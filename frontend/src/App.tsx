@@ -1,0 +1,175 @@
+import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, Outlet } from "react-router-dom"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { Toaster } from "@/components/ui/sonner"
+import Header from "@/components/layout/Header"
+import ModeNavigation from "@/components/layout/ModeNavigation"
+import WatchlistSidebar from "@/components/layout/WatchlistSidebar"
+import { TelegramChannelsSidebar } from "@/components/feed/TelegramFeedPage"
+import { BlogSourcesSidebar } from "@/components/feed/BlogFeedPage"
+import { useCompany } from "@/hooks/useCompanySearch"
+import { addToHistory } from "@/components/layout/SearchHistory"
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
+
+// Discovery
+import IndustryPage from "@/components/industry/IndustryPage"
+import OnchainPage from "@/components/onchain/OnchainPage"
+import ScreenerPage from "@/components/discovery/ScreenerPage"
+import SignalFeedPage from "@/components/discovery/SignalFeedPage"
+
+// Analysis
+import ComparePage from "@/components/analyze/ComparePage"
+import SummaryPage from "@/components/summary/SummaryPage"
+import FinancialsPage from "@/components/financials/FinancialsPage"
+import BusinessPage from "@/components/business/BusinessPage"
+import DisclosurePage from "@/components/disclosures/DisclosurePage"
+import ValuationPage from "@/components/valuation/ValuationPage"
+
+// Feed
+import TelegramFeedPage from "@/components/feed/TelegramFeedPage"
+import BlogFeedPage from "@/components/feed/BlogFeedPage"
+
+// Research
+import WatchlistPage from "@/components/research/WatchlistPage"
+import MemosPage from "@/components/research/MemosPage"
+import CatalystsPage from "@/components/research/CatalystsPage"
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, refetchOnWindowFocus: false },
+  },
+})
+
+function Layout() {
+  useKeyboardShortcuts()
+  const { pathname } = useLocation()
+
+  // Extract stockCode from /analyze/:stockCode/... paths (exclude special routes like /analyze/compare)
+  const stockCodeMatch = pathname.match(/^\/analyze\/([^/]+)/)
+  const rawCode = stockCodeMatch ? stockCodeMatch[1] : null
+  const stockCode = rawCode === "compare" ? null : rawCode
+  const { data: company } = useCompany(stockCode)
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header selectedCompany={company ?? null} />
+      <ModeNavigation stockCode={stockCode} companyName={company?.corp_name} />
+
+      <div className="mx-auto max-w-[1440px] flex">
+        <main className="flex-1 min-w-0 p-6">
+          <Outlet />
+        </main>
+
+        {pathname.startsWith("/feed") ? (
+          <aside className="w-[220px] shrink-0 bg-card border-l sticky top-[110px] h-[calc(100vh-110px)] overflow-y-auto">
+            {pathname.startsWith("/feed/blogs") ? <BlogSourcesSidebar /> : <TelegramChannelsSidebar />}
+          </aside>
+        ) : (
+          <WatchlistSidebar currentStockCode={stockCode} />
+        )}
+      </div>
+      <Toaster />
+    </div>
+  )
+}
+
+function AnalyzePage({ tab }: { tab: string }) {
+  const { stockCode } = useParams<{ stockCode: string }>()
+  const { data: company, isLoading } = useCompany(stockCode ?? null)
+
+  if (!stockCode) return null
+  if (isLoading) return <div className="text-center py-20 text-muted-foreground">로딩 중...</div>
+  if (!company) return <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
+
+  const corpCode = company.corp_code
+
+  switch (tab) {
+    case "summary":
+      return <SummaryPage stockCode={stockCode} corpCode={corpCode} />
+    case "financials":
+      return <FinancialsPage stockCode={stockCode} corpCode={corpCode} />
+    case "business":
+      return <BusinessPage stockCode={stockCode} corpCode={corpCode} />
+    case "disclosures":
+      return <DisclosurePage stockCode={stockCode} corpCode={corpCode} />
+    case "valuation":
+      return <ValuationPage stockCode={stockCode} />
+    default:
+      return <Navigate to={`/analyze/${stockCode}/summary`} replace />
+  }
+}
+
+function IndustryRoute() {
+  const navigate = useNavigate()
+  return (
+    <IndustryPage
+      onSelectCompany={(c) => {
+        if (c.stock_code) {
+          addToHistory(c)
+          navigate(`/analyze/${c.stock_code}/summary`)
+        }
+      }}
+    />
+  )
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            {/* Default */}
+            <Route index element={<Navigate to="/discover/industry" replace />} />
+
+            {/* Discovery */}
+            <Route path="discover" element={<Navigate to="/discover/industry" replace />} />
+            <Route path="discover/industry" element={<IndustryRoute />} />
+            <Route path="discover/screener" element={<ScreenerPage />} />
+            <Route path="discover/signals" element={<SignalFeedPage />} />
+            <Route path="discover/alt-data" element={<OnchainPage />} />
+
+            {/* Analysis */}
+            <Route path="analyze/compare" element={<ComparePage />} />
+            <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
+            <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
+            <Route path="analyze/:stockCode/financials" element={<AnalyzePage tab="financials" />} />
+            <Route path="analyze/:stockCode/valuation" element={<AnalyzePage tab="valuation" />} />
+            <Route path="analyze/:stockCode/business" element={<AnalyzePage tab="business" />} />
+            <Route path="analyze/:stockCode/disclosures" element={<AnalyzePage tab="disclosures" />} />
+
+            {/* Feed */}
+            <Route path="feed" element={<Navigate to="/feed/telegram" replace />} />
+            <Route path="feed/telegram" element={<TelegramFeedPage />} />
+            <Route path="feed/blogs" element={<BlogFeedPage />} />
+
+            {/* Research */}
+            <Route path="research" element={<Navigate to="/research/watchlist" replace />} />
+            <Route path="research/watchlist" element={<WatchlistPage />} />
+            <Route path="research/memos" element={<MemosPage />} />
+            <Route path="research/catalysts" element={<CatalystsPage />} />
+
+            {/* Legacy redirects */}
+            <Route path="industry" element={<Navigate to="/discover/industry" replace />} />
+            <Route path="onchain" element={<Navigate to="/discover/alt-data" replace />} />
+            <Route path="company/:stockCode/:tab" element={<LegacyRedirect />} />
+
+            {/* Catch all */}
+            <Route path="*" element={<Navigate to="/discover/industry" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
+  )
+}
+
+/** Redirect old /company/:stockCode/:tab URLs to /analyze/:stockCode/:tab */
+function LegacyRedirect() {
+  const { stockCode, tab } = useParams<{ stockCode: string; tab: string }>()
+  const tabMap: Record<string, string> = {
+    summary: "summary", financials: "financials", business: "business",
+    disclosures: "disclosures", valuation: "valuation",
+    metrics: "summary", marketcap: "valuation",
+  }
+  const newTab = tabMap[tab ?? "summary"] ?? "summary"
+  return <Navigate to={`/analyze/${stockCode}/${newTab}`} replace />
+}
