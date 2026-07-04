@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+opendartreader
+pykrx
+aiosqlite
+pandas
+httpx
+beautifulsoup4
+lxml
+feedparser

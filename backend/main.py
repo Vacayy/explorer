@@ -1,0 +1,45 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from database import init_db
+from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, onchain, kpi
+from routers import watchlist, screener, signals, catalysts, compare, consensus, index_data
+from routers import telegram_feed
+from routers import blog_feed
+
+app = FastAPI(title="Stock Explorer API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(companies.router)
+app.include_router(financials.router)
+app.include_router(disclosures.router)
+app.include_router(ir_notes.router)
+app.include_router(stock_prices.router)
+app.include_router(business.router)
+app.include_router(industries.router)
+app.include_router(onchain.router)
+app.include_router(kpi.router)
+app.include_router(watchlist.router)
+app.include_router(screener.router)
+app.include_router(signals.router)
+app.include_router(catalysts.router)
+app.include_router(compare.router)
+app.include_router(consensus.router)
+app.include_router(index_data.router)
+app.include_router(telegram_feed.router)
+app.include_router(blog_feed.router)
+
+
+@app.on_event("startup")
+def startup():
+    init_db()
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}
