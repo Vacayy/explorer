@@ -9,3 +9,6 @@ httpx
 beautifulsoup4
 lxml
 feedparser
+requests
+markitdown
+# anthropic  # LLM enrich 활성화 시 주석 해제 (ANTHROPIC_API_KEY 확보 후)
