@@ -8,26 +8,13 @@
 """
 import json
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
 
 from database import get_connection
+from pipeline.dates import parse_dt as _parse_dt
 
 MIN_MENTIONS = 3      # 최근 7일 최소 언급 수
 SURGE_RATIO = 2.0     # baseline 대비 배수 (baseline 0이면 MIN_MENTIONS만으로 성립)
 
-
-def _parse_dt(s: str):
-    """published_at 혼재 포맷 파싱: ISO(텔레그램) / RFC822(블로그 RSS)."""
-    if not s:
-        return None
-    try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except ValueError:
-        pass
-    try:
-        return parsedate_to_datetime(s)
-    except Exception:
-        return None
 
 
 def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
