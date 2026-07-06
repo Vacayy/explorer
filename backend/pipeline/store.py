@@ -7,6 +7,7 @@ content_hash로 멱등성 보장:
 """
 import hashlib
 import os
+import re
 
 from database import get_connection
 from pipeline.base import RawDoc
@@ -42,12 +43,32 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
         conn.execute(
             "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
             "VALUES (?, ?, 'topic', 0.5)", (doc_id, eid))
-    # 종목: 기존 company 엔티티 이름이 본문에 등장하면 링크
+    # 종목: 기존 company 엔티티 이름이 본문에 등장하면 링크.
+    # 오탐 완화 휴리스틱 (근본 해결은 LLM enrich):
+    #  - 모든 이름: 앞이 한글/영숫자면 다른 단어의 꼬리 매칭('하이닉스'의 '이닉스')이므로 제외.
+    #    뒤는 조사('삼성전자는')를 허용해야 하므로 ≤2자 이름만 뒤 경계도 요구
+    #    ('레이','SK','테스' 등 일반 단어 오탐 — 조사 붙은 언급은 놓치지만 precision 우선)
+    #  - 더 긴 매칭명에 포함된 이름('이닉스'⊂'SK하이닉스'): 등장 횟수가
+    #    포함하는 이름들의 합계 이하면 전부 내부 매칭으로 보고 제외
+    hits = []
     for row in conn.execute("SELECT id, name FROM entities WHERE type='company'").fetchall():
-        if row["name"] and row["name"] in text:
-            conn.execute(
-                "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
-                "VALUES (?, ?, 'stock', 0.6)", (doc_id, row["id"]))
+        name = row["name"]
+        if not name or name not in text:
+            continue
+        pat = rf"(?<![0-9A-Za-z가-힣]){re.escape(name)}"
+        if len(name) <= 2:
+            pat += r"(?![0-9A-Za-z가-힣])"
+        if not re.search(pat, text):
+            continue
+        hits.append((row["id"], name))
+    matched_names = [n for _, n in hits]
+    for eid, name in hits:
+        longer = [o for o in matched_names if o != name and name in o]
+        if longer and text.count(name) <= sum(text.count(o) for o in longer):
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
+            "VALUES (?, ?, 'stock', 0.6)", (doc_id, eid))
 
 
 def store_document(doc: RawDoc) -> dict:
