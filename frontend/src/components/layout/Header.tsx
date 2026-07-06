@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import { addToHistory } from "@/components/layout/SearchHistory"
 import { Badge } from "@/components/ui/badge"
+import ThemeToggle from "@/components/shared/ThemeToggle"
 import {
   Command,
   CommandInput,
@@ -62,6 +63,10 @@ export default function Header({ selectedCompany }: Props) {
             {selectedCompany.corp_name} ({selectedCompany.stock_code})
           </Badge>
         )}
+
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   )
