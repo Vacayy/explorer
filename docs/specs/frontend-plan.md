@@ -41,8 +41,9 @@ routers/spine_feed.py     GET /api/spine/feed?source=&stock=&industry=&topic=&pa
                           → raw_documents ⨝ enrichments ⨝ entity_links
 routers/spine_signals.py  GET /api/spine/signals?type=&days=
                           → signals ⨝ entities (payload_json 포함)
-routers/spine_today.py    GET /api/spine/today
-                          → 캘린더(catalysts) + 신규 신호 + 24h 하이라이트 + 왓치리스트 펄스
+routers/spine_home.py     GET /api/spine/home
+                          → 캘린더(내 종목 우선) + 왓치리스트 업데이트 스트림
+                            (공시·언급·신호) + 시장 하이라이트 (빈 날 승격용)
 ```
 - Pydantic 모델 `models/spine.py`. 모든 응답에 `fetched_at`/`as_of` 포함 (FreshnessStamp용).
 - 기존 feed 라우터들은 cutover 완료 후 별도 커밋에서 은퇴.
@@ -66,12 +67,15 @@ types/index.ts     UI 모델 타입 추가
 | 필터 상태 | URL 쿼리 파라미터가 단일 소스 → queryKey에 그대로 반영 |
 | mutation | 왓치리스트 토글 등: onSuccess에서 관련 key invalidate |
 
-## Phase D — 화면 조립 (P0 순서)
+## Phase D — 화면 조립 (P0 순서, product-v2.md v2.1 IA)
 
-1. `/today` — 신규. 섹션 4개, 각 섹션 독립 로딩(부분 실패 허용 = Partial state)
-2. `/signals` — SignalCard 시스템. 기존 discover/signals 라우트를 새 화면으로 교체
+1. `/home` — 내 종목 follow-up. 섹션 3개 독립 로딩(Partial 허용), 빈 화면 방지 규칙
+   (내 종목 조용한 날 → 시장 하이라이트 승격) 구현 필수
+2. `/explore` — 신호 카드 시스템(SignalCard)부터. 스캔(신고가)은 벌크 OHLCV 수집 후 P1
 3. `/feed` — 통합 피드 + 필터. 기존 feed/telegram·feed/blogs → 리다이렉트
-4. 네비게이션 갱신: Today를 첫 탭으로
+4. 네비게이션 갱신: Home을 첫 탭으로, 탐색(Explore) 분리
+
+useSpineFeed/useSpineSignals/useToday → useHome/useExplore로 훅 명명 정정.
 
 ## 검증 (각 Phase 완료 시)
 - `npx tsc --noEmit` 통과 (기존 규칙)

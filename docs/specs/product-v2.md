@@ -32,28 +32,42 @@
 
 ## IA (정보 구조)
 
+> v2.1 개정: 사용자(실사용자) 피드백 반영 — 홈은 범용 브리핑이 아니라 **내가 추적하는
+> 종목의 follow-up**. 모니터링(매일·의무)과 탐색(가끔·발굴)을 메뉴로 분리.
+
 ```
-/today                      🆕 홈 — 아침 브리핑
-/signals                    🆕 신호 피드 (기존 discover/signals 대체)
+/home                       🆕 홈 — 내 종목 follow-up (왓치리스트 중심)
+/explore                    🆕 탐색 — 신호·스캔(52주/역사적 신고가 등)·스크리너·섹터 렌즈
 /feed                       🆕 통합 피드 (기존 feed/telegram, feed/blogs cutover → 은퇴)
-/analyze/:code/*            기존 유지 + 🆕 mentions 탭 (P1)
+/analyze/:code/*            종목 디테일 — 기존 유지 + 🆕 mentions 탭 (P1)
 /research/*                 기존 유지 (catalysts는 event 자동화 후 캘린더로 승격, P1)
-/discover/*                 기존 유지 (순차 교체)
 ```
 URL = 상태의 단일 소스 (기존 navigation 정책 유지).
 
+**층위 원칙 (홈 vs 디테일)**: 홈은 **변화의 스트림(delta)** — "밤사이 무슨 일이 있었나"만.
+디테일은 **상태의 전체(state)** — 실적·공시·수출입·언급의 전체 맥락. 홈에 풀데이터를 쌓지 않는다.
+
 ## 화면 스펙 (P0)
 
-### 1. /today — 아침 브리핑
+### 1. /home — 내 종목 follow-up
 | 섹션 | 내용 | 데이터 |
 |---|---|---|
-| ① 캘린더 스트립 | 오늘~이번주 이벤트 (실적발표·FOMC 등) | catalysts (→ P1에서 event 노드) |
-| ② 신규 신호 | 최근 신호 카드 (최대 6) | signals |
-| ③ 수집 하이라이트 | 최근 24h 문서 중 언급 상위 종목 + 대표 문서 | raw_documents + entity_links |
-| ④ 왓치리스트 펄스 | 왓치리스트 종목 중 언급/신호 발생분만 | watchlist ⨝ entity_links |
+| ① 캘린더 스트립 | 오늘~이번주 이벤트, **내 종목 이벤트 우선 정렬** | catalysts (→ P1에서 event 노드) |
+| ② 내 종목 업데이트 스트림 | 왓치리스트 종목의 공시·피드 언급·신호를 시간/중요도순 카드로. 클릭 → 디테일 | watchlist ⨝ entity_links ⨝ raw_documents/signals/disclosures |
+| ③ 시장 하이라이트 | 전체 신호·24h 언급 상위 — **내 종목 업데이트가 적은 날 자연 승격** | signals + entity_links |
 
-### 2. /signals — 신호 피드
-- 카드 리스트 + 타입 필터 칩. **확장형 카드 시스템**: signal_type별 카드 변형이 같은 프레임 공유
+- **빈 화면 방지 규칙**: ②가 0건이어도 홈이 죽지 않는다 — ③이 올라오고, ②는
+  "오늘 내 종목은 조용합니다" 상태로 명시. 왓치리스트 자체가 비면 탐색/검색 유도 Empty state.
+
+### 1-b. /explore — 탐색
+| 블록 | 내용 | 전제조건 |
+|---|---|---|
+| 신호 카드 | mention_surge (확장형 카드 시스템 — 수출변화·신고가 카드 추후 추가) | 구현됨 |
+| 스캔 | 52주 신고가 · 역사적 신고가 | ⚠️ **전 종목 일별 OHLCV 벌크 수집 선행 필요** (현재 주가는 종목 조회 시 lazy 수집 — cron에 벌크 잡 추가) |
+| 스크리너·섹터 렌즈 | 기존 스크리너 + MEMBER_OF 롤업 (P1) | 섹터 그래프 구현됨 |
+
+### 2. 신호 카드 (in /explore, /home ③)
+- **확장형 카드 시스템**: signal_type별 카드 변형이 같은 프레임 공유
   (mention_surge 지금 / export_change·high_52w 나중에 카드만 추가).
 - **SignalCard 규격** (기획 확정 형식):
   - 헤더: 종목명 + 신호타입 뱃지 + 날짜
@@ -73,9 +87,19 @@ URL = 상태의 단일 소스 (기존 navigation 정책 유지).
 
 | 단계 | 범위 |
 |---|---|
-| **P0** | 디자인 토큰 재정비(+다크모드), Today, Signals, 통합 Feed, spine 읽기 API |
-| **P1** | analyze mentions 탭, 캘린더 자동화 UI(event 노드), 스파크라인·밸류 캡슐, 섹터 렌즈 페이지(MEMBER_OF 롤업) |
-| **P2** | 밸류체인 그래프 시각화, RAG 챗, 신호 ②③(수출 변화·52주 신고가) UI |
+| **P0** | 디자인 토큰 재정비(+다크모드), **/home(내 종목)**, /explore(신호 카드까지), 통합 Feed, spine 읽기 API |
+| **P1** | analyze mentions 탭, 캘린더 자동화 UI(event 노드), 스파크라인·밸류 캡슐, 섹터 렌즈, **벌크 OHLCV 수집 + 52주/역사적 신고가 스캔**, **엔티티 팔로우**(종목뿐 아니라 섹터·테마 팔로우 → 홈 스트림에 반영), **증권사 리포트 커넥터** |
+| **P2** | 밸류체인 그래프 시각화, RAG 챗, 수출 변화 신호 UI |
+
+## 데이터 소스 백로그 — 증권사 리포트
+
+**설계상 완전히 수용 가능** — 문서형 소스이므로 커넥터 1개로 척추에 흡수된다:
+- `ReportConnector`: discover = 네이버금융 리서치(finance.naver.com/research) /
+  한경컨센서스 목록 크롤 → fetch = PDF 다운로드 → `RawDoc(kind="pdf")`
+- normalize의 **markitdown PDF 경로가 이미 구현**되어 있음 (이 소스가 markitdown의 본래 용도)
+- 리포트는 종목코드가 메타데이터로 구조화되어 있어 entity_links를 substring 매칭보다
+  높은 confidence로 걸 수 있음. 목표주가·투자의견은 enrich에서 추출 → observations 투영 가능
+- 리스크: 수집처의 크롤 차단·PDF 접근 제한 → 실측 필요. 유료DB(에프앤가이드 등)는 제외
 
 ## Out of Scope (이번 사이클)
 - 텔레그램 봇 인터페이스, 멀티유저/인증, 모바일 최적화(반응형 기본만).
