@@ -145,3 +145,83 @@ export interface WatchlistItem {
   latest_market_cap: number | null;
   gap_pct: number | null;
 }
+
+// ---------- Spine (그래프 척추) API ----------
+
+export interface EntityTag {
+  entity_id: number;
+  type: string;          // company | sector | theme
+  name: string;
+  link_type: string;     // stock | industry | topic | mention
+  confidence: number | null;
+}
+
+export interface FeedDocument {
+  id: number;
+  source_type: string;   // blog | telegram
+  title: string;
+  url: string;
+  published_at: string;
+  summary: string | null;
+  enrich_model: string | null;
+  entities: EntityTag[];
+}
+
+export interface SpineFeedResponse {
+  items: FeedDocument[];
+  total: number;
+  page: number;
+  size: number;
+  as_of: string;
+}
+
+export interface SpineSignal {
+  id: number;
+  signal_type: string;
+  entity_id: number;
+  entity_name: string;
+  stock_code: string | null;
+  date: string;
+  payload: {
+    count_7d?: number;
+    baseline_7d?: number;
+    keywords?: string[];
+    docs?: { title: string; url: string }[];
+  };
+  interpretation: string | null;
+  interpretation_model: string | null;
+}
+
+export interface SpineSignalsResponse {
+  items: SpineSignal[];
+  as_of: string;
+}
+
+export interface CalendarEvent {
+  id: number;
+  stock_code: string | null;
+  corp_name: string | null;
+  event_type: string;
+  event_date: string;
+  title: string;
+  in_watchlist: boolean;
+}
+
+export interface WatchlistUpdate {
+  kind: "document" | "signal";
+  stock_code: string;
+  corp_name: string;
+  occurred_at: string;
+  title: string;
+  url: string | null;
+  source_type: string | null;
+  signal_type: string | null;
+}
+
+export interface HomeResponse {
+  calendar: CalendarEvent[];
+  watchlist_updates: WatchlistUpdate[];
+  market_highlights: SpineSignal[];
+  watchlist_empty: boolean;
+  as_of: string;
+}

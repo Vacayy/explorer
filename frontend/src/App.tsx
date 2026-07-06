@@ -10,6 +10,9 @@ import { useCompany } from "@/hooks/useCompanySearch"
 import { addToHistory } from "@/components/layout/SearchHistory"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
+// Home
+import HomePage from "@/components/home/HomePage"
+
 // Discovery
 import IndustryPage from "@/components/industry/IndustryPage"
 import OnchainPage from "@/components/onchain/OnchainPage"
@@ -119,7 +122,10 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             {/* Default */}
-            <Route index element={<Navigate to="/discover/industry" replace />} />
+            <Route index element={<Navigate to="/home" replace />} />
+
+            {/* Home — 내 종목 follow-up */}
+            <Route path="home" element={<HomePage />} />
 
             {/* Discovery */}
             <Route path="discover" element={<Navigate to="/discover/industry" replace />} />

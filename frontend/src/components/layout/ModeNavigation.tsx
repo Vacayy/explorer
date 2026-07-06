@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
-type AppMode = "discover" | "feed" | "analyze" | "research"
+type AppMode = "home" | "discover" | "feed" | "analyze" | "research"
 
 const DISCOVER_TABS = [
   { key: "industry", path: "/discover/industry", label: "산업군" },
@@ -44,6 +44,11 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
       <div className="mx-auto max-w-[1440px] px-6">
         {/* Level 1: Mode pills */}
         <div className="flex items-center gap-1 pt-1.5 pb-0.5">
+          <ModeButton
+            to="/home"
+            active={activeMode === "home"}
+            label="홈"
+          />
           <ModeButton
             to="/discover/industry"
             active={activeMode === "discover"}
@@ -142,6 +147,7 @@ function SubTab({ to, active, label }: { to: string; active: boolean; label: str
 }
 
 function getActiveMode(pathname: string): AppMode {
+  if (pathname.startsWith("/home")) return "home"
   if (pathname.startsWith("/feed")) return "feed"
   if (pathname.startsWith("/analyze")) return "analyze"
   if (pathname.startsWith("/research")) return "research"
