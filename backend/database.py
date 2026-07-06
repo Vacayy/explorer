@@ -229,6 +229,102 @@ def init_db():
         UNIQUE(post_id, tag_type, tag_value)
     );
     CREATE INDEX IF NOT EXISTS idx_blog_post_tags ON blog_post_tags(tag_type, tag_value);
+
+    -- ============================================================
+    -- 그래프 척추 (Phase 1 ETL spine) — 신규 단일 진실원천.
+    -- 기존 테이블/라우터와 독립. docs/ontology.md, docs/specs/phase1-etl-spine.md 참조.
+    -- ============================================================
+
+    -- 노드: company/institution/product/theme/sector/event/person/policy/...
+    CREATE TABLE IF NOT EXISTS entities (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        type         TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        aliases      TEXT,
+        meta_json    TEXT,
+        status       TEXT NOT NULL DEFAULT 'active',  -- active | proposed
+        created_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(type, name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
+
+    -- 엣지: 단방향 저장. epistemic_type으로 사실/가설 분리(비타협 원칙).
+    CREATE TABLE IF NOT EXISTS entity_relations (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        src_id         INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        dst_id         INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        rel_type       TEXT NOT NULL,
+        epistemic_type TEXT NOT NULL DEFAULT 'fact',  -- fact | hypothesis
+        confidence     REAL,
+        source_doc_id  INTEGER REFERENCES raw_documents(id) ON DELETE SET NULL,
+        valid_from     TEXT,
+        valid_to       TEXT,
+        created_at     TEXT DEFAULT (datetime('now')),
+        UNIQUE(src_id, dst_id, rel_type, valid_from)
+    );
+    CREATE INDEX IF NOT EXISTS idx_entity_relations_src ON entity_relations(src_id, rel_type);
+    CREATE INDEX IF NOT EXISTS idx_entity_relations_dst ON entity_relations(dst_id, rel_type);
+
+    -- 시계열: 도메인 원본 테이블의 핵심 라인 투영 (2계층 저장).
+    CREATE TABLE IF NOT EXISTS observations (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        date         TEXT NOT NULL,
+        metric       TEXT NOT NULL,
+        value        REAL,
+        unit         TEXT,
+        source       TEXT,
+        UNIQUE(entity_id, date, metric, source)
+    );
+    CREATE INDEX IF NOT EXISTS idx_observations_entity ON observations(entity_id, metric, date);
+
+    -- 문서: 모든 소스의 정규화 결과 통합. content_hash로 멱등성.
+    CREATE TABLE IF NOT EXISTS raw_documents (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type  TEXT NOT NULL,
+        source_id    TEXT NOT NULL,
+        title        TEXT,
+        url          TEXT,
+        published_at TEXT,
+        fetched_at   TEXT DEFAULT (datetime('now')),
+        raw_content  TEXT,
+        markdown     TEXT,
+        content_hash TEXT,
+        UNIQUE(source_type, source_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_raw_documents_hash ON raw_documents(content_hash);
+
+    -- LLM 강화 결과 (문서당 1건, content_hash로 캐시).
+    CREATE TABLE IF NOT EXISTS enrichments (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        doc_id       INTEGER NOT NULL REFERENCES raw_documents(id) ON DELETE CASCADE,
+        summary      TEXT,
+        sentiment    TEXT,
+        model        TEXT,
+        content_hash TEXT,
+        enriched_at  TEXT DEFAULT (datetime('now')),
+        UNIQUE(doc_id, content_hash)
+    );
+
+    -- 문서↔엔티티 링크 (기존 blog_post_tags의 일반화).
+    CREATE TABLE IF NOT EXISTS entity_links (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        doc_id       INTEGER NOT NULL REFERENCES raw_documents(id) ON DELETE CASCADE,
+        entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        link_type    TEXT NOT NULL DEFAULT 'mention',  -- mention | stock | industry | topic
+        confidence   REAL,
+        UNIQUE(doc_id, entity_id, link_type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_entity_links_entity ON entity_links(entity_id, link_type);
+
+    -- 살아있는 모델: 파라미터화된 계산 스펙 (엑셀 continuity).
+    CREATE TABLE IF NOT EXISTS models (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        name             TEXT NOT NULL UNIQUE,
+        spec_json        TEXT,
+        output_entity_id INTEGER REFERENCES entities(id) ON DELETE SET NULL,
+        updated_at       TEXT DEFAULT (datetime('now'))
+    );
     """)
 
     conn.commit()
