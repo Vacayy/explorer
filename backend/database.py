@@ -317,6 +317,20 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_entity_links_entity ON entity_links(entity_id, link_type);
 
+    -- 파생 신호 (docs/specs/signals-spine.md). 산출값(payload)과 LLM 해석을 분리 저장.
+    CREATE TABLE IF NOT EXISTS signals (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        signal_type          TEXT NOT NULL,     -- mention_surge | export_change | high_52w
+        entity_id            INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        date                 TEXT NOT NULL,     -- 신호 산출 기준일
+        payload_json         TEXT,              -- 산출값 (카운트, 키워드, 근거 doc_ids 등)
+        interpretation       TEXT,              -- LLM 해석 (epistemic: hypothesis)
+        interpretation_model TEXT,
+        created_at           TEXT DEFAULT (datetime('now')),
+        UNIQUE(signal_type, entity_id, date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_signals_type_date ON signals(signal_type, date);
+
     -- 살아있는 모델: 파라미터화된 계산 스펙 (엑셀 continuity).
     CREATE TABLE IF NOT EXISTS models (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,

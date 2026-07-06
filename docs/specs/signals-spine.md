@@ -1,6 +1,6 @@
 # 신호(Signals) 계층 — 척추 위의 파생 분석 (기획 기록)
 
-> 상태: **기획 단계** (Phase 1b~2에서 구현). 원시 데이터가 아닌 **파생 계층**으로,
+> 상태: **①(언급량 급증) 구현됨** — `pipeline/signals.py` + `scripts/compute_signals.py`, cron으로 ingest 후 자동 계산. ②③은 기획 단계. 원시 데이터가 아닌 **파생 계층**으로,
 > ETL 척추(raw_documents/entity_links/observations)와 그래프(MAKES/MEMBER_OF) 위에서 주기 재계산된다.
 > 기존 discover/signals 페이지(docs/specs/discover-signals.md)가 UI 착지점.
 
