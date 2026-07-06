@@ -93,3 +93,21 @@ export function formatFundingRate(rate: string | number): string {
   const num = typeof rate === "string" ? parseFloat(rate) : rate
   return `${(num * 100).toFixed(4)}%`
 }
+
+/** ISO 시각 → 상대 시간 표기 ("3분 전", "2시간 전", "어제", "6/28") */
+export function formatRelativeTime(iso: string): string {
+  if (!iso) return "-";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "-";
+  const diffMs = Date.now() - t;
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "방금";
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return "어제";
+  if (day < 7) return `${day}일 전`;
+  const d = new Date(t);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
