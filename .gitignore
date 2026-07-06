@@ -25,3 +25,4 @@ frontend/.vite/
 docs_cache/
 backend/docs_cache/
 *.pkl
+logs/

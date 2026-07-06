@@ -1,0 +1,26 @@
+"""파생 신호 계산 실행 (ingest 후 후처리로 실행).
+
+사용법: python scripts/compute_signals.py
+"""
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+
+from database import init_db
+from pipeline.signals import compute_mention_surge
+
+
+def main():
+    init_db()
+    signals = compute_mention_surge()
+    print(f"[mention_surge] {len(signals)}건")
+    for s in sorted(signals, key=lambda x: -x["payload"]["count_7d"]):
+        p = s["payload"]
+        print(f"  · {s['name']}: 최근 7일 {p['count_7d']}회 (직전 7일 {p['baseline_7d']}회)"
+              f"  키워드: {', '.join(p['keywords'][:3]) or '-'}")
+
+
+if __name__ == "__main__":
+    main()
