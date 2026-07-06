@@ -5,6 +5,7 @@ from routers import companies, financials, disclosures, ir_notes, stock_prices, 
 from routers import watchlist, screener, signals, catalysts, compare, consensus, index_data
 from routers import telegram_feed
 from routers import blog_feed
+from routers import spine_feed, spine_signals, spine_home
 
 app = FastAPI(title="Stock Explorer API")
 
@@ -33,6 +34,9 @@ app.include_router(consensus.router)
 app.include_router(index_data.router)
 app.include_router(telegram_feed.router)
 app.include_router(blog_feed.router)
+app.include_router(spine_feed.router)
+app.include_router(spine_signals.router)
+app.include_router(spine_home.router)
 
 
 @app.on_event("startup")

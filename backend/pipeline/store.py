@@ -11,6 +11,7 @@ import re
 
 from database import get_connection
 from pipeline.base import RawDoc
+from pipeline.dates import to_iso_utc
 from pipeline.normalize import to_markdown
 from pipeline import enrich as enrich_mod
 
@@ -88,14 +89,14 @@ def store_document(doc: RawDoc) -> dict:
         conn.execute(
             "UPDATE raw_documents SET title=?, url=?, published_at=?, raw_content=?, "
             "markdown=?, content_hash=?, fetched_at=datetime('now') WHERE id=?",
-            (doc.title, doc.url, doc.published_at, doc.raw_content, md, h, existing["id"]),
+            (doc.title, doc.url, to_iso_utc(doc.published_at), doc.raw_content, md, h, existing["id"]),
         )
         doc_id, status = existing["id"], "updated"
     else:
         cur = conn.execute(
             "INSERT INTO raw_documents (source_type, source_id, title, url, published_at, "
             "raw_content, markdown, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (doc.source_type, doc.source_id, doc.title, doc.url, doc.published_at,
+            (doc.source_type, doc.source_id, doc.title, doc.url, to_iso_utc(doc.published_at),
              doc.raw_content, md, h),
         )
         doc_id, status = cur.lastrowid, "new"
