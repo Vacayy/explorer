@@ -6,6 +6,7 @@ class EntityTag(BaseModel):
     entity_id: int
     type: str          # company | sector | theme
     name: str
+    aliases: str | None  # company면 종목코드 (칩 클릭 → 필터/디테일 이동용)
     link_type: str     # stock | industry | topic | mention
     confidence: float | None
 
