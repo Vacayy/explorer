@@ -57,12 +57,12 @@ def get_feed(
     if doc_ids:
         ph = ",".join("?" for _ in doc_ids)
         for t in conn.execute(f"""
-            SELECT el.doc_id, el.entity_id, e.type, e.name, el.link_type, el.confidence
+            SELECT el.doc_id, el.entity_id, e.type, e.name, e.aliases, el.link_type, el.confidence
             FROM entity_links el JOIN entities e ON el.entity_id = e.id
             WHERE el.doc_id IN ({ph})""", doc_ids):
             tags[t["doc_id"]].append(EntityTag(
                 entity_id=t["entity_id"], type=t["type"], name=t["name"],
-                link_type=t["link_type"], confidence=t["confidence"]))
+                aliases=t["aliases"], link_type=t["link_type"], confidence=t["confidence"]))
     conn.close()
 
     return FeedResponse(

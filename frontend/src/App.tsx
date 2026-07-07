@@ -28,8 +28,7 @@ import DisclosurePage from "@/components/disclosures/DisclosurePage"
 import ValuationPage from "@/components/valuation/ValuationPage"
 
 // Feed
-import TelegramFeedPage from "@/components/feed/TelegramFeedPage"
-import BlogFeedPage from "@/components/feed/BlogFeedPage"
+import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
 
 // Research
 import WatchlistPage from "@/components/research/WatchlistPage"
@@ -44,7 +43,7 @@ const queryClient = new QueryClient({
 
 function Layout() {
   useKeyboardShortcuts()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
 
   // Extract stockCode from /analyze/:stockCode/... paths (exclude special routes like /analyze/compare)
   const stockCodeMatch = pathname.match(/^\/analyze\/([^/]+)/)
@@ -64,7 +63,7 @@ function Layout() {
 
         {pathname.startsWith("/feed") ? (
           <aside className="w-[220px] shrink-0 bg-card border-l sticky top-[110px] h-[calc(100vh-110px)] overflow-y-auto">
-            {pathname.startsWith("/feed/blogs") ? <BlogSourcesSidebar /> : <TelegramChannelsSidebar />}
+            {search.includes("source=blog") ? <BlogSourcesSidebar /> : <TelegramChannelsSidebar />}
           </aside>
         ) : (
           <WatchlistSidebar currentStockCode={stockCode} />
@@ -143,10 +142,10 @@ export default function App() {
             <Route path="analyze/:stockCode/business" element={<AnalyzePage tab="business" />} />
             <Route path="analyze/:stockCode/disclosures" element={<AnalyzePage tab="disclosures" />} />
 
-            {/* Feed */}
-            <Route path="feed" element={<Navigate to="/feed/telegram" replace />} />
-            <Route path="feed/telegram" element={<TelegramFeedPage />} />
-            <Route path="feed/blogs" element={<BlogFeedPage />} />
+            {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
+            <Route path="feed" element={<UnifiedFeedPage />} />
+            <Route path="feed/telegram" element={<Navigate to="/feed?source=telegram" replace />} />
+            <Route path="feed/blogs" element={<Navigate to="/feed?source=blog" replace />} />
 
             {/* Research */}
             <Route path="research" element={<Navigate to="/research/watchlist" replace />} />

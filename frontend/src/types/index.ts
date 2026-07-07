@@ -152,6 +152,7 @@ export interface EntityTag {
   entity_id: number;
   type: string;          // company | sector | theme
   name: string;
+  aliases: string | null; // company면 종목코드
   link_type: string;     // stock | industry | topic | mention
   confidence: number | null;
 }

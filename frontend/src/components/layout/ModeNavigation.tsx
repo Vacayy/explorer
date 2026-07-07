@@ -19,8 +19,9 @@ const ANALYZE_TABS = [
 ] as const
 
 const FEED_TABS = [
-  { key: "telegram", path: "/feed/telegram", label: "텔레그램" },
-  { key: "blogs", path: "/feed/blogs", label: "블로그" },
+  { key: "all", path: "/feed", label: "전체" },
+  { key: "telegram", path: "/feed?source=telegram", label: "텔레그램" },
+  { key: "blog", path: "/feed?source=blog", label: "블로그" },
 ] as const
 
 const RESEARCH_TABS = [
@@ -35,9 +36,11 @@ interface Props {
 }
 
 export default function ModeNavigation({ stockCode, companyName }: Props) {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const activeMode = getActiveMode(pathname)
   const activeSubTab = getActiveSubTab(pathname)
+  // 피드 서브탭은 쿼리 파라미터(source)가 상태 소스
+  const feedSource = new URLSearchParams(search).get("source") ?? "all"
 
   return (
     <nav className="border-b bg-card">
@@ -55,7 +58,7 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
             label="발굴"
           />
           <ModeButton
-            to="/feed/telegram"
+            to="/feed"
             active={activeMode === "feed"}
             label="피드"
           />
@@ -80,7 +83,7 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
         {/* Level 2: Sub-tabs */}
         <div className="flex -mb-px">
           {activeMode === "feed" && FEED_TABS.map((tab) => (
-            <SubTab key={tab.key} to={tab.path} active={activeSubTab === tab.key} label={tab.label} />
+            <SubTab key={tab.key} to={tab.path} active={feedSource === tab.key} label={tab.label} />
           ))}
 
           {activeMode === "discover" && DISCOVER_TABS.map((tab) => (
@@ -155,9 +158,7 @@ function getActiveMode(pathname: string): AppMode {
 }
 
 function getActiveSubTab(pathname: string): string | null {
-  // Feed
-  if (pathname.startsWith("/feed/telegram")) return "telegram"
-  if (pathname.startsWith("/feed/blogs")) return "blogs"
+  // Feed 서브탭은 쿼리 파라미터 기반 (컴포넌트에서 직접 계산)
 
   // Discover
   if (pathname.startsWith("/discover/industry")) return "industry"
