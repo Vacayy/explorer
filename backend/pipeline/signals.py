@@ -15,6 +15,8 @@ from pipeline.dates import parse_dt as _parse_dt
 MIN_MENTIONS = 3      # 최근 7일 최소 언급 수
 SURGE_RATIO = 2.0     # baseline 대비 배수 (baseline 0이면 MIN_MENTIONS만으로 성립)
 
+MIN_HISTORY_ROWS = 200  # 52주 신고가 판정에 필요한 최소 일봉 수 (신규상장 오탐 방지)
+
 
 
 def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
@@ -73,6 +75,67 @@ def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
         conn.execute("""
             INSERT INTO signals (signal_type, entity_id, date, payload_json)
             VALUES ('mention_surge', ?, ?, ?)
+            ON CONFLICT(signal_type, entity_id, date)
+            DO UPDATE SET payload_json = excluded.payload_json
+        """, (s["entity_id"], s["date"], json.dumps(s["payload"], ensure_ascii=False)))
+    conn.commit()
+    conn.close()
+    return signals
+
+
+def compute_high_52w() -> list[dict]:
+    """52주 신고가 스캔: 최신 거래일 고가가 직전 52주(365일) 최고가를 경신한 종목.
+
+    - MIN_HISTORY_ROWS 미만 종목 제외 (신규상장·데이터 부족 오탐 방지)
+    - payload: 종가/고가/전고점/경신폭. 근거는 가격 데이터 자체.
+    """
+    conn = get_connection()
+    latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
+    if not latest:
+        conn.close()
+        return []
+
+    rows = conn.execute("""
+        SELECT sp.stock_code, sp.close, sp.high,
+               (SELECT max(p.high) FROM stock_prices p
+                WHERE p.stock_code = sp.stock_code
+                  AND p.trade_date < sp.trade_date
+                  AND p.trade_date >= date(sp.trade_date, '-365 days')) AS prior_high,
+               (SELECT count(*) FROM stock_prices p
+                WHERE p.stock_code = sp.stock_code
+                  AND p.trade_date >= date(sp.trade_date, '-365 days')) AS n_days
+        FROM stock_prices sp
+        WHERE sp.trade_date = ? AND sp.high IS NOT NULL
+    """, (latest,)).fetchall()
+
+    # 종목코드 → entity 매핑
+    ent = {r["aliases"]: (r["id"], r["name"]) for r in conn.execute(
+        "SELECT id, name, aliases FROM entities WHERE type='company' AND aliases IS NOT NULL")}
+
+    signals = []
+    for r in rows:
+        if (r["n_days"] or 0) < MIN_HISTORY_ROWS or not r["prior_high"]:
+            continue
+        if r["high"] <= r["prior_high"]:
+            continue
+        e = ent.get(r["stock_code"])
+        if not e:
+            continue
+        breakout_pct = round((r["high"] / r["prior_high"] - 1) * 100, 2)
+        signals.append({
+            "entity_id": e[0],
+            "name": e[1],
+            "date": latest,
+            "payload": {
+                "close": r["close"], "high": r["high"],
+                "prior_high_52w": r["prior_high"], "breakout_pct": breakout_pct,
+            },
+        })
+
+    for s in signals:
+        conn.execute("""
+            INSERT INTO signals (signal_type, entity_id, date, payload_json)
+            VALUES ('high_52w', ?, ?, ?)
             ON CONFLICT(signal_type, entity_id, date)
             DO UPDATE SET payload_json = excluded.payload_json
         """, (s["entity_id"], s["date"], json.dumps(s["payload"], ensure_ascii=False)))

@@ -16,6 +16,7 @@ const ANALYZE_TABS = [
   { key: "valuation", label: "밸류에이션" },
   { key: "business", label: "사업정보" },
   { key: "disclosures", label: "공시" },
+  { key: "mentions", label: "언급" },
 ] as const
 
 const FEED_TABS = [

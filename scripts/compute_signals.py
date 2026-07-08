@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.signals import compute_mention_surge
+from pipeline.signals import compute_high_52w, compute_mention_surge
 
 
 def main():
@@ -20,6 +20,12 @@ def main():
         p = s["payload"]
         print(f"  · {s['name']}: 최근 7일 {p['count_7d']}회 (직전 7일 {p['baseline_7d']}회)"
               f"  키워드: {', '.join(p['keywords'][:3]) or '-'}")
+
+    highs = compute_high_52w()
+    print(f"[high_52w] {len(highs)}건")
+    for s in sorted(highs, key=lambda x: -x["payload"]["breakout_pct"])[:10]:
+        p = s["payload"]
+        print(f"  · {s['name']}: 고가 {p['high']:,} (전고점 {p['prior_high_52w']:,}, +{p['breakout_pct']}%)")
 
 
 if __name__ == "__main__":
