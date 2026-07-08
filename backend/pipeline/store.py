@@ -6,7 +6,6 @@ content_hash로 멱등성 보장:
 - keyword 티어 결과는 LLM 사용 가능해지면 자동 재enrich (백필)
 """
 import hashlib
-import os
 import re
 
 from database import get_connection
@@ -55,7 +54,19 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
         conn.execute(
             "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
             "VALUES (?, ?, 'topic', 0.5)", (doc_id, eid))
-    # 종목: 기존 company 엔티티 이름이 본문에 등장하면 링크.
+    # 종목 (1순위): LLM이 별칭까지 정규화한 종목명 — substring 매칭을 대체 (conf 0.9)
+    if result.get("stocks") is not None:
+        for name in result["stocks"]:
+            row = conn.execute(
+                "SELECT id FROM entities WHERE type='company' AND name=?", (str(name).strip(),)
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
+                    "VALUES (?, ?, 'stock', 0.9)", (doc_id, row["id"]))
+        return
+
+    # 종목 (fallback): 기존 company 엔티티 이름이 본문에 등장하면 링크.
     # 오탐 완화 휴리스틱 (근본 해결은 LLM enrich):
     #  - 모든 이름: 앞이 한글/영숫자면 다른 단어의 꼬리 매칭('하이닉스'의 '이닉스')이므로 제외.
     #    뒤는 조사('삼성전자는')를 허용해야 하므로 ≤2자 이름만 뒤 경계도 요구
@@ -81,6 +92,37 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
         conn.execute(
             "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
             "VALUES (?, ?, 'stock', 0.6)", (doc_id, eid))
+
+
+def _enrich_and_store(conn, doc_id: int, title: str, md: str, h: str) -> dict:
+    """이전 enrichment·링크 제거 후 재생성 — 문서당 정확히 1개 유지, stale 방지."""
+    conn.execute("DELETE FROM enrichments WHERE doc_id=?", (doc_id,))
+    conn.execute("DELETE FROM entity_links WHERE doc_id=?", (doc_id,))
+    result = enrich_mod.enrich(title, md)
+    conn.execute(
+        "INSERT INTO enrichments (doc_id, summary, sentiment, model, content_hash) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (doc_id, result.get("summary"), result.get("sentiment"),
+         result.get("model", "keyword"), h),
+    )
+    _link(conn, doc_id, title, md, result)
+    conn.commit()
+    return result
+
+
+def reenrich_document(doc_id: int) -> str | None:
+    """단일 문서 재enrich (백필용). 반환: 사용된 모델명."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT title, markdown, content_hash FROM raw_documents WHERE id=?", (doc_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+    result = _enrich_and_store(conn, doc_id, row["title"] or "", row["markdown"] or "",
+                               row["content_hash"] or "")
+    conn.close()
+    return result.get("model")
 
 
 def store_document(doc: RawDoc) -> dict:
@@ -119,22 +161,10 @@ def store_document(doc: RawDoc) -> dict:
     cached = conn.execute(
         "SELECT model FROM enrichments WHERE doc_id=? AND content_hash=?", (doc_id, h)
     ).fetchone()
-    llm_ready = bool(os.getenv("ANTHROPIC_API_KEY"))
-    needs_enrich = cached is None or (cached["model"] == "keyword" and llm_ready)
+    needs_enrich = cached is None or (cached["model"] == "keyword" and enrich_mod.llm_available())
 
     if needs_enrich:
-        # 이전 내용/이전 티어의 enrichment·링크를 먼저 제거 → 문서당 정확히 1개 유지, stale 링크 방지
-        conn.execute("DELETE FROM enrichments WHERE doc_id=?", (doc_id,))
-        conn.execute("DELETE FROM entity_links WHERE doc_id=?", (doc_id,))
-        result = enrich_mod.enrich(doc.title, md)
-        conn.execute(
-            "INSERT INTO enrichments (doc_id, summary, sentiment, model, content_hash) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (doc_id, result.get("summary"), result.get("sentiment"),
-             result.get("model", "keyword"), h),
-        )
-        _link(conn, doc_id, doc.title, md, result)
-        conn.commit()
+        _enrich_and_store(conn, doc_id, doc.title, md, h)
 
     conn.close()
     return {"doc_id": doc_id, "status": status}
