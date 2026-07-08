@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils"
 type AppMode = "home" | "discover" | "feed" | "analyze" | "research"
 
 const DISCOVER_TABS = [
+  { key: "signals", path: "/explore", label: "신호" },
   { key: "industry", path: "/discover/industry", label: "산업군" },
   { key: "screener", path: "/discover/screener", label: "스크리너" },
-  { key: "signals", path: "/discover/signals", label: "시그널" },
   { key: "alt-data", path: "/discover/alt-data", label: "대안데이터" },
 ] as const
 
@@ -53,9 +53,9 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
             label="홈"
           />
           <ModeButton
-            to="/discover/industry"
+            to="/explore"
             active={activeMode === "discover"}
-            label="발굴"
+            label="탐색"
           />
           <ModeButton
             to="/feed"
@@ -154,16 +154,16 @@ function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/feed")) return "feed"
   if (pathname.startsWith("/analyze")) return "analyze"
   if (pathname.startsWith("/research")) return "research"
-  return "discover"
+  return "discover" // /explore, /discover/* 모두 탐색 모드
 }
 
 function getActiveSubTab(pathname: string): string | null {
   // Feed 서브탭은 쿼리 파라미터 기반 (컴포넌트에서 직접 계산)
 
-  // Discover
+  // Discover (탐색)
+  if (pathname.startsWith("/explore")) return "signals"
   if (pathname.startsWith("/discover/industry")) return "industry"
   if (pathname.startsWith("/discover/screener")) return "screener"
-  if (pathname.startsWith("/discover/signals")) return "signals"
   if (pathname.startsWith("/discover/alt-data")) return "alt-data"
 
   // Analyze

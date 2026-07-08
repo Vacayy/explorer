@@ -13,11 +13,13 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 // Home
 import HomePage from "@/components/home/HomePage"
 
+// Explore (탐색 — 신호)
+import ExplorePage from "@/components/explore/ExplorePage"
+
 // Discovery
 import IndustryPage from "@/components/industry/IndustryPage"
 import OnchainPage from "@/components/onchain/OnchainPage"
 import ScreenerPage from "@/components/discovery/ScreenerPage"
-import SignalFeedPage from "@/components/discovery/SignalFeedPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
@@ -126,11 +128,14 @@ export default function App() {
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
 
+            {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
+            <Route path="explore" element={<ExplorePage />} />
+
             {/* Discovery */}
-            <Route path="discover" element={<Navigate to="/discover/industry" replace />} />
+            <Route path="discover" element={<Navigate to="/explore" replace />} />
             <Route path="discover/industry" element={<IndustryRoute />} />
             <Route path="discover/screener" element={<ScreenerPage />} />
-            <Route path="discover/signals" element={<SignalFeedPage />} />
+            <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
             <Route path="discover/alt-data" element={<OnchainPage />} />
 
             {/* Analysis */}
