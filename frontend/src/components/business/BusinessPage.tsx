@@ -18,7 +18,6 @@ interface Props {
   corpCode: string
 }
 
-const COLORS = ["var(--color-chart-blue)", "var(--color-chart-orange)", "var(--color-chart-green)", "var(--color-chart-red)", "var(--color-chart-purple)", "#ec4899", "var(--color-chart-teal)", "var(--color-chart-yellow)"]
 const RAW_COLORS = ["#4472C4", "#ED7D31", "#70AD47", "#dc2626", "#8b5cf6", "#ec4899", "#14b8a6", "#FFC000"]
 
 const SEG_TABS = [
@@ -104,10 +103,10 @@ export default function BusinessPage({ stockCode }: Props) {
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={95}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`} labelLine={{ strokeWidth: 1 }}>
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(1)}%`} labelLine={{ strokeWidth: 1 }}>
                     {pieData.map((_, i) => <Cell key={i} fill={RAW_COLORS[i % RAW_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => formatKrw(v)} />
+                  <Tooltip formatter={(v) => formatKrw(Number(v))} />
                 </PieChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -118,7 +117,7 @@ export default function BusinessPage({ stockCode }: Props) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatKrw(v)} />
-                  <Tooltip formatter={(v: number) => formatKrw(v)} />
+                  <Tooltip formatter={(v) => formatKrw(Number(v))} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   {allSegNames.map((name, i) => (
                     <Bar key={name} dataKey={name} stackId="a" fill={RAW_COLORS[i % RAW_COLORS.length]} />

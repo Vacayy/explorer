@@ -295,8 +295,8 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
                   />
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: "1px solid #d2d2d7", fontSize: 11 }}
-                    formatter={(v: number, name: string) => [`${v.toFixed(1)}`, name]}
-                    labelFormatter={(l: string) => l}
+                    formatter={(v, name) => [`${Number(v).toFixed(1)}`, String(name)]}
+                    labelFormatter={(l) => l}
                   />
                   <Legend iconType="line" iconSize={12} wrapperStyle={{ fontSize: 10 }} />
                   <Line
@@ -368,7 +368,7 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
                   />
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: "1px solid #d2d2d7", fontSize: 12 }}
-                    formatter={(v: number, name: string) => name === "OPM(%)" ? `${v.toFixed(1)}%` : `${v.toLocaleString()}억`}
+                    formatter={(v, name) => String(name) === "OPM(%)" ? `${Number(v).toFixed(1)}%` : `${Number(v).toLocaleString()}억`}
                   />
                   <Legend iconType="rect" iconSize={10} wrapperStyle={{ fontSize: 11, color: "#86868b" }} />
                   {/* 3 overlay bars: 매출(wide, light) → 영업(medium) → 순이익(narrow, bright) */}

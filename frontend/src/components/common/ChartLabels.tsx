@@ -15,7 +15,7 @@ interface LabelProps {
  * Data label on a line point — shows percentage.
  * Only renders every Nth point when data is dense.
  */
-export function PercentLabel({ x = 0, y = 0, index = 0, value }: LabelProps & { totalPoints?: number }) {
+export function PercentLabel({ x = 0, y = 0, value }: LabelProps & { totalPoints?: number }) {
   if (value === null || value === undefined) return null
   const num = typeof value === "string" ? parseFloat(value) : value
   if (isNaN(num)) return null

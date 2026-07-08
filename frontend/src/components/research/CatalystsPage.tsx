@@ -30,10 +30,6 @@ function eventTypeInfo(type: string) {
   return EVENT_TYPES.find((t) => t.value === type) ?? { icon: "📌", label: type }
 }
 
-function isPast(dateStr: string): boolean {
-  return dateStr < new Date().toISOString().slice(0, 10)
-}
-
 function groupByMonth(items: CatalystItem[]): Map<string, CatalystItem[]> {
   const map = new Map<string, CatalystItem[]>()
   for (const item of items) {

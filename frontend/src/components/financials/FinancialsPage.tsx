@@ -171,12 +171,8 @@ export default function FinancialsPage({ stockCode }: Props) {
               {sjDiv === "IS" ? (
                 <>
                   <Tooltip content={<ISTooltip />} />
-                  <Legend iconType="rect" wrapperStyle={{ fontSize: 12 }}
-                    payload={[
-                      { value: "매출액", type: "rect", color: "var(--color-chart-blue)" },
-                      { value: "영업이익", type: "rect", color: "var(--color-chart-orange)" },
-                      { value: "당기순이익", type: "rect", color: "var(--color-chart-green)" },
-                    ]} />
+                  {/* recharts 3.x: Legend payload prop 제거됨 — Bar name/fill에서 자동 생성 */}
+                  <Legend iconType="rect" wrapperStyle={{ fontSize: 12 }} />
                   {/* Stack order: bottom → top = 당기순이익 → 영업이익 초과분 → 매출액 초과분 */}
                   <Bar yAxisId="left" dataKey="_ni" stackId="is" name="당기순이익"
                     fill="var(--color-chart-green)" barSize={32} />
@@ -189,7 +185,7 @@ export default function FinancialsPage({ stockCode }: Props) {
                 </>
               ) : (
                 <>
-                  <Tooltip formatter={(v: number, name: string) => name === "OPM(%)" ? `${v}%` : `${v.toLocaleString()}억`} />
+                  <Tooltip formatter={(v, name) => String(name) === "OPM(%)" ? `${Number(v)}%` : `${Number(v).toLocaleString()}억`} />
                   <Legend iconType="rect" wrapperStyle={{ fontSize: 12 }} />
                   {(data?.rows || [])
                     .filter((r) => chartAccounts.some((a) => r.account_nm.includes(a)))

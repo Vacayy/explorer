@@ -1,6 +1,6 @@
 import { useState } from "react"
 import ReactMarkdown from "react-markdown"
-import { HelpCircle, Plus, X, ExternalLink } from "lucide-react"
+import { HelpCircle, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
