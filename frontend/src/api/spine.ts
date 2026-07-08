@@ -3,6 +3,7 @@ import api from "@/api/client";
 import type { HomeResponse, SpineFeedResponse, SpineSignalsResponse } from "@/types";
 
 export interface SpineFeedParams {
+  q?: string;
   source?: string;
   stock?: string;
   industry?: string;

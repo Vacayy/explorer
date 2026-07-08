@@ -331,6 +331,22 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_signals_type_date ON signals(signal_type, date);
 
+    -- 전문 검색 (BM25) — raw_documents 외부 콘텐츠 방식 + 트리거 동기화.
+    -- 벡터(doc_vec)는 sqlite-vec 확장이 필요해 pipeline/search.py에서 생성한다.
+    CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(
+        title, markdown, content='raw_documents', content_rowid='id'
+    );
+    CREATE TRIGGER IF NOT EXISTS raw_documents_ai AFTER INSERT ON raw_documents BEGIN
+        INSERT INTO doc_fts(rowid, title, markdown) VALUES (new.id, new.title, new.markdown);
+    END;
+    CREATE TRIGGER IF NOT EXISTS raw_documents_ad AFTER DELETE ON raw_documents BEGIN
+        INSERT INTO doc_fts(doc_fts, rowid, title, markdown) VALUES ('delete', old.id, old.title, old.markdown);
+    END;
+    CREATE TRIGGER IF NOT EXISTS raw_documents_au AFTER UPDATE ON raw_documents BEGIN
+        INSERT INTO doc_fts(doc_fts, rowid, title, markdown) VALUES ('delete', old.id, old.title, old.markdown);
+        INSERT INTO doc_fts(rowid, title, markdown) VALUES (new.id, new.title, new.markdown);
+    END;
+
     -- 살아있는 모델: 파라미터화된 계산 스펙 (엑셀 continuity).
     CREATE TABLE IF NOT EXISTS models (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,9 +1,10 @@
 import { Link, useSearchParams } from "react-router-dom"
-import { X } from "lucide-react"
+import { Search, X } from "lucide-react"
 import { useSpineFeed } from "@/hooks/useSpineFeed"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { SourceBadge } from "@/components/shared/SourceBadge"
@@ -20,6 +21,7 @@ import type { EntityTag, FeedDocument } from "@/types"
 export default function UnifiedFeedPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = {
+    q: searchParams.get("q") ?? undefined,
     source: searchParams.get("source") ?? undefined,
     stock: searchParams.get("stock") ?? undefined,
     industry: searchParams.get("industry") ?? undefined,
@@ -57,6 +59,25 @@ export default function UnifiedFeedPage() {
         <h2 className="text-xl font-bold">피드</h2>
         <FreshnessStamp asOf={data.as_of} />
       </div>
+
+      {/* 하이브리드 검색 (BM25+벡터) — Enter로 실행, URL ?q= 동기화 */}
+      <form
+        className="relative max-w-md"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const v = new FormData(e.currentTarget).get("q")?.toString().trim() ?? ""
+          setFilter("q", v || null)
+        }}
+      >
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input name="q" defaultValue={filters.q ?? ""} placeholder="문서 검색 (의미 기반)…" className="pl-8 h-8 text-sm" />
+        {filters.q && (
+          <button type="button" onClick={() => setFilter("q", null)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </form>
 
       {/* 활성 필터 칩 (제거 가능) */}
       {activeFilters.length > 0 && (

@@ -12,4 +12,6 @@ feedparser
 requests
 markitdown
 finance-datareader  # 업종(KSIC)·시장 구분 시딩 (scripts/seed_sectors.py)
+sqlite-vec          # 벡터 검색 (pipeline/search.py)
+fastembed           # 로컬 임베딩 (다국어 MiniLM 384d, API 키 불필요)
 # anthropic  # LLM enrich 활성화 시 주석 해제 (ANTHROPIC_API_KEY 확보 후)
