@@ -23,6 +23,7 @@ import ScreenerPage from "@/components/discovery/ScreenerPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
+import MentionsPage from "@/components/analyze/MentionsPage"
 import SummaryPage from "@/components/summary/SummaryPage"
 import FinancialsPage from "@/components/financials/FinancialsPage"
 import BusinessPage from "@/components/business/BusinessPage"
@@ -97,6 +98,8 @@ function AnalyzePage({ tab }: { tab: string }) {
       return <DisclosurePage stockCode={stockCode} corpCode={corpCode} />
     case "valuation":
       return <ValuationPage stockCode={stockCode} />
+    case "mentions":
+      return <MentionsPage stockCode={stockCode} />
     default:
       return <Navigate to={`/analyze/${stockCode}/summary`} replace />
   }
@@ -146,6 +149,7 @@ export default function App() {
             <Route path="analyze/:stockCode/valuation" element={<AnalyzePage tab="valuation" />} />
             <Route path="analyze/:stockCode/business" element={<AnalyzePage tab="business" />} />
             <Route path="analyze/:stockCode/disclosures" element={<AnalyzePage tab="disclosures" />} />
+            <Route path="analyze/:stockCode/mentions" element={<AnalyzePage tab="mentions" />} />
 
             {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
             <Route path="feed" element={<UnifiedFeedPage />} />

@@ -184,10 +184,16 @@ export interface SpineSignal {
   stock_code: string | null;
   date: string;
   payload: {
+    // mention_surge
     count_7d?: number;
     baseline_7d?: number;
     keywords?: string[];
     docs?: { title: string; url: string }[];
+    // high_52w
+    close?: number;
+    high?: number;
+    prior_high_52w?: number;
+    breakout_pct?: number;
   };
   interpretation: string | null;
   interpretation_model: string | null;

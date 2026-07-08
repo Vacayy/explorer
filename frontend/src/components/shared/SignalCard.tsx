@@ -43,11 +43,19 @@ export function SignalCard({ signal: s, onKeywordClick }: {
           <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">{s.date}</span>
         </div>
 
-        {/* 본문 — signal_type별 (현재: mention_surge) */}
+        {/* 본문 — signal_type별 렌더러 */}
         {s.signal_type === "mention_surge" && (
           <div className="text-sm">
             최근 7일 <span className="font-bold text-up text-base">{p.count_7d ?? "-"}회</span> 언급
             <span className="text-muted-foreground text-xs"> · 직전 7일 {p.baseline_7d ?? 0}회</span>
+          </div>
+        )}
+        {s.signal_type === "high_52w" && (
+          <div className="text-sm space-x-2">
+            <span>고가 <span className="font-bold text-up text-base tabular-nums">{p.high?.toLocaleString()}</span></span>
+            <span className="text-muted-foreground text-xs tabular-nums">
+              전고점 {p.prior_high_52w?.toLocaleString()} 경신 (+{p.breakout_pct}%) · 종가 {p.close?.toLocaleString()}
+            </span>
           </div>
         )}
 
