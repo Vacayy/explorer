@@ -63,7 +63,7 @@ export default function MetricsPage({ stockCode }: Props) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
-                  <Tooltip formatter={(v: number) => `${v}%`} />
+                  <Tooltip formatter={(v) => `${Number(v)}%`} />
                   <Legend iconType="line" wrapperStyle={{ fontSize: 11 }} />
                   <Line type="monotone" dataKey="매출총이익률" stroke="var(--color-chart-yellow)" strokeWidth={2} dot={{ r: 3 }}>
                     <LabelList content={<PercentLabel />} />
@@ -84,7 +84,7 @@ export default function MetricsPage({ stockCode }: Props) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
-                  <Tooltip formatter={(v: number) => formatPercent(v)} />
+                  <Tooltip formatter={(v) => formatPercent(Number(v))} />
                   <Legend iconType="rect" wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="매출액성장률" fill="var(--color-chart-blue)" opacity={0.8} barSize={18} />
                   <Bar dataKey="영업이익성장률" fill="var(--color-chart-orange)" opacity={0.8} barSize={18} />
@@ -105,7 +105,7 @@ export default function MetricsPage({ stockCode }: Props) {
                     <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                     <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v.toLocaleString()}`} />
                     <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
-                    <Tooltip formatter={(v: number, n: string) => n.includes("%") ? `${v}%` : `${v.toLocaleString()}억`} />
+                    <Tooltip formatter={(v, n) => String(n).includes("%") ? `${Number(v)}%` : `${Number(v).toLocaleString()}억`} />
                     <Legend iconType="rect" wrapperStyle={{ fontSize: 11 }} />
                     <Bar yAxisId="left" dataKey="자본총계" stackId="bs" fill="var(--color-chart-blue)" barSize={24} />
                     <Bar yAxisId="left" dataKey="부채총계" stackId="bs" fill="var(--color-chart-orange)" barSize={24} />
@@ -124,7 +124,7 @@ export default function MetricsPage({ stockCode }: Props) {
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v.toLocaleString()}`} />
-                    <Tooltip formatter={(v: number) => `${v.toLocaleString()}억`} />
+                    <Tooltip formatter={(v) => `${Number(v).toLocaleString()}억`} />
                     <Legend iconType="rect" wrapperStyle={{ fontSize: 11 }} />
                     <Bar dataKey="영업활동" fill="var(--color-chart-green)" barSize={18} />
                     <Bar dataKey="투자활동" fill="var(--color-chart-blue)" barSize={18} />
@@ -177,7 +177,7 @@ function MetricChart({ title, data, bars, barColors, line, isQuarterly }: {
           <XAxis dataKey="period" tick={{ fontSize: 11 }} />
           <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v.toLocaleString()}`} />
           <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
-          <Tooltip formatter={(v: number, n: string) => n.includes("%") ? `${v}%` : `${v.toLocaleString()}억`} />
+          <Tooltip formatter={(v, n) => String(n).includes("%") ? `${Number(v)}%` : `${Number(v).toLocaleString()}억`} />
           <Legend iconType="rect" wrapperStyle={{ fontSize: 11 }} />
           {bars.map((b, i) => (
             <Bar key={b} yAxisId="left" dataKey={b} fill={colors[i]} radius={[2, 2, 0, 0]} barSize={isQuarterly ? 8 : 20}>

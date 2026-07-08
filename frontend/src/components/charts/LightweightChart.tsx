@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect } from "react"
 import { createChart, ColorType } from "lightweight-charts"
 import type { IChartApi, DeepPartial, ChartOptions } from "lightweight-charts"
 

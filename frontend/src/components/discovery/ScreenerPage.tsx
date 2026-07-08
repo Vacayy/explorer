@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { TableSkeleton } from "@/components/shared/Skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
-import { formatKrw, formatNumber } from "@/utils/format"
+import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
 
 // ─── Filter state derived from URL ───────────────────────────────────────────
@@ -106,8 +106,8 @@ export default function ScreenerPage() {
   const sorted = useMemo(() => {
     if (!data?.items) return []
     return [...data.items].sort((a, b) => {
-      const aVal = (a as Record<string, unknown>)[sortBy] as number | null
-      const bVal = (b as Record<string, unknown>)[sortBy] as number | null
+      const aVal = (a as unknown as Record<string, unknown>)[sortBy] as number | null
+      const bVal = (b as unknown as Record<string, unknown>)[sortBy] as number | null
       if (aVal == null && bVal == null) return 0
       if (aVal == null) return 1
       if (bVal == null) return -1

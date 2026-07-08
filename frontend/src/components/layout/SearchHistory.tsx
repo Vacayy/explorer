@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import type { Company } from "@/types"
 
 const STORAGE_KEY = "stock-explorer-history"
 const MAX_HISTORY = 30

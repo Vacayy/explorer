@@ -2,7 +2,6 @@ import { useSearchParams, Link } from "react-router-dom"
 import { useCompare } from "@/hooks/useCompare"
 import { useWatchlist } from "@/hooks/useWatchlist"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
@@ -125,7 +124,7 @@ export default function ComparePage() {
     corp_name: dataMap[code]?.corp_name ?? code,
   }))
 
-  function handleAdd(stock_code: string, corp_name: string) {
+  function handleAdd(stock_code: string, _corp_name: string) {
     if (stockCodes.includes(stock_code) || stockCodes.length >= 5) return
     const next = [...stockCodes, stock_code].join(",")
     setSearchParams({ stocks: next })
