@@ -34,6 +34,17 @@ def _get_or_create_entity(conn, type_: str, name: str) -> int:
 
 def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
     text = f"{title}\n{markdown}"
+
+    # [[엔티티명]] 위키링크 — 사람이 명시한 연결이므로 confidence 1.0 (노트 등)
+    for name in set(re.findall(r"\[\[([^\]|#]+?)\]\]", text)):
+        row = conn.execute(
+            "SELECT id FROM entities WHERE name=? ORDER BY CASE type WHEN 'company' THEN 0 ELSE 1 END LIMIT 1",
+            (name.strip(),),
+        ).fetchone()
+        if row:
+            conn.execute(
+                "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
+                "VALUES (?, ?, 'mention', 1.0)", (doc_id, row["id"]))
     for name in result.get("industries", []):
         eid = _get_or_create_entity(conn, "sector", name)
         conn.execute(
