@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom"
-import { TrendingUp, CalendarDays, Bell } from "lucide-react"
+import { TrendingUp, CalendarDays, Bell, X } from "lucide-react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useHome } from "@/hooks/useHome"
+import { spineKeys, unfollowEntity } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -8,7 +10,7 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { formatRelativeTime } from "@/utils/format"
-import type { CalendarEvent, SpineSignal, WatchlistUpdate } from "@/types"
+import type { CalendarEvent, HomeFollow, SpineSignal, WatchlistUpdate } from "@/types"
 
 /**
  * /home — 내 종목 follow-up (product-v2.md v2.1)
@@ -36,11 +38,11 @@ export default function HomePage() {
       {quietDay ? (
         <>
           <HighlightsSection signals={data.market_highlights} promoted />
-          <UpdatesSection updates={data.watchlist_updates} watchlistEmpty={data.watchlist_empty} />
+          <UpdatesSection updates={data.watchlist_updates} watchlistEmpty={data.watchlist_empty} follows={data.follows} />
         </>
       ) : (
         <>
-          <UpdatesSection updates={data.watchlist_updates} watchlistEmpty={data.watchlist_empty} />
+          <UpdatesSection updates={data.watchlist_updates} watchlistEmpty={data.watchlist_empty} follows={data.follows} />
           <HighlightsSection signals={data.market_highlights} />
         </>
       )}
@@ -91,20 +93,39 @@ function CalendarSection({ events }: { events: CalendarEvent[] }) {
 
 /* ---------- ② 내 종목 업데이트 스트림 ---------- */
 
-function UpdatesSection({ updates, watchlistEmpty }: { updates: WatchlistUpdate[]; watchlistEmpty: boolean }) {
+function UpdatesSection({ updates, watchlistEmpty, follows }: {
+  updates: WatchlistUpdate[]; watchlistEmpty: boolean; follows: HomeFollow[]
+}) {
+  const qc = useQueryClient()
+  const unfollow = useMutation({
+    mutationFn: unfollowEntity,
+    onSuccess: () => qc.invalidateQueries({ queryKey: spineKeys.home() }),
+  })
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
-          <Bell className="h-4 w-4 text-muted-foreground" /> 내 종목 업데이트
+          <Bell className="h-4 w-4 text-muted-foreground" /> 내 종목·팔로우 업데이트
         </CardTitle>
+        {follows.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {follows.map((f) => (
+              <Badge key={f.entity_id} variant="secondary" className="text-[10px] gap-1 pr-1 font-normal">
+                {f.name}
+                <button onClick={() => unfollow.mutate(f.entity_id)} aria-label="팔로우 해제">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {watchlistEmpty ? (
           <div className="py-8 text-center space-y-2">
             <p className="text-sm text-muted-foreground">추적 중인 종목이 없습니다.</p>
             <p className="text-xs text-muted-foreground">
-              상단 검색으로 기업을 찾아 워치리스트에 담으면, 그 종목의 공시·언급·신호가 여기에 모입니다.
+              상단 검색으로 기업을 워치리스트에 담거나, 피드에서 산업·토픽 태그를 팔로우하면 업데이트가 여기에 모입니다.
             </p>
             <Link to="/research/watchlist" className="text-xs text-primary hover:underline">
               워치리스트 관리 →
@@ -135,7 +156,9 @@ function UpdateRow({ update: u }: { update: WatchlistUpdate }) {
         <SourceBadge sourceType={u.source_type ?? ""} />
       )}
       <Link
-        to={`/analyze/${u.stock_code}/summary`}
+        to={u.entity_type === "company" && u.stock_code
+          ? `/analyze/${u.stock_code}/summary`
+          : `/feed?${u.entity_type === "theme" ? "topic" : "industry"}=${encodeURIComponent(u.corp_name)}`}
         className="shrink-0 text-sm font-medium text-primary hover:underline"
       >
         {u.corp_name}

@@ -40,3 +40,12 @@ export async function askQuestion(question: string): Promise<AskResponse> {
   const { data } = await api.post<AskResponse>("/api/spine/ask", { question }, { timeout: 300_000 });
   return data;
 }
+
+export async function followEntity(params: { entity_id?: number; type?: string; name?: string }) {
+  const { data } = await api.post("/api/spine/follows", params);
+  return data;
+}
+
+export async function unfollowEntity(entityId: number) {
+  await api.delete(`/api/spine/follows/${entityId}`);
+}
