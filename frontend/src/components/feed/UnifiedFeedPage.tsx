@@ -1,6 +1,9 @@
 import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { ChevronDown, ChevronUp, Search, X } from "lucide-react"
+import { BellPlus, ChevronDown, ChevronUp, Search, X } from "lucide-react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { followEntity, spineKeys } from "@/api/spine"
 import { useSpineFeed } from "@/hooks/useSpineFeed"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +35,14 @@ export default function UnifiedFeedPage() {
     size: 20,
   }
   const { data, isLoading, isError, refetch, isPlaceholderData } = useSpineFeed(filters)
+  const qc = useQueryClient()
+  const follow = useMutation({
+    mutationFn: followEntity,
+    onSuccess: (_d, v) => {
+      toast.success(`'${v.name}' 팔로우 — 홈 업데이트에 반영됩니다`)
+      qc.invalidateQueries({ queryKey: spineKeys.home() })
+    },
+  })
 
   const setFilter = (key: string, value: string | null) => {
     setSearchParams((prev) => {
@@ -93,6 +104,17 @@ export default function UnifiedFeedPage() {
               </button>
             </Badge>
           ))}
+          {(filters.industry || filters.topic) && (
+            <Button
+              variant="outline" size="xs"
+              disabled={follow.isPending}
+              onClick={() => follow.mutate(filters.industry
+                ? { type: "sector", name: filters.industry }
+                : { type: "theme", name: filters.topic! })}
+            >
+              <BellPlus className="h-3 w-3" /> 이 태그 팔로우
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="xs"

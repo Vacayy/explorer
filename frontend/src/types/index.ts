@@ -216,10 +216,18 @@ export interface CalendarEvent {
   in_watchlist: boolean;
 }
 
+export interface HomeFollow {
+  entity_id: number;
+  type: string;
+  name: string;
+}
+
 export interface WatchlistUpdate {
   kind: "document" | "signal";
-  stock_code: string;
-  corp_name: string;
+  entity_type: string;         // company | sector | theme
+  entity_id: number | null;
+  stock_code: string | null;
+  corp_name: string;           // 표시명
   occurred_at: string;
   title: string;
   url: string | null;
@@ -229,6 +237,7 @@ export interface WatchlistUpdate {
 
 export interface HomeResponse {
   calendar: CalendarEvent[];
+  follows: HomeFollow[];
   watchlist_updates: WatchlistUpdate[];
   market_highlights: SpineSignal[];
   watchlist_empty: boolean;

@@ -61,8 +61,10 @@ class CalendarEvent(BaseModel):
 
 class WatchlistUpdate(BaseModel):
     kind: str                  # document | signal
-    stock_code: str
-    corp_name: str
+    entity_type: str = "company"   # company | sector | theme (팔로우 엔티티)
+    entity_id: int | None = None
+    stock_code: str | None
+    corp_name: str             # 표시명 (엔티티명)
     occurred_at: str
     title: str
     url: str | None
@@ -70,8 +72,15 @@ class WatchlistUpdate(BaseModel):
     signal_type: str | None    # signal일 때
 
 
+class HomeFollow(BaseModel):
+    entity_id: int
+    type: str
+    name: str
+
+
 class HomeResponse(BaseModel):
     calendar: list[CalendarEvent]
+    follows: list[HomeFollow]
     watchlist_updates: list[WatchlistUpdate]
     market_highlights: list[SignalItem]
     watchlist_empty: bool

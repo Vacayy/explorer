@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
 from database import get_connection
-from models.spine import CalendarEvent, HomeResponse, SignalItem, WatchlistUpdate
+from models.spine import CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
 
@@ -38,13 +38,19 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
         key=lambda e: (not e.in_watchlist, e.event_date),
     )
 
-    # ② 왓치리스트 업데이트 스트림 (문서 언급 + 신호)
+    # ② 업데이트 스트림 = 왓치리스트 종목 + 팔로우 엔티티 (섹터·테마)
+    follows_rows = conn.execute("""
+        SELECT e.id, e.type, e.name FROM follows f JOIN entities e ON f.entity_id = e.id
+        ORDER BY f.created_at""").fetchall()
+    follows = [HomeFollow(entity_id=r["id"], type=r["type"], name=r["name"]) for r in follows_rows]
+
     updates: list[WatchlistUpdate] = []
+    seen_docs: set[int] = set()
+    since_dt = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     if wl_codes:
         ph = ",".join("?" for _ in wl_codes)
-        since_dt = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         for r in conn.execute(f"""
-            SELECT DISTINCT e.aliases AS stock_code, e.name AS corp_name,
+            SELECT DISTINCT rd.id doc_id, e.aliases AS stock_code, e.name AS corp_name,
                    rd.published_at, rd.title, rd.url, rd.source_type
             FROM entity_links el
             JOIN entities e ON el.entity_id = e.id
@@ -53,10 +59,34 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
               AND e.aliases IN ({ph}) AND rd.published_at >= ?
             ORDER BY rd.published_at DESC LIMIT 50
         """, [*wl_codes, since_dt]):
+            seen_docs.add(r["doc_id"])
             updates.append(WatchlistUpdate(
                 kind="document", stock_code=r["stock_code"], corp_name=r["corp_name"],
                 occurred_at=r["published_at"], title=r["title"] or "",
                 url=r["url"], source_type=r["source_type"], signal_type=None))
+
+    if follows_rows:
+        fph = ",".join("?" for _ in follows_rows)
+        for r in conn.execute(f"""
+            SELECT DISTINCT rd.id doc_id, e.id entity_id, e.type entity_type, e.name,
+                   e.aliases, rd.published_at, rd.title, rd.url, rd.source_type
+            FROM entity_links el
+            JOIN entities e ON el.entity_id = e.id
+            JOIN raw_documents rd ON el.doc_id = rd.id
+            WHERE el.entity_id IN ({fph}) AND rd.published_at >= ?
+            ORDER BY rd.published_at DESC LIMIT 50
+        """, [*[f["id"] for f in follows_rows], since_dt]):
+            if r["doc_id"] in seen_docs:
+                continue  # 왓치리스트 종목으로 이미 포함된 문서는 중복 제거
+            seen_docs.add(r["doc_id"])
+            updates.append(WatchlistUpdate(
+                kind="document", entity_type=r["entity_type"], entity_id=r["entity_id"],
+                stock_code=r["aliases"], corp_name=r["name"],
+                occurred_at=r["published_at"], title=r["title"] or "",
+                url=r["url"], source_type=r["source_type"], signal_type=None))
+
+    if wl_codes:
+        ph = ",".join("?" for _ in wl_codes)
         for r in conn.execute(f"""
             SELECT s.signal_type, s.date, s.payload_json,
                    e.aliases AS stock_code, e.name AS corp_name
@@ -70,7 +100,7 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
                 occurred_at=r["date"],
                 title=f"언급 급증: 최근 7일 {p.get('count_7d', '?')}회",
                 url=None, source_type=None, signal_type=r["signal_type"]))
-        updates.sort(key=lambda u: u.occurred_at, reverse=True)
+    updates.sort(key=lambda u: u.occurred_at, reverse=True)
 
     # ③ 시장 하이라이트: 최근 신호 전체 (빈 날 승격용)
     highlights = [SignalItem(
@@ -90,8 +120,9 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
 
     return HomeResponse(
         calendar=calendar,
+        follows=follows,
         watchlist_updates=updates[:30],
         market_highlights=highlights,
-        watchlist_empty=not wl_codes,
+        watchlist_empty=not wl_codes and not follows,
         as_of=datetime.now(timezone.utc).isoformat(),
     )

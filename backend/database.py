@@ -331,6 +331,14 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_signals_type_date ON signals(signal_type, date);
 
+    -- 엔티티 팔로우 — 팔로우 대상을 종목(watchlist)에서 임의 엔티티로 확장
+    -- (섹터·테마 팔로우 → 홈 업데이트 스트림에 편입. 종목은 기존 watchlist 유지)
+    CREATE TABLE IF NOT EXISTS follows (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id    INTEGER NOT NULL UNIQUE REFERENCES entities(id) ON DELETE CASCADE,
+        created_at   TEXT DEFAULT (datetime('now'))
+    );
+
     -- 이미지 비전 분석 캐시 (이미지당 1회 — 증시일정표 → 이벤트 추출)
     CREATE TABLE IF NOT EXISTS media_analysis (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
