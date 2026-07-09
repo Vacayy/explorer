@@ -1,3 +1,5 @@
+import re
+
 import requests
 import urllib3
 from bs4 import BeautifulSoup
@@ -38,12 +40,21 @@ def scrape_channel(channel_name: str) -> list[dict]:
         date = time_el.get("datetime", "") if time_el else ""
         msg_id = msg_link.split("/")[-1] if "/" in msg_link else msg_link
 
-        if content:
+        # 첨부 이미지 (증시일정 짤 등) — background-image CDN URL 추출
+        images = []
+        for photo in bubble.find_all("a", class_="tgme_widget_message_photo_wrap"):
+            m = re.search(r"url\('([^']+)'\)", photo.get("style", ""))
+            if m:
+                images.append(m.group(1))
+
+        # 이미지만 있는 메시지(텍스트 없음)도 수집한다
+        if content or images:
             messages.append({
                 "message_id": msg_id,
                 "content": content,
                 "date": date,
                 "link": f"https://t.me/{msg_link}" if msg_link else "",
+                "images": images,
             })
 
     return messages

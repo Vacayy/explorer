@@ -27,3 +27,4 @@ backend/docs_cache/
 *.pkl
 logs/
 vault/
+media/

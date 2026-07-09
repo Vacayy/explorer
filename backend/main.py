@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from config import MEDIA_PATH
 from database import init_db
 from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, onchain, kpi
 from routers import watchlist, screener, signals, catalysts, compare, consensus, index_data
@@ -37,6 +39,10 @@ app.include_router(blog_feed.router)
 app.include_router(spine_feed.router)
 app.include_router(spine_signals.router)
 app.include_router(spine_home.router)
+
+
+MEDIA_PATH.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(MEDIA_PATH)), name="media")
 
 
 @app.on_event("startup")

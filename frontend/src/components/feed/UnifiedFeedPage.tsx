@@ -1,5 +1,6 @@
+import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { Search, X } from "lucide-react"
+import { ChevronDown, ChevronUp, Search, X } from "lucide-react"
 import { useSpineFeed } from "@/hooks/useSpineFeed"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +11,7 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { EntityChip } from "@/components/shared/EntityChip"
+import { API_BASE } from "@/api/client"
 import { formatRelativeTime } from "@/utils/format"
 import type { EntityTag, FeedDocument } from "@/types"
 
@@ -142,8 +144,10 @@ function DocumentCard({ doc, onChipFilter }: {
   doc: FeedDocument
   onChipFilter: (tag: EntityTag) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
   const stockTags = doc.entities.filter((e) => e.link_type === "stock")
   const otherTags = doc.entities.filter((e) => e.link_type !== "stock")
+  const hasFullText = !!doc.content && doc.content.trim().length > 0
 
   return (
     <Card>
@@ -163,8 +167,40 @@ function DocumentCard({ doc, onChipFilter }: {
           </span>
         </div>
 
-        {doc.summary && (
+        {doc.summary && !expanded && (
           <p className="text-xs text-muted-foreground line-clamp-2">{doc.summary}</p>
+        )}
+
+        {/* 전문 (펼침) — 텔레그램/노트 원문 그대로 */}
+        {expanded && hasFullText && (
+          <div className="text-sm whitespace-pre-wrap border-l-2 border-border pl-3 py-1 max-h-[480px] overflow-y-auto">
+            {doc.content}
+          </div>
+        )}
+
+        {/* 첨부 이미지 (증시일정 짤 등) — 클릭 시 원본 */}
+        {doc.images.length > 0 && (
+          <div className="flex gap-2 flex-wrap pt-1">
+            {doc.images.map((img) => (
+              <a key={img} href={`${API_BASE}/media/${img}`} target="_blank" rel="noreferrer">
+                <img
+                  src={`${API_BASE}/media/${img}`}
+                  alt=""
+                  loading="lazy"
+                  className={expanded ? "max-h-[420px] rounded-lg border" : "h-24 rounded-md border object-cover"}
+                />
+              </a>
+            ))}
+          </div>
+        )}
+
+        {hasFullText && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            {expanded ? <><ChevronUp className="h-3 w-3" /> 접기</> : <><ChevronDown className="h-3 w-3" /> 전문 보기</>}
+          </button>
         )}
 
         {(stockTags.length > 0 || otherTags.length > 0) && (

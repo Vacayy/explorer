@@ -1,4 +1,5 @@
 """통합 피드 API — raw_documents 기반 (greenfield spine 읽기)."""
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
@@ -53,6 +54,7 @@ def get_feed(
     where_sql = " AND ".join(where)
     select_sql = f"""
         SELECT rd.id, rd.source_type, rd.title, rd.url, rd.published_at,
+               rd.markdown, rd.media_json,
                en.summary, en.model AS enrich_model
         FROM raw_documents rd
         LEFT JOIN enrichments en ON en.doc_id = rd.id
@@ -93,7 +95,10 @@ def get_feed(
         items=[FeedDocument(
             id=r["id"], source_type=r["source_type"], title=r["title"] or "",
             url=r["url"] or "", published_at=r["published_at"] or "",
-            summary=r["summary"], enrich_model=r["enrich_model"],
+            summary=r["summary"],
+            content=r["markdown"],
+            images=json.loads(r["media_json"]) if r["media_json"] else [],
+            enrich_model=r["enrich_model"],
             entities=tags.get(r["id"], []),
         ) for r in rows],
         total=total, page=page, size=size,
