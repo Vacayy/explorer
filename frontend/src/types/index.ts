@@ -234,3 +234,25 @@ export interface HomeResponse {
   watchlist_empty: boolean;
   as_of: string;
 }
+
+export interface AskCitation {
+  n: number;
+  doc_id: number;
+  title: string;
+  url: string;
+  source_type: string;
+  published_at: string;
+}
+
+export interface AskGap {
+  type: "unsupported" | "contradiction" | "stale" | "missing" | string;
+  note: string;
+}
+
+export interface AskResponse {
+  answer: string | null;
+  citations: AskCitation[];
+  gaps: AskGap[];
+  model: string | null;
+  as_of: string;
+}
