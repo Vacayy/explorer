@@ -331,6 +331,22 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_signals_type_date ON signals(signal_type, date);
 
+    -- 기업활동 (Corporate Actions) — DART 전 시장 공시에서 키워드 분류 + 시총 필터
+    CREATE TABLE IF NOT EXISTS corporate_actions (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        rcp_no       TEXT NOT NULL UNIQUE,   -- DART 접수번호 (멱등)
+        corp_code    TEXT,
+        corp_name    TEXT,
+        stock_code   TEXT,
+        market       TEXT,                   -- Y=유가 K=코스닥
+        action_type  TEXT NOT NULL,          -- 유상증자|무상증자|공개매수|주식분할|합병|회사분할|감자
+        report_nm    TEXT,
+        rcept_dt     TEXT,                   -- YYYYMMDD
+        market_cap   INTEGER,                -- 스캔 시점 시총 (원)
+        created_at   TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_corporate_actions_dt ON corporate_actions(rcept_dt, action_type);
+
     -- 엔티티 팔로우 — 팔로우 대상을 종목(watchlist)에서 임의 엔티티로 확장
     -- (섹터·테마 팔로우 → 홈 업데이트 스트림에 편입. 종목은 기존 watchlist 유지)
     CREATE TABLE IF NOT EXISTS follows (

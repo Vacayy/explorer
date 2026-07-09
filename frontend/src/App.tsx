@@ -16,6 +16,7 @@ import HomePage from "@/components/home/HomePage"
 // Explore (탐색 — 신호)
 import ExplorePage from "@/components/explore/ExplorePage"
 import AskPage from "@/components/ask/AskPage"
+import ActionsPage from "@/components/actions/ActionsPage"
 
 // Discovery
 import IndustryPage from "@/components/industry/IndustryPage"
@@ -135,6 +136,7 @@ export default function App() {
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />
             <Route path="ask" element={<AskPage />} />
+            <Route path="actions" element={<ActionsPage />} />
 
             {/* Discovery */}
             <Route path="discover" element={<Navigate to="/explore" replace />} />
