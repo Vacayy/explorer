@@ -164,6 +164,8 @@ export interface FeedDocument {
   url: string;
   published_at: string;
   summary: string | null;
+  content: string | null;    // 전문 (markdown)
+  images: string[];          // /media 상대경로
   enrich_model: string | null;
   entities: EntityTag[];
 }

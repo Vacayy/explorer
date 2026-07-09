@@ -18,6 +18,8 @@ class FeedDocument(BaseModel):
     url: str
     published_at: str
     summary: str | None
+    content: str | None        # 전문 (markdown) — 카드 펼침용
+    images: list[str]          # /media 상대경로
     enrich_model: str | None   # keyword | LLM 모델명 (epistemic 표시용)
     entities: list[EntityTag]
 

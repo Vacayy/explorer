@@ -9,13 +9,14 @@ from typing import Protocol, runtime_checkable
 
 @dataclass
 class RawDoc:
-    source_type: str            # blog | telegram | ...
+    source_type: str            # blog | telegram | note | ...
     source_id: str              # 소스 내 고유 자연키 (dedup용)
     title: str = ""
     url: str = ""
     published_at: str = ""
     raw_content: str = ""       # 원본 (text/html) 또는 파일 경로(pdf)
     kind: str = "text"          # text | html | pdf  (normalize 힌트)
+    images: list[str] = field(default_factory=list)  # 로컬 저장된 미디어 상대경로 (/media 기준)
 
 
 @dataclass

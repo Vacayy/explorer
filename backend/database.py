@@ -360,6 +360,7 @@ def init_db():
     conn.commit()
 
     for migration in [
+        "ALTER TABLE raw_documents ADD COLUMN media_json TEXT",
         "ALTER TABLE ir_notes ADD COLUMN memo_type TEXT DEFAULT 'general'",
         "ALTER TABLE telegram_channels ADD COLUMN is_active INTEGER DEFAULT 1",
         "ALTER TABLE telegram_channels ADD COLUMN last_fetched_at TEXT",

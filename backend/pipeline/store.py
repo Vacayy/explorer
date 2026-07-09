@@ -6,6 +6,7 @@ content_hash로 멱등성 보장:
 - keyword 티어 결과는 LLM 사용 가능해지면 자동 재enrich (백필)
 """
 import hashlib
+import json
 import re
 
 from database import get_connection
@@ -134,23 +135,27 @@ def store_document(doc: RawDoc) -> dict:
         (doc.source_type, doc.source_id),
     ).fetchone()
 
+    media = json.dumps(doc.images) if doc.images else None
     if existing and existing["content_hash"] == h:
         # 내용 동일 — 문서는 그대로 두되, enrich 체크는 계속 진행
-        # (keyword→LLM 백필이 여기서 일어난다)
+        # (keyword→LLM 백필이 여기서 일어난다). 미디어는 새로 잡히면 갱신.
         doc_id, status = existing["id"], "unchanged"
+        if media:
+            conn.execute("UPDATE raw_documents SET media_json=? WHERE id=? AND (media_json IS NULL OR media_json != ?)",
+                         (media, doc_id, media))
     elif existing:
         conn.execute(
             "UPDATE raw_documents SET title=?, url=?, published_at=?, raw_content=?, "
-            "markdown=?, content_hash=?, fetched_at=datetime('now') WHERE id=?",
-            (doc.title, doc.url, to_iso_utc(doc.published_at), doc.raw_content, md, h, existing["id"]),
+            "markdown=?, content_hash=?, media_json=?, fetched_at=datetime('now') WHERE id=?",
+            (doc.title, doc.url, to_iso_utc(doc.published_at), doc.raw_content, md, h, media, existing["id"]),
         )
         doc_id, status = existing["id"], "updated"
     else:
         cur = conn.execute(
             "INSERT INTO raw_documents (source_type, source_id, title, url, published_at, "
-            "raw_content, markdown, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "raw_content, markdown, content_hash, media_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (doc.source_type, doc.source_id, doc.title, doc.url, to_iso_utc(doc.published_at),
-             doc.raw_content, md, h),
+             doc.raw_content, md, h, media),
         )
         doc_id, status = cur.lastrowid, "new"
     conn.commit()
