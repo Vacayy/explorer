@@ -331,6 +331,18 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_signals_type_date ON signals(signal_type, date);
 
+    -- 이미지 비전 분석 캐시 (이미지당 1회 — 증시일정표 → 이벤트 추출)
+    CREATE TABLE IF NOT EXISTS media_analysis (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        doc_id       INTEGER NOT NULL REFERENCES raw_documents(id) ON DELETE CASCADE,
+        image_path   TEXT NOT NULL UNIQUE,
+        kind         TEXT,              -- calendar | chart | table | text | other
+        description  TEXT,
+        events_json  TEXT,
+        model        TEXT,
+        analyzed_at  TEXT DEFAULT (datetime('now'))
+    );
+
     -- 전문 검색 (BM25) — raw_documents 외부 콘텐츠 방식 + 트리거 동기화.
     -- 벡터(doc_vec)는 sqlite-vec 확장이 필요해 pipeline/search.py에서 생성한다.
     CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(
