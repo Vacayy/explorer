@@ -1,6 +1,6 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
-import type { HomeResponse, SpineFeedResponse, SpineSignalsResponse } from "@/types";
+import type { AskResponse, HomeResponse, SpineFeedResponse, SpineSignalsResponse } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -33,5 +33,10 @@ export async function fetchSpineSignals(type?: string, days?: number): Promise<S
   const { data } = await api.get<SpineSignalsResponse>("/api/spine/signals", {
     params: { type, days },
   });
+  return data;
+}
+
+export async function askQuestion(question: string): Promise<AskResponse> {
+  const { data } = await api.post<AskResponse>("/api/spine/ask", { question }, { timeout: 300_000 });
   return data;
 }

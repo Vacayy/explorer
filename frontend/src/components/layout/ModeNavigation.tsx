@@ -5,6 +5,7 @@ type AppMode = "home" | "discover" | "feed" | "analyze" | "research"
 
 const DISCOVER_TABS = [
   { key: "signals", path: "/explore", label: "신호" },
+  { key: "ask", path: "/ask", label: "AI 질문" },
   { key: "industry", path: "/discover/industry", label: "산업군" },
   { key: "screener", path: "/discover/screener", label: "스크리너" },
   { key: "alt-data", path: "/discover/alt-data", label: "대안데이터" },
@@ -163,6 +164,7 @@ function getActiveSubTab(pathname: string): string | null {
 
   // Discover (탐색)
   if (pathname.startsWith("/explore")) return "signals"
+  if (pathname.startsWith("/ask")) return "ask"
   if (pathname.startsWith("/discover/industry")) return "industry"
   if (pathname.startsWith("/discover/screener")) return "screener"
   if (pathname.startsWith("/discover/alt-data")) return "alt-data"
