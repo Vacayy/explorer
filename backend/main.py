@@ -7,7 +7,7 @@ from routers import companies, financials, disclosures, ir_notes, stock_prices, 
 from routers import watchlist, screener, signals, catalysts, compare, consensus, index_data
 from routers import telegram_feed
 from routers import blog_feed
-from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows
+from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions
 
 app = FastAPI(title="Stock Explorer API")
 
@@ -41,6 +41,7 @@ app.include_router(spine_signals.router)
 app.include_router(spine_home.router)
 app.include_router(spine_ask.router)
 app.include_router(spine_follows.router)
+app.include_router(spine_actions.router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)
