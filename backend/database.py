@@ -347,6 +347,15 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_corporate_actions_dt ON corporate_actions(rcept_dt, action_type);
 
+    -- 종목별 사용자 정의 매칭 키워드 (결정적 매칭 — LLM 별칭 인식의 보완)
+    CREATE TABLE IF NOT EXISTS entity_keywords (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        keyword      TEXT NOT NULL,
+        created_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(entity_id, keyword)
+    );
+
     -- 종목별 언급 다이제스트 (1D / 롤링 7D) — 내러티브의 시계열 아카이브
     CREATE TABLE IF NOT EXISTS entity_digests (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,

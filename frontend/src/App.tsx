@@ -49,7 +49,7 @@ const queryClient = new QueryClient({
 
 function Layout() {
   useKeyboardShortcuts()
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
 
   // Extract stockCode from /analyze/:stockCode/... paths (exclude special routes like /analyze/compare)
   const stockCodeMatch = pathname.match(/^\/analyze\/([^/]+)/)
@@ -68,8 +68,10 @@ function Layout() {
         </main>
 
         {pathname.startsWith("/feed") ? (
-          <aside className="w-[220px] shrink-0 bg-card border-l sticky top-[110px] h-[calc(100vh-110px)] overflow-y-auto">
-            {search.includes("source=blog") ? <BlogSourcesSidebar /> : <TelegramChannelsSidebar />}
+          <aside className="w-[220px] shrink-0 bg-card border-l sticky top-[110px] h-[calc(100vh-110px)] overflow-y-auto divide-y">
+            {/* 구독 소스 관리 — 여기서 추가한 채널/블로그가 곧 수집 대상 */}
+            <TelegramChannelsSidebar />
+            <BlogSourcesSidebar />
           </aside>
         ) : (
           <WatchlistSidebar currentStockCode={stockCode} />
