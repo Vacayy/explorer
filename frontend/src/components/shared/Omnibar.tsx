@@ -24,6 +24,11 @@ const PAGES = [
   { label: "AI 질문", to: "/ask", icon: MessageCircleQuestion, keywords: "ask rag" },
   { label: "워치리스트", to: "/research/watchlist", icon: ListChecks, keywords: "watchlist" },
   { label: "카탈리스트 캘린더", to: "/research/catalysts", icon: CalendarDays, keywords: "calendar 일정" },
+  { label: "VS 비교 (보관함)", to: "/analyze/compare", icon: Table2, keywords: "compare 비교" },
+  { label: "투자메모 (보관함)", to: "/research/memos", icon: ListChecks, keywords: "memo 메모" },
+  { label: "스크리너 (보관함)", to: "/discover/screener", icon: LineChart, keywords: "screener" },
+  { label: "산업군 지도 (보관함)", to: "/discover/industry", icon: Building2, keywords: "industry 밸류체인" },
+  { label: "보관함", to: "/archive", icon: Home, keywords: "archive 휴지통" },
 ] as const
 
 export default function Omnibar() {

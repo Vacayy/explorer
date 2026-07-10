@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import ReactMarkdown from "react-markdown"
 import { HelpCircle, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
@@ -175,8 +175,20 @@ function AddSourceForm({ placeholder, onSubmit, pending }: {
   )
 }
 
+function useSourcesHealth() {
+  return useQuery({
+    queryKey: ["spine", "sources", "health"],
+    queryFn: async () => (await api.get("/api/spine/sources/health")).data as {
+      items: { kind: string; key: string; last_doc_at: string | null; docs_7d: number; warning: boolean }[]
+    },
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function TelegramChannelsSidebar() {
   const { data: channels = [], isLoading } = useTelegramChannels()
+  const { data: health } = useSourcesHealth()
+  const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "telegram").map((i) => [i.key, i]))
   const toggleChannel = useToggleTelegramChannel()
   const qc = useQueryClient()
   const addChannel = useMutation({
@@ -215,8 +227,15 @@ export function TelegramChannelsSidebar() {
             )}
           >
             <div className="min-w-0">
-              <div className="text-[13px] font-medium truncate">{ch.display_name ?? ch.channel_name}</div>
-              <div className="text-[11px] text-muted-foreground">@{ch.channel_name}</div>
+              <div className="text-[13px] font-medium truncate flex items-center gap-1">
+                {healthMap.get(ch.channel_name)?.warning && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" title="7일간 유입 없음" />
+                )}
+                {ch.display_name ?? ch.channel_name}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                7일 {healthMap.get(ch.channel_name)?.docs_7d ?? "-"}건
+              </div>
             </div>
             <button
               onClick={() => toggleChannel.mutate({ id: ch.id, is_active: !active })}

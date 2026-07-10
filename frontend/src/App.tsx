@@ -19,6 +19,7 @@ import ExplorePage from "@/components/explore/ExplorePage"
 import AskPage from "@/components/ask/AskPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import DocPage from "@/components/doc/DocPage"
+import ArchivePage from "@/components/archive/ArchivePage"
 
 // Discovery
 import IndustryPage from "@/components/industry/IndustryPage"
@@ -137,6 +138,7 @@ export default function App() {
 
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
+            <Route path="archive" element={<ArchivePage />} />
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />

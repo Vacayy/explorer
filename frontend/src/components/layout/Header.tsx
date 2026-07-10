@@ -4,6 +4,8 @@ import { useCompanySearch } from "@/hooks/useCompanySearch"
 import { addToHistory } from "@/components/layout/SearchHistory"
 import { Badge } from "@/components/ui/badge"
 import ThemeToggle from "@/components/shared/ThemeToggle"
+import { Link } from "react-router-dom"
+import { Archive } from "lucide-react"
 import {
   Command,
   CommandInput,
@@ -72,6 +74,10 @@ export default function Header({ selectedCompany }: Props) {
           >
             이동·검색·질문 <kbd className="rounded border bg-muted px-1">⌘K</kbd>
           </button>
+          <Link to="/archive" title="보관함 — 안 쓰는 화면 모음"
+            className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted">
+            <Archive className="h-4 w-4" />
+          </Link>
           <ThemeToggle />
         </div>
       </div>

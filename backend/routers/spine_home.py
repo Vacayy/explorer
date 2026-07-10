@@ -25,6 +25,15 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
     # ⓪ 기계가 먼저 말하는 3줄 — 저장된 재료의 결정적 조합 (추가 LLM 호출 없음)
     #    우선순위: 내 종목/팔로우 insight > 시장 insight > 오늘 기업활동 > 오늘 신호
     briefing: list[BriefItem] = []
+    # 소스 경고 최우선 — '조용함'이 수집 고장이면 그것부터 알려야 한다
+    from routers.spine_sources import compute_source_health
+    dead = [i for i in compute_source_health(conn) if i["warning"]]
+    if dead:
+        names = ", ".join(i["name"] for i in dead[:3])
+        briefing.append(BriefItem(
+            kind="warning",
+            text=f"소스 {len(dead)}곳 7일간 유입 없음 — {names}",
+            to="/feed"))
     ins_rows = conn.execute("""
         SELECT e.name, e.aliases stock_code, d.insights, d.period_start
         FROM entity_digests d JOIN entities e ON d.entity_id = e.id
