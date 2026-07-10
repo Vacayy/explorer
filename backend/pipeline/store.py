@@ -55,6 +55,19 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
         conn.execute(
             "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
             "VALUES (?, ?, 'topic', 0.5)", (doc_id, eid))
+    # 사용자 정의 키워드 — 결정적 매칭 (LLM 결과와 무관하게 항상 적용, conf 0.7)
+    for row in conn.execute("""SELECT ek.entity_id, ek.keyword FROM entity_keywords ek""").fetchall():
+        kw = (row["keyword"] or "").strip()
+        if not kw or kw not in text:
+            continue
+        pat = rf"(?<![0-9A-Za-z가-힣]){re.escape(kw)}"
+        if len(kw) <= 2:
+            pat += r"(?![0-9A-Za-z가-힣])"
+        if re.search(pat, text):
+            conn.execute(
+                "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
+                "VALUES (?, ?, 'stock', 0.7)", (doc_id, row["entity_id"]))
+
     # 종목 (1순위): LLM이 별칭까지 정규화한 종목명 — substring 매칭을 대체 (conf 0.9)
     if result.get("stocks") is not None:
         for name in result["stocks"]:
