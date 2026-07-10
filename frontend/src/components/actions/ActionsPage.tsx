@@ -8,6 +8,7 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
+import RightsProTable from "@/components/actions/RightsProTable"
 
 interface CorporateAction {
   id: number
@@ -32,6 +33,7 @@ const TYPE_FILTERS = ["전체", "유상증자", "무상증자", "합병", "주�
 export default function ActionsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const type = searchParams.get("type") ?? ""
+  const view = searchParams.get("view") ?? "list"
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["spine", "actions", type],
     queryFn: async () => {
@@ -54,8 +56,19 @@ export default function ActionsPage() {
         <FreshnessStamp asOf={data.as_of} />
       </div>
 
-      <div className="flex gap-1.5 flex-wrap">
-        {TYPE_FILTERS.map((t) => {
+      {/* 뷰 토글: 목록 | 유무증 Pro */}
+      <div className="flex gap-1.5 items-center flex-wrap">
+        <div className="flex rounded-md border overflow-hidden mr-2">
+          {[["list", "목록"], ["pro", "유무증 Pro"]].map(([v, label]) => (
+            <button key={v}
+              className={cn("px-2.5 py-1 text-xs",
+                view === v ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground")}
+              onClick={() => setSearchParams(v === "list" ? {} : { view: v })}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === "list" && TYPE_FILTERS.map((t) => {
           const key = t === "전체" ? "" : t
           return (
             <Badge
@@ -70,7 +83,9 @@ export default function ActionsPage() {
         })}
       </div>
 
-      {data.items.length === 0 ? (
+      {view === "pro" ? (
+        <RightsProTable />
+      ) : data.items.length === 0 ? (
         <EmptyState message="해당 조건의 기업활동 공시가 없습니다." />
       ) : (
         <Table>
