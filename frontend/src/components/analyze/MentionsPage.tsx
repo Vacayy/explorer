@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import ReactMarkdown from "react-markdown"
-import { ChevronDown, ChevronUp, Lightbulb, X } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Lightbulb, X } from "lucide-react"
 import api from "@/api/client"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
@@ -226,7 +226,7 @@ function KeywordsSection({ stockCode }: { stockCode: string }) {
     queryFn: async () =>
       (await api.get("/api/spine/keywords", { params: { stock: stockCode } })).data as {
         official_name: string | null
-        keywords: { id: number; keyword: string }[]
+        keywords: { id: number; keyword: string; status: string }[]
       },
     staleTime: 60_000,
   })
@@ -243,6 +243,15 @@ function KeywordsSection({ stockCode }: { stockCode: string }) {
     mutationFn: async (id: number) => api.delete(`/api/spine/keywords/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "keywords", stockCode] }),
   })
+  const approve = useMutation({
+    mutationFn: async (id: number) =>
+      (await api.post(`/api/spine/keywords/${id}/approve`)).data as { keyword: string; retro_linked_docs: number },
+    onSuccess: (d) => {
+      toast.success(`'${d.keyword}' 승인 — 기존 문서 ${d.retro_linked_docs}건 소급 링크`)
+      qc.invalidateQueries({ queryKey: ["spine", "keywords", stockCode] })
+      qc.invalidateQueries({ queryKey: ["spine", "feed"] })
+    },
+  })
 
   return (
     <Card>
@@ -256,10 +265,23 @@ function KeywordsSection({ stockCode }: { stockCode: string }) {
           <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">
             + LLM 별칭 자동 인식
           </Badge>
-          {(data?.keywords ?? []).map((k) => (
+          {(data?.keywords ?? []).filter((k) => k.status !== "proposed").map((k) => (
             <Badge key={k.id} variant="outline" className="text-[10px] gap-1 pr-1">
               {k.keyword}
               <button onClick={() => remove.mutate(k.id)} aria-label="키워드 삭제">
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </Badge>
+          ))}
+          {/* LLM 자동 제안 별칭 — 승인 시 결정적 매칭 편입 + 소급 링크 */}
+          {(data?.keywords ?? []).filter((k) => k.status === "proposed").map((k) => (
+            <Badge key={k.id} variant="outline"
+              className="text-[10px] gap-1 pr-1 text-hypothesis border-hypothesis/40 bg-hypothesis/5">
+              제안: {k.keyword}
+              <button onClick={() => approve.mutate(k.id)} aria-label="별칭 승인" title="승인 (소급 링크)">
+                <Check className="h-2.5 w-2.5" />
+              </button>
+              <button onClick={() => remove.mutate(k.id)} aria-label="별칭 거부" title="거부">
                 <X className="h-2.5 w-2.5" />
               </button>
             </Badge>

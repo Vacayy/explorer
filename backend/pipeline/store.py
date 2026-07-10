@@ -56,7 +56,11 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
             "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
             "VALUES (?, ?, 'topic', 0.5)", (doc_id, eid))
     # 사용자 정의 키워드 — 결정적 매칭 (LLM 결과와 무관하게 항상 적용, conf 0.7)
-    for row in conn.execute("""SELECT ek.entity_id, ek.keyword FROM entity_keywords ek""").fetchall():
+    # proposed(자동 제안)는 승인 전까지 매칭에 쓰지 않는다
+    for row in conn.execute(
+        """SELECT ek.entity_id, ek.keyword FROM entity_keywords ek
+           WHERE ek.status = 'active' OR ek.status IS NULL"""
+    ).fetchall():
         kw = (row["keyword"] or "").strip()
         if not kw or kw not in text:
             continue
@@ -78,6 +82,19 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
                 conn.execute(
                     "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
                     "VALUES (?, ?, 'stock', 0.9)", (doc_id, row["id"]))
+
+        # 별칭 자동 학습: LLM이 발견한 표기를 proposed 키워드로 축적 (승인 후 매칭 편입)
+        for al in result.get("stock_aliases") or []:
+            alias = (al.get("alias") or "").strip()
+            if not alias or len(alias) < 2 or len(alias) > 20 or alias == al.get("name"):
+                continue
+            row = conn.execute(
+                "SELECT id FROM entities WHERE type='company' AND name=?", (al.get("name"),)
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_keywords (entity_id, keyword, status) "
+                    "VALUES (?, ?, 'proposed')", (row["id"], alias))
         return
 
     # 종목 (fallback): 기존 company 엔티티 이름이 본문에 등장하면 링크.
@@ -109,10 +126,14 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
 
 
 def _enrich_and_store(conn, doc_id: int, title: str, md: str, h: str) -> dict:
-    """이전 enrichment·링크 제거 후 재생성 — 문서당 정확히 1개 유지, stale 방지."""
+    """이전 enrichment·링크 제거 후 재생성 — 문서당 정확히 1개 유지, stale 방지.
+
+    LLM 호출(수 초~수십 초)은 반드시 쓰기 트랜잭션 밖에서 — DELETE를 LLM 뒤에 둬서
+    쓰기 락 점유를 밀리초로 유지한다 (cron enrich 중 API 'database is locked' 방지).
+    """
+    result = enrich_mod.enrich(title, md)
     conn.execute("DELETE FROM enrichments WHERE doc_id=?", (doc_id,))
     conn.execute("DELETE FROM entity_links WHERE doc_id=?", (doc_id,))
-    result = enrich_mod.enrich(title, md)
     conn.execute(
         "INSERT INTO enrichments (doc_id, summary, sentiment, model, content_hash) "
         "VALUES (?, ?, ?, ?, ?)",

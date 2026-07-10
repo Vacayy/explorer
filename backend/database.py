@@ -463,6 +463,7 @@ def init_db():
         "ALTER TABLE blog_sources ADD COLUMN last_fetched_at TEXT",
         "ALTER TABLE blog_posts ADD COLUMN author TEXT",
         "ALTER TABLE blog_sources ADD COLUMN author TEXT",
+        "ALTER TABLE entity_keywords ADD COLUMN status TEXT DEFAULT 'active'",
     ]:
         try:
             conn.execute(migration)
