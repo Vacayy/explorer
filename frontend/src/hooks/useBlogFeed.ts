@@ -4,7 +4,8 @@ import api from "@/api/client";
 export interface BlogSource {
   id: number;
   url: string;
-  platform: string;
+  platform: string
+  author: string | null;
   blog_name: string | null;
   is_active: number;
   last_fetched_at: string | null;
