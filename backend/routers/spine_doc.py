@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/spine/doc", tags=["spine"])
 def get_document(doc_id: int):
     conn = get_connection()
     r = conn.execute("""
-        SELECT rd.id, rd.source_type, rd.title, rd.url, rd.published_at,
+        SELECT rd.id, rd.source_type, rd.source_id, rd.title, rd.url, rd.published_at,
                rd.markdown, rd.media_json,
                en.summary, en.model AS enrich_model
         FROM raw_documents rd
@@ -30,12 +30,14 @@ def get_document(doc_id: int):
         SELECT el.entity_id, e.type, e.name, e.aliases, el.link_type, el.confidence
         FROM entity_links el JOIN entities e ON el.entity_id = e.id
         WHERE el.doc_id = ?""", (doc_id,))]
+    from routers.spine_feed import resolve_channels
+    channel = resolve_channels(conn, [r]).get(r["id"])
     conn.close()
 
     return FeedDocument(
         id=r["id"], source_type=r["source_type"], title=r["title"] or "",
         url=r["url"] or "", published_at=r["published_at"] or "",
-        summary=r["summary"], content=r["markdown"],
+        summary=r["summary"], channel=channel, content=r["markdown"],
         images=json.loads(r["media_json"]) if r["media_json"] else [],
         enrich_model=r["enrich_model"], entities=tags,
     )

@@ -176,6 +176,9 @@ function DocumentCard({ doc, onChipFilter }: {
       <CardContent className="py-3 space-y-1.5">
         <div className="flex items-center gap-2">
           <SourceBadge sourceType={doc.source_type} />
+          {doc.channel && (
+            <span className="shrink-0 text-[11px] text-muted-foreground">{doc.channel}</span>
+          )}
           <Link
             to={`/doc/${doc.id}`}
             className="font-medium text-sm truncate hover:underline"

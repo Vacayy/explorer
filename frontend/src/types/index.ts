@@ -164,6 +164,7 @@ export interface FeedDocument {
   url: string;
   published_at: string;
   summary: string | null;
+  channel: string | null;    // 출처 채널/블로그 이름
   content: string | null;    // 전문 (markdown)
   images: string[];          // /media 상대경로
   enrich_model: string | null;
