@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
 from database import get_connection
-from models.spine import CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
+from models.spine import BriefItem, CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
 
@@ -21,6 +21,44 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
 
     wl = conn.execute("SELECT stock_code, corp_name FROM watchlist").fetchall()
     wl_codes = {r["stock_code"]: r["corp_name"] for r in wl}
+
+    # ⓪ 기계가 먼저 말하는 3줄 — 저장된 재료의 결정적 조합 (추가 LLM 호출 없음)
+    #    우선순위: 내 종목/팔로우 insight > 시장 insight > 오늘 기업활동 > 오늘 신호
+    briefing: list[BriefItem] = []
+    ins_rows = conn.execute("""
+        SELECT e.name, e.aliases stock_code, d.insights, d.period_start
+        FROM entity_digests d JOIN entities e ON d.entity_id = e.id
+        WHERE d.period='1d' AND d.insights IS NOT NULL
+          AND d.period_start >= date('now', '-1 day')
+        ORDER BY (e.aliases IN (SELECT stock_code FROM watchlist)) DESC, d.period_start DESC
+        LIMIT 4
+    """).fetchall()
+    for r in ins_rows[:2]:
+        briefing.append(BriefItem(
+            kind="insight",
+            text=f"{r['name']} — {r['insights'][:90]}",
+            to=f"/analyze/{r['stock_code']}/mentions" if r["stock_code"] else "/feed"))
+    act = conn.execute("""
+        SELECT corp_name, action_type FROM corporate_actions
+        WHERE rcept_dt = strftime('%Y%m%d', 'now', 'localtime')
+        ORDER BY market_cap DESC LIMIT 1""").fetchone()
+    if act and len(briefing) < 3:
+        briefing.append(BriefItem(kind="action",
+            text=f"{act['corp_name']} {act['action_type']} 공시 접수", to="/actions"))
+    if len(briefing) < 3:
+        sig = conn.execute("""
+            SELECT s.signal_type, s.payload_json, e.name, e.aliases stock_code
+            FROM signals s JOIN entities e ON s.entity_id = e.id
+            WHERE s.date >= date('now', '-1 day')
+            ORDER BY s.date DESC, s.id DESC LIMIT 2""").fetchall()
+        for r in sig[:3 - len(briefing)]:
+            p_ = json.loads(r["payload_json"] or "{}")
+            if r["signal_type"] == "high_52w":
+                text = f"{r['name']} 52주 신고가 경신 (+{p_.get('breakout_pct')}%)"
+            else:
+                text = f"{r['name']} 언급 급증 — 7일 {p_.get('count_7d')}회"
+            briefing.append(BriefItem(kind="signal", text=text,
+                to=f"/analyze/{r['stock_code']}/mentions" if r["stock_code"] else "/explore"))
 
     # ① 캘린더: 오늘~7일, 내 종목 우선
     cal_rows = conn.execute("""
@@ -119,6 +157,7 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
     conn.close()
 
     return HomeResponse(
+        briefing=briefing[:3],
         calendar=calendar,
         follows=follows,
         watchlist_updates=updates[:30],

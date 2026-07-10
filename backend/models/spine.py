@@ -80,7 +80,15 @@ class HomeFollow(BaseModel):
     name: str
 
 
+class BriefItem(BaseModel):
+    """'기계가 먼저 말하는 3줄' — 판단이 아니라 변화 감지만 (epistemic 규율)."""
+    kind: str            # insight(가설 스타일) | action | signal
+    text: str
+    to: str              # 프론트 라우트 (근거로 1클릭)
+
+
 class HomeResponse(BaseModel):
+    briefing: list[BriefItem]
     calendar: list[CalendarEvent]
     follows: list[HomeFollow]
     watchlist_updates: list[WatchlistUpdate]
