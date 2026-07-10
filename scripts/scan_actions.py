@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
 from pipeline.actions import scan, summarize_pending
+from pipeline.rights import extract_pending
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -22,3 +23,4 @@ if __name__ == "__main__":
     bgn = end - timedelta(days=args.days)
     print("[scan-actions]", scan(bgn.strftime("%Y%m%d"), end.strftime("%Y%m%d")))
     print("[summarize]", summarize_pending())
+    print("[rights]", extract_pending())

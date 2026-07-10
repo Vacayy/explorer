@@ -347,6 +347,37 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_corporate_actions_dt ON corporate_actions(rcept_dt, action_type);
 
+    -- 유·무상증자 상세 (Pro 뷰) — 결정 공시 원문에서 구조화 추출
+    CREATE TABLE IF NOT EXISTS capital_raise_details (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        rcp_no         TEXT NOT NULL UNIQUE,   -- corporate_actions.rcp_no
+        stock_code     TEXT,
+        corp_name      TEXT,
+        action_type    TEXT,                   -- 유상증자 | 무상증자
+        method         TEXT,                   -- 주주배정 | 제3자배정 | 일반공모 | 무상
+        price_1st      INTEGER,                -- 1차 발행가
+        price_2nd      INTEGER,
+        price_final    INTEGER,                -- 확정 발행가
+        old_shares     INTEGER,                -- 증자 전 발행주식총수
+        new_shares     INTEGER,
+        date_disclosure TEXT,                  -- 공시일 (rcept_dt)
+        date_price_1st TEXT,                   -- 1차발행가 산정일
+        date_record    TEXT,                   -- 신주배정기준일
+        date_ex_rights TEXT,                   -- 권리락 (기준일-1거래일 파생)
+        date_rights_listing_start TEXT,        -- 신주인수권증서 상장 시작
+        date_rights_listing_end   TEXT,
+        date_price_fix TEXT,                   -- 발행가 확정일
+        date_sub_start TEXT,                   -- 구주주 청약 시작
+        date_sub_end   TEXT,
+        date_public_start TEXT,                -- 일반공모 시작
+        date_public_end   TEXT,
+        date_payment   TEXT,                   -- 납입일
+        date_new_listing TEXT,                 -- 신주 상장(예정)일
+        underwriter    TEXT,                   -- 주관사
+        major_holder   TEXT,                   -- 최대주주 지분율/참여율
+        extracted_at   TEXT DEFAULT (datetime('now'))
+    );
+
     -- 엔티티 팔로우 — 팔로우 대상을 종목(watchlist)에서 임의 엔티티로 확장
     -- (섹터·테마 팔로우 → 홈 업데이트 스트림에 편입. 종목은 기존 watchlist 유지)
     CREATE TABLE IF NOT EXISTS follows (
