@@ -128,3 +128,29 @@ def verify_and_fetch(feed_url: str) -> tuple[list[dict], str]:
     if not blog_name and not posts:
         raise ValueError("RSS 피드에 접근할 수 없거나 게시글이 없습니다")
     return posts, blog_name
+
+
+def fetch_blog_author(url: str, posts: list[dict] | None = None) -> str | None:
+    """블로그 주인 닉네임. 네이버는 모바일 페이지의 nickName, 그 외는 RSS author."""
+    import re
+
+    import requests
+    import urllib3
+    urllib3.disable_warnings()
+
+    if "blog.naver.com" in url:
+        blog_id = url.rstrip("/").split("blog.naver.com/")[-1].split("/")[0]
+        try:
+            resp = requests.get(f"https://m.blog.naver.com/{blog_id}", timeout=15, verify=False,
+                                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
+            m = re.search(r'"nickName"\s*:\s*"([^"]{1,30})"', resp.text)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    # fallback: RSS 항목의 author
+    if posts:
+        for p_ in posts:
+            if p_.get("author"):
+                return p_["author"]
+    return None

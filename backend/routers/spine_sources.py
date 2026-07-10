@@ -70,24 +70,26 @@ def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     if not url.startswith("http"):
         url = f"https://{url}"
 
-    from services.blog_service import detect_platform_and_feed_url, verify_and_fetch
+    from services.blog_service import detect_platform_and_feed_url, fetch_blog_author, verify_and_fetch
     platform, feed_url = detect_platform_and_feed_url(url)
     try:
         posts, blog_name = verify_and_fetch(feed_url)
     except Exception as e:
         raise HTTPException(422, f"RSS 피드를 읽을 수 없습니다: {e}")
 
+    author = fetch_blog_author(url, posts)
+
     conn = get_connection()
     dup = conn.execute("SELECT 1 FROM blog_sources WHERE url=?", (url,)).fetchone()
     if not dup:
         conn.execute(
-            "INSERT INTO blog_sources (url, platform, blog_name, is_active) VALUES (?, ?, ?, 1)",
-            (url, platform, blog_name))
+            "INSERT INTO blog_sources (url, platform, blog_name, author, is_active) VALUES (?, ?, ?, ?, 1)",
+            (url, platform, blog_name, author))
         conn.commit()
     conn.close()
     if dup:
         raise HTTPException(409, "이미 등록된 블로그입니다")
 
     background.add_task(_ingest_blog, url)
-    return {"url": url, "blog_name": blog_name, "platform": platform,
+    return {"url": url, "blog_name": blog_name, "author": author, "platform": platform,
             "preview_posts": len(posts), "note": "백그라운드 수집 시작"}

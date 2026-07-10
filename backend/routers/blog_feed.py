@@ -37,7 +37,7 @@ def _is_cache_fresh(last_fetched: str | None) -> bool:
 def list_sources():
     conn = get_connection()
     rows = conn.execute(
-        "SELECT id, url, platform, blog_name, is_active, last_fetched_at, added_at FROM blog_sources ORDER BY added_at DESC"
+        "SELECT id, url, platform, blog_name, author, is_active, last_fetched_at, added_at FROM blog_sources ORDER BY added_at DESC"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

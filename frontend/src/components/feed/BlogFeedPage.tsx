@@ -299,7 +299,7 @@ export function BlogSourcesSidebar() {
             >
               <div className="min-w-0">
                 <div className="text-[13px] font-medium truncate">{src.blog_name || src.url}</div>
-                <div className="text-[11px] text-muted-foreground capitalize">{src.platform}</div>
+                <div className="text-[11px] text-muted-foreground">{src.author ?? src.platform}</div>
               </div>
               <button
                 onClick={() => toggleSource.mutate({ id: src.id, is_active: !active })}
