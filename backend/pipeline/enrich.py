@@ -69,7 +69,7 @@ def _build_prompt(title: str, markdown: str) -> str:
     doc = f"{title}\n{(markdown or '')[:MAX_DOC_CHARS]}"
     return (
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
-        '형식: {"stocks": [{"name": "정식 종목명"}], "industries": [], "topics": [], '
+        '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문에 쓰인 표기"}], "industries": [], "topics": [], '
         '"summary": "핵심 2문장", "sentiment": "positive|neutral|negative"}\n'
         "규칙:\n"
         "- stocks: 실제로 논의 대상인 한국 상장사만. 별칭·약칭(하이닉스=SK하이닉스, 삼전=삼성전자 등)은 "
@@ -113,12 +113,18 @@ def _enrich_llm(title: str, markdown: str) -> dict:
     prompt = _build_prompt(title, markdown)
     raw = _call_claude_code(prompt) if engine == "claude-code" else _call_api(prompt)
     data = _parse_json(raw)
-    stocks = data.get("stocks") or []
+    stocks = [s for s in (data.get("stocks") or []) if isinstance(s, dict) and s.get("name")]
     return {
         "summary": data.get("summary"),
         "sentiment": data.get("sentiment"),
         "model": f"{engine}/haiku",
         "industries": data.get("industries") or [],
         "topics": data.get("topics") or [],
-        "stocks": [s.get("name") for s in stocks if isinstance(s, dict) and s.get("name")],
+        "stocks": [s["name"] for s in stocks],
+        # 별칭 자동 학습: 본문 표기가 정식명과 다르면 ('삼전'→삼성전자) 후보로 전달
+        "stock_aliases": [
+            {"name": s["name"], "alias": str(s.get("as_written") or "").strip()}
+            for s in stocks
+            if s.get("as_written") and str(s["as_written"]).strip() != s["name"]
+        ],
     }

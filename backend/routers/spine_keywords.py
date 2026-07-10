@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/spine/keywords", tags=["spine"])
 class Keyword(BaseModel):
     id: int
     keyword: str
+    status: str = "active"   # active | proposed (LLM 자동 제안 — 승인 대기)
 
 
 class KeywordsResponse(BaseModel):
@@ -47,14 +48,47 @@ def list_keywords(stock: str = Query(...)):
         conn.close()
         raise HTTPException(404, "종목을 찾을 수 없습니다")
     rows = conn.execute(
-        "SELECT id, keyword FROM entity_keywords WHERE entity_id=? ORDER BY created_at", (ent["id"],)
+        "SELECT id, keyword, COALESCE(status, 'active') AS status FROM entity_keywords "
+        "WHERE entity_id=? ORDER BY status DESC, created_at", (ent["id"],)
     ).fetchall()
     conn.close()
     return KeywordsResponse(
         stock_code=stock, official_name=ent["name"],
-        keywords=[Keyword(id=r["id"], keyword=r["keyword"]) for r in rows],
+        keywords=[Keyword(id=r["id"], keyword=r["keyword"], status=r["status"]) for r in rows],
         as_of=datetime.now(timezone.utc).isoformat(),
     )
+
+
+def _retro_link(conn, entity_id: int, kw: str) -> int:
+    """키워드를 기존 문서 전체에 소급 매칭 (결정적)."""
+    pat = rf"(?<![0-9A-Za-z가-힣]){re.escape(kw)}"
+    if len(kw) <= 2:
+        pat += r"(?![0-9A-Za-z가-힣])"
+    rx = re.compile(pat)
+    linked = 0
+    for doc in conn.execute("SELECT id, title, markdown FROM raw_documents").fetchall():
+        text = f"{doc['title'] or ''}\n{doc['markdown'] or ''}"
+        if kw in text and rx.search(text):
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
+                "VALUES (?, ?, 'stock', 0.7)", (doc["id"], entity_id))
+            linked += cur.rowcount
+    return linked
+
+
+@router.post("/{keyword_id}/approve")
+def approve_keyword(keyword_id: int):
+    """proposed 별칭 승인 → active + 기존 문서 소급 링크."""
+    conn = get_connection()
+    row = conn.execute("SELECT entity_id, keyword FROM entity_keywords WHERE id=?", (keyword_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "키워드를 찾을 수 없습니다")
+    conn.execute("UPDATE entity_keywords SET status='active' WHERE id=?", (keyword_id,))
+    linked = _retro_link(conn, row["entity_id"], row["keyword"])
+    conn.commit()
+    conn.close()
+    return {"keyword": row["keyword"], "retro_linked_docs": linked}
 
 
 @router.post("", status_code=201)
@@ -70,19 +104,7 @@ def add_keyword(body: AddKeywordRequest):
     conn.execute("INSERT OR IGNORE INTO entity_keywords (entity_id, keyword) VALUES (?, ?)",
                  (ent["id"], kw))
 
-    # 소급 적용: 기존 문서에서 즉시 매칭 (결정적 — LLM 불필요)
-    pat = rf"(?<![0-9A-Za-z가-힣]){re.escape(kw)}"
-    if len(kw) <= 2:
-        pat += r"(?![0-9A-Za-z가-힣])"
-    rx = re.compile(pat)
-    linked = 0
-    for doc in conn.execute("SELECT id, title, markdown FROM raw_documents").fetchall():
-        text = f"{doc['title'] or ''}\n{doc['markdown'] or ''}"
-        if kw in text and rx.search(text):
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
-                "VALUES (?, ?, 'stock', 0.7)", (doc["id"], ent["id"]))
-            linked += cur.rowcount
+    linked = _retro_link(conn, ent["id"], kw)
     conn.commit()
     conn.close()
     return {"keyword": kw, "retro_linked_docs": linked}
