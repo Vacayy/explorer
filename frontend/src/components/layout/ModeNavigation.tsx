@@ -154,7 +154,7 @@ function SubTab({ to, active, label }: { to: string; active: boolean; label: str
 
 function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/home")) return "home"
-  if (pathname.startsWith("/feed")) return "feed"
+  if (pathname.startsWith("/feed") || pathname.startsWith("/doc/")) return "feed"
   if (pathname.startsWith("/analyze")) return "analyze"
   if (pathname.startsWith("/research")) return "research"
   return "discover" // /explore, /discover/* 모두 탐색 모드

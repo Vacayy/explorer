@@ -19,6 +19,7 @@ class CorporateAction(BaseModel):
     report_nm: str | None
     rcept_dt: str             # YYYYMMDD
     market_cap: int | None
+    summary: str | None       # haiku 핵심 요약 (규모·비율·일정)
     dart_url: str
 
 
@@ -48,6 +49,7 @@ def list_actions(
             id=r["id"], rcp_no=r["rcp_no"], corp_name=r["corp_name"],
             stock_code=r["stock_code"], market=r["market"], action_type=r["action_type"],
             report_nm=r["report_nm"], rcept_dt=r["rcept_dt"], market_cap=r["market_cap"],
+            summary=r["summary"],
             dart_url=f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r['rcp_no']}",
         ) for r in rows],
         total=len(rows),

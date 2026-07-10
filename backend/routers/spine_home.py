@@ -61,7 +61,7 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
         """, [*wl_codes, since_dt]):
             seen_docs.add(r["doc_id"])
             updates.append(WatchlistUpdate(
-                kind="document", stock_code=r["stock_code"], corp_name=r["corp_name"],
+                kind="document", doc_id=r["doc_id"], stock_code=r["stock_code"], corp_name=r["corp_name"],
                 occurred_at=r["published_at"], title=r["title"] or "",
                 url=r["url"], source_type=r["source_type"], signal_type=None))
 
@@ -80,7 +80,7 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
                 continue  # 왓치리스트 종목으로 이미 포함된 문서는 중복 제거
             seen_docs.add(r["doc_id"])
             updates.append(WatchlistUpdate(
-                kind="document", entity_type=r["entity_type"], entity_id=r["entity_id"],
+                kind="document", doc_id=r["doc_id"], entity_type=r["entity_type"], entity_id=r["entity_id"],
                 stock_code=r["aliases"], corp_name=r["name"],
                 occurred_at=r["published_at"], title=r["title"] or "",
                 url=r["url"], source_type=r["source_type"], signal_type=None))

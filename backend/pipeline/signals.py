@@ -66,7 +66,7 @@ def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
                 "count_7d": n,
                 "baseline_7d": b,
                 "keywords": keywords,
-                "docs": [{"title": d["title"], "url": d["url"]} for d in docs[:5]],
+                "docs": [{"id": d["doc_id"], "title": d["title"], "url": d["url"]} for d in docs[:5]],
             },
         })
 

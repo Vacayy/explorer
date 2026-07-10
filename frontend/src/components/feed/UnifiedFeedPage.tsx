@@ -176,14 +176,12 @@ function DocumentCard({ doc, onChipFilter }: {
       <CardContent className="py-3 space-y-1.5">
         <div className="flex items-center gap-2">
           <SourceBadge sourceType={doc.source_type} />
-          <a
-            href={doc.url || undefined}
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            to={`/doc/${doc.id}`}
             className="font-medium text-sm truncate hover:underline"
           >
             {doc.title || "(제목 없음)"}
-          </a>
+          </Link>
           <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
             {formatRelativeTime(doc.published_at)}
           </span>

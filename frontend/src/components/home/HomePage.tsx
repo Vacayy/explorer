@@ -163,10 +163,10 @@ function UpdateRow({ update: u }: { update: WatchlistUpdate }) {
       >
         {u.corp_name}
       </Link>
-      {u.url ? (
-        <a href={u.url} target="_blank" rel="noreferrer" className="text-sm truncate hover:underline">
+      {u.doc_id ? (
+        <Link to={`/doc/${u.doc_id}`} className="text-sm truncate hover:underline">
           {u.title}
-        </a>
+        </Link>
       ) : (
         <span className="text-sm truncate">{u.title}</span>
       )}

@@ -92,10 +92,16 @@ export function SignalCard({ signal: s, onKeywordClick }: {
             <ul className="space-y-0.5">
               {visibleDocs.map((d, i) => (
                 <li key={i} className="truncate">
-                  <a href={d.url} target="_blank" rel="noreferrer"
-                     className="text-xs hover:underline text-foreground/80">
-                    · {d.title}
-                  </a>
+                  {d.id ? (
+                    <Link to={`/doc/${d.id}`} className="text-xs hover:underline text-foreground/80">
+                      · {d.title}
+                    </Link>
+                  ) : (
+                    <a href={d.url} target="_blank" rel="noreferrer"
+                       className="text-xs hover:underline text-foreground/80">
+                      · {d.title}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>

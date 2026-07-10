@@ -84,3 +84,61 @@ def scan(bgn_de: str, end_de: str, min_market_cap: int = MIN_MARKET_CAP) -> dict
 
     conn.close()
     return stats
+
+
+def _fetch_document_text(rcp_no: str) -> str | None:
+    """DART 공시 원문 → 텍스트 (앞 4000자 — 요약에 충분)."""
+    import re as _re
+    import warnings
+
+    import OpenDartReader
+    from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+    warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+    try:
+        dart = OpenDartReader(DART_API_KEY)
+        doc = dart.document(rcp_no)
+        if not doc:
+            return None
+        text = BeautifulSoup(doc, "html.parser").get_text("\n")
+        return _re.sub(r"\n{2,}", "\n", text).strip()[:4000]
+    except Exception:
+        return None
+
+
+def summarize_pending(limit: int = 20) -> dict:
+    """summary 없는 기업활동 공시를 haiku로 요약 (규모·비율·일정·목적 중심)."""
+    from pipeline.enrich import _call_claude_code, llm_engine
+
+    if llm_engine() != "claude-code":
+        return {"skipped": "claude-code 엔진 아님"}
+
+    conn = get_connection()
+    todo = conn.execute("""
+        SELECT id, rcp_no, corp_name, action_type, report_nm FROM corporate_actions
+        WHERE summary IS NULL ORDER BY rcept_dt DESC LIMIT ?
+    """, (limit,)).fetchall()
+
+    done = failed = 0
+    for r in todo:
+        text = _fetch_document_text(r["rcp_no"])
+        if not text:
+            conn.execute("UPDATE corporate_actions SET summary='(원문 조회 실패)' WHERE id=?", (r["id"],))
+            conn.commit()
+            failed += 1
+            continue
+        prompt = (
+            f"다음은 {r['corp_name']}의 '{r['report_nm']}' 공시 원문이다. "
+            "투자자 관점 핵심만 2~3문장으로 요약해라 (규모/비율/신주 수·발행가/기준일·일정/목적). "
+            "수치를 우선하고 군더더기 금지. 텍스트만 출력.\n\n" + text
+        )
+        try:
+            summary = _call_claude_code(prompt).strip()[:600]
+            conn.execute("UPDATE corporate_actions SET summary=? WHERE id=?", (summary, r["id"]))
+            conn.commit()
+            done += 1
+        except Exception:
+            failed += 1
+
+    conn.close()
+    return {"summarized": done, "failed": failed, "remaining_checked": len(todo)}
