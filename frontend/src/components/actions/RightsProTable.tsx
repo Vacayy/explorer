@@ -78,7 +78,7 @@ export default function RightsProTable() {
         <thead>
           <tr className="bg-muted/60 text-muted-foreground">
             <th className="sticky left-0 bg-muted px-2 py-1.5 text-left z-10">종목명</th>
-            {["방식", "WR", "1차발행가", "2차발행가", "최종발행가", "유증매수가", "차액(₩)", "차액(%)", "구주수", "신주수", "증자비율"].map((h) => (
+            {["WR", "1차발행가", "2차발행가", "최종발행가", "유증매수가", "차액(₩)", "차액(%)", "구주수", "신주수", "증자비율"].map((h) => (
               <th key={h} className="px-2 py-1.5 text-right font-medium">{h}</th>
             ))}
             {DATE_COLS.map((c) => (

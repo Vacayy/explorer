@@ -50,6 +50,7 @@ def _extract_one(rcp_no: str, corp_name: str, report_nm: str) -> dict | None:
         f"다음은 {corp_name}의 '{report_nm}' 공시 원문이다. JSON만 출력해라 (설명 금지).\n"
         f"형식:\n{FIELDS}\n"
         "규칙: 날짜는 YYYY-MM-DD로 정규화. 없는 항목은 null. 숫자는 콤마 없이 정수. "
+        "발행가는 반드시 '신주 발행가액(1주당)' — 액면가·전환가·기준주가를 쓰지 마라. "
         "'~부터 ~까지' 기간은 start/end로 분리. 무상증자면 method='무상'.\n\n" + text
     )
     raw = _call_claude_code(prompt)
