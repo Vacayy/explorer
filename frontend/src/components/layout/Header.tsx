@@ -64,7 +64,14 @@ export default function Header({ selectedCompany }: Props) {
           </Badge>
         )}
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+            className="hidden md:flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+            title="옴니바 열기"
+          >
+            이동·검색·질문 <kbd className="rounded border bg-muted px-1">⌘K</kbd>
+          </button>
           <ThemeToggle />
         </div>
       </div>

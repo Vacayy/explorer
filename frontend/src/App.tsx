@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLoca
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Toaster } from "@/components/ui/sonner"
 import Header from "@/components/layout/Header"
+import Omnibar from "@/components/shared/Omnibar"
 import ModeNavigation from "@/components/layout/ModeNavigation"
 import WatchlistSidebar from "@/components/layout/WatchlistSidebar"
 import { TelegramChannelsSidebar } from "@/components/feed/TelegramFeedPage"
@@ -60,6 +61,7 @@ function Layout() {
   return (
     <div className="min-h-screen bg-background">
       <Header selectedCompany={company ?? null} />
+      <Omnibar />
       <ModeNavigation stockCode={stockCode} companyName={company?.corp_name} />
 
       <div className="mx-auto max-w-[1440px] flex">
