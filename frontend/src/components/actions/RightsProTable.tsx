@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { Badge } from "@/components/ui/badge"
@@ -59,7 +59,11 @@ const shortDate = (v: string | null) => (v ? v.slice(2).replace(/-/g, "/") : "-"
  * 셀 하이라이트: 각 행의 '다음 도래 일정'을 강조 (노랑), 미래 일정은 옅게.
  * WR·유증매수가는 신주인수권증서 시세 필요 — 데이터 확보 전까지 '-' (v2).
  */
+const METHOD_FILTERS = ["전체", "주주배정", "제3자배정", "일반공모", "무상"] as const
+
 export default function RightsProTable() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const method = searchParams.get("method") ?? ""
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["spine", "actions", "rights"],
     queryFn: async () => (await api.get("/api/spine/actions/rights")).data as { items: RightsRow[]; as_of: string },
@@ -71,8 +75,36 @@ export default function RightsProTable() {
   if (data.items.length === 0) return <EmptyState message="추출된 유·무상증자 상세가 아직 없습니다." />
 
   const today = new Date().toISOString().slice(0, 10)
+  // 방식 필터 — 데이터는 유지, 표시만 거른다 (제3자배정은 일정 필드가 원래 없는 유형)
+  const items = data.items.filter((r) => {
+    if (!method) return true
+    if (method === "무상") return r.action_type === "무상증자"
+    return r.method === method
+  })
 
   return (
+    <div className="space-y-2">
+      <div className="flex gap-1.5 flex-wrap items-center">
+        {METHOD_FILTERS.map((m) => {
+          const key = m === "전체" ? "" : m
+          return (
+            <Badge key={m}
+              variant={method === key ? "default" : "outline"}
+              className="cursor-pointer select-none text-xs"
+              onClick={() => setSearchParams((prev) => {
+                const next = new URLSearchParams(prev)
+                if (key) next.set("method", key)
+                else next.delete("method")
+                return next
+              })}>
+              {m}
+            </Badge>
+          )
+        })}
+        {method && (
+          <span className="text-[11px] text-muted-foreground">{items.length}/{data.items.length}건 표시</span>
+        )}
+      </div>
     <div className="overflow-x-auto border rounded-lg">
       <table className="text-xs tabular-nums whitespace-nowrap w-max min-w-full">
         <thead>
@@ -89,7 +121,7 @@ export default function RightsProTable() {
           </tr>
         </thead>
         <tbody className="divide-y">
-          {data.items.map((r) => {
+          {items.map((r) => {
             const futureDates = DATE_COLS.map((c) => r[c.key] as string | null)
               .filter((d): d is string => !!d && d >= today)
             const nextDate = futureDates.length ? futureDates.reduce((a, b) => (a < b ? a : b)) : null
@@ -146,6 +178,7 @@ export default function RightsProTable() {
         * 권리락 = 기준일−1거래일 파생(공휴일 근사) · 차액 = 최근 종가 − 유효발행가(확정&gt;2차&gt;1차) ·
         WR·유증매수가는 신주인수권증서 시세 연동 예정 · <span className="bg-hypothesis/20 px-1 rounded">노랑</span> = 다음 도래 일정
       </p>
+    </div>
     </div>
   )
 }
