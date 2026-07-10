@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useMutation } from "@tanstack/react-query"
 import ReactMarkdown from "react-markdown"
 import { Sparkles, AlertTriangle } from "lucide-react"
@@ -31,7 +31,8 @@ const EXAMPLES = [
  * 갭 분석(근거 부족·모순·오래된 정보)을 일급 출력으로 노출.
  */
 export default function AskPage() {
-  const [question, setQuestion] = useState("")
+  const [searchParams] = useSearchParams()
+  const [question, setQuestion] = useState(searchParams.get("q") ?? "")
   const ask = useMutation({ mutationFn: askQuestion })
 
   const submit = () => {
