@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { HelpCircle, Plus, ExternalLink, X } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
@@ -20,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import api from "@/api/client"
 import {
   useBlogSources,
   useBlogFeed,
@@ -241,14 +243,24 @@ export function BlogSourcesSidebar() {
   const { data: tags = [] } = useBlogTags()
   const toggleSource = useToggleBlogSource()
   const [activeTag, setActiveTag] = useState<string | undefined>(undefined)
+  const qc = useQueryClient()
+  const addBlog = useMutation({
+    mutationFn: async (url: string) =>
+      (await api.post("/api/spine/sources/blog", { url })).data as { url: string; blog_name: string | null },
+    onSuccess: (d) => {
+      toast.success(`'${d.blog_name || d.url}' 등록 — 백그라운드 수집 시작`)
+      qc.invalidateQueries({ queryKey: ["blog-sources"] })
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(msg ?? "블로그 등록 실패")
+    },
+  })
 
   const industryTags = tags.filter((t) => t.tag_type === "industry")
   const topicTags = tags.filter((t) => t.tag_type === "topic")
 
   if (sourcesLoading) return <div className="px-3 py-4"><Skeleton className="h-4 w-full" /></div>
-  if (sources.length === 0) return (
-    <div className="px-3 py-8 text-center text-xs text-muted-foreground">구독 블로그 없음</div>
-  )
 
   return (
     <div className="py-2 space-y-4">
@@ -257,6 +269,24 @@ export function BlogSourcesSidebar() {
         <div className="px-3 mb-2">
           <h3 className="text-xs font-semibold text-secondary-foreground">구독 블로그</h3>
         </div>
+        <form
+          className="px-3 pb-2 flex gap-1"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const v = new FormData(e.currentTarget).get("v")?.toString().trim()
+            if (v) { addBlog.mutate(v); (e.target as HTMLFormElement).reset() }
+          }}
+        >
+          <input name="v" placeholder="블로그 URL (네이버/티스토리/RSS)" disabled={addBlog.isPending}
+            className="min-w-0 flex-1 h-7 rounded-md border bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring" />
+          <button type="submit" disabled={addBlog.isPending}
+            className="shrink-0 h-7 px-2 rounded-md bg-primary text-primary-foreground text-[11px] disabled:opacity-50">
+            {addBlog.isPending ? "…" : "추가"}
+          </button>
+        </form>
+        {sources.length === 0 && (
+          <div className="px-3 py-4 text-center text-xs text-muted-foreground">구독 블로그 없음</div>
+        )}
         {sources.map((src) => {
           const active = src.is_active === 1
           return (
