@@ -347,6 +347,22 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_corporate_actions_dt ON corporate_actions(rcept_dt, action_type);
 
+    -- 종목별 언급 다이제스트 (1D / 롤링 7D) — 내러티브의 시계열 아카이브
+    CREATE TABLE IF NOT EXISTS entity_digests (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        period       TEXT NOT NULL,          -- 1d | 7d (7d는 롤링, period_start=기준일)
+        period_start TEXT NOT NULL,          -- KST 날짜 (YYYY-MM-DD)
+        digest       TEXT,                   -- 요약 본문 (마크다운)
+        insights     TEXT,                   -- 이전 요약 대비 '새로운 시각' (없으면 NULL)
+        doc_count    INTEGER,
+        doc_ids_hash TEXT,                   -- 재생성 가드 (문서 집합 변경 시에만 재생성)
+        model        TEXT,
+        created_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(entity_id, period, period_start)
+    );
+    CREATE INDEX IF NOT EXISTS idx_entity_digests ON entity_digests(entity_id, period, period_start);
+
     -- 유·무상증자 상세 (Pro 뷰) — 결정 공시 원문에서 구조화 추출
     CREATE TABLE IF NOT EXISTS capital_raise_details (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
