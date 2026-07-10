@@ -118,6 +118,9 @@ def list_rights():
         close = closes.get(r["stock_code"])
         diff_w = (close - eff) if (close and eff) else None
         diff_pct = round(diff_w / eff * 100, 2) if (diff_w is not None and eff) else None
+        if diff_pct is not None and abs(diff_pct) > 70:
+            # 유증 할인율 범위를 벗어남 — 발행가 추출 오류 의심 → 차액 숨김 (원문 확인 유도)
+            diff_w = diff_pct = None
         ratio = round(r["new_shares"] / r["old_shares"] * 100, 2) \
             if (r["new_shares"] and r["old_shares"]) else None
         items.append(RightsRow(
