@@ -1,15 +1,13 @@
 import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
-type AppMode = "home" | "discover" | "feed" | "analyze" | "research"
+type AppMode = "home" | "discover" | "feed" | "analyze" | "research" | "archive"
 
+// 산업군·스크리너·대안데이터는 보관함(/archive)으로 이동 — 라우트는 유지
 const DISCOVER_TABS = [
   { key: "signals", path: "/explore", label: "신호" },
   { key: "ask", path: "/ask", label: "AI 질문" },
   { key: "actions", path: "/actions", label: "기업활동" },
-  { key: "industry", path: "/discover/industry", label: "산업군" },
-  { key: "screener", path: "/discover/screener", label: "스크리너" },
-  { key: "alt-data", path: "/discover/alt-data", label: "대안데이터" },
 ] as const
 
 const ANALYZE_TABS = [
@@ -71,16 +69,7 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
             disabled={!stockCode}
             label={stockCode && companyName ? `분석: ${companyName}` : "분석"}
           />
-          <ModeButton
-            to="/analyze/compare"
-            active={pathname.startsWith("/analyze/compare")}
-            label="VS 비교"
-          />
-          <ModeButton
-            to="/research/watchlist"
-            active={activeMode === "research"}
-            label="리서치노트"
-          />
+
         </div>
 
         {/* Level 2: Sub-tabs */}
@@ -157,6 +146,7 @@ function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/feed") || pathname.startsWith("/doc/")) return "feed"
   if (pathname.startsWith("/analyze")) return "analyze"
   if (pathname.startsWith("/research")) return "research"
+  if (pathname.startsWith("/archive")) return "archive"
   return "discover" // /explore, /discover/* 모두 탐색 모드
 }
 

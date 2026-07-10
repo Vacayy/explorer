@@ -69,6 +69,9 @@ def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     url = body.url.strip().rstrip("/")
     if not url.startswith("http"):
         url = f"https://{url}"
+    # 네이버 모바일 URL 정규화 — 포스트 URL(blog.naver.com)과 프리픽스 매칭돼야
+    # 채널명 표시·소스 건강 집계가 정확해진다
+    url = url.replace("://m.blog.naver.com/", "://blog.naver.com/")
 
     from services.blog_service import detect_platform_and_feed_url, fetch_blog_author, verify_and_fetch
     platform, feed_url = detect_platform_and_feed_url(url)
@@ -93,3 +96,67 @@ def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     background.add_task(_ingest_blog, url)
     return {"url": url, "blog_name": blog_name, "author": author, "platform": platform,
             "preview_posts": len(posts), "note": "백그라운드 수집 시작"}
+
+
+class SourceHealth(BaseModel):
+    kind: str            # telegram | blog
+    name: str            # 표시명
+    key: str             # channel_name | url
+    is_active: bool
+    last_doc_at: str | None
+    docs_7d: int
+    docs_24h: int
+    warning: bool        # 활성인데 7일간 유입 0
+
+
+class SourcesHealthResponse(BaseModel):
+    items: list[SourceHealth]
+    warnings: int
+    as_of: str
+
+
+def compute_source_health(conn) -> list[dict]:
+    """소스별 유입 상태 — '조용한 날'이 시장 탓인지 수집 고장 탓인지 구분하는 계기판."""
+    items = []
+    for r in conn.execute("SELECT channel_name, display_name, is_active FROM telegram_channels"):
+        st = conn.execute("""
+            SELECT max(published_at) last, 
+                   sum(published_at >= datetime('now', '-7 days')) d7,
+                   sum(published_at >= datetime('now', '-1 day')) d1
+            FROM raw_documents WHERE source_type='telegram' AND source_id LIKE ? || '/%'
+        """, (r["channel_name"],)).fetchone()
+        d7 = st["d7"] or 0
+        items.append({
+            "kind": "telegram", "name": r["display_name"] or r["channel_name"],
+            "key": r["channel_name"], "is_active": bool(r["is_active"]),
+            "last_doc_at": st["last"], "docs_7d": d7, "docs_24h": st["d1"] or 0,
+            "warning": bool(r["is_active"]) and d7 == 0,
+        })
+    for r in conn.execute("SELECT url, blog_name, author, is_active FROM blog_sources"):
+        st = conn.execute("""
+            SELECT max(published_at) last,
+                   sum(published_at >= datetime('now', '-7 days')) d7,
+                   sum(published_at >= datetime('now', '-1 day')) d1
+            FROM raw_documents WHERE source_type='blog' AND url LIKE ? || '%'
+        """, (r["url"],)).fetchone()
+        d7 = st["d7"] or 0
+        items.append({
+            "kind": "blog", "name": r["blog_name"] or r["url"],
+            "key": r["url"], "is_active": bool(r["is_active"]),
+            "last_doc_at": st["last"], "docs_7d": d7, "docs_24h": st["d1"] or 0,
+            "warning": bool(r["is_active"]) and d7 == 0,
+        })
+    return items
+
+
+@router.get("/health", response_model=SourcesHealthResponse)
+def sources_health():
+    from datetime import datetime, timezone
+    conn = get_connection()
+    items = compute_source_health(conn)
+    conn.close()
+    return SourcesHealthResponse(
+        items=[SourceHealth(**i) for i in items],
+        warnings=sum(1 for i in items if i["warning"]),
+        as_of=datetime.now(timezone.utc).isoformat(),
+    )

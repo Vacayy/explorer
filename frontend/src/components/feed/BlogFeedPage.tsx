@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { HelpCircle, Plus, ExternalLink, X } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
@@ -238,8 +238,20 @@ export default function BlogFeedPage() {
 }
 
 /** Sidebar: blog sources with on/off toggle + tag filter */
+function useBlogHealth() {
+  return useQuery({
+    queryKey: ["spine", "sources", "health"],
+    queryFn: async () => (await api.get("/api/spine/sources/health")).data as {
+      items: { kind: string; key: string; docs_7d: number; warning: boolean }[]
+    },
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function BlogSourcesSidebar() {
   const { data: sources = [], isLoading: sourcesLoading } = useBlogSources()
+  const { data: health } = useBlogHealth()
+  const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "blog").map((i) => [i.key, i]))
   const { data: tags = [] } = useBlogTags()
   const toggleSource = useToggleBlogSource()
   const [activeTag, setActiveTag] = useState<string | undefined>(undefined)
@@ -298,8 +310,15 @@ export function BlogSourcesSidebar() {
               )}
             >
               <div className="min-w-0">
-                <div className="text-[13px] font-medium truncate">{src.blog_name || src.url}</div>
-                <div className="text-[11px] text-muted-foreground">{src.author ?? src.platform}</div>
+                <div className="text-[13px] font-medium truncate flex items-center gap-1">
+                  {healthMap.get(src.url)?.warning && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" title="7일간 유입 없음" />
+                  )}
+                  {src.blog_name || src.url}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {src.author ?? src.platform} · 7일 {healthMap.get(src.url)?.docs_7d ?? "-"}건
+                </div>
               </div>
               <button
                 onClick={() => toggleSource.mutate({ id: src.id, is_active: !active })}
