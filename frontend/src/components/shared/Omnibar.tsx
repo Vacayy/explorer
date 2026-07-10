@@ -6,7 +6,7 @@ import {
 } from "lucide-react"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import {
-  CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
+  Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
 } from "@/components/ui/command"
 
 /**
@@ -55,6 +55,7 @@ export default function Omnibar() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen} title="옴니바" description="이동·검색·질문">
+      <Command shouldFilter={true}>
       <CommandInput
         placeholder="종목·화면 이동, 문서 검색, 질문… (⌘K)"
         value={query}
@@ -115,6 +116,7 @@ export default function Omnibar() {
           ))}
         </CommandGroup>
       </CommandList>
+      </Command>
     </CommandDialog>
   )
 }

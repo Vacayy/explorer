@@ -237,7 +237,14 @@ export interface WatchlistUpdate {
   signal_type: string | null;
 }
 
+export interface BriefItem {
+  kind: "insight" | "action" | "signal" | string;
+  text: string;
+  to: string;
+}
+
 export interface HomeResponse {
+  briefing: BriefItem[];
   calendar: CalendarEvent[];
   follows: HomeFollow[];
   watchlist_updates: WatchlistUpdate[];

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { TrendingUp, CalendarDays, Bell, X } from "lucide-react"
+import { TrendingUp, CalendarDays, Bell, Building2, Lightbulb, LineChart, X } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useHome } from "@/hooks/useHome"
 import { spineKeys, unfollowEntity } from "@/api/spine"
@@ -10,7 +10,7 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { formatRelativeTime } from "@/utils/format"
-import type { CalendarEvent, HomeFollow, SpineSignal, WatchlistUpdate } from "@/types"
+import type { BriefItem, CalendarEvent, HomeFollow, SpineSignal, WatchlistUpdate } from "@/types"
 
 /**
  * /home — 내 종목 follow-up (product-v2.md v2.1)
@@ -32,6 +32,8 @@ export default function HomePage() {
         <FreshnessStamp asOf={data.as_of} />
       </div>
 
+      {data.briefing.length > 0 && <BriefingSection items={data.briefing} />}
+
       <CalendarSection events={data.calendar} />
 
       {/* 조용한 날: 시장 하이라이트를 먼저 올린다 (빈 화면 방지 규칙) */}
@@ -47,6 +49,36 @@ export default function HomePage() {
         </>
       )}
     </div>
+  )
+}
+
+/* ---------- ⓪ 기계가 먼저 말하는 3줄 (변화 감지 — 판단 아님) ---------- */
+
+const BRIEF_ICON = {
+  insight: Lightbulb,
+  action: Building2,
+  signal: LineChart,
+} as const
+
+function BriefingSection({ items }: { items: BriefItem[] }) {
+  return (
+    <Card className="border-l-2 border-l-primary">
+      <CardContent className="py-3">
+        <ul className="space-y-1.5">
+          {items.map((b, i) => {
+            const Icon = BRIEF_ICON[b.kind as keyof typeof BRIEF_ICON] ?? Lightbulb
+            return (
+              <li key={i}>
+                <Link to={b.to} className="group flex items-start gap-2 text-sm">
+                  <Icon className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${b.kind === "insight" ? "text-hypothesis" : "text-muted-foreground"}`} />
+                  <span className="group-hover:underline leading-snug">{b.text}</span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }
 
