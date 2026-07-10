@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import ReactMarkdown from "react-markdown"
 import { HelpCircle, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
@@ -14,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import api from "@/api/client"
 import {
   useTelegramChannels,
   useTelegramFeed,
@@ -146,20 +148,62 @@ export default function TelegramFeedPage() {
 }
 
 /** Sidebar: subscribed channels with on/off toggle */
+function AddSourceForm({ placeholder, onSubmit, pending }: {
+  placeholder: string
+  onSubmit: (value: string) => void
+  pending: boolean
+}) {
+  return (
+    <form
+      className="px-3 pb-2 flex gap-1"
+      onSubmit={(e) => {
+        e.preventDefault()
+        const v = new FormData(e.currentTarget).get("v")?.toString().trim()
+        if (v) {
+          onSubmit(v)
+          ;(e.target as HTMLFormElement).reset()
+        }
+      }}
+    >
+      <input name="v" placeholder={placeholder} disabled={pending}
+        className="min-w-0 flex-1 h-7 rounded-md border bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring" />
+      <button type="submit" disabled={pending}
+        className="shrink-0 h-7 px-2 rounded-md bg-primary text-primary-foreground text-[11px] disabled:opacity-50">
+        {pending ? "…" : "추가"}
+      </button>
+    </form>
+  )
+}
+
 export function TelegramChannelsSidebar() {
   const { data: channels = [], isLoading } = useTelegramChannels()
   const toggleChannel = useToggleTelegramChannel()
+  const qc = useQueryClient()
+  const addChannel = useMutation({
+    mutationFn: async (channel: string) =>
+      (await api.post("/api/spine/sources/telegram", { channel })).data as { channel: string; preview_messages: number },
+    onSuccess: (d) => {
+      toast.success(`@${d.channel} 등록 — 백그라운드 수집 시작 (프리뷰 ${d.preview_messages}건)`)
+      qc.invalidateQueries({ queryKey: ["telegram-channels"] })
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(msg ?? "채널 등록 실패")
+    },
+  })
 
   if (isLoading) return <div className="px-3 py-4"><Skeleton className="h-4 w-full" /></div>
-  if (channels.length === 0) return (
-    <div className="px-3 py-8 text-center text-xs text-muted-foreground">구독 채널 없음</div>
-  )
 
   return (
     <div className="py-2">
       <div className="px-3 mb-2">
         <h3 className="text-xs font-semibold text-secondary-foreground">구독 채널</h3>
       </div>
+      <AddSourceForm placeholder="t.me/채널명 또는 @채널명"
+        onSubmit={(v) => addChannel.mutate(v)} pending={addChannel.isPending} />
+      {channels.length === 0 && (
+        <div className="px-3 py-4 text-center text-xs text-muted-foreground">구독 채널 없음</div>
+      )}
       {channels.map((ch) => {
         const active = ch.is_active === 1
         return (
