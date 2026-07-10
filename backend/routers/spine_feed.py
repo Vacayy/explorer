@@ -9,6 +9,28 @@ from models.spine import EntityTag, FeedDocument, FeedResponse
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
 
 
+def resolve_channels(conn, rows) -> dict[int, str | None]:
+    """문서별 출처 채널/블로그 이름. telegram=source_id 프리픽스, blog=url 프리픽스 매칭."""
+    tg = {r["channel_name"]: (r["display_name"] or r["channel_name"]) for r in
+          conn.execute("SELECT channel_name, display_name FROM telegram_channels")}
+    blogs = [(r["url"], r["blog_name"] or r["url"]) for r in
+             conn.execute("SELECT url, blog_name FROM blog_sources ORDER BY length(url) DESC")]
+    out: dict[int, str | None] = {}
+    for r in rows:
+        st = r["source_type"]
+        if st == "telegram":
+            ch = (r["source_id"] or "").split("/")[0]
+            out[r["id"]] = tg.get(ch, ch or None)
+        elif st == "blog":
+            url = r["url"] or ""
+            out[r["id"]] = next((name for prefix, name in blogs if url.startswith(prefix)), None)
+        elif st == "note":
+            out[r["id"]] = "내 노트"
+        else:
+            out[r["id"]] = None
+    return out
+
+
 @router.get("", response_model=FeedResponse)
 def get_feed(
     q: str | None = Query(None, description="하이브리드 검색어 (BM25+벡터 RRF)"),
@@ -53,7 +75,7 @@ def get_feed(
 
     where_sql = " AND ".join(where)
     select_sql = f"""
-        SELECT rd.id, rd.source_type, rd.title, rd.url, rd.published_at,
+        SELECT rd.id, rd.source_type, rd.source_id, rd.title, rd.url, rd.published_at,
                rd.markdown, rd.media_json,
                en.summary, en.model AS enrich_model
         FROM raw_documents rd
@@ -89,6 +111,7 @@ def get_feed(
             tags[t["doc_id"]].append(EntityTag(
                 entity_id=t["entity_id"], type=t["type"], name=t["name"],
                 aliases=t["aliases"], link_type=t["link_type"], confidence=t["confidence"]))
+    channels = resolve_channels(conn, rows)
     conn.close()
 
     return FeedResponse(
@@ -96,6 +119,7 @@ def get_feed(
             id=r["id"], source_type=r["source_type"], title=r["title"] or "",
             url=r["url"] or "", published_at=r["published_at"] or "",
             summary=r["summary"],
+            channel=channels.get(r["id"]),
             content=r["markdown"],
             images=json.loads(r["media_json"]) if r["media_json"] else [],
             enrich_model=r["enrich_model"],

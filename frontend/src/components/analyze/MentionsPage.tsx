@@ -72,6 +72,7 @@ export default function MentionsPage({ stockCode }: { stockCode: string }) {
                 <li key={doc.id} className="py-2.5 space-y-1">
                   <div className="flex items-center gap-2">
                     <SourceBadge sourceType={doc.source_type} />
+                    {doc.channel && <span className="shrink-0 text-[11px] text-muted-foreground">{doc.channel}</span>}
                     <Link to={`/doc/${doc.id}`}
                        className="text-sm font-medium truncate hover:underline">
                       {doc.title || "(제목 없음)"}

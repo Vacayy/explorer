@@ -47,6 +47,7 @@ export default function DocPage() {
       <div className="space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <SourceBadge sourceType={doc.source_type} />
+          {doc.channel && <span className="text-[11px] text-muted-foreground font-medium">{doc.channel}</span>}
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {(doc.published_at || "").slice(0, 16).replace("T", " ")} · {formatRelativeTime(doc.published_at)}
           </span>
