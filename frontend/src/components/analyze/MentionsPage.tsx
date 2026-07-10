@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useSpineFeed } from "@/hooks/useSpineFeed"
 import { useSpineSignals } from "@/hooks/useSpineSignals"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -60,10 +60,10 @@ export default function MentionsPage({ stockCode }: { stockCode: string }) {
                 <li key={doc.id} className="py-2.5 space-y-1">
                   <div className="flex items-center gap-2">
                     <SourceBadge sourceType={doc.source_type} />
-                    <a href={doc.url || undefined} target="_blank" rel="noreferrer"
+                    <Link to={`/doc/${doc.id}`}
                        className="text-sm font-medium truncate hover:underline">
                       {doc.title || "(제목 없음)"}
-                    </a>
+                    </Link>
                     <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
                       {formatRelativeTime(doc.published_at)}
                     </span>

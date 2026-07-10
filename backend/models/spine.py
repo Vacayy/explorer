@@ -63,6 +63,7 @@ class WatchlistUpdate(BaseModel):
     kind: str                  # document | signal
     entity_type: str = "company"   # company | sector | theme (팔로우 엔티티)
     entity_id: int | None = None
+    doc_id: int | None = None      # document일 때 — 내부 디테일(/doc/:id) 링크용
     stock_code: str | None
     corp_name: str             # 표시명 (엔티티명)
     occurred_at: str

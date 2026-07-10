@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { useMutation } from "@tanstack/react-query"
 import ReactMarkdown from "react-markdown"
 import { Sparkles, AlertTriangle } from "lucide-react"
@@ -129,9 +130,7 @@ export default function AskPage() {
                     <li key={c.n} className="text-xs flex items-center gap-2">
                       <span className="text-muted-foreground tabular-nums shrink-0">[{c.n}]</span>
                       <SourceBadge sourceType={c.source_type} />
-                      {c.url
-                        ? <a href={c.url} target="_blank" rel="noreferrer" className="truncate hover:underline">{c.title}</a>
-                        : <span className="truncate">{c.title}</span>}
+                      <Link to={`/doc/${c.doc_id}`} className="truncate hover:underline">{c.title}</Link>
                       <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">{(c.published_at || "").slice(0, 10)}</span>
                     </li>
                   ))}

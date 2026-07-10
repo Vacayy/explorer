@@ -19,6 +19,7 @@ interface CorporateAction {
   report_nm: string | null
   rcept_dt: string
   market_cap: number | null
+  summary: string | null
   dart_url: string
 }
 
@@ -113,6 +114,11 @@ export default function ActionsPage() {
                   <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">
                     {a.report_nm}
                   </a>
+                  {a.summary && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2" title={a.summary}>
+                      {a.summary}
+                    </p>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

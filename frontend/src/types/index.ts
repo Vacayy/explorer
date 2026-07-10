@@ -190,7 +190,7 @@ export interface SpineSignal {
     count_7d?: number;
     baseline_7d?: number;
     keywords?: string[];
-    docs?: { title: string; url: string }[];
+    docs?: { id?: number; title: string; url: string }[];
     // high_52w
     close?: number;
     high?: number;
@@ -226,6 +226,7 @@ export interface WatchlistUpdate {
   kind: "document" | "signal";
   entity_type: string;         // company | sector | theme
   entity_id: number | null;
+  doc_id: number | null;       // 내부 디테일(/doc/:id) 링크용
   stock_code: string | null;
   corp_name: string;           // 표시명
   occurred_at: string;
