@@ -8,6 +8,7 @@ import type { SpineSignal } from "@/types"
 
 const SIGNAL_LABEL: Record<string, string> = {
   mention_surge: "언급 급증",
+  neglect: "소외",
   export_change: "수출 변화",
   high_52w: "52주 신고가",
 }
@@ -49,6 +50,14 @@ export function SignalCard({ signal: s, onKeywordClick }: {
             최근 7일 <span className="font-bold text-up text-base">{p.count_7d ?? "-"}회</span> 언급
             <span className="text-muted-foreground text-xs"> · 직전 7일 {p.baseline_7d ?? 0}회</span>
           </div>
+        )}
+        {s.signal_type === "neglect" && (
+          <p className="text-xs text-muted-foreground">
+            PER <span className="font-semibold text-foreground">{p.per}배</span> · ROE{" "}
+            <span className="font-semibold text-foreground">{p.roe}%</span> · 시총{" "}
+            {p.market_cap != null ? `${(p.market_cap / 1e12).toFixed(2)}조` : "-"} [{p.market}]
+            <br />저평가·흑자인데 최근 {p.window_days ?? 30}일 언급 0 — 주목의 부재가 신호
+          </p>
         )}
         {s.signal_type === "high_52w" && (
           <div className="text-sm space-x-2">

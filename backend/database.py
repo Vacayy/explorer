@@ -539,6 +539,7 @@ def init_db():
     for migration in [
         "ALTER TABLE raw_documents ADD COLUMN media_json TEXT",
         "ALTER TABLE conversations ADD COLUMN chat_id TEXT",  # 사용자 분리 (텔레그램 chat_id, 웹=NULL=오너)
+        "ALTER TABLE fundamentals ADD COLUMN roe REAL",  # 전종목 밸류 수집 (네이버 시세)
         "ALTER TABLE corporate_actions ADD COLUMN summary TEXT",
         "ALTER TABLE ir_notes ADD COLUMN memo_type TEXT DEFAULT 'general'",
         "ALTER TABLE telegram_channels ADD COLUMN is_active INTEGER DEFAULT 1",
