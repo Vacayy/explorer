@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom"
+import ApprovalsCard from "@/components/home/ApprovalsCard"
 import { TrendingUp, AlertTriangle, CalendarDays, Bell, Building2, Lightbulb, LineChart, X } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useHome } from "@/hooks/useHome"
@@ -35,6 +36,9 @@ export default function HomePage() {
       </div>
 
       {data.briefing.length > 0 && <BriefingSection items={data.briefing} />}
+
+      {/* 승인 대기 — 기계의 제안, 사람의 결정 (인라인 승인/거부) */}
+      <ApprovalsCard />
 
       <CalendarSection events={data.calendar} />
 
