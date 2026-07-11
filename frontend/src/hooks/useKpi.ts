@@ -20,6 +20,8 @@ export interface KpiData {
   net_income: number | null
   fwd_per: number | null
   fwd_fiscal_year?: string | null;
+  fwd_eps?: number | null;
+  fwd_analyst_count?: number | null;
   fwd_eps: number | null
   target_price_consensus: number | null
 }

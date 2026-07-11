@@ -126,7 +126,7 @@ def get_kpi(stock_code: str):
     # Forward estimates from consensus
     conn2 = get_connection()
     fwd_row = conn2.execute(
-        """SELECT eps_est, per_est, target_price, fiscal_year FROM consensus
+        """SELECT eps_est, per_est, target_price, fiscal_year, analyst_count FROM consensus
            WHERE stock_code = ? ORDER BY fiscal_year DESC LIMIT 1""",
         (stock_code,),
     ).fetchone()
@@ -159,6 +159,8 @@ def get_kpi(stock_code: str):
         "net_income": net_income,
         "fwd_per": fwd_per,
         "fwd_fiscal_year": fwd_row["fiscal_year"] if fwd_row else None,  # 예: 2026E — 라벨 정직성
+        "fwd_eps": fwd_eps,
+        "fwd_analyst_count": fwd_row["analyst_count"] if fwd_row else None,
         "fwd_eps": fwd_eps,
         "target_price_consensus": target_price_consensus,
     }

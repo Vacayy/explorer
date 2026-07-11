@@ -18,6 +18,7 @@ import DigestSection from "@/components/analyze/DigestSection"
 import { SignalHistoryCard, MentionDocsCard, MatchingCollapsed } from "@/components/summary/MentionsPanel"
 import PeerSection from "@/components/summary/PeerSection"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { MetricHint } from "@/components/shared/MetricHint"
 import {
   Legend, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts"
@@ -29,19 +30,21 @@ interface Props {
 
 /* ── tiny helpers ─────────────────────────────────────────────── */
 
-function KpiItem({ label, value, sub, subColor }: {
+function KpiItem({ label, value, sub, subColor, hint }: {
   label: string
   value: string
   sub?: string
   subColor?: string
+  hint?: string
 }) {
-  return (
+  const body = (
     <span className="inline-flex items-baseline gap-1.5 text-sm">
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="font-semibold">{value}</span>
       {sub && <span className={`text-xs ${subColor ?? "text-muted-foreground"}`}>{sub}</span>}
     </span>
   )
+  return hint ? <MetricHint hint={hint}>{body}</MetricHint> : body
 }
 
 /* ── main component ───────────────────────────────────────────── */
@@ -118,17 +121,23 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
             value={kpi.close != null ? `${kpi.close.toLocaleString("ko-KR")}원` : "-"}
             sub={priceChangeStr}
             subColor={priceChangeColor}
+            hint="최신 거래일 종가 (거래소) · 등락률은 전일 종가 대비"
           />
           <Separator orientation="vertical" className="h-6" />
-          <KpiItem label="시가총액" value={kpi.market_cap != null ? formatKrw(kpi.market_cap) : "-"} />
+          <KpiItem label="시가총액" value={kpi.market_cap != null ? formatKrw(kpi.market_cap) : "-"}
+            hint="최신 거래일 종가 × 상장주식수 (거래소)" />
           <Separator orientation="vertical" className="h-6" />
           <KpiItem
             label="PER"
             value={kpi.fwd_per != null ? `${kpi.fwd_per.toFixed(1)}배` : kpi.per != null ? `${kpi.per.toFixed(1)}배` : "-"}
             sub={kpi.fwd_per != null ? `${kpi.fwd_fiscal_year ?? "fwd"} 컨센서스` : kpi.per != null ? "trailing" : undefined}
+            hint={kpi.fwd_per != null
+              ? `현재가 ÷ ${kpi.fwd_fiscal_year ?? ""} EPS 추정${kpi.fwd_eps ? ` ${Math.round(kpi.fwd_eps).toLocaleString("ko-KR")}원` : ""} — 네이버 컨센서스${kpi.fwd_analyst_count ? ` (애널리스트 ${kpi.fwd_analyst_count}명 평균)` : ""}`
+              : "시가총액 ÷ 최근 연간 순이익 (DART) — 과거 실적 기준(trailing)"}
           />
           <Separator orientation="vertical" className="h-6" />
-          <KpiItem label="PBR" value={kpi.pbr != null ? `${kpi.pbr.toFixed(2)}배` : "-"} />
+          <KpiItem label="PBR" value={kpi.pbr != null ? `${kpi.pbr.toFixed(2)}배` : "-"}
+            hint="최신 거래일 기준 (거래소 제공, 없으면 시가총액 ÷ 자본총계로 계산)" />
           <Separator orientation="vertical" className="h-6" />
           <KpiItem
             label="목표가"
@@ -139,18 +148,21 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
             subColor={kpi.target_price_consensus != null && kpi.close != null
               ? (kpi.target_price_consensus >= kpi.close ? "text-red-600" : "text-blue-600")
               : undefined}
+            hint={`네이버 컨센서스 목표주가 평균${kpi.fwd_analyst_count ? ` (애널리스트 ${kpi.fwd_analyst_count}명)` : ""} · %는 현재가 대비 괴리`}
           />
           <Separator orientation="vertical" className="h-6" />
           <KpiItem
             label="영업이익률"
             value={kpi.op_margin != null ? `${kpi.op_margin.toFixed(1)}%` : "-"}
             sub={kpi.op_margin_change != null ? `${kpi.op_margin_change >= 0 ? "+" : ""}${kpi.op_margin_change.toFixed(1)}%p` : undefined}
+            hint="최근 연간 영업이익 ÷ 매출액 (DART 사업보고서) · %p는 전년 대비"
           />
           <Separator orientation="vertical" className="h-6" />
           <KpiItem
             label="ROE"
             value={kpi.roe != null ? `${kpi.roe.toFixed(1)}%` : "-"}
             sub={kpi.roe_change != null ? `${kpi.roe_change >= 0 ? "+" : ""}${kpi.roe_change.toFixed(1)}%p` : undefined}
+            hint="최근 연간 순이익 ÷ 자본총계 (DART 사업보고서) · %p는 전년 대비"
           />
           <Separator orientation="vertical" className="h-6" />
           <WatchlistButton stockCode={stockCode} corpCode={corpCode} />
