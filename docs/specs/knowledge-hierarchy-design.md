@@ -105,6 +105,35 @@ infrastructure → governance → culture → nature(최저속)의 층으로 움
   지식 계층의 존재 이유는 **cycle 이하의 느린 층** — 빠른 층을 승격하려고
   애쓰지 않는다 (event는 승격 대상에서 원칙적으로 제외).
 
+### A-6. 인간 지능의 편향은 모방하지 않고 보정한다 (행동경제학 + Marks의 진자)
+
+**원리**: 인간 기억의 강점(강도·감쇠·공고화)을 빌리되, 그 시스템의 실패 모드는
+설계로 상쇄해야 한다. 행동경제학이 목록화한 실패들 — 가용성 휴리스틱(최근·생생한
+것의 과대평가), 확증편향, 앵커링, 손실회피 — 과 Howard Marks의 진자(pendulum):
+시장 심리는 낙관↔비관의 극단을 오가며 중간에 머물지 않고, **모두가 동의하는
+순간이 가장 위험하다.** 군중심리는 A-3의 독립성 붕괴가 감정 차원에서 일어난 것.
+
+**시사점 — 편향별 보정 장치**:
+| 인간의 편향 | 이 시스템에서의 발현 | 보정 |
+|---|---|---|
+| 가용성 휴리스틱 | activation의 최신성 편중 | pace layer 분리 표기 — "지금 시끄러운 것"(event)과 "구조적인 것"(structure)을 소비 지점에서 섞지 않는다 |
+| 확증편향 | 지지 증거만 수집·승격 | 승격 시 **반대 증거 탐색 의무화** (해당 주장 부정 검색 1회) + refute stance (A-4) |
+| 앵커링 | 낡은 추정·목표가에 고정 | valid_to·supersedes 계보 — '언제까지 참이었나'가 일급 정보 |
+| 군중 극단 (진자) | 소스 전체가 한 방향으로 쏠림 | **진자 감시(프로세스 6)**: 엔티티별 sentiment 집계가 극단(만장일치)에 도달하면 그 자체를 신호로 — 컨센서스의 강도가 역설적 경고 |
+
+### A-7. 격자식 사고 — 렌즈의 교차점 (Munger)
+
+**원리**: Charlie Munger의 latticework of mental models — 하나의 현상을 여러
+분과의 모델(심리학·경제학·공학…)로 겹쳐 볼 때 판단이 강해지고, 여러 모델이
+같은 방향을 가리키는 교차점에서 비선형적 효과(lollapalooza)가 난다.
+
+**시사점**: 이 시스템의 격자는 이미 두 축으로 존재한다 — **도메인 렌즈**(live vocab
+라벨: 매크로·지정학·산업·수급·기술 — 정치외교/거시/기술 관점은 여기서 커버되며,
+어휘가 살아있으므로 관점 축은 계속 자란다)와 **시간 층**(pace layer). 격자는 이
+둘의 곱이다. 설계 반영: 승격된 지식이 **여러 도메인 라벨에 걸칠 때(교차 도메인)
+주목 가중** — 지정학×반도체×수급이 같은 방향을 가리키는 지식은 단일 렌즈 지식보다
+중요할 개연성이 높다. (단, 가중은 보수적으로 — lollapalooza는 드물어서 가치 있다.)
+
 ---
 
 ## B. 종합 — Explorer 지식 위계 모델
@@ -142,6 +171,8 @@ supersedes       계보 — 어떤 지식을 대체했는가
 3. **감쇠**: 배치 없음 — activation이 조회 시 계산이므로 자동 (A-2).
 4. **재활성화**: 새 증거·사용자 행위가 붙는 순간 activation 식이 자동 반영.
 5. **소멸**: superseded — valid_to 닫고 계보 연결. 삭제는 없다 (역사가 맥락이다).
+6. **진자 감시** (A-6, K2+): 엔티티별 최근 창의 sentiment 분포가 극단(예: 일방향
+   90%+ & 표본 충분)이면 "컨센서스 극단" 신호 생성 — 낙관의 만장일치는 경고다.
 
 ### 소비 지점
 
@@ -192,12 +223,15 @@ knowledge에 쓴다).
 statement 파편화(→승격 시 기존 지식 목록 주입, live vocab 방식), 비용(주 1회 haiku
 수십 콜 — 규약 ⓐ급).
 
-## E. 열린 질문 (stakeholder 논의)
+## E. 결정 사항 (2026-07-11 stakeholder 확정)
 
-1. 승격을 자동 확정할까, 별칭처럼 **승인 큐**로 둘까? (초기엔 승인 큐 추천 —
-   홈의 '승인 대기' 패턴이 이미 있고, 품질 관찰 후 자동화)
-2. pace_layer 5층 명명이 투자 직관에 맞는가? (event/flow/cycle/structure/regime)
-3. contested 알림의 피로 관리 — 임계값을 어디에?
+1. **승격은 승인 큐** — 홈에 전용 승인 카드 (항목별 인라인 승인/거부, 별칭 제안과
+   동일 표면). 품질 관찰 후 자동화 재논의. → 승인 큐 UI는 게이트와 무관하게 선행
+   구현 (별칭 제안이 첫 사용자).
+2. **5층 유지** (event/flow/cycle/structure/regime) — 단 A-6의 편향 보정 장치와
+   반드시 함께 (인간 직관에 맞다 = 인간 편향도 담겼다는 뜻이므로).
+3. **contested 알림**: 전환 시 즉시 1회, 같은 지식 재알림은 7일 쿨다운, 브리핑
+   노출은 하루 최대 1건 (가장 activation 높은 것).
 
 ---
 
@@ -208,3 +242,4 @@ statement 파편화(→승격 시 기존 지식 목록 주입, live vocab 방식
 - [Analysis of Competing Hypotheses (Heuer)](https://en.wikipedia.org/wiki/Analysis_of_competing_hypotheses) · [Improving Intelligence Analysis with ACH](https://pherson.org/wp-content/uploads/2013/06/Improving-Intelligence-Analysis-with-ACH.pdf)
 - [Pace Layering: How Complex Systems Learn (Brand, MIT JoDS)](https://jods.mitpress.mit.edu/pub/issue3-brand) · [Pace layers — Long Now](https://longnow.org/ideas/pace-layers/)
 - [The Half-Life of Facts (Arbesman)](https://fs.blog/the-half-life-of-facts/) · [서평·mesofacts](https://www.themarginalian.org/2012/11/06/the-half-life-of-facts/)
+- Howard Marks, *Mastering the Market Cycle* / memo "On the Couch" — 진자·컨센서스 극단 · Charlie Munger, *Poor Charlie's Almanack* — latticework of mental models (stakeholder 제안 반영)
