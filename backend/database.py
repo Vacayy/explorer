@@ -374,6 +374,16 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_entity_digests ON entity_digests(entity_id, period, period_start);
 
+    -- 텔레그램 연속 타이핑 판정 캐시 — 메시지당 1회 판정, 재수집 멱등성의 근간
+    CREATE TABLE IF NOT EXISTS telegram_group_marks (
+        channel    TEXT NOT NULL,
+        msg_id     INTEGER NOT NULL,
+        joins_prev INTEGER NOT NULL,   -- 1=직전 메시지의 연장, 0=별개
+        model      TEXT,               -- judge(LLM) | gap(시간 fallback)
+        judged_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (channel, msg_id)
+    );
+
     -- 종목 AI 브리프 (P2-1) — 도시에 첫 화면, 열람 시 게으른 생성 (inputs_hash 가드)
     CREATE TABLE IF NOT EXISTS stock_briefs (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
