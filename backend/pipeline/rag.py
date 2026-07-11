@@ -25,7 +25,7 @@ def _fetch_docs(doc_ids: list[int]) -> list[dict]:
     conn = get_connection()
     ph = ",".join("?" for _ in doc_ids)
     rows = {r["id"]: r for r in conn.execute(f"""
-        SELECT id, source_type, title, url, published_at, substr(markdown, 1, {EXCERPT_CHARS}) excerpt
+        SELECT id, source_type, source_id, title, url, published_at, substr(markdown, 1, {EXCERPT_CHARS}) excerpt
         FROM raw_documents WHERE id IN ({ph})""", doc_ids)}
     conn.close()
     return [dict(rows[d]) for d in doc_ids if d in rows]  # 검색 랭킹 순 유지
@@ -74,8 +74,14 @@ def ask(question: str, history: list[dict] | None = None) -> dict:
         if prev_user:
             search_q = f"{prev_user[-1]} {question}"
 
-    hits = search(search_q, k=TOP_K)
+    hits = search(search_q, k=TOP_K + 8)   # 뮤트 필터 후에도 TOP_K 확보용 여유분
     docs = _fetch_docs([h["doc_id"] for h in hits])
+    # 뮤트 소스 제외 — 노출 설정은 답변 근거에도 적용 (수집·지능은 공유)
+    from pipeline.visibility import get_muted, is_muted
+    conn = get_connection()
+    muted = get_muted(conn)
+    conn.close()
+    docs = [d for d in docs if not is_muted(d["source_type"], d.get("source_id", ""), d["url"], muted)][:TOP_K]
     if not docs:
         return {"answer": None, "citations": [], "gaps": [
             {"type": "missing", "note": "질문과 관련된 수집 문서가 없습니다."}], "model": None}

@@ -12,15 +12,18 @@ import { formatNumber, formatPercent } from "@/utils/format"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Toggle } from "@/components/ui/toggle"
+import {
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupAction, SidebarGroupContent,
+  SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+} from "@/components/ui/sidebar"
 import type { WatchlistItem } from "@/types"
 
 /**
- * 팔로우 레일 — 모든 화면에서 동일한 단일 사이드바 (docs/specs/follow-rail.md)
- * 종목·채널·블로그는 같은 프리미티브("내가 팔로우하는 대상"):
- * 행 클릭 = 도시에 이동, hover = 토글 노출, [+] = 추가.
+ * 팔로우 레일 — shadcn Sidebar(side=right, collapsible=offcanvas) 기반.
+ * 넓은 데스크톱=펼침, 그 이하=토글/오버레이(모바일 Sheet). 토글은 헤더의 패널 버튼(⌘B).
+ * 종목·채널·블로그는 같은 프리미티브("내가 팔로우하는 대상"): 행=도시에 이동, hover=수집 토글, [+]=추가.
  */
 
 function gapColor(gap: number | null): string {
@@ -52,19 +55,22 @@ function Section({ title, count, onAdd, addLabel, children }: {
   children: React.ReactNode
 }) {
   return (
-    <Collapsible defaultOpen className="py-1">
-      <div className="flex items-center gap-1 px-2.5 py-1.5">
-        <CollapsibleTrigger className="group/section flex items-center gap-1 text-xs font-semibold text-secondary-foreground hover:text-foreground min-w-0">
-          <ChevronDown className="h-3 w-3 shrink-0 transition-transform group-data-[state=closed]/section:-rotate-90" />
-          {title}
-          <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
-        </CollapsibleTrigger>
-        <Button variant="ghost" size="icon-xs" onClick={onAdd} title={addLabel}
-          className="ml-auto text-muted-foreground hover:text-foreground">
+    <Collapsible defaultOpen className="group/section">
+      <SidebarGroup className="py-1">
+        <SidebarGroupLabel asChild>
+          <CollapsibleTrigger className="text-xs font-semibold text-sidebar-foreground/70 hover:text-sidebar-foreground">
+            <ChevronDown className="mr-1 h-3 w-3 transition-transform group-data-[state=closed]/section:-rotate-90" />
+            {title}
+            <span className="ml-1 font-normal text-muted-foreground tabular-nums">{count}</span>
+          </CollapsibleTrigger>
+        </SidebarGroupLabel>
+        <SidebarGroupAction onClick={onAdd} title={addLabel}>
           <Plus className="h-3 w-3" />
-        </Button>
-      </div>
-      <CollapsibleContent>{children}</CollapsibleContent>
+        </SidebarGroupAction>
+        <CollapsibleContent>
+          <SidebarGroupContent>{children}</SidebarGroupContent>
+        </CollapsibleContent>
+      </SidebarGroup>
     </Collapsible>
   )
 }
@@ -78,27 +84,25 @@ function Row({ active, warning, onClick, name, sub, right }: {
   right?: React.ReactNode
 }) {
   return (
-    <div
-      onClick={onClick}
-      className={cn(
-        "group flex items-center gap-1 px-3 py-2 cursor-pointer border-l-[3px] transition-colors",
-        active ? "bg-accent border-l-primary" : "border-l-transparent hover:bg-muted/50"
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <div className={cn(
-          "text-[13px] truncate flex items-center gap-1",
-          active ? "font-semibold text-primary" : "text-foreground"
-        )}>
-          {warning && (
-            <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" title="7일간 유입 없음" />
-          )}
-          {name}
+    <SidebarMenuItem className="group/row relative">
+      <SidebarMenuButton isActive={active} onClick={onClick} className="h-auto py-1.5 pr-8">
+        <div className="min-w-0 flex-1">
+          <div className={cn(
+            "flex items-center gap-1 text-[13px] truncate",
+            active ? "font-semibold" : ""
+          )}>
+            {warning && (
+              <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" title="7일간 유입 없음" />
+            )}
+            {name}
+          </div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground truncate">{sub}</div>
         </div>
-        <div className="text-[11px] text-muted-foreground truncate mt-0.5">{sub}</div>
-      </div>
-      {right}
-    </div>
+      </SidebarMenuButton>
+      {right && (
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2">{right}</div>
+      )}
+    </SidebarMenuItem>
   )
 }
 
@@ -110,12 +114,12 @@ function SourceToggle({ active, onToggle }: { active: boolean; onToggle: () => v
       onClick={(e) => e.stopPropagation()}
       className={cn(
         "shrink-0 h-[18px] w-[18px] min-w-0 p-0 rounded-full border-2 flex items-center justify-center transition-all",
-        "opacity-0 group-hover:opacity-100 hover:bg-transparent",
+        "opacity-0 group-hover/row:opacity-100 hover:bg-transparent",
         active
           ? "border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-          : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
+          : "border-muted-foreground/30 opacity-40 group-hover/row:opacity-100"
       )}
-      title={active ? "수집 중지" : "수집 재개"}
+      title={active ? "숨기기 — 내 피드·답변에서 제외" : "표시하기"}
     >
       {active && <span className="text-[9px] leading-none">✓</span>}
     </Toggle>
@@ -129,7 +133,7 @@ function AddForm({ placeholder, onSubmit, pending }: {
 }) {
   return (
     <form
-      className="px-3 pb-2 flex gap-1"
+      className="px-2 pb-2 flex gap-1"
       onSubmit={(e) => {
         e.preventDefault()
         const v = new FormData(e.currentTarget).get("v")?.toString().trim()
@@ -149,7 +153,7 @@ function AddForm({ placeholder, onSubmit, pending }: {
 }
 
 function EmptyRow({ message }: { message: string }) {
-  return <p className="px-3 py-2 text-[11px] text-muted-foreground">{message}</p>
+  return <p className="px-2 py-2 text-[11px] text-muted-foreground">{message}</p>
 }
 
 /* ---------- 섹션들 ---------- */
@@ -161,26 +165,28 @@ function StockSection({ currentStockCode }: { currentStockCode: string | null })
 
   return (
     <Section title="종목" count={items.length} onAdd={() => navigate("/research/watchlist")} addLabel="워치리스트 관리">
-      {items.length === 0 && <EmptyRow message="아직 없음 — +로 추가" />}
-      {items.map((item: WatchlistItem) => (
-        <Row
-          key={item.id}
-          active={item.stock_code === currentStockCode}
-          onClick={() => navigate(`/analyze/${item.stock_code}/summary`)}
-          name={item.corp_name}
-          sub={
-            <span className="flex items-center gap-1.5">
-              <span className="text-amber-400 text-[10px] tracking-tighter">
-                {"★".repeat(item.conviction)}{"☆".repeat(5 - item.conviction)}
+      <SidebarMenu>
+        {items.length === 0 && <EmptyRow message="아직 없음 — +로 추가" />}
+        {items.map((item: WatchlistItem) => (
+          <Row
+            key={item.id}
+            active={item.stock_code === currentStockCode}
+            onClick={() => navigate(`/analyze/${item.stock_code}/summary`)}
+            name={item.corp_name}
+            sub={
+              <span className="flex items-center gap-1.5">
+                <span className="text-amber-400 text-[10px] tracking-tighter">
+                  {"★".repeat(item.conviction)}{"☆".repeat(5 - item.conviction)}
+                </span>
+                <span>{item.latest_close != null ? formatNumber(item.latest_close) : "-"}</span>
+                {item.gap_pct != null && (
+                  <span className={cn("font-medium", gapColor(item.gap_pct))}>{formatPercent(item.gap_pct)}</span>
+                )}
               </span>
-              <span>{item.latest_close != null ? formatNumber(item.latest_close) : "-"}</span>
-              {item.gap_pct != null && (
-                <span className={cn("font-medium", gapColor(item.gap_pct))}>{formatPercent(item.gap_pct)}</span>
-              )}
-            </span>
-          }
-        />
-      ))}
+            }
+          />
+        ))}
+      </SidebarMenu>
     </Section>
   )
 }
@@ -223,22 +229,24 @@ function ChannelSection() {
       {showForm && (
         <AddForm placeholder="t.me/채널명 또는 @채널명" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
       )}
-      {channels.length === 0 && !showForm && <EmptyRow message="아직 없음 — +로 추가" />}
-      {channels.map((ch) => {
-        const active = ch.is_active === 1
-        const h = healthMap.get(ch.channel_name)
-        return (
-          <Row
-            key={ch.id}
-            active={activeSource?.kind === "telegram" && activeSource.key === ch.channel_name}
-            warning={h?.warning}
-            onClick={() => navigate(`/source?kind=telegram&key=${encodeURIComponent(ch.channel_name)}`)}
-            name={<span className={cn(!active && "opacity-50")}>{ch.display_name ?? ch.channel_name}</span>}
-            sub={`7일 ${h?.docs_7d ?? "-"}건`}
-            right={<SourceToggle active={active} onToggle={() => toggle.mutate({ id: ch.id, is_active: !active })} />}
-          />
-        )
-      })}
+      <SidebarMenu>
+        {channels.length === 0 && !showForm && <EmptyRow message="아직 없음 — +로 추가" />}
+        {channels.map((ch) => {
+          const active = ch.is_active === 1
+          const h = healthMap.get(ch.channel_name)
+          return (
+            <Row
+              key={ch.id}
+              active={activeSource?.kind === "telegram" && activeSource.key === ch.channel_name}
+              warning={h?.warning}
+              onClick={() => navigate(`/source?kind=telegram&key=${encodeURIComponent(ch.channel_name)}`)}
+              name={<span className={cn(!active && "opacity-50")}>{ch.display_name ?? ch.channel_name}</span>}
+              sub={`7일 ${h?.docs_7d ?? "-"}건`}
+              right={<SourceToggle active={active} onToggle={() => toggle.mutate({ id: ch.id, is_active: !active })} />}
+            />
+          )
+        })}
+      </SidebarMenu>
     </Section>
   )
 }
@@ -272,71 +280,41 @@ function BlogSection() {
       {showForm && (
         <AddForm placeholder="블로그 URL (네이버/티스토리/RSS)" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
       )}
-      {sources.length === 0 && !showForm && <EmptyRow message="아직 없음 — +로 추가" />}
-      {sources.map((src) => {
-        const active = src.is_active === 1
-        const h = healthMap.get(src.url)
-        return (
-          <Row
-            key={src.id}
-            active={activeSource?.kind === "blog" && activeSource.key === src.url}
-            warning={h?.warning}
-            onClick={() => navigate(`/source?kind=blog&key=${encodeURIComponent(src.url)}`)}
-            name={<span className={cn(!active && "opacity-50")}>{src.blog_name || src.url}</span>}
-            sub={`${src.author ?? src.platform} · 7일 ${h?.docs_7d ?? "-"}건`}
-            right={<SourceToggle active={active} onToggle={() => toggle.mutate({ id: src.id, is_active: !active })} />}
-          />
-        )
-      })}
+      <SidebarMenu>
+        {sources.length === 0 && !showForm && <EmptyRow message="아직 없음 — +로 추가" />}
+        {sources.map((src) => {
+          const active = src.is_active === 1
+          const h = healthMap.get(src.url)
+          return (
+            <Row
+              key={src.id}
+              active={activeSource?.kind === "blog" && activeSource.key === src.url}
+              warning={h?.warning}
+              onClick={() => navigate(`/source?kind=blog&key=${encodeURIComponent(src.url)}`)}
+              name={<span className={cn(!active && "opacity-50")}>{src.blog_name || src.url}</span>}
+              sub={`${src.author ?? src.platform} · 7일 ${h?.docs_7d ?? "-"}건`}
+              right={<SourceToggle active={active} onToggle={() => toggle.mutate({ id: src.id, is_active: !active })} />}
+            />
+          )
+        })}
+      </SidebarMenu>
     </Section>
   )
 }
 
 /* ---------- 레일 ---------- */
 
-const RAIL_KEY = "follow-rail-open"
-
 export default function FollowRail({ currentStockCode }: { currentStockCode: string | null }) {
-  // drawer 동작: 기본 숨김, 열림 상태는 localStorage에 기억
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(RAIL_KEY) !== "1")
-  const toggle = (open: boolean) => {
-    localStorage.setItem(RAIL_KEY, open ? "1" : "0")
-    setCollapsed(!open)
-  }
-
-  if (collapsed) {
-    return (
-      <Button
-        variant="ghost"
-        onClick={() => toggle(true)}
-        className="fixed right-0 top-[120px] w-8 h-20 bg-card border border-r-0 rounded-l-lg flex items-center justify-center cursor-pointer shadow-sm text-xs text-muted-foreground"
-        style={{ writingMode: "vertical-rl" }}
-      >
-        팔로우
-      </Button>
-    )
-  }
-
   return (
-    <aside className="w-[220px] shrink-0 bg-card border-l sticky top-[110px] h-[calc(100vh-110px)] py-2">
-      <ScrollArea className="h-full">
-        <div className="flex items-center justify-between px-2.5 pt-1 pb-0.5">
-          <h3 className="text-[11px] font-semibold text-muted-foreground tracking-wide">팔로우</h3>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => toggle(false)}
-            className="text-muted-foreground hover:text-foreground text-sm leading-none"
-          >
-            ✕
-          </Button>
-        </div>
-        <div className="divide-y">
-          <StockSection currentStockCode={currentStockCode} />
-          <ChannelSection />
-          <BlogSection />
-        </div>
-      </ScrollArea>
-    </aside>
+    <Sidebar side="right" collapsible="offcanvas">
+      <SidebarHeader className="px-3 pt-3 pb-1">
+        <span className="text-[11px] font-semibold tracking-wide text-muted-foreground">팔로우</span>
+      </SidebarHeader>
+      <SidebarContent className="gap-0">
+        <StockSection currentStockCode={currentStockCode} />
+        <ChannelSection />
+        <BlogSection />
+      </SidebarContent>
+    </Sidebar>
   )
 }

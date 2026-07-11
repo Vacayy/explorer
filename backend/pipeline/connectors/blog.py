@@ -19,7 +19,7 @@ class BlogConnector:
             return [SourceRef(key=u) for u in self._feeds]
         conn = get_connection()
         rows = conn.execute(
-            "SELECT url FROM blog_sources WHERE is_active=1"
+            "SELECT url FROM blog_sources"  # 수집은 항상 — is_active는 개인 노출(뮤트) 설정
         ).fetchall()
         conn.close()
         return [SourceRef(key=r["url"]) for r in rows]

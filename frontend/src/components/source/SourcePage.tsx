@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { PageContainer } from "@/components/shared/PageContainer"
 import type { DossierSummary, SourceDossier } from "@/types"
 
 /**
@@ -34,7 +35,7 @@ export default function SourcePage() {
   const tags = data.top_entities.filter((e) => e.link_type !== "stock")
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <PageContainer width="reading" gap="sm">
       {/* 헤더 */}
       <div className="space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
@@ -46,7 +47,7 @@ export default function SourcePage() {
           <Badge variant="secondary" className="text-[10px]">
             {data.kind === "telegram" ? "텔레그램" : "블로그"}
           </Badge>
-          {!data.is_active && <Badge variant="outline" className="text-[10px]">수집 중지</Badge>}
+          {!data.is_active && <Badge variant="outline" className="text-[10px]">숨김 — 내 피드·답변 제외</Badge>}
         </div>
         <p className="text-xs text-muted-foreground tabular-nums">
           수집 {data.total_docs}건 · 최근 7일 {data.docs_7d}건
@@ -112,7 +113,7 @@ export default function SourcePage() {
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
@@ -125,7 +126,7 @@ function ProfileCard({ data, fresh, pending, failed }: {
   // 생성 쿼리 결과 우선, 없으면 도시에에 실린 캐시 프로필
   const s = fresh ?? data.summary
   return (
-    <Card className="border-l-2 border-l-hypothesis">
+    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">
         <CardTitle className="text-sm">관점 프로필</CardTitle>
         {s?.created_at && (
@@ -176,11 +177,11 @@ function ProfileCard({ data, fresh, pending, failed }: {
 
 function SourceSkeleton() {
   return (
-    <div className="space-y-4 max-w-3xl">
+    <PageContainer width="reading" gap="sm">
       <Skeleton className="h-7 w-64" />
       <Skeleton className="h-4 w-80" />
       <Skeleton className="h-48 w-full rounded-xl" />
       <Skeleton className="h-24 w-full rounded-xl" />
-    </div>
+    </PageContainer>
   )
 }

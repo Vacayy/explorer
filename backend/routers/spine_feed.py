@@ -47,7 +47,10 @@ def get_feed(
     size: int = Query(20, ge=1, le=100),
 ):
     conn = get_connection()
-    where, params = ["1=1"], []
+    # 뮤트 소스 제외 — 개인 노출 설정 (수집은 계속됨, pipeline/visibility.py)
+    from pipeline.visibility import feed_mute_sql
+    mute_sql, mute_params = feed_mute_sql(conn)
+    where, params = [mute_sql], list(mute_params)
 
     # 검색어: 하이브리드 검색으로 랭킹된 doc_id 집합을 필터 + 정렬 기준으로 사용
     rank_order: list[int] = []
