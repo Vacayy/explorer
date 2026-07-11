@@ -279,6 +279,7 @@ function FollowedTagsCard({ onGo }: { onGo: (type: string, name: string) => void
   const unfollow = useMutation({
     mutationFn: unfollowEntity,
     onSuccess: () => {
+      toast.success("팔로우 해제 — 홈 업데이트에서 제외됩니다")
       qc.invalidateQueries({ queryKey: ["spine", "follows"] })
       qc.invalidateQueries({ queryKey: spineKeys.home() })
     },
