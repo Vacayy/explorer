@@ -127,7 +127,8 @@ export default function ChatPage() {
                 <p className="text-sm font-medium">수집된 문서를 근거로 답합니다</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   근거 없는 내용은 답하지 않고, 갭(근거 부족·모순·오래된 정보)을 함께 표시합니다.<br />
-                  질문·후속질문은 스레드로 쌓여 종목 도시에의 "내가 물어본 것들"에 연결됩니다.
+                  질문·후속질문은 스레드로 쌓여 종목 도시에의 "내가 물어본 것들"에 연결됩니다.<br />
+                  <span className="text-hypothesis">"기억해: …"</span>로 시작하면 내 지식으로 저장됩니다 (사실은 "기억해(사실): …").
                 </p>
               </div>
               <div className="flex gap-1.5 flex-wrap justify-center">

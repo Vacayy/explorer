@@ -79,6 +79,26 @@ def ask_question(body: AskRequest, background: BackgroundTasks):
     if not q:
         raise HTTPException(400, "질문이 비어 있습니다")
 
+    # '기억해: …' — RAG 대신 지식 주입 (즉시 확인 답변, knowledge-system ①)
+    from pipeline.knowledge import parse_remember
+    remembered = parse_remember(q)
+    if remembered:
+        from pipeline.knowledge import inject_knowledge
+        from pipeline.conversations import log_exchange_safe
+        content, epistemic = remembered
+        try:
+            r = inject_knowledge(content, epistemic)
+            ents = f" · 연결: {', '.join(r['entities'])}" if r["entities"] else ""
+            confirm = (f"지식으로 저장했습니다 ({'사실' if epistemic == 'fact' else '가설'}){ents}. "
+                       "이제 검색·답변·다이제스트가 이 내용을 근거로 활용합니다.")
+        except Exception as e:
+            confirm = f"저장 실패: {str(e)[:100]}"
+        conv_id = log_exchange_safe(q, confirm, channel="web",
+                                    conversation_id=body.conversation_id)
+        return AskResponse(answer=confirm, citations=[], gaps=[], model=None,
+                           conversation_id=conv_id, status="done",
+                           as_of=datetime.now(timezone.utc).isoformat())
+
     from pipeline.conversations import log_question
     conv_id = log_question(q, channel="web", conversation_id=body.conversation_id)
     background.add_task(_generate_answer, conv_id, q)
