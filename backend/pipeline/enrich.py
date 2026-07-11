@@ -65,8 +65,38 @@ def _enrich_keyword(title: str, markdown: str) -> dict:
     }
 
 
+def _live_vocab() -> tuple[list[str], list[str]]:
+    """온톨로지의 현재 어휘 — DB의 sector/theme 엔티티, 사용 빈도순 상위 40.
+
+    고정 사전이 아니라 살아있는 어휘: 새 라벨이 한 번 생성되면 다음 문서부터
+    '기존 어휘'로 제시돼 표기가 수렴한다 (Web3 vs 웹3 파편화 방지).
+    DB 접근 실패 시 시드 사전으로 fallback.
+    """
+    inds: list[str] = []
+    tops: list[str] = []
+    try:
+        from database import get_connection
+        conn = get_connection()
+        inds = [r["name"] for r in conn.execute("""
+            SELECT e.name, count(el.doc_id) c FROM entities e
+            JOIN entity_links el ON el.entity_id = e.id AND el.link_type = 'industry'
+            WHERE e.type = 'sector' GROUP BY e.id ORDER BY c DESC LIMIT 40""")]
+        tops = [r["name"] for r in conn.execute("""
+            SELECT e.name, count(el.doc_id) c FROM entities e
+            JOIN entity_links el ON el.entity_id = e.id AND el.link_type = 'topic'
+            WHERE e.type = 'theme' GROUP BY e.id ORDER BY c DESC LIMIT 40""")]
+        conn.close()
+    except Exception:
+        pass
+    # 시드 어휘 병합 (사용 빈도순 유지, 중복 제거)
+    inds = list(dict.fromkeys([*inds, *INDUSTRY_KEYWORDS]))
+    tops = list(dict.fromkeys([*tops, *TOPIC_KEYWORDS]))
+    return inds, tops
+
+
 def _build_prompt(title: str, markdown: str) -> str:
     doc = f"{title}\n{(markdown or '')[:MAX_DOC_CHARS]}"
+    inds, tops = _live_vocab()
     return (
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
         '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문에 쓰인 표기"}], "industries": [], "topics": [], '
@@ -74,8 +104,11 @@ def _build_prompt(title: str, markdown: str) -> str:
         "규칙:\n"
         "- stocks: 실제로 논의 대상인 한국 상장사만. 별칭·약칭(하이닉스=SK하이닉스, 삼전=삼성전자 등)은 "
         "반드시 정식 종목명으로 정규화. 스쳐 지나가는 언급은 제외.\n"
-        f"- industries: 다음 목록에서만 선택: {', '.join(INDUSTRY_KEYWORDS)}\n"
-        f"- topics: 다음 목록 우선 사용: {', '.join(TOPIC_KEYWORDS)}. 꼭 필요하면 2단어 이내로 신규 허용.\n"
+        "- industries/topics: 문서가 실제로 다루는 산업·주제를 라벨링. 아래 기존 라벨과 같거나 유사한 "
+        "개념이면 반드시 기존 라벨을 그대로 사용하고, 명백히 새로운 영역이면 신규 라벨 허용 "
+        "(1~2단어, 통용되는 한국어 표기 우선. 예: Web3, 크립토, 게임, 조선, 지정학).\n"
+        f"- 기존 산업 라벨: {', '.join(inds)}\n"
+        f"- 기존 토픽 라벨: {', '.join(tops)}\n"
         f"문서:\n{doc}"
     )
 
