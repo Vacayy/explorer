@@ -188,6 +188,7 @@ export interface StockBrief {
   thesis_check: string | null;  // 내 논지 vs 새 증거 충돌·지지
   created_at: string | null;
   stale: boolean;
+  evidence?: string[];       // 근거 재료 인벤토리 (다이제스트·신호·공시·일정·논지)
 }
 
 // 대화 (P2-0/P2-1)

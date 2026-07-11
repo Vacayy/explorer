@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useStockPrices } from "@/hooks/useStockPrices"
 import { useDisclosures } from "@/hooks/useDisclosures"
 import { useKpi } from "@/hooks/useKpi"
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import CandlestickChart from "@/components/charts/CandlestickChart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,8 +16,9 @@ import { formatKrw, formatPercent } from "@/utils/format"
 import StockBriefCard from "@/components/summary/StockBriefCard"
 import ThesisSection from "@/components/summary/ThesisSection"
 import AskedSection from "@/components/summary/AskedSection"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import DigestSection from "@/components/analyze/DigestSection"
+import { PageContainer } from "@/components/shared/PageContainer"
 import {
   Legend, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts"
@@ -93,7 +95,7 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
     : undefined
 
   return (
-    <div className="space-y-4 p-4">
+    <PageContainer gap="sm">
       {/* Row 0: KPI Strip */}
       {kpiLoading ? (
         <div className="flex items-center gap-3 px-4 py-2 border-b bg-card">
@@ -157,7 +159,7 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
       <CollapsibleDigests stockCode={stockCode} />
 
       {/* Row 1: Candlestick (2/3) | Relative Performance (1/3) */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="col-span-2">
           <CardContent className="p-4">
             {priceLoading ? (
@@ -282,25 +284,23 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
 
       {/* Row 4: 내가 물어본 것들 — 이 종목 앵커 대화 (P2-0 데이터의 첫 노출) */}
       <AskedSection stockCode={stockCode} />
-    </div>
+    </PageContainer>
   )
 }
 
 /* ── 접힘 다이제스트 — 브리프(종합)와 원요약(기간별)의 중복감 해소 ── */
 
 function CollapsibleDigests({ stockCode }: { stockCode: string }) {
-  const [open, setOpen] = useState(false)
   return (
-    <div>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
-        {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-        언급 요약 원문 (1D · 7D) — 브리프의 근거
-      </button>
-      {open && <div className="mt-2"><DigestSection stockCode={stockCode} /></div>}
-    </div>
+    <Collapsible>
+      <CollapsibleTrigger className="group/dig flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]/dig:rotate-180" />
+        언급 요약 원문 (1D · 7D)
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-2"><DigestSection stockCode={stockCode} /></div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
