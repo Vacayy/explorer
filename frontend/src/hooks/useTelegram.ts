@@ -34,7 +34,7 @@ export function useToggleTelegramChannel() {
       const name = d?.display_name ?? d?.channel_name ?? "채널";
       toast.success(v.is_active
         ? `'${name}' 표시 — 내 피드·AI 답변에 다시 노출됩니다`
-        : `'${name}' 숨김 — 내 피드·AI 답변에서 제외됩니다 (수집은 계속)`);
+        : `'${name}' 숨김 — 내 피드·AI 답변에서 제외됩니다`);
     },
   });
 }

@@ -123,9 +123,9 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
           <KpiItem label="시가총액" value={kpi.market_cap != null ? formatKrw(kpi.market_cap) : "-"} />
           <Separator orientation="vertical" className="h-6" />
           <KpiItem
-            label="PER(fwd)"
+            label="PER"
             value={kpi.fwd_per != null ? `${kpi.fwd_per.toFixed(1)}배` : kpi.per != null ? `${kpi.per.toFixed(1)}배` : "-"}
-            sub={kpi.fwd_per != null ? "12m fwd" : kpi.per != null ? "trailing" : undefined}
+            sub={kpi.fwd_per != null ? `${kpi.fwd_fiscal_year ?? "fwd"} 컨센서스` : kpi.per != null ? "trailing" : undefined}
           />
           <Separator orientation="vertical" className="h-6" />
           <KpiItem label="PBR" value={kpi.pbr != null ? `${kpi.pbr.toFixed(2)}배` : "-"} />

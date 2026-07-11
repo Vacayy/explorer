@@ -119,8 +119,9 @@ def _kr_metrics(stock_code: str) -> dict | None:
     px = conn.execute("""
         SELECT close, market_cap FROM stock_prices WHERE stock_code=?
         ORDER BY trade_date DESC LIMIT 1""", (stock_code,)).fetchone()
+    # PER(fwd): 컨센서스(최신 회계연도 추정) 우선 — trailing을 fwd로 표기하지 않는다
     fu = conn.execute("""
-        SELECT per FROM fundamentals WHERE stock_code=? ORDER BY trade_date DESC LIMIT 1""",
+        SELECT per_est FROM consensus WHERE stock_code=? ORDER BY fiscal_year DESC LIMIT 1""",
         (stock_code,)).fetchone()
     # 영업이익률: 최근 연간 IS (KPI와 동일 소스 재사용은 무겁고, 근사로 컨센서스/재무 활용)
     op_margin = None
@@ -147,6 +148,6 @@ def _kr_metrics(stock_code: str) -> dict | None:
     return {
         "market_cap": px["market_cap"],
         "currency": "KRW",
-        "per_fwd": round(fu["per"], 1) if fu and fu["per"] else None,
+        "per_fwd": round(fu["per_est"], 1) if fu and fu["per_est"] else None,
         "op_margin": op_margin,
     }
