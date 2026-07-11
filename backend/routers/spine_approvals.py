@@ -34,5 +34,23 @@ def list_approvals():
             title=f"{r['name']} ← '{r['keyword']}'",
             detail="LLM이 발견한 별칭 — 승인 시 매칭 기준에 편입되고 기존 문서에 소급 링크",
             entity_name=r["name"], stock_code=r["stock_code"]))
+    LAYER_KO = {"cycle": "사이클", "structure": "구조", "regime": "제도"}
+    for r in conn.execute("""
+        SELECT k.id, k.statement, k.pace_layer,
+               (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='support' AND independent=1) ind,
+               (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='refute') ref,
+               (SELECT e.name FROM knowledge_entities ke JOIN entities e ON ke.entity_id=e.id
+                WHERE ke.knowledge_id=k.id LIMIT 1) ename,
+               (SELECT e.aliases FROM knowledge_entities ke JOIN entities e ON ke.entity_id=e.id
+                WHERE ke.knowledge_id=k.id LIMIT 1) scode
+        FROM knowledge k WHERE k.review_status='proposed' ORDER BY k.created_at DESC
+    """):
+        detail = f"{LAYER_KO.get(r['pace_layer'], r['pace_layer'])}층 · 독립 관측 {r['ind']}건"
+        if r["ref"]:
+            detail += f" · ⚠반박 {r['ref']}건"
+        items.append(ApprovalItem(
+            kind="knowledge", id=r["id"],
+            title=r["statement"][:80],
+            detail=detail, entity_name=r["ename"], stock_code=r["scode"]))
     conn.close()
     return items
