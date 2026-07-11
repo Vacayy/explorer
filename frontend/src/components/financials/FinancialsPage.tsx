@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useFinancials } from "@/hooks/useFinancials"
+import AnnualOverview from "@/components/financials/AnnualOverview"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import PeriodToggle from "@/components/shared/PeriodToggle"
 import YearToggle from "@/components/shared/YearToggle"
@@ -120,6 +121,9 @@ export default function FinancialsPage({ stockCode }: Props) {
 
   return (
     <div className="space-y-5">
+      {/* 연간 개요 — 종목 홈에서 이관 (손익 차트 + 연도별 실적표·컨센서스) */}
+      <AnnualOverview stockCode={stockCode} />
+
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
         <SegmentTabs tabs={SJ_TABS} value={sjDiv} onChange={setSjDiv} />
