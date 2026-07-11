@@ -18,12 +18,12 @@ import {
  */
 
 const PAGES = [
-  { label: "홈 — 내 종목 업데이트", to: "/home", icon: Home, keywords: "home stream" },
+  { label: "오늘 — 내 종목 업데이트", to: "/home", icon: Home, keywords: "home stream 홈" },
   { label: "신호 — 언급 급증·52주 신고가", to: "/explore", icon: LineChart, keywords: "signal" },
   { label: "기업활동 — 유무증·합병·공개매수", to: "/actions", icon: Building2, keywords: "actions 유상증자" },
   { label: "유무증 Pro", to: "/actions?view=pro", icon: Table2, keywords: "rights pro" },
   { label: "피드 — 전체 수집 문서", to: "/feed", icon: Newspaper, keywords: "feed 텔레그램 블로그" },
-  { label: "AI 질문", to: "/ask", icon: MessageCircleQuestion, keywords: "ask rag" },
+  { label: "대화 — AI 질문·스레드", to: "/chat", icon: MessageCircleQuestion, keywords: "ask rag chat" },
   { label: "워치리스트", to: "/research/watchlist", icon: ListChecks, keywords: "watchlist" },
   { label: "카탈리스트 캘린더", to: "/research/catalysts", icon: CalendarDays, keywords: "calendar 일정" },
   { label: "VS 비교 (보관함)", to: "/analyze/compare", icon: Table2, keywords: "compare 비교" },
@@ -108,7 +108,7 @@ export default function Omnibar() {
                 <span className="ml-auto text-[10px] text-muted-foreground">의미 기반</span>
               </CommandItem>
               {looksLikeQuestion && (
-                <CommandItem forceMount value={`ask-${q}`} onSelect={() => go(`/ask?q=${encodeURIComponent(q)}`)}>
+                <CommandItem forceMount value={`ask-${q}`} onSelect={() => go(`/chat?q=${encodeURIComponent(q)}`)}>
                   <Sparkles className="h-3.5 w-3.5 text-hypothesis" />
                   <span>"{q}" AI에게 질문</span>
                   <span className="ml-auto text-[10px] text-muted-foreground">수집 문서 근거</span>

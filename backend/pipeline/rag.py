@@ -31,7 +31,18 @@ def _fetch_docs(doc_ids: list[int]) -> list[dict]:
     return [dict(rows[d]) for d in doc_ids if d in rows]  # 검색 랭킹 순 유지
 
 
-def _build_prompt(question: str, docs: list[dict]) -> str:
+def _history_block(history: list[dict] | None) -> str:
+    """스레드 후속질문용 이전 문답 — 최근 6개, 답변은 400자 절단 (토큰 규약)."""
+    if not history:
+        return ""
+    lines = []
+    for m in history[-6:]:
+        tag = "사용자" if m.get("role") == "user" else "이전 답변"
+        lines.append(f"{tag}: {(m.get('content') or '')[:400]}")
+    return "\n\n[이전 대화 — 후속질문의 맥락. 근거는 여전히 아래 문서만]\n" + "\n".join(lines)
+
+
+def _build_prompt(question: str, docs: list[dict], history: list[dict] | None = None) -> str:
     ctx = "\n\n".join(
         f"[{i+1}] ({d['source_type']}, {(d['published_at'] or '')[:10]}) {d['title']}\n{d['excerpt']}"
         for i, d in enumerate(docs)
@@ -48,21 +59,28 @@ def _build_prompt(question: str, docs: list[dict]) -> str:
         "문서가 오래돼 최신 상황과 다를 수 있음(stale), 질문에 답하기에 빠진 정보(missing)\n"
         "- note 소스는 사용자의 자체 가설 메모다 — 사실과 구분해서 다뤄라\n"
         f"- 오늘 날짜 기준으로 문서 날짜의 신선도를 판단해라\n\n"
-        f"질문: {question}\n\n수집 문서:\n{ctx}"
+        f"{_history_block(history)}\n\n질문: {question}\n\n수집 문서:\n{ctx}"
     )
 
 
-def ask(question: str) -> dict:
+def ask(question: str, history: list[dict] | None = None) -> dict:
     if llm_engine() != "claude-code" and not os.getenv("ANTHROPIC_API_KEY"):
         return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 또는 ANTHROPIC_API_KEY 필요)"}
 
-    hits = search(question, k=TOP_K)
+    # 후속질문("그럼 마이크론은?")은 단독으로 검색이 안 됨 — 직전 사용자 질문을 검색어에 포함
+    search_q = question
+    if history:
+        prev_user = [m["content"] for m in history if m.get("role") == "user"]
+        if prev_user:
+            search_q = f"{prev_user[-1]} {question}"
+
+    hits = search(search_q, k=TOP_K)
     docs = _fetch_docs([h["doc_id"] for h in hits])
     if not docs:
         return {"answer": None, "citations": [], "gaps": [
             {"type": "missing", "note": "질문과 관련된 수집 문서가 없습니다."}], "model": None}
 
-    prompt = _build_prompt(question, docs)
+    prompt = _build_prompt(question, docs, history)
     if llm_engine() == "claude-code":
         proc = subprocess.run(
             [_claude_bin(), "-p", "--model", RAG_MODEL, "--output-format", "json", prompt],

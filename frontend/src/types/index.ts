@@ -333,5 +333,6 @@ export interface AskResponse {
   citations: AskCitation[];
   gaps: AskGap[];
   model: string | null;
+  conversation_id: number | null;  // 적재된 스레드 (P2-0)
   as_of: string;
 }

@@ -40,9 +40,19 @@ def ask_question(body: AskRequest):
     q = body.question.strip()
     if not q:
         raise HTTPException(400, "질문이 비어 있습니다")
+    # 스레드 이어가기: 이전 문답을 맥락으로 전달 (근거는 여전히 검색 문서만)
+    history = None
+    if body.conversation_id:
+        from database import get_connection
+        conn = get_connection()
+        history = [dict(r) for r in conn.execute(
+            "SELECT role, content FROM chat_messages WHERE conversation_id=? ORDER BY id DESC LIMIT 6",
+            (body.conversation_id,))][::-1]
+        conn.close()
+
     from pipeline.rag import ask
     try:
-        result = ask(q)
+        result = ask(q, history=history)
     except Exception as e:
         raise HTTPException(502, f"응답 생성 실패: {e}")
     if result.get("error"):
