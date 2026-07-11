@@ -33,8 +33,8 @@ export function useToggleTelegramChannel() {
       qc.invalidateQueries({ queryKey: ["telegram-channels"] });
       const name = d?.display_name ?? d?.channel_name ?? "채널";
       toast.success(v.is_active
-        ? `'${name}' 수집 재개 — 다음 주기(30분)부터 수집됩니다`
-        : `'${name}' 수집 중지 — 기존 수집분은 유지됩니다`);
+        ? `'${name}' 표시 — 내 피드·AI 답변에 다시 노출됩니다`
+        : `'${name}' 숨김 — 내 피드·AI 답변에서 제외됩니다 (수집은 계속)`);
     },
   });
 }

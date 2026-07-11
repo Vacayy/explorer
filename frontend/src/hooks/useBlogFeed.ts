@@ -35,8 +35,8 @@ export function useToggleBlogSource() {
       qc.invalidateQueries({ queryKey: ["blog-sources"] });
       const name = d?.blog_name ?? "블로그";
       toast.success(v.is_active
-        ? `'${name}' 수집 재개 — 다음 주기(30분)부터 수집됩니다`
-        : `'${name}' 수집 중지 — 기존 수집분은 유지됩니다`);
+        ? `'${name}' 표시 — 내 피드·AI 답변에 다시 노출됩니다`
+        : `'${name}' 숨김 — 내 피드·AI 답변에서 제외됩니다 (수집은 계속)`);
     },
   });
 }

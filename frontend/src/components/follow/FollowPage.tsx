@@ -145,7 +145,7 @@ function SourceRow({ name, sub, warning, active, onClick, onToggle }: {
           "opacity-0 group-hover:opacity-100",
           active ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
         )}
-        title={active ? "수집 중지" : "수집 재개"}
+        title={active ? "숨기기 — 내 피드·답변에서 제외" : "표시하기"}
       >
         {active && <span className="text-[9px] leading-none">✓</span>}
       </button>
