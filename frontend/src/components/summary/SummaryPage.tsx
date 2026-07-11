@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useStockPrices } from "@/hooks/useStockPrices"
 import { useDisclosures } from "@/hooks/useDisclosures"
 import { useKpi } from "@/hooks/useKpi"
@@ -13,10 +13,10 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatKrw, formatPercent } from "@/utils/format"
 import StockBriefCard from "@/components/summary/StockBriefCard"
-import ThesisSection from "@/components/summary/ThesisSection"
 import AskedSection from "@/components/summary/AskedSection"
 import DigestSection from "@/components/analyze/DigestSection"
-import MentionsPanel from "@/components/summary/MentionsPanel"
+import { SignalHistoryCard, MentionDocsCard, MatchingCollapsed } from "@/components/summary/MentionsPanel"
+import PeerSection from "@/components/summary/PeerSection"
 import { PageContainer } from "@/components/shared/PageContainer"
 import {
   Legend, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -56,7 +56,13 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
   const { data: kpi, isLoading: kpiLoading } = useKpi(stockCode)
   const { data: priceData, isLoading: priceLoading } = useStockPrices(stockCode, fromDate, toDate)
   const { data: discData, isLoading: discLoading } = useDisclosures(stockCode, undefined, undefined, undefined, 1, 5)
-  const { data: indexPerfData, isLoading: indexLoading } = useIndexPerformance(stockCode, 365)
+  const [perfDays, setPerfDays] = useState(365)
+  const { data: indexPerfData, isLoading: indexLoading } = useIndexPerformance(stockCode, perfDays)
+  const ytdDays = Math.max(1, Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000))
+  const PERF_PERIODS = [
+    { label: "1M", days: 30 }, { label: "3M", days: 91 }, { label: "6M", days: 182 },
+    { label: "YTD", days: ytdDays }, { label: "1Y", days: 365 },
+  ]
 
   const priceItems = priceData?.items || []
 
@@ -173,8 +179,17 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">상대 수익률 (1년)</CardTitle>
+          <CardHeader className="pb-2 flex-row items-center gap-2">
+            <CardTitle className="text-sm">상대 수익률</CardTitle>
+            <div className="ml-auto flex gap-0.5">
+              {PERF_PERIODS.map((p) => (
+                <button key={p.label} onClick={() => setPerfDays(p.days)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] tabular-nums ${
+                    perfDays === p.days ? "bg-primary text-primary-foreground font-semibold" : "text-muted-foreground hover:text-foreground"}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             {indexLoading ? (
@@ -240,19 +255,27 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
         </Card>
       </div>
 
-      {/* Row 3: 최근 공시 | 투자 논점 */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* AI 브리프 + 1D/7D 요약 — 읽기 중심이라 넓은 좌측에 (v2 재배치) */}
+      <StockBriefCard stockCode={stockCode} />
+      <DigestSection stockCode={stockCode} />
+
+      </div>{/* /좌측 메인 */}
+
+      {/* 우측: 신호 → Peer 그룹 → 언급 문서 → 최근 공시 → 물어본 것들 → 키워드 */}
+      <div className="space-y-4 min-w-0 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1.5">
+        <SignalHistoryCard stockCode={stockCode} />
+        <PeerSection stockCode={stockCode} />
+        <MentionDocsCard stockCode={stockCode} />
         <Card>
-          <CardHeader>
-            <CardTitle>최근 공시</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">최근 공시</CardTitle>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[250px]">
+            <ScrollArea className="max-h-[220px]">
               {discLoading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-4 w-full rounded" />
                   <Skeleton className="h-4 w-3/4 rounded" />
-                  <Skeleton className="h-4 w-5/6 rounded" />
                 </div>
               ) : discData && discData.items.length > 0 ? (
                 <ul className="space-y-1.5">
@@ -275,21 +298,8 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
             </ScrollArea>
           </CardContent>
         </Card>
-
-        {/* 내 논지 4분면 — 보관함 투자메모에서 이관 (P2-1). 항목 변경 시 브리프 재생성 대상 */}
-        <ThesisSection stockCode={stockCode} />
-      </div>
-
-      {/* 내가 물어본 것들 — 이 종목 앵커 대화 (P2-0 데이터의 첫 노출) */}
-      <AskedSection stockCode={stockCode} />
-
-      </div>{/* /좌측 메인 */}
-
-      {/* 우측: AI/언급 축 — 브리프 → 1D/7D 요약 → 신호 → 언급 문서 → 매칭 키워드 */}
-      <div className="space-y-4 min-w-0 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1.5">
-        <StockBriefCard stockCode={stockCode} />
-        <DigestSection stockCode={stockCode} stack />
-        <MentionsPanel stockCode={stockCode} />
+        <AskedSection stockCode={stockCode} />
+        <MatchingCollapsed stockCode={stockCode} />
       </div>
 
       </div>{/* /2컬럼 */}

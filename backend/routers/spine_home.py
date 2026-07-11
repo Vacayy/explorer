@@ -34,6 +34,22 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
             kind="warning",
             text=f"소스 {len(dead)}곳 7일간 유입 없음 — {names}",
             to="/feed"))
+
+    # 승인 대기 제안 — 기계의 제안이 사람의 결정을 기다리는 곳 (판단 루프 ③)
+    pending = conn.execute("""
+        SELECT e.name, e.aliases stock_code, count(*) n
+        FROM entity_keywords ek JOIN entities e ON ek.entity_id = e.id
+        WHERE ek.status = 'proposed'
+        GROUP BY e.id ORDER BY n DESC
+    """).fetchall()
+    if pending:
+        total = sum(r["n"] for r in pending)
+        head = pending[0]
+        others = f" 외 {len(pending)-1}종목" if len(pending) > 1 else ""
+        briefing.append(BriefItem(
+            kind="action",
+            text=f"승인 대기: 별칭 제안 {total}건 — {head['name']}{others} (종목 홈에서 승인)",
+            to=f"/analyze/{head['stock_code']}/summary" if head["stock_code"] else "/stocks"))
     ins_rows = conn.execute("""
         SELECT e.name, e.aliases stock_code, d.insights, d.period_start
         FROM entity_digests d JOIN entities e ON d.entity_id = e.id
