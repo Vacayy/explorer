@@ -35,6 +35,8 @@ def _evidence(inp: dict) -> list[str]:
     t = inp["thesis"]
     if (t and t["thesis"]) or inp["notes"]:
         ev.append(f"내 논지 ({len(inp['notes'])}건)")
+    if inp.get("knowledge"):
+        ev.append(f"승격 지식 {len(inp['knowledge'])}건")
     return ev
 
 

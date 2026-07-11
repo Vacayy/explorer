@@ -42,11 +42,15 @@ def _history_block(history: list[dict] | None) -> str:
     return "\n\n[이전 대화 — 후속질문의 맥락. 근거는 여전히 아래 문서만]\n" + "\n".join(lines)
 
 
-def _build_prompt(question: str, docs: list[dict], history: list[dict] | None = None) -> str:
+def _build_prompt(question: str, docs: list[dict], history: list[dict] | None = None,
+                  knowledge: list[dict] | None = None) -> str:
     ctx = "\n\n".join(
         f"[{i+1}] ({d['source_type']}, {(d['published_at'] or '')[:10]}) {d['title']}\n{d['excerpt']}"
         for i, d in enumerate(docs)
     )
+    from pipeline.knowledge_recall import knowledge_block
+    kn = knowledge_block(knowledge or [],
+                         "승격된 지식 — 반복·독립 관측으로 시스템이 검증해 승격한 전제")
     return (
         "너는 개인 투자 리서치 어시스턴트다. 아래 수집 문서들만 근거로 질문에 답해라.\n"
         "JSON만 출력 (설명·코드블록 금지):\n"
@@ -58,7 +62,11 @@ def _build_prompt(question: str, docs: list[dict], history: list[dict] | None = 
         "- 갭 분석: 근거가 약한 부분(unsupported), 문서끼리 상충(contradiction), "
         "문서가 오래돼 최신 상황과 다를 수 있음(stale), 질문에 답하기에 빠진 정보(missing)\n"
         "- note 소스는 사용자의 자체 가설 메모다 — 사실과 구분해서 다뤄라\n"
-        f"- 오늘 날짜 기준으로 문서 날짜의 신선도를 판단해라\n\n"
+        "- 승격된 지식은 배경 전제로 활용해라 (인용 시 [K번호]). 단 층위를 구분해라 — "
+        "사건/흐름층은 일시적, 구조/체제층은 판단의 기반. 문서가 승격된 지식과 상충하면 "
+        "contradiction 갭으로 표시해라\n"
+        f"- 오늘 날짜 기준으로 문서 날짜의 신선도를 판단해라\n"
+        f"{kn}\n"
         f"{_history_block(history)}\n\n질문: {question}\n\n수집 문서:\n{ctx}"
     )
 
@@ -86,7 +94,13 @@ def ask(question: str, history: list[dict] | None = None) -> dict:
         return {"answer": None, "citations": [], "gaps": [
             {"type": "missing", "note": "질문과 관련된 수집 문서가 없습니다."}], "model": None}
 
-    prompt = _build_prompt(question, docs, history)
+    # K1: 질문과 유사한 승격 지식을 별도 블록으로 — relevance×activation×epistemic 랭킹
+    from pipeline.knowledge_recall import recall_for_query
+    conn = get_connection()
+    knowledge = recall_for_query(conn, search_q)
+    conn.close()
+
+    prompt = _build_prompt(question, docs, history, knowledge)
     if llm_engine() == "claude-code":
         proc = subprocess.run(
             [_claude_bin(), "-p", "--model", RAG_MODEL, "--output-format", "json", prompt],
