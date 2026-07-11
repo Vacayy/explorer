@@ -19,6 +19,7 @@ export interface KpiData {
   op_profit_growth: number | null
   net_income: number | null
   fwd_per: number | null
+  fwd_fiscal_year?: string | null;
   fwd_eps: number | null
   target_price_consensus: number | null
 }
