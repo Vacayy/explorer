@@ -374,6 +374,17 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_entity_digests ON entity_digests(entity_id, period, period_start);
 
+    -- 종목 AI 브리프 (P2-1) — 도시에 첫 화면, 열람 시 게으른 생성 (inputs_hash 가드)
+    CREATE TABLE IF NOT EXISTS stock_briefs (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id    INTEGER NOT NULL UNIQUE REFERENCES entities(id) ON DELETE CASCADE,
+        brief        TEXT,                   -- 종합 브리프 (마크다운)
+        thesis_check TEXT,                   -- 내 논지 vs 새 증거 충돌·지지 (없으면 NULL)
+        inputs_hash  TEXT,                   -- 입력(다이제스트·신호·논지·일정) 변경 시에만 재생성
+        model        TEXT,
+        created_at   TEXT DEFAULT (datetime('now'))
+    );
+
     -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
     CREATE TABLE IF NOT EXISTS conversations (

@@ -181,6 +181,40 @@ export interface SpineFeedResponse {
   as_of: string;
 }
 
+// 종목 AI 브리프 (P2-1, docs/specs/product-v3.md §3)
+export interface StockBrief {
+  status: string;            // fresh | cached | empty | unavailable | failed
+  brief: string | null;
+  thesis_check: string | null;  // 내 논지 vs 새 증거 충돌·지지
+  created_at: string | null;
+  stale: boolean;
+}
+
+// 대화 (P2-0/P2-1)
+export interface ConversationItem {
+  id: number;
+  title: string | null;
+  channel: string;           // web | telegram
+  anchor_entity_id: number | null;
+  message_count: number;
+  updated_at: string;
+}
+
+export interface ConversationDetail {
+  id: number;
+  title: string | null;
+  channel: string;
+  messages: {
+    id: number;
+    role: string;
+    content: string;
+    citations: { n: number; doc_id: number; title: string }[] | null;
+    gaps: { type: string; note: string }[] | null;
+    model: string | null;
+    created_at: string;
+  }[];
+}
+
 // 소스 도시에 (docs/specs/source-dossier.md)
 export interface DossierSummary {
   status: string;            // fresh | cached | empty | unavailable | failed
