@@ -47,13 +47,15 @@ def get_document(doc_id: int):
         FROM entity_links el JOIN entities e ON el.entity_id = e.id
         WHERE el.doc_id = ?""", (doc_id,))]
     from routers.spine_feed import resolve_channels
-    channel = resolve_channels(conn, [r]).get(r["id"])
+    channel = resolve_channels(conn, [r]).get(r["id"]) or {}
     conn.close()
 
     return FeedDocument(
         id=r["id"], source_type=r["source_type"], title=r["title"] or "",
         url=r["url"] or "", published_at=r["published_at"] or "",
-        summary=r["summary"], channel=channel, content=r["markdown"],
+        summary=r["summary"], channel=channel.get("name"),
+        channel_kind=channel.get("kind"), channel_key=channel.get("key"),
+        content=r["markdown"],
         images=json.loads(r["media_json"]) if r["media_json"] else [],
         enrich_model=r["enrich_model"], entities=tags,
     )
