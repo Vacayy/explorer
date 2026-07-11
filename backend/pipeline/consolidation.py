@@ -86,6 +86,54 @@ def mark_independence(conn, docs: list[dict]) -> list[dict]:
     return docs
 
 
+STATEMENT_SIM = 0.86  # 이 이상 유사한 주장 = 같은 지식 (병합, 파편화 방지)
+
+_embed_model = None
+
+
+def _embed_statements(texts: list[str]) -> list[list[float]]:
+    global _embed_model
+    if _embed_model is None:
+        from fastembed import TextEmbedding
+        from pipeline.search import EMBED_MODEL
+        _embed_model = TextEmbedding(EMBED_MODEL)
+    return [list(e) for e in _embed_model.embed(texts)]
+
+
+def _find_similar_knowledge(conn, statement: str) -> int | None:
+    """기존(proposed+active) 지식 중 같은 주장 찾기 — 있으면 병합 대상 id."""
+    rows = conn.execute("""
+        SELECT id, statement FROM knowledge
+        WHERE review_status IN ('proposed','active') AND valid_to IS NULL""").fetchall()
+    if not rows:
+        return None
+    embs = _embed_statements([statement] + [r["statement"] for r in rows])
+    target = embs[0]
+    best_id, best_sim = None, 0.0
+    for r, e in zip(rows, embs[1:]):
+        sim = _cosine(target, e)
+        if sim > best_sim:
+            best_id, best_sim = r["id"], sim
+    return best_id if best_sim >= STATEMENT_SIM else None
+
+
+def _merge_into(conn, kid: int, entity_id: int, ev_docs: list[dict]):
+    """같은 주장 발견 시: 새 증거·엔티티를 기존 지식에 병합 (corroboration 증가)."""
+    conn.execute("INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) VALUES (?, ?)",
+                 (kid, entity_id))
+    existing_docs = {r["doc_id"] for r in conn.execute(
+        "SELECT doc_id FROM knowledge_evidence WHERE knowledge_id=?", (kid,))}
+    for d in ev_docs:
+        if d["id"] in existing_docs:
+            continue
+        conn.execute("""
+            INSERT INTO knowledge_evidence (knowledge_id, doc_id, stance, independent, observed_at)
+            VALUES (?, ?, 'support', ?, ?)""",
+            (kid, d["id"], int(d.get("independent", True)),
+             d["published_at"] or datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+
+
 def promote_batch() -> dict:
     """주간 승격 배치 — 후보를 knowledge(proposed)로 생성. 반환: 통계."""
     if llm_engine() != "claude-code":
@@ -157,6 +205,14 @@ def promote_batch() -> dict:
             ev_docs = mark_independence(conn, ev_docs)
             if sum(1 for d in ev_docs if d["independent"]) < MIN_INDEPENDENT:
                 stats["rejected_by_rule"] += 1   # 릴레이 재방송뿐 (독립성)
+                continue
+
+            # 파편화 방지: 같은 주장이 이미 있으면(배치 내 형제 포함) 병합 — 새 행 대신
+            # corroboration 증가 (A-1 '스키마 일치 시 빠른 편입')
+            dup = _find_similar_knowledge(conn, st)
+            if dup:
+                _merge_into(conn, dup, ent["entity_id"], ev_docs)
+                stats["merged"] = stats.get("merged", 0) + 1
                 continue
 
             # 확증편향 보정: 반대 증거 탐색 1회 (A-6)
