@@ -8,6 +8,7 @@ import Header from "@/components/layout/Header"
 import Omnibar from "@/components/shared/Omnibar"
 import ModeNavigation from "@/components/layout/ModeNavigation"
 import FollowRail from "@/components/layout/FollowRail"
+import AnswerWatcher from "@/components/layout/AnswerWatcher"
 import { useCompany } from "@/hooks/useCompanySearch"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
@@ -79,6 +80,7 @@ function Layout() {
         {/* 팔로우 레일 — 종목·채널·블로그 통합, shadcn Sidebar (docs/specs/follow-rail.md) */}
         <FollowRail currentStockCode={stockCode} />
       </SidebarProvider>
+      <AnswerWatcher />
       <Toaster />
     </div>
   )

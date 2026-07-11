@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
+import { toast } from "sonner";
 
 export interface TelegramChannel {
   id: number;
@@ -8,14 +9,6 @@ export interface TelegramChannel {
   is_active: number;
   last_fetched_at: string | null;
   added_at: string;
-}
-
-export interface TelegramMessage {
-  channel_name: string;
-  message_id: string;
-  content: string;
-  date: string;
-  link: string;
 }
 
 export function useTelegramChannels() {
@@ -29,31 +22,6 @@ export function useTelegramChannels() {
   });
 }
 
-export function useTelegramFeed() {
-  return useQuery<{ items: TelegramMessage[]; total: number }>({
-    queryKey: ["telegram-feed"],
-    queryFn: async () => {
-      const { data } = await api.get("/api/telegram/feed");
-      return data;
-    },
-    staleTime: 60_000,
-  });
-}
-
-export function useAddTelegramChannel() {
-  const qc = useQueryClient();
-  return useMutation<TelegramChannel, Error, string>({
-    mutationFn: async (url: string) => {
-      const { data } = await api.post("/api/telegram/channels", { url });
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["telegram-channels"] });
-      qc.invalidateQueries({ queryKey: ["telegram-feed"] });
-    },
-  });
-}
-
 export function useToggleTelegramChannel() {
   const qc = useQueryClient();
   return useMutation<TelegramChannel, Error, { id: number; is_active: boolean }>({
@@ -61,22 +29,12 @@ export function useToggleTelegramChannel() {
       const { data } = await api.put(`/api/telegram/channels/${id}/toggle`, { is_active });
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (d, v) => {
       qc.invalidateQueries({ queryKey: ["telegram-channels"] });
-      qc.invalidateQueries({ queryKey: ["telegram-feed"] });
-    },
-  });
-}
-
-export function useDeleteTelegramChannel() {
-  const qc = useQueryClient();
-  return useMutation<void, Error, number>({
-    mutationFn: async (id: number) => {
-      await api.delete(`/api/telegram/channels/${id}`);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["telegram-channels"] });
-      qc.invalidateQueries({ queryKey: ["telegram-feed"] });
+      const name = d?.display_name ?? d?.channel_name ?? "채널";
+      toast.success(v.is_active
+        ? `'${name}' 수집 재개 — 다음 주기(30분)부터 수집됩니다`
+        : `'${name}' 수집 중지 — 기존 수집분은 유지됩니다`);
     },
   });
 }

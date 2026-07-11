@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown"
 import { AlertTriangle, MessageCircleQuestion, Plus, Send, Sparkles } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { askQuestion, conversationsQuery, conversationDetailQuery, spineKeys } from "@/api/spine"
+import { addPendingAnswer } from "@/lib/pendingAnswers"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -55,6 +56,7 @@ export default function ChatPage() {
       setQuestion("")
       qc.invalidateQueries({ queryKey: spineKeys.conversations() })
       if (d.conversation_id) {
+        addPendingAnswer(d.conversation_id)   // 다른 화면으로 가도 '답변 도착' 알림
         qc.invalidateQueries({ queryKey: spineKeys.conversation(d.conversation_id) })
         if (d.conversation_id !== activeId) setSearchParams({ id: String(d.conversation_id) })
       }
@@ -74,7 +76,7 @@ export default function ChatPage() {
   }, [detail.data?.messages.length, ask.isPending, awaiting])
 
   return (
-    <div className="grid grid-cols-[240px_1fr] gap-4 h-[calc(100vh-190px)]">
+    <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4 h-[calc(100dvh-var(--shell-offset))]">
       {/* 스레드 리스트 */}
       <aside className="border rounded-xl overflow-y-auto">
         <div className="flex items-center justify-between px-3 py-2 border-b sticky top-0 bg-card">
@@ -93,12 +95,13 @@ export default function ChatPage() {
           </p>
         )}
         {threads.map((t) => (
-          <button
+          <Button
             key={t.id}
+            variant="ghost"
             onClick={() => setSearchParams({ id: String(t.id) })}
             className={cn(
-              "w-full text-left px-3 py-2 border-l-[3px] transition-colors",
-              t.id === activeId ? "bg-accent border-l-primary" : "border-l-transparent hover:bg-muted/50"
+              "block h-auto w-full font-normal whitespace-normal rounded-none text-left px-3 py-2 border-0 border-l-[3px] transition-colors",
+              t.id === activeId ? "bg-accent border-l-primary hover:bg-accent" : "border-l-transparent hover:bg-muted/50"
             )}
           >
             <div className="flex items-center gap-1.5">
@@ -110,7 +113,7 @@ export default function ChatPage() {
             <div className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
               {t.message_count}개 · {formatRelativeTime(t.updated_at)}
             </div>
-          </button>
+          </Button>
         ))}
       </aside>
 
@@ -129,10 +132,10 @@ export default function ChatPage() {
               </div>
               <div className="flex gap-1.5 flex-wrap justify-center">
                 {EXAMPLES.map((ex) => (
-                  <button key={ex} onClick={() => setQuestion(ex)}
-                    className="text-[11px] text-muted-foreground hover:text-foreground border rounded-full px-2.5 py-1">
+                  <Button key={ex} variant="ghost" size="sm" onClick={() => setQuestion(ex)}
+                    className="h-auto font-normal text-[11px] text-muted-foreground hover:text-foreground hover:bg-transparent border border-border rounded-full px-2.5 py-1">
                     {ex}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -212,7 +215,7 @@ function AssistantMessage({ content, citations, gaps, model }: {
 }) {
   return (
     <div className="max-w-[85%] space-y-1.5">
-      <div className="rounded-2xl rounded-bl-sm border border-l-2 border-l-hypothesis px-3.5 py-2.5">
+      <div className="rounded-2xl rounded-bl-sm bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] px-3.5 py-2.5">
         <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
           <ReactMarkdown>{content}</ReactMarkdown>
         </div>
