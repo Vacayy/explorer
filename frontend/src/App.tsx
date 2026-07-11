@@ -19,6 +19,7 @@ import ExplorePage from "@/components/explore/ExplorePage"
 import AskPage from "@/components/ask/AskPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import DocPage from "@/components/doc/DocPage"
+import SourcePage from "@/components/source/SourcePage"
 import ArchivePage from "@/components/archive/ArchivePage"
 
 // Discovery
@@ -165,6 +166,7 @@ export default function App() {
             {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
             <Route path="feed" element={<UnifiedFeedPage />} />
             <Route path="doc/:docId" element={<DocPage />} />
+            <Route path="source" element={<SourcePage />} />
             <Route path="feed/telegram" element={<Navigate to="/feed?source=telegram" replace />} />
             <Route path="feed/blogs" element={<Navigate to="/feed?source=blog" replace />} />
 

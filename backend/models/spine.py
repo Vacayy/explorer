@@ -19,6 +19,8 @@ class FeedDocument(BaseModel):
     published_at: str
     summary: str | None
     channel: str | None        # 출처 채널/블로그 이름 (예: cahier_de_market, 메르의 블로그)
+    channel_kind: str | None = None   # telegram | blog — 소스 도시에(/source) 링크용
+    channel_key: str | None = None    # channel_name | blog url
     content: str | None        # 전문 (markdown) — 카드 펼침용
     images: list[str]          # /media 상대경로
     enrich_model: str | None   # keyword | LLM 모델명 (epistemic 표시용)

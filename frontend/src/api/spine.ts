@@ -1,6 +1,6 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
-import type { AskResponse, HomeResponse, SpineFeedResponse, SpineSignalsResponse } from "@/types";
+import type { AskResponse, DossierSummary, HomeResponse, SourceDossier, SpineFeedResponse, SpineSignalsResponse } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -17,7 +17,22 @@ export const spineKeys = {
   home: () => [...spineKeys.all, "home"] as const,
   feed: (params: SpineFeedParams) => [...spineKeys.all, "feed", params] as const,
   signals: (type?: string, days?: number) => [...spineKeys.all, "signals", type ?? "all", days ?? 7] as const,
+  sourceDossier: (kind: string, key: string) => [...spineKeys.all, "source-dossier", kind, key] as const,
 };
+
+export async function fetchSourceDossier(kind: string, key: string): Promise<SourceDossier> {
+  const { data } = await api.get<SourceDossier>("/api/spine/sources/dossier", { params: { kind, key } });
+  return data;
+}
+
+export async function computeSourceSummary(kind: string, key: string): Promise<DossierSummary> {
+  // 새 글이 있으면 LLM 프로필 생성 (수십 초) — 없으면 서버가 캐시 즉답
+  const { data } = await api.post<DossierSummary>("/api/spine/sources/dossier/summary", null, {
+    params: { kind, key },
+    timeout: 180_000,
+  });
+  return data;
+}
 
 export async function fetchHome(): Promise<HomeResponse> {
   const { data } = await api.get<HomeResponse>("/api/spine/home");
