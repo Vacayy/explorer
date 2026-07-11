@@ -94,7 +94,7 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
     : undefined
 
   return (
-    <PageContainer gap="sm">
+    <PageContainer gap="sm" className="flex flex-col xl:h-[calc(100dvh-var(--shell-offset))]">
       {/* Row 0: KPI Strip */}
       {kpiLoading ? (
         <div className="flex items-center gap-3 px-4 py-2 border-b bg-card">
@@ -151,9 +151,10 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
         </div>
       ) : null}
 
-      {/* 2컬럼: 좌 = 사실 데이터(차트·공시·논지) / 우 = AI 종합(브리프·1D/7D 요약) */}
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4 items-start">
-      <div className="space-y-4 min-w-0">
+      {/* 2컬럼: 좌 = 사실 데이터 / 우 = AI·언급 축.
+          앱형 레이아웃: 페이지 스크롤 대신 컬럼별 내부 스크롤 (xl 미만은 자연 플로우) */}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4 items-start xl:items-stretch flex-1 min-h-0">
+      <div className="space-y-4 min-w-0 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1.5">
 
       {/* Row 1: Candlestick (2/3) | Relative Performance (1/3) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -285,7 +286,7 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
       </div>{/* /좌측 메인 */}
 
       {/* 우측: AI/언급 축 — 브리프 → 1D/7D 요약 → 신호 → 언급 문서 → 매칭 키워드 */}
-      <div className="space-y-4 min-w-0">
+      <div className="space-y-4 min-w-0 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1.5">
         <StockBriefCard stockCode={stockCode} />
         <DigestSection stockCode={stockCode} stack />
         <MentionsPanel stockCode={stockCode} />
