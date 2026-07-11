@@ -17,7 +17,6 @@ const ANALYZE_TABS = [
   { key: "valuation", label: "밸류에이션" },
   { key: "business", label: "사업정보" },
   { key: "disclosures", label: "공시" },
-  { key: "mentions", label: "언급" },
 ] as const
 
 const FEED_TABS = [
@@ -41,7 +40,7 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
 
   return (
     <nav className="border-b bg-card">
-      <div className="mx-auto max-w-[1440px] px-6">
+      <div className="mx-auto max-w-[var(--layout-shell)] px-6">
         {/* Level 1: Mode pills — 판단 루프의 단계들 */}
         <div className="flex items-center gap-1 pt-1.5 pb-0.5">
           <ModeButton to="/home" active={activeMode === "home"} label="오늘" />

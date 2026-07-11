@@ -7,7 +7,6 @@ import Omnibar from "@/components/shared/Omnibar"
 import ModeNavigation from "@/components/layout/ModeNavigation"
 import FollowRail from "@/components/layout/FollowRail"
 import { useCompany } from "@/hooks/useCompanySearch"
-import { addToHistory } from "@/components/layout/SearchHistory"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 // Home
@@ -28,7 +27,6 @@ import ScreenerPage from "@/components/discovery/ScreenerPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
-import MentionsPage from "@/components/analyze/MentionsPage"
 import SummaryPage from "@/components/summary/SummaryPage"
 import FinancialsPage from "@/components/financials/FinancialsPage"
 import BusinessPage from "@/components/business/BusinessPage"
@@ -61,7 +59,7 @@ function Layout() {
       <Omnibar />
       <ModeNavigation stockCode={stockCode} companyName={company?.corp_name} />
 
-      <div className="mx-auto max-w-[1440px] flex">
+      <div className="mx-auto max-w-[var(--layout-shell)] flex">
         <main className="flex-1 min-w-0 p-6">
           <Outlet />
         </main>
@@ -96,7 +94,8 @@ function AnalyzePage({ tab }: { tab: string }) {
     case "valuation":
       return <ValuationPage stockCode={stockCode} />
     case "mentions":
-      return <MentionsPage stockCode={stockCode} />
+      // 언급 탭은 종목 홈 우측 컬럼으로 흡수 — 기존 링크는 홈으로
+      return <Navigate to={`/analyze/${stockCode}/summary`} replace />
     default:
       return <Navigate to={`/analyze/${stockCode}/summary`} replace />
   }
@@ -114,7 +113,6 @@ function IndustryRoute() {
     <IndustryPage
       onSelectCompany={(c) => {
         if (c.stock_code) {
-          addToHistory(c)
           navigate(`/analyze/${c.stock_code}/summary`)
         }
       }}

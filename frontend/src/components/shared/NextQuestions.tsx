@@ -51,7 +51,7 @@ export default function NextQuestions({ stockCode, context }: {
         ))}
         <span className="flex-1" />
         <Link
-          to={`/analyze/${stockCode}/mentions`}
+          to={`/feed?stock=${stockCode}`}
           className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary shrink-0"
         >
           <Newspaper className="h-3 w-3" /> 언급 문서 보기 <ArrowRight className="h-3 w-3" />
