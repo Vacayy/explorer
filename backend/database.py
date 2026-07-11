@@ -374,6 +374,35 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_entity_digests ON entity_digests(entity_id, period, period_start);
 
+    -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
+    -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
+    CREATE TABLE IF NOT EXISTS conversations (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        title            TEXT,                   -- 첫 질문 앞 60자 (자동)
+        anchor_entity_id INTEGER REFERENCES entities(id) ON DELETE SET NULL,
+        channel          TEXT NOT NULL DEFAULT 'web',  -- web | telegram
+        created_at       TEXT DEFAULT (datetime('now')),
+        updated_at       TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        role            TEXT NOT NULL,           -- user | assistant
+        content         TEXT NOT NULL,
+        citations_json  TEXT,                    -- assistant: 출처 인용
+        gaps_json       TEXT,                    -- assistant: 갭 분석
+        model           TEXT,                    -- assistant: epistemic 표시
+        created_at      TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, id);
+    -- 질문 메시지 → 종목 링크 (결정적 매칭, LLM 0토큰) — "내가 물어본 것들"의 근간
+    CREATE TABLE IF NOT EXISTS chat_entity_links (
+        message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+        entity_id  INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        link_type  TEXT,
+        UNIQUE(message_id, entity_id)
+    );
+
     -- 소스(채널/블로그) 관점 프로필 — 열람 시 게으른 생성 (docs/specs/source-dossier.md)
     CREATE TABLE IF NOT EXISTS source_digests (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,

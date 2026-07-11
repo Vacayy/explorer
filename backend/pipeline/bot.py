@@ -108,6 +108,9 @@ def handle_message(text: str) -> str:
         from pipeline.notify import _compose_briefing
         return _compose_briefing() or "오늘 브리핑 내용이 없습니다."
 
+    # P2-0: 명령어 제외 전 문답을 대화로 적재 (질문 = 사용자 의도 데이터)
+    from pipeline.conversations import log_exchange_safe
+
     conn = get_connection()
     # 짧은 입력은 종목 조회 시도
     if len(q) <= 12 and " " not in q:
@@ -115,6 +118,7 @@ def handle_message(text: str) -> str:
         if ent:
             out = _stock_brief(conn, ent)
             conn.close()
+            log_exchange_safe(q, out, channel="telegram", anchor_entity_id=ent["id"])
             return out
     conn.close()
 
@@ -126,13 +130,17 @@ def handle_message(text: str) -> str:
         except Exception as e:
             return f"답변 생성 실패: {e}"
         if not r.get("answer"):
+            log_exchange_safe(q, None, channel="telegram")
             return "관련 수집 문서가 없어 답할 수 없습니다."
         parts = [r["answer"][:2500]]
         if r.get("gaps"):
             parts.append("\n⚠ " + " / ".join(g["note"][:60] for g in r["gaps"][:2]))
         parts.append(f"\n(출처 {len(r.get('citations', []))}건 · AI 종합 — 검증 필요)")
+        log_exchange_safe(q, r["answer"], citations=r.get("citations"), gaps=r.get("gaps"),
+                          model=r.get("model"), channel="telegram")
         return "\n".join(parts)
 
+    log_exchange_safe(q, None, channel="telegram")
     return "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
 
 
