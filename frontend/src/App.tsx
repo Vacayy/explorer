@@ -1,7 +1,9 @@
+import { useState, type CSSProperties } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import Header from "@/components/layout/Header"
 import Omnibar from "@/components/shared/Omnibar"
 import ModeNavigation from "@/components/layout/ModeNavigation"
@@ -11,6 +13,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 // Home
 import HomePage from "@/components/home/HomePage"
+import StocksPage from "@/components/stocks/StocksPage"
 
 // Explore (탐색 — 신호)
 import ExplorePage from "@/components/explore/ExplorePage"
@@ -53,20 +56,29 @@ function Layout() {
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
 
+  // 넓은 데스크톱에선 팔로우 레일 펼침, 그 이하에선 접힘(토글/오버레이) — 사용자 의도
+  const [railDefaultOpen] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches,
+  )
+
   return (
     <div className="min-h-screen bg-background">
-      <Header selectedCompany={company ?? null} />
       <Omnibar />
-      <ModeNavigation stockCode={stockCode} companyName={company?.corp_name} />
+      <SidebarProvider
+        defaultOpen={railDefaultOpen}
+        style={{ "--sidebar-width": "16rem" } as CSSProperties}
+      >
+        <SidebarInset className="min-w-0 bg-background">
+          <Header />
+          <ModeNavigation stockCode={stockCode} companyName={company?.corp_name} />
+          <div className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 p-6">
+            <Outlet />
+          </div>
+        </SidebarInset>
 
-      <div className="mx-auto max-w-[var(--layout-shell)] flex">
-        <main className="flex-1 min-w-0 p-6">
-          <Outlet />
-        </main>
-
-        {/* 팔로우 레일 — 종목·채널·블로그 통합, 모든 화면 동일 (docs/specs/follow-rail.md) */}
+        {/* 팔로우 레일 — 종목·채널·블로그 통합, shadcn Sidebar (docs/specs/follow-rail.md) */}
         <FollowRail currentStockCode={stockCode} />
-      </div>
+      </SidebarProvider>
       <Toaster />
     </div>
   )
@@ -131,6 +143,7 @@ export default function App() {
 
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
+            <Route path="stocks" element={<StocksPage />} />
             <Route path="archive" element={<ArchivePage />} />
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
-type AppMode = "home" | "discover" | "feed" | "chat" | "analyze" | "research" | "archive"
+type AppMode = "home" | "stocks" | "discover" | "feed" | "chat" | "analyze" | "research" | "archive"
 
 // P2-2 L1 재편 (product-v3.md §3): 오늘(델타)·탐색(유입)·피드(원천)·대화(판단).
 // 도시에(/analyze, /source)는 네비가 아니라 목적지 — 진입은 검색·레일·옴니바·링크로.
@@ -39,11 +39,12 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
   const inAnalyze = activeMode === "analyze" && !pathname.startsWith("/analyze/compare")
 
   return (
-    <nav className="border-b bg-card">
+    <nav className="bg-card">
       <div className="mx-auto max-w-[var(--layout-shell)] px-6">
         {/* Level 1: Mode pills — 판단 루프의 단계들 */}
         <div className="flex items-center gap-1 pt-1.5 pb-0.5">
           <ModeButton to="/home" active={activeMode === "home"} label="오늘" />
+          <ModeButton to="/stocks" active={activeMode === "stocks"} label="종목" />
           <ModeButton to="/explore" active={activeMode === "discover"} label="탐색" />
           <ModeButton to="/feed" active={activeMode === "feed"} label="피드" />
           <ModeButton to="/chat" active={activeMode === "chat"} label="대화" />
@@ -116,6 +117,7 @@ function SubTab({ to, active, label }: { to: string; active: boolean; label: str
 
 function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/home")) return "home"
+  if (pathname.startsWith("/stocks")) return "stocks"
   if (pathname.startsWith("/chat") || pathname.startsWith("/ask")) return "chat"
   if (pathname.startsWith("/feed") || pathname.startsWith("/doc/") || pathname.startsWith("/source")) return "feed"
   if (pathname.startsWith("/analyze")) return "analyze"

@@ -64,6 +64,44 @@ def get_brief(stock_code: str):
                       created_at=cached["created_at"], stale=stale, evidence=ev)
 
 
+class PeerRow(BaseModel):
+    name: str
+    ticker: str
+    market: str
+    is_self: bool = False
+    market_cap: float | None = None
+    currency: str | None = None
+    per_fwd: float | None = None
+    op_margin: float | None = None
+
+
+@router.get("/{stock_code}/peers", response_model=list[PeerRow])
+def stock_peers(stock_code: str):
+    """Peer 그룹 비교 — 본 종목 + peer들의 시총·PER(fwd)·영업이익률.
+
+    peer 목록은 haiku 큐레이션 1회 캐시, 지표는 KR=자체 데이터 / 해외=yfinance(24h 캐시).
+    첫 호출은 LLM+외부 조회로 수 초~수십 초 걸릴 수 있다 (이후 캐시 즉답).
+    """
+    from pipeline.peers import get_peer_list, get_peer_metrics, _kr_metrics
+    conn = get_connection()
+    row = conn.execute("SELECT corp_name FROM companies WHERE stock_code=?", (stock_code,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "종목을 찾을 수 없습니다")
+
+    out = []
+    self_m = _kr_metrics(stock_code) or {}
+    out.append(PeerRow(name=row["corp_name"], ticker=f"{stock_code}.KS", market="KR",
+                       is_self=True, **{k: self_m.get(k) for k in ("market_cap", "currency", "per_fwd", "op_margin")}))
+    for p in get_peer_list(stock_code, row["corp_name"]):
+        if p["ticker"].split(".")[0] == stock_code:
+            continue
+        m = get_peer_metrics(p["ticker"], p["market"]) or {}
+        out.append(PeerRow(name=p["name"], ticker=p["ticker"], market=p["market"],
+                           **{k: m.get(k) for k in ("market_cap", "currency", "per_fwd", "op_margin")}))
+    return out
+
+
 class BriefHistoryItem(BaseModel):
     brief: str | None
     thesis_check: str | None

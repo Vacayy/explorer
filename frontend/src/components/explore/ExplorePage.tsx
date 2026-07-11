@@ -1,13 +1,16 @@
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
+import { Spark } from "@/components/shared/Spark"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSpineSignals } from "@/hooks/useSpineSignals"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { SignalCard } from "@/components/shared/SignalCard"
+import { PageContainer } from '@/components/shared/PageContainer'
 import { cn } from "@/lib/utils"
 
 const TYPE_FILTERS = [
@@ -44,7 +47,7 @@ export default function ExplorePage() {
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
 
   return (
-    <div className="space-y-4">
+    <PageContainer gap="sm">
       <div className="flex items-baseline justify-between">
         <h2 className="text-xl font-bold">신호</h2>
         <FreshnessStamp asOf={data.as_of} />
@@ -64,16 +67,18 @@ export default function ExplorePage() {
         ))}
         <span className="mx-1 text-muted-foreground text-xs">·</span>
         {DAYS_FILTERS.map((d) => (
-          <button
+          <Button
             key={d}
+            variant="ghost"
+            size="sm"
             className={cn(
-              "text-xs px-2 py-0.5 rounded-md",
-              days === d ? "bg-muted font-semibold" : "text-muted-foreground hover:text-foreground",
+              "h-auto border-0 font-normal text-xs px-2 py-0.5 rounded-md",
+              days === d ? "bg-muted font-semibold hover:bg-muted" : "text-muted-foreground hover:text-foreground hover:bg-transparent",
             )}
             onClick={() => setParam("days", String(d))}
           >
             {d}일
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -95,13 +100,13 @@ export default function ExplorePage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
 function ExploreSkeleton() {
   return (
-    <div className="space-y-4">
+    <PageContainer gap="sm">
       <Skeleton className="h-6 w-24" />
       <Skeleton className="h-5 w-64" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -114,7 +119,7 @@ function ExploreSkeleton() {
           </div>
         ))}
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -130,20 +135,6 @@ interface MomentumRow {
   prior_7d: number
   score: number
   daily: number[]
-}
-
-function Spark({ data }: { data: number[] }) {
-  const max = Math.max(...data, 1)
-  const w = 3, gap = 1
-  return (
-    <svg width={data.length * (w + gap)} height={14} className="shrink-0 opacity-80">
-      {data.map((v, i) => {
-        const h = Math.max(1, Math.round((v / max) * 13))
-        return <rect key={i} x={i * (w + gap)} y={14 - h} width={w} height={h} rx={0.5}
-          className={i >= data.length - 7 ? "fill-primary" : "fill-muted-foreground/40"} />
-      })}
-    </svg>
-  )
 }
 
 function MomentumSection() {

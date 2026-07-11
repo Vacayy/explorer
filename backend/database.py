@@ -397,6 +397,22 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
 
+    -- Peer 그룹 (LLM 큐레이션 1회 캐시) + 지표 캐시 (KR=자체, 해외=yfinance 24h)
+    CREATE TABLE IF NOT EXISTS stock_peers (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        stock_code TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        ticker     TEXT NOT NULL,          -- 야후 티커 (005930.KS, MU 등)
+        market     TEXT NOT NULL,          -- KR | US | JP | ...
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(stock_code, ticker)
+    );
+    CREATE TABLE IF NOT EXISTS peer_metrics (
+        ticker       TEXT PRIMARY KEY,
+        metrics_json TEXT NOT NULL,
+        fetched_at   TEXT NOT NULL
+    );
+
     -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
     CREATE TABLE IF NOT EXISTS conversations (
