@@ -87,6 +87,16 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
                 INSERT OR IGNORE INTO entity_relations (src_id, dst_id, rel_type, epistemic_type, confidence, source_doc_id)
                 VALUES (?, ?, 'MEMBER_OF', 'fact', 0.7, ?)""", (crow["id"], pid, doc_id))
 
+    # 인물 (샘 알트먼, 최태원 등): person 엔티티 생성 + 링크 (conf 0.8)
+    for name in result.get("people") or []:
+        name = str(name).strip()
+        if not name or len(name) > 30:
+            continue
+        eid = _get_or_create_entity(conn, "person", name)
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
+            "VALUES (?, ?, 'person', 0.8)", (doc_id, eid))
+
     # 해외 상장사 (써클, 엔비디아 등): 엔티티 없으면 생성 — aliases(종목코드) 없이 (conf 0.8)
     for name in result.get("foreign_stocks") or []:
         name = str(name).strip()

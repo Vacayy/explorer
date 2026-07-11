@@ -22,6 +22,7 @@ import ChatPage from "@/components/chat/ChatPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import DocPage from "@/components/doc/DocPage"
 import SourcePage from "@/components/source/SourcePage"
+import PersonPage from "@/components/person/PersonPage"
 import ArchivePage from "@/components/archive/ArchivePage"
 
 // Discovery
@@ -175,6 +176,7 @@ export default function App() {
             <Route path="feed" element={<UnifiedFeedPage />} />
             <Route path="doc/:docId" element={<DocPage />} />
             <Route path="source" element={<SourcePage />} />
+            <Route path="person" element={<PersonPage />} />
             <Route path="feed/telegram" element={<Navigate to="/feed?source=telegram" replace />} />
             <Route path="feed/blogs" element={<Navigate to="/feed?source=blog" replace />} />
 
