@@ -6,6 +6,7 @@ import { stockBriefQuery, stockBriefComputeQuery, stockBriefHistoryQuery } from 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Expandable } from "@/components/shared/Expandable"
 
 /**
  * 종목 AI 브리프 — 도시에 첫 화면 (P2-1, product-v3.md §3).
@@ -56,9 +57,11 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
         )}
         {b.brief && (
           <>
-            <div className={`prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5 ${compute.isFetching ? "opacity-60" : ""}`}>
-              <ReactMarkdown>{b.brief}</ReactMarkdown>
-            </div>
+            <Expandable collapsedHeight={300}>
+              <div className={`prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5 ${compute.isFetching ? "opacity-60" : ""}`}>
+                <ReactMarkdown>{b.brief}</ReactMarkdown>
+              </div>
+            </Expandable>
             <div className="text-right">
               <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
                 AI 종합 · 열람 시점 갱신 — 검증 필요

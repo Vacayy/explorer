@@ -5,6 +5,7 @@ import api from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Expandable } from "@/components/shared/Expandable"
 
 /**
  * 언급 다이제스트 (1D · 7D) — 언급 탭에서 종목 홈으로 이관 (P2-1 후속).
@@ -63,12 +64,14 @@ function DigestCard({ stockCode, period, title }: { stockCode: string; period: "
             {latest.insights && (
               <div className="flex gap-2 rounded-md bg-hypothesis/10 border border-hypothesis/30 px-3 py-2">
                 <Lightbulb className="h-3.5 w-3.5 text-hypothesis shrink-0 mt-0.5" />
-                <p className="text-xs"><span className="font-semibold text-hypothesis">새로운 시각</span> {latest.insights}</p>
+                <p className="text-xs line-clamp-3"><span className="font-semibold text-hypothesis">새로운 시각</span> {latest.insights}</p>
               </div>
             )}
-            <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5">
-              <ReactMarkdown>{latest.digest ?? ""}</ReactMarkdown>
-            </div>
+            <Expandable collapsedHeight={180}>
+              <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5">
+                <ReactMarkdown>{latest.digest ?? ""}</ReactMarkdown>
+              </div>
+            </Expandable>
             <div className="text-right">
               <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
                 AI 요약 · {latest.model}
