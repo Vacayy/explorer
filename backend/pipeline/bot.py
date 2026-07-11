@@ -85,13 +85,26 @@ def handle_message(text: str) -> str:
     if not q:
         return "종목명, 질문, 또는 /브리핑"
 
-    if q in ("/start", "/help", "help", "?"):
-        return ("📟 Explorer 봇\n"
-                "· 종목명/별칭 → 최신 요약·언급·신호 (예: 삼성전자, 하이닉스)\n"
-                "· /브리핑 → 아침 브리핑 다시 받기\n"
-                "· 문장으로 질문 → 수집 문서 근거로 AI 답변")
+    if q in ("/start", "/help", "help", "도움말", "?"):
+        return (
+            "📟 Explorer 봇 — 주머니 속 리서치 터미널\n"
+            "\n"
+            "1️⃣ 종목 조회 — 종목명이나 별칭을 그대로 보내세요\n"
+            "   예: 삼성전자 · 하이닉스 · 슼하\n"
+            "   → 최신 1D 요약, 새로운 시각, 신호, 최근 언급 3건\n"
+            "\n"
+            "2️⃣ AI 질문 — 문장으로 물어보세요 (수집 문서 근거)\n"
+            "   예: 하이닉스 ADR 이후 수급 얘기 정리해줘\n"
+            "   → 출처 있는 답변 + 갭(근거 부족·모순) 표시. ~30초 소요\n"
+            "\n"
+            "3️⃣ /briefing — 아침 브리핑 다시 받기\n"
+            "   (평일 08:00 자동 발송: 기계가 먼저 말하는 3줄+오늘 일정)\n"
+            "\n"
+            "ℹ️ 답변은 구독 중인 텔레그램·블로그에서 수집된 문서 기반이며,\n"
+            "   AI 요약·해석은 참고용입니다 (투자 판단은 사람이)."
+        )
 
-    if q in ("/브리핑", "브리핑"):
+    if q in ("/briefing", "/브리핑", "브리핑"):
         from pipeline.notify import _compose_briefing
         return _compose_briefing() or "오늘 브리핑 내용이 없습니다."
 
@@ -120,7 +133,7 @@ def handle_message(text: str) -> str:
         parts.append(f"\n(출처 {len(r.get('citations', []))}건 · AI 종합 — 검증 필요)")
         return "\n".join(parts)
 
-    return "찾지 못했습니다. 종목명 또는 문장형 질문을 보내주세요."
+    return "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
 
 
 def _poll_loop():
@@ -155,4 +168,11 @@ def start_bot():
     if os.getenv("TELEGRAM_POLLING", "1") != "1":
         return
     _started = True
+    try:
+        requests.post(_api("setMyCommands"), json={"commands": [
+            {"command": "help", "description": "사용법 — 종목 조회·AI 질문·브리핑"},
+            {"command": "briefing", "description": "아침 브리핑 다시 받기"},
+        ]}, timeout=10)
+    except Exception:
+        pass
     threading.Thread(target=_poll_loop, daemon=True, name="telegram-bot").start()
