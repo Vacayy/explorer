@@ -18,7 +18,7 @@ import AskedSection from "@/components/summary/AskedSection"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import DigestSection from "@/components/analyze/DigestSection"
 import {
-  Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Legend, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts"
 
 interface Props {
