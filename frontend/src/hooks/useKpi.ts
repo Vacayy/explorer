@@ -22,6 +22,7 @@ export interface KpiData {
   fwd_fiscal_year?: string | null
   fwd_eps: number | null
   fwd_analyst_count?: number | null
+  fwd_estimates?: { fiscal_year: string; per: number | null; eps: number | null }[]
   target_price_consensus: number | null
 }
 

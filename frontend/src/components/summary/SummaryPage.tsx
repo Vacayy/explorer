@@ -129,10 +129,12 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
           <Separator orientation="vertical" className="h-6" />
           <KpiItem
             label="PER"
-            value={kpi.fwd_per != null ? `${kpi.fwd_per.toFixed(1)}배` : kpi.per != null ? `${kpi.per.toFixed(1)}배` : "-"}
-            sub={kpi.fwd_per != null ? `${kpi.fwd_fiscal_year ?? "fwd"} 컨센서스` : kpi.per != null ? "trailing" : undefined}
-            hint={kpi.fwd_per != null
-              ? `현재가 ÷ ${kpi.fwd_fiscal_year ?? ""} EPS 추정${kpi.fwd_eps ? ` ${Math.round(kpi.fwd_eps).toLocaleString("ko-KR")}원` : ""} — 네이버 컨센서스${kpi.fwd_analyst_count ? ` (애널리스트 ${kpi.fwd_analyst_count}명 평균)` : ""}`
+            value={(kpi.fwd_estimates?.length ?? 0) > 0
+              ? kpi.fwd_estimates!.map((e) => `${e.fiscal_year} ${e.per != null ? `${e.per.toFixed(1)}배` : "-"}`).join(" · ")
+              : kpi.per != null ? `${kpi.per.toFixed(1)}배` : "-"}
+            sub={(kpi.fwd_estimates?.length ?? 0) > 0 ? "컨센서스" : kpi.per != null ? "trailing" : undefined}
+            hint={(kpi.fwd_estimates?.length ?? 0) > 0
+              ? `현재가 ÷ 연도별 EPS 추정 (${kpi.fwd_estimates!.map((e) => `${e.fiscal_year}: ${e.eps ? Math.round(e.eps).toLocaleString("ko-KR") + "원" : "-"}`).join(", ")}) — 네이버 컨센서스${kpi.fwd_analyst_count ? ` (애널리스트 ${kpi.fwd_analyst_count}명 평균)` : ""}`
               : "시가총액 ÷ 최근 연간 순이익 (DART) — 과거 실적 기준(trailing)"}
           />
           <Separator orientation="vertical" className="h-6" />

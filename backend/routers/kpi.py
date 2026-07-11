@@ -125,12 +125,13 @@ def get_kpi(stock_code: str):
 
     # Forward estimates from consensus
     conn2 = get_connection()
-    fwd_row = conn2.execute(
+    fwd_rows = conn2.execute(
         """SELECT eps_est, per_est, target_price, fiscal_year, analyst_count FROM consensus
-           WHERE stock_code = ? ORDER BY fiscal_year DESC LIMIT 1""",
+           WHERE stock_code = ? ORDER BY fiscal_year ASC""",
         (stock_code,),
-    ).fetchone()
+    ).fetchall()
     conn2.close()
+    fwd_row = fwd_rows[0] if fwd_rows else None  # 가장 가까운 추정 연도
 
     fwd_per = fwd_row["per_est"] if fwd_row else None
     fwd_eps = fwd_row["eps_est"] if fwd_row else None
@@ -161,6 +162,14 @@ def get_kpi(stock_code: str):
         "fwd_fiscal_year": fwd_row["fiscal_year"] if fwd_row else None,  # 예: 2026E — 라벨 정직성
         "fwd_eps": fwd_eps,
         "fwd_analyst_count": fwd_row["analyst_count"] if fwd_row else None,
+        # 추정 연도 전체 (2027E 등이 소스에 등장하면 자동으로 함께 노출)
+        "fwd_estimates": [
+            {"fiscal_year": r["fiscal_year"],
+             "per": r["per_est"] if r["per_est"] else (
+                 round(latest_close / r["eps_est"], 1) if r["eps_est"] and latest_close else None),
+             "eps": r["eps_est"]}
+            for r in fwd_rows
+        ],
         "fwd_eps": fwd_eps,
         "target_price_consensus": target_price_consensus,
     }
