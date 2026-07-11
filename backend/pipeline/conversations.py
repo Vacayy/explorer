@@ -1,0 +1,99 @@
+"""대화 영속화 — P2-0 (docs/specs/product-v3.md §2).
+
+- 웹(/ask)·텔레그램 봇의 전 문답을 conversations/chat_messages에 적재
+- 질문에 종목 엔티티 링크 (store._link와 동일한 결정적 매칭 — LLM 0토큰)
+- 에코챔버 방지: AI 답변은 검색 인덱스(doc_fts/doc_vec)에 절대 넣지 않는다
+- 텔레그램 스레딩 휴리스틱: 마지막 활동 30분 이내면 같은 스레드 (A9)
+- 적재 실패가 답변 경로를 깨면 안 된다 → 호출부는 log_exchange_safe만 사용
+"""
+import json
+import re
+
+from database import get_connection
+
+TELEGRAM_THREAD_WINDOW_MIN = 30
+
+
+def _boundary_ok(text: str, name: str) -> bool:
+    """store._link의 경계 휴리스틱: 앞 경계는 항상, ≤2자 이름은 뒤 경계도 요구."""
+    pat = rf"(?<![0-9A-Za-z가-힣]){re.escape(name)}"
+    if len(name) <= 2:
+        pat += r"(?![0-9A-Za-z가-힣])"
+    return re.search(pat, text) is not None
+
+
+def _match_stocks(conn, text: str) -> set[int]:
+    """질문 텍스트에서 종목 결정적 매칭 — 활성 키워드 + 정식명."""
+    ids: set[int] = set()
+    for row in conn.execute(
+        "SELECT entity_id, keyword FROM entity_keywords WHERE status='active' OR status IS NULL"):
+        kw = (row["keyword"] or "").strip()
+        if kw and kw in text and _boundary_ok(text, kw):
+            ids.add(row["entity_id"])
+    for row in conn.execute("SELECT id, name FROM entities WHERE type='company'"):
+        name = row["name"]
+        if name and name in text and _boundary_ok(text, name):
+            ids.add(row["id"])
+    return ids
+
+
+def log_exchange(question: str, answer: str | None, *,
+                 citations: list | None = None, gaps: list | None = None,
+                 model: str | None = None, channel: str = "web",
+                 conversation_id: int | None = None,
+                 anchor_entity_id: int | None = None) -> int:
+    """문답 1회 적재. 반환: conversation_id.
+
+    conversation_id 없으면 새 스레드 생성 — 단 텔레그램은 30분 윈도우 내
+    마지막 스레드를 이어간다. anchor는 스레드에 아직 없을 때만 채운다.
+    """
+    conn = get_connection()
+    try:
+        cid = conversation_id
+        if cid is None and channel == "telegram":
+            row = conn.execute("""
+                SELECT id FROM conversations WHERE channel='telegram'
+                  AND updated_at >= datetime('now', ?)
+                ORDER BY updated_at DESC LIMIT 1
+            """, (f"-{TELEGRAM_THREAD_WINDOW_MIN} minutes",)).fetchone()
+            cid = row["id"] if row else None
+
+        if cid is None:
+            cid = conn.execute(
+                "INSERT INTO conversations (title, anchor_entity_id, channel) VALUES (?, ?, ?)",
+                ((question or "").strip()[:60], anchor_entity_id, channel)).lastrowid
+        else:
+            conn.execute("""
+                UPDATE conversations SET updated_at=datetime('now'),
+                    anchor_entity_id=COALESCE(anchor_entity_id, ?)
+                WHERE id=?""", (anchor_entity_id, cid))
+
+        msg_id = conn.execute(
+            "INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', ?)",
+            (cid, question)).lastrowid
+        for eid in _match_stocks(conn, question):
+            conn.execute(
+                "INSERT OR IGNORE INTO chat_entity_links (message_id, entity_id, link_type) "
+                "VALUES (?, ?, 'stock')", (msg_id, eid))
+
+        if answer:
+            conn.execute("""
+                INSERT INTO chat_messages (conversation_id, role, content,
+                                           citations_json, gaps_json, model)
+                VALUES (?, 'assistant', ?, ?, ?, ?)
+            """, (cid, answer,
+                  json.dumps(citations, ensure_ascii=False) if citations else None,
+                  json.dumps(gaps, ensure_ascii=False) if gaps else None,
+                  model))
+        conn.commit()
+        return cid
+    finally:
+        conn.close()
+
+
+def log_exchange_safe(*args, **kwargs) -> int | None:
+    """적재는 부가 기능 — 실패해도 답변 경로를 깨지 않는다."""
+    try:
+        return log_exchange(*args, **kwargs)
+    except Exception:
+        return None

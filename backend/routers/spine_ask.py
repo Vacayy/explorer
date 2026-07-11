@@ -9,6 +9,7 @@ router = APIRouter(prefix="/api/spine/ask", tags=["spine"])
 
 class AskRequest(BaseModel):
     question: str
+    conversation_id: int | None = None   # 스레드 이어가기 (P2-2 UI 전까지는 미사용)
 
 
 class Citation(BaseModel):
@@ -30,6 +31,7 @@ class AskResponse(BaseModel):
     citations: list[Citation]
     gaps: list[Gap]
     model: str | None   # epistemic: 답변은 이 모델의 '가설'
+    conversation_id: int | None = None   # 적재된 스레드 (P2-0)
     as_of: str
 
 
@@ -45,10 +47,20 @@ def ask_question(body: AskRequest):
         raise HTTPException(502, f"응답 생성 실패: {e}")
     if result.get("error"):
         raise HTTPException(503, result["error"])
+
+    # P2-0 대화 영속화 — 질문·답변 적재 (실패해도 응답은 정상)
+    from pipeline.conversations import log_exchange_safe
+    conv_id = log_exchange_safe(
+        q, result.get("answer"),
+        citations=result.get("citations"), gaps=result.get("gaps"),
+        model=result.get("model"), channel="web",
+        conversation_id=body.conversation_id)
+
     return AskResponse(
         answer=result.get("answer"),
         citations=result.get("citations", []),
         gaps=result.get("gaps", []),
         model=result.get("model"),
+        conversation_id=conv_id,
         as_of=datetime.now(timezone.utc).isoformat(),
     )
