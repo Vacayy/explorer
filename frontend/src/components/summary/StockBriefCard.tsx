@@ -1,9 +1,11 @@
+import { useState } from "react"
 import ReactMarkdown from "react-markdown"
-import { Loader2, Scale } from "lucide-react"
+import { ChevronDown, Loader2, Scale } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { stockBriefQuery, stockBriefComputeQuery } from "@/api/spine"
+import { stockBriefQuery, stockBriefComputeQuery, stockBriefHistoryQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 /**
  * 종목 AI 브리프 — 도시에 첫 화면 (P2-1, product-v3.md §3).
@@ -62,6 +64,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
                 AI 종합 · 열람 시점 갱신 — 검증 필요
               </Badge>
             </div>
+            <BriefHistory stockCode={stockCode} />
           </>
         )}
         {!b.brief && !compute.isFetching && b.status === "unavailable" && (
@@ -72,5 +75,38 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** 지난 브리프 아카이브 — 펼칠 때만 조회 (append-only stock_briefs) */
+function BriefHistory({ stockCode }: { stockCode: string }) {
+  const [open, setOpen] = useState(false)
+  const history = useQuery(stockBriefHistoryQuery(stockCode, open))
+  return (
+    <Collapsible className="border-t pt-2" open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="group/bh flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+        <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]/bh:rotate-180" />
+        지난 브리프
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-3 pt-2">
+          {history.isLoading && <p className="text-[11px] text-muted-foreground">불러오는 중…</p>}
+          {history.data?.length === 0 && (
+            <p className="text-[11px] text-muted-foreground">이전 브리프가 없습니다 — 재료가 바뀔 때마다 새 판이 쌓입니다.</p>
+          )}
+          {history.data?.map((h) => (
+            <div key={h.created_at} className="rounded-md border px-3 py-2">
+              <div className="text-[11px] text-muted-foreground tabular-nums mb-1">
+                {h.created_at.slice(0, 16).replace("T", " ")}
+              </div>
+              {h.thesis_check && <p className="text-[11px] text-hypothesis mb-1">⚖ {h.thesis_check}</p>}
+              <div className="prose prose-sm dark:prose-invert max-w-none text-xs [&_p]:my-1">
+                <ReactMarkdown>{h.brief ?? ""}</ReactMarkdown>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

@@ -64,6 +64,29 @@ def get_brief(stock_code: str):
                       created_at=cached["created_at"], stale=stale, evidence=ev)
 
 
+class BriefHistoryItem(BaseModel):
+    brief: str | None
+    thesis_check: str | None
+    created_at: str
+
+
+@router.get("/{stock_code}/brief/history", response_model=list[BriefHistoryItem])
+def brief_history(stock_code: str, limit: int = 10):
+    """지난 브리프 아카이브 — 최신 제외, 시점 역순."""
+    from pipeline.stock_brief import _resolve_entity
+    conn = get_connection()
+    ent = _resolve_entity(conn, stock_code)
+    if not ent:
+        conn.close()
+        raise HTTPException(404, "종목 엔티티가 없습니다")
+    rows = conn.execute("""
+        SELECT brief, thesis_check, created_at FROM stock_briefs
+        WHERE entity_id=? ORDER BY id DESC LIMIT ?""", (ent["id"], limit + 1)).fetchall()
+    conn.close()
+    return [BriefHistoryItem(brief=r["brief"], thesis_check=r["thesis_check"],
+                             created_at=r["created_at"]) for r in rows[1:]]
+
+
 @router.post("/{stock_code}/brief/compute", response_model=StockBrief)
 def compute_brief_endpoint(stock_code: str):
     """입력(다이제스트·신호·일정·논지)이 바뀌었을 때만 LLM 생성 — 멱등."""

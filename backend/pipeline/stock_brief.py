@@ -77,9 +77,10 @@ def _has_material(inp: dict) -> bool:
 
 
 def get_cached(conn, entity_id: int):
+    """최신 브리프 — append-only 히스토리에서 max(id)."""
     return conn.execute(
-        "SELECT brief, thesis_check, inputs_hash, created_at FROM stock_briefs WHERE entity_id=?",
-        (entity_id,)).fetchone()
+        "SELECT brief, thesis_check, inputs_hash, created_at FROM stock_briefs "
+        "WHERE entity_id=? ORDER BY id DESC LIMIT 1", (entity_id,)).fetchone()
 
 
 def _build_prompt(name: str, inp: dict) -> str:
@@ -169,12 +170,10 @@ def _compute_locked(stock_code: str) -> dict:
                 "thesis_check": cached["thesis_check"] if cached else None,
                 "created_at": cached["created_at"] if cached else None}
 
+    # append-only: 재생성마다 새 행 = 히스토리 축적 (지난 시점 브리프 열람용)
     conn.execute("""
         INSERT INTO stock_briefs (entity_id, brief, thesis_check, inputs_hash, model)
         VALUES (?, ?, ?, ?, 'claude-code/haiku')
-        ON CONFLICT(entity_id) DO UPDATE SET
-            brief=excluded.brief, thesis_check=excluded.thesis_check,
-            inputs_hash=excluded.inputs_hash, model=excluded.model, created_at=datetime('now')
     """, (ent["id"], data.get("brief"), data.get("thesis_check") or None, h))
     conn.commit()
     row = get_cached(conn, ent["id"])
