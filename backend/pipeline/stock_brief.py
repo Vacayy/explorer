@@ -54,8 +54,10 @@ def gather_inputs(conn, stock_code: str, entity_id: int) -> dict:
         WHERE corp_code=(SELECT corp_code FROM companies WHERE stock_code=?)
            OR corp_code=?
         ORDER BY updated_at DESC LIMIT 12""", (stock_code, stock_code)).fetchall()
+    from pipeline.knowledge_recall import recall_for_entity
+    knowledge = recall_for_entity(conn, entity_id)  # K1: 승격 지식을 재료로
     return {"digests": digests, "signals": signals, "upcoming": upcoming,
-            "actions": actions, "thesis": thesis, "notes": notes}
+            "actions": actions, "thesis": thesis, "notes": notes, "knowledge": knowledge}
 
 
 def inputs_hash(inp: dict) -> str:
@@ -69,6 +71,8 @@ def inputs_hash(inp: dict) -> str:
     if t:
         parts.append(f"thesis:{t['thesis']}:{t['conviction']}:{t['target_price']}")
     parts += [f"note:{n['id']}:{n['updated_at']}" for n in inp["notes"]]
+    # 지식 승인·증거 병합 시 브리프 재생성 (독립 관측 수가 지문에 포함)
+    parts += [f"kn:{k['id']}:{k['independent_n']}:{k['refute_n']}" for k in inp["knowledge"]]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
@@ -104,6 +108,12 @@ def _build_prompt(name: str, inp: dict) -> str:
     if inp["upcoming"]:
         blocks.append("[다가오는 일정]\n" + "\n".join(
             f"- {c['event_date']} {c['event_type']}: {c['title']}" for c in inp["upcoming"]))
+    if inp["knowledge"]:
+        from pipeline.knowledge_recall import knowledge_block
+        blocks.append(knowledge_block(
+            inp["knowledge"],
+            "승격된 지식 — 이 종목에 대해 시스템이 반복·독립 관측으로 검증한 전제. "
+            "구조/체제층은 판단의 기반으로, 오늘의 재료를 이 위에서 해석해라").strip())
 
     thesis_block = ""
     t = inp["thesis"]
