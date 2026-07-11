@@ -1,5 +1,6 @@
 """대화 조회 API — P2-1 '내가 물어본 것들' (P2-2 스레드 UI도 재사용)."""
 import json
+import os
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -35,10 +36,17 @@ class ConversationDetail(BaseModel):
     messages: list[ChatMessage]
 
 
+def _owner_filter() -> tuple[str, list]:
+    """웹 대화 목록은 오너 것만 — 친구(TELEGRAM_EXTRA_CHAT_IDS) 스레드 비노출 (A7 프라이버시)."""
+    owner = os.getenv("TELEGRAM_CHAT_ID", "")
+    return "(c.channel='web' OR c.chat_id IS NULL OR c.chat_id=?)", [owner]
+
+
 @router.get("", response_model=list[ConversationItem])
 def list_conversations(stock: str | None = Query(None, description="종목코드 — 앵커 또는 질문 링크 기준"),
                        limit: int = Query(20, ge=1, le=100)):
     conn = get_connection()
+    owner_sql, owner_params = _owner_filter()
     if stock:
         rows = conn.execute("""
             SELECT DISTINCT c.id, c.title, c.channel, c.anchor_entity_id, c.updated_at,
@@ -46,16 +54,18 @@ def list_conversations(stock: str | None = Query(None, description="종목코드
             FROM conversations c
             LEFT JOIN chat_messages m ON m.conversation_id = c.id
             LEFT JOIN chat_entity_links cel ON cel.message_id = m.id
-            WHERE c.anchor_entity_id = (SELECT id FROM entities WHERE type='company' AND aliases=?)
-               OR cel.entity_id = (SELECT id FROM entities WHERE type='company' AND aliases=?)
+            WHERE (c.anchor_entity_id = (SELECT id FROM entities WHERE type='company' AND aliases=?)
+               OR cel.entity_id = (SELECT id FROM entities WHERE type='company' AND aliases=?))
+              AND {owner_sql}
             ORDER BY c.updated_at DESC LIMIT ?
-        """, (stock, stock, limit)).fetchall()
+        """.format(owner_sql=owner_sql), (stock, stock, *owner_params, limit)).fetchall()
     else:
         rows = conn.execute("""
             SELECT c.id, c.title, c.channel, c.anchor_entity_id, c.updated_at,
                    (SELECT count(*) FROM chat_messages m WHERE m.conversation_id=c.id) n
-            FROM conversations c ORDER BY c.updated_at DESC LIMIT ?
-        """, (limit,)).fetchall()
+            FROM conversations c WHERE {owner_sql}
+            ORDER BY c.updated_at DESC LIMIT ?
+        """.format(owner_sql=owner_sql), (*owner_params, limit)).fetchall()
     conn.close()
     return [ConversationItem(id=r["id"], title=r["title"], channel=r["channel"],
                              anchor_entity_id=r["anchor_entity_id"],

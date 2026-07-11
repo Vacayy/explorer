@@ -37,9 +37,35 @@ def _match_stocks(conn, text: str) -> set[int]:
     return ids
 
 
+def find_telegram_thread(chat_id: str | None) -> int | None:
+    """이 사용자(chat_id)의 30분 윈도우 내 마지막 텔레그램 스레드 — 없으면 None."""
+    conn = get_connection()
+    try:
+        row = conn.execute("""
+            SELECT id FROM conversations WHERE channel='telegram' AND chat_id IS ?
+              AND updated_at >= datetime('now', ?)
+            ORDER BY updated_at DESC LIMIT 1
+        """, (chat_id, f"-{TELEGRAM_THREAD_WINDOW_MIN} minutes")).fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+def thread_history(conversation_id: int, limit: int = 6) -> list[dict]:
+    """스레드의 최근 문답 — RAG 후속질문 맥락용."""
+    conn = get_connection()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT role, content FROM chat_messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
+            (conversation_id, limit))][::-1]
+    finally:
+        conn.close()
+
+
 def log_question(question: str, *, channel: str = "web",
                  conversation_id: int | None = None,
-                 anchor_entity_id: int | None = None) -> int:
+                 anchor_entity_id: int | None = None,
+                 chat_id: str | None = None) -> int:
     """질문만 즉시 적재 (LLM 실행 전) — 진행 중 상태도 서버 상태가 되도록.
 
     마지막 메시지가 user면 '답변 생성 중'으로 해석된다 (FE 폴링 규약).
@@ -47,7 +73,7 @@ def log_question(question: str, *, channel: str = "web",
     """
     conn = get_connection()
     try:
-        cid = _resolve_thread(conn, conversation_id, channel, question, anchor_entity_id)
+        cid = _resolve_thread(conn, conversation_id, channel, question, anchor_entity_id, chat_id)
         msg_id = conn.execute(
             "INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', ?)",
             (cid, question)).lastrowid
@@ -82,18 +108,20 @@ def append_assistant(conversation_id: int, content: str, *,
         conn.close()
 
 
-def _resolve_thread(conn, conversation_id, channel, question, anchor_entity_id) -> int:
+def _resolve_thread(conn, conversation_id, channel, question, anchor_entity_id,
+                    chat_id: str | None = None) -> int:
     if conversation_id is None and channel == "telegram":
+        # 사용자(chat_id)별 윈도우 — 다른 사용자의 문답과 절대 섞이지 않는다
         row = conn.execute("""
-            SELECT id FROM conversations WHERE channel='telegram'
+            SELECT id FROM conversations WHERE channel='telegram' AND chat_id IS ?
               AND updated_at >= datetime('now', ?)
             ORDER BY updated_at DESC LIMIT 1
-        """, (f"-{TELEGRAM_THREAD_WINDOW_MIN} minutes",)).fetchone()
+        """, (chat_id, f"-{TELEGRAM_THREAD_WINDOW_MIN} minutes")).fetchone()
         conversation_id = row["id"] if row else None
     if conversation_id is None:
         return conn.execute(
-            "INSERT INTO conversations (title, anchor_entity_id, channel) VALUES (?, ?, ?)",
-            ((question or "").strip()[:60], anchor_entity_id, channel)).lastrowid
+            "INSERT INTO conversations (title, anchor_entity_id, channel, chat_id) VALUES (?, ?, ?, ?)",
+            ((question or "").strip()[:60], anchor_entity_id, channel, chat_id)).lastrowid
     conn.execute("""
         UPDATE conversations SET updated_at=datetime('now'),
             anchor_entity_id=COALESCE(anchor_entity_id, ?)
@@ -105,14 +133,15 @@ def log_exchange(question: str, answer: str | None, *,
                  citations: list | None = None, gaps: list | None = None,
                  model: str | None = None, channel: str = "web",
                  conversation_id: int | None = None,
-                 anchor_entity_id: int | None = None) -> int:
+                 anchor_entity_id: int | None = None,
+                 chat_id: str | None = None) -> int:
     """문답 1회 적재. 반환: conversation_id.
 
     conversation_id 없으면 새 스레드 생성 — 단 텔레그램은 30분 윈도우 내
     마지막 스레드를 이어간다. anchor는 스레드에 아직 없을 때만 채운다.
     """
     cid = log_question(question, channel=channel, conversation_id=conversation_id,
-                       anchor_entity_id=anchor_entity_id)
+                       anchor_entity_id=anchor_entity_id, chat_id=chat_id)
     if answer:
         append_assistant(cid, answer, citations=citations, gaps=gaps, model=model)
     return cid
