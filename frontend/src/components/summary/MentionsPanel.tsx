@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { SourceBadge } from "@/components/shared/SourceBadge"
-import { SignalCard } from "@/components/shared/SignalCard"
 import KeywordsSection, { useStockKeywords } from "@/components/analyze/KeywordsSection"
 import { formatRelativeTime } from "@/utils/format"
 
@@ -15,21 +14,36 @@ import { formatRelativeTime } from "@/utils/format"
  * 신호 이력 · 언급 문서(최근, 전체는 피드 필터로) · 매칭 키워드(접힘).
  */
 export default function MentionsPanel({ stockCode }: { stockCode: string }) {
-  const feed = useSpineFeed({ stock: stockCode, page: 1, size: 8 })
+  const feed = useSpineFeed({ stock: stockCode, page: 1, size: 5 })
   const signals = useSpineSignals(undefined, 90)
   const stockSignals = (signals.data?.items ?? []).filter((s) => s.stock_code === stockCode)
 
   return (
     <>
-      {/* 신호 이력 (최근 90일, 최신 4) */}
+      {/* 신호 이력 — 컴팩트 행 (스캔 표면 원칙: 상세는 탐색 화면이 담당) */}
       {stockSignals.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">신호 이력 (90일)</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {stockSignals.slice(0, 4).map((s) => (
-              <SignalCard key={s.id} signal={s} />
+          <CardContent className="divide-y">
+            {stockSignals.slice(0, 5).map((s) => (
+              <div key={s.id} className="py-1.5 space-y-0.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge variant="secondary" className="text-[10px] shrink-0">
+                    {s.signal_type === "mention_surge" ? "언급 급증" : s.signal_type === "high_52w" ? "52주 신고가" : s.signal_type}
+                  </Badge>
+                  <span className="font-medium tabular-nums">
+                    {s.signal_type === "mention_surge"
+                      ? `7일 ${s.payload.count_7d}회 (직전 ${s.payload.baseline_7d})`
+                      : s.signal_type === "high_52w" ? `+${s.payload.breakout_pct}%` : ""}
+                  </span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">{s.date}</span>
+                </div>
+                {s.interpretation && (
+                  <p className="text-[11px] text-muted-foreground line-clamp-2">{s.interpretation}</p>
+                )}
+              </div>
             ))}
           </CardContent>
         </Card>
