@@ -4,9 +4,7 @@ import { Toaster } from "@/components/ui/sonner"
 import Header from "@/components/layout/Header"
 import Omnibar from "@/components/shared/Omnibar"
 import ModeNavigation from "@/components/layout/ModeNavigation"
-import WatchlistSidebar from "@/components/layout/WatchlistSidebar"
-import { TelegramChannelsSidebar } from "@/components/feed/TelegramFeedPage"
-import { BlogSourcesSidebar } from "@/components/feed/BlogFeedPage"
+import FollowRail from "@/components/layout/FollowRail"
 import { useCompany } from "@/hooks/useCompanySearch"
 import { addToHistory } from "@/components/layout/SearchHistory"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
@@ -71,15 +69,8 @@ function Layout() {
           <Outlet />
         </main>
 
-        {pathname.startsWith("/feed") ? (
-          <aside className="w-[220px] shrink-0 bg-card border-l sticky top-[110px] h-[calc(100vh-110px)] overflow-y-auto divide-y">
-            {/* 구독 소스 관리 — 여기서 추가한 채널/블로그가 곧 수집 대상 */}
-            <TelegramChannelsSidebar />
-            <BlogSourcesSidebar />
-          </aside>
-        ) : (
-          <WatchlistSidebar currentStockCode={stockCode} />
-        )}
+        {/* 팔로우 레일 — 종목·채널·블로그 통합, 모든 화면 동일 (docs/specs/follow-rail.md) */}
+        <FollowRail currentStockCode={stockCode} />
       </div>
       <Toaster />
     </div>
