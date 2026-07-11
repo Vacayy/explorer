@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
-import { ChevronDown, ChevronRight, Plus } from "lucide-react"
+import { ChevronDown, Plus } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
@@ -10,8 +10,11 @@ import { useTelegramChannels, useToggleTelegramChannel } from "@/hooks/useTelegr
 import { useBlogSources, useToggleBlogSource } from "@/hooks/useBlogFeed"
 import { formatNumber, formatPercent } from "@/utils/format"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Toggle } from "@/components/ui/toggle"
 import type { WatchlistItem } from "@/types"
 
 /**
@@ -48,25 +51,21 @@ function Section({ title, count, onAdd, addLabel, children }: {
   addLabel: string
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(true)
   return (
-    <div className="py-1">
+    <Collapsible defaultOpen className="py-1">
       <div className="flex items-center gap-1 px-2.5 py-1.5">
-        <button
-          onClick={() => setOpen(!open)}
-          className="flex items-center gap-1 text-xs font-semibold text-secondary-foreground hover:text-foreground min-w-0"
-        >
-          {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+        <CollapsibleTrigger className="group/section flex items-center gap-1 text-xs font-semibold text-secondary-foreground hover:text-foreground min-w-0">
+          <ChevronDown className="h-3 w-3 shrink-0 transition-transform group-data-[state=closed]/section:-rotate-90" />
           {title}
           <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
-        </button>
+        </CollapsibleTrigger>
         <Button variant="ghost" size="icon-xs" onClick={onAdd} title={addLabel}
           className="ml-auto text-muted-foreground hover:text-foreground">
           <Plus className="h-3 w-3" />
         </Button>
       </div>
-      {open && children}
-    </div>
+      <CollapsibleContent>{children}</CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -105,17 +104,21 @@ function Row({ active, warning, onClick, name, sub, right }: {
 
 function SourceToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
   return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onToggle() }}
+    <Toggle
+      pressed={active}
+      onPressedChange={onToggle}
+      onClick={(e) => e.stopPropagation()}
       className={cn(
-        "shrink-0 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center transition-all",
-        "opacity-0 group-hover:opacity-100",
-        active ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
+        "shrink-0 h-[18px] w-[18px] min-w-0 p-0 rounded-full border-2 flex items-center justify-center transition-all",
+        "opacity-0 group-hover:opacity-100 hover:bg-transparent",
+        active
+          ? "border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
       )}
       title={active ? "수집 중지" : "수집 재개"}
     >
       {active && <span className="text-[9px] leading-none">✓</span>}
-    </button>
+    </Toggle>
   )
 }
 
@@ -136,12 +139,11 @@ function AddForm({ placeholder, onSubmit, pending }: {
         }
       }}
     >
-      <input name="v" placeholder={placeholder} disabled={pending} autoFocus
-        className="min-w-0 flex-1 h-7 rounded-md border bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring" />
-      <button type="submit" disabled={pending}
-        className="shrink-0 h-7 px-2 rounded-md bg-primary text-primary-foreground text-[11px] disabled:opacity-50">
+      <Input name="v" placeholder={placeholder} disabled={pending} autoFocus
+        className="min-w-0 flex-1 h-7 px-2 text-[11px]" />
+      <Button type="submit" size="sm" disabled={pending} className="shrink-0 h-7 px-2 text-[11px]">
         {pending ? "…" : "추가"}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -292,14 +294,21 @@ function BlogSection() {
 
 /* ---------- 레일 ---------- */
 
+const RAIL_KEY = "follow-rail-open"
+
 export default function FollowRail({ currentStockCode }: { currentStockCode: string | null }) {
-  const [collapsed, setCollapsed] = useState(false)
+  // drawer 동작: 기본 숨김, 열림 상태는 localStorage에 기억
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(RAIL_KEY) !== "1")
+  const toggle = (open: boolean) => {
+    localStorage.setItem(RAIL_KEY, open ? "1" : "0")
+    setCollapsed(!open)
+  }
 
   if (collapsed) {
     return (
       <Button
         variant="ghost"
-        onClick={() => setCollapsed(false)}
+        onClick={() => toggle(true)}
         className="fixed right-0 top-[120px] w-8 h-20 bg-card border border-r-0 rounded-l-lg flex items-center justify-center cursor-pointer shadow-sm text-xs text-muted-foreground"
         style={{ writingMode: "vertical-rl" }}
       >
@@ -316,7 +325,7 @@ export default function FollowRail({ currentStockCode }: { currentStockCode: str
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={() => setCollapsed(true)}
+            onClick={() => toggle(false)}
             className="text-muted-foreground hover:text-foreground text-sm leading-none"
           >
             ✕

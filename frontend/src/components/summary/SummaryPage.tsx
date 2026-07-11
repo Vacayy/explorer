@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import CandlestickChart from "@/components/charts/CandlestickChart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -16,7 +15,6 @@ import { formatKrw, formatPercent } from "@/utils/format"
 import StockBriefCard from "@/components/summary/StockBriefCard"
 import ThesisSection from "@/components/summary/ThesisSection"
 import AskedSection from "@/components/summary/AskedSection"
-import { ChevronDown } from "lucide-react"
 import DigestSection from "@/components/analyze/DigestSection"
 import { PageContainer } from "@/components/shared/PageContainer"
 import {
@@ -152,11 +150,9 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
         </div>
       ) : null}
 
-      {/* Row 0.5: AI 브리프 — 지금 알아야 할 것 (P2-1, 게으른 생성) */}
-      <StockBriefCard stockCode={stockCode} />
-
-      {/* Row 0.6: 언급 요약 1D·7D — 브리프의 원재료, 기본 접힘 (언급 탭에서 이관) */}
-      <CollapsibleDigests stockCode={stockCode} />
+      {/* 2컬럼: 좌 = 사실 데이터(차트·공시·논지) / 우 = AI 종합(브리프·1D/7D 요약) */}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4 items-start">
+      <div className="space-y-4 min-w-0">
 
       {/* Row 1: Candlestick (2/3) | Relative Performance (1/3) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -282,25 +278,19 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
         <ThesisSection stockCode={stockCode} />
       </div>
 
-      {/* Row 4: 내가 물어본 것들 — 이 종목 앵커 대화 (P2-0 데이터의 첫 노출) */}
+      {/* 내가 물어본 것들 — 이 종목 앵커 대화 (P2-0 데이터의 첫 노출) */}
       <AskedSection stockCode={stockCode} />
+
+      </div>{/* /좌측 메인 */}
+
+      {/* 우측: AI 종합 컬럼 — 브리프 + 1D/7D 요약 (각각 지난 판 아카이브 펼침) */}
+      <div className="space-y-4 min-w-0">
+        <StockBriefCard stockCode={stockCode} />
+        <DigestSection stockCode={stockCode} stack />
+      </div>
+
+      </div>{/* /2컬럼 */}
     </PageContainer>
-  )
-}
-
-/* ── 접힘 다이제스트 — 브리프(종합)와 원요약(기간별)의 중복감 해소 ── */
-
-function CollapsibleDigests({ stockCode }: { stockCode: string }) {
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="group/dig flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]/dig:rotate-180" />
-        언급 요약 원문 (1D · 7D)
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2"><DigestSection stockCode={stockCode} /></div>
-      </CollapsibleContent>
-    </Collapsible>
   )
 }
 

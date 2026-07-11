@@ -35,6 +35,14 @@ export const stockBriefQuery = (code: string) =>
     enabled: !!code,
   });
 
+export const stockBriefHistoryQuery = (code: string, enabled: boolean) =>
+  apiQuery<{ brief: string | null; thesis_check: string | null; created_at: string }[]>({
+    key: [...spineKeys.stockBrief(code), "history"],
+    url: `/api/spine/stock/${code}/brief/history`,
+    staleTime: STALE.medium,
+    enabled,
+  });
+
 /** 브리프 생성 — 입력(다이제스트·신호·일정·논지) 변경 시만 LLM. 종목별 키잉. */
 export const stockBriefComputeQuery = (code: string, enabled: boolean) =>
   apiComputeQuery<StockBrief>({

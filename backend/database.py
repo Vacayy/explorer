@@ -385,15 +385,17 @@ def init_db():
     );
 
     -- 종목 AI 브리프 (P2-1) — 도시에 첫 화면, 열람 시 게으른 생성 (inputs_hash 가드)
+    -- append-only: 재생성마다 새 행 = 브리프 히스토리 (최신 = max(id))
     CREATE TABLE IF NOT EXISTS stock_briefs (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        entity_id    INTEGER NOT NULL UNIQUE REFERENCES entities(id) ON DELETE CASCADE,
+        entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
         brief        TEXT,                   -- 종합 브리프 (마크다운)
         thesis_check TEXT,                   -- 내 논지 vs 새 증거 충돌·지지 (없으면 NULL)
         inputs_hash  TEXT,                   -- 입력(다이제스트·신호·논지·일정) 변경 시에만 재생성
         model        TEXT,
         created_at   TEXT DEFAULT (datetime('now'))
     );
+    CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
 
     -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
@@ -536,6 +538,28 @@ def init_db():
             conn.commit()
         except Exception:
             pass
+
+    # stock_briefs: UNIQUE(entity_id) 제거 → append-only 히스토리 (1회성 재생성)
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='stock_briefs'").fetchone()
+    if row and "UNIQUE" in (row[0] or ""):
+        conn.executescript("""
+            ALTER TABLE stock_briefs RENAME TO stock_briefs_old;
+            CREATE TABLE stock_briefs (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+                brief        TEXT,
+                thesis_check TEXT,
+                inputs_hash  TEXT,
+                model        TEXT,
+                created_at   TEXT DEFAULT (datetime('now'))
+            );
+            INSERT INTO stock_briefs (entity_id, brief, thesis_check, inputs_hash, model, created_at)
+                SELECT entity_id, brief, thesis_check, inputs_hash, model, created_at FROM stock_briefs_old;
+            DROP TABLE stock_briefs_old;
+            CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
+        """)
+        conn.commit()
 
     conn.close()
 

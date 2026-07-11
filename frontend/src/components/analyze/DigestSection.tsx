@@ -1,13 +1,13 @@
-import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import ReactMarkdown from "react-markdown"
-import { ChevronDown, ChevronUp, Lightbulb } from "lucide-react"
+import { ChevronDown, Lightbulb } from "lucide-react"
 import api from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 /**
- * 언급 다이제스트 (1D · 7D 롤링, 2열) — 언급 탭에서 종목 홈으로 이관 (P2-1 후속).
+ * 언급 다이제스트 (1D · 7D) — 언급 탭에서 종목 홈으로 이관 (P2-1 후속).
  * AI 브리프의 '원재료' 위치: 브리프가 종합이고, 이건 기간별 원요약.
  */
 
@@ -20,17 +20,16 @@ interface DigestItem {
   model: string | null
 }
 
-export default function DigestSection({ stockCode }: { stockCode: string }) {
+export default function DigestSection({ stockCode, stack = false }: { stockCode: string; stack?: boolean }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+    <div className={stack ? "space-y-4" : "grid grid-cols-1 lg:grid-cols-2 gap-4 items-start"}>
       <DigestCard stockCode={stockCode} period="1d" title="1D 요약" />
-      <DigestCard stockCode={stockCode} period="7d" title="7D 롤링 요약" />
+      <DigestCard stockCode={stockCode} period="7d" title="7D 요약" />
     </div>
   )
 }
 
 function DigestCard({ stockCode, period, title }: { stockCode: string; period: "1d" | "7d"; title: string }) {
-  const [showArchive, setShowArchive] = useState(false)
   const { data } = useQuery({
     queryKey: ["spine", "digests", stockCode, period],
     queryFn: async () =>
@@ -77,13 +76,12 @@ function DigestCard({ stockCode, period, title }: { stockCode: string; period: "
             </div>
 
             {archive.length > 0 && (
-              <div className="border-t pt-2">
-                <button onClick={() => setShowArchive(!showArchive)}
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
-                  {showArchive ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              <Collapsible className="border-t pt-2">
+                <CollapsibleTrigger className="group/archive flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                  <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]/archive:rotate-180" />
                   지난 요약 {archive.length}건
-                </button>
-                {showArchive && (
+                </CollapsibleTrigger>
+                <CollapsibleContent>
                   <div className="space-y-3 pt-2">
                     {archive.map((d) => (
                       <div key={d.period_start} className="rounded-md border px-3 py-2">
@@ -97,8 +95,8 @@ function DigestCard({ stockCode, period, title }: { stockCode: string; period: "
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
             )}
           </>
         )}
