@@ -37,6 +37,70 @@ def _match_stocks(conn, text: str) -> set[int]:
     return ids
 
 
+def log_question(question: str, *, channel: str = "web",
+                 conversation_id: int | None = None,
+                 anchor_entity_id: int | None = None) -> int:
+    """질문만 즉시 적재 (LLM 실행 전) — 진행 중 상태도 서버 상태가 되도록.
+
+    마지막 메시지가 user면 '답변 생성 중'으로 해석된다 (FE 폴링 규약).
+    반환: conversation_id.
+    """
+    conn = get_connection()
+    try:
+        cid = _resolve_thread(conn, conversation_id, channel, question, anchor_entity_id)
+        msg_id = conn.execute(
+            "INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', ?)",
+            (cid, question)).lastrowid
+        for eid in _match_stocks(conn, question):
+            conn.execute(
+                "INSERT OR IGNORE INTO chat_entity_links (message_id, entity_id, link_type) "
+                "VALUES (?, ?, 'stock')", (msg_id, eid))
+        conn.commit()
+        return cid
+    finally:
+        conn.close()
+
+
+def append_assistant(conversation_id: int, content: str, *,
+                     citations: list | None = None, gaps: list | None = None,
+                     model: str | None = None):
+    """답변 적재 — 백그라운드 작업 완료 시 호출."""
+    conn = get_connection()
+    try:
+        conn.execute("""
+            INSERT INTO chat_messages (conversation_id, role, content,
+                                       citations_json, gaps_json, model)
+            VALUES (?, 'assistant', ?, ?, ?, ?)
+        """, (conversation_id, content,
+              json.dumps(citations, ensure_ascii=False) if citations else None,
+              json.dumps(gaps, ensure_ascii=False) if gaps else None,
+              model))
+        conn.execute("UPDATE conversations SET updated_at=datetime('now') WHERE id=?",
+                     (conversation_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _resolve_thread(conn, conversation_id, channel, question, anchor_entity_id) -> int:
+    if conversation_id is None and channel == "telegram":
+        row = conn.execute("""
+            SELECT id FROM conversations WHERE channel='telegram'
+              AND updated_at >= datetime('now', ?)
+            ORDER BY updated_at DESC LIMIT 1
+        """, (f"-{TELEGRAM_THREAD_WINDOW_MIN} minutes",)).fetchone()
+        conversation_id = row["id"] if row else None
+    if conversation_id is None:
+        return conn.execute(
+            "INSERT INTO conversations (title, anchor_entity_id, channel) VALUES (?, ?, ?)",
+            ((question or "").strip()[:60], anchor_entity_id, channel)).lastrowid
+    conn.execute("""
+        UPDATE conversations SET updated_at=datetime('now'),
+            anchor_entity_id=COALESCE(anchor_entity_id, ?)
+        WHERE id=?""", (anchor_entity_id, conversation_id))
+    return conversation_id
+
+
 def log_exchange(question: str, answer: str | None, *,
                  citations: list | None = None, gaps: list | None = None,
                  model: str | None = None, channel: str = "web",
@@ -47,48 +111,11 @@ def log_exchange(question: str, answer: str | None, *,
     conversation_id 없으면 새 스레드 생성 — 단 텔레그램은 30분 윈도우 내
     마지막 스레드를 이어간다. anchor는 스레드에 아직 없을 때만 채운다.
     """
-    conn = get_connection()
-    try:
-        cid = conversation_id
-        if cid is None and channel == "telegram":
-            row = conn.execute("""
-                SELECT id FROM conversations WHERE channel='telegram'
-                  AND updated_at >= datetime('now', ?)
-                ORDER BY updated_at DESC LIMIT 1
-            """, (f"-{TELEGRAM_THREAD_WINDOW_MIN} minutes",)).fetchone()
-            cid = row["id"] if row else None
-
-        if cid is None:
-            cid = conn.execute(
-                "INSERT INTO conversations (title, anchor_entity_id, channel) VALUES (?, ?, ?)",
-                ((question or "").strip()[:60], anchor_entity_id, channel)).lastrowid
-        else:
-            conn.execute("""
-                UPDATE conversations SET updated_at=datetime('now'),
-                    anchor_entity_id=COALESCE(anchor_entity_id, ?)
-                WHERE id=?""", (anchor_entity_id, cid))
-
-        msg_id = conn.execute(
-            "INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', ?)",
-            (cid, question)).lastrowid
-        for eid in _match_stocks(conn, question):
-            conn.execute(
-                "INSERT OR IGNORE INTO chat_entity_links (message_id, entity_id, link_type) "
-                "VALUES (?, ?, 'stock')", (msg_id, eid))
-
-        if answer:
-            conn.execute("""
-                INSERT INTO chat_messages (conversation_id, role, content,
-                                           citations_json, gaps_json, model)
-                VALUES (?, 'assistant', ?, ?, ?, ?)
-            """, (cid, answer,
-                  json.dumps(citations, ensure_ascii=False) if citations else None,
-                  json.dumps(gaps, ensure_ascii=False) if gaps else None,
-                  model))
-        conn.commit()
-        return cid
-    finally:
-        conn.close()
+    cid = log_question(question, channel=channel, conversation_id=conversation_id,
+                       anchor_entity_id=anchor_entity_id)
+    if answer:
+        append_assistant(cid, answer, citations=citations, gaps=gaps, model=model)
+    return cid
 
 
 def log_exchange_safe(*args, **kwargs) -> int | None:

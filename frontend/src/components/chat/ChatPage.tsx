@@ -37,10 +37,20 @@ export default function ChatPage() {
   const qc = useQueryClient()
 
   const { data: threads = [], isLoading: threadsLoading } = useQuery(conversationsQuery())
-  const detail = useQuery(conversationDetailQuery(activeId ?? 0, !!activeId))
+  // 진행 중 상태도 서버 상태: 마지막 메시지가 user = 답변 생성 중 → 폴링.
+  // 탭 이동·새로고침·기기 전환에도 유실 없음 (질문은 서버에 즉시 적재됨)
+  const detail = useQuery({
+    ...conversationDetailQuery(activeId ?? 0, !!activeId),
+    refetchInterval: (query) => {
+      const msgs = query.state.data?.messages
+      return msgs && msgs.length > 0 && msgs[msgs.length - 1].role === "user" ? 2500 : false
+    },
+  })
+  const msgs = detail.data?.messages
+  const awaiting = !!msgs && msgs.length > 0 && msgs[msgs.length - 1].role === "user"
 
   const ask = useMutation({
-    mutationFn: askQuestion,
+    mutationFn: askQuestion,   // 서버가 질문을 즉시 적재하고 conversation_id 반환 (답변은 백그라운드)
     onSuccess: (d) => {
       setQuestion("")
       qc.invalidateQueries({ queryKey: spineKeys.conversations() })
@@ -53,7 +63,7 @@ export default function ChatPage() {
 
   const submit = () => {
     const q = question.trim()
-    if (!q || ask.isPending) return
+    if (!q || ask.isPending || awaiting) return
     ask.mutate({ question: q, conversation_id: activeId ?? undefined })
   }
 
@@ -61,7 +71,7 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [detail.data?.messages.length, ask.isPending])
+  }, [detail.data?.messages.length, ask.isPending, awaiting])
 
   return (
     <div className="grid grid-cols-[240px_1fr] gap-4 h-[calc(100vh-190px)]">
@@ -148,19 +158,21 @@ export default function ChatPage() {
             )
           )}
 
+          {/* 제출 직후 찰나 (서버 적재 전) — 낙관적 말풍선 */}
           {ask.isPending && (
-            <>
-              <div className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-3.5 py-2 text-sm opacity-70">
-                  {ask.variables?.question}
-                </div>
+            <div className="flex justify-end">
+              <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-3.5 py-2 text-sm opacity-70">
+                {ask.variables?.question}
               </div>
-              <div className="rounded-2xl border px-3.5 py-3 max-w-[85%] space-y-2">
-                <Skeleton className="h-3.5 w-3/4" />
-                <Skeleton className="h-3.5 w-full" />
-                <p className="text-[11px] text-muted-foreground">검색 → 근거 취합 → 종합 생성 중… (~30초)</p>
-              </div>
-            </>
+            </div>
+          )}
+          {/* 답변 생성 중 — 서버 상태(마지막 메시지=user) 기반: 탭 이동·새로고침에도 유지 */}
+          {(awaiting || ask.isPending) && (
+            <div className="rounded-2xl border px-3.5 py-3 max-w-[85%] space-y-2">
+              <Skeleton className="h-3.5 w-3/4" />
+              <Skeleton className="h-3.5 w-full" />
+              <p className="text-[11px] text-muted-foreground">검색 → 근거 취합 → 종합 생성 중… (~30초, 다른 화면에 다녀와도 계속됩니다)</p>
+            </div>
           )}
           {ask.isError && (
             <p className="text-xs text-destructive">답변 생성에 실패했습니다. 다시 시도해주세요.</p>
@@ -182,8 +194,8 @@ export default function ChatPage() {
             <span className="text-[10px] text-muted-foreground">
               답변은 AI 종합 — 검증 필요 · 텔레그램 봇 문답도 이 스레드 풀에 쌓입니다
             </span>
-            <Button size="sm" onClick={submit} disabled={ask.isPending || !question.trim()}>
-              <Sparkles className="h-3.5 w-3.5" /> {activeId ? "이어서 질문" : "질문"}
+            <Button size="sm" onClick={submit} disabled={ask.isPending || awaiting || !question.trim()}>
+              <Sparkles className="h-3.5 w-3.5" /> {awaiting ? "답변 생성 중…" : activeId ? "이어서 질문" : "질문"}
             </Button>
           </div>
         </div>
