@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 const TYPE_FILTERS = [
   { key: "", label: "전체" },
   { key: "mention_surge", label: "언급 급증" },
+  { key: "neglect", label: "소외" },
   { key: "high_52w", label: "52주 신고가" },
   // 확장 예정: export_change(수출 변화) — 무역 커넥터 후
 ] as const

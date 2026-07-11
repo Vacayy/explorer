@@ -259,6 +259,12 @@ export interface SpineSignal {
     high?: number;
     prior_high_52w?: number;
     breakout_pct?: number;
+    // neglect
+    per?: number;
+    roe?: number;
+    market_cap?: number;
+    market?: string;
+    window_days?: number;
   };
   interpretation: string | null;
   interpretation_model: string | null;

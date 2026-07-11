@@ -144,6 +144,76 @@ def compute_high_52w() -> list[dict]:
     return signals
 
 
+NEGLECT_MAX_PER = 12.0    # 저평가 스크린
+NEGLECT_MIN_ROE = 5.0     # 수익성 (흑자·자본효율)
+NEGLECT_MIN_MCAP = 1e11   # 1,000억 — 실체 없는 초소형 제외
+NEGLECT_WINDOW_DAYS = 30  # 이 기간 언급 0 = 소외
+NEGLECT_LIMIT = 20
+
+
+def compute_neglect() -> list[dict]:
+    """소외 신호 — mention_surge의 쌍대 (knowledge-hierarchy-design §G 태도 3).
+
+    '괜찮은데(저PER·흑자·실체 규모) 아무도 말하지 않는(30일 언급 0)' 종목.
+    주목의 부재는 비효율을 낳는다 — 소외 자체가 기회의 신호. LLM 0.
+    """
+    conn = get_connection()
+    latest_fu = conn.execute("SELECT max(trade_date) FROM fundamentals").fetchone()[0]
+    if not latest_fu:
+        conn.close()
+        return []
+
+    rows = conn.execute("""
+        WITH latest_px AS (
+            SELECT stock_code, market_cap FROM stock_prices
+            WHERE (stock_code, trade_date) IN (
+                SELECT stock_code, max(trade_date) FROM stock_prices GROUP BY stock_code)
+        ),
+        mentioned AS (
+            SELECT DISTINCT e.aliases stock_code
+            FROM entity_links el
+            JOIN entities e ON el.entity_id = e.id
+            JOIN raw_documents rd ON el.doc_id = rd.id
+            WHERE el.link_type='stock' AND e.type='company' AND e.aliases IS NOT NULL
+              AND rd.published_at >= datetime('now', ?)
+        )
+        SELECT f.stock_code, f.per, f.roe, p.market_cap, c.corp_name, co_e.id entity_id,
+               c.market
+        FROM fundamentals f
+        JOIN latest_px p ON p.stock_code = f.stock_code
+        JOIN companies c ON c.stock_code = f.stock_code
+        JOIN entities co_e ON co_e.aliases = f.stock_code AND co_e.type='company'
+        WHERE f.trade_date = ?
+          AND f.per > 0 AND f.per <= ?
+          AND f.roe >= ?
+          AND p.market_cap >= ?
+          AND f.stock_code NOT IN (SELECT stock_code FROM mentioned)
+        ORDER BY f.per ASC LIMIT ?
+    """, (f"-{NEGLECT_WINDOW_DAYS} days", latest_fu, NEGLECT_MAX_PER,
+          NEGLECT_MIN_ROE, NEGLECT_MIN_MCAP, NEGLECT_LIMIT)).fetchall()
+
+    signals = []
+    today = datetime.now(timezone.utc).date().isoformat()
+    for r in rows:
+        signals.append({
+            "entity_id": r["entity_id"], "name": r["corp_name"], "date": today,
+            "payload": {
+                "per": r["per"], "roe": r["roe"], "market_cap": r["market_cap"],
+                "market": r["market"], "window_days": NEGLECT_WINDOW_DAYS,
+            },
+        })
+    for s in signals:
+        conn.execute("""
+            INSERT INTO signals (signal_type, entity_id, date, payload_json)
+            VALUES ('neglect', ?, ?, ?)
+            ON CONFLICT(signal_type, entity_id, date)
+            DO UPDATE SET payload_json = excluded.payload_json
+        """, (s["entity_id"], s["date"], json.dumps(s["payload"], ensure_ascii=False)))
+    conn.commit()
+    conn.close()
+    return signals
+
+
 def interpret_pending(limit: int = 10) -> dict:
     """interpretation이 빈 신호에 haiku 1문장 해석 (epistemic: 가설 — 모델명 기록).
 

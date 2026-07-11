@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.signals import compute_high_52w, compute_mention_surge, interpret_pending
+from pipeline.signals import compute_high_52w, compute_mention_surge, compute_neglect, interpret_pending
 
 
 def main():
@@ -26,6 +26,12 @@ def main():
     for s in sorted(highs, key=lambda x: -x["payload"]["breakout_pct"])[:10]:
         p = s["payload"]
         print(f"  · {s['name']}: 고가 {p['high']:,} (전고점 {p['prior_high_52w']:,}, +{p['breakout_pct']}%)")
+
+    neglected = compute_neglect()
+    print(f"[neglect] {len(neglected)}건 — 저평가·흑자·30일 무언급")
+    for s in neglected[:8]:
+        p_ = s["payload"]
+        print(f"  · {s['name']} [{p_['market']}]: PER {p_['per']} · ROE {p_['roe']}% · 시총 {p_['market_cap']/1e12:.2f}조")
 
     print("[interpret]", interpret_pending())
 

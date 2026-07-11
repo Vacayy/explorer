@@ -102,6 +102,15 @@ def backfill(days: int, limit: int | None):
     print(f"[backfill] 완료 {done}, 실패 {failed}")
 
 
+def _refresh_valuation():
+    """전종목 PER·ROE 갱신 (네이버 시세) — 소외 신호의 재료."""
+    from services.market_valuation import fetch_market_valuation
+    try:
+        print("[valuation]", fetch_market_valuation())
+    except Exception as e:
+        print(f"[valuation] 실패: {str(e)[:100]}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--daily", action="store_true")
@@ -113,6 +122,7 @@ if __name__ == "__main__":
     init_db()
     if args.daily:
         ingest_daily()
+        _refresh_valuation()  # 전종목 PER·ROE — 소외 신호 재료 (일 1회)
     elif args.backfill:
         backfill(args.days, args.limit)
     else:
