@@ -14,6 +14,28 @@ class StockBrief(BaseModel):
     thesis_check: str | None   # 내 논지 vs 새 증거 (충돌/지지)
     created_at: str | None
     stale: bool = False
+    evidence: list[str] = []   # 근거 재료 인벤토리 (다이제스트·신호·공시·일정·논지)
+
+
+_SIGNAL_LABEL = {"mention_surge": "언급 급증", "high_52w": "52주 신고가"}
+
+
+def _evidence(inp: dict) -> list[str]:
+    """브리프에 들어간 재료를 사람이 읽을 칩으로 — '이 브리프는 무엇을 보고 썼나'."""
+    ev = []
+    for period, d in sorted(inp["digests"].items()):
+        ev.append(f"언급 요약 {period.upper()} ({d['period_start']})")
+    for s in inp["signals"]:
+        ev.append(f"신호 · {_SIGNAL_LABEL.get(s['signal_type'], s['signal_type'])} ({s['date']})")
+    for a in inp["actions"]:
+        dt = a["rcept_dt"]
+        ev.append(f"공시 · {a['action_type']} ({dt[4:6]}-{dt[6:8]})")
+    for c in inp["upcoming"]:
+        ev.append(f"일정 · {c['event_type']} ({c['event_date']})")
+    t = inp["thesis"]
+    if (t and t["thesis"]) or inp["notes"]:
+        ev.append(f"내 논지 ({len(inp['notes'])}건)")
+    return ev
 
 
 @router.get("/{stock_code}/brief", response_model=StockBrief)
@@ -33,12 +55,13 @@ def get_brief(stock_code: str):
     cached = get_cached(conn, ent["id"])
     stale = not cached or cached["inputs_hash"] != inputs_hash(inp)
     conn.close()
+    ev = _evidence(inp)
     if not cached:
         return StockBrief(status="empty", brief=None, thesis_check=None,
-                          created_at=None, stale=True)
+                          created_at=None, stale=True, evidence=ev)
     return StockBrief(status="cached", brief=cached["brief"],
                       thesis_check=cached["thesis_check"],
-                      created_at=cached["created_at"], stale=stale)
+                      created_at=cached["created_at"], stale=stale, evidence=ev)
 
 
 @router.post("/{stock_code}/brief/compute", response_model=StockBrief)

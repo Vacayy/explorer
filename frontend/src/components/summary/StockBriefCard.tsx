@@ -43,6 +43,15 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
             </p>
           </div>
         )}
+        {/* 근거 재료 — 이 브리프는 무엇을 보고 썼나 (언급 없이 공시만으로 쓰일 수도 있다) */}
+        {(data?.evidence?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[10px] text-muted-foreground shrink-0">근거 재료</span>
+            {data!.evidence!.map((e) => (
+              <Badge key={e} variant="secondary" className="text-[10px] font-normal">{e}</Badge>
+            ))}
+          </div>
+        )}
         {b.brief && (
           <>
             <div className={`prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5 ${compute.isFetching ? "opacity-60" : ""}`}>
