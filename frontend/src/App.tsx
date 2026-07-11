@@ -13,7 +13,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 // Home
 import HomePage from "@/components/home/HomePage"
-import StocksPage from "@/components/stocks/StocksPage"
+import FollowPage from "@/components/follow/FollowPage"
 
 // Explore (탐색 — 신호)
 import ExplorePage from "@/components/explore/ExplorePage"
@@ -143,7 +143,8 @@ export default function App() {
 
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
-            <Route path="stocks" element={<StocksPage />} />
+            <Route path="follow" element={<FollowPage />} />
+            <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}

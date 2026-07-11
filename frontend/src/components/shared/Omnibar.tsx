@@ -19,7 +19,7 @@ import {
 
 const PAGES = [
   { label: "오늘 — 내 종목 업데이트", to: "/home", icon: Home, keywords: "home stream 홈" },
-  { label: "종목 — 워치리스트·검색 진입", to: "/stocks", icon: Building2, keywords: "stocks watchlist 종목" },
+  { label: "팔로우 — 종목·채널·블로그·태그", to: "/follow", icon: Building2, keywords: "follow stocks watchlist 종목 소스" },
   { label: "신호 — 언급 급증·52주 신고가", to: "/explore", icon: LineChart, keywords: "signal" },
   { label: "기업활동 — 유무증·합병·공개매수", to: "/actions", icon: Building2, keywords: "actions 유상증자" },
   { label: "유무증 Pro", to: "/actions?view=pro", icon: Table2, keywords: "rights pro" },
