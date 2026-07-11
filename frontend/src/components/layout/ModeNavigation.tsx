@@ -11,7 +11,7 @@ const DISCOVER_TABS = [
 ] as const
 
 const ANALYZE_TABS = [
-  { key: "summary", label: "요약" },
+  { key: "summary", label: "홈" },
   { key: "financials", label: "재무정보" },
   { key: "valuation", label: "밸류에이션" },
   { key: "business", label: "사업정보" },
