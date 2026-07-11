@@ -46,15 +46,18 @@ def add_telegram(body: AddTelegramRequest, background: BackgroundTasks):
     if not re.fullmatch(r"[A-Za-z0-9_]{3,64}", ch):
         raise HTTPException(400, "채널명 형식이 올바르지 않습니다 (예: cahier_de_market)")
 
-    from services.telegram_service import scrape_channel
+    from services.telegram_service import get_channel_display_name, scrape_channel
     messages = scrape_channel(ch)
     if not messages:
         raise HTTPException(422, "공개 프리뷰를 읽을 수 없는 채널입니다 (비공개이거나 프리뷰 비활성)")
+    display_name = get_channel_display_name(ch)
 
     conn = get_connection()
     dup = conn.execute("SELECT 1 FROM telegram_channels WHERE channel_name=?", (ch,)).fetchone()
     if not dup:
-        conn.execute("INSERT INTO telegram_channels (channel_name, is_active) VALUES (?, 1)", (ch,))
+        conn.execute(
+            "INSERT INTO telegram_channels (channel_name, display_name, is_active) VALUES (?, ?, 1)",
+            (ch, display_name))
         conn.commit()
     conn.close()
     if dup:

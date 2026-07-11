@@ -79,6 +79,8 @@ export default function ExplorePage() {
 
       <MomentumSection />
 
+      <BacktestSection />
+
       {/* 신호 카드 그리드 */}
       {data.items.length === 0 ? (
         <EmptyState message={`최근 ${days}일 신호가 없습니다. 수집이 쌓이면 여기에 나타납니다.`} />
@@ -127,6 +129,21 @@ interface MomentumRow {
   count_7d: number
   prior_7d: number
   score: number
+  daily: number[]
+}
+
+function Spark({ data }: { data: number[] }) {
+  const max = Math.max(...data, 1)
+  const w = 3, gap = 1
+  return (
+    <svg width={data.length * (w + gap)} height={14} className="shrink-0 opacity-80">
+      {data.map((v, i) => {
+        const h = Math.max(1, Math.round((v / max) * 13))
+        return <rect key={i} x={i * (w + gap)} y={14 - h} width={w} height={h} rx={0.5}
+          className={i >= data.length - 7 ? "fill-primary" : "fill-muted-foreground/40"} />
+      })}
+    </svg>
+  )
 }
 
 function MomentumSection() {
@@ -153,14 +170,59 @@ function MomentumSection() {
                   {m.name}
                 </Link>
               ) : <span className="font-medium truncate">{m.name}</span>}
-              <span className="ml-auto shrink-0 text-xs tabular-nums">
+              <span className="ml-auto shrink-0 flex items-center gap-2 text-xs tabular-nums">
+                <Spark data={m.daily} />
                 7일 <b>{m.count_7d}</b>회
-                <span className="text-muted-foreground"> (직전 {m.prior_7d})</span>
-                {m.score >= 2 && <span className="text-up ml-1">×{m.score}</span>}
+                <span className="text-muted-foreground">(직전 {m.prior_7d})</span>
+                {m.score >= 2 && <span className="text-up">×{m.score}</span>}
               </span>
             </div>
           ))}
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+
+/* ---------- 신호 성적표 — 언급 급증 후 5거래일 수익률 (자기 검증) ---------- */
+
+function BacktestSection() {
+  const { data } = useQuery({
+    queryKey: ["spine", "backtest"],
+    queryFn: async () => (await api.get("/api/spine/signals/backtest")).data as {
+      items: { date: string; name: string; stock_code: string | null; ret_5d: number | null }[]
+      avg_ret: number | null
+      hit_rate: number | null
+      n: number
+    },
+    staleTime: 30 * 60_000,
+  })
+  if (!data || data.n === 0) return null
+  return (
+    <Card>
+      <CardHeader className="pb-2 flex-row items-baseline gap-3">
+        <CardTitle className="text-sm">신호 성적표 — 언급 급증 후 5거래일</CardTitle>
+        <span className="text-xs tabular-nums">
+          평균 <b className={data.avg_ret! > 0 ? "text-up" : "text-down"}>{data.avg_ret}%</b>
+          <span className="text-muted-foreground"> · 적중 {data.hit_rate}% · {data.n}건</span>
+        </span>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums">
+          {data.items.filter((i) => i.ret_5d != null).slice(0, 12).map((i, idx) => (
+            <span key={idx}>
+              <span className="text-muted-foreground">{i.date.slice(5)}</span>{" "}
+              {i.name}{" "}
+              <b className={i.ret_5d! > 0 ? "text-up" : "text-down"}>
+                {i.ret_5d! > 0 ? "+" : ""}{i.ret_5d}%
+              </b>
+            </span>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-2">
+          과거 신호의 사후 수익률 — 신호의 유효성 자체를 검증하기 위한 것 (투자 추천 아님)
+        </p>
       </CardContent>
     </Card>
   )
