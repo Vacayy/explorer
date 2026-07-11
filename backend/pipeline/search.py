@@ -83,9 +83,18 @@ def build_index(batch: int = 64) -> dict:
 
 
 def _fts_query(q: str) -> str:
-    """사용자 입력 → FTS5 안전 질의 (토큰별 따옴표, prefix 매칭)."""
-    tokens = [t for t in re.split(r"[\s]+", q.strip()) if t]
-    return " ".join(f'"{t}"*' for t in tokens[:8])
+    """사용자 입력 → FTS5 안전 질의.
+
+    - 구두점 기준 분해: "ADR(SKHY)" → ADR, SKHY (티커·괄호 표기가 통째로 죽지 않게)
+    - OR 결합: 공백 결합(암묵 AND)은 문장형 질문에서 전멸을 부른다 —
+      다중 토큰 매칭 문서는 BM25 rank가 알아서 상위로 올린다
+    - 토큰별 prefix 매칭: "현황"*이 "현황을"(조사 붙은 형태)도 잡는다
+    """
+    raw = re.split(r"[^0-9A-Za-z가-힣]+", q)
+    tokens = [t for t in raw if len(t) >= 2][:12]
+    if not tokens:
+        return '""'
+    return " OR ".join(f'"{t}"*' for t in tokens)
 
 
 def search(q: str, k: int = 20) -> list[dict]:
