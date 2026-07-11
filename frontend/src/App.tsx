@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, Outlet } from "react-router-dom"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
 import Header from "@/components/layout/Header"
 import Omnibar from "@/components/shared/Omnibar"
@@ -42,11 +43,7 @@ import WatchlistPage from "@/components/research/WatchlistPage"
 import MemosPage from "@/components/research/MemosPage"
 import CatalystsPage from "@/components/research/CatalystsPage"
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false },
-  },
-})
+const queryClient = createQueryClient()
 
 function Layout() {
   useKeyboardShortcuts()

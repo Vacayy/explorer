@@ -1,5 +1,6 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
+import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
 import type { AskResponse, DossierSummary, HomeResponse, SourceDossier, SpineFeedResponse, SpineSignalsResponse } from "@/types";
 
 export interface SpineFeedParams {
@@ -18,21 +19,30 @@ export const spineKeys = {
   feed: (params: SpineFeedParams) => [...spineKeys.all, "feed", params] as const,
   signals: (type?: string, days?: number) => [...spineKeys.all, "signals", type ?? "all", days ?? 7] as const,
   sourceDossier: (kind: string, key: string) => [...spineKeys.all, "source-dossier", kind, key] as const,
+  sourceSummary: (kind: string, key: string) => [...spineKeys.all, "source-summary", kind, key] as const,
 };
 
-export async function fetchSourceDossier(kind: string, key: string): Promise<SourceDossier> {
-  const { data } = await api.get<SourceDossier>("/api/spine/sources/dossier", { params: { kind, key } });
-  return data;
-}
-
-export async function computeSourceSummary(kind: string, key: string): Promise<DossierSummary> {
-  // 새 글이 있으면 LLM 프로필 생성 (수십 초) — 없으면 서버가 캐시 즉답
-  const { data } = await api.post<DossierSummary>("/api/spine/sources/dossier/summary", null, {
+/** 소스 도시에 — LLM 없이 즉시 응답 (캐시된 프로필 + stale 플래그) */
+export const sourceDossierQuery = (kind: string, key: string) =>
+  apiQuery<SourceDossier>({
+    key: spineKeys.sourceDossier(kind, key),
+    url: "/api/spine/sources/dossier",
     params: { kind, key },
-    timeout: 180_000,
+    staleTime: STALE.short,
+    enabled: !!kind && !!key,
   });
-  return data;
-}
+
+/**
+ * 관점 프로필 생성 — 서버 멱등(새 글 있을 때만 LLM, 아니면 캐시 즉답).
+ * (kind, key)로 키잉된 계산 쿼리: 응답이 항상 자기 소스 슬롯에만 적재된다.
+ */
+export const sourceSummaryQuery = (kind: string, key: string, enabled: boolean) =>
+  apiComputeQuery<DossierSummary>({
+    key: spineKeys.sourceSummary(kind, key),
+    url: "/api/spine/sources/dossier/summary",
+    params: { kind, key },
+    enabled,
+  });
 
 export async function fetchHome(): Promise<HomeResponse> {
   const { data } = await api.get<HomeResponse>("/api/spine/home");
