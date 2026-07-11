@@ -25,7 +25,6 @@ const PAGES = [
   { label: "유무증 Pro", to: "/actions?view=pro", icon: Table2, keywords: "rights pro" },
   { label: "피드 — 전체 수집 문서", to: "/feed", icon: Newspaper, keywords: "feed 텔레그램 블로그" },
   { label: "대화 — AI 질문·스레드", to: "/chat", icon: MessageCircleQuestion, keywords: "ask rag chat" },
-  { label: "워치리스트", to: "/research/watchlist", icon: ListChecks, keywords: "watchlist" },
   { label: "카탈리스트 캘린더", to: "/research/catalysts", icon: CalendarDays, keywords: "calendar 일정" },
   { label: "VS 비교 (보관함)", to: "/analyze/compare", icon: Table2, keywords: "compare 비교" },
   { label: "투자메모 (보관함)", to: "/research/memos", icon: ListChecks, keywords: "memo 메모" },

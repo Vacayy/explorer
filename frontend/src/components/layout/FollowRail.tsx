@@ -164,7 +164,7 @@ function StockSection({ currentStockCode }: { currentStockCode: string | null })
   if (isLoading) return <div className="px-3 py-2"><Skeleton className="h-4 w-full" /></div>
 
   return (
-    <Section title="종목" count={items.length} onAdd={() => navigate("/research/watchlist")} addLabel="워치리스트 관리">
+    <Section title="종목" count={items.length} onAdd={() => navigate("/follow")} addLabel="워치리스트 관리">
       <SidebarMenu>
         {items.length === 0 && <EmptyRow message="아직 없음 — +로 추가" />}
         {items.map((item: WatchlistItem) => (

@@ -5,8 +5,10 @@ import { useHome } from "@/hooks/useHome"
 import { spineKeys, unfollowEntity } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { PageContainer } from '@/components/shared/PageContainer'
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { formatRelativeTime } from "@/utils/format"
@@ -26,7 +28,7 @@ export default function HomePage() {
   const quietDay = !data.watchlist_empty && data.watchlist_updates.length === 0
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <div className="flex items-baseline justify-between">
         <h2 className="text-xl font-bold">홈</h2>
         <FreshnessStamp asOf={data.as_of} />
@@ -48,7 +50,7 @@ export default function HomePage() {
           <HighlightsSection signals={data.market_highlights} />
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
@@ -63,7 +65,7 @@ const BRIEF_ICON = {
 
 function BriefingSection({ items }: { items: BriefItem[] }) {
   return (
-    <Card className="border-l-2 border-l-primary">
+    <Card className="bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))]">
       <CardContent className="py-3">
         <ul className="space-y-1.5">
           {items.map((b, i) => {
@@ -145,9 +147,9 @@ function UpdatesSection({ updates, watchlistEmpty, follows }: {
             {follows.map((f) => (
               <Badge key={f.entity_id} variant="secondary" className="text-[10px] gap-1 pr-1 font-normal">
                 {f.name}
-                <button onClick={() => unfollow.mutate(f.entity_id)} aria-label="팔로우 해제">
-                  <X className="h-2.5 w-2.5" />
-                </button>
+                <Button variant="ghost" size="sm" className="h-auto border-0 p-0 hover:bg-transparent hover:text-inherit" onClick={() => unfollow.mutate(f.entity_id)} aria-label="팔로우 해제">
+                  <X className="size-2.5" />
+                </Button>
               </Badge>
             ))}
           </div>
@@ -160,7 +162,7 @@ function UpdatesSection({ updates, watchlistEmpty, follows }: {
             <p className="text-xs text-muted-foreground">
               상단 검색으로 기업을 워치리스트에 담거나, 피드에서 산업·토픽 태그를 팔로우하면 업데이트가 여기에 모입니다.
             </p>
-            <Link to="/research/watchlist" className="text-xs text-primary hover:underline">
+            <Link to="/follow" className="text-xs text-primary hover:underline">
               워치리스트 관리 →
             </Link>
           </div>
@@ -283,7 +285,7 @@ function SignalMiniCard({ signal: s }: { signal: SpineSignal }) {
 
 function HomeSkeleton() {
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <Skeleton className="h-6 w-24" />
       {[96, 200, 180].map((h, i) => (
         <div key={i} className="border rounded-xl p-4 space-y-3">
@@ -291,6 +293,6 @@ function HomeSkeleton() {
           <Skeleton style={{ height: h }} className="w-full" />
         </div>
       ))}
-    </div>
+    </PageContainer>
   )
 }
