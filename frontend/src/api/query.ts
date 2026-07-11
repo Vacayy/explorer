@@ -23,9 +23,11 @@ export const STALE = {
 } as const
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status?: number) {
+  readonly status?: number
+  constructor(message: string, status?: number) {
     super(message)
     this.name = "ApiError"
+    this.status = status
   }
 }
 
