@@ -72,6 +72,31 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
                 "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
                 "VALUES (?, ?, 'stock', 0.7)", (doc_id, row["entity_id"]))
 
+    # 라벨 계층: 신규 라벨 → 상위 개념 MEMBER_OF (온톨로지 규약, epistemic=fact, LLM 추론 0.7)
+    for child, parent in (result.get("label_parents") or {}).items():
+        child, parent = str(child).strip(), str(parent).strip()
+        if not child or not parent or child == parent:
+            continue
+        crow = conn.execute(
+            "SELECT id FROM entities WHERE name=? AND type IN ('sector','theme')", (child,)).fetchone()
+        prow = conn.execute(
+            "SELECT id FROM entities WHERE name=? AND type IN ('sector','theme')", (parent,)).fetchone()
+        pid = prow["id"] if prow else _get_or_create_entity(conn, "theme", parent)
+        if crow:
+            conn.execute("""
+                INSERT OR IGNORE INTO entity_relations (src_id, dst_id, rel_type, epistemic_type, confidence, source_doc_id)
+                VALUES (?, ?, 'MEMBER_OF', 'fact', 0.7, ?)""", (crow["id"], pid, doc_id))
+
+    # 해외 상장사 (써클, 엔비디아 등): 엔티티 없으면 생성 — aliases(종목코드) 없이 (conf 0.8)
+    for name in result.get("foreign_stocks") or []:
+        name = str(name).strip()
+        if not name or len(name) > 30:
+            continue
+        eid = _get_or_create_entity(conn, "company", name)
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links (doc_id, entity_id, link_type, confidence) "
+            "VALUES (?, ?, 'stock', 0.8)", (doc_id, eid))
+
     # 종목 (1순위): LLM이 별칭까지 정규화한 종목명 — substring 매칭을 대체 (conf 0.9)
     if result.get("stocks") is not None:
         for name in result["stocks"]:

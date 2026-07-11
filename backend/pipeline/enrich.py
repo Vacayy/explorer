@@ -99,14 +99,19 @@ def _build_prompt(title: str, markdown: str) -> str:
     inds, tops = _live_vocab()
     return (
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
-        '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문에 쓰인 표기"}], "industries": [], "topics": [], '
+        '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문 표기", "listed": "KR|해외"}], '
+        '"industries": [], "topics": [], "label_parents": {"신규라벨": "상위라벨"}, '
         '"summary": "핵심 2문장", "sentiment": "positive|neutral|negative"}\n'
         "규칙:\n"
-        "- stocks: 실제로 논의 대상인 한국 상장사만. 별칭·약칭(하이닉스=SK하이닉스, 삼전=삼성전자 등)은 "
-        "반드시 정식 종목명으로 정규화. 스쳐 지나가는 언급은 제외.\n"
-        "- industries/topics: 문서가 실제로 다루는 산업·주제를 라벨링. 아래 기존 라벨과 같거나 유사한 "
-        "개념이면 반드시 기존 라벨을 그대로 사용하고, 명백히 새로운 영역이면 신규 라벨 허용 "
-        "(1~2단어, 통용되는 한국어 표기 우선. 예: Web3, 크립토, 게임, 조선, 지정학).\n"
+        "- stocks: 실제로 논의 대상인 상장사만 (스쳐 지나가는 언급 제외). 한국 상장사는 별칭·약칭"
+        "(하이닉스=SK하이닉스, 삼전=삼성전자)을 정식 종목명으로 정규화하고 listed=KR. "
+        "해외 주요 상장사(써클, 엔비디아, 코인베이스 등)도 논의 대상이면 포함하되 통용 한국어 표기로, listed=해외.\n"
+        "- industries/topics: 넓은 영역과 세부 주제를 함께 라벨링 — 세부가 더 가치 있다 "
+        "(예: Web3 문서면 'Web3'와 함께 '스테이블코인'/'RWA'/'STO' 등 구체 주제도). "
+        "아래 기존 라벨과 같거나 유사한 개념이면 반드시 기존 라벨을 그대로 사용, "
+        "명백히 새로우면 신규 허용 (1~2단어, 통용 한국어 표기).\n"
+        "- label_parents: 이번에 새로 만든 라벨이 있으면 그것의 상위 개념을 기존/사용 라벨 중에서 지정 "
+        '(예: {"스테이블코인": "Web3"}). 상위가 없으면 생략.\n'
         f"- 기존 산업 라벨: {', '.join(inds)}\n"
         f"- 기존 토픽 라벨: {', '.join(tops)}\n"
         f"문서:\n{doc}"
@@ -147,17 +152,21 @@ def _enrich_llm(title: str, markdown: str) -> dict:
     raw = _call_claude_code(prompt) if engine == "claude-code" else _call_api(prompt)
     data = _parse_json(raw)
     stocks = [s for s in (data.get("stocks") or []) if isinstance(s, dict) and s.get("name")]
+    kr = [s for s in stocks if str(s.get("listed", "KR")).upper() in ("KR", "K", "KOREA")]
+    foreign = [s for s in stocks if s not in kr]
     return {
         "summary": data.get("summary"),
         "sentiment": data.get("sentiment"),
         "model": f"{engine}/haiku",
         "industries": data.get("industries") or [],
         "topics": data.get("topics") or [],
-        "stocks": [s["name"] for s in stocks],
+        "label_parents": data.get("label_parents") or {},
+        "stocks": [s["name"] for s in kr],
+        "foreign_stocks": [s["name"] for s in foreign],
         # 별칭 자동 학습: 본문 표기가 정식명과 다르면 ('삼전'→삼성전자) 후보로 전달
         "stock_aliases": [
             {"name": s["name"], "alias": str(s.get("as_written") or "").strip()}
-            for s in stocks
+            for s in kr
             if s.get("as_written") and str(s["as_written"]).strip() != s["name"]
         ],
     }
