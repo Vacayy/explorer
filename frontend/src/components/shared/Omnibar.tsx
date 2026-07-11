@@ -2,8 +2,10 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Bell, Building2, CalendarDays, FileSearch, Home, LineChart, ListChecks,
-  MessageCircleQuestion, Newspaper, Sparkles, Table2,
+  MessageCircleQuestion, Newspaper, Rss, Send, Sparkles, Table2,
 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import api from "@/api/client"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import {
   Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
@@ -36,6 +38,15 @@ export default function Omnibar() {
   const [query, setQuery] = useState("")
   const navigate = useNavigate()
   const { data: companies = [] } = useCompanySearch(query)
+  // 구독 소스 → 소스 도시에 이동 (열려 있을 때만 조회)
+  const { data: sources = [] } = useQuery({
+    queryKey: ["spine", "sources", "health"],
+    queryFn: async () =>
+      (await api.get("/api/spine/sources/health")).data.items as
+        { kind: string; name: string; key: string }[],
+    enabled: open,
+    staleTime: 5 * 60_000,
+  })
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -107,6 +118,24 @@ export default function Omnibar() {
                 <Bell className="h-3.5 w-3.5" />
                 <span>"{q}" 태그 피드 보기</span>
               </CommandItem>
+            </CommandGroup>
+          </>
+        )}
+
+        {sources.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="소스 — 관점 프로필">
+              {sources.map((s) => (
+                <CommandItem
+                  key={`${s.kind}:${s.key}`}
+                  value={`${s.name} ${s.key} source 소스`}
+                  onSelect={() => go(`/source?kind=${s.kind}&key=${encodeURIComponent(s.key)}`)}
+                >
+                  {s.kind === "telegram" ? <Send className="h-3.5 w-3.5" /> : <Rss className="h-3.5 w-3.5" />}
+                  {s.name}
+                </CommandItem>
+              ))}
             </CommandGroup>
           </>
         )}

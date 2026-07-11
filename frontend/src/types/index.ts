@@ -165,6 +165,8 @@ export interface FeedDocument {
   published_at: string;
   summary: string | null;
   channel: string | null;    // 출처 채널/블로그 이름
+  channel_kind: string | null; // telegram | blog — 소스 도시에 링크용
+  channel_key: string | null;  // channel_name | blog url
   content: string | null;    // 전문 (markdown)
   images: string[];          // /media 상대경로
   enrich_model: string | null;
@@ -177,6 +179,31 @@ export interface SpineFeedResponse {
   page: number;
   size: number;
   as_of: string;
+}
+
+// 소스 도시에 (docs/specs/source-dossier.md)
+export interface DossierSummary {
+  status: string;            // fresh | cached | empty | unavailable | failed
+  digest: string | null;
+  insights: string | null;
+  created_at: string | null;
+  doc_count: number;
+}
+
+export interface SourceDossier {
+  kind: string;              // telegram | blog
+  key: string;
+  name: string;
+  author: string | null;
+  is_active: boolean;
+  total_docs: number;
+  first_doc_at: string | null;
+  last_doc_at: string | null;
+  docs_7d: number;
+  summary: DossierSummary | null;
+  summary_stale: boolean;
+  top_entities: { entity_id: number; name: string; link_type: string; aliases: string | null; count: number }[];
+  recent_docs: { id: number; title: string; published_at: string | null }[];
 }
 
 export interface SpineSignal {

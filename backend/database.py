@@ -374,6 +374,20 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_entity_digests ON entity_digests(entity_id, period, period_start);
 
+    -- 소스(채널/블로그) 관점 프로필 — 열람 시 게으른 생성 (docs/specs/source-dossier.md)
+    CREATE TABLE IF NOT EXISTS source_digests (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind         TEXT NOT NULL,          -- telegram | blog
+        key          TEXT NOT NULL,          -- channel_name | blog url
+        digest       TEXT,                   -- 관점·관심사 프로필 (마크다운)
+        insights     TEXT,                   -- 지난 프로필 이후 새 관심사·시각 변화 (없으면 NULL)
+        doc_count    INTEGER,
+        doc_ids_hash TEXT,                   -- 재생성 가드 (문서 집합 변경 시에만 재생성)
+        model        TEXT,
+        created_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(kind, key)
+    );
+
     -- 유·무상증자 상세 (Pro 뷰) — 결정 공시 원문에서 구조화 추출
     CREATE TABLE IF NOT EXISTS capital_raise_details (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,

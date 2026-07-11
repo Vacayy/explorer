@@ -176,9 +176,17 @@ function DocumentCard({ doc, onChipFilter }: {
       <CardContent className="py-3 space-y-1.5">
         <div className="flex items-center gap-2">
           <SourceBadge sourceType={doc.source_type} />
-          {doc.channel && (
+          {doc.channel && (doc.channel_kind && doc.channel_key ? (
+            <Link
+              to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
+              className="shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
+              title="소스 도시에 — 이 채널의 관점 프로필"
+            >
+              {doc.channel}
+            </Link>
+          ) : (
             <span className="shrink-0 text-[11px] text-muted-foreground">{doc.channel}</span>
-          )}
+          ))}
           <Link
             to={`/doc/${doc.id}`}
             className="font-medium text-sm truncate hover:underline"

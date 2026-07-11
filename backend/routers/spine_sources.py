@@ -152,6 +152,108 @@ def compute_source_health(conn) -> list[dict]:
     return items
 
 
+class DossierEntity(BaseModel):
+    entity_id: int
+    name: str
+    link_type: str       # stock | industry | topic
+    aliases: str | None  # 종목이면 종목코드
+    count: int
+
+
+class DossierDoc(BaseModel):
+    id: int
+    title: str
+    published_at: str | None
+
+
+class DossierSummary(BaseModel):
+    status: str          # fresh | cached | empty | unavailable | failed
+    digest: str | None
+    insights: str | None
+    created_at: str | None
+    doc_count: int
+
+
+class SourceDossierResponse(BaseModel):
+    kind: str
+    key: str
+    name: str
+    author: str | None
+    is_active: bool
+    total_docs: int
+    first_doc_at: str | None
+    last_doc_at: str | None
+    docs_7d: int
+    summary: DossierSummary | None   # 캐시만 (LLM 호출 없음)
+    summary_stale: bool              # true면 프론트가 POST /dossier/summary 호출
+    top_entities: list[DossierEntity]
+    recent_docs: list[DossierDoc]
+
+
+@router.get("/dossier", response_model=SourceDossierResponse)
+def source_dossier(kind: str, key: str):
+    """소스 도시에 — LLM 호출 없이 즉시 응답. 요약은 캐시 + stale 플래그만."""
+    from pipeline.source_dossier import (_doc_filter, get_cached, profile_hash,
+                                         recent_docs, resolve_source, PROFILE_DOCS)
+    conn = get_connection()
+    src = resolve_source(conn, kind, key)
+    if not src:
+        conn.close()
+        raise HTTPException(404, "등록되지 않은 소스입니다")
+
+    df = _doc_filter(kind)
+    st = conn.execute(f"""
+        SELECT count(*) n, min(published_at) first, max(published_at) last,
+               sum(published_at >= datetime('now', '-7 days')) d7
+        FROM raw_documents WHERE {df}""", (key,)).fetchone()
+
+    docs = recent_docs(conn, kind, key, PROFILE_DOCS)
+    cached = get_cached(conn, kind, key)
+    stale = bool(docs) and (not cached or cached["doc_ids_hash"] != profile_hash(docs))
+    summary = DossierSummary(
+        status="cached", digest=cached["digest"], insights=cached["insights"],
+        created_at=cached["created_at"], doc_count=cached["doc_count"] or 0) if cached else None
+
+    top = conn.execute(f"""
+        SELECT e.id entity_id, e.name, el.link_type, e.aliases, count(*) c
+        FROM raw_documents rd
+        JOIN entity_links el ON el.doc_id = rd.id
+        JOIN entities e ON el.entity_id = e.id
+        WHERE {df} AND rd.published_at >= datetime('now', '-90 days')
+          AND el.link_type IN ('stock', 'industry', 'topic')
+        GROUP BY e.id, el.link_type ORDER BY c DESC LIMIT 12
+    """, (key,)).fetchall()
+
+    recent = conn.execute(f"""
+        SELECT id, title, published_at FROM raw_documents WHERE {df}
+        ORDER BY published_at DESC LIMIT 20""", (key,)).fetchall()
+    conn.close()
+
+    return SourceDossierResponse(
+        kind=src["kind"], key=src["key"], name=src["name"], author=src["author"],
+        is_active=src["is_active"], total_docs=st["n"] or 0,
+        first_doc_at=st["first"], last_doc_at=st["last"], docs_7d=st["d7"] or 0,
+        summary=summary, summary_stale=stale,
+        top_entities=[DossierEntity(entity_id=r["entity_id"], name=r["name"],
+                                    link_type=r["link_type"], aliases=r["aliases"], count=r["c"])
+                      for r in top],
+        recent_docs=[DossierDoc(id=r["id"], title=r["title"] or "(제목 없음)",
+                                published_at=r["published_at"]) for r in recent],
+    )
+
+
+@router.post("/dossier/summary", response_model=DossierSummary)
+def source_dossier_summary(kind: str, key: str):
+    """관점 프로필 생성 — 새 글이 있을 때만 LLM 호출 (아니면 캐시 반환)."""
+    from pipeline.source_dossier import compute_profile
+    r = compute_profile(kind, key)
+    if r.get("status") == "not_found":
+        raise HTTPException(404, "등록되지 않은 소스입니다")
+    return DossierSummary(status=r["status"], digest=r.get("digest"),
+                          insights=r.get("insights"), created_at=r.get("created_at"),
+                          doc_count=r.get("doc_count") or 0)
+
+
 @router.get("/health", response_model=SourcesHealthResponse)
 def sources_health():
     from datetime import datetime, timezone
