@@ -47,7 +47,17 @@ export default function DocPage() {
       <div className="space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <SourceBadge sourceType={doc.source_type} />
-          {doc.channel && <span className="text-[11px] text-muted-foreground font-medium">{doc.channel}</span>}
+          {doc.channel && (doc.channel_kind && doc.channel_key ? (
+            <Link
+              to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
+              className="text-[11px] text-muted-foreground font-medium hover:text-primary hover:underline"
+              title="소스 도시에 — 이 채널의 관점 프로필"
+            >
+              {doc.channel}
+            </Link>
+          ) : (
+            <span className="text-[11px] text-muted-foreground font-medium">{doc.channel}</span>
+          ))}
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {(doc.published_at || "").slice(0, 16).replace("T", " ")} · {formatRelativeTime(doc.published_at)}
           </span>
