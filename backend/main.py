@@ -55,6 +55,9 @@ app.mount("/media", StaticFiles(directory=str(MEDIA_PATH)), name="media")
 @app.on_event("startup")
 def startup():
     init_db()
+    # 텔레그램 봇 양방향 (토큰·chat_id 설정 시에만, TELEGRAM_POLLING=0으로 비활성)
+    from pipeline.bot import start_bot
+    start_bot()
 
 
 @app.get("/api/health")
