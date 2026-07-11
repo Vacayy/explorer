@@ -16,6 +16,7 @@ import StockBriefCard from "@/components/summary/StockBriefCard"
 import ThesisSection from "@/components/summary/ThesisSection"
 import AskedSection from "@/components/summary/AskedSection"
 import DigestSection from "@/components/analyze/DigestSection"
+import MentionsPanel from "@/components/summary/MentionsPanel"
 import { PageContainer } from "@/components/shared/PageContainer"
 import {
   Legend, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -283,10 +284,11 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
 
       </div>{/* /좌측 메인 */}
 
-      {/* 우측: AI 종합 컬럼 — 브리프 + 1D/7D 요약 (각각 지난 판 아카이브 펼침) */}
+      {/* 우측: AI/언급 축 — 브리프 → 1D/7D 요약 → 신호 → 언급 문서 → 매칭 키워드 */}
       <div className="space-y-4 min-w-0">
         <StockBriefCard stockCode={stockCode} />
         <DigestSection stockCode={stockCode} stack />
+        <MentionsPanel stockCode={stockCode} />
       </div>
 
       </div>{/* /2컬럼 */}
