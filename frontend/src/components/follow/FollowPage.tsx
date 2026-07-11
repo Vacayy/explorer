@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { unfollowEntity, spineKeys } from "@/api/spine"
-import { useWatchlist } from "@/hooks/useWatchlist"
+import { useWatchlist, useUpdateWatchlistItem, useDeleteWatchlistItem } from "@/hooks/useWatchlist"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import { useTelegramChannels, useToggleTelegramChannel } from "@/hooks/useTelegram"
 import { useBlogSources, useToggleBlogSource } from "@/hooks/useBlogFeed"
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageContainer } from "@/components/shared/PageContainer"
-import { formatNumber, formatPercent } from "@/utils/format"
+import { formatKrw, formatNumber } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import type { WatchlistItem } from "@/types"
 
@@ -43,12 +43,34 @@ export default function FollowPage() {
   )
 }
 
-/* ── 종목 (워치리스트 + 전체 검색) ── */
+/* ── 종목 (워치리스트 관리 통합: 정렬·편집·삭제 + 전체 검색) ── */
+
+type SortKey = "corp_name" | "latest_close" | "latest_market_cap"
 
 function StocksSection({ onGo }: { onGo: (code: string) => void }) {
   const [query, setQuery] = useState("")
+  const [sortKey, setSortKey] = useState<SortKey>("latest_market_cap")
+  const [sortAsc, setSortAsc] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
   const { data: items = [], isLoading } = useWatchlist()
   const { data: results = [] } = useCompanySearch(query)
+  const update = useUpdateWatchlistItem()
+  const del = useDeleteWatchlistItem()
+
+  const sorted = [...items].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey]
+    if (va == null && vb == null) return 0
+    if (va == null) return 1
+    if (vb == null) return -1
+    const cmp = typeof va === "string" ? va.localeCompare(vb as string) : (va as number) - (vb as number)
+    return sortAsc ? cmp : -cmp
+  })
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortAsc(!sortAsc)
+    else { setSortKey(key); setSortAsc(key === "corp_name") }
+  }
+  const arrow = (key: SortKey) => sortKey === key ? (sortAsc ? " ↑" : " ↓") : ""
 
   return (
     <Card>
@@ -81,30 +103,97 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
             워치리스트가 비어 있습니다 — 검색으로 종목에 들어가 ★를 눌러보세요.
           </p>
         )}
-        {items.map((item: WatchlistItem) => (
-          <button
-            key={item.id}
-            onClick={() => onGo(item.stock_code)}
-            className="flex w-full items-center gap-3 px-4 py-2 hover:bg-muted/50 text-left border-b border-border/50 last:border-0"
-          >
-            <span className="text-amber-400 text-[10px] tracking-tighter shrink-0">
-              {"★".repeat(item.conviction)}{"☆".repeat(5 - item.conviction)}
-            </span>
-            <span className="text-sm font-medium">{item.corp_name}</span>
-            <span className="text-xs text-muted-foreground tabular-nums">{item.stock_code}</span>
-            <span className="ml-auto text-xs tabular-nums">
-              {item.latest_close != null ? formatNumber(item.latest_close) : "-"}
-            </span>
-            {item.gap_pct != null && (
-              <span className={cn("text-xs font-medium tabular-nums w-16 text-right",
-                item.gap_pct >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                {formatPercent(item.gap_pct)}
-              </span>
-            )}
-          </button>
-        ))}
+        {items.length > 0 && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-xs text-muted-foreground">
+                <th className="px-4 py-1.5 text-left font-medium cursor-pointer select-none" onClick={() => toggleSort("corp_name")}>
+                  종목명{arrow("corp_name")}
+                </th>
+                <th className="py-1.5 text-left font-medium">코드</th>
+                <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("latest_close")}>
+                  현재가{arrow("latest_close")}
+                </th>
+                <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("latest_market_cap")}>
+                  시가총액{arrow("latest_market_cap")}
+                </th>
+                <th className="px-4 py-1.5 text-right font-medium w-24"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((item) => (
+                <StockRow key={item.id} item={item}
+                  editing={editingId === item.id}
+                  onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
+                  onSaved={() => setEditingId(null)}
+                  onGo={() => onGo(item.stock_code)}
+                  onDelete={() => del.mutate(item.id, { onSuccess: () => toast.success(`'${item.corp_name}' 워치리스트에서 삭제`) })}
+                  update={update}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
       </CardContent>
     </Card>
+  )
+}
+
+function StockRow({ item, editing, onEdit, onSaved, onGo, onDelete, update }: {
+  item: WatchlistItem
+  editing: boolean
+  onEdit: () => void
+  onSaved: () => void
+  onGo: () => void
+  onDelete: () => void
+  update: ReturnType<typeof useUpdateWatchlistItem>
+}) {
+  return (
+    <>
+      <tr className="border-b border-border/50 hover:bg-muted/50 cursor-pointer" onClick={onGo}>
+        <td className="px-4 py-2 font-medium">{item.corp_name}</td>
+        <td className="py-2 text-xs text-muted-foreground tabular-nums">{item.stock_code}</td>
+        <td className="py-2 text-right tabular-nums text-xs">
+          {item.latest_close != null ? formatNumber(item.latest_close) : "-"}
+        </td>
+        <td className="py-2 text-right tabular-nums text-xs">
+          {item.latest_market_cap != null ? formatKrw(item.latest_market_cap) : "-"}
+        </td>
+        <td className="px-4 py-2 text-right">
+          <button onClick={(e) => { e.stopPropagation(); onEdit() }}
+            className="text-[11px] text-muted-foreground hover:text-foreground mr-2">편집</button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="text-[11px] text-muted-foreground hover:text-destructive">삭제</button>
+        </td>
+      </tr>
+      {editing && (
+        <tr className="border-b border-border/50 bg-muted/30">
+          <td colSpan={5} className="px-4 py-2">
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const fd = new FormData(e.currentTarget)
+                const tp = fd.get("tp")?.toString().trim()
+                update.mutate(
+                  { id: item.id, target_price: tp ? Number(tp.replace(/,/g, "")) : undefined,
+                    thesis: fd.get("thesis")?.toString() ?? undefined },
+                  { onSuccess: () => { toast.success("저장됨 — 논지는 AI 브리프의 점검 대상이 됩니다"); onSaved() } },
+                )
+              }}
+            >
+              <label className="text-[11px] text-muted-foreground">목표가</label>
+              <Input name="tp" defaultValue={item.target_price ?? ""} className="h-7 w-28 text-xs" placeholder="원" />
+              <label className="text-[11px] text-muted-foreground">투자 논지</label>
+              <Input name="thesis" defaultValue={item.thesis ?? ""} className="h-7 flex-1 min-w-[200px] text-xs"
+                placeholder="핵심 논지 한 줄 — AI 브리프가 새 증거와 대조합니다" />
+              <button type="submit" disabled={update.isPending}
+                className="h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">저장</button>
+            </form>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 

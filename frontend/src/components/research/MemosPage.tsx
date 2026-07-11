@@ -9,8 +9,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
 import { Skeleton } from "@/components/shared/Skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
+import { PageContainer } from "@/components/shared/PageContainer"
 import { cn } from "@/lib/utils"
 import type { IRNote } from "@/types"
 
@@ -230,7 +232,7 @@ function StructuredView({ stockCode }: StructuredViewProps) {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-36 w-full" />
         ))}
@@ -255,7 +257,7 @@ function StructuredView({ stockCode }: StructuredViewProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {SECTIONS.map((section) => (
         <ThesisSection
           key={section.key}
@@ -366,16 +368,27 @@ function GeneralMemos({ stockCode }: GeneralMemosProps) {
                   <span className="text-xs text-muted-foreground mr-3">{note.note_date}</span>
                   <span className="font-semibold text-sm">{note.title}</span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive text-xs h-7"
-                  onClick={() => {
-                    if (confirm("삭제하시겠습니까?")) deleteNote.mutate(note.id, { onSuccess: () => toast.success("삭제되었습니다") })
-                  }}
-                >
-                  삭제
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive text-xs h-7"
+                    >
+                      삭제
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>삭제하시겠습니까?</AlertDialogTitle>
+                      <AlertDialogDescription>이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>취소</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => deleteNote.mutate(note.id, { onSuccess: () => toast.success("삭제되었습니다") })}>삭제</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
               {note.content && (
                 <p className="text-sm text-secondary-foreground whitespace-pre-wrap leading-relaxed">
@@ -403,7 +416,7 @@ export default function MemosPage() {
   const [activeTab, setActiveTab] = useState<"thesis" | "general">("thesis")
 
   return (
-    <div className="space-y-5">
+    <PageContainer gap="sm">
       {/* Company selector */}
       <div className="flex items-center gap-3">
         <Label className="text-sm font-medium text-muted-foreground whitespace-nowrap">기업 선택</Label>
@@ -462,6 +475,6 @@ export default function MemosPage() {
           </TabsContent>
         </Tabs>
       )}
-    </div>
+    </PageContainer>
   )
 }

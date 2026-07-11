@@ -41,7 +41,6 @@ import ValuationPage from "@/components/valuation/ValuationPage"
 import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
 
 // Research
-import WatchlistPage from "@/components/research/WatchlistPage"
 import MemosPage from "@/components/research/MemosPage"
 import CatalystsPage from "@/components/research/CatalystsPage"
 
@@ -180,8 +179,8 @@ export default function App() {
             <Route path="feed/blogs" element={<Navigate to="/feed?source=blog" replace />} />
 
             {/* Research */}
-            <Route path="research" element={<Navigate to="/research/watchlist" replace />} />
-            <Route path="research/watchlist" element={<WatchlistPage />} />
+            <Route path="research" element={<Navigate to="/follow" replace />} />
+            <Route path="research/watchlist" element={<Navigate to="/follow" replace />} />
             <Route path="research/memos" element={<MemosPage />} />
             <Route path="research/catalysts" element={<CatalystsPage />} />
 

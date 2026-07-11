@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { toast } from "sonner"
+import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCatalysts, useCreateCatalyst, useDeleteCatalyst } from "@/hooks/useCatalysts"
 import { Button } from "@/components/ui/button"
@@ -7,7 +8,10 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import FilterChips from "@/components/shared/FilterChips"
 import CompanySearchCombobox from "@/components/shared/CompanySearchCombobox"
+import { PageContainer } from "@/components/shared/PageContainer"
 import type { CatalystItem } from "@/types"
 import type { Company } from "@/types"
 
@@ -48,7 +52,6 @@ function monthLabel(key: string): string {
 export default function CatalystsPage() {
   const [days, setDays] = useState(90)
   const [showAddForm, setShowAddForm] = useState(false)
-  const [showPast, setShowPast] = useState(false)
 
   // Add form state
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
@@ -87,7 +90,7 @@ export default function CatalystsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <PageContainer gap="sm">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">카탈리스트</h1>
@@ -175,21 +178,11 @@ export default function CatalystsPage() {
       {/* Period filter */}
       <div className="flex gap-2 items-center">
         <span className="text-xs text-muted-foreground">기간:</span>
-        {PERIOD_OPTIONS.map((p) => (
-          <Button
-            key={p.value}
-            variant="outline"
-            size="xs"
-            onClick={() => setDays(p.value)}
-            className={cn(
-              days === p.value
-                ? "border-primary text-primary bg-primary/5"
-                : "border-border text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {p.label}
-          </Button>
-        ))}
+        <FilterChips
+          options={PERIOD_OPTIONS.map((p) => ({ value: String(p.value), label: p.label }))}
+          value={String(days)}
+          onChange={(v) => setDays(Number(v))}
+        />
       </div>
 
       {/* Content */}
@@ -231,16 +224,12 @@ export default function CatalystsPage() {
 
           {/* Past events (collapsed by default) */}
           {pastItems.length > 0 && (
-            <div className="space-y-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors px-0"
-                onClick={() => setShowPast((v) => !v)}
-              >
-                {showPast ? "▼" : "▶"} 지난 이벤트 ({pastItems.length})
-              </Button>
-              {showPast && (
+            <Collapsible className="space-y-2">
+              <CollapsibleTrigger className="group/past text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors px-0">
+                <ChevronDown className="size-3.5 transition-transform group-data-[state=open]/past:rotate-180" />
+                지난 이벤트 ({pastItems.length})
+              </CollapsibleTrigger>
+              <CollapsibleContent>
                 <div className="space-y-4 opacity-60">
                   {Array.from(pastGroups.entries()).map(([month, monthItems]) => (
                     <div key={month} className="space-y-2">
@@ -261,12 +250,12 @@ export default function CatalystsPage() {
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
