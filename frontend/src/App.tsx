@@ -15,7 +15,7 @@ import HomePage from "@/components/home/HomePage"
 
 // Explore (탐색 — 신호)
 import ExplorePage from "@/components/explore/ExplorePage"
-import AskPage from "@/components/ask/AskPage"
+import ChatPage from "@/components/chat/ChatPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import DocPage from "@/components/doc/DocPage"
 import SourcePage from "@/components/source/SourcePage"
@@ -102,6 +102,12 @@ function AnalyzePage({ tab }: { tab: string }) {
   }
 }
 
+function AskRedirect() {
+  // /ask → /chat (옴니바·구 링크 호환, ?q= 프리필 보존)
+  const { search } = useLocation()
+  return <Navigate to={`/chat${search}`} replace />
+}
+
 function IndustryRoute() {
   const navigate = useNavigate()
   return (
@@ -131,7 +137,8 @@ export default function App() {
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />
-            <Route path="ask" element={<AskPage />} />
+            <Route path="chat" element={<ChatPage />} />
+            <Route path="ask" element={<AskRedirect />} />
             <Route path="actions" element={<ActionsPage />} />
 
             {/* Discovery */}
@@ -170,7 +177,7 @@ export default function App() {
             <Route path="company/:stockCode/:tab" element={<LegacyRedirect />} />
 
             {/* Catch all */}
-            <Route path="*" element={<Navigate to="/discover/industry" replace />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

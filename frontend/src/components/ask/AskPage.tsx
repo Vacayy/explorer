@@ -36,7 +36,7 @@ export default function AskPage() {
   const ask = useMutation({ mutationFn: askQuestion })
 
   const submit = () => {
-    if (question.trim() && !ask.isPending) ask.mutate(question.trim())
+    if (question.trim() && !ask.isPending) ask.mutate({ question: question.trim() })
   }
 
   return (

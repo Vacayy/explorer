@@ -98,8 +98,8 @@ export async function fetchSpineSignals(type?: string, days?: number): Promise<S
   return data;
 }
 
-export async function askQuestion(question: string): Promise<AskResponse> {
-  const { data } = await api.post<AskResponse>("/api/spine/ask", { question }, { timeout: 300_000 });
+export async function askQuestion(params: { question: string; conversation_id?: number }): Promise<AskResponse> {
+  const { data } = await api.post<AskResponse>("/api/spine/ask", params, { timeout: 300_000 });
   return data;
 }
 
