@@ -105,6 +105,9 @@ export default function DocPage() {
         </CardContent>
       </Card>
 
+      {/* 관련 문서 (임베딩 유사) */}
+      <RelatedSection docId={doc.id} />
+
       {/* 이 문서가 언급한 종목의 디테일로 */}
       {doc.entities.filter((e) => e.link_type === "stock" && e.aliases).length > 0 && (
         <div className="text-xs text-muted-foreground">
@@ -129,5 +132,36 @@ function DocSkeleton() {
       <Skeleton className="h-4 w-48" />
       <Skeleton className="h-48 w-full rounded-xl" />
     </div>
+  )
+}
+
+
+function RelatedSection({ docId }: { docId: number }) {
+  const { data } = useQuery({
+    queryKey: ["spine", "doc", docId, "related"],
+    queryFn: async () =>
+      (await api.get(`/api/spine/doc/${docId}/related`)).data as {
+        id: number; source_type: string; title: string | null; published_at: string | null
+      }[],
+    staleTime: 10 * 60_000,
+  })
+  if (!data || data.length === 0) return null
+  return (
+    <Card>
+      <CardContent className="py-3">
+        <div className="text-[11px] text-muted-foreground mb-1.5">관련 문서 (의미 유사)</div>
+        <ul className="space-y-1">
+          {data.map((r) => (
+            <li key={r.id} className="flex items-center gap-2 text-xs">
+              <SourceBadge sourceType={r.source_type} />
+              <Link to={`/doc/${r.id}`} className="truncate hover:underline">{r.title || "(제목 없음)"}</Link>
+              <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+                {(r.published_at || "").slice(0, 10)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,11 +1,27 @@
 """문서 디테일 API — 수집한 raw content를 내부 페이지에서 열람 (외부 이동 대신)."""
 import json
 
+from pydantic import BaseModel
+
 from fastapi import APIRouter, HTTPException
 from database import get_connection
 from models.spine import EntityTag, FeedDocument
 
 router = APIRouter(prefix="/api/spine/doc", tags=["spine"])
+
+
+class RelatedDoc(BaseModel):
+    id: int
+    source_type: str
+    title: str | None
+    published_at: str | None
+
+
+@router.get("/{doc_id}/related", response_model=list[RelatedDoc])
+def get_related(doc_id: int):
+    """임베딩 유사 문서 5건 — 아카이브 재방문 촉진 (H2)."""
+    from pipeline.search import related_docs
+    return [RelatedDoc(**d) for d in related_docs(doc_id)]
 
 
 @router.get("/{doc_id}", response_model=FeedDocument)
