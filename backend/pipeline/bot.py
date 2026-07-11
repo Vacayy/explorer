@@ -136,8 +136,15 @@ def handle_message(text: str) -> str:
     return "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
 
 
+def _allowed_chats() -> set[str]:
+    """허용 채팅: TELEGRAM_CHAT_ID(본인) + TELEGRAM_EXTRA_CHAT_IDS(콤마 구분 — 친구/그룹)."""
+    ids = {os.getenv("TELEGRAM_CHAT_ID", "").strip()}
+    ids |= {x.strip() for x in os.getenv("TELEGRAM_EXTRA_CHAT_IDS", "").split(",")}
+    return {i for i in ids if i}
+
+
 def _poll_loop():
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    allowed = _allowed_chats()
     offset = None
     while True:
         try:
@@ -146,14 +153,15 @@ def _poll_loop():
             for u in resp.json().get("result", []):
                 offset = u["update_id"] + 1
                 msg = u.get("message") or {}
-                if str(msg.get("chat", {}).get("id")) != str(chat_id):
-                    continue  # 등록된 채팅만 (보안)
+                sender = str(msg.get("chat", {}).get("id"))
+                if sender not in allowed:
+                    continue  # 허용 목록만 (보안)
                 text = msg.get("text", "")
                 if not text:
                     continue
                 if len(text) >= 15:  # 긴 질문은 시간이 걸림 — 선응답
-                    _send(chat_id, "🔎 찾아보는 중…")
-                _send(chat_id, handle_message(text))
+                    _send(sender, "🔎 찾아보는 중…")
+                _send(sender, handle_message(text))
         except Exception:
             time.sleep(10)
 
