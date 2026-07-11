@@ -79,8 +79,11 @@ def _stock_brief(conn, ent) -> str:
     return "\n".join(lines)
 
 
-def handle_message(text: str) -> str:
-    """메시지 → 응답 텍스트 (폴링과 분리 — 단위 테스트 가능)."""
+def handle_message(text: str, chat_id: str | None = None) -> str:
+    """메시지 → 응답 텍스트 (폴링과 분리 — 단위 테스트 가능).
+
+    chat_id: 텔레그램 사용자 식별 — 스레드·대화 내역이 사용자별로 분리된다.
+    """
     q = (text or "").strip()
     if not q:
         return "종목명, 질문, 또는 /브리핑"
@@ -118,29 +121,33 @@ def handle_message(text: str) -> str:
         if ent:
             out = _stock_brief(conn, ent)
             conn.close()
-            log_exchange_safe(q, out, channel="telegram", anchor_entity_id=ent["id"])
+            log_exchange_safe(q, out, channel="telegram", anchor_entity_id=ent["id"], chat_id=chat_id)
             return out
     conn.close()
 
-    # 문장형 → RAG
+    # 문장형 → RAG (웹 /chat과 동일 엔진 + 동일하게 스레드 맥락 전달)
     if len(q) >= 8:
+        from pipeline.conversations import find_telegram_thread, thread_history
         from pipeline.rag import ask
+        thread_id = find_telegram_thread(chat_id)   # 이 사용자의 30분 윈도우 스레드
+        history = thread_history(thread_id) if thread_id else None
         try:
-            r = ask(q)
+            r = ask(q, history=history)
         except Exception as e:
             return f"답변 생성 실패: {e}"
         if not r.get("answer"):
-            log_exchange_safe(q, None, channel="telegram")
+            log_exchange_safe(q, None, channel="telegram", conversation_id=thread_id, chat_id=chat_id)
             return "관련 수집 문서가 없어 답할 수 없습니다."
         parts = [r["answer"][:2500]]
         if r.get("gaps"):
             parts.append("\n⚠ " + " / ".join(g["note"][:60] for g in r["gaps"][:2]))
         parts.append(f"\n(출처 {len(r.get('citations', []))}건 · AI 종합 — 검증 필요)")
         log_exchange_safe(q, r["answer"], citations=r.get("citations"), gaps=r.get("gaps"),
-                          model=r.get("model"), channel="telegram")
+                          model=r.get("model"), channel="telegram",
+                          conversation_id=thread_id, chat_id=chat_id)
         return "\n".join(parts)
 
-    log_exchange_safe(q, None, channel="telegram")
+    log_exchange_safe(q, None, channel="telegram", chat_id=chat_id)
     return "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
 
 
@@ -169,7 +176,7 @@ def _poll_loop():
                     continue
                 if len(text) >= 15:  # 긴 질문은 시간이 걸림 — 선응답
                     _send(sender, "🔎 찾아보는 중…")
-                _send(sender, handle_message(text))
+                _send(sender, handle_message(text, chat_id=sender))
         except Exception:
             time.sleep(10)
 

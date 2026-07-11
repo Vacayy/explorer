@@ -392,6 +392,7 @@ def init_db():
         title            TEXT,                   -- 첫 질문 앞 60자 (자동)
         anchor_entity_id INTEGER REFERENCES entities(id) ON DELETE SET NULL,
         channel          TEXT NOT NULL DEFAULT 'web',  -- web | telegram
+        chat_id          TEXT,                   -- 텔레그램 사용자 분리 (웹/오너=NULL)
         created_at       TEXT DEFAULT (datetime('now')),
         updated_at       TEXT DEFAULT (datetime('now'))
     );
@@ -509,6 +510,7 @@ def init_db():
 
     for migration in [
         "ALTER TABLE raw_documents ADD COLUMN media_json TEXT",
+        "ALTER TABLE conversations ADD COLUMN chat_id TEXT",  # 사용자 분리 (텔레그램 chat_id, 웹=NULL=오너)
         "ALTER TABLE corporate_actions ADD COLUMN summary TEXT",
         "ALTER TABLE ir_notes ADD COLUMN memo_type TEXT DEFAULT 'general'",
         "ALTER TABLE telegram_channels ADD COLUMN is_active INTEGER DEFAULT 1",
