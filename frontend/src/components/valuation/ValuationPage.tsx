@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react"
+import NextQuestions from "@/components/shared/NextQuestions"
 import { useValuation } from "@/hooks/useStockPrices"
 import ChartCard from "@/components/shared/ChartCard"
 import FilterChips from "@/components/shared/FilterChips"
@@ -128,6 +129,8 @@ export default function ValuationPage({ stockCode }: Props) {
           </ResponsiveContainer>
         </ChartCard>
       </div>
+      {/* 다음 질문 — dead-end 제거 (P2-3) */}
+      <NextQuestions stockCode={stockCode} context="valuation" />
     </div>
   )
 }

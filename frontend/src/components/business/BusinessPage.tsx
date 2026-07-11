@@ -1,4 +1,5 @@
 import { useState } from "react"
+import NextQuestions from "@/components/shared/NextQuestions"
 import { useBusinessSegments, useCreateSegment, useDeleteSegment } from "@/hooks/useBusiness"
 import ChartCard from "@/components/shared/ChartCard"
 import SegmentTabs from "@/components/shared/SegmentTabs"
@@ -153,6 +154,8 @@ export default function BusinessPage({ stockCode }: Props) {
           </Table>
         </>
       )}
+      {/* 다음 질문 — dead-end 제거 (P2-3) */}
+      <NextQuestions stockCode={stockCode} context="business" />
     </div>
   )
 }
