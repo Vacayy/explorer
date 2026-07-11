@@ -1,4 +1,5 @@
 import { useState } from "react"
+import NextQuestions from "@/components/shared/NextQuestions"
 import { useDisclosures } from "@/hooks/useDisclosures"
 import { useIRNotes, useCreateIRNote, useDeleteIRNote } from "@/hooks/useIRNotes"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -157,6 +158,8 @@ export default function DisclosurePage({ stockCode }: Props) {
           </div>
         </TabsContent>
       </Tabs>
+      {/* 다음 질문 — dead-end 제거 (P2-3) */}
+      <NextQuestions stockCode={stockCode} context="disclosures" />
     </div>
   )
 }

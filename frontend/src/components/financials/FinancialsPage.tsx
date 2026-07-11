@@ -1,4 +1,5 @@
 import { useState } from "react"
+import NextQuestions from "@/components/shared/NextQuestions"
 import { useFinancials } from "@/hooks/useFinancials"
 import AnnualOverview from "@/components/financials/AnnualOverview"
 import SegmentTabs from "@/components/shared/SegmentTabs"
@@ -211,7 +212,8 @@ export default function FinancialsPage({ stockCode }: Props) {
           </ResponsiveContainer>
         </ChartCard>
       )}
+      {/* 다음 질문 — dead-end 제거 (P2-3) */}
+      <NextQuestions stockCode={stockCode} context="financials" />
     </div>
   )
 }
-
