@@ -3,6 +3,7 @@ uvicorn[standard]
 python-dotenv
 opendartreader==0.2.2  # 0.3.x는 패키지 구조 변경으로 `import OpenDartReader` 불가
 pykrx
+yfinance          # 주가 수집 (krx_service — pykrx 차단 시 대체 경로)
 aiosqlite
 pandas
 httpx
