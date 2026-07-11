@@ -235,6 +235,30 @@ statement 파편화(→승격 시 기존 지식 목록 주입, live vocab 방식
 
 ---
 
+## F. 문헌 검증 (2026-07-12 조사) — 확증·도전·수정
+
+설계를 각 분야의 고인용 정본 연구에 대조한 결과. **판정**: ✅확증 ⚠️도전 ➕설계 수정.
+
+| 문헌 | 분야 | 요지 | 판정 |
+|---|---|---|---|
+| **Anderson & Schooler (1991)** *Reflections of the Environment in Memory* — ACT-R의 실증 기반 | 인지심리 | 기억 가용성은 환경의 재사용 확률(need odds)을 미러링하며, NYT 헤드라인·이메일 등 실환경에서 빈도·최신성·**노출 패턴**의 power law를 실측 | ✅ ln(Σt⁻ᵈ)가 임의 선택이 아니라 환경 통계에 최적화된 형태임을 실증. ➕ **간격 효과**: 몰아친 N회 노출 < 시간에 분산된 N회 — 승격 기준 수정 (아래) |
+| **Kahneman & Tversky (1974)** *Judgment under Uncertainty* (Science) · **(1979)** *Prospect Theory* (Econometrica 역대 최다 인용) | 행동경제 | 가용성·대표성·앵커링 휴리스틱과 편향 목록; 손익 비대칭(손실회피) | ✅ A-6 보정표의 정본 근거. ➕ 손실회피 → 진자 감시에서 **비관 쏠림은 낙관보다 빠르고 깊게 형성** — 임계 비대칭 참고 |
+| **HippoRAG (NeurIPS 2024)** — 해마 인덱싱 이론 기반 LLM 장기기억 | AI | LLM+지식그래프+Personalized PageRank로 신피질/해마 역할 분담 — multi-hop QA +20%, 반복검색 대비 10-30배 저렴 | ✅ CLS→시스템 매핑이 업계 검증된 방향. ⚠️ 승격만이 신피질이 아니다 — **그래프를 통한 검색 확산**도 스키마 역할 → K1에 entity_links 그래프 확산 검토 추가 |
+| **Generative Agents (Park et al. 2023, UIST)** — 에이전트 메모리의 정본 | AI | 검색 점수 = recency(지수감쇠)×importance×relevance; 주기적 reflection으로 상위 지식 종합 | ✅ 우리 activation×relevance와 동형, reflection=승격의 선례. ⚠️ 그들의 importance는 **LLM 단건 채점** — 우리는 corroboration(독립 관측 수)으로 도출: 더 검증가능하고 환각에 강함 (설계 유지, 차이 명시) |
+| **LLM 에이전트 메모리 생태계 (2025-26 서베이·Mem0·Zep·Letta)** | AI | 업계가 episodic/semantic/procedural 3층으로 수렴; Zep은 그래프+하이브리드 검색을 **검색 시 LLM 무호출**로; MemGuard 등 'memory contamination'이 공인 문제 | ✅ records/claims/knowledge ≈ episodic→semantic 수렴과 정합. ✅ '조회 시 계산·검색 시 LLM 0' 방향 확증. ✅ 에코챔버 방지(오염 차단)가 업계 공인 문제임을 확인 |
+| **Hayek (1945)** *The Use of Knowledge in Society* (AER) | 경제학 | 지식은 분산·국지적·암묵적이며 어떤 단일 주체도 전체를 가질 수 없다 — 문제는 자원 배분이 아니라 **분산 지식의 조정** | ✅ 이 시스템의 존재 이유에 대한 헌장 (분산 소스의 국지 지식 집계). ➕ **국지성 가중**: 소스가 자기 전문 영역에서 말할 때 가중 — 소스 도시에의 '주로 다루는 것'이 이미 전문성 프로파일이므로 승격 시 활용 가능 |
+
+### 문헌이 요구한 설계 수정 (v3)
+
+1. **승격 기준에 간격 요건 추가** (Anderson & Schooler): 독립 관측 2+ **이면서 시간
+   분산** — 같은 날 쏟아진 관측 묶음은 1개 에피소드로 취급 (몰림 ≠ 반복 확인).
+2. **K1에 그래프 검색 확산 검토** (HippoRAG): 승격된 지식·entity_links 위에서
+   개인화 PageRank류 확산 — 검색 시 LLM 무호출 원칙 유지 (Zep 실증).
+3. **진자 감시 임계 비대칭** (손실회피): 비관 쏠림의 형성 속도·깊이가 크므로
+   낙관 만장일치 임계를 더 민감하게 (역설적으로 낙관 극단이 더 드물고 더 위험).
+4. **국지성 가중** (Hayek): 승격 증거 평가에서 소스의 전문 영역 일치 여부를
+   corroboration 품질에 반영 (K0에서는 기록만, 가중은 K1+).
+
 ### Sources
 - [Why There Are Complementary Learning Systems in the Hippocampus and Neocortex (McClelland et al.)](https://www.researchgate.net/publication/15575602_Why_There_are_Complementary_Learning_Systems_in_the_Hippocampus_and_Neocortex_Insights_from_the_Successes_and_Failures_of_Connectionist_Models_of_Learning_and_Memory) · [A Neural Model of Schemas and Memory Consolidation](https://www.biorxiv.org/content/10.1101/434696v1.full)
 - [ACT-R base-level learning (Petrov, CMU)](http://act-r.psy.cmu.edu/wordpress/wp-content/uploads/2012/12/652petrovAbstract.pdf) · [Human-Like Remembering and Forgetting in LLM Agents: An ACT-R-Inspired Memory Architecture](https://dl.acm.org/doi/10.1145/3765766.3765803)
@@ -243,3 +267,8 @@ statement 파편화(→승격 시 기존 지식 목록 주입, live vocab 방식
 - [Pace Layering: How Complex Systems Learn (Brand, MIT JoDS)](https://jods.mitpress.mit.edu/pub/issue3-brand) · [Pace layers — Long Now](https://longnow.org/ideas/pace-layers/)
 - [The Half-Life of Facts (Arbesman)](https://fs.blog/the-half-life-of-facts/) · [서평·mesofacts](https://www.themarginalian.org/2012/11/06/the-half-life-of-facts/)
 - Howard Marks, *Mastering the Market Cycle* / memo "On the Couch" — 진자·컨센서스 극단 · Charlie Munger, *Poor Charlie's Almanack* — latticework of mental models (stakeholder 제안 반영)
+- [Anderson & Schooler (1991) Reflections of the Environment in Memory](https://journals.sagepub.com/doi/abs/10.1111/j.1467-9280.1991.tb00174.x) · [원문 PDF](https://users.cs.northwestern.edu/~paritosh/papers/KIP/AndersonSchooler1991ReflectionsOfEnvironmentOnMemory.pdf)
+- [Tversky & Kahneman (1974) Judgment under Uncertainty (Science)](https://www.science.org/doi/10.1126/science.185.4157.1124) · [Prospect Theory (1979) 개관](https://en.wikipedia.org/wiki/Prospect_theory)
+- [HippoRAG (NeurIPS 2024)](https://arxiv.org/abs/2405.14831) · [Generative Agents (Park et al. 2023)](https://arxiv.org/abs/2304.03442)
+- [Memory in the Age of AI Agents: A Survey — paper list](https://github.com/Shichun-Liu/Agent-Memory-Paper-List) · [From Storage to Experience: LLM Agent Memory Survey](https://arxiv.org/pdf/2605.06716) · [AI Agent Memory Architectures (2026)](https://zylos.ai/research/2026-04-05-ai-agent-memory-architectures-persistent-knowledge/)
+- [Hayek (1945) The Use of Knowledge in Society (AER)](https://en.wikipedia.org/wiki/The_Use_of_Knowledge_in_Society) · [원문](https://oll.libertyfund.org/titles/hayek-the-use-of-knowledge-in-society-1945)
