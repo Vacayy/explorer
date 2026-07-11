@@ -4,6 +4,7 @@ import { apiQuery, STALE } from "@/api/query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { MetricHint } from "@/components/shared/MetricHint"
 
 /**
  * Peer 그룹 — 본 종목 + 경쟁사(국내·해외) 지표 비교.
@@ -61,9 +62,15 @@ export default function PeerSection({ stockCode }: { stockCode: string }) {
             <thead>
               <tr className="border-b text-muted-foreground">
                 <th className="py-1 text-left font-medium">기업</th>
-                <th className="py-1 text-right font-medium">시총</th>
-                <th className="py-1 text-right font-medium">PER(fwd)</th>
-                <th className="py-1 text-right font-medium">영업이익률</th>
+                <th className="py-1 text-right font-medium">
+                  <MetricHint hint="국내: 거래소 최신 거래일 / 해외: Yahoo Finance (현지통화)">시총</MetricHint>
+                </th>
+                <th className="py-1 text-right font-medium">
+                  <MetricHint hint="국내: 네이버 컨센서스 최신 회계연도 추정 / 해외: Yahoo Finance forwardPE">PER(fwd)</MetricHint>
+                </th>
+                <th className="py-1 text-right font-medium">
+                  <MetricHint hint="국내: DART 최근 연간 영업이익÷매출액 / 해외: Yahoo operatingMargins(TTM) — 회계기준 차이 유의">영업이익률</MetricHint>
+                </th>
               </tr>
             </thead>
             <tbody>
