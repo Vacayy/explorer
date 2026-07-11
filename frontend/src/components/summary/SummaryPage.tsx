@@ -3,7 +3,6 @@ import { useFinancials } from "@/hooks/useFinancials"
 import { useStockPrices } from "@/hooks/useStockPrices"
 import { useDisclosures } from "@/hooks/useDisclosures"
 import { useKpi } from "@/hooks/useKpi"
-import { useIRNotes } from "@/hooks/useIRNotes"
 import { useConsensus } from "@/hooks/useConsensus"
 import { useIndexPerformance } from "@/hooks/useIndexPerformance"
 import { useWatchlist, useAddToWatchlist } from "@/hooks/useWatchlist"
@@ -17,6 +16,9 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatKrw, formatPercent } from "@/utils/format"
 import { buildRevenueOpChart } from "@/utils/metrics"
+import StockBriefCard from "@/components/summary/StockBriefCard"
+import ThesisSection from "@/components/summary/ThesisSection"
+import AskedSection from "@/components/summary/AskedSection"
 // Chart labels defined inline at bottom of file (SparseBarLabel, SparseOpmLabel)
 import {
   ComposedChart, Bar, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -59,8 +61,6 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
   const { data: annualData } = useFinancials(stockCode, "IS", "annual", 5)
   const { data: priceData, isLoading: priceLoading } = useStockPrices(stockCode, fromDate, toDate)
   const { data: discData, isLoading: discLoading } = useDisclosures(stockCode, undefined, undefined, undefined, 1, 5)
-  const { data: bullNotes, isLoading: bullLoading } = useIRNotes(stockCode, "bull")
-  const { data: bearNotes, isLoading: bearLoading } = useIRNotes(stockCode, "bear")
   const { data: consensusData } = useConsensus(stockCode)
   const { data: indexPerfData, isLoading: indexLoading } = useIndexPerformance(stockCode, 365)
 
@@ -169,17 +169,6 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
 
   const recentQ = qPeriods
 
-  // Memos (recent 3)
-  const recentMemos = useMemo(() => {
-    const bulls = (bullNotes || []).slice(0, 3).map(n => ({ ...n, type: "bull" as const }))
-    const bears = (bearNotes || []).slice(0, 3).map(n => ({ ...n, type: "bear" as const }))
-    return [...bulls, ...bears]
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .slice(0, 3)
-  }, [bullNotes, bearNotes])
-
-  const memosLoading = bullLoading || bearLoading
-
   /* ── KPI strip values ─────────────────────────────────────── */
   const priceChangePct = kpi?.price_change_pct
   const priceChangeStr = priceChangePct != null
@@ -246,6 +235,9 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
           <WatchlistButton stockCode={stockCode} corpCode={corpCode} />
         </div>
       ) : null}
+
+      {/* Row 0.5: AI 브리프 — 지금 알아야 할 것 (P2-1, 게으른 생성) */}
+      <StockBriefCard stockCode={stockCode} />
 
       {/* Row 1: Candlestick (2/3) | Relative Performance (1/3) */}
       <div className="grid grid-cols-3 gap-4">
@@ -512,38 +504,12 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>투자 논점</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[250px]">
-              {memosLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full rounded" />
-                  <Skeleton className="h-4 w-2/3 rounded" />
-                </div>
-              ) : recentMemos.length > 0 ? (
-                <ul className="space-y-2">
-                  {recentMemos.map((memo) => (
-                    <li key={memo.id} className="text-xs">
-                      <span className={memo.type === "bull" ? "text-red-600" : "text-blue-600"}>
-                        {memo.type === "bull" ? "▲ Bull" : "▼ Bear"}
-                      </span>{" "}
-                      <span className="font-medium">{memo.title}</span>
-                      {memo.content && (
-                        <p className="text-muted-foreground mt-0.5 line-clamp-2">{memo.content}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-muted-foreground">메모가 없습니다</p>
-              )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
+        {/* 내 논지 4분면 — 보관함 투자메모에서 이관 (P2-1). 항목 변경 시 브리프 재생성 대상 */}
+        <ThesisSection stockCode={stockCode} />
       </div>
+
+      {/* Row 4: 내가 물어본 것들 — 이 종목 앵커 대화 (P2-0 데이터의 첫 노출) */}
+      <AskedSection stockCode={stockCode} />
     </div>
   )
 }
