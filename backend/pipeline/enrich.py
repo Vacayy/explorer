@@ -94,13 +94,29 @@ def _live_vocab() -> tuple[list[str], list[str]]:
     return inds, tops
 
 
+def _person_vocab() -> list[str]:
+    """기존 person 엔티티 (표기 수렴용) — 사용 빈도순 상위 40."""
+    try:
+        from database import get_connection
+        conn = get_connection()
+        names = [r["name"] for r in conn.execute("""
+            SELECT e.name, count(el.doc_id) c FROM entities e
+            JOIN entity_links el ON el.entity_id = e.id AND el.link_type = 'person'
+            WHERE e.type = 'person' GROUP BY e.id ORDER BY c DESC LIMIT 40""")]
+        conn.close()
+        return names
+    except Exception:
+        return []
+
+
 def _build_prompt(title: str, markdown: str) -> str:
     doc = f"{title}\n{(markdown or '')[:MAX_DOC_CHARS]}"
     inds, tops = _live_vocab()
+    persons = _person_vocab()
     return (
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
         '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문 표기", "listed": "KR|해외"}], '
-        '"industries": [], "topics": [], "label_parents": {"신규라벨": "상위라벨"}, '
+        '"industries": [], "topics": [], "label_parents": {"신규라벨": "상위라벨"}, "people": [], '
         '"summary": "핵심 2문장", "sentiment": "positive|neutral|negative"}\n'
         "규칙:\n"
         "- stocks: 실제로 논의 대상인 상장사만 (스쳐 지나가는 언급 제외). 한국 상장사는 별칭·약칭"
@@ -112,6 +128,9 @@ def _build_prompt(title: str, markdown: str) -> str:
         "명백히 새로우면 신규 허용 (1~2단어, 통용 한국어 표기).\n"
         "- label_parents: 이번에 새로 만든 라벨이 있으면 그것의 상위 개념을 기존/사용 라벨 중에서 지정 "
         '(예: {"스테이블코인": "Web3"}). 상위가 없으면 생략.\n'
+        "- people: 문서가 실질적으로 다루는 실존 인물(기업가·투자자·정책결정자·석학)만, "
+        "통용 한국어 표기로 정규화 (Sam Altman=샘 알트먼, 최태원 회장=최태원). 스쳐가는 이름 제외.\n"
+        f"- 기존 인물 표기 (있으면 그대로 사용): {', '.join(persons) if persons else '(아직 없음)'}\n"
         f"- 기존 산업 라벨: {', '.join(inds)}\n"
         f"- 기존 토픽 라벨: {', '.join(tops)}\n"
         f"문서:\n{doc}"
@@ -161,6 +180,7 @@ def _enrich_llm(title: str, markdown: str) -> dict:
         "industries": data.get("industries") or [],
         "topics": data.get("topics") or [],
         "label_parents": data.get("label_parents") or {},
+        "people": [str(x).strip()[:30] for x in (data.get("people") or []) if str(x).strip()],
         "stocks": [s["name"] for s in kr],
         "foreign_stocks": [s["name"] for s in foreign],
         # 별칭 자동 학습: 본문 표기가 정식명과 다르면 ('삼전'→삼성전자) 후보로 전달

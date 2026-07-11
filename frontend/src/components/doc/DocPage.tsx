@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { EntityChip } from "@/components/shared/EntityChip"
+import { PageContainer } from "@/components/shared/PageContainer"
 import { formatRelativeTime } from "@/utils/format"
 import type { EntityTag, FeedDocument } from "@/types"
 
@@ -36,13 +37,14 @@ export default function DocPage() {
     if (tag.link_type === "stock" && tag.aliases) navigate(`/analyze/${tag.aliases}/summary`)
     else if (tag.link_type === "industry") navigate(`/feed?industry=${encodeURIComponent(tag.name)}`)
     else if (tag.link_type === "topic") navigate(`/feed?topic=${encodeURIComponent(tag.name)}`)
+    else if (tag.link_type === "person") navigate(`/person?name=${encodeURIComponent(tag.name)}`)
   }
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3.5 w-3.5" /> 뒤로
-      </button>
+    <PageContainer width="reading" gap="sm">
+      <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="h-auto border-0 p-0 font-normal flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:bg-transparent">
+        <ArrowLeft className="size-3.5" /> 뒤로
+      </Button>
 
       <div className="space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -84,7 +86,7 @@ export default function DocPage() {
 
       {/* AI 요약 (있으면) */}
       {doc.summary && (
-        <Card className="border-l-2 border-l-hypothesis">
+        <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]">
           <CardContent className="py-2.5 text-xs text-muted-foreground">
             <span className="text-hypothesis font-medium mr-1">요약</span>{doc.summary}
           </CardContent>
@@ -130,18 +132,18 @@ export default function DocPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
 function DocSkeleton() {
   return (
-    <div className="space-y-4 max-w-3xl">
+    <PageContainer width="reading" gap="sm">
       <Skeleton className="h-4 w-16" />
       <Skeleton className="h-6 w-3/4" />
       <Skeleton className="h-4 w-48" />
       <Skeleton className="h-48 w-full rounded-xl" />
-    </div>
+    </PageContainer>
   )
 }
 

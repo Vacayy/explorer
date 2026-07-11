@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { BellPlus, ChevronDown, ChevronUp, Search, X } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { PageContainer } from '@/components/shared/PageContainer'
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { EntityChip } from "@/components/shared/EntityChip"
@@ -25,6 +26,7 @@ import type { EntityTag, FeedDocument } from "@/types"
  */
 export default function UnifiedFeedPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const filters = {
     q: searchParams.get("q") ?? undefined,
     source: searchParams.get("source") ?? undefined,
@@ -58,6 +60,7 @@ export default function UnifiedFeedPage() {
     if (tag.link_type === "stock" && tag.aliases) setFilter("stock", tag.aliases)
     else if (tag.link_type === "industry") setFilter("industry", tag.name)
     else if (tag.link_type === "topic") setFilter("topic", tag.name)
+    else if (tag.link_type === "person") navigate(`/person?name=${encodeURIComponent(tag.name)}`)
   }
 
   if (isLoading) return <FeedSkeleton />
@@ -67,7 +70,7 @@ export default function UnifiedFeedPage() {
   const activeFilters = (["stock", "industry", "topic"] as const).filter((k) => filters[k])
 
   return (
-    <div className="space-y-4">
+    <PageContainer gap="sm">
       <div className="flex items-baseline justify-between">
         <h2 className="text-xl font-bold">피드</h2>
         <FreshnessStamp asOf={data.as_of} />
@@ -85,10 +88,10 @@ export default function UnifiedFeedPage() {
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
         <Input name="q" defaultValue={filters.q ?? ""} placeholder="문서 검색 (의미 기반)…" className="pl-8 h-8 text-sm" />
         {filters.q && (
-          <button type="button" onClick={() => setFilter("q", null)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setFilter("q", null)}
+            className="h-fit border-0 p-0 absolute right-2.5 inset-y-0 my-auto text-muted-foreground hover:text-foreground hover:bg-transparent">
+            <X className="size-3.5" />
+          </Button>
         )}
       </form>
 
@@ -99,9 +102,9 @@ export default function UnifiedFeedPage() {
           {activeFilters.map((k) => (
             <Badge key={k} variant="secondary" className="text-xs gap-1 pr-1">
               {k === "stock" ? `종목 ${filters[k]}` : filters[k]}
-              <button onClick={() => setFilter(k, null)} aria-label="필터 제거">
-                <X className="h-3 w-3" />
-              </button>
+              <Button variant="ghost" size="sm" className="h-auto border-0 p-0 hover:bg-transparent hover:text-inherit" onClick={() => setFilter(k, null)} aria-label="필터 제거">
+                <X className="size-3" />
+              </Button>
             </Badge>
           ))}
           {(filters.industry || filters.topic) && (
@@ -158,7 +161,7 @@ export default function UnifiedFeedPage() {
           </Button>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -226,12 +229,14 @@ function DocumentCard({ doc, onChipFilter }: {
         )}
 
         {hasFullText && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+            className="h-auto border-0 p-0 font-normal flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-transparent"
           >
-            {expanded ? <><ChevronUp className="h-3 w-3" /> 접기</> : <><ChevronDown className="h-3 w-3" /> 전문 보기</>}
-          </button>
+            {expanded ? <><ChevronUp className="size-3" /> 접기</> : <><ChevronDown className="size-3" /> 전문 보기</>}
+          </Button>
         )}
 
         {(stockTags.length > 0 || otherTags.length > 0) && (
@@ -262,7 +267,7 @@ function DocumentCard({ doc, onChipFilter }: {
 
 function FeedSkeleton() {
   return (
-    <div className="space-y-3">
+    <PageContainer gap="sm">
       <Skeleton className="h-6 w-24" />
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="border rounded-xl p-4 space-y-2">
@@ -271,6 +276,6 @@ function FeedSkeleton() {
           <Skeleton className="h-3 w-40" />
         </div>
       ))}
-    </div>
+    </PageContainer>
   )
 }

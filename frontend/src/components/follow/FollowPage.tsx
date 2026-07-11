@@ -37,6 +37,8 @@ export default function FollowPage() {
         <BlogsCard onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
       </div>
 
+      <FollowedPeopleCard onGo={(name) => navigate(`/person?name=${encodeURIComponent(name)}`)} />
+
       <FollowedTagsCard onGo={(type, name) =>
         navigate(`/feed?${type === "sector" ? "industry" : "topic"}=${encodeURIComponent(name)}`)} />
     </PageContainer>
@@ -355,9 +357,9 @@ function BlogsCard({ onGo }: { onGo: (key: string) => void }) {
   )
 }
 
-/* ── 팔로우 태그 (섹터·테마) ── */
+/* ── 팔로우 인물 ── */
 
-function FollowedTagsCard({ onGo }: { onGo: (type: string, name: string) => void }) {
+function FollowedPeopleCard({ onGo }: { onGo: (name: string) => void }) {
   const qc = useQueryClient()
   const { data: follows = [] } = useQuery({
     queryKey: ["spine", "follows"],
@@ -365,6 +367,57 @@ function FollowedTagsCard({ onGo }: { onGo: (type: string, name: string) => void
       { entity_id: number; type: string; name: string }[],
     staleTime: 60_000,
   })
+  const people = follows.filter((f) => f.type === "person")
+  const unfollow = useMutation({
+    mutationFn: unfollowEntity,
+    onSuccess: () => {
+      toast.success("팔로우 해제")
+      qc.invalidateQueries({ queryKey: ["spine", "follows"] })
+      qc.invalidateQueries({ queryKey: spineKeys.home() })
+    },
+  })
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">인물 <span className="font-normal text-muted-foreground">{people.length}</span></CardTitle>
+      </CardHeader>
+      <CardContent>
+        {people.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            팔로우한 인물이 없습니다 — 피드·문서의 인물 칩에서 도시에로 들어가 팔로우해보세요.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {people.map((f) => (
+              <Badge key={f.entity_id} variant="outline" className="text-xs gap-1 pr-1 cursor-pointer text-hypothesis border-hypothesis/40 hover:bg-hypothesis/10"
+                onClick={() => onGo(f.name)}>
+                {f.name}
+                <button
+                  onClick={(e) => { e.stopPropagation(); unfollow.mutate(f.entity_id) }}
+                  className="hover:text-destructive" aria-label="팔로우 해제">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ── 팔로우 태그 (섹터·테마) ── */
+
+function FollowedTagsCard({ onGo }: { onGo: (type: string, name: string) => void }) {
+  const qc = useQueryClient()
+  const { data: allFollows = [] } = useQuery({
+    queryKey: ["spine", "follows"],
+    queryFn: async () => (await api.get("/api/spine/follows")).data as
+      { entity_id: number; type: string; name: string }[],
+    staleTime: 60_000,
+  })
+  const follows = allFollows.filter((f) => f.type !== "person")
   const unfollow = useMutation({
     mutationFn: unfollowEntity,
     onSuccess: () => {
