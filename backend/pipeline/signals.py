@@ -142,3 +142,57 @@ def compute_high_52w() -> list[dict]:
     conn.commit()
     conn.close()
     return signals
+
+
+def interpret_pending(limit: int = 10) -> dict:
+    """interpretation이 빈 신호에 haiku 1문장 해석 (epistemic: 가설 — 모델명 기록).
+
+    - mention_surge: payload의 근거 문서 제목들로 맥락 해석
+    - high_52w: 해당 종목의 최근 언급 문서가 있으면 그걸로, 없으면 skip (근거 없는 해석 금지)
+    """
+    from pipeline.enrich import _call_claude_code, llm_engine
+    if llm_engine() != "claude-code":
+        return {"skipped": "claude-code 엔진 아님"}
+
+    conn = get_connection()
+    todo = conn.execute("""
+        SELECT s.id, s.signal_type, s.payload_json, e.name, e.id entity_id
+        FROM signals s JOIN entities e ON s.entity_id = e.id
+        WHERE s.interpretation IS NULL
+        ORDER BY s.date DESC LIMIT ?
+    """, (limit,)).fetchall()
+
+    done = skipped = 0
+    for r in todo:
+        import json as _json
+        p = _json.loads(r["payload_json"] or "{}")
+        if r["signal_type"] == "mention_surge":
+            titles = [d["title"] for d in (p.get("docs") or [])]
+            context = "\n".join(f"- {t}" for t in titles)
+            detail = f"최근 7일 {p.get('count_7d')}회 언급 (직전 {p.get('baseline_7d')}회)"
+        else:  # high_52w 등 — 최근 언급 문서로
+            rows = conn.execute("""
+                SELECT rd.title FROM entity_links el JOIN raw_documents rd ON el.doc_id = rd.id
+                WHERE el.entity_id=? AND el.link_type='stock'
+                ORDER BY rd.published_at DESC LIMIT 3""", (r["entity_id"],)).fetchall()
+            if not rows:
+                skipped += 1
+                continue  # 근거 없는 해석 금지
+            context = "\n".join(f"- {x['title']}" for x in rows)
+            detail = f"52주 신고가 경신 (+{p.get('breakout_pct')}%)" if r["signal_type"] == "high_52w" else r["signal_type"]
+        prompt = (
+            f"'{r['name']}'에 {detail} 신호가 발생했다. 아래 관련 문서 제목들을 근거로 "
+            "이 신호의 배경 맥락을 정확히 1문장으로 써라. 한국어 평서체, 추측 금지, "
+            "문서에 없는 내용 금지. 문장만 출력.\n" + context
+        )
+        try:
+            text = _call_claude_code(prompt).strip()[:200]
+            conn.execute(
+                "UPDATE signals SET interpretation=?, interpretation_model='claude-code/haiku' WHERE id=?",
+                (text, r["id"]))
+            conn.commit()
+            done += 1
+        except Exception:
+            skipped += 1
+    conn.close()
+    return {"interpreted": done, "skipped": skipped}

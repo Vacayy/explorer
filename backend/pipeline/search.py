@@ -121,3 +121,27 @@ def search(q: str, k: int = 20) -> list[dict]:
 
     ordered = sorted(ranks.items(), key=lambda x: -x[1])[:k]
     return [{"doc_id": doc_id, "score": score} for doc_id, score in ordered]
+
+
+def related_docs(doc_id: int, k: int = 5) -> list[dict]:
+    """임베딩 유사 문서 — 문서 디테일의 '관련 문서' (doc_vec 재사용, LLM 불필요)."""
+    vconn = _vec_conn()
+    if vconn is None:
+        return []
+    row = vconn.execute("SELECT embedding FROM doc_vec WHERE rowid = ?", (doc_id,)).fetchone()
+    if not row:
+        vconn.close()
+        return []
+    hits = vconn.execute(
+        "SELECT rowid, distance FROM doc_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+        (row["embedding"], k + 1),
+    ).fetchall()
+    ids = [h["rowid"] for h in hits if h["rowid"] != doc_id][:k]
+    if not ids:
+        vconn.close()
+        return []
+    ph = ",".join("?" for _ in ids)
+    rows = {r["id"]: r for r in vconn.execute(f"""
+        SELECT id, source_type, title, published_at FROM raw_documents WHERE id IN ({ph})""", ids)}
+    vconn.close()
+    return [dict(rows[i]) for i in ids if i in rows]
