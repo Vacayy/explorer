@@ -2,9 +2,10 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Bell, Building2, CalendarDays, FileSearch, Home, LineChart, ListChecks,
-  MessageCircleQuestion, Newspaper, Rss, Send, Sparkles, Table2,
+  MessageCircleQuestion, Newspaper, NotebookPen, Rss, Send, Sparkles, Table2,
 } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { toast } from "sonner"
 import api from "@/api/client"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import {
@@ -69,6 +70,19 @@ export default function Omnibar() {
   // 문장형이면 AI 질문 후보로 (물음표 또는 어절 3+)
   const looksLikeQuestion = q.endsWith("?") || q.split(/\s+/).length >= 3
 
+  // 지식 주입 (knowledge-system ①) — 문장을 온톨로지에 저장
+  const inject = useMutation({
+    mutationFn: async (content: string) =>
+      (await api.post("/api/spine/knowledge", { content, epistemic: "hypothesis" })).data as
+        { title: string; entities: string[] },
+    onSuccess: (d) => {
+      toast.success(`지식으로 저장 (가설)${d.entities.length ? ` — 연결: ${d.entities.slice(0, 4).join(", ")}` : ""}`)
+      setOpen(false)
+      setQuery("")
+    },
+    onError: () => toast.error("저장 실패"),
+  })
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen} title="옴니바" description="이동·검색·질문">
       <Command shouldFilter={true}>
@@ -118,6 +132,13 @@ export default function Omnibar() {
                 <Bell className="h-3.5 w-3.5" />
                 <span>"{q}" 태그 피드 보기</span>
               </CommandItem>
+              {q.length >= 8 && (
+                <CommandItem forceMount value={`remember-${q}`} onSelect={() => !inject.isPending && inject.mutate(q)}>
+                  <NotebookPen className="h-3.5 w-3.5 text-hypothesis" />
+                  <span>"{q.length > 40 ? q.slice(0, 40) + "…" : q}" 내 지식으로 저장</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">가설 · 검색·답변에 반영</span>
+                </CommandItem>
+              )}
             </CommandGroup>
           </>
         )}

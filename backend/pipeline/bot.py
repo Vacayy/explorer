@@ -100,7 +100,11 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
             "   예: 하이닉스 ADR 이후 수급 얘기 정리해줘\n"
             "   → 출처 있는 답변 + 갭(근거 부족·모순) 표시. ~30초 소요\n"
             "\n"
-            "3️⃣ /briefing — 아침 브리핑 다시 받기\n"
+            "3️⃣ 기억해: … — 내 지식을 시스템에 저장\n"
+        "   예: 기억해: 삼성전자는 노조 성과급 이슈로 골머리\n"
+        "   → 검색·답변·요약이 이 지식을 활용 (기억해(사실): 로 사실 표시)\n"
+        "\n"
+        "4️⃣ /briefing — 아침 브리핑 다시 받기\n"
             "   (평일 08:00 자동 발송: 기계가 먼저 말하는 3줄+오늘 일정)\n"
             "\n"
             "ℹ️ 답변은 구독 중인 텔레그램·블로그에서 수집된 문서 기반이며,\n"
@@ -113,6 +117,21 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
 
     # P2-0: 명령어 제외 전 문답을 대화로 적재 (질문 = 사용자 의도 데이터)
     from pipeline.conversations import log_exchange_safe
+
+    # '기억해: …' — 지식 주입 (knowledge-system ①)
+    from pipeline.knowledge import parse_remember
+    remembered = parse_remember(q)
+    if remembered:
+        from pipeline.knowledge import inject_knowledge
+        content, epistemic = remembered
+        try:
+            r = inject_knowledge(content, epistemic)
+            ents = f"\n연결: {', '.join(r['entities'])}" if r["entities"] else ""
+            out = f"💾 지식으로 저장 ({'사실' if epistemic == 'fact' else '가설'}){ents}"
+        except Exception as e:
+            out = f"저장 실패: {str(e)[:80]}"
+        log_exchange_safe(q, out, channel="telegram", chat_id=chat_id)
+        return out
 
     conn = get_connection()
     # 짧은 입력은 종목 조회 시도
