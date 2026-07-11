@@ -1,4 +1,7 @@
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
+import api from "@/api/client"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSpineSignals } from "@/hooks/useSpineSignals"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -74,6 +77,8 @@ export default function ExplorePage() {
         ))}
       </div>
 
+      <MomentumSection />
+
       {/* 신호 카드 그리드 */}
       {data.items.length === 0 ? (
         <EmptyState message={`최근 ${days}일 신호가 없습니다. 수집이 쌓이면 여기에 나타납니다.`} />
@@ -108,5 +113,55 @@ function ExploreSkeleton() {
         ))}
       </div>
     </div>
+  )
+}
+
+
+/* ---------- 언급 모멘텀 랭킹 — 이번 주 부상 종목 (새 탭 없이 /explore 착륙) ---------- */
+
+interface MomentumRow {
+  rank: number
+  entity_id: number
+  name: string
+  stock_code: string | null
+  count_7d: number
+  prior_7d: number
+  score: number
+}
+
+function MomentumSection() {
+  const { data } = useQuery({
+    queryKey: ["spine", "momentum"],
+    queryFn: async () => (await api.get("/api/spine/signals/momentum")).data as { items: MomentumRow[] },
+    staleTime: 5 * 60_000,
+  })
+  const items = data?.items ?? []
+  if (items.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">언급 모멘텀 — 이번 주 부상 종목</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+          {items.map((m) => (
+            <div key={m.entity_id} className="flex items-center gap-2 py-1 text-sm">
+              <span className="w-5 text-right text-xs text-muted-foreground tabular-nums">{m.rank}</span>
+              {m.stock_code ? (
+                <Link to={`/analyze/${m.stock_code}/mentions`} className="font-medium text-primary hover:underline truncate">
+                  {m.name}
+                </Link>
+              ) : <span className="font-medium truncate">{m.name}</span>}
+              <span className="ml-auto shrink-0 text-xs tabular-nums">
+                7일 <b>{m.count_7d}</b>회
+                <span className="text-muted-foreground"> (직전 {m.prior_7d})</span>
+                {m.score >= 2 && <span className="text-up ml-1">×{m.score}</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
