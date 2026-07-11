@@ -98,8 +98,15 @@ def _fts_query(q: str) -> str:
 
 
 def search(q: str, k: int = 20) -> list[dict]:
-    """하이브리드 검색 → [{doc_id, score}] (RRF 순)."""
+    """하이브리드 검색 → [{doc_id, score}].
+
+    융합: RRF + 모달리티별 상위 보장 쿼터(k/2) — 한쪽 헤드(예: 긴 질문에
+    희석된 벡터)가 다른쪽의 정확한 중위 매치(예: BM25 8위의 티커 단문)를
+    밀어내지 않도록, 각 모달리티 상위 k/2는 최종 결과에 반드시 포함한다.
+    """
     ranks: dict[int, float] = {}
+    fts_ids: list[int] = []
+    vec_ids: list[int] = []
 
     # BM25
     conn = get_connection()
@@ -113,6 +120,7 @@ def search(q: str, k: int = 20) -> list[dict]:
     conn.close()
     for i, r in enumerate(fts_rows):
         ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
+        fts_ids.append(r["rowid"])
 
     # 벡터
     vconn = _vec_conn()
@@ -126,10 +134,15 @@ def search(q: str, k: int = 20) -> list[dict]:
             ).fetchall()
             for i, r in enumerate(vec_rows):
                 ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
+                vec_ids.append(r["rowid"])
         vconn.close()
 
-    ordered = sorted(ranks.items(), key=lambda x: -x[1])[:k]
-    return [{"doc_id": doc_id, "score": score} for doc_id, score in ordered]
+    half = max(1, k // 2)
+    guaranteed = set(fts_ids[:half]) | set(vec_ids[:half])
+    rrf_order = [d for d, _ in sorted(ranks.items(), key=lambda x: -x[1])]
+    final = [d for d in rrf_order if d in guaranteed]          # 보장분 (RRF 순 유지)
+    final += [d for d in rrf_order if d not in guaranteed]     # 나머지 RRF 순
+    return [{"doc_id": d, "score": ranks[d]} for d in final[:k]]
 
 
 def related_docs(doc_id: int, k: int = 5) -> list[dict]:

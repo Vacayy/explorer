@@ -15,7 +15,7 @@ from pipeline.enrich import _claude_bin, llm_engine
 from pipeline.search import search
 
 RAG_MODEL = os.getenv("RAG_MODEL", "sonnet")
-TOP_K = 8
+TOP_K = 16   # 모달리티 쿼터(각 8)와 짝 — 티커 단문·속보가 탈락하지 않도록
 EXCERPT_CHARS = 1200
 
 
