@@ -1,49 +1,30 @@
-import { useEffect, useRef } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import ReactMarkdown from "react-markdown"
 import { Lightbulb, Loader2, Rss, Send } from "lucide-react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { computeSourceSummary, fetchSourceDossier, spineKeys } from "@/api/spine"
+import { useQuery } from "@tanstack/react-query"
+import { sourceDossierQuery, sourceSummaryQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import type { SourceDossier } from "@/types"
+import type { DossierSummary, SourceDossier } from "@/types"
 
 /**
  * /source?kind=telegram|blog&key= — 소스 도시에 (docs/specs/source-dossier.md)
  * "이 채널은 어떤 맥락 속에서 이런 말을 했지?" — 관점 프로필 + 주요 엔티티 + 최근 글.
  * 프로필은 열람 시점에 게으르게 생성: 지난 요약 이후 새 글이 있을 때만 LLM 호출.
+ *
+ * 상태관리: 도시에·프로필 생성 모두 (kind,key)로 키잉된 쿼리 (api/query.ts 규약).
+ * 생성 중 다른 소스로 이동해도 각 응답은 자기 키 슬롯에만 적재 — 오염 불가.
  */
 export default function SourcePage() {
   const [searchParams] = useSearchParams()
   const kind = searchParams.get("kind") ?? ""
   const key = searchParams.get("key") ?? ""
 
-  const qc = useQueryClient()
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: spineKeys.sourceDossier(kind, key),
-    queryFn: () => fetchSourceDossier(kind, key),
-    enabled: !!kind && !!key,
-    staleTime: 60_000,
-  })
-
-  const summarize = useMutation({
-    mutationFn: () => computeSourceSummary(kind, key),
-    onSuccess: (summary) => {
-      qc.setQueryData<SourceDossier>(spineKeys.sourceDossier(kind, key), (prev) =>
-        prev ? { ...prev, summary, summary_stale: false } : prev)
-    },
-  })
-
-  // 새 글이 반영 안 된 프로필이면 자동 생성 (열람 = 호출 시점)
-  const triggered = useRef(false)
-  useEffect(() => {
-    if (data?.summary_stale && !triggered.current) {
-      triggered.current = true
-      summarize.mutate()
-    }
-  }, [data?.summary_stale]) // eslint-disable-line react-hooks/exhaustive-deps
+  const { data, isLoading, isError, refetch } = useQuery(sourceDossierQuery(kind, key))
+  // 계산 쿼리: stale일 때만 발화. 결과 불변(staleTime ∞) — 재방문 시 즉시 표시.
+  const summary = useQuery(sourceSummaryQuery(kind, key, !!data?.summary_stale))
 
   if (!kind || !key) return <ErrorState message="소스 정보가 없습니다 (kind/key 필요)" />
   if (isLoading) return <SourceSkeleton />
@@ -78,7 +59,12 @@ export default function SourcePage() {
         <EmptyState message="아직 수집된 글이 없습니다. 다음 수집 주기(30분)에 반영됩니다." />
       ) : (
         <>
-          <ProfileCard data={data} pending={summarize.isPending} failed={summarize.isError} />
+          <ProfileCard
+            data={data}
+            fresh={summary.data}
+            pending={summary.isFetching}
+            failed={summary.isError}
+          />
 
           {/* 주로 다루는 것 (90일 링크 집계) */}
           {data.top_entities.length > 0 && (
@@ -130,8 +116,14 @@ export default function SourcePage() {
   )
 }
 
-function ProfileCard({ data, pending, failed }: { data: SourceDossier; pending: boolean; failed: boolean }) {
-  const s = data.summary
+function ProfileCard({ data, fresh, pending, failed }: {
+  data: SourceDossier
+  fresh: DossierSummary | undefined
+  pending: boolean
+  failed: boolean
+}) {
+  // 생성 쿼리 결과 우선, 없으면 도시에에 실린 캐시 프로필
+  const s = fresh ?? data.summary
   return (
     <Card className="border-l-2 border-l-hypothesis">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">

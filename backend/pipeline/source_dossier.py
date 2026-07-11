@@ -6,6 +6,7 @@
 """
 import hashlib
 import json
+import threading
 
 from database import get_connection
 from pipeline.digests import STYLE_RULES, _call_json
@@ -13,6 +14,16 @@ from pipeline.enrich import llm_engine
 
 PROFILE_DOCS = 40   # 프로필 입력으로 쓰는 최근 문서 수
 EXCERPT = 500
+
+# 소스별 in-flight 락 — 같은 소스에 생성 요청이 겹치면 뒤엣것은 앞 생성을 기다렸다
+# 캐시를 받는다 (LLM 중복 호출 방지). sync 엔드포인트는 threadpool에서 돌아 블로킹 OK.
+_locks_guard = threading.Lock()
+_locks: dict[tuple[str, str], threading.Lock] = {}
+
+
+def _profile_lock(kind: str, key: str) -> threading.Lock:
+    with _locks_guard:
+        return _locks.setdefault((kind, key), threading.Lock())
 
 
 def resolve_source(conn, kind: str, key: str) -> dict | None:
@@ -66,6 +77,11 @@ def compute_profile(kind: str, key: str) -> dict:
 
     반환: {status: fresh|cached|empty|unavailable|failed, digest, insights, created_at, doc_count}
     """
+    with _profile_lock(kind, key):
+        return _compute_profile_locked(kind, key)
+
+
+def _compute_profile_locked(kind: str, key: str) -> dict:
     conn = get_connection()
     src = resolve_source(conn, kind, key)
     if not src:
