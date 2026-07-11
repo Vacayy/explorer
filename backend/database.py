@@ -413,6 +413,36 @@ def init_db():
         fetched_at   TEXT NOT NULL
     );
 
+    -- 지식 계층 (K0, knowledge-hierarchy-design.md) — 신피질: 승격된 통합 지식
+    CREATE TABLE IF NOT EXISTS knowledge (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        statement        TEXT NOT NULL,
+        epistemic_status TEXT NOT NULL DEFAULT 'observed',  -- observed|corroborated|contested|superseded|hypothesis
+        review_status    TEXT NOT NULL DEFAULT 'proposed',  -- proposed|active|rejected (승인 큐)
+        pace_layer       TEXT NOT NULL DEFAULT 'cycle',     -- event|flow|cycle|structure|regime (닫힌 어휘)
+        confidence       REAL,
+        valid_from       TEXT,
+        valid_to         TEXT,
+        supersedes       INTEGER REFERENCES knowledge(id),
+        model            TEXT,
+        created_at       TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS knowledge_entities (
+        knowledge_id INTEGER NOT NULL REFERENCES knowledge(id) ON DELETE CASCADE,
+        entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        role         TEXT DEFAULT 'subject',
+        UNIQUE(knowledge_id, entity_id)
+    );
+    CREATE TABLE IF NOT EXISTS knowledge_evidence (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        knowledge_id INTEGER NOT NULL REFERENCES knowledge(id) ON DELETE CASCADE,
+        doc_id       INTEGER REFERENCES raw_documents(id) ON DELETE SET NULL,
+        stance       TEXT NOT NULL DEFAULT 'support',   -- support|refute|attention(사용자 행위)
+        independent  INTEGER NOT NULL DEFAULT 1,        -- 독립 관측 여부 (릴레이 접기)
+        observed_at  TEXT NOT NULL                      -- activation 계산의 t
+    );
+    CREATE INDEX IF NOT EXISTS idx_knowledge_evidence ON knowledge_evidence(knowledge_id);
+
     -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
     CREATE TABLE IF NOT EXISTS conversations (

@@ -38,15 +38,28 @@ export default function ApprovalsCard() {
     qc.invalidateQueries({ queryKey: ["spine", "feed"] })
   }
   const approve = useMutation({
-    mutationFn: async (item: ApprovalItem) =>
-      (await api.post(`/api/spine/keywords/${item.id}/approve`)).data as { keyword: string; retro_linked_docs: number },
-    onSuccess: (d) => {
-      toast.success(`'${d.keyword}' 승인 — 기존 문서 ${d.retro_linked_docs}건 소급 링크`)
+    mutationFn: async (item: ApprovalItem) => {
+      if (item.kind === "knowledge") {
+        return (await api.post(`/api/spine/knowledge/items/${item.id}/approve`)).data as { epistemic_status: string }
+      }
+      return (await api.post(`/api/spine/keywords/${item.id}/approve`)).data as { keyword: string; retro_linked_docs: number }
+    },
+    onSuccess: (d, item) => {
+      if (item.kind === "knowledge") {
+        const epi = (d as { epistemic_status: string }).epistemic_status
+        toast.success(`지식 승격 — ${epi === "corroborated" ? "교차확인됨(corroborated)" : "관측(observed)"}으로 활성화`)
+      } else {
+        const r = d as { keyword: string; retro_linked_docs: number }
+        toast.success(`'${r.keyword}' 승인 — 기존 문서 ${r.retro_linked_docs}건 소급 링크`)
+      }
       invalidate()
     },
   })
   const reject = useMutation({
-    mutationFn: async (item: ApprovalItem) => api.delete(`/api/spine/keywords/${item.id}`),
+    mutationFn: async (item: ApprovalItem) =>
+      item.kind === "knowledge"
+        ? api.post(`/api/spine/knowledge/items/${item.id}/reject`)
+        : api.delete(`/api/spine/keywords/${item.id}`),
     onSuccess: () => {
       toast.success("거부 — 제안이 제거되었습니다")
       invalidate()
@@ -68,12 +81,15 @@ export default function ApprovalsCard() {
         {visible.map((it) => (
           <div key={`${it.kind}-${it.id}`} className="flex items-center gap-2 py-1.5">
             <Badge variant="secondary" className="text-[9px] shrink-0">
-              {it.kind === "alias" ? "별칭" : it.kind}
+              {it.kind === "alias" ? "별칭" : it.kind === "knowledge" ? "지식" : it.kind}
             </Badge>
             <span className="text-sm truncate" title={it.detail ?? undefined}>
               {it.stock_code ? (
                 <Link to={`/analyze/${it.stock_code}/summary`} className="hover:underline">{it.title}</Link>
               ) : it.title}
+              {it.kind === "knowledge" && it.detail && (
+                <span className="ml-1.5 text-[10px] text-muted-foreground">{it.detail}</span>
+              )}
             </span>
             <span className="ml-auto flex gap-1 shrink-0">
               <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
