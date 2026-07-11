@@ -89,118 +89,126 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* ---------- Light (Apple HIG) ---------- */
+/* ---------- Layout tokens (docs/DESIGN_SYSTEM.md) ---------- */
 :root {
-  --background: #ffffff;
-  --foreground: #1d1d1f;
+  /* 셸 폭 상한 — Header/ModeNavigation/본문이 공유하는 유일한 폭 기준 */
+  --layout-shell: 1440px;
+  /* 헤더(48) + 2단 네비 + main 상하 p-6 합 — 풀하이트 페이지의 뷰포트 차감량 */
+  --shell-offset: 190px;
+}
+
+/* ---------- Light — 쿨 스톤 & 멀버리 (docs/DECISIONS.md D-016) ---------- */
+:root {
+  --background: #f9f8f9;
+  --foreground: #201f22;
   --card: #ffffff;
-  --card-foreground: #1d1d1f;
+  --card-foreground: #201f22;
   --popover: #ffffff;
-  --popover-foreground: #1d1d1f;
-  --primary: #0071e3;
+  --popover-foreground: #201f22;
+  --primary: #8e4162;
   --primary-foreground: #ffffff;
-  --secondary: #f5f5f7;
-  --secondary-foreground: #1d1d1f;
-  --muted: #f5f5f7;
-  --muted-foreground: #86868b;
-  --accent: #f0f5ff;
-  --accent-foreground: #0071e3;
-  --destructive: #ff3b30;
+  --secondary: #ebedf0;
+  --secondary-foreground: #201f22;
+  --muted: #ebedf0;
+  --muted-foreground: #6d6a70;
+  --accent: #f6eef2;
+  --accent-foreground: #8e4162;
+  --destructive: #d92d20;
   --destructive-foreground: #ffffff;
-  --border: #d2d2d7;
-  --input: #d2d2d7;
-  --ring: #0071e3;
+  --border: #e0e2e7;
+  --input: #e0e2e7;
+  --ring: #8e4162;
   --radius: 0.75rem;
 
-  --sidebar: #f5f5f7;
-  --sidebar-foreground: #1d1d1f;
-  --sidebar-primary: #0071e3;
+  --sidebar: #f2f3f5;
+  --sidebar-foreground: #201f22;
+  --sidebar-primary: #8e4162;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e8e8ed;
-  --sidebar-accent-foreground: #1d1d1f;
-  --sidebar-border: #d2d2d7;
-  --sidebar-ring: #0071e3;
+  --sidebar-accent: #e6e8ec;
+  --sidebar-accent-foreground: #201f22;
+  --sidebar-border: #e0e2e7;
+  --sidebar-ring: #8e4162;
 
-  --up: #ff3b30;
-  --down: #0071e3;
-  --fact: #248a3d;
-  --hypothesis: #b25000;
+  --up: #d92d20;
+  --down: #1268c3;
+  --fact: #1f7a37;
+  --hypothesis: #a85400;
 
-  --chart-revenue: #0071e3;
+  --chart-revenue: #1268c3;
   --chart-profit: #34c759;
   --chart-profit-dark: #248a3d;
-  --chart-ratio: #86868b;
-  --chart-negative: #ff3b30;
+  --chart-ratio: #6d6a70;
+  --chart-negative: #d92d20;
   --chart-warning: #ff9f0a;
-  --chart-1: #0071e3;
+  --chart-1: #1268c3;
   --chart-2: #34c759;
   --chart-3: #ff9f0a;
   --chart-4: #af52de;
   --chart-5: #5ac8fa;
 
-  --chart-blue: #0071e3;
+  --chart-blue: #1268c3;
   --chart-orange: #ff9f0a;
   --chart-green: #34c759;
-  --chart-red: #ff3b30;
-  --chart-gray: #86868b;
+  --chart-red: #d92d20;
+  --chart-gray: #6d6a70;
   --chart-yellow: #ffcc00;
   --chart-purple: #af52de;
   --chart-teal: #5ac8fa;
 }
 
-/* ---------- Dark (Apple HIG dark) ---------- */
+/* ---------- Dark — 더스크 플럼 (웜 오베르진 밝은 버전, docs/DECISIONS.md D-016) ---------- */
 .dark {
-  --background: #0d0d0f;
-  --foreground: #f5f5f7;
-  --card: #1c1c1e;
-  --card-foreground: #f5f5f7;
-  --popover: #1c1c1e;
-  --popover-foreground: #f5f5f7;
-  --primary: #2997ff;
-  --primary-foreground: #ffffff;
-  --secondary: #2c2c2e;
-  --secondary-foreground: #f5f5f7;
-  --muted: #2c2c2e;
-  --muted-foreground: #98989d;
-  --accent: #16283c;
-  --accent-foreground: #2997ff;
-  --destructive: #ff453a;
+  --background: #282130;
+  --foreground: #f1edf0;
+  --card: #332a3c;
+  --card-foreground: #f1edf0;
+  --popover: #332a3c;
+  --popover-foreground: #f1edf0;
+  --primary: #e199ba;
+  --primary-foreground: #23121b;
+  --secondary: #3f3447;
+  --secondary-foreground: #f1edf0;
+  --muted: #3f3447;
+  --muted-foreground: #b3a7b2;
+  --accent: #402d49;
+  --accent-foreground: #e199ba;
+  --destructive: #ff6157;
   --destructive-foreground: #ffffff;
-  --border: #38383a;
-  --input: #38383a;
-  --ring: #2997ff;
+  --border: #504358;
+  --input: #504358;
+  --ring: #e199ba;
 
-  --sidebar: #1c1c1e;
-  --sidebar-foreground: #f5f5f7;
-  --sidebar-primary: #2997ff;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #2c2c2e;
-  --sidebar-accent-foreground: #f5f5f7;
-  --sidebar-border: #38383a;
-  --sidebar-ring: #2997ff;
+  --sidebar: #2c2438;
+  --sidebar-foreground: #f1edf0;
+  --sidebar-primary: #e199ba;
+  --sidebar-primary-foreground: #23121b;
+  --sidebar-accent: #3f3447;
+  --sidebar-accent-foreground: #f1edf0;
+  --sidebar-border: #504358;
+  --sidebar-ring: #e199ba;
 
-  --up: #ff453a;
-  --down: #409cff;
-  --fact: #30d158;
-  --hypothesis: #ff9f0a;
+  --up: #ff6157;
+  --down: #5aa6f5;
+  --fact: #4ccb6d;
+  --hypothesis: #f0a53f;
 
-  --chart-revenue: #409cff;
+  --chart-revenue: #5aa6f5;
   --chart-profit: #30d158;
   --chart-profit-dark: #30d158;
-  --chart-ratio: #98989d;
-  --chart-negative: #ff453a;
+  --chart-ratio: #b3a7b2;
+  --chart-negative: #ff6157;
   --chart-warning: #ff9f0a;
-  --chart-1: #409cff;
+  --chart-1: #5aa6f5;
   --chart-2: #30d158;
   --chart-3: #ff9f0a;
   --chart-4: #bf5af2;
   --chart-5: #64d2ff;
 
-  --chart-blue: #409cff;
+  --chart-blue: #5aa6f5;
   --chart-orange: #ff9f0a;
   --chart-green: #30d158;
-  --chart-red: #ff453a;
-  --chart-gray: #98989d;
+  --chart-red: #ff6157;
+  --chart-gray: #b3a7b2;
   --chart-yellow: #ffd60a;
   --chart-purple: #bf5af2;
   --chart-teal: #64d2ff;
@@ -209,6 +217,9 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* 색상 계열만 트랜지션 — property 미지정 시 'all'이 되어 Radix 포털의
+       위치 지정(transform)까지 애니메이션됨 (툴팁이 좌측 상단에서 날아오는 원인) */
+    transition-property: color, background-color, border-color, opacity, box-shadow, fill, stroke;
     transition-duration: 150ms;
   }
   body {
