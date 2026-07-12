@@ -64,6 +64,12 @@ def _counts(conn, kid: int) -> tuple[int, int]:
     return r["s"] or 0, r["r"] or 0
 
 
+def ran_today(conn) -> bool:
+    """오늘 스캔 흔적이 있으면 True — 30분 수집 체인 편승 시 일 1회 가드."""
+    return bool(conn.execute(
+        "SELECT 1 FROM knowledge_doc_scans WHERE date(scanned_at)=date('now') LIMIT 1").fetchone())
+
+
 def scan_contradictions(max_judge: int = MAX_JUDGE) -> dict:
     """일 배치 — 미검사 최근 문서를 active 지식과 대조. 반환: 통계."""
     conn = get_connection()
