@@ -35,6 +35,25 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
             text=f"소스 {len(dead)}곳 7일간 유입 없음 — {names}",
             to="/feed"))
 
+    # 지식 충돌 (K2, E-3): 최근 24h 내 contested 전환분 중 activation 최고 1건만
+    contested = conn.execute("""
+        SELECT k.id, k.statement,
+               (SELECT count(*) FROM knowledge_evidence
+                WHERE knowledge_id=k.id AND stance='refute') ref
+        FROM knowledge k
+        WHERE k.epistemic_status='contested' AND k.review_status='active'
+          AND k.contested_at >= datetime('now', '-1 day')""").fetchall()
+    if contested:
+        if len(contested) > 1:
+            from pipeline.knowledge_recall import _load_active, _score
+            acts = {i["id"]: _score(i) for i in _load_active(conn)}
+            contested = sorted(contested, key=lambda r: acts.get(r["id"], 0), reverse=True)
+        top = contested[0]
+        briefing.append(BriefItem(
+            kind="conflict",
+            text=f'지식 충돌 — "{top["statement"][:70]}…" 반박 증거 {top["ref"]}건 누적',
+            to="/knowledge"))
+
     ins_rows = conn.execute("""
         SELECT e.name, e.aliases stock_code, d.insights, d.period_start
         FROM entity_digests d JOIN entities e ON d.entity_id = e.id

@@ -214,6 +214,59 @@ def compute_neglect() -> list[dict]:
     return signals
 
 
+PENDULUM_WINDOW_DAYS = 14   # 컨센서스 판정 창
+PENDULUM_MIN_DOCS = 8       # 방향 있는 문서 최소 표본 (신뢰 하한)
+PENDULUM_RATIO = 0.9        # 일방향 비율 임계 — "낙관의 만장일치는 경고다"
+
+
+def compute_consensus_extreme() -> list[dict]:
+    """진자 감시 (K2, 설계 프로세스 6 · A-6 Marks 진자) — LLM 0.
+
+    엔티티별 최근 창의 문서 감성 분포가 극단(일방향 90%+ & 표본 충분)이면
+    'consensus_extreme' 신호. 판단이 아니라 분포 관찰 — 해석은 interpretation이.
+    """
+    conn = get_connection()
+    rows = conn.execute(f"""
+        SELECT el.entity_id, e.name,
+               SUM(en.sentiment='positive') pos, SUM(en.sentiment='negative') neg
+        FROM entity_links el
+        JOIN entities e ON e.id = el.entity_id AND e.type='company'
+        JOIN raw_documents rd ON rd.id = el.doc_id
+        JOIN enrichments en ON en.doc_id = rd.id
+        WHERE el.link_type='stock'
+          AND rd.published_at >= datetime('now', '-{PENDULUM_WINDOW_DAYS} days')
+          AND en.sentiment IN ('positive','negative')
+        GROUP BY el.entity_id""").fetchall()
+
+    signals = []
+    today = datetime.now(timezone.utc).date().isoformat()
+    for r in rows:
+        n = (r["pos"] or 0) + (r["neg"] or 0)
+        if n < PENDULUM_MIN_DOCS:
+            continue
+        ratio = max(r["pos"], r["neg"]) / n
+        if ratio < PENDULUM_RATIO:
+            continue
+        signals.append({
+            "entity_id": r["entity_id"], "name": r["name"], "date": today,
+            "payload": {
+                "direction": "optimism" if r["pos"] >= r["neg"] else "pessimism",
+                "pos": r["pos"], "neg": r["neg"], "ratio": round(ratio, 2),
+                "window_days": PENDULUM_WINDOW_DAYS,
+            },
+        })
+    for s in signals:
+        conn.execute("""
+            INSERT INTO signals (signal_type, entity_id, date, payload_json)
+            VALUES ('consensus_extreme', ?, ?, ?)
+            ON CONFLICT(signal_type, entity_id, date)
+            DO UPDATE SET payload_json = excluded.payload_json
+        """, (s["entity_id"], s["date"], json.dumps(s["payload"], ensure_ascii=False)))
+    conn.commit()
+    conn.close()
+    return signals
+
+
 def interpret_pending(limit: int = 10) -> dict:
     """interpretation이 빈 신호에 haiku 1문장 해석 (epistemic: 가설 — 모델명 기록).
 

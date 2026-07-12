@@ -11,6 +11,7 @@ const SIGNAL_LABEL: Record<string, string> = {
   neglect: "소외",
   export_change: "수출 변화",
   high_52w: "52주 신고가",
+  consensus_extreme: "컨센서스 극단",
 }
 
 /**
@@ -57,6 +58,16 @@ export function SignalCard({ signal: s, onKeywordClick }: {
             <span className="font-semibold text-foreground">{p.roe}%</span> · 시총{" "}
             {p.market_cap != null ? `${(p.market_cap / 1e12).toFixed(2)}조` : "-"} [{p.market}]
             <br />저평가·흑자인데 최근 {p.window_days ?? 30}일 언급 0 — 주목의 부재가 신호
+          </p>
+        )}
+        {s.signal_type === "consensus_extreme" && (
+          <p className="text-xs text-muted-foreground">
+            최근 {p.window_days ?? 14}일 감성{" "}
+            <span className={`font-semibold ${p.direction === "optimism" ? "text-up" : "text-down"}`}>
+              {p.direction === "optimism" ? "낙관" : "비관"} {p.ratio != null ? `${Math.round(p.ratio * 100)}%` : "-"}
+            </span>
+            <span className="tabular-nums"> (긍정 {p.pos} / 부정 {p.neg})</span>
+            <br />만장일치에 가까운 컨센서스 — 진자가 극단에 있다는 관찰
           </p>
         )}
         {s.signal_type === "high_52w" && (

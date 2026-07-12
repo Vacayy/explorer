@@ -442,6 +442,11 @@ def init_db():
         observed_at  TEXT NOT NULL                      -- activation 계산의 t
     );
     CREATE INDEX IF NOT EXISTS idx_knowledge_evidence ON knowledge_evidence(knowledge_id);
+    -- K2 모순 감지: 문서-지식 대조를 문서당 1회만 (haiku 재판정 방지)
+    CREATE TABLE IF NOT EXISTS knowledge_doc_scans (
+        doc_id     INTEGER PRIMARY KEY REFERENCES raw_documents(id) ON DELETE CASCADE,
+        scanned_at TEXT DEFAULT (datetime('now'))
+    );
 
     -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
@@ -579,6 +584,7 @@ def init_db():
         "ALTER TABLE blog_posts ADD COLUMN author TEXT",
         "ALTER TABLE blog_sources ADD COLUMN author TEXT",
         "ALTER TABLE entity_keywords ADD COLUMN status TEXT DEFAULT 'active'",
+        "ALTER TABLE knowledge ADD COLUMN contested_at TEXT",  # K2: contested 전환 시각 (알림 쿨다운 기준)
     ]:
         try:
             conn.execute(migration)

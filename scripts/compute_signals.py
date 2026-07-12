@@ -9,7 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.signals import compute_high_52w, compute_mention_surge, compute_neglect, interpret_pending
+from pipeline.signals import (compute_consensus_extreme, compute_high_52w,
+                              compute_mention_surge, compute_neglect, interpret_pending)
 
 
 def main():
@@ -32,6 +33,13 @@ def main():
     for s in neglected[:8]:
         p_ = s["payload"]
         print(f"  · {s['name']} [{p_['market']}]: PER {p_['per']} · ROE {p_['roe']}% · 시총 {p_['market_cap']/1e12:.2f}조")
+
+    extremes = compute_consensus_extreme()
+    print(f"[consensus_extreme] {len(extremes)}건 — 컨센서스 극단 (진자)")
+    for s in extremes[:8]:
+        p_ = s["payload"]
+        print(f"  · {s['name']}: {'낙관' if p_['direction']=='optimism' else '비관'} "
+              f"{p_['ratio']*100:.0f}% ({p_['pos']}+/{p_['neg']}-)")
 
     print("[interpret]", interpret_pending())
 
