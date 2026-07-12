@@ -237,8 +237,19 @@ def promote_batch() -> dict:
             conn.commit()
             stats["proposed"] += 1
 
+    conn.execute("INSERT OR REPLACE INTO pipeline_runs (name, last_run_at) VALUES ('promote', datetime('now'))")
+    conn.commit()
     conn.close()
     return stats
+
+
+def promote_due(conn, days: int = 7) -> bool:
+    """주간 승격이 밀렸는가 — cron 누락(PC 꺼짐) 시 수집 체인이 catch-up."""
+    r = conn.execute("SELECT last_run_at FROM pipeline_runs WHERE name='promote'").fetchone()
+    if not r:
+        return True
+    return bool(conn.execute(
+        "SELECT datetime(?) <= datetime('now', ?)", (r["last_run_at"], f"-{days} days")).fetchone()[0])
 
 
 def _find_refutes(conn, statement: str, exclude: set[int]) -> list[tuple[int, str]]:

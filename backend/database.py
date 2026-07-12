@@ -447,6 +447,11 @@ def init_db():
         doc_id     INTEGER PRIMARY KEY REFERENCES raw_documents(id) ON DELETE CASCADE,
         scanned_at TEXT DEFAULT (datetime('now'))
     );
+    -- 배치 실행 마커 — cron 누락 시 수집 체인이 catch-up 판단 (PC 꺼짐 대비)
+    CREATE TABLE IF NOT EXISTS pipeline_runs (
+        name        TEXT PRIMARY KEY,
+        last_run_at TEXT NOT NULL
+    );
 
     -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다

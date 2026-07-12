@@ -1,13 +1,15 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { BookOpenCheck, ChevronDown, Loader2, Swords } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import { BookOpenCheck, ChevronDown, Globe2, Loader2, Swords } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { apiQuery, STALE } from "@/api/query"
-import { Card, CardContent } from "@/components/ui/card"
+import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { Expandable } from "@/components/shared/Expandable"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { cn } from "@/lib/utils"
@@ -82,11 +84,79 @@ export default function KnowledgePage() {
       {data.length === 0 ? (
         <EmptyState message="아직 승격된 지식이 없습니다. 주간 승격 배치가 후보를 만들면 홈 승인 카드에서 심사할 수 있습니다." />
       ) : (
-        <div className="space-y-2">
-          {data.map((k) => <KnowledgeCard key={k.id} item={k} />)}
-        </div>
+        <>
+          <WorldviewCard />
+          <div className="space-y-2">
+            {data.map((k) => <KnowledgeCard key={k.id} item={k} />)}
+          </div>
+        </>
       )}
     </PageContainer>
+  )
+}
+
+interface Worldview {
+  status: string
+  briefing: string | null
+  created_at: string | null
+  stale?: boolean
+}
+
+/** 세계관 브리핑 — 느린 층(지식) + 빠른 층(이번 주 관측) 종합 (§G 통념 계량) */
+function WorldviewCard() {
+  const cached = useQuery(
+    apiQuery<Worldview>({
+      key: ["spine", "worldview"],
+      url: "/api/spine/knowledge/worldview",
+      staleTime: STALE.short,
+    }),
+  )
+  const fresh = useQuery(
+    apiComputeQuery<Worldview>({
+      key: ["spine", "worldview", "compute"],
+      url: "/api/spine/knowledge/worldview/compute",
+      enabled: !!cached.data?.stale,
+    }),
+  )
+  const w = fresh.data ?? cached.data
+  if (!w || (w.status === "empty" && !w.briefing && !fresh.isFetching)) return null
+
+  return (
+    <Card className="border-l-2 border-l-hypothesis">
+      <CardHeader className="pb-2 flex-row items-baseline gap-2">
+        <CardTitle className="text-sm flex items-center gap-1.5">
+          <Globe2 className="h-4 w-4 text-hypothesis" /> 세계관 브리핑
+        </CardTitle>
+        <span className="text-[11px] text-muted-foreground">자리 잡은 전제 · 도전받는 것 · 이번 주</span>
+        {w.created_at && (
+          <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
+            {w.created_at.slice(0, 10)} 기준
+          </span>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {fresh.isFetching && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            지식·이번 주 관측을 반영해 갱신 중… (수십 초)
+          </div>
+        )}
+        {w.briefing && (
+          <Expandable collapsedHeight={260}>
+            <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5 [&_li]:my-0.5">
+              <ReactMarkdown>{w.briefing}</ReactMarkdown>
+            </div>
+          </Expandable>
+        )}
+        {w.briefing && (
+          <div className="text-right">
+            <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
+              AI 종합 · 지식 상태 변경 시 갱신 — 판단은 사람이
+            </Badge>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

@@ -27,6 +27,39 @@ def inject(body: InjectRequest):
     return InjectResponse(**r)
 
 
+class Worldview(BaseModel):
+    status: str          # fresh | cached | empty | unavailable | failed
+    briefing: str | None
+    created_at: str | None
+    stale: bool = False
+
+
+@router.get("/worldview", response_model=Worldview)
+def get_worldview():
+    """캐시된 세계관 브리핑 + stale 플래그 — LLM 호출 없음 (도시에 2단 패턴)."""
+    from database import get_connection
+    from pipeline.worldview import gather, get_cached, inputs_hash
+    conn = get_connection()
+    m = gather(conn)
+    cached = get_cached(conn)
+    conn.close()
+    if not m["knowledge"]:
+        return Worldview(status="empty", briefing=None, created_at=None)
+    stale = not cached or cached["doc_ids_hash"] != inputs_hash(m)
+    if not cached:
+        return Worldview(status="empty", briefing=None, created_at=None, stale=True)
+    return Worldview(status="cached", briefing=cached["digest"],
+                     created_at=cached["created_at"], stale=stale)
+
+
+@router.post("/worldview/compute", response_model=Worldview)
+def compute_worldview_endpoint():
+    """입력(지식 상태·주간 신호·관측)이 바뀐 경우에만 sonnet 생성 — 멱등."""
+    from pipeline.worldview import compute_worldview
+    r = compute_worldview()
+    return Worldview(status=r["status"], briefing=r.get("briefing"), created_at=r.get("created_at"))
+
+
 class KnowledgeEntity(BaseModel):
     name: str
     type: str
