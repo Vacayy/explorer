@@ -27,6 +27,12 @@ interface KnowledgeEntity {
   aliases: string | null
 }
 
+interface Falsifier {
+  condition: string
+  triggered_at: string | null
+  triggered_doc_id: number | null
+}
+
 interface KnowledgeItem {
   id: number
   statement: string
@@ -37,6 +43,7 @@ interface KnowledgeItem {
   independent: number
   activation: number | null
   entities: KnowledgeEntity[]
+  falsifiers: Falsifier[]
   created_at: string
   contested_at: string | null
 }
@@ -203,6 +210,27 @@ function KnowledgeCard({ item: k }: { item: KnowledgeItem }) {
                   {e.name}
                 </Badge>
               </Link>
+            ))}
+          </div>
+        )}
+
+        {k.falsifiers.length > 0 && (
+          <div className="rounded-md border border-dashed px-2.5 py-1.5 space-y-0.5">
+            <p className="text-[10px] font-medium text-muted-foreground">반증 조건 — 이 신호가 관측되면 이 지식은 흔들린다</p>
+            {k.falsifiers.map((f, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[11px]">
+                <span className={cn("mt-1 h-1.5 w-1.5 rounded-full shrink-0",
+                  f.triggered_at ? "bg-destructive" : "bg-muted-foreground/40")} />
+                {f.triggered_at && f.triggered_doc_id ? (
+                  <Link to={`/doc/${f.triggered_doc_id}`} className="text-destructive hover:underline">
+                    {f.condition} — {f.triggered_at.slice(0, 10)} 감지됨 →
+                  </Link>
+                ) : (
+                  <span className={f.triggered_at ? "text-destructive" : "text-muted-foreground"}>
+                    {f.condition}{f.triggered_at && ` — ${f.triggered_at.slice(0, 10)} 감지됨`}
+                  </span>
+                )}
+              </div>
             ))}
           </div>
         )}

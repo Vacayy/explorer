@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
 from pipeline.signals import (compute_consensus_extreme, compute_high_52w,
-                              compute_mention_surge, compute_neglect, interpret_pending)
+                              compute_mention_surge, compute_neglect,
+                              compute_volume_spike, interpret_pending)
 
 
 def main():
@@ -34,6 +35,12 @@ def main():
         p_ = s["payload"]
         print(f"  · {s['name']} [{p_['market']}]: PER {p_['per']} · ROE {p_['roe']}% · 시총 {p_['market_cap']/1e12:.2f}조")
 
+    spikes = compute_volume_spike()
+    print(f"[volume_spike] {len(spikes)}건 — 거래량이 터진 날")
+    for s in spikes[:8]:
+        p_ = s["payload"]
+        print(f"  · {s['name']}: 평균 {p_['ratio']}배 · 주가 {p_['change_pct']:+}% · 문서 {len(p_['docs'])}건")
+
     extremes = compute_consensus_extreme()
     print(f"[consensus_extreme] {len(extremes)}건 — 컨센서스 극단 (진자)")
     for s in extremes[:8]:
@@ -51,6 +58,8 @@ def main():
     conn.close()
     if todo:
         print("[contradiction]", scan_contradictions())
+        from pipeline.falsifiers import watch_falsifiers
+        print("[falsifiers]", watch_falsifiers())
 
     # K0 주간 승격 catch-up — 일요일 07:00 cron을 놓쳤으면(PC 꺼짐) 여기서 수행
     from pipeline.consolidation import promote_batch, promote_due

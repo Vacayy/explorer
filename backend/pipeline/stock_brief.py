@@ -127,9 +127,11 @@ def _build_prompt(name: str, inp: dict) -> str:
             lines.append(f"- [{n['memo_type']}] {n['title']}: {(n['content'] or '')[:100]}")
         thesis_block = "\n\n[사용자의 투자 논지 — thesis_check 판단 기준]\n" + "\n".join(lines)
 
+    from pipeline.lenses import LENS_PATTERN
     return (
         f"너는 '{name}' 담당 애널리스트다. 아래 수집된 재료로 \"지금 이 종목에서 알아야 할 것\" 브리프를 써라.\n"
         "재료를 나열하지 말고 종합해라 — 무엇이 중요하고 무엇이 연결되는지.\n"
+        + LENS_PATTERN + "\n"
         + STYLE_RULES +
         'JSON만 출력: {"brief": "마크다운 브리프", "thesis_check": "사용자 논지와 새 증거가 '
         "충돌하거나 강하게 지지되는 지점이 있으면 1~3문장 (어느 쪽인지 명시), 논지가 없거나 "
