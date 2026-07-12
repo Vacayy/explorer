@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import ApprovalsCard from "@/components/home/ApprovalsCard"
-import { TrendingUp, AlertTriangle, CalendarDays, Bell, Building2, Lightbulb, LineChart, X } from "lucide-react"
+import { TrendingUp, AlertTriangle, CalendarDays, Bell, Building2, Lightbulb, LineChart, Swords, X } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useHome } from "@/hooks/useHome"
 import { spineKeys, unfollowEntity } from "@/api/spine"
@@ -65,6 +65,7 @@ const BRIEF_ICON = {
   action: Building2,
   signal: LineChart,
   warning: AlertTriangle,
+  conflict: Swords,   // 지식 충돌 (K2) — 검증된 전제에 반박 증거 누적
 } as const
 
 function BriefingSection({ items }: { items: BriefItem[] }) {
@@ -77,7 +78,7 @@ function BriefingSection({ items }: { items: BriefItem[] }) {
             return (
               <li key={i}>
                 <Link to={b.to} className="group flex items-start gap-2 text-sm">
-                  <Icon className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${b.kind === "insight" ? "text-hypothesis" : b.kind === "warning" ? "text-destructive" : "text-muted-foreground"}`} />
+                  <Icon className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${b.kind === "insight" ? "text-hypothesis" : b.kind === "warning" || b.kind === "conflict" ? "text-destructive" : "text-muted-foreground"}`} />
                   <span className="group-hover:underline leading-snug">{b.text}</span>
                 </Link>
               </li>

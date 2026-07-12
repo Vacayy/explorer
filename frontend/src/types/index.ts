@@ -265,6 +265,11 @@ export interface SpineSignal {
     market_cap?: number;
     market?: string;
     window_days?: number;
+    // consensus_extreme (진자)
+    direction?: "optimism" | "pessimism";
+    pos?: number;
+    neg?: number;
+    ratio?: number;
   };
   interpretation: string | null;
   interpretation_model: string | null;

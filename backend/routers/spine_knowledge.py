@@ -27,6 +27,12 @@ def inject(body: InjectRequest):
     return InjectResponse(**r)
 
 
+class KnowledgeEntity(BaseModel):
+    name: str
+    type: str
+    aliases: str | None   # company면 종목코드 (도시에 링크)
+
+
 class KnowledgeItem(BaseModel):
     id: int
     statement: str
@@ -36,33 +42,69 @@ class KnowledgeItem(BaseModel):
     support: int
     refute: int
     independent: int
-    entities: list[str]
+    activation: float | None   # 조회 시 계산 (A-2) — 죽은 지식은 뒤로
+    entities: list[KnowledgeEntity]
     created_at: str
+    contested_at: str | None
 
 
 @router.get("/items", response_model=list[KnowledgeItem])
 def list_knowledge(status: str = "active"):
-    """승격된 지식 목록 (K1 소비·디버그용)."""
+    """승격된 지식 목록 — 지식 익스플로러·K1 소비. activation 내림차순."""
     from database import get_connection
+    from pipeline.consolidation import activation as _activation
     conn = get_connection()
     rows = conn.execute("""
-        SELECT k.*, 
+        SELECT k.*,
                (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='support') sup,
                (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='refute') ref,
                (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='support' AND independent=1) ind
         FROM knowledge k WHERE k.review_status=? ORDER BY k.id DESC""", (status,)).fetchall()
     out = []
     for r in rows:
-        ents = [e["name"] for e in conn.execute("""
-            SELECT e.name FROM knowledge_entities ke JOIN entities e ON ke.entity_id=e.id
-            WHERE ke.knowledge_id=?""", (r["id"],))]
+        ents = [KnowledgeEntity(name=e["name"], type=e["type"], aliases=e["aliases"])
+                for e in conn.execute("""
+            SELECT e.name, e.type, e.aliases FROM knowledge_entities ke
+            JOIN entities e ON ke.entity_id=e.id WHERE ke.knowledge_id=?""", (r["id"],))]
+        obs = [x["observed_at"] for x in conn.execute(
+            "SELECT observed_at FROM knowledge_evidence WHERE knowledge_id=?", (r["id"],))]
+        act = _activation(obs, r["pace_layer"])
         out.append(KnowledgeItem(
             id=r["id"], statement=r["statement"], epistemic_status=r["epistemic_status"],
             pace_layer=r["pace_layer"], confidence=r["confidence"],
             support=r["sup"], refute=r["ref"], independent=r["ind"],
-            entities=ents, created_at=r["created_at"]))
+            activation=None if act == float("-inf") else round(act, 3),
+            entities=ents, created_at=r["created_at"],
+            contested_at=r["contested_at"] if "contested_at" in r.keys() else None))
     conn.close()
+    out.sort(key=lambda k: k.activation if k.activation is not None else -99, reverse=True)
     return out
+
+
+class EvidenceDoc(BaseModel):
+    doc_id: int | None
+    title: str | None
+    source_type: str | None
+    stance: str
+    independent: bool
+    observed_at: str
+
+
+@router.get("/items/{knowledge_id}/evidence", response_model=list[EvidenceDoc])
+def knowledge_evidence(knowledge_id: int):
+    """지식의 근거 사슬 — 어떤 문서가 지지/반박했나 (follow-up 동선)."""
+    from database import get_connection
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT ev.doc_id, ev.stance, ev.independent, ev.observed_at, rd.title, rd.source_type
+        FROM knowledge_evidence ev LEFT JOIN raw_documents rd ON rd.id = ev.doc_id
+        WHERE ev.knowledge_id=?
+        ORDER BY ev.stance='refute' DESC, ev.independent DESC, ev.observed_at DESC""",
+        (knowledge_id,)).fetchall()
+    conn.close()
+    return [EvidenceDoc(doc_id=r["doc_id"], title=r["title"], source_type=r["source_type"],
+                        stance=r["stance"], independent=bool(r["independent"]),
+                        observed_at=r["observed_at"]) for r in rows]
 
 
 @router.post("/items/{knowledge_id}/approve")

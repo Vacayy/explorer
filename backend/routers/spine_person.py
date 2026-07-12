@@ -57,6 +57,54 @@ class PersonDossier(BaseModel):
     recent_docs: list[PersonDoc]
 
 
+class PersonRow(BaseModel):
+    entity_id: int
+    name: str
+    doc_count: int
+    last_doc_at: str | None
+    last_doc_title: str | None
+    last_doc_id: int | None
+    following: bool
+    top_stocks: list[str]   # 함께 언급되는 종목 상위 (파급 경로 미리보기)
+
+
+@router.get("", response_model=list[PersonRow])
+def list_people(days: int = 0):
+    """인물 디렉토리 — 수집된 전체 인물 + 최근 발언 (탐색의 발견 표면).
+
+    days>0이면 해당 기간 내 언급된 인물만 (기본: 전체, 언급 수 순).
+    """
+    conn = get_connection()
+    since = f"AND rd.published_at >= datetime('now', '-{int(days)} days')" if days else ""
+    rows = conn.execute(f"""
+        SELECT e.id, e.name, COUNT(DISTINCT el.doc_id) n, MAX(rd.published_at) last_at,
+               (SELECT 1 FROM follows f WHERE f.entity_id = e.id) following
+        FROM entities e
+        JOIN entity_links el ON el.entity_id = e.id AND el.link_type='person'
+        JOIN raw_documents rd ON rd.id = el.doc_id
+        WHERE e.type='person' {since}
+        GROUP BY e.id ORDER BY n DESC, last_at DESC""").fetchall()
+    out = []
+    for r in rows:
+        last = conn.execute("""
+            SELECT rd.id, rd.title FROM entity_links el JOIN raw_documents rd ON rd.id = el.doc_id
+            WHERE el.entity_id=? AND el.link_type='person'
+            ORDER BY rd.published_at DESC LIMIT 1""", (r["id"],)).fetchone()
+        stocks = [s["name"] for s in conn.execute("""
+            SELECT e2.name, COUNT(*) c FROM entity_links el1
+            JOIN entity_links el2 ON el2.doc_id = el1.doc_id AND el2.link_type='stock'
+            JOIN entities e2 ON e2.id = el2.entity_id AND e2.type='company'
+            WHERE el1.entity_id=? AND el1.link_type='person'
+            GROUP BY e2.id ORDER BY c DESC LIMIT 3""", (r["id"],))]
+        out.append(PersonRow(
+            entity_id=r["id"], name=r["name"], doc_count=r["n"], last_doc_at=r["last_at"],
+            last_doc_title=last["title"] if last else None,
+            last_doc_id=last["id"] if last else None,
+            following=bool(r["following"]), top_stocks=stocks))
+    conn.close()
+    return out
+
+
 def _resolve(conn, name: str):
     return conn.execute(
         "SELECT id, name FROM entities WHERE type='person' AND name=?", (name,)).fetchone()

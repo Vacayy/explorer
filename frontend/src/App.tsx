@@ -23,6 +23,8 @@ import ActionsPage from "@/components/actions/ActionsPage"
 import DocPage from "@/components/doc/DocPage"
 import SourcePage from "@/components/source/SourcePage"
 import PersonPage from "@/components/person/PersonPage"
+import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
+import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import ArchivePage from "@/components/archive/ArchivePage"
 
 // Discovery
@@ -151,6 +153,8 @@ export default function App() {
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />
+            <Route path="people" element={<PeopleDirectoryPage />} />
+            <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="ask" element={<AskRedirect />} />
             <Route path="actions" element={<ActionsPage />} />
