@@ -43,6 +43,15 @@ def main():
 
     print("[interpret]", interpret_pending())
 
+    # K2 모순 감지 — 30분 체인 편승, 일 1회 (오늘 스캔 흔적 있으면 skip)
+    from database import get_connection
+    from pipeline.contradiction import ran_today, scan_contradictions
+    conn = get_connection()
+    todo = not ran_today(conn)
+    conn.close()
+    if todo:
+        print("[contradiction]", scan_contradictions())
+
 
 if __name__ == "__main__":
     main()
