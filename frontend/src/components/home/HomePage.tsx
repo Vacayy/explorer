@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import ApprovalsCard from "@/components/home/ApprovalsCard"
-import { TrendingUp, AlertTriangle, CalendarDays, Bell, Building2, Lightbulb, LineChart, Swords, X } from "lucide-react"
+import { TrendingUp, AlertTriangle, BadgeCheck, CalendarDays, Bell, Building2, Lightbulb, LineChart, Swords, X } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useHome } from "@/hooks/useHome"
 import { spineKeys, unfollowEntity } from "@/api/spine"
@@ -65,7 +65,8 @@ const BRIEF_ICON = {
   action: Building2,
   signal: LineChart,
   warning: AlertTriangle,
-  conflict: Swords,   // 지식 충돌 (K2) — 검증된 전제에 반박 증거 누적
+  conflict: Swords,     // 지식 충돌 (K2) — 검증된 전제에 반박 증거 누적
+  confirmed: BadgeCheck, // 가설 확인 (K3) — 내 가설을 기계 관측이 지지
 } as const
 
 function BriefingSection({ items }: { items: BriefItem[] }) {

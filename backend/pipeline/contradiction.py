@@ -139,8 +139,11 @@ def scan_contradictions(max_judge: int = MAX_JUDGE) -> dict:
             conn.execute("UPDATE knowledge SET epistemic_status='contested', contested_at=? WHERE id=?",
                          (now.isoformat(), k["id"]))
             stats["contested"].append(k["id"])
-        elif k["epistemic_status"] == "observed" and sup >= MIN_INDEPENDENT:
-            conn.execute("UPDATE knowledge SET epistemic_status='corroborated' WHERE id=?", (k["id"],))
+        elif k["epistemic_status"] in ("observed", "hypothesis") and sup >= MIN_INDEPENDENT:
+            # K3: 사용자 가설(hypothesis)도 같은 규칙 — 기계 관측이 확인하면 승격
+            conn.execute("UPDATE knowledge SET epistemic_status='corroborated', corroborated_at=? WHERE id=?",
+                         (now.isoformat(), k["id"]))
+            stats.setdefault("corroborated", []).append(k["id"])
     conn.commit()
     conn.close()
     return stats

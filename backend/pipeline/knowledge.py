@@ -70,9 +70,107 @@ def inject_knowledge(content: str, epistemic: str = "hypothesis") -> dict:
         entities = [r["name"] for r in conn.execute("""
             SELECT DISTINCT e.name FROM entity_links el JOIN entities e ON el.entity_id=e.id
             WHERE el.doc_id=? ORDER BY el.confidence DESC LIMIT 6""", (row["id"],))]
+        # K3: 사용자 지식도 knowledge 계층에 편입 — 기계 관측과 같은 수명주기
+        register_user_knowledge(conn, row["id"], content, epistemic, now.isoformat())
     conn.close()
     return {"doc_id": row["id"] if row else None, "title": title,
             "epistemic": epistemic, "entities": entities}
+
+
+def _classify_layer(statement: str) -> str:
+    """pace layer 한 단어 판정 (haiku) — 실패 시 cycle."""
+    from pipeline.enrich import llm_engine, _call_claude_code
+    if llm_engine() != "claude-code":
+        return "cycle"
+    prompt = (
+        "다음 투자 관련 주장의 시간 지평을 분류해라.\n"
+        "- EVENT: 하루짜리 사건 (주가 등락, 단건 공시)\n"
+        "- FLOW: 수주~수개월 흐름 (수급, 분기 실적 추세)\n"
+        "- CYCLE: 1~수년 사이클 (업황, 공급부족)\n"
+        "- STRUCTURE: 산업·기업의 구조 변화 (사업모델, 계약 구조)\n"
+        "- REGIME: 정책·체제 (규제, 지정학)\n"
+        "마지막 줄에 정확히 한 단어만.\n\n" + statement[:400]
+    )
+    try:
+        hits = re.findall(r"\b(EVENT|FLOW|CYCLE|STRUCTURE|REGIME)\b", _call_claude_code(prompt))
+        return hits[-1].lower() if hits else "cycle"
+    except Exception:
+        return "cycle"
+
+
+def register_user_knowledge(conn, doc_id: int, content: str, epistemic: str, observed_at: str) -> int | None:
+    """주입 지식 → knowledge 행 (K3). 시장 엔티티 링크가 없으면 건너뜀 (개인 메모).
+
+    - 가설 → hypothesis, 사실 → observed. review_status='active' (내 지식은 승인 불필요)
+    - 증거 1호 = 주입 노트 자신 (독립). 이후 K2 모순 스캔이 수집 문서로
+      지지/반박을 붙이고, 독립 지지 2+면 corroborated — 기계가 내 가설을 확인.
+    """
+    market_ents = conn.execute("""
+        SELECT DISTINCT el.entity_id FROM entity_links el JOIN entities e ON e.id = el.entity_id
+        WHERE el.doc_id=? AND e.type IN ('company','sector','theme') """, (doc_id,)).fetchall()
+    if not market_ents:
+        return None  # 시장과 무관한 개인 메모 — 세계관 지식으로 편입하지 않음
+    statement = " ".join(content.split())[:500]
+    from pipeline.consolidation import _find_similar_knowledge, _merge_into
+    similar = _find_similar_knowledge(conn, statement)
+    if similar:
+        _merge_into(conn, similar, market_ents[0]["entity_id"],
+                    [{"id": doc_id, "independent": True, "published_at": observed_at}])
+        return similar
+    cur = conn.execute("""
+        INSERT INTO knowledge (statement, epistemic_status, review_status, pace_layer, model, valid_from)
+        VALUES (?, ?, 'active', ?, 'user', ?)""",
+        (statement, "observed" if epistemic == "fact" else "hypothesis",
+         _classify_layer(statement), observed_at))
+    kid = cur.lastrowid
+    for e in market_ents:
+        conn.execute("INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) VALUES (?, ?)",
+                     (kid, e["entity_id"]))
+    conn.execute("""
+        INSERT INTO knowledge_evidence (knowledge_id, doc_id, stance, independent, observed_at)
+        VALUES (?, ?, 'support', 1, ?)""", (kid, doc_id, observed_at))
+    conn.commit()
+    _seed_evidence(conn, kid, statement, exclude={doc_id})
+    return kid
+
+
+def _seed_evidence(conn, kid: int, statement: str, exclude: set[int]):
+    """기존 수집분에서 초기 증거 탐색 — K2 스캔은 문서 단위 마크라 새 지식은
+    미래 문서만 보게 됨. 주입 시점에 검색 top-5를 판정해 과거분을 보정한다."""
+    try:
+        from pipeline.search import search
+        from pipeline.contradiction import _judge_stance
+        hits = search(statement, k=5)
+    except Exception:
+        return
+    for h in hits:
+        if h["doc_id"] in exclude:
+            continue
+        doc = conn.execute(
+            "SELECT id, title, published_at, substr(markdown,1,1200) ex FROM raw_documents WHERE id=?",
+            (h["doc_id"],)).fetchone()
+        if not doc:
+            continue
+        stance = _judge_stance(statement, doc["title"] or "", doc["ex"])
+        if stance not in ("SUPPORT", "REFUTE"):
+            continue
+        from pipeline.contradiction import _is_independent
+        from pipeline.consolidation import _embeddings
+        emb = _embeddings(conn, [doc["id"]]).get(doc["id"])
+        conn.execute("""
+            INSERT INTO knowledge_evidence (knowledge_id, doc_id, stance, independent, observed_at)
+            VALUES (?, ?, ?, ?, ?)""",
+            (kid, doc["id"], stance.lower(), int(_is_independent(conn, kid, emb)),
+             doc["published_at"] or datetime.now(timezone.utc).isoformat()))
+    # 시딩 결과로 즉시 승격 가능 여부 판정 (K2와 동일 규칙)
+    r = conn.execute("""
+        SELECT SUM(stance='support' AND independent) s FROM knowledge_evidence
+        WHERE knowledge_id=?""", (kid,)).fetchone()
+    if (r["s"] or 0) >= 2:
+        conn.execute("""UPDATE knowledge SET epistemic_status='corroborated',
+            corroborated_at=datetime('now') WHERE id=? AND epistemic_status IN ('observed','hypothesis')""",
+            (kid,))
+    conn.commit()
 
 
 REMEMBER_PREFIXES = ("기억해(사실):", "기억해(사실)", "기억해:", "기억해 ", "메모:")

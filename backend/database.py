@@ -590,6 +590,7 @@ def init_db():
         "ALTER TABLE blog_sources ADD COLUMN author TEXT",
         "ALTER TABLE entity_keywords ADD COLUMN status TEXT DEFAULT 'active'",
         "ALTER TABLE knowledge ADD COLUMN contested_at TEXT",  # K2: contested 전환 시각 (알림 쿨다운 기준)
+        "ALTER TABLE knowledge ADD COLUMN corroborated_at TEXT",  # K3: 승격 시각 (사용자 가설 확인 알림)
     ]:
         try:
             conn.execute(migration)
