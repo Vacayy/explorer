@@ -26,8 +26,11 @@ def resolve_channels(conn, rows) -> dict[int, dict | None]:
             out[r["id"]] = {"name": tg.get(ch, ch), "kind": "telegram" if ch in tg else None,
                             "key": ch if ch in tg else None} if ch else None
         elif st == "blog":
+            from pipeline.urls import url_belongs
             url = r["url"] or ""
             hit = next(((prefix, name) for prefix, name in blogs if url.startswith(prefix)), None)
+            if not hit:  # RSS 직등록 소스(뉴스·뉴스레터) — 도메인 fallback
+                hit = next(((prefix, name) for prefix, name in blogs if url_belongs(url, prefix)), None)
             out[r["id"]] = {"name": hit[1], "kind": "blog", "key": hit[0]} if hit else None
         elif st == "note":
             out[r["id"]] = {"name": "내 노트", "kind": None, "key": None}

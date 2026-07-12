@@ -19,8 +19,9 @@ def is_muted(source_type: str, source_id: str, url: str, muted: dict) -> bool:
     if source_type == "telegram":
         return (source_id or "").split("/")[0] in muted["telegram"]
     if source_type == "blog":
+        from pipeline.urls import url_belongs
         u = url or ""
-        return any(u.startswith(prefix) for prefix in muted["blog"])
+        return any(url_belongs(u, prefix) for prefix in muted["blog"])
     return False
 
 
@@ -32,9 +33,14 @@ def feed_mute_sql(conn) -> tuple[str, list]:
         ph = ",".join("?" for _ in muted["telegram"])
         conds.append(f"(rd.source_type='telegram' AND substr(rd.source_id, 1, instr(rd.source_id,'/')-1) IN ({ph}))")
         params += list(muted["telegram"])
+    from pipeline.urls import is_feedlike, norm_domain
     for u in muted["blog"]:
-        conds.append("(rd.source_type='blog' AND rd.url LIKE ? || '%')")
-        params.append(u)
+        if is_feedlike(u):  # RSS 직등록 소스 — 기사 url이 피드 url로 시작 안 함
+            conds.append("(rd.source_type='blog' AND rd.url LIKE '%//%' || ? || '%')")
+            params.append(norm_domain(u))
+        else:
+            conds.append("(rd.source_type='blog' AND rd.url LIKE ? || '%')")
+            params.append(u)
     if not conds:
         return "1=1", []
     return f"NOT ({' OR '.join(conds)})", params

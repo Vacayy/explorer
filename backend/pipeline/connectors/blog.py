@@ -36,13 +36,20 @@ class BlogConnector:
         posts, _blog_name = scrape_rss(feed_url)
         docs = []
         for p in posts:
+            body = p.get("content") or p.get("summary", "")
+            # 뉴스 RSS는 제목만 오는 경우가 많다 — 본문 없으면 기사 원문 스크랩
+            if len(body) < 200 and p.get("url"):
+                from services.blog_service import fetch_full_content
+                full = fetch_full_content(p["url"])
+                if full:
+                    body = full
             docs.append(RawDoc(
                 source_type="blog",
                 source_id=p.get("url") or p.get("title", ""),
                 title=p.get("title", ""),
                 url=p.get("url", ""),
                 published_at=p.get("published_at", ""),
-                raw_content=p.get("content") or p.get("summary", ""),
+                raw_content=body,
                 kind="html",
             ))
         return docs

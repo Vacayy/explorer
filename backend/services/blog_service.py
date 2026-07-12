@@ -1,5 +1,33 @@
 import feedparser
+import requests
 from bs4 import BeautifulSoup
+
+# 언론사 RSS(매경 등)는 feedparser 기본 UA를 차단 — 브라우저 UA로 받아서 파싱
+# 주의: 'Chrome' 토큰이 들어가면 Cloudflare가 TLS 지문 불일치로 차단 (한경에서 실측)
+_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+
+def _parse_feed(feed_url: str):
+    try:
+        resp = requests.get(feed_url, headers={"User-Agent": _UA}, timeout=15)
+        resp.raise_for_status()
+        parsed = feedparser.parse(resp.content)
+        if parsed.entries or parsed.feed.get("title"):
+            return parsed
+    except Exception:
+        pass
+    # Cloudflare가 requests를 막는 피드(한경 등) — curl은 통과하는 경우가 있다
+    try:
+        import subprocess
+        proc = subprocess.run(["curl", "-sL", "--max-time", "15", "-A", _UA, feed_url],
+                              capture_output=True, timeout=20)
+        if proc.returncode == 0 and proc.stdout:
+            parsed = feedparser.parse(proc.stdout)
+            if parsed.entries or parsed.feed.get("title"):
+                return parsed
+    except Exception:
+        pass
+    return feedparser.parse(feed_url)  # 기존 경로 fallback
 
 
 def _html_to_summary(html: str, max_chars: int = 200) -> str:
@@ -13,7 +41,7 @@ def scrape_rss(feed_url: str) -> tuple[list[dict], str]:
     Returns: (posts, blog_name)
     posts: [{title, summary, content, url, published_at}]
     """
-    feed = feedparser.parse(feed_url)
+    feed = _parse_feed(feed_url)
     blog_name = feed.feed.get("title", "")
     posts = []
     for entry in feed.entries[:20]:
@@ -76,6 +104,8 @@ def fetch_full_content(url: str) -> str | None:
         ".tt_article_useless_p_margin",  # Tistory
         ".area_view",                     # Tistory alt
         ".contents_style",               # Tistory v2
+        "#articletxt",                   # 한국경제 기사 본문
+        ".news_cnt_detail_wrap",         # 매일경제 기사 본문
         "#content .entry-content",        # Generic
         ".post-content",                  # Generic
         "article",                        # Semantic HTML
@@ -114,6 +144,9 @@ def detect_platform_and_feed_url(blog_url: str) -> tuple[str, str]:
     # Try to detect if it already looks like an RSS url
     lower = url.lower()
     if any(lower.endswith(ext) for ext in ["/rss", "/feed", ".xml", "/atom"]):
+        return "rss", url
+    # 경로 중간에 rss/feed가 있는 언론사형 피드 (예: mk.co.kr/rss/40300001)
+    if "/rss" in lower or "/feed" in lower:
         return "rss", url
 
     return "rss", f"{url}/rss"

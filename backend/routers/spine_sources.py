@@ -135,13 +135,19 @@ def compute_source_health(conn) -> list[dict]:
             "last_doc_at": st["last"], "docs_7d": d7, "docs_24h": st["d1"] or 0,
             "warning": bool(r["is_active"]) and d7 == 0,
         })
+    from pipeline.urls import is_feedlike, norm_domain
     for r in conn.execute("SELECT url, blog_name, author, is_active FROM blog_sources"):
-        st = conn.execute("""
+        # RSS 직등록 소스(뉴스·뉴스레터)는 기사 url이 피드 url로 시작하지 않음 → 도메인 매칭
+        if is_feedlike(r["url"]):
+            cond, arg = "url LIKE '%//%' || ? || '%'", norm_domain(r["url"])
+        else:
+            cond, arg = "url LIKE ? || '%'", r["url"]
+        st = conn.execute(f"""
             SELECT max(published_at) last,
                    sum(published_at >= datetime('now', '-7 days')) d7,
                    sum(published_at >= datetime('now', '-1 day')) d1
-            FROM raw_documents WHERE source_type='blog' AND url LIKE ? || '%'
-        """, (r["url"],)).fetchone()
+            FROM raw_documents WHERE source_type='blog' AND {cond}
+        """, (arg,)).fetchone()
         d7 = st["d7"] or 0
         items.append({
             "kind": "blog", "name": r["blog_name"] or r["url"],
