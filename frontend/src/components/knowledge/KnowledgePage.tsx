@@ -122,7 +122,7 @@ function WorldviewCard() {
   if (!w || (w.status === "empty" && !w.briefing && !fresh.isFetching)) return null
 
   return (
-    <Card className="border-l-2 border-l-hypothesis">
+    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <Globe2 className="h-4 w-4 text-hypothesis" /> 세계관 브리핑
