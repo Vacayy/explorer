@@ -47,19 +47,23 @@ def resolve_source(conn, kind: str, key: str) -> dict | None:
     return None
 
 
-def _doc_filter(kind: str) -> str:
-    """raw_documents에서 이 소스의 문서를 고르는 WHERE 조각 (health와 동일 매칭)."""
+def _doc_filter(kind: str, key: str) -> tuple[str, str]:
+    """raw_documents에서 이 소스의 문서를 고르는 (WHERE 조각, 인자) — health와 동일 매칭."""
     if kind == "telegram":
-        return "source_type='telegram' AND source_id LIKE ? || '/%'"
-    return "source_type='blog' AND url LIKE ? || '%'"
+        return "source_type='telegram' AND source_id LIKE ? || '/%'", key
+    from pipeline.urls import is_feedlike, norm_domain
+    if is_feedlike(key):  # RSS 직등록 소스(뉴스·뉴스레터) — 도메인 매칭
+        return "source_type='blog' AND url LIKE '%//%' || ? || '%'", norm_domain(key)
+    return "source_type='blog' AND url LIKE ? || '%'", key
 
 
 def recent_docs(conn, kind: str, key: str, limit: int):
+    cond, arg = _doc_filter(kind, key)
     return conn.execute(f"""
         SELECT id, title, published_at, substr(markdown, 1, ?) ex
-        FROM raw_documents WHERE {_doc_filter(kind)}
+        FROM raw_documents WHERE {cond}
         ORDER BY published_at DESC LIMIT ?
-    """, (EXCERPT, key, limit)).fetchall()
+    """, (EXCERPT, arg, limit)).fetchall()
 
 
 def profile_hash(docs) -> str:
