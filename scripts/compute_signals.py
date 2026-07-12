@@ -52,6 +52,14 @@ def main():
     if todo:
         print("[contradiction]", scan_contradictions())
 
+    # K0 주간 승격 catch-up — 일요일 07:00 cron을 놓쳤으면(PC 꺼짐) 여기서 수행
+    from pipeline.consolidation import promote_batch, promote_due
+    conn = get_connection()
+    due = promote_due(conn)
+    conn.close()
+    if due:
+        print("[promote·catchup]", promote_batch())
+
 
 if __name__ == "__main__":
     main()
