@@ -452,6 +452,16 @@ def init_db():
         name        TEXT PRIMARY KEY,
         last_run_at TEXT NOT NULL
     );
+    -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
+    CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        knowledge_id INTEGER NOT NULL REFERENCES knowledge(id) ON DELETE CASCADE,
+        condition    TEXT NOT NULL,               -- 관측 가능한 반증 신호 서술
+        triggered_at TEXT,                        -- 감지 시각 (NULL=미발화)
+        triggered_doc_id INTEGER REFERENCES raw_documents(id) ON DELETE SET NULL,
+        created_at   TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_falsifiers_knowledge ON knowledge_falsifiers(knowledge_id);
 
     -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다

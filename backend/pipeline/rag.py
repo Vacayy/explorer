@@ -42,6 +42,11 @@ def _history_block(history: list[dict] | None) -> str:
     return "\n\n[이전 대화 — 후속질문의 맥락. 근거는 여전히 아래 문서만]\n" + "\n".join(lines)
 
 
+def _lens() -> str:
+    from pipeline.lenses import lens_block
+    return lens_block()
+
+
 def _build_prompt(question: str, docs: list[dict], history: list[dict] | None = None,
                   knowledge: list[dict] | None = None) -> str:
     ctx = "\n\n".join(
@@ -66,6 +71,7 @@ def _build_prompt(question: str, docs: list[dict], history: list[dict] | None = 
         "사건/흐름층은 일시적, 구조/체제층은 판단의 기반. 문서가 승격된 지식과 상충하면 "
         "contradiction 갭으로 표시해라\n"
         f"- 오늘 날짜 기준으로 문서 날짜의 신선도를 판단해라\n"
+        f"{_lens()}\n"
         f"{kn}\n"
         f"{_history_block(history)}\n\n질문: {question}\n\n수집 문서:\n{ctx}"
     )

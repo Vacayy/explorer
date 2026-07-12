@@ -266,10 +266,14 @@ export interface SpineSignal {
     market?: string;
     window_days?: number;
     // consensus_extreme (진자)
-    direction?: "optimism" | "pessimism";
+    direction?: "optimism" | "pessimism" | "up" | "down";
     pos?: number;
     neg?: number;
     ratio?: number;
+    // volume_spike (거래량이 터진 날)
+    volume?: number;
+    avg_vol_60d?: number;
+    change_pct?: number;
   };
   interpretation: string | null;
   interpretation_model: string | null;

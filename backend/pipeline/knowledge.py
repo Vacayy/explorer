@@ -131,6 +131,8 @@ def register_user_knowledge(conn, doc_id: int, content: str, epistemic: str, obs
         VALUES (?, ?, 'support', 1, ?)""", (kid, doc_id, observed_at))
     conn.commit()
     _seed_evidence(conn, kid, statement, exclude={doc_id})
+    from pipeline.falsifiers import generate_falsifiers
+    generate_falsifiers(conn, kid, statement)
     return kid
 
 

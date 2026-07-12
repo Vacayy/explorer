@@ -214,6 +214,87 @@ def compute_neglect() -> list[dict]:
     return signals
 
 
+VOLSPIKE_RATIO = 3.0        # 60일 평균 거래량 대비 배수
+VOLSPIKE_MIN_CHANGE = 3.0   # 종가 등락 절대값 % (장대봉 요건)
+VOLSPIKE_MIN_MCAP = 1e11    # 시총 1000억+ (저유동성 잡음 배제)
+VOLSPIKE_MIN_HIST = 20      # 평균 계산 최소 일수
+VOLSPIKE_LIMIT = 15
+
+
+def compute_volume_spike() -> list[dict]:
+    """거래량 급증 신호 — '거래량이 터진 날 = 시장의 생각이 바뀐 날' (추세 패턴 문서).
+
+    가격·거래량 데이터와 수집 문서를 결합: 급증일 전후 언급 문서를 payload에
+    붙여 '그날 무슨 일이 있었나'를 1클릭으로. 해석(매집/분산/재료소멸)은
+    interpret_pending이 문서 근거로 채운다. LLM 0 (해석 제외).
+    """
+    conn = get_connection()
+    latest = conn.execute("SELECT max(trade_date) d FROM stock_prices").fetchone()["d"]
+    if not latest:
+        conn.close()
+        return []
+    rows = conn.execute(f"""
+        WITH cur AS (
+            SELECT stock_code, volume, close, market_cap FROM stock_prices WHERE trade_date = ?
+        ),
+        hist AS (
+            SELECT stock_code, avg(volume) avg_vol, count(*) n
+            FROM stock_prices
+            WHERE trade_date < ? AND trade_date >= date(?, '-90 days') AND volume > 0
+            GROUP BY stock_code
+        )
+        SELECT c.stock_code, c.volume, c.close, c.market_cap, h.avg_vol,
+               co.corp_name, e.id entity_id
+        FROM cur c
+        JOIN hist h ON h.stock_code = c.stock_code AND h.n >= {VOLSPIKE_MIN_HIST}
+        JOIN companies co ON co.stock_code = c.stock_code
+        JOIN entities e ON e.type='company' AND e.aliases = c.stock_code
+        WHERE c.volume >= h.avg_vol * {VOLSPIKE_RATIO}
+          AND c.market_cap >= {VOLSPIKE_MIN_MCAP}
+        ORDER BY c.volume / h.avg_vol DESC
+    """, (latest, latest, latest)).fetchall()
+
+    signals = []
+    for r in rows:
+        prev = conn.execute("""
+            SELECT close FROM stock_prices WHERE stock_code=? AND trade_date < ?
+            ORDER BY trade_date DESC LIMIT 1""", (r["stock_code"], latest)).fetchone()
+        if not prev or not prev["close"]:
+            continue
+        change_pct = (r["close"] - prev["close"]) / prev["close"] * 100
+        if abs(change_pct) < VOLSPIKE_MIN_CHANGE:
+            continue
+        docs = conn.execute("""
+            SELECT rd.id, rd.title, rd.url FROM entity_links el
+            JOIN raw_documents rd ON rd.id = el.doc_id
+            WHERE el.entity_id=? AND el.link_type='stock'
+              AND date(rd.published_at) BETWEEN date(?, '-1 day') AND date(?, '+1 day')
+            ORDER BY rd.published_at DESC LIMIT 5""",
+            (r["entity_id"], latest, latest)).fetchall()
+        signals.append({
+            "entity_id": r["entity_id"], "name": r["corp_name"], "date": latest,
+            "payload": {
+                "volume": r["volume"], "avg_vol_60d": round(r["avg_vol"]),
+                "ratio": round(r["volume"] / r["avg_vol"], 1),
+                "change_pct": round(change_pct, 1),
+                "direction": "up" if change_pct > 0 else "down",
+                "docs": [{"id": d["id"], "title": d["title"], "url": d["url"]} for d in docs],
+            },
+        })
+        if len(signals) >= VOLSPIKE_LIMIT:
+            break
+    for s in signals:
+        conn.execute("""
+            INSERT INTO signals (signal_type, entity_id, date, payload_json)
+            VALUES ('volume_spike', ?, ?, ?)
+            ON CONFLICT(signal_type, entity_id, date)
+            DO UPDATE SET payload_json = excluded.payload_json
+        """, (s["entity_id"], s["date"], json.dumps(s["payload"], ensure_ascii=False)))
+    conn.commit()
+    conn.close()
+    return signals
+
+
 PENDULUM_WINDOW_DAYS = 14   # 컨센서스 판정 창
 PENDULUM_MIN_DOCS = 8       # 방향 있는 문서 최소 표본 (신뢰 하한)
 PENDULUM_RATIO = 0.9        # 일방향 비율 임계 — "낙관의 만장일치는 경고다"
@@ -293,6 +374,14 @@ def interpret_pending(limit: int = 10) -> dict:
             titles = [d["title"] for d in (p.get("docs") or [])]
             context = "\n".join(f"- {t}" for t in titles)
             detail = f"최근 7일 {p.get('count_7d')}회 언급 (직전 {p.get('baseline_7d')}회)"
+        elif r["signal_type"] == "volume_spike":
+            titles = [d["title"] for d in (p.get("docs") or [])]
+            if not titles:
+                skipped += 1
+                continue  # 근거 없는 해석 금지 — 문서 없는 급증은 해석 유보
+            context = "\n".join(f"- {t}" for t in titles)
+            detail = (f"거래량 급증 — 60일 평균 {p.get('ratio')}배, "
+                      f"주가 {p.get('change_pct'):+}% (거래량이 터진 날 = 시장의 생각이 바뀐 날)")
         else:  # high_52w 등 — 최근 언급 문서로
             rows = conn.execute("""
                 SELECT rd.title FROM entity_links el JOIN raw_documents rd ON el.doc_id = rd.id

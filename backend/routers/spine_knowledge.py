@@ -66,6 +66,12 @@ class KnowledgeEntity(BaseModel):
     aliases: str | None   # company면 종목코드 (도시에 링크)
 
 
+class Falsifier(BaseModel):
+    condition: str
+    triggered_at: str | None
+    triggered_doc_id: int | None
+
+
 class KnowledgeItem(BaseModel):
     id: int
     statement: str
@@ -77,6 +83,7 @@ class KnowledgeItem(BaseModel):
     independent: int
     activation: float | None   # 조회 시 계산 (A-2) — 죽은 지식은 뒤로
     entities: list[KnowledgeEntity]
+    falsifiers: list[Falsifier] = []
     created_at: str
     contested_at: str | None
 
@@ -102,12 +109,17 @@ def list_knowledge(status: str = "active"):
         obs = [x["observed_at"] for x in conn.execute(
             "SELECT observed_at FROM knowledge_evidence WHERE knowledge_id=?", (r["id"],))]
         act = _activation(obs, r["pace_layer"])
+        fals = [Falsifier(condition=f["condition"], triggered_at=f["triggered_at"],
+                          triggered_doc_id=f["triggered_doc_id"])
+                for f in conn.execute("""
+            SELECT condition, triggered_at, triggered_doc_id FROM knowledge_falsifiers
+            WHERE knowledge_id=? ORDER BY triggered_at IS NULL, id""", (r["id"],))]
         out.append(KnowledgeItem(
             id=r["id"], statement=r["statement"], epistemic_status=r["epistemic_status"],
             pace_layer=r["pace_layer"], confidence=r["confidence"],
             support=r["sup"], refute=r["ref"], independent=r["ind"],
             activation=None if act == float("-inf") else round(act, 3),
-            entities=ents, created_at=r["created_at"],
+            entities=ents, falsifiers=fals, created_at=r["created_at"],
             contested_at=r["contested_at"] if "contested_at" in r.keys() else None))
     conn.close()
     out.sort(key=lambda k: k.activation if k.activation is not None else -99, reverse=True)
@@ -157,6 +169,10 @@ def approve_knowledge(knowledge_id: int):
     conn.execute("UPDATE knowledge SET review_status='active', epistemic_status=? WHERE id=?",
                  (epi, knowledge_id))
     conn.commit()
+    # 반증 조건 생성 — active가 된 순간부터 표적 감시 대상 (거부될 후보에는 비용 안 씀)
+    from pipeline.falsifiers import generate_falsifiers
+    st = conn.execute("SELECT statement FROM knowledge WHERE id=?", (knowledge_id,)).fetchone()
+    generate_falsifiers(conn, knowledge_id, st["statement"])
     conn.close()
     return {"id": knowledge_id, "epistemic_status": epi}
 

@@ -49,7 +49,7 @@ export function SignalHistoryCard({ stockCode }: { stockCode: string }) {
           <div key={s.id} className="py-1.5 space-y-0.5">
             <div className="flex items-center gap-2 text-xs">
               <Badge variant="secondary" className="text-[10px] shrink-0">
-                {s.signal_type === "mention_surge" ? "언급 급증" : s.signal_type === "high_52w" ? "52주 신고가" : s.signal_type === "neglect" ? "소외" : s.signal_type === "consensus_extreme" ? "컨센서스 극단" : s.signal_type}
+                {s.signal_type === "mention_surge" ? "언급 급증" : s.signal_type === "high_52w" ? "52주 신고가" : s.signal_type === "neglect" ? "소외" : s.signal_type === "consensus_extreme" ? "컨센서스 극단" : s.signal_type === "volume_spike" ? "거래량 급증" : s.signal_type}
               </Badge>
               <span className="font-medium tabular-nums">
                 {s.signal_type === "mention_surge"

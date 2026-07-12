@@ -12,6 +12,7 @@ const SIGNAL_LABEL: Record<string, string> = {
   export_change: "수출 변화",
   high_52w: "52주 신고가",
   consensus_extreme: "컨센서스 극단",
+  volume_spike: "거래량 급증",
 }
 
 /**
@@ -59,6 +60,17 @@ export function SignalCard({ signal: s, onKeywordClick }: {
             {p.market_cap != null ? `${(p.market_cap / 1e12).toFixed(2)}조` : "-"} [{p.market}]
             <br />저평가·흑자인데 최근 {p.window_days ?? 30}일 언급 0 — 주목의 부재가 신호
           </p>
+        )}
+        {s.signal_type === "volume_spike" && (
+          <div className="text-sm">
+            60일 평균 <span className="font-bold text-base">{p.ratio}배</span> 거래량
+            <span className={`ml-2 font-semibold ${(p.change_pct ?? 0) > 0 ? "text-up" : "text-down"}`}>
+              {(p.change_pct ?? 0) > 0 ? "+" : ""}{p.change_pct}%
+            </span>
+            <span className="block text-xs text-muted-foreground mt-0.5">
+              거래량이 터진 날 — 시장의 생각이 바뀌었을 수 있는 날
+            </span>
+          </div>
         )}
         {s.signal_type === "consensus_extreme" && (
           <p className="text-xs text-muted-foreground">
