@@ -54,6 +54,21 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
             text=f'지식 충돌 — "{top["statement"][:70]}…" 반박 증거 {top["ref"]}건 누적',
             to="/knowledge"))
 
+    # 가설 확인 (K3): 내가 주입한 지식이 기계 관측으로 corroborated 승격 — 24h 내
+    confirmed = conn.execute("""
+        SELECT k.statement,
+               (SELECT count(*) FROM knowledge_evidence
+                WHERE knowledge_id=k.id AND stance='support' AND independent=1) ind
+        FROM knowledge k
+        WHERE k.model='user' AND k.epistemic_status='corroborated'
+          AND k.corroborated_at >= datetime('now', '-1 day')
+        ORDER BY k.corroborated_at DESC LIMIT 1""").fetchone()
+    if confirmed:
+        briefing.append(BriefItem(
+            kind="confirmed",
+            text=f'가설 확인 — "{confirmed["statement"][:70]}…" 독립 관측 {confirmed["ind"]}건이 지지',
+            to="/knowledge"))
+
     ins_rows = conn.execute("""
         SELECT e.name, e.aliases stock_code, d.insights, d.period_start
         FROM entity_digests d JOIN entities e ON d.entity_id = e.id
