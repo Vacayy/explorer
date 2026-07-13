@@ -59,7 +59,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
           </div>
         )}
         {data?.has_thesis === false && <ThesisPrompt stockCode={stockCode} />}
-        {data?.thesis && <ThesisView stockCode={stockCode} thesis={data.thesis} />
+        {data?.thesis && <ThesisView stockCode={stockCode} thesis={data.thesis} />}
         {b.thesis_check && (
           <div className="flex gap-2 rounded-md bg-hypothesis/10 border border-hypothesis/30 px-3 py-2">
             <Scale className="h-3.5 w-3.5 text-hypothesis shrink-0 mt-0.5" />
