@@ -19,6 +19,41 @@ _UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKi
 _RSS = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
 _LANG_PREF = ["ko", "en"]
 MAX_NEW_PER_CHANNEL = 5   # 채널당 회차 신규 영상 상한 (첫 구독 시 폭주 방지)
+MAX_TRANSCRIPT_CHARS = 45000  # opus 입력 상한 (긴 라이브 방어)
+
+
+def digest_transcript(title: str, transcript: str) -> str | None:
+    """자막(노이즈·구어체)을 opus로 투자 리서치 정리본(markdown)으로 1차 가공.
+
+    자막 raw는 그 자체로 검색·지식에 노이즈다 — 정리본을 본문으로 삼아
+    지식 체계에 흡수한다 (stakeholder 방향, 2026-07-13). 실패 시 None(호출부 fallback).
+    """
+    import subprocess
+    from pipeline.enrich import _claude_bin, llm_engine
+    if llm_engine() != "claude-code":
+        return None
+    prompt = (
+        f"유튜브 영상 '{title}'의 자막이다. 음성을 자막화한 것이라 구어체·반복·"
+        "인식오류 노이즈가 많다. 이것을 투자 리서치 관점의 정리본(마크다운)으로 재구성해라.\n"
+        "구조 (섹션 고정):\n"
+        "## 핵심 요약\n화자의 결론과 핵심 메시지를 4~6문장으로 디테일하게. 무엇을 주장하고 왜 그런지.\n"
+        "## 주요 논점\n- 화자가 편 논거를 순서대로 (각 항목에 근거·수치 포함)\n"
+        "## 언급된 종목·지표·이벤트\n- 종목명/티커, 언급된 수치(가격·전망·비중), 일정. 없으면 생략\n"
+        "## 투자 시사점\n화자의 포지션·전략 제안과, 그것이 유효하려면/틀리려면 무엇이 필요한지\n"
+        "규율: 자막에 없는 내용 지어내지 말 것. 인사말·잡담·광고는 버릴 것. "
+        "화자의 주관적 주장은 '화자는 ~라고 본다'로 표기해 사실과 구분. 정보 밀도 최대화.\n\n"
+        f"[자막]\n{transcript[:MAX_TRANSCRIPT_CHARS]}"
+    )
+    try:
+        proc = subprocess.run(
+            [_claude_bin(), "-p", "--model", "opus", prompt],
+            capture_output=True, text=True, timeout=400)
+        if proc.returncode != 0:
+            return None
+        out = proc.stdout.strip()
+        return out if len(out) > 100 else None
+    except Exception:
+        return None
 
 
 def parse_video_id(url_or_id: str) -> str | None:
@@ -150,12 +185,16 @@ class YouTubeConnector:
             return []
         title = ref.meta.get("title") or _video_title(vid)
         published = ref.meta.get("published") or _video_published(vid)
+        # 자막 raw 대신 opus 정리본을 본문으로 — 검색·태깅·지식이 정리본을 흡수
+        digest = digest_transcript(title, transcript)
+        body = f"{digest}\n\n---\n*원본 자막 {len(transcript):,}자 → opus 정리본. 원문: 유튜브 링크*" \
+            if digest else transcript
         return [RawDoc(
             source_type="youtube",
             source_id=vid,
             title=title,
             url=f"https://www.youtube.com/watch?v={vid}",
             published_at=published,
-            raw_content=transcript,
+            raw_content=body,
             kind="text",
         )]
