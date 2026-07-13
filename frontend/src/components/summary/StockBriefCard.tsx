@@ -49,7 +49,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
               </span>{" "}
               {b.revision_call.rationale}
               <span className="block text-[10px] text-muted-foreground mt-0.5">
-                AI 가설 — 기록되어 실제 컨센서스 변화와 대조됩니다
+                시장 컨센서스(애널리스트 추정치)가 앞으로 움직일 방향에 대한 AI 가설 — 기록되어 실제 변화와 대조됩니다
               </span>
             </p>
           </div>
@@ -59,6 +59,9 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
             <Scale className="h-3.5 w-3.5 text-hypothesis shrink-0 mt-0.5" />
             <p className="text-xs">
               <span className="font-semibold text-hypothesis">내 논지 점검</span> {b.thesis_check}
+              <span className="block text-[10px] text-muted-foreground mt-0.5">
+                팔로우에 등록한 나의 투자 논지를 새 증거가 지지/반박하는지 — 위 콜(시장 기대)과 달리 대상은 '내 가설'
+              </span>
             </p>
           </div>
         )}

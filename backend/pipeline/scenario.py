@@ -15,7 +15,7 @@ import subprocess
 from database import get_connection
 from pipeline.enrich import _claude_bin, llm_engine
 
-SCENARIO_MODEL = os.getenv("SCENARIO_MODEL", os.getenv("RAG_MODEL", "sonnet"))
+SCENARIO_MODEL = os.getenv("SCENARIO_MODEL", "opus")  # 심층 종합 티어 — 다단 인과 추론
 SCENARIO_PREFIXES = ("시나리오:", "시나리오 :", "만약:", "what if:")
 TOP_DOCS = 10
 EXCERPT = 800
