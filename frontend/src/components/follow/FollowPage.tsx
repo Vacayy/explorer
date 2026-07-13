@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { unfollowEntity, spineKeys } from "@/api/spine"
+import { apiQuery, STALE } from "@/api/query"
 import { useWatchlist, useUpdateWatchlistItem, useDeleteWatchlistItem } from "@/hooks/useWatchlist"
 import { useQuotes, type LiveQuote } from "@/hooks/useQuotes"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
@@ -41,6 +42,7 @@ export default function FollowPage() {
         <BlogSourcesCard title="뉴스 및 아티클" placeholder="RSS 피드 URL (뉴스·뉴스레터)"
           match={(s) => s.platform === "rss"}
           onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
+        <YouTubeCard />
       </div>
 
       <FollowedPeopleCard onGo={(name) => navigate(`/person?name=${encodeURIComponent(name)}`)} />
@@ -324,6 +326,53 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
             />
           )
         })}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ── 유튜브 (채널 구독 + 영상 링크 단건) ── */
+
+interface YtChannel { channel_id: string; title: string | null; handle: string | null; is_active: boolean }
+
+function YouTubeCard() {
+  const qc = useQueryClient()
+  const { data } = useQuery(
+    apiQuery<{ items: YtChannel[] }>({ key: ["youtube-channels"], url: "/api/spine/sources/youtube", staleTime: STALE.medium }),
+  )
+  const channels = data?.items ?? []
+  const add = useMutation({
+    mutationFn: async (input: string) =>
+      (await api.post("/api/spine/sources/youtube", { input })).data as { kind: string; title?: string },
+    onSuccess: (d) => {
+      toast.success(d.kind === "channel" ? `'${d.title}' 구독 — 최근 영상 자막 수집` : "영상 자막 수집 시작")
+      qc.invalidateQueries({ queryKey: ["youtube-channels"] })
+    },
+    onError: (e: unknown) =>
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "등록 실패"),
+  })
+  const toggle = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
+      api.patch(`/api/spine/sources/youtube/${id}?is_active=${active}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["youtube-channels"] }),
+  })
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">유튜브 <span className="font-normal text-muted-foreground">{channels.length}</span></CardTitle>
+      </CardHeader>
+      <CardContent className="px-0 pb-2 space-y-1">
+        <AddForm placeholder="채널 @handle·URL (구독) 또는 영상 URL (단건)" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
+        {channels.map((ch) => (
+          <SourceRow key={ch.channel_id}
+            name={ch.title ?? ch.channel_id}
+            sub="신규 영상 자동 자막"
+            active={ch.is_active}
+            onClick={() => window.open(`https://www.youtube.com/channel/${ch.channel_id}`, "_blank")}
+            onToggle={() => toggle.mutate({ id: ch.channel_id, active: !ch.is_active })}
+          />
+        ))}
       </CardContent>
     </Card>
   )

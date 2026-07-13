@@ -101,6 +101,72 @@ def add_blog(body: AddBlogRequest, background: BackgroundTasks):
             "preview_posts": len(posts), "note": "백그라운드 수집 시작"}
 
 
+class AddYouTubeRequest(BaseModel):
+    input: str   # 채널 URL/@handle (구독) 또는 영상 URL/ID (단건)
+
+
+def _ingest_youtube(video_ids: list[str] | None):
+    from pipeline.connectors.youtube import YouTubeConnector
+    from pipeline.runner import run_source
+    try:
+        run_source(YouTubeConnector(video_ids))
+    except Exception:
+        pass
+
+
+@router.post("/youtube", status_code=201)
+def add_youtube(body: AddYouTubeRequest, background: BackgroundTasks):
+    from pipeline.connectors.youtube import parse_video_id, resolve_channel_id, fetch_transcript
+    s = body.input.strip()
+
+    # 1) 영상 링크/ID면 단건 수집 (watch·youtu.be·live·shorts만 — 채널 URL 오인 방지)
+    vid = parse_video_id(s) if ("watch" in s or "youtu.be" in s or "/live/" in s
+                                or "/shorts/" in s or len(s) == 11) else None
+    if vid:
+        if not fetch_transcript(vid):
+            raise HTTPException(422, "이 영상은 자막(transcript)이 없어 수집할 수 없습니다")
+        background.add_task(_ingest_youtube, [vid])
+        return {"kind": "video", "video_id": vid, "note": "자막 수집 시작"}
+
+    # 2) 채널 구독 — 이후 신규 영상 자동 수집
+    resolved = resolve_channel_id(s)
+    if not resolved:
+        raise HTTPException(422, "채널을 찾을 수 없습니다 (채널 URL 또는 @handle을 입력하세요)")
+    cid, title = resolved
+    conn = get_connection()
+    dup = conn.execute("SELECT 1 FROM youtube_channels WHERE channel_id=?", (cid,)).fetchone()
+    if not dup:
+        conn.execute(
+            "INSERT INTO youtube_channels (channel_id, handle, title, is_active) VALUES (?, ?, ?, 1)",
+            (cid, s if s.startswith("@") else None, title))
+        conn.commit()
+    conn.close()
+    if dup:
+        raise HTTPException(409, "이미 구독 중인 채널입니다")
+    background.add_task(_ingest_youtube, None)
+    return {"kind": "channel", "channel_id": cid, "title": title, "note": "구독 완료 — 최근 영상 자막 수집 시작"}
+
+
+@router.get("/youtube")
+def list_youtube():
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT channel_id, title, handle, is_active FROM youtube_channels ORDER BY added_at DESC").fetchall()
+    conn.close()
+    return {"items": [{"channel_id": r["channel_id"], "title": r["title"],
+                       "handle": r["handle"], "is_active": bool(r["is_active"])} for r in rows]}
+
+
+@router.patch("/youtube/{channel_id}")
+def toggle_youtube(channel_id: str, is_active: bool):
+    conn = get_connection()
+    conn.execute("UPDATE youtube_channels SET is_active=? WHERE channel_id=?",
+                 (int(is_active), channel_id))
+    conn.commit()
+    conn.close()
+    return {"channel_id": channel_id, "is_active": is_active}
+
+
 class SourceHealth(BaseModel):
     kind: str            # telegram | blog
     name: str            # 표시명
@@ -207,11 +273,11 @@ def source_dossier(kind: str, key: str):
         conn.close()
         raise HTTPException(404, "등록되지 않은 소스입니다")
 
-    df = _doc_filter(kind)
+    df, arg = _doc_filter(kind, key)
     st = conn.execute(f"""
         SELECT count(*) n, min(published_at) first, max(published_at) last,
                sum(published_at >= datetime('now', '-7 days')) d7
-        FROM raw_documents WHERE {df}""", (key,)).fetchone()
+        FROM raw_documents WHERE {df}""", (arg,)).fetchone()
 
     docs = recent_docs(conn, kind, key, PROFILE_DOCS)
     cached = get_cached(conn, kind, key)
@@ -228,11 +294,11 @@ def source_dossier(kind: str, key: str):
         WHERE {df} AND rd.published_at >= datetime('now', '-90 days')
           AND el.link_type IN ('stock', 'industry', 'topic')
         GROUP BY e.id, el.link_type ORDER BY c DESC LIMIT 12
-    """, (key,)).fetchall()
+    """, (arg,)).fetchall()
 
     recent = conn.execute(f"""
         SELECT id, title, published_at FROM raw_documents WHERE {df}
-        ORDER BY published_at DESC LIMIT 20""", (key,)).fetchall()
+        ORDER BY published_at DESC LIMIT 20""", (arg,)).fetchall()
     conn.close()
 
     return SourceDossierResponse(

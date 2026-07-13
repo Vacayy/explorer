@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge"
 const SOURCE_LABEL: Record<string, string> = {
   telegram: "텔레그램",
   blog: "블로그",
+  youtube: "유튜브",
   dart: "공시",
   report: "리포트",
 }
