@@ -26,7 +26,8 @@ SCAN_WINDOW_DAYS = 7      # 검사 대상 문서 창
 
 def _judge_stance(statement: str, doc_title: str, doc_text: str) -> str | None:
     """haiku 판정: 문서가 주장을 지지/반박/무관한가. 실패 시 None."""
-    from pipeline.enrich import llm_engine, _call_claude_code
+    from pipeline.enrich import llm_engine
+    from pipeline.consolidation import _call_claude_knowledge
     if llm_engine() != "claude-code":
         return None
     prompt = (
@@ -39,7 +40,7 @@ def _judge_stance(statement: str, doc_title: str, doc_text: str) -> str | None:
         f"[지식]\n{statement}\n\n[문서] {doc_title}\n{(doc_text or '')[:900]}"
     )
     try:
-        raw = _call_claude_code(prompt)
+        raw = _call_claude_knowledge(prompt)
         hits = re.findall(r"\b(SUPPORT|REFUTE|NEUTRAL)\b", raw)
         return hits[-1] if hits else None
     except Exception:
