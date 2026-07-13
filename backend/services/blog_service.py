@@ -1,6 +1,19 @@
+import calendar
+from datetime import datetime, timezone
+
 import feedparser
 import requests
 from bs4 import BeautifulSoup
+
+
+def _entry_published(entry) -> str:
+    """RSS 날짜 → ISO 8601 UTC. feedparser가 파싱한 struct_time(published_parsed) 우선 —
+    'Thu, 09 Jul 2026'처럼 시각 없는 pubDate도 안정적으로 처리된다. 없으면 원본 문자열."""
+    for key in ("published_parsed", "updated_parsed"):
+        st = entry.get(key)
+        if st:
+            return datetime.fromtimestamp(calendar.timegm(st), tz=timezone.utc).isoformat()
+    return entry.get("published", entry.get("updated", ""))
 
 # 언론사 RSS(매경 등)는 feedparser 기본 UA를 차단 — 브라우저 UA로 받아서 파싱
 # 주의: 'Chrome' 토큰이 들어가면 Cloudflare가 TLS 지문 불일치로 차단 (한경에서 실측)
@@ -58,7 +71,7 @@ def scrape_rss(feed_url: str) -> tuple[list[dict], str]:
             "summary": summary,
             "content": content_html,
             "url": entry.get("link", ""),
-            "published_at": entry.get("published", entry.get("updated", "")),
+            "published_at": _entry_published(entry),
             "author": author,
         })
     return posts, blog_name
@@ -105,7 +118,9 @@ def fetch_full_content(url: str) -> str | None:
         ".area_view",                     # Tistory alt
         ".contents_style",               # Tistory v2
         "#articletxt",                   # 한국경제 기사 본문
-        ".news_cnt_detail_wrap",         # 매일경제 기사 본문
+        "#article_body",                 # 매일경제 기사 본문 (실측 확인)
+        ".article_body",                 # 매일경제 변형
+        ".news_cnt_detail_wrap",         # 매일경제 구버전
         "#content .entry-content",        # Generic
         ".post-content",                  # Generic
         "article",                        # Semantic HTML

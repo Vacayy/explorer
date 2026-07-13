@@ -102,11 +102,13 @@ def ask(question: str, history: list[dict] | None = None) -> dict:
 
     # K1: 질문과 유사한 승격 지식을 별도 블록으로 — relevance×activation×epistemic 랭킹
     from pipeline.knowledge_recall import recall_for_query
+    from pipeline.quotes import quote_block
     conn = get_connection()
     knowledge = recall_for_query(conn, search_q)
+    quotes = quote_block(conn, question)  # 질문 속 종목의 실시간 시세 — 낡은 종가로 답하지 않게
     conn.close()
 
-    prompt = _build_prompt(question, docs, history, knowledge)
+    prompt = _build_prompt(question, docs, history, knowledge) + quotes
     if llm_engine() == "claude-code":
         proc = subprocess.run(
             [_claude_bin(), "-p", "--model", RAG_MODEL, "--output-format", "json", prompt],
