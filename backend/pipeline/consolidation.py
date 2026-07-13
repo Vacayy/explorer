@@ -9,12 +9,32 @@
 """
 import json
 import math
+import os
 import struct
+import subprocess
 from datetime import datetime, timezone
 
 from database import get_connection
-from pipeline.digests import _call_json
-from pipeline.enrich import llm_engine
+from pipeline.enrich import _claude_bin, llm_engine
+
+# 지식 승격·심사는 다층 판단이라 opus (stakeholder 지정, 2026-07-13)
+KNOWLEDGE_MODEL = os.getenv("KNOWLEDGE_MODEL", "opus")
+
+
+def _call_claude_knowledge(prompt: str) -> str:
+    """지식 라인 공용 opus 텍스트 호출 (승격·모순·반증 판정 공통 티어)."""
+    proc = subprocess.run(
+        [_claude_bin(), "-p", "--model", KNOWLEDGE_MODEL, "--output-format", "json", prompt],
+        capture_output=True, text=True, timeout=400)
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
+    return json.loads(proc.stdout).get("result", "")
+
+
+def _call_json(prompt: str) -> dict:
+    raw = _call_claude_knowledge(prompt)
+    s, e = raw.find("{"), raw.rfind("}")
+    return json.loads(raw[s:e + 1])
 
 WINDOW_DAYS = 14          # 승격 검토 창
 MIN_DOCS = 4              # 엔티티당 최소 언급 (후보 대상 선정)

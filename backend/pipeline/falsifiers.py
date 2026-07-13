@@ -32,7 +32,8 @@ def generate_falsifiers(conn, knowledge_id: int, statement: str) -> list[str]:
     if conn.execute("SELECT 1 FROM knowledge_falsifiers WHERE knowledge_id=?",
                     (knowledge_id,)).fetchone():
         return []
-    from pipeline.enrich import llm_engine, _call_claude_code
+    from pipeline.enrich import llm_engine
+    from pipeline.consolidation import _call_claude_knowledge
     if llm_engine() != "claude-code":
         return []
     prompt = (
@@ -44,7 +45,7 @@ def generate_falsifiers(conn, knowledge_id: int, statement: str) -> list[str]:
         f"[지식]\n{statement}"
     )
     try:
-        raw = _call_claude_code(prompt)
+        raw = _call_claude_knowledge(prompt)
         s, e = raw.find("{"), raw.rfind("}")
         items = json.loads(raw[s:e + 1]).get("falsifiers") or []
     except Exception:
@@ -63,7 +64,8 @@ def generate_falsifiers(conn, knowledge_id: int, statement: str) -> list[str]:
 
 def _judge_triggered(condition: str, statement: str, doc_title: str, doc_text: str) -> bool:
     """haiku 판정: 문서가 반증 조건의 실제 발생을 보고하는가."""
-    from pipeline.enrich import llm_engine, _call_claude_code
+    from pipeline.enrich import llm_engine
+    from pipeline.consolidation import _call_claude_knowledge
     if llm_engine() != "claude-code":
         return False
     prompt = (
@@ -76,7 +78,7 @@ def _judge_triggered(condition: str, statement: str, doc_title: str, doc_text: s
         f"[문서] {doc_title}\n{(doc_text or '')[:900]}"
     )
     try:
-        hits = re.findall(r"\b(TRIGGERED|NOT)\b", _call_claude_code(prompt))
+        hits = re.findall(r"\b(TRIGGERED|NOT)\b", _call_claude_knowledge(prompt))
         return bool(hits) and hits[-1] == "TRIGGERED"
     except Exception:
         return False
