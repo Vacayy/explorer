@@ -57,7 +57,44 @@ def gather_inputs(conn, stock_code: str, entity_id: int) -> dict:
     from pipeline.knowledge_recall import recall_for_entity
     knowledge = recall_for_entity(conn, entity_id)  # K1: 승격 지식을 재료로
     return {"digests": digests, "signals": signals, "upcoming": upcoming,
-            "actions": actions, "thesis": thesis, "notes": notes, "knowledge": knowledge}
+            "actions": actions, "thesis": thesis, "notes": notes, "knowledge": knowledge,
+            "decomp": _price_decomposition(conn, stock_code)}
+
+
+def _price_decomposition(conn, stock_code: str) -> dict | None:
+    """상승 분해 (근사) — 12개월 주가 변화를 이익 변화 × 멀티플 변화로 (추세 패턴 §7 Step5).
+
+    이익은 최신 연간 사업보고서 당기순이익 YoY (thstrm vs frmtrm). 적자 구간이면
+    분해가 무의미하므로 None. LLM 0, 재무 데이터 없으면 None (Partial 허용).
+    hash에는 넣지 않는다 — 매일 바뀌는 주가로 브리프가 재생성되지 않게 (보조 재료).
+    """
+    px = conn.execute("""
+        SELECT (SELECT close FROM stock_prices WHERE stock_code=? ORDER BY trade_date DESC LIMIT 1) cur,
+               (SELECT close FROM stock_prices WHERE stock_code=?
+                AND trade_date <= date('now', '-365 days') ORDER BY trade_date DESC LIMIT 1) base
+    """, (stock_code, stock_code)).fetchone()
+    if not px or not px["cur"] or not px["base"]:
+        return None
+    ni = conn.execute("""
+        SELECT fs.thstrm_amount t, fs.frmtrm_amount f, fs.bsns_year
+        FROM financial_statements fs
+        JOIN companies c ON c.corp_code = fs.corp_code
+        WHERE c.stock_code=? AND fs.reprt_code='11011' AND fs.sj_div IN ('IS','CIS')
+          AND fs.account_nm LIKE '당기순이익%'
+        ORDER BY fs.bsns_year DESC LIMIT 1""", (stock_code,)).fetchone()
+    if not ni:
+        return None
+    try:
+        t, f = int(ni["t"]), int(ni["f"])
+    except (TypeError, ValueError):
+        return None
+    if t <= 0 or f <= 0:
+        return None  # 적자 구간 — 멀티플 분해 무의미
+    price_chg = (px["cur"] - px["base"]) / px["base"] * 100
+    earnings_chg = (t - f) / f * 100
+    multiple_chg = ((1 + price_chg / 100) / (1 + earnings_chg / 100) - 1) * 100
+    return {"price_chg_12m": round(price_chg, 1), "earnings_chg_yoy": round(earnings_chg, 1),
+            "multiple_chg": round(multiple_chg, 1), "year": ni["bsns_year"]}
 
 
 def inputs_hash(inp: dict) -> str:
@@ -108,6 +145,13 @@ def _build_prompt(name: str, inp: dict) -> str:
     if inp["upcoming"]:
         blocks.append("[다가오는 일정]\n" + "\n".join(
             f"- {c['event_date']} {c['event_type']}: {c['title']}" for c in inp["upcoming"]))
+    if inp.get("decomp"):
+        d = inp["decomp"]
+        blocks.append(
+            f"[상승 분해 (근사 — {d['year']}년 연간 실적 기준)]\n"
+            f"12개월 주가 {d['price_chg_12m']:+}% = 순이익 YoY {d['earnings_chg_yoy']:+}% × "
+            f"멀티플 {d['multiple_chg']:+}% — 멀티플 기여가 크면 '기대'가, "
+            f"이익 기여가 크면 '실적'이 주도한 상승이다")
     if inp["knowledge"]:
         from pipeline.knowledge_recall import knowledge_block
         blocks.append(knowledge_block(

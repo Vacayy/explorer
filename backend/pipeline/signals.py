@@ -295,6 +295,75 @@ def compute_volume_spike() -> list[dict]:
     return signals
 
 
+QUAD_RETURN_DOWN = -10.0   # 3개월 수익률 '부진' 임계 (%)
+QUAD_RETURN_UP = 30.0      # 3개월 수익률 '선반영 급등' 임계 (%)
+QUAD_MIN_DOCS = 5          # 감성 방향 판정 최소 문서 수 (30일)
+QUAD_POS_RATIO = 0.65      # 개선 인식 임계
+QUAD_NEG_RATIO = 0.40      # 악화 인식 임계
+QUAD_LIMIT = 10
+
+
+def compute_quadrant_gap() -> list[dict]:
+    """4분면 갭 신호 (추세 패턴 문서 §3) — 주가 × 펀더멘탈 인식의 괴리. LLM 0.
+
+    - C(기회): 주가 부진 + 관측 개선 — '시장이 아직 모르는 구간?'
+    - D_RISK(경고): 주가 급등 + 관측 악화 — 'B(선반영)가 D(함정)로 전환?'
+    펀더멘탈 축은 30일 언급 문서 감성을 프록시로 쓴다 (실적 컨센서스 이력이
+    쌓이기 전까지의 정직한 근사 — payload에 근거 수치 동봉).
+    """
+    conn = get_connection()
+    latest = conn.execute("SELECT max(trade_date) d FROM stock_prices").fetchone()["d"]
+    if not latest:
+        conn.close()
+        return []
+    rows = conn.execute("""
+        SELECT el.entity_id, e.name, e.aliases stock_code,
+               SUM(en.sentiment='positive') pos, SUM(en.sentiment='negative') neg
+        FROM entity_links el
+        JOIN entities e ON e.id = el.entity_id AND e.type='company' AND e.aliases IS NOT NULL
+        JOIN raw_documents rd ON rd.id = el.doc_id
+        JOIN enrichments en ON en.doc_id = rd.id
+        WHERE el.link_type='stock' AND rd.published_at >= datetime('now', '-30 days')
+          AND en.sentiment IN ('positive','negative')
+        GROUP BY el.entity_id HAVING pos + neg >= ?""", (QUAD_MIN_DOCS,)).fetchall()
+
+    signals = []
+    for r in rows:
+        px = conn.execute("""
+            SELECT (SELECT close FROM stock_prices WHERE stock_code=? AND trade_date=?) cur,
+                   (SELECT close FROM stock_prices WHERE stock_code=? AND trade_date <= date(?, '-90 days')
+                    ORDER BY trade_date DESC LIMIT 1) base""",
+            (r["stock_code"], latest, r["stock_code"], latest)).fetchone()
+        if not px or not px["cur"] or not px["base"]:
+            continue
+        ret_3m = (px["cur"] - px["base"]) / px["base"] * 100
+        n = r["pos"] + r["neg"]
+        pos_ratio = r["pos"] / n
+        quadrant = None
+        if ret_3m <= QUAD_RETURN_DOWN and pos_ratio >= QUAD_POS_RATIO:
+            quadrant = "C"
+        elif ret_3m >= QUAD_RETURN_UP and (r["neg"] / n) >= QUAD_NEG_RATIO:
+            quadrant = "D_RISK"
+        if not quadrant:
+            continue
+        signals.append({
+            "entity_id": r["entity_id"], "name": r["name"], "date": latest,
+            "payload": {"quadrant": quadrant, "return_3m": round(ret_3m, 1),
+                        "pos": r["pos"], "neg": r["neg"], "window_days": 30},
+        })
+    signals = signals[:QUAD_LIMIT]
+    for s in signals:
+        conn.execute("""
+            INSERT INTO signals (signal_type, entity_id, date, payload_json)
+            VALUES ('quadrant_gap', ?, ?, ?)
+            ON CONFLICT(signal_type, entity_id, date)
+            DO UPDATE SET payload_json = excluded.payload_json
+        """, (s["entity_id"], s["date"], json.dumps(s["payload"], ensure_ascii=False)))
+    conn.commit()
+    conn.close()
+    return signals
+
+
 PENDULUM_WINDOW_DAYS = 14   # 컨센서스 판정 창
 PENDULUM_MIN_DOCS = 8       # 방향 있는 문서 최소 표본 (신뢰 하한)
 PENDULUM_RATIO = 0.9        # 일방향 비율 임계 — "낙관의 만장일치는 경고다"

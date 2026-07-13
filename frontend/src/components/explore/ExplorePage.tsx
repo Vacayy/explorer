@@ -19,6 +19,7 @@ const TYPE_FILTERS = [
   { key: "neglect", label: "소외" },
   { key: "high_52w", label: "52주 신고가" },
   { key: "volume_spike", label: "거래량 급증" },
+  { key: "quadrant_gap", label: "가격-관측 괴리" },
   { key: "consensus_extreme", label: "컨센서스 극단" },
   // 확장 예정: export_change(수출 변화) — 무역 커넥터 후
 ] as const
