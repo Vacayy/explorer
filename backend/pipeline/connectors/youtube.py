@@ -96,6 +96,17 @@ def _video_title(video_id: str) -> str:
     return video_id
 
 
+def _video_published(video_id: str) -> str:
+    """단건 링크는 RSS 메타가 없음 — watch 페이지에서 게시일 추출 (피드 정렬용)."""
+    try:
+        html = requests.get(f"https://www.youtube.com/watch?v={video_id}", headers=_UA, timeout=15).text
+        m = re.search(r'"publishDate":"([0-9T:+-]{10,25})', html) or \
+            re.search(r'"uploadDate":"([0-9T:+-]{10,25})', html)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
 class YouTubeConnector:
     source_type = "youtube"
 
@@ -138,12 +149,13 @@ class YouTubeConnector:
         if not transcript:
             return []
         title = ref.meta.get("title") or _video_title(vid)
+        published = ref.meta.get("published") or _video_published(vid)
         return [RawDoc(
             source_type="youtube",
             source_id=vid,
             title=title,
             url=f"https://www.youtube.com/watch?v={vid}",
-            published_at=ref.meta.get("published", ""),
+            published_at=published,
             raw_content=transcript,
             kind="text",
         )]
