@@ -26,6 +26,7 @@ const FEED_TABS = [
   { key: "all", path: "/feed", label: "전체" },
   { key: "telegram", path: "/feed?source=telegram", label: "텔레그램" },
   { key: "blog", path: "/feed?source=blog", label: "블로그" },
+  { key: "youtube", path: "/feed?source=youtube", label: "유튜브" },
   { key: "news", path: "/feed?source=news", label: "뉴스" },
   { key: "article", path: "/feed?source=article", label: "아티클" },
   { key: "people", path: "/feed?source=people", label: "인물" },
