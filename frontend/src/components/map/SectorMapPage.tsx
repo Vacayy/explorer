@@ -165,8 +165,51 @@ export default function SectorMapPage() {
         </CardContent>
       </Card>
 
+      {selected && <ValueChain group={selected} onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
       {selected && <GroupMembers group={selected} onGo={(code) => navigate(`/analyze/${code}/summary`)} />}
     </PageContainer>
+  )
+}
+
+interface ChainStage { stage_name: string; themes: string[] }
+
+/** 밸류체인 — 상류→하류 단계 흐름 + 테마 칩(클릭 시 피드 검색) */
+function ValueChain({ group, onTheme }: { group: string; onTheme: (theme: string) => void }) {
+  const { data } = useQuery(
+    apiQuery<{ group: string; stages: ChainStage[] }>({
+      key: ["spine", "sector-map", "chain", group],
+      url: `/api/spine/sector-map/chain?group=${encodeURIComponent(group)}`,
+      staleTime: STALE.long,
+    }),
+  )
+  if (!data || data.stages.length === 0) return null
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">{group} — 산업 흐름 <span className="font-normal text-muted-foreground">(상류 → 하류 · 테마 클릭 시 피드)</span></CardTitle>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <div className="flex items-stretch gap-2 min-w-max pb-1">
+          {data.stages.map((st, i) => (
+            <div key={i} className="flex items-stretch gap-2">
+              <div className="rounded-lg border px-3 py-2 min-w-[130px] max-w-[180px]">
+                <div className="text-xs font-semibold mb-1.5">{st.stage_name}</div>
+                <div className="flex flex-wrap gap-1">
+                  {st.themes.map((t) => (
+                    <Badge key={t} variant="secondary"
+                      className="text-[10px] font-normal cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                      onClick={() => onTheme(t)}>{t}</Badge>
+                  ))}
+                </div>
+              </div>
+              {i < data.stages.length - 1 && (
+                <div className="flex items-center text-muted-foreground shrink-0">→</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
