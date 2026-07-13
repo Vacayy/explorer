@@ -59,6 +59,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
           </div>
         )}
         {data?.has_thesis === false && <ThesisPrompt stockCode={stockCode} />}
+        {data?.thesis && <ThesisView stockCode={stockCode} thesis={data.thesis} />
         {b.thesis_check && (
           <div className="flex gap-2 rounded-md bg-hypothesis/10 border border-hypothesis/30 px-3 py-2">
             <Scale className="h-3.5 w-3.5 text-hypothesis shrink-0 mt-0.5" />
@@ -102,6 +103,56 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** 논지 원문 열람·수정 — 원문은 불변 저장, AI는 점검(thesis_check)만 생성 */
+function ThesisView({ stockCode, thesis }: { stockCode: string; thesis: string }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(thesis)
+  const qc = useQueryClient()
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.post("/api/watchlist", { stock_code: stockCode, thesis: text.trim() })).data,
+    onSuccess: () => {
+      toast.success("논지 수정 — 다음 브리프에 반영됩니다")
+      setEditing(false)
+      qc.invalidateQueries({ queryKey: ["spine", "stock-brief", stockCode] })
+      qc.invalidateQueries({ queryKey: ["watchlist"] })
+    },
+    onError: () => toast.error("수정 실패 — 잠시 후 다시 시도해주세요"),
+  })
+
+  return (
+    <Collapsible>
+      <div className="flex items-center gap-1.5">
+        <CollapsibleTrigger className="group/th flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+          <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]/th:rotate-180" />
+          내 논지 원문 <span className="opacity-70">— 아래 점검의 기준. AI가 고쳐 쓰지 않습니다</span>
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        {editing ? (
+          <div className="mt-1.5 space-y-2">
+            <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} className="text-sm" />
+            <div className="flex justify-end gap-2">
+              <Button size="xs" variant="ghost" onClick={() => { setEditing(false); setText(thesis) }}>취소</Button>
+              <Button size="xs" disabled={!text.trim() || save.isPending} onClick={() => save.mutate()}>
+                {save.isPending ? "저장 중…" : "저장"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-1.5 rounded-md border px-3 py-2">
+            <p className="text-xs whitespace-pre-wrap leading-relaxed">{thesis}</p>
+            <div className="text-right mt-1">
+              <Button size="xs" variant="ghost" className="text-[11px] text-muted-foreground"
+                onClick={() => { setText(thesis); setEditing(true) }}>수정</Button>
+            </div>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
