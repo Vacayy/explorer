@@ -137,6 +137,16 @@ def _video_title(video_id: str) -> str:
     return video_id
 
 
+def video_channel_id(video_id: str) -> str | None:
+    """영상의 소속 channel_id — 단건 링크도 채널 도시에에 연결되도록."""
+    try:
+        html = requests.get(f"https://www.youtube.com/watch?v={video_id}", headers=_UA, timeout=15).text
+        m = re.search(r'"channelId":"(UC[A-Za-z0-9_-]{22})"', html)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
 def _video_published(video_id: str) -> str:
     """단건 링크는 RSS 메타가 없음 — watch 페이지에서 게시일 추출 (피드 정렬용)."""
     try:
@@ -196,8 +206,9 @@ class YouTubeConnector:
         digest = digest_transcript(title, transcript)
         body = f"{digest}\n\n---\n*원본 자막 {len(transcript):,}자 → opus 정리본. 원문: 유튜브 링크*" \
             if digest else transcript
-        # 구독 채널 경유면 source_id에 채널 프리픽스 — 도시에가 channel/vid로 매칭
-        cid = ref.meta.get("channel_id")
+        # source_id에 항상 채널 프리픽스 — 단건 링크도 실제 channel_id를 조회해
+        # 붙여, 그 채널을 구독하면 도시에(channel/vid LIKE)에 자동 연결된다
+        cid = ref.meta.get("channel_id") or video_channel_id(vid)
         source_id = f"{cid}/{vid}" if cid else vid
         return [RawDoc(
             source_type="youtube",
