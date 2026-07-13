@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom"
 import ReactMarkdown from "react-markdown"
-import { Lightbulb, Loader2, Rss, Send } from "lucide-react"
+import { Lightbulb, Loader2, MonitorPlay, Rss, Send } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { sourceDossierQuery, sourceSummaryQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,11 +41,13 @@ export default function SourcePage() {
         <div className="flex items-center gap-2 flex-wrap">
           {data.kind === "telegram"
             ? <Send className="h-4 w-4 text-muted-foreground" />
+            : data.kind === "youtube"
+            ? <MonitorPlay className="h-4 w-4 text-muted-foreground" />
             : <Rss className="h-4 w-4 text-muted-foreground" />}
           <h2 className="text-xl font-bold">{data.name}</h2>
           {data.author && <span className="text-sm text-muted-foreground">{data.author}</span>}
           <Badge variant="secondary" className="text-[10px]">
-            {data.kind === "telegram" ? "텔레그램" : "블로그"}
+            {data.kind === "telegram" ? "텔레그램" : data.kind === "youtube" ? "유튜브" : "블로그"}
           </Badge>
           {!data.is_active && <Badge variant="outline" className="text-[10px]">숨김 — 내 피드·답변 제외</Badge>}
         </div>

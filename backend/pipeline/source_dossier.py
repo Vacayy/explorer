@@ -44,6 +44,14 @@ def resolve_source(conn, kind: str, key: str) -> dict | None:
             return {"kind": "blog", "key": r["url"],
                     "name": r["blog_name"] or r["url"], "author": r["author"],
                     "is_active": bool(r["is_active"])}
+    elif kind == "youtube":
+        r = conn.execute(
+            "SELECT channel_id, title, handle, is_active FROM youtube_channels WHERE channel_id=?",
+            (key,)).fetchone()
+        if r:
+            return {"kind": "youtube", "key": r["channel_id"],
+                    "name": r["title"] or r["channel_id"], "author": r["handle"],
+                    "is_active": bool(r["is_active"])}
     return None
 
 
@@ -51,6 +59,8 @@ def _doc_filter(kind: str, key: str) -> tuple[str, str]:
     """raw_documents에서 이 소스의 문서를 고르는 (WHERE 조각, 인자) — health와 동일 매칭."""
     if kind == "telegram":
         return "source_type='telegram' AND source_id LIKE ? || '/%'", key
+    if kind == "youtube":
+        return "source_type='youtube' AND source_id LIKE ? || '/%'", key
     from pipeline.urls import is_feedlike, norm_domain
     if is_feedlike(key):  # RSS 직등록 소스(뉴스·뉴스레터) — 도메인 매칭
         return "source_type='blog' AND url LIKE '%//%' || ? || '%'", norm_domain(key)

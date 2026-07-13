@@ -42,7 +42,7 @@ export default function FollowPage() {
         <BlogSourcesCard title="뉴스 및 아티클" placeholder="RSS 피드 URL (뉴스·뉴스레터)"
           match={(s) => s.platform === "rss"}
           onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
-        <YouTubeCard />
+        <YouTubeCard onGo={(cid) => navigate(`/source?kind=youtube&key=${encodeURIComponent(cid)}`)} />
       </div>
 
       <FollowedPeopleCard onGo={(name) => navigate(`/person?name=${encodeURIComponent(name)}`)} />
@@ -335,7 +335,7 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
 
 interface YtChannel { channel_id: string; title: string | null; handle: string | null; is_active: boolean }
 
-function YouTubeCard() {
+function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
   const qc = useQueryClient()
   const { data } = useQuery(
     apiQuery<{ items: YtChannel[] }>({ key: ["youtube-channels"], url: "/api/spine/sources/youtube", staleTime: STALE.medium }),
@@ -369,7 +369,7 @@ function YouTubeCard() {
             name={ch.title ?? ch.channel_id}
             sub="신규 영상 자동 자막"
             active={ch.is_active}
-            onClick={() => window.open(`https://www.youtube.com/channel/${ch.channel_id}`, "_blank")}
+            onClick={() => onGo(ch.channel_id)}
             onToggle={() => toggle.mutate({ id: ch.channel_id, active: !ch.is_active })}
           />
         ))}
