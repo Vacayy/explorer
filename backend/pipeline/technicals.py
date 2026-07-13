@@ -1,0 +1,101 @@
+"""기술적 위치 계산 — '좋은 기업과 좋은 주식은 다르다' (LLM 0).
+
+펀더멘탈 재료만으로는 과열/과매도를 못 본다 — RSI·이평선·52주 위치·
+멀티플 역사 밴드로 '주가의 위치'를 브리프 재료에 공급한다.
+밴드는 장기 평균회귀의 준거: 성장주는 절대 싸지지 않는다는 공식도 있지만
+어느 정도의 밴드는 존재한다 (stakeholder 관점, 2026-07-13).
+"""
+from database import get_connection
+
+
+def _closes(conn, stock_code: str, n: int = 130) -> list[dict]:
+    rows = conn.execute("""
+        SELECT trade_date, close, high FROM stock_prices
+        WHERE stock_code=? AND close IS NOT NULL
+        ORDER BY trade_date DESC LIMIT ?""", (stock_code, n)).fetchall()
+    return [dict(r) for r in rows][::-1]  # 과거 → 최신
+
+
+def _rsi14(closes: list[int]) -> float | None:
+    if len(closes) < 15:
+        return None
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        d = closes[i] - closes[i - 1]
+        gains.append(max(d, 0))
+        losses.append(max(-d, 0))
+    # Wilder smoothing
+    ag = sum(gains[:14]) / 14
+    al = sum(losses[:14]) / 14
+    for g, l in zip(gains[14:], losses[14:]):
+        ag = (ag * 13 + g) / 14
+        al = (al * 13 + l) / 14
+    if al == 0:
+        return 100.0
+    return round(100 - 100 / (1 + ag / al), 1)
+
+
+def compute_technicals(conn, stock_code: str) -> dict | None:
+    rows = _closes(conn, stock_code)
+    if len(rows) < 21:
+        return None
+    closes = [r["close"] for r in rows]
+    cur = closes[-1]
+
+    def ma_gap(n):
+        if len(closes) < n:
+            return None
+        ma = sum(closes[-n:]) / n
+        return round((cur - ma) / ma * 100, 1)
+
+    high_52w = conn.execute("""
+        SELECT max(high) h FROM stock_prices
+        WHERE stock_code=? AND trade_date >= date('now', '-365 days')""",
+        (stock_code,)).fetchone()["h"]
+    return {
+        "rsi14": _rsi14(closes),
+        "ma20_gap": ma_gap(20), "ma60_gap": ma_gap(60), "ma120_gap": ma_gap(120),
+        "off_52w_high": round((cur - high_52w) / high_52w * 100, 1) if high_52w else None,
+        "ret_1m": round((cur - closes[-21]) / closes[-21] * 100, 1) if len(closes) >= 21 else None,
+        "ret_3m": round((cur - closes[-63]) / closes[-63] * 100, 1) if len(closes) >= 63 else None,
+    }
+
+
+def per_band(conn, stock_code: str, years: int = 4) -> dict | None:
+    """멀티플 역사 밴드 — 연간 EPS × 그 해 주가 범위로 trailing PER 밴드 근사.
+
+    fwd PER 이력이 쌓이기 전까지의 평균회귀 준거. EPS<=0인 해는 제외.
+    """
+    eps_rows = conn.execute("""
+        SELECT fs.bsns_year y, MAX(fs.thstrm_amount) ni
+        FROM financial_statements fs JOIN companies c ON c.corp_code = fs.corp_code
+        WHERE c.stock_code=? AND fs.reprt_code='11011' AND fs.sj_div IN ('IS','CIS')
+          AND fs.account_nm LIKE '당기순이익%' AND fs.account_nm NOT LIKE '%지배%'
+        GROUP BY fs.bsns_year
+        ORDER BY fs.bsns_year DESC LIMIT ?""", (stock_code, years)).fetchall()
+    shares = conn.execute("""
+        SELECT shares FROM stock_prices WHERE stock_code=? AND shares IS NOT NULL
+        ORDER BY trade_date DESC LIMIT 1""", (stock_code,)).fetchone()
+    if not eps_rows or not shares or not shares["shares"]:
+        return None
+    n_shares = shares["shares"]
+    pers = []
+    for r in eps_rows:
+        try:
+            ni = int(r["ni"])
+        except (TypeError, ValueError):
+            continue
+        if ni <= 0:
+            continue
+        eps = ni / n_shares
+        px = conn.execute("""
+            SELECT min(close) lo, max(close) hi FROM stock_prices
+            WHERE stock_code=? AND trade_date BETWEEN ? AND ?""",
+            (stock_code, f"{r['y']}-01-01", f"{r['y']}-12-31")).fetchone()
+        if not px or not px["lo"]:
+            continue
+        pers.append({"year": r["y"], "lo": round(px["lo"] / eps, 1), "hi": round(px["hi"] / eps, 1)})
+    if not pers:
+        return None
+    return {"bands": pers,
+            "min": min(p["lo"] for p in pers), "max": max(p["hi"] for p in pers)}
