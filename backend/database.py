@@ -479,6 +479,11 @@ def init_db():
         close        INTEGER,
         PRIMARY KEY (stock_code, trade_date)
     );
+    -- 섹터 맵: KSIC 세분류(165) → 투자 언어 대분류 (LLM 1회 큐레이션 시드)
+    CREATE TABLE IF NOT EXISTS sector_map (
+        sector_name TEXT PRIMARY KEY,   -- entities(type='sector').name (KSIC)
+        group_name  TEXT NOT NULL       -- 대분류 (반도체·전자부품, 바이오·헬스케어 등)
+    );
     -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
     CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,

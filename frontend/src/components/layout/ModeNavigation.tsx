@@ -8,6 +8,7 @@ type AppMode = "home" | "follow" | "discover" | "feed" | "chat" | "analyze" | "r
 // 산업군·스크리너·대안데이터·리서치는 보관함(/archive) — 라우트는 유지
 const DISCOVER_TABS = [
   { key: "signals", path: "/explore", label: "신호" },
+  { key: "map", path: "/map", label: "산업 맵" },
   { key: "people", path: "/people", label: "인물" },
   { key: "knowledge", path: "/knowledge", label: "지식" },
   { key: "actions", path: "/actions", label: "기업활동" },
@@ -25,6 +26,9 @@ const FEED_TABS = [
   { key: "all", path: "/feed", label: "전체" },
   { key: "telegram", path: "/feed?source=telegram", label: "텔레그램" },
   { key: "blog", path: "/feed?source=blog", label: "블로그" },
+  { key: "news", path: "/feed?source=news", label: "뉴스" },
+  { key: "article", path: "/feed?source=article", label: "아티클" },
+  { key: "people", path: "/feed?source=people", label: "인물" },
 ] as const
 
 interface Props {
@@ -133,6 +137,7 @@ function getActiveSubTab(pathname: string): string | null {
 
   // Discover (탐색)
   if (pathname.startsWith("/explore")) return "signals"
+  if (pathname.startsWith("/map")) return "map"
   if (pathname.startsWith("/people") || pathname.startsWith("/person")) return "people"
   if (pathname.startsWith("/knowledge")) return "knowledge"
   if (pathname.startsWith("/actions")) return "actions"
