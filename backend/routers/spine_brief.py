@@ -22,6 +22,7 @@ class StockBrief(BaseModel):
     stale: bool = False
     evidence: list[str] = []   # 근거 재료 인벤토리 (다이제스트·신호·공시·일정·논지)
     has_thesis: bool = True    # false면 FE가 논지 등록 입력을 띄운다
+    thesis: str | None = None  # 논지 원문 (불변 저장 — AI는 점검만 하고 원문은 안 고친다)
 
 
 _SIGNAL_LABEL = {"mention_surge": "언급 급증", "high_52w": "52주 신고가"}
@@ -73,15 +74,17 @@ def get_brief(stock_code: str):
     ev = _evidence(inp)
     t = inp["thesis"]
     has_thesis = bool((t and t["thesis"]) or inp["notes"])
+    thesis_text = t["thesis"] if (t and t["thesis"]) else None
     if not cached:
         return StockBrief(status="empty", brief=None, thesis_check=None,
-                          created_at=None, stale=True, evidence=ev, has_thesis=has_thesis)
+                          created_at=None, stale=True, evidence=ev,
+                          has_thesis=has_thesis, thesis=thesis_text)
     from pipeline.stock_brief import _parse_call
     return StockBrief(status="cached", brief=cached["brief"],
                       thesis_check=cached["thesis_check"],
                       revision_call=_parse_call(cached["revision_call"]),
                       created_at=cached["created_at"], stale=stale, evidence=ev,
-                      has_thesis=has_thesis)
+                      has_thesis=has_thesis, thesis=thesis_text)
 
 
 class PeerRow(BaseModel):

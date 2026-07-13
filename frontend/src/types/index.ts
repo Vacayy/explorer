@@ -191,6 +191,7 @@ export interface StockBrief {
   stale: boolean;
   evidence?: string[];       // 근거 재료 인벤토리 (다이제스트·신호·공시·일정·논지)
   has_thesis?: boolean;      // false면 논지 등록 유도 표시
+  thesis?: string | null;    // 논지 원문 (불변 — AI는 점검만)
 }
 
 // 대화 (P2-0/P2-1)
