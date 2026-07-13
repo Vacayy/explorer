@@ -1,6 +1,6 @@
 import { useState } from "react"
 import ReactMarkdown from "react-markdown"
-import { ChevronDown, Loader2, Scale } from "lucide-react"
+import { ChevronDown, Loader2, Scale, TrendingDown, TrendingUp, Minus } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { stockBriefQuery, stockBriefComputeQuery, stockBriefHistoryQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,7 +22,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
   if (!b || (b.status === "empty" && !b.stale && !compute.isFetching)) return null
 
   return (
-    <Card className="border-l-2 border-l-hypothesis">
+    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">
         <CardTitle className="text-sm">AI 브리프 — 지금 알아야 할 것</CardTitle>
         {b.created_at && (
@@ -36,6 +36,22 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
           <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             새 재료를 반영해 브리프 생성 중… (수십 초 걸릴 수 있습니다)
+          </div>
+        )}
+        {b.revision_call && (
+          <div className="flex gap-2 rounded-md bg-card/60 border px-3 py-2">
+            {b.revision_call.direction === "up" ? <TrendingUp className="h-3.5 w-3.5 text-up shrink-0 mt-0.5" />
+              : b.revision_call.direction === "down" ? <TrendingDown className="h-3.5 w-3.5 text-down shrink-0 mt-0.5" />
+              : <Minus className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />}
+            <p className="text-xs">
+              <span className={`font-semibold ${b.revision_call.direction === "up" ? "text-up" : b.revision_call.direction === "down" ? "text-down" : "text-muted-foreground"}`}>
+                추정치 방향 콜 — {b.revision_call.direction === "up" ? "상향 우세" : b.revision_call.direction === "down" ? "하향 우세" : "유지"}
+              </span>{" "}
+              {b.revision_call.rationale}
+              <span className="block text-[10px] text-muted-foreground mt-0.5">
+                AI 가설 — 기록되어 실제 컨센서스 변화와 대조됩니다
+              </span>
+            </p>
           </div>
         )}
         {b.thesis_check && (

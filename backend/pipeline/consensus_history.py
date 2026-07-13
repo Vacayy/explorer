@@ -50,6 +50,18 @@ def fetch_estimates(stock_code: str) -> list[dict]:
     return [v for v in out.values() if any(v.get(f) is not None for f in _ROW_MAP.values())]
 
 
+def fetch_target(stock_code: str) -> dict:
+    """목표주가 평균·투자의견 평균 (integration API consensusInfo)."""
+    try:
+        r = requests.get(f"https://m.stock.naver.com/api/stock/{stock_code}/integration",
+                         headers=_UA, timeout=15)
+        info = r.json().get("consensusInfo") or {}
+        return {"target_price": _num(info.get("priceTargetMean")),
+                "opinion": _num(info.get("recommMean"))}
+    except Exception:
+        return {}
+
+
 def collect_snapshots(stock_codes: list[str] | None = None) -> dict:
     """워치리스트(기본) 종목의 일일 스냅샷 — 멱등 (종목·일·연도 UNIQUE)."""
     conn = get_connection()
@@ -63,16 +75,20 @@ def collect_snapshots(stock_codes: list[str] | None = None) -> dict:
         except Exception:
             stats["failed"] += 1
             continue
+        tgt = fetch_target(code)
         for est in rows:
             conn.execute("""
                 INSERT INTO consensus_estimates
-                    (stock_code, fetched_date, fiscal_year, fwd_eps, fwd_per, fwd_op, fwd_revenue, fwd_roe)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (stock_code, fetched_date, fiscal_year, fwd_eps, fwd_per, fwd_op,
+                     fwd_revenue, fwd_roe, target_price, opinion)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(stock_code, fetched_date, fiscal_year) DO UPDATE SET
                     fwd_eps=excluded.fwd_eps, fwd_per=excluded.fwd_per, fwd_op=excluded.fwd_op,
-                    fwd_revenue=excluded.fwd_revenue, fwd_roe=excluded.fwd_roe
+                    fwd_revenue=excluded.fwd_revenue, fwd_roe=excluded.fwd_roe,
+                    target_price=excluded.target_price, opinion=excluded.opinion
             """, (code, today, est["fiscal_year"], est.get("fwd_eps"), est.get("fwd_per"),
-                  est.get("fwd_op"), est.get("fwd_revenue"), est.get("fwd_roe")))
+                  est.get("fwd_op"), est.get("fwd_revenue"), est.get("fwd_roe"),
+                  tgt.get("target_price"), tgt.get("opinion")))
             stats["rows"] += 1
     conn.commit()
     conn.close()

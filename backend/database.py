@@ -468,6 +468,17 @@ def init_db():
         UNIQUE(stock_code, fetched_date, fiscal_year)
     );
     CREATE INDEX IF NOT EXISTS idx_consensus_stock ON consensus_estimates(stock_code, fiscal_year, fetched_date);
+    -- 수급 이력 (백로그 #23) — '누가 사고 있는가': 외인·기관·개인 순매수 (주식 수)
+    CREATE TABLE IF NOT EXISTS investor_flows (
+        stock_code   TEXT NOT NULL,
+        trade_date   TEXT NOT NULL,               -- YYYY-MM-DD
+        foreign_net  INTEGER,
+        inst_net     INTEGER,
+        indiv_net    INTEGER,
+        foreign_hold_ratio REAL,
+        close        INTEGER,
+        PRIMARY KEY (stock_code, trade_date)
+    );
     -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
     CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -617,6 +628,9 @@ def init_db():
         "ALTER TABLE entity_keywords ADD COLUMN status TEXT DEFAULT 'active'",
         "ALTER TABLE knowledge ADD COLUMN contested_at TEXT",  # K2: contested 전환 시각 (알림 쿨다운 기준)
         "ALTER TABLE knowledge ADD COLUMN corroborated_at TEXT",  # K3: 승격 시각 (사용자 가설 확인 알림)
+        "ALTER TABLE consensus_estimates ADD COLUMN target_price REAL",  # 목표주가 평균 (integration API)
+        "ALTER TABLE consensus_estimates ADD COLUMN opinion REAL",       # 투자의견 평균 (5점 척도)
+        "ALTER TABLE stock_briefs ADD COLUMN revision_call TEXT",  # 추정치 방향 콜 JSON {direction, rationale}
     ]:
         try:
             conn.execute(migration)

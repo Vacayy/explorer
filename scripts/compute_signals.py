@@ -77,6 +77,17 @@ def main():
         mark_ran(conn)
     conn.close()
 
+    # 수급 일일 수집 — 외인·기관·개인 순매수 (백로그 #23)
+    from pipeline import flows as _flows
+    conn = get_connection()
+    f_todo = not _flows.ran_today(conn)
+    conn.close()
+    if f_todo:
+        print("[flows]", _flows.collect_flows())
+        conn = get_connection()
+        _flows.mark_ran(conn)
+        conn.close()
+
     # K0 주간 승격 catch-up — 일요일 07:00 cron을 놓쳤으면(PC 꺼짐) 여기서 수행
     from pipeline.consolidation import promote_batch, promote_due
     conn = get_connection()

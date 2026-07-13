@@ -8,10 +8,16 @@ from database import get_connection
 router = APIRouter(prefix="/api/spine/stock", tags=["spine"])
 
 
+class RevisionCall(BaseModel):
+    direction: str             # up | down | hold
+    rationale: str | None = None
+
+
 class StockBrief(BaseModel):
     status: str                # fresh | cached | empty | unavailable | failed
     brief: str | None
     thesis_check: str | None   # 내 논지 vs 새 증거 (충돌/지지)
+    revision_call: RevisionCall | None = None  # 추정치 방향 콜 (기록되어 실측 대조)
     created_at: str | None
     stale: bool = False
     evidence: list[str] = []   # 근거 재료 인벤토리 (다이제스트·신호·공시·일정·논지)
@@ -39,6 +45,10 @@ def _evidence(inp: dict) -> list[str]:
         ev.append(f"승격 지식 {len(inp['knowledge'])}건")
     if inp.get("decomp"):
         ev.append(f"상승 분해 ({inp['decomp']['year']}년 실적 기준)")
+    if inp.get("consensus"):
+        ev.append("컨센서스 (Fwd EPS·목표가)")
+    if inp.get("flows"):
+        ev.append(f"수급 {inp['flows']['days']}거래일")
     return ev
 
 
@@ -63,8 +73,10 @@ def get_brief(stock_code: str):
     if not cached:
         return StockBrief(status="empty", brief=None, thesis_check=None,
                           created_at=None, stale=True, evidence=ev)
+    from pipeline.stock_brief import _parse_call
     return StockBrief(status="cached", brief=cached["brief"],
                       thesis_check=cached["thesis_check"],
+                      revision_call=_parse_call(cached["revision_call"]),
                       created_at=cached["created_at"], stale=stale, evidence=ev)
 
 
@@ -137,4 +149,5 @@ def compute_brief_endpoint(stock_code: str):
     if r.get("status") == "not_found":
         raise HTTPException(404, "종목 엔티티가 없습니다")
     return StockBrief(status=r["status"], brief=r.get("brief"),
-                      thesis_check=r.get("thesis_check"), created_at=r.get("created_at"))
+                      thesis_check=r.get("thesis_check"),
+                      revision_call=r.get("revision_call"), created_at=r.get("created_at"))

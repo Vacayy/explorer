@@ -186,6 +186,7 @@ export interface StockBrief {
   status: string;            // fresh | cached | empty | unavailable | failed
   brief: string | null;
   thesis_check: string | null;  // 내 논지 vs 새 증거 충돌·지지
+  revision_call: { direction: "up" | "down" | "hold"; rationale: string | null } | null;  // 추정치 방향 콜 (실측 대조용 기록)
   created_at: string | null;
   stale: boolean;
   evidence?: string[];       // 근거 재료 인벤토리 (다이제스트·신호·공시·일정·논지)

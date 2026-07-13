@@ -55,10 +55,16 @@ def gather_inputs(conn, stock_code: str, entity_id: int) -> dict:
            OR corp_code=?
         ORDER BY updated_at DESC LIMIT 12""", (stock_code, stock_code)).fetchall()
     from pipeline.knowledge_recall import recall_for_entity
+    from pipeline.flows import flow_summary
     knowledge = recall_for_entity(conn, entity_id)  # K1: 승격 지식을 재료로
+    consensus = conn.execute("""
+        SELECT fiscal_year, fwd_eps, fwd_per, target_price, fetched_date
+        FROM consensus_estimates WHERE stock_code=?
+        ORDER BY fetched_date DESC, fiscal_year LIMIT 2""", (stock_code,)).fetchall()
     return {"digests": digests, "signals": signals, "upcoming": upcoming,
             "actions": actions, "thesis": thesis, "notes": notes, "knowledge": knowledge,
-            "decomp": _price_decomposition(conn, stock_code)}
+            "decomp": _price_decomposition(conn, stock_code),
+            "consensus": consensus, "flows": flow_summary(conn, stock_code)}
 
 
 def _price_decomposition(conn, stock_code: str) -> dict | None:
@@ -110,6 +116,9 @@ def inputs_hash(inp: dict) -> str:
     parts += [f"note:{n['id']}:{n['updated_at']}" for n in inp["notes"]]
     # 지식 승인·증거 병합 시 브리프 재생성 (독립 관측 수가 지문에 포함)
     parts += [f"kn:{k['id']}:{k['independent_n']}:{k['refute_n']}" for k in inp["knowledge"]]
+    # 컨센서스 revision(추정치 변경)은 의미 있는 새 정보 — 재생성 유발.
+    # 수급(flows)·상승분해는 매일 바뀌는 보조 재료라 지문에 넣지 않는다
+    parts += [f"cs:{c['fiscal_year']}:{c['fwd_eps']}:{c['target_price']}" for c in inp.get("consensus", [])]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
@@ -120,7 +129,7 @@ def _has_material(inp: dict) -> bool:
 def get_cached(conn, entity_id: int):
     """최신 브리프 — append-only 히스토리에서 max(id)."""
     return conn.execute(
-        "SELECT brief, thesis_check, inputs_hash, created_at FROM stock_briefs "
+        "SELECT brief, thesis_check, revision_call, inputs_hash, created_at FROM stock_briefs "
         "WHERE entity_id=? ORDER BY id DESC LIMIT 1", (entity_id,)).fetchone()
 
 
@@ -152,6 +161,20 @@ def _build_prompt(name: str, inp: dict) -> str:
             f"12개월 주가 {d['price_chg_12m']:+}% = 순이익 YoY {d['earnings_chg_yoy']:+}% × "
             f"멀티플 {d['multiple_chg']:+}% — 멀티플 기여가 크면 '기대'가, "
             f"이익 기여가 크면 '실적'이 주도한 상승이다")
+    if inp.get("consensus"):
+        lines = [f"- {c['fiscal_year'][:4]}E: Fwd EPS {c['fwd_eps']:,.0f}원 · Fwd PER {c['fwd_per']}배"
+                 + (f" · 목표주가 평균 {c['target_price']:,.0f}원" if c["target_price"] else "")
+                 for c in inp["consensus"] if c["fwd_eps"]]
+        if lines:
+            blocks.append("[현재 컨센서스 — 시장의 기대치]\n" + "\n".join(lines))
+    if inp.get("flows"):
+        f = inp["flows"]
+        def _fmt(v):
+            return f"{v/10000:+,.0f}만주" if v is not None else "-"
+        blocks.append(
+            f"[수급 — 최근 {f['days']}거래일 누적 순매수]\n"
+            f"외국인 {_fmt(f['foreign_net'])} · 기관 {_fmt(f['inst_net'])} · 개인 {_fmt(f['indiv_net'])}"
+            + (f" · 외인 보유율 {f['foreign_hold_ratio']}%" if f["foreign_hold_ratio"] else ""))
     if inp["knowledge"]:
         from pipeline.knowledge_recall import knowledge_block
         blocks.append(knowledge_block(
@@ -179,7 +202,11 @@ def _build_prompt(name: str, inp: dict) -> str:
         + STYLE_RULES +
         'JSON만 출력: {"brief": "마크다운 브리프", "thesis_check": "사용자 논지와 새 증거가 '
         "충돌하거나 강하게 지지되는 지점이 있으면 1~3문장 (어느 쪽인지 명시), 논지가 없거나 "
-        '특이사항 없으면 null"}\n'
+        '특이사항 없으면 null", '
+        '"revision_call": {"direction": "up|down|hold", "rationale": "1~2문장"} 또는 null}\n'
+        "revision_call 규칙: 위 재료(승격 지식·언급 요약·신호·수급)를 근거로 향후 1~2개월 "
+        "이익 컨센서스가 상향/하향/유지될 가능성을 판단해라. 반드시 재료의 구체 근거를 대라 — "
+        "재료가 방향 판단에 불충분하면 null. 이 콜은 기록되어 실제 추정치 변화와 대조된다.\n"
         + thesis_block + "\n\n[재료]\n" + "\n\n".join(blocks)
     )
 
@@ -207,13 +234,16 @@ def _compute_locked(stock_code: str) -> dict:
     if cached and cached["inputs_hash"] == h:
         conn.close()
         return {"status": "cached", "brief": cached["brief"],
-                "thesis_check": cached["thesis_check"], "created_at": cached["created_at"]}
+                "thesis_check": cached["thesis_check"],
+                "revision_call": _parse_call(cached["revision_call"]),
+                "created_at": cached["created_at"]}
 
     if llm_engine() != "claude-code":
         conn.close()
         return {"status": "unavailable",
                 "brief": cached["brief"] if cached else None,
                 "thesis_check": cached["thesis_check"] if cached else None,
+                "revision_call": _parse_call(cached["revision_call"]) if cached else None,
                 "created_at": cached["created_at"] if cached else None}
 
     prompt = _build_prompt(ent["name"], inp)
@@ -224,15 +254,29 @@ def _compute_locked(stock_code: str) -> dict:
         return {"status": "failed",
                 "brief": cached["brief"] if cached else None,
                 "thesis_check": cached["thesis_check"] if cached else None,
+                "revision_call": _parse_call(cached["revision_call"]) if cached else None,
                 "created_at": cached["created_at"] if cached else None}
 
-    # append-only: 재생성마다 새 행 = 히스토리 축적 (지난 시점 브리프 열람용)
+    # append-only: 재생성마다 새 행 = 히스토리 축적 (지난 시점 브리프 열람 +
+    # revision_call은 나중에 실제 컨센서스 변화와 대조해 적중 평가)
+    call = data.get("revision_call")
     conn.execute("""
-        INSERT INTO stock_briefs (entity_id, brief, thesis_check, inputs_hash, model)
-        VALUES (?, ?, ?, ?, 'claude-code/haiku')
-    """, (ent["id"], data.get("brief"), data.get("thesis_check") or None, h))
+        INSERT INTO stock_briefs (entity_id, brief, thesis_check, revision_call, inputs_hash, model)
+        VALUES (?, ?, ?, ?, ?, 'claude-code/haiku')
+    """, (ent["id"], data.get("brief"), data.get("thesis_check") or None,
+          json.dumps(call, ensure_ascii=False) if call else None, h))
     conn.commit()
     row = get_cached(conn, ent["id"])
     conn.close()
     return {"status": "fresh", "brief": row["brief"], "thesis_check": row["thesis_check"],
-            "created_at": row["created_at"]}
+            "revision_call": _parse_call(row["revision_call"]), "created_at": row["created_at"]}
+
+
+def _parse_call(raw) -> dict | None:
+    if not raw:
+        return None
+    try:
+        c = json.loads(raw)
+        return c if isinstance(c, dict) and c.get("direction") in ("up", "down", "hold") else None
+    except Exception:
+        return None
