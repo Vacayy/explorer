@@ -97,5 +97,37 @@ def per_band(conn, stock_code: str, years: int = 4) -> dict | None:
         pers.append({"year": r["y"], "lo": round(px["lo"] / eps, 1), "hi": round(px["hi"] / eps, 1)})
     if not pers:
         return None
-    return {"bands": pers,
+    band = {"bands": pers,
             "min": min(p["lo"] for p in pers), "max": max(p["hi"] for p in pers)}
+    # 현재 trailing PER과 밴드 내 위치 (0=하단, 1=상단) — 임계점 판정용
+    cur_px = conn.execute("""
+        SELECT close FROM stock_prices WHERE stock_code=? AND close IS NOT NULL
+        ORDER BY trade_date DESC LIMIT 1""", (stock_code,)).fetchone()
+    latest = eps_rows[0]
+    try:
+        eps = int(latest["ni"]) / n_shares
+        if cur_px and eps > 0:
+            band["current_per"] = round(cur_px["close"] / eps, 1)
+            if band["max"] > band["min"]:
+                band["position"] = round((band["current_per"] - band["min"]) / (band["max"] - band["min"]), 2)
+    except (TypeError, ValueError):
+        pass
+    return band
+
+
+def at_threshold(technicals: dict | None, band: dict | None) -> str | None:
+    """임계점 상태 판정 — 브리프의 '돌파의 조건' 섹션 발동 여부.
+
+    반환: 임계점 서술 문자열 (없으면 None). 임계점 = 전례없는 구간의 문턱:
+    52주 고점 5% 이내(신고가권) 또는 trailing PER이 역사 밴드 80%+ 위치.
+    """
+    reasons = []
+    if technicals and technicals.get("off_52w_high") is not None and technicals["off_52w_high"] >= -5:
+        reasons.append(f"52주 고점 대비 {technicals['off_52w_high']:+}% — 신고가권")
+    if band and band.get("position") is not None and band["position"] >= 0.8:
+        if band["position"] >= 1:
+            desc = f"역사 밴드({band['min']}~{band['max']}배) 상단을 넘어선 전례없는 구간"
+        else:
+            desc = f"역사 밴드({band['min']}~{band['max']}배) 상단 근접 (위치 {round(band['position']*100)}%)"
+        reasons.append(f"trailing PER {band.get('current_per')}배 — {desc}")
+    return " · ".join(reasons) if reasons else None

@@ -207,7 +207,9 @@ def _build_prompt(name: str, inp: dict) -> str:
     if inp.get("per_band"):
         pb = inp["per_band"]
         yrs = " / ".join(f"{b['year']}년 {b['lo']}~{b['hi']}배" for b in pb["bands"])
-        blocks.append(f"[Trailing PER 역사 밴드 — 평균회귀의 준거]\n{yrs} (전체 {pb['min']}~{pb['max']}배)")
+        cur = (f" · 현재 trailing {pb['current_per']}배 (밴드 내 위치 {round(pb['position']*100)}%)"
+               if pb.get("position") is not None else "")
+        blocks.append(f"[Trailing PER 역사 밴드 — 평균회귀의 준거]\n{yrs} (전체 {pb['min']}~{pb['max']}배){cur}")
     if inp["knowledge"]:
         from pipeline.knowledge_recall import knowledge_block
         blocks.append(knowledge_block(
@@ -246,6 +248,7 @@ def _build_prompt(name: str, inp: dict) -> str:
         "### 시나리오 전략 — Bull/Base/Bear 3줄: 각각 [확률%] 트리거 → 결과. 확률 합=100. "
         "각 시나리오가 이익(추정치)과 멀티플 중 무엇을 움직이는지 명시하고, "
         "이전 대비 지켜볼 핵심 변수 1~2개로 마무리\n"
+        + _threshold_section(inp) +
         "매크로 유의: 재료에 금리·유동성 관측이 있으면 멀티플 지속성 판단에 반영해라 — "
         "고멀티플(성장주 영역)일수록 할인율 변화에 민감하다\n"
         + LENS_PATTERN + "\n"
@@ -258,6 +261,35 @@ def _build_prompt(name: str, inp: dict) -> str:
         "이익 컨센서스가 상향/하향/유지될 가능성을 판단해라. 반드시 재료의 구체 근거를 대라 — "
         "재료가 방향 판단에 불충분하면 null. 이 콜은 기록되어 실제 추정치 변화와 대조된다.\n"
         + thesis_block + "\n\n[재료]\n" + "\n\n".join(blocks)
+    )
+
+
+def _threshold_section(inp: dict) -> str:
+    """임계점(신고가권·밴드 상단)일 때만 발동 — '돌파의 조건' 의사결정 트리.
+
+    임계점에서는 과거·현재 분석과 함께 '전례없는 구간으로 가려면 기존
+    구조적 한계에서 무엇이 해소돼야 하나'를 물어야 한다 (stakeholder 사고틀).
+    """
+    from pipeline.technicals import at_threshold
+    state = at_threshold(inp.get("technicals"), inp.get("per_band"))
+    if not state:
+        return ""
+    return (
+        f"### 임계점 분석 — 돌파의 조건 (현재 상태: {state})\n"
+        "이 종목은 임계점에 있다. 단순 대응은 '밴드 상단이므로 비중 축소'지만, "
+        "그 전에 돌파 경로를 구체적으로 상상해라:\n"
+        "ⓐ EPS 추가 상향 경로 — 매출인가 이익률인가? 매출이면 P(가격)인가 Q(물량)인가? "
+        "P 상승이면 이익률 개선 동반 가능성, Q 상승이면 증설 계획·영업 레버리지 여부. "
+        "고객 계약·회사 시그널·수요 대비 쇼티지 정도를 재료에서 찾아라\n"
+        "ⓑ 멀티플 리레이팅 경로 — 기존 밴드에 이 회사를 가둬온 BM의 구조적 한계는 "
+        "무엇이었나(예: 사이클 산업의 재고 채찍효과)? 그 한계가 해소되고 있다는 증거가 "
+        "있나(예: LTA 장기 가시성 → 사이클주에서 성장주로, PBR에서 PER 평가로)?\n"
+        "ⓒ 신사업·신시장 경로 — 프리미엄 받는 신사업이 주력이 되는 미래가 선명한가? "
+        "그렇다면 지금의 PER 상승은 미래 EPS의 선반영(이후 실적 가시화되며 PER은 내려오고 "
+        "EPS가 올라가는 그림)\n"
+        "ⓓ 매크로·수급·파생 경로 — 유동성·할인율·패시브 플로우가 임계점 돌파를 밀어줄 환경인가\n"
+        "각 경로의 증거 유무를 재료 인용으로 판정하고, 결론: 돌파 가능성이 우세한가 "
+        "밴드 존중(비중 축소)이 우세한가.\n"
     )
 
 
