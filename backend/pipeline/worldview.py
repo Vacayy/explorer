@@ -18,7 +18,7 @@ import threading
 from database import get_connection
 from pipeline.enrich import _claude_bin, llm_engine
 
-WORLDVIEW_MODEL = os.getenv("WORLDVIEW_MODEL", "sonnet")
+WORLDVIEW_MODEL = os.getenv("WORLDVIEW_MODEL", "opus")  # 심층 종합 티어
 _lock = threading.Lock()
 
 

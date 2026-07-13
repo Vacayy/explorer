@@ -9,11 +9,28 @@
 """
 import hashlib
 import json
+import os
+import subprocess
 import threading
 
 from database import get_connection
-from pipeline.digests import STYLE_RULES, _call_json
-from pipeline.enrich import llm_engine
+from pipeline.digests import STYLE_RULES
+from pipeline.enrich import _claude_bin, llm_engine
+
+# 심층 종합은 opus — 전제·갭·챌린지·임계점을 저울질하는 다층 사고라
+# haiku 1콜로는 얕아진다 (티어: 태깅/판정=haiku, 대화 RAG=sonnet, 심층 종합=opus)
+BRIEF_MODEL = os.getenv("BRIEF_MODEL", "opus")
+
+
+def _call_json_brief(prompt: str) -> dict:
+    proc = subprocess.run(
+        [_claude_bin(), "-p", "--model", BRIEF_MODEL, "--output-format", "json", prompt],
+        capture_output=True, text=True, timeout=300)
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
+    raw = json.loads(proc.stdout).get("result", "")
+    s, e = raw.find("{"), raw.rfind("}")
+    return json.loads(raw[s:e + 1])
 
 _locks_guard = threading.Lock()
 _locks: dict[str, threading.Lock] = {}
@@ -330,7 +347,7 @@ def _compute_locked(stock_code: str) -> dict:
 
     prompt = _build_prompt(ent["name"], inp)
     try:
-        data = _call_json(prompt)  # LLM 호출 — 쓰기 트랜잭션 밖
+        data = _call_json_brief(prompt)  # LLM 호출 — 쓰기 트랜잭션 밖
     except Exception:
         conn.close()
         return {"status": "failed",
@@ -344,9 +361,9 @@ def _compute_locked(stock_code: str) -> dict:
     call = data.get("revision_call")
     conn.execute("""
         INSERT INTO stock_briefs (entity_id, brief, thesis_check, revision_call, inputs_hash, model)
-        VALUES (?, ?, ?, ?, ?, 'claude-code/haiku')
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (ent["id"], data.get("brief"), data.get("thesis_check") or None,
-          json.dumps(call, ensure_ascii=False) if call else None, h))
+          json.dumps(call, ensure_ascii=False) if call else None, h, f"claude-code/{BRIEF_MODEL}"))
     conn.commit()
     row = get_cached(conn, ent["id"])
     conn.close()
