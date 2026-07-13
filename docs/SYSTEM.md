@@ -2,8 +2,9 @@
 
 > 최종 갱신: 2026-07-10 (feat/etl-spine 브랜치 기준)
 > 목적: 현재 시스템의 전체 구조·기능·데이터를 한눈에 파악하기 위한 현황 문서.
-> 기획 배경·온톨로지는 docs/ontology.md, docs/specs/product-v2.md 참조.
-> (구 ARCHITECTURE.md는 초기 대시보드 시절 문서 — 본 문서가 현행)
+> 기획 배경·온톨로지는 docs/ontology.md, docs/specs/product-v2.md 참조. 의사결정 이력은 docs/DECISIONS.md.
+> 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
+> (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/archive/로 이동, 본 문서가 현행)
 
 ## 1. 제품 한 줄 정의
 
@@ -105,18 +106,30 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `store` | 멱등 적재(content_hash)·재enrich 시 stale 링크 제거·4층 confidence 링크 |
 | `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 |
 | `search` | FTS5+sqlite-vec 하이브리드(RRF)·인덱스 빌드 |
-| `signals` | mention_surge·high_52w (200일+ 히스토리 요구) |
+| `signals` | mention_surge·high_52w(200일+ 히스토리 요구)·neglect·consensus_extreme(진자, 감성 90%+ 극단)·volume_spike(60일 평균 3배+ & 등락 3%+ — 급증일 언급 문서 결합)·quadrant_gap(3개월 주가×30일 감성 괴리 — C 기회/D_RISK 경고) |
+| `falsifiers` | 반증 조건 감시 — 지식 active 시 haiku가 '틀렸다는 신호' 2~3개 생성, 일일 표적 검색·판정(TRIGGERED) → refute 증거 부착 → contested 기계 연동. 본문 150자 미만 문서 판정 제외 |
+| `lenses` | 분석 렌즈 — docs/references 사고틀(주가 패턴 5축·산업 수요→병목→주가) 압축, RAG·브리프 프롬프트 주입 |
+| `consensus_history` | Fwd EPS·PER·목표주가 일일 스냅샷(네이버 모바일 API, 워치리스트) → consensus_estimates 이력. 축적 후: 분해 v2(revision vs 리레이팅)·quadrant_gap 펀더 축 교체·추정치 반전 신호 |
+| `flows` | 수급 이력 — 외인·기관·개인 순매수 30일(네이버 trend API, pykrx는 KRX 로그인 벽) → investor_flows. 브리프 [수급] 재료 |
+| `scenario` | 사건 시나리오 엔진 — 대화 "시나리오: <사건>" → 파급 체인(단계별 메커니즘·근거 인용/일반지식 구분·확률)+영향 지도+감시 조건+반대 시나리오(ACH). sonnet |
+| `technicals` | 기술적 위치(LLM 0) — RSI14·이평선 갭(20/60/120)·52주 고점 대비·1/3개월 수익률 + trailing PER 역사 밴드(연간 EPS×주가 범위, 평균회귀 준거). 브리프 재료 |
+| `sector_rs` | 산업/섹터 맵(LLM 0) — 대분류 18(sector_map: KSIC 165→LLM 시드)별 장기(11M)·단기(1M) RS 백분위(최신 시총가중 — 과거 행 mcap 부재), 5일 흐름, 1~3주 궤적. /map 4사분면. value_chains(opus 시드 단계·테마)로 밸류체인 뷰 |
+| `feature_days` | 종목 특징일(LLM 0 감지) — |등락|3.5%+ 또는 거래량 4배+, 상위 24일. 마커 클릭 시 게으른 haiku 1콜로 그날 원인 조사(±1일 문서, feature_day_notes 캐시) |
+| `contradiction` | K2 모순 감지 — 새 문서×active 지식 haiku 대조(일 배치, 예산 40) → refute 축적 → 독립 반박 2+ contested(7일 쿨다운) → 홈 알림 |
+| `knowledge` (K3) | 사용자 주입("기억해:") → knowledge 행(hypothesis·model='user') + 검색 시딩 → 독립 지지 2+ corroborated → 홈 '가설 확인' 알림 |
 | `vision` | 이미지 분류→증시일정 이벤트→catalysts |
 | `actions` / `rights` | 기업활동 스캔·요약 / 유무증 구조화 추출(종속회사 제외) |
 | `digests` | 1D/7D 롤링(계층 요약)·새로운 시각(이전 요약 대비) |
-| `rag` | 검색 top-8→sonnet 종합·출처 인용 강제·갭 분석 |
+| `rag` | 검색 top-16→sonnet 종합·출처 인용 강제·갭 분석·승격 지식 블록(K1) — 모델 티어: 태깅/판정=haiku, 대화 RAG=sonnet(지연 민감), 심층 종합(브리프·세계관·시나리오)=opus |
+| `consolidation` | K0 공고화 — 주간 승격 배치(4중 검증·릴레이 접기·반박 탐색·statement 병합) → 승인 큐 |
+| `knowledge_recall` | K1 지식 소환 — activation×epistemic 랭킹, 브리프용 1-hop 그래프 확산, RAG용 의미 유사 |
 | `dates` / `normalize` | ISO 정규화(KST 버킷) / markitdown(PDF)·HTML 텍스트화 |
 
 ### 5-2. API (spine 라우터 10종)
 | 엔드포인트 | 기능 |
 |---|---|
 | `GET /api/spine/home` | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 |
-| `GET /api/spine/feed` | 통합 피드 — q(하이브리드 검색)·source·stock·industry·topic 필터, 전문·이미지·채널명 |
+| `GET /api/spine/feed` | 통합 피드 — q(하이브리드 검색)·source(telegram·blog·news·article·people)·stock·industry·topic 필터, published_at DESC. source 세분류: blog=개인블로그(platform≠rss)·news=언론사RSS·article=간행물RSS(pipeline/urls.blog_category)·people=팔로우 인물 언급 문서 |
 | `GET /api/spine/doc/{id}` | 문서 디테일 (raw content·이미지·태그·요약) |
 | `GET /api/spine/signals` | 신호 (type·days) |
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
@@ -130,7 +143,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 ### 5-3. 스크립트 (`scripts/`)
 시딩: `seed_companies`(DART) · `seed_entities`(그래프) · `seed_sectors`(FDR KSIC)
-운영(cron): `ingest` · `ingest_prices` · `compute_signals` · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index`
+운영(cron): `ingest` · `ingest_prices` · `compute_signals` · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index` · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
 1회성: `backfill_enrich`
 
 ## 6. 프론트엔드 (React 19 + shadcn + TanStack Query)
@@ -138,9 +151,11 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 ### IA (내비게이션)
 ```
 홈(/home)          내 종목·팔로우 delta 스트림 + 이번주 캘린더 + 시장 하이라이트 (빈화면 방지 승격)
-탐색               신호(/explore: mention_surge·52주신고가 카드) · AI 질문(/ask) ·
+탐색               신호(/explore: mention_surge·소외·52주신고가·컨센서스극단 카드) ·
+                   인물(/people: 디렉토리 — 언급량·최근발언·파급종목 → /person 도시에) ·
+                   지식(/knowledge: 승격 지식 activation순 + 근거사슬 — contested 강조) ·
                    기업활동(/actions: 목록+요약 | 유무증 Pro 토글+방식 필터) · 산업군 · 스크리너 · 대안데이터
-피드(/feed)        통합 피드 — 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
+피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·뉴스·아티클·인물 (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
                    + 사이드바: 구독 채널/블로그 목록·닉네임·활성 토글·인라인 등록 폼
 문서(/doc/:id)     수집 원문·이미지 내부 열람 (외부 원문은 보조 버튼)
 분석(/analyze/:code) 요약·재무·밸류·사업·공시 (기존) + 언급 탭(1D/7D 다이제스트 2열·
@@ -149,8 +164,9 @@ VS 비교 · 리서치노트(워치리스트/투자메모/카탈리스트)
 ```
 
 ### 공통 시스템
-- 디자인 토큰: Apple HIG light/dark (next-themes 토글), 도메인 토큰 `--color-up/down`(상승빨강/하락파랑)·`--color-fact/hypothesis`
-- shared 컴포넌트: SignalCard(확장형 카드 시스템)·DocumentCard·EntityChip(저신뢰 흐림)·SourceBadge·EpistemicBadge류·FreshnessStamp·ThemeToggle
+- **디자인 시스템: docs/DESIGN_SYSTEM.md** — 레이아웃 컨트랙트(셸 `--layout-shell` 1440px + 전 페이지 `shared/PageContainer`), 토큰 카탈로그, 패턴별 지정 구현(ToggleGroup/Collapsible/Command…), grandfathered 예외 목록
+- 디자인 토큰: Apple HIG light/dark (next-themes 토글), 도메인 토큰 `--color-up/down`(상승빨강/하락파랑)·`--color-fact/hypothesis`, 레이아웃 `--layout-shell`·`--shell-offset`
+- shared 컴포넌트: PageContainer(페이지 컨테이너)·SignalCard(확장형 카드 시스템)·DocumentCard·EntityChip(저신뢰 흐림)·SourceBadge·EpistemicBadge류·FreshnessStamp·ThemeToggle·SegmentTabs/PeriodToggle/YearToggle/FilterChips(전부 Radix ToggleGroup 기반)
 - Query 정책: queryKey factory(spineKeys)·staleTime 1~5분·keepPreviousData·URL=queryKey
 - `npm run build`(tsc -b + vite) 완전 통과 유지
 
