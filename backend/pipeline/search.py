@@ -43,6 +43,11 @@ def _vec_conn():
     conn.execute(
         f"CREATE VIRTUAL TABLE IF NOT EXISTS doc_vec USING vec0(embedding float[{EMBED_DIM}])"
     )
+    # 임베딩 대상 문서의 content_hash 추적 — 내용이 바뀐 문서는 재임베딩
+    # (vec0 가상테이블엔 부가 컬럼을 못 달아 별도 테이블로)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS doc_vec_hash (rowid INTEGER PRIMARY KEY, content_hash TEXT)"
+    )
     return conn
 
 
@@ -62,9 +67,13 @@ def build_index(batch: int = 64) -> dict:
     if vconn is None:
         return {"fts_docs": n_fts, "embedded": 0, "vec": "unavailable"}
 
+    # 신규(doc_vec에 없음) + 변경분(content_hash 불일치) 모두 재임베딩
     todo = vconn.execute("""
-        SELECT id, title, substr(markdown, 1, 2000) md FROM raw_documents
-        WHERE id NOT IN (SELECT rowid FROM doc_vec)
+        SELECT rd.id, rd.title, substr(rd.markdown, 1, 2000) md, rd.content_hash
+        FROM raw_documents rd
+        LEFT JOIN doc_vec_hash h ON h.rowid = rd.id
+        WHERE rd.id NOT IN (SELECT rowid FROM doc_vec)
+           OR h.content_hash IS NULL OR h.content_hash != rd.content_hash
     """).fetchall()
     model = _get_model() if todo else None
     embedded = 0
@@ -72,9 +81,15 @@ def build_index(batch: int = 64) -> dict:
         chunk = todo[i:i + batch]
         texts = [f"{r['title']}\n{r['md'] or ''}" for r in chunk]
         for row, emb in zip(chunk, model.embed(texts)):
+            # vec0는 INSERT OR REPLACE 미지원 — 재임베딩(변경분)은 삭제 후 삽입
+            vconn.execute("DELETE FROM doc_vec WHERE rowid=?", (row["id"],))
             vconn.execute(
-                "INSERT OR REPLACE INTO doc_vec (rowid, embedding) VALUES (?, ?)",
+                "INSERT INTO doc_vec (rowid, embedding) VALUES (?, ?)",
                 (row["id"], _serialize(emb)),
+            )
+            vconn.execute(
+                "INSERT OR REPLACE INTO doc_vec_hash (rowid, content_hash) VALUES (?, ?)",
+                (row["id"], row["content_hash"]),
             )
         vconn.commit()
         embedded += len(chunk)
