@@ -171,7 +171,12 @@ def promote_batch() -> dict:
         ORDER BY n DESC LIMIT {MAX_ENTITIES}
     """).fetchall()
 
-    stats = {"entities": len(targets), "proposed": 0, "rejected_by_rule": 0, "failed": 0}
+    stats = {"entities": len(targets), "proposed": 0, "rejected_by_rule": 0, "failed": 0,
+             "reject_reasons": {}}
+
+    def _reject(reason):
+        stats["rejected_by_rule"] += 1
+        stats["reject_reasons"][reason] = stats["reject_reasons"].get(reason, 0) + 1
     for ent in targets:
         docs = [dict(r) for r in conn.execute(f"""
             SELECT DISTINCT rd.id, rd.title, rd.published_at, rd.source_type,
@@ -198,6 +203,9 @@ def promote_batch() -> dict:
             "- 느린 층: cycle(사이클 국면) | structure(경쟁구도·계약·지배구조) | regime(제도·패러다임)\n"
             "- 오늘의 시세·단발 이벤트(event)나 단순 수급(flow)은 제외\n"
             "- 각 주장은 한 문장, 문서에 실제로 있는 내용만, 근거 문서 번호를 반드시 나열\n"
+            "- **근거는 반드시 서로 다른 날짜의 문서 2건 이상.** 같은 날 여러 건은 한 사건의 "
+            "동시 보도라 '반복 관측'이 아니다. 여러 날에 걸쳐 관측된 주장만 골라라 "
+            "(문서마다 날짜가 표기돼 있으니 서로 다른 날짜를 조합해 인용)\n"
             '- 반복 관측이 없으면 빈 배열: {"claims": []}\n'
             'JSON만 출력: {"claims": [{"statement": "…", "pace_layer": "cycle|structure|regime", '
             '"evidence": [문서 번호들]}]}'
@@ -215,17 +223,18 @@ def promote_batch() -> dict:
             ev_idx = [i for i in (claim.get("evidence") or []) if isinstance(i, int) and 1 <= i <= len(docs)]
             ev_docs = [docs[i - 1] for i in ev_idx]
             # 규칙 검증: 인용 강제 · 느린 층 · 간격(서로 다른 날짜 2+) · 독립 관측 2+
-            if not st or layer not in SLOW_LAYERS or len(ev_docs) < 2:
-                stats["rejected_by_rule"] += 1
-                continue
+            if not st:
+                _reject("empty"); continue
+            if layer not in SLOW_LAYERS:
+                _reject(f"fast_layer({layer})"); continue
+            if len(ev_docs) < 2:
+                _reject("few_evidence"); continue
             dates = {(d["published_at"] or "")[:10] for d in ev_docs}
             if len(dates) < 2:
-                stats["rejected_by_rule"] += 1   # 몰림 ≠ 반복 확인 (간격 요건)
-                continue
+                _reject("same_day"); continue   # 몰림 ≠ 반복 확인 (간격 요건)
             ev_docs = mark_independence(conn, ev_docs)
             if sum(1 for d in ev_docs if d["independent"]) < MIN_INDEPENDENT:
-                stats["rejected_by_rule"] += 1   # 릴레이 재방송뿐 (독립성)
-                continue
+                _reject("not_independent"); continue   # 릴레이 재방송뿐
 
             # 파편화 방지: 같은 주장이 이미 있으면(배치 내 형제 포함) 병합 — 새 행 대신
             # corroboration 증가 (A-1 '스키마 일치 시 빠른 편입')
