@@ -165,6 +165,8 @@ export default function SectorMapPage() {
         </CardContent>
       </Card>
 
+      {/* 글로벌 AI 컴퓨트 스택 — 국내 섹터가 아니라 산점도엔 없지만 밸류체인은 상시 노출 */}
+      {!selected && <ValueChain group="AI 컴퓨트·인프라" onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
       {selected && <ValueChain group={selected} onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
       {selected && <GroupMembers group={selected} onGo={(code) => navigate(`/analyze/${code}/summary`)} />}
     </PageContainer>

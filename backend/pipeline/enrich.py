@@ -115,13 +115,17 @@ def _build_prompt(title: str, markdown: str) -> str:
     persons = _person_vocab()
     return (
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
-        '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문 표기", "listed": "KR|해외"}], '
+        '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문 표기", "listed": "KR|해외|비상장"}], '
         '"industries": [], "topics": [], "label_parents": {"신규라벨": "상위라벨"}, "people": [], '
         '"summary": "핵심 2문장", "sentiment": "positive|neutral|negative"}\n'
         "규칙:\n"
         "- stocks: 실제로 논의 대상인 상장사만 (스쳐 지나가는 언급 제외). 한국 상장사는 별칭·약칭"
         "(하이닉스=SK하이닉스, 삼전=삼성전자)을 정식 종목명으로 정규화하고 listed=KR. "
-        "해외 주요 상장사(써클, 엔비디아, 코인베이스 등)도 논의 대상이면 포함하되 통용 한국어 표기로, listed=해외.\n"
+        "해외 주요 상장사(엔비디아, 브로드컴, TSMC, 마이크론, 오라클, 팔란티어 등)도 논의 대상이면 "
+        "통용 한국어 표기로, listed=해외. "
+        "비상장 주요 기업(오픈AI, 앤트로픽, xAI, 데이터브릭스, Figure AI, Cognition, Harvey 등 "
+        "AI 모델·소프트웨어·로보틱스)도 논의 대상이면 stocks에 listed=비상장으로 포함 — "
+        "상장 여부와 무관하게 투자 세계관의 핵심 주체다.\n"
         "- industries/topics: 넓은 영역과 세부 주제를 함께 라벨링 — 세부가 더 가치 있다 "
         "(예: Web3 문서면 'Web3'와 함께 '스테이블코인'/'RWA'/'STO' 등 구체 주제도). "
         "아래 기존 라벨과 같거나 유사한 개념이면 반드시 기존 라벨을 그대로 사용, "
