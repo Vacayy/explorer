@@ -18,13 +18,26 @@ from database import get_connection, init_db
 from pipeline.enrich import _claude_bin
 
 
+GLOBAL_HINTS = {
+    "AI 컴퓨트·인프라": (
+        "글로벌 AI 컴퓨트 스택을 수요→공급 수직 흐름으로. 예시 축: "
+        "최종수요(빅테크 CapEx·AI 모델사) → AI 칩/시스템(엔비디아 로드맵 Hopper→Blackwell→"
+        "Rubin→Kyber rack, 브로드컴/마벨 커스텀 ASIC, AMD) → 인터커넥트·광(CPO·실리콘포토닉스·"
+        "NVLink) → 메모리(HBM·SOCAMM) → 첨단 패키징(CoWoS·2.5D/3D) → 파운드리(TSMC·삼성·인텔) → "
+        "전력·냉각(전력반도체 SiC/GaN·전력기기·액침냉각). 한국뿐 아니라 미·대만·일·유럽 주체 포함."
+    ),
+}
+
+
 def seed_group(conn, group: str, dry: bool):
-    prompt = (
-        f"한국 주식시장 관점에서 '{group}' 산업의 밸류체인을 단계별로 정리해라.\n"
-        "왼쪽(상류·소재/설계)에서 오른쪽(하류·완제품/응용)으로 3~5개 단계, "
-        "각 단계에 투자자가 쓰는 테마 키워드 2~7개.\n"
+    hint = GLOBAL_HINTS.get(group)
+    scope = hint if hint else (
+        f"한국 주식시장 관점에서 '{group}' 산업의 밸류체인.\n"
         "예: 반도체 = 설계(팹리스·IP·NPU) → 파운드리 → 전공정(장비·소재·가스) → "
-        "후공정(패키징·테스트) → 기판/패키징(기판·SOCAMM).\n"
+        "후공정(패키징·테스트) → 기판/패키징(기판·SOCAMM).")
+    prompt = (
+        f"'{group}'의 밸류체인을 단계별로 정리해라.\n{scope}\n"
+        "왼쪽(상류)에서 오른쪽(하류/응용)으로 4~6개 단계, 각 단계에 투자자가 쓰는 테마 키워드 3~8개.\n"
         '출력: JSON만. {"stages": [{"name": "단계명", "themes": ["테마", ...]}, ...]}\n'
         "테마는 실제 시장에서 통용되는 이름으로 (예: HBM, DRAM, 전고체 배터리, 휴머노이드). "
         "종목명 말고 테마·하위산업 수준."
