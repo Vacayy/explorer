@@ -3,9 +3,17 @@ import { createChart, ColorType } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
 import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
 
+export interface ChartMarker {
+  time: string
+  direction: "up" | "down"
+  text: string
+}
+
 interface CandlestickChartProps {
   data: { time: string; open: number; high: number; low: number; close: number }[]
   volumeData?: { time: string; value: number; color: string }[]
+  markers?: ChartMarker[]
+  onMarkerClick?: (time: string) => void
   height?: number
   formatValue?: (value: number) => string
 }
@@ -17,9 +25,13 @@ const DOWN_COLOR = "#3b82f6"
 export default function CandlestickChart({
   data,
   volumeData,
+  markers,
+  onMarkerClick,
   height = 400,
   formatValue,
 }: CandlestickChartProps) {
+  const onMarkerClickRef = useRef(onMarkerClick)
+  onMarkerClickRef.current = onMarkerClick
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
@@ -73,6 +85,12 @@ export default function CandlestickChart({
     })
     volumeSeriesRef.current = volSeries
 
+    // 특징일 마커 클릭 → 가장 가까운 마커 시각 콜백
+    chart.subscribeClick((param) => {
+      if (!param.time || !onMarkerClickRef.current) return
+      onMarkerClickRef.current(String(param.time))
+    })
+
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width } = entry.contentRect
@@ -96,6 +114,19 @@ export default function CandlestickChart({
     candleSeriesRef.current.setData(data)
     chartRef.current?.timeScale().fitContent()
   }, [data])
+
+  // 특징일 마커 — 상승=아래 빨강 화살표, 하락=위 파랑 화살표
+  useEffect(() => {
+    if (!candleSeriesRef.current) return
+    const ms = (markers ?? []).map((m) => ({
+      time: m.time,
+      position: m.direction === "up" ? "belowBar" as const : "aboveBar" as const,
+      color: m.direction === "up" ? UP_COLOR : DOWN_COLOR,
+      shape: m.direction === "up" ? "arrowUp" as const : "arrowDown" as const,
+      text: m.text,
+    }))
+    candleSeriesRef.current.setMarkers(ms)
+  }, [markers])
 
   // Update volume data
   useEffect(() => {
