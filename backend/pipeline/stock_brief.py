@@ -61,10 +61,18 @@ def gather_inputs(conn, stock_code: str, entity_id: int) -> dict:
         SELECT fiscal_year, fwd_eps, fwd_per, target_price, fetched_date
         FROM consensus_estimates WHERE stock_code=?
         ORDER BY fetched_date DESC, fiscal_year LIMIT 2""", (stock_code,)).fetchall()
+    sentiment = conn.execute("""
+        SELECT SUM(en.sentiment='positive') pos, SUM(en.sentiment='negative') neg,
+               SUM(en.sentiment='neutral') neu
+        FROM entity_links el JOIN raw_documents rd ON rd.id = el.doc_id
+        JOIN enrichments en ON en.doc_id = rd.id
+        WHERE el.entity_id=? AND el.link_type='stock'
+          AND rd.published_at >= datetime('now', '-30 days')""", (entity_id,)).fetchone()
     return {"digests": digests, "signals": signals, "upcoming": upcoming,
             "actions": actions, "thesis": thesis, "notes": notes, "knowledge": knowledge,
             "decomp": _price_decomposition(conn, stock_code),
-            "consensus": consensus, "flows": flow_summary(conn, stock_code)}
+            "consensus": consensus, "flows": flow_summary(conn, stock_code),
+            "sentiment": dict(sentiment) if sentiment and (sentiment["pos"] or sentiment["neg"]) else None}
 
 
 def _price_decomposition(conn, stock_code: str) -> dict | None:
@@ -175,6 +183,10 @@ def _build_prompt(name: str, inp: dict) -> str:
             f"[수급 — 최근 {f['days']}거래일 누적 순매수]\n"
             f"외국인 {_fmt(f['foreign_net'])} · 기관 {_fmt(f['inst_net'])} · 개인 {_fmt(f['indiv_net'])}"
             + (f" · 외인 보유율 {f['foreign_hold_ratio']}%" if f["foreign_hold_ratio"] else ""))
+    if inp.get("sentiment"):
+        s = inp["sentiment"]
+        blocks.append(f"[감성 온도 — 최근 30일 언급 문서]\n"
+                      f"긍정 {s['pos'] or 0} · 부정 {s['neg'] or 0} · 중립 {s['neu'] or 0}")
     if inp["knowledge"]:
         from pipeline.knowledge_recall import knowledge_block
         blocks.append(knowledge_block(
@@ -196,8 +208,18 @@ def _build_prompt(name: str, inp: dict) -> str:
 
     from pipeline.lenses import LENS_PATTERN
     return (
-        f"너는 '{name}' 담당 애널리스트다. 아래 수집된 재료로 \"지금 이 종목에서 알아야 할 것\" 브리프를 써라.\n"
-        "재료를 나열하지 말고 종합해라 — 무엇이 중요하고 무엇이 연결되는지.\n"
+        f"너는 '{name}' 담당 애널리스트다. 아래 수집된 재료로 관점 있는 브리프를 써라 — "
+        "재료 나열이 아니라 콜이다.\n"
+        "브리프 마크다운 구조 (해당 재료가 없으면 그 섹션은 생략):\n"
+        "(첫 문단) 핵심 종합 — 지금 이 종목에서 알아야 할 것 2~3문장\n"
+        "### 가격의 전제 — 현재가는 어떤 기대(컨센서스 EPS·멀티플·목표가) 위에 서 있나. "
+        "'현재 추정치가 ~라는 전제인데'를 명시\n"
+        "### 전제 vs 관측 — 최근 관측(언급 요약·신호·수급·지식)이 그 전제를 지지하는가 이탈하는가. "
+        "추정치가 더 오를/내릴 근거가 보이면 명시\n"
+        "### 유의할 챌린지 — 지금 내러티브에 도전이 될 수 있는 것 (반박 증거·상충 관측·과열 신호). "
+        "'이 부분 유의해서 봐야 한다'까지\n"
+        "### 심리와 위치 — 시장 온도(환호/중립/절망, 감성·수급 근거)와 위치 판단. "
+        "가능하면 '하방 탄탄·상방 열림' 같은 비대칭 구조로 결론 (근거 없으면 판단 유보 명시)\n"
         + LENS_PATTERN + "\n"
         + STYLE_RULES +
         'JSON만 출력: {"brief": "마크다운 브리프", "thesis_check": "사용자 논지와 새 증거가 '
