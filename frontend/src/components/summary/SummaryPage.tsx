@@ -4,6 +4,7 @@ import { useDisclosures } from "@/hooks/useDisclosures"
 import { useKpi } from "@/hooks/useKpi"
 import { useIndexPerformance } from "@/hooks/useIndexPerformance"
 import { useWatchlist, useAddToWatchlist } from "@/hooks/useWatchlist"
+import { useQuote } from "@/hooks/useQuotes"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import CandlestickChart from "@/components/charts/CandlestickChart"
@@ -93,8 +94,10 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
     [priceItems]
   )
 
-  /* ── KPI strip values ─────────────────────────────────────── */
-  const priceChangePct = kpi?.price_change_pct
+  /* ── KPI strip values — 실시간 시세가 있으면 종가 대신 사용 ── */
+  const live = useQuote(stockCode)
+  const curPrice = live?.price ?? kpi?.close
+  const priceChangePct = live?.change_pct ?? kpi?.price_change_pct
   const priceChangeStr = priceChangePct != null
     ? `${priceChangePct >= 0 ? "▲" : "▼"}${formatPercent(priceChangePct)}`
     : undefined
@@ -118,10 +121,12 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
         <div className="flex items-center gap-3 px-4 py-2 border-b bg-card flex-wrap">
           <KpiItem
             label="현재가"
-            value={kpi.close != null ? `${kpi.close.toLocaleString("ko-KR")}원` : "-"}
+            value={curPrice != null ? `${curPrice.toLocaleString("ko-KR")}원` : "-"}
             sub={priceChangeStr}
             subColor={priceChangeColor}
-            hint="최신 거래일 종가 (거래소) · 등락률은 전일 종가 대비"
+            hint={live?.price != null
+              ? `실시간 (네이버, ~10초 갱신${live.market_status === "CLOSE" ? " · 장 마감" : ""}) · 등락률은 전일 종가 대비`
+              : "최신 거래일 종가 (거래소) · 등락률은 전일 종가 대비"}
           />
           <Separator orientation="vertical" className="h-6" />
           <KpiItem label="시가총액" value={kpi.market_cap != null ? formatKrw(kpi.market_cap) : "-"}

@@ -6,9 +6,10 @@ import { toast } from "sonner"
 import api from "@/api/client"
 import { unfollowEntity, spineKeys } from "@/api/spine"
 import { useWatchlist, useUpdateWatchlistItem, useDeleteWatchlistItem } from "@/hooks/useWatchlist"
+import { useQuotes, type LiveQuote } from "@/hooks/useQuotes"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import { useTelegramChannels, useToggleTelegramChannel } from "@/hooks/useTelegram"
-import { useBlogSources, useToggleBlogSource } from "@/hooks/useBlogFeed"
+import { useBlogSources, useToggleBlogSource, type BlogSource } from "@/hooks/useBlogFeed"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -32,9 +33,14 @@ export default function FollowPage() {
 
       <StocksSection onGo={(code) => navigate(`/analyze/${code}/summary`)} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
         <ChannelsCard onGo={(key) => navigate(`/source?kind=telegram&key=${encodeURIComponent(key)}`)} />
-        <BlogsCard onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
+        <BlogSourcesCard title="블로그" placeholder="네이버/티스토리 블로그 URL"
+          match={(s) => s.platform !== "rss"}
+          onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
+        <BlogSourcesCard title="뉴스 및 아티클" placeholder="RSS 피드 URL (뉴스·뉴스레터)"
+          match={(s) => s.platform === "rss"}
+          onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
       </div>
 
       <FollowedPeopleCard onGo={(name) => navigate(`/person?name=${encodeURIComponent(name)}`)} />
@@ -58,6 +64,8 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
   const { data: results = [] } = useCompanySearch(query)
   const update = useUpdateWatchlistItem()
   const del = useDeleteWatchlistItem()
+  const { data: quotes } = useQuotes(items.map((i) => i.stock_code))
+  const quoteMap = new Map((quotes ?? []).map((q) => [q.stock_code, q]))
 
   const sorted = [...items].sort((a, b) => {
     const va = a[sortKey], vb = b[sortKey]
@@ -124,7 +132,7 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
             </thead>
             <tbody>
               {sorted.map((item) => (
-                <StockRow key={item.id} item={item}
+                <StockRow key={item.id} item={item} quote={quoteMap.get(item.stock_code)}
                   editing={editingId === item.id}
                   onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
                   onSaved={() => setEditingId(null)}
@@ -141,8 +149,9 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
   )
 }
 
-function StockRow({ item, editing, onEdit, onSaved, onGo, onDelete, update }: {
+function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, update }: {
   item: WatchlistItem
+  quote?: LiveQuote
   editing: boolean
   onEdit: () => void
   onSaved: () => void
@@ -156,7 +165,16 @@ function StockRow({ item, editing, onEdit, onSaved, onGo, onDelete, update }: {
         <td className="px-4 py-2 font-medium">{item.corp_name}</td>
         <td className="py-2 text-xs text-muted-foreground tabular-nums">{item.stock_code}</td>
         <td className="py-2 text-right tabular-nums text-xs">
-          {item.latest_close != null ? formatNumber(item.latest_close) : "-"}
+          {quote?.price != null ? (
+            <>
+              {formatNumber(quote.price)}
+              {quote.change_pct != null && (
+                <span className={`ml-1.5 ${quote.change_pct >= 0 ? "text-up" : "text-down"}`}>
+                  {quote.change_pct >= 0 ? "+" : ""}{quote.change_pct.toFixed(1)}%
+                </span>
+              )}
+            </>
+          ) : item.latest_close != null ? formatNumber(item.latest_close) : "-"}
         </td>
         <td className="py-2 text-right tabular-nums text-xs">
           {item.latest_market_cap != null ? formatKrw(item.latest_market_cap) : "-"}
@@ -311,10 +329,16 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
   )
 }
 
-/* ── 블로그 ── */
+/* ── 블로그 / 뉴스·아티클 (blog_sources를 platform으로 분리) ── */
 
-function BlogsCard({ onGo }: { onGo: (key: string) => void }) {
-  const { data: sources = [], isLoading } = useBlogSources()
+function BlogSourcesCard({ title, placeholder, match, onGo }: {
+  title: string
+  placeholder: string
+  match: (src: BlogSource) => boolean
+  onGo: (key: string) => void
+}) {
+  const { data: allSources = [], isLoading } = useBlogSources()
+  const sources = allSources.filter(match)
   const { data: health } = useSourcesHealth()
   const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "blog").map((i) => [i.key, i]))
   const toggle = useToggleBlogSource()
@@ -327,17 +351,17 @@ function BlogsCard({ onGo }: { onGo: (key: string) => void }) {
       qc.invalidateQueries({ queryKey: ["blog-sources"] })
     },
     onError: (e: unknown) => {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "블로그 등록 실패")
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "소스 등록 실패")
     },
   })
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">블로그 <span className="font-normal text-muted-foreground">{sources.length}</span></CardTitle>
+        <CardTitle className="text-sm">{title} <span className="font-normal text-muted-foreground">{sources.length}</span></CardTitle>
       </CardHeader>
       <CardContent className="px-0 pb-2 space-y-1">
-        <AddForm placeholder="블로그 URL (네이버/티스토리/RSS)" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
+        <AddForm placeholder={placeholder} onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
         {isLoading && <div className="px-4 py-2"><Skeleton className="h-4 w-full" /></div>}
         {sources.map((src) => {
           const h = healthMap.get(src.url)

@@ -9,6 +9,7 @@ from routers import telegram_feed
 from routers import blog_feed
 from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_digests, spine_keywords, spine_sources
 from routers import spine_brief, spine_conversations, spine_person, spine_knowledge, spine_approvals
+from routers import spine_quotes
 
 app = FastAPI(title="Stock Explorer API")
 
@@ -37,6 +38,7 @@ app.include_router(consensus.router)
 app.include_router(index_data.router)
 app.include_router(telegram_feed.router)
 app.include_router(blog_feed.router)
+app.include_router(spine_quotes.router)
 app.include_router(spine_feed.router)
 app.include_router(spine_signals.router)
 app.include_router(spine_home.router)
