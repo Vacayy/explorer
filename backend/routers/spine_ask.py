@@ -57,9 +57,13 @@ def _generate_answer(conversation_id: int, question: str):
     if history and history[-1]["role"] == "user" and history[-1]["content"] == question:
         history = history[:-1]
 
+    # '시나리오: <사건>' — 파급 체인 전개 (RAG 대신 시나리오 엔진)
+    from pipeline.scenario import parse_scenario, build_scenario
+    event = parse_scenario(question)
+
     from pipeline.rag import ask
     try:
-        result = ask(question, history=history or None)
+        result = build_scenario(event) if event else ask(question, history=history or None)
     except Exception as e:
         append_assistant(conversation_id, f"답변 생성에 실패했습니다: {str(e)[:150]} — 다시 질문해주세요.")
         return
