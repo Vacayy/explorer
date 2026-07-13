@@ -37,8 +37,8 @@ class BlogConnector:
         docs = []
         for p in posts:
             body = p.get("content") or p.get("summary", "")
-            # 뉴스 RSS는 제목만 오는 경우가 많다 — 본문 없으면 기사 원문 스크랩
-            if len(body) < 200 and p.get("url"):
+            # RSS가 요약만 주는 경우가 많다(네이버 블로그·일부 뉴스) — 짧으면 원문 스크랩
+            if len(body) < 600 and p.get("url"):
                 from services.blog_service import fetch_full_content
                 full = fetch_full_content(p["url"])
                 if full:

@@ -348,6 +348,11 @@ def _compute_locked(stock_code: str) -> dict:
     prompt = _build_prompt(ent["name"], inp)
     try:
         data = _call_json_brief(prompt)  # LLM 호출 — 쓰기 트랜잭션 밖
+        # 논지가 실제로 없으면 thesis_check 강제 무효 — 모델이 '논지가 있다면…'
+        # 가정 화법으로 칸을 채우는 환각 방지 (실측: 논지 0건인데 점검 출력)
+        t = inp["thesis"]
+        if not ((t and t["thesis"]) or inp["notes"]):
+            data["thesis_check"] = None
     except Exception:
         conn.close()
         return {"status": "failed",
