@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import ReactMarkdown from "react-markdown"
 import { ArrowLeft, ExternalLink } from "lucide-react"
+import { Markdown } from "@/components/shared/Markdown"
 import api, { API_BASE } from "@/api/client"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -110,9 +110,7 @@ export default function DocPage() {
         <CardContent className="py-4">
           {doc.content?.trim() ? (
             doc.source_type === "youtube" ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1.5 [&_li]:my-0.5 [&_p]:my-1.5">
-                <ReactMarkdown>{doc.content}</ReactMarkdown>
-              </div>
+              <Markdown>{doc.content}</Markdown>
             ) : (
               <div className="text-sm whitespace-pre-wrap leading-relaxed">{doc.content}</div>
             )

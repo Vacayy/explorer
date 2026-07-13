@@ -1,6 +1,6 @@
 import { useState } from "react"
-import ReactMarkdown from "react-markdown"
 import { ChevronDown, Loader2, Scale, TrendingDown, TrendingUp, Minus } from "lucide-react"
+import { Markdown } from "@/components/shared/Markdown"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
@@ -83,9 +83,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
         {b.brief && (
           <>
             <Expandable collapsedHeight={300}>
-              <div className={`prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5 ${compute.isFetching ? "opacity-60" : ""}`}>
-                <ReactMarkdown>{b.brief}</ReactMarkdown>
-              </div>
+              <Markdown className={compute.isFetching ? "opacity-60" : ""}>{b.brief}</Markdown>
             </Expandable>
             <div className="text-right">
               <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
@@ -221,9 +219,7 @@ function BriefHistory({ stockCode }: { stockCode: string }) {
                 {h.created_at.slice(0, 16).replace("T", " ")}
               </div>
               {h.thesis_check && <p className="text-[11px] text-hypothesis mb-1">⚖ {h.thesis_check}</p>}
-              <div className="prose prose-sm dark:prose-invert max-w-none text-xs [&_p]:my-1">
-                <ReactMarkdown>{h.brief ?? ""}</ReactMarkdown>
-              </div>
+              <Markdown className="text-xs">{h.brief ?? ""}</Markdown>
             </div>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import ReactMarkdown from "react-markdown"
+import { Markdown } from "@/components/shared/Markdown"
 import { BookOpenCheck, ChevronDown, Globe2, Loader2, Swords } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
@@ -150,9 +150,7 @@ function WorldviewCard() {
         )}
         {w.briefing && (
           <Expandable collapsedHeight={260}>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5 [&_li]:my-0.5">
-              <ReactMarkdown>{w.briefing}</ReactMarkdown>
-            </div>
+            <Markdown>{w.briefing}</Markdown>
           </Expandable>
         )}
         {w.briefing && (
