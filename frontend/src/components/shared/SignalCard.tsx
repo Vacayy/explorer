@@ -13,6 +13,7 @@ const SIGNAL_LABEL: Record<string, string> = {
   high_52w: "52주 신고가",
   consensus_extreme: "컨센서스 극단",
   volume_spike: "거래량 급증",
+  quadrant_gap: "가격-관측 괴리",
 }
 
 /**
@@ -59,6 +60,18 @@ export function SignalCard({ signal: s, onKeywordClick }: {
             <span className="font-semibold text-foreground">{p.roe}%</span> · 시총{" "}
             {p.market_cap != null ? `${(p.market_cap / 1e12).toFixed(2)}조` : "-"} [{p.market}]
             <br />저평가·흑자인데 최근 {p.window_days ?? 30}일 언급 0 — 주목의 부재가 신호
+          </p>
+        )}
+        {s.signal_type === "quadrant_gap" && (
+          <p className="text-xs text-muted-foreground">
+            3개월 주가 <span className={`font-semibold ${(p.return_3m ?? 0) > 0 ? "text-up" : "text-down"}`}>
+              {(p.return_3m ?? 0) > 0 ? "+" : ""}{p.return_3m}%
+            </span>
+            {" "}· 30일 언급 감성 <span className="tabular-nums">{p.pos}+/{p.neg}-</span>
+            <br />
+            {p.quadrant === "C"
+              ? "주가는 부진한데 관측은 개선 — 시장이 아직 모르는 구간일 수 있다"
+              : "주가는 선반영됐는데 악화 관측 누적 — 선반영이 함정으로 바뀌는 구간일 수 있다"}
           </p>
         )}
         {s.signal_type === "volume_spike" && (

@@ -37,6 +37,8 @@ def _evidence(inp: dict) -> list[str]:
         ev.append(f"내 논지 ({len(inp['notes'])}건)")
     if inp.get("knowledge"):
         ev.append(f"승격 지식 {len(inp['knowledge'])}건")
+    if inp.get("decomp"):
+        ev.append(f"상승 분해 ({inp['decomp']['year']}년 실적 기준)")
     return ev
 
 

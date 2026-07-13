@@ -274,6 +274,9 @@ export interface SpineSignal {
     volume?: number;
     avg_vol_60d?: number;
     change_pct?: number;
+    // quadrant_gap (주가×관측 괴리)
+    quadrant?: "C" | "D_RISK";
+    return_3m?: number;
   };
   interpretation: string | null;
   interpretation_model: string | null;

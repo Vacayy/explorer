@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from database import init_db
 from pipeline.signals import (compute_consensus_extreme, compute_high_52w,
                               compute_mention_surge, compute_neglect,
-                              compute_volume_spike, interpret_pending)
+                              compute_quadrant_gap, compute_volume_spike, interpret_pending)
 
 
 def main():
@@ -40,6 +40,12 @@ def main():
     for s in spikes[:8]:
         p_ = s["payload"]
         print(f"  · {s['name']}: 평균 {p_['ratio']}배 · 주가 {p_['change_pct']:+}% · 문서 {len(p_['docs'])}건")
+
+    quads = compute_quadrant_gap()
+    print(f"[quadrant_gap] {len(quads)}건 — 주가×관측 괴리")
+    for s in quads[:8]:
+        p_ = s["payload"]
+        print(f"  · {s['name']}: {p_['quadrant']} · 3개월 {p_['return_3m']:+}% · 감성 {p_['pos']}+/{p_['neg']}-")
 
     extremes = compute_consensus_extreme()
     print(f"[consensus_extreme] {len(extremes)}건 — 컨센서스 극단 (진자)")
