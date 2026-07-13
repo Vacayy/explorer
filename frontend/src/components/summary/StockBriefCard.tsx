@@ -1,10 +1,14 @@
 import { useState } from "react"
 import ReactMarkdown from "react-markdown"
 import { ChevronDown, Loader2, Scale, TrendingDown, TrendingUp, Minus } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import api from "@/api/client"
 import { stockBriefQuery, stockBriefComputeQuery, stockBriefHistoryQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Expandable } from "@/components/shared/Expandable"
 
@@ -54,6 +58,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
             </p>
           </div>
         )}
+        {data?.has_thesis === false && <ThesisPrompt stockCode={stockCode} />}
         {b.thesis_check && (
           <div className="flex gap-2 rounded-md bg-hypothesis/10 border border-hypothesis/30 px-3 py-2">
             <Scale className="h-3.5 w-3.5 text-hypothesis shrink-0 mt-0.5" />
@@ -97,6 +102,49 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** 논지 미등록 시 등록 유도 — 논지가 있어야 '내 논지 점검'(내 가설 vs 새 증거)이 작동한다 */
+function ThesisPrompt({ stockCode }: { stockCode: string }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState("")
+  const qc = useQueryClient()
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.post("/api/watchlist", { stock_code: stockCode, thesis: text.trim() })).data,
+    onSuccess: () => {
+      toast.success("논지 등록 — 다음 브리프부터 새 증거가 이 논지를 지지/반박하는지 점검합니다")
+      setOpen(false)
+      qc.invalidateQueries({ queryKey: ["spine", "stock-brief", stockCode] })
+      qc.invalidateQueries({ queryKey: ["watchlist"] })
+    },
+    onError: () => toast.error("등록 실패 — 잠시 후 다시 시도해주세요"),
+  })
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30">
+        <Scale className="h-3.5 w-3.5 shrink-0" />
+        내 투자 논지가 없습니다 — 등록하면 새 증거가 논지를 지지/반박하는지 브리프가 점검합니다. 클릭해서 등록
+      </button>
+    )
+  }
+  return (
+    <div className="rounded-md border border-dashed px-3 py-2 space-y-2">
+      <p className="text-[11px] text-muted-foreground">
+        이 종목에 대한 나의 투자 논지 — 예: "HBM 구조 전환으로 사이클주에서 성장주로 리레이팅될 것"
+      </p>
+      <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3}
+        placeholder="한두 문장이면 충분합니다" className="text-sm" />
+      <div className="flex justify-end gap-2">
+        <Button size="xs" variant="ghost" onClick={() => setOpen(false)}>취소</Button>
+        <Button size="xs" disabled={!text.trim() || save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? "저장 중…" : "논지 등록"}
+        </Button>
+      </div>
+    </div>
   )
 }
 
