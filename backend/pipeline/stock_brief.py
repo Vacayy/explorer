@@ -68,11 +68,14 @@ def gather_inputs(conn, stock_code: str, entity_id: int) -> dict:
         JOIN enrichments en ON en.doc_id = rd.id
         WHERE el.entity_id=? AND el.link_type='stock'
           AND rd.published_at >= datetime('now', '-30 days')""", (entity_id,)).fetchone()
+    from pipeline.technicals import compute_technicals, per_band
     return {"digests": digests, "signals": signals, "upcoming": upcoming,
             "actions": actions, "thesis": thesis, "notes": notes, "knowledge": knowledge,
             "decomp": _price_decomposition(conn, stock_code),
             "consensus": consensus, "flows": flow_summary(conn, stock_code),
-            "sentiment": dict(sentiment) if sentiment and (sentiment["pos"] or sentiment["neg"]) else None}
+            "sentiment": dict(sentiment) if sentiment and (sentiment["pos"] or sentiment["neg"]) else None,
+            "technicals": compute_technicals(conn, stock_code),
+            "per_band": per_band(conn, stock_code)}
 
 
 def _price_decomposition(conn, stock_code: str) -> dict | None:
@@ -94,7 +97,7 @@ def _price_decomposition(conn, stock_code: str) -> dict | None:
         FROM financial_statements fs
         JOIN companies c ON c.corp_code = fs.corp_code
         WHERE c.stock_code=? AND fs.reprt_code='11011' AND fs.sj_div IN ('IS','CIS')
-          AND fs.account_nm LIKE '당기순이익%'
+          AND fs.account_nm LIKE '당기순이익%' AND fs.account_nm NOT LIKE '%지배%'
         ORDER BY fs.bsns_year DESC LIMIT 1""", (stock_code,)).fetchone()
     if not ni:
         return None
@@ -187,6 +190,24 @@ def _build_prompt(name: str, inp: dict) -> str:
         s = inp["sentiment"]
         blocks.append(f"[감성 온도 — 최근 30일 언급 문서]\n"
                       f"긍정 {s['pos'] or 0} · 부정 {s['neg'] or 0} · 중립 {s['neu'] or 0}")
+    if inp.get("technicals"):
+        t = inp["technicals"]
+        parts = []
+        if t["rsi14"] is not None:
+            state = "과열권" if t["rsi14"] >= 70 else "과매도권" if t["rsi14"] <= 30 else "중립권"
+            parts.append(f"RSI14 {t['rsi14']} ({state})")
+        for k, label in (("ma20_gap", "20일선"), ("ma60_gap", "60일선"), ("ma120_gap", "120일선")):
+            if t[k] is not None:
+                parts.append(f"{label} 대비 {t[k]:+}%")
+        if t["off_52w_high"] is not None:
+            parts.append(f"52주 고점 대비 {t['off_52w_high']:+}%")
+        if t["ret_1m"] is not None:
+            parts.append(f"1개월 {t['ret_1m']:+}% · 3개월 {t['ret_3m']:+}%")
+        blocks.append("[기술적 위치]\n" + " · ".join(parts))
+    if inp.get("per_band"):
+        pb = inp["per_band"]
+        yrs = " / ".join(f"{b['year']}년 {b['lo']}~{b['hi']}배" for b in pb["bands"])
+        blocks.append(f"[Trailing PER 역사 밴드 — 평균회귀의 준거]\n{yrs} (전체 {pb['min']}~{pb['max']}배)")
     if inp["knowledge"]:
         from pipeline.knowledge_recall import knowledge_block
         blocks.append(knowledge_block(
@@ -218,8 +239,15 @@ def _build_prompt(name: str, inp: dict) -> str:
         "추정치가 더 오를/내릴 근거가 보이면 명시\n"
         "### 유의할 챌린지 — 지금 내러티브에 도전이 될 수 있는 것 (반박 증거·상충 관측·과열 신호). "
         "'이 부분 유의해서 봐야 한다'까지\n"
-        "### 심리와 위치 — 시장 온도(환호/중립/절망, 감성·수급 근거)와 위치 판단. "
-        "가능하면 '하방 탄탄·상방 열림' 같은 비대칭 구조로 결론 (근거 없으면 판단 유보 명시)\n"
+        "### 심리와 위치 — 시장 온도(환호/중립/절망, 감성·수급 근거) + 기술적 위치(RSI·이평선·"
+        "52주 위치 — 좋은 기업과 좋은 주식은 다르다: 과열이면 좋은 기업이어도 주가는 위험할 수 있고, "
+        "멀티플은 밴드를 벗어나면 장기적으로 평균회귀 압력을 받는다) → "
+        "'하방 탄탄·상방 열림' 같은 비대칭 구조로 결론 (근거 없으면 판단 유보 명시)\n"
+        "### 시나리오 전략 — Bull/Base/Bear 3줄: 각각 [확률%] 트리거 → 결과. 확률 합=100. "
+        "각 시나리오가 이익(추정치)과 멀티플 중 무엇을 움직이는지 명시하고, "
+        "이전 대비 지켜볼 핵심 변수 1~2개로 마무리\n"
+        "매크로 유의: 재료에 금리·유동성 관측이 있으면 멀티플 지속성 판단에 반영해라 — "
+        "고멀티플(성장주 영역)일수록 할인율 변화에 민감하다\n"
         + LENS_PATTERN + "\n"
         + STYLE_RULES +
         'JSON만 출력: {"brief": "마크다운 브리프", "thesis_check": "사용자 논지와 새 증거가 '
