@@ -479,6 +479,24 @@ def init_db():
         close        INTEGER,
         PRIMARY KEY (stock_code, trade_date)
     );
+    -- 특징일 설명 캐시 — 급등락일 원인 (마커 클릭 시 1콜, 영구 캐시)
+    CREATE TABLE IF NOT EXISTS feature_day_notes (
+        stock_code TEXT NOT NULL,
+        date       TEXT NOT NULL,
+        note       TEXT,               -- NULL이면 status 참조 (no_docs 등)
+        status     TEXT NOT NULL,      -- ok | no_docs | failed
+        model      TEXT,
+        created_at TEXT,
+        PRIMARY KEY (stock_code, date)
+    );
+    -- 밸류체인 구조 (맵 v2) — 대분류별 단계·테마 (LLM 시드)
+    CREATE TABLE IF NOT EXISTS value_chains (
+        group_name  TEXT NOT NULL,
+        stage_idx   INTEGER NOT NULL,
+        stage_name  TEXT NOT NULL,
+        themes_json TEXT NOT NULL,     -- ["테마", ...]
+        PRIMARY KEY (group_name, stage_idx)
+    );
     -- 섹터 맵: KSIC 세분류(165) → 투자 언어 대분류 (LLM 1회 큐레이션 시드)
     CREATE TABLE IF NOT EXISTS sector_map (
         sector_name TEXT PRIMARY KEY,   -- entities(type='sector').name (KSIC)

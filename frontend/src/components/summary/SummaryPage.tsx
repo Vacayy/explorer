@@ -5,9 +5,11 @@ import { useKpi } from "@/hooks/useKpi"
 import { useIndexPerformance } from "@/hooks/useIndexPerformance"
 import { useWatchlist, useAddToWatchlist } from "@/hooks/useWatchlist"
 import { useQuote } from "@/hooks/useQuotes"
+import { useFeatureDays } from "@/hooks/useFeatureDays"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import CandlestickChart from "@/components/charts/CandlestickChart"
+import { FeatureDayPopup } from "@/components/summary/FeatureDayPopup"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -96,6 +98,13 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
 
   /* ── KPI strip values — 실시간 시세가 있으면 종가 대신 사용 ── */
   const live = useQuote(stockCode)
+  const { data: featureData } = useFeatureDays(stockCode)
+  const [openDay, setOpenDay] = useState<string | null>(null)
+  const markers = useMemo(() =>
+    (featureData?.days ?? []).map((d) => ({
+      time: d.date, direction: d.direction,
+      text: `${d.ret_pct >= 0 ? "+" : ""}${d.ret_pct}%`,
+    })), [featureData])
   const curPrice = live?.price ?? kpi?.close
   const priceChangePct = live?.change_pct ?? kpi?.price_change_pct
   const priceChangeStr = priceChangePct != null
@@ -188,7 +197,22 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
             {priceLoading ? (
               <Skeleton className="h-[300px] w-full rounded" />
             ) : candleData.length > 0 ? (
-              <CandlestickChart data={candleData} volumeData={volumeData} height={300} />
+              <>
+                <CandlestickChart data={candleData} volumeData={volumeData} height={300}
+                  markers={markers} onMarkerClick={(t) => {
+                    if ((featureData?.days ?? []).some((d) => d.date === t)) setOpenDay(t)
+                  }} />
+                {(featureData?.days?.length ?? 0) > 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    화살표 = 급등락·거래량 특징일 · 클릭하면 그날 무슨 일이 있었는지 조사합니다
+                  </p>
+                )}
+                {openDay && (
+                  <FeatureDayPopup stockCode={stockCode} day={openDay}
+                    meta={featureData?.days.find((d) => d.date === openDay)}
+                    onClose={() => setOpenDay(null)} />
+                )}
+              </>
             ) : (
               <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
                 주가 데이터가 없습니다
