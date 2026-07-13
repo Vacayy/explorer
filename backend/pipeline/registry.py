@@ -2,9 +2,11 @@
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.notes import NoteConnector
 from pipeline.connectors.telegram import TelegramConnector
+from pipeline.connectors.youtube import YouTubeConnector
 
 CONNECTORS = {
     "blog": BlogConnector,
     "telegram": TelegramConnector,
     "note": NoteConnector,
+    "youtube": YouTubeConnector,
 }

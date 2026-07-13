@@ -479,6 +479,15 @@ def init_db():
         close        INTEGER,
         PRIMARY KEY (stock_code, trade_date)
     );
+    -- 유튜브 구독 채널 (신규 영상 자막 자동 수집)
+    CREATE TABLE IF NOT EXISTS youtube_channels (
+        channel_id  TEXT PRIMARY KEY,   -- UC…
+        handle      TEXT,
+        title       TEXT,
+        is_active   INTEGER DEFAULT 1,
+        last_fetched_at TEXT,
+        added_at    TEXT DEFAULT (datetime('now'))
+    );
     -- 특징일 설명 캐시 — 급등락일 원인 (마커 클릭 시 1콜, 영구 캐시)
     CREATE TABLE IF NOT EXISTS feature_day_notes (
         stock_code TEXT NOT NULL,

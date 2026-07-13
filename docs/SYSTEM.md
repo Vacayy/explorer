@@ -137,7 +137,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/digests` | 종목 1D/7D 요약 아카이브 |
 | `GET·POST·DELETE /api/spine/follows` | 엔티티 팔로우 |
 | `GET·POST·DELETE /api/spine/keywords` | 매칭 키워드 (등록 시 소급 링크) |
-| `POST /api/spine/sources/telegram·blog` | 소스 등록 (실검증→저장→백그라운드 첫 수집) |
+| `POST /api/spine/sources/telegram·blog·youtube` | 소스 등록 (실검증→저장→백그라운드 첫 수집). youtube=영상 링크 단건 또는 채널 @handle/URL 구독 |
 
 기존 라우터(companies·financials·disclosures·stock_prices·watchlist·screener 등 17종)는 종목 디테일·리서치노트·스크리너가 계속 사용.
 

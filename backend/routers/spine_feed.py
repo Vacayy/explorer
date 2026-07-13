@@ -32,6 +32,8 @@ def resolve_channels(conn, rows) -> dict[int, dict | None]:
             if not hit:  # RSS 직등록 소스(뉴스·뉴스레터) — 도메인 fallback
                 hit = next(((prefix, name) for prefix, name in blogs if url_belongs(url, prefix)), None)
             out[r["id"]] = {"name": hit[1], "kind": "blog", "key": hit[0]} if hit else None
+        elif st == "youtube":
+            out[r["id"]] = {"name": "YouTube", "kind": None, "key": None}
         elif st == "note":
             out[r["id"]] = {"name": "내 노트", "kind": None, "key": None}
         else:
@@ -42,7 +44,7 @@ def resolve_channels(conn, rows) -> dict[int, dict | None]:
 @router.get("", response_model=FeedResponse)
 def get_feed(
     q: str | None = Query(None, description="하이브리드 검색어 (BM25+벡터 RRF)"),
-    source: str | None = Query(None, description="blog | telegram | note"),
+    source: str | None = Query(None, description="telegram | blog | news | article | people | note"),
     stock: str | None = Query(None, description="종목코드 (entities.aliases)"),
     industry: str | None = Query(None),
     topic: str | None = Query(None),
@@ -68,7 +70,32 @@ def get_feed(
         where.append(f"rd.id IN ({ph})")
         params.extend(rank_order)
 
-    if source:
+    if source in ("blog", "news", "article"):
+        # blog_sources를 카테고리로 분류해 해당 소스의 문서만 — RSS는 도메인, 개인블로그는 프리픽스 매칭
+        from pipeline.urls import blog_category, norm_domain
+        conds, cargs = [], []
+        for r in conn.execute("SELECT url, platform FROM blog_sources"):
+            if blog_category(r["url"], r["platform"]) != source:
+                continue
+            if r["platform"] == "rss":
+                conds.append("rd.url LIKE '%//%' || ? || '%'")
+                cargs.append(norm_domain(r["url"]))
+            else:
+                conds.append("rd.url LIKE ? || '%'")
+                cargs.append(r["url"])
+        if not conds:
+            conn.close()
+            return FeedResponse(items=[], total=0, page=page, size=size,
+                                as_of=datetime.now(timezone.utc).isoformat())
+        where.append("rd.source_type = 'blog' AND (" + " OR ".join(conds) + ")")
+        params.extend(cargs)
+    elif source == "people":
+        # 팔로우한 인물이 언급된 문서
+        where.append("""rd.id IN (
+            SELECT el.doc_id FROM entity_links el
+            JOIN follows f ON f.entity_id = el.entity_id
+            WHERE el.link_type = 'person')""")
+    elif source:
         where.append("rd.source_type = ?")
         params.append(source)
 
