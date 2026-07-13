@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom"
-import ReactMarkdown from "react-markdown"
+import { Markdown } from "@/components/shared/Markdown"
 import { Lightbulb, Loader2, MonitorPlay, Rss, Send } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { sourceDossierQuery, sourceSummaryQuery } from "@/api/spine"
@@ -162,9 +162,7 @@ function ProfileCard({ data, fresh, pending, failed }: {
                 <p className="text-xs"><span className="font-semibold text-hypothesis">지난 프로필 이후</span> {s.insights}</p>
               </div>
             )}
-            <div className={`prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5 ${pending ? "opacity-60" : ""}`}>
-              <ReactMarkdown>{s.digest}</ReactMarkdown>
-            </div>
+            <Markdown className={pending ? "opacity-60" : ""}>{s.digest}</Markdown>
             <div className="text-right">
               <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
                 AI 프로필 · 열람 시점 갱신
