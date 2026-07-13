@@ -452,6 +452,22 @@ def init_db():
         name        TEXT PRIMARY KEY,
         last_run_at TEXT NOT NULL
     );
+    -- 컨센서스 이력 (분해 v2 기반) — 투자자는 forward를 산다: Fwd EPS 추정치의
+    -- 시계열이 쌓여야 revision(추정치 변화)과 리레이팅(멀티플 변화)을 가를 수 있다
+    CREATE TABLE IF NOT EXISTS consensus_estimates (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        stock_code   TEXT NOT NULL,
+        fetched_date TEXT NOT NULL,               -- 수집일 (일 1회)
+        fiscal_year  TEXT NOT NULL,               -- 추정 회계연도 (예: '202612')
+        fwd_eps      REAL,
+        fwd_per      REAL,
+        fwd_op       REAL,                        -- 영업이익 추정 (억원)
+        fwd_revenue  REAL,
+        fwd_roe      REAL,
+        source       TEXT DEFAULT 'naver',
+        UNIQUE(stock_code, fetched_date, fiscal_year)
+    );
+    CREATE INDEX IF NOT EXISTS idx_consensus_stock ON consensus_estimates(stock_code, fiscal_year, fetched_date);
     -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
     CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,

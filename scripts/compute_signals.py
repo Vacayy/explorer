@@ -67,6 +67,16 @@ def main():
         from pipeline.falsifiers import watch_falsifiers
         print("[falsifiers]", watch_falsifiers())
 
+    # 컨센서스 일일 스냅샷 — Fwd EPS 이력 축적 (분해 v2 기반, 30분 체인 편승 일 1회)
+    from pipeline.consensus_history import collect_snapshots, mark_ran
+    from pipeline.consensus_history import ran_today as consensus_ran
+    conn = get_connection()
+    c_todo = not consensus_ran(conn)
+    if c_todo:
+        print("[consensus]", collect_snapshots())
+        mark_ran(conn)
+    conn.close()
+
     # K0 주간 승격 catch-up — 일요일 07:00 cron을 놓쳤으면(PC 꺼짐) 여기서 수행
     from pipeline.consolidation import promote_batch, promote_due
     conn = get_connection()
