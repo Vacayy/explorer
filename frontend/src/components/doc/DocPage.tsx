@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
+import ReactMarkdown from "react-markdown"
 import { ArrowLeft, ExternalLink } from "lucide-react"
 import api, { API_BASE } from "@/api/client"
 import { Card, CardContent } from "@/components/ui/card"
@@ -104,11 +105,17 @@ export default function DocPage() {
         </div>
       )}
 
-      {/* 본문 (수집 raw content) */}
+      {/* 본문 — 유튜브는 opus 정리본(markdown), 그 외는 raw content */}
       <Card>
         <CardContent className="py-4">
           {doc.content?.trim() ? (
-            <div className="text-sm whitespace-pre-wrap leading-relaxed">{doc.content}</div>
+            doc.source_type === "youtube" ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1.5 [&_li]:my-0.5 [&_p]:my-1.5">
+                <ReactMarkdown>{doc.content}</ReactMarkdown>
+              </div>
+            ) : (
+              <div className="text-sm whitespace-pre-wrap leading-relaxed">{doc.content}</div>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">
               텍스트 본문이 없는 문서입니다{doc.images.length > 0 ? " (이미지 참조)" : ""}.
