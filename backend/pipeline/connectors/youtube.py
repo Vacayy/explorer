@@ -66,18 +66,23 @@ def parse_video_id(url_or_id: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _channel_title(cid: str) -> str:
+    """RSS feed title이 정확한 채널명 — 페이지 파싱은 네비 '홈' 등을 오인함."""
+    try:
+        f = feedparser.parse(requests.get(_RSS.format(cid=cid), headers=_UA, timeout=15).content)
+        return f.feed.get("title", "") or cid
+    except Exception:
+        return cid
+
+
 def resolve_channel_id(url_or_handle: str) -> tuple[str, str] | None:
-    """@handle·채널 URL → (channel_id, title). channel/UC… 직접이면 페이지 없이."""
+    """@handle·채널 URL → (channel_id, title). title은 항상 RSS 기준."""
     s = (url_or_handle or "").strip()
     m = re.search(r"(UC[A-Za-z0-9_-]{22})", s)
     if m:
         cid = m.group(1)
-        try:
-            f = feedparser.parse(requests.get(_RSS.format(cid=cid), headers=_UA, timeout=15).content)
-            return cid, f.feed.get("title", cid)
-        except Exception:
-            return cid, cid
-    # @handle 또는 핸들 URL — 페이지에서 canonical channelId 추출
+        return cid, _channel_title(cid)
+    # @handle 또는 핸들 URL — 페이지에서 canonical channelId 추출 (title은 RSS로)
     handle = s
     if "youtube.com" not in s and not s.startswith("@"):
         handle = "@" + s
@@ -89,8 +94,7 @@ def resolve_channel_id(url_or_handle: str) -> tuple[str, str] | None:
             m = re.search(r"channel/(UC[A-Za-z0-9_-]{22})", html)
         if m:
             cid = m.group(1)
-            tm = re.search(r'"title"\s*:\s*"([^"]{1,80})"', html)
-            return cid, (tm.group(1) if tm else cid)
+            return cid, _channel_title(cid)
     except Exception:
         pass
     return None
@@ -157,7 +161,8 @@ class YouTubeConnector:
         conn = get_connection()
         channels = conn.execute(
             "SELECT channel_id, title FROM youtube_channels WHERE is_active=1").fetchall()
-        seen = {r["source_id"] for r in conn.execute(
+        # seen은 video_id 기준 (source_id는 channel/vid 또는 vid 혼재)
+        seen = {r["source_id"].split("/")[-1] for r in conn.execute(
             "SELECT source_id FROM raw_documents WHERE source_type='youtube'")}
         conn.close()
         refs: list[SourceRef] = []
@@ -174,7 +179,7 @@ class YouTubeConnector:
                     continue
                 refs.append(SourceRef(key=vid, meta={
                     "title": e.get("title", ""), "published": e.get("published", ""),
-                    "channel": ch["title"]}))
+                    "channel_id": ch["channel_id"], "channel": ch["title"]}))
                 new += 1
                 if new >= MAX_NEW_PER_CHANNEL:
                     break
@@ -191,9 +196,12 @@ class YouTubeConnector:
         digest = digest_transcript(title, transcript)
         body = f"{digest}\n\n---\n*원본 자막 {len(transcript):,}자 → opus 정리본. 원문: 유튜브 링크*" \
             if digest else transcript
+        # 구독 채널 경유면 source_id에 채널 프리픽스 — 도시에가 channel/vid로 매칭
+        cid = ref.meta.get("channel_id")
+        source_id = f"{cid}/{vid}" if cid else vid
         return [RawDoc(
             source_type="youtube",
-            source_id=vid,
+            source_id=source_id,
             title=title,
             url=f"https://www.youtube.com/watch?v={vid}",
             published_at=published,
