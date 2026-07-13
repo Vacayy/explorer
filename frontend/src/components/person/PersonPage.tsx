@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom"
-import ReactMarkdown from "react-markdown"
+import { Markdown } from "@/components/shared/Markdown"
 import { BellPlus, BellOff, Lightbulb, Loader2, User } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -135,9 +135,7 @@ export default function PersonPage() {
               )}
               {p?.digest && (
                 <Expandable collapsedHeight={280}>
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5">
-                    <ReactMarkdown>{p.digest}</ReactMarkdown>
-                  </div>
+                  <Markdown>{p.digest}</Markdown>
                 </Expandable>
               )}
               {p?.digest && (

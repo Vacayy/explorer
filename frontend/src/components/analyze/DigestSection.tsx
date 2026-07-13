@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import ReactMarkdown from "react-markdown"
+import { Markdown } from "@/components/shared/Markdown"
 import { ChevronDown, Lightbulb } from "lucide-react"
 import api from "@/api/client"
 import { Badge } from "@/components/ui/badge"
@@ -45,7 +45,7 @@ function DigestCard({ stockCode, period, title }: { stockCode: string; period: "
   const archive = items.slice(1)
 
   return (
-    <Card className="border-l-2 border-l-hypothesis flex flex-col">
+    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] flex flex-col">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">
         <CardTitle className="text-sm">{title}</CardTitle>
         {latest && (
@@ -68,9 +68,7 @@ function DigestCard({ stockCode, period, title }: { stockCode: string; period: "
               </div>
             )}
             <Expandable collapsedHeight={180}>
-              <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_h3]:text-[13px] [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:my-1.5">
-                <ReactMarkdown>{latest.digest ?? ""}</ReactMarkdown>
-              </div>
+              <Markdown>{latest.digest ?? ""}</Markdown>
             </Expandable>
             <div className="text-right">
               <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
@@ -92,9 +90,7 @@ function DigestCard({ stockCode, period, title }: { stockCode: string; period: "
                           {d.period_start} · 문서 {d.doc_count ?? "-"}건
                         </div>
                         {d.insights && <p className="text-[11px] text-hypothesis mb-1">💡 {d.insights}</p>}
-                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs [&_p]:my-1">
-                          <ReactMarkdown>{d.digest ?? ""}</ReactMarkdown>
-                        </div>
+                        <Markdown className="text-xs">{d.digest ?? ""}</Markdown>
                       </div>
                     ))}
                   </div>

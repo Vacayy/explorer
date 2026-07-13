@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import ReactMarkdown from "react-markdown"
+import { Markdown } from "@/components/shared/Markdown"
 import { AlertTriangle, MessageCircleQuestion, Plus, Send, Sparkles } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { askQuestion, conversationsQuery, conversationDetailQuery, spineKeys } from "@/api/spine"
@@ -217,9 +217,7 @@ function AssistantMessage({ content, citations, gaps, model }: {
   return (
     <div className="max-w-[85%] space-y-1.5">
       <div className="rounded-2xl rounded-bl-sm bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] px-3.5 py-2.5">
-        <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
-          <ReactMarkdown>{content}</ReactMarkdown>
-        </div>
+        <Markdown>{content}</Markdown>
         {model && (
           <div className="text-right pt-1">
             <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
