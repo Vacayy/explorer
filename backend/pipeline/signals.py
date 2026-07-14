@@ -295,6 +295,84 @@ def compute_volume_spike() -> list[dict]:
     return signals
 
 
+# 문서 유형 메타 라벨 — '화두'가 아니라 모든 투자 문서에 붙는 카테고리, 주제 신호에서 제외
+THEME_STOPWORDS = {
+    "산업동향", "수급", "실적분석", "밸류에이션", "매크로", "시장동향", "시장분석",
+    "투자전략", "투자심리", "투자철학", "시황", "기업분석", "종목분석", "차트분석",
+    "IPO/이벤트", "이벤트", "공시", "뉴스", "리서치",
+}
+THEME_MIN_RECENT = 6       # 최근 7일 최소 언급
+THEME_MIN_BASE_DOCS = 3    # 주제 신규성 판정용 (직전 언급 이만큼 미만이면 '신규 부상')
+THEME_LIMIT = 12
+
+
+def compute_theme_surge() -> list[dict]:
+    """주목 주제 — 똑똑한 소스들이 '유독 지금' 몰리는 화두 (mention_surge의 테마판).
+
+    전체 유입 증가에 강건하도록 절대 배수가 아닌 '점유율(share) 상승'으로:
+    전체 문서 중 이 주제의 비중이 최근에 늘었나. 문서 유형 메타 라벨은 제외.
+    요약(왜 화두인지)은 interpret_pending이 근거 문서로 채운다. LLM 0(감지).
+    """
+    conn = get_connection()
+    tot = conn.execute("""
+        SELECT SUM(published_at >= datetime('now','-7 days')) r,
+               SUM(published_at >= datetime('now','-14 days') AND published_at < datetime('now','-7 days')) b
+        FROM raw_documents WHERE published_at >= datetime('now','-14 days')""").fetchone()
+    tot_r, tot_b = (tot["r"] or 1), (tot["b"] or 1)
+
+    rows = conn.execute("""
+        SELECT e.id, e.name, e.type,
+          SUM(rd.published_at >= datetime('now','-7 days')) recent,
+          SUM(rd.published_at >= datetime('now','-14 days') AND rd.published_at < datetime('now','-7 days')) base
+        FROM entity_links el
+        JOIN entities e ON e.id=el.entity_id AND e.type IN ('sector','theme')
+        JOIN raw_documents rd ON rd.id=el.doc_id
+        WHERE el.link_type IN ('industry','topic') AND rd.published_at >= datetime('now','-14 days')
+        GROUP BY e.id HAVING recent >= ?""", (THEME_MIN_RECENT,)).fetchall()
+
+    cands = []
+    for r in rows:
+        if r["name"] in THEME_STOPWORDS:
+            continue
+        share_r = r["recent"] / tot_r
+        share_b = (r["base"] or 0) / tot_b
+        delta = share_r - share_b          # 점유율 상승폭 (전체 유입 증가에 강건)
+        if delta <= 0:
+            continue
+        cands.append((delta, r, share_r, share_b))
+    cands.sort(key=lambda x: -x[0])
+    cands = cands[:THEME_LIMIT]
+
+    signals = []
+    today = datetime.now(timezone.utc).date().isoformat()
+    for delta, r, share_r, share_b in cands:
+        docs = conn.execute("""
+            SELECT rd.id, rd.title FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id
+            WHERE el.entity_id=? AND el.link_type IN ('industry','topic')
+              AND rd.published_at >= datetime('now','-7 days')
+            ORDER BY rd.published_at DESC LIMIT 6""", (r["id"],)).fetchall()
+        signals.append({
+            "entity_id": r["id"], "name": r["name"], "date": today,
+            "payload": {
+                "recent": r["recent"], "base": r["base"] or 0,
+                "share_pct": round(share_r * 100, 1),
+                "share_delta_pp": round((share_r - share_b) * 100, 1),
+                "is_new": (r["base"] or 0) < THEME_MIN_BASE_DOCS,
+                "docs": [{"id": d["id"], "title": d["title"]} for d in docs],
+            },
+        })
+    for s in signals:
+        conn.execute("""
+            INSERT INTO signals (signal_type, entity_id, date, payload_json)
+            VALUES ('theme_surge', ?, ?, ?)
+            ON CONFLICT(signal_type, entity_id, date)
+            DO UPDATE SET payload_json = excluded.payload_json
+        """, (s["entity_id"], s["date"], json.dumps(s["payload"], ensure_ascii=False)))
+    conn.commit()
+    conn.close()
+    return signals
+
+
 QUAD_RETURN_DOWN = -10.0   # 3개월 수익률 '부진' 임계 (%)
 QUAD_RETURN_UP = 30.0      # 3개월 수익률 '선반영 급등' 임계 (%)
 QUAD_MIN_DOCS = 5          # 감성 방향 판정 최소 문서 수 (30일)
@@ -432,13 +510,34 @@ def interpret_pending(limit: int = 10) -> dict:
         SELECT s.id, s.signal_type, s.payload_json, e.name, e.id entity_id
         FROM signals s JOIN entities e ON s.entity_id = e.id
         WHERE s.interpretation IS NULL
-        ORDER BY s.date DESC LIMIT ?
+        ORDER BY (s.signal_type='theme_surge') DESC,
+                 (s.signal_type IN ('consensus_extreme','volume_spike')) DESC,
+                 s.date DESC LIMIT ?
     """, (limit,)).fetchall()
 
     done = skipped = 0
     for r in todo:
         import json as _json
         p = _json.loads(r["payload_json"] or "{}")
+        if r["signal_type"] == "theme_surge":
+            titles = [d["title"] for d in (p.get("docs") or [])]
+            if not titles:
+                skipped += 1
+                continue
+            ctx = "\n".join(f"- {t}" for t in titles)
+            prompt = (
+                f"'{r['name']}' 주제가 최근 여러 소스에서 주목이 급증했다"
+                f"(전체 문서 중 비중 {p.get('share_pct')}%). 아래 최근 문서 제목들을 근거로, "
+                "지금 이 주제에서 무슨 이야기가 오가고 왜 화두가 됐는지 1~2문장으로 요약해라. "
+                "한국어 평서체, 추측 금지, 문서에 없는 내용 금지. 문장만 출력.\n" + ctx)
+            try:
+                text = _call_claude_code(prompt).strip()[:250]
+                conn.execute("UPDATE signals SET interpretation=?, interpretation_model='claude-code/haiku' WHERE id=?",
+                             (text, r["id"]))
+                conn.commit(); done += 1
+            except Exception:
+                skipped += 1
+            continue
         if r["signal_type"] == "mention_surge":
             titles = [d["title"] for d in (p.get("docs") or [])]
             context = "\n".join(f"- {t}" for t in titles)

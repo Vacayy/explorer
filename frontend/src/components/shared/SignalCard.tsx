@@ -14,6 +14,7 @@ const SIGNAL_LABEL: Record<string, string> = {
   consensus_extreme: "컨센서스 극단",
   volume_spike: "거래량 급증",
   quadrant_gap: "가격-관측 괴리",
+  theme_surge: "주목 주제",
 }
 
 /**
@@ -61,6 +62,17 @@ export function SignalCard({ signal: s, onKeywordClick }: {
             {p.market_cap != null ? `${(p.market_cap / 1e12).toFixed(2)}조` : "-"} [{p.market}]
             <br />저평가·흑자인데 최근 {p.window_days ?? 30}일 언급 0 — 주목의 부재가 신호
           </p>
+        )}
+        {s.signal_type === "theme_surge" && (
+          <div className="text-sm">
+            최근 7일 <span className="font-bold text-base">{p.recent}건</span> 언급 ·
+            전체 문서의 <span className="font-semibold">{p.share_pct}%</span>
+            <span className="text-up text-xs"> (+{p.share_delta_pp}%p)</span>
+            {p.is_new && <Badge variant="outline" className="ml-1.5 text-[9px] text-up border-up/40">신규 부상</Badge>}
+            <span className="block text-xs text-muted-foreground mt-0.5">
+              여러 소스가 유독 지금 이 주제로 몰리고 있다
+            </span>
+          </div>
         )}
         {s.signal_type === "quadrant_gap" && (
           <p className="text-xs text-muted-foreground">
