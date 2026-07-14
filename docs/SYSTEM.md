@@ -111,7 +111,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `lenses` | 분석 렌즈 — docs/references 사고틀(주가 패턴 5축·산업 수요→병목→주가) 압축, RAG·브리프 프롬프트 주입 |
 | `consensus_history` | Fwd EPS·PER·목표주가 일일 스냅샷(네이버 모바일 API, 워치리스트) → consensus_estimates 이력. 축적 후: 분해 v2(revision vs 리레이팅)·quadrant_gap 펀더 축 교체·추정치 반전 신호 |
 | `flows` | 수급 이력 — 외인·기관·개인 순매수 30일(네이버 trend API, pykrx는 KRX 로그인 벽) → investor_flows. 브리프 [수급] 재료 |
-| `scenario` | 사건 시나리오 엔진 — 대화 "시나리오: <사건>" → 파급 체인(단계별 메커니즘·근거 인용/일반지식 구분·확률)+영향 지도+감시 조건+반대 시나리오(ACH). sonnet |
+| `scenario` | 사건 시나리오 엔진 — 대화 "시나리오: <사건>" → 파급 체인(단계별 메커니즘·근거 인용/일반지식 구분·확률)+영향 지도+감시 조건+반대 시나리오(ACH). opus |
+| `narrative` | 주제 내러티브(theme_surge 고도화) — 주목 주제를 질문형 서사로: 제목·3줄요약·전개 타임라인·인과 구조·시나리오(긍/부정 확률)·종합 해석. 게으른 opus md, hash 가드(source_digests kind='narrative'). /narrative?topic= |
 | `technicals` | 기술적 위치(LLM 0) — RSI14·이평선 갭(20/60/120)·52주 고점 대비·1/3개월 수익률 + trailing PER 역사 밴드(연간 EPS×주가 범위, 평균회귀 준거). 브리프 재료 |
 | `sector_rs` | 산업/섹터 맵(LLM 0) — 대분류 18(sector_map: KSIC 165→LLM 시드)별 장기(11M)·단기(1M) RS 백분위(최신 시총가중 — 과거 행 mcap 부재), 5일 흐름, 1~3주 궤적. /map 4사분면. value_chains(opus 시드 단계·테마)로 밸류체인 뷰 |
 | `feature_days` | 종목 특징일(LLM 0 감지) — |등락|3.5%+ 또는 거래량 4배+, 상위 24일. 마커 클릭 시 게으른 haiku 1콜로 그날 원인 조사(±1일 문서, feature_day_notes 캐시) |

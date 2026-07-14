@@ -118,7 +118,7 @@ function ThemeSurgeSummary({ onOpen }: { onOpen: () => void }) {
     key: String(s.id),
     rank: i + 1,
     name: s.entity_name,
-    link: `/feed?topic=${encodeURIComponent(s.entity_name)}`,
+    link: `/narrative?topic=${encodeURIComponent(s.entity_name)}`,
     metric: `비중 ${s.payload.share_pct ?? "-"}%`,
     sub: `${s.payload.recent ?? 0}건`,
     badge: s.payload.is_new ? "신규" : (s.payload.share_delta_pp ? `+${s.payload.share_delta_pp}%p` : undefined),
