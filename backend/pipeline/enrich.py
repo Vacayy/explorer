@@ -109,10 +109,28 @@ def _person_vocab() -> list[str]:
         return []
 
 
+def _foreign_company_vocab() -> list[str]:
+    """종목코드 없는 기업(해외·비상장) 정본 표기 — 재파편화 방지(메타/Meta 분리 차단).
+    빈도순 상위 40. 시딩·병합으로 확립된 정본을 haiku가 그대로 쓰게."""
+    try:
+        from database import get_connection
+        conn = get_connection()
+        names = [r["name"] for r in conn.execute("""
+            SELECT e.name, count(el.doc_id) c FROM entities e
+            LEFT JOIN entity_links el ON el.entity_id = e.id
+            WHERE e.type='company' AND e.aliases IS NULL AND e.status IS NOT 'merged'
+            GROUP BY e.id ORDER BY c DESC LIMIT 40""")]
+        conn.close()
+        return names
+    except Exception:
+        return []
+
+
 def _build_prompt(title: str, markdown: str) -> str:
     doc = f"{title}\n{(markdown or '')[:MAX_DOC_CHARS]}"
     inds, tops = _live_vocab()
     persons = _person_vocab()
+    companies = _foreign_company_vocab()
     return (
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
         '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문 표기", "listed": "KR|해외|비상장"}], '
@@ -126,6 +144,8 @@ def _build_prompt(title: str, markdown: str) -> str:
         "비상장 주요 기업(오픈AI, 앤트로픽, xAI, 데이터브릭스, Figure AI, Cognition, Harvey 등 "
         "AI 모델·소프트웨어·로보틱스)도 논의 대상이면 stocks에 listed=비상장으로 포함 — "
         "상장 여부와 무관하게 투자 세계관의 핵심 주체다.\n"
+        "- **해외/비상장 기업은 아래 '기존 기업 표기'에 있으면 반드시 그 표기를 그대로 써라** "
+        "(Meta→메타, Nvidia→엔비디아 식으로 통일 — 같은 회사가 한/영으로 쪼개지면 안 된다).\n"
         "- industries/topics: 넓은 영역과 세부 주제를 함께 라벨링 — 세부가 더 가치 있다 "
         "(예: Web3 문서면 'Web3'와 함께 '스테이블코인'/'RWA'/'STO' 등 구체 주제도). "
         "아래 기존 라벨과 같거나 유사한 개념이면 반드시 기존 라벨을 그대로 사용, "
@@ -135,6 +155,7 @@ def _build_prompt(title: str, markdown: str) -> str:
         "- people: 문서가 실질적으로 다루는 실존 인물(기업가·투자자·정책결정자·석학)만, "
         "통용 한국어 표기로 정규화 (Sam Altman=샘 알트먼, 최태원 회장=최태원). 스쳐가는 이름 제외.\n"
         f"- 기존 인물 표기 (있으면 그대로 사용): {', '.join(persons) if persons else '(아직 없음)'}\n"
+        f"- 기존 기업 표기 (해외/비상장, 있으면 그대로 사용): {', '.join(companies) if companies else '(아직 없음)'}\n"
         f"- 기존 산업 라벨: {', '.join(inds)}\n"
         f"- 기존 토픽 라벨: {', '.join(tops)}\n"
         f"문서:\n{doc}"

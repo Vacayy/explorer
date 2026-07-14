@@ -24,6 +24,7 @@ import DocPage from "@/components/doc/DocPage"
 import SourcePage from "@/components/source/SourcePage"
 import PersonPage from "@/components/person/PersonPage"
 import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
+import CompanyPage from "@/components/company/CompanyPage"
 import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import SectorMapPage from "@/components/map/SectorMapPage"
 import ArchivePage from "@/components/archive/ArchivePage"
@@ -183,6 +184,7 @@ export default function App() {
             <Route path="doc/:docId" element={<DocPage />} />
             <Route path="source" element={<SourcePage />} />
             <Route path="person" element={<PersonPage />} />
+            <Route path="company" element={<CompanyPage />} />
             <Route path="feed/telegram" element={<Navigate to="/feed?source=telegram" replace />} />
             <Route path="feed/blogs" element={<Navigate to="/feed?source=blog" replace />} />
 

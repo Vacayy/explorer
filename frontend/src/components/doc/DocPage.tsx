@@ -36,6 +36,7 @@ export default function DocPage() {
 
   const onChipFilter = (tag: EntityTag) => {
     if (tag.link_type === "stock" && tag.aliases) navigate(`/analyze/${tag.aliases}/summary`)
+    else if (tag.link_type === "stock") navigate(`/company?name=${encodeURIComponent(tag.name)}`)  // 해외/비상장
     else if (tag.link_type === "industry") navigate(`/feed?industry=${encodeURIComponent(tag.name)}`)
     else if (tag.link_type === "topic") navigate(`/feed?topic=${encodeURIComponent(tag.name)}`)
     else if (tag.link_type === "person") navigate(`/person?name=${encodeURIComponent(tag.name)}`)
@@ -54,7 +55,7 @@ export default function DocPage() {
             <Link
               to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
               className="text-[11px] text-muted-foreground font-medium hover:text-primary hover:underline"
-              title="소스 도시에 — 이 채널의 관점 프로필"
+              title="채널 프로필 — 이 채널의 관점·이력"
             >
               {doc.channel}
             </Link>
