@@ -170,9 +170,10 @@ def _enrich_and_store(conn, doc_id: int, title: str, md: str, h: str) -> dict:
     conn.execute("DELETE FROM enrichments WHERE doc_id=?", (doc_id,))
     conn.execute("DELETE FROM entity_links WHERE doc_id=?", (doc_id,))
     conn.execute(
-        "INSERT INTO enrichments (doc_id, summary, sentiment, model, content_hash) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO enrichments (doc_id, summary, sentiment, time_orientation, "
+        "reference_period, model, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (doc_id, result.get("summary"), result.get("sentiment"),
+         result.get("time_orientation"), result.get("reference_period"),
          result.get("model", "keyword"), h),
     )
     _link(conn, doc_id, title, md, result)

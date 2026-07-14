@@ -684,6 +684,9 @@ def init_db():
         "ALTER TABLE consensus_estimates ADD COLUMN target_price REAL",  # 목표주가 평균 (integration API)
         "ALTER TABLE consensus_estimates ADD COLUMN opinion REAL",       # 투자의견 평균 (5점 척도)
         "ALTER TABLE stock_briefs ADD COLUMN revision_call TEXT",  # 추정치 방향 콜 JSON {direction, rationale}
+        # 시간 정박(D-021): 발행일≠사건 발생일. 글이 가리키는 시간 방향·시기 분리
+        "ALTER TABLE enrichments ADD COLUMN time_orientation TEXT",  # past|current|forward|mixed
+        "ALTER TABLE enrichments ADD COLUMN reference_period TEXT",  # 발행일과 다른 실제 대상 시기 (예: '2026 2분기', '2027 전망')
     ]:
         try:
             conn.execute(migration)

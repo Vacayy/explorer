@@ -10,6 +10,16 @@
 
 ---
 
+## D-021 · 2026-07-14 · 시간 정박 — 발행일 ≠ 사건 발생일
+
+**결정**: 문서의 `published_at`(수집·작성 시각)을 사건 발생 시각처럼 쓰던 것을 바로잡는다. enrich 태깅 haiku 콜에 **같은 호출로** `time_orientation`(past/current/forward/mixed)과 `reference_period`(발행일과 다른 실제 대상 시기, 예 '2027 전망')를 추가 추출 → enrichments 2컬럼. 이를 (1) 내러티브 — '전개' 섹션을 '무엇이 회자되고 있나'로 개칭, 수집일이 사건일이 아님을 명시하고 회고/현재/전망을 구분, (2) 다이제스트 — 문서별 [현재]/[전망]/[회고] 태그로 "전망을 방금 벌어진 사건으로 단정 말라", (3) mention_surge — 급증의 시간 방향 구성(orient_mix·orient_driver)을 실어 '전망 위주 급증'과 '실제 사건 급증'을 구분, 에 반영. 기존분은 scripts/backfill_temporal.py(title+요약만 쓰는 경량 haiku, 최신순)로 백필.
+
+**맥락·이유**: "3일에 A를 수집" → "3일에 A가 발생"으로 처리되어, 실제로는 몇 달·미래에 걸친 이슈가 수집 기간(며칠)에 압축돼 '급격한 전개'처럼 보이는 착시가 시스템 전반에 있었다(예: Web3 내러티브가 8일 만의 급전개로 오독). 월드모델의 시간 감각은 토대라 미룰 수 없다. 비용은 사실상 0 — 태깅 콜에 필드 2개 추가일 뿐.
+
+**기각한 대안**: ① 내러티브 프롬프트만 고쳐 opus가 본문에서 시간 추론(스키마 무변경) — 즉효지만 신호·다이제스트엔 무력, 매 생성마다 재추론 낭비 ② 정밀 event_date 파서(정규화된 날짜) — haiku가 다양한 문서에서 정확한 날짜를 뽑기엔 취약, orientation+coarse period가 비용 대비 실익의 균형점.
+
+**참조**: enrich.py(classify_temporal), store.py, database.py(enrichments +2), narrative.py, digests.py, signals.py(mention_surge), scripts/backfill_temporal.py
+
 ## D-020 · 2026-07-14 · RS 활용 = 승인 게이트형 리서치 제안 (항상-켜짐 4분면 기각)
 
 **결정**: 산업 맵의 RS 지표를 펀더멘탈과 결합하는 방식으로, **전 종목 RS×펀더멘탈 4분면을 매일 opus로 돌리지 않고**, 값싼 감지로 후보를 골라 **제안 → 사용자 승인 시에만 opus 리서치**를 실행. 감지(LLM 0) = 관심 유입(단기 RS≥70 & 1주 대비 +8pp↑) ∩ 규모(시총 5000억+) ∩ 화두(theme_surge 테마와 초점 문서 공동언급). 승인 = stock_brief(opus) 실행 → 추정치 방향 콜(up/down/hold) 기록. 표면: 신호 탭 '리서치 제안' 섹션(ApprovalsCard와 동일한 기계 제안→사람 결정 패턴).

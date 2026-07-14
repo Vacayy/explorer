@@ -36,6 +36,35 @@ def llm_available() -> bool:
     return llm_engine() is not None
 
 
+def classify_temporal(title: str, summary: str) -> dict:
+    """시간 방향만 값싸게 분류 (백필용) — 전체 재태깅 없이 title+요약으로.
+
+    반환: {time_orientation, reference_period}. 실패/미가용 시 빈 값.
+    """
+    if not llm_available():
+        return {"time_orientation": None, "reference_period": None}
+    prompt = (
+        "다음 한국 투자 문서의 제목+요약을 읽고 '내용이 가리키는 시간'만 분류해 JSON만 출력.\n"
+        '{"time_orientation": "past|current|forward|mixed", "reference_period": "실제 대상 시기 또는 null"}\n'
+        "- past=이미 벌어진 일 회고, current=지금 상태·방금 사건, forward=미래 전망, mixed=과거+전망.\n"
+        "- **글 작성일이 아니라 다루는 내용의 시점 기준.** reference_period: 발행 시점과 다른 특정 "
+        "시기 대상이면 짧게(예: '2027 전망'), 아니면 null.\n"
+        f"제목: {title}\n요약: {(summary or '')[:600]}"
+    )
+    try:
+        engine = llm_engine()
+        raw = _call_claude_code(prompt) if engine == "claude-code" else _call_api(prompt)
+        data = _parse_json(raw)
+    except Exception:
+        return {"time_orientation": None, "reference_period": None}
+    orient = str(data.get("time_orientation") or "").strip().lower()
+    ref = str(data.get("reference_period") or "").strip()
+    return {
+        "time_orientation": orient if orient in ("past", "current", "forward", "mixed") else None,
+        "reference_period": ref[:60] if ref and ref.lower() not in ("null", "none", "") else None,
+    }
+
+
 def enrich(title: str, markdown: str) -> dict:
     if llm_available():
         try:
@@ -135,8 +164,15 @@ def _build_prompt(title: str, markdown: str) -> str:
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
         '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문 표기", "listed": "KR|해외|비상장"}], '
         '"industries": [], "topics": [], "label_parents": {"신규라벨": "상위라벨"}, "people": [], '
-        '"summary": "핵심 2문장", "sentiment": "positive|neutral|negative"}\n'
+        '"summary": "핵심 2문장", "sentiment": "positive|neutral|negative", '
+        '"time_orientation": "past|current|forward|mixed", "reference_period": "실제 대상 시기 또는 null"}\n'
         "규칙:\n"
+        "- time_orientation: 이 글의 '내용'이 시간상 어디를 가리키나 — past(이미 벌어진 일 회고), "
+        "current(지금 상태·방금 일어난 사건), forward(미래 전망·예상), mixed(과거 짚고 전망까지). "
+        "**중요: 글이 작성된 날짜가 아니라 다루는 내용의 시점 기준.** 예: '내년 반도체는 좋을 것'=forward, "
+        "'어제 CFTC가 승인했다'=current, '2020년 사이클을 돌아보면'=past.\n"
+        "- reference_period: 글이 발행일과 명백히 다른 특정 시기를 대상으로 하면 짧게 명시 "
+        "(예: '2026 2분기 실적', '2027 전망', '2025 하반기'). 발행 시점 얘기면 null.\n"
         "- stocks: 실제로 논의 대상인 상장사만 (스쳐 지나가는 언급 제외). 한국 상장사는 별칭·약칭"
         "(하이닉스=SK하이닉스, 삼전=삼성전자)을 정식 종목명으로 정규화하고 listed=KR. "
         "해외 주요 상장사(엔비디아, 브로드컴, TSMC, 마이크론, 오라클, 팔란티어 등)도 논의 대상이면 "
@@ -198,9 +234,13 @@ def _enrich_llm(title: str, markdown: str) -> dict:
     stocks = [s for s in (data.get("stocks") or []) if isinstance(s, dict) and s.get("name")]
     kr = [s for s in stocks if str(s.get("listed", "KR")).upper() in ("KR", "K", "KOREA")]
     foreign = [s for s in stocks if s not in kr]
+    orient = str(data.get("time_orientation") or "").strip().lower()
+    ref = str(data.get("reference_period") or "").strip()
     return {
         "summary": data.get("summary"),
         "sentiment": data.get("sentiment"),
+        "time_orientation": orient if orient in ("past", "current", "forward", "mixed") else None,
+        "reference_period": ref[:60] if ref and ref.lower() not in ("null", "none", "") else None,
         "model": f"{engine}/haiku",
         "industries": data.get("industries") or [],
         "topics": data.get("topics") or [],
