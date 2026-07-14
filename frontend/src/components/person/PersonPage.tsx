@@ -157,11 +157,12 @@ export default function PersonPage() {
           {data.co_entities.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">함께 언급되는 것 <span className="text-[11px] font-normal text-muted-foreground">공출현 집계</span></CardTitle>
+                <CardTitle className="text-sm">함께 언급되는 것</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-1.5">
                 {stocks.map((e) => (
-                  <Link key={`s-${e.entity_id}`} to={e.aliases ? `/analyze/${e.aliases}/summary` : "#"}>
+                  <Link key={`s-${e.entity_id}`}
+                    to={e.aliases ? `/analyze/${e.aliases}/summary` : `/feed?q=${encodeURIComponent(e.name)}`}>
                     <Badge variant="outline" className="text-xs gap-1 hover:border-primary hover:text-primary">
                       {e.name} <span className="text-muted-foreground tabular-nums">{e.count}</span>
                     </Badge>
