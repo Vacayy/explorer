@@ -280,6 +280,11 @@ export interface SpineSignal {
     // quadrant_gap (주가×관측 괴리)
     quadrant?: "C" | "D_RISK";
     return_3m?: number;
+    // theme_surge (주목 주제)
+    recent?: number;
+    share_pct?: number;
+    share_delta_pp?: number;
+    is_new?: boolean;
   };
   interpretation: string | null;
   interpretation_model: string | null;

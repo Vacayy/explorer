@@ -106,7 +106,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `store` | 멱등 적재(content_hash)·재enrich 시 stale 링크 제거·4층 confidence 링크 |
 | `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 |
 | `search` | FTS5+sqlite-vec 하이브리드(RRF)·인덱스 빌드 |
-| `signals` | mention_surge·high_52w(200일+ 히스토리 요구)·neglect·consensus_extreme(진자, 감성 90%+ 극단)·volume_spike(60일 평균 3배+ & 등락 3%+ — 급증일 언급 문서 결합)·quadrant_gap(3개월 주가×30일 감성 괴리 — C 기회/D_RISK 경고) |
+| `signals` | mention_surge·high_52w(200일+ 히스토리 요구)·neglect·consensus_extreme(진자, 감성 90%+ 극단)·volume_spike(60일 평균 3배+ & 등락 3%+ — 급증일 언급 문서 결합)·quadrant_gap(주가×감성 괴리)·theme_surge(주목 주제 — 점유율 상승 화두, 문서유형 라벨 제외) |
 | `falsifiers` | 반증 조건 감시 — 지식 active 시 haiku가 '틀렸다는 신호' 2~3개 생성, 일일 표적 검색·판정(TRIGGERED) → refute 증거 부착 → contested 기계 연동. 본문 150자 미만 문서 판정 제외 |
 | `lenses` | 분석 렌즈 — docs/references 사고틀(주가 패턴 5축·산업 수요→병목→주가) 압축, RAG·브리프 프롬프트 주입 |
 | `consensus_history` | Fwd EPS·PER·목표주가 일일 스냅샷(네이버 모바일 API, 워치리스트) → consensus_estimates 이력. 축적 후: 분해 v2(revision vs 리레이팅)·quadrant_gap 펀더 축 교체·추정치 반전 신호 |
