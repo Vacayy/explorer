@@ -1,8 +1,10 @@
 import { useState } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
+import { ArrowLeft, Sparkles, FlaskConical, ArrowRight } from "lucide-react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import api from "@/api/client"
+import { apiQuery, STALE } from "@/api/query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSpineSignals } from "@/hooks/useSpineSignals"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +15,7 @@ import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { SignalCard } from "@/components/shared/SignalCard"
 import { SignalSummaryCard, type SummaryRow } from "@/components/explore/SignalSummaryCard"
 import { PageContainer } from '@/components/shared/PageContainer'
+import { formatKrw } from "@/utils/format"
 
 const TYPE_LABEL: Record<string, string> = {
   theme_surge: "주목 주제", mention_surge: "언급 급증", neglect: "소외",
@@ -49,8 +52,10 @@ function SignalSummaryView() {
         {stock.data && <FreshnessStamp asOf={stock.data.as_of} />}
       </div>
 
+      <ResearchProposalSection />
       <MomentumSection onOpen={() => navigate("/explore?list=mention_surge")} />
       <ThemeSurgeSummary onOpen={() => navigate("/explore?list=theme_surge")} />
+      <NarrativeSection />
       <BacktestSection />
 
       {/* 나머지 신호 유형 진입 — 각 유형 목록으로 */}
@@ -130,6 +135,191 @@ function ThemeSurgeSummary({ onOpen }: { onOpen: () => void }) {
       rows={rows}
       onOpen={onOpen}
     />
+  )
+}
+
+/* ---------- 리서치 제안 — 값싸게 고른 후보, 승인 시에만 opus 리서치 (D-020) ---------- */
+
+interface RevisionCall {
+  direction: "up" | "down" | "hold"
+  rationale: string | null
+}
+interface Candidate {
+  id: number
+  stock_code: string
+  name: string | null
+  rs_short: number | null
+  rs_short_prev: number | null
+  market_cap: number | null
+  sector: string | null
+  status: string
+  revision_call: RevisionCall | null
+}
+interface ApproveResult {
+  status: string
+  stock_code: string | null
+  revision_call: RevisionCall | null
+}
+
+const DIR_LABEL: Record<string, { text: string; cls: string }> = {
+  up: { text: "추정치 상향 가능", cls: "text-up" },
+  down: { text: "추정치 하향 우려", cls: "text-down" },
+  hold: { text: "추정치 유지 전망", cls: "text-muted-foreground" },
+}
+
+function ResearchProposalSection() {
+  const qc = useQueryClient()
+  const [done, setDone] = useState<Record<number, RevisionCall | null>>({})
+  const { data } = useQuery(
+    apiQuery<{ items: Candidate[] }>({
+      key: ["spine", "research", "candidates"],
+      url: "/api/spine/research/candidates",
+      staleTime: STALE.short,
+    }),
+  )
+  const approve = useMutation({
+    mutationFn: async (id: number) =>
+      (await api.post(`/api/spine/research/candidates/${id}/approve`)).data as ApproveResult,
+    onSuccess: (d, id) => {
+      setDone((m) => ({ ...m, [id]: d.revision_call }))
+      const dir = d.revision_call ? DIR_LABEL[d.revision_call.direction]?.text : "리서치 완료"
+      toast.success(`리서치 완료 — ${dir}`)
+    },
+    onError: () => toast.error("리서치 실행 실패 — 잠시 후 다시 시도"),
+  })
+  const dismiss = useMutation({
+    mutationFn: async (id: number) => api.post(`/api/spine/research/candidates/${id}/dismiss`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "research", "candidates"] }),
+  })
+
+  const items = data?.items ?? []
+  if (items.length === 0) return null
+
+  return (
+    <Card className="border-l-2 border-l-hypothesis">
+      <CardHeader className="pb-2 flex-row items-center gap-2">
+        <FlaskConical className="h-4 w-4 text-hypothesis" />
+        <CardTitle className="text-sm">리서치 제안 — 지금 파볼 만한 종목</CardTitle>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          기계가 값싸게 골랐습니다 · 승인 시 추정치 방향까지 리서치
+        </span>
+      </CardHeader>
+      <CardContent className="divide-y">
+        {items.map((c) => {
+          const result = c.id in done ? done[c.id] : c.revision_call
+          const researched = c.id in done || c.status === "done"
+          return (
+            <div key={c.id} className="py-2.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link to={`/analyze/${c.stock_code}/summary`}
+                  className="font-medium text-sm hover:underline">{c.name ?? c.stock_code}</Link>
+                {c.sector && <Badge variant="outline" className="text-[10px]">{c.sector} 화두</Badge>}
+                <span className="text-[11px] text-muted-foreground tabular-nums ml-auto">
+                  관심 유입: 단기 RS {c.rs_short_prev} → <b className="text-up">{c.rs_short}</b>
+                  {c.market_cap ? ` · 시총 ${formatKrw(c.market_cap)}` : ""}
+                </span>
+              </div>
+
+              {!researched ? (
+                <div className="flex gap-1.5 mt-2">
+                  <Button size="sm" className="h-7"
+                    disabled={approve.isPending}
+                    onClick={() => approve.mutate(c.id)}>
+                    <FlaskConical className="h-3.5 w-3.5" /> 추가 리서치
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-muted-foreground"
+                    disabled={dismiss.isPending} onClick={() => dismiss.mutate(c.id)}>
+                    건너뛰기
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-2 rounded-lg bg-muted/40 px-3 py-2 text-xs">
+                  {result ? (
+                    <>
+                      <span className={`font-semibold ${DIR_LABEL[result.direction]?.cls}`}>
+                        {DIR_LABEL[result.direction]?.text}
+                      </span>
+                      {result.rationale && (
+                        <span className="text-muted-foreground"> — {result.rationale}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      추정치 방향 판단은 유보 — 재료가 방향을 가르기엔 아직 부족
+                    </span>
+                  )}
+                  <Link to={`/analyze/${c.stock_code}/summary`}
+                    className="ml-1.5 inline-flex items-center gap-0.5 text-primary hover:underline">
+                    전체 브리프 <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ---------- 내러티브 섹션 — 주목 주제를 관통하는 질문형 서사 모음 ---------- */
+
+interface NarrativeItem {
+  topic: string
+  title: string | null
+  summary: string | null
+  share_pct: number | null
+  share_delta_pp: number | null
+  is_new: boolean
+  is_surging: boolean
+  created_at: string | null
+}
+
+function NarrativeSection() {
+  const { data } = useQuery(
+    apiQuery<{ items: NarrativeItem[] }>({
+      key: ["spine", "narrative", "list"],
+      url: "/api/spine/narrative/list",
+      staleTime: STALE.medium,
+    }),
+  )
+  const items = data?.items ?? []
+  if (items.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 flex-row items-center gap-2">
+        <CardTitle className="text-sm">내러티브 — 지금 시장을 관통하는 질문</CardTitle>
+        <span className="text-[11px] text-muted-foreground">주목 주제를 하나의 서사로</span>
+      </CardHeader>
+      <CardContent className="space-y-2.5">
+        {items.map((n) => (
+          <Link
+            key={n.topic}
+            to={`/narrative?topic=${encodeURIComponent(n.topic)}`}
+            className="flex items-start gap-2 group"
+          >
+            <Sparkles className="h-4 w-4 text-hypothesis shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium text-sm leading-snug group-hover:underline">
+                  {n.title ?? n.topic}
+                </span>
+                <Badge variant="outline" className="text-[10px]">{n.topic}</Badge>
+                {n.is_new ? (
+                  <span className="text-[10px] text-up">신규</span>
+                ) : n.share_delta_pp ? (
+                  <span className="text-[10px] text-up tabular-nums">+{n.share_delta_pp}%p</span>
+                ) : null}
+              </div>
+              {n.summary && (
+                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.summary}</p>
+              )}
+            </div>
+          </Link>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 

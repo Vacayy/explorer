@@ -64,6 +64,14 @@ def main():
 
     print("[interpret]", interpret_pending())
 
+    # 리서치 후보 — theme_surge 뒤에 실행 (화두 섹터가 있어야 감지 가능). LLM 0
+    from pipeline.research_candidates import compute_research_candidates
+    rc = compute_research_candidates()
+    print(f"[research_candidates] {len(rc)}건 — RS 상승 ∩ 시총 ∩ 화두 섹터")
+    for c in rc[:8]:
+        print(f"  · {c['name']} [{c['sector']}]: RS {c['rs_short_prev']}→{c['rs_short']} "
+              f"· 시총 {c['market_cap']/1e12:.2f}조")
+
     # K2 모순 감지 — 30분 체인 편승, 일 1회 (오늘 스캔 흔적 있으면 skip)
     from database import get_connection
     from pipeline.contradiction import ran_today, scan_contradictions
