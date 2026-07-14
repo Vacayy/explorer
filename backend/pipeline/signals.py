@@ -26,10 +26,12 @@ def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
 
     conn = get_connection()
     rows = conn.execute("""
-        SELECT el.entity_id, e.name, rd.id doc_id, rd.title, rd.url, rd.published_at
+        SELECT el.entity_id, e.name, rd.id doc_id, rd.title, rd.url, rd.published_at,
+               en.time_orientation
         FROM entity_links el
         JOIN entities e ON el.entity_id = e.id
         JOIN raw_documents rd ON el.doc_id = rd.id
+        LEFT JOIN enrichments en ON en.doc_id = rd.id
         WHERE el.link_type = 'stock' AND e.type = 'company'
     """).fetchall()
 
@@ -58,6 +60,15 @@ def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
             SELECT e.name, count(*) c FROM entity_links el JOIN entities e ON el.entity_id=e.id
             WHERE el.doc_id IN ({ph}) AND el.link_type IN ('industry','topic')
             GROUP BY e.name ORDER BY c DESC LIMIT 5""", doc_ids)]
+        # 시간 방향 구성(D-021): 이 급증이 실제 사건(current) 주도인지 전망(forward) 주도인지
+        orient = {}
+        for d in docs:
+            o = d["time_orientation"]
+            if o:
+                orient[o] = orient.get(o, 0) + 1
+        fwd = orient.get("forward", 0)
+        driver = ("전망 위주" if fwd > n / 2 else "회고 위주"
+                  if orient.get("past", 0) > n / 2 else None)
         signals.append({
             "entity_id": eid,
             "name": docs[0]["name"],
@@ -66,6 +77,8 @@ def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
                 "count_7d": n,
                 "baseline_7d": b,
                 "keywords": keywords,
+                "orient_mix": orient or None,        # {current:n, forward:n, ...}
+                "orient_driver": driver,             # '전망 위주'면 실제 사건 급증 아님
                 "docs": [{"id": d["doc_id"], "title": d["title"], "url": d["url"]} for d in docs[:5]],
             },
         })
@@ -542,6 +555,8 @@ def interpret_pending(limit: int = 10) -> dict:
             titles = [d["title"] for d in (p.get("docs") or [])]
             context = "\n".join(f"- {t}" for t in titles)
             detail = f"최근 7일 {p.get('count_7d')}회 언급 (직전 {p.get('baseline_7d')}회)"
+            if p.get("orient_driver"):  # 전망/회고 위주면 '실제 사건 급증'과 구분해 해석
+                detail += f" — 이 급증은 {p['orient_driver']}(미래 전망·과거 회고성 글이 다수, 방금 일어난 사건 아님)"
         elif r["signal_type"] == "volume_spike":
             titles = [d["title"] for d in (p.get("docs") or [])]
             if not titles:

@@ -20,6 +20,7 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
 | **소유권 분할 (vault)** | 자동수집=DB 원본→vault로 투영 / 사람의 가설·메모=마크다운 원본→DB로 흡수. 대칭 sync 금지 |
 | **URL = 상태의 단일 소스** | 모든 필터·탭이 URL 쿼리/경로 (새로고침·공유 보존) |
 | **전 화면 5-state** | Empty/Loading/Partial/Error/Ideal + FreshnessStamp(수집 시각) |
+| **시간 정박 (temporal)** | 발행일 ≠ 사건 발생일. enrich가 문서마다 time_orientation(past/current/forward/mixed)·reference_period 추출 → 내러티브·다이제스트·신호가 '전망을 방금 일어난 사건으로' 착각하지 않게 회고/현재/전망 구분 (D-021) |
 
 ## 2. 아키텍처 조감
 
@@ -28,7 +29,7 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
         DART(전시장 공시) · FDR(전종목 주가) — (대기: 관세청 무역)
    │
    ▼  30분 cron 체인 (logs/ingest.log)
-ingest(수집→enrich→그래프) → compute_signals → compute_narratives → extract_events(이미지 비전)
+ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → compute_signals → compute_narratives → extract_events(이미지 비전)
   → scan_actions(기업활동) → compute_digests(1D/7D) → vault_sync --export → build_search_index
    +  평일 16:10: ingest_prices --daily (전종목 OHLCV)
    │
@@ -70,7 +71,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `entities` | 4,135 | 노드: company(3,943)·sector(KSIC 165+태그)·theme·(예약: person/policy/macro…) |
 | `entity_relations` | 2,760 | 엣지: MEMBER_OF(기업→섹터). epistemic_type·confidence·valid_from/to 보유 |
 | `raw_documents` | 264 | 모든 소스의 문서 원본+markdown+media_json. UNIQUE(source_type, source_id) |
-| `enrichments` | 264 | 문서당 1행: 요약·감성·모델 (content_hash 캐시) |
+| `enrichments` | 문서당 1 | 요약·감성·**time_orientation·reference_period**(시간 정박 D-021)·모델 (content_hash 캐시) |
 | `entity_links` | 563 | 문서↔엔티티. confidence 계층: 위키링크 1.0 > LLM 0.9 > 사용자 키워드 0.7 > 정식명 substring 0.6 > 태그 0.5 |
 | `signals` | 9 | mention_surge(7일 vs 직전 7일)·high_52w(52주 신고가). payload+interpretation 분리 |
 | `entity_digests` | 30 | 종목별 1D/롤링7D 요약+새로운시각. (entity, period, KST날짜) 키로 영구 아카이브 |
@@ -103,8 +104,9 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `connectors/telegram` | t.me/s 스크랩 + 이미지 다운로드 (이미지-only 메시지 포함) |
 | `connectors/blog` | RSS + 네이버 iframe 본문 (기존 검증 로직 이식) |
 | `connectors/notes` | vault/notes → 척추 흡수 |
+| `connectors/youtube` | 채널 구독(RSS 신규 영상)·링크 단건 공용 fetch → 자막(ko>en) → **opus 정리본**(digest_transcript, 3회 재시도)을 본문으로 저장. 실패 시 raw 저장되나 discover seen-skip으로 재수집 안 됨 → **redigest_youtube 배치**가 저장분 스캔해 사후 치유(회차당 5, cron ingest 직후). 단건/채널 로직 동일 |
 | `store` | 멱등 적재(content_hash)·재enrich 시 stale 링크 제거·4층 confidence 링크 |
-| `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 |
+| `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 + **시간 정박**(time_orientation·reference_period, 같은 haiku 콜) — 발행일≠사건일. classify_temporal(백필용 경량 분류). 기존분: scripts/backfill_temporal.py |
 | `search` | FTS5+sqlite-vec 하이브리드(RRF)·인덱스 빌드 |
 | `signals` | mention_surge·high_52w(200일+ 히스토리 요구)·neglect·consensus_extreme(진자, 감성 90%+ 극단)·volume_spike(60일 평균 3배+ & 등락 3%+ — 급증일 언급 문서 결합)·quadrant_gap(주가×감성 괴리)·theme_surge(주목 주제 — 점유율 상승 화두, 문서유형 라벨 제외) |
 | `falsifiers` | 반증 조건 감시 — 지식 active 시 haiku가 '틀렸다는 신호' 2~3개 생성, 일일 표적 검색·판정(TRIGGERED) → refute 증거 부착 → contested 기계 연동. 본문 150자 미만 문서 판정 제외 |
@@ -148,7 +150,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 ### 5-3. 스크립트 (`scripts/`)
 시딩: `seed_companies`(DART) · `seed_entities`(그래프) · `seed_sectors`(FDR KSIC)
-운영(cron): `ingest` · `ingest_prices` · `compute_signals` · `compute_narratives`(theme_surge 상위 5 내러티브 사전 생성) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index` · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
+운영(cron): `ingest` · `redigest_youtube`(자막 raw로 굳은 유튜브 문서 opus 재요약 치유, 회차당 5) · `ingest_prices` · `compute_signals` · `compute_narratives`(theme_surge 상위 5 내러티브 사전 생성) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index` · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
 1회성: `backfill_enrich`
 
 ## 6. 프론트엔드 (React 19 + shadcn + TanStack Query)

@@ -7,6 +7,7 @@
 import hashlib
 import json
 import os
+import re
 import subprocess
 
 from database import get_connection
@@ -24,10 +25,17 @@ def _resolve(conn, topic: str):
 
 
 def gather(conn, entity_id: int) -> list[dict]:
-    """이 주제 문서 — 타임라인 재료, 시간순(오래된→최신)."""
+    """이 주제 문서 — 재료, 수집(발행)순(오래된→최신). 시간 방향(D-021)도 함께.
+
+    주의: published_at은 '글이 수집·작성된 날'이지 사건 발생일이 아니다.
+    time_orientation(past/current/forward)으로 회고/현재/전망을 구분해 내러티브에 반영.
+    """
     return [dict(r) for r in conn.execute(f"""
-        SELECT rd.id, rd.title, rd.published_at, rd.source_type, substr(rd.markdown, 1, {EXCERPT}) ex
+        SELECT rd.id, rd.title, rd.published_at, rd.source_type,
+               en.time_orientation, en.reference_period,
+               substr(rd.markdown, 1, {EXCERPT}) ex
         FROM entity_links el JOIN raw_documents rd ON rd.id = el.doc_id
+        LEFT JOIN enrichments en ON en.doc_id = rd.id
         WHERE el.entity_id=? AND el.link_type IN ('industry','topic')
           AND rd.published_at >= datetime('now', '-30 days')
         ORDER BY rd.published_at ASC LIMIT {DOCS}""", (entity_id,))]
@@ -43,28 +51,46 @@ def get_cached(conn, topic: str):
         "WHERE kind='narrative' AND key=?", (topic,)).fetchone()
 
 
+_ORIENT_KO = {"past": "회고", "current": "현재", "forward": "전망", "mixed": "회고+전망"}
+
+
 def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict]) -> str:
-    tl = "\n".join(f"- {(d['published_at'] or '')[:10]} ({d['source_type']}) {d['title']}"
+    def _mark(d):
+        o = _ORIENT_KO.get(d.get("time_orientation") or "")
+        ref = d.get("reference_period")
+        tag = f"[{o}]" if o else "[시점미상]"
+        if ref:
+            tag += f"(대상: {ref})"
+        return tag
+    tl = "\n".join(f"- 수집 {(d['published_at'] or '')[:10]} {_mark(d)} ({d['source_type']}) {d['title']}"
                    f"\n  {(d['ex'] or '').strip()[:160]}" for d in docs)
+    first = min((d["published_at"] or "")[:10] for d in docs) if docs else ""
     from pipeline.knowledge_recall import knowledge_block
     kn = knowledge_block(knowledge, "승격된 지식 — 검증된 전제")
     return (
         f"너는 1인 리서치센터의 전략가다. '{topic}'가 최근 시장에서 주목받는 화두다. "
-        "아래 시간순 문서로 이 주제의 '내러티브'를 써라 — 키워드 나열이 아니라 하나의 서사.\n"
+        "아래 문서로 이 주제의 '내러티브'를 써라 — 키워드 나열이 아니라 하나의 서사.\n"
+        "★시간 규율(가장 중요): 각 문서의 '수집 날짜'는 내가 그 글을 수집한 날일 뿐, "
+        "사건이 실제로 일어난 날이 아니다. 각 문서에는 [회고]/[현재]/[전망] 시간 방향과 "
+        "(대상: 시기)가 붙어 있다. 이걸 반드시 구분해라 — [전망] 문서를 '방금 일어난 사건'처럼 "
+        "쓰지 말고, 수집이 며칠 새 몰렸다고 '급격한 전개'로 과장하지 마라. "
+        f"(이 주제 수집 시작: {first})\n"
         'JSON만 출력: {"title": "질문형 제목", "narrative": "마크다운 본문"}\n'
         "title: 이 이슈를 관통하는 질문 (예: '메모리 슈퍼사이클은 어디까지 갈까?', "
         "'엔비디아의 HBM4 의존은 SK하이닉스에 무엇을 의미하나?'). 낚시성 금지, 핵심 긴장을 담아라.\n"
         "narrative 마크다운 구조 (섹션 고정):\n"
         "## 3줄 요약\n지금 이 주제에서 알아야 할 것 3줄 (불릿).\n"
-        "## 전개 — 어떻게 여기까지 왔나\n문서 날짜를 근거로 이슈가 시작돼 전개된 흐름을 시간순 서술 "
-        "(각 국면에 '무엇이 관측됐고 무엇이 바뀌었나').\n"
+        "## 무엇이 회자되고 있나\n최근 이 주제에서 '수집·논의된' 내용을 정리 — 날짜를 사건 발생일로 "
+        "단정하지 말고 '언제 회자됐다'로 서술. [현재]로 표시된 실제 사건과 [전망]으로 표시된 "
+        "예상·논평을 명확히 구분해라 (예: '~가 관측됐다' vs '~할 것이라는 전망이 나온다'). "
+        "실제 사건에 확실한 발생 시기(대상 시기)가 있으면 그걸 쓰고, 없으면 시점을 단정하지 마라.\n"
         "## 인과 구조\n무엇이 무엇으로 이어지는지 A → B → C 형태로 (핵심 연결고리와 수혜/피해 주체).\n"
         "## 시나리오\n**긍정 [확률%]** 트리거→결과 / **기본 [확률%]** / **부정 [확률%]** 트리거→결과. "
         "확률 합 100.\n"
         "## 종합 해석\n이 내러티브에서 지금 가장 중요한 긴장과, 판가름 낼 관전 포인트 1~2개.\n"
         "규율: 문서에 없는 사실 지어내지 말 것. 주장은 근거 문서 흐름에 기반. "
         "'화자/시장은 ~로 본다'로 관측과 사실 구분. 전체 800자 내외, 밀도 높게.\n"
-        f"{kn}\n\n[시간순 문서]\n{tl}"
+        f"{kn}\n\n[수집된 문서 — '수집 날짜'는 발행일이지 사건 발생일이 아님]\n{tl}"
     )
 
 
@@ -122,6 +148,74 @@ def compute_narrative(topic: str) -> dict:
     conn.close()
     return {"status": "fresh", "title": data.get("title"), "narrative": data.get("narrative"),
             "created_at": None}
+
+
+def _summary(md: str | None) -> str | None:
+    """내러티브 md에서 '3줄 요약' 섹션만 뽑아 한 줄로 (목록 미리보기용)."""
+    if not md:
+        return None
+    m = re.search(r"##\s*3줄\s*요약\s*\n(.*?)(?=\n##|\Z)", md, re.S)
+    body = m.group(1) if m else md
+    lines = [ln.strip().lstrip("-*•").strip() for ln in body.strip().splitlines() if ln.strip()]
+    return " · ".join(lines)[:200] or None
+
+
+def _theme_metrics(conn) -> dict:
+    """최신 theme_surge 신호 — 테마명→점유율 지표 (목록 랭킹·배지용)."""
+    rows = conn.execute("""
+        SELECT e.name, s.payload_json FROM signals s JOIN entities e ON e.id=s.entity_id
+        WHERE s.signal_type='theme_surge'
+          AND s.date=(SELECT MAX(date) FROM signals WHERE signal_type='theme_surge')
+    """).fetchall()
+    return {r["name"]: json.loads(r["payload_json"]) for r in rows}
+
+
+def list_narratives(conn) -> list[dict]:
+    """생성된 내러티브 목록 — 현재 급증 중인 주제 먼저(점유율 상승폭순), 나머지는 최신순."""
+    metrics = _theme_metrics(conn)
+    rows = conn.execute(
+        "SELECT key, digest, created_at FROM source_digests "
+        "WHERE kind='narrative' AND digest IS NOT NULL").fetchall()
+    items = []
+    for r in rows:
+        d = json.loads(r["digest"])
+        if not d.get("title"):
+            continue
+        m = metrics.get(r["key"])
+        items.append({
+            "topic": r["key"], "title": d.get("title"),
+            "summary": _summary(d.get("narrative")),
+            "share_pct": m.get("share_pct") if m else None,
+            "share_delta_pp": m.get("share_delta_pp") if m else None,
+            "is_new": bool(m.get("is_new")) if m else False,
+            "is_surging": m is not None, "created_at": r["created_at"],
+        })
+    surging = sorted((x for x in items if x["is_surging"]),
+                     key=lambda x: -(x["share_delta_pp"] or 0))
+    rest = sorted((x for x in items if not x["is_surging"]),
+                  key=lambda x: x["created_at"] or "", reverse=True)
+    return surging + rest
+
+
+def compute_top_narratives(limit: int = 5) -> dict:
+    """cron 배치 — 현재 주목 상위 테마의 내러티브를 미리 생성 (사전 생성).
+    theme_surge 최신 신호 상위 N개 → compute_narrative (멱등, hash 가드로 변경 시에만 opus)."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT e.name FROM signals s JOIN entities e ON e.id=s.entity_id
+        WHERE s.signal_type='theme_surge'
+          AND s.date=(SELECT MAX(date) FROM signals WHERE signal_type='theme_surge')
+        ORDER BY json_extract(s.payload_json,'$.share_delta_pp') DESC LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    topics = [r["name"] for r in rows]
+    results = {}
+    for t in topics:
+        try:
+            results[t] = compute_narrative(t).get("status")
+        except Exception as e:  # noqa: BLE001 — 배치라 한 주제 실패가 전체를 막지 않게
+            results[t] = f"error:{str(e)[:80]}"
+    return {"topics": topics, "results": results}
 
 
 def cached_meta(conn, topic: str) -> dict:

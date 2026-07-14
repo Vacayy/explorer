@@ -29,6 +29,16 @@ STYLE_RULES = (
 )
 
 
+_ORIENT_TAG = {"past": "[회고]", "current": "[현재]", "forward": "[전망]", "mixed": "[회고+전망]"}
+
+
+def _orient_tag(d) -> str:
+    """문서 행의 시간 방향 태그 (D-021) — 요약이 발행일=사건일로 착각하지 않게."""
+    t = _ORIENT_TAG.get((d["time_orientation"] if "time_orientation" in d.keys() else None) or "", "")
+    ref = d["reference_period"] if "reference_period" in d.keys() else None
+    return f"{t}(대상:{ref})" if (t and ref) else t
+
+
 def _kst_day_utc_bounds(day_iso: str) -> tuple[str, str]:
     d = date.fromisoformat(day_iso)
     start = datetime(d.year, d.month, d.day, tzinfo=KST).astimezone(timezone.utc)
@@ -80,8 +90,10 @@ def compute_daily(day_iso: str | None = None) -> dict:
     stats = {"day": day, "generated": 0, "unchanged": 0, "failed": 0}
     for s in stocks:
         docs = conn.execute("""
-            SELECT DISTINCT rd.id, rd.title, rd.source_type, substr(rd.markdown, 1, ?) ex
+            SELECT DISTINCT rd.id, rd.title, rd.source_type, en.time_orientation,
+                   en.reference_period, substr(rd.markdown, 1, ?) ex
             FROM entity_links el JOIN raw_documents rd ON el.doc_id = rd.id
+            LEFT JOIN enrichments en ON en.doc_id = rd.id
             WHERE el.entity_id = ? AND el.link_type = 'stock'
               AND rd.published_at >= ? AND rd.published_at < ?
             ORDER BY rd.published_at
@@ -99,13 +111,16 @@ def compute_daily(day_iso: str | None = None) -> dict:
             WHERE entity_id=? AND period='1d' AND period_start < ?
             ORDER BY period_start DESC LIMIT 5""", (s["id"], day)) if r["digest"]]
 
-        ctx = "\n\n".join(f"[{d['source_type']}] {d['title']}\n{d['ex'] or ''}" for d in docs)
+        ctx = "\n\n".join(f"[{d['source_type']}]{_orient_tag(d)} {d['title']}\n{d['ex'] or ''}" for d in docs)
         prior_block = ("\n\n[이전 며칠의 요약 — 새로움 판단 기준]\n" + "\n---\n".join(prior)) if prior else ""
         prompt = (
             f"너는 애널리스트의 데일리 노트를 쓴다. 아래는 '{s['name']}' 관련 {day}(KST) 수집 문서 {len(docs)}건이다.\n"
+            "시간 규율: 문서마다 [현재]/[전망]/[회고] 표시가 있다. 오늘 '수집'됐다고 오늘 '일어난' 일이 "
+            "아니다 — [전망]은 미래 예상, [회고]는 과거 얘기다. '~라는 전망' vs '~가 일어났다'를 구분해 "
+            "써라. 미래 전망을 방금 벌어진 사건처럼 단정하지 마라.\n"
             + STYLE_RULES +
             'JSON만 출력: {"digest": "마크다운 요약", "new_insights": "이전 요약들에 없던 새 이슈·시각 전환·상충 관측이 있으면 1~3문장, 없거나 이전 요약이 없으면 null"}\n'
-            f"{prior_block}\n\n[오늘 문서]\n{ctx}"
+            f"{prior_block}\n\n[오늘 수집 문서 — 표시된 시간 방향 구분]\n{ctx}"
         )
         try:
             data = _call_json(prompt)
