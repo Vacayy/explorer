@@ -1,5 +1,6 @@
-import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { Spark } from "@/components/shared/Spark"
+import { useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
+import { ArrowLeft } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,22 +11,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { SignalCard } from "@/components/shared/SignalCard"
+import { SignalSummaryCard, type SummaryRow } from "@/components/explore/SignalSummaryCard"
 import { PageContainer } from '@/components/shared/PageContainer'
-import { cn } from "@/lib/utils"
 
-const TYPE_FILTERS = [
-  { key: "", label: "전체" },
-  { key: "theme_surge", label: "주목 주제" },
-  { key: "mention_surge", label: "언급 급증" },
-  { key: "neglect", label: "소외" },
-  { key: "high_52w", label: "52주 신고가" },
-  { key: "volume_spike", label: "거래량 급증" },
-  { key: "quadrant_gap", label: "가격-관측 괴리" },
-  { key: "consensus_extreme", label: "컨센서스 극단" },
-  // 확장 예정: export_change(수출 변화) — 무역 커넥터 후
-] as const
+const TYPE_LABEL: Record<string, string> = {
+  theme_surge: "주목 주제", mention_surge: "언급 급증", neglect: "소외",
+  high_52w: "52주 신고가", volume_spike: "거래량 급증",
+  quadrant_gap: "가격-관측 괴리", consensus_extreme: "컨센서스 극단",
+}
+const PAGE_SIZE = 12
 
-const DAYS_FILTERS = [7, 30] as const
 
 /**
  * /explore — 탐색 (product-v2.md v2.1)
@@ -33,79 +28,108 @@ const DAYS_FILTERS = [7, 30] as const
  * URL 쿼리(type/days)가 필터 상태의 단일 소스.
  */
 export default function ExplorePage() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
+  const list = searchParams.get("list")   // 있으면 목록(디테일) 모드
+  // 목록 모드: 특정 신호 유형의 개별 카드 나열 + 페이지네이션
+  if (list) return <SignalListView type={list} />
+  return <SignalSummaryView />
+}
+
+/* ---------- 요약 모드 (기본 착륙) — Signal Summary Card들 ---------- */
+
+function SignalSummaryView() {
   const navigate = useNavigate()
-  const type = searchParams.get("type") ?? ""
-  const days = Number(searchParams.get("days") ?? "7")
-  const { data, isLoading, isError, refetch } = useSpineSignals(type || undefined, days)
-
-  const setParam = (key: string, value: string) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (value) next.set(key, value)
-      else next.delete(key)
-      return next
-    })
-  }
-
-  if (isLoading) return <ExploreSkeleton />
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
+  const stock = useSpineSignals(undefined, 30)
+  if (stock.isLoading) return <ExploreSkeleton />
 
   return (
     <PageContainer gap="sm">
       <div className="flex items-baseline justify-between">
         <h2 className="text-xl font-bold">신호</h2>
-        <FreshnessStamp asOf={data.as_of} />
+        {stock.data && <FreshnessStamp asOf={stock.data.as_of} />}
       </div>
 
-      {/* 필터: 타입 + 기간 */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {TYPE_FILTERS.map((f) => (
-          <Badge
-            key={f.key}
-            variant={type === f.key ? "default" : "outline"}
-            className="cursor-pointer select-none text-xs"
-            onClick={() => setParam("type", f.key)}
-          >
-            {f.label}
-          </Badge>
-        ))}
-        <span className="mx-1 text-muted-foreground text-xs">·</span>
-        {DAYS_FILTERS.map((d) => (
-          <Button
-            key={d}
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-auto border-0 font-normal text-xs px-2 py-0.5 rounded-md",
-              days === d ? "bg-muted font-semibold hover:bg-muted" : "text-muted-foreground hover:text-foreground hover:bg-transparent",
-            )}
-            onClick={() => setParam("days", String(d))}
-          >
-            {d}일
-          </Button>
-        ))}
-      </div>
-
-      <MomentumSection />
-
+      <MomentumSection onOpen={() => navigate("/explore?list=mention_surge")} />
+      <ThemeSurgeSummary onOpen={() => navigate("/explore?list=theme_surge")} />
       <BacktestSection />
 
-      {/* 신호 카드 그리드 */}
-      {data.items.length === 0 ? (
-        <EmptyState message={`최근 ${days}일 신호가 없습니다. 수집이 쌓이면 여기에 나타납니다.`} />
+      {/* 나머지 신호 유형 진입 — 각 유형 목록으로 */}
+      <div className="flex flex-wrap gap-1.5">
+        <span className="text-[11px] text-muted-foreground self-center mr-1">더 보기</span>
+        {["neglect", "high_52w", "volume_spike", "quadrant_gap", "consensus_extreme"].map((t) => (
+          <Badge key={t} variant="outline" className="cursor-pointer text-xs"
+            onClick={() => navigate(`/explore?list=${t}`)}>{TYPE_LABEL[t]}</Badge>
+        ))}
+      </div>
+    </PageContainer>
+  )
+}
+
+/* ---------- 목록 모드 — 유형별 개별 카드 + 페이지네이션 ---------- */
+
+function SignalListView({ type }: { type: string }) {
+  const navigate = useNavigate()
+  const [page, setPage] = useState(1)
+  const days = type === "theme_surge" ? 14 : 30
+  const { data, isLoading, isError, refetch } = useSpineSignals(type, days)
+  if (isLoading) return <ExploreSkeleton />
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
+
+  const items = data.items
+  const shown = items.slice(0, page * PAGE_SIZE)
+  return (
+    <PageContainer gap="sm">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/explore")}>
+          <ArrowLeft className="h-4 w-4" /> 신호
+        </Button>
+        <h2 className="text-lg font-bold">{TYPE_LABEL[type] ?? type}</h2>
+        <span className="text-xs text-muted-foreground">{items.length}건</span>
+        <span className="ml-auto"><FreshnessStamp asOf={data.as_of} /></span>
+      </div>
+      {items.length === 0 ? (
+        <EmptyState message="해당 신호가 아직 없습니다. 수집이 쌓이면 나타납니다." />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {data.items.map((s) => (
-            <SignalCard
-              key={s.id}
-              signal={s}
-              onKeywordClick={(k) => navigate(`/feed?topic=${encodeURIComponent(k)}`)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {shown.map((s) => (
+              <SignalCard key={s.id} signal={s}
+                onKeywordClick={(k) => navigate(`/feed?topic=${encodeURIComponent(k)}`)} />
+            ))}
+          </div>
+          {shown.length < items.length && (
+            <div className="flex justify-center pt-1">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => p + 1)}>
+                {items.length - shown.length}건 더 보기
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </PageContainer>
+  )
+}
+
+/* ---------- 주제 모멘텀 요약 카드 (theme_surge) ---------- */
+
+function ThemeSurgeSummary({ onOpen }: { onOpen: () => void }) {
+  const { data } = useSpineSignals("theme_surge", 14)
+  const rows: SummaryRow[] = (data?.items ?? []).map((s, i) => ({
+    key: String(s.id),
+    rank: i + 1,
+    name: s.entity_name,
+    link: `/feed?topic=${encodeURIComponent(s.entity_name)}`,
+    metric: `비중 ${s.payload.share_pct ?? "-"}%`,
+    sub: `${s.payload.recent ?? 0}건`,
+    badge: s.payload.is_new ? "신규" : (s.payload.share_delta_pp ? `+${s.payload.share_delta_pp}%p` : undefined),
+  }))
+  return (
+    <SignalSummaryCard
+      title="주목 주제 — 지금 소스들이 몰리는 화두"
+      subtitle="전체 문서 중 비중 상승"
+      rows={rows}
+      onOpen={onOpen}
+    />
   )
 }
 
@@ -142,41 +166,28 @@ interface MomentumRow {
   daily: number[]
 }
 
-function MomentumSection() {
+function MomentumSection({ onOpen }: { onOpen: () => void }) {
   const { data } = useQuery({
     queryKey: ["spine", "momentum"],
     queryFn: async () => (await api.get("/api/spine/signals/momentum")).data as { items: MomentumRow[] },
     staleTime: 5 * 60_000,
   })
-  const items = data?.items ?? []
-  if (items.length === 0) return null
-
+  const rows: SummaryRow[] = (data?.items ?? []).map((m) => ({
+    key: String(m.entity_id),
+    rank: m.rank,
+    name: m.name,
+    link: m.stock_code ? `/analyze/${m.stock_code}/mentions` : undefined,
+    spark: m.daily,
+    metric: `7일 ${m.count_7d}회`,
+    sub: `직전 ${m.prior_7d}`,
+    badge: m.score >= 2 ? `×${m.score}` : undefined,
+  }))
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">언급 모멘텀 — 이번 주 부상 종목</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
-          {items.map((m) => (
-            <div key={m.entity_id} className="flex items-center gap-2 py-1 text-sm">
-              <span className="w-5 text-right text-xs text-muted-foreground tabular-nums">{m.rank}</span>
-              {m.stock_code ? (
-                <Link to={`/analyze/${m.stock_code}/mentions`} className="font-medium text-primary hover:underline truncate">
-                  {m.name}
-                </Link>
-              ) : <span className="font-medium truncate">{m.name}</span>}
-              <span className="ml-auto shrink-0 flex items-center gap-2 text-xs tabular-nums">
-                <Spark data={m.daily} />
-                7일 <b>{m.count_7d}</b>회
-                <span className="text-muted-foreground">(직전 {m.prior_7d})</span>
-                {m.score >= 2 && <span className="text-up">×{m.score}</span>}
-              </span>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <SignalSummaryCard
+      title="언급 모멘텀 — 이번 주 부상 종목"
+      rows={rows}
+      onOpen={onOpen}
+    />
   )
 }
 
