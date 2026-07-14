@@ -28,7 +28,7 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
         DART(전시장 공시) · FDR(전종목 주가) — (대기: 관세청 무역)
    │
    ▼  30분 cron 체인 (logs/ingest.log)
-ingest(수집→enrich→그래프) → compute_signals → extract_events(이미지 비전)
+ingest(수집→enrich→그래프) → compute_signals → compute_narratives → extract_events(이미지 비전)
   → scan_actions(기업활동) → compute_digests(1D/7D) → vault_sync --export → build_search_index
    +  평일 16:10: ingest_prices --daily (전종목 OHLCV)
    │
@@ -112,7 +112,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `consensus_history` | Fwd EPS·PER·목표주가 일일 스냅샷(네이버 모바일 API, 워치리스트) → consensus_estimates 이력. 축적 후: 분해 v2(revision vs 리레이팅)·quadrant_gap 펀더 축 교체·추정치 반전 신호 |
 | `flows` | 수급 이력 — 외인·기관·개인 순매수 30일(네이버 trend API, pykrx는 KRX 로그인 벽) → investor_flows. 브리프 [수급] 재료 |
 | `scenario` | 사건 시나리오 엔진 — 대화 "시나리오: <사건>" → 파급 체인(단계별 메커니즘·근거 인용/일반지식 구분·확률)+영향 지도+감시 조건+반대 시나리오(ACH). opus |
-| `narrative` | 주제 내러티브(theme_surge 고도화) — 주목 주제를 질문형 서사로: 제목·3줄요약·전개 타임라인·인과 구조·시나리오(긍/부정 확률)·종합 해석. 게으른 opus md, hash 가드(source_digests kind='narrative'). /narrative?topic= |
+| `narrative` | 주제 내러티브(theme_surge 고도화) — 주목 주제를 질문형 서사로: 제목·3줄요약·전개 타임라인·인과 구조·시나리오(긍/부정 확률)·종합 해석. 게으른 opus md, hash 가드(source_digests kind='narrative'). /narrative?topic=. **사전 생성**: compute_narratives cron이 theme_surge 상위 5개 주제를 미리 생성(hash 가드로 변경분만 opus). 목록: list_narratives(급증 주제 먼저·나머지 최신순)→/narrative/list |
+| `research_candidates` | 리서치 후보(감지 LLM 0) — RS 상승(단기 RS≥70 & 1주 대비 +8pp↑) ∩ 시총 5000억+ ∩ 화두(theme_surge 테마와 초점 문서 공동언급, 시황글 제외). research_candidates 테이블 proposed 적재. **승인 시에만** stock_brief(opus) 실행→추정치 방향 콜 기록 (비싼 노동을 사람 판단 뒤로, D-020). 신호 탭 '리서치 제안' 섹션 |
 | `technicals` | 기술적 위치(LLM 0) — RSI14·이평선 갭(20/60/120)·52주 고점 대비·1/3개월 수익률 + trailing PER 역사 밴드(연간 EPS×주가 범위, 평균회귀 준거). 브리프 재료 |
 | `sector_rs` | 산업/섹터 맵(LLM 0) — 대분류 18(sector_map: KSIC 165→LLM 시드)별 장기(11M)·단기(1M) RS 백분위(최신 시총가중 — 과거 행 mcap 부재), 5일 흐름, 1~3주 궤적. /map 4사분면. value_chains(opus 시드 단계·테마)로 밸류체인 뷰 |
 | `feature_days` | 종목 특징일(LLM 0 감지) — |등락|3.5%+ 또는 거래량 4배+, 상위 24일. 마커 클릭 시 게으른 haiku 1콜로 그날 원인 조사(±1일 문서, feature_day_notes 캐시) |
@@ -137,6 +138,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
 | `GET /api/spine/digests` | 종목 1D/7D 요약 아카이브 |
+| `GET /api/spine/narrative` (+`/compute`·`/list`) | 주제 내러티브 캐시+stale / opus 생성(멱등) / 생성된 내러티브 모음(탐색 섹션) |
+| `GET /api/spine/research/candidates` (+`/{id}/approve`·`/dismiss`) | 리서치 제안 목록(LLM 0) / 승인→stock_brief(opus)·추정치 방향 콜 / 기각 |
 | `GET·POST·DELETE /api/spine/follows` | 엔티티 팔로우 |
 | `GET·POST·DELETE /api/spine/keywords` | 매칭 키워드 (등록 시 소급 링크) |
 | `POST /api/spine/sources/telegram·blog·youtube` | 소스 등록 (실검증→저장→백그라운드 첫 수집). youtube=영상 링크 단건 또는 채널 @handle/URL 구독 |
@@ -145,7 +148,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 ### 5-3. 스크립트 (`scripts/`)
 시딩: `seed_companies`(DART) · `seed_entities`(그래프) · `seed_sectors`(FDR KSIC)
-운영(cron): `ingest` · `ingest_prices` · `compute_signals` · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index` · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
+운영(cron): `ingest` · `ingest_prices` · `compute_signals` · `compute_narratives`(theme_surge 상위 5 내러티브 사전 생성) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index` · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
 1회성: `backfill_enrich`
 
 ## 6. 프론트엔드 (React 19 + shadcn + TanStack Query)
@@ -153,7 +156,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 ### IA (내비게이션)
 ```
 홈(/home)          내 종목·팔로우 delta 스트림 + 이번주 캘린더 + 시장 하이라이트 (빈화면 방지 승격)
-탐색               신호(/explore: mention_surge·소외·52주신고가·컨센서스극단 카드) ·
+탐색               신호(/explore 착륙: 언급 모멘텀·주목 주제(theme_surge)·**내러티브 모음**(생성된 질문형 서사)·백테스트, 그 외 소외·52주신고가·컨센서스극단 목록) ·
                    인물(/people: 디렉토리 — 언급량·최근발언·파급종목 → /person 도시에) ·
                    지식(/knowledge: 승격 지식 activation순 + 근거사슬 — contested 강조) ·
                    기업활동(/actions: 목록+요약 | 유무증 Pro 토글+방식 필터) · 산업군 · 스크리너 · 대안데이터

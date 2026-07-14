@@ -333,6 +333,27 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_signals_type_date ON signals(signal_type, date);
 
+    -- 리서치 후보 — 값싼 감지(RS 상승 ∩ 시총 ∩ 소속 섹터 화두)로 '파볼 만한' 종목 제안.
+    -- 승인 시에만 opus 심층 리서치(stock_brief) 실행 — 비싼 노동을 사람 판단 뒤로 (D-020)
+    CREATE TABLE IF NOT EXISTS research_candidates (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        stock_code       TEXT NOT NULL,
+        entity_id        INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+        name             TEXT,
+        detected_date    TEXT NOT NULL,          -- 감지 기준일
+        rs_short         INTEGER,                 -- 단기 RS 백분위(현재)
+        rs_short_prev    INTEGER,                 -- 1주 전 단기 RS
+        market_cap       INTEGER,
+        sector           TEXT,                    -- 화두인 소속 섹터
+        share_delta_pp   REAL,                    -- 그 섹터의 theme_surge 점유율 상승폭
+        status           TEXT DEFAULT 'proposed', -- proposed | done | dismissed
+        revision_call    TEXT,                    -- 승인 리서치 결과(추정치 방향 콜 JSON)
+        researched_at    TEXT,
+        created_at       TEXT DEFAULT (datetime('now')),
+        UNIQUE(stock_code, detected_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_research_cand_status ON research_candidates(status, detected_date);
+
     -- 기업활동 (Corporate Actions) — DART 전 시장 공시에서 키워드 분류 + 시총 필터
     CREATE TABLE IF NOT EXISTS corporate_actions (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
