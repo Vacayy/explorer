@@ -458,7 +458,7 @@ function FollowedPeopleCard({ onGo }: { onGo: (name: string) => void }) {
       <CardContent>
         {people.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            팔로우한 인물이 없습니다 — 피드·문서의 인물 칩에서 도시에로 들어가 팔로우해보세요.
+            팔로우한 인물이 없습니다 — 피드·문서의 인물 칩에서 프로필로 들어가 팔로우해보세요.
           </p>
         ) : (
           <div className="flex flex-wrap gap-1.5">

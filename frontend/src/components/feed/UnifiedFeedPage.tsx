@@ -183,7 +183,7 @@ function DocumentCard({ doc, onChipFilter }: {
             <Link
               to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
               className="shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
-              title="소스 도시에 — 이 채널의 관점 프로필"
+              title="채널 프로필 — 이 채널의 관점·이력"
             >
               {doc.channel}
             </Link>
