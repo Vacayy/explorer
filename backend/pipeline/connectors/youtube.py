@@ -48,19 +48,22 @@ def digest_transcript(title: str, transcript: str) -> str | None:
     )
     # 일시적 실패(호출 blip)로 raw가 영구화되지 않도록 소폭 재시도 — 백오프 5s·10s
     import time
+    last = ""
     for attempt in range(3):
         try:
             proc = subprocess.run(
                 [_claude_bin(), "-p", "--model", "opus", prompt],
                 capture_output=True, text=True, timeout=400)
-            if proc.returncode == 0:
-                out = proc.stdout.strip()
-                if len(out) > 100:
-                    return out
-        except Exception:
-            pass
+            if proc.returncode == 0 and len(proc.stdout.strip()) > 100:
+                return proc.stdout.strip()
+            # claude는 오류(사용량 한도·미로그인 등)를 stdout에 쓴다 — stderr만 보면 원인이 안 보임
+            last = (f"rc={proc.returncode} out={proc.stdout.strip()[:160]!r} "
+                    f"err={proc.stderr.strip()[:100]!r}")
+        except Exception as e:  # noqa: BLE001 — timeout 등도 원인 기록
+            last = f"exc={type(e).__name__}:{e}"
         if attempt < 2:
             time.sleep(5 * (attempt + 1))
+    print(f"[digest_transcript] '{title[:40]}' 3회 실패 — {last}", flush=True)
     return None
 
 
