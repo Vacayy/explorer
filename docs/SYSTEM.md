@@ -53,6 +53,8 @@ ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → 
 API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code, CLAUDE_BIN=절대경로`).
 `ANTHROPIC_API_KEY` 설정 시 자동으로 API 모드 전환 (코드 준비됨).
 
+> **프롬프트 위생 (사용자 출력 규칙)**: 'K1/K2/K3'·'corroborated/contested/observed'·'(독립 N)'·pace layer 같은 **내부 코드·약어는 LLM 출력에 노출 금지**. 지식 주입 블록(knowledge_block)·worldview는 이를 자연어로만 표현하고 no-leak 지시를 포함한다. 출처를 어색하게 괄호로 붙이느니 아예 표기하지 않는다 (사용자 지침).
+
 | 용도 | 모델 | 시점 | 캐시/멱등 |
 |---|---|---|---|
 | 문서 태깅(종목 정규화·산업·토픽·요약·감성) | haiku | 수집 시 문서당 1회 | content_hash + model 티어 (keyword→LLM 자동 백필) |
