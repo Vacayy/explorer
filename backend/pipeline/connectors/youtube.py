@@ -46,16 +46,28 @@ def digest_transcript(title: str, transcript: str) -> str | None:
         "긴 문단은 읽기 쉽게 나눌 것.\n\n"
         f"[자막]\n{transcript[:MAX_TRANSCRIPT_CHARS]}"
     )
-    try:
-        proc = subprocess.run(
-            [_claude_bin(), "-p", "--model", "opus", prompt],
-            capture_output=True, text=True, timeout=400)
-        if proc.returncode != 0:
-            return None
-        out = proc.stdout.strip()
-        return out if len(out) > 100 else None
-    except Exception:
-        return None
+    # 일시적 실패(호출 blip)로 raw가 영구화되지 않도록 소폭 재시도 — 백오프 5s·10s
+    import time
+    for attempt in range(3):
+        try:
+            proc = subprocess.run(
+                [_claude_bin(), "-p", "--model", "opus", prompt],
+                capture_output=True, text=True, timeout=400)
+            if proc.returncode == 0:
+                out = proc.stdout.strip()
+                if len(out) > 100:
+                    return out
+        except Exception:
+            pass
+        if attempt < 2:
+            time.sleep(5 * (attempt + 1))
+    return None
+
+
+def _digest_body(digest: str, transcript: str) -> str:
+    """정리본 + 원본 자막 길이 주석 (fetch·백필 공용)."""
+    return (f"{digest}\n\n---\n"
+            f"*원본 자막 {len(transcript):,}자 → opus 정리본. 원문: 유튜브 링크*")
 
 
 def parse_video_id(url_or_id: str) -> str | None:
@@ -89,9 +101,12 @@ def resolve_channel_id(url_or_handle: str) -> tuple[str, str] | None:
     page_url = s if "youtube.com" in s else f"https://www.youtube.com/{handle}"
     try:
         html = requests.get(page_url, headers=_UA, timeout=15).text
-        m = re.search(r'"(?:channelId|externalId)"\s*:\s*"(UC[A-Za-z0-9_-]{22})"', html)
-        if not m:
-            m = re.search(r"channel/(UC[A-Za-z0-9_-]{22})", html)
+        # canonical 링크 = 이 페이지 '자신'의 채널. externalId = 채널 자체 메타.
+        # 주의: 그냥 첫 "channelId"를 잡으면 featured된 서브채널(예: 'Dwarkesh Clips')을
+        # 본 채널로 오인한다 — clips 채널 id가 externalId보다 HTML 앞에 나오기 때문.
+        m = (re.search(r'<link\s+rel="canonical"\s+href="https://www\.youtube\.com/channel/(UC[A-Za-z0-9_-]{22})"', html)
+             or re.search(r'"externalId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"', html)
+             or re.search(r'"channelId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"', html))  # 최후 수단
         if m:
             cid = m.group(1)
             return cid, _channel_title(cid)
@@ -158,6 +173,39 @@ def _video_published(video_id: str) -> str:
         return ""
 
 
+DIGEST_MARKER = "opus 정리본"
+
+
+def redigest_youtube(limit: int = 5) -> dict:
+    """자막 raw로 굳은 유튜브 문서를 opus 정리본으로 사후 치유 (백필 + 재발 방지).
+
+    수집 당시 opus 실패로 raw 저장된 문서는 커넥터가 다시 안 건드리므로(seen-skip),
+    저장분을 직접 스캔해 재요약한다. 성공분만 store_document로 갱신(내용 변경→재enrich).
+    실패분은 손대지 않아 다음 회차에 재시도된다. 회차당 상한으로 버스트 실패 방지.
+    """
+    from pipeline.base import RawDoc
+    from pipeline.store import store_document
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT source_id, title, url, published_at, raw_content FROM raw_documents "
+        "WHERE source_type='youtube' AND raw_content NOT LIKE ? "
+        "ORDER BY published_at DESC LIMIT ?", (f"%{DIGEST_MARKER}%", limit)).fetchall()
+    conn.close()
+    digested = failed = 0
+    for r in rows:
+        transcript = r["raw_content"] or ""
+        digest = digest_transcript(r["title"] or "", transcript) if len(transcript) >= 100 else None
+        if not digest:
+            failed += 1
+            continue
+        store_document(RawDoc(
+            source_type="youtube", source_id=r["source_id"], title=r["title"] or "",
+            url=r["url"] or "", published_at=r["published_at"] or "",
+            raw_content=_digest_body(digest, transcript), kind="text"))
+        digested += 1
+    return {"scanned": len(rows), "digested": digested, "failed": failed}
+
+
 class YouTubeConnector:
     source_type = "youtube"
 
@@ -202,10 +250,11 @@ class YouTubeConnector:
             return []
         title = ref.meta.get("title") or _video_title(vid)
         published = ref.meta.get("published") or _video_published(vid)
-        # 자막 raw 대신 opus 정리본을 본문으로 — 검색·태깅·지식이 정리본을 흡수
+        # 자막 raw 대신 opus 정리본을 본문으로 — 검색·태깅·지식이 정리본을 흡수.
+        # 실패 시 raw로 저장되지만, discover()의 seen-skip 때문에 커넥터는 다시 안 건드림 —
+        # redigest_youtube 배치가 저장분을 직접 스캔해 사후 치유한다.
         digest = digest_transcript(title, transcript)
-        body = f"{digest}\n\n---\n*원본 자막 {len(transcript):,}자 → opus 정리본. 원문: 유튜브 링크*" \
-            if digest else transcript
+        body = _digest_body(digest, transcript) if digest else transcript
         # source_id에 항상 채널 프리픽스 — 단건 링크도 실제 channel_id를 조회해
         # 붙여, 그 채널을 구독하면 도시에(channel/vid LIKE)에 자동 연결된다
         cid = ref.meta.get("channel_id") or video_channel_id(vid)
