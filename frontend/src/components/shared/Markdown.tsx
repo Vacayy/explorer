@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown"
+import remarkBreaks from "remark-breaks"
 import { cn } from "@/lib/utils"
 
 /**
@@ -21,7 +22,7 @@ export function Markdown({ children, className }: { children: string; className?
       "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
       className,
     )}>
-      <ReactMarkdown>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkBreaks]}>{children}</ReactMarkdown>
     </div>
   )
 }
