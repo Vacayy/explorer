@@ -211,7 +211,9 @@ def _call_claude_code(prompt: str) -> str:
         capture_output=True, text=True, timeout=180,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
+        # claude는 오류(사용량 한도·미로그인 등)를 stdout에 쓴다 — stderr만 보면 원인이 비어 보임
+        raise RuntimeError(f"claude -p 실패 rc={proc.returncode} "
+                           f"out={proc.stdout.strip()[:200]!r} err={proc.stderr.strip()[:120]!r}")
     envelope = json.loads(proc.stdout)
     return envelope.get("result", "")
 
