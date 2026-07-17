@@ -65,17 +65,14 @@ def get_cached(conn):
         WHERE kind='worldview' AND key='global'""").fetchone()
 
 
-LAYER_KO = {"event": "사건", "flow": "흐름", "cycle": "사이클", "structure": "구조", "regime": "체제"}
-
-
 def _build_prompt(m: dict) -> str:
+    from pipeline.knowledge_recall import _EPI_HINT
     kn_lines = []
     for k in sorted(m["knowledge"], key=lambda x: ("structure regime cycle flow event".split().index(x["pace_layer"])
                                                    if x["pace_layer"] in "structure regime cycle flow event".split() else 9)):
-        line = (f"- [{LAYER_KO.get(k['pace_layer'], k['pace_layer'])}층 · {k['epistemic_status']} · "
-                f"독립 관측 {k['ind']}건" + (f" · 반박 {k['ref']}건" if k["ref"] else "") + f"] {k['statement']}")
+        line = f"- {k['statement']}{_EPI_HINT.get(k['epistemic_status'], '')}"
         if k.get("refute_titles"):
-            line += "\n  반박 근거: " + " / ".join(k["refute_titles"])
+            line += "\n  이견 근거: " + " / ".join(k["refute_titles"])
         kn_lines.append(line)
     sig_lines = []
     for s in m["signals"]:
@@ -94,14 +91,17 @@ def _build_prompt(m: dict) -> str:
         "브리핑을 써라. 재료는 시스템이 반복·독립 관측으로 승격한 지식(느린 층)과 "
         "이번 주 관측(빠른 층)이다.\n"
         "구조 (마크다운 ### 섹션 3개):\n"
-        "1. '자리 잡은 전제' — 교차확인된(corroborated) 지식. 구조/체제층 먼저. "
-        "독립 관측 수가 많을수록 통념에 가깝다 — 통념임을 명시해라.\n"
-        "2. '도전받는 것' — contested 지식과 반박이 붙은 지식. 무엇이 주장이고 "
-        "무엇이 반론인지 대비시켜라. 판단은 내리지 마라 — 갈등 자체가 정보다.\n"
+        "1. '자리 잡은 전제' — 반복·교차확인으로 굳어진 믿음. 구조적·장기적인 것 먼저. "
+        "여러 곳에서 반복될수록 통념에 가깝다 — 통념임을 자연스럽게 서술해라.\n"
+        "2. '도전받는 것' — 이견이 붙은 믿음. 무엇이 주장이고 무엇이 반론인지 "
+        "대비시켜라. 판단은 내리지 마라 — 갈등 자체가 정보다.\n"
         "3. '이번 주 달라진 것' — 새 관측·신호·진자. 세계관에 무엇이 새로 들어오려 하는지.\n"
-        "규율: 재료에 없는 내용 금지. 각 주장 뒤에 (독립 N) 표기. 전체 500자 내외. "
+        "규율: 재료에 없는 내용 금지. 전체 500자 내외. "
         "마지막에 한 줄 — 이 세계관에서 가장 만장일치에 가까운 믿음 하나를 지목해라 "
         "(만장일치는 경고다).\n"
+        "표현 규율: 'corroborated'·'contested'·'K1'·'(독립 N)' 같은 내부 라벨이나 "
+        "출처 표기를 출력에 절대 노출하지 말 것 — 확실성은 '반복 확인된'·'아직 이견이 있는' "
+        "식 자연어로만 표현.\n"
         'JSON만 출력: {"briefing": "마크다운"}\n\n'
         "[승격된 지식]\n" + "\n".join(kn_lines) +
         "\n\n[이번 주 신호]\n" + ("\n".join(sig_lines) or "- 없음") +

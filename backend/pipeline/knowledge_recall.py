@@ -13,7 +13,6 @@ from pipeline.consolidation import _cosine, _embed_statements, activation
 EPISTEMIC_W = {"corroborated": 1.0, "observed": 0.7, "hypothesis": 0.5, "contested": 0.35}
 MIN_QUERY_SIM = 0.45   # 질문-주장 최소 유사도 (multilingual-MiniLM cosine)
 
-LAYER_KO = {"event": "사건", "flow": "흐름", "cycle": "사이클", "structure": "구조", "regime": "체제"}
 
 
 def _f_activation(act: float) -> float:
@@ -99,14 +98,22 @@ def recall_for_query(conn, query: str, limit: int = 4) -> list[dict]:
     return [item for _, item in scored[:limit]]
 
 
+# 지식의 확실성을 '자연어 힌트'로만 — 확립/관측은 전제로 취급(무표기), 약한 것만 표시.
+# 'corroborated'·'K1' 같은 내부 라벨이 사용자 출력에 새지 않게 (원칙: 내부 코드 비노출)
+_EPI_HINT = {"hypothesis": " (아직 가설)", "contested": " (이견 있음)"}
+
+
 def knowledge_block(items: list[dict], header: str) -> str:
-    """소비 지점 공통 프롬프트 블록 — 층위·지위·관측 수를 라벨로 명시."""
+    """소비 지점 공통 프롬프트 블록 — 판단의 배경 전제.
+
+    번호(K1…)·영어 지위(corroborated)·관측 수 같은 내부 라벨은 넣지 않는다.
+    모델이 그대로 인용하면 사용자에게 정체불명 코드로 노출되기 때문 (자연어로만).
+    """
     if not items:
         return ""
-    lines = []
-    for i, k in enumerate(items, 1):
-        tags = f"{k['epistemic_status']} · {LAYER_KO.get(k['pace_layer'], k['pace_layer'])}층 · 독립 관측 {k['independent_n']}"
-        if k["refute_n"]:
-            tags += f" · 반박 {k['refute_n']}"
-        lines.append(f"K{i}. ({tags}) {k['statement']}")
-    return f"\n\n[{header}]\n" + "\n".join(lines)
+    lines = [f"- {k['statement']}{_EPI_HINT.get(k['epistemic_status'], '')}" for k in items]
+    return (
+        f"\n\n[{header}]\n" + "\n".join(lines)
+        + "\n(위는 판단의 배경 전제다. 답변에 'K1'·'corroborated' 같은 내부 라벨이나 "
+        "'근거: …' 식 출처 표기를 노출하지 말 것 — 필요하면 자연스러운 한국어 서술에 녹여라.)"
+    )
