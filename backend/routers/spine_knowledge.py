@@ -8,6 +8,8 @@ router = APIRouter(prefix="/api/spine/knowledge", tags=["spine"])
 class InjectRequest(BaseModel):
     content: str
     epistemic: str = "hypothesis"   # fact | hypothesis
+    rationale: str = ""             # 왜 믿나 (선택)
+    source: str = ""                # 누가 말했나 (선택)
 
 
 class InjectResponse(BaseModel):
@@ -21,7 +23,7 @@ class InjectResponse(BaseModel):
 def inject(body: InjectRequest):
     from pipeline.knowledge import inject_knowledge
     try:
-        r = inject_knowledge(body.content, body.epistemic)
+        r = inject_knowledge(body.content, body.epistemic, body.rationale, body.source)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return InjectResponse(**r)
@@ -70,6 +72,10 @@ class Falsifier(BaseModel):
     condition: str
     triggered_at: str | None
     triggered_doc_id: int | None
+    target_entity: str | None = None
+    metric: str | None = None
+    threshold: str | None = None
+    window: str | None = None
 
 
 class KnowledgeItem(BaseModel):
@@ -81,7 +87,14 @@ class KnowledgeItem(BaseModel):
     support: int
     refute: int
     independent: int
+    source_types: int          # 근거 소스 유형 다양성 (A-3)
     activation: float | None   # 조회 시 계산 (A-2) — 죽은 지식은 뒤로
+    salience: float            # 시장 주목 0~1
+    conviction: float          # 근거 강도 0~1
+    quadrant: str              # overhyped | priced_in | hidden_edge | noise
+    is_mine: bool              # 사용자 주입 (model='user') — 삭제 가능
+    rationale: str | None = None
+    source_ref: str | None = None
     entities: list[KnowledgeEntity]
     falsifiers: list[Falsifier] = []
     created_at: str
@@ -93,12 +106,16 @@ def list_knowledge(status: str = "active"):
     """승격된 지식 목록 — 지식 익스플로러·K1 소비. activation 내림차순."""
     from database import get_connection
     from pipeline.consolidation import activation as _activation
+    from pipeline.knowledge_state import compute_state
     conn = get_connection()
     rows = conn.execute("""
         SELECT k.*,
                (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='support') sup,
                (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='refute') ref,
-               (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='support' AND independent=1) ind
+               (SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=k.id AND stance='support' AND independent=1) ind,
+               (SELECT count(DISTINCT rd.source_type) FROM knowledge_evidence ke
+                  JOIN raw_documents rd ON rd.id=ke.doc_id
+                  WHERE ke.knowledge_id=k.id AND ke.stance='support') src_div
         FROM knowledge k WHERE k.review_status=? ORDER BY k.id DESC""", (status,)).fetchall()
     out = []
     for r in rows:
@@ -110,17 +127,26 @@ def list_knowledge(status: str = "active"):
             "SELECT observed_at FROM knowledge_evidence WHERE knowledge_id=?", (r["id"],))]
         act = _activation(obs, r["pace_layer"])
         fals = [Falsifier(condition=f["condition"], triggered_at=f["triggered_at"],
-                          triggered_doc_id=f["triggered_doc_id"])
+                          triggered_doc_id=f["triggered_doc_id"], target_entity=f["target_entity"],
+                          metric=f["metric"], threshold=f["threshold"], window=f["window"])
                 for f in conn.execute("""
-            SELECT condition, triggered_at, triggered_doc_id FROM knowledge_falsifiers
+            SELECT condition, triggered_at, triggered_doc_id, target_entity, metric, threshold, window
+            FROM knowledge_falsifiers
             WHERE knowledge_id=? ORDER BY triggered_at IS NULL, id""", (r["id"],))]
+        st = compute_state(conn, r["id"], r["ind"], r["ref"], r["src_div"] or 0,
+                           r["pace_layer"], r["epistemic_status"])
+        keys = r.keys()
         out.append(KnowledgeItem(
             id=r["id"], statement=r["statement"], epistemic_status=r["epistemic_status"],
             pace_layer=r["pace_layer"], confidence=r["confidence"],
-            support=r["sup"], refute=r["ref"], independent=r["ind"],
+            support=r["sup"], refute=r["ref"], independent=r["ind"], source_types=r["src_div"] or 0,
             activation=None if act == float("-inf") else round(act, 3),
+            salience=st["salience"], conviction=st["conviction"], quadrant=st["quadrant"],
+            is_mine=(r["model"] == "user"),
+            rationale=r["rationale"] if "rationale" in keys else None,
+            source_ref=r["source_ref"] if "source_ref" in keys else None,
             entities=ents, falsifiers=fals, created_at=r["created_at"],
-            contested_at=r["contested_at"] if "contested_at" in r.keys() else None))
+            contested_at=r["contested_at"] if "contested_at" in keys else None))
     conn.close()
     out.sort(key=lambda k: k.activation if k.activation is not None else -99, reverse=True)
     return out
@@ -185,3 +211,55 @@ def reject_knowledge(knowledge_id: int):
     conn.commit()
     conn.close()
     return {"id": knowledge_id}
+
+
+class KnowledgeOverview(BaseModel):
+    total: int          # active 지식 총계
+    corroborated: int
+    contested: int
+    hypothesis: int
+    pending: int        # 승격 대기 (review_status='proposed')
+    mine: int           # 사용자 주입 (model='user', active)
+    by_layer: dict[str, int]
+
+
+@router.get("/overview", response_model=KnowledgeOverview)
+def overview():
+    """현황 대시보드 카운트 스트립 — LLM 0."""
+    from database import get_connection
+    conn = get_connection()
+
+    def _c(where, args=()):
+        return conn.execute(f"SELECT count(*) FROM knowledge WHERE {where}", args).fetchone()[0]
+
+    active = "review_status='active' AND valid_to IS NULL"
+    by_layer = {r["pace_layer"]: r["n"] for r in conn.execute(
+        f"SELECT pace_layer, count(*) n FROM knowledge WHERE {active} GROUP BY pace_layer")}
+    r = KnowledgeOverview(
+        total=_c(active),
+        corroborated=_c(f"{active} AND epistemic_status='corroborated'"),
+        contested=_c(f"{active} AND epistemic_status='contested'"),
+        hypothesis=_c(f"{active} AND epistemic_status='hypothesis'"),
+        pending=_c("review_status='proposed'"),
+        mine=_c(f"{active} AND model='user'"),
+        by_layer=by_layer)
+    conn.close()
+    return r
+
+
+@router.delete("/items/{knowledge_id}")
+def delete_knowledge(knowledge_id: int):
+    """내 주입 지식 삭제 — '나의 가설'(model='user')만. 시스템 승격분은 삭제 불가(superseded만)."""
+    from database import get_connection
+    conn = get_connection()
+    row = conn.execute("SELECT model FROM knowledge WHERE id=?", (knowledge_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "지식이 없습니다")
+    if row["model"] != "user":
+        conn.close()
+        raise HTTPException(403, "시스템 승격 지식은 삭제할 수 없습니다 (역사 보존 — superseded만)")
+    conn.execute("DELETE FROM knowledge WHERE id=?", (knowledge_id,))  # 자식은 ON DELETE CASCADE
+    conn.commit()
+    conn.close()
+    return {"id": knowledge_id, "deleted": True}
