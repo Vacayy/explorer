@@ -714,6 +714,9 @@ def init_db():
         "ALTER TABLE entity_relations ADD COLUMN reference_period TEXT",   # 이 인과가 작동하는 시점 (D-021)
         "ALTER TABLE entity_relations ADD COLUMN time_orientation TEXT",   # past|current|forward (시간 그래디언트)
         "ALTER TABLE entity_relations ADD COLUMN narrative_id INTEGER",    # 어느 내러티브(버전)에서 나왔나
+        # 메르식 서사 (Phase 2 §2-2) — 순회 top-1 경로를 opus가 하나의 흐르는 글로
+        "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
+        "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
     ]:
         try:
             conn.execute(migration)

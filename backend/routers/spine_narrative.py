@@ -60,6 +60,13 @@ class Chain(BaseModel):
     paths: list[ChainPath]
 
 
+class MerNarrative(BaseModel):
+    status: str             # cached | fresh | empty | unavailable | failed
+    narrative: str | None = None
+    path: ChainPath | None = None
+    stale: bool = False
+
+
 @router.get("/list", response_model=NarrativeList)
 def list_narratives():
     """생성된 내러티브 모음 — 급증 주제 먼저, 나머지 최신순 (LLM 호출 없음)."""
@@ -95,6 +102,23 @@ def get_causal(narrative_id: int):
     g = causal_subgraph(conn, narrative_id)
     conn.close()
     return CausalGraph(**g)
+
+
+@router.get("/mer", response_model=MerNarrative)
+def get_mer(topic: str):
+    """캐시된 메르식 서사(순회 top-1 경로 정박) + stale — LLM 없음 (Phase 2 §2-2)."""
+    from pipeline.narrative import cached_mer_meta
+    conn = get_connection()
+    r = cached_mer_meta(conn, topic)
+    conn.close()
+    return MerNarrative(**r)
+
+
+@router.post("/mer/compute", response_model=MerNarrative)
+def compute_mer(topic: str):
+    """경로가 바뀐 경우에만 opus 생성 — 멱등."""
+    from pipeline.narrative import compute_mer_narrative
+    return MerNarrative(**compute_mer_narrative(topic))
 
 
 @router.get("/{narrative_id}/chain", response_model=Chain)
