@@ -602,6 +602,18 @@ def init_db():
         superseded_at TEXT,                   -- 새 버전 나오면 닫음 (삭제 없음 — 드리프트 추적)
         UNIQUE(topic, version)
     );
+
+    -- 인과 엣지 근거 이력 (Phase 2 §2-4 교차검증) — entity_relations.narrative_id는 "가장 최근"
+    -- 하나만 남기므로(재적재 시 덮어씀), 몇 개의 '독립' 내러티브가 이 엣지를 주장했는지 세려면
+    -- 매 적재·재적재마다의 (엣지, 내러티브) 쌍을 별도로 누적해야 한다.
+    CREATE TABLE IF NOT EXISTS narrative_edge_evidence (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_relation_id INTEGER NOT NULL,
+        narrative_id       INTEGER NOT NULL,
+        created_at         TEXT DEFAULT (datetime('now')),
+        UNIQUE(entity_relation_id, narrative_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_nee_relation ON narrative_edge_evidence(entity_relation_id);
     CREATE INDEX IF NOT EXISTS idx_narratives_topic ON narratives(topic, version);
 
     -- 유·무상증자 상세 (Pro 뷰) — 결정 공시 원문에서 구조화 추출
@@ -724,6 +736,16 @@ def init_db():
             conn.commit()
         except Exception:
             pass
+
+    # narrative_edge_evidence 백필 — 과거엔 narrative_id가 최근 갱신 하나만 남겨 이전 재적재
+    # 이력이 유실됐다. 최소 1건(현재 태그)은 근거로 잡아 corroborated_by가 0으로 보이지
+    # 않게 한다(멱등, INSERT OR IGNORE + UNIQUE).
+    conn.execute("""
+        INSERT OR IGNORE INTO narrative_edge_evidence (entity_relation_id, narrative_id)
+        SELECT id, narrative_id FROM entity_relations
+        WHERE narrative_id IS NOT NULL AND rel_type IN ('CAUSES','BENEFITS_FROM')
+    """)
+    conn.commit()
 
     # stock_briefs: UNIQUE(entity_id) 제거 → append-only 히스토리 (1회성 재생성)
     row = conn.execute(

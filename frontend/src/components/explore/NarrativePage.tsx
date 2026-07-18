@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft, ArrowRight, ChevronDown, Loader2, Route, Sparkles, Workflow } from "lucide-react"
+import { ArrowLeft, ArrowRight, ChevronDown, GitMerge, Loader2, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
@@ -128,6 +128,7 @@ export default function NarrativePage() {
           )}
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
           {narrativeId && <ChainPaths narrativeId={narrativeId} />}
+          {narrativeId && <RelatedNarratives narrativeId={narrativeId} />}
         </>
       )}
     </PageContainer>
@@ -140,6 +141,7 @@ interface CausalEdge {
   from: string; from_type: string | null; to: string; to_type: string | null
   rel: string; mechanism: string | null; orientation: string | null
   reference_period: string | null; confidence: number | null
+  corroborated_by?: number; contested?: boolean
 }
 interface CausalGraph { nodes: { name: string; type: string }[]; edges: CausalEdge[] }
 
@@ -203,6 +205,14 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
                     {o && <span className={cn("ml-0.5", o.cls)}>· {o.label}</span>}
                   </span>
                   <NodeChip name={e.to} type={e.to_type} />
+                  {(e.corroborated_by ?? 0) >= 2 && (
+                    <Badge variant="outline" className="text-[9px] font-normal text-primary border-primary/40">
+                      {e.corroborated_by}개 내러티브 확인
+                    </Badge>
+                  )}
+                  {e.contested && (
+                    <Badge variant="destructive" className="text-[9px] font-normal">상충</Badge>
+                  )}
                   {e.mechanism && (
                     <span className="text-[11px] text-muted-foreground w-full pl-1">↳ {e.mechanism}</span>
                   )}
@@ -390,6 +400,54 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
               <Badge variant="outline" className="text-[9px] font-normal text-muted-foreground ml-1">
                 신뢰도 {(p.confidence * 100).toFixed(0)}%
               </Badge>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ---------- 공유 내러티브 (같은 그래프의 다른 서브그래프, Phase 2 §2-4 머지) ---------- */
+
+interface RelatedNarrative {
+  narrative_id: number; topic: string; title: string | null; shared_nodes: string[]
+}
+interface RelatedResponse { status: string; related: RelatedNarrative[] }
+
+function RelatedNarratives({ narrativeId }: { narrativeId: number }) {
+  const navigate = useNavigate()
+  const { data, isLoading, isError } = useQuery(
+    apiQuery<RelatedResponse>({
+      key: ["spine", "narrative", "related", narrativeId],
+      url: `/api/spine/narrative/${narrativeId}/related`,
+      staleTime: STALE.short,
+    }),
+  )
+  if (isLoading) return <Skeleton className="h-16 w-full rounded-xl" />
+  if (isError || !data || data.status !== "ok" || data.related.length === 0) return null
+
+  return (
+    <Card>
+      <CardContent className="py-3 space-y-2">
+        <div className="flex items-center gap-1.5">
+          <GitMerge className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">이 인과를 공유하는 다른 내러티브</span>
+          <span className="text-[11px] text-muted-foreground">{data.related.length}개</span>
+        </div>
+        <ul className="space-y-1.5">
+          {data.related.map((r) => (
+            <li key={r.narrative_id}>
+              <button
+                onClick={() => navigate(`/narrative?topic=${encodeURIComponent(r.topic)}`)}
+                className="flex flex-wrap items-center gap-1.5 text-left text-sm hover:underline"
+              >
+                <Badge variant="secondary" className="text-[10px]">{r.topic}</Badge>
+                <span className="text-muted-foreground text-xs truncate">{r.title}</span>
+              </button>
+              <div className="pl-1 text-[11px] text-muted-foreground">
+                공유 노드: {r.shared_nodes.join(" · ")}
+              </div>
             </li>
           ))}
         </ul>

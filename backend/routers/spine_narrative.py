@@ -36,7 +36,20 @@ class NarrativeList(BaseModel):
 
 class CausalGraph(BaseModel):
     nodes: list[dict]    # [{name, type}]
-    edges: list[dict]    # [{from, from_type, to, to_type, rel, mechanism, orientation, reference_period, confidence}]
+    edges: list[dict]    # [{from, from_type, to, to_type, rel, mechanism, orientation, reference_period,
+                          #   confidence, corroborated_by, contested}]
+
+
+class RelatedNarrative(BaseModel):
+    narrative_id: int
+    topic: str
+    title: str | None
+    shared_nodes: list[str]
+
+
+class Related(BaseModel):
+    status: str          # ok | empty
+    related: list[RelatedNarrative]
 
 
 class NarrativeVersion(BaseModel):
@@ -139,6 +152,16 @@ def get_chain(narrative_id: int):
     r = narrative_chain(conn, narrative_id)
     conn.close()
     return Chain(**r)
+
+
+@router.get("/{narrative_id}/related", response_model=Related)
+def get_related(narrative_id: int):
+    """인과 노드를 공유하는 다른 내러티브(주제별 최신 버전) — 공유 수 랭킹, LLM 없음 (Phase 2 §2-4)."""
+    from pipeline.narrative import related_narratives
+    conn = get_connection()
+    r = related_narratives(conn, narrative_id)
+    conn.close()
+    return Related(**r)
 
 
 @router.get("/{narrative_id}/diff", response_model=VersionDiff)
