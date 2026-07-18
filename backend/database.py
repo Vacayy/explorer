@@ -731,12 +731,24 @@ def init_db():
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
         "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
         "ALTER TABLE narratives ADD COLUMN drift_summary TEXT",  # 직전 버전 대비 변화 한 줄 (Phase 2 §2-3)
+        "ALTER TABLE raw_documents ADD COLUMN digest_status TEXT",  # youtube opus 정리본 성공 여부 (ok|failed, 그 외 소스는 NULL)
+        # 문서 레벨 인과 추출 (D-028 레버 3) — 시도 기록(인과 0건이어도), 재시도 방지
+        "ALTER TABLE enrichments ADD COLUMN causal_extracted_at TEXT",
     ]:
         try:
             conn.execute(migration)
             conn.commit()
         except Exception:
             pass
+
+    # 백필: digest_status 컬럼 신설 이전 유튜브 문서는 opus 정리본 마커로 상태 역산
+    conn.execute(
+        "UPDATE raw_documents SET digest_status='ok' WHERE source_type='youtube' "
+        "AND digest_status IS NULL AND raw_content LIKE '%opus 정리본%'")
+    conn.execute(
+        "UPDATE raw_documents SET digest_status='failed' WHERE source_type='youtube' "
+        "AND digest_status IS NULL AND raw_content NOT LIKE '%opus 정리본%'")
+    conn.commit()
 
     # narrative_edge_evidence 백필 — 과거엔 narrative_id가 최근 갱신 하나만 남겨 이전 재적재
     # 이력이 유실됐다. 최소 1건(현재 태그)은 근거로 잡아 corroborated_by가 0으로 보이지

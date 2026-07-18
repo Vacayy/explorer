@@ -74,8 +74,11 @@ def _resolve_or_create_node(conn, name: str, type_: str) -> int | None:
     return cur.lastrowid
 
 
-def _persist_causal(conn, narrative_id: int, source_doc_id: int | None, causal: dict) -> int:
-    """인과 노드·엣지를 entity_relations에 적재 (hypothesis). 같은 (src,dst,rel) 재적재는 confidence 강화."""
+def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, causal: dict,
+                     conf_cap: float = 1.0) -> int:
+    """인과 노드·엣지를 entity_relations에 적재 (hypothesis). 같은 (src,dst,rel) 재적재는 confidence 강화.
+    narrative_id=None이면 문서 레벨 추출(D-028 레버 3) — 근거 이력(narrative_edge_evidence)은 건너뛴다.
+    conf_cap: 초기 confidence 상한 (문서 레벨은 0.5 — 반복 확인돼야 커진다)."""
     ntype = {str(n.get("name")).strip(): (n.get("type") or "theme")
              for n in (causal.get("nodes") or []) if n.get("name")}
     made = 0
@@ -89,15 +92,18 @@ def _persist_causal(conn, narrative_id: int, source_doc_id: int | None, causal: 
         if not sid or not did:
             continue
         try:
-            conf = max(0.0, min(1.0, float(e.get("confidence")))) if e.get("confidence") is not None else 0.5
+            conf = max(0.0, min(conf_cap, float(e.get("confidence")))) if e.get("confidence") is not None else 0.5
         except (TypeError, ValueError):
             conf = 0.5
+        conf = min(conf, conf_cap)
         existing = conn.execute(
             "SELECT id, confidence FROM entity_relations WHERE src_id=? AND dst_id=? AND rel_type=?",
             (sid, did, rel)).fetchone()
         if existing:  # 반복 확인 → confidence 강화(상한 0.95), 최신 내러티브로 연결 (교차검증의 씨앗)
+            # 문서 레벨 재확인(narrative_id=None)이 기존 내러티브 태그를 지우지 않게 COALESCE
             conn.execute(
-                "UPDATE entity_relations SET confidence=?, narrative_id=?, mechanism=COALESCE(?, mechanism) WHERE id=?",
+                "UPDATE entity_relations SET confidence=?, narrative_id=COALESCE(?, narrative_id), "
+                "mechanism=COALESCE(?, mechanism) WHERE id=?",
                 (min(0.95, (existing["confidence"] or conf) + 0.05), narrative_id, e.get("mechanism"), existing["id"]))
             rel_id = existing["id"]
         else:
@@ -109,10 +115,12 @@ def _persist_causal(conn, narrative_id: int, source_doc_id: int | None, causal: 
                  e.get("reference_period"), e.get("orientation"), narrative_id))
             rel_id = cur.lastrowid
             made += 1
-        # 근거 이력 — 이 (엣지, 내러티브) 조합을 처음 본다면만 적재(멱등, 교차검증 카운트용)
-        conn.execute(
-            "INSERT OR IGNORE INTO narrative_edge_evidence (entity_relation_id, narrative_id) VALUES (?, ?)",
-            (rel_id, narrative_id))
+        # 근거 이력 — 이 (엣지, 내러티브) 조합을 처음 본다면만 적재(멱등, 교차검증 카운트용).
+        # 문서 레벨 추출은 내러티브가 아니므로 건너뜀 (source_doc_id로 별도 추적)
+        if narrative_id is not None:
+            conn.execute(
+                "INSERT OR IGNORE INTO narrative_edge_evidence (entity_relation_id, narrative_id) VALUES (?, ?)",
+                (rel_id, narrative_id))
     return made
 
 
@@ -203,9 +211,17 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "  rel='CAUSES'(원인→결과). 수혜 섹터는 rel='BENEFITS_FROM'(from=수혜 섹터, to=체인 말단 동인).\n"
         "  앞의 끝(근본 원인)은 policy/regime/structure 노드까지 거슬러라. "
         "뒤의 끝(수혜)은 sector까지만 — 개별 종목 금지.\n"
+        "  ★행위자: 인과의 뿌리나 중간에 특정 인물의 선언·비전·자본배분 결정(예: 젠슨 황의 로드맵 선언)이나 "
+        "특정 기업의 결정·행동이 메커니즘의 실체라면 person/company 노드로 명시하라. "
+        "판별 기준: '그 사람/기업이 사라지면 이 인과가 약해지는가' — 아니라면(단순 논평·스쳐가는 언급) 넣지 마라. "
+        "company는 수혜 예측이 아니라 동인으로서만 (수혜 종착은 여전히 sector).\n"
         "  orientation ∈ past|current|forward (원인은 대개 past, 수혜 효과는 forward).\n"
         "  reference_period: 이 인과가 작동하는 시점(수집일 아님, 예 '2026 하반기'), 모르면 null.\n"
-        "  confidence: 0~1 (근거 강도). 원인→결과 방향만, 순환(사이클) 금지.\n"
+        "  confidence: 0~1 (근거 강도). 원인→결과 방향만.\n"
+        "  ★피드백(자기강화): 결과가 다시 원인을 강화하는 순환(예: AI 능력↑→합성 데이터→학습 강화→AI 능력↑)을 "
+        "발견하면 버리지 말고 **시점이 다른 두 개의 엣지로 펴서** 표현하라 — A→B(reference_period=현재)와 "
+        "B→A(reference_period=그 다음 시기, orientation=forward). 같은 시점 안에서의 순환(A→B→A 동시)은 금지. "
+        "자기강화 루프는 가장 강력한 투자 구조이니 놓치지 마라.\n"
         f"{kn}\n\n[수집된 문서 — '수집 날짜'는 발행일이지 사건 발생일이 아님. "
         f"대괄호 태그는 입력 주석일 뿐, 본문에 그대로 쓰지 말 것]\n{tl}"
     )
@@ -304,9 +320,46 @@ def list_narratives(conn) -> list[dict]:
     return surging + rest
 
 
+COVERAGE_MIN_DOCS = 30     # 커버리지 트리거 — 30일 문서 이만큼 이상이면 '꾸준히 두꺼운 주제'
+COVERAGE_STALE_DAYS = 7    # 내러티브가 이보다 오래됐으면 재생성 후보
+COVERAGE_PER_CYCLE = 2     # 사이클당 커버리지 생성 상한 (opus 비용 통제, 순환 소화)
+
+
+def _coverage_topics(conn, exclude: set[str], limit: int = COVERAGE_PER_CYCLE) -> list[str]:
+    """급증하진 않지만 문서가 꾸준히 두꺼운데 내러티브가 없거나 오래된 주제 (D-028 레버 2).
+    theme_surge(급증)만 보면 반도체 725건 같은 상시 화두가 영원히 소외된다."""
+    from pipeline.signals import THEME_STOPWORDS
+    rows = conn.execute(f"""
+        SELECT e.name, COUNT(DISTINCT rd.id) n
+        FROM entity_links el JOIN entities e ON e.id=el.entity_id
+        JOIN raw_documents rd ON rd.id=el.doc_id
+        WHERE el.link_type IN ('industry','topic') AND e.type IN ('sector','theme')
+          AND e.status IS NOT 'merged'
+          AND rd.published_at >= datetime('now','-30 days')
+        GROUP BY e.id HAVING n >= {COVERAGE_MIN_DOCS} ORDER BY n DESC
+    """).fetchall()
+    picked = []
+    for r in rows:
+        name = r["name"]
+        if name in THEME_STOPWORDS or name in exclude:
+            continue
+        latest = conn.execute(
+            "SELECT created_at FROM narratives WHERE topic=? ORDER BY version DESC LIMIT 1",
+            (name,)).fetchone()
+        fresh = latest and conn.execute(
+            "SELECT datetime(?) >= datetime('now', ?)",
+            (latest["created_at"], f"-{COVERAGE_STALE_DAYS} days")).fetchone()[0]
+        if fresh:
+            continue
+        picked.append(name)
+        if len(picked) >= limit:
+            break
+    return picked
+
+
 def compute_top_narratives(limit: int = 5) -> dict:
-    """cron 배치 — 현재 주목 상위 테마의 내러티브를 미리 생성 (사전 생성).
-    theme_surge 최신 신호 상위 N개 → compute_narrative (멱등, hash 가드로 변경 시에만 opus)."""
+    """cron 배치 — 사전 생성 트리거 2종 (멱등, hash 가드로 변경 시에만 opus).
+    ① 급증: theme_surge 최신 신호 상위 N ② 커버리지: 문서 두꺼운데 내러티브 부재/오래됨 (D-028)."""
     conn = get_connection()
     rows = conn.execute("""
         SELECT e.name FROM signals s JOIN entities e ON e.id=s.entity_id
@@ -314,15 +367,16 @@ def compute_top_narratives(limit: int = 5) -> dict:
           AND s.date=(SELECT MAX(date) FROM signals WHERE signal_type='theme_surge')
         ORDER BY json_extract(s.payload_json,'$.share_delta_pp') DESC LIMIT ?
     """, (limit,)).fetchall()
-    conn.close()
     topics = [r["name"] for r in rows]
+    coverage = _coverage_topics(conn, exclude=set(topics))
+    conn.close()
     results = {}
-    for t in topics:
+    for t in topics + coverage:
         try:
             results[t] = compute_narrative(t).get("status")
         except Exception as e:  # noqa: BLE001 — 배치라 한 주제 실패가 전체를 막지 않게
             results[t] = f"error:{str(e)[:80]}"
-    return {"topics": topics, "results": results}
+    return {"topics": topics, "coverage": coverage, "results": results}
 
 
 def causal_subgraph(conn, narrative_id: int) -> dict:
