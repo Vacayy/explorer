@@ -717,6 +717,7 @@ def init_db():
         # 메르식 서사 (Phase 2 §2-2) — 순회 top-1 경로를 opus가 하나의 흐르는 글로
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
         "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
+        "ALTER TABLE narratives ADD COLUMN drift_summary TEXT",  # 직전 버전 대비 변화 한 줄 (Phase 2 §2-3)
     ]:
         try:
             conn.execute(migration)

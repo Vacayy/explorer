@@ -67,6 +67,16 @@ class MerNarrative(BaseModel):
     stale: bool = False
 
 
+class VersionDiff(BaseModel):
+    status: str             # ok | not_found | no_prior_version
+    prev_version_id: int | None = None
+    added_nodes: list[str] = []
+    removed_nodes: list[str] = []
+    added_edges: list[dict] = []
+    removed_edges: list[dict] = []
+    summary: str | None = None
+
+
 @router.get("/list", response_model=NarrativeList)
 def list_narratives():
     """생성된 내러티브 모음 — 급증 주제 먼저, 나머지 최신순 (LLM 호출 없음)."""
@@ -129,6 +139,17 @@ def get_chain(narrative_id: int):
     r = narrative_chain(conn, narrative_id)
     conn.close()
     return Chain(**r)
+
+
+@router.get("/{narrative_id}/diff", response_model=VersionDiff)
+def get_diff(narrative_id: int):
+    """직전 버전 대비 인과 그래프 변화 — added/removed 노드·엣지(LLM 없음) + 게으른 haiku
+    한 줄 요약(캐시) (Phase 2 §2-3)."""
+    from pipeline.narrative import narrative_diff
+    conn = get_connection()
+    r = narrative_diff(conn, narrative_id)
+    conn.close()
+    return VersionDiff(**r)
 
 
 @router.get("/versions", response_model=list[NarrativeVersion])

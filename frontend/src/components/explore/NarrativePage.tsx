@@ -1,6 +1,6 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft, ArrowRight, Loader2, Route, Sparkles, Workflow } from "lucide-react"
+import { ArrowLeft, ArrowRight, ChevronDown, Loader2, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -84,6 +85,8 @@ export default function NarrativePage() {
           <Badge variant="outline" className="text-[10px] text-muted-foreground">v{version}</Badge>
         )}
       </div>
+
+      {narrativeId && version && version > 1 && <DriftBadge narrativeId={narrativeId} />}
 
       {empty ? (
         <EmptyState message={`'${topic}' 관련 문서가 아직 충분하지 않습니다 (3건 이상 필요).`} />
@@ -210,6 +213,59 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/* ---------- 버전 드리프트 (직전 버전 대비 인과 변화, Phase 2 §2-3) ---------- */
+
+interface VersionDiff {
+  status: string
+  added_nodes: string[]
+  removed_nodes: string[]
+  added_edges: CausalEdge[]
+  removed_edges: CausalEdge[]
+  summary: string | null
+}
+
+function DriftBadge({ narrativeId }: { narrativeId: number }) {
+  const [open, setOpen] = useState(false)
+  const { data } = useQuery(
+    apiQuery<VersionDiff>({
+      key: ["spine", "narrative", "diff", narrativeId],
+      url: `/api/spine/narrative/${narrativeId}/diff`,
+      staleTime: STALE.short,
+    }),
+  )
+  if (!data || data.status !== "ok" || (data.added_edges.length === 0 && data.removed_edges.length === 0)) {
+    return null
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-0.5 text-[11px] text-primary">
+          지난 버전 대비 달라진 것
+          <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <Card className="mt-1.5">
+          <CardContent className="py-2.5 space-y-1.5 text-xs">
+            {data.summary && <p>{data.summary}</p>}
+            {data.added_edges.length > 0 && (
+              <div className="text-primary">
+                + {data.added_edges.map((e) => `${e.from}→${e.to}`).join(" · ")}
+              </div>
+            )}
+            {data.removed_edges.length > 0 && (
+              <div className="text-muted-foreground line-through decoration-muted-foreground/50">
+                {data.removed_edges.map((e) => `${e.from}→${e.to}`).join(" · ")}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
