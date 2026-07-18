@@ -176,9 +176,6 @@ def _video_published(video_id: str) -> str:
         return ""
 
 
-DIGEST_MARKER = "opus 정리본"
-
-
 def redigest_youtube(limit: int = 5) -> dict:
     """자막 raw로 굳은 유튜브 문서를 opus 정리본으로 사후 치유 (백필 + 재발 방지).
 
@@ -191,8 +188,8 @@ def redigest_youtube(limit: int = 5) -> dict:
     conn = get_connection()
     rows = conn.execute(
         "SELECT source_id, title, url, published_at, raw_content FROM raw_documents "
-        "WHERE source_type='youtube' AND raw_content NOT LIKE ? "
-        "ORDER BY published_at DESC LIMIT ?", (f"%{DIGEST_MARKER}%", limit)).fetchall()
+        "WHERE source_type='youtube' AND (digest_status IS NULL OR digest_status='failed') "
+        "ORDER BY published_at DESC LIMIT ?", (limit,)).fetchall()
     conn.close()
     digested = failed = 0
     for r in rows:
@@ -204,7 +201,7 @@ def redigest_youtube(limit: int = 5) -> dict:
         store_document(RawDoc(
             source_type="youtube", source_id=r["source_id"], title=r["title"] or "",
             url=r["url"] or "", published_at=r["published_at"] or "",
-            raw_content=_digest_body(digest, transcript), kind="text"))
+            raw_content=_digest_body(digest, transcript), kind="text", digest_status="ok"))
         digested += 1
     return {"scanned": len(rows), "digested": digested, "failed": failed}
 
@@ -270,4 +267,5 @@ class YouTubeConnector:
             published_at=published,
             raw_content=body,
             kind="text",
+            digest_status="ok" if digest else "failed",
         )]
