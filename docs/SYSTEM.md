@@ -107,7 +107,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `connectors/telegram` | t.me/s 스크랩 + 이미지 다운로드 (이미지-only 메시지 포함) |
 | `connectors/blog` | RSS + 네이버 iframe 본문 (기존 검증 로직 이식) |
 | `connectors/notes` | vault/notes → 척추 흡수 |
-| `connectors/youtube` | 채널 구독(RSS 신규 영상)·링크 단건 공용 fetch → 자막(ko>en) → **opus 정리본**(digest_transcript, 3회 재시도)을 본문으로 저장. 실패 시 raw 저장되나 discover seen-skip으로 재수집 안 됨 → **redigest_youtube 배치**가 저장분 스캔해 사후 치유(회차당 5, cron ingest 직후). 단건/채널 로직 동일 |
+| `connectors/youtube` | 채널 구독(RSS 신규 영상)·링크 단건 공용 fetch → 자막(ko>en) → **opus 정리본**(digest_transcript, 3회 재시도)을 본문으로 저장. 성공/실패는 `raw_documents.digest_status`(ok\|failed)로 관리(문자열 마커 대신 명시 컬럼). 실패 시 raw 저장되나 discover seen-skip으로 재수집 안 됨 → ① **redigest_youtube 배치**가 `digest_status != 'ok'`인 저장분 스캔해 사후 치유(회차당 5, cron ingest 직후) ② `GET /api/spine/doc/{id}` 열람 시에도 digest_status가 ok가 아니면 그 자리에서 1회 재시도(lazy) — 사용자 진입이 곧 재시도 트리거. 단건/채널 로직 동일 |
 | `store` | 멱등 적재(content_hash)·재enrich 시 stale 링크 제거·4층 confidence 링크 |
 | `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 + **시간 정박**(time_orientation·reference_period, 같은 haiku 콜) — 발행일≠사건일. classify_temporal(백필용 경량 분류). 기존분: scripts/backfill_temporal.py |
 | `search` | FTS5+sqlite-vec 하이브리드(RRF)·인덱스 빌드 |
@@ -117,7 +117,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `consensus_history` | Fwd EPS·PER·목표주가 일일 스냅샷(네이버 모바일 API, 워치리스트) → consensus_estimates 이력. 축적 후: 분해 v2(revision vs 리레이팅)·quadrant_gap 펀더 축 교체·추정치 반전 신호 |
 | `flows` | 수급 이력 — 외인·기관·개인 순매수 30일(네이버 trend API, pykrx는 KRX 로그인 벽) → investor_flows. 브리프 [수급] 재료 |
 | `scenario` | 사건 시나리오 엔진 — 대화 "시나리오: <사건>" → 파급 체인(단계별 메커니즘·근거 인용/일반지식 구분·확률)+영향 지도+감시 조건+반대 시나리오(ACH). opus |
-| `narrative` | 주제 내러티브(theme_surge 고도화) — 질문형 제목·3줄요약·무엇이 다뤄지나·인과 구조·시나리오·종합 해석 (게으른 opus md). **인과 그래프 물질화(Phase 1, D-023)**: 생성 시 구조화 인과(nodes·edges)도 함께 산출 → `narratives` 테이블(버전 보존) + `entity_relations` CAUSES/BENEFITS_FROM 엣지(노드 정규화: 기존 노드 vocab 주입 + 재적재 시 confidence 강화, 뒤의 끝=섹터 종착, DAG+시간 스탬프). **사전 생성**: compute_narratives cron 상위 5. **인과 순회(Phase 2 §2-1)**: `pipeline/narrative_graph.py` — 내러티브 서브그래프 노드를 앵커로 전역 `entity_relations` 그래프를 상류(CAUSES만, 위상적 소스=근본 원인 정지)·하류(CAUSES∪BENEFITS_FROM, sector 노드=수혜 종착)로 BFS, confidence 곱 랭킹 top-3 경로 반환. **메르식 서사(Phase 2 §2-2)**: 순회 top-1 경로(근본원인→수혜)를 opus에 입력으로 줘 하나의 흐르는 서사로 정박(경로 노드 시퀀스 hash로 재생성 가드, `narratives.mer_body`/`mer_path_hash`). **버전 드리프트(Phase 2 §2-3)**: 인과 서브그래프를 (from,to,rel) 노드-이름 정체성으로 직전 버전과 비교(재적재 시 narrative_id 태그가 최신으로 옮겨가므로 태그가 아닌 정체성 비교) — added/removed 노드·엣지(LLM 없음) + 변화가 있으면 게으른 haiku 한 줄 요약(캐시, `narratives.drift_summary`). **머지·교차검증(Phase 2 §2-4)**: `narrative_edge_evidence`(엣지↔내러티브 다대다, 재적재마다 누적)로 몇 개의 독립 내러티브가 한 엣지를 주장했는지 집계(`corroborated_by`, causal 서브그래프에 포함) + 반대 방향 CAUSES 공존 시 `contested` 플래그. 공유 노드 기반 관련 내러티브 랭킹(`related_narratives`, LLM 없음) — 같은 그래프의 다른 서브그래프임을 드러낸다(예: AI·HBM·파운드리가 "AI 데이터센터 투자" 노드로 연결). **내러티브↔지식 루프(Phase 2 §2-5, 핵심)**: `entity_relations.promoted_knowledge_id` — 한 엣지가 2+ 독립 내러티브에서 서로 다른 날 반복 확인되면(`promote_causal_edges`, consolidation.py) opus가 서술형 statement로 승격(승인 큐, review_status='proposed'). 승격된 지식은 기존 recall_for_query(Phase 1부터 이미 배선)로 다음 내러티브 생성에 검증된 전제로 자동 주입되어 루프가 닫힌다. `narrative_grounding`으로 "이 서사가 딛고 선 지식 + 미발화 반증 조건" 조회. 주간 cron(promote_knowledge.py)에 편입. API: /narrative(topic)·/compute·/list·/{id}/causal(서브그래프+교차검증)·/{id}/chain(순회 경로)·/{id}/diff(버전 드리프트)·/{id}/related(공유 내러티브)·/{id}/grounding(딛고 선 지식)·/mer(메르 서사)·/mer/compute·/versions. 프론트: "서사"/"인과 흐름(메르 모드)" 탭 + 드리프트 배지 + 인과 구조 뷰 corroborated_by/contested/승격 배지 + "딛고 선 지식"·"공유 내러티브" 섹션. Phase 2 §5 5단계 전부 구현 완료. 세계관 뷰(/causal/worldview, 노드-링크 시각화)는 후속(Out of Scope 명시, §6) |
+| `narrative` | 주제 내러티브(theme_surge 고도화) — 질문형 제목·3줄요약·무엇이 다뤄지나·인과 구조·시나리오·종합 해석 (게으른 opus md). **인과 그래프 물질화(Phase 1, D-023)**: 생성 시 구조화 인과(nodes·edges)도 함께 산출 → `narratives` 테이블(버전 보존) + `entity_relations` CAUSES/BENEFITS_FROM 엣지(노드 정규화: 기존 노드 vocab 주입 + 재적재 시 confidence 강화, 뒤의 끝=섹터 종착, DAG+시간 스탬프). **사전 생성**: compute_narratives cron 상위 5. **인과 순회(Phase 2 §2-1)**: `pipeline/narrative_graph.py` — 내러티브 서브그래프 노드를 앵커로 전역 `entity_relations` 그래프를 상류(CAUSES만, 위상적 소스=근본 원인 정지)·하류(CAUSES∪BENEFITS_FROM, sector 노드=수혜 종착)로 BFS, confidence 곱 랭킹 top-3 경로 반환. 방문집합=엣지 id(D-027 반사성 — 시점 다른 두 엣지로 펴진 피드백 나선을 걸을 수 있게, 무한루프는 엣지 유한성+깊이 캡이 방지). **반사성·행위자(D-027)**: 생성 프롬프트가 피드백을 시점 다른 두 엣지로 펴게 지시(플라이휠 추출), 인과의 뿌리·중간에 person/company 행위자 노드 허용('사라지면 약해지는가' 기준, 수혜 종착은 여전히 sector). **메르식 서사(Phase 2 §2-2)**: 순회 top-1 경로(근본원인→수혜)를 opus에 입력으로 줘 하나의 흐르는 서사로 정박(경로 노드 시퀀스 hash로 재생성 가드, `narratives.mer_body`/`mer_path_hash`). **버전 드리프트(Phase 2 §2-3)**: 인과 서브그래프를 (from,to,rel) 노드-이름 정체성으로 직전 버전과 비교(재적재 시 narrative_id 태그가 최신으로 옮겨가므로 태그가 아닌 정체성 비교) — added/removed 노드·엣지(LLM 없음) + 변화가 있으면 게으른 haiku 한 줄 요약(캐시, `narratives.drift_summary`). **머지·교차검증(Phase 2 §2-4)**: `narrative_edge_evidence`(엣지↔내러티브 다대다, 재적재마다 누적)로 몇 개의 독립 내러티브가 한 엣지를 주장했는지 집계(`corroborated_by`, causal 서브그래프에 포함) + 반대 방향 CAUSES 공존 시 `contested` 플래그. 공유 노드 기반 관련 내러티브 랭킹(`related_narratives`, LLM 없음) — 같은 그래프의 다른 서브그래프임을 드러낸다(예: AI·HBM·파운드리가 "AI 데이터센터 투자" 노드로 연결). **내러티브↔지식 루프(Phase 2 §2-5, 핵심)**: `entity_relations.promoted_knowledge_id` — 한 엣지가 2+ 독립 내러티브에서 서로 다른 날 반복 확인되면(`promote_causal_edges`, consolidation.py) opus가 서술형 statement로 승격(승인 큐, review_status='proposed'). 승격된 지식은 기존 recall_for_query(Phase 1부터 이미 배선)로 다음 내러티브 생성에 검증된 전제로 자동 주입되어 루프가 닫힌다. `narrative_grounding`으로 "이 서사가 딛고 선 지식 + 미발화 반증 조건" 조회. 주간 cron(promote_knowledge.py)에 편입. API: /narrative(topic)·/compute·/list·/{id}/causal(서브그래프+교차검증)·/{id}/chain(순회 경로)·/{id}/diff(버전 드리프트)·/{id}/related(공유 내러티브)·/{id}/grounding(딛고 선 지식)·/mer(메르 서사)·/mer/compute·/versions. 프론트: "서사"/"인과 흐름(메르 모드)" 탭 + 드리프트 배지 + 인과 구조 뷰 corroborated_by/contested/승격 배지 + "딛고 선 지식"·"공유 내러티브" 섹션. Phase 2 §5 5단계 전부 구현 완료. 세계관 뷰(/causal/worldview, 노드-링크 시각화)는 후속(Out of Scope 명시, §6) |
 | `research_candidates` | 리서치 후보(감지 LLM 0) — RS 상승(단기 RS≥70 & 1주 대비 +8pp↑) ∩ 시총 5000억+ ∩ 화두(theme_surge 테마와 초점 문서 공동언급, 시황글 제외). research_candidates 테이블 proposed 적재. **승인 시에만** stock_brief(opus) 실행→추정치 방향 콜 기록 (비싼 노동을 사람 판단 뒤로, D-020). 신호 탭 '리서치 제안' 섹션 |
 | `technicals` | 기술적 위치(LLM 0) — RSI14·이평선 갭(20/60/120)·52주 고점 대비·1/3개월 수익률 + trailing PER 역사 밴드(연간 EPS×주가 범위, 평균회귀 준거). 브리프 재료 |
 | `sector_rs` | 산업/섹터 맵(LLM 0) — 대분류 18(sector_map: KSIC 165→LLM 시드)별 장기(11M)·단기(1M) RS 백분위(최신 시총가중 — 과거 행 mcap 부재), 5일 흐름, 1~3주 궤적. /map 4사분면. value_chains(opus 시드 단계·테마)로 밸류체인 뷰 |
@@ -134,12 +134,12 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `knowledge_recall` | K1 지식 소환 — activation×epistemic 랭킹, 브리프용 1-hop 그래프 확산, RAG용 의미 유사 |
 | `dates` / `normalize` | ISO 정규화(KST 버킷) / markitdown(PDF)·HTML 텍스트화 |
 
-### 5-2. API (spine 라우터 10종)
+### 5-2. API (spine 라우터 11종)
 | 엔드포인트 | 기능 |
 |---|---|
 | `GET /api/spine/home` | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 |
 | `GET /api/spine/feed` | 통합 피드 — q(하이브리드 검색)·source(telegram·blog·news·article·people)·stock·industry·topic 필터, published_at DESC. source 세분류: blog=개인블로그(platform≠rss)·news=언론사RSS·article=간행물RSS(pipeline/urls.blog_category)·people=팔로우 인물 언급 문서 |
-| `GET /api/spine/doc/{id}` | 문서 디테일 (raw content·이미지·태그·요약) |
+| `GET /api/spine/doc/{id}` | 문서 디테일 (raw content·이미지·태그·요약). youtube 소스면 digest_status가 ok가 아닐 때 opus 정리본을 그 자리에서 1회 재시도 후 반환(lazy retry) |
 | `GET /api/spine/signals` | 신호 (type·days) |
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
@@ -147,6 +147,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 |
 | `POST·GET·DELETE /api/spine/knowledge` (+`/items`·`/overview`·`/items/{id}/evidence·approve·reject`·`/worldview`) | 지식 주입(+rationale·source, 반증조건 생성) / 지식 목록(salience·conviction·quadrant·근거해부·반증조건) / 현황 카운트 / 근거사슬 / 승격 승인·거부 / 내 주입 삭제(user 한정) / 세계관 브리핑 |
 | `GET /api/spine/research/candidates` (+`/{id}/approve`·`/dismiss`) | 리서치 제안 목록(LLM 0) / 승인→stock_brief(opus)·추정치 방향 콜 / 기각 |
+| `GET /api/spine/causal/worldview` (+`/node/{id}/narratives`) | 세계관 뷰 — narrative_id 스코프 없는 전역 인과 그래프(노드·엣지+연결요소 cluster_id, union-find) + **플라이휠 감지**(CAUSES 방향 그래프의 크기 2+ SCC = 자기강화 루프, in_flywheel/flywheel 플래그 — D-027 반사성), category 필터(도메인 렌즈) / 노드가 등장하는 내러티브. 전부 LLM 없음(docs/specs/causal-worldview.md) |
 | `GET·POST·DELETE /api/spine/follows` | 엔티티 팔로우 |
 | `GET·POST·DELETE /api/spine/keywords` | 매칭 키워드 (등록 시 소급 링크) |
 | `POST /api/spine/sources/telegram·blog·youtube` | 소스 등록 (실검증→저장→백그라운드 첫 수집). youtube=영상 링크 단건 또는 채널 @handle/URL 구독 |
@@ -155,8 +156,9 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 ### 5-3. 스크립트 (`scripts/`)
 시딩: `seed_companies`(DART) · `seed_entities`(그래프) · `seed_sectors`(FDR KSIC)
-운영: **`run_chain.sh`**(30분 cron 체인 래퍼 — mkdir+PID 락으로 겹침 방지, 이전 실행 진행 중이면 skip, D-024)가 순서대로 실행: `ingest` · `redigest_youtube`(자막 raw로 굳은 유튜브 문서 opus 재요약 치유, 회차당 5) · `compute_signals` · `compute_narratives`(theme_surge 상위 5 내러티브 사전 생성) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index`. 별도 cron: `ingest_prices`(평일 16:10) · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
-1회성: `backfill_enrich` · `backfill_temporal` · `migrate_narratives`(source_digests→narratives 이관, D-023)
+운영: **`run_chain.sh`**(30분 cron 체인 래퍼 — mkdir+PID 락으로 겹침 방지, 이전 실행 진행 중이면 skip, D-024)가 순서대로 실행: `ingest` · `redigest_youtube`(자막 raw로 굳은 유튜브 문서 opus 재요약 치유, 회차당 5) · `compute_signals` · `compute_narratives`(트리거 2종: theme_surge 상위 5 + **커버리지** — 30일 문서 30건+ & 내러티브 부재/7일+ 오래됨, 사이클당 +2 순환, 문서유형 라벨 제외, D-028) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index`. 별도 cron: `ingest_prices`(평일 16:10) · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
+1회성: `backfill_enrich` · **`backfill_enrich_batch`**(keyword 폴백 배치 재태깅 — 문서 10건/콜 sonnet, D-028 레버 1) · `backfill_temporal` · `migrate_narratives`(source_digests→narratives 이관, D-023)
+수동 배치: **`extract_doc_causal`**(문서 레벨 인과 추출 — LLM 태깅 완료+본문 1,200자+ 문서에서 sonnet이 명시 인과만 추출, source_doc_id·narrative_id=NULL·confidence 상한 0.5, 내러티브와 독립된 제2 인과 공급원 = 교차검증 부트스트랩. cron 편입은 체인 런타임 최적화 후 재논의 — D-028 레버 3, docs/specs/doc-causal-extraction.md)
 
 ## 6. 프론트엔드 (React 19 + shadcn + TanStack Query)
 
@@ -164,6 +166,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 ```
 홈(/home)          내 종목·팔로우 delta 스트림 + 이번주 캘린더 + 시장 하이라이트 (빈화면 방지 승격)
 탐색               신호(/explore 착륙: 언급 모멘텀·주목 주제(theme_surge)·**내러티브 모음**(생성된 질문형 서사)·백테스트, 그 외 소외·52주신고가·컨센서스극단 목록) ·
+                   **세계관 뷰**(/narrative/worldview: narrative_id 스코프 없는 전역 인과 그래프 노드-링크 시각화 — React Flow+dagre 좌→우 배치, 도메인 렌즈 필터, 노드/엣지 클릭 시 Sheet 디테일. docs/specs/causal-worldview.md) ·
                    인물(/people: 디렉토리 — 언급량·최근발언·파급종목 → /person 도시에) ·
                    지식(/knowledge: 3섹션 — 구조 지도(학습)·현황 대시보드(카운트·승격대기 큐·세계관·지식 리스트 salience×conviction 배지·근거사슬·반증조건)·지식 주입 콘솔(주입+근거/출처+삭제)) ·
                    기업활동(/actions: 목록+요약 | 유무증 Pro 토글+방식 필터) · 산업군 · 스크리너 · 대안데이터
