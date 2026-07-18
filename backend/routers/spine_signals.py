@@ -30,6 +30,12 @@ def get_signals(
     if type:
         where.append("s.signal_type = ?")
         params.append(type)
+    if type == "theme_surge":
+        # 매일 재평가되는 state성 신호 — 같은 테마가 연속으로 화두면 날짜마다 row가 쌓인다.
+        # 목록엔 테마당 최신 스냅샷만 (히스토리 자체는 signals에 그대로 축적됨, narrative.py
+        # _theme_metrics와 동일 패턴).
+        where.append("s.date = (SELECT MAX(s2.date) FROM signals s2 "
+                      "WHERE s2.signal_type = s.signal_type AND s2.entity_id = s.entity_id)")
 
     rows = conn.execute(f"""
         SELECT s.id, s.signal_type, s.entity_id, s.date, s.payload_json,

@@ -118,12 +118,16 @@ def compute_research_candidates() -> list[dict]:
 
 
 def list_candidates(status: str = "proposed", limit: int = 20) -> list[dict]:
-    """제안(또는 완료) 후보 — 최신 감지일 우선, RS 상승폭순."""
+    """제안(또는 완료) 후보 — 종목당 최신 감지일 1건만(재감지 시 detected_date별로 row가
+    쌓이는 UNIQUE(stock_code, detected_date) 특성 때문 — 히스토리 자체는 그대로 남는다),
+    최신 감지일 우선·RS 상승폭순."""
     conn = get_connection()
     rows = conn.execute("""
         SELECT id, stock_code, name, detected_date, rs_short, rs_short_prev,
                market_cap, sector, share_delta_pp, status, revision_call, researched_at
-        FROM research_candidates WHERE status=?
+        FROM research_candidates rc WHERE status=?
+          AND detected_date = (SELECT MAX(detected_date) FROM research_candidates rc2
+                                WHERE rc2.stock_code = rc.stock_code AND rc2.status = rc.status)
         ORDER BY detected_date DESC, (rs_short - rs_short_prev) DESC LIMIT ?
     """, (status, limit)).fetchall()
     conn.close()
