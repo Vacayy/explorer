@@ -29,7 +29,7 @@ def get_document(doc_id: int):
     conn = get_connection()
     r = conn.execute("""
         SELECT rd.id, rd.source_type, rd.source_id, rd.title, rd.url, rd.published_at,
-               rd.markdown, rd.media_json,
+               rd.markdown, rd.raw_content, rd.digest_status, rd.media_json,
                en.summary, en.model AS enrich_model
         FROM raw_documents rd
         LEFT JOIN enrichments en ON en.doc_id = rd.id
@@ -38,6 +38,19 @@ def get_document(doc_id: int):
     if not r:
         conn.close()
         raise HTTPException(404, "문서를 찾을 수 없습니다")
+
+    content = r["markdown"]
+    if r["source_type"] == "youtube" and r["digest_status"] != "ok":
+        transcript = r["raw_content"] or ""
+        if len(transcript) >= 100:
+            from pipeline.connectors.youtube import digest_transcript, _digest_body
+            digest = digest_transcript(r["title"] or "", transcript)
+            body = _digest_body(digest, transcript) if digest else transcript
+            conn.execute(
+                "UPDATE raw_documents SET raw_content=?, markdown=?, digest_status=? WHERE id=?",
+                (body, body, "ok" if digest else "failed", doc_id))
+            conn.commit()
+            content = body
 
     tags = [EntityTag(
         entity_id=t["entity_id"], type=t["type"], name=t["name"],
@@ -55,7 +68,7 @@ def get_document(doc_id: int):
         url=r["url"] or "", published_at=r["published_at"] or "",
         summary=r["summary"], channel=channel.get("name"),
         channel_kind=channel.get("kind"), channel_key=channel.get("key"),
-        content=r["markdown"],
+        content=content,
         images=json.loads(r["media_json"]) if r["media_json"] else [],
         enrich_model=r["enrich_model"], entities=tags,
     )
