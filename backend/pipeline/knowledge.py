@@ -26,13 +26,18 @@ def _slug(text: str) -> str:
     return s or "지식"
 
 
-def inject_knowledge(content: str, epistemic: str = "hypothesis") -> dict:
-    """지식 한 조각 → vault 노트 생성 + 즉시 흡수. 반환: {doc_id, title, entities}."""
+def inject_knowledge(content: str, epistemic: str = "hypothesis",
+                     rationale: str = "", source: str = "") -> dict:
+    """지식 한 조각 → vault 노트 생성 + 즉시 흡수. 반환: {doc_id, title, entities}.
+
+    rationale('왜 믿나')·source('누가 말했나')는 선택 — conviction 축·국지성 가중의 입력.
+    """
     content = (content or "").strip()
     if not content:
         raise ValueError("내용이 비어 있습니다")
     if epistemic not in EPISTEMIC_LABEL:
         epistemic = "hypothesis"
+    rationale, source = (rationale or "").strip(), (source or "").strip()
 
     now = datetime.now(timezone.utc)
     title = content.splitlines()[0].strip()[:60]
@@ -46,6 +51,8 @@ def inject_knowledge(content: str, epistemic: str = "hypothesis") -> dict:
         f"# {title}\n\n"
         f"> {label} (사용자 주입 · {now.strftime('%Y-%m-%d')})\n\n"
         f"{content}\n"
+        + (f"\n**근거**: {rationale}\n" if rationale else "")
+        + (f"\n**출처**: {source}\n" if source else "")
     )
     path.write_text(md, encoding="utf-8")
 
@@ -71,7 +78,8 @@ def inject_knowledge(content: str, epistemic: str = "hypothesis") -> dict:
             SELECT DISTINCT e.name FROM entity_links el JOIN entities e ON el.entity_id=e.id
             WHERE el.doc_id=? ORDER BY el.confidence DESC LIMIT 6""", (row["id"],))]
         # K3: 사용자 지식도 knowledge 계층에 편입 — 기계 관측과 같은 수명주기
-        register_user_knowledge(conn, row["id"], content, epistemic, now.isoformat())
+        register_user_knowledge(conn, row["id"], content, epistemic, now.isoformat(),
+                                rationale=rationale, source=source)
     conn.close()
     return {"doc_id": row["id"] if row else None, "title": title,
             "epistemic": epistemic, "entities": entities}
@@ -98,7 +106,8 @@ def _classify_layer(statement: str) -> str:
         return "cycle"
 
 
-def register_user_knowledge(conn, doc_id: int, content: str, epistemic: str, observed_at: str) -> int | None:
+def register_user_knowledge(conn, doc_id: int, content: str, epistemic: str, observed_at: str,
+                            rationale: str = "", source: str = "") -> int | None:
     """주입 지식 → knowledge 행 (K3). 시장 엔티티 링크가 없으면 건너뜀 (개인 메모).
 
     - 가설 → hypothesis, 사실 → observed. review_status='active' (내 지식은 승인 불필요)
@@ -118,10 +127,11 @@ def register_user_knowledge(conn, doc_id: int, content: str, epistemic: str, obs
                     [{"id": doc_id, "independent": True, "published_at": observed_at}])
         return similar
     cur = conn.execute("""
-        INSERT INTO knowledge (statement, epistemic_status, review_status, pace_layer, model, valid_from)
-        VALUES (?, ?, 'active', ?, 'user', ?)""",
+        INSERT INTO knowledge (statement, epistemic_status, review_status, pace_layer, model, valid_from,
+                               rationale, source_ref)
+        VALUES (?, ?, 'active', ?, 'user', ?, ?, ?)""",
         (statement, "observed" if epistemic == "fact" else "hypothesis",
-         _classify_layer(statement), observed_at))
+         _classify_layer(statement), observed_at, rationale or None, source or None))
     kid = cur.lastrowid
     for e in market_ents:
         conn.execute("INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) VALUES (?, ?)",

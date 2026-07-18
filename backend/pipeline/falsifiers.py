@@ -27,37 +27,69 @@ SEARCH_TOP_K = 3
 MIN_DOC_CHARS = 150     # 본문이 이보다 짧으면 판정 불가 (제목·링크만으로 오탐 — 실측)
 
 
+FALSIFIER_MODEL = "opus"
+
+
+def _call_falsifier_opus(prompt: str) -> str:
+    """반증 조건 생성 전용 opus 호출 — 심층 종합이라 opus (판정·감시는 결정적 로직)."""
+    import subprocess
+    from pipeline.enrich import _claude_bin
+    proc = subprocess.run(
+        [_claude_bin(), "-p", "--model", FALSIFIER_MODEL, "--output-format", "json", prompt],
+        capture_output=True, text=True, timeout=400)
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
+    return json.loads(proc.stdout).get("result", "")
+
+
 def generate_falsifiers(conn, knowledge_id: int, statement: str) -> list[str]:
-    """지식의 반증 조건 생성 — 이미 있으면 스킵 (멱등)."""
+    """지식의 반증 조건 생성 — 이미 있으면 스킵 (멱등).
+
+    하이브리드: opus가 반증 조건을 '관측 가능한 구조'(대상·지표·임계·기간)로 생성 →
+    감시·판정은 watch_falsifiers의 결정적 로직이 담당 (LLM은 무엇을 감시할지만).
+    구조화 필드는 부가 정보 — 감시는 여전히 condition 서술 검색으로 (필드 결손 강건).
+    """
     if conn.execute("SELECT 1 FROM knowledge_falsifiers WHERE knowledge_id=?",
                     (knowledge_id,)).fetchone():
         return []
     from pipeline.enrich import llm_engine
-    from pipeline.consolidation import _call_claude_knowledge
     if llm_engine() != "claude-code":
         return []
     prompt = (
-        "다음 투자 관련 지식이 '틀렸다는 신호'를 2~3개 제시해라.\n"
-        "규칙: 각 신호는 뉴스·리포트·데이터에서 관측 가능해야 한다 "
-        "(예: '신규 팹 가동으로 공급 증가율이 수요 증가율을 상회', "
-        "'주요 고객 CapEx 가이던스 하향'). 모호한 표현 금지.\n"
-        'JSON만 출력: {"falsifiers": ["신호1", "신호2", ...]}\n\n'
+        "다음 투자 관련 지식이 '틀렸다는 신호'를 2~3개 제시해라 (ACH — 반증 우선).\n"
+        "규칙: 각 신호는 뉴스·리포트·데이터에서 관측 가능해야 한다. 모호한 표현 금지.\n"
+        "각 신호를 다음 구조로 분해해라:\n"
+        "- condition: 관측 가능한 반증 신호 서술 (예: '신규 팹 가동으로 공급 증가율이 수요 증가율을 상회')\n"
+        "- target_entity: 감시 대상 (기업/산업/지표 명, 없으면 null)\n"
+        "- metric: 관측 지표 (예: '공급 증가율', 'CapEx 가이던스', 없으면 null)\n"
+        "- threshold: 판단 임계 (예: '수요 증가율 상회', '전분기 대비 하향', 없으면 null)\n"
+        "- window: 관측 기간 (예: '분기', '30일', 없으면 null)\n"
+        'JSON만: {"falsifiers": [{"condition": "...", "target_entity": "...", '
+        '"metric": "...", "threshold": "...", "window": "..."}]}\n\n'
         f"[지식]\n{statement}"
     )
     try:
-        raw = _call_claude_knowledge(prompt)
+        raw = _call_falsifier_opus(prompt)
         s, e = raw.find("{"), raw.rfind("}")
         items = json.loads(raw[s:e + 1]).get("falsifiers") or []
     except Exception:
         return []
     out = []
-    for c in items[:MAX_FALSIFIERS]:
-        c = str(c).strip()
-        if len(c) < 8:
+    for it in items[:MAX_FALSIFIERS]:
+        if isinstance(it, str):          # 구버전/축약 응답 방어
+            it = {"condition": it}
+        cond = str(it.get("condition") or "").strip()
+        if len(cond) < 8:
             continue
-        conn.execute("INSERT INTO knowledge_falsifiers (knowledge_id, condition) VALUES (?, ?)",
-                     (knowledge_id, c))
-        out.append(c)
+        conn.execute(
+            "INSERT INTO knowledge_falsifiers (knowledge_id, condition, target_entity, metric, threshold, window) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (knowledge_id, cond,
+             (str(it.get("target_entity")).strip() if it.get("target_entity") else None),
+             (str(it.get("metric")).strip() if it.get("metric") else None),
+             (str(it.get("threshold")).strip() if it.get("threshold") else None),
+             (str(it.get("window")).strip() if it.get("window") else None)))
+        out.append(cond)
     conn.commit()
     return out
 
