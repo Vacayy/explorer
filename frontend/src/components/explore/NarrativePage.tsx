@@ -1,6 +1,7 @@
+import { useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft, Loader2, Sparkles } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { ArrowLeft, ArrowRight, Loader2, Route, Sparkles, Workflow } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -9,10 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { cn } from "@/lib/utils"
 
 /**
- * /narrative?topic= — 주제 내러티브 (theme_surge 고도화).
- * 질문형 제목 + 3줄요약 + 전개 타임라인 + 인과 + 시나리오 + 종합해석 (opus md).
+ * /narrative?topic= — 주제 내러티브 (theme_surge 고도화, D-023 인과 그래프 위 서브그래프).
+ * 질문형 제목 + 서사(md) + 인과 체인 구조 뷰(그래프에서 조회) + category/version.
  * 도시에 2단 패턴: GET 캐시 → stale이면 compute 자동 발화.
  */
 interface Narrative {
@@ -21,11 +23,19 @@ interface Narrative {
   narrative: string | null
   created_at: string | null
   stale: boolean
+  category: string | null
+  version: number | null
+  narrative_id: number | null
+}
+
+const LENS_LABEL: Record<string, string> = {
+  macro: "매크로", geopolitics: "지정학", industry: "산업", flow: "수급", tech: "기술", policy: "정책",
 }
 
 export default function NarrativePage() {
   const [sp] = useSearchParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const topic = sp.get("topic") ?? ""
 
   const cached = useQuery(
@@ -42,6 +52,12 @@ export default function NarrativePage() {
       enabled: !!cached.data?.stale,
     }),
   )
+  // 재생성 완료 시 캐시 GET을 무효화 → 새 version·category·narrative_id·인과 그래프 반영
+  useEffect(() => {
+    if (fresh.data?.status === "fresh") {
+      qc.invalidateQueries({ queryKey: ["spine", "narrative", topic] })
+    }
+  }, [fresh.data?.status, topic, qc])
   const n = fresh.data ?? cached.data
 
   if (!topic) return <ErrorState message="주제가 없습니다 (?topic= 필요)" />
@@ -49,14 +65,23 @@ export default function NarrativePage() {
 
   const generating = fresh.isFetching
   const empty = n?.status === "empty" && !n?.narrative && !generating
+  const lenses = (cached.data?.category ?? n?.category ?? "").split(",").filter(Boolean)
+  const version = cached.data?.version
+  const narrativeId = cached.data?.narrative_id
 
   return (
     <PageContainer gap="sm" width="reading">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Button variant="ghost" size="sm" onClick={() => navigate("/explore?list=theme_surge")}>
           <ArrowLeft className="h-4 w-4" /> 주목 주제
         </Button>
         <Badge variant="secondary" className="text-[10px]">내러티브</Badge>
+        {lenses.map((l) => (
+          <Badge key={l} variant="outline" className="text-[10px]">{LENS_LABEL[l] ?? l}</Badge>
+        ))}
+        {version && version > 1 && (
+          <Badge variant="outline" className="text-[10px] text-muted-foreground">v{version}</Badge>
+        )}
       </div>
 
       {empty ? (
@@ -86,8 +111,153 @@ export default function NarrativePage() {
               </CardContent>
             </Card>
           )}
+          {narrativeId && <CausalChain narrativeId={narrativeId} />}
+          {narrativeId && <ChainPaths narrativeId={narrativeId} />}
         </>
       )}
     </PageContainer>
+  )
+}
+
+/* ---------- 인과 체인 구조 뷰 (그래프에서 조회) ---------- */
+
+interface CausalEdge {
+  from: string; from_type: string | null; to: string; to_type: string | null
+  rel: string; mechanism: string | null; orientation: string | null
+  reference_period: string | null; confidence: number | null
+}
+interface CausalGraph { nodes: { name: string; type: string }[]; edges: CausalEdge[] }
+
+const NODE_LABEL: Record<string, string> = {
+  company: "기업", sector: "섹터", theme: "테마", person: "인물",
+  macro: "매크로", policy: "정책", event: "사건",
+}
+const ORIENT: Record<string, { label: string; cls: string }> = {
+  past: { label: "회고", cls: "text-muted-foreground" },
+  current: { label: "현재", cls: "text-foreground" },
+  forward: { label: "전망", cls: "text-hypothesis" },
+}
+const ORIENT_ORDER: Record<string, number> = { past: 0, current: 1, forward: 2 }
+
+function NodeChip({ name, type }: { name: string; type: string | null }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs">
+      {type && <span className="text-[9px] text-muted-foreground">{NODE_LABEL[type] ?? type}</span>}
+      <span className="font-medium">{name}</span>
+    </span>
+  )
+}
+
+function CausalChain({ narrativeId }: { narrativeId: number }) {
+  const { data, isLoading, isError } = useQuery(
+    apiQuery<CausalGraph>({
+      key: ["spine", "narrative", "causal", narrativeId],
+      url: `/api/spine/narrative/${narrativeId}/causal`,
+      staleTime: STALE.short,
+    }),
+  )
+  if (isLoading) return <Skeleton className="h-24 w-full rounded-xl" />
+  if (isError) return null   // 본문은 이미 노출됨 — 구조 뷰만 조용히 생략
+
+  const edges = [...(data?.edges ?? [])].sort(
+    (a, b) => (ORIENT_ORDER[a.orientation ?? ""] ?? 1) - (ORIENT_ORDER[b.orientation ?? ""] ?? 1),
+  )
+
+  return (
+    <Card>
+      <CardContent className="py-3 space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Workflow className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">인과 구조</span>
+          <span className="text-[11px] text-muted-foreground">시간순 · 원인 → 결과, 수혜 섹터</span>
+        </div>
+        {edges.length === 0 ? (
+          <EmptyState message="인과 구조가 아직 추출되지 않았습니다 — 재생성 시 그래프에 쌓입니다." />
+        ) : (
+          <ul className="space-y-1.5">
+            {edges.map((e, i) => {
+              const o = ORIENT[e.orientation ?? ""]
+              const benefit = e.rel === "BENEFITS_FROM"
+              return (
+                <li key={i} className="flex flex-wrap items-center gap-1.5 text-sm">
+                  <NodeChip name={e.from} type={e.from_type} />
+                  <span className={cn("inline-flex items-center gap-0.5 text-[10px]",
+                    benefit ? "text-primary" : "text-muted-foreground")}>
+                    <ArrowRight className="h-3 w-3" />
+                    {benefit ? "수혜" : "인과"}
+                    {o && <span className={cn("ml-0.5", o.cls)}>· {o.label}</span>}
+                  </span>
+                  <NodeChip name={e.to} type={e.to_type} />
+                  {e.mechanism && (
+                    <span className="text-[11px] text-muted-foreground w-full pl-1">↳ {e.mechanism}</span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ---------- 근본 원인 → 수혜 경로 (전역 그래프 순회, Phase 2 §2-1) ---------- */
+
+interface ChainPath {
+  nodes: { name: string; type: string }[]
+  edges: CausalEdge[]
+  confidence: number
+  reaches_sector: boolean
+}
+interface ChainResponse { status: string; paths: ChainPath[] }
+
+function ChainPaths({ narrativeId }: { narrativeId: number }) {
+  const { data, isLoading, isError } = useQuery(
+    apiQuery<ChainResponse>({
+      key: ["spine", "narrative", "chain", narrativeId],
+      url: `/api/spine/narrative/${narrativeId}/chain`,
+      staleTime: STALE.short,
+    }),
+  )
+  if (isLoading) return <Skeleton className="h-20 w-full rounded-xl" />
+  // 엣지 부족(순회 불가)이거나 실패 — 섹션 자체를 조용히 숨김 (5-state: Empty/Error)
+  if (isError || !data || data.status !== "ok" || data.paths.length === 0) return null
+
+  return (
+    <Card>
+      <CardContent className="py-3 space-y-2.5">
+        <div className="flex items-center gap-1.5">
+          <Route className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">근본 원인 → 수혜 경로</span>
+          <span className="text-[11px] text-muted-foreground">전역 인과 그래프 순회</span>
+        </div>
+        <ul className="space-y-2.5">
+          {data.paths.map((p, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-1.5 text-sm">
+              {p.nodes.map((n, j) => {
+                const isRoot = j === 0
+                const isBeneficiary = j === p.nodes.length - 1 && p.reaches_sector
+                return (
+                  <span key={j} className="flex items-center gap-1.5">
+                    <span className={cn(
+                      "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs",
+                      isRoot && "border-hypothesis/50 bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]",
+                      isBeneficiary && "border-primary/50 bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))]",
+                    )}>
+                      <span className="text-[9px] text-muted-foreground">{NODE_LABEL[n.type] ?? n.type}</span>
+                      <span className="font-medium">{n.name}</span>
+                    </span>
+                    {j < p.nodes.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
+                  </span>
+                )
+              })}
+              <Badge variant="outline" className="text-[9px] font-normal text-muted-foreground ml-1">
+                신뢰도 {(p.confidence * 100).toFixed(0)}%
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }
