@@ -160,13 +160,9 @@ def _link(conn, doc_id: int, title: str, markdown: str, result: dict):
             "VALUES (?, ?, 'stock', 0.6)", (doc_id, eid))
 
 
-def _enrich_and_store(conn, doc_id: int, title: str, md: str, h: str) -> dict:
-    """이전 enrichment·링크 제거 후 재생성 — 문서당 정확히 1개 유지, stale 방지.
-
-    LLM 호출(수 초~수십 초)은 반드시 쓰기 트랜잭션 밖에서 — DELETE를 LLM 뒤에 둬서
-    쓰기 락 점유를 밀리초로 유지한다 (cron enrich 중 API 'database is locked' 방지).
-    """
-    result = enrich_mod.enrich(title, md)
+def apply_enrichment(conn, doc_id: int, title: str, md: str, h: str, result: dict) -> None:
+    """enrich 결과 dict를 문서에 적용 — 이전 enrichment·링크 제거 후 재생성 (stale 방지).
+    LLM 호출은 이 함수 밖에서 끝내고 와야 한다 — 쓰기 락 점유를 밀리초로 유지."""
     conn.execute("DELETE FROM enrichments WHERE doc_id=?", (doc_id,))
     conn.execute("DELETE FROM entity_links WHERE doc_id=?", (doc_id,))
     conn.execute(
@@ -178,6 +174,16 @@ def _enrich_and_store(conn, doc_id: int, title: str, md: str, h: str) -> dict:
     )
     _link(conn, doc_id, title, md, result)
     conn.commit()
+
+
+def _enrich_and_store(conn, doc_id: int, title: str, md: str, h: str) -> dict:
+    """이전 enrichment·링크 제거 후 재생성 — 문서당 정확히 1개 유지, stale 방지.
+
+    LLM 호출(수 초~수십 초)은 반드시 쓰기 트랜잭션 밖에서 — DELETE를 LLM 뒤에 둬서
+    쓰기 락 점유를 밀리초로 유지한다 (cron enrich 중 API 'database is locked' 방지).
+    """
+    result = enrich_mod.enrich(title, md)
+    apply_enrichment(conn, doc_id, title, md, h, result)
     return result
 
 
@@ -216,16 +222,17 @@ def store_document(doc: RawDoc) -> dict:
     elif existing:
         conn.execute(
             "UPDATE raw_documents SET title=?, url=?, published_at=?, raw_content=?, "
-            "markdown=?, content_hash=?, media_json=?, fetched_at=datetime('now') WHERE id=?",
-            (doc.title, doc.url, to_iso_utc(doc.published_at), doc.raw_content, md, h, media, existing["id"]),
+            "markdown=?, content_hash=?, media_json=?, digest_status=?, fetched_at=datetime('now') WHERE id=?",
+            (doc.title, doc.url, to_iso_utc(doc.published_at), doc.raw_content, md, h, media,
+             doc.digest_status, existing["id"]),
         )
         doc_id, status = existing["id"], "updated"
     else:
         cur = conn.execute(
             "INSERT INTO raw_documents (source_type, source_id, title, url, published_at, "
-            "raw_content, markdown, content_hash, media_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "raw_content, markdown, content_hash, media_json, digest_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (doc.source_type, doc.source_id, doc.title, doc.url, to_iso_utc(doc.published_at),
-             doc.raw_content, md, h, media),
+             doc.raw_content, md, h, media, doc.digest_status),
         )
         doc_id, status = cur.lastrowid, "new"
     conn.commit()

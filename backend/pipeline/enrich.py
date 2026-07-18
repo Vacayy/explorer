@@ -205,10 +205,10 @@ def _parse_json(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-def _call_claude_code(prompt: str) -> str:
+def _call_claude_code(prompt: str, model: str = "haiku", timeout: int = 180) -> str:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", "haiku", "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=180,
+        [_claude_bin(), "-p", "--model", model, "--output-format", "json", prompt],
+        capture_output=True, text=True, timeout=timeout,
     )
     if proc.returncode != 0:
         # claude는 오류(사용량 한도·미로그인 등)를 stdout에 쓴다 — stderr만 보면 원인이 비어 보임
@@ -228,11 +228,8 @@ def _call_api(prompt: str) -> str:
     return "".join(b.text for b in msg.content if b.type == "text")
 
 
-def _enrich_llm(title: str, markdown: str) -> dict:
-    engine = llm_engine()
-    prompt = _build_prompt(title, markdown)
-    raw = _call_claude_code(prompt) if engine == "claude-code" else _call_api(prompt)
-    data = _parse_json(raw)
+def _normalize_llm_result(data: dict, model: str) -> dict:
+    """LLM 태깅 원시 JSON → enrich 표준 dict (단건·배치 공용 정규화)."""
     stocks = [s for s in (data.get("stocks") or []) if isinstance(s, dict) and s.get("name")]
     kr = [s for s in stocks if str(s.get("listed", "KR")).upper() in ("KR", "K", "KOREA")]
     foreign = [s for s in stocks if s not in kr]
@@ -243,7 +240,7 @@ def _enrich_llm(title: str, markdown: str) -> dict:
         "sentiment": data.get("sentiment"),
         "time_orientation": orient if orient in ("past", "current", "forward", "mixed") else None,
         "reference_period": ref[:60] if ref and ref.lower() not in ("null", "none", "") else None,
-        "model": f"{engine}/haiku",
+        "model": model,
         "industries": data.get("industries") or [],
         "topics": data.get("topics") or [],
         "label_parents": data.get("label_parents") or {},
@@ -257,3 +254,66 @@ def _enrich_llm(title: str, markdown: str) -> dict:
             if s.get("as_written") and str(s["as_written"]).strip() != s["name"]
         ],
     }
+
+
+def _enrich_llm(title: str, markdown: str) -> dict:
+    engine = llm_engine()
+    prompt = _build_prompt(title, markdown)
+    raw = _call_claude_code(prompt) if engine == "claude-code" else _call_api(prompt)
+    return _normalize_llm_result(_parse_json(raw), f"{engine}/haiku")
+
+
+BATCH_MODEL = "sonnet"       # 배치 백필 전용 — 멀티 문서 구조화 출력은 지시 추종 요구가 높음 (D-028)
+BATCH_DOC_CHARS = 1500       # 배치는 문서당 발췌를 줄여 프롬프트 총량 통제
+
+
+def _build_batch_prompt(docs: list[dict]) -> str:
+    """문서 N건을 한 콜에 태깅 — 단건 프롬프트와 같은 스키마, 문서별 [i] 인덱스로 분리."""
+    inds, tops = _live_vocab()
+    persons = _person_vocab()
+    companies = _foreign_company_vocab()
+    body = "\n\n".join(
+        f"[{i + 1}] 제목: {d['title']}\n{(d['markdown'] or '')[:BATCH_DOC_CHARS]}"
+        for i, d in enumerate(docs))
+    return (
+        f"아래 한국 투자 관련 문서 {len(docs)}건을 각각 독립적으로 분석해 JSON만 출력해. "
+        "설명·코드블록 금지. 문서끼리 내용을 섞지 마라 — 각 결과는 해당 번호 문서만 근거로.\n"
+        '형식: {"results": [{"doc": 1, "stocks": [{"name": "정식 종목명", "as_written": "본문 표기", '
+        '"listed": "KR|해외|비상장"}], "industries": [], "topics": [], '
+        '"label_parents": {"신규라벨": "상위라벨"}, "people": [], "summary": "핵심 2문장", '
+        '"sentiment": "positive|neutral|negative", "time_orientation": "past|current|forward|mixed", '
+        '"reference_period": "실제 대상 시기 또는 null"}, ...]}\n'
+        f"results 배열은 반드시 {len(docs)}개, doc 번호는 입력 번호 그대로.\n"
+        "규칙 (문서마다 동일 적용):\n"
+        "- time_orientation: 글 작성일이 아니라 다루는 내용의 시점 기준 — past(회고)/current(지금)/"
+        "forward(전망)/mixed(과거+전망).\n"
+        "- reference_period: 발행일과 명백히 다른 특정 시기 대상이면 짧게(예: '2027 전망'), 아니면 null.\n"
+        "- stocks: 실제 논의 대상 상장사만. 한국 상장사는 별칭을 정식 종목명으로 정규화(listed=KR), "
+        "해외 주요 상장사는 통용 한국어 표기(listed=해외), 비상장 주요 기업(오픈AI 등)은 listed=비상장.\n"
+        "- 해외/비상장 기업은 아래 '기존 기업 표기'에 있으면 반드시 그 표기 그대로.\n"
+        "- industries/topics: 기존 라벨과 같거나 유사하면 반드시 기존 라벨 그대로, 명백히 새로우면 신규 허용.\n"
+        "- people: 실질적으로 다루는 실존 인물만, 통용 한국어 표기로 정규화. 스쳐가는 이름 제외.\n"
+        f"- 기존 인물 표기: {', '.join(persons) if persons else '(아직 없음)'}\n"
+        f"- 기존 기업 표기 (해외/비상장): {', '.join(companies) if companies else '(아직 없음)'}\n"
+        f"- 기존 산업 라벨: {', '.join(inds)}\n"
+        f"- 기존 토픽 라벨: {', '.join(tops)}\n\n"
+        f"[문서들]\n{body}"
+    )
+
+
+def enrich_batch(docs: list[dict]) -> dict[int, dict]:
+    """배치 재태깅 (백필 전용, D-028) — docs: [{id, title, markdown}].
+    반환: {doc_id: 표준 enrich dict}. 배치 전체 실패 시 예외 (호출자가 재시도 관리)."""
+    if llm_engine() != "claude-code":
+        raise RuntimeError("배치 재태깅은 claude-code 엔진 필요")
+    raw = _call_claude_code(_build_batch_prompt(docs), model=BATCH_MODEL, timeout=420)
+    data = _parse_json(raw)
+    out: dict[int, dict] = {}
+    for r in (data.get("results") or []):
+        try:
+            idx = int(r.get("doc")) - 1
+        except (TypeError, ValueError):
+            continue
+        if 0 <= idx < len(docs):
+            out[docs[idx]["id"]] = _normalize_llm_result(r, f"claude-code/{BATCH_MODEL}")
+    return out
