@@ -200,9 +200,6 @@ function ResearchProposalSection() {
       <CardHeader className="pb-2 flex-row items-center gap-2">
         <FlaskConical className="h-4 w-4 text-hypothesis" />
         <CardTitle className="text-sm">리서치 제안 — 지금 파볼 만한 종목</CardTitle>
-        <span className="ml-auto text-[11px] text-muted-foreground">
-          기계가 값싸게 골랐습니다 · 승인 시 추정치 방향까지 리서치
-        </span>
       </CardHeader>
       <CardContent className="divide-y">
         {items.map((c) => {
@@ -289,8 +286,8 @@ function NarrativeSection() {
   return (
     <Card>
       <CardHeader className="pb-2 flex-row items-center gap-2">
-        <CardTitle className="text-sm">내러티브 — 지금 시장을 관통하는 질문</CardTitle>
-        <span className="text-[11px] text-muted-foreground">주목 주제를 하나의 서사로</span>
+        <CardTitle className="text-sm">내러티브</CardTitle>
+        <span className="text-[11px] text-muted-foreground">주목받는 주제들을 기반으로 생성한 시장의 질문들</span>
       </CardHeader>
       <CardContent className="space-y-2.5">
         {items.map((n) => (
