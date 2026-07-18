@@ -62,6 +62,7 @@ app.include_router(spine_conversations.router)
 app.include_router(spine_person.router)
 app.include_router(spine_knowledge.router)
 app.include_router(spine_approvals.router)
+app.include_router(spine_approvals.agent_router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)

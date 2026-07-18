@@ -12,7 +12,7 @@
    (스펙: docs/specs/doc-causal-extraction.md)
 4-1. **시나리오 엔진 → 그래프 적재** — 파급 체인을 프로즈로만 버리던 것을 같은 opus 콜에서
    구조화 인과로도 산출·적재 (제3 공급원, 추가 비용 ~0). ✅ 2026-07-18 구현
-5. (계획 승인, 착수 보류) **에이전트 제안함 v1** — docs/specs/agent-proposals.md, 세계관 뷰 완료 후 별도 논의
+5. **에이전트 제안함 v1** — docs/specs/agent-proposals.md. ✅ 2026-07-18 구현 (kind 4종·ApprovalsCard 통합·주간 cron)
 
 ## Top 5 (2차)
 1. **텔레그램 봇 양방향화** — 답장으로 종목 요약·RAG 질문 (주머니 속 옴니바, 모바일 접점)

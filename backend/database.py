@@ -603,6 +603,23 @@ def init_db():
         UNIQUE(topic, version)
     );
 
+    -- 에이전트 제안함 (진화계획 3단계 v1, docs/specs/agent-proposals.md) — 시스템이 그래프·지식
+    -- 상태를 감시하다 먼저 "조사해볼까요?"를 던진다. 제안-전용: 승인 전엔 어떤 행동도 없음.
+    CREATE TABLE IF NOT EXISTS agent_proposals (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind          TEXT NOT NULL,        -- neglect|contested_edge|devils_advocate|falsifier_watch
+        title         TEXT NOT NULL,        -- 제안형 한 줄
+        rationale     TEXT,                 -- 왜 이걸 제안하는지 (승인 전 읽는 근거)
+        payload_json  TEXT,                 -- kind별 구조화 데이터 (entity_id·edge_id·knowledge_id 등)
+        dedup_key     TEXT,                 -- kind별 중복 방지 키 (같은 대상 재제안 억제)
+        status        TEXT DEFAULT 'proposed',  -- proposed|dismissed|actioned
+        detected_at   TEXT DEFAULT (datetime('now')),
+        actioned_at   TEXT,
+        result_json   TEXT,                 -- 승인 후 실행 결과 요약
+        UNIQUE(kind, dedup_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_proposals_status ON agent_proposals(status, detected_at);
+
     -- 인과 엣지 근거 이력 (Phase 2 §2-4 교차검증) — entity_relations.narrative_id는 "가장 최근"
     -- 하나만 남기므로(재적재 시 덮어씀), 몇 개의 '독립' 내러티브가 이 엣지를 주장했는지 세려면
     -- 매 적재·재적재마다의 (엣지, 내러티브) 쌍을 별도로 누적해야 한다.
