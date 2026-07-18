@@ -28,6 +28,7 @@ import CompanyPage from "@/components/company/CompanyPage"
 import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import SectorMapPage from "@/components/map/SectorMapPage"
 import NarrativePage from "@/components/explore/NarrativePage"
+import WorldviewPage from "@/components/explore/WorldviewPage"
 import ArchivePage from "@/components/archive/ArchivePage"
 
 // Discovery
@@ -158,6 +159,7 @@ export default function App() {
             <Route path="explore" element={<ExplorePage />} />
             <Route path="map" element={<SectorMapPage />} />
             <Route path="narrative" element={<NarrativePage />} />
+            <Route path="narrative/worldview" element={<WorldviewPage />} />
             <Route path="people" element={<PeopleDirectoryPage />} />
             <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="chat" element={<ChatPage />} />

@@ -288,6 +288,9 @@ function NarrativeSection() {
       <CardHeader className="pb-2 flex-row items-center gap-2">
         <CardTitle className="text-sm">내러티브</CardTitle>
         <span className="text-[11px] text-muted-foreground">주목받는 주제들을 기반으로 생성한 시장의 질문들</span>
+        <Link to="/narrative/worldview" className="ml-auto text-[11px] text-primary hover:underline shrink-0">
+          세계관 전체 보기 →
+        </Link>
       </CardHeader>
       <CardContent className="space-y-2.5">
         {items.map((n) => (

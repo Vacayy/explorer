@@ -141,7 +141,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 
 ## Tech Stack
 - Backend: FastAPI + SQLite + OpenDartReader + pykrx + yfinance
-- Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4 + shadcn/ui + Recharts + lightweight-charts + TanStack Query
+- Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4 + shadcn/ui + Recharts + lightweight-charts + React Flow(@xyflow/react, 노드-링크 그래프) + dagre(그래프 레이아웃) + TanStack Query
 - Routing: react-router-dom v6 (URL = single source of truth)
 
 ## Component Hierarchy
