@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft, ArrowRight, ChevronDown, GitMerge, Loader2, Route, Sparkles, Workflow } from "lucide-react"
+import { Anchor, ArrowLeft, ArrowRight, ChevronDown, GitMerge, Loader2, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
@@ -128,6 +128,7 @@ export default function NarrativePage() {
           )}
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
           {narrativeId && <ChainPaths narrativeId={narrativeId} />}
+          {narrativeId && <Grounding narrativeId={narrativeId} />}
           {narrativeId && <RelatedNarratives narrativeId={narrativeId} />}
         </>
       )}
@@ -141,7 +142,7 @@ interface CausalEdge {
   from: string; from_type: string | null; to: string; to_type: string | null
   rel: string; mechanism: string | null; orientation: string | null
   reference_period: string | null; confidence: number | null
-  corroborated_by?: number; contested?: boolean
+  corroborated_by?: number; contested?: boolean; promoted_knowledge_id?: number | null
 }
 interface CausalGraph { nodes: { name: string; type: string }[]; edges: CausalEdge[] }
 
@@ -212,6 +213,9 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
                   )}
                   {e.contested && (
                     <Badge variant="destructive" className="text-[9px] font-normal">상충</Badge>
+                  )}
+                  {e.promoted_knowledge_id && (
+                    <Badge variant="secondary" className="text-[9px] font-normal">승격된 지식</Badge>
                   )}
                   {e.mechanism && (
                     <span className="text-[11px] text-muted-foreground w-full pl-1">↳ {e.mechanism}</span>
@@ -400,6 +404,49 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
               <Badge variant="outline" className="text-[9px] font-normal text-muted-foreground ml-1">
                 신뢰도 {(p.confidence * 100).toFixed(0)}%
               </Badge>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ---------- 딛고 선 지식 (내러티브↔지식 루프, Phase 2 §2-5) ---------- */
+
+interface GroundingItem {
+  knowledge_id: number; statement: string; epistemic_status: string; falsifiers: string[]
+}
+interface GroundingResponse { status: string; grounding: GroundingItem[] }
+
+function Grounding({ narrativeId }: { narrativeId: number }) {
+  const { data, isLoading, isError } = useQuery(
+    apiQuery<GroundingResponse>({
+      key: ["spine", "narrative", "grounding", narrativeId],
+      url: `/api/spine/narrative/${narrativeId}/grounding`,
+      staleTime: STALE.short,
+    }),
+  )
+  if (isLoading) return <Skeleton className="h-16 w-full rounded-xl" />
+  if (isError || !data || data.status !== "ok" || data.grounding.length === 0) return null
+
+  return (
+    <Card>
+      <CardContent className="py-3 space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Anchor className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">이 서사가 딛고 선 지식</span>
+          <span className="text-[11px] text-muted-foreground">{data.grounding.length}건</span>
+        </div>
+        <ul className="space-y-2">
+          {data.grounding.map((g) => (
+            <li key={g.knowledge_id} className="text-sm space-y-0.5">
+              <p>{g.statement}</p>
+              {g.falsifiers.length > 0 && (
+                <div className="text-[11px] text-muted-foreground">
+                  흔들릴 조건: {g.falsifiers.join(" · ")}
+                </div>
+              )}
             </li>
           ))}
         </ul>
