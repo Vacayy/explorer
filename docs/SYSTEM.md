@@ -113,6 +113,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `search` | FTS5+sqlite-vec 하이브리드(RRF)·인덱스 빌드 |
 | `signals` | mention_surge·high_52w(200일+ 히스토리 요구)·neglect·consensus_extreme(진자, 감성 90%+ 극단)·volume_spike(60일 평균 3배+ & 등락 3%+ — 급증일 언급 문서 결합)·quadrant_gap(주가×감성 괴리)·theme_surge(주목 주제 — 점유율 상승 화두, 문서유형 라벨 제외) |
 | `falsifiers` | 반증 조건 감시(ACH 반증우선) — 지식 active/주입 시 **opus가 '틀렸다는 신호' 2~3개를 구조화**(condition·target_entity·metric·threshold·window)로 생성 → 일일 표적 검색·판정(TRIGGERED, 결정적 로직) → refute 증거 부착 → contested 기계 연동. 본문 150자 미만 문서 판정 제외 |
+| `agent_proposals` | **에이전트 제안함(진화계획 3단계 v1, docs/specs/agent-proposals.md)** — 시스템이 그래프·지식 상태를 감시하다 먼저 "조사해볼까요?" 제안. 제안-전용(승인 전 무행동, D-020·D-022 계승). kind 4종: `neglect`(소외 신호→리서치 제안, LLM 0) · `contested_edge`(역방향 CAUSES 쌍, 시점 갈린 나선 제외, LLM 0 — 승인 시 opus 조정: a_wins/b_wins→열세 confidence×0.7, both_temporal→피드백 루프로 둘 다 유지) · `devils_advocate`(watchlist thesis 반대 질문, haiku 주 1회) · `falsifier_watch`(corroborated 지식의 미발화 반증 리마인드, LLM 0). `agent_proposals` 테이블(dedup_key 멱등), 홈 ApprovalsCard 통합 노출, POST /agent-proposals/{id}/approve·dismiss. 주 1회 cron(일 07:20) |
 | `lenses` | 분석 렌즈 — docs/references 사고틀(주가 패턴 5축·산업 수요→병목→주가) 압축, RAG·브리프 프롬프트 주입 |
 | `consensus_history` | Fwd EPS·PER·목표주가 일일 스냅샷(네이버 모바일 API, 워치리스트) → consensus_estimates 이력. 축적 후: 분해 v2(revision vs 리레이팅)·quadrant_gap 펀더 축 교체·추정치 반전 신호 |
 | `flows` | 수급 이력 — 외인·기관·개인 순매수 30일(네이버 trend API, pykrx는 KRX 로그인 벽) → investor_flows. 브리프 [수급] 재료 |

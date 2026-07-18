@@ -25,6 +25,15 @@ interface ApprovalItem {
 
 const VISIBLE = 5
 
+// 에이전트 제안함 kind (진화계획 3단계 v1, docs/specs/agent-proposals.md)
+const AGENT_KINDS = new Set(["neglect", "contested_edge", "devils_advocate", "falsifier_watch"])
+const KIND_LABEL: Record<string, string> = {
+  alias: "별칭", knowledge: "지식",
+  neglect: "소외", contested_edge: "상충", devils_advocate: "질문", falsifier_watch: "반증",
+}
+// 확인만 하는 kind — 승인 버튼 라벨을 다르게 (액션이 없음을 정직하게)
+const ACK_ONLY = new Set(["devils_advocate", "falsifier_watch"])
+
 export default function ApprovalsCard() {
   const qc = useQueryClient()
   const [showAll, setShowAll] = useState(false)
@@ -42,12 +51,20 @@ export default function ApprovalsCard() {
       if (item.kind === "knowledge") {
         return (await api.post(`/api/spine/knowledge/items/${item.id}/approve`)).data as { epistemic_status: string }
       }
+      if (AGENT_KINDS.has(item.kind)) {
+        return (await api.post(`/api/spine/agent-proposals/${item.id}/approve`)).data as { kind: string; result: { verdict?: string; brief_status?: string } | null }
+      }
       return (await api.post(`/api/spine/keywords/${item.id}/approve`)).data as { keyword: string; retro_linked_docs: number }
     },
     onSuccess: (d, item) => {
       if (item.kind === "knowledge") {
         const epi = (d as { epistemic_status: string }).epistemic_status
         toast.success(`지식 승격 — ${epi === "corroborated" ? "교차확인됨(corroborated)" : "관측(observed)"}으로 활성화`)
+      } else if (AGENT_KINDS.has(item.kind)) {
+        const r = d as { result: { verdict?: string; brief_status?: string } | null }
+        if (item.kind === "neglect") toast.success(`리서치 실행 — 브리프 ${r.result?.brief_status ?? "완료"}`)
+        else if (item.kind === "contested_edge") toast.success(`상충 조정 — 판정: ${r.result?.verdict ?? "완료"}`)
+        else toast.success("확인 완료")
       } else {
         const r = d as { keyword: string; retro_linked_docs: number }
         toast.success(`'${r.keyword}' 승인 — 기존 문서 ${r.retro_linked_docs}건 소급 링크`)
@@ -56,10 +73,11 @@ export default function ApprovalsCard() {
     },
   })
   const reject = useMutation({
-    mutationFn: async (item: ApprovalItem) =>
-      item.kind === "knowledge"
-        ? api.post(`/api/spine/knowledge/items/${item.id}/reject`)
-        : api.delete(`/api/spine/keywords/${item.id}`),
+    mutationFn: async (item: ApprovalItem) => {
+      if (item.kind === "knowledge") return api.post(`/api/spine/knowledge/items/${item.id}/reject`)
+      if (AGENT_KINDS.has(item.kind)) return api.post(`/api/spine/agent-proposals/${item.id}/dismiss`)
+      return api.delete(`/api/spine/keywords/${item.id}`)
+    },
     onSuccess: () => {
       toast.success("거부 — 제안이 제거되었습니다")
       invalidate()
@@ -81,7 +99,7 @@ export default function ApprovalsCard() {
         {visible.map((it) => (
           <div key={`${it.kind}-${it.id}`} className="flex items-center gap-2 py-1.5">
             <Badge variant="secondary" className="text-[9px] shrink-0">
-              {it.kind === "alias" ? "별칭" : it.kind === "knowledge" ? "지식" : it.kind}
+              {KIND_LABEL[it.kind] ?? it.kind}
             </Badge>
             <span className="text-sm truncate" title={it.detail ?? undefined}>
               {it.stock_code ? (
@@ -94,7 +112,7 @@ export default function ApprovalsCard() {
             <span className="ml-auto flex gap-1 shrink-0">
               <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
                 disabled={approve.isPending} onClick={() => approve.mutate(it)}>
-                <Check className="h-3 w-3" /> 승인
+                <Check className="h-3 w-3" /> {ACK_ONLY.has(it.kind) ? "확인" : "승인"}
               </Button>
               <Button size="xs" variant="ghost" className="h-6 px-2 text-muted-foreground hover:text-destructive"
                 disabled={reject.isPending} onClick={() => reject.mutate(it)}>
