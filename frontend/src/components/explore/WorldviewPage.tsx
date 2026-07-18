@@ -53,7 +53,7 @@ const MIN_CLUSTER = 3   // 이보다 작은 연결요소(고립된 2노드 조�
 
 function layoutGraph(nodes: WNode[], edges: WEdge[]): (WNode & { x: number; y: number })[] {
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: "LR", nodesep: 48, ranksep: 170 })
+  g.setGraph({ rankdir: "LR", nodesep: 24, ranksep: 80 })
   g.setDefaultEdgeLabel(() => ({}))
   nodes.forEach((n) => g.setNode(String(n.id), { width: NODE_W, height: NODE_H }))
   edges.forEach((e) => g.setEdge(String(e.from_id), String(e.to_id)))
