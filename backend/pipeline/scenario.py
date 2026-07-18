@@ -30,7 +30,8 @@ def parse_scenario(text: str) -> str | None:
     return None
 
 
-def _build_prompt(event: str, docs: list[dict], knowledge: list[dict]) -> str:
+def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
+                   node_vocab: list[str]) -> str:
     ctx = "\n\n".join(
         f"[{i+1}] ({d['source_type']}, {(d['published_at'] or '')[:10]}) {d['title']}\n{d['excerpt']}"
         for i, d in enumerate(docs)) or "(관련 수집 문서 없음)"
@@ -39,7 +40,8 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict]) -> str:
     return (
         "너는 사건의 파급을 추론하는 투자 리서치 전략가다. 아래 [사건]을 그대로 받아들이지 말고 "
         "인과 체인으로 전개해라.\n"
-        'JSON만 출력: {"scenario": "마크다운"}\n'
+        'JSON만 출력: {"scenario": "마크다운", "causal": {"nodes": [{"name","type"}], '
+        '"edges": [{"from","to","rel","mechanism","orientation","reference_period","confidence"}]}}\n'
         "마크다운 구조 (섹션 고정):\n"
         "### 사건 정의 — 무엇이 실제로 일어났고/일어난다고 가정하며, 무엇은 아직 불확실한가\n"
         "### 파급 체인 — '사건 → 1차 → 2차 → 3차' 화살표 체인을 먼저 한 줄로, 이어서 단계별로:\n"
@@ -51,6 +53,14 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict]) -> str:
         "### 반대 시나리오 — 이 체인이 통째로 틀리는 가장 그럴듯한 경로 한 단락 (ACH — 확증 방지)\n"
         "규칙: 수집 문서에 없는 수치는 (일반지식)으로 정직하게 표기. 과장 금지, 각 단계는 "
         "반증 가능한 서술로. 전체 700자 내외.\n\n"
+        "★인과 그래프 추출 (본문과 별도로 — 위 파급 체인을 노드·엣지로, 내러티브 인과와 동일 규약):\n"
+        "- nodes: {\"name\",\"type\"}, type ∈ company·sector·theme·person·macro·policy·event\n"
+        f"  ★기존 노드가 있으면 새로 만들지 말고 정확히 그 이름을 재사용: {', '.join(node_vocab[:60])}\n"
+        "- edges: rel='CAUSES'(원인→결과), 수혜 섹터는 rel='BENEFITS_FROM'(from=수혜 섹터, to=동인). "
+        "수혜 종착은 sector까지만 — 개별 종목 금지. 특정 인물/기업의 결정이 메커니즘의 실체면 "
+        "person/company 노드로 명시('사라지면 약해지는가' 기준). 피드백은 시점 다른 두 엣지로. "
+        "orientation ∈ past|current|forward, reference_period는 작동 시점(모르면 null), "
+        "confidence 0~1(가정된 사건에서 출발하므로 보수적으로).\n\n"
         f"[사건]\n{event}\n"
         f"{kn}\n\n[수집 문서]\n{ctx}"
     )
@@ -78,17 +88,31 @@ def build_scenario(event: str) -> dict:
         if len(docs) >= TOP_DOCS:
             break
     knowledge = recall_for_query(conn, event)
+    from pipeline.narrative import _node_vocab, _persist_causal
+    vocab = _node_vocab(conn)
     conn.close()
 
     proc = subprocess.run(
         [_claude_bin(), "-p", "--model", SCENARIO_MODEL, "--output-format", "json",
-         _build_prompt(event, docs, knowledge)],
+         _build_prompt(event, docs, knowledge, vocab)],
         capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
     raw = json.loads(proc.stdout).get("result", "")
     s, e = raw.find("{"), raw.rfind("}")
-    md = json.loads(raw[s:e + 1]).get("scenario") or ""
+    data = json.loads(raw[s:e + 1])
+    md = data.get("scenario") or ""
+
+    # 인과 그래프 물질화 (D-028 제3 공급원) — 시나리오 파급 체인도 같은 그래프에 적재.
+    # 가정된 사건에서 출발하므로 confidence 상한은 문서 레벨과 같은 0.5.
+    if data.get("causal"):
+        conn = get_connection()
+        try:
+            _persist_causal(conn, None, docs[0]["id"] if docs else None,
+                            data["causal"], conf_cap=0.5)
+            conn.commit()
+        finally:
+            conn.close()
     md += ("\n\n---\n*감시 조건 중 계속 지켜볼 것이 있으면 `기억해: <조건>`으로 주입하세요 — "
            "반증 센티넬이 매일 감시합니다.*")
     return {
