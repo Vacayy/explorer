@@ -10,6 +10,58 @@
 
 ---
 
+## D-024 · 2026-07-17 · 30분 수집 체인 겹침 방지 — run_chain.sh 락 래퍼
+
+**결정**: crontab의 긴 인라인 `*/30` 체인(`ingest && redigest_youtube && compute_signals && … && build_search_index`)을 **`scripts/run_chain.sh` 단일 래퍼**로 옮기고, **겹침 방지 락**을 건다. 한 사이클이 30분을 넘겨 다음 cron이 이전 위에 쌓이면 두 writer가 SQLite를 동시에 두드려 busy_timeout 경합·락이 난다(실제 사고 이력). 락: flock이 macOS 기본 미포함이라 **mkdir 원자성 + PID 생존확인(stale 자동 회수)** 으로 이식성 있게. 이전 실행 진행 중이면 이번 회차 조용히 skip. 전환기·수동 실행 대비 `pgrep -f 'scripts/ingest.py'` 2차 가드. 기존 `&&` 실패-중단 의미 보존.
+
+**맥락·이유**: cron 주기(30분)보다 런타임이 길면 stacking은 구조적 결함(stakeholder 지적). 근본 런타임(문서당 claude-CLI 콜드스타트 enrich가 느림)은 별개 최적화 과제 — 락은 "겹치지 않게"를 즉시 보장하는 올바른 1차 처방(런이 길어도 다음 회차 skip 후 30분 뒤 재개하면 됨).
+
+**기각한 대안**: ① flock — macOS 미포함(brew 의존) ② ingest.py 내부 락 — 체인 전체가 아니라 ingest 단계만 보호 ③ 런타임 최적화(배치 enrich)를 먼저 — 오래 걸리고 겹침을 즉시 못 막음(후속).
+
+**참조**: scripts/run_chain.sh · crontab `*/30` → run_chain.sh · 관련 락 사고: 유튜브 백필×cron 겹침(대화 2026-07-14)
+
+---
+
+## D-023 · 2026-07-17 · 내러티브를 인과 그래프 위 살아있는 월드모델로 — "하나의 인과 그래프, 두 개의 속도"
+
+내러티브와 지식은 분리되어있음.
+각 정보들의 정보에 시점과 더불어 '인과(from, to)' 개념을 더함. 이를 통해 노드간 관계로 이루어진 거대한 그래프가 구축되고, 거대한 그래프의 sub graph 경로 중 하나가 곧 특정 내러티브가 된다.
+
+**결정**: 내러티브(theme_surge 고도화)를 md 덩어리 생성기에서 **인과 그래프 기반 지능 시스템**으로 격상한다. 기획: docs/specs/narrative-causal-graph.md(비전·로드맵), docs/specs/narrative-causal-phase1.md(Phase 1 기획서).
+
+**관통 프레임**: 내러티브가 매번 opus로 뽑되 md 텍스트에만 버리던 "인과 구조 A→B→C, 수혜/피해 주체"를 그래프로 **물질화**한다 — `entity_relations`에 `CAUSES`/`BENEFITS_FROM` 엣지(epistemic=hypothesis, D-005 규약)로 적재. 그러면 내러티브는 "문서"가 아니라 **인과 그래프 위의 시간순 경로(walked path)**가 되고, **내러티브(빠른 층: 최근 문서의 종합)와 지식(느린 층: 공고화된 전제)이 같은 인과 그래프의 두 속도**가 된다(CLS 해마/신피질). 최종 지향은 둘이 서로를 먹이는 루프: 내러티브가 인과를 제안 → 반복·독립된 것이 지식으로 승격 → 지식이 다음 내러티브를 지지 → 지식의 falsifier가 감시 → 반증 시 지식이 흔들려 내러티브 재생성. = 진화계획 3단계(자율 에이전트).
+
+**인과는 시간에 종속된다 (핵심 원리)**: 원인은 결과에 선행한다. D-021의 "수집 시각 ≠ 정보가 가리키는 시점(reference_period)" 분리를 인과 층에 끌어올려, **각 인과 엣지에 시간 스탬프**(reference_period·time_orientation)를 붙인다. 효과: ① 시간 그래디언트 = 체인의 읽기 순서(과거 뿌리 → 현재 → 전망 효과), 그래서 뒤의 끝(수혜)은 forward·hypothesis 영역이고 거기에 엣지가 있다 ② 시간 정합성 검증(원인이 결과보다 늦으면 유사인과 경고) ③ salience×conviction의 "이미 반영됐나(past·priced) vs 아직 안 왔나(forward·edge)"와 맞물림.
+
+**확정한 5개 하위 결정** (2026-07-17 stakeholder):
+1. **내러티브 = 1급 객체** — `narratives` 테이블(버전 보존·supersedes). source_digests 덮어쓰기 폐기 → 내러티브 드리프트("핵심 고리가 유가→금리로 이동") 추적 가능.
+2. **인과 노드 = 예약 타입 활성화** — company·sector·theme·person에 **macro·policy·event** 추가(온톨로지 D-004 reserved 채움). 인과 체인은 기업만이 아니라 사건·매크로·정책을 통과하므로. 파편화는 임베딩 dedup + 기존 노드 주입으로 방어.
+3. **뒤의 끝 = 섹터에서 종착** — 종목 하강은 후속(종목 노드·리서치 성숙 후). 억지 종목 지정은 거짓 정밀 = 사실/가설 분리 위반. 앞의 끝 = regime/structure급 루트에서 정지(무한 후퇴 방지).
+4. **카테고리 = 도메인 렌즈** — 매크로·지정학·산업·수급·기술·정책(지식 A-7 live vocab). 교차 렌즈는 가중(lollapalooza). 루트 원인 emergent 클러스터는 그래프 성숙 후.
+5. **반사성 = 시간으로 푸는 DAG** — 인과 엣지는 원인→결과 방향, 피드백("가격↑→낙관 내러티브→가격↑")은 사이클이 아니라 **같은 노드의 다른 시점 두 엣지**로 표현. 무한루프 없음, 앞/뒤 끝 순회 정의 명확.
+
+**단계 (Phase 2는 필수 — 미룰 수 있는 옵션 아님)**:
+- **Phase 1(토대)**: 위 5결정 물질화 — narratives 1급 객체·노드 타입·인과 엣지 적재·시간 스탬프·카테고리 + 최소 UI(인과 체인 구조 뷰).
+- **Phase 2(필수 commit)**: 앞/뒤 끝 순회(루트 원인↑·수혜 섹터↓)·메르식 서사·버전 드리프트 시각화·내러티브 머지/교차검증·**내러티브↔지식 루프**. 이 단계라야 이번 고민(인과 양 끝·세계관 내러티브·상호 지능)이 실제로 시스템에 반영된다 — Phase 1만으로는 데이터만 쌓이고 가치는 미실현. stakeholder 명시(2026-07-17): "Phase 2도 반드시 해야 한다."
+
+**기각한 대안**: ① 인과를 계속 프롬프트가 프로즈로만 생성(스키마 무변경) — 질의·연결·추적·머지·지식 연동 전부 불가, 매번 재추론 낭비. ② source_digests 유지(1급 객체화 안 함) — 버전·머지·그래프 연결을 억지로 얹어야 해 구조 지저분. ③ 인과 노드를 기존 엔티티(company/sector/theme)로 한정, 이벤트/매크로는 엣지 텍스트로 — 매크로 체인(유가→인플레→금리)을 노드로 못 그림. ④ 뒤의 끝을 항상 종목까지 강제 — 근거 약한데 종목 찍는 거짓 신호. ⑤ 사이클 허용 방향그래프 — 무한루프·루트/종착 모호(시간 DAG가 반사성을 더 정확히 표현). ⑥ 루트 원인 emergent 클러스터를 처음부터 — 그래프 미성숙 시 무의미, 도메인 렌즈로 시작 후 진화.
+
+**참조**: docs/specs/narrative-causal-graph.md(§5-0 결정)·narrative-causal-phase1.md · pipeline/narrative.py·signals.py(theme_surge) · 엣지 D-005 · 온톨로지 D-004 · 시간 정박 D-021 · 지식 위계·CLS·§G D-022·docs/specs/knowledge-hierarchy-design.md · 대화 2026-07-17
+
+---
+
+## D-022 · 2026-07-17 · 지식 위계 — 주목(salience)과 확신(conviction) 분리 + 반증-우선 주입 + /knowledge 관측 페이지
+
+**결정**: ① 지식 승격 기준의 "반복=지식" 함정을 축 분리로 정면 대응 — **salience(시장 주목: 주체 엔티티 최근 언급량)와 conviction(근거 강도: 독립 관측·소스 다양성·느린 pace 층·반박 감점)을 직교 축으로** 계량하고(pipeline/knowledge_state.py, LLM 0), 4상태로 위치: `주목받지 않은 확신`(기회·소외)·`주목받는 확신`(선반영)·`확신 대비 과한 주목`(진자 경고)·`단순 노이즈`. 하나의 "지식" 점수로 합치지 않는다 — 그 갭 자체가 알파(설계 §G). ② **반증-우선 주입**: 사용자 주입 시 corroboration을 수동으로 기다리지 않고 **opus가 반증 조건을 구조화**(condition·target_entity·metric·threshold·window)로 즉시 생성, 감시·판정은 기존 결정적 로직(falsifiers). 반례 축적 시 contested 강등 — 시스템 지식과 같은 수명주기. ③ `/knowledge`를 **3섹션 관측 페이지**로 개편(구조 지도·현황 대시보드·주입 콘솔), 사용자 주입은 이 페이지에서(+rationale·source). 내 주입 지식(model='user')은 삭제 가능, 시스템 승격분은 superseded만(역사 보존).
+
+**맥락·이유**: stakeholder 통찰 — "반복 뉴스는 세상 인식(주목) 시그널이고, 영향력 있는 현자의 단발 통찰은 진리근접 시그널인데, 둘은 다른 축이다." 기존 승격은 독립 관측 2+ 하한이라 현자의 단발 통찰(독립 관측 1)은 승격 불가였고, salience/conviction을 안 나누면 '붐비는 합의'와 '소외된 엣지'를 구분 못 했다. 반증-우선은 ACH(A-4)의 능동형 — 주입을 수동 축적이 아니라 스트레스 테스트로. 반증 생성만 opus(심층), 감시는 LLM 0(재현성·비용). 관측 페이지는 기존 평면 리스트가 체계 구조·현황을 못 보여주던 문제 해결.
+
+**기각한 대안**: ① 승격 기준을 "더 똑똑하게" 단일화 — 두 축을 하나로 뭉개면 정보 소실, 분리가 정답. ② 순수 Opus 반증(생성+판정 매번 LLM) — 비용·비재현·드리프트로 기각, 하이브리드(구조화+결정적 감시) 채택. ③ 소스 권위/트랙레코드 가중을 지금 도입 — 편집자적 편향 위험 + 트랙레코드 데이터 미축적, 국지성/캘리브레이션은 K1+ 후속으로 보류(Out of Scope). ④ 홈 "통념 vs 나의 가설" 갭 패널 — P2 후속.
+
+**참조**: docs/specs/knowledge-page.md · pipeline/knowledge_state.py·falsifiers.py·knowledge.py · routers/spine_knowledge.py · frontend KnowledgePage.tsx · 설계 원본 docs/specs/knowledge-hierarchy-design.md §A-3·A-4·G · 대화 2026-07-17
+
+---
+
 ## D-021 · 2026-07-14 · 시간 정박 — 발행일 ≠ 사건 발생일
 
 **결정**: 문서의 `published_at`(수집·작성 시각)을 사건 발생 시각처럼 쓰던 것을 바로잡는다. enrich 태깅 haiku 콜에 **같은 호출로** `time_orientation`(past/current/forward/mixed)과 `reference_period`(발행일과 다른 실제 대상 시기, 예 '2027 전망')를 추가 추출 → enrichments 2컬럼. 이를 (1) 내러티브 — '전개' 섹션을 '무엇이 회자되고 있나'로 개칭, 수집일이 사건일이 아님을 명시하고 회고/현재/전망을 구분, (2) 다이제스트 — 문서별 [현재]/[전망]/[회고] 태그로 "전망을 방금 벌어진 사건으로 단정 말라", (3) mention_surge — 급증의 시간 방향 구성(orient_mix·orient_driver)을 실어 '전망 위주 급증'과 '실제 사건 급증'을 구분, 에 반영. 기존분은 scripts/backfill_temporal.py(title+요약만 쓰는 경량 haiku, 최신순)로 백필.

@@ -28,7 +28,7 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
 [소스]  텔레그램(텍스트+이미지) · 블로그(네이버/티스토리/RSS) · vault/notes(내 가설)
         DART(전시장 공시) · FDR(전종목 주가) — (대기: 관세청 무역)
    │
-   ▼  30분 cron 체인 (logs/ingest.log)
+   ▼  30분 cron 체인 (run_chain.sh — 겹침 방지 락, logs/ingest.log)
 ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → compute_signals → compute_narratives → extract_events(이미지 비전)
   → scan_actions(기업활동) → compute_digests(1D/7D) → vault_sync --export → build_search_index
    +  평일 16:10: ingest_prices --daily (전종목 OHLCV)
@@ -70,8 +70,9 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 | 테이블 | 행수 | 역할 |
 |---|---|---|
-| `entities` | 4,135 | 노드: company(3,943)·sector(KSIC 165+태그)·theme·(예약: person/policy/macro…) |
-| `entity_relations` | 2,760 | 엣지: MEMBER_OF(기업→섹터). epistemic_type·confidence·valid_from/to 보유 |
+| `entities` | 4,135+ | 노드: company·sector·theme·person + **macro·policy·event**(인과 그래프 노드, D-023 활성화) |
+| `entity_relations` | 2,760+ | 엣지: MEMBER_OF(기업→섹터, fact) + **CAUSES·BENEFITS_FROM**(인과, hypothesis — 내러티브 산출). epistemic_type·confidence·valid_from/to + mechanism·reference_period·time_orientation·narrative_id(D-023) |
+| `narratives` | 버전별 | 내러티브 1급 객체 — topic별 version 보존(supersede, 드리프트 추적)·title·body(md)·category(도메인 렌즈)·doc_ids_hash. 인과 서브그래프는 entity_relations의 narrative_id로 연결 (D-023) |
 | `raw_documents` | 264 | 모든 소스의 문서 원본+markdown+media_json. UNIQUE(source_type, source_id) |
 | `enrichments` | 문서당 1 | 요약·감성·**time_orientation·reference_period**(시간 정박 D-021)·모델 (content_hash 캐시) |
 | `entity_links` | 563 | 문서↔엔티티. confidence 계층: 위키링크 1.0 > LLM 0.9 > 사용자 키워드 0.7 > 정식명 substring 0.6 > 태그 0.5 |
@@ -111,18 +112,19 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 + **시간 정박**(time_orientation·reference_period, 같은 haiku 콜) — 발행일≠사건일. classify_temporal(백필용 경량 분류). 기존분: scripts/backfill_temporal.py |
 | `search` | FTS5+sqlite-vec 하이브리드(RRF)·인덱스 빌드 |
 | `signals` | mention_surge·high_52w(200일+ 히스토리 요구)·neglect·consensus_extreme(진자, 감성 90%+ 극단)·volume_spike(60일 평균 3배+ & 등락 3%+ — 급증일 언급 문서 결합)·quadrant_gap(주가×감성 괴리)·theme_surge(주목 주제 — 점유율 상승 화두, 문서유형 라벨 제외) |
-| `falsifiers` | 반증 조건 감시 — 지식 active 시 haiku가 '틀렸다는 신호' 2~3개 생성, 일일 표적 검색·판정(TRIGGERED) → refute 증거 부착 → contested 기계 연동. 본문 150자 미만 문서 판정 제외 |
+| `falsifiers` | 반증 조건 감시(ACH 반증우선) — 지식 active/주입 시 **opus가 '틀렸다는 신호' 2~3개를 구조화**(condition·target_entity·metric·threshold·window)로 생성 → 일일 표적 검색·판정(TRIGGERED, 결정적 로직) → refute 증거 부착 → contested 기계 연동. 본문 150자 미만 문서 판정 제외 |
 | `lenses` | 분석 렌즈 — docs/references 사고틀(주가 패턴 5축·산업 수요→병목→주가) 압축, RAG·브리프 프롬프트 주입 |
 | `consensus_history` | Fwd EPS·PER·목표주가 일일 스냅샷(네이버 모바일 API, 워치리스트) → consensus_estimates 이력. 축적 후: 분해 v2(revision vs 리레이팅)·quadrant_gap 펀더 축 교체·추정치 반전 신호 |
 | `flows` | 수급 이력 — 외인·기관·개인 순매수 30일(네이버 trend API, pykrx는 KRX 로그인 벽) → investor_flows. 브리프 [수급] 재료 |
 | `scenario` | 사건 시나리오 엔진 — 대화 "시나리오: <사건>" → 파급 체인(단계별 메커니즘·근거 인용/일반지식 구분·확률)+영향 지도+감시 조건+반대 시나리오(ACH). opus |
-| `narrative` | 주제 내러티브(theme_surge 고도화) — 주목 주제를 질문형 서사로: 제목·3줄요약·전개 타임라인·인과 구조·시나리오(긍/부정 확률)·종합 해석. 게으른 opus md, hash 가드(source_digests kind='narrative'). /narrative?topic=. **사전 생성**: compute_narratives cron이 theme_surge 상위 5개 주제를 미리 생성(hash 가드로 변경분만 opus). 목록: list_narratives(급증 주제 먼저·나머지 최신순)→/narrative/list |
+| `narrative` | 주제 내러티브(theme_surge 고도화) — 질문형 제목·3줄요약·무엇이 다뤄지나·인과 구조·시나리오·종합 해석 (게으른 opus md). **인과 그래프 물질화(Phase 1, D-023)**: 생성 시 구조화 인과(nodes·edges)도 함께 산출 → `narratives` 테이블(버전 보존) + `entity_relations` CAUSES/BENEFITS_FROM 엣지(노드 정규화: 기존 노드 vocab 주입 + 재적재 시 confidence 강화, 뒤의 끝=섹터 종착, DAG+시간 스탬프). **사전 생성**: compute_narratives cron 상위 5. **인과 순회(Phase 2 §2-1)**: `pipeline/narrative_graph.py` — 내러티브 서브그래프 노드를 앵커로 전역 `entity_relations` 그래프를 상류(CAUSES만, 위상적 소스=근본 원인 정지)·하류(CAUSES∪BENEFITS_FROM, sector 노드=수혜 종착)로 BFS, confidence 곱 랭킹 top-3 경로 반환. API: /narrative(topic)·/compute·/list·/{id}/causal(서브그래프)·/{id}/chain(순회 경로)·/versions. 메르 서사·머지·지식 루프는 Phase 2 후속 |
 | `research_candidates` | 리서치 후보(감지 LLM 0) — RS 상승(단기 RS≥70 & 1주 대비 +8pp↑) ∩ 시총 5000억+ ∩ 화두(theme_surge 테마와 초점 문서 공동언급, 시황글 제외). research_candidates 테이블 proposed 적재. **승인 시에만** stock_brief(opus) 실행→추정치 방향 콜 기록 (비싼 노동을 사람 판단 뒤로, D-020). 신호 탭 '리서치 제안' 섹션 |
 | `technicals` | 기술적 위치(LLM 0) — RSI14·이평선 갭(20/60/120)·52주 고점 대비·1/3개월 수익률 + trailing PER 역사 밴드(연간 EPS×주가 범위, 평균회귀 준거). 브리프 재료 |
 | `sector_rs` | 산업/섹터 맵(LLM 0) — 대분류 18(sector_map: KSIC 165→LLM 시드)별 장기(11M)·단기(1M) RS 백분위(최신 시총가중 — 과거 행 mcap 부재), 5일 흐름, 1~3주 궤적. /map 4사분면. value_chains(opus 시드 단계·테마)로 밸류체인 뷰 |
 | `feature_days` | 종목 특징일(LLM 0 감지) — |등락|3.5%+ 또는 거래량 4배+, 상위 24일. 마커 클릭 시 게으른 haiku 1콜로 그날 원인 조사(±1일 문서, feature_day_notes 캐시) |
 | `contradiction` | K2 모순 감지 — 새 문서×active 지식 haiku 대조(일 배치, 예산 40) → refute 축적 → 독립 반박 2+ contested(7일 쿨다운) → 홈 알림 |
-| `knowledge` (K3) | 사용자 주입("기억해:") → knowledge 행(hypothesis·model='user') + 검색 시딩 → 독립 지지 2+ corroborated → 홈 '가설 확인' 알림 |
+| `knowledge` (K3) | 사용자 주입("기억해:" 또는 /knowledge 주입 콘솔, +rationale·source) → knowledge 행(hypothesis·model='user') + 검색 시딩 + 반증 조건 생성(반증우선) → 독립 지지 2+ corroborated / 반례 축적 contested → 홈 '가설 확인' 알림. 내 주입 지식은 삭제 가능(시스템 승격분은 superseded만) |
+| `knowledge_state` | salience×conviction (LLM 0) — 시장 주목(주체 엔티티 최근 언급량) × 근거 강도(독립 관측·소스 다양성·느린 층·반박)로 4상태 위치: 주목받지 않은 확신(기회)·주목받는 확신(선반영)·확신 대비 과한 주목(진자 경고)·단순 노이즈. /knowledge 카드 배지 (설계 §G 갭 계량의 축) |
 | 기업 프로필(spine_company) | 해외/비상장 기업(종목코드 없음) — 인물 프로필 동형: 언급·공출현·게으른 프로필(source_digests kind='company_profile')·팔로우. /company?name=. 표기 병합(merge_entity_aliases)·enrich 기업 vocab으로 파편화 방지 |
 | `vision` | 이미지 분류→증시일정 이벤트→catalysts |
 | `actions` / `rights` | 기업활동 스캔·요약 / 유무증 구조화 추출(종속회사 제외) |
@@ -142,7 +144,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
 | `GET /api/spine/digests` | 종목 1D/7D 요약 아카이브 |
-| `GET /api/spine/narrative` (+`/compute`·`/list`) | 주제 내러티브 캐시+stale / opus 생성(멱등) / 생성된 내러티브 모음(탐색 섹션) |
+| `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/versions`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프 / 순회 경로(근본원인→수혜, LLM 없음) / 버전 목록(드리프트) |
+| `POST·GET·DELETE /api/spine/knowledge` (+`/items`·`/overview`·`/items/{id}/evidence·approve·reject`·`/worldview`) | 지식 주입(+rationale·source, 반증조건 생성) / 지식 목록(salience·conviction·quadrant·근거해부·반증조건) / 현황 카운트 / 근거사슬 / 승격 승인·거부 / 내 주입 삭제(user 한정) / 세계관 브리핑 |
 | `GET /api/spine/research/candidates` (+`/{id}/approve`·`/dismiss`) | 리서치 제안 목록(LLM 0) / 승인→stock_brief(opus)·추정치 방향 콜 / 기각 |
 | `GET·POST·DELETE /api/spine/follows` | 엔티티 팔로우 |
 | `GET·POST·DELETE /api/spine/keywords` | 매칭 키워드 (등록 시 소급 링크) |
@@ -152,8 +155,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 ### 5-3. 스크립트 (`scripts/`)
 시딩: `seed_companies`(DART) · `seed_entities`(그래프) · `seed_sectors`(FDR KSIC)
-운영(cron): `ingest` · `redigest_youtube`(자막 raw로 굳은 유튜브 문서 opus 재요약 치유, 회차당 5) · `ingest_prices` · `compute_signals` · `compute_narratives`(theme_surge 상위 5 내러티브 사전 생성) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index` · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
-1회성: `backfill_enrich`
+운영: **`run_chain.sh`**(30분 cron 체인 래퍼 — mkdir+PID 락으로 겹침 방지, 이전 실행 진행 중이면 skip, D-024)가 순서대로 실행: `ingest` · `redigest_youtube`(자막 raw로 굳은 유튜브 문서 opus 재요약 치유, 회차당 5) · `compute_signals` · `compute_narratives`(theme_surge 상위 5 내러티브 사전 생성) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index`. 별도 cron: `ingest_prices`(평일 16:10) · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장)
+1회성: `backfill_enrich` · `backfill_temporal` · `migrate_narratives`(source_digests→narratives 이관, D-023)
 
 ## 6. 프론트엔드 (React 19 + shadcn + TanStack Query)
 
@@ -162,7 +165,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 홈(/home)          내 종목·팔로우 delta 스트림 + 이번주 캘린더 + 시장 하이라이트 (빈화면 방지 승격)
 탐색               신호(/explore 착륙: 언급 모멘텀·주목 주제(theme_surge)·**내러티브 모음**(생성된 질문형 서사)·백테스트, 그 외 소외·52주신고가·컨센서스극단 목록) ·
                    인물(/people: 디렉토리 — 언급량·최근발언·파급종목 → /person 도시에) ·
-                   지식(/knowledge: 승격 지식 activation순 + 근거사슬 — contested 강조) ·
+                   지식(/knowledge: 3섹션 — 구조 지도(학습)·현황 대시보드(카운트·승격대기 큐·세계관·지식 리스트 salience×conviction 배지·근거사슬·반증조건)·지식 주입 콘솔(주입+근거/출처+삭제)) ·
                    기업활동(/actions: 목록+요약 | 유무증 Pro 토글+방식 필터) · 산업군 · 스크리너 · 대안데이터
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·뉴스·아티클·인물 (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
                    + 사이드바: 구독 채널/블로그 목록·닉네임·활성 토글·인라인 등록 폼

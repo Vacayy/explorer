@@ -1,5 +1,33 @@
 # Stock Explorer — Project Instructions
 
+## Context Discipline (모든 작업의 시작과 끝)
+
+문서는 변경 빈도별 3층 구조다. 이 규율이 세션 간 맥락 유실을 막는다 (배경: docs/DECISIONS.md D-014).
+
+| 층 | 파일 | 역할 |
+|---|---|---|
+| 규칙 | CLAUDE.md (본 문서) | 안정적 규칙 + 포인터. 아키텍처 *내용*을 여기 쓰지 않는다 |
+| 상태 | **docs/SYSTEM.md** | 살아있는 시스템 지도 — 아키텍처·DB·파이프라인·API·IA의 현행 |
+| 결정 | **docs/DECISIONS.md** | append-only 의사결정 로그 — 결정의 이유와 기각한 대안 |
+
+### 작업 시작 전 (필수)
+- 사소하지 않은 작업이면 **docs/SYSTEM.md를 먼저 읽고** 전체 그림 위에서 판단한다. 코드를 뒤지기 전에 지도부터.
+- 설계 판단이 필요하면 **docs/DECISIONS.md의 관련 항목을 확인**한다. 기존 결정과 충돌하는 방향이면 조용히 우회하지 말고 사용자에게 알린다 — 뒤집기로 하면 새 D-항목으로 기록.
+
+### 작업 종료 시 (커밋에 포함)
+- **구조가 바뀌었으면 SYSTEM.md를 같은 커밋에서 갱신**한다. "구조"란: DB 테이블/컬럼, pipeline/ 모듈, 라우터/API, cron 체인, IA(페이지/탭), 외부 의존성, .env 키. 문서 갱신이 빠진 구조 변경 커밋은 미완성이다.
+- **중요한 결정이 있었으면 DECISIONS.md에 항목을 추가**한다. 기록 대상: 되돌리기 비싼 결정, 대안을 기각한 결정, 나중에 "왜 이렇게 돼 있지?"가 나올 결정. 단순 버그 수정·사소한 구현 선택은 커밋 메시지로 충분.
+- DECISIONS.md는 **append-only**: 기존 항목 수정·삭제 금지. 번복은 새 항목 + 원 항목에 `→ D-0XX에서 번복` 한 줄.
+
+### 문서 지도
+- 현행 시스템: docs/SYSTEM.md · 결정 이력: docs/DECISIONS.md
+- 디자인 시스템: docs/DESIGN_SYSTEM.md (레이아웃 컨트랙트·토큰·패턴별 지정 구현)
+- 전략·지표: docs/STRATEGY.md · 백로그: docs/BACKLOG.md · 온톨로지: docs/ontology.md
+- 스펙: docs/specs/ · 정책: docs/policies/
+- **docs/archive/** — 낡은 구 문서 (ARCHITECTURE.md, PLAN.md). 현행 판단의 근거로 사용 금지.
+
+---
+
 ## Product Orchestrator Workflow
 
 멀티 디시플린 작업 시 아래 프로세스를 따른다:
@@ -54,23 +82,23 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 - PRD scope (P0/P1/P2) 외 기능을 임의로 추가하지 않는다
 - Out of Scope 항목을 구현하려면 stakeholder 승인 필요
 
-### 프론트엔드
-- **UI atom은 반드시 shadcn 공식 컴포넌트를 사용**
-  - shadcn 컴포넌트 추가: `npx shadcn@latest add <component>` CLI로 설치 (수동 작성 금지)
-  - CLI가 interactive면 사용자에게 `! npx shadcn@latest add <component>` 실행 요청
-  - Radix 기반 컴포넌트(Select, Tabs, Tooltip, Dialog 등)는 반드시 `@radix-ui/*` 패키지 사용
-  - "shadcn 스타일로 직접 작성"은 shadcn이 아님. 공식 설치만 인정.
-  - 현재 설치됨: Button, Card, Input, Select(Radix), Table, Badge, Textarea, Tabs, Separator, Tooltip
-  - raw HTML 태그(`<select>`, `<button>` 등)를 UI 컴포넌트로 직접 쓰지 않는다
+- **shadcn-first — atom뿐 아니라 "기능에 대응하는 shadcn 공식 컴포넌트가 있으면 반드시 그것을 CLI 설치해 쓴다"** (정책 배경: DECISIONS.md D-017, memory `shadcn-first-policy`)
+  - 복합 컴포넌트도 포함: Sidebar·Sheet·Dialog·AlertDialog·Accordion·Progress·Collapsible 등. "비슷하게 직접 만든 것"은 인정 안 됨 — 공식 설치본 위에 토큰+wrapper만 씌운다
+  - 새 인터랙티브 UI 착수 전 "이 기능의 shadcn 컴포넌트가 있는가?"부터 확인. 있으면 `npx shadcn@latest add <c>` (interactive면 사용자에게 `!` 실행 요청). 없을 때만 Radix 프리미티브 직접 조합
+  - Radix 기반 컴포넌트는 반드시 `@radix-ui/*`(또는 `radix-ui`) 패키지 사용
+  - **주의**: 이 프로젝트에서 `npx shadcn add`가 파일을 `@/` 경로에 잘못 생성하는 버그가 있음 → 설치 후 `src/components/ui/`·`src/hooks/`로 옮기고 재생성된 기존 커스텀(Button의 icon-xs 등)은 폐기, `@` 디렉토리 제거
+  - 현재 설치됨: Button, Card, Input, Select(Radix), Table, Badge, Textarea, Tabs, Separator, Tooltip, Collapsible, Toggle, ToggleGroup, Checkbox, Sidebar, Sheet, Progress, AlertDialog, Dialog, Popover, Command, DropdownMenu, ScrollArea, Skeleton, Kbd, Avatar, Slider, Switch, Sonner, Pagination
+  - raw HTML 태그(`<select>`, `<button>`, `<input>`, `<table>` 등)를 UI 컴포넌트로 직접 쓰지 않는다 (grandfathered 예외는 docs/DESIGN_SYSTEM.md §3)
 - **컴포넌트 계층 엄수**
   ```
   ui/        → shadcn atom만. 비즈니스 로직 없음.
   shared/    → ui/ 를 wrapping한 서비스 공통 컴포넌트. 도메인 로직 최소.
-  layout/    → 전체 레이아웃 (Header, ModeNavigation, WatchlistSidebar)
+  layout/    → 전체 레이아웃 (Header, ModeNavigation, FollowRail=shadcn Sidebar)
   {page}/    → shared/를 조합. 직접 ui/도 사용 가능하나 shared/에 있으면 shared/ 우선.
   charts/    → lightweight-charts 기반 차트 (CandlestickChart, AreaSeriesChart 등)
   ```
 - **새 페이지 컴포넌트 작성 시 체크리스트**
+  - [ ] 최상위가 `shared/PageContainer`인가? (자체 max-w/padding 금지 — docs/DESIGN_SYSTEM.md 레이아웃 컨트랙트)
   - [ ] 5-state 모두 구현했는가? (Empty → Skeleton → ErrorState → Ideal)
   - [ ] 타입을 `types/index.ts`에 정의했는가?
   - [ ] hook을 `hooks/`에 분리했는가?
