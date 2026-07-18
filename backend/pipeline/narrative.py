@@ -205,9 +205,9 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
     )
 
 
-def _call(prompt: str) -> dict:
+def _call(prompt: str, model: str = NARRATIVE_MODEL) -> dict:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", NARRATIVE_MODEL, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--model", model, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=400)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
@@ -409,6 +409,76 @@ def cached_mer_meta(conn, topic: str) -> dict:
     stale = prev["mer_path_hash"] != h or not prev["mer_body"]
     return {"status": "empty" if stale else "cached", "narrative": prev["mer_body"],
             "path": path, "stale": stale}
+
+
+def _edge_key(e: dict) -> tuple:
+    return (e["from"], e["to"], e["rel"])
+
+
+def _version_diff(conn, narrative_id: int) -> dict:
+    """narrative_id 버전과 직전 버전(topic, version-1)의 인과 서브그래프 비교 (Phase 2 §2-3).
+    엣지는 (from,to,rel) 노드-이름 정체성으로 비교한다 — 재적재 시 narrative_id 태그가
+    최신 버전으로 옮겨가므로(D-023 confidence 강화), 태그가 아니라 정체성으로 비교해야
+    '그대로 이어진 고리'를 '사라짐+새로 생김'으로 오판하지 않는다."""
+    cur = conn.execute("SELECT topic, version FROM narratives WHERE id=?", (narrative_id,)).fetchone()
+    if not cur:
+        return {"status": "not_found"}
+    prev_row = conn.execute(
+        "SELECT id FROM narratives WHERE topic=? AND version=?",
+        (cur["topic"], cur["version"] - 1)).fetchone()
+    if not prev_row:
+        return {"status": "no_prior_version"}
+    cur_graph = causal_subgraph(conn, narrative_id)
+    prev_graph = causal_subgraph(conn, prev_row["id"])
+    cur_edges = {_edge_key(e): e for e in cur_graph["edges"]}
+    prev_edges = {_edge_key(e): e for e in prev_graph["edges"]}
+    cur_nodes = {n["name"] for n in cur_graph["nodes"]}
+    prev_nodes = {n["name"] for n in prev_graph["nodes"]}
+    return {
+        "status": "ok", "prev_version_id": prev_row["id"],
+        "added_nodes": sorted(cur_nodes - prev_nodes),
+        "removed_nodes": sorted(prev_nodes - cur_nodes),
+        "added_edges": [cur_edges[k] for k in cur_edges.keys() - prev_edges.keys()],
+        "removed_edges": [prev_edges[k] for k in prev_edges.keys() - cur_edges.keys()],
+    }
+
+
+def _build_drift_prompt(added_edges: list[dict], removed_edges: list[dict]) -> str:
+    def fmt(es):
+        return "\n".join(f"- {e['from']} → {e['to']} ({e['rel']})" for e in es) or "(없음)"
+    return (
+        "아래는 한 내러티브의 인과 그래프가 이전 버전 대비 어떻게 바뀌었는지다. "
+        "핵심 고리가 어디서 어디로 이동했는지 한국어 한 문장으로 요약해라"
+        "(예: '유가→금리 고리가 빠지고 반도체→AI 고리가 새로 들어왔다').\n"
+        f"새로 생긴 고리:\n{fmt(added_edges)}\n\n사라진 고리:\n{fmt(removed_edges)}\n\n"
+        'JSON만 출력: {"summary": "..."}'
+    )
+
+
+def narrative_diff(conn, narrative_id: int) -> dict:
+    """버전 드리프트 — 결정적 diff(LLM 없음) + 변화가 있으면 게으른 haiku 한 줄 요약(캐시)."""
+    d = _version_diff(conn, narrative_id)
+    if d["status"] != "ok":
+        return d
+    if not d["added_edges"] and not d["removed_edges"]:
+        d["summary"] = None
+        return d
+    row = conn.execute("SELECT drift_summary FROM narratives WHERE id=?", (narrative_id,)).fetchone()
+    if row and row["drift_summary"]:
+        d["summary"] = row["drift_summary"]
+        return d
+    if llm_engine() != "claude-code":
+        d["summary"] = None
+        return d
+    try:
+        data = _call(_build_drift_prompt(d["added_edges"], d["removed_edges"]), model="haiku")
+    except Exception:
+        d["summary"] = None
+        return d
+    d["summary"] = data.get("summary")
+    conn.execute("UPDATE narratives SET drift_summary=? WHERE id=?", (d["summary"], narrative_id))
+    conn.commit()
+    return d
 
 
 def cached_meta(conn, topic: str) -> dict:
