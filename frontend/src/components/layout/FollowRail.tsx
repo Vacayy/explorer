@@ -7,7 +7,7 @@ import api from "@/api/client"
 import { cn } from "@/lib/utils"
 import { useWatchlist } from "@/hooks/useWatchlist"
 import { useTelegramChannels, useToggleTelegramChannel } from "@/hooks/useTelegram"
-import { useBlogSources, useToggleBlogSource } from "@/hooks/useBlogFeed"
+import { useBlogSources, useToggleBlogSource, type BlogSource } from "@/hooks/useBlogFeed"
 import { formatNumber, formatPercent } from "@/utils/format"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -251,10 +251,16 @@ function ChannelSection() {
   )
 }
 
-function BlogSection() {
+function BlogGroupSection({ title, placeholder, addLabel, match }: {
+  title: string
+  placeholder: string
+  addLabel: string
+  match: (src: BlogSource) => boolean
+}) {
   const navigate = useNavigate()
   const activeSource = useActiveSource()
-  const { data: sources = [], isLoading } = useBlogSources()
+  const { data: allSources = [], isLoading } = useBlogSources()
+  const sources = allSources.filter(match)
   const { data: health } = useSourcesHealth()
   const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "blog").map((i) => [i.key, i]))
   const toggle = useToggleBlogSource()
@@ -270,15 +276,15 @@ function BlogSection() {
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast.error(msg ?? "블로그 등록 실패")
+      toast.error(msg ?? "소스 등록 실패")
     },
   })
   if (isLoading) return <div className="px-3 py-2"><Skeleton className="h-4 w-full" /></div>
 
   return (
-    <Section title="블로그" count={sources.length} onAdd={() => setShowForm(!showForm)} addLabel="블로그 추가">
+    <Section title={title} count={sources.length} onAdd={() => setShowForm(!showForm)} addLabel={addLabel}>
       {showForm && (
-        <AddForm placeholder="블로그 URL (네이버/티스토리/RSS)" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
+        <AddForm placeholder={placeholder} onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
       )}
       <SidebarMenu>
         {sources.length === 0 && !showForm && <EmptyRow message="아직 없음 — +로 추가" />}
@@ -313,7 +319,10 @@ export default function FollowRail({ currentStockCode }: { currentStockCode: str
       <SidebarContent className="gap-0">
         <StockSection currentStockCode={currentStockCode} />
         <ChannelSection />
-        <BlogSection />
+        <BlogGroupSection title="블로그" addLabel="블로그 추가"
+          placeholder="네이버/티스토리 블로그 URL" match={(s) => s.platform !== "rss"} />
+        <BlogGroupSection title="뉴스·아티클" addLabel="뉴스·아티클 추가"
+          placeholder="RSS 피드 URL (뉴스·뉴스레터)" match={(s) => s.platform === "rss"} />
       </SidebarContent>
     </Sidebar>
   )

@@ -12,6 +12,16 @@ from urllib.parse import urlparse
 _SUB_PREFIX = re.compile(r"^(www|rss|m|feeds?|news)\.")
 _FEEDLIKE = re.compile(r"(rss|feed)", re.I)
 
+# 언론사 도메인 — RSS 소스를 '뉴스'(언론사)와 '아티클'(간행물·뉴스레터)로 가르는 기준.
+# 새 언론사 RSS를 등록하면 여기 도메인만 추가하면 '뉴스' 탭에 자동 편입된다.
+_NEWS_DOMAINS = {
+    "mk.co.kr", "hankyung.com", "chosun.com", "biz.chosun.com", "joongang.co.kr",
+    "donga.com", "hani.co.kr", "khan.co.kr", "yna.co.kr", "yonhapnews.co.kr",
+    "mt.co.kr", "edaily.co.kr", "sedaily.com", "fnnews.com", "mbn.co.kr",
+    "asiae.co.kr", "heraldcorp.com", "newsis.com", "wowtv.co.kr", "hankookilbo.com",
+    "seoul.co.kr", "kmib.co.kr", "munhwa.com", "hankyung.io",
+}
+
 
 def norm_domain(url: str) -> str:
     host = urlparse(url or "").netloc.lower()
@@ -20,6 +30,17 @@ def norm_domain(url: str) -> str:
 
 def is_feedlike(source_url: str) -> bool:
     return bool(_FEEDLIKE.search(source_url or ""))
+
+
+def is_news_domain(url: str) -> bool:
+    return norm_domain(url) in _NEWS_DOMAINS
+
+
+def blog_category(url: str, platform: str) -> str:
+    """blog 소스를 3분류 — 'blog'(개인 블로그) | 'news'(언론사) | 'article'(간행물·뉴스레터)."""
+    if platform != "rss":
+        return "blog"
+    return "news" if is_news_domain(url) else "article"
 
 
 def url_belongs(doc_url: str, source_url: str) -> bool:
