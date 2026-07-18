@@ -10,6 +10,54 @@
 
 ---
 
+## D-028 · 2026-07-18 · 지능 깔때기 해소 — 배치 재태깅(sonnet)·커버리지 트리거·문서 레벨 인과 추출
+
+**결정**: 수집(2주간 2,000+건)에 비해 지능층(인과 그래프 60엣지·지식 10건)이 못 자라는 갭의 원인을 깔때기 실측으로 진단하고 3개 레버로 해소한다. ① **배치 재태깅** — keyword 폴백 1,524건(전체의 67%)을 문서 10건/콜 배치로 LLM 재태깅. 모델: **배치 백필=sonnet, 증분 cron 단건=haiku 유지**. 단건 태깅은 haiku로 741건 검증된 좁은 작업이지만, 배치는 여러 문서를 한 응답에서 혼동 없이 분리 태깅해야 해(멀티 문서 구조화 출력) 지시 추종 요구가 높고, 1회성 토대 작업이라 품질이 이후 모든 지능의 상한이 됨. ② **커버리지 트리거** — compute_top_narratives가 theme_surge 상위 5만 보던 것에 "30일 문서 풍부(기준치+) & 내러티브 부재/오래됨" 트리거 추가(사이클당 +2 순환, 문서유형 라벨 제외). 반도체 725건·자동차 316건 등이 내러티브 0인 문제 해소 — 내러티브가 늘어야 공유 노드가 생겨 교차검증(corroboration)이 작동하기 시작한다(2026-07-18 기준 60엣지 전부 단일 출처). ③ **문서 레벨 인과 추출** — 인사이트 밀도 높은 문서에서 인과 엣지 직접 추출(source_doc_id, 내러티브와 독립된 제2 공급원). 별도 스펙 docs/specs/doc-causal-extraction.md.
+
+**맥락·이유**: 깔때기 실측(2026-07-18) — 수집 2,265건 → LLM 태깅 741건(33%, ①에서 67% 유실) → 내러티브 소화 108건(~5%, ②에서 95% 유실) → 인과 추출 경로는 내러티브 하나뿐(③). "양질 인사이트가 쌓이는데 지능이 안 큰다"(stakeholder)의 기계적 원인. 재태깅이 안 밀린 이유는 문서당 claude -p 콜드스타트(HANDOFF §6 기록) — 배치가 해법.
+
+**기각한 대안**: ① 지켜보기(축적 대기) — 병목이 축적량이 아니라 소화 기관 구조라 대기는 무익 ② 재태깅 병렬화(워커 N개) — 콜드스타트 오버헤드가 콜 수만큼 그대로, 배치가 콜 수 자체를 1/10로 ③ 전 문서 sonnet 상시 태깅 — 증분 경로는 haiku로 충분(검증됨), 비용 낭비.
+
+**참조**: scripts/backfill_enrich_batch.py · pipeline/enrich.py(enrich_batch) · pipeline/narrative.py(compute_top_narratives 커버리지 트리거) · docs/specs/doc-causal-extraction.md · 깔때기 실측 대화 2026-07-18
+
+---
+
+## D-027 · 2026-07-18 · 인과 그래프 표현력 — 반사성 나선 이행 + person/company 중간 행위자 (D-023 정제)
+
+**결정**: ① **반사성(나선) 이행** — D-023 하위결정 5("피드백은 사이클이 아니라 같은 노드의 다른 시점 두 엣지")는 설계만 있고 구현이 없었다(프롬프트가 '순환 금지'만 말하고 시간으로 펴는 법을 안 가르침 → 역방향 쌍 0개 실측). 내러티브 프롬프트에 나선 추출 지침(피드백 발견 시 reference_period가 전진하는 두 엣지로), 순회를 노드 방문집합 → 엣지 방문집합으로 변경(시간-합법적 재방문 허용), 세계관 뷰에 플라이휠(자기강화 루프) 감지·표시. 젠슨 황의 스케일링 법칙 순환(에이전틱 AI→합성 데이터→사전학습→더 강한 AI)이 대표 사례 — AI 시대의 핵심 메커니즘인 자기강화를 담는다. ② **person/company 중간 행위자 허용** — 인과의 뿌리·중간에 특정 인물의 선언/비전/자본배분(젠슨 황·머스크류 매니페스터)이나 특정 기업의 결정이 메커니즘의 실체면 person/company 노드로 명시. 판별 기준: "그 사람/기업이 사라지면 이 인과가 약해지는가" — 논평가·스쳐가는 언급은 탈락. **수혜 종착 = 섹터 원칙은 유지** (D-023 하위결정 3 번복 아님 — 그 결정이 기각한 건 '수혜 끝을 종목으로 강제'이고, 중간 사슬 행위자는 수혜 예측이 아니라 관측·반증 가능한 동인).
+
+**맥락·이유**: ① 세상은 결과가 원인에 되먹임하는 복잡계인데(stakeholder, 2026-07-18) 단방향 DAG 서술만으로는 AI 시대 최강 메커니즘(자기강화 플라이휠)을 못 담는다. D-023이 이미 답(시간으로 풀기)을 설계했으므로 새 결정이 아니라 미완 이행. ② 매니페스터 인과(믿음을 경유하는 인과 — 선언이 실현 전부터 시장을 움직임)는 선행 신호라서 "이미 반영됐나 vs 아직 안 왔나"(D-022 salience×conviction 갭)를 읽는 눈이 하나 더 생긴다. 구조주의(구조가 역사를 만든다)만 있고 행위자(인물이 미래를 선언하고 실현한다) 축이 없던 세계관의 보완.
+
+**기각한 대안**: ① 새 rel_type(SHAPES/MANIFESTS) 신설 — 온톨로지 파편화, CAUSES+mechanism 서술로 충분 ② 사이클 허용 그래프 — D-023에서 이미 기각(무한루프·루트/종착 모호) ③ 모든 인물 발언을 person 노드로 — 소음 오염, "사라지면 약해지는가" 기준으로 방어.
+
+**참조**: D-023(하위결정 3·5) · pipeline/narrative.py(_build_prompt) · pipeline/narrative_graph.py(엣지 방문집합·플라이휠) · 젠슨 황 렉스 프리드먼 인터뷰 논의(대화 2026-07-18)
+
+---
+
+## D-026 · 2026-07-18 · 세계관 뷰 — React Flow + dagre 채택
+
+**결정**: 인과 그래프 노드-링크 시각화(세계관 뷰, docs/specs/causal-worldview.md)에 **React Flow(`@xyflow/react`)** + **dagre**(레이아웃 알고리즘)를 신규 의존성으로 도입. dagre로 **좌(근본원인)→우(수혜) 계층 배치**(rankdir=LR) — force-directed(d3-force)가 아니라 방향 배치를 택한 이유는 "인과는 시간에 종속된다"(narrative-causal-graph.md §2, D-023) 원칙을 시각 언어로 그대로 반영하기 위함.
+
+**맥락·이유**: 기존 차트 라이브러리(recharts·lightweight-charts)는 노드-링크 그래프를 못 그린다. Phase 2(D-023)에서 "노드-링크 풀 인터랙티브 시각화"를 1차 Out of Scope로 미뤘으나(narrative-causal-phase2.md §6), 2026-07-18 stakeholder 결정으로 이 트랙을 먼저 진행. narrative_id 스코프 없는 전역 인과 그래프(`pipeline/narrative_graph.py` `full_causal_graph`)에 union-find 연결요소(cluster_id)를 얹어 "같은 세계관"을 시각적으로 드러낸다.
+
+**기각한 대안**: ① d3-force(force-directed) — 조직적이지만 방향성이 시각적으로 희석돼 시간 그래디언트 원칙과 어긋남 ② cytoscape.js — 네트워크 그래프 전문이나 React 통합이 React Flow보다 무겁고 커스텀 노드/엣지 DX가 떨어짐 ③ 순수 SVG+수동 배치 — 줌/팬/미니맵을 직접 구현해야 해 비용 과다.
+
+**참조**: docs/specs/causal-worldview.md · backend/pipeline/narrative_graph.py(`full_causal_graph`) · backend/routers/spine_causal.py · frontend/src/components/explore/WorldviewPage.tsx
+
+---
+
+## D-025 · 2026-07-18 · 유튜브 요약 상태를 명시 컬럼으로 — digest_status + 열람 시 lazy 재시도
+
+**결정**: `raw_documents`에 `digest_status`(ok|failed) 컬럼을 추가해 유튜브 opus 정리본 성공 여부를 명시적으로 관리한다(기존: `raw_content LIKE '%opus 정리본%'` 문자열 매칭으로 암묵 판별). `GET /api/spine/doc/{id}` 열람 시 해당 문서가 youtube이고 digest_status가 ok가 아니면 그 자리에서 opus 재요약을 1회 시도하고 성공하면 갱신(lazy retry) — 사용자가 문서를 열어보는 행위 자체가 백필 트리거가 된다.
+
+**맥락·이유**: 진단 결과 최근 유튜브 요약 누락(11건)의 실제 원인은 PC 전원이 아니라, **cron이 띄우는 `claude` CLI 서브프로세스가 macOS Keychain의 로그인 세션에 접근하지 못해 "Not logged in" 실패를 반복**하는 것이었다(대화 중 로그 확인, `logs/ingest.log` 반복 패턴). 같은 세션의 인터랙티브 `claude` 호출은 정상 동작 — 즉 cron 컨텍스트 특유의 인증 문제. 이 근본 원인(cron 인증)은 이번 작업 범위에서 제외하고(stakeholder 결정), 대신 사용자 체감 문제(요약 누락이 방치됨)를 flag+lazy 트리거로 완화하는 쪽을 먼저 택했다 — 문서 열람은 보통 백엔드 서버(로그인 세션 있는 상태로 기동)에서 처리되므로 cron과 달리 성공 가능성이 높다.
+
+**기각한 대안**: ① cron 인증 문제 자체를 먼저 해결(예: ANTHROPIC_API_KEY 환경변수로 전환, launchd 재구성) — 근본적이지만 별도 조사·검증이 필요해 범위 분리 ② 문자열 마커 유지 — 신뢰 불가(요약 본문에 우연히 유사 텍스트가 있으면 오판, 상태 조회 시 매번 LIKE 스캔).
+
+**참조**: backend/database.py(마이그레이션+백필) · backend/pipeline/base.py · backend/pipeline/store.py · backend/pipeline/connectors/youtube.py · backend/routers/spine_doc.py · docs/SYSTEM.md §connectors/youtube, §GET /api/spine/doc/{id}
+
+---
+
 ## D-024 · 2026-07-17 · 30분 수집 체인 겹침 방지 — run_chain.sh 락 래퍼
 
 **결정**: crontab의 긴 인라인 `*/30` 체인(`ingest && redigest_youtube && compute_signals && … && build_search_index`)을 **`scripts/run_chain.sh` 단일 래퍼**로 옮기고, **겹침 방지 락**을 건다. 한 사이클이 30분을 넘겨 다음 cron이 이전 위에 쌓이면 두 writer가 SQLite를 동시에 두드려 busy_timeout 경합·락이 난다(실제 사고 이력). 락: flock이 macOS 기본 미포함이라 **mkdir 원자성 + PID 생존확인(stale 자동 회수)** 으로 이식성 있게. 이전 실행 진행 중이면 이번 회차 조용히 skip. 전환기·수동 실행 대비 `pgrep -f 'scripts/ingest.py'` 2차 가드. 기존 `&&` 실패-중단 의미 보존.
