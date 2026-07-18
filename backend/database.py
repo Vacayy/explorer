@@ -587,6 +587,23 @@ def init_db():
         UNIQUE(kind, key)
     );
 
+    -- 내러티브 (1급 객체, 버전 보존) — 인과 그래프 위의 시간순 서브그래프 (D-023)
+    CREATE TABLE IF NOT EXISTS narratives (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic         TEXT NOT NULL,          -- theme/sector 이름 (생성 앵커)
+        version       INTEGER NOT NULL,       -- topic별 1,2,3…
+        title         TEXT,                   -- 질문형 제목
+        body          TEXT,                   -- md 본문
+        category      TEXT,                   -- 도메인 렌즈 CSV (macro|geopolitics|industry|flow|tech|policy)
+        doc_count     INTEGER,
+        doc_ids_hash  TEXT,                   -- 재생성 가드
+        model         TEXT,
+        created_at    TEXT DEFAULT (datetime('now')),
+        superseded_at TEXT,                   -- 새 버전 나오면 닫음 (삭제 없음 — 드리프트 추적)
+        UNIQUE(topic, version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_narratives_topic ON narratives(topic, version);
+
     -- 유·무상증자 상세 (Pro 뷰) — 결정 공시 원문에서 구조화 추출
     CREATE TABLE IF NOT EXISTS capital_raise_details (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -687,6 +704,16 @@ def init_db():
         # 시간 정박(D-021): 발행일≠사건 발생일. 글이 가리키는 시간 방향·시기 분리
         "ALTER TABLE enrichments ADD COLUMN time_orientation TEXT",  # past|current|forward|mixed
         "ALTER TABLE enrichments ADD COLUMN reference_period TEXT",  # 발행일과 다른 실제 대상 시기 (예: '2026 2분기', '2027 전망')
+        "ALTER TABLE knowledge ADD COLUMN rationale TEXT",   # 사용자 주입 근거 ('왜 믿나')
+        "ALTER TABLE knowledge ADD COLUMN source_ref TEXT",  # 사용자 주입 출처 ('누가 말했나')
+        "ALTER TABLE knowledge_falsifiers ADD COLUMN target_entity TEXT",  # 반증 감시 대상 (구조화)
+        "ALTER TABLE knowledge_falsifiers ADD COLUMN metric TEXT",         # 관측 지표
+        "ALTER TABLE knowledge_falsifiers ADD COLUMN threshold TEXT",      # 임계
+        "ALTER TABLE knowledge_falsifiers ADD COLUMN window TEXT",         # 관측 기간
+        "ALTER TABLE entity_relations ADD COLUMN mechanism TEXT",          # 인과 엣지 서사 (D-023)
+        "ALTER TABLE entity_relations ADD COLUMN reference_period TEXT",   # 이 인과가 작동하는 시점 (D-021)
+        "ALTER TABLE entity_relations ADD COLUMN time_orientation TEXT",   # past|current|forward (시간 그래디언트)
+        "ALTER TABLE entity_relations ADD COLUMN narrative_id INTEGER",    # 어느 내러티브(버전)에서 나왔나
     ]:
         try:
             conn.execute(migration)
