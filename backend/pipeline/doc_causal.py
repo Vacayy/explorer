@@ -25,6 +25,8 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
     return (
         "너는 투자 리서치의 인과 구조 추출가다. 아래 문서에서 **명시적으로 서술된** 인과관계만 "
         "구조화해라. 문서에 없는 인과를 추론·보완하지 마라. 명확한 인과 서술이 없으면 빈 배열.\n"
+        "★투자·시장 세계관에 속하는 인과만: 거시경제·산업·기업·정책·시장 구조가 대상이다. "
+        "지역 행정·생활 정보·사회 일반 등 투자 판단과 무관한 인과는 문서에 서술돼 있어도 제외.\n"
         'JSON만 출력: {"causal": {"nodes": [{"name","type"}], "edges": '
         '[{"from","to","rel","mechanism","orientation","reference_period","confidence"}]}}\n'
         "규칙 (내러티브 인과 추출과 동일):\n"

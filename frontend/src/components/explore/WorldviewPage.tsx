@@ -49,10 +49,11 @@ const LENS_LABEL: Record<string, string> = {
 const LENSES = Object.keys(LENS_LABEL)
 const NODE_W = 150
 const NODE_H = 44
+const MIN_CLUSTER = 3   // 이보다 작은 연결요소(고립된 2노드 조각)는 기본 숨김 — 노이즈 감소
 
 function layoutGraph(nodes: WNode[], edges: WEdge[]): (WNode & { x: number; y: number })[] {
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: "LR", nodesep: 32, ranksep: 110 })
+  g.setGraph({ rankdir: "LR", nodesep: 48, ranksep: 170 })
   g.setDefaultEdgeLabel(() => ({}))
   nodes.forEach((n) => g.setNode(String(n.id), { width: NODE_W, height: NODE_H }))
   edges.forEach((e) => g.setEdge(String(e.from_id), String(e.to_id)))
@@ -79,6 +80,7 @@ const nodeTypes = { graphNode: GraphNode }
 export default function WorldviewPage() {
   const navigate = useNavigate()
   const [lenses, setLenses] = useState<string[]>([])
+  const [showSmall, setShowSmall] = useState(false)
   const [selectedNode, setSelectedNode] = useState<WNode | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<WEdge | null>(null)
   // 백엔드는 현재 단일 category만 지원 — 2개 이상 선택 시 필터 없이(합집합) 보여줌
@@ -92,26 +94,38 @@ export default function WorldviewPage() {
     }),
   )
 
-  const { nodes: builtNodes, edges: builtEdges } = useMemo(() => {
-    if (!data || data.edges.length === 0) return { nodes: [] as Node[], edges: [] as Edge[] }
-    const positioned = layoutGraph(data.nodes, data.edges)
+  const { nodes: builtNodes, edges: builtEdges, hiddenCount } = useMemo(() => {
+    if (!data || data.edges.length === 0)
+      return { nodes: [] as Node[], edges: [] as Edge[], hiddenCount: 0 }
+    // 작은 연결요소(고립 조각) 숨김 — 문서 추출발 주변부 인과가 본 그래프를 가리지 않게
+    const clusterSize = new Map<number, number>()
+    data.nodes.forEach((n) => clusterSize.set(n.cluster_id, (clusterSize.get(n.cluster_id) ?? 0) + 1))
+    const keep = (n: WNode) => showSmall || (clusterSize.get(n.cluster_id) ?? 0) >= MIN_CLUSTER
+    const visNodes = data.nodes.filter(keep)
+    const visIds = new Set(visNodes.map((n) => n.id))
+    const visEdges = data.edges.filter((e) => visIds.has(e.from_id) && visIds.has(e.to_id))
+    const hidden = data.nodes.length - visNodes.length
+
+    const positioned = layoutGraph(visNodes, visEdges)
     const rfNodes: Node[] = positioned.map((n) => ({
       id: String(n.id), type: "graphNode", position: { x: n.x, y: n.y }, data: n as unknown as Record<string, unknown>,
     }))
-    const rfEdges: Edge[] = data.edges.map((e, i) => ({
+    const rfEdges: Edge[] = visEdges.map((e, i) => ({
       id: `e${i}`, source: String(e.from_id), target: String(e.to_id),
+      type: "smoothstep",
       style: {
         strokeDasharray: e.rel === "BENEFITS_FROM" ? "4 3" : undefined,
         stroke: e.contested ? "var(--destructive)"
           : e.flywheel ? "var(--hypothesis)" : "var(--muted-foreground)",
         strokeWidth: e.flywheel || e.corroborated_by >= 2 ? 2.5 : 1,
+        opacity: e.flywheel || e.contested || e.corroborated_by >= 2 ? 1 : 0.45,
       },
       animated: !!e.flywheel,
       markerEnd: { type: MarkerType.ArrowClosed },
       data: e as unknown as Record<string, unknown>,
     }))
-    return { nodes: rfNodes, edges: rfEdges }
-  }, [data])
+    return { nodes: rfNodes, edges: rfEdges, hiddenCount: hidden }
+  }, [data, showSmall])
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(builtNodes)
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(builtEdges)
@@ -143,12 +157,16 @@ export default function WorldviewPage() {
             {LENS_LABEL[l]}
           </label>
         ))}
+        <label className="flex items-center gap-1.5 cursor-pointer ml-auto text-muted-foreground">
+          <Checkbox checked={showSmall} onCheckedChange={(v) => setShowSmall(!!v)} />
+          작은 조각 표시{hiddenCount > 0 && !showSmall ? ` (숨김 ${hiddenCount}개 노드)` : ""}
+        </label>
       </div>
 
       {!data || data.edges.length === 0 ? (
         <EmptyState message="인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다." />
       ) : (
-        <div style={{ height: 620 }} className="rounded-xl border overflow-hidden">
+        <div style={{ height: "calc(100vh - 240px)", minHeight: 560 }} className="rounded-xl border overflow-hidden">
           <ReactFlow
             nodes={rfNodes}
             edges={rfEdges}
@@ -158,6 +176,8 @@ export default function WorldviewPage() {
             onNodeClick={(_, n) => { setSelectedNode(n.data as unknown as WNode); setSelectedEdge(null) }}
             onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNode(null) }}
             fitView
+            fitViewOptions={{ maxZoom: 0.9 }}
+            minZoom={0.15}
           >
             <Background />
             <Controls />
