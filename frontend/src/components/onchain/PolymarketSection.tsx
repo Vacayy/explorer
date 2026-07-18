@@ -2,6 +2,7 @@ import { memo } from "react"
 import { usePolymarket } from "@/hooks/useOnchain"
 import type { PolymarketEvent } from "@/hooks/useOnchain"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { formatUsd } from "@/utils/format"
 import { SectionSkeleton, ErrorCard } from "./SectionSkeleton"
@@ -23,12 +24,10 @@ const EventCard = memo(function EventCard({ event }: { event: PolymarketEvent })
               </div>
               {yesPercent != null && (
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-emerald-500"
-                      style={{ width: `${Math.min(yesPercent, 100)}%` }}
-                    />
-                  </div>
+                  <Progress
+                    value={Math.min(yesPercent, 100)}
+                    className="w-16 h-1.5 [&>[data-slot=progress-indicator]]:bg-emerald-500"
+                  />
                   <span className={cn(
                     "text-xs font-mono w-12 text-right",
                     yesPercent >= 50 ? "text-emerald-600" : "text-rose-500"

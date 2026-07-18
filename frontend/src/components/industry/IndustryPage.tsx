@@ -2,8 +2,10 @@ import { useState, useMemo } from "react"
 import api from "@/api/client"
 import { useIndustryGroups, useIndustryDetail, useFetchIndustryPrices } from "@/hooks/useIndustry"
 import { Button } from "@/components/ui/button"
+import SegmentTabs from "@/components/shared/SegmentTabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { PageContainer } from '@/components/shared/PageContainer'
 import { formatKrw, formatNumber } from "@/utils/format"
 import type { Company, IndustryMember } from "@/types"
 import ValueChainMap from "./ValueChainMap"
@@ -89,7 +91,7 @@ export default function IndustryPage({ onSelectCompany }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <PageContainer gap="sm">
       {/* Controls */}
       <div className="flex items-center gap-3">
         <Select
@@ -121,16 +123,14 @@ export default function IndustryPage({ onSelectCompany }: Props) {
               {detail.members.length}개 종목
             </span>
           )}
-          <Button variant={viewMode === "map" ? "outline" : "ghost"} size="sm"
-            onClick={() => setViewMode("map")}
-            className={viewMode === "map" ? "border-primary text-primary" : "text-muted-foreground"}>
-            밸류체인맵
-          </Button>
-          <Button variant={viewMode === "table" ? "outline" : "ghost"} size="sm"
-            onClick={() => setViewMode("table")}
-            className={viewMode === "table" ? "border-primary text-primary" : "text-muted-foreground"}>
-            테이블
-          </Button>
+          <SegmentTabs
+            tabs={[
+              { value: "map", label: "밸류체인맵" },
+              { value: "table", label: "테이블" },
+            ]}
+            value={viewMode}
+            onChange={(v) => setViewMode(v as "table" | "map")}
+          />
         </div>
       </div>
 
@@ -207,7 +207,7 @@ export default function IndustryPage({ onSelectCompany }: Props) {
           </table>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 

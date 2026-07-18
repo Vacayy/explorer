@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
 import FilterChips from "@/components/shared/FilterChips"
+import { PageContainer } from "@/components/shared/PageContainer"
 
 interface Props {
   stockCode: string
@@ -53,7 +55,7 @@ export default function DisclosurePage({ stockCode }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <PageContainer>
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "disclosure" | "ir")}>
         <TabsList>
           {SUB_TABS.map((t) => (
@@ -143,10 +145,23 @@ export default function DisclosurePage({ stockCode }: Props) {
                       <span className="text-xs text-muted-foreground mr-3">{note.note_date}</span>
                       <span className="font-semibold text-sm">{note.title}</span>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-destructive text-xs h-7"
-                      onClick={() => { if (confirm("삭제하시겠습니까?")) deleteNote.mutate(note.id) }}>
-                      삭제
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-destructive text-xs h-7">
+                          삭제
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>삭제하시겠습니까?</AlertDialogTitle>
+                          <AlertDialogDescription>이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>취소</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => deleteNote.mutate(note.id)}>삭제</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                   {note.content && (
                     <p className="text-sm text-secondary-foreground whitespace-pre-wrap leading-relaxed">{note.content}</p>
@@ -160,6 +175,6 @@ export default function DisclosurePage({ stockCode }: Props) {
       </Tabs>
       {/* 다음 질문 — dead-end 제거 (P2-3) */}
       <NextQuestions stockCode={stockCode} context="disclosures" />
-    </div>
+    </PageContainer>
   )
 }

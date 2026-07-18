@@ -5,6 +5,7 @@ import { Link } from "react-router-dom"
 import { conversationsQuery, conversationDetailQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { formatRelativeTime } from "@/utils/format"
 
 /**
@@ -44,8 +45,8 @@ function ThreadRow({ id, title, channel, count, updatedAt }: {
   const detail = useQuery(conversationDetailQuery(id, open))
 
   return (
-    <div className="py-1.5">
-      <button onClick={() => setOpen(!open)} className="flex items-center gap-2 w-full text-left group">
+    <Collapsible open={open} onOpenChange={setOpen} className="py-1.5">
+      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left group">
         {channel === "telegram"
           ? <Send className="h-3 w-3 text-muted-foreground shrink-0" />
           : <MessageCircleQuestion className="h-3 w-3 text-muted-foreground shrink-0" />}
@@ -54,21 +55,23 @@ function ThreadRow({ id, title, channel, count, updatedAt }: {
         <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
           {formatRelativeTime(updatedAt)}
         </span>
-      </button>
-      {open && detail.data && (
-        <div className="mt-1.5 space-y-1.5 border-l-2 border-border pl-3">
-          {detail.data.messages.map((m) => (
-            <div key={m.id} className="text-xs">
-              <span className={m.role === "user" ? "font-semibold" : "text-hypothesis font-semibold"}>
-                {m.role === "user" ? "Q" : "A"}
-              </span>{" "}
-              <span className={m.role === "assistant" ? "text-muted-foreground" : ""}>
-                {m.content.length > 400 ? m.content.slice(0, 400) + "…" : m.content}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {detail.data && (
+          <div className="mt-1.5 space-y-1.5 border-l-2 border-border pl-3">
+            {detail.data.messages.map((m) => (
+              <div key={m.id} className="text-xs">
+                <span className={m.role === "user" ? "font-semibold" : "text-hypothesis font-semibold"}>
+                  {m.role === "user" ? "Q" : "A"}
+                </span>{" "}
+                <span className={m.role === "assistant" ? "text-muted-foreground" : ""}>
+                  {m.content.length > 400 ? m.content.slice(0, 400) + "…" : m.content}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

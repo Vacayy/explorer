@@ -1,84 +1,52 @@
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { useCompanySearch } from "@/hooks/useCompanySearch"
-import { addToHistory } from "@/components/layout/SearchHistory"
-import { Badge } from "@/components/ui/badge"
-import ThemeToggle from "@/components/shared/ThemeToggle"
 import { Link } from "react-router-dom"
-import { Archive } from "lucide-react"
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandGroup,
-  CommandItem,
-} from "@/components/ui/command"
-import type { Company } from "@/types"
+import { Archive, PanelRight, Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import { useSidebar } from "@/components/ui/sidebar"
+import ThemeToggle from "@/components/shared/ThemeToggle"
 
-interface Props {
-  selectedCompany: Company | null
+/**
+ * 헤더 — 로고 + 단일 검색 진입(옴니바 트리거) + 유틸 아이콘.
+ * 검색·이동·질문은 전부 옴니바(⌘K)로 수렴 — 헤더는 진입점만 제공한다.
+ */
+function openOmnibar() {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))
 }
 
-export default function Header({ selectedCompany }: Props) {
-  const navigate = useNavigate()
-  const [query, setQuery] = useState("")
-  const { data: results = [] } = useCompanySearch(query)
-
+export default function Header() {
+  const { toggleSidebar } = useSidebar()
   return (
-    <header className="sticky top-0 z-50 border-b bg-card">
-      <div className="mx-auto max-w-[1440px] flex items-center gap-4 px-6 h-12">
-        <h1 className="text-lg font-bold whitespace-nowrap">Stock Explorer</h1>
+    <header className="sticky top-0 z-50 bg-card">
+      <div className="mx-auto max-w-[var(--layout-shell)] flex items-center gap-4 px-6 h-14">
+        <Link to="/home" className="text-[15px] font-bold tracking-tight whitespace-nowrap">
+          Stock Explorer
+        </Link>
 
-        <div className="relative w-[360px]">
-          <Command shouldFilter={false} className="rounded-lg border shadow-none bg-transparent">
-            <CommandInput
-              placeholder="기업명 또는 종목코드 검색..."
-              value={query}
-              onValueChange={setQuery}
-              data-search-input
-            />
-            {query.length > 0 && results.length > 0 && (
-              <CommandList className="absolute top-full left-0 right-0 mt-1 z-50 rounded-lg border bg-popover shadow-lg max-h-[300px]">
-                <CommandGroup>
-                  {results.map((c) => (
-                    <CommandItem
-                      key={c.corp_code}
-                      value={c.stock_code ?? ""}
-                      onSelect={() => {
-                        addToHistory(c)
-                        setQuery("")
-                        if (c.stock_code) navigate(`/analyze/${c.stock_code}/summary`)
-                      }}
-                    >
-                      <span className="font-medium text-sm">{c.corp_name}</span>
-                      <span className="ml-auto text-muted-foreground text-xs">{c.stock_code}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            )}
-          </Command>
-        </div>
-
-        {selectedCompany && (
-          <Badge variant="accent" className="text-sm font-medium">
-            {selectedCompany.corp_name} ({selectedCompany.stock_code})
-          </Badge>
-        )}
+        <button
+          type="button"
+          onClick={openOmnibar}
+          data-search-input
+          className="group flex flex-1 max-w-[420px] items-center gap-2 h-9 rounded-lg bg-secondary px-3 text-[13px] text-muted-foreground transition-colors hover:bg-secondary/70"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="truncate">기업·종목 검색, 이동, 질문</span>
+          <KbdGroup className="ml-auto shrink-0">
+            <Kbd>⌘</Kbd>
+            <Kbd>K</Kbd>
+          </KbdGroup>
+        </button>
 
         <div className="ml-auto flex items-center gap-1">
-          <button
-            onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-            className="hidden md:flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-            title="옴니바 열기"
-          >
-            이동·검색·질문 <kbd className="rounded border bg-muted px-1">⌘K</kbd>
-          </button>
-          <Link to="/archive" title="보관함 — 안 쓰는 화면 모음"
-            className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted">
-            <Archive className="h-4 w-4" />
-          </Link>
+          <Button variant="ghost" size="icon-sm" asChild>
+            <Link to="/archive" title="보관함 — 안 쓰는 화면 모음">
+              <Archive className="h-4 w-4" />
+            </Link>
+          </Button>
           <ThemeToggle />
+          <Button variant="ghost" size="icon-sm" onClick={toggleSidebar}
+            title="팔로우 레일 토글" aria-label="팔로우 레일 토글">
+            <PanelRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     </header>

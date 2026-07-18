@@ -1,4 +1,5 @@
-import { Button } from "@/components/ui/button"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { cn } from "@/lib/utils"
 
 interface Option {
   value: string
@@ -11,25 +12,27 @@ interface Props {
   onChange: (value: string) => void
 }
 
-/** Filter chip group — wraps shadcn Button for filter selection */
+/** Filter chip group (단일선택) — Radix ToggleGroup(single) 래핑 (docs/DESIGN_SYSTEM.md §3) */
 export default function FilterChips({ options, value, onChange }: Props) {
   return (
-    <div className="flex gap-1.5 flex-wrap">
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(v) => v && onChange(v)}
+      className="flex flex-wrap gap-1.5 w-auto"
+    >
       {options.map((opt) => (
-        <Button
+        <ToggleGroupItem
           key={opt.value}
-          variant={value === opt.value ? "outline" : "ghost"}
-          size="sm"
-          onClick={() => onChange(opt.value)}
-          className={
-            value === opt.value
-              ? "border-primary text-primary bg-accent h-7 text-xs"
-              : "text-muted-foreground h-7 text-xs"
-          }
+          value={opt.value}
+          className={cn(
+            "h-7 px-3 text-xs rounded-lg text-muted-foreground",
+            "data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent data-[state=on]:hover:bg-accent"
+          )}
         >
           {opt.label}
-        </Button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   )
 }

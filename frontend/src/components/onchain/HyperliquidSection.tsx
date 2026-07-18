@@ -2,6 +2,7 @@ import { memo } from "react"
 import { useHyperliquid } from "@/hooks/useOnchain"
 import type { HyperliquidAsset, HyperliquidStock } from "@/hooks/useOnchain"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { formatUsd, formatPrice, formatFundingRate } from "@/utils/format"
 import { SectionSkeleton, ErrorCard } from "./SectionSkeleton"
@@ -9,22 +10,22 @@ import { SectionSkeleton, ErrorCard } from "./SectionSkeleton"
 const AssetRow = memo(function AssetRow({ asset }: { asset: HyperliquidAsset }) {
   const isPositive = asset.changePct >= 0
   return (
-    <tr className="border-b last:border-b-0 hover:bg-muted/50">
-      <td className="py-2.5 px-3 font-medium">{asset.name}</td>
-      <td className="py-2.5 px-3 text-right font-mono">{formatPrice(asset.markPx)}</td>
-      <td className={cn("py-2.5 px-3 text-right font-mono", isPositive ? "text-red-500" : "text-blue-500")}>
+    <TableRow className="border-b last:border-b-0 hover:bg-muted/50">
+      <TableCell className="py-2.5 px-3 font-medium">{asset.name}</TableCell>
+      <TableCell className="py-2.5 px-3 text-right font-mono">{formatPrice(asset.markPx)}</TableCell>
+      <TableCell className={cn("py-2.5 px-3 text-right font-mono", isPositive ? "text-red-500" : "text-blue-500")}>
         {isPositive ? "+" : ""}{asset.changePct.toFixed(2)}%
-      </td>
-      <td className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
+      </TableCell>
+      <TableCell className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
         {formatFundingRate(asset.funding)}
-      </td>
-      <td className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
+      </TableCell>
+      <TableCell className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
         {formatUsd(asset.openInterest * asset.markPx)}
-      </td>
-      <td className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
+      </TableCell>
+      <TableCell className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
         {formatUsd(asset.dayNtlVlm)}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   )
 })
 
@@ -32,21 +33,21 @@ const StockRow = memo(function StockRow({ stock }: { stock: HyperliquidStock }) 
   const isPositive = stock.changePct >= 0
   const price = stock.midPx ?? stock.markPx
   return (
-    <tr className="border-b last:border-b-0 hover:bg-muted/50">
-      <td className="py-2.5 px-3 font-medium">{stock.name}</td>
-      <td className="py-2.5 px-3 text-right font-mono">
+    <TableRow className="border-b last:border-b-0 hover:bg-muted/50">
+      <TableCell className="py-2.5 px-3 font-medium">{stock.name}</TableCell>
+      <TableCell className="py-2.5 px-3 text-right font-mono">
         {price != null ? formatPrice(price) : "-"}
-      </td>
-      <td className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
+      </TableCell>
+      <TableCell className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
         {stock.markPx != null ? formatPrice(stock.markPx) : "-"}
-      </td>
-      <td className={cn("py-2.5 px-3 text-right font-mono", isPositive ? "text-red-500" : "text-blue-500")}>
+      </TableCell>
+      <TableCell className={cn("py-2.5 px-3 text-right font-mono", isPositive ? "text-red-500" : "text-blue-500")}>
         {stock.changePct !== 0 ? `${isPositive ? "+" : ""}${stock.changePct.toFixed(2)}%` : "-"}
-      </td>
-      <td className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
+      </TableCell>
+      <TableCell className="py-2.5 px-3 text-right font-mono text-muted-foreground text-xs">
         {stock.dayNtlVlm > 0 ? formatUsd(stock.dayNtlVlm) : "-"}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   )
 })
 
@@ -90,25 +91,23 @@ export default function HyperliquidSection() {
         {/* Top by volume table */}
         <div>
           <div className="text-xs font-medium text-muted-foreground mb-2">거래량 상위 10 (무기한 선물)</div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-muted-foreground">
-                  <th className="py-2 px-3 text-left font-medium">자산</th>
-                  <th className="py-2 px-3 text-right font-medium">가격</th>
-                  <th className="py-2 px-3 text-right font-medium">24h 변동</th>
-                  <th className="py-2 px-3 text-right font-medium">펀딩비</th>
-                  <th className="py-2 px-3 text-right font-medium">미결제약정</th>
-                  <th className="py-2 px-3 text-right font-medium">24h 거래량</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data?.top_volume.map((asset) => (
-                  <AssetRow key={asset.name} asset={asset} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table className="w-full text-sm">
+            <TableHeader>
+              <TableRow className="border-b text-muted-foreground hover:bg-transparent">
+                <TableHead className="h-auto py-2 px-3 text-left font-medium text-muted-foreground">자산</TableHead>
+                <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">가격</TableHead>
+                <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">24h 변동</TableHead>
+                <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">펀딩비</TableHead>
+                <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">미결제약정</TableHead>
+                <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">24h 거래량</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data?.top_volume.map((asset) => (
+                <AssetRow key={asset.name} asset={asset} />
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         {/* Tokenized stocks */}
@@ -118,24 +117,22 @@ export default function HyperliquidSection() {
               토큰화 주식 (Spot)
               <span className="ml-1 font-normal">— 유동성이 낮을 수 있음</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="py-2 px-3 text-left font-medium">티커</th>
-                    <th className="py-2 px-3 text-right font-medium">Mid 가격</th>
-                    <th className="py-2 px-3 text-right font-medium">Mark 가격</th>
-                    <th className="py-2 px-3 text-right font-medium">24h 변동</th>
-                    <th className="py-2 px-3 text-right font-medium">24h 거래량</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.stocks.map((s) => (
-                    <StockRow key={s.name} stock={s} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table className="w-full text-sm">
+              <TableHeader>
+                <TableRow className="border-b text-muted-foreground hover:bg-transparent">
+                  <TableHead className="h-auto py-2 px-3 text-left font-medium text-muted-foreground">티커</TableHead>
+                  <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">Mid 가격</TableHead>
+                  <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">Mark 가격</TableHead>
+                  <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">24h 변동</TableHead>
+                  <TableHead className="h-auto py-2 px-3 text-right font-medium text-muted-foreground">24h 거래량</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.stocks.map((s) => (
+                  <StockRow key={s.name} stock={s} />
+                ))}
+              </TableBody>
+            </Table>
             <div className="mt-3 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
               SKHYNIX-USDC는 xyz 독립 배포 마켓으로 표준 API에서 조회 불가합니다.{" "}
               <a

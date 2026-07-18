@@ -1,11 +1,12 @@
 import HyperliquidSection from "./HyperliquidSection"
 import PolymarketSection from "./PolymarketSection"
+import { PageContainer } from '@/components/shared/PageContainer'
 
 export default function OnchainPage() {
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <HyperliquidSection />
       <PolymarketSection />
-    </div>
+    </PageContainer>
   )
 }

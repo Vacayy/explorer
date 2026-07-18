@@ -2,11 +2,13 @@ import { useSearchParams, Link } from "react-router-dom"
 import { useCompare } from "@/hooks/useCompare"
 import { useWatchlist } from "@/hooks/useWatchlist"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { formatKrw, formatNumber, formatPercent } from "@/utils/format"
 import CompanySearchCombobox from "@/components/shared/CompanySearchCombobox"
+import { PageContainer } from "@/components/shared/PageContainer"
 import type { Company } from "@/types"
 
 // Metric row definitions
@@ -64,12 +66,14 @@ function CompanySelector({
             <Link to={`/analyze/${s.stock_code}/summary`} className="hover:underline">
               {s.corp_name}
             </Link>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => onRemove(s.stock_code)}
-              className="ml-1 text-muted-foreground hover:text-foreground"
+              className="h-auto p-0 ml-1 text-muted-foreground hover:text-foreground hover:bg-transparent"
             >
               ✕
-            </button>
+            </Button>
           </Badge>
         ))}
         {selected.length === 0 && (
@@ -95,14 +99,16 @@ function CompanySelector({
             .filter((w) => !selected.find((s) => s.stock_code === w.stock_code))
             .slice(0, 8)
             .map((w) => (
-              <button
+              <Button
                 key={w.stock_code}
+                variant="outline"
+                size="sm"
                 onClick={() => onAdd(w.stock_code, w.corp_name)}
                 disabled={selected.length >= 5}
-                className="text-xs px-2 py-0.5 rounded border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-auto font-normal text-xs px-2 py-0.5 rounded border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 + {w.corp_name}
-              </button>
+              </Button>
             ))}
         </div>
       )}
@@ -142,7 +148,7 @@ export default function ComparePage() {
   const items = data?.items ?? []
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <div>
         <h1 className="text-xl font-bold mb-1">기업 비교 (VS 모드)</h1>
         <p className="text-sm text-muted-foreground">2~5개 기업의 주요 지표를 나란히 비교합니다.</p>
@@ -219,6 +225,6 @@ export default function ComparePage() {
           </Table>
         </Card>
       )}
-    </div>
+    </PageContainer>
   )
 }

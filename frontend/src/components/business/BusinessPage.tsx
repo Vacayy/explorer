@@ -2,6 +2,7 @@ import { useState } from "react"
 import NextQuestions from "@/components/shared/NextQuestions"
 import { useBusinessSegments, useCreateSegment, useDeleteSegment } from "@/hooks/useBusiness"
 import ChartCard from "@/components/shared/ChartCard"
+import { PageContainer } from "@/components/shared/PageContainer"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -66,7 +67,7 @@ export default function BusinessPage({ stockCode }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <PageContainer>
       <div className="flex items-center gap-3">
         <SegmentTabs tabs={SEG_TABS} value={segType} onChange={setSegType} />
         <Button size="sm" onClick={() => setShowForm(!showForm)}>{showForm ? "취소" : "+ 데이터 추가"}</Button>
@@ -156,6 +157,6 @@ export default function BusinessPage({ stockCode }: Props) {
       )}
       {/* 다음 질문 — dead-end 제거 (P2-3) */}
       <NextQuestions stockCode={stockCode} context="business" />
-    </div>
+    </PageContainer>
   )
 }

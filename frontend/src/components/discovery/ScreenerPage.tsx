@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { TableSkeleton } from "@/components/shared/Skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
+import { PageContainer } from '@/components/shared/PageContainer'
 import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
 
@@ -149,7 +150,7 @@ export default function ScreenerPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <PageContainer gap="sm">
       {/* Filter Panel */}
       <div className="border rounded-lg bg-card p-4 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
@@ -307,7 +308,7 @@ export default function ScreenerPage() {
           </table>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
