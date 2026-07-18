@@ -331,7 +331,7 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     내러티브 수, narrative_edge_evidence 집계) · contested(반대 방향 CAUSES가 그래프에 공존)."""
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
-               s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
+               er.promoted_knowledge_id, s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
         WHERE er.narrative_id=? AND er.rel_type IN ('CAUSES','BENEFITS_FROM')
@@ -351,8 +351,25 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
                           "to_type": e["dtype"], "rel": e["rel_type"], "mechanism": e["mechanism"],
                           "orientation": e["time_orientation"], "reference_period": e["reference_period"],
                           "confidence": e["confidence"], "corroborated_by": n_narratives,
-                          "contested": contested})
+                          "contested": contested, "promoted_knowledge_id": e["promoted_knowledge_id"]})
     return {"nodes": list(nodes.values()), "edges": out_edges}
+
+
+def narrative_grounding(conn, narrative_id: int) -> dict:
+    """이 내러티브의 인과 엣지 중 지식으로 승격된 것들 + 각각의 미발화 반증 조건
+    (Phase 2 §2-5, 지식→내러티브: 이 서사가 딛고 선 지식과 흔들릴 조건)."""
+    rows = conn.execute("""
+        SELECT DISTINCT k.id, k.statement, k.epistemic_status
+        FROM entity_relations er JOIN knowledge k ON k.id = er.promoted_knowledge_id
+        WHERE er.narrative_id=?""", (narrative_id,)).fetchall()
+    items = []
+    for r in rows:
+        falsifiers = [f["condition"] for f in conn.execute(
+            "SELECT condition FROM knowledge_falsifiers WHERE knowledge_id=? AND triggered_at IS NULL",
+            (r["id"],)).fetchall()]
+        items.append({"knowledge_id": r["id"], "statement": r["statement"],
+                      "epistemic_status": r["epistemic_status"], "falsifiers": falsifiers})
+    return {"status": "ok" if items else "empty", "grounding": items}
 
 
 def related_narratives(conn, narrative_id: int) -> dict:

@@ -52,6 +52,18 @@ class Related(BaseModel):
     related: list[RelatedNarrative]
 
 
+class GroundingItem(BaseModel):
+    knowledge_id: int
+    statement: str
+    epistemic_status: str
+    falsifiers: list[str]
+
+
+class Grounding(BaseModel):
+    status: str           # ok | empty
+    grounding: list[GroundingItem]
+
+
 class NarrativeVersion(BaseModel):
     id: int
     version: int
@@ -152,6 +164,16 @@ def get_chain(narrative_id: int):
     r = narrative_chain(conn, narrative_id)
     conn.close()
     return Chain(**r)
+
+
+@router.get("/{narrative_id}/grounding", response_model=Grounding)
+def get_grounding(narrative_id: int):
+    """이 내러티브가 딛고 선 승격된 지식 + 흔들릴 조건(미발화 반증), LLM 없음 (Phase 2 §2-5)."""
+    from pipeline.narrative import narrative_grounding
+    conn = get_connection()
+    r = narrative_grounding(conn, narrative_id)
+    conn.close()
+    return Grounding(**r)
 
 
 @router.get("/{narrative_id}/related", response_model=Related)

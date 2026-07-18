@@ -300,3 +300,77 @@ def _find_refutes(conn, statement: str, exclude: set[int]) -> list[tuple[int, st
         return [(d["id"], d["published_at"] or "") for d in docs if d["id"] in ids]
     except Exception:
         return []
+
+
+MIN_CAUSAL_NARRATIVES = 2   # 독립 관측 하한 — consolidation.py 문서 기반과 동일 원칙
+MIN_CAUSAL_DAYS = 2         # 시간 분산 하한 (간격 요건, F-1)
+
+
+def promote_causal_edges() -> dict:
+    """인과 엣지 승격 — 2+ 독립 내러티브가 서로 다른 날 반복 주장한 고리를 지식으로
+    (Phase 2 §2-5, 내러티브→지식). 입력이 문서가 아니라 인과 그래프 재적재라는 점만
+    promote_batch와 다르고, 나머지 규율(독립 관측 하한·시간 분산·중복 병합·반대 증거
+    탐색·승인 큐)은 그대로 재사용한다."""
+    if llm_engine() != "claude-code":
+        return {"skipped": "claude-code 엔진 아님"}
+    conn = get_connection()
+    edges = conn.execute("""
+        SELECT er.id, s.id sid, s.name sname, d.id did, d.name dname,
+               er.rel_type, er.mechanism,
+               COUNT(DISTINCT nee.narrative_id) n_narratives,
+               COUNT(DISTINCT date(nee.created_at)) n_days
+        FROM entity_relations er
+        JOIN entities s ON s.id = er.src_id JOIN entities d ON d.id = er.dst_id
+        JOIN narrative_edge_evidence nee ON nee.entity_relation_id = er.id
+        WHERE er.rel_type IN ('CAUSES','BENEFITS_FROM') AND er.promoted_knowledge_id IS NULL
+        GROUP BY er.id
+        HAVING n_narratives >= ? AND n_days >= ?
+    """, (MIN_CAUSAL_NARRATIVES, MIN_CAUSAL_DAYS)).fetchall()
+
+    stats = {"candidates": len(edges), "promoted": 0, "merged": 0, "failed": 0}
+    for e in edges:
+        prompt = (
+            "너는 리서치센터의 지식 편집자다. 아래 인과 고리는 서로 다른 시점의 독립된 "
+            "여러 내러티브 분석에서 반복 확인된 구조적 관계다. 이를 하나의 완결된 "
+            "한국어 서술형 문장으로 다듬어라(과장·추측 추가 금지, 주어진 고리만).\n"
+            f"고리: {e['sname']} → {e['dname']} ({e['rel_type']})\n"
+            f"메커니즘: {e['mechanism'] or '(불명)'}\n"
+            'JSON만 출력: {"statement": "..."}'
+        )
+        try:
+            data = _call_json(prompt)
+        except Exception:
+            stats["failed"] += 1
+            continue
+        st = str(data.get("statement") or "").strip()
+        if not st:
+            stats["failed"] += 1
+            continue
+
+        dup = _find_similar_knowledge(conn, st)
+        if dup:
+            conn.execute("UPDATE entity_relations SET promoted_knowledge_id=? WHERE id=?", (dup, e["id"]))
+            conn.commit()
+            stats["merged"] += 1
+            continue
+
+        refutes = _find_refutes(conn, st, set())
+        kid = conn.execute("""
+            INSERT INTO knowledge (statement, epistemic_status, review_status, pace_layer,
+                                   confidence, valid_from, model, rationale)
+            VALUES (?, 'observed', 'proposed', 'structure', ?, date('now'), 'claude-code/opus', ?)
+        """, (st, round(min(0.5 + 0.1 * e["n_narratives"], 0.9), 2),
+              f"인과 그래프 순회 — {e['n_narratives']}개 독립 내러티브에서 반복 확인")).lastrowid
+        conn.execute("INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) VALUES (?, ?)",
+                     (kid, e["sid"]))
+        conn.execute("INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) VALUES (?, ?)",
+                     (kid, e["did"]))
+        for rd_id, rd_at in refutes:
+            conn.execute(
+                "INSERT INTO knowledge_evidence (knowledge_id, doc_id, stance, independent, observed_at) "
+                "VALUES (?, ?, 'refute', 1, ?)", (kid, rd_id, rd_at))
+        conn.execute("UPDATE entity_relations SET promoted_knowledge_id=? WHERE id=?", (kid, e["id"]))
+        conn.commit()
+        stats["promoted"] += 1
+    conn.close()
+    return stats
