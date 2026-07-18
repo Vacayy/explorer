@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -99,17 +100,28 @@ export default function NarrativePage() {
             </div>
           )}
           {n?.narrative && (
-            <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_6%,var(--card))]">
-              <CardContent className="py-4">
-                <Markdown>{n.narrative}</Markdown>
-                <div className="text-right mt-2">
-                  <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
-                    AI 내러티브 · 문서 집합 변경 시 갱신 — 검증 필요
-                    {n.created_at && ` · ${n.created_at.slice(0, 10)}`}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+            <Tabs defaultValue="narrative">
+              <TabsList>
+                <TabsTrigger value="narrative">서사</TabsTrigger>
+                <TabsTrigger value="mer">인과 흐름 (메르 모드)</TabsTrigger>
+              </TabsList>
+              <TabsContent value="narrative">
+                <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_6%,var(--card))]">
+                  <CardContent className="py-4">
+                    <Markdown>{n.narrative}</Markdown>
+                    <div className="text-right mt-2">
+                      <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
+                        AI 내러티브 · 문서 집합 변경 시 갱신 — 검증 필요
+                        {n.created_at && ` · ${n.created_at.slice(0, 10)}`}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              <TabsContent value="mer">
+                <MerNarrativeCard topic={topic} />
+              </TabsContent>
+            </Tabs>
           )}
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
           {narrativeId && <ChainPaths narrativeId={narrativeId} />}
@@ -198,6 +210,74 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/* ---------- 메르 모드 (순회 top-1 경로 정박 서사, Phase 2 §2-2) ---------- */
+
+interface MerNarrativeResponse {
+  status: string
+  narrative: string | null
+  path: { nodes: { name: string; type: string }[] } | null
+  stale: boolean
+}
+
+function MerNarrativeCard({ topic }: { topic: string }) {
+  const qc = useQueryClient()
+  const cachedMer = useQuery(
+    apiQuery<MerNarrativeResponse>({
+      key: ["spine", "narrative", "mer", topic],
+      url: `/api/spine/narrative/mer?topic=${encodeURIComponent(topic)}`,
+      staleTime: STALE.short,
+    }),
+  )
+  const freshMer = useQuery(
+    apiComputeQuery<MerNarrativeResponse>({
+      key: ["spine", "narrative", "mer", topic, "compute"],
+      url: `/api/spine/narrative/mer/compute?topic=${encodeURIComponent(topic)}`,
+      enabled: !!cachedMer.data?.stale,
+    }),
+  )
+  useEffect(() => {
+    if (freshMer.data?.status === "fresh") {
+      qc.invalidateQueries({ queryKey: ["spine", "narrative", "mer", topic] })
+    }
+  }, [freshMer.data?.status, topic, qc])
+  const m = freshMer.data ?? cachedMer.data
+  const generating = freshMer.isFetching
+
+  if (cachedMer.isLoading) return <Skeleton className="h-40 w-full rounded-xl" />
+  if (!m || !m.narrative) {
+    return <EmptyState message="아직 순회 가능한 인과 경로가 없습니다 — 인과가 더 쌓이면 나타납니다." />
+  }
+
+  return (
+    <div className="space-y-2">
+      {generating && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          인과 체인을 서사로 엮는 중…
+        </div>
+      )}
+      <Card className="bg-[color-mix(in_srgb,var(--primary)_6%,var(--card))]">
+        <CardContent className="py-4 space-y-3">
+          <p className="text-sm leading-relaxed">{m.narrative}</p>
+          {m.path && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t">
+              {m.path.nodes.map((nd, j) => (
+                <span key={j} className="flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs">
+                    <span className="text-[9px] text-muted-foreground">{NODE_LABEL[nd.type] ?? nd.type}</span>
+                    <span className="font-medium">{nd.name}</span>
+                  </span>
+                  {j < m.path!.nodes.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
+                </span>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 

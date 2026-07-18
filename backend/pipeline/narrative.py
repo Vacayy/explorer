@@ -339,6 +339,78 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     return {"nodes": list(nodes.values()), "edges": out_edges}
 
 
+def _path_hash(path: dict) -> str:
+    return hashlib.sha256("|".join(n["name"] for n in path["nodes"]).encode()).hexdigest()
+
+
+def _build_mer_prompt(topic: str, path: dict) -> str:
+    hops = []
+    for i, e in enumerate(path["edges"]):
+        o = _ORIENT_KO.get(e.get("orientation") or "", "시점미상")
+        ref = f"(대상: {e['reference_period']})" if e.get("reference_period") else ""
+        hops.append(f"{i + 1}. {e['from']} → {e['to']} [{o}{ref}] {e.get('mechanism') or ''}")
+    chain_desc = "\n".join(hops)
+    ending = "수혜 섹터" if path.get("reaches_sector") else "현재까지 파악된 끝"
+    return (
+        "너는 '메르'처럼 인과 체인을 근본 원인에서 결과까지 시간순으로 풀어 쓰는 애널리스트다. "
+        f"아래는 인과 그래프 순회로 얻은 '{topic}' 관련 체인이다 — 이미 사실 검증된 구조이니 "
+        "여기 없는 인과를 지어내지 말고, 주어진 체인만 하나의 흐르는 서사로 엮어라.\n"
+        f"인과 체인(근본 원인 → … → {ending}):\n{chain_desc}\n\n"
+        "규율: 각 단계의 메커니즘과 시간(회고/현재/전망)을 자연스러운 한국어 문장으로 녹여라. "
+        "대괄호 태그를 본문에 그대로 쓰지 말 것. 근본 원인에서 시작해 논리적으로 다음 단계로 "
+        "이어지는 하나의 글로 써라(400자 내외). 마지막 문장은 투자 함의로 닫아라.\n"
+        'JSON만 출력: {"narrative": "..."}'
+    )
+
+
+def compute_mer_narrative(topic: str) -> dict:
+    """순회 top-1 경로(근본원인→수혜)를 opus로 하나의 서사로 (Phase 2 §2-2). 경로 불변 시 캐시."""
+    conn = get_connection()
+    prev = _latest_narrative(conn, topic)
+    if not prev:
+        conn.close()
+        return {"status": "empty", "narrative": None, "path": None}
+    from pipeline.narrative_graph import narrative_chain
+    chain = narrative_chain(conn, prev["id"], top_k=1)
+    if chain["status"] != "ok" or not chain["paths"]:
+        conn.close()
+        return {"status": "empty", "narrative": None, "path": None}
+    path = chain["paths"][0]
+    h = _path_hash(path)
+    if prev["mer_path_hash"] == h and prev["mer_body"]:
+        conn.close()
+        return {"status": "cached", "narrative": prev["mer_body"], "path": path}
+    if llm_engine() != "claude-code":
+        conn.close()
+        return {"status": "unavailable", "narrative": prev["mer_body"], "path": path}
+    try:
+        data = _call(_build_mer_prompt(topic, path))
+    except Exception:
+        conn.close()
+        return {"status": "failed", "narrative": None, "path": path}
+    conn.execute("UPDATE narratives SET mer_body=?, mer_path_hash=? WHERE id=?",
+                 (data.get("narrative"), h, prev["id"]))
+    conn.commit()
+    conn.close()
+    return {"status": "fresh", "narrative": data.get("narrative"), "path": path}
+
+
+def cached_mer_meta(conn, topic: str) -> dict:
+    """GET용 — 캐시된 메르 서사 + stale만 (LLM 없음)."""
+    prev = _latest_narrative(conn, topic)
+    if not prev:
+        return {"status": "empty", "narrative": None, "path": None, "stale": False}
+    from pipeline.narrative_graph import narrative_chain
+    chain = narrative_chain(conn, prev["id"], top_k=1)
+    if chain["status"] != "ok" or not chain["paths"]:
+        return {"status": "empty", "narrative": prev["mer_body"], "path": None, "stale": False}
+    path = chain["paths"][0]
+    h = _path_hash(path)
+    stale = prev["mer_path_hash"] != h or not prev["mer_body"]
+    return {"status": "empty" if stale else "cached", "narrative": prev["mer_body"],
+            "path": path, "stale": stale}
+
+
 def cached_meta(conn, topic: str) -> dict:
     """GET용 — 캐시 여부·stale만 (LLM 없음)."""
     ent = _resolve(conn, topic)
