@@ -99,14 +99,20 @@ def _persist_causal(conn, narrative_id: int, source_doc_id: int | None, causal: 
             conn.execute(
                 "UPDATE entity_relations SET confidence=?, narrative_id=?, mechanism=COALESCE(?, mechanism) WHERE id=?",
                 (min(0.95, (existing["confidence"] or conf) + 0.05), narrative_id, e.get("mechanism"), existing["id"]))
+            rel_id = existing["id"]
         else:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO entity_relations (src_id, dst_id, rel_type, epistemic_type, confidence, "
                 "source_doc_id, mechanism, reference_period, time_orientation, narrative_id, valid_from) "
                 "VALUES (?, ?, ?, 'hypothesis', ?, ?, ?, ?, ?, ?, datetime('now'))",
                 (sid, did, rel, conf, source_doc_id, e.get("mechanism"),
                  e.get("reference_period"), e.get("orientation"), narrative_id))
+            rel_id = cur.lastrowid
             made += 1
+        # 근거 이력 — 이 (엣지, 내러티브) 조합을 처음 본다면만 적재(멱등, 교차검증 카운트용)
+        conn.execute(
+            "INSERT OR IGNORE INTO narrative_edge_evidence (entity_relation_id, narrative_id) VALUES (?, ?)",
+            (rel_id, narrative_id))
     return made
 
 
@@ -320,9 +326,11 @@ def compute_top_narratives(limit: int = 5) -> dict:
 
 
 def causal_subgraph(conn, narrative_id: int) -> dict:
-    """한 내러티브의 인과 서브그래프 — 노드·엣지 (프론트 구조 뷰용)."""
+    """한 내러티브의 인과 서브그래프 — 노드·엣지 (프론트 구조 뷰용).
+    엣지마다 교차검증 정보(Phase 2 §2-4)도 얹는다: corroborated_by(이 엣지를 주장한 독립
+    내러티브 수, narrative_edge_evidence 집계) · contested(반대 방향 CAUSES가 그래프에 공존)."""
     edges = conn.execute("""
-        SELECT er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
+        SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
                s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
@@ -332,11 +340,41 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     out_edges = []
     for e in edges:
         nodes.setdefault(e["sid"], {"name": e["sname"], "type": e["stype"]})
+        n_narratives = conn.execute(
+            "SELECT COUNT(DISTINCT narrative_id) c FROM narrative_edge_evidence WHERE entity_relation_id=?",
+            (e["id"],)).fetchone()["c"]
+        contested = e["rel_type"] == "CAUSES" and conn.execute(
+            "SELECT 1 FROM entity_relations er2 JOIN entities s2 ON s2.id=er2.src_id "
+            "JOIN entities d2 ON d2.id=er2.dst_id WHERE er2.rel_type='CAUSES' AND s2.name=? AND d2.name=?",
+            (e["dname"], e["sname"])).fetchone() is not None
         out_edges.append({"from": e["sname"], "from_type": e["stype"], "to": e["dname"],
                           "to_type": e["dtype"], "rel": e["rel_type"], "mechanism": e["mechanism"],
                           "orientation": e["time_orientation"], "reference_period": e["reference_period"],
-                          "confidence": e["confidence"]})
+                          "confidence": e["confidence"], "corroborated_by": n_narratives,
+                          "contested": contested})
     return {"nodes": list(nodes.values()), "edges": out_edges}
+
+
+def related_narratives(conn, narrative_id: int) -> dict:
+    """narrative_id와 인과 노드를 공유하는 다른 내러티브(주제별 최신 버전) — 공유 노드 수로
+    랭킹 (Phase 2 §2-4 머지). 공유 노드 = 같은 그래프의 서브그래프라는 신호."""
+    my_nodes = {n["name"] for n in causal_subgraph(conn, narrative_id)["nodes"]}
+    if not my_nodes:
+        return {"status": "empty", "related": []}
+    rows = conn.execute("""
+        SELECT n.id, n.topic, n.title FROM narratives n
+        JOIN (SELECT topic, MAX(version) mv FROM narratives GROUP BY topic) l
+          ON l.topic = n.topic AND l.mv = n.version
+        WHERE n.id != ?""", (narrative_id,)).fetchall()
+    related = []
+    for row in rows:
+        other_nodes = {n["name"] for n in causal_subgraph(conn, row["id"])["nodes"]}
+        shared = my_nodes & other_nodes
+        if shared:
+            related.append({"narrative_id": row["id"], "topic": row["topic"], "title": row["title"],
+                             "shared_nodes": sorted(shared)})
+    related.sort(key=lambda r: -len(r["shared_nodes"]))
+    return {"status": "ok" if related else "empty", "related": related}
 
 
 def _path_hash(path: dict) -> str:
