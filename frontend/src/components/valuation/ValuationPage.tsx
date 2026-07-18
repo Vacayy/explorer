@@ -3,6 +3,7 @@ import NextQuestions from "@/components/shared/NextQuestions"
 import { useValuation } from "@/hooks/useStockPrices"
 import ChartCard from "@/components/shared/ChartCard"
 import FilterChips from "@/components/shared/FilterChips"
+import { PageContainer } from "@/components/shared/PageContainer"
 import MultiLineChart from "@/components/charts/MultiLineChart"
 import type { LineConfig } from "@/components/charts/MultiLineChart"
 import {
@@ -87,7 +88,7 @@ export default function ValuationPage({ stockCode }: Props) {
   )
 
   return (
-    <div className="space-y-5">
+    <PageContainer>
       <FilterChips options={RANGE_OPTIONS} value={rangeYears} onChange={setRangeYears} />
 
       {isLoading && <p className="text-muted-foreground">로딩 중...</p>}
@@ -131,6 +132,6 @@ export default function ValuationPage({ stockCode }: Props) {
       </div>
       {/* 다음 질문 — dead-end 제거 (P2-3) */}
       <NextQuestions stockCode={stockCode} context="valuation" />
-    </div>
+    </PageContainer>
   )
 }

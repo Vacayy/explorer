@@ -7,7 +7,7 @@ import PeriodToggle from "@/components/shared/PeriodToggle"
 import YearToggle from "@/components/shared/YearToggle"
 import ChartCard from "@/components/shared/ChartCard"
 import DataTable from "@/components/shared/DataTable"
-import { Button } from "@/components/ui/button"
+import { PageContainer } from "@/components/shared/PageContainer"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { PercentLabel, EokLabel } from "@/components/common/ChartLabels"
 import {
@@ -121,7 +121,7 @@ export default function FinancialsPage({ stockCode }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <PageContainer>
       {/* 연간 개요 — 종목 홈에서 이관 (손익 차트 + 연도별 실적표·컨센서스) */}
       <AnnualOverview stockCode={stockCode} />
 
@@ -139,18 +139,15 @@ export default function FinancialsPage({ stockCode }: Props) {
             <SelectItem value="OFS">별도재무제표</SelectItem>
           </SelectContent>
         </Select>
-        <div className="ml-auto flex gap-1">
-          <Button variant={viewMode === "chart" ? "outline" : "ghost"} size="sm"
-            onClick={() => setViewMode("chart")}
-            className={viewMode === "chart" ? "border-primary text-primary" : "text-muted-foreground"}>
-            차트
-          </Button>
-          <Button variant={viewMode === "table" ? "outline" : "ghost"} size="sm"
-            onClick={() => setViewMode("table")}
-            className={viewMode === "table" ? "border-primary text-primary" : "text-muted-foreground"}>
-            테이블
-          </Button>
-        </div>
+        <SegmentTabs
+          className="ml-auto"
+          tabs={[
+            { value: "chart", label: "차트" },
+            { value: "table", label: "테이블" },
+          ]}
+          value={viewMode}
+          onChange={(v) => setViewMode(v as "table" | "chart")}
+        />
       </div>
 
       {isLoading && <p className="text-muted-foreground">로딩 중...</p>}
@@ -214,6 +211,6 @@ export default function FinancialsPage({ stockCode }: Props) {
       )}
       {/* 다음 질문 — dead-end 제거 (P2-3) */}
       <NextQuestions stockCode={stockCode} context="financials" />
-    </div>
+    </PageContainer>
   )
 }

@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { PageContainer } from '@/components/shared/PageContainer'
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
@@ -47,7 +49,7 @@ export default function ActionsPage() {
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
 
   return (
-    <div className="space-y-4">
+    <PageContainer gap="sm">
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-xl font-bold">기업활동</h2>
@@ -58,16 +60,21 @@ export default function ActionsPage() {
 
       {/* 뷰 토글: 목록 | 유무증 Pro */}
       <div className="flex gap-1.5 items-center flex-wrap">
-        <div className="flex rounded-md border overflow-hidden mr-2">
+        <ToggleGroup
+          type="single"
+          value={view}
+          onValueChange={(v) => v && setSearchParams(v === "list" ? {} : { view: v })}
+          className="flex gap-0 rounded-md border overflow-hidden mr-2"
+        >
           {[["list", "목록"], ["pro", "유무증 Pro"]].map(([v, label]) => (
-            <button key={v}
-              className={cn("px-2.5 py-1 text-xs",
-                view === v ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground")}
-              onClick={() => setSearchParams(v === "list" ? {} : { view: v })}>
+            <ToggleGroupItem key={v} value={v}
+              className={cn("h-auto min-w-0 rounded-none px-2.5 py-1 text-xs font-normal",
+                "text-muted-foreground hover:bg-transparent hover:text-foreground",
+                "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:font-medium data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground")}>
               {label}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
         {view === "list" && TYPE_FILTERS.map((t) => {
           const key = t === "전체" ? "" : t
           return (
@@ -140,16 +147,16 @@ export default function ActionsPage() {
           </TableBody>
         </Table>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
 function ActionsSkeleton() {
   return (
-    <div className="space-y-3">
+    <PageContainer gap="sm">
       <Skeleton className="h-6 w-32" />
       <Skeleton className="h-5 w-72" />
       {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-    </div>
+    </PageContainer>
   )
 }

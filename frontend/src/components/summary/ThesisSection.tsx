@@ -1,7 +1,9 @@
 import { useState } from "react"
 import { X } from "lucide-react"
 import { useIRNotes, useCreateIRNote, useDeleteIRNote } from "@/hooks/useIRNotes"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
@@ -48,12 +50,13 @@ function Quadrant({ stockCode, memoType, label, color }: {
     <div className="min-w-0">
       <div className="flex items-baseline gap-1 mb-1">
         <span className={cn("text-[11px] font-semibold", color)}>{label}</span>
-        <button
+        <Button
+          variant="ghost" size="icon-xs"
           onClick={() => setAdding(!adding)}
           className="ml-auto text-[11px] text-muted-foreground hover:text-foreground"
         >
           +
-        </button>
+        </Button>
       </div>
       {isLoading ? (
         <Skeleton className="h-4 w-full" />
@@ -68,13 +71,14 @@ function Quadrant({ stockCode, memoType, label, color }: {
                 <span className="font-medium">{n.title}</span>
                 {n.content && <span className="text-muted-foreground"> — {n.content}</span>}
               </span>
-              <button
+              <Button
+                variant="ghost" size="icon-xs"
                 onClick={() => del.mutate(n.id)}
-                className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                className="shrink-0 h-4 w-4 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
                 aria-label="삭제"
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             </li>
           ))}
           {adding && (
@@ -91,10 +95,10 @@ function Quadrant({ stockCode, memoType, label, color }: {
                   }
                 }}
               >
-                <input
+                <Input
                   name="v" autoFocus disabled={create.isPending}
                   placeholder="논거 한 줄…"
-                  className="w-full h-6 rounded border bg-background px-1.5 text-[11px] outline-none focus:ring-1 focus:ring-ring"
+                  className="w-full h-6 rounded px-1.5 text-[11px]"
                   onKeyDown={(e) => e.key === "Escape" && setAdding(false)}
                 />
               </form>

@@ -4,6 +4,7 @@ import DataTable from "@/components/shared/DataTable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatKrw } from "@/utils/format"
 import { buildRevenueOpChart } from "@/utils/metrics"
 import {
@@ -196,32 +197,32 @@ export default function AnnualOverview({ stockCode }: { stockCode: string }) {
                 {recentQ.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold mb-2 text-muted-foreground">최근 분기</h3>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-muted/50 border-b">
-                          <th className="px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground w-[80px]">구분</th>
+                    <Table className="w-full text-sm">
+                      <TableHeader>
+                        <TableRow className="bg-muted/50 border-b">
+                          <TableHead className="h-auto px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground w-[80px]">구분</TableHead>
                           {recentQ.map((q) => (
-                            <th key={q} className="px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground">{q}</th>
+                            <TableHead key={q} className="h-auto px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground">{q}</TableHead>
                           ))}
-                        </tr>
-                      </thead>
-                      <tbody>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody className="[&_tr:last-child]:border-b">
                         {[
                           { label: "매출액", vals: qRevVals },
                           { label: "영업이익", vals: qOpVals },
                           { label: "순이익", vals: qNetVals },
                         ].map((row) => (
-                          <tr key={row.label} className="border-b border-border/50">
-                            <td className="px-2 py-1 text-xs font-medium">{row.label}</td>
+                          <TableRow key={row.label} className="border-b border-border/50 hover:bg-transparent">
+                            <TableCell className="px-2 py-1 text-xs font-medium">{row.label}</TableCell>
                             {row.vals.map((v, i) => (
-                              <td key={i} className="px-2 py-1 text-right text-xs tabular-nums">
+                              <TableCell key={i} className="px-2 py-1 text-right text-xs tabular-nums">
                                 {v ? formatKrw(parseFloat(v)) : "-"}
-                              </td>
+                              </TableCell>
                             ))}
-                          </tr>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
 
