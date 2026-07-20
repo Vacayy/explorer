@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import dagre from "dagre"
 import {
@@ -13,8 +14,19 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+
+// PoC 뷰 — three.js(3D)/force-graph 번들을 메인에서 분리 (토글 시에만 로드)
+const ForceGraph3DView = lazy(() => import("@/components/explore/graph/ForceGraph3DView"))
+const ObsidianGraphView = lazy(() => import("@/components/explore/graph/ObsidianGraphView"))
+
+const VIEW_MODES = [
+  { value: "structure", label: "구조" },
+  { value: "force3d", label: "3D" },
+  { value: "obsidian", label: "옵시디언" },
+] as const
 
 /**
  * /narrative/worldview — 세계관 뷰 (그래프 시각화 기획서, docs/specs/causal-worldview.md).
@@ -106,6 +118,13 @@ function GraphNode({ data }: NodeProps) {
 const nodeTypes = { graphNode: GraphNode }
 
 export default function WorldviewPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = searchParams.get("view") ?? "structure"   // URL=상태 소스: structure|force3d|obsidian
+  const setView = (v: string) => setSearchParams((p) => {
+    const n = new URLSearchParams(p)
+    if (v === "structure") n.delete("view"); else n.set("view", v)
+    return n
+  }, { replace: true })
   const [lenses, setLenses] = useState<string[]>([])
   const [showSmall, setShowSmall] = useState(false)
   const [selectedNode, setSelectedNode] = useState<WNode | null>(null)
@@ -121,18 +140,21 @@ export default function WorldviewPage() {
     }),
   )
 
-  const { nodes: builtNodes, edges: builtEdges, hiddenCount } = useMemo(() => {
-    if (!data || data.edges.length === 0)
-      return { nodes: [] as Node[], edges: [] as Edge[], hiddenCount: 0 }
-    // 작은 연결요소(고립 조각) 숨김 — 문서 추출발 주변부 인과가 본 그래프를 가리지 않게
+  // 1단계: 작은 연결요소(고립 조각) 숨김 → 세 뷰(구조·3D·옵시디언)가 공유하는 visNodes/visEdges
+  const { visNodes, visEdges, hiddenCount } = useMemo(() => {
+    if (!data) return { visNodes: [] as WNode[], visEdges: [] as WEdge[], hiddenCount: 0 }
     const clusterSize = new Map<number, number>()
     data.nodes.forEach((n) => clusterSize.set(n.cluster_id, (clusterSize.get(n.cluster_id) ?? 0) + 1))
     const keep = (n: WNode) => showSmall || (clusterSize.get(n.cluster_id) ?? 0) >= MIN_CLUSTER
-    const visNodes = data.nodes.filter(keep)
-    const visIds = new Set(visNodes.map((n) => n.id))
-    const visEdges = data.edges.filter((e) => visIds.has(e.from_id) && visIds.has(e.to_id))
-    const hidden = data.nodes.length - visNodes.length
+    const vN = data.nodes.filter(keep)
+    const ids = new Set(vN.map((n) => n.id))
+    const vE = data.edges.filter((e) => ids.has(e.from_id) && ids.has(e.to_id))
+    return { visNodes: vN, visEdges: vE, hiddenCount: data.nodes.length - vN.length }
+  }, [data, showSmall])
 
+  // 2단계: 구조 뷰(React Flow) 전용 — dagre 좌→우 배치 변환
+  const { nodes: builtNodes, edges: builtEdges } = useMemo(() => {
+    if (visEdges.length === 0) return { nodes: [] as Node[], edges: [] as Edge[] }
     const positioned = layoutGraph(visNodes, visEdges)
     const rfNodes: Node[] = positioned.map((n) => ({
       id: String(n.id), type: "graphNode", position: { x: n.x, y: n.y }, data: n as unknown as Record<string, unknown>,
@@ -151,8 +173,8 @@ export default function WorldviewPage() {
       markerEnd: { type: MarkerType.ArrowClosed },
       data: e as unknown as Record<string, unknown>,
     }))
-    return { nodes: rfNodes, edges: rfEdges, hiddenCount: hidden }
-  }, [data, showSmall])
+    return { nodes: rfNodes, edges: rfEdges }
+  }, [visNodes, visEdges])
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(builtNodes)
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(builtEdges)
@@ -166,7 +188,20 @@ export default function WorldviewPage() {
     <PageContainer gap="sm">
       <div className="flex items-baseline gap-2 flex-wrap">
         <h1 className="text-lg font-bold">세계관 뷰 — 인과 그래프</h1>
-        <span className="text-[11px] text-muted-foreground">근본 원인 → 수혜 (좌→우)</span>
+        <span className="text-[11px] text-muted-foreground">
+          {view === "structure" ? "근본 원인 → 수혜 (좌→우)"
+            : view === "force3d" ? "3D 포스 그래프 (회전·줌, PoC)"
+            : "옵시디언式 2D 포스 (hover 이웃 강조, PoC)"}
+        </span>
+        <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}
+          className="ml-auto gap-1">
+          {VIEW_MODES.map((m) => (
+            <ToggleGroupItem key={m.value} value={m.value}
+              className="h-7 px-3 text-xs rounded-lg text-muted-foreground data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent">
+              {m.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap text-xs">
@@ -191,22 +226,34 @@ export default function WorldviewPage() {
         <EmptyState message="인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다." />
       ) : (
         <div style={{ height: "calc(100vh - 240px)", minHeight: 560 }} className="rounded-xl border overflow-hidden">
-          <ReactFlow
-            nodes={rfNodes}
-            edges={rfEdges}
-            nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={(_, n) => { setSelectedNode(n.data as unknown as WNode); setSelectedEdge(null) }}
-            onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNode(null) }}
-            fitView
-            fitViewOptions={{ maxZoom: 0.9 }}
-            minZoom={0.15}
-          >
-            <Background />
-            <Controls />
-            <MiniMap pannable zoomable />
-          </ReactFlow>
+          {view === "structure" ? (
+            <ReactFlow
+              nodes={rfNodes}
+              edges={rfEdges}
+              nodeTypes={nodeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={(_, n) => { setSelectedNode(n.data as unknown as WNode); setSelectedEdge(null) }}
+              onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNode(null) }}
+              fitView
+              fitViewOptions={{ maxZoom: 0.9 }}
+              minZoom={0.15}
+            >
+              <Background />
+              <Controls />
+              <MiniMap pannable zoomable />
+            </ReactFlow>
+          ) : (
+            <Suspense fallback={<Skeleton className="h-full w-full" />}>
+              {view === "force3d" ? (
+                <ForceGraph3DView nodes={visNodes} edges={visEdges}
+                  onNodeSelect={(n) => { setSelectedNode(n); setSelectedEdge(null) }} />
+              ) : (
+                <ObsidianGraphView nodes={visNodes} edges={visEdges}
+                  onNodeSelect={(n) => { setSelectedNode(n); setSelectedEdge(null) }} />
+              )}
+            </Suspense>
+          )}
         </div>
       )}
 
