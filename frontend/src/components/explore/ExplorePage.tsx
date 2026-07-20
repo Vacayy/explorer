@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft, Sparkles, FlaskConical, ArrowRight } from "lucide-react"
+import { ArrowLeft, FlaskConical, ArrowRight } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
@@ -14,6 +14,8 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { SignalCard } from "@/components/shared/SignalCard"
 import { SignalSummaryCard, type SummaryRow } from "@/components/explore/SignalSummaryCard"
+import { NarrativeList } from "@/components/explore/NarrativeList"
+import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { PageContainer } from '@/components/shared/PageContainer'
 import { formatKrw } from "@/utils/format"
 
@@ -196,13 +198,8 @@ function ResearchProposalSection() {
   if (items.length === 0) return null
 
   return (
-    <Card className="border-l-2 border-l-hypothesis">
-      <CardHeader className="pb-2 flex-row items-center gap-2">
-        <FlaskConical className="h-4 w-4 text-hypothesis" />
-        <CardTitle className="text-sm">리서치 제안 — 지금 파볼 만한 종목</CardTitle>
-      </CardHeader>
-      <CardContent className="divide-y">
-        {items.map((c) => {
+    <ProposalPanel icon={FlaskConical} title="리서치 제안 — 지금 파볼 만한 종목" contentClassName="divide-y">
+      {items.map((c) => {
           const result = c.id in done ? done[c.id] : c.revision_call
           const researched = c.id in done || c.status === "done"
           return (
@@ -254,70 +251,24 @@ function ResearchProposalSection() {
             </div>
           )
         })}
-      </CardContent>
-    </Card>
+    </ProposalPanel>
   )
 }
 
-/* ---------- 내러티브 섹션 — 주목 주제를 관통하는 질문형 서사 모음 ---------- */
-
-interface NarrativeItem {
-  topic: string
-  title: string | null
-  summary: string | null
-  share_pct: number | null
-  share_delta_pp: number | null
-  is_new: boolean
-  is_surging: boolean
-  created_at: string | null
-}
+/* ---------- 내러티브 티저 — 상위 몇 개만, 전체는 월드모델>내러티브 탭 ---------- */
 
 function NarrativeSection() {
-  const { data } = useQuery(
-    apiQuery<{ items: NarrativeItem[] }>({
-      key: ["spine", "narrative", "list"],
-      url: "/api/spine/narrative/list",
-      staleTime: STALE.medium,
-    }),
-  )
-  const items = data?.items ?? []
-  if (items.length === 0) return null
-
   return (
     <Card>
       <CardHeader className="pb-2 flex-row items-center gap-2">
         <CardTitle className="text-sm">내러티브</CardTitle>
-        <span className="text-[11px] text-muted-foreground">주목받는 주제들을 기반으로 생성한 시장의 질문들</span>
-        <Link to="/narrative/worldview" className="ml-auto text-[11px] text-primary hover:underline shrink-0">
-          세계관 전체 보기 →
+        <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 질문</span>
+        <Link to="/narrative" className="ml-auto text-[11px] text-primary hover:underline shrink-0">
+          월드모델에서 전체 보기 →
         </Link>
       </CardHeader>
-      <CardContent className="space-y-2.5">
-        {items.map((n) => (
-          <Link
-            key={n.topic}
-            to={`/narrative?topic=${encodeURIComponent(n.topic)}`}
-            className="flex items-start gap-2 group"
-          >
-            <Sparkles className="h-4 w-4 text-hypothesis shrink-0 mt-0.5" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium text-sm leading-snug group-hover:underline">
-                  {n.title ?? n.topic}
-                </span>
-                <Badge variant="outline" className="text-[10px]">{n.topic}</Badge>
-                {n.is_new ? (
-                  <span className="text-[10px] text-up">신규</span>
-                ) : n.share_delta_pp ? (
-                  <span className="text-[10px] text-up tabular-nums">+{n.share_delta_pp}%p</span>
-                ) : null}
-              </div>
-              {n.summary && (
-                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.summary}</p>
-              )}
-            </div>
-          </Link>
-        ))}
+      <CardContent>
+        <NarrativeList limit={3} />
       </CardContent>
     </Card>
   )

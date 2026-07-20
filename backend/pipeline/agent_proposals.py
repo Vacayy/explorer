@@ -205,7 +205,14 @@ def _resolve_contested(payload: dict) -> dict:
         conn.execute("UPDATE entity_relations SET confidence=confidence*0.7 WHERE id=?", (b["id"],))
     elif verdict == "b_wins":
         conn.execute("UPDATE entity_relations SET confidence=confidence*0.7 WHERE id=?", (a["id"],))
-    # both_temporal: 정당한 나선 — 둘 다 유지. unclear: 보류.
+    elif verdict == "both_temporal":
+        # 상충이 아니라 시점 다른 피드백 나선(D-027) — 판정을 두 엣지에 물질화(D-029).
+        # confidence는 유지하되 feedback_note에 근거를 남겨 ① contested 계산이 이 쌍을 제외하고
+        # ② opus 근거가 result_json에만 갇혀 버려지지 않게 한다.
+        note = data.get("rationale") or "opus 판정: 시점 다른 피드백 나선(both_temporal)"
+        conn.execute("UPDATE entity_relations SET feedback_note=? WHERE id IN (?, ?)",
+                     (note, a["id"], b["id"]))
+    # unclear: 보류.
     conn.commit()
     conn.close()
     return {"verdict": verdict, "rationale": data.get("rationale")}

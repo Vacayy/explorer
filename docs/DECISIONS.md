@@ -10,6 +10,75 @@
 
 ---
 
+## D-033 · 2026-07-19 · 어휘 통합 — theme·macro 파편화 치유 (승격 루프 소생)
+
+**결정**: 인과 그래프 추상 노드(theme·macro)의 표기 파편화를 **배치 병합 + 쓰기 시 리다이렉트**로 치유한다(스펙: docs/specs/vocab-consolidation.md). ① `entity_merges` 테이블(audit+redirect 겸용) ② `pipeline/vocab.py` — fastembed 코사인(≥0.90, 같은 type 내) 후보 → sonnet 배치 쌍 판정(same/different, "수준·방향·시점 다르면 different, 애매하면 different") → survivor(인과 엣지 참조 多, 동률이면 오래된 id)로 FK 전수 재배선(PRAGMA 동적 발견; entity_relations는 UNIQUE 충돌 시 confidence=max·메타 non-null 우선으로 엣지 병합 + narrative_edge_evidence 이관) 후 loser 삭제 ③ `scripts/consolidate_vocab.py` — dry-run(기본)이 계획을 출력·저장, 사람 검토 후 `--apply`가 그 계획 그대로 적용(LLM 재호출 없음) = D-020 "기계는 제안, 사람은 승인"의 CLI 배치 승인 ④ `_resolve_or_create_node`가 병합으로 사라진 이름을 entity_merges로 survivor에 해소(재파편화 방지).
+
+**맥락·이유**: 온톨로지 점검(2026-07-19, MS Ontology-Playground 대비 교차검증)에서 실측 — theme 745·macro 149 중 근접 중복 다수("AI 고점론"/"AI 거품론·고점론", "AI Agent"/"AI 에이전트", "금리 상승"/"연준 금리인상"류), 그 결과 인과 엣지 1,283개 중 corroborated(2+) 35개, **지식 승격 0건** — 같은 주장이 다른 노드로 갈라져 교차확인 카운트가 쪼개지면서 Phase 2 §2-5 내러티브↔지식 루프가 한 번도 발화하지 못했다. D-023이 방어책으로 명시한 "임베딩 dedup"은 실제 구현된 적 없음(_resolve_or_create_node는 정확 이름 매칭뿐). 진단 결론: 표현 스키마는 건전(형식 온톨로지 방향은 퇴행), 병목은 어휘 정체성 — 가장 싼 레버로 죽은 승격 루프를 살린다. 원칙: **쓰기 시 = 결정적 해소, 배치 = 의미적 치유** (쓰기 경로에 임베딩·LLM 금지).
+
+**기각한 대안**: ① ApprovalsCard 쌍별 승인 UI — 1회성 백필 수십 쌍에 UI 과투자, CLI dry-run 검토가 같은 승인 원칙을 더 싸게 충족 ② 쓰기 시 임베딩 유사 노드 재사용 — 쓰기 경로가 느려지고 비결정적, 배치 치유로 충분 ③ soft-merge(merged_into 컬럼로 tombstone 유지) — 모든 읽기 경로가 tombstone 필터를 알아야 함, 재배선+삭제+redirect 테이블이 더 단순 ④ company 포함 — 정체성 semantics가 다르고(종목코드) 승격 루프를 죽이는 건 추상 노드, 별도 트랙.
+
+**참조**: docs/specs/vocab-consolidation.md · backend/pipeline/vocab.py · scripts/consolidate_vocab.py · backend/database.py(entity_merges) · backend/pipeline/narrative.py(_resolve_or_create_node redirect) · D-023(임베딩 dedup 설계)·D-020(승인 원칙)·D-028(배치=sonnet 티어 논리) · 온톨로지 점검 대화 2026-07-19
+
+---
+
+## D-030 · 2026-07-19 · 세계관 완성도 — 노드 중력(pace_layer) + 정전(canon) 지식층
+
+**결정**: 인과 그래프가 "평평하고(모든 노드 동일 무게) 뿌리가 없는(시간 지평이 수집 30일+미래 전망뿐)" 문제를 4층으로 해소한다. 실측 근거: '세계질서 재편'(시대의 중력급 힘)이 out=6·**in=0**으로 설명되지 않는 출발점이고, 전 그래프의 reference_period가 2026~2030뿐이며, 프롬프트가 뽑는 layer(event~regime)를 `_persist_causal`이 폐기 중.
+
+① **Layer 0 — 노드 중력 물질화**: 이미 추출되는 `layer ∈ event·flow·cycle·structure·regime`을 `entities.meta_json`에 저장(Phase 1 스펙 §2-1 예고분 이행). 기존 인과 노드는 haiku 배치 백필. 세계관 뷰에서 layer별 시각 무게(regime 크게/짙게), 순회 루트 정지를 위상적 소스 → **regime/structure 도달 시 정지**로 정밀화.
+② **정전(canon) 지식층**: `vault/canon/`에 사람+Claude가 작성한 요약 노트(원저 통째 수집 금지 — 저작권+발췌 철학)를 `source_type='canon'`으로 흡수. 시간 정박은 D-021 그대로 — published_at(정리일)이 아니라 역사적 reference_period(2001, 2011, 2018…). 감쇠는 기존 LAYER_DECAY의 regime(0.1)이 자연 처리 — 늙지 않는 지식.
+③ **역사 인과 체인**: canon 노트에서 인과 추출해 그래프의 뿌리 확장 — `epistemic_type='observed'`(신규 중간 티어: 시장 가설(hypothesis)보다 강하고 순수 사실(fact)보다 약한 '널리 수용된 역사 해석'), 높은 confidence, 과거 reference_period. '세계질서 재편'이 뿌리 없는 소스에서 "중국 WTO 가입(2001)→…→칩스액트(2022)→현재"의 사반세기 체인의 현재 단면이 된다.
+④ **해석 렌즈 확장**: 책의 프레임워크(투키디데스 함정·지리결정론·화폐사 사이클·멱법칙 등)는 그래프 노드가 아니라 `lenses.py`(멍거 격자)로 — 프롬프트 주입 렌즈.
+
+**핵심 규율 — 사실은 그래프로, 프레임은 렌즈로**: 역사적 사실 체인(관세 부과 2018 — 일어난 일)과 해석 프레임(투키디데스 함정 — 하나의 관점)을 다른 층에 넣는다. 프레임을 corroborated 지식으로 넣으면 반증 규율(D-022)과 충돌 — 정전도 관점이다(사피엔스·총균쇠 모두 학술 논쟁 존재).
+
+**모델 배분**: canon 노트 작성=Fable 5(세션 직접, 고지능 종합) · canon 인과 추출=opus(깊은 다단 인과, 소량) · 기존 노드 layer 백필=haiku 배치(좁은 분류, 대량) · 신규 노드 layer=기존 생성 프롬프트에 편승.
+
+**진행 규율**: 볼륨 규율 — 20권 일괄 주입 금지, '세계질서 재편'(stakeholder 지목 최강 중력) 하나로 파일럿 → 기존 그래프(지정학·미-이란·CPTPP·AI 수출통제 노드)와의 연결·내러티브 품질 개선 검증 후 화폐사·전쟁사·실리콘밸리사 확장.
+
+**기각한 대안**: ① 노드 무게를 degree 등 창발 지표로만 — 창발은 수집 편향에 종속(많이 언급=무겁다는 보장 없음), 추출된 layer가 더 정직 ② 책 원문 통째 수집 — 저작권+발췌 철학 위배 ③ 프레임까지 그래프 노드로 — 반증 규율 충돌(위 핵심 규율) ④ 한 번에 다권 주입 — 검증 없는 스케일업.
+
+**참조**: 대화 2026-07-19(스테이크홀더 제안: 전문 지식 뼈대 주입 — 현대사·사회사·화폐사·전쟁사·실리콘밸리사) · pipeline/narrative.py(_persist_causal)·lenses.py·doc_causal.py · D-021(시간 정박)·D-022(반증 규율)·D-023(물질화)·narrative-causal-phase1.md §2-1(layer 적재 예고)
+
+---
+
+## D-032 · 2026-07-19 · 메가 내러티브 층 — 공유노드 군집의 상위 세계관 서사 (D-023 §2-4 완성)
+
+**결정**: 토픽 내러티브(원자, 버전·드리프트 추적 단위)는 유지하고, **인과 노드를 공유하는 내러티브 군집(연결요소, 크기 3+)마다 상위 '세계관 서사'를 생성**하는 층을 신설한다(pipeline/mega_narrative.py). 계량 근거: 살아있는 내러티브 15개 중 10쌍이 노드 공유, 공유 노드가 'AI 데이터센터 투자·전력수요·빅테크 CAPEX'로 수렴 — 대부분이 단일 메가 서사의 sub-story라는 stakeholder 직감이 실측으로 확인됨. 저장은 narratives 테이블 재사용(kind='mega', topic=군집 라벨(LLM 명명), members_json=구성 토픽, doc_ids_hash=멤버 (topic,id) 해시) — 멤버 구성/버전 변경 시에만 opus 재생성(기존 게으른 패턴). 표면: 내러티브 랜딩 최상단 '세계관' 카드(구성 토픽 배지→sub-story 딥링크, Collapsible 전문). cron은 compute_narratives 끝에 편승. 첫 실행: 'AI 전력 슈퍼사이클'(7개 서사)·'AI 컴퓨트 슈퍼사이클'(3개) 생성.
+
+**맥락·이유**: topic당 1내러티브 구조는 원자 단위로는 옳지만 층이 하나 비어 있었다 — D-023 §2-4가 "머지 = 공유 서브그래프 = 상위 세계관 내러티브"를 설계해놓고 뷰(related·worldview 그래프)만 구현되고 서사 생성은 미완이었다. sub-story 개별 follow-up은 유지(각자의 드리프트가 신호), 읽는 층위만 하나 추가.
+
+**기각한 대안**: ① 계층 트리(parent_id) — 그래프가 소속을 더 유연하게 인코딩, 토픽이 군집을 옮길 때 트리는 경직 ② 노드 공유 2+ 임계 — 실측상 허브 노드 1개 공유(AI 데이터센터 투자)가 이미 강한 신호, 2+면 군집이 잘게 쪼개짐 ③ 지식 세계관 브리핑(D-019)에 통합 — 그건 느린 층(지식) 종합, 메가는 빠른 층(내러티브) 종합으로 층이 다름(CLS 두 속도), 별도 유지.
+
+**참조**: pipeline/mega_narrative.py · narratives(kind·members_json) · GET /api/spine/narrative/mega · NarrativePage.tsx(MegaNarrativeSection) · scripts/compute_narratives.py 편승 · D-023 §2-4 · D-019 · 군집 실측 대화 2026-07-19
+
+---
+
+## D-031 · 2026-07-19 · IA 재편 — '월드모델' 모드 신설(내러티브·세계관·지식), 신호에서 분리
+
+**결정**: 최상위 네비(L1)에 **'월드모델' 모드**를 신설하고, 그 아래 `내러티브 · 세계관 · 지식` 3서브탭을 둔다. 기존에 내러티브·세계관은 탐색 '신호'(/explore) 착륙 페이지 안에 묻혀 있었고 지식만 탐색 서브탭이었다 — 셋을 신호에서 떼어내 한 모드로 통합. URL은 그대로 유지(/narrative, /narrative/worldview, /knowledge — 리다이렉트·딥링크 보존), 모드 그룹핑은 네비 계층에서만 처리. `/narrative`는 topic 없이 진입 시 내러티브 목록 랜딩(신규), `?topic=`이면 기존 상세. 신호 페이지엔 내러티브 **티저(상위 3개+월드모델 링크)** 만 남긴다. 지식은 탐색 서브탭에서 제거.
+
+**맥락·이유**: D-023에서 정의한 대로 **내러티브(빠른 층)와 지식(느린 층)은 "같은 인과 그래프의 두 속도"** 이고 세계관 뷰는 그 인과 그래프 자체의 시각화 — 셋은 한 몸(월드모델)이다. 반면 '신호'는 변화 감지(delta/스크리닝) 표면이라 성격이 다르다. 흩어져 있던 셋을 개념적으로 한곳에 모아 "세계 모형을 보는 곳"과 "변화를 훑는 곳"을 IA에서 분리(stakeholder, 2026-07-19). 목록 렌더는 신호 티저와 월드모델 랜딩이 공유하도록 `NarrativeList` 컴포넌트로 추출(중복 제거).
+
+**기각한 대안**: ① 탐색 서브탭으로 승격(신호 옆에 내러티브·세계관 추가) — 탐색 탭이 비대해지고 "한 몸(월드모델)" 신호가 희석 ② URL도 /worldmodel/* 로 재구성 — 딥링크 다수·리다이렉트 유지비용 대비 이득 적음(네비 그룹핑만으로 충분) ③ 세계관을 내러티브 하위 상세로 유지 — 세계관은 전역 그래프라 특정 내러티브의 하위가 아님, 형제 서브탭이 맞음.
+
+**참조**: frontend/src/components/layout/ModeNavigation.tsx(worldmodel 모드+WORLDMODEL_TABS+getActiveMode/SubTab) · frontend/src/components/explore/NarrativeList.tsx(신규 공유) · NarrativePage.tsx(목록 랜딩) · ExplorePage.tsx(티저 축소) · WorldviewPage.tsx(뒤로가기 제거) · docs/SYSTEM.md IA · D-023(두 속도 원칙)
+
+---
+
+## D-029 · 2026-07-19 · both_temporal 판정을 엣지에 물질화 — feedback_note (contested 오탐 해소)
+
+**결정**: contested_edge 제안을 승인해 opus가 `both_temporal`(역방향 CAUSES 쌍이 상충이 아니라 시점 다른 피드백 나선, D-027)로 판정하면, 그 판정을 두 엣지의 **`entity_relations.feedback_note`(신규 컬럼)에 물질화**한다(근거 rationale 저장). 그리고 세계관 뷰·서브그래프의 `contested` 온더플라이 계산(narrative_graph.py·narrative.py)이 **feedback_note 있는 엣지를 contested에서 제외**한다. 이미 승인된 both_temporal 제안은 `scripts/backfill_feedback_edges.py`로 노드 이름 매칭해 소급 반영.
+
+**맥락·이유**: 기존 both_temporal 분기는 "둘 다 유지"만 하고 **아무것도 기록하지 않아**, opus의 판정·근거가 `agent_proposals.result_json`에만 갇혀 사실상 버려졌다(승인 목록은 status='proposed'만 노출 → 다시 볼 화면 없음). 더 심각한 건 엣지에 흔적이 안 남아 `contested` 계산이 이 쌍을 **여전히 상충으로 오탐**한다는 것 — 같은 엣지가 세계관 뷰에서 flywheel(자기강화 루프, SCC 감지)이면서 동시에 contested(빨간 상충)로 **모순된 신호**를 냈다. D-023의 "판정을 그래프에 물질화" 원칙 위반. 엣지는 upsert(삭제 없이 UPDATE, id 안정)라 feedback_note가 재계산에도 살아남는다.
+
+**기각한 대안**: ① result_json에만 두기(현행) — 근거 유실·contested 오탐 지속 ② mechanism에 근거 덧쓰기 — 엣지별 인과 서사(mechanism)를 쌍 단위 판정으로 오염 ③ 별도 boolean 플래그 + 근거 분리 컬럼 — nullable TEXT 하나로 플래그(non-null)+근거를 겸하면 충분, 컬럼 최소화 ④ opus가 두 reference_period를 반환해 시점 자체를 채우기 — 더 완전하나(D-027 이상형) 프롬프트·구조화 출력 변경 필요, 이번 범위 밖(후속).
+
+**참조**: backend/database.py(feedback_note 마이그레이션) · backend/pipeline/agent_proposals.py(_resolve_contested) · backend/pipeline/narrative_graph.py·narrative.py(contested 계산+노출) · backend/routers/spine_causal.py · frontend/src/components/explore/WorldviewPage.tsx · scripts/backfill_feedback_edges.py · D-027(반사성 나선) · D-023(물질화 원칙)
+
+---
+
 ## D-028 · 2026-07-18 · 지능 깔때기 해소 — 배치 재태깅(sonnet)·커버리지 트리거·문서 레벨 인과 추출
 
 **결정**: 수집(2주간 2,000+건)에 비해 지능층(인과 그래프 60엣지·지식 10건)이 못 자라는 갭의 원인을 깔때기 실측으로 진단하고 3개 레버로 해소한다. ① **배치 재태깅** — keyword 폴백 1,524건(전체의 67%)을 문서 10건/콜 배치로 LLM 재태깅. 모델: **배치 백필=sonnet, 증분 cron 단건=haiku 유지**. 단건 태깅은 haiku로 741건 검증된 좁은 작업이지만, 배치는 여러 문서를 한 응답에서 혼동 없이 분리 태깅해야 해(멀티 문서 구조화 출력) 지시 추종 요구가 높고, 1회성 토대 작업이라 품질이 이후 모든 지능의 상한이 됨. ② **커버리지 트리거** — compute_top_narratives가 theme_surge 상위 5만 보던 것에 "30일 문서 풍부(기준치+) & 내러티브 부재/오래됨" 트리거 추가(사이클당 +2 순환, 문서유형 라벨 제외). 반도체 725건·자동차 316건 등이 내러티브 0인 문제 해소 — 내러티브가 늘어야 공유 노드가 생겨 교차검증(corroboration)이 작동하기 시작한다(2026-07-18 기준 60엣지 전부 단일 출처). ③ **문서 레벨 인과 추출** — 인사이트 밀도 높은 문서에서 인과 엣지 직접 추출(source_doc_id, 내러티브와 독립된 제2 공급원). 별도 스펙 docs/specs/doc-causal-extraction.md.

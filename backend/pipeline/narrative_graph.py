@@ -10,6 +10,8 @@
 - 상류: 들어오는 CAUSES 엣지가 없는 노드(위상적 소스) 또는 깊이 한도.
 - 하류: sector 노드 도달 또는 더 갈 곳 없음/깊이 한도.
 """
+import json
+
 from database import get_connection
 from pipeline.narrative import causal_subgraph
 
@@ -24,15 +26,27 @@ def _entity_id(conn, name: str) -> int | None:
     return row["id"] if row else None
 
 
+ROOT_LAYERS = ("regime", "structure")   # 이 층 노드 도달 = 근본 원인 (D-030 루트 정지 정밀화)
+
+
 def _upstream_step(conn, node_id: int) -> list[dict]:
-    """node_id를 결과(dst)로 갖는 CAUSES 엣지 — 원인(src) 후보."""
-    return [dict(r) for r in conn.execute(
+    """node_id를 결과(dst)로 갖는 CAUSES 엣지 — 원인(src) 후보 (+pace_layer, 루트 정지용)."""
+    out = []
+    for r in conn.execute(
         "SELECT er.id eid, er.src_id nid, er.confidence, er.mechanism, "
         "er.time_orientation orientation, "
-        "er.reference_period, e.name, e.type, 'CAUSES' rel "
+        "er.reference_period, e.name, e.type, e.meta_json, 'CAUSES' rel "
         "FROM entity_relations er JOIN entities e ON e.id = er.src_id "
         "WHERE er.dst_id=? AND er.rel_type='CAUSES' "
-        "ORDER BY er.confidence DESC LIMIT ?", (node_id, MAX_BRANCH)).fetchall()]
+            "ORDER BY er.confidence DESC LIMIT ?", (node_id, MAX_BRANCH)).fetchall():
+        d = dict(r)
+        meta = d.pop("meta_json", None)
+        try:
+            d["pace_layer"] = (json.loads(meta) or {}).get("pace_layer") if meta else None
+        except (ValueError, TypeError):
+            d["pace_layer"] = None
+        out.append(d)
+    return out
 
 
 def _downstream_step(conn, node_id: int) -> list[dict]:
@@ -58,7 +72,10 @@ def _walk_upstream(conn, start_id: int, max_depth: int = MAX_DEPTH) -> list[list
 
     방문집합 = 엣지 id (D-027 반사성): 노드 재방문은 허용하되 같은 엣지 재사용만 금지 —
     시점이 다른 두 엣지로 펴진 피드백 나선(A→B(t1), B→A(t2))을 걸을 수 있게. 무한루프는
-    엣지 유한성 + max_depth가 이중으로 막는다."""
+    엣지 유한성 + max_depth가 이중으로 막는다.
+
+    루트 정지(D-030): regime/structure 층 노드에 닿으면 거기가 근본 원인 — 더 거슬러
+    올라가지 않는다 (무한 후퇴 방지의 정밀판, layer 미태깅 노드는 기존 위상 규칙대로)."""
     results: list[list[dict]] = []
 
     def dfs(node_id: int, path: list[dict], used_edges: set[int]):
@@ -72,6 +89,9 @@ def _walk_upstream(conn, start_id: int, max_depth: int = MAX_DEPTH) -> list[list
             results.append(path)
             return
         for s in steps:
+            if s.get("pace_layer") in ROOT_LAYERS:
+                results.append(path + [s])   # 구조적 뿌리 도달 — 정지
+                continue
             dfs(s["nid"], path + [s], used_edges | {s["eid"]})
 
     dfs(start_id, [], set())
@@ -181,8 +201,9 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
     해당 도메인 렌즈를 걸치면 포함 — 현재 태그 하나만 보는 것보다 정확하다."""
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation,
-               er.confidence, er.promoted_knowledge_id,
-               s.id sid, s.name sname, s.type stype, d.id did, d.name dname, d.type dtype
+               er.confidence, er.promoted_knowledge_id, er.feedback_note,
+               s.id sid, s.name sname, s.type stype, s.meta_json smeta,
+               d.id did, d.name dname, d.type dtype, d.meta_json dmeta
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
         WHERE er.rel_type IN ('CAUSES','BENEFITS_FROM')
@@ -213,18 +234,27 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
         if ra != rb:
             parent[ra] = rb
 
+    def _layer(meta: str | None) -> str | None:
+        try:
+            return (json.loads(meta) or {}).get("pace_layer") if meta else None
+        except (ValueError, TypeError):
+            return None
+
     nodes: dict[int, dict] = {}
     out_edges = []
     for e in edges:
         nodes.setdefault(e["sid"], {"id": e["sid"], "name": e["sname"], "type": e["stype"],
+                                     "pace_layer": _layer(e["smeta"]),
                                      "in_degree": 0, "out_degree": 0})
         nodes.setdefault(e["did"], {"id": e["did"], "name": e["dname"], "type": e["dtype"],
+                                     "pace_layer": _layer(e["dmeta"]),
                                      "in_degree": 0, "out_degree": 0})
         union(e["sid"], e["did"])
         n_narratives = conn.execute(
             "SELECT COUNT(DISTINCT narrative_id) c FROM narrative_edge_evidence WHERE entity_relation_id=?",
             (e["id"],)).fetchone()["c"]
-        contested = e["rel_type"] == "CAUSES" and conn.execute(
+        # feedback_note가 있으면 opus가 '상충 아닌 시점 다른 피드백 나선'으로 해소한 것 → contested 제외(D-029)
+        contested = e["rel_type"] == "CAUSES" and not e["feedback_note"] and conn.execute(
             "SELECT 1 FROM entity_relations er2 JOIN entities s2 ON s2.id=er2.src_id "
             "JOIN entities d2 ON d2.id=er2.dst_id WHERE er2.rel_type='CAUSES' AND s2.name=? AND d2.name=?",
             (e["dname"], e["sname"])).fetchone() is not None
@@ -236,6 +266,7 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
             "rel": e["rel_type"], "mechanism": e["mechanism"], "orientation": e["time_orientation"],
             "reference_period": e["reference_period"], "confidence": e["confidence"],
             "corroborated_by": n_narratives, "contested": contested,
+            "feedback_note": e["feedback_note"],
             "promoted_knowledge_id": e["promoted_knowledge_id"],
         })
 

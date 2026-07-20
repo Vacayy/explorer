@@ -106,11 +106,11 @@ export default function DocPage() {
         </div>
       )}
 
-      {/* 본문 — 유튜브는 opus 정리본(markdown), 그 외는 raw content */}
+      {/* 본문 — 유튜브(opus 정리본)·canon(역사 노트)은 markdown 렌더, 그 외는 raw content */}
       <Card>
         <CardContent className="py-4">
           {doc.content?.trim() ? (
-            doc.source_type === "youtube" ? (
+            doc.source_type === "youtube" || doc.source_type === "canon" || doc.source_type === "note" ? (
               <Markdown>{doc.content}</Markdown>
             ) : (
               <div className="text-sm whitespace-pre-wrap leading-relaxed">{doc.content}</div>

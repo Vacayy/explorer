@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import dagre from "dagre"
 import {
@@ -15,8 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 /**
  * /narrative/worldview — 세계관 뷰 (그래프 시각화 기획서, docs/specs/causal-worldview.md).
@@ -27,6 +25,7 @@ interface WNode {
   id: number; name: string; type: string
   in_degree: number; out_degree: number; cluster_id: number
   in_flywheel?: boolean
+  pace_layer?: string | null   // event|flow|cycle|structure|regime — 노드 중력 (D-030)
 }
 interface WEdge {
   from: string; from_id: number; from_type: string | null
@@ -34,6 +33,7 @@ interface WEdge {
   rel: string; mechanism: string | null; orientation: string | null
   reference_period: string | null; confidence: number | null
   corroborated_by: number; contested: boolean; promoted_knowledge_id: number | null
+  feedback_note?: string | null   // both_temporal 해소 근거 (시점 다른 피드백 나선, D-029)
   flywheel?: boolean
 }
 interface Worldview { nodes: WNode[]; edges: WEdge[] }
@@ -51,25 +51,53 @@ const NODE_W = 150
 const NODE_H = 44
 const MIN_CLUSTER = 3   // 이보다 작은 연결요소(고립된 2노드 조각)는 기본 숨김 — 노이즈 감소
 
+// 노드 중력 (D-030) — 느린 층일수록 크고 무겁게. 크기는 dagre 레이아웃에도 반영.
+const LAYER_SIZE: Record<string, { w: number; h: number }> = {
+  regime: { w: 190, h: 56 }, structure: { w: 168, h: 50 },
+  cycle: { w: NODE_W, h: NODE_H }, flow: { w: NODE_W, h: NODE_H },
+  event: { w: 132, h: 40 },
+}
+const LAYER_KO: Record<string, string> = {
+  regime: "체제", structure: "구조", cycle: "사이클", flow: "수급", event: "사건",
+}
+const nodeSize = (n: WNode) => LAYER_SIZE[n.pace_layer ?? ""] ?? { w: NODE_W, h: NODE_H }
+
 function layoutGraph(nodes: WNode[], edges: WEdge[]): (WNode & { x: number; y: number })[] {
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: "LR", nodesep: 24, ranksep: 80 })
+  g.setGraph({ rankdir: "LR", nodesep: 12, ranksep: 40 })
   g.setDefaultEdgeLabel(() => ({}))
-  nodes.forEach((n) => g.setNode(String(n.id), { width: NODE_W, height: NODE_H }))
+  nodes.forEach((n) => {
+    const s = nodeSize(n)
+    g.setNode(String(n.id), { width: s.w, height: s.h })
+  })
   edges.forEach((e) => g.setEdge(String(e.from_id), String(e.to_id)))
   dagre.layout(g)
   return nodes.map((n) => {
     const pos = g.node(String(n.id))
-    return { ...n, x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 }
+    const s = nodeSize(n)
+    return { ...n, x: pos.x - s.w / 2, y: pos.y - s.h / 2 }
   })
 }
 
 function GraphNode({ data }: NodeProps) {
   const n = data as unknown as WNode
+  const s = nodeSize(n)
+  const layer = n.pace_layer ?? ""
   return (
-    <div className="rounded-md border bg-card px-2 py-1 text-xs shadow-sm" style={{ width: NODE_W }}>
-      <div className="text-[9px] text-muted-foreground">{NODE_LABEL[n.type] ?? n.type}</div>
-      <div className="font-medium truncate">{n.name}</div>
+    <div
+      className={cn(
+        "rounded-md border bg-card px-2 py-1 text-xs shadow-sm",
+        layer === "regime" && "border-2 border-foreground/50 bg-[color-mix(in_srgb,var(--foreground)_6%,var(--card))] shadow-md",
+        layer === "structure" && "border-foreground/30 shadow",
+        layer === "event" && "opacity-80",
+      )}
+      style={{ width: s.w }}
+    >
+      <div className="text-[9px] text-muted-foreground">
+        {NODE_LABEL[n.type] ?? n.type}
+        {layer && (layer === "regime" || layer === "structure") && ` · ${LAYER_KO[layer]}`}
+      </div>
+      <div className={cn("truncate", layer === "regime" ? "font-bold text-sm" : "font-medium")}>{n.name}</div>
       <Handle type="target" position={Position.Left} className="opacity-0" />
       <Handle type="source" position={Position.Right} className="opacity-0" />
     </div>
@@ -78,7 +106,6 @@ function GraphNode({ data }: NodeProps) {
 const nodeTypes = { graphNode: GraphNode }
 
 export default function WorldviewPage() {
-  const navigate = useNavigate()
   const [lenses, setLenses] = useState<string[]>([])
   const [showSmall, setShowSmall] = useState(false)
   const [selectedNode, setSelectedNode] = useState<WNode | null>(null)
@@ -137,10 +164,7 @@ export default function WorldviewPage() {
 
   return (
     <PageContainer gap="sm">
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/explore")}>
-          <ArrowLeft className="h-4 w-4" /> 탐색
-        </Button>
+      <div className="flex items-baseline gap-2 flex-wrap">
         <h1 className="text-lg font-bold">세계관 뷰 — 인과 그래프</h1>
         <span className="text-[11px] text-muted-foreground">근본 원인 → 수혜 (좌→우)</span>
       </div>
@@ -262,6 +286,11 @@ function EdgeDetailSheet({ edge, onClose }: { edge: WEdge | null; onClose: () =>
               <Badge variant="secondary" className="text-[9px] font-normal">승격된 지식</Badge>
             )}
           </div>
+          {edge?.feedback_note && (
+            <p className="text-[11px] text-muted-foreground border-l-2 border-hypothesis/40 pl-2">
+              피드백 나선 판정: {edge.feedback_note}
+            </p>
+          )}
           {edge?.confidence != null && (
             <div className="text-xs text-muted-foreground">신뢰도 {(edge.confidence * 100).toFixed(0)}%</div>
           )}

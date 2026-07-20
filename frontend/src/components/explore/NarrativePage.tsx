@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { NarrativeList } from "@/components/explore/NarrativeList"
 import { cn } from "@/lib/utils"
 
 /**
@@ -62,7 +63,8 @@ export default function NarrativePage() {
   }, [fresh.data?.status, topic, qc])
   const n = fresh.data ?? cached.data
 
-  if (!topic) return <ErrorState message="주제가 없습니다 (?topic= 필요)" />
+  // topic 없이 진입 = 월드모델>내러티브 탭 랜딩 → 내러티브 목록
+  if (!topic) return <NarrativeLanding />
   if (cached.isLoading) return <PageContainer gap="sm"><Skeleton className="h-8 w-96" /><Skeleton className="h-64 w-full rounded-xl" /></PageContainer>
 
   const generating = fresh.isFetching
@@ -74,8 +76,8 @@ export default function NarrativePage() {
   return (
     <PageContainer gap="sm" width="reading">
       <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/explore?list=theme_surge")}>
-          <ArrowLeft className="h-4 w-4" /> 주목 주제
+        <Button variant="ghost" size="sm" onClick={() => navigate("/narrative")}>
+          <ArrowLeft className="h-4 w-4" /> 내러티브
         </Button>
         <Badge variant="secondary" className="text-[10px]">내러티브</Badge>
         {lenses.map((l) => (
@@ -133,6 +135,95 @@ export default function NarrativePage() {
         </>
       )}
     </PageContainer>
+  )
+}
+
+/* ---------- 랜딩 (월드모델>내러티브 탭 — topic 없이 진입) ---------- */
+
+function NarrativeLanding() {
+  return (
+    <PageContainer gap="sm">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-xl font-bold">내러티브</h2>
+        <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 질문</span>
+      </div>
+      <MegaNarrativeSection />
+      <NarrativeList empty="state" />
+    </PageContainer>
+  )
+}
+
+/* ---------- 메가 내러티브 — 공유노드 군집의 상위 세계관 서사 (D-031) ---------- */
+
+interface MegaNarrative {
+  id: number
+  name: string
+  title: string | null
+  narrative: string | null
+  members: string[]
+  version: number
+  created_at: string | null
+}
+
+function MegaNarrativeSection() {
+  const navigate = useNavigate()
+  const [openId, setOpenId] = useState<number | null>(null)
+  const { data } = useQuery(
+    apiQuery<MegaNarrative[]>({
+      key: ["spine", "narrative", "mega"],
+      url: "/api/spine/narrative/mega",
+      staleTime: STALE.medium,
+    }),
+  )
+  const items = data ?? []
+  if (items.length === 0) return null
+
+  return (
+    <div className="space-y-2.5">
+      {items.map((m) => (
+        <Card key={m.id} className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
+          <CardContent className="py-3 space-y-2">
+            <Collapsible open={openId === m.id} onOpenChange={(o) => setOpenId(o ? m.id : null)}>
+              <CollapsibleTrigger asChild>
+                <button className="w-full text-left group">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className="text-[10px]">세계관</Badge>
+                    <span className="font-semibold text-sm group-hover:underline">{m.title ?? m.name}</span>
+                    {m.version > 1 && (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">v{m.version}</Badge>
+                    )}
+                    <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground ml-auto transition-transform shrink-0",
+                      openId === m.id && "rotate-180")} />
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap mt-1.5">
+                    <span className="text-[10px] text-muted-foreground mr-0.5">{m.members.length}개 서사를 관통 —</span>
+                    {m.members.map((t) => (
+                      <Badge key={t} variant="secondary" className="text-[10px] cursor-pointer hover:bg-accent"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/narrative?topic=${encodeURIComponent(t)}`) }}>
+                        {t}
+                      </Badge>
+                    ))}
+                  </div>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {m.narrative && (
+                  <div className="pt-2">
+                    <Markdown>{m.narrative}</Markdown>
+                    <div className="text-right mt-2">
+                      <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
+                        AI 세계관 서사 · 부분 서사 변경 시 갱신 — 검증 필요
+                        {m.created_at && ` · ${m.created_at.slice(0, 10)}`}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   )
 }
 
