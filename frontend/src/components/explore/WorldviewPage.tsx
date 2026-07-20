@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
+import { useTheme } from "next-themes"
 import { useQuery } from "@tanstack/react-query"
 import dagre from "dagre"
 import {
@@ -15,15 +16,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, X } from "lucide-react"
+import { ArrowRight, X, Maximize2, Minimize2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
 const ObsidianGraphView = lazy(() => import("@/components/explore/graph/ObsidianGraphView"))
 
 const VIEW_MODES = [
-  { value: "structure", label: "구조" },
-  { value: "obsidian", label: "옵시디언" },
+  { value: "structure", label: "흐름" },     // 좌→우 인과 흐름 (dagre 시간축)
+  { value: "obsidian", label: "관계망" },    // force 관계망 (옵시디언式)
 ] as const
 
 /**
@@ -117,6 +118,9 @@ function GraphNode({ data }: NodeProps) {
 const nodeTypes = { graphNode: GraphNode }
 
 export default function WorldviewPage() {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === "dark"
+  const [fullscreen, setFullscreen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const view = searchParams.get("view") === "obsidian" ? "obsidian" : "structure"   // URL=상태 소스 (stale 값은 structure로)
   const setView = (v: string) => setSearchParams((p) => {
@@ -290,13 +294,20 @@ export default function WorldviewPage() {
       {!data || data.edges.length === 0 ? (
         <EmptyState message="인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다." />
       ) : (
-        <div style={{ height: "calc(100vh - 160px)", minHeight: 620 }} className="relative rounded-xl border overflow-hidden">
+        <div
+          style={fullscreen ? undefined : { height: "calc(100vh - 160px)", minHeight: 620 }}
+          className={cn(
+            "relative border overflow-hidden bg-background",
+            fullscreen ? "fixed inset-0 z-50 rounded-none" : "rounded-xl",
+          )}
+        >
           {view === "structure" ? (
             <ReactFlow
-              key={`${focusId ?? "all"}-${depth}-${backboneOnly}`}   // 초점/필터 변경 시 재마운트 → fitView 재실행
+              key={`${focusId ?? "all"}-${depth}-${backboneOnly}-${fullscreen}`}   // 초점·필터·전체화면 변경 시 재마운트 → fitView
               nodes={rfNodes}
               edges={rfEdges}
               nodeTypes={nodeTypes}
+              colorMode={isDark ? "dark" : "light"}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={(_, n) => focusNode(n.data as unknown as WNode)}
@@ -312,9 +323,19 @@ export default function WorldviewPage() {
             </ReactFlow>
           ) : (
             <Suspense fallback={<Skeleton className="h-full w-full" />}>
-              <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode} />
+              <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode}
+                isDark={isDark} focusId={focusId} />
             </Suspense>
           )}
+
+          {/* 전체화면 토글 — 그래프 영역이 화면을 덮게 */}
+          <button
+            onClick={() => setFullscreen((f) => !f)}
+            className="absolute top-3 left-3 z-10 rounded-lg border bg-card/85 p-1.5 text-muted-foreground shadow hover:text-foreground backdrop-blur"
+            aria-label={fullscreen ? "전체화면 종료" : "전체화면"}
+          >
+            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
 
           {/* 상세 — blur 드로어 대신 그래프 영역 안에 뜨는 패널 */}
           {selectedNode && (
