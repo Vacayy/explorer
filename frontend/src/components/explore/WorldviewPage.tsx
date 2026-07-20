@@ -93,6 +93,7 @@ function layoutGraph(nodes: WNode[], edges: WEdge[]): (WNode & { x: number; y: n
 
 function GraphNode({ data }: NodeProps) {
   const n = data as unknown as WNode
+  const focal = (data as { isFocal?: boolean }).isFocal
   const s = nodeSize(n)
   const layer = n.pace_layer ?? ""
   return (
@@ -102,6 +103,7 @@ function GraphNode({ data }: NodeProps) {
         layer === "regime" && "border-2 border-foreground/50 bg-[color-mix(in_srgb,var(--foreground)_6%,var(--card))] shadow-md",
         layer === "structure" && "border-foreground/30 shadow",
         layer === "event" && "opacity-80",
+        focal && "ring-2 ring-primary ring-offset-1 ring-offset-background border-primary shadow-lg",
       )}
       style={{ width: s.w }}
     >
@@ -203,7 +205,8 @@ export default function WorldviewPage() {
     if (visEdges.length === 0) return { nodes: [] as Node[], edges: [] as Edge[] }
     const positioned = layoutGraph(visNodes, visEdges)
     const rfNodes: Node[] = positioned.map((n) => ({
-      id: String(n.id), type: "graphNode", position: { x: n.x, y: n.y }, data: n as unknown as Record<string, unknown>,
+      id: String(n.id), type: "graphNode", position: { x: n.x, y: n.y },
+      data: { ...n, isFocal: n.id === focusId } as unknown as Record<string, unknown>,
     }))
     const rfEdges: Edge[] = visEdges.map((e, i) => ({
       id: `e${i}`, source: String(e.from_id), target: String(e.to_id),
@@ -220,7 +223,7 @@ export default function WorldviewPage() {
       data: e as unknown as Record<string, unknown>,
     }))
     return { nodes: rfNodes, edges: rfEdges }
-  }, [visNodes, visEdges])
+  }, [visNodes, visEdges, focusId])
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(builtNodes)
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(builtEdges)
