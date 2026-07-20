@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Checkbox } from "@/components/ui/checkbox"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
+import { ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // PoC 뷰 — three.js(3D)/force-graph 번들을 메인에서 분리 (토글 시에만 로드)
@@ -192,8 +193,8 @@ export default function WorldviewPage() {
     () => (focusId != null ? data?.nodes.find((n) => n.id === focusId) ?? null : null),
     [data, focusId])
 
-  // 노드 클릭 = 그 노드로 초점 재중심(로컬 그래프). 상세는 초점 헤더 '상세'로 온디맨드.
-  const focusNode = (n: WNode) => { setFocusId(n.id); setSelectedEdge(null) }
+  // 노드 클릭 = 초점 재중심 + 상세 패널(초점 이동 시 같은 패널이 갱신되어 맥락을 따라간다).
+  const focusNode = (n: WNode) => { setFocusId(n.id); setSelectedNode(n); setSelectedEdge(null) }
 
   // 2단계: 구조 뷰(React Flow) 전용 — dagre 좌→우 배치 변환
   const { nodes: builtNodes, edges: builtEdges } = useMemo(() => {
@@ -327,13 +328,35 @@ export default function WorldviewPage() {
         </div>
       )}
 
-      <NodeDetailSheet node={selectedNode} onClose={() => setSelectedNode(null)} />
+      <NodeDetailSheet node={selectedNode} allEdges={data?.edges ?? []} onClose={() => setSelectedNode(null)} />
       <EdgeDetailSheet edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
     </PageContainer>
   )
 }
 
-function NodeDetailSheet({ node, onClose }: { node: WNode | null; onClose: () => void }) {
+function EdgeContextRow({ e, dir }: { e: WEdge; dir: "in" | "out" }) {
+  // dir=in: {상대} → 이 노드 (원인) / dir=out: 이 노드 → {상대} (결과)
+  const other = dir === "in" ? e.from : e.to
+  const otherType = dir === "in" ? e.from_type : e.to_type
+  return (
+    <li className="rounded-lg border px-2.5 py-1.5 space-y-1">
+      <div className="flex items-center gap-1.5 flex-wrap text-sm">
+        {dir === "in" && <><span className="font-medium">{other}</span><ArrowRight className="h-3 w-3 text-muted-foreground" /></>}
+        <Badge variant="outline" className="text-[9px]">
+          {e.rel === "BENEFITS_FROM" ? "수혜" : "인과"}
+        </Badge>
+        {dir === "out" && <><ArrowRight className="h-3 w-3 text-muted-foreground" /><span className="font-medium">{other}</span></>}
+        {otherType && <span className="text-[9px] text-muted-foreground">{NODE_LABEL[otherType] ?? otherType}</span>}
+        {e.reference_period && <span className="text-[9px] text-muted-foreground">· {e.reference_period}</span>}
+        {e.corroborated_by >= 2 && <Badge variant="outline" className="text-[9px] text-primary border-primary/40">{e.corroborated_by}개 확인</Badge>}
+        {e.contested && <Badge variant="destructive" className="text-[9px]">상충</Badge>}
+      </div>
+      {e.mechanism && <p className="text-xs text-muted-foreground leading-snug">{e.mechanism}</p>}
+    </li>
+  )
+}
+
+function NodeDetailSheet({ node, allEdges, onClose }: { node: WNode | null; allEdges: WEdge[]; onClose: () => void }) {
   const { data } = useQuery(
     apiQuery<NodeNarrative[]>({
       key: ["spine", "causal", "node", node?.id ?? 0, "narratives"],
@@ -341,21 +364,36 @@ function NodeDetailSheet({ node, onClose }: { node: WNode | null; onClose: () =>
       enabled: !!node,
     }),
   )
+  const causes = node ? allEdges.filter((e) => e.to_id === node.id) : []      // 이 노드로 들어오는 (원인)
+  const effects = node ? allEdges.filter((e) => e.from_id === node.id) : []   // 이 노드에서 나가는 (결과)
+
   return (
     <Sheet open={!!node} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent>
+      <SheetContent className="overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{node?.name}</SheetTitle>
-          <SheetDescription>{node && (NODE_LABEL[node.type] ?? node.type)}</SheetDescription>
+          <SheetDescription>
+            {node && (NODE_LABEL[node.type] ?? node.type)} · 유입 {node?.in_degree} · 유출 {node?.out_degree}
+          </SheetDescription>
         </SheetHeader>
-        <div className="px-4 space-y-3 text-sm">
-          {node && (
-            <div className="text-xs text-muted-foreground">
-              유입 {node.in_degree} · 유출 {node.out_degree}
+        <div className="px-4 space-y-4 text-sm">
+          {causes.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드를 부르는 원인 ({causes.length})</div>
+              <ul className="space-y-1.5">{causes.map((e, i) => <EdgeContextRow key={`c${i}`} e={e} dir="in" />)}</ul>
             </div>
           )}
+          {effects.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드가 부르는 결과 ({effects.length})</div>
+              <ul className="space-y-1.5">{effects.map((e, i) => <EdgeContextRow key={`e${i}`} e={e} dir="out" />)}</ul>
+            </div>
+          )}
+          {causes.length === 0 && effects.length === 0 && (
+            <div className="text-xs text-muted-foreground">연결된 인과가 아직 없습니다.</div>
+          )}
           <div>
-            <div className="text-xs font-medium mb-1">등장하는 내러티브</div>
+            <div className="text-xs font-medium mb-1 text-muted-foreground">등장하는 내러티브</div>
             {(data ?? []).length === 0 ? (
               <div className="text-xs text-muted-foreground">없음</div>
             ) : (
