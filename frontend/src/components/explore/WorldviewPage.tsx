@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import dagre from "dagre"
@@ -12,20 +12,17 @@ import { apiQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// PoC 뷰 — three.js(3D)/force-graph 번들을 메인에서 분리 (토글 시에만 로드)
-const ForceGraph3DView = lazy(() => import("@/components/explore/graph/ForceGraph3DView"))
+// 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
 const ObsidianGraphView = lazy(() => import("@/components/explore/graph/ObsidianGraphView"))
 
 const VIEW_MODES = [
   { value: "structure", label: "구조" },
-  { value: "force3d", label: "3D" },
   { value: "obsidian", label: "옵시디언" },
 ] as const
 
@@ -121,7 +118,7 @@ const nodeTypes = { graphNode: GraphNode }
 
 export default function WorldviewPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const view = searchParams.get("view") ?? "structure"   // URL=상태 소스: structure|force3d|obsidian
+  const view = searchParams.get("view") === "obsidian" ? "obsidian" : "structure"   // URL=상태 소스 (stale 값은 structure로)
   const setView = (v: string) => setSearchParams((p) => {
     const n = new URLSearchParams(p)
     if (v === "structure") n.delete("view"); else n.set("view", v)
@@ -232,12 +229,7 @@ export default function WorldviewPage() {
   return (
     <PageContainer gap="sm">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <h1 className="text-lg font-bold">세계관 뷰 — 인과 그래프</h1>
-        <span className="text-[11px] text-muted-foreground">
-          {view === "structure" ? "근본 원인 → 수혜 (좌→우)"
-            : view === "force3d" ? "3D 포스 그래프 (회전·줌, PoC)"
-            : "옵시디언式 2D 포스 (hover 이웃 강조, PoC)"}
-        </span>
+        <h1 className="text-lg font-bold">세계관 뷰 (인과 그래프)</h1>
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}
           className="ml-auto gap-1">
           {VIEW_MODES.map((m) => (
@@ -298,7 +290,7 @@ export default function WorldviewPage() {
       {!data || data.edges.length === 0 ? (
         <EmptyState message="인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다." />
       ) : (
-        <div style={{ height: "calc(100vh - 240px)", minHeight: 560 }} className="rounded-xl border overflow-hidden">
+        <div style={{ height: "calc(100vh - 160px)", minHeight: 620 }} className="relative rounded-xl border overflow-hidden">
           {view === "structure" ? (
             <ReactFlow
               key={`${focusId ?? "all"}-${depth}-${backboneOnly}`}   // 초점/필터 변경 시 재마운트 → fitView 재실행
@@ -311,7 +303,8 @@ export default function WorldviewPage() {
               onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNode(null) }}
               fitView
               fitViewOptions={{ maxZoom: 0.9 }}
-              minZoom={0.15}
+              minZoom={0.08}
+              maxZoom={4}
             >
               <Background />
               <Controls />
@@ -319,18 +312,20 @@ export default function WorldviewPage() {
             </ReactFlow>
           ) : (
             <Suspense fallback={<Skeleton className="h-full w-full" />}>
-              {view === "force3d" ? (
-                <ForceGraph3DView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode} />
-              ) : (
-                <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode} />
-              )}
+              <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode} />
             </Suspense>
+          )}
+
+          {/* 상세 — blur 드로어 대신 그래프 영역 안에 뜨는 패널 */}
+          {selectedNode && (
+            <NodeGraphPanel node={selectedNode} allEdges={data?.edges ?? []}
+              onClose={() => setSelectedNode(null)} />
+          )}
+          {selectedEdge && (
+            <EdgeGraphPanel edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
           )}
         </div>
       )}
-
-      <NodeDetailSheet node={selectedNode} allEdges={data?.edges ?? []} onClose={() => setSelectedNode(null)} />
-      <EdgeDetailSheet edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
     </PageContainer>
   )
 }
@@ -358,117 +353,130 @@ function EdgeContextRow({ e, dir }: { e: WEdge; dir: "in" | "out" }) {
   )
 }
 
-function NodeDetailSheet({ node, allEdges, onClose }: { node: WNode | null; allEdges: WEdge[]; onClose: () => void }) {
+/* 그래프 영역 안에 뜨는 상세 패널 셸 — 우측 상단 플로팅, 화면 blur/드로어 없음 */
+function GraphPanel({ title, subtitle, onClose, children }: {
+  title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode
+}) {
+  return (
+    <div className="absolute top-3 right-3 z-10 flex max-h-[calc(100%-24px)] w-[340px] flex-col rounded-xl border bg-card shadow-xl">
+      <div className="flex items-start gap-2 border-b px-4 py-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">{title}</div>
+          {subtitle && <div className="text-[11px] text-muted-foreground">{subtitle}</div>}
+        </div>
+        <button onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="닫기">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{children}</div>
+    </div>
+  )
+}
+
+function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WEdge[]; onClose: () => void }) {
   const { data } = useQuery(
     apiQuery<NodeNarrative[]>({
-      key: ["spine", "causal", "node", node?.id ?? 0, "narratives"],
-      url: `/api/spine/causal/node/${node?.id}/narratives`,
-      enabled: !!node,
+      key: ["spine", "causal", "node", node.id, "narratives"],
+      url: `/api/spine/causal/node/${node.id}/narratives`,
     }),
   )
-  const causes = node ? allEdges.filter((e) => e.to_id === node.id) : []      // 이 노드로 들어오는 (원인)
-  const effects = node ? allEdges.filter((e) => e.from_id === node.id) : []   // 이 노드에서 나가는 (결과)
+  const causes = allEdges.filter((e) => e.to_id === node.id)      // 이 노드로 들어오는 (원인)
+  const effects = allEdges.filter((e) => e.from_id === node.id)   // 이 노드에서 나가는 (결과)
   // 보편 노드의 "언제·어디서" — 연결된 인과 주장들의 시점·지역 집합 (D-034)
   const incident = [...causes, ...effects]
   const periods = [...new Set(incident.map((e) => e.reference_period).filter(Boolean))]
   const geos = [...new Set(incident.map((e) => e.geo_scope).filter(Boolean))]
 
   return (
-    <Sheet open={!!node} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{node?.name}</SheetTitle>
-          <SheetDescription>
-            {node && (NODE_LABEL[node.type] ?? node.type)} · 유입 {node?.in_degree} · 유출 {node?.out_degree}
-          </SheetDescription>
-        </SheetHeader>
-        <div className="px-4 space-y-4 text-sm">
-          {(periods.length > 0 || geos.length > 0) && (
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground border-b pb-2">
-              {periods.length > 0 && <span>관측 시점: {periods.join(" · ")}</span>}
-              {geos.length > 0 && <span>지역: {geos.join(" · ")}</span>}
-            </div>
-          )}
-          {causes.length > 0 && (
-            <div>
-              <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드를 부르는 원인 ({causes.length})</div>
-              <ul className="space-y-1.5">{causes.map((e, i) => <EdgeContextRow key={`c${i}`} e={e} dir="in" />)}</ul>
-            </div>
-          )}
-          {effects.length > 0 && (
-            <div>
-              <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드가 부르는 결과 ({effects.length})</div>
-              <ul className="space-y-1.5">{effects.map((e, i) => <EdgeContextRow key={`e${i}`} e={e} dir="out" />)}</ul>
-            </div>
-          )}
-          {causes.length === 0 && effects.length === 0 && (
-            <div className="text-xs text-muted-foreground">연결된 인과가 아직 없습니다.</div>
-          )}
-          <div>
-            <div className="text-xs font-medium mb-1 text-muted-foreground">등장하는 내러티브</div>
-            {(data ?? []).length === 0 ? (
-              <div className="text-xs text-muted-foreground">없음</div>
-            ) : (
-              <ul className="space-y-1">
-                {(data ?? []).map((n) => (
-                  <li key={n.id}>
-                    <a href={`/narrative?topic=${encodeURIComponent(n.topic)}`} className="text-xs hover:underline">
-                      <Badge variant="secondary" className="text-[10px] mr-1">{n.topic}</Badge>
-                      {n.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
+    <GraphPanel
+      title={node.name}
+      subtitle={`${NODE_LABEL[node.type] ?? node.type} · 유입 ${node.in_degree} · 유출 ${node.out_degree}`}
+      onClose={onClose}
+    >
+      <div className="space-y-4 text-sm">
+        {(periods.length > 0 || geos.length > 0) && (
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground border-b pb-2">
+            {periods.length > 0 && <span>관측 시점: {periods.join(" · ")}</span>}
+            {geos.length > 0 && <span>지역: {geos.join(" · ")}</span>}
           </div>
+        )}
+        {causes.length > 0 && (
+          <div>
+            <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드를 부르는 원인 ({causes.length})</div>
+            <ul className="space-y-1.5">{causes.map((e, i) => <EdgeContextRow key={`c${i}`} e={e} dir="in" />)}</ul>
+          </div>
+        )}
+        {effects.length > 0 && (
+          <div>
+            <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드가 부르는 결과 ({effects.length})</div>
+            <ul className="space-y-1.5">{effects.map((e, i) => <EdgeContextRow key={`e${i}`} e={e} dir="out" />)}</ul>
+          </div>
+        )}
+        {causes.length === 0 && effects.length === 0 && (
+          <div className="text-xs text-muted-foreground">연결된 인과가 아직 없습니다.</div>
+        )}
+        <div>
+          <div className="text-xs font-medium mb-1 text-muted-foreground">등장하는 내러티브</div>
+          {(data ?? []).length === 0 ? (
+            <div className="text-xs text-muted-foreground">없음</div>
+          ) : (
+            <ul className="space-y-1">
+              {(data ?? []).map((n) => (
+                <li key={n.id}>
+                  <a href={`/narrative?topic=${encodeURIComponent(n.topic)}`} className="text-xs hover:underline">
+                    <Badge variant="secondary" className="text-[10px] mr-1">{n.topic}</Badge>
+                    {n.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </div>
+    </GraphPanel>
   )
 }
 
-function EdgeDetailSheet({ edge, onClose }: { edge: WEdge | null; onClose: () => void }) {
+function EdgeGraphPanel({ edge, onClose }: { edge: WEdge; onClose: () => void }) {
   return (
-    <Sheet open={!!edge} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>{edge?.from} → {edge?.to}</SheetTitle>
-          <SheetDescription>{edge?.rel === "BENEFITS_FROM" ? "수혜" : "인과"}</SheetDescription>
-        </SheetHeader>
-        <div className="px-4 space-y-2 text-sm">
-          {(edge?.reference_period || edge?.geo_scope) && (
-            <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-              {edge?.reference_period && <span>시점: {edge.reference_period}</span>}
-              {edge?.geo_scope && <span>· 지역: {edge.geo_scope}</span>}
-            </div>
-          )}
-          {edge?.mechanism && <p>{edge.mechanism}</p>}
-          <div className="flex flex-wrap gap-1.5">
-            {edge && edge.corroborated_by >= 2 && (
-              <Badge variant="outline" className="text-[9px] font-normal text-primary border-primary/40">
-                {edge.corroborated_by}개 내러티브 확인
-              </Badge>
-            )}
-            {edge?.contested && <Badge variant="destructive" className="text-[9px] font-normal">상충</Badge>}
-            {edge?.flywheel && (
-              <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
-                자기강화 루프
-              </Badge>
-            )}
-            {edge?.promoted_knowledge_id && (
-              <Badge variant="secondary" className="text-[9px] font-normal">승격된 지식</Badge>
-            )}
+    <GraphPanel
+      title={`${edge.from} → ${edge.to}`}
+      subtitle={edge.rel === "BENEFITS_FROM" ? "수혜" : "인과"}
+      onClose={onClose}
+    >
+      <div className="space-y-2 text-sm">
+        {(edge.reference_period || edge.geo_scope) && (
+          <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+            {edge.reference_period && <span>시점: {edge.reference_period}</span>}
+            {edge.geo_scope && <span>· 지역: {edge.geo_scope}</span>}
           </div>
-          {edge?.feedback_note && (
-            <p className="text-[11px] text-muted-foreground border-l-2 border-hypothesis/40 pl-2">
-              피드백 나선 판정: {edge.feedback_note}
-            </p>
+        )}
+        {edge.mechanism && <p>{edge.mechanism}</p>}
+        <div className="flex flex-wrap gap-1.5">
+          {edge.corroborated_by >= 2 && (
+            <Badge variant="outline" className="text-[9px] font-normal text-primary border-primary/40">
+              {edge.corroborated_by}개 내러티브 확인
+            </Badge>
           )}
-          {edge?.confidence != null && (
-            <div className="text-xs text-muted-foreground">신뢰도 {(edge.confidence * 100).toFixed(0)}%</div>
+          {edge.contested && <Badge variant="destructive" className="text-[9px] font-normal">상충</Badge>}
+          {edge.flywheel && (
+            <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
+              자기강화 루프
+            </Badge>
+          )}
+          {edge.promoted_knowledge_id && (
+            <Badge variant="secondary" className="text-[9px] font-normal">승격된 지식</Badge>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+        {edge.feedback_note && (
+          <p className="text-[11px] text-muted-foreground border-l-2 border-hypothesis/40 pl-2">
+            피드백 나선 판정: {edge.feedback_note}
+          </p>
+        )}
+        {edge.confidence != null && (
+          <div className="text-xs text-muted-foreground">신뢰도 {(edge.confidence * 100).toFixed(0)}%</div>
+        )}
+      </div>
+    </GraphPanel>
   )
 }
