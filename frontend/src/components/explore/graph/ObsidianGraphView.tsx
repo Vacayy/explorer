@@ -6,26 +6,27 @@ import { NODE_COLOR, NODE_COLOR_FALLBACK, NODE_LABEL, nodeRadius, type WNode, ty
 /**
  * 옵시디언式 2D 포스 그래프 (react-force-graph-2d = HTML5 Canvas + d3-force).
  * 옵시디언 시그니처: 차수 비례 노드 크기 · hover 시 이웃 강조+나머지 디밍.
- * 가독성 개선: 작은 그래프(초점/백본)에선 라벨 상시 노출 · 방향 파티클로 인과 흐름 직관 ·
- * 링크 곡선·노드 테두리 · 타입 색 범례.
+ * 가독성: 작은 그래프(초점/백본)면 라벨 상시 · 라벨 배경 pill로 대비 · 방향 파티클로 인과 흐름 ·
+ * 링크 곡선·노드 테두리 · 초점 노드 강조 · 타입 색 범례 · 다크모드 대응.
  */
-const LABEL_COLOR = "#64748b"       // 라이트·다크 공통 중립색 (canvas는 CSS 변수 못 씀)
-const LABEL_ACTIVE = "#334155"
-const RING_COLOR = "rgba(100,116,139,0.45)"
-
 const endId = (x: unknown): number =>
   typeof x === "object" && x !== null ? (x as WNode).id : (x as number)
 
 export default function ObsidianGraphView({
-  nodes, edges, onNodeSelect,
+  nodes, edges, onNodeSelect, isDark = false, focusId = null,
 }: {
   nodes: WNode[]; edges: WEdge[]; onNodeSelect: (n: WNode) => void
+  isDark?: boolean; focusId?: number | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const { width, height } = useElementSize(ref)
   const [hoverId, setHoverId] = useState<number | null>(null)
-  // 노드 수가 적으면(초점/백본) 라벨을 상시 노출 — 굳이 hover 안 해도 지도가 읽힌다
-  const alwaysLabel = nodes.length <= 40
+  const alwaysLabel = nodes.length <= 40   // 초점/백본이면 hover 없이도 지도가 읽히게
+
+  // 다크모드 대응 색 (canvas는 CSS 변수 못 씀)
+  const C = isDark
+    ? { label: "#e2e8f0", labelDim: "#64748b", bg: "rgba(2,6,23,0.62)", ring: "rgba(148,163,184,0.5)" }
+    : { label: "#334155", labelDim: "#94a3b8", bg: "rgba(255,255,255,0.66)", ring: "rgba(100,116,139,0.45)" }
 
   const graphData = useMemo(() => ({
     nodes: nodes.map((n) => ({ ...n })),
@@ -71,10 +72,10 @@ export default function ObsidianGraphView({
           onNodeClick={(n) => onNodeSelect(n as WNode)}
           linkColor={(l) => {
             const e = l as unknown as WEdge
-            if (!linkActive(l)) return "rgba(148,163,184,0.05)"
+            if (!linkActive(l)) return isDark ? "rgba(148,163,184,0.07)" : "rgba(148,163,184,0.05)"
             if (e.contested) return "rgba(239,68,68,0.8)"
             if (e.flywheel) return "rgba(245,158,11,0.85)"
-            return "rgba(148,163,184,0.4)"
+            return isDark ? "rgba(148,163,184,0.5)" : "rgba(100,116,139,0.4)"
           }}
           linkWidth={(l) => ((l as unknown as WEdge).corroborated_by >= 2 ? 2.2 : 1)}
           linkDirectionalArrowLength={3}
@@ -82,7 +83,7 @@ export default function ObsidianGraphView({
           linkDirectionalParticles={(l) => {
             const e = l as unknown as WEdge
             if (!linkActive(l)) return 0
-            return e.flywheel || e.corroborated_by >= 2 ? 3 : 2   // 파티클이 원인→결과로 흐르며 방향을 보여줌
+            return e.flywheel || e.corroborated_by >= 2 ? 3 : 2   // 원인→결과로 흐르며 방향을 보여줌
           }}
           linkDirectionalParticleWidth={2}
           linkDirectionalParticleColor={(l) => {
@@ -100,25 +101,29 @@ export default function ObsidianGraphView({
           nodeCanvasObject={(node, ctx, scale) => {
             const n = node as WNode & { x: number; y: number }
             const active = nodeActive(n.id)
-            const isHover = n.id === hoverId
+            const emphasized = n.id === hoverId || n.id === focusId   // hover 또는 초점 중심
             const r = nodeRadius(n)
             ctx.globalAlpha = active ? 1 : 0.12
-            // 노드 원 + 테두리(대비)
             ctx.beginPath()
             ctx.arc(n.x, n.y, r, 0, 2 * Math.PI)
             ctx.fillStyle = NODE_COLOR[n.type] ?? NODE_COLOR_FALLBACK
             ctx.fill()
-            ctx.lineWidth = isHover ? 2 / scale : 0.7 / scale
-            ctx.strokeStyle = isHover ? "#0071e3" : RING_COLOR
+            ctx.lineWidth = (emphasized ? 2 : 0.7) / scale
+            ctx.strokeStyle = emphasized ? "#0071e3" : C.ring
             ctx.stroke()
-            // 라벨: 작은 그래프면 상시, 아니면 줌인·hover 시
+            // 라벨 (배경 pill로 대비 확보)
             if (alwaysLabel || scale > 1.1 || (hoverId != null && active)) {
               const fontSize = Math.max(3, 11 / scale)
-              ctx.font = `${isHover ? "600 " : ""}${fontSize}px sans-serif`
+              ctx.font = `${emphasized ? "600 " : ""}${fontSize}px sans-serif`
               ctx.textAlign = "center"
               ctx.textBaseline = "top"
-              ctx.fillStyle = active ? (isHover ? LABEL_ACTIVE : LABEL_COLOR) : LABEL_COLOR
-              ctx.fillText(n.name, n.x, n.y + r + 1.5)
+              const ly = n.y + r + 1.5
+              const tw = ctx.measureText(n.name).width
+              const pad = 2 / scale
+              ctx.fillStyle = C.bg
+              ctx.fillRect(n.x - tw / 2 - pad, ly - pad / 2, tw + pad * 2, fontSize + pad)
+              ctx.fillStyle = emphasized ? C.label : (active ? C.label : C.labelDim)
+              ctx.fillText(n.name, n.x, ly)
             }
             ctx.globalAlpha = 1
           }}
