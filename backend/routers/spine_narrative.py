@@ -149,6 +149,31 @@ def compute(topic: str):
     return Narrative(**compute_narrative(topic))
 
 
+class ScenarioResult(BaseModel):
+    status: str                       # ok | unavailable | error
+    answer: str | None = None         # 파급 체인 마크다운
+    citations: list[dict] = []
+
+
+@router.post("/scenario/compute", response_model=ScenarioResult)
+def scenario_compute(topic: str):
+    """내러티브 핵심 사건을 scenario 엔진으로 1·2·3차 파급 체인 전개 (opus, 온디맨드).
+    '무엇이 일어났나(내러티브)'를 넘어 '왜·그래서 무엇'을 푸는 심층 인과 — 감시 조건까지."""
+    from pipeline.scenario import build_scenario
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT title FROM narratives WHERE topic=? ORDER BY version DESC LIMIT 1", (topic,)).fetchone()
+    conn.close()
+    event = f"{topic} — {row['title']}" if row and row["title"] else topic
+    try:
+        r = build_scenario(event)
+    except Exception:
+        return ScenarioResult(status="error")
+    if r.get("error"):
+        return ScenarioResult(status="unavailable")
+    return ScenarioResult(status="ok", answer=r.get("answer"), citations=r.get("citations") or [])
+
+
 @router.get("/{narrative_id}/causal", response_model=CausalGraph)
 def get_causal(narrative_id: int):
     """한 내러티브의 인과 서브그래프 (구조 뷰용) — LLM 없음."""
