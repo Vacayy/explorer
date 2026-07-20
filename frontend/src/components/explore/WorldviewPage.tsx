@@ -127,6 +127,9 @@ export default function WorldviewPage() {
   }, { replace: true })
   const [lenses, setLenses] = useState<string[]>([])
   const [showSmall, setShowSmall] = useState(false)
+  const [backboneOnly, setBackboneOnly] = useState(true)   // 기본=줄기만 (잔가지 숨김)
+  const [focusId, setFocusId] = useState<number | null>(null)   // 초점(로컬) 모드 중심 노드
+  const [depth, setDepth] = useState(2)                     // 초점 N홉
   const [selectedNode, setSelectedNode] = useState<WNode | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<WEdge | null>(null)
   // 백엔드는 현재 단일 category만 지원 — 2개 이상 선택 시 필터 없이(합집합) 보여줌
@@ -140,17 +143,57 @@ export default function WorldviewPage() {
     }),
   )
 
-  // 1단계: 작은 연결요소(고립 조각) 숨김 → 세 뷰(구조·3D·옵시디언)가 공유하는 visNodes/visEdges
+  // 1단계: 작은 연결요소 숨김 → base. 그 위에 초점(로컬 N홉) 또는 백본(줄기) 필터.
+  // 세 뷰(구조·3D·옵시디언)가 공유하는 visNodes/visEdges.
   const { visNodes, visEdges, hiddenCount } = useMemo(() => {
     if (!data) return { visNodes: [] as WNode[], visEdges: [] as WEdge[], hiddenCount: 0 }
     const clusterSize = new Map<number, number>()
     data.nodes.forEach((n) => clusterSize.set(n.cluster_id, (clusterSize.get(n.cluster_id) ?? 0) + 1))
-    const keep = (n: WNode) => showSmall || (clusterSize.get(n.cluster_id) ?? 0) >= MIN_CLUSTER
-    const vN = data.nodes.filter(keep)
-    const ids = new Set(vN.map((n) => n.id))
-    const vE = data.edges.filter((e) => ids.has(e.from_id) && ids.has(e.to_id))
-    return { visNodes: vN, visEdges: vE, hiddenCount: data.nodes.length - vN.length }
-  }, [data, showSmall])
+    const baseN = data.nodes.filter((n) => showSmall || (clusterSize.get(n.cluster_id) ?? 0) >= MIN_CLUSTER)
+    const baseIds = new Set(baseN.map((n) => n.id))
+    const baseE = data.edges.filter((e) => baseIds.has(e.from_id) && baseIds.has(e.to_id))
+    const smallHidden = data.nodes.length - baseN.length
+
+    // 초점 모드: 중심 노드에서 depth홉 이웃(무향 BFS)만 — 잔가지 포함 전체 이웃 (로컬 그래프)
+    if (focusId != null && baseIds.has(focusId)) {
+      const adj = new Map<number, number[]>()
+      baseE.forEach((e) => {
+        ;(adj.get(e.from_id) ?? adj.set(e.from_id, []).get(e.from_id)!).push(e.to_id)
+        ;(adj.get(e.to_id) ?? adj.set(e.to_id, []).get(e.to_id)!).push(e.from_id)
+      })
+      const keep = new Set<number>([focusId])
+      let frontier = [focusId]
+      for (let d = 0; d < depth; d++) {
+        const next: number[] = []
+        frontier.forEach((id) => (adj.get(id) ?? []).forEach((nb) => {
+          if (!keep.has(nb)) { keep.add(nb); next.push(nb) }
+        }))
+        frontier = next
+      }
+      const fN = baseN.filter((n) => keep.has(n.id))
+      const fE = baseE.filter((e) => keep.has(e.from_id) && keep.has(e.to_id))
+      return { visNodes: fN, visEdges: fE, hiddenCount: smallHidden }
+    }
+
+    // 개요 모드: 백본(줄기)만 — 차수 2+ 또는 느린 층(체제·구조) 또는 플라이휠. 잔가지(차수 1) 제거.
+    if (backboneOnly) {
+      const bN = baseN.filter((n) =>
+        (n.in_degree + n.out_degree) >= 2 || n.pace_layer === "regime"
+        || n.pace_layer === "structure" || n.in_flywheel)
+      const bIds = new Set(bN.map((n) => n.id))
+      const bE = baseE.filter((e) => bIds.has(e.from_id) && bIds.has(e.to_id))
+      return { visNodes: bN, visEdges: bE, hiddenCount: smallHidden }
+    }
+
+    return { visNodes: baseN, visEdges: baseE, hiddenCount: smallHidden }
+  }, [data, showSmall, backboneOnly, focusId, depth])
+
+  const focalNode = useMemo(
+    () => (focusId != null ? data?.nodes.find((n) => n.id === focusId) ?? null : null),
+    [data, focusId])
+
+  // 노드 클릭 = 그 노드로 초점 재중심(로컬 그래프). 상세는 초점 헤더 '상세'로 온디맨드.
+  const focusNode = (n: WNode) => { setFocusId(n.id); setSelectedEdge(null) }
 
   // 2단계: 구조 뷰(React Flow) 전용 — dagre 좌→우 배치 변환
   const { nodes: builtNodes, edges: builtEdges } = useMemo(() => {
@@ -216,11 +259,39 @@ export default function WorldviewPage() {
             {LENS_LABEL[l]}
           </label>
         ))}
-        <label className="flex items-center gap-1.5 cursor-pointer ml-auto text-muted-foreground">
+        <label className={cn("flex items-center gap-1.5 cursor-pointer ml-auto text-muted-foreground",
+          focusId != null && "opacity-40 pointer-events-none")}>
+          <Checkbox checked={backboneOnly} onCheckedChange={(v) => setBackboneOnly(!!v)} />
+          줄기만
+        </label>
+        <label className={cn("flex items-center gap-1.5 cursor-pointer text-muted-foreground",
+          focusId != null && "opacity-40 pointer-events-none")}>
           <Checkbox checked={showSmall} onCheckedChange={(v) => setShowSmall(!!v)} />
-          작은 조각 표시{hiddenCount > 0 && !showSmall ? ` (숨김 ${hiddenCount}개 노드)` : ""}
+          작은 조각{hiddenCount > 0 && !showSmall ? ` (숨김 ${hiddenCount})` : ""}
         </label>
       </div>
+
+      {focalNode && (
+        <div className="flex items-center gap-2 text-xs flex-wrap rounded-lg border border-primary/30 bg-accent/40 px-3 py-1.5">
+          <Badge className="text-[10px]">초점</Badge>
+          <span className="font-medium">{focalNode.name}</span>
+          <span className="text-muted-foreground">이웃 {visNodes.length - 1}개</span>
+          <span className="ml-2 text-muted-foreground">깊이</span>
+          <ToggleGroup type="single" value={String(depth)}
+            onValueChange={(v) => v && setDepth(Number(v))} className="gap-0.5">
+            {[1, 2, 3].map((d) => (
+              <ToggleGroupItem key={d} value={String(d)}
+                className="h-6 w-6 p-0 text-[11px] rounded data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+                {d}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <button onClick={() => setSelectedNode(focalNode)}
+            className="ml-auto text-primary hover:underline">상세</button>
+          <button onClick={() => setFocusId(null)}
+            className="text-primary hover:underline">전체 보기 ✕</button>
+        </div>
+      )}
 
       {!data || data.edges.length === 0 ? (
         <EmptyState message="인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다." />
@@ -228,12 +299,13 @@ export default function WorldviewPage() {
         <div style={{ height: "calc(100vh - 240px)", minHeight: 560 }} className="rounded-xl border overflow-hidden">
           {view === "structure" ? (
             <ReactFlow
+              key={`${focusId ?? "all"}-${depth}-${backboneOnly}`}   // 초점/필터 변경 시 재마운트 → fitView 재실행
               nodes={rfNodes}
               edges={rfEdges}
               nodeTypes={nodeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
-              onNodeClick={(_, n) => { setSelectedNode(n.data as unknown as WNode); setSelectedEdge(null) }}
+              onNodeClick={(_, n) => focusNode(n.data as unknown as WNode)}
               onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNode(null) }}
               fitView
               fitViewOptions={{ maxZoom: 0.9 }}
@@ -246,11 +318,9 @@ export default function WorldviewPage() {
           ) : (
             <Suspense fallback={<Skeleton className="h-full w-full" />}>
               {view === "force3d" ? (
-                <ForceGraph3DView nodes={visNodes} edges={visEdges}
-                  onNodeSelect={(n) => { setSelectedNode(n); setSelectedEdge(null) }} />
+                <ForceGraph3DView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode} />
               ) : (
-                <ObsidianGraphView nodes={visNodes} edges={visEdges}
-                  onNodeSelect={(n) => { setSelectedNode(n); setSelectedEdge(null) }} />
+                <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode} />
               )}
             </Suspense>
           )}
