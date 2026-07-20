@@ -148,7 +148,7 @@ function NarrativeLanding() {
         <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 질문</span>
       </div>
       <MegaNarrativeSection />
-      <NarrativeList empty="state" />
+      <NarrativeList empty="state" controls />
     </PageContainer>
   )
 }
