@@ -132,16 +132,17 @@ def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, c
             # 문서 레벨 재확인(narrative_id=None)이 기존 내러티브 태그를 지우지 않게 COALESCE
             conn.execute(
                 "UPDATE entity_relations SET confidence=?, narrative_id=COALESCE(?, narrative_id), "
-                "mechanism=COALESCE(?, mechanism) WHERE id=?",
-                (min(0.95, (existing["confidence"] or conf) + 0.05), narrative_id, e.get("mechanism"), existing["id"]))
+                "mechanism=COALESCE(?, mechanism), geo_scope=COALESCE(geo_scope, ?) WHERE id=?",
+                (min(0.95, (existing["confidence"] or conf) + 0.05), narrative_id,
+                 e.get("mechanism"), _norm_geo(e.get("geo")), existing["id"]))
             rel_id = existing["id"]
         else:
             cur = conn.execute(
                 "INSERT INTO entity_relations (src_id, dst_id, rel_type, epistemic_type, confidence, "
-                "source_doc_id, mechanism, reference_period, time_orientation, narrative_id, valid_from) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                "source_doc_id, mechanism, reference_period, time_orientation, narrative_id, geo_scope, valid_from) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
                 (sid, did, rel, epistemic, conf, source_doc_id, e.get("mechanism"),
-                 e.get("reference_period"), e.get("orientation"), narrative_id))
+                 e.get("reference_period"), e.get("orientation"), narrative_id, _norm_geo(e.get("geo"))))
             rel_id = cur.lastrowid
             made += 1
         # 근거 이력 — 이 (엣지, 내러티브) 조합을 처음 본다면만 적재(멱등, 교차검증 카운트용).
@@ -179,6 +180,15 @@ _ORIENT_KO = {"past": "회고", "current": "현재", "forward": "전망", "mixed
 DOMAIN_LENSES = {"macro", "geopolitics", "industry", "flow", "tech", "policy"}
 NODE_TYPES = {"company", "sector", "theme", "person", "macro", "policy", "event"}
 CAUSAL_RELS = {"CAUSES", "BENEFITS_FROM"}
+# 인과 주장의 장소 스코프 통제어휘 (파편화 방지, D-034). 3개 프롬프트가 공유.
+GEO_VOCAB = "한국|미국|중국|유럽|일본|대만|글로벌|기타"
+_GEO_SET = set(GEO_VOCAB.split("|"))
+
+
+def _norm_geo(v) -> str | None:
+    """geo 값 정규화 — 통제어휘(GEO_VOCAB)에 없으면 None (거짓 정밀 방지)."""
+    v = (v or "").strip()
+    return v if v in _GEO_SET else None
 
 
 def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_vocab: list[str]) -> str:
@@ -237,7 +247,7 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "  layer ∈ event·flow·cycle·structure·regime (느릴수록 구조적)\n"
         f"  ★기존 노드가 있으면 새로 만들지 말고 정확히 그 이름을 재사용: {', '.join(node_vocab[:60])}\n"
         "- causal.edges: 인과 고리. 각 "
-        "{\"from\",\"to\",\"rel\",\"mechanism\",\"orientation\",\"reference_period\",\"confidence\"}.\n"
+        "{\"from\",\"to\",\"rel\",\"mechanism\",\"orientation\",\"reference_period\",\"geo\",\"confidence\"}.\n"
         "  rel='CAUSES'(원인→결과). 수혜 섹터는 rel='BENEFITS_FROM'(from=수혜 섹터, to=체인 말단 동인).\n"
         "  앞의 끝(근본 원인)은 policy/regime/structure 노드까지 거슬러라. "
         "뒤의 끝(수혜)은 sector까지만 — 개별 종목 금지.\n"
@@ -247,6 +257,7 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "company는 수혜 예측이 아니라 동인으로서만 (수혜 종착은 여전히 sector).\n"
         "  orientation ∈ past|current|forward (원인은 대개 past, 수혜 효과는 forward).\n"
         "  reference_period: 이 인과가 작동하는 시점(수집일 아님, 예 '2026 하반기'), 모르면 null.\n"
+        f"  geo ∈ {{{GEO_VOCAB}}} 중 하나(특정 지역 사건이면 해당국, 전세계 공통이면 글로벌, 목록 밖이면 기타), 모르면 null.\n"
         "  confidence: 0~1 (근거 강도). 원인→결과 방향만.\n"
         "  ★피드백(자기강화): 결과가 다시 원인을 강화하는 순환(예: AI 능력↑→합성 데이터→학습 강화→AI 능력↑)을 "
         "발견하면 버리지 말고 **시점이 다른 두 개의 엣지로 펴서** 표현하라 — A→B(reference_period=현재)와 "
@@ -416,7 +427,7 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     내러티브 수, narrative_edge_evidence 집계) · contested(반대 방향 CAUSES가 그래프에 공존)."""
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
-               er.promoted_knowledge_id, er.feedback_note, s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
+               er.promoted_knowledge_id, er.feedback_note, er.geo_scope, s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
         WHERE er.narrative_id=? AND er.rel_type IN ('CAUSES','BENEFITS_FROM')
@@ -438,6 +449,7 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
                           "orientation": e["time_orientation"], "reference_period": e["reference_period"],
                           "confidence": e["confidence"], "corroborated_by": n_narratives,
                           "contested": contested, "feedback_note": e["feedback_note"],
+                          "geo_scope": e["geo_scope"],
                           "promoted_knowledge_id": e["promoted_knowledge_id"]})
     return {"nodes": list(nodes.values()), "edges": out_edges}
 

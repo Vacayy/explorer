@@ -14,6 +14,7 @@ import subprocess
 
 from database import get_connection
 from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.narrative import GEO_VOCAB
 
 SCENARIO_MODEL = os.getenv("SCENARIO_MODEL", "opus")  # 심층 종합 티어 — 다단 인과 추론
 SCENARIO_PREFIXES = ("시나리오:", "시나리오 :", "만약:", "what if:")
@@ -42,7 +43,7 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "너는 사건의 파급을 추론하는 투자 리서치 전략가다. 아래 [사건]을 그대로 받아들이지 말고 "
         "인과 체인으로 전개해라.\n"
         'JSON만 출력: {"scenario": "마크다운", "causal": {"nodes": [{"name","type","layer"}], '
-        '"edges": [{"from","to","rel","mechanism","orientation","reference_period","confidence"}]}}\n'
+        '"edges": [{"from","to","rel","mechanism","orientation","reference_period","geo","confidence"}]}}\n'
         "마크다운 구조 (섹션 고정):\n"
         "### 사건 정의 — 무엇이 실제로 일어났고/일어난다고 가정하며, 무엇은 아직 불확실한가\n"
         "### 파급 체인 — '사건 → 1차 → 2차 → 3차' 화살표 체인을 먼저 한 줄로, 이어서 단계별로:\n"
@@ -62,6 +63,7 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "수혜 종착은 sector까지만 — 개별 종목 금지. 특정 인물/기업의 결정이 메커니즘의 실체면 "
         "person/company 노드로 명시('사라지면 약해지는가' 기준). 피드백은 시점 다른 두 엣지로. "
         "orientation ∈ past|current|forward, reference_period는 작동 시점(모르면 null), "
+        f"geo ∈ {{{GEO_VOCAB}}} 중 하나(특정 지역 사건이면 해당국, 전세계 공통이면 글로벌, 목록 밖이면 기타, 모르면 null), "
         "confidence 0~1(가정된 사건에서 출발하므로 보수적으로).\n\n"
         f"[사건]\n{event}\n"
         f"\n{LENS_WORLDVIEW}\n"

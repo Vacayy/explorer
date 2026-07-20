@@ -14,6 +14,7 @@ export interface WEdge {
   reference_period: string | null; confidence: number | null
   corroborated_by: number; contested: boolean; promoted_knowledge_id: number | null
   feedback_note?: string | null   // both_temporal 해소 근거 (D-029)
+  geo_scope?: string | null       // 인과 주장의 장소 스코프 (통제어휘, D-034)
   flywheel?: boolean
 }
 

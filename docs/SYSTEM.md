@@ -71,7 +71,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | 테이블 | 행수 | 역할 |
 |---|---|---|
 | `entities` | 4,135+ | 노드: company·sector·theme·person + **macro·policy·event**(인과 그래프 노드, D-023 활성화) |
-| `entity_relations` | 2,760+ | 엣지: MEMBER_OF(기업→섹터, fact) + **CAUSES·BENEFITS_FROM**(인과, hypothesis — 내러티브 산출). epistemic_type·confidence·valid_from/to + mechanism·reference_period·time_orientation·narrative_id(D-023) + feedback_note(both_temporal 해소 근거 — non-null이면 상충 아닌 시점 다른 피드백 나선, contested 계산서 제외, D-029) |
+| `entity_relations` | 2,760+ | 엣지: MEMBER_OF(기업→섹터, fact) + **CAUSES·BENEFITS_FROM**(인과, hypothesis — 내러티브 산출). epistemic_type·confidence·valid_from/to + mechanism·reference_period·time_orientation·narrative_id(D-023) + feedback_note(both_temporal 해소 근거 — non-null이면 상충 아닌 시점 다른 피드백 나선, contested 계산서 제외, D-029) + geo_scope(인과 주장의 장소 스코프 — 통제어휘 한국·미국·중국·유럽·일본·대만·글로벌·기타, reference_period와 대칭, backfill_geo_scope.py, D-034) |
 | `narratives` | 버전별 | 내러티브 1급 객체 — topic별 version 보존(supersede, 드리프트 추적)·title·body(md)·category(도메인 렌즈)·doc_ids_hash. 인과 서브그래프는 entity_relations의 narrative_id로 연결 (D-023) |
 | `raw_documents` | 264 | 모든 소스의 문서 원본+markdown+media_json. UNIQUE(source_type, source_id) |
 | `enrichments` | 문서당 1 | 요약·감성·**time_orientation·reference_period**(시간 정박 D-021)·모델 (content_hash 캐시) |
