@@ -32,7 +32,7 @@
 | reserved | `policy` | 정책·규제 (지정학 렌즈) | 대중 반도체 수출규제, CHIPS Act |
 | reserved | `macro_indicator` | 할인율/유동성 축 (매크로 렌즈) | 기준금리, TGA 잔고, CPI |
 | reserved | `paper` | 피인용 최신 논문 (인물 렌즈) | — |
-| reserved | `geo` | 국가/진영 (지정학 렌즈) | 미국, 중국 |
+| reserved | `geo` | 국가/진영 (지정학 렌즈) — 1급 노드는 아직 예약. 장소는 현재 인과 엣지의 `geo_scope` 스칼라로 정박(D-034) | 미국, 중국 |
 | reserved | `commodity` | 원자재 (에너지 렌즈) | 원유, 가스, 전력 |
 
 ---
@@ -136,7 +136,9 @@ entities(id, type, name, aliases, meta)
 entity_relations(src_id, dst_id, rel_type,
                  epistemic_type[fact|hypothesis],
                  confidence, source_doc_id,
-                 valid_from, valid_to)
+                 valid_from, valid_to,
+                 mechanism, reference_period, time_orientation,  -- 인과 서사·시점(D-021·D-023)
+                 geo_scope)  -- 인과 주장의 장소 스코프(통제어휘, D-034). 노드는 보편 유지, 시공간은 엣지에.
 observations(entity_id, date, metric, value, unit, source)
 models(id, name, spec_json, output_entity_id)
 -- 도메인 원본 테이블은 별도 유지: financial_statements, trade_*, stock_prices ...

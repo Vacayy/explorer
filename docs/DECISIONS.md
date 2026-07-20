@@ -10,6 +10,18 @@
 
 ---
 
+## D-034 · 2026-07-20 · 인과 주장에 장소 정박 — geo_scope 엣지 스칼라 (보편 노드 + 스코프 있는 엣지)
+
+**결정**: 인과 노드는 시간·장소 없는 **보편 개념**으로 유지하고(A방향), 인과 주장(엣지)에 **`entity_relations.geo_scope`(통제어휘 스칼라)를 추가** — 시간 `reference_period`과 대칭. 통제어휘 `한국|미국|중국|유럽|일본|대만|글로벌|기타`(프리폼 파편화 방지, D-033 교훈), 공용 상수 `GEO_VOCAB`(narrative.py)를 추출 프롬프트 3곳(narrative·doc_causal·scenario)이 공유, `_norm_geo`로 어휘 밖 값은 None. 적재는 `_persist_causal` 한 곳(INSERT + 기존엣지 COALESCE). 기존 ~1,352 엣지는 `scripts/backfill_geo_scope.py`(haiku 배치, dry-run→apply, 애매하면 null 유지). 프론트: 노드 상세에 "관측 시점·지역" 집합 + 각 인과 행·엣지 상세에 geo 배지. 스펙: docs/specs/geo-scope.md.
+
+**맥락·이유**: "전력요금 인상" 같은 보편 노드가 "언제·어디서?"가 없어 정보 가치가 약하다는 지적(대화 2026-07-20). 시간은 이미 엣지에 있었으므로(D-021·D-023) 장소도 엣지에 대칭으로 붙이는 게 일관된다. 노드를 개별 사건("2026 한국 전력요금 인상")으로 쪼개는 대안은 노드 폭발·반복 패턴 상실로 기각 — 보편 노드는 재사용·반복 패턴 인식이라는 이 도구의 강점을 지킨다. **범위 규율**: geo_scope는 인과 주장을 시공간에 *위치*시키는 것이지 영향 *계산*(전파·시차·크기)이 아니다 — 정량 exposure 추론(호르무즈式 "각국 영향도")은 geo 태그가 아니라 가중 의존 그래프(geo 1급 노드 + DEPENDS_ON, observations, models)를 요구하는 별도 종의 시스템이며, 시장은 물리가 아니라 반사적 도메인이라 결정론적 시뮬레이션은 거짓 정밀 위험(대화 2026-07-20). 정량은 좁은 렌즈에만.
+
+**기각한 대안**: ① 개별 사건 노드(token) — 노드 폭발·dedup·반복성 상실 ② geo 1급 노드/OCCURS_IN 즉시 활성화 — 시간이 노드가 아닌데 geo만 노드면 비대칭, 추출·dedup·UI 비용 큼(정량 exposure가 실제 목표일 때 별도 트랙) ③ 프리폼 geo — 지명 파편화(서울/한국/코리아), 통제어휘로 방어 ④ 억지 지정 — 애매한 엣지는 null 유지(거짓 정밀 방지).
+
+**참조**: docs/specs/geo-scope.md · backend/database.py(geo_scope 마이그레이션) · backend/pipeline/narrative.py(GEO_VOCAB·_norm_geo·_persist_causal·추출 프롬프트·causal_subgraph) · doc_causal.py·scenario.py(프롬프트) · narrative_graph.py(full_causal_graph) · routers/spine_causal.py · scripts/backfill_geo_scope.py · frontend WorldviewPage.tsx·graph/types.ts · D-021(시간 정박)·D-023(인과=시간 종속)·D-033(파편화 교훈) · 대화 2026-07-20
+
+---
+
 ## D-033 · 2026-07-19 · 어휘 통합 — theme·macro 파편화 치유 (승격 루프 소생)
 
 **결정**: 인과 그래프 추상 노드(theme·macro)의 표기 파편화를 **배치 병합 + 쓰기 시 리다이렉트**로 치유한다(스펙: docs/specs/vocab-consolidation.md). ① `entity_merges` 테이블(audit+redirect 겸용) ② `pipeline/vocab.py` — fastembed 코사인(≥0.90, 같은 type 내) 후보 → sonnet 배치 쌍 판정(same/different, "수준·방향·시점 다르면 different, 애매하면 different") → survivor(인과 엣지 참조 多, 동률이면 오래된 id)로 FK 전수 재배선(PRAGMA 동적 발견; entity_relations는 UNIQUE 충돌 시 confidence=max·메타 non-null 우선으로 엣지 병합 + narrative_edge_evidence 이관) 후 loser 삭제 ③ `scripts/consolidate_vocab.py` — dry-run(기본)이 계획을 출력·저장, 사람 검토 후 `--apply`가 그 계획 그대로 적용(LLM 재호출 없음) = D-020 "기계는 제안, 사람은 승인"의 CLI 배치 승인 ④ `_resolve_or_create_node`가 병합으로 사라진 이름을 entity_merges로 survivor에 해소(재파편화 방지).

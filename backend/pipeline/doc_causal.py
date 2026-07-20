@@ -13,7 +13,7 @@ import subprocess
 
 from database import get_connection
 from pipeline.enrich import _claude_bin, llm_engine
-from pipeline.narrative import _node_vocab, _persist_causal
+from pipeline.narrative import GEO_VOCAB, _node_vocab, _persist_causal
 
 DOC_CAUSAL_MODEL = os.getenv("DOC_CAUSAL_MODEL", "sonnet")
 MIN_DOC_CHARS = 1200      # 짧은 시황 코멘트 배제 — 인과 서술이 있을 만한 밀도
@@ -28,7 +28,7 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
         "★투자·시장 세계관에 속하는 인과만: 거시경제·산업·기업·정책·시장 구조가 대상이다. "
         "지역 행정·생활 정보·사회 일반 등 투자 판단과 무관한 인과는 문서에 서술돼 있어도 제외.\n"
         'JSON만 출력: {"causal": {"nodes": [{"name","type","layer"}], "edges": '
-        '[{"from","to","rel","mechanism","orientation","reference_period","confidence"}]}}\n'
+        '[{"from","to","rel","mechanism","orientation","reference_period","geo","confidence"}]}}\n'
         "규칙 (내러티브 인과 추출과 동일):\n"
         "- type ∈ company·sector·theme·person·macro(유가·금리·인플레)·policy(협상·규제)·event(봉쇄·사고)\n"
         "- layer ∈ event·flow·cycle·structure·regime (느릴수록 구조적 — 단발 사건=event, "
@@ -40,7 +40,9 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
         "person/company 노드로 명시 ('그 사람/기업이 사라지면 이 인과가 약해지는가' 기준).\n"
         "- 피드백(자기강화)을 발견하면 시점이 다른 두 엣지로 펴서 표현 (같은 시점 내 순환 금지).\n"
         "- orientation ∈ past|current|forward. reference_period: 이 인과가 작동하는 시점(예 '2026 하반기'), "
-        "모르면 null. confidence: 0~1 — 문서가 단정하면 0.5, 조건부/추측이면 0.3.\n"
+        "모르면 null.\n"
+        f"- geo ∈ {{{GEO_VOCAB}}} 중 하나(특정 지역 사건이면 해당국, 전세계 공통이면 글로벌, 목록 밖이면 기타), 모르면 null.\n"
+        "- confidence: 0~1 — 문서가 단정하면 0.5, 조건부/추측이면 0.3.\n"
         f"[문서]\n제목: {title}\n{(markdown or '')[:EXCERPT]}"
     )
 

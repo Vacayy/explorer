@@ -47,6 +47,7 @@ interface WEdge {
   reference_period: string | null; confidence: number | null
   corroborated_by: number; contested: boolean; promoted_knowledge_id: number | null
   feedback_note?: string | null   // both_temporal 해소 근거 (시점 다른 피드백 나선, D-029)
+  geo_scope?: string | null       // 인과 주장의 장소 스코프 (통제어휘, D-034)
   flywheel?: boolean
 }
 interface Worldview { nodes: WNode[]; edges: WEdge[] }
@@ -348,6 +349,7 @@ function EdgeContextRow({ e, dir }: { e: WEdge; dir: "in" | "out" }) {
         {dir === "out" && <><ArrowRight className="h-3 w-3 text-muted-foreground" /><span className="font-medium">{other}</span></>}
         {otherType && <span className="text-[9px] text-muted-foreground">{NODE_LABEL[otherType] ?? otherType}</span>}
         {e.reference_period && <span className="text-[9px] text-muted-foreground">· {e.reference_period}</span>}
+        {e.geo_scope && <Badge variant="outline" className="text-[9px]">{e.geo_scope}</Badge>}
         {e.corroborated_by >= 2 && <Badge variant="outline" className="text-[9px] text-primary border-primary/40">{e.corroborated_by}개 확인</Badge>}
         {e.contested && <Badge variant="destructive" className="text-[9px]">상충</Badge>}
       </div>
@@ -366,6 +368,10 @@ function NodeDetailSheet({ node, allEdges, onClose }: { node: WNode | null; allE
   )
   const causes = node ? allEdges.filter((e) => e.to_id === node.id) : []      // 이 노드로 들어오는 (원인)
   const effects = node ? allEdges.filter((e) => e.from_id === node.id) : []   // 이 노드에서 나가는 (결과)
+  // 보편 노드의 "언제·어디서" — 연결된 인과 주장들의 시점·지역 집합 (D-034)
+  const incident = [...causes, ...effects]
+  const periods = [...new Set(incident.map((e) => e.reference_period).filter(Boolean))]
+  const geos = [...new Set(incident.map((e) => e.geo_scope).filter(Boolean))]
 
   return (
     <Sheet open={!!node} onOpenChange={(o) => !o && onClose()}>
@@ -377,6 +383,12 @@ function NodeDetailSheet({ node, allEdges, onClose }: { node: WNode | null; allE
           </SheetDescription>
         </SheetHeader>
         <div className="px-4 space-y-4 text-sm">
+          {(periods.length > 0 || geos.length > 0) && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground border-b pb-2">
+              {periods.length > 0 && <span>관측 시점: {periods.join(" · ")}</span>}
+              {geos.length > 0 && <span>지역: {geos.join(" · ")}</span>}
+            </div>
+          )}
           {causes.length > 0 && (
             <div>
               <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드를 부르는 원인 ({causes.length})</div>
@@ -424,6 +436,12 @@ function EdgeDetailSheet({ edge, onClose }: { edge: WEdge | null; onClose: () =>
           <SheetDescription>{edge?.rel === "BENEFITS_FROM" ? "수혜" : "인과"}</SheetDescription>
         </SheetHeader>
         <div className="px-4 space-y-2 text-sm">
+          {(edge?.reference_period || edge?.geo_scope) && (
+            <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+              {edge?.reference_period && <span>시점: {edge.reference_period}</span>}
+              {edge?.geo_scope && <span>· 지역: {edge.geo_scope}</span>}
+            </div>
+          )}
           {edge?.mechanism && <p>{edge.mechanism}</p>}
           <div className="flex flex-wrap gap-1.5">
             {edge && edge.corroborated_by >= 2 && (
