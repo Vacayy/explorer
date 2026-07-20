@@ -232,6 +232,8 @@ export default function WorldviewPage() {
 
   return (
     <PageContainer gap="sm">
+      {/* 전체화면이면 뷰 전체(메뉴+그래프)가 화면을 덮는다 — 상단 컨트롤도 함께 노출 */}
+      <div className={cn("flex flex-col gap-2", fullscreen && "fixed inset-0 z-50 bg-background p-4")}>
       <div className="flex items-baseline gap-2 flex-wrap">
         <h1 className="text-lg font-bold">세계관 뷰 (인과 그래프)</h1>
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}
@@ -297,8 +299,8 @@ export default function WorldviewPage() {
         <div
           style={fullscreen ? undefined : { height: "calc(100vh - 160px)", minHeight: 620 }}
           className={cn(
-            "relative border overflow-hidden bg-background",
-            fullscreen ? "fixed inset-0 z-50 rounded-none" : "rounded-xl",
+            "relative border overflow-hidden bg-background rounded-xl",
+            fullscreen && "flex-1 min-h-0",
           )}
         >
           {view === "structure" ? (
@@ -347,6 +349,7 @@ export default function WorldviewPage() {
           )}
         </div>
       )}
+      </div>
     </PageContainer>
   )
 }
