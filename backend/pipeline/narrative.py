@@ -58,8 +58,26 @@ def _node_vocab(conn, limit: int = 60) -> list[str]:
     return [r["name"] for r in rows]
 
 
-def _resolve_or_create_node(conn, name: str, type_: str) -> int | None:
-    """인과 노드명 → entity id. 정확 이름 매칭 우선(타입 무관 재사용), 없으면 생성."""
+PACE_LAYERS = ("event", "flow", "cycle", "structure", "regime")
+
+
+def _set_pace_layer(conn, entity_id: int, layer: str | None) -> None:
+    """노드 중력(D-030) — 추출된 pace_layer를 meta_json에 저장. 이미 있으면 유지
+    (문서마다 판정이 흔들릴 수 있어 최초 기록이 안정적 — 정정은 백필/수동으로)."""
+    if layer not in PACE_LAYERS:
+        return
+    row = conn.execute("SELECT meta_json FROM entities WHERE id=?", (entity_id,)).fetchone()
+    meta = json.loads(row["meta_json"]) if row and row["meta_json"] else {}
+    if meta.get("pace_layer"):
+        return
+    meta["pace_layer"] = layer
+    conn.execute("UPDATE entities SET meta_json=? WHERE id=?",
+                 (json.dumps(meta, ensure_ascii=False), entity_id))
+
+
+def _resolve_or_create_node(conn, name: str, type_: str, layer: str | None = None) -> int | None:
+    """인과 노드명 → entity id. 정확 이름 매칭 우선(타입 무관 재사용), 없으면 생성.
+    layer가 오면 meta_json.pace_layer에 기록 (노드 중력, D-030)."""
     name = (name or "").strip()
     if not name or len(name) > 60:
         return None
@@ -69,26 +87,37 @@ def _resolve_or_create_node(conn, name: str, type_: str) -> int | None:
         "SELECT id FROM entities WHERE name=? ORDER BY CASE WHEN type=? THEN 0 ELSE 1 END LIMIT 1",
         (name, type_)).fetchone()
     if row:
-        return row["id"]
-    cur = conn.execute("INSERT INTO entities (type, name) VALUES (?, ?)", (type_, name))
-    return cur.lastrowid
+        eid = row["id"]
+    else:
+        # 정확 이름 매칭 실패 — 병합으로 사라진 이름이면 survivor로 해소 (D-033, 재파편화 방지)
+        redirect = conn.execute(
+            "SELECT survivor_id FROM entity_merges WHERE old_name=? AND type=?",
+            (name, type_)).fetchone()
+        eid = redirect["survivor_id"] if redirect else conn.execute(
+            "INSERT INTO entities (type, name) VALUES (?, ?)", (type_, name)).lastrowid
+    if layer:
+        _set_pace_layer(conn, eid, layer)
+    return eid
 
 
 def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, causal: dict,
-                     conf_cap: float = 1.0) -> int:
-    """인과 노드·엣지를 entity_relations에 적재 (hypothesis). 같은 (src,dst,rel) 재적재는 confidence 강화.
+                     conf_cap: float = 1.0, epistemic: str = "hypothesis") -> int:
+    """인과 노드·엣지를 entity_relations에 적재. 같은 (src,dst,rel) 재적재는 confidence 강화.
     narrative_id=None이면 문서 레벨 추출(D-028 레버 3) — 근거 이력(narrative_edge_evidence)은 건너뛴다.
-    conf_cap: 초기 confidence 상한 (문서 레벨은 0.5 — 반복 확인돼야 커진다)."""
+    conf_cap: 초기 confidence 상한 (문서 레벨은 0.5 — 반복 확인돼야 커진다).
+    epistemic: 'hypothesis'(시장 가설, 기본) | 'observed'(canon 역사 해석 — 널리 수용된 사실 사슬, D-030)."""
     ntype = {str(n.get("name")).strip(): (n.get("type") or "theme")
              for n in (causal.get("nodes") or []) if n.get("name")}
+    nlayer = {str(n.get("name")).strip(): n.get("layer")
+              for n in (causal.get("nodes") or []) if n.get("name")}
     made = 0
     for e in (causal.get("edges") or []):
         frm, to = (e.get("from") or "").strip(), (e.get("to") or "").strip()
         rel = e.get("rel") if e.get("rel") in CAUSAL_RELS else "CAUSES"
         if not frm or not to or frm == to:
             continue
-        sid = _resolve_or_create_node(conn, frm, ntype.get(frm, "theme"))
-        did = _resolve_or_create_node(conn, to, ntype.get(to, "theme"))
+        sid = _resolve_or_create_node(conn, frm, ntype.get(frm, "theme"), nlayer.get(frm))
+        did = _resolve_or_create_node(conn, to, ntype.get(to, "theme"), nlayer.get(to))
         if not sid or not did:
             continue
         try:
@@ -110,8 +139,8 @@ def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, c
             cur = conn.execute(
                 "INSERT INTO entity_relations (src_id, dst_id, rel_type, epistemic_type, confidence, "
                 "source_doc_id, mechanism, reference_period, time_orientation, narrative_id, valid_from) "
-                "VALUES (?, ?, ?, 'hypothesis', ?, ?, ?, ?, ?, ?, datetime('now'))",
-                (sid, did, rel, conf, source_doc_id, e.get("mechanism"),
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                (sid, did, rel, epistemic, conf, source_doc_id, e.get("mechanism"),
                  e.get("reference_period"), e.get("orientation"), narrative_id))
             rel_id = cur.lastrowid
             made += 1
@@ -164,6 +193,7 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
                    f"\n  {(d['ex'] or '').strip()[:160]}" for d in docs)
     first = min((d["published_at"] or "")[:10] for d in docs) if docs else ""
     from pipeline.knowledge_recall import knowledge_block
+    from pipeline.lenses import LENS_WORLDVIEW
     kn = knowledge_block(knowledge, "승격된 지식 — 검증된 전제")
     return (
         f"너는 1인 리서치센터의 전략가다. '{topic}'가 최근 시장에서 주목받는 화두다. "
@@ -222,6 +252,7 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "발견하면 버리지 말고 **시점이 다른 두 개의 엣지로 펴서** 표현하라 — A→B(reference_period=현재)와 "
         "B→A(reference_period=그 다음 시기, orientation=forward). 같은 시점 안에서의 순환(A→B→A 동시)은 금지. "
         "자기강화 루프는 가장 강력한 투자 구조이니 놓치지 마라.\n"
+        f"\n{LENS_WORLDVIEW}\n"
         f"{kn}\n\n[수집된 문서 — '수집 날짜'는 발행일이지 사건 발생일이 아님. "
         f"대괄호 태그는 입력 주석일 뿐, 본문에 그대로 쓰지 말 것]\n{tl}"
     )
@@ -301,7 +332,7 @@ def list_narratives(conn) -> list[dict]:
         SELECT n.* FROM narratives n
         JOIN (SELECT topic, MAX(version) mv FROM narratives GROUP BY topic) l
           ON l.topic=n.topic AND l.mv=n.version
-        WHERE n.title IS NOT NULL""").fetchall()
+        WHERE n.title IS NOT NULL AND COALESCE(n.kind,'topic')='topic'""").fetchall()
     items = []
     for r in rows:
         m = metrics.get(r["topic"])
@@ -385,7 +416,7 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     내러티브 수, narrative_edge_evidence 집계) · contested(반대 방향 CAUSES가 그래프에 공존)."""
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
-               er.promoted_knowledge_id, s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
+               er.promoted_knowledge_id, er.feedback_note, s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
         WHERE er.narrative_id=? AND er.rel_type IN ('CAUSES','BENEFITS_FROM')
@@ -397,7 +428,8 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
         n_narratives = conn.execute(
             "SELECT COUNT(DISTINCT narrative_id) c FROM narrative_edge_evidence WHERE entity_relation_id=?",
             (e["id"],)).fetchone()["c"]
-        contested = e["rel_type"] == "CAUSES" and conn.execute(
+        # feedback_note가 있으면 opus가 '상충 아닌 시점 다른 피드백 나선'으로 해소한 것 → contested 제외(D-029)
+        contested = e["rel_type"] == "CAUSES" and not e["feedback_note"] and conn.execute(
             "SELECT 1 FROM entity_relations er2 JOIN entities s2 ON s2.id=er2.src_id "
             "JOIN entities d2 ON d2.id=er2.dst_id WHERE er2.rel_type='CAUSES' AND s2.name=? AND d2.name=?",
             (e["dname"], e["sname"])).fetchone() is not None
@@ -405,7 +437,8 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
                           "to_type": e["dtype"], "rel": e["rel_type"], "mechanism": e["mechanism"],
                           "orientation": e["time_orientation"], "reference_period": e["reference_period"],
                           "confidence": e["confidence"], "corroborated_by": n_narratives,
-                          "contested": contested, "promoted_knowledge_id": e["promoted_knowledge_id"]})
+                          "contested": contested, "feedback_note": e["feedback_note"],
+                          "promoted_knowledge_id": e["promoted_knowledge_id"]})
     return {"nodes": list(nodes.values()), "edges": out_edges}
 
 
@@ -436,7 +469,7 @@ def related_narratives(conn, narrative_id: int) -> dict:
         SELECT n.id, n.topic, n.title FROM narratives n
         JOIN (SELECT topic, MAX(version) mv FROM narratives GROUP BY topic) l
           ON l.topic = n.topic AND l.mv = n.version
-        WHERE n.id != ?""", (narrative_id,)).fetchall()
+        WHERE n.id != ? AND COALESCE(n.kind,'topic')='topic'""", (narrative_id,)).fetchall()
     related = []
     for row in rows:
         other_nodes = {n["name"] for n in causal_subgraph(conn, row["id"])["nodes"]}

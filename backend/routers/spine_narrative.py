@@ -102,6 +102,26 @@ class VersionDiff(BaseModel):
     summary: str | None = None
 
 
+class MegaNarrative(BaseModel):
+    id: int
+    name: str            # 군집 이름 (LLM 명명, 예: 'AI 슈퍼사이클')
+    title: str | None
+    narrative: str | None
+    members: list[str]   # 구성 sub-story 토픽들
+    version: int
+    created_at: str | None
+
+
+@router.get("/mega", response_model=list[MegaNarrative])
+def mega_list():
+    """메가 내러티브(공유노드 군집의 상위 세계관 서사, D-031) — 살아있는 것만. LLM 없음."""
+    from pipeline.mega_narrative import list_mega
+    conn = get_connection()
+    r = list_mega(conn)
+    conn.close()
+    return [MegaNarrative(**x) for x in r]
+
+
 @router.get("/list", response_model=NarrativeList)
 def list_narratives():
     """생성된 내러티브 모음 — 급증 주제 먼저, 나머지 최신순 (LLM 호출 없음)."""

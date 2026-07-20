@@ -6,6 +6,8 @@ const SOURCE_LABEL: Record<string, string> = {
   youtube: "유튜브",
   dart: "공시",
   report: "리포트",
+  canon: "역사",
+  note: "노트",
 }
 
 export function SourceBadge({ sourceType }: { sourceType: string }) {

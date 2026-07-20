@@ -1,17 +1,16 @@
-import { useState } from "react"
 import { Link } from "react-router-dom"
-import { Check, ChevronDown, Inbox, X } from "lucide-react"
+import { AlertTriangle, BookOpen, Check, Clock, HelpCircle, Inbox, Search, Tag, X } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ProposalPanel } from "@/components/shared/ProposalPanel"
 
 /**
  * 승인 대기 — 기계의 제안이 사람의 결정을 기다리는 곳 (판단 루프 ③).
- * 홈에서 바로 훑고 인라인으로 승인/거부. 유형 확장: alias → knowledge 승격(K0) → …
+ * kind별 개별 카드를 2열 그리드로. 카드 안이 넘치면 내부 스크롤(펼침 UI 대신).
  */
 
 interface ApprovalItem {
@@ -23,20 +22,24 @@ interface ApprovalItem {
   stock_code: string | null
 }
 
-const VISIBLE = 5
-
 // 에이전트 제안함 kind (진화계획 3단계 v1, docs/specs/agent-proposals.md)
 const AGENT_KINDS = new Set(["neglect", "contested_edge", "devils_advocate", "falsifier_watch"])
-const KIND_LABEL: Record<string, string> = {
-  alias: "별칭", knowledge: "지식",
-  neglect: "소외", contested_edge: "상충", devils_advocate: "질문", falsifier_watch: "반증",
+// kind별 메타 + 카드 표시 순서 (에이전트 제안 4종 먼저, 별칭·지식은 뒤)
+type KindMeta = { label: string; Icon: React.ComponentType<{ className?: string }> }
+const KIND_META: Record<string, KindMeta> = {
+  neglect: { label: "소외", Icon: Search },
+  contested_edge: { label: "상충", Icon: AlertTriangle },
+  devils_advocate: { label: "질문", Icon: HelpCircle },
+  falsifier_watch: { label: "반증", Icon: Clock },
+  alias: { label: "별칭", Icon: Tag },
+  knowledge: { label: "지식", Icon: BookOpen },
 }
+const KIND_ORDER = ["neglect", "contested_edge", "devils_advocate", "falsifier_watch", "alias", "knowledge"]
 // 확인만 하는 kind — 승인 버튼 라벨을 다르게 (액션이 없음을 정직하게)
 const ACK_ONLY = new Set(["devils_advocate", "falsifier_watch"])
 
 export default function ApprovalsCard() {
   const qc = useQueryClient()
-  const [showAll, setShowAll] = useState(false)
   const { data: items = [] } = useQuery(
     apiQuery<ApprovalItem[]>({ key: ["spine", "approvals"], url: "/api/spine/approvals", staleTime: STALE.short }),
   )
@@ -85,50 +88,56 @@ export default function ApprovalsCard() {
   })
 
   if (items.length === 0) return null
-  const visible = showAll ? items : items.slice(0, VISIBLE)
+
+  // kind별로 묶어 개별 카드로. 순서는 KIND_ORDER, 미등록 kind는 뒤에.
+  const kindsInOrder = [...KIND_ORDER, ...items.map((it) => it.kind).filter((k) => !KIND_ORDER.includes(k))]
+  const groups = Array.from(new Set(kindsInOrder))
+    .map((kind) => ({ kind, rows: items.filter((it) => it.kind === kind) }))
+    .filter((g) => g.rows.length > 0)
+
+  const renderRow = (it: ApprovalItem) => (
+    <div key={`${it.kind}-${it.id}`} className="flex items-start gap-2 py-1.5">
+      <span className="text-sm min-w-0 flex-1 break-words" title={it.detail ?? undefined}>
+        {it.stock_code ? (
+          <Link to={`/analyze/${it.stock_code}/summary`} className="hover:underline">{it.title}</Link>
+        ) : it.title}
+        {it.kind === "knowledge" && it.detail && (
+          <span className="ml-1.5 text-[10px] text-muted-foreground">{it.detail}</span>
+        )}
+      </span>
+      <span className="flex gap-1 shrink-0">
+        <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
+          disabled={approve.isPending} onClick={() => approve.mutate(it)}>
+          <Check className="h-3 w-3" /> {ACK_ONLY.has(it.kind) ? "확인" : "승인"}
+        </Button>
+        <Button size="xs" variant="ghost" className="h-6 px-2 text-muted-foreground hover:text-destructive"
+          disabled={reject.isPending} onClick={() => reject.mutate(it)}>
+          <X className="h-3 w-3" /> 거부
+        </Button>
+      </span>
+    </div>
+  )
 
   return (
-    <Card className="border-l-2 border-l-hypothesis">
-      <CardHeader className="pb-2 flex-row items-center gap-2">
+    <section className="space-y-2">
+      <div className="flex items-center gap-2">
         <Inbox className="h-4 w-4 text-hypothesis" />
-        <CardTitle className="text-sm">승인 대기</CardTitle>
+        <h3 className="text-sm font-semibold">승인 대기</h3>
         <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{items.length}</Badge>
         <span className="ml-auto text-[11px] text-muted-foreground">기계의 제안 — 결정은 사람이</span>
-      </CardHeader>
-      <CardContent className="divide-y">
-        {visible.map((it) => (
-          <div key={`${it.kind}-${it.id}`} className="flex items-center gap-2 py-1.5">
-            <Badge variant="secondary" className="text-[9px] shrink-0">
-              {KIND_LABEL[it.kind] ?? it.kind}
-            </Badge>
-            <span className="text-sm truncate" title={it.detail ?? undefined}>
-              {it.stock_code ? (
-                <Link to={`/analyze/${it.stock_code}/summary`} className="hover:underline">{it.title}</Link>
-              ) : it.title}
-              {it.kind === "knowledge" && it.detail && (
-                <span className="ml-1.5 text-[10px] text-muted-foreground">{it.detail}</span>
-              )}
-            </span>
-            <span className="ml-auto flex gap-1 shrink-0">
-              <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
-                disabled={approve.isPending} onClick={() => approve.mutate(it)}>
-                <Check className="h-3 w-3" /> {ACK_ONLY.has(it.kind) ? "확인" : "승인"}
-              </Button>
-              <Button size="xs" variant="ghost" className="h-6 px-2 text-muted-foreground hover:text-destructive"
-                disabled={reject.isPending} onClick={() => reject.mutate(it)}>
-                <X className="h-3 w-3" /> 거부
-              </Button>
-            </span>
-          </div>
-        ))}
-        {items.length > VISIBLE && (
-          <button onClick={() => setShowAll(!showAll)}
-            className="flex items-center gap-1 pt-2 text-[11px] text-muted-foreground hover:text-foreground">
-            <ChevronDown className={`h-3 w-3 transition-transform ${showAll ? "rotate-180" : ""}`} />
-            {showAll ? "접기" : `${items.length - VISIBLE}건 더 보기`}
-          </button>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+        {groups.map((g) => {
+          const meta = KIND_META[g.kind]
+          const Icon = meta?.Icon ?? Inbox
+          return (
+            <ProposalPanel key={g.kind} icon={Icon} title={meta?.label ?? g.kind} count={g.rows.length}
+              maxHeight="50vh" contentClassName="divide-y">
+              {g.rows.map(renderRow)}
+            </ProposalPanel>
+          )
+        })}
+      </div>
+    </section>
   )
 }

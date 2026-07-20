@@ -20,7 +20,8 @@ class WorldviewNode(BaseModel):
 class Worldview(BaseModel):
     nodes: list[WorldviewNode]
     edges: list[dict]   # [{from, from_id, from_type, to, to_id, to_type, rel, mechanism, orientation,
-                         #   reference_period, confidence, corroborated_by, contested, promoted_knowledge_id}]
+                         #   reference_period, confidence, corroborated_by, contested, feedback_note,
+                         #   promoted_knowledge_id}]  feedback_note=both_temporal 해소 근거(D-029)
                          # from이 파이썬 예약어라 CausalGraph(spine_narrative.py)와 동일하게 dict로 통과
 
 

@@ -36,11 +36,12 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         f"[{i+1}] ({d['source_type']}, {(d['published_at'] or '')[:10]}) {d['title']}\n{d['excerpt']}"
         for i, d in enumerate(docs)) or "(관련 수집 문서 없음)"
     from pipeline.knowledge_recall import knowledge_block
+    from pipeline.lenses import LENS_WORLDVIEW
     kn = knowledge_block(knowledge, "승격된 지식 — 시스템이 검증한 전제")
     return (
         "너는 사건의 파급을 추론하는 투자 리서치 전략가다. 아래 [사건]을 그대로 받아들이지 말고 "
         "인과 체인으로 전개해라.\n"
-        'JSON만 출력: {"scenario": "마크다운", "causal": {"nodes": [{"name","type"}], '
+        'JSON만 출력: {"scenario": "마크다운", "causal": {"nodes": [{"name","type","layer"}], '
         '"edges": [{"from","to","rel","mechanism","orientation","reference_period","confidence"}]}}\n'
         "마크다운 구조 (섹션 고정):\n"
         "### 사건 정의 — 무엇이 실제로 일어났고/일어난다고 가정하며, 무엇은 아직 불확실한가\n"
@@ -54,7 +55,8 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "규칙: 수집 문서에 없는 수치는 (일반지식)으로 정직하게 표기. 과장 금지, 각 단계는 "
         "반증 가능한 서술로. 전체 700자 내외.\n\n"
         "★인과 그래프 추출 (본문과 별도로 — 위 파급 체인을 노드·엣지로, 내러티브 인과와 동일 규약):\n"
-        "- nodes: {\"name\",\"type\"}, type ∈ company·sector·theme·person·macro·policy·event\n"
+        "- nodes: {\"name\",\"type\",\"layer\"}, type ∈ company·sector·theme·person·macro·policy·event, "
+        "layer ∈ event·flow·cycle·structure·regime (느릴수록 구조적)\n"
         f"  ★기존 노드가 있으면 새로 만들지 말고 정확히 그 이름을 재사용: {', '.join(node_vocab[:60])}\n"
         "- edges: rel='CAUSES'(원인→결과), 수혜 섹터는 rel='BENEFITS_FROM'(from=수혜 섹터, to=동인). "
         "수혜 종착은 sector까지만 — 개별 종목 금지. 특정 인물/기업의 결정이 메커니즘의 실체면 "
@@ -62,6 +64,7 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "orientation ∈ past|current|forward, reference_period는 작동 시점(모르면 null), "
         "confidence 0~1(가정된 사건에서 출발하므로 보수적으로).\n\n"
         f"[사건]\n{event}\n"
+        f"\n{LENS_WORLDVIEW}\n"
         f"{kn}\n\n[수집 문서]\n{ctx}"
     )
 

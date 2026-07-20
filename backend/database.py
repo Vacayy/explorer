@@ -708,6 +708,18 @@ def init_db():
         output_entity_id INTEGER REFERENCES entities(id) ON DELETE SET NULL,
         updated_at       TEXT DEFAULT (datetime('now'))
     );
+
+    -- 어휘 통합 (vocab consolidation, D-033) — audit + redirect 겸용.
+    -- 배치 병합으로 사라진 theme/macro 노드 이름이 재등장해도 survivor로 해소 (재파편화 방지).
+    CREATE TABLE IF NOT EXISTS entity_merges (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        old_name     TEXT NOT NULL,       -- 병합으로 사라진 노드 이름
+        type         TEXT NOT NULL,       -- theme | macro (v1 범위)
+        survivor_id  INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        rationale    TEXT,                -- LLM 판정 근거
+        merged_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE(old_name, type)
+    );
     """)
 
     conn.commit()
@@ -744,10 +756,15 @@ def init_db():
         "ALTER TABLE entity_relations ADD COLUMN time_orientation TEXT",   # past|current|forward (시간 그래디언트)
         "ALTER TABLE entity_relations ADD COLUMN narrative_id INTEGER",    # 어느 내러티브(버전)에서 나왔나
         "ALTER TABLE entity_relations ADD COLUMN promoted_knowledge_id INTEGER",  # 승격된 지식(Phase 2 §2-5)
+        "ALTER TABLE entity_relations ADD COLUMN feedback_note TEXT",  # both_temporal 판정 물질화 — 상충 아닌 시점 다른 피드백 나선(D-027) 근거, non-null=해소됨(D-029)
         # 메르식 서사 (Phase 2 §2-2) — 순회 top-1 경로를 opus가 하나의 흐르는 글로
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
         "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
         "ALTER TABLE narratives ADD COLUMN drift_summary TEXT",  # 직전 버전 대비 변화 한 줄 (Phase 2 §2-3)
+        # 메가 내러티브 층 (D-031) — 공유노드 군집의 상위 세계관 서사. kind='mega'면
+        # topic=군집 라벨(LLM 명명), members_json=구성 sub-story 토픽들, doc_ids_hash=멤버 해시
+        "ALTER TABLE narratives ADD COLUMN kind TEXT DEFAULT 'topic'",   # topic | mega
+        "ALTER TABLE narratives ADD COLUMN members_json TEXT",
         "ALTER TABLE raw_documents ADD COLUMN digest_status TEXT",  # youtube opus 정리본 성공 여부 (ok|failed, 그 외 소스는 NULL)
         # 문서 레벨 인과 추출 (D-028 레버 3) — 시도 기록(인과 0건이어도), 재시도 방지
         "ALTER TABLE enrichments ADD COLUMN causal_extracted_at TEXT",

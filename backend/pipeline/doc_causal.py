@@ -27,10 +27,12 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
         "구조화해라. 문서에 없는 인과를 추론·보완하지 마라. 명확한 인과 서술이 없으면 빈 배열.\n"
         "★투자·시장 세계관에 속하는 인과만: 거시경제·산업·기업·정책·시장 구조가 대상이다. "
         "지역 행정·생활 정보·사회 일반 등 투자 판단과 무관한 인과는 문서에 서술돼 있어도 제외.\n"
-        'JSON만 출력: {"causal": {"nodes": [{"name","type"}], "edges": '
+        'JSON만 출력: {"causal": {"nodes": [{"name","type","layer"}], "edges": '
         '[{"from","to","rel","mechanism","orientation","reference_period","confidence"}]}}\n'
         "규칙 (내러티브 인과 추출과 동일):\n"
         "- type ∈ company·sector·theme·person·macro(유가·금리·인플레)·policy(협상·규제)·event(봉쇄·사고)\n"
+        "- layer ∈ event·flow·cycle·structure·regime (느릴수록 구조적 — 단발 사건=event, "
+        "수급=flow, 사이클 국면=cycle, 경쟁구도·계약=structure, 제도·패러다임·시대적 힘=regime)\n"
         f"- ★기존 노드가 있으면 새로 만들지 말고 정확히 그 이름을 재사용: {', '.join(node_vocab[:60])}\n"
         "- rel='CAUSES'(원인→결과). 수혜 섹터는 rel='BENEFITS_FROM'(from=수혜 섹터, to=동인). "
         "수혜 종착은 sector까지만 — 개별 종목 금지.\n"
