@@ -128,6 +128,7 @@ export default function NarrativePage() {
               </TabsContent>
             </Tabs>
           )}
+          <ScenarioSection topic={topic} />
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
           {narrativeId && <ChainPaths narrativeId={narrativeId} />}
           {narrativeId && <Grounding narrativeId={narrativeId} />}
@@ -224,6 +225,58 @@ function MegaNarrativeSection() {
         </Card>
       ))}
     </div>
+  )
+}
+
+/* ---------- 파급 시나리오 (scenario 엔진 연결 — '왜·그래서 무엇', 온디맨드 opus) ---------- */
+
+interface ScenarioResult {
+  status: string
+  answer: string | null
+  citations: { n: number; doc_id: number; title: string; url: string }[]
+}
+
+function ScenarioSection({ topic }: { topic: string }) {
+  const [run, setRun] = useState(false)
+  const { data, isFetching } = useQuery(
+    apiComputeQuery<ScenarioResult>({
+      key: ["spine", "narrative", "scenario", topic],
+      url: `/api/spine/narrative/scenario/compute?topic=${encodeURIComponent(topic)}`,
+      enabled: run,
+    }),
+  )
+  const loading = run && (isFetching || !data)
+  return (
+    <Card>
+      <CardContent className="py-3 space-y-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Route className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">파급 시나리오</span>
+          <span className="text-[11px] text-muted-foreground">사건을 1·2·3차 인과 체인으로 — 왜, 그래서 무엇</span>
+          {!run && (
+            <Button size="sm" className="ml-auto h-7" onClick={() => setRun(true)}>
+              <Sparkles className="h-3.5 w-3.5" /> 파급 분석
+            </Button>
+          )}
+        </div>
+        {loading && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            파급 체인을 전개하는 중… (수십 초~수 분, 심층 추론)
+          </div>
+        )}
+        {run && data && data.status !== "ok" && (
+          <EmptyState message="파급 분석을 생성하지 못했습니다 — 잠시 후 다시 시도." />
+        )}
+        {run && data?.status === "ok" && data.answer && (
+          <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
+            <CardContent className="py-4">
+              <Markdown>{data.answer}</Markdown>
+            </CardContent>
+          </Card>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

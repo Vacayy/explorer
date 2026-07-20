@@ -40,6 +40,8 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
     from pipeline.lenses import LENS_WORLDVIEW
     kn = knowledge_block(knowledge, "승격된 지식 — 시스템이 검증한 전제")
     return (
+        "[중요] 너는 순수 텍스트 생성기다. 도구를 쓰지 말고, 이 저장소·파일·git 상태를 참조하거나 "
+        "언급하지 말며, 되묻지 말고, 아래 지시가 요구하는 JSON만 즉시 출력하라.\n"
         "너는 사건의 파급을 추론하는 투자 리서치 전략가다. 아래 [사건]을 그대로 받아들이지 말고 "
         "인과 체인으로 전개해라.\n"
         'JSON만 출력: {"scenario": "마크다운", "causal": {"nodes": [{"name","type","layer"}], '
@@ -97,15 +99,29 @@ def build_scenario(event: str) -> dict:
     vocab = _node_vocab(conn)
     conn.close()
 
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", SCENARIO_MODEL, "--output-format", "json",
-         _build_prompt(event, docs, knowledge, vocab)],
-        capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    raw = json.loads(proc.stdout).get("result", "")
-    s, e = raw.find("{"), raw.rfind("}")
-    data = json.loads(raw[s:e + 1])
+    # opus는 결과를 ```json 펜스로 감싸거나 긴 출력이 절단될 수 있어 파싱이 간헐 실패 → 1회 재시도.
+    prompt = _build_prompt(event, docs, knowledge, vocab)
+    data, last_err = None, ""
+    for _ in range(2):
+        proc = subprocess.run(
+            [_claude_bin(), "-p", "--model", SCENARIO_MODEL, "--output-format", "json", prompt],
+            capture_output=True, text=True, timeout=300)
+        if proc.returncode != 0:
+            last_err = f"rc={proc.returncode} {proc.stderr[:120]}"
+            continue
+        try:
+            raw = json.loads(proc.stdout).get("result", "")
+            raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            s, e = raw.find("{"), raw.rfind("}")
+            if s < 0 or e <= s:
+                last_err = f"JSON 없음: {raw[:80]!r}"
+                continue
+            data = json.loads(raw[s:e + 1])
+            break
+        except Exception as ex:  # noqa: BLE001 — 절단·형식 오류 모두 재시도
+            last_err = f"{type(ex).__name__}: {str(ex)[:100]}"
+    if data is None:
+        raise RuntimeError(f"scenario 파싱 실패(2회): {last_err}")
     md = data.get("scenario") or ""
 
     # 인과 그래프 물질화 (D-028 제3 공급원) — 시나리오 파급 체인도 같은 그래프에 적재.
