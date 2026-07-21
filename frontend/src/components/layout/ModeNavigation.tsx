@@ -13,6 +13,12 @@ const DISCOVER_TABS = [
   { key: "actions", path: "/actions", label: "기업활동" },
 ] as const
 
+// 팔로우 — 내가 따라가는 것(허브) + 담당 유니버스(섹터 커버리지·밸류체인, D-037)
+const FOLLOW_TABS = [
+  { key: "follow", path: "/follow", label: "팔로우" },
+  { key: "universe", path: "/follow/universe", label: "유니버스" },
+] as const
+
 // 월드모델 — 내러티브(빠른 층)·세계관(인과 그래프)·지식(느린 층)은 "같은 인과 그래프의 두 속도"(D-023).
 // 신호(델타 감지)와 성격이 달라 별도 모드로 묶음 (D-031). 지식은 탐색에서 이관.
 const WORLDMODEL_TABS = [
@@ -77,6 +83,10 @@ export default function ModeNavigation({ stockCode, companyName }: Props) {
         <div className="flex -mb-px">
           {activeMode === "feed" && FEED_TABS.map((tab) => (
             <SubTab key={tab.key} to={tab.path} active={feedSource === tab.key} label={tab.label} />
+          ))}
+
+          {activeMode === "follow" && FOLLOW_TABS.map((tab) => (
+            <SubTab key={tab.key} to={tab.path} active={activeSubTab === tab.key} label={tab.label} />
           ))}
 
           {activeMode === "discover" && DISCOVER_TABS.map((tab) => (
@@ -155,6 +165,10 @@ function getActiveSubTab(pathname: string): string | null {
   if (pathname.startsWith("/narrative/worldview")) return "worldview"
   if (pathname.startsWith("/narrative")) return "narrative"
   if (pathname.startsWith("/knowledge")) return "knowledge"
+
+  // 팔로우 — universe는 /follow 하위라 follow보다 먼저 매칭
+  if (pathname.startsWith("/follow/universe")) return "universe"
+  if (pathname.startsWith("/follow")) return "follow"
 
   // Discover (탐색)
   if (pathname.startsWith("/explore")) return "signals"
