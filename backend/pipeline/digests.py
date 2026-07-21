@@ -69,23 +69,31 @@ def _upsert(conn, entity_id, period, period_start, data, doc_count, h):
     conn.commit()
 
 
-def compute_daily(day_iso: str | None = None) -> dict:
-    """당일(KST) 언급 종목별 1D 다이제스트."""
+def compute_daily(day_iso: str | None = None, stock_code: str | None = None,
+                  force: bool = False) -> dict:
+    """당일(KST) 언급 종목별 1D 다이제스트.
+    stock_code 지정 시 그 종목만(온디맨드 새로고침), force=True면 문서 무변경이어도 재생성.
+    period_start=당일이라 ON CONFLICT로 같은 날 기존 행을 덮어쓴다(하루 다중 생성 방지)."""
     if llm_engine() != "claude-code":
         return {"skipped": "claude-code 엔진 아님"}
     day = day_iso or datetime.now(KST).date().isoformat()
     lo, hi = _kst_day_utc_bounds(day)
 
     conn = get_connection()
-    stocks = conn.execute("""
+    sql = """
         SELECT e.id, e.name, count(*) n
         FROM entity_links el
         JOIN entities e ON el.entity_id = e.id
         JOIN raw_documents rd ON el.doc_id = rd.id
         WHERE el.link_type = 'stock' AND e.type = 'company'
-          AND rd.published_at >= ? AND rd.published_at < ?
-        GROUP BY e.id ORDER BY n DESC LIMIT ?
-    """, (lo, hi, DAILY_CAP)).fetchall()
+          AND rd.published_at >= ? AND rd.published_at < ?"""
+    params: list = [lo, hi]
+    if stock_code:
+        sql += " AND e.aliases = ?"
+        params.append(stock_code)
+    sql += " GROUP BY e.id ORDER BY n DESC LIMIT ?"
+    params.append(DAILY_CAP)
+    stocks = conn.execute(sql, params).fetchall()
 
     stats = {"day": day, "generated": 0, "unchanged": 0, "failed": 0}
     for s in stocks:
@@ -102,7 +110,7 @@ def compute_daily(day_iso: str | None = None) -> dict:
         existing = conn.execute(
             "SELECT doc_ids_hash FROM entity_digests WHERE entity_id=? AND period='1d' AND period_start=?",
             (s["id"], day)).fetchone()
-        if existing and existing["doc_ids_hash"] == h:
+        if existing and existing["doc_ids_hash"] == h and not force:
             stats["unchanged"] += 1
             continue
 
@@ -134,20 +142,28 @@ def compute_daily(day_iso: str | None = None) -> dict:
     return stats
 
 
-def compute_rolling7(as_of_iso: str | None = None) -> dict:
-    """롤링 7일 다이제스트 — 창 안의 1D 요약들을 재요약 (기준일별 아카이브)."""
+def compute_rolling7(as_of_iso: str | None = None, stock_code: str | None = None,
+                     force: bool = False) -> dict:
+    """롤링 7일 다이제스트 — 창 안의 1D 요약들을 재요약 (기준일별 아카이브).
+    stock_code 지정 시 그 종목만(온디맨드), force=True면 무변경이어도 재생성.
+    period_start=기준일(as_of)이라 ON CONFLICT로 같은 날 기존 행을 덮어쓴다."""
     if llm_engine() != "claude-code":
         return {"skipped": "claude-code 엔진 아님"}
     as_of = as_of_iso or datetime.now(KST).date().isoformat()
     win_start = (date.fromisoformat(as_of) - timedelta(days=6)).isoformat()
 
     conn = get_connection()
-    entities = conn.execute("""
+    sql = """
         SELECT DISTINCT d.entity_id, e.name FROM entity_digests d
         JOIN entities e ON d.entity_id = e.id
-        WHERE d.period='1d' AND d.period_start >= ? AND d.period_start <= ?
-        LIMIT ?
-    """, (win_start, as_of, DAILY_CAP)).fetchall()
+        WHERE d.period='1d' AND d.period_start >= ? AND d.period_start <= ?"""
+    params: list = [win_start, as_of]
+    if stock_code:
+        sql += " AND e.aliases = ?"
+        params.append(stock_code)
+    sql += " LIMIT ?"
+    params.append(DAILY_CAP)
+    entities = conn.execute(sql, params).fetchall()
 
     stats = {"as_of": as_of, "generated": 0, "unchanged": 0, "failed": 0}
     for ent in entities:
@@ -162,7 +178,7 @@ def compute_rolling7(as_of_iso: str | None = None) -> dict:
         existing = conn.execute(
             "SELECT doc_ids_hash FROM entity_digests WHERE entity_id=? AND period='7d' AND period_start=?",
             (ent["entity_id"], as_of)).fetchone()
-        if existing and existing["doc_ids_hash"] == h:
+        if existing and existing["doc_ids_hash"] == h and not force:
             stats["unchanged"] += 1
             continue
 
