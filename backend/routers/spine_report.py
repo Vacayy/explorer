@@ -19,6 +19,29 @@ class ReportResult(BaseModel):
     created_at: str | None = None
 
 
+class ReportListItem(BaseModel):
+    anchor_topic: str
+    title: str | None
+    n_members: int
+    n_stocks: int
+    created_at: str
+
+
+@router.get("/list", response_model=list[ReportListItem])
+def report_list():
+    """발간된 통합 리포트 목록 — 최신순. LLM 없음."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT anchor_topic, title, members_json, stocks_json, created_at "
+        "FROM reports ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [ReportListItem(
+        anchor_topic=r["anchor_topic"], title=r["title"],
+        n_members=len(json.loads(r["members_json"] or "[]")),
+        n_stocks=len(json.loads(r["stocks_json"] or "[]")),
+        created_at=r["created_at"]) for r in rows]
+
+
 @router.get("", response_model=ReportResult)
 def report_cached(topic: str):
     """저장된 통합 리포트 조회 — LLM 없음. 없으면 status=none."""
