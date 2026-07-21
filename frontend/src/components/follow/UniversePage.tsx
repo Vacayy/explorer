@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Card, CardContent } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
@@ -165,15 +165,7 @@ export default function UniversePage() {
                     {members.length}종목{totalMcap > 0 ? ` · ${formatKrw(totalMcap)}` : ""}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {members.map((m) => (
-                    <MemberCard
-                      key={m.id}
-                      member={m}
-                      onRemove={() => removeMember.mutate(m.id)}
-                    />
-                  ))}
-                </div>
+                <MemberTable members={members} onRemove={(id) => removeMember.mutate(id)} />
               </div>
             ))}
         </div>
@@ -195,61 +187,52 @@ export default function UniversePage() {
   )
 }
 
-/* ── 멤버 카드 ── */
+/* ── 멤버 테이블 (밸류체인 단계별) — 팔로우 종목 테이블과 동형 ── */
 
-function MemberCard({
-  member,
-  onRemove,
-}: {
-  member: IndustryMember
-  onRemove: () => void
-}) {
+function MemberTable({ members, onRemove }: { members: IndustryMember[]; onRemove: (id: number) => void }) {
+  const num = (v: number | null, suffix: string, digits = 1) =>
+    v != null ? `${v.toFixed(digits)}${suffix}` : "-"
   return (
-    <Card className="group relative">
-      <CardContent className="p-3 space-y-1.5">
-        <div className="flex items-center gap-2">
-          <Link
-            to={`/analyze/${member.stock_code}/summary`}
-            className="text-sm font-medium hover:underline"
-          >
-            {member.corp_name}
-          </Link>
-          <span className="text-[11px] text-muted-foreground tabular-nums">
-            {member.stock_code}
-          </span>
-          <Button
-            variant="ghost" size="icon"
-            onClick={onRemove}
-            aria-label="멤버 삭제"
-            className="ml-auto size-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {member.latest_market_cap != null && (
-            <Badge variant="secondary" className="text-[11px]">
-              {formatKrw(member.latest_market_cap)}
-            </Badge>
-          )}
-          {member.per != null && (
-            <Badge variant="outline" className="text-[11px]">
-              PER {member.per.toFixed(1)}배
-            </Badge>
-          )}
-          {member.pbr != null && (
-            <Badge variant="outline" className="text-[11px]">
-              PBR {member.pbr.toFixed(2)}배
-            </Badge>
-          )}
-          {member.op_margin != null && (
-            <Badge variant="outline" className="text-[11px]">
-              영업이익률 {member.op_margin.toFixed(1)}%
-            </Badge>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="text-xs">
+            <TableHead>종목</TableHead>
+            <TableHead className="text-right">시총</TableHead>
+            <TableHead className="text-right">PER</TableHead>
+            <TableHead className="text-right">PBR</TableHead>
+            <TableHead className="text-right">영업이익률</TableHead>
+            <TableHead className="text-right">ROE</TableHead>
+            <TableHead className="w-8" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {members.map((m) => (
+            <TableRow key={m.id} className="group">
+              <TableCell>
+                <Link to={`/analyze/${m.stock_code}/summary`} className="text-sm font-medium hover:underline">
+                  {m.corp_name}
+                </Link>
+                <span className="ml-2 text-[11px] text-muted-foreground tabular-nums">{m.stock_code}</span>
+              </TableCell>
+              <TableCell className="text-right tabular-nums text-xs">
+                {m.latest_market_cap != null ? formatKrw(m.latest_market_cap) : "-"}
+              </TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{num(m.per, "배")}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{num(m.pbr, "배", 2)}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{num(m.op_margin, "%")}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{num(m.roe, "%")}</TableCell>
+              <TableCell className="text-right">
+                <Button variant="ghost" size="icon" onClick={() => onRemove(m.id)} aria-label="멤버 삭제"
+                  className="size-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive">
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   )
 }
 
