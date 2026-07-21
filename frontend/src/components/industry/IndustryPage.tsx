@@ -1,31 +1,13 @@
 import { useState, useMemo } from "react"
 import api from "@/api/client"
-import {
-  useIndustryGroups,
-  useIndustryDetail,
-  useFetchIndustryPrices,
-  useCreateGroup,
-  useProposeMembers,
-  useAddMember,
-} from "@/hooks/useIndustry"
+import { useIndustryGroups, useIndustryDetail, useFetchIndustryPrices } from "@/hooks/useIndustry"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { PageContainer } from '@/components/shared/PageContainer'
 import { formatKrw, formatNumber } from "@/utils/format"
-import type { Company, IndustryMember, IndustryCandidate } from "@/types"
+import type { Company, IndustryMember } from "@/types"
 import ValueChainMap from "./ValueChainMap"
 
 interface Props {
@@ -42,64 +24,10 @@ export default function IndustryPage({ onSelectCompany }: Props) {
   const [sortBy, setSortBy] = useState<"market_cap" | "name">("market_cap")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
-  // Curation: create group dialog
-  const [createOpen, setCreateOpen] = useState(false)
-  const [groupName, setGroupName] = useState("")
-  const [groupDesc, setGroupDesc] = useState("")
-  const createGroup = useCreateGroup()
-
-  // Curation: propose members dialog
-  const [proposeOpen, setProposeOpen] = useState(false)
-  const [checked, setChecked] = useState<Record<string, boolean>>({})
-  const [cats, setCats] = useState<Record<string, string>>({})
-  const { data: candidates = [], isLoading: candidatesLoading } = useProposeMembers(
-    selectedGroupId,
-    proposeOpen
-  )
-  const addMember = useAddMember(selectedGroupId ?? 0)
-  const [adding, setAdding] = useState(false)
-
   // Auto-select first group
   if (selectedGroupId === null && groups.length > 0) {
     setSelectedGroupId(groups[0].id)
   }
-
-  const handleCreateGroup = async () => {
-    const name = groupName.trim()
-    if (!name) return
-    const group = await createGroup.mutateAsync({
-      name,
-      description: groupDesc.trim() || undefined,
-    })
-    setSelectedGroupId(group.id)
-    setCreateOpen(false)
-    setGroupName("")
-    setGroupDesc("")
-  }
-
-  const openPropose = () => {
-    setChecked({})
-    setCats({})
-    setProposeOpen(true)
-  }
-
-  const catFor = (stockCode: string) => cats[stockCode] ?? "기타"
-
-  const handleAddSelected = async () => {
-    const picked = candidates.filter((c) => checked[c.stock_code])
-    if (picked.length === 0) return
-    setAdding(true)
-    try {
-      for (const c of picked) {
-        await addMember.mutateAsync({ stock_code: c.stock_code, category: catFor(c.stock_code) })
-      }
-      setProposeOpen(false)
-    } finally {
-      setAdding(false)
-    }
-  }
-
-  const checkedCount = candidates.filter((c) => checked[c.stock_code]).length
 
   // Group members by category, sort by market cap within
   const grouped = useMemo(() => {
@@ -179,19 +107,6 @@ export default function IndustryPage({ onSelectCompany }: Props) {
             ))}
           </SelectContent>
         </Select>
-
-        <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
-          새 산업 그룹
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={openPropose}
-          disabled={!selectedGroupId}
-        >
-          종목 후보 제안
-        </Button>
 
         <Button
           variant="outline"
@@ -292,144 +207,7 @@ export default function IndustryPage({ onSelectCompany }: Props) {
           </table>
         </div>
       )}
-
-      {/* Create group dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>새 산업 그룹</DialogTitle>
-            <DialogDescription>밸류체인 맵을 그릴 새 산업 그룹을 만듭니다.</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">이름</label>
-              <Input
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="예: 이차전지"
-                autoFocus
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">설명 (선택)</label>
-              <Input
-                value={groupDesc}
-                onChange={(e) => setGroupDesc(e.target.value)}
-                placeholder="한 줄 설명"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)}>
-              취소
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleCreateGroup}
-              disabled={!groupName.trim() || createGroup.isPending}
-            >
-              {createGroup.isPending ? "생성 중..." : "생성"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Propose members dialog */}
-      <Dialog open={proposeOpen} onOpenChange={setProposeOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>종목 후보 제안</DialogTitle>
-            <DialogDescription>
-              기계가 제안한 후보입니다. 노이즈가 섞일 수 있으니 체크로 거르고 밸류체인 단계를 지정하세요.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="max-h-[52vh] overflow-y-auto -mx-1 px-1">
-            {candidatesLoading ? (
-              <div className="flex flex-col gap-2 py-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="h-12 rounded-md bg-muted/40 animate-pulse" />
-                ))}
-              </div>
-            ) : candidates.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">제안할 후보 없음</p>
-            ) : (
-              <div className="flex flex-col divide-y divide-border/50">
-                {candidates.map((c) => (
-                  <CandidateRow
-                    key={c.stock_code}
-                    c={c}
-                    checked={!!checked[c.stock_code]}
-                    onToggle={(v) => setChecked((prev) => ({ ...prev, [c.stock_code]: v }))}
-                    category={catFor(c.stock_code)}
-                    onCategory={(v) => setCats((prev) => ({ ...prev, [c.stock_code]: v }))}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <span className="mr-auto text-xs text-muted-foreground self-center">
-              {checkedCount}개 선택됨
-            </span>
-            <Button variant="outline" size="sm" onClick={() => setProposeOpen(false)}>
-              취소
-            </Button>
-            <Button size="sm" onClick={handleAddSelected} disabled={checkedCount === 0 || adding}>
-              {adding ? "추가 중..." : "선택 추가"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageContainer>
-  )
-}
-
-const CHAIN_STAGES = ["소재", "부품", "장비", "완제품", "서비스", "기타"]
-
-/** One candidate row: checkbox + name + metric badges + value-chain stage select */
-function CandidateRow({
-  c,
-  checked,
-  onToggle,
-  category,
-  onCategory,
-}: {
-  c: IndustryCandidate
-  checked: boolean
-  onToggle: (v: boolean) => void
-  category: string
-  onCategory: (v: string) => void
-}) {
-  return (
-    <div className="flex items-center gap-3 py-2">
-      <Checkbox checked={checked} onCheckedChange={(v) => onToggle(v === true)} />
-      <button
-        type="button"
-        className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
-        onClick={() => onToggle(!checked)}
-      >
-        <span className="font-medium text-sm w-28 shrink-0 truncate">{c.name}</span>
-        <div className="flex flex-wrap items-center gap-1.5 flex-1">
-          {c.rs_short != null && <Badge variant="secondary">RS {Math.round(c.rs_short)}</Badge>}
-          <Badge variant="secondary">관련도 {Math.round(c.relevance * 100)}%</Badge>
-          {c.pos_52w != null && <Badge variant="outline">52주 {Math.round(c.pos_52w)}%</Badge>}
-          {c.per != null && <Badge variant="outline">PER {c.per.toFixed(1)}</Badge>}
-          {c.market_cap != null && <Badge variant="outline">{formatKrw(c.market_cap)}</Badge>}
-        </div>
-      </button>
-      <Select value={category} onValueChange={onCategory}>
-        <SelectTrigger className="w-[104px] shrink-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {CHAIN_STAGES.map((s) => (
-            <SelectItem key={s} value={s}>{s}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
   )
 }
 

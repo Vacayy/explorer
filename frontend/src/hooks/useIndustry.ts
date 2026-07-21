@@ -74,3 +74,17 @@ export function useAddMember(groupId: number) {
     },
   })
 }
+
+export function useRemoveMember(groupId: number) {
+  const qc = useQueryClient()
+  return useMutation<{ ok: boolean }, unknown, number>({
+    mutationFn: async (memberId) => {
+      const { data } = await api.delete(`/api/industries/members/${memberId}`)
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["industry-detail", groupId] })
+      qc.invalidateQueries({ queryKey: ["industry-groups"] })
+    },
+  })
+}

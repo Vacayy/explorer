@@ -10,6 +10,30 @@
 
 ---
 
+## D-039 · 2026-07-21 · 유니버스 페이지 = 팔로우 모드 신설 (구 산업 페이지 폐기)
+
+**결정**: 담당 유니버스 큐레이션 UI를 **팔로우 모드의 새 서브탭 '유니버스'(`/follow/universe`, UniversePage)**로
+신설한다. D-037에서 큐레이션을 얹었던 `/discover/industry`(IndustryPage)는 **이미 폐기된(nav 미노출)
+휴지통 페이지**였음이 확인돼(사용자 2026-07-21), 그 페이지의 큐레이션 추가분을 원상복구(D-037 이전
+상태로 `git checkout`)하고 새 집으로 이전. 팔로우 모드에 서브탭 신설(FOLLOW_TABS: 팔로우/유니버스,
+ModeNavigation). 백엔드(industries create_group·propose·universe_membership)와 훅은 그대로 재사용 —
+바뀐 건 프론트 홈뿐. UniversePage: 그룹 pill 선택 → 밸류체인 category별 멤버 + '새 산업 그룹'·'종목 후보 제안'
+Dialog + 멤버 삭제.
+
+**맥락·이유**: 팔로우(/follow)가 '내가 따라가는 것(종목·채널·태그)' 개인 커버리지 허브라, '담당 섹터
+유니버스'와 성격이 같다 — 둘 다 사용자의 커버리지. 그래서 탐색/월드모델보다 팔로우가 개념적 집(사용자
+선택). 구 산업 페이지에 얹은 게 실수였던 이유: 그 페이지가 nav에 없어 도달 불가한 죽은 화면이었음.
+
+**기각한 대안**: ① 탐색에 탭 신설 — RS 산업 맵(/map) 옆이나 커버리지는 개인 성격이라 팔로우가 맞음
+② 월드모델에 신설 — 시나리오 크로스체크와 가까우나 유니버스는 커버리지(팔로우)지 인과 그래프가 아님
+③ 구 산업 페이지 되살리기 — 사용자가 이미 폐기한 화면.
+
+**참조**: frontend/src/components/follow/UniversePage.tsx · hooks/useIndustry.ts(useRemoveMember 추가) ·
+layout/ModeNavigation.tsx(FOLLOW_TABS)·App.tsx(/follow/universe) · IndustryPage.tsx(큐레이션 원복) ·
+D-037(유니버스 큐레이션 백엔드·데이터) · 대화 2026-07-21
+
+---
+
 ## D-038 · 2026-07-21 · 파급 시나리오 캐시 — 내러티브 버전 기반 (매 클릭 opus 재생성 방지)
 
 **결정**: 파급 시나리오를 `scenarios` 테이블(topic PK · answer · beneficiaries · citations ·
