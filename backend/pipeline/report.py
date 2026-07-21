@@ -1,77 +1,37 @@
-"""통합 리포트 — 공유 인과로 엮인 내러티브들을 애널리스트 참고자료로 취합하고,
-같은 종목의 '내러티브별 다른 파급'을 다 모은 뒤 반영해 종목을 다시 분석 → Top-down 리포트.
+"""통합 리포트 엔진 v2 — 다중 에이전트 리서치 (report-v2-agents, D-043).
 
-연쇄 LLM(오케스트레이션 도구 아님, scenario/mega처럼 순차 호출):
-  취합(LLM 0) → 종목별 다각도 재분석 ×M(sonnet) → 리포트 종합 ×1(opus). 전부 캐시.
-스펙: docs/specs/integrated-report.md. 선례: mega_narrative(공유 노드 서사).
+애널리스트 팀(펀더·기술·수급) → 리서처 debate(Bull vs Bear) → 리드 애널리스트 판정
+→ 섹션 작성 → 조립. 연쇄 LLM(오케스트레이션 도구 아님, pipeline 순차 호출).
+레이팅은 리드가 맥락 종합으로 부여(기계적 임계 오버라이드 폐기). 상상은 debate로 균형.
+검증 산출물(analyst·bull·bear·ratings)은 reports.debate_json에 보존 → 서비스 열람.
 """
 import hashlib
 import json
+import statistics
 
 from pipeline.enrich import _call_claude_code, llm_engine
 from pipeline.upside_model import _anchor
 from pipeline.research_candidates import _rs_short
 
-TOP_RELATED = 5    # 공유 이웃 내러티브 상위
-TOP_STOCKS = 6     # 종목 재분석 대상 (교차 현저성 순)
-AUGMENT_CAP = 2    # scenario 없는 구성 내러티브 자동 보강 상한(opus, 비용 통제) — ②
-BODY_EXCERPT = 600
-SCEN_EXCERPT = 700
+TOP_RELATED = 5
+TOP_STOCKS = 4      # 종목 재분석 대상 (v2는 콜이 많아 축소)
+AUGMENT_CAP = 2
+MAX_SECTIONS = 6
+BODY_EXCERPT = 500
+SCEN_EXCERPT = 600
+RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50% Strong Buy · ≥15% Buy · 그 이하 Hold · "
+                 "추세 훼손·과열·논지 붕괴 등 위험이면 Sell. 단 이는 어휘 가이드일 뿐, "
+                 "기계적 임계가 아니다 — 펀더·기술 국면·수급을 확률론적으로 종합해 판단하라. "
+                 "특히 펀더가 견고한데 쏠림 해소로 조정받아 RS만 급락한 경우는 Sell이 아니라 "
+                 "하방 대비 상방이 열린 국면일 수 있다(맥락으로 판단).")
 
 
-# 레이팅 — 상승여력 기반, 불안 신호면 Sell (사용자 정의 임계, 2026-07-21)
-def _rating(upside_pct: float | None, warning: bool) -> str:
-    if warning:
-        return "Sell"
-    if upside_pct is None:
-        return "Hold"
-    if upside_pct >= 50:
-        return "Strong Buy"
-    if upside_pct >= 15:
-        return "Buy"
-    return "Hold"
-
-
-def _cached_upside_pct(conn, name: str | None) -> float | None:
-    """저장된 업사이드 모델(models)의 기본 시나리오 상승여력 — 콜의 펀더 앵커 (①)."""
-    if not name:
-        return None
-    row = conn.execute(
-        "SELECT spec_json FROM models WHERE name LIKE ? ORDER BY updated_at DESC LIMIT 1",
-        (f"{name} · %업사이드",)).fetchone()
-    if not row or not row["spec_json"]:
-        return None
-    try:
-        scens = json.loads(row["spec_json"]).get("scenarios") or []
-        base = next((s for s in scens if "기본" in (s.get("name") or "")), None)
-        base = base or (scens[len(scens) // 2] if scens else None)
-        return base.get("upside_pct") if base else None
-    except Exception:
-        return None
-
-
-def _signals(conn, code: str, name: str | None) -> dict:
-    """콜 스코어 재료 (③) — 펀더(업사이드 캐시)·기술(RS·52주)·심리(언급 모멘텀)."""
-    latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
-    rs = _rs_short(conn, latest).get(code) if latest else None
-    r = conn.execute("""
-        SELECT MIN(close) mn, MAX(close) mx,
-               (SELECT close FROM stock_prices WHERE stock_code=? ORDER BY trade_date DESC LIMIT 1) cur
-        FROM (SELECT close FROM stock_prices WHERE stock_code=? AND close IS NOT NULL
-              ORDER BY trade_date DESC LIMIT 250)""", (code, code)).fetchone()
-    pos = None
-    if r and r["cur"] is not None and r["mn"] is not None and r["mx"] and r["mx"] > r["mn"]:
-        pos = round((r["cur"] - r["mn"]) / (r["mx"] - r["mn"]) * 100)
-    m = conn.execute("""
-        SELECT SUM(CASE WHEN rd.published_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) recent,
-               SUM(CASE WHEN rd.published_at >= datetime('now','-14 days')
-                         AND rd.published_at < datetime('now','-7 days') THEN 1 ELSE 0 END) prev
-        FROM entity_links el JOIN entities e ON e.id=el.entity_id
-        JOIN raw_documents rd ON rd.id=el.doc_id
-        WHERE el.link_type='stock' AND e.aliases=?""", (code,)).fetchone()
-    return {"rs": int(rs) if rs is not None else None, "pos_52w": pos,
-            "mentions_7d": m["recent"] or 0, "mentions_prev_7d": m["prev"] or 0,
-            "upside_cached": _cached_upside_pct(conn, name)}
+def _parse_json(raw: str) -> dict:
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    s, e = raw.find("{"), raw.rfind("}")
+    if s < 0 or e <= s:
+        raise ValueError(f"JSON 없음: {raw[:80]!r}")
+    return json.loads(raw[s:e + 1])
 
 
 def _latest_narr(conn, topic: str):
@@ -85,110 +45,179 @@ def _members_hash(members: list[tuple[str, int]]) -> str:
     return hashlib.sha256("|".join(f"{t}:{v}" for t, v in sorted(members)).encode()).hexdigest()
 
 
-def _parse_json(raw: str) -> dict:
-    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    s, e = raw.find("{"), raw.rfind("}")
-    if s < 0 or e <= s:
-        raise ValueError(f"JSON 없음: {raw[:80]!r}")
-    return json.loads(raw[s:e + 1])
-
-
 def _anchor_line(a: dict) -> str:
-    """앵커 재무를 한 줄로 (없으면 미상)."""
     def v(x, unit=""):
         return f"{x}{unit}" if x is not None else "미상"
-    return (f"현재가 {v(a.get('price'))} · PER {v(a.get('per'), '배')} · "
-            f"매출 {v(a.get('revenue'))} · 순이익률 {v(a.get('net_margin'), '%')} · 시총 {v(a.get('market_cap'))}")
+    return (f"현재가 {v(a.get('price'))}·PER {v(a.get('per'), '배')}·매출 {v(a.get('revenue'))}·"
+            f"순이익률 {v(a.get('net_margin'), '%')}·시총 {v(a.get('market_cap'))}")
 
 
-def _synth_stock(a: dict, code: str, name: str, angles: list[dict], sig: dict) -> dict | None:
-    """종목 다각도 재분석 + 콜 (sonnet, 연쇄 1콜) — 여러 내러티브 파급을 관통하는 통합 투자 포인트
-    + 펀더·심리·기술 종합 콜(③). 상승여력·불안신호 → 레이팅(결정적)."""
-    angle_block = "\n".join(
-        f"- [{ag['narrative']}] ({ag.get('rel') or '수혜'}) {ag.get('reason') or ''}" for ag in angles)
-    mom = "상승" if sig["mentions_7d"] > sig["mentions_prev_7d"] else ("둔화" if sig["mentions_7d"] < sig["mentions_prev_7d"] else "유지")
-    sig_line = (f"기술: RS {sig['rs'] if sig['rs'] is not None else '미상'}(0~100 백분위)·"
-                f"52주위치 {sig['pos_52w'] if sig['pos_52w'] is not None else '미상'}% · "
-                f"심리: 최근7일 언급 {sig['mentions_7d']}건({mom}) · "
-                f"펀더: 저장 업사이드 {sig['upside_cached'] if sig['upside_cached'] is not None else '미상'}%")
-    prompt = (
-        f"너는 애널리스트다. '{name}'({code})가 여러 산업 내러티브에서 각각 어떻게 영향받는지 아래에 모았다. "
-        "같은 종목이라도 내러티브마다 파급 논리가 다르다 — 이 다각도를 관통하는 **하나의 통합 투자 포인트**로 "
-        "종합하고(단순 나열 금지), 펀더·심리·기술을 함께 반영한 **콜**을 내라. 근거 없는 수치 창작 금지.\n"
-        "JSON만 출력(코드블록·머리말 없이): "
-        '{"thesis":"2~3문장 통합 논지(마크다운)","key_points":["핵심 투자 포인트 2~4개"],'
-        '"risks":["리스크·무효화 조건 1~3개"],'
-        '"upside_pct":"상승여력 대표값(%) 정수, 저장 업사이드가 있으면 그것을 기준으로 다각도 반영해 조정, '
-        '없으면 논리적 추정(모르면 null)","warning":"불안 신호(추세 붕괴·논지 훼손·과열 위험 등)면 true, 아니면 false"}\n'
-        f"[재무 앵커] {_anchor_line(a)}\n[시그널] {sig_line}\n"
-        f"[내러티브별 파급]\n{angle_block}")
+def _cached_upside_pct(conn, name: str | None) -> float | None:
+    if not name:
+        return None
+    row = conn.execute(
+        "SELECT spec_json FROM models WHERE name LIKE ? ORDER BY updated_at DESC LIMIT 1",
+        (f"{name} · %업사이드",)).fetchone()
+    if not row or not row["spec_json"]:
+        return None
     try:
-        d = _parse_json(_call_claude_code(prompt, model="sonnet", timeout=240))
+        scens = json.loads(row["spec_json"]).get("scenarios") or []
+        base = next((s for s in scens if "기본" in (s.get("name") or "")), None) or (scens[len(scens) // 2] if scens else None)
+        return base.get("upside_pct") if base else None
     except Exception:
         return None
-    up = d.get("upside_pct")
+
+
+def _signals(conn, code: str, name: str | None) -> dict:
+    """콜 재료 — 기술(RS·이동평균·볼린저·52주)·심리(언급 모멘텀)·펀더(캐시 업사이드)."""
+    latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
+    rs = _rs_short(conn, latest).get(code) if latest else None
+    closes = [r["close"] for r in conn.execute(
+        "SELECT close FROM stock_prices WHERE stock_code=? AND close IS NOT NULL "
+        "ORDER BY trade_date DESC LIMIT 250", (code,))]
+    cur = closes[0] if closes else None
+
+    def ma(n):
+        return round(sum(closes[:n]) / n) if len(closes) >= n else None
+    ma20, ma60, ma120 = ma(20), ma(60), ma(120)
+    pos52 = None
+    if cur is not None and len(closes) >= 2:
+        w = closes[:250]
+        mn, mx = min(w), max(w)
+        if mx > mn:
+            pos52 = round((cur - mn) / (mx - mn) * 100)
+    pctb = None  # 볼린저 %B (20일, ±2σ): 0=하단·100=상단·>100 상단이탈
+    if len(closes) >= 20:
+        w = closes[:20]
+        mid, sd = sum(w) / 20, statistics.pstdev(w)
+        if sd > 0:
+            pctb = round((cur - (mid - 2 * sd)) / (4 * sd) * 100)
+    m = conn.execute("""
+        SELECT SUM(CASE WHEN rd.published_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) recent,
+               SUM(CASE WHEN rd.published_at >= datetime('now','-14 days')
+                         AND rd.published_at < datetime('now','-7 days') THEN 1 ELSE 0 END) prev
+        FROM entity_links el JOIN entities e ON e.id=el.entity_id
+        JOIN raw_documents rd ON rd.id=el.doc_id
+        WHERE el.link_type='stock' AND e.aliases=?""", (code,)).fetchone()
+    return {"rs": int(rs) if rs is not None else None, "pos_52w": pos52,
+            "price": cur, "ma20": ma20, "ma60": ma60, "ma120": ma120, "bollinger_pctb": pctb,
+            "mentions_7d": m["recent"] or 0, "mentions_prev_7d": m["prev"] or 0,
+            "upside_cached": _cached_upside_pct(conn, name)}
+
+
+def _tech_line(s: dict, sig: dict) -> str:
+    def rel(price, m):
+        if price is None or m is None:
+            return "?"
+        return "위" if price >= m else "아래"
+    p = sig["price"]
+    return (f"현재가 {p}·RS {sig['rs'] if sig['rs'] is not None else '?'}(0~100)·"
+            f"52주위치 {sig['pos_52w'] if sig['pos_52w'] is not None else '?'}%·"
+            f"20일선 {rel(p, sig['ma20'])}/60일선 {rel(p, sig['ma60'])}/120일선 {rel(p, sig['ma120'])}·"
+            f"볼린저%B {sig['bollinger_pctb'] if sig['bollinger_pctb'] is not None else '?'}")
+
+
+# ── LLM 헬퍼 ──
+def _call_text(prompt: str, model: str = "sonnet", timeout: int = 240) -> str:
     try:
-        up = float(up) if up is not None and str(up) != "null" else None
-    except (ValueError, TypeError):
-        up = None
-    warning = bool(d.get("warning") is True or str(d.get("warning")).lower() == "true")
-    return {"code": code, "name": name,
-            "thesis": d.get("thesis") or "",
-            "key_points": d.get("key_points") or [],
-            "risks": d.get("risks") or [],
-            "upside_pct": up, "warning": warning,
-            "rating": _rating(up, warning),
-            "rs": sig["rs"], "pos_52w": sig["pos_52w"]}
+        return _call_claude_code(prompt, model=model, timeout=timeout).strip()
+    except Exception:
+        return ""
 
 
-def _synth_report(anchor_topic: str, narr_material: list[dict], stock_blocks: list[dict]) -> dict:
-    """Top-down 설득형 리포트 종합 (opus, 1콜) — 투자 포인트 → 산업 내러티브 → Numbers → 종목(레이팅)."""
-    narr_block = "\n\n".join(
+def _stock_ctx(stocks: list[dict]) -> str:
+    """애널리스트·debate 공용 종목 컨텍스트 (앵커·시그널·다각도 파급)."""
+    out = []
+    for s in stocks:
+        angles = "; ".join(f"[{a['narrative']}]({a.get('rel') or '수혜'}) {a.get('reason') or ''}" for a in s["angles"])
+        out.append(f"■ {s['name']}({s['code']})\n  재무: {_anchor_line(s['anchor'])}\n"
+                   f"  기술: {_tech_line(s, s['sig'])}\n  심리: 최근7일 언급 {s['sig']['mentions_7d']}건"
+                   f"(이전 {s['sig']['mentions_prev_7d']}건)\n  펀더 저장 업사이드: "
+                   f"{s['sig']['upside_cached'] if s['sig']['upside_cached'] is not None else '미상'}%\n"
+                   f"  내러티브별 파급: {angles}")
+    return "\n".join(out)
+
+
+def _narr_ctx(narr_material: list[dict]) -> str:
+    return "\n\n".join(
         f"### {m['topic']} — {m['title'] or ''}\n{(m['body'] or '')[:BODY_EXCERPT]}"
         + (f"\n[파급] {m['scenario'][:SCEN_EXCERPT]}" if m.get("scenario") else "")
         for m in narr_material)
-    def _sb(s: dict) -> str:
-        head = f"### {s['name']}({s['code']}) — 레이팅 {s['rating']}"
-        if s.get("upside_pct") is not None:
-            head += f" · 상승여력 {round(s['upside_pct'])}%"
-        if s.get("rs") is not None:
-            head += f" · RS {s['rs']}"
-        return (f"{head}\n{s['thesis']}\n포인트: {' · '.join(s['key_points'])}\n"
-                f"리스크: {' · '.join(s['risks'])}")
-    stock_block = "\n\n".join(_sb(s) for s in stock_blocks) or "(분석 종목 없음)"
+
+
+def _analyst(kind: str, narr_ctx: str, stock_ctx: str) -> str:
+    roles = {
+        "fundamental": ("펀더멘털 애널리스트", "각 종목의 실적·밸류·리레이팅 여지를 재무 앵커로 평가. "
+                        "매출/이익률/PER 기준 저평가·고평가와 그 근거."),
+        "technical": ("기술 애널리스트", "각 종목의 기술적 국면을 판정. RS·이동평균(20/60/120)·볼린저%B·"
+                      "52주위치를 임계값이 아니라 **국면**(신고가 돌파·과열·건강한 조정·바닥권 등)으로 해석하라. "
+                      "펀더가 견고한데 조정으로 RS만 하락한 경우는 위험이 아니라 기회일 수 있음을 구분하라."),
+        "sentiment": ("수급·심리 애널리스트", "언급 모멘텀·쏠림·과열을 평가. 관심 급증이 기회인지 과열 경고인지 판단."),
+    }
+    title, task = roles[kind]
+    return _call_text(
+        f"너는 {title}다. 아래 산업 자료와 종목 데이터를 보고 {task}\n"
+        "종목별로 2~3문장씩, 산업 전반 코멘트 1~2문장. 근거 없는 수치 창작 금지. 500자 내외 평서체.\n\n"
+        f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}")
+
+
+def _researcher(side: str, narr_ctx: str, stock_ctx: str, analysts: dict, counter: str = "") -> str:
+    stance = ("강세(Bull)", "이 산업·종목이 왜 매력적인지 가장 설득력 있는 강세 논지를 세워라. "
+              "업계 리더의 방향성 등 아직 실현 안 된 미래도 근거가 타당하면 확률론적으로 당겨와 논해도 된다"
+              ) if side == "bull" else (
+              "약세(Bear)", "위 강세 논지에 맞서 가장 설득력 있는 약세·반대 논지를 세워라. 쏠림·기울기 한계·"
+              "밸류 부담·구조적 리스크 등. 강세 논리와 정면으로 충돌하는 지점을 명확히 하라.")
+    role, task = stance
+    return _call_text(
+        f"너는 {role} 리서처다. {task}\n"
+        "핵심 논지 3~4개를 '- 제목: 근거' 형식으로. 각 근거는 위 자료(내러티브·파급·애널리스트 평가)에 정박. "
+        "600자 내외.\n\n"
+        f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n"
+        f"[애널리스트 평가]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}"
+        + (f"\n\n[반박 대상 — 강세 논지]\n{counter}" if counter else ""))
+
+
+def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull: str, bear: str) -> dict:
+    """리드 애널리스트(research manager) — debate 판정 → 레이팅 + 섹션 목차."""
     prompt = (
-        "너는 1인 리서치센터의 수석 애널리스트다. 아래는 공유 인과로 엮인 산업 내러티브들(참고자료)과, "
-        "그것들을 관통해 이미 종합한 종목별 콜(레이팅·상승여력 포함)이다. 이를 **읽는 사람이 논지에 설득되는** "
-        "Top-down 투자 리포트로 써라. 하나의 핵심 투자 포인트를 세우고, 그것을 산업 내러티브로 설명하고, "
-        "Numbers로 뒷받침한 뒤, 종목으로 내려온다. 요약 나열이 아니라 하나의 설득 논리로.\n"
-        "JSON만 출력(코드블록·머리말 없이): "
-        '{"title": "리포트 제목(핵심 주장 한 줄)", "body": "마크다운 리포트"}\n'
-        "body 구조(섹션 고정, 각 섹션 충분히 상세히):\n"
-        "## 투자 포인트\n이 리포트가 주장하는 핵심 명제 1개를 2~3문장으로 또렷하게 — 왜 지금 주목해야 하는가.\n"
-        "## 산업 내러티브\n그 포인트를 뒷받침하는 산업의 구조적 스토리 — 근본 동인 → 전개 갈래 → 왜 지속되는가. "
-        "엮인 내러티브·파급을 하나의 흐름으로 짜라(3~5단락).\n"
-        "## Numbers\n논지를 뒷받침하는 정량 근거 — 시장 규모/성장·capa/ASP/실적/밸류 등. 참고자료·시그널에 "
-        "있는 수치만 사용하고 없으면 '(자료 부재)'로 정직하게. 숫자로 논지를 검증.\n"
-        "## 종목\n산업 논리에서 개별 기업으로. 각 종목을 '**종목명** — 레이팅 · 상승여력' 헤더로 시작해 "
-        "왜 그 레이팅인지 2~3문장. 레이팅·상승여력은 아래 제공값을 그대로 쓰고 바꾸지 마라(없는 수치 창작 금지).\n"
-        "## 리스크 · 무효화\n이 논지가 틀리는 조건과 감시 신호. 타이밍은 추세추종 렌즈(RS·52주)로 별도임을 명시.\n"
-        "규율: 참고자료·시그널에 없는 사실 창작 금지. **매수 일변도 금지** — 레이팅은 제공된 값(Strong Buy/Buy/"
-        "Hold/Sell)을 따르고, Hold·Sell이면 그 이유를 정직하게. 범위+조건부, 단정 금지. 전체 2000~2600자. "
-        "내부 코드·약어 노출 금지.\n\n"
-        f"[앵커 주제] {anchor_topic}\n\n[참고 내러티브·파급]\n{narr_block}\n\n[종목별 콜]\n{stock_block}")
-    d = _parse_json(_call_claude_code(prompt, model="opus", timeout=360))
-    return {"title": d.get("title") or f"{anchor_topic} 통합 리포트", "body": d.get("body") or ""}
+        "너는 리드 애널리스트다. 아래 애널리스트 평가와 Bull/Bear 논쟁을 보고 **최종 판정**을 내려라. "
+        "한쪽으로 치우치지 말고 확률론적으로 종합하되, 분명한 콜을 내라.\n"
+        + RATING_RUBRIC + "\n"
+        "JSON만 출력(코드블록·머리말 없이): {"
+        '"title":"리포트 제목(핵심 주장 한 줄)",'
+        '"overall":"종합 판단 3~4문장(투자 포인트)",'
+        '"ratings":[{"code":"종목코드","name":"종목명","rating":"Strong Buy|Buy|Hold|Sell","upside_pct":정수 or null,"rationale":"1~2문장"}],'
+        '"outline":[{"section":"섹션 제목","brief":"이 섹션이 담을 내용","evidence":"핵심 근거 요지"}]}\n'
+        f"outline은 4~{MAX_SECTIONS}개 섹션(예: 투자 포인트/산업 구조/강세 논거/약세 논거·리스크/종목별 콜/결론). "
+        "ratings는 위 [종목 데이터]의 모든 종목에 대해.\n\n"
+        f"[앵커 주제] {anchor_topic}\n[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n"
+        f"[애널리스트]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}\n\n"
+        f"[Bull]\n{bull}\n\n[Bear]\n{bear}")
+    try:
+        return _parse_json(_call_claude_code(prompt, model="opus", timeout=360))
+    except Exception:
+        return {}
+
+
+def _write_section(sec: dict, anchor_topic: str, ctx: str, ratings_line: str) -> str:
+    """섹션 작성자 — 목차 한 파트를 근거에 기반해 서술."""
+    body = _call_text(
+        f"너는 리포트 섹션 작성자다. '{anchor_topic}' 통합 리포트의 아래 섹션을 서술하라. "
+        "제공 자료·근거에 정박하고, 미래 전망은 근거 기반으로 논리를 제시하라(범위+조건부, 단정 금지). "
+        "없는 사실·수치 창작 금지. 자연스러운 평서체, 이 섹션만 400~600자.\n"
+        f"[섹션] {sec.get('section')}\n[담을 내용] {sec.get('brief')}\n[근거] {sec.get('evidence')}\n"
+        f"[종목 레이팅] {ratings_line}\n\n[참고 자료]\n{ctx}", timeout=200)
+    return f"## {sec.get('section')}\n\n{body}" if body else ""
 
 
 def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
-    """앵커 주제 → 공유 이웃 취합 → 종목 다각도 재분석 → Top-down 리포트 (연쇄 LLM, 캐시)."""
     if llm_engine() != "claude-code":
         return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)"}
     anchor = _latest_narr(conn, anchor_topic)
     if not anchor:
         return {"error": f"'{anchor_topic}' 내러티브 없음 — 먼저 내러티브를 생성하세요"}
 
-    # 1. 앵커 + 공유 이웃 (LLM 0)
+    # A. 앵커 + 공유 이웃
     from pipeline.narrative import related_narratives
     rel = related_narratives(conn, anchor["id"]).get("related", [])
     member_narrs, seen = [dict(anchor)], {anchor_topic}
@@ -202,27 +231,25 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
             break
     members = [(m["topic"], m["version"]) for m in member_narrs]
     mhash = _members_hash(members)
-
-    # 캐시: 구성원 해시 동일 & 비-refresh → 저장분
     if not force:
         cur = conn.execute(
-            "SELECT title, body, stocks_json, members_json, members_hash, created_at "
+            "SELECT title, body, stocks_json, members_json, debate_json, members_hash, created_at "
             "FROM reports WHERE anchor_topic=?", (anchor_topic,)).fetchone()
         if cur and cur["members_hash"] == mhash:
             return {"status": "ok", "title": cur["title"], "answer": cur["body"],
                     "members": json.loads(cur["members_json"] or "[]"),
                     "stocks": json.loads(cur["stocks_json"] or "[]"),
+                    "debate": json.loads(cur["debate_json"] or "{}"),
                     "cached": True, "created_at": cur["created_at"]}
 
-    # 2. 자료 수집 + 종목별 다각도 집계 (캐시된 scenario 재사용, ② 없으면 상한 내 자동 보강)
+    # A. 자료 수집 + 종목 다각도 집계 (② 보강 포함)
     narr_material, stock_angles = [], {}
     augment_budget = AUGMENT_CAP
     for m in member_narrs:
-        sc = conn.execute(
-            "SELECT answer, beneficiaries FROM scenarios WHERE topic=?", (m["topic"],)).fetchone()
+        sc = conn.execute("SELECT answer, beneficiaries FROM scenarios WHERE topic=?", (m["topic"],)).fetchone()
         answer = sc["answer"] if sc else None
         bens = json.loads(sc["beneficiaries"]) if (sc and sc["beneficiaries"]) else []
-        if not sc and augment_budget > 0:   # ② 파급 없는 구성 내러티브 경량 보강 (best-effort)
+        if not sc and augment_budget > 0:
             augment_budget -= 1
             try:
                 from pipeline.scenario import build_scenario
@@ -232,8 +259,7 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
                     answer, bens = r.get("answer"), r.get("beneficiaries") or []
             except Exception:
                 pass
-        narr_material.append({"topic": m["topic"], "title": m["title"], "body": m["body"],
-                              "scenario": answer})
+        narr_material.append({"topic": m["topic"], "title": m["title"], "body": m["body"], "scenario": answer})
         for b in bens:
             code = b.get("stock_code")
             if not code:
@@ -241,31 +267,58 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
             slot = stock_angles.setdefault(code, {"name": b.get("name") or code, "angles": []})
             slot["angles"].append({"narrative": m["topic"], "rel": b.get("rel"), "reason": b.get("reason")})
 
-    # 3. 랭킹 = 등장 내러티브 수(교차 현저성)
     ranked = sorted(stock_angles.items(), key=lambda kv: -len(kv[1]["angles"]))[:TOP_STOCKS]
+    stocks = [{"code": c, "name": v["name"], "angles": v["angles"],
+               "anchor": _anchor(conn, c), "sig": _signals(conn, c, v["name"])} for c, v in ranked]
 
-    # 4. 종목별 재분석 + 콜 (sonnet, 연쇄) — 펀더·심리·기술 시그널 반영(③)
-    stock_blocks = []
-    for code, info in ranked:
-        blk = _synth_stock(_anchor(conn, code), code, info["name"], info["angles"], _signals(conn, code, info["name"]))
-        if blk:
-            stock_blocks.append(blk)
+    narr_ctx, stock_ctx = _narr_ctx(narr_material), _stock_ctx(stocks)
 
-    # 5. 리포트 종합 (opus)
-    rpt = _synth_report(anchor_topic, narr_material, stock_blocks)
+    # B. 애널리스트 팀 (sonnet ×3)
+    analysts = {k: _analyst(k, narr_ctx, stock_ctx) for k in ("fundamental", "technical", "sentiment")}
+    # C. 리서처 debate (sonnet ×2, Bear는 Bull을 반박)
+    bull = _researcher("bull", narr_ctx, stock_ctx, analysts)
+    bear = _researcher("bear", narr_ctx, stock_ctx, analysts, counter=bull)
+    # D. 리드 판정 (opus ×1)
+    lead = _lead(anchor_topic, narr_ctx, stock_ctx, analysts, bull, bear)
+    ratings = lead.get("ratings") or []
+    outline, _seen_sec = [], set()   # 섹션 제목 중복 제거 (리드가 같은 제목 반복 방지)
+    for o in (lead.get("outline") or []):
+        t = (o.get("section") or "").strip()
+        if t and t not in _seen_sec:
+            _seen_sec.add(t); outline.append(o)
+    outline = outline[:MAX_SECTIONS]
+    ratings_line = " · ".join(
+        f"{r.get('name')} {r.get('rating')}"
+        + (f"({round(r['upside_pct'])}%)" if r.get("upside_pct") is not None else "")
+        for r in ratings) or "(레이팅 없음)"
 
-    # 6. 적재
-    stocks = [{"code": s["code"], "name": s["name"], "rating": s["rating"],
-               "upside_pct": s["upside_pct"]} for s in stock_blocks]
+    # F. 섹션 작성 (sonnet ×N) → 조립
+    ctx = f"{narr_ctx}\n\n[애널리스트]\n펀더:{analysts['fundamental']}\n기술:{analysts['technical']}\n수급:{analysts['sentiment']}\n\n[Bull]{bull}\n\n[Bear]{bear}"
+    sections = [_write_section(s, anchor_topic, ctx, ratings_line) for s in outline]
+    body = "\n\n".join(s for s in sections if s)
+    if lead.get("overall") and not any("투자 포인트" in (o.get("section") or "") for o in outline):
+        body = f"## 투자 포인트\n\n{lead['overall']}\n\n" + body
+    title = lead.get("title") or f"{anchor_topic} 통합 리포트"
+
+    if not body:   # LLM 연쇄 실패 시 저장 안 함
+        return {"error": "리포트 생성 실패 (LLM 연쇄)"}
+
+    stocks_out = [{"code": r.get("code"), "name": r.get("name"), "rating": r.get("rating"),
+                   "upside_pct": r.get("upside_pct")} for r in ratings]
+    debate = {"fundamental": analysts["fundamental"], "technical": analysts["technical"],
+              "sentiment": analysts["sentiment"], "bull": bull, "bear": bear,
+              "ratings": ratings}
     conn.execute(
-        "INSERT INTO reports (anchor_topic, title, body, members_json, stocks_json, members_hash, "
-        "model, created_at) VALUES (?,?,?,?,?,?,?,datetime('now')) "
+        "INSERT INTO reports (anchor_topic, title, body, members_json, stocks_json, debate_json, "
+        "members_hash, model, created_at) VALUES (?,?,?,?,?,?,?,?,datetime('now')) "
         "ON CONFLICT(anchor_topic) DO UPDATE SET title=excluded.title, body=excluded.body, "
         "members_json=excluded.members_json, stocks_json=excluded.stocks_json, "
-        "members_hash=excluded.members_hash, model=excluded.model, created_at=excluded.created_at",
-        (anchor_topic, rpt["title"], rpt["body"], json.dumps([m["topic"] for m in member_narrs], ensure_ascii=False),
-         json.dumps(stocks, ensure_ascii=False), mhash, "claude-code/opus+sonnet"))
+        "debate_json=excluded.debate_json, members_hash=excluded.members_hash, "
+        "model=excluded.model, created_at=excluded.created_at",
+        (anchor_topic, title, body, json.dumps([m["topic"] for m in member_narrs], ensure_ascii=False),
+         json.dumps(stocks_out, ensure_ascii=False), json.dumps(debate, ensure_ascii=False),
+         mhash, "claude-code/opus+sonnet"))
     conn.commit()
-    return {"status": "ok", "title": rpt["title"], "answer": rpt["body"],
-            "members": [m["topic"] for m in member_narrs], "stocks": stocks,
-            "cached": False, "created_at": None}
+    return {"status": "ok", "title": title, "answer": body,
+            "members": [m["topic"] for m in member_narrs], "stocks": stocks_out,
+            "debate": debate, "cached": False, "created_at": None}

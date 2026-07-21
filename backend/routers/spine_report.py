@@ -14,7 +14,8 @@ class ReportResult(BaseModel):
     title: str | None = None
     answer: str | None = None        # Top-down 마크다운
     members: list[str] = []          # 취합된 내러티브 topic
-    stocks: list[dict] = []          # 분석 종목 [{code,name}]
+    stocks: list[dict] = []          # 분석 종목 [{code,name,rating,upside_pct}]
+    debate: dict = {}                # analyst·bull·bear·ratings (v2 산출물 열람, D-043)
     cached: bool = False
     created_at: str | None = None
 
@@ -47,8 +48,8 @@ def report_cached(topic: str):
     """저장된 통합 리포트 조회 — LLM 없음. 없으면 status=none."""
     conn = get_connection()
     row = conn.execute(
-        "SELECT title, body, members_json, stocks_json, created_at FROM reports WHERE anchor_topic=?",
-        (topic,)).fetchone()
+        "SELECT title, body, members_json, stocks_json, debate_json, created_at "
+        "FROM reports WHERE anchor_topic=?", (topic,)).fetchone()
     conn.close()
     if not row:
         return ReportResult(status="none")
@@ -56,6 +57,7 @@ def report_cached(topic: str):
         status="ok", title=row["title"], answer=row["body"],
         members=json.loads(row["members_json"] or "[]"),
         stocks=json.loads(row["stocks_json"] or "[]"),
+        debate=json.loads(row["debate_json"] or "{}"),
         cached=True, created_at=row["created_at"])
 
 
@@ -75,4 +77,5 @@ def report_compute(topic: str, refresh: bool = False):
         return ReportResult(status="unavailable")
     return ReportResult(status="ok", title=r.get("title"), answer=r.get("answer"),
                         members=r.get("members") or [], stocks=r.get("stocks") or [],
+                        debate=r.get("debate") or {},
                         cached=bool(r.get("cached")), created_at=r.get("created_at"))
