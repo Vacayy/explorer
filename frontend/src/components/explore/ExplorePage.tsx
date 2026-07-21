@@ -283,7 +283,7 @@ function GraphActivitySection() {
       </CardHeader>
       <CardContent className="space-y-2">
         {items.map((n) => (
-          <Link key={n.id} to={`/narrative/worldview?focus=${n.id}`} className="block group">
+          <Link key={n.id} to={`/issue/${n.id}`} className="block group">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-medium text-sm group-hover:underline">{n.name}</span>
               <Badge variant="outline" className="text-[9px]">{NODE_LABEL[n.type] ?? n.type}</Badge>
