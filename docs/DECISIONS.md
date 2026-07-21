@@ -10,6 +10,33 @@
 
 ---
 
+## D-041 · 2026-07-21 · 통합 리포트 — 공유 인과 내러티브 취합 → 종목 다각도 재분석 → Top-down (연쇄 LLM)
+
+**결정**: 공유 인과로 엮인 내러티브들을 애널리스트 참고자료로 취합해 하나의 **Top-down 투자 리포트**
+(산업 분석→기업 분석→투자 포인트·전략)를 생성한다. 앵커=주제 시드+공유 이웃(`related_narratives`),
+깊이=종목 분석까지. 핵심: **같은 종목도 내러티브마다 파급이 다르므로**, 종목별로 각 내러티브의 파급을
+다 모은 뒤(캐시된 scenario.beneficiaries) 그 다각도를 반영해 **다시** 분석한다. `pipeline/report.py`:
+취합(LLM 0) → 종목별 재분석 ×M(sonnet, 연쇄) → 리포트 종합 ×1(opus). `reports` 캐시(members_hash
+멱등, D-038 철학). `GET/POST /api/spine/report`. 스펙: docs/specs/integrated-report.md.
+
+**맥락·이유**: 내러티브 각각이 이미 파급 시나리오·인과 구조·공유 내러티브를 낸다 — 이를 애널리스트가 여러
+자료를 종합하듯 하나로 엮으면 산업→기업 리포트가 된다(사용자 2026-07-21). 선례 mega_narrative는 공유
+노드 내러티브를 세계관 *서사*로 꿰지만 기업 분석·투자 전략이 없어 리포트가 아니었다 — 이걸 투자 리포트로
+확장. 연쇄 LLM인 이유: 종목 재분석이 '여러 내러티브의 다각도 파급'을 입력으로 받아야 해서 취합→종목
+종합→리포트 종합이 순차 의존(멀티에이전트 오케스트레이션 도구가 아니라 scenario/mega처럼 pipeline
+순차 호출). 비용 통제: 리포트는 **캐시된 scenario·앵커·업사이드를 재사용**하고 새 scenario를 강제
+생성하지 않는다(scenario 없는 내러티브는 body만); 전체는 members_hash로 캐시해 재진입 시 opus 0.
+
+**기각한 대안**: ① mega_narrative 확장으로 처리 — 그건 서사지 리포트(기업 분석·전략 없음) ② 종목 재분석
+없이 scenario 나열 — '같은 종목 다각도 종합'이라는 핵심을 놓침 ③ 멀티에이전트 워크플로 도구 — 사용자
+명시 opt-in 없음, 순차 파이프라인으로 충분 ④ 리포트가 새 정량 창작 — 거짓 정밀, 캐시된 앵커만 사용.
+
+**참조**: pipeline/report.py · routers/spine_report.py · database.py(reports) · main.py ·
+narrative.related_narratives · scenario(캐시 beneficiaries)·upside_model._anchor · mega_narrative(선례) ·
+frontend NarrativePage.tsx(ReportSection) · docs/specs/integrated-report.md · D-032·D-034·D-036·D-038·D-040 · 대화 2026-07-21
+
+---
+
 ## D-040 · 2026-07-21 · 액션 씨어리 순환 — 커버리지↔이슈 파급의 닫힌 고리 (종합)
 
 **결정**: action_thesis를 하나의 **닫힌 순환**으로 정박한다. 개별 결정(D-036~039)이 이 고리의

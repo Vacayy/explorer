@@ -722,6 +722,19 @@ def init_db():
         created_at        TEXT DEFAULT (datetime('now'))
     );
 
+    -- 통합 리포트 캐시 (integrated-report) — 앵커 주제 + 공유 이웃 내러티브 취합 → 종목 다각도
+    -- 재분석 → Top-down 리포트. members_hash(구성원 topic:version)로 멱등, 구성원 변동 시 stale.
+    CREATE TABLE IF NOT EXISTS reports (
+        anchor_topic  TEXT PRIMARY KEY,
+        title         TEXT,
+        body          TEXT,        -- Top-down 마크다운
+        members_json  TEXT,        -- 취합된 내러티브 topic 목록 (json)
+        stocks_json   TEXT,        -- 분석 종목 [{code,name}] (json)
+        members_hash  TEXT,        -- 재생성 가드
+        model         TEXT,
+        created_at    TEXT DEFAULT (datetime('now'))
+    );
+
     -- 어휘 통합 (vocab consolidation, D-033) — audit + redirect 겸용.
     -- 배치 병합으로 사라진 theme/macro 노드 이름이 재등장해도 survivor로 해소 (재파편화 방지).
     CREATE TABLE IF NOT EXISTS entity_merges (
