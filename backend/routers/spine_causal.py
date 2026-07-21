@@ -103,3 +103,55 @@ def screen_beneficiary_candidates(sector: str, limit: int = 12):
     r = screen_beneficiaries(conn, sector, limit)
     conn.close()
     return r
+
+
+# 업사이드 모델 — 이벤트 → 종목 조건부 업사이드/하방 정량 (action_thesis Phase 2, 온디맨드 opus)
+class UpsideAnchor(BaseModel):
+    price: float | None = None
+    eps: float | None = None
+    per: float | None = None
+    revenue: int | None = None
+    net_margin: float | None = None
+
+
+class UpsideScenario(BaseModel):
+    name: str
+    prob: float | None = None
+    assumptions: list[str] = []
+    revenue_delta_pct: float | None = None
+    margin: float | None = None
+    eps_new: float | None = None
+    multiple: float | None = None
+    fair_price: float | None = None
+    upside_pct: float | None = None
+
+
+class UpsideDownside(BaseModel):
+    floor_price: float | None = None
+    downside_pct: float | None = None
+    basis: str | None = None
+
+
+class UpsideModel(BaseModel):
+    status: str
+    stock: str | None = None
+    stock_code: str | None = None
+    anchor: UpsideAnchor | None = None
+    method: str | None = None
+    scenarios: list[UpsideScenario] = []
+    downside: UpsideDownside | None = None
+    invalidation: list[str] = []
+    summary: str | None = None
+
+
+@beneficiary_router.post("/upside", response_model=UpsideModel)
+def upside(stock: str, event: str):
+    """이벤트 → 종목(=stock 종목코드) 조건부 업사이드/하방 모델링 (opus, models 적재)."""
+    from pipeline.upside_model import build_upside_model
+    conn = get_connection()
+    try:
+        return build_upside_model(conn, stock, event)
+    except Exception:
+        return {"status": "error"}
+    finally:
+        conn.close()
