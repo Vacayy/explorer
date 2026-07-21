@@ -1,11 +1,21 @@
 import { useState } from "react"
-import { ArrowRight, Loader2 } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { ArrowRight, Loader2, Plus, Check } from "lucide-react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
+import { useIndustryGroups } from "@/hooks/useIndustry"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
+import {
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from "@/components/ui/select"
 import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import { NODE_LABEL, type WEdge } from "./types"
+
+const CHAIN_STAGES = ["소재", "부품", "장비", "완제품", "서비스", "기타"]
 
 /** 세계관 노드 패널·이슈 디테일 공용 — 인과 엣지 행 + 수혜 종목 + 업사이드 모델. */
 
@@ -140,6 +150,58 @@ export interface ScenarioBeneficiary {
   market_cap: number | null; pos_52w: number | null
 }
 
+// ③→① 피드백 고리 — 파급 논리가 지목한 '신규 후보'(유니버스 밖)를 담당 유니버스에 편입.
+// 이슈 파급이 아직 안 보던 종목을 커버리지로 승격 (말뭉치 탈출의 완성, D-037 원목적).
+function InductButton({ stockCode, name }: { stockCode: string; name: string }) {
+  const [groupId, setGroupId] = useState("")
+  const [category, setCategory] = useState("기타")
+  const [done, setDone] = useState<string | null>(null)
+  const { data: groups = [] } = useIndustryGroups()
+  const qc = useQueryClient()
+  const add = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/api/industries/${groupId}/members`, { stock_code: stockCode, category })).data,
+    onSuccess: () => {
+      const g = groups.find((x) => String(x.id) === groupId)?.name ?? "유니버스"
+      setDone(g)
+      toast.success(`'${name}' ${g} 편입`)
+      qc.invalidateQueries({ queryKey: ["industry-detail", Number(groupId)] })
+      qc.invalidateQueries({ queryKey: ["industry-groups"] })
+    },
+    onError: () => toast.error("편입 실패 — 잠시 후 다시 시도"),
+  })
+
+  if (done) return <Badge variant="secondary" className="text-[9px]"><Check className="h-2.5 w-2.5 mr-0.5" />{done} 편입됨</Badge>
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-5 px-1.5 text-[10px]">
+          <Plus className="h-2.5 w-2.5" /> 유니버스 편입
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-52 space-y-2" align="start">
+        <div className="text-xs font-medium">유니버스 편입 — {name}</div>
+        <Select value={groupId} onValueChange={setGroupId}>
+          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="산업 그룹" /></SelectTrigger>
+          <SelectContent>
+            {groups.map((g) => <SelectItem key={g.id} value={String(g.id)} className="text-xs">{g.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={category} onValueChange={setCategory}>
+          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="밸류체인 단계" /></SelectTrigger>
+          <SelectContent>
+            {CHAIN_STAGES.map((c) => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button size="sm" className="w-full h-7 text-xs" disabled={!groupId || add.isPending}
+          onClick={() => add.mutate()}>
+          {add.isPending ? "편입 중…" : "편입"}
+        </Button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function ScenarioBeneficiaryRow({ b, event }: { b: ScenarioBeneficiary; event: string }) {
   const [open, setOpen] = useState(false)
   const harm = b.rel === "피해"
@@ -154,7 +216,10 @@ function ScenarioBeneficiaryRow({ b, event }: { b: ScenarioBeneficiary; event: s
           : <span className="font-medium text-sm">{b.name}</span>}
         {b.stock_code && (b.in_universe
           ? <Badge variant="secondary" className="text-[9px]">유니버스 · {b.universe_groups.join("/")}</Badge>
-          : <Badge variant="outline" className="text-[9px] text-muted-foreground">신규 후보 · 편입 검토</Badge>)}
+          : <>
+              <Badge variant="outline" className="text-[9px] text-muted-foreground">신규 후보</Badge>
+              {!harm && <InductButton stockCode={b.stock_code} name={b.name} />}
+            </>)}
         {b.rs_short != null && <Badge variant="outline" className="text-[9px] text-primary border-primary/40">RS {b.rs_short}</Badge>}
         {b.pos_52w != null && <span className="text-[9px] text-muted-foreground">52주 {b.pos_52w}%</span>}
         {!b.stock_code && <span className="text-[9px] text-muted-foreground">미상장·미보유</span>}
