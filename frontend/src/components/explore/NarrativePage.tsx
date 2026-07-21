@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { NarrativeList } from "@/components/explore/NarrativeList"
+import { BeneficiaryList } from "@/components/explore/graph/CausalDetail"
 import { cn } from "@/lib/utils"
 
 /**
@@ -131,6 +132,14 @@ export default function NarrativePage() {
           <ScenarioSection topic={topic} />
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
           {narrativeId && <ChainPaths narrativeId={narrativeId} />}
+          <Card><CardContent className="py-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">수혜 종목</span>
+              <span className="text-[11px] text-muted-foreground">이 테마에 엮인 종목 · RS·밸류 · 업사이드/하방</span>
+            </div>
+            <BeneficiaryList sector={topic} />
+          </CardContent></Card>
           {narrativeId && <Grounding narrativeId={narrativeId} />}
           {narrativeId && <RelatedNarratives narrativeId={narrativeId} />}
         </>
