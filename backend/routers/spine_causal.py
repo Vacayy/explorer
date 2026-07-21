@@ -50,3 +50,30 @@ def get_node_narratives(entity_id: int):
     r = nodes_in_narratives(conn, entity_id)
     conn.close()
     return [NodeNarrative(**x) for x in r]
+
+
+# 수혜 섹터 → 종목 후보 스크린 (action_thesis Phase 1) — 세계관/인과 계열이라 여기 둔다.
+beneficiary_router = APIRouter(prefix="/api/spine/beneficiary", tags=["spine"])
+
+
+class BeneficiaryCandidate(BaseModel):
+    stock_code: str
+    entity_id: int
+    name: str
+    rs_short: int
+    rs_prev: int | None = None
+    per: float | None = None
+    pbr: float | None = None
+    market_cap: int | None = None
+    pos_52w: int | None = None
+    co_mentions: int
+
+
+@beneficiary_router.get("/screen", response_model=list[BeneficiaryCandidate])
+def screen_beneficiary_candidates(sector: str, limit: int = 12):
+    """수혜 섹터/테마 → 종목 후보 (문서 공동언급 + RS·밸류·시총·52주 위치). LLM 없음."""
+    from pipeline.beneficiary import screen_beneficiaries
+    conn = get_connection()
+    r = screen_beneficiaries(conn, sector, limit)
+    conn.close()
+    return r

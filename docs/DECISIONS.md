@@ -10,6 +10,32 @@
 
 ---
 
+## D-035 · 2026-07-21 · action_thesis — 이벤트→수혜 종목→조건부 업사이드/하방 (에이전트화 다음 단계)
+
+**결정**: 갖춰진 준비물(주가·재무·RS·인과 그래프·내러티브·scenario 엔진·falsifier·lenses)을 하나의
+**액션 명제**로 엮는다 — "이벤트 터지면 뭘 사고, 업사이드/하방 얼마인지"(사용자 피드백 2026-07-21).
+플로우: 이벤트/신호 → scenario 파급 → 수혜 섹터 → **종목 후보(문서 공동언급+RS·밸류)** →
+업사이드(모델링: 매출 P×Q·Capa·TAM→이익률→EPS→적정주가, 불확실하면 멀티플) →
+하방(펀더멘탈 지지선 대비 현재가, 비대칭 프레이밍) → 매매(추세추종 렌즈) →
+**범위+조건부** action_thesis 카드 → 홈 승인. 스펙: docs/specs/action-thesis.md.
+**Phase 1 착수 = 수혜 섹터→종목 스크린만** (결정적·LLM 0). 나머지는 후속 Phase.
+
+**맥락·이유**: 이 시스템의 구조적 강점(연속 수집→인과 그래프)이 "애널 안 기다리는 실시간 대응"을
+가능케 한다 — scenario 엔진이 이미 이벤트→수혜 섹터를 함. **범위+조건부 표현 못박음**(point target은
+거짓 정밀, 시장은 물리 아님 — D-034 연장). 정량(업사이드 모델링)은 이벤트로 스코프된 소수 종목에만
+(ontology.md models 층, 애널리스트 소유 가정). "기계는 제안, 사람은 승인" 유지(D-020·D-022). 무효화
+조건은 falsifier 재활용. 매매 타이밍은 기업 질과 분리(추세추종) — "좋은 기업 ≠ 좋은 종목". **품질
+경고**: 액션 카드 품질은 밑바닥 그래프 품질이 상한(정체성·상류 인과·커버리지) — 얇은 위에 얹으면
+'자신만만한 오답'(돈 걸림). 불확실성 정직한 v1부터.
+
+**섹터→종목 연결 = 문서 공동언급** (MEMBER_OF는 KSIC라 투자언어 테마와 taxonomy 불일치 — research_candidates 검증 패턴 재사용).
+
+**기각한 대안**: ① point target 업사이드 — 거짓 정밀 ② 범용 전종목 정량 모델 — 파라미터화 불가·false precision, 이벤트 스코프 소수만 ③ 자동매매 — 영구 out(제안-승인 철학) ④ MEMBER_OF로 섹터→종목 — taxonomy 불일치.
+
+**참조**: docs/specs/action-thesis.md · pipeline/scenario.py·research_candidates.py(_rs_short·공동언급) · pipeline/beneficiary.py(신규 Phase 1) · falsifiers·lenses · ontology.md(models) · D-020·D-022·D-023·D-034 · 대화 2026-07-21
+
+---
+
 ## D-034 · 2026-07-20 · 인과 주장에 장소 정박 — geo_scope 엣지 스칼라 (보편 노드 + 스코프 있는 엣지)
 
 **결정**: 인과 노드는 시간·장소 없는 **보편 개념**으로 유지하고(A방향), 인과 주장(엣지)에 **`entity_relations.geo_scope`(통제어휘 스칼라)를 추가** — 시간 `reference_period`과 대칭. 통제어휘 `한국|미국|중국|유럽|일본|대만|글로벌|기타`(프리폼 파편화 방지, D-033 교훈), 공용 상수 `GEO_VOCAB`(narrative.py)를 추출 프롬프트 3곳(narrative·doc_causal·scenario)이 공유, `_norm_geo`로 어휘 밖 값은 None. 적재는 `_persist_causal` 한 곳(INSERT + 기존엣지 COALESCE). 기존 ~1,352 엣지는 `scripts/backfill_geo_scope.py`(haiku 배치, dry-run→apply, 애매하면 null 유지). 프론트: 노드 상세에 "관측 시점·지역" 집합 + 각 인과 행·엣지 상세에 geo 배지. 스펙: docs/specs/geo-scope.md.
