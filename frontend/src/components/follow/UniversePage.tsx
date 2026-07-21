@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Plus, Sparkles, X } from "lucide-react"
+import { Plus, Sparkles, Star, X } from "lucide-react"
 import {
   useIndustryGroups,
   useIndustryDetail,
@@ -9,6 +9,8 @@ import {
   useAddMember,
   useRemoveMember,
 } from "@/hooks/useIndustry"
+import { useWatchlist, useAddToWatchlist, useDeleteWatchlistItem } from "@/hooks/useWatchlist"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -52,6 +54,18 @@ export default function UniversePage() {
 
   const { data: detail, isLoading: detailLoading } = useIndustryDetail(activeId)
   const removeMember = useRemoveMember(activeId ?? 0)
+
+  // 팔로우(watchlist) 연결 — 커버리지 중 '능동 추적'을 ★로 표시 (역할 분리, 겹침 해소)
+  const { data: watchlist = [] } = useWatchlist()
+  const addFollow = useAddToWatchlist()
+  const delFollow = useDeleteWatchlistItem()
+  const followById = useMemo(
+    () => new Map(watchlist.map((w) => [w.stock_code, w.id])), [watchlist])
+  const toggleFollow = (code: string) => {
+    const id = followById.get(code)
+    if (id != null) delFollow.mutate(id)
+    else addFollow.mutate({ stock_code: code })
+  }
 
   // 멤버를 category별로 묶고 시총 합 내림차순 정렬
   const grouped = useMemo(() => {
@@ -165,7 +179,8 @@ export default function UniversePage() {
                     {members.length}종목{totalMcap > 0 ? ` · ${formatKrw(totalMcap)}` : ""}
                   </span>
                 </div>
-                <MemberTable members={members} onRemove={(id) => removeMember.mutate(id)} />
+                <MemberTable members={members} onRemove={(id) => removeMember.mutate(id)}
+                  followById={followById} onToggleFollow={toggleFollow} />
               </div>
             ))}
         </div>
@@ -189,7 +204,12 @@ export default function UniversePage() {
 
 /* ── 멤버 테이블 (밸류체인 단계별) — 팔로우 종목 테이블과 동형 ── */
 
-function MemberTable({ members, onRemove }: { members: IndustryMember[]; onRemove: (id: number) => void }) {
+function MemberTable({ members, onRemove, followById, onToggleFollow }: {
+  members: IndustryMember[]
+  onRemove: (id: number) => void
+  followById: Map<string, number>
+  onToggleFollow: (code: string) => void
+}) {
   const num = (v: number | null, suffix: string, digits = 1) =>
     v != null ? `${v.toFixed(digits)}${suffix}` : "-"
   return (
@@ -197,6 +217,7 @@ function MemberTable({ members, onRemove }: { members: IndustryMember[]; onRemov
       <Table>
         <TableHeader>
           <TableRow className="text-xs">
+            <TableHead className="w-8" />
             <TableHead>종목</TableHead>
             <TableHead className="text-right">시총</TableHead>
             <TableHead className="text-right">PER</TableHead>
@@ -207,8 +228,18 @@ function MemberTable({ members, onRemove }: { members: IndustryMember[]; onRemov
           </TableRow>
         </TableHeader>
         <TableBody>
-          {members.map((m) => (
+          {members.map((m) => {
+            const followed = followById.has(m.stock_code)
+            return (
             <TableRow key={m.id} className="group">
+              <TableCell>
+                <Button variant="ghost" size="icon" className="size-6"
+                  onClick={() => onToggleFollow(m.stock_code)}
+                  aria-label={followed ? "팔로우 해제" : "팔로우 — 능동 추적에 추가"}
+                  title={followed ? "팔로우 중 (능동 추적) — 클릭해 해제" : "팔로우 — 논지·목표가로 능동 추적"}>
+                  <Star className={cn("h-3.5 w-3.5", followed ? "fill-primary text-primary" : "text-muted-foreground/50")} />
+                </Button>
+              </TableCell>
               <TableCell>
                 <Link to={`/analyze/${m.stock_code}/summary`} className="text-sm font-medium hover:underline">
                   {m.corp_name}
@@ -229,7 +260,7 @@ function MemberTable({ members, onRemove }: { members: IndustryMember[]; onRemov
                 </Button>
               </TableCell>
             </TableRow>
-          ))}
+          )})}
         </TableBody>
       </Table>
     </div>
