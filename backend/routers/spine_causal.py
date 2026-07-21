@@ -52,6 +52,31 @@ def get_node_narratives(entity_id: int):
     return [NodeNarrative(**x) for x in r]
 
 
+class ActivityBeneficiary(BaseModel):
+    stock_code: str
+    name: str
+    rs_short: int | None = None
+
+
+class GraphActivityNode(BaseModel):
+    id: int
+    name: str
+    type: str
+    is_new: bool
+    new_edges: int
+    beneficiaries: list[ActivityBeneficiary] = []
+
+
+@router.get("/activity", response_model=list[GraphActivityNode])
+def get_graph_activity(days: int = 7, limit: int = 12):
+    """인과 그래프 델타 — 최근 새 엣지가 붙은 노드(신규/갱신) + 섹터/테마면 수혜 종목 (D-035). LLM 없음."""
+    from pipeline.beneficiary import graph_activity
+    conn = get_connection()
+    r = graph_activity(conn, days=days, limit=limit)
+    conn.close()
+    return [GraphActivityNode(**x) for x in r]
+
+
 # 수혜 섹터 → 종목 후보 스크린 (action_thesis Phase 1) — 세계관/인과 계열이라 여기 둔다.
 beneficiary_router = APIRouter(prefix="/api/spine/beneficiary", tags=["spine"])
 
