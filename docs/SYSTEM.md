@@ -151,8 +151,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 |
 | `POST·GET·DELETE /api/spine/knowledge` (+`/items`·`/overview`·`/items/{id}/evidence·approve·reject`·`/worldview`) | 지식 주입(+rationale·source, 반증조건 생성) / 지식 목록(salience·conviction·quadrant·근거해부·반증조건) / 현황 카운트 / 근거사슬 / 승격 승인·거부 / 내 주입 삭제(user 한정) / 세계관 브리핑 |
 | `GET /api/spine/research/candidates` (+`/{id}/approve`·`/dismiss`) | 리서치 제안 목록(LLM 0) / 승인→stock_brief(opus)·추정치 방향 콜 / 기각 |
-| `GET /api/spine/beneficiary/screen?sector=` · `GET /api/spine/causal/activity` · `POST /api/spine/beneficiary/upside?stock=&event=` | 수혜 종목 스크린(공동언급+RS·밸류·관련도 필터, LLM 0) / 인과 그래프 델타(신규·갱신 노드+수혜 top3) / **업사이드 모델**(opus 4단계: 매출→이익→EPS→적정주가 또는 멀티플 리레이팅, 시나리오 보수/기본/낙관 범위+조건부·하방·무효화, `models` 적재, D-035). 세계관 뷰 노드 패널·신호 탭 노출 |
-| `GET /api/spine/causal/worldview` (+`/node/{id}/narratives`·`/node/{id}/context`) | node/context=이슈 디테일용(노드+인과 논리 원인·결과 엣지, full_causal_graph 재사용). 세계관 뷰 — narrative_id 스코프 없는 전역 인과 그래프(노드·엣지+연결요소 cluster_id, union-find) + **플라이휠 감지**(CAUSES 방향 그래프의 크기 2+ SCC = 자기강화 루프, in_flywheel/flywheel 플래그 — D-027 반사성) + **노드 중력**(pace_layer — event~regime, 프론트에서 layer별 크기·강조, D-030), category 필터(도메인 렌즈) / 노드가 등장하는 내러티브. 전부 LLM 없음(docs/specs/causal-worldview.md). 순회 루트 정지도 layer 기반 정밀화 — regime/structure 도달 시 근본 원인으로 정지 |
+| `GET /api/spine/beneficiary/screen?sector=` · `GET /api/spine/causal/activity` · `POST /api/spine/beneficiary/upside?stock=&event=` | 수혜 종목 스크린(공동언급+RS·밸류·관련도 필터, LLM 0) / 인과 그래프 델타(신규·갱신 노드+수혜 top3) / **업사이드 모델**(opus 4단계: 매출→이익→EPS→적정주가 또는 멀티플 리레이팅, 시나리오 보수/기본/낙관 범위+조건부·하방·무효화, `models` **캐시**(저장분 즉시 반환, refresh=1일 때만 opus 재생성), D-035). 세계관 노드 패널·**내러티브(수혜 종목 섹션)**에 노출 — 신호 탭 활동 카드는 내러티브로 연결(이슈=내러티브로 통합) |
+| `GET /api/spine/causal/worldview` (+`/node/{id}/narratives`) | 세계관 뷰 — narrative_id 스코프 없는 전역 인과 그래프(노드·엣지+연결요소 cluster_id, union-find) + **플라이휠 감지**(CAUSES 방향 그래프의 크기 2+ SCC = 자기강화 루프, in_flywheel/flywheel 플래그 — D-027 반사성) + **노드 중력**(pace_layer — event~regime, 프론트에서 layer별 크기·강조, D-030), category 필터(도메인 렌즈) / 노드가 등장하는 내러티브. 전부 LLM 없음(docs/specs/causal-worldview.md). 순회 루트 정지도 layer 기반 정밀화 — regime/structure 도달 시 근본 원인으로 정지 |
 | `GET·POST·DELETE /api/spine/follows` | 엔티티 팔로우 |
 | `GET·POST·DELETE /api/spine/keywords` | 매칭 키워드 (등록 시 소급 링크) |
 | `POST /api/spine/sources/telegram·blog·youtube` | 소스 등록 (실검증→저장→백그라운드 첫 수집). youtube=영상 링크 단건 또는 채널 @handle/URL 구독 |
@@ -179,7 +179,6 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
                    지식(/knowledge: 3섹션 — 구조 지도(학습)·현황 대시보드(카운트·승격대기 큐·세계관·지식 리스트 salience×conviction 배지·근거사슬·반증조건)·지식 주입 콘솔(주입+근거/출처+삭제))
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·유튜브·뉴스·아티클·인물·역사(source_type=canon) (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
                    + 사이드바: 구독 채널/블로그 목록·닉네임·활성 토글·인라인 등록 폼
-이슈(/issue/:id)   신호 탭 '인과 그래프 활동'에서 진입 — 이슈(노드)의 인과 논리(원인→결과 mechanism) + 수혜 종목 + 업사이드/하방(온디맨드 모델). 세계관 노드 점프 대신 논리·수혜·업사이드를 한 페이지에서 해소 (D-035)
 문서(/doc/:id)     수집 원문·이미지 내부 열람 (외부 원문은 보조 버튼)
 분석(/analyze/:code) 요약·재무·밸류·사업·공시 (기존) + 언급 탭(1D/7D 다이제스트 2열·
                    새로운시각·매칭 키워드 관리·신호 이력·언급 문서)

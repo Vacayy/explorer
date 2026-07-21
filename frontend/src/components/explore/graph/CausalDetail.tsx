@@ -47,14 +47,16 @@ interface UpsideModel {
   scenarios?: UpsideScenario[]
   downside?: { floor_price: number | null; downside_pct: number | null; basis: string } | null
   invalidation?: string[]; summary?: string
+  cached?: boolean; updated_at?: string | null
 }
 
-// 업사이드 모델 (Phase 2, D-035) — 온디맨드 opus. 범위+조건부: 시나리오별 가정→적정주가→여지.
+// 업사이드 모델 (Phase 2, D-035) — 저장분 캐시 반환(즉시), '다시 계산' 시에만 opus 재생성.
 function UpsideResult({ stock, event }: { stock: string; event: string }) {
+  const [nonce, setNonce] = useState(0)   // 증가 시 refresh=1로 재생성
   const { data, isFetching, isError } = useQuery(
     apiComputeQuery<UpsideModel>({
-      key: ["spine", "beneficiary", "upside", stock, event],
-      url: `/api/spine/beneficiary/upside?stock=${stock}&event=${encodeURIComponent(event)}`,
+      key: ["spine", "beneficiary", "upside", stock, event, nonce],
+      url: `/api/spine/beneficiary/upside?stock=${stock}&event=${encodeURIComponent(event)}${nonce > 0 ? "&refresh=1" : ""}`,
       enabled: true,
     }),
   )
@@ -96,7 +98,11 @@ function UpsideResult({ stock, event }: { stock: string; event: string }) {
       {data.invalidation?.length ? (
         <div className="text-muted-foreground">무효화: {data.invalidation.join(" · ")}</div>
       ) : null}
-      <div className="text-[9px] text-muted-foreground/70">가정 기반 추정 · 범위+조건부 · 검증 필요</div>
+      <div className="flex items-center gap-2 text-[9px] text-muted-foreground/70">
+        <span>가정 기반 추정 · 범위+조건부 · 검증 필요</span>
+        {data.cached && data.updated_at && <span>· 저장분 {data.updated_at.slice(0, 10)}</span>}
+        <button onClick={() => setNonce((n) => n + 1)} className="ml-auto text-primary hover:underline">다시 계산</button>
+      </div>
     </div>
   )
 }

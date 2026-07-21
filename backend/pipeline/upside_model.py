@@ -181,13 +181,25 @@ def _call_opus(prompt: str) -> dict:
     return data
 
 
-def build_upside_model(conn, stock_code: str, event: str) -> dict:
-    """이벤트 → 종목 조건부 업사이드/하방 모델. models 테이블 적재. 반환: status ok|error|unavailable."""
-    if llm_engine() != "claude-code":
-        return {"status": "unavailable"}
+def build_upside_model(conn, stock_code: str, event: str, force: bool = False) -> dict:
+    """이벤트 → 종목 조건부 업사이드/하방 모델. models 테이블 캐시·적재.
+    반환: status ok|error|unavailable. force가 아니면 저장분을 그대로 반환(opus 재실행 없음)."""
     try:
         a = _anchor(conn, stock_code)
         name = a["name"] or stock_code
+        model_name = f"{name} · {event} 업사이드"
+
+        # 캐시: 이미 만든 모델이 있으면 opus 없이 즉시 반환 (매번 재생성 방지)
+        if not force:
+            row = conn.execute(
+                "SELECT spec_json, updated_at FROM models WHERE name=?", (model_name,)).fetchone()
+            if row and row["spec_json"]:
+                spec = json.loads(row["spec_json"])
+                return {"status": "ok", "stock": name, "stock_code": stock_code,
+                        "cached": True, "updated_at": row["updated_at"], **spec}
+
+        if llm_engine() != "claude-code":
+            return {"status": "unavailable"}
         docs = _evidence(conn, a["name"], event)
         data = _call_opus(_build_prompt(a["name"], event, a, docs))
 
@@ -213,8 +225,9 @@ def build_upside_model(conn, stock_code: str, event: str) -> dict:
                 spec_json=excluded.spec_json,
                 output_entity_id=excluded.output_entity_id,
                 updated_at=datetime('now')""",
-            (f"{name} · {event} 업사이드", json.dumps(spec, ensure_ascii=False), entity_id))
+            (model_name, json.dumps(spec, ensure_ascii=False), entity_id))
         conn.commit()
+        result["cached"] = False
         return result
     except Exception as e:  # noqa: BLE001 — opus 드리프트·타임아웃 포함, 상위에서 error 처리
         print(f"[upside_model] 실패: {type(e).__name__}: {e}")
