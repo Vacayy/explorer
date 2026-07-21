@@ -7,14 +7,18 @@ theme_surge(투자언어 테마)는 taxonomy가 달라 직접 매칭 불가 → 
 """
 from datetime import date, timedelta
 
-from pipeline.research_candidates import MAX_DOC_STOCKS, MIN_CO, _rs_short
+from pipeline.research_candidates import MAX_DOC_STOCKS, _rs_short
 from pipeline.sector_rs import _snapshot
 
-WINDOW_52W = 250   # 52주 위치 창(거래일)
+WINDOW_52W = 250      # 52주 위치 창(거래일)
+MIN_CO_BENEFIT = 2    # 최소 공동언급 문서 수 (Phase 1.5 — 1회성 우연 제외)
+REL_MIN = 0.3         # 관련도 하한 = 이 테마와 함께한 언급 / 전체 언급. 편재 대형주 배제(D-035)
 
 
 def screen_beneficiaries(conn, sector_name: str, limit: int = 12, days: int = 21) -> list[dict]:
-    """섹터명 → 공동언급 종목 후보 + RS·밸류·시총·52주 위치. RS(now) 내림차순 Top N."""
+    """섹터명 → 공동언급 종목 후보 + RS·밸류·시총·52주 위치. RS(now) 내림차순 Top N.
+    정밀도(Phase 1.5): 공동언급 2+ & 관련도(co/전체언급) 하한 — '모든 시황에 나오는 대형주'가
+    아니라 '이 테마에 집중적으로 엮인' 종목만 남긴다."""
     latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
     if not latest:
         return []
@@ -23,7 +27,7 @@ def screen_beneficiaries(conn, sector_name: str, limit: int = 12, days: int = 21
     # 섹터→종목: sector_name과 최근 days일 문서에서 함께 링크된 company 종목.
     # 문서당 stock 링크 수가 MAX_DOC_STOCKS 초과인 문서(시황 요약)는 공동언급서 제외.
     linked = conn.execute(f"""
-        SELECT c.aliases code, c.id entity_id, c.name, COUNT(*) co
+        SELECT c.aliases code, c.id entity_id, c.name, COUNT(DISTINCT tl.doc_id) co
         FROM entity_links tl
         JOIN entities e ON e.id=tl.entity_id AND e.name=?
         JOIN raw_documents rd ON rd.id=tl.doc_id
@@ -35,8 +39,31 @@ def screen_beneficiaries(conn, sector_name: str, limit: int = 12, days: int = 21
                WHERE x.doc_id=tl.doc_id AND x.link_type='stock') <= {MAX_DOC_STOCKS}
         GROUP BY c.id""", (sector_name, f"-{days} days")).fetchall()
 
-    cands = {r["code"]: {"entity_id": r["entity_id"], "name": r["name"], "co": r["co"]}
-             for r in linked if r["co"] >= MIN_CO}
+    raw = {r["code"]: {"entity_id": r["entity_id"], "name": r["name"], "co": r["co"]}
+           for r in linked if r["co"] >= MIN_CO_BENEFIT}
+    if not raw:
+        return []
+
+    # 관련도: 각 후보의 '전체' 종목 언급 수(같은 문서 유니버스 = 비-시황 문서, 창 내). rel=co/total.
+    # 편재 대형주(모든 시황에 등장)는 total이 커 rel이 낮아 걸러진다.
+    ph_raw = ",".join("?" * len(raw))
+    totals = {r["code"]: r["total"] for r in conn.execute(f"""
+        SELECT c.aliases code, COUNT(DISTINCT sl.doc_id) total
+        FROM entity_links sl
+        JOIN entities c ON c.id=sl.entity_id AND c.type='company'
+        JOIN raw_documents rd ON rd.id=sl.doc_id
+        WHERE sl.link_type='stock' AND c.aliases IN ({ph_raw})
+          AND rd.published_at >= datetime('now', ?)
+          AND (SELECT COUNT(*) FROM entity_links x
+               WHERE x.doc_id=sl.doc_id AND x.link_type='stock') <= {MAX_DOC_STOCKS}
+        GROUP BY c.id""", (*raw, f"-{days} days"))}
+
+    cands = {}
+    for code, b in raw.items():
+        total = totals.get(code, b["co"]) or b["co"]
+        rel = b["co"] / total
+        if rel >= REL_MIN:
+            cands[code] = {**b, "rel": rel}
     if not cands:
         return []
     codes = list(cands)
@@ -78,6 +105,7 @@ def screen_beneficiaries(conn, sector_name: str, limit: int = 12, days: int = 21
             "pbr": round(pbr, 2) if pbr is not None else None,
             "market_cap": int(mcap) if mcap else None,
             "pos_52w": pos, "co_mentions": int(b["co"]),
+            "relevance": round(b["rel"], 2),
         })
     out.sort(key=lambda x: -x["rs_short"])
     return out[:limit]
