@@ -81,3 +81,29 @@ def screen_beneficiaries(conn, sector_name: str, limit: int = 12, days: int = 21
         })
     out.sort(key=lambda x: -x["rs_short"])
     return out[:limit]
+
+
+def graph_activity(conn, days: int = 7, limit: int = 12) -> list[dict]:
+    """최근 새 엣지가 붙은 인과 노드(그래프 델타) + 섹터/테마면 수혜 종목 top3 (action_thesis, D-035).
+    신호 탭 델타 표면 — '무엇이 그래프에서 새로 뜨거나 갱신됐나'. 활동(new_edges) 내림차순."""
+    rows = conn.execute(f"""
+        SELECT e.id, e.name, e.type,
+               MAX(e.created_at >= datetime('now','-{days} days')) is_new,
+               COUNT(*) new_edges
+        FROM entity_relations er
+        JOIN entities e ON e.id IN (er.src_id, er.dst_id)
+        WHERE er.created_at >= datetime('now','-{days} days')
+          AND e.type IN ('theme','sector','macro','policy','event')
+        GROUP BY e.id
+        ORDER BY new_edges DESC, is_new DESC
+        LIMIT ?""", (limit,)).fetchall()
+    out = []
+    for r in rows:
+        item = {"id": r["id"], "name": r["name"], "type": r["type"],
+                "is_new": bool(r["is_new"]), "new_edges": r["new_edges"], "beneficiaries": []}
+        if r["type"] in ("sector", "theme"):
+            item["beneficiaries"] = [
+                {"stock_code": b["stock_code"], "name": b["name"], "rs_short": b["rs_short"]}
+                for b in screen_beneficiaries(conn, r["name"], limit=3)]
+        out.append(item)
+    return out

@@ -134,7 +134,9 @@ export default function WorldviewPage() {
   const [lenses, setLenses] = useState<string[]>([])
   const [showSmall, setShowSmall] = useState(false)
   const [backboneOnly, setBackboneOnly] = useState(true)   // 기본=줄기만 (잔가지 숨김)
-  const [focusId, setFocusId] = useState<number | null>(null)   // 초점(로컬) 모드 중심 노드
+  // ?focus=<id> 로 딥링크 진입 시 그 노드에 초점 (신호 탭 그래프 활동 → 세계관)
+  const focusParam = searchParams.get("focus")
+  const [focusId, setFocusId] = useState<number | null>(focusParam ? Number(focusParam) : null)
   const [depth, setDepth] = useState(2)                     // 초점 N홉
   const [selectedNode, setSelectedNode] = useState<WNode | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<WEdge | null>(null)
