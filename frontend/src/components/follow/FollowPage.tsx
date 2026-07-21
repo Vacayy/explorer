@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { formatKrw, formatNumber } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import type { WatchlistItem } from "@/types"
@@ -306,28 +307,24 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
   })
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">텔레그램 채널 <span className="font-normal text-muted-foreground">{channels.length}</span></CardTitle>
-      </CardHeader>
-      <CardContent className="px-0 pb-2 space-y-1">
-        <AddForm placeholder="t.me/채널명 또는 @채널명" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
-        {isLoading && <div className="px-4 py-2"><Skeleton className="h-4 w-full" /></div>}
-        {channels.map((ch) => {
-          const h = healthMap.get(ch.channel_name)
-          return (
-            <SourceRow key={ch.id}
-              name={ch.display_name ?? ch.channel_name}
-              sub={`7일 ${h?.docs_7d ?? "-"}건`}
-              warning={h?.warning}
-              active={ch.is_active === 1}
-              onClick={() => onGo(ch.channel_name)}
-              onToggle={() => toggle.mutate({ id: ch.id, is_active: !(ch.is_active === 1) })}
-            />
-          )
-        })}
-      </CardContent>
-    </Card>
+    <ProposalPanel title="텔레그램 채널" count={channels.length} maxHeight="50vh"
+      contentClassName="px-0 space-y-1"
+      pinned={<AddForm placeholder="t.me/채널명 또는 @채널명" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />}>
+      {isLoading && <div className="px-4 py-2"><Skeleton className="h-4 w-full" /></div>}
+      {channels.map((ch) => {
+        const h = healthMap.get(ch.channel_name)
+        return (
+          <SourceRow key={ch.id}
+            name={ch.display_name ?? ch.channel_name}
+            sub={`7일 ${h?.docs_7d ?? "-"}건`}
+            warning={h?.warning}
+            active={ch.is_active === 1}
+            onClick={() => onGo(ch.channel_name)}
+            onToggle={() => toggle.mutate({ id: ch.id, is_active: !(ch.is_active === 1) })}
+          />
+        )
+      })}
+    </ProposalPanel>
   )
 }
 
@@ -358,23 +355,19 @@ function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
   })
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">유튜브 <span className="font-normal text-muted-foreground">{channels.length}</span></CardTitle>
-      </CardHeader>
-      <CardContent className="px-0 pb-2 space-y-1">
-        <AddForm placeholder="채널 @handle·URL (구독) 또는 영상 URL (단건)" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
-        {channels.map((ch) => (
-          <SourceRow key={ch.channel_id}
-            name={ch.title ?? ch.channel_id}
-            sub="신규 영상 자동 자막"
-            active={ch.is_active}
-            onClick={() => onGo(ch.channel_id)}
-            onToggle={() => toggle.mutate({ id: ch.channel_id, active: !ch.is_active })}
-          />
-        ))}
-      </CardContent>
-    </Card>
+    <ProposalPanel title="유튜브" count={channels.length} maxHeight="50vh"
+      contentClassName="px-0 space-y-1"
+      pinned={<AddForm placeholder="채널 @handle·URL (구독) 또는 영상 URL (단건)" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />}>
+      {channels.map((ch) => (
+        <SourceRow key={ch.channel_id}
+          name={ch.title ?? ch.channel_id}
+          sub="신규 영상 자동 자막"
+          active={ch.is_active}
+          onClick={() => onGo(ch.channel_id)}
+          onToggle={() => toggle.mutate({ id: ch.channel_id, active: !ch.is_active })}
+        />
+      ))}
+    </ProposalPanel>
   )
 }
 
@@ -405,28 +398,24 @@ function BlogSourcesCard({ title, placeholder, match, onGo }: {
   })
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{title} <span className="font-normal text-muted-foreground">{sources.length}</span></CardTitle>
-      </CardHeader>
-      <CardContent className="px-0 pb-2 space-y-1">
-        <AddForm placeholder={placeholder} onSubmit={(v) => add.mutate(v)} pending={add.isPending} />
-        {isLoading && <div className="px-4 py-2"><Skeleton className="h-4 w-full" /></div>}
-        {sources.map((src) => {
-          const h = healthMap.get(src.url)
-          return (
-            <SourceRow key={src.id}
-              name={src.blog_name || src.url}
-              sub={`${src.author ?? src.platform} · 7일 ${h?.docs_7d ?? "-"}건`}
-              warning={h?.warning}
-              active={src.is_active === 1}
-              onClick={() => onGo(src.url)}
-              onToggle={() => toggle.mutate({ id: src.id, is_active: !(src.is_active === 1) })}
-            />
-          )
-        })}
-      </CardContent>
-    </Card>
+    <ProposalPanel title={title} count={sources.length} maxHeight="50vh"
+      contentClassName="px-0 space-y-1"
+      pinned={<AddForm placeholder={placeholder} onSubmit={(v) => add.mutate(v)} pending={add.isPending} />}>
+      {isLoading && <div className="px-4 py-2"><Skeleton className="h-4 w-full" /></div>}
+      {sources.map((src) => {
+        const h = healthMap.get(src.url)
+        return (
+          <SourceRow key={src.id}
+            name={src.blog_name || src.url}
+            sub={`${src.author ?? src.platform} · 7일 ${h?.docs_7d ?? "-"}건`}
+            warning={h?.warning}
+            active={src.is_active === 1}
+            onClick={() => onGo(src.url)}
+            onToggle={() => toggle.mutate({ id: src.id, is_active: !(src.is_active === 1) })}
+          />
+        )
+      })}
+    </ProposalPanel>
   )
 }
 
