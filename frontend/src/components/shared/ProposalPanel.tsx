@@ -16,6 +16,7 @@ interface ProposalPanelProps {
   icon?: ComponentType<{ className?: string }>
   count?: number
   action?: ReactNode              // 헤더 우측 슬롯 (링크 등)
+  pinned?: ReactNode              // 헤더와 스크롤 body 사이 고정 슬롯 (추가 폼 등 — 스크롤에 딸려가지 않음)
   maxHeight?: string              // window 대비 비율 (기본 70vh) — viewport에 적용
   maxWidth?: string               // window 대비 비율 (기본 90vw) — Card에 적용
   className?: string
@@ -24,7 +25,7 @@ interface ProposalPanelProps {
 }
 
 export function ProposalPanel({
-  title, subtitle, icon: Icon, count, action,
+  title, subtitle, icon: Icon, count, action, pinned,
   maxHeight = "70vh", maxWidth = "90vw",
   className, contentClassName, children,
 }: ProposalPanelProps) {
@@ -37,6 +38,7 @@ export function ProposalPanel({
         {subtitle && <span className="text-[11px] text-muted-foreground">{subtitle}</span>}
         {action && <span className="ml-auto shrink-0">{action}</span>}
       </CardHeader>
+      {pinned && <div className="shrink-0">{pinned}</div>}
       <ScrollArea viewportStyle={{ maxHeight }}>
         <CardContent className={contentClassName}>{children}</CardContent>
       </ScrollArea>
