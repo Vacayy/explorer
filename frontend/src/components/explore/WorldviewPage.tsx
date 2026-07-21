@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, X, Maximize2, Minimize2 } from "lucide-react"
+import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
@@ -400,6 +401,52 @@ function GraphPanel({ title, subtitle, onClose, children }: {
   )
 }
 
+interface BeneficiaryCandidate {
+  stock_code: string; entity_id: number; name: string
+  rs_short: number | null; rs_prev: number | null
+  per: number | null; pbr: number | null; market_cap: number | null; pos_52w: number | null
+  co_mentions: number
+}
+
+// 수혜 섹터/테마 → 종목 후보 (문서 공동언급 + RS·밸류 스크린, action_thesis Phase 1, D-035)
+function BeneficiarySection({ sector }: { sector: string }) {
+  const { data, isLoading } = useQuery(
+    apiQuery<BeneficiaryCandidate[]>({
+      key: ["spine", "beneficiary", sector],
+      url: `/api/spine/beneficiary/screen?sector=${encodeURIComponent(sector)}&limit=10`,
+      staleTime: STALE.medium,
+    }),
+  )
+  if (isLoading) return <div className="text-xs text-muted-foreground">수혜 후보 탐색 중…</div>
+  const items = data ?? []
+  if (items.length === 0) return null
+  return (
+    <div>
+      <div className="text-xs font-medium mb-1.5 text-muted-foreground">
+        수혜 후보 종목 ({items.length}) <span className="font-normal">· 문서 공동언급 + RS·밸류</span>
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((c) => (
+          <li key={c.stock_code} className="rounded-lg border px-2.5 py-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <a href={`/analyze/${c.stock_code}/summary`} className="font-medium text-sm hover:underline">{c.name}</a>
+              {c.rs_short != null && (
+                <Badge variant="outline" className="text-[9px] text-primary border-primary/40">RS {c.rs_short}</Badge>
+              )}
+              {c.pos_52w != null && <span className="text-[9px] text-muted-foreground">52주 {c.pos_52w}%</span>}
+              {c.market_cap != null && <span className="text-[9px] text-muted-foreground ml-auto">{formatKrw(c.market_cap)}</span>}
+            </div>
+            <div className="flex gap-2 text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+              {c.per != null && <span>PER {c.per.toFixed(1)}배</span>}
+              {c.pbr != null && <span>PBR {c.pbr.toFixed(2)}배</span>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WEdge[]; onClose: () => void }) {
   const { data } = useQuery(
     apiQuery<NodeNarrative[]>({
@@ -427,6 +474,7 @@ function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WE
             {geos.length > 0 && <span>지역: {geos.join(" · ")}</span>}
           </div>
         )}
+        {(node.type === "sector" || node.type === "theme") && <BeneficiarySection sector={node.name} />}
         {causes.length > 0 && (
           <div>
             <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드를 부르는 원인 ({causes.length})</div>
