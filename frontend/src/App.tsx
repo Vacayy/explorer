@@ -29,6 +29,7 @@ import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import SectorMapPage from "@/components/map/SectorMapPage"
 import NarrativePage from "@/components/explore/NarrativePage"
 import WorldviewPage from "@/components/explore/WorldviewPage"
+import IssueDetailPage from "@/components/explore/IssueDetailPage"
 import ArchivePage from "@/components/archive/ArchivePage"
 
 // Discovery
@@ -157,6 +158,7 @@ export default function App() {
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />
+            <Route path="issue/:nodeId" element={<IssueDetailPage />} />
             <Route path="map" element={<SectorMapPage />} />
             <Route path="narrative" element={<NarrativePage />} />
             <Route path="narrative/worldview" element={<WorldviewPage />} />

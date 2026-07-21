@@ -52,6 +52,26 @@ def get_node_narratives(entity_id: int):
     return [NodeNarrative(**x) for x in r]
 
 
+class NodeContext(BaseModel):
+    node: dict | None = None            # {id, name, type, in_degree, out_degree, ...}
+    causes: list[dict] = []             # 이 노드로 들어오는 인과 엣지 (worldview edge 형태)
+    effects: list[dict] = []            # 이 노드에서 나가는 인과 엣지
+
+
+@router.get("/node/{entity_id}/context", response_model=NodeContext)
+def get_node_context(entity_id: int):
+    """이슈(노드) 디테일용 — 노드 + 인과 논리(원인·결과 엣지, mechanism·geo 포함). LLM 없음.
+    full_causal_graph 재사용으로 corroborated_by·contested·feedback_note 등 필드 일관."""
+    from pipeline.narrative_graph import full_causal_graph
+    conn = get_connection()
+    g = full_causal_graph(conn)
+    conn.close()
+    node = next((n for n in g["nodes"] if n["id"] == entity_id), None)
+    causes = [e for e in g["edges"] if e.get("to_id") == entity_id]
+    effects = [e for e in g["edges"] if e.get("from_id") == entity_id]
+    return NodeContext(node=node, causes=causes, effects=effects)
+
+
 class ActivityBeneficiary(BaseModel):
     stock_code: str
     name: str

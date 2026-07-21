@@ -9,16 +9,16 @@ import {
   type Node, type Edge, type NodeProps,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
+import { apiQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, X, Maximize2, Minimize2, Loader2 } from "lucide-react"
-import { formatKrw } from "@/utils/format"
+import { X, Maximize2, Minimize2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
 const ObsidianGraphView = lazy(() => import("@/components/explore/graph/ObsidianGraphView"))
@@ -360,29 +360,6 @@ export default function WorldviewPage() {
   )
 }
 
-function EdgeContextRow({ e, dir }: { e: WEdge; dir: "in" | "out" }) {
-  // dir=in: {상대} → 이 노드 (원인) / dir=out: 이 노드 → {상대} (결과)
-  const other = dir === "in" ? e.from : e.to
-  const otherType = dir === "in" ? e.from_type : e.to_type
-  return (
-    <li className="rounded-lg border px-2.5 py-1.5 space-y-1">
-      <div className="flex items-center gap-1.5 flex-wrap text-sm">
-        {dir === "in" && <><span className="font-medium">{other}</span><ArrowRight className="h-3 w-3 text-muted-foreground" /></>}
-        <Badge variant="outline" className="text-[9px]">
-          {e.rel === "BENEFITS_FROM" ? "수혜" : "인과"}
-        </Badge>
-        {dir === "out" && <><ArrowRight className="h-3 w-3 text-muted-foreground" /><span className="font-medium">{other}</span></>}
-        {otherType && <span className="text-[9px] text-muted-foreground">{NODE_LABEL[otherType] ?? otherType}</span>}
-        {e.reference_period && <span className="text-[9px] text-muted-foreground">· {e.reference_period}</span>}
-        {e.geo_scope && <Badge variant="outline" className="text-[9px]">{e.geo_scope}</Badge>}
-        {e.corroborated_by >= 2 && <Badge variant="outline" className="text-[9px] text-primary border-primary/40">{e.corroborated_by}개 확인</Badge>}
-        {e.contested && <Badge variant="destructive" className="text-[9px]">상충</Badge>}
-      </div>
-      {e.mechanism && <p className="text-xs text-muted-foreground leading-snug">{e.mechanism}</p>}
-    </li>
-  )
-}
-
 /* 그래프 영역 안에 뜨는 상세 패널 셸 — 우측 상단 플로팅, 화면 blur/드로어 없음 */
 function GraphPanel({ title, subtitle, onClose, children }: {
   title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode
@@ -400,129 +377,6 @@ function GraphPanel({ title, subtitle, onClose, children }: {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{children}</div>
     </div>
-  )
-}
-
-interface BeneficiaryCandidate {
-  stock_code: string; entity_id: number; name: string
-  rs_short: number | null; rs_prev: number | null
-  per: number | null; pbr: number | null; market_cap: number | null; pos_52w: number | null
-  co_mentions: number; relevance: number | null
-}
-
-// 수혜 섹터/테마 → 종목 후보 (문서 공동언급 + RS·밸류 스크린, action_thesis Phase 1, D-035)
-function BeneficiarySection({ sector }: { sector: string }) {
-  const { data, isLoading } = useQuery(
-    apiQuery<BeneficiaryCandidate[]>({
-      key: ["spine", "beneficiary", sector],
-      url: `/api/spine/beneficiary/screen?sector=${encodeURIComponent(sector)}&limit=10`,
-      staleTime: STALE.medium,
-    }),
-  )
-  if (isLoading) return <div className="text-xs text-muted-foreground">수혜 후보 탐색 중…</div>
-  const items = data ?? []
-  if (items.length === 0) return null
-  return (
-    <div>
-      <div className="text-xs font-medium mb-1.5 text-muted-foreground">
-        수혜 후보 종목 ({items.length}) <span className="font-normal">· 문서 공동언급 + RS·밸류</span>
-      </div>
-      <ul className="space-y-1.5">
-        {items.map((c) => (
-          <BeneficiaryRow key={c.stock_code} c={c} event={sector} />
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-interface UpsideScenario {
-  name: string; prob: number | null; assumptions: string[]
-  revenue_delta_pct: number | null; margin: number | null; eps_new: number | null
-  multiple: number | null; fair_price: number | null; upside_pct: number | null
-}
-interface UpsideModel {
-  status: string; method?: string
-  scenarios?: UpsideScenario[]
-  downside?: { floor_price: number | null; downside_pct: number | null; basis: string } | null
-  invalidation?: string[]; summary?: string
-}
-
-// 업사이드 모델 (Phase 2, D-035) — 온디맨드 opus. 범위+조건부: 시나리오별 가정→적정주가→여지.
-function UpsideResult({ stock, event }: { stock: string; event: string }) {
-  const { data, isFetching, isError } = useQuery(
-    apiComputeQuery<UpsideModel>({
-      key: ["spine", "beneficiary", "upside", stock, event],
-      url: `/api/spine/beneficiary/upside?stock=${stock}&event=${encodeURIComponent(event)}`,
-      enabled: true,
-    }),
-  )
-  if (isFetching && !data) {
-    return <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-      <Loader2 className="h-3 w-3 animate-spin" /> 업사이드 모델 생성 중… (opus, 수십 초)</div>
-  }
-  if (isError || !data || data.status !== "ok" || !data.scenarios?.length) {
-    return <div className="mt-1.5 text-[11px] text-muted-foreground">업사이드 모델 생성 실패 — 재시도.</div>
-  }
-  return (
-    <div className="mt-1.5 space-y-1.5 border-t pt-1.5 text-[11px]">
-      <div className="flex items-center gap-1.5">
-        {data.method && <Badge variant="secondary" className="text-[9px]">{data.method}</Badge>}
-        {data.summary && <span className="text-muted-foreground">{data.summary}</span>}
-      </div>
-      {data.scenarios.map((s) => (
-        <div key={s.name}>
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium">{s.name}{s.prob != null ? ` (${Math.round(s.prob * 100)}%)` : ""}</span>
-            {s.upside_pct != null && (
-              <span className={cn("tabular-nums font-medium", s.upside_pct >= 0 ? "text-up" : "text-down")}>
-                {s.upside_pct >= 0 ? "+" : ""}{Math.round(s.upside_pct)}%
-              </span>
-            )}
-            {s.fair_price != null && <span className="text-muted-foreground tabular-nums">적정 {formatKrw(s.fair_price)}</span>}
-          </div>
-          {s.assumptions?.length > 0 && (
-            <div className="text-muted-foreground pl-1">↳ {s.assumptions.join(" · ")}</div>
-          )}
-        </div>
-      ))}
-      {data.downside && (data.downside.downside_pct != null || data.downside.basis) && (
-        <div className="text-muted-foreground">
-          하방 {data.downside.downside_pct != null ? `${Math.round(data.downside.downside_pct)}%` : ""}
-          {data.downside.basis ? ` — ${data.downside.basis}` : ""}
-        </div>
-      )}
-      {data.invalidation?.length ? (
-        <div className="text-muted-foreground">무효화: {data.invalidation.join(" · ")}</div>
-      ) : null}
-      <div className="text-[9px] text-muted-foreground/70">가정 기반 추정 · 범위+조건부 · 검증 필요</div>
-    </div>
-  )
-}
-
-function BeneficiaryRow({ c, event }: { c: BeneficiaryCandidate; event: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <li className="rounded-lg border px-2.5 py-1.5">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <a href={`/analyze/${c.stock_code}/summary`} className="font-medium text-sm hover:underline">{c.name}</a>
-        {c.rs_short != null && (
-          <Badge variant="outline" className="text-[9px] text-primary border-primary/40">RS {c.rs_short}</Badge>
-        )}
-        {c.relevance != null && <span className="text-[9px] text-muted-foreground">관련도 {Math.round(c.relevance * 100)}%</span>}
-        {c.pos_52w != null && <span className="text-[9px] text-muted-foreground">52주 {c.pos_52w}%</span>}
-        <button onClick={() => setOpen((o) => !o)}
-          className="ml-auto text-[10px] text-primary hover:underline">
-          {open ? "접기" : "업사이드"}
-        </button>
-      </div>
-      <div className="flex gap-2 text-[10px] text-muted-foreground mt-0.5 tabular-nums">
-        {c.market_cap != null && <span>{formatKrw(c.market_cap)}</span>}
-        {c.per != null && <span>PER {c.per.toFixed(1)}배</span>}
-        {c.pbr != null && <span>PBR {c.pbr.toFixed(2)}배</span>}
-      </div>
-      {open && <UpsideResult stock={c.stock_code} event={event} />}
-    </li>
   )
 }
 
@@ -553,7 +407,7 @@ function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WE
             {geos.length > 0 && <span>지역: {geos.join(" · ")}</span>}
           </div>
         )}
-        {(node.type === "sector" || node.type === "theme") && <BeneficiarySection sector={node.name} />}
+        {(node.type === "sector" || node.type === "theme") && <BeneficiaryList sector={node.name} />}
         {causes.length > 0 && (
           <div>
             <div className="text-xs font-medium mb-1.5 text-muted-foreground">이 노드를 부르는 원인 ({causes.length})</div>
