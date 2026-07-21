@@ -1,11 +1,12 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { FileText, Loader2 } from "lucide-react"
+import { ChevronDown, FileText, Loader2 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Markdown } from "@/components/shared/Markdown"
 import { EmptyState } from "@/components/shared/ErrorState"
 import { cn } from "@/lib/utils"
@@ -29,6 +30,10 @@ export interface ReportResult {
   answer: string | null
   members: string[]
   stocks: { code: string; name: string; rating?: string; upside_pct?: number | null }[]
+  debate?: {
+    fundamental?: string; technical?: string; sentiment?: string
+    bull?: string; bear?: string
+  }
   cached?: boolean
   created_at?: string | null
 }
@@ -107,9 +112,26 @@ export function ReportView({ topic }: { topic: string }) {
                   ))}
                 </div>
               )}
+              {display.debate && (display.debate.bull || display.debate.bear) && (
+                <Collapsible className="border-t pt-2">
+                  <CollapsibleTrigger className="group/dbt flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                    <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]/dbt:rotate-180" />
+                    논쟁·분석 (이 리포트가 어떻게 벼려졌나)
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="space-y-2 pt-2 text-[11px] leading-snug">
+                      {display.debate.bull && <div className="rounded-md border border-up/30 bg-up/5 px-2.5 py-1.5"><span className="font-semibold text-up">강세 (Bull)</span><div className="text-muted-foreground whitespace-pre-wrap mt-0.5">{display.debate.bull}</div></div>}
+                      {display.debate.bear && <div className="rounded-md border border-down/30 bg-down/5 px-2.5 py-1.5"><span className="font-semibold text-down">약세 (Bear)</span><div className="text-muted-foreground whitespace-pre-wrap mt-0.5">{display.debate.bear}</div></div>}
+                      {display.debate.fundamental && <p className="text-muted-foreground"><span className="font-medium text-foreground">펀더:</span> {display.debate.fundamental}</p>}
+                      {display.debate.technical && <p className="text-muted-foreground"><span className="font-medium text-foreground">기술:</span> {display.debate.technical}</p>}
+                      {display.debate.sentiment && <p className="text-muted-foreground"><span className="font-medium text-foreground">수급:</span> {display.debate.sentiment}</p>}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
               <div className="text-[10px] text-muted-foreground/70 border-t pt-2">
                 {display.cached && display.created_at ? `저장분 ${display.created_at.slice(0, 10)}` : "방금 생성"}
-                {" · 자료 취합·종합 · 범위+조건부 · 검증 필요"}
+                {" · 애널리스트 팀·Bull/Bear 논쟁·리드 판정 · 범위+조건부 · 검증 필요"}
               </div>
             </CardContent>
           </Card>

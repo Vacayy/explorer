@@ -795,6 +795,8 @@ def init_db():
         "ALTER TABLE raw_documents ADD COLUMN digest_status TEXT",  # youtube opus 정리본 성공 여부 (ok|failed, 그 외 소스는 NULL)
         # 문서 레벨 인과 추출 (D-028 레버 3) — 시도 기록(인과 0건이어도), 재시도 방지
         "ALTER TABLE enrichments ADD COLUMN causal_extracted_at TEXT",
+        # 리포트 v2 다중 에이전트(report-v2-agents) — debate 산출물 보존·열람 (analyst·bull·bear·레이팅)
+        "ALTER TABLE reports ADD COLUMN debate_json TEXT",
     ]:
         try:
             conn.execute(migration)
