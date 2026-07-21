@@ -42,7 +42,8 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
     return (
         "너는 사건의 파급을 추론하는 투자 리서치 전략가다. 아래 [사건]을 그대로 받아들이지 말고 "
         "인과 체인으로 전개해 결과를 JSON으로 정리해라. (설명·머리말 없이 JSON만, 코드블록 없이.)\n"
-        'JSON만 출력: {"scenario": "마크다운", "causal": {"nodes": [{"name","type","layer"}], '
+        'JSON만 출력: {"scenario": "마크다운", "beneficiaries": [{"name","rel","reason"}], '
+        '"causal": {"nodes": [{"name","type","layer"}], '
         '"edges": [{"from","to","rel","mechanism","orientation","reference_period","geo","confidence"}]}}\n'
         "마크다운 구조 (섹션 고정):\n"
         "### 사건 정의 — 무엇이 실제로 일어났고/일어난다고 가정하며, 무엇은 아직 불확실한가\n"
@@ -55,6 +56,10 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "### 반대 시나리오 — 이 체인이 통째로 틀리는 가장 그럴듯한 경로 한 단락 (ACH — 확증 방지)\n"
         "규칙: 수집 문서에 없는 수치는 (일반지식)으로 정직하게 표기. 과장 금지, 각 단계는 "
         "반증 가능한 서술로. 전체 700자 내외.\n\n"
+        "★수혜/피해 종목 (별도 필드 beneficiaries) — 위 파급 논리로 실제 영향받는 한국 상장 개별 종목을 "
+        "직접 지목해라. 문서에 자주 언급됐는지가 아니라 인과 논리로 판단(아직 회자 안 됐어도 논리상 수혜면 지목). "
+        "각 원소 {name: 정확한 상장사명, rel: '수혜'|'피해', reason: 이 파급 체인에서 왜 수혜/피해인지 한 문장}. "
+        "논리로 근거 댈 수 있는 것만, 억지 지목 금지. 최대 6개.\n\n"
         "★인과 그래프 추출 (본문과 별도로 — 위 파급 체인을 노드·엣지로, 내러티브 인과와 동일 규약):\n"
         "- nodes: {\"name\",\"type\",\"layer\"}, type ∈ company·sector·theme·person·macro·policy·event, "
         "layer ∈ event·flow·cycle·structure·regime (느릴수록 구조적)\n"
@@ -122,6 +127,18 @@ def build_scenario(event: str) -> dict:
         raise RuntimeError(f"scenario 파싱 실패(2회): {last_err}")
     md = data.get("scenario") or ""
 
+    # 논리 기반 수혜 종목 (D-035 통합 체인) — opus가 파급 논리로 지목한 종목을 resolve + RS·밸류 enrich.
+    # 공동언급 스크린과 달리 '아직 회자 안 됐어도 논리상 수혜'를 잡는다 (말뭉치 최신편향 탈출).
+    beneficiaries: list[dict] = []
+    picks = data.get("beneficiaries") or []
+    if isinstance(picks, list) and picks:
+        from pipeline.beneficiary import resolve_and_enrich
+        conn = get_connection()
+        try:
+            beneficiaries = resolve_and_enrich(conn, [p for p in picks if isinstance(p, dict)])
+        finally:
+            conn.close()
+
     # 인과 그래프 물질화 (D-028 제3 공급원) — 시나리오 파급 체인도 같은 그래프에 적재.
     # 가정된 사건에서 출발하므로 confidence 상한은 문서 레벨과 같은 0.5.
     if data.get("causal"):
@@ -136,6 +153,7 @@ def build_scenario(event: str) -> dict:
            "반증 센티넬이 매일 감시합니다.*")
     return {
         "answer": md,
+        "beneficiaries": beneficiaries,
         "citations": [{"n": i + 1, "doc_id": d["id"], "title": d["title"], "url": d["url"],
                        "source_type": d["source_type"], "published_at": d["published_at"]}
                       for i, d in enumerate(docs)],

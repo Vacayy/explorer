@@ -111,6 +111,78 @@ def screen_beneficiaries(conn, sector_name: str, limit: int = 12, days: int = 21
     return out[:limit]
 
 
+def resolve_and_enrich(conn, picks: list[dict]) -> list[dict]:
+    """scenario opus가 파급 논리로 지목한 종목(picks=[{name, rel, reason}]) → 종목코드 resolve +
+    RS·밸류·시총·52주 enrich (통합 체인, D-035). 말뭉치 공동언급이 아니라 인과 논리로 고른 종목이
+    입력 — '이미 자주 언급된 과거'에 갇히지 않는다. 미해소 종목은 code=None으로 이름·이유만 남긴다."""
+    if not picks:
+        return []
+    # resolve: 이름 → 종목코드 (company 엔티티 정확 일치 → companies.corp_name fallback)
+    resolved: dict[str, tuple[str | None, int | None]] = {}
+    for p in picks:
+        n = (p.get("name") or "").strip()
+        if not n or n in resolved:
+            continue
+        row = conn.execute(
+            "SELECT aliases code, id FROM entities "
+            "WHERE type='company' AND aliases IS NOT NULL AND name=? LIMIT 1", (n,)).fetchone()
+        if row:
+            resolved[n] = (row["code"], row["id"]); continue
+        row = conn.execute(
+            "SELECT stock_code FROM companies WHERE stock_code IS NOT NULL AND corp_name=? LIMIT 1",
+            (n,)).fetchone()
+        if row:
+            ent = conn.execute(
+                "SELECT id FROM entities WHERE type='company' AND aliases=? LIMIT 1",
+                (row["stock_code"],)).fetchone()
+            resolved[n] = (row["stock_code"], ent["id"] if ent else None)
+
+    codes = list({c for c, _ in resolved.values() if c})
+    metrics: dict[str, dict] = {}
+    latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
+    if codes and latest:
+        rs_now = _rs_short(conn, latest)
+        snap = _snapshot(conn, latest)
+        ph = ",".join("?" * len(codes))
+        val = {r["stock_code"]: (r["per"], r["pbr"]) for r in conn.execute(f"""
+            SELECT f.stock_code, f.per, f.pbr FROM fundamentals f
+            JOIN (SELECT stock_code, max(trade_date) d FROM fundamentals
+                  WHERE stock_code IN ({ph}) GROUP BY stock_code) t
+              ON t.stock_code=f.stock_code AND t.d=f.trade_date""", codes)}
+        rng = {r["stock_code"]: (r["mn"], r["mx"]) for r in conn.execute(f"""
+            SELECT stock_code, MIN(close) mn, MAX(close) mx FROM (
+              SELECT stock_code, close,
+                     ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY trade_date DESC) rn
+              FROM stock_prices WHERE stock_code IN ({ph}) AND close IS NOT NULL)
+            WHERE rn <= {WINDOW_52W} GROUP BY stock_code""", codes)}
+        for code in codes:
+            close, mcap = snap.get(code, (None, 0))
+            per, pbr = val.get(code, (None, None))
+            mn, mx = rng.get(code, (None, None))
+            pos = None
+            if close is not None and mn is not None and mx is not None and mx > mn:
+                pos = round((close - mn) / (mx - mn) * 100)
+            rs = rs_now.get(code)
+            metrics[code] = {
+                "rs_short": int(rs) if rs is not None else None,
+                "per": round(per, 1) if per is not None else None,
+                "pbr": round(pbr, 2) if pbr is not None else None,
+                "market_cap": int(mcap) if mcap else None, "pos_52w": pos}
+
+    out = []
+    for p in picks:
+        n = (p.get("name") or "").strip()
+        if not n:
+            continue
+        code, eid = resolved.get(n, (None, None))
+        out.append({
+            "name": n, "rel": p.get("rel"), "reason": p.get("reason"),
+            "stock_code": code, "entity_id": eid,
+            **metrics.get(code or "", {
+                "rs_short": None, "per": None, "pbr": None, "market_cap": None, "pos_52w": None})})
+    return out
+
+
 def graph_activity(conn, days: int = 7, limit: int = 12) -> list[dict]:
     """최근 새 엣지가 붙은 인과 노드(그래프 델타) + 섹터/테마면 수혜 종목 top3 (action_thesis, D-035).
     신호 탭 델타 표면 — '무엇이 그래프에서 새로 뜨거나 갱신됐나'. 활동(new_edges) 내림차순."""
