@@ -244,18 +244,36 @@ interface ScenarioResult {
   answer: string | null
   beneficiaries: ScenarioBeneficiary[]
   citations: { n: number; doc_id: number; title: string; url: string }[]
+  cached?: boolean
+  created_at?: string | null
+  stale?: boolean
 }
 
+// 파급 시나리오 (D-038 캐시) — 저장분 즉시 표시, '다시 분석'(refresh)으로만 opus 재생성.
+// 내러티브 버전이 그대로면 재분석해도 저장분 반환(백엔드 가드).
 function ScenarioSection({ topic }: { topic: string }) {
-  const [run, setRun] = useState(false)
-  const { data, isFetching } = useQuery(
-    apiComputeQuery<ScenarioResult>({
-      key: ["spine", "narrative", "scenario", topic],
-      url: `/api/spine/narrative/scenario/compute?topic=${encodeURIComponent(topic)}`,
-      enabled: run,
+  const [nonce, setNonce] = useState(0)     // >0 이면 compute 실행 (증가 시 재실행)
+  const [refresh, setRefresh] = useState(false)
+  const cached = useQuery(
+    apiQuery<ScenarioResult>({
+      key: ["spine", "narrative", "scenario", "cached", topic],
+      url: `/api/spine/narrative/scenario?topic=${encodeURIComponent(topic)}`,
+      staleTime: STALE.short, enabled: !!topic,
     }),
   )
-  const loading = run && (isFetching || !data)
+  const compute = useQuery(
+    apiComputeQuery<ScenarioResult>({
+      key: ["spine", "narrative", "scenario", "compute", topic, nonce],
+      url: `/api/spine/narrative/scenario/compute?topic=${encodeURIComponent(topic)}${refresh ? "&refresh=1" : ""}`,
+      enabled: nonce > 0,
+    }),
+  )
+  const display = compute.data?.status === "ok" ? compute.data
+    : cached.data?.status === "ok" ? cached.data : null
+  const loading = nonce > 0 && (compute.isFetching || !compute.data)
+  const failed = nonce > 0 && compute.data && compute.data.status !== "ok" && !display
+  const analyze = (isRefresh: boolean) => { setRefresh(isRefresh); setNonce((n) => n + 1) }
+
   return (
     <Card>
       <CardContent className="py-3 space-y-2">
@@ -263,9 +281,10 @@ function ScenarioSection({ topic }: { topic: string }) {
           <Route className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">파급 시나리오</span>
           <span className="text-[11px] text-muted-foreground">사건을 1·2·3차 인과 체인으로 — 왜, 그래서 무엇</span>
-          {!run && (
-            <Button size="sm" className="ml-auto h-7" onClick={() => setRun(true)}>
-              <Sparkles className="h-3.5 w-3.5" /> 파급 분석
+          {!loading && (
+            <Button size="sm" variant={display ? "outline" : "default"} className="ml-auto h-7"
+              onClick={() => analyze(!!display)}>
+              <Sparkles className="h-3.5 w-3.5" /> {display ? "다시 분석" : "파급 분석"}
             </Button>
           )}
         </div>
@@ -275,18 +294,22 @@ function ScenarioSection({ topic }: { topic: string }) {
             파급 체인을 전개하는 중… (수십 초~수 분, 심층 추론)
           </div>
         )}
-        {run && data && data.status !== "ok" && (
-          <EmptyState message="파급 분석을 생성하지 못했습니다 — 잠시 후 다시 시도." />
-        )}
-        {run && data?.status === "ok" && data.answer && (
+        {failed && <EmptyState message="파급 분석을 생성하지 못했습니다 — 잠시 후 다시 시도." />}
+        {display?.answer && (
           <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
             <CardContent className="py-4 space-y-3">
-              <Markdown>{data.answer}</Markdown>
-              {data.beneficiaries?.length > 0 && (
+              <Markdown>{display.answer}</Markdown>
+              {display.beneficiaries?.length > 0 && (
                 <div className="border-t pt-3">
-                  <ScenarioBeneficiaries items={data.beneficiaries} event={topic} />
+                  <ScenarioBeneficiaries items={display.beneficiaries} event={topic} />
                 </div>
               )}
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 border-t pt-2">
+                {display.cached && display.created_at
+                  ? <span>저장분 {display.created_at.slice(0, 10)}</span>
+                  : <span>방금 분석</span>}
+                {display.stale && <span className="text-primary">· 내러티브 갱신됨 — 다시 분석 권장</span>}
+              </div>
             </CardContent>
           </Card>
         )}

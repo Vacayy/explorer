@@ -709,6 +709,19 @@ def init_db():
         updated_at       TEXT DEFAULT (datetime('now'))
     );
 
+    -- 파급 시나리오 캐시 (D-038) — topic별 opus 결과 저장, 기반 내러티브 버전 변동 시에만 재생성.
+    -- upside 캐시(models)와 같은 철학: 매 클릭 opus 재생성 방지, 명시적 '다시 분석'으로만 갱신.
+    CREATE TABLE IF NOT EXISTS scenarios (
+        topic             TEXT PRIMARY KEY,
+        event             TEXT,
+        answer            TEXT,
+        beneficiaries     TEXT,    -- json
+        citations         TEXT,    -- json
+        narrative_version INTEGER, -- 기반 내러티브 버전 (변동 시 stale)
+        model             TEXT,
+        created_at        TEXT DEFAULT (datetime('now'))
+    );
+
     -- 어휘 통합 (vocab consolidation, D-033) — audit + redirect 겸용.
     -- 배치 병합으로 사라진 theme/macro 노드 이름이 재등장해도 survivor로 해소 (재파편화 방지).
     CREATE TABLE IF NOT EXISTS entity_merges (
