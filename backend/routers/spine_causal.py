@@ -92,6 +92,7 @@ class BeneficiaryCandidate(BaseModel):
     market_cap: int | None = None
     pos_52w: int | None = None
     co_mentions: int
+    relevance: float | None = None
 
 
 @beneficiary_router.get("/screen", response_model=list[BeneficiaryCandidate])

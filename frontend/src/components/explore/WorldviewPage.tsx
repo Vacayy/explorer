@@ -407,7 +407,7 @@ interface BeneficiaryCandidate {
   stock_code: string; entity_id: number; name: string
   rs_short: number | null; rs_prev: number | null
   per: number | null; pbr: number | null; market_cap: number | null; pos_52w: number | null
-  co_mentions: number
+  co_mentions: number; relevance: number | null
 }
 
 // 수혜 섹터/테마 → 종목 후보 (문서 공동언급 + RS·밸류 스크린, action_thesis Phase 1, D-035)
@@ -435,6 +435,7 @@ function BeneficiarySection({ sector }: { sector: string }) {
               {c.rs_short != null && (
                 <Badge variant="outline" className="text-[9px] text-primary border-primary/40">RS {c.rs_short}</Badge>
               )}
+              {c.relevance != null && <span className="text-[9px] text-muted-foreground">관련도 {Math.round(c.relevance * 100)}%</span>}
               {c.pos_52w != null && <span className="text-[9px] text-muted-foreground">52주 {c.pos_52w}%</span>}
               {c.market_cap != null && <span className="text-[9px] text-muted-foreground ml-auto">{formatKrw(c.market_cap)}</span>}
             </div>
