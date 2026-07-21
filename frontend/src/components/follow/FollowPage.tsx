@@ -130,6 +130,8 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
                 <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("latest_market_cap")}>
                   시가총액{arrow("latest_market_cap")}
                 </th>
+                <th className="py-1.5 text-right font-medium">목표가</th>
+                <th className="py-1.5 text-left font-medium">논지</th>
                 <th className="px-4 py-1.5 text-right font-medium w-24"></th>
               </tr>
             </thead>
@@ -182,6 +184,12 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
         <td className="py-2 text-right tabular-nums text-xs">
           {item.latest_market_cap != null ? formatKrw(item.latest_market_cap) : "-"}
         </td>
+        <td className="py-2 text-right tabular-nums text-xs">
+          {item.target_price != null ? formatNumber(item.target_price) : "-"}
+        </td>
+        <td className="py-2 text-xs text-muted-foreground max-w-[240px]">
+          <span className="block truncate" title={item.thesis ?? ""}>{item.thesis || "-"}</span>
+        </td>
         <td className="px-4 py-2 text-right">
           <button onClick={(e) => { e.stopPropagation(); onEdit() }}
             className="text-[11px] text-muted-foreground hover:text-foreground mr-2">편집</button>
@@ -191,7 +199,7 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
       </tr>
       {editing && (
         <tr className="border-b border-border/50 bg-muted/30">
-          <td colSpan={5} className="px-4 py-2">
+          <td colSpan={7} className="px-4 py-2">
             <form
               className="flex flex-wrap items-center gap-2"
               onSubmit={(e) => {
