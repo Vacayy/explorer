@@ -111,6 +111,21 @@ def screen_beneficiaries(conn, sector_name: str, limit: int = 12, days: int = 21
     return out[:limit]
 
 
+def universe_membership(conn, codes: list[str]) -> dict[str, list[str]]:
+    """종목코드 → 그 종목이 속한 산업 맵(유니버스) 그룹명 목록 (크로스체크 태그, universe-curation).
+    빈 맵이면 전부 빈 리스트 = '신규 후보'."""
+    if not codes:
+        return {}
+    ph = ",".join("?" * len(codes))
+    out: dict[str, list[str]] = {c: [] for c in codes}
+    for r in conn.execute(f"""
+        SELECT im.stock_code code, g.name grp
+        FROM industry_members im JOIN industry_groups g ON g.id=im.group_id
+        WHERE im.stock_code IN ({ph})""", codes):
+        out.setdefault(r["code"], []).append(r["grp"])
+    return out
+
+
 def resolve_and_enrich(conn, picks: list[dict]) -> list[dict]:
     """scenario opus가 파급 논리로 지목한 종목(picks=[{name, rel, reason}]) → 종목코드 resolve +
     RS·밸류·시총·52주 enrich (통합 체인, D-035). 말뭉치 공동언급이 아니라 인과 논리로 고른 종목이
@@ -169,15 +184,18 @@ def resolve_and_enrich(conn, picks: list[dict]) -> list[dict]:
                 "pbr": round(pbr, 2) if pbr is not None else None,
                 "market_cap": int(mcap) if mcap else None, "pos_52w": pos}
 
+    universe = universe_membership(conn, codes)   # 크로스체크: 유니버스 내인지 태그 (하드 필터 아님)
     out = []
     for p in picks:
         n = (p.get("name") or "").strip()
         if not n:
             continue
         code, eid = resolved.get(n, (None, None))
+        groups = universe.get(code or "", [])
         out.append({
             "name": n, "rel": p.get("rel"), "reason": p.get("reason"),
             "stock_code": code, "entity_id": eid,
+            "in_universe": bool(groups), "universe_groups": groups,
             **metrics.get(code or "", {
                 "rs_short": None, "per": None, "pbr": None, "market_cap": None, "pos_52w": None})})
     return out

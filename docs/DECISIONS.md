@@ -10,6 +10,34 @@
 
 ---
 
+## D-037 · 2026-07-21 · 담당 유니버스 = 산업 맵(밸류체인) 큐레이션 + 크로스체크 태그 (하드 필터 아님)
+
+**결정**: 애널리스트의 '담당 섹터 유니버스'(워크플로 ①)를 **산업 맵**(`industry_groups`/`industry_members`,
+category=밸류체인 단계)에 담는다. 기존 소스가 부적합해 **직접 큐레이션**: KSIC(`companies.sector`)는
+taxonomy 불일치(D-023), 투자 섹터 엔티티(389)는 멤버십 없음, 산업 맵은 목적 맞으나 비어 있었음.
+방식 = **기계 제안 → 사람 승인**(D-020·D-022): `GET /api/industries/{id}/propose`가 그룹명으로
+`screen_beneficiaries`(공동언급+RS·밸류·관련도, 기존 멤버 제외) 후보를 내고, 사람이 체크·밸류체인 단계
+지정 후 `POST members`로 적재. 그룹 생성 `POST /api/industries/`(신규, 이름 UNIQUE). 통합 체인(D-036)의
+시나리오 수혜 종목은 `universe_membership`으로 `in_universe`·`universe_groups` **태그** — '유니버스 내'
+vs '신규 후보(편입 검토)'. **크로스체크는 태그일 뿐 하드 필터가 아니다**: 유니버스 밖의 '논리상 수혜'도
+그대로 노출해 D-036의 말뭉치 탈출을 안 깨뜨린다. 스펙: docs/specs/universe-curation.md.
+
+**맥락·이유**: 유니버스가 있어야 이슈 수혜 종목이 '내 커버리지 안인지 밖(편입 검토)인지'를 애널리스트처럼
+판단한다. 하드 필터로 하면 안정성은 얻지만 D-036이 막 열어젖힌 '아직 회자 안 된 논리상 수혜'를 다시
+가두므로, 유니버스는 **안정적 커버리지(①)**로 두고 편입/편출은 사람의 별도 리서치로 남긴다(태그만).
+기계 후보엔 공동언급 노이즈(반도체에 금호타이어 등)가 섞이는데, 이는 결함이 아니라 '사람이 필터한다'는
+설계의 전제 — 자동 확정하지 않는 이유.
+
+**기각한 대안**: ① KSIC 그대로 유니버스 — taxonomy 불일치 ② 투자 섹터 엔티티 자동 멤버십 — 공동언급
+자동 확정은 노이즈 유입(사람 승인 우회) ③ 유니버스 하드 필터 — D-036 말뭉치 탈출 무효화 ④ 새 테이블 —
+산업 맵이 이미 그룹/밸류체인 구조를 가짐, 재사용.
+
+**참조**: docs/specs/universe-curation.md · backend/routers/industries.py(create_group·propose_members) ·
+pipeline/beneficiary.py(universe_membership·resolve_and_enrich 태그) · frontend IndustryPage.tsx·
+useIndustry.ts·types(IndustryCandidate)·CausalDetail.tsx(태그 배지) · D-020·D-022·D-023·D-036 · 대화 2026-07-21
+
+---
+
 ## D-036 · 2026-07-21 · 통합 체인 — 수혜 종목을 '문서 공동언급'에서 '파급 논리'로 (말뭉치 최신편향 탈출)
 
 **결정**: 이슈→수혜 종목→업사이드를 **한 체인**으로 잇되, 통합 체인의 수혜 종목 선정은 공동언급 통계가

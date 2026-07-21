@@ -135,6 +135,7 @@ function BeneficiaryRow({ c, event }: { c: BeneficiaryCandidate; event: string }
 export interface ScenarioBeneficiary {
   name: string; rel: string | null; reason: string | null
   stock_code: string | null; entity_id: number | null
+  in_universe: boolean; universe_groups: string[]
   rs_short: number | null; per: number | null; pbr: number | null
   market_cap: number | null; pos_52w: number | null
 }
@@ -151,6 +152,9 @@ function ScenarioBeneficiaryRow({ b, event }: { b: ScenarioBeneficiary; event: s
         {b.stock_code
           ? <a href={`/analyze/${b.stock_code}/summary`} className="font-medium text-sm hover:underline">{b.name}</a>
           : <span className="font-medium text-sm">{b.name}</span>}
+        {b.stock_code && (b.in_universe
+          ? <Badge variant="secondary" className="text-[9px]">유니버스 · {b.universe_groups.join("/")}</Badge>
+          : <Badge variant="outline" className="text-[9px] text-muted-foreground">신규 후보 · 편입 검토</Badge>)}
         {b.rs_short != null && <Badge variant="outline" className="text-[9px] text-primary border-primary/40">RS {b.rs_short}</Badge>}
         {b.pos_52w != null && <span className="text-[9px] text-muted-foreground">52주 {b.pos_52w}%</span>}
         {!b.stock_code && <span className="text-[9px] text-muted-foreground">미상장·미보유</span>}

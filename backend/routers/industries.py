@@ -26,6 +26,46 @@ def list_groups():
     return [dict(r) for r in rows]
 
 
+class GroupCreate(BaseModel):
+    name: str
+    description: str | None = None
+
+
+@router.post("/")
+def create_group(body: GroupCreate):
+    """새 산업 그룹(유니버스) 생성 — universe-curation. 이름 UNIQUE."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "이름 필요")
+    conn = get_connection()
+    if conn.execute("SELECT id FROM industry_groups WHERE name=?", (name,)).fetchone():
+        conn.close()
+        raise HTTPException(400, "이미 있는 산업 그룹")
+    cur = conn.execute(
+        "INSERT INTO industry_groups (name, description) VALUES (?, ?)", (name, body.description))
+    conn.commit()
+    gid = cur.lastrowid
+    conn.close()
+    return {"id": gid, "name": name, "description": body.description}
+
+
+@router.get("/{group_id}/propose")
+def propose_members(group_id: int, limit: int = Query(30, le=60)):
+    """기계 후보 제안 — 그룹명으로 공동언급 스크린(+RS·밸류·관련도), 이미 멤버인 종목 제외.
+    사람이 체크 → 밸류체인 category 지정 → POST members로 승인 (universe-curation, D-020·D-022)."""
+    from pipeline.beneficiary import screen_beneficiaries
+    conn = get_connection()
+    grp = conn.execute("SELECT name FROM industry_groups WHERE id=?", (group_id,)).fetchone()
+    if not grp:
+        conn.close()
+        raise HTTPException(404, "Group not found")
+    existing = {r["stock_code"] for r in conn.execute(
+        "SELECT stock_code FROM industry_members WHERE group_id=?", (group_id,))}
+    cands = screen_beneficiaries(conn, grp["name"], limit=limit)
+    conn.close()
+    return [c for c in cands if c["stock_code"] not in existing]
+
+
 @router.get("/{group_id}")
 def get_group_detail(group_id: int):
     conn = get_connection()

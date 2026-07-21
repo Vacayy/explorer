@@ -99,6 +99,20 @@ export interface IndustryDetail {
   members: IndustryMember[];
 }
 
+export interface IndustryCandidate {
+  stock_code: string;
+  entity_id: number;
+  name: string;
+  rs_short: number | null;
+  rs_prev: number | null;
+  per: number | null;
+  pbr: number | null;
+  market_cap: number | null;
+  pos_52w: number | null;
+  co_mentions: number | null;
+  relevance: number;
+}
+
 export interface BusinessSegment {
   id: number;
   corp_code: string;
