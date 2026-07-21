@@ -1,4 +1,6 @@
 """주제 내러티브 API — theme_surge 고도화 (pipeline/narrative). 2단 게으른 패턴."""
+import json
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -150,31 +152,91 @@ def compute(topic: str):
 
 
 class ScenarioResult(BaseModel):
-    status: str                       # ok | unavailable | error
+    status: str                       # ok | unavailable | error | none
     answer: str | None = None         # 파급 체인 마크다운
     beneficiaries: list[dict] = []    # 파급 논리로 지목된 수혜/피해 종목 (resolve+enrich, D-035)
     citations: list[dict] = []
+    cached: bool = False              # 저장분 반환 여부 (D-038)
+    created_at: str | None = None     # 저장분 생성 시각
+    stale: bool = False               # 기반 내러티브가 갱신됨 → 재분석 권장
+
+
+def _latest_narrative(conn, topic: str):
+    return conn.execute(
+        "SELECT title, version FROM narratives WHERE topic=? ORDER BY version DESC LIMIT 1",
+        (topic,)).fetchone()
+
+
+def _cached_scenario(conn, topic: str):
+    return conn.execute(
+        "SELECT event, answer, beneficiaries, citations, narrative_version, created_at "
+        "FROM scenarios WHERE topic=?", (topic,)).fetchone()
+
+
+@router.get("/scenario", response_model=ScenarioResult)
+def scenario_cached(topic: str):
+    """저장된 파급 시나리오 조회 — LLM 호출 없음. 없으면 status=none. (D-038 캐시)"""
+    conn = get_connection()
+    row = _cached_scenario(conn, topic)
+    nar = _latest_narrative(conn, topic)
+    conn.close()
+    if not row:
+        return ScenarioResult(status="none")
+    stale = bool(nar and row["narrative_version"] is not None
+                 and nar["version"] != row["narrative_version"])
+    return ScenarioResult(
+        status="ok", answer=row["answer"],
+        beneficiaries=json.loads(row["beneficiaries"] or "[]"),
+        citations=json.loads(row["citations"] or "[]"),
+        cached=True, created_at=row["created_at"], stale=stale)
 
 
 @router.post("/scenario/compute", response_model=ScenarioResult)
-def scenario_compute(topic: str):
+def scenario_compute(topic: str, refresh: bool = False):
     """내러티브 핵심 사건을 scenario 엔진으로 1·2·3차 파급 체인 전개 (opus, 온디맨드).
-    '무엇이 일어났나(내러티브)'를 넘어 '왜·그래서 무엇'을 푸는 심층 인과 — 감시 조건까지."""
+    '무엇이 일어났나(내러티브)'를 넘어 '왜·그래서 무엇'을 푸는 심층 인과 — 감시 조건까지.
+    캐시(D-038): 기반 내러티브 버전이 그대로면 저장분 반환, refresh=1일 때만 opus 재생성."""
     from pipeline.scenario import build_scenario
     conn = get_connection()
-    row = conn.execute(
-        "SELECT title FROM narratives WHERE topic=? ORDER BY version DESC LIMIT 1", (topic,)).fetchone()
+    nar = _latest_narrative(conn, topic)
+    version = nar["version"] if nar else None
+    # 캐시 유효(내러티브 버전 동일) & refresh 아님 → 저장분 즉시 반환
+    if not refresh:
+        cur = _cached_scenario(conn, topic)
+        if cur and cur["narrative_version"] == version:
+            conn.close()
+            return ScenarioResult(
+                status="ok", answer=cur["answer"],
+                beneficiaries=json.loads(cur["beneficiaries"] or "[]"),
+                citations=json.loads(cur["citations"] or "[]"),
+                cached=True, created_at=cur["created_at"])
     conn.close()
-    event = f"{topic} — {row['title']}" if row and row["title"] else topic
+
+    event = f"{topic} — {nar['title']}" if nar and nar["title"] else topic
     try:
         r = build_scenario(event)
     except Exception:
         return ScenarioResult(status="error")
     if r.get("error"):
         return ScenarioResult(status="unavailable")
+
+    beneficiaries = r.get("beneficiaries") or []
+    citations = r.get("citations") or []
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO scenarios (topic, event, answer, beneficiaries, citations, "
+        "narrative_version, model, created_at) VALUES (?,?,?,?,?,?,?,datetime('now')) "
+        "ON CONFLICT(topic) DO UPDATE SET event=excluded.event, answer=excluded.answer, "
+        "beneficiaries=excluded.beneficiaries, citations=excluded.citations, "
+        "narrative_version=excluded.narrative_version, model=excluded.model, "
+        "created_at=excluded.created_at",
+        (topic, event, r.get("answer"), json.dumps(beneficiaries, ensure_ascii=False),
+         json.dumps(citations, ensure_ascii=False), version, r.get("model")))
+    conn.commit()
+    conn.close()
     return ScenarioResult(status="ok", answer=r.get("answer"),
-                          beneficiaries=r.get("beneficiaries") or [],
-                          citations=r.get("citations") or [])
+                          beneficiaries=beneficiaries, citations=citations,
+                          cached=False, created_at=None)
 
 
 @router.get("/{narrative_id}/causal", response_model=CausalGraph)

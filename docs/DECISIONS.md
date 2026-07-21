@@ -10,6 +10,29 @@
 
 ---
 
+## D-038 · 2026-07-21 · 파급 시나리오 캐시 — 내러티브 버전 기반 (매 클릭 opus 재생성 방지)
+
+**결정**: 파급 시나리오를 `scenarios` 테이블(topic PK · answer · beneficiaries · citations ·
+narrative_version)에 캐시한다. `GET /api/spine/narrative/scenario`(저장분 즉시, LLM 0) +
+`POST /scenario/compute`(기반 내러티브 버전이 동일하면 저장분 반환, `refresh=1`일 때만 opus 재생성).
+내러티브 버전이 캐시 시점과 다르면 `stale` 플래그(재분석 권장). 프론트: 진입 시 저장분 자동 표시 +
+'다시 분석' 버튼(refresh) + '저장분 {날짜}'·stale 힌트. upside 캐시(models, D-035)와 같은 철학.
+
+**맥락·이유**: 파급 분석은 opus 심층 추론이라 콜드 ~85초. 내러티브가 안 바뀌었는데 진입/재방문마다
+새로 돌리는 건 낭비이자 UX 저하(사용자 지적 2026-07-21). 무효화 키를 **내러티브 버전**으로 잡은 이유:
+시나리오의 event가 최신 내러티브 title에서 파생되고 내러티브가 doc_ids_hash로 이미 멱등 버전 관리되므로,
+버전이 그대로면 입력이 그대로 = 재생성 불필요. 문서 집합 자체 해시 대신 버전을 쓴 건 단순·일관(내러티브
+갱신이 곧 재분석 트리거). 강제 갱신은 사람이 '다시 분석'으로만 — 자동 재생성 폭주 방지.
+
+**기각한 대안**: ① 무캐시(현행) — 매 클릭 opus, 낭비 ② TTL 시간 만료 — 내러티브 안 바뀌면 무의미한 재생성
+③ 문서집합 해시 무효화 — 내러티브 버전과 중복(내러티브가 이미 doc 해시로 버전업), 복잡도만 증가.
+
+**참조**: backend/database.py(scenarios 테이블) · routers/spine_narrative.py(scenario_cached·scenario_compute
+캐시 가드) · pipeline/scenario.py(build_scenario 순수 계산 유지) · frontend NarrativePage.tsx(ScenarioSection
+저장분+다시 분석) · D-035(upside 캐시)·D-036(통합 체인 beneficiaries) · 대화 2026-07-21
+
+---
+
 ## D-037 · 2026-07-21 · 담당 유니버스 = 산업 맵(밸류체인) 큐레이션 + 크로스체크 태그 (하드 필터 아님)
 
 **결정**: 애널리스트의 '담당 섹터 유니버스'(워크플로 ①)를 **산업 맵**(`industry_groups`/`industry_members`,
