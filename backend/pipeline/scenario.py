@@ -40,10 +40,8 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
     from pipeline.lenses import LENS_WORLDVIEW
     kn = knowledge_block(knowledge, "승격된 지식 — 시스템이 검증한 전제")
     return (
-        "[중요] 너는 순수 텍스트 생성기다. 도구를 쓰지 말고, 이 저장소·파일·git 상태를 참조하거나 "
-        "언급하지 말며, 되묻지 말고, 아래 지시가 요구하는 JSON만 즉시 출력하라.\n"
         "너는 사건의 파급을 추론하는 투자 리서치 전략가다. 아래 [사건]을 그대로 받아들이지 말고 "
-        "인과 체인으로 전개해라.\n"
+        "인과 체인으로 전개해 결과를 JSON으로 정리해라. (설명·머리말 없이 JSON만, 코드블록 없이.)\n"
         'JSON만 출력: {"scenario": "마크다운", "causal": {"nodes": [{"name","type","layer"}], '
         '"edges": [{"from","to","rel","mechanism","orientation","reference_period","geo","confidence"}]}}\n'
         "마크다운 구조 (섹션 고정):\n"

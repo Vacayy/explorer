@@ -36,6 +36,30 @@
 - 출력: 범위(보수~낙관) + 각 시나리오 확률감 + 근거(모델 가정/유사 사례). `models` 테이블에 spec_json으로
   적재 → 재현·감사·자동 리프레시(입력 observation 갱신 시).
 
+## Phase 2 구현 계약 (업사이드 모델 — 착수)
+
+**엔진** `pipeline/upside_model.py` — `build_upside_model(conn, stock_code, event)`:
+1. **앵커 수집(결정적)**: 현재 주가(stock_prices.close)·주식수(shares)·시총, EPS·PER(fundamentals,
+   PER 없으면 price/eps), 최근 연간 매출·순이익·순이익률(financial_statements, corp_code 조인 +
+   `_normalize_account_name`으로 매출액·당기순이익). 없는 값은 null로 두고 LLM에 "미상" 전달.
+2. **관련 근거**: `search(stock+event)` top 문서 발췌 + 인과 맥락.
+3. **opus 4단계 추론 → 구조화 JSON**(범위+조건부, D-034/D-035):
+   - method ∈ `P×Q | Capa×가동률 | TAM×점유율 | 멀티플 리레이팅`(먼 미래·불확실 시 4번).
+   - scenarios[보수/기본/낙관] 각: prob · assumptions[명시적 가정 리스트] · revenue_delta_pct ·
+     margin · eps_new · multiple · fair_price · upside_pct. (1~3단계를 이 필드로 전개; 4번이면
+     revenue/eps 대신 multiple 리레이팅으로 fair_price).
+   - downside{floor_price, downside_pct, basis} — 펀더멘탈 지지선(실적/자산가치).
+   - invalidation[] — 무효화 조건(falsifier 재활용 대상), summary 한 줄.
+   - **가정은 전부 명시**(오라클 아님, 사람이 검토·수정 가능 — ontology.md 원칙3). 근거 없는 수치는
+     '(가정)' 표기. scenario.py의 견고화(펜스 제거·재시도·출력전용 가드) 재사용.
+4. **models 테이블 적재**: name=`{종목} {이벤트} 업사이드`(UNIQUE upsert), spec_json=위 전체,
+   output_entity_id=company 엔티티. 재현·감사·수정 토대.
+
+**API**: `POST /api/spine/beneficiary/upside?stock=<code>&event=<text>` → 위 JSON(status ok|error).
+온디맨드(opus). **프론트(최소)**: 수혜 후보에 "업사이드" 버튼 → 시나리오 범위·가정·하방·무효화 표시.
+
+**주의**: 개발 DB의 주가/재무가 실제와 스케일 불일치 — 숫자는 데이터 품질만큼. 방법은 실데이터에서 정확.
+
 ## 하방 방법론 (Phase 3)
 
 - **펀더멘탈 지지선 대비 현재가**: 실적·전망으로 하방이 탄탄한지 판단. "틀려도 -20% (실적 하단),
