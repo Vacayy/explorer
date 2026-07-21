@@ -8,6 +8,15 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Markdown } from "@/components/shared/Markdown"
 import { EmptyState } from "@/components/shared/ErrorState"
+import { cn } from "@/lib/utils"
+
+// 레이팅 색 — 한국 컨벤션(상승=빨강 up, 하락=파랑 down)
+const RATING_CLS: Record<string, string> = {
+  "Strong Buy": "text-up border-up/50 font-semibold",
+  "Buy": "text-up border-up/40",
+  "Hold": "text-muted-foreground",
+  "Sell": "text-down border-down/50 font-semibold",
+}
 
 /**
  * 통합 리포트 뷰 (integrated-report, D-041) — 공유 인과 내러티브 취합 → 종목 재분석 → Top-down.
@@ -19,7 +28,7 @@ export interface ReportResult {
   title: string | null
   answer: string | null
   members: string[]
-  stocks: { code: string; name: string }[]
+  stocks: { code: string; name: string; rating?: string; upside_pct?: number | null }[]
   cached?: boolean
   created_at?: string | null
 }
@@ -74,10 +83,17 @@ export function ReportView({ topic }: { topic: string }) {
               {display.title && <h3 className="text-base font-bold">{display.title}</h3>}
               <Markdown>{display.answer}</Markdown>
               {display.stocks.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 border-t pt-2 text-[11px]">
+                <div className="flex flex-wrap items-center gap-2 border-t pt-2 text-[11px]">
                   <span className="text-muted-foreground">분석 종목</span>
                   {display.stocks.map((s) => (
-                    <Link key={s.code} to={`/analyze/${s.code}/summary`} className="text-primary hover:underline">{s.name}</Link>
+                    <span key={s.code} className="inline-flex items-center gap-1">
+                      <Link to={`/analyze/${s.code}/summary`} className="text-primary hover:underline">{s.name}</Link>
+                      {s.rating && (
+                        <Badge variant="outline" className={cn("text-[9px]", RATING_CLS[s.rating] ?? "")}>
+                          {s.rating}{s.upside_pct != null ? ` ${Math.round(s.upside_pct)}%` : ""}
+                        </Badge>
+                      )}
+                    </span>
                   ))}
                 </div>
               )}
