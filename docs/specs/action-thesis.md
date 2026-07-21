@@ -93,6 +93,26 @@
 
 **검증**: BE import·실 종목 스크린 표본 확인(우주항공/반도체 등)·FE tsc.
 
+## Phase 3 구현 계약 (통합 체인 — 착수: 시나리오 인과 논리로 수혜 종목)
+
+**동기(말뭉치 함정 탈출)**: 수혜 종목을 '문서 공동언급'으로 고르면 이미 자주 언급된 과거에 갇힌다.
+애널리스트처럼 **이슈 파급의 논리로 영향 종목을 추론**해야 아직 회자 안 된 논리상 수혜도 잡는다.
+→ scenario opus가 파급 체인을 풀 때 **영향 종목을 직접 지목(+왜)**, 공동언급 통계가 아니라 상상력.
+
+**엔진** — `build_scenario`(scenario.py) 확장:
+- 프롬프트에 `beneficiaries` 출력 추가: `[{name, ticker?, rel:"수혜"|"피해", reason(이 파급으로 왜 이 종목인지)}]`.
+  섹터 종착 규율(D-023)은 그래프 물질화에만 적용 — 여기 애널리스트 '콜'용 종목 지목은 **논리로 허용**.
+  한국 상장 우선, 근거 없으면 지목 안 함(억지 금지).
+- **resolve**: name → stock_code (entities type=company aliases/이름, 또는 companies.corp_name). 미해소는 name만.
+- **enrich**(resolve된 것): RS·per·시총·pos_52w (beneficiary/research_candidates 헬퍼 재사용).
+- `build_scenario` 반환 + `/narrative/scenario/compute`(ScenarioResult)에 `beneficiaries[]` 추가.
+
+**프론트**: NarrativePage 파급 시나리오 섹션이 파급 마크다운 아래에 **논리 기반 수혜 종목**(이유 + RS·밸류 +
+'업사이드' 버튼=upside 모델). 이게 통합 체인: 이슈 → 파급 논리 → (논리) 수혜 종목 → 업사이드/하방 → 콜.
+기존 공동언급 BeneficiaryList는 '언급 상위(참고)'로 병존.
+
+**남김(후속)**: 펀더+심리(salience×conviction)+기술 종합 '콜' 스코어 · 엑셀식 드라이버 유지모델 · 유니버스 편입/편출.
+
 ## Out of Scope (Phase 1)
 - 업사이드/하방 정량(Phase 2·3) · 타이밍 신호 · 실시간 트리거·푸시 · action_thesis 카드/승인 흐름.
 - 자동매매(원칙상 영구 out).

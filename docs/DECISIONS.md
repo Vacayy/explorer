@@ -10,6 +10,38 @@
 
 ---
 
+## D-036 · 2026-07-21 · 통합 체인 — 수혜 종목을 '문서 공동언급'에서 '파급 논리'로 (말뭉치 최신편향 탈출)
+
+**결정**: 이슈→수혜 종목→업사이드를 **한 체인**으로 잇되, 통합 체인의 수혜 종목 선정은 공동언급 통계가
+아니라 **scenario opus가 파급 논리로 직접 지목**한다. `build_scenario`가 같은 콜에 `beneficiaries`
+`[{name, rel:수혜|피해, reason}]`를 산출(파급 체인에서 왜 영향받는지 한 문장) →
+`beneficiary.resolve_and_enrich`가 종목명을 종목코드로 resolve(company 엔티티 `name`/`aliases`, fallback
+`companies.corp_name`) + RS·per·pbr·시총·52주 enrich, 미해소는 이름·이유만. `ScenarioResult.beneficiaries`로
+반환, NarrativePage 파급 시나리오 섹션이 파급 마크다운 아래 **논리 기반 수혜/피해 종목**(이유 + RS·밸류 +
+'업사이드' 버튼=upside 모델)으로 렌더. 기존 공동언급 `BeneficiaryList`는 '언급 상위(참고)'로 병존(리네이밍).
+
+**맥락·이유**: 수혜 종목을 문서 공동언급으로 고르면 **이미 자주 언급된 과거에 갇힌다** — 새 이슈의 파급으로
+논리상 수혜인데 아직 회자 안 된 종목을 놓친다(사용자 지적 2026-07-21). 애널리스트는 언급 빈도가 아니라
+**담당 유니버스 + 논리적 상상력**으로 영향을 추론한다(애널리스트 워크플로 ③). LLM(opus)의 인과 추론을
+종목 지목에 쓰면 말뭉치 밖의 논리상 수혜까지 잡는다 — 검증: HBM 시나리오가 한미반도체·주성엔지니어링·
+이수페타시스 등 공급망 하위 종목을 논리로 지목(공동언급 스크린이 놓칠 것). 사용자 선택지 중 '시나리오
+인과 논리'(하이브리드·섹터 유니버스 대비) 채택. 그래프 물질화의 **수혜 종착=섹터 규율(D-023)은 유지** —
+개별 종목 지목은 애널리스트 '콜'용 출력(beneficiaries 필드)에만, 그래프 엣지엔 물질화 안 함.
+
+**남긴 후속(연구급)**: 펀더+심리(salience×conviction)+기술 종합 '콜' 스코어 · 엑셀식 드라이버 유지모델
+(docs/references/Krafton_1Q25… = CLSA式 살아있는 모델, 현 1회성 opus 범위와 층 다름) · 섹터 유니버스
+편입/편출 리서치.
+
+**기각한 대안**: ① 공동언급 유지 — 말뭉치 최신편향, 함정 그대로 ② 섹터 유니버스 기반(companies.sector) —
+'담당 유니버스'에 가장 충실하나 섹터 매핑 큐레이션 선행 필요, 후속으로 ③ 하이브리드(공동언급 풀+논리 필터)
+— 여전히 공동언급 풀에 갇힘.
+
+**참조**: docs/specs/action-thesis.md(Phase 3 계약) · pipeline/scenario.py(beneficiaries 프롬프트·파싱) ·
+pipeline/beneficiary.py(resolve_and_enrich) · routers/spine_narrative.py(ScenarioResult) ·
+frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수혜 종착=섹터)·D-034·D-035 · 대화 2026-07-21
+
+---
+
 ## D-035 · 2026-07-21 · action_thesis — 이벤트→수혜 종목→조건부 업사이드/하방 (에이전트화 다음 단계)
 
 **결정**: 갖춰진 준비물(주가·재무·RS·인과 그래프·내러티브·scenario 엔진·falsifier·lenses)을 하나의

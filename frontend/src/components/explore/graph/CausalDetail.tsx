@@ -131,6 +131,62 @@ function BeneficiaryRow({ c, event }: { c: BeneficiaryCandidate; event: string }
   )
 }
 
+// ── 통합 체인: scenario 파급 논리로 지목된 수혜/피해 종목 (D-035, 공동언급 아님) ──
+export interface ScenarioBeneficiary {
+  name: string; rel: string | null; reason: string | null
+  stock_code: string | null; entity_id: number | null
+  rs_short: number | null; per: number | null; pbr: number | null
+  market_cap: number | null; pos_52w: number | null
+}
+
+function ScenarioBeneficiaryRow({ b, event }: { b: ScenarioBeneficiary; event: string }) {
+  const [open, setOpen] = useState(false)
+  const harm = b.rel === "피해"
+  return (
+    <li className="rounded-lg border px-2.5 py-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <Badge variant="outline" className={cn("text-[9px]", harm ? "text-down border-down/40" : "text-up border-up/40")}>
+          {b.rel ?? "수혜"}
+        </Badge>
+        {b.stock_code
+          ? <a href={`/analyze/${b.stock_code}/summary`} className="font-medium text-sm hover:underline">{b.name}</a>
+          : <span className="font-medium text-sm">{b.name}</span>}
+        {b.rs_short != null && <Badge variant="outline" className="text-[9px] text-primary border-primary/40">RS {b.rs_short}</Badge>}
+        {b.pos_52w != null && <span className="text-[9px] text-muted-foreground">52주 {b.pos_52w}%</span>}
+        {!b.stock_code && <span className="text-[9px] text-muted-foreground">미상장·미보유</span>}
+        {b.stock_code && !harm && (
+          <button onClick={() => setOpen((o) => !o)}
+            className="ml-auto text-[10px] text-primary hover:underline">{open ? "접기" : "업사이드"}</button>
+        )}
+      </div>
+      {b.reason && <p className="text-xs text-muted-foreground leading-snug mt-0.5">{b.reason}</p>}
+      {(b.market_cap != null || b.per != null) && (
+        <div className="flex gap-2 text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+          {b.market_cap != null && <span>{formatKrw(b.market_cap)}</span>}
+          {b.per != null && <span>PER {b.per.toFixed(1)}배</span>}
+          {b.pbr != null && <span>PBR {b.pbr.toFixed(2)}배</span>}
+        </div>
+      )}
+      {open && b.stock_code && <UpsideResult stock={b.stock_code} event={event} />}
+    </li>
+  )
+}
+
+/** scenario 파급 체인의 논리 기반 수혜/피해 종목 (통합 체인 — 이슈→파급 논리→종목→업사이드). */
+export function ScenarioBeneficiaries({ items, event }: { items: ScenarioBeneficiary[]; event: string }) {
+  if (!items?.length) return null
+  return (
+    <div>
+      <div className="text-xs font-medium mb-1.5 text-muted-foreground">
+        수혜·피해 종목 ({items.length}) <span className="font-normal">· 파급 논리로 지목 (공동언급 아님)</span>
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((b, i) => <ScenarioBeneficiaryRow key={`${b.name}-${i}`} b={b} event={event} />)}
+      </ul>
+    </div>
+  )
+}
+
 /** 수혜 섹터/테마 → 종목 후보 목록 (공동언급+RS·밸류·관련도, 각 행에 업사이드 버튼). */
 export function BeneficiaryList({ sector }: { sector: string }) {
   const { data, isLoading } = useQuery(

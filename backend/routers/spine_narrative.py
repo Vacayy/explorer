@@ -152,6 +152,7 @@ def compute(topic: str):
 class ScenarioResult(BaseModel):
     status: str                       # ok | unavailable | error
     answer: str | None = None         # 파급 체인 마크다운
+    beneficiaries: list[dict] = []    # 파급 논리로 지목된 수혜/피해 종목 (resolve+enrich, D-035)
     citations: list[dict] = []
 
 
@@ -171,7 +172,9 @@ def scenario_compute(topic: str):
         return ScenarioResult(status="error")
     if r.get("error"):
         return ScenarioResult(status="unavailable")
-    return ScenarioResult(status="ok", answer=r.get("answer"), citations=r.get("citations") or [])
+    return ScenarioResult(status="ok", answer=r.get("answer"),
+                          beneficiaries=r.get("beneficiaries") or [],
+                          citations=r.get("citations") or [])
 
 
 @router.get("/{narrative_id}/causal", response_model=CausalGraph)

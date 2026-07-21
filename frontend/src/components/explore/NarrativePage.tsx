@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { NarrativeList } from "@/components/explore/NarrativeList"
-import { BeneficiaryList } from "@/components/explore/graph/CausalDetail"
+import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
 import { cn } from "@/lib/utils"
 
 /**
@@ -135,8 +135,8 @@ export default function NarrativePage() {
           <Card><CardContent className="py-3">
             <div className="flex items-center gap-1.5 mb-2">
               <Sparkles className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">수혜 종목</span>
-              <span className="text-[11px] text-muted-foreground">이 테마에 엮인 종목 · RS·밸류 · 업사이드/하방</span>
+              <span className="text-sm font-medium">언급 상위 종목</span>
+              <span className="text-[11px] text-muted-foreground">참고 · 이 테마와 자주 함께 언급 (공동언급) · RS·밸류</span>
             </div>
             <BeneficiaryList sector={topic} />
           </CardContent></Card>
@@ -242,6 +242,7 @@ function MegaNarrativeSection() {
 interface ScenarioResult {
   status: string
   answer: string | null
+  beneficiaries: ScenarioBeneficiary[]
   citations: { n: number; doc_id: number; title: string; url: string }[]
 }
 
@@ -279,8 +280,13 @@ function ScenarioSection({ topic }: { topic: string }) {
         )}
         {run && data?.status === "ok" && data.answer && (
           <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
-            <CardContent className="py-4">
+            <CardContent className="py-4 space-y-3">
               <Markdown>{data.answer}</Markdown>
+              {data.beneficiaries?.length > 0 && (
+                <div className="border-t pt-3">
+                  <ScenarioBeneficiaries items={data.beneficiaries} event={topic} />
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
