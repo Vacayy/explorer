@@ -180,7 +180,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
                    인물(/people: 디렉토리 — 언급량·최근발언·파급종목 → /person 도시에) ·
                    기업활동(/actions: 목록+요약 | 유무증 Pro 토글+방식 필터) · 산업군 · 스크리너 · 대안데이터
 월드모델           내러티브(빠른 층)·세계관(인과 그래프)·지식(느린 층)을 한 모드로 묶음 — "같은 인과 그래프의 두 속도"(D-023), 신호(델타 감지)와 성격이 달라 분리(D-031). 서브탭:
-                   내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드) ·
+                   내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·파급 시나리오·통합 리포트) ·
+                   **리포트**(/report: 발간 목록, /report?topic=X=디테일 — Top-down 리포트 + 최하단 구성 내러티브 링크, integrated-report/D-041) ·
                    **세계관**(/narrative/worldview: narrative_id 스코프 없는 전역 인과 그래프 노드-링크 시각화 — React Flow+dagre 좌→우 배치, 도메인 렌즈 필터, 노드/엣지 클릭 시 Sheet 디테일. docs/specs/causal-worldview.md) ·
                    지식(/knowledge: 3섹션 — 구조 지도(학습)·현황 대시보드(카운트·승격대기 큐·세계관·지식 리스트 salience×conviction 배지·근거사슬·반증조건)·지식 주입 콘솔(주입+근거/출처+삭제))
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·유튜브·뉴스·아티클·인물·역사(source_type=canon) (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시

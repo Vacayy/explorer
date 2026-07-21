@@ -23,6 +23,7 @@ const FOLLOW_TABS = [
 // 신호(델타 감지)와 성격이 달라 별도 모드로 묶음 (D-031). 지식은 탐색에서 이관.
 const WORLDMODEL_TABS = [
   { key: "narrative", path: "/narrative", label: "내러티브" },
+  { key: "report", path: "/report", label: "리포트" },
   { key: "worldview", path: "/narrative/worldview", label: "세계관" },
   { key: "knowledge", path: "/knowledge", label: "지식" },
 ] as const
@@ -153,8 +154,8 @@ function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/analyze")) return "analyze"
   if (pathname.startsWith("/research")) return "research"
   if (pathname.startsWith("/archive")) return "archive"
-  // 월드모델 — 내러티브·세계관·지식 (D-031)
-  if (pathname.startsWith("/narrative") || pathname.startsWith("/knowledge")) return "worldmodel"
+  // 월드모델 — 내러티브·리포트·세계관·지식 (D-031)
+  if (pathname.startsWith("/narrative") || pathname.startsWith("/knowledge") || pathname.startsWith("/report")) return "worldmodel"
   return "discover" // /explore, /discover/*, /actions 모두 탐색 모드
 }
 
@@ -164,6 +165,7 @@ function getActiveSubTab(pathname: string): string | null {
   // 월드모델 — worldview는 /narrative 하위라 narrative보다 먼저 매칭
   if (pathname.startsWith("/narrative/worldview")) return "worldview"
   if (pathname.startsWith("/narrative")) return "narrative"
+  if (pathname.startsWith("/report")) return "report"
   if (pathname.startsWith("/knowledge")) return "knowledge"
 
   // 팔로우 — universe는 /follow 하위라 follow보다 먼저 매칭
