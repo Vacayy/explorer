@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { stockBriefQuery, stockBriefComputeQuery, stockBriefHistoryQuery } from "@/api/spine"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -26,17 +26,14 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
   if (!b || (b.status === "empty" && !b.stale && !compute.isFetching)) return null
 
   return (
-    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]">
-      <CardHeader className="pb-2 flex-row items-baseline gap-2">
-        <CardTitle className="text-sm">AI 브리프 — 지금 알아야 할 것</CardTitle>
-        {b.created_at && (
-          <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
-            {b.created_at.slice(0, 16).replace("T", " ")} 기준
-          </span>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {compute.isFetching && (
+    <ProposalPanel
+      title="AI 브리프 — 지금 알아야 할 것"
+      subtitle={b.created_at ? `${b.created_at.slice(0, 16).replace("T", " ")} 기준` : undefined}
+      maxHeight="70vh"
+      className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]"
+      contentClassName="space-y-3"
+    >
+      {compute.isFetching && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             새 재료를 반영해 브리프 생성 중… (수십 초 걸릴 수 있습니다)
@@ -99,8 +96,7 @@ export default function StockBriefCard({ stockCode }: { stockCode: string }) {
         {!b.brief && !compute.isFetching && compute.isError && (
           <p className="text-xs text-muted-foreground py-1">브리프 생성에 실패했습니다. 다시 열람하면 재시도됩니다.</p>
         )}
-      </CardContent>
-    </Card>
+    </ProposalPanel>
   )
 }
 
