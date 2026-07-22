@@ -185,11 +185,12 @@ def _stock_ctx(stocks: list[dict]) -> str:
         angles = "; ".join(f"[{a['narrative']}]({a.get('rel') or '수혜'}) {a.get('reason') or ''}" for a in s["angles"])
         seg = f"\n  사업부: {s['segments']}" if s.get("segments") else ""
         fwd = f"\n  선행(컨센서스): {s['consensus']}" if s.get("consensus") else ""
+        brief = f"\n  [AI 브리프 종합]\n  {s['brief'][:1500].strip()}" if s.get("brief") else ""
         out.append(f"■ {s['name']}({s['code']})\n  재무: {_anchor_line(s['anchor'])}{fwd}{seg}\n"
                    f"  기술: {_tech_line(s, s['sig'])}\n  심리: 최근7일 언급 {s['sig']['mentions_7d']}건"
                    f"(이전 {s['sig']['mentions_prev_7d']}건)\n  펀더 저장 업사이드: "
                    f"{s['sig']['upside_cached'] if s['sig']['upside_cached'] is not None else '미상'}%\n"
-                   f"  내러티브별 파급: {angles}")
+                   f"  내러티브별 파급: {angles}{brief}")
     return "\n".join(out)
 
 
@@ -201,17 +202,18 @@ def _narr_ctx(narr_material: list[dict]) -> str:
 
 
 def _analyst(kind: str, narr_ctx: str, stock_ctx: str) -> str:
+    from pipeline.lenses import LENS_INDUSTRY, LENS_PATTERN, LENS_CYCLE
     roles = {
         "fundamental": ("펀더멘털 애널리스트", "각 종목의 실적·밸류·리레이팅 여지를 재무 앵커로 평가. "
-                        "매출/이익률/PER 기준 저평가·고평가와 그 근거."),
+                        "매출/이익률/PER 기준 저평가·고평가와 그 근거.", LENS_INDUSTRY),
         "technical": ("기술 애널리스트", "각 종목의 기술적 국면을 판정. RS·이동평균(20/60/120)·볼린저%B·"
                       "52주위치를 임계값이 아니라 **국면**(신고가 돌파·과열·건강한 조정·바닥권 등)으로 해석하라. "
-                      "펀더가 견고한데 조정으로 RS만 하락한 경우는 위험이 아니라 기회일 수 있음을 구분하라."),
-        "sentiment": ("수급·심리 애널리스트", "언급 모멘텀·쏠림·과열을 평가. 관심 급증이 기회인지 과열 경고인지 판단."),
+                      "펀더가 견고한데 조정으로 RS만 하락한 경우는 위험이 아니라 기회일 수 있음을 구분하라.", LENS_PATTERN),
+        "sentiment": ("수급·심리 애널리스트", "언급 모멘텀·쏠림·과열을 평가. 관심 급증이 기회인지 과열 경고인지 판단.", LENS_CYCLE),
     }
-    title, task = roles[kind]
+    title, task, lens = roles[kind]
     return _call_text(
-        f"너는 {title}다. 아래 산업 자료와 종목 데이터를 보고 {task}\n"
+        f"너는 {title}다. 아래 산업 자료와 종목 데이터를 보고 {task}\n{lens}\n"
         "종목별로 충분히(각 3~5문장) 근거를 들어 평가하고, 산업 전반 코멘트도 상세히. 밸류·멀티플은 "
         "선행(12M Fwd) 우선. 근거 없는 수치 창작 금지. 평서체(분량 넉넉히).\n\n"
         f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}")
@@ -356,9 +358,17 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     stocks = []
     for c, v in ranked:
         a = _anchor(conn, c)
+        # 브리프 재사용(보강) — 종목 심층 콜(수급·상승분해·기술·PER밴드·컨센서스 종합, opus·게으른 캐시).
+        # 리포트가 종목 분석을 재발명하지 않고 이미 정합적인 브리프 위에 서게 한다.
+        brief = None
+        try:
+            from pipeline.stock_brief import compute_brief
+            brief = compute_brief(c).get("brief")
+        except Exception:
+            pass
         stocks.append({"code": c, "name": v["name"], "angles": v["angles"], "anchor": a,
                        "sig": _signals(conn, c, v["name"]), "segments": _segments(conn, a.get("corp_code")),
-                       "consensus": _consensus(conn, c)})
+                       "consensus": _consensus(conn, c), "brief": brief})
 
     narr_ctx, stock_ctx = _narr_ctx(narr_material), _stock_ctx(stocks)
 
