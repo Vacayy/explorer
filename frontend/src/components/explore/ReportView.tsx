@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ChevronDown, FileText, Loader2 } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { ChevronDown, FileText, History, Loader2 } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -26,10 +26,12 @@ const RATING_CLS: Record<string, string> = {
  */
 export interface ReportResult {
   status: string
+  id?: number | null
   title: string | null
   answer: string | null
   members: string[]
   stocks: { code: string; name: string; rating?: string; upside_pct?: number | null }[]
+  top_pick?: string | null
   debate?: {
     fundamental?: string; technical?: string; sentiment?: string
     bull?: string; bear?: string
@@ -37,10 +39,13 @@ export interface ReportResult {
   cached?: boolean
   created_at?: string | null
 }
+interface ReportVersion { id: number; title: string | null; top_pick: string | null; created_at: string }
 
 export function ReportView({ topic }: { topic: string }) {
+  const qc = useQueryClient()
   const [nonce, setNonce] = useState(0)
   const [refresh, setRefresh] = useState(false)
+  const [versionId, setVersionId] = useState<number | null>(null)   // 과거 버전 열람 (null=최신, D-047)
   const cached = useQuery(
     apiQuery<ReportResult>({
       key: ["spine", "report", "cached", topic],
@@ -55,11 +60,32 @@ export function ReportView({ topic }: { topic: string }) {
       enabled: nonce > 0,
     }),
   )
-  const display = compute.data?.status === "ok" ? compute.data
+  const history = useQuery(
+    apiQuery<ReportVersion[]>({
+      key: ["spine", "report", "history", topic],
+      url: `/api/spine/report/history?topic=${encodeURIComponent(topic)}`,
+      staleTime: STALE.short, enabled: !!topic,
+    }),
+  )
+  const version = useQuery(
+    apiQuery<ReportResult>({
+      key: ["spine", "report", "version", versionId],
+      url: `/api/spine/report/version?id=${versionId}`,
+      staleTime: STALE.short, enabled: versionId != null,
+    }),
+  )
+  const display = versionId != null
+    ? (version.data?.status === "ok" ? version.data : null)
+    : compute.data?.status === "ok" ? compute.data
     : cached.data?.status === "ok" ? cached.data : null
-  const loading = nonce > 0 && (compute.isFetching || !compute.data)
+  const loading = (nonce > 0 && (compute.isFetching || !compute.data)) || (versionId != null && version.isFetching && !version.data)
   const failed = nonce > 0 && compute.data && compute.data.status !== "ok" && !display
-  const run = (isRefresh: boolean) => { setRefresh(isRefresh); setNonce((n) => n + 1) }
+  const versions = history.data ?? []
+  const viewingOld = versionId != null && versions.length > 0 && versions[0].id !== versionId
+  const run = (isRefresh: boolean) => {
+    setVersionId(null); setRefresh(isRefresh); setNonce((n) => n + 1)
+    qc.invalidateQueries({ queryKey: ["spine", "report", "history", topic] })
+  }
 
   return (
     <Card>
@@ -82,6 +108,12 @@ export function ReportView({ topic }: { topic: string }) {
           </div>
         )}
         {failed && <EmptyState message="리포트를 생성하지 못했습니다 — 잠시 후 다시 시도." />}
+        {viewingOld && (
+          <div className="flex items-center gap-2 rounded-md bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+            <History className="h-3 w-3" /> 과거 버전 열람 중{display?.created_at ? ` (${display.created_at.slice(0, 10)})` : ""}
+            <button className="ml-auto text-primary hover:underline" onClick={() => setVersionId(null)}>최신으로</button>
+          </div>
+        )}
         {display?.answer && (
           <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
             <CardContent className="py-4 space-y-3">
@@ -92,7 +124,10 @@ export function ReportView({ topic }: { topic: string }) {
                   <span className="text-muted-foreground">분석 종목</span>
                   {display.stocks.map((s) => (
                     <span key={s.code} className="inline-flex items-center gap-1">
-                      <Link to={`/analyze/${s.code}/summary`} className="text-primary hover:underline">{s.name}</Link>
+                      {s.code === display.top_pick && (
+                        <Badge className="text-[9px] bg-primary text-primary-foreground">Top-pick</Badge>
+                      )}
+                      <Link to={`/analyze/${s.code}/summary`} className={cn("hover:underline", s.code === display.top_pick ? "text-primary font-semibold" : "text-primary")}>{s.name}</Link>
                       {s.rating && (
                         <Badge variant="outline" className={cn("text-[9px]", RATING_CLS[s.rating] ?? "")}>
                           {s.rating}{s.upside_pct != null ? ` ${Math.round(s.upside_pct)}%` : ""}
@@ -125,6 +160,27 @@ export function ReportView({ topic }: { topic: string }) {
                       {display.debate.fundamental && <p className="text-muted-foreground"><span className="font-medium text-foreground">펀더:</span> {display.debate.fundamental}</p>}
                       {display.debate.technical && <p className="text-muted-foreground"><span className="font-medium text-foreground">기술:</span> {display.debate.technical}</p>}
                       {display.debate.sentiment && <p className="text-muted-foreground"><span className="font-medium text-foreground">수급:</span> {display.debate.sentiment}</p>}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+              {versions.length > 1 && (
+                <Collapsible className="border-t pt-2">
+                  <CollapsibleTrigger className="group/hist flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                    <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]/hist:rotate-180" />
+                    이전 버전 {versions.length}개
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="space-y-1 pt-2">
+                      {versions.map((v, i) => (
+                        <button key={v.id} onClick={() => setVersionId(i === 0 ? null : v.id)}
+                          className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[11px] hover:bg-muted/60",
+                            (versionId === v.id || (i === 0 && versionId == null)) && "bg-muted/50")}>
+                          <span className="text-muted-foreground tabular-nums shrink-0">{v.created_at.slice(0, 10)}</span>
+                          {i === 0 && <Badge variant="secondary" className="text-[9px]">최신</Badge>}
+                          <span className="truncate">{v.title ?? "(제목 없음)"}</span>
+                        </button>
+                      ))}
                     </div>
                   </CollapsibleContent>
                 </Collapsible>

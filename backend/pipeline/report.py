@@ -8,6 +8,7 @@
 import hashlib
 import json
 import statistics
+from datetime import date
 
 from pipeline.enrich import _call_claude_code, llm_engine
 from pipeline.upside_model import _anchor
@@ -29,6 +30,18 @@ RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50%인 경우 Strong Buy, �
 # 두괄식 문단 규칙 — 모든 섹션 공통 (사용자 2026-07-21)
 PARA_RULE = ("각 문단은 **두괄식**: 첫 문장에 핵심 메시지를 못 박고, 이어지는 문장들에서 "
              "숫자·논리·맥락으로 그 문장을 뒷받침하라.")
+
+
+def _timeline_rule() -> str:
+    """시점 규율 (사용자 2026-07-22) — 분기·연도별 경로 구체화. 못 하면 '멀티플로 당겨온 기대'로 판정."""
+    t = date.today()
+    yy, q = str(t.year)[2:], (t.month - 1) // 3 + 1
+    ny, nny = str(t.year + 1)[2:], str(t.year + 2)[2:]
+    return (f"[시점 규율] 현재 {t.isoformat()}(={t.year} {q}Q). 판단은 **분기·연도별 경로를 구체화**하라 — "
+            f"2H{yy}(남은 분기)→{t.year + 1}(증설·반영 시점, 예: 1Q{ny}부터 실적 반영되나)→{t.year + 1}·"
+            f"{t.year + 2}({ny}·{nny}) 수요/공급 다이내믹스. 언제 무엇이 실적·공급·수요로 찍히는지 시점을 "
+            "못 박아라. **시점을 구체화 못 하면 그렇게 명시하고, 그럴 때 꿈이 크고 설득력 있으면 그건 실적이 "
+            "아니라 멀티플로 미리 당겨오는 구조임을 판정하라**(그만큼 조건부·리스크가 크다).")
 
 # 규격화된 목차 (report-v2-agents / 목차 규격화) — 리드가 Top-down/Bottom-up만 선택, 섹션은 고정.
 SECTION_SPECS = {
@@ -148,6 +161,21 @@ def _signals(conn, code: str, name: str | None) -> dict:
         mid, sd = sum(w) / 20, statistics.pstdev(w)
         if sd > 0:
             pctb = round((cur - (mid - 2 * sd)) / (4 * sd) * 100)
+    # 다우 이론 고저 구조 — 최근 60일 vs 직전 60일의 고점·저점(HH/HL vs LH/LL 판정용)
+    dow = None
+    if len(closes) >= 120:
+        r_hi, r_lo = max(closes[:60]), min(closes[:60])
+        p_hi, p_lo = max(closes[60:120]), min(closes[60:120])
+        dow = f"최근60일 고{r_hi}/저{r_lo} vs 직전60일 고{p_hi}/저{p_lo} → 고점 {'▲' if r_hi > p_hi else '▼'}·저점 {'▲' if r_lo > p_lo else '▼'}"
+    # 거래량 추세 — 최근 20일 평균 vs 직전 20일
+    vols = [r["volume"] for r in conn.execute(
+        "SELECT volume FROM stock_prices WHERE stock_code=? AND volume IS NOT NULL "
+        "ORDER BY trade_date DESC LIMIT 40", (code,)) if r["volume"]]
+    vol_trend = None
+    if len(vols) >= 40:
+        rv, pv = sum(vols[:20]) / 20, sum(vols[20:40]) / 20
+        if pv > 0:
+            vol_trend = f"거래량 최근20일 {'증가' if rv > pv * 1.1 else '감소' if rv < pv * 0.9 else '유지'}({round(rv / pv * 100)}%)"
     m = conn.execute("""
         SELECT SUM(CASE WHEN rd.published_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) recent,
                SUM(CASE WHEN rd.published_at >= datetime('now','-14 days')
@@ -157,6 +185,7 @@ def _signals(conn, code: str, name: str | None) -> dict:
         WHERE el.link_type='stock' AND e.aliases=?""", (code,)).fetchone()
     return {"rs": int(rs) if rs is not None else None, "pos_52w": pos52,
             "price": cur, "ma20": ma20, "ma60": ma60, "ma120": ma120, "bollinger_pctb": pctb,
+            "dow": dow, "vol_trend": vol_trend,
             "mentions_7d": m["recent"] or 0, "mentions_prev_7d": m["prev"] or 0,
             "upside_cached": _cached_upside_pct(conn, name)}
 
@@ -167,10 +196,15 @@ def _tech_line(s: dict, sig: dict) -> str:
             return "?"
         return "위" if price >= m else "아래"
     p = sig["price"]
+    extra = ""
+    if sig.get("dow"):
+        extra += f"·{sig['dow']}"
+    if sig.get("vol_trend"):
+        extra += f"·{sig['vol_trend']}"
     return (f"현재가 {p}·RS {sig['rs'] if sig['rs'] is not None else '?'}(0~100)·"
             f"52주위치 {sig['pos_52w'] if sig['pos_52w'] is not None else '?'}%·"
             f"20일선 {rel(p, sig['ma20'])}/60일선 {rel(p, sig['ma60'])}/120일선 {rel(p, sig['ma120'])}·"
-            f"볼린저%B {sig['bollinger_pctb'] if sig['bollinger_pctb'] is not None else '?'}")
+            f"볼린저%B {sig['bollinger_pctb'] if sig['bollinger_pctb'] is not None else '?'}{extra}")
 
 
 # ── LLM 헬퍼 ──
@@ -221,7 +255,10 @@ def _analyst(kind: str, narr_ctx: str, stock_ctx: str) -> str:
         "fundamental": ("펀더멘털 애널리스트", "각 종목의 실적·밸류·리레이팅 여지를 재무 앵커로 평가. "
                         "매출/이익률/PER 기준 저평가·고평가와 그 근거.", LENS_INDUSTRY),
         "technical": ("기술 애널리스트", "각 종목의 기술적 국면을 판정. RS·이동평균(20/60/120)·볼린저%B·"
-                      "52주위치를 임계값이 아니라 **국면**(신고가 돌파·과열·건강한 조정·바닥권 등)으로 해석하라. "
+                      "52주위치·고저 구조를 임계값이 아니라 **국면**(신고가 돌파·과열·건강한 조정·바닥권 등)으로 해석하라. "
+                      "**다우 이론**으로 추세를 규정하라: 1차(주추세)/2차(조정)/소추세 구분, 고점·저점 구조"
+                      "(직전 고점·저점 대비 고점 높아지고 저점 높아지면 상승추세[HH·HL], 반대면 하락추세[LH·LL]), "
+                      "거래량이 추세를 확인/배반하는지, 그리고 3국면(축적→대중참여→분산) 중 어디인지. "
                       "펀더가 견고한데 조정으로 RS만 하락한 경우는 위험이 아니라 기회일 수 있음을 구분하라.", LENS_PATTERN),
         "sentiment": ("수급·심리 애널리스트", "언급 모멘텀·쏠림·과열을 평가. 관심 급증이 기회인지 과열 경고인지 판단.", LENS_CYCLE),
     }
@@ -255,10 +292,12 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
         "너는 리드 애널리스트다. 아래 애널리스트 평가와 Bull/Bear 논쟁을 보고 **최종 판정**을 내려라. "
         "한쪽으로 치우치지 말고 확률론적으로 종합하되 분명한 콜을 내라.\n"
         "먼저 리포트 유형을 정하라: 산업 동인이 성장을 주도하면 top_down(예: 반도체), 개별 기업·브랜드가 "
-        "주도하면 bottom_up(예: 소비재·화장품).\n"
-        + RATING_RUBRIC + "\n"
+        "주도하면 bottom_up(예: 소비재·화장품). 그리고 **가장 수혜받는 Top-pick 종목 1개**를 골라라(리포트는 "
+        "이 종목을 중심으로 심화된다).\n"
+        + RATING_RUBRIC + "\n" + _timeline_rule() + "\n"
         "JSON만 출력(코드블록·머리말 없이): {"
         '"report_type":"top_down|bottom_up",'
+        '"top_pick":"가장 수혜받는 Top-pick 종목코드 1개",'
         '"title":"리포트 제목(핵심 주장 한 줄)",'
         '"overall":"종합 판단 2~3문장(핵심 투자 포인트)",'
         '"ratings":[{"code":"종목코드","name":"종목명","rating":"Strong Buy|Buy|Hold|Sell","upside_pct":정수 or null,"rationale":"1~2문장"}]}\n'
@@ -333,9 +372,9 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     members = [(m["topic"], m["version"]) for m in member_narrs]
     mhash = _members_hash(members)
     if not force:
-        cur = conn.execute(
+        cur = conn.execute(   # append-only — 최신 버전(id DESC) (D-047)
             "SELECT title, body, stocks_json, members_json, debate_json, members_hash, created_at "
-            "FROM reports WHERE anchor_topic=?", (anchor_topic,)).fetchone()
+            "FROM reports WHERE anchor_topic=? ORDER BY id DESC LIMIT 1", (anchor_topic,)).fetchone()
         if cur and cur["members_hash"] == mhash:
             return {"status": "ok", "title": cur["title"], "answer": cur["body"],
                     "members": json.loads(cur["members_json"] or "[]"),
@@ -401,9 +440,24 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
         + (f"({round(r['upside_pct'])}%)" if r.get("upside_pct") is not None else "")
         for r in ratings) or "(레이팅 없음)"
 
-    # F. 규격 목차 섹션 작성 (sonnet ×4, 두괄식) → 조립. overall은 리드 판단을 머리말로.
+    # Top-pick 선정 (A) — 리드 지정 우선, 아니면 최고 레이팅(동률 시 상승여력·교차 현저성)으로 유도.
+    codes = {s["code"] for s in stocks}
+    top_pick = lead.get("top_pick") if lead.get("top_pick") in codes else None
+    if not top_pick and ratings:
+        order = {"Strong Buy": 3, "Buy": 2, "Hold": 1, "Sell": 0}
+        best = max((r for r in ratings if r.get("code") in codes),
+                   key=lambda r: (order.get(r.get("rating"), 0), r.get("upside_pct") or 0), default=None)
+        top_pick = best.get("code") if best else None
+    top_pick = top_pick or (stocks[0]["code"] if stocks else None)
+    top_name = next((s["name"] for s in stocks if s["code"] == top_pick), top_pick)
+
+    # F. 규격 목차 섹션 작성 (sonnet ×4, 두괄식) → 조립. Top-pick 종목 중심 심화 + 피어는 비교.
+    focus = (f"\n\n[Top-pick — 이 리포트의 집중 대상] {top_name}({top_pick}). 기업 분석·투자 포인트·투자 "
+             f"전략은 **이 종목을 중심으로 심층**(사업부·재무·경영진·시점·기술 국면)으로 쓰고, 나머지 종목은 "
+             f"비교 관점(피어)으로만 간략히 병기하라. 산업 분석은 '왜 이 산업, 그 안에서 왜 {top_name}인가'로."
+             f"\n\n{_timeline_rule()}")
     ctx = (f"{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n[애널리스트]\n펀더:{analysts['fundamental']}\n"
-           f"기술:{analysts['technical']}\n수급:{analysts['sentiment']}\n\n[Bull]{bull}\n\n[Bear]{bear}")
+           f"기술:{analysts['technical']}\n수급:{analysts['sentiment']}\n\n[Bull]{bull}\n\n[Bear]{bear}{focus}")
     sections = [_write_section(t, brief, anchor_topic, ctx, ratings_line)
                 for t, brief in SECTION_SPECS[report_type]]
     body = "\n\n".join(s for s in sections if s)
@@ -418,17 +472,13 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     debate = {"fundamental": analysts["fundamental"], "technical": analysts["technical"],
               "sentiment": analysts["sentiment"], "bull": bull, "bear": bear,
               "ratings": ratings}
-    conn.execute(
+    conn.execute(   # append-only — 매 생성이 새 버전(히스토리 보존, D-047)
         "INSERT INTO reports (anchor_topic, title, body, members_json, stocks_json, debate_json, "
-        "members_hash, model, created_at) VALUES (?,?,?,?,?,?,?,?,datetime('now')) "
-        "ON CONFLICT(anchor_topic) DO UPDATE SET title=excluded.title, body=excluded.body, "
-        "members_json=excluded.members_json, stocks_json=excluded.stocks_json, "
-        "debate_json=excluded.debate_json, members_hash=excluded.members_hash, "
-        "model=excluded.model, created_at=excluded.created_at",
+        "members_hash, top_pick, model, created_at) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))",
         (anchor_topic, title, body, json.dumps([m["topic"] for m in member_narrs], ensure_ascii=False),
          json.dumps(stocks_out, ensure_ascii=False), json.dumps(debate, ensure_ascii=False),
-         mhash, "claude-code/opus+sonnet"))
+         mhash, top_pick, "claude-code/opus+sonnet"))
     conn.commit()
     return {"status": "ok", "title": title, "answer": body,
             "members": [m["topic"] for m in member_narrs], "stocks": stocks_out,
-            "debate": debate, "cached": False, "created_at": None}
+            "debate": debate, "top_pick": top_pick, "cached": False, "created_at": None}
