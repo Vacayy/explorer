@@ -16,7 +16,6 @@ from pipeline.research_candidates import _rs_short
 TOP_RELATED = 5
 TOP_STOCKS = 4      # 종목 재분석 대상 (v2는 콜이 많아 축소)
 AUGMENT_CAP = 2
-MAX_SECTIONS = 6
 BODY_EXCERPT = 500
 SCEN_EXCERPT = 600
 RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50% Strong Buy · ≥15% Buy · 그 이하 Hold · "
@@ -24,6 +23,31 @@ RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50% Strong Buy · ≥15% Buy
                  "기계적 임계가 아니다 — 펀더·기술 국면·수급을 확률론적으로 종합해 판단하라. "
                  "특히 펀더가 견고한데 쏠림 해소로 조정받아 RS만 급락한 경우는 Sell이 아니라 "
                  "하방 대비 상방이 열린 국면일 수 있다(맥락으로 판단).")
+
+# 두괄식 문단 규칙 — 모든 섹션 공통 (사용자 2026-07-21)
+PARA_RULE = ("각 문단은 **두괄식**: 첫 문장에 핵심 메시지를 못 박고, 이어지는 문장들에서 "
+             "숫자·논리·맥락으로 그 문장을 뒷받침하라.")
+
+# 규격화된 목차 (report-v2-agents / 목차 규격화) — 리드가 Top-down/Bottom-up만 선택, 섹션은 고정.
+SECTION_SPECS = {
+    "top_down": [
+        ("산업 분석", "세계관→내러티브→주목할 catalyst 또는 최근 발생 event로 새롭게 자극된 성장. "
+                      "내러티브 중심으로 서술하되, 각 문단 첫 문장은 내러티브 요지, 이어서 숫자·디테일 근거."),
+        ("기업 분석", "사업 분석(무엇으로 버는가·사업부별 매출 비중/구조)과 재무 분석(성장성·수익성·건전성 — "
+                      "불건전하지 않은지). 대상 종목들을 아우르되 핵심 종목 위주."),
+        ("투자 포인트", "이 기업들의 이익 또는 멀티플이 재평가될 이유 — 위 산업·기업 분석에서 도출. "
+                        "종목별 레이팅의 근거를 여기서 명확히."),
+        ("투자 전략", "매크로 환경 + 밸류에이션 + 기술적 국면(RS·이동평균·볼린저)을 종합한 대응 — "
+                      "진입/감시 조건, 하방 제한 vs 상방 여지의 비대칭. 타이밍은 추세추종 렌즈로 별도."),
+    ],
+    "bottom_up": [
+        ("기업 분석", "사업 분석(무엇을 파는가·사업부 구조)과 재무 분석(성장성·수익성·건전성)."),
+        ("시장 분석", "이 기업이 노리는/침투하려는 시장의 특성 — 규모·성장·경쟁 구도와 기업의 침투 전략."),
+        ("투자 포인트", "이익 또는 멀티플이 재평가될 이유 — 어떤 사업을 어떤 시장에서 어떤 전략으로 전개하는지 포함. "
+                        "종목별 레이팅의 근거."),
+        ("투자 전략", "매크로 + 밸류에이션 + 기술적 국면을 종합한 대응 — 진입/감시 조건, 비대칭."),
+    ],
+}
 
 
 def _parse_json(raw: str) -> dict:
@@ -125,12 +149,24 @@ def _call_text(prompt: str, model: str = "sonnet", timeout: int = 240) -> str:
         return ""
 
 
+def _segments(conn, corp_code: str | None) -> str:
+    """사업부별 매출 비중 (사업 분석용, best-effort). 없으면 빈 문자열."""
+    if not corp_code:
+        return ""
+    rows = conn.execute(
+        "SELECT segment_name, ratio FROM business_segments WHERE corp_code=? "
+        "AND bsns_year=(SELECT max(bsns_year) FROM business_segments WHERE corp_code=?) "
+        "AND ratio IS NOT NULL ORDER BY ratio DESC LIMIT 5", (corp_code, corp_code)).fetchall()
+    return ", ".join(f"{r['segment_name']} {round(r['ratio'])}%" for r in rows)
+
+
 def _stock_ctx(stocks: list[dict]) -> str:
-    """애널리스트·debate 공용 종목 컨텍스트 (앵커·시그널·다각도 파급)."""
+    """애널리스트·debate 공용 종목 컨텍스트 (앵커·사업부·시그널·다각도 파급)."""
     out = []
     for s in stocks:
         angles = "; ".join(f"[{a['narrative']}]({a.get('rel') or '수혜'}) {a.get('reason') or ''}" for a in s["angles"])
-        out.append(f"■ {s['name']}({s['code']})\n  재무: {_anchor_line(s['anchor'])}\n"
+        seg = f"\n  사업부: {s['segments']}" if s.get("segments") else ""
+        out.append(f"■ {s['name']}({s['code']})\n  재무: {_anchor_line(s['anchor'])}{seg}\n"
                    f"  기술: {_tech_line(s, s['sig'])}\n  심리: 최근7일 언급 {s['sig']['mentions_7d']}건"
                    f"(이전 {s['sig']['mentions_prev_7d']}건)\n  펀더 저장 업사이드: "
                    f"{s['sig']['upside_cached'] if s['sig']['upside_cached'] is not None else '미상'}%\n"
@@ -178,17 +214,18 @@ def _researcher(side: str, narr_ctx: str, stock_ctx: str, analysts: dict, counte
 
 
 def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull: str, bear: str) -> dict:
-    """리드 애널리스트(research manager) — debate 판정 → 레이팅 + 섹션 목차."""
+    """리드 애널리스트 — debate 판정 → 리포트 유형(Top-down/Bottom-up) + 레이팅. 목차는 고정 템플릿."""
     prompt = (
         "너는 리드 애널리스트다. 아래 애널리스트 평가와 Bull/Bear 논쟁을 보고 **최종 판정**을 내려라. "
-        "한쪽으로 치우치지 말고 확률론적으로 종합하되, 분명한 콜을 내라.\n"
+        "한쪽으로 치우치지 말고 확률론적으로 종합하되 분명한 콜을 내라.\n"
+        "먼저 리포트 유형을 정하라: 산업 동인이 성장을 주도하면 top_down(예: 반도체), 개별 기업·브랜드가 "
+        "주도하면 bottom_up(예: 소비재·화장품).\n"
         + RATING_RUBRIC + "\n"
         "JSON만 출력(코드블록·머리말 없이): {"
+        '"report_type":"top_down|bottom_up",'
         '"title":"리포트 제목(핵심 주장 한 줄)",'
-        '"overall":"종합 판단 3~4문장(투자 포인트)",'
-        '"ratings":[{"code":"종목코드","name":"종목명","rating":"Strong Buy|Buy|Hold|Sell","upside_pct":정수 or null,"rationale":"1~2문장"}],'
-        '"outline":[{"section":"섹션 제목","brief":"이 섹션이 담을 내용","evidence":"핵심 근거 요지"}]}\n'
-        f"outline은 4~{MAX_SECTIONS}개 섹션(예: 투자 포인트/산업 구조/강세 논거/약세 논거·리스크/종목별 콜/결론). "
+        '"overall":"종합 판단 2~3문장(핵심 투자 포인트)",'
+        '"ratings":[{"code":"종목코드","name":"종목명","rating":"Strong Buy|Buy|Hold|Sell","upside_pct":정수 or null,"rationale":"1~2문장"}]}\n'
         "ratings는 위 [종목 데이터]의 모든 종목에 대해.\n\n"
         f"[앵커 주제] {anchor_topic}\n[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n"
         f"[애널리스트]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}\n\n"
@@ -199,15 +236,15 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
         return {}
 
 
-def _write_section(sec: dict, anchor_topic: str, ctx: str, ratings_line: str) -> str:
-    """섹션 작성자 — 목차 한 파트를 근거에 기반해 서술."""
+def _write_section(title: str, brief: str, anchor_topic: str, ctx: str, ratings_line: str) -> str:
+    """규격 섹션 작성 — 고정 목차의 한 파트를 두괄식으로 서술."""
     body = _call_text(
-        f"너는 리포트 섹션 작성자다. '{anchor_topic}' 통합 리포트의 아래 섹션을 서술하라. "
-        "제공 자료·근거에 정박하고, 미래 전망은 근거 기반으로 논리를 제시하라(범위+조건부, 단정 금지). "
-        "없는 사실·수치 창작 금지. 자연스러운 평서체, 이 섹션만 400~600자.\n"
-        f"[섹션] {sec.get('section')}\n[담을 내용] {sec.get('brief')}\n[근거] {sec.get('evidence')}\n"
+        f"너는 리서치 리포트 작성자다. '{anchor_topic}' 통합 리포트의 '{title}' 섹션을 서술하라.\n"
+        f"[이 섹션이 담을 것] {brief}\n"
+        f"{PARA_RULE} 제공 자료·근거에 정박하고, 미래 전망은 근거 기반 논리로(범위+조건부, 단정 금지). "
+        "없는 사실·수치 창작 금지. 자연스러운 평서체. 이 섹션만 400~700자.\n"
         f"[종목 레이팅] {ratings_line}\n\n[참고 자료]\n{ctx}", timeout=200)
-    return f"## {sec.get('section')}\n\n{body}" if body else ""
+    return f"## {title}\n\n{body}" if body else ""
 
 
 def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
@@ -268,8 +305,11 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
             slot["angles"].append({"narrative": m["topic"], "rel": b.get("rel"), "reason": b.get("reason")})
 
     ranked = sorted(stock_angles.items(), key=lambda kv: -len(kv[1]["angles"]))[:TOP_STOCKS]
-    stocks = [{"code": c, "name": v["name"], "angles": v["angles"],
-               "anchor": _anchor(conn, c), "sig": _signals(conn, c, v["name"])} for c, v in ranked]
+    stocks = []
+    for c, v in ranked:
+        a = _anchor(conn, c)
+        stocks.append({"code": c, "name": v["name"], "angles": v["angles"], "anchor": a,
+                       "sig": _signals(conn, c, v["name"]), "segments": _segments(conn, a.get("corp_code"))})
 
     narr_ctx, stock_ctx = _narr_ctx(narr_material), _stock_ctx(stocks)
 
@@ -278,29 +318,26 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     # C. 리서처 debate (sonnet ×2, Bear는 Bull을 반박)
     bull = _researcher("bull", narr_ctx, stock_ctx, analysts)
     bear = _researcher("bear", narr_ctx, stock_ctx, analysts, counter=bull)
-    # D. 리드 판정 (opus ×1)
+    # D. 리드 판정 (opus ×1) — 리포트 유형 선택 + 레이팅 (목차는 고정 템플릿, 리드 실패해도 진행)
     lead = _lead(anchor_topic, narr_ctx, stock_ctx, analysts, bull, bear)
     ratings = lead.get("ratings") or []
-    outline, _seen_sec = [], set()   # 섹션 제목 중복 제거 (리드가 같은 제목 반복 방지)
-    for o in (lead.get("outline") or []):
-        t = (o.get("section") or "").strip()
-        if t and t not in _seen_sec:
-            _seen_sec.add(t); outline.append(o)
-    outline = outline[:MAX_SECTIONS]
+    report_type = lead.get("report_type") if lead.get("report_type") in SECTION_SPECS else "top_down"
+    title = lead.get("title") or f"{anchor_topic} 통합 리포트"
     ratings_line = " · ".join(
         f"{r.get('name')} {r.get('rating')}"
         + (f"({round(r['upside_pct'])}%)" if r.get("upside_pct") is not None else "")
         for r in ratings) or "(레이팅 없음)"
 
-    # F. 섹션 작성 (sonnet ×N) → 조립
-    ctx = f"{narr_ctx}\n\n[애널리스트]\n펀더:{analysts['fundamental']}\n기술:{analysts['technical']}\n수급:{analysts['sentiment']}\n\n[Bull]{bull}\n\n[Bear]{bear}"
-    sections = [_write_section(s, anchor_topic, ctx, ratings_line) for s in outline]
+    # F. 규격 목차 섹션 작성 (sonnet ×4, 두괄식) → 조립. overall은 리드 판단을 머리말로.
+    ctx = (f"{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n[애널리스트]\n펀더:{analysts['fundamental']}\n"
+           f"기술:{analysts['technical']}\n수급:{analysts['sentiment']}\n\n[Bull]{bull}\n\n[Bear]{bear}")
+    sections = [_write_section(t, brief, anchor_topic, ctx, ratings_line)
+                for t, brief in SECTION_SPECS[report_type]]
     body = "\n\n".join(s for s in sections if s)
-    if lead.get("overall") and not any("투자 포인트" in (o.get("section") or "") for o in outline):
-        body = f"## 투자 포인트\n\n{lead['overall']}\n\n" + body
-    title = lead.get("title") or f"{anchor_topic} 통합 리포트"
+    if lead.get("overall"):
+        body = f"## 투자 포인트 요약\n\n{lead['overall']}\n\n" + body
 
-    if not body:   # LLM 연쇄 실패 시 저장 안 함
+    if not body:   # 전 섹션 실패 시에만 저장 안 함
         return {"error": "리포트 생성 실패 (LLM 연쇄)"}
 
     stocks_out = [{"code": r.get("code"), "name": r.get("name"), "rating": r.get("rating"),
