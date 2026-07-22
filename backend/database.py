@@ -17,6 +17,16 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
+    # 사전 마이그레이션: 구 reports(anchor_topic PK, id 없음) → append-only(id PK)로 전환 (D-047).
+    # reports는 재생성 가능한 캐시라 구 표는 버린다(id 생기면 재실행 안 됨). 히스토리는 이후부터 누적.
+    try:
+        rcols = [r[1] for r in conn.execute("PRAGMA table_info(reports)")]
+        if rcols and "id" not in rcols:
+            conn.execute("DROP TABLE reports")
+            conn.commit()
+    except Exception:
+        pass
+
     cur.executescript("""
     CREATE TABLE IF NOT EXISTS companies (
         corp_code    TEXT PRIMARY KEY,
@@ -725,15 +735,19 @@ def init_db():
     -- 통합 리포트 캐시 (integrated-report) — 앵커 주제 + 공유 이웃 내러티브 취합 → 종목 다각도
     -- 재분석 → Top-down 리포트. members_hash(구성원 topic:version)로 멱등, 구성원 변동 시 stale.
     CREATE TABLE IF NOT EXISTS reports (
-        anchor_topic  TEXT PRIMARY KEY,
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,   -- append-only 버전 (D-047 히스토리)
+        anchor_topic  TEXT NOT NULL,
         title         TEXT,
         body          TEXT,        -- Top-down 마크다운
         members_json  TEXT,        -- 취합된 내러티브 topic 목록 (json)
-        stocks_json   TEXT,        -- 분석 종목 [{code,name}] (json)
+        stocks_json   TEXT,        -- 분석 종목 [{code,name,rating,upside_pct}] (json)
+        debate_json   TEXT,        -- analyst·bull·bear·ratings 산출물 (열람)
         members_hash  TEXT,        -- 재생성 가드
+        top_pick      TEXT,        -- Top-pick 종목코드 (A, 단일 종목 심층)
         model         TEXT,
         created_at    TEXT DEFAULT (datetime('now'))
     );
+    CREATE INDEX IF NOT EXISTS idx_reports_topic ON reports(anchor_topic, id);
 
     -- 어휘 통합 (vocab consolidation, D-033) — audit + redirect 겸용.
     -- 배치 병합으로 사라진 theme/macro 노드 이름이 재등장해도 survivor로 해소 (재파편화 방지).
