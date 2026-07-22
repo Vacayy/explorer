@@ -22,7 +22,9 @@ RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50%인 경우 Strong Buy, �
                  "추세 훼손·과열·논지 붕괴 등 위험이면 Sell. 단 이는 어휘 가이드일 뿐, "
                  "기계적 임계가 아니다 — 펀더·기술 국면·수급을 확률론적으로 종합해 판단하라. "
                  "특히 펀더가 견고한데 쏠림 해소로 조정받아 RS만 급락한 경우는 Sell이 아니라 "
-                 "하방 대비 상방이 열린 국면일 수 있다(맥락으로 판단).")
+                 "하방 대비 상방이 열린 국면일 수 있다(맥락으로 판단). "
+                 "밸류·멀티플 언급은 가급적 선행(12M Fwd PER·컨센서스)을 우선 쓰고, 후행(trailing)만 "
+                 "있으면 그렇게 명시하라.")
 
 # 두괄식 문단 규칙 — 모든 섹션 공통 (사용자 2026-07-21)
 PARA_RULE = ("각 문단은 **두괄식**: 첫 문장에 핵심 메시지를 못 박고, 이어지는 문장들에서 "
@@ -72,8 +74,24 @@ def _members_hash(members: list[tuple[str, int]]) -> str:
 def _anchor_line(a: dict) -> str:
     def v(x, unit=""):
         return f"{x}{unit}" if x is not None else "미상"
-    return (f"현재가 {v(a.get('price'))}·PER {v(a.get('per'), '배')}·매출 {v(a.get('revenue'))}·"
+    return (f"현재가 {v(a.get('price'))}·PER(후행) {v(a.get('per'), '배')}·매출 {v(a.get('revenue'))}·"
             f"순이익률 {v(a.get('net_margin'), '%')}·시총 {v(a.get('market_cap'))}")
+
+
+def _consensus(conn, code: str) -> str:
+    """선행 컨센서스 — 12M Fwd PER·Fwd EPS·목표주가 (멀티플은 선행 우선, stock_brief와 동일 소스)."""
+    r = conn.execute(
+        "SELECT fiscal_year, fwd_eps, fwd_per, target_price FROM consensus_estimates "
+        "WHERE stock_code=? ORDER BY fetched_date DESC, fiscal_year LIMIT 1", (code,)).fetchone()
+    if not r or not r["fwd_per"]:
+        return ""
+    fy = (r["fiscal_year"] or "")[:4]
+    parts = [f"12M Fwd PER {r['fwd_per']}배"]
+    if r["fwd_eps"]:
+        parts.append(f"Fwd EPS {round(r['fwd_eps']):,}원({fy}E)")
+    if r["target_price"]:
+        parts.append(f"컨센서스 목표주가 {round(r['target_price']):,}원")
+    return " · ".join(parts)
 
 
 def _cached_upside_pct(conn, name: str | None) -> float | None:
@@ -166,7 +184,8 @@ def _stock_ctx(stocks: list[dict]) -> str:
     for s in stocks:
         angles = "; ".join(f"[{a['narrative']}]({a.get('rel') or '수혜'}) {a.get('reason') or ''}" for a in s["angles"])
         seg = f"\n  사업부: {s['segments']}" if s.get("segments") else ""
-        out.append(f"■ {s['name']}({s['code']})\n  재무: {_anchor_line(s['anchor'])}{seg}\n"
+        fwd = f"\n  선행(컨센서스): {s['consensus']}" if s.get("consensus") else ""
+        out.append(f"■ {s['name']}({s['code']})\n  재무: {_anchor_line(s['anchor'])}{fwd}{seg}\n"
                    f"  기술: {_tech_line(s, s['sig'])}\n  심리: 최근7일 언급 {s['sig']['mentions_7d']}건"
                    f"(이전 {s['sig']['mentions_prev_7d']}건)\n  펀더 저장 업사이드: "
                    f"{s['sig']['upside_cached'] if s['sig']['upside_cached'] is not None else '미상'}%\n"
@@ -193,7 +212,8 @@ def _analyst(kind: str, narr_ctx: str, stock_ctx: str) -> str:
     title, task = roles[kind]
     return _call_text(
         f"너는 {title}다. 아래 산업 자료와 종목 데이터를 보고 {task}\n"
-        "종목별로 2~3문장씩, 산업 전반 코멘트 1~2문장. 근거 없는 수치 창작 금지. 500자 내외 평서체.\n\n"
+        "종목별로 충분히(각 3~5문장) 근거를 들어 평가하고, 산업 전반 코멘트도 상세히. 밸류·멀티플은 "
+        "선행(12M Fwd) 우선. 근거 없는 수치 창작 금지. 평서체(분량 넉넉히).\n\n"
         f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}")
 
 
@@ -206,8 +226,8 @@ def _researcher(side: str, narr_ctx: str, stock_ctx: str, analysts: dict, counte
     role, task = stance
     return _call_text(
         f"너는 {role} 리서처다. {task}\n"
-        "핵심 논지 3~4개를 '- 제목: 근거' 형식으로. 각 근거는 위 자료(내러티브·파급·애널리스트 평가)에 정박. "
-        "600자 내외.\n\n"
+        "핵심 논지 3~5개를 '- 제목: 근거' 형식으로. 각 논지는 위 자료(내러티브·파급·애널리스트 평가)에 "
+        "정박해 근거를 충분히 풀어라(논지당 2~3문장). 밸류는 선행(12M Fwd) 우선.\n\n"
         f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n"
         f"[애널리스트 평가]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}"
         + (f"\n\n[반박 대상 — 강세 논지]\n{counter}" if counter else ""))
@@ -237,16 +257,18 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
 
 
 def _write_section(title: str, brief: str, anchor_topic: str, ctx: str, ratings_line: str) -> str:
-    """규격 섹션 작성 — 고정 목차의 한 파트를 두괄식으로 서술."""
+    """규격 섹션 작성 — 고정 목차의 한 파트를 두괄식·필력으로 충분히 전개."""
     body = _call_text(
         f"너는 리서치 리포트 작성자다. '{anchor_topic}' 통합 리포트의 '{title}' 섹션을 서술하라.\n"
         f"[이 섹션이 담을 것] {brief}\n"
         f"{PARA_RULE} 제공 자료·근거에 정박하고, 미래 전망은 근거 기반 논리로(범위+조건부, 단정 금지). "
-        "없는 사실·수치 창작 금지. 자연스러운 평서체. 이 섹션만 400~700자.\n"
-        "★출력 규칙: **섹션 본문만** 출력한다. 제목·머리말(##, #, **제목** 등)·구분선(---)·"
-        "글자 수 언급('약 660자' 등)·'아래는 …이다' 같은 메타 문장을 절대 붙이지 마라. 섹션 제목은 "
-        "시스템이 붙인다.\n"
-        f"[종목 레이팅] {ratings_line}\n\n[참고 자료]\n{ctx}", timeout=200)
+        "없는 사실·수치 창작 금지. 밸류·멀티플은 선행(12M Fwd PER·컨센서스)을 우선 사용.\n"
+        "★분량: 제한을 두지 마라 — **완결성과 논리의 설득력이 최우선**이다. 여러 문단으로 충분히 전개하고, "
+        "하나의 주제로 묶기 어려우면 `### 소제목`으로 논리를 구조화해 내러티브를 펼쳐라. 독자에게 상상력과 "
+        "확신을 주는 필력으로 써라(건조한 나열 금지).\n"
+        "★출력 규칙: **섹션 본문만** 출력한다. 최상위 제목(## / #)·구분선(---)·글자 수 언급('약 660자' 등)·"
+        "'아래는 …이다' 같은 메타 문장을 붙이지 마라(섹션 제목은 시스템이 붙임). 단, 본문 내부의 `### 소제목`은 허용.\n"
+        f"[종목 레이팅] {ratings_line}\n\n[참고 자료]\n{ctx}", timeout=420)
     body = _clean_section(body)
     return f"## {title}\n\n{body}" if body else ""
 
@@ -258,11 +280,13 @@ def _clean_section(text: str) -> str:
     head, sep, rest = t.partition("---")
     if sep and len(head) < 200 and any(k in head for k in ("자", "섹션", "초안", "다음", "범위")):
         t = rest.strip()
-    # 선두의 자체 제목 라인(#… 또는 **…**) 제거
+    # 선두의 '자체 최상위 제목' 라인만 제거 — H1/H2(#, ##)·짧은 **제목**. ### 소제목은 보존.
     lines = t.split("\n")
     while lines:
         first = lines[0].strip()
-        if first.startswith("#") or (first.startswith("**") and first.endswith("**") and len(first) < 40):
+        is_h12 = first.startswith("#") and not first.startswith("###")
+        is_bold_title = first.startswith("**") and first.endswith("**") and len(first) < 40
+        if is_h12 or is_bold_title:
             lines.pop(0)
             while lines and not lines[0].strip():
                 lines.pop(0)
@@ -333,7 +357,8 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     for c, v in ranked:
         a = _anchor(conn, c)
         stocks.append({"code": c, "name": v["name"], "angles": v["angles"], "anchor": a,
-                       "sig": _signals(conn, c, v["name"]), "segments": _segments(conn, a.get("corp_code"))})
+                       "sig": _signals(conn, c, v["name"]), "segments": _segments(conn, a.get("corp_code")),
+                       "consensus": _consensus(conn, c)})
 
     narr_ctx, stock_ctx = _narr_ctx(narr_material), _stock_ctx(stocks)
 
