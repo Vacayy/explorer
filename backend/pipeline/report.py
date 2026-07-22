@@ -18,7 +18,7 @@ TOP_STOCKS = 4      # 종목 재분석 대상 (v2는 콜이 많아 축소)
 AUGMENT_CAP = 2
 BODY_EXCERPT = 500
 SCEN_EXCERPT = 600
-RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50% Strong Buy · ≥15% Buy · 그 이하 Hold · "
+RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50%인 경우 Strong Buy, ≥15% 인 경우 Buy, 그 이하 Hold. "
                  "추세 훼손·과열·논지 붕괴 등 위험이면 Sell. 단 이는 어휘 가이드일 뿐, "
                  "기계적 임계가 아니다 — 펀더·기술 국면·수급을 확률론적으로 종합해 판단하라. "
                  "특히 펀더가 견고한데 쏠림 해소로 조정받아 RS만 급락한 경우는 Sell이 아니라 "
@@ -33,15 +33,15 @@ SECTION_SPECS = {
     "top_down": [
         ("산업 분석", "세계관→내러티브→주목할 catalyst 또는 최근 발생 event로 새롭게 자극된 성장. "
                       "내러티브 중심으로 서술하되, 각 문단 첫 문장은 내러티브 요지, 이어서 숫자·디테일 근거."),
-        ("기업 분석", "사업 분석(무엇으로 버는가·사업부별 매출 비중/구조)과 재무 분석(성장성·수익성·건전성 — "
+        ("기업 분석", "경영진 분석(경영진 정보가 인물 node에 있을 경우), 사업 분석(무엇으로 버는가·사업부별 매출 비중/구조)과 재무 분석(성장성·수익성·건전성 — "
                       "불건전하지 않은지). 대상 종목들을 아우르되 핵심 종목 위주."),
-        ("투자 포인트", "이 기업들의 이익 또는 멀티플이 재평가될 이유 — 위 산업·기업 분석에서 도출. "
+        ("투자 포인트", "이 기업의 이익 또는 멀티플이 재평가될 이유 — 위 산업·기업 분석에서 연결되는 논리. "
                         "종목별 레이팅의 근거를 여기서 명확히."),
         ("투자 전략", "매크로 환경 + 밸류에이션 + 기술적 국면(RS·이동평균·볼린저)을 종합한 대응 — "
                       "진입/감시 조건, 하방 제한 vs 상방 여지의 비대칭. 타이밍은 추세추종 렌즈로 별도."),
     ],
     "bottom_up": [
-        ("기업 분석", "사업 분석(무엇을 파는가·사업부 구조)과 재무 분석(성장성·수익성·건전성)."),
+        ("기업 분석", "경영진 분석(경영진 정보가 인물 node에 있을 경우), 사업 분석(무엇을 파는가·사업부 구조)과 재무 분석(성장성·수익성·건전성)."),
         ("시장 분석", "이 기업이 노리는/침투하려는 시장의 특성 — 규모·성장·경쟁 구도와 기업의 침투 전략."),
         ("투자 포인트", "이익 또는 멀티플이 재평가될 이유 — 어떤 사업을 어떤 시장에서 어떤 전략으로 전개하는지 포함. "
                         "종목별 레이팅의 근거."),
@@ -243,8 +243,32 @@ def _write_section(title: str, brief: str, anchor_topic: str, ctx: str, ratings_
         f"[이 섹션이 담을 것] {brief}\n"
         f"{PARA_RULE} 제공 자료·근거에 정박하고, 미래 전망은 근거 기반 논리로(범위+조건부, 단정 금지). "
         "없는 사실·수치 창작 금지. 자연스러운 평서체. 이 섹션만 400~700자.\n"
+        "★출력 규칙: **섹션 본문만** 출력한다. 제목·머리말(##, #, **제목** 등)·구분선(---)·"
+        "글자 수 언급('약 660자' 등)·'아래는 …이다' 같은 메타 문장을 절대 붙이지 마라. 섹션 제목은 "
+        "시스템이 붙인다.\n"
         f"[종목 레이팅] {ratings_line}\n\n[참고 자료]\n{ctx}", timeout=200)
+    body = _clean_section(body)
     return f"## {title}\n\n{body}" if body else ""
+
+
+def _clean_section(text: str) -> str:
+    """작성자 LLM이 흘린 메타(글자수 언급·'아래는…이다'·구분선·자체 제목)를 제거."""
+    t = (text or "").strip()
+    # 상단 메타 머리말(짧고 '자/섹션/초안/다음/범위' 포함) + 그 뒤 '---' 제거
+    head, sep, rest = t.partition("---")
+    if sep and len(head) < 200 and any(k in head for k in ("자", "섹션", "초안", "다음", "범위")):
+        t = rest.strip()
+    # 선두의 자체 제목 라인(#… 또는 **…**) 제거
+    lines = t.split("\n")
+    while lines:
+        first = lines[0].strip()
+        if first.startswith("#") or (first.startswith("**") and first.endswith("**") and len(first) < 40):
+            lines.pop(0)
+            while lines and not lines[0].strip():
+                lines.pop(0)
+        else:
+            break
+    return "\n".join(lines).strip()
 
 
 def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
