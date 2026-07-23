@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { Anchor, ArrowLeft, ArrowRight, ChevronDown, GitMerge, Loader2, Route, Sparkles, Workflow } from "lucide-react"
+import { Anchor, ArrowLeft, ArrowRight, ChevronDown, GitMerge, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +14,7 @@ import { EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { NarrativeList } from "@/components/explore/NarrativeList"
+import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
 import { ReportView } from "@/components/explore/ReportView"
 import { cn } from "@/lib/utils"
@@ -50,19 +52,32 @@ export default function NarrativePage() {
       staleTime: STALE.short, enabled: !!topic,
     }),
   )
+  // 자동 재생성은 24h에 1회로 제한 — stale(새 문서 있음)이라도 최근 갱신 <24h면 자동 발화 금지.
+  // 강제 트리거는 새로고침 버튼(refreshNonce)으로만. 재료가 없으면 백엔드가 doc_ids_hash로 no-op(status=cached).
+  const [refreshNonce, setRefreshNonce] = useState(0)
+  const createdAt = cached.data?.created_at
+  const ageHours = createdAt
+    ? (Date.now() - new Date(createdAt.replace(" ", "T") + "Z").getTime()) / 3.6e6
+    : Infinity
+  const autoStale = !!cached.data?.stale && ageHours >= 24
   const fresh = useQuery(
     apiComputeQuery<Narrative>({
-      key: ["spine", "narrative", topic, "compute"],
+      key: ["spine", "narrative", topic, "compute", refreshNonce],
       url: `/api/spine/narrative/compute?topic=${encodeURIComponent(topic)}`,
-      enabled: !!cached.data?.stale,
+      enabled: !!topic && (autoStale || refreshNonce > 0),
     }),
   )
-  // 재생성 완료 시 캐시 GET을 무효화 → 새 version·category·narrative_id·인과 그래프 반영
+  // 생성 완료 시 캐시·버전 목록 무효화. 수동 새로고침이면 결과(갱신됨 vs 재료 없음)를 토스트로 알림.
   useEffect(() => {
-    if (fresh.data?.status === "fresh") {
+    if (!fresh.data || fresh.isFetching) return
+    if (fresh.data.status === "fresh") {
       qc.invalidateQueries({ queryKey: ["spine", "narrative", topic] })
+      qc.invalidateQueries({ queryKey: ["spine", "narrative", "versions", topic] })
+      if (refreshNonce > 0) toast.success("내러티브를 새로 갱신했습니다")
+    } else if (refreshNonce > 0 && fresh.data.status === "cached") {
+      toast("새로 반영할 재료가 없어 갱신하지 않았습니다")
     }
-  }, [fresh.data?.status, topic, qc])
+  }, [fresh.data, fresh.isFetching, refreshNonce, topic, qc])
   const n = fresh.data ?? cached.data
 
   // topic 없이 진입 = 월드모델>내러티브 탭 랜딩 → 내러티브 목록
@@ -88,9 +103,19 @@ export default function NarrativePage() {
         {version && version > 1 && (
           <Badge variant="outline" className="text-[10px] text-muted-foreground">v{version}</Badge>
         )}
+        <div className="ml-auto flex items-center gap-2">
+          {createdAt && (
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              최근 갱신 {createdAt.slice(0, 16).replace("T", " ")}
+            </span>
+          )}
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground"
+            disabled={generating} onClick={() => setRefreshNonce((k) => k + 1)}
+            title="새 문서가 있으면 내러티브를 다시 생성 (없으면 갱신 없음)">
+            <RefreshCw className={cn("h-3.5 w-3.5", generating && "animate-spin")} /> 새로고침
+          </Button>
+        </div>
       </div>
-
-      {narrativeId && version && version > 1 && <DriftBadge narrativeId={narrativeId} />}
 
       {empty ? (
         <EmptyState message={`'${topic}' 관련 문서가 아직 충분하지 않습니다 (3건 이상 필요).`} />
@@ -130,6 +155,12 @@ export default function NarrativePage() {
               </TabsContent>
             </Tabs>
           )}
+          {/* 재생성 이력 타임라인 — 본문 아래, 파급 시나리오 위. 도트 클릭 시 디테일 페이지에서 열람 */}
+          <NarrativeTimeline
+            topic={topic}
+            heading="이력 — 재생성 타임라인"
+            onSelectVersion={(id) => navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`)}
+          />
           <ScenarioSection topic={topic} />
           <ReportView topic={topic} />
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
@@ -159,83 +190,8 @@ function NarrativeLanding() {
         <h2 className="text-xl font-bold">내러티브</h2>
         <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 질문</span>
       </div>
-      <MegaNarrativeSection />
       <NarrativeList empty="state" controls />
     </PageContainer>
-  )
-}
-
-/* ---------- 메가 내러티브 — 공유노드 군집의 상위 세계관 서사 (D-031) ---------- */
-
-interface MegaNarrative {
-  id: number
-  name: string
-  title: string | null
-  narrative: string | null
-  members: string[]
-  version: number
-  created_at: string | null
-}
-
-function MegaNarrativeSection() {
-  const navigate = useNavigate()
-  const [openId, setOpenId] = useState<number | null>(null)
-  const { data } = useQuery(
-    apiQuery<MegaNarrative[]>({
-      key: ["spine", "narrative", "mega"],
-      url: "/api/spine/narrative/mega",
-      staleTime: STALE.medium,
-    }),
-  )
-  const items = data ?? []
-  if (items.length === 0) return null
-
-  return (
-    <div className="space-y-2.5">
-      {items.map((m) => (
-        <Card key={m.id} className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
-          <CardContent className="py-3 space-y-2">
-            <Collapsible open={openId === m.id} onOpenChange={(o) => setOpenId(o ? m.id : null)}>
-              <CollapsibleTrigger asChild>
-                <button className="w-full text-left group">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge className="text-[10px]">세계관</Badge>
-                    <span className="font-semibold text-sm group-hover:underline">{m.title ?? m.name}</span>
-                    {m.version > 1 && (
-                      <Badge variant="outline" className="text-[10px] text-muted-foreground">v{m.version}</Badge>
-                    )}
-                    <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground ml-auto transition-transform shrink-0",
-                      openId === m.id && "rotate-180")} />
-                  </div>
-                  <div className="flex items-center gap-1 flex-wrap mt-1.5">
-                    <span className="text-[10px] text-muted-foreground mr-0.5">{m.members.length}개 서사를 관통 —</span>
-                    {m.members.map((t) => (
-                      <Badge key={t} variant="secondary" className="text-[10px] cursor-pointer hover:bg-accent"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/narrative?topic=${encodeURIComponent(t)}`) }}>
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                {m.narrative && (
-                  <div className="pt-2">
-                    <Markdown>{m.narrative}</Markdown>
-                    <div className="text-right mt-2">
-                      <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
-                        AI 세계관 서사 · 부분 서사 변경 시 갱신 — 검증 필요
-                        {m.created_at && ` · ${m.created_at.slice(0, 10)}`}
-                      </Badge>
-                    </div>
-                  </div>
-                )}
-              </CollapsibleContent>
-            </Collapsible>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
   )
 }
 
@@ -411,59 +367,6 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
         )}
       </CardContent>
     </Card>
-  )
-}
-
-/* ---------- 버전 드리프트 (직전 버전 대비 인과 변화, Phase 2 §2-3) ---------- */
-
-interface VersionDiff {
-  status: string
-  added_nodes: string[]
-  removed_nodes: string[]
-  added_edges: CausalEdge[]
-  removed_edges: CausalEdge[]
-  summary: string | null
-}
-
-function DriftBadge({ narrativeId }: { narrativeId: number }) {
-  const [open, setOpen] = useState(false)
-  const { data } = useQuery(
-    apiQuery<VersionDiff>({
-      key: ["spine", "narrative", "diff", narrativeId],
-      url: `/api/spine/narrative/${narrativeId}/diff`,
-      staleTime: STALE.short,
-    }),
-  )
-  if (!data || data.status !== "ok" || (data.added_edges.length === 0 && data.removed_edges.length === 0)) {
-    return null
-  }
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-0.5 text-[11px] text-primary">
-          지난 버전 대비 달라진 것
-          <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <Card className="mt-1.5">
-          <CardContent className="py-2.5 space-y-1.5 text-xs">
-            {data.summary && <p>{data.summary}</p>}
-            {data.added_edges.length > 0 && (
-              <div className="text-primary">
-                + {data.added_edges.map((e) => `${e.from}→${e.to}`).join(" · ")}
-              </div>
-            )}
-            {data.removed_edges.length > 0 && (
-              <div className="text-muted-foreground line-through decoration-muted-foreground/50">
-                {data.removed_edges.map((e) => `${e.from}→${e.to}`).join(" · ")}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </CollapsibleContent>
-    </Collapsible>
   )
 }
 

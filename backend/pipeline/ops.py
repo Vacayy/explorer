@@ -13,7 +13,8 @@ JOBS: list[tuple[str, str, str]] = [
     ("compute_narratives", "내러티브 생성", "opus — 주제별 서사·인과 그래프 물질화"),
     ("compute_digests", "다이제스트", "haiku — 종목 1D/7D 요약"),
     ("scan_actions", "기업활동 스캔", "haiku — DART 공시 스캔·요약"),
-    ("agent_proposals", "에이전트 제안", "제안 스캔 — 소외·상충·노드통합·리포트 제안 등"),
+    ("agent_proposals", "에이전트 제안", "제안 스캔 — 소외·상충·리포트 제안·반증 감시"),
+    ("vocab_merge", "노드 통합", "온톨로지 유사 노드 교통정리 — sonnet 병합 판정→승인 큐(D-050)"),
     ("promote_knowledge", "지식 승격", "주 1회 — 반복 관측 검증 지식 승격"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc in JOBS}
