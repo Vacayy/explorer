@@ -8,17 +8,18 @@ import time
 
 from database import get_connection
 
-# 관리 대상 작업 레지스트리 (name, 라벨, 설명) — 생성/비용 큰 것 위주.
-JOBS: list[tuple[str, str, str]] = [
-    ("compute_narratives", "내러티브 생성", "opus — 주제별 서사·인과 그래프 물질화"),
-    ("compute_digests", "다이제스트", "haiku — 종목 1D/7D 요약"),
-    ("scan_actions", "기업활동 스캔", "haiku — DART 공시 스캔·요약"),
-    ("agent_proposals", "에이전트 제안", "제안 스캔 — 소외·상충·리포트 제안·반증 감시"),
-    ("vocab_merge", "노드 통합", "온톨로지 유사 노드 교통정리 — sonnet 병합 판정→승인 큐(D-050)"),
-    ("promote_knowledge", "지식 승격", "주 1회 — 반복 관측 검증 지식 승격"),
-    ("collect_transcripts", "컨콜 수집", "FMP — 팔로우 미국 기업 실적 컨콜 → raw_documents(온톨로지 편입)"),
+# 관리 대상 작업 레지스트리 (name, 라벨, 설명, 진입점) — 생성/비용 큰 것 위주.
+# 진입점 = 실제로 실행되는 스크립트/함수 (관리자 페이지에서 무엇이 도는지 가시화).
+JOBS: list[tuple[str, str, str, str]] = [
+    ("compute_narratives", "내러티브 생성", "opus — 주제별 서사·인과 그래프 물질화", "scripts/compute_narratives.py"),
+    ("compute_digests", "다이제스트", "haiku — 종목 1D/7D 요약", "scripts/compute_digests.py"),
+    ("scan_actions", "기업활동 스캔", "haiku — DART 공시 스캔·요약", "scripts/scan_actions.py"),
+    ("agent_proposals", "에이전트 제안", "제안 스캔 — 소외·상충·리포트 제안·반증 감시", "scripts/scan_agent_proposals.py"),
+    ("vocab_merge", "노드 통합", "온톨로지 유사 노드 교통정리 — sonnet 병합 판정→승인 큐(D-050)", "scan_agent_proposals.py → scan_vocab_merges"),
+    ("promote_knowledge", "지식 승격", "주 1회 — 반복 관측 검증 지식 승격", "scripts/promote_knowledge.py"),
+    ("collect_transcripts", "컨콜 수집", "Alpha Vantage — 팔로우 미국 기업 실적 컨콜 → raw_documents(온톨로지 편입)", "scripts/collect_transcripts.py"),
 ]
-JOB_LABEL = {n: (label, desc) for n, label, desc in JOBS}
+JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}
 
 
 def flag_enabled(name: str, default: bool = True) -> bool:

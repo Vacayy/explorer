@@ -9,6 +9,7 @@ class JobStatus(BaseModel):
     name: str
     label: str
     description: str
+    entrypoint: str                # 실제 실행되는 스크립트/함수 (가시화)
     enabled: bool
     last_run: dict | None = None   # {status, summary, duration_ms, ran_at}
 
@@ -34,12 +35,12 @@ def jobs():
     flags = list_flags()
     conn = get_connection()
     out = []
-    for name, label, desc in JOBS:
+    for name, label, desc, entrypoint in JOBS:
         lr = conn.execute(
             "SELECT status, summary, duration_ms, ran_at FROM job_runs WHERE job=? "
             "ORDER BY id DESC LIMIT 1", (name,)).fetchone()
         out.append(JobStatus(
-            name=name, label=label, description=desc,
+            name=name, label=label, description=desc, entrypoint=entrypoint,
             enabled=flags.get(name, True),
             last_run=dict(lr) if lr else None))
     conn.close()

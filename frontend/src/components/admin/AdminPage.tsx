@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
  * 자동화가 늘수록 비용·가시성 통제판. 기계는 제안·사람은 통제(D-020 연장).
  */
 interface JobStatus {
-  name: string; label: string; description: string; enabled: boolean
+  name: string; label: string; description: string; entrypoint: string; enabled: boolean
   last_run: { status: string; summary: string | null; duration_ms: number | null; ran_at: string } | null
 }
 interface JobRun { job: string; status: string; summary: string | null; duration_ms: number | null; ran_at: string }
@@ -57,13 +57,16 @@ export default function AdminPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{j.label}</span>
+                  <code className="text-[10px] font-mono text-muted-foreground bg-muted px-1 py-0.5 rounded">{j.name}</code>
                   {j.last_run && (
                     <Badge variant="outline" className={cn("text-[9px]", STATUS_CLS[j.last_run.status] ?? "")}>
                       {j.last_run.status}
                     </Badge>
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{j.description}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  <code className="font-mono text-muted-foreground/90">{j.entrypoint}</code> · {j.description}
+                </div>
                 {j.last_run && (
                   <div className="text-[10px] text-muted-foreground/80 mt-0.5 tabular-nums">
                     최근 {j.last_run.ran_at.slice(5, 16)}
