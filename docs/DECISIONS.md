@@ -10,6 +10,16 @@
 
 ---
 
+## D-050 · 2026-07-23 · 내러티브 히스토리 타임라인 — 재생성 이력을 x축 도트로 열람
+
+**결정**: 내러티브가 재생성될 때마다 덮어써지는 게 아니라 이미 버전별 행으로 보존되고 있음(supersede는 `superseded_at`만 찍고 body 미삭제, 새 버전은 새 row INSERT)을 활용해, **재생성 이력 타임라인 공간**(`/narrative/history?topic=X`, `NarrativeHistory.tsx`)을 만든다. x축에 생성 시점 도트(버전+날짜+제목), 도트 클릭 시 해당 버전 본문, 인접 도트 사이에 직전 버전 대비 인과 diff(기존 `/{id}/diff` 재사용)를 표시. 진입: 내러티브 상세 헤더의 '이력' 버튼(v2+일 때). 유일한 신규 백엔드는 `GET /api/spine/narrative/version?id=`(버전 본문 by id, 리포트 `/version?id=`와 동형, LLM 0).
+
+**맥락·이유**: "재생성될 때마다 덮어써지는 것 같은데 이력을 보고 싶다"는 요청에서 출발했으나, 확인 결과 데이터는 이미 온전히 남아 있었다(D-023 버전 보존). 즉 신규 저장 구조가 아니라 **보존돼 있던 데이터를 드러내는 뷰**의 문제. 기존에 상세 페이지의 '지난 버전 대비 달라진 것'(DriftBadge)은 직전 1스텝만 보여줬는데, 이를 전체 이력으로 확장해 주제가 시간에 따라 어떻게 리프레이밍됐는지 한눈에 본다.
+
+**기각한 대안**: ① 세로 타임라인 — 제목·diff 가독성은 더 낫지만 사용자가 x축 도트를 명시 요청. 가로 스트립으로 하되 도트 제목은 line-clamp, diff는 도트 사이 칩(클릭 시 상세 펼침)으로 해소. ② 월드모델 L2에 '히스토리' 탭 신설 — 히스토리는 주제별이라 전역 L2 탭과 안 맞음, 상세에서 진입하는 라우트가 맞음. ③ 버전 본문을 versions 목록에 미리 포함 — 목록이 무거워지고 대부분 최신만 보므로 도트 클릭 시 lazy 조회.
+
+**참조**: frontend `components/explore/NarrativeHistory.tsx`(신설)·`components/explore/NarrativePage.tsx`(이력 진입)·`App.tsx`(라우트) · backend `routers/spine_narrative.py`(`/version?id=`) · SYSTEM.md §5-2·§6 · [[D-023]](버전 보존)
+
 ## D-049 · 2026-07-23 · 탐색 모드 해체 — 신호는 Home으로, 커버리지는 팔로우로, 리서치 제안은 승인 큐로
 
 **결정**: D-048에 이어 **탐색(L1) 모드를 완전히 해체**한다. L1이 `Home ┃ 팔로우 → 피드 → 월드모델 ┃ 대화`(4개)로 줄고, 흐름은 입력→원천→종합으로 더 단순해진다. 세부: **(A) 신호 요약 → Home**: 탐색 랜딩의 언급 모멘텀·주목 주제·인과 그래프 활동을 Home 신호 대시보드로 이관(`components/home/HomeSignals.tsx` 신설), Home의 기존 '핵심 신호'(market_highlights 카드)는 중복이라 제거. **(B) 커버리지 → 팔로우**: 산업 맵(/map)·인물(/people)·기업활동(/actions)을 팔로우 서브탭으로 이동 — 전부 '내가 커버하는 대상'이라 팔로우(내가 따라가는 것)와 성격 일치. **(C) 리서치 제안 → 승인 큐**: 탐색의 ResearchProposalSection을 폐기하고 research_candidates를 `/api/spine/approvals` 집계에 편입(kind='research_candidate') — ApprovalsCard가 승인(→opus 심층 리서치)/기각을 처리, 헤더 인박스에서 다른 제안들과 함께 결정. **(D) 잔여물**: 신호 상세 목록(소외·52주신고가·컨센서스극단·거래량·괴리)은 `/explore?list=` 도시에로 유지(pill 없음, ExplorePage는 목록+유형 인덱스만), 백테스트(신호 성적표)는 보관함(ArchivePage)으로. 내러티브 티저는 Home 월드모델 델타와 중복이라 제거.
@@ -29,6 +39,31 @@
 **기각한 대안**: ① 오늘 탭 완전 삭제 후 월드모델로 랜딩 — 아침 요약의 가치(기계 3줄·승인 카운트·신호 티저)를 버림. ② 홈 응답 확장으로 "변한 내러티브" 필드 추가 — narrative/list·report/list가 이미 급증·최신 플래그를 주므로 백엔드 변경 불필요. ③ 승인을 지식 페이지로만 통합 — 횡단 가시성(어느 화면에서든)을 잃음. ④ 팔로우 업데이트 스트림을 팔로우 페이지로 이관 — FollowPage(528줄)가 이미 종목별 업데이트를 StockRow에 담고 있어 집계 스트림 신설은 별도 작업, 후속으로 보류.
 
 **참조**: frontend `components/layout/ModeNavigation.tsx`·`components/layout/Header.tsx`·`components/home/HomePage.tsx`·`components/home/ApprovalsCard.tsx`(hideHeader 옵션) · SYSTEM.md §6 IA · D-031(월드모델 분리)·D-023
+
+## D-051 · 2026-07-23 · 리포트 생성은 자동이 아니라 '승인 후' — report_suggest 제안 + 백그라운드 생성
+
+**결정**: 리포트 자동 사전생성 대신, 재료(파급 시나리오 + 공유 내러티브)가 쌓인 주제를 감지해
+**"통합 리포트를 생성할까요?" 제안(agent_proposals kind='report_suggest')**을 큐잉하고, 사람이 승인하면
+생성한다. 승인 액션은 opus 연쇄(수 분)라 HTTP 응답을 막지 않게 **백그라운드 스레드**로 build_report 실행
+(`_bg_build_report`), 승인 즉시 "생성 시작 — 리포트 탭에서 확인" 반환. 감지: `scenarios`에 파급이 있는데
+아직 (최신) 리포트가 없는 주제(narrative_version별 dedup, cap 5). scan_report_suggestions는 LLM 0.
+
+**맥락·이유**: 리포트는 다중 에이전트 opus 연쇄라 비용·시간이 크다(사용자 2026-07-23) — 자동 생성은
+낭비·폭주 위험. 반면 파급 시나리오는 이미 그 주제가 주목할 가치가 있다는 신호이므로, "재료 쌓임"을
+감지해 사람에게 물어보는 게 맞다(기계 제안·사람 승인, D-020). 승인의 무거운 액션을 동기 실행하면 요청이
+타임아웃되므로 백그라운드 스레드(단일 사용자 개인 도구라 수용 가능; 결과는 append-only reports로 안착).
+
+**남긴 후속(사용자 로드맵 순서)**: ② 홈 최상단 '지난 7일 AI 자동생성' 피드(기존 무쓸모 상단 알림 통합)
+③ cron 관리자 페이지(작업·변경 내역·on/off) ④ 리포트 차트/짧은 애널리스트 피드. + 스캐너 파급 자동 예열은
+팔로우·유니버스·신호 좋은 신규 종목으로 한정(리포트만 승인).
+
+**기각한 대안**: ① 리포트 자동 생성 — 비용 폭주 ② 승인 시 동기 생성 — 15분 요청 타임아웃 ③ 큐 테이블+
+전용 워커 — 개인 도구엔 과함, 데몬 스레드로 충분.
+
+**참조**: pipeline/agent_proposals.py(scan_report_suggestions·_bg_build_report·approve report_suggest) ·
+frontend ApprovalsCard(report_suggest) · pipeline/report.py(build_report) · D-020·D-043·D-047 · 대화 2026-07-23
+
+---
 
 ## D-050 · 2026-07-23 · 노드 통합을 승인 큐로 주기화(cron 편입) + 세계관/지식 R&R 명확화
 
