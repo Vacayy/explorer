@@ -749,6 +749,22 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_reports_topic ON reports(anchor_topic, id);
 
+    -- 운영 관리 (관리자 페이지, D-055) — cron 작업 on/off + 실행 로그.
+    CREATE TABLE IF NOT EXISTS feature_flags (
+        name       TEXT PRIMARY KEY,
+        enabled    INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS job_runs (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        job         TEXT NOT NULL,
+        status      TEXT NOT NULL,   -- ok | skipped | error
+        summary     TEXT,
+        duration_ms INTEGER,
+        ran_at      TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_runs ON job_runs(id);
+
     -- 어휘 통합 (vocab consolidation, D-033) — audit + redirect 겸용.
     -- 배치 병합으로 사라진 theme/macro 노드 이름이 재등장해도 survivor로 해소 (재파편화 방지).
     CREATE TABLE IF NOT EXISTS entity_merges (

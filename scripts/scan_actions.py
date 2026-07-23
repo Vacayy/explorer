@@ -19,8 +19,12 @@ if __name__ == "__main__":
     parser.add_argument("--days", type=int, default=3)
     args = parser.parse_args()
     init_db()
-    end = date.today()
-    bgn = end - timedelta(days=args.days)
-    print("[scan-actions]", scan(bgn.strftime("%Y%m%d"), end.strftime("%Y%m%d")))
-    print("[summarize]", summarize_pending())
-    print("[rights]", extract_pending())
+    from pipeline.ops import run_job
+
+    def _work():
+        end = date.today()
+        bgn = end - timedelta(days=args.days)
+        s = scan(bgn.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
+        print("[scan-actions]", s, "[summarize]", summarize_pending(), "[rights]", extract_pending())
+        return s if isinstance(s, dict) else {}
+    run_job("scan_actions", _work)   # 관리자 플래그 게이트 + 로그 (D-055)

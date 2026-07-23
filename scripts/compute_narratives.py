@@ -16,13 +16,18 @@ from pipeline.narrative import compute_top_narratives
 
 def main():
     init_db()
-    r = compute_top_narratives(limit=5)
-    print(f"[narrative] 상위 {len(r['topics'])}개 테마 사전 생성")
-    for t, st in r["results"].items():
-        print(f"  · {t}: {st}")
-    # 메가 내러티브 (D-031) — 멤버 해시 가드로 대부분 캐시 즉답, 군집 구성/멤버 버전 변경 시만 opus
-    from pipeline.mega_narrative import compute_mega_narratives
-    print("[mega-narrative]", compute_mega_narratives())
+    from pipeline.ops import run_job
+
+    def _work():
+        r = compute_top_narratives(limit=5)
+        print(f"[narrative] 상위 {len(r['topics'])}개 테마 사전 생성")
+        for t, st in r["results"].items():
+            print(f"  · {t}: {st}")
+        # 메가 내러티브 (D-031) — 멤버 해시 가드로 대부분 캐시 즉답, 군집 구성/멤버 변경 시만 opus
+        from pipeline.mega_narrative import compute_mega_narratives
+        print("[mega-narrative]", compute_mega_narratives())
+        return {"themes": len(r["topics"])}
+    run_job("compute_narratives", _work)   # 관리자 플래그 게이트 + 실행 로그 (D-055)
 
 
 if __name__ == "__main__":

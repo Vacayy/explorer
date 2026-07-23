@@ -10,6 +10,16 @@
 
 ---
 
+## D-055 · 2026-07-23 · 내러티브 자동 재생성 24h 제한 + 새로고침 + 이력 타임라인 인라인 이동
+
+**결정**: 내러티브 상세에 세 가지. **(A) 자동 재생성 24h 제한**: 진입 시 stale(새 문서 있음)이면 무조건 자동 compute하던 것을, **최근 갱신이 24h 이내면 자동 발화 금지**로 바꿈(프론트 `autoStale = stale && ageHours>=24`). created_at은 UTC라 파싱 시 `Z` 부착. **(B) 강제 새로고침**: 우상단 새로고침 버튼(`refreshNonce`)으로 24h 무관하게 compute 강제 트리거 — 단 백엔드 doc_ids_hash 가드로 새 재료가 없으면 no-op(status=cached), 이 경우 "새로 반영할 재료가 없어 갱신하지 않았습니다" 토스트. 성공(fresh) 시 "갱신했습니다" + 캐시·버전목록 무효화. **최근 갱신 시각** 헤더 표시. **(C) 이력 진입 이동**: 지난 D-050의 헤더 '이력' 버튼을 폐기하고, 재생성 이력 타임라인을 **본문 아래·파급 시나리오 위 인라인**으로 배치(도트 클릭 시 `/narrative/history?topic=&v=id` 디테일 페이지에서 본문 열람). 타임라인을 재사용 컴포넌트 `NarrativeTimeline`(인라인/상세 공용)으로 추출. 단발 diff만 보이던 `DriftBadge`는 타임라인이 전 구간 diff를 포함하므로 폐기.
+
+**맥락·이유**: 자동 재생성이 진입마다 opus를 태워 비용·지연이 컸고, 하루에도 여러 번 여는 주제는 매번 재생성될 소지가 있었다. "새 재료가 있어도 하루 1회면 충분, 급하면 수동" 원칙으로 전환. 이력은 헤더 버튼보다 본문 흐름(서사→어떻게 바뀌어왔나→파급) 안에 두는 게 읽기 맥락에 맞다는 사용자 판단.
+
+**기각한 대안**: ① 백엔드에 24h 게이트 — created_at 비교는 프론트에서 충분하고, 수동 강제(refresh)와 자동을 프론트에서 구분하는 게 단순. compute의 doc_ids_hash 가드는 그대로 재료-없음 방어. ② `/compute`에 force 파라미터 신설 — 불필요(해시 가드가 이미 재료 없으면 no-op). ③ DriftBadge 존치 — 타임라인과 중복.
+
+**참조**: frontend `components/explore/NarrativePage.tsx`·`components/explore/NarrativeHistory.tsx`(NarrativeTimeline export) · SYSTEM.md §6 · [[D-050]](히스토리 타임라인 최초 도입 — 이 프로젝트 브랜치 기준. ※아래 D-048~054는 동시 작업 라인과 번호 충돌 있음, 사용자 확인 필요)
+
 ## D-050 · 2026-07-23 · 내러티브 히스토리 타임라인 — 재생성 이력을 x축 도트로 열람
 
 **결정**: 내러티브가 재생성될 때마다 덮어써지는 게 아니라 이미 버전별 행으로 보존되고 있음(supersede는 `superseded_at`만 찍고 body 미삭제, 새 버전은 새 row INSERT)을 활용해, **재생성 이력 타임라인 공간**(`/narrative/history?topic=X`, `NarrativeHistory.tsx`)을 만든다. x축에 생성 시점 도트(버전+날짜+제목), 도트 클릭 시 해당 버전 본문, 인접 도트 사이에 직전 버전 대비 인과 diff(기존 `/{id}/diff` 재사용)를 표시. 진입: 내러티브 상세 헤더의 '이력' 버튼(v2+일 때). 유일한 신규 백엔드는 `GET /api/spine/narrative/version?id=`(버전 본문 by id, 리포트 `/version?id=`와 동형, LLM 0).
@@ -39,6 +49,27 @@
 **기각한 대안**: ① 오늘 탭 완전 삭제 후 월드모델로 랜딩 — 아침 요약의 가치(기계 3줄·승인 카운트·신호 티저)를 버림. ② 홈 응답 확장으로 "변한 내러티브" 필드 추가 — narrative/list·report/list가 이미 급증·최신 플래그를 주므로 백엔드 변경 불필요. ③ 승인을 지식 페이지로만 통합 — 횡단 가시성(어느 화면에서든)을 잃음. ④ 팔로우 업데이트 스트림을 팔로우 페이지로 이관 — FollowPage(528줄)가 이미 종목별 업데이트를 StockRow에 담고 있어 집계 스트림 신설은 별도 작업, 후속으로 보류.
 
 **참조**: frontend `components/layout/ModeNavigation.tsx`·`components/layout/Header.tsx`·`components/home/HomePage.tsx`·`components/home/ApprovalsCard.tsx`(hideHeader 옵션) · SYSTEM.md §6 IA · D-031(월드모델 분리)·D-023
+
+## D-055 · 2026-07-23 · 운영 관리자 페이지 — cron 작업 on/off + 실행 로그
+
+**결정**: 자동화(생성 cron)가 늘어나 비용·가시성 통제가 필요 → **관리자 페이지(/admin)** 신설. `feature_flags`
+(작업 on/off) + `job_runs`(실행 로그: 상태·요약·소요시간·시각) 테이블 + `pipeline/ops.py`(flag_enabled·set_flag·
+record_run·recent_runs·**run_job(name, fn) 래퍼**). 생성 스크립트 5종(compute_narratives·compute_digests·
+scan_actions·agent_proposals·promote_knowledge) main을 run_job으로 감싸 ①플래그 off면 skip ②실행 기록.
+API `/api/spine/admin`(jobs·runs·flag), 헤더 ⚙ 링크. 관리자는 작업별 스위치로 끄고 최근 실행·변경을 본다.
+
+**맥락·이유**: 파급·리포트·통합·다이제스트 등 LLM 생성이 늘며 "무거워지지 않게 관리할 판"이 필요하다는
+사용자 요청(2026-07-23). 개인 도구라 전용 스케줄러·워커 대신 SQLite 플래그 + 스크립트 진입점 게이트로
+충분. run_job 래퍼로 스크립트당 1~2줄 편입, 실행마다 요약·소요시간 기록 → "뭐가 언제 돌았고 뭐가 바뀌었나".
+
+**기각한 대안**: ① run_chain.sh(bash)에서 게이트 — 파이썬 요약/기록이 어려움 ② 전 스크립트 게이트 —
+plumbing(ingest·signals·vault)은 저비용이라 생성 5종 우선(나머지는 후속) ③ 외부 스케줄러 도입 — 개인 도구엔 과함.
+
+**참조**: pipeline/ops.py · database.py(feature_flags·job_runs) · routers/spine_admin.py · main.py ·
+scripts/{compute_narratives,compute_digests,scan_actions,scan_agent_proposals,promote_knowledge}(run_job) ·
+frontend admin/AdminPage·layout/Header(⚙) · 대화 2026-07-23
+
+---
 
 ## D-054 · 2026-07-23 · 홈 브리핑(기계의 3줄) → 인박스 '공지'로 이관
 

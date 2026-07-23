@@ -9,7 +9,7 @@ from routers import telegram_feed
 from routers import blog_feed
 from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_digests, spine_keywords, spine_sources
 from routers import spine_brief, spine_conversations, spine_person, spine_knowledge, spine_approvals
-from routers import spine_quotes, spine_sector_map, spine_feature_days, spine_company, spine_narrative, spine_research, spine_report
+from routers import spine_quotes, spine_sector_map, spine_feature_days, spine_company, spine_narrative, spine_research, spine_report, spine_admin
 from routers import spine_causal
 
 app = FastAPI(title="Stock Explorer API")
@@ -46,6 +46,7 @@ app.include_router(spine_company.router)
 app.include_router(spine_narrative.router)
 app.include_router(spine_research.router)
 app.include_router(spine_report.router)
+app.include_router(spine_admin.router)
 app.include_router(spine_causal.router)
 app.include_router(spine_causal.beneficiary_router)
 # spine_sources에 youtube 추가됨 (별도 등록 불필요 — 이미 include됨)

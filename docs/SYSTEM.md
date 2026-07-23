@@ -88,6 +88,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `scenarios` | topic별 | 파급 시나리오 캐시(D-038) — topic PK·answer·beneficiaries(json)·citations(json)·narrative_version(변동 시 stale). 매 클릭 opus 재생성 방지, '다시 분석'(refresh)으로만 갱신 |
 | `reports` | 버전별 | 통합 리포트 **append-only 히스토리**(D-047) — id PK·anchor_topic·title·body(Top-down md)·members_json·stocks_json·debate_json·members_hash·**top_pick**·created_at. 최신=id DESC, 매 생성이 새 버전(덮어쓰기 폐기, 과거 열람 가능) |
 | `doc_fts` / `doc_vec` | 264 | BM25(트리거 동기화) / 384d 벡터 |
+| `feature_flags` / `job_runs` | 운영 | cron 작업 on/off 플래그 / 실행 로그(상태·요약·소요) — 관리자 페이지(D-055) |
 
 ### 4-2. 도메인 원본 (옛 세계 — 유지, 척추가 읽기 참조)
 
@@ -179,8 +180,8 @@ Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소
                    **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039) ·
                    **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-049, 전부 '내가 커버하는 대상'). ※구 산업 페이지(/discover/industry)는 폐기
 월드모델           내러티브(빠른 층)·세계관(인과 그래프)·지식(느린 층)을 한 모드로 묶음 — "같은 인과 그래프의 두 속도"(D-023), 신호(델타 감지)와 성격이 달라 분리(D-031). 서브탭:
-                   내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·파급 시나리오·통합 리포트 + **이력**(v2+일 때 헤더 '이력'→/narrative/history?topic=X)) ·
-                   **히스토리**(/narrative/history?topic=X: 재생성 이력 타임라인 — x축 버전 도트(생성 시점+제목), 도트 클릭=해당 버전 본문(/version?id=), 도트 사이=직전 버전 대비 인과 diff, D-050) ·
+                   내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·**재생성 이력 타임라인**(본문 아래·파급 시나리오 위 인라인, 도트 클릭→히스토리 페이지에서 열람, D-055)·파급 시나리오·통합 리포트. **자동 재생성은 24h 1회 제한**(stale이라도 최근 갱신<24h면 자동 발화 금지) + 우상단 새로고침 버튼(강제, 새 재료 없으면 no-op)·최근 갱신 시각 표시, D-055) ·
+                   **히스토리**(/narrative/history?topic=X&v=id: 재생성 이력 상세 — x축 버전 도트(생성 시점+제목), 도트 클릭=해당 버전 본문(/version?id=), 도트 사이=직전 버전 대비 인과 diff. NarrativeTimeline 컴포넌트 인라인/상세 공용, D-050·D-055) ·
                    **리포트**(/report: 발간 목록, /report?topic=X=디테일 — Top-down 리포트 + 최하단 구성 내러티브 링크, integrated-report/D-041) ·
                    지식(/knowledge: **지식↔온톨로지 토글**, D-052) — 지식=구조 지도·현황 대시보드·주입 콘솔(검증 승격 핵심) / **온톨로지**(/knowledge/ontology: 구 '세계관 뷰' 리네임 — 전역 인과 그래프 노드-링크 시각화, React Flow+dagre, 렌즈 필터, in-graph 패널. /narrative/worldview는 리다이렉트). 세계관 탭은 지식으로 통합(세계관 ⊃ 지식)
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·유튜브·뉴스·아티클·인물·역사(source_type=canon) (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
