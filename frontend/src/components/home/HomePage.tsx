@@ -14,7 +14,7 @@ import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
 
 /**
- * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-048·D-049).
+ * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-056·D-057).
  * 기계의 3줄 → 승인 배너 → 월드모델 델타(변한 내러티브·최근 리포트, 매일 여는 것) →
  * 신호(언급 모멘텀·주목 주제·인과 활동 — 탐색 해체로 이관).
  * 승인 대기는 헤더 상시 배지가 주 진입 — 여기선 카운트 배너만.

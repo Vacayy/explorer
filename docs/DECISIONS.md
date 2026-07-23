@@ -27,17 +27,17 @@ pipeline/ops.py(JOBS)·agent_proposals.py(vocab_merge 게이트) · D-032·D-050
 
 ---
 
-## D-055 · 2026-07-23 · 내러티브 자동 재생성 24h 제한 + 새로고침 + 이력 타임라인 인라인 이동
+## D-059 · 2026-07-23 · 내러티브 자동 재생성 24h 제한 + 새로고침 + 이력 타임라인 인라인 이동
 
-**결정**: 내러티브 상세에 세 가지. **(A) 자동 재생성 24h 제한**: 진입 시 stale(새 문서 있음)이면 무조건 자동 compute하던 것을, **최근 갱신이 24h 이내면 자동 발화 금지**로 바꿈(프론트 `autoStale = stale && ageHours>=24`). created_at은 UTC라 파싱 시 `Z` 부착. **(B) 강제 새로고침**: 우상단 새로고침 버튼(`refreshNonce`)으로 24h 무관하게 compute 강제 트리거 — 단 백엔드 doc_ids_hash 가드로 새 재료가 없으면 no-op(status=cached), 이 경우 "새로 반영할 재료가 없어 갱신하지 않았습니다" 토스트. 성공(fresh) 시 "갱신했습니다" + 캐시·버전목록 무효화. **최근 갱신 시각** 헤더 표시. **(C) 이력 진입 이동**: 지난 D-050의 헤더 '이력' 버튼을 폐기하고, 재생성 이력 타임라인을 **본문 아래·파급 시나리오 위 인라인**으로 배치(도트 클릭 시 `/narrative/history?topic=&v=id` 디테일 페이지에서 본문 열람). 타임라인을 재사용 컴포넌트 `NarrativeTimeline`(인라인/상세 공용)으로 추출. 단발 diff만 보이던 `DriftBadge`는 타임라인이 전 구간 diff를 포함하므로 폐기.
+**결정**: 내러티브 상세에 세 가지. **(A) 자동 재생성 24h 제한**: 진입 시 stale(새 문서 있음)이면 무조건 자동 compute하던 것을, **최근 갱신이 24h 이내면 자동 발화 금지**로 바꿈(프론트 `autoStale = stale && ageHours>=24`). created_at은 UTC라 파싱 시 `Z` 부착. **(B) 강제 새로고침**: 우상단 새로고침 버튼(`refreshNonce`)으로 24h 무관하게 compute 강제 트리거 — 단 백엔드 doc_ids_hash 가드로 새 재료가 없으면 no-op(status=cached), 이 경우 "새로 반영할 재료가 없어 갱신하지 않았습니다" 토스트. 성공(fresh) 시 "갱신했습니다" + 캐시·버전목록 무효화. **최근 갱신 시각** 헤더 표시. **(C) 이력 진입 이동**: 지난 D-060의 헤더 '이력' 버튼을 폐기하고, 재생성 이력 타임라인을 **본문 아래·파급 시나리오 위 인라인**으로 배치(도트 클릭 시 `/narrative/history?topic=&v=id` 디테일 페이지에서 본문 열람). 타임라인을 재사용 컴포넌트 `NarrativeTimeline`(인라인/상세 공용)으로 추출. 단발 diff만 보이던 `DriftBadge`는 타임라인이 전 구간 diff를 포함하므로 폐기.
 
 **맥락·이유**: 자동 재생성이 진입마다 opus를 태워 비용·지연이 컸고, 하루에도 여러 번 여는 주제는 매번 재생성될 소지가 있었다. "새 재료가 있어도 하루 1회면 충분, 급하면 수동" 원칙으로 전환. 이력은 헤더 버튼보다 본문 흐름(서사→어떻게 바뀌어왔나→파급) 안에 두는 게 읽기 맥락에 맞다는 사용자 판단.
 
 **기각한 대안**: ① 백엔드에 24h 게이트 — created_at 비교는 프론트에서 충분하고, 수동 강제(refresh)와 자동을 프론트에서 구분하는 게 단순. compute의 doc_ids_hash 가드는 그대로 재료-없음 방어. ② `/compute`에 force 파라미터 신설 — 불필요(해시 가드가 이미 재료 없으면 no-op). ③ DriftBadge 존치 — 타임라인과 중복.
 
-**참조**: frontend `components/explore/NarrativePage.tsx`·`components/explore/NarrativeHistory.tsx`(NarrativeTimeline export) · SYSTEM.md §6 · [[D-050]](히스토리 타임라인 최초 도입 — 이 프로젝트 브랜치 기준. ※아래 D-048~054는 동시 작업 라인과 번호 충돌 있음, 사용자 확인 필요)
+**참조**: frontend `components/explore/NarrativePage.tsx`·`components/explore/NarrativeHistory.tsx`(NarrativeTimeline export) · SYSTEM.md §6 · [[D-060]](히스토리 타임라인 최초 도입)
 
-## D-050 · 2026-07-23 · 내러티브 히스토리 타임라인 — 재생성 이력을 x축 도트로 열람
+## D-060 · 2026-07-23 · 내러티브 히스토리 타임라인 — 재생성 이력을 x축 도트로 열람
 
 **결정**: 내러티브가 재생성될 때마다 덮어써지는 게 아니라 이미 버전별 행으로 보존되고 있음(supersede는 `superseded_at`만 찍고 body 미삭제, 새 버전은 새 row INSERT)을 활용해, **재생성 이력 타임라인 공간**(`/narrative/history?topic=X`, `NarrativeHistory.tsx`)을 만든다. x축에 생성 시점 도트(버전+날짜+제목), 도트 클릭 시 해당 버전 본문, 인접 도트 사이에 직전 버전 대비 인과 diff(기존 `/{id}/diff` 재사용)를 표시. 진입: 내러티브 상세 헤더의 '이력' 버튼(v2+일 때). 유일한 신규 백엔드는 `GET /api/spine/narrative/version?id=`(버전 본문 by id, 리포트 `/version?id=`와 동형, LLM 0).
 
@@ -47,17 +47,17 @@ pipeline/ops.py(JOBS)·agent_proposals.py(vocab_merge 게이트) · D-032·D-050
 
 **참조**: frontend `components/explore/NarrativeHistory.tsx`(신설)·`components/explore/NarrativePage.tsx`(이력 진입)·`App.tsx`(라우트) · backend `routers/spine_narrative.py`(`/version?id=`) · SYSTEM.md §5-2·§6 · [[D-023]](버전 보존)
 
-## D-049 · 2026-07-23 · 탐색 모드 해체 — 신호는 Home으로, 커버리지는 팔로우로, 리서치 제안은 승인 큐로
+## D-057 · 2026-07-23 · 탐색 모드 해체 — 신호는 Home으로, 커버리지는 팔로우로, 리서치 제안은 승인 큐로
 
-**결정**: D-048에 이어 **탐색(L1) 모드를 완전히 해체**한다. L1이 `Home ┃ 팔로우 → 피드 → 월드모델 ┃ 대화`(4개)로 줄고, 흐름은 입력→원천→종합으로 더 단순해진다. 세부: **(A) 신호 요약 → Home**: 탐색 랜딩의 언급 모멘텀·주목 주제·인과 그래프 활동을 Home 신호 대시보드로 이관(`components/home/HomeSignals.tsx` 신설), Home의 기존 '핵심 신호'(market_highlights 카드)는 중복이라 제거. **(B) 커버리지 → 팔로우**: 산업 맵(/map)·인물(/people)·기업활동(/actions)을 팔로우 서브탭으로 이동 — 전부 '내가 커버하는 대상'이라 팔로우(내가 따라가는 것)와 성격 일치. **(C) 리서치 제안 → 승인 큐**: 탐색의 ResearchProposalSection을 폐기하고 research_candidates를 `/api/spine/approvals` 집계에 편입(kind='research_candidate') — ApprovalsCard가 승인(→opus 심층 리서치)/기각을 처리, 헤더 인박스에서 다른 제안들과 함께 결정. **(D) 잔여물**: 신호 상세 목록(소외·52주신고가·컨센서스극단·거래량·괴리)은 `/explore?list=` 도시에로 유지(pill 없음, ExplorePage는 목록+유형 인덱스만), 백테스트(신호 성적표)는 보관함(ArchivePage)으로. 내러티브 티저는 Home 월드모델 델타와 중복이라 제거.
+**결정**: D-056에 이어 **탐색(L1) 모드를 완전히 해체**한다. L1이 `Home ┃ 팔로우 → 피드 → 월드모델 ┃ 대화`(4개)로 줄고, 흐름은 입력→원천→종합으로 더 단순해진다. 세부: **(A) 신호 요약 → Home**: 탐색 랜딩의 언급 모멘텀·주목 주제·인과 그래프 활동을 Home 신호 대시보드로 이관(`components/home/HomeSignals.tsx` 신설), Home의 기존 '핵심 신호'(market_highlights 카드)는 중복이라 제거. **(B) 커버리지 → 팔로우**: 산업 맵(/map)·인물(/people)·기업활동(/actions)을 팔로우 서브탭으로 이동 — 전부 '내가 커버하는 대상'이라 팔로우(내가 따라가는 것)와 성격 일치. **(C) 리서치 제안 → 승인 큐**: 탐색의 ResearchProposalSection을 폐기하고 research_candidates를 `/api/spine/approvals` 집계에 편입(kind='research_candidate') — ApprovalsCard가 승인(→opus 심층 리서치)/기각을 처리, 헤더 인박스에서 다른 제안들과 함께 결정. **(D) 잔여물**: 신호 상세 목록(소외·52주신고가·컨센서스극단·거래량·괴리)은 `/explore?list=` 도시에로 유지(pill 없음, ExplorePage는 목록+유형 인덱스만), 백테스트(신호 성적표)는 보관함(ArchivePage)으로. 내러티브 티저는 Home 월드모델 델타와 중복이라 제거.
 
-**맥락·이유**: 사용자 문답 — "홈에서 핵심 신호 빼고 탐색의 언급모멘텀·주목주제·인과그래프를 넣으면? 그럼 탐색>신호가 필요 없어지나?"에서 출발. 분석 결과 탐색의 신호 랜딩은 두 층(요약/상세)인데 요약이 Home으로 가고 커버리지(산업맵·인물·기업활동)가 팔로우로 가면 탐색에 남는 건 상세목록+백테스트뿐이라 L1 pill을 유지할 무게가 안 됐다. Home이 신호 대시보드까지 흡수하면서 "아침에 여는 델타 코크핏"이라는 실제 사용 습관과 정확히 맞춰진다(D-048의 연장). 리서치 제안을 인박스로 모은 건 '결정할 것'을 한 곳에 수렴시키는 D-048 승인 배지의 자연스러운 귀결.
+**맥락·이유**: 사용자 문답 — "홈에서 핵심 신호 빼고 탐색의 언급모멘텀·주목주제·인과그래프를 넣으면? 그럼 탐색>신호가 필요 없어지나?"에서 출발. 분석 결과 탐색의 신호 랜딩은 두 층(요약/상세)인데 요약이 Home으로 가고 커버리지(산업맵·인물·기업활동)가 팔로우로 가면 탐색에 남는 건 상세목록+백테스트뿐이라 L1 pill을 유지할 무게가 안 됐다. Home이 신호 대시보드까지 흡수하면서 "아침에 여는 델타 코크핏"이라는 실제 사용 습관과 정확히 맞춰진다(D-056의 연장). 리서치 제안을 인박스로 모은 건 '결정할 것'을 한 곳에 수렴시키는 D-056 승인 배지의 자연스러운 귀결.
 
 **기각한 대안**: ① 탐색을 얇게 유지(신호 상세+백테스트만) — pill 하나가 거의 빈 모드를 가리켜 흐름을 흐림. ② 신호 상세목록까지 Home으로 — Home이 과밀해지고, 자주 안 보는 상세는 도시에가 맞음. ③ 백테스트 Home 잔류 — 자기검증 도구라 매일 안 봐서 보관함이 적절. ④ bare /explore를 /home으로 리다이렉트 — 신호 상세 유형(neglect·52w 등) 진입점이 사라져, 얇은 유형 인덱스로 남김.
 
-**참조**: frontend `components/layout/ModeNavigation.tsx`·`components/home/HomePage.tsx`·`components/home/HomeSignals.tsx`(신설)·`components/home/ApprovalsCard.tsx`·`components/explore/ExplorePage.tsx`·`components/archive/ArchivePage.tsx`·`hooks/useWatchlist.ts`(타입 수정) · backend `routers/spine_approvals.py`(research_candidate 집계) · SYSTEM.md §6 IA · [[D-048]]
+**참조**: frontend `components/layout/ModeNavigation.tsx`·`components/home/HomePage.tsx`·`components/home/HomeSignals.tsx`(신설)·`components/home/ApprovalsCard.tsx`·`components/explore/ExplorePage.tsx`·`components/archive/ArchivePage.tsx`·`hooks/useWatchlist.ts`(타입 수정) · backend `routers/spine_approvals.py`(research_candidate 집계) · SYSTEM.md §6 IA · [[D-056]]
 
-## D-048 · 2026-07-23 · 메뉴 재편 — L1을 파이프라인 흐름으로 + Home=아침 브리핑 + 승인 헤더 배지
+## D-056 · 2026-07-23 · 메뉴 재편 — L1을 파이프라인 흐름으로 + Home=아침 브리핑 + 승인 헤더 배지
 
 **결정**: 메뉴의 1차 목적을 "판단 루프 은유"에서 **"데이터 흐름을 드러내기"**로 바꾼다. **(A) L1 재배치**: `오늘·팔로우·탐색·월드모델·피드·대화` → `Home ┃ 팔로우 → 피드 → 탐색 → 월드모델 ┃ 대화`. 가운데 4개가 파이프라인(입력→원천→감지→종합)을 좌→우로 그대로 보여준다 — 유일한 실질 이동은 **피드를 탐색·월드모델 앞으로**(기존엔 월드모델 뒤라 "원천→종합" 인과가 역행). Home·대화는 흐름에서 구분선으로 격리(Home=아침 요약 진입, 대화=횡단 도구), 월드모델은 매일 여는 종착점이라 약한 강조. **(B) '오늘'→'Home' 개명 + 아침 브리핑 재건축**: 죽은 4블록(승인/캘린더/하이라이트/업데이트) 중 캘린더·업데이트 제거, 시장 하이라이트→핵심 신호로 흡수, **월드모델 델타(변한/급증 내러티브 + 최근 리포트)를 진입 요약의 중심으로** 신설(사용자가 매일 여는 것). 기계의 3줄 브리핑은 유지. **(C) 승인 대기→헤더 상시 배지**: 홈에 묻혀 안 보이던 승인 인박스를 헤더 Inbox 배지(카운트)로 격상, 클릭 시 Sheet에 ApprovalsCard 재활용. 백엔드 무변경(narrative/list·report/list·approvals 기존 엔드포인트 재사용).
 
