@@ -19,7 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.transcript import collect_roundrobin, digest_pending, seed_default_follows, _followed
+from pipeline.transcript import (collect_roundrobin, digest_pending, extract_proxies,
+                                 seed_default_follows, seed_proxies, _followed)
 
 
 def main():
@@ -44,7 +45,10 @@ def main():
               f"빈응답 {r['empty']} · 예산소진={r['exhausted']}")
         n = digest_pending(limit=max(r["stored"], 5))  # 신규분 핵심 정리 생성(sonnet)
         print(f"[transcript] 핵심 정리 {n}건 생성")
-        return {**r, "digested": n}
+        seed_proxies()
+        px = extract_proxies()  # 관찰 프록시 자동 트래킹 (haiku, 멱등, D-048)
+        print(f"[transcript] 프록시 추출 {px.get('extracted', 0)}건")
+        return {**r, "digested": n, "proxies": px.get("extracted", 0)}
     run_job("collect_transcripts", _work)   # 관리자 플래그 게이트 + 실행 로그 (D-055)
 
 
