@@ -89,7 +89,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `reports` | 버전별 | 통합 리포트 **append-only 히스토리**(D-047) — id PK·anchor_topic·title·body(Top-down md)·members_json·stocks_json·debate_json·members_hash·**top_pick**·created_at. 최신=id DESC, 매 생성이 새 버전(덮어쓰기 폐기, 과거 열람 가능) |
 | `doc_fts` / `doc_vec` | 264 | BM25(트리거 동기화) / 384d 벡터 |
 | `feature_flags` / `job_runs` | 운영 | cron 작업 on/off 플래그 / 실행 로그(상태·요약·소요) — 관리자 페이지(D-055) |
-| `transcript_follow` / `transcripts` / `proxy_registry` / `proxy_observations` | transcript(D-061) | 미국 기업 컨콜 팔로우(21종 시드)+얇은 인덱스(raw_doc_id FK) / 프록시 레지스트리·관측치. 전문은 raw_documents(source_type='transcript'), 인과·정리·임베딩은 기존 파이프라인 경유. proxy_*는 스키마만(stage 4 가동) |
+| `transcript_follow` / `transcripts` / `proxy_registry` / `proxy_observations` | transcript(D-061) | 미국 기업 컨콜 팔로우(21종 시드)+얇은 인덱스(raw_doc_id FK·**digest**=LLM 핵심 정리) / 프록시 레지스트리·관측치. 전문은 raw_documents(source_type='transcript'), 인과·임베딩은 기존 파이프라인 경유. proxy_*는 스키마만(stage 4 가동) |
 
 ### 4-2. 도메인 원본 (옛 세계 — 유지, 척추가 읽기 참조)
 
@@ -114,7 +114,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `connectors/notes` | vault/notes → 척추 흡수 |
 | `connectors/youtube` | 채널 구독(RSS 신규 영상)·링크 단건 공용 fetch → 자막(ko>en) → **opus 정리본**(digest_transcript, 3회 재시도)을 본문으로 저장. 성공/실패는 `raw_documents.digest_status`(ok\|failed)로 관리(문자열 마커 대신 명시 컬럼). 실패 시 raw 저장되나 discover seen-skip으로 재수집 안 됨 → ① **redigest_youtube 배치**가 `digest_status != 'ok'`인 저장분 스캔해 사후 치유(회차당 5, cron ingest 직후) ② `GET /api/spine/doc/{id}` 열람 시에도 digest_status가 ok가 아니면 그 자리에서 1회 재시도(lazy) — 사용자 진입이 곧 재시도 트리거. 단건/채널 로직 동일 |
 | `store` | 멱등 적재(content_hash)·재enrich 시 stale 링크 제거·4층 confidence 링크 |
-| `transcript` | **미국 기업 실적 컨콜(D-061, docs/specs/transcript-follow.md)** — provider-추상 어댑터(Alpha Vantage EARNINGS_CALL_TRANSCRIPT 무료 25/day 채택, FMP는 유료라 402·폴백). 화자별 세그먼트를 라벨 보존 마크다운으로 → `raw_documents(source_type='transcript')` 적재 → 기존 enrich→doc_causal(온톨로지)→digests→doc_vec가 자동 인수(사일로 아님, 컨콜=경영진 1차 발언 고신호 인과원). dates 엔드포인트 없어 list_available은 최근 분기 후보 생성. scripts/collect_transcripts.py=관리자 잡 `collect_transcripts`. **stage 1(적재)만 구현** — 전용 페이지(2분할 브라우저)·피드 '컨콜' 탭·프록시 추출은 미구현 |
+| `transcript` | **미국 기업 실적 컨콜(D-061, docs/specs/transcript-follow.md)** — provider-추상 어댑터(Alpha Vantage EARNINGS_CALL_TRANSCRIPT 무료 25/day 채택, FMP는 유료라 402·폴백). 화자별 세그먼트를 라벨 보존 마크다운으로 → `raw_documents(source_type='transcript')` 적재 → 기존 enrich→doc_causal(온톨로지)→digests→doc_vec가 자동 인수(사일로 아님, 컨콜=경영진 1차 발언 고신호 인과원). dates 엔드포인트 없어 list_available은 최근 분기 후보 생성. **핵심 정리(digest_one, sonnet)**: 원문은 두고 별도 구조화 정리(실적·가이던스·코멘트·리스크)를 transcripts.digest에 저장(수집 후 digest_pending + 상세 열람 시 POST compute). scripts/collect_transcripts.py=관리자 잡 `collect_transcripts`. **stage 1·2·3 구현**(적재→온톨로지·핵심정리·전용 페이지 2분할+피드 '컨콜' 탭) — 프록시 추출(stage 4)만 미구현 |
 | `beneficiary` | **수혜 종목 스크린(action_thesis Phase 1·1.5, D-035)** — 수혜 섹터/테마 → 종목 후보. MEMBER_OF(KSIC)가 아니라 **문서 공동언급**(entity_links industry/topic ↔ stock)으로 연결 + RS·per·시총·pos_52w enrich, RS순. **정밀도(1.5)**: 공동언급 2+ & **관련도(co/전체언급) ≥ 0.3** — 편재 대형주(모든 시황 등장) 배제, 테마 집중 종목만. + `graph_activity`(entity_relations.created_at 델타 = 최근 새 엣지 붙은 인과 노드, 섹터/테마면 수혜 top3). + `resolve_and_enrich`(scenario가 논리로 지목한 종목명 → 종목코드 resolve[company 엔티티/companies] + RS·밸류 enrich + `universe_membership` 크로스체크 태그[in_universe·universe_groups], 통합 체인 D-036·유니버스 큐레이션). LLM 0. **산업 맵 유니버스**(D-037): `industries` 라우터에 그룹 생성(`POST /api/industries/`)·기계 후보 제안(`GET /{id}/propose` = screen_beneficiaries 재사용, 기존 멤버 제외)·멤버 승인 적재(기존 `POST /{id}/members`) — 기계 제안·사람 필터로 산업 맵(industry_groups/members, 밸류체인 category)을 담당 유니버스로 큐레이션. 크로스체크는 태그일 뿐 하드 필터 아님(D-036 유지). + `upside_model`(업사이드 모델 Phase 2): 앵커(재무·EPS·PER·주가) 결정적 수집 → opus 4단계(매출 P×Q·Capa·TAM→이익률→EPS→적정주가, 불확실 시 멀티플 리레이팅)로 시나리오 보수/기본/낙관 **범위+조건부**·하방(펀더멘탈 지지선)·무효화 → `models` 테이블 적재(감사·재현). 후속: 타이밍(추세)·action_thesis 카드 |
 | `vocab` | **어휘 통합(D-033)** — theme·macro 노드 파편화 치유. 배치: fastembed 코사인 후보(≥0.90) → sonnet 쌍 판정(same/different, 방향·수준 다르면 different) → dry-run 계획(logs/vocab_merge_plan.json) 사람 검토 후 `scripts/consolidate_vocab.py --apply`. 병합: survivor(인과 엣지 多)로 FK 전수 재배선(PRAGMA 동적 발견, entity_relations는 UNIQUE 충돌 시 엣지 병합+evidence 이관) → loser 삭제 + `entity_merges` 기록. 쓰기 시: `_resolve_or_create_node`가 사라진 이름을 entity_merges redirect로 해소(재파편화 방지). **주간 cron 편입(D-050)**: agent_proposals `vocab_merge` kind — 후보(상위 15)→sonnet same 판정→홈 승인 큐, 승인 시 `merge_entities` 실행(자동 적용 아님, 사람 승인) |
 | `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 + **시간 정박**(time_orientation·reference_period, 같은 haiku 콜) — 발행일≠사건일. classify_temporal(백필용 경량 분류). 기존분: scripts/backfill_temporal.py |
@@ -148,7 +148,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | 엔드포인트 | 기능 |
 |---|---|
 | `GET /api/spine/home` · `/home/ai-activity?days=` | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 / **AI 자동생성 피드**(D-053, 지난 N일 내러티브·리포트·파급·다이제스트 최신순 통합, LLM 0) — 홈 최상단 AiActivityFeed(구 승인 배너 대체) |
-| `GET /api/spine/feed` | 통합 피드 — q(하이브리드 검색)·source(telegram·blog·news·article·people·canon·youtube)·stock·industry·topic 필터, published_at DESC. source 세분류: blog=개인블로그(platform≠rss)·news=언론사RSS·article=간행물RSS(pipeline/urls.blog_category)·people=팔로우 인물 언급 문서 |
+| `GET /api/spine/feed` | 통합 피드 — q(하이브리드 검색)·source(telegram·blog·news·article·people·canon·youtube·transcript)·stock·industry·topic 필터, published_at DESC. source 세분류: blog=개인블로그(platform≠rss)·news=언론사RSS·article=간행물RSS(pipeline/urls.blog_category)·people=팔로우 인물 언급 문서·transcript=미국 컨콜(D-061) |
+| `GET /api/spine/transcript/*` | **Transcript 팔로우(D-061)** — `/follow`(그룹별 팔로우+최신 콜) · `/company/{ticker}`(분기 목록) · `/detail/{id}`(원문+메타+저장 정리, 빠름) · POST `/detail/{id}/digest`(멱등 정리 생성 sonnet, ~수 분) · POST `/follow`(구독 토글) · POST `/seed`(기본 21종). FE: /follow/transcripts 2분할 브라우저 |
 | `GET /api/spine/doc/{id}` | 문서 디테일 (raw content·이미지·태그·요약). youtube 소스면 digest_status가 ok가 아닐 때 opus 정리본을 그 자리에서 1회 재시도 후 반환(lazy retry) |
 | `GET /api/spine/signals` | 신호 (type·days) |
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
@@ -180,6 +181,7 @@ L1은 파이프라인 흐름을 좌→우로 드러낸다 (D-056·D-057): `Home 
 Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소스경고·지식충돌·가설확인·인사이트) + 승인 대기 배너 + **월드모델 델타**(변한/급증 내러티브 + 최근 리포트, 매일 여는 것을 진입 요약으로) + **신호**(언급 모멘텀·주목 주제·인과 그래프 활동 — 탐색 해체로 이관, D-057). (구 캘린더·업데이트 스트림·핵심신호 카드는 제거)
 팔로우             서브탭: 팔로우(/follow: 내가 따라가는 종목·채널·블로그·태그 허브) ·
                    **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039) ·
+                   **컨콜**(/follow/transcripts: 미국 기업 실적 컨콜 2분할 브라우저 — 좌 그룹 팔로우, 우 핵심 정리+원문, D-061) ·
                    **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-057, 전부 '내가 커버하는 대상'). ※구 산업 페이지(/discover/industry)는 폐기
 월드모델           내러티브(빠른 층)·세계관(인과 그래프)·지식(느린 층)을 한 모드로 묶음 — "같은 인과 그래프의 두 속도"(D-023), 신호(델타 감지)와 성격이 달라 분리(D-031). 서브탭:
                    내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·**재생성 이력 타임라인**(본문 아래·파급 시나리오 위 인라인, 도트 클릭→히스토리 페이지에서 열람, D-059)·파급 시나리오·통합 리포트. **자동 재생성은 24h 1회 제한**(stale이라도 최근 갱신<24h면 자동 발화 금지) + 우상단 새로고침 버튼(강제, 새 재료 없으면 no-op)·최근 갱신 시각 표시, D-059) ·

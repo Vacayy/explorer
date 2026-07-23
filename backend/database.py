@@ -879,6 +879,8 @@ def init_db():
         "ALTER TABLE enrichments ADD COLUMN causal_extracted_at TEXT",
         # 리포트 v2 다중 에이전트(report-v2-agents) — debate 산출물 보존·열람 (analyst·bull·bear·레이팅)
         "ALTER TABLE reports ADD COLUMN debate_json TEXT",
+        # transcript 핵심 정리(D-061 stage 2) — 원문(raw_documents)은 그대로 두고 별도 LLM 정리 저장
+        "ALTER TABLE transcripts ADD COLUMN digest TEXT",
     ]:
         try:
             conn.execute(migration)
