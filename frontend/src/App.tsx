@@ -33,6 +33,7 @@ import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import WorldviewPage from "@/components/explore/WorldviewPage"
 import ReportsPage from "@/components/explore/ReportsPage"
 import ArchivePage from "@/components/archive/ArchivePage"
+import AdminPage from "@/components/admin/AdminPage"
 
 // Discovery
 import IndustryPage from "@/components/industry/IndustryPage"
@@ -158,6 +159,7 @@ export default function App() {
             <Route path="follow/universe" element={<UniversePage />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
+            <Route path="admin" element={<AdminPage />} />
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />

@@ -12,5 +12,11 @@ from pipeline.consolidation import promote_batch, promote_causal_edges
 
 if __name__ == "__main__":
     init_db()
-    print("[promote]", promote_batch())
-    print("[promote-causal]", promote_causal_edges())
+    from pipeline.ops import run_job
+
+    def _work():
+        p = promote_batch()
+        pc = promote_causal_edges()
+        print("[promote]", p, "[promote-causal]", pc)
+        return {"promoted": p.get("promoted", 0) if isinstance(p, dict) else 0}
+    run_job("promote_knowledge", _work)   # 관리자 플래그 게이트 + 로그 (D-055)

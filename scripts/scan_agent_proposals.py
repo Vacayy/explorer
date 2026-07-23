@@ -18,7 +18,13 @@ def main():
     parser.add_argument("--no-llm", action="store_true", help="devils_advocate(haiku) 생략")
     args = parser.parse_args()
     init_db()
-    print("[agent-proposals]", run_all(include_llm=not args.no_llm))
+    from pipeline.ops import run_job
+
+    def _work():
+        r = run_all(include_llm=not args.no_llm)
+        print("[agent-proposals]", r)
+        return r
+    run_job("agent_proposals", _work)   # 관리자 플래그 게이트 + 로그 (D-055)
 
 
 if __name__ == "__main__":

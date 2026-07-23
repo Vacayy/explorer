@@ -18,10 +18,16 @@ if __name__ == "__main__":
     parser.add_argument("--backfill", type=int, default=0)
     args = parser.parse_args()
     init_db()
-    if args.backfill:
-        for i in range(args.backfill, 0, -1):
-            d = (date.today() - timedelta(days=i - 1)).isoformat()
-            print(f"[daily {d}]", compute_daily(d))
-    else:
-        print("[daily]", compute_daily())
-    print("[rolling7]", compute_rolling7())
+    from pipeline.ops import run_job
+
+    def _work():
+        if args.backfill:
+            for i in range(args.backfill, 0, -1):
+                d = (date.today() - timedelta(days=i - 1)).isoformat()
+                print(f"[daily {d}]", compute_daily(d))
+            return {"backfill": args.backfill}
+        daily = compute_daily()
+        r7 = compute_rolling7()
+        print("[daily]", daily, "[rolling7]", r7)
+        return {"daily_gen": daily.get("generated", 0) if isinstance(daily, dict) else 0}
+    run_job("compute_digests", _work)   # 관리자 플래그 게이트 + 로그 (D-055)

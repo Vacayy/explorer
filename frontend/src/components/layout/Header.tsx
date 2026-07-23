@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { Archive, Inbox, PanelRight, Search } from "lucide-react"
+import { Archive, Inbox, PanelRight, Search, SlidersHorizontal } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { Button } from "@/components/ui/button"
@@ -46,6 +46,11 @@ export default function Header() {
 
         <div className="ml-auto flex items-center gap-1">
           <ApprovalsInbox />
+          <Button variant="ghost" size="icon-sm" asChild>
+            <Link to="/admin" title="관리자 — cron 작업·기능 on/off">
+              <SlidersHorizontal className="h-4 w-4" />
+            </Link>
+          </Button>
           <Button variant="ghost" size="icon-sm" asChild>
             <Link to="/archive" title="보관함 — 안 쓰는 화면 모음">
               <Archive className="h-4 w-4" />
@@ -94,7 +99,6 @@ function ApprovalsInbox() {
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle>인박스</SheetTitle>
-            <SheetDescription>공지(기계의 관측) + 승인 대기(결정은 사람이)</SheetDescription>
           </SheetHeader>
           {open && <InboxBody count={count} />}
         </SheetContent>
@@ -111,7 +115,7 @@ function InboxBody({ count }: { count: number }) {
     <div className="px-4 pb-6 space-y-5">
       {briefing.length > 0 && (
         <div>
-          <div className="text-xs font-medium text-muted-foreground mb-1.5">공지 — 기계가 포착한 변화</div>
+          <div className="text-xs font-medium text-muted-foreground mb-1.5">공지사항</div>
           <BriefingList items={briefing} />
         </div>
       )}
