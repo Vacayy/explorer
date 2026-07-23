@@ -19,7 +19,7 @@ export function ReportCharts({ stocks, topPick }: { stocks: Stock[]; topPick?: s
   if (!hasBar && !top) return null
 
   return (
-    <div className="border-t pt-3 space-y-4">
+    <div className="border-b pb-4 space-y-4">
       {hasBar && <UpsideDownsideBars stocks={stocks} topPick={topPick} />}
       {top && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -118,6 +118,9 @@ export function ReportView({ topic }: { topic: string }) {
         {display?.answer && (
           <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
             <CardContent className="py-4 space-y-3">
+              {display.stocks.length > 0 && (
+                <ReportCharts stocks={display.stocks} topPick={display.top_pick} />
+              )}
               {display.title && <h3 className="text-base font-bold">{display.title}</h3>}
               <Markdown>{display.answer}</Markdown>
               {display.stocks.length > 0 && (
@@ -142,9 +145,6 @@ export function ReportView({ topic }: { topic: string }) {
                     </span>
                   ))}
                 </div>
-              )}
-              {display.stocks.length > 0 && (
-                <ReportCharts stocks={display.stocks} topPick={display.top_pick} />
               )}
               {display.members.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 border-t pt-2 text-[11px]">
