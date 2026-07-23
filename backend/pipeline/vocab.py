@@ -12,7 +12,7 @@ import math
 
 from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
 
-MERGE_TYPES = ("theme", "macro", "sector")  # sector 추가(D-062): 메모리반도체=메모리반도체 섹터류 파편 치유
+MERGE_TYPES = ("theme", "macro", "sector", "event")  # sector·event 추가(D-062·D-063): 섹터/사건 파편 치유
 DEFAULT_THRESHOLD = 0.90
 JUDGE_BATCH = 15
 
@@ -95,7 +95,7 @@ def _build_judge_prompt(pairs: list[dict]) -> str:
         f'{k + 1}. "{p["a_name"]}" vs "{p["b_name"]}" (type={p["type"]})'
         for k, p in enumerate(pairs))
     return (
-        "아래는 인과 그래프의 추상 노드(theme·macro) 이름 쌍이다. 각 쌍이 "
+        "아래는 인과 그래프 노드(theme·macro·sector·event 등) 이름 쌍이다. 각 쌍이 "
         "'같은 개념(same)'인지 '다른 개념(different)'인지 판정해 JSON만 출력해. 설명·코드블록 금지.\n"
         "판정 규율:\n"
         "- 수준/방향/시점이 다르면 different. 예: '금리'와 '금리 상승'은 different — "
@@ -104,6 +104,10 @@ def _build_judge_prompt(pairs: list[dict]) -> str:
         "- 같은 대상을 가리키는 동의어·축약·어순·병기 차이는 same. "
         "예: 'AI 거품론·고점론'과 'AI 고점론', 'AI 데이터센터 투자'와 'AI 데이터센터 투자 확대'는 "
         "판단 대상 — 후자는 '확대'라는 방향이 붙었으니 애매하면 different로.\n"
+        "- 사건(event)은 특정 발생이다. 같은 발생을 표현·구체성만 달리하면 same 예: "
+        "'SK하이닉스 ADR 상장'과 'SK하이닉스 나스닥 ADR 상장'('나스닥'은 상장 장소 특정일 뿐 동일 사건). "
+        "다른 시점·다른 주체·상위/하위 사건이거나 방향이 반대면 different 예: "
+        "'반도체 공급 부족'과 '반도체 공급 완화'(반대 방향), '반도체 종목 급락'과 '반도체 대장주 급락'(범위 다름).\n"
         "- 애매하면 different (병합은 되돌리기 비싸다).\n"
         f'형식: {{"results": [{{"pair": 1, "verdict": "same|different", "rationale": "한 문장 근거"}}, ...]}}\n'
         f"results는 정확히 {len(pairs)}개, pair 번호는 입력 그대로.\n\n"
