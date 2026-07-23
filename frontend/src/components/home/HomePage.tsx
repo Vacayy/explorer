@@ -1,24 +1,25 @@
 import { Link } from "react-router-dom"
-import ApprovalsCard from "@/components/home/ApprovalsCard"
-import { TrendingUp, AlertTriangle, BadgeCheck, CalendarDays, Bell, Building2, Lightbulb, LineChart, Swords, X } from "lucide-react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { AlertTriangle, BadgeCheck, Building2, FileText, Inbox, LineChart, Lightbulb, Route, Sparkles, Swords, Workflow } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { apiQuery, STALE } from "@/api/query"
 import { useHome } from "@/hooks/useHome"
-import { spineKeys, unfollowEntity } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from '@/components/shared/PageContainer'
-import { SourceBadge } from "@/components/shared/SourceBadge"
+import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
-import { formatRelativeTime } from "@/utils/format"
-import type { BriefItem, CalendarEvent, HomeFollow, SpineSignal, WatchlistUpdate } from "@/types"
+import { NarrativeList } from "@/components/explore/NarrativeList"
+import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
+import type { BriefItem } from "@/types"
 
 /**
- * /home — 내 종목 follow-up (product-v2.md v2.1)
- * 층위 원칙: 홈은 변화(delta)만 보여준다. 깊이는 클릭 뒤(디테일)에.
- * 빈 화면 방지: 내 종목이 조용한 날은 시장 하이라이트가 위로 승격된다.
+ * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-048·D-049).
+ * 기계의 3줄 → 승인 배너 → 월드모델 델타(변한 내러티브·최근 리포트, 매일 여는 것) →
+ * 신호(언급 모멘텀·주목 주제·인과 활동 — 탐색 해체로 이관).
+ * 승인 대기는 헤더 상시 배지가 주 진입 — 여기선 카운트 배너만.
+ * 신호 상세 목록은 /explore?list= (pill 없는 도시에).
  */
 export default function HomePage() {
   const { data, isLoading, isError, refetch } = useHome()
@@ -26,47 +27,42 @@ export default function HomePage() {
   if (isLoading) return <HomeSkeleton />
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
 
-  const quietDay = !data.watchlist_empty && data.watchlist_updates.length === 0
-
   return (
     <PageContainer>
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-bold">홈</h2>
+        <h2 className="text-xl font-bold">Home</h2>
         <FreshnessStamp asOf={data.as_of} />
       </div>
 
+      {/* 기계가 먼저 말하는 3줄 — 소스경고·지식충돌·가설확인·인사이트 (변화 감지, 판단 아님) */}
       {data.briefing.length > 0 && <BriefingSection items={data.briefing} />}
 
-      {/* 승인 대기 — 기계의 제안, 사람의 결정 (인라인 승인/거부) */}
-      <ApprovalsCard />
+      {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드 (승인 대기 칩 통합) */}
+      <AiActivityFeed />
 
-      <CalendarSection events={data.calendar} />
+      {/* 월드모델 델타 — 매일 여는 것을 진입 요약으로 (내러티브 + 리포트) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <NarrativeDeltaCard />
+        <RecentReportsCard />
+      </div>
 
-      {/* 조용한 날: 시장 하이라이트를 먼저 올린다 (빈 화면 방지 규칙) */}
-      {quietDay ? (
-        <>
-          <HighlightsSection signals={data.market_highlights} promoted />
-          <UpdatesSection updates={data.watchlist_updates} watchlistEmpty={data.watchlist_empty} follows={data.follows} />
-        </>
-      ) : (
-        <>
-          <UpdatesSection updates={data.watchlist_updates} watchlistEmpty={data.watchlist_empty} follows={data.follows} />
-          <HighlightsSection signals={data.market_highlights} />
-        </>
-      )}
+      {/* 신호 대시보드 — 탐색 해체로 Home 흡수 (세로 스택) */}
+      <MomentumSection />
+      <ThemeSurgeSummary />
+      <GraphActivitySection />
     </PageContainer>
   )
 }
 
-/* ---------- ⓪ 기계가 먼저 말하는 3줄 (변화 감지 — 판단 아님) ---------- */
+/* ---------- 기계의 3줄 ---------- */
 
 const BRIEF_ICON = {
   insight: Lightbulb,
   action: Building2,
   signal: LineChart,
   warning: AlertTriangle,
-  conflict: Swords,     // 지식 충돌 (K2) — 검증된 전제에 반박 증거 누적
-  confirmed: BadgeCheck, // 가설 확인 (K3) — 내 가설을 기계 관측이 지지
+  conflict: Swords,      // 지식 충돌 (K2)
+  confirmed: BadgeCheck, // 가설 확인 (K3)
 } as const
 
 function BriefingSection({ items }: { items: BriefItem[] }) {
@@ -91,199 +87,124 @@ function BriefingSection({ items }: { items: BriefItem[] }) {
   )
 }
 
-/* ---------- ① 캘린더 스트립 ---------- */
+/* ---------- AI 자동생성 피드 (지난 7일 · 최신순, 승인 대기 칩 통합) ---------- */
 
-function CalendarSection({ events }: { events: CalendarEvent[] }) {
+interface AiActivityItem {
+  type: string; title: string; topic: string; code: string | null; created_at: string
+}
+const ACT_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }>; cls: string }> = {
+  narrative: { label: "내러티브", Icon: Sparkles, cls: "text-hypothesis border-hypothesis/40" },
+  mega: { label: "메가", Icon: Workflow, cls: "text-hypothesis border-hypothesis/40" },
+  report: { label: "리포트", Icon: FileText, cls: "text-primary border-primary/40" },
+  scenario: { label: "파급", Icon: Route, cls: "text-muted-foreground" },
+  digest: { label: "요약", Icon: LineChart, cls: "text-muted-foreground" },
+}
+function actLink(a: AiActivityItem): string {
+  if (a.type === "report") return `/report?topic=${encodeURIComponent(a.topic)}`
+  if (a.type === "digest" && a.code) return `/analyze/${a.code}/summary`
+  if (a.type === "mega") return "/narrative"
+  return `/narrative?topic=${encodeURIComponent(a.topic)}`
+}
+
+function AiActivityFeed() {
+  const { data: items = [], isLoading } = useQuery(
+    apiQuery<AiActivityItem[]>({ key: ["spine", "home", "ai-activity"], url: "/api/spine/home/ai-activity?days=7", staleTime: STALE.short }),
+  )
+  const { data: approvals = [] } = useQuery(
+    apiQuery<{ id: number }[]>({ key: ["spine", "approvals"], url: "/api/spine/approvals", staleTime: STALE.short }),
+  )
+  if (isLoading) return <Skeleton className="h-40 w-full rounded-xl" />
+  return (
+    <ProposalPanel
+      icon={Sparkles} title="AI가 최근 만든 것" subtitle="지난 7일 · 최신순" count={items.length}
+      maxHeight="46vh" contentClassName="px-0 divide-y"
+      action={approvals.length > 0
+        ? <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40 gap-1">
+            <Inbox className="h-3 w-3" /> 승인 대기 {approvals.length} · 우상단 인박스
+          </Badge>
+        : undefined}>
+      {items.length === 0 ? (
+        <p className="px-4 py-4 text-sm text-muted-foreground">지난 7일간 자동생성된 콘텐츠가 없습니다.</p>
+      ) : items.map((a, i) => {
+        const m = ACT_META[a.type] ?? ACT_META.narrative
+        return (
+          <Link key={`${a.type}-${a.topic}-${i}`} to={actLink(a)}
+            className="flex items-center gap-2 px-4 py-1.5 hover:bg-muted/50">
+            <m.Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <Badge variant="outline" className={`text-[9px] shrink-0 ${m.cls}`}>{m.label}</Badge>
+            <span className="text-sm truncate min-w-0 flex-1">{a.title}</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{a.created_at.slice(5, 16)}</span>
+          </Link>
+        )
+      })}
+    </ProposalPanel>
+  )
+}
+
+/* ---------- 월드모델 델타: 내러티브 ---------- */
+
+function NarrativeDeltaCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
-          <CalendarDays className="h-4 w-4 text-muted-foreground" /> 이번 주 일정
+          <Sparkles className="h-4 w-4 text-hypothesis" /> 내러티브 — 지금 움직이는 주제
+          <Link to="/narrative" className="ml-auto text-[11px] font-normal text-muted-foreground hover:text-foreground">전체 →</Link>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-2">이번 주 등록된 일정이 없습니다.</p>
-        ) : (
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {events.map((e) => (
-              <div
-                key={e.id}
-                className={`shrink-0 rounded-lg border px-3 py-2 min-w-[180px] ${
-                  e.in_watchlist ? "border-primary/40 bg-accent" : ""
-                }`}
-              >
-                <div className="text-[11px] text-muted-foreground tabular-nums">{e.event_date}</div>
-                <div className="text-sm font-medium truncate max-w-[220px]">{e.title}</div>
-                <div className="flex items-center gap-1 mt-1">
-                  {e.corp_name && e.stock_code && (
-                    <Link to={`/analyze/${e.stock_code}/summary`} className="text-xs text-primary hover:underline">
-                      {e.corp_name}
-                    </Link>
-                  )}
-                  {e.in_watchlist && <Badge variant="secondary" className="text-[10px]">내 종목</Badge>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <NarrativeList limit={5} empty="state" />
       </CardContent>
     </Card>
   )
 }
 
-/* ---------- ② 내 종목 업데이트 스트림 ---------- */
+/* ---------- 월드모델 델타: 최근 리포트 ---------- */
 
-function UpdatesSection({ updates, watchlistEmpty, follows }: {
-  updates: WatchlistUpdate[]; watchlistEmpty: boolean; follows: HomeFollow[]
-}) {
-  const qc = useQueryClient()
-  const unfollow = useMutation({
-    mutationFn: unfollowEntity,
-    onSuccess: () => qc.invalidateQueries({ queryKey: spineKeys.home() }),
-  })
+interface ReportListItem {
+  anchor_topic: string
+  title: string | null
+  n_members: number
+  n_stocks: number
+  created_at: string
+}
+
+function RecentReportsCard() {
+  const { data = [] } = useQuery(
+    apiQuery<ReportListItem[]>({ key: ["spine", "report", "list"], url: "/api/spine/report/list", staleTime: STALE.short }),
+  )
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
-          <Bell className="h-4 w-4 text-muted-foreground" /> 내 종목·팔로우 업데이트
+          <FileText className="h-4 w-4 text-muted-foreground" /> 최근 리포트
+          <Link to="/report" className="ml-auto text-[11px] font-normal text-muted-foreground hover:text-foreground">전체 →</Link>
         </CardTitle>
-        {follows.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1">
-            {follows.map((f) => (
-              <Badge key={f.entity_id} variant="secondary" className="text-[10px] gap-1 pr-1 font-normal">
-                {f.name}
-                <Button variant="ghost" size="sm" className="h-auto border-0 p-0 hover:bg-transparent hover:text-inherit" onClick={() => unfollow.mutate(f.entity_id)} aria-label="팔로우 해제">
-                  <X className="size-2.5" />
-                </Button>
-              </Badge>
-            ))}
-          </div>
-        )}
       </CardHeader>
       <CardContent>
-        {watchlistEmpty ? (
-          <div className="py-8 text-center space-y-2">
-            <p className="text-sm text-muted-foreground">추적 중인 종목이 없습니다.</p>
-            <p className="text-xs text-muted-foreground">
-              상단 검색으로 기업을 워치리스트에 담거나, 피드에서 산업·토픽 태그를 팔로우하면 업데이트가 여기에 모입니다.
-            </p>
-            <Link to="/follow" className="text-xs text-primary hover:underline">
-              워치리스트 관리 →
-            </Link>
-          </div>
-        ) : updates.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">
-            오늘 내 종목은 조용합니다. 아래는 시장 전체 하이라이트입니다.
-          </p>
+        {data.length === 0 ? (
+          <EmptyState message="아직 발간된 리포트가 없습니다 — 내러티브 상세에서 생성하세요." />
         ) : (
-          <ul className="divide-y">
-            {updates.map((u, i) => (
-              <UpdateRow key={`${u.kind}-${u.stock_code}-${u.occurred_at}-${i}`} update={u} />
+          <ul className="space-y-2.5">
+            {data.slice(0, 5).map((r) => (
+              <li key={r.anchor_topic}>
+                <Link to={`/report?topic=${encodeURIComponent(r.anchor_topic)}`} className="group flex items-start gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm leading-snug group-hover:underline">{r.title || `${r.anchor_topic} 통합 리포트`}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
+                      <Badge variant="secondary" className="text-[10px] font-normal">{r.anchor_topic}</Badge>
+                      <span>내러티브 {r.n_members} · 종목 {r.n_stocks}</span>
+                      <span className="tabular-nums">· {r.created_at.slice(0, 10)}</span>
+                    </div>
+                  </div>
+                </Link>
+              </li>
             ))}
           </ul>
         )}
       </CardContent>
     </Card>
-  )
-}
-
-function UpdateRow({ update: u }: { update: WatchlistUpdate }) {
-  return (
-    <li className="flex items-center gap-3 py-2.5">
-      {u.kind === "signal" ? (
-        <Badge className="shrink-0 text-[10px] bg-hypothesis/15 text-hypothesis border-transparent">신호</Badge>
-      ) : (
-        <SourceBadge sourceType={u.source_type ?? ""} />
-      )}
-      <Link
-        to={u.entity_type === "company" && u.stock_code
-          ? `/analyze/${u.stock_code}/summary`
-          : `/feed?${u.entity_type === "theme" ? "topic" : "industry"}=${encodeURIComponent(u.corp_name)}`}
-        className="shrink-0 text-sm font-medium text-primary hover:underline"
-      >
-        {u.corp_name}
-      </Link>
-      {u.doc_id ? (
-        <Link to={`/doc/${u.doc_id}`} className="text-sm truncate hover:underline">
-          {u.title}
-        </Link>
-      ) : (
-        <span className="text-sm truncate">{u.title}</span>
-      )}
-      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
-        {formatRelativeTime(u.occurred_at)}
-      </span>
-    </li>
-  )
-}
-
-/* ---------- ③ 시장 하이라이트 (신호) ---------- */
-
-function HighlightsSection({ signals, promoted }: { signals: SpineSignal[]; promoted?: boolean }) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          시장 하이라이트
-          {promoted && <span className="text-[11px] font-normal text-muted-foreground">— 오늘 내 종목이 조용해서 먼저 보여드려요</span>}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {signals.length === 0 ? (
-          <EmptyState message="최근 7일 신호가 없습니다." />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {signals.map((s) => (
-              <SignalMiniCard key={s.id} signal={s} />
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function SignalMiniCard({ signal: s }: { signal: SpineSignal }) {
-  const p = s.payload
-  return (
-    <div className="rounded-lg border p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        {s.stock_code ? (
-          <Link to={`/analyze/${s.stock_code}/summary`} className="font-medium text-sm text-primary hover:underline">
-            {s.entity_name}
-          </Link>
-        ) : (
-          <span className="font-medium text-sm">{s.entity_name}</span>
-        )}
-        <Badge variant="secondary" className="text-[10px]">언급 급증</Badge>
-        <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">{s.date}</span>
-      </div>
-      <div className="text-sm">
-        최근 7일 <span className="font-semibold text-up">{p.count_7d ?? "-"}회</span>
-        <span className="text-muted-foreground text-xs"> (직전 {p.baseline_7d ?? 0}회)</span>
-      </div>
-      {p.keywords && p.keywords.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {p.keywords.slice(0, 4).map((k) => (
-            <Badge key={k} variant="outline" className="text-[10px] font-normal">{k}</Badge>
-          ))}
-        </div>
-      )}
-      {/* 근거 문서 — "왜 이 신호?"는 항상 노출 (신호 노이즈 규율) */}
-      {p.docs && p.docs.length > 0 && (
-        <ul className="space-y-0.5 border-t pt-1.5">
-          {p.docs.slice(0, 2).map((d, i) => (
-            <li key={i} className="truncate">
-              <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
-                · {d.title}
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   )
 }
 
@@ -293,7 +214,7 @@ function HomeSkeleton() {
   return (
     <PageContainer>
       <Skeleton className="h-6 w-24" />
-      {[96, 200, 180].map((h, i) => (
+      {[80, 160, 180].map((h, i) => (
         <div key={i} className="border rounded-xl p-4 space-y-3">
           <Skeleton className="h-4 w-32" />
           <Skeleton style={{ height: h }} className="w-full" />

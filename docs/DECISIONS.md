@@ -40,6 +40,26 @@
 
 **참조**: frontend `components/layout/ModeNavigation.tsx`·`components/layout/Header.tsx`·`components/home/HomePage.tsx`·`components/home/ApprovalsCard.tsx`(hideHeader 옵션) · SYSTEM.md §6 IA · D-031(월드모델 분리)·D-023
 
+## D-053 · 2026-07-23 · 홈 최상단 'AI 자동생성 피드' — 무쓸모 승인 배너 대체
+
+**결정**: 홈 최상단의 `ApprovalsBanner`(우상단 인박스로 유도만 하던 배너 — 무쓸모)를 **'AI가 최근 만든 것'
+피드**로 대체. `GET /api/spine/home/ai-activity`(지난 7일 내러티브·리포트·파급·다이제스트를 created_at
+최신순 통합, LLM 0) → 홈 `AiActivityFeed`(ProposalPanel 내부 스크롤, 유형 배지+제목+시각+링크). 승인 대기
+건수는 피드 헤더 칩으로 통합("승인 대기 N · 우상단 인박스"). 자동화가 늘수록 "AI가 뭘 만들었나"를 홈에서
+바로 보게 하는 진입점.
+
+**맥락·이유**: 상단 배너가 헤더 인박스 배지와 중복이라 가치가 없었다(사용자 2026-07-23). 자동생성물(내러티브·
+파급·리포트)이 쌓이는데 홈에서 최신 활동을 볼 곳이 없었음 → 연대순 활동 피드가 그 자리를 채운다. 승인
+대기는 별도 배너 대신 피드 헤더 칩으로 흡수. **미해소 중복**: 기존 NarrativeDeltaCard(급증 주제)·
+RecentReportsCard(최근 리포트)와 피드가 리포트에서 겹침 — 델타 카드는 '큐레이션'이라 일단 병존, 추가 통합은
+후속(사용자 판단).
+
+**기각한 대안**: ① 배너 유지 — 무쓸모 ② 델타 카드 즉시 제거 — 스코프 초과(요청은 배너 통합), 병존 후 판단.
+
+**참조**: routers/spine_home.py(ai_activity)·frontend HomePage.tsx(AiActivityFeed, ApprovalsBanner 제거) · 대화 2026-07-23
+
+---
+
 ## D-052 · 2026-07-23 · 세계관을 지식 탭으로 통합 + '세계관 뷰' → '온톨로지' 리네임
 
 **결정**: 월드모델 서브탭에서 별도였던 **세계관(인과 그래프)을 지식 탭으로 통합** — 지식 안에서

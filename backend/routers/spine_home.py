@@ -8,10 +8,49 @@ import json
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 from database import get_connection
 from models.spine import BriefItem, CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
+
+
+class AiActivityItem(BaseModel):
+    type: str            # narrative | mega | report | scenario | digest
+    title: str
+    topic: str
+    code: str | None = None   # digest면 종목코드(analyze 링크용)
+    created_at: str
+
+
+@router.get("/ai-activity", response_model=list[AiActivityItem])
+def ai_activity(days: int = Query(7, ge=1, le=30), limit: int = Query(30, ge=1, le=100)):
+    """지난 N일간 AI가 자동/승인 생성한 산출물 — 내러티브·리포트·파급·다이제스트, 최신순 통합 피드."""
+    conn = get_connection()
+    since = f"-{days} days"
+    items: list[dict] = []
+    for r in conn.execute(
+        "SELECT topic, title, created_at, COALESCE(kind,'topic') kind FROM narratives "
+        "WHERE created_at >= datetime('now', ?)", (since,)):
+        items.append({"type": "mega" if r["kind"] == "mega" else "narrative",
+                      "title": r["title"] or r["topic"], "topic": r["topic"], "created_at": r["created_at"]})
+    for r in conn.execute(
+        "SELECT anchor_topic, title, created_at FROM reports WHERE created_at >= datetime('now', ?)", (since,)):
+        items.append({"type": "report", "title": r["title"] or f"{r['anchor_topic']} 리포트",
+                      "topic": r["anchor_topic"], "created_at": r["created_at"]})
+    for r in conn.execute(
+        "SELECT topic, created_at FROM scenarios WHERE created_at >= datetime('now', ?)", (since,)):
+        items.append({"type": "scenario", "title": f"{r['topic']} 파급 분석",
+                      "topic": r["topic"], "created_at": r["created_at"]})
+    for r in conn.execute(
+        "SELECT e.name, e.aliases code, d.period, d.created_at FROM entity_digests d "
+        "JOIN entities e ON e.id=d.entity_id "
+        "WHERE d.created_at >= datetime('now', ?) AND e.aliases IS NOT NULL", (since,)):
+        items.append({"type": "digest", "title": f"{r['name']} {r['period'].upper()} 요약",
+                      "topic": r["name"], "code": r["code"], "created_at": r["created_at"]})
+    conn.close()
+    items.sort(key=lambda x: x["created_at"] or "", reverse=True)
+    return [AiActivityItem(**x) for x in items[:limit]]
 
 
 @router.get("", response_model=HomeResponse)

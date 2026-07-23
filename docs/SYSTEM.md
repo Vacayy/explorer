@@ -144,7 +144,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 ### 5-2. API (spine 라우터 11종)
 | 엔드포인트 | 기능 |
 |---|---|
-| `GET /api/spine/home` | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 |
+| `GET /api/spine/home` · `/home/ai-activity?days=` | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 / **AI 자동생성 피드**(D-053, 지난 N일 내러티브·리포트·파급·다이제스트 최신순 통합, LLM 0) — 홈 최상단 AiActivityFeed(구 승인 배너 대체) |
 | `GET /api/spine/feed` | 통합 피드 — q(하이브리드 검색)·source(telegram·blog·news·article·people·canon·youtube)·stock·industry·topic 필터, published_at DESC. source 세분류: blog=개인블로그(platform≠rss)·news=언론사RSS·article=간행물RSS(pipeline/urls.blog_category)·people=팔로우 인물 언급 문서 |
 | `GET /api/spine/doc/{id}` | 문서 디테일 (raw content·이미지·태그·요약). youtube 소스면 digest_status가 ok가 아닐 때 opus 정리본을 그 자리에서 1회 재시도 후 반환(lazy retry) |
 | `GET /api/spine/signals` | 신호 (type·days) |
