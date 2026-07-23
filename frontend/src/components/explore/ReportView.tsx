@@ -30,7 +30,7 @@ export interface ReportResult {
   title: string | null
   answer: string | null
   members: string[]
-  stocks: { code: string; name: string; rating?: string; upside_pct?: number | null }[]
+  stocks: { code: string; name: string; rating?: string; upside_pct?: number | null; downside_pct?: number | null }[]
   top_pick?: string | null
   debate?: {
     fundamental?: string; technical?: string; sentiment?: string
@@ -129,9 +129,14 @@ export function ReportView({ topic }: { topic: string }) {
                       )}
                       <Link to={`/analyze/${s.code}/summary`} className={cn("hover:underline", s.code === display.top_pick ? "text-primary font-semibold" : "text-primary")}>{s.name}</Link>
                       {s.rating && (
-                        <Badge variant="outline" className={cn("text-[9px]", RATING_CLS[s.rating] ?? "")}>
-                          {s.rating}{s.upside_pct != null ? ` ${Math.round(s.upside_pct)}%` : ""}
-                        </Badge>
+                        <Badge variant="outline" className={cn("text-[9px]", RATING_CLS[s.rating] ?? "")}>{s.rating}</Badge>
+                      )}
+                      {(s.upside_pct != null || s.downside_pct != null) && (
+                        <span className="text-[9px] text-muted-foreground tabular-nums">
+                          {s.upside_pct != null ? `상방 +${Math.round(s.upside_pct)}%` : ""}
+                          {s.upside_pct != null && s.downside_pct != null ? " / " : ""}
+                          {s.downside_pct != null ? `하방 ${Math.round(s.downside_pct)}%` : ""}
+                        </span>
                       )}
                     </span>
                   ))}

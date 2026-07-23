@@ -19,13 +19,16 @@ TOP_STOCKS = 4      # 종목 재분석 대상 (v2는 콜이 많아 축소)
 AUGMENT_CAP = 2
 BODY_EXCERPT = 500
 SCEN_EXCERPT = 600
-RATING_RUBRIC = ("레이팅 어휘: 상승여력 ≥50%인 경우 Strong Buy, ≥15% 인 경우 Buy, 그 이하 Hold. "
-                 "추세 훼손·과열·논지 붕괴 등 위험이면 Sell. 단 이는 어휘 가이드일 뿐, "
-                 "기계적 임계가 아니다 — 펀더·기술 국면·수급을 확률론적으로 종합해 판단하라. "
-                 "특히 펀더가 견고한데 쏠림 해소로 조정받아 RS만 급락한 경우는 Sell이 아니라 "
-                 "하방 대비 상방이 열린 국면일 수 있다(맥락으로 판단). "
-                 "밸류·멀티플은 **12M Fwd PER과 그 변화 추이(리레이팅/디레이팅)·추정 EPS 개정**으로만 "
-                 "판단하라. **후행(trailing) PER은 시장이 참고하지 않는 지표이니 논리에 쓰지 마라.**")
+RATING_RUBRIC = ("레이팅 어휘: **상승여력(upside)** ≥50%면 Strong Buy, ≥15%면 Buy, 그 이하 Hold. "
+                 "추세 훼손·과열·논지 붕괴 등 위험이면 Sell. 단 이는 어휘 가이드일 뿐 기계적 임계가 아니다 — "
+                 "펀더·기술 국면·수급을 확률론적으로 종합해 판단하라. 펀더가 견고한데 쏠림 해소로 조정받아 "
+                 "RS만 급락한 경우는 Sell이 아니라 하방 대비 상방이 열린 국면일 수 있다.\n"
+                 "★레이팅의 % 숫자는 **상승여력(현재가 대비 적정가치까지의 상방 여지)이지 포트폴리오 비중이 "
+                 "절대 아니다** — '비중 25%'처럼 쓰지 말고 '상승여력 +25%'로 명시하라. 그리고 투자 판단은 "
+                 "반드시 **하방(펀더멘털 지지선 대비 -X%) 대비 상방(+Y%)의 비대칭**으로 전개하라 — "
+                 "'하방 -A%로 제한적인데 상방 +B%가 열려 비대칭' 식으로.\n"
+                 "밸류·멀티플은 **12M Fwd PER과 그 변화 추이(리레이팅/디레이팅)·추정 EPS 개정**으로만 판단하라. "
+                 "**후행(trailing) PER은 시장이 참고하지 않는 지표이니 논리에 쓰지 마라.**")
 
 # 두괄식 문단 규칙 — 모든 섹션 공통 (사용자 2026-07-21)
 PARA_RULE = ("각 문단은 **두괄식**: 첫 문장에 핵심 메시지를 못 박고, 이어지는 문장들에서 "
@@ -121,20 +124,24 @@ def _consensus(conn, code: str) -> str:
     return " · ".join(parts)
 
 
-def _cached_upside_pct(conn, name: str | None) -> float | None:
+def _cached_upside(conn, name: str | None) -> dict:
+    """저장 업사이드 모델 — 기본 시나리오 상승여력(upside) + 하방(downside). 하방 대비 상방 비대칭 앵커."""
     if not name:
-        return None
+        return {}
     row = conn.execute(
         "SELECT spec_json FROM models WHERE name LIKE ? ORDER BY updated_at DESC LIMIT 1",
         (f"{name} · %업사이드",)).fetchone()
     if not row or not row["spec_json"]:
-        return None
+        return {}
     try:
-        scens = json.loads(row["spec_json"]).get("scenarios") or []
+        spec = json.loads(row["spec_json"])
+        scens = spec.get("scenarios") or []
         base = next((s for s in scens if "기본" in (s.get("name") or "")), None) or (scens[len(scens) // 2] if scens else None)
-        return base.get("upside_pct") if base else None
+        dn = spec.get("downside") or {}
+        return {"upside": base.get("upside_pct") if base else None,
+                "downside": dn.get("downside_pct")}
     except Exception:
-        return None
+        return {}
 
 
 def _signals(conn, code: str, name: str | None) -> dict:
@@ -183,11 +190,12 @@ def _signals(conn, code: str, name: str | None) -> dict:
         FROM entity_links el JOIN entities e ON e.id=el.entity_id
         JOIN raw_documents rd ON rd.id=el.doc_id
         WHERE el.link_type='stock' AND e.aliases=?""", (code,)).fetchone()
+    cu = _cached_upside(conn, name)
     return {"rs": int(rs) if rs is not None else None, "pos_52w": pos52,
             "price": cur, "ma20": ma20, "ma60": ma60, "ma120": ma120, "bollinger_pctb": pctb,
             "dow": dow, "vol_trend": vol_trend,
             "mentions_7d": m["recent"] or 0, "mentions_prev_7d": m["prev"] or 0,
-            "upside_cached": _cached_upside_pct(conn, name)}
+            "upside_cached": cu.get("upside"), "downside_cached": cu.get("downside")}
 
 
 def _tech_line(s: dict, sig: dict) -> str:
@@ -236,8 +244,9 @@ def _stock_ctx(stocks: list[dict]) -> str:
         brief = f"\n  [AI 브리프 종합]\n  {s['brief'][:1500].strip()}" if s.get("brief") else ""
         out.append(f"■ {s['name']}({s['code']})\n  재무: {_anchor_line(s['anchor'])}{fwd}{seg}\n"
                    f"  기술: {_tech_line(s, s['sig'])}\n  심리: 최근7일 언급 {s['sig']['mentions_7d']}건"
-                   f"(이전 {s['sig']['mentions_prev_7d']}건)\n  펀더 저장 업사이드: "
-                   f"{s['sig']['upside_cached'] if s['sig']['upside_cached'] is not None else '미상'}%\n"
+                   f"(이전 {s['sig']['mentions_prev_7d']}건)\n  펀더 저장 상방/하방: "
+                   f"상방 {s['sig']['upside_cached'] if s['sig']['upside_cached'] is not None else '미상'}% / "
+                   f"하방 {s['sig']['downside_cached'] if s['sig'].get('downside_cached') is not None else '미상'}%\n"
                    f"  내러티브별 파급: {angles}{brief}")
     return "\n".join(out)
 
@@ -294,14 +303,19 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
         "먼저 리포트 유형을 정하라: 산업 동인이 성장을 주도하면 top_down(예: 반도체), 개별 기업·브랜드가 "
         "주도하면 bottom_up(예: 소비재·화장품). 그리고 **가장 수혜받는 Top-pick 종목 1개**를 골라라(리포트는 "
         "이 종목을 중심으로 심화된다).\n"
+        "★그리고 **가장 먼저** 정하라: 지금 이 판을 볼 때 **가장 중요한 질문(key_question)** 하나와, 현명한 "
+        "투자자가 그 답을 **관찰하기 위해 볼 선행 프록시(proxies)** — 예: 하이퍼스케일러 CAPEX 가이던스 추이, "
+        "AI기업 ARR, AI/하이퍼스케일러 자금조달 현황, 데이터센터 착공. 이 질문·프록시가 리포트 논리의 출발점이다.\n"
         + RATING_RUBRIC + "\n" + _timeline_rule() + "\n"
         "JSON만 출력(코드블록·머리말 없이): {"
         '"report_type":"top_down|bottom_up",'
         '"top_pick":"가장 수혜받는 Top-pick 종목코드 1개",'
+        '"key_question":"지금 가장 중요한 질문 한 문장",'
+        '"proxies":["관찰 프록시(선행지표) 3~5개"],'
         '"title":"리포트 제목(핵심 주장 한 줄)",'
         '"overall":"종합 판단 2~3문장(핵심 투자 포인트)",'
-        '"ratings":[{"code":"종목코드","name":"종목명","rating":"Strong Buy|Buy|Hold|Sell","upside_pct":정수 or null,"rationale":"1~2문장"}]}\n'
-        "ratings는 위 [종목 데이터]의 모든 종목에 대해.\n\n"
+        '"ratings":[{"code":"종목코드","name":"종목명","rating":"Strong Buy|Buy|Hold|Sell","upside_pct":상방%정수 or null,"downside_pct":하방%정수(음수) or null,"rationale":"하방 대비 상방 비대칭으로 1~2문장"}]}\n'
+        "upside_pct는 상승여력(상방), downside_pct는 하방(펀더 지지선 대비, 음수). ratings는 모든 종목에.\n\n"
         f"[앵커 주제] {anchor_topic}\n[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n"
         f"[애널리스트]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}\n\n"
         f"[Bull]\n{bull}\n\n[Bear]\n{bear}")
@@ -435,10 +449,14 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     ratings = lead.get("ratings") or []
     report_type = lead.get("report_type") if lead.get("report_type") in SECTION_SPECS else "top_down"
     title = lead.get("title") or f"{anchor_topic} 통합 리포트"
-    ratings_line = " · ".join(
-        f"{r.get('name')} {r.get('rating')}"
-        + (f"({round(r['upside_pct'])}%)" if r.get("upside_pct") is not None else "")
-        for r in ratings) or "(레이팅 없음)"
+    def _rl(r):
+        asym = []
+        if r.get("upside_pct") is not None:
+            asym.append(f"상방 +{round(r['upside_pct'])}%")
+        if r.get("downside_pct") is not None:
+            asym.append(f"하방 {round(r['downside_pct'])}%")
+        return f"{r.get('name')} {r.get('rating')}" + (f"({' / '.join(asym)})" if asym else "")
+    ratings_line = " · ".join(_rl(r) for r in ratings) or "(레이팅 없음)"
 
     # Top-pick 선정 (A) — 리드 지정 우선, 아니면 최고 레이팅(동률 시 상승여력·교차 현저성)으로 유도.
     codes = {s["code"] for s in stocks}
@@ -451,11 +469,18 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     top_pick = top_pick or (stocks[0]["code"] if stocks else None)
     top_name = next((s["name"] for s in stocks if s["code"] == top_pick), top_pick)
 
+    # 핵심 질문 · 관찰 프록시 (#2) — 리포트 논리의 출발점, 투자 전략의 감시 조건으로도 쓰인다.
+    key_question = lead.get("key_question")
+    proxies = [p for p in (lead.get("proxies") or []) if p]
+    proxy_line = " · ".join(proxies)
+
     # F. 규격 목차 섹션 작성 (sonnet ×4, 두괄식) → 조립. Top-pick 종목 중심 심화 + 피어는 비교.
     focus = (f"\n\n[Top-pick — 이 리포트의 집중 대상] {top_name}({top_pick}). 기업 분석·투자 포인트·투자 "
              f"전략은 **이 종목을 중심으로 심층**(사업부·재무·경영진·시점·기술 국면)으로 쓰고, 나머지 종목은 "
              f"비교 관점(피어)으로만 간략히 병기하라. 산업 분석은 '왜 이 산업, 그 안에서 왜 {top_name}인가'로."
-             f"\n\n{_timeline_rule()}")
+             f"\n\n[핵심 질문] {key_question or '(미정)'}\n[관찰 프록시(선행지표)] {proxy_line or '(미정)'} "
+             f"— 투자 전략의 감시 조건은 이 프록시를 우선 반영하라. 종목 콜은 **하방 대비 상방(비대칭)**으로 "
+             f"전개하고, %는 상승여력(상방)이지 포트폴리오 비중이 아님에 유의.\n\n{_timeline_rule()}")
     ctx = (f"{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n[애널리스트]\n펀더:{analysts['fundamental']}\n"
            f"기술:{analysts['technical']}\n수급:{analysts['sentiment']}\n\n[Bull]{bull}\n\n[Bear]{bear}{focus}")
     sections = [_write_section(t, brief, anchor_topic, ctx, ratings_line)
@@ -463,12 +488,17 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     body = "\n\n".join(s for s in sections if s)
     if lead.get("overall"):
         body = f"## 투자 포인트 요약\n\n{lead['overall']}\n\n" + body
+    if key_question:   # 최상단: 핵심 질문 + 관찰 프록시 (논리의 출발점)
+        head = f"## 핵심 질문\n\n{key_question}\n\n"
+        if proxy_line:
+            head += f"**관찰 프록시(선행지표):** {proxy_line}\n\n"
+        body = head + body
 
     if not body:   # 전 섹션 실패 시에만 저장 안 함
         return {"error": "리포트 생성 실패 (LLM 연쇄)"}
 
     stocks_out = [{"code": r.get("code"), "name": r.get("name"), "rating": r.get("rating"),
-                   "upside_pct": r.get("upside_pct")} for r in ratings]
+                   "upside_pct": r.get("upside_pct"), "downside_pct": r.get("downside_pct")} for r in ratings]
     debate = {"fundamental": analysts["fundamental"], "technical": analysts["technical"],
               "sentiment": analysts["sentiment"], "bull": bull, "bear": bear,
               "ratings": ratings}
