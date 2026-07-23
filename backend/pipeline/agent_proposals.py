@@ -125,20 +125,32 @@ def scan_devils_advocate(conn) -> int:
     return made
 
 
-VOCAB_MERGE_CAP = 15   # 회당 판정 후보 상한 (sonnet 비용 통제)
+VOCAB_MERGE_CAP = 30   # 타입별 판정 후보 상한 (sonnet 비용 통제) — D-062: 전역→타입별로 변경
 
 
 def scan_vocab_merges(conn, cap: int = VOCAB_MERGE_CAP) -> int:
     """비슷하지만 별개인 노드 병합 제안 (D-050) — fastembed 후보 → sonnet same 판정 →
-    승인 큐. 파괴적 병합(FK 재배선)이라 자동적용 대신 사람이 승인(D-020). 상위 유사도만(비용 통제)."""
+    승인 큐. 파괴적 병합(FK 재배선)이라 자동적용 대신 사람이 승인(D-020). 상위 유사도만(비용 통제).
+
+    cap은 **타입별** 상한(D-062): theme의 고코사인 '어간 vs 어간+방향' 벽이 예산을 독식해
+    sector·macro의 진짜 동의어가 판정조차 안 되는 걸 막는다. 각 타입 상위 cap쌍씩 판정.
+
+    실패(fastembed·판정 엔진 미가용)는 삼키지 않고 raise — 호출부(run_all)가 job_runs에 error로
+    남긴다. 예전엔 except→0으로 삼켜 '제안 0건 ok'로 둔갑, 실패가 관리자 페이지에서 안 보였다(D-055)."""
+    from collections import defaultdict
+
     from pipeline.vocab import find_merge_candidates, judge_pairs, pick_survivor
-    try:
-        cands = find_merge_candidates(conn)["candidates"][:cap]
-        if not cands:
-            return 0
-        judged = judge_pairs(cands)
-    except Exception:
+    found = find_merge_candidates(conn)
+    if found["reason"]:              # 후보 생성 degrade(fastembed 미설치 등) — 0 아니라 실패로 노출
+        raise RuntimeError(found["reason"])
+    by_type: dict[str, list] = defaultdict(list)   # 후보는 코사인 내림차순 → 타입별 상위 cap쌍
+    for c in found["candidates"]:
+        if len(by_type[c["type"]]) < cap:
+            by_type[c["type"]].append(c)
+    cands = [c for lst in by_type.values() for c in lst]
+    if not cands:
         return 0
+    judged = judge_pairs(cands)      # 엔진 미가용 시 RuntimeError — 그대로 전파
     made = 0
     for j in judged:
         if j.get("verdict") != "same":
@@ -207,11 +219,19 @@ def run_all(include_llm: bool = True) -> dict:
     if include_llm:
         stats["devils_advocate"] = scan_devils_advocate(conn)
         # 노드 통합은 독립 작업 플래그·로그로 관리(관리자 페이지 가시성, D-055)
+        import time as _time
+
         from pipeline.ops import flag_enabled, record_run
         if flag_enabled("vocab_merge"):
-            n = scan_vocab_merges(conn)
-            stats["vocab_merge"] = n
-            record_run("vocab_merge", "ok", f"병합 제안 {n}건")
+            t0 = _time.time()
+            try:
+                n = scan_vocab_merges(conn)
+                stats["vocab_merge"] = n
+                record_run("vocab_merge", "ok", f"병합 제안 {n}건", int((_time.time() - t0) * 1000))
+            except Exception as e:  # noqa: BLE001 — 실패를 job_runs에 노출(삼키지 않음)
+                stats["vocab_merge"] = f"error: {type(e).__name__}"
+                record_run("vocab_merge", "error", f"{type(e).__name__}: {str(e)[:200]}",
+                           int((_time.time() - t0) * 1000))
         else:
             record_run("vocab_merge", "skipped", "비활성(관리자 off)")
     conn.commit()
