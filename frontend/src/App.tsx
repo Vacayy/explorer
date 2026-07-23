@@ -29,6 +29,7 @@ import CompanyPage from "@/components/company/CompanyPage"
 import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import SectorMapPage from "@/components/map/SectorMapPage"
 import NarrativePage from "@/components/explore/NarrativePage"
+import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import WorldviewPage from "@/components/explore/WorldviewPage"
 import ReportsPage from "@/components/explore/ReportsPage"
 import ArchivePage from "@/components/archive/ArchivePage"
@@ -162,7 +163,9 @@ export default function App() {
             <Route path="explore" element={<ExplorePage />} />
             <Route path="map" element={<SectorMapPage />} />
             <Route path="narrative" element={<NarrativePage />} />
-            <Route path="narrative/worldview" element={<WorldviewPage />} />
+            <Route path="narrative/history" element={<NarrativeHistory />} />
+            <Route path="knowledge/ontology" element={<WorldviewPage />} />
+            <Route path="narrative/worldview" element={<Navigate to="/knowledge/ontology" replace />} />
             <Route path="report" element={<ReportsPage />} />
             <Route path="people" element={<PeopleDirectoryPage />} />
             <Route path="knowledge" element={<KnowledgePage />} />
