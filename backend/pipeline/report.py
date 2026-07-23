@@ -295,7 +295,25 @@ def _researcher(side: str, narr_ctx: str, stock_ctx: str, analysts: dict, counte
         + (f"\n\n[반박 대상 — 강세 논지]\n{counter}" if counter else ""))
 
 
-def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull: str, bear: str) -> dict:
+def _narrative_power(conn, anchor_topic: str, member_narrs: list, rel: list) -> str:
+    """내러티브 영향력 신호 — 공유노드·인과엣지 수. 리드가 '가장 강력한 지배 서사'를 판별해
+    거기서 핵심 질문을 도출하게 한다(핵심 질문 = 가장 중요한 내러티브 판별에서 출발, D-049)."""
+    rel_shared = {r["topic"]: len(r.get("shared_nodes") or []) for r in rel}
+    lines = []
+    for m in member_narrs:
+        ec = conn.execute(
+            "SELECT COUNT(*) FROM entity_relations WHERE narrative_id=?", (m["id"],)).fetchone()[0]
+        if m["topic"] == anchor_topic:
+            tag = "앵커(시드)"
+        else:
+            sh = rel_shared.get(m["topic"])
+            tag = f"앵커와 공유노드 {sh}개" if sh else "공유 약함"
+        lines.append(f"- {m['topic']}: 인과엣지 {ec}개 · {tag}")
+    return ("[내러티브 영향력 — 공유·연결이 클수록 지배 서사]\n" + "\n".join(lines))
+
+
+def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull: str, bear: str,
+          power_block: str = "") -> dict:
     """리드 애널리스트 — debate 판정 → 리포트 유형(Top-down/Bottom-up) + 레이팅. 목차는 고정 템플릿."""
     prompt = (
         "너는 리드 애널리스트다. 아래 애널리스트 평가와 Bull/Bear 논쟁을 보고 **최종 판정**을 내려라. "
@@ -303,9 +321,11 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
         "먼저 리포트 유형을 정하라: 산업 동인이 성장을 주도하면 top_down(예: 반도체), 개별 기업·브랜드가 "
         "주도하면 bottom_up(예: 소비재·화장품). 그리고 **가장 수혜받는 Top-pick 종목 1개**를 골라라(리포트는 "
         "이 종목을 중심으로 심화된다).\n"
-        "★그리고 **가장 먼저** 정하라: 지금 이 판을 볼 때 **가장 중요한 질문(key_question)** 하나와, 현명한 "
-        "투자자가 그 답을 **관찰하기 위해 볼 선행 프록시(proxies)** — 예: 하이퍼스케일러 CAPEX 가이던스 추이, "
-        "AI기업 ARR, AI/하이퍼스케일러 자금조달 현황, 데이터센터 착공. 이 질문·프록시가 리포트 논리의 출발점이다.\n"
+        "★그리고 **가장 먼저**: 아래 [내러티브 영향력]에서 **가장 강력한(공유·연결·확산이 큰) 지배 내러티브**를 "
+        "판별하고, 그 지배 서사가 던지는 **가장 중요한 질문(key_question)** 하나를 뽑아라 — 핵심 질문은 여기서 "
+        "출발한다. 그리고 현명한 투자자가 그 답을 **관찰할 선행 프록시(proxies)**(예: 하이퍼스케일러 CAPEX "
+        "가이던스 추이·AI기업 ARR·자금조달 현황·데이터센터 착공)를 정하라.\n"
+        + power_block + "\n"
         + RATING_RUBRIC + "\n" + _timeline_rule() + "\n"
         "JSON만 출력(코드블록·머리말 없이): {"
         '"report_type":"top_down|bottom_up",'
@@ -445,7 +465,8 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     bull = _researcher("bull", narr_ctx, stock_ctx, analysts)
     bear = _researcher("bear", narr_ctx, stock_ctx, analysts, counter=bull)
     # D. 리드 판정 (opus ×1) — 리포트 유형 선택 + 레이팅 (목차는 고정 템플릿, 리드 실패해도 진행)
-    lead = _lead(anchor_topic, narr_ctx, stock_ctx, analysts, bull, bear)
+    power_block = _narrative_power(conn, anchor_topic, member_narrs, rel)
+    lead = _lead(anchor_topic, narr_ctx, stock_ctx, analysts, bull, bear, power_block)
     ratings = lead.get("ratings") or []
     report_type = lead.get("report_type") if lead.get("report_type") in SECTION_SPECS else "top_down"
     title = lead.get("title") or f"{anchor_topic} 통합 리포트"
@@ -488,11 +509,23 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     body = "\n\n".join(s for s in sections if s)
     if lead.get("overall"):
         body = f"## 투자 포인트 요약\n\n{lead['overall']}\n\n" + body
-    if key_question:   # 최상단: 핵심 질문 + 관찰 프록시 (논리의 출발점)
-        head = f"## 핵심 질문\n\n{key_question}\n\n"
+    # (b) 최상단 = 결론 헤드라인(BLUF): Top-pick·상방/하방 먼저. 그 다음 핵심 질문. 나머지는 근거.
+    head = ""
+    tp = next((r for r in ratings if r.get("code") == top_pick), None)
+    if tp:
+        asym = []
+        if tp.get("upside_pct") is not None:
+            asym.append(f"상방 +{round(tp['upside_pct'])}%")
+        if tp.get("downside_pct") is not None:
+            asym.append(f"하방 {round(tp['downside_pct'])}%")
+        line = f"**{top_name}({top_pick}) — {tp.get('rating') or ''}"
+        line += (f" · {' / '.join(asym)}" if asym else "") + "**"
+        head += f"## 결론\n\n{line}\n\n" + (f"{tp['rationale']}\n\n" if tp.get("rationale") else "")
+    if key_question:
+        head += f"## 핵심 질문\n\n{key_question}\n\n"
         if proxy_line:
             head += f"**관찰 프록시(선행지표):** {proxy_line}\n\n"
-        body = head + body
+    body = head + body
 
     if not body:   # 전 섹션 실패 시에만 저장 안 함
         return {"error": "리포트 생성 실패 (LLM 연쇄)"}
