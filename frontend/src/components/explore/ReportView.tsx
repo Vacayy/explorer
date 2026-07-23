@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Markdown } from "@/components/shared/Markdown"
 import { EmptyState } from "@/components/shared/ErrorState"
+import { ReportCharts } from "@/components/explore/report/ReportCharts"
 import { cn } from "@/lib/utils"
 
 // 레이팅 색 — 한국 컨벤션(상승=빨강 up, 하락=파랑 down)
@@ -141,6 +142,9 @@ export function ReportView({ topic }: { topic: string }) {
                     </span>
                   ))}
                 </div>
+              )}
+              {display.stocks.length > 0 && (
+                <ReportCharts stocks={display.stocks} topPick={display.top_pick} />
               )}
               {display.members.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 border-t pt-2 text-[11px]">
