@@ -129,7 +129,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="저장된 계획의 same 판정 적용 (기본=dry-run)")
     ap.add_argument("--threshold", type=float, default=0.90)
-    ap.add_argument("--types", type=str, default="theme,macro")
+    ap.add_argument("--types", type=str, default="theme,macro,sector")  # D-062: sector 추가
     ap.add_argument("--plan", type=str, default=str(DEFAULT_PLAN))
     args = ap.parse_args()
 

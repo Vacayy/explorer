@@ -1,4 +1,4 @@
-"""어휘 통합 (vocab consolidation, D-033) — theme·macro 노드 파편화 치유.
+"""어휘 통합 (vocab consolidation, D-033) — theme·macro·sector 노드 파편화 치유(sector: D-062).
 
 쓰기 시 = 결정적 해소(_resolve_or_create_node + entity_merges redirect),
 배치 = 의미적 치유(여기): 후보 생성(fastembed) → 판정(sonnet) → 병합.
@@ -12,7 +12,7 @@ import math
 
 from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
 
-MERGE_TYPES = ("theme", "macro")
+MERGE_TYPES = ("theme", "macro", "sector")  # sector 추가(D-062): 메모리반도체=메모리반도체 섹터류 파편 치유
 DEFAULT_THRESHOLD = 0.90
 JUDGE_BATCH = 15
 

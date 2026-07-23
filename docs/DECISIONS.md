@@ -10,6 +10,38 @@
 
 ---
 
+## D-062 · 2026-07-24 · 노드 통합 스캔에 sector 편입 + 타입별 cap + 실패 노출(silent-0 수정)
+
+**결정**: 자동 노드 통합(D-050 `vocab_merge`)을 세 방향으로 고친다. **(A) 대상 타입 확장**: `MERGE_TYPES`에
+`sector` 추가(theme·macro·sector). 실측 파편화가 sector(`메모리 반도체`=`메모리 반도체 섹터`, `보험`=`보험업`,
+`전력 인프라`=`전력인프라`)·event에 몰려 있는데 기존 스캔은 theme·macro만 봐서 방치됐다. **(B) cap을 전역→타입별**:
+`VOCAB_MERGE_CAP`을 15(전역)에서 30(**타입별**)로. 코사인 최상위는 theme의 '어간 vs 어간+방향' 벽(`나스닥`≠`나스닥
+급락` — 항상 different)이 독식해, 전역 상한이면 sector·macro의 진짜 동의어가 판정조차 안 됐다. 타입별 상위 N쌍씩
+판정해 각 타입에 예산 보장. **(C) 실패 노출**: `scan_vocab_merges`의 바깥 `except→return 0`을 제거하고 실패
+(fastembed·판정 엔진 미가용)를 raise → `run_all`이 job_runs에 `error`로 기록. 예전엔 실패가 '제안 0건 ok'로
+둔갑해 관리자 페이지에서 안 보였다(D-055 가시성 취지 위배). **(D) 관리자 표시**: admin 잡 행에 job 키·실제
+진입점(scripts/…) 표기.
+
+**맥락·이유**: 사용자 2026-07-23~24 — admin의 '노드 통합' 잡이 배선 후 실행 기록 0·제안 0이라 점검. 진단 결과
+"엔진·로직은 정상, 0건도 규율상 옳음(top-15가 전부 진짜 different)"이었으나, 스크린샷으로 sector·event 실제
+파편이 드러나 **원인은 cap이 아니라 스캔 타입 범위**로 재정의. dry-run 실측: sector 후보 201쌍 중 상위 30 판정
+same 6(정밀도 양호 — 전공정/후공정·도매/소매는 정확히 different), event 171쌍 중 same 3. sector 먼저(안전·고수익,
+위험 낮음)·event는 사건용 프롬프트 튜닝 후 2차로 **순차** 결정. 활성화 직후 스캔 1회 → sector 동의어 5건 제안 큐 적재 확인.
+
+**기각한 대안**: ① cap만 상향 — 최상위 different 벽을 매주 더 비싸게 재기각할 뿐, sector는 여전히 미스캔 ②
+크로스 타입 병합(theme `ADR 프리미엄` × event `ADR 프리미엄 확대`) — 온톨로지상 역할이 다른 노드 병합이라
+의미론적으로 위험, 후보 생성도 타입 내로 한정 유지 ③ event 동시 활성화 — 사건은 시점·인과 특정성이 있어 theme용
+프롬프트로는 과병합 위험, 프롬프트 튜닝 후로 미룸 ④ 기각 이력 메모이제이션(재판정 회피) — 효율 개선이나 별도
+스코프, 이번 미포함.
+
+**남긴 후속**: event 타입 활성화(사건용 same 판정 프롬프트) · 일요일 cron 미발화 원인 추적(agent_proposals job_run 0) ·
+기각 쌍 메모이제이션으로 주간 재판정 낭비 제거.
+
+**참조**: pipeline/vocab.py(MERGE_TYPES)·agent_proposals.py(scan_vocab_merges 타입별 cap·raise·run_all error 기록)·
+ops.py+spine_admin.py+AdminPage.tsx(진입점 표시)·scripts/consolidate_vocab.py(기본 타입) · D-050·D-055·D-020 · 대화 2026-07-23~24
+
+---
+
 ## D-061 · 2026-07-23 · Transcript 팔로우 — 미국 기업 실적 컨콜을 raw_documents로 흡수(Alpha Vantage 무료)
 **결정**: **(A)** 미국 기업 실적 발표·컨콜 transcript를 **기업 단위 팔로우**로 수집 — 리포트 핵심질문(D-049)의 "관찰 프록시(미정)"를 실데이터로 채우는 1차 소스. **(B) 사일로 금지**: 전문을 `raw_documents(source_type='transcript')`로 넣어 기존 enrich→doc_causal(온톨로지)→digests(LLM 정리)→doc_vec가 자동 인수. `transcripts` 테이블은 팔로우/프록시 UI용 얇은 인덱스(raw_doc_id FK)일 뿐, 전문 중복 저장 안 함. 컨콜=경영진 1차 발언이라 doc_causal 인과 추출 품질이 높은 고신호원. **(C) provider-추상**: `TRANSCRIPT_PROVIDER` env로 어댑터 스위치. **Alpha Vantage 무료(25 req/day, EARNINGS_CALL_TRANSCRIPT, 화자 세그먼트+감성) 채택** — FMP transcript는 유료 전용(실측 402)이라 폴백. **(D) 화면 IA**: 전용 **2분할 브라우저**(좌 기업 그룹 리스트=구독 관리, 우 LLM 정리→프록시 델타→원문) 본진 + 피드 '컨콜' 소스 탭 보조. 기업 페이지 탭은 `/analyze`가 DART 기반 **한국 종목 전용**이라 보류(→ US 도시에 백로그 P1로 승격). **(E) 기본 세트 21종**(M7·ORCL·AVGO·AMD·AI DC[CRWV·IREN·NBIS]·RKLB·에너지[VST·CEG]·CPO[COHR·LITE]·SNOW·Web3[COIN·HOOD]) — 비상장(OpenAI·Anthropic·SpaceX·Databricks·Securitize)은 컨콜 부재로 제외(상장 시 편입·그전엔 canon/feed 추적), 전력반도체·바이오는 이번 세트 제외. **stage 1(적재)만 구현** — 전용 페이지·피드 탭·프록시 추출은 후속.
 **맥락·이유**: 초기 리서치가 "FMP 무료 250 req/day"만 보고 transcript도 무료라 단정 → 무료 키로 402(유료 전용) 실측 후 Alpha Vantage로 전환(무료 demo 키로 IBM 실데이터·화자 37세그먼트 확인). provider-추상 덕에 어댑터만 교체. 검증: NVDA FY2026 Q3 컨콜 51KB 적재→enrich(haiku)→entity_links 12개 확인(온톨로지 엔티티 연결). 인과 엣지는 doc_causal cron이 후속 생성.
