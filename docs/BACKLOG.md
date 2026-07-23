@@ -13,8 +13,9 @@
    Alpha Vantage 무료 수집→raw_documents(온톨로지 편입)→핵심 정리(sonnet)→전용 2분할 페이지+피드 탭→
    프록시 추출(하이퍼스케일러 CAPEX·AI DC 수요, 수집 잡에 자동 편입). **잔여**: 21종 backlog는 25/day라
    며칠 재실행으로 소진 · 리포트 본문→프록시 링크(마크다운 텍스트라 보류) · earningscall 어댑터(필요 시)
-2. **리포트 차트/시각자료** — 리포트 텍스트 과잉 해소. lightweight-charts 재사용(저비용·고효과):
-   Top-pick 주가+이동평균 · Fwd PER 추이 · 상방/하방 bar. (로드맵 #4) ← **P0 최우선 후보**
+2. ✅ **리포트 차트/시각자료** — 2026-07-24 완료. ReportCharts: 상방/하방 비대칭 bar + Top-pick
+   주가·이동평균(MultiLine) + 12M Fwd PER 추이(consensus history). 리포트 최상단(시각 요약 먼저).
+   lightweight-charts 재사용. (로드맵 #4) **잔여**: Fwd PER는 컨센서스 이력(현 12일) 축적되며 채워짐
 
 **P1 — 저비용 위생·선행 가능**
 3. **편입 직후 태그 즉시 갱신 + 신규 후보 편입 큐(제안→승인)** — 액션 씨어리 고리 마지막 구멍 (D-040 후속)
