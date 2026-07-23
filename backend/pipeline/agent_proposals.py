@@ -206,7 +206,14 @@ def run_all(include_llm: bool = True) -> dict:
     }
     if include_llm:
         stats["devils_advocate"] = scan_devils_advocate(conn)
-        stats["vocab_merge"] = scan_vocab_merges(conn)
+        # 노드 통합은 독립 작업 플래그·로그로 관리(관리자 페이지 가시성, D-055)
+        from pipeline.ops import flag_enabled, record_run
+        if flag_enabled("vocab_merge"):
+            n = scan_vocab_merges(conn)
+            stats["vocab_merge"] = n
+            record_run("vocab_merge", "ok", f"병합 제안 {n}건")
+        else:
+            record_run("vocab_merge", "skipped", "비활성(관리자 off)")
     conn.commit()
     conn.close()
     return stats

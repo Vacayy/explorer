@@ -23,6 +23,7 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Expandable } from "@/components/shared/Expandable"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
+import { MegaNarrativeSection } from "@/components/knowledge/MegaNarrativeSection"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { cn } from "@/lib/utils"
 
@@ -116,10 +117,11 @@ export default function KnowledgePage() {
           <BookOpenCheck className="h-5 w-5 text-muted-foreground" /> 지식 체계
         </h2>
         <span className="text-xs text-muted-foreground">
-          세계관(전체 인과 지도)에서 반복·독립 관측으로 검증돼 승격된 핵심 전제 — 주 1회 갱신. 시장 주목 × 근거 강도로 위치
+          온톨로지(전체 인과 지도)에서 반복·독립 관측으로 검증돼 승격된 핵심 전제 — 주 1회 갱신. 시장 주목 × 근거 강도로 위치
         </span>
       </div>
 
+      <MegaNarrativeSection />
       <StructureMap />
       {overview && <OverviewStrip o={overview} />}
       <InjectConsole onDone={invalidate} />
