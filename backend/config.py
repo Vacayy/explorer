@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 DART_API_KEY = os.getenv("DART_API_KEY", "")
+# 미국 기업 실적 컨콜 transcript (docs/specs/transcript-follow.md) — provider 추상, 무료 발급
+FMP_API_KEY = os.getenv("FMP_API_KEY", "")
+TRANSCRIPT_PROVIDER = os.getenv("TRANSCRIPT_PROVIDER", "fmp")  # fmp | earningscall | alphavantage
 DB_PATH = Path(__file__).resolve().parent / "db" / "stock_explorer.db"
 
 # 가설·메모 vault (소유권 분할: notes/=사람 원본, entities/=DB 투영 — 수정 무시)

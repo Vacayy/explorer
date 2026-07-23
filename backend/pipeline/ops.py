@@ -16,6 +16,7 @@ JOBS: list[tuple[str, str, str]] = [
     ("agent_proposals", "에이전트 제안", "제안 스캔 — 소외·상충·리포트 제안·반증 감시"),
     ("vocab_merge", "노드 통합", "온톨로지 유사 노드 교통정리 — sonnet 병합 판정→승인 큐(D-050)"),
     ("promote_knowledge", "지식 승격", "주 1회 — 반복 관측 검증 지식 승격"),
+    ("collect_transcripts", "컨콜 수집", "FMP — 팔로우 미국 기업 실적 컨콜 → raw_documents(온톨로지 편입)"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc in JOBS}
 
