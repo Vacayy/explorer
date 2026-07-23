@@ -3,13 +3,13 @@ import { cn } from "@/lib/utils"
 
 type AppMode = "home" | "follow" | "worldmodel" | "feed" | "chat" | "analyze" | "research" | "archive"
 
-// L1 = 파이프라인 흐름을 좌→우로 드러낸다: 입력(팔로우)→원천(피드)→종합(월드모델). (D-049: 탐색 해체)
+// L1 = 파이프라인 흐름을 좌→우로 드러낸다: 입력(팔로우)→원천(피드)→종합(월드모델). (D-057: 탐색 해체)
 // Home은 흐름의 아침 요약 + 신호 대시보드(진입), 대화는 횡단 도구 — 둘은 흐름에서 구분선으로 격리.
-// 월드모델은 매일 여는 종착점이라 약한 강조. 승인 대기는 헤더 상시 배지(홈에서 격상, D-048).
+// 월드모델은 매일 여는 종착점이라 약한 강조. 승인 대기는 헤더 상시 배지(홈에서 격상, D-056).
 // 도시에(/analyze, /source)는 네비가 아니라 목적지 — 진입은 검색·레일·옴니바·링크로.
 // 신호 상세(/explore?list=)·산업군·스크리너·대안데이터·리서치·백테스트는 보관함/도시에 — 라우트 유지
 
-// 팔로우 — 내가 따라가는 것(허브) + 담당 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-049)
+// 팔로우 — 내가 따라가는 것(허브) + 담당 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-057)
 const FOLLOW_TABS = [
   { key: "follow", path: "/follow", label: "팔로우" },
   { key: "universe", path: "/follow/universe", label: "유니버스" },
@@ -150,7 +150,7 @@ function SubTab({ to, active, label }: { to: string; active: boolean; label: str
 
 function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/home")) return "home"
-  // 팔로우 — 허브 + 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-049)
+  // 팔로우 — 허브 + 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-057)
   if (pathname.startsWith("/follow") || pathname.startsWith("/stocks")
       || pathname.startsWith("/map") || pathname.startsWith("/people") || pathname.startsWith("/person")
       || pathname.startsWith("/actions")) return "follow"
@@ -161,7 +161,7 @@ function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/archive")) return "archive"
   // 월드모델 — 내러티브·리포트·세계관·지식 (D-031)
   if (pathname.startsWith("/narrative") || pathname.startsWith("/knowledge") || pathname.startsWith("/report")) return "worldmodel"
-  // /explore(신호 상세)·/discover/*·/onchain — 탐색 해체 후 pill 없는 도시에 (D-049)
+  // /explore(신호 상세)·/discover/*·/onchain — 탐색 해체 후 pill 없는 도시에 (D-057)
   return "archive"
 }
 
@@ -173,7 +173,7 @@ function getActiveSubTab(pathname: string): string | null {
   if (pathname.startsWith("/report")) return "report"
   if (pathname.startsWith("/knowledge")) return "knowledge"
 
-  // 팔로우 — universe는 /follow 하위라 follow보다 먼저 매칭 + 커버리지 대상(D-049)
+  // 팔로우 — universe는 /follow 하위라 follow보다 먼저 매칭 + 커버리지 대상(D-057)
   if (pathname.startsWith("/follow/universe")) return "universe"
   if (pathname.startsWith("/follow")) return "follow"
   if (pathname.startsWith("/map")) return "map"

@@ -316,3 +316,19 @@ def versions(topic: str):
         "WHERE topic=? ORDER BY version DESC", (topic,)).fetchall()
     conn.close()
     return [NarrativeVersion(**dict(r)) for r in rows]
+
+
+@router.get("/version", response_model=Narrative)
+def get_version(id: int):
+    """특정 버전 본문 by id — 히스토리 타임라인 도트 클릭 시 열람 (D-060). LLM 없음.
+    supersede가 이전 버전 body를 지우지 않으므로 모든 버전 본문이 보존된다."""
+    conn = get_connection()
+    r = conn.execute(
+        "SELECT id, title, body, category, version, created_at FROM narratives WHERE id=?",
+        (id,)).fetchone()
+    conn.close()
+    if not r:
+        return Narrative(status="not_found")
+    return Narrative(status="cached", title=r["title"], narrative=r["body"],
+                     created_at=r["created_at"], category=r["category"],
+                     version=r["version"], narrative_id=r["id"])

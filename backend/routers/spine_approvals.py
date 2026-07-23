@@ -65,6 +65,23 @@ def list_approvals():
         items.append(ApprovalItem(
             kind=r["kind"], id=r["id"], title=r["title"], detail=r["rationale"],
             entity_name=None, stock_code=payload.get("stock_code")))
+    # 리서치 후보 (research_candidates) — RS 상승 ∩ 시총 ∩ 화두. 승인 시 opus 심층 리서치 (D-020).
+    # 종목당 최신 감지일 1건만 (list_candidates와 동일 규칙).
+    for r in conn.execute("""
+        SELECT id, stock_code, name, rs_short, rs_short_prev, sector, share_delta_pp
+        FROM research_candidates rc WHERE status='proposed'
+          AND detected_date = (SELECT MAX(detected_date) FROM research_candidates rc2
+                                WHERE rc2.stock_code = rc.stock_code AND rc2.status='proposed')
+        ORDER BY detected_date DESC, (rs_short - rs_short_prev) DESC
+    """):
+        rs = f"단기 RS {r['rs_short_prev']}→{r['rs_short']}" if r["rs_short"] is not None else ""
+        theme = f"{r['sector']} 화두" if r["sector"] else ""
+        detail = " · ".join(x for x in [rs, theme] if x) or "관심 유입 감지"
+        items.append(ApprovalItem(
+            kind="research_candidate", id=r["id"],
+            title=f"{r['name'] or r['stock_code']} — 리서치 후보",
+            detail=f"{detail} — 승인 시 심층 리서치(opus)",
+            entity_name=r["name"], stock_code=r["stock_code"]))
     LAYER_KO = {"cycle": "사이클", "structure": "구조", "regime": "제도"}
     for r in conn.execute("""
         SELECT k.id, k.statement, k.pace_layer,
