@@ -776,6 +776,58 @@ def init_db():
         merged_at    TEXT DEFAULT (datetime('now')),
         UNIQUE(old_name, type)
     );
+
+    -- Transcript 팔로우 (미국 기업 실적 컨콜, docs/specs/transcript-follow.md) — 기업 단위 구독
+    CREATE TABLE IF NOT EXISTS transcript_follow (
+        ticker        TEXT PRIMARY KEY,     -- 미국 티커 (AAPL, NVDA, CRWV ...)
+        company_name  TEXT NOT NULL,
+        entity_id     INTEGER,              -- entities 연결(있으면) — 유니버스/팔로우와 크로스링크
+        group_label   TEXT,                 -- M7 | hyperscaler | ai-datacenter | energy | cpo | web3 ...
+        active        INTEGER DEFAULT 1,
+        added_at      TEXT DEFAULT (datetime('now'))
+    );
+
+    -- transcript 인덱스 (얇은 메타) — 전문(body)은 raw_documents(source_type='transcript')에 있고
+    -- 인과·정리·임베딩은 그 raw_documents 행을 통해 기존 파이프라인에 흐른다. 여기선 중복 저장 안 함.
+    CREATE TABLE IF NOT EXISTS transcripts (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        raw_doc_id    INTEGER NOT NULL,     -- FK raw_documents.id
+        ticker        TEXT NOT NULL,
+        fiscal_year   INTEGER,
+        fiscal_period TEXT,                 -- Q1..Q4 | FY
+        call_date     TEXT,
+        provider      TEXT,                 -- 어느 어댑터로 수집했는지
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE(ticker, fiscal_year, fiscal_period)
+    );
+
+    -- 프록시 레지스트리 (사람이 세팅 — "무엇을 볼지") — 리포트 핵심질문(D-049)의 관찰 프록시
+    CREATE TABLE IF NOT EXISTS proxy_registry (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        key           TEXT NOT NULL UNIQUE, -- hyperscaler_capex | oai_arr ...
+        label         TEXT NOT NULL,        -- '하이퍼스케일러 CAPEX 추이'
+        narrative_id  INTEGER,              -- 어느 지배 내러티브의 프록시인가
+        tickers       TEXT,                 -- 관련 티커 CSV (추출 대상 컨콜)
+        unit          TEXT,                 -- $B | % | MW ...
+        extract_hint  TEXT,                 -- 추출용 프롬프트 힌트
+        active        INTEGER DEFAULT 1,
+        created_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 프록시 관측치 (기계가 트래킹 — transcript에서 추출한 값, 시계열)
+    CREATE TABLE IF NOT EXISTS proxy_observations (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        proxy_id      INTEGER NOT NULL,
+        transcript_id INTEGER,              -- 출처 컨콜 (추적성)
+        observed_at   TEXT,                 -- 관측 시점(컨콜 날짜)
+        value_num     REAL,                 -- 파싱된 수치(가능하면)
+        value_text    TEXT,                 -- 원문 인용/맥락
+        direction     TEXT,                 -- up | down | flat
+        confidence    REAL,
+        created_at    TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_transcripts_ticker ON transcripts(ticker, fiscal_year, fiscal_period);
+    CREATE INDEX IF NOT EXISTS idx_proxy_obs ON proxy_observations(proxy_id, observed_at);
     """)
 
     conn.commit()
