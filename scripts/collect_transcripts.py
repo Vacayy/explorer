@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.transcript import collect_followed, seed_default_follows, _followed
+from pipeline.transcript import collect_followed, digest_pending, seed_default_follows, _followed
 
 
 def main():
@@ -32,7 +32,9 @@ def main():
         r = collect_followed(only=only)
         print(f"[transcript] 신규 {r['stored']}건 적재 · 스킵 {r['skipped']} · 실패 {r['failed']} "
               f"(대상 {r['tickers']}개 기업)")
-        return r
+        n = digest_pending(limit=max(r["stored"], 5))  # 신규분 핵심 정리 생성
+        print(f"[transcript] 핵심 정리 {n}건 생성")
+        return {**r, "digested": n}
     run_job("collect_transcripts", _work)   # 관리자 플래그 게이트 + 실행 로그 (D-055)
 
 

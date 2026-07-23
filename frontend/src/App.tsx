@@ -16,6 +16,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 import HomePage from "@/components/home/HomePage"
 import FollowPage from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
+import TranscriptPage from "@/components/follow/TranscriptPage"
 
 // Explore (탐색 — 신호)
 import ExplorePage from "@/components/explore/ExplorePage"
@@ -157,6 +158,7 @@ export default function App() {
             <Route path="home" element={<HomePage />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="follow/universe" element={<UniversePage />} />
+            <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />

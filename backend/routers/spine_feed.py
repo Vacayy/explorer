@@ -48,7 +48,7 @@ def resolve_channels(conn, rows) -> dict[int, dict | None]:
 @router.get("", response_model=FeedResponse)
 def get_feed(
     q: str | None = Query(None, description="하이브리드 검색어 (BM25+벡터 RRF)"),
-    source: str | None = Query(None, description="telegram | blog | news | article | people | note | canon | youtube"),
+    source: str | None = Query(None, description="telegram | blog | news | article | people | note | canon | youtube | transcript"),
     stock: str | None = Query(None, description="종목코드 (entities.aliases)"),
     industry: str | None = Query(None),
     topic: str | None = Query(None),

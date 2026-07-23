@@ -13,6 +13,7 @@ type AppMode = "home" | "follow" | "worldmodel" | "feed" | "chat" | "analyze" | 
 const FOLLOW_TABS = [
   { key: "follow", path: "/follow", label: "팔로우" },
   { key: "universe", path: "/follow/universe", label: "유니버스" },
+  { key: "transcripts", path: "/follow/transcripts", label: "컨콜" },
   { key: "map", path: "/map", label: "산업 맵" },
   { key: "people", path: "/people", label: "인물" },
   { key: "actions", path: "/actions", label: "기업활동" },
@@ -41,6 +42,7 @@ const FEED_TABS = [
   { key: "youtube", path: "/feed?source=youtube", label: "유튜브" },
   { key: "news", path: "/feed?source=news", label: "뉴스" },
   { key: "article", path: "/feed?source=article", label: "아티클" },
+  { key: "transcript", path: "/feed?source=transcript", label: "컨콜" },
   { key: "people", path: "/feed?source=people", label: "인물" },
   { key: "canon", path: "/feed?source=canon", label: "역사" },
 ] as const
@@ -173,8 +175,9 @@ function getActiveSubTab(pathname: string): string | null {
   if (pathname.startsWith("/report")) return "report"
   if (pathname.startsWith("/knowledge")) return "knowledge"
 
-  // 팔로우 — universe는 /follow 하위라 follow보다 먼저 매칭 + 커버리지 대상(D-057)
+  // 팔로우 — /follow 하위(universe·transcripts)는 follow보다 먼저 매칭 + 커버리지 대상(D-057)
   if (pathname.startsWith("/follow/universe")) return "universe"
+  if (pathname.startsWith("/follow/transcripts")) return "transcripts"
   if (pathname.startsWith("/follow")) return "follow"
   if (pathname.startsWith("/map")) return "map"
   if (pathname.startsWith("/people") || pathname.startsWith("/person")) return "people"

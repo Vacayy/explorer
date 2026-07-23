@@ -151,6 +151,62 @@ def seed_default_follows() -> int:
     return n
 
 
+_DIGEST_PROMPT = """다음은 미국 상장사의 실적 발표·컨퍼런스콜 전문이다. 투자자가 30초에 핵심을 잡도록
+한국어 마크다운 불릿으로 정리하라. 아래 4개 소제목을 그대로 쓰고 각 2~4개 불릿. 수치는 원문 그대로 인용.
+추측·미사여구 금지 — 원문에 없는 건 쓰지 마라.
+
+### 실적 하이라이트
+### 가이던스·전망
+### 경영진 핵심 코멘트
+### 리스크·유의점
+
+[제목] {title}
+[전문]
+{body}"""
+
+
+def digest_one(transcript_id: int) -> str | None:
+    """transcript 한 건의 핵심 정리 생성(sonnet) → transcripts.digest 저장. 원문은 그대로 둔다."""
+    from pipeline.enrich import _call_claude_code, llm_available
+    if not llm_available():
+        return None
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT t.id, t.raw_doc_id, rd.title, rd.markdown FROM transcripts t "
+        "JOIN raw_documents rd ON rd.id = t.raw_doc_id WHERE t.id=?", (transcript_id,)
+    ).fetchone()
+    if not row or not (row["markdown"] or "").strip():
+        conn.close()
+        return None
+    body = row["markdown"][:60000]  # 과대 입력 방지 (컨콜 앞부분에 실적·가이던스 집중)
+    try:
+        digest = _call_claude_code(
+            _DIGEST_PROMPT.format(title=row["title"] or "", body=body),
+            model="sonnet", timeout=300).strip()
+    except Exception as e:  # noqa: BLE001
+        print(f"[transcript] digest {transcript_id} 실패: {e}")
+        conn.close()
+        return None
+    conn.execute("UPDATE transcripts SET digest=? WHERE id=?", (digest, transcript_id))
+    conn.commit()
+    conn.close()
+    return digest
+
+
+def digest_pending(limit: int = 10) -> int:
+    """정리 미생성(digest IS NULL) transcript를 최신순으로 채운다 (수집 후·cron)."""
+    conn = get_connection()
+    ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM transcripts WHERE digest IS NULL ORDER BY fiscal_year DESC, id DESC LIMIT ?",
+        (limit,)).fetchall()]
+    conn.close()
+    n = 0
+    for tid in ids:
+        if digest_one(tid):
+            n += 1
+    return n
+
+
 def _followed(only: list[str] | None = None) -> list[dict]:
     conn = get_connection()
     q = "SELECT ticker, company_name, group_label FROM transcript_follow WHERE active=1"
