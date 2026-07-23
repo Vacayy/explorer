@@ -114,7 +114,7 @@ export default function KnowledgePage() {
           <BookOpenCheck className="h-5 w-5 text-muted-foreground" /> 지식 체계
         </h2>
         <span className="text-xs text-muted-foreground">
-          수집·주입이 반복·독립 관측으로 승격된 시스템의 전제 — 시장 주목 × 근거 강도로 위치
+          세계관(전체 인과 지도)에서 반복·독립 관측으로 검증돼 승격된 핵심 전제 — 주 1회 갱신. 시장 주목 × 근거 강도로 위치
         </span>
       </div>
 

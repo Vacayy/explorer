@@ -1,7 +1,7 @@
 """에이전트 제안함 — 시스템이 스스로 '뭘 조사할지' 포착해 제안 (진화계획 3단계 v1, D-020·D-022 계승).
 
 docs/specs/agent-proposals.md. 제안-전용: 감지는 전부 자동, 실행은 항상 사람 승인 후.
-kind 4종: neglect(소외 종목) · contested_edge(상충 인과) · devils_advocate(반대 관점 질문)
+kind 5종: neglect · contested_edge · devils_advocate · falsifier_watch · vocab_merge(유사 노드 통합, D-050)
 · falsifier_watch(딛고 선 전제의 반증 조건 리마인드).
 """
 import json
@@ -125,8 +125,42 @@ def scan_devils_advocate(conn) -> int:
     return made
 
 
+VOCAB_MERGE_CAP = 15   # 회당 판정 후보 상한 (sonnet 비용 통제)
+
+
+def scan_vocab_merges(conn, cap: int = VOCAB_MERGE_CAP) -> int:
+    """비슷하지만 별개인 노드 병합 제안 (D-050) — fastembed 후보 → sonnet same 판정 →
+    승인 큐. 파괴적 병합(FK 재배선)이라 자동적용 대신 사람이 승인(D-020). 상위 유사도만(비용 통제)."""
+    from pipeline.vocab import find_merge_candidates, judge_pairs, pick_survivor
+    try:
+        cands = find_merge_candidates(conn)["candidates"][:cap]
+        if not cands:
+            return 0
+        judged = judge_pairs(cands)
+    except Exception:
+        return 0
+    made = 0
+    for j in judged:
+        if j.get("verdict") != "same":
+            continue
+        try:
+            sid, lid = pick_survivor(conn, j["a_id"], j["b_id"])
+        except Exception:
+            continue
+        names = {j["a_id"]: j["a_name"], j["b_id"]: j["b_name"]}
+        made += _insert(
+            conn, "vocab_merge",
+            f"'{names.get(lid)}' → '{names.get(sid)}' 통합?",
+            f"유사 노드 병합 제안 (유사도 {j.get('cosine')}). {j.get('rationale', '')}".strip(),
+            {"survivor_id": sid, "survivor_name": names.get(sid), "loser_id": lid,
+             "loser_name": names.get(lid), "type": j.get("type"), "cosine": j.get("cosine"),
+             "rationale": j.get("rationale", "")},
+            f"vocab:{sid}:{lid}")
+    return made
+
+
 def run_all(include_llm: bool = True) -> dict:
-    """전체 스캔 배치 — LLM 0 kind 3종은 항상, devils_advocate(haiku)는 include_llm일 때만."""
+    """전체 스캔 배치 — LLM 0 kind 3종은 항상, LLM 필요분(devils_advocate·vocab_merge)은 include_llm일 때만."""
     conn = get_connection()
     stats = {
         "neglect": scan_neglect(conn),
@@ -135,6 +169,7 @@ def run_all(include_llm: bool = True) -> dict:
     }
     if include_llm:
         stats["devils_advocate"] = scan_devils_advocate(conn)
+        stats["vocab_merge"] = scan_vocab_merges(conn)
     conn.commit()
     conn.close()
     return stats
@@ -162,6 +197,18 @@ def approve_proposal(proposal_id: int) -> dict:
         result = {"brief_status": r.get("status"), "revision_call": r.get("revision_call")}
     elif kind == "contested_edge":
         result = _resolve_contested(payload)
+    elif kind == "vocab_merge" and payload.get("survivor_id") and payload.get("loser_id"):
+        from pipeline.vocab import merge_entities
+        mc = get_connection()
+        try:
+            r = merge_entities(mc, payload["survivor_id"], payload["loser_id"], payload.get("rationale"))
+            mc.commit()
+            result = {"merged": True, "survivor": payload.get("survivor_name"),
+                      "loser": payload.get("loser_name"), "detail": r}
+        except Exception as e:  # noqa: BLE001
+            result = {"merged": False, "error": str(e)[:150]}
+        finally:
+            mc.close()
     # devils_advocate·falsifier_watch: 확인만 — 읽었다는 사실이 액션
 
     conn = get_connection()

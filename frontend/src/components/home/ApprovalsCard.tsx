@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { AlertTriangle, BookOpen, Check, Clock, HelpCircle, Inbox, Search, Tag, X } from "lucide-react"
+import { AlertTriangle, BookOpen, Check, Clock, FlaskConical, GitMerge, HelpCircle, Inbox, Search, Tag, X } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
@@ -23,22 +23,25 @@ interface ApprovalItem {
 }
 
 // 에이전트 제안함 kind (진화계획 3단계 v1, docs/specs/agent-proposals.md)
-const AGENT_KINDS = new Set(["neglect", "contested_edge", "devils_advocate", "falsifier_watch"])
-// kind별 메타 + 카드 표시 순서 (에이전트 제안 4종 먼저, 별칭·지식은 뒤)
+const AGENT_KINDS = new Set(["neglect", "contested_edge", "devils_advocate", "falsifier_watch", "vocab_merge"])
+// kind별 메타 + 카드 표시 순서 (에이전트 제안 먼저, 별칭·지식은 뒤)
 type KindMeta = { label: string; Icon: React.ComponentType<{ className?: string }> }
 const KIND_META: Record<string, KindMeta> = {
   neglect: { label: "소외", Icon: Search },
   contested_edge: { label: "상충", Icon: AlertTriangle },
   devils_advocate: { label: "질문", Icon: HelpCircle },
   falsifier_watch: { label: "반증", Icon: Clock },
+  vocab_merge: { label: "통합", Icon: GitMerge },
+  research_candidate: { label: "리서치", Icon: FlaskConical },
   alias: { label: "별칭", Icon: Tag },
   knowledge: { label: "지식", Icon: BookOpen },
 }
-const KIND_ORDER = ["neglect", "contested_edge", "devils_advocate", "falsifier_watch", "alias", "knowledge"]
+const KIND_ORDER = ["research_candidate", "neglect", "contested_edge", "devils_advocate", "falsifier_watch", "vocab_merge", "alias", "knowledge"]
+const DIR_TEXT: Record<string, string> = { up: "추정치 상향 가능", down: "추정치 하향 우려", hold: "추정치 유지 전망" }
 // 확인만 하는 kind — 승인 버튼 라벨을 다르게 (액션이 없음을 정직하게)
 const ACK_ONLY = new Set(["devils_advocate", "falsifier_watch"])
 
-export default function ApprovalsCard() {
+export default function ApprovalsCard({ hideHeader }: { hideHeader?: boolean } = {}) {
   const qc = useQueryClient()
   const { data: items = [] } = useQuery(
     apiQuery<ApprovalItem[]>({ key: ["spine", "approvals"], url: "/api/spine/approvals", staleTime: STALE.short }),
@@ -48,11 +51,15 @@ export default function ApprovalsCard() {
     qc.invalidateQueries({ queryKey: ["spine", "approvals"] })
     qc.invalidateQueries({ queryKey: ["spine", "keywords"] })
     qc.invalidateQueries({ queryKey: ["spine", "feed"] })
+    qc.invalidateQueries({ queryKey: ["spine", "research", "candidates"] })
   }
   const approve = useMutation({
     mutationFn: async (item: ApprovalItem) => {
       if (item.kind === "knowledge") {
         return (await api.post(`/api/spine/knowledge/items/${item.id}/approve`)).data as { epistemic_status: string }
+      }
+      if (item.kind === "research_candidate") {
+        return (await api.post(`/api/spine/research/candidates/${item.id}/approve`)).data as { revision_call: { direction: string } | null }
       }
       if (AGENT_KINDS.has(item.kind)) {
         return (await api.post(`/api/spine/agent-proposals/${item.id}/approve`)).data as { kind: string; result: { verdict?: string; brief_status?: string } | null }
@@ -63,6 +70,9 @@ export default function ApprovalsCard() {
       if (item.kind === "knowledge") {
         const epi = (d as { epistemic_status: string }).epistemic_status
         toast.success(`지식 승격 — ${epi === "corroborated" ? "교차확인됨(corroborated)" : "관측(observed)"}으로 활성화`)
+      } else if (item.kind === "research_candidate") {
+        const rc = (d as { revision_call: { direction: string } | null }).revision_call
+        toast.success(`리서치 완료 — ${rc ? (DIR_TEXT[rc.direction] ?? "방향 판단") : "방향 유보"}`)
       } else if (AGENT_KINDS.has(item.kind)) {
         const r = d as { result: { verdict?: string; brief_status?: string } | null }
         if (item.kind === "neglect") toast.success(`리서치 실행 — 브리프 ${r.result?.brief_status ?? "완료"}`)
@@ -78,6 +88,7 @@ export default function ApprovalsCard() {
   const reject = useMutation({
     mutationFn: async (item: ApprovalItem) => {
       if (item.kind === "knowledge") return api.post(`/api/spine/knowledge/items/${item.id}/reject`)
+      if (item.kind === "research_candidate") return api.post(`/api/spine/research/candidates/${item.id}/dismiss`)
       if (AGENT_KINDS.has(item.kind)) return api.post(`/api/spine/agent-proposals/${item.id}/dismiss`)
       return api.delete(`/api/spine/keywords/${item.id}`)
     },
@@ -120,13 +131,15 @@ export default function ApprovalsCard() {
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Inbox className="h-4 w-4 text-hypothesis" />
-        <h3 className="text-sm font-semibold">승인 대기</h3>
-        <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{items.length}</Badge>
-        <span className="ml-auto text-[11px] text-muted-foreground">기계의 제안 — 결정은 사람이</span>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+      {!hideHeader && (
+        <div className="flex items-center gap-2">
+          <Inbox className="h-4 w-4 text-hypothesis" />
+          <h3 className="text-sm font-semibold">승인 대기</h3>
+          <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{items.length}</Badge>
+          <span className="ml-auto text-[11px] text-muted-foreground">기계의 제안 — 결정은 사람이</span>
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-3 items-start">
         {groups.map((g) => {
           const meta = KIND_META[g.kind]
           const Icon = meta?.Icon ?? Inbox
