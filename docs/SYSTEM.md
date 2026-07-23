@@ -113,7 +113,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `connectors/youtube` | 채널 구독(RSS 신규 영상)·링크 단건 공용 fetch → 자막(ko>en) → **opus 정리본**(digest_transcript, 3회 재시도)을 본문으로 저장. 성공/실패는 `raw_documents.digest_status`(ok\|failed)로 관리(문자열 마커 대신 명시 컬럼). 실패 시 raw 저장되나 discover seen-skip으로 재수집 안 됨 → ① **redigest_youtube 배치**가 `digest_status != 'ok'`인 저장분 스캔해 사후 치유(회차당 5, cron ingest 직후) ② `GET /api/spine/doc/{id}` 열람 시에도 digest_status가 ok가 아니면 그 자리에서 1회 재시도(lazy) — 사용자 진입이 곧 재시도 트리거. 단건/채널 로직 동일 |
 | `store` | 멱등 적재(content_hash)·재enrich 시 stale 링크 제거·4층 confidence 링크 |
 | `beneficiary` | **수혜 종목 스크린(action_thesis Phase 1·1.5, D-035)** — 수혜 섹터/테마 → 종목 후보. MEMBER_OF(KSIC)가 아니라 **문서 공동언급**(entity_links industry/topic ↔ stock)으로 연결 + RS·per·시총·pos_52w enrich, RS순. **정밀도(1.5)**: 공동언급 2+ & **관련도(co/전체언급) ≥ 0.3** — 편재 대형주(모든 시황 등장) 배제, 테마 집중 종목만. + `graph_activity`(entity_relations.created_at 델타 = 최근 새 엣지 붙은 인과 노드, 섹터/테마면 수혜 top3). + `resolve_and_enrich`(scenario가 논리로 지목한 종목명 → 종목코드 resolve[company 엔티티/companies] + RS·밸류 enrich + `universe_membership` 크로스체크 태그[in_universe·universe_groups], 통합 체인 D-036·유니버스 큐레이션). LLM 0. **산업 맵 유니버스**(D-037): `industries` 라우터에 그룹 생성(`POST /api/industries/`)·기계 후보 제안(`GET /{id}/propose` = screen_beneficiaries 재사용, 기존 멤버 제외)·멤버 승인 적재(기존 `POST /{id}/members`) — 기계 제안·사람 필터로 산업 맵(industry_groups/members, 밸류체인 category)을 담당 유니버스로 큐레이션. 크로스체크는 태그일 뿐 하드 필터 아님(D-036 유지). + `upside_model`(업사이드 모델 Phase 2): 앵커(재무·EPS·PER·주가) 결정적 수집 → opus 4단계(매출 P×Q·Capa·TAM→이익률→EPS→적정주가, 불확실 시 멀티플 리레이팅)로 시나리오 보수/기본/낙관 **범위+조건부**·하방(펀더멘탈 지지선)·무효화 → `models` 테이블 적재(감사·재현). 후속: 타이밍(추세)·action_thesis 카드 |
-| `vocab` | **어휘 통합(D-033)** — theme·macro 노드 파편화 치유. 배치: fastembed 코사인 후보(≥0.90) → sonnet 쌍 판정(same/different, 방향·수준 다르면 different) → dry-run 계획(logs/vocab_merge_plan.json) 사람 검토 후 `scripts/consolidate_vocab.py --apply`. 병합: survivor(인과 엣지 多)로 FK 전수 재배선(PRAGMA 동적 발견, entity_relations는 UNIQUE 충돌 시 엣지 병합+evidence 이관) → loser 삭제 + `entity_merges` 기록. 쓰기 시: `_resolve_or_create_node`가 사라진 이름을 entity_merges redirect로 해소(재파편화 방지). cron 미편입(수동) |
+| `vocab` | **어휘 통합(D-033)** — theme·macro 노드 파편화 치유. 배치: fastembed 코사인 후보(≥0.90) → sonnet 쌍 판정(same/different, 방향·수준 다르면 different) → dry-run 계획(logs/vocab_merge_plan.json) 사람 검토 후 `scripts/consolidate_vocab.py --apply`. 병합: survivor(인과 엣지 多)로 FK 전수 재배선(PRAGMA 동적 발견, entity_relations는 UNIQUE 충돌 시 엣지 병합+evidence 이관) → loser 삭제 + `entity_merges` 기록. 쓰기 시: `_resolve_or_create_node`가 사라진 이름을 entity_merges redirect로 해소(재파편화 방지). **주간 cron 편입(D-050)**: agent_proposals `vocab_merge` kind — 후보(상위 15)→sonnet same 판정→홈 승인 큐, 승인 시 `merge_entities` 실행(자동 적용 아님, 사람 승인) |
 | `enrich` | 엔진 선택(claude-code/api/keyword)·구조화 태깅 + **시간 정박**(time_orientation·reference_period, 같은 haiku 콜) — 발행일≠사건일. classify_temporal(백필용 경량 분류). 기존분: scripts/backfill_temporal.py |
 | `search` | FTS5+sqlite-vec 하이브리드(RRF)·인덱스 빌드 |
 | `signals` | mention_surge·high_52w(200일+ 히스토리 요구)·neglect·consensus_extreme(진자, 감성 90%+ 극단)·volume_spike(60일 평균 3배+ & 등락 3%+ — 급증일 언급 문서 결합)·quadrant_gap(주가×감성 괴리)·theme_surge(주목 주제 — 점유율 상승 화두, 문서유형 라벨 제외) |
@@ -172,14 +172,12 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 ## 6. 프론트엔드 (React 19 + shadcn + TanStack Query)
 
 ### IA (내비게이션)
-L1은 파이프라인 흐름을 좌→우로 드러낸다 (D-048): `Home ┃ 팔로우 → 피드 → 탐색 → 월드모델 ┃ 대화`. 가운데 4개(입력→원천→감지→종합)가 흐름, Home은 아침 요약(진입)·대화는 횡단 도구라 구분선으로 격리, 월드모델은 매일 여는 종착점이라 약한 강조. **승인 대기는 헤더 상시 배지**(어느 화면에서든, 클릭 시 인박스 Sheet — ApprovalsCard 재활용).
+L1은 파이프라인 흐름을 좌→우로 드러낸다 (D-048·D-049): `Home ┃ 팔로우 → 피드 → 월드모델 ┃ 대화`. 가운데 3개(입력→원천→종합)가 흐름, Home은 아침 요약+신호 대시보드(진입)·대화는 횡단 도구라 구분선으로 격리, 월드모델은 매일 여는 종착점이라 약한 강조. **탐색 모드는 해체(D-049)** — 신호 요약은 Home으로, 산업맵·인물·기업활동은 팔로우로, 신호 상세는 `/explore?list=`(pill 없는 도시에), 백테스트는 보관함. **승인 대기는 헤더 상시 배지**(어느 화면에서든, 클릭 시 인박스 Sheet — ApprovalsCard 재활용, 리서치 후보 포함).
 ```
-Home(/home)        아침 브리핑 — 기계의 3줄(소스경고·지식충돌·가설확인·인사이트) + 승인 대기 배너 + **월드모델 델타**(변한/급증 내러티브 + 최근 리포트, 매일 여는 것을 진입 요약으로) + 핵심 신호. (구 캘린더·업데이트 스트림은 제거 — 각각 기업활동/카탈리스트·팔로우가 담당, D-048)
+Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소스경고·지식충돌·가설확인·인사이트) + 승인 대기 배너 + **월드모델 델타**(변한/급증 내러티브 + 최근 리포트, 매일 여는 것을 진입 요약으로) + **신호**(언급 모멘텀·주목 주제·인과 그래프 활동 — 탐색 해체로 이관, D-049). (구 캘린더·업데이트 스트림·핵심신호 카드는 제거)
 팔로우             서브탭: 팔로우(/follow: 내가 따라가는 종목·채널·블로그·태그 허브) ·
-                   **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039). ※구 산업 페이지(/discover/industry, IndustryPage)는 폐기 — nav 미노출
-탐색               신호(/explore 착륙: 언급 모멘텀·주목 주제(theme_surge)·**내러티브 티저**(상위 3개, 전체는 월드모델)·백테스트, 그 외 소외·52주신고가·컨센서스극단 목록) ·
-                   인물(/people: 디렉토리 — 언급량·최근발언·파급종목 → /person 도시에) ·
-                   기업활동(/actions: 목록+요약 | 유무증 Pro 토글+방식 필터) · 산업군 · 스크리너 · 대안데이터
+                   **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039) ·
+                   **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-049, 전부 '내가 커버하는 대상'). ※구 산업 페이지(/discover/industry)는 폐기
 월드모델           내러티브(빠른 층)·세계관(인과 그래프)·지식(느린 층)을 한 모드로 묶음 — "같은 인과 그래프의 두 속도"(D-023), 신호(델타 감지)와 성격이 달라 분리(D-031). 서브탭:
                    내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·파급 시나리오·통합 리포트) ·
                    **리포트**(/report: 발간 목록, /report?topic=X=디테일 — Top-down 리포트 + 최하단 구성 내러티브 링크, integrated-report/D-041) ·

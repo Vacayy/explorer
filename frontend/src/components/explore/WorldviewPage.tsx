@@ -16,7 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
-import { X, Maximize2, Minimize2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { X, Maximize2, Minimize2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
 
@@ -162,10 +163,12 @@ export default function WorldviewPage() {
     const baseE = data.edges.filter((e) => baseIds.has(e.from_id) && baseIds.has(e.to_id))
     const smallHidden = data.nodes.length - baseN.length
 
-    // 초점 모드: 중심 노드에서 depth홉 이웃(무향 BFS)만 — 잔가지 포함 전체 이웃 (로컬 그래프)
-    if (focusId != null && baseIds.has(focusId)) {
+    // 초점 모드: 중심 노드에서 depth홉 이웃(무향 BFS)만 — 잔가지 포함 전체 이웃 (로컬 그래프).
+    // 작은-클러스터 필터를 무시하고 전체 그래프에서 BFS — 검색으로 고른 노드가 숨은 조각에
+    // 있어도 초점이 잡히도록 (개요의 노이즈 감축과 달리, 초점은 명시적 선택이므로 전부 보여준다).
+    if (focusId != null && data.nodes.some((n) => n.id === focusId)) {
       const adj = new Map<number, number[]>()
-      baseE.forEach((e) => {
+      data.edges.forEach((e) => {
         ;(adj.get(e.from_id) ?? adj.set(e.from_id, []).get(e.from_id)!).push(e.to_id)
         ;(adj.get(e.to_id) ?? adj.set(e.to_id, []).get(e.to_id)!).push(e.from_id)
       })
@@ -178,8 +181,8 @@ export default function WorldviewPage() {
         }))
         frontier = next
       }
-      const fN = baseN.filter((n) => keep.has(n.id))
-      const fE = baseE.filter((e) => keep.has(e.from_id) && keep.has(e.to_id))
+      const fN = data.nodes.filter((n) => keep.has(n.id))
+      const fE = data.edges.filter((e) => keep.has(e.from_id) && keep.has(e.to_id))
       return { visNodes: fN, visEdges: fE, hiddenCount: smallHidden }
     }
 
@@ -242,6 +245,7 @@ export default function WorldviewPage() {
       <div className={cn("flex flex-col gap-2", fullscreen && "fixed inset-0 z-50 bg-background p-4")}>
       <div className="flex items-baseline gap-2 flex-wrap">
         <h1 className="text-lg font-bold">세계관 뷰 (인과 그래프)</h1>
+        <span className="text-[11px] text-muted-foreground">전체 인과 지도(가설 포함) · 내러티브 갱신마다 상시 반영 — 검증된 핵심만 '지식'으로 승격</span>
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}
           className="ml-auto gap-1">
           {VIEW_MODES.map((m) => (
@@ -252,6 +256,8 @@ export default function WorldviewPage() {
           ))}
         </ToggleGroup>
       </div>
+
+      {data && <NodeSearch nodes={data.nodes} onPick={focusNode} />}
 
       <div className="flex items-center gap-3 flex-wrap text-xs">
         {LENSES.map((l) => (
@@ -357,6 +363,67 @@ export default function WorldviewPage() {
       )}
       </div>
     </PageContainer>
+  )
+}
+
+/* 노드 검색 — 이름으로 찾아 초점 이동(focusNode 재활용). 매치 후보는 차수순 상위 8개. */
+function NodeSearch({ nodes, onPick }: { nodes: WNode[]; onPick: (n: WNode) => void }) {
+  const [q, setQ] = useState("")
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const results = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (!s) return [] as WNode[]
+    return nodes
+      .filter((n) => n.name.toLowerCase().includes(s))
+      .sort((a, b) => (b.in_degree + b.out_degree) - (a.in_degree + a.out_degree))
+      .slice(0, 8)
+  }, [q, nodes])
+
+  const pick = (n: WNode | undefined) => {
+    if (!n) return
+    onPick(n); setQ(""); setOpen(false); setActive(0)
+  }
+
+  return (
+    <div className="relative w-full max-w-sm">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); setActive(0) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => Math.min(i + 1, results.length - 1)) }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)) }
+          else if (e.key === "Enter") { e.preventDefault(); pick(results[active]) }
+          else if (e.key === "Escape") { setOpen(false) }
+        }}
+        placeholder="노드 검색 — 이름으로 찾아 이동"
+        className="h-8 pl-8 text-xs"
+      />
+      {open && results.length > 0 && (
+        <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border bg-popover py-1 shadow-lg">
+          {results.map((n, i) => (
+            <li key={n.id}>
+              <button
+                onMouseDown={(e) => { e.preventDefault(); pick(n) }}
+                onMouseEnter={() => setActive(i)}
+                className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
+                  i === active ? "bg-accent" : "hover:bg-accent/60")}
+              >
+                <span className="shrink-0 text-[9px] text-muted-foreground">{NODE_LABEL[n.type] ?? n.type}</span>
+                <span className="truncate font-medium">{n.name}</span>
+                {n.pace_layer && LAYER_KO[n.pace_layer] && (
+                  <span className="shrink-0 text-[9px] text-muted-foreground">{LAYER_KO[n.pace_layer]}</span>
+                )}
+                <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">연결 {n.in_degree + n.out_degree}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
