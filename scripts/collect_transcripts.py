@@ -5,9 +5,13 @@
 
 선행: .env에 FMP_API_KEY (무료 발급: financialmodelingprep.com).
 
+라운드로빈: 모든 기업의 최신 분기 먼저 → 그 다음 이전 분기. AV 무료 한도(25/day)라
+요청 예산 안에서만 수집하고, 매일 재실행하면 이미 저장된 분기는 스킵하며 backlog가 이어짐.
+
 사용법:
-  python scripts/collect_transcripts.py            # 팔로우 전체 (없으면 기본 세트 시드)
-  python scripts/collect_transcripts.py NVDA AAPL  # 특정 티커만 (적재 검증용)
+  python scripts/collect_transcripts.py            # 라운드로빈 (없으면 기본 세트 시드), 예산 22
+  python scripts/collect_transcripts.py --budget 10
+  python scripts/collect_transcripts.py NVDA AAPL  # 특정 티커만
 """
 import sys
 from pathlib import Path
@@ -15,12 +19,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.transcript import collect_followed, digest_pending, seed_default_follows, _followed
+from pipeline.transcript import collect_roundrobin, digest_pending, seed_default_follows, _followed
 
 
 def main():
     init_db()
-    only = [a.upper() for a in sys.argv[1:]] or None
+    args = sys.argv[1:]
+    budget = 22
+    if "--budget" in args:
+        i = args.index("--budget")
+        budget = int(args[i + 1])
+        del args[i:i + 2]
+    only = [a.upper() for a in args] or None
 
     if not _followed():
         n = seed_default_follows()
@@ -29,10 +39,10 @@ def main():
     from pipeline.ops import run_job
 
     def _work():
-        r = collect_followed(only=only)
-        print(f"[transcript] 신규 {r['stored']}건 적재 · 스킵 {r['skipped']} · 실패 {r['failed']} "
-              f"(대상 {r['tickers']}개 기업)")
-        n = digest_pending(limit=max(r["stored"], 5))  # 신규분 핵심 정리 생성
+        r = collect_roundrobin(request_budget=budget, only=only)
+        print(f"[transcript] 요청 {r['requests']}/{r['budget']} · 신규 {r['stored']}건 적재 · "
+              f"빈응답 {r['empty']} · 예산소진={r['exhausted']}")
+        n = digest_pending(limit=max(r["stored"], 5))  # 신규분 핵심 정리 생성(sonnet)
         print(f"[transcript] 핵심 정리 {n}건 생성")
         return {**r, "digested": n}
     run_job("collect_transcripts", _work)   # 관리자 플래그 게이트 + 실행 로그 (D-055)

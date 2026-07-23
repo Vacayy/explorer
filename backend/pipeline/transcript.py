@@ -9,6 +9,7 @@
 Provider 추상 — 한 제공처에 락인되지 않게 어댑터로. TRANSCRIPT_PROVIDER env로 스위치.
 1차 구현은 FMP(무료 티어 250 req/day + dates-by-symbol 폴링). 필요 시 earningscall/alphavantage 추가.
 """
+import time
 from datetime import date
 from typing import Protocol
 
@@ -207,6 +208,87 @@ def digest_pending(limit: int = 10) -> int:
     return n
 
 
+# 프록시 레지스트리 기본 시드 (D-048: 사람이 초기 세팅 → 이후 자동 트래킹) — AI/데이터센터 지배 서사 기준
+PROXY_SEED = [
+    ("hyperscaler_capex", "하이퍼스케일러 CAPEX 추이", "MSFT,GOOGL,AMZN,META,ORCL", "$B",
+     "이번 분기 자본지출(CAPEX) 금액과 전분기·전년 대비 방향, 그리고 차기/연간 CAPEX 가이던스"),
+    ("dc_demand_backlog", "AI 데이터센터 수요·백로그", "NVDA,CRWV,IREN,NBIS", "$B",
+     "데이터센터/AI 관련 매출·수주잔고(백로그)·캐파 규모와 전분기 대비 방향"),
+]
+
+
+def seed_proxies() -> int:
+    conn = get_connection()
+    n = 0
+    for key, label, tickers, unit, hint in PROXY_SEED:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO proxy_registry (key, label, tickers, unit, extract_hint) VALUES (?, ?, ?, ?, ?)",
+            (key, label, tickers, unit, hint))
+        n += cur.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
+_PROXY_PROMPT = """다음 실적 컨콜 전문에서 아래 지표를 추출하라. 원문에 명시된 수치·발언만 쓰고,
+없으면 found=false. 추정·계산 금지.
+
+[지표] {label}
+[무엇을 볼지] {hint}
+
+JSON만 출력:
+{{"found": true/false, "value_text": "원문 인용 한 문장(수치 포함)", "value_num": 숫자 또는 null,
+  "direction": "up"/"down"/"flat"/null}}
+
+[컨콜 전문]
+{body}"""
+
+
+def extract_proxies(limit: int = 40) -> dict:
+    """활성 프록시 × 관련 티커의 미추출 transcript에서 지표 값 추출 → proxy_observations.
+    멱등: (proxy_id, transcript_id) 이미 있으면 스킵. haiku(값싸게)."""
+    import json
+    from pipeline.enrich import _call_claude_code, llm_available
+    if not llm_available():
+        return {"extracted": 0, "skipped": 0, "reason": "llm 미가용"}
+    conn = get_connection()
+    proxies = conn.execute("SELECT id, label, tickers, extract_hint FROM proxy_registry WHERE active=1").fetchall()
+    extracted, scanned = 0, 0
+    for p in proxies:
+        tickers = [t.strip() for t in (p["tickers"] or "").split(",") if t.strip()]
+        rows = conn.execute(
+            "SELECT t.id, t.ticker, t.call_date, rd.markdown FROM transcripts t "
+            "JOIN raw_documents rd ON rd.id = t.raw_doc_id "
+            f"WHERE t.ticker IN ({','.join('?' * len(tickers))}) "
+            "ORDER BY t.fiscal_year DESC LIMIT ?", (*tickers, limit)).fetchall() if tickers else []
+        for r in rows:
+            if scanned >= limit:
+                break
+            exists = conn.execute(
+                "SELECT 1 FROM proxy_observations WHERE proxy_id=? AND transcript_id=?", (p["id"], r["id"])).fetchone()
+            if exists:
+                continue
+            scanned += 1
+            try:
+                raw = _call_claude_code(
+                    _PROXY_PROMPT.format(label=p["label"], hint=p["extract_hint"] or "", body=(r["markdown"] or "")[:40000]),
+                    model="haiku", timeout=180)
+                d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+            except Exception as e:  # noqa: BLE001
+                print(f"[proxy] {p['label']} {r['ticker']} 실패: {e}")
+                continue
+            if not d.get("found"):
+                continue
+            conn.execute(
+                "INSERT INTO proxy_observations (proxy_id, transcript_id, observed_at, value_num, value_text, direction) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (p["id"], r["id"], r["call_date"], d.get("value_num"), d.get("value_text"), d.get("direction")))
+            conn.commit()
+            extracted += 1
+    conn.close()
+    return {"extracted": extracted, "scanned": scanned}
+
+
 def _followed(only: list[str] | None = None) -> list[dict]:
     conn = get_connection()
     q = "SELECT ticker, company_name, group_label FROM transcript_follow WHERE active=1"
@@ -224,6 +306,67 @@ def _existing_periods(ticker: str) -> set:
     ).fetchall()
     conn.close()
     return {(r["fiscal_year"], r["fiscal_period"]) for r in rows}
+
+
+def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
+    """한 (기업, 분기) 수집 → raw_documents + transcripts. 저장 성공 시 True."""
+    got = provider.fetch(f["ticker"], year, quarter)
+    if not got:
+        return False
+    period = f"Q{quarter}" if quarter else "FY"
+    source_id = f"{f['ticker']}:{year}:{period}"
+    doc = RawDoc(
+        source_type="transcript", source_id=source_id,
+        title=f"{f['company_name']} ({f['ticker']}) FY{year} {period} 실적 컨퍼런스콜",
+        published_at=got["date"], raw_content=got["content"], kind="text")
+    res = store_document(doc)
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR IGNORE INTO transcripts (raw_doc_id, ticker, fiscal_year, fiscal_period, call_date, provider) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (res["doc_id"], f["ticker"], year, period, got["date"], provider.name))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float = 13.0,
+                       only: list[str] | None = None) -> dict:
+    """분기-랭크 라운드로빈 — 모든 기업의 최신 분기 먼저, 그 다음 이전 분기(사용자 지정 순서).
+    Alpha Vantage 무료 한도(25/day·5/min) 대응: request_budget으로 하루 요청 상한, 요청 간 sleep.
+    이미 저장된 (기업,분기)는 요청 없이 스킵 → 매일 재실행하면 backlog가 이어서 채워진다.
+    (AV는 dates 엔드포인트가 없어 후보 분기를 probe하므로 미보고/회계·달력 분기 불일치 시 빈 응답=요청 소모)."""
+    provider = get_provider()
+    companies = _followed(only)
+    cands = _recent_quarters(ranks)   # 최신순
+    used, stored, empty = 0, 0, 0
+    done = False
+    for q in cands:                    # 랭크(분기) 바깥 = 최신 분기부터
+        if done:
+            break
+        period = f"Q{q['quarter']}"
+        for f in companies:            # 기업 안쪽 = 그 분기를 전 기업에 걸쳐
+            if used >= request_budget:
+                done = True
+                break
+            if (q["year"], period) in _existing_periods(f["ticker"]):
+                continue               # 저장됨 — 요청 없이 스킵
+            if used > 0:
+                time.sleep(sleep_s)    # 5 req/min 준수
+            try:
+                ok = _store_call(provider, f, q["year"], q["quarter"])
+            except Exception as e:      # noqa: BLE001
+                print(f"[transcript] {f['ticker']} {q['year']}{period} 실패: {e}")
+                used += 1
+                continue
+            used += 1
+            if ok:
+                stored += 1
+                print(f"[transcript] +{f['ticker']} {q['year']}{period}")
+            else:
+                empty += 1
+    return {"requests": used, "stored": stored, "empty": empty, "budget": request_budget,
+            "exhausted": done}
 
 
 def collect_followed(only: list[str] | None = None, max_new_per_ticker: int = 4) -> dict:

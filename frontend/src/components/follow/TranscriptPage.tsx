@@ -12,7 +12,9 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { ProxyDashboard } from "@/components/follow/ProxyDashboard"
 import { cn } from "@/lib/utils"
 
 /**
@@ -37,7 +39,15 @@ const periodOf = (y: number | null, p: string | null) => `FY${y ?? "?"} ${p ?? "
 export default function TranscriptPage() {
   const [params, setParams] = useSearchParams()
   const selectedId = params.get("t")
+  const view = params.get("view") === "proxies" ? "proxies" : "calls"
   const qc = useQueryClient()
+
+  const setView = (v: string) => {
+    const next = new URLSearchParams(params)
+    if (v === "proxies") next.set("view", "proxies")
+    else next.delete("view")
+    setParams(next, { replace: true })
+  }
 
   const { data: follows = [], isLoading, isError, refetch } = useQuery(
     apiQuery<FollowRow[]>({ key: ["spine", "transcript", "follow"], url: "/api/spine/transcript/follow", staleTime: STALE.short }),
@@ -64,6 +74,16 @@ export default function TranscriptPage() {
         <span className="text-xs text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
       </div>
 
+      <Tabs value={view} onValueChange={setView}>
+        <TabsList>
+          <TabsTrigger value="calls">컨콜</TabsTrigger>
+          <TabsTrigger value="proxies">프록시</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {view === "proxies" ? (
+        <ProxyDashboard />
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4 items-start">
         {/* 좌 레일 — 팔로우 기업 그룹 (구독 관리 겸용) */}
         <Card className="md:sticky md:top-16">
@@ -92,6 +112,7 @@ export default function TranscriptPage() {
           )}
         </div>
       </div>
+      )}
     </PageContainer>
   )
 }

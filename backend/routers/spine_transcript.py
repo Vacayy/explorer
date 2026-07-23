@@ -145,3 +145,70 @@ def upsert_follow(body: FollowReq):
 def seed():
     from pipeline.transcript import seed_default_follows
     return {"seeded": seed_default_follows()}
+
+
+# ---------- 프록시 (관찰 선행지표, D-061 stage 4) ----------
+
+class ProxyObs(BaseModel):
+    observed_at: str | None
+    value_num: float | None
+    value_text: str | None
+    direction: str | None
+    ticker: str | None
+    transcript_id: int | None
+
+
+class ProxyRow(BaseModel):
+    id: int
+    key: str
+    label: str
+    unit: str | None
+    tickers: str | None
+    latest: ProxyObs | None
+    series: list[ProxyObs]
+
+
+class ProxyReq(BaseModel):
+    key: str
+    label: str
+    tickers: str | None = None
+    unit: str | None = None
+    extract_hint: str | None = None
+
+
+@router.get("/proxies", response_model=list[ProxyRow])
+def list_proxies():
+    conn = get_connection()
+    proxies = conn.execute("SELECT id, key, label, unit, tickers FROM proxy_registry WHERE active=1 ORDER BY id").fetchall()
+    out = []
+    for p in proxies:
+        obs = conn.execute(
+            "SELECT o.observed_at, o.value_num, o.value_text, o.direction, t.ticker, o.transcript_id "
+            "FROM proxy_observations o LEFT JOIN transcripts t ON t.id = o.transcript_id "
+            "WHERE o.proxy_id=? ORDER BY o.observed_at", (p["id"],)).fetchall()
+        series = [ProxyObs(**dict(r)) for r in obs]
+        out.append(ProxyRow(id=p["id"], key=p["key"], label=p["label"], unit=p["unit"],
+                            tickers=p["tickers"], latest=series[-1] if series else None, series=series))
+    conn.close()
+    return out
+
+
+@router.post("/proxies", status_code=201)
+def create_proxy(body: ProxyReq):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO proxy_registry (key, label, tickers, unit, extract_hint) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET label=excluded.label, tickers=excluded.tickers, "
+        "unit=excluded.unit, extract_hint=excluded.extract_hint",
+        (body.key, body.label, body.tickers, body.unit, body.extract_hint))
+    conn.commit()
+    conn.close()
+    return {"key": body.key}
+
+
+@router.post("/proxies/extract")
+def run_extract():
+    """관찰 프록시 추출 트리거 (멱등, haiku). 프록시 없으면 기본 시드 먼저."""
+    from pipeline.transcript import extract_proxies, seed_proxies
+    seed_proxies()
+    return extract_proxies()
