@@ -40,6 +40,20 @@
 
 **참조**: frontend `components/layout/ModeNavigation.tsx`·`components/layout/Header.tsx`·`components/home/HomePage.tsx`·`components/home/ApprovalsCard.tsx`(hideHeader 옵션) · SYSTEM.md §6 IA · D-031(월드모델 분리)·D-023
 
+## D-054 · 2026-07-23 · 홈 브리핑(기계의 3줄) → 인박스 '공지'로 이관
+
+**결정**: 홈 최상단 BriefingSection(소스 경고·가설 확인/충돌·공시 3줄)을 홈에서 제거하고 헤더 **인박스 Sheet의
+'공지' 섹션**으로 이관. 인박스는 이제 [공지(기계가 포착한 변화) + 승인 대기(결정 필요)] 2단, 제목 '인박스'.
+홈 상단은 AI 자동생성 피드(D-053)만 남아 깔끔.
+
+**맥락·이유**: 브리핑 공간도 애매·무가치하다는 지적(사용자 2026-07-23, D-053 연장). 공지성 알림은 상시 진입점인
+인박스에 모으는 게 맞다(승인 대기와 성격은 다르나 둘 다 '기계가 사람에게 전하는 것'). 브리핑 렌더는 BriefingList로
+추출해 공유. 인박스 본문은 Sheet 열릴 때만 마운트(홈 payload 지연 로드).
+
+**참조**: frontend home/BriefingList(신규)·HomePage(BriefingSection 제거)·layout/Header(InboxBody 공지+승인) · D-053 · 대화 2026-07-23
+
+---
+
 ## D-053 · 2026-07-23 · 홈 최상단 'AI 자동생성 피드' — 무쓸모 승인 배너 대체
 
 **결정**: 홈 최상단의 `ApprovalsBanner`(우상단 인박스로 유도만 하던 배너 — 무쓸모)를 **'AI가 최근 만든 것'
