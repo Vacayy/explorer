@@ -5,9 +5,12 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 DART_API_KEY = os.getenv("DART_API_KEY", "")
-# 미국 기업 실적 컨콜 transcript (docs/specs/transcript-follow.md) — provider 추상, 무료 발급
+# 미국 기업 실적 컨콜 transcript (docs/specs/transcript-follow.md) — provider 추상
+# Alpha Vantage 채택: EARNINGS_CALL_TRANSCRIPT가 무료 티어(25 req/day)에 포함 + 화자 세그먼트.
+# FMP transcript는 유료 전용이라 무료 MVP엔 부적합(402). 무료 키: alphavantage.co/support
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
-TRANSCRIPT_PROVIDER = os.getenv("TRANSCRIPT_PROVIDER", "fmp")  # fmp | earningscall | alphavantage
+ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "")
+TRANSCRIPT_PROVIDER = os.getenv("TRANSCRIPT_PROVIDER", "alphavantage")  # alphavantage | fmp
 DB_PATH = Path(__file__).resolve().parent / "db" / "stock_explorer.db"
 
 # 가설·메모 vault (소유권 분할: notes/=사람 원본, entities/=DB 투영 — 수정 무시)

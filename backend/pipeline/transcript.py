@@ -9,12 +9,12 @@
 Provider 추상 — 한 제공처에 락인되지 않게 어댑터로. TRANSCRIPT_PROVIDER env로 스위치.
 1차 구현은 FMP(무료 티어 250 req/day + dates-by-symbol 폴링). 필요 시 earningscall/alphavantage 추가.
 """
-import os
+from datetime import date
 from typing import Protocol
 
 import requests
 
-from config import FMP_API_KEY, TRANSCRIPT_PROVIDER
+from config import ALPHAVANTAGE_API_KEY, FMP_API_KEY, TRANSCRIPT_PROVIDER
 from database import get_connection
 from pipeline.base import RawDoc
 from pipeline.store import store_document
@@ -81,10 +81,59 @@ class FMPProvider:
         return {"date": row.get("date", ""), "content": content}
 
 
+def _recent_quarters(n: int = 5) -> list[dict]:
+    """최근 n개 캘린더 분기 (연,분기) 내림차순. Alpha Vantage는 dates 엔드포인트가 없어
+    직접 분기를 지목해 조회하므로 최근 분기 후보를 생성한다(없는 분기는 빈 응답 → 스킵)."""
+    today = date.today()
+    y, q = today.year, (today.month - 1) // 3 + 1
+    out = []
+    for _ in range(n):
+        out.append({"year": y, "quarter": q, "date": f"{y}-{q * 3:02d}-01"})
+        q -= 1
+        if q == 0:
+            q, y = 4, y - 1
+    return out
+
+
+class AlphaVantageProvider:
+    """Alpha Vantage — EARNINGS_CALL_TRANSCRIPT. 무료 티어(25 req/day) 포함, 화자 세그먼트 반환.
+    dates 엔드포인트가 없어 list_available은 최근 분기 후보를 생성한다."""
+    name = "alphavantage"
+    URL = "https://www.alphavantage.co/query"
+
+    def list_available(self, ticker: str) -> list[dict]:
+        return _recent_quarters(5)
+
+    def fetch(self, ticker: str, year: int, quarter: int) -> dict | None:
+        if not ALPHAVANTAGE_API_KEY:
+            raise RuntimeError("ALPHAVANTAGE_API_KEY 미설정 — .env에 무료 키를 넣어주세요 (alphavantage.co/support)")
+        r = requests.get(self.URL, params={
+            "function": "EARNINGS_CALL_TRANSCRIPT", "symbol": ticker,
+            "quarter": f"{year}Q{quarter}", "apikey": ALPHAVANTAGE_API_KEY}, timeout=30)
+        r.raise_for_status()
+        j = r.json()
+        # 레이트리밋·프리미엄 안내는 Information/Note로 옴 — 조용히 스킵(거짓 데이터 금지)
+        if "Information" in j or "Note" in j or "Error Message" in j:
+            print(f"[transcript] AV {ticker} {year}Q{quarter}: {j.get('Information') or j.get('Note') or j.get('Error Message')}")
+            return None
+        segs = j.get("transcript") or []
+        if not segs:
+            return None
+        # 화자 라벨 보존 마크다운 — doc_causal이 '누가 무엇을 주장했나'를 살리도록
+        body = "\n\n".join(
+            f"**{s.get('speaker', '')}**{f' ({s['title']})' if s.get('title') else ''}: {s.get('content', '')}"
+            for s in segs if s.get("content"))
+        if not body.strip():
+            return None
+        return {"date": f"{year}-{quarter * 3:02d}-01", "content": body}  # AV는 콜 날짜 미제공 → 분기 근사
+
+
 def get_provider() -> TranscriptProvider:
+    if TRANSCRIPT_PROVIDER == "alphavantage":
+        return AlphaVantageProvider()
     if TRANSCRIPT_PROVIDER == "fmp":
         return FMPProvider()
-    raise NotImplementedError(f"provider '{TRANSCRIPT_PROVIDER}' 미구현 — fmp만 지원 (어댑터 추가 필요)")
+    raise NotImplementedError(f"provider '{TRANSCRIPT_PROVIDER}' 미구현 — alphavantage|fmp 지원")
 
 
 def seed_default_follows() -> int:

@@ -17,22 +17,24 @@
 
 실적 컨콜 transcript는 상용 API가 성숙해 있어 **직접 크롤 불필요**. 미국 상장사 위주면 아래 후보들이 커버.
 
-| 제공처 | 무료 티어 | 미국 커버리지 | 이력 | 화자 라벨 | 오디오 | 파이썬 SDK | 판단 |
-|---|---|---|---|---|---|---|---|
-| **Financial Modeling Prep (FMP)** | 250 req/day, 500MB/mo | 광범위 | 10+년 | △ | ✗ | ✓ | **1차 후보** — 무료 요청 예산 넉넉 + `transcript-dates-by-symbol`로 신규 콜 폴링 용이 |
-| **earningscall.biz** | 브라우저 열람 무료, API는 유료(저렴·투명) | 9,000+ | 있음 | ✓ (CEO/CFO/analyst 역할 ID) | ✓ | ✓ 공식 | **업그레이드 경로** — 구조 최상(화자·역할), SDK 깔끔. 유료지만 스타트업 친화 |
-| **Alpha Vantage** | 25 req/day, 5/min | 있음 | 15+년 | △ | ✗ | ✓ | **폴백** — LLM 감성점수 내장. 단 25/day는 백필에 빠듯 |
-| **API Ninjas** | 무료(상업용 불가—개인은 무관) | 주요 상장사 | 2000~ | ✗ | ✗ | ✗ | 단순·저렴, 구조 약함 |
-| **Finnhub** | 무료(rate limit) | 글로벌 | - | △ | ✓ 라이브 | ✓ | 라이브 스트리밍 강점, transcript는 부차 |
-| **ROIC.ai** | 5 req/min, 2년 | 전 상장사 | 2년(무료) | - | ✗ | - | 무료 이력 짧음 |
-| **Quartr** | 없음(영업 문의) | 14,500+ / 65개 시장 | 있음 | ✓ | ✓ | ✗ | 품질 최상·AI 최적화지만 **개인 도구엔 과함**(엔터프라이즈 가격) |
+| 제공처 | transcript 무료? | 미국 커버리지 | 이력 | 화자 라벨 | 판단 |
+|---|---|---|---|---|---|
+| **Alpha Vantage** | ✅ 무료 25 req/day (실측 확인) | 있음 | 15+년 | ✅ 세그먼트+감성 | **★채택(MVP)** — 무료 transcript + 화자별 세그먼트(감성 포함) |
+| **Financial Modeling Prep (FMP)** | ❌ 유료 전용 (실측 402 Payment Required) | 광범위 | 10+년 | △ | 유료 업그레이드 시 후보 — 재무·컨센서스도 함께 쓰면 가치 |
+| **earningscall.biz** | ❌ API 유료(저렴·투명) | 9,000+ | 있음 | ✅ CEO/CFO/analyst 역할 ID | 구조 최상·SDK 깔끔. 유료 |
+| **API Ninjas** | △ 개인·비상업만 | 주요 상장사 | 무료 제한 | ✗ | "상업용 불가"·무료 이력 제한 |
+| **Quartr** | ❌ 없음(영업 문의) | 14,500+ / 65개 시장 | 있음 | ✅ | 품질 최상이나 개인 도구엔 과함 |
 
-**권장 전략** — MVP는 **FMP 무료 티어**(요청 예산·dates-by-symbol 폴링)로 시작, 구조 품질이 필요해지면
-**earningscall.biz**로 교체(화자·역할 라벨이 프록시 추출·발언 인용에 유리). 커넥터를 provider-추상으로
-짜서 어댑터만 바꾸면 되게 한다. Alpha Vantage는 감성점수가 필요할 때 폴백.
+> ⚠️ **실측 정정(2026-07-23)**: 초기 조사에서 "FMP 무료 250 req/day"만 보고 transcript도 무료라 판단했으나,
+> FMP transcript 엔드포인트는 **유료 전용**(무료 키로 402). Alpha Vantage EARNINGS_CALL_TRANSCRIPT는
+> 무료 `demo` 키로 IBM 실데이터 200 확인(화자 세그먼트 37개) → **무료 MVP는 Alpha Vantage로 확정**.
 
-> API 키는 `.env`에 `FMP_API_KEY` / `EARNINGSCALL_API_KEY` / `ALPHAVANTAGE_API_KEY`. 활성 provider는
-> `TRANSCRIPT_PROVIDER=fmp|earningscall|alphavantage` 로 스위치.
+**채택 전략** — MVP는 **Alpha Vantage 무료**(EARNINGS_CALL_TRANSCRIPT, 화자 세그먼트+감성). 25 req/day라
+백필은 며칠 나눠서·증분 수집은 충분. 커넥터는 provider-추상이라 대량·고품질이 필요해지면 FMP 유료나
+earningscall.biz로 어댑터만 교체. dates 엔드포인트가 없어 `list_available`은 최근 분기 후보를 생성해 조회.
+
+> API 키는 `.env`에 `ALPHAVANTAGE_API_KEY`(무료: alphavantage.co/support) · (선택)`FMP_API_KEY`.
+> 활성 provider는 `TRANSCRIPT_PROVIDER=alphavantage|fmp` 로 스위치 (기본 alphavantage).
 
 **출처**: [koyfin 2026 비교](https://www.koyfin.com/blog/top-earnings-call-transcripts-platforms/) · [earningscall.biz best-apis-2026](https://earningscall.biz/blog/best-earnings-call-apis-for-developers-2026) · [FMP transcript docs](https://site.financialmodelingprep.com/developer/docs/stable/search-transcripts) · [FMP pricing](https://site.financialmodelingprep.com/pricing-plans) · [Alpha Vantage docs](https://www.alphavantage.co/documentation/) · [Quartr API](https://quartr.com/products/quartr-api)
 
