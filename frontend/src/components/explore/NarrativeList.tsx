@@ -7,7 +7,13 @@ import { Badge } from "@/components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EmptyState } from "@/components/shared/ErrorState"
+import { formatRelativeTime } from "@/utils/format"
 import { cn } from "@/lib/utils"
+
+/** SQLite UTC 시각("YYYY-MM-DD HH:MM:SS")을 상대 표기로 — Z 부착해 로컬 오파싱 방지(D-059). */
+function relUpdated(iso: string | null): string {
+  return iso ? formatRelativeTime(iso.replace(" ", "T") + "Z") : ""
+}
 
 /** 내러티브 카드 목록 — 신호 티저(limit)와 월드모델>내러티브 랜딩이 공유. */
 export interface NarrativeItem {
@@ -142,6 +148,11 @@ export function NarrativeList({
                   ) : n.share_delta_pp ? (
                     <span className="text-[10px] text-up tabular-nums">+{n.share_delta_pp}%p</span>
                   ) : null}
+                  {n.created_at && (
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                      {relUpdated(n.created_at)}
+                    </span>
+                  )}
                 </div>
                 {n.summary && (
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.summary}</p>
