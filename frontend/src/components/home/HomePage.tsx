@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { AlertTriangle, BadgeCheck, Building2, FileText, Inbox, LineChart, Lightbulb, Route, Sparkles, Swords, Workflow } from "lucide-react"
+import { FileText, Inbox, LineChart, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { useHome } from "@/hooks/useHome"
@@ -12,7 +12,6 @@ import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
-import type { BriefItem } from "@/types"
 
 /**
  * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-048·D-049).
@@ -34,10 +33,7 @@ export default function HomePage() {
         <FreshnessStamp asOf={data.as_of} />
       </div>
 
-      {/* 기계가 먼저 말하는 3줄 — 소스경고·지식충돌·가설확인·인사이트 (변화 감지, 판단 아님) */}
-      {data.briefing.length > 0 && <BriefingSection items={data.briefing} />}
-
-      {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드 (승인 대기 칩 통합) */}
+      {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드. 공지(브리핑)·승인은 인박스로(D-054) */}
       <AiActivityFeed />
 
       {/* 월드모델 델타 — 매일 여는 것을 진입 요약으로 (내러티브 + 리포트) */}
@@ -54,38 +50,6 @@ export default function HomePage() {
   )
 }
 
-/* ---------- 기계의 3줄 ---------- */
-
-const BRIEF_ICON = {
-  insight: Lightbulb,
-  action: Building2,
-  signal: LineChart,
-  warning: AlertTriangle,
-  conflict: Swords,      // 지식 충돌 (K2)
-  confirmed: BadgeCheck, // 가설 확인 (K3)
-} as const
-
-function BriefingSection({ items }: { items: BriefItem[] }) {
-  return (
-    <Card className="bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))]">
-      <CardContent className="py-3">
-        <ul className="space-y-1.5">
-          {items.map((b, i) => {
-            const Icon = BRIEF_ICON[b.kind as keyof typeof BRIEF_ICON] ?? Lightbulb
-            return (
-              <li key={i}>
-                <Link to={b.to} className="group flex items-start gap-2 text-sm">
-                  <Icon className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${b.kind === "insight" ? "text-hypothesis" : b.kind === "warning" || b.kind === "conflict" ? "text-destructive" : "text-muted-foreground"}`} />
-                  <span className="group-hover:underline leading-snug">{b.text}</span>
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-      </CardContent>
-    </Card>
-  )
-}
 
 /* ---------- AI 자동생성 피드 (지난 7일 · 최신순, 승인 대기 칩 통합) ---------- */
 
