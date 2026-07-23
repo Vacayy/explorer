@@ -40,6 +40,24 @@
 
 **참조**: frontend `components/layout/ModeNavigation.tsx`·`components/layout/Header.tsx`·`components/home/HomePage.tsx`·`components/home/ApprovalsCard.tsx`(hideHeader 옵션) · SYSTEM.md §6 IA · D-031(월드모델 분리)·D-023
 
+## D-052 · 2026-07-23 · 세계관을 지식 탭으로 통합 + '세계관 뷰' → '온톨로지' 리네임
+
+**결정**: 월드모델 서브탭에서 별도였던 **세계관(인과 그래프)을 지식 탭으로 통합** — 지식 안에서
+**지식(검증 핵심) ↔ 온톨로지(전체 그래프)** 토글(`KnowledgeSubNav`). 월드모델 탭 3개로 축소:
+내러티브·리포트·지식. 구 '세계관 뷰' 라벨은 **'온톨로지'**로 리네임. 라우트: 그래프는 `/knowledge/ontology`,
+`/narrative/worldview`는 리다이렉트(레거시). 지식=`/knowledge`(기본).
+
+**맥락·이유**: 세계관 ⊃ 지식(전체 인과 지도 vs 그중 검증돼 승격된 핵심, D-050)이라 둘이 겹쳐 보였고
+R&R이 모호했다(사용자 2026-07-23). 한 탭에서 '전체 지도 ↔ 검증 핵심'을 오가는 게 개념적으로 맞고 탭도
+간결해진다. '세계관'은 은유적이라, '월드모델'(상단 모드명과 중복)보다 **'온톨로지'**가 정확(사용자 선택).
+
+**기각한 대안**: ① 세계관·지식 별도 유지 — 겹침·모호 지속 ② '월드모델'로 리네임 — 상단 모드명과 중복 혼란.
+
+**참조**: frontend ModeNavigation(WORLDMODEL_TABS 3개)·App.tsx(/knowledge/ontology·worldview 리다이렉트)·
+KnowledgeSubNav(신규)·KnowledgePage·WorldviewPage(h1 '온톨로지') · D-050 · 대화 2026-07-23
+
+---
+
 ## D-051 · 2026-07-23 · 리포트 생성은 자동이 아니라 '승인 후' — report_suggest 제안 + 백그라운드 생성
 
 **결정**: 리포트 자동 사전생성 대신, 재료(파급 시나리오 + 공유 내러티브)가 쌓인 주제를 감지해

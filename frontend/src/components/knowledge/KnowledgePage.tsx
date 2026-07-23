@@ -22,6 +22,7 @@ import {
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Expandable } from "@/components/shared/Expandable"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { cn } from "@/lib/utils"
 
@@ -109,6 +110,7 @@ export default function KnowledgePage() {
 
   return (
     <PageContainer gap="sm">
+      <KnowledgeSubNav />
       <div className="flex items-baseline gap-2">
         <h2 className="text-xl font-bold flex items-center gap-2">
           <BookOpenCheck className="h-5 w-5 text-muted-foreground" /> 지식 체계

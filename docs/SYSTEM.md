@@ -151,7 +151,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
 | `GET /api/spine/digests` · `POST /api/spine/digests/compute?stock=&period=` | 종목 1D/7D 요약 아카이브 조회 / **온디맨드 새로고침**(force 생성, period_start=당일이라 ON CONFLICT로 당일분 덮어씀 — 하루 다중 방지). 프론트: 진입 시 자동생성 없음, 카드 우측 ⟳ 버튼으로만 |
-| `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 |
+| `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`·`/version?id=`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 / **특정 버전 본문 by id**(히스토리 도트 클릭, D-050) |
 | `POST·GET·DELETE /api/spine/knowledge` (+`/items`·`/overview`·`/items/{id}/evidence·approve·reject`·`/worldview`) | 지식 주입(+rationale·source, 반증조건 생성) / 지식 목록(salience·conviction·quadrant·근거해부·반증조건) / 현황 카운트 / 근거사슬 / 승격 승인·거부 / 내 주입 삭제(user 한정) / 세계관 브리핑 |
 | `GET /api/spine/research/candidates` (+`/{id}/approve`·`/dismiss`) | 리서치 제안 목록(LLM 0) / 승인→stock_brief(opus)·추정치 방향 콜 / 기각 |
 | `GET /api/spine/beneficiary/screen?sector=` · `GET /api/spine/causal/activity` · `POST /api/spine/beneficiary/upside?stock=&event=` | 수혜 종목 스크린(공동언급+RS·밸류·관련도 필터, LLM 0) / 인과 그래프 델타(신규·갱신 노드+수혜 top3) / **업사이드 모델**(opus 4단계: 매출→이익→EPS→적정주가 또는 멀티플 리레이팅, 시나리오 보수/기본/낙관 범위+조건부·하방·무효화, `models` **캐시**(저장분 즉시 반환, refresh=1일 때만 opus 재생성), D-035). 세계관 노드 패널·**내러티브(수혜 종목 섹션)**에 노출 — 신호 탭 활동 카드는 내러티브로 연결(이슈=내러티브로 통합) |
@@ -179,10 +179,10 @@ Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소
                    **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039) ·
                    **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-049, 전부 '내가 커버하는 대상'). ※구 산업 페이지(/discover/industry)는 폐기
 월드모델           내러티브(빠른 층)·세계관(인과 그래프)·지식(느린 층)을 한 모드로 묶음 — "같은 인과 그래프의 두 속도"(D-023), 신호(델타 감지)와 성격이 달라 분리(D-031). 서브탭:
-                   내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·파급 시나리오·통합 리포트) ·
+                   내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·파급 시나리오·통합 리포트 + **이력**(v2+일 때 헤더 '이력'→/narrative/history?topic=X)) ·
+                   **히스토리**(/narrative/history?topic=X: 재생성 이력 타임라인 — x축 버전 도트(생성 시점+제목), 도트 클릭=해당 버전 본문(/version?id=), 도트 사이=직전 버전 대비 인과 diff, D-050) ·
                    **리포트**(/report: 발간 목록, /report?topic=X=디테일 — Top-down 리포트 + 최하단 구성 내러티브 링크, integrated-report/D-041) ·
-                   **세계관**(/narrative/worldview: narrative_id 스코프 없는 전역 인과 그래프 노드-링크 시각화 — React Flow+dagre 좌→우 배치, 도메인 렌즈 필터, 노드/엣지 클릭 시 Sheet 디테일. docs/specs/causal-worldview.md) ·
-                   지식(/knowledge: 3섹션 — 구조 지도(학습)·현황 대시보드(카운트·승격대기 큐·세계관·지식 리스트 salience×conviction 배지·근거사슬·반증조건)·지식 주입 콘솔(주입+근거/출처+삭제))
+                   지식(/knowledge: **지식↔온톨로지 토글**, D-052) — 지식=구조 지도·현황 대시보드·주입 콘솔(검증 승격 핵심) / **온톨로지**(/knowledge/ontology: 구 '세계관 뷰' 리네임 — 전역 인과 그래프 노드-링크 시각화, React Flow+dagre, 렌즈 필터, in-graph 패널. /narrative/worldview는 리다이렉트). 세계관 탭은 지식으로 통합(세계관 ⊃ 지식)
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·유튜브·뉴스·아티클·인물·역사(source_type=canon) (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
                    + 사이드바: 구독 채널/블로그 목록·닉네임·활성 토글·인라인 등록 폼
 문서(/doc/:id)     수집 원문·이미지 내부 열람 (외부 원문은 보조 버튼)
