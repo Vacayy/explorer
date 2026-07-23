@@ -10,6 +10,12 @@
 
 ---
 
+## D-061 · 2026-07-23 · Transcript 팔로우 — 미국 기업 실적 컨콜을 raw_documents로 흡수(Alpha Vantage 무료)
+**결정**: **(A)** 미국 기업 실적 발표·컨콜 transcript를 **기업 단위 팔로우**로 수집 — 리포트 핵심질문(D-049)의 "관찰 프록시(미정)"를 실데이터로 채우는 1차 소스. **(B) 사일로 금지**: 전문을 `raw_documents(source_type='transcript')`로 넣어 기존 enrich→doc_causal(온톨로지)→digests(LLM 정리)→doc_vec가 자동 인수. `transcripts` 테이블은 팔로우/프록시 UI용 얇은 인덱스(raw_doc_id FK)일 뿐, 전문 중복 저장 안 함. 컨콜=경영진 1차 발언이라 doc_causal 인과 추출 품질이 높은 고신호원. **(C) provider-추상**: `TRANSCRIPT_PROVIDER` env로 어댑터 스위치. **Alpha Vantage 무료(25 req/day, EARNINGS_CALL_TRANSCRIPT, 화자 세그먼트+감성) 채택** — FMP transcript는 유료 전용(실측 402)이라 폴백. **(D) 화면 IA**: 전용 **2분할 브라우저**(좌 기업 그룹 리스트=구독 관리, 우 LLM 정리→프록시 델타→원문) 본진 + 피드 '컨콜' 소스 탭 보조. 기업 페이지 탭은 `/analyze`가 DART 기반 **한국 종목 전용**이라 보류(→ US 도시에 백로그 P1로 승격). **(E) 기본 세트 21종**(M7·ORCL·AVGO·AMD·AI DC[CRWV·IREN·NBIS]·RKLB·에너지[VST·CEG]·CPO[COHR·LITE]·SNOW·Web3[COIN·HOOD]) — 비상장(OpenAI·Anthropic·SpaceX·Databricks·Securitize)은 컨콜 부재로 제외(상장 시 편입·그전엔 canon/feed 추적), 전력반도체·바이오는 이번 세트 제외. **stage 1(적재)만 구현** — 전용 페이지·피드 탭·프록시 추출은 후속.
+**맥락·이유**: 초기 리서치가 "FMP 무료 250 req/day"만 보고 transcript도 무료라 단정 → 무료 키로 402(유료 전용) 실측 후 Alpha Vantage로 전환(무료 demo 키로 IBM 실데이터·화자 37세그먼트 확인). provider-추상 덕에 어댑터만 교체. 검증: NVDA FY2026 Q3 컨콜 51KB 적재→enrich(haiku)→entity_links 12개 확인(온톨로지 엔티티 연결). 인과 엣지는 doc_causal cron이 후속 생성.
+**기각한 대안**: ① FMP 유료 업그레이드(월 ~$29) — 무료 우선, 필요 시 어댑터로 승격 ② 기업 페이지에서 풀기 — 미국 도시에 부재(한국 전용), 신설은 큰 범위 ③ 피드에서만 — 실적시즌 훑기엔 소음에 묻힘 ④ 별도 사일로 테이블에 전문 저장 — 온톨로지·RAG 단절(초안의 실수, 교정) ⑤ API Ninjas — "상업용 불가"·무료 이력 제한 ⑥ 짧은 애널리스트 피드式 노출 — 홈 AI 피드와 중복(BACKLOG 보류).
+**참조**: docs/specs/transcript-follow.md · 커밋 22882fc·c196a40 · SYSTEM.md §4-1·§5-1 · BACKLOG "리포트·액션 씨어리 후속 트랙" P0 · [[D-048]] [[D-049]]
+
 ## D-058 · 2026-07-23 · 메가 '세계관 서사'를 지식 탭으로 + 노드 통합을 관리자 독립 작업으로
 
 **결정**: (1) 내러티브 랜딩에 있던 **메가 내러티브('세계관 서사', D-032)**를 지식 탭(지식 뷰) 상단으로 이관 —
