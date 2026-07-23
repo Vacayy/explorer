@@ -159,13 +159,50 @@ def scan_vocab_merges(conn, cap: int = VOCAB_MERGE_CAP) -> int:
     return made
 
 
+def scan_report_suggestions(conn, cap: int = 5) -> int:
+    """리포트 생성 제안 (D-051) — 파급 시나리오가 있는데 아직 (최신) 리포트가 없는 주제.
+    리포트 생성은 비싸므로(opus 연쇄) 자동 생성 대신 '재료가 쌓였는데 만들까요?' 제안 → 승인 후 생성."""
+    made = 0
+    for r in conn.execute("""
+        SELECT s.topic, n.v narrative_version
+        FROM scenarios s
+        JOIN (SELECT topic, MAX(version) v FROM narratives
+              WHERE COALESCE(kind,'topic')='topic' GROUP BY topic) n ON n.topic = s.topic
+        WHERE NOT EXISTS (SELECT 1 FROM reports r WHERE r.anchor_topic = s.topic)
+        ORDER BY s.created_at DESC LIMIT ?""", (cap,)).fetchall():
+        topic = r["topic"]
+        rel = conn.execute(
+            "SELECT COUNT(*) FROM scenarios").fetchone()[0]  # 전체 파급 수(재료 풍부도 힌트)
+        made += _insert(
+            conn, "report_suggest",
+            f"'{topic}' — 내러티브·파급 재료가 쌓였습니다. 통합 리포트를 생성할까요?",
+            f"이 주제에 파급 시나리오가 준비됐고 공유 인과로 엮인 내러티브가 있습니다(현재 파급 {rel}건). "
+            "승인하면 다중 에이전트 리포트를 생성합니다 — opus 연쇄라 비용·시간(수 분)이 듭니다.",
+            {"topic": topic, "narrative_version": r["narrative_version"]},
+            f"report:{topic}:v{r['narrative_version']}")
+    return made
+
+
+def _bg_build_report(topic: str) -> None:
+    """리포트 백그라운드 생성 — 승인 HTTP 응답을 막지 않도록 스레드에서(opus 연쇄 수 분)."""
+    from pipeline.report import build_report
+    conn = get_connection()
+    try:
+        build_report(conn, topic, force=False)
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
 def run_all(include_llm: bool = True) -> dict:
-    """전체 스캔 배치 — LLM 0 kind 3종은 항상, LLM 필요분(devils_advocate·vocab_merge)은 include_llm일 때만."""
+    """전체 스캔 배치 — LLM 0 kind는 항상, LLM 필요분(devils_advocate·vocab_merge)은 include_llm일 때만."""
     conn = get_connection()
     stats = {
         "neglect": scan_neglect(conn),
         "contested_edge": scan_contested_edges(conn),
         "falsifier_watch": scan_falsifier_watch(conn),
+        "report_suggest": scan_report_suggestions(conn),
     }
     if include_llm:
         stats["devils_advocate"] = scan_devils_advocate(conn)
@@ -197,6 +234,10 @@ def approve_proposal(proposal_id: int) -> dict:
         result = {"brief_status": r.get("status"), "revision_call": r.get("revision_call")}
     elif kind == "contested_edge":
         result = _resolve_contested(payload)
+    elif kind == "report_suggest" and payload.get("topic"):
+        import threading
+        threading.Thread(target=_bg_build_report, args=(payload["topic"],), daemon=True).start()
+        result = {"report": "생성 시작 — 수 분 후 리포트 탭에서 확인"}
     elif kind == "vocab_merge" and payload.get("survivor_id") and payload.get("loser_id"):
         from pipeline.vocab import merge_entities
         mc = get_connection()
