@@ -18,6 +18,7 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("vocab_merge", "노드 통합", "온톨로지 유사 노드 교통정리 — sonnet 병합 판정→승인 큐(D-050)", "scan_agent_proposals.py → scan_vocab_merges"),
     ("promote_knowledge", "지식 승격", "주 1회 — 반복 관측 검증 지식 승격", "scripts/promote_knowledge.py"),
     ("collect_transcripts", "컨콜 수집", "Alpha Vantage — 팔로우 미국 기업 실적 컨콜 → raw_documents(온톨로지 편입)", "scripts/collect_transcripts.py"),
+    ("collect_trade", "수출입 수집", "관세청 — 팔로우 품목 월별 수출입 통계 + 관련 종목(파급 논리) 부트스트랩", "scripts/collect_trade.py"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}
 

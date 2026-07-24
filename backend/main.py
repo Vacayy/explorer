@@ -12,6 +12,7 @@ from routers import spine_brief, spine_conversations, spine_person, spine_knowle
 from routers import spine_quotes, spine_sector_map, spine_feature_days, spine_company, spine_narrative, spine_research, spine_report, spine_admin
 from routers import spine_causal
 from routers import spine_transcript
+from routers import spine_trade
 
 app = FastAPI(title="Stock Explorer API")
 
@@ -68,6 +69,7 @@ app.include_router(spine_knowledge.router)
 app.include_router(spine_approvals.router)
 app.include_router(spine_approvals.agent_router)
 app.include_router(spine_transcript.router)
+app.include_router(spine_trade.router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)
