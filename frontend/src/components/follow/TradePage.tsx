@@ -5,8 +5,9 @@ import { TrendingUp, ChevronRight, Sparkles } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
-import MultiLineChart from "@/components/charts/MultiLineChart"
-import type { LineConfig } from "@/components/charts/MultiLineChart"
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from "recharts"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -109,11 +110,6 @@ function ItemRail({ follows, effective, onPick }: { follows: FollowRow[]; effect
   )
 }
 
-const TRADE_LINES: LineConfig[] = [
-  { key: "export", label: "수출", color: "#38bdf8", lineWidth: 2 },
-  { key: "import", label: "수입", color: "#fb923c", lineWidth: 2 },
-]
-
 function TradeDetail({ hs }: { hs: string }) {
   const qc = useQueryClient()
   const { data, isLoading, isError, refetch } = useQuery(
@@ -127,7 +123,19 @@ function TradeDetail({ hs }: { hs: string }) {
   if (isLoading) return <Card><CardContent className="py-6 space-y-3"><Skeleton className="h-5 w-40" /><Skeleton className="h-56 w-full" /></CardContent></Card>
   if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
 
-  const rows = data.series.map((s) => ({ time: `${s.period}-01`, export: s.export_usd, import: s.import_usd }))
+  // 금액=bar($B), 수출 YoY%=line(별도 축). YoY = 전년 동월 대비.
+  const expByPeriod = new Map(data.series.map((s) => [s.period, s.export_usd]))
+  const rows = data.series.map((s) => {
+    const [y, m] = s.period.split("-")
+    const prev = expByPeriod.get(`${Number(y) - 1}-${m}`)
+    const yoy = prev && s.export_usd ? (s.export_usd / prev - 1) * 100 : null
+    return {
+      period: s.period,
+      수출: s.export_usd != null ? +(s.export_usd / 1e9).toFixed(2) : null,
+      수입: s.import_usd != null ? +(s.import_usd / 1e9).toFixed(2) : null,
+      YoY: yoy != null ? Math.round(yoy * 10) / 10 : null,
+    }
+  })
 
   return (
     <Card>
@@ -139,10 +147,26 @@ function TradeDetail({ hs }: { hs: string }) {
 
         <section className="rounded-lg border p-3">
           <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-            <TrendingUp className="h-4 w-4" /> 월별 수출입 추이 (달러)
+            <TrendingUp className="h-4 w-4" /> 월별 수출입 (bar, $B) · 수출 YoY (line, %)
           </h4>
           {rows.length === 0 ? <EmptyState message="통계 없음 — 관리자에서 '수출입 수집' 실행" />
-            : <MultiLineChart data={rows} lines={TRADE_LINES} height={240} formatValue={(v) => `$${(v / 1e9).toFixed(1)}B`} />}
+            : (
+              <ResponsiveContainer width="100%" height={260}>
+                <ComposedChart data={rows} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="period" tick={{ fontSize: 10 }} tickFormatter={(p: string) => p.slice(2)} minTickGap={24} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `$${v}B`} width={44} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} width={40} />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }}
+                    formatter={(v: number, name: string) => [name === "YoY" ? `${v}%` : `$${v}B`, name]} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar yAxisId="left" dataKey="수출" fill="var(--color-chart-blue)" opacity={0.85} />
+                  <Bar yAxisId="left" dataKey="수입" fill="var(--color-chart-orange)" opacity={0.85} />
+                  <Line yAxisId="right" type="monotone" dataKey="YoY" stroke="var(--color-chart-purple)" strokeWidth={2} dot={false} connectNulls />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
         </section>
 
         <section>
