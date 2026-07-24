@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Anchor, ArrowLeft, ArrowRight, GitMerge, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -15,7 +15,7 @@ import { PageContainer } from "@/components/shared/PageContainer"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
-import { ReportView } from "@/components/explore/ReportView"
+import { FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
@@ -161,7 +161,7 @@ export default function NarrativePage() {
             onSelectVersion={(id) => navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`)}
           />
           <ScenarioSection topic={topic} />
-          <ReportView topic={topic} />
+          <ReportLinkCard topic={topic} />
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
           {narrativeId && <ChainPaths narrativeId={narrativeId} />}
           <Card><CardContent className="py-3">
@@ -208,6 +208,52 @@ interface ScenarioResult {
 
 // 파급 시나리오 (D-038 캐시) — 저장분 즉시 표시, '다시 분석'(refresh)으로만 opus 재생성.
 // 내러티브 버전이 그대로면 재분석해도 저장분 반환(백엔드 가드).
+/** 통합 리포트 — 제목 리스트만(버전별), 클릭 시 리포트 페이지로. 원문은 리포트 페이지에서(D-041). */
+function ReportLinkCard({ topic }: { topic: string }) {
+  const to = `/report?topic=${encodeURIComponent(topic)}`
+  const { data: versions = [], isLoading } = useQuery(
+    apiQuery<{ id: number; title: string | null; top_pick: string | null; created_at: string }[]>({
+      key: ["spine", "report", "history", topic], url: "/api/spine/report/history", params: { topic },
+      staleTime: STALE.short,
+    }),
+  )
+  return (
+    <Card>
+      <CardContent className="py-3">
+        <div className="flex items-center gap-1.5 mb-2">
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">통합 리포트</span>
+          <Link to={to} className="ml-auto text-[11px] text-muted-foreground hover:text-foreground">리포트 페이지 →</Link>
+        </div>
+        {isLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : versions.length === 0 ? (
+          <Link to={to} className="text-xs text-muted-foreground hover:text-foreground">
+            아직 통합 리포트가 없습니다 — 리포트 페이지에서 생성 →
+          </Link>
+        ) : (
+          <ul className="space-y-1.5">
+            {versions.map((v) => (
+              <li key={v.id}>
+                <Link to={to} className="group flex items-start gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm leading-snug group-hover:underline">{v.title || `${topic} 통합 리포트`}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
+                      {v.top_pick && <Badge variant="secondary" className="text-[10px] font-normal">Top-pick {v.top_pick}</Badge>}
+                      <span className="tabular-nums">{v.created_at.slice(0, 10)}</span>
+                    </div>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function ScenarioSection({ topic }: { topic: string }) {
   const [nonce, setNonce] = useState(0)     // >0 이면 compute 실행 (증가 시 재실행)
   const [refresh, setRefresh] = useState(false)
