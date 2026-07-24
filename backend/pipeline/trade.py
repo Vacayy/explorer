@@ -121,6 +121,69 @@ def seed_default_follows() -> int:
     return n
 
 
+_BENE_PROMPT = """다음은 한국의 수출입 품목 '{item}'(HS {hs})의 최근 월별 수출 추이다.
+{trend}
+
+이 품목의 수출 증감이 **인과 논리로** 수혜/피해를 주는 한국 상장 종목을 지목하라.
+문서 언급 빈도가 아니라 인과 논리로 판단 — 아직 회자 안 됐어도 논리상 수혜/피해면 지목.
+(예: 이 품목 수출↑ → 생산·소재·장비 밸류체인 수혜 / 원재료 수입 의존 종목은 피해 가능)
+논리로 근거 댈 수 있는 것만, 억지 금지, 최대 6개.
+
+JSON만: {{"beneficiaries":[{{"name":"정확한 상장사명","rel":"수혜" 또는 "피해","reason":"이 품목 추이가 왜 이 종목에 수혜/피해인지 한 문장"}}]}}"""
+
+
+def _trend_str(stats: list) -> str:
+    """최근 통계로 추이 요약 문자열 (LLM 입력)."""
+    if not stats:
+        return "(데이터 없음)"
+    s = sorted(stats, key=lambda r: r["period"])
+    recent = s[-1]; first = s[0]
+    yoy = ""
+    if len(s) >= 13:
+        prev = s[-13]
+        if prev["export_usd"]:
+            yoy = f", 전년동월대비 {(recent['export_usd']/prev['export_usd']-1)*100:+.0f}%"
+    return (f"수출: {first['period']} ${first['export_usd']/1e9:.1f}B → "
+            f"{recent['period']} ${recent['export_usd']/1e9:.1f}B{yoy} "
+            f"(무역수지 {recent['period']} ${recent['balance_usd']/1e9:+.1f}B)")
+
+
+def compute_beneficiaries(hs_code: str) -> list[dict]:
+    """품목 관련 종목을 LLM 논리로 지목(D-036) → resolve_and_enrich → trade_beneficiaries 캐시(멱등 교체)."""
+    import json
+    from pipeline.enrich import _call_claude_code, llm_available
+    conn = get_connection()
+    item = conn.execute("SELECT item_name FROM trade_follow WHERE hs_code=?", (hs_code,)).fetchone()
+    stats = conn.execute(
+        "SELECT period, export_usd, balance_usd FROM trade_stats WHERE hs_code=? ORDER BY period DESC LIMIT 13",
+        (hs_code,)).fetchall()
+    if not item or not llm_available():
+        conn.close()
+        return []
+    try:
+        raw = _call_claude_code(
+            _BENE_PROMPT.format(item=item["item_name"], hs=hs_code, trend=_trend_str(stats)),
+            model="sonnet", timeout=180)
+        picks = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]).get("beneficiaries") or []
+    except Exception as e:  # noqa: BLE001
+        print(f"[trade] {hs_code} beneficiaries 실패: {e}")
+        conn.close()
+        return []
+    from pipeline.beneficiary import resolve_and_enrich
+    enriched = resolve_and_enrich(conn, [p for p in picks if isinstance(p, dict)])
+    conn.execute("DELETE FROM trade_beneficiaries WHERE hs_code=?", (hs_code,))
+    for b in enriched:
+        conn.execute(
+            "INSERT OR IGNORE INTO trade_beneficiaries (hs_code, stock_code, name, rel, reason, "
+            "rs, per, mktcap, pos_52w, in_universe, universe_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (hs_code, b.get("stock_code"), b.get("name"), b.get("rel"), b.get("reason"),
+             b.get("rs_short"), b.get("per"), b.get("market_cap"), b.get("pos_52w"),
+             1 if b.get("in_universe") else 0, json.dumps(b.get("universe_groups") or [], ensure_ascii=False)))
+    conn.commit()
+    conn.close()
+    return enriched
+
+
 def _followed(only: list[str] | None = None) -> list[dict]:
     conn = get_connection()
     rows = [dict(r) for r in conn.execute(

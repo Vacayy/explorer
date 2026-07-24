@@ -14,6 +14,7 @@ const FOLLOW_TABS = [
   { key: "follow", path: "/follow", label: "팔로우" },
   { key: "universe", path: "/follow/universe", label: "유니버스" },
   { key: "transcripts", path: "/follow/transcripts", label: "컨콜" },
+  { key: "trade", path: "/follow/trade", label: "수출입" },
   { key: "map", path: "/map", label: "산업 맵" },
   { key: "people", path: "/people", label: "인물" },
   { key: "actions", path: "/actions", label: "기업활동" },
@@ -178,6 +179,7 @@ function getActiveSubTab(pathname: string): string | null {
   // 팔로우 — /follow 하위(universe·transcripts)는 follow보다 먼저 매칭 + 커버리지 대상(D-057)
   if (pathname.startsWith("/follow/universe")) return "universe"
   if (pathname.startsWith("/follow/transcripts")) return "transcripts"
+  if (pathname.startsWith("/follow/trade")) return "trade"
   if (pathname.startsWith("/follow")) return "follow"
   if (pathname.startsWith("/map")) return "map"
   if (pathname.startsWith("/people") || pathname.startsWith("/person")) return "people"
