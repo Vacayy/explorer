@@ -21,6 +21,7 @@
 
 ### 문서 지도
 - 현행 시스템: docs/SYSTEM.md · 결정 이력: docs/DECISIONS.md
+- **설계 철학(관통 원칙): docs/PHILOSOPHY.md** — 개별 결정 뒤의 세계관(인식론·인과 세계모델·시장 인식론·인간기계 R&R). 설계 판단 시 원칙 정박점
 - 디자인 시스템: docs/DESIGN_SYSTEM.md (레이아웃 컨트랙트·토큰·패턴별 지정 구현)
 - 전략·지표: docs/STRATEGY.md · 백로그: docs/BACKLOG.md · 온톨로지: docs/ontology.md
 - 스펙: docs/specs/ · 정책: docs/policies/
