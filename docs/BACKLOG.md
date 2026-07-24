@@ -49,8 +49,9 @@
 5. **에이전트 제안함 v1** — docs/specs/agent-proposals.md. ✅ 2026-07-18 구현 (kind 4종·ApprovalsCard 통합·주간 cron)
 
 ## 세계관 완성도 트랙 (2026-07-19 착수 — D-030)
-1. **Layer 0 — 노드 중력** — layer(event~regime)를 meta_json에 적재+백필(haiku), 세계관 뷰 시각 무게,
-   순회 루트 정지 정밀화(regime/structure 도달 시)
+1. ✅ **Layer 0 — 노드 중력** — 완료(D-030). layer(event~regime)를 entities.meta_json에 적재(_persist_causal,
+   4개 소스 공통)+백필(scripts/backfill_pace_layer.py, 1,194노드 태깅), 세계관 뷰 시각 무게(WorldviewPage
+   LAYER_SIZE·regime 굵게), 순회 루트 정지(narrative_graph ROOT_LAYERS=regime/structure)
 2. **Canon 파일럿 — 패권사** — vault/canon/ 요약 노트(Fable 5 작성) → source_type='canon' 흡수 →
    역사 인과 추출(opus, epistemic='observed'·과거 reference_period) → '세계질서 재편' 뿌리 검증
 3. **canon 주제 확장** — ✅ 2026-07-19 4편 추가: 화폐질서 한 세기(1914~)·현대전쟁 형태변화
