@@ -828,6 +828,44 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_transcripts_ticker ON transcripts(ticker, fiscal_year, fiscal_period);
     CREATE INDEX IF NOT EXISTS idx_proxy_obs ON proxy_observations(proxy_id, observed_at);
+
+    -- 수출입(무역) 팔로우 (docs/specs/trade-follow.md, 관세청 품목별 수출입실적) — 관심 품목 구독
+    CREATE TABLE IF NOT EXISTS trade_follow (
+        hs_code       TEXT PRIMARY KEY,     -- HS 부호 (2·4단위 혼용, 예 '8542'=반도체)
+        item_name     TEXT NOT NULL,
+        group_label   TEXT,                 -- IT·자동차·소재·에너지 ...
+        active        INTEGER DEFAULT 1,
+        added_at      TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 품목별 월별 수출입 통계 (추이 시계열)
+    CREATE TABLE IF NOT EXISTS trade_stats (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        hs_code       TEXT NOT NULL,
+        period        TEXT NOT NULL,        -- 'YYYY-MM'
+        export_usd    REAL,
+        import_usd    REAL,
+        export_wt     REAL,
+        import_wt     REAL,
+        balance_usd   REAL,                 -- 무역수지 (수출-수입)
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE(hs_code, period)
+    );
+
+    -- 품목 관련 종목 (LLM 논리 지목 캐시, scenario/beneficiary와 동일 철학 — D-036)
+    CREATE TABLE IF NOT EXISTS trade_beneficiaries (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        hs_code       TEXT NOT NULL,
+        stock_code    TEXT,
+        name          TEXT,
+        rel           TEXT,                 -- 수혜 | 피해
+        reason        TEXT,
+        rs REAL, per REAL, mktcap REAL, pos_52w REAL,
+        in_universe   INTEGER, universe_groups TEXT,
+        computed_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(hs_code, name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_trade_stats ON trade_stats(hs_code, period);
     """)
 
     conn.commit()
