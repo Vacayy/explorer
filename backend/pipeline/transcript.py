@@ -87,6 +87,11 @@ def _recent_quarters(n: int = 5) -> list[dict]:
     직접 분기를 지목해 조회하므로 최근 분기 후보를 생성한다(없는 분기는 빈 응답 → 스킵)."""
     today = date.today()
     y, q = today.year, (today.month - 1) // 3 + 1
+    # 현재 캘린더 분기는 대개 미보고 → 직전 분기부터 조회(빈응답 낭비 방지). 회계연도-선행 기업(NVDA 등)의
+    # 이미-보고분은 저장돼 있어 스킵되므로 손실 없음. n을 1 늘려 커버 폭 유지.
+    q -= 1
+    if q == 0:
+        q, y = 4, y - 1
     out = []
     for _ in range(n):
         out.append({"year": y, "quarter": q, "date": f"{y}-{q * 3:02d}-01"})
@@ -103,7 +108,7 @@ class AlphaVantageProvider:
     URL = "https://www.alphavantage.co/query"
 
     def list_available(self, ticker: str) -> list[dict]:
-        return _recent_quarters(5)
+        return _recent_quarters(6)
 
     def fetch(self, ticker: str, year: int, quarter: int) -> dict | None:
         if not ALPHAVANTAGE_API_KEY:
