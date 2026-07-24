@@ -15,34 +15,34 @@ import requests
 from config import DATA_GO_KR_KEY
 from database import get_connection
 
-BASE = "http://apis.data.go.kr/1220000/nitemtrade/getNitemtradeList"
+BASE = "https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
 
-# 기본 팔로우 시드 (2026-07-24 리서치) — HS부호·품목명. 관련 종목은 런타임 LLM 지목.
-# 플래그십은 4단위(정밀), 광범위 카테고리는 2단위(전체 포괄).
+# 기본 팔로우 시드 (2026-07-24, 관세청 API로 6단위 검증·수출액순) — HS부호·품목명.
+# 관련 종목은 런타임 LLM 지목. 6단위는 투자 서사 직결처(반도체 메모리/시스템·EV전지·스마트폰),
+# 세분이 흐리는 광범위 카테고리는 2·4단위 유지(거짓 정밀 회피).
 DEFAULT_FOLLOWS = [
-    ("8542", "반도체(집적회로)", "IT"),
-    ("8541", "반도체(개별소자·전력)", "IT"),
-    ("8517", "무선통신기기", "IT"),
-    ("8471", "컴퓨터", "IT"),
-    ("8524", "디스플레이(평판모듈)", "IT"),
-    ("8703", "승용자동차", "자동차"),
+    ("854232", "메모리반도체(D램·낸드·HBM)", "반도체"),      # 월 ~$8B, 한국 최대 수출
+    ("854231", "시스템반도체(프로세서·컨트롤러)", "반도체"),   # 월 ~$3B
+    ("851713", "스마트폰", "IT"),
+    ("8524", "디스플레이(평판 모듈)", "IT"),               # 6단위 세분 모호 → 4단위
+    ("850760", "전기차용 리튬이온전지", "2차전지"),          # EV 배터리 (LG엔솔·삼성SDI)
+    ("8703", "승용자동차", "자동차"),                      # 세분(배기량·HEV·EV)은 후속
     ("8708", "자동차부품", "자동차"),
-    ("8507", "2차전지(축전지)", "2차전지"),
     ("2710", "석유제품", "에너지"),
-    ("39", "플라스틱·합성수지", "소재"),
+    ("39", "플라스틱·합성수지", "소재"),                    # 2단위=석화 전체
     ("72", "철강", "소재"),
     ("89", "선박", "기계"),
 ]
 
-# 응답 필드 후보 (관세청 표준 + 변형 대비) — 첫 확정 후 정리
+# 응답 필드 (2026-07-24 라이브 확정): expDlr·impDlr·expWgt·impWgt·balPayments·hsCode·statKor·year(YYYY.MM)
 _F = {
-    "period": ("year", "statYymm", "yymm"),
-    "export_usd": ("expDlr", "expUsd"),
-    "import_usd": ("impDlr", "impUsd"),
+    "period": ("year",),
+    "export_usd": ("expDlr",),
+    "import_usd": ("impDlr",),
     "export_wt": ("expWgt",),
     "import_wt": ("impWgt",),
-    "hs": ("hsCd", "hsSgn"),
-    "name": ("statKor", "korPrlmNm"),
+    "hs": ("hsCode",),
+    "name": ("statKor",),
 }
 
 
@@ -74,7 +74,8 @@ def _norm_period(raw: str | None) -> str | None:
 
 
 def fetch(hs_code: str, strt_yymm: str, end_yymm: str) -> list[dict]:
-    """관세청 품목별 수출입실적 조회 → 월별 정규화 dict 리스트. raw 보존."""
+    """관세청 품목별 수출입실적 조회 → **기간별 합산** 월별 시계열.
+    hsSgn을 2·4·6단위로 주면 하위 10단위 행이 여럿 오므로 period 기준 합산해 품목 총계를 낸다."""
     if not DATA_GO_KR_KEY:
         raise RuntimeError("DATA_GO_KR_KEY 미설정 — .env에 공공데이터포털 서비스키 필요")
     r = requests.get(BASE, params={
@@ -82,22 +83,18 @@ def fetch(hs_code: str, strt_yymm: str, end_yymm: str) -> list[dict]:
         headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     r.raise_for_status()
     root = ET.fromstring(r.text)
-    out = []
+    agg: dict[str, dict] = {}
     for item in root.iter("item"):
         period = _norm_period(_pick(item, _F["period"]))
         if not period:
-            continue
-        exp = _num(_pick(item, _F["export_usd"]))
-        imp = _num(_pick(item, _F["import_usd"]))
-        out.append({
-            "period": period,
-            "export_usd": exp, "import_usd": imp,
-            "export_wt": _num(_pick(item, _F["export_wt"])),
-            "import_wt": _num(_pick(item, _F["import_wt"])),
-            "balance_usd": (exp - imp) if (exp is not None and imp is not None) else None,
-            "name": _pick(item, _F["name"]),
-        })
-    return out
+            continue   # 연간 누계 행 등 제외
+        a = agg.setdefault(period, {"export_usd": 0.0, "import_usd": 0.0, "export_wt": 0.0, "import_wt": 0.0})
+        a["export_usd"] += _num(_pick(item, _F["export_usd"])) or 0
+        a["import_usd"] += _num(_pick(item, _F["import_usd"])) or 0
+        a["export_wt"] += _num(_pick(item, _F["export_wt"])) or 0
+        a["import_wt"] += _num(_pick(item, _F["import_wt"])) or 0
+    return [{"period": p, **v, "balance_usd": v["export_usd"] - v["import_usd"]}
+            for p, v in sorted(agg.items())]
 
 
 def probe(hs_code: str = "8542", strt_yymm: str = "202501", end_yymm: str = "202506") -> str:
