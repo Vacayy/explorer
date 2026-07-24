@@ -10,6 +10,8 @@ DART_API_KEY = os.getenv("DART_API_KEY", "")
 # FMP transcript는 유료 전용이라 무료 MVP엔 부적합(402). 무료 키: alphavantage.co/support
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "")
+# 관세청 수출입 무역통계 (공공데이터포털 data.go.kr, docs/specs/trade-follow.md)
+DATA_GO_KR_KEY = os.getenv("DATA_GO_KR_KEY", "")
 TRANSCRIPT_PROVIDER = os.getenv("TRANSCRIPT_PROVIDER", "alphavantage")  # alphavantage | fmp
 DB_PATH = Path(__file__).resolve().parent / "db" / "stock_explorer.db"
 
