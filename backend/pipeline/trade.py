@@ -83,6 +83,9 @@ def fetch(hs_code: str, strt_yymm: str, end_yymm: str) -> list[dict]:
         headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     r.raise_for_status()
     root = ET.fromstring(r.text)
+    code = root.findtext(".//resultCode")
+    if code and code not in ("00", "0"):   # 99=기간초과 등 — 조용히 빈 결과 처리 방지
+        raise RuntimeError(f"관세청 API: {root.findtext('.//resultMsg')} (code {code})")
     agg: dict[str, dict] = {}
     for item in root.iter("item"):
         period = _norm_period(_pick(item, _F["period"]))
@@ -126,17 +129,30 @@ def _followed(only: list[str] | None = None) -> list[dict]:
     return [r for r in rows if not only or r["hs_code"] in only]
 
 
+def _windows(strt: str, end: str) -> list[tuple[str, str]]:
+    """조회기간을 캘린더 연 단위(≤12개월)로 분할 — 관세청 API 1년 제한 대응."""
+    sy, sm = int(strt[:4]), int(strt[4:6])
+    ey, em = int(end[:4]), int(end[4:6])
+    out = []
+    for y in range(sy, ey + 1):
+        out.append((f"{y}{(sm if y == sy else 1):02d}", f"{y}{(em if y == ey else 12):02d}"))
+    return out
+
+
 def collect_followed(only: list[str] | None = None, strt_yymm: str = "202401",
                      end_yymm: str | None = None) -> dict:
-    """팔로우 품목의 월별 수출입 통계 수집 → trade_stats (멱등 upsert)."""
+    """팔로우 품목의 월별 수출입 통계 수집 → trade_stats (멱등 upsert). 기간은 연 단위로 분할 호출."""
     from datetime import date
     if end_yymm is None:
         t = date.today()
         end_yymm = f"{t.year}{t.month:02d}"
+    windows = _windows(strt_yymm, end_yymm)
     stored, failed = 0, 0
     for f in _followed(only):
+        rows = []
         try:
-            rows = fetch(f["hs_code"], strt_yymm, end_yymm)
+            for ws, we in windows:
+                rows += fetch(f["hs_code"], ws, we)
         except Exception as e:  # noqa: BLE001
             print(f"[trade] {f['hs_code']} {f['item_name']} 실패: {e}")
             failed += 1
