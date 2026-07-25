@@ -205,7 +205,8 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
     해당 도메인 렌즈를 걸치면 포함 — 현재 태그 하나만 보는 것보다 정확하다."""
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation,
-               er.confidence, er.promoted_knowledge_id, er.feedback_note, er.geo_scope,
+               er.confidence, er.effect_direction, er.effect_strength,
+               er.promoted_knowledge_id, er.feedback_note, er.geo_scope,
                s.id sid, s.name sname, s.type stype, s.meta_json smeta,
                d.id did, d.name dname, d.type dtype, d.meta_json dmeta
         FROM entity_relations er
@@ -269,6 +270,7 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
             "to": e["dname"], "to_id": e["did"], "to_type": e["dtype"],
             "rel": e["rel_type"], "mechanism": e["mechanism"], "orientation": e["time_orientation"],
             "reference_period": e["reference_period"], "confidence": e["confidence"],
+            "effect_direction": e["effect_direction"], "effect_strength": e["effect_strength"],
             "corroborated_by": n_narratives, "contested": contested,
             "feedback_note": e["feedback_note"], "geo_scope": e["geo_scope"],
             "promoted_knowledge_id": e["promoted_knowledge_id"],

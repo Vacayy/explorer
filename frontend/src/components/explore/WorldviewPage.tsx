@@ -30,6 +30,12 @@ const VIEW_MODES = [
   { value: "obsidian", label: "관계망" },    // force 관계망 (옵시디언式)
 ] as const
 
+// 엣지 표현 렌즈 (흐름 뷰 전용) — 같은 그래프, 엣지가 답하는 질문만 바꾼다 ("사실은 그래프로, 프레임은 렌즈로")
+const EDGE_MODES = [
+  { value: "epistemic", label: "인식 상태" },   // 반박·플라이휠·교차검증 (기본)
+  { value: "effect", label: "효과 흐름" },       // 방향(색)·크기(굵기) — D-065·D-066
+] as const
+
 /**
  * /narrative/worldview — 세계관 뷰 (그래프 시각화 기획서, docs/specs/causal-worldview.md).
  * narrative_id 스코프 없는 전역 인과 그래프를 노드-링크로. 좌(근본원인)→우(수혜) dagre 배치 —
@@ -46,6 +52,7 @@ interface WEdge {
   to: string; to_id: number; to_type: string | null
   rel: string; mechanism: string | null; orientation: string | null
   reference_period: string | null; confidence: number | null
+  effect_direction?: string | null; effect_strength?: string | null
   corroborated_by: number; contested: boolean; promoted_knowledge_id: number | null
   feedback_note?: string | null   // both_temporal 해소 근거 (시점 다른 피드백 나선, D-029)
   geo_scope?: string | null       // 인과 주장의 장소 스코프 (통제어휘, D-034)
@@ -133,6 +140,12 @@ export default function WorldviewPage() {
     if (v === "structure") n.delete("view"); else n.set("view", v)
     return n
   }, { replace: true })
+  const edgeMode = searchParams.get("edges") === "effect" ? "effect" : "epistemic"  // 엣지 렌즈 (URL=상태 소스)
+  const setEdgeMode = (v: string) => setSearchParams((p) => {
+    const n = new URLSearchParams(p)
+    if (v === "effect") n.set("edges", "effect"); else n.delete("edges")
+    return n
+  }, { replace: true })
   const [lenses, setLenses] = useState<string[]>([])
   const [showSmall, setShowSmall] = useState(false)
   const [backboneOnly, setBackboneOnly] = useState(true)   // 기본=줄기만 (잔가지 숨김)
@@ -215,22 +228,34 @@ export default function WorldviewPage() {
       id: String(n.id), type: "graphNode", position: { x: n.x, y: n.y },
       data: { ...n, isFocal: n.id === focusId } as unknown as Record<string, unknown>,
     }))
+    const dash = (e: WEdge) => (e.rel === "BENEFITS_FROM" ? "4 3" : undefined)
     const rfEdges: Edge[] = visEdges.map((e, i) => ({
       id: `e${i}`, source: String(e.from_id), target: String(e.to_id),
       type: "smoothstep",
-      style: {
-        strokeDasharray: e.rel === "BENEFITS_FROM" ? "4 3" : undefined,
-        stroke: e.contested ? "var(--destructive)"
-          : e.flywheel ? "var(--hypothesis)" : "var(--muted-foreground)",
-        strokeWidth: e.flywheel || e.corroborated_by >= 2 ? 2.5 : 1,
-        opacity: e.flywheel || e.contested || e.corroborated_by >= 2 ? 1 : 0.45,
-      },
-      animated: !!e.flywheel,
+      // 효과 흐름 렌즈: 색=방향(정+ 빨강/부− 파랑), 굵기=효과 크기(약할수록 얇고 흐림, D-066 편향 대응)
+      // 인식 상태 렌즈(기본): 색=반박/플라이휠, 굵기=교차검증
+      style: edgeMode === "effect"
+        ? {
+            strokeDasharray: dash(e),
+            stroke: e.effect_direction === "positive" ? "var(--color-up)"
+              : e.effect_direction === "negative" ? "var(--color-down)"
+              : "var(--muted-foreground)",
+            strokeWidth: e.effect_strength === "strong" ? 2.5 : e.effect_strength === "weak" ? 0.75 : 1.5,
+            opacity: e.effect_strength === "weak" ? 0.4 : 0.9,
+          }
+        : {
+            strokeDasharray: dash(e),
+            stroke: e.contested ? "var(--destructive)"
+              : e.flywheel ? "var(--hypothesis)" : "var(--muted-foreground)",
+            strokeWidth: e.flywheel || e.corroborated_by >= 2 ? 2.5 : 1,
+            opacity: e.flywheel || e.contested || e.corroborated_by >= 2 ? 1 : 0.45,
+          },
+      animated: edgeMode === "epistemic" && !!e.flywheel,
       markerEnd: { type: MarkerType.ArrowClosed },
       data: e as unknown as Record<string, unknown>,
     }))
     return { nodes: rfNodes, edges: rfEdges }
-  }, [visNodes, visEdges, focusId])
+  }, [visNodes, visEdges, focusId, edgeMode])
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(builtNodes)
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(builtEdges)
@@ -284,6 +309,25 @@ export default function WorldviewPage() {
           작은 조각{hiddenCount > 0 && !showSmall ? ` (숨김 ${hiddenCount})` : ""}
         </label>
       </div>
+
+      {view === "structure" && (
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-muted-foreground">엣지 렌즈</span>
+          <ToggleGroup type="single" value={edgeMode} onValueChange={(v) => v && setEdgeMode(v)} className="gap-1">
+            {EDGE_MODES.map((m) => (
+              <ToggleGroupItem key={m.value} value={m.value}
+                className="h-7 px-3 text-xs rounded-lg text-muted-foreground data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent">
+                {m.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <span className="text-[10px] text-muted-foreground ml-1">
+            {edgeMode === "effect"
+              ? <>색 = 방향(<span className="text-up">정+</span> 늘림 / <span className="text-down">부−</span> 줄임) · 굵기 = 효과 크기(약할수록 흐림)</>
+              : <>색 = <span className="text-destructive">상충</span> / <span className="text-hypothesis">플라이휠</span> · 굵기 = 교차검증</>}
+          </span>
+        </div>
+      )}
 
       {focalNode && (
         <div className="flex items-center gap-2 text-xs flex-wrap rounded-lg border border-primary/30 bg-accent/40 px-3 py-1.5">
