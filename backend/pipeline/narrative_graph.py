@@ -157,7 +157,7 @@ def _materialize(conn, anchor_id: int, anchor_name: str, anchor_type: str,
         })
     return {
         "nodes": nodes, "edges": edges,
-        "confidence": round(_path_confidence(up_hops) * _path_confidence(down_hops), 4),
+        "path_confidence": round(_path_confidence(up_hops) * _path_confidence(down_hops), 4),
         "reaches_sector": (bool(down_hops) and down_hops[-1]["type"] == "sector")
         or anchor_type == "sector",
     }
@@ -165,7 +165,7 @@ def _materialize(conn, anchor_id: int, anchor_name: str, anchor_type: str,
 
 def narrative_chain(conn, narrative_id: int, top_k: int = TOP_K) -> dict:
     """내러티브의 인과 서브그래프 노드들을 앵커로, 전역 그래프에서 근본 원인↔수혜 섹터까지
-    순회해 root→…→수혜 경로 top_k개를 confidence 곱 랭킹으로 반환."""
+    순회해 root→…→수혜 경로 top_k개를 path_confidence(경로 신뢰도=엣지 confidence 곱) 랭킹으로 반환."""
     sub = causal_subgraph(conn, narrative_id)
     anchors = []
     for n in sub["nodes"]:
@@ -189,7 +189,7 @@ def narrative_chain(conn, narrative_id: int, top_k: int = TOP_K) -> dict:
                 seen_seq.add(seq)
                 candidates.append(path)
 
-    candidates.sort(key=lambda p: -p["confidence"])
+    candidates.sort(key=lambda p: -p["path_confidence"])
     return {"status": "ok" if candidates else "empty", "paths": candidates[:top_k]}
 
 

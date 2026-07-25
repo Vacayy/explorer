@@ -488,7 +488,7 @@ function MerNarrativeCard({ topic }: { topic: string }) {
 interface ChainPath {
   nodes: { name: string; type: string }[]
   edges: CausalEdge[]
-  confidence: number
+  path_confidence: number
   reaches_sector: boolean
 }
 interface ChainResponse { status: string; paths: ChainPath[] }
@@ -534,7 +534,7 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
                 )
               })}
               <Badge variant="outline" className="text-[9px] font-normal text-muted-foreground ml-1">
-                신뢰도 {(p.confidence * 100).toFixed(0)}%
+                경로 신뢰도 {(p.path_confidence * 100).toFixed(0)}%
               </Badge>
             </li>
           ))}

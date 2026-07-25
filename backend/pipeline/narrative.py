@@ -125,6 +125,8 @@ def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, c
         except (TypeError, ValueError):
             conf = 0.5
         conf = min(conf, conf_cap)
+        es = e.get("effect_strength") if e.get("effect_strength") in EFFECT_STRENGTHS else "unknown"
+        ed = e.get("effect_direction") if e.get("effect_direction") in EFFECT_DIRECTIONS else None
         existing = conn.execute(
             "SELECT id, confidence FROM entity_relations WHERE src_id=? AND dst_id=? AND rel_type=?",
             (sid, did, rel)).fetchone()
@@ -132,16 +134,19 @@ def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, c
             # 문서 레벨 재확인(narrative_id=None)이 기존 내러티브 태그를 지우지 않게 COALESCE
             conn.execute(
                 "UPDATE entity_relations SET confidence=?, narrative_id=COALESCE(?, narrative_id), "
-                "mechanism=COALESCE(?, mechanism), geo_scope=COALESCE(geo_scope, ?) WHERE id=?",
+                "mechanism=COALESCE(?, mechanism), geo_scope=COALESCE(geo_scope, ?), "
+                "effect_strength=COALESCE(NULLIF(?, 'unknown'), effect_strength), "
+                "effect_direction=COALESCE(?, effect_direction) WHERE id=?",
                 (min(0.95, (existing["confidence"] or conf) + 0.05), narrative_id,
-                 e.get("mechanism"), _norm_geo(e.get("geo")), existing["id"]))
+                 e.get("mechanism"), _norm_geo(e.get("geo")), es, ed, existing["id"]))
             rel_id = existing["id"]
         else:
             cur = conn.execute(
                 "INSERT INTO entity_relations (src_id, dst_id, rel_type, epistemic_type, confidence, "
+                "effect_strength, effect_direction, "
                 "source_doc_id, mechanism, reference_period, time_orientation, narrative_id, geo_scope, valid_from) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-                (sid, did, rel, epistemic, conf, source_doc_id, e.get("mechanism"),
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                (sid, did, rel, epistemic, conf, es, ed, source_doc_id, e.get("mechanism"),
                  e.get("reference_period"), e.get("orientation"), narrative_id, _norm_geo(e.get("geo"))))
             rel_id = cur.lastrowid
             made += 1
@@ -180,6 +185,9 @@ _ORIENT_KO = {"past": "회고", "current": "현재", "forward": "전망", "mixed
 DOMAIN_LENSES = {"macro", "geopolitics", "industry", "flow", "tech", "policy"}
 NODE_TYPES = {"company", "sector", "theme", "person", "macro", "policy", "event"}
 CAUSAL_RELS = {"CAUSES", "BENEFITS_FROM"}
+# 효과 크기·방향 통제어휘 (확신=confidence와 분리된 축, D-065). float 금지=거짓 정밀(철학 §3).
+EFFECT_STRENGTHS = {"unknown", "weak", "moderate", "strong", "dominant"}
+EFFECT_DIRECTIONS = {"positive", "negative", "mixed"}
 # 인과 주장의 장소 스코프 통제어휘 (파편화 방지, D-034). 3개 프롬프트가 공유.
 GEO_VOCAB = "한국|미국|중국|유럽|일본|대만|글로벌|기타"
 _GEO_SET = set(GEO_VOCAB.split("|"))
@@ -247,7 +255,8 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "  layer ∈ event·flow·cycle·structure·regime (느릴수록 구조적)\n"
         f"  ★기존 노드가 있으면 새로 만들지 말고 정확히 그 이름을 재사용: {', '.join(node_vocab[:60])}\n"
         "- causal.edges: 인과 고리. 각 "
-        "{\"from\",\"to\",\"rel\",\"mechanism\",\"orientation\",\"reference_period\",\"geo\",\"confidence\"}.\n"
+        "{\"from\",\"to\",\"rel\",\"mechanism\",\"orientation\",\"reference_period\",\"geo\","
+        "\"effect_direction\",\"effect_strength\",\"confidence\"}.\n"
         "  rel='CAUSES'(원인→결과). 수혜 섹터는 rel='BENEFITS_FROM'(from=수혜 섹터, to=체인 말단 동인).\n"
         "  앞의 끝(근본 원인)은 policy/regime/structure 노드까지 거슬러라. "
         "뒤의 끝(수혜)은 sector까지만 — 개별 종목 금지.\n"
@@ -258,7 +267,9 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "  orientation ∈ past|current|forward (원인은 대개 past, 수혜 효과는 forward).\n"
         "  reference_period: 이 인과가 작동하는 시점(수집일 아님, 예 '2026 하반기'), 모르면 null.\n"
         f"  geo ∈ {{{GEO_VOCAB}}} 중 하나(특정 지역 사건이면 해당국, 전세계 공통이면 글로벌, 목록 밖이면 기타), 모르면 null.\n"
-        "  confidence: 0~1 (근거 강도). 원인→결과 방향만.\n"
+        "  effect_direction ∈ positive|negative|mixed (원인이 결과를 늘리나/줄이나).\n"
+        "  effect_strength ∈ unknown|weak|moderate|strong|dominant (성립 시 효과의 크기 — 확신과 별개 축, 숫자로 답하지 말 것).\n"
+        "  confidence: 0~1 (이 인과 주장이 **참이라는 확신** — 효과 크기가 아니라 맞을 믿음). 원인→결과 방향만.\n"
         "  ★피드백(자기강화): 결과가 다시 원인을 강화하는 순환(예: AI 능력↑→합성 데이터→학습 강화→AI 능력↑)을 "
         "발견하면 버리지 말고 **시점이 다른 두 개의 엣지로 펴서** 표현하라 — A→B(reference_period=현재)와 "
         "B→A(reference_period=그 다음 시기, orientation=forward). 같은 시점 안에서의 순환(A→B→A 동시)은 금지. "
