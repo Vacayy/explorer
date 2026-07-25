@@ -48,7 +48,7 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
         "정전(canon) 노트다. 여기 서술된 인과 사슬을 구조화해라 — 노트에 없는 인과를 추론으로 "
         "보태지 마라.\n"
         'JSON만 출력: {"causal": {"nodes": [{"name","type","layer"}], "edges": '
-        '[{"from","to","rel","mechanism","orientation","reference_period","confidence"}]}}\n'
+        '[{"from","to","rel","mechanism","orientation","reference_period","effect_direction","effect_strength","confidence"}]}}\n'
         "규칙:\n"
         "- type ∈ company·sector·theme·person·macro·policy·event\n"
         "- layer ∈ event·flow·cycle·structure·regime — 역사 노트이므로 structure·regime이 많을 것\n"
@@ -59,7 +59,9 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
         "(예: '2001', '2011', '2018', '2022'). orientation은 대부분 past, 현재 진행분만 current.\n"
         "- 행위자: 특정 인물·기업·기관의 결정이 메커니즘의 실체면 person/company 노드로.\n"
         "- 피드백(자기강화 — 예: 수출통제→자립 투자→견제 강화)은 시점이 다른 두 엣지로 펴서.\n"
-        "- mechanism: 한 문장, 노트의 서술에 근거. confidence: 통설적 합의 강도 (0.6~0.85).\n"
+        "- mechanism: 한 문장, 노트의 서술에 근거. effect_direction ∈ positive|negative|mixed. "
+        "effect_strength ∈ unknown|weak|moderate|strong (효과 크기 — 확신과 별개 축, 숫자 금지, 애매하면 낮은 쪽). "
+        "confidence: 통설적 합의 강도 (0.6~0.85).\n"
         f"[canon 노트]\n제목: {title}\n{(markdown or '')[:EXCERPT]}"
     )
 
