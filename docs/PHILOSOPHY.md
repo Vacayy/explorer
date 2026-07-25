@@ -22,9 +22,10 @@
   - **왜**: 둘을 섞으면 월드모델이 "그럴듯한 쓰레기"가 된다. LLM 산출(태그·요약·해석·답변)은 전부 가설이다.
   - **발현**: `entity_relations.epistemic_type` ∈ `fact`(공시·지분·계약·통계) · `observed`(널리 수용된 역사 해석 — 시장 가설보다 강하고 순수 사실보다 약한 중간 티어) · `hypothesis`(LLM 추출, `confidence`+`source_doc_id` 필수). UI에서 가설=주황(hypothesis) 스타일.
   - **근거**: [[D-005]](엣지 단방향+epistemic 필수) · [[D-030]](observed 중간 티어) · ontology.md §설계원칙 · SYSTEM.md §1
-- **confidence = 엣지 가중치** — 인과의 강도·확실성을 0~1로.
-  - **왜**: "얼마나 강한/확실한 원인인가"를 명시해야 약한 주장이 강한 사실을 흉내 내지 못한다.
-  - **발현**: `entity_relations.confidence`. 재적재 시 강화, 교차검증(`corroborated_by`)으로 누적. 노드 중력(§2)과 **직교**하는 축.
+- **confidence·effect_strength 분리 — 확신과 강도는 다른 축** — confidence는 "이 인과 주장이 참이라는 믿음"만, effect_strength(+effect_direction)는 "성립 시 효과의 크기·방향".
+  - **왜**: 단일 confidence는 "약하지만 확실"과 "강하지만 불확실"을 구분 못 한다. 그 값을 곱한 경로점수는 causal impact가 아니라 epistemic reliability 랭킹이다 — 둘을 섞으면 "가장 믿을 만한 경로"가 "가장 중요한 경로"로 오독된다.
+  - **발현**: `entity_relations.confidence`(확신, 재적재·`corroborated_by` 누적) + `effect_strength`(범주형 unknown~dominant, 0~1 float 금지=거짓 정밀 §3) + `effect_direction`. 순회 점수는 `path_confidence`(경로 신뢰도)로 표기 — "영향도" 아님. applicability(현 대상·시점 적합도)는 저장 축이 아니라 geo_scope×reference_period×노출의 쿼리 시점 함수. 노드 중력(§2)과 **직교**.
+  - **근거**: [[D-065]](confidence 의미 분리) · [[D-005]] · [[D-034]]
 - **신호는 근거와 함께** — 근거 문서 없는 신호는 표시하지 않는다. "왜?"가 항상 1클릭.
 - **정직한 보고** — "완료"는 실제 충족했을 때만. 흉내는 완료가 아니다. 불확실하면 먼저 말한다. RAG가 근거 없으면 답을 거부하는 것도 이 원칙(느슨하게가 아니라 canon으로 출처를 준다).
   - **근거**: CLAUDE.md Integrity Rules · [[D-030]](canon 인물사 배경)
@@ -55,7 +56,7 @@
   - **근거**: [[D-035]](조건부 업사이드/하방) · docs/specs/action-thesis.md
 - **하방 대비 상방(비대칭)이 레이팅의 기준** — %는 상승여력이지 포트폴리오 비중이 아니다.
   - **근거**: [[D-048]](레이팅=상승여력 비대칭)
-- **Forward만 본다** — trailing PER은 시장이 참고 안 하는 지표. 12M Fwd PER 추이·리레이팅/디레이팅으로.
+- **Forward만 본다** — 시장은 미래를 본다. 12M Fwd PER 추이·리레이팅/디레이팅을 활용. trailing PER은 시장이 참고 안 하는 지표.
   - **근거**: [[D-046]](Fwd PER only)
 - **말뭉치 최신편향 탈출** — 수혜 종목은 "문서에 자주 언급됐나"가 아니라 **인과 논리**로 지목(아직 회자 안 됐어도 논리상 수혜면). 유니버스는 필터가 아니라 크로스체크 태그.
   - **왜**: 공동언급 스크린은 이미 회자된 것만 잡는다 — 논리상 수혜를 놓친다.
@@ -63,7 +64,7 @@
 - **핵심은 결론 먼저(BLUF)** — 리포트는 지배 내러티브가 던지는 핵심 질문 + 상방/하방 결론을 최상단에, 근거는 뒤에.
   - **근거**: [[D-049]](BLUF)
 
-## 4. 인간·기계 R&R — 기계는 제안, 사람이 판단
+## 4. 인간·기계 R&amp;R — 기계는 제안, 사람이 판단
 
 - **제안-전용 (승인 전 무행동)** — 시스템은 "조사해볼까요?"를 던질 뿐, 승인 전 어떤 상태도 바꾸지 않는다.
   - **왜**: 자율을 좁게 정의한다 — 자동 실행이 아니라 자동 **제안**. 판단은 사람의 것.
@@ -98,3 +99,4 @@
 4. **시간을 1급으로** — 정박(언제 작동), 속도(얼마나 느린가), 축적(버전·시계열).
 
 > 참조 지도: 결정 이력 [DECISIONS.md](DECISIONS.md) · 현행 구조 [SYSTEM.md](SYSTEM.md) · 온톨로지 [ontology.md](ontology.md) · 전략 [STRATEGY.md](STRATEGY.md) · 규칙 [CLAUDE.md](../CLAUDE.md)
+
