@@ -327,6 +327,7 @@ interface CausalEdge {
   from: string; from_type: string | null; to: string; to_type: string | null
   rel: string; mechanism: string | null; orientation: string | null
   reference_period: string | null; confidence: number | null
+  effect_direction?: string | null; effect_strength?: string | null
   corroborated_by?: number; contested?: boolean; promoted_knowledge_id?: number | null
 }
 interface CausalGraph { nodes: { name: string; type: string }[]; edges: CausalEdge[] }
@@ -493,6 +494,21 @@ interface ChainPath {
 }
 interface ChainResponse { status: string; paths: ChainPath[] }
 
+// 인과 링크 화살표 — 방향(색: 정+ 빨강 / 부− 파랑, D-065 견고 축)·효과 크기(굵기, D-066 보조 축).
+function EdgeArrow({ edge }: { edge?: CausalEdge }) {
+  const dir = edge?.effect_direction
+  const str = edge?.effect_strength
+  const color = dir === "positive" ? "text-up" : dir === "negative" ? "text-down" : "text-muted-foreground"
+  const size = str === "strong" ? "h-4 w-4" : str === "weak" ? "h-2.5 w-2.5" : "h-3 w-3"
+  const dirLabel = dir === "positive" ? "정(+) 늘림" : dir === "negative" ? "부(−) 줄임" : "방향 미상"
+  const title = str && str !== "unknown" ? `${dirLabel} · 효과 ${str}` : dirLabel
+  return (
+    <span title={title} className="inline-flex shrink-0">
+      <ArrowRight className={cn(size, color)} />
+    </span>
+  )
+}
+
 function ChainPaths({ narrativeId }: { narrativeId: number }) {
   const { data, isLoading, isError } = useQuery(
     apiQuery<ChainResponse>({
@@ -513,6 +529,9 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
           <span className="text-sm font-medium">근본 원인 → 수혜 경로</span>
           <span className="text-[11px] text-muted-foreground">전역 인과 그래프 순회</span>
         </div>
+        <div className="text-[10px] text-muted-foreground">
+          화살표 색 = 효과 방향(<span className="text-up">정+</span> 늘림 / <span className="text-down">부−</span> 줄임), 굵기 = 효과 크기
+        </div>
         <ul className="space-y-2.5">
           {data.paths.map((p, i) => (
             <li key={i} className="flex flex-wrap items-center gap-1.5 text-sm">
@@ -529,7 +548,7 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
                       <span className="text-[9px] text-muted-foreground">{NODE_LABEL[n.type] ?? n.type}</span>
                       <span className="font-medium">{n.name}</span>
                     </span>
-                    {j < p.nodes.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
+                    {j < p.nodes.length - 1 && <EdgeArrow edge={p.edges[j]} />}
                   </span>
                 )
               })}

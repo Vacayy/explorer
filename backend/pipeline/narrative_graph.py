@@ -33,7 +33,8 @@ def _upstream_step(conn, node_id: int) -> list[dict]:
     """node_id를 결과(dst)로 갖는 CAUSES 엣지 — 원인(src) 후보 (+pace_layer, 루트 정지용)."""
     out = []
     for r in conn.execute(
-        "SELECT er.id eid, er.src_id nid, er.confidence, er.mechanism, "
+        "SELECT er.id eid, er.src_id nid, er.confidence, "
+        "er.effect_direction, er.effect_strength, er.mechanism, "
         "er.time_orientation orientation, "
         "er.reference_period, e.name, e.type, e.meta_json, 'CAUSES' rel "
         "FROM entity_relations er JOIN entities e ON e.id = er.src_id "
@@ -52,13 +53,15 @@ def _upstream_step(conn, node_id: int) -> list[dict]:
 def _downstream_step(conn, node_id: int) -> list[dict]:
     """node_id 이후 하류 — CAUSES(src=node_id→dst) ∪ BENEFITS_FROM(dst=node_id→src, 수혜 방향)."""
     return [dict(r) for r in conn.execute(
-        "SELECT er.id eid, er.dst_id nid, er.confidence, er.mechanism, "
+        "SELECT er.id eid, er.dst_id nid, er.confidence, "
+        "er.effect_direction, er.effect_strength, er.mechanism, "
         "er.time_orientation orientation, "
         "er.reference_period, e.name, e.type, 'CAUSES' rel "
         "FROM entity_relations er JOIN entities e ON e.id = er.dst_id "
         "WHERE er.src_id=? AND er.rel_type='CAUSES' "
         "UNION ALL "
-        "SELECT er.id eid, er.src_id nid, er.confidence, er.mechanism, "
+        "SELECT er.id eid, er.src_id nid, er.confidence, "
+        "er.effect_direction, er.effect_strength, er.mechanism, "
         "er.time_orientation orientation, "
         "er.reference_period, e.name, e.type, 'BENEFITS_FROM' rel "
         "FROM entity_relations er JOIN entities e ON e.id = er.src_id "
@@ -154,6 +157,7 @@ def _materialize(conn, anchor_id: int, anchor_name: str, anchor_type: str,
             "from": a, "to": b, "rel": h["rel"], "mechanism": h.get("mechanism"),
             "orientation": h.get("orientation"), "reference_period": h.get("reference_period"),
             "confidence": h.get("confidence"),
+            "effect_direction": h.get("effect_direction"), "effect_strength": h.get("effect_strength"),
         })
     return {
         "nodes": nodes, "edges": edges,
