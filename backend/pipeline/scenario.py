@@ -44,7 +44,7 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "인과 체인으로 전개해 결과를 JSON으로 정리해라. (설명·머리말 없이 JSON만, 코드블록 없이.)\n"
         'JSON만 출력: {"scenario": "마크다운", "beneficiaries": [{"name","rel","reason"}], '
         '"causal": {"nodes": [{"name","type","layer"}], '
-        '"edges": [{"from","to","rel","mechanism","orientation","reference_period","geo","confidence"}]}}\n'
+        '"edges": [{"from","to","rel","mechanism","orientation","reference_period","geo","effect_direction","effect_strength","confidence"}]}}\n'
         "마크다운 구조 (섹션 고정):\n"
         "### 사건 정의 — 무엇이 실제로 일어났고/일어난다고 가정하며, 무엇은 아직 불확실한가\n"
         "### 파급 체인 — '사건 → 1차 → 2차 → 3차' 화살표 체인을 먼저 한 줄로, 이어서 단계별로:\n"
@@ -69,6 +69,8 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "person/company 노드로 명시('사라지면 약해지는가' 기준). 피드백은 시점 다른 두 엣지로. "
         "orientation ∈ past|current|forward, reference_period는 작동 시점(모르면 null), "
         f"geo ∈ {{{GEO_VOCAB}}} 중 하나(특정 지역 사건이면 해당국, 전세계 공통이면 글로벌, 목록 밖이면 기타, 모르면 null), "
+        "effect_direction ∈ positive|negative|mixed, effect_strength ∈ unknown|weak|moderate|strong "
+        "(효과 크기 — 확신과 별개 축, 숫자 금지, 애매하면 낮은 쪽), "
         "confidence 0~1(가정된 사건에서 출발하므로 보수적으로).\n\n"
         f"[사건]\n{event}\n"
         f"\n{LENS_WORLDVIEW}\n"
