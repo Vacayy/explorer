@@ -268,7 +268,7 @@ def init_db():
         rel_type       TEXT NOT NULL,
         epistemic_type TEXT NOT NULL DEFAULT 'fact',  -- fact | hypothesis
         confidence     REAL,                          -- 이 인과 주장이 참이라는 확신 (효과 크기 아님, D-065)
-        effect_strength TEXT,                          -- unknown|weak|moderate|strong|dominant (효과 크기, D-065)
+        effect_strength TEXT,                          -- unknown|weak|moderate|strong (효과 크기 3단계, D-065·D-066)
         effect_direction TEXT,                         -- positive|negative|mixed (효과 방향, D-065)
         source_doc_id  INTEGER REFERENCES raw_documents(id) ON DELETE SET NULL,
         valid_from     TEXT,
@@ -906,7 +906,7 @@ def init_db():
         "ALTER TABLE entity_relations ADD COLUMN promoted_knowledge_id INTEGER",  # 승격된 지식(Phase 2 §2-5)
         "ALTER TABLE entity_relations ADD COLUMN feedback_note TEXT",  # both_temporal 판정 물질화 — 상충 아닌 시점 다른 피드백 나선(D-027) 근거, non-null=해소됨(D-029)
         "ALTER TABLE entity_relations ADD COLUMN geo_scope TEXT",  # 인과 주장의 장소 스코프 (통제어휘 GEO_VOCAB, D-034)
-        "ALTER TABLE entity_relations ADD COLUMN effect_strength TEXT",   # 효과 크기 unknown|weak|moderate|strong|dominant — 확신과 별개 축 (D-065)
+        "ALTER TABLE entity_relations ADD COLUMN effect_strength TEXT",   # 효과 크기 unknown|weak|moderate|strong — 확신과 별개 축 (D-065, 3단계 D-066)
         "ALTER TABLE entity_relations ADD COLUMN effect_direction TEXT",  # 효과 방향 positive|negative|mixed (D-065)
         # 메르식 서사 (Phase 2 §2-2) — 순회 top-1 경로를 opus가 하나의 흐르는 글로
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",

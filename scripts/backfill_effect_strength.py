@@ -50,10 +50,10 @@ def _build_batch_prompt(batch: list[dict]) -> str:
     return (
         "너는 투자 인과 주장의 '효과 크기'와 '효과 방향'을 판정한다. 이는 '주장이 맞다는 확신'과 "
         "**별개 축**이다 — 관계가 성립한다고 가정할 때 결과에 미치는 영향의 크기·방향만 본다.\n"
-        "effect_strength(성립 시 효과 크기): unknown|weak|moderate|strong|dominant. "
-        "숫자 금지. 판단 근거가 약하면 'unknown'.\n"
-        "  - dominant: 이 원인 하나가 결과를 사실상 좌우 (병목·핵심 동인).\n"
-        "  - strong: 큰 영향이나 다른 요인도 개입. moderate: 뚜렷하나 부차적. weak: 미미.\n"
+        "effect_strength(성립 시 효과 크기): unknown|weak|moderate|strong. "
+        "숫자 금지. 판단 근거가 약하면 'unknown', 버킷 경계가 애매하면 낮은 쪽(과대평가 금지).\n"
+        "  - strong: 큰 영향 — 이 원인이 결과의 주요 동인.\n"
+        "  - moderate: 뚜렷하나 부차적. weak: 있으나 미미.\n"
         "effect_direction(원인이 결과를 늘리나/줄이나): positive|negative|mixed. "
         "판단 어려우면 null.\n"
         "  - BENEFITS_FROM은 from(수혜자)이 to(동인)에서 이득을 보는 관계 — 대개 positive.\n"
@@ -62,9 +62,9 @@ def _build_batch_prompt(batch: list[dict]) -> str:
     )
 
 
-def _judge_batch(batch: list[dict]) -> dict[int, dict]:
+def _judge_batch(batch: list[dict], model: str = MODEL) -> dict[int, dict]:
     """배치 → {entity_relation_id: {strength, direction}}. 어휘 밖·미판정은 제외."""
-    raw = _call_claude_code(_build_batch_prompt(batch), model=MODEL, timeout=240)
+    raw = _call_claude_code(_build_batch_prompt(batch), model=model, timeout=300)
     data = _parse_json(raw)
     out: dict[int, dict] = {}
     for a in (data.get("assignments") or []):
@@ -82,10 +82,10 @@ def _judge_batch(batch: list[dict]) -> dict[int, dict]:
     return out
 
 
-def run_dry(limit: int, plan_path: Path) -> None:
+def run_dry(limit: int, plan_path: Path, model: str = MODEL) -> None:
     conn = get_connection()
     candidates = _candidates(conn, limit)
-    print(f"[후보] effect_strength IS NULL 인과 엣지 {len(candidates)}개 (limit={limit})")
+    print(f"[후보] effect_strength IS NULL 인과 엣지 {len(candidates)}개 (limit={limit}, model={model})")
     if not candidates:
         conn.close()
         return
@@ -99,7 +99,7 @@ def run_dry(limit: int, plan_path: Path) -> None:
     for i in range(0, len(candidates), BATCH):
         batch = candidates[i:i + BATCH]
         try:
-            assigned.update(_judge_batch(batch))
+            assigned.update(_judge_batch(batch, model))
         except Exception as ex:  # noqa: BLE001 — 배치 하나 실패가 전체를 막지 않게
             print(f"  배치 {i // BATCH} 판정 실패: {str(ex)[:120]}")
 
@@ -157,6 +157,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="저장된 계획 적용 (기본=dry-run)")
     ap.add_argument("--limit", type=int, default=3000, help="판정 후보 상한")
+    ap.add_argument("--model", type=str, default=MODEL, help="판정 모델 (sonnet|opus|haiku)")
     ap.add_argument("--plan", type=str, default=str(DEFAULT_PLAN))
     args = ap.parse_args()
 
@@ -165,7 +166,7 @@ def main():
     if args.apply:
         run_apply(plan_path)
     else:
-        run_dry(args.limit, plan_path)
+        run_dry(args.limit, plan_path, args.model)
 
 
 if __name__ == "__main__":

@@ -186,7 +186,7 @@ DOMAIN_LENSES = {"macro", "geopolitics", "industry", "flow", "tech", "policy"}
 NODE_TYPES = {"company", "sector", "theme", "person", "macro", "policy", "event"}
 CAUSAL_RELS = {"CAUSES", "BENEFITS_FROM"}
 # 효과 크기·방향 통제어휘 (확신=confidence와 분리된 축, D-065). float 금지=거짓 정밀(철학 §3).
-EFFECT_STRENGTHS = {"unknown", "weak", "moderate", "strong", "dominant"}
+EFFECT_STRENGTHS = {"unknown", "weak", "moderate", "strong"}  # 3단계+unknown (5단계는 모델 A/B 38% 불일치, D-066)
 EFFECT_DIRECTIONS = {"positive", "negative", "mixed"}
 # 인과 주장의 장소 스코프 통제어휘 (파편화 방지, D-034). 3개 프롬프트가 공유.
 GEO_VOCAB = "한국|미국|중국|유럽|일본|대만|글로벌|기타"
@@ -268,7 +268,7 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "  reference_period: 이 인과가 작동하는 시점(수집일 아님, 예 '2026 하반기'), 모르면 null.\n"
         f"  geo ∈ {{{GEO_VOCAB}}} 중 하나(특정 지역 사건이면 해당국, 전세계 공통이면 글로벌, 목록 밖이면 기타), 모르면 null.\n"
         "  effect_direction ∈ positive|negative|mixed (원인이 결과를 늘리나/줄이나).\n"
-        "  effect_strength ∈ unknown|weak|moderate|strong|dominant (성립 시 효과의 크기 — 확신과 별개 축, 숫자로 답하지 말 것).\n"
+        "  effect_strength ∈ unknown|weak|moderate|strong (성립 시 효과의 크기 — 확신과 별개 축, 숫자 금지, 경계 애매하면 낮은 쪽).\n"
         "  confidence: 0~1 (이 인과 주장이 **참이라는 확신** — 효과 크기가 아니라 맞을 믿음). 원인→결과 방향만.\n"
         "  ★피드백(자기강화): 결과가 다시 원인을 강화하는 순환(예: AI 능력↑→합성 데이터→학습 강화→AI 능력↑)을 "
         "발견하면 버리지 말고 **시점이 다른 두 개의 엣지로 펴서** 표현하라 — A→B(reference_period=현재)와 "
