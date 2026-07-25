@@ -24,8 +24,8 @@
   - **근거**: [[D-005]](엣지 단방향+epistemic 필수) · [[D-030]](observed 중간 티어) · ontology.md §설계원칙 · SYSTEM.md §1
 - **confidence·effect_strength 분리 — 확신과 강도는 다른 축** — confidence는 "이 인과 주장이 참이라는 믿음"만, effect_strength(+effect_direction)는 "성립 시 효과의 크기·방향".
   - **왜**: 단일 confidence는 "약하지만 확실"과 "강하지만 불확실"을 구분 못 한다. 그 값을 곱한 경로점수는 causal impact가 아니라 epistemic reliability 랭킹이다 — 둘을 섞으면 "가장 믿을 만한 경로"가 "가장 중요한 경로"로 오독된다.
-  - **발현**: `entity_relations.confidence`(확신, 재적재·`corroborated_by` 누적) + `effect_strength`(범주형 unknown~dominant, 0~1 float 금지=거짓 정밀 §3) + `effect_direction`. 순회 점수는 `path_confidence`(경로 신뢰도)로 표기 — "영향도" 아님. applicability(현 대상·시점 적합도)는 저장 축이 아니라 geo_scope×reference_period×노출의 쿼리 시점 함수. 노드 중력(§2)과 **직교**.
-  - **근거**: [[D-065]](confidence 의미 분리) · [[D-005]] · [[D-034]]
+  - **발현**: `entity_relations.confidence`(확신, 재적재·`corroborated_by` 누적) + `effect_strength`(범주형 3단계 weak/moderate/strong+unknown, 0~1 float 금지=거짓 정밀 §3) + `effect_direction`. 순회 점수는 `path_confidence`(경로 신뢰도)로 표기 — "영향도" 아님. applicability(현 대상·시점 적합도)는 저장 축이 아니라 geo_scope×reference_period×노출의 쿼리 시점 함수. 노드 중력(§2)과 **직교**.
+  - **근거**: [[D-065]](confidence 의미 분리) · [[D-066]](강도 3단계·판정 모델) · [[D-005]] · [[D-034]]
 - **신호는 근거와 함께** — 근거 문서 없는 신호는 표시하지 않는다. "왜?"가 항상 1클릭.
 - **정직한 보고** — "완료"는 실제 충족했을 때만. 흉내는 완료가 아니다. 불확실하면 먼저 말한다. RAG가 근거 없으면 답을 거부하는 것도 이 원칙(느슨하게가 아니라 canon으로 출처를 준다).
   - **근거**: CLAUDE.md Integrity Rules · [[D-030]](canon 인물사 배경)
