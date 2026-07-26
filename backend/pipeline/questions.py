@@ -270,9 +270,12 @@ JSON만: {{"direction":"up|down|flat", "value_text":"판정 근거 한 문장(�
 {snippets}"""
 
 
-def extract_sentiment_proxies(question_id: int | None = None, per_proxy_docs: int = 8) -> dict:
+def extract_sentiment_proxies(question_id: int | None = None, budget: int = 20,
+                              active_days: int = 14, per_proxy_docs: int = 8) -> dict:
     """sentiment 프록시를 코퍼스에서 게으른 haiku로 판정 (D-068 선행층).
-    하루 1회(source_id=KST 날짜 버킷) 멱등. event-driven — 분해 시·cron 편승."""
+    하루 1회(source_id=KST 날짜 버킷) 멱등. **비용 가드(D-072)**: cron 경로(question_id=None)는
+    (1) 활성 질문만(최근 active_days 내 조회/생성 — dormant 일시정지) (2) 회당 budget 상한, 가장 오래
+    안 본 프록시 우선(라운드로빈) → 일일 비용이 질문 수와 무관하게 천장 고정. 특정 질문 지정 시엔 전부(초기 분해)."""
     from datetime import datetime, timedelta, timezone
     from pipeline.enrich import _call_claude_code, llm_available
     from pipeline.search import search
@@ -280,10 +283,28 @@ def extract_sentiment_proxies(question_id: int | None = None, per_proxy_docs: in
         return {"extracted": 0, "reason": "llm 미가용"}
     today = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d")
     conn = get_connection()
-    sql = "SELECT id, label, extract_hint, yes_direction FROM proxy_registry WHERE active=1 AND modality='sentiment'"
+    where = ["pr.active=1", "pr.modality='sentiment'"]
+    params: list = []
     if question_id is not None:
-        sql += " AND sub_question_id IN (SELECT id FROM sub_questions WHERE question_id=%d)" % int(question_id)
-    proxies = conn.execute(sql).fetchall()
+        where.append("sq.question_id = ?")
+        params.append(question_id)
+        limit = 1000                       # 특정 질문 초기 분해 — 전부
+    else:
+        where.append("q.status='tracking'")
+        where.append(f"COALESCE(q.last_viewed_at, q.created_at) >= datetime('now', '-{int(active_days)} days')")
+        limit = budget                     # cron — 활성 질문 + 예산 상한
+    # 오늘 이미 관측한 프록시 제외 + 라운드로빈(가장 오래 안 본 것 우선, 미관측 최우선)
+    proxies = conn.execute(
+        f"SELECT pr.id, pr.label, pr.extract_hint, pr.yes_direction, "
+        f"  (SELECT MAX(observed_at) FROM proxy_observations po WHERE po.proxy_id=pr.id AND po.source_type='corpus') AS last_obs "
+        f"FROM proxy_registry pr "
+        f"JOIN sub_questions sq ON sq.id = pr.sub_question_id "
+        f"JOIN questions q ON q.id = sq.question_id "
+        f"WHERE {' AND '.join(where)} "
+        f"  AND NOT EXISTS (SELECT 1 FROM proxy_observations po2 WHERE po2.proxy_id=pr.id "
+        f"                  AND po2.source_type='corpus' AND po2.source_id=?) "
+        f"ORDER BY last_obs ASC LIMIT ?",   # SQLite: NULL(미관측)이 asc 최상단
+        (*params, today, limit)).fetchall()
     extracted = 0
     for p in proxies:
         dup = conn.execute(

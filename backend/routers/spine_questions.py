@@ -81,11 +81,16 @@ def approve(question_id: int):
 
 @router.get("/{question_id}")
 def detail(question_id: int):
-    """질문 트리 — 서브질문 → 프록시 → 관측 시계열 + 판정 (LLM 0)."""
+    """질문 트리 — 서브질문 → 프록시 → 관측 시계열 + 판정 (LLM 0). 조회 시 last_viewed_at 갱신(활성 신호, D-072)."""
+    from database import get_connection
     from pipeline.questions import get_tree
     r = get_tree(question_id)
     if "error" in r:
         raise HTTPException(404, r["error"])
+    conn = get_connection()
+    conn.execute("UPDATE questions SET last_viewed_at=datetime('now') WHERE id=?", (question_id,))
+    conn.commit()
+    conn.close()
     return r
 
 

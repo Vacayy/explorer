@@ -10,6 +10,12 @@
 
 ---
 
+## D-072 · 2026-07-26 · 질문 관측 비용 가드 — sentiment 예산·라운드로빈 + 활성 질문 게이트
+**결정**: 일 1회 cron(`refresh_all`)이 모든 tracking 질문의 sentiment 프록시를 매일 관측하던 것(프록시당 haiku 1, **상한 없음** → 질문 누적 시 일일 비용 선형 증가)에 가드를 건다. **(A) 회당 예산 + 라운드로빈** — `extract_sentiment_proxies(budget=20)`: 회당 최대 20개, `MAX(observed_at) ASC`(가장 오래 안 본·미관측 우선)로 선별 → **일일 비용이 질문 수와 무관하게 천장 고정**(numeric의 `limit=40` 패턴을 sentiment에 이식). **(B) 활성 질문 게이트** — cron 경로는 `COALESCE(last_viewed_at, created_at) >= now-14일`인 질문만 관측. `last_viewed_at`은 질문 상세(`GET /questions/{id}`) 조회 시 갱신 → 안 보는 dormant 질문은 관측 일시정지(질문은 보존, 다시 열면 재개). 초기 분해(question_id 지정) 경로는 게이트·예산 없이 전부(사용자 행위라 즉시 채움).
+**맥락·이유**: 사용자 2026-07-26 — "질문이 늘수록 관측 대상이 너무 많아지고 토큰 비용 문제." 진단: numeric은 이미 회당 40 상한 + 멱등(새 컨콜 시만)이라 bounded, rollup은 결정적(LLM 0), propose는 LLM 0 — 그러나 **sentiment만 상한 없이 매일 전 프록시** 관측이라 선형 시한폭탄(질문 10개≈40 haiku/일, 30개≈120/일, 영구). 사용자 선택: 레버 1(예산+라운드로빈)+2(활성 게이트). 예산 상한이 핵심(질문 수 무관 천장), 활성 게이트가 낭비 제거. cadence 차등(레버 3)은 라운드로빈이 사실상 흡수(오래된 것부터라 활성 프록시가 자연히 더 자주)라 보류.
+**기각한 대안**: ① 상한 없이 유지 — 시한폭탄, 사용자 지적. ② updated_at을 활성 신호로 — rollup이 매일 bump해 무의미, 조회 전용 last_viewed_at 신설이 맞음. ③ 전 레버(cadence 최소간격까지) — 라운드로빈이 흡수, 추가 복잡도 불필요. ④ numeric도 활성 게이트 — 이미 상한(40)+멱등으로 bounded, extract_proxies는 시드 프록시(리포트용)도 서빙해 게이트가 침습적, 보류.
+**참조**: pipeline/questions.py(extract_sentiment_proxies budget·round-robin·active-gate)·routers/spine_questions.py(detail→last_viewed_at)·database.py(questions.last_viewed_at) · SYSTEM.md §4-1·§5-1 · [[D-068]] [[D-069]] · 대화 2026-07-26
+
 ## D-071 · 2026-07-26 · 질문을 내러티브와 같은 레이어로 — 내러티브 상위 탭 + [내러티브·질문] 서브탭
 **결정**: 질문(미결 트래커)을 지식 탭 안(QuestionsSection)에서 빼내 **내러티브와 같은 L2 레이어**로 올린다. 지식이 상위 탭이고 그 안에 [지식·온톨로지] 서브탭을 갖는 것(D-052)과 **동형 구조**로, **내러티브를 상위 탭**으로 삼고 그 안에 **[내러티브·질문] 서브탭**을 둔다(`NarrativeSubNav` 토글, KnowledgeSubNav 복제). 신규 라우트 `/questions`(QuestionsPage=NarrativeSubNav+QuestionsSection), 질문 상세는 기존 `/question/:id` 허브(D-070). ModeNavigation: `/question*`도 worldmodel 모드 + '내러티브' L2 탭 활성. KnowledgePage에서 QuestionsSection 제거.
 **맥락·이유**: 사용자 2026-07-26 — "질문을 별도 탭으로, 내러티브와 같은 레이어에. 지식 하위에 지식·온톨로지가 있듯 내러티브·질문을 상위 탭+서브탭으로." 층위 논리: 질문(무엇을 확인해야 하나)과 내러티브(지금 무슨 이야기인가)는 둘 다 **주제/이슈 레벨의 사고 산출물**이라 같은 레이어가 맞다. 질문이 지식(검증된 느린 층) 탭에 얹혀 있던 건 "질문=지식의 미결 버전"(D-067)이라는 개념적 인접성 때문이었으나, 실사용 IA로는 내러티브와 병렬이 자연스럽다(둘 다 topic 단위, delta 성격). 상위 탭 이름은 지식 선례(parent=primary child 이름)를 따라 '내러티브' 유지.

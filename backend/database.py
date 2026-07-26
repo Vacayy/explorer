@@ -958,6 +958,7 @@ def init_db():
         "ALTER TABLE proxy_registry ADD COLUMN modality TEXT DEFAULT 'numeric'",   # numeric|sentiment|stance (pace layer)
         "ALTER TABLE proxy_registry ADD COLUMN yes_direction TEXT",                # 'up'|'down' — 어느 관측 방향이 핵심질문 '예'의 근거인가(판정 극성)
         "ALTER TABLE scenarios ADD COLUMN question_id INTEGER",                     # 질문=허브(D-070): Q5 시나리오를 질문에 묶음(NULL=내러티브발)
+        "ALTER TABLE questions ADD COLUMN last_viewed_at TEXT",                     # 관측 비용 게이트(D-072): 최근 조회 질문만 자동 관측(dormant 일시정지)
         "ALTER TABLE proxy_observations ADD COLUMN source_type TEXT",              # 범용 source_ref (transcript|financial|consensus|signal)
         "ALTER TABLE proxy_observations ADD COLUMN source_id TEXT",
     ]:
