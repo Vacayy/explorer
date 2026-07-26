@@ -163,7 +163,7 @@ function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/research")) return "research"
   if (pathname.startsWith("/archive")) return "archive"
   // 월드모델 — 내러티브·리포트·세계관·지식 (D-031)
-  if (pathname.startsWith("/narrative") || pathname.startsWith("/knowledge") || pathname.startsWith("/report")) return "worldmodel"
+  if (pathname.startsWith("/narrative") || pathname.startsWith("/question") || pathname.startsWith("/knowledge") || pathname.startsWith("/report")) return "worldmodel"
   // /explore(신호 상세)·/discover/*·/onchain — 탐색 해체 후 pill 없는 도시에 (D-057)
   return "archive"
 }
@@ -171,8 +171,9 @@ function getActiveMode(pathname: string): AppMode {
 function getActiveSubTab(pathname: string): string | null {
   // Feed 서브탭은 쿼리 파라미터 기반 (컴포넌트에서 직접 계산)
 
-  // 월드모델 — 온톨로지(그래프)는 지식 탭 하위(/knowledge/ontology), 둘 다 '지식' 탭 활성 (D-052)
-  if (pathname.startsWith("/narrative")) return "narrative"
+  // 월드모델 — 내러티브 상위탭 하위에 내러티브·질문(/question*), 둘 다 '내러티브' 탭 활성 (D-071)
+  // 온톨로지(그래프)는 지식 탭 하위(/knowledge/ontology), 둘 다 '지식' 탭 활성 (D-052)
+  if (pathname.startsWith("/narrative") || pathname.startsWith("/question")) return "narrative"
   if (pathname.startsWith("/report")) return "report"
   if (pathname.startsWith("/knowledge")) return "knowledge"
 

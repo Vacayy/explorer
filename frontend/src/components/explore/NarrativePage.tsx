@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { NarrativeList } from "@/components/explore/NarrativeList"
+import { NarrativeSubNav } from "@/components/explore/NarrativeSubNav"
 import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
 import { FileText } from "lucide-react"
@@ -232,6 +233,7 @@ function NarrativeQuestions({ narrativeId }: { narrativeId: number }) {
 function NarrativeLanding() {
   return (
     <PageContainer gap="sm">
+      <NarrativeSubNav />
       <div className="flex items-baseline gap-2">
         <h2 className="text-xl font-bold">내러티브</h2>
         <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 질문</span>
