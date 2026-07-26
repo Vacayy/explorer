@@ -10,7 +10,7 @@ Provider 추상 — 한 제공처에 락인되지 않게 어댑터로. TRANSCRIP
 1차 구현은 FMP(무료 티어 250 req/day + dates-by-symbol 폴링). 필요 시 earningscall/alphavantage 추가.
 """
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Protocol
 
 import requests
@@ -334,6 +334,13 @@ def _existing_periods(ticker: str) -> set:
     return {(r["fiscal_year"], r["fiscal_period"]) for r in rows}
 
 
+def _feed_ts() -> str:
+    """transcript 피드 정렬용 published_at = 수집 시각(UTC ISO). AV는 실제 콜 날짜를 안 줘
+    회계분기 근사(YYYY-분기*3-01)를 published_at에 쓰면 미래로 찍혀 피드 '최신순'을 깬다
+    → 수집 시각으로. 분기 정체성은 call_date·fiscal_year/period가 별도 보존(목록은 그쪽 정렬)."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
     """한 (기업, 분기) 수집 → raw_documents + transcripts. 저장 성공 시 True."""
     got = provider.fetch(f["ticker"], year, quarter)
@@ -344,7 +351,7 @@ def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
     doc = RawDoc(
         source_type="transcript", source_id=source_id,
         title=f"{f['company_name']} ({f['ticker']}) FY{year} {period} 실적 컨퍼런스콜",
-        published_at=got["date"], raw_content=got["content"], kind="text")
+        published_at=_feed_ts(), raw_content=got["content"], kind="text")
     res = store_document(doc)
     conn = get_connection()
     conn.execute(
@@ -434,7 +441,7 @@ def collect_followed(only: list[str] | None = None, max_new_per_ticker: int = 4)
                 source_type="transcript",
                 source_id=source_id,
                 title=f"{f['company_name']} ({ticker}) FY{item['year']} {period} 실적 컨퍼런스콜",
-                published_at=got["date"] or item.get("date") or "",
+                published_at=_feed_ts(),
                 raw_content=got["content"],
                 kind="text",
             )
