@@ -5,8 +5,6 @@ import { toast } from "sonner"
 import { Loader2, Sparkles, Telescope } from "lucide-react"
 import api from "@/api/client"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Markdown } from "@/components/shared/Markdown"
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
@@ -19,7 +17,6 @@ import { cn } from "@/lib/utils"
  */
 
 interface DeriveResult { doc_id: number; title: string | null; candidates: string[]; event: string }
-interface ScenarioResult { answer: string; beneficiaries: { name?: string; reason?: string }[] }
 
 export function SourceDeepDive({ docId }: { docId: number }) {
   const [open, setOpen] = useState(false)
@@ -32,14 +29,9 @@ export function SourceDeepDive({ docId }: { docId: number }) {
   })
   const track = useMutation({
     mutationFn: async (text: string) =>
-      (await api.post("/api/spine/questions", { text, source_doc_id: docId })).data,
-    onSuccess: () => { toast.success("질문 추적 시작 — 지식 탭에서 확인"); setOpen(false); navigate("/knowledge") },
+      (await api.post("/api/spine/questions", { text, source_doc_id: docId })).data as { id: number },
+    onSuccess: (q) => { toast.success("질문 추적 시작 — 상세로 이동"); setOpen(false); navigate(`/question/${q.id}`) },
     onError: () => toast.error("분해 실패 — 다시 시도"),
-  })
-  const scenario = useMutation({
-    mutationFn: async (event: string) =>
-      (await api.post("/api/spine/questions/scenario", { event })).data as ScenarioResult,
-    onError: () => toast.error("시나리오 생성 실패"),
   })
 
   const onOpenChange = (o: boolean) => {
@@ -94,31 +86,8 @@ export function SourceDeepDive({ docId }: { docId: number }) {
 
             {d.event && (
               <div className="border-t pt-3">
-                <p className="text-[11px] font-medium text-muted-foreground mb-1">파급 사건</p>
-                <p className="text-sm mb-2">{d.event}</p>
-                {!scenario.data && (
-                  <Button size="sm" variant="outline" className="w-full" disabled={scenario.isPending}
-                    onClick={() => scenario.mutate(d.event)}>
-                    {scenario.isPending
-                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 파급 시나리오 전개 중… (수 분)</>
-                      : <>파급 시나리오 생성</>}
-                  </Button>
-                )}
-                {scenario.data && (
-                  <div className="rounded-md border bg-muted/30 px-3 py-2 mt-1">
-                    <Markdown>{scenario.data.answer}</Markdown>
-                    {scenario.data.beneficiaries.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t">
-                        <span className="text-[10px] text-muted-foreground mr-1">논리상 수혜:</span>
-                        {scenario.data.beneficiaries.map((b, i) => (
-                          <Badge key={i} variant="outline" className="text-[10px]" title={b.reason ?? ""}>
-                            {b.name ?? "?"}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <p className="text-[11px] font-medium text-muted-foreground mb-1">파급 사건 (질문 추적 시작 후 상세에서 시나리오 생성)</p>
+                <p className="text-sm text-muted-foreground">{d.event}</p>
               </div>
             )}
           </div>

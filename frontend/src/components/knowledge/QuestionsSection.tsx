@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Check, ChevronDown, HelpCircle, Inbox, Loader2, Plus, RefreshCw, Trash2, Wand2, X } from "lucide-react"
@@ -24,22 +25,24 @@ interface QProxy {
   yes_direction: string | null; tickers: string | null; observations: QObs[]
 }
 interface QSub { id: number; text: string; falsifier: string | null; verdict: string | null; proxies: QProxy[] }
-interface QTree {
+export interface QScenario { event: string; answer: string; beneficiaries: { name?: string; reason?: string }[]; created_at: string }
+export interface QTree {
   id: number; text: string; lead_verdict: string | null; confirm_verdict: string | null
   divergence: string | null; verdict_summary: string | null; sub_questions: QSub[]
+  scenario?: QScenario | null; source_doc?: { id: number; title: string | null; source_type: string } | null
 }
 interface QListItem {
   id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null
   divergence: string | null; verdict_summary: string | null; sub_count: number; updated_at: string
 }
 
-const VERDICT: Record<string, { label: string; cls: string }> = {
+export const VERDICT: Record<string, { label: string; cls: string }> = {
   leaning_yes: { label: "긍정", cls: "text-primary border-primary/40" },
   leaning_no: { label: "부정", cls: "text-destructive border-destructive/50" },
   mixed: { label: "혼조", cls: "text-hypothesis border-hypothesis/40" },
   unknown: { label: "미판정", cls: "text-muted-foreground border-border" },
 }
-const DIVERGENCE: Record<string, string> = {
+export const DIVERGENCE: Record<string, string> = {
   lead_ahead: "여론이 실적보다 앞섬 — 선행 경고",
   confirm_ahead: "실적이 여론보다 강함 — 뒤늦은 여론",
 }
@@ -48,7 +51,7 @@ const DIR: Record<string, string> = { up: "↑", down: "↓", flat: "→" }
 
 const listKey = ["spine", "questions", "list"]
 
-function VerdictBadge({ v, prefix }: { v: string | null; prefix: string }) {
+export function VerdictBadge({ v, prefix }: { v: string | null; prefix: string }) {
   const d = VERDICT[v ?? "unknown"]
   return (
     <Badge variant="outline" className={cn("text-[10px] gap-1", d.cls)}>
@@ -214,7 +217,9 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
     <Card>
       <CardContent className="py-3 space-y-2">
         <div className="flex items-start gap-2">
-          <p className="text-sm leading-snug flex-1">{item.text}</p>
+          <Link to={`/question/${item.id}`} className="text-sm leading-snug flex-1 hover:text-primary hover:underline">
+            {item.text}
+          </Link>
           <span className="flex shrink-0 items-center gap-1">
             <button className="text-muted-foreground/60 hover:text-foreground" title="판정 재계산"
               disabled={roll.isPending} onClick={() => roll.mutate()}>
@@ -250,7 +255,7 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
   )
 }
 
-function QuestionTree({ id }: { id: number }) {
+export function QuestionTree({ id }: { id: number }) {
   const { data, isLoading } = useQuery(
     apiQuery<QTree>({ key: ["spine", "questions", id], url: `/api/spine/questions/${id}`, staleTime: STALE.short }),
   )

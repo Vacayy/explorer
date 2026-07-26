@@ -85,7 +85,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `entity_merges` | 병합분 | 어휘 통합 audit+redirect (D-033) — 병합으로 사라진 (old_name, type) → survivor_id. 쓰기 시 재파편화 방지 리다이렉트 겸용 |
 | `follows` | 0 | 엔티티 팔로우 (섹터·테마 → 홈 스트림) |
 | `observations` / `models` | 활성/0 | 시계열 투영·살아있는 모델. **observations 가동(D-069)**: 질문 트래커의 numeric 프록시 관측이 `entity_id·metric·value`로 투영(source='proxy:transcript', transcript_follow.entity_id 경유). models는 여전히 스키마만 |
-| `scenarios` | topic별 | 파급 시나리오 캐시(D-038) — topic PK·answer·beneficiaries(json)·citations(json)·narrative_version(변동 시 stale). 매 클릭 opus 재생성 방지, '다시 분석'(refresh)으로만 갱신 |
+| `scenarios` | topic별 | 파급 시나리오 캐시(D-038) — topic PK·answer·beneficiaries(json)·citations(json)·narrative_version(변동 시 stale) + **`question_id`(D-070 질문=허브: Q5 시나리오를 질문에 묶음, NULL=내러티브발)**. 매 클릭 opus 재생성 방지, '다시 분석'(refresh)으로만 갱신 |
 | `reports` | 버전별 | 통합 리포트 **append-only 히스토리**(D-047) — id PK·anchor_topic·title·body(Top-down md)·members_json·stocks_json·debate_json·members_hash·**top_pick**·created_at. 최신=id DESC, 매 생성이 새 버전(덮어쓰기 폐기, 과거 열람 가능) |
 | `doc_fts` / `doc_vec` | 264 | BM25(트리거 동기화) / 384d 벡터 |
 | `feature_flags` / `job_runs` | 운영 | cron 작업 on/off 플래그 / 실행 로그(상태·요약·소요) — 관리자 페이지(D-055) |
@@ -154,7 +154,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/home` · `/home/ai-activity?days=` | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 / **AI 자동생성 피드**(D-053, 지난 N일 내러티브·리포트·파급·다이제스트 최신순 통합, LLM 0) — 홈 최상단 AiActivityFeed(구 승인 배너 대체) |
 | `GET /api/spine/feed` | 통합 피드 — q(하이브리드 검색)·source(telegram·blog·news·article·people·canon·youtube·transcript)·stock·industry·topic 필터, published_at DESC. source 세분류: blog=개인블로그(platform≠rss)·news=언론사RSS·article=간행물RSS(pipeline/urls.blog_category)·people=팔로우 인물 언급 문서·transcript=미국 컨콜(D-061) |
 | `GET /api/spine/trade/*` | **수출입 팔로우(D-064)** — `/follow`(그룹별 품목+최신월·YoY) · `/{hs}`(월별 시계열+관련종목) · POST `/follow`(구독) · POST `/seed`(11품목) · POST `/{hs}/beneficiaries`(관련종목 LLM 지목, ~수 분). FE: /follow/trade 2분할(추이 차트+관련종목) |
-| `GET·POST·DELETE /api/spine/questions` (+`/propose`·`/from-doc`·`/scenario`·`/{id}`·`/{id}/rollup`·`/{id}/approve`) | **핵심질문 트래커(D-067·D-068·D-069)** — POST(질문 주입→자동분해→numeric+sentiment 추출→트리, ~수 분) · GET(미결 목록, `narrative_id`·`status` 필터, LLM 0) · `/{id}`(트리+2층 판정, LLM 0) · POST `/propose`(지배 내러티브서 질문 후보, 생성자 ①) · POST `/{id}/approve`(제안 승인→분해) · **POST `/from-doc`(Q5 — 단일 소스 문서서 딥다이브 핵심질문 후보+파급 event 도출, sonnet)** · **POST `/scenario`(Q5 — event로 파급 시나리오 생성+scenarios 캐시, opus)** · POST `/{id}/rollup` · DELETE(dismiss) |
+| `GET·POST·DELETE /api/spine/questions` (+`/propose`·`/from-doc`·`/scenario`·`/{id}`·`/{id}/rollup`·`/{id}/approve`) | **핵심질문 트래커(D-067·D-068·D-069)** — POST(질문 주입→자동분해→numeric+sentiment 추출→트리, ~수 분) · GET(미결 목록, `narrative_id`·`status` 필터, LLM 0) · `/{id}`(트리+2층 판정, LLM 0) · POST `/propose`(지배 내러티브서 질문 후보, 생성자 ①) · POST `/{id}/approve`(제안 승인→분해) · **POST `/from-doc`(Q5 — 단일 소스 문서서 딥다이브 핵심질문 후보 도출, sonnet)** · **POST `/{id}/scenario`(질문=허브 D-070 — 질문에 묶어 파급 시나리오 생성, opus)** · POST `/{id}/rollup` · DELETE(dismiss). `/{id}` 트리는 **묶인 시나리오·소스 문서 포함**(허브) |
 | `GET /api/spine/transcript/*` | **Transcript 팔로우(D-061)** — `/follow`(그룹별 팔로우+최신 콜) · `/company/{ticker}`(분기 목록) · `/detail/{id}`(원문+메타+저장 정리, 빠름) · POST `/detail/{id}/digest`(멱등 정리 생성 sonnet, ~수 분) · POST `/follow`(구독 토글) · POST `/seed`(기본 21종) · **`/proxies`**(레지스트리+관측 시계열) · POST `/proxies`(세팅) · POST `/proxies/extract`(추출 트리거 haiku). FE: /follow/transcripts 2분할 브라우저 + 프록시 탭 |
 | `GET /api/spine/doc/{id}` | 문서 디테일 (raw content·이미지·태그·요약). youtube 소스면 digest_status가 ok가 아닐 때 opus 정리본을 그 자리에서 1회 재시도 후 반환(lazy retry) |
 | `GET /api/spine/signals` | 신호 (type·days) |
@@ -195,7 +195,7 @@ Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소
                    내러티브(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·**재생성 이력 타임라인**(본문 아래·파급 시나리오 위 인라인, 도트 클릭→히스토리 페이지에서 열람, D-059)·파급 시나리오·통합 리포트. **자동 재생성은 24h 1회 제한**(stale이라도 최근 갱신<24h면 자동 발화 금지) + 우상단 새로고침 버튼(강제, 새 재료 없으면 no-op)·최근 갱신 시각 표시, D-059) ·
                    **히스토리**(/narrative/history?topic=X&v=id: 재생성 이력 상세 — x축 버전 도트(생성 시점+제목), 도트 클릭=해당 버전 본문(/version?id=), 도트 사이=직전 버전 대비 인과 diff. NarrativeTimeline 컴포넌트 인라인/상세 공용, D-060·D-059) ·
                    **리포트**(/report: 발간 목록, /report?topic=X=디테일 — Top-down 리포트 + 최하단 구성 내러티브 링크, integrated-report/D-041) ·
-                   지식(/knowledge: **지식↔온톨로지 토글**, D-052) — 지식=구조 지도·현황 대시보드·주입 콘솔(검증 승격 핵심) / **온톨로지**(/knowledge/ontology: 구 '세계관 뷰' 리네임 — 전역 인과 그래프 노드-링크 시각화, React Flow+dagre, 렌즈 필터, in-graph 패널. /narrative/worldview는 리다이렉트). 세계관 탭은 지식으로 통합(세계관 ⊃ 지식)
+                   지식(/knowledge: **지식↔온톨로지 토글**, D-052) — 지식=구조 지도·현황 대시보드·주입 콘솔(검증 승격 핵심) + **미결 질문**(QuestionsSection: 질문 콘솔·제안 큐·질문 카드) / **질문 허브**(/question/:id: 한 질문의 2층 판정+분할정복 트리+파급 시나리오+소스를 한 화면, D-070) / **온톨로지**(/knowledge/ontology: 구 '세계관 뷰' 리네임 — 전역 인과 그래프 노드-링크 시각화, React Flow+dagre, 렌즈 필터, in-graph 패널. /narrative/worldview는 리다이렉트). 세계관 탭은 지식으로 통합(세계관 ⊃ 지식)
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·유튜브·뉴스·아티클·인물·역사(source_type=canon) (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
                    + 사이드바: 구독 채널/블로그 목록·닉네임·활성 토글·인라인 등록 폼
 문서(/doc/:id)     수집 원문·이미지 내부 열람 (외부 원문은 보조 버튼)

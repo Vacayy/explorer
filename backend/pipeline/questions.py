@@ -166,25 +166,32 @@ def derive_questions_from_doc(doc_id: int) -> dict:
     return {"doc_id": doc_id, "title": doc["title"], "candidates": cands, "event": (d.get("event") or "").strip()}
 
 
-def run_scenario_for_event(event: str) -> dict:
-    """단일 소스 event로 파급 시나리오 생성 + scenarios 캐시(topic=event, narrative_version=NULL). Q5 '시나리오도 함께'."""
+def run_scenario_for_event(event: str, question_id: int | None = None) -> dict:
+    """단일 소스 event로 파급 시나리오 생성 + scenarios 캐시. 질문=허브(D-070): question_id로 질문에 묶는다.
+    topic은 짧은 라벨(질문 텍스트 앞부분)로 — 긴 event 문장이 피드에서 내러티브로 오인되던 것 교정."""
     from pipeline.scenario import build_scenario
     if not event.strip():
         return {"error": "event 비어 있음"}
     r = build_scenario(event)
     if r.get("error"):
         return {"error": r["error"]}
+    # 피드 표시용 짧은 topic 라벨 (질문에 묶였으면 질문 텍스트, 아니면 event 앞부분)
+    label = event.strip()
     conn = get_connection()
+    if question_id:
+        q = conn.execute("SELECT text FROM questions WHERE id=?", (question_id,)).fetchone()
+        if q:
+            label = q["text"][:60]
     conn.execute(
-        "INSERT INTO scenarios (topic, event, answer, beneficiaries, citations, narrative_version, model, created_at) "
-        "VALUES (?,?,?,?,?,NULL,?,datetime('now')) ON CONFLICT(topic) DO UPDATE SET "
+        "INSERT INTO scenarios (topic, event, answer, beneficiaries, citations, narrative_version, question_id, model, created_at) "
+        "VALUES (?,?,?,?,?,NULL,?,?,datetime('now')) ON CONFLICT(topic) DO UPDATE SET "
         "event=excluded.event, answer=excluded.answer, beneficiaries=excluded.beneficiaries, "
-        "citations=excluded.citations, model=excluded.model, created_at=excluded.created_at",
-        (event, event, r.get("answer"), json.dumps(r.get("beneficiaries") or [], ensure_ascii=False),
-         json.dumps(r.get("citations") or [], ensure_ascii=False), r.get("model")))
+        "citations=excluded.citations, question_id=excluded.question_id, model=excluded.model, created_at=excluded.created_at",
+        (label, event, r.get("answer"), json.dumps(r.get("beneficiaries") or [], ensure_ascii=False),
+         json.dumps(r.get("citations") or [], ensure_ascii=False), question_id, r.get("model")))
     conn.commit()
     conn.close()
-    return {"topic": event, "answer": r.get("answer"), "beneficiaries": r.get("beneficiaries") or []}
+    return {"topic": label, "answer": r.get("answer"), "beneficiaries": r.get("beneficiaries") or []}
 
 
 # ---------- 생성자 ① 자동 도출 (지배 내러티브 → 제안 큐, D-067) ----------
@@ -423,6 +430,16 @@ def get_tree(question_id: int) -> dict:
             proxies.append({**dict(p), "observations": obs})
         subs.append({**dict(sq), "proxies": proxies})
     tree["sub_questions"] = subs
+    # 허브(D-070): 이 질문에 묶인 파급 시나리오 + 소스 문서
+    sc = conn.execute(
+        "SELECT event, answer, beneficiaries, created_at FROM scenarios WHERE question_id=? ORDER BY created_at DESC LIMIT 1",
+        (question_id,)).fetchone()
+    tree["scenario"] = ({"event": sc["event"], "answer": sc["answer"],
+                         "beneficiaries": json.loads(sc["beneficiaries"] or "[]"),
+                         "created_at": sc["created_at"]} if sc else None)
+    if tree.get("source_doc_id"):
+        src = conn.execute("SELECT id, title, source_type FROM raw_documents WHERE id=?", (tree["source_doc_id"],)).fetchone()
+        tree["source_doc"] = dict(src) if src else None
     conn.close()
     return tree
 

@@ -52,11 +52,11 @@ class ScenarioRequest(BaseModel):
     event: str
 
 
-@router.post("/scenario")
-def scenario(body: ScenarioRequest):
-    """Q5 — 도출한 event로 파급 시나리오 생성+캐시 (opus, ~수 분). GET /narrative/scenario?topic=event로도 열람."""
+@router.post("/{question_id}/scenario")
+def scenario(question_id: int, body: ScenarioRequest):
+    """Q5 — 질문에 묶어 파급 시나리오 생성+캐시 (opus, ~수 분). 질문=허브(D-070): 질문 상세에서 열람."""
     from pipeline.questions import run_scenario_for_event
-    r = run_scenario_for_event(body.event)
+    r = run_scenario_for_event(body.event, question_id=question_id)
     if "error" in r:
         raise HTTPException(503, r["error"])
     return r

@@ -19,7 +19,8 @@ class AiActivityItem(BaseModel):
     type: str            # narrative | mega | report | scenario | digest
     title: str
     topic: str
-    code: str | None = None   # digest면 종목코드(analyze 링크용)
+    code: str | None = None          # digest면 종목코드(analyze 링크용)
+    question_id: int | None = None   # scenario가 질문에 묶였으면(D-070) — /question/:id 링크용
     created_at: str
 
 
@@ -39,9 +40,9 @@ def ai_activity(days: int = Query(7, ge=1, le=30), limit: int = Query(30, ge=1, 
         items.append({"type": "report", "title": r["title"] or f"{r['anchor_topic']} 리포트",
                       "topic": r["anchor_topic"], "created_at": r["created_at"]})
     for r in conn.execute(
-        "SELECT topic, created_at FROM scenarios WHERE created_at >= datetime('now', ?)", (since,)):
+        "SELECT topic, question_id, created_at FROM scenarios WHERE created_at >= datetime('now', ?)", (since,)):
         items.append({"type": "scenario", "title": f"{r['topic']} 파급 분석",
-                      "topic": r["topic"], "created_at": r["created_at"]})
+                      "topic": r["topic"], "question_id": r["question_id"], "created_at": r["created_at"]})
     for r in conn.execute(
         "SELECT e.name, e.aliases code, d.period, d.created_at FROM entity_digests d "
         "JOIN entities e ON e.id=d.entity_id "
