@@ -53,7 +53,7 @@ export function SourceDeepDive({ docId }: { docId: number }) {
             <Telescope className="h-4 w-4 text-hypothesis" /> 단일 소스 딥다이브
           </DialogTitle>
           <DialogDescription>
-            이 소스가 던지는 핵심질문을 뽑아 추적하고, 파급 시나리오도 함께 봅니다 — corpus 누적을 기다리지 않고.
+            이 소스가 던지는 핵심질문을 뽑아 추적하고, 파급 시나리오도 함께 봅니다
           </DialogDescription>
         </DialogHeader>
 
