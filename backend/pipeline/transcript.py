@@ -285,9 +285,10 @@ def extract_proxies(limit: int = 40) -> dict:
             if not d.get("found"):
                 continue
             conn.execute(
-                "INSERT INTO proxy_observations (proxy_id, transcript_id, observed_at, value_num, value_text, direction) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (p["id"], r["id"], r["call_date"], d.get("value_num"), d.get("value_text"), d.get("direction")))
+                "INSERT INTO proxy_observations "
+                "(proxy_id, transcript_id, source_type, source_id, observed_at, value_num, value_text, direction) "
+                "VALUES (?, ?, 'transcript', ?, ?, ?, ?, ?)",
+                (p["id"], r["id"], str(r["id"]), r["call_date"], d.get("value_num"), d.get("value_text"), d.get("direction")))
             conn.commit()
             extracted += 1
     conn.close()
