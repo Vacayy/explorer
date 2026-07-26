@@ -29,9 +29,9 @@ def create(body: AskRequest):
 
 @router.get("")
 def index():
-    """미결 질문 목록 (판정 배지용, LLM 0)."""
+    """미결 질문 목록 (판정 배지용, LLM 0). apiQuery 패턴에 맞춰 배열 직접 반환."""
     from pipeline.questions import list_questions
-    return {"questions": list_questions()}
+    return list_questions()
 
 
 @router.get("/{question_id}")
