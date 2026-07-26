@@ -22,7 +22,7 @@ _DECOMPOSE_PROMPT = """당신은 투자 리서치 애널리스트다. 아래 '�
 [핵심 질문] {question}
 
 규칙:
-- 서브질문은 핵심 질문의 논리적 성분이어야 한다(투입·수요·전환·마진·밸류·심리 등 다른 축).
+- 서브질문은 핵심 질문의 논리적 성분이어야 한다(투입·수요·공급·전환·마진·밸류·심리 등 다른 축).
 - 각 서브질문에 `falsifier`(반증조건: "이 방향으로 관측되면 핵심 질문이 틀린 것")를 명시.
 - 프록시 `modality` 3종:
   · numeric  — 실적 컨콜/재무의 수치(CAPEX·ARR·매출성장률·영업이익률·FCF 등). 관련 미국 티커(`tickers`)와
@@ -169,6 +169,29 @@ def approve_question(question_id: int) -> dict:
     if q["status"] != "proposed":
         return get_tree(question_id)
     return _decompose_and_track(question_id, q["text"])
+
+
+def refresh_all(propose: int = 3) -> dict:
+    """일 1회 cron — 자동도출 + 관측 갱신(numeric 컨콜·sentiment 코퍼스) + 전 추적 질문 재판정.
+    event-driven 편승: 새 컨콜/문서 없으면 멱등 스킵으로 사실상 no-op(D-068)."""
+    out: dict = {"proposed": 0, "numeric": 0, "sentiment": 0, "rerolled": 0}
+    out["proposed"] = propose_from_narratives(limit=propose).get("proposed", 0)
+    try:
+        from pipeline.transcript import extract_proxies
+        out["numeric"] = extract_proxies(limit=40).get("extracted", 0)   # 새 컨콜만 (멱등)
+    except Exception as e:  # noqa: BLE001
+        print(f"[refresh] numeric 실패: {e}")
+    try:
+        out["sentiment"] = extract_sentiment_proxies().get("extracted", 0)  # 전 sentiment 프록시, 하루 1회 멱등
+    except Exception as e:  # noqa: BLE001
+        print(f"[refresh] sentiment 실패: {e}")
+    conn = get_connection()
+    ids = [r["id"] for r in conn.execute("SELECT id FROM questions WHERE status='tracking'").fetchall()]
+    conn.close()
+    for qid in ids:
+        rollup(qid)
+    out["rerolled"] = len(ids)
+    return out
 
 
 _SENTIMENT_PROMPT = """다음은 '{label}'에 대한 최근 투자자 문서 발췌다. 이 주제의 시장 여론/심리가
