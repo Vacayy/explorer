@@ -37,11 +37,14 @@ class BlogConnector:
         docs = []
         for p in posts:
             body = p.get("content") or p.get("summary", "")
-            # RSS가 요약만 주는 경우가 많다(네이버 블로그·일부 뉴스) — 짧으면 원문 스크랩
-            if len(body) < 600 and p.get("url"):
+            url = p.get("url")
+            # 네이버 블로그 RSS는 길이와 무관하게 늘 요약(excerpt)만 준다(본문은 iframe) → 항상 원문 스크랩.
+            # 그 외 소스는 RSS가 통짜 본문인 경우가 많아 짧을 때만 스크랩. (긴 excerpt 오판 방지)
+            is_naver = bool(url) and "blog.naver.com" in url
+            if url and (is_naver or len(body) < 600):
                 from services.blog_service import fetch_full_content
-                full = fetch_full_content(p["url"])
-                if full:
+                full = fetch_full_content(url)
+                if full and len(full) > len(body):
                     body = full
             docs.append(RawDoc(
                 source_type="blog",
