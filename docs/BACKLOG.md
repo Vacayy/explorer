@@ -43,6 +43,15 @@
 > Phase 1 착수(데이터 모델+사용자 주입 생성자+numeric 프록시+결정적 판정+지식 탭 뷰).
 > 아래는 스펙 §미해결에서 이관한 **Phase 밖 후속** — 셋 다 Phase 1을 막지 않음(데이터·정밀도 이슈).
 
+**Q5 라이브 테스트로 드러난 갭 (2026-07-26, SK하이퍼 문서 딥다이브)**
+- **한국 종목 질문의 numeric 프록시가 영원히 미판정** — numeric 추출기가 미국 컨콜(transcripts)만 읽어, 한국
+  기업(SKT·HD현대일렉트릭 등) 프록시는 매칭 소스가 없어 confirm=unknown 고착. → **재무·컨센서스 추출기(Phase 1.5,
+  스펙에 이미 명시)가 실제 병목으로 부상.** Korean-stock 질문엔 지금 sentiment(코퍼스)만 작동.
+- **Q5 모달 UX = fire-and-forget 필요** — 분해·추적이 수 분~십수 분인데 모달에서 대기를 강제. 게다가 api 클라이언트
+  timeout 무한이라 서버 완료 후에도 스피너가 안 풀림. → 즉시 닫고 지식 탭에서 확인하는 흐름 + 진행상태 폴링으로 재설계.
+- **doc-derived 시나리오 영속 뷰 부재** — Q5 시나리오는 scenarios 테이블에 캐시되나 모달 인라인으로만 렌더. 닫으면
+  다시 볼 FE 화면이 없음(GET /narrative/scenario?topic=event API만). 시나리오 열람 라우트 필요.
+
 **미결 (Phase 밖 후속)**
 - **서브질문 → 지식 승격 conviction 임계** — 질문 verdict가 얼마나 확고해야(confirm_verdict 확정 + lead 동조 +
   독립 관측 N회) 검증 지식으로 승격하나. 지식 사다리(K0 consolidation) 재사용이 전제이나 "질문→지식" 승격의
