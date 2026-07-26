@@ -35,7 +35,9 @@ questions(
   created_by,             -- 'system' (Q2 자동도출) | 'user' (Q6 주입)
   source_doc_id,          -- Q5: 단일 소스에서 출발한 경우 그 문서 (NULL 가능)
   status,                 -- proposed | tracking | resolved | dismissed
-  verdict,                -- leaning_yes | leaning_no | mixed | unknown  (판정 롤업 결과)
+  lead_verdict,           -- 선행 판정 (fast: sentiment·stance 프록시 롤업) leaning_yes|no|mixed|unknown
+  confirm_verdict,        -- 확정 판정 (slow: numeric 프록시 롤업) 〃 (D-068)
+  divergence,             -- 선행↔확정 괴리 (quadrant_gap 질문 버전): aligned|lead_ahead|confirm_ahead
   verdict_summary,        -- 게으른 LLM 한 줄 종합 (하이브리드 판정의 서술부)
   conviction, salience,   -- knowledge_state 4상한 재사용 (판정 강도 × 시장 주목)
   created_at, updated_at
@@ -110,16 +112,35 @@ proxy_observations(  -- 확장
 
 ---
 
-## 판정 롤업 (하이브리드)
+## 판정 롤업 (하이브리드 + pace layer 2층, D-068)
 
 프록시 관측 → 서브질문 판정 → 핵심질문 종합. **하이브리드**: 결정적 스코어(LLM 0) + 게으른 LLM 한 줄.
 
 1. **프록시 → 서브질문 (결정적)**: 프록시 관측의 방향(up/down/flat) 카운트·최근성 가중 → 서브질문 verdict.
    **반증우선**: 서브질문의 `falsifier` 방향으로 꺾인 관측을 강조(예: E "OPM 축소"가 TRUE로 관측되면 굵게).
-2. **서브질문 → 핵심질문 (결정적)**: 서브질문 verdict를 weight로 종합 → questions.verdict(leaning_yes/no/mixed).
-   어느 서브질문이 부정으로 돌아섰나가 종합의 핵심 신호(단순 다수결 아님, 반증 가중).
-3. **게으른 LLM 종합 (서술)**: 판정이 바뀔 때만 haiku 한 줄로 `verdict_summary` 갱신 —
-   "투입·수요(A·B)는 강한 확인, 단 전환(C·E) 프록시가 비어 핵심은 미판정" 류. 캐시.
+2. **서브질문 → 핵심질문, pace layer 2층 (결정적)**: 질문 안에 두 속도가 공존한다 — sentiment·stance(fast)는
+   매일 움직이고 numeric(slow)은 분기마다만. 단일 점수로 뭉치면 fast 여론이 slow 실적을 압도해 verdict가
+   출렁인다(온톨로지 §fact/hypothesis 안 섞기 위반). 그래서 프록시 **modality를 pace layer로 갈라 2층 롤업**:
+   - **lead_verdict (선행, fast)** = sentiment·stance 프록시 관측 종합 → "여론·태세는 이미 X로 기울었다"(조기 경보).
+   - **confirm_verdict (확정, slow)** = numeric 프록시 관측 종합 → "실적으로 확인된 방향"(후행).
+   - **divergence** = 둘의 괴리를 신호로 — "여론은 식었는데 실적은 아직 강함"(lead_ahead) 등. `quadrant_gap`
+     (주가×감성 괴리)의 **질문 버전**. 시차를 뭉개지 않고 정보로 만든다.
+   어느 서브질문이 부정으로 돌아섰나가 각 층 종합의 핵심 신호(단순 다수결 아님, 반증 가중).
+3. **게으른 LLM 종합 (서술)**: 두 verdict·divergence가 바뀔 때만 haiku 한 줄로 `verdict_summary` 갱신 —
+   "투입·수요(A·B)는 확정 확인, 단 여론(D)은 선행으로 식기 시작, 전환(C·E) 프록시는 아직 공백" 류. 캐시.
+
+## 판정 주기 (Tracking 트리거, D-068)
+
+"주기적 추적"은 별개 두 타이밍이다 — **관측 추출**과 **판정 롤업**을 갈라서 본다. 둘 다 event-driven(소스/관측
+갱신 편승), **고정 폴러·cron 재판정 금지**.
+
+- **관측 추출 = 소스별 event-driven, 기존 이벤트에 편승** (프록시마다 pace layer가 다르므로):
+  - numeric ← 컨콜 수집 후(`extract_proxies` 기존 패턴)·재무 갱신·컨센서스 일별 스냅샷 (느림, 분기)
+  - sentiment ← 30분 cron(signals 계산에 편승) (빠름, 연속)
+  - stance ← 새 발언 문서 enrich 후 (불규칙)
+  → 새 스케줄러를 만들지 않는다. Phase 1은 numeric뿐이라 "컨콜/재무 수집 후 훅" 하나로 충분.
+- **판정 롤업 = 관측 갱신에 편승, 재료 없으면 no-op** (D-059 내러티브 재생성·digests doc_ids_hash 가드와 동형):
+  결정적 스코어는 관측 하나 들어올 때마다 재계산(쌈), LLM 서술(`verdict_summary`)만 판정이 실제 바뀔 때 게으르게.
 
 ---
 
@@ -166,7 +187,7 @@ proxy_observations(  -- 확장
 
 ## 미해결 / 후속 (Phase 밖)
 
-- **판정 주기(Tracking) 트리거** — 실적/컨콜 이벤트 발생 시 재판정(event-driven) vs cron. fast/slow layer 경계 논의 필요.
+- ~~판정 주기(Tracking) 트리거~~ — **해소(D-068)**: 관측 추출·판정 롤업 모두 event-driven 편승, 재료 없으면 no-op.
 - **서브질문 승격 기준** — 질문 verdict가 얼마나 확고해야 지식으로 승격하나(conviction 임계).
 - **프록시 관측 독립성** — 말뭉치 복제편향(보도자료 1→기사 10)이 sentiment 프록시 방향을 부풀릴 위험(D-065 한계 5와 동일).
 - **stance 프록시 데이터** — 수장 발언 태세 변화 추적은 person 감성 시계열이 선결(현재 감성 태깅은 있으나 프록시화 안 됨).
