@@ -185,6 +185,35 @@ proxy_observations(  -- 확장
 - **Phase 2**: 자동 도출 생성자(①, 제안 큐) + sentiment·stance 프록시 + observations 투영 + 내러티브 미러링.
 - **Phase 3**: 판정 → 지식 승격 고리 + Q5 단일 소스 생성자 + Tracking 주기(이벤트 트리거) 정교화.
 
+## Q5 — 단일 소스 딥다이브 (설계, 2026-07-26 확정)
+
+**문제**: 신호가 mention 임계 기반이라 "한 번 언급됐지만 상상을 자극하는" 소스(SK하이퍼 뉴스·젠슨황 인터뷰)를
+못 잡는다(corpus 최신편향). Q5는 사용자가 "이 소스 하나가 중요하다, 파보자"를 누적 없이 선언하게 한다.
+
+**핵심 차이 (② 와)**: ②는 사용자가 *질문*을 준다. Q5는 사용자가 *소스*를 준다 → **소스→핵심질문 도출**이라는
+새 단계가 앞에 붙고, 그 뒤 분해는 ②를 100% 재사용한다.
+
+```
+기존 수집 문서(/doc/:id, 피드)
+   │  ★신규: derive_questions_from_doc(doc_id) — sonnet이 소스를 읽고
+   │         "딥다이브할 핵심질문 1~3개"(+파급 사건 event 문구) 도출
+   ▼
+핵심질문 후보 → 사용자 픽/편집
+   ├─(a) decompose_question(text, source_doc_id=doc_id) — 질문 트래커 (기존 ② 재사용)
+   └─(b) build_scenario(event) — 파급 시나리오도 함께(scenarios 캐시)   ← 사용자 확정
+```
+
+**확정 결정 (2026-07-26)**:
+- **입력 = 기존 수집 문서만**(MVP). 외부 URL 붙여넣기(유튜브 단건 커넥터·뉴스 범용 fetch)는 후속.
+- **소스→질문 = 시스템 자동 도출**(sonnet) → 사용자 픽/편집. "선제적 상상 보조"의 핵심 가치.
+- **시나리오도 함께**: 같은 소스에서 도출한 event로 `build_scenario`(pipeline/scenario.py)도 태워 파급 체인 생성.
+  질문 트래커(무엇을 볼지)와 시나리오(무슨 일이 벌어질지)가 한 소스의 두 렌즈.
+- `source_doc_id`로 출처 추적 + recall_for_query로 가까운 내러티브에 narrative_id 자동 연결.
+
+**구현 요소**: `derive_questions_from_doc(doc_id)`(신규, sonnet — 질문 후보 + event) · POST `/api/spine/questions/from-doc`
+(도출→후보 반환) · 기존 `decompose_question`·`build_scenario` 재사용 · FE: `/doc/:id`·피드에 "이 소스로 파보기" 버튼
+→ 후보 픽 모달 → 질문 트래커 + 시나리오 진입.
+
 ## 미해결 / 후속 (Phase 밖)
 
 - ~~판정 주기(Tracking) 트리거~~ — **해소(D-068)**: 관측 추출·판정 롤업 모두 event-driven 편승, 재료 없으면 no-op.

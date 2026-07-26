@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { EntityChip } from "@/components/shared/EntityChip"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { SourceDeepDive } from "@/components/doc/SourceDeepDive"
 import { formatRelativeTime } from "@/utils/format"
 import type { EntityTag, FeedDocument } from "@/types"
 
@@ -84,6 +85,7 @@ export default function DocPage() {
             ))}
           </div>
         )}
+        <SourceDeepDive docId={doc.id} />
       </div>
 
       {/* AI 요약 (있으면) */}
