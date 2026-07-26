@@ -24,7 +24,6 @@ import { Expandable } from "@/components/shared/Expandable"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
 import { MegaNarrativeSection } from "@/components/knowledge/MegaNarrativeSection"
-import { QuestionsSection } from "@/components/knowledge/QuestionsSection"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { cn } from "@/lib/utils"
 
@@ -123,7 +122,6 @@ export default function KnowledgePage() {
       </div>
 
       <MegaNarrativeSection />
-      <QuestionsSection />
       <StructureMap />
       {overview && <OverviewStrip o={overview} />}
       <InjectConsole onDone={invalidate} />

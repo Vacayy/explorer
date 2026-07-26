@@ -45,9 +45,9 @@ export default function QuestionDetail() {
 
   return (
     <PageContainer width="reading" gap="sm">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/knowledge")}
+      <Button variant="ghost" size="sm" onClick={() => navigate("/questions")}
         className="h-auto border-0 p-0 font-normal flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:bg-transparent">
-        <ArrowLeft className="size-3.5" /> 지식 · 미결 질문
+        <ArrowLeft className="size-3.5" /> 미결 질문
       </Button>
 
       <h1 className="text-xl font-bold leading-snug flex items-start gap-2">
