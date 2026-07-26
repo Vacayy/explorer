@@ -2,15 +2,16 @@ import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 /**
- * 내러티브 상위 탭 내부 토글 — 내러티브(주제 서사, 빠른 층) ↔ 질문(핵심질문 분할정복 추적). D-071.
- * 지식 탭의 지식↔온톨로지 토글과 동형: 한 상위 탭에서 "지금 무슨 이야기인가"와 "무엇을 확인해야 하나"를 오간다.
+ * 전망(미래·확률) 상위 탭 내부 토글 — 질문(핵심질문 추적) ↔ 리포트(투자 판단·콜). D-073.
+ * 인식론적 시간축: 지식=과거·검증 / 내러티브=현재·서사 / 전망=미래·확률.
+ * 미래-확률이 질문·리포트로 흩어져 있던 것을 한 상위 탭으로 집약 (지식↔온톨로지와 동형).
  */
 const TABS = [
-  { to: "/narrative", label: "내러티브", active: (p: string) => p.startsWith("/narrative") },
   { to: "/questions", label: "질문", active: (p: string) => p.startsWith("/question") },
+  { to: "/report", label: "리포트", active: (p: string) => p.startsWith("/report") },
 ] as const
 
-export function NarrativeSubNav() {
+export function OutlookSubNav() {
   const { pathname } = useLocation()
   return (
     <div className="flex gap-1">

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/shared/ErrorState"
 import { ReportView } from "@/components/explore/ReportView"
+import { OutlookSubNav } from "@/components/explore/OutlookSubNav"
 
 /**
  * /report — 통합 리포트 공간 (월드모델 탭, integrated-report/D-041).
@@ -47,7 +48,8 @@ function ReportList() {
     }),
   )
   return (
-    <PageContainer>
+    <PageContainer gap="sm">
+      <OutlookSubNav />
       <div>
         <h2 className="text-xl font-bold">리포트</h2>
         <p className="text-sm text-muted-foreground">공유 인과로 엮인 내러티브 + 종목 분석을 종합한 Top-down 리포트</p>
