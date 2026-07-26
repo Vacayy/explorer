@@ -20,11 +20,11 @@ const FOLLOW_TABS = [
   { key: "actions", path: "/actions", label: "기업활동" },
 ] as const
 
-// 월드모델 — 내러티브(빠른 층)·세계관(인과 그래프)·지식(느린 층)은 "같은 인과 그래프의 두 속도"(D-023).
-// 신호(델타 감지)와 성격이 달라 별도 모드로 묶음 (D-031). 지식은 탐색에서 이관.
+// 월드모델 — 인식론적 시간축으로 L2 구성 (D-073): 내러티브(현재·서사) · 전망(미래·확률) · 지식(과거·검증).
+// 전망은 질문↔리포트 토글(미래-확률 집약), 지식은 지식↔온톨로지 토글(D-052). 신호와 성격 달라 별도 모드(D-031).
 const WORLDMODEL_TABS = [
   { key: "narrative", path: "/narrative", label: "내러티브" },
-  { key: "report", path: "/report", label: "리포트" },
+  { key: "outlook", path: "/questions", label: "전망" },     // 전망 안에서 질문↔리포트 토글 (D-073)
   { key: "knowledge", path: "/knowledge", label: "지식" },   // 지식 안에서 지식↔온톨로지(그래프) 토글 (D-052)
 ] as const
 
@@ -171,10 +171,10 @@ function getActiveMode(pathname: string): AppMode {
 function getActiveSubTab(pathname: string): string | null {
   // Feed 서브탭은 쿼리 파라미터 기반 (컴포넌트에서 직접 계산)
 
-  // 월드모델 — 내러티브 상위탭 하위에 내러티브·질문(/question*), 둘 다 '내러티브' 탭 활성 (D-071)
+  // 월드모델 — 시간축(D-073): 전망 상위탭 하위에 질문(/question*)·리포트(/report), 둘 다 '전망(outlook)' 활성.
   // 온톨로지(그래프)는 지식 탭 하위(/knowledge/ontology), 둘 다 '지식' 탭 활성 (D-052)
-  if (pathname.startsWith("/narrative") || pathname.startsWith("/question")) return "narrative"
-  if (pathname.startsWith("/report")) return "report"
+  if (pathname.startsWith("/narrative")) return "narrative"
+  if (pathname.startsWith("/question") || pathname.startsWith("/report")) return "outlook"
   if (pathname.startsWith("/knowledge")) return "knowledge"
 
   // 팔로우 — /follow 하위(universe·transcripts)는 follow보다 먼저 매칭 + 커버리지 대상(D-057)
