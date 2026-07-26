@@ -34,6 +34,34 @@ def index(narrative_id: int | None = None, status: str | None = None):
     return list_questions(narrative_id=narrative_id, status=status)
 
 
+class FromDocRequest(BaseModel):
+    doc_id: int
+
+
+@router.post("/from-doc")
+def from_doc(body: FromDocRequest):
+    """Q5 — 단일 소스 문서에서 딥다이브 핵심질문 후보 + 파급 event 도출 (sonnet, ~수십 초). 생성은 별도(질문 픽·시나리오)."""
+    from pipeline.questions import derive_questions_from_doc
+    r = derive_questions_from_doc(body.doc_id)
+    if "error" in r:
+        raise HTTPException(503, r["error"])
+    return r
+
+
+class ScenarioRequest(BaseModel):
+    event: str
+
+
+@router.post("/scenario")
+def scenario(body: ScenarioRequest):
+    """Q5 — 도출한 event로 파급 시나리오 생성+캐시 (opus, ~수 분). GET /narrative/scenario?topic=event로도 열람."""
+    from pipeline.questions import run_scenario_for_event
+    r = run_scenario_for_event(body.event)
+    if "error" in r:
+        raise HTTPException(503, r["error"])
+    return r
+
+
 @router.post("/propose")
 def propose(limit: int = 3):
     """지배 내러티브에서 질문 후보 자동 도출 (생성자 ①, 제안 큐 — 분해는 승인 후)."""

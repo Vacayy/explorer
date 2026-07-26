@@ -128,6 +128,65 @@ def _hard_delete(qid: int) -> None:
     conn.close()
 
 
+# ---------- Q5 단일 소스 딥다이브 (소스→질문 도출 + 파급 시나리오) ----------
+
+_DERIVE_PROMPT = """당신은 투자 리서치 애널리스트다. 아래 '단일 소스'(뉴스/글/영상)를 읽고, 투자자가
+딥다이브할 가치가 있는 **핵심질문 1~3개**를 뽑아라. 많이 회자되지 않았어도 미래를 상상하게 만드는 각도를
+우선하라(예: "이 재료가 특정 기업의 EPS·멀티플 리레이팅을 부를 수 있는가?"). 그리고 이 소스가 함의하는
+**파급 사건(event) 한 문장**(시나리오 분석용)을 하나 도출하라.
+
+[소스 제목] {title}
+[소스 본문]
+{body}
+
+JSON만: {{"candidates": ["핵심질문1", "핵심질문2"], "event": "파급 분석용 사건 한 문장"}}"""
+
+
+def derive_questions_from_doc(doc_id: int) -> dict:
+    """단일 소스 문서에서 딥다이브 핵심질문 후보 + 파급 event 도출 (Q5, sonnet). 생성 안 함 — 후보 반환만."""
+    from pipeline.enrich import _call_claude_code, llm_available
+    if not llm_available():
+        return {"error": "llm 미가용"}
+    conn = get_connection()
+    doc = conn.execute(
+        "SELECT rd.title, rd.markdown, e.summary FROM raw_documents rd "
+        "LEFT JOIN enrichments e ON e.doc_id=rd.id WHERE rd.id=?", (doc_id,)).fetchone()
+    conn.close()
+    if not doc:
+        return {"error": "문서 없음"}
+    body = (doc["markdown"] or doc["summary"] or "")[:12000]
+    if not body.strip():
+        return {"error": "본문 없음"}
+    try:
+        raw = _call_claude_code(_DERIVE_PROMPT.format(title=doc["title"] or "", body=body), model="sonnet", timeout=180)
+        d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"도출 실패: {e}"}
+    cands = [c.strip() for c in (d.get("candidates") or []) if isinstance(c, str) and c.strip()][:3]
+    return {"doc_id": doc_id, "title": doc["title"], "candidates": cands, "event": (d.get("event") or "").strip()}
+
+
+def run_scenario_for_event(event: str) -> dict:
+    """단일 소스 event로 파급 시나리오 생성 + scenarios 캐시(topic=event, narrative_version=NULL). Q5 '시나리오도 함께'."""
+    from pipeline.scenario import build_scenario
+    if not event.strip():
+        return {"error": "event 비어 있음"}
+    r = build_scenario(event)
+    if r.get("error"):
+        return {"error": r["error"]}
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO scenarios (topic, event, answer, beneficiaries, citations, narrative_version, model, created_at) "
+        "VALUES (?,?,?,?,?,NULL,?,datetime('now')) ON CONFLICT(topic) DO UPDATE SET "
+        "event=excluded.event, answer=excluded.answer, beneficiaries=excluded.beneficiaries, "
+        "citations=excluded.citations, model=excluded.model, created_at=excluded.created_at",
+        (event, event, r.get("answer"), json.dumps(r.get("beneficiaries") or [], ensure_ascii=False),
+         json.dumps(r.get("citations") or [], ensure_ascii=False), r.get("model")))
+    conn.commit()
+    conn.close()
+    return {"topic": event, "answer": r.get("answer"), "beneficiaries": r.get("beneficiaries") or []}
+
+
 # ---------- 생성자 ① 자동 도출 (지배 내러티브 → 제안 큐, D-067) ----------
 
 def propose_from_narratives(limit: int = 3) -> dict:
