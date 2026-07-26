@@ -831,6 +831,36 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_transcripts_ticker ON transcripts(ticker, fiscal_year, fiscal_period);
     CREATE INDEX IF NOT EXISTS idx_proxy_obs ON proxy_observations(proxy_id, observed_at);
 
+    -- 핵심질문 트래커 (D-067·D-068, docs/specs/question-proxy.md) — 분할정복:
+    -- 질문 → 서브질문 → 프록시 → 관측 → 판정. 질문 = 지식의 미결 버전(판정되면 knowledge로 승격).
+    CREATE TABLE IF NOT EXISTS questions (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        text            TEXT NOT NULL,
+        narrative_id    INTEGER,              -- 도출 출처 내러티브 (사용자 주입이면 NULL)
+        source_doc_id   INTEGER,              -- Q5: 단일 소스에서 출발한 경우 그 문서
+        created_by      TEXT NOT NULL DEFAULT 'user',      -- system(내러티브 도출) | user(주입)
+        status          TEXT NOT NULL DEFAULT 'tracking',  -- proposed | tracking | resolved | dismissed
+        lead_verdict    TEXT,                 -- 선행 판정 (fast: sentiment·stance) leaning_yes|leaning_no|mixed|unknown
+        confirm_verdict TEXT,                 -- 확정 판정 (slow: numeric)
+        divergence      TEXT,                 -- aligned | lead_ahead | confirm_ahead (D-068)
+        verdict_summary TEXT,                 -- 게으른 LLM 한 줄 종합 (하이브리드 판정의 서술부)
+        conviction      REAL,                 -- knowledge_state 재사용 (판정 강도)
+        salience        REAL,                 -- 시장 주목
+        created_at      TEXT DEFAULT (datetime('now')),
+        updated_at      TEXT DEFAULT (datetime('now'))
+    );
+    -- 서브질문 (논리적 분할, 각 반증조건 보유) — "이걸 보려면"
+    CREATE TABLE IF NOT EXISTS sub_questions (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id  INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+        text         TEXT NOT NULL,
+        falsifier    TEXT,                    -- 반증조건: 이 방향 관측이면 핵심질문이 틀린 것
+        verdict      TEXT,                    -- 서브질문 단위 판정 (프록시 관측 롤업)
+        weight       REAL DEFAULT 1.0,
+        created_at   TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_sub_questions ON sub_questions(question_id);
+
     -- 수출입(무역) 팔로우 (docs/specs/trade-follow.md, 관세청 품목별 수출입실적) — 관심 품목 구독
     CREATE TABLE IF NOT EXISTS trade_follow (
         hs_code       TEXT PRIMARY KEY,     -- HS 부호 (2·4단위 혼용, 예 '8542'=반도체)
@@ -923,6 +953,12 @@ def init_db():
         "ALTER TABLE reports ADD COLUMN debate_json TEXT",
         # transcript 핵심 정리(D-061 stage 2) — 원문(raw_documents)은 그대로 두고 별도 LLM 정리 저장
         "ALTER TABLE transcripts ADD COLUMN digest TEXT",
+        # 핵심질문 트래커(D-067·D-068) — 프록시를 서브질문에 바인딩 + 다양식(pace layer) + 관측 다소스화
+        "ALTER TABLE proxy_registry ADD COLUMN sub_question_id INTEGER",           # 어느 서브질문의 프록시인가
+        "ALTER TABLE proxy_registry ADD COLUMN modality TEXT DEFAULT 'numeric'",   # numeric|sentiment|stance (pace layer)
+        "ALTER TABLE proxy_registry ADD COLUMN yes_direction TEXT",                # 'up'|'down' — 어느 관측 방향이 핵심질문 '예'의 근거인가(판정 극성)
+        "ALTER TABLE proxy_observations ADD COLUMN source_type TEXT",              # 범용 source_ref (transcript|financial|consensus|signal)
+        "ALTER TABLE proxy_observations ADD COLUMN source_id TEXT",
     ]:
         try:
             conn.execute(migration)
@@ -937,6 +973,12 @@ def init_db():
     conn.execute(
         "UPDATE raw_documents SET digest_status='failed' WHERE source_type='youtube' "
         "AND digest_status IS NULL AND raw_content NOT LIKE '%opus 정리본%'")
+    conn.commit()
+
+    # 프록시 관측 다소스화 백필 (D-067) — 기존 transcript_id를 범용 source_ref로 (7건 보존)
+    conn.execute(
+        "UPDATE proxy_observations SET source_type='transcript', source_id=CAST(transcript_id AS TEXT) "
+        "WHERE source_type IS NULL AND transcript_id IS NOT NULL")
     conn.commit()
 
     # narrative_edge_evidence 백필 — 과거엔 narrative_id가 최근 갱신 하나만 남겨 이전 재적재
