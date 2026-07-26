@@ -438,6 +438,7 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     내러티브 수, narrative_edge_evidence 집계) · contested(반대 방향 CAUSES가 그래프에 공존)."""
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
+               er.effect_direction, er.effect_strength,
                er.promoted_knowledge_id, er.feedback_note, er.geo_scope, s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
@@ -458,7 +459,9 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
         out_edges.append({"from": e["sname"], "from_type": e["stype"], "to": e["dname"],
                           "to_type": e["dtype"], "rel": e["rel_type"], "mechanism": e["mechanism"],
                           "orientation": e["time_orientation"], "reference_period": e["reference_period"],
-                          "confidence": e["confidence"], "corroborated_by": n_narratives,
+                          "confidence": e["confidence"],
+                          "effect_direction": e["effect_direction"], "effect_strength": e["effect_strength"],
+                          "corroborated_by": n_narratives,
                           "contested": contested, "feedback_note": e["feedback_note"],
                           "geo_scope": e["geo_scope"],
                           "promoted_knowledge_id": e["promoted_knowledge_id"]})

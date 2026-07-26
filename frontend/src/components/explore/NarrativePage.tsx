@@ -420,7 +420,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
         <div className="flex items-center gap-1.5">
           <Workflow className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">인과 구조</span>
-          <span className="text-[11px] text-muted-foreground">시간순 · 원인 → 결과, 수혜 섹터</span>
+          <span className="text-[11px] text-muted-foreground">시간순 · 원인 → 결과 · 화살표 색=방향(<span className="text-up">정+</span>/<span className="text-down">부−</span>), 굵기=효과 크기</span>
         </div>
         {edges.length === 0 ? (
           <EmptyState message="인과 구조가 아직 추출되지 않았습니다 — 재생성 시 그래프에 쌓입니다." />
@@ -434,7 +434,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
                   <NodeChip name={e.from} type={e.from_type} />
                   <span className={cn("inline-flex items-center gap-0.5 text-[10px]",
                     benefit ? "text-primary" : "text-muted-foreground")}>
-                    <ArrowRight className="h-3 w-3" />
+                    <EdgeArrow edge={e} />
                     {benefit ? "수혜" : "인과"}
                     {o && <span className={cn("ml-0.5", o.cls)}>· {o.label}</span>}
                   </span>
