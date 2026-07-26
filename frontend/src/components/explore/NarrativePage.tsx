@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { Anchor, ArrowLeft, ArrowRight, GitMerge, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
+import { Anchor, ArrowLeft, ArrowRight, GitMerge, HelpCircle, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
@@ -161,6 +161,7 @@ export default function NarrativePage() {
             onSelectVersion={(id) => navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`)}
           />
           <ScenarioSection topic={topic} />
+          {narrativeId && <NarrativeQuestions narrativeId={narrativeId} />}
           <ReportLinkCard topic={topic} />
           {narrativeId && <CausalChain narrativeId={narrativeId} />}
           {narrativeId && <ChainPaths narrativeId={narrativeId} />}
@@ -177,6 +178,52 @@ export default function NarrativePage() {
         </>
       )}
     </PageContainer>
+  )
+}
+
+/* ---------- 이 서사의 핵심질문 (D-067 2d 미러링) — 질문 트래커와 내러티브 연결 ---------- */
+
+const QV: Record<string, { label: string; cls: string }> = {
+  leaning_yes: { label: "긍정", cls: "text-primary border-primary/40" },
+  leaning_no: { label: "부정", cls: "text-destructive border-destructive/50" },
+  mixed: { label: "혼조", cls: "text-hypothesis border-hypothesis/40" },
+  unknown: { label: "미판정", cls: "text-muted-foreground border-border" },
+}
+
+function NarrativeQuestions({ narrativeId }: { narrativeId: number }) {
+  const { data = [] } = useQuery(
+    apiQuery<{ id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null }[]>({
+      key: ["spine", "questions", "narrative", narrativeId],
+      url: `/api/spine/questions?narrative_id=${narrativeId}`, staleTime: STALE.short,
+    }),
+  )
+  if (data.length === 0) return null
+  return (
+    <Card><CardContent className="py-3 space-y-2">
+      <div className="flex items-center gap-1.5">
+        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-medium">이 서사가 던지는 핵심질문</span>
+        <span className="text-[11px] text-muted-foreground">분할정복으로 추적 · 지식 탭에서 상세</span>
+      </div>
+      {data.map((q) => (
+        <Link key={q.id} to="/knowledge"
+          className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 hover:border-primary">
+          <span className="text-[13px] flex-1">{q.text}</span>
+          {q.status === "proposed" ? (
+            <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40 shrink-0">제안됨</Badge>
+          ) : (
+            <span className="flex shrink-0 gap-1">
+              <Badge variant="outline" className={cn("text-[10px]", QV[q.confirm_verdict ?? "unknown"].cls)}>
+                확정 {QV[q.confirm_verdict ?? "unknown"].label}
+              </Badge>
+              <Badge variant="outline" className={cn("text-[10px]", QV[q.lead_verdict ?? "unknown"].cls)}>
+                선행 {QV[q.lead_verdict ?? "unknown"].label}
+              </Badge>
+            </span>
+          )}
+        </Link>
+      ))}
+    </CardContent></Card>
   )
 }
 

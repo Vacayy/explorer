@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { ChevronDown, HelpCircle, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { Check, ChevronDown, HelpCircle, Inbox, Loader2, Plus, RefreshCw, Trash2, Wand2, X } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,7 +29,7 @@ interface QTree {
   divergence: string | null; verdict_summary: string | null; sub_questions: QSub[]
 }
 interface QListItem {
-  id: number; text: string; lead_verdict: string | null; confirm_verdict: string | null
+  id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null
   divergence: string | null; verdict_summary: string | null; sub_count: number; updated_at: string
 }
 
@@ -59,10 +59,14 @@ function VerdictBadge({ v, prefix }: { v: string | null; prefix: string }) {
 
 export function QuestionsSection() {
   const qc = useQueryClient()
-  const { data = [], isLoading } = useQuery(
+  const { data: all = [], isLoading } = useQuery(
     apiQuery<QListItem[]>({ key: listKey, url: "/api/spine/questions", staleTime: STALE.short }),
   )
-  const invalidate = () => qc.invalidateQueries({ queryKey: listKey })
+  const data = all.filter((q) => q.status !== "proposed")   // proposed는 제안 큐에서 별도 처리
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: listKey })
+    qc.invalidateQueries({ queryKey: ["spine", "questions", "proposed"] })
+  }
 
   return (
     <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_5%,var(--card))]">
@@ -76,6 +80,7 @@ export function QuestionsSection() {
       </CardHeader>
       <CardContent className="space-y-2">
         <QuestionConsole onDone={invalidate} />
+        <ProposedQueue onDone={invalidate} />
         {isLoading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
             <Loader2 className="h-3 w-3 animate-spin" /> 질문 불러오는 중…
@@ -117,6 +122,72 @@ function QuestionConsole({ onDone }: { onDone: () => void }) {
           추적 시작
         </Button>
       </div>
+    </div>
+  )
+}
+
+/* 제안 큐 (생성자 ①) — 지배 내러티브에서 자동 도출된 질문 후보. 승인 시 분해·추적(비싼 노동 뒤로, D-020) */
+function ProposedQueue({ onDone }: { onDone: () => void }) {
+  const qc = useQueryClient()
+  const proposedKey = ["spine", "questions", "proposed"]
+  const { data = [] } = useQuery(
+    apiQuery<QListItem[]>({ key: proposedKey, url: "/api/spine/questions?status=proposed", staleTime: STALE.short }),
+  )
+  const refresh = () => { qc.invalidateQueries({ queryKey: proposedKey }); onDone() }
+
+  const propose = useMutation({
+    mutationFn: () => api.post("/api/spine/questions/propose"),
+    onSuccess: (r) => {
+      const n = (r.data as { proposed: number }).proposed
+      toast.success(n ? `지배 내러티브에서 질문 후보 ${n}개 도출` : "새 후보 없음 — 이미 다 제안됨")
+      refresh()
+    },
+  })
+  const approve = useMutation({
+    mutationFn: (id: number) => api.post(`/api/spine/questions/${id}/approve`),
+    onSuccess: () => { toast.success("승인 — 분해·추적 시작"); refresh() },
+    onError: () => toast.error("분해 실패 — 다시 시도"),
+  })
+  const reject = useMutation({
+    mutationFn: (id: number) => api.delete(`/api/spine/questions/${id}`),
+    onSuccess: () => { toast.success("후보 제거"); refresh() },
+  })
+
+  return (
+    <div className="rounded-md border border-dashed px-3 py-2 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Inbox className="h-3.5 w-3.5 text-hypothesis" />
+        <span className="text-[11px] font-medium">지배 내러티브 발(發) 질문 후보</span>
+        {data.length > 0 && <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">{data.length}</Badge>}
+        <Button size="xs" variant="ghost" className="ml-auto h-6 px-2 text-muted-foreground"
+          disabled={propose.isPending} onClick={() => propose.mutate()}>
+          {propose.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />} 후보 찾기
+        </Button>
+      </div>
+      {approve.isPending && (
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" /> 승인된 질문을 분해·추적하는 중… (수 분)
+        </div>
+      )}
+      {data.length === 0 ? (
+        <p className="text-[10px] text-muted-foreground/60">승인 전 무행동 — "후보 찾기"로 지배 서사의 질문을 제안받으세요</p>
+      ) : (
+        data.map((q) => (
+          <div key={q.id} className="flex items-center gap-2 py-0.5">
+            <span className="text-[13px] truncate flex-1">{q.text}</span>
+            <span className="flex shrink-0 gap-1">
+              <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
+                disabled={approve.isPending} onClick={() => approve.mutate(q.id)}>
+                <Check className="h-3 w-3" /> 승인
+              </Button>
+              <Button size="xs" variant="ghost" className="h-6 px-2 text-muted-foreground hover:text-destructive"
+                onClick={() => reject.mutate(q.id)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </span>
+          </div>
+        ))
+      )}
     </div>
   )
 }

@@ -28,10 +28,27 @@ def create(body: AskRequest):
 
 
 @router.get("")
-def index():
-    """미결 질문 목록 (판정 배지용, LLM 0). apiQuery 패턴에 맞춰 배열 직접 반환."""
+def index(narrative_id: int | None = None, status: str | None = None):
+    """미결 질문 목록 (판정 배지용, LLM 0). narrative_id·status 필터. apiQuery 패턴 배열 반환."""
     from pipeline.questions import list_questions
-    return list_questions()
+    return list_questions(narrative_id=narrative_id, status=status)
+
+
+@router.post("/propose")
+def propose(limit: int = 3):
+    """지배 내러티브에서 질문 후보 자동 도출 (생성자 ①, 제안 큐 — 분해는 승인 후)."""
+    from pipeline.questions import propose_from_narratives
+    return propose_from_narratives(limit=limit)
+
+
+@router.post("/{question_id}/approve")
+def approve(question_id: int):
+    """제안 질문 승인 → 분해·추적 시작 (비싼 분해는 승인 뒤, ~수 분)."""
+    from pipeline.questions import approve_question
+    r = approve_question(question_id)
+    if "error" in r:
+        raise HTTPException(404, r["error"])
+    return r
 
 
 @router.get("/{question_id}")

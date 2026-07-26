@@ -257,7 +257,7 @@ def extract_proxies(limit: int = 40) -> dict:
     if not llm_available():
         return {"extracted": 0, "skipped": 0, "reason": "llm 미가용"}
     conn = get_connection()
-    proxies = conn.execute("SELECT id, label, tickers, extract_hint FROM proxy_registry WHERE active=1").fetchall()
+    proxies = conn.execute("SELECT id, key, label, tickers, unit, extract_hint FROM proxy_registry WHERE active=1").fetchall()
     extracted, scanned = 0, 0
     for p in proxies:
         tickers = [t.strip() for t in (p["tickers"] or "").split(",") if t.strip()]
@@ -292,7 +292,27 @@ def extract_proxies(limit: int = 40) -> dict:
             conn.commit()
             extracted += 1
     conn.close()
+    project_numeric_observations()   # 그래프 결합 (D-067 2c) — 멱등 배치
     return {"extracted": extracted, "scanned": scanned}
+
+
+def project_numeric_observations() -> int:
+    """numeric 프록시 관측을 observations(엔티티 노드)에 투영 — 그래프 결합(D-067 2c), 잠자던 테이블 가동.
+    transcript_id→ticker→transcript_follow.entity_id 경유. 멱등(INSERT OR IGNORE)."""
+    conn = get_connection()
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO observations (entity_id, date, metric, value, unit, source) "
+        "SELECT tf.entity_id, po.observed_at, pr.key, po.value_num, pr.unit, 'proxy:transcript' "
+        "FROM proxy_observations po "
+        "JOIN transcripts t ON t.id = po.transcript_id "
+        "JOIN transcript_follow tf ON tf.ticker = t.ticker "
+        "JOIN proxy_registry pr ON pr.id = po.proxy_id "
+        "WHERE po.source_type='transcript' AND po.value_num IS NOT NULL "
+        "  AND tf.entity_id IS NOT NULL AND po.observed_at IS NOT NULL")
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return n
 
 
 def _followed(only: list[str] | None = None) -> list[dict]:

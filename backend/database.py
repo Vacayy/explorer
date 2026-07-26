@@ -979,6 +979,11 @@ def init_db():
     conn.execute(
         "UPDATE proxy_observations SET source_type='transcript', source_id=CAST(transcript_id AS TEXT) "
         "WHERE source_type IS NULL AND transcript_id IS NOT NULL")
+    # transcript_follow.entity_id 백필 (D-067 2c) — observations 투영 전제. 정확 매칭만(Meta→MetaMask 오매칭 회피)
+    conn.execute(
+        "UPDATE transcript_follow SET entity_id = ("
+        "  SELECT e.id FROM entities e WHERE e.type='company' AND e.name = transcript_follow.company_name LIMIT 1) "
+        "WHERE entity_id IS NULL")
     conn.commit()
 
     # narrative_edge_evidence 백필 — 과거엔 narrative_id가 최근 갱신 하나만 남겨 이전 재적재

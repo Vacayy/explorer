@@ -50,7 +50,21 @@ def _slugify(label: str, qid: int, i: int) -> str:
 
 def decompose_question(text: str, created_by: str = "user",
                        narrative_id: int | None = None, source_doc_id: int | None = None) -> dict:
-    """질문을 서브질문·프록시로 분해해 적재하고 numeric 프록시 관측을 추출한 뒤 트리를 반환한다."""
+    """새 질문을 적재하고 즉시 서브질문·프록시로 분해·추출·판정 (생성자 ②: 사용자 주입)."""
+    conn = get_connection()
+    qid = conn.execute(
+        "INSERT INTO questions (text, narrative_id, source_doc_id, created_by, status) VALUES (?, ?, ?, ?, 'tracking')",
+        (text.strip(), narrative_id, source_doc_id, created_by)).lastrowid
+    conn.commit()
+    conn.close()
+    r = _decompose_and_track(qid, text)
+    if "error" in r:
+        _hard_delete(qid)   # 빈 질문 잔재 방지
+    return r
+
+
+def _decompose_and_track(qid: int, text: str) -> dict:
+    """질문 qid를 분해(sonnet)→적재→numeric/sentiment 추출→판정. 신규·승인 공용."""
     from pipeline.enrich import _call_claude_code, llm_available
     if not llm_available():
         return {"error": "llm 미가용"}
@@ -61,17 +75,11 @@ def decompose_question(text: str, created_by: str = "user",
         return {"error": f"분해 실패: {e}"}
 
     conn = get_connection()
-    status = "proposed" if created_by == "system" else "tracking"
-    cur = conn.execute(
-        "INSERT INTO questions (text, narrative_id, source_doc_id, created_by, status) VALUES (?, ?, ?, ?, ?)",
-        (text.strip(), narrative_id, source_doc_id, created_by, status))
-    qid = cur.lastrowid
-    has_numeric = False
+    has_numeric = has_corpus = False
     for sq in plan.get("sub_questions", []):
-        scur = conn.execute(
+        sqid = conn.execute(
             "INSERT INTO sub_questions (question_id, text, falsifier) VALUES (?, ?, ?)",
-            (qid, (sq.get("text") or "").strip(), (sq.get("falsifier") or "").strip() or None))
-        sqid = scur.lastrowid
+            (qid, (sq.get("text") or "").strip(), (sq.get("falsifier") or "").strip() or None)).lastrowid
         for i, p in enumerate(sq.get("proxies", [])):
             modality = p.get("modality") if p.get("modality") in ("numeric", "sentiment", "stance") else "numeric"
             yes_dir = p.get("yes_direction") if p.get("yes_direction") in ("up", "down") else "up"
@@ -84,19 +92,143 @@ def decompose_question(text: str, created_by: str = "user",
                  (p.get("extract_hint") or "").strip() or None, yes_dir))
             if modality == "numeric" and (p.get("tickers") or "").strip():
                 has_numeric = True
+            elif modality == "sentiment":
+                has_corpus = True
+    conn.execute("UPDATE questions SET status='tracking' WHERE id=?", (qid,))
     conn.commit()
     conn.close()
 
-    # numeric 프록시는 컨콜에서 즉시 추출(event-driven 편승 — 여기선 최초 분해 시 1회). sentiment/stance는 Phase 2.
+    # 관측 추출은 event-driven — 여기선 최초 분해 시 1회. numeric=컨콜, sentiment=코퍼스(게으른 haiku).
     if has_numeric:
         try:
             from pipeline.transcript import extract_proxies
             extract_proxies(limit=40)
         except Exception as e:  # noqa: BLE001
-            print(f"[question] 프록시 추출 실패: {e}")
+            print(f"[question] numeric 추출 실패: {e}")
+    if has_corpus:
+        try:
+            extract_sentiment_proxies(question_id=qid)
+        except Exception as e:  # noqa: BLE001
+            print(f"[question] sentiment 추출 실패: {e}")
 
     rollup(qid)
     return get_tree(qid)
+
+
+def _hard_delete(qid: int) -> None:
+    conn = get_connection()
+    conn.execute("DELETE FROM proxy_observations WHERE proxy_id IN "
+                 "(SELECT id FROM proxy_registry WHERE sub_question_id IN "
+                 "(SELECT id FROM sub_questions WHERE question_id=?))", (qid,))
+    conn.execute("DELETE FROM proxy_registry WHERE sub_question_id IN "
+                 "(SELECT id FROM sub_questions WHERE question_id=?)", (qid,))
+    conn.execute("DELETE FROM sub_questions WHERE question_id=?", (qid,))
+    conn.execute("DELETE FROM questions WHERE id=?", (qid,))
+    conn.commit()
+    conn.close()
+
+
+# ---------- 생성자 ① 자동 도출 (지배 내러티브 → 제안 큐, D-067) ----------
+
+def propose_from_narratives(limit: int = 3) -> dict:
+    """지배 내러티브(인과엣지 多·최신)의 질문형 제목을 질문 후보로 제안(status='proposed').
+    분해는 하지 않는다 — 비싼 노동은 승인 뒤로(D-020). 승인 시 approve_question이 분해."""
+    conn = get_connection()
+    # topic별 최신(non-superseded) 내러티브 중 인과엣지 수(=영향력)로 랭킹
+    rows = conn.execute(
+        "SELECT n.id, n.topic, n.title, "
+        "  (SELECT COUNT(*) FROM entity_relations er WHERE er.narrative_id=n.id) AS power "
+        "FROM narratives n "
+        "WHERE n.superseded_at IS NULL AND n.title IS NOT NULL AND n.kind='topic' "
+        "ORDER BY power DESC, n.created_at DESC LIMIT 40").fetchall()
+    proposed = 0
+    for r in rows:
+        if proposed >= limit:
+            break
+        # 이미 이 내러티브에서 만든 질문(제안·추적 불문)이 있으면 스킵
+        exists = conn.execute(
+            "SELECT 1 FROM questions WHERE narrative_id=? AND status != 'dismissed'", (r["id"],)).fetchone()
+        if exists or not (r["title"] or "").strip():
+            continue
+        conn.execute(
+            "INSERT INTO questions (text, narrative_id, created_by, status) VALUES (?, ?, 'system', 'proposed')",
+            (r["title"].strip(), r["id"]))
+        proposed += 1
+    conn.commit()
+    conn.close()
+    return {"proposed": proposed}
+
+
+def approve_question(question_id: int) -> dict:
+    """제안된 질문을 승인 → 분해·추적 시작 (비싼 sonnet 분해는 여기서, 승인 뒤)."""
+    conn = get_connection()
+    q = conn.execute("SELECT text, status FROM questions WHERE id=?", (question_id,)).fetchone()
+    conn.close()
+    if not q:
+        return {"error": "질문 없음"}
+    if q["status"] != "proposed":
+        return get_tree(question_id)
+    return _decompose_and_track(question_id, q["text"])
+
+
+_SENTIMENT_PROMPT = """다음은 '{label}'에 대한 최근 투자자 문서 발췌다. 이 주제의 시장 여론/심리가
+최근 어느 방향으로 움직이는지 판정하라. 추정 금지 — 발췌에 근거만. 근거가 약하면 flat.
+[무엇을 볼지] {hint}
+
+JSON만: {{"direction":"up|down|flat", "value_text":"판정 근거 한 문장(한국어)"}}
+
+[최근 문서 발췌]
+{snippets}"""
+
+
+def extract_sentiment_proxies(question_id: int | None = None, per_proxy_docs: int = 8) -> dict:
+    """sentiment 프록시를 코퍼스에서 게으른 haiku로 판정 (D-068 선행층).
+    하루 1회(source_id=KST 날짜 버킷) 멱등. event-driven — 분해 시·cron 편승."""
+    from datetime import datetime, timedelta, timezone
+    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.search import search
+    if not llm_available():
+        return {"extracted": 0, "reason": "llm 미가용"}
+    today = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d")
+    conn = get_connection()
+    sql = "SELECT id, label, extract_hint, yes_direction FROM proxy_registry WHERE active=1 AND modality='sentiment'"
+    if question_id is not None:
+        sql += " AND sub_question_id IN (SELECT id FROM sub_questions WHERE question_id=%d)" % int(question_id)
+    proxies = conn.execute(sql).fetchall()
+    extracted = 0
+    for p in proxies:
+        dup = conn.execute(
+            "SELECT 1 FROM proxy_observations WHERE proxy_id=? AND source_type='corpus' AND source_id=?",
+            (p["id"], today)).fetchone()
+        if dup:
+            continue
+        hits = search(f"{p['label']} {p['extract_hint'] or ''}".strip(), k=per_proxy_docs)
+        if not hits:
+            continue
+        ids = [h["doc_id"] for h in hits]
+        docs = conn.execute(
+            f"SELECT rd.title, e.summary FROM raw_documents rd LEFT JOIN enrichments e ON e.doc_id=rd.id "
+            f"WHERE rd.id IN ({','.join('?' * len(ids))})", ids).fetchall()
+        snippets = "\n".join(f"- {(d['title'] or '')[:80]}: {(d['summary'] or '')[:200]}" for d in docs)
+        if not snippets.strip():
+            continue
+        try:
+            raw = _call_claude_code(
+                _SENTIMENT_PROMPT.format(label=p["label"], hint=p["extract_hint"] or "", snippets=snippets[:8000]),
+                model="haiku", timeout=120)
+            d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+        except Exception as e:  # noqa: BLE001
+            print(f"[sentiment] {p['label']} 실패: {e}")
+            continue
+        direction = d.get("direction") if d.get("direction") in ("up", "down", "flat") else None
+        conn.execute(
+            "INSERT INTO proxy_observations (proxy_id, source_type, source_id, observed_at, value_text, direction) "
+            "VALUES (?, 'corpus', ?, ?, ?, ?)",
+            (p["id"], today, today, d.get("value_text"), direction))
+        conn.commit()
+        extracted += 1
+    conn.close()
+    return {"extracted": extracted}
 
 
 def _verdict(score: int, n: int) -> str:
@@ -213,11 +345,19 @@ def get_tree(question_id: int) -> dict:
     return tree
 
 
-def list_questions() -> list[dict]:
+def list_questions(narrative_id: int | None = None, status: str | None = None) -> list[dict]:
     conn = get_connection()
+    where = ["status != 'dismissed'"]
+    params: list = []
+    if narrative_id is not None:
+        where.append("narrative_id = ?")
+        params.append(narrative_id)
+    if status:
+        where.append("status = ?")
+        params.append(status)
     rows = conn.execute(
         "SELECT q.*, (SELECT COUNT(*) FROM sub_questions sq WHERE sq.question_id=q.id) AS sub_count "
-        "FROM questions q WHERE status != 'dismissed' ORDER BY updated_at DESC").fetchall()
+        f"FROM questions q WHERE {' AND '.join(where)} ORDER BY updated_at DESC", params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
