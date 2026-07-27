@@ -114,3 +114,23 @@ def report_compute(topic: str, refresh: bool = False):
                         members=r.get("members") or [], stocks=r.get("stocks") or [],
                         top_pick=r.get("top_pick"), debate=r.get("debate") or {},
                         cached=bool(r.get("cached")), created_at=r.get("created_at"))
+
+
+@router.post("/compute-group", response_model=ReportResult)
+def report_compute_group(group_id: int, refresh: bool = False):
+    """섹터 리포트 생성 (D-074 Phase 2) — 유니버스 그룹 앵커. 그룹을 건드리는 내러티브 + 커버리지 종목 종합.
+    앵커 topic=그룹명이라 /report?topic=그룹명 으로 열람. 무겁다(수 분)."""
+    from pipeline.report import build_group_report
+    conn = get_connection()
+    try:
+        r = build_group_report(conn, group_id, force=refresh)
+    except Exception:
+        conn.close()
+        return ReportResult(status="error")
+    conn.close()
+    if r.get("error"):
+        return ReportResult(status="unavailable")
+    return ReportResult(status="ok", title=r.get("title"), answer=r.get("answer"),
+                        members=r.get("members") or [], stocks=r.get("stocks") or [],
+                        top_pick=r.get("top_pick"), debate=r.get("debate") or {},
+                        cached=bool(r.get("cached")), created_at=r.get("created_at"))
