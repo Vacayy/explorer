@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import { Plus, Sparkles, Star, X } from "lucide-react"
+import { apiQuery, STALE } from "@/api/query"
 import {
   useIndustryGroups,
   useIndustryDetail,
@@ -183,6 +185,8 @@ export default function UniversePage() {
                   followById={followById} onToggleFollow={toggleFollow} />
               </div>
             ))}
+
+          {!detailLoading && <SectorNarratives groupId={activeId} />}
         </div>
       )}
 
@@ -199,6 +203,44 @@ export default function UniversePage() {
         />
       )}
     </PageContainer>
+  )
+}
+
+/* ── 이 섹터의 내러티브 (섹터 집약 뷰, D-074 Phase 1) — 파편화된 topic 내러티브가 섹터 단위로 모임 ── */
+
+interface SectorNarr {
+  id: number; topic: string; title: string | null; co_docs: number; relevance: number
+}
+
+function SectorNarratives({ groupId }: { groupId: number }) {
+  const { data = [], isLoading } = useQuery(
+    apiQuery<SectorNarr[]>({
+      key: ["industries", groupId, "narratives"],
+      url: `/api/industries/${groupId}/narratives`, staleTime: STALE.short,
+    }),
+  )
+  if (isLoading || data.length === 0) return null
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-sm font-semibold">이 섹터의 내러티브</h3>
+        <span className="text-[11px] text-muted-foreground">
+          이 섹터 종목을 다루는 내러티브가 모임 · 한 내러티브는 여러 섹터에 등장(공동언급 기반, 관련도순)
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {data.map((n) => (
+          <Link key={n.id} to={`/narrative?topic=${encodeURIComponent(n.topic)}`}
+            className="flex items-center gap-2 rounded-md border px-3 py-2 hover:border-primary transition-colors">
+            <Badge variant="secondary" className="text-[10px] shrink-0">{n.topic}</Badge>
+            <span className="text-[13px] truncate flex-1">{n.title || n.topic}</span>
+            <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums" title="공동언급 문서 · 관련도">
+              {n.co_docs}건 · {Math.round(n.relevance * 100)}%
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
   )
 }
 

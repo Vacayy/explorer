@@ -318,3 +318,11 @@ def remove_member(member_id: int):
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+@router.get("/{group_id}/narratives")
+def group_narratives(group_id: int):
+    """섹터 집약 뷰 (D-074 Phase 1) — 이 유니버스 그룹을 '건드리는' 내러티브 (문서 공동언급, LLM 0).
+    섹터=집약 뷰(N:M): 한 내러티브가 여러 섹터에 등장. 파편화된 topic 내러티브가 섹터 단위로 모인다."""
+    from pipeline.sector import sector_narratives
+    return sector_narratives(group_id)
