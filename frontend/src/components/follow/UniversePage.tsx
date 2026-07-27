@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import { Plus, Sparkles, Star, X } from "lucide-react"
+import { Link, useNavigate } from "react-router-dom"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { FileText, Loader2, Plus, Sparkles, Star, X } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
+import api from "@/api/client"
 import {
   useIndustryGroups,
   useIndustryDetail,
@@ -186,7 +188,9 @@ export default function UniversePage() {
               </div>
             ))}
 
-          {!detailLoading && <SectorNarratives groupId={activeId} />}
+          {!detailLoading && (
+            <SectorNarratives groupId={activeId} groupName={detail?.group.name ?? ""} />
+          )}
         </div>
       )}
 
@@ -212,13 +216,23 @@ interface SectorNarr {
   id: number; topic: string; title: string | null; co_docs: number; relevance: number
 }
 
-function SectorNarratives({ groupId }: { groupId: number }) {
+function SectorNarratives({ groupId, groupName }: { groupId: number; groupName: string }) {
+  const navigate = useNavigate()
   const { data = [], isLoading } = useQuery(
     apiQuery<SectorNarr[]>({
       key: ["industries", groupId, "narratives"],
       url: `/api/industries/${groupId}/narratives`, staleTime: STALE.short,
     }),
   )
+  const genReport = useMutation({
+    mutationFn: () => api.post(`/api/spine/report/compute-group?group_id=${groupId}`),
+    onSuccess: (r) => {
+      const st = (r.data as { status?: string }).status
+      if (st === "ok") { toast.success("섹터 리포트 생성됨"); navigate(`/report?topic=${encodeURIComponent(groupName)}`) }
+      else toast("섹터에 집약할 내러티브가 부족합니다")
+    },
+    onError: () => toast.error("리포트 생성 실패 — 다시 시도"),
+  })
   if (isLoading || data.length === 0) return null
   return (
     <div className="space-y-2 border-t pt-4">
@@ -226,6 +240,17 @@ function SectorNarratives({ groupId }: { groupId: number }) {
         <h3 className="text-sm font-semibold">이 섹터의 내러티브</h3>
         <span className="text-[11px] text-muted-foreground">
           이 섹터 종목을 다루는 내러티브가 모임 · 한 내러티브는 여러 섹터에 등장(공동언급 기반, 관련도순)
+        </span>
+        <span className="ml-auto flex items-center gap-2 shrink-0">
+          <Link to={`/report?topic=${encodeURIComponent(groupName)}`}
+            className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-1">
+            <FileText className="h-3 w-3" /> 리포트 보기
+          </Link>
+          <Button size="xs" variant="outline" disabled={genReport.isPending} onClick={() => genReport.mutate()}>
+            {genReport.isPending
+              ? <><Loader2 className="h-3 w-3 animate-spin" /> 생성 중… (수 분)</>
+              : <>섹터 리포트 생성</>}
+          </Button>
         </span>
       </div>
       <div className="space-y-1.5">

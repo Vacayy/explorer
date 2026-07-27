@@ -384,13 +384,18 @@ def _clean_section(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _resolve_name(conn, code: str) -> str:
+    r = conn.execute("SELECT name FROM entities WHERE type='company' AND aliases=? LIMIT 1", (code,)).fetchone()
+    return r["name"] if r else code
+
+
 def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
+    """주제 앵커 통합 리포트 (D-041) — 앵커 내러티브 + 공유노드 이웃 취합."""
     if llm_engine() != "claude-code":
         return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)"}
     anchor = _latest_narr(conn, anchor_topic)
     if not anchor:
         return {"error": f"'{anchor_topic}' 내러티브 없음 — 먼저 내러티브를 생성하세요"}
-
     # A. 앵커 + 공유 이웃
     from pipeline.narrative import related_narratives
     rel = related_narratives(conn, anchor["id"]).get("related", [])
@@ -403,6 +408,35 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
             member_narrs.append(dict(m)); seen.add(r["topic"])
         if len(member_narrs) > TOP_RELATED:
             break
+    return _compute_report(conn, anchor_topic, member_narrs, rel, [], force)
+
+
+def build_group_report(conn, group_id: int, force: bool = False) -> dict:
+    """섹터(유니버스 그룹) 앵커 통합 리포트 (D-074 Phase 2) — 그룹을 건드리는 내러티브 + 유니버스 종목 종합.
+    앵커=그룹명. gather는 sector_narratives(집약 뷰) + 커버리지 종목 시드. 나머지 엔진(애널리스트·debate·리드·
+    섹션)은 topic 경로와 공유."""
+    if llm_engine() != "claude-code":
+        return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)"}
+    g = conn.execute("SELECT name FROM industry_groups WHERE id=?", (group_id,)).fetchone()
+    if not g:
+        return {"error": "그룹 없음"}
+    anchor_topic = g["name"]
+    from pipeline.sector import sector_narratives
+    member_narrs = []
+    for s in sector_narratives(group_id)[:8]:   # co_docs 상위 상한 — 섹터는 topic보다 넓되 최약 꼬리 제외
+        m = _latest_narr(conn, s["topic"])
+        if m:
+            member_narrs.append(dict(m))
+    if not member_narrs:
+        return {"error": f"'{anchor_topic}' 섹터에 집약할 내러티브가 없습니다 — 관련 내러티브가 쌓인 뒤 생성하세요"}
+    seed_codes = [r["stock_code"] for r in conn.execute(
+        "SELECT stock_code FROM industry_members WHERE group_id=?", (group_id,)).fetchall()]
+    return _compute_report(conn, anchor_topic, member_narrs, [], seed_codes, force)
+
+
+def _compute_report(conn, anchor_topic: str, member_narrs: list, rel: list,
+                    seed_codes: list, force: bool) -> dict:
+    """리포트 compute 코어 (topic·group 앵커 공용) — 취합된 member_narrs로 종목 집계→분석→리드→섹션→적재."""
     members = [(m["topic"], m["version"]) for m in member_narrs]
     mhash = _members_hash(members)
     if not force:
@@ -440,6 +474,10 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
                 continue
             slot = stock_angles.setdefault(code, {"name": b.get("name") or code, "angles": []})
             slot["angles"].append({"narrative": m["topic"], "rel": b.get("rel"), "reason": b.get("reason")})
+
+    # 섹터 리포트(D-074): 커버리지 유니버스 종목을 후보에 시드 — 시나리오 수혜(angles 有)가 우선, 멤버는 보장
+    for code in seed_codes:
+        stock_angles.setdefault(code, {"name": _resolve_name(conn, code), "angles": []})
 
     ranked = sorted(stock_angles.items(), key=lambda kv: -len(kv[1]["angles"]))[:TOP_STOCKS]
     stocks = []
