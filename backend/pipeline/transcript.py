@@ -20,7 +20,10 @@ from database import get_connection
 from pipeline.base import RawDoc
 from pipeline.store import store_document
 
-# 기본 팔로우 세트 (사용자 확정 2026-07-23) — 미국 상장사만, 전력반도체·바이오 제외, 비상장 제외
+# 기본 팔로우 세트 (사용자 확정 2026-07-23, 확대 2026-07-27 D-075).
+# 미국 위주. 2026-07-27 확대로 AI 반도체 공급망(메모리·파운드리·semicap)·AI DC 물리인프라(전력·냉각)·
+# SW까지 넓힘. ASML(네덜란드)·TSM(대만)은 미국 상장 ADR/주식 — 사용자 명시 요청으로 포함(전공정 앵커).
+# ⚠️ Alpha Vantage EARNINGS_CALL_TRANSCRIPT의 해외 발행사 커버리지는 제한적일 수 있음(수집 후 확인 필요).
 DEFAULT_FOLLOWS = [
     ("AAPL", "Apple", "M7"), ("MSFT", "Microsoft", "M7"), ("GOOGL", "Alphabet", "M7"),
     ("AMZN", "Amazon", "M7"), ("META", "Meta", "M7"), ("NVDA", "NVIDIA", "M7"), ("TSLA", "Tesla", "M7"),
@@ -32,6 +35,16 @@ DEFAULT_FOLLOWS = [
     ("COHR", "Coherent", "cpo"), ("LITE", "Lumentum", "cpo"),
     ("SNOW", "Snowflake", "software"),
     ("COIN", "Coinbase", "web3"), ("HOOD", "Robinhood", "web3"),
+    # ── 확대 2026-07-27 (D-075): AI 반도체 공급망 ──
+    ("MU", "Micron", "memory"),
+    ("TSM", "TSMC", "foundry"),
+    ("ASML", "ASML", "semicap"), ("AMAT", "Applied Materials", "semicap"),
+    ("LRCX", "Lam Research", "semicap"), ("KLAC", "KLA", "semicap"),
+    ("ANET", "Arista Networks", "networking"), ("MRVL", "Marvell", "networking"),
+    ("DELL", "Dell Technologies", "server"), ("SMCI", "Super Micro Computer", "server"),
+    # ── AI 데이터센터 물리 인프라(전력·냉각)·SW ──
+    ("VRT", "Vertiv", "dc-infra"), ("ETN", "Eaton", "dc-infra"), ("GEV", "GE Vernova", "power"),
+    ("PLTR", "Palantir", "software"),
 ]
 
 
