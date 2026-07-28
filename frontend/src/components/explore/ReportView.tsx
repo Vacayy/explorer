@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Markdown } from "@/components/shared/Markdown"
 import { EmptyState } from "@/components/shared/ErrorState"
+import SaveButton from "@/components/shared/SaveButton"
 import { ReportCharts } from "@/components/explore/report/ReportCharts"
 import { cn } from "@/lib/utils"
 
@@ -42,11 +43,11 @@ export interface ReportResult {
 }
 interface ReportVersion { id: number; title: string | null; top_pick: string | null; created_at: string }
 
-export function ReportView({ topic }: { topic: string }) {
+export function ReportView({ topic, initialVersionId = null }: { topic: string; initialVersionId?: number | null }) {
   const qc = useQueryClient()
   const [nonce, setNonce] = useState(0)
   const [refresh, setRefresh] = useState(false)
-  const [versionId, setVersionId] = useState<number | null>(null)   // 과거 버전 열람 (null=최신, D-047)
+  const [versionId, setVersionId] = useState<number | null>(initialVersionId)   // 과거 버전 열람 (null=최신, D-047)
   const cached = useQuery(
     apiQuery<ReportResult>({
       key: ["spine", "report", "cached", topic],
@@ -95,12 +96,23 @@ export function ReportView({ topic }: { topic: string }) {
           <FileText className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">통합 리포트</span>
           <span className="text-[11px] text-muted-foreground">공유 인과로 엮인 내러티브 + 종목 분석 → Top-down</span>
-          {!loading && (
-            <Button size="sm" variant={display ? "outline" : "default"} className="ml-auto h-7"
-              onClick={() => run(!!display)}>
-              <FileText className="h-3.5 w-3.5" /> {display ? "다시 생성" : "리포트 생성"}
-            </Button>
-          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            {display?.id != null && (
+              <SaveButton
+                kind="report"
+                refId={String(display.id)}
+                url={`/report?topic=${encodeURIComponent(topic)}&v=${display.id}`}
+                title={display.title || `${topic} 리포트`}
+                subtitle={display.created_at ? display.created_at.slice(0, 10) : topic}
+              />
+            )}
+            {!loading && (
+              <Button size="sm" variant={display ? "outline" : "default"} className="h-7"
+                onClick={() => run(!!display)}>
+                <FileText className="h-3.5 w-3.5" /> {display ? "다시 생성" : "리포트 생성"}
+              </Button>
+            )}
+          </div>
         </div>
         {loading && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

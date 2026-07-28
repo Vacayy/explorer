@@ -24,6 +24,7 @@ export const spineKeys = {
   stockBriefCompute: (code: string) => [...spineKeys.all, "stock-brief-compute", code] as const,
   conversations: (stock?: string) => [...spineKeys.all, "conversations", stock ?? "all"] as const,
   conversation: (id: number) => [...spineKeys.all, "conversation", id] as const,
+  saved: () => [...spineKeys.all, "saved"] as const,
 };
 
 /** 종목 AI 브리프 — 캐시 + stale 플래그 (LLM 없음) */

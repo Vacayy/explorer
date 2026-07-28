@@ -25,16 +25,17 @@ interface ReportListItem {
 export default function ReportsPage() {
   const [params] = useSearchParams()
   const topic = params.get("topic")
-  return topic ? <ReportDetail topic={topic} /> : <ReportList />
+  const v = params.get("v")
+  return topic ? <ReportDetail topic={topic} initialVersionId={v ? Number(v) : null} /> : <ReportList />
 }
 
-function ReportDetail({ topic }: { topic: string }) {
+function ReportDetail({ topic, initialVersionId }: { topic: string; initialVersionId: number | null }) {
   return (
     <PageContainer>
       <Link to="/report" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-3.5 w-3.5" /> 리포트 목록
       </Link>
-      <ReportView topic={topic} />
+      <ReportView topic={topic} initialVersionId={initialVersionId} />
     </PageContainer>
   )
 }

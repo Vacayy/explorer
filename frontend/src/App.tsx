@@ -18,6 +18,7 @@ import FollowPage from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
+import SavedPage from "@/components/follow/SavedPage"
 
 // Explore (탐색 — 신호)
 import ExplorePage from "@/components/explore/ExplorePage"
@@ -163,6 +164,7 @@ export default function App() {
             <Route path="follow/universe" element={<UniversePage />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
+            <Route path="follow/saved" element={<SavedPage />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />

@@ -4,6 +4,7 @@ import { useDisclosures } from "@/hooks/useDisclosures"
 import { useKpi } from "@/hooks/useKpi"
 import { useIndexPerformance } from "@/hooks/useIndexPerformance"
 import { useWatchlist, useAddToWatchlist } from "@/hooks/useWatchlist"
+import { useCompany } from "@/hooks/useCompanySearch"
 import { useQuote } from "@/hooks/useQuotes"
 import { useFeatureDays } from "@/hooks/useFeatureDays"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ import DigestSection from "@/components/analyze/DigestSection"
 import { SignalHistoryCard, MentionDocsCard, MatchingCollapsed } from "@/components/summary/MentionsPanel"
 import PeerSection from "@/components/summary/PeerSection"
 import { PageContainer } from "@/components/shared/PageContainer"
+import SaveButton from "@/components/shared/SaveButton"
 import { MetricHint } from "@/components/shared/MetricHint"
 import {
   Legend, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -59,6 +61,7 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
   const toDate = now.toISOString().slice(0, 10).replace(/-/g, "")
 
   // Data fetching
+  const { data: company } = useCompany(stockCode)
   const { data: kpi, isLoading: kpiLoading } = useKpi(stockCode)
   const { data: priceData, isLoading: priceLoading } = useStockPrices(stockCode, fromDate, toDate)
   const { data: discData, isLoading: discLoading } = useDisclosures(stockCode, undefined, undefined, undefined, 1, 5)
@@ -182,6 +185,13 @@ export default function SummaryPage({ stockCode, corpCode }: Props) {
           />
           <Separator orientation="vertical" className="h-6" />
           <WatchlistButton stockCode={stockCode} corpCode={corpCode} />
+          <SaveButton
+            kind="company"
+            refId={stockCode}
+            url={`/analyze/${stockCode}/summary`}
+            title={company?.corp_name ?? stockCode}
+            subtitle={stockCode}
+          />
         </div>
       ) : null}
 

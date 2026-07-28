@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { Archive, Inbox, PanelRight, Search, SlidersHorizontal } from "lucide-react"
+import { Archive, Bookmark, Inbox, PanelRight, Search, SlidersHorizontal } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,9 @@ import ThemeToggle from "@/components/shared/ThemeToggle"
 import ApprovalsCard from "@/components/home/ApprovalsCard"
 import { BriefingList } from "@/components/home/BriefingList"
 import { useHome } from "@/hooks/useHome"
+import { useSaved } from "@/hooks/useSaved"
+import SavedList from "@/components/follow/SavedList"
+import { EmptyState } from "@/components/shared/ErrorState"
 
 /**
  * 헤더 — 로고 + 단일 검색 진입(옴니바 트리거) + 유틸 아이콘.
@@ -45,6 +48,7 @@ export default function Header() {
         </button>
 
         <div className="ml-auto flex items-center gap-1">
+          <SavedInbox />
           <ApprovalsInbox />
           <Button variant="ghost" size="icon-sm" asChild>
             <Link to="/admin" title="관리자 — cron 작업·기능 on/off">
@@ -64,6 +68,59 @@ export default function Header() {
         </div>
       </div>
     </header>
+  )
+}
+
+/**
+ * 저장됨 인박스 — 저장 건수 배지 + 클릭 시 Sheet(SavedList compact). (D-077)
+ * 목록 쿼리는 SavedPage·SaveButton과 같은 queryKey라 캐시 공유.
+ */
+function SavedInbox() {
+  const [open, setOpen] = useState(false)
+  const { data: items = [] } = useSaved()
+  const count = items.length
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={() => setOpen(true)}
+        title="저장됨 — 다시 볼 산출물"
+        aria-label={`저장됨 ${count}건`}
+        className="relative"
+      >
+        <Bookmark className="h-4 w-4" />
+        {count > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground tabular-nums">
+            {count > 9 ? "9+" : count}
+          </span>
+        )}
+      </Button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>저장됨</SheetTitle>
+          </SheetHeader>
+          <div className="px-4 pb-6">
+            {count === 0 ? (
+              <EmptyState message="아직 저장한 항목이 없어요." />
+            ) : (
+              <>
+                <SavedList items={items} compact onNavigate={() => setOpen(false)} />
+                <Link
+                  to="/follow/saved"
+                  onClick={() => setOpen(false)}
+                  className="mt-3 block text-center text-xs text-muted-foreground hover:underline"
+                >
+                  전체 보기
+                </Link>
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }
 
