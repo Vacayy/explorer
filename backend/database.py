@@ -781,6 +781,18 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_job_runs ON job_runs(id);
 
+    -- 시장 국면 (market regime, D-076, docs/specs/market-regime.md) — 매크로 리스크 포스처.
+    -- 일별 스냅샷(EOD): F&G·VIX·S&P·KOSPI·20EMA·VKOSPI/실현변동성. 스파크라인 히스토리 = 축적.
+    -- 지표 = fact (hypothesis 아님). 포스처 결합은 API에서 결정적 계산(LLM 0), 여기엔 원지표만.
+    CREATE TABLE IF NOT EXISTS market_indicators (
+        snapshot_date TEXT NOT NULL,        -- KST YYYY-MM-DD
+        indicator     TEXT NOT NULL,        -- fear_greed | vix | sp500 | kospi | kospi_ema20 | vkospi | kospi_vol
+        value         REAL,
+        extra_json    TEXT,                 -- rating·band 등 부수 (nullable)
+        PRIMARY KEY (snapshot_date, indicator)
+    );
+    CREATE INDEX IF NOT EXISTS idx_market_ind ON market_indicators(indicator, snapshot_date);
+
     -- 어휘 통합 (vocab consolidation, D-033) — audit + redirect 겸용.
     -- 배치 병합으로 사라진 theme/macro 노드 이름이 재등장해도 survivor로 해소 (재파편화 방지).
     CREATE TABLE IF NOT EXISTS entity_merges (
