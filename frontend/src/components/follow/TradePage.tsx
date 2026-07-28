@@ -159,7 +159,7 @@ function TradeDetail({ hs }: { hs: string }) {
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} width={40} />
                   <Tooltip
                     contentStyle={{ fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }}
-                    formatter={(v: number, name: string) => [name === "YoY" ? `${v}%` : `$${v}B`, name]} />
+                    formatter={(v, name) => [name === "YoY" ? `${v as number}%` : `$${v as number}B`, name as string]} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Bar yAxisId="left" dataKey="수출" fill="var(--color-chart-blue)" opacity={0.85} />
                   <Bar yAxisId="left" dataKey="수입" fill="var(--color-chart-orange)" opacity={0.85} />

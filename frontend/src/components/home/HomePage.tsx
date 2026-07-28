@@ -12,6 +12,7 @@ import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
+import { MarketRegime } from "@/components/home/MarketRegime"
 
 /**
  * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-056·D-057).
@@ -35,6 +36,9 @@ export default function HomePage() {
 
       {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드. 공지(브리핑)·승인은 인박스로(D-054) */}
       <AiActivityFeed />
+
+      {/* 시장 국면 — 매크로 리스크 포스처 (그날의 렌즈니 델타 위, D-076) */}
+      <MarketRegime />
 
       {/* 월드모델 델타 — 매일 여는 것을 진입 요약으로 (내러티브 + 리포트) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">

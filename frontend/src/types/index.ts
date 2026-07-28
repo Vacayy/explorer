@@ -377,3 +377,37 @@ export interface AskResponse {
   conversation_id: number | null;  // 적재된 스레드 (P2-0)
   as_of: string;
 }
+
+/* ── 시장 국면 (market regime, D-076) ── */
+export type PostureColor = "favorable" | "caution" | "risk" | "neutral";
+/** [YYYY-MM-DD, value] 튜플 시계열 (스파크라인) */
+export type MarketSeries = [string, number][];
+
+/** 추세 게이트 = 오실레이터의 20 EMA (가격 EMA 아님) */
+export interface MarketPostureUS {
+  posture: string;
+  posture_color: PostureColor;
+  reason: string;
+  fear_greed: { score: number; zone: string } | null;
+  vix: { value: number; band: string } | null;
+  trend: { ema: number | null; dir: string };   // F&G의 20 EMA
+  series: { osc: MarketSeries; osc_ema: MarketSeries; vix: MarketSeries };
+}
+
+export interface MarketPostureKR {
+  posture: string;
+  posture_color: PostureColor;
+  reason: string;
+  oscillator: { metric: string; value: number | null; zone: string };
+  trend: { ema: number | null; dir: string };    // RSI14의 20 EMA
+  volatility: { metric: string; value: number | null; band: string } | null;
+  series: { osc: MarketSeries; osc_ema: MarketSeries; vol: MarketSeries };
+}
+
+export interface MarketRegime {
+  as_of: string | null;
+  headline: string;
+  kr: MarketPostureKR | null;
+  us: MarketPostureUS | null;
+  degraded: string[];
+}

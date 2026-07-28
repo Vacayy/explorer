@@ -14,6 +14,7 @@ from routers import spine_causal
 from routers import spine_transcript
 from routers import spine_trade
 from routers import spine_questions
+from routers import spine_market
 from routers import spine_saved
 
 app = FastAPI(title="Stock Explorer API")
@@ -73,6 +74,7 @@ app.include_router(spine_approvals.agent_router)
 app.include_router(spine_transcript.router)
 app.include_router(spine_trade.router)
 app.include_router(spine_questions.router)
+app.include_router(spine_market.router)
 app.include_router(spine_saved.router)
 
 
