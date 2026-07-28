@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
+import SaveButton from "@/components/shared/SaveButton"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
@@ -107,6 +108,15 @@ export default function NarrativePage() {
             <span className="text-[11px] text-muted-foreground tabular-nums">
               최근 갱신 {createdAt.slice(0, 16).replace("T", " ")}
             </span>
+          )}
+          {narrativeId != null && (
+            <SaveButton
+              kind="narrative"
+              refId={String(narrativeId)}
+              url={`/narrative/history?topic=${encodeURIComponent(topic)}&v=${narrativeId}`}
+              title={topic}
+              subtitle={version && version > 1 ? `v${version}` : "내러티브"}
+            />
           )}
           <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground"
             disabled={generating} onClick={() => setRefreshNonce((k) => k + 1)}

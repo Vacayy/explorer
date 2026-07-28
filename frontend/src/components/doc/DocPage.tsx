@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { EntityChip } from "@/components/shared/EntityChip"
 import { PageContainer } from "@/components/shared/PageContainer"
+import SaveButton from "@/components/shared/SaveButton"
 import { SourceDeepDive } from "@/components/doc/SourceDeepDive"
 import { formatRelativeTime } from "@/utils/format"
 import type { EntityTag, FeedDocument } from "@/types"
@@ -69,13 +70,22 @@ export default function DocPage() {
           {doc.enrich_model && (
             <Badge variant="outline" className="text-[10px] font-normal opacity-70">태깅: {doc.enrich_model}</Badge>
           )}
-          {doc.url && (
-            <Button asChild variant="outline" size="xs" className="ml-auto">
-              <a href={doc.url} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-3 w-3" /> 원문
-              </a>
-            </Button>
-          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            <SaveButton
+              kind="doc"
+              refId={docId ?? ""}
+              url={`/doc/${docId}`}
+              title={doc.title || "(제목 없음)"}
+              subtitle={doc.channel || doc.source_type}
+            />
+            {doc.url && (
+              <Button asChild variant="outline" size="xs">
+                <a href={doc.url} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-3 w-3" /> 원문
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
         <h2 className="text-lg font-bold leading-snug">{doc.title || "(제목 없음)"}</h2>
         {doc.entities.length > 0 && (

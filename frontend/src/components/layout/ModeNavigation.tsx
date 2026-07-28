@@ -15,6 +15,7 @@ const FOLLOW_TABS = [
   { key: "universe", path: "/follow/universe", label: "유니버스" },
   { key: "transcripts", path: "/follow/transcripts", label: "컨콜" },
   { key: "trade", path: "/follow/trade", label: "수출입" },
+  { key: "saved", path: "/follow/saved", label: "저장됨" },
   { key: "map", path: "/map", label: "산업 맵" },
   { key: "people", path: "/people", label: "인물" },
   { key: "actions", path: "/actions", label: "기업활동" },
@@ -181,6 +182,7 @@ function getActiveSubTab(pathname: string): string | null {
   if (pathname.startsWith("/follow/universe")) return "universe"
   if (pathname.startsWith("/follow/transcripts")) return "transcripts"
   if (pathname.startsWith("/follow/trade")) return "trade"
+  if (pathname.startsWith("/follow/saved")) return "saved"
   if (pathname.startsWith("/follow")) return "follow"
   if (pathname.startsWith("/map")) return "map"
   if (pathname.startsWith("/people") || pathname.startsWith("/person")) return "people"

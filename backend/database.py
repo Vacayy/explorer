@@ -684,6 +684,20 @@ def init_db():
         created_at   TEXT DEFAULT (datetime('now'))
     );
 
+    -- 저장됨(북마크) — 특정 산출물(기업·문서·내러티브·리포트) 다시 찾기 (D-078)
+    -- 내러티브·리포트는 버전 행 PK를 ref로 저장(보던 그 버전 고정). UNIQUE(kind, ref)로 토글 멱등.
+    CREATE TABLE IF NOT EXISTS saved_items (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind         TEXT NOT NULL,          -- company | doc | narrative | report
+        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id
+        url          TEXT NOT NULL,
+        title        TEXT,
+        subtitle     TEXT,
+        note         TEXT,
+        created_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(kind, ref)
+    );
+
     -- 이미지 비전 분석 캐시 (이미지당 1회 — 증시일정표 → 이벤트 추출)
     CREATE TABLE IF NOT EXISTS media_analysis (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,

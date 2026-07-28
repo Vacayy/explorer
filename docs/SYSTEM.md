@@ -84,6 +84,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `entity_keywords` | 6 | 종목별 사용자 매칭 키워드 (등록 시 소급 링크) |
 | `entity_merges` | 병합분 | 어휘 통합 audit+redirect (D-033) — 병합으로 사라진 (old_name, type) → survivor_id. 쓰기 시 재파편화 방지 리다이렉트 겸용 |
 | `follows` | 0 | 엔티티 팔로우 (섹터·테마 → 홈 스트림) |
+| `saved_items` | 북마크 | **저장됨(D-078, docs/specs/saved-items.md)** — 산출물 북마크. kind(company·doc·narrative·report)·ref(안정 식별자; 내러티브·리포트는 **버전 행 PK**=보던 버전 고정)·url·title/subtitle 스냅샷·note(한 줄). UNIQUE(kind, ref)로 토글 멱등. 팔로우(엔티티 흐름 구독)와 성격이 다른 아티팩트 다시-찾기 |
 | `observations` / `models` | 활성/0 | 시계열 투영·살아있는 모델. **observations 가동(D-069)**: 질문 트래커의 numeric 프록시 관측이 `entity_id·metric·value`로 투영(source='proxy:transcript', transcript_follow.entity_id 경유). models는 여전히 스키마만 |
 | `scenarios` | topic별 | 파급 시나리오 캐시(D-038) — topic PK·answer·beneficiaries(json)·citations(json)·narrative_version(변동 시 stale) + **`question_id`(D-070 질문=허브: Q5 시나리오를 질문에 묶음, NULL=내러티브발)**. 매 클릭 opus 재생성 방지, '다시 분석'(refresh)으로만 갱신 |
 | `reports` | 버전별 | 통합 리포트 **append-only 히스토리**(D-047) — id PK·anchor_topic·title·body(Top-down md)·members_json·stocks_json·debate_json·members_hash·**top_pick**·created_at. 최신=id DESC, 매 생성이 새 버전(덮어쓰기 폐기, 과거 열람 가능) |
@@ -160,6 +161,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/doc/{id}` | 문서 디테일 (raw content·이미지·태그·요약). youtube 소스면 digest_status가 ok가 아닐 때 opus 정리본을 그 자리에서 1회 재시도 후 반환(lazy retry) |
 | `GET /api/spine/signals` | 신호 (type·days) |
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
+| `GET·POST·PATCH·DELETE /api/spine/saved` | **저장됨(D-078)** — 산출물 북마크. GET(목록, `?kind=`; 배지·토글·리스트 공용) · POST(`INSERT OR IGNORE` 멱등 토글) · PATCH `/{id}`(메모) · DELETE `/{id}`. FE: 각 페이지 북마크 토글 + 헤더 상시 아이콘(Sheet) + 팔로우 '저장됨' 서브탭(`/follow/saved`) |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
 | `GET /api/spine/digests` · `POST /api/spine/digests/compute?stock=&period=` | 종목 1D/7D 요약 아카이브 조회 / **온디맨드 새로고침**(force 생성, period_start=당일이라 ON CONFLICT로 당일분 덮어씀 — 하루 다중 방지). 프론트: 진입 시 자동생성 없음, 카드 우측 ⟳ 버튼으로만 |
 | `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`·`/version?id=`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 / **특정 버전 본문 by id**(히스토리 도트 클릭, D-060) |
@@ -184,13 +186,14 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 ## 6. 프론트엔드 (React 19 + shadcn + TanStack Query)
 
 ### IA (내비게이션)
-L1은 파이프라인 흐름을 좌→우로 드러낸다 (D-056·D-057): `Home ┃ 팔로우 → 피드 → 월드모델 ┃ 대화`. 가운데 3개(입력→원천→종합)가 흐름, Home은 아침 요약+신호 대시보드(진입)·대화는 횡단 도구라 구분선으로 격리, 월드모델은 매일 여는 종착점이라 약한 강조. **탐색 모드는 해체(D-057)** — 신호 요약은 Home으로, 산업맵·인물·기업활동은 팔로우로, 신호 상세는 `/explore?list=`(pill 없는 도시에), 백테스트는 보관함. **승인 대기는 헤더 상시 배지**(어느 화면에서든, 클릭 시 인박스 Sheet — ApprovalsCard 재활용, 리서치 후보 포함).
+L1은 파이프라인 흐름을 좌→우로 드러낸다 (D-056·D-057): `Home ┃ 팔로우 → 피드 → 월드모델 ┃ 대화`. 가운데 3개(입력→원천→종합)가 흐름, Home은 아침 요약+신호 대시보드(진입)·대화는 횡단 도구라 구분선으로 격리, 월드모델은 매일 여는 종착점이라 약한 강조. **탐색 모드는 해체(D-057)** — 신호 요약은 Home으로, 산업맵·인물·기업활동은 팔로우로, 신호 상세는 `/explore?list=`(pill 없는 도시에), 백테스트는 보관함. **승인 대기는 헤더 상시 배지**(어느 화면에서든, 클릭 시 인박스 Sheet — ApprovalsCard 재활용, 리서치 후보 포함). **저장됨도 헤더 상시 아이콘**(북마크 → Sheet 빠른 열람, D-078).
 ```
 Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소스경고·지식충돌·가설확인·인사이트) + 승인 대기 배너 + **월드모델 델타**(변한/급증 내러티브 + 최근 리포트, 매일 여는 것을 진입 요약으로) + **신호**(언급 모멘텀·주목 주제·인과 그래프 활동 — 탐색 해체로 이관, D-057). (구 캘린더·업데이트 스트림·핵심신호 카드는 제거)
 팔로우             서브탭: 팔로우(/follow: 내가 따라가는 종목·채널·블로그·태그 허브) ·
                    **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039. + **'이 섹터의 내러티브' 집약 뷰 + 섹터 리포트**(D-074: 그룹을 건드리는 내러티브가 섹터 단위로 모임, 월드모델로 링크 + '섹터 리포트 생성'(compute-group)·'리포트 보기' — 섹터=팔로우×월드모델 cross-cutting 앵커)) ·
                    **컨콜**(/follow/transcripts: 미국 기업 실적 컨콜 2분할 브라우저 — 좌 그룹 팔로우, 우 핵심 정리+원문, D-061) ·
                    **수출입**(/follow/trade: 관세청 품목별 무역통계 2분할 — 좌 품목 팔로우, 우 수출입 추이 차트+관련 종목(파급 논리), D-064) ·
+                   **저장됨**(/follow/saved: 산출물 북마크 목록 — kind 필터 + 인라인 메모·삭제, SavedPage, D-078) ·
                    **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-057, 전부 '내가 커버하는 대상'). ※구 산업 페이지(/discover/industry)는 폐기
 월드모델           **인식론적 시간축으로 L2 구성 (D-073)**: 내러티브(현재·서사) · 전망(미래·확률) · 지식(과거·검증). "같은 인과 그래프의 여러 속도"(D-023)에 시간대를 겹친 것. 신호(델타 감지)와 성격 달라 분리(D-031). 시간축은 무게중심이지 칸막이 아님(내러티브는 현재+미래 겸함, 리포트는 과거+현재+미래 종합) — 탭은 중심으로, 교차는 링크로.
                    **내러티브(현재)**(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·**재생성 이력 타임라인**(본문 아래·파급 시나리오 위 인라인, 도트 클릭→히스토리 페이지, D-059)·파급 시나리오·통합 리포트·**이 서사의 핵심질문**(미러링, D-067). 자동 재생성 24h 1회 제한 + 새로고침 버튼, D-059. 히스토리=/narrative/history?topic=X&v=id 재생성 이력 상세, D-060) ·
