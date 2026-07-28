@@ -31,6 +31,7 @@ import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
 import CompanyPage from "@/components/company/CompanyPage"
 import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import QuestionsPage from "@/components/knowledge/QuestionsPage"
+import ThesisAuditPage from "@/components/thesis/ThesisAuditPage"
 import QuestionDetail from "@/components/knowledge/QuestionDetail"
 import SectorMapPage from "@/components/map/SectorMapPage"
 import NarrativePage from "@/components/explore/NarrativePage"
@@ -181,6 +182,7 @@ export default function App() {
             <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="questions" element={<QuestionsPage />} />
             <Route path="question/:id" element={<QuestionDetail />} />
+            <Route path="thesis" element={<ThesisAuditPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="ask" element={<AskRedirect />} />
             <Route path="actions" element={<ActionsPage />} />

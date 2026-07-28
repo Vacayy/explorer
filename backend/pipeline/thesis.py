@@ -199,3 +199,42 @@ def audit_thesis(text: str) -> dict:
             "edges": rel, "narratives": g["narratives"], "temporal": g["temporal"],
         })
     return {"claims": results, "n_claims": len(results)}
+
+
+# ──────────────────── 영속화 (append-only 히스토리, read-only 감사) ────────────────────
+
+def run_and_store(text: str) -> dict:
+    """감사 실행 → thesis_audits 적재 → id·created_at 포함 반환. 그래프 무변경(격리)."""
+    import json
+    result = audit_thesis(text)
+    conn = get_connection()
+    cur = conn.execute("INSERT INTO thesis_audits(thesis_text, result_json) VALUES (?,?)",
+                        (text, json.dumps(result, ensure_ascii=False)))
+    conn.commit()
+    row = conn.execute("SELECT id, created_at FROM thesis_audits WHERE id=?", (cur.lastrowid,)).fetchone()
+    conn.close()
+    return {"id": row["id"], "created_at": row["created_at"], "thesis_text": text, **result}
+
+
+def list_audits(limit: int = 30) -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, thesis_text, result_json, created_at FROM thesis_audits ORDER BY id DESC LIMIT ?",
+        (limit,)).fetchall()
+    conn.close()
+    import json
+    return [{"id": r["id"], "created_at": r["created_at"],
+             "preview": (r["thesis_text"] or "")[:80],
+             "n_claims": len(json.loads(r["result_json"]).get("claims", []))} for r in rows]
+
+
+def get_audit(audit_id: int) -> dict | None:
+    conn = get_connection()
+    r = conn.execute("SELECT id, thesis_text, result_json, created_at FROM thesis_audits WHERE id=?",
+                     (audit_id,)).fetchone()
+    conn.close()
+    if not r:
+        return None
+    import json
+    return {"id": r["id"], "created_at": r["created_at"], "thesis_text": r["thesis_text"],
+            **json.loads(r["result_json"])}
