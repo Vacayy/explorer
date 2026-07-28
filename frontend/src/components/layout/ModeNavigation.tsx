@@ -175,7 +175,7 @@ function getActiveSubTab(pathname: string): string | null {
   // 월드모델 — 시간축(D-073): 전망 상위탭 하위에 질문(/question*)·리포트(/report), 둘 다 '전망(outlook)' 활성.
   // 온톨로지(그래프)는 지식 탭 하위(/knowledge/ontology), 둘 다 '지식' 탭 활성 (D-052)
   if (pathname.startsWith("/narrative")) return "narrative"
-  if (pathname.startsWith("/question") || pathname.startsWith("/report")) return "outlook"
+  if (pathname.startsWith("/question") || pathname.startsWith("/report") || pathname.startsWith("/thesis")) return "outlook"
   if (pathname.startsWith("/knowledge")) return "knowledge"
 
   // 팔로우 — /follow 하위(universe·transcripts)는 follow보다 먼저 매칭 + 커버리지 대상(D-057)

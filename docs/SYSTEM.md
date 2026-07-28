@@ -91,6 +91,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `doc_fts` / `doc_vec` | 264 | BM25(트리거 동기화) / 384d 벡터 |
 | `feature_flags` / `job_runs` | 운영 | cron 작업 on/off 플래그 / 실행 로그(상태·요약·소요) — 관리자 페이지(D-055) |
 | `market_indicators` | 일별 | **시장 국면 스냅샷(D-076)** — F&G·VIX·KOSPI·VKOSPI(폴백 실현변동성) 원지표 시계열. (snapshot_date, indicator) PK. 파생(RSI14·**오실레이터의 20EMA**·vol·기울기)·포스처 결합은 읽을 때 결정적 계산(LLM 0). 지표=fact |
+| `thesis_audits` | 감사별 | **논지 감사(D-078, docs/specs/thesis-audit.md)** — thesis를 인과그래프에 대질한 read-only 감사 결과 append-only 히스토리(thesis_text·result_json·created_at). **사용자 주장은 여기 저장될 뿐 인과그래프엔 안 써진다(격리)** — 등재는 별도·승인 |
 | `transcript_follow` / `transcripts` / `proxy_registry` / `proxy_observations` | transcript(D-061) | 미국 기업 컨콜 팔로우(**35종 시드**, D-075 확대: AI 반도체 공급망 MU·TSM·ASML·semicap + AI DC 물리인프라 VRT·ETN·GEV + SW)+얇은 인덱스(raw_doc_id FK·**digest**=LLM 핵심 정리) / 프록시 레지스트리(사람 세팅 + **질문 트래커가 자동 생성**, D-067)·관측치(값·방향 시계열). proxy_registry에 `sub_question_id`(어느 서브질문의 프록시)·`modality`(numeric\|sentiment\|stance, pace layer)·`yes_direction`(판정 극성) 추가, proxy_observations에 범용 `source_ref`(source_type·source_id, transcript 전용 FK 탈피) 추가. 전문은 raw_documents(source_type='transcript'), 인과·임베딩은 기존 파이프라인 경유 |
 | `questions` / `sub_questions` | 질문 트래커(D-067·D-068) | **핵심질문 = 지식의 미결층** (+`last_viewed_at`: 관측 비용 활성 게이트, D-072)(판정되면 knowledge 승격). 분할정복: 질문→서브질문(반증조건 보유)→프록시→관측→판정. questions: narrative_id(도출 출처)·source_doc_id(Q5 단일소스)·created_by(system\|user)·**lead_verdict/confirm_verdict/divergence**(pace layer 2층 판정 — 선행 fast·확정 slow·괴리, D-068)·verdict_summary(게으른 LLM 한 줄)·conviction·salience. 생성자 2개: ①자동도출(내러티브, 제안 큐) ②사용자주입(자동분해+편집) |
 | `trade_follow` / `trade_stats` / `trade_beneficiaries` | 무역(D-064) | 수출입 팔로우 품목(11종 시드, HS 6단위 위주)+월별 수출/수입/무역수지 시계열(관세청)+관련 종목(LLM 파급 논리 지목 캐시, resolve_and_enrich·유니버스 태그) |
@@ -138,6 +139,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `research_candidates` | 리서치 후보(감지 LLM 0) — RS 상승(단기 RS≥70 & 1주 대비 +8pp↑) ∩ 시총 5000억+ ∩ 화두(theme_surge 테마와 초점 문서 공동언급, 시황글 제외). research_candidates 테이블 proposed 적재. **승인 시에만** stock_brief(opus) 실행→추정치 방향 콜 기록 (비싼 노동을 사람 판단 뒤로, D-020). 신호 탭 '리서치 제안' 섹션 |
 | `technicals` | 기술적 위치(LLM 0) — RSI14·이평선 갭(20/60/120)·52주 고점 대비·1/3개월 수익률 + trailing PER 역사 밴드(연간 EPS×주가 범위, 평균회귀 준거). 브리프 재료 |
 | `market_regime` | **시장 국면(D-076, docs/specs/market-regime.md)** — 매크로 리스크 포스처. 3중 필터(감성 오실레이터 × **그 오실레이터의 20 EMA** 추세 게이트 × 변동성)를 **결정적 결합(LLM 0)**해 비중 포스처(favorable/caution/risk/neutral)+근거 한 줄 산출. **20EMA는 가격이 아니라 오실레이터 자체의 이평**(오실레이터가 바닥서 반등해도 EMA 우하향이면 보류 — 태린이 아빠 규율). `snapshot_market`(yfinance ^VIX·^KS11 + CNN F&G[브라우저 UA 필수] + naver VKOSPI/폴백 실현변동성 → market_indicators 멱등 적재) · `get_regime`(저장분서 RSI·오실레이터 EMA·포스처 계산). 미국=날씨(F&G+F&G의 EMA×VIX)·국장=본판(RSI14+RSI14의 EMA×VKOSPI/vol). 지표=fact, 포스처=frame(귀속 배지 없음). fetch 실패는 degraded로 부분 흡수 |
+| `thesis` | **논지 감사(D-078, docs/specs/thesis-audit.md)** — 내 thesis를 축적된 인과그래프에 **대질**(read-only 감사, 등재 아님). moat는 추론이 아니라 정박 — 모든 판정이 코퍼스 근거(엣지·독립 소스·시점) 인용. 5단계 중 Phase 1·2 구현: `decompose_thesis`(자유서술→원자 주장+역할+그래프 vocab 앵커, sonnet stage 1) · `ground_claim`(앵커 해소→인과엣지[corroborated_by 독립 내러티브 수·effect_direction·created_at]·내러티브·시간급증 후보검색, LLM 0) · `filter_edges`(후보 엣지 중 주장 관련성+입장 support/contradict/context, haiku stage 2) · `audit_thesis`(주장별 델타 aligned/contested/challenged/novel). **격리 불변식**: 사용자 주장은 감사만·그래프 무변경. 후속: 종합(opus stage 5)·진자·반증/프록시(stage 3·4). 프롬프트는 enrich 패턴(명령형·JSON만) — roleplay 시 에이전트로 샘 |
 | `sector_rs` | 산업/섹터 맵(LLM 0) — 대분류 18(sector_map: KSIC 165→LLM 시드)별 장기(11M)·단기(1M) RS 백분위(최신 시총가중 — 과거 행 mcap 부재), 5일 흐름, 1~3주 궤적. /map 4사분면. value_chains(opus 시드 단계·테마)로 밸류체인 뷰 |
 | `feature_days` | 종목 특징일(LLM 0 감지) — |등락|3.5%+ 또는 거래량 4배+, 상위 24일. 마커 클릭 시 게으른 haiku 1콜로 그날 원인 조사(±1일 문서, feature_day_notes 캐시) |
 | `contradiction` | K2 모순 감지 — 새 문서×active 지식 haiku 대조(일 배치, 예산 40) → refute 축적 → 독립 반박 2+ contested(7일 쿨다운) → 홈 알림 |
@@ -152,7 +154,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `knowledge_recall` | K1 지식 소환 — activation×epistemic 랭킹, 브리프용 1-hop 그래프 확산, RAG용 의미 유사 |
 | `dates` / `normalize` | ISO 정규화(KST 버킷) / markitdown(PDF)·HTML 텍스트화 |
 
-### 5-2. API (spine 라우터 12종)
+### 5-2. API (spine 라우터 13종)
 | 엔드포인트 | 기능 |
 |---|---|
 | `GET /api/spine/home` · `/home/ai-activity?days=` | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 / **AI 자동생성 피드**(D-053, 지난 N일 내러티브·리포트·파급·다이제스트 최신순 통합, LLM 0) — 홈 최상단 AiActivityFeed(구 승인 배너 대체) |
@@ -165,6 +167,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
 | `GET·POST·PATCH·DELETE /api/spine/saved` | **저장됨(D-078)** — 산출물 북마크. GET(목록, `?kind=`; 배지·토글·리스트 공용) · POST(`INSERT OR IGNORE` 멱등 토글) · PATCH `/{id}`(메모) · DELETE `/{id}`. FE: 각 페이지 북마크 토글 + 헤더 상시 아이콘(Sheet) + 팔로우 '저장됨' 서브탭(`/follow/saved`) |
 | `GET /api/spine/market-regime` · `POST /snapshot` | **시장 국면(D-076)** — 양 시장 리스크 포스처+근거+스파크라인 series(LLM 0, 첫 진입 시 lazy 스냅샷). / EOD 일별 스냅샷 적재(scripts/snapshot_market.py=수동·cron) |
+| `POST /api/spine/thesis/audit` · `GET /audits` · `GET /{id}` | **논지 감사(D-078)** — thesis 주입→인과그래프 대질 감사(read-only·연쇄 LLM ~수 분, 저장) / 히스토리 / 저장분 재조회(LLM 0). 격리: 그래프 무변경 |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
 | `GET /api/spine/digests` · `POST /api/spine/digests/compute?stock=&period=` | 종목 1D/7D 요약 아카이브 조회 / **온디맨드 새로고침**(force 생성, period_start=당일이라 ON CONFLICT로 당일분 덮어씀 — 하루 다중 방지). 프론트: 진입 시 자동생성 없음, 카드 우측 ⟳ 버튼으로만 |
 | `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`·`/version?id=`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 / **특정 버전 본문 by id**(히스토리 도트 클릭, D-060) |
@@ -200,9 +203,10 @@ Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소
                    **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-057, 전부 '내가 커버하는 대상'). ※구 산업 페이지(/discover/industry)는 폐기
 월드모델           **인식론적 시간축으로 L2 구성 (D-073)**: 내러티브(현재·서사) · 전망(미래·확률) · 지식(과거·검증). "같은 인과 그래프의 여러 속도"(D-023)에 시간대를 겹친 것. 신호(델타 감지)와 성격 달라 분리(D-031). 시간축은 무게중심이지 칸막이 아님(내러티브는 현재+미래 겸함, 리포트는 과거+현재+미래 종합) — 탭은 중심으로, 교차는 링크로.
                    **내러티브(현재)**(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·**재생성 이력 타임라인**(본문 아래·파급 시나리오 위 인라인, 도트 클릭→히스토리 페이지, D-059)·파급 시나리오·통합 리포트·**이 서사의 핵심질문**(미러링, D-067). 자동 재생성 24h 1회 제한 + 새로고침 버튼, D-059. 히스토리=/narrative/history?topic=X&v=id 재생성 이력 상세, D-060) ·
-                   **전망(상위 탭, D-073)** — 미래-확률 집약, 내부 서브탭 [질문·리포트] (OutlookSubNav 토글, 지식↔온톨로지와 동형):
+                   **전망(상위 탭, D-073)** — 미래-확률 집약, 내부 서브탭 [질문·리포트·**논지 감사**(D-078)] (OutlookSubNav 토글, 지식↔온톨로지와 동형):
                    · **질문**(/questions: 미결 질문 목록·콘솔·제안 큐 — QuestionsSection. 상세는 **/question/:id 허브**(2층 판정+분할정복 트리+파급 시나리오+소스, D-070). 전망의 기본 랜딩) ·
                    · **리포트**(/report: 발간 목록, /report?topic=X=디테일 — Top-down 리포트 + 최하단 구성 내러티브 링크, integrated-report/D-041) ·
+                   · **논지 감사**(/thesis: 내 thesis 붙여넣기 콘솔 → 인과그래프 대질 read-only 감사, 주장별 델타(일치/충돌/반박/신규)+근거 엣지·독립 소스·시간 급증+감사 히스토리, ThesisAuditPage, D-078) ·
                    **지식(과거, 상위 탭)**(/knowledge: **지식↔온톨로지 토글**, D-052) — 지식=구조 지도·현황 대시보드·주입 콘솔(검증 승격 핵심) / **온톨로지**(/knowledge/ontology: 구 '세계관 뷰' 리네임 — 전역 인과 그래프 노드-링크 시각화, React Flow+dagre, 렌즈 필터, in-graph 패널. /narrative/worldview는 리다이렉트). 세계관 탭은 지식으로 통합(세계관 ⊃ 지식)
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·유튜브·뉴스·아티클·인물·역사(source_type=canon) (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
                    + 사이드바: 구독 채널/블로그 목록·닉네임·활성 토글·인라인 등록 폼

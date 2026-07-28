@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 const TABS = [
   { to: "/questions", label: "질문", active: (p: string) => p.startsWith("/question") },
   { to: "/report", label: "리포트", active: (p: string) => p.startsWith("/report") },
+  { to: "/thesis", label: "논지 감사", active: (p: string) => p.startsWith("/thesis") },
 ] as const
 
 export function OutlookSubNav() {

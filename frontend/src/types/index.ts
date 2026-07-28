@@ -411,3 +411,35 @@ export interface MarketRegime {
   us: MarketPostureUS | null;
   degraded: string[];
 }
+
+/* ── 논지 감사 (thesis audit) — thesis를 인과그래프에 대질한 read-only 델타 ── */
+export type ThesisVerdict = "aligned" | "contested" | "challenged" | "novel";
+export type ThesisRole = "consensus" | "shift" | "catalyst" | "causal" | "synthesis";
+export type EdgeStance = "support" | "contradict" | "context";
+
+export interface ThesisEdge {
+  id: number; src: string; dst: string; rel_type: string;
+  effect_direction: string | null; effect_strength: string | null;
+  corroborated_by: number; confidence: number; mechanism: string | null;
+  created_at: string | null; reference_period: string | null; stance: EdgeStance;
+}
+export interface ThesisNarrative {
+  topic: string; version: number; title: string | null;
+  category: string | null; drift_summary: string | null; created_at: string;
+}
+export interface ThesisTemporal {
+  monthly: { ym: string; count: number }[]; spiking: boolean;
+  latest: { ym: string; count: number } | null; prev: { ym: string; count: number } | null;
+}
+export interface ThesisClaim {
+  claim: string; role: ThesisRole; anchor_terms: string[];
+  verdict: ThesisVerdict; spiking: boolean;
+  edges: ThesisEdge[]; narratives: ThesisNarrative[]; temporal: ThesisTemporal;
+}
+export interface ThesisAudit {
+  id: number; created_at: string; thesis_text: string;
+  claims: ThesisClaim[]; n_claims: number;
+}
+export interface ThesisAuditListItem {
+  id: number; created_at: string; preview: string; n_claims: number;
+}

@@ -793,6 +793,15 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_market_ind ON market_indicators(indicator, snapshot_date);
 
+    -- 논지 감사 (thesis audit, docs/specs/thesis-audit.md) — thesis를 인과그래프에 대질한 read-only 감사 결과.
+    -- append-only 히스토리(판단이 시간에 따라 어떻게 변했나). 사용자 주장은 여기 저장되지 그래프에 안 써진다(격리).
+    CREATE TABLE IF NOT EXISTS thesis_audits (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        thesis_text TEXT NOT NULL,
+        result_json TEXT NOT NULL,       -- 주장별 델타(판정·근거 엣지·내러티브·시간)
+        created_at  TEXT DEFAULT (datetime('now'))
+    );
+
     -- 어휘 통합 (vocab consolidation, D-033) — audit + redirect 겸용.
     -- 배치 병합으로 사라진 theme/macro 노드 이름이 재등장해도 survivor로 해소 (재파편화 방지).
     CREATE TABLE IF NOT EXISTS entity_merges (
