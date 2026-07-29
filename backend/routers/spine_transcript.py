@@ -25,6 +25,8 @@ class FollowRow(BaseModel):
     group_label: str | None
     n_calls: int
     latest: LatestCall | None
+    last_report_date: str | None = None   # yfinance 실적 발표일 캐시 (D-081)
+    next_report_date: str | None = None
 
 
 class QuarterRow(BaseModel):
@@ -59,6 +61,8 @@ def list_follow():
     conn = get_connection()
     rows = conn.execute("SELECT ticker, company_name, group_label FROM transcript_follow "
                         "WHERE active=1 ORDER BY group_label, ticker").fetchall()
+    cal = {r["ticker"]: r for r in conn.execute(
+        "SELECT ticker, last_report_date, next_report_date FROM transcript_calendar").fetchall()}
     out = []
     for r in rows:
         calls = conn.execute(
@@ -70,10 +74,22 @@ def list_follow():
             latest = LatestCall(transcript_id=c["id"], fiscal_year=c["fiscal_year"],
                                 fiscal_period=c["fiscal_period"], call_date=c["call_date"],
                                 has_digest=bool(c["digest"]))
+        cr = cal.get(r["ticker"])
         out.append(FollowRow(ticker=r["ticker"], company_name=r["company_name"],
-                             group_label=r["group_label"], n_calls=len(calls), latest=latest))
+                             group_label=r["group_label"], n_calls=len(calls), latest=latest,
+                             last_report_date=cr["last_report_date"] if cr else None,
+                             next_report_date=cr["next_report_date"] if cr else None))
     conn.close()
     return out
+
+
+@router.post("/calendar/refresh")
+def refresh_earnings_calendar():
+    """yfinance 실적 발표일 캐시 갱신 (무료·AV 예산 무관, D-081). 활성 팔로우 전체. ~수십초."""
+    from pipeline.transcript import refresh_calendar, _followed
+    tickers = [c["ticker"] for c in _followed()]
+    n = refresh_calendar(tickers, max_age_hours=0)   # 강제 갱신
+    return {"refreshed": n}
 
 
 @router.get("/company/{ticker}", response_model=list[QuarterRow])
