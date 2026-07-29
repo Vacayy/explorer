@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
 from pipeline.transcript import (collect_roundrobin, digest_pending, extract_proxies,
-                                 seed_default_follows, seed_proxies, _followed)
+                                 seed_default_follows, seed_proxies, backfill_call_dates, _followed)
 
 
 def main():
@@ -56,6 +56,9 @@ def main():
         r = collect_roundrobin(request_budget=budget, only=only)
         print(f"[transcript] 요청 {r['requests']}/{r['budget']} · 신규 {r['stored']}건 적재 · "
               f"빈응답 {r['empty']} · 캐시 스킵 {r['skipped_cache']} · 예산소진={r['exhausted']}")
+        if r["stored"]:
+            bc = backfill_call_dates(only=only)  # 신규분 call_date를 실제 발표일로 (yfinance, D-084)
+            print(f"[transcript] 발표일 교정 {bc['updated']}건")
         n = digest_pending(limit=max(r["stored"], 5))  # 신규분 핵심 정리 생성(sonnet)
         print(f"[transcript] 핵심 정리 {n}건 생성")
         seed_proxies()
