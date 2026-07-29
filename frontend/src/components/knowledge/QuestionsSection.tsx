@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { EmptyState } from "@/components/shared/ErrorState"
 import SegmentTabs from "@/components/shared/SegmentTabs"
+import { MetricHint } from "@/components/shared/MetricHint"
 import { cn } from "@/lib/utils"
 
 /**
@@ -127,6 +128,9 @@ function LedgerBar({ data, sort, onSort }: {
         tabs={[{ value: "ledger", label: "원장" }, { value: "recent", label: "최근" }]}
         value={sort} onChange={(v) => onSort(v as "ledger" | "recent")}
       />
+      <MetricHint hint="원장 = 괴리(선행 여론 ↔ 확정 실적 판정이 어긋난 질문 = 조기 경보) 먼저, 그다음 확신(conviction·근거 강도) 높은 순 — 의사결정 우선순위. 최근 = 판정 갱신 시각순(updated_at). ─ 스트립: 괴리=선행·확정이 어긋난 질문 수, 고확신=근거 강한(conviction≥0.5) 질문 수, 논지발=논지 감사에서 승격된 질문 수.">
+        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60" />
+      </MetricHint>
       <div className="ml-auto flex items-center gap-2.5 text-[11px] text-muted-foreground tabular-nums">
         {diverging > 0 && <span className="text-hypothesis">괴리 {diverging}</span>}
         {highConv > 0 && <span>고확신 {highConv}</span>}
