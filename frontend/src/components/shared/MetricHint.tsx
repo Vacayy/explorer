@@ -9,7 +9,7 @@ export function MetricHint({ hint, children }: { hint: string; children: ReactNo
         <TooltipTrigger asChild>
           <span className="cursor-help">{children}</span>
         </TooltipTrigger>
-        <TooltipContent className="max-w-[300px] text-xs leading-relaxed">{hint}</TooltipContent>
+        <TooltipContent className="max-w-[300px] text-xs leading-relaxed whitespace-pre-line">{hint}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )
