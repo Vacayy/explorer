@@ -1,7 +1,8 @@
-"""언급 다이제스트 계산 (1D + 롤링 7D). cron 체인에서 주기 실행 — hash 가드로 대부분 no-op.
+"""언급 다이제스트 계산 (1D 오늘 + 1W 이번 주). cron 체인 주기 실행 — hash 가드로 대부분 no-op.
 
-  python scripts/compute_digests.py                 # 오늘 (KST)
-  python scripts/compute_digests.py --backfill 7    # 지난 N일 1D 백필 + 7D
+  python scripts/compute_digests.py                 # 오늘(1D) + 이번 주(1W)
+  python scripts/compute_digests.py --backfill 7    # 지난 N일 1D 백필
+과거 월(1M)·소급은 종목 진입 시 catch_up(D-085)이 담당 — cron은 최신만.
 """
 import argparse
 import sys
@@ -11,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.digests import compute_daily, compute_rolling7
+from pipeline.digests import compute_daily, compute_weekly
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -27,7 +28,7 @@ if __name__ == "__main__":
                 print(f"[daily {d}]", compute_daily(d))
             return {"backfill": args.backfill}
         daily = compute_daily()
-        r7 = compute_rolling7()
-        print("[daily]", daily, "[rolling7]", r7)
+        weekly = compute_weekly()   # 이번 주(월~일), 이번 주 언급 종목 전체
+        print("[daily]", daily, "[weekly]", weekly)
         return {"daily_gen": daily.get("generated", 0) if isinstance(daily, dict) else 0}
     run_job("compute_digests", _work)   # 관리자 플래그 게이트 + 로그 (D-055)

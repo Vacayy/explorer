@@ -10,8 +10,8 @@ router = APIRouter(prefix="/api/spine/digests", tags=["spine"])
 
 
 class DigestItem(BaseModel):
-    period: str          # 1d | 7d
-    period_start: str    # KST 날짜 (7d는 기준일)
+    period: str          # 1d | 1w | 1m (캘린더 기준, D-085)
+    period_start: str    # KST 날짜 — 1d=당일, 1w=그 주 월요일, 1m=그 달 1일
     digest: str | None
     insights: str | None # 이전 요약 대비 새로운 시각 (epistemic: 가설)
     doc_count: int | None
@@ -23,15 +23,18 @@ class DigestsResponse(BaseModel):
     as_of: str
 
 
-class DigestComputeResult(BaseModel):
-    status: str                  # ok | empty | unavailable
-    item: DigestItem | None = None
+class CatchupResult(BaseModel):
+    status: str                  # ok | unavailable
+    monthly: int = 0
+    weekly: int = 0
+    daily: int = 0
+    unchanged: int = 0
 
 
 @router.get("", response_model=DigestsResponse)
 def list_digests(
     stock: str = Query(..., description="종목코드"),
-    period: str = Query("1d", pattern="^(1d|7d)$"),
+    period: str = Query("1d", pattern="^(1d|1w|1m)$"),
     limit: int = Query(10, ge=1, le=60),
 ):
     conn = get_connection()
@@ -49,27 +52,13 @@ def list_digests(
     )
 
 
-@router.post("/compute", response_model=DigestComputeResult)
-def compute_digest(
-    stock: str = Query(..., description="종목코드"),
-    period: str = Query("1d", pattern="^(1d|7d)$"),
-):
-    """온디맨드 다이제스트 새로고침 — 해당 종목·기간을 지금 한 번 생성(force).
-    period_start=당일(KST)이라 오늘 이미 생성분이 있으면 덮어쓴다(하루 다중 생성 방지)."""
-    from pipeline.digests import compute_daily, compute_rolling7, KST
-    stats = (compute_daily(stock_code=stock, force=True) if period == "1d"
-             else compute_rolling7(stock_code=stock, force=True))
-    if stats.get("skipped"):
-        return DigestComputeResult(status="unavailable")
-
-    today = datetime.now(KST).date().isoformat()
-    conn = get_connection()
-    row = conn.execute("""
-        SELECT d.period, d.period_start, d.digest, d.insights, d.doc_count, d.model
-        FROM entity_digests d JOIN entities e ON d.entity_id = e.id
-        WHERE e.type='company' AND e.aliases=? AND d.period=? AND d.period_start=?
-    """, (stock, period, today)).fetchone()
-    conn.close()
-    if not row:
-        return DigestComputeResult(status="empty")
-    return DigestComputeResult(status="ok", item=DigestItem(**dict(row)))
+@router.post("/catchup", response_model=CatchupResult)
+def catchup(stock: str = Query(..., description="종목코드")):
+    """진입 시 소급 생성(D-085) — 과거 완결 월 1M · 이번 달 주 1W · 오늘 1D를 멱등 채움.
+    프론트가 종목 진입 시 자동 호출(백그라운드). 이미 있으면 unchanged로 스킵(재진입 무비용)."""
+    from pipeline.digests import catch_up
+    r = catch_up(stock)
+    if r.get("skipped"):
+        return CatchupResult(status="unavailable")
+    return CatchupResult(status="ok", monthly=r.get("monthly", 0), weekly=r.get("weekly", 0),
+                         daily=r.get("daily", 0), unchanged=r.get("unchanged", 0))
