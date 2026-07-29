@@ -100,15 +100,13 @@ class FMPProvider:
 
 
 def _recent_quarters(n: int = 5) -> list[dict]:
-    """최근 n개 캘린더 분기 (연,분기) 내림차순. Alpha Vantage는 dates 엔드포인트가 없어
-    직접 분기를 지목해 조회하므로 최근 분기 후보를 생성한다(없는 분기는 빈 응답 → 스킵)."""
+    """AV 조회용 후보 분기 (연,분기) 내림차순. **AV는 dates 엔드포인트가 없고 회계분기로 라벨링**한다 —
+    6월 결산사(MSFT)의 회계 Q4는 캘린더 Q3(7월)에 발표되며 라벨은 `연Q4`, 1월 결산사(NVDA)는 회계연도가
+    캘린더보다 앞서 `차년Q1` 라벨을 쓴다. 따라서 캘린더 분기만으론 라벨을 못 맞춘다 → **캘린더보다 한 해 앞
+    (당해 Q4·차년 Q1 포함)부터 넓게 생성**. 없는 라벨은 빈응답 → 네거티브 캐시가 억제.
+    (D-084: 기존 '캘린더 q-1부터' 방식은 MSFT류 회계 Q4 라벨을 영영 생성 못 해 신규 콜을 놓쳤음)."""
     today = date.today()
-    y, q = today.year, (today.month - 1) // 3 + 1
-    # 현재 캘린더 분기는 대개 미보고 → 직전 분기부터 조회(빈응답 낭비 방지). 회계연도-선행 기업(NVDA 등)의
-    # 이미-보고분은 저장돼 있어 스킵되므로 손실 없음. n을 1 늘려 커버 폭 유지.
-    q -= 1
-    if q == 0:
-        q, y = 4, y - 1
+    y, q = today.year + 1, 1   # 한 해 앞 Q1부터 (회계연도-선행·회계 Q4 커버)
     out = []
     for _ in range(n):
         out.append({"year": y, "quarter": q, "date": f"{y}-{q * 3:02d}-01"})
@@ -176,14 +174,24 @@ def seed_default_follows() -> int:
     return n
 
 
-_DIGEST_PROMPT = """다음은 미국 상장사의 실적 발표·컨퍼런스콜 전문이다. 투자자가 30초에 핵심을 잡도록
-한국어 마크다운 불릿으로 정리하라. 아래 4개 소제목을 그대로 쓰고 각 2~4개 불릿. 수치는 원문 그대로 인용.
-추측·미사여구 금지 — 원문에 없는 건 쓰지 마라.
+_DIGEST_PROMPT = """다음은 미국 상장사의 실적 발표·컨퍼런스콜 전문이다. 한국어 마크다운으로 정리하라.
+아래 소제목을 그대로 쓴다. 수치는 원문 그대로 인용. 추측·미사여구 금지 — 원문에 없는 건 쓰지 마라.
+
+앞의 4개 섹션은 각 2~4개 불릿으로 간결하게.
 
 ### 실적 하이라이트
 ### 가이던스·전망
 ### 경영진 핵심 코멘트
 ### 리스크·유의점
+
+**Q&A는 가급적 상세하게** 정리한다(애널리스트가 무엇을 물었고 경영진이 어떻게 답했는지가 신호가 큼).
+아래 형식으로 **주요 문답을 빠짐없이**, 질문자 소속(있으면)·질문 요지·경영진 답변 핵심(수치·뉘앙스 포함)을 담아라.
+답변이 회피/모호하면 그 점도 적는다. 문답이 없으면 "Q&A 없음"만 쓴다.
+
+### Q&A 핵심
+- **Q (질문자/소속):** 질문 요지
+  - **A:** 경영진 답변 핵심 (수치·가이던스·뉘앙스, 회피 여부)
+- (주요 문답마다 반복)
 
 [제목] {title}
 [전문]
@@ -382,16 +390,9 @@ def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
     return True
 
 
-def _quarter_start_iso(year: int, quarter: int) -> str:
-    """분기 시작 ISO date (캘린더 게이트용). **증명 가능 안전**: quarter_start > last_report_date면
-    그 분기는 최근 보고 이후에 '시작'된 것 → 아직 보고 안 됨 → AV에 있을 수 없음 → probe 안 함.
-    (분기 말 기준은 회계연도 어긋난 종목[AMAT·MU 등]의 수집가능 분기를 false-skip → 시작 기준으로.)"""
-    return f"{year}-{quarter * 3 - 2:02d}-01"
-
-
 def refresh_calendar(tickers: list[str], max_age_hours: int = 24) -> int:
     """yfinance로 최근/차기 실적 발표일 캐시 (무료 — AV 25/day 예산과 무관, D-081).
-    max_age 내 최신 캐시는 스킵. 실패는 무시(게이트는 캘린더 없으면 통과=기존 동작)."""
+    max_age 내 최신 캐시는 스킵. 실패는 무시. **UI 표시·발표일 참고용**(D-084: 수집 게이트 폐지)."""
     import yfinance as yf
     import pandas as pd
     conn = get_connection()
@@ -438,14 +439,6 @@ def _bucket_map(sql: str, params: tuple = ()) -> dict:
     return out
 
 
-def _calendar_map() -> dict:
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT ticker, last_report_date FROM transcript_calendar WHERE last_report_date IS NOT NULL").fetchall()
-    conn.close()
-    return {r["ticker"]: r["last_report_date"] for r in rows}
-
-
 def _record_empty(ticker: str, year: int, period: str) -> None:
     conn = get_connection()
     conn.execute(
@@ -461,14 +454,15 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
                        use_calendar: bool = True, dry_run: bool = False) -> dict:
     """분기-랭크 라운드로빈 — 모든 기업의 최신 분기 먼저, 그 다음 이전 분기.
     Alpha Vantage 무료 한도(25/day·5/min) 대응: request_budget 상한 + 요청 간 sleep.
-    낭비 차단 2겹(D-081): ① 캘린더 게이트(yfinance last_report_date보다 미래 분기는 probe 안 함)
-    ② 빈응답 네거티브 캐시(cooldown_days 내 빈 (기업,분기) 재요청 안 함). 저장분은 여전히 스킵.
-    dry_run=True면 fetch 없이 '무엇을 요청할지'만 계산(예산·sleep 미적용)."""
+    낭비 차단: **빈응답 네거티브 캐시**(cooldown_days 내 빈 (기업,분기) 재요청 안 함) + 저장분 스킵.
+    (D-084: D-081의 '캘린더 게이트'는 AV가 회계분기로 라벨링해 회계연도 어긋난 종목[MSFT·NVDA 등]의
+    수집가능 분기를 false-skip → 제거. 캘린더는 UI 표시·발표일 참고용으로만 유지.)
+    use_calendar=True면 수집 김에 발표일 캐시도 갱신(UI용). dry_run=True면 fetch 없이 계획만."""
     provider = get_provider()
     companies = _followed(only)
     if use_calendar and not dry_run:
         try:
-            refresh_calendar([c["ticker"] for c in companies])
+            refresh_calendar([c["ticker"] for c in companies])   # UI용 발표일 캐시 (게이트 아님)
         except Exception as e:  # noqa: BLE001
             print(f"[calendar] 갱신 실패(무시): {e}")
     cands = _recent_quarters(ranks)   # 최신순
@@ -476,23 +470,17 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
     empties = _bucket_map(
         "SELECT ticker, fiscal_year, fiscal_period FROM transcript_probe WHERE checked_at > datetime('now', ?)",
         (f"-{cooldown_days} days",))
-    cal = _calendar_map() if use_calendar else {}
-    used, stored, empty, skip_cal, skip_cache = 0, 0, 0, 0, 0
+    used, stored, empty, skip_cache = 0, 0, 0, 0
     planned: list[str] = []
     done = False
     for q in cands:                    # 랭크(분기) 바깥 = 최신 분기부터
         if done:
             break
         period = f"Q{q['quarter']}"
-        qstart = _quarter_start_iso(q["year"], q["quarter"])
         for f in companies:            # 기업 안쪽 = 그 분기를 전 기업에 걸쳐
             tk = f["ticker"]
             if (q["year"], period) in existing.get(tk, ()):
                 continue               # 저장됨 — 요청 없이 스킵
-            lr = cal.get(tk)
-            if lr and qstart > lr:
-                skip_cal += 1          # 보고 이후 시작된 분기 — 아직 안 나옴, 안전 게이트
-                continue
             if (q["year"], period) in empties.get(tk, ()):
                 skip_cache += 1        # 최근 빈응답 — 네거티브 캐시
                 continue
@@ -519,10 +507,9 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
                 _record_empty(tk, q["year"], period)   # 빈응답 기억 → 재요청 차단
     if dry_run:
         return {"dry_run": True, "would_request": len(planned), "planned": planned,
-                "skipped_calendar": skip_cal, "skipped_cache": skip_cache}
+                "skipped_cache": skip_cache}
     return {"requests": used, "stored": stored, "empty": empty, "budget": request_budget,
-            "skipped_calendar": skip_cal, "skipped_cache": skip_cache,
-            "exhausted": done}
+            "skipped_cache": skip_cache, "exhausted": done}
 
 
 def collect_followed(only: list[str] | None = None, max_new_per_ticker: int = 4) -> dict:
