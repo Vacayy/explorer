@@ -128,7 +128,23 @@ function LedgerBar({ data, sort, onSort }: {
         tabs={[{ value: "ledger", label: "중요도순" }, { value: "recent", label: "최근" }]}
         value={sort} onChange={(v) => onSort(v as "ledger" | "recent")}
       />
-      <MetricHint hint="중요도순 = 괴리(선행 여론 ↔ 확정 실적 판정이 어긋난 질문 = 조기 경보) 먼저, 그다음 확신(conviction·근거 강도) 높은 순 — 의사결정 우선순위. 최근 = 판정 갱신 시각순(updated_at). ─ 스트립: 괴리=선행·확정이 어긋난 질문 수, 고확신=근거 강한(conviction≥0.5) 질문 수, 논지발=논지 감사에서 승격된 질문 수.">
+      <MetricHint hint={
+`각 질문은 두 종류의 신호로 지켜봐요.
+· 여론 — 시장 분위기·심리 (빨리 움직여요)
+· 실적 — 실제 숫자·성과 (늦게 확인돼요)
+
+[중요도순] 여론과 실적이 서로 엇갈리는 질문(무언가 바뀌고 있다는 조기 신호)을 맨 위로, 그다음 근거가 탄탄한 순으로 보여줘요.
+[최근] 판정이 마지막으로 갱신된 순서예요.
+
+위쪽 요약 숫자
+· 괴리 — 여론과 실적이 엇갈린 질문 수
+· 고확신 — 근거가 탄탄한 질문 수
+· 논지발 — 내 투자 논지를 검토해 추적을 시작한 질문 수
+
+지금 기준
+· 괴리 = 여론 신호와 실적 신호의 방향이 서로 다름
+· 고확신 = 서로 다른 출처의 근거 2개 이상이 뒷받침하고, 반박은 적음`
+      }>
         <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60" />
       </MetricHint>
       <div className="ml-auto flex items-center gap-2.5 text-[11px] text-muted-foreground tabular-nums">
