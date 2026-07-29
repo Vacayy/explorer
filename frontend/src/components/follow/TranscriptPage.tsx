@@ -30,11 +30,22 @@ const GROUP_LABEL: Record<string, string> = {
 const GROUP_ORDER = ["M7", "hyperscaler", "nasdaq", "ai-datacenter", "space", "energy", "cpo", "software", "web3"]
 
 interface LatestCall { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; has_digest: boolean }
-interface FollowRow { ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null }
+interface FollowRow { ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null; last_report_date?: string | null; next_report_date?: string | null }
 interface Quarter { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; has_digest: boolean }
 interface Detail { transcript_id: number; ticker: string; company_name: string; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; digest: string | null; body: string }
 
 const periodOf = (y: number | null, p: string | null) => `FY${y ?? "?"} ${p ?? ""}`.trim()
+
+/** 발표일까지 남은 일수 (오늘 0, 미래 양수, 지난 날 음수) */
+function daysUntil(iso?: string | null): number | null {
+  if (!iso) return null
+  const d = new Date(iso + "T00:00:00")
+  if (Number.isNaN(d.getTime())) return null
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  return Math.round((d.getTime() - today.getTime()) / 86_400_000)
+}
+const ddayLabel = (n: number) => (n === 0 ? "오늘" : n > 0 ? `D-${n}` : `D+${-n}`)
+const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 
 export default function TranscriptPage() {
   const [params, setParams] = useSearchParams()
@@ -55,6 +66,11 @@ export default function TranscriptPage() {
 
   const seed = useMutation({
     mutationFn: () => api.post("/api/spine/transcript/seed").then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "follow"] }),
+  })
+
+  const refreshCal = useMutation({
+    mutationFn: () => api.post("/api/spine/transcript/calendar/refresh").then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "follow"] }),
   })
 
@@ -84,6 +100,9 @@ export default function TranscriptPage() {
       {view === "proxies" ? (
         <ProxyDashboard />
       ) : (
+      <>
+      <UpcomingEarnings follows={follows} onSelect={selectId}
+        onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4 items-start">
         {/* 좌 레일 — 팔로우 기업 그룹 (구독 관리 겸용) */}
         <Card className="md:sticky md:top-16">
@@ -112,8 +131,58 @@ export default function TranscriptPage() {
           )}
         </div>
       </div>
+      </>
       )}
     </PageContainer>
+  )
+}
+
+/* ---------- 곧 발표 (실적 발표일 캘린더, D-081) ---------- */
+function UpcomingEarnings({ follows, onSelect, onRefresh, refreshing }: {
+  follows: FollowRow[]; onSelect: (id: number) => void; onRefresh: () => void; refreshing: boolean
+}) {
+  const upcoming = useMemo(() => follows
+    .map((f) => ({ f, d: daysUntil(f.next_report_date) }))
+    .filter((x): x is { f: FollowRow; d: number } => x.d != null && x.d >= 0)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 12), [follows])
+
+  return (
+    <Card>
+      <CardContent className="p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground">곧 발표 · 실적 캘린더</span>
+          <Button variant="ghost" size="xs" onClick={onRefresh} disabled={refreshing}>
+            {refreshing ? "갱신 중…(수십초)" : "발표일 갱신"}
+          </Button>
+        </div>
+        {upcoming.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-1">예정된 발표일이 없습니다. '발표일 갱신'을 눌러 불러오세요.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {upcoming.map(({ f, d }) => (
+              <button
+                key={f.ticker}
+                onClick={() => f.latest && onSelect(f.latest.transcript_id)}
+                disabled={!f.latest}
+                title={`${f.company_name} · ${f.next_report_date}${f.latest ? "" : " (수집된 콜 없음)"}`}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
+                  d <= 3 ? "border-primary/40 bg-primary/5" : "border-border",
+                  f.latest ? "hover:bg-muted" : "opacity-60 cursor-default",
+                )}
+              >
+                <span className="font-semibold tabular-nums">{f.ticker}</span>
+                <span className={cn("tabular-nums", d <= 3 ? "text-primary font-medium" : "text-muted-foreground")}>
+                  {ddayLabel(d)}
+                </span>
+                <span className="text-muted-foreground tabular-nums">{mmdd(f.next_report_date!)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -143,6 +212,8 @@ function GroupedRail({ follows, effectiveId, onSelect }: {
           <CollapsibleContent className="pl-1">
             {byGroup.get(g)!.map((f) => {
               const active = f.latest && String(f.latest.transcript_id) === effectiveId
+              const dd = daysUntil(f.next_report_date)
+              const imminent = dd != null && dd >= 0 && dd <= 14
               return (
                 <button
                   key={f.ticker}
@@ -156,6 +227,12 @@ function GroupedRail({ follows, effectiveId, onSelect }: {
                 >
                   <span className="font-medium tabular-nums">{f.ticker}</span>
                   <span className="truncate text-xs text-muted-foreground flex-1">{f.company_name}</span>
+                  {imminent && (
+                    <span className="text-[9px] font-medium tabular-nums shrink-0 rounded bg-primary/10 px-1 text-primary"
+                      title={`다음 실적 ${f.next_report_date}`}>
+                      {ddayLabel(dd!)}
+                    </span>
+                  )}
                   {f.latest ? (
                     <span className="text-[10px] text-muted-foreground shrink-0">{f.latest.fiscal_period}</span>
                   ) : (
