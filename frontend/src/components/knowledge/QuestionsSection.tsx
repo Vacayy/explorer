@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Check, ChevronDown, HelpCircle, Inbox, Loader2, Plus, RefreshCw, Trash2, Wand2, X } from "lucide-react"
+import { Check, ChevronDown, FileText, HelpCircle, Inbox, Loader2, Plus, RefreshCw, Trash2, Wand2, X } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/shared/ErrorState"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { MetricHint } from "@/components/shared/MetricHint"
@@ -340,27 +341,110 @@ export function QuestionTree({ id }: { id: number }) {
             </p>
           )}
           <div className="space-y-1">
-            {sq.proxies.map((p) => {
-              const o = p.observations[0]
-              return (
-                <div key={p.id} className="flex items-center gap-1.5 text-[11px]">
-                  <Badge variant="secondary" className="text-[9px] shrink-0">{MODALITY[p.modality] ?? p.modality}</Badge>
-                  <span className="shrink-0 text-muted-foreground">{p.label}</span>
-                  {o ? (
-                    <span className="ml-auto flex items-center gap-1.5 text-right text-muted-foreground min-w-0">
-                      <span className="truncate max-w-[22rem]" title={o.value_text ?? ""}>{o.value_text}</span>
-                      {o.direction && <span className="shrink-0 tabular-nums">{DIR[o.direction] ?? o.direction}</span>}
-                      <span className="shrink-0 tabular-nums text-[10px]">{o.observed_at?.slice(0, 10)}</span>
-                    </span>
-                  ) : (
-                    <span className="ml-auto text-[10px] text-muted-foreground/60">관측 대기{p.tickers ? ` · ${p.tickers}` : ""}</span>
-                  )}
-                </div>
-              )
-            })}
+            {sq.proxies.map((p) => <ProxyRow key={p.id} p={p} />)}
           </div>
         </div>
       ))}
     </div>
+  )
+}
+
+/* 프록시 행 — 클릭 시 디테일 모달(무엇을 측정·'예' 방향·전체 관측 시계열·출처). 트리에선 최신 1건만. */
+function ProxyRow({ p }: { p: QProxy }) {
+  const o = p.observations[0]
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button className="w-full flex items-center gap-1.5 text-[11px] text-left rounded px-1 -mx-1 hover:bg-muted/60 transition-colors">
+          <Badge variant="secondary" className="text-[9px] shrink-0">{MODALITY[p.modality] ?? p.modality}</Badge>
+          <span className="shrink-0 text-muted-foreground">{p.label}</span>
+          {o ? (
+            <span className="ml-auto flex items-center gap-1.5 text-right text-muted-foreground min-w-0">
+              <span className="truncate max-w-[20rem]" title={o.value_text ?? ""}>{o.value_text}</span>
+              {o.direction && <span className="shrink-0 tabular-nums">{DIR[o.direction] ?? o.direction}</span>}
+              <span className="shrink-0 tabular-nums text-[10px]">{o.observed_at?.slice(0, 10)}</span>
+            </span>
+          ) : (
+            <span className="ml-auto text-[10px] text-muted-foreground/60">관측 대기{p.tickers ? ` · ${p.tickers}` : ""}</span>
+          )}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <ProxyDetailBody proxyId={p.id} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface ProxyObs {
+  observed_at: string | null; value_num: number | null; value_text: string | null
+  direction: string | null; confidence: number | null; source: { doc_id: number | null; label: string } | null
+}
+interface ProxyDetail {
+  id: number; label: string; modality: string; yes_direction: string | null; unit: string | null
+  tickers: string | null; extract_hint: string | null; sub_question_text: string | null
+  question_id: number | null; question_text: string | null; observations: ProxyObs[]
+}
+
+function ProxyDetailBody({ proxyId }: { proxyId: number }) {
+  const { data, isLoading } = useQuery(
+    apiQuery<ProxyDetail>({ key: ["spine", "proxy", proxyId], url: `/api/spine/questions/proxy/${proxyId}`, staleTime: STALE.short }),
+  )
+  if (isLoading) return <div className="py-10 flex justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+  if (!data) return null
+  const yesText = data.yes_direction === "up" ? "늘어남 ↑" : data.yes_direction === "down" ? "줄어듦 ↓" : "—"
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-1.5 text-base">
+          <Badge variant="secondary" className="text-[10px]">{MODALITY[data.modality] ?? data.modality}</Badge>
+          {data.label}
+        </DialogTitle>
+        {data.sub_question_text && (
+          <DialogDescription>지켜보는 하위 질문 — {data.sub_question_text}</DialogDescription>
+        )}
+      </DialogHeader>
+      <div className="space-y-3 text-xs">
+        <div className="rounded-md bg-muted/40 px-3 py-2 space-y-1">
+          {data.extract_hint && <p><span className="text-muted-foreground">무엇을 보나</span> · {data.extract_hint}</p>}
+          <p><span className="text-muted-foreground">'예'로 볼 방향</span> · {yesText}{data.unit ? ` (단위 ${data.unit})` : ""}</p>
+          {data.tickers && <p><span className="text-muted-foreground">대상</span> · {data.tickers}</p>}
+        </div>
+        <div>
+          <p className="text-[11px] font-medium text-muted-foreground mb-1.5">관측 기록 ({data.observations.length})</p>
+          {data.observations.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground/60">
+              아직 관측이 없어요 — {data.modality === "numeric" ? "새 실적 발표(컨콜)를 기다리는 중" : "시장 여론 스캔을 기다리는 중"}
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {data.observations.map((o, i) => <ObsRow key={i} o={o} unit={data.unit} />)}
+            </ul>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function ObsRow({ o, unit }: { o: ProxyObs; unit: string | null }) {
+  return (
+    <li className="flex items-start gap-2 rounded-md border px-2.5 py-1.5">
+      <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground mt-0.5">{o.observed_at?.slice(0, 10)}</span>
+      <span className="shrink-0 tabular-nums w-3 text-center">{o.direction ? (DIR[o.direction] ?? "") : ""}</span>
+      <div className="min-w-0 flex-1">
+        {o.value_num != null && <span className="font-medium tabular-nums">{o.value_num}{unit ? ` ${unit}` : ""} </span>}
+        {o.value_text && <span className="text-muted-foreground">{o.value_text}</span>}
+        {o.source && (
+          o.source.doc_id != null ? (
+            <Link to={`/doc/${o.source.doc_id}`} className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-primary hover:underline align-baseline">
+              <FileText className="h-2.5 w-2.5" />{o.source.label}
+            </Link>
+          ) : (
+            <span className="ml-1 text-[10px] text-muted-foreground/70">· {o.source.label}</span>
+          )
+        )}
+      </div>
+    </li>
   )
 }

@@ -36,6 +36,16 @@ def index(narrative_id: int | None = None, status: str | None = None):
     return list_questions(narrative_id=narrative_id, status=status)
 
 
+@router.get("/proxy/{proxy_id}")
+def proxy_detail(proxy_id: int):
+    """프록시 디테일 — 메타 + 전체 관측 시계열(출처 포함, LLM 0). 질문 트리에서 프록시 클릭 시 모달."""
+    from pipeline.questions import get_proxy_detail
+    r = get_proxy_detail(proxy_id)
+    if r is None:
+        raise HTTPException(404, "프록시 없음")
+    return r
+
+
 class FromDocRequest(BaseModel):
     doc_id: int
 
