@@ -164,7 +164,7 @@ function getActiveMode(pathname: string): AppMode {
   if (pathname.startsWith("/research")) return "research"
   if (pathname.startsWith("/archive")) return "archive"
   // 월드모델 — 내러티브·리포트·세계관·지식 (D-031)
-  if (pathname.startsWith("/narrative") || pathname.startsWith("/question") || pathname.startsWith("/knowledge") || pathname.startsWith("/report")) return "worldmodel"
+  if (pathname.startsWith("/narrative") || pathname.startsWith("/question") || pathname.startsWith("/knowledge") || pathname.startsWith("/report") || pathname.startsWith("/thesis")) return "worldmodel"
   // /explore(신호 상세)·/discover/*·/onchain — 탐색 해체 후 pill 없는 도시에 (D-057)
   return "archive"
 }
