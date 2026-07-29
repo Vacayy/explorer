@@ -47,6 +47,10 @@ DEFAULT_FOLLOWS = [
     ("PLTR", "Palantir", "software"),
 ]
 
+# Alpha Vantage 트랜스크립트 미커버 종목 (D-081) — 해외 발행사(ADR). 신규 설치 시 active=0으로
+# 수집 대상에서 제외(예산 낭비 방지). 팔로우 기록은 유지 — 나중에 유료 소스 붙이면 재활성.
+AV_UNCOVERED = {"ASML", "TSM"}
+
 
 class TranscriptProvider(Protocol):
     name: str
@@ -165,6 +169,8 @@ def seed_default_follows() -> int:
             (ticker, name, group),
         )
         n += cur.rowcount
+    # AV 미커버(해외 발행사)는 수집 대상에서 제외 (D-081)
+    conn.executemany("UPDATE transcript_follow SET active=0 WHERE ticker=?", [(t,) for t in AV_UNCOVERED])
     conn.commit()
     conn.close()
     return n
@@ -376,42 +382,146 @@ def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
     return True
 
 
+def _quarter_start_iso(year: int, quarter: int) -> str:
+    """분기 시작 ISO date (캘린더 게이트용). **증명 가능 안전**: quarter_start > last_report_date면
+    그 분기는 최근 보고 이후에 '시작'된 것 → 아직 보고 안 됨 → AV에 있을 수 없음 → probe 안 함.
+    (분기 말 기준은 회계연도 어긋난 종목[AMAT·MU 등]의 수집가능 분기를 false-skip → 시작 기준으로.)"""
+    return f"{year}-{quarter * 3 - 2:02d}-01"
+
+
+def refresh_calendar(tickers: list[str], max_age_hours: int = 24) -> int:
+    """yfinance로 최근/차기 실적 발표일 캐시 (무료 — AV 25/day 예산과 무관, D-081).
+    max_age 내 최신 캐시는 스킵. 실패는 무시(게이트는 캘린더 없으면 통과=기존 동작)."""
+    import yfinance as yf
+    import pandas as pd
+    conn = get_connection()
+    fresh = {r[0] for r in conn.execute(
+        "SELECT ticker FROM transcript_calendar WHERE checked_at > datetime('now', ?)",
+        (f"-{max_age_hours} hours",)).fetchall()}
+    today = datetime.now(timezone.utc).date().isoformat()
+    n = 0
+    for tk in tickers:
+        if tk in fresh:
+            continue
+        last = nxt = None
+        try:
+            df = yf.Ticker(tk).get_earnings_dates(limit=8)
+            if df is not None and len(df):
+                for idx, row in df.iterrows():
+                    dstr = idx.date().isoformat()
+                    if pd.notna(row.get("Reported EPS", None)):
+                        if last is None or dstr > last:
+                            last = dstr
+                    elif dstr >= today and (nxt is None or dstr < nxt):
+                        nxt = dstr
+        except Exception as e:  # noqa: BLE001
+            print(f"[calendar] {tk} 조회 실패(무시): {e}")
+        conn.execute(
+            "INSERT INTO transcript_calendar (ticker, last_report_date, next_report_date, checked_at) "
+            "VALUES (?, ?, ?, datetime('now')) ON CONFLICT(ticker) DO UPDATE SET "
+            "last_report_date=excluded.last_report_date, next_report_date=excluded.next_report_date, "
+            "checked_at=datetime('now')", (tk, last, nxt))
+        conn.commit()
+        n += 1
+    conn.close()
+    return n
+
+
+def _bucket_map(sql: str, params: tuple = ()) -> dict:
+    """(ticker → {(year, period)}) 벌크 로드 — 루프 내 커넥션 N×M 방지."""
+    conn = get_connection()
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    out: dict = {}
+    for r in rows:
+        out.setdefault(r["ticker"], set()).add((r["fiscal_year"], r["fiscal_period"]))
+    return out
+
+
+def _calendar_map() -> dict:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT ticker, last_report_date FROM transcript_calendar WHERE last_report_date IS NOT NULL").fetchall()
+    conn.close()
+    return {r["ticker"]: r["last_report_date"] for r in rows}
+
+
+def _record_empty(ticker: str, year: int, period: str) -> None:
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO transcript_probe (ticker, fiscal_year, fiscal_period) VALUES (?, ?, ?) "
+        "ON CONFLICT(ticker, fiscal_year, fiscal_period) DO UPDATE SET "
+        "attempts = attempts + 1, checked_at = datetime('now')", (ticker, year, period))
+    conn.commit()
+    conn.close()
+
+
 def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float = 13.0,
-                       only: list[str] | None = None) -> dict:
-    """분기-랭크 라운드로빈 — 모든 기업의 최신 분기 먼저, 그 다음 이전 분기(사용자 지정 순서).
-    Alpha Vantage 무료 한도(25/day·5/min) 대응: request_budget으로 하루 요청 상한, 요청 간 sleep.
-    이미 저장된 (기업,분기)는 요청 없이 스킵 → 매일 재실행하면 backlog가 이어서 채워진다.
-    (AV는 dates 엔드포인트가 없어 후보 분기를 probe하므로 미보고/회계·달력 분기 불일치 시 빈 응답=요청 소모)."""
+                       only: list[str] | None = None, cooldown_days: int = 45,
+                       use_calendar: bool = True, dry_run: bool = False) -> dict:
+    """분기-랭크 라운드로빈 — 모든 기업의 최신 분기 먼저, 그 다음 이전 분기.
+    Alpha Vantage 무료 한도(25/day·5/min) 대응: request_budget 상한 + 요청 간 sleep.
+    낭비 차단 2겹(D-081): ① 캘린더 게이트(yfinance last_report_date보다 미래 분기는 probe 안 함)
+    ② 빈응답 네거티브 캐시(cooldown_days 내 빈 (기업,분기) 재요청 안 함). 저장분은 여전히 스킵.
+    dry_run=True면 fetch 없이 '무엇을 요청할지'만 계산(예산·sleep 미적용)."""
     provider = get_provider()
     companies = _followed(only)
+    if use_calendar and not dry_run:
+        try:
+            refresh_calendar([c["ticker"] for c in companies])
+        except Exception as e:  # noqa: BLE001
+            print(f"[calendar] 갱신 실패(무시): {e}")
     cands = _recent_quarters(ranks)   # 최신순
-    used, stored, empty = 0, 0, 0
+    existing = _bucket_map("SELECT ticker, fiscal_year, fiscal_period FROM transcripts")
+    empties = _bucket_map(
+        "SELECT ticker, fiscal_year, fiscal_period FROM transcript_probe WHERE checked_at > datetime('now', ?)",
+        (f"-{cooldown_days} days",))
+    cal = _calendar_map() if use_calendar else {}
+    used, stored, empty, skip_cal, skip_cache = 0, 0, 0, 0, 0
+    planned: list[str] = []
     done = False
     for q in cands:                    # 랭크(분기) 바깥 = 최신 분기부터
         if done:
             break
         period = f"Q{q['quarter']}"
+        qstart = _quarter_start_iso(q["year"], q["quarter"])
         for f in companies:            # 기업 안쪽 = 그 분기를 전 기업에 걸쳐
+            tk = f["ticker"]
+            if (q["year"], period) in existing.get(tk, ()):
+                continue               # 저장됨 — 요청 없이 스킵
+            lr = cal.get(tk)
+            if lr and qstart > lr:
+                skip_cal += 1          # 보고 이후 시작된 분기 — 아직 안 나옴, 안전 게이트
+                continue
+            if (q["year"], period) in empties.get(tk, ()):
+                skip_cache += 1        # 최근 빈응답 — 네거티브 캐시
+                continue
+            if dry_run:
+                planned.append(f"{tk} {q['year']}{period}")
+                continue
             if used >= request_budget:
                 done = True
                 break
-            if (q["year"], period) in _existing_periods(f["ticker"]):
-                continue               # 저장됨 — 요청 없이 스킵
             if used > 0:
                 time.sleep(sleep_s)    # 5 req/min 준수
             try:
                 ok = _store_call(provider, f, q["year"], q["quarter"])
             except Exception as e:      # noqa: BLE001
-                print(f"[transcript] {f['ticker']} {q['year']}{period} 실패: {e}")
+                print(f"[transcript] {tk} {q['year']}{period} 실패: {e}")
                 used += 1
                 continue
             used += 1
             if ok:
                 stored += 1
-                print(f"[transcript] +{f['ticker']} {q['year']}{period}")
+                print(f"[transcript] +{tk} {q['year']}{period}")
             else:
                 empty += 1
+                _record_empty(tk, q["year"], period)   # 빈응답 기억 → 재요청 차단
+    if dry_run:
+        return {"dry_run": True, "would_request": len(planned), "planned": planned,
+                "skipped_calendar": skip_cal, "skipped_cache": skip_cache}
     return {"requests": used, "stored": stored, "empty": empty, "budget": request_budget,
+            "skipped_calendar": skip_cal, "skipped_cache": skip_cache,
             "exhausted": done}
 
 

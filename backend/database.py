@@ -838,6 +838,26 @@ def init_db():
         UNIQUE(ticker, fiscal_year, fiscal_period)
     );
 
+    -- 빈응답 네거티브 캐시 (D-081) — AV는 dates 엔드포인트가 없어 분기를 probe하는데,
+    -- 빈응답(커버리지 공백·미보고)을 기억해 쿨다운 동안 재요청 안 함 → 25/day 예산 낭비 차단.
+    CREATE TABLE IF NOT EXISTS transcript_probe (
+        ticker        TEXT NOT NULL,
+        fiscal_year   INTEGER NOT NULL,
+        fiscal_period TEXT NOT NULL,
+        attempts      INTEGER DEFAULT 1,
+        checked_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, fiscal_year, fiscal_period)
+    );
+
+    -- 실적 발표일 캘린더 (D-081) — yfinance(무료, AV 예산과 무관)로 최근/차기 보고일 캐시.
+    -- 라운드로빈이 '아직 안 나온 분기'(quarter_end > last_report_date)를 probe 안 하게 게이트.
+    CREATE TABLE IF NOT EXISTS transcript_calendar (
+        ticker           TEXT PRIMARY KEY,
+        last_report_date TEXT,              -- 최근 실적 발표일 (ISO date)
+        next_report_date TEXT,              -- 차기 예정 발표일
+        checked_at       TEXT DEFAULT (datetime('now'))
+    );
+
     -- 프록시 레지스트리 (사람이 세팅 — "무엇을 볼지") — 리포트 핵심질문(D-049)의 관찰 프록시
     CREATE TABLE IF NOT EXISTS proxy_registry (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
