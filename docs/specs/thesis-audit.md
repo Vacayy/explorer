@@ -48,8 +48,10 @@
 - **시간 검증** → claim 개념의 월별 문서수(결정적) → 급증(spike) 감지 = "최근 본격화" 류 검증.
 - **주장별 판정**: aligned/contested/novel/stale-vs-fresh.
 
-**③ 진자 위치 (pendulum)** [LLM 0] — 핵심 주장의 앵커 엔티티에 `knowledge_state`(salience×conviction, 설계 §G)
-적용 → 선반영/기회/진자경고/노이즈 4상 위치. "이미 시장이 다 아는가"의 계량.
+**③ 진자 위치 (pendulum)** [LLM 0] **[구현 — D-079]** — 핵심 주장의 앵커 엔티티에 `knowledge_state`(salience×conviction, 설계 §G)
+적용 → 선반영(priced_in)/소외기회(hidden_edge)/과열(overhyped)/노이즈 4상한 위치. "이미 시장이 다 아는가"의 계량.
+verdict(그래프 일치)와 **직교 축** — `pendulum_for_claim`이 support 엣지의 corroborated_by·소스 다양성·느린 pace 층으로 conviction,
+앵커 엔티티 최근 언급량으로 salience 산출. 주장 result_json에 `pendulum` 필드로 저장.
 
 **④ 반증조건 + 프록시 배선 (falsifiers + proxies)** [sonnet] — thesis의 반증조건 생성(반증-우선 §4) + 관측
 프록시 배선(하이퍼스케일러 CAPEX·OpenAI 자금조달 등, transcript 프록시 D-067). → 선택 시 **추적되는 핵심질문**을

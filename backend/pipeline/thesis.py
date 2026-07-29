@@ -4,8 +4,9 @@
 moat는 추론이 아니라 정박 — 모든 판정이 코퍼스 포인터(엣지 id·독립 소스 수·created_at·내러티브 버전)를 가리킨다.
 
 Phase 1(본 모듈): **정박 코어(stage 2, 결정적·LLM 0)** — 주장의 앵커 엔티티를 해소하고
-매칭 인과 엣지(교차검증·방향·시점)·내러티브·시간 급증을 조회해 주장별 판정. LLM 분해(stage 1)·
-종합(stage 5)·진자(stage 3)·반증/프록시(stage 4)는 후속 Phase에서 이 코어 위에 배선.
+매칭 인과 엣지(교차검증·방향·시점)·내러티브·시간 급증을 조회해 주장별 판정. LLM 분해(stage 1).
+Phase 3: **진자(stage 3, LLM 0)** — salience × conviction(knowledge_state 재사용)으로 선반영/소외
+기회 판정. verdict(그래프 일치)와 직교 축. 종합(stage 5)·반증/프록시(stage 4)는 후속.
 """
 from database import get_connection
 from pipeline.enrich import _call_claude_code, _parse_json
@@ -174,8 +175,63 @@ def filter_edges(claim: str, edges: list[dict], model: str = "haiku") -> dict[in
             if isinstance(e.get("id"), int) and e.get("stance") in ("support", "contradict", "context")}
 
 
+# ──────────────────── Phase 3: 진자 — 선반영 vs 소외 기회 (stage 3, LLM 0) ────────────────────
+
+# pace 층 slow→fast (느릴수록 conviction 가중↑, knowledge_state._LAYER_W와 정합)
+_LAYER_ORDER = ("regime", "structure", "cycle", "flow", "event")
+
+
+def _slowest_layer(conn, entity_ids: list[int]) -> str:
+    """앵커 엔티티들의 pace layer 중 가장 느린 것 — 구조적 주장일수록 정박 가중↑."""
+    if not entity_ids:
+        return "cycle"
+    import json
+    rows = conn.execute(
+        f"SELECT meta_json FROM entities WHERE id IN ({','.join('?' * len(entity_ids))})",
+        entity_ids).fetchall()
+    layers = set()
+    for r in rows:
+        try:
+            L = (json.loads(r["meta_json"] or "{}")).get("pace_layer")
+            if L:
+                layers.add(L)
+        except Exception:
+            pass
+    for L in _LAYER_ORDER:
+        if L in layers:
+            return L
+    return "cycle"
+
+
+def pendulum_for_claim(entity_ids: list[int], rel_edges: list[dict],
+                       narratives: list[dict], temporal: dict) -> dict:
+    """주장의 선반영 위치 = salience × conviction (LLM 0, knowledge_state 재사용).
+
+    verdict(그래프가 지지하나)와 **직교 축**: 그래프가 지지해도 이미 선반영이면 엣지가 없고(priced_in),
+    소외면 기회(hidden_edge). 이 갭이 의사결정의 핵심 (설계 §G, D-022).
+    - salience = 앵커 엔티티 최근 14일 언급량 (시장 주목)
+    - conviction = 정박 강도: 교차검증(독립 내러티브 수)·소스 다양성·느린 층 − 반례
+    """
+    from pipeline.knowledge_state import salience as _sal, conviction as _conv, quadrant as _quad
+    conn = get_connection()
+    sal = _sal(conn, entity_ids)
+    supports = [e for e in rel_edges if e.get("stance") == "support"]
+    contradicts = [e for e in rel_edges if e.get("stance") == "contradict"]
+    independent = max((e.get("corroborated_by") or 0) for e in supports) if supports else 0
+    refute = len(contradicts)
+    # 근거 채널 다양성 (엣지·내러티브·시간급증)
+    source_types = sum([bool(rel_edges), bool(narratives), bool(temporal.get("spiking"))])
+    pace = _slowest_layer(conn, entity_ids)
+    status = ("contested" if (supports and contradicts)
+              else "corroborated" if independent >= 2 else "hypothesis")
+    conv = _conv(independent, refute, source_types, pace, status)
+    conn.close()
+    return {"salience": sal, "conviction": conv, "quadrant": _quad(sal, conv),
+            "pace_layer": pace, "independent": independent, "refute": refute}
+
+
 def audit_thesis(text: str) -> dict:
-    """논지 감사 end-to-end (stage 1·2). read-only. 산출 = 주장별 델타 + 정밀 근거."""
+    """논지 감사 end-to-end (stage 1·2·3). read-only. 산출 = 주장별 델타 + 정밀 근거 + 진자."""
     claims = decompose_thesis(text)
     results = []
     for c in claims:
@@ -193,9 +249,12 @@ def audit_thesis(text: str) -> dict:
             verdict = "challenged"      # 그래프가 반박
         else:
             verdict = "aligned"         # 그래프가 지지
+        # 진자 (stage 3) — verdict와 직교: 선반영/소외 기회
+        pend = pendulum_for_claim([e["id"] for e in g["entities"]], rel,
+                                  g["narratives"], g["temporal"])
         results.append({
             "claim": c["claim"], "role": c["role"], "anchor_terms": c["anchor_terms"],
-            "verdict": verdict, "spiking": g["temporal"]["spiking"],
+            "verdict": verdict, "spiking": g["temporal"]["spiking"], "pendulum": pend,
             "edges": rel, "narratives": g["narratives"], "temporal": g["temporal"],
         })
     return {"claims": results, "n_claims": len(results)}
