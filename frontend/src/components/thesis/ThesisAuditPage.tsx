@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState, ErrorState } from "@/components/shared/ErrorState"
 import { useRunThesisAudit, useThesisAudits, useThesisAudit } from "@/hooks/useThesisAudit"
-import type { ThesisAudit, ThesisClaim, ThesisEdge, ThesisVerdict } from "@/types"
+import type { ThesisAudit, ThesisClaim, ThesisEdge, ThesisPendulum, ThesisQuadrant, ThesisVerdict } from "@/types"
 
 /**
  * /thesis — 논지 감사 (thesis audit, docs/specs/thesis-audit.md). 전망(미래·확률) 서브탭.
@@ -80,20 +80,35 @@ const STANCE: Record<string, { label: string; color: string }> = {
   contradict: { label: "반박", color: "var(--color-chart-negative)" },
   context: { label: "배경", color: "var(--color-muted-foreground)" },
 }
+/* 진자 (stage 3) — verdict와 직교 축: 선반영 vs 소외 기회. 소외가 상금, 선반영이 경고. */
+const QUADRANT: Record<ThesisQuadrant, { label: string; hint: string; color: string }> = {
+  hidden_edge: { label: "소외 기회", hint: "주목↓·확신↑ — 아직 안 회자된 정박 논지", color: "var(--color-chart-green)" },
+  priced_in: { label: "선반영", hint: "주목↑·확신↑ — 시장도 이미 안다, 엣지 소진", color: "var(--color-chart-warning)" },
+  overhyped: { label: "과열", hint: "주목↑·확신↓ — 회자되나 근거 얇음", color: "var(--color-chart-negative)" },
+  noise: { label: "노이즈", hint: "주목↓·확신↓ — 근거·관심 모두 약함", color: "var(--color-muted-foreground)" },
+}
 
 function AuditResult({ audit }: { audit: ThesisAudit }) {
   const counts = audit.claims.reduce<Record<string, number>>((a, c) => {
     a[c.verdict] = (a[c.verdict] ?? 0) + 1; return a
   }, {})
+  const qCounts = audit.claims.reduce<Record<string, number>>((a, c) => {
+    if (c.pendulum) a[c.pendulum.quadrant] = (a[c.pendulum.quadrant] ?? 0) + 1; return a
+  }, {})
   return (
     <div className="space-y-3">
-      {/* 요약 — 델타 분포 */}
+      {/* 요약 — 델타 분포 (그래프 일치) + 진자 분포 (선반영/기회) */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted-foreground">주장 {audit.n_claims} —</span>
         {(["aligned", "contested", "challenged", "novel"] as ThesisVerdict[]).filter((v) => counts[v]).map((v) => (
           <span key={v} className="inline-flex items-center gap-1" style={{ color: VERDICT[v].color }}>
             <span className="inline-block h-2 w-2 rounded-full" style={{ background: VERDICT[v].color }} />
             {VERDICT[v].label} {counts[v]}
+          </span>
+        ))}
+        {(["hidden_edge", "priced_in"] as ThesisQuadrant[]).filter((q) => qCounts[q]).map((q) => (
+          <span key={q} className="inline-flex items-center gap-1 border-l pl-2" style={{ color: QUADRANT[q].color }}>
+            <Gauge className="h-3 w-3" />{QUADRANT[q].label} {qCounts[q]}
           </span>
         ))}
       </div>
@@ -124,6 +139,9 @@ function ClaimCard({ claim }: { claim: ThesisClaim }) {
             <p className="text-sm mt-1 leading-snug">{claim.claim}</p>
           </div>
         </div>
+
+        {/* 진자 (stage 3) — 선반영 vs 소외 기회 */}
+        {claim.pendulum && <PendulumRow p={claim.pendulum} />}
 
         {/* 근거 엣지 (정박 — moat) */}
         {rel.length > 0 && (
@@ -171,6 +189,32 @@ function EdgeRow({ e }: { e: ThesisEdge }) {
         {e.mechanism && <span className="text-muted-foreground"> · {e.mechanism.slice(0, 46)}</span>}
       </span>
     </li>
+  )
+}
+
+function PendulumRow({ p }: { p: ThesisPendulum }) {
+  const q = QUADRANT[p.quadrant as ThesisQuadrant] ?? QUADRANT.noise
+  return (
+    <div className="pl-4 flex items-center gap-2 text-[11px] flex-wrap">
+      <Badge variant="outline" className="text-[9px] gap-1" style={{ color: q.color, borderColor: `${q.color}66` }}>
+        <Gauge className="h-2.5 w-2.5" /> {q.label}
+      </Badge>
+      <PBar label="주목" value={p.salience} />
+      <PBar label="확신" value={p.conviction} />
+      <span className="text-muted-foreground min-w-0 truncate">{q.hint}</span>
+    </div>
+  )
+}
+
+function PBar({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="inline-block h-1.5 w-10 rounded-full bg-muted overflow-hidden align-middle">
+        <span className="block h-full rounded-full"
+          style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, background: "var(--color-foreground)" }} />
+      </span>
+    </span>
   )
 }
 

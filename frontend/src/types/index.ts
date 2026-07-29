@@ -431,9 +431,15 @@ export interface ThesisTemporal {
   monthly: { ym: string; count: number }[]; spiking: boolean;
   latest: { ym: string; count: number } | null; prev: { ym: string; count: number } | null;
 }
+/* 진자 (stage 3) — salience × conviction 직교 축: 선반영/소외 기회 */
+export type ThesisQuadrant = "priced_in" | "overhyped" | "hidden_edge" | "noise";
+export interface ThesisPendulum {
+  salience: number; conviction: number; quadrant: ThesisQuadrant;
+  pace_layer: string; independent: number; refute: number;
+}
 export interface ThesisClaim {
   claim: string; role: ThesisRole; anchor_terms: string[];
-  verdict: ThesisVerdict; spiking: boolean;
+  verdict: ThesisVerdict; spiking: boolean; pendulum?: ThesisPendulum;
   edges: ThesisEdge[]; narratives: ThesisNarrative[]; temporal: ThesisTemporal;
 }
 export interface ThesisAudit {
