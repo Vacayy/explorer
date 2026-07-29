@@ -428,6 +428,68 @@ def refresh_calendar(tickers: list[str], max_age_hours: int = 24) -> int:
     return n
 
 
+def _yf_call_dates(ticker: str) -> dict:
+    """yfinance로 (회계연도, 분기)→실제 발표일 매핑 (D-084). AV는 콜 날짜를 안 줘 회계분기 라벨만 오므로,
+    결산월(lastFiscalYearEnd) + 분기말(quarterly_income_stmt) + 실적일(get_earnings_dates)로 라벨↔날짜 정합.
+    분기말 pe의 라벨: q = 4 - ((결산월-pe.월) % 12)//3, fy = pe.년(+1 if pe.월>결산월). 실패 시 {}."""
+    import yfinance as yf
+    import pandas as pd
+    try:
+        t = yf.Ticker(ticker)
+        ts = (t.info or {}).get("lastFiscalYearEnd")
+        if not ts:
+            return {}
+        fye_month = datetime.fromtimestamp(ts, timezone.utc).month
+        qis = t.quarterly_income_stmt
+        period_ends = sorted([c.date() for c in qis.columns], reverse=True) if qis is not None and len(qis.columns) else []
+        ed = t.get_earnings_dates(limit=16)
+        reps = sorted([idx.date() for idx, r in ed.iterrows() if pd.notna(r.get("Reported EPS", None))])
+    except Exception as e:  # noqa: BLE001
+        print(f"[call-date] {ticker} yfinance 실패(무시): {e}")
+        return {}
+    out = {}
+    for pe in period_ends:
+        cand = [d for d in reps if d >= pe]     # 분기말 이후 첫 실적일 = 발표일
+        if not cand:
+            continue
+        q = 4 - (((fye_month - pe.month) % 12) // 3)
+        fy = pe.year if pe.month <= fye_month else pe.year + 1
+        out[(fy, q)] = min(cand).isoformat()
+    return out
+
+
+def backfill_call_dates(only: list[str] | None = None, set_published: bool = True) -> dict:
+    """저장된 transcripts.call_date를 실제 발표일로 교정 (D-084). AV 저장 시 분기 근사(YYYY-분기*3-01)라
+    헷갈려서 → yfinance 실제 발표일로. set_published면 raw_documents.published_at(피드 정렬)도 함께.
+    회계분기(Q1~Q4)만 대상(FY 연간 제외). 매핑 안 되는(윈도 밖·yfinance 실패) 건은 건드리지 않음."""
+    conn = get_connection()
+    q = "SELECT DISTINCT ticker FROM transcripts"
+    tickers = [r["ticker"] for r in conn.execute(q).fetchall()]
+    if only:
+        tickers = [t for t in tickers if t in only]
+    updated, unresolved = 0, 0
+    for tk in tickers:
+        mapping = _yf_call_dates(tk)
+        rows = conn.execute(
+            "SELECT id, raw_doc_id, fiscal_year, fiscal_period FROM transcripts WHERE ticker=?", (tk,)).fetchall()
+        for r in rows:
+            p = (r["fiscal_period"] or "")
+            if not p.startswith("Q"):
+                continue
+            key = (r["fiscal_year"], int(p[1:]))
+            real = mapping.get(key)
+            if not real:
+                unresolved += 1
+                continue
+            conn.execute("UPDATE transcripts SET call_date=? WHERE id=?", (real, r["id"]))
+            if set_published and r["raw_doc_id"]:
+                conn.execute("UPDATE raw_documents SET published_at=? WHERE id=?", (real, r["raw_doc_id"]))
+            updated += 1
+    conn.commit()
+    conn.close()
+    return {"updated": updated, "unresolved": unresolved, "tickers": len(tickers)}
+
+
 def _bucket_map(sql: str, params: tuple = ()) -> dict:
     """(ticker → {(year, period)}) 벌크 로드 — 루프 내 커넥션 N×M 방지."""
     conn = get_connection()
