@@ -27,6 +27,10 @@ def main():
     init_db()
     args = sys.argv[1:]
     budget = 22
+    dry_run = False
+    if "--dry-run" in args:
+        dry_run = True
+        args.remove("--dry-run")
     if "--budget" in args:
         i = args.index("--budget")
         budget = int(args[i + 1])
@@ -37,12 +41,23 @@ def main():
         n = seed_default_follows()
         print(f"[transcript] 팔로우가 비어 기본 세트 {n}개 시드")
 
+    if dry_run:   # 예산·sleep 없이 '무엇을 요청할지'만 (D-081)
+        r = collect_roundrobin(only=only, dry_run=True)
+        print(f"[transcript][dry-run] 요청 예정 {r['would_request']}건 · "
+              f"캘린더 스킵 {r['skipped_calendar']} · 캐시 스킵 {r['skipped_cache']}")
+        for p in r["planned"][:budget]:
+            print(f"  → {p}")
+        if r["would_request"] > budget:
+            print(f"  … 외 {r['would_request'] - budget}건 (예산 {budget} 초과분은 다음 회차)")
+        return
+
     from pipeline.ops import run_job
 
     def _work():
         r = collect_roundrobin(request_budget=budget, only=only)
         print(f"[transcript] 요청 {r['requests']}/{r['budget']} · 신규 {r['stored']}건 적재 · "
-              f"빈응답 {r['empty']} · 예산소진={r['exhausted']}")
+              f"빈응답 {r['empty']} · 캘린더 스킵 {r['skipped_calendar']} · 캐시 스킵 {r['skipped_cache']} · "
+              f"예산소진={r['exhausted']}")
         n = digest_pending(limit=max(r["stored"], 5))  # 신규분 핵심 정리 생성(sonnet)
         print(f"[transcript] 핵심 정리 {n}건 생성")
         seed_proxies()
