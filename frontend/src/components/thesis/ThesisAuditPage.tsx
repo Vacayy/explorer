@@ -1,5 +1,9 @@
 import { useState } from "react"
-import { Gauge, History, Sparkles, TrendingUp } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import { useMutation } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { Gauge, History, Loader2, Sparkles, Telescope, TrendingUp } from "lucide-react"
+import api from "@/api/client"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { OutlookSubNav } from "@/components/explore/OutlookSubNav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -138,6 +142,7 @@ function ClaimCard({ claim }: { claim: ThesisClaim }) {
             </div>
             <p className="text-sm mt-1 leading-snug">{claim.claim}</p>
           </div>
+          <PromoteButton text={claim.claim} />
         </div>
 
         {/* 진자 (stage 3) — 선반영 vs 소외 기회 */}
@@ -189,6 +194,28 @@ function EdgeRow({ e }: { e: ThesisEdge }) {
         {e.mechanism && <span className="text-muted-foreground"> · {e.mechanism.slice(0, 46)}</span>}
       </span>
     </li>
+  )
+}
+
+/* 승격 (#2) — 감사된 주장을 추적 질문으로. decompose_question 재사용(서브질문·반증조건·프록시 스폰).
+   격리 유지: created_by='user'(격리 태그), 질문은 독립 테이블 — 그래프 무변경. */
+function PromoteButton({ text }: { text: string }) {
+  const navigate = useNavigate()
+  const promote = useMutation({
+    mutationFn: async () => (await api.post("/api/spine/questions", { text })).data as { id: number },
+    onSuccess: (q) => { toast.success("추적 질문으로 승격 — 상세로 이동"); navigate(`/question/${q.id}`) },
+    onError: () => toast.error("승격 실패 — 다시 시도"),
+  })
+  return (
+    <Button variant="ghost" size="sm"
+      className="h-6 shrink-0 px-2 text-[11px] text-hypothesis hover:bg-hypothesis/5"
+      disabled={promote.isPending} onClick={() => promote.mutate()}
+      title="이 주장을 추적 질문으로 승격 — 프록시·2층 판정·반증 감시를 얻습니다">
+      {promote.isPending
+        ? <Loader2 className="h-3 w-3 animate-spin" />
+        : <Telescope className="h-3 w-3" />}
+      추적 시작
+    </Button>
   )
 }
 

@@ -53,9 +53,11 @@
 verdict(그래프 일치)와 **직교 축** — `pendulum_for_claim`이 support 엣지의 corroborated_by·소스 다양성·느린 pace 층으로 conviction,
 앵커 엔티티 최근 언급량으로 salience 산출. 주장 result_json에 `pendulum` 필드로 저장.
 
-**④ 반증조건 + 프록시 배선 (falsifiers + proxies)** [sonnet] — thesis의 반증조건 생성(반증-우선 §4) + 관측
+**④ 반증조건 + 프록시 배선 (falsifiers + proxies)** [sonnet] **[승격 절반 구현 — D-080]** — thesis의 반증조건 생성(반증-우선 §4) + 관측
 프록시 배선(하이퍼스케일러 CAPEX·OpenAI 자금조달 등, transcript 프록시 D-067). → 선택 시 **추적되는 핵심질문**을
 스폰(사용자 가설로 격리 태그). thesis가 일회성 답이 아니라 **앞으로 추적**되게.
+구현: 주장 카드 "추적 시작" → 기존 `decompose_question`(D-067)에 태워 서브질문(반증조건)·프록시·2층 판정을 스폰
+(백엔드 무변경, `POST /questions` 재사용, created_by='user' 격리). thesis 전용 반증조건 자동생성은 후속.
 
 **⑤ 종합 (grounded synthesis)** [opus, 얇은 층] — ①~④ 정박 위에서만 감사 리포트 작성. **제약**: 모든 문장이
 stage 2~4의 grounding(엣지 id·내러티브 버전·시간 카운트·프록시)을 인용. **적대적 반대(ACH)**는 contested 엣지에
