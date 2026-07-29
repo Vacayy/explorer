@@ -30,7 +30,7 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
    │
    ▼  30분 cron 체인 (run_chain.sh — 겹침 방지 락, logs/ingest.log)
 ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → compute_signals → compute_narratives → extract_events(이미지 비전)
-  → scan_actions(기업활동) → compute_digests(1D/7D) → vault_sync --export → build_search_index
+  → scan_actions(기업활동) → compute_digests(1D 오늘+1W 이번 주) → vault_sync --export → build_search_index
    +  평일 16:10: ingest_prices --daily (전종목 OHLCV)
    │
    ▼
@@ -60,7 +60,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | 문서 태깅(종목 정규화·산업·토픽·요약·감성) | haiku | 수집 시 문서당 1회 | content_hash + model 티어 (keyword→LLM 자동 백필) |
 | 이미지 분류·증시일정 추출 | haiku (+Read 비전) | 이미지당 1회 | media_analysis |
 | 공시 요약 / 유무증 구조화 추출 | haiku | 공시당 1회 | corporate_actions.summary / capital_raise_details |
-| 1D/7D 다이제스트 + 새로운 시각 | haiku | 문서 집합 변경 시만 | doc_ids_hash |
+| 1D/1W/1M 다이제스트 + 새로운 시각 (캘린더 기준, D-085) | haiku | 문서 집합 변경 시만 | doc_ids_hash |
 | RAG 질의응답 + 갭 분석 | **sonnet** (RAG_MODEL) | 사용자 질문 시 | — |
 | 임베딩 (검색) | 로컬 fastembed (다국어 MiniLM 384d) | 문서당 1회 | doc_vec |
 
@@ -77,7 +77,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `enrichments` | 문서당 1 | 요약·감성·**time_orientation·reference_period**(시간 정박 D-021)·모델 (content_hash 캐시) |
 | `entity_links` | 563 | 문서↔엔티티. confidence 계층: 위키링크 1.0 > LLM 0.9 > 사용자 키워드 0.7 > 정식명 substring 0.6 > 태그 0.5 |
 | `signals` | 9 | mention_surge(7일 vs 직전 7일)·high_52w(52주 신고가). payload+interpretation 분리 |
-| `entity_digests` | 30 | 종목별 1D/롤링7D 요약+새로운시각. (entity, period, KST날짜) 키로 영구 아카이브 |
+| `entity_digests` | 30 | 종목별 **1D(오늘)·1W(월~일 주)·1M(월)** 요약+새로운시각 — 캘린더 기준(비롤링, D-085). (entity, period, period_start[1d=당일·1w=월요일·1m=1일]) 키로 영구 아카이브 |
 | `corporate_actions` | 57 | 시총 5,000억+ 유·무상증자/합병/분할/공개매수/감자 (DART 전시장 스캔+haiku 요약) |
 | `capital_raise_details` | 16 | 유무증 Pro: 발행가 1·2차·확정/구주·신주/기준일·권리락(파생)·청약·납입·상장/주관사 |
 | `media_analysis` | 31 | 이미지 비전 분류 캐시 (calendar면 → catalysts 적재) |
@@ -148,7 +148,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | 기업 프로필(spine_company) | 해외/비상장 기업(종목코드 없음) — 인물 프로필 동형: 언급·공출현·게으른 프로필(source_digests kind='company_profile')·팔로우. /company?name=. 표기 병합(merge_entity_aliases)·enrich 기업 vocab으로 파편화 방지 |
 | `vision` | 이미지 분류→증시일정 이벤트→catalysts |
 | `actions` / `rights` | 기업활동 스캔·요약 / 유무증 구조화 추출(종속회사 제외) |
-| `digests` | 1D/7D 롤링(계층 요약)·새로운 시각(이전 요약 대비) |
+| `digests` | **1D(오늘)·1W(월~일)·1M(월) 캘린더 다이제스트**(D-085) — 각 주기가 자기 캘린더 구간 raw 문서 직접 요약(비롤링). `_compute_bucket` 공용. **`catch_up(stock)`**: 진입 시 소급 — 과거 완결 월 1M·이번 달 주 1W·오늘 1D 멱등 생성(상한 CATCHUP_MONTHS=3). 새로운 시각(이전 같은 주기 요약 대비). cron은 최신(1D+이번 주 1W)만, 과거 월은 진입 catch_up |
 | `rag` | 검색 top-16→sonnet 종합·출처 인용 강제·갭 분석·승격 지식 블록(K1) — 모델 티어: 태깅/판정=haiku, 대화 RAG=sonnet(지연 민감), 심층 종합(브리프·세계관·시나리오)=opus |
 | `consolidation` | K0 공고화 — 주간 승격 배치(4중 검증·릴레이 접기·반박 탐색·statement 병합) → 승인 큐. **인과 엣지 승격(Phase 2 §2-5)**: `promote_causal_edges` — 문서 대신 인과 그래프 재적재(narrative_edge_evidence)가 입력이라는 점만 다르고 동일 규율(독립 관측 2+·시간 분산·병합·반박 탐색) 재사용 |
 | `knowledge_recall` | K1 지식 소환 — activation×epistemic 랭킹, 브리프용 1-hop 그래프 확산, RAG용 의미 유사 |
@@ -169,7 +169,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/market-regime` · `POST /snapshot` | **시장 국면(D-076)** — 양 시장 리스크 포스처+근거+스파크라인 series(LLM 0, 첫 진입 시 lazy 스냅샷). / EOD 일별 스냅샷 적재(scripts/snapshot_market.py=수동·cron) |
 | `POST /api/spine/thesis/audit` · `GET /audits` · `GET /{id}` | **논지 감사(D-078)** — thesis 주입→인과그래프 대질 감사(read-only·연쇄 LLM ~수 분, 저장) / 히스토리 / 저장분 재조회(LLM 0). 격리: 그래프 무변경 |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
-| `GET /api/spine/digests` · `POST /api/spine/digests/compute?stock=&period=` | 종목 1D/7D 요약 아카이브 조회 / **온디맨드 새로고침**(force 생성, period_start=당일이라 ON CONFLICT로 당일분 덮어씀 — 하루 다중 방지). 프론트: 진입 시 자동생성 없음, 카드 우측 ⟳ 버튼으로만 |
+| `GET /api/spine/digests?stock=&period=(1d\|1w\|1m)` · `POST /api/spine/digests/catchup?stock=` | 종목 1D/1W/1M 요약 아카이브 조회 / **진입 시 소급 catch-up**(D-085 — 과거 월 1M·이번 달 주 1W·오늘 1D 멱등 생성). 프론트: 종목 진입 시 자동 호출(백그라운드, 세션당 1회) + '지금 업데이트' 버튼. 구 `/compute?period` 폐지 |
 | `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`·`/version?id=`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 / **특정 버전 본문 by id**(히스토리 도트 클릭, D-060) |
 | `POST·GET·DELETE /api/spine/knowledge` (+`/items`·`/overview`·`/items/{id}/evidence·approve·reject`·`/worldview`) | 지식 주입(+rationale·source, 반증조건 생성) / 지식 목록(salience·conviction·quadrant·근거해부·반증조건) / 현황 카운트 / 근거사슬 / 승격 승인·거부 / 내 주입 삭제(user 한정) / 세계관 브리핑 |
 | `GET /api/spine/research/candidates` (+`/{id}/approve`·`/dismiss`) | 리서치 제안 목록(LLM 0) / 승인→stock_brief(opus)·추정치 방향 콜 / 기각 |
@@ -211,7 +211,7 @@ Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소
 피드(/feed)        통합 피드 — 탭: 전체·텔레그램·블로그·유튜브·뉴스·아티클·인물·역사(source_type=canon) (최신순), 의미 검색창, 칩 클릭=필터, 전문 보기, 이미지, 채널명 표시
                    + 사이드바: 구독 채널/블로그 목록·닉네임·활성 토글·인라인 등록 폼
 문서(/doc/:id)     수집 원문·이미지 내부 열람 (외부 원문은 보조 버튼)
-분석(/analyze/:code) 요약·재무·밸류·사업·공시 (기존) + 언급 탭(1D/7D 다이제스트 2열·
+분석(/analyze/:code) 요약·재무·밸류·사업·공시 (기존) + 언급 탭(1D/1W/1M 다이제스트 진입 시 자동 catch-up, D-085·
                    새로운시각·매칭 키워드 관리·신호 이력·언급 문서)
 VS 비교 · 리서치노트(워치리스트/투자메모/카탈리스트)
 ```
