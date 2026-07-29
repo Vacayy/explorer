@@ -25,7 +25,7 @@ const FOLLOW_TABS = [
 // 전망은 질문↔리포트 토글(미래-확률 집약), 지식은 지식↔온톨로지 토글(D-052). 신호와 성격 달라 별도 모드(D-031).
 const WORLDMODEL_TABS = [
   { key: "narrative", path: "/narrative", label: "내러티브" },
-  { key: "outlook", path: "/questions", label: "전망" },     // 전망 안에서 질문↔리포트 토글 (D-073)
+  { key: "outlook", path: "/thesis", label: "전망" },        // 전망 하위 [논지 감사·질문·리포트], 랜딩=논지 감사 (D-083)
   { key: "knowledge", path: "/knowledge", label: "지식" },   // 지식 안에서 지식↔온톨로지(그래프) 토글 (D-052)
 ] as const
 

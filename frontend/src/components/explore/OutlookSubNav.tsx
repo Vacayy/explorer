@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils"
  * 미래-확률이 질문·리포트로 흩어져 있던 것을 한 상위 탭으로 집약 (지식↔온톨로지와 동형).
  */
 const TABS = [
+  { to: "/thesis", label: "논지 감사", active: (p: string) => p.startsWith("/thesis") },
   { to: "/questions", label: "질문", active: (p: string) => p.startsWith("/question") },
   { to: "/report", label: "리포트", active: (p: string) => p.startsWith("/report") },
-  { to: "/thesis", label: "논지 감사", active: (p: string) => p.startsWith("/thesis") },
 ] as const
 
 export function OutlookSubNav() {

@@ -482,6 +482,44 @@ def list_questions(narrative_id: int | None = None, status: str | None = None) -
     return [dict(r) for r in rows]
 
 
+def get_proxy_detail(proxy_id: int) -> dict | None:
+    """프록시 1개 디테일 — 메타(무엇을 측정·'예' 방향·하위질문) + 전체 관측 시계열(출처 포함, LLM 0)."""
+    conn = get_connection()
+    p = conn.execute(
+        "SELECT pr.id, pr.label, pr.modality, pr.yes_direction, pr.unit, pr.tickers, pr.extract_hint, "
+        "  sq.text AS sub_question_text, q.id AS question_id, q.text AS question_text "
+        "FROM proxy_registry pr "
+        "LEFT JOIN sub_questions sq ON sq.id = pr.sub_question_id "
+        "LEFT JOIN questions q ON q.id = sq.question_id "
+        "WHERE pr.id=?", (proxy_id,)).fetchone()
+    if not p:
+        conn.close()
+        return None
+    rows = conn.execute(
+        "SELECT o.observed_at, o.value_num, o.value_text, o.direction, o.confidence, o.source_type, "
+        "  t.raw_doc_id, t.ticker, t.fiscal_year, t.fiscal_period "
+        "FROM proxy_observations o LEFT JOIN transcripts t ON t.id = o.transcript_id "
+        "WHERE o.proxy_id=? ORDER BY o.observed_at DESC, o.id DESC LIMIT 60", (proxy_id,)).fetchall()
+    conn.close()
+    obs = []
+    for o in rows:
+        src = None
+        if o["raw_doc_id"]:
+            lbl = o["ticker"] or ""
+            if o["fiscal_year"] and o["fiscal_period"]:
+                lbl = f"{lbl} {o['fiscal_year']}{o['fiscal_period']}".strip()
+            src = {"doc_id": o["raw_doc_id"], "label": lbl or "컨콜"}
+        elif o["source_type"] == "corpus":
+            src = {"doc_id": None, "label": "코퍼스 여론"}
+        obs.append({"observed_at": o["observed_at"], "value_num": o["value_num"],
+                    "value_text": o["value_text"], "direction": o["direction"],
+                    "confidence": o["confidence"], "source": src})
+    return {"id": p["id"], "label": p["label"], "modality": p["modality"],
+            "yes_direction": p["yes_direction"], "unit": p["unit"], "tickers": p["tickers"],
+            "extract_hint": p["extract_hint"], "sub_question_text": p["sub_question_text"],
+            "question_id": p["question_id"], "question_text": p["question_text"], "observations": obs}
+
+
 def dismiss_question(question_id: int) -> None:
     conn = get_connection()
     conn.execute("UPDATE questions SET status='dismissed' WHERE id=?", (question_id,))
