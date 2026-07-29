@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { EmptyState } from "@/components/shared/ErrorState"
+import SegmentTabs from "@/components/shared/SegmentTabs"
 import { cn } from "@/lib/utils"
 
 /**
@@ -34,6 +35,16 @@ export interface QTree {
 interface QListItem {
   id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null
   divergence: string | null; verdict_summary: string | null; sub_count: number; updated_at: string
+  conviction: number | null; created_by: string; source_doc_id: number | null
+}
+
+/* 원장 렌즈 (#3, D-082) — 괴리(선행/확정 어긋남) 우선, 그다음 확신 순. 최근순은 updated_at 유지. */
+const DIVERGING = (d: string | null) => d === "lead_ahead" || d === "confirm_ahead"
+function ledgerSort(a: QListItem, b: QListItem) {
+  const da = DIVERGING(a.divergence) ? 1 : 0
+  const db = DIVERGING(b.divergence) ? 1 : 0
+  if (da !== db) return db - da
+  return (b.conviction ?? 0) - (a.conviction ?? 0)
 }
 
 export const VERDICT: Record<string, { label: string; cls: string }> = {
@@ -62,10 +73,12 @@ export function VerdictBadge({ v, prefix }: { v: string | null; prefix: string }
 
 export function QuestionsSection() {
   const qc = useQueryClient()
+  const [sort, setSort] = useState<"ledger" | "recent">("ledger")
   const { data: all = [], isLoading } = useQuery(
     apiQuery<QListItem[]>({ key: listKey, url: "/api/spine/questions", staleTime: STALE.short }),
   )
-  const data = all.filter((q) => q.status !== "proposed")   // proposed는 제안 큐에서 별도 처리
+  const filtered = all.filter((q) => q.status !== "proposed")   // proposed는 제안 큐에서 별도 처리
+  const data = sort === "ledger" ? [...filtered].sort(ledgerSort) : filtered
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: listKey })
     qc.invalidateQueries({ queryKey: ["spine", "questions", "proposed"] })
@@ -92,11 +105,34 @@ export function QuestionsSection() {
           <EmptyState message="아직 추적 중인 질문이 없습니다. 위에 핵심 질문을 넣으면 서브질문·프록시로 분해해 추적합니다." />
         ) : (
           <div className="space-y-2">
+            <LedgerBar data={data} sort={sort} onSort={setSort} />
             {data.map((q) => <QuestionCard key={q.id} item={q} onChange={invalidate} />)}
           </div>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/* 컨빅션 원장 바 (#3, D-082) — 정렬 토글 + 의사결정 요약(괴리·고확신·논지발). 새 표면 없이 렌즈만. */
+function LedgerBar({ data, sort, onSort }: {
+  data: QListItem[]; sort: "ledger" | "recent"; onSort: (s: "ledger" | "recent") => void
+}) {
+  const diverging = data.filter((q) => DIVERGING(q.divergence)).length
+  const highConv = data.filter((q) => (q.conviction ?? 0) >= 0.5).length
+  const fromThesis = data.filter((q) => q.created_by === "thesis").length
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <SegmentTabs
+        tabs={[{ value: "ledger", label: "원장" }, { value: "recent", label: "최근" }]}
+        value={sort} onChange={(v) => onSort(v as "ledger" | "recent")}
+      />
+      <div className="ml-auto flex items-center gap-2.5 text-[11px] text-muted-foreground tabular-nums">
+        {diverging > 0 && <span className="text-hypothesis">괴리 {diverging}</span>}
+        {highConv > 0 && <span>고확신 {highConv}</span>}
+        {fromThesis > 0 && <span className="text-hypothesis">논지발 {fromThesis}</span>}
+      </div>
+    </div>
   )
 }
 
@@ -235,6 +271,9 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
         <div className="flex flex-wrap items-center gap-1.5">
           <VerdictBadge v={item.confirm_verdict} prefix="확정 " />
           <VerdictBadge v={item.lead_verdict} prefix="선행 " />
+          {item.created_by === "thesis" && (
+            <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">논지</Badge>
+          )}
           {div && <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{div}</Badge>}
           <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">서브질문 {item.sub_count}</span>
         </div>

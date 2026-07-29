@@ -12,6 +12,7 @@ class AskRequest(BaseModel):
     text: str
     narrative_id: int | None = None
     source_doc_id: int | None = None
+    created_by: str = "user"          # user(콘솔 주입) | thesis(논지 감사 승격, D-082) — 원장 역추적
 
 
 @router.post("", status_code=201)
@@ -20,7 +21,8 @@ def create(body: AskRequest):
     from pipeline.questions import decompose_question
     if not body.text.strip():
         raise HTTPException(400, "질문이 비어 있습니다")
-    r = decompose_question(body.text, created_by="user",
+    cb = body.created_by if body.created_by in ("user", "thesis") else "user"
+    r = decompose_question(body.text, created_by=cb,
                            narrative_id=body.narrative_id, source_doc_id=body.source_doc_id)
     if "error" in r:
         raise HTTPException(503, r["error"])

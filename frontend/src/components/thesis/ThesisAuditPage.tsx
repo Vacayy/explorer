@@ -202,7 +202,7 @@ function EdgeRow({ e }: { e: ThesisEdge }) {
 function PromoteButton({ text }: { text: string }) {
   const navigate = useNavigate()
   const promote = useMutation({
-    mutationFn: async () => (await api.post("/api/spine/questions", { text })).data as { id: number },
+    mutationFn: async () => (await api.post("/api/spine/questions", { text, created_by: "thesis" })).data as { id: number },
     onSuccess: (q) => { toast.success("추적 질문으로 승격 — 상세로 이동"); navigate(`/question/${q.id}`) },
     onError: () => toast.error("승격 실패 — 다시 시도"),
   })
