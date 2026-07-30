@@ -381,7 +381,7 @@ function ScenarioSection({ topic }: { topic: string }) {
 /* ---------- 인과 체인 구조 뷰 (그래프에서 조회) ---------- */
 
 interface CausalEdge {
-  from: string; from_type: string | null; to: string; to_type: string | null
+  from: string; from_type: string | null; from_id?: number; to: string; to_type: string | null; to_id?: number
   rel: string; mechanism: string | null; orientation: string | null
   reference_period: string | null; confidence: number | null
   effect_direction?: string | null; effect_strength?: string | null
@@ -401,12 +401,22 @@ const ORIENT: Record<string, { label: string; cls: string }> = {
 }
 const ORIENT_ORDER: Record<string, number> = { past: 0, current: 1, forward: 2 }
 
-function NodeChip({ name, type }: { name: string; type: string | null }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs">
+function NodeChip({ name, type, id }: { name: string; type: string | null; id?: number }) {
+  const cls = "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs"
+  const inner = (
+    <>
       {type && <span className="text-[9px] text-muted-foreground">{NODE_LABEL[type] ?? type}</span>}
       <span className="font-medium">{name}</span>
-    </span>
+    </>
+  )
+  // 온톨로지 그래프의 해당 노드로 딥링크 (?focus=<id> — WorldviewPage가 그 노드에 초점)
+  return id != null ? (
+    <Link to={`/knowledge/ontology?focus=${id}`} title="온톨로지 그래프에서 이 노드 보기"
+      className={cn(cls, "hover:border-primary hover:bg-primary/5 transition-colors")}>
+      {inner}
+    </Link>
+  ) : (
+    <span className={cls}>{inner}</span>
   )
 }
 
@@ -442,14 +452,14 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
               const benefit = e.rel === "BENEFITS_FROM"
               return (
                 <li key={i} className="flex flex-wrap items-center gap-1.5 text-sm">
-                  <NodeChip name={e.from} type={e.from_type} />
+                  <NodeChip name={e.from} type={e.from_type} id={e.from_id} />
                   <span className={cn("inline-flex items-center gap-0.5 text-[10px]",
                     benefit ? "text-primary" : "text-muted-foreground")}>
                     <EdgeArrow edge={e} />
                     {benefit ? "수혜" : "인과"}
                     {o && <span className={cn("ml-0.5", o.cls)}>· {o.label}</span>}
                   </span>
-                  <NodeChip name={e.to} type={e.to_type} />
+                  <NodeChip name={e.to} type={e.to_type} id={e.to_id} />
                   {(e.corroborated_by ?? 0) >= 2 && (
                     <Badge variant="outline" className="text-[9px] font-normal text-primary border-primary/40">
                       {e.corroborated_by}개 내러티브 확인
