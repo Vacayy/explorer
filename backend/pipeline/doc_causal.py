@@ -70,6 +70,33 @@ def _candidates(conn, limit: int) -> list[dict]:
         ORDER BY rd.published_at DESC LIMIT ?""", (limit,)).fetchall()]
 
 
+def extract_for_doc(doc_id: int) -> dict:
+    """단일 문서 즉시 인과 추출 (수집 직후 event-driven, D-089). enrich 완료 전제.
+    멱등: causal_extracted_at 있으면·미enrich(keyword)·짧으면 스킵(무LLM). 실패는 마커 안 찍음(재시도)."""
+    if llm_engine() != "claude-code":
+        return {"skipped": "claude-code 엔진 아님"}
+    conn = get_connection()
+    d = conn.execute(f"""
+        SELECT rd.id, rd.title, rd.markdown FROM raw_documents rd
+        JOIN enrichments en ON en.doc_id = rd.id
+        WHERE rd.id = ? AND en.model != 'keyword' AND en.causal_extracted_at IS NULL
+          AND length(rd.markdown) >= {MIN_DOC_CHARS}""", (doc_id,)).fetchone()
+    if not d:
+        conn.close()
+        return {"skipped": "미충족(미enrich·짧음·이미추출)"}
+    vocab = _node_vocab(conn)
+    try:
+        data = _call(_build_prompt(d["title"] or "", d["markdown"] or "", vocab))
+    except Exception as e:  # noqa: BLE001 — 마커 안 찍음, 다음 배치/재실행에서 재시도
+        conn.close()
+        return {"failed": str(e)[:120]}
+    made = _persist_causal(conn, None, d["id"], data.get("causal") or {}, conf_cap=CONF_CAP)
+    conn.execute("UPDATE enrichments SET causal_extracted_at=datetime('now') WHERE doc_id=?", (d["id"],))
+    conn.commit()
+    conn.close()
+    return {"doc_id": doc_id, "edges": made}
+
+
 def extract_doc_causal(limit: int = 20) -> dict:
     """배치 — 후보 문서에서 인과 추출·적재. 시도는 성공/0건 무관하게 기록(재시도 방지)."""
     if llm_engine() != "claude-code":

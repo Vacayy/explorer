@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Sparkles, ChevronRight } from "lucide-react"
+import { FileText, Network, Sparkles, ChevronRight } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -32,7 +32,25 @@ const GROUP_ORDER = ["M7", "hyperscaler", "nasdaq", "ai-datacenter", "space", "e
 interface LatestCall { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; has_digest: boolean }
 interface FollowRow { ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null; last_report_date?: string | null; next_report_date?: string | null }
 interface Quarter { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; has_digest: boolean }
-interface Detail { transcript_id: number; ticker: string; company_name: string; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; digest: string | null; body: string }
+interface TxNode { id: number; name: string; type: string; link_type: string }
+interface TxEdge { rel_type: string; effect_direction: string | null; from: string; from_id: number; from_type: string; to: string; to_id: number; to_type: string }
+interface Detail { transcript_id: number; ticker: string; company_name: string; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; digest: string | null; body: string; nodes?: TxNode[]; causal_edges?: TxEdge[] }
+
+const NODE_LABEL: Record<string, string> = {
+  company: "기업", sector: "섹터", theme: "테마", person: "인물",
+  macro: "매크로", policy: "정책", event: "사건", industry: "산업", topic: "토픽",
+}
+
+/* 온톨로지 딥링크 칩 — 클릭 시 전역 인과 그래프의 그 노드로 초점 (?focus=id, D-089) */
+function OntoChip({ id, name, type }: { id: number; name: string; type: string }) {
+  return (
+    <Link to={`/knowledge/ontology?focus=${id}`} title="온톨로지 그래프에서 이 노드 보기"
+      className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs hover:border-primary hover:bg-primary/5 transition-colors">
+      <span className="text-[9px] text-muted-foreground">{NODE_LABEL[type] ?? type}</span>
+      <span className="font-medium">{name}</span>
+    </Link>
+  )
+}
 
 const periodOf = (y: number | null, p: string | null) => `FY${y ?? "?"} ${p ?? ""}`.trim()
 
@@ -298,6 +316,32 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
             </Button>
           )}
         </section>
+
+        {/* 온톨로지 연결 (D-089) — 이 콜이 편입된 노드·인과, 클릭 시 그래프로 */}
+        {((data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0) && (
+          <section>
+            <div className="flex items-center gap-1.5 mb-1.5 text-sm font-semibold">
+              <Network className="h-4 w-4 text-muted-foreground" /> 온톨로지 연결
+              <span className="text-[11px] font-normal text-muted-foreground">이 콜이 편입된 노드·인과 — 클릭 시 그래프로</span>
+            </div>
+            {(data.nodes?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {data.nodes!.map((n) => <OntoChip key={n.id} id={n.id} name={n.name} type={n.type} />)}
+              </div>
+            )}
+            {(data.causal_edges?.length ?? 0) > 0 && (
+              <ul className="space-y-1">
+                {data.causal_edges!.map((e, i) => (
+                  <li key={i} className="flex flex-wrap items-center gap-1">
+                    <OntoChip id={e.from_id} name={e.from} type={e.from_type} />
+                    <span className="text-[10px] text-muted-foreground">{e.rel_type === "BENEFITS_FROM" ? "← 수혜" : "→ 인과"}</span>
+                    <OntoChip id={e.to_id} name={e.to} type={e.to_type} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
 
         {/* 원문 전문 (펼침) */}
         <Collapsible>
