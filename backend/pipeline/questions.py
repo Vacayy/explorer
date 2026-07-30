@@ -237,11 +237,64 @@ def approve_question(question_id: int) -> dict:
     return _decompose_and_track(question_id, q["text"])
 
 
+_INSIGHT_Q_PROMPT = """다음은 '{name}' 종목의 최근 다이제스트에서 포착된 '새로운 시각'(관찰)이다.
+투자자가 앞으로 추적할 가치가 있는 **핵심질문 1개**로 바꿔라 — 반드시 의문형, 판정 가능하게(예/아니오로 수렴).
+관찰이 추적할 질문거리가 아니면(단순 사실 확인·이미 종결) question을 null로.
+
+관찰: {insight}
+
+JSON만: {{"question": "의문형 핵심질문 또는 null"}}"""
+
+
+def _insight_to_question(name: str, insight: str) -> str | None:
+    """다이제스트 insight(서술문) → 추적 가능한 의문형 핵심질문 (haiku). 질문거리 아니면 None."""
+    from pipeline.enrich import _call_claude_code
+    try:
+        raw = _call_claude_code(_INSIGHT_Q_PROMPT.format(name=name, insight=insight[:600]),
+                                model="haiku", timeout=60)
+        q = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]).get("question")
+        return q.strip() if isinstance(q, str) and q.strip() and q.strip().lower() != "null" else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def propose_from_digests(budget: int = 5) -> dict:
+    """팔로우(워치리스트) 기업의 1W/1M 다이제스트 '새로운 시각'을 질문형으로 변환해 제안 큐에 적재
+    (다이제스트 언섬, D-085 — 매일 버려지던 발견을 능동 추적으로). 승인 시에만 추적(D-020).
+    insight_proposed 플래그로 dedup(시도 1회), budget 상한으로 비용 천장 고정([[D-072]])."""
+    from pipeline.enrich import llm_available
+    if not llm_available():
+        return {"proposed": 0}
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT ed.id, e.name, ed.period, ed.insights FROM entity_digests ed
+        JOIN entities e ON e.id = ed.entity_id
+        JOIN watchlist w ON w.stock_code = e.aliases
+        WHERE ed.period IN ('1w','1m') AND ed.insights IS NOT NULL
+          AND COALESCE(ed.insight_proposed, 0) = 0
+        ORDER BY (ed.period='1m') DESC, ed.period_start DESC LIMIT ?""", (budget,)).fetchall()
+    proposed = 0
+    for r in rows:
+        q = _insight_to_question(r["name"], r["insights"])
+        if q and not conn.execute(
+                "SELECT 1 FROM questions WHERE text=? AND status != 'dismissed'", (q,)).fetchone():
+            conn.execute("INSERT INTO questions (text, created_by, status) VALUES (?, 'digest', 'proposed')", (q,))
+            proposed += 1
+        conn.execute("UPDATE entity_digests SET insight_proposed=1 WHERE id=?", (r["id"],))  # 시도 dedup(성패 무관)
+    conn.commit()
+    conn.close()
+    return {"proposed": proposed}
+
+
 def refresh_all(propose: int = 3) -> dict:
     """일 1회 cron — 자동도출 + 관측 갱신(numeric 컨콜·sentiment 코퍼스) + 전 추적 질문 재판정.
     event-driven 편승: 새 컨콜/문서 없으면 멱등 스킵으로 사실상 no-op(D-068)."""
-    out: dict = {"proposed": 0, "numeric": 0, "sentiment": 0, "rerolled": 0}
+    out: dict = {"proposed": 0, "digest_proposed": 0, "numeric": 0, "sentiment": 0, "rerolled": 0}
     out["proposed"] = propose_from_narratives(limit=propose).get("proposed", 0)
+    try:
+        out["digest_proposed"] = propose_from_digests().get("proposed", 0)   # 다이제스트 언섬(D-085)
+    except Exception as e:  # noqa: BLE001
+        print(f"[refresh] digest 제안 실패: {e}")
     try:
         from pipeline.transcript import extract_proxies
         out["numeric"] = extract_proxies(limit=40).get("extracted", 0)   # 새 컨콜만 (멱등)

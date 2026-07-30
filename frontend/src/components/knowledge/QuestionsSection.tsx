@@ -217,7 +217,7 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
     <div className="rounded-md border border-dashed px-3 py-2 space-y-1.5">
       <div className="flex items-center gap-2">
         <Inbox className="h-3.5 w-3.5 text-hypothesis" />
-        <span className="text-[11px] font-medium">지배 내러티브 발(發) 질문 후보</span>
+        <span className="text-[11px] font-medium">질문 후보 (내러티브 · 언급 다이제스트 발)</span>
         {data.length > 0 && <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">{data.length}</Badge>}
         <Button size="xs" variant="ghost" className="ml-auto h-6 px-2 text-muted-foreground"
           disabled={propose.isPending} onClick={() => propose.mutate()}>
@@ -234,7 +234,10 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
       ) : (
         data.map((q) => (
           <div key={q.id} className="flex items-center gap-2 py-0.5">
-            <span className="text-[13px] truncate flex-1">{q.text}</span>
+            <span className="text-[13px] truncate flex-1">
+              {q.created_by === "digest" && <Badge variant="secondary" className="text-[8px] mr-1 align-middle">언급</Badge>}
+              {q.text}
+            </span>
             <span className="flex shrink-0 gap-1">
               <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
                 disabled={approve.isPending} onClick={() => approve.mutate(q.id)}>
@@ -294,6 +297,9 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
           <VerdictBadge v={item.lead_verdict} prefix="선행 " />
           {item.created_by === "thesis" && (
             <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">논지</Badge>
+          )}
+          {item.created_by === "digest" && (
+            <Badge variant="outline" className="text-[9px] text-muted-foreground border-border">언급</Badge>
           )}
           {div && <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{div}</Badge>}
           <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">서브질문 {item.sub_count}</span>
