@@ -116,6 +116,28 @@ def recompute(question_id: int):
     return r
 
 
+@router.get("/{question_id}/synthesis")
+def synthesis_get(question_id: int):
+    """질문 종합 리포트(현재 결산) 캐시 + stale — LLM 0. 시나리오는 GET /{id}(트리)가 반환. (D-093)"""
+    from pipeline.question_report import synthesis_status
+    r = synthesis_status(question_id)
+    if r.get("status") == "not_found":
+        raise HTTPException(404, "질문 없음")
+    return r
+
+
+@router.post("/{question_id}/synthesis/compute")
+def synthesis_compute(question_id: int, refresh: bool = False):
+    """리포트(현재 결산 sonnet) → 그걸 출발 조건으로 파급 시나리오(전방 opus) 체인 (~수 분). (D-093)"""
+    from pipeline.question_report import compute_synthesis
+    r = compute_synthesis(question_id, refresh=refresh)
+    if r.get("status") == "not_found":
+        raise HTTPException(404, "질문 없음")
+    if r.get("status") == "unavailable":
+        raise HTTPException(503, "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)")
+    return r
+
+
 @router.delete("/{question_id}", status_code=204)
 def remove(question_id: int):
     from pipeline.questions import dismiss_question

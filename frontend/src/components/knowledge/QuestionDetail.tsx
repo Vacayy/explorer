@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { ArrowLeft, FileText, HelpCircle, Loader2, Route } from "lucide-react"
+import { ArrowLeft, ClipboardList, FileText, HelpCircle, Loader2, Route } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
 import api from "@/api/client"
 import { Card, CardContent } from "@/components/ui/card"
@@ -34,6 +34,18 @@ export default function QuestionDetail() {
     mutationFn: () => api.post(`/api/spine/questions/${qid}/scenario`, { event: data?.text ?? "" }),
     onSuccess: () => { toast.success("파급 시나리오 생성됨"); qc.invalidateQueries({ queryKey: ["spine", "questions", qid] }) },
     onError: () => toast.error("시나리오 생성 실패 — 다시 시도"),
+  })
+
+  // 질문 종합 (D-093) — 현재 결산 리포트 (LLM 0 캐시 + stale)
+  const synth = useQuery(
+    apiQuery<{ status: string; body: string | null; created_at: string | null; stale: boolean }>(
+      { key: ["spine", "questions", qid, "synthesis"], url: `/api/spine/questions/${qid}/synthesis`, staleTime: STALE.short }),
+  )
+  // 체인: 리포트(sonnet) → 그걸 출발 조건으로 파급 시나리오(opus). 트리 키 무효화로 둘 다 갱신.
+  const genSynth = useMutation({
+    mutationFn: () => api.post(`/api/spine/questions/${qid}/synthesis/compute`),
+    onSuccess: () => { toast.success("질문 종합 생성됨 (결산 → 파급 시나리오)"); qc.invalidateQueries({ queryKey: ["spine", "questions", qid] }) },
+    onError: () => toast.error("종합 생성 실패 — 다시 시도"),
   })
 
   if (isLoading) {
@@ -77,13 +89,43 @@ export default function QuestionDetail() {
         <QuestionTree id={qid} />
       </div>
 
-      {/* 파급 시나리오 (허브: 같은 질문에 묶임) */}
+      {/* 질문 종합 — 현재 결산 리포트 (D-093). 아래 파급 시나리오와 체인(결산 → 전방 전망) */}
+      <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_6%,var(--card))]">
+        <CardContent className="py-3 space-y-2">
+          <div className="flex items-center gap-1.5">
+            <ClipboardList className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">질문 종합 — 현재 결산</span>
+            <span className="text-[11px] text-muted-foreground">지금까지 추적한 근거로 답할 수 있는 것</span>
+            <Button size="xs" variant="outline" className="ml-auto" disabled={genSynth.isPending}
+              onClick={() => genSynth.mutate()}>
+              {genSynth.isPending
+                ? <><Loader2 className="h-3 w-3 animate-spin" /> 종합 중… (수 분)</>
+                : (synth.data?.body ? "다시 종합" : "종합 생성")}
+            </Button>
+          </div>
+          {genSynth.isPending && (
+            <p className="text-[11px] text-muted-foreground">결산 리포트 → 그걸 출발 조건으로 파급 시나리오까지 이어서 생성합니다.</p>
+          )}
+          {synth.data?.body ? (
+            <div className="rounded-md border bg-card/60 px-3 py-2">
+              <Markdown>{synth.data.body}</Markdown>
+              {synth.data.stale && !genSynth.isPending && (
+                <p className="text-[10px] text-hypothesis mt-1.5">관측이 갱신됐습니다 — '다시 종합'으로 최신화</p>
+              )}
+            </div>
+          ) : !genSynth.isPending && (
+            <p className="text-[11px] text-muted-foreground/60">아직 없음 — 서브질문·판정·근거를 종합해 짧은 결산을 만들고, 이어서 파급 시나리오까지 생성합니다.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 파급 시나리오 (허브: 같은 질문에 묶임) — 위 결산을 출발 조건으로 한 전방 전망 */}
       <Card>
         <CardContent className="py-3 space-y-2">
           <div className="flex items-center gap-1.5">
             <Route className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">파급 시나리오</span>
-            <span className="text-[11px] text-muted-foreground">이 질문이 함의하는 사건의 1·2·3차 파급</span>
+            <span className="text-[11px] text-muted-foreground">결산을 출발 조건으로 한 1·2·3차 파급 전망</span>
             {!data.scenario && (
               <Button size="xs" variant="outline" className="ml-auto" disabled={genScenario.isPending}
                 onClick={() => genScenario.mutate()}>

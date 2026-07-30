@@ -32,7 +32,7 @@ def parse_scenario(text: str) -> str | None:
 
 
 def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
-                   node_vocab: list[str]) -> str:
+                   node_vocab: list[str], report_context: str | None = None) -> str:
     ctx = "\n\n".join(
         f"[{i+1}] ({d['source_type']}, {(d['published_at'] or '')[:10]}) {d['title']}\n{d['excerpt']}"
         for i, d in enumerate(docs)) or "(관련 수집 문서 없음)"
@@ -72,14 +72,21 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
         "effect_direction ∈ positive|negative|mixed, effect_strength ∈ unknown|weak|moderate|strong "
         "(효과 크기 — 확신과 별개 축, 숫자 금지, 애매하면 낮은 쪽), "
         "confidence 0~1(가정된 사건에서 출발하므로 보수적으로).\n\n"
-        f"[사건]\n{event}\n"
+        + (f"\n[현재 추적 결산 — 이 전망의 출발 조건]\n{report_context}\n"
+           "※ 위 결산은 이 질문을 추적하며 지금까지 관측한 상태다. 이걸 출발 조건으로 파급을 전개하되, "
+           "결산에서 '미판정'인 부분은 확정으로 다루지 말고 '아직 미판정' 가정임을 명시하라.\n"
+           if report_context else "")
+        + f"\n[사건]\n{event}\n"
         f"\n{LENS_WORLDVIEW}\n"
         f"{kn}\n\n[수집 문서]\n{ctx}"
     )
 
 
-def build_scenario(event: str) -> dict:
-    """사건 → 파급 체인 시나리오. 반환: rag.ask와 같은 형태 (answer/citations/model)."""
+def build_scenario(event: str, report_context: str | None = None) -> dict:
+    """사건 → 파급 체인 시나리오. 반환: rag.ask와 같은 형태 (answer/citations/model).
+
+    report_context: 질문 종합 리포트(현재 결산) — 주면 전망의 '출발 조건'으로 주입(D-093 체인).
+    """
     if llm_engine() != "claude-code":
         return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)"}
     from pipeline.search import search

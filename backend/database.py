@@ -447,6 +447,18 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_lens_readings ON lens_readings(stock_code, lens_type, id);
 
+    -- 질문 종합 리포트 (docs 없음 — D-093) — 서브질문·판정·근거를 종합한 '현재 결산'.
+    -- append-only 히스토리. inputs_hash로 게으른 재생성 가드(바뀔 때만 리포트→시나리오 체인 재실행).
+    CREATE TABLE IF NOT EXISTS question_reports (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER NOT NULL,
+        body        TEXT,                   -- 현재 결산 (마크다운)
+        inputs_hash TEXT,                   -- 2층 판정·서브질문·프록시 관측·근거 스냅샷
+        model       TEXT,
+        created_at  TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_question_reports ON question_reports(question_id, id);
+
     -- 미국 종목 데이터 (docs/specs/us-dossier.md, yfinance 캐시) — KR 도메인 테이블 오염 방지 위해 분리.
     -- 컬럼명은 stock_prices와 호환(stock_code=티커) → technicals·매물대 재사용.
     CREATE TABLE IF NOT EXISTS us_prices (
