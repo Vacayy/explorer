@@ -131,3 +131,41 @@ def at_threshold(technicals: dict | None, band: dict | None) -> str | None:
             desc = f"역사 밴드({band['min']}~{band['max']}배) 상단 근접 (위치 {round(band['position']*100)}%)"
         reasons.append(f"trailing PER {band.get('current_per')}배 — {desc}")
     return " · ".join(reasons) if reasons else None
+
+
+def volume_by_price(conn, stock_code: str, window: int = 250, bins: int = 20) -> dict | None:
+    """매물대 — 최근 window 거래일의 가격대별 거래량 프로파일 (LLM 0, 추세 렌즈 원칙 3).
+
+    가격 구간별 거래량 히스토그램 → POC(최대 거래 가격대) + 현재가 위 저항 물량 / 아래 지지 물량 비중.
+    데이터 부족(<40행) 또는 가격 무변동이면 None.
+    """
+    rows = conn.execute("""
+        SELECT close, volume FROM stock_prices
+        WHERE stock_code=? AND close IS NOT NULL AND volume IS NOT NULL
+        ORDER BY trade_date DESC LIMIT ?""", (stock_code, window)).fetchall()
+    if len(rows) < 40:
+        return None
+    closes = [r["close"] for r in rows]
+    vols = [r["volume"] or 0 for r in rows]
+    cur = closes[0]  # 최신
+    lo, hi = min(closes), max(closes)
+    if hi <= lo:
+        return None
+    width = (hi - lo) / bins
+    buckets = [0.0] * bins
+    for c, v in zip(closes, vols):
+        idx = min(int((c - lo) / width), bins - 1)
+        buckets[idx] += v
+    total = sum(buckets) or 1
+    poc_idx = max(range(bins), key=lambda i: buckets[i])
+    poc_price = lo + (poc_idx + 0.5) * width
+    cur_idx = min(int((cur - lo) / width), bins - 1)
+    overhead = sum(buckets[cur_idx + 1:]) / total * 100   # 현재가 위 = 저항
+    support = sum(buckets[:cur_idx]) / total * 100          # 현재가 아래 = 지지
+    top = sorted(range(bins), key=lambda i: buckets[i], reverse=True)[:3]
+    nodes = [{"price": round(lo + (i + 0.5) * width), "vol_pct": round(buckets[i] / total * 100, 1)}
+             for i in sorted(top)]
+    return {"cur": round(cur), "poc": round(poc_price),
+            "poc_vs_cur": "above" if poc_price > cur else "below",
+            "overhead_pct": round(overhead, 1), "support_pct": round(support, 1),
+            "nodes": nodes, "lo": round(lo), "hi": round(hi), "window": len(rows)}

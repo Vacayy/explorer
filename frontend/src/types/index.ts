@@ -208,6 +208,31 @@ export interface StockBrief {
   thesis?: string | null;    // 논지 원문 (불변 — AI는 점검만)
 }
 
+// 투자 렌즈 (docs/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)
+export interface LensReading {
+  lens_type: string;         // value | trend
+  status: string;            // cached | fresh | empty | unavailable | failed
+  body: string | null;       // 원칙에 비춘 판독 (마크다운)
+  stance: string | null;     // value: 강|중|약 / trend: 초입|진행|성숙|훼손
+  signals: string[];         // 역추적용 근거
+  created_at: string | null;
+  stale: boolean;
+}
+
+export interface Quadrant {
+  value_axis: string;        // 강|중|약 (가치 확신)
+  trend_axis: string;        // 초입|진행|성숙|훼손 (추세 위치)
+  cell: string;              // 기회 | 늦은 진입 | 과열 경고 | 회피
+  note: string;
+}
+
+export interface LensBundle {
+  stock_code: string;
+  value: LensReading | null;
+  trend: LensReading | null;
+  quadrant: Quadrant | null; // 두 렌즈 stance로 계산(LLM 0) — 둘 다 있을 때만
+}
+
 // 대화 (P2-0/P2-1)
 export interface ConversationItem {
   id: number;

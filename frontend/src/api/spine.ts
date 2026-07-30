@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief } from "@/types";
+import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -25,6 +25,8 @@ export const spineKeys = {
   conversations: (stock?: string) => [...spineKeys.all, "conversations", stock ?? "all"] as const,
   conversation: (id: number) => [...spineKeys.all, "conversation", id] as const,
   saved: () => [...spineKeys.all, "saved"] as const,
+  stockLens: (code: string) => [...spineKeys.all, "stock-lens", code] as const,
+  stockLensCompute: (code: string, type: string) => [...spineKeys.all, "stock-lens-compute", code, type] as const,
 };
 
 /** 종목 AI 브리프 — 캐시 + stale 플래그 (LLM 없음) */
@@ -49,6 +51,23 @@ export const stockBriefComputeQuery = (code: string, enabled: boolean) =>
   apiComputeQuery<StockBrief>({
     key: spineKeys.stockBriefCompute(code),
     url: `/api/spine/stock/${code}/brief/compute`,
+    enabled,
+  });
+
+/** 투자 렌즈 — 캐시 + stale 플래그 (LLM 없음) */
+export const stockLensQuery = (code: string) =>
+  apiQuery<LensBundle>({
+    key: spineKeys.stockLens(code),
+    url: `/api/spine/stock/${code}/lens`,
+    staleTime: STALE.short,
+    enabled: !!code,
+  });
+
+/** 렌즈 생성 — 원칙·재료 변경 시만 LLM. 종목·렌즈별 키잉. */
+export const stockLensComputeQuery = (code: string, type: string, enabled: boolean) =>
+  apiComputeQuery<LensReading>({
+    key: spineKeys.stockLensCompute(code, type),
+    url: `/api/spine/stock/${code}/lens/compute?type=${type}`,
     enabled,
   });
 
