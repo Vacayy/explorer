@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException
 import json
 
 from database import get_connection
-from models.us import UsDossier, UsGroup, UsList, UsListItem, UsMention
+from models.us import (UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
+                        UsNarrativeRef, UsWorldModel)
 
 router = APIRouter(prefix="/api/spine/us", tags=["spine"])
 
@@ -65,6 +66,42 @@ def us_mentions(ticker: str, limit: int = 20):
     conn.close()
     return [UsMention(id=r["id"], source_type=r["source_type"], title=r["title"], url=r["url"],
                       published_at=r["published_at"], excerpt=r["excerpt"]) for r in rows]
+
+
+@router.get("/{ticker}/worldmodel", response_model=UsWorldModel)
+def us_worldmodel(ticker: str):
+    """이 미국 기업 노드의 온톨로지 위치 — 인과 엣지(양방향) + 걸린 내러티브. LLM 0.
+
+    온톨로지 그래프 딥링크는 FE가 entity_id로 `/knowledge/ontology?focus=` 구성.
+    """
+    from pipeline.us_data import resolve_us
+    conn = get_connection()
+    eid, _ = resolve_us(conn, ticker)
+    if eid is None:
+        conn.close()
+        return UsWorldModel(entity_id=None, edges=[], narratives=[])
+    rows = conn.execute("""
+        SELECT r.rel_type, r.effect_direction, r.confidence, r.mechanism, r.narrative_id,
+               s.name src, d.name dst, r.src_id
+        FROM entity_relations r
+        JOIN entities s ON s.id = r.src_id
+        JOIN entities d ON d.id = r.dst_id
+        WHERE r.epistemic_type='hypothesis' AND r.rel_type IN ('CAUSES','BENEFITS_FROM')
+          AND (r.src_id=? OR r.dst_id=?)
+        ORDER BY r.confidence DESC LIMIT 12""", (eid, eid)).fetchall()
+    edges = [UsEdge(src=r["src"], dst=r["dst"], rel_type=r["rel_type"], direction=r["effect_direction"],
+                    confidence=r["confidence"], mechanism=r["mechanism"], self_is_src=(r["src_id"] == eid))
+             for r in rows]
+    nids = [n for n in {r["narrative_id"] for r in rows} if n]
+    narratives = []
+    if nids:
+        ph = ",".join("?" * len(nids))
+        nr = conn.execute(
+            f"SELECT topic, max(id) id, title FROM narratives WHERE id IN ({ph}) GROUP BY topic",
+            nids).fetchall()
+        narratives = [UsNarrativeRef(id=r["id"], topic=r["topic"], title=r["title"]) for r in nr]
+    conn.close()
+    return UsWorldModel(entity_id=eid, edges=edges, narratives=narratives)
 
 
 @router.get("/{ticker}", response_model=UsDossier)

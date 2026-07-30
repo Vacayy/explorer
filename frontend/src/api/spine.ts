@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief, UsDossier, UsList, UsMention } from "@/types";
+import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief, UsDossier, UsList, UsMention, UsWorldModel } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -30,6 +30,7 @@ export const spineKeys = {
   usDossier: (ticker: string) => [...spineKeys.all, "us-dossier", ticker] as const,
   usList: () => [...spineKeys.all, "us-list"] as const,
   usMentions: (ticker: string) => [...spineKeys.all, "us-mentions", ticker] as const,
+  usWorldModel: (ticker: string) => [...spineKeys.all, "us-worldmodel", ticker] as const,
 };
 
 /** 종목 AI 브리프 — 캐시 + stale 플래그 (LLM 없음) */
@@ -92,6 +93,15 @@ export const usMentionsQuery = (ticker: string) =>
   apiQuery<UsMention[]>({
     key: spineKeys.usMentions(ticker),
     url: `/api/spine/us/${ticker}/mentions`,
+    staleTime: STALE.medium,
+    enabled: !!ticker,
+  });
+
+/** 미국 종목 월드모델 위치 — 인과 엣지 + 걸린 내러티브 (LLM 없음) */
+export const usWorldModelQuery = (ticker: string) =>
+  apiQuery<UsWorldModel>({
+    key: spineKeys.usWorldModel(ticker),
+    url: `/api/spine/us/${ticker}/worldmodel`,
     staleTime: STALE.medium,
     enabled: !!ticker,
   });

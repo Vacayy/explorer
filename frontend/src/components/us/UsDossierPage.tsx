@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { usDossierQuery, usMentionsQuery } from "@/api/spine"
+import { usDossierQuery, usMentionsQuery, usWorldModelQuery } from "@/api/spine"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -91,8 +91,88 @@ export default function UsDossierPage() {
 
       <LensView code={d.ticker} market="us" />
 
+      <WorldModelSection ticker={d.ticker} name={d.name} />
+
       <MentionsSection ticker={d.ticker} name={d.name} />
     </PageContainer>
+  )
+}
+
+/** 월드모델 — 이 종목 노드의 인과 위치(엣지) + 걸린 내러티브 + 온톨로지 그래프 딥링크. */
+function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
+  const q = useQuery(usWorldModelQuery(ticker))
+  const w = q.data
+  if (q.isLoading)
+    return (
+      <Card>
+        <CardContent className="py-4">
+          <Skeleton className="h-16 w-full rounded-lg" />
+        </CardContent>
+      </Card>
+    )
+  if (!w || (w.edges.length === 0 && w.narratives.length === 0)) {
+    return (
+      <Card>
+        <CardContent className="py-4">
+          <span className="text-sm font-semibold">월드모델 · 인과 위치</span>
+          <p className="mt-2 text-xs text-muted-foreground">
+            아직 이 종목 노드에 연결된 인과 관계·내러티브가 없습니다 — 컨콜·문서가 쌓이면 그래프에 편입됩니다.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+  return (
+    <Card>
+      <CardContent className="py-4 space-y-3">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm font-semibold">월드모델 · 인과 위치</span>
+          {w.entity_id != null && (
+            <Link to={`/knowledge/ontology?focus=${w.entity_id}`} className="text-xs text-primary hover:underline">
+              온톨로지 그래프에서 보기 →
+            </Link>
+          )}
+        </div>
+
+        {w.edges.length > 0 && (
+          <ul className="space-y-1">
+            {w.edges.map((e, i) => {
+              const dirCls =
+                e.direction === "positive" ? "text-up" : e.direction === "negative" ? "text-down" : "text-muted-foreground"
+              return (
+                <li key={i} className="text-xs flex items-baseline gap-1.5">
+                  <span className={dirCls}>●</span>
+                  <span className="text-muted-foreground">
+                    <b className="text-foreground">{e.src}</b> {e.rel_type === "CAUSES" ? "→" : "←수혜"}{" "}
+                    <b className="text-foreground">{e.dst}</b>
+                    {e.mechanism ? ` · ${e.mechanism}` : ""}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        {w.narratives.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 border-t pt-2">
+            <span className="text-[10px] text-muted-foreground shrink-0">걸린 내러티브</span>
+            {w.narratives.map((n) => (
+              <Link
+                key={n.id}
+                to={`/narrative?topic=${encodeURIComponent(n.topic)}`}
+                className="text-[11px] rounded-md border px-1.5 py-0.5 hover:border-foreground/30 hover:bg-accent/40"
+                title={n.title ?? n.topic}
+              >
+                {n.topic}
+              </Link>
+            ))}
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground">
+          {name} 노드가 걸린 인과 엣지·내러티브 — 가치 렌즈의 '구조적 동인·해자'가 여기서 온다(hypothesis).
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
