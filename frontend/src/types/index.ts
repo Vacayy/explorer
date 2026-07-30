@@ -233,6 +233,30 @@ export interface LensBundle {
   quadrant: Quadrant | null; // 두 렌즈 stance로 계산(LLM 0) — 둘 다 있을 때만
 }
 
+// 미국 종목 도시에 (docs/specs/us-dossier.md)
+export interface UsFundamentals {
+  price: number | null;
+  market_cap: number | null;
+  fwd_pe: number | null;
+  trailing_pe: number | null;
+  fwd_eps: number | null;
+  revenue: number | null;
+  net_income: number | null;
+  ocf: number | null;
+  fcf: number | null;
+  capex: number | null;
+  earnings_quality: number | null;
+  estimates?: Record<string, unknown>;
+}
+
+export interface UsDossier {
+  ticker: string;
+  name: string;
+  entity_id: number | null;
+  fundamentals: UsFundamentals | null;
+  latest_transcript: { id: number; fiscal_year: number; fiscal_period: string; call_date: string } | null;
+}
+
 // 대화 (P2-0/P2-1)
 export interface ConversationItem {
   id: number;

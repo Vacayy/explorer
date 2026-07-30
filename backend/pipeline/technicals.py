@@ -8,9 +8,9 @@
 from database import get_connection
 
 
-def _closes(conn, stock_code: str, n: int = 130) -> list[dict]:
-    rows = conn.execute("""
-        SELECT trade_date, close, high FROM stock_prices
+def _closes(conn, stock_code: str, n: int = 130, table: str = "stock_prices") -> list[dict]:
+    rows = conn.execute(f"""
+        SELECT trade_date, close, high FROM {table}
         WHERE stock_code=? AND close IS NOT NULL
         ORDER BY trade_date DESC LIMIT ?""", (stock_code, n)).fetchall()
     return [dict(r) for r in rows][::-1]  # 과거 → 최신
@@ -35,8 +35,8 @@ def _rsi14(closes: list[int]) -> float | None:
     return round(100 - 100 / (1 + ag / al), 1)
 
 
-def compute_technicals(conn, stock_code: str) -> dict | None:
-    rows = _closes(conn, stock_code)
+def compute_technicals(conn, stock_code: str, table: str = "stock_prices") -> dict | None:
+    rows = _closes(conn, stock_code, table=table)
     if len(rows) < 21:
         return None
     closes = [r["close"] for r in rows]
@@ -48,8 +48,8 @@ def compute_technicals(conn, stock_code: str) -> dict | None:
         ma = sum(closes[-n:]) / n
         return round((cur - ma) / ma * 100, 1)
 
-    high_52w = conn.execute("""
-        SELECT max(high) h FROM stock_prices
+    high_52w = conn.execute(f"""
+        SELECT max(high) h FROM {table}
         WHERE stock_code=? AND trade_date >= date('now', '-365 days')""",
         (stock_code,)).fetchone()["h"]
     return {
@@ -133,14 +133,15 @@ def at_threshold(technicals: dict | None, band: dict | None) -> str | None:
     return " · ".join(reasons) if reasons else None
 
 
-def volume_by_price(conn, stock_code: str, window: int = 250, bins: int = 20) -> dict | None:
+def volume_by_price(conn, stock_code: str, window: int = 250, bins: int = 20,
+                    table: str = "stock_prices") -> dict | None:
     """매물대 — 최근 window 거래일의 가격대별 거래량 프로파일 (LLM 0, 추세 렌즈 원칙 3).
 
     가격 구간별 거래량 히스토그램 → POC(최대 거래 가격대) + 현재가 위 저항 물량 / 아래 지지 물량 비중.
     데이터 부족(<40행) 또는 가격 무변동이면 None.
     """
-    rows = conn.execute("""
-        SELECT close, volume FROM stock_prices
+    rows = conn.execute(f"""
+        SELECT close, volume FROM {table}
         WHERE stock_code=? AND close IS NOT NULL AND volume IS NOT NULL
         ORDER BY trade_date DESC LIMIT ?""", (stock_code, window)).fetchall()
     if len(rows) < 40:

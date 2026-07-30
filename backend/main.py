@@ -18,6 +18,7 @@ from routers import spine_market
 from routers import spine_thesis
 from routers import spine_saved
 from routers import spine_lens
+from routers import spine_us
 
 app = FastAPI(title="Stock Explorer API")
 
@@ -80,6 +81,7 @@ app.include_router(spine_market.router)
 app.include_router(spine_thesis.router)
 app.include_router(spine_saved.router)
 app.include_router(spine_lens.router)
+app.include_router(spine_us.router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)

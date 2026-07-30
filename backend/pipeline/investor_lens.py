@@ -118,15 +118,20 @@ def _causal_edges(conn, entity_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def gather_material(conn, stock_code: str, entity_id: int, lens_type: str) -> dict:
-    """렌즈 재료 취합 (LLM 0). 가치=브리프 정량 + 현금의 질 + 인과엣지 + 캐시 업사이드.
-
-    재사용 우선(스펙 원칙 4): 정량 종합은 stock_brief.gather_inputs를 그대로 인수.
-    """
+def gather_material(conn, code: str, entity_id: int, lens_type: str, market: str = "kr") -> dict:
+    """렌즈 재료 취합 (LLM 0). market=kr(재무제표·컨센서스) | us(yfinance). 재사용 우선(스펙 원칙 4)."""
     if lens_type == "trend":
-        return _gather_trend(conn, stock_code)
+        m = _gather_trend(conn, code, market)
+        m["market"] = market
+        return m
     if lens_type != "value":
         return {}
+    m = _gather_value_us(conn, code, entity_id) if market == "us" else _gather_value_kr(conn, code, entity_id)
+    m["market"] = market
+    return m
+
+
+def _gather_value_kr(conn, stock_code: str, entity_id: int) -> dict:
     from pipeline.stock_brief import gather_inputs
     from pipeline.upside_model import _anchor
     base = gather_inputs(conn, stock_code, entity_id)
@@ -149,9 +154,22 @@ def gather_material(conn, stock_code: str, entity_id: int, lens_type: str) -> di
     }
 
 
+def _gather_value_us(conn, ticker: str, entity_id: int) -> dict:
+    """US 가치 재료 — yfinance(밸류·EPS 개정·현금의 질) + 인과엣지 + 최근 컨콜 정리."""
+    from pipeline.us_data import get_fundamentals
+    fund = get_fundamentals(ticker)
+    edges = _causal_edges(conn, entity_id) if entity_id else []
+    row = conn.execute("""
+        SELECT digest FROM transcripts WHERE ticker=? AND digest IS NOT NULL
+        ORDER BY call_date DESC LIMIT 1""", (ticker.upper(),)).fetchone()
+    return {"fundamentals": fund, "edges": edges, "transcript_digest": row["digest"] if row else None}
+
+
 def _has_material(m: dict, lens_type: str = "value") -> bool:
     if lens_type == "trend":
         return bool(m.get("technicals"))
+    if m.get("market") == "us":
+        return bool(m.get("fundamentals"))
     a = m.get("anchor") or {}
     return bool(a.get("revenue") or a.get("net_income") or m.get("consensus") or m.get("cf"))
 
@@ -163,6 +181,15 @@ def material_hash(m: dict, principles_hash: str, lens_type: str = "value") -> st
     """
     if lens_type == "trend":
         return hashlib.sha256(f"pr:{principles_hash}|{_trend_signature(m)}".encode()).hexdigest()
+    if m.get("market") == "us":
+        f = m.get("fundamentals") or {}
+        est = f.get("estimates") or {}
+        us_parts = [f"pr:{principles_hash}",
+                    f"us:{f.get('fwd_pe')}:{f.get('fwd_eps')}:{f.get('fcf')}:{f.get('earnings_quality')}",
+                    f"rev:{(est.get('revisions') or {}).get('+1y')}"]
+        for e in m.get("edges") or []:
+            us_parts.append(f"ed:{e['src_id']}:{e['dst_id']}:{e['confidence']}")
+        return hashlib.sha256("|".join(str(p) for p in us_parts).encode()).hexdigest()
     a = m.get("anchor") or {}
     parts = [f"pr:{principles_hash}",
              f"anc:{a.get('eps')}:{a.get('revenue')}:{a.get('net_income')}"]
@@ -186,6 +213,8 @@ def _fmt(v, unit=""):
 
 
 def _material_blocks(m: dict) -> str:
+    if m.get("market") == "us":
+        return _value_blocks_us(m)
     a = m.get("anchor") or {}
     blocks = [
         "[현재 밸류·실적 앵커]\n"
@@ -233,6 +262,69 @@ def _material_blocks(m: dict) -> str:
     return "\n\n".join(blocks)
 
 
+def _num(v):
+    return "미상" if v is None else (f"{v:,.1f}" if isinstance(v, float) else f"{v:,}")
+
+
+def _usd_big(v):
+    if v is None:
+        return "미상"
+    a = abs(v)
+    if a >= 1e9:
+        return f"{v/1e9:,.1f}B"
+    if a >= 1e6:
+        return f"{v/1e6:,.0f}M"
+    return f"{v:,.0f}"
+
+
+def _value_blocks_us(m: dict) -> str:
+    """US 가치 재료 블록 — yfinance(밸류·개정 방향·현금의 질) + 인과엣지 + 컨콜 정리."""
+    f = m.get("fundamentals") or {}
+    est = f.get("estimates") or {}
+    blocks = []
+    pt = est.get("price_targets") or {}
+    up = round((pt["mean"] - f["price"]) / f["price"] * 100, 1) if (pt.get("mean") and f.get("price")) else None
+    blocks.append(
+        "[현재 밸류 — Forward 우선]\n"
+        f"- 현재가 ${_num(f.get('price'))} · 시총 ${_usd_big(f.get('market_cap'))}\n"
+        f"- Fwd PER {_num(f.get('fwd_pe'))}배 · trailing PER {_num(f.get('trailing_pe'))}배 · Fwd EPS ${_num(f.get('fwd_eps'))}"
+        + (f"\n- 애널리스트 목표가 평균 ${_num(pt.get('mean'))} (${_num(pt.get('low'))}~${_num(pt.get('high'))})"
+           + (f" · 현재가 대비 {up:+}%" if up is not None else "") if pt else ""))
+    rev = (est.get("revisions") or {}).get("+1y") or (est.get("revisions") or {}).get("0y")
+    et = est.get("eps_trend_1y") or {}
+    e1 = est.get("earnings_1y") or {}
+    rl = []
+    if rev:
+        rl.append(f"차년 EPS 상향 {rev.get('up30')}건 vs 하향 {rev.get('down30')}건 (최근 30일) — 개정 방향")
+    if et.get("current") and et.get("d90"):
+        d = (et["current"] - et["d90"]) / abs(et["d90"]) * 100 if et["d90"] else 0
+        rl.append(f"차년 EPS 추정 90일 변화 {d:+.1f}% (현재 ${_num(et['current'])} vs 90일전 ${_num(et['d90'])})")
+    if e1.get("growth") is not None:
+        rl.append(f"차년 이익 성장 컨센 {e1['growth']*100:+.0f}% (애널리스트 {e1.get('analysts')}명)")
+    if rl:
+        blocks.append("[컨센서스·개정 방향 — 시장이 보는 미래(Forward)]\n" + "\n".join("- " + x for x in rl))
+    q = f.get("earnings_quality")
+    if f.get("ocf") is not None or f.get("fcf") is not None:
+        blocks.append(
+            "[현금의 질 — 최근 연간]\n"
+            f"- 영업현금흐름 ${_usd_big(f.get('ocf'))} · CAPEX ${_usd_big(f.get('capex'))} · FCF ${_usd_big(f.get('fcf'))}\n"
+            f"- 매출 ${_usd_big(f.get('revenue'))} · 순이익 ${_usd_big(f.get('net_income'))}"
+            + (f"\n- 이익의 질(영업CF/순이익) {q}배 — 1 미만이면 회계이익 대비 현금전환이 약함" if q is not None else ""))
+    edges = m.get("edges") or []
+    if edges:
+        el = []
+        for e in edges:
+            arrow = "→" if e["rel_type"] == "CAUSES" else "←수혜"
+            dirn = {"positive": "(+)", "negative": "(−)", "mixed": "(±)"}.get(e.get("effect_direction"), "")
+            el.append(f"- {e['src_name']} {arrow} {e['dst_name']} {dirn}"
+                      + (f": {e['mechanism']}" if e.get("mechanism") else "")
+                      + (f" [확신 {e['confidence']:.2f}]" if e.get("confidence") else ""))
+        blocks.append("[인과 그래프 — 구조적 동인·해자 (원칙 2)]\n" + "\n".join(el))
+    if m.get("transcript_digest"):
+        blocks.append("[최근 컨콜 핵심 정리 — 경영진 1차 발언(미래 확신 근거)]\n" + m["transcript_digest"][:1200])
+    return "\n\n".join(blocks) or "(재료 부족)"
+
+
 def _build_value_prompt(name: str, principles_text: str, m: dict) -> str:
     from pipeline.digests import STYLE_RULES
     return (
@@ -258,18 +350,50 @@ def _build_value_prompt(name: str, principles_text: str, m: dict) -> str:
 
 # ── 추세 렌즈 재료·프롬프트 (원칙: 시장 수용·위치 맥락·대응 규율) ────────────────
 
-def _gather_trend(conn, stock_code: str) -> dict:
+def _gather_trend(conn, code: str, market: str = "kr") -> dict:
     from pipeline.technicals import compute_technicals, volume_by_price
-    tech = compute_technicals(conn, stock_code)
-    vp = volume_by_price(conn, stock_code)
-    rs = _rs_short_for(conn, stock_code)
+    table = "us_prices" if market == "us" else "stock_prices"
+    if market == "us":
+        from pipeline.us_data import BENCHMARK, fetch_prices
+        fetch_prices(code)          # 캐시 신선하면 no-op
+        fetch_prices(BENCHMARK)
+    tech = compute_technicals(conn, code, table=table)
+    vp = volume_by_price(conn, code, table=table)
+    if market == "us":
+        rel = _us_rel_strength(conn, code)
+        rs, rs_bucket = rel, _us_rs_bucket(rel)
+    else:
+        rs = _rs_short_for(conn, code)
+        rs_bucket = _rs_bucket(rs)
     try:
         from pipeline.market_regime import get_regime
-        regime = (get_regime() or {}).get("kr") or {}
+        regime = (get_regime() or {}).get("us" if market == "us" else "kr") or {}
     except Exception:
         regime = {}
     return {"technicals": tech, "volume_profile": vp, "rs": rs,
-            "rs_bucket": _rs_bucket(rs), "regime": regime}
+            "rs_bucket": rs_bucket, "regime": regime}
+
+
+def _us_rel_strength(conn, ticker: str):
+    """지수(SPY) 대비 3개월 초과수익(%p) — US 상대강도(KR 유니버스 백분위 대체)."""
+    from pipeline.us_data import BENCHMARK
+
+    def ret63(code):
+        rows = conn.execute(
+            "SELECT close FROM us_prices WHERE stock_code=? ORDER BY trade_date DESC LIMIT 64",
+            (code,)).fetchall()
+        if len(rows) < 40 or not rows[-1]["close"]:
+            return None
+        return (rows[0]["close"] - rows[-1]["close"]) / rows[-1]["close"] * 100
+
+    s, b = ret63(ticker.upper()), ret63(BENCHMARK)
+    return round(s - b, 1) if (s is not None and b is not None) else None
+
+
+def _us_rs_bucket(rel) -> str:
+    if rel is None:
+        return "?"
+    return "out+" if rel >= 10 else "in" if rel >= -10 else "out-"
 
 
 def _rs_short_for(conn, stock_code: str):
@@ -319,6 +443,8 @@ def _trend_signature(m: dict) -> str:
 
 
 def _trend_material_blocks(m: dict) -> str:
+    us = m.get("market") == "us"
+    cur, won = ("$", "") if us else ("", "원")
     blocks = []
     t = m.get("technicals") or {}
     parts = []
@@ -334,22 +460,26 @@ def _trend_material_blocks(m: dict) -> str:
     if parts:
         blocks.append("[기술적 위치 — 이평·RSI·52주]\n" + " · ".join(parts))
     if m.get("rs") is not None:
-        blocks.append(f"[상대강도 RS]\n단기(30일 수익률) 전종목 백분위 {m['rs']} (100=최강, 시장 대비 관심 유입)")
+        if us:
+            blocks.append(f"[상대강도 — 지수(SPY) 대비]\n최근 3개월 초과수익 {m['rs']:+.1f}%p (양수=시장 상회)")
+        else:
+            blocks.append(f"[상대강도 RS]\n단기(30일 수익률) 전종목 백분위 {m['rs']} (100=최강, 시장 대비 관심 유입)")
     vp = m.get("volume_profile")
     if vp:
-        nd = " · ".join(f"{n['price']:,}원({n['vol_pct']}%)" for n in vp["nodes"])
+        nd = " · ".join(f"{cur}{n['price']:,}{won}({n['vol_pct']}%)" for n in vp["nodes"])
         blocks.append(
             "[매물대 — 최근 거래 가격대별 물량]\n"
-            f"현재가 {vp['cur']:,}원 · POC(최대 매물) {vp['poc']:,}원({'머리 위' if vp['poc_vs_cur']=='above' else '아래'})\n"
+            f"현재가 {cur}{vp['cur']:,}{won} · POC(최대 매물) {cur}{vp['poc']:,}{won}"
+            f"({'머리 위' if vp['poc_vs_cur']=='above' else '아래'})\n"
             f"현재가 위 저항 물량 {vp['overhead_pct']}% / 아래 지지 물량 {vp['support_pct']}% · "
-            f"주요 매물대 {nd} (범위 {vp['lo']:,}~{vp['hi']:,}원, {vp['window']}일)")
+            f"주요 매물대 {nd} (범위 {cur}{vp['lo']:,}~{cur}{vp['hi']:,}{won}, {vp['window']}일)")
     reg = m.get("regime") or {}
     if reg:
         osc = reg.get("oscillator") or {}
         tr = reg.get("trend") or {}
         vol = reg.get("volatility") or {}
         blocks.append(
-            "[시장 국면(국장) — 국면 게이트(원칙 7)]\n"
+            f"[시장 국면({'미국' if us else '국장'}) — 국면 게이트(원칙 7)]\n"
             f"포스처 {reg.get('posture')} · {reg.get('reason')}\n"
             f"{osc.get('metric')} {osc.get('value')}({osc.get('zone')}) · "
             f"20EMA {tr.get('ema')}({tr.get('dir')}) · {vol.get('metric')} {vol.get('value')}({vol.get('band')})")
@@ -398,11 +528,11 @@ def compute_quadrant(value_stance: str | None, trend_stance: str | None) -> dict
 
 # ── 실행 ────────────────────────────────────────────────────────────────────
 
-def _get_cached(conn, stock_code: str, lens_type: str):
+def _get_cached(conn, code: str, lens_type: str, market: str = "kr"):
     return conn.execute(
         "SELECT body, stance, signals_json, principles_hash, material_hash, created_at "
-        "FROM lens_readings WHERE stock_code=? AND lens_type=? ORDER BY id DESC LIMIT 1",
-        (stock_code, lens_type)).fetchone()
+        "FROM lens_readings WHERE stock_code=? AND lens_type=? AND market=? ORDER BY id DESC LIMIT 1",
+        (code, lens_type, market)).fetchone()
 
 
 def _row(r) -> dict:
@@ -415,11 +545,21 @@ def _empty() -> dict:
     return {"body": None, "stance": None, "signals": [], "created_at": None}
 
 
-def peek(stock_code: str, lens_type: str) -> dict | None:
+def _resolve(conn, code: str, market: str):
+    """종목 해소. kr=entities aliases / us=transcript_follow(ticker↔entity, 미팔로우여도 티커로 진행)."""
+    if market == "us":
+        from pipeline.us_data import resolve_us
+        eid, name = resolve_us(conn, code)
+        return {"id": eid, "name": name or code.upper()}
+    r = conn.execute(
+        "SELECT id, name FROM entities WHERE type='company' AND aliases=?", (code,)).fetchone()
+    return {"id": r["id"], "name": r["name"]} if r else None
+
+
+def peek(code: str, lens_type: str, market: str = "kr") -> dict | None:
     """LLM 없이 캐시 + stale 플래그. 엔티티/원칙 없거나 재료 없으면 None(FE 미표시)."""
     conn = get_connection()
-    ent = conn.execute(
-        "SELECT id, name FROM entities WHERE type='company' AND aliases=?", (stock_code,)).fetchone()
+    ent = _resolve(conn, code, market)
     if not ent:
         conn.close()
         return None
@@ -427,30 +567,28 @@ def peek(stock_code: str, lens_type: str) -> dict | None:
     if not principles_text:
         conn.close()
         return None
-    material = gather_material(conn, stock_code, ent["id"], lens_type)
+    material = gather_material(conn, code, ent["id"], lens_type, market)
     if not _has_material(material, lens_type):
         conn.close()
         return None
-    cached = _get_cached(conn, stock_code, lens_type)
+    cached = _get_cached(conn, code, lens_type, market)
     mhash = material_hash(material, phash, lens_type)
     conn.close()
     if not cached:
         return {"status": "empty", **_empty(), "stale": True}
-    stale = cached["material_hash"] != mhash
-    return {"status": "cached", **_row(cached), "stale": stale}
+    return {"status": "cached", **_row(cached), "stale": cached["material_hash"] != mhash}
 
 
-def compute_reading(stock_code: str, lens_type: str = "value", refresh: bool = False) -> dict:
-    with _lens_lock(f"{stock_code}:{lens_type}"):
-        return _compute_locked(stock_code, lens_type, refresh)
+def compute_reading(code: str, lens_type: str = "value", market: str = "kr", refresh: bool = False) -> dict:
+    with _lens_lock(f"{market}:{code}:{lens_type}"):
+        return _compute_locked(code, lens_type, market, refresh)
 
 
-def _compute_locked(stock_code: str, lens_type: str, refresh: bool) -> dict:
+def _compute_locked(code: str, lens_type: str, market: str, refresh: bool) -> dict:
     if lens_type not in LENS_TYPES:
         return {"status": "unsupported"}
     conn = get_connection()
-    ent = conn.execute(
-        "SELECT id, name FROM entities WHERE type='company' AND aliases=?", (stock_code,)).fetchone()
+    ent = _resolve(conn, code, market)
     if not ent:
         conn.close()
         return {"status": "not_found"}
@@ -458,12 +596,12 @@ def _compute_locked(stock_code: str, lens_type: str, refresh: bool) -> dict:
     if not principles_text:
         conn.close()
         return {"status": "no_principles"}
-    material = gather_material(conn, stock_code, ent["id"], lens_type)
+    material = gather_material(conn, code, ent["id"], lens_type, market)
     if not _has_material(material, lens_type):
         conn.close()
         return {"status": "empty", **_empty()}
     mhash = material_hash(material, phash, lens_type)
-    cached = _get_cached(conn, stock_code, lens_type)
+    cached = _get_cached(conn, code, lens_type, market)
     if cached and not refresh and cached["material_hash"] == mhash:
         conn.close()
         return {"status": "cached", **_row(cached)}
@@ -487,11 +625,11 @@ def _compute_locked(stock_code: str, lens_type: str, refresh: bool) -> dict:
         INSERT INTO lens_readings
             (stock_code, market, lens_type, body, stance, signals_json,
              principles_hash, material_hash, model)
-        VALUES (?, 'kr', ?, ?, ?, ?, ?, ?, ?)""",
-        (stock_code, lens_type, data.get("body"), data.get("stance"),
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (code, market, lens_type, data.get("body"), data.get("stance"),
          json.dumps(signals, ensure_ascii=False) if signals else None,
          phash, mhash, f"claude-code/{LENS_MODEL}"))
     conn.commit()
-    row = _get_cached(conn, stock_code, lens_type)
+    row = _get_cached(conn, code, lens_type, market)
     conn.close()
     return {"status": "fresh", **_row(row)}

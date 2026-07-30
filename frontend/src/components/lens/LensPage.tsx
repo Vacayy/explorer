@@ -25,24 +25,28 @@ const TREND_STANCE: Record<string, { label: string; cls: string }> = {
 }
 
 /**
- * 투자 렌즈 탭 — 원칙 원장(가치/추세)에 비춰 이 종목을 읽는다 (docs/specs/investor-lens.md).
+ * 투자 렌즈 — 원칙 원장(가치/추세)에 비춰 이 종목을 읽는다 (docs/specs/investor-lens.md).
  * 판정 오라클이 아니라 프레임(hypothesis). 두 렌즈가 갈리는 지점이 신호(4상한 미니뷰).
  * 게으른 생성: 원칙·재료(질적 추세 상태)가 바뀌면 stale → 자동 재생성.
+ * LensPage = /analyze 탭용(PageContainer 래핑). LensView = 재사용(US 도시에 등에 임베드).
  */
-export default function LensPage({ stockCode }: { stockCode: string; corpCode?: string }) {
-  const bundle = useQuery(stockLensQuery(stockCode))
+export default function LensPage({ code, market = "kr" }: { code: string; market?: string; corpCode?: string }) {
+  return (
+    <PageContainer gap="sm">
+      <LensView code={code} market={market} />
+    </PageContainer>
+  )
+}
+
+export function LensView({ code, market = "kr" }: { code: string; market?: string }) {
+  const bundle = useQuery(stockLensQuery(code, market))
   const vStale = bundle.data?.value?.stale ?? false
   const tStale = bundle.data?.trend?.stale ?? false
-  const vCompute = useQuery(stockLensComputeQuery(stockCode, "value", !!bundle.data?.value && vStale))
-  const tCompute = useQuery(stockLensComputeQuery(stockCode, "trend", !!bundle.data?.trend && tStale))
+  const vCompute = useQuery(stockLensComputeQuery(code, "value", market, !!bundle.data?.value && vStale))
+  const tCompute = useQuery(stockLensComputeQuery(code, "trend", market, !!bundle.data?.trend && tStale))
 
   if (bundle.isLoading) return <LensSkeleton />
-  if (bundle.isError)
-    return (
-      <PageContainer>
-        <ErrorState onRetry={() => bundle.refetch()} />
-      </PageContainer>
-    )
+  if (bundle.isError) return <ErrorState onRetry={() => bundle.refetch()} />
 
   const value = vCompute.data ?? bundle.data?.value ?? null
   const trend = tCompute.data ?? bundle.data?.trend ?? null
@@ -51,7 +55,7 @@ export default function LensPage({ stockCode }: { stockCode: string; corpCode?: 
   const hasTrend = bundle.data?.trend != null
 
   return (
-    <PageContainer gap="sm">
+    <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
         투자 원칙 원장에 비춰 이 종목을 읽습니다 — 판정이 아니라 관점입니다. 두 렌즈가 갈리는 지점이 곧 신호이며,
         원칙 원장(<code>vault/principles</code>)을 수정하면 다음 열람 때 자동으로 다시 읽습니다.
@@ -63,7 +67,7 @@ export default function LensPage({ stockCode }: { stockCode: string; corpCode?: 
         <LensCard kind="value" label="가치 렌즈 · 성장주도 펀더멘탈" reading={value} loading={vCompute.isFetching} />
       ) : (
         <ProposalPanel title="가치 렌즈 · 성장주도 펀더멘탈" contentClassName="text-xs text-muted-foreground">
-          재료가 부족합니다(재무·컨센서스 없음) — 판독을 유보합니다.
+          재료가 부족합니다(재무·추정치 없음) — 판독을 유보합니다.
         </ProposalPanel>
       )}
 
@@ -74,7 +78,7 @@ export default function LensPage({ stockCode }: { stockCode: string; corpCode?: 
           가격 데이터가 부족합니다 — 판독을 유보합니다.
         </ProposalPanel>
       )}
-    </PageContainer>
+    </div>
   )
 }
 
