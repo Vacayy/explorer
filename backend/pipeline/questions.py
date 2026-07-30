@@ -166,13 +166,15 @@ def derive_questions_from_doc(doc_id: int) -> dict:
     return {"doc_id": doc_id, "title": doc["title"], "candidates": cands, "event": (d.get("event") or "").strip()}
 
 
-def run_scenario_for_event(event: str, question_id: int | None = None) -> dict:
+def run_scenario_for_event(event: str, question_id: int | None = None,
+                            report_context: str | None = None) -> dict:
     """단일 소스 event로 파급 시나리오 생성 + scenarios 캐시. 질문=허브(D-070): question_id로 질문에 묶는다.
-    topic은 짧은 라벨(질문 텍스트 앞부분)로 — 긴 event 문장이 피드에서 내러티브로 오인되던 것 교정."""
+    topic은 짧은 라벨(질문 텍스트 앞부분)로 — 긴 event 문장이 피드에서 내러티브로 오인되던 것 교정.
+    report_context: 질문 종합 리포트(현재 결산) — 주면 전망의 출발 조건으로 주입(D-093 체인)."""
     from pipeline.scenario import build_scenario
     if not event.strip():
         return {"error": "event 비어 있음"}
-    r = build_scenario(event)
+    r = build_scenario(event, report_context=report_context)
     if r.get("error"):
         return {"error": r["error"]}
     # 피드 표시용 짧은 topic 라벨 (질문에 묶였으면 질문 텍스트, 아니면 event 앞부분)
