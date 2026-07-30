@@ -379,7 +379,7 @@ def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
         source_type="transcript", source_id=source_id,
         title=f"{f['company_name']} ({f['ticker']}) FY{year} {period} 실적 컨퍼런스콜",
         published_at=_feed_ts(), raw_content=got["content"], kind="text")
-    res = store_document(doc)
+    res = store_document(doc)   # raw_documents INSERT + enrich 인라인
     conn = get_connection()
     conn.execute(
         "INSERT OR IGNORE INTO transcripts (raw_doc_id, ticker, fiscal_year, fiscal_period, call_date, provider) "
@@ -387,6 +387,13 @@ def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
         (res["doc_id"], f["ticker"], year, period, got["date"], provider.name))
     conn.commit()
     conn.close()
+    # 수집 즉시 인과 추출 (D-089) — cron 대기 없이 그 건을 바로 온톨로지에 편입. 컨콜=고신호 인과원.
+    if res.get("status") in ("new", "updated"):
+        try:
+            from pipeline.doc_causal import extract_for_doc
+            extract_for_doc(res["doc_id"])
+        except Exception as e:  # noqa: BLE001 — 추출 실패가 수집을 막지 않게 (cron 배치가 후속 치유)
+            print(f"[transcript] 즉시 doc_causal 실패 doc {res['doc_id']}: {e}")
     return True
 
 

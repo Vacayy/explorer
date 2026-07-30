@@ -47,6 +47,8 @@ class Detail(BaseModel):
     digest: str | None
     body: str
     proxies: list = []   # stage 4에서 채움 (proxy_observations 델타)
+    nodes: list = []          # 이 콜이 언급한 엔티티(노드) — 온톨로지 딥링크 (D-089)
+    causal_edges: list = []   # 이 콜에서 추출된 인과 엣지 (source_doc_id, D-089)
 
 
 class FollowReq(BaseModel):
@@ -106,10 +108,33 @@ def list_quarters(ticker: str):
 
 def _detail_row(conn, transcript_id: int):
     return conn.execute(
-        "SELECT t.id, t.ticker, t.fiscal_year, t.fiscal_period, t.call_date, t.digest, "
+        "SELECT t.id, t.raw_doc_id, t.ticker, t.fiscal_year, t.fiscal_period, t.call_date, t.digest, "
         "rd.markdown, f.company_name FROM transcripts t "
         "JOIN raw_documents rd ON rd.id = t.raw_doc_id "
         "LEFT JOIN transcript_follow f ON f.ticker = t.ticker WHERE t.id=?", (transcript_id,)).fetchone()
+
+
+def _doc_graph(conn, raw_doc_id: int) -> dict:
+    """이 콜 문서가 붙인 노드(entity_links)·추출한 인과 엣지(source_doc_id) — 온톨로지 딥링크용 (D-089)."""
+    nodes = [dict(r) for r in conn.execute(
+        "SELECT DISTINCT e.id, e.name, e.type, el.link_type FROM entity_links el "
+        "JOIN entities e ON e.id = el.entity_id WHERE el.doc_id = ? "
+        "ORDER BY el.confidence DESC, e.name LIMIT 30", (raw_doc_id,)).fetchall()]
+    edges = [dict(r) for r in conn.execute(
+        "SELECT er.rel_type, er.effect_direction, s.id from_id, s.name \"from\", s.type from_type, "
+        "  d.id to_id, d.name \"to\", d.type to_type "
+        "FROM entity_relations er JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id "
+        "WHERE er.source_doc_id = ? AND er.rel_type IN ('CAUSES','BENEFITS_FROM') ORDER BY er.id", (raw_doc_id,)).fetchall()]
+    return {"nodes": nodes, "edges": edges}
+
+
+def _build_detail(conn, row) -> "Detail":
+    g = _doc_graph(conn, row["raw_doc_id"])
+    return Detail(transcript_id=row["id"], ticker=row["ticker"],
+                  company_name=row["company_name"] or row["ticker"],
+                  fiscal_year=row["fiscal_year"], fiscal_period=row["fiscal_period"],
+                  call_date=row["call_date"], digest=row["digest"], body=row["markdown"] or "",
+                  nodes=g["nodes"], causal_edges=g["edges"])
 
 
 @router.get("/detail/{transcript_id}", response_model=Detail)
@@ -117,13 +142,12 @@ def detail(transcript_id: int):
     """빠른 조회 — 원문+메타+저장된 정리(없으면 null). 정리 생성은 POST /digest로 분리(수 분 소요)."""
     conn = get_connection()
     row = _detail_row(conn, transcript_id)
-    conn.close()
     if not row:
+        conn.close()
         raise HTTPException(404, "transcript 없음")
-    return Detail(transcript_id=row["id"], ticker=row["ticker"],
-                  company_name=row["company_name"] or row["ticker"],
-                  fiscal_year=row["fiscal_year"], fiscal_period=row["fiscal_period"],
-                  call_date=row["call_date"], digest=row["digest"], body=row["markdown"] or "")
+    d = _build_detail(conn, row)
+    conn.close()
+    return d
 
 
 @router.post("/detail/{transcript_id}/digest", response_model=Detail)
@@ -132,14 +156,15 @@ def compute_digest(transcript_id: int):
     from pipeline.transcript import digest_one
     conn = get_connection()
     row = _detail_row(conn, transcript_id)
-    conn.close()
     if not row:
+        conn.close()
         raise HTTPException(404, "transcript 없음")
-    digest = row["digest"] or digest_one(transcript_id)
-    return Detail(transcript_id=row["id"], ticker=row["ticker"],
-                  company_name=row["company_name"] or row["ticker"],
-                  fiscal_year=row["fiscal_year"], fiscal_period=row["fiscal_period"],
-                  call_date=row["call_date"], digest=digest, body=row["markdown"] or "")
+    if not row["digest"]:
+        digest_one(transcript_id)
+        row = _detail_row(conn, transcript_id)   # digest 반영분 재조회
+    d = _build_detail(conn, row)
+    conn.close()
+    return d
 
 
 @router.post("/follow", status_code=201)
