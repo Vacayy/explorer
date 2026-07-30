@@ -37,6 +37,7 @@ echo "$(ts) [chain] 시작" >> "$LOG"
 # 기존 crontab의 && 의미 보존 (한 단계 실패 시 이후 중단)
 $PY scripts/ingest.py            >> "$LOG" 2>&1 && \
 $PY scripts/redigest_youtube.py  >> "$LOG" 2>&1 && \
+$PY scripts/extract_doc_causal.py --limit 10 >> "$LOG" 2>&1 && \
 $PY scripts/compute_signals.py   >> "$LOG" 2>&1 && \
 $PY scripts/compute_narratives.py >> "$LOG" 2>&1 && \
 $PY scripts/extract_events.py    >> "$LOG" 2>&1 && \
