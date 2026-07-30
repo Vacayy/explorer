@@ -386,6 +386,7 @@ interface CausalEdge {
   reference_period: string | null; confidence: number | null
   effect_direction?: string | null; effect_strength?: string | null
   corroborated_by?: number; contested?: boolean; promoted_knowledge_id?: number | null
+  obs_confirmed?: boolean
 }
 interface CausalGraph { nodes: { name: string; type: string }[]; edges: CausalEdge[] }
 
@@ -459,6 +460,11 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
                   )}
                   {e.promoted_knowledge_id && (
                     <Badge variant="secondary" className="text-[9px] font-normal">승격된 지식</Badge>
+                  )}
+                  {e.obs_confirmed && (
+                    <Badge variant="outline" className="text-[9px] font-normal text-up border-up/40" title="추적 질문의 실적 관측이 이 인과를 확증">
+                      관측 확증
+                    </Badge>
                   )}
                   {e.mechanism && (
                     <span className="text-[11px] text-muted-foreground w-full pl-1">↳ {e.mechanism}</span>
