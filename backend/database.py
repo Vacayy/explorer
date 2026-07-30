@@ -1016,6 +1016,7 @@ def init_db():
         "ALTER TABLE questions ADD COLUMN last_viewed_at TEXT",                     # 관측 비용 게이트(D-072): 최근 조회 질문만 자동 관측(dormant 일시정지)
         "ALTER TABLE proxy_observations ADD COLUMN source_type TEXT",              # 범용 source_ref (transcript|financial|consensus|signal)
         "ALTER TABLE proxy_observations ADD COLUMN source_id TEXT",
+        "ALTER TABLE entity_digests ADD COLUMN insight_proposed INTEGER DEFAULT 0",  # 다이제스트 언섬(D-085): insight를 질문 제안 큐로 흘린 dedup 플래그
     ]:
         try:
             conn.execute(migration)
