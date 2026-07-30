@@ -439,7 +439,7 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
                er.effect_direction, er.effect_strength, er.obs_confirmed_at,
-               er.promoted_knowledge_id, er.feedback_note, er.geo_scope, s.id sid, s.name sname, s.type stype, d.name dname, d.type dtype
+               er.promoted_knowledge_id, er.feedback_note, er.geo_scope, s.id sid, s.name sname, s.type stype, d.id did, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
         WHERE er.narrative_id=? AND er.rel_type IN ('CAUSES','BENEFITS_FROM')
@@ -456,8 +456,9 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
             "SELECT 1 FROM entity_relations er2 JOIN entities s2 ON s2.id=er2.src_id "
             "JOIN entities d2 ON d2.id=er2.dst_id WHERE er2.rel_type='CAUSES' AND s2.name=? AND d2.name=?",
             (e["dname"], e["sname"])).fetchone() is not None
-        out_edges.append({"from": e["sname"], "from_type": e["stype"], "to": e["dname"],
-                          "to_type": e["dtype"], "rel": e["rel_type"], "mechanism": e["mechanism"],
+        out_edges.append({"from": e["sname"], "from_type": e["stype"], "from_id": e["sid"],
+                          "to": e["dname"], "to_type": e["dtype"], "to_id": e["did"],
+                          "rel": e["rel_type"], "mechanism": e["mechanism"],
                           "orientation": e["time_orientation"], "reference_period": e["reference_period"],
                           "confidence": e["confidence"],
                           "effect_direction": e["effect_direction"], "effect_strength": e["effect_strength"],
