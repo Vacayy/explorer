@@ -257,6 +257,31 @@ export interface UsDossier {
   latest_transcript: { id: number; fiscal_year: number; fiscal_period: string; call_date: string } | null;
 }
 
+export interface UsListItem {
+  ticker: string;
+  name: string;
+  group_label: string | null;
+  value_stance: string | null;
+  trend_stance: string | null;
+  quadrant_cell: string | null;
+  price: number | null;
+}
+export interface UsGroup {
+  label: string;
+  items: UsListItem[];
+}
+export interface UsList {
+  groups: UsGroup[];
+}
+export interface UsMention {
+  id: number;
+  source_type: string;
+  title: string | null;
+  url: string | null;
+  published_at: string | null;
+  excerpt: string | null;
+}
+
 // 대화 (P2-0/P2-1)
 export interface ConversationItem {
   id: number;

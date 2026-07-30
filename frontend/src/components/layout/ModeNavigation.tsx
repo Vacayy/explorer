@@ -14,6 +14,7 @@ const FOLLOW_TABS = [
   { key: "follow", path: "/follow", label: "팔로우" },
   { key: "universe", path: "/follow/universe", label: "유니버스" },
   { key: "transcripts", path: "/follow/transcripts", label: "컨콜" },
+  { key: "us", path: "/us", label: "미국" },
   { key: "trade", path: "/follow/trade", label: "수출입" },
   { key: "saved", path: "/follow/saved", label: "저장됨" },
   { key: "map", path: "/map", label: "산업 맵" },
@@ -158,7 +159,7 @@ function getActiveMode(pathname: string): AppMode {
   // 팔로우 — 허브 + 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-057)
   if (pathname.startsWith("/follow") || pathname.startsWith("/stocks")
       || pathname.startsWith("/map") || pathname.startsWith("/people") || pathname.startsWith("/person")
-      || pathname.startsWith("/actions")) return "follow"
+      || pathname.startsWith("/us") || pathname.startsWith("/actions")) return "follow"
   if (pathname.startsWith("/chat") || pathname.startsWith("/ask")) return "chat"
   if (pathname.startsWith("/feed") || pathname.startsWith("/doc/") || pathname.startsWith("/source")) return "feed"
   if (pathname.startsWith("/analyze")) return "analyze"
@@ -184,6 +185,7 @@ function getActiveSubTab(pathname: string): string | null {
   if (pathname.startsWith("/follow/transcripts")) return "transcripts"
   if (pathname.startsWith("/follow/trade")) return "trade"
   if (pathname.startsWith("/follow/saved")) return "saved"
+  if (pathname.startsWith("/us")) return "us"
   if (pathname.startsWith("/follow")) return "follow"
   if (pathname.startsWith("/map")) return "map"
   if (pathname.startsWith("/people") || pathname.startsWith("/person")) return "people"

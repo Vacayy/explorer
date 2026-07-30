@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief, UsDossier } from "@/types";
+import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief, UsDossier, UsList, UsMention } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -28,6 +28,8 @@ export const spineKeys = {
   stockLens: (code: string, market: string) => [...spineKeys.all, "stock-lens", code, market] as const,
   stockLensCompute: (code: string, type: string, market: string) => [...spineKeys.all, "stock-lens-compute", code, type, market] as const,
   usDossier: (ticker: string) => [...spineKeys.all, "us-dossier", ticker] as const,
+  usList: () => [...spineKeys.all, "us-list"] as const,
+  usMentions: (ticker: string) => [...spineKeys.all, "us-mentions", ticker] as const,
 };
 
 /** 종목 AI 브리프 — 캐시 + stale 플래그 (LLM 없음) */
@@ -77,6 +79,19 @@ export const usDossierQuery = (ticker: string) =>
   apiQuery<UsDossier>({
     key: spineKeys.usDossier(ticker),
     url: `/api/spine/us/${ticker}`,
+    staleTime: STALE.medium,
+    enabled: !!ticker,
+  });
+
+/** 미국 종목 디렉토리 — transcript_follow 그룹별 + 캐시된 렌즈 stance (LLM 없음) */
+export const usListQuery = () =>
+  apiQuery<UsList>({ key: spineKeys.usList(), url: `/api/spine/us`, staleTime: STALE.medium });
+
+/** 미국 종목 언급(여론) — entity_links 경유 최근 문서 */
+export const usMentionsQuery = (ticker: string) =>
+  apiQuery<UsMention[]>({
+    key: spineKeys.usMentions(ticker),
+    url: `/api/spine/us/${ticker}/mentions`,
     staleTime: STALE.medium,
     enabled: !!ticker,
   });

@@ -55,6 +55,7 @@ import DisclosurePage from "@/components/disclosures/DisclosurePage"
 import ValuationPage from "@/components/valuation/ValuationPage"
 import LensPage from "@/components/lens/LensPage"
 import UsDossierPage from "@/components/us/UsDossierPage"
+import UsIndexPage from "@/components/us/UsIndexPage"
 
 // Feed
 import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
@@ -208,6 +209,7 @@ export default function App() {
             <Route path="analyze/:stockCode/disclosures" element={<AnalyzePage tab="disclosures" />} />
             <Route path="analyze/:stockCode/mentions" element={<AnalyzePage tab="mentions" />} />
             <Route path="analyze/:stockCode/lens" element={<AnalyzePage tab="lens" />} />
+            <Route path="us" element={<UsIndexPage />} />
             <Route path="us/:ticker" element={<UsDossierPage />} />
 
             {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
