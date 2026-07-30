@@ -281,6 +281,25 @@ export interface UsMention {
   published_at: string | null;
   excerpt: string | null;
 }
+export interface UsEdge {
+  src: string;
+  dst: string;
+  rel_type: string;
+  direction: string | null;
+  confidence: number | null;
+  mechanism: string | null;
+  self_is_src: boolean;
+}
+export interface UsNarrativeRef {
+  id: number;
+  topic: string;
+  title: string | null;
+}
+export interface UsWorldModel {
+  entity_id: number | null;
+  edges: UsEdge[];
+  narratives: UsNarrativeRef[];
+}
 
 // 대화 (P2-0/P2-1)
 export interface ConversationItem {

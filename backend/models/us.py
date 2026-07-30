@@ -38,3 +38,25 @@ class UsMention(BaseModel):
     url: str | None = None
     published_at: str | None = None
     excerpt: str | None = None
+
+
+class UsEdge(BaseModel):
+    src: str
+    dst: str
+    rel_type: str                 # CAUSES | BENEFITS_FROM
+    direction: str | None = None  # positive | negative | mixed
+    confidence: float | None = None
+    mechanism: str | None = None
+    self_is_src: bool             # 이 종목이 원인(True)인가 결과(False)인가
+
+
+class UsNarrativeRef(BaseModel):
+    id: int
+    topic: str
+    title: str | None = None
+
+
+class UsWorldModel(BaseModel):
+    entity_id: int | None = None
+    edges: list[UsEdge]
+    narratives: list[UsNarrativeRef]

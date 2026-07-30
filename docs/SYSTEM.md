@@ -172,7 +172,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/market-regime` · `POST /snapshot` | **시장 국면(D-076)** — 양 시장 리스크 포스처+근거+스파크라인 series(LLM 0, 첫 진입 시 lazy 스냅샷). / EOD 일별 스냅샷 적재(scripts/snapshot_market.py=수동·cron) |
 | `POST /api/spine/thesis/audit` · `GET /audits` · `GET /{id}` | **논지 감사(D-078)** — thesis 주입→인과그래프 대질 감사(read-only·연쇄 LLM ~수 분, 저장) / 히스토리 / 저장분 재조회(LLM 0). 격리: 그래프 무변경 |
 | `GET /api/spine/stock/{code}/lens?market=` · POST `/lens/compute?type=&market=&refresh=` | **투자 렌즈(D-090·D-091)** — 캐시 판독 번들(value/trend)+**4상한(quadrant)**+stale(LLM 0) / 원칙·재료 변경 시만 생성(sonnet, `type=value\|trend`, `market=kr\|us`, 멱등). 재료·원칙 없는 렌즈는 응답에서 생략 |
-| `GET /api/spine/us` · `/{ticker}` · `/{ticker}/mentions` | **미국 종목(D-091·D-092)** — 디렉토리(transcript_follow 그룹별 + 캐시 렌즈 stance·4상한, LLM 0) / 도시에 헤더(yfinance 시세·밸류 + entity_id + 최근 컨콜 메타) / 여론(entity_links 경유 언급 문서 — 컨콜·유튜브·인물·뉴스 혼합). 렌즈는 `/lens?market=us` |
+| `GET /api/spine/us` · `/{ticker}` · `/{ticker}/mentions` · `/{ticker}/worldmodel` | **미국 종목(D-091·D-092)** — 디렉토리(transcript_follow 그룹별 + 캐시 렌즈 stance·4상한, LLM 0) / 도시에 헤더(yfinance 시세·밸류 + entity_id + 최근 컨콜 메타) / 여론(entity_links 경유 언급 문서) / **월드모델(이 노드의 인과 엣지 양방향 + 걸린 내러티브, LLM 0 — 온톨로지 딥링크 `/knowledge/ontology?focus=id`)**. 렌즈는 `/lens?market=us` |
 | `GET /api/spine/actions` (+`/rights`) | 기업활동 목록+요약 / 유무증 Pro (차액·증자비율 계산 포함) |
 | `GET /api/spine/digests?stock=&period=(1d\|1w\|1m)` · `POST /api/spine/digests/catchup?stock=` | 종목 1D/1W/1M 요약 아카이브 조회 / **진입 시 소급 catch-up**(D-085 — 과거 월 1M·이번 달 주 1W·오늘 1D 멱등 생성). 프론트: 종목 진입 시 자동 호출(백그라운드, 세션당 1회) + '지금 업데이트' 버튼. 구 `/compute?period` 폐지 |
 | `GET /api/spine/narrative` (+`/compute`·`/list`·`/{id}/causal`·`/{id}/chain`·`/{id}/diff`·`/{id}/related`·`/{id}/grounding`·`/mer`·`/mer/compute`·`/versions`·`/version?id=`) | 주제 내러티브 캐시+stale(category·version) / opus 생성(멱등) / 모음 / 인과 서브그래프(교차검증 포함) / 순회 경로(근본원인→수혜, LLM 없음) / 직전 버전 대비 드리프트(결정적 diff+게으른 haiku 요약) / 공유 노드 기반 관련 내러티브(LLM 없음) / 딛고 선 승격 지식+반증 조건(LLM 없음) / 메르식 서사 캐시+stale / 메르 서사 opus 생성(멱등) / 버전 목록 / **특정 버전 본문 by id**(히스토리 도트 클릭, D-060) |
@@ -218,7 +218,7 @@ Home(/home)        아침 브리핑 + 신호 대시보드 — 기계의 3줄(소
 문서(/doc/:id)     수집 원문·이미지 내부 열람 (외부 원문은 보조 버튼)
 분석(/analyze/:code) 요약·재무·밸류·사업·공시·**렌즈**(투자 원칙 원장 기반 가치·추세 관점 + 4상한 미니뷰, D-090) (기존) + 언급 탭(1D/1W/1M 다이제스트 진입 시 자동 catch-up, D-085·
                    새로운시각·매칭 키워드 관리·신호 이력·언급 문서)
-미국(/us · /us/:ticker) **미국 종목 디렉토리+도시에(D-091·D-092)** — `/us`=팔로우 서브탭 '미국'(transcript_follow 그룹별 카드 → 도시에, 렌즈 stance 배지). `/us/:ticker`=경량 도시에(헤더 yfinance + 투자 렌즈 가치/추세 market='us' + **여론(언급 문서)**). 컨콜 팔로우 상세 '도시에 →'로도 진입. `/analyze`(DART 한국 전용)와 분리
+미국(/us · /us/:ticker) **미국 종목 디렉토리+도시에(D-091·D-092)** — `/us`=팔로우 서브탭 '미국'(transcript_follow 그룹별 카드 → 도시에, 렌즈 stance 배지). `/us/:ticker`=경량 도시에(헤더 yfinance + 투자 렌즈 가치/추세 market='us' + **월드모델(인과 엣지·걸린 내러티브·온톨로지 딥링크)** + **여론(언급 문서)**). 컨콜 팔로우 상세 '도시에 →'로도 진입. `/analyze`(DART 한국 전용)와 분리
 VS 비교 · 리서치노트(워치리스트/투자메모/카탈리스트)
 ```
 
