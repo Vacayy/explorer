@@ -1017,6 +1017,11 @@ def init_db():
         "ALTER TABLE proxy_observations ADD COLUMN source_type TEXT",              # 범용 source_ref (transcript|financial|consensus|signal)
         "ALTER TABLE proxy_observations ADD COLUMN source_id TEXT",
         "ALTER TABLE entity_digests ADD COLUMN insight_proposed INTEGER DEFAULT 0",  # 다이제스트 언섬(D-085): insight를 질문 제안 큐로 흘린 dedup 플래그
+        # 관측→엣지 환류 (D-087) — 추적 질문이 confirm=leaning_yes+aligned 도달 시 딛고 선 내러티브 엣지에
+        # 관측 확증 주석. confidence(인과 확신)와 별개 축(축 분리 D-022/D-065) — 실데이터로 확인됐나.
+        "ALTER TABLE entity_relations ADD COLUMN obs_confirmed_at TEXT",
+        "ALTER TABLE entity_relations ADD COLUMN obs_confirmed_qid INTEGER",
+        "ALTER TABLE questions ADD COLUMN edge_confirmed INTEGER DEFAULT 0",  # 확증 상태 진입 1회 발화 가드(멱등)
     ]:
         try:
             conn.execute(migration)

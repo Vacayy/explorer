@@ -415,8 +415,23 @@ def _divergence(lead: str, confirm: str) -> str:
     return "lead_ahead" if a > b else "confirm_ahead"
 
 
+def _confirm_edges(conn, qid: int, narrative_id: int) -> int:
+    """관측→엣지 환류 (D-087) — 질문이 confirm=leaning_yes+aligned 도달 = 그 질문이 딛고 선
+    내러티브의 인과 엣지가 **실데이터 관측으로 확증**됨. 엣지에 obs_confirmed 주석을 찍는다.
+
+    confidence(이 인과가 참이라는 확신)에 **안 섞는다** — 별개 축(축 분리 D-022/D-065): 관측 확증은
+    '실데이터로 확인됐나'라는 독립 신호. 질문↔엣지 매핑은 narrative_edge_evidence(내러티브 버전이
+    주장한 엣지) 경유 — 성긴 매핑이라 blunt한 confidence 수학 대신 가시 주석이 정직하다."""
+    cur = conn.execute(
+        "UPDATE entity_relations SET obs_confirmed_at=datetime('now'), obs_confirmed_qid=? "
+        "WHERE id IN (SELECT entity_relation_id FROM narrative_edge_evidence WHERE narrative_id=?)",
+        (qid, narrative_id))
+    return cur.rowcount
+
+
 def rollup(question_id: int) -> dict:
-    """프록시 관측을 pace layer 2층으로 결정적 롤업. 판정이 바뀌면 haiku 한 줄 종합(게으르게)."""
+    """프록시 관측을 pace layer 2층으로 결정적 롤업. 판정이 바뀌면 haiku 한 줄 종합(게으르게).
+    confirm=leaning_yes+aligned 진입 시 딛고 선 내러티브 엣지에 관측 확증 주석(D-087)."""
     conn = get_connection()
     q = conn.execute("SELECT * FROM questions WHERE id=?", (question_id,)).fetchone()
     if not q:
@@ -452,13 +467,23 @@ def rollup(question_id: int) -> dict:
     if changed:
         summary = _summarize(conn, q, lead_v, confirm_v, div)
     conviction = (abs(sum(confirm)) / len(confirm)) if confirm else None
+
+    # 관측→엣지 환류 (D-087) — confirm 확증(leaning_yes+aligned) 상태 진입 시 1회 발화(멱등 가드)
+    was = bool(q["edge_confirmed"]) if "edge_confirmed" in q.keys() else False
+    now_ok = confirm_v == "leaning_yes" and div == "aligned" and q["narrative_id"] is not None
+    confirmed = 1 if now_ok else 0
+    edges_confirmed = 0
+    if now_ok and not was:
+        edges_confirmed = _confirm_edges(conn, question_id, q["narrative_id"])
+
     conn.execute(
         "UPDATE questions SET lead_verdict=?, confirm_verdict=?, divergence=?, verdict_summary=?, "
-        "conviction=?, updated_at=datetime('now') WHERE id=?",
-        (lead_v, confirm_v, div, summary, conviction, question_id))
+        "conviction=?, edge_confirmed=?, updated_at=datetime('now') WHERE id=?",
+        (lead_v, confirm_v, div, summary, conviction, confirmed, question_id))
     conn.commit()
     conn.close()
-    return {"lead_verdict": lead_v, "confirm_verdict": confirm_v, "divergence": div, "changed": changed}
+    return {"lead_verdict": lead_v, "confirm_verdict": confirm_v, "divergence": div,
+            "changed": changed, "edges_confirmed": edges_confirmed}
 
 
 _SUMMARY_PROMPT = """핵심 질문의 현재 판정을 한국어 한 문장으로 종합하라(간결히, 내부코드·약어 노출 금지).
