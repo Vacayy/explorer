@@ -1,11 +1,17 @@
 import { Link, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { usDossierQuery } from "@/api/spine"
+import { usDossierQuery, usMentionsQuery } from "@/api/spine"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { LensView } from "@/components/lens/LensPage"
+
+const SRC_LABEL: Record<string, string> = {
+  transcript: "컨콜", youtube: "유튜브", blog: "블로그", news: "뉴스", article: "아티클",
+  telegram: "텔레그램", canon: "역사", note: "메모",
+}
 
 function usd(v?: number | null) {
   if (v == null) return "-"
@@ -76,14 +82,61 @@ export default function UsDossierPage() {
                 최근 컨콜 {d.latest_transcript.fiscal_year} {d.latest_transcript.fiscal_period} →
               </Link>
             )}
-            <Link to={`/feed?q=${encodeURIComponent(d.name)}`} className="text-primary hover:underline">
-              이 종목 언급 →
+            <Link to="/us" className="text-muted-foreground hover:underline">
+              ← 미국 종목 목록
             </Link>
           </div>
         </CardContent>
       </Card>
 
       <LensView code={d.ticker} market="us" />
+
+      <MentionsSection ticker={d.ticker} name={d.name} />
     </PageContainer>
+  )
+}
+
+/** 여론 — 이 종목 언급 문서(entity_links). 컨콜·유튜브·인물·뉴스 혼합, US 소스는 Phase 3로 확충. */
+function MentionsSection({ ticker, name }: { ticker: string; name: string }) {
+  const q = useQuery(usMentionsQuery(ticker))
+  const items = q.data ?? []
+  return (
+    <Card>
+      <CardContent className="py-4">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm font-semibold">여론 · 최근 언급 {items.length ? `(${items.length})` : ""}</span>
+          <Link to={`/feed?q=${encodeURIComponent(name)}`} className="text-xs text-primary hover:underline">
+            더 보기 →
+          </Link>
+        </div>
+        {q.isLoading ? (
+          <Skeleton className="mt-3 h-16 w-full rounded-lg" />
+        ) : items.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            아직 이 종목을 언급한 수집 문서가 없습니다 — 컨콜·US 유튜브·인물 소스를 구독하면 채워집니다.
+          </p>
+        ) : (
+          <ul className="mt-2 divide-y">
+            {items.map((m) => (
+              <li key={m.id} className="py-2">
+                <Link to={`/doc/${m.id}`} className="flex items-start gap-2 group">
+                  <Badge variant="secondary" className="text-[10px] font-normal shrink-0 mt-0.5">
+                    {SRC_LABEL[m.source_type] ?? m.source_type}
+                  </Badge>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-sm group-hover:underline line-clamp-1">{m.title || m.excerpt || "(제목 없음)"}</span>
+                    {m.published_at && (
+                      <span className="block text-[10px] text-muted-foreground tabular-nums">
+                        {m.published_at.slice(0, 10)}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }
