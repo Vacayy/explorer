@@ -430,6 +430,23 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
 
+    -- 투자 렌즈 판독 (docs/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단.
+    -- append-only 히스토리(판단 변화 추적). principles/material 해시로 게으른 재생성 가드.
+    CREATE TABLE IF NOT EXISTS lens_readings (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        stock_code      TEXT NOT NULL,
+        market          TEXT NOT NULL DEFAULT 'kr',   -- kr | us
+        lens_type       TEXT NOT NULL,                -- value | trend
+        body            TEXT,                         -- 원칙에 비춘 판독 (마크다운)
+        stance          TEXT,                         -- value: 강|중|약 / trend: 초입|진행|성숙|훼손
+        signals_json    TEXT,                         -- 역추적용 근거
+        principles_hash TEXT,                         -- 원장 버전 (바뀌면 stale)
+        material_hash   TEXT,                         -- 재료 스냅샷 (바뀌면 재생성)
+        model           TEXT,
+        created_at      TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_lens_readings ON lens_readings(stock_code, lens_type, id);
+
     -- Peer 그룹 (LLM 큐레이션 1회 캐시) + 지표 캐시 (KR=자체, 해외=yfinance 24h)
     CREATE TABLE IF NOT EXISTS stock_peers (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
