@@ -11,12 +11,12 @@ router = APIRouter(prefix="/api/spine/stock", tags=["spine"])
 
 
 @router.get("/{stock_code}/lens", response_model=LensBundle)
-def get_lens(stock_code: str):
+def get_lens(stock_code: str, market: str = "kr"):
     """캐시된 렌즈 판독 + stale + 4상한 — LLM 호출 없음. 재료·원칙 없는 렌즈는 응답에서 생략."""
     from pipeline.investor_lens import LENS_TYPES, compute_quadrant, peek
     bundle: dict = {"stock_code": stock_code}
     for lt in LENS_TYPES:
-        p = peek(stock_code, lt)
+        p = peek(stock_code, lt, market)
         if p:
             bundle[lt] = LensReading(
                 lens_type=lt, status=p["status"], body=p["body"], stance=p["stance"],
@@ -30,12 +30,12 @@ def get_lens(stock_code: str):
 
 
 @router.post("/{stock_code}/lens/compute", response_model=LensReading)
-def compute_lens(stock_code: str, type: str = "value", refresh: bool = False):
-    """재료가 바뀌었을 때만 LLM 생성 — 멱등. type=value|trend."""
+def compute_lens(stock_code: str, type: str = "value", market: str = "kr", refresh: bool = False):
+    """재료가 바뀌었을 때만 LLM 생성 — 멱등. type=value|trend, market=kr|us."""
     from pipeline.investor_lens import LENS_TYPES, compute_reading
     if type not in LENS_TYPES:
         raise HTTPException(400, "알 수 없는 렌즈 유형")
-    r = compute_reading(stock_code, type, refresh)
+    r = compute_reading(stock_code, type, market, refresh)
     if r.get("status") == "not_found":
         raise HTTPException(404, "종목 엔티티가 없습니다")
     if r.get("status") == "no_principles":

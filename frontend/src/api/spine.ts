@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief } from "@/types";
+import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief, UsDossier } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -25,8 +25,9 @@ export const spineKeys = {
   conversations: (stock?: string) => [...spineKeys.all, "conversations", stock ?? "all"] as const,
   conversation: (id: number) => [...spineKeys.all, "conversation", id] as const,
   saved: () => [...spineKeys.all, "saved"] as const,
-  stockLens: (code: string) => [...spineKeys.all, "stock-lens", code] as const,
-  stockLensCompute: (code: string, type: string) => [...spineKeys.all, "stock-lens-compute", code, type] as const,
+  stockLens: (code: string, market: string) => [...spineKeys.all, "stock-lens", code, market] as const,
+  stockLensCompute: (code: string, type: string, market: string) => [...spineKeys.all, "stock-lens-compute", code, type, market] as const,
+  usDossier: (ticker: string) => [...spineKeys.all, "us-dossier", ticker] as const,
 };
 
 /** 종목 AI 브리프 — 캐시 + stale 플래그 (LLM 없음) */
@@ -54,21 +55,30 @@ export const stockBriefComputeQuery = (code: string, enabled: boolean) =>
     enabled,
   });
 
-/** 투자 렌즈 — 캐시 + stale 플래그 (LLM 없음) */
-export const stockLensQuery = (code: string) =>
+/** 투자 렌즈 — 캐시 + stale 플래그 (LLM 없음). market=kr|us */
+export const stockLensQuery = (code: string, market = "kr") =>
   apiQuery<LensBundle>({
-    key: spineKeys.stockLens(code),
-    url: `/api/spine/stock/${code}/lens`,
+    key: spineKeys.stockLens(code, market),
+    url: `/api/spine/stock/${code}/lens?market=${market}`,
     staleTime: STALE.short,
     enabled: !!code,
   });
 
-/** 렌즈 생성 — 원칙·재료 변경 시만 LLM. 종목·렌즈별 키잉. */
-export const stockLensComputeQuery = (code: string, type: string, enabled: boolean) =>
+/** 렌즈 생성 — 원칙·재료 변경 시만 LLM. 종목·렌즈·시장별 키잉. */
+export const stockLensComputeQuery = (code: string, type: string, market: string, enabled: boolean) =>
   apiComputeQuery<LensReading>({
-    key: spineKeys.stockLensCompute(code, type),
-    url: `/api/spine/stock/${code}/lens/compute?type=${type}`,
+    key: spineKeys.stockLensCompute(code, type, market),
+    url: `/api/spine/stock/${code}/lens/compute?type=${type}&market=${market}`,
     enabled,
+  });
+
+/** 미국 종목 도시에 헤더 — yfinance 시세·밸류 + 컨콜 메타 */
+export const usDossierQuery = (ticker: string) =>
+  apiQuery<UsDossier>({
+    key: spineKeys.usDossier(ticker),
+    url: `/api/spine/us/${ticker}`,
+    staleTime: STALE.medium,
+    enabled: !!ticker,
   });
 
 export const conversationsQuery = (stock?: string) =>

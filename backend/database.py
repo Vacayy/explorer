@@ -447,6 +447,21 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_lens_readings ON lens_readings(stock_code, lens_type, id);
 
+    -- 미국 종목 데이터 (docs/specs/us-dossier.md, yfinance 캐시) — KR 도메인 테이블 오염 방지 위해 분리.
+    -- 컬럼명은 stock_prices와 호환(stock_code=티커) → technicals·매물대 재사용.
+    CREATE TABLE IF NOT EXISTS us_prices (
+        stock_code TEXT NOT NULL,          -- 티커 (NVDA…) 또는 벤치마크(SPY)
+        trade_date TEXT NOT NULL,
+        open REAL, high REAL, low REAL, close REAL, volume REAL,
+        fetched_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY(stock_code, trade_date)
+    );
+    CREATE TABLE IF NOT EXISTS us_fundamentals (
+        ticker     TEXT PRIMARY KEY,        -- yfinance info/income/cashflow/estimates 스냅샷
+        data_json  TEXT NOT NULL,
+        fetched_at TEXT NOT NULL
+    );
+
     -- Peer 그룹 (LLM 큐레이션 1회 캐시) + 지표 캐시 (KR=자체, 해외=yfinance 24h)
     CREATE TABLE IF NOT EXISTS stock_peers (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -290,6 +290,8 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
             <div className="flex items-center gap-2">
               <span className="font-bold text-lg truncate">{data.company_name}</span>
               <Badge variant="secondary" className="text-[11px]">{data.ticker}</Badge>
+              <Link to={`/us/${data.ticker}`} className="text-xs text-primary hover:underline whitespace-nowrap"
+                title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에 →</Link>
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">
               {periodOf(data.fiscal_year, data.fiscal_period)}{data.call_date ? ` · ${data.call_date}` : ""}

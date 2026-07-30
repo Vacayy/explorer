@@ -54,6 +54,7 @@ import BusinessPage from "@/components/business/BusinessPage"
 import DisclosurePage from "@/components/disclosures/DisclosurePage"
 import ValuationPage from "@/components/valuation/ValuationPage"
 import LensPage from "@/components/lens/LensPage"
+import UsDossierPage from "@/components/us/UsDossierPage"
 
 // Feed
 import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
@@ -125,7 +126,7 @@ function AnalyzePage({ tab }: { tab: string }) {
     case "valuation":
       return <ValuationPage stockCode={stockCode} />
     case "lens":
-      return <LensPage stockCode={stockCode} corpCode={corpCode} />
+      return <LensPage code={stockCode} market="kr" />
     case "mentions":
       // 언급 탭은 종목 홈 우측 컬럼으로 흡수 — 기존 링크는 홈으로
       return <Navigate to={`/analyze/${stockCode}/summary`} replace />
@@ -207,6 +208,7 @@ export default function App() {
             <Route path="analyze/:stockCode/disclosures" element={<AnalyzePage tab="disclosures" />} />
             <Route path="analyze/:stockCode/mentions" element={<AnalyzePage tab="mentions" />} />
             <Route path="analyze/:stockCode/lens" element={<AnalyzePage tab="lens" />} />
+            <Route path="us/:ticker" element={<UsDossierPage />} />
 
             {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
             <Route path="feed" element={<UnifiedFeedPage />} />
