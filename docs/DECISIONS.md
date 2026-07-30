@@ -10,6 +10,12 @@
 
 ---
 
+## D-088 · 2026-07-30 · 문서 레벨 인과 추출 cron 편입 — 컨콜·feed 새 문서를 자동 엣지화 (D-028 보류 번복)
+**결정**: `extract_doc_causal`(문서 레벨 인과 추출)을 30분 cron 체인에 편입한다 — `ingest→redigest_youtube→**extract_doc_causal**→compute_signals→compute_narratives→…` 순(회당 `--limit 10`). 이로써 **모든 소스(텔레그램·블로그·뉴스·유튜브 feed + 컨콜 transcript)**의 새 문서가 enrich 후 **인과 엣지로 자동 추출**된다(source_doc_id·narrative_id=NULL·confidence 상한 0.5, 제2 인과 공급원=교차검증 부트스트랩). 멱등(`enrichments.causal_extracted_at` 마커 — 시도 1회, 재실행 스킵), `run_job` 게이트(관리자 플래그 on/off·job_runs 로그, D-055). 체인 앞쪽(narratives 이전) 배치 — doc-causal 엣지가 내러티브 생성 전 그래프에 있어 노드 vocab 공유·교차검증 부트스트랩. **D-028이 "체인 런타임" 우려로 보류했던 것을 번복** — 런타임은 회당 limit(10)+chain 락(겹침 방지)+멱등으로 관리, 백로그는 점진 처리(또는 수동 `--limit 200` 1회).
+**맥락·이유**: 사용자 2026-07-30 — "컨콜 인과 추출을 cron에 편입" + "feed 문서가 enrich·doc_causal까지 cron에 포함되지?" 확인 요청. 실측으로 갭 확인: **doc_causal은 어떤 소스도 cron에 없었다**(수동 배치) — feed·컨콜 모두 enrich·entity link·embed까지만 자동, 인과 엣지는 compute_narratives(토픽 트리거)로 *간접* 생성될 뿐. `extract_doc_causal`은 이미 소스 무관 전체 후보(enriched·본문 1,200자+·미시도)를 처리하므로 **한 번 cron 편입으로 컨콜+feed 둘 다 해결**. 이게 D-023의 "모든 문서가 인과 그래프에 기여" 비전과 정합 — 특히 컨콜(경영진 1차 발언)은 고신호 인과원. 실측: 1문서→9엣지, 111s(sonnet), job_runs ok 기록.
+**기각한 대안**: ① 컨콜만 필터해 편입 — extract_doc_causal이 소스 무관이라 별도 필터가 오히려 인위적, feed도 원하던 바(사용자 Q2). 전체가 단순·정합. ② 계속 수동 유지 — 사용자 명시 요청·D-023 비전 미달, feed 문서 인과가 내러티브 뽑힐 때까지 누락. ③ limit 크게(20~) — 1문서 111s라 20이면 ~37분>30분 사이클, 락으로 무해하나 상시 초과는 비효율 → 10(보수적, ~18분 최악). ④ 별도 cron(체인 밖) — 체인 앞 배치가 narratives 교차검증 부트스트랩에 유리(D-028 원목적), 편입이 나음. ⑤ run_job 없이 raw — 관리자 게이트·로그 없어 비용 폭주 시 못 끔, run_job이 D-055 정합.
+**참조**: scripts/run_chain.sh(체인)·scripts/extract_doc_causal.py(run_job 래핑)·backend/pipeline/doc_causal.py(멱등·conf_cap 0.5) · SYSTEM.md §2·§5-3 · [[D-028]](레버 3 — cron 보류, 여기서 번복) [[D-023]](문서→인과 그래프) [[D-055]](run_job 게이트) [[D-061]](컨콜 고신호 인과원) · 대화 2026-07-30
+
 ## D-087 · 2026-07-30 · 관측→엣지 환류 — 추적 질문의 실적 확증을 인과 그래프에 (#5, feat/conviction-loop)
 **결정**: 컨빅션 루프의 마지막 열린 고리를 닫는다 — 추적 질문의 관측이 그래프로 **환류**한다. 질문의 `confirm_verdict`가 **leaning_yes + divergence=aligned**(선행 여론과 확정 실적이 같은 방향 = 실데이터 확증)에 도달하면, 그 질문이 딛고 선 내러티브의 인과 엣지(narrative_edge_evidence 경유 매핑)에 **관측 확증 주석**(`obs_confirmed_at`·`obs_confirmed_qid`)을 찍는다(`_confirm_edges`, LLM 0). **핵심 판단 — confidence에 안 섞고 별개 축으로**: 관측 확증은 `confidence`(이 인과가 참이라는 확신)와 직교하는 '실데이터로 확인됐나' 신호다. ①축 분리 철학([[D-022]] salience/conviction·[[D-065]] confidence/effect) 정합, ②질문↔엣지 매핑이 내러티브 단위라 **성기다**(질문은 서사의 thesis를 넓게 테스트, 특정 엣지 아님) → blunt한 confidence 수학은 무관 엣지 과대강화 위험, 가시 주석이 정직. 멱등: 질문에 `edge_confirmed` 플래그 — 확증 상태 **진입 시 1회** 발화, 이탈 시 리셋. rollup에 편승(새 배관 없음). FE: 내러티브 인과 구조 뷰 엣지에 '관측 확증' 배지(교차검증·승격 배지 옆).
 **맥락·이유**: 브레인스토밍(2026-07-29) Top-5, 에픽의 최종 고리. 조사에서 프록시 판정이 질문 트리에 갇혀 그래프로 안 흐르는 게 확인됐다 — 정박 대상 그래프가 현실 관측으로부터 학습하지 못했다. 이걸 닫으면 **정박 → 추적(#2·#4) → 콕핏(#3) → 학습(#5) → 재정박**이 완결된다: 관측이 확인한 인과는 다음 내러티브·논지 감사가 딛고 설 때 '실데이터로 뒷받침된' 엣지로 드러난다. 관측(컨콜·코퍼스)은 내러티브 텍스트와 **독립 소스**라 에코챔버가 아니라 교차모달 확증(서사가 A→B 주장, 실수치가 B 예측대로 움직임 확인) — 정당한 그라운딩. 실측: 질문 3(narrative 68, 19엣지) 매핑·주석·causal_subgraph 노출 확인(테스트 흔적은 실제 판정 unknown이라 되돌림 — 실제 confirm 도달 시만 정당 발화).
@@ -914,6 +920,7 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **맥락·이유**: 깔때기 실측(2026-07-18) — 수집 2,265건 → LLM 태깅 741건(33%, ①에서 67% 유실) → 내러티브 소화 108건(~5%, ②에서 95% 유실) → 인과 추출 경로는 내러티브 하나뿐(③). "양질 인사이트가 쌓이는데 지능이 안 큰다"(stakeholder)의 기계적 원인. 재태깅이 안 밀린 이유는 문서당 claude -p 콜드스타트(HANDOFF §6 기록) — 배치가 해법.
 
 **기각한 대안**: ① 지켜보기(축적 대기) — 병목이 축적량이 아니라 소화 기관 구조라 대기는 무익 ② 재태깅 병렬화(워커 N개) — 콜드스타트 오버헤드가 콜 수만큼 그대로, 배치가 콜 수 자체를 1/10로 ③ 전 문서 sonnet 상시 태깅 — 증분 경로는 haiku로 충분(검증됨), 비용 낭비.
+→ 레버 ③(문서 레벨 인과 추출)의 cron 보류는 D-088에서 번복 — 체인 편입(회당 10·멱등·run_job 게이트)
 
 **참조**: scripts/backfill_enrich_batch.py · pipeline/enrich.py(enrich_batch) · pipeline/narrative.py(compute_top_narratives 커버리지 트리거) · docs/specs/doc-causal-extraction.md · 깔때기 실측 대화 2026-07-18
 
