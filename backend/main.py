@@ -14,7 +14,7 @@ from routers import spine_causal
 from routers import spine_transcript
 from routers import spine_trade
 from routers import spine_questions
-from routers import spine_market
+from routers import spine_macro, spine_market
 from routers import spine_thesis
 from routers import spine_saved
 from routers import spine_lens
@@ -78,6 +78,7 @@ app.include_router(spine_transcript.router)
 app.include_router(spine_trade.router)
 app.include_router(spine_questions.router)
 app.include_router(spine_market.router)
+app.include_router(spine_macro.router)
 app.include_router(spine_thesis.router)
 app.include_router(spine_saved.router)
 app.include_router(spine_lens.router)
