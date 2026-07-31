@@ -517,6 +517,17 @@ def init_db():
         PRIMARY KEY(ticker, url)
     );
 
+    -- 매크로·유동성 신호등 해설 캐시 (D-102, sonnet 산문 · signature 불변이면 재사용, docs/specs/macro.md).
+    CREATE TABLE IF NOT EXISTS macro_signals (
+        as_of      TEXT PRIMARY KEY,       -- 스냅샷 기준일
+        signature  TEXT NOT NULL,          -- 지표 값·변화율 해시 (재생성 게이트)
+        signal     TEXT,                   -- green | yellow | red (신호등)
+        headline   TEXT,
+        comment    TEXT,
+        model      TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- 어젯밤 미국장 브리핑 LLM 종합 캐시 (하루 1회·signature 불변이면 재사용, docs/specs/us-briefing.md).
     CREATE TABLE IF NOT EXISTS us_briefings (
         trade_date     TEXT PRIMARY KEY,
