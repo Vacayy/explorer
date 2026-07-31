@@ -13,6 +13,12 @@ import type { MacroIndicator } from "@/types"
  * 매크로(키 없음, yfinance)·유동성(FRED). 순유동성 = Fed BS − TGA − RRP (MacroMicro US Liquidity Index).
  * 시장 국면(포스처)과 역할 분리 — 이건 '배경 조건'. 버튼 주도 갱신(D-100).
  */
+const LIGHT: Record<string, { dot: string; text: string }> = {
+  green: { dot: "bg-chart-profit", text: "text-chart-profit" },
+  yellow: { dot: "bg-chart-warning", text: "text-chart-warning" },
+  red: { dot: "bg-destructive", text: "text-destructive" },
+}
+
 const GROUP_ORDER: { key: string; label: string }[] = [
   { key: "rates", label: "금리·달러" },
   { key: "liquidity", label: "유동성" },
@@ -85,8 +91,17 @@ export function MacroLiquidity() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {/* 해석 코멘트 — 결정적 frame(LLM 0, 정답 아님) */}
-        {data.interpretation && (
+        {/* 신호등 해설 — sonnet 산문(우선), LLM 미가용이면 결정적 프레임 폴백 */}
+        {data.signal ? (
+          <div className="rounded-md bg-muted/40 px-2.5 py-2">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${LIGHT[data.signal.signal]?.dot ?? "bg-muted-foreground"}`} />
+              <span className={`text-xs font-semibold ${LIGHT[data.signal.signal]?.text ?? "text-foreground"}`}>{data.signal.headline}</span>
+              <span className="ml-auto text-[9px] uppercase tracking-wide text-muted-foreground">해석</span>
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{data.signal.comment}</p>
+          </div>
+        ) : data.interpretation ? (
           <div className="flex items-start gap-1.5 rounded-md bg-muted/40 px-2 py-1.5 text-[11px]">
             <span className={`shrink-0 font-medium ${
               data.interpretation.stance === "우호" ? "text-up"
@@ -95,7 +110,7 @@ export function MacroLiquidity() {
             </span>
             <span className="text-muted-foreground">· {data.interpretation.comment.replace(/ → 위험자산 배경 \S+$/, "")}</span>
           </div>
-        )}
+        ) : null}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
         {GROUP_ORDER.map(({ key, label }) => {
           const items = byGroup(key)

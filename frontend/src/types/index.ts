@@ -596,7 +596,10 @@ export interface MacroIndicator {
   value: number; change_pct: number | null; series: number[];
 }
 export interface MacroInterpretation { stance: string; comment: string }
+export interface MacroSignal { signal: "green" | "yellow" | "red"; headline: string; comment: string }
 export interface MacroData {
   as_of: string | null; items: MacroIndicator[]; degraded: string[];
-  interpretation: MacroInterpretation | null; fred_enabled: boolean;
+  interpretation: MacroInterpretation | null;   // 결정적 폴백
+  signal: MacroSignal | null;                    // 신호등 산문(sonnet)
+  fred_enabled: boolean;
 }
