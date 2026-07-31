@@ -16,7 +16,7 @@ from database import get_connection
 from services import cache_service
 
 CACHE_KEY = "us_movers_dollar_vol"
-TTL_SECONDS = 3600            # 1h — EOD 후 정착, 장중엔 최신 세션 누적치
+TTL_SECONDS = 86400          # 24h — 아침 브리핑용 하루 1회 갱신(마감 후 크론/수동 버튼이 force로 새로고침)
 LIMIT = 20                    # 상위 N 종목
 FETCH_ROWS = 60              # ETF 제외 후 20개 확보용 여유
 RETAIN_DAYS = 7              # 스냅샷 보존 일수(신규 진입 판정용)

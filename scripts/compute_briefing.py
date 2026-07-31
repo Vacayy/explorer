@@ -7,8 +7,9 @@ signature 캐시라 재료(무버·담론·헤드라인) 안 바뀌면 sonnet �
 30분 수집 체인(run_chain.sh)엔 넣지 않는다 — 장중이면 거래대금이 계속 바뀌어 signature가 매번 달라져
 sonnet이 30분마다 재호출(비용 위반). 하루 1회, 마감 뒤가 맞는 케이던스.
 
-권장 crontab (KST, 미국장 마감 05:00 + 수집 여유):
-    10 6 * * 2-6  cd <repo> && ./.venv/bin/python scripts/compute_briefing.py >> logs/briefing.log 2>&1
+권장 crontab (KST, 매일 아침 8시 — 전날 미국장 결산):
+    0 8 * * *  cd <repo> && ./.venv/bin/python scripts/compute_briefing.py >> logs/briefing.log 2>&1
+홈 카드의 '지금 업데이트' 버튼도 같은 경로를 force=True로 호출한다(수동 갱신).
 
 사용법: python scripts/compute_briefing.py
 """

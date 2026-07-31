@@ -7,7 +7,7 @@
 """
 from database import get_connection
 
-NEWS_TTL_HOURS = 6
+NEWS_TTL_HOURS = 24      # 하루 1회 — 브리핑 케이던스에 맞춤(마감 후 크론/수동 버튼이 force)
 NEWS_PER_TICKER = 3       # 종목당 노출 헤드라인 수
 _RECENT_DAYS = 3          # 이보다 오래된 뉴스는 '왜'로 부적합
 

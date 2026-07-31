@@ -1,12 +1,16 @@
-import { useQuery } from "@tanstack/react-query"
-import { apiQuery, STALE } from "@/api/query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { apiQuery, getJson, STALE } from "@/api/query"
 import type { UsBriefing } from "@/types"
 
-/** 어젯밤 미국장 브리핑 — 섹터 쏠림·개별 이슈 + 하루 1회 종합. status로 정상/경고/에러 구분. */
+const KEY = ["spine", "us", "briefing"] as const
+
+/** 어젯밤 미국장 브리핑 — 하루 1회 갱신(마감 후 크론 pre-warm). refresh=수동 force 갱신(TradingView+뉴스+재종합). */
 export function useUsBriefing() {
-  return useQuery(apiQuery<UsBriefing>({
-    key: ["spine", "us", "briefing"],
-    url: "/api/spine/us/briefing",
-    staleTime: STALE.medium,
-  }))
+  const qc = useQueryClient()
+  const query = useQuery(apiQuery<UsBriefing>({ key: KEY, url: "/api/spine/us/briefing", staleTime: STALE.long }))
+  const refresh = useMutation({
+    mutationFn: () => getJson<UsBriefing>("/api/spine/us/briefing", { force: true }),
+    onSuccess: (data) => qc.setQueryData(KEY, data),
+  })
+  return { ...query, refresh: () => refresh.mutate(), refreshing: refresh.isPending }
 }

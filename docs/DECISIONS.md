@@ -10,6 +10,12 @@
 
 ---
 
+## D-099 · 2026-07-31 · 브리핑·시장 국면 = 하루 1회(아침 8시) + 수동 갱신 버튼 (feat/conviction-loop)
+**결정**: 어젯밤 미국장 브리핑과 시장 국면을 **24시간 1회 갱신**으로 고정 + **'지금 업데이트' 수동 버튼**. 브리핑: 무버 TTL 1h→24h·뉴스 6h→24h(장중 자동 재조회 제거), 크론 시각 06:10→**08:00**, 버튼=`GET /us/briefing?force=true`(재수집+재종합). 시장 국면: 이미 스냅샷 기반이라 그대로 두고 크론 16:20→**08:00**, 버튼=`POST /market-regime/snapshot` 후 invalidate. 공용 `shared/RefreshButton`(스핀·비활성), 훅이 `refresh()`·`refreshing` 노출, FE staleTime→long.
+**맥락·이유**: 사용자 — "매일 아침 전날 미국장 상황 업데이트니까 24시간에 한번만, 아침 8시쯤. 수동 버튼 달아줘. 시장 국면도 마찬가지." → 아침 브리핑 용도엔 장중 실시간성이 불필요하고, 오히려 하루 안에서 값이 바뀌면 '전날 결산'이라는 프레임이 흔들림. 24h 캐시로 하루 고정 + 마감 후 크론 pre-warm + 필요 시 수동 버튼이 제품 의도에 정합. 비용도 절감(sonnet 하루 1회 상한). 시장 국면은 이미 `POST /snapshot`(수동/EOD) 구조라 버튼만 연결.
+**기각한 대안**: ① 기존 층상 캐시(무버 1h·뉴스 6h·FE 5분) 유지 — 장중 값 변동으로 '전날 결산' 프레임 흔들림·재종합 비용, 사용자 요구와 불일치. ② 시장 국면 스냅샷을 16:20 KR EOD 유지 — 사용자가 아침 8시 통일 원함(8시엔 US 밤 세션 반영·KR은 전일 종가로 프리마켓 읽기). ③ 버튼 없이 크론만 — 사용자가 즉시 갱신 수단 명시 요구. ④ 버튼을 백그라운드 잡으로(비동기 완료 알림) — 지금은 동기 mutation+스피너로 충분(재종합 ~2분은 스핀으로 안내, 재료 불변이면 즉답).
+**참조**: backend/pipeline/us_movers.py(TTL 86400)·us_news.py(24h) · scripts/compute_briefing.py·snapshot_market.py(크론 08:00) · frontend hooks/useUsBriefing.ts·useMarketRegime.ts(refresh mutation)·components/shared/RefreshButton.tsx·home/UsBriefingSection.tsx·MarketRegime.tsx · docs/specs/us-briefing.md·market-regime.md · [[D-098]][[D-095]][[D-076]](시장 국면) · 대화 2026-07-31
+
 ## D-098 · 2026-07-31 · 브리핑 마무리 — ADR 비파괴 크로스레퍼런스 + 일별 사전생성 크론 (feat/conviction-loop)
 **결정**: 두 후속. **① ADR→본체 크로스레퍼런스(하드 병합 대신)**: US ADR 무버가 별도 US 엔티티로 해소돼(SKHY=4434, 언급 22건) 본체(SK하이닉스=1643, 언급 1349건·내러티브)의 풍부한 국내 담론을 못 받던 문제를, `_ADR_HOME={"SKHY":"SK하이닉스"}` 이름맵으로 **enrich 시점에 두 엔티티를 union 조회**(비파괴). `merge_entities` 하드 병합은 안 씀. **② 일별 사전생성 크론**: `scripts/compute_briefing.py`(run_job 게이트)로 미국장 마감 후 1회 `build_briefing(force=True)` → 캐시 데움 → 홈 첫 로딩 즉답. 30분 체인엔 미포함(장중 signature 변동으로 sonnet 매시간=비용). 권장 crontab `10 6 * * 2-6`(KST, 마감 05:00+수집 여유).
 **맥락·이유**: ①**하드 병합 기각 이유**: (a) D-050이 엔티티 병합을 **사람 승인 게이트**(agent_proposals vocab_merge)로 규정 — 인라인 자동 병합은 governance 우회. (b) 병합 시 `resolve_us("SKHY")`가 엔티티 소멸로 깨져 오히려 uncovered(aliases 오버로드·resolve_us alias 지원 등 연쇄 변경 필요). (c) ADR은 자체 us_prices·ticker 정체성 보유 — 증권은 다르고 회사만 같음. → 비파괴 read-time union이 안전·되돌리기 쉬움·거래대금 정체성 보존. 실측: SKHY coverage uncovered→covered, 언급 0→304, narrative=**"한국 반도체는 왜 AI 레버리지 베팅의 담보물이 되었나?"**(레오폴드 서사) 연결 — 병합 없이 ADR을 국내 담론에 이음. ②lazy(D-095)는 첫 로딩이 sonnet ~2분 대기라 마감 후 pre-warm이 UX 큼. signature 캐시라 재료 불변이면 재호출 0, 하루 1회가 맞는 케이던스(cost-conscious).

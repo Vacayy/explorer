@@ -1,10 +1,11 @@
 """시장 국면 일별 스냅샷 (market regime, D-076, docs/specs/market-regime.md).
 
 F&G·VIX·S&P·KOSPI·VKOSPI(폴백 실현변동성)를 fetch → market_indicators 멱등 적재.
-스파크라인 히스토리 + 당일 값. EOD 1회 실행 권장.
+스파크라인 히스토리 + 당일 값. 하루 1회 실행 권장(아침 브리핑과 동일 케이던스).
 
-크론 예시 (평일 16:20 — ingest_prices 16:10 직후, KOSPI 종가 반영):
-  20 16 * * 1-5 cd <PROJECT_DIR> && ./.venv/bin/python scripts/snapshot_market.py >> logs/ingest.log 2>&1
+크론 예시 (매일 아침 8시 — 미국 밤 세션 반영, KR은 전일 종가):
+  0 8 * * * cd <PROJECT_DIR> && ./.venv/bin/python scripts/snapshot_market.py >> logs/ingest.log 2>&1
+홈 카드의 '지금 업데이트' 버튼도 POST /api/spine/market-regime/snapshot로 같은 적재를 수동 트리거한다.
 
 사용법:
   python scripts/snapshot_market.py
