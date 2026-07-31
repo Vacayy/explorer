@@ -13,6 +13,7 @@ import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
 import { MarketRegime } from "@/components/home/MarketRegime"
+import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 
 /**
  * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-056·D-057).
@@ -33,6 +34,9 @@ export default function HomePage() {
         <h2 className="text-xl font-bold">Home</h2>
         <FreshnessStamp asOf={data.as_of} />
       </div>
+
+      {/* 어젯밤 미국장 브리핑 — 아침 분위기 파악 (자금이 어디로 쏠렸나, D-095) */}
+      <UsBriefingSection />
 
       {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드. 공지(브리핑)·승인은 인박스로(D-054) */}
       <AiActivityFeed />
