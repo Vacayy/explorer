@@ -595,6 +595,8 @@ export interface MacroIndicator {
   fmt: "pct" | "num" | "usd" | "trillion_b";
   value: number; change_pct: number | null; series: number[];
 }
+export interface MacroInterpretation { stance: string; comment: string }
 export interface MacroData {
-  as_of: string | null; items: MacroIndicator[]; degraded: string[]; fred_enabled: boolean;
+  as_of: string | null; items: MacroIndicator[]; degraded: string[];
+  interpretation: MacroInterpretation | null; fred_enabled: boolean;
 }

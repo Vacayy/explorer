@@ -112,6 +112,44 @@ def _change_pct(series: list[tuple[str, float]], back: int = 5) -> float | None:
     return round((series[-1][1] - prev) / abs(prev) * 100, 2)
 
 
+def _interpret(items: list[dict]) -> dict:
+    """지표 → 위험자산 배경 해석 (결정적 frame · LLM 0 · 정답 아님, 지표=fact/해석=frame 계승 D-076).
+
+    핵심축: 순유동성 방향(위험자산과 최밀착) + 금리·달러(완화/긴축) + 신용(HYG). 점수 합으로 우호/혼조/역풍.
+    """
+    by = {it["key"]: it for it in items}
+    def chg(k):
+        it = by.get(k)
+        return it["change_pct"] if it and it["change_pct"] is not None else None
+
+    score, notes = 0, []
+    nl = chg("net_liq")
+    if nl is not None:
+        if nl > 0.5:
+            score += 1; notes.append(f"순유동성 개선(+{nl}%)")
+        elif nl < -0.5:
+            score -= 1; notes.append(f"순유동성 위축({nl}%)")
+    y, dx = chg("us10y"), chg("dxy")
+    if y is not None and dx is not None and y < -0.3 and dx < -0.3:
+        score += 1; notes.append("금리·달러 동반 하락(완화적)")
+    elif y is not None and dx is not None and y > 0.3 and dx > 0.3:
+        score -= 1; notes.append("금리·달러 동반 상승(긴축적)")
+    elif dx is not None and dx < -0.5:
+        notes.append("달러 약세(위험선호 우호)")
+    elif dx is not None and dx > 0.5:
+        notes.append("달러 강세(위험자산 부담)")
+    hyg = chg("hyg")
+    if hyg is not None and hyg > 0.3:
+        score += 1; notes.append("신용 우호(HYG↑)")
+    elif hyg is not None and hyg < -0.3:
+        score -= 1; notes.append("신용 경계(HYG↓)")
+
+    stance = "우호" if score >= 1 else "역풍" if score <= -1 else "혼조"
+    if not notes:
+        return {"stance": "혼조", "comment": "지표 변화가 크지 않아 배경은 중립적입니다."}
+    return {"stance": stance, "comment": " · ".join(notes) + f" → 위험자산 배경 {stance}"}
+
+
 def get_macro() -> dict:
     """매크로·유동성 지표 그룹 + 스파크라인. LLM 0. market_indicators 순수 읽기(네트워크 없음)."""
     conn = get_connection()
@@ -140,4 +178,5 @@ def get_macro() -> dict:
 
     as_of = max((s[-1][0] for s in series_of.values() if s), default=None)
     return {"as_of": as_of, "items": items, "degraded": degraded,
+            "interpretation": _interpret(items) if items else None,
             "fred_enabled": bool(os.getenv("FRED_API_KEY"))}
