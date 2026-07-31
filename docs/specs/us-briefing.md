@@ -11,7 +11,7 @@
 ## 결정적 코어 (LLM 0, `pipeline/us_briefing.py`)
 1. **클러스터**: TradingView `sector` → KR 라벨 매핑으로 그룹. 클러스터별 {종목수, 합계 거래대금, **비중%**(상위20 합 대비), 대표 등락률(median), 신규 포함 여부}. 쏠림 = 최상위 클러스터 비중.
 2. **개별 이슈 탐지**: 다음 중 하나면 flag — ①`|등락률| ≥ 8%`(거래대금+급등락 동반=실이벤트) ②클러스터 median과 **부호 역행**(그룹에 3+ 종목일 때) ③**신규 진입**. 사유 라벨(`급등 +18%`·`그룹 역행`·`신규 진입`).
-3. **enrich(우리 커버리지)**: `resolve_us(ticker)`로 entity 해소 → 있으면 최근 3일 언급수 + 걸린 내러티브(worldmodel 패턴: `entity_relations.narrative_id`). 없으면 `coverage=uncovered` → **스터디 후보**.
+3. **enrich(우리 커버리지)**: `resolve_us(ticker)`로 entity 해소 → 있으면 최근 3일 언급수 + 걸린 내러티브(worldmodel 패턴: `entity_relations.narrative_id`). 없으면 `coverage=uncovered` → **스터디 후보**. **ADR 크로스레퍼런스(D-098)**: `_ADR_HOME={"SKHY":"SK하이닉스"}` 이름맵으로 ADR은 본체(KR) 엔티티도 함께 union 조회 — 하드 병합 없이 국내 담론(SK하이닉스 1349건·레오폴드 내러티브)을 ADR 무버에 잇는다(SKHY: uncovered→covered·언급 0→304).
 
 ## 그날 시장 담론 주입 (D-096 — 시장 레벨 촉매를 잡는 열쇠)
 개별 종목 경로(ticker→entity→narrative)로는 **시장구조 사건**(예: AI 디레버리징·"레오폴드 사태")을 못 잡는다 — 그 서사는 US 무버가 아니라 테마/한국 엔티티에 링크된 문서에 산다. 그래서 종합에 **그날 담론**을 함께 주입:
@@ -47,6 +47,9 @@
 
 ## 프론트 (홈 상단 승격, `UsBriefingSection`)
 아침 터미널의 첫 카드. mood 산문 + **섹터 쏠림 바** + 개별 이슈 리스트(사유 배지) + 신규 진입 + 스터디/공유 후보. 상위 20 전체는 Collapsible로 접어둠. 종목 → `/us/:ticker`, 클러스터/내러티브 → `/narrative`.
+
+## 사전생성 크론 (D-098)
+`scripts/compute_briefing.py`(run_job 게이트) — 미국장 마감 후 1회 `build_briefing(force=True)`로 캐시 데움 → 홈 첫 로딩 즉답. 30분 체인 미포함(장중 signature 변동 → sonnet 반복 비용). 권장 crontab `10 6 * * 2-6`(KST). lazy 생성(D-095)이 fallback.
 
 ## 5-state
 | 상태 | 조건 | 렌더 |
