@@ -542,3 +542,44 @@ export interface ThesisAudit {
 export interface ThesisAuditListItem {
   id: number; created_at: string; preview: string; n_claims: number;
 }
+
+// 전일 미국시장 거래대금 상위 (홈, TradingView 무키 스크리너 — docs/specs/us-movers.md)
+export interface UsMover {
+  rank: number; ticker: string; name: string;
+  close: number | null; volume: number | null; dollar_volume: number | null;
+  exchange: string | null; is_adr: boolean;
+}
+export interface UsMoversResponse {
+  status: "ok" | "stale" | "error";
+  source: string; fetched_at: string | null; error: string | null;
+  items: UsMover[];
+}
+
+// 어젯밤 미국장 브리핑 (홈 상단, docs/specs/us-briefing.md)
+export interface UsMoverBrief {
+  rank: number; ticker: string; name: string;
+  dollar_volume: number | null; change_pct: number | null;
+  sector: string | null; industry: string | null; cluster: string;
+  is_adr: boolean; is_new: boolean;
+  coverage: "covered" | "uncovered"; entity_id: number | null;
+  mentions_3d: number; narrative: string | null; flags: string[];
+}
+export interface UsCluster {
+  label: string; n: number; dollar_volume: number; share_pct: number;
+  median_change: number; has_new: boolean; tickers: string[];
+}
+export interface UsBriefingSynthesis {
+  mood: string; study_candidates: string[]; share_candidates: string[];
+}
+export interface UsMarketTheme { name: string; count: number }
+export interface UsMarketDoc {
+  id: number; source_type: string; title: string | null;
+  published_at: string | null; excerpt: string | null;
+}
+export interface UsBriefing {
+  status: "ok" | "stale" | "error";
+  trade_date: string | null; fetched_at: string | null; error: string | null;
+  clusters: UsCluster[]; idiosyncratic: UsMoverBrief[]; movers: UsMoverBrief[];
+  market_themes: UsMarketTheme[]; market_docs: UsMarketDoc[];
+  synthesis: UsBriefingSynthesis | null;
+}

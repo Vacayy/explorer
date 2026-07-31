@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException
 import json
 
 from database import get_connection
-from models.us import (UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
-                        UsNarrativeRef, UsWorldModel)
+from models.us import (UsBriefing, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
+                        UsMoverItem, UsMoversResponse, UsNarrativeRef, UsWorldModel)
 
 router = APIRouter(prefix="/api/spine/us", tags=["spine"])
 
@@ -46,6 +46,33 @@ def us_list():
             value_stance=vs, trend_stance=ts, quadrant_cell=q["cell"] if q else None, price=price))
     conn.close()
     return UsList(groups=[UsGroup(label=g, items=items) for g, items in grouped.items()])
+
+
+@router.get("/movers", response_model=UsMoversResponse)
+def us_movers(force: bool = False):
+    """전일 미국시장 거래대금 상위 20 — TradingView 무키 스크리너 캐시(1h).
+
+    전 거래소 통합·ADR 포함·ETF 제외. status=stale이면 갱신 실패로 마지막 성공분,
+    error면 데이터 없음 — FE가 경고 배너·에러 상태로 구분. ('/{ticker}'보다 먼저 선언).
+    """
+    from pipeline.us_movers import get_leaders
+    res = get_leaders(force=force)
+    return UsMoversResponse(
+        status=res["status"], source=res["source"], fetched_at=res["fetched_at"], error=res["error"],
+        items=[UsMoverItem(rank=r["rank"], ticker=r["ticker"], name=r["name"], close=r["close"],
+                           volume=r["volume"], dollar_volume=r["dollar_volume"],
+                           exchange=r["exchange"], is_adr=bool(r["is_adr"])) for r in res["items"]],
+    )
+
+
+@router.get("/briefing", response_model=UsBriefing)
+def us_briefing(force: bool = False):
+    """어젯밤 미국장 브리핑 — 거래대금 상위를 섹터 쏠림·개별 이슈로 읽고 하루 1회 종합(docs/specs/us-briefing.md).
+
+    구조화 코어는 LLM 0, synthesis만 sonnet 1콜·캐시. synthesis=null이면 LLM 미가용(스켈레톤만).
+    ('/{ticker}'보다 먼저 선언 — catch-all 회피)."""
+    from pipeline.us_briefing import build_briefing
+    return UsBriefing(**build_briefing(force=force))
 
 
 @router.get("/{ticker}/mentions", response_model=list[UsMention])

@@ -27,6 +27,16 @@ def init_db():
     except Exception:
         pass
 
+    # 사전 마이그레이션: us_movers 단일 스냅샷 → 일별 히스토리(D-095). 구표(trade_date 없음)는 재생성 가능한
+    # 캐시라 폐기 — 히스토리는 이후부터 누적. (배경: docs/specs/us-briefing.md)
+    try:
+        mcols = [r[1] for r in conn.execute("PRAGMA table_info(us_movers)")]
+        if mcols and "trade_date" not in mcols:
+            conn.execute("DROP TABLE us_movers")
+            conn.commit()
+    except Exception:
+        pass
+
     cur.executescript("""
     CREATE TABLE IF NOT EXISTS companies (
         corp_code    TEXT PRIMARY KEY,
@@ -472,6 +482,36 @@ def init_db():
         ticker     TEXT PRIMARY KEY,        -- yfinance info/income/cashflow/estimates 스냅샷
         data_json  TEXT NOT NULL,
         fetched_at TEXT NOT NULL
+    );
+
+    -- 전일 미국시장 거래대금(=종가×거래량) 상위 종목 — 일별 스냅샷 (TradingView 무키, docs/specs/us-briefing.md).
+    -- 전 거래소 통합·ADR 포함·ETF 제외. 날짜별 누적(신규 진입 판정용, 최근 7일 보존). 캐시 게이트 cache_meta('us_movers_dollar_vol').
+    CREATE TABLE IF NOT EXISTS us_movers (
+        trade_date    TEXT NOT NULL,         -- 스냅샷 세션 날짜(US/Eastern)
+        rank          INTEGER NOT NULL,      -- 1..N (거래대금 내림차순)
+        ticker        TEXT NOT NULL,
+        name          TEXT,
+        close         REAL,
+        volume        REAL,
+        dollar_volume REAL,                  -- close × volume (USD)
+        change_pct    REAL,                  -- 전일 등락률(%)
+        sector        TEXT,                  -- TradingView sector (Electronic Technology …)
+        industry      TEXT,                  -- TradingView industry (Semiconductors …)
+        exchange      TEXT,                  -- NASDAQ | NYSE | AMEX | CBOE …
+        market_cap    REAL,
+        is_adr        INTEGER DEFAULT 0,     -- TradingView type='dr'
+        is_new        INTEGER DEFAULT 0,     -- 직전 스냅샷 대비 신규 진입
+        fetched_at    TEXT,
+        PRIMARY KEY(trade_date, rank)
+    );
+
+    -- 어젯밤 미국장 브리핑 LLM 종합 캐시 (하루 1회·signature 불변이면 재사용, docs/specs/us-briefing.md).
+    CREATE TABLE IF NOT EXISTS us_briefings (
+        trade_date     TEXT PRIMARY KEY,
+        signature      TEXT NOT NULL,        -- 구조화 요약 해시 (재생성 게이트)
+        synthesis_json TEXT NOT NULL,        -- {mood, study_candidates, share_candidates}
+        model          TEXT,
+        created_at     TEXT DEFAULT (datetime('now'))
     );
 
     -- Peer 그룹 (LLM 큐레이션 1회 캐시) + 지표 캐시 (KR=자체, 해외=yfinance 24h)
