@@ -77,9 +77,23 @@ def _build_movers(conn, items: list[dict]) -> list[dict]:
             "rank": r["rank"], "ticker": r["ticker"], "name": r["name"],
             "dollar_volume": r["dollar_volume"], "change_pct": r["change_pct"],
             "sector": r["sector"], "industry": r["industry"], "cluster": _cluster_label(r["sector"]),
-            "is_adr": bool(r["is_adr"]), "is_new": bool(r["is_new"]), **cov, "flags": [],
+            "is_adr": bool(r["is_adr"]), "is_new": bool(r["is_new"]), **cov, "flags": [], "headlines": [],
         })
     return out
+
+
+def _attach_headlines(conn, movers: list[dict]) -> None:
+    """개별 이슈 종목의 US 원천 헤드라인 병렬 수집·부착 (D-097) — 개별 '왜' 채움. 실패는 빈 리스트."""
+    from concurrent.futures import ThreadPoolExecutor
+    from pipeline.us_news import fetch_news, get_news
+    targets = [m["ticker"] for m in movers if m["flags"]]   # 튀는 종목만(비용 바운드)
+    if not targets:
+        return
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(fetch_news, targets))                  # 캐시 미스만 실제 조회
+    for m in movers:
+        if m["flags"]:
+            m["headlines"] = get_news(conn, m["ticker"])
 
 
 def _clusters(movers: list[dict]) -> list[dict]:
@@ -164,6 +178,7 @@ def _signature(trade_date: str, movers: list[dict], discourse: dict) -> str:
         f"{m['ticker']}:{round(m['change_pct'] or 0)}:{m['coverage']}:{int(bool(m['flags']))}"
         for m in movers)
     basis += "|D:" + ",".join(str(d["id"]) for d in discourse.get("docs", []))
+    basis += "|H:" + ",".join(h["url"] for m in movers for h in m.get("headlines", []))
     return hashlib.sha256(basis.encode()).hexdigest()
 
 
@@ -172,7 +187,12 @@ def _synthesis_prompt(clusters, idio, movers, discourse) -> str:
         return f"- {c['label']}: {c['n']}종목·거래대금비중 {c['share_pct']}%·대표등락 {c['median_change']:+.1f}%{'·신규포함' if c['has_new'] else ''} ({', '.join(c['tickers'])})"
     def fmt_i(m):
         cov = m["narrative"] or ("커버 안 됨" if m["coverage"] == "uncovered" else "내러티브 없음")
-        return f"- {m['ticker']} ({m['name']}): {', '.join(m['flags'])} · 최근언급 {m['mentions_3d']}건 · 관련내러티브: {cov}"
+        head = ""
+        if m.get("headlines"):
+            head = "\n    " + "\n    ".join(
+                f"· [{h['publisher'] or '?'}] {h['title']}" + (f" — {h['summary'][:100]}" if h.get('summary') else "")
+                for h in m["headlines"][:2])
+        return f"- {m['ticker']} ({m['name']}): {', '.join(m['flags'])} · 최근언급 {m['mentions_3d']}건 · 관련내러티브: {cov}{head}"
     themes = ", ".join(f"{t['name']}({t['count']})" for t in discourse.get("themes", [])) or "없음"
     docs = "\n".join(
         f"- [{d['source_type']}] {d['title']}: {(d['excerpt'] or '').strip()[:180]}"
@@ -186,8 +206,10 @@ def _synthesis_prompt(clusters, idio, movers, discourse) -> str:
         "[어제 시장 담론 — 시장구조 코멘터리]\n" + docs + "\n\n"
         "임무: 거래대금 쏠림(무엇이 움직였나)을 시장 담론(왜·무슨 얘기였나)과 **교차**해서, 개별 종목이 아니라 "
         "**시장 레벨에서 무슨 일이 있었는지**를 먼저 짚어라. 담론이 특정 사건을 지목하면 그 이름을 명시하라. "
-        "거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·반등인지)을 담론 근거로 판단하라.\n"
-        "규율: 담론이나 구조화 팩트에 근거가 있는 것만 말하라. 개별 종목의 촉매를 모르면 지어내지 말고 스터디 후보로 돌려라.\n"
+        "거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·반등인지)을 담론 근거로 판단하라. "
+        "개별 이슈 종목에 헤드라인이 달려 있으면 그것을 그 종목의 '왜'(개별 촉매)로 삼아라.\n"
+        "규율: 담론·헤드라인·구조화 팩트에 근거가 있는 것만 말하라. 헤드라인이 있으면 그 종목은 스터디 후보가 아니라 "
+        "촉매를 아는 것이다. 근거가 전혀 없을 때만 스터디 후보로 돌리고, 없는 촉매를 지어내지 마라.\n"
         "JSON만 출력: {\"mood\": \"어제 시장 레벨에서 무슨 일이 있었고(담론 근거), 그게 거래대금 쏠림과 어떻게 연결되는지, "
         "성격은 무엇인지 3~5문장\", "
         "\"study_candidates\": [\"티커 — 왜 스터디해야 하는지 한 줄\"], "
@@ -243,6 +265,7 @@ def build_briefing(force: bool = False) -> dict:
         movers = _build_movers(conn, lead["items"])
         clusters = _clusters(movers)
         _flag_idiosyncratic(movers, clusters)
+        _attach_headlines(conn, movers)                    # 개별 '왜' — US 원천 헤드라인(D-097)
         idio = [m for m in movers if m["flags"]]
         discourse = _gather_discourse(conn, lead["trade_date"])
         synthesis = _synthesize(conn, lead["trade_date"], _signature(lead["trade_date"], movers, discourse),
