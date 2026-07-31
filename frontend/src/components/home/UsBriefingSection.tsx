@@ -25,7 +25,19 @@ export function UsBriefingSection() {
   if (isError || !data || data.status === "error")
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
   if (data.movers.length === 0)
-    return <Card><CardContent className="py-6"><EmptyState message="표시할 종목이 없습니다." /></CardContent></Card>
+    return (
+      <Card>
+        <CardHeader className="pb-2 flex-row items-center gap-2">
+          <CardTitle className="text-sm flex items-center gap-1.5">
+            <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
+          </CardTitle>
+          <div className="ml-auto"><RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트" /></div>
+        </CardHeader>
+        <CardContent>
+          <EmptyState message={refreshing ? "전날 미국장을 불러오는 중…" : "‘지금 업데이트’를 눌러 전날 미국장 브리핑을 생성하세요."} />
+        </CardContent>
+      </Card>
+    )
 
   const { clusters, idiosyncratic, movers, synthesis } = data
   const topShare = clusters[0]

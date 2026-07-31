@@ -32,7 +32,7 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
 ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → extract_doc_causal(문서레벨 인과 엣지, 회당 10, D-088) → compute_signals → compute_narratives → extract_events(이미지 비전)
   → scan_actions(기업활동) → compute_digests(1D 오늘+1W 이번 주) → vault_sync --export → build_search_index
    +  평일 16:10: ingest_prices --daily (전종목 OHLCV)
-   +  일 08:00(KST): compute_briefing + snapshot_market (아침 브리핑·시장 국면 하루 1회 갱신 — 홈 카드 '지금 업데이트' 수동 버튼도 제공, D-098·D-099)
+   +  (선택) 일 08:00(KST): compute_briefing + snapshot_market — **기본은 홈 카드 '지금 업데이트' 버튼 주도**(D-100). 일반 로드는 순수 읽기(재종합 없음), 버튼만 재수집·재종합. 크론은 아침 pre-warm 원할 때만
    │
    ▼
 [SQLite 단일 DB (WAL, busy_timeout 30s)]

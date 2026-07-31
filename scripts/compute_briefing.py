@@ -1,15 +1,11 @@
-"""어젯밤 미국장 브리핑 사전 생성 — 미국장 마감 후 1회 (D-098).
+"""어젯밤 미국장 브리핑 생성 — build_briefing(force=True) (D-098·D-100).
 
-홈 진입 시 lazy 생성(D-095)이 fallback이지만, 첫 로딩이 sonnet 종합 ~2분을 기다린다.
-미국장 마감 후(≈05:00 KST) 크론으로 미리 build_briefing(force=True)해 캐시를 데우면 첫 로딩도 즉답.
-signature 캐시라 재료(무버·담론·헤드라인) 안 바뀌면 sonnet 재호출 없음.
+기본 갱신 수단은 **홈 카드의 '지금 업데이트' 버튼**(같은 경로를 force=True로 호출)이다.
+이 스크립트는 그 버튼과 동치인 CLI 진입점 — 크론 자동화를 원할 때만 선택적으로 건다(필수 아님).
+일반 홈 로드는 최신 스냅샷을 순수 읽기(재종합 없음, D-100)하므로 갱신은 버튼/이 스크립트로만 일어난다.
 
-30분 수집 체인(run_chain.sh)엔 넣지 않는다 — 장중이면 거래대금이 계속 바뀌어 signature가 매번 달라져
-sonnet이 30분마다 재호출(비용 위반). 하루 1회, 마감 뒤가 맞는 케이던스.
-
-권장 crontab (KST, 매일 아침 8시 — 전날 미국장 결산):
+선택 crontab (KST, 매일 아침 8시 — 전날 미국장 결산 미리 데우기):
     0 8 * * *  cd <repo> && ./.venv/bin/python scripts/compute_briefing.py >> logs/briefing.log 2>&1
-홈 카드의 '지금 업데이트' 버튼도 같은 경로를 force=True로 호출한다(수동 갱신).
 
 사용법: python scripts/compute_briefing.py
 """
