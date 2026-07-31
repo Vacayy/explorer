@@ -15,13 +15,14 @@
 ## 백엔드 (`pipeline/macro.py`)
 - `snapshot_macro()`: yfinance + FRED(있으면) fetch → 멱등 적재. 각 소스 실패 개별 흡수(degraded).
 - `get_macro()`: `macro_*` 순수 읽기 → 그룹별 지표(값·변화율·스파크라인 40) + 순유동성 파생. LLM 0·네트워크 0.
+- `_interpret()`: **해석 코멘트(결정적 frame · LLM 0 · 정답 아님, 지표=fact/해석=frame 계승 D-076)** — 순유동성 방향(위험자산 최밀착) + 금리·달러(완화/긴축) + 신용(HYG) 점수 합 → 위험자산 배경 **우호/혼조/역풍** + 근거 한 줄. 예: "순유동성 위축(−1.5%)·금리·달러 동반 하락(완화적) → 배경 혼조".
 
 ## API (`/api/spine/macro`)
 - `GET` — 지표 그룹 + 스파크라인. 첫 진입 시 lazy 스냅샷 1회(시장 국면 패턴).
 - `POST /snapshot` — 재수집 적재(수동 버튼·선택 크론).
 
 ## 프론트 (`MacroLiquidity`, 홈 시장 국면 아래)
-4그룹 타일(금리·달러 / 유동성 / 신용·위험선호 / 원자재), 각 지표: 라벨·미니 라인 스파크(min/max 기준)·값·변화율. **버튼 주도 갱신**(D-100 계승, `RefreshButton` → `POST /snapshot`). 유동성 그룹이 비고 FRED 미설정이면 키 안내.
+상단 **해석 코멘트**(배경 우호/혼조/역풍 배지 + 근거) + 4그룹 타일(금리·달러 / 유동성 / 신용·위험선호 / 원자재), 각 지표: 라벨·미니 라인 스파크(min/max 기준)·값·변화율. **버튼 주도 갱신**(D-100 계승, `RefreshButton` → `POST /snapshot`). 유동성 그룹이 비고 FRED 미설정이면 키 안내.
 
 ## 설정 (사용자)
 유동성 지표는 **FRED 무료 키** 필요: https://fred.stlouisfed.org/docs/api/api_key.html 발급 → `.env`에 `FRED_API_KEY=...` → 버튼으로 스냅샷. 없어도 매크로 6종은 정상.

@@ -84,7 +84,19 @@ export function MacroLiquidity() {
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+      <CardContent className="space-y-2">
+        {/* 해석 코멘트 — 결정적 frame(LLM 0, 정답 아님) */}
+        {data.interpretation && (
+          <div className="flex items-start gap-1.5 rounded-md bg-muted/40 px-2 py-1.5 text-[11px]">
+            <span className={`shrink-0 font-medium ${
+              data.interpretation.stance === "우호" ? "text-up"
+              : data.interpretation.stance === "역풍" ? "text-down" : "text-muted-foreground"}`}>
+              배경 {data.interpretation.stance}
+            </span>
+            <span className="text-muted-foreground">· {data.interpretation.comment.replace(/ → 위험자산 배경 \S+$/, "")}</span>
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
         {GROUP_ORDER.map(({ key, label }) => {
           const items = byGroup(key)
           return (
@@ -100,6 +112,7 @@ export function MacroLiquidity() {
             </div>
           )
         })}
+        </div>
       </CardContent>
     </Card>
   )
