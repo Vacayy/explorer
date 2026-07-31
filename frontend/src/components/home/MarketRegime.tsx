@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { MetricHint } from "@/components/shared/MetricHint"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
+import { RefreshButton } from "@/components/shared/RefreshButton"
 import { formatNumber } from "@/utils/format"
 import { useMarketRegime } from "@/hooks/useMarketRegime"
 import type { MarketPostureKR, MarketPostureUS, MarketSeries, PostureColor } from "@/types"
@@ -38,7 +39,7 @@ const HINT = {
 } as const
 
 export function MarketRegime() {
-  const { data, isLoading, isError, refetch } = useMarketRegime()
+  const { data, isLoading, isError, refetch, refresh, refreshing } = useMarketRegime()
 
   if (isLoading) return <Skeleton className="h-52 w-full rounded-xl" />
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
@@ -57,7 +58,10 @@ export function MarketRegime() {
               일부 지표 미수집: {data.degraded.join(", ")}
             </Badge>
           )}
-          {data.as_of && <span className="ml-auto"><FreshnessStamp asOf={data.as_of} /></span>}
+          <span className="ml-auto flex items-center gap-1.5">
+            {data.as_of && <FreshnessStamp asOf={data.as_of} />}
+            <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (시장 지표 재수집)" />
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

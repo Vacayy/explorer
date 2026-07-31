@@ -48,8 +48,8 @@
 ## 프론트 (홈 상단 승격, `UsBriefingSection`)
 아침 터미널의 첫 카드. mood 산문 + **섹터 쏠림 바** + 개별 이슈 리스트(사유 배지) + 신규 진입 + 스터디/공유 후보. 상위 20 전체는 Collapsible로 접어둠. 종목 → `/us/:ticker`, 클러스터/내러티브 → `/narrative`.
 
-## 사전생성 크론 (D-098)
-`scripts/compute_briefing.py`(run_job 게이트) — 미국장 마감 후 1회 `build_briefing(force=True)`로 캐시 데움 → 홈 첫 로딩 즉답. 30분 체인 미포함(장중 signature 변동 → sonnet 반복 비용). 권장 crontab `10 6 * * 2-6`(KST). lazy 생성(D-095)이 fallback.
+## 갱신 케이던스 — 하루 1회 + 수동 버튼 (D-099)
+아침에 전날 미국장을 보는 용도라 **24시간 1회**로 고정: 무버 캐시 24h·뉴스 캐시 24h → 장중 자동 재조회 없음. 갱신 경로 둘: ①`scripts/compute_briefing.py`(run_job) 아침 8시 크론 `0 8 * * *`(마감 후 결산, sonnet 종합 pre-warm) ②홈 카드 **'지금 업데이트' 버튼**(`GET ?force=true` → TradingView·뉴스 재수집 + 재종합). lazy 생성(D-095)이 fallback. signature 캐시라 재료 불변이면 재종합 0.
 
 ## 5-state
 | 상태 | 조건 | 렌더 |

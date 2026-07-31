@@ -1,14 +1,16 @@
-import { useQuery } from "@tanstack/react-query"
-import { apiQuery, STALE } from "@/api/query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { apiQuery, postJson, STALE } from "@/api/query"
 import type { MarketRegime } from "@/types"
 
-/** 시장 국면 — 매크로 리스크 포스처 (D-076). EOD 갱신이라 short stale. */
+const KEY = ["spine", "market-regime"] as const
+
+/** 시장 국면 — 하루 1회 스냅샷(D-076). refresh=수동 스냅샷 적재(POST /snapshot) 후 갱신. */
 export function useMarketRegime() {
-  return useQuery(
-    apiQuery<MarketRegime>({
-      key: ["spine", "market-regime"],
-      url: "/api/spine/market-regime",
-      staleTime: STALE.short,
-    }),
-  )
+  const qc = useQueryClient()
+  const query = useQuery(apiQuery<MarketRegime>({ key: KEY, url: "/api/spine/market-regime", staleTime: STALE.long }))
+  const refresh = useMutation({
+    mutationFn: () => postJson("/api/spine/market-regime/snapshot"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+  return { ...query, refresh: () => refresh.mutate(), refreshing: refresh.isPending }
 }

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
+import { RefreshButton } from "@/components/shared/RefreshButton"
 import { formatUsd, formatPercent } from "@/utils/format"
 import { useUsBriefing } from "@/hooks/useUsBriefing"
 import type { UsMoverBrief } from "@/types"
@@ -17,7 +18,7 @@ import type { UsMoverBrief } from "@/types"
  * 5-state: Loading / Error(status=error·쿼리실패) / Partial(stale·synthesis=null) / Empty / Ideal.
  */
 export function UsBriefingSection() {
-  const { data, isLoading, isError, refetch } = useUsBriefing()
+  const { data, isLoading, isError, refetch, refresh, refreshing } = useUsBriefing()
   const [open, setOpen] = useState(false)
 
   if (isLoading) return <Skeleton className="h-80 w-full rounded-xl" />
@@ -36,8 +37,9 @@ export function UsBriefingSection() {
           <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
         </CardTitle>
         <span className="text-[11px] text-muted-foreground">전일 거래대금 상위 20 · 자금이 어디로 쏠렸나</span>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           {data.fetched_at && <FreshnessStamp asOf={data.fetched_at} />}
+          <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />
           <Link to="/us" className="text-[11px] text-muted-foreground hover:text-foreground">미국 종목 →</Link>
         </div>
       </CardHeader>
