@@ -129,6 +129,14 @@ def _result(status: str, items: list[dict], error: str | None) -> dict:
             "fetched_at": items[0]["fetched_at"] if items else None, "error": error}
 
 
+def read_leaders() -> dict:
+    """최신 스냅샷 순수 읽기 — 네트워크 없음(일반 로드용). 갱신은 버튼=get_leaders(force=True) (D-100)."""
+    conn = get_connection()
+    items = _read_snapshot(conn)
+    conn.close()
+    return _result("ok", items, None)
+
+
 def get_leaders(force: bool = False) -> dict:
     """거래대금 상위 종목 — 캐시 우선. 반환 {status, items, source, trade_date, fetched_at, error}.
 

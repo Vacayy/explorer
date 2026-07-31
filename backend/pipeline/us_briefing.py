@@ -14,7 +14,7 @@ import statistics
 from database import get_connection
 from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
 from pipeline.us_data import resolve_us
-from pipeline.us_movers import get_leaders
+from pipeline.us_movers import get_leaders, read_leaders
 
 # TradingView sector(유한 집합) → KR 라벨. 미매핑은 원문 유지.
 _SECTOR_KR = {
@@ -97,18 +97,33 @@ def _build_movers(conn, items: list[dict]) -> list[dict]:
     return out
 
 
-def _attach_headlines(conn, movers: list[dict]) -> None:
-    """개별 이슈 종목의 US 원천 헤드라인 병렬 수집·부착 (D-097) — 개별 '왜' 채움. 실패는 빈 리스트."""
+def _attach_headlines(conn, movers: list[dict], fetch: bool = True) -> None:
+    """개별 이슈 종목의 US 원천 헤드라인 부착 (D-097). fetch=True면 병렬 조회(버튼), False면 캐시 읽기만."""
     from concurrent.futures import ThreadPoolExecutor
     from pipeline.us_news import fetch_news, get_news
     targets = [m["ticker"] for m in movers if m["flags"]]   # 튀는 종목만(비용 바운드)
     if not targets:
         return
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        list(ex.map(fetch_news, targets))                  # 캐시 미스만 실제 조회
+    if fetch:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            list(ex.map(fetch_news, targets))              # 캐시 미스만 실제 조회
     for m in movers:
         if m["flags"]:
             m["headlines"] = get_news(conn, m["ticker"])
+
+
+def _read_synthesis(conn, trade_date: str | None) -> dict | None:
+    """저장된 종합 순수 읽기 — LLM 없음(일반 로드용). 없으면 None(스켈레톤만)."""
+    if not trade_date:
+        return None
+    row = conn.execute(
+        "SELECT synthesis_json FROM us_briefings WHERE trade_date=?", (trade_date,)).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["synthesis_json"])
+    except Exception:
+        return None
 
 
 def _clusters(movers: list[dict]) -> list[dict]:
@@ -267,7 +282,8 @@ def build_briefing(force: bool = False) -> dict:
     반환 {status, trade_date, fetched_at, error, clusters, idiosyncratic, movers, synthesis|None}.
     LLM 미가용이어도 결정적 스켈레톤(clusters·idiosyncratic·movers)은 항상 채워진다.
     """
-    lead = get_leaders(force=force)
+    # force(버튼)=재수집+재종합, force=False(일반 로드)=최신 스냅샷 순수 읽기(네트워크·LLM 없음, D-100)
+    lead = get_leaders(force=True) if force else read_leaders()
     base = {"status": lead["status"], "trade_date": lead["trade_date"],
             "fetched_at": lead["fetched_at"], "error": lead["error"],
             "clusters": [], "idiosyncratic": [], "movers": [], "market_themes": [],
@@ -280,11 +296,14 @@ def build_briefing(force: bool = False) -> dict:
         movers = _build_movers(conn, lead["items"])
         clusters = _clusters(movers)
         _flag_idiosyncratic(movers, clusters)
-        _attach_headlines(conn, movers)                    # 개별 '왜' — US 원천 헤드라인(D-097)
+        _attach_headlines(conn, movers, fetch=force)       # 버튼만 새 뉴스 조회, 로드는 캐시 읽기
         idio = [m for m in movers if m["flags"]]
         discourse = _gather_discourse(conn, lead["trade_date"])
-        synthesis = _synthesize(conn, lead["trade_date"], _signature(lead["trade_date"], movers, discourse),
-                                clusters, idio, movers, discourse) if lead["status"] == "ok" else None
+        if force:                                          # 버튼: 재종합(sonnet, signature 캐시)
+            synthesis = _synthesize(conn, lead["trade_date"], _signature(lead["trade_date"], movers, discourse),
+                                    clusters, idio, movers, discourse)
+        else:                                              # 로드: 저장된 종합 읽기(LLM 없음)
+            synthesis = _read_synthesis(conn, lead["trade_date"])
     finally:
         conn.close()
 
