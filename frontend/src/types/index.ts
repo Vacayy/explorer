@@ -588,3 +588,13 @@ export interface UsBriefing {
   market_themes: UsMarketTheme[]; market_docs: UsMarketDoc[];
   synthesis: UsBriefingSynthesis | null;
 }
+
+// 매크로·유동성 트래킹 (홈, docs/specs/macro.md)
+export interface MacroIndicator {
+  key: string; label: string; group: string; group_label: string;
+  fmt: "pct" | "num" | "usd" | "trillion_b";
+  value: number; change_pct: number | null; series: number[];
+}
+export interface MacroData {
+  as_of: string | null; items: MacroIndicator[]; degraded: string[]; fred_enabled: boolean;
+}

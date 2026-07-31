@@ -13,6 +13,7 @@ import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
 import { MarketRegime } from "@/components/home/MarketRegime"
+import { MacroLiquidity } from "@/components/home/MacroLiquidity"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 
 /**
@@ -43,6 +44,9 @@ export default function HomePage() {
 
       {/* 시장 국면 — 매크로 리스크 포스처 (그날의 렌즈니 델타 위, D-076) */}
       <MarketRegime />
+
+      {/* 매크로·유동성 — 배경 조건 트래킹 (금리·달러·순유동성·신용·원자재, D-101) */}
+      <MacroLiquidity />
 
       {/* 월드모델 델타 — 매일 여는 것을 진입 요약으로 (내러티브 + 리포트) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">

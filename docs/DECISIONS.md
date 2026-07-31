@@ -10,6 +10,12 @@
 
 ---
 
+## D-101 · 2026-07-31 · 매크로·유동성 트래킹 — 하이브리드 소스, 순유동성=MacroMicro 공식 재현 (feat/conviction-loop)
+**결정**: 홈에 **매크로·유동성** 별도 카드 추가(시장 국면과 역할 분리 — 포스처 vs 배경 조건). 하이브리드 소스: **yfinance 무키**(미10Y ^TNX·달러 DXY·유가·금·신용 HYG·비트코인) + **FRED 무료키**(WALCL·TGA·RRP·M2). **순유동성 = WALCL − TGA − RRP**(읽을 때 계산, 혼합 주기 forward-fill) = 사용자가 레퍼런스한 **MacroMicro US Liquidity Index** 공식. 인프라 재사용: `market_indicators` 테이블에 `macro_*` 프리픽스(스키마 0), 시장 국면의 `_yf_history`·`_series` 재사용. `pipeline/macro.py`·`routers/spine_macro.py`(GET 순수읽기+lazy·POST snapshot). FE `MacroLiquidity`(4그룹 타일·미니 라인 스파크·버튼 주도 D-100). FRED 키 없으면 유동성만 degraded(`fred_enabled` 플래그로 FE 안내).
+**맥락·이유**: 사용자 — "매크로 지표·유동성 지표도 트래킹" + 소스 하이브리드·네 그룹 전부·별도 카드 선택 + "유동성은 MacroMicro US Liquidity Index 참고". MacroMicro는 유료(WebFetch 403)라 스크래핑 불가·불안정 → **동일 공식(WALCL−TGA−RRP)을 무료 FRED 원데이터로 재현**(웹서치로 공식 확인). 진짜 유동성(순유동성)이 위험자산과 가장 잘 붙는 핵심이라 FRED 채택 불가피(yfinance는 금리·달러·신용 프록시까지만). 시장 국면 인프라가 이미 일별 스냅샷+버튼(D-076·D-100)이라 지표만 얹으면 배관 0. 실측(FRED 키 미설정): 매크로 6종 정상(값·변화율·스파크라인), 유동성 2종 degraded로 우아하게 안내.
+**기각한 대안**: ① MacroMicro 직접 스크래핑 — 유료·403·ToS·불안정. 공식 재현이 무료·투명·안정. ② 유동성도 yfinance 프록시(신용스프레드)로만 — 순유동성이 유동성의 정수라 FRED 필수(사용자도 그 지수 지목). ③ 시장 국면 카드에 통합 — 포스처(오늘 얼마나 실을까) vs 배경 조건(판이 어떻게 깔렸나)은 역할이 달라 사용자도 별도 카드 선택. ④ 새 테이블 `macro_indicators` — `market_indicators` 프리픽스 재사용이 스키마 0·헬퍼 재사용. ⑤ FRED 키를 필수로 — 없어도 매크로는 돌게 degraded 설계(점진 도입). ⑥ 자동 크론 상시 — 버튼 주도(D-100) 일관, GET은 순수 읽기+첫 진입 lazy.
+**참조**: backend/pipeline/macro.py·routers/spine_macro.py·main.py(등록) · frontend hooks/useMacro.ts·components/home/MacroLiquidity.tsx·HomePage.tsx·types/index.ts · docs/specs/macro.md · SYSTEM.md §env·§5-1·§5-2·§6 · [[D-076]](시장 국면 인프라) [[D-100]](버튼 주도) · 대화 2026-07-31
+
 ## D-100 · 2026-07-31 · 브리핑 = 버튼 주도(로드는 순수 읽기, 갱신은 버튼만) (feat/conviction-loop)
 **결정**: 브리핑 갱신을 **버튼 주도**로 전환(D-099의 크론-우선 → 번복). **일반 로드(`force=False`)는 순수 읽기** — `read_leaders`(최신 스냅샷, 네트워크 없음)+`_read_synthesis`(저장된 종합, LLM 없음)+헤드라인 캐시 읽기(`_attach_headlines(fetch=False)`). **'지금 업데이트' 버튼(`force=True`)만** TradingView·뉴스 재수집+sonnet 재종합. 크론(compute_briefing.py)은 버튼과 동치인 선택적 CLI로 강등(필수 아님). 스냅샷 없으면 빈 상태+버튼 안내. 시장 국면은 이미 스냅샷+`POST /snapshot` 버튼 구조라 그대로.
 **맥락·이유**: 사용자 — "그냥 cron 보단 업데이트 버튼 달아주고 그거 누르면 업데이트가 낫겠다." → 크론 셋업 부담 없이 버튼으로 통제. 핵심은 **로드가 절대 무거운 갱신을 트리거하지 않게** 하는 것: D-099의 24h 캐시+lazy는 24h 경과 후 첫 로드가 2분 멈추는 깜짝 상황이 남아 있었음 → 로드를 순수 읽기로 만들어 제거. 값은 버튼 누를 때만 바뀌므로 '전날 결산' 프레임이 예측 가능하게 고정, FreshnessStamp가 마지막 갱신 시각 노출.
