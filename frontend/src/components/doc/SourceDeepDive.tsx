@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Loader2, Sparkles, Telescope } from "lucide-react"
+import { Check, Loader2, Sparkles, Telescope } from "lucide-react"
 import api from "@/api/client"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,7 +20,7 @@ interface DeriveResult { doc_id: number; title: string | null; candidates: strin
 
 export function SourceDeepDive({ docId }: { docId: number }) {
   const [open, setOpen] = useState(false)
-  const [picked, setPicked] = useState<string | null>(null)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
   const navigate = useNavigate()
 
   const derive = useMutation({
@@ -28,10 +28,21 @@ export function SourceDeepDive({ docId }: { docId: number }) {
     onError: () => toast.error("질문 도출 실패 — 다시 시도"),
   })
   const track = useMutation({
-    mutationFn: async (text: string) =>
-      (await api.post("/api/spine/questions", { text, source_doc_id: docId })).data as { id: number },
-    onSuccess: (q) => { toast.success("질문 추적 시작 — 상세로 이동"); setOpen(false); navigate(`/question/${q.id}`) },
+    mutationFn: async (texts: string[]) => Promise.all(
+      texts.map((text) =>
+        api.post("/api/spine/questions", { text, source_doc_id: docId }).then((r) => r.data as { id: number }))),
+    onSuccess: (qs) => {
+      toast.success(`${qs.length}개 질문 추적 시작`)
+      setOpen(false)
+      navigate(qs.length === 1 ? `/question/${qs[0].id}` : "/questions")
+    },
     onError: () => toast.error("분해 실패 — 다시 시도"),
+  })
+
+  const toggle = (c: string) => setPicked((prev) => {
+    const next = new Set(prev)
+    next.has(c) ? next.delete(c) : next.add(c)
+    return next
   })
 
   const onOpenChange = (o: boolean) => {
@@ -66,21 +77,28 @@ export function SourceDeepDive({ docId }: { docId: number }) {
         {d && (
           <div className="space-y-3">
             <div>
-              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">딥다이브 핵심질문 후보 — 하나 골라 추적</p>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">딥다이브 핵심질문 후보 — 추적할 질문을 고르세요 (복수 선택)</p>
               <div className="space-y-1.5">
-                {d.candidates.map((c) => (
-                  <button key={c} onClick={() => setPicked(c)}
-                    className={cn("w-full text-left rounded-md border px-3 py-2 text-sm transition-colors",
-                      picked === c ? "border-primary bg-primary/5" : "hover:border-primary/50")}>
-                    {c}
-                  </button>
-                ))}
+                {d.candidates.map((c) => {
+                  const on = picked.has(c)
+                  return (
+                    <button key={c} onClick={() => toggle(c)}
+                      className={cn("w-full flex items-start gap-2 text-left rounded-md border px-3 py-2 text-sm transition-colors",
+                        on ? "border-primary bg-primary/5" : "hover:border-primary/50")}>
+                      <span className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                        on ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40")}>
+                        {on && <Check className="h-3 w-3" />}
+                      </span>
+                      <span className="min-w-0 flex-1">{c}</span>
+                    </button>
+                  )
+                })}
               </div>
-              <Button size="sm" className="mt-2 w-full" disabled={!picked || track.isPending}
-                onClick={() => picked && track.mutate(picked)}>
+              <Button size="sm" className="mt-2 w-full" disabled={picked.size === 0 || track.isPending}
+                onClick={() => track.mutate([...picked])}>
                 {track.isPending
-                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 분해·추적 시작 중… (수 분)</>
-                  : <><Sparkles className="h-3.5 w-3.5" /> 질문으로 추적</>}
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {picked.size}개 분해·추적 시작 중… (수 분)</>
+                  : <><Sparkles className="h-3.5 w-3.5" /> 질문으로 추적{picked.size > 0 ? ` (${picked.size})` : ""}</>}
               </Button>
             </div>
 
