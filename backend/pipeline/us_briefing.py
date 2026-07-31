@@ -41,6 +41,9 @@ _SECTOR_KR = {
 }
 
 _IDIO_CHANGE = 8.0     # |등락률| 이 이상이면 '거래대금+급등락 동반=실이벤트'
+# ADR → 담론이 사는 본체(KR) 엔티티명. 비파괴 크로스레퍼런스(하드 병합 대신, D-098):
+# ADR 엔티티(SKHY 22건)는 자체 us_prices·ticker 정체성 유지하되, enrich는 본체(SK하이닉스 1349건)를 함께 읽는다.
+_ADR_HOME = {"SKHY": "SK하이닉스"}
 _MACRO_FLOW = ("수급", "매크로")   # 시장구조 렌즈(담론 문서 선별 시 항상 포함)
 _DISCOURSE_THEMES = 12            # 지배 테마 랭킹 상한
 _DISCOURSE_DOCS = 8              # 시장구조 코멘터리 문서 상한
@@ -52,19 +55,31 @@ def _cluster_label(sector: str | None) -> str:
     return _SECTOR_KR.get(sector, sector)
 
 
+def _home_entity_id(conn, ticker: str) -> int | None:
+    """ADR의 본체(KR) 엔티티 id — 비파괴 크로스레퍼런스(_ADR_HOME 이름→id 런타임 해소)."""
+    name = _ADR_HOME.get((ticker or "").upper())
+    if not name:
+        return None
+    r = conn.execute("SELECT id FROM entities WHERE type='company' AND name=? LIMIT 1", (name,)).fetchone()
+    return r["id"] if r else None
+
+
 def _enrich_coverage(conn, ticker: str) -> dict:
-    """우리 커버리지 — entity 해소 시 최근 언급수 + 걸린 내러티브. 없으면 uncovered(스터디 후보)."""
-    eid, _ = resolve_us(conn, ticker)
-    if eid is None:
+    """우리 커버리지 — entity(US + ADR 본체) 해소 시 최근 언급수 + 걸린 내러티브. 없으면 uncovered(스터디 후보)."""
+    us_eid, _ = resolve_us(conn, ticker)
+    home_eid = _home_entity_id(conn, ticker)             # ADR이면 KR 본체도 함께
+    ids = [e for e in dict.fromkeys([us_eid, home_eid]) if e]
+    if not ids:
         return {"coverage": "uncovered", "entity_id": None, "mentions_3d": 0, "narrative": None}
+    ph = ",".join("?" * len(ids))
     m = conn.execute(
-        "SELECT count(DISTINCT el.doc_id) n FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id "
-        "WHERE el.entity_id=? AND rd.published_at >= datetime('now','-3 days')", (eid,)).fetchone()
+        f"SELECT count(DISTINCT el.doc_id) n FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id "
+        f"WHERE el.entity_id IN ({ph}) AND rd.published_at >= datetime('now','-3 days')", ids).fetchone()
     nar = conn.execute(
-        "SELECT n.title t FROM entity_relations r JOIN narratives n ON n.id=r.narrative_id "
-        "WHERE (r.src_id=? OR r.dst_id=?) AND r.narrative_id IS NOT NULL ORDER BY n.id DESC LIMIT 1",
-        (eid, eid)).fetchone()
-    return {"coverage": "covered", "entity_id": eid,
+        f"SELECT n.title t FROM entity_relations r JOIN narratives n ON n.id=r.narrative_id "
+        f"WHERE (r.src_id IN ({ph}) OR r.dst_id IN ({ph})) AND r.narrative_id IS NOT NULL "
+        f"ORDER BY n.id DESC LIMIT 1", ids + ids).fetchone()
+    return {"coverage": "covered", "entity_id": us_eid or home_eid,
             "mentions_3d": m["n"] if m else 0, "narrative": nar["t"] if nar else None}
 
 
