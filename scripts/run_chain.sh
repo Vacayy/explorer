@@ -40,7 +40,7 @@ $PY scripts/redigest_youtube.py  >> "$LOG" 2>&1 && \
 $PY scripts/extract_doc_causal.py --limit 10 >> "$LOG" 2>&1 && \
 $PY scripts/compute_signals.py   >> "$LOG" 2>&1 && \
 $PY scripts/compute_narratives.py >> "$LOG" 2>&1 && \
-$PY scripts/extract_events.py    >> "$LOG" 2>&1 && \
+$PY scripts/extract_events.py --limit 40 >> "$LOG" 2>&1 && \
 $PY scripts/scan_actions.py      >> "$LOG" 2>&1 && \
 $PY scripts/compute_digests.py   >> "$LOG" 2>&1 && \
 $PY scripts/vault_sync.py --export >> "$LOG" 2>&1 && \
