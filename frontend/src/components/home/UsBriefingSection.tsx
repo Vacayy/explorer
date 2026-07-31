@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { AlertTriangle, ChevronDown, GraduationCap, Info, Share2, TrendingUp } from "lucide-react"
+import { AlertTriangle, ChevronDown, GraduationCap, Info, Newspaper, Share2, TrendingUp } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -155,23 +155,32 @@ function chg(v: number | null): string {
 }
 
 function MoverRow({ m }: { m: UsMoverBrief }) {
+  const top = m.headlines?.[0]
   return (
-    <div className="flex items-center gap-2 py-1 text-sm min-w-0">
-      <Link to={`/us/${m.ticker}`} className="font-semibold text-primary hover:underline shrink-0">{m.ticker}</Link>
-      <span className={`text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : ""}</span>
-      <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
-        {m.flags.map((f) => (
-          <Badge key={f} variant="outline" className={`text-[9px] shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
-        ))}
+    <div className="py-1 text-sm min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <Link to={`/us/${m.ticker}`} className="font-semibold text-primary hover:underline shrink-0">{m.ticker}</Link>
+        <span className={`text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : ""}</span>
+        <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
+          {m.flags.map((f) => (
+            <Badge key={f} variant="outline" className={`text-[9px] shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
+          ))}
+        </div>
+        {m.narrative && (
+          <Link to={`/narrative?topic=${encodeURIComponent(m.narrative)}`}
+            className="ml-auto shrink-0 max-w-[40%] truncate text-[11px] text-hypothesis hover:underline">{m.narrative}</Link>
+        )}
       </div>
-      {m.narrative ? (
-        <Link to={`/narrative?topic=${encodeURIComponent(m.narrative)}`}
-          className="ml-auto shrink-0 max-w-[45%] truncate text-[11px] text-hypothesis hover:underline">{m.narrative}</Link>
+      {/* 개별 '왜' — US 원천 헤드라인 (D-097) */}
+      {top ? (
+        <a href={top.url ?? undefined} target="_blank" rel="noreferrer"
+          className="mt-0.5 flex items-start gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+          <Newspaper className="h-3 w-3 shrink-0 mt-0.5" />
+          <span className="truncate"><span className="text-foreground/70">{top.publisher}</span> · {top.title}</span>
+        </a>
       ) : m.coverage === "uncovered" ? (
-        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">스터디 후보</span>
-      ) : (
-        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">언급 {m.mentions_3d}</span>
-      )}
+        <div className="mt-0.5 pl-1 text-[10px] text-muted-foreground">촉매 미상 · 스터디 후보</div>
+      ) : null}
     </div>
   )
 }

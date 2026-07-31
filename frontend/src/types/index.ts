@@ -556,6 +556,10 @@ export interface UsMoversResponse {
 }
 
 // 어젯밤 미국장 브리핑 (홈 상단, docs/specs/us-briefing.md)
+export interface UsHeadline {
+  title: string; publisher: string | null; published_at: string | null;
+  url: string | null; summary: string | null;
+}
 export interface UsMoverBrief {
   rank: number; ticker: string; name: string;
   dollar_volume: number | null; change_pct: number | null;
@@ -563,6 +567,7 @@ export interface UsMoverBrief {
   is_adr: boolean; is_new: boolean;
   coverage: "covered" | "uncovered"; entity_id: number | null;
   mentions_3d: number; narrative: string | null; flags: string[];
+  headlines: UsHeadline[];
 }
 export interface UsCluster {
   label: string; n: number; dollar_volume: number; share_pct: number;

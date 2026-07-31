@@ -505,6 +505,18 @@ def init_db():
         PRIMARY KEY(trade_date, rank)
     );
 
+    -- 무버 종목별 US 원천 헤드라인 (yfinance .news 캐시, D-097) — 개별 종목 '왜' 채움.
+    CREATE TABLE IF NOT EXISTS us_ticker_news (
+        ticker       TEXT NOT NULL,
+        url          TEXT NOT NULL,
+        title        TEXT,
+        publisher    TEXT,
+        published_at TEXT,
+        summary      TEXT,
+        fetched_at   TEXT,
+        PRIMARY KEY(ticker, url)
+    );
+
     -- 어젯밤 미국장 브리핑 LLM 종합 캐시 (하루 1회·signature 불변이면 재사용, docs/specs/us-briefing.md).
     CREATE TABLE IF NOT EXISTS us_briefings (
         trade_date     TEXT PRIMARY KEY,

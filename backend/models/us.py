@@ -52,6 +52,14 @@ class UsMoversResponse(BaseModel):
 
 # ── 어젯밤 미국장 브리핑 (docs/specs/us-briefing.md) ─────────────────────────
 
+class UsHeadline(BaseModel):
+    title: str
+    publisher: str | None = None
+    published_at: str | None = None
+    url: str | None = None
+    summary: str | None = None
+
+
 class UsMoverBrief(BaseModel):
     rank: int
     ticker: str
@@ -68,6 +76,7 @@ class UsMoverBrief(BaseModel):
     mentions_3d: int = 0
     narrative: str | None = None          # 걸린 최신 내러티브 제목
     flags: list[str] = []                 # 개별 이슈 사유 (급등 +18% · 그룹 역행 · 신규 진입)
+    headlines: list[UsHeadline] = []      # US 원천 헤드라인 (개별 '왜', D-097)
 
 
 class UsCluster(BaseModel):
