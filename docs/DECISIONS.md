@@ -10,6 +10,13 @@
 
 ---
 
+## D-103 · 2026-08-02 · 텔레그램 답글 원문 유실 버그 — 인용문이 아니라 본문(js-message_text) 타겟 (feat/conviction-loop)
+**결정**: `scrape_channel`의 본문 셀렉터를 `tgme_widget_message_text`(generic) → **`js-message_text`(실제 본문)** 로 교정. **답글 메시지**는 인용문 div(`js-message_reply_text`)도 `tgme_widget_message_text` 클래스를 가져, `find`가 문서순 **첫 매칭=인용문**을 잡아 본문 대신 **잘린 인용문("…")** 을 저장하던 버그. 기존 오손 문서는 `scripts/backfill_telegram_truncated.py`(개별 임베드 `?embed=1`에서 `fetch_message_body`로 전문 재수집 → markdown·title 갱신 + `reenrich_document`로 entity_links 재생성)로 백필. 안전장치: '…로 끝 + <500자'(단일 답글 인용문 시그니처)만 대상, 새 본문이 더 짧으면 skip(멀티메시지 버스트 오손 방지), dry-run 기본.
+**맥락·이유**: 사용자 신고 "텔레그램 원문 전체가 안 되는 경우 꽤 있음, 예 doc/7408". 진단: 7408(=t.me/chunjonghyun/7624)은 **답글**이고 저장된 260자 "…"는 답글이 인용한 원 메시지의 잘린 프리뷰였음(실제 본문은 "공감하는 관점…" 355자). 텔레그램 위젯이 인용문을 truncate("…")하는데 구 셀렉터가 그걸 본문으로 오인. dry-run 실측(최근 52 후보): 21건 전문 복구(#7408 260→355·#5406 263→**1694** 메리츠 리포트·#4680 257→1394·#1266 257→1202…), 31건 정상 skip, 0 실패. **데이터 정합성**: 잘린 본문은 enrich·entity_links·내러티브·검색까지 오염시키므로 백필 시 재enrich 필수.
+**기각한 대안**: ① 스크래퍼만 고치고 기존 방치 — 264개 "…" 포함 문서가 이미 오염(엔티티·검색), 백필로 교정. ② generic 셀렉터 유지 + reply div만 사후 제외 — `js-message_text` 직접 타겟이 명확·견고. ③ 버스트까지 완벽 재구성 백필 — head 임베드만으론 continuation id 미보유, '…+짧음' 필터로 단일 답글에 한정하고 새 본문이 짧으면 skip(데이터 손실 방지), dry-run 검토 게이트. ④ 인용문(reply 컨텍스트)도 함께 저장 — 잘려서 신뢰 낮고 본문이 핵심, 범위 밖.
+**참조**: backend/services/telegram_service.py(scrape_channel js-message_text·fetch_message_body) · scripts/backfill_telegram_truncated.py · pipeline/store.py(reenrich_document 재사용) · [[D-024]](수집 체인) · 대화 2026-08-02
+**후속**: 답글 인용문이 짧아 "…" 없이 저장된 케이스는 이 필터가 못 잡음 — 필요 시 reply 여부 재판정 백필 별도.
+
 ## D-102 · 2026-07-31 · 매크로·유동성 해석 = 신호등 산문(sonnet) — 서술 넘어 포지셔닝 가이드 (feat/conviction-loop)
 **결정**: D-101의 결정적 해석 코멘트를 **LLM 산문 신호등으로 격상**. `_refresh_signal`(스냅샷/버튼 때 sonnet 1콜)이 지표 + 결정적 초안(`_interpret`)을 입력받아 **신호등**(`green` 실어도 되는 배경 / `yellow` 선별·경계 / `red` 방어) + headline + comment(①왜 이 신호인지 지표 근거 ②비중·방어·헤지 등 **포지셔닝 함의** ③가장 주시할 지표와 전환 트리거) 생성. `macro_signals` 테이블(as_of PK, signature 불변이면 재사용, 버튼 주도 D-100 — GET은 순수 읽기). 엔진 미가용이면 결정적 `_interpret` 폴백(FE도 폴백 렌더). 결정적 프레임은 폐기 아니라 **LLM 입력+폴백**으로 유지.
 **맥락·이유**: 사용자 — "산문 해석으로 격상. 단순 해석을 넘어 투자자에게 **신호등 역할**을 해줄 해설이어야." → 서술("순유동성 위축")을 넘어 "그래서 어떻게"(실어도 되나·방어인가·뭘 주시)까지. 실측(2026-07-31): yellow · "유동성 실탄은 줄고 위험선호는 식는 중 — 선별 대응" · 순유동성 위축을 가장 무겁게 읽고 완화적 금리·달러와의 엇갈림·BTC/WTI↓+금↑의 위험선호 냉각을 종합 → "베타 축소·우량 선별·레버리지 축소·되돌림 매수" + 트리거(순유동성 방향→red/green). 비용: 스냅샷(버튼) 때만·signature 캐시라 하루 1콜 수준(cost-conscious).

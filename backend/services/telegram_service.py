@@ -30,7 +30,10 @@ def scrape_channel(channel_name: str) -> list[dict]:
     messages = []
 
     for bubble in soup.find_all("div", class_="tgme_widget_message_bubble"):
-        text_div = bubble.find("div", class_="tgme_widget_message_text")
+        # 본문 = js-message_text. 답글 메시지는 인용문 div(js-message_reply_text)도
+        # tgme_widget_message_text 클래스를 가져, generic first-match면 잘린 인용문("…")을
+        # 본문으로 오인한다 → 원문 유실. js-message_text로 실제 본문만 타겟 (D-103).
+        text_div = bubble.find("div", class_="js-message_text")
         time_el = bubble.find("time")
 
         parent = bubble.find_parent("div", class_="tgme_widget_message")
@@ -58,6 +61,20 @@ def scrape_channel(channel_name: str) -> list[dict]:
             })
 
     return messages
+
+
+def fetch_message_body(channel: str, msg_id: str) -> str | None:
+    """개별 메시지 본문(js-message_text) 전문 — 백필용(D-103). 실패/본문없음이면 None."""
+    url = f"https://t.me/{channel}/{msg_id}?embed=1&mode=tme"
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=15, verify=False)
+    except Exception:
+        return None
+    if resp.status_code != 200:
+        return None
+    soup = BeautifulSoup(resp.text, "html.parser")
+    td = soup.find("div", class_="js-message_text")
+    return _extract_text_with_breaks(td) if td else None
 
 
 def _extract_text_with_breaks(element) -> str:
