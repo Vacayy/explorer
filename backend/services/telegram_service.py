@@ -77,6 +77,27 @@ def fetch_message_body(channel: str, msg_id: str) -> str | None:
     return _extract_text_with_breaks(td) if td else None
 
 
+def fetch_message_parts(channel: str, msg_id: str) -> dict:
+    """개별 메시지의 답글 인용문(reply)·본문(body) — 오손(인용문을 본문으로 저장) 판별용(D-103).
+
+    실패/없으면 해당 키 None. reply가 있고 저장분이 reply와 같으면 그 문서는 인용문을 잘못 저장한 것.
+    """
+    url = f"https://t.me/{channel}/{msg_id}?embed=1&mode=tme"
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=15, verify=False)
+    except Exception:
+        return {}
+    if resp.status_code != 200:
+        return {}
+    soup = BeautifulSoup(resp.text, "html.parser")
+    body_div = soup.find("div", class_="js-message_text")
+    reply_div = soup.find("div", class_="js-message_reply_text")
+    return {
+        "body": _extract_text_with_breaks(body_div) if body_div else None,
+        "reply": _extract_text_with_breaks(reply_div) if reply_div else None,
+    }
+
+
 def _extract_text_with_breaks(element) -> str:
     """Extract text preserving intentional line breaks only.
 
