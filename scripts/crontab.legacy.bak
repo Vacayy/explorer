@@ -1,0 +1,13 @@
+# 30분 수집 체인 (겹침 방지 래퍼)
+*/30 * * * * <PROJECT_DIR>/scripts/run_chain.sh >> <PROJECT_DIR>/logs/ingest.log 2>&1
+# 평일 16:10 전종목 주가
+10 16 * * 1-5 cd <PROJECT_DIR> && ./.venv/bin/python scripts/ingest_prices.py --daily >> logs/ingest.log 2>&1
+# 평일 08:00 아침 브리핑
+0 8 * * 1-5 cd <PROJECT_DIR> && ./.venv/bin/python scripts/send_briefing.py >> logs/ingest.log 2>&1
+# 일요일 07:00 지식 주간 승격
+0 7 * * 0 cd <PROJECT_DIR> && ./.venv/bin/python scripts/promote_knowledge.py >> logs/ingest.log 2>&1
+# 매일 06:45 모순 감지
+45 6 * * * cd <PROJECT_DIR> && ./.venv/bin/python scripts/scan_contradictions.py >> logs/ingest.log 2>&1
+# 일요일 07:20 에이전트 제안함 스캔 (소외·상충·반증 리마인드·반대 질문)
+20 7 * * 0 cd <PROJECT_DIR> && ./.venv/bin/python scripts/scan_agent_proposals.py >> logs/ingest.log 2>&1
+40 7 * * * cd <PROJECT_DIR> && ./.venv/bin/python scripts/refresh_questions.py >> logs/ingest.log 2>&1

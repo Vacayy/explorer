@@ -85,7 +85,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `entity_keywords` | 6 | 종목별 사용자 매칭 키워드 (등록 시 소급 링크) |
 | `entity_merges` | 병합분 | 어휘 통합 audit+redirect (D-033) — 병합으로 사라진 (old_name, type) → survivor_id. 쓰기 시 재파편화 방지 리다이렉트 겸용 |
 | `follows` | 0 | 엔티티 팔로우 (섹터·테마 → 홈 스트림) |
-| `saved_items` | 북마크 | **저장됨(D-078, docs/specs/saved-items.md)** — 산출물 북마크. kind(company·doc·narrative·report)·ref(안정 식별자; 내러티브·리포트는 **버전 행 PK**=보던 버전 고정)·url·title/subtitle 스냅샷·note(한 줄). UNIQUE(kind, ref)로 토글 멱등. 팔로우(엔티티 흐름 구독)와 성격이 다른 아티팩트 다시-찾기 |
+| `saved_items` | 북마크 | **저장됨(D-078, docs/specs/saved-items.md)** — 산출물 북마크. kind(company·doc·narrative·report·**synthesis**[D-104])·ref(안정 식별자; 내러티브·리포트는 **버전 행 PK**=보던 버전 고정)·url·title/subtitle 스냅샷·note(한 줄). UNIQUE(kind, ref)로 토글 멱등. 팔로우(엔티티 흐름 구독)와 성격이 다른 아티팩트 다시-찾기 |
+| `doc_syntheses` | 종합별 | **문서 교차 종합(D-104, docs/specs/doc-synthesis.md)** — 사람이 저장됨에서 **직접 고른 문서 묶음**을 엮어 읽은 산출물. doc_ids(json 스냅샷)·title·body(md)·model·created_at. 기존 종합은 앵커가 자동 선정(질문 D-093·기간 다이제스트·토픽 내러티브)인데 여기선 **큐레이션이 곧 입력**. **일회성**: 묶음 객체 없음, 같은 조합 재생성=새 행(append-only). read-only — 인과그래프·질문 트래커 무변경 |
 | `observations` / `models` | 활성/0 | 시계열 투영·살아있는 모델. **observations 가동(D-069)**: 질문 트래커의 numeric 프록시 관측이 `entity_id·metric·value`로 투영(source='proxy:transcript', transcript_follow.entity_id 경유). models는 여전히 스키마만 |
 | `scenarios` | topic별 | 파급 시나리오 캐시(D-038) — topic PK·answer·beneficiaries(json)·citations(json)·narrative_version(변동 시 stale) + **`question_id`(D-070 질문=허브: Q5 시나리오를 질문에 묶음, NULL=내러티브발)**. 매 클릭 opus 재생성 방지, '다시 분석'(refresh)으로만 갱신 |
 | `reports` | 버전별 | 통합 리포트 **append-only 히스토리**(D-047) — id PK·anchor_topic·title·body(Top-down md)·members_json·stocks_json·debate_json·members_hash·**top_pick**·created_at. 최신=id DESC, 매 생성이 새 버전(덮어쓰기 폐기, 과거 열람 가능) |
@@ -159,6 +160,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `rag` | 검색 top-16→sonnet 종합·출처 인용 강제·갭 분석·승격 지식 블록(K1) — 모델 티어: 태깅/판정=haiku, 대화 RAG=sonnet(지연 민감), 심층 종합(브리프·세계관·시나리오)=opus |
 | `consolidation` | K0 공고화 — 주간 승격 배치(4중 검증·릴레이 접기·반박 탐색·statement 병합) → 승인 큐. **인과 엣지 승격(Phase 2 §2-5)**: `promote_causal_edges` — 문서 대신 인과 그래프 재적재(narrative_edge_evidence)가 입력이라는 점만 다르고 동일 규율(독립 관측 2+·시간 분산·병합·반박 탐색) 재사용 |
 | `knowledge_recall` | K1 지식 소환 — activation×epistemic 랭킹, 브리프용 1-hop 그래프 확산, RAG용 의미 유사 |
+| `doc_synthesis` | **문서 교차 종합(D-104·D-105)** — 사람이 고른 문서 묶음(2~12건)을 엮어 **업황 프레임**(업황 한 줄 종합·**판의 구조**[산업의 수요·공급·가격·자본·경쟁 중 무엇이 어디로]·상충[주장 주체 성격 차이 포함]·**업황이 던지는 질문+각 질문의 잠정 추론**·감시 지표)을 sonnet으로. **층위=업황, 종목 투자판단 아님**(D-105: 기업 자료도 산업을 읽는 표본으로) · **인용=자연어, 번호 참조 금지**(본문이 자기충족 — `resolve_channels()`로 채널명 주입). **출력 계약=마크다운**(`# 제목`+본문; 산문+따옴표를 JSON으로 받으면 이스케이프가 깨져 실측 2회 실패, D-105). 문서당 8,000자 클립(앞 6,000+뒤 2,000 — 컨콜 Q&A·결론부 보존), markdown 우선. read-only(그래프·트래커 무변경), 캐시 가드 없음(버튼이 곧 의도) |
 | `dates` / `normalize` | ISO 정규화(KST 버킷) / markitdown(PDF)·HTML 텍스트화 |
 
 ### 5-2. API (spine 라우터 13종)
@@ -173,6 +175,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/signals` | 신호 (type·days) |
 | `POST /api/spine/ask` | RAG 질의응답 (인용+갭 분석) |
 | `GET·POST·PATCH·DELETE /api/spine/saved` | **저장됨(D-078)** — 산출물 북마크. GET(목록, `?kind=`; 배지·토글·리스트 공용) · POST(`INSERT OR IGNORE` 멱등 토글) · PATCH `/{id}`(메모) · DELETE `/{id}`. FE: 각 페이지 북마크 토글 + 헤더 상시 아이콘(Sheet) + 팔로우 '저장됨' 서브탭(`/follow/saved`) |
+| `GET·POST /api/spine/synthesis` | **문서 교차 종합(D-104, docs/specs/doc-synthesis.md)** — POST(`{doc_ids}` 2~12건 → 교차 종합 sonnet, ~60~90초 실측) · GET(최신 목록, 재열람 경로) · GET `/{id}`(단건+엮은 문서 메타, LLM 0). FE: `/follow/saved`에서 문서 체크박스 다중선택 → 액션 바 '엮어 종합' → `/synthesis/:id`(SynthesisPage) + 종합을 다시 북마크(kind=`synthesis`) |
 | `GET /api/spine/market-regime` · `POST /snapshot` | **시장 국면(D-076)** — 양 시장 리스크 포스처+근거+스파크라인 series(LLM 0, 첫 진입 시 lazy 스냅샷). / EOD 일별 스냅샷 적재(scripts/snapshot_market.py=수동·cron) |
 | `GET /api/spine/macro` · `POST /snapshot` | **매크로·유동성(D-101, docs/specs/macro.md)** — 배경 조건 트래킹(금리·달러·순유동성·신용·원자재). 하이브리드: yfinance(무키: ^TNX·DXY·유가·금·HYG·BTC) + FRED(무료키 `FRED_API_KEY`: WALCL·TGA·RRP·M2). **순유동성=WALCL−TGA−RRP**(= MacroMicro US Liquidity Index, 읽을 때 계산). `market_indicators` 재사용(`macro_*` 프리픽스). GET=순수 읽기+lazy, POST=재수집(버튼 주도 D-100). FRED 키 없으면 유동성만 degraded |
 | `POST /api/spine/thesis/audit` · `GET /audits` · `GET /{id}` | **논지 감사(D-078)** — thesis 주입→인과그래프 대질 감사(read-only·연쇄 LLM ~수 분, 저장) / 히스토리 / 저장분 재조회(LLM 0). 격리: 그래프 무변경 |
@@ -195,7 +198,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 ### 5-3. 스크립트 (`scripts/`)
 시딩: `seed_companies`(DART) · `seed_entities`(그래프) · `seed_sectors`(FDR KSIC) · **`seed_universe`**(유니버스 정본 — 11섹터/119종 industry_groups·members, 멱등·비파괴, D-075: 그간 DB에만 있던 유니버스를 git으로 고정)
-운영: **`run_chain.sh`**(30분 cron 체인 래퍼 — mkdir+PID 락으로 겹침 방지, 이전 실행 진행 중이면 skip, D-024)가 순서대로 실행: `ingest` · `redigest_youtube`(자막 raw로 굳은 유튜브 문서 opus 재요약 치유, 회차당 5) · `compute_signals` · `compute_narratives`(트리거 2종: theme_surge 상위 5 + **커버리지** — 30일 문서 30건+ & 내러티브 부재/7일+ 오래됨, 사이클당 +2 순환, 문서유형 라벨 제외, D-028) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index`. 별도 cron: `ingest_prices`(평일 16:10) · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장) · **`refresh_questions`(매일 07:40, D-069)** — 질문 트래커 갱신(자동도출 + numeric/sentiment 관측 갱신 + 재판정, 재료 없으면 멱등 no-op, 관리자 플래그 게이트) · **`snapshot_market`(권장 평일 16:20, D-076)** — 시장 국면 지표 일별 스냅샷(F&G·VIX·KOSPI·VKOSPI, 멱등)
+운영: **스케줄러는 cron이 아니라 launchd**(D-106 — cron은 GUI 세션 밖이라 ①claude 자격증명이 든 **macOS 키체인에 접근 못 해** 모든 LLM 호출이 `Not logged in`으로 죽었고 ②**놓친 스케줄을 기상 후 재실행하지 않아** 랩탑 수면 시 그 회차가 증발. launchd user agent는 Aqua 세션이라 키체인이 열리고 기상 시 놓친 회차를 실행 — 두 고장이 한 번에 해소). 설치기 `install_launchd.py`(plist 생성+bootstrap, `--dry-run`·`--uninstall`), 등록 라벨 `dev.explorer.{chain,prices,briefing,promote,contradictions,proposals,questions}`, 롤백은 `scripts/crontab.legacy.bak`.
+**`run_chain.sh`**(30분 체인 래퍼 — mkdir+PID 락으로 겹침 방지, 이전 실행 진행 중이면 skip, D-024)가 순서대로 실행 — 맨 앞에 값싼 운영 점검 2개(`&&` 밖, 수집 실패에 발목 안 잡히게): **`probe_llm`**(LLM 엔진 생사 haiku 1콜 → `job_runs('llm_probe')`. 정상이면 하루 1회, 고장 중이면 매 회차 재시도해 복구 즉시 감지 — 실패 시 `ops.llm_down_reason()`이 홈 브리핑 **최상단 경고**로, 텔레그램 브리핑에도 동반, D-106) · **`send_briefing.py --catch-up`**(평일 08:00 지났는데 오늘 시도 기록 없으면 발송 — 멱등, D-106). 이어서 `ingest` · `redigest_youtube`(자막 raw로 굳은 유튜브 문서 opus 재요약 치유, 회차당 5) · `compute_signals` · `compute_narratives`(트리거 2종: theme_surge 상위 5 + **커버리지** — 30일 문서 30건+ & 내러티브 부재/7일+ 오래됨, 사이클당 +2 순환, 문서유형 라벨 제외, D-028) · `extract_events` · `scan_actions` · `compute_digests` · `vault_sync` · `build_search_index`. 별도 잡(launchd): **`send_briefing`(평일 08:00 — 아침 브리핑 텔레그램 발송, 모든 시도를 `job_runs('send_briefing')`에 ok/skipped/error로 기록, 망 실패는 3회 재시도, D-106)** · `ingest_prices`(평일 16:10) · `promote_knowledge`(주 1회 일 07:00) · `scan_contradictions`(매일 06:45 — compute_signals 끝에도 편승하나 ran_today 가드로 일 1회 보장) · **`refresh_questions`(매일 07:40, D-069)** — 질문 트래커 갱신(자동도출 + numeric/sentiment 관측 갱신 + 재판정, 재료 없으면 멱등 no-op, 관리자 플래그 게이트) · **`snapshot_market`(권장 평일 16:20, D-076)** — 시장 국면 지표 일별 스냅샷(F&G·VIX·KOSPI·VKOSPI, 멱등)
 1회성: `backfill_enrich` · **`backfill_enrich_batch`**(keyword 폴백 배치 재태깅 — 문서 10건/콜 sonnet, D-028 레버 1 · 2026-07-19 완료: 1,514건 전량) · `backfill_temporal` · `backfill_pace_layer`(기존 인과 노드 layer 분류 — 40개/콜 haiku, D-030 · 2026-07-19 완료: 838노드) · **`backfill_effect_strength`**(기존 인과 엣지에 effect_strength/direction 소급 — sonnet 배치, dry-run→`--apply`, confidence 불변[교차검증 이력 보존], D-065) · `migrate_narratives`(source_digests→narratives 이관, D-023)
 **`extract_doc_causal`**(문서 레벨 인과 추출 — LLM 태깅 완료+본문 1,200자+ 문서[모든 소스: feed·컨콜]에서 sonnet이 명시 인과만 추출, source_doc_id·narrative_id=NULL·confidence 상한 0.5, 내러티브와 독립된 제2 인과 공급원 = 교차검증 부트스트랩. **cron 체인 편입됨(D-088, 회당 10·멱등 causal_extracted_at·run_job 게이트)** — 구 수동 보류[D-028] 번복. docs/specs/doc-causal-extraction.md) · 수동 배치: **`ingest_canon`**(역사(canon) 지식층, D-030 — UI 라벨 '역사', source_type=canon 유지 — `vault/canon/*.md`(사람+Claude 작성 통사 노트, 원저 통째 수집 금지) → source_type='canon' 흡수 → opus가 역사 인과 추출: epistemic_type='observed'(신규 중간 티어 — 널리 수용된 역사 해석), confidence 상한 0.85, 역사적 reference_period(2001~). 그래프의 시간 지평을 과거로 확장 — 파일럿: 미중 패권 25년사 54엣지, '세계질서 재편' 뿌리 접합 검증) **`ingest_canon`**(역사(canon) 지식층, D-030 — UI 라벨 '역사', source_type=canon 유지 — `vault/canon/*.md`(사람+Claude 작성 통사 노트, 원저 통째 수집 금지) → source_type='canon' 흡수 → opus가 역사 인과 추출: epistemic_type='observed'(신규 중간 티어 — 널리 수용된 역사 해석), confidence 상한 0.85, 역사적 reference_period(2001~). 그래프의 시간 지평을 과거로 확장 — 파일럿: 미중 패권 25년사 54엣지, '세계질서 재편' 뿌리 접합 검증)
 
@@ -209,7 +213,7 @@ Home(/home)        아침 브리핑 + 신호 대시보드 — **어젯밤 미국
                    **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039. + **'이 섹터의 내러티브' 집약 뷰 + 섹터 리포트**(D-074: 그룹을 건드리는 내러티브가 섹터 단위로 모임, 월드모델로 링크 + '섹터 리포트 생성'(compute-group)·'리포트 보기' — 섹터=팔로우×월드모델 cross-cutting 앵커)) ·
                    **컨콜**(/follow/transcripts: 미국 기업 실적 컨콜 2분할 브라우저 — 좌 그룹 팔로우, 우 핵심 정리+원문, D-061. + 상단 '곧 발표' 실적 캘린더·팔로우 행 D-day 배지·발표일 갱신, D-081) ·
                    **수출입**(/follow/trade: 관세청 품목별 무역통계 2분할 — 좌 품목 팔로우, 우 수출입 추이 차트+관련 종목(파급 논리), D-064) ·
-                   **저장됨**(/follow/saved: 산출물 북마크 목록 — kind 필터 + 인라인 메모·삭제, SavedPage, D-078) ·
+                   **저장됨**(/follow/saved: 산출물 북마크 목록 — kind 필터 + 인라인 메모·삭제, SavedPage, D-078. + **문서 다중선택 → 교차 종합**(D-104): 체크박스로 2~12건 골라 '엮어 종합' → `/synthesis/:id`(SynthesisPage — 한 줄 종합·공통 축·상충·질문+잠정 추론·감시 지표 + 엮은 문서 칩 + 재북마크), 하단 '최근 교차 종합' 재열람 목록) ·
                    **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-057, 전부 '내가 커버하는 대상'). ※구 산업 페이지(/discover/industry)는 폐기
 월드모델           **인식론적 시간축으로 L2 구성 (D-073)**: 내러티브(현재·서사) · 전망(미래·확률) · 지식(과거·검증). "같은 인과 그래프의 여러 속도"(D-023)에 시간대를 겹친 것. 신호(델타 감지)와 성격 달라 분리(D-031). 시간축은 무게중심이지 칸막이 아님(내러티브는 현재+미래 겸함, 리포트는 과거+현재+미래 종합) — 탭은 중심으로, 교차는 링크로.
                    **내러티브(현재)**(/narrative: topic 없이 진입=목록 랜딩, /narrative?topic=X=상세 서사·인과 구조·메르 모드·**재생성 이력 타임라인**(본문 아래·파급 시나리오 위 인라인, 도트 클릭→히스토리 페이지, D-059)·파급 시나리오·통합 리포트·**이 서사의 핵심질문**(미러링, D-067). 자동 재생성 24h 1회 제한 + 새로고침 버튼, D-059. 히스토리=/narrative/history?topic=X&v=id 재생성 이력 상세, D-060) ·
@@ -241,8 +245,9 @@ VS 비교 · 리서치노트(워치리스트/투자메모/카탈리스트)
 cd backend && ../.venv/bin/uvicorn main:app --reload --port 8000
 cd frontend && npm run dev            # http://localhost:5173
 
-# 자동화 (등록됨 — 별도 조작 불필요)
-crontab -l                            # 30분 체인 + 평일 16:10 주가
+# 자동화 (launchd에 등록됨 — 별도 조작 불필요, D-106)
+launchctl list | grep dev.explorer    # 30분 체인 + 브리핑·주가·주간잡
+python scripts/install_launchd.py     # 스케줄 변경 후 재설치 (--dry-run/--uninstall)
 tail -f logs/ingest.log               # 수집 관찰
 ```
 `.env`: `DART_API_KEY` · `ENRICH_ENGINE=claude-code` · `CLAUDE_BIN` (+선택: VAULT_PATH, MEDIA_PATH, RAG_MODEL, ANTHROPIC_API_KEY, **FRED_API_KEY**[매크로·유동성 순유동성·M2, 무료 발급, 없으면 유동성만 degraded — D-101])

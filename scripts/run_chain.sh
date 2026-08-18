@@ -34,6 +34,11 @@ if pgrep -f 'scripts/ingest.py' >/dev/null 2>&1; then
 fi
 
 echo "$(ts) [chain] 시작" >> "$LOG"
+
+# --- 수집보다 먼저: 값싸고 빠른 운영 점검 (수집 실패에 발목 잡히지 않도록 && 밖) ---
+$PY scripts/probe_llm.py                     >> "$LOG" 2>&1   # LLM 엔진 생사 (D-106)
+$PY scripts/send_briefing.py --catch-up      >> "$LOG" 2>&1   # 미발송 브리핑 보전 (D-106)
+
 # 기존 crontab의 && 의미 보존 (한 단계 실패 시 이후 중단)
 $PY scripts/ingest.py            >> "$LOG" 2>&1 && \
 $PY scripts/redigest_youtube.py  >> "$LOG" 2>&1 && \

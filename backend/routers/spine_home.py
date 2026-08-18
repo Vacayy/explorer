@@ -65,7 +65,17 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
     # ⓪ 기계가 먼저 말하는 3줄 — 저장된 재료의 결정적 조합 (추가 LLM 호출 없음)
     #    우선순위: 내 종목/팔로우 insight > 시장 insight > 오늘 기업활동 > 오늘 신호
     briefing: list[BriefItem] = []
-    # 소스 경고 최우선 — '조용함'이 수집 고장이면 그것부터 알려야 한다
+    # LLM 엔진 경고가 소스 경고보다도 앞 — 엔진이 죽으면 태깅·요약·다이제스트가 전부
+    # 조용히 fallback해 '돌아가는 것처럼' 보인다. 그 착시를 먼저 깬다 (D-106)
+    from pipeline.ops import llm_down_reason
+    llm_down = llm_down_reason()
+    if llm_down:
+        briefing.append(BriefItem(
+            kind="warning",
+            text=f"LLM 엔진 응답 실패 — 태깅·요약 품질 저하 중 ({llm_down})",
+            to="/admin"))
+
+    # 소스 경고 — '조용함'이 수집 고장이면 그것부터 알려야 한다
     from routers.spine_sources import compute_source_health
     dead = [i for i in compute_source_health(conn) if i["warning"]]
     if dead:
@@ -139,8 +149,14 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
             p_ = json.loads(r["payload_json"] or "{}")
             if r["signal_type"] == "high_52w":
                 text = f"{r['name']} 52주 신고가 경신 (+{p_.get('breakout_pct')}%)"
+            elif r["signal_type"] == "theme_surge":
+                # theme_surge payload에는 count_7d가 없다 (share_pct·share_delta_pp)
+                text = (f"{r['name']} 주목 상승 — 담론 점유 {p_.get('share_pct')}% "
+                        f"(+{p_.get('share_delta_pp')}%p)")
+            elif p_.get("count_7d") is not None:
+                text = f"{r['name']} 언급 급증 — 7일 {p_['count_7d']}회"
             else:
-                text = f"{r['name']} 언급 급증 — 7일 {p_.get('count_7d')}회"
+                text = f"{r['name']} {r['signal_type']} 신호"
             briefing.append(BriefItem(kind="signal", text=text,
                 to=f"/analyze/{r['stock_code']}/mentions" if r["stock_code"] else "/explore"))
 

@@ -86,3 +86,68 @@ def run_job(name: str, fn):
     except Exception as e:  # noqa: BLE001 — 기록 후 재전파
         record_run(name, "error", f"{type(e).__name__}: {str(e)[:200]}", int((time.time() - t0) * 1000))
         raise
+
+
+# ── LLM 엔진 생사 감시 (D-106) ─────────────────────────────────────────────
+# 배경: cron이 GUI 세션 밖이라 키체인(claude 자격증명)에 접근하지 못해 모든 LLM 호출이
+# `Not logged in`으로 죽었는데(45,294건, 7/17~8/18) 한 달간 아무도 몰랐다. 각 파이프라인이
+# 조용히 fallback(enrich→키워드, digest→raw)해 표면적으로는 돌아가는 것처럼 보였기 때문.
+# → 값싼 프로브 1콜로 엔진 생사를 명시 신호로 만들고, 죽어 있으면 홈·텔레그램 최상단에 띄운다.
+LLM_PROBE = "llm_probe"
+
+
+def probe_llm() -> dict:
+    """LLM 엔진에 haiku 1콜을 던져 생사 확인 → job_runs 기록.
+
+    비용 가드: 오늘 이미 ok면 재프로브하지 않는다(하루 1콜). 단 마지막이 error면
+    매 회차 재시도해 복구를 즉시 감지한다 — 고장 중에만 자주 두드리는 비대칭.
+    """
+    import subprocess
+    from pipeline.enrich import _claude_bin, llm_engine
+
+    conn = get_connection()
+    last = conn.execute(
+        "SELECT status, date(ran_at, '+9 hours') d FROM job_runs WHERE job=? "
+        "ORDER BY id DESC LIMIT 1", (LLM_PROBE,)).fetchone()
+    conn.close()
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone(timedelta(hours=9))).date().isoformat()
+    if last and last["status"] == "ok" and last["d"] == today:
+        return {"status": "ok", "cached": True}
+
+    engine = llm_engine()
+    if engine is None:
+        record_run(LLM_PROBE, "error", "엔진 미설정 (ENRICH_ENGINE·ANTHROPIC_API_KEY 없음)")
+        return {"status": "error", "reason": "엔진 미설정"}
+    if engine != "claude-code":
+        record_run(LLM_PROBE, "ok", f"engine={engine} (프로브 생략)")
+        return {"status": "ok", "engine": engine}
+
+    t0 = time.time()
+    try:
+        proc = subprocess.run([_claude_bin(), "-p", "--model", "haiku", "ping"],
+                              capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL)
+        ms = int((time.time() - t0) * 1000)
+        if proc.returncode == 0 and proc.stdout.strip():
+            record_run(LLM_PROBE, "ok", f"engine=claude-code {ms}ms", ms)
+            return {"status": "ok", "engine": "claude-code", "ms": ms}
+        # claude는 오류(미로그인·한도)를 stdout에 쓴다 — stderr만 보면 원인이 안 보인다
+        reason = (proc.stdout.strip() or proc.stderr.strip())[:200]
+        record_run(LLM_PROBE, "error", f"rc={proc.returncode} {reason}", ms)
+        return {"status": "error", "reason": reason}
+    except Exception as e:  # noqa: BLE001
+        ms = int((time.time() - t0) * 1000)
+        record_run(LLM_PROBE, "error", f"{type(e).__name__}: {str(e)[:150]}", ms)
+        return {"status": "error", "reason": type(e).__name__}
+
+
+def llm_down_reason() -> str | None:
+    """마지막 프로브가 실패면 그 사유, 정상이면 None (홈 브리핑 경고용)."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT status, summary FROM job_runs WHERE job=? ORDER BY id DESC LIMIT 1",
+        (LLM_PROBE,)).fetchone()
+    conn.close()
+    if row and row["status"] == "error":
+        return (row["summary"] or "원인 불명")[:120]
+    return None
