@@ -14,6 +14,15 @@ from models.spine import BriefItem, CalendarEvent, HomeFollow, HomeResponse, Sig
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
 
+# 신호 타입 한글 라벨 — 프론트 SignalCard.tsx의 SIGNAL_LABEL과 같은 어휘.
+# 브리핑 3줄은 텔레그램으로도 나가므로(D-107) 원시 타입명이 새어나가지 않게 한다.
+SIGNAL_LABEL = {
+    "mention_surge": "언급 급증", "neglect": "소외", "export_change": "수출 변화",
+    "high_52w": "52주 신고가", "consensus_extreme": "컨센서스 극단",
+    "volume_spike": "거래량 급증", "quadrant_gap": "가격-관측 괴리",
+    "theme_surge": "주목 주제",
+}
+
 
 class AiActivityItem(BaseModel):
     type: str            # narrative | mega | report | scenario | digest
@@ -156,7 +165,7 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
             elif p_.get("count_7d") is not None:
                 text = f"{r['name']} 언급 급증 — 7일 {p_['count_7d']}회"
             else:
-                text = f"{r['name']} {r['signal_type']} 신호"
+                text = f"{r['name']} {SIGNAL_LABEL.get(r['signal_type'], r['signal_type'])}"
             briefing.append(BriefItem(kind="signal", text=text,
                 to=f"/analyze/{r['stock_code']}/mentions" if r["stock_code"] else "/explore"))
 
