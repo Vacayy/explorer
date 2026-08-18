@@ -10,6 +10,30 @@
 
 ---
 
+## D-108 · 2026-08-18 · 전일 국장 거래대금 상위 — 미국장 대응물이되 LLM 0 (feat/conviction-loop)
+**결정**: 홈에 **전일 국장 거래대금 상위 20** 카드를 신설한다(`KrMoversSection`, 미국장 브리핑 바로 아래). 미국장(D-094·D-095)과 같은 물음("어제 돈이 어디로 몰렸나")에 답하되 **종합 산문(sonnet)은 붙이지 않는다** — 표 + 섹터 쏠림 + 개별 이슈까지 전부 결정적 계산(LLM 0콜). 소스는 `fdr.StockListing("KRX")` 1콜(거래대금 `Amount`·등락률 `ChagesRatio`·시장·시총 동시 수령) — pykrx 시장 단위 엔드포인트는 KRX 로그인이 필요해져 쓰지 않는다(`ingest_prices.py`와 같은 이유). 신규 모듈 `pipeline/kr_movers.py` · 테이블 `kr_movers`(일별 스냅샷, 7일 보존) · 라우터 `GET /api/spine/kr/movers?force=` · launchd 잡 `dev.explorer.krmovers`(평일 16:20). 판정 규칙(급등락 |8%|·그룹 역행·신규 진입)과 status(ok/stale/error) 계약은 `us_briefing`과 **의도적으로 동일**하게 맞췄다 — 두 시장을 나란히 읽을 때 어휘가 달라지면 비교가 안 된다.
+
+**맥락·이유**: 사용자 — "국장 거래대금 상위도 보이면 좋을 것 같거든? 미국장 처럼.. 이건 웹에 일단 추가할 기능." 미국장은 이미 아침 분위기 파악의 진입점인데(D-095) 정작 본판인 국장에는 같은 뷰가 없었다. **LLM 0 선택**: 사용자가 "표 + 섹터 쏠림만"으로 확정 — 국장은 이미 신호·내러티브·다이제스트가 담론을 두껍게 덮고 있어 종합 산문의 한계효용이 낮고, 미국장 종합(sonnet 하루 1콜)은 '커버 밖 시장을 처음 읽는' 상황이라 값이 달랐다. 비용 의식 설계(D-072) 유지. **섹터 분류체계 통일**: `companies.sector`(KSIC, 2,760종목 커버) → `sector_map.group_name`(18개 대분류) 단일 경로. `industry_groups`(큐레이션 119종)와 섞으면 같은 카드 안에서 "반도체"와 "반도체·전자부품"이 공존해 라벨 어휘가 깨진다. **우선주 섹터 폴백**: `companies`가 DART corp_code 기반이라 우선주 행이 없어 삼성전자우가 '미분류'로 빠졌다 → 본주 코드(005935→005930)로 폴백. **'미분류'는 클러스터에서 제외**: 섹터가 아니라 매칭 실패 버킷이라, 묶으면 성격이 제각각인 종목들의 중앙값이 나와 **그룹 역행 판정까지 오염**시켰다(실측: 삼성전자우 +2.25%가 미분류 중앙값 -6.0% 대비 '그룹 역행'으로 오탐).
+
+**기각한 대안**: **(a) `stock_prices`에서 종가×거래량으로 계산** — 이미 있는 데이터라 추가 수집이 없지만 ①거래대금의 근사일 뿐이고 ②`ingest_prices`가 랩탑 수면으로 자주 걸러 최신이 2026-08-13에 멈춰 있었다(D-106 이전). 원천이 `Amount`를 직접 주는데 근사할 이유가 없다. **(b) pykrx `get_market_ohlcv_by_ticker`** — 거래대금을 정확히 주지만 KRX 로그인 요구로 이미 프로젝트에서 폐기된 경로. **(c) 미국장과 완전 대칭(sonnet 종합 포함)** — 위 이유로 사용자가 기각. 붙일 자리(`_synthesize` 대응)는 남겨뒀다. **(d) ETF·리츠·스팩 포함** — 거래대금 상위를 ETF가 잠식해 '어느 사업이 화두인가'가 안 보인다. FDR 리스팅에 종류 컬럼이 없어 이름 토큰(KODEX·TIGER·스팩·리츠…)으로 제외 — 취약하지만 스키마 검증(`MoversSourceError`)이 붕괴를 잡는다.
+
+**참조**: `backend/pipeline/kr_movers.py` · `backend/models/kr.py` · `backend/routers/spine_kr.py` · `backend/database.py`(kr_movers DDL) · `frontend/src/components/home/KrMoversSection.tsx` · `frontend/src/hooks/useKrMovers.ts` · `scripts/snapshot_kr_movers.py`
+
+---
+
+## D-107 · 2026-08-18 · 텔레그램 브리핑을 **누르는 브리핑**으로 — 버튼이 곧 생성 착수점 (docs/specs/telegram-briefing.md, feat/conviction-loop)
+**결정**: 아침 브리핑에 ①**어젯밤 미국장**(캐시된 `us_briefings` 종합 + 쏠림·개별이슈) ②**어제의 주제 = 최다 3 + 급상승 2** ③**팔로우 유튜브 최근 3일**을 싣고, ②③을 **inline keyboard 버튼**으로 낸다. 누르면 `bot.py`의 콜백 핸들러가 **기존 생성 로직을 그대로** 돌려(주제→`compute_narrative`, 영상→`spine_doc.get_document`의 lazy digest) 결과를 같은 대화로 회신한다. 새 파이프라인은 만들지 않았다. 조립 자체는 **LLM 0콜**(전부 SQL + 이미 만들어진 캐시 읽기)이고, 비싼 생성은 **사람이 누른 것만** 돈다(D-020 계승). 콜백은 즉시 `answerCallbackQuery` + 선응답 후 **데몬 스레드**에서 실행(폴링 루프 비차단), 주제/문서 단위 `_inflight` 잠금으로 연타 시 opus 중복 기동을 막고, 4,000자 초과 응답은 문단 경계로 분할 발송한다.
+
+**맥락·이유**: v1 브리핑은 초창기(D-056) 재료에 멈춰 실측 155~322자였다 — `기계의 3줄` + 오늘 일정 + 업데이트 **건수**뿐. 그 사이 홈은 미국장 브리핑(D-095~097)·시장 국면(D-076)·매크로 유동성(D-101)으로 자랐는데 텔레그램은 따라가지 않았고, 정작 출근길 폰에서 가장 값진 미국장이 빠져 있었다. 더 근본적으로 v1은 **읽고 끝**이었다 — "홈에서 확인"이라 써놓고 링크는 `localhost`라 폰에서 열리지 않는다. 도구 앞에 앉기 전까지 브리핑은 죽은 텍스트였다. 버튼을 달면 **가방 속에서 관심 항목을 눌러 생성을 걸어두고, 앉았을 때 판단 재료가 준비돼 있다**. v2 실측 1,457자 · 버튼 11개. **주제 top5 = 최다 3 + 급상승 2 (사용자 확정)**: 절대 최다만 쓰면 매일 같은 얼굴(AI·반도체·자동차)이고, 급상승(`theme_surge`)만 쓰면 "어제 무엇이 화두였나"에 답하지 않는다. 둘을 섞어 판의 크기와 변화를 함께 준다. 최다 집계에는 `THEME_STOPWORDS`(문서유형 메타 라벨) 제외가 **필수** — 실측상 제외 전엔 산업동향 127·실적분석 80·밸류에이션 53이 상위를 독식한다.
+
+**알고 수용한 제약**: 발송은 launchd라 서버와 무관하지만(D-106) **콜백은 백엔드 서버가 떠 있을 때만** 처리된다(봇 폴링이 FastAPI startup 스레드). 랩탑이 가방에 있는 동안 누른 버튼은 텔레그램 `getUpdates` 백로그(최대 24h)에 남아 **서버가 켜지는 즉시 처리**된다 — "즉시"는 보장 못 해도 "유실"은 없다.
+
+**기각한 대안**: **(a) 콜백을 launchd 폴러로 이중화** — 서버가 꺼져 있어도 즉시 처리하려 했으나, 같은 봇 토큰에 `getUpdates` 소비자가 둘이 되면 업데이트를 서로 훔쳐 메시지가 유실된다. 지연 수용이 낫다. **(b) 버튼 대신 URL 링크** — 로컬 서버(`localhost:5173`)라 폰에서 열리지 않는다. 애초에 v1이 실패한 지점. **(c) callback_data에 주제명 문자열** — 64바이트 상한이라 긴 한글 주제가 잘린다 → entity_id/doc_id를 싣고 핸들러에서 해소. **(d) 브리핑 생성 시점에 미리 내러티브를 만들어 첨부** — 매일 아침 opus 5콜이 고정비로 붙는다. 제안 먼저·노동은 승인 뒤(D-020).
+
+**참조**: docs/specs/telegram-briefing.md · `backend/pipeline/notify.py`(`compose_briefing`·`_us_section`·`_topics`·`_youtube_recent`·`_keyboard`) · `backend/pipeline/bot.py`(`handle_callback`·`_run_narrative`·`_run_youtube`·`_chunks`)
+
+---
+
 ## D-106 · 2026-08-18 · 스케줄러를 cron → launchd로 — 키체인(LLM 인증)과 놓친 스케줄이 같은 뿌리였다 (feat/conviction-loop)
 **결정**: 모든 정기 작업(30분 수집 체인 + 6개 단발 잡)을 crontab에서 **launchd user agent**(`~/Library/LaunchAgents/dev.explorer.*`)로 옮긴다. 설치기는 `scripts/install_launchd.py`(plist 생성 + `launchctl bootstrap gui/$UID`, `--dry-run`·`--uninstall`). crontab은 포인터 주석만 남기고 비우며, 원본은 `scripts/crontab.legacy.bak`으로 보존(롤백 1줄). 더불어 브리핑 발송에 **이중 안전망**: ①모든 시도를 `job_runs('send_briefing')`에 ok/skipped/error로 기록 ②30분 체인이 `send_briefing.py --catch-up`으로 평일 08:00 이후 미시도분을 사후 발송(멱등 — ok/skipped는 완료로 보고 error만 재시도) ③`send_telegram`은 망 실패를 삼키지 않고 3회 재시도(5s·10s 백오프). 그리고 **LLM 엔진 생사 프로브**(`scripts/probe_llm.py` → `ops.probe_llm`, `job_runs('llm_probe')`): 정상이면 하루 1콜, 고장 중이면 매 회차 재시도(복구 즉시 감지)하는 비대칭 폴링. 실패 시 `ops.llm_down_reason()`이 홈 브리핑 **최상단 경고**로 노출되고, 그 경고가 텔레그램 브리핑에도 그대로 실린다.
 

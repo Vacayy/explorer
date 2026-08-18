@@ -4,6 +4,9 @@
 - 보안: TELEGRAM_CHAT_ID와 일치하는 채팅에만 응답
 - 라우팅: 종목명/별칭 → 최신 요약+언급+신호 / '/브리핑' → 아침 브리핑 /
           문장형 → RAG 질문 (수집 문서 근거) / 그 외 → 도움말
+- 콜백: 아침 브리핑의 inline 버튼(D-107) — `n:{entity_id}`=주제 내러티브 생성,
+        `y:{doc_id}`=유튜브 정리본. 생성이 수십 초~수 분이라 즉시 ack + 선응답 후
+        **데몬 스레드**에서 돌린다 (폴링 루프를 막지 않게). 결과는 같은 대화로 회신.
 - TELEGRAM_POLLING=0 으로 폴링 비활성 (테스트 인스턴스 충돌 방지)
 """
 import json
@@ -16,6 +19,9 @@ import requests
 from database import get_connection
 
 _started = False
+TG_LIMIT = 4000            # 텔레그램 메시지 상한(4096)에 여유
+_inflight: set[str] = set()   # 같은 버튼 연타로 opus가 중복 기동되지 않게
+_inflight_lock = threading.Lock()
 
 
 def _api(method: str) -> str:
@@ -23,10 +29,37 @@ def _api(method: str) -> str:
 
 
 def _send(chat_id: str, text: str):
-    try:
-        requests.post(_api("sendMessage"), json={"chat_id": chat_id, "text": text[:4000]}, timeout=15)
-    except Exception:
-        pass
+    """긴 본문은 문단 경계로 나눠 연속 발송 — 내러티브 정리본이 상한을 넘기 때문.
+
+    빈 문자열은 보내지 않는다 — 핸들러가 이미 직접 발송한 경우("" 반환)의 신호.
+    """
+    if not (text or "").strip():
+        return
+    for chunk in _chunks(text):
+        try:
+            requests.post(_api("sendMessage"), json={"chat_id": chat_id, "text": chunk}, timeout=15)
+        except Exception:
+            return
+
+
+def _chunks(text: str) -> list[str]:
+    if len(text) <= TG_LIMIT:
+        return [text]
+    out, cur = [], ""
+    for para in text.split("\n\n"):
+        if len(cur) + len(para) + 2 > TG_LIMIT:
+            if cur:
+                out.append(cur)
+            # 한 문단이 통째로 상한을 넘으면 강제 절단
+            while len(para) > TG_LIMIT:
+                out.append(para[:TG_LIMIT])
+                para = para[TG_LIMIT:]
+            cur = para
+        else:
+            cur = f"{cur}\n\n{para}" if cur else para
+    if cur:
+        out.append(cur)
+    return out
 
 
 def _find_company(conn, q: str):
@@ -112,8 +145,15 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
         )
 
     if q in ("/briefing", "/브리핑", "브리핑"):
-        from pipeline.notify import _compose_briefing
-        return _compose_briefing() or "오늘 브리핑 내용이 없습니다."
+        from pipeline.notify import compose_briefing
+        composed = compose_briefing()
+        if not composed:
+            return "오늘 브리핑 내용이 없습니다."
+        # 재발송은 버튼까지 그대로 — 아침에 못 누른 것을 여기서 누를 수 있게
+        if chat_id:
+            _send_with_keyboard(chat_id, composed[0], composed[1])
+            return ""
+        return composed[0]
 
     # P2-0: 명령어 제외 전 문답을 대화로 적재 (질문 = 사용자 의도 데이터)
     from pipeline.conversations import log_exchange_safe
@@ -170,6 +210,102 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
     return "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
 
 
+def _send_with_keyboard(chat_id: str, text: str, keyboard: dict | None):
+    """버튼 달린 본문 발송 — 긴 본문은 나누되 키보드는 마지막 조각에만 붙인다."""
+    chunks = _chunks(text)
+    for i, chunk in enumerate(chunks):
+        payload = {"chat_id": chat_id, "text": chunk}
+        if keyboard and i == len(chunks) - 1:
+            payload["reply_markup"] = keyboard
+        try:
+            requests.post(_api("sendMessage"), json=payload, timeout=15)
+        except Exception:
+            return
+
+
+def _answer_callback(cq_id: str, text: str = ""):
+    """텔레그램은 콜백을 몇 초 안에 ack하지 않으면 버튼이 멈춘 것처럼 보인다."""
+    try:
+        requests.post(_api("answerCallbackQuery"),
+                      json={"callback_query_id": cq_id, "text": text[:200]}, timeout=10)
+    except Exception:
+        pass
+
+
+def _run_narrative(entity_id: int) -> str:
+    """주제 버튼 — 기존 compute_narrative를 그대로 호출(멱등: 문서집합 불변이면 캐시)."""
+    conn = get_connection()
+    row = conn.execute("SELECT name FROM entities WHERE id=?", (entity_id,)).fetchone()
+    conn.close()
+    if not row:
+        return "주제를 찾을 수 없습니다."
+    topic = row["name"]
+
+    from pipeline.narrative import compute_narrative
+    r = compute_narrative(topic)
+    status = r.get("status")
+    if status == "not_found":
+        return f"'{topic}' — 그래프에 없는 주제입니다."
+    if status == "empty":
+        return f"'{topic}' — 관련 문서가 3건 미만이라 서사를 만들 수 없습니다."
+    if status == "unavailable" and not r.get("narrative"):
+        return f"'{topic}' — LLM 엔진 미가용으로 생성하지 못했습니다."
+    head = f"🧠 {r.get('title') or topic}"
+    if status == "cached":
+        head += "  (기존 생성분 — 새 문서 없음)"
+    return f"{head}\n\n{r.get('narrative') or ''}"
+
+
+def _run_youtube(doc_id: int) -> str:
+    """영상 버튼 — spine_doc.get_document의 lazy 재요약 경로를 그대로 탄다."""
+    from routers.spine_doc import get_document
+    try:
+        doc = get_document(doc_id)
+    except Exception as e:  # noqa: BLE001 — 404 등
+        return f"문서를 열 수 없습니다 ({type(e).__name__})."
+    body = (doc.content or "").strip()
+    if not body:
+        return f"📺 {doc.title}\n\n정리본이 비어 있습니다 (자막 없음)."
+    return f"📺 {doc.channel or '유튜브'} — {doc.title}\n{doc.url}\n\n{body}"
+
+
+_CALLBACKS = {
+    "n": (_run_narrative, "내러티브"),
+    "y": (_run_youtube, "정리본"),
+}
+
+
+def handle_callback(data: str, chat_id: str, cq_id: str) -> None:
+    """브리핑 버튼 처리 — 즉시 ack + 선응답 후 생성은 데몬 스레드로."""
+    kind, _, raw = (data or "").partition(":")
+    entry = _CALLBACKS.get(kind)
+    if not entry or not raw.isdigit():
+        _answer_callback(cq_id, "알 수 없는 버튼")
+        return
+    fn, label = entry
+
+    key = f"{chat_id}:{data}"
+    with _inflight_lock:
+        if key in _inflight:
+            _answer_callback(cq_id, "이미 생성 중입니다")
+            return
+        _inflight.add(key)
+
+    _answer_callback(cq_id, f"{label} 생성 시작 — 완료되면 보내드립니다")
+    _send(chat_id, f"🔎 {label} 생성 중… 1~2분 걸립니다")
+
+    def _work():
+        try:
+            _send(chat_id, fn(int(raw)))
+        except Exception as e:  # noqa: BLE001 — 사용자에게 사유를 돌려준다
+            _send(chat_id, f"생성 실패 — {type(e).__name__}: {str(e)[:200]}")
+        finally:
+            with _inflight_lock:
+                _inflight.discard(key)
+
+    threading.Thread(target=_work, daemon=True, name=f"tg-{kind}-{raw}").start()
+
+
 def _allowed_chats() -> set[str]:
     """허용 채팅: TELEGRAM_CHAT_ID(본인) + TELEGRAM_EXTRA_CHAT_IDS(콤마 구분 — 친구/그룹)."""
     ids = {os.getenv("TELEGRAM_CHAT_ID", "").strip()}
@@ -186,6 +322,14 @@ def _poll_loop():
                                 params={"timeout": 50, "offset": offset}, timeout=60)
             for u in resp.json().get("result", []):
                 offset = u["update_id"] + 1
+
+                cq = u.get("callback_query")
+                if cq:
+                    sender = str((cq.get("message") or {}).get("chat", {}).get("id"))
+                    if sender in allowed:      # 허용 목록만 (보안)
+                        handle_callback(cq.get("data", ""), sender, cq["id"])
+                    continue
+
                 msg = u.get("message") or {}
                 sender = str(msg.get("chat", {}).get("id"))
                 if sender not in allowed:
