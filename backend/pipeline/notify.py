@@ -74,9 +74,10 @@ def action_link(label: str, kind: str, ident: int) -> str:
 def _us_section(lines: list[str]) -> None:
     """어젯밤 미국장 — 이미 만들어진 스냅샷·종합 캐시를 읽기만 한다 (LLM·네트워크 0).
 
-    force=False 경로라 홈이 아직 종합을 안 만들었으면 synthesis=None — 그때는
-    결정적 스켈레톤(쏠림·개별이슈)만 싣는다 (Partial 상태).
+    4섹션 종합(D-112: 지수·요인·이슈·흐름)을 소제목과 함께 싣는다. force=False 경로라
+    아직 종합이 없으면 결정적 스켈레톤(쏠림·개별이슈)만 나간다 (Partial 상태).
     """
+    from pipeline.telegram_md import esc
     try:
         from pipeline.us_briefing import build_briefing
         b = build_briefing(force=False)
@@ -85,12 +86,31 @@ def _us_section(lines: list[str]) -> None:
     if not b.get("movers"):
         return
 
-    from pipeline.telegram_md import esc
     lines.append("")
     lines.append(f"🇺🇸 <b>어젯밤 미국장</b> ({esc(b.get('trade_date') or '-')})")
+
+    # '어젯밤'을 자처하는데 며칠 묵었으면 먼저 밝힌다 — 날짜만 찍고 넘어가면 프레임이 거짓이 된다
+    stale = b.get("stale_days")
+    if stale and stale > 1:
+        lines.append(f"  ⚠️ <i>스냅샷이 {stale}일 전 것입니다 (자동 갱신 실패 의심)</i>")
+
     syn = b.get("synthesis") or {}
-    if syn.get("mood"):
-        lines.append(esc(syn["mood"]))
+    for key, label in (("index_summary", "지수 마감"), ("drivers", "움직인 요인"),
+                       ("issues", "거래대금 이슈"), ("flow", "시계열 흐름")):
+        if syn.get(key):
+            lines.append("")
+            lines.append(f"  <b>{label}</b>")
+            lines.append(f"  {esc(syn[key])}")
+
+    # 산문의 수치 근거 — 짧게 붙인다
+    nums = []
+    for i in (b.get("indices") or {}).get("items", []):
+        nums.append(f"{i['name']} {i['change_pct']:+.2f}%")
+    if nums:
+        lines.append("")
+        idx_as_of = (b.get("indices") or {}).get("as_of")
+        suffix = f" ({idx_as_of})" if idx_as_of and idx_as_of != b.get("trade_date") else ""
+        lines.append(f"  📊 {esc(' · '.join(nums))}{esc(suffix)}")
     for c in (b.get("clusters") or [])[:2]:
         lines.append(f"  · 쏠림: <b>{esc(c['label'])}</b> {c['share_pct']}% "
                      f"({c['n']}종목, 중앙값 {c['median_change']:+.1f}%)")

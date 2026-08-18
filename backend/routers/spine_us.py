@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 import json
 
 from database import get_connection
-from models.us import (UsBriefing, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
+from models.us import (UsBriefing, UsBriefingListItem, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
                         UsMoverItem, UsMoversResponse, UsNarrativeRef, UsWorldModel)
 
 router = APIRouter(prefix="/api/spine/us", tags=["spine"])
@@ -65,14 +65,26 @@ def us_movers(force: bool = False):
     )
 
 
-@router.get("/briefing", response_model=UsBriefing)
-def us_briefing(force: bool = False):
-    """어젯밤 미국장 브리핑 — 거래대금 상위를 섹터 쏠림·개별 이슈로 읽고 하루 1회 종합(docs/specs/us-briefing.md).
+@router.get("/briefing/list", response_model=list[UsBriefingListItem])
+def us_briefing_list(limit: int = 30):
+    """저장된 미국장 브리핑 목록(최신순) — 과거 조회 진입점 (D-112).
 
-    구조화 코어는 LLM 0, synthesis만 sonnet 1콜·캐시. synthesis=null이면 LLM 미가용(스켈레톤만).
-    ('/{ticker}'보다 먼저 선언 — catch-all 회피)."""
+    종합 산문은 영구 보존이라 여기 다 남지만, 근거 스냅샷은 RETAIN_DAYS 뒤 사라진다
+    (그 경우 상세가 status='partial'로 응답).
+    """
+    from pipeline.us_briefing import list_briefings
+    return [UsBriefingListItem(**x) for x in list_briefings(limit=limit)]
+
+
+@router.get("/briefing", response_model=UsBriefing)
+def us_briefing(force: bool = False, trade_date: str | None = None):
+    """어젯밤 미국장 브리핑 — 4섹션 종합(지수·요인·이슈·흐름, docs/specs/us-briefing.md).
+
+    force=false: 최신 스냅샷 순수 읽기 · force=true: 재수집+재종합(D-100 버튼 주도).
+    trade_date: 과거 브리핑 읽기 전용 조회 (재수집·재종합 없음, D-112).
+    """
     from pipeline.us_briefing import build_briefing
-    return UsBriefing(**build_briefing(force=force))
+    return UsBriefing(**build_briefing(force=force, trade_date=trade_date))
 
 
 @router.get("/{ticker}/mentions", response_model=list[UsMention])

@@ -21,7 +21,7 @@ from services import cache_service
 CACHE_KEY = "kr_movers_value"
 TTL_SECONDS = 86400          # 24h — 아침 브리핑용 하루 1회 (마감 후 갱신 + 수동 버튼 force)
 LIMIT = 20                   # 상위 N 종목
-RETAIN_DAYS = 7              # 스냅샷 보존 (신규 진입 판정용)
+RETAIN_DAYS = 30             # 스냅샷 보존 (신규 진입 판정 + 쏠림 시계열, D-112)
 SOURCE = "fdr-krx-listing"
 IDIO_CHANGE = 8.0            # |등락률| 이 이상이면 '거래대금+급등락 동반=실이벤트' (us_briefing과 동일 기준)
 CONTRA_MIN_N = 3             # 그룹 역행 판정 최소 클러스터 크기 (2종목짜리 '그룹'은 대표성이 없다)

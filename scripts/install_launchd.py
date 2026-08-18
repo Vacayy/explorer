@@ -22,6 +22,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent.parent
@@ -47,6 +48,9 @@ JOBS = [
      [{"Weekday": d, "Hour": 16, "Minute": 10} for d in range(1, 6)]),
     ("krmovers", [PY, "scripts/snapshot_kr_movers.py"],          # D-108 — 신규진입 판정에 일별 필요
      [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
+    # 미국장 브리핑은 발송(08:00)보다 **먼저** 데워야 그날 것이 실린다 (D-112).
+    # 매일 — 주말은 TradingView 값이 금요일과 같아 signature 캐시로 sonnet 0콜.
+    ("usbriefing", [PY, "scripts/compute_briefing.py"], {"Hour": 7, "Minute": 30}),
     ("briefing", [PY, "scripts/send_briefing.py"],
      [{"Weekday": d, "Hour": 8, "Minute": 0} for d in range(1, 6)]),
     ("promote", [PY, "scripts/promote_knowledge.py"], {"Weekday": 0, "Hour": 7, "Minute": 0}),
@@ -104,12 +108,17 @@ def main() -> int:
 
         path.write_bytes(plistlib.dumps(data))
         _run("launchctl", "bootout", f"{domain}/{full}")   # 기존분 있으면 교체
-        p = _run("launchctl", "bootstrap", domain, str(path))
-        if p.returncode != 0:
-            print(f"[실패] {full} — {p.stderr.strip()}")
-            rc = 1
+        # bootout 직후 bootstrap은 잡이 아직 정리 중이면 'Input/output error'로 실패한다.
+        # 실패한 채 두면 그 잡이 **등록 해제 상태로 남아** 스케줄이 조용히 멈춘다 — 반드시 재시도.
+        for attempt in range(4):
+            p = _run("launchctl", "bootstrap", domain, str(path))
+            if p.returncode == 0:
+                print(f"[설치] {full}")
+                break
+            time.sleep(1.5 * (attempt + 1))
         else:
-            print(f"[설치] {full}")
+            print(f"[실패] {full} — {p.stderr.strip() or p.stdout.strip()}")
+            rc = 1
 
     if args.uninstall or args.dry_run:
         return rc

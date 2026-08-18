@@ -19,7 +19,7 @@ CACHE_KEY = "us_movers_dollar_vol"
 TTL_SECONDS = 86400          # 24h — 아침 브리핑용 하루 1회 갱신(마감 후 크론/수동 버튼이 force로 새로고침)
 LIMIT = 20                    # 상위 N 종목
 FETCH_ROWS = 60              # ETF 제외 후 20개 확보용 여유
-RETAIN_DAYS = 7              # 스냅샷 보존 일수(신규 진입 판정용)
+RETAIN_DAYS = 30             # 스냅샷 보존 (신규 진입 판정 + 섹터 쏠림 시계열, D-112)
 SOURCE = "tradingview-scanner"
 TV_URL = "https://scanner.tradingview.com/america/scan"
 # 응답 각 행 d[]의 컬럼 순서 — 스키마 검증 기준(순서·개수가 곧 계약)
@@ -127,6 +127,11 @@ def _result(status: str, items: list[dict], error: str | None) -> dict:
     return {"status": status, "items": items, "source": SOURCE,
             "trade_date": items[0]["trade_date"] if items else None,
             "fetched_at": items[0]["fetched_at"] if items else None, "error": error}
+
+
+def read_snapshot(conn, trade_date: str) -> list[dict]:
+    """특정 날짜 스냅샷 순수 읽기 — 과거 브리핑 조회용 공개 진입점 (D-112)."""
+    return _read_snapshot(conn, trade_date)
 
 
 def read_leaders() -> dict:

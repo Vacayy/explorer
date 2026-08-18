@@ -573,19 +573,38 @@ export interface UsCluster {
   label: string; n: number; dollar_volume: number; share_pct: number;
   median_change: number; has_new: boolean; tickers: string[];
 }
+/** 4섹션 종합 (D-112). 구 스키마(mood 단일)는 백엔드가 issues로 승계해 내려준다. */
 export interface UsBriefingSynthesis {
-  mood: string; study_candidates: string[]; share_candidates: string[];
+  index_summary: string;   // ① 지수 마감
+  drivers: string;         // ② 시장을 움직인 요인
+  issues: string;          // ③ 거래대금 기반 이슈
+  flow: string;            // ④ 시계열 흐름
+  study_candidates: string[]; share_candidates: string[];
 }
+export interface UsIndexMove { name: string; close: number; change_pct: number }
+export interface UsIndexBlock { as_of: string | null; items: UsIndexMove[] }
+export interface UsMacroItem { name: string; value: number; change_pct: number; group: string | null }
+export interface UsMacroSignal { as_of: string | null; signal: string | null; headline: string | null }
+export interface UsMacroBlock {
+  as_of: string | null; items: UsMacroItem[]; lookback: string | null;
+  signal: UsMacroSignal | null; degraded: string[];
+}
+export interface UsFlowPoint { date: string; share_pct: number }
+export interface UsFlowSector { label: string; series: UsFlowPoint[] }
+export interface UsFlowBlock { dates: string[]; sectors: UsFlowSector[] }
+export interface UsBriefingListItem { trade_date: string; model: string | null; created_at: string | null }
 export interface UsMarketTheme { name: string; count: number }
 export interface UsMarketDoc {
   id: number; source_type: string; title: string | null;
   published_at: string | null; excerpt: string | null;
 }
 export interface UsBriefing {
-  status: "ok" | "stale" | "error";
+  status: "ok" | "stale" | "partial" | "error";
   trade_date: string | null; fetched_at: string | null; error: string | null;
+  stale_days: number | null;                 // 스냅샷 경과일 — 며칠 묵었나 (D-112)
   clusters: UsCluster[]; idiosyncratic: UsMoverBrief[]; movers: UsMoverBrief[];
   market_themes: UsMarketTheme[]; market_docs: UsMarketDoc[];
+  indices: UsIndexBlock; macro: UsMacroBlock; flow: UsFlowBlock;   // D-112
   synthesis: UsBriefingSynthesis | null;
 }
 
