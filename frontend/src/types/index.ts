@@ -603,3 +603,20 @@ export interface MacroData {
   signal: MacroSignal | null;                    // 신호등 산문(sonnet)
   fred_enabled: boolean;
 }
+
+/* ── 국장 거래대금 상위 (D-108) — 미국장의 국장 대응물, LLM 종합 없음 ── */
+export interface KrMoverItem {
+  rank: number; stock_code: string; name: string; market: string | null;
+  close: number | null; volume: number | null; value_traded: number | null;
+  change_pct: number | null; sector: string | null; market_cap: number | null;
+  is_new: boolean; flags: string[];
+}
+export interface KrCluster {
+  label: string; n: number; value_traded: number; share_pct: number;
+  median_change: number; has_new: boolean; codes: string[]; names: string[];
+}
+export interface KrMovers {
+  status: string; source: string; trade_date: string | null;
+  fetched_at: string | null; error: string | null;
+  items: KrMoverItem[]; clusters: KrCluster[]; idiosyncratic: KrMoverItem[];
+}
