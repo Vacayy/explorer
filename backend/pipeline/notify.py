@@ -172,12 +172,15 @@ def compose_briefing() -> str | None:
 
     lines = [f"📋 <b>Explorer 아침 브리핑</b> — {datetime.now(KST).strftime('%m/%d %a')}"]
 
-    if home.briefing:
+    # 홈의 '기계의 3줄'은 싣지 않는다 (D-111) — 소스 경고·공시 접수·저점유 주제 같은
+    # 낮은 신호가 브리핑 최상단을 차지해 정작 읽을 것(미국장·주제·유튜브)을 밀어냈다.
+    # 다만 LLM 엔진 다운은 '아래 내용 전체가 열화됐다'는 메타 경보라 예외로 남긴다(D-106).
+    from pipeline.ops import llm_down_reason
+    llm_down = llm_down_reason()
+    if llm_down:
         lines.append("")
-        icon = {"insight": "💡", "action": "🏢", "signal": "📈",
-                "warning": "⚠️", "conflict": "⚔️", "confirmed": "✅"}
-        for b in home.briefing:
-            lines.append(f"{icon.get(b.kind, '•')} {esc(b.text)}")
+        lines.append(f"⚠️ <b>LLM 엔진 응답 실패</b> — 아래 내용이 열화됐을 수 있습니다 "
+                     f"({esc(llm_down)})")
 
     _us_section(lines)
 
@@ -210,7 +213,9 @@ def compose_briefing() -> str | None:
             title = v["title"][:52]
             head = link(title, v["url"]) if v["url"] else esc(title)   # 제목=유튜브 원문
             lines.append(f"  · {esc(v['channel'])} — {head}")
-            lines.append(f"    {action_link('▸ 정리본 생성', 'y', v['id'])}")
+            # 이미 만들어져 있으면 '생성'이 아니라 '보기' — 워딩이 상태를 드러내게 (D-111)
+            verb = "▸ 정리본 보기" if v["digest_status"] == "ok" else "▸ 정리본 생성"
+            lines.append(f"    {action_link(verb, 'y', v['id'])}")
 
     today = date.today().isoformat()
     todays = [e for e in home.calendar if e.event_date == today]
@@ -230,7 +235,7 @@ def compose_briefing() -> str | None:
         return None  # 보낼 내용 없음
     if (topics or videos) and bot_username():
         lines.append("")
-        lines.append("<i>링크를 누르면 생성이 시작되고 결과가 이 대화로 옵니다.</i>")
+        lines.append("<i>링크를 누르면 결과가 이 대화로 옵니다.</i>")
     return "\n".join(lines)
 
 
