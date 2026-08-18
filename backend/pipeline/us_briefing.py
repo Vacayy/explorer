@@ -64,23 +64,47 @@ def _home_entity_id(conn, ticker: str) -> int | None:
     return r["id"] if r else None
 
 
+NARRATIVE_GIST_CHARS = 340
+
+
+def _narrative_gist(body: str | None) -> str | None:
+    """내러티브 본문에서 **주장의 실체**를 뽑는다 (D-114).
+
+    제목만 넘기면 브리핑이 자기충족적이지 않다 — "'에이전트가 실제로 일을 하기 시작하면
+    비용은 누가 대나' 내러티브 있음"을 읽어도 그 서사가 무엇을 주장하는지 모른다.
+    본문 최상단 `## 3줄 요약`(생성 규약상 항상 존재)을 실체로 쓰고, 없으면 앞부분을 잘라 쓴다.
+    """
+    if not body:
+        return None
+    text = body
+    if "## 3줄 요약" in body:
+        rest = body.split("## 3줄 요약", 1)[1]
+        text = rest.split("\n## ", 1)[0]
+    lines = [ln.strip().lstrip("-*• ").strip() for ln in text.splitlines() if ln.strip()]
+    gist = " / ".join(ln for ln in lines if not ln.startswith("#"))
+    return gist[:NARRATIVE_GIST_CHARS] or None
+
+
 def _enrich_coverage(conn, ticker: str) -> dict:
     """우리 커버리지 — entity(US + ADR 본체) 해소 시 최근 언급수 + 걸린 내러티브. 없으면 uncovered(스터디 후보)."""
     us_eid, _ = resolve_us(conn, ticker)
     home_eid = _home_entity_id(conn, ticker)             # ADR이면 KR 본체도 함께
     ids = [e for e in dict.fromkeys([us_eid, home_eid]) if e]
     if not ids:
-        return {"coverage": "uncovered", "entity_id": None, "mentions_3d": 0, "narrative": None}
+        return {"coverage": "uncovered", "entity_id": None, "mentions_3d": 0,
+                "narrative": None, "narrative_gist": None}
     ph = ",".join("?" * len(ids))
     m = conn.execute(
         f"SELECT count(DISTINCT el.doc_id) n FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id "
         f"WHERE el.entity_id IN ({ph}) AND rd.published_at >= datetime('now','-3 days')", ids).fetchone()
     nar = conn.execute(
-        f"SELECT n.title t FROM entity_relations r JOIN narratives n ON n.id=r.narrative_id "
+        f"SELECT n.title t, n.body b FROM entity_relations r JOIN narratives n ON n.id=r.narrative_id "
         f"WHERE (r.src_id IN ({ph}) OR r.dst_id IN ({ph})) AND r.narrative_id IS NOT NULL "
         f"ORDER BY n.id DESC LIMIT 1", ids + ids).fetchone()
     return {"coverage": "covered", "entity_id": us_eid or home_eid,
-            "mentions_3d": m["n"] if m else 0, "narrative": nar["t"] if nar else None}
+            "mentions_3d": m["n"] if m else 0,
+            "narrative": nar["t"] if nar else None,
+            "narrative_gist": _narrative_gist(nar["b"]) if nar else None}
 
 
 def _build_movers(conn, items: list[dict]) -> list[dict]:
@@ -170,11 +194,17 @@ def _gather_discourse(conn, trade_date: str) -> dict:
     day = (trade_date or "")[:10]
     if not day:
         return {"themes": [], "docs": []}
+    # 문서유형 메타 라벨(산업동향·실적분석·수급…)은 지배 테마가 아니다 — 제외 없이는 상위를
+    # 독식해 '무슨 얘기였나'를 가린다(실측: 산업동향 57건이 반도체 36건보다 위에 올라왔다). D-114
+    from pipeline.signals import THEME_STOPWORDS
+    sw = ",".join("?" * len(THEME_STOPWORDS))
     themes = [{"name": r["name"], "count": r["c"]} for r in conn.execute(
-        "SELECT e.name, count(DISTINCT rd.id) c FROM entity_links el "
-        "JOIN raw_documents rd ON rd.id=el.doc_id JOIN entities e ON e.id=el.entity_id "
-        "WHERE substr(rd.published_at,1,10)=? AND e.type IN ('theme','sector') "
-        "GROUP BY e.id ORDER BY c DESC LIMIT ?", (day, _DISCOURSE_THEMES)).fetchall()]
+        f"SELECT e.name, count(DISTINCT rd.id) c FROM entity_links el "
+        f"JOIN raw_documents rd ON rd.id=el.doc_id JOIN entities e ON e.id=el.entity_id "
+        f"WHERE substr(rd.published_at,1,10)=? AND e.type IN ('theme','sector') "
+        f"AND e.name NOT IN ({sw}) "
+        f"GROUP BY e.id ORDER BY c DESC LIMIT ?",
+        (day, *THEME_STOPWORDS, _DISCOURSE_THEMES)).fetchall()]
     top_sectors = [r["name"] for r in conn.execute(
         "SELECT e.name FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id "
         "JOIN entities e ON e.id=el.entity_id WHERE substr(rd.published_at,1,10)=? AND e.type='sector' "
@@ -240,6 +270,48 @@ def _index_moves(conn) -> dict:
     return out
 
 
+# 국면 판정 임계 — 지표마다 단위·변동성이 달라(10Y 4.68 vs BTC 63,350) 절대·상대 변화율로는
+# 한 기준을 못 쓴다. **자체 관측 범위(hi-lo) 대비 드리프트**로 재면 스케일 무관해진다.
+MACRO_FLAT = 0.15       # 범위의 15% 미만 이동 = 횡보
+MACRO_STRONG = 0.45     # 범위의 45% 이상 이동 = 뚜렷한 방향
+MACRO_MIN_OBS = 8       # 국면 판정 최소 관측 수
+MACRO_BAND_EDGE = 25    # 밴드 상·하단으로 볼 백분위
+
+
+def _macro_regime(series: list[float]) -> dict | None:
+    """매크로 지표의 **국면**을 결정적으로 판정 (LLM 0, D-114).
+
+    사용자 지적: "유동성·M2·신용은 당장 오늘의 전일 대비 변화보다 '지금이 어떤 국면인가'라는
+    추이가 중요하다 — 이런 매크로 요인들은 장기 시계열로 시장에 영향을 미친다."
+    그래서 단기 델타(D-101의 5관측 전 대비)와 **별도로** 구간 국면을 함께 준다.
+
+    측정: ①드리프트 = (최근 1/3 평균 − 초기 1/3 평균) / 관측범위 → 스케일 무관한 방향·강도
+          ②밴드 위치 = 현재값이 관측 범위의 어디쯤(0=저점, 100=고점)
+    """
+    vals = [v for v in (series or []) if v is not None]
+    if len(vals) < MACRO_MIN_OBS:
+        return None
+    lo, hi = min(vals), max(vals)
+    rng = hi - lo
+    k = max(2, len(vals) // 3)
+    early = sum(vals[:k]) / k
+    late = sum(vals[-k:]) / k
+    drift = (late - early) / rng if rng else 0.0
+    band = round((vals[-1] - lo) / rng * 100) if rng else 50
+
+    mag = abs(drift)
+    if mag < MACRO_FLAT:
+        label = "횡보"
+    else:
+        strength = "뚜렷한 " if mag >= MACRO_STRONG else "완만한 "
+        label = f"{strength}{'상승' if drift > 0 else '하락'} 국면"
+    where = ("밴드 상단" if band >= 100 - MACRO_BAND_EDGE else
+             "밴드 하단" if band <= MACRO_BAND_EDGE else "밴드 중단")
+    span_pct = round((vals[-1] - vals[0]) / abs(vals[0]) * 100, 2) if vals[0] else None
+    return {"label": label, "band_pos": band, "where": where,
+            "obs": len(vals), "span_pct": span_pct}
+
+
 def _macro_context() -> dict:
     """② 시장을 움직인 요인 — D-101 매크로 리더를 **그대로** 재사용 (LLM 0, D-112).
 
@@ -257,7 +329,8 @@ def _macro_context() -> dict:
         print(f"[us_briefing] 매크로 재료 조회 실패: {type(e).__name__}", flush=True)
         return {}
     items = [{"name": i["label"], "value": i["value"], "change_pct": i["change_pct"],
-              "group": i.get("group_label")}
+              "group": i.get("group_label"), "group_key": i.get("group"),
+              "regime": _macro_regime(i.get("series") or [])}
              for i in m.get("items", []) if i.get("change_pct") is not None]
     sig = m.get("signal") or {}
     return {"as_of": m.get("as_of"), "items": items, "lookback": "5관측 전 대비",
@@ -374,18 +447,18 @@ def _flow_history(conn, trade_date: str) -> dict:
             "prior_moods": moods}
 
 
-def _signature(trade_date: str, movers: list[dict], discourse: dict, extra: dict) -> str:
-    basis = trade_date + "|" + "|".join(
-        f"{m['ticker']}:{round(m['change_pct'] or 0)}:{m['coverage']}:{int(bool(m['flags']))}"
-        for m in movers)
-    basis += "|D:" + ",".join(str(d["id"]) for d in discourse.get("docs", []))
-    basis += "|H:" + ",".join(h["url"] for m in movers for h in m.get("headlines", []))
-    # 맥락 재료는 '날짜'만 넣는다 (D-112) — 값 지터마다 재종합하면 sonnet 비용이 새고,
-    # 새 하루치가 들어오면 signature가 바뀌어 정상적으로 다시 쓴다.
-    basis += "|I:" + (extra.get("index_as_of") or "")
-    basis += "|M:" + ",".join(sorted(extra.get("macro_dates") or []))
-    basis += "|F:" + ",".join(extra.get("flow_dates") or [])
-    return hashlib.sha256(basis.encode()).hexdigest()
+def _prompt_signature(trade_date: str, prompt: str) -> str:
+    """재생성 게이트 = **프롬프트 자체의 해시** (D-114 — D-112의 '입력 날짜만' 방식 번복).
+
+    왜 바꿨나: 날짜만 해싱하면 **프롬프트 템플릿을 고쳐도 캐시가 적중해 옛 산출물이 그대로 나온다**
+    (실측: 담론 테마 필터·매크로 국면 지시를 넣었는데 이전 종합이 반환됐다). 또 같은 날 데이터가
+    수정돼도 감지하지 못한다.
+
+    비용 걱정이 없는 이유: 프롬프트는 DB 상태의 결정적 함수다 — 데이터가 안 바뀌면 프롬프트가
+    같고 따라서 캐시가 적중한다. 즉 '진짜 변화 1회당 재종합 1회'로, 날짜 방식보다 정확하면서
+    비용은 동일하다.
+    """
+    return hashlib.sha256((trade_date + "|" + prompt).encode()).hexdigest()
 
 
 def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, trade_date) -> str:
@@ -406,8 +479,9 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
             head = "\n    " + "\n    ".join(
                 f"· [{h['publisher'] or '?'}] {h['title']}" + (f" — {h['summary'][:100]}" if h.get("summary") else "")
                 for h in m["headlines"][:2])
+        gist = f"\n    (내러티브 요지: {m['narrative_gist']})" if m.get("narrative_gist") else ""
         return (f"- {m['ticker']} ({m['name']}): {', '.join(m['flags'])} · 최근언급 {m['mentions_3d']}건 "
-                f"· 관련내러티브: {cov}{head}")
+                f"· 관련내러티브: {cov}{gist}{head}")
 
     idx = "- 없음"
     if indices.get("items"):
@@ -419,8 +493,30 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
 
     mac = "- 없음"
     if macro.get("items"):
-        mac = (f"({macro.get('as_of')} 기준 · 변화율은 {macro.get('lookback')})\n" + "\n".join(
-            f"- {i['name']}: {i['value']:,} ({i['change_pct']:+.2f}%)" for i in macro["items"]))
+        # 구조 지표(유동성·신용)와 가격 지표(금리·달러·원자재)를 나눠 제시 —
+        # 앞은 국면으로, 뒤는 국면 + 단기 변화 둘 다로 읽어야 한다 (D-114)
+        slow = [i for i in macro["items"] if i.get("group_key") in ("liquidity", "credit")]
+        fast = [i for i in macro["items"] if i.get("group_key") not in ("liquidity", "credit")]
+
+        def fmt_m(i, with_short: bool):
+            """구조 지표엔 단기 델타를 **주지 않는다**(D-114).
+
+            프롬프트로 '국면으로 읽어라'고만 하면 모델은 눈앞의 숫자를 집는다(실측: 국면을
+            함께 줬는데도 '순유동성 -0.75%'로 시작했다). 쓰지 않기를 바라는 재료는 넣지 않는 게
+            확실하다 — 구조 지표의 하루치 변화는 사용자 지적대로 애초에 의미가 얕다.
+            """
+            r = i.get("regime") or {}
+            reg = (f"{r['label']} · {r['where']}({r['band_pos']}%) · "
+                   f"{r['obs']}관측 구간 {r['span_pct']:+}%" if r else "관측 부족")
+            short = f" (단기 {i['change_pct']:+.2f}%)" if with_short else ""
+            return f"  - {i['name']}: {i['value']:,}{short} · {reg}"
+
+        mac = f"({macro.get('as_of')} 기준 · '단기'는 {macro.get('lookback')})\n"
+        mac += ("· 구조 지표 — **국면만 준다**(유동성·신용). 하루치 변화는 이 층위에서 의미가 얕아 "
+                "일부러 제외했다 — 국면·위치로만 말하라\n")
+        mac += ("\n".join(fmt_m(i, with_short=False) for i in slow) or "  - 없음")
+        mac += "\n· 가격 지표 — 국면과 단기 변화 둘 다 의미 있는 것(금리·달러·원자재)\n"
+        mac += ("\n".join(fmt_m(i, with_short=True) for i in fast) or "  - 없음")
         if macro.get("signal"):
             mac += (f"\n- 매크로 신호등({macro['signal']['as_of']}): "
                     f"{macro['signal']['signal']} — {macro['signal']['headline']}")
@@ -448,26 +544,37 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
     return (
         "당신은 미국장 마감 후 아침 브리핑을 쓰는 애널리스트다. 아래 재료로 4개 섹션을 쓴다.\n\n"
         f"[1. 지수 마감]\n{idx}\n\n"
-        f"[2. 매크로 지표 — 전일 대비]\n{mac}\n\n"
+        f"[2. 매크로 — 국면(장기 추이) 우선, 단기 변화는 참고]\n{mac}\n\n"
         f"[3-a. 거래대금 섹터 쏠림]\n" + "\n".join(fmt_c(c) for c in clusters) + "\n\n"
         f"[3-b. 거래대금 개별 이슈 종목]\n" + ("\n".join(fmt_i(m) for m in idio) or "- 없음") + "\n\n"
         f"[3-c. 그날 시장 담론 — 지배 테마(문서수)]\n{themes}\n\n"
         f"[3-d. 그날 시장 담론 — 시장구조 코멘터리]\n{docs}\n\n"
         f"[4. 최근 스냅샷의 섹터 거래대금 비중 추이(과거→최신)]\n{fl}\n\n"
         "임무 — 각 항목을 하나의 문단으로. **분량 예산을 지켜라. 짧게 쓰는 것이 요구사항이다.**\n"
+        "**네 문단은 화면에서 소제목 없이 이어 붙여 한 편의 글로 읽힌다(D-114).** 그러니 "
+        "'지수 마감은…', '요인으로는…' 처럼 항목 이름을 문단 앞에 달지 말고, 앞 문단을 이어받아 "
+        "자연스럽게 넘어가라(예: ③이 ①의 '잠잠한 지수'를 받아 '그러나 거래대금은…'으로). "
+        "각 문단은 독립된 절이 아니라 한 글의 단락이다.\n"
         "① index_summary — **1~2문장.** 지수 등락률(숫자)과 마감 성격만. 예: "
         "'8/14 종가 기준 S&P500 7,785.76(-0.17%), 나스닥 26,729.16(-0.28%), 다우 53,732.41(-0.20%)로 "
         "세 지수 모두 소폭 하락에 그쳐 표면적으로는 잠잠한 하루였다.' "
         "이 정도면 충분하다. 거래대금 이야기는 ③의 몫이니 여기서 하지 마라. "
         "지수 날짜가 거래대금 기준일과 다르면 날짜만 밝히고 넘어가라.\n"
         "② drivers — **2~3문장.** 매크로([2])와 담론([3-c],[3-d])을 교차해 '무엇이 위험선호를 밀거나 눌렀나' "
-        "핵심만. 지표를 전부 나열하지 말고 **방향을 가른 것 1~2개**만 집어라. "
-        "**규율: 재료에 없는 이벤트를 지어내지 마라.** FOMC·CPI 같은 발표 일정 정보는 여기 없다. "
-        "지표가 '어떻게 움직였다'까지만 말하고, 원인을 모르면 모른다고 한 문장으로 끝내라.\n"
+        "핵심만. 지표를 전부 나열하지 말고 **방향을 가른 것 1~2개**만 집어라.\n"
+        "   **매크로는 국면으로 읽어라(D-114).** 유동성·M2·신용 같은 구조 지표는 **하루치 변화가 아니라 "
+        "추이·위치가 시장에 작용한다** — '순유동성이 -0.75% 줄었다'가 아니라 '순유동성은 저점권에서 "
+        "횡보 중'처럼 국면과 밴드 위치로 말하라. 금리·달러·원자재는 국면과 단기 변화를 함께 봐도 좋다. "
+        "구조 지표의 국면이 배경(실탄이 있나)이고 가격 지표의 단기 변화가 방아쇠라는 층위를 지켜라.\n"
+        "   **규율: 재료에 없는 이벤트를 지어내지 마라.** FOMC·CPI 같은 발표 일정 정보는 여기 없다. "
+        "지표가 '어떤 국면이다'까지만 말하고, 원인을 모르면 모른다고 한 문장으로 끝내라.\n"
         "③ issues — **3~4문장.** 중요한 것만 남겨라: 쏠린 섹터 1~2개, 그룹으로 안 풀리는 개별 종목 "
         "**가장 중요한 2~3개**, 그리고 거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·되돌림인지). "
         "종목을 빠짐없이 훑지 마라 — 덜 중요한 건 버리고 스터디 후보로 넘겨라. "
-        "헤드라인이 있으면 그 종목의 촉매로 삼고, 담론이 사건을 지목하면 이름을 명시하라.\n"
+        "헤드라인이 있으면 그 종목의 촉매로 삼고, 담론이 사건을 지목하면 이름을 명시하라. "
+        "**내러티브를 끌어올 때는 제목만 던지지 마라(D-114).** 제목은 물음일 뿐이라 그것만으론 "
+        "무슨 얘기인지 알 수 없다 — `(내러티브 요지: …)`에 실체가 있으니 **그 요지가 주장하는 바를 "
+        "한 구절로 풀어** 브리핑만 읽고도 내용이 파악되게 하라.\n"
         "④ flow — **3~4문장. 날짜별 수치를 읊지 마라.** ([4]에 이미 국면 판정이 계산돼 있다.) "
         "지금이 **어떤 국면인지**를 말하라: 추세가 이어지는 중인가, 횡보인가, 기간 조정인가, "
         "고점을 지나 눌리는 중인가, 바닥에서 돌아서는 중인가. "
@@ -500,9 +607,11 @@ def _normalize_synthesis(data: dict) -> dict:
     return out
 
 
-def _synthesize(conn, trade_date: str, signature: str, clusters, idio, movers,
+def _synthesize(conn, trade_date: str, clusters, idio, movers,
                 discourse, indices, macro, flow) -> dict | None:
-    """LLM 종합 — 캐시(signature 불변 재사용). 엔진 미가용이면 None(구조화 스켈레톤만)."""
+    """LLM 종합 — 프롬프트 해시로 캐시 판정. 엔진 미가용이면 None(구조화 스켈레톤만)."""
+    prompt = _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, trade_date)
+    signature = _prompt_signature(trade_date, prompt)
     cached = conn.execute(
         "SELECT signature, synthesis_json FROM us_briefings WHERE trade_date=?", (trade_date,)).fetchone()
     if cached and cached["signature"] == signature:
@@ -513,9 +622,7 @@ def _synthesize(conn, trade_date: str, signature: str, clusters, idio, movers,
     if llm_engine() != "claude-code":
         return None
     try:
-        data = _parse_json(_call_claude_code(
-            _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, trade_date),
-            model="sonnet", timeout=300))
+        data = _parse_json(_call_claude_code(prompt, model="sonnet", timeout=300))
     except Exception as e:  # noqa: BLE001 — 원인을 로그로 남긴다(구 silent-None 대비)
         print(f"[us_briefing] 종합 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return None
@@ -594,13 +701,8 @@ def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
         indices = _index_moves(conn)                        # ① 지수 (D-112)
         macro = _macro_context()                            # ② 매크로 (D-112)
         flow = _flow_history(conn, lead["trade_date"])      # ④ 시계열 (D-112)
-        if force:                                          # 버튼: 재종합(sonnet, signature 캐시)
-            sig = _signature(lead["trade_date"], movers, discourse, {
-                "index_as_of": indices.get("as_of"),
-                "macro_dates": [macro.get("as_of") or ""],
-                "flow_dates": flow.get("dates", []),
-            })
-            synthesis = _synthesize(conn, lead["trade_date"], sig, clusters, idio, movers,
+        if force:                                          # 버튼: 재종합(sonnet, 프롬프트 해시 캐시)
+            synthesis = _synthesize(conn, lead["trade_date"], clusters, idio, movers,
                                     discourse, indices, macro, flow)
         else:                                              # 로드: 저장된 종합 읽기(LLM 없음)
             synthesis = _read_synthesis(conn, lead["trade_date"])

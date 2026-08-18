@@ -74,8 +74,8 @@ def action_link(label: str, kind: str, ident: int) -> str:
 def _us_section(lines: list[str]) -> None:
     """어젯밤 미국장 — 이미 만들어진 스냅샷·종합 캐시를 읽기만 한다 (LLM·네트워크 0).
 
-    4섹션 종합(D-112: 지수·요인·이슈·흐름)을 소제목과 함께 싣는다. force=False 경로라
-    아직 종합이 없으면 결정적 스켈레톤(쏠림·개별이슈)만 나간다 (Partial 상태).
+    4섹션 종합(D-112: 지수·요인·이슈·흐름)을 **소제목 없이 한 편의 글로** 싣는다(D-114).
+    force=False 경로라 아직 종합이 없으면 결정적 스켈레톤(쏠림·개별이슈)만 나간다 (Partial 상태).
     """
     from pipeline.telegram_md import esc
     try:
@@ -94,13 +94,12 @@ def _us_section(lines: list[str]) -> None:
     if stale and stale > 1:
         lines.append(f"  ⚠️ <i>스냅샷이 {stale}일 전 것입니다 (자동 갱신 실패 의심)</i>")
 
+    # 소제목 없이 문단만 이어 붙인다 (D-114) — 네 항목은 절이 아니라 한 글의 단락이다
     syn = b.get("synthesis") or {}
-    for key, label in (("index_summary", "지수 마감"), ("drivers", "움직인 요인"),
-                       ("issues", "거래대금 이슈"), ("flow", "시계열 흐름")):
+    for key in ("index_summary", "drivers", "issues", "flow"):
         if syn.get(key):
             lines.append("")
-            lines.append(f"  <b>{label}</b>")
-            lines.append(f"  {esc(syn[key])}")
+            lines.append(esc(syn[key]))
 
     # 지수 수치는 ① 산문이 이미 담는다(D-113 형식) — 여기서 반복하지 않는다.
     # 산문에 없는 수치 근거만 짧게 붙인다.
