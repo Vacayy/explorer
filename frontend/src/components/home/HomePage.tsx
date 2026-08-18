@@ -15,6 +15,7 @@ import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/comp
 import { MarketRegime } from "@/components/home/MarketRegime"
 import { MacroLiquidity } from "@/components/home/MacroLiquidity"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
+import { KrMoversSection } from "@/components/home/KrMoversSection"
 
 /**
  * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-056·D-057).
@@ -38,6 +39,9 @@ export default function HomePage() {
 
       {/* 어젯밤 미국장 브리핑 — 아침 분위기 파악 (자금이 어디로 쏠렸나, D-095) */}
       <UsBriefingSection />
+
+      {/* 전일 국장 거래대금 — 미국장의 국장 대응물, LLM 0 (D-108) */}
+      <KrMoversSection />
 
       {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드. 공지(브리핑)·승인은 인박스로(D-054) */}
       <AiActivityFeed />

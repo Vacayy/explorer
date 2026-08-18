@@ -505,6 +505,25 @@ def init_db():
         PRIMARY KEY(trade_date, rank)
     );
 
+    -- 국장 거래대금 상위 일별 스냅샷 (FDR KRX 리스팅, D-108) — us_movers의 국장 대응물.
+    -- 섹터는 companies.sector(KSIC) → sector_map.group_name 대분류로 통일해 저장.
+    CREATE TABLE IF NOT EXISTS kr_movers (
+        trade_date    TEXT NOT NULL,         -- 스냅샷 세션 날짜(KST)
+        rank          INTEGER NOT NULL,      -- 1..N (거래대금 내림차순)
+        stock_code    TEXT NOT NULL,
+        name          TEXT,
+        market        TEXT,                  -- KOSPI | KOSDAQ | KONEX
+        close         INTEGER,
+        volume        INTEGER,
+        value_traded  INTEGER,               -- 거래대금(원) — FDR Amount
+        change_pct    REAL,                  -- 전일 등락률(%)
+        sector        TEXT,                  -- sector_map.group_name 대분류
+        market_cap    INTEGER,
+        is_new        INTEGER DEFAULT 0,     -- 직전 스냅샷 대비 신규 진입
+        fetched_at    TEXT,
+        PRIMARY KEY(trade_date, rank)
+    );
+
     -- 무버 종목별 US 원천 헤드라인 (yfinance .news 캐시, D-097) — 개별 종목 '왜' 채움.
     CREATE TABLE IF NOT EXISTS us_ticker_news (
         ticker       TEXT NOT NULL,

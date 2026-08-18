@@ -45,6 +45,8 @@ JOBS = [
     ("chain", [str(PROJECT / "scripts" / "run_chain.sh")], 1800),
     ("prices", [PY, "scripts/ingest_prices.py", "--daily"],
      [{"Weekday": d, "Hour": 16, "Minute": 10} for d in range(1, 6)]),
+    ("krmovers", [PY, "scripts/snapshot_kr_movers.py"],          # D-108 — 신규진입 판정에 일별 필요
+     [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
     ("briefing", [PY, "scripts/send_briefing.py"],
      [{"Weekday": d, "Hour": 8, "Minute": 0} for d in range(1, 6)]),
     ("promote", [PY, "scripts/promote_knowledge.py"], {"Weekday": 0, "Hour": 7, "Minute": 0}),
