@@ -136,14 +136,28 @@ class UsFlowPoint(BaseModel):
     share_pct: float
 
 
+class UsFlowTrend(BaseModel):
+    """비중 시계열의 국면 판정 (LLM 0, D-113) — 확대/축소 추세·되돌림·반등·횡보."""
+    label: str
+    delta_pp: float | None = None
+    detail: str | None = None
+
+
 class UsFlowSector(BaseModel):
     label: str
     series: list[UsFlowPoint] = []
+    trend: UsFlowTrend | None = None
+
+
+class UsFlowConcentration(BaseModel):
+    series: list[UsFlowPoint] = []
+    trend: UsFlowTrend | None = None
 
 
 class UsFlowBlock(BaseModel):
     dates: list[str] = []
     sectors: list[UsFlowSector] = []
+    concentration: UsFlowConcentration | None = None
 
 
 class UsBriefingListItem(BaseModel):

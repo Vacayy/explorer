@@ -102,15 +102,9 @@ def _us_section(lines: list[str]) -> None:
             lines.append(f"  <b>{label}</b>")
             lines.append(f"  {esc(syn[key])}")
 
-    # 산문의 수치 근거 — 짧게 붙인다
-    nums = []
-    for i in (b.get("indices") or {}).get("items", []):
-        nums.append(f"{i['name']} {i['change_pct']:+.2f}%")
-    if nums:
-        lines.append("")
-        idx_as_of = (b.get("indices") or {}).get("as_of")
-        suffix = f" ({idx_as_of})" if idx_as_of and idx_as_of != b.get("trade_date") else ""
-        lines.append(f"  📊 {esc(' · '.join(nums))}{esc(suffix)}")
+    # 지수 수치는 ① 산문이 이미 담는다(D-113 형식) — 여기서 반복하지 않는다.
+    # 산문에 없는 수치 근거만 짧게 붙인다.
+    lines.append("")
     for c in (b.get("clusters") or [])[:2]:
         lines.append(f"  · 쏠림: <b>{esc(c['label'])}</b> {c['share_pct']}% "
                      f"({c['n']}종목, 중앙값 {c['median_change']:+.1f}%)")
@@ -118,6 +112,11 @@ def _us_section(lines: list[str]) -> None:
     if idio:
         lines.append("  · 이슈: " + " · ".join(
             f"{esc(m['ticker'])} {esc('/'.join(m['flags']))}" for m in idio[:3]))
+    sectors = (b.get("flow") or {}).get("sectors") or []
+    if sectors:
+        lines.append("  · 국면: " + " · ".join(
+            f"{esc(x['label'])} {esc((x.get('trend') or {}).get('label') or '')}"
+            for x in sectors[:3]))
     for sc in (syn.get("study_candidates") or [])[:2]:
         lines.append(f"  · 스터디: {esc(sc)}")
 
