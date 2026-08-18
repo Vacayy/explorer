@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { AlertTriangle, ChevronDown, GraduationCap, Info, Newspaper, Share2, TrendingUp } from "lucide-react"
+import { Activity, AlertTriangle, BarChart3, ChevronDown, Clock, GraduationCap, Gauge,
+  Info, Newspaper, Share2, TrendingUp } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -9,16 +10,21 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { RefreshButton } from "@/components/shared/RefreshButton"
 import { formatUsd, formatPercent } from "@/utils/format"
-import { useUsBriefing } from "@/hooks/useUsBriefing"
-import type { UsMoverBrief } from "@/types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
+import type { UsBriefing, UsMoverBrief } from "@/types"
 
 /**
  * 홈 상단 — 어젯밤 미국장 브리핑 (docs/specs/us-briefing.md). 아침 분위기 파악 가속기.
- * 섹터 쏠림 + 개별 이슈 + 하루 1회 종합(분위기·스터디/공유 후보). 상위 20 전체는 Collapsible.
- * 5-state: Loading / Error(status=error·쿼리실패) / Partial(stale·synthesis=null) / Empty / Ideal.
+ * **4섹션 종합(D-112)**: ① 지수 마감 ② 시장을 움직인 요인 ③ 거래대금 이슈 ④ 시계열 흐름.
+ * 하루치 스냅샷에 지수·매크로·비중추이를 얹어 '오늘이 흐름의 어디쯤인지'를 읽게 한다.
+ * 과거 브리핑은 헤더 날짜 셀렉터로 조회(읽기 전용). 상위 20 전체는 Collapsible.
+ * 5-state: Loading / Error / Partial(stale·묵은 스냅샷·synthesis=null) / Empty / Ideal.
  */
 export function UsBriefingSection() {
-  const { data, isLoading, isError, refetch, refresh, refreshing } = useUsBriefing()
+  const [pickedDate, setPickedDate] = useState<string | null>(null)
+  const { data, isLoading, isError, refetch, refresh, refreshing } = useUsBriefing(pickedDate)
+  const { data: dates = [] } = useUsBriefingDates()
   const [open, setOpen] = useState(false)
 
   if (isLoading) return <Skeleton className="h-80 w-full rounded-xl" />
@@ -50,8 +56,24 @@ export function UsBriefingSection() {
         </CardTitle>
         <span className="text-[11px] text-muted-foreground">전일 거래대금 상위 20 · 자금이 어디로 쏠렸나</span>
         <div className="ml-auto flex items-center gap-1.5">
+          {dates.length > 1 && (
+            <Select value={pickedDate ?? "latest"}
+              onValueChange={(v) => setPickedDate(v === "latest" ? null : v)}>
+              <SelectTrigger className="h-7 w-[124px] text-[11px]">
+                <SelectValue placeholder="날짜" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest" className="text-xs">최신</SelectItem>
+                {dates.map((d) => (
+                  <SelectItem key={d.trade_date} value={d.trade_date} className="text-xs">
+                    {d.trade_date}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {data.fetched_at && <FreshnessStamp asOf={data.fetched_at} />}
-          <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />
+          {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
           <Link to="/us" className="text-[11px] text-muted-foreground hover:text-foreground">미국 종목 →</Link>
         </div>
       </CardHeader>
@@ -60,13 +82,55 @@ export function UsBriefingSection() {
         {data.status === "stale" && (
           <Banner tone="warn">실시간 갱신 실패 — 마지막 성공 데이터를 표시합니다.{data.error ? ` (${data.error})` : ""}</Banner>
         )}
-        {!synthesis && (
+        {/* '어젯밤'을 자처하는데 스냅샷이 며칠 묵었으면 프레임이 거짓이 된다 — 먼저 밝힌다 (D-112) */}
+        {!pickedDate && (data.stale_days ?? 0) > 1 && (
+          <Banner tone="warn">
+            거래대금 스냅샷이 {data.stale_days}일 전({data.trade_date}) 것입니다 — ‘지금 업데이트’로 갱신하세요.
+          </Banner>
+        )}
+        {data.status === "partial" && (
+          <Banner tone="info">근거 스냅샷은 보존 기간이 지나 삭제됐습니다 — 저장된 종합만 표시합니다.</Banner>
+        )}
+        {!synthesis && data.status !== "partial" && (
           <Banner tone="info">LLM 종합이 아직 없습니다 — 아래 구조화 브리핑(섹터 쏠림·개별 이슈)만 표시합니다.</Banner>
         )}
 
-        {/* 분위기 산문 */}
-        {synthesis?.mood && (
-          <p className="text-sm leading-relaxed text-foreground/90">{synthesis.mood}</p>
+        {/* 4섹션 종합 (D-112) — 지수 → 요인 → 이슈 → 흐름 */}
+        {synthesis && (
+          <div className="space-y-2.5">
+            <Section icon={BarChart3} title="지수 마감" body={synthesis.index_summary}
+              meta={data.indices.items.length > 0
+                ? data.indices.items.map((i) => `${i.name} ${i.change_pct >= 0 ? "+" : ""}${i.change_pct}%`).join(" · ")
+                  + (data.indices.as_of && data.indices.as_of !== data.trade_date ? ` (${data.indices.as_of})` : "")
+                : undefined} />
+            <Section icon={Gauge} title="시장을 움직인 요인" body={synthesis.drivers}
+              meta={data.macro.items.length > 0
+                ? `${data.macro.as_of ?? ""} · ${data.macro.lookback ?? ""}`
+                  + (data.macro.signal?.signal ? ` · 신호등 ${data.macro.signal.signal}` : "")
+                : undefined} />
+            <Section icon={TrendingUp} title="거래대금 이슈" body={synthesis.issues} />
+            <Section icon={Activity} title="시계열 흐름" body={synthesis.flow}
+              meta={data.flow.dates.length > 0 ? `최근 스냅샷 ${data.flow.dates.length}개 대비` : undefined} />
+          </div>
+        )}
+
+        {/* 섹터 비중 추이 — ④ 산문의 근거 (LLM 0) */}
+        {data.flow.sectors.length > 0 && (
+          <div className="rounded-lg bg-muted/40 p-2.5">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <Clock className="h-3.5 w-3.5" /> 섹터 거래대금 비중 추이 (과거 → 최신)
+            </div>
+            <div className="space-y-1">
+              {data.flow.sectors.map((sec) => (
+                <div key={sec.label} className="flex items-center gap-2 text-xs">
+                  <span className="w-28 shrink-0 truncate">{sec.label}</span>
+                  <span className="flex-1 truncate tabular-nums text-muted-foreground">
+                    {sec.series.map((x) => `${x.date.slice(5)} ${x.share_pct}%`).join("  →  ")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* 어제 시장 담론 — 왜·무슨 얘기였나 (거래대금 × 내러티브 교차의 근거) */}
@@ -211,6 +275,24 @@ function CandidateList({ icon: Icon, title, items, accent }: {
       <ul className="space-y-1">
         {items.map((x, i) => <li key={i} className="text-xs leading-snug text-foreground/85">{x}</li>)}
       </ul>
+    </div>
+  )
+}
+
+/** 종합 4섹션의 한 문단 — 제목 + (있으면) 결정적 수치 메타 + 산문. body 없으면 렌더 안 함. */
+function Section({ icon: Icon, title, body, meta }: {
+  icon: React.ComponentType<{ className?: string }>
+  title: string; body: string; meta?: string
+}) {
+  if (!body) return null
+  return (
+    <div>
+      <div className="mb-0.5 flex items-baseline gap-1.5">
+        <Icon className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-muted-foreground" />
+        <span className="text-[11px] font-medium text-foreground/80">{title}</span>
+        {meta && <span className="text-[10px] tabular-nums text-muted-foreground truncate">{meta}</span>}
+      </div>
+      <p className="pl-5 text-sm leading-relaxed text-foreground/90">{body}</p>
     </div>
   )
 }
