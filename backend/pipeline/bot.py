@@ -30,39 +30,80 @@ def _api(method: str) -> str:
     return f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/{method}"
 
 
-def _send(chat_id: str, text: str, markdown: bool = True):
-    """본문 발송. 기본은 마크다운 → HTML 변환 후 태그 경계를 지켜 분할(D-109).
+def _render(text: str, markdown: bool) -> list[str]:
+    from pipeline.telegram_md import split_html, to_html
+    return split_html(to_html(text) if markdown else text)
+
+
+def _send(chat_id: str, text: str, markdown: bool = True) -> int | None:
+    """본문 발송 → 첫 메시지 id. 마크다운 → HTML 변환 후 태그 경계를 지켜 분할(D-109).
 
     빈 문자열은 보내지 않는다 — 핸들러가 이미 직접 발송한 경우("" 반환)의 신호.
     markdown=False 는 이미 HTML로 조립된 본문(브리핑) 용.
     """
     if not (text or "").strip():
+        return None
+    first = None
+    for chunk in _render(text, markdown):
+        mid = _post(chat_id, chunk)
+        if mid is None:
+            break
+        first = first or mid
+    return first
+
+
+def _replace(chat_id: str, message_id: int, text: str, markdown: bool = True) -> None:
+    """로딩 말풍선을 결과로 **대체**한다 (D-111).
+
+    '생성 중…'은 진행 표시일 뿐 대화 기록에 남을 내용이 아니다. editMessageText로
+    같은 말풍선을 결과로 갈아끼워 잔재를 남기지 않는다. 결과가 여러 조각이면
+    첫 조각으로 대체하고 나머지는 이어 보낸다. 편집이 실패하면(메시지 삭제 등)
+    placeholder를 지우고 새로 보낸다 — 어느 경로로도 결과는 반드시 도달한다.
+    """
+    chunks = _render(text, markdown)
+    if not chunks:
+        _delete(chat_id, message_id)
         return
-    from pipeline.telegram_md import split_html, to_html
-    body = to_html(text) if markdown else text
-    for chunk in split_html(body):
-        if not _post(chat_id, chunk, "HTML"):
-            return
+    if not _edit(chat_id, message_id, chunks[0]):
+        _delete(chat_id, message_id)
+        _post(chat_id, chunks[0])
+    for chunk in chunks[1:]:
+        _post(chat_id, chunk)
 
 
-def _post(chat_id: str, text: str, parse_mode: str | None) -> bool:
-    """1건 발송. 마크업 파싱 실패(400)는 평문으로 1회 구제 — 서식보다 내용 전달이 우선."""
-    payload = {"chat_id": chat_id, "text": text}
-    if parse_mode:
-        payload["parse_mode"] = parse_mode
+def _call(method: str, payload: dict):
+    """텔레그램 API 1회. 마크업 파싱 실패(400)는 평문으로 1회 구제 — 서식보다 내용 전달이 우선."""
     try:
-        r = requests.post(_api("sendMessage"), json=payload, timeout=15)
+        r = requests.post(_api(method), json=payload, timeout=15)
     except Exception:
-        return False
+        return None
     if r.status_code == 200:
-        return True
-    if r.status_code == 400 and parse_mode:
+        return (r.json() or {}).get("result")
+    if r.status_code == 400 and payload.get("parse_mode"):
+        if "not modified" in r.text:      # 편집 결과가 원문과 동일 — 실패가 아니다
+            return True
         import html as _html
         import re as _re
-        plain = _html.unescape(_re.sub(r"<[^>]+>", "", text))
+        plain = dict(payload)
+        plain.pop("parse_mode")
+        plain["text"] = _html.unescape(_re.sub(r"<[^>]+>", "", payload.get("text", "")))
         print(f"[bot] 마크업 파싱 실패 → 평문 재시도: {r.text[:160]}", flush=True)
-        return _post(chat_id, plain, None)
-    return False
+        return _call(method, plain)
+    return None
+
+
+def _post(chat_id: str, text: str) -> int | None:
+    r = _call("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+    return r.get("message_id") if isinstance(r, dict) else None
+
+
+def _edit(chat_id: str, message_id: int, text: str) -> bool:
+    return _call("editMessageText", {"chat_id": chat_id, "message_id": message_id,
+                                     "text": text, "parse_mode": "HTML"}) is not None
+
+
+def _delete(chat_id: str, message_id: int) -> None:
+    _call("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
 
 
 def _find_company(conn, q: str):
@@ -272,11 +313,24 @@ _ACTIONS = {
 }
 
 
+def _pending_text(kind: str, ident: int) -> str:
+    """로딩 말풍선 문구 — 이미 만들어져 있으면 '생성'이 아니라 '불러오는' 것이다 (D-111)."""
+    if kind == "y":
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT digest_status FROM raw_documents WHERE id=?", (ident,)).fetchone()
+        conn.close()
+        if row and row["digest_status"] == "ok":
+            return "📺 정리본 불러오는 중…"
+        return "📺 정리본 생성 중… 1~2분 걸립니다"
+    return "🧠 내러티브 준비 중… (새 문서가 있으면 1~2분)"
+
+
 def start_action(kind: str, ident: str, chat_id: str) -> str:
-    """생성 액션 착수 — 즉시 돌려줄 문구를 반환하고 실제 생성은 데몬 스레드로.
+    """생성 액션 착수. 로딩 말풍선을 띄우고 완료 시 **그 말풍선을 결과로 대체**한다(D-111).
 
     본문 딥링크(`/start n_4740`)와 구 inline 버튼 콜백(`n:4740`)의 공용 진입점.
-    """
+    반환값은 호출부가 보낼 문구 — 정상 착수 시에는 이미 직접 발송했으므로 ""."""
     entry = _ACTIONS.get(kind)
     if not entry or not ident.isdigit():
         return "알 수 없는 요청입니다. 사용법은 /help"
@@ -285,20 +339,27 @@ def start_action(kind: str, ident: str, chat_id: str) -> str:
     key = f"{chat_id}:{kind}:{ident}"
     with _inflight_lock:
         if key in _inflight:
-            return f"이미 {label} 생성 중입니다 — 잠시만요."
+            return f"이미 {label} 준비 중입니다 — 잠시만요."
         _inflight.add(key)
+
+    pending_id = _post(chat_id, _pending_text(kind, int(ident)))
 
     def _work():
         try:
-            _send(chat_id, fn(int(ident)))
+            out = fn(int(ident))
         except Exception as e:  # noqa: BLE001 — 사용자에게 사유를 돌려준다
-            _send(chat_id, f"생성 실패 — {type(e).__name__}: {str(e)[:200]}")
+            out = f"생성 실패 — {type(e).__name__}: {str(e)[:200]}"
+        try:
+            if pending_id:
+                _replace(chat_id, pending_id, out)   # 로딩 말풍선 → 결과
+            else:
+                _send(chat_id, out)                  # 말풍선 확보 실패 시 새 메시지
         finally:
             with _inflight_lock:
                 _inflight.discard(key)
 
     threading.Thread(target=_work, daemon=True, name=f"tg-{kind}-{ident}").start()
-    return f"🔎 {label} 생성 중… 1~2분 걸립니다"
+    return ""
 
 
 def handle_callback(data: str, chat_id: str, cq_id: str) -> None:
