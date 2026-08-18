@@ -10,9 +10,11 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { RefreshButton } from "@/components/shared/RefreshButton"
 import { formatUsd, formatPercent } from "@/utils/format"
+import MultiLineChart from "@/components/charts/MultiLineChart"
+import type { LineConfig } from "@/components/charts/MultiLineChart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
-import type { UsBriefing, UsMoverBrief } from "@/types"
+import type { UsFlowBlock, UsMoverBrief } from "@/types"
 
 /**
  * 홈 상단 — 어젯밤 미국장 브리핑 (docs/specs/us-briefing.md). 아침 분위기 파악 가속기.
@@ -114,54 +116,8 @@ export function UsBriefingSection() {
           </div>
         )}
 
-        {/* 섹터 비중 추이 — ④ 산문의 근거 (LLM 0) */}
-        {data.flow.sectors.length > 0 && (
-          <div className="rounded-lg bg-muted/40 p-2.5">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-              <Clock className="h-3.5 w-3.5" /> 섹터 거래대금 비중 추이 (과거 → 최신)
-            </div>
-            <div className="space-y-1">
-              {data.flow.sectors.map((sec) => (
-                <div key={sec.label} className="flex items-center gap-2 text-xs">
-                  <span className="w-28 shrink-0 truncate">{sec.label}</span>
-                  <span className="flex-1 truncate tabular-nums text-muted-foreground">
-                    {sec.series.map((x) => `${x.date.slice(5)} ${x.share_pct}%`).join("  →  ")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 어제 시장 담론 — 왜·무슨 얘기였나 (거래대금 × 내러티브 교차의 근거) */}
-        {(data.market_themes.length > 0 || data.market_docs.length > 0) && (
-          <div className="rounded-lg bg-muted/40 p-2.5 space-y-2">
-            <div className="text-[11px] font-medium text-muted-foreground">어제 시장 담론 — 무슨 얘기였나</div>
-            {data.market_themes.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {data.market_themes.slice(0, 10).map((t) => (
-                  <Link key={t.name} to={`/narrative?topic=${encodeURIComponent(t.name)}`}>
-                    <Badge variant="secondary" className="text-[10px] font-normal hover:bg-primary/10">
-                      {t.name} <span className="ml-1 tabular-nums text-muted-foreground">{t.count}</span>
-                    </Badge>
-                  </Link>
-                ))}
-              </div>
-            )}
-            {data.market_docs.length > 0 && (
-              <ul className="space-y-0.5">
-                {data.market_docs.slice(0, 6).map((d) => (
-                  <li key={d.id}>
-                    <Link to={`/doc/${d.id}`} className="group flex items-center gap-1.5 text-xs min-w-0">
-                      <Badge variant="outline" className="text-[9px] shrink-0">{d.source_type}</Badge>
-                      <span className="truncate group-hover:underline">{d.title}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        {/* 섹터 비중 추이 — ④ 산문의 근거 (LLM 0). 숫자 나열보다 모양이 읽히도록 차트로 */}
+        {data.flow.sectors.length > 1 && <FlowChart flow={data.flow} />}
 
         {/* 섹터 쏠림 */}
         <div>
@@ -275,6 +231,54 @@ function CandidateList({ icon: Icon, title, items, accent }: {
       <ul className="space-y-1">
         {items.map((x, i) => <li key={i} className="text-xs leading-snug text-foreground/85">{x}</li>)}
       </ul>
+    </div>
+  )
+}
+
+/**
+ * 섹터 거래대금 비중 추이 — ④ 산문의 근거.
+ * lightweight-charts는 CSS 변수를 못 받아 리터럴 색을 쓴다(ReportCharts 선례).
+ * 라이트·다크 양쪽에서 보이는 밝은 조합.
+ */
+const FLOW_COLORS = ["#38bdf8", "#a78bfa", "#fb923c", "#34d399"]
+
+function FlowChart({ flow }: { flow: UsFlowBlock }) {
+  const lines: LineConfig[] = flow.sectors.map((s, i) => ({
+    key: `s${i}`, label: s.label, color: FLOW_COLORS[i % FLOW_COLORS.length], lineWidth: 2,
+  }))
+  // 날짜별 행으로 피벗 — 스냅샷이 있는 날만 점이 찍힌다(휴장·미수집 구간은 자연히 비어 있음)
+  const byDate = new Map<string, Record<string, unknown>>()
+  flow.sectors.forEach((sec, i) => {
+    sec.series.forEach((pt) => {
+      const row = byDate.get(pt.date) ?? { time: pt.date }
+      row[`s${i}`] = pt.share_pct
+      byDate.set(pt.date, row)
+    })
+  })
+  const rows = [...byDate.values()].sort((a, b) => String(a.time).localeCompare(String(b.time)))
+
+  return (
+    <div className="rounded-lg border p-2.5">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+        <Clock className="h-3.5 w-3.5" /> 섹터 거래대금 비중 추이
+        <span className="ml-auto tabular-nums">스냅샷 {flow.dates.length}개</span>
+      </div>
+      <MultiLineChart data={rows} lines={lines} height={168} formatValue={(v) => `${v.toFixed(1)}%`} />
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+        {flow.sectors.map((sec, i) => (
+          <span key={sec.label} className="flex items-center gap-1 text-[10px]">
+            <span className="h-1.5 w-1.5 rounded-full shrink-0"
+              style={{ background: FLOW_COLORS[i % FLOW_COLORS.length] }} />
+            <span className="text-muted-foreground">{sec.label}</span>
+            <span className="font-medium text-foreground/80">{sec.trend?.label}</span>
+            {sec.trend?.delta_pp != null && (
+              <span className={`tabular-nums ${chg(sec.trend.delta_pp)}`}>
+                {sec.trend.delta_pp > 0 ? "+" : ""}{sec.trend.delta_pp}%p
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }

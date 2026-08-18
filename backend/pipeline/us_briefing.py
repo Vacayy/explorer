@@ -267,6 +267,61 @@ def _macro_context() -> dict:
             "degraded": m.get("degraded") or []}
 
 
+TREND_PP = 3.0          # 추세로 볼 최소 비중 변화(pp)
+REVERSAL_PP = 3.0       # 고점/저점에서 되돌린 것으로 볼 폭(pp)
+RANGE_PP = 5.0          # 횡보로 볼 최대 진폭(pp)
+
+
+def _classify_trend(series: list[dict]) -> dict:
+    """섹터 비중 시계열의 **국면을 결정적으로 판정** (LLM 0, D-113).
+
+    왜 계산해서 주나: 프롬프트로 "국면을 규정하라"고만 하면 모델이 근거 삼을 어휘가 없어
+    날짜별 수치를 읊는 것으로 도피한다(실측: "8/12 51.3%에서 8/17 61.6%로 급등했다가…").
+    추세·되돌림·횡보를 먼저 이름 붙여 주면 산문이 국면 서술로 올라간다.
+
+    라벨은 **방향 + 모양**의 합성이다 — 순증인데 고점에선 눌린 경우처럼 둘 다 참인 상황이
+    흔해, 하나만 고르면 "고점 되돌림(+5.6pp)"처럼 모순으로 읽힌다.
+    """
+    pts = [p["share_pct"] for p in series if p.get("share_pct") is not None]
+    if len(pts) < 2:
+        return {"label": "관측 부족", "delta_pp": None, "detail": "스냅샷 1개 이하"}
+    first, last = pts[0], pts[-1]
+    delta = round(last - first, 1)
+    hi, lo = max(pts), min(pts)
+    hi_i, lo_i = pts.index(hi), pts.index(lo)
+    span = round(hi - lo, 1)
+    detail = f"{first}% → {last}% · 고점 {hi}% · 저점 {lo}% · 진폭 {span}pp"
+
+    if len(pts) < 3:
+        d = "상승" if delta > 0 else ("하락" if delta < 0 else "보합")
+        return {"label": f"{d}(관측 2개)", "delta_pp": delta, "detail": f"{first}% → {last}%"}
+
+    direction = ("확대" if delta >= TREND_PP else
+                 "축소" if delta <= -TREND_PP else
+                 "횡보" if span <= RANGE_PP else "등락")
+    # 끝점만 보면 안 보이는 모양. 극값이 **내부**일 때만 의미가 있다 —
+    # 단조 상승은 시작점이 곧 저점이라, 끝점을 허용하면 전부 '저점 반등'으로 잡힌다.
+    interior_hi = 0 < hi_i < len(pts) - 1
+    interior_lo = 0 < lo_i < len(pts) - 1
+    pulled_back = interior_hi and hi - last >= REVERSAL_PP
+    bounced = interior_lo and last - lo >= REVERSAL_PP
+
+    # 방향과 어울리는 모양만 붙인다 — 축소인데 '고점 대비 되돌림'은 동어반복이다
+    if direction == "횡보":
+        label = "횡보"
+    elif direction == "확대":
+        label = "확대 후 되돌림" if pulled_back else "확대 추세"
+    elif direction == "축소":
+        label = "축소 후 반등" if bounced else "축소 추세"
+    elif pulled_back:
+        label = "고점 대비 되돌림"
+    elif bounced:
+        label = "저점 대비 반등"
+    else:
+        label = "방향 불명"
+    return {"label": label, "delta_pp": delta, "detail": detail}
+
+
 def _flow_history(conn, trade_date: str) -> dict:
     """④ 시계열 흐름 — 최근 스냅샷의 섹터 쏠림 추이 + 직전 브리핑들의 판단 (LLM 0, D-112).
 
@@ -303,7 +358,19 @@ def _flow_history(conn, trade_date: str) -> dict:
         text = j.get("issues") or j.get("mood") or ""     # 구 스키마(mood) 호환
         if text:
             moods.append({"trade_date": p["trade_date"], "text": text[:400]})
-    return {"dates": dates, "sectors": [{"label": k, "series": v} for k, v in ranked],
+    sectors = [{"label": k, "series": v, "trend": _classify_trend(v)} for k, v in ranked]
+    # 시장 전체 쏠림 — 스냅샷별 '최상위 섹터 비중'의 추이 (한 섹터로 모이는 중인가 흩어지는가)
+    top_share = []
+    for d in reversed(dates):
+        rows = conn.execute(
+            "SELECT sector, sum(dollar_volume) dv FROM us_movers WHERE trade_date=? GROUP BY sector",
+            (d,)).fetchall()
+        total = sum(r["dv"] or 0 for r in rows) or 1
+        if rows:
+            top_share.append({"date": d,
+                              "share_pct": round(max(r["dv"] or 0 for r in rows) / total * 100, 1)})
+    return {"dates": dates, "sectors": sectors,
+            "concentration": {"series": top_share, "trend": _classify_trend(top_share)},
             "prior_moods": moods}
 
 
@@ -363,9 +430,12 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
     fl = "- 없음"
     if flow.get("sectors"):
         fl = "\n".join(
-            "- {}: {}".format(s["label"], " → ".join(
-                f"{x['date'][5:]} {x['share_pct']}%" for x in s["series"]))
+            f"- {s['label']}: **{s['trend']['label']}** ({s['trend']['delta_pp']:+}pp) · {s['trend']['detail']}"
             for s in flow["sectors"])
+        conc = (flow.get("concentration") or {}).get("trend")
+        if conc:
+            fl += f"\n- [시장 전체 쏠림: 최상위 섹터 비중] **{conc['label']}** · {conc['detail']}"
+        fl += f"\n(스냅샷 {len(flow.get('dates') or [])}개 구간)"
         if flow.get("prior_moods"):
             fl += "\n\n[직전 브리핑에서 내가 읽은 것]\n" + "\n".join(
                 f"- {m['trade_date']}: {m['text']}" for m in flow["prior_moods"])
@@ -384,20 +454,29 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
         f"[3-c. 그날 시장 담론 — 지배 테마(문서수)]\n{themes}\n\n"
         f"[3-d. 그날 시장 담론 — 시장구조 코멘터리]\n{docs}\n\n"
         f"[4. 최근 스냅샷의 섹터 거래대금 비중 추이(과거→최신)]\n{fl}\n\n"
-        "임무 — 각 항목을 **하나의 문단**으로. 전체 4문단, 문단당 3~5문장:\n"
-        "① index_summary: 어제 장이 어디서 어떻게 끝났는지. 지수 등락률을 실제 숫자로 쓰고, "
-        "지수는 잠잠한데 개별 거래대금은 쏠렸다면 그 괴리를 짚어라.\n"
-        "② drivers: 시장 전체를 움직인 요인. 매크로 지표 변화([2])와 담론([3-c],[3-d])을 교차해 "
-        "'무엇이 위험선호를 밀거나 눌렀나'를 말하라. "
-        "**규율: 재료에 없는 이벤트를 지어내지 마라.** 여기엔 FOMC·CPI 같은 발표 일정 정보가 없다. "
-        "지표가 '어떻게 움직였다'까지만 말하고, 원인을 모르면 모른다고 하라.\n"
-        "③ issues: 거래대금이 어디로 쏠렸고 그룹으로 안 풀리는 개별 움직임은 무엇인지. "
-        "담론이 특정 사건을 지목하면 이름을 명시하고, 헤드라인이 있으면 그 종목의 촉매로 삼아라. "
-        "거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·되돌림인지)을 근거와 함께 판단하라.\n"
-        "④ flow: [4]의 비중 추이와 [직전 브리핑에서 내가 읽은 것]을 대조해 "
-        "**어제가 흐름의 연속인지 단절인지** 판정하라. 어느 섹터로 자금이 옮겨가는 중인지, "
-        "직전 판단이 유지되는지 뒤집혔는지 명시하라. 추이 데이터가 2일 이하면 그렇다고 말하라.\n\n"
-        "공통 규율: 근거 있는 것만. 촉매를 모르면 지어내지 말고 스터디 후보로 돌려라.\n"
+        "임무 — 각 항목을 하나의 문단으로. **분량 예산을 지켜라. 짧게 쓰는 것이 요구사항이다.**\n"
+        "① index_summary — **1~2문장.** 지수 등락률(숫자)과 마감 성격만. 예: "
+        "'8/14 종가 기준 S&P500 7,785.76(-0.17%), 나스닥 26,729.16(-0.28%), 다우 53,732.41(-0.20%)로 "
+        "세 지수 모두 소폭 하락에 그쳐 표면적으로는 잠잠한 하루였다.' "
+        "이 정도면 충분하다. 거래대금 이야기는 ③의 몫이니 여기서 하지 마라. "
+        "지수 날짜가 거래대금 기준일과 다르면 날짜만 밝히고 넘어가라.\n"
+        "② drivers — **2~3문장.** 매크로([2])와 담론([3-c],[3-d])을 교차해 '무엇이 위험선호를 밀거나 눌렀나' "
+        "핵심만. 지표를 전부 나열하지 말고 **방향을 가른 것 1~2개**만 집어라. "
+        "**규율: 재료에 없는 이벤트를 지어내지 마라.** FOMC·CPI 같은 발표 일정 정보는 여기 없다. "
+        "지표가 '어떻게 움직였다'까지만 말하고, 원인을 모르면 모른다고 한 문장으로 끝내라.\n"
+        "③ issues — **3~4문장.** 중요한 것만 남겨라: 쏠린 섹터 1~2개, 그룹으로 안 풀리는 개별 종목 "
+        "**가장 중요한 2~3개**, 그리고 거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·되돌림인지). "
+        "종목을 빠짐없이 훑지 마라 — 덜 중요한 건 버리고 스터디 후보로 넘겨라. "
+        "헤드라인이 있으면 그 종목의 촉매로 삼고, 담론이 사건을 지목하면 이름을 명시하라.\n"
+        "④ flow — **3~4문장. 날짜별 수치를 읊지 마라.** ([4]에 이미 국면 판정이 계산돼 있다.) "
+        "지금이 **어떤 국면인지**를 말하라: 추세가 이어지는 중인가, 횡보인가, 기간 조정인가, "
+        "고점을 지나 눌리는 중인가, 바닥에서 돌아서는 중인가. "
+        "그 위에서 자금이 어디에서 어디로 옮겨가는 큰 흐름인지, "
+        "[직전 브리핑에서 내가 읽은 것]과 견줘 그 판단이 유지되는지 뒤집혔는지 한 문장으로 덧붙여라. "
+        "'8/17은 이랬고 8/18은 저랬다'式 일자별 서술 금지 — 국면과 방향으로 말하라. "
+        "스냅샷이 2개 이하면 판단 근거가 부족하다고 밝혀라.\n\n"
+        "공통 규율: 근거 있는 것만. 촉매를 모르면 지어내지 말고 스터디 후보로 돌려라. "
+        "예산을 넘기면 안 된다 — 길게 쓰는 것보다 버리는 것이 어렵고 중요하다.\n"
         "JSON만 출력: {\"index_summary\": \"…\", \"drivers\": \"…\", \"issues\": \"…\", \"flow\": \"…\", "
         "\"study_candidates\": [\"티커 — 왜 스터디해야 하는지 한 줄\"], "
         "\"share_candidates\": [\"티커/주제 — 이미 내러티브 있어 공유할 만한 것 한 줄\"]}"

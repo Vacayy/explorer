@@ -590,8 +590,13 @@ export interface UsMacroBlock {
   signal: UsMacroSignal | null; degraded: string[];
 }
 export interface UsFlowPoint { date: string; share_pct: number }
-export interface UsFlowSector { label: string; series: UsFlowPoint[] }
-export interface UsFlowBlock { dates: string[]; sectors: UsFlowSector[] }
+/** 비중 시계열 국면 판정 (D-113) — 확대/축소 추세·되돌림·반등·횡보 */
+export interface UsFlowTrend { label: string; delta_pp: number | null; detail: string | null }
+export interface UsFlowSector { label: string; series: UsFlowPoint[]; trend: UsFlowTrend | null }
+export interface UsFlowConcentration { series: UsFlowPoint[]; trend: UsFlowTrend | null }
+export interface UsFlowBlock {
+  dates: string[]; sectors: UsFlowSector[]; concentration: UsFlowConcentration | null
+}
 export interface UsBriefingListItem { trade_date: string; model: string | null; created_at: string | null }
 export interface UsMarketTheme { name: string; count: number }
 export interface UsMarketDoc {
