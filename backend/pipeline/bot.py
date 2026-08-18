@@ -4,9 +4,12 @@
 - 보안: TELEGRAM_CHAT_ID와 일치하는 채팅에만 응답
 - 라우팅: 종목명/별칭 → 최신 요약+언급+신호 / '/브리핑' → 아침 브리핑 /
           문장형 → RAG 질문 (수집 문서 근거) / 그 외 → 도움말
-- 콜백: 아침 브리핑의 inline 버튼(D-107) — `n:{entity_id}`=주제 내러티브 생성,
-        `y:{doc_id}`=유튜브 정리본. 생성이 수십 초~수 분이라 즉시 ack + 선응답 후
-        **데몬 스레드**에서 돌린다 (폴링 루프를 막지 않게). 결과는 같은 대화로 회신.
+- 액션: 아침 브리핑의 **본문 인라인 딥링크**(D-109) — `t.me/<bot>?start=n_4740` 을 누르면
+        봇이 `/start n_4740` 을 받아 주제 내러티브를, `y_11676` 이면 유튜브 정리본을 생성.
+        구 inline 버튼 콜백(`n:4740`, D-107)도 이미 발송된 메시지를 위해 계속 받는다 —
+        둘 다 `start_action()` 한 곳으로 모인다.
+        생성이 수십 초~수 분이라 즉시 응답 후 **데몬 스레드**에서 돌린다(폴링 비차단).
+- 출력: 본문은 마크다운 → 텔레그램 HTML 변환(pipeline/telegram_md.py) 후 parse_mode=HTML.
 - TELEGRAM_POLLING=0 으로 폴링 비활성 (테스트 인스턴스 충돌 방지)
 """
 import json
@@ -19,8 +22,7 @@ import requests
 from database import get_connection
 
 _started = False
-TG_LIMIT = 4000            # 텔레그램 메시지 상한(4096)에 여유
-_inflight: set[str] = set()   # 같은 버튼 연타로 opus가 중복 기동되지 않게
+_inflight: set[str] = set()   # 같은 링크 연타로 opus가 중복 기동되지 않게
 _inflight_lock = threading.Lock()
 
 
@@ -28,38 +30,39 @@ def _api(method: str) -> str:
     return f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/{method}"
 
 
-def _send(chat_id: str, text: str):
-    """긴 본문은 문단 경계로 나눠 연속 발송 — 내러티브 정리본이 상한을 넘기 때문.
+def _send(chat_id: str, text: str, markdown: bool = True):
+    """본문 발송. 기본은 마크다운 → HTML 변환 후 태그 경계를 지켜 분할(D-109).
 
     빈 문자열은 보내지 않는다 — 핸들러가 이미 직접 발송한 경우("" 반환)의 신호.
+    markdown=False 는 이미 HTML로 조립된 본문(브리핑) 용.
     """
     if not (text or "").strip():
         return
-    for chunk in _chunks(text):
-        try:
-            requests.post(_api("sendMessage"), json={"chat_id": chat_id, "text": chunk}, timeout=15)
-        except Exception:
+    from pipeline.telegram_md import split_html, to_html
+    body = to_html(text) if markdown else text
+    for chunk in split_html(body):
+        if not _post(chat_id, chunk, "HTML"):
             return
 
 
-def _chunks(text: str) -> list[str]:
-    if len(text) <= TG_LIMIT:
-        return [text]
-    out, cur = [], ""
-    for para in text.split("\n\n"):
-        if len(cur) + len(para) + 2 > TG_LIMIT:
-            if cur:
-                out.append(cur)
-            # 한 문단이 통째로 상한을 넘으면 강제 절단
-            while len(para) > TG_LIMIT:
-                out.append(para[:TG_LIMIT])
-                para = para[TG_LIMIT:]
-            cur = para
-        else:
-            cur = f"{cur}\n\n{para}" if cur else para
-    if cur:
-        out.append(cur)
-    return out
+def _post(chat_id: str, text: str, parse_mode: str | None) -> bool:
+    """1건 발송. 마크업 파싱 실패(400)는 평문으로 1회 구제 — 서식보다 내용 전달이 우선."""
+    payload = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    try:
+        r = requests.post(_api("sendMessage"), json=payload, timeout=15)
+    except Exception:
+        return False
+    if r.status_code == 200:
+        return True
+    if r.status_code == 400 and parse_mode:
+        import html as _html
+        import re as _re
+        plain = _html.unescape(_re.sub(r"<[^>]+>", "", text))
+        print(f"[bot] 마크업 파싱 실패 → 평문 재시도: {r.text[:160]}", flush=True)
+        return _post(chat_id, plain, None)
+    return False
 
 
 def _find_company(conn, q: str):
@@ -121,6 +124,12 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
     if not q:
         return "종목명, 질문, 또는 /브리핑"
 
+    # 브리핑 본문 딥링크 — `/start n_4740` (D-109). 도움말(/start 단독)보다 먼저 판별.
+    if q.startswith("/start ") and chat_id:
+        payload = q[len("/start "):].strip()
+        kind, _, ident = payload.partition("_")
+        return start_action(kind, ident, chat_id)
+
     if q in ("/start", "/help", "help", "도움말", "?"):
         return (
             "📟 Explorer 봇 — 주머니 속 리서치 터미널\n"
@@ -138,7 +147,8 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
         "   → 검색·답변·요약이 이 지식을 활용 (기억해(사실): 로 사실 표시)\n"
         "\n"
         "4️⃣ /briefing — 아침 브리핑 다시 받기\n"
-            "   (평일 08:00 자동 발송: 기계가 먼저 말하는 3줄+오늘 일정)\n"
+            "   (평일 08:00 자동 발송: 3줄 + 어젯밤 미국장 + 어제의 주제 + 유튜브)\n"
+            "   본문의 파란 링크를 누르면 내러티브·정리본 생성이 걸립니다\n"
             "\n"
             "ℹ️ 답변은 구독 중인 텔레그램·블로그에서 수집된 문서 기반이며,\n"
             "   AI 요약·해석은 참고용입니다 (투자 판단은 사람이)."
@@ -146,14 +156,14 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
 
     if q in ("/briefing", "/브리핑", "브리핑"):
         from pipeline.notify import compose_briefing
-        composed = compose_briefing()
-        if not composed:
+        body = compose_briefing()
+        if not body:
             return "오늘 브리핑 내용이 없습니다."
-        # 재발송은 버튼까지 그대로 — 아침에 못 누른 것을 여기서 누를 수 있게
+        # 이미 HTML로 조립된 본문 — 재변환하면 태그가 이스케이프된다
         if chat_id:
-            _send_with_keyboard(chat_id, composed[0], composed[1])
+            _send(chat_id, body, markdown=False)
             return ""
-        return composed[0]
+        return body
 
     # P2-0: 명령어 제외 전 문답을 대화로 적재 (질문 = 사용자 의도 데이터)
     from pipeline.conversations import log_exchange_safe
@@ -210,19 +220,6 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
     return "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
 
 
-def _send_with_keyboard(chat_id: str, text: str, keyboard: dict | None):
-    """버튼 달린 본문 발송 — 긴 본문은 나누되 키보드는 마지막 조각에만 붙인다."""
-    chunks = _chunks(text)
-    for i, chunk in enumerate(chunks):
-        payload = {"chat_id": chat_id, "text": chunk}
-        if keyboard and i == len(chunks) - 1:
-            payload["reply_markup"] = keyboard
-        try:
-            requests.post(_api("sendMessage"), json=payload, timeout=15)
-        except Exception:
-            return
-
-
 def _answer_callback(cq_id: str, text: str = ""):
     """텔레그램은 콜백을 몇 초 안에 ack하지 않으면 버튼이 멈춘 것처럼 보인다."""
     try:
@@ -269,41 +266,46 @@ def _run_youtube(doc_id: int) -> str:
     return f"📺 {doc.channel or '유튜브'} — {doc.title}\n{doc.url}\n\n{body}"
 
 
-_CALLBACKS = {
+_ACTIONS = {
     "n": (_run_narrative, "내러티브"),
     "y": (_run_youtube, "정리본"),
 }
 
 
-def handle_callback(data: str, chat_id: str, cq_id: str) -> None:
-    """브리핑 버튼 처리 — 즉시 ack + 선응답 후 생성은 데몬 스레드로."""
-    kind, _, raw = (data or "").partition(":")
-    entry = _CALLBACKS.get(kind)
-    if not entry or not raw.isdigit():
-        _answer_callback(cq_id, "알 수 없는 버튼")
-        return
+def start_action(kind: str, ident: str, chat_id: str) -> str:
+    """생성 액션 착수 — 즉시 돌려줄 문구를 반환하고 실제 생성은 데몬 스레드로.
+
+    본문 딥링크(`/start n_4740`)와 구 inline 버튼 콜백(`n:4740`)의 공용 진입점.
+    """
+    entry = _ACTIONS.get(kind)
+    if not entry or not ident.isdigit():
+        return "알 수 없는 요청입니다. 사용법은 /help"
     fn, label = entry
 
-    key = f"{chat_id}:{data}"
+    key = f"{chat_id}:{kind}:{ident}"
     with _inflight_lock:
         if key in _inflight:
-            _answer_callback(cq_id, "이미 생성 중입니다")
-            return
+            return f"이미 {label} 생성 중입니다 — 잠시만요."
         _inflight.add(key)
-
-    _answer_callback(cq_id, f"{label} 생성 시작 — 완료되면 보내드립니다")
-    _send(chat_id, f"🔎 {label} 생성 중… 1~2분 걸립니다")
 
     def _work():
         try:
-            _send(chat_id, fn(int(raw)))
+            _send(chat_id, fn(int(ident)))
         except Exception as e:  # noqa: BLE001 — 사용자에게 사유를 돌려준다
             _send(chat_id, f"생성 실패 — {type(e).__name__}: {str(e)[:200]}")
         finally:
             with _inflight_lock:
                 _inflight.discard(key)
 
-    threading.Thread(target=_work, daemon=True, name=f"tg-{kind}-{raw}").start()
+    threading.Thread(target=_work, daemon=True, name=f"tg-{kind}-{ident}").start()
+    return f"🔎 {label} 생성 중… 1~2분 걸립니다"
+
+
+def handle_callback(data: str, chat_id: str, cq_id: str) -> None:
+    """구 inline 버튼(D-107)이 달린 기존 메시지 대응 — 즉시 ack 후 같은 디스패처로."""
+    kind, _, ident = (data or "").partition(":")
+    _answer_callback(cq_id, "생성 시작 — 완료되면 보내드립니다")
+    _send(chat_id, start_action(kind, ident, chat_id))
 
 
 def _allowed_chats() -> set[str]:
@@ -337,7 +339,9 @@ def _poll_loop():
                 text = msg.get("text", "")
                 if not text:
                     continue
-                if len(text) >= 15:  # 긴 질문은 시간이 걸림 — 선응답
+                # 긴 질문은 시간이 걸림 — 선응답. 단 명령·딥링크(`/start y_11733`)는
+                # 핸들러가 자체 선응답을 주므로 중복 안내를 보내지 않는다 (D-109)
+                if len(text) >= 15 and not text.startswith("/"):
                     _send(sender, "🔎 찾아보는 중…")
                 _send(sender, handle_message(text, chat_id=sender))
         except Exception:

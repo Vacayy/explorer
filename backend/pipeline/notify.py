@@ -12,10 +12,12 @@
 `ensure_briefing_sent()`로 미발송을 사후 보전한다.
 
 콘텐츠 v2(D-107, docs/specs/telegram-briefing.md): 어젯밤 미국장 + 어제의 주제(최다3+급상승2)
-+ 팔로우 유튜브 3일치를 싣고, 주제·영상은 **inline keyboard 버튼**으로 낸다. 버튼을 누르면
-`bot.py`의 콜백 핸들러가 기존 생성 로직(compute_narrative / 유튜브 lazy digest)을 그대로 돌려
-결과를 다시 텔레그램으로 보낸다 — 브리핑을 읽는 것에서 **누르는 것**으로.
-조립 자체는 LLM 0콜(전부 SQL + 이미 만들어진 캐시 읽기).
++ 팔로우 유튜브 3일치. 조립 자체는 LLM 0콜(전부 SQL + 이미 만들어진 캐시 읽기).
+
+v3(D-109): 본문을 **HTML(parse_mode)** 로 보내고, 액션을 하단 버튼이 아니라 **본문 인라인
+하이퍼링크**로 심는다. 텔레그램 인라인 링크는 URL만 걸 수 있어 콜백을 못 쓰므로,
+`https://t.me/<bot>?start=<payload>` **딥링크**로 봇에게 `/start n_4740`을 되돌려준다
+(bot.py가 콜백과 같은 핸들러로 라우팅). 마크다운→HTML 변환·분할은 pipeline/telegram_md.py.
 """
 import json
 import os
@@ -33,7 +35,40 @@ SEND_BACKOFF = 5          # 초 — 5s, 10s
 TOP_TOPICS = 3            # 어제 절대 최다 주제
 SURGE_TOPICS = 2          # 점유율 급상승 주제 (최다와 중복 제거 후)
 YOUTUBE_DAYS = 3          # 팔로우 유튜브 조회 기간
-YOUTUBE_LIMIT = 6         # 버튼 수 상한 (메시지·키보드 비대화 방지)
+YOUTUBE_LIMIT = 6         # 목록 상한 (메시지 비대화 방지)
+
+_bot_username: str | None = None
+
+
+def bot_username() -> str | None:
+    """딥링크에 쓸 봇 핸들. .env 오버라이드 우선, 없으면 getMe 1회 조회 후 캐시."""
+    global _bot_username
+    if _bot_username is None:
+        _bot_username = (os.getenv("TELEGRAM_BOT_USERNAME") or "").lstrip("@").strip()
+    if _bot_username:
+        return _bot_username
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return None
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10).json()
+        if r.get("ok"):
+            _bot_username = r["result"]["username"]
+    except Exception:  # noqa: BLE001 — 링크 없이 평문으로 나가면 될 뿐, 발송을 막지 않는다
+        return None
+    return _bot_username or None
+
+
+def action_link(label: str, kind: str, ident: int) -> str:
+    """본문 인라인 액션 링크. 봇 핸들을 못 구하면 링크 없이 라벨만(평문 열화).
+
+    payload는 `A-Za-z0-9_-` 64자 제한이라 `n:4740`이 아니라 `n_4740`을 쓴다.
+    """
+    from pipeline.telegram_md import esc, link
+    user = bot_username()
+    if not user:
+        return esc(label)
+    return link(label, f"https://t.me/{user}?start={kind}_{ident}")
 
 
 def _us_section(lines: list[str]) -> None:
@@ -50,20 +85,21 @@ def _us_section(lines: list[str]) -> None:
     if not b.get("movers"):
         return
 
+    from pipeline.telegram_md import esc
     lines.append("")
-    lines.append(f"🇺🇸 어젯밤 미국장 ({b.get('trade_date') or '-'})")
+    lines.append(f"🇺🇸 <b>어젯밤 미국장</b> ({esc(b.get('trade_date') or '-')})")
     syn = b.get("synthesis") or {}
     if syn.get("mood"):
-        lines.append(syn["mood"])
+        lines.append(esc(syn["mood"]))
     for c in (b.get("clusters") or [])[:2]:
-        lines.append(f"  · 쏠림: {c['label']} {c['share_pct']}% "
+        lines.append(f"  · 쏠림: <b>{esc(c['label'])}</b> {c['share_pct']}% "
                      f"({c['n']}종목, 중앙값 {c['median_change']:+.1f}%)")
     idio = b.get("idiosyncratic") or []
     if idio:
         lines.append("  · 이슈: " + " · ".join(
-            f"{m['ticker']} {'/'.join(m['flags'])}" for m in idio[:3]))
+            f"{esc(m['ticker'])} {esc('/'.join(m['flags']))}" for m in idio[:3]))
     for sc in (syn.get("study_candidates") or [])[:2]:
-        lines.append(f"  · 스터디: {sc}")
+        lines.append(f"  · 스터디: {esc(sc)}")
 
 
 def _topics(conn) -> list[dict]:
@@ -113,7 +149,7 @@ def _topics(conn) -> list[dict]:
 def _youtube_recent(conn) -> list[dict]:
     """팔로우 채널의 최근 N일 영상 — source_id는 '{channel_id}/{video_id}' 규약."""
     return [dict(r) for r in conn.execute("""
-        SELECT rd.id, rd.title, rd.digest_status,
+        SELECT rd.id, rd.title, rd.url, rd.digest_status,
                COALESCE(yc.title, '유튜브') channel
         FROM raw_documents rd
         LEFT JOIN youtube_channels yc
@@ -124,34 +160,24 @@ def _youtube_recent(conn) -> list[dict]:
     """, (f"-{YOUTUBE_DAYS} days", YOUTUBE_LIMIT))]
 
 
-def _keyboard(topics: list[dict], videos: list[dict]) -> dict | None:
-    """inline keyboard — callback_data는 64바이트 상한이라 이름이 아닌 id를 싣는다."""
-    rows = []
-    for i in range(0, len(topics), 3):                       # 주제는 한 줄에 3개
-        rows.append([{"text": f"🧠 {t['name']}", "callback_data": f"n:{t['id']}"}
-                     for t in topics[i:i + 3]])
-    for v in videos:                                          # 영상은 제목이 길어 한 줄에 1개
-        label = f"📺 {v['channel']} — {v['title']}"
-        rows.append([{"text": label[:56], "callback_data": f"y:{v['id']}"}])
-    return {"inline_keyboard": rows} if rows else None
-
-
-def compose_briefing() -> tuple[str, dict | None] | None:
-    """브리핑 본문 + inline keyboard. 보낼 내용이 없으면 None.
+def compose_briefing() -> str | None:
+    """브리핑 본문(HTML). 보낼 내용이 없으면 None.
 
     섹션은 서로 독립 — 하나가 비거나 실패해도 나머지는 실린다(Partial, D-107 §5).
+    액션은 본문 인라인 딥링크로 심는다(D-109) — 하단 버튼 행 없음.
     """
     from routers.spine_home import get_home
+    from pipeline.telegram_md import esc, link
     home = get_home(days=1)
 
-    lines = [f"📋 Explorer 아침 브리핑 — {datetime.now(KST).strftime('%m/%d %a')}"]
+    lines = [f"📋 <b>Explorer 아침 브리핑</b> — {datetime.now(KST).strftime('%m/%d %a')}"]
 
     if home.briefing:
         lines.append("")
         icon = {"insight": "💡", "action": "🏢", "signal": "📈",
                 "warning": "⚠️", "conflict": "⚔️", "confirmed": "✅"}
         for b in home.briefing:
-            lines.append(f"{icon.get(b.kind, '•')} {b.text}")
+            lines.append(f"{icon.get(b.kind, '•')} {esc(b.text)}")
 
     _us_section(lines)
 
@@ -162,30 +188,38 @@ def compose_briefing() -> tuple[str, dict | None] | None:
     finally:
         conn.close()
 
+    def _topic_line(label: str, items: list[dict]) -> str:
+        # 주제명 자체가 링크 — 누르면 내러티브 생성이 걸린다
+        return f"  [{label}] " + " · ".join(
+            f"{action_link(t['name'], 'n', t['id'])} <i>{esc(t['metric'])}</i>" for t in items)
+
     if topics:
         lines.append("")
-        lines.append("📊 어제의 주제")
+        lines.append("📊 <b>어제의 주제</b>")
         top = [t for t in topics if t["kind"] == "top"]
         surge = [t for t in topics if t["kind"] == "surge"]
         if top:
-            lines.append("  [최다] " + " · ".join(f"{t['name']} {t['metric']}" for t in top))
+            lines.append(_topic_line("최다", top))
         if surge:
-            lines.append("  [급상승] " + " · ".join(f"{t['name']} {t['metric']}" for t in surge))
+            lines.append(_topic_line("급상승", surge))
 
     if videos:
         lines.append("")
-        lines.append(f"📺 팔로우 유튜브 최근 {YOUTUBE_DAYS}일 · {len(videos)}건")
+        lines.append(f"📺 <b>팔로우 유튜브</b> 최근 {YOUTUBE_DAYS}일 · {len(videos)}건")
         for v in videos:
-            lines.append(f"  · {v['channel']} — {v['title'][:44]}")
+            title = v["title"][:52]
+            head = link(title, v["url"]) if v["url"] else esc(title)   # 제목=유튜브 원문
+            lines.append(f"  · {esc(v['channel'])} — {head}")
+            lines.append(f"    {action_link('▸ 정리본 생성', 'y', v['id'])}")
 
     today = date.today().isoformat()
     todays = [e for e in home.calendar if e.event_date == today]
     if todays:
         lines.append("")
-        lines.append("📅 오늘 일정")
+        lines.append("📅 <b>오늘 일정</b>")
         for e in todays[:5]:
-            corp = f" ({e.corp_name})" if e.corp_name else ""
-            lines.append(f"  · {e.title}{corp}")
+            corp = f" ({esc(e.corp_name)})" if e.corp_name else ""
+            lines.append(f"  · {esc(e.title)}{corp}")
 
     n_updates = len(home.watchlist_updates)
     if n_updates:
@@ -194,22 +228,31 @@ def compose_briefing() -> tuple[str, dict | None] | None:
 
     if len(lines) <= 1:
         return None  # 보낼 내용 없음
-    if topics or videos:
+    if (topics or videos) and bot_username():
         lines.append("")
-        lines.append("👇 눌러서 생성 — 결과를 이 대화로 보내드립니다")
-    return "\n".join(lines), _keyboard(topics, videos)
+        lines.append("<i>링크를 누르면 생성이 시작되고 결과가 이 대화로 옵니다.</i>")
+    return "\n".join(lines)
 
 
-def send_telegram(text: str, reply_markup: dict | None = None) -> bool:
-    """발송 1건. 망 실패는 예외를 삼키지 않고 재시도 — 기상 직후 DNS 미해석으로
-    스크립트가 죽어 그날 브리핑이 통째로 날아간 사례(2026-07-22) 방지."""
+def send_telegram(text: str, parse_mode: str | None = "HTML") -> bool:
+    """발송. 상한 초과분은 태그 경계를 지켜 나눠 보낸다(D-109).
+
+    망 실패는 예외를 삼키지 않고 재시도 — 기상 직후 DNS 미해석으로 스크립트가 죽어
+    그날 브리핑이 통째로 날아간 사례(2026-07-22) 방지.
+    """
+    from pipeline.telegram_md import split_html
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         return False
+    parts = split_html(text) if parse_mode == "HTML" else [text]
+    return all(_send_one(token, chat_id, p, parse_mode) for p in parts)
+
+
+def _send_one(token: str, chat_id: str, text: str, parse_mode: str | None) -> bool:
     payload: dict = {"chat_id": chat_id, "text": text}
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     last = ""
     for attempt in range(SEND_RETRIES):
         try:
@@ -219,13 +262,24 @@ def send_telegram(text: str, reply_markup: dict | None = None) -> bool:
             )
             if resp.status_code == 200:
                 return True
-            last = f"HTTP {resp.status_code}"
+            # 400은 대개 마크업 파싱 실패 — 재시도해도 같으니 평문으로 1회 구제.
+            # 링크·굵기를 잃더라도 내용이 유실되는 것보다 낫다.
+            last = f"HTTP {resp.status_code} {resp.text[:160]}"
+            if resp.status_code == 400 and parse_mode:
+                print(f"[send_telegram] 마크업 파싱 실패 → 평문 재시도: {last}", flush=True)
+                return _send_one(token, chat_id, _strip_tags(text), None)
         except Exception as e:  # noqa: BLE001 — 망 미연결도 재시도 대상
             last = f"{type(e).__name__}"
         if attempt < SEND_RETRIES - 1:
             time.sleep(SEND_BACKOFF * (attempt + 1))
     print(f"[send_telegram] {SEND_RETRIES}회 실패 — {last}", flush=True)
     return False
+
+
+def _strip_tags(text: str) -> str:
+    import html as _html
+    import re as _re
+    return _html.unescape(_re.sub(r"<[^>]+>", "", text))
 
 
 def _attempted_today(conn) -> bool:
@@ -251,22 +305,20 @@ def push_briefing(dry_run: bool = False) -> dict:
             record_run(JOB, status, summary, int((time.time() - t0) * 1000))
         return result
 
-    composed = compose_briefing()
-    if not composed:
+    text = compose_briefing()
+    if not text:
         return _done({"sent": False, "reason": "내용 없음"}, "skipped", "내용 없음")
-    text, keyboard = composed
-    n_btn = sum(len(r) for r in (keyboard or {}).get("inline_keyboard", []))
+    n_link = text.count("?start=")
     if dry_run:
         print(text)
-        print(f"\n[버튼 {n_btn}개] " + " / ".join(
-            b["text"] for r in (keyboard or {}).get("inline_keyboard", []) for b in r))
-        return {"sent": False, "reason": "dry-run", "chars": len(text), "buttons": n_btn}
+        print(f"\n[액션 링크 {n_link}개]")
+        return {"sent": False, "reason": "dry-run", "chars": len(text), "links": n_link}
     if not os.getenv("TELEGRAM_BOT_TOKEN"):
         return _done({"sent": False, "reason": "TELEGRAM_BOT_TOKEN 미설정 (.env)"},
                      "skipped", "TELEGRAM_BOT_TOKEN 미설정")
-    if send_telegram(text, keyboard):
-        return _done({"sent": True, "chars": len(text), "buttons": n_btn},
-                     "ok", f"{len(text)}자 · 버튼 {n_btn}개 발송")
+    if send_telegram(text):
+        return _done({"sent": True, "chars": len(text), "links": n_link},
+                     "ok", f"{len(text)}자 · 액션 링크 {n_link}개 발송")
     return _done({"sent": False, "reason": "발송 실패"}, "error", "텔레그램 발송 실패")
 
 
