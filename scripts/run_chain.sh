@@ -40,8 +40,9 @@ $PY scripts/probe_llm.py                     >> "$LOG" 2>&1   # LLM 엔진 생�
 $PY scripts/send_briefing.py --catch-up      >> "$LOG" 2>&1   # 미발송 브리핑 보전 (D-106)
 
 # 기존 crontab의 && 의미 보존 (한 단계 실패 시 이후 중단)
+# redigest_youtube 제거(D-115) — 구독 채널 신규 영상 전부를 opus로 정리하면 아무도 안 읽는
+# 영상까지 값을 치른다. 정리는 문서를 열 때만(spine_doc lazy / 텔레그램 액션).
 $PY scripts/ingest.py            >> "$LOG" 2>&1 && \
-$PY scripts/redigest_youtube.py  >> "$LOG" 2>&1 && \
 $PY scripts/extract_doc_causal.py --limit 10 >> "$LOG" 2>&1 && \
 $PY scripts/compute_signals.py   >> "$LOG" 2>&1 && \
 $PY scripts/compute_narratives.py >> "$LOG" 2>&1 && \

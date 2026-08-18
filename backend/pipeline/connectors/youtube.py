@@ -176,6 +176,37 @@ def _video_published(video_id: str) -> str:
         return ""
 
 
+def digest_stored(doc_id: int) -> bool:
+    """저장된 유튜브 문서 1건을 정리본으로 승격 (D-115 lazy 경로의 실체).
+
+    `store_document`를 거치는 이유: 수집 시점엔 자막 raw로 태깅되므로(정리를 안 했으니)
+    본문이 정리본으로 바뀔 때 **다시 태깅**돼야 지식층이 깨끗한 쪽을 흡수한다.
+    단순 UPDATE로 본문만 갈면 enrichment는 자막 raw 기준으로 남는다.
+    """
+    from pipeline.base import RawDoc
+    from pipeline.store import store_document
+    conn = get_connection()
+    r = conn.execute(
+        "SELECT source_id, title, url, published_at, raw_content FROM raw_documents "
+        "WHERE id=? AND source_type='youtube'", (doc_id,)).fetchone()
+    conn.close()
+    if not r:
+        return False
+    transcript = r["raw_content"] or ""
+    digest = digest_transcript(r["title"] or "", transcript) if len(transcript) >= 100 else None
+    if not digest:
+        conn = get_connection()
+        conn.execute("UPDATE raw_documents SET digest_status='failed' WHERE id=?", (doc_id,))
+        conn.commit()
+        conn.close()
+        return False
+    store_document(RawDoc(
+        source_type="youtube", source_id=r["source_id"], title=r["title"] or "",
+        url=r["url"] or "", published_at=r["published_at"] or "",
+        raw_content=_digest_body(digest, transcript), kind="text", digest_status="ok"))
+    return True
+
+
 def redigest_youtube(limit: int = 5) -> dict:
     """자막 raw로 굳은 유튜브 문서를 opus 정리본으로 사후 치유 (백필 + 재발 방지).
 
@@ -250,11 +281,11 @@ class YouTubeConnector:
             return []
         title = ref.meta.get("title") or _video_title(vid)
         published = ref.meta.get("published") or _video_published(vid)
-        # 자막 raw 대신 opus 정리본을 본문으로 — 검색·태깅·지식이 정리본을 흡수.
-        # 실패 시 raw로 저장되지만, discover()의 seen-skip 때문에 커넥터는 다시 안 건드림 —
-        # redigest_youtube 배치가 저장분을 직접 스캔해 사후 치유한다.
-        digest = digest_transcript(title, transcript)
-        body = _digest_body(digest, transcript) if digest else transcript
+        # **수집 시점에는 정리하지 않는다**(D-115) — 자막 raw로 저장하고, 사람이 그 문서를
+        # 열 때 opus 정리본을 만든다(spine_doc.get_document의 lazy 경로 / 텔레그램 액션).
+        # 배경: 구독 채널 신규 영상 전부를 opus로 정리하면 아무도 안 읽는 영상까지 값을 치른다
+        # (실측 하루 103콜·505K output). 읽는 것만 정리하면 변동비가 열람에 비례한다.
+        body = transcript
         # source_id에 항상 채널 프리픽스 — 단건 링크도 실제 channel_id를 조회해
         # 붙여, 그 채널을 구독하면 도시에(channel/vid LIKE)에 자동 연결된다
         cid = ref.meta.get("channel_id") or video_channel_id(vid)
@@ -267,5 +298,5 @@ class YouTubeConnector:
             published_at=published,
             raw_content=body,
             kind="text",
-            digest_status="ok" if digest else "failed",
+            digest_status="pending",     # 열람 시 정리 (실패 'failed'와 구분)
         )]
