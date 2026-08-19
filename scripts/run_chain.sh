@@ -28,7 +28,9 @@ echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
 
 # --- 전환기·수동 실행 대비: 래퍼 밖에서 이미 도는 수집이 있으면 skip ---
-if pgrep -f 'scripts/ingest.py' >/dev/null 2>&1; then
+# 인터프리터 경로로 시작하는 줄만 매칭한다(D-116). 단순 부분문자열이면 이 문자열을 담은
+# 아무 명령(grep·편집기·진단 스크립트)에도 걸려 **수집 회차를 조용히 건너뛴다** — 실측으로 확인됨.
+if pgrep -f '^/.*[Pp]ython.*scripts/ingest\.py' >/dev/null 2>&1; then
   echo "$(ts) [chain] 래퍼 밖 수집 프로세스 감지 — 이번 회차 skip" >> "$LOG"
   exit 0
 fi
