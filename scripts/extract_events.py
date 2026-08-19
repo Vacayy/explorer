@@ -21,4 +21,5 @@ if __name__ == "__main__":
     from pipeline.ops import run_job
     from pipeline.vision import extract_events
     r = run_job("extract_events", lambda: extract_events(limit=args.limit))
-    print("[extract-events]", r)
+    if r is not None:                    # None = 플래그 off (run_job이 이미 안내 출력)
+        print("[extract-events]", r)
