@@ -53,6 +53,9 @@ JOBS = [
     ("usbriefing", [PY, "scripts/compute_briefing.py"], {"Hour": 7, "Minute": 30}),
     ("briefing", [PY, "scripts/send_briefing.py"],
      [{"Weekday": d, "Hour": 8, "Minute": 0} for d in range(1, 6)]),
+    # 재태깅 백필 야간 창(D-118) — 02:00 시작, 스크립트가 04:00에 자진 종료.
+    # 유휴 시간대라 주간 세션 사용량에 영향이 없고, 백로그가 비면 즉시 종료된다(대상 0건).
+    ("backfill", [str(PROJECT / "scripts" / "run_backfill.sh")], {"Hour": 2, "Minute": 0}),
     ("promote", [PY, "scripts/promote_knowledge.py"], {"Weekday": 0, "Hour": 7, "Minute": 0}),
     ("contradictions", [PY, "scripts/scan_contradictions.py"], {"Hour": 6, "Minute": 45}),
     ("proposals", [PY, "scripts/scan_agent_proposals.py"], {"Weekday": 0, "Hour": 7, "Minute": 20}),

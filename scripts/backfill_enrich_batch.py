@@ -10,6 +10,10 @@
 **예산(D-117)**: `--budget-calls`로 LLM 호출 수를 직접 제한한다. 문서 수 상한(`--limit`)보다
 비용에 직결되고, 세션 소진 속도를 통제할 수 있다.
 
+**데드라인(D-118)**: `--until HH:MM`(로컬)을 넘기면 **다음 콜을 시작하지 않고** 정상 종료한다.
+바깥에서 kill하면 진행 중 배치가 날아가는데(그 10건은 재시도 대상으로 남지만), 데드라인은
+배치를 끝내고 커밋한 뒤 빠져나와 낭비가 없다. 야간 창(02:00~04:00) 운영용.
+
 사용법:
   python scripts/backfill_enrich_batch.py --budget-calls 20        # 20콜(≈200건)만
   python scripts/backfill_enrich_batch.py --dry-run                # 남은 물량만 출력
@@ -41,7 +45,18 @@ def _fetch() -> list[dict]:
         conn.close()
 
 
-def run(batch_size: int, budget_calls: int, dry_run: bool) -> dict:
+def _deadline(until: str | None):
+    """'HH:MM' → 오늘(또는 이미 지났으면 내일) 그 시각의 datetime. 미지정이면 None."""
+    if not until:
+        return None
+    import datetime
+    h, m = (int(x) for x in until.split(":"))
+    now = datetime.datetime.now()
+    d = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    return d if d > now else d + datetime.timedelta(days=1)
+
+
+def run(batch_size: int, budget_calls: int, dry_run: bool, until: str | None = None) -> dict:
     rows = _fetch()
     print(f"남은 대상 {len(rows)}건")
     planned = min(budget_calls, -(-len(rows) // batch_size)) if budget_calls else -(-len(rows) // batch_size)
@@ -50,10 +65,21 @@ def run(batch_size: int, budget_calls: int, dry_run: bool) -> dict:
     if dry_run:
         return {"dry_run": True, "candidates": len(rows), "planned_calls": planned}
 
+    import datetime
+    stop_at = _deadline(until)
+    if stop_at:
+        print(f"데드라인 {stop_at:%m-%d %H:%M} — 그 이후엔 새 콜을 시작하지 않는다")
+
     ok = failed = calls = 0
+    stopped = None
     for i in range(0, len(rows), batch_size):
         if budget_calls and calls >= budget_calls:
+            stopped = "예산 소진"
             print(f"  예산 {budget_calls}콜 소진 — 남은 {len(rows) - i}건은 다음 실행에서")
+            break
+        if stop_at and datetime.datetime.now() >= stop_at:
+            stopped = "데드라인"
+            print(f"  데드라인 도달 — 남은 {len(rows) - i}건은 다음 실행에서")
             break
         batch = rows[i:i + batch_size]
         calls += 1
@@ -79,13 +105,16 @@ def run(batch_size: int, budget_calls: int, dry_run: bool) -> dict:
             conn.close()
         print(f"  콜 {calls}/{planned} · 적용 누계 {ok}건", flush=True)
 
-    return {"applied": ok, "calls": calls, "failed_calls": failed, "candidates": len(rows)}
+    return {"applied": ok, "calls": calls, "failed_calls": failed,
+            "candidates": len(rows), "stopped": stopped or "완주"}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--batch-size", type=int, default=10)
     ap.add_argument("--budget-calls", type=int, default=0, help="이번 실행 LLM 호출 상한 (0=무제한)")
+    ap.add_argument("--until", default=None, metavar="HH:MM",
+                    help="이 시각(로컬) 이후엔 새 콜을 시작하지 않고 종료")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -96,7 +125,7 @@ def main():
 
     from pipeline.ops import run_job
     r = run_job("backfill_enrich", lambda: run(
-        args.batch_size, args.budget_calls, args.dry_run))
+        args.batch_size, args.budget_calls, args.dry_run, args.until))
     print("[backfill_enrich]", r)
 
 
