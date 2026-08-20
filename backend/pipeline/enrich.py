@@ -53,7 +53,8 @@ def classify_temporal(title: str, summary: str) -> dict:
     )
     try:
         engine = llm_engine()
-        raw = _call_claude_code(prompt) if engine == "claude-code" else _call_api(prompt)
+        raw = (_call_claude_code(prompt, effort=EFFORT_MECHANICAL)
+           if engine == "claude-code" else _call_api(prompt))
         data = _parse_json(raw)
     except Exception:
         return {"time_orientation": None, "reference_period": None}
@@ -205,11 +206,20 @@ def _parse_json(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-def _call_claude_code(prompt: str, model: str = "haiku", timeout: int = 180) -> str:
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", model, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=timeout,
-    )
+# 기계적 추출·태깅에는 확장 사고가 낭비다 — 실측(D-117): 배치 재태깅 1콜의 output 11,939 중
+# thinking이 8,188(69%)였다. `--effort low`로 그 몫을 걷어낸다. 판단이 필요한 생성(내러티브·
+# 종합)은 호출부가 effort를 올리거나 생략해 기본값을 쓴다.
+# (`--bare`는 시스템 프롬프트·기동 비용까지 줄이지만 ANTHROPIC_API_KEY를 요구해 이 환경에선 못 쓴다.)
+EFFORT_MECHANICAL = "low"
+
+
+def _call_claude_code(prompt: str, model: str = "haiku", timeout: int = 180,
+                      effort: str | None = None) -> str:
+    argv = [_claude_bin(), "-p", "--model", model, "--output-format", "json"]
+    if effort:
+        argv += ["--effort", effort]
+    argv.append(prompt)
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0:
         # claude는 오류(사용량 한도·미로그인 등)를 stdout에 쓴다 — stderr만 보면 원인이 비어 보임
         raise RuntimeError(f"claude -p 실패 rc={proc.returncode} "
@@ -259,7 +269,8 @@ def _normalize_llm_result(data: dict, model: str) -> dict:
 def _enrich_llm(title: str, markdown: str) -> dict:
     engine = llm_engine()
     prompt = _build_prompt(title, markdown)
-    raw = _call_claude_code(prompt) if engine == "claude-code" else _call_api(prompt)
+    raw = (_call_claude_code(prompt, effort=EFFORT_MECHANICAL)
+           if engine == "claude-code" else _call_api(prompt))
     return _normalize_llm_result(_parse_json(raw), f"{engine}/haiku")
 
 
@@ -306,7 +317,8 @@ def enrich_batch(docs: list[dict]) -> dict[int, dict]:
     반환: {doc_id: 표준 enrich dict}. 배치 전체 실패 시 예외 (호출자가 재시도 관리)."""
     if llm_engine() != "claude-code":
         raise RuntimeError("배치 재태깅은 claude-code 엔진 필요")
-    raw = _call_claude_code(_build_batch_prompt(docs), model=BATCH_MODEL, timeout=420)
+    raw = _call_claude_code(_build_batch_prompt(docs), model=BATCH_MODEL, timeout=420,
+                            effort=EFFORT_MECHANICAL)
     data = _parse_json(raw)
     out: dict[int, dict] = {}
     for r in (data.get("results") or []):

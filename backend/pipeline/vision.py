@@ -25,7 +25,8 @@ def _analyze_image(path: str, published_at: str) -> dict:
         f"- 이 이미지는 {published_at[:10]} 게시글 첨부임"
     )
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", "haiku", "--allowedTools", "Read",
+        # 이미지 판독 → 구조화 출력. 기계적 작업이라 effort low (D-117)
+        [_claude_bin(), "-p", "--model", "haiku", "--allowedTools", "Read", "--effort", "low",
          "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=180,
         cwd=str(MEDIA_PATH),  # headless Read는 cwd 하위만 허용 — 호출 위치와 무관하게 고정
