@@ -22,4 +22,7 @@ fi
 
 echo "$(ts) [backfill] 시작 (데드라인 $UNTIL)" >> "$LOG"
 ./.venv/bin/python -u scripts/backfill_enrich_batch.py --budget-calls 0 --until "$UNTIL" >> "$LOG" 2>&1
-echo "$(ts) [backfill] 종료(rc=$?)" >> "$LOG"
+rc=$?
+echo "$(ts) [backfill] 종료(rc=$rc)" >> "$LOG"
+# 끊겨도 사실이 남게 — 결과 보고서 생성 (LLM 0). 아침에 사람이 한 번 읽으면 된다.
+./.venv/bin/python scripts/backfill_report.py >> "$LOG" 2>&1
