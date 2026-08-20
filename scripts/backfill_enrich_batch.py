@@ -10,6 +10,11 @@
 **예산(D-117)**: `--budget-calls`로 LLM 호출 수를 직접 제한한다. 문서 수 상한(`--limit`)보다
 비용에 직결되고, 세션 소진 속도를 통제할 수 있다.
 
+**연속 실패 차단기(D-119)**: 엔진이 죽으면(사용량 소진·인증 실패) 실패가 즉시 반복된다.
+"배치 실패는 다음 실행에서 재시도" 규칙만 있으면 **목록 끝까지 실패로 갈아버린다** —
+실측 2026-08-21 01:14: 사용량 소진 후 611콜 연속 실패, 그런데 종료 사유는 '완주'로 찍혔다.
+연속 실패가 MAX_CONSECUTIVE_FAILURES에 닿으면 즉시 중단한다.
+
 **데드라인(D-118)**: `--until HH:MM`(로컬)을 넘기면 **다음 콜을 시작하지 않고** 정상 종료한다.
 바깥에서 kill하면 진행 중 배치가 날아가는데(그 10건은 재시도 대상으로 남지만), 데드라인은
 배치를 끝내고 커밋한 뒤 빠져나와 낭비가 없다. 야간 창(02:00~04:00) 운영용.
@@ -27,6 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from database import get_connection, init_db
 from pipeline.enrich import enrich_batch, llm_engine
 from pipeline.store import apply_enrichment
+
+MAX_CONSECUTIVE_FAILURES = 3   # 엔진 이상은 즉시 반복된다 — 목록을 갈아먹기 전에 끊는다
 
 _ROWS_SQL = """
 SELECT rd.id, rd.title, rd.markdown, rd.content_hash
@@ -71,6 +78,7 @@ def run(batch_size: int, budget_calls: int, dry_run: bool, until: str | None = N
         print(f"데드라인 {stop_at:%m-%d %H:%M} — 그 이후엔 새 콜을 시작하지 않는다")
 
     ok = failed = calls = 0
+    consecutive = 0
     stopped = None
     for i in range(0, len(rows), batch_size):
         if budget_calls and calls >= budget_calls:
@@ -89,11 +97,17 @@ def run(batch_size: int, budget_calls: int, dry_run: bool, until: str | None = N
                  for d in batch])
         except Exception as e:  # noqa: BLE001 — 배치 실패는 keyword로 남아 재시도된다
             failed += 1
+            consecutive += 1
             print(f"  콜 {calls} 실패(재시도 대상): {str(e)[:120]}", flush=True)
+            if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                stopped = f"연속 실패 {consecutive}회 — 엔진 이상 의심(사용량 소진·인증)"
+                print(f"  {stopped}. 남은 {len(rows) - i}건은 다음 실행에서", flush=True)
+                break
             continue
         # 배치 단위로 짧게 연결 열고 적용 — cron ingest와의 쓰기 락 경합 최소화
         conn = get_connection()
         try:
+            consecutive = 0                  # 한 번 성공하면 차단기 리셋
             for d in batch:
                 result = results.get(d["id"])
                 if not result:
@@ -105,8 +119,11 @@ def run(batch_size: int, budget_calls: int, dry_run: bool, until: str | None = N
             conn.close()
         print(f"  콜 {calls}/{planned} · 적용 누계 {ok}건", flush=True)
 
+    if stopped is None:
+        # 실패가 성공보다 많으면 '완주'가 아니다 — 목록을 다 돌았을 뿐이다
+        stopped = "완주" if failed <= calls // 2 else f"목록 소진(실패 {failed}/{calls} 우세)"
     return {"applied": ok, "calls": calls, "failed_calls": failed,
-            "candidates": len(rows), "stopped": stopped or "완주"}
+            "candidates": len(rows), "stopped": stopped}
 
 
 def main():
