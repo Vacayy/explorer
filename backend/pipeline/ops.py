@@ -19,6 +19,7 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("promote_knowledge", "지식 승격", "주 1회 — 반복 관측 검증 지식 승격", "scripts/promote_knowledge.py"),
     ("collect_transcripts", "컨콜 수집", "Alpha Vantage — 팔로우 미국 기업 실적 컨콜 → raw_documents(온톨로지 편입)", "scripts/collect_transcripts.py"),
     ("collect_trade", "수출입 수집", "관세청 — 팔로우 품목 월별 수출입 통계 + 관련 종목(파급 논리) 부트스트랩", "scripts/collect_trade.py"),
+    ("backfill_enrich", "재태깅 백필", "sonnet — 키워드 폴백 문서 재태깅 (백로그 7,871건, 우선순위·예산 제어, D-117)", "scripts/backfill_enrich_batch.py"),
     ("extract_events", "이미지 비전 분석", "haiku — 첨부 이미지 판독·증시일정 이벤트 추출 (미분석 백로그 ~2,000장, D-116)", "scripts/extract_events.py"),
     ("extract_doc_causal", "문서 인과 추출", "sonnet — 문서에서 명시 인과만 추출 (백로그 1,177건, D-116)", "scripts/extract_doc_causal.py"),
     ("refresh_questions", "질문 트래커 갱신", "일 1회 — 자동도출(지배 내러티브) + 프록시 관측 갱신(numeric/sentiment) + 재판정", "scripts/refresh_questions.py"),

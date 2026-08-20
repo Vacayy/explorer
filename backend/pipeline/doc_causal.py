@@ -51,7 +51,9 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
 
 def _call(prompt: str) -> dict:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", DOC_CAUSAL_MODEL, "--output-format", "json", prompt],
+        # 명시 인과만 추출하는 기계적 작업 — 확장 사고가 output의 대부분을 먹는다 (D-117 실측)
+        [_claude_bin(), "-p", "--model", DOC_CAUSAL_MODEL, "--output-format", "json",
+         "--effort", "low", prompt],
         capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {(proc.stdout or proc.stderr)[:200]}")

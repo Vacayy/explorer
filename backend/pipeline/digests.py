@@ -74,7 +74,9 @@ def _hash(parts: list[str]) -> str:
 
 
 def _call_json(prompt: str) -> dict:
-    raw = _call_claude_code(prompt)
+    # 기계적 요약 — 확장 사고 불필요 (D-117)
+    from pipeline.enrich import EFFORT_MECHANICAL
+    raw = _call_claude_code(prompt, effort=EFFORT_MECHANICAL)
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 
