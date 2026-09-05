@@ -18,7 +18,10 @@ from pipeline.narrative import (_call, _latest_narrative, causal_subgraph, list_
 
 MEGA_MODEL = os.getenv("NARRATIVE_MODEL", "opus")   # 최상위 종합 — 내러티브와 같은 티어
 MIN_CLUSTER = 3        # 이 수 이상의 내러티브가 엮여야 '세계관'
-MIN_SHARED = 1         # 공유 인과 노드 하한 (허브 노드 1개 공유도 강한 신호 — 실측 기반)
+# 공유 인과 노드 하한 (D-123). 1이면 허브 1개만 겹쳐도 합쳐져 **군집이 곧 전체**가 됐다 —
+# 실측: 살아있는 topic 54개 중 49개가 한 군집. 임계별 분할: 1→[49,3] · 2→[21,3] · 3→[4,3] · 4→[3].
+# 3에서만 의미가 갈린다(메모리·장비 축 / AI 모델 축). 군집 밖 주제는 델타 목록이 담당(역할 분담).
+MIN_SHARED = 3
 
 
 def _live_topic_narratives(conn) -> list[dict]:
@@ -98,7 +101,9 @@ def _build_prompt(members: list[dict], shared_block: str) -> str:
         "**상위 세계관 서사** 하나를 써라. 부분 서사의 요약 나열이 아니라, 단면들을 꿰는 "
         "하나의 구조(근본 동인 → 전개 갈래들 → 긴장과 관전 포인트)로.\n"
         'JSON만 출력: {"cluster_name": "군집 이름 (2~5단어, 예: AI 슈퍼사이클)", '
-        '"title": "질문형 제목", "narrative": "마크다운 서사"}\n'
+        '"title": "주장형 제목", "narrative": "마크다운 서사"}\n'
+        "title: 이 세계관이 말하는 결론을 한 문장으로 단언(질문형 금지 — 제목만 읽어도 전달돼야 "
+        "한다, D-120). 코퍼스가 뒷받침하는 것만, 수치 예측·과장 부사 금지.\n"
         "narrative 구조(섹션 고정):\n"
         "## 하나의 이야기\n부분 서사들이 왜 한 이야기인지 — 근본 동인과 전개 구조를 3~5문장으로.\n"
         "## 갈래들\n각 부분 서사가 이 세계관의 어느 단면인지 — '- **주제**: 한 줄' 불릿.\n"
@@ -118,13 +123,21 @@ def compute_mega_narratives() -> dict:
     for members in _clusters(conn):
         h = _members_hash(members)
         # 이 군집의 기존 메가 찾기 — 멤버 토픽 겹침 최대인 살아있는 mega
-        prev = None
-        for r in conn.execute(
-                "SELECT * FROM narratives WHERE kind='mega' AND superseded_at IS NULL").fetchall():
-            prev_members = set(json.loads(r["members_json"] or "[]"))
-            if prev_members & {m["topic"] for m in members}:
-                prev = r
-                break
+        # 군집 정체성 (D-123) — 겹침이 **가장 큰** live mega를 이 군집의 전신으로 본다.
+        # 전엔 '첫 교집합'에서 break 해, live mega가 여럿이면 회차마다 다른 것을 집어
+        # 여러 lineage가 동시에 살아남았다(실측: 같은 49개 군집이 3개 mega로 갈려 각각 서술).
+        topics_now = {m["topic"] for m in members}
+        lives = conn.execute(
+            "SELECT * FROM narratives WHERE kind='mega' AND superseded_at IS NULL").fetchall()
+        scored = sorted(
+            ((len(set(json.loads(r["members_json"] or "[]")) & topics_now), r) for r in lives),
+            key=lambda x: (-x[0], -x[1]["id"]))
+        prev = scored[0][1] if scored and scored[0][0] > 0 else None
+        # 같은 군집에 걸린 다른 live mega는 중복 lineage — 여기서 접는다(라벨만 다른 같은 이야기)
+        for overlap, r in scored[1:]:
+            if overlap > 0:
+                conn.execute("UPDATE narratives SET superseded_at=datetime('now') WHERE id=?", (r["id"],))
+                print(f"[mega] 중복 lineage 접음: {r['topic']} (겹침 {overlap})")
         label = prev["topic"] if prev else f"군집({members[0]['topic']} 외 {len(members)-1})"
         if prev and prev["doc_ids_hash"] == h:
             results[label] = "cached"
@@ -138,8 +151,15 @@ def compute_mega_narratives() -> dict:
         except Exception as e:  # noqa: BLE001 — 배치라 한 군집 실패가 전체를 막지 않게
             results[label] = f"error:{str(e)[:80]}"
             continue
-        name = (data.get("cluster_name") or label).strip()[:40]
-        version = (prev["version"] + 1) if prev else 1
+        # 라벨은 **최초 생성 시에만** LLM 이름을 쓴다 (D-123). 매 회차 `cluster_name`으로 덮어쓰면
+        # topic 값이 드리프트해("AI 병목의 하강"→"AI 캐펙스 병목 하강"→…) 같은 군집이 새 lineage로
+        # 갈라지고, 버전 히스토리도 끊긴다. 전신이 있으면 그 이름을 물려받는다.
+        name = prev["topic"] if prev else (data.get("cluster_name") or label).strip()[:40]
+        # 버전은 **그 topic의 MAX+1** (D-123). prev는 '최대 겹침'으로 고르므로 최신 버전이 아닐 수
+        # 있고, 라벨 드리프트 시절 같은 이름이 여러 lineage에 재사용돼 `prev.version+1`이
+        # 기존 행과 충돌했다(실측: v23을 prev로 잡았는데 v24가 이미 있어 UNIQUE 위반 → 롤백).
+        mx = conn.execute("SELECT MAX(version) m FROM narratives WHERE topic=?", (name,)).fetchone()["m"]
+        version = (mx or 0) + 1
         if prev:
             conn.execute("UPDATE narratives SET superseded_at=datetime('now') WHERE id=?",
                          (prev["id"],))

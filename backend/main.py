@@ -14,9 +14,10 @@ from routers import spine_causal
 from routers import spine_transcript
 from routers import spine_trade
 from routers import spine_questions
-from routers import spine_macro, spine_market
+from routers import spine_macro, spine_market, spine_indices
 from routers import spine_thesis
 from routers import spine_saved
+from routers import spine_synthesis
 from routers import spine_lens
 from routers import spine_kr, spine_us
 
@@ -24,7 +25,8 @@ app = FastAPI(title="Stock Explorer API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    # 프론트 dev 서버는 5174 (5173은 다른 프로젝트가 사용). 5173도 남겨 되돌릴 때 안 깨지게.
+    allow_origins=["http://localhost:5174", "http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -79,8 +81,10 @@ app.include_router(spine_trade.router)
 app.include_router(spine_questions.router)
 app.include_router(spine_market.router)
 app.include_router(spine_macro.router)
+app.include_router(spine_indices.router)
 app.include_router(spine_thesis.router)
 app.include_router(spine_saved.router)
+app.include_router(spine_synthesis.router)
 app.include_router(spine_lens.router)
 app.include_router(spine_kr.router)
 app.include_router(spine_us.router)

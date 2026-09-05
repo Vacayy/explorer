@@ -30,6 +30,8 @@ class NarrativeItem(BaseModel):
     is_new: bool = False
     is_surging: bool = False
     created_at: str | None = None
+    drift_summary: str | None = None   # 이번 버전에서 무엇이 바뀌었나 한 줄 (D-123, 델타 목록)
+    version: int | None = None
 
 
 class NarrativeList(BaseModel):

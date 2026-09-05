@@ -199,12 +199,16 @@ def run_scenario_for_event(event: str, question_id: int | None = None,
 # ---------- 생성자 ① 자동 도출 (지배 내러티브 → 제안 큐, D-067) ----------
 
 def propose_from_narratives(limit: int = 3) -> dict:
-    """지배 내러티브(인과엣지 多·최신)의 질문형 제목을 질문 후보로 제안(status='proposed').
-    분해는 하지 않는다 — 비싼 노동은 승인 뒤로(D-020). 승인 시 approve_question이 분해."""
+    """지배 내러티브(인과엣지 多·최신)의 **관통 질문**을 질문 후보로 제안(status='proposed').
+    분해는 하지 않는다 — 비싼 노동은 승인 뒤로(D-020). 승인 시 approve_question이 분해.
+
+    D-120로 내러티브 title이 주장형이 됐으므로 질문 텍스트는 `core_question`에서 가져온다.
+    구 버전 행은 core_question이 NULL이고 그 시절 title이 질문형이라 COALESCE로 흡수한다.
+    """
     conn = get_connection()
     # topic별 최신(non-superseded) 내러티브 중 인과엣지 수(=영향력)로 랭킹
     rows = conn.execute(
-        "SELECT n.id, n.topic, n.title, "
+        "SELECT n.id, n.topic, COALESCE(n.core_question, n.title) AS title, "
         "  (SELECT COUNT(*) FROM entity_relations er WHERE er.narrative_id=n.id) AS power "
         "FROM narratives n "
         "WHERE n.superseded_at IS NULL AND n.title IS NOT NULL AND n.kind='topic' "

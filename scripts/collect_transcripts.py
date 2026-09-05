@@ -19,8 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.transcript import (collect_roundrobin, digest_pending, extract_proxies,
-                                 seed_default_follows, seed_proxies, backfill_call_dates, _followed)
+from pipeline.transcript import (collect_and_process, collect_roundrobin,
+                                 seed_default_follows, _followed)
 
 
 def main():
@@ -52,20 +52,9 @@ def main():
 
     from pipeline.ops import run_job
 
-    def _work():
-        r = collect_roundrobin(request_budget=budget, only=only)
-        print(f"[transcript] 요청 {r['requests']}/{r['budget']} · 신규 {r['stored']}건 적재 · "
-              f"빈응답 {r['empty']} · 캐시 스킵 {r['skipped_cache']} · 예산소진={r['exhausted']}")
-        if r["stored"]:
-            bc = backfill_call_dates(only=only)  # 신규분 call_date를 실제 발표일로 (yfinance, D-084)
-            print(f"[transcript] 발표일 교정 {bc['updated']}건")
-        n = digest_pending(limit=max(r["stored"], 5))  # 신규분 핵심 정리 생성(sonnet)
-        print(f"[transcript] 핵심 정리 {n}건 생성")
-        seed_proxies()
-        px = extract_proxies()  # 관찰 프록시 자동 트래킹 (haiku, 멱등, D-048)
-        print(f"[transcript] 프록시 추출 {px.get('extracted', 0)}건")
-        return {**r, "digested": n, "proxies": px.get("extracted", 0)}
-    run_job("collect_transcripts", _work)   # 관리자 플래그 게이트 + 실행 로그 (D-055)
+    # 사슬 본체는 pipeline/transcript.collect_and_process — UI 버튼(D-121)과 같은 코드를 탄다
+    run_job("collect_transcripts",
+            lambda: collect_and_process(budget=budget, only=only))   # 플래그 게이트 + 실행 로그 (D-055)
 
 
 if __name__ == "__main__":

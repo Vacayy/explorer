@@ -10,8 +10,11 @@ import { Markdown } from "@/components/shared/Markdown"
 import { cn } from "@/lib/utils"
 
 /**
- * 메가 내러티브 — 공유노드 군집을 관통하는 상위 세계관 서사 (D-031/D-032).
- * 온톨로지(그래프)의 '읽기'에 해당 — 내러티브 랜딩에서 지식 탭으로 이관(D-056).
+ * 엮인 서사 — 공유 인과노드로 엮인 내러티브 군집의 상위 서사 (D-031/D-032).
+ * **이름·자리 정리(D-123)**: 전엔 '세계관' 배지로 지식 탭에 있었는데, 지식 축 종합인
+ * `worldview.py`의 '세계관 브리핑'과 이름·화면이 겹쳐 같은 페이지에 두 개의 opus 종합이
+ * 나란히 놓였다. 이건 **내러티브 축**(빠른 층)의 상위 진입점이므로 내러티브 랜딩으로 옮기고
+ * 이름도 메커니즘(엮임)을 드러내게 바꿨다. '세계관'은 지식 축 브리핑 전용.
  */
 interface MegaNarrative {
   id: number; name: string; title: string | null; narrative: string | null
@@ -40,7 +43,7 @@ export function MegaNarrativeSection() {
               <CollapsibleTrigger asChild>
                 <button className="w-full text-left group">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge className="text-[10px]">세계관</Badge>
+                    <Badge className="text-[10px]">엮인 서사</Badge>
                     <span className="font-semibold text-sm group-hover:underline">{m.title ?? m.name}</span>
                     {m.version > 1 && (
                       <Badge variant="outline" className="text-[10px] text-muted-foreground">v{m.version}</Badge>
@@ -65,7 +68,7 @@ export function MegaNarrativeSection() {
                     <Markdown>{m.narrative}</Markdown>
                     <div className="text-right mt-2">
                       <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
-                        AI 세계관 서사 · 부분 서사 변경 시 갱신 — 검증 필요
+                        AI 상위 서사 · 부분 서사 변경 시 갱신 — 검증 필요
                         {m.created_at && ` · ${m.created_at.slice(0, 10)}`}
                       </Badge>
                     </div>

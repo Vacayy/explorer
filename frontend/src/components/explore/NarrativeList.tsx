@@ -26,6 +26,8 @@ export interface NarrativeItem {
   is_new: boolean
   is_surging: boolean
   created_at: string | null
+  drift_summary: string | null   // 이번 버전에서 무엇이 바뀌었나 한 줄 (D-123)
+  version: number | null
 }
 
 /** 렌즈 카테고리 — NarrativePage LENS_LABEL과 동일 (category는 콤마 구분 렌즈 목록). */
@@ -38,14 +40,18 @@ const LENS: { value: string; label: string }[] = [
   { value: "policy", label: "정책" },
 ]
 
-type SortKey = "latest" | "share" | "surge"
+type SortKey = "changed" | "latest" | "share" | "surge"
 const SORT: { value: SortKey; label: string }[] = [
+  { value: "changed", label: "변화순" },
   { value: "latest", label: "최신순" },
   { value: "share", label: "비중순" },
   { value: "surge", label: "급등순" },
 ]
 
 const sortFns: Record<SortKey, (a: NarrativeItem, b: NarrativeItem) => number> = {
+  // 변화순(D-123) — '무엇이 바뀌었나'가 있는 것을 위로. 다 읽을 수 없으니 변한 것만 훑게.
+  changed: (a, b) => Number(!!b.drift_summary) - Number(!!a.drift_summary)
+    || (b.created_at ?? "").localeCompare(a.created_at ?? ""),
   latest: (a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""),
   share: (a, b) => (b.share_pct ?? -1) - (a.share_pct ?? -1),
   surge: (a, b) => (b.share_delta_pp ?? -Infinity) - (a.share_delta_pp ?? -Infinity),
@@ -70,7 +76,7 @@ export function NarrativeList({
   const items = data?.items ?? []
 
   const [lenses, setLenses] = useState<string[]>([])
-  const [sort, setSort] = useState<SortKey>("latest")
+  const [sort, setSort] = useState<SortKey>("changed")   // 델타 우선 (D-123)
 
   const filtered = useMemo(() => {
     if (!controls) return items   // 티저 등 — 백엔드 순서(급증 우선) 유지
@@ -154,9 +160,14 @@ export function NarrativeList({
                     </span>
                   )}
                 </div>
-                {n.summary && (
+                {n.drift_summary ? (
+                  <p className="text-xs line-clamp-2 mt-0.5">
+                    <span className="text-hypothesis">바뀐 것 </span>
+                    <span className="text-muted-foreground">{n.drift_summary}</span>
+                  </p>
+                ) : n.summary ? (
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.summary}</p>
-                )}
+                ) : null}
               </div>
             </Link>
           ))}

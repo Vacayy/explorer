@@ -126,6 +126,10 @@ def scan_devils_advocate(conn) -> int:
 
 
 VOCAB_MERGE_CAP = 30   # 타입별 판정 후보 상한 (sonnet 비용 통제) — D-062: 전역→타입별로 변경
+# company만 상한을 올린다(D-125): 후보 생성에서 이미 2겹 필터(활성·접두사버킷)+'둘 다 코드 보유 제외'로
+# 211쌍까지 좁혀졌고, 한국 기업명은 접두사 공유로 코사인이 과대평가돼 진짜 케이스가 뒤에 온다
+# (실측: 현대자동차↔현대차가 47위). 판정은 15쌍씩 배치라 60이어도 sonnet 4콜.
+VOCAB_MERGE_CAP_COMPANY = 60
 
 
 def scan_vocab_merges(conn, cap: int = VOCAB_MERGE_CAP) -> int:
@@ -145,7 +149,8 @@ def scan_vocab_merges(conn, cap: int = VOCAB_MERGE_CAP) -> int:
         raise RuntimeError(found["reason"])
     by_type: dict[str, list] = defaultdict(list)   # 후보는 코사인 내림차순 → 타입별 상위 cap쌍
     for c in found["candidates"]:
-        if len(by_type[c["type"]]) < cap:
+        limit = VOCAB_MERGE_CAP_COMPANY if c["type"] == "company" else cap
+        if len(by_type[c["type"]]) < limit:
             by_type[c["type"]].append(c)
     cands = [c for lst in by_type.values() for c in lst]
     if not cands:

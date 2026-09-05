@@ -814,14 +814,25 @@ def init_db():
     -- 내러티브·리포트는 버전 행 PK를 ref로 저장(보던 그 버전 고정). UNIQUE(kind, ref)로 토글 멱등.
     CREATE TABLE IF NOT EXISTS saved_items (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind         TEXT NOT NULL,          -- company | doc | narrative | report
-        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id
+        kind         TEXT NOT NULL,          -- company | doc | narrative | report | synthesis
+        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id | synthesis id
         url          TEXT NOT NULL,
         title        TEXT,
         subtitle     TEXT,
         note         TEXT,
         created_at   TEXT DEFAULT (datetime('now')),
         UNIQUE(kind, ref)
+    );
+
+    -- 문서 교차 종합 — 사람이 고른 문서 묶음을 엮어 읽은 산출물 (D-104, docs/specs/doc-synthesis.md)
+    -- 일회성: 묶음 객체 없음. 같은 조합 재생성은 새 행(append-only 히스토리).
+    CREATE TABLE IF NOT EXISTS doc_syntheses (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        doc_ids      TEXT NOT NULL,          -- json 배열(정렬된 raw_documents.id) — 무엇을 엮었나 스냅샷
+        title        TEXT,
+        body         TEXT NOT NULL,          -- 마크다운 산출물
+        model        TEXT,
+        created_at   TEXT DEFAULT (datetime('now'))
     );
 
     -- 이미지 비전 분석 캐시 (이미지당 1회 — 증시일정표 → 이벤트 추출)
@@ -1148,6 +1159,15 @@ def init_db():
         "ALTER TABLE entity_relations ADD COLUMN obs_confirmed_at TEXT",
         "ALTER TABLE entity_relations ADD COLUMN obs_confirmed_qid INTEGER",
         "ALTER TABLE questions ADD COLUMN edge_confirmed INTEGER DEFAULT 0",  # 확증 상태 진입 1회 발화 가드(멱등)
+        "ALTER TABLE market_indicators ADD COLUMN fetched_at TEXT",  # 수집 시각(UTC) — 지수별 '언제 받은 값인가' 표시 (D-110)
+        # 내러티브 제목이 주장형이 되며 분리된 '관통 질문' — 질문 트래커 후보 공급용 (D-120).
+        # 구 버전 행은 NULL이고 그 시절 title이 질문형이라 소비처가 COALESCE로 흡수한다(백필 없음).
+        "ALTER TABLE narratives ADD COLUMN core_question TEXT",
+        # 수집 게이트 (D-126) — `is_active`는 **개인 노출(뮤트)** 축이라 수집을 멈추지 않는다
+        # (PHILOSOPHY §1 "수집=공공재 / 판단=개인" 분리). 수집 자체를 끄는 별도 축이 필요했다.
+        "ALTER TABLE blog_sources ADD COLUMN collect_enabled INTEGER DEFAULT 1",
+        "ALTER TABLE telegram_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
+        "ALTER TABLE youtube_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
     ]:
         try:
             conn.execute(migration)

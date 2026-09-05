@@ -33,9 +33,9 @@ export default function FollowPage() {
     <PageContainer>
       <h2 className="text-xl font-bold">팔로우</h2>
 
-      <StocksSection onGo={(code) => navigate(`/analyze/${code}/summary`)} />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+      {/* 소스 4종을 2열로 — 각 패널이 소비 지표(30일 태깅·종목·인과)까지 담아 행이 길어져
+          3열에선 잘렸다. 종목은 목록이 길고 표 형태라 최하단 전폭으로 내렸다(사용자 요청). */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <ChannelsCard onGo={(key) => navigate(`/source?kind=telegram&key=${encodeURIComponent(key)}`)} />
         <BlogSourcesCard title="블로그" placeholder="네이버/티스토리 블로그 URL"
           match={(s) => s.platform !== "rss"}
@@ -50,6 +50,8 @@ export default function FollowPage() {
 
       <FollowedTagsCard onGo={(type, name) =>
         navigate(`/feed?${type === "sector" ? "industry" : "topic"}=${encodeURIComponent(name)}`)} />
+
+      <StocksSection onGo={(code) => navigate(`/analyze/${code}/summary`)} />
     </PageContainer>
   )
 }
@@ -230,34 +232,106 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
 
 /* ── 소스 공통 조각 ── */
 
+/** 소스 계기판 한 행 — 유입(7일/24h)에 **소비 지표 30일**을 더한 것 (D-127) */
+export interface SourceHealthItem {
+  kind: string
+  key: string
+  name: string
+  is_active: boolean
+  collect_enabled: boolean
+  docs_7d: number
+  docs_24h: number
+  warning: boolean
+  docs_30d: number
+  untagged_30d: number
+  stock_linked_30d: number
+  causal_30d: number
+  last_fetch_at: string | null
+  shared_domain: boolean
+}
+
+/** 수집 축 토글 — is_active(뮤트)와 독립 (D-126) */
+function useToggleCollect() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: { kind: string; key: string; enabled: boolean }) =>
+      (await api.post("/api/spine/sources/collect", v)).data,
+    onSuccess: (_d, v) => {
+      toast.success(v.enabled ? "수집 재개" : "수집 중단 — 문서·이력은 보존됩니다")
+      qc.invalidateQueries({ queryKey: ["spine", "sources", "health"] })
+    },
+    onError: () => toast.error("수집 설정 변경 실패"),
+  })
+}
+
 function useSourcesHealth() {
   return useQuery({
     queryKey: ["spine", "sources", "health"],
     queryFn: async () => (await api.get("/api/spine/sources/health")).data as {
-      items: { kind: string; key: string; docs_7d: number; warning: boolean }[]
+      items: SourceHealthItem[]
     },
     staleTime: 5 * 60_000,
   })
 }
 
-function SourceRow({ name, sub, warning, active, onClick, onToggle }: {
+function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onToggleCollect }: {
   name: string
   sub: string
   warning?: boolean
   active: boolean
+  health?: SourceHealthItem
   onClick: () => void
   onToggle: () => void
+  onToggleCollect?: () => void
 }) {
+  // 소비 지표 — 30일 수집량 대비 무엇이 실제로 쓰였나 (D-127)
+  const collecting = health?.collect_enabled !== false
+  const n = health?.docs_30d ?? 0
+  const pct = (v: number) => (n ? Math.round((v / n) * 100) : 0)
   return (
     <div onClick={onClick}
       className="group flex items-center gap-2 px-4 py-2 hover:bg-muted/50 cursor-pointer border-b border-border/50 last:border-0">
       <div className="min-w-0 flex-1">
         <div className={cn("text-sm font-medium truncate flex items-center gap-1.5", !active && "opacity-50")}>
           {warning && <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" title="7일간 유입 없음" />}
+          {!collecting && (
+            <span className="shrink-0 rounded bg-muted px-1 text-[9px] text-muted-foreground" title="수집 중단됨 — 문서·이력은 보존">
+              수집OFF
+            </span>
+          )}
           {name}
         </div>
-        <div className="text-[11px] text-muted-foreground">{sub}</div>
+        <div className="text-[11px] text-muted-foreground">
+          {sub}
+          {/* 소비 지표 — 들어온 문서가 실제로 쓰였나 (D-127). 30일 창 */}
+          {n > 0 && (
+            <span className="ml-1.5" title={`30일 ${n}건 · 태깅실패 ${health?.untagged_30d ?? 0} · 종목연결 ${health?.stock_linked_30d ?? 0} · 인과기여 ${health?.causal_30d ?? 0}`}>
+              · 30일 {n} · 종목 {pct(health?.stock_linked_30d ?? 0)}% · 인과 {pct(health?.causal_30d ?? 0)}%
+              {(health?.untagged_30d ?? 0) > 0 && (
+                <span className="text-hypothesis"> · 태깅실패 {pct(health?.untagged_30d ?? 0)}%</span>
+              )}
+            </span>
+          )}
+          {health?.shared_domain && (
+            <span className="ml-1 text-hypothesis" title="같은 도메인 피드가 여럿 — 이 숫자는 그 피드들의 문서가 중복 집계된 값입니다">
+              · 도메인 공유(중복집계)
+            </span>
+          )}
+        </div>
       </div>
+      {/* 수집 축 토글 — is_active(뮤트)와 독립 (D-126) */}
+      {onToggleCollect && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleCollect() }}
+          className={cn(
+            "shrink-0 rounded border px-1.5 py-0.5 text-[9px] transition-all opacity-0 group-hover:opacity-100",
+            collecting ? "border-border text-muted-foreground" : "border-hypothesis/40 text-hypothesis",
+          )}
+          title={collecting ? "수집 중단 — 문서·이력은 보존, 되돌릴 수 있음" : "수집 재개"}
+        >
+          {collecting ? "수집중단" : "수집재개"}
+        </button>
+      )}
       <button
         onClick={(e) => { e.stopPropagation(); onToggle() }}
         className={cn(
@@ -300,6 +374,7 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
   const { data: channels = [], isLoading } = useTelegramChannels()
   const { data: health } = useSourcesHealth()
   const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "telegram").map((i) => [i.key, i]))
+  const collect = useToggleCollect()
   const toggle = useToggleTelegramChannel()
   const qc = useQueryClient()
   const add = useMutation({
@@ -327,8 +402,11 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
             sub={`7일 ${h?.docs_7d ?? "-"}건`}
             warning={h?.warning}
             active={ch.is_active === 1}
+            health={h}
             onClick={() => onGo(ch.channel_name)}
             onToggle={() => toggle.mutate({ id: ch.id, is_active: !(ch.is_active === 1) })}
+            onToggleCollect={() => collect.mutate({ kind: "telegram", key: ch.channel_name,
+              enabled: h?.collect_enabled === false })}
           />
         )
       })}
@@ -361,20 +439,30 @@ function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
       api.patch(`/api/spine/sources/youtube/${id}?is_active=${active}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["youtube-channels"] }),
   })
+  const { data: health } = useSourcesHealth()
+  const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "youtube").map((i) => [i.key, i]))
+  const collect = useToggleCollect()
 
   return (
     <ProposalPanel title="유튜브" count={channels.length} maxHeight="50vh"
       contentClassName="px-0 space-y-1"
       pinned={<AddForm placeholder="채널 @handle·URL (구독) 또는 영상 URL (단건)" onSubmit={(v) => add.mutate(v)} pending={add.isPending} />}>
-      {channels.map((ch) => (
-        <SourceRow key={ch.channel_id}
-          name={ch.title ?? ch.channel_id}
-          sub="신규 영상 자동 자막"
-          active={ch.is_active}
-          onClick={() => onGo(ch.channel_id)}
-          onToggle={() => toggle.mutate({ id: ch.channel_id, active: !ch.is_active })}
-        />
-      ))}
+      {channels.map((ch) => {
+        const h = healthMap.get(ch.channel_id)
+        return (
+          <SourceRow key={ch.channel_id}
+            name={ch.title ?? ch.channel_id}
+            sub={`7일 ${h?.docs_7d ?? "-"}건`}
+            warning={h?.warning}
+            health={h}
+            active={ch.is_active}
+            onClick={() => onGo(ch.channel_id)}
+            onToggle={() => toggle.mutate({ id: ch.channel_id, active: !ch.is_active })}
+            onToggleCollect={() => collect.mutate({ kind: "youtube", key: ch.channel_id,
+              enabled: h?.collect_enabled === false })}
+          />
+        )
+      })}
     </ProposalPanel>
   )
 }
@@ -391,6 +479,7 @@ function BlogSourcesCard({ title, placeholder, match, onGo }: {
   const sources = allSources.filter(match)
   const { data: health } = useSourcesHealth()
   const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "blog").map((i) => [i.key, i]))
+  const collect = useToggleCollect()
   const toggle = useToggleBlogSource()
   const qc = useQueryClient()
   const add = useMutation({
@@ -418,8 +507,11 @@ function BlogSourcesCard({ title, placeholder, match, onGo }: {
             sub={`${src.author ?? src.platform} · 7일 ${h?.docs_7d ?? "-"}건`}
             warning={h?.warning}
             active={src.is_active === 1}
+            health={h}
             onClick={() => onGo(src.url)}
             onToggle={() => toggle.mutate({ id: src.id, is_active: !(src.is_active === 1) })}
+            onToggleCollect={() => collect.mutate({ kind: "blog", key: src.url,
+              enabled: h?.collect_enabled === false })}
           />
         )
       })}

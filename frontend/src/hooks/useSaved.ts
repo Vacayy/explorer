@@ -5,7 +5,7 @@ import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
 import { spineKeys } from "@/api/spine"
 
-export type SavedKind = "company" | "doc" | "narrative" | "report"
+export type SavedKind = "company" | "doc" | "narrative" | "report" | "synthesis"
 
 export interface SavedItem {
   id: number

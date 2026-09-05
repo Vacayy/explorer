@@ -152,7 +152,8 @@ class TelegramConnector:
             return [SourceRef(key=c) for c in self._channels]
         conn = get_connection()
         rows = conn.execute(
-            "SELECT channel_name FROM telegram_channels"  # 수집은 항상 — is_active는 개인 노출(뮤트) 설정
+            # is_active=개인 노출(뮤트), collect_enabled=수집 자체 (D-126) — 축이 다르다
+            "SELECT channel_name FROM telegram_channels WHERE COALESCE(collect_enabled,1)=1"
         ).fetchall()
         conn.close()
         return [SourceRef(key=r["channel_name"]) for r in rows]

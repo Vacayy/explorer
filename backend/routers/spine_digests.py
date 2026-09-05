@@ -42,9 +42,9 @@ def list_digests(
         SELECT d.period, d.period_start, d.digest, d.insights, d.doc_count, d.model
         FROM entity_digests d
         JOIN entities e ON d.entity_id = e.id
-        WHERE e.type='company' AND e.aliases = ? AND d.period = ?
+        WHERE e.type='company' AND (e.aliases = ? OR e.name = ?) AND d.period = ?
         ORDER BY d.period_start DESC LIMIT ?
-    """, (stock, period, limit)).fetchall()
+    """, (stock, stock, period, limit)).fetchall()
     conn.close()
     return DigestsResponse(
         items=[DigestItem(**dict(r)) for r in rows],

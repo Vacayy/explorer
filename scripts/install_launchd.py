@@ -56,6 +56,10 @@ JOBS = [
     # 재태깅 백필 야간 창(D-118) — 02:00 시작, 스크립트가 04:00에 자진 종료.
     # 유휴 시간대라 주간 세션 사용량에 영향이 없고, 백로그가 비면 즉시 종료된다(대상 0건).
     ("backfill", [str(PROJECT / "scripts" / "run_backfill.sh")], {"Hour": 2, "Minute": 0}),
+    # 내러티브 전량 배치는 **주 1회**(D-122) — 30분 체인엔 `--urgent`(신규·급증만)가 남는다.
+    # 체인에서 전량을 돌리면 새 문서 1건에 해시가 바뀌어 opus가 재발화했다(실측 7일 52회·16.1시간).
+    # promote(07:00)·proposals(07:20)보다 먼저 돌아 그 주의 서사가 지식 승격의 입력이 되게 06:00.
+    ("narratives", [PY, "scripts/compute_narratives.py"], {"Weekday": 0, "Hour": 6, "Minute": 0}),
     ("promote", [PY, "scripts/promote_knowledge.py"], {"Weekday": 0, "Hour": 7, "Minute": 0}),
     ("contradictions", [PY, "scripts/scan_contradictions.py"], {"Hour": 6, "Minute": 45}),
     ("proposals", [PY, "scripts/scan_agent_proposals.py"], {"Weekday": 0, "Hour": 7, "Minute": 20}),

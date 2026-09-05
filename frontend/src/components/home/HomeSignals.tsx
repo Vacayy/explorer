@@ -46,6 +46,7 @@ export function MomentumSection() {
   return (
     <SignalSummaryCard
       title="언급 모멘텀 — 이번 주 부상 종목"
+      subtitle="7일 언급 비중순 (×N = 직전 주 대비 배율)"
       rows={rows}
       onOpen={() => navigate("/explore?list=mention_surge")}
     />
@@ -57,7 +58,12 @@ export function MomentumSection() {
 export function ThemeSurgeSummary() {
   const navigate = useNavigate()
   const { data } = useSpineSignals("theme_surge", 14)
-  const rows: SummaryRow[] = (data?.items ?? []).map((s, i) => ({
+  // 비중순 정렬 (사용자 2026-08-18) — 감지는 점유율 *상승폭*으로 하되, 보여줄 때는 지금 비중이 큰 화두가 위로.
+  // 비중 없는 행은 뒤로. 랭크는 정렬 후 부여해 표시 순서와 번호가 어긋나지 않게.
+  const sorted = [...(data?.items ?? [])].sort(
+    (a, b) => (b.payload.share_pct ?? -1) - (a.payload.share_pct ?? -1),
+  )
+  const rows: SummaryRow[] = sorted.map((s, i) => ({
     key: String(s.id),
     rank: i + 1,
     name: s.entity_name,

@@ -1,9 +1,10 @@
 // 저장됨 목록 — 헤더 Sheet(compact)와 /follow/saved 페이지 공용 (D-078)
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { Bookmark, Building2, FileBarChart, FileText, Network, X } from "lucide-react"
+import { Bookmark, Building2, FileBarChart, FileText, Layers, Network, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { formatRelativeTime } from "@/utils/format"
 import { useRemoveSaved, useUpdateSavedNote, type SavedItem, type SavedKind } from "@/hooks/useSaved"
@@ -13,6 +14,7 @@ const KIND_META: Record<SavedKind, { icon: typeof Bookmark; label: string }> = {
   doc: { icon: FileText, label: "문서" },
   narrative: { icon: Network, label: "내러티브" },
   report: { icon: FileBarChart, label: "리포트" },
+  synthesis: { icon: Layers, label: "종합" },
 }
 
 /** SQLite datetime('now')는 UTC 공백 포맷 — ISO UTC로 정규화 후 상대시각 */
@@ -25,19 +27,39 @@ export default function SavedList({
   items,
   compact = false,
   onNavigate,
+  selectedDocIds,
+  onToggleDoc,
 }: {
   items: SavedItem[]
   compact?: boolean
   onNavigate?: () => void
+  /** 선택 모드(D-104 교차 종합) — 넘기면 문서 행에 체크박스. 문서 kind만 선택 가능 */
+  selectedDocIds?: number[]
+  onToggleDoc?: (docId: number) => void
 }) {
   const remove = useRemoveSaved()
+  const selectable = !!onToggleDoc && !!selectedDocIds
   return (
     <ul className="divide-y">
       {items.map((it) => {
         const Meta = KIND_META[it.kind]
         const Icon = Meta?.icon ?? Bookmark
+        const docId = it.kind === "doc" ? Number(it.ref) : null
+        const checked = docId != null && !!selectedDocIds?.includes(docId)
         return (
           <li key={it.id} className="flex items-start gap-3 py-3">
+            {selectable && (
+              docId != null && Number.isFinite(docId) ? (
+                <Checkbox
+                  className="mt-0.5 shrink-0"
+                  checked={checked}
+                  onCheckedChange={() => onToggleDoc?.(docId)}
+                  aria-label={`${it.title || it.url} 종합 대상으로 선택`}
+                />
+              ) : (
+                <span className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              )
+            )}
             <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <Link
