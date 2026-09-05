@@ -60,6 +60,9 @@ JOBS = [
     # 체인에서 전량을 돌리면 새 문서 1건에 해시가 바뀌어 opus가 재발화했다(실측 7일 52회·16.1시간).
     # promote(07:00)·proposals(07:20)보다 먼저 돌아 그 주의 서사가 지식 승격의 입력이 되게 06:00.
     ("narratives", [PY, "scripts/compute_narratives.py"], {"Weekday": 0, "Hour": 6, "Minute": 0}),
+    # 축적물 백업(D-129) — DB VACUUM+gzip · vault tar · media 미러. 매일 04:30, 실측 20초.
+    # 잠들어 있었으면 launchd가 기상 시 실행한다(D-106).
+    ("backup", [PY, "scripts/backup.py"], {"Hour": 4, "Minute": 30}),
     ("promote", [PY, "scripts/promote_knowledge.py"], {"Weekday": 0, "Hour": 7, "Minute": 0}),
     ("contradictions", [PY, "scripts/scan_contradictions.py"], {"Hour": 6, "Minute": 45}),
     ("proposals", [PY, "scripts/scan_agent_proposals.py"], {"Weekday": 0, "Hour": 7, "Minute": 20}),
