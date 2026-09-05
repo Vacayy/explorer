@@ -28,3 +28,9 @@ backend/docs_cache/
 logs/
 vault/
 media/
+
+# 개인 큐레이션 — 담당 커버리지는 공개하지 않는다 (scripts/seed_universe.py 참조)
+scripts/universe.local.json
+
+# 개인 참고자료 (IR 자료·리포트 등)
+docs/references/

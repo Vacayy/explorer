@@ -13,8 +13,11 @@ from datetime import datetime, timedelta
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "backend"))
 from database import get_connection, init_db
 
-REPORT = pathlib.Path(__file__).resolve().parent.parent / "logs" / "backfill_report.md"
-SESS = pathlib.Path.home() / ".claude/projects/-Users-juyeongkim-dev-explorer"
+PROJECT = pathlib.Path(__file__).resolve().parent.parent
+REPORT = PROJECT / "logs" / "backfill_report.md"
+# claude-code 세션 디렉터리 — 프로젝트 절대경로의 '/'를 '-'로 치환한 이름 규칙에서 유도.
+# (사용자명이 박히므로 하드코딩하지 않는다)
+SESS = pathlib.Path.home() / ".claude/projects" / str(PROJECT).replace("/", "-")
 
 
 def _tokens_since(t0: float) -> dict:
