@@ -3,7 +3,7 @@
 ## 인과 지식그래프 기반 리서치 시스템
 
 - 금융시장 데이터(미국 실적 컨콜·DART·주가), 투자자 인사이트(텔레그램·블로그·유튜브 등), 뉴스 등 수집
-- LLM 기반으로 태깅 -&gt; 인과 지식그래프화
+- LLM 기반으로 태깅 → 인과 지식그래프화
 - 지식그래프 기반으로 다양한 Application 구현(내러티브 생성 에이전트, RAG 검색, 리서치 생성 에이전트 등)
 
 
@@ -125,7 +125,7 @@ Python 3.11+, Node 20+, [Claude Code CLI](https://claude.com/claude-code)(구독
 `ANTHROPIC_API_KEY`, 그리고 DART API 키(무료)가 필요합니다.
 
 ```bash
-git clone <this-repo> explorer && cd explorer
+git clone https://github.com/Vacayy/explorer.git && cd explorer
 
 python -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
@@ -171,13 +171,13 @@ cron이 아니라 launchd를 쓴 데는 이유가 있는데,
 
 ```
 backend/
-  pipeline/      67개 모듈 — 수집·정제·그래프·종합. 시스템의 무게는 여기 있습니다
+  pipeline/      70개 모듈 — 수집·정제·그래프·종합. 시스템의 무게는 여기 있습니다
     connectors/  소스별 커넥터 (discover → fetch 프로토콜)
-  routers/       55개 — spine_*(그래프 세계) 36 + 레거시(종목 디테일) 19
+  routers/       54개 — spine_*(그래프 세계) 36 + 레거시(종목 디테일) 18
   database.py    85개 테이블
 frontend/src/
   components/    ui(shadcn) → shared → layout → {page} 계층
-scripts/         49개 — 수집 체인·배치·시딩·백필
+scripts/         52개 — 수집 체인·배치·시딩·백필
 docs/            아래 참조
 ```
 
@@ -189,10 +189,10 @@ docs/            아래 참조
 
 | 문서                                          | 층     | 내용                                           |
 | ------------------------------------------- | ----- | -------------------------------------------- |
-| [PHILOSOPHY.md](docs/PHILOSOPHY.md)         | 원칙    | 개별 결정 뒤에 흐르는 세계관. 인식론·인과 세계모델·시장 인식론·R&amp;R |
+| [PHILOSOPHY.md](docs/PHILOSOPHY.md)         | 원칙    | 개별 결정 뒤에 흐르는 세계관. 인식론·인과 세계모델·시장 인식론·R&R |
 | [TECH_DECISIONS.md](docs/TECH_DECISIONS.md) | 원칙→결정 | **기획 의도와 주요 기술 결정.** 성능·비용을 어떻게 저울질했는지       |
 | [SYSTEM.md](docs/SYSTEM.md)                 | 상태    | 현행 시스템 지도 — 테이블·파이프라인·API·화면 전체 목록           |
-| [DECISIONS.md](docs/DECISIONS.md)           | 결정    | append-only 로그 132건. 고려했지만 선택하지 않은 것까지       |
+| [DECISIONS.md](docs/DECISIONS.md)           | 결정    | append-only 로그 133건. 고려했지만 선택하지 않은 것까지       |
 | [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)   | 상태    | 레이아웃 컨트랙트·토큰                                 |
 | `docs/specs/`                               | 상태    | 기능별 화면·구현 스펙                                 |
 
