@@ -14,6 +14,7 @@ import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import SaveButton from "@/components/shared/SaveButton"
 import { NarrativeList } from "@/components/explore/NarrativeList"
+import { MegaNarrativeSection } from "@/components/knowledge/MegaNarrativeSection"
 import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
 import { FileText } from "lucide-react"
@@ -52,14 +53,17 @@ export default function NarrativePage() {
       staleTime: STALE.short, enabled: !!topic,
     }),
   )
-  // 자동 재생성은 24h에 1회로 제한 — stale(새 문서 있음)이라도 최근 갱신 <24h면 자동 발화 금지.
-  // 강제 트리거는 새로고침 버튼(refreshNonce)으로만. 재료가 없으면 백엔드가 doc_ids_hash로 no-op(status=cached).
+  // 자동 재생성은 **7일에 1회**로 제한 (D-122 — 기존 24h). stale(새 문서 있음)이라도 최근 갱신이
+  // 7일 내면 자동 발화 금지. 진입만으로 opus가 도는 경로가 토큰 소모의 큰 축이었고, 지금은
+  // 새로고침 버튼이 있어 사람이 원할 때 즉시 돌릴 수 있다.
+  // 재료가 없으면 백엔드가 doc_ids_hash로 no-op(status=cached).
   const [refreshNonce, setRefreshNonce] = useState(0)
+  const AUTO_REGEN_HOURS = 24 * 7
   const createdAt = cached.data?.created_at
   const ageHours = createdAt
     ? (Date.now() - new Date(createdAt.replace(" ", "T") + "Z").getTime()) / 3.6e6
     : Infinity
-  const autoStale = !!cached.data?.stale && ageHours >= 24
+  const autoStale = !!cached.data?.stale && ageHours >= AUTO_REGEN_HOURS
   const fresh = useQuery(
     apiComputeQuery<Narrative>({
       key: ["spine", "narrative", topic, "compute", refreshNonce],
@@ -244,8 +248,11 @@ function NarrativeLanding() {
     <PageContainer gap="sm">
       <div className="flex items-baseline gap-2">
         <h2 className="text-xl font-bold">내러티브</h2>
-        <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 질문</span>
+        <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 서사</span>
       </div>
+      {/* 엮인 서사(구 '세계관' 배지) — 내러티브 축의 상위 진입점이라 목록 위에 둔다 (D-123).
+          지식 축 종합인 '세계관 브리핑'은 지식 탭에 남는다 — 이름·자리로 두 축을 분리. */}
+      <MegaNarrativeSection />
       <NarrativeList empty="state" controls />
     </PageContainer>
   )

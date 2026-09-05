@@ -23,7 +23,6 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Expandable } from "@/components/shared/Expandable"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
-import { MegaNarrativeSection } from "@/components/knowledge/MegaNarrativeSection"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { cn } from "@/lib/utils"
 
@@ -121,7 +120,6 @@ export default function KnowledgePage() {
         </span>
       </div>
 
-      <MegaNarrativeSection />
       <StructureMap />
       {overview && <OverviewStrip o={overview} />}
       <InjectConsole onDone={invalidate} />

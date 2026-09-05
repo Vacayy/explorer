@@ -168,14 +168,22 @@ def toggle_youtube(channel_id: str, is_active: bool):
 
 
 class SourceHealth(BaseModel):
-    kind: str            # telegram | blog
+    kind: str            # telegram | blog | youtube
     name: str            # 표시명
-    key: str             # channel_name | url
-    is_active: bool
+    key: str             # channel_name | url | channel_id
+    is_active: bool      # 개인 노출(뮤트) 축
+    collect_enabled: bool = True   # 수집 축 (D-126) — 둘은 독립
     last_doc_at: str | None
     docs_7d: int
     docs_24h: int
-    warning: bool        # 활성인데 7일간 유입 0
+    warning: bool        # 수집 켜진 활성 소스인데 7일간 유입 0
+    # 소비 지표 30일 (D-127) — 수집량 대비 실제로 쓰였나
+    docs_30d: int = 0
+    untagged_30d: int = 0        # enrich가 태깅 못 한 문서 (온톨로지 기여 0)
+    stock_linked_30d: int = 0    # 종목이 연결된 문서
+    causal_30d: int = 0          # 인과 엣지로 기여한 문서 (가장 강한 소비 신호)
+    last_fetch_at: str | None = None   # raw_documents.fetched_at 최대 (레지스트리 컬럼은 죽어 있음)
+    shared_domain: bool = False  # 같은 도메인 피드가 여럿 — 숫자가 서로 중복 집계됨
 
 
 class SourcesHealthResponse(BaseModel):
@@ -184,10 +192,40 @@ class SourcesHealthResponse(BaseModel):
     as_of: str
 
 
+# 소비 지표 — 수집량 대비 '실제로 쓰였나' (D-127). 30일 창.
+_CONSUME_SQL = """
+    SELECT COUNT(*) n,
+      SUM(CASE WHEN (SELECT COUNT(*) FROM entity_links el WHERE el.doc_id=rd.id)=0
+               THEN 1 ELSE 0 END) untagged,
+      SUM(CASE WHEN EXISTS (SELECT 1 FROM entity_links el2
+                            WHERE el2.doc_id=rd.id AND el2.link_type='stock')
+               THEN 1 ELSE 0 END) stock_linked,
+      SUM(CASE WHEN EXISTS (SELECT 1 FROM entity_relations er WHERE er.source_doc_id=rd.id)
+               THEN 1 ELSE 0 END) causal,
+      MAX(rd.fetched_at) last_fetch
+    FROM raw_documents rd
+    WHERE rd.source_type=? AND rd.published_at >= datetime('now','-30 days') AND {cond}
+"""
+
+
+def _consume(conn, source_type: str, cond: str, arg) -> dict:
+    r = conn.execute(_CONSUME_SQL.format(cond=cond), (source_type, arg)).fetchone()
+    n = r["n"] or 0
+    return {"docs_30d": n, "untagged_30d": r["untagged"] or 0,
+            "stock_linked_30d": r["stock_linked"] or 0, "causal_30d": r["causal"] or 0,
+            "last_fetch_at": r["last_fetch"]}
+
+
 def compute_source_health(conn) -> list[dict]:
-    """소스별 유입 상태 — '조용한 날'이 시장 탓인지 수집 고장 탓인지 구분하는 계기판."""
+    """소스별 유입 + **소비** 상태 — '조용한 날'이 시장 탓인지 수집 고장 탓인지, 그리고
+    들어온 문서가 실제로 쓰이는지(태깅·종목연결·인과기여)까지 한 표에서 본다 (D-127).
+
+    주의: `last_fetched_at`(레지스트리 컬럼)은 **어디서도 갱신되지 않는 죽은 컬럼**이라 쓰지 않고,
+    `raw_documents.fetched_at`의 최대값을 실제 수집 시각으로 쓴다.
+    """
     items = []
-    for r in conn.execute("SELECT channel_name, display_name, is_active FROM telegram_channels"):
+    for r in conn.execute("SELECT channel_name, display_name, is_active, "
+                          "COALESCE(collect_enabled,1) ce FROM telegram_channels"):
         st = conn.execute("""
             SELECT max(published_at) last, 
                    sum(published_at >= datetime('now', '-7 days')) d7,
@@ -198,11 +236,23 @@ def compute_source_health(conn) -> list[dict]:
         items.append({
             "kind": "telegram", "name": r["display_name"] or r["channel_name"],
             "key": r["channel_name"], "is_active": bool(r["is_active"]),
+            "collect_enabled": bool(r["ce"]),
             "last_doc_at": st["last"], "docs_7d": d7, "docs_24h": st["d1"] or 0,
-            "warning": bool(r["is_active"]) and d7 == 0,
+            # 수집을 끈 소스는 유입 0이 정상이므로 경고 대상이 아니다
+            "warning": bool(r["is_active"]) and bool(r["ce"]) and d7 == 0,
+            "shared_domain": False,
+            **_consume(conn, "telegram", "rd.source_id LIKE ? || '/%'", r["channel_name"]),
         })
     from pipeline.urls import is_feedlike, norm_domain
-    for r in conn.execute("SELECT url, blog_name, author, is_active FROM blog_sources"):
+    # 같은 도메인을 공유하는 피드가 여러 개면 도메인 매칭이 서로의 문서를 중복 집계한다
+    # (실측: mk.co.kr 3피드가 모두 같은 기사에 매칭 → '경제'에 전부 귀속돼 나머지가 0건으로 보였다).
+    # 숫자를 고칠 수는 없으니 **그 사실을 플래그로 드러낸다**(조용한 오해 금지).
+    from collections import Counter
+    from pipeline.urls import is_feedlike as _fl, norm_domain as _nd
+    _dom_count = Counter(_nd(x["url"]) for x in
+                         conn.execute("SELECT url FROM blog_sources").fetchall() if _fl(x["url"]))
+    for r in conn.execute("SELECT url, blog_name, author, is_active, "
+                          "COALESCE(collect_enabled,1) ce FROM blog_sources"):
         # RSS 직등록 소스(뉴스·뉴스레터)는 기사 url이 피드 url로 시작하지 않음 → 도메인 매칭
         if is_feedlike(r["url"]):
             cond, arg = "url LIKE '%//%' || ? || '%'", norm_domain(r["url"])
@@ -215,11 +265,34 @@ def compute_source_health(conn) -> list[dict]:
             FROM raw_documents WHERE source_type='blog' AND {cond}
         """, (arg,)).fetchone()
         d7 = st["d7"] or 0
+        shared = _fl(r["url"]) and _dom_count.get(norm_domain(r["url"]), 0) > 1
         items.append({
             "kind": "blog", "name": r["blog_name"] or r["url"],
             "key": r["url"], "is_active": bool(r["is_active"]),
+            "collect_enabled": bool(r["ce"]),
             "last_doc_at": st["last"], "docs_7d": d7, "docs_24h": st["d1"] or 0,
-            "warning": bool(r["is_active"]) and d7 == 0,
+            "warning": bool(r["is_active"]) and bool(r["ce"]) and d7 == 0 and not shared,
+            "shared_domain": bool(shared),
+            **_consume(conn, "blog", cond.replace("url", "rd.url"), arg),
+        })
+    # 유튜브도 같은 표에 (전엔 빠져 있어 15개 채널이 계기판에서 안 보였다, D-127)
+    for r in conn.execute("SELECT channel_id, handle, title, is_active, "
+                          "COALESCE(collect_enabled,1) ce FROM youtube_channels"):
+        st = conn.execute("""
+            SELECT max(published_at) last,
+                   sum(published_at >= datetime('now', '-7 days')) d7,
+                   sum(published_at >= datetime('now', '-1 day')) d1
+            FROM raw_documents WHERE source_type='youtube' AND source_id LIKE ? || '/%'
+        """, (r["channel_id"],)).fetchone()
+        d7 = st["d7"] or 0
+        items.append({
+            "kind": "youtube", "name": r["title"] or r["handle"] or r["channel_id"],
+            "key": r["channel_id"], "is_active": bool(r["is_active"]),
+            "collect_enabled": bool(r["ce"]),
+            "last_doc_at": st["last"], "docs_7d": d7, "docs_24h": st["d1"] or 0,
+            "warning": bool(r["is_active"]) and bool(r["ce"]) and d7 == 0,
+            "shared_domain": False,
+            **_consume(conn, "youtube", "rd.source_id LIKE ? || '/%'", r["channel_id"]),
         })
     return items
 
@@ -324,6 +397,35 @@ def source_dossier_summary(kind: str, key: str):
     return DossierSummary(status=r["status"], digest=r.get("digest"),
                           insights=r.get("insights"), created_at=r.get("created_at"),
                           doc_count=r.get("doc_count") or 0)
+
+
+class CollectToggle(BaseModel):
+    kind: str            # telegram | blog | youtube
+    key: str             # channel_name | url | channel_id
+    enabled: bool
+
+
+@router.post("/collect")
+def set_collect(body: CollectToggle):
+    """수집 축 토글 (D-126) — `is_active`(뮤트)와 **독립**이다.
+
+    뮤트는 내 피드에서만 감추고 코퍼스는 계속 쌓는다(수집=공공재). 이 토글은 수집 자체를 끈다.
+    """
+    table, col = {
+        "telegram": ("telegram_channels", "channel_name"),
+        "blog": ("blog_sources", "url"),
+        "youtube": ("youtube_channels", "channel_id"),
+    }.get(body.kind, (None, None))
+    if not table:
+        raise HTTPException(400, "알 수 없는 kind")
+    conn = get_connection()
+    cur = conn.execute(f"UPDATE {table} SET collect_enabled=? WHERE {col}=?",
+                       (1 if body.enabled else 0, body.key))
+    conn.commit()
+    conn.close()
+    if not cur.rowcount:
+        raise HTTPException(404, "해당 소스를 찾을 수 없습니다")
+    return {"kind": body.kind, "key": body.key, "collect_enabled": body.enabled}
 
 
 @router.get("/health", response_model=SourcesHealthResponse)

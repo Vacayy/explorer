@@ -27,8 +27,17 @@ if __name__ == "__main__":
                 d = (date.today() - timedelta(days=i - 1)).isoformat()
                 print(f"[daily {d}]", compute_daily(d))
             return {"backfill": args.backfill}
-        daily = compute_daily()
-        weekly = compute_weekly()   # 이번 주(월~일), 이번 주 언급 종목 전체
-        print("[daily]", daily, "[weekly]", weekly)
-        return {"daily_gen": daily.get("generated", 0) if isinstance(daily, dict) else 0}
+        # **닫힌 구간만** 생성한다 (D-124). 전엔 진행 중인 오늘·이번 주를 대상으로 삼아,
+        # 그 구간에 새 문서가 들어올 때마다 doc_ids_hash가 바뀌어 같은 요약을 다시 썼다
+        # (실측: 1d start=08-31이 46건, 같은 종목이 7일간 7회 재생성).
+        # 닫힌 구간은 문서 집합이 고정이라 첫 생성 뒤 해시가 일치 → unchanged로 LLM 0.
+        # 진행 중 구간이 필요하면 종목 진입 시 catch_up(D-085)이 채운다.
+        today = date.today()
+        y = (today - timedelta(days=1)).isoformat()                    # 어제(확정)
+        last_mon = today - timedelta(days=today.weekday() + 7)         # 지난 주 월요일(확정)
+        daily = compute_daily(y)
+        weekly = compute_weekly(last_mon.isoformat())
+        print(f"[daily {y}]", daily, f"[weekly {last_mon}]", weekly)
+        return {"daily_gen": daily.get("generated", 0) if isinstance(daily, dict) else 0,
+                "weekly_gen": weekly.get("generated", 0) if isinstance(weekly, dict) else 0}
     run_job("compute_digests", _work)   # 관리자 플래그 게이트 + 로그 (D-055)

@@ -18,6 +18,21 @@ def main():
     init_db()
     from pipeline.ops import run_job
 
+    # --urgent: 30분 체인용 이벤트 트리거 (신규·급증 주제만, 쿨다운 3일). 전량 배치는 주 1회 (D-122)
+    if "--urgent" in sys.argv[1:]:
+        from pipeline.narrative import compute_urgent_narratives
+
+        def _urgent():
+            r = compute_urgent_narratives()
+            if r["picked"]:
+                for p in r["picked"]:
+                    print(f"[narrative][urgent] {p['topic']} ({p['why']}) → {r['results'].get(p['topic'])}")
+            else:
+                print(f"[narrative][urgent] 대상 없음 (쿨다운/임계 미달: {r.get('skipped') or '-'})")
+            return {"picked": len(r["picked"]), **r["results"]}
+        run_job("compute_narratives", _urgent)
+        return
+
     def _work():
         r = compute_top_narratives(limit=5)
         print(f"[narrative] 상위 {len(r['topics'])}개 테마 사전 생성")

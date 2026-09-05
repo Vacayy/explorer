@@ -25,6 +25,7 @@ import ExplorePage from "@/components/explore/ExplorePage"
 import ChatPage from "@/components/chat/ChatPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import DocPage from "@/components/doc/DocPage"
+import SynthesisPage from "@/components/synthesis/SynthesisPage"
 import SourcePage from "@/components/source/SourcePage"
 import PersonPage from "@/components/person/PersonPage"
 import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
@@ -215,6 +216,7 @@ export default function App() {
             {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
             <Route path="feed" element={<UnifiedFeedPage />} />
             <Route path="doc/:docId" element={<DocPage />} />
+            <Route path="synthesis/:synthesisId" element={<SynthesisPage />} />
             <Route path="source" element={<SourcePage />} />
             <Route path="person" element={<PersonPage />} />
             <Route path="company" element={<CompanyPage />} />

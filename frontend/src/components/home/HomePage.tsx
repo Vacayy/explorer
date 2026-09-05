@@ -12,10 +12,12 @@ import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
+import { IndexStrip } from "@/components/home/IndexStrip"
 import { MarketRegime } from "@/components/home/MarketRegime"
 import { MacroLiquidity } from "@/components/home/MacroLiquidity"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { KrMoversSection } from "@/components/home/KrMoversSection"
+import { DigestBriefs } from "@/components/home/DigestBriefs"
 
 /**
  * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-056·D-057).
@@ -37,11 +39,18 @@ export default function HomePage() {
         <FreshnessStamp asOf={data.as_of} />
       </div>
 
+      {/* 주요 지수 — 판이 어디에 서 있나 (미국·한국·홍콩·일본, 최상단, D-110) */}
+      <IndexStrip />
+
       {/* 어젯밤 미국장 브리핑 — 아침 분위기 파악 (자금이 어디로 쏠렸나, D-095) */}
       <UsBriefingSection />
 
       {/* 전일 국장 거래대금 — 미국장의 국장 대응물, LLM 0 (D-108) */}
       <KrMoversSection />
+
+      {/* 종목 요약 — 어제 확정 구간, 언급 상위 5종목의 내용까지 (D-124).
+          전엔 'AI가 최근 만든 것'에 제목만 떠서 내용을 보려면 종목 페이지로 들어가야 했다 */}
+      <DigestBriefs />
 
       {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드. 공지(브리핑)·승인은 인박스로(D-054) */}
       <AiActivityFeed />

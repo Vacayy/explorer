@@ -12,6 +12,7 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Expandable } from "@/components/shared/Expandable"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
+import DigestSection from "@/components/analyze/DigestSection"
 
 /**
  * /company?name= — 기업 프로필 (해외/비상장). 인물 프로필과 동형.
@@ -162,6 +163,11 @@ export default function CompanyPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* 기간 요약 (D-124) — 종목코드가 없는 해외·비상장도 다이제스트를 받고 열람할 수 있게.
+              백엔드가 코드·이름 겸용이라(D-124) DigestSection을 이름으로 그대로 재사용한다.
+              진입 시 catch_up이 밀린 구간(오늘·이번 주)을 채운다 — cron은 닫힌 구간만 만든다. */}
+          <DigestSection stockCode={name} stack />
 
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">언급 문서</CardTitle></CardHeader>

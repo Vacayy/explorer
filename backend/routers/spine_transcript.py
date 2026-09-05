@@ -3,7 +3,10 @@
 전용 페이지(2분할 브라우저): 좌 팔로우 기업 그룹 리스트 → 우 선택 기업 컨콜(핵심 정리+원문).
 전문은 raw_documents(source_type='transcript')에서, 정리는 transcripts.digest(lazy 생성).
 """
-from fastapi import APIRouter, HTTPException
+import threading
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from database import get_connection
@@ -83,6 +86,76 @@ def list_follow():
                              next_report_date=cr["next_report_date"] if cr else None))
     conn.close()
     return out
+
+
+JOB = "collect_transcripts"
+_collect_lock = threading.Lock()
+_collecting: dict = {"running": False, "started_at": None, "budget": None}
+
+
+def _run_collect(budget: int, only: list[str] | None) -> None:
+    """백그라운드 수집 — run_job으로 감싸 플래그 게이트·job_runs 기록을 그대로 받는다."""
+    from pipeline.ops import run_job
+    from pipeline.transcript import collect_and_process
+    try:
+        run_job(JOB, lambda: collect_and_process(budget=budget, only=only))
+    except Exception as e:  # noqa: BLE001 — run_job이 이미 error를 기록했다. 여기선 플래그만 해제
+        print(f"[transcript] 수집 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
+    finally:
+        _collecting.update(running=False)
+
+
+@router.post("/collect")
+def collect(background: BackgroundTasks, budget: int = 22, dry_run: bool = False,
+            tickers: str | None = None):
+    """컨콜 수집 직접 트리거 (D-121).
+
+    실행 1회가 **~20분**(AV 무료 한도 5/min 때문에 요청마다 sleep)이라 동기 응답이 불가능하다 →
+    백그라운드로 넘기고 즉시 반환, 진행은 `GET /collect/status`로 본다.
+    `dry_run=1`은 외부 호출·예산 소모 없이 '무엇을 요청할지' 계획만 즉시 반환(25/day를
+    한 번의 클릭으로 태우기 전에 확인용).
+    """
+    from pipeline.ops import flag_enabled
+    from pipeline.transcript import _followed, collect_roundrobin, seed_default_follows
+
+    only = [t.strip().upper() for t in (tickers or "").split(",") if t.strip()] or None
+    if not _followed(only):
+        if only:
+            raise HTTPException(400, "해당 티커의 활성 팔로우가 없습니다")
+        seed_default_follows()
+
+    if dry_run:      # 예산 0 — 계획만 (DB 조회뿐, 외부 fetch 없음)
+        plan = collect_roundrobin(only=only, dry_run=True)
+        return {"dry_run": True, "budget": budget,
+                "would_request": plan["would_request"], "skipped_cache": plan["skipped_cache"],
+                "planned": plan["planned"][:budget],
+                "over_budget": max(0, plan["would_request"] - budget)}
+
+    # 관리자 플래그가 off면 조용히 skip되지 않게 여기서 막고 이유를 돌려준다(조용한 fallback 금지)
+    if not flag_enabled(JOB):
+        raise HTTPException(409, "관리자 페이지에서 '컨콜 수집' 작업이 off 상태입니다")
+    # 중복 실행 가드 — 두 번 누르면 하루 예산(25)을 두 배로 태운다
+    with _collect_lock:
+        if _collecting["running"]:
+            raise HTTPException(409, "이미 수집이 진행 중입니다")
+        _collecting.update(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                           budget=budget)
+    background.add_task(_run_collect, budget, only)
+    return {"started": True, "budget": budget, "tickers": only}
+
+
+@router.get("/collect/status")
+def collect_status():
+    """진행 중 여부 + 마지막 실행 결과(job_runs) + 플래그 상태 — 버튼이 결과를 말할 수 있게."""
+    from pipeline.ops import flag_enabled
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT status, summary, duration_ms, ran_at FROM job_runs WHERE job=? "
+        "ORDER BY id DESC LIMIT 1", (JOB,)).fetchone()
+    conn.close()
+    return {"running": _collecting["running"], "started_at": _collecting["started_at"],
+            "budget": _collecting["budget"], "enabled": flag_enabled(JOB),
+            "last_run": dict(row) if row else None}
 
 
 @router.post("/calendar/refresh")

@@ -12,8 +12,14 @@ import math
 
 from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
 
-MERGE_TYPES = ("theme", "macro", "sector", "event")  # sector·event 추가(D-062·D-063): 섹터/사건 파편 치유
+# company 추가(D-125): 같은 회사가 코드 있는 엔티티와 코드 없는 엔티티로 갈려 다이제스트 슬롯을
+# 이중 소모하고 있었다(실측: 현대자동차 005930류 vs "현대차" 코드없음, 코사인 0.9626).
+MERGE_TYPES = ("theme", "macro", "sector", "event", "company")
 DEFAULT_THRESHOLD = 0.90
+# company는 5,871개라 전쌍(1,723만)이 불가능 → 값싼 1차 필터 2겹:
+#   ①최근 언급 있는 기업만(2,327개) ②이름 앞 2글자 버킷 내에서만 비교 → 총 3,735쌍(실측)
+COMPANY_ACTIVE_DAYS = 30
+COMPANY_BUCKET = 2
 JUDGE_BATCH = 15
 
 
@@ -33,22 +39,45 @@ def find_merge_candidates(conn, types=MERGE_TYPES, threshold=DEFAULT_THRESHOLD) 
 
     candidates: list[dict] = []
     for type_ in types:
-        rows = conn.execute(
-            "SELECT id, name FROM entities WHERE type=? AND status IS NOT 'merged' ORDER BY id",
-            (type_,)).fetchall()
+        if type_ == "company":       # 규모가 달라 후보 생성 전략도 다르다 (D-125)
+            rows = conn.execute(
+                "SELECT e.id, e.name, e.aliases FROM entities e "
+                "WHERE e.type='company' AND e.status IS NOT 'merged' "
+                "  AND EXISTS (SELECT 1 FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id "
+                f"             WHERE el.entity_id=e.id AND rd.published_at >= datetime('now','-{COMPANY_ACTIVE_DAYS} days')) "
+                "ORDER BY e.id").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name FROM entities WHERE type=? AND status IS NOT 'merged' ORDER BY id",
+                (type_,)).fetchall()
         if len(rows) < 2:
             continue
         names = [r["name"] for r in rows]
         vecs = [_normalize(v) for v in model.embed(names)]
-        for i in range(len(rows)):
-            for j in range(i + 1, len(rows)):
-                cos = _dot(vecs[i], vecs[j])
-                if cos >= threshold:
-                    candidates.append({
-                        "a_id": rows[i]["id"], "a_name": rows[i]["name"],
-                        "b_id": rows[j]["id"], "b_name": rows[j]["name"],
-                        "type": type_, "cosine": round(cos, 4),
-                    })
+        if type_ == "company":       # 앞 N글자 버킷 내에서만 (전쌍 1,723만 → 3,735)
+            from collections import defaultdict
+            buckets: dict[str, list[int]] = defaultdict(list)
+            for idx, r in enumerate(rows):
+                buckets[(r["name"] or "")[:COMPANY_BUCKET]].append(idx)
+            # **둘 다 종목코드가 있으면 제외** — 서로 다른 실재 상장사다(현대위아↔현대로템 0.973,
+            # 현대글로비스↔현대모비스 0.9696처럼 접두사 공유로 유사도가 과대평가된 오탐이
+            # 코사인 상위를 먹어 진짜 케이스[현대자동차↔현대차 0.9626]가 cap에서 밀려났다).
+            # 우리가 찾는 패턴은 '같은 회사가 코드 있는/없는 엔티티로 갈린 것'이다.
+            def _coded(idx: int) -> bool:
+                return bool((rows[idx]["aliases"] or "").strip())
+            pairs = [(a, b) for ix in buckets.values()
+                     for pi, a in enumerate(ix) for b in ix[pi + 1:]
+                     if not (_coded(a) and _coded(b))]
+        else:
+            pairs = [(i, j) for i in range(len(rows)) for j in range(i + 1, len(rows))]
+        for i, j in pairs:
+            cos = _dot(vecs[i], vecs[j])
+            if cos >= threshold:
+                candidates.append({
+                    "a_id": rows[i]["id"], "a_name": rows[i]["name"],
+                    "b_id": rows[j]["id"], "b_name": rows[j]["name"],
+                    "type": type_, "cosine": round(cos, 4),
+                })
     candidates.sort(key=lambda c: -c["cosine"])
     return {"candidates": candidates, "reason": None}
 

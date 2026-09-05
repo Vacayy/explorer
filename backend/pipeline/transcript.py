@@ -581,6 +581,27 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
             "skipped_cache": skip_cache, "exhausted": done}
 
 
+def collect_and_process(budget: int = 22, only: list[str] | None = None) -> dict:
+    """수집 전체 사슬 — 라운드로빈 수집 → 발표일 교정 → 핵심 정리 → 프록시 추출 (D-121).
+
+    cron 스크립트와 UI 버튼이 **같은 코드**를 타게 하려고 여기로 올렸다(전엔 스크립트 안에
+    인라인 `_work`였다). 버튼이 '지금 돌리기'인데 사슬이 다르면 결과가 갈린다.
+    호출자가 `run_job`으로 감싸 플래그 게이트·실행 로그를 붙인다.
+    """
+    r = collect_roundrobin(request_budget=budget, only=only)
+    print(f"[transcript] 요청 {r['requests']}/{r['budget']} · 신규 {r['stored']}건 적재 · "
+          f"빈응답 {r['empty']} · 캐시 스킵 {r['skipped_cache']} · 예산소진={r['exhausted']}")
+    if r["stored"]:
+        bc = backfill_call_dates(only=only)   # 신규분 call_date를 실제 발표일로 (yfinance, D-084)
+        print(f"[transcript] 발표일 교정 {bc['updated']}건")
+    n = digest_pending(limit=max(r["stored"], 5))   # 신규분 핵심 정리 생성(sonnet)
+    print(f"[transcript] 핵심 정리 {n}건 생성")
+    seed_proxies()
+    px = extract_proxies()                          # 관찰 프록시 트래킹 (haiku, 멱등)
+    print(f"[transcript] 프록시 추출 {px.get('extracted', 0)}건")
+    return {**r, "digested": n, "proxies": px.get("extracted", 0)}
+
+
 def collect_followed(only: list[str] | None = None, max_new_per_ticker: int = 4) -> dict:
     """팔로우 기업의 신규 컨콜을 수집 → raw_documents 적재 → transcripts 인덱스.
     이후 enrich·doc_causal·digests는 기존 파이프라인이 인수(온톨로지 편입은 doc_causal cron에서).

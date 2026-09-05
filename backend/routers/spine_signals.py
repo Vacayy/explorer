@@ -93,7 +93,8 @@ def mention_momentum(limit: int = Query(12, ge=3, le=30)):
           "count_7d": r["c7"] or 0, "prior_7d": r["p7"] or 0,
           "score": round((r["c7"] or 0) / max(r["p7"] or 0, 1), 1)}
          for r in rows),
-        key=lambda x: (-x["score"], -x["count_7d"]),
+        # 언급 비중(=7일 언급량) 순 — 급증 배율이 앞서면 2~3회짜리가 상위를 먹어 '지금 큰 화두'가 묻힌다(사용자 2026-08-18)
+        key=lambda x: (-x["count_7d"], -x["score"]),
     )[:limit]
 
     # 스파크라인: 최근 14일 일별 언급 카운트

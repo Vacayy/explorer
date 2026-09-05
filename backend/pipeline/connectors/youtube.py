@@ -249,7 +249,8 @@ class YouTubeConnector:
             return [SourceRef(key=v) for v in self._video_ids]
         conn = get_connection()
         channels = conn.execute(
-            "SELECT channel_id, title FROM youtube_channels WHERE is_active=1").fetchall()
+            "SELECT channel_id, title FROM youtube_channels "
+            "WHERE is_active=1 AND COALESCE(collect_enabled,1)=1").fetchall()
         # seen은 video_id 기준 (source_id는 channel/vid 또는 vid 혼재)
         seen = {r["source_id"].split("/")[-1] for r in conn.execute(
             "SELECT source_id FROM raw_documents WHERE source_type='youtube'")}

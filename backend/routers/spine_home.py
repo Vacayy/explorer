@@ -63,6 +63,39 @@ def ai_activity(days: int = Query(7, ge=1, le=30), limit: int = Query(30, ge=1, 
     return [AiActivityItem(**x) for x in items[:limit]]
 
 
+class DigestBrief(BaseModel):
+    name: str
+    stock_code: str | None = None
+    period: str
+    period_start: str
+    digest: str
+    insights: str | None = None
+    doc_count: int | None = None
+
+
+@router.get("/digests", response_model=list[DigestBrief])
+def recent_digests(period: str = Query("1d", pattern="^(1d|1w)$"), limit: int = Query(5, ge=1, le=10)):
+    """가장 최근 **닫힌 구간**의 종목 요약 — 내용까지 (D-124, LLM 0).
+
+    다이제스트가 '생겼다'는 알림(ai-activity)만 있고 정작 내용을 홈에서 볼 길이 없어
+    종목 페이지까지 들어가야 했다. 생성 상한이 언급 상위 5종목이므로 그 5건을 그대로 싣는다.
+    """
+    conn = get_connection()
+    latest = conn.execute(
+        "SELECT MAX(period_start) p FROM entity_digests WHERE period=? AND digest IS NOT NULL",
+        (period,)).fetchone()["p"]
+    if not latest:
+        conn.close()
+        return []
+    rows = conn.execute("""
+        SELECT e.name, e.aliases stock_code, d.period, d.period_start, d.digest, d.insights, d.doc_count
+        FROM entity_digests d JOIN entities e ON d.entity_id = e.id
+        WHERE d.period=? AND d.period_start=? AND d.digest IS NOT NULL
+        ORDER BY d.doc_count DESC LIMIT ?""", (period, latest, limit)).fetchall()
+    conn.close()
+    return [DigestBrief(**dict(r)) for r in rows]
+
+
 @router.get("", response_model=HomeResponse)
 def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트림 기간")):
     conn = get_connection()

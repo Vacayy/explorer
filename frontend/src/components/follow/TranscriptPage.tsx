@@ -6,6 +6,7 @@ import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { Markdown } from "@/components/shared/Markdown"
+import CollectTranscripts from "@/components/follow/CollectTranscripts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -119,6 +120,9 @@ export default function TranscriptPage() {
         <ProxyDashboard />
       ) : (
       <>
+      {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
+      <CollectTranscripts />
+
       <UpcomingEarnings follows={follows} onSelect={selectId}
         onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4 items-start">

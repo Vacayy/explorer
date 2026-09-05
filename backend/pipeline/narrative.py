@@ -1,7 +1,8 @@
-"""주제 내러티브 — '주목 주제'를 질문형 서사로 격상 (theme_surge 고도화).
+"""주제 내러티브 — '주목 주제'를 하나의 서사로 격상 (theme_surge 고도화).
 
 키워드+요약을 넘어, 한 이슈가 '어디서 시작해 어디로 가는지'를 자연어 md로:
-질문형 제목 → 3줄 요약 → 전개 타임라인 → 인과 구조 → 시나리오(긍/부정) → 종합 해석.
+**주장형 제목**(D-120 — 목록·브리핑에서 제목만 봐도 전달되게. 관통 질문은 `core_question`으로
+분리해 질문 트래커에 공급) → 3줄 요약 → 전개 타임라인 → 인과 구조 → 시나리오(긍/부정) → 종합 해석.
 게으른 생성 + hash 가드(source_digests kind='narrative'). 심층 종합이라 opus.
 """
 import hashlib
@@ -19,9 +20,18 @@ EXCERPT = 500
 
 
 def _resolve(conn, topic: str):
+    """주제명 → 엔티티. **동명 파편화 시 담론이 실제로 붙은 쪽**을 고른다 (D-122).
+
+    실측: '기술개발'이 theme(4155, 문서 974건)·sector(7654, 1건) 둘로 갈려 있었는데
+    ORDER BY가 없어 1건짜리가 잡혀 급증 1위 주제가 `empty`로 조용히 무효화됐다.
+    파편화가 없으면 단일 행이라 동작 불변, 있을 때만 문서 많은 쪽으로.
+    """
     return conn.execute(
-        "SELECT id, name, type FROM entities WHERE type IN ('sector','theme') AND name=? "
-        "AND status IS NOT 'merged'", (topic,)).fetchone()
+        "SELECT e.id, e.name, e.type FROM entities e "
+        "WHERE e.type IN ('sector','theme') AND e.name=? AND e.status IS NOT 'merged' "
+        "ORDER BY (SELECT COUNT(*) FROM entity_links el WHERE el.entity_id=e.id "
+        "          AND el.link_type IN ('industry','topic')) DESC, e.id "
+        "LIMIT 1", (topic,)).fetchone()
 
 
 def gather(conn, entity_id: int) -> list[dict]:
@@ -170,9 +180,10 @@ def _persist_narrative(conn, topic: str, data: dict, docs: list[dict], h: str) -
         cats = [cats]
     category = ",".join(c for c in (str(x).strip() for x in cats) if c in DOMAIN_LENSES) or None
     cur = conn.execute(
-        "INSERT INTO narratives (topic, version, title, body, category, doc_count, doc_ids_hash, model) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (topic, version, data.get("title"), data.get("narrative"), category, len(docs), h,
+        "INSERT INTO narratives (topic, version, title, core_question, body, category, "
+        "doc_count, doc_ids_hash, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (topic, version, data.get("title"), (data.get("core_question") or "").strip() or None,
+         data.get("narrative"), category, len(docs), h,
          f"claude-code/{NARRATIVE_MODEL}"))
     nid = cur.lastrowid
     made = _persist_causal(conn, nid, docs[-1]["id"] if docs else None, data.get("causal") or {})
@@ -227,10 +238,20 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "나온다'), 검토('~을 검토 중이다'). "
         "예: '베이징의 자국 AI 해외접근 제한 [현재·검토 단계]이 상징' (나쁨) → "
         "'현재 베이징이 자국 AI 해외접근 제한을 검토 중인 것이 대표적 상징이다' (좋음).\n"
-        'JSON만 출력: {"title": "질문형 제목", "narrative": "마크다운 본문", '
+        'JSON만 출력: {"title": "주장형 제목", "core_question": "이 서사를 관통하는 질문", '
+        '"narrative": "마크다운 본문", '
         '"category": ["도메인 렌즈"], "causal": {"nodes": [...], "edges": [...]}}\n'
-        "title: 이 이슈를 관통하는 질문 (예: '메모리 슈퍼사이클은 어디까지 갈까?', "
-        "'엔비디아의 HBM4 의존은 SK하이닉스에 무엇을 의미하나?'). 낚시성 금지, 핵심 긴장을 담아라.\n"
+        "title: **이 서사가 말하는 결론을 한 문장으로 단언하는 제목**(D-120). 질문형 금지 — "
+        "제목만 읽어도 무슨 얘기인지 전달돼야 한다(목록·브리핑에서 제목만 노출되는 자리가 많다). "
+        "예: '병목은 칩에서 자본으로 내려갔다', 'HBM4 의존이 SK하이닉스의 교섭력을 만들었다'. "
+        "규율: ① 코퍼스가 뒷받침하는 것만 단언하라 — 근거 없는 예측을 제목으로 만들지 마라. "
+        "② 목표주가·확률 같은 **수치 예측을 제목에 넣지 마라**(거짓 정밀). "
+        "③ 낚시성·과장 부사('충격', '대폭발') 금지. 핵심 긴장을 담되 평서문으로. "
+        "④ **40자 내외**로 끊어라 — 목록·피드·브리핑에서 잘리면 주장형으로 바꾼 이유가 사라진다. "
+        "수식을 덜어내고 주어·서술어만 남겨라(실측: 첫 산출물이 78자로 나왔다).\n"
+        "core_question: 같은 서사를 **질문으로** 벼린 한 문장(예: '병목은 어디까지 내려가나?'). "
+        "이 값은 핵심질문 트래커의 후보로 쓰이므로 추적 가능한 물음이어야 한다 — "
+        "제목(주장)과 짝을 이루되 같은 문장을 물음표만 붙여 되풀이하지 마라.\n"
         "가독성 규율: 논리 단위마다 줄을 나눠라. 불릿은 각각 '- '로 시작하는 별도 줄, "
         "여러 갈래(①②)나 시나리오(긍정/기본/부정)는 각각 자기 줄에 둔다. 한 문단에 여러 논점을 "
         "몰아넣지 마라.\n"
@@ -320,8 +341,15 @@ def compute_narrative(topic: str) -> dict:
     except Exception:
         conn.close()
         return {"status": "failed", "title": None, "narrative": None, "created_at": None}
-    _persist_narrative(conn, topic, data, docs, h)
+    nid, _version, _made = _persist_narrative(conn, topic, data, docs, h)
     conn.commit()
+    # 드리프트 한 줄을 **생성 시점에** 채운다 (D-123, haiku 1콜).
+    # 전엔 diff 화면을 열 때만 게으르게 생성돼 54건 중 3건만 채워져 있었고, 그래서 목록에서
+    # '무엇이 바뀌었나'를 보여줄 수 없었다. 변화가 없거나 haiku가 실패하면 그냥 비워둔다.
+    try:
+        narrative_diff(conn, nid)
+    except Exception as e:  # noqa: BLE001 — 부가 정보라 생성 자체를 실패시키지 않는다
+        print(f"[narrative] 드리프트 요약 실패({topic}): {type(e).__name__}")
     conn.close()
     return {"status": "fresh", "title": data.get("title"), "narrative": data.get("narrative"),
             "created_at": None}
@@ -365,6 +393,8 @@ def list_narratives(conn) -> list[dict]:
             "share_delta_pp": m.get("share_delta_pp") if m else None,
             "is_new": bool(m.get("is_new")) if m else False,
             "is_surging": m is not None, "created_at": r["created_at"],
+            # 델타 중심 목록용 (D-123) — '무엇이 바뀌었나' 한 줄. 없으면 변화 없음/미생성
+            "drift_summary": r["drift_summary"], "version": r["version"],
         })
     surging = sorted((x for x in items if x["is_surging"]),
                      key=lambda x: -(x["share_delta_pp"] or 0))
@@ -430,6 +460,67 @@ def compute_top_narratives(limit: int = 5) -> dict:
         except Exception as e:  # noqa: BLE001 — 배치라 한 주제 실패가 전체를 막지 않게
             results[t] = f"error:{str(e)[:80]}"
     return {"topics": topics, "coverage": coverage, "results": results}
+
+
+# 이벤트 트리거 상수 (D-122) — 30분 체인에서 '지금 다뤄야 할 것'만 좁게 생성.
+URGENT_DELTA_PP = 3.0      # 점유율 급증 임계 (실측 분포: Δ≥3.0pp = 7일 20건·주제 4~6개)
+URGENT_MIN_AGE_DAYS = 3    # 살아있는 서사가 이보다 어리면 급증이어도 재생성 안 함(실질 상한)
+URGENT_MAX_PER_RUN = 2     # 동시 다발 시 한 회차 폭주 방지
+
+
+def compute_urgent_narratives() -> dict:
+    """이벤트 트리거 — **신규로 드러난 주제**나 **비중이 갑자기 커진 주제**만 즉시 생성 (D-122).
+
+    주 1회 전량 배치(compute_top_narratives)와 짝을 이룬다. 30분 체인에서 전량을 돌리면
+    문서 1건만 들어와도 해시가 바뀌어 opus가 다시 돌았다(실측 7일 52회·16.1시간).
+    여기선 좁게: ①`is_new`(커버가 없던 주제 — 실측 7일 1건) 또는 ②Δ≥3.0pp 급증.
+    비용 상한은 **쿨다운**이 만든다 — 이미 3일 내 서사가 있으면 급증이어도 건너뛴다.
+    """
+    conn = get_connection()
+    latest = conn.execute(
+        "SELECT MAX(date) d FROM signals WHERE signal_type='theme_surge'").fetchone()["d"]
+    if not latest:
+        conn.close()
+        return {"picked": [], "results": {}, "reason": "theme_surge 신호 없음"}
+    rows = conn.execute("""
+        SELECT e.name,
+               json_extract(s.payload_json,'$.share_delta_pp') delta,
+               json_extract(s.payload_json,'$.is_new') is_new
+        FROM signals s JOIN entities e ON e.id=s.entity_id
+        WHERE s.signal_type='theme_surge' AND s.date=?
+        ORDER BY delta DESC""", (latest,)).fetchall()
+
+    picked, skipped = [], {}
+    for r in rows:
+        if len(picked) >= URGENT_MAX_PER_RUN:
+            break
+        new = bool(r["is_new"])
+        surge = (r["delta"] or 0) >= URGENT_DELTA_PP
+        if not (new or surge):
+            continue
+        # 재료 부족 주제가 cap을 먹으면 유효 후보가 밀린다 — 먼저 걸러낸다(대상이 1~2개뿐이라 치명적)
+        ent = _resolve(conn, r["name"])
+        if not ent or len(gather(conn, ent["id"])) < 3:
+            skipped[r["name"]] = "재료 부족(30일 문서<3)"
+            continue
+        prev = _latest_narrative(conn, r["name"])
+        if prev and prev["superseded_at"] is None:
+            age = conn.execute(
+                "SELECT (julianday('now') - julianday(created_at)) d FROM narratives WHERE id=?",
+                (prev["id"],)).fetchone()["d"]
+            if age is not None and age < URGENT_MIN_AGE_DAYS:
+                skipped[r["name"]] = f"쿨다운({age:.1f}일<{URGENT_MIN_AGE_DAYS})"
+                continue
+        picked.append({"topic": r["name"], "why": "신규" if new else f"급증 Δ{r['delta']}pp"})
+    conn.close()
+
+    results = {}
+    for p in picked:
+        try:
+            results[p["topic"]] = compute_narrative(p["topic"]).get("status")
+        except Exception as e:  # noqa: BLE001 — 체인이라 한 주제 실패가 전체를 막지 않게
+            results[p["topic"]] = f"error:{str(e)[:80]}"
+    return {"picked": picked, "results": results, "skipped": skipped, "signal_date": latest}
 
 
 def causal_subgraph(conn, narrative_id: int) -> dict:

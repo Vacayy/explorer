@@ -17,7 +17,9 @@ from database import get_connection
 from pipeline.enrich import _call_claude_code, llm_engine
 
 KST = timezone(timedelta(hours=9))
-DAILY_CAP = 20          # 한 구간 다이제스트 생성 종목 상한 (all-stock 경로)
+DAILY_CAP = 5           # 한 구간 다이제스트 생성 종목 상한 (all-stock 경로).
+# 20 → 5 (D-124, 사용자 지시) — 20이면 언급만 튄 종목까지 요약해 아무도 안 읽는 값을 치렀다.
+# 상위 5는 Home에 그 내용을 직접 노출하는 단위이기도 하다(읽을 사람이 있는 만큼만 생성).
 PRIOR_CAP = 4           # 새로움 판단 베이스라인으로 줄 이전 요약 수
 CATCHUP_MONTHS = 3      # 진입 소급 시 과거 월 상한 (cold-start 비용 가드)
 
@@ -109,8 +111,11 @@ def _compute_bucket(period: str, period_start: str, lo: str, hi: str,
            "AND rd.published_at >= ? AND rd.published_at < ?")
     params: list = [lo, hi]
     if stock_code:
-        sql += " AND e.aliases = ?"
-        params.append(stock_code)
+        # 종목코드 **또는 이름** (D-124) — 해외·비상장 기업은 aliases(종목코드)가 없다.
+        # 생성은 국적 무관이었는데 단일 종목 경로만 코드로 조회해, 코드 없는 기업은
+        # catch_up(진행 중 구간)을 탈 방법이 없었다. 같은 값을 두 열에 대조한다.
+        sql += " AND (e.aliases = ? OR e.name = ?)"
+        params += [stock_code, stock_code]
     sql += " GROUP BY e.id ORDER BY n DESC LIMIT ?"
     params.append(DAILY_CAP)
     stocks = conn.execute(sql, params).fetchall()
