@@ -94,7 +94,7 @@ flowchart LR
 분해할 방법이 없습니다. 같은 이유로 지식을 평가할 때도 **주목(salience)과 확신(conviction)을
 직교 축**으로 둡니다. 그 둘의 갭이야말로 찾으려는 것이기 때문입니다.
 
-자세한 배경은 [docs/TECH_DECISIONS.md](docs/TECH_DECISIONS.md#인식론에서-나온-결정)에 정리했습니다.
+자세한 배경은 [docs/TECH_DECISIONS.md](docs/TECH_DECISIONS.md#from-epistemology)에 정리했습니다.
 
 ---
 
@@ -160,7 +160,7 @@ launchctl list | grep dev.explorer
 
 30분 수집 체인과 아침 브리핑, 백업을 포함한 잡들이 등록됩니다.
 cron이 아니라 launchd를 쓴 데는 이유가 있는데,
-[제약에서 나온 결정](docs/TECH_DECISIONS.md#로컬-1인이라는-제약에서-나온-결정)에 적었습니다.
+[제약에서 나온 결정](docs/TECH_DECISIONS.md#from-local-constraints)에 적었습니다.
 
 > `seed_universe.py`에는 예시 종목만 들어 있습니다. 본인 커버리지를 쓰려면
 > `scripts/universe.local.json`(gitignore)에 두면 그쪽을 먼저 읽습니다.
@@ -254,7 +254,7 @@ python scripts/backup.py --verify-only <파일.sqlite.gz>
 - **텔레그램** — 공개 채널의 최근 ~20개 창만 봅니다. 로그인 없는 프리뷰 스크랩이라 그렇습니다.
 - **컨콜** — 무료 API 하루 25건입니다. 이 한도가 검증 층의 데이터 상한을 그대로 결정합니다.
 - **닫히지 않은 고리** — 실관측이 인과를 확증하는 마지막 경로가 배선만 되고 아직 발화한 적이 없습니다.
-원인은 [TECH_DECISIONS.md](docs/TECH_DECISIONS.md#지금-열려-있는-문제)에 적었습니다.
+원인은 [TECH_DECISIONS.md](docs/TECH_DECISIONS.md#open-problems)에 적었습니다.
 - **한국어 전용** — UI도 프롬프트도 문서도 전부 한국어입니다.
 
 ## 라이선스
