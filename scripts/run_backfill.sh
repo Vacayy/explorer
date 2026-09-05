@@ -14,6 +14,17 @@ LOG="logs/backfill_enrich.log"
 UNTIL="${BACKFILL_UNTIL:-04:00}"
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 
+# ⓪ 관리자 플래그 게이트(D-129) — launchd 잡은 등록해두되 플래그가 꺼져 있으면 아무것도 안 한다.
+#    install_launchd.py를 다시 돌릴 때마다 중단해둔 백필이 되살아나던 함정을 없앤다.
+#    재개는 플래그 한 번 켜기: ops.set_flag('backfill_enrich', True)
+if ! ./.venv/bin/python -c "
+import sys; sys.path.insert(0,'backend')
+from pipeline.ops import flag_enabled
+sys.exit(0 if flag_enabled('backfill_enrich', default=False) else 1)" 2>/dev/null; then
+  echo "$(ts) [backfill] 플래그 off — 실행 안 함" >> "$LOG"
+  exit 0
+fi
+
 # 인터프리터 경로로 시작하는 줄만 매칭 — 부분문자열이면 grep·에디터에도 걸린다(D-116 교훈)
 if pgrep -f '^/.*[Pp]ython.*backfill_enrich_batch\.py' >/dev/null 2>&1; then
   echo "$(ts) [backfill] 이미 실행 중 — 이번 회차 skip" >> "$LOG"
