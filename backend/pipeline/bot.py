@@ -3,7 +3,7 @@
 - 백엔드(FastAPI) startup에서 데몬 스레드로 long-polling (서버 켜져 있는 동안 응답)
 - 보안: TELEGRAM_CHAT_ID와 일치하는 채팅에만 응답
 - 라우팅: 종목명/별칭 → 최신 요약+언급+신호 / '/브리핑' → 아침 브리핑 /
-          문장형 → RAG 질문 (수집 문서 근거) / 그 외 → 도움말
+          문장형 → RAG 질문 (웹과 같은 pipeline/chat.generate_answer, 데몬 스레드·말풍선 대체) / 그 외 → 도움말
 - 액션: 아침 브리핑의 **본문 인라인 딥링크**(D-109) — `t.me/<bot>?start=n_4740` 을 누르면
         봇이 `/start n_4740` 을 받아 주제 내러티브를, `y_11676` 이면 유튜브 정리본을 생성.
         구 inline 버튼 콜백(`n:4740`, D-107)도 이미 발송된 메시지를 위해 계속 받는다 —
@@ -181,13 +181,9 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
             "\n"
             "2️⃣ AI 질문 — 문장으로 물어보세요 (수집 문서 근거)\n"
             "   예: 하이닉스 ADR 이후 수급 얘기 정리해줘\n"
-            "   → 출처 있는 답변 + 갭(근거 부족·모순) 표시. ~30초 소요\n"
+            "   → 출처 있는 답변 + 갭(근거 부족·모순) 표시. 이어서 물으면 맥락을 기억합니다. ~30초 소요\n"
             "\n"
-            "3️⃣ 기억해: … — 내 지식을 시스템에 저장\n"
-        "   예: 기억해: 삼성전자는 노조 성과급 이슈로 골머리\n"
-        "   → 검색·답변·요약이 이 지식을 활용 (기억해(사실): 로 사실 표시)\n"
-        "\n"
-        "4️⃣ /briefing — 아침 브리핑 다시 받기\n"
+            "3️⃣ /briefing — 아침 브리핑 다시 받기\n"
             "   (평일 08:00 자동 발송: 3줄 + 어젯밤 미국장 + 어제의 주제 + 유튜브)\n"
             "   본문의 파란 링크를 누르면 내러티브·정리본 생성이 걸립니다\n"
             "\n"
@@ -209,21 +205,6 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
     # P2-0: 명령어 제외 전 문답을 대화로 적재 (질문 = 사용자 의도 데이터)
     from pipeline.conversations import log_exchange_safe
 
-    # '기억해: …' — 지식 주입 (knowledge-system ①)
-    from pipeline.knowledge import parse_remember
-    remembered = parse_remember(q)
-    if remembered:
-        from pipeline.knowledge import inject_knowledge
-        content, epistemic = remembered
-        try:
-            r = inject_knowledge(content, epistemic)
-            ents = f"\n연결: {', '.join(r['entities'])}" if r["entities"] else ""
-            out = f"💾 지식으로 저장 ({'사실' if epistemic == 'fact' else '가설'}){ents}"
-        except Exception as e:
-            out = f"저장 실패: {str(e)[:80]}"
-        log_exchange_safe(q, out, channel="telegram", chat_id=chat_id)
-        return out
-
     conn = get_connection()
     # 짧은 입력은 종목 조회 시도
     if len(q) <= 12 and " " not in q:
@@ -235,30 +216,46 @@ def handle_message(text: str, chat_id: str | None = None) -> str:
             return out
     conn.close()
 
-    # 문장형 → RAG (웹 /chat과 동일 엔진 + 동일하게 스레드 맥락 전달)
+    # 문장형 → RAG. 웹 /chat과 **같은 함수**(pipeline/chat.generate_answer)를 데몬 스레드에서 —
+    # 폴링 스레드를 막지 않고, 로딩 말풍선을 결과로 대체한다(D-111). 스레드는 항상 assistant로 닫힌다.
     if len(q) >= 8:
-        from pipeline.conversations import find_telegram_thread, thread_history
-        from pipeline.rag import ask
+        from pipeline.chat import generate_answer
+        from pipeline.conversations import find_telegram_thread, log_question
         thread_id = find_telegram_thread(chat_id)   # 이 사용자의 30분 윈도우 스레드
-        history = thread_history(thread_id) if thread_id else None
         try:
-            r = ask(q, history=history)
-        except Exception as e:
-            return f"답변 생성 실패: {e}"
-        if not r.get("answer"):
-            log_exchange_safe(q, None, channel="telegram", conversation_id=thread_id, chat_id=chat_id)
-            return "관련 수집 문서가 없어 답할 수 없습니다."
-        parts = [r["answer"][:2500]]
-        if r.get("gaps"):
-            parts.append("\n⚠ " + " / ".join(g["note"][:60] for g in r["gaps"][:2]))
-        parts.append(f"\n(출처 {len(r.get('citations', []))}건 · AI 종합 — 검증 필요)")
-        log_exchange_safe(q, r["answer"], citations=r.get("citations"), gaps=r.get("gaps"),
-                          model=r.get("model"), channel="telegram",
-                          conversation_id=thread_id, chat_id=chat_id)
-        return "\n".join(parts)
+            cid = log_question(q, channel="telegram", conversation_id=thread_id, chat_id=chat_id)
+        except Exception as e:  # noqa: BLE001
+            return f"질문 적재 실패: {str(e)[:100]}"
+        if not chat_id:                               # 단위 테스트 경로 — 동기
+            return _format_rag(generate_answer(cid, q))
+        pending_id = _post(chat_id, "🔎 찾아보는 중… (~30초)")
 
-    log_exchange_safe(q, None, channel="telegram", chat_id=chat_id)
-    return "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
+        def _work():
+            out = _format_rag(generate_answer(cid, q))
+            if pending_id:
+                _replace(chat_id, pending_id, out)
+            else:
+                _send(chat_id, out)
+
+        threading.Thread(target=_work, daemon=True, name=f"tg-rag-{cid}").start()
+        return ""
+
+    out = "찾지 못했습니다. 종목명(예: 삼성전자) 또는 문장형 질문을 보내주세요. 사용법은 /help"
+    log_exchange_safe(q, out, channel="telegram", chat_id=chat_id)
+    return out
+
+
+def _format_rag(r: dict) -> str:
+    """generate_answer 결과 → 텔레그램 본문."""
+    if r.get("error"):
+        return r["error"]
+    if not r.get("answer"):
+        return "관련 수집 문서가 없어 답할 수 없습니다."
+    parts = [r["answer"][:2500]]
+    if r.get("gaps"):
+        parts.append("\n⚠ " + " / ".join(g["note"][:60] for g in r["gaps"][:2]))
+    parts.append(f"\n(출처 {len(r.get('citations', []))}건 · AI 종합 — 검증 필요)")
+    return "\n".join(parts)
 
 
 def _answer_callback(cq_id: str, text: str = ""):
@@ -400,10 +397,8 @@ def _poll_loop():
                 text = msg.get("text", "")
                 if not text:
                     continue
-                # 긴 질문은 시간이 걸림 — 선응답. 단 명령·딥링크(`/start y_11733`)는
-                # 핸들러가 자체 선응답을 주므로 중복 안내를 보내지 않는다 (D-109)
-                if len(text) >= 15 and not text.startswith("/"):
-                    _send(sender, "🔎 찾아보는 중…")
+                # 오래 걸리는 경로(RAG·딥링크 액션)는 핸들러가 자체 로딩 말풍선을 띄우고
+                # ""를 돌려준다 — 여기서는 즉답 문구만 보낸다 (_send는 빈 문자열을 무시)
                 _send(sender, handle_message(text, chat_id=sender))
         except Exception:
             time.sleep(10)

@@ -1,0 +1,262 @@
+{
+  "_doc": "대화 평가셋 v1 (docs/specs/chat-agent.md §7). 실제 질문 로그 13건 + 멀티턴·조회 보강 13건. expect: answer|refuse|command. route_hint 첫 도구명이 라우팅 규칙 판정의 기대 도구. thread=앞 문항의 문답을 맥락으로 이어감.",
+  "items": [
+    {
+      "id": "Q01",
+      "type": "synthesis",
+      "source": "real",
+      "question": "메모리 반도체 사이클에 대한 시장 시각은?",
+      "expect": "answer",
+      "route_hint": "search_docs + get_narrative(메모리) + get_knowledge",
+      "must_include": []
+    },
+    {
+      "id": "Q02",
+      "type": "followup",
+      "source": "real",
+      "thread": "Q01",
+      "question": "방금 답변에서 투자자 입장에서 가장 중요한 부분이 뭐라고 생각해?",
+      "expect": "answer",
+      "route_hint": "thread history 기반, 재검색 최소",
+      "must_include": []
+    },
+    {
+      "id": "Q03",
+      "type": "followup",
+      "source": "real",
+      "thread": "Q01",
+      "question": "최근 주가 조정이 있었나?",
+      "expect": "answer",
+      "route_hint": "thread에서 종목 해석 + get_quote/prices",
+      "must_include": []
+    },
+    {
+      "id": "Q04",
+      "type": "synthesis",
+      "source": "real",
+      "question": "하이닉스 ADR(SKHY) 상장 후 현황을 알려주고, 이게 코스피에 상장된 하이닉스 주가에 미칠 영향을 분석해줘.",
+      "expect": "answer",
+      "route_hint": "search_docs + get_worldmodel(SK하이닉스) + get_quote + get_questions",
+      "must_include": []
+    },
+    {
+      "id": "Q05",
+      "type": "followup",
+      "source": "added",
+      "thread": "Q04",
+      "question": "그럼 마이크론은 어때? 같은 관점에서 봐줘",
+      "expect": "answer",
+      "route_hint": "search_docs(entity=마이크론) + get_worldmodel(마이크론) — 스레드 엔티티 전환 후속",
+      "must_include": []
+    },
+    {
+      "id": "Q06",
+      "type": "followup",
+      "source": "added",
+      "thread": "Q04",
+      "question": "방금 답변에서 첫 번째로 인용한 문서 내용을 더 자세히 알려줘",
+      "expect": "answer",
+      "route_hint": "open_doc(이전 답변 인용 [1]의 doc_id)",
+      "must_include": []
+    },
+    {
+      "id": "Q07",
+      "type": "followup",
+      "source": "added",
+      "thread": "Q09",
+      "question": "이게 지금 코스피 전체 국면과는 어떻게 연결돼?",
+      "expect": "answer",
+      "route_hint": "get_regime + 스레드 맥락(하이닉스 급락)",
+      "must_include": []
+    },
+    {
+      "id": "Q08",
+      "type": "lookup",
+      "source": "added",
+      "question": "SK하이닉스 관련해서 최근 신호 뜬 거 있어? 언급 급증이나 신고가 같은 거",
+      "expect": "answer",
+      "route_hint": "list_recent(signals, entity=SK하이닉스)",
+      "must_include": []
+    },
+    {
+      "id": "Q09",
+      "type": "event",
+      "source": "real",
+      "question": "하이닉스 오늘 코스피에서 엄청 빠지는 이유 뭐야? 지난주 금요일에 미국 ADR 상장했을 때는 엄청 올랐잖아.",
+      "expect": "answer",
+      "route_hint": "get_quote + search_docs(since=3d) + list_recent(signals) + get_narrative",
+      "must_include": []
+    },
+    {
+      "id": "Q10",
+      "type": "lookup",
+      "source": "real",
+      "question": "애플과 관련된 주요 내용을 알려줘.",
+      "expect": "answer",
+      "route_hint": "search_docs(entity=애플) + list_recent(digests)",
+      "must_include": []
+    },
+    {
+      "id": "Q11",
+      "type": "synthesis",
+      "source": "real",
+      "question": "최근 애플과 마이크론 사이에 불화가 있었어. 메모리 가격이 너무 올랐다는 게 그 원인인데, 이와 관련해서 서로 불편한 말들이 오갔지. 사실상 최대 부품 수요자이자 고객인 애플과의 관계 악화가 마이크론에 어떤 영향을 줄까?",
+      "expect": "answer",
+      "route_hint": "search_docs + get_worldmodel(마이크론) — 사용자 주장은 문서로 확인 안 되면 unsupported 갭",
+      "must_include": []
+    },
+    {
+      "id": "Q12",
+      "type": "person",
+      "source": "real",
+      "question": "다리오 아모데이와 샘 알트먼은 살짝 불편한 관계 같은데, 짐작가는 것 있어?",
+      "expect": "answer",
+      "route_hint": "search_docs(source=canon|people)",
+      "must_include": []
+    },
+    {
+      "id": "Q13",
+      "type": "person",
+      "source": "real",
+      "question": "다리오 아모데이와 샘 알트먼은 개인적 서사가 있고, 그게 앤트로픽과 오픈AI의 가치관과 행보를 이해하는데 도움이 될 것 같은데.. 짐작가는 것 있어?",
+      "expect": "answer",
+      "route_hint": "search_docs(source=canon|people)",
+      "must_include": []
+    },
+    {
+      "id": "Q14",
+      "type": "lookup",
+      "source": "real",
+      "question": "최근 업데이트된 내러티브",
+      "expect": "answer",
+      "route_hint": "list_recent(narratives) — 문서 검색 아님",
+      "must_include": []
+    },
+    {
+      "id": "Q15",
+      "type": "lookup",
+      "source": "real",
+      "question": "\"태린이 아빠\" 유튜브의 컨텐츠 목록을 최근순으로 알려줘.",
+      "expect": "answer",
+      "route_hint": "list_recent(youtube, channel=태린이 아빠) — 문서 검색 아님",
+      "must_include": []
+    },
+    {
+      "id": "Q16",
+      "type": "lookup",
+      "source": "real",
+      "question": "최근 유튜브 업데이트 있어? 삼성증권 텍톡",
+      "expect": "answer",
+      "route_hint": "list_recent(youtube, channel=삼성증권)",
+      "must_include": []
+    },
+    {
+      "id": "Q17",
+      "type": "lookup",
+      "source": "real",
+      "question": "이종욱 위원 유튜브 영상",
+      "expect": "answer",
+      "route_hint": "search_docs(source=youtube, q=이종욱)",
+      "must_include": []
+    },
+    {
+      "id": "Q18",
+      "type": "command",
+      "source": "added",
+      "question": "시나리오: 미국이 한국산 반도체에 25% 관세를 부과한다",
+      "expect": "command",
+      "route_hint": "scenario 엔진 (기존)",
+      "must_include": []
+    },
+    {
+      "id": "Q19",
+      "type": "lookup",
+      "source": "added",
+      "question": "SK하이닉스 지금 주가랑 오늘 등락 알려줘",
+      "expect": "answer",
+      "route_hint": "get_quote — LLM 종합 최소",
+      "must_include": []
+    },
+    {
+      "id": "Q20",
+      "type": "lookup",
+      "source": "added",
+      "question": "삼성전자 관련 미결 핵심질문 뭐가 있어?",
+      "expect": "answer",
+      "route_hint": "get_questions(entity=삼성전자)",
+      "must_include": []
+    },
+    {
+      "id": "Q21",
+      "type": "lookup",
+      "source": "added",
+      "question": "반도체 관련해서 지식으로 승격된 전제들 정리해줘",
+      "expect": "answer",
+      "route_hint": "get_knowledge(반도체) — 층위(사건/구조) 구분 표기",
+      "must_include": []
+    },
+    {
+      "id": "Q22",
+      "type": "lookup",
+      "source": "added",
+      "question": "지금 시장 국면 어때? 리스크 포스처 기준으로",
+      "expect": "answer",
+      "route_hint": "get_regime + get_macro",
+      "must_include": []
+    },
+    {
+      "id": "Q23",
+      "type": "lookup",
+      "source": "added",
+      "question": "삼성전자 가치 렌즈 판독 결과 알려줘",
+      "expect": "answer",
+      "route_hint": "get_lens(005930, value)",
+      "must_include": []
+    },
+    {
+      "id": "Q24",
+      "type": "refuse",
+      "source": "added",
+      "question": "내일 코스피 오를까?",
+      "expect": "refuse",
+      "route_hint": "예측 요구 — 근거 문서로 답할 수 없음을 말하고 국면·신호로 대체 제안",
+      "must_include": []
+    },
+    {
+      "id": "Q25",
+      "type": "refuse",
+      "source": "added",
+      "question": "테슬라 3분기 실적 발표 내용 정리해줘",
+      "expect": "refuse",
+      "route_hint": "수집 문서 없으면 missing 갭 — 지어내지 않음",
+      "must_include": []
+    },
+    {
+      "id": "Q26",
+      "type": "lookup",
+      "source": "added",
+      "question": "어젯밤 미국장 브리핑 요약해줘",
+      "expect": "answer",
+      "route_hint": "get_us_briefing(latest) — LLM 0 반출 후 요약",
+      "must_include": []
+    },
+    {
+      "id": "Q27",
+      "type": "lookup",
+      "source": "real",
+      "question": "오늘 나온 주요 이슈들 알려줘.",
+      "expect": "answer",
+      "route_hint": "list_recent(docs, days=1) + list_recent(signals) — 유입 문서 시간순이 1순위",
+      "must_include": []
+    },
+    {
+      "id": "Q28",
+      "type": "event",
+      "source": "real",
+      "question": "하이닉스 이번주 주가 추이를 알려주고 그 이유를 알려줘.",
+      "expect": "answer",
+      "route_hint": "get_price_history(SK하이닉스, 7) + get_quote + list_recent(docs, entity, 7) + search_docs(entity, since 7)",
+      "must_include": []
+    }
+  ]
+}

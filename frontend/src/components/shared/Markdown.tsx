@@ -1,4 +1,4 @@
-import ReactMarkdown from "react-markdown"
+import ReactMarkdown, { type Components } from "react-markdown"
 import remarkBreaks from "remark-breaks"
 import { cn } from "@/lib/utils"
 
@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils"
  * 가독성 표준. 문단 간격·소제목 크기·불릿 마커를 일관되게 준다.
  * (기존엔 컴포넌트마다 인라인 [&_h3]:… 를 제각각 달아 문단이 뭉쳐 보였다.)
  */
-export function Markdown({ children, className }: { children: string; className?: string }) {
+/** components: 특정 요소 렌더 교체 (예: 대화 인용 칩 — chat/citations.tsx). 기본은 ReactMarkdown 그대로. */
+export function Markdown({ children, className, components }: { children: string; className?: string; components?: Components }) {
   return (
     <div className={cn(
       "text-sm leading-relaxed break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
@@ -22,7 +23,7 @@ export function Markdown({ children, className }: { children: string; className?
       "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
       className,
     )}>
-      <ReactMarkdown remarkPlugins={[remarkBreaks]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkBreaks]} components={components}>{children}</ReactMarkdown>
     </div>
   )
 }

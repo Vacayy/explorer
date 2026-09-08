@@ -91,7 +91,7 @@ charts/  lightweight-charts 래퍼
 | 모달 확인 | `ui/alert-dialog` — native `confirm()` 금지 |
 | 진행률 | `ui/progress` — 수제 width 바 금지 |
 | 오버레이 드로어 | `ui/sheet` |
-| 강조 카드 (AI/hypothesis·primary) | **배경 틴트로 강조**: `bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]` (AI) / `var(--primary)` (홈 브리핑). 좌측 보더(`border-l-*`) 강조는 변칙 — 금지. 예외: 리스트 선택 마커·인용 들여쓰기·다이어그램 헤더는 보더 유지 (D-018) |
+| 강조 카드 (AI/hypothesis·primary) | **배경 틴트로 강조**: `bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]` (AI) / `var(--primary)` (홈 브리핑). 좌측 보더(`border-l-*`) 강조는 변칙 — 금지. 예외: 리스트 선택 마커·인용 들여쓰기·다이어그램 헤더는 보더 유지 (D-018). **/chat 어시스턴트 본문은 말풍선·틴트 없이 풀폭 텍스트 — LLM 산출 마커는 `text-hypothesis` 라벨 행으로**(D-135, docs/specs/chat-page.md §4) |
 | 빈/로딩/에러 | shared/Skeleton · shared/ErrorState (5-state 정책) |
 
 ### 허용된 예외 (grandfathered — 신규 작성 금지, 점진 이관)

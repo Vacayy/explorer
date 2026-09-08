@@ -80,8 +80,8 @@ def recall_for_entity(conn, entity_id: int, limit: int = 5) -> list[dict]:
     return [k for _, k in scored[:limit]]
 
 
-def recall_for_query(conn, query: str, limit: int = 4) -> list[dict]:
-    """RAG용 — 질문과 의미 유사한 지식, relevance×activation×epistemic 순."""
+def recall_for_query(conn, query: str, limit: int = 4, min_sim: float = MIN_QUERY_SIM) -> list[dict]:
+    """RAG용 — 질문과 의미 유사한 지식, relevance×activation×epistemic 순. min_sim으로 문턱 조절(도구 폴백용)."""
     items = _load_active(conn)
     if not items:
         return []
@@ -90,7 +90,7 @@ def recall_for_query(conn, query: str, limit: int = 4) -> list[dict]:
     scored = []
     for item, e in zip(items, embs[1:]):
         sim = _cosine(q, e)
-        if sim < MIN_QUERY_SIM:
+        if sim < min_sim:
             continue
         item["relevance"] = sim
         scored.append((_score(item, sim), item))

@@ -1,252 +1,180 @@
-import { useEffect, useRef, useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
-import { Markdown } from "@/components/shared/Markdown"
-import { AlertTriangle, MessageCircleQuestion, Plus, Send, Sparkles } from "lucide-react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { askQuestion, conversationsQuery, conversationDetailQuery, spineKeys } from "@/api/spine"
-import { addPendingAnswer } from "@/lib/pendingAnswers"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
+import { ArrowDown, PanelLeft, Send, SquarePen } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatRelativeTime } from "@/utils/format"
+import { ErrorState } from "@/components/shared/ErrorState"
+import { useChat } from "@/hooks/useChat"
 import { cn } from "@/lib/utils"
+import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
+import { ChatEmpty } from "./ChatEmpty"
+import { Composer } from "./Composer"
+import { ThreadRail } from "./ThreadRail"
+import { UserMessage } from "./UserMessage"
 
-const GAP_LABEL: Record<string, string> = {
-  unsupported: "근거 부족",
-  contradiction: "모순",
-  stale: "오래된 정보",
-  missing: "빠진 정보",
-}
-
-const EXAMPLES = [
-  "최근 SK하이닉스 관련 주요 이슈를 정리해줘",
-  "메모리 반도체 사이클에 대한 시장 시각은?",
-  "내 가설과 상충하는 최근 언급이 있어?",
-]
+/** 스크롤 컨테이너 하단에서 이 거리 이내면 "바닥" — 자동 스크롤 허용 */
+const BOTTOM_PX = 80
 
 /**
  * /chat — 대화 (P2-2, product-v3.md §2). 세 번째 프리미티브: 판단 인터페이스.
- * 좌측 스레드 리스트(웹·텔레그램 공용 풀) + 우측 활성 스레드 + 이어서 질문.
- * 후속질문은 이전 문답을 맥락으로 전달 (근거는 여전히 수집 문서만 — 에코챔버 방지).
- * URL ?id= 가 활성 스레드의 단일 상태 소스.
+ * 화면 스펙: docs/specs/chat-page.md (D-135) — 좌측 스레드 레일(접힘·모바일 Sheet) + 중앙 768px 읽기 컬럼 + 하단 고정 컴포저.
+ * URL ?id= 가 활성 스레드의 단일 상태 소스, ?q= 는 옴니바 프리필. 데이터·진행 규약은 hooks/useChat.ts.
  */
 export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeId = searchParams.get("id") ? Number(searchParams.get("id")) : null
   const [question, setQuestion] = useState(searchParams.get("q") ?? "")
-  const qc = useQueryClient()
+  const [railOpen, setRailOpen] = useState(true)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
-  const { data: threads = [], isLoading: threadsLoading } = useQuery(conversationsQuery())
-  // 진행 중 상태도 서버 상태: 마지막 메시지가 user = 답변 생성 중 → 폴링.
-  // 탭 이동·새로고침·기기 전환에도 유실 없음 (질문은 서버에 즉시 적재됨)
-  const detail = useQuery({
-    ...conversationDetailQuery(activeId ?? 0, !!activeId),
-    refetchInterval: (query) => {
-      const msgs = query.state.data?.messages
-      return msgs && msgs.length > 0 && msgs[msgs.length - 1].role === "user" ? 2500 : false
-    },
-  })
-  const msgs = detail.data?.messages
-  const awaiting = !!msgs && msgs.length > 0 && msgs[msgs.length - 1].role === "user"
+  const openThread = useCallback((id: number) => {
+    setSearchParams({ id: String(id) })
+    setSheetOpen(false)
+  }, [setSearchParams])
+  const newThread = () => { setSearchParams({}); setQuestion(""); setSheetOpen(false) }
 
-  const ask = useMutation({
-    mutationFn: askQuestion,   // 서버가 질문을 즉시 적재하고 conversation_id 반환 (답변은 백그라운드)
-    onSuccess: (d) => {
-      setQuestion("")
-      qc.invalidateQueries({ queryKey: spineKeys.conversations() })
-      if (d.conversation_id) {
-        addPendingAnswer(d.conversation_id)   // 다른 화면으로 가도 '답변 도착' 알림
-        qc.invalidateQueries({ queryKey: spineKeys.conversation(d.conversation_id) })
-        if (d.conversation_id !== activeId) setSearchParams({ id: String(d.conversation_id) })
-      }
-    },
-  })
+  const chat = useChat(activeId, openThread)
+  const { detail, messages, awaiting, stalled, draft, ask } = chat
+  const busy = ask.isPending || awaiting
 
   const submit = () => {
     const q = question.trim()
-    if (!q || ask.isPending || awaiting) return
-    ask.mutate({ question: q, conversation_id: activeId ?? undefined })
+    if (!q || busy) return
+    ask.mutate({ question: q, conversation_id: activeId ?? undefined }, { onSuccess: () => setQuestion("") })
+    stickRef.current = true
   }
 
-  // 새 답변 도착 시 스크롤 하단으로
-  const bottomRef = useRef<HTMLDivElement>(null)
+  // ── 스크롤 규칙: 바닥일 때만 따라간다. 위로 올라가 읽는 중이면 끌어내리지 않고 "최신으로" 버튼을 보인다.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const stickRef = useRef(true)
+  const [atBottom, setAtBottom] = useState(true)
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_PX
+    stickRef.current = near
+    setAtBottom(near)
+  }
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    const el = scrollRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior })
+    stickRef.current = true
+  }
+  useLayoutEffect(() => { scrollToBottom("instant") }, [activeId])   // 스레드 전환 = 무조건 바닥
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [detail.data?.messages.length, ask.isPending, awaiting])
+    if (stickRef.current) scrollToBottom()
+  }, [messages.length, ask.isPending, awaiting, draft?.text.length])
+
+  const thread = detail.data
+  const composerPlaceholder = activeId ? "이어서 질문… (이전 문답이 맥락으로 전달됩니다)" : "무엇이든 물어보세요"
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4 h-[calc(100dvh-var(--shell-offset))]">
-      {/* 스레드 리스트 */}
-      <aside className="border rounded-xl overflow-y-auto">
-        <div className="flex items-center justify-between px-3 py-2 border-b sticky top-0 bg-card">
-          <h2 className="text-xs font-semibold">대화</h2>
-          <Button variant="ghost" size="icon-xs" title="새 대화"
-            onClick={() => { setSearchParams({}); setQuestion("") }}>
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
+    <div className="flex h-[calc(100dvh-var(--shell-offset))] gap-4">
+      {/* 스레드 레일 — lg 이상 인라인(접힘 가능) */}
+      <aside className={cn(
+        "hidden shrink-0 overflow-hidden rounded-xl bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:block",
+        railOpen ? "w-[260px]" : "w-0",
+      )}>
+        <div className="w-[260px] h-full">
+          <ThreadRail threads={chat.threads} loading={chat.threadsLoading} error={chat.threadsError}
+            activeId={activeId} onSelect={openThread} onNew={newThread} />
         </div>
-        {threadsLoading && <div className="p-3 space-y-2">
-          <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" />
-        </div>}
-        {!threadsLoading && threads.length === 0 && (
-          <p className="p-3 text-[11px] text-muted-foreground">
-            아직 대화가 없습니다. 오른쪽에서 첫 질문을 해보세요 — 텔레그램 봇 문답도 여기 쌓입니다.
-          </p>
-        )}
-        {threads.map((t) => (
-          <Button
-            key={t.id}
-            variant="ghost"
-            onClick={() => setSearchParams({ id: String(t.id) })}
-            className={cn(
-              "block h-auto w-full font-normal whitespace-normal rounded-none text-left px-3 py-2 border-0 border-l-[3px] transition-colors",
-              t.id === activeId ? "bg-accent border-l-primary hover:bg-accent" : "border-l-transparent hover:bg-muted/50"
-            )}
-          >
-            <div className="flex items-center gap-1.5">
-              {t.channel === "telegram"
-                ? <Send className="h-3 w-3 text-muted-foreground shrink-0" />
-                : <MessageCircleQuestion className="h-3 w-3 text-muted-foreground shrink-0" />}
-              <span className="text-xs truncate">{t.title || "(제목 없음)"}</span>
-            </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
-              {t.message_count}개 · {formatRelativeTime(t.updated_at)}
-            </div>
-          </Button>
-        ))}
       </aside>
+      {/* 모바일·태블릿 — Sheet */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent side="left" className="w-[300px] p-0 sm:max-w-[300px]">
+          <SheetTitle className="sr-only">대화 목록</SheetTitle>
+          <ThreadRail threads={chat.threads} loading={chat.threadsLoading} error={chat.threadsError}
+            activeId={activeId} onSelect={openThread} onNew={newThread} />
+        </SheetContent>
+      </Sheet>
 
-      {/* 활성 스레드 + 컴포저 */}
-      <section className="flex flex-col min-w-0">
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-          {!activeId && !ask.isPending && (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
-              <Sparkles className="h-6 w-6 text-hypothesis" />
-              <div>
-                <p className="text-sm font-medium">수집된 문서를 근거로 답합니다</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  근거 없는 내용은 답하지 않고, 갭(근거 부족·모순·오래된 정보)을 함께 표시합니다.<br />
-                  질문·후속질문은 스레드로 쌓여 종목 도시에의 "내가 물어본 것들"에 연결됩니다.<br />
-                  <span className="text-hypothesis">"기억해: …"</span>로 시작하면 내 지식으로 저장됩니다 (사실은 "기억해(사실): …").
-                </p>
-              </div>
-              <div className="flex gap-1.5 flex-wrap justify-center">
-                {EXAMPLES.map((ex) => (
-                  <Button key={ex} variant="ghost" size="sm" onClick={() => setQuestion(ex)}
-                    className="h-auto font-normal text-[11px] text-muted-foreground hover:text-foreground hover:bg-transparent border border-border rounded-full px-2.5 py-1">
-                    {ex}
-                  </Button>
-                ))}
-              </div>
-            </div>
+      {/* 중앙 */}
+      <section className="flex min-w-0 flex-1 flex-col">
+        {/* 헤더 — 슬림 1줄 */}
+        <header className="flex h-9 items-center gap-2">
+          <Button variant="ghost" size="icon-sm" aria-label="대화 목록" className="lg:hidden" onClick={() => setSheetOpen(true)}>
+            <PanelLeft className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label={railOpen ? "목록 접기" : "목록 펼치기"} className="hidden lg:inline-flex"
+            onClick={() => setRailOpen((v) => !v)}>
+            <PanelLeft className="size-4" />
+          </Button>
+          {thread && (
+            <>
+              <h2 className="min-w-0 truncate text-sm font-medium">{thread.title || "(제목 없음)"}</h2>
+              {thread.channel === "telegram" && (
+                <Badge variant="outline" className="shrink-0 gap-1 text-[10px] font-normal"><Send className="size-2.5" /> 텔레그램</Badge>
+              )}
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{messages.length}개</span>
+              <Button variant="ghost" size="icon-sm" aria-label="새 대화" className="ml-auto lg:hidden" onClick={newThread}>
+                <SquarePen className="size-4" />
+              </Button>
+            </>
           )}
+        </header>
 
-          {activeId && detail.isLoading && (
-            <div className="space-y-3 pt-2">
-              <Skeleton className="h-10 w-2/3 ml-auto" />
-              <Skeleton className="h-24 w-5/6" />
-            </div>
-          )}
-
-          {detail.data?.messages.map((m) =>
-            m.role === "user" ? (
-              <div key={m.id} className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-3.5 py-2 text-sm whitespace-pre-wrap">
-                  {m.content}
-                </div>
-              </div>
-            ) : (
-              <AssistantMessage key={m.id} content={m.content} citations={m.citations}
-                gaps={m.gaps} model={m.model} />
-            )
-          )}
-
-          {/* 제출 직후 찰나 (서버 적재 전) — 낙관적 말풍선 */}
-          {ask.isPending && (
-            <div className="flex justify-end">
-              <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-3.5 py-2 text-sm opacity-70">
-                {ask.variables?.question}
-              </div>
-            </div>
-          )}
-          {/* 답변 생성 중 — 서버 상태(마지막 메시지=user) 기반: 탭 이동·새로고침에도 유지 */}
-          {(awaiting || ask.isPending) && (
-            <div className="rounded-2xl border px-3.5 py-3 max-w-[85%] space-y-2">
-              <Skeleton className="h-3.5 w-3/4" />
-              <Skeleton className="h-3.5 w-full" />
-              <p className="text-[11px] text-muted-foreground">검색 → 근거 취합 → 종합 생성 중… (~30초, 다른 화면에 다녀와도 계속됩니다)</p>
-            </div>
-          )}
-          {ask.isError && (
-            <p className="text-xs text-destructive">답변 생성에 실패했습니다. 다시 시도해주세요.</p>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        {/* 컴포저 */}
-        <div className="pt-3 space-y-1.5">
-          <Textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() } }}
-            placeholder={activeId ? "이어서 질문… (이전 문답이 맥락으로 전달됩니다)" : "질문하기… (Enter 전송, Shift+Enter 줄바꿈)"}
-            rows={2}
-            className="resize-none"
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground">
-              답변은 AI 종합 — 검증 필요 · 텔레그램 봇 문답도 이 스레드 풀에 쌓입니다
-            </span>
-            <Button size="sm" onClick={submit} disabled={ask.isPending || awaiting || !question.trim()}>
-              <Sparkles className="h-3.5 w-3.5" /> {awaiting ? "답변 생성 중…" : activeId ? "이어서 질문" : "질문"}
-            </Button>
+        {!activeId && !ask.isPending ? (
+          /* Empty — 인사 + 중앙 컴포저 + 제안 카드 */
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ChatEmpty onPick={setQuestion}>
+              <Composer value={question} onChange={setQuestion} onSubmit={submit} busy={busy}
+                placeholder={composerPlaceholder} autoFocus />
+              {ask.isError && <p className="pt-2 text-center text-xs text-destructive">질문을 보내지 못했습니다. 다시 시도해주세요.</p>}
+            </ChatEmpty>
           </div>
-        </div>
-      </section>
-    </div>
-  )
-}
+        ) : (
+          <>
+            {/* 메시지 스트림 */}
+            <div ref={scrollRef} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto w-full max-w-[768px] space-y-8 px-1 pt-3 pb-6">
+                {detail.isLoading && (
+                  <>
+                    <Skeleton className="ml-auto h-11 w-1/2 rounded-2xl" />
+                    <div className="space-y-2.5">
+                      <Skeleton className="h-3.5 w-32" />
+                      <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-11/12" /><Skeleton className="h-4 w-3/4" />
+                    </div>
+                  </>
+                )}
+                {detail.isError && (
+                  <ErrorState message="대화를 불러올 수 없습니다." onRetry={() => detail.refetch()} />
+                )}
+                {messages.map((m) =>
+                  m.role === "user"
+                    ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
+                    : <AssistantMessage key={m.id} m={m} />
+                )}
+                {/* 제출 직후 찰나(서버 적재 전) — 낙관적 표시 */}
+                {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} pending />}
+                {(awaiting || ask.isPending) && <StreamingMessage draft={draft} />}
+                {stalled && (
+                  <p className="rounded-xl border border-destructive/30 px-4 py-3 text-[13px] text-destructive">
+                    답변 생성이 멈춘 것 같습니다 (5분 초과). 서버 상태를 확인하고 다시 질문해주세요.
+                  </p>
+                )}
+              </div>
+            </div>
 
-function AssistantMessage({ content, citations, gaps, model }: {
-  content: string
-  citations: { n: number; doc_id: number; title: string }[] | null
-  gaps: { type: string; note: string }[] | null
-  model: string | null
-}) {
-  return (
-    <div className="max-w-[85%] space-y-1.5">
-      <div className="rounded-2xl rounded-bl-sm bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] px-3.5 py-2.5">
-        <Markdown>{content}</Markdown>
-        {model && (
-          <div className="text-right pt-1">
-            <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
-              AI 종합 · {model}
-            </Badge>
-          </div>
+            {/* 컴포저 — 하단 고정 */}
+            <div className="relative mx-auto w-full max-w-[768px] pt-2">
+              {!atBottom && messages.length > 0 && (
+                <Button variant="outline" size="icon-sm" aria-label="최신으로"
+                  className="absolute -top-9 left-1/2 -translate-x-1/2 rounded-full shadow-md"
+                  onClick={() => scrollToBottom()}>
+                  <ArrowDown className="size-4" />
+                </Button>
+              )}
+              {ask.isError && <p className="pb-1.5 text-xs text-destructive">질문을 보내지 못했습니다. 입력은 보존되어 있으니 다시 시도해주세요.</p>}
+              <Composer value={question} onChange={setQuestion} onSubmit={submit} busy={busy}
+                placeholder={composerPlaceholder}
+                hint={awaiting ? "답변을 생성하는 동안에는 이어서 질문할 수 없습니다" : undefined} />
+            </div>
+          </>
         )}
-      </div>
-      {gaps && gaps.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pl-1">
-          {gaps.map((g, i) => (
-            <span key={i} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-              <AlertTriangle className="h-3 w-3 text-hypothesis" />
-              <Badge variant="secondary" className="text-[9px]">{GAP_LABEL[g.type] ?? g.type}</Badge>
-              {g.note}
-            </span>
-          ))}
-        </div>
-      )}
-      {citations && citations.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pl-1">
-          {citations.map((c) => (
-            <Link key={c.n} to={`/doc/${c.doc_id}`}
-              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary border rounded-full px-2 py-0.5">
-              <span className="max-w-[200px] truncate">[{c.n}] {c.title}</span>
-            </Link>
-          ))}
-        </div>
-      )}
+      </section>
     </div>
   )
 }

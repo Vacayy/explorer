@@ -22,6 +22,8 @@ frontend/.vite/
 .DS_Store
 
 # Cache
+# claude -p 격리 실행 cwd (pipeline/llm.py) — CLAUDE.md·훅 없는 빈 폴더
+.claude-runtime/
 docs_cache/
 backend/docs_cache/
 *.pkl
@@ -34,3 +36,6 @@ scripts/universe.local.json
 
 # 개인 참고자료 (IR 자료·리포트 등)
 docs/references/
+
+# 대화 평가 run 산출물 — 수집 문서 발췌·답변이 담겨 축적물 취급 (D-129: git은 로직만). 로컬 채점용
+docs/specs/chat-eval-runs/

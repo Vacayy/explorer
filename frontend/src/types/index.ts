@@ -311,6 +311,22 @@ export interface ConversationItem {
   updated_at: string;
 }
 
+/** 답변 경로 — 라우팅·도구 로그 (D-131, chat_messages.route_json). "왜 이 답이 나왔나" 1클릭. */
+export interface ChatRoute {
+  intent: string | null;
+  standalone_question: string | null;
+  entities: { name: string; kind?: string }[] | null;
+  lens: string | null;
+  answer_style: string | null;
+  tools: { name: string; args?: Record<string, unknown>; n?: number; note?: string | null; ms?: number; error?: string }[];
+  evidence_n: number;
+  timings_ms: { route?: number; review?: number; synth?: number };
+  model: string | null;
+  steps?: string[] | null;                                   // 과정 자연어 서술 (코드 생성, D-134)
+  process?: string[] | null;                                 // 종합 모델의 판단 메모 (META.process)
+  review?: { enough: boolean; reason?: string; added?: string[]; skipped?: boolean } | null;
+}
+
 export interface ConversationDetail {
   id: number;
   title: string | null;
@@ -319,12 +335,14 @@ export interface ConversationDetail {
     id: number;
     role: string;
     content: string;
-    citations: { n: number; doc_id: number; title: string }[] | null;
+    citations: { n: number; doc_id: number | null; title: string; href?: string | null; kind?: string }[] | null;
     gaps: { type: string; note: string }[] | null;
     model: string | null;
+    route?: ChatRoute | null;
     created_at: string;
   }[];
 }
+export type ChatMessage = ConversationDetail["messages"][number];
 
 // 소스 도시에 (docs/specs/source-dossier.md)
 export interface DossierSummary {
@@ -448,13 +466,14 @@ export interface HomeResponse {
   as_of: string;
 }
 
+/** 근거 인용 — 문서뿐 아니라 내러티브·인과 엣지·시세 등 시스템 산출물도 근거(D-131). 링크는 href 우선. */
 export interface AskCitation {
   n: number;
-  doc_id: number;
+  kind: string;                 // doc | narrative | edges | knowledge | question | lens | quote | regime | briefing …
+  doc_id: number | null;
   title: string;
-  url: string;
-  source_type: string;
-  published_at: string;
+  href: string | null;
+  published_at: string | null;
 }
 
 export interface AskGap {
