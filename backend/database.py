@@ -863,6 +863,19 @@ def init_db():
         INSERT INTO doc_fts(rowid, title, markdown) VALUES (new.id, new.title, new.markdown);
     END;
 
+    -- 청크 인덱스 (D-132, pipeline/chunks.py) — 대화 근거 전용. 문단 경계 청킹 + 문맥 접두어(제목·요약, LLM 0).
+    -- 트리거 없음: 청킹은 코드라 빌드(build_search_index)가 content_hash로 변경분만 재생성한다. chunk_vec는 sqlite-vec.
+    CREATE TABLE IF NOT EXISTS doc_chunks (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        doc_id       INTEGER NOT NULL REFERENCES raw_documents(id) ON DELETE CASCADE,
+        idx          INTEGER NOT NULL,
+        text         TEXT NOT NULL,
+        prefix       TEXT,                 -- "[소스·날짜] 제목 — 요약"
+        content_hash TEXT                  -- 원문 해시 (변경 감지·멱등)
+    );
+    CREATE INDEX IF NOT EXISTS idx_doc_chunks_doc ON doc_chunks(doc_id, idx);
+    CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(prefix, text);
+
     -- 살아있는 모델: 파라미터화된 계산 스펙 (엑셀 continuity).
     CREATE TABLE IF NOT EXISTS models (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -917,6 +930,26 @@ def init_db():
         ran_at      TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_job_runs ON job_runs(id);
+
+    -- LLM 호출 원장 (D-130, pipeline/llm.py) — 콜당 usage·cost·소요. 비용 결정은 유추 말고 실측(D-117).
+    CREATE TABLE IF NOT EXISTS llm_calls (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        job                 TEXT,             -- chat.answer | … (호출부 라벨)
+        model               TEXT,             -- haiku | sonnet | opus (요청 티어)
+        engine              TEXT,             -- claude-code | api
+        effort              TEXT,
+        input_tokens        INTEGER,
+        cache_create_tokens INTEGER,
+        cache_read_tokens   INTEGER,
+        output_tokens       INTEGER,
+        thinking_tokens     INTEGER,
+        cost_usd            REAL,
+        duration_ms         INTEGER,
+        ok                  INTEGER NOT NULL DEFAULT 1,
+        error               TEXT,
+        created_at          TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_llm_calls_job ON llm_calls(job, created_at);
 
     -- 시장 국면 (market regime, D-076, docs/specs/market-regime.md) — 매크로 리스크 포스처.
     -- 일별 스냅샷(EOD): F&G·VIX·S&P·KOSPI·20EMA·VKOSPI/실현변동성. 스파크라인 히스토리 = 축적.
@@ -1097,6 +1130,9 @@ def init_db():
     for migration in [
         "ALTER TABLE raw_documents ADD COLUMN media_json TEXT",
         "ALTER TABLE conversations ADD COLUMN chat_id TEXT",  # 사용자 분리 (텔레그램 chat_id, 웹=NULL=오너)
+        "ALTER TABLE conversations ADD COLUMN summary TEXT",     # 스레드 작업 노트 (컴팩션, D-131)
+        "ALTER TABLE conversations ADD COLUMN state_json TEXT",  # 스레드 상태: 엔티티·마지막 intent·도구·근거 (D-131)
+        "ALTER TABLE chat_messages ADD COLUMN route_json TEXT",  # assistant: 라우팅·도구 로그 (D-131)
         "ALTER TABLE fundamentals ADD COLUMN roe REAL",  # 전종목 밸류 수집 (네이버 시세)
         "ALTER TABLE corporate_actions ADD COLUMN summary TEXT",
         "ALTER TABLE ir_notes ADD COLUMN memo_type TEXT DEFAULT 'general'",
