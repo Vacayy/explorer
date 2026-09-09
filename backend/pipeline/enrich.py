@@ -21,7 +21,12 @@ MAX_DOC_CHARS = 4000  # 토큰 통제 — 태깅에는 앞부분이면 충분
 
 
 def _claude_bin() -> str | None:
-    return os.getenv("CLAUDE_BIN") or shutil.which("claude")
+    """노드 버전이 박힌 nvm 경로(.../v24.15.0/bin/claude)라 노드를 올리면 전 시스템의 LLM 호출이 죽는다.
+    지정 경로가 실제로 없으면 PATH에서 찾아 자가 치유한다 (D-143, chatId=37 첫 질문 실패)."""
+    env = os.getenv("CLAUDE_BIN")
+    if env and os.path.exists(env):
+        return env
+    return shutil.which("claude") or env
 
 
 def llm_engine() -> str | None:
@@ -215,7 +220,7 @@ EFFORT_MECHANICAL = "low"
 
 def _call_claude_code(prompt: str, model: str = "haiku", timeout: int = 180,
                       effort: str | None = None) -> str:
-    argv = [_claude_bin(), "-p", "--model", model, "--output-format", "json"]
+    argv = [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", model, "--output-format", "json"]
     if effort:
         argv += ["--effort", effort]
     argv.append(prompt)

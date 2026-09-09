@@ -98,7 +98,7 @@ def explain_day(stock_code: str, day: str) -> dict:
         )
         try:
             proc = subprocess.run(
-                [_claude_bin(), "-p", "--model", "haiku", "--output-format", "json", prompt],
+                [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", "haiku", "--output-format", "json", prompt],
                 capture_output=True, text=True, timeout=180)
             note = json.loads(proc.stdout).get("result", "").strip()[:400] or None
             status = "ok" if note else "failed"
