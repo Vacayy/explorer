@@ -11,4 +11,11 @@ def run_source(connector: SourceConnector) -> dict:
             r = store_document(doc)
             stats["docs"] += 1
             stats[r["status"]] += 1
+            # 선택적 훅 — 적재된 doc_id를 커넥터가 자기 원장에 되쓴다 (예: scrap_links)
+            hook = getattr(connector, "after_store", None)
+            if hook:
+                try:
+                    hook(doc, r)
+                except Exception:  # noqa: BLE001 — 부가 기록 실패가 수집을 막지 않는다
+                    pass
     return stats

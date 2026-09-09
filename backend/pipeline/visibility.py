@@ -6,6 +6,25 @@ is_active=0 = 뮤트: 내 피드·AI 답변에서 제외 (수집·다이제스�
 """
 
 
+# ── 미검증 소스 (D-142) ───────────────────────────────────────────────────────
+# 내가 고르지 않은, 사실관계가 확인되지 않은 개인 주장. 지금은 링크 스크랩(scrap) 하나.
+# **판정은 여기 한 곳에서만** — 네 경로(인과 추출·내러티브 생성·언급 급증·기본 검색)가 이 집합을 임포트한다.
+# 규율(PHILOSOPHY §1 사실/가설 분리): 미검증 소스는 ①월드모델(엣지·내러티브) 입력에서 제외
+# ②언급 급증 집계에서 제외 ③기본 검색 풀에서 제외(source를 명시할 때만 조회) ④읽히는 자리에는 라벨.
+UNVERIFIED_SOURCES = {"scrap"}
+
+_UNVERIFIED_SQL = ",".join(f"'{s}'" for s in sorted(UNVERIFIED_SOURCES))
+
+
+def unverified_sql(col: str = "rd.source_type") -> str:
+    """월드모델·신호 쿼리에 붙일 WHERE 조각 — 미검증 소스 제외. 파라미터 없음(상수 집합)."""
+    return f"{col} NOT IN ({_UNVERIFIED_SQL})"
+
+
+def is_unverified(source_type: str) -> bool:
+    return source_type in UNVERIFIED_SOURCES
+
+
 def get_muted(conn) -> dict:
     """뮤트된 소스 — {'telegram': set[채널명], 'blog': [url 프리픽스]}."""
     tg = {r["channel_name"] for r in conn.execute(

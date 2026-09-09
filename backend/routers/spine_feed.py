@@ -10,39 +10,9 @@ router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
 
 
 def resolve_channels(conn, rows) -> dict[int, dict | None]:
-    """문서별 출처 채널/블로그 {name, kind, key}. telegram=source_id 프리픽스, blog=url 프리픽스 매칭.
-
-    kind/key는 소스 도시에(/source?kind=&key=) 링크용 — 레지스트리 미등록이면 None.
-    """
-    tg = {r["channel_name"]: (r["display_name"] or r["channel_name"]) for r in
-          conn.execute("SELECT channel_name, display_name FROM telegram_channels")}
-    blogs = [(r["url"], r["blog_name"] or r["url"]) for r in
-             conn.execute("SELECT url, blog_name FROM blog_sources ORDER BY length(url) DESC")]
-    yt = {r["channel_id"]: r["title"] for r in
-          conn.execute("SELECT channel_id, title FROM youtube_channels")}
-    out: dict[int, dict | None] = {}
-    for r in rows:
-        st = r["source_type"]
-        if st == "telegram":
-            ch = (r["source_id"] or "").split("/")[0]
-            out[r["id"]] = {"name": tg.get(ch, ch), "kind": "telegram" if ch in tg else None,
-                            "key": ch if ch in tg else None} if ch else None
-        elif st == "blog":
-            from pipeline.urls import url_belongs
-            url = r["url"] or ""
-            hit = next(((prefix, name) for prefix, name in blogs if url.startswith(prefix)), None)
-            if not hit:  # RSS 직등록 소스(뉴스·뉴스레터) — 도메인 fallback
-                hit = next(((prefix, name) for prefix, name in blogs if url_belongs(url, prefix)), None)
-            out[r["id"]] = {"name": hit[1], "kind": "blog", "key": hit[0]} if hit else None
-        elif st == "youtube":
-            cid = (r["source_id"] or "").split("/")[0] if "/" in (r["source_id"] or "") else None
-            out[r["id"]] = {"name": yt.get(cid), "kind": "youtube", "key": cid} \
-                if cid and cid in yt else {"name": "YouTube", "kind": None, "key": None}
-        elif st == "note":
-            out[r["id"]] = {"name": "내 노트", "kind": None, "key": None}
-        else:
-            out[r["id"]] = None
-    return out
+    """문서별 출처 채널/블로그 {name, kind, key} — 판정은 pipeline/sources.py 한 곳 (D-143)."""
+    from pipeline.sources import source_names
+    return source_names(conn, rows)
 
 
 @router.get("", response_model=FeedResponse)
