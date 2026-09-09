@@ -73,6 +73,7 @@
 1. **메타 행**: hypothesis 색 점(●) + "AI 종합" + 모델 + 상대시각. → LLM 산출=hypothesis 마커 규칙(DESIGN_SYSTEM §2)을 **틴트가 아닌 라벨**로 충족. D-018의 "AI 말풍선 틴트" 적용은 이 화면에서 해제(D-135).
 2. **과정 행**(route 있을 때): Collapsible 트리거 `▸ 답변 경로 · 도구 N · 근거 M · 총 N초`. 펼치면 RoutePanel(steps → process → 요약 메타 → 도구 표, D-134 그대로).
 3. **본문**: shared/Markdown, `text-[15px] leading-7`. **인라인 인용 칩**: 본문 `[n]`·`[n, m]`을 전처리로 `[n](#cite-n)` 링크로 바꾸고 Markdown `components.a`에서 `#cite-` 링크만 칩으로 렌더 — `n` 표기 소형 pill, Tooltip=종류·제목, 클릭=근거 href로 이동(href 없으면 no-op). 유효 번호 밖(citations에 없음)은 텍스트 그대로.
+3-1. **시세 차트 카드**(2026-09-08, 사용자 결정 — TradingView 임베드 대신 lightweight-charts+우리 데이터): 근거에 `prices` 인용이 있으면 본문 아래에 자동으로 붙는다. `chat/PriceChartCard.tsx` — href `/analyze/:code/summary`에서 종목코드, 제목 "최근 N거래일"에서 기간. 종목 1=종가 라인, 2+=첫 거래일 대비 등락률(%) 비교선. 데이터는 `GET /api/stock-prices/{code}/snapshot`(stock_prices 테이블만, 답변이 읽은 것과 같은 16:10 스냅샷 → 표·본문·차트 정합). 헤더에 "16:10 스냅샷 기준"·도시에 링크. 실패·데이터 <2행이면 조용히 숨김. **기각**: TradingView 임베드 위젯 — 외부 데이터라 답변 숫자와 어긋나고, 인용·신호를 얹을 수 없고, iframe이 스레드를 무겁게 함(도시에의 '고급 차트' 토글 후보로만). **후속**: 인용 문서·신호 발생일을 차트 마커로.
 4. **갭 블록**(있을 때): hypothesis 8% 틴트 박스, 항목마다 `⚠ [유형] 메모`. 갭은 이 시스템의 일급 산출(D-004)이라 작게 숨기지 않는다.
 5. **근거 카드 행**: "근거 N건" 라벨 + 카드 `[n] 종류 · 제목`(Link, 종류 라벨 매핑: 문서/내러티브/인과/지식/질문/렌즈/시세/시세 추이/국면/브리핑). 기본 6개, 나머지 "+N" 토글.
 6. **액션 행**(호버, 모바일 상시): 복사(본문 마크다운 원문, toast "복사됨").
@@ -109,7 +110,8 @@ frontend/src/components/chat/
   UserMessage.tsx       사용자 메시지 + 액션
   AssistantMessage.tsx  메타·과정 행·본문(인라인 인용)·갭·근거 카드·액션 + 생성 중 변형
   RoutePanel.tsx        답변 경로 패널 (D-134, 기존 마크업 이관)
-  citations.ts          [n]→링크 전처리 · 종류 라벨 · 인용 칩
+  citations.tsx         [n]→링크 전처리 · 종류 라벨 · 인용 칩
+  PriceChartCard.tsx    prices 인용 → 시세 차트 카드 (종가 / 등락률 비교)
 frontend/src/hooks/useChat.ts   스레드 목록·상세 폴링·SSE 초안·질문 mutation (기존 ChatPage 로직 이관)
 frontend/src/components/shared/Markdown.tsx  `components` prop 추가(인용 칩 주입용)
 frontend/src/types/index.ts     `ChatMessage` 타입 export
