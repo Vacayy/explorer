@@ -23,7 +23,7 @@ interface ApprovalItem {
 }
 
 // 에이전트 제안함 kind (진화계획 3단계 v1, docs/specs/agent-proposals.md)
-const AGENT_KINDS = new Set(["neglect", "contested_edge", "devils_advocate", "falsifier_watch", "vocab_merge", "report_suggest"])
+const AGENT_KINDS = new Set(["neglect", "contested_edge", "devils_advocate", "falsifier_watch", "vocab_merge", "report_suggest", "entity_alias"])
 // kind별 메타 + 카드 표시 순서 (에이전트 제안 먼저, 별칭·지식은 뒤)
 type KindMeta = { label: string; Icon: React.ComponentType<{ className?: string }> }
 const KIND_META: Record<string, KindMeta> = {
@@ -33,11 +33,12 @@ const KIND_META: Record<string, KindMeta> = {
   falsifier_watch: { label: "반증", Icon: Clock },
   vocab_merge: { label: "통합", Icon: GitMerge },
   report_suggest: { label: "리포트", Icon: FileText },
+  entity_alias: { label: "종목 별칭", Icon: Tag },
   research_candidate: { label: "리서치", Icon: FlaskConical },
   alias: { label: "별칭", Icon: Tag },
   knowledge: { label: "지식", Icon: BookOpen },
 }
-const KIND_ORDER = ["report_suggest", "research_candidate", "neglect", "contested_edge", "devils_advocate", "falsifier_watch", "vocab_merge", "alias", "knowledge"]
+const KIND_ORDER = ["report_suggest", "research_candidate", "neglect", "contested_edge", "devils_advocate", "falsifier_watch", "vocab_merge", "entity_alias", "alias", "knowledge"]
 const DIR_TEXT: Record<string, string> = { up: "추정치 상향 가능", down: "추정치 하향 우려", hold: "추정치 유지 전망" }
 // 확인만 하는 kind — 승인 버튼 라벨을 다르게 (액션이 없음을 정직하게)
 const ACK_ONLY = new Set(["devils_advocate", "falsifier_watch"])

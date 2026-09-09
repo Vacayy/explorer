@@ -10,7 +10,7 @@ import re
 import struct
 
 from database import get_connection
-from pipeline.search import EMBED_DIM, _get_model, _vec_conn, _fts_query
+from pipeline.search import EMBED_DIM, _get_model, _vec_conn
 
 SINGLE_MAX = 1500
 CHUNK_CHARS = 1200
@@ -19,7 +19,9 @@ MAX_CHUNKS_PER_DOC = 80
 SUMMARY_CHARS = 160
 
 _SOURCE_LABEL = {"telegram": "텔레그램", "blog": "블로그", "youtube": "유튜브", "transcript": "컨콜",
-                 "canon": "정전", "note": "메모"}
+                 "canon": "정전", "note": "메모",
+                 # 미검증 — 개인 투자자 블로그 스크랩. 라벨이 근거 텍스트에 그대로 실려 종합이 읽는다 (D-142)
+                 "scrap": "스크랩(미검증)"}
 
 
 def chunk_text(text: str) -> list[str]:
@@ -141,25 +143,54 @@ def chunk_index_ready() -> bool:
         conn.close()
 
 
-def search_chunks(q: str, k: int = 40, pool: int = 80) -> list[dict]:
+def _fts_terms(texts: list[str], cap: int = 16) -> list[str]:
+    """여러 검색어(원문+변형)에서 FTS 토큰 합집합 — 순서 보존·중복 제거."""
+    out: list[str] = []
+    for t in texts:
+        for tok in re.split(r"[^0-9A-Za-z가-힣]+", t or ""):
+            if len(tok) >= 2 and tok.lower() not in {o.lower() for o in out}:
+                out.append(tok)
+    return out[:cap]
+
+
+def search_chunks(q: str, k: int = 40, pool: int = 80, variants: list[str] | None = None,
+                  must_any: list[str] | None = None) -> list[dict]:
     """청크 하이브리드 검색 → 문서별 최고 청크. 반환 [{doc_id, chunk_id, score, prefix, text}] (RRF 순).
 
-    RRF + 모달리티 쿼터(search.search와 같은 규율): 각 모달리티 상위 pool/4는 반드시 포함.
+    - variants: 검색어 변형(한/영/티커/약어, D-137) — BM25는 토큰 합집합, 벡터는 원문+변형 각각 임베딩해 RRF.
+    - must_any: 엔티티 별칭 목록 — BM25에 `(별칭 OR …) AND (주제 토큰 OR …)`로 '엔티티 언급'을 요구한다.
+      별칭만 OR로 섞으면 엔티티만 자주 나오는 문서가 주제 문서를 밀어낸다. 결과가 적으면 주제 토큰만으로 보강.
+    - RRF + 모달리티 쿼터(search.search와 같은 규율): 각 모달리티 상위 pool/4는 반드시 포함.
     """
     ranks: dict[int, float] = {}
     fts_ids: list[int] = []
     vec_ids: list[int] = []
+    queries = [q] + [v for v in (variants or []) if v and v.strip() and v.strip() != q.strip()][:3]
+
+    topic = _fts_terms(queries)
+    topic_q = " OR ".join(f'"{t}"*' for t in topic) or '""'
+    fts_queries = []
+    if must_any:
+        # 별칭 토큰: 'SK Hynix Inc.'→SK·Hynix·Inc 로 갈라지면 'SK'가 SK그룹 전체를 잡는다 — 2자 이하 ASCII는 제외
+        alias_toks = [a for a in _fts_terms(must_any, cap=12) if len(a) >= 3 or re.search(r"[가-힣]", a)]
+        ent_q = " OR ".join(f'"{a}"*' for a in alias_toks) or '""'
+        fts_queries.append(f"({ent_q}) AND ({topic_q})")
+    fts_queries.append(topic_q)
 
     conn = get_connection()
-    try:
-        rows = conn.execute("SELECT rowid FROM chunk_fts WHERE chunk_fts MATCH ? ORDER BY rank LIMIT ?",
-                            (_fts_query(q), pool)).fetchall()
-    except Exception:
-        rows = []
+    for fq in fts_queries:
+        try:
+            rows = conn.execute("SELECT rowid FROM chunk_fts WHERE chunk_fts MATCH ? ORDER BY rank LIMIT ?",
+                                (fq, pool)).fetchall()
+        except Exception:
+            rows = []
+        for i, r in enumerate(rows):
+            ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
+            if r["rowid"] not in fts_ids:
+                fts_ids.append(r["rowid"])
+        if len(rows) >= pool // 4:      # 엔티티 제한 질의가 충분히 나오면 주제-only는 생략
+            break
     conn.close()
-    for i, r in enumerate(rows):
-        ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
-        fts_ids.append(r["rowid"])
 
     vconn = _vec_conn()
     if vconn is not None:
@@ -168,12 +199,15 @@ def search_chunks(q: str, k: int = 40, pool: int = 80) -> list[dict]:
         except Exception:
             has = 0
         if has:
-            q_emb = list(_get_model().embed([q]))[0]
-            vrows = vconn.execute("SELECT rowid FROM chunk_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-                                  (_serialize(q_emb), pool)).fetchall()
-            for i, r in enumerate(vrows):
-                ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
-                vec_ids.append(r["rowid"])
+            embs = list(_get_model().embed(queries))
+            for j, emb in enumerate(embs):
+                vrows = vconn.execute("SELECT rowid FROM chunk_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+                                      (_serialize(emb), pool)).fetchall()
+                w = 1.0 if j == 0 else 0.7        # 변형은 원문보다 약하게
+                for i, r in enumerate(vrows):
+                    ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + w / (60 + i)
+                    if r["rowid"] not in vec_ids:
+                        vec_ids.append(r["rowid"])
         vconn.close()
     if not ranks:
         return []

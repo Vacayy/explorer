@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { AlertTriangle, Check, ChevronRight, Copy } from "lucide-react"
+import { AlertTriangle, Check, ChevronRight, Copy, Info } from "lucide-react"
 import { Markdown } from "@/components/shared/Markdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils"
 import { utcMs, type Draft } from "@/hooks/useChat"
 import { citationComponents, citationHref, GAP_LABEL, KIND_LABEL, linkifyCitations } from "./citations"
 import { fmtSec, RoutePanel, routeTotalMs } from "./RoutePanel"
+import { PriceChartCard, priceTargets } from "./PriceChartCard"
 import { useCopy } from "./UserMessage"
 
 const BODY = "text-[15px] leading-7 [&_p]:my-3 [&_li]:my-1.5 [&_h2]:mt-6 [&_h3]:mt-5 [&_table]:my-3 [&_table]:text-sm"
@@ -91,6 +92,7 @@ export function AssistantMessage({ m }: { m: ChatMessage }) {
   const { copied, copy } = useCopy()
   const body = useMemo(() => linkifyCitations(m.content, m.citations), [m.content, m.citations])
   const components = useMemo(() => citationComponents(m.citations), [m.citations])
+  const prices = useMemo(() => priceTargets(m.citations), [m.citations])
   return (
     <article className="group/msg space-y-2">
       <MetaRow model={m.model} createdAt={m.created_at} />
@@ -99,11 +101,16 @@ export function AssistantMessage({ m }: { m: ChatMessage }) {
         <Markdown className={BODY} components={components}>{body}</Markdown>
       </TooltipProvider>
 
+      {/* 시세 근거를 인용한 답변 — 같은 스냅샷을 차트로 (종목 1=종가, 2+=등락률 비교) */}
+      {prices && <PriceChartCard targets={prices.targets} days={prices.days} />}
+
       {m.gaps && m.gaps.length > 0 && (
         <div className="rounded-xl bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] px-4 py-3 space-y-1.5">
           {m.gaps.map((g, i) => (
             <div key={i} className="flex items-start gap-2 text-[13px] leading-relaxed">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-hypothesis" />
+              {g.type === "assumption"
+                ? <Info className="mt-0.5 size-3.5 shrink-0 text-hypothesis" aria-label="가정" />
+                : <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-hypothesis" />}
               <Badge variant="secondary" className="shrink-0 text-[10px]">{GAP_LABEL[g.type] ?? g.type}</Badge>
               <span>{g.note}</span>
             </div>
@@ -130,7 +137,6 @@ export function StreamingMessage({ draft }: { draft: Draft | null }) {
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Spinner className="size-3.5" />
         <span>{draft?.status || "질문 분석 중…"}</span>
-        <span className="hidden sm:inline">· 다른 화면에 다녀와도 계속됩니다</span>
       </div>
       {draft?.text ? (
         <div className="relative">

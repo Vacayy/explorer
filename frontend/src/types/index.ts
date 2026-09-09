@@ -58,6 +58,13 @@ export interface StockPriceItem {
   market_cap: number | null;
 }
 
+/** 최근 N거래일 시세 스냅샷 — stock_prices 테이블만(16:10 스냅샷), 대화 차트 카드용 */
+export interface PriceSnapshot {
+  stock_code: string;
+  name: string;
+  items: { trade_date: string; open: number | null; high: number | null; low: number | null; close: number | null; volume: number | null }[];
+}
+
 export interface ValuationItem {
   trade_date: string;
   close: number | null;

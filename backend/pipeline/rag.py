@@ -29,17 +29,20 @@ def _fetch_docs(doc_ids: list[int]) -> list[dict]:
 
 
 def retrieve_docs(query: str, k: int = TOP_K, since_days: int | None = None,
-                  source: str | None = None, entity_id: int | None = None) -> list[dict]:
+                  source: str | None = None, entity_id: int | None = None,
+                  variants: list[str] | None = None, entity_terms: list[str] | None = None,
+                  doc_ids: set[int] | None = None) -> list[dict]:
     """청크 경로(D-132): 청크 하이브리드 → 문서별 최고 청크 → 필터 → 리랭크 → 상위 k, excerpt=접두어+청크.
     청크 인덱스가 비어 있으면 문서 경로(제목+앞 1,200자)로 폴백."""
     from pipeline.chunks import chunk_index_ready, search_chunks
     if not chunk_index_ready():
-        return _retrieve_docs_legacy(query, k, since_days, source, entity_id)
+        return _retrieve_docs_legacy(query, k, since_days, source, entity_id, doc_ids)
 
     # 날짜·소스·엔티티 필터가 후보의 대부분을 걸러내면 찌꺼기(짧은 잡담 청크)만 남아 인용된다 —
     # 필터가 있으면 후보 풀을 넉넉히 뽑고, 짧은 청크(단문 답글·이모지)는 후보에서 뺀다
-    filtered = bool(since_days or source or entity_id)
-    hits = [h for h in search_chunks(query, k=CANDIDATES * (4 if filtered else 1), pool=320 if filtered else 80)
+    filtered = bool(since_days or source or entity_id or doc_ids)
+    hits = [h for h in search_chunks(query, k=CANDIDATES * (4 if filtered else 1), pool=320 if filtered else 80,
+                                     variants=variants, must_any=entity_terms)
             if len(h.get("text") or "") >= MIN_CHUNK_CHARS]
     if not hits:
         return []
@@ -53,11 +56,12 @@ def retrieve_docs(query: str, k: int = TOP_K, since_days: int | None = None,
             d["excerpt"] = f"{h['prefix']}\n{h['text']}"[:EXCERPT_CHARS + 300]
             d["chunk_id"] = h["chunk_id"]
             cands.append(d)
-    cands = _dedupe(_apply_filters(cands, since_days, source, entity_id))[:CANDIDATES]
+    cands = _dedupe(_apply_filters(cands, since_days, source, entity_id, doc_ids))[:CANDIDATES]
     if not cands:
         return []
     from pipeline.rerank import rerank
-    scores = rerank(query, [c["excerpt"][:RERANK_CHARS] for c in cands])
+    rq = query if not variants else f"{query} ({' / '.join(v for v in variants[:2] if v)})"
+    scores = rerank(rq, [c["excerpt"][:RERANK_CHARS] for c in cands])
     if scores is not None:
         cands = [c for _, c in sorted(zip(scores, cands), key=lambda t: -t[0])]
         for c, sc in zip(cands, sorted(scores, reverse=True)):
@@ -77,8 +81,8 @@ def _dedupe(docs: list[dict]) -> list[dict]:
     return out
 
 
-def _apply_filters(docs: list[dict], since_days, source, entity_id) -> list[dict]:
-    from pipeline.visibility import get_muted, is_muted
+def _apply_filters(docs: list[dict], since_days, source, entity_id, doc_ids=None) -> list[dict]:
+    from pipeline.visibility import UNVERIFIED_SOURCES, get_muted, is_muted
     conn = get_connection()
     muted = get_muted(conn)
     linked: set[int] | None = None
@@ -93,17 +97,24 @@ def _apply_filters(docs: list[dict], since_days, source, entity_id) -> list[dict
             continue
         if source and d["source_type"] != source:
             continue
+        # 미검증 소스(스크랩)는 기본 풀에서 뺀다 — source를 명시해 조회할 때만 나온다 (D-142).
+        # "남들은 뭐라고 하나"는 사실 조회와 다른 질문이라 문을 따로 둔다.
+        if not source and d["source_type"] in UNVERIFIED_SOURCES:
+            continue
         if since and (d["published_at"] or "")[:10] < since:
             continue
         if linked is not None and d["id"] not in linked:
+            continue
+        # 채널·블로거 범위 검색 (D-143) — 특정 소스 안에서만 찾을 때
+        if doc_ids is not None and d["id"] not in doc_ids:
             continue
         out.append(d)
     return out
 
 
-def _retrieve_docs_legacy(query: str, k: int, since_days, source, entity_id) -> list[dict]:
+def _retrieve_docs_legacy(query: str, k: int, since_days, source, entity_id, doc_ids=None) -> list[dict]:
     """문서 단위 검색(제목+앞 1,200자) — 청크 인덱스 첫 빌드 전 폴백."""
     pool = k + 8 + (24 if (since_days or source or entity_id) else 0)
     hits = search(query, k=pool)
-    docs = _apply_filters(_fetch_docs([h["doc_id"] for h in hits]), since_days, source, entity_id)
+    docs = _apply_filters(_fetch_docs([h["doc_id"] for h in hits]), since_days, source, entity_id, doc_ids)
     return docs[:k]

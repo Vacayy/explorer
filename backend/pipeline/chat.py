@@ -25,6 +25,7 @@ ROUTER_MODEL = os.getenv("CHAT_ROUTER_MODEL", "haiku")
 SYNTH_MODEL = os.getenv("RAG_MODEL", "sonnet")
 SYNTH_EFFORT = os.getenv("CHAT_SYNTH_EFFORT") or None   # 기본=모델 기본값(판단 품질 우선, D-117). 실측: 분석형 1콜 thinking 8.5K·130초
 MAX_EVIDENCE = 20
+MAX_EVIDENCE_REVIEW = 30   # 근거 점검이 추가 수집할 때의 상한 — 1라운드가 20을 채워도 추가분이 들어갈 자리
 NO_EVIDENCE_ANSWER = "관련 근거(수집 문서·시스템 산출물)가 없어 답할 수 없습니다."
 STREAM_TTL_S = 120
 
@@ -136,7 +137,21 @@ def _router_system() -> str:
         "그 외 '최근/목록/업데이트/있어?' 조회는 list_recent·get_* 조회 도구를 쓴다. search_docs는 사건·의견·언급을 찾을 때 붙인다.\n"
         "- 주가·오늘·지금·등락 → get_quote 필수. '추이·이번주·지난 N일·왜 올랐/내렸' → get_price_history(days) + get_quote + list_recent(kind=docs, entity, days) + search_docs(원인 검색어, since_days, entity). "
         "왜·영향·파급·연결 → get_worldmodel + search_docs. 국면·장세·거시 → get_regime. 인물·관계 → search_docs(source=canon) + search_docs.\n"
+        "- 특정 블로거·채널·작성자('메르','슈카월드','삼성증권')가 '최근에 무슨 글/영상을 냈나' → list_recent(kind=docs, channel=그 이름, days=30) 필수. 사람 엔티티 검색(source=canon)이 아니다. "
+        "**그 사람이 '무엇을 어떻게 말했나'(어느 종목을 강조·추천·경고했나)는 search_docs(query=주제, channel=그 이름)** — channel 없이 검색하면 전혀 다른 소스가 섞인다. "
+        "후속질문에서 '이 사람·그 채널'이면 노트·최근 문답에서 이름을 찾아 channel에 반드시 채운다.\n"
+        "- '스크랩된 글·요즘 뭘 스터디하나' 목록 요청 → list_recent(kind=scrap). 검색이 아니라 목록이다. "
+        "스크랩 채널 이름('비나인')은 **channel에 넣는다 — entity가 아니다**(entity는 종목·테마).\n"
+        "- 수출·수출입·무역 통계 → get_trade(item). 공시 → list_recent(kind=disclosures, entity). '내가 저장한/북마크한' → get_saved. "
+        "프록시·관측 지표·추적 수치·'실데이터로 확인됐나' → get_proxies(query) (+ get_questions).\n"
+        "- 미국 기업의 '실적발표·컨콜·가이던스·경영진 코멘트' → get_transcripts(companies=[회사명들]) 필수. "
+        "companies에는 **사용자가 쓴 표기를 그대로**(한글이면 한글 그대로: '네비우스','아이렌','코어위브') 넣는다 — 영문 번역·다른 회사로의 추정 금지, 해석은 도구가 한다. "
+        "search_docs(source=transcript)는 보조이며 그때 entity에는 회사명만 넣고 테마명(예: 'AI 데이터센터')은 넣지 않는다 — 컨콜 문서는 테마 엔티티에 링크돼 있지 않다.\n"
         "- search_docs에는 entity(종목·테마명)와 since_days를 가능하면 항상 채운다 — 필터 없는 검색은 잡담 문서가 섞인다.\n"
+        "- **'다른 투자자들은 뭐라고 하나·요즘 뭘 스터디하나·개인 블로그 시각'**을 묻는 질문에만 search_docs(source='scrap')를 쓴다. "
+        "스크랩은 미검증 개인 주장이라 기본 검색에서 빠져 있고, 이 인자로 명시할 때만 조회된다. 사실 확인 질문에는 쓰지 않는다.\n"
+        "- search_docs의 variants에 검색어 변형 2~3개를 넣는다: 영문 표기·티커·업계 약어·다른 표현(예: 'HBM 마진' → 'HBM 수익성', 'SK hynix HBM margin'). "
+        "사용자가 대충 부른 이름('하닉', '삼전')·오탈자·구어체는 여기서 정식 표현으로 펼친다. 질문 자체가 모호하면 넓은 변형과 좁은 변형을 섞는다.\n"
         "- 후속질문(그럼/이것/방금/더)은 작업 노트와 최근 대화로 standalone_question을 재작성하고, "
         "'이전 답변 인용' 목록이 있으면 doc_id로 open_doc을 쓸 수 있다.\n"
         "- 예측·매매 판단 요구(오를까/사야 하나/목표가)는 intent=refuse. 대신 근거로 말할 수 있는 도구(get_regime·list_recent signals·search_docs)만 붙인다.\n"
@@ -197,16 +212,18 @@ def _route(turn: Turn, status) -> None:
 # ── ② 수집 ───────────────────────────────────────────────────────────────────
 
 def _gather(turn: Turn, status, calls: list[dict] | None = None, round_no: int = 1) -> None:
+    cap = MAX_EVIDENCE if round_no == 1 else MAX_EVIDENCE_REVIEW
     for call in (calls if calls is not None else turn.calls):
         status(f"근거 수집 중 · {call['name']}" + (" (추가)" if round_no > 1 else ""))
         t0 = time.time()
         res = run_tool(call)
-        room = MAX_EVIDENCE - len(turn.evidence)
+        room = cap - len(turn.evidence)
         items = res.items[:max(0, room)]
         for it in items:
             it["tool"] = res.name
         turn.evidence.extend(items)
         turn.tool_log.append({"name": res.name, "args": res.args, "n": len(items), "note": res.note,
+                              "assumed": res.assumed or None,
                               "ms": int((time.time() - t0) * 1000), "round": round_no})
 
 
@@ -246,6 +263,8 @@ def _review(turn: Turn, status) -> None:
         "- open_doc의 인자는 근거 목록에 적힌 doc_id(문서 id)다. 근거 번호 [n]을 넣지 않는다.\n"
         "- '왜 올랐/내렸·원인·촉매' 질문인데 시황·리서치 문서가 없으면 search_docs를 다른 각도 검색어(사건명·촉매·증권사 코멘트)로, "
         "또는 list_recent(kind=docs, entity, days)로 보강한다. 시계열 질문에 일별 시세가 없으면 get_price_history.\n"
+        "- 어떤 도구가 '종목을 찾지 못함'인데 다른 근거·검색 결과가 한 회사로 수렴하면, 그 정식 회사명으로 같은 도구를 다시 부른다(인자가 다르면 재호출 허용). "
+        "후보가 여럿이라는 메모('분명하지 않음 — 후보')면 추정하지 말고 enough=true로 두어 종합이 되묻게 한다.\n"
         "- 근거가 질문의 핵심을 이미 덮으면 enough=true. 조금 더 있으면 좋은 정도로는 부르지 않는다(비용)."
     )
     user = f"질문: {turn.question}\n(독립형: {turn.standalone})\n\n지금까지 부른 도구:\n{called}\n\n모인 근거 {len(turn.evidence)}건:\n{digest}"
@@ -262,7 +281,7 @@ def _review(turn: Turn, status) -> None:
              if (c["name"], json.dumps(c["args"], sort_keys=True, ensure_ascii=False)) not in already][:REVIEW_MAX_TOOLS]
     turn.review = {"enough": bool(data.get("enough", True)) and not extra, "reason": (data.get("reason") or "")[:200],
                    "added": [c["name"] for c in extra]}
-    if extra and len(turn.evidence) < MAX_EVIDENCE:
+    if extra and len(turn.evidence) < MAX_EVIDENCE_REVIEW:
         _gather(turn, status, calls=extra, round_no=2)
 
 
@@ -274,7 +293,8 @@ _STYLE = {
     "analysis": "결론(BLUF)을 먼저 한 단락으로, 이어서 근거·상충·조건을 구조화한다. 범위와 조건부로 말하고 점 추정은 피한다.",
 }
 
-_KIND_LABEL = {"doc": "문서", "prices": "일별 시세(사실)", "narrative": "내러티브(가설)", "edges": "인과 엣지(가설)", "knowledge": "승격 지식",
+_KIND_LABEL = {"doc": "문서", "prices": "일별 시세(사실)", "transcript": "실적 컨콜 정리(경영진 발언 요약)", "narrative": "내러티브(가설)",
+               "disclosure": "공시(사실)", "trade": "수출입 통계(사실)", "saved": "저장됨(사용자 북마크)", "proxy": "프록시 관측(지표)", "edges": "인과 엣지(가설)", "knowledge": "승격 지식",
                "question": "핵심질문 판정", "lens": "렌즈 판독(가설)", "quote": "실시간 시세(사실)",
                "regime": "시장 국면(지표 사실)", "briefing": "미국장 브리핑(가설)", "digest": "종목 요약(가설)",
                "signal": "신호(지표)", "action": "기업활동(공시 사실)", "youtube": "유튜브 문서"}
@@ -296,7 +316,12 @@ def _synth_system(turn: Turn) -> str:
         "- 모든 주장 문장 뒤에 근거 번호를 [n] 형식으로 인용한다. 인용할 수 없는 주장은 쓰지 않는다.\n"
         "- 근거 종류를 구분한다: 문서·시세·공시·지표는 사실 쪽, 내러티브·인과 엣지·렌즈·요약은 시스템이 만든 가설이다. "
         "가설을 사실처럼 단언하지 않는다.\n"
-        "- 갭 분석: unsupported(근거 약함) · contradiction(근거끼리 상충) · stale(오래됨) · missing(답하기에 빠진 정보).\n"
+        "- **'스크랩(미검증)' 라벨이 붙은 근거는 개인 투자자 블로그의 주장이다** — 사실로 단언하지 말고 "
+        "'이렇게 보는 시각이 있다'는 형태로만 쓰고, 누구의 주장인지 밝힌다. 시세·공시와 어긋나면 후자를 따른다.\n"
+        "- 갭 분석: unsupported(근거 약함) · contradiction(근거끼리 상충) · stale(오래됨) · missing(답하기에 빠진 정보) · assumption(이름 해석 가정).\n"
+        "- 근거 뒤에 '이름 해석 가정'이 있으면 답 첫 문장에서 그 가정을 밝힌다(예: \"'삼양라면'은 삼양식품으로 가정하고 답합니다\") — "
+        "가정한 회사의 근거를 그 회사 것으로 정상 사용하되 사용자 표기와 다르다는 사실은 숨기지 않는다. "
+        "반대로 '후보가 여럿(분명하지 않음)'이라는 메모가 있으면 추정하지 말고 첫 줄에 어느 것인지 되묻고 후보를 나열한다.\n"
         "- '이전 스레드 노트'와 '작업 노트'는 맥락일 뿐 근거가 아니다 — 인용하지 않고, 거기 있는 사실을 새로 단언하지 않는다.\n"
         "- 예측·매매 판단(오를까·사야 하나·목표가)은 하지 않는다. 근거가 말하는 현재 상태·조건·시나리오까지만.\n"
         "- 내부 코드·약어·영문 상태값은 노출하지 않는다. 자연스러운 한국어로만 쓴다.\n"
@@ -310,7 +335,7 @@ def _synth_system(turn: Turn) -> str:
         "1) 마크다운 답변 본문.\n"
         f"2) 본문이 끝나면 새 줄에 정확히 `{llm.META_MARKER}` 한 줄.\n"
         '3) 그 다음 줄에 JSON 한 줄: {"citations": [실제로 인용한 번호들], '
-        '"gaps": [{"type": "unsupported|contradiction|stale|missing", "note": "한 줄"}], '
+        '"gaps": [{"type": "unsupported|contradiction|stale|missing|assumption", "note": "한 줄"}], '
         '"process": ["판단 메모 2~4줄 — 근거를 어떻게 읽었나: 서로 어긋난 수치와 그 처리, 사실/가설로 나눈 기준, 쓰지 않은 근거와 이유, 검증 못한 것"]}\n'
         f"`{llm.META_MARKER}` 뒤에는 JSON 외 아무것도 쓰지 않는다. 코드블록으로 감싸지 않는다."
         + _lens_text(turn.route.get("lens"))
@@ -333,7 +358,20 @@ def _synth_user(turn: Turn) -> str:
         ev.append(f"{head}\n{e.get('text') or ''}")
     notes = [f"- {t['name']}: {t['note']}" for t in turn.tool_log if t.get("note") and not t.get("n")]
     parts.append("근거:\n" + "\n\n".join(ev) + (("\n\n조회했지만 비어 있던 것:\n" + "\n".join(notes)) if notes else ""))
+    assumed = _assumed_notes(turn)
+    if assumed:
+        parts.append("이름 해석 가정 (첫 문장에서 밝힐 것):\n" + "\n".join(f"- {a}" for a in assumed))
     return "\n\n".join(parts)
+
+
+def _assumed_notes(turn: Turn) -> list[str]:
+    """도구들이 남긴 이름 해석 가정 메모 — 중복 제거, 순서 보존."""
+    out: list[str] = []
+    for t in turn.tool_log:
+        for a in t.get("assumed") or []:
+            if a.get("note") and a["note"] not in out:
+                out.append(a["note"])
+    return out
 
 
 def _synthesize(turn: Turn, status, on_text) -> None:
@@ -355,6 +393,9 @@ def _synthesize(turn: Turn, status, on_text) -> None:
     meta = meta or {}
     turn.answer = body or None
     turn.gaps = [g for g in (meta.get("gaps") or []) if isinstance(g, dict) and g.get("note")]
+    # 이름 해석 가정은 모델 순응과 무관하게 갭으로 남긴다 — 화면 갭 블록 '가정' 항목 (규칙 판정)
+    if not any(g.get("type") == "assumption" for g in turn.gaps):
+        turn.gaps += [{"type": "assumption", "note": n} for n in _assumed_notes(turn)]
     turn.process = [str(x)[:300] for x in (meta.get("process") or []) if x][:6]
     turn.route["_declared"] = meta.get("citations") or []
 
@@ -396,7 +437,9 @@ _INTENT_KO = {"lookup": "조회", "event": "사건 설명", "synthesis": "종합
 _TOOL_KO = {"search_docs": "수집 문서를 검색", "open_doc": "문서 전문을 열어", "list_recent": "최근 목록을 조회",
             "get_narrative": "주제 내러티브를 읽어", "get_worldmodel": "인과 그래프에서 위치를 확인", "get_knowledge": "승격 지식을 소환",
             "get_questions": "핵심질문 트래커를 조회", "get_lens": "투자 렌즈 판독을 읽어", "get_quote": "실시간 시세를 조회",
-            "get_price_history": "일별 시세를 조회", "get_regime": "시장 국면·매크로를 읽어", "get_us_briefing": "미국장 브리핑을 읽어"}
+            "get_price_history": "일별 시세를 조회", "get_regime": "시장 국면·매크로를 읽어", "get_us_briefing": "미국장 브리핑을 읽어",
+            "get_transcripts": "실적 컨콜 정리를 읽어", "get_trade": "수출입 통계를 조회", "get_saved": "저장됨 목록을 조회",
+            "get_proxies": "프록시 관측치를 조회"}
 
 
 def _args_ko(args: dict) -> str:
@@ -425,6 +468,8 @@ def build_steps(turn: "Turn") -> list[str]:
         line = f"{verb}했습니다" + (f" ({a})" if a else "") + (f" → {t.get('n', 0)}건." if t.get("n") else " → 결과 없음.")
         if t.get("note"):
             line += f" {t['note']}."
+        for asm in t.get("assumed") or []:
+            line += f" {asm.get('note')}."
         steps.append(line)
     if turn.review:
         if turn.review.get("skipped"):
@@ -527,6 +572,18 @@ def generate_answer(conversation_id: int, question: str) -> dict:
                      doc_ids=[c["doc_id"] for c in turn.citations if c.get("doc_id")],
                      last_citations=[{"n": c["n"], "kind": c.get("kind"), "doc_id": c.get("doc_id"), "title": c["title"]} for c in turn.citations])
         maybe_compact(conversation_id)
+    except Exception:
+        pass
+    # 이름 해석 가정 → 별칭 제안(승인 큐). 승인되면 entity_keywords에 들어가 다음부터 결정적으로 첫 단계에서 맞는다 (기계는 제안, 사람이 판단)
+    try:
+        from pipeline.agent_proposals import propose_entity_alias
+        seen = set()
+        for t in turn.tool_log:
+            for a in t.get("assumed") or []:
+                key = (a.get("entity_id"), a.get("query"))
+                if a.get("entity_id") and a.get("query") and key not in seen:
+                    seen.add(key)
+                    propose_entity_alias(a["query"], a["entity_id"], a.get("name") or "", a.get("note") or "", conversation_id)
     except Exception:
         pass
     return {"answer": turn.answer, "citations": turn.citations, "gaps": turn.gaps, "model": turn.model}
