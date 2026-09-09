@@ -117,3 +117,28 @@ CREATE TABLE trade_beneficiaries (
 - 관세청 품목별 수출입실적: data.go.kr/data/15101609 · 품목별 국가별: /15100475
 - 파급 논리 수혜 종목: docs/DECISIONS.md D-036 · pipeline/beneficiary.resolve_and_enrich · scenario.py
 - 편입 고리(③→①): D-037 · 같은 골격: docs/specs/transcript-follow.md · 시계열 스키마 배경: D-004(observations)
+
+
+---
+
+## 2026-09-08 · data-watcher 이식 (D-140)
+
+별도 프로젝트 `~/dev/data-watcher`(관세청 수출입 워처)에서 검증된 것을 explorer로 옮겼다. API 키는 두 프로젝트가 같은 키(`DATA_GO_KR_KEY`).
+
+**커넥터(`pipeline/trade.py`)**: 최소 호출 간격 0.35초(`CUSTOMS_MIN_INTERVAL`) + 429/5xx 지수백오프(지터) · `errMsg`(인증)와 `resultCode`(조회) 둘 다 검사 · `totalCount` 페이징 · `item_name(hs)`(관세청 품목명으로 HS 오기 대조) · `latest_available_period(hs)`(1콜 신선도).
+
+**수집(`collect_followed`)**: 최신 window부터 역순, 루프 바깥은 기간(첫 패스에 전 품목 최근치가 찬다) · 품목 단위 실패는 삼키되 `collect_status()`가 ok/partial/error/noop 판정 · DB 커넥션은 쓰기 순간에만 · 시작월 `TRADE_COLLECT_START_YYYYMM`(기본 202101 — YoY z에 24개월↑).
+
+**워치리스트**: `scripts/trade_watchlist.local.csv`(gitignore, 168품목·15분류 — 종목 힌트가 든 개인 큐레이션, universe.local.json과 같은 취급) → `seed_watchlist()` 멱등 시드. CSV에 없는 기존 팔로우는 유지(기본 11품목·UI 추가와 공존). 선행 0 유실 보정.
+
+**파생지표(`pipeline/trade_metrics.py`, 저장 안 함)**: mom·yoy·qoq(직전 3개월 합 vs 그 앞 3개월)·yoy3m · 지표별 로버스트 z(median/MAD, 관측 8↑) · 판정 surge/plunge/new/none(규모 게이트 $10M, zscore |z|≥2 / fixed 임계) · '이력 부족'과 '신규' 구분 · 기여도 |Δ|/Σ|Δ|.
+
+**API**: `GET /follow`에 mom·qoq·yoy3m·z·flag·reason·contribution 추가 · **`GET /highlights`**(급등·급감 랭킹, 기본 기여도 순) · **`GET /{hs}/metrics`**(월별 파생지표 시계열). FE TradePage는 기존 필드만 쓰므로 무변경(후속: 판정 격자·하이라이트 뷰).
+
+**스케줄**: launchd `dev.explorer.trade` 매일 09:20 `collect_trade.py --if-fresh` — 원천 최신월 1콜 확인 후 전진했을 때만 최근 24개월 수집. (전엔 `collect_trade` 잡이 ops 레지스트리에만 있고 **launchd에 등록돼 있지 않았다**.)
+
+**초기 적재**: data-watcher `trade.db`의 9,718행(2021-09~2026-07)을 ATTACH로 이식 — 재수집 없이 5년치 확보.
+
+**대화 도구 `get_trade`**: 품목 지정=월별 수출·YoY·z·지표별 판정·수혜종목, 미지정=최신월 급등·급감 하이라이트+분류별 합계.
+
+**남은 것**: 국가별 축(별도 API 활용신청 필요, watcher D-014) · 다중 HS 합산 품목 15건(list-review.md) · FE 판정 격자.

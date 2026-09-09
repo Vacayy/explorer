@@ -33,6 +33,8 @@ media/
 
 # 개인 큐레이션 — 담당 커버리지는 공개하지 않는다 (scripts/seed_universe.py 참조)
 scripts/universe.local.json
+# 개인 수출입 워치리스트(HS 168품목, 종목 힌트 포함) — 로더만 저장소에 (pipeline/trade.seed_watchlist)
+scripts/trade_watchlist.local.csv
 
 # 개인 참고자료 (IR 자료·리포트 등)
 docs/references/
