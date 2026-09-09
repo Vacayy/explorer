@@ -7,7 +7,7 @@
   3. .env에 TELEGRAM_BOT_TOKEN=..., TELEGRAM_CHAT_ID=...
 미설정 시 조용히 skip (스케줄러 안전).
 
-발송 보장(D-106): 스케줄러가 08:00에 못 뜨거나(랩탑 수면) 그 순간 망이 안 붙어도
+발송 보장(D-106): 스케줄러가 07:00에 못 뜨거나(랩탑 수면) 그 순간 망이 안 붙어도
 그날 브리핑이 증발하지 않도록 ①모든 시도를 job_runs에 기록하고 ②30분 체인이
 `ensure_briefing_sent()`로 미발송을 사후 보전한다.
 
@@ -29,6 +29,7 @@ import requests
 from database import get_connection
 
 KST = timezone(timedelta(hours=9))
+BRIEFING_HOUR = 7   # 아침 브리핑 발송 시각(KST). launchd dev.explorer.briefing과 맞춘다 (2026-09-09 08→07)
 JOB = "send_briefing"
 SEND_RETRIES = 3          # 망 미연결(기상 직후 Wi-Fi 지연) 대비
 SEND_BACKOFF = 5          # 초 — 5s, 10s
@@ -348,15 +349,15 @@ def push_briefing(dry_run: bool = False) -> dict:
 def ensure_briefing_sent() -> dict:
     """미발송 사후 보전 — 30분 체인이 매 회차 호출(멱등).
 
-    평일 08:00(KST)이 지났는데 오늘 시도 기록이 없으면 지금 발송한다.
+    평일 07:00(KST)이 지났는데 오늘 시도 기록이 없으면 지금 발송한다. (2026-09-09 08:00→07:00)
     launchd가 기상 시 놓친 회차를 실행하지만, 전원이 꺼져 있었거나 발송이
     망 실패로 error가 난 경우까지 덮는 마지막 그물.
     """
     now = datetime.now(KST)
     if now.weekday() > 4:
         return {"sent": False, "reason": "주말"}
-    if now.hour < 8:
-        return {"sent": False, "reason": "08:00 이전"}
+    if now.hour < BRIEFING_HOUR:
+        return {"sent": False, "reason": f"{BRIEFING_HOUR:02d}:00 이전"}
     conn = get_connection()
     try:
         if _attempted_today(conn):
