@@ -44,6 +44,18 @@ _IDIO_CHANGE = 8.0     # |등락률| 이 이상이면 '거래대금+급등락 �
 # ADR → 담론이 사는 본체(KR) 엔티티명. 비파괴 크로스레퍼런스(하드 병합 대신, D-098):
 # ADR 엔티티(SKHY 22건)는 자체 us_prices·ticker 정체성 유지하되, enrich는 본체(SK하이닉스 1349건)를 함께 읽는다.
 _ADR_HOME = {"SKHY": "SK하이닉스"}
+# 티커 → 우리 문서가 부르는 이름(한글 엔티티명). 커버리지(transcript_follow)와 무관하게 '왜'를 문서에서 찾기 위한 매핑.
+# 실측(2026-09-09): 인텔 +9.1%의 이유("CPU 가격 10% 인상")가 키움 시황 문서에 있었지만 INTC가 팔로우 밖이라 '스터디 후보'로만 남았다.
+_US_KR_NAMES = {
+    "NVDA": ["엔비디아"], "MU": ["마이크론"], "SNDK": ["샌디스크"], "TSLA": ["테슬라"], "INTC": ["인텔"], "AMD": ["AMD"],
+    "META": ["메타", "메타플랫폼스"], "AVGO": ["브로드컴"], "AAPL": ["애플"], "MSFT": ["마이크로소프트", "MS"], "GOOGL": ["알파벳", "구글"],
+    "GOOG": ["알파벳", "구글"], "AMZN": ["아마존"], "CRWV": ["코어위브"], "NBIS": ["네비우스"], "ORCL": ["오라클"], "PLTR": ["팔란티어"],
+    "SPCX": ["스페이스X"], "BE": ["블룸에너지", "블룸 에너지"], "LITE": ["루멘텀"], "DELL": ["델"], "TSM": ["TSMC"], "SMCI": ["슈퍼마이크로"],
+    "ANET": ["아리스타"], "MRVL": ["마벨"], "COHR": ["코히런트"], "VRT": ["버티브"], "ETN": ["이튼"], "IREN": ["아이렌", "IREN"],
+    "NFLX": ["넷플릭스"], "COIN": ["코인베이스"], "HOOD": ["로빈후드"], "UNH": ["유나이티드헬스"], "JPM": ["JP모건"], "LLY": ["일라이릴리"],
+}
+_MENTION_HOURS = 40      # 상위 종목 '왜' 탐색 창 — 미국장 마감(05:00 KST) 전후 하루 반
+_MENTIONS_PER_MOVER = 3
 _MACRO_FLOW = ("수급", "매크로")   # 시장구조 렌즈(담론 문서 선별 시 항상 포함)
 _DISCOURSE_THEMES = 12            # 지배 테마 랭킹 상한
 _DISCOURSE_DOCS = 8              # 시장구조 코멘터리 문서 상한
@@ -85,14 +97,66 @@ def _narrative_gist(body: str | None) -> str | None:
     return gist[:NARRATIVE_GIST_CHARS] or None
 
 
-def _enrich_coverage(conn, ticker: str) -> dict:
-    """우리 커버리지 — entity(US + ADR 본체) 해소 시 최근 언급수 + 걸린 내러티브. 없으면 uncovered(스터디 후보)."""
+def _resolve_any(conn, ticker: str) -> tuple[list[int], list[str]]:
+    """티커 → (엔티티 id들, 문서에서 부르는 이름들). transcript_follow·ADR 본체·한글 별칭표 순으로 넓게 잡는다."""
     us_eid, _ = resolve_us(conn, ticker)
-    home_eid = _home_entity_id(conn, ticker)             # ADR이면 KR 본체도 함께
-    ids = [e for e in dict.fromkeys([us_eid, home_eid]) if e]
+    home_eid = _home_entity_id(conn, ticker)
+    names = list(_US_KR_NAMES.get((ticker or "").upper(), []))
+    ids = [e for e in [us_eid, home_eid] if e]
+    for nm in names:
+        row = conn.execute("SELECT id FROM entities WHERE type='company' AND name=? LIMIT 1", (nm,)).fetchone()
+        if row and row["id"] not in ids:
+            ids.append(row["id"])
+    if home_eid:
+        nm = _ADR_HOME.get((ticker or "").upper())
+        if nm and nm not in names:
+            names.append(nm)
+    return ids, [n for n in names if len(n) >= 2]
+
+
+def _recent_mentions(conn, ids: list[int], names: list[str], hours: int = _MENTION_HOURS,
+                     k: int = _MENTIONS_PER_MOVER) -> list[dict]:
+    """최근 문서에서 이 종목을 언급한 문장 — 엔티티 링크 또는 이름 부분일치. LLM 0.
+    '무슨 일이 있었나'를 문서의 말로 옮기기 위한 재료(라벨이 아니라 사건)."""
+    if not ids and not names:
+        return []
+    from pipeline.chat_tools import _mention_sentences
+    conds, params = [], []
+    if ids:
+        conds.append(f"rd.id IN (SELECT doc_id FROM entity_links WHERE entity_id IN ({','.join('?' * len(ids))}))")
+        params += ids
+    for nm in names[:3]:
+        conds.append("(rd.title LIKE '%'||?||'%' OR rd.markdown LIKE '%'||?||'%')")
+        params += [nm, nm]
+    rows = conn.execute(f"""
+        SELECT rd.id, rd.title, rd.published_at, rd.source_type, substr(rd.markdown,1,20000) body
+        FROM raw_documents rd WHERE rd.published_at >= datetime('now', ?) AND length(rd.markdown) >= 80
+          AND ({' OR '.join(conds)}) ORDER BY rd.published_at DESC LIMIT 12""", (f"-{hours} hours", *params)).fetchall()
+    out = []
+    for r in rows:
+        sent = None
+        for nm in names:
+            got = _mention_sentences(r["body"] or "", nm, k=2, width=240)   # 첫 언급은 종목 나열일 때가 많다 — 두 창을 이어 붙인다
+            if got:
+                sent = " … ".join(got)
+                break
+        if not sent and names:
+            continue           # 엔티티 링크만 있고 이름이 본문에 없으면 문장을 못 뽑는다 — 건너뜀
+        out.append({"doc_id": r["id"], "title": (r["title"] or "")[:60], "when": (r["published_at"] or "")[:16],
+                    "source_type": r["source_type"], "sentence": sent or ""})
+        if len(out) >= k:
+            break
+    return out
+
+
+def _enrich_coverage(conn, ticker: str) -> dict:
+    """우리 커버리지 — 엔티티(US·ADR 본체·한글 별칭) 해소 시 최근 언급수·언급 문장·걸린 내러티브. 없으면 uncovered."""
+    ids, names = _resolve_any(conn, ticker)
+    us_eid = ids[0] if ids else None
+    home_eid = None
     if not ids:
         return {"coverage": "uncovered", "entity_id": None, "mentions_3d": 0,
-                "narrative": None, "narrative_gist": None}
+                "narrative": None, "narrative_gist": None, "mentions": []}
     ph = ",".join("?" * len(ids))
     m = conn.execute(
         f"SELECT count(DISTINCT el.doc_id) n FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id "
@@ -104,7 +168,8 @@ def _enrich_coverage(conn, ticker: str) -> dict:
     return {"coverage": "covered", "entity_id": us_eid or home_eid,
             "mentions_3d": m["n"] if m else 0,
             "narrative": nar["t"] if nar else None,
-            "narrative_gist": _narrative_gist(nar["b"]) if nar else None}
+            "narrative_gist": _narrative_gist(nar["b"]) if nar else None,
+            "mentions": _recent_mentions(conn, ids, names)}
 
 
 def _build_movers(conn, items: list[dict]) -> list[dict]:
@@ -133,7 +198,19 @@ def _attach_headlines(conn, movers: list[dict], fetch: bool = True) -> None:
             list(ex.map(fetch_news, targets))              # 캐시 미스만 실제 조회
     for m in movers:
         if m["flags"]:
-            m["headlines"] = get_news(conn, m["ticker"])
+            m["headlines"] = _relevant_headlines(m, get_news(conn, m["ticker"]))
+
+
+def _relevant_headlines(m: dict, items: list[dict]) -> list[dict]:
+    """티커·회사명(영문 첫 토큰·한글 별칭)이 제목에 없는 헤드라인은 버린다 — yfinance 뉴스는 시장 일반 기사가 섞인다
+    (실측: 엔비디아에 버텍스 파마 기사)."""
+    toks = {m["ticker"].lower()}
+    first = (m.get("name") or "").split(" ")[0].strip(",.").lower()
+    if len(first) >= 4:
+        toks.add(first)
+    toks |= {n.lower() for n in _US_KR_NAMES.get(m["ticker"].upper(), [])}
+    out = [h for h in items if any(t in (h.get("title") or "").lower() for t in toks)]
+    return out[:3]
 
 
 def _read_synthesis(conn, trade_date: str | None) -> dict | None:
@@ -498,8 +575,12 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
                 f"· [{h['publisher'] or '?'}] {h['title']}" + (f" — {h['summary'][:100]}" if h.get("summary") else "")
                 for h in m["headlines"][:2])
         gist = f"\n    (내러티브 요지: {m['narrative_gist']})" if m.get("narrative_gist") else ""
+        ment = ""
+        if m.get("mentions"):
+            ment = "\n    수집 문서 언급(이 종목에 무슨 일이 있었나 — 여기 있는 사건을 그대로 옮겨 쓸 것):\n" + "\n".join(
+                f"      · [{x['source_type']} {x['when']}] {x['title']}: \"{x['sentence'][:200]}\"" for x in m["mentions"])
         return (f"- {m['ticker']} ({m['name']}): {', '.join(m['flags'])} · 최근언급 {m['mentions_3d']}건 "
-                f"· 관련내러티브: {cov}{gist}{head}")
+                f"· 관련내러티브: {cov}{gist}{head}{ment}")
 
     idx = "- 없음"
     if indices.get("items"):
@@ -592,6 +673,9 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
         "③ issues — **3~4문장.** 중요한 것만 남겨라: 쏠린 섹터 1~2개, 그룹으로 안 풀리는 개별 종목 "
         "**가장 중요한 2~3개**, 그리고 거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·되돌림인지). "
         "종목을 빠짐없이 훑지 마라 — 덜 중요한 건 버리고 스터디 후보로 넘겨라. "
+"**개별 종목은 라벨이 아니라 사건으로 쓴다**: '단일 촉매 확인'·'촉매 실체 불명' 같은 판정어만 쓰지 말고, "
+        "수집 문서 언급·헤드라인에 있는 **무슨 일이 있었는지**(예: 'CPU 가격 10% 인상 발표', '네비우스 실적 발표에 동반 상승')를 그 종목 문장에 넣어라. "
+        "언급도 헤드라인도 없을 때만 '수집 문서·헤드라인에 촉매 없음'이라고 쓴다. "
         "헤드라인이 있으면 그 종목의 촉매로 삼고, 담론이 사건을 지목하면 이름을 명시하라. "
         "**내러티브를 끌어올 때는 제목만 던지지 마라(D-114).** 제목은 서사를 한 줄로 압축한 것이라 "
         "근거·전개가 빠져 있다(구 버전은 물음 형태라 더욱 그렇다) — `(내러티브 요지: …)`에 실체가 "
@@ -627,6 +711,7 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
         "- **재료 섹션 번호를 본문에 노출하지 마라.** 독자는 `[1]`~`[4]` 재료를 보지 않는다. "
         "'[4]를 보면'이 아니라 '최근 스냅샷을 보면'처럼 내용으로 지칭하라.\n"
         "JSON만 출력: {\"index_summary\": \"…\", \"drivers\": \"…\", \"issues\": \"…\", \"flow\": \"…\", "
+        "\"movers_why\": [{\"ticker\": \"INTC\", \"why\": \"+9.1% — 무슨 일(출처 종류). 사건이 없으면 '촉매 없음'\"}] (개별 이슈 종목 전부, 각 60자 이내), "
         "\"study_candidates\": [\"티커 — 왜 스터디해야 하는지 한 줄\"], "
         "\"share_candidates\": [\"티커/주제 — 이미 내러티브 있어 공유할 만한 것 한 줄\"]}"
     )
@@ -646,6 +731,7 @@ def _normalize_synthesis(data: dict) -> dict:
         out["issues"] = data["mood"]
     out["study_candidates"] = data.get("study_candidates") or []
     out["share_candidates"] = data.get("share_candidates") or []
+    out["movers_why"] = [x for x in (data.get("movers_why") or []) if isinstance(x, dict) and x.get("ticker")]
     return out
 
 

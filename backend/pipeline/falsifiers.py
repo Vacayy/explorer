@@ -35,7 +35,7 @@ def _call_falsifier_opus(prompt: str) -> str:
     import subprocess
     from pipeline.enrich import _claude_bin
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", FALSIFIER_MODEL, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", FALSIFIER_MODEL, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=400)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")

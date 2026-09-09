@@ -160,7 +160,7 @@ def _call_opus(prompt: str) -> dict:
     data, last_err = None, ""
     for _ in range(2):
         proc = subprocess.run(
-            [_claude_bin(), "-p", "--model", UPSIDE_MODEL, "--output-format", "json", prompt],
+            [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", UPSIDE_MODEL, "--output-format", "json", prompt],
             capture_output=True, text=True, timeout=300)
         if proc.returncode != 0:
             last_err = f"rc={proc.returncode} out={proc.stdout.strip()[:150]!r} err={proc.stderr.strip()[:120]!r}"

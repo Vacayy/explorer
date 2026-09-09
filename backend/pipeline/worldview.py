@@ -111,7 +111,7 @@ def _build_prompt(m: dict) -> str:
 
 def _call_json_sonnet(prompt: str) -> dict:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", WORLDVIEW_MODEL, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", WORLDVIEW_MODEL, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")

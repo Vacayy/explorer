@@ -68,7 +68,7 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
 
 def _call(prompt: str) -> dict:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", CANON_MODEL, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", CANON_MODEL, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=600)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {(proc.stdout or proc.stderr)[:200]}")

@@ -24,7 +24,7 @@ KNOWLEDGE_MODEL = os.getenv("KNOWLEDGE_MODEL", "opus")
 def _call_claude_knowledge(prompt: str) -> str:
     """지식 라인 공용 opus 텍스트 호출 (승격·모순·반증 판정 공통 티어)."""
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", KNOWLEDGE_MODEL, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", KNOWLEDGE_MODEL, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=400)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")

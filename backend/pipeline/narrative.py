@@ -12,6 +12,7 @@ import re
 import subprocess
 
 from database import get_connection
+from pipeline.visibility import unverified_sql
 from pipeline.enrich import _claude_bin, llm_engine
 
 NARRATIVE_MODEL = os.getenv("NARRATIVE_MODEL", "opus")
@@ -37,6 +38,9 @@ def _resolve(conn, topic: str):
 def gather(conn, entity_id: int) -> list[dict]:
     """이 주제 문서 — 재료, 수집(발행)순(오래된→최신). 시간 방향(D-021)도 함께.
 
+    미검증 소스(스크랩)는 제외 — 내러티브가 뽑는 인과 엣지가 결국 같은 그래프로 들어가고,
+    2+ 내러티브가 반복 주장하면 지식으로 승격돼 다음 생성에 전제로 재주입된다 (D-142).
+
     주의: published_at은 '글이 수집·작성된 날'이지 사건 발생일이 아니다.
     time_orientation(past/current/forward)으로 회고/현재/전망을 구분해 내러티브에 반영.
     """
@@ -48,6 +52,7 @@ def gather(conn, entity_id: int) -> list[dict]:
         LEFT JOIN enrichments en ON en.doc_id = rd.id
         WHERE el.entity_id=? AND el.link_type IN ('industry','topic')
           AND rd.published_at >= datetime('now', '-30 days')
+          AND {unverified_sql()}
         ORDER BY rd.published_at ASC LIMIT {DOCS}""", (entity_id,))]
 
 
@@ -303,7 +308,7 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
 
 def _call(prompt: str, model: str = NARRATIVE_MODEL) -> dict:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", model, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", model, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=400)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
