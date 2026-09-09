@@ -200,6 +200,20 @@ def init_db():
         UNIQUE(stock_code, data_source, fiscal_year)
     );
 
+    -- 스크랩 링크 원장 (D-142) — 스크랩 채널이 올린 URL의 처리 이력.
+    -- url이 키라 같은 글이 여러 번 스크랩돼도 문서는 하나(seen_count로 반복 노출을 센다 → 훗날 '스터디 열기' 신호).
+    CREATE TABLE IF NOT EXISTS scrap_links (
+        url           TEXT PRIMARY KEY,
+        doc_id        INTEGER REFERENCES raw_documents(id) ON DELETE SET NULL,
+        channel       TEXT,                      -- 최초로 스크랩한 채널
+        src_doc_id    INTEGER,                   -- 그 텔레그램 문서 (raw_documents.id)
+        seen_count    INTEGER DEFAULT 1,
+        status        TEXT DEFAULT 'pending',    -- pending | ok | failed
+        tries         INTEGER DEFAULT 0,
+        first_seen_at TEXT DEFAULT (datetime('now')),
+        last_seen_at  TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS telegram_channels (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         channel_name TEXT NOT NULL UNIQUE,
@@ -1204,6 +1218,8 @@ def init_db():
         "ALTER TABLE blog_sources ADD COLUMN collect_enabled INTEGER DEFAULT 1",
         "ALTER TABLE telegram_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
         "ALTER TABLE youtube_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
+        # 링크 스크랩 채널 (D-142) — 본문 없이 URL만 올리는 채널. 켜면 링크를 따라가 원문을 별도 문서로 적재한다.
+        "ALTER TABLE telegram_channels ADD COLUMN expand_links INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(migration)
