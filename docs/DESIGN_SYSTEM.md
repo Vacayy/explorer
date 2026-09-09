@@ -12,26 +12,31 @@
 
 ## 1. 레이아웃 컨트랙트
 
-### 셸 (App.tsx Layout — shadcn Sidebar 기반, D-017)
+### 셸 (App.tsx Layout — shadcn Sidebar 기반, D-017 → 상단 크롬 제거·하단 도크, D-136)
 
 ```
 <div min-h-screen>
   <Omnibar/>                              ⌘K 오버레이 (CommandDialog)
   <SidebarProvider defaultOpen={≥1280px} --sidebar-width:16rem>
-    <SidebarInset>                        메인 컬럼 (=main)
-      <Header>          h-14 · sticky · 보더 없음 · 단일 검색=옴니바 트리거
-      <ModeNavigation>  보더 없음
-      <div mx-auto max-w-[var(--layout-shell)] p-6>  ← 페이지 렌더 슬롯
+    <SidebarInset>                        메인 컬럼 (=main) — 상단 크롬 없음
+      <div mx-auto max-w-[var(--layout-shell)] px-6 pt-6 pb-[var(--dock-reserve)]>
+        <SubNav/>                         모드 안 L2 (있을 때만, h-8 + mb-5 = --subnav-height)
+        ← 페이지 렌더 슬롯
+      </div>
     </SidebarInset>
+    <Dock/>                               fixed bottom-4 · 뷰포트 중앙 · 플로팅 pill (docs/specs/dock-navigation.md)
     <FollowRail/>                         shadcn <Sidebar side=right collapsible=offcanvas>
   </SidebarProvider>
 </div>
 ```
 
-- 폭 상한 토큰: `--layout-shell: 1440px` (index.css). Header·ModeNavigation·본문이 **반드시 이 토큰을 공유** — 개별 하드코딩 금지.
-- 페이지는 `p-6` 슬롯 안에서 렌더되므로 **자체 padding·margin·max-w를 지정하지 않는다.**
-- **팔로우 레일 = 공식 shadcn Sidebar**. 넓은 데스크톱(≥1280px)=펼침, 이하=토글(헤더 패널버튼/⌘B), 모바일=Sheet 오버레이 자동. 헤더/네비는 이제 inset 폭 안에 있음(레일 열림 시 축소).
-- **보더리스**: 헤더·네비에 `border-b` 없음 — 카드색(card) vs stone 바탕 대비로 층 표현. 카드는 ring+shadow. 표 행 구분선·인풋·세그먼트는 유지.
+- 폭 상한 토큰: `--layout-shell: 1440px` (index.css). 본문 슬롯이 이 토큰을 쓴다. 도크는 뷰포트 중앙 고정(레일 열림/닫힘에 흔들리지 않게).
+- 페이지는 슬롯 안에서 렌더되므로 **자체 padding·margin·max-w를 지정하지 않는다.**
+- **도크(layout/Dock.tsx)** = `[검색] │ Home ┃ 팔로우 · 피드 · 월드모델 ┃ 대화 │ [열린 도시에] │ 승인 · 저장 · 레일 · 더보기`. 아이템=아이콘 20+라벨 11 상시(`DockItem`), 활성=primary 틴트+하단 점, 배지=우상단 원형 숫자(승인=hypothesis, 저장=primary). L2가 있는 항목은 호버 250ms → `ui/hover-card` 팝오버(모드 간 점프). `<768`은 전폭 하단 탭바(5모드+더보기, 활성 탭 재탭 → L2 Sheet).
+- **SubNav(layout/SubNav.tsx)** = 모드 안 형제 탭 한 행(pill). 탭 목록은 `layout/navConfig.ts` 한 곳 — 도크 팝오버와 공유.
+- **팔로우 레일 = 공식 shadcn Sidebar**. 넓은 데스크톱(≥1280px)=펼침, 이하=토글(도크 '레일'/⌘B), 모바일=Sheet 오버레이 자동.
+- **보더리스**: 카드색(card) vs stone 바탕 대비로 층 표현. 카드는 ring+shadow. 도크는 `bg-card/85 backdrop-blur ring-1 shadow-lg`.
+- 토스트(sonner)는 **우상단** — 하단은 도크·대화 컴포저 자리.
 
 ### 페이지 컨테이너 (shared/PageContainer)
 
@@ -44,8 +49,8 @@
 | `gap` | `md`(기본, space-y-6) | 카드·차트 중심 화면 |
 | | `sm`(space-y-4) | 리스트·테이블 밀집 화면 |
 
-**예외 — 풀하이트 앱형 페이지** (ChatPage): PageContainer 대신
-`h-[calc(100dvh-var(--shell-offset))]` + 내부 `overflow-y-auto`. `--shell-offset` 토큰만 사용, 매직넘버 금지.
+**예외 — 풀하이트 앱형 페이지** (ChatPage·SummaryPage): PageContainer 대신
+`h-[calc(100dvh-var(--shell-offset))]` + 내부 `overflow-y-auto`. `--shell-offset`(= 상단 p-6 + `--dock-reserve` + SubNav 있으면 `--subnav-height`)은 Layout이 인라인으로 확정한다 — 매직넘버 금지.
 
 ### 반응형 규칙
 
@@ -62,7 +67,7 @@
 | 도메인: 주가 | `--color-up`(빨강) `--color-down`(파랑) | 한국 컨벤션. 등락 표시는 이 둘만 |
 | 도메인: 인식론 | `--color-fact`(초록) `--color-hypothesis`(주황) | LLM 산출=hypothesis 스타일 필수 |
 | 차트 | `--color-chart-revenue/profit/ratio/negative/warning`, `--color-chart-1~5` | 신규 차트는 semantic 우선, 팔레트(1~5)는 시리즈 나열용 |
-| 레이아웃 | `--layout-shell` `--shell-offset` | §1 참조 |
+| 레이아웃 | `--layout-shell` `--dock-height` `--dock-reserve` `--subnav-height` `--shell-offset` | §1 참조 |
 | 라운딩 | `--radius`(0.75rem) 파생 sm~4xl | 카드=`rounded-xl` |
 
 폰트: Inter Variable + Noto Sans KR fallback, 숫자는 전역 `tabular-nums` (td/th 자동).
@@ -72,7 +77,7 @@
 ```
 ui/      shadcn 공식 CLI 설치본만. 수정·수제작 금지.
 shared/  ui/를 조합한 서비스 공통 (PageContainer, SegmentTabs, ChartCard, DataTable…)
-layout/  셸 전용 (Header, ModeNavigation, FollowRail)
+layout/  셸 전용 (Dock·DockItem·Inboxes, SubNav, navConfig, FollowRail)
 charts/  lightweight-charts 래퍼
 {page}/  shared 조합. shared에 있으면 shared 우선.
 ```
@@ -100,7 +105,7 @@ charts/  lightweight-charts 래퍼
 |---|---|
 | `actions/RightsProTable.tsx` | sticky 첫 컬럼 + `w-max` 밀집 테이블 — raw table 유지, `overflow-x-auto` 래퍼 필수 |
 | `discovery/ScreenerPage.tsx` · `industry/IndustryPage.tsx` 내부 Th/Td | 정렬 헤더 로컬 헬퍼 — 토큰 준수 확인됨 |
-| `layout/ModeNavigation.tsx` | 라우터 연동 네비 — Radix Tabs 의미론(패널 전환)과 다름. Link+border-b 유지 |
+| `layout/SubNav.tsx` · `layout/Dock.tsx` 모드 Link | 라우터 연동 네비 — Radix Tabs 의미론(패널 전환)과 다름. Link(pill) 유지. 도크 아이템은 ui/button 기반 |
 
 이 표에 없는 raw HTML atom 사용은 전부 위반이다.
 

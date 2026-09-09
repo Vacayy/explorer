@@ -93,8 +93,15 @@
 :root {
   /* 셸 폭 상한 — Header/ModeNavigation/본문이 공유하는 유일한 폭 기준 */
   --layout-shell: 1440px;
-  /* 헤더(48) + 2단 네비 + main 상하 p-6 합 — 풀하이트 페이지의 뷰포트 차감량 */
-  --shell-offset: 190px;
+  /* 도크(D-136, docs/specs/dock-navigation.md §5): 높이 · 하단 예약(도크+여백) · 인페이지 서브탭 행(h-8 + mb-5) */
+  --dock-height: 56px;
+  --dock-reserve: calc(var(--dock-height) + 2rem);
+  --subnav-height: 3.25rem;
+  /* 풀하이트 페이지의 뷰포트 차감량 — 상단 p-6 + 하단 도크 예약(+ SubNav). App.tsx Layout이 인라인으로 확정한다 */
+  --shell-offset: calc(1.5rem + var(--dock-reserve));
+}
+@media (max-width: 767px) {
+  :root { --dock-reserve: calc(var(--dock-height) + 1rem + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- Light — 쿨 스톤 & 멀버리 (docs/DECISIONS.md D-016) ---------- */

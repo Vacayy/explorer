@@ -4,9 +4,10 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import Header from "@/components/layout/Header"
+import Dock from "@/components/layout/Dock"
+import { SubNav } from "@/components/layout/SubNav"
+import { FEED_TABS, FOLLOW_TABS, WORLDMODEL_TABS, analyzeTabs, getActiveMode, getActiveSubTab } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
-import ModeNavigation from "@/components/layout/ModeNavigation"
 import FollowRail from "@/components/layout/FollowRail"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
 import { useCompany } from "@/hooks/useCompanySearch"
@@ -67,15 +68,27 @@ import CatalystsPage from "@/components/research/CatalystsPage"
 
 const queryClient = createQueryClient()
 
+/** 모드별 인페이지 L2 — 도크 팝오버와 같은 navConfig를 읽는다 (docs/specs/dock-navigation.md §2) */
+function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
+  const mode = getActiveMode(pathname)
+  const activeKey = getActiveSubTab(pathname, search)
+  if (mode === "follow" || mode === "us") return { tabs: FOLLOW_TABS, activeKey }
+  if (mode === "feed" && pathname.startsWith("/feed")) return { tabs: FEED_TABS, activeKey }
+  if (mode === "worldmodel") return { tabs: WORLDMODEL_TABS, activeKey }
+  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode), activeKey, context: companyName ?? stockCode }
+  return null
+}
+
 function Layout() {
   useKeyboardShortcuts()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
 
   // Extract stockCode from /analyze/:stockCode/... paths (exclude special routes like /analyze/compare)
   const stockCodeMatch = pathname.match(/^\/analyze\/([^/]+)/)
   const rawCode = stockCodeMatch ? stockCodeMatch[1] : null
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
+  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
 
   // 넓은 데스크톱에선 팔로우 레일 펼침, 그 이하에선 접힘(토글/오버레이) — 사용자 의도
   const [railDefaultOpen] = useState(
@@ -90,18 +103,23 @@ function Layout() {
         style={{ "--sidebar-width": "16rem" } as CSSProperties}
       >
         <SidebarInset className="min-w-0 bg-background">
-          <Header />
-          <ModeNavigation stockCode={stockCode} companyName={company?.corp_name} />
-          <div className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 p-6">
+          {/* 상단 크롬 없음(D-136) — 콘텐츠가 뷰포트 최상단에서 시작. 하단은 도크 예약(--dock-reserve).
+              --shell-offset(풀하이트 페이지 차감량)은 SubNav 유무로 달라져 여기서 확정한다 */}
+          <div
+            className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-6 pt-6 pb-[var(--dock-reserve)]"
+            style={{ "--shell-offset": subNav ? "calc(1.5rem + var(--dock-reserve) + var(--subnav-height))" : "calc(1.5rem + var(--dock-reserve))" } as CSSProperties}
+          >
+            {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
             <Outlet />
           </div>
         </SidebarInset>
+        <Dock stockCode={stockCode} companyName={company?.corp_name} />
 
         {/* 팔로우 레일 — 종목·채널·블로그 통합, shadcn Sidebar (docs/specs/follow-rail.md) */}
         <FollowRail currentStockCode={stockCode} />
       </SidebarProvider>
       <AnswerWatcher />
-      <Toaster />
+      <Toaster position="top-right" />
     </div>
   )
 }
