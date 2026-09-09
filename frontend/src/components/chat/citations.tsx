@@ -17,6 +17,7 @@ export const GAP_LABEL: Record<string, string> = {
   contradiction: "모순",
   stale: "오래된 정보",
   missing: "빠진 정보",
+  assumption: "가정",
 }
 
 export function citationHref(c: Citation): string | null {

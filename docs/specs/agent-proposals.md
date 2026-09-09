@@ -38,6 +38,7 @@ BACKLOG.md에 이미 스펙되어 있던 두 항목(소외 스캐너·불편한 
 | `contested_edge` | entity_relations `contested=true`인 엣지 쌍(Phase 2 §2-4에서 이미 계산됨) | LLM 0 감지, 승인 시만 opus | opus가 두 주장을 검토해 조정(confidence 재산정 또는 사용자 선택 요청) |
 | `devils_advocate` | 내 watchlist/논지 vs 통념 반대 관점 질문 3개, 주 1회 (BACKLOG 기존 스펙, thesis_check 능동형) | haiku | 대화 스레드 시작 (또는 단순 확인만, §6 참고) |
 | `falsifier_watch` | knowledge_falsifiers 중 미발화(`triggered_at IS NULL`)이고 근거 지식이 corroborated인 것 — "이 전제가 흔들리면 무엇이 달라지는지" 정기 리마인드 | LLM 0 | 확인만(액션 없음) — 다음 내러티브 재생성 시 이미 반증-우선 로직이 감시 중이므로 이건 순수 가시성 제공 |
+| `entity_alias` (D-141 추가) | 대화 도구가 이름 해석을 '가정'으로 통과시킨 표기('삼양라면'→삼양식품) — `chat.generate_answer` 끝에 제안, dedup=`entity_id:표기` | LLM 0 | `entity_keywords(active)` 등록 → 다음부터 결정적 해석 |
 
 **의도적으로 뺀 것**: 반복 질문 기반 트리거(product-v3.md L2 "질문의 cron화"). **이건 대화 영속화
 (product-v3 L0/L1)가 먼저 있어야 한다 — 지금 conversations 테이블 자체가 없다.** 이 트랙의 전제
