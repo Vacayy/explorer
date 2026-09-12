@@ -7,7 +7,7 @@ export type Citation = NonNullable<ChatMessage["citations"]>[number]
 
 /** 근거 종류 → 한국어 라벨 (chat_tools 근거 항목 kind) */
 export const KIND_LABEL: Record<string, string> = {
-  doc: "문서", narrative: "내러티브", edges: "인과", knowledge: "지식", question: "질문",
+  study: "스터디 원문·주석", doc: "문서", narrative: "내러티브", edges: "인과", knowledge: "지식", question: "질문",
   lens: "렌즈", quote: "시세", prices: "시세 추이", regime: "국면", briefing: "브리핑",
   digest: "다이제스트", youtube: "유튜브", signal: "신호", action: "기업활동",
 }
@@ -68,9 +68,9 @@ function CitationChip({ c }: { c: Citation }) {
     <Tooltip>
       <TooltipTrigger asChild>
         {to ? (
-          <Link to={to} className={CHIP} aria-label={label}>{c.n}</Link>
+          <Link to={to} className={CHIP} aria-label={label} data-cite-n={c.n}>{c.n}</Link>
         ) : (
-          <span className={CHIP} aria-label={label}>{c.n}</span>
+          <span className={CHIP} aria-label={label} data-cite-n={c.n}>{c.n}</span>
         )}
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs">

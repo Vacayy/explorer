@@ -1,4 +1,5 @@
 import { Newspaper, Scale, TrendingUp, Waypoints } from "lucide-react"
+import { Link } from "react-router-dom"
 import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -20,11 +21,12 @@ export function ChatEmpty({ onPick, children }: { onPick: (q: string) => void; c
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">무엇을 확인할까요?</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          수집 문서·내러티브·인과 그래프·시세·시장 국면을 질문에 맞게 조회해 근거와 함께 답합니다.<br className="hidden sm:block" />
-          근거 없는 내용은 답하지 않고, 갭(근거 부족·모순·오래된 정보)을 함께 표시합니다.
+          모아둔 텔레그램·블로그·유튜브와 시세를 찾아, 원문 근거와 함께 답합니다.<br className="hidden sm:block" />
+          최근 이야기, 같은 채널의 과거 발언, 서로 다른 시각을 이어서 물어보세요.
         </p>
       </div>
 
+      <Button asChild variant="outline"><Link to="/experiments/expectations">수집한 메모리 자료부터 읽기</Link></Button>
       <div className="w-full">{children}</div>
 
       <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">

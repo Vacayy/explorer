@@ -8,14 +8,24 @@ DB가 진실원천, 진행 표시·본문 스트리밍은 `GET /conversations/{i
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/spine/ask", tags=["spine"])
+
+
+class Quote(BaseModel):
+    """드래그 인용 (D-146) — 선택 문장만으로는 맥락을 모른다. 문단·출처·근거를 함께 받는다."""
+    message_id: int | None = None                 # 인용된 assistant 메시지 (전문을 한 번만 싣기 위한 키)
+    selected: str                                  # 사용자가 지목한 문장
+    block: str | None = None                       # 그 문장이 속한 문단 전체
+    citations: list[dict] | None = None            # 그 대목이 딛던 근거 [{kind,title,doc_id}]
 
 
 class AskRequest(BaseModel):
     question: str
     conversation_id: int | None = None   # 스레드 이어가기
+    quote: Quote | None = None
+    document_ids: list[int] | None = Field(default=None, max_length=12)
 
 
 class Citation(BaseModel):
@@ -42,10 +52,10 @@ class AskResponse(BaseModel):
     as_of: str
 
 
-def _generate_answer(conversation_id: int, question: str):
+def _generate_answer(conversation_id: int, question: str, quote: dict | None = None):
     """백그라운드: 웹·봇 공용 경로 (pipeline/chat.py) — 어떤 경로로도 assistant 메시지로 닫힌다."""
     from pipeline.chat import generate_answer
-    generate_answer(conversation_id, question)
+    generate_answer(conversation_id, question, quote)
 
 
 @router.post("", response_model=AskResponse)
@@ -54,9 +64,17 @@ def ask_question(body: AskRequest, background: BackgroundTasks):
     if not q:
         raise HTTPException(400, "질문이 비어 있습니다")
 
+    if body.document_ids:
+        from pipeline.expectation_evidence import get_document
+        if any(doc_id < 1 or get_document(doc_id) is None for doc_id in body.document_ids):
+            raise HTTPException(422, "첨부할 수집 자료를 찾을 수 없습니다")
     from pipeline.conversations import log_question
     conv_id = log_question(q, channel="web", conversation_id=body.conversation_id)
-    background.add_task(_generate_answer, conv_id, q)
+    if body.document_ids is not None:
+        # Persist before generation: navigation/reload/follow-up keeps the selected corpus.
+        from pipeline.chat_memory import set_attached_documents
+        set_attached_documents(conv_id, list(dict.fromkeys(body.document_ids)))
+    background.add_task(_generate_answer, conv_id, q, body.quote.model_dump() if body.quote else None)
 
     return AskResponse(
         answer=None, citations=[], gaps=[], model=None,
