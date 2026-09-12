@@ -193,7 +193,7 @@ docs/            아래 참조
 | [SYSTEM.md](docs/SYSTEM.md)                 | 상태    | 현행 시스템 지도 — 테이블·파이프라인·API·화면 전체 목록           |
 | [DECISIONS.md](docs/DECISIONS.md)           | 결정    | append-only 로그 133건. 고려했지만 선택하지 않은 것까지       |
 | [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)   | 상태    | 레이아웃 컨트랙트·토큰                                 |
-| `docs/specs/`                               | 상태    | 기능별 화면·구현 스펙                                 |
+| [spec 목록과 수명주기](docs/specs/README.md) | 상태 | 진행 중 설계의 진입점 · 기능별 계약 · 검토 상태 |
 
 
 `DECISIONS.md`는 고치지 않습니다. 결정을 뒤집을 때는 새 항목을 쓰고 원래 항목에 한 줄을 답니다.
