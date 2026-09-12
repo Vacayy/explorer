@@ -188,6 +188,67 @@ def _flag_idiosyncratic(items: list[dict], clusters: list[dict]) -> None:
         m["flags"] = flags
 
 
+def _briefing_evidence(items: list[dict]) -> list[dict]:
+    """Stored, entity-linked reporting near the snapshot; never inferred price causation.
+
+    Bound to three calendar days ending on the snapshot date. Latest enrichment
+    only, so re-enrichment cannot duplicate a document. No network or generation.
+    """
+    if not items:
+        return []
+    from datetime import timedelta
+    end = date.fromisoformat(items[0]["trade_date"])
+    start = (end - timedelta(days=2)).isoformat()
+    until = (end + timedelta(days=1)).isoformat()
+    conn = get_connection()
+    try:
+        result = []
+        for item in items[:5]:
+            code = item['stock_code']
+            base = _base_code(code)
+            rows = conn.execute("""
+                SELECT d.id AS doc_id, d.title, d.source_type, d.published_at, d.markdown, d.raw_content,
+                       (SELECT en.summary FROM enrichments en WHERE en.doc_id=d.id
+                        ORDER BY en.id DESC LIMIT 1) AS summary
+                FROM raw_documents d
+                WHERE julianday(d.published_at, '+9 hours') >= julianday(?)
+                  AND julianday(d.published_at, '+9 hours') < julianday(?)
+                  AND EXISTS (
+                    SELECT 1 FROM entity_links l JOIN entities e ON e.id=l.entity_id
+                    WHERE l.doc_id=d.id AND e.type='company'
+                    AND (e.name=? OR e.aliases=? OR e.aliases=?
+                      OR (',' || replace(e.aliases,' ','') || ',') LIKE ?))
+                ORDER BY julianday(d.published_at) DESC, d.id DESC LIMIT 2
+            """, (start, until, item['name'], code, base, '%,' + code + ',%')).fetchall()
+            import re
+            documents = []
+            names = [item['name']]
+            if base != code and item['name'].endswith('우'):
+                names.append(item['name'][:-1])
+            for row in rows:
+                doc = dict(row)
+                raw = doc.pop('markdown') or doc.get('raw_content') or ''
+                doc.pop('raw_content')
+                doc['excerpt'], doc['excerpt_kind'] = None, None
+                for kind, text in [('summary', doc.get('summary')), ('original', raw)]:
+                    sentences = re.split(r'(?<=[.!?。])\s+|\n+', text or '')
+                    matches = [s.strip() for s in sentences if any(n.casefold() in s.casefold() for n in names)]
+                    if matches:
+                        excerpt = ' '.join(matches[:2])
+                        doc['excerpt'] = excerpt[:360] + ('…' if len(excerpt) > 360 else '')
+                        doc['excerpt_kind'] = kind
+                        break
+                # Never present an unrelated whole-document summary as a company catalyst.
+                doc.pop('summary')
+                documents.append(doc)
+            result.append({'stock_code': code, 'name': item['name'], 'rank': item['rank'],
+                           'parent_company_context': base != code,
+                           'documents': documents})
+        return result
+    finally:
+        conn.close()
+
+
 def _result(status: str, items: list[dict], error: str | None) -> dict:
     _flagged = list(items)
     clusters = _clusters(_flagged) if _flagged else []
@@ -200,6 +261,7 @@ def _result(status: str, items: list[dict], error: str | None) -> dict:
         "items": _flagged,
         "clusters": clusters,
         "idiosyncratic": [m for m in _flagged if m.get("flags")],
+        "briefing": _briefing_evidence(_flagged),
     }
 
 

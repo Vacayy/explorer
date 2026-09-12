@@ -1,12 +1,47 @@
 """통합 피드 API — raw_documents 기반 (greenfield spine 읽기)."""
 import json
+from typing import Literal
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 from database import get_connection
 from models.spine import EntityTag, FeedDocument, FeedResponse
+from models.timeline import TimelineResponse, TimelineChannelsResponse
 
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
+
+
+@router.get("/timeline", response_model=TimelineResponse)
+def get_timeline(
+    scope: Literal["all", "sources", "system"] = "all",
+    kind: Literal["all", "company", "person", "transcript", "trade"] = "all",
+    source: Literal["all", "telegram", "blog", "youtube"] = "all",
+    page: int = Query(1, ge=1, le=100),
+    size: int = Query(20, ge=1, le=50),
+    until: datetime | None = None,
+    channel: str | None = Query(None, max_length=2048),
+):
+    from pipeline.timeline import timeline
+    conn = get_connection()
+    try:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("BEGIN")
+        return timeline(conn, scope=scope, kind=kind, source=source, channel=channel, page=page, size=size,
+                        until=until.isoformat() if until else None)
+    finally:
+        conn.close()
+
+
+@router.get("/channels", response_model=TimelineChannelsResponse)
+def get_timeline_channels(until: datetime | None = None):
+    from pipeline.timeline import channels
+    conn = get_connection()
+    try:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("BEGIN")
+        return channels(conn, until=until.isoformat() if until else None)
+    finally:
+        conn.close()
 
 
 def resolve_channels(conn, rows) -> dict[int, dict | None]:

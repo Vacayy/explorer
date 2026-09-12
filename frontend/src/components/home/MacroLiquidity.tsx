@@ -28,8 +28,9 @@ const GROUP_ORDER: { key: string; label: string }[] = [
 
 const HINT = "전날 미국장의 배경 조건 — 금리·달러(위험선호 방향), 순유동성(Fed BS−TGA−RRP, 위험자산과 가장 잘 붙는 유동성), 신용스프레드·원자재. 시장 국면(오늘 얼마나 실을까)과 달리 '판이 어떻게 깔렸나'를 본다."
 
-function fmtValue(m: MacroIndicator): string {
+export function fmtValue(m: MacroIndicator): string {
   const v = m.value
+  if (m.key === "usdkrw") return `${v.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}원`
   if (m.fmt === "pct") return `${v.toFixed(2)}%`
   if (m.fmt === "usd") return `$${v.toLocaleString("en-US", { maximumFractionDigits: v >= 100 ? 0 : 2 })}`
   if (m.fmt === "trillion_b") return `$${v.toFixed(2)}T`
@@ -111,7 +112,7 @@ export function MacroLiquidity() {
             <span className="text-muted-foreground">· {data.interpretation.comment.replace(/ → 위험자산 배경 \S+$/, "")}</span>
           </div>
         ) : null}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+        <div className="grid grid-cols-1 @[620px]/market:grid-cols-2 gap-x-6 gap-y-1">
         {GROUP_ORDER.map(({ key, label }) => {
           const items = byGroup(key)
           return (

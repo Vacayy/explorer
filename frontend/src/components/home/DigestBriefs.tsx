@@ -43,16 +43,15 @@ export function DigestBriefs() {
 
   if (isLoading) return <Skeleton className="h-40 w-full rounded-xl" />
   const items = data ?? []
-  if (items.length === 0) return null
 
   return (
     <Card>
-      <CardHeader className="pb-2 flex-row items-center gap-2">
+      <CardHeader className="pb-2 flex flex-wrap items-center gap-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <LineChart className="h-4 w-4 text-muted-foreground" /> 종목 요약
         </CardTitle>
         <span className="text-[11px] text-muted-foreground">
-          {items[0].period_start} · 언급 상위 {items.length}종목
+          {items[0]?.period_start ?? "저장된 요약 없음"} · 언급 상위 {items.length}종목
         </span>
       </CardHeader>
       <CardContent className="divide-y py-0">

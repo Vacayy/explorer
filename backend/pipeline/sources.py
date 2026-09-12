@@ -41,8 +41,9 @@ def source_names(conn, rows) -> dict[int, dict | None]:
                         "key": ch if ch in tg else None} if ch else None
         elif st == "blog":
             from pipeline.urls import url_belongs
-            hit = next(((p, n) for p, n in blogs if url.startswith(p)), None)
-            if not hit:  # RSS 직등록 소스(뉴스·뉴스레터) — 도메인 fallback
+            # Path boundary matters: /alice2 is not a post from /alice.
+            hit = next(((p, n) for p, n in blogs if url_belongs(url, p, prefix_only=True)), None)
+            if not hit:  # A concrete source path takes precedence over a broad RSS domain.
                 hit = next(((p, n) for p, n in blogs if url_belongs(url, p)), None)
             out[did] = {"name": hit[1], "kind": "blog", "key": hit[0]} if hit else None
         elif st == "youtube":

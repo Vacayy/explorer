@@ -1,23 +1,20 @@
-import { useState } from "react"
-import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { BellPlus, ChevronDown, ChevronUp, Search, X } from "lucide-react"
+import { Timeline } from './Timeline'
+import { DocumentCard } from './FeedPost'
+import { isDocumentFeed } from '@/components/layout/navConfig'
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
+import { BellPlus, Search, X } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { followEntity, spineKeys } from "@/api/spine"
 import { useSpineFeed } from "@/hooks/useSpineFeed"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { PageContainer } from '@/components/shared/PageContainer'
-import { SourceBadge } from "@/components/shared/SourceBadge"
+import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
-import { EntityChip } from "@/components/shared/EntityChip"
-import { API_BASE } from "@/api/client"
-import { formatRelativeTime } from "@/utils/format"
-import type { EntityTag, FeedDocument } from "@/types"
+import type { EntityTag } from "@/types"
 
 /**
  * /feed — 통합 피드 (product-v2.md v2.1)
@@ -25,6 +22,13 @@ import type { EntityTag, FeedDocument } from "@/types"
  * 엔티티 칩 클릭 = 해당 필터 적용.
  */
 export default function UnifiedFeedPage() {
+  const [params] = useSearchParams()
+  if (isDocumentFeed(params.toString())) return <DocumentFeedPage />
+  if ([...params.keys()].some(key => key.startsWith('feed_'))) return <PageLayout width="reading"><Timeline /></PageLayout>
+  return <Navigate to="/home?home_view=feed" replace />
+}
+
+function DocumentFeedPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const filters = {
@@ -49,6 +53,7 @@ export default function UnifiedFeedPage() {
   const setFilter = (key: string, value: string | null) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
+      next.set("view", "documents")
       if (value) next.set(key, value)
       else next.delete(key)
       next.delete("page") // 필터 변경 시 1페이지로
@@ -64,17 +69,14 @@ export default function UnifiedFeedPage() {
   }
 
   if (isLoading) return <FeedSkeleton />
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
+  if (isError || !data) return <PageLayout header={<PageHeader title="문서 검색" />}><ErrorState onRetry={() => refetch()} /></PageLayout>
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.size))
   const activeFilters = (["stock", "industry", "topic"] as const).filter((k) => filters[k])
 
   return (
-    <PageContainer gap="sm">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-bold">피드</h2>
-        <FreshnessStamp asOf={data.as_of} />
-      </div>
+    <PageLayout header={<PageHeader title="문서 검색" actions={<><Button asChild variant="ghost" size="sm"><Link to="/home?home_view=feed">Home 피드로</Link></Button><FreshnessStamp asOf={data.as_of} /></>} />}>
+      <div className="space-y-4">
 
       {/* 하이브리드 검색 (BM25+벡터) — Enter로 실행, URL ?q= 동기화 */}
       <form
@@ -86,9 +88,9 @@ export default function UnifiedFeedPage() {
         }}
       >
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input name="q" defaultValue={filters.q ?? ""} placeholder="문서 검색 (의미 기반)…" className="pl-8 h-8 text-sm" />
+        <Input key={filters.q ?? ""} aria-label="문서 검색" autoComplete="off" name="q" defaultValue={filters.q ?? ""} placeholder="문서 검색 (의미 기반)…" className="pl-8 h-8 text-sm" />
         {filters.q && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setFilter("q", null)}
+          <Button type="button" variant="ghost" size="sm" aria-label="검색어 지우기" onClick={() => setFilter("q", null)}
             className="h-fit border-0 p-0 absolute right-2.5 inset-y-0 my-auto text-muted-foreground hover:text-foreground hover:bg-transparent">
             <X className="size-3.5" />
           </Button>
@@ -121,7 +123,7 @@ export default function UnifiedFeedPage() {
           <Button
             variant="ghost"
             size="xs"
-            onClick={() => setSearchParams(filters.source ? { source: filters.source } : {})}
+            onClick={() => setSearchParams(filters.source ? { view: "documents", source: filters.source } : { view: "documents" })}
           >
             모두 지우기
           </Button>
@@ -161,114 +163,15 @@ export default function UnifiedFeedPage() {
           </Button>
         </div>
       </div>
-    </PageContainer>
-  )
-}
-
-function DocumentCard({ doc, onChipFilter }: {
-  doc: FeedDocument
-  onChipFilter: (tag: EntityTag) => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const stockTags = doc.entities.filter((e) => e.link_type === "stock")
-  const otherTags = doc.entities.filter((e) => e.link_type !== "stock")
-  const hasFullText = !!doc.content && doc.content.trim().length > 0
-
-  return (
-    <Card>
-      <CardContent className="py-3 space-y-1.5">
-        <div className="flex items-center gap-2">
-          <SourceBadge sourceType={doc.source_type} />
-          {doc.channel && (doc.channel_kind && doc.channel_key ? (
-            <Link
-              to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
-              className="shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
-              title="채널 프로필 — 이 채널의 관점·이력"
-            >
-              {doc.channel}
-            </Link>
-          ) : (
-            <span className="shrink-0 text-[11px] text-muted-foreground">{doc.channel}</span>
-          ))}
-          <Link
-            to={`/doc/${doc.id}`}
-            className="font-medium text-sm truncate hover:underline"
-          >
-            {doc.title || "(제목 없음)"}
-          </Link>
-          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
-            {formatRelativeTime(doc.published_at)}
-          </span>
-        </div>
-
-        {doc.summary && !expanded && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{doc.summary}</p>
-        )}
-
-        {/* 전문 (펼침) — 텔레그램/노트 원문 그대로 */}
-        {expanded && hasFullText && (
-          <div className="text-sm whitespace-pre-wrap border-l-2 border-border pl-3 py-1 max-h-[480px] overflow-y-auto">
-            {doc.content}
-          </div>
-        )}
-
-        {/* 첨부 이미지 (증시일정 짤 등) — 클릭 시 원본 */}
-        {doc.images.length > 0 && (
-          <div className="flex gap-2 flex-wrap pt-1">
-            {doc.images.map((img) => (
-              <a key={img} href={`${API_BASE}/media/${img}`} target="_blank" rel="noreferrer">
-                <img
-                  src={`${API_BASE}/media/${img}`}
-                  alt=""
-                  loading="lazy"
-                  className={expanded ? "max-h-[420px] rounded-lg border" : "h-24 rounded-md border object-cover"}
-                />
-              </a>
-            ))}
-          </div>
-        )}
-
-        {hasFullText && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded(!expanded)}
-            className="h-auto border-0 p-0 font-normal flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-transparent"
-          >
-            {expanded ? <><ChevronUp className="size-3" /> 접기</> : <><ChevronDown className="size-3" /> 전문 보기</>}
-          </Button>
-        )}
-
-        {(stockTags.length > 0 || otherTags.length > 0) && (
-          <div className="flex flex-wrap items-center gap-1 pt-0.5">
-            {stockTags.map((t) => (
-              <span key={`${t.entity_id}-${t.link_type}`} className="inline-flex items-center gap-0.5">
-                <EntityChip tag={t} onFilter={onChipFilter} />
-                {t.aliases && (
-                  <Link
-                    to={`/analyze/${t.aliases}/summary`}
-                    className="text-[10px] text-muted-foreground hover:text-primary"
-                    title="종목 상세로 이동"
-                  >
-                    ↗
-                  </Link>
-                )}
-              </span>
-            ))}
-            {otherTags.map((t) => (
-              <EntityChip key={`${t.entity_id}-${t.link_type}`} tag={t} onFilter={onChipFilter} />
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+    </PageLayout>
   )
 }
 
 function FeedSkeleton() {
   return (
-    <PageContainer gap="sm">
-      <Skeleton className="h-6 w-24" />
+    <PageLayout header={<PageHeader title="문서 검색" />}>
+      <div className="space-y-4">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="border rounded-xl p-4 space-y-2">
           <Skeleton className="h-4 w-3/4" />
@@ -276,6 +179,7 @@ function FeedSkeleton() {
           <Skeleton className="h-3 w-40" />
         </div>
       ))}
-    </PageContainer>
+      </div>
+    </PageLayout>
   )
 }

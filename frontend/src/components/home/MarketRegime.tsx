@@ -69,7 +69,7 @@ export function MarketRegime() {
         <Bluf color={(data.kr ?? data.us)!.posture_color}
           posture={(data.kr ?? data.us)!.posture} reason={data.headline} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 @[620px]/market:grid-cols-2 gap-4">
           {data.us && <UsColumn us={data.us} />}
           {data.kr && <KrColumn kr={data.kr} />}
         </div>
