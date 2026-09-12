@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from database import get_connection
+from pipeline.visibility import unverified_sql
 from pipeline.dates import parse_dt as _parse_dt
 
 MIN_MENTIONS = 3      # 최근 7일 최소 언급 수
@@ -33,7 +34,8 @@ def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
         JOIN raw_documents rd ON el.doc_id = rd.id
         LEFT JOIN enrichments en ON en.doc_id = rd.id
         WHERE el.link_type = 'stock' AND e.type = 'company'
-    """).fetchall()
+          AND {unverified}
+    """.format(unverified=unverified_sql())).fetchall()
 
     # 종목별로 최근 7일 / 직전 7일 언급 분류
     recent, baseline = {}, {}

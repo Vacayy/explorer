@@ -61,9 +61,11 @@ def digest_transcript(title: str, transcript: str) -> str | None:
                     f"err={proc.stderr.strip()[:100]!r}")
         except Exception as e:  # noqa: BLE001 — timeout 등도 원인 기록
             last = f"exc={type(e).__name__}:{e}"
+        if any(marker in last.lower() for marker in ('oauth', 'authenticate', 'authentication', 'not logged in', 'login required')):
+            break
         if attempt < 2:
             time.sleep(5 * (attempt + 1))
-    print(f"[digest_transcript] '{title[:40]}' 3회 실패 — {last}", flush=True)
+    print(f"[digest_transcript] '{title[:40]}' 생성 실패 — {last}", flush=True)
     return None
 
 
@@ -177,6 +179,13 @@ def _video_published(video_id: str) -> str:
 
 
 def digest_stored(doc_id: int) -> bool:
+    """Shared admission for manual/Telegram callers; HTTP uses background execution."""
+    from pipeline.youtube_digest import queue, execute
+    job = queue(doc_id)
+    return execute(doc_id, job['token']) if job['token'] else job['status'] == 'ok'
+
+
+def _digest_stored(doc_id: int) -> bool:
     """저장된 유튜브 문서 1건을 정리본으로 승격 (D-115 lazy 경로의 실체).
 
     `store_document`를 거치는 이유: 수집 시점엔 자막 raw로 태깅되므로(정리를 안 했으니)
@@ -187,8 +196,10 @@ def digest_stored(doc_id: int) -> bool:
     from pipeline.store import store_document
     conn = get_connection()
     r = conn.execute(
-        "SELECT source_id, title, url, published_at, raw_content FROM raw_documents "
-        "WHERE id=? AND source_type='youtube'", (doc_id,)).fetchone()
+        "SELECT rd.source_id, rd.title, rd.url, rd.published_at, "
+        "COALESCE(j.transcript,rd.raw_content) AS raw_content FROM raw_documents rd "
+        "LEFT JOIN youtube_digest_jobs j ON j.doc_id=rd.id "
+        "WHERE rd.id=? AND rd.source_type='youtube'", (doc_id,)).fetchone()
     conn.close()
     if not r:
         return False
@@ -214,27 +225,14 @@ def redigest_youtube(limit: int = 5) -> dict:
     저장분을 직접 스캔해 재요약한다. 성공분만 store_document로 갱신(내용 변경→재enrich).
     실패분은 손대지 않아 다음 회차에 재시도된다. 회차당 상한으로 버스트 실패 방지.
     """
-    from pipeline.base import RawDoc
-    from pipeline.store import store_document
     conn = get_connection()
     rows = conn.execute(
-        "SELECT source_id, title, url, published_at, raw_content FROM raw_documents "
-        "WHERE source_type='youtube' AND (digest_status IS NULL OR digest_status='failed') "
+        "SELECT id FROM raw_documents WHERE source_type='youtube' "
+        "AND (digest_status IS NULL OR digest_status='failed') "
         "ORDER BY published_at DESC LIMIT ?", (limit,)).fetchall()
     conn.close()
-    digested = failed = 0
-    for r in rows:
-        transcript = r["raw_content"] or ""
-        digest = digest_transcript(r["title"] or "", transcript) if len(transcript) >= 100 else None
-        if not digest:
-            failed += 1
-            continue
-        store_document(RawDoc(
-            source_type="youtube", source_id=r["source_id"], title=r["title"] or "",
-            url=r["url"] or "", published_at=r["published_at"] or "",
-            raw_content=_digest_body(digest, transcript), kind="text", digest_status="ok"))
-        digested += 1
-    return {"scanned": len(rows), "digested": digested, "failed": failed}
+    digested = sum(digest_stored(r['id']) for r in rows)
+    return {"scanned": len(rows), "digested": digested, "failed": len(rows) - digested}
 
 
 class YouTubeConnector:

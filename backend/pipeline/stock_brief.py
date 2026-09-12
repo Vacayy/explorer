@@ -24,7 +24,7 @@ BRIEF_MODEL = os.getenv("BRIEF_MODEL", "opus")
 
 def _call_json_brief(prompt: str) -> dict:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", BRIEF_MODEL, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", BRIEF_MODEL, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")

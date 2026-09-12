@@ -33,7 +33,7 @@ export function MomentumSection() {
     queryFn: async () => (await api.get("/api/spine/signals/momentum")).data as { items: MomentumRow[] },
     staleTime: 5 * 60_000,
   })
-  const rows: SummaryRow[] = (data?.items ?? []).map((m) => ({
+  const rows: SummaryRow[] = (data?.items ?? []).slice(0, 5).map((m) => ({
     key: String(m.entity_id),
     rank: m.rank,
     name: m.name,
@@ -46,7 +46,7 @@ export function MomentumSection() {
   return (
     <SignalSummaryCard
       title="언급 모멘텀 — 이번 주 부상 종목"
-      subtitle="7일 언급 비중순 (×N = 직전 주 대비 배율)"
+      subtitle="상위 5 · 7일 언급 비중순"
       rows={rows}
       onOpen={() => navigate("/explore?list=mention_surge")}
     />
@@ -63,7 +63,7 @@ export function ThemeSurgeSummary() {
   const sorted = [...(data?.items ?? [])].sort(
     (a, b) => (b.payload.share_pct ?? -1) - (a.payload.share_pct ?? -1),
   )
-  const rows: SummaryRow[] = sorted.map((s, i) => ({
+  const rows: SummaryRow[] = sorted.slice(0, 5).map((s, i) => ({
     key: String(s.id),
     rank: i + 1,
     name: s.entity_name,
@@ -75,7 +75,7 @@ export function ThemeSurgeSummary() {
   return (
     <SignalSummaryCard
       title="주목 주제 — 지금 소스들이 몰리는 화두"
-      subtitle="전체 문서 중 비중 상승"
+      subtitle="상위 5 · 전체 문서 중 비중 상승"
       rows={rows}
       onOpen={() => navigate("/explore?list=theme_surge")}
     />
@@ -99,14 +99,14 @@ export function GraphActivitySection() {
     }),
   )
   const items = data ?? []
-  if (items.length === 0) return null
   return (
     <Card>
-      <CardHeader className="pb-2 flex-row items-center gap-2">
-        <CardTitle className="text-sm">인과 그래프 — 최근 뜬 고리</CardTitle>
+      <CardHeader className="pb-2 flex flex-wrap items-center gap-2">
+        <CardTitle className="text-sm">인과 그래프 업데이트</CardTitle>
         <span className="text-[11px] text-muted-foreground">새로 추가·갱신된 노드와 수혜 종목</span>
       </CardHeader>
       <CardContent className="space-y-2">
+        {items.length === 0 && <p className="text-sm text-muted-foreground">최근 인과 그래프 업데이트가 없습니다.</p>}
         {items.map((n) => (
           <Link key={n.id} to={`/narrative?topic=${encodeURIComponent(n.name)}`} className="block group">
             <div className="flex items-center gap-1.5 flex-wrap">

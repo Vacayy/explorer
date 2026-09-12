@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft, GitCommitHorizontal, History } from "lucide-react"
+import { useLocation, useSearchParams } from "react-router-dom"
+import { GitCommitHorizontal, History } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
-import { PageContainer } from "@/components/shared/PageContainer"
+import { DetailLayout } from "@/components/shared/DetailLayout"
 import { cn } from "@/lib/utils"
 
 /**
@@ -66,7 +66,7 @@ export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading 
   )
   const asc = [...versions].sort((a, b) => a.version - b.version)
   if (isLoading) return <Skeleton className="h-24 w-full rounded-xl" />
-  if (asc.length <= 1) return null   // 재생성 이력 없음 — 표시 안 함
+  if (asc.length === 0) return <EmptyState message="저장된 버전이 없습니다." />   // 재생성 이력 없음 — 표시 안 함
 
   return (
     <Card>
@@ -103,8 +103,8 @@ export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading 
 /* ---------- 상세 페이지 (/narrative/history?topic=&v=) ---------- */
 
 export default function NarrativeHistory() {
-  const [sp] = useSearchParams()
-  const navigate = useNavigate()
+  const [sp, setSp] = useSearchParams()
+  const location = useLocation()
   const topic = sp.get("topic") ?? ""
   const vParam = sp.get("v")
 
@@ -117,26 +117,15 @@ export default function NarrativeHistory() {
     }),
   )
   const latestId = versions.length ? versions.reduce((a, b) => (a.version >= b.version ? a : b)).id : null
-  const [picked, setPicked] = useState<number | null>(vParam ? Number(vParam) : null)
+  const picked = Number(vParam) || null
   const activeId = picked ?? latestId
 
-  if (!topic) return <PageContainer><EmptyState message="주제가 지정되지 않았습니다." /></PageContainer>
-
-  return (
-    <PageContainer gap="sm">
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="sm" onClick={() => navigate(`/narrative?topic=${encodeURIComponent(topic)}`)}>
-          <ArrowLeft className="h-4 w-4" /> 내러티브
-        </Button>
-        <h1 className="text-lg font-bold">{topic}</h1>
-        <Badge variant="secondary" className="text-[10px]">히스토리</Badge>
-      </div>
-
-      <NarrativeTimeline topic={topic} selectedId={activeId} onSelectVersion={setPicked} />
-
+  return <DetailLayout title={topic || '내러티브 이력'} context="Explorer · 저장된 AI 내러티브" fallback={topic ? `/narrative?topic=${encodeURIComponent(topic)}` : '/narrative'} backLabel="내러티브로 돌아가기">
+    {!topic ? <EmptyState message="주제가 지정되지 않았습니다." /> : <div className="space-y-5">
+      <NarrativeTimeline topic={topic} selectedId={activeId} onSelectVersion={id => setSp(prev => {const next=new URLSearchParams(prev);next.set('v',String(id));return next}, {replace:true,state:location.state})} />
       {activeId != null && <VersionBody id={activeId} />}
-    </PageContainer>
-  )
+    </div>}
+  </DetailLayout>
 }
 
 /* ---------- 도트 (버전) ---------- */
@@ -149,12 +138,9 @@ function DotColumn({ v, selected, onSelect }: { v: NarrativeVersion; selected: b
         title={v.title ?? undefined}>
         {v.title ?? "(제목 없음)"}
       </div>
-      <button
-        onClick={onSelect}
-        aria-label={`버전 ${v.version} 보기`}
-        className={cn("h-4 w-4 rounded-full border-2 transition-colors",
-          selected ? "bg-hypothesis border-hypothesis" : "bg-card border-muted-foreground/50 hover:border-hypothesis")}
-      />
+      <Button variant="ghost" size="icon" onClick={onSelect} aria-label={`버전 ${v.version} 보기`} aria-pressed={selected}>
+        <span aria-hidden="true" className={cn("size-4 rounded-full border-2", selected ? "bg-hypothesis border-hypothesis" : "bg-card border-muted-foreground/50")} />
+      </Button>
       <div className={cn("mt-1.5 text-[11px] tabular-nums", selected ? "text-hypothesis font-semibold" : "text-muted-foreground")}>
         v{v.version}
       </div>
@@ -258,7 +244,7 @@ function VersionBody({ id }: { id: number }) {
     return <EmptyState message="이 버전의 본문을 불러올 수 없습니다." />
   }
   return (
-    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_6%,var(--card))]">
+    <Card className="border-0 ring-0">
       <CardContent className="py-4">
         <div className="flex items-baseline gap-2 mb-2">
           <h2 className="text-base font-bold leading-snug">{data.title}</h2>

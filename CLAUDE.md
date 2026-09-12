@@ -25,6 +25,7 @@
 - 디자인 시스템: docs/DESIGN_SYSTEM.md (레이아웃 컨트랙트·토큰·패턴별 지정 구현)
 - 전략·지표: docs/STRATEGY.md · 백로그: docs/BACKLOG.md · 온톨로지: docs/ontology.md
 - 스펙: docs/specs/ · 정책: docs/policies/
+- **스펙 진입점/수명주기: docs/specs/README.md**. 기존 담당 spec을 먼저 갱신한다. 새 spec은 독립된 계약/커버리지일 때만 만들고 인덱스에 상태·역할·다음 단계를 등록한다. 작업일별 설계/리포트 복제 금지. 개인 원문·실험 산출물은 로컬 logs, 현행 구조는 SYSTEM, 결정 이유는 DECISIONS에 둔다. 종료된 spec은 구현 계약으로 축소하거나 대체 문서를 명시해 archive로 이관한다.
 - **docs/archive/** — 낡은 구 문서 (ARCHITECTURE.md, PLAN.md). 현행 판단의 근거로 사용 금지.
 
 ---
@@ -88,13 +89,13 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
   - 새 인터랙티브 UI 착수 전 "이 기능의 shadcn 컴포넌트가 있는가?"부터 확인. 있으면 `npx shadcn@latest add <c>` (interactive면 사용자에게 `!` 실행 요청). 없을 때만 Radix 프리미티브 직접 조합
   - Radix 기반 컴포넌트는 반드시 `@radix-ui/*`(또는 `radix-ui`) 패키지 사용
   - **주의**: 이 프로젝트에서 `npx shadcn add`가 파일을 `@/` 경로에 잘못 생성하는 버그가 있음 → 설치 후 `src/components/ui/`·`src/hooks/`로 옮기고 재생성된 기존 커스텀(Button의 icon-xs 등)은 폐기, `@` 디렉토리 제거
-  - 현재 설치됨: Button, Card, Input, Select(Radix), Table, Badge, Textarea, Tabs, Separator, Tooltip, Collapsible, Toggle, ToggleGroup, Checkbox, Sidebar, Sheet, Progress, AlertDialog, Dialog, Popover, Command, DropdownMenu, ScrollArea, Skeleton, Kbd, Avatar, Slider, Switch, Sonner, Pagination
+  - 현재 설치됨: Button, Card, Input, Select(Radix), Table, Badge, Textarea, Tabs, Separator, Tooltip, Collapsible, Toggle, ToggleGroup, Checkbox, Sidebar, Sheet, Progress, AlertDialog, Dialog, Popover, Command, DropdownMenu, ScrollArea, Skeleton, Kbd, Avatar, Slider, Switch, Sonner, Pagination, HoverCard
   - raw HTML 태그(`<select>`, `<button>`, `<input>`, `<table>` 등)를 UI 컴포넌트로 직접 쓰지 않는다 (grandfathered 예외는 docs/DESIGN_SYSTEM.md §3)
 - **컴포넌트 계층 엄수**
   ```
   ui/        → shadcn atom만. 비즈니스 로직 없음.
   shared/    → ui/ 를 wrapping한 서비스 공통 컴포넌트. 도메인 로직 최소.
-  layout/    → 전체 레이아웃 (Header, ModeNavigation, FollowRail=shadcn Sidebar)
+  layout/    → 전체 레이아웃 (Dock=하단 도크 L1·유틸, SubNav=인페이지 L2, navConfig=탭 단일 소스, FollowRail=shadcn Sidebar)
   {page}/    → shared/를 조합. 직접 ui/도 사용 가능하나 shared/에 있으면 shared/ 우선.
   charts/    → lightweight-charts 기반 차트 (CandlestickChart, AreaSeriesChart 등)
   ```
@@ -149,7 +150,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 ```
 ui/        ← shadcn atoms (Button, Card, Input, Table, Badge, Select, Textarea, Tabs, Separator, Tooltip)
 shared/    ← 서비스 공통 (ChartCard, DataTable, PeriodToggle, YearToggle, SegmentTabs, FilterChips, HeroKpiCards, Skeleton, ErrorState)
-layout/    ← 레이아웃 (Header, ModeNavigation, WatchlistSidebar)
+layout/    ← 레이아웃 (Dock, SubNav, navConfig, FollowRail)
 charts/    ← lightweight-charts 래퍼 (CandlestickChart, AreaSeriesChart, MultiLineChart)
 {page}/    ← 각 페이지 (shared + charts를 조합)
 ```

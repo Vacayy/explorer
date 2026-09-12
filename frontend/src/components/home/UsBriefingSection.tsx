@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { RefreshButton } from "@/components/shared/RefreshButton"
-import { formatUsd, formatPercent } from "@/utils/format"
+import { formatNumber, formatUsd, formatPercent } from "@/utils/format"
 import { ShareTrendChart } from "@/components/charts/ShareTrendChart"
 import type { TrendSeries } from "@/components/charts/ShareTrendChart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -34,9 +34,9 @@ export function UsBriefingSection() {
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
   if (data.movers.length === 0)
     return (
-      <Card>
-        <CardHeader className="pb-2 flex-row items-center gap-2">
-          <CardTitle className="text-sm flex items-center gap-1.5">
+      <Card data-home-briefing>
+        <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
+          <CardTitle className="text-card-title flex items-center gap-1.5">
             <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
           </CardTitle>
           <div className="ml-auto"><RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트" /></div>
@@ -51,17 +51,17 @@ export function UsBriefingSection() {
   const topShare = clusters[0]
 
   return (
-    <Card>
-      <CardHeader className="pb-2 flex-row items-center gap-2">
-        <CardTitle className="text-sm flex items-center gap-1.5">
+    <Card data-home-briefing>
+      <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
+        <CardTitle className="text-card-title flex items-center gap-1.5">
           <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
         </CardTitle>
-        <span className="text-[11px] text-muted-foreground">전일 거래대금 상위 20 · 자금이 어디로 쏠렸나</span>
+        <span className="text-caption text-muted-foreground">전일 거래대금 상위 20 · 자금이 어디로 쏠렸나</span>
         <div className="ml-auto flex items-center gap-1.5">
           {dates.length > 1 && (
             <Select value={pickedDate ?? "latest"}
               onValueChange={(v) => setPickedDate(v === "latest" ? null : v)}>
-              <SelectTrigger className="h-7 w-[124px] text-[11px]">
+              <SelectTrigger className="w-36 text-caption">
                 <SelectValue placeholder="날짜" />
               </SelectTrigger>
               <SelectContent>
@@ -76,11 +76,18 @@ export function UsBriefingSection() {
           )}
           {data.fetched_at && <FreshnessStamp asOf={data.fetched_at} />}
           {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
-          <Link to="/us" className="text-[11px] text-muted-foreground hover:text-foreground">미국 종목 →</Link>
+          <Link to="/us" className="text-caption text-muted-foreground hover:text-foreground">미국 종목 →</Link>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
+        {data.indices.items.length > 0 && <div className="grid grid-cols-1 gap-3 border-b pb-4 @[420px]/market:grid-cols-3">
+          {data.indices.items.slice(0, 3).map(index => <div key={index.name}>
+            <p className="text-caption text-muted-foreground">{index.name}</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">{formatNumber(index.close)}</p>
+            <p className={`text-caption tabular-nums ${chg(index.change_pct)}`}>{formatPercent(index.change_pct)}</p>
+          </div>)}
+        </div>}
         {data.status === "stale" && (
           <Banner tone="warn">실시간 갱신 실패 — 마지막 성공 데이터를 표시합니다.{data.error ? ` (${data.error})` : ""}</Banner>
         )}
@@ -103,7 +110,7 @@ export function UsBriefingSection() {
             {[synthesis.index_summary, synthesis.drivers, synthesis.issues, synthesis.flow]
               .filter(Boolean)
               .map((para, i) => (
-                <p key={i} className="text-sm leading-relaxed text-foreground/90">{para}</p>
+                <p key={i} className="text-reading text-foreground/90">{para}</p>
               ))}
           </div>
         )}
@@ -113,7 +120,7 @@ export function UsBriefingSection() {
 
         {/* 섹터 쏠림 */}
         <div>
-          <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+          <div className="mb-1 text-caption font-medium text-muted-foreground">
             섹터 쏠림 {topShare && <span className="text-foreground">· {topShare.label} {topShare.share_pct}%</span>}
           </div>
           <div className="space-y-1">
@@ -125,8 +132,8 @@ export function UsBriefingSection() {
                 </div>
                 <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
                 <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
-                {c.has_new && <Badge variant="outline" className="text-[9px] shrink-0 text-up border-up/40">신규</Badge>}
-                <span className="hidden sm:block text-[10px] text-muted-foreground truncate min-w-0 flex-1">{c.tickers.join(" · ")}</span>
+                {c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}
+                <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.tickers.join(" · ")}</span>
               </div>
             ))}
           </div>
@@ -135,8 +142,8 @@ export function UsBriefingSection() {
         {/* 개별 이슈 */}
         {idiosyncratic.length > 0 && (
           <div>
-            <div className="mb-1 text-[11px] font-medium text-muted-foreground">개별 이슈 — 그룹으로 안 풀리는 움직임</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+            <div className="mb-1 text-caption font-medium text-muted-foreground">개별 이슈 — 그룹으로 안 풀리는 움직임</div>
+            <div className="grid grid-cols-1 @[620px]/market:grid-cols-2 gap-x-6 gap-y-1">
               {idiosyncratic.map((m) => <MoverRow key={m.ticker} m={m} />)}
             </div>
           </div>
@@ -144,7 +151,7 @@ export function UsBriefingSection() {
 
         {/* 스터디 / 공유 후보 */}
         {synthesis && (synthesis.study_candidates.length > 0 || synthesis.share_candidates.length > 0) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+          <div className="grid grid-cols-1 @[620px]/market:grid-cols-2 gap-3 pt-1">
             <CandidateList icon={GraduationCap} title="스터디 후보" items={synthesis.study_candidates} accent="text-hypothesis" />
             <CandidateList icon={Share2} title="공유 후보" items={synthesis.share_candidates} accent="text-primary" />
           </div>
@@ -152,17 +159,17 @@ export function UsBriefingSection() {
 
         {/* 상위 20 전체 */}
         <Collapsible open={open} onOpenChange={setOpen}>
-          <CollapsibleTrigger className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+          <CollapsibleTrigger className="flex items-center gap-1 text-caption text-muted-foreground hover:text-foreground">
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
             거래대금 상위 20 전체
           </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5">
+          <CollapsibleContent className="mt-2 grid grid-cols-1 @[620px]/market:grid-cols-2 gap-x-6 gap-y-0.5">
             {movers.map((m) => (
               <div key={m.ticker} className="flex items-center gap-2 py-0.5 text-sm min-w-0">
                 <span className="w-5 text-right text-xs text-muted-foreground tabular-nums shrink-0">{m.rank}</span>
                 <Link to={`/us/${m.ticker}`} className="font-semibold text-primary hover:underline shrink-0">{m.ticker}</Link>
                 <span className="text-muted-foreground truncate min-w-0 flex-1 text-xs">{m.name}</span>
-                {m.is_adr && <Badge variant="outline" className="text-[9px] shrink-0">ADR</Badge>}
+                {m.is_adr && <Badge variant="outline" className="text-caption shrink-0">ADR</Badge>}
                 <span className={`w-14 text-right text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : "-"}</span>
                 <span className="w-16 text-right shrink-0 font-medium tabular-nums text-xs">{m.dollar_volume != null ? formatUsd(m.dollar_volume) : "-"}</span>
               </div>
@@ -189,23 +196,23 @@ function MoverRow({ m }: { m: UsMoverBrief }) {
         <span className={`text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : ""}</span>
         <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
           {m.flags.map((f) => (
-            <Badge key={f} variant="outline" className={`text-[9px] shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
+            <Badge key={f} variant="outline" className={`text-caption shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
           ))}
         </div>
         {m.narrative && (
           <Link to={`/narrative?topic=${encodeURIComponent(m.narrative)}`}
-            className="ml-auto shrink-0 max-w-[40%] truncate text-[11px] text-hypothesis hover:underline">{m.narrative}</Link>
+            className="ml-auto shrink-0 max-w-[40%] truncate text-caption text-hypothesis hover:underline">{m.narrative}</Link>
         )}
       </div>
       {/* 개별 '왜' — US 원천 헤드라인 (D-097) */}
       {top ? (
         <a href={top.url ?? undefined} target="_blank" rel="noreferrer"
-          className="mt-0.5 flex items-start gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+          className="mt-0.5 flex items-start gap-1 text-caption text-muted-foreground hover:text-foreground">
           <Newspaper className="h-3 w-3 shrink-0 mt-0.5" />
           <span className="truncate"><span className="text-foreground/70">{top.publisher}</span> · {top.title}</span>
         </a>
       ) : m.coverage === "uncovered" ? (
-        <div className="mt-0.5 pl-1 text-[10px] text-muted-foreground">촉매 미상 · 스터디 후보</div>
+        <div className="mt-0.5 pl-1 text-caption text-muted-foreground">촉매 미상 · 스터디 후보</div>
       ) : null}
     </div>
   )
@@ -217,7 +224,7 @@ function CandidateList({ icon: Icon, title, items, accent }: {
   if (items.length === 0) return null
   return (
     <div className="rounded-lg border p-2.5">
-      <div className={`mb-1.5 flex items-center gap-1.5 text-[11px] font-medium ${accent}`}>
+      <div className={`mb-1.5 flex items-center gap-1.5 text-caption font-medium ${accent}`}>
         <Icon className="h-3.5 w-3.5" /> {title}
       </div>
       <ul className="space-y-1">
@@ -245,14 +252,14 @@ function FlowChart({ flow }: { flow: UsFlowBlock }) {
 
   return (
     <div className="rounded-lg border p-2.5">
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+      <div className="mb-1 flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
         <Clock className="h-3.5 w-3.5" /> 섹터 거래대금 비중 추이
         <span className="ml-auto tabular-nums">스냅샷 {flow.dates.length}개</span>
       </div>
       <ShareTrendChart series={series} height={168} />
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
         {flow.sectors.map((sec, i) => (
-          <span key={sec.label} className="flex items-center gap-1 text-[10px]">
+          <span key={sec.label} className="flex items-center gap-1 text-caption">
             <span className="h-1.5 w-1.5 rounded-full shrink-0"
               style={{ background: FLOW_COLORS[i % FLOW_COLORS.length] }} />
             <span className="text-muted-foreground">{sec.label}</span>
@@ -273,7 +280,7 @@ function Banner({ tone, children }: { tone: "warn" | "info"; children: React.Rea
   const cls = tone === "warn" ? "bg-chart-warning/10 text-chart-warning" : "bg-muted text-muted-foreground"
   const Icon = tone === "warn" ? AlertTriangle : Info
   return (
-    <div className={`flex items-start gap-1.5 rounded-md px-2 py-1.5 text-[11px] ${cls}`}>
+    <div className={`flex items-start gap-1.5 rounded-md px-2 py-1.5 text-caption ${cls}`}>
       <Icon className="h-3.5 w-3.5 shrink-0 mt-0.5" /> <span>{children}</span>
     </div>
   )

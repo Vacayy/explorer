@@ -16,6 +16,12 @@ def get_connection() -> sqlite3.Connection:
 def init_db():
     conn = get_connection()
     cur = conn.cursor()
+    from pipeline.study import SCHEMA as STUDY_SCHEMA
+    cur.executescript(STUDY_SCHEMA)
+    from pipeline.study_projects import migrate as migrate_study_projects
+    migrate_study_projects(conn)
+    from pipeline.youtube_digest import SCHEMA as YOUTUBE_DIGEST_SCHEMA
+    cur.executescript(YOUTUBE_DIGEST_SCHEMA)
 
     # 사전 마이그레이션: 구 reports(anchor_topic PK, id 없음) → append-only(id PK)로 전환 (D-047).
     # reports는 재생성 가능한 캐시라 구 표는 버린다(id 생기면 재실행 안 됨). 히스토리는 이후부터 누적.
@@ -198,6 +204,20 @@ def init_db():
         opinion       TEXT,
         fetched_at    TEXT DEFAULT (datetime('now')),
         UNIQUE(stock_code, data_source, fiscal_year)
+    );
+
+    -- 스크랩 링크 원장 (D-142) — 스크랩 채널이 올린 URL의 처리 이력.
+    -- url이 키라 같은 글이 여러 번 스크랩돼도 문서는 하나(seen_count로 반복 노출을 센다 → 훗날 '스터디 열기' 신호).
+    CREATE TABLE IF NOT EXISTS scrap_links (
+        url           TEXT PRIMARY KEY,
+        doc_id        INTEGER REFERENCES raw_documents(id) ON DELETE SET NULL,
+        channel       TEXT,                      -- 최초로 스크랩한 채널
+        src_doc_id    INTEGER,                   -- 그 텔레그램 문서 (raw_documents.id)
+        seen_count    INTEGER DEFAULT 1,
+        status        TEXT DEFAULT 'pending',    -- pending | ok | failed
+        tries         INTEGER DEFAULT 0,
+        first_seen_at TEXT DEFAULT (datetime('now')),
+        last_seen_at  TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS telegram_channels (
@@ -863,6 +883,19 @@ def init_db():
         INSERT INTO doc_fts(rowid, title, markdown) VALUES (new.id, new.title, new.markdown);
     END;
 
+    -- 청크 인덱스 (D-132, pipeline/chunks.py) — 대화 근거 전용. 문단 경계 청킹 + 문맥 접두어(제목·요약, LLM 0).
+    -- 트리거 없음: 청킹은 코드라 빌드(build_search_index)가 content_hash로 변경분만 재생성한다. chunk_vec는 sqlite-vec.
+    CREATE TABLE IF NOT EXISTS doc_chunks (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        doc_id       INTEGER NOT NULL REFERENCES raw_documents(id) ON DELETE CASCADE,
+        idx          INTEGER NOT NULL,
+        text         TEXT NOT NULL,
+        prefix       TEXT,                 -- "[소스·날짜] 제목 — 요약"
+        content_hash TEXT                  -- 원문 해시 (변경 감지·멱등)
+    );
+    CREATE INDEX IF NOT EXISTS idx_doc_chunks_doc ON doc_chunks(doc_id, idx);
+    CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(prefix, text);
+
     -- 살아있는 모델: 파라미터화된 계산 스펙 (엑셀 continuity).
     CREATE TABLE IF NOT EXISTS models (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -917,6 +950,26 @@ def init_db():
         ran_at      TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_job_runs ON job_runs(id);
+
+    -- LLM 호출 원장 (D-130, pipeline/llm.py) — 콜당 usage·cost·소요. 비용 결정은 유추 말고 실측(D-117).
+    CREATE TABLE IF NOT EXISTS llm_calls (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        job                 TEXT,             -- chat.answer | … (호출부 라벨)
+        model               TEXT,             -- haiku | sonnet | opus (요청 티어)
+        engine              TEXT,             -- claude-code | api
+        effort              TEXT,
+        input_tokens        INTEGER,
+        cache_create_tokens INTEGER,
+        cache_read_tokens   INTEGER,
+        output_tokens       INTEGER,
+        thinking_tokens     INTEGER,
+        cost_usd            REAL,
+        duration_ms         INTEGER,
+        ok                  INTEGER NOT NULL DEFAULT 1,
+        error               TEXT,
+        created_at          TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_llm_calls_job ON llm_calls(job, created_at);
 
     -- 시장 국면 (market regime, D-076, docs/specs/market-regime.md) — 매크로 리스크 포스처.
     -- 일별 스냅샷(EOD): F&G·VIX·S&P·KOSPI·20EMA·VKOSPI/실현변동성. 스파크라인 히스토리 = 축적.
@@ -1097,6 +1150,9 @@ def init_db():
     for migration in [
         "ALTER TABLE raw_documents ADD COLUMN media_json TEXT",
         "ALTER TABLE conversations ADD COLUMN chat_id TEXT",  # 사용자 분리 (텔레그램 chat_id, 웹=NULL=오너)
+        "ALTER TABLE conversations ADD COLUMN summary TEXT",     # 스레드 작업 노트 (컴팩션, D-131)
+        "ALTER TABLE conversations ADD COLUMN state_json TEXT",  # 스레드 상태: 엔티티·마지막 intent·도구·근거 (D-131)
+        "ALTER TABLE chat_messages ADD COLUMN route_json TEXT",  # assistant: 라우팅·도구 로그 (D-131)
         "ALTER TABLE fundamentals ADD COLUMN roe REAL",  # 전종목 밸류 수집 (네이버 시세)
         "ALTER TABLE corporate_actions ADD COLUMN summary TEXT",
         "ALTER TABLE ir_notes ADD COLUMN memo_type TEXT DEFAULT 'general'",
@@ -1168,6 +1224,8 @@ def init_db():
         "ALTER TABLE blog_sources ADD COLUMN collect_enabled INTEGER DEFAULT 1",
         "ALTER TABLE telegram_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
         "ALTER TABLE youtube_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
+        # 링크 스크랩 채널 (D-142) — 본문 없이 URL만 올리는 채널. 켜면 링크를 따라가 원문을 별도 문서로 적재한다.
+        "ALTER TABLE telegram_channels ADD COLUMN expand_links INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(migration)

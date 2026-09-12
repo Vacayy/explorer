@@ -58,6 +58,13 @@ export interface StockPriceItem {
   market_cap: number | null;
 }
 
+/** 최근 N거래일 시세 스냅샷 — stock_prices 테이블만(16:10 스냅샷), 대화 차트 카드용 */
+export interface PriceSnapshot {
+  stock_code: string;
+  name: string;
+  items: { trade_date: string; open: number | null; high: number | null; low: number | null; close: number | null; volume: number | null }[];
+}
+
 export interface ValuationItem {
   trade_date: string;
   close: number | null;
@@ -172,6 +179,10 @@ export interface EntityTag {
 }
 
 export interface FeedDocument {
+  digest_status?: string | null;
+  digest_error?: string | null;
+  video_digest?: string | null;
+  transcript?: string | null;
   id: number;
   source_type: string;   // blog | telegram
   title: string;
@@ -311,20 +322,43 @@ export interface ConversationItem {
   updated_at: string;
 }
 
+/** 답변 경로 — 라우팅·도구 로그 (D-131, chat_messages.route_json). "왜 이 답이 나왔나" 1클릭. */
+export interface ChatRoute {
+  intent: string | null;
+  standalone_question: string | null;
+  entities: { name: string; kind?: string }[] | null;
+  lens: string | null;
+  answer_style: string | null;
+  tools: { name: string; args?: Record<string, unknown>; n?: number; note?: string | null; ms?: number; error?: string }[];
+  evidence_n: number;
+  timings_ms: { route?: number; review?: number; synth?: number };
+  model: string | null;
+  steps?: string[] | null;                                   // 과정 자연어 서술 (코드 생성, D-134)
+  process?: string[] | null;                                 // 종합 모델의 판단 메모 (META.process)
+  review?: { enough: boolean; reason?: string; added?: string[]; skipped?: boolean } | null;
+  /** 후속 질문 제안 (D-145) — 종합 META에 동승, 추가 LLM 콜 0 */
+  follow_ups?: { kind: string; question: string }[] | null;
+}
+
 export interface ConversationDetail {
+  study?: {id:number; title:string} | null;
+  study_project?: {id:number; title:string} | null;
   id: number;
   title: string | null;
   channel: string;
+  attached_documents?: { id: number; title: string | null }[]
   messages: {
     id: number;
     role: string;
     content: string;
-    citations: { n: number; doc_id: number; title: string }[] | null;
+    citations: { n: number; doc_id: number | null; title: string; href?: string | null; kind?: string }[] | null;
     gaps: { type: string; note: string }[] | null;
     model: string | null;
+    route?: ChatRoute | null;
     created_at: string;
   }[];
 }
+export type ChatMessage = ConversationDetail["messages"][number];
 
 // 소스 도시에 (docs/specs/source-dossier.md)
 export interface DossierSummary {
@@ -448,13 +482,14 @@ export interface HomeResponse {
   as_of: string;
 }
 
+/** 근거 인용 — 문서뿐 아니라 내러티브·인과 엣지·시세 등 시스템 산출물도 근거(D-131). 링크는 href 우선. */
 export interface AskCitation {
   n: number;
-  doc_id: number;
+  kind: string;                 // doc | narrative | edges | knowledge | question | lens | quote | regime | briefing …
+  doc_id: number | null;
   title: string;
-  url: string;
-  source_type: string;
-  published_at: string;
+  href: string | null;
+  published_at: string | null;
 }
 
 export interface AskGap {
@@ -615,9 +650,10 @@ export interface UsBriefing {
 
 // 매크로·유동성 트래킹 (홈, docs/specs/macro.md)
 export interface MacroIndicator {
-  key: string; label: string; group: string; group_label: string;
+  key: string; label: string; group: string; group_label: string; as_of?: string;
   fmt: "pct" | "num" | "usd" | "trillion_b";
   value: number; change_pct: number | null; series: number[];
+  dated_series?: [string, number][];
 }
 export interface MacroInterpretation { stance: string; comment: string }
 export interface MacroSignal { signal: "green" | "yellow" | "red"; headline: string; comment: string }
@@ -643,4 +679,116 @@ export interface KrMovers {
   status: string; source: string; trade_date: string | null;
   fetched_at: string | null; error: string | null;
   items: KrMoverItem[]; clusters: KrCluster[]; idiosyncratic: KrMoverItem[];
+  briefing?: { stock_code: string; name: string; rank: number; parent_company_context: boolean;
+    documents: { doc_id: number; title: string | null; source_type: string; published_at: string | null; excerpt: string | null; excerpt_kind: string | null }[] }[];
+}
+
+// Isolated memory expectation experiment
+export interface ExpectationDocument {
+  id: number; source_type: string; source_id: string; source_url: string | null
+  title: string | null; published_at: string | null; fetched_at: string | null
+  products: string[]; text_kind: 'derived_summary' | 'stored_transcript' | 'stored_text' | 'empty'
+  text_field: string; text_sha256: string; text_length: number; text: string | null
+  source_text_available: boolean; speaker_status: string; speaker: string | null
+  attribution_cues: { kind: string; text: string; start: number; end: number; status: string }[]
+  warnings: string[]
+}
+export interface ExpectationPage {
+  items: ExpectationDocument[]; scanned: number; next_before_id: number | null; has_more: boolean
+}
+export interface ExpectationFields {
+  speaker: string; attribution: 'direct' | 'reported' | 'unknown'; speaker_quote: string
+  product: 'hbm' | 'dram' | 'nand' | 'memory'; target: string
+  lens: 'business' | 'valuation' | 'psychology' | 'position' | 'flows'
+  metric: 'demand' | 'supply' | 'price' | 'margin' | 'qualification' | 'position' | 'other'
+  axis: 'level' | 'growth' | 'acceleration' | 'timing' | 'conviction' | 'position'
+  horizon: string; basis: string; direction: 'up' | 'down' | 'flat' | 'unclear'
+  value: number | null; unit: string; quote: string; claim: string; conditions: string
+}
+export interface ExpectationStatement {
+  id: number; snapshot_id: number; job_id: string | null; fields: ExpectationFields
+  status: 'draft' | 'approved' | 'rejected'; revision: number; note: string; created_at: string
+  document: Pick<ExpectationDocument, 'id' | 'title' | 'source_type' | 'source_id' | 'source_url' | 'published_at' | 'fetched_at' | 'text_sha256' | 'text_kind'>
+}
+export interface ExpectationJob {
+  version: string
+  id: string; state: 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+  error: string | null; result: { statement_ids: number[]; skipped: number; truncated: boolean; input_chars: number } | null
+  usage: { duration_ms?: number; cost_usd?: number } | null
+}
+export interface ExpectationComparison {
+  current: ExpectationStatement; previous: ExpectationStatement | null; kind: string; reason: string; delta: number | null
+}
+export interface ExpectationHistory {
+  notes: { id: number; text: string; created_at: string }[]
+  reviews: { id: number; revision: number; status: string; note: string; created_at: string; data: ExpectationFields }[]
+}
+
+export interface ReadingItem {
+  document: ExpectationDocument
+  channel_name: string
+  channel_key: string
+  summary: string | null
+  excerpt: string
+  copies: number[]
+}
+export interface ReadingPage {
+  items: ReadingItem[]
+  as_of: string
+  since: string
+  scanned: number
+  matched: number
+  duplicates: number
+  truncated: boolean
+  latest_fetched_at: string | null
+  source_counts: Record<string, number>
+  discussion_ids: number[]
+}
+export interface ReadingHistory {
+  current: ReadingItem
+  previous: ReadingItem[]
+  scanned: number
+  truncated: boolean
+  note: string
+}
+
+// Home and /feed share the same stored-update contract (docs/specs/home-feed.md).
+export interface TimelineItem {
+  id: string
+  kind: 'source' | 'company' | 'person' | 'transcript' | 'trade'
+  title: string
+  body: string
+  occurred_at: string
+  time_label: string
+  subject: string
+  period: string | null
+  evidence_count: number | null
+  ai_generated: boolean
+  to: string
+  document: FeedDocument | null
+  links: { label: string; to: string }[]
+}
+
+export interface TimelineResponse {
+  items: TimelineItem[]
+  page: number
+  size: number
+  has_more: boolean
+  until: string
+  as_of: string
+}
+
+
+export interface TimelineChannel {
+  id: string
+  name: string
+  platform: 'telegram' | 'blog' | 'youtube' | 'system'
+  count: number
+  latest_at: string | null
+  preview: string
+}
+export interface TimelineChannelsResponse {
+  items: TimelineChannel[]
+  total: number
+  until: string
 }

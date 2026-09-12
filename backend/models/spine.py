@@ -24,6 +24,10 @@ class FeedDocument(BaseModel):
     content: str | None        # 전문 (markdown) — 카드 펼침용
     images: list[str]          # /media 상대경로
     enrich_model: str | None   # keyword | LLM 모델명 (epistemic 표시용)
+    digest_status: str | None = None
+    digest_error: str | None = None
+    video_digest: str | None = None
+    transcript: str | None = None
     entities: list[EntityTag]
 
 

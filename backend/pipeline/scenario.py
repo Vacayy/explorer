@@ -116,7 +116,7 @@ def build_scenario(event: str, report_context: str | None = None) -> dict:
     data, last_err = None, ""
     for _ in range(2):
         proc = subprocess.run(
-            [_claude_bin(), "-p", "--model", SCENARIO_MODEL, "--output-format", "json", prompt],
+            [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", SCENARIO_MODEL, "--output-format", "json", prompt],
             capture_output=True, text=True, timeout=300)
         if proc.returncode != 0:
             last_err = f"rc={proc.returncode} {proc.stderr[:120]}"

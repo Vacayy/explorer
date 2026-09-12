@@ -1,4 +1,4 @@
-"""아침 브리핑 텔레그램 발송 (launchd: 평일 08:00 KST, dev.explorer.briefing).
+"""아침 브리핑 텔레그램 발송 (launchd: 평일 07:00 KST, dev.explorer.briefing).
 
   python scripts/send_briefing.py            # 발송 (토큰 미설정이면 skip)
   python scripts/send_briefing.py --dry-run  # 메시지 미리보기만

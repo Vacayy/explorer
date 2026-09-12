@@ -8,6 +8,9 @@ FRED 키 없으면 유동성 축만 degraded(매크로는 정상).
 갱신은 버튼 주도(D-100 계승): GET=스냅샷 순수 읽기, POST /snapshot=재수집. 지표는 market_indicators에
 'macro_' 프리픽스로 적재(시장 국면과 네임스페이스 분리).
 """
+import csv
+import io
+import math
 import hashlib
 import json
 import os
@@ -19,7 +22,9 @@ from database import get_connection
 from pipeline.market_regime import _series, _yf_history
 
 # 키 없음 (yfinance) — 종가 시계열
-YF = {"us10y": "^TNX", "dxy": "DX-Y.NYB", "oil": "CL=F", "gold": "GC=F", "hyg": "HYG", "btc": "BTC-USD"}
+YF = {"us10y": "^TNX", "usdkrw": "KRW=X", "dxy": "DX-Y.NYB", "oil": "CL=F", "gold": "GC=F", "hyg": "HYG", "btc": "BTC-USD"}
+# Public FRED Treasury series; no key required for the official CSV export.
+PUBLIC_FRED = {"us2y": "DGS2"}
 # FRED (무료키) — 유동성 구성요소
 FRED = {"fed_bs": "WALCL", "tga": "WTREGEN", "rrp": "RRPONTSYD", "m2": "M2SL"}
 # 단위 → 십억달러($B) 정규화: WALCL·WTREGEN=백만$, RRPONTSYD·M2=십억$
@@ -27,6 +32,8 @@ _FRED_TO_B = {"fed_bs": 1 / 1000, "tga": 1 / 1000, "rrp": 1.0, "m2": 1.0}
 
 # 표시 메타 (label·group·fmt) — group: rates|liquidity|credit|commodity
 INDICATORS = [
+    {"key": "us2y", "label": "미 2Y 금리", "group": "rates", "fmt": "pct"},
+    {"key": "usdkrw", "label": "달러/원", "group": "rates", "fmt": "num"},
     {"key": "us10y", "label": "미 10Y 금리", "group": "rates", "fmt": "pct"},
     {"key": "dxy", "label": "달러 DXY", "group": "rates", "fmt": "num"},
     {"key": "net_liq", "label": "순유동성", "group": "liquidity", "fmt": "trillion_b"},
@@ -54,6 +61,26 @@ def _fred_history(series_id: str, days: int = 400) -> list[tuple[str, float]]:
     return [(o["date"], float(o["value"])) for o in obs if o.get("value") not in (None, ".", "")]
 
 
+def _public_fred_history(series_id: str, days: int = 400) -> list[tuple[str, float]]:
+    """Official FRED CSV: percentage yields as published, missing observations excluded."""
+    start = (date.today() - timedelta(days=days)).isoformat()
+    query = urllib.parse.urlencode({"id": series_id, "cosd": start})
+    req = urllib.request.Request(f"https://fred.stlouisfed.org/graph/fredgraph.csv?{query}",
+                                 headers={"User-Agent": "stock-explorer"})
+    with urllib.request.urlopen(req, timeout=20) as response:
+        rows = csv.DictReader(io.StringIO(response.read().decode('utf-8-sig')))
+        values = []
+        for row in rows:
+            stamp = row.get('observation_date') or row.get('DATE')
+            raw_value = row.get(series_id)
+            if not stamp or stamp < start or raw_value in (None, '', '.'):
+                continue
+            value = float(raw_value)
+            if math.isfinite(value):
+                values.append((stamp, value))
+    return sorted(values)
+
+
 # ── 적재 (버튼/크론) ─────────────────────────────────────────────────────────
 
 def snapshot_macro() -> dict:
@@ -73,6 +100,8 @@ def snapshot_macro() -> dict:
 
     for name, ticker in YF.items():
         _try(name, lambda t=ticker: _yf_history(t))
+    for name, sid in PUBLIC_FRED.items():
+        _try(name, lambda s=sid: _public_fred_history(s))
     for name, sid in FRED.items():
         _try(name, lambda s=sid: _fred_history(s))
 
@@ -220,7 +249,7 @@ def _read_signal(as_of: str | None) -> dict | None:
 def get_macro(with_signal: bool = True) -> dict:
     """매크로·유동성 지표 그룹 + 스파크라인 + 신호등 산문. LLM 0(읽기). market_indicators 순수 읽기."""
     conn = get_connection()
-    raw = {name: _series(conn, f"macro_{name}") for name in [*YF, *FRED]}
+    raw = {name: _series(conn, f"macro_{name}") for name in [*YF, *FRED, *PUBLIC_FRED]}
     conn.close()
 
     series_of = dict(raw)
@@ -239,8 +268,9 @@ def get_macro(with_signal: bool = True) -> dict:
             ser = [(d, round(v / 1000, 3)) for d, v in ser]
         items.append({
             "key": k, "label": meta["label"], "group": meta["group"], "group_label": GROUP_LABEL[meta["group"]],
-            "fmt": meta["fmt"], "value": value, "change_pct": _change_pct(ser),
+            "fmt": meta["fmt"], "as_of": ser[-1][0], "value": value, "change_pct": _change_pct(ser),
             "series": [v for _, v in ser][-40:],
+            "dated_series": ser[-40:],
         })
 
     as_of = max((s[-1][0] for s in series_of.values() if s), default=None)

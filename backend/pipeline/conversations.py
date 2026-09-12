@@ -89,18 +89,19 @@ def log_question(question: str, *, channel: str = "web",
 
 def append_assistant(conversation_id: int, content: str, *,
                      citations: list | None = None, gaps: list | None = None,
-                     model: str | None = None):
-    """답변 적재 — 백그라운드 작업 완료 시 호출."""
+                     model: str | None = None, route: dict | None = None):
+    """답변 적재 — 백그라운드 작업 완료 시 호출. route=라우팅·도구 로그(D-131, '왜 이 답인가')."""
     conn = get_connection()
     try:
         conn.execute("""
             INSERT INTO chat_messages (conversation_id, role, content,
-                                       citations_json, gaps_json, model)
-            VALUES (?, 'assistant', ?, ?, ?, ?)
+                                       citations_json, gaps_json, model, route_json)
+            VALUES (?, 'assistant', ?, ?, ?, ?, ?)
         """, (conversation_id, content,
               json.dumps(citations, ensure_ascii=False) if citations else None,
               json.dumps(gaps, ensure_ascii=False) if gaps else None,
-              model))
+              model,
+              json.dumps(route, ensure_ascii=False) if route else None))
         conn.execute("UPDATE conversations SET updated_at=datetime('now') WHERE id=?",
                      (conversation_id,))
         conn.commit()

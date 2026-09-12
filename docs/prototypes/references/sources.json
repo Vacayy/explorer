@@ -1,0 +1,16 @@
+{
+  "retrieved": "2026-09-10",
+  "purpose": "Official product imagery for internal design research; copyright belongs to respective owners.",
+  "assets": {
+    "revolut.png": "https://assets.revolut.com/published-assets-v3/f30ae5b4-de48-4d5f-b338-40a69a9f894a/1a534921-8e7e-42e8-b092-0409ea752d41.png",
+    "stripe.png": "https://b.stripecdn.com/docs-statics-srv/assets/overview.61ec7a7cfe8a8bc7a503c00c82d59509.png",
+    "linear.webp": "https://webassets.linear.app/images/ornj730p/production/b6d6be14c96978b10553cfb9205be1065087e793-3904x2720.png?w=1000&auto=format",
+    "apple.jpg": "https://www.apple.com/newsroom/videos/2025/autoplay/06/apple-introduces-a-delightful-and-elegant-new-software-design/apple-wwdc25-liquid-glass-apple-music-dynamic-tab-bars/posters/Apple-WWDC25-Liquid-Glass-Apple-Music-dynamic-tab-bars-250609.jpg.large_2x.jpg"
+  },
+  "unavailable": {
+    "mercury": {
+      "url": "https://www.datocms-assets.com/115132/1772833892-2-1_insights-dashboard_beige.png?w=1000",
+      "reason": "HTTP 403; official page text used, no local image"
+    }
+  }
+}

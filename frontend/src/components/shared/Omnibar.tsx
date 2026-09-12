@@ -19,12 +19,15 @@ import {
  */
 
 const PAGES = [
+  { label: "스터디 — 자료를 모아 함께 공부하기", to: "/study", icon: NotebookPen, keywords: "study 스터디 공부 프로젝트" },
   { label: "오늘 — 내 종목 업데이트", to: "/home", icon: Home, keywords: "home stream 홈" },
-  { label: "팔로우 — 종목·채널·블로그·태그", to: "/follow", icon: Building2, keywords: "follow stocks watchlist 종목 소스" },
+  { label: "관심목록 — 기업·인물·산업·테마", to: "/follow", icon: Building2, keywords: "follow stocks watchlist 종목 소스" },
   { label: "신호 — 언급 급증·52주 신고가", to: "/explore", icon: LineChart, keywords: "signal" },
   { label: "기업활동 — 유무증·합병·공개매수", to: "/actions", icon: Building2, keywords: "actions 유상증자" },
   { label: "유무증 Pro", to: "/actions?view=pro", icon: Table2, keywords: "rights pro" },
-  { label: "피드 — 전체 수집 문서", to: "/feed", icon: Newspaper, keywords: "feed 텔레그램 블로그" },
+  { label: "문서 검색 — 전체 수집 자료", to: "/feed?view=documents", icon: Newspaper, keywords: "feed 텔레그램 블로그" },
+  { label: "소스 관리 — 채널·블로그·유튜브", to: "/sources", icon: Rss, keywords: "source 소스 구독 관리 채널 블로그 유튜브" },
+  { label: "Home 피드 — 최신 업데이트", to: "/home?home_view=feed", icon: Newspaper, keywords: "feed 피드 업데이트" },
   { label: "대화 — AI 질문·스레드", to: "/chat", icon: MessageCircleQuestion, keywords: "ask rag chat" },
   { label: "카탈리스트 캘린더", to: "/research/catalysts", icon: CalendarDays, keywords: "calendar 일정" },
   { label: "VS 비교 (보관함)", to: "/analyze/compare", icon: Table2, keywords: "compare 비교" },

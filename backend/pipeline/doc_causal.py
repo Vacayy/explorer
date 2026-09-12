@@ -12,6 +12,7 @@ import os
 import subprocess
 
 from database import get_connection
+from pipeline.visibility import unverified_sql
 from pipeline.enrich import _claude_bin, llm_engine
 from pipeline.narrative import GEO_VOCAB, _node_vocab, _persist_causal
 
@@ -52,7 +53,7 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
 def _call(prompt: str) -> dict:
     proc = subprocess.run(
         # 명시 인과만 추출하는 기계적 작업 — 확장 사고가 output의 대부분을 먹는다 (D-117 실측)
-        [_claude_bin(), "-p", "--model", DOC_CAUSAL_MODEL, "--output-format", "json",
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", DOC_CAUSAL_MODEL, "--output-format", "json",
          "--effort", "low", prompt],
         capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
@@ -63,12 +64,14 @@ def _call(prompt: str) -> dict:
 
 
 def _candidates(conn, limit: int) -> list[dict]:
-    """추출 후보 — LLM 태깅 완료 + 본문 충분 + 아직 시도 안 함, 최신순."""
+    """추출 후보 — LLM 태깅 완료 + 본문 충분 + 아직 시도 안 함, 최신순.
+    미검증 소스(스크랩)는 제외 — 월드모델 엣지는 되돌리기 가장 비싼 자산이다 (D-142)."""
     return [dict(r) for r in conn.execute(f"""
         SELECT rd.id, rd.title, rd.markdown
         FROM raw_documents rd JOIN enrichments en ON en.doc_id = rd.id
         WHERE en.model != 'keyword' AND en.causal_extracted_at IS NULL
           AND length(rd.markdown) >= {MIN_DOC_CHARS}
+          AND {unverified_sql()}
         ORDER BY rd.published_at DESC LIMIT ?""", (limit,)).fetchall()]
 
 
@@ -82,7 +85,8 @@ def extract_for_doc(doc_id: int) -> dict:
         SELECT rd.id, rd.title, rd.markdown FROM raw_documents rd
         JOIN enrichments en ON en.doc_id = rd.id
         WHERE rd.id = ? AND en.model != 'keyword' AND en.causal_extracted_at IS NULL
-          AND length(rd.markdown) >= {MIN_DOC_CHARS}""", (doc_id,)).fetchone()
+          AND length(rd.markdown) >= {MIN_DOC_CHARS}
+          AND {unverified_sql()}""", (doc_id,)).fetchone()
     if not d:
         conn.close()
         return {"skipped": "미충족(미enrich·짧음·이미추출)"}

@@ -26,6 +26,14 @@ class FollowRow(BaseModel):
     latest_period: str | None
     latest_export: float | None
     yoy_pct: float | None
+    # D-140 파생지표·판정 (요청 시 계산, trade_metrics) — 기준월=적재 최신월
+    mom: float | None = None
+    qoq: float | None = None
+    yoy3m: float | None = None
+    z: float | None = None
+    flag: str | None = None          # surge | plunge | new | none
+    reason: str | None = None
+    contribution: float | None = None
 
 
 class Beneficiary(BaseModel):
@@ -68,17 +76,39 @@ def _yoy(conn, hs: str) -> tuple[str | None, float | None, float | None]:
 
 
 @router.get("/follow", response_model=list[FollowRow])
-def list_follow():
+def list_follow(mode: str = "zscore", metric: str = "yoy"):
+    """그룹별 팔로우 + 최신월 + 파생지표·판정(D-140). 판정은 highlights와 같은 table()을 쓴다."""
+    from pipeline.trade_metrics import table
+    t = table(flow="export", mode=mode, metric=metric)
+    by = {r["hs_code"]: r for r in t["rows"]}
     conn = get_connection()
     rows = conn.execute("SELECT hs_code, item_name, group_label FROM trade_follow WHERE active=1 "
                         "ORDER BY group_label, hs_code").fetchall()
     out = []
     for r in rows:
         period, exp, yoy = _yoy(conn, r["hs_code"])
+        m = by.get(r["hs_code"]) or {}
         out.append(FollowRow(hs_code=r["hs_code"], item_name=r["item_name"], group_label=r["group_label"],
-                             latest_period=period, latest_export=exp, yoy_pct=yoy))
+                             latest_period=period, latest_export=exp, yoy_pct=yoy,
+                             mom=m.get("mom"), qoq=m.get("qoq"), yoy3m=m.get("yoy3m"), z=m.get("z"),
+                             flag=m.get("flag"), reason=m.get("reason"), contribution=m.get("contribution")))
     conn.close()
     return out
+
+
+@router.get("/highlights")
+def highlights(period: str | None = None, flow: str = "export", limit: int = 8, rank: str = "contribution",
+               mode: str = "zscore", metric: str = "yoy", z_threshold: float | None = None, min_usd: float | None = None):
+    """급등·급감 랭킹(D-140) — 기본 기여도 순. `/{hs_code}`보다 먼저 선언(경로 충돌 방지)."""
+    from pipeline.trade_metrics import highlights as _hl
+    return _hl(period, flow, limit=limit, rank=rank, mode=mode, metric=metric, z_threshold=z_threshold, min_usd=min_usd)
+
+
+@router.get("/{hs_code}/metrics")
+def item_metrics(hs_code: str):
+    """품목 월별 파생지표 시계열(수출·수입 각각 mom/yoy/qoq/yoy3m/z) — D-140."""
+    from pipeline.trade_metrics import item_series
+    return item_series(hs_code)
 
 
 @router.get("/{hs_code}", response_model=Detail)
@@ -126,5 +156,6 @@ def upsert_follow(body: FollowReq):
 
 @router.post("/seed")
 def seed():
-    from pipeline.trade import seed_default_follows
-    return {"seeded": seed_default_follows()}
+    """기본 세트 + 개인 워치리스트 CSV(있으면) 시드."""
+    from pipeline.trade import seed_default_follows, seed_watchlist
+    return {"seeded_default": seed_default_follows(), **seed_watchlist()}

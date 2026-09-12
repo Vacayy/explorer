@@ -36,7 +36,7 @@ def load_principles(lens_type: str) -> tuple[str | None, str]:
 
 def _call_json_lens(prompt: str) -> dict:
     proc = subprocess.run(
-        [_claude_bin(), "-p", "--model", LENS_MODEL, "--output-format", "json", prompt],
+        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", LENS_MODEL, "--output-format", "json", prompt],
         capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
