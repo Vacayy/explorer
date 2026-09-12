@@ -3,7 +3,7 @@ import json
 
 from pydantic import BaseModel
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from database import get_connection
 from models.spine import EntityTag, FeedDocument
 
@@ -32,26 +32,16 @@ def get_document(doc_id: int):
                rd.markdown, rd.raw_content, rd.digest_status, rd.media_json,
                en.summary, en.model AS enrich_model
         FROM raw_documents rd
-        LEFT JOIN enrichments en ON en.doc_id = rd.id
+        LEFT JOIN enrichments en ON en.id = (SELECT id FROM enrichments WHERE doc_id=rd.id ORDER BY enriched_at DESC, id DESC LIMIT 1)
         WHERE rd.id = ?
     """, (doc_id,)).fetchone()
     if not r:
         conn.close()
         raise HTTPException(404, "문서를 찾을 수 없습니다")
 
-    content = r["markdown"]
-    # 유튜브 정리는 **여기서만** 일어난다(D-115) — 수집 시점엔 자막 raw로 저장하고,
-    # 사람이 문서를 열 때 opus로 정리한다. 구독 채널 신규 영상 전부를 정리하면
-    # 아무도 안 읽는 영상까지 값을 치르므로(실측 하루 103콜) 변동비를 열람에 비례시킨다.
-    if r["source_type"] == "youtube" and r["digest_status"] != "ok":
-        if len((r["raw_content"] or "")) >= 100:
-            conn.close()                     # 정리 중 커넥션을 붙들지 않는다(opus 수십 초)
-            from pipeline.connectors.youtube import digest_stored
-            digest_stored(doc_id)            # 정리 + 재enrich (store_document 경유)
-            conn = get_connection()
-            row2 = conn.execute(
-                "SELECT markdown, raw_content FROM raw_documents WHERE id=?", (doc_id,)).fetchone()
-            content = (row2["markdown"] or row2["raw_content"]) if row2 else content
+    content = r["markdown"] or r["raw_content"]
+    from pipeline.youtube_digest import fields
+    video_fields = fields(conn, r)
 
     tags = [EntityTag(
         entity_id=t["entity_id"], type=t["type"], name=t["name"],
@@ -69,7 +59,16 @@ def get_document(doc_id: int):
         url=r["url"] or "", published_at=r["published_at"] or "",
         summary=r["summary"], channel=channel.get("name"),
         channel_kind=channel.get("kind"), channel_key=channel.get("key"),
-        content=content,
+        content=content, **video_fields,
         images=json.loads(r["media_json"]) if r["media_json"] else [],
         enrich_model=r["enrich_model"], entities=tags,
     )
+
+
+@router.post("/{doc_id}/digest", status_code=202)
+def generate_digest(doc_id: int, background_tasks: BackgroundTasks):
+    from pipeline.youtube_digest import queue, execute
+    job = queue(doc_id)
+    if job['token']:
+        background_tasks.add_task(execute, doc_id, job['token'])
+    return {'status': job['status']}
