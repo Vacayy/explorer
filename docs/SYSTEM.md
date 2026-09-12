@@ -1,10 +1,14 @@
 # Explorer — 시스템 현황 명세
 
-> 최종 갱신: 2026-09-11 (feat/etl-spine 브랜치 기준)
+> 최종 갱신: 2026-09-12 (development 브랜치 기준)
 > 목적: 현재 시스템의 전체 구조·기능·데이터를 한눈에 파악하기 위한 현황 문서.
 > 기획 배경·온톨로지는 docs/ontology.md, docs/specs/product-v2.md 참조. 의사결정 이력은 docs/DECISIONS.md.
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/archive/로 이동, 본 문서가 현행)
+
+## 문서 안내
+
+설계 원칙은 [PHILOSOPHY](PHILOSOPHY.md), 주요 기능의 요청·처리·저장 흐름과 기술 선택은 [TECH_DECISIONS](TECH_DECISIONS.md), 세부 계약은 [기능별 스펙](specs/README.md)에 있다. 이 문서는 전체 시스템 현황과 운영 항목을 관리한다. 2026-09-12 문서 대조에서 승인 범위·사용자 기록 소유권·스터디 웹 탐색·조회 정책의 적용 범위를 바로잡았다. 과거 운영 측정치는 측정 당시 기록이며 현재 값을 뜻하지 않는다.
 
 ## 스터디 학습 코파일럿 (D-159, 2026-09-11)
 
@@ -39,7 +43,7 @@
 - `pipeline/study.py`, `routers/spine_study.py`: 수집 문서의 본문을 고정하고 Unicode 위치·exact·revision으로 영속 주석을 관리한다. `study_sessions`, `study_annotations`, `study_turns` additive 테이블. GET 생성 없음.
 - 스터디 AI는 서버 검증한 인용/주변 문맥/사용자 코멘트의 턴별 context를 고정하고 기존 conversations/chat_messages에 기록한다. chat.run_turn의 study_context 분기는 일반 라우터를 우회하며 D-159의 제한된 검색·학습 합성과 기존 인용 검증을 수행한다. 문서 옆에서 읽고 답하며 일반 대화 이력에도 남는다.
 - 중복 request_key·동시 생성 제한, revision 충돌, 선택 입력 예산, soft delete와 과거 근거 보존, 10분 이상 중단 요청 복구. 실패도 이력에 저장한다.
-- 기존 원문·수집·요약 정책을 보존한다. 다중 자료는 위 프로젝트 스터디로 확장했다. 새 URL 자동 수집, 웹 리서치, 이미지/PDF 주석은 미구현. 2026-09-10 격리 검증 당시 OAuth 세션 만료가 있었으나, 2026-09-11 동일 프로젝트 CLI 경로의 opus 실제 호출로 인증 정상화를 확인했다. 스터디 전체 실응답의 재검증은 별도다.
+- 기존 원문·수집·요약 정책을 보존한다. 다중 자료는 위 프로젝트 스터디로 확장했다. 새 URL 자동 수집과 이미지/PDF 주석은 미구현이다. 웹 리서치는 D-159의 제한된 WebSearch/WebFetch 경로로 구현했다. 2026-09-11 격리 환경에서 실제 모델·수집 검색·웹 원문 읽기를 확인했으며 검증 범위는 상단 D-159 항목을 참고한다.
 - 현행 계약: `specs/study-mode.md`. 검증: `backend/tests/test_study.py`, `logs/study-implementation/`.
 
 ## 시장 홈 행 구성 보완 (2026-09-10)
@@ -95,11 +99,11 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
 ### 비타협 설계 원칙
 | 원칙 | 의미 |
 |---|---|
-| **사실/가설 분리 (epistemic)** | LLM 산출(태그·요약·해석·답변)은 전부 '가설' — confidence·모델명 표시, UI에서 주황(hypothesis) 스타일로 구분 |
+| **사실/가설 분리 (epistemic)** | LLM 해석을 확인된 사실과 구분한다. 그래프는 epistemic_type을, 요약·스터디는 본문 종류·생성 정보·context를 사용한다. 모든 산출물에 같은 컬럼·색상·DB 제약이 적용되는 것은 아니다 |
 | **신호는 근거와 함께** | 근거 문서 없는 신호 표시 금지, "왜?"가 항상 1클릭 |
-| **층위: 홈=delta, 디테일=state** | 홈은 변화의 스트림만, 전체 맥락은 디테일 페이지 |
-| **소유권 분할 (vault)** | 자동수집=DB 원본→vault로 투영 / 사람의 가설·메모=마크다운 원본→DB로 흡수. 대칭 sync 금지 |
-| **URL = 상태의 단일 소스** | 모든 필터·탭이 URL 쿼리/경로 (새로고침·공유 보존) |
+| **층위: 홈=delta, 디테일=state** | 홈은 시장 현황과 최근 업데이트, 전체 맥락과 학습은 상세·스터디 |
+| **소유권 분할 (vault)** | 자동수집=DB→vault 투영 / 사람이 작성한 vault 문서=Markdown 원본. 스터디 주석·자유 메모·대화는 DB 원본이며 별도 보존 |
+| **URL = 상태의 단일 소스** | 자료 ID·공유 필터·복귀 경로는 URL. 팔레트·패널·초안·스크롤은 UI 상태로도 관리 |
 | **전 화면 5-state** | Empty/Loading/Partial/Error/Ideal + FreshnessStamp(수집 시각) |
 | **시간 정박 (temporal)** | 발행일 ≠ 사건 발생일. enrich가 문서마다 time_orientation(past/current/forward/mixed)·reference_period 추출 → 내러티브·다이제스트·신호가 '전망을 방금 일어난 사건으로' 착각하지 않게 회고/현재/전망 구분 (D-021) |
 
