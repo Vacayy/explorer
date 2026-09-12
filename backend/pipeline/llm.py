@@ -40,6 +40,7 @@ class LLMResult:
     usage: dict = field(default_factory=dict)
     cost_usd: float | None = None
     duration_ms: int = 0
+    tool_results: list[dict] = field(default_factory=list)
     session_id: str | None = None
 
     @property
@@ -82,6 +83,8 @@ def _argv(model: str, effort: str | None, tools: tuple[str, ...], system: str | 
             "--setting-sources", "",          # 사용자·프로젝트 설정(훅·MCP) 미로드
             "--tools", ",".join(tools),       # ""=도구 전부 끔 → 도구 정의 토큰 제거
             "--no-session-persistence"]
+    if set(tools) & {"WebSearch", "WebFetch"}:
+        argv += ["--allowedTools", ",".join(t for t in tools if t in ("WebSearch","WebFetch")), "--max-turns", "6"]
     if effort:
         argv += ["--effort", effort]
     if system:
@@ -95,8 +98,8 @@ def _argv(model: str, effort: str | None, tools: tuple[str, ...], system: str | 
 
 def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text) -> LLMResult:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    argv = _argv(model, effort, tools, system, stream=on_text is not None)
-    if on_text is None:
+    argv = _argv(model, effort, tools, system, stream=on_text is not None or bool(set(tools) & {"WebSearch","WebFetch"}))
+    if on_text is None and not (set(tools) & {"WebSearch","WebFetch"}):
         proc = subprocess.run(argv, input=prompt, capture_output=True, text=True,
                               timeout=timeout, cwd=RUNTIME_DIR)
         if proc.returncode != 0:
@@ -112,6 +115,9 @@ def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text) 
     killer = threading.Timer(timeout, proc.kill)
     killer.start()
     parts: list[str] = []
+    tool_names: dict[str,str] = {}
+    tool_inputs: dict[str,dict] = {}
+    tool_results: list[dict] = []
     final: dict | None = None
     try:
         proc.stdin.write(prompt)
@@ -128,7 +134,15 @@ def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text) 
                 delta = (ev.get("event") or {}).get("delta") or {}
                 if delta.get("type") == "text_delta" and delta.get("text"):
                     parts.append(delta["text"])
-                    on_text(delta["text"])
+                    if on_text: on_text(delta["text"])
+            elif ev.get("type") in ("assistant", "user"):
+                for block in (ev.get("message") or {}).get("content", []):
+                    if not isinstance(block,dict):continue
+                    if block.get("type")=="tool_use":
+                        tool_names[block["id"]]=block.get("name", "")
+                        tool_inputs[block["id"]]=block.get("input") or {}
+                    elif block.get("type")=="tool_result":
+                        tool_results.append({"name":tool_names.get(block.get("tool_use_id"), ""),"input":tool_inputs.get(block.get("tool_use_id"),{}),"content":block.get("content"),"is_error":block.get("is_error",False)})
             elif ev.get("type") == "result":
                 final = ev
         proc.wait()
@@ -139,7 +153,9 @@ def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text) 
                            f"err={(proc.stderr.read() or '').strip()[:200]!r}")
     if final.get("is_error"):
         raise RuntimeError(f"claude -p 오류: {str(final.get('result'))[:200]}")
-    return _from_result_event(final, model, "".join(parts) or final.get("result", ""))
+    result = _from_result_event(final, model, "".join(parts) or final.get("result", ""))
+    result.tool_results = tool_results
+    return result
 
 
 def _from_result_event(env: dict, model: str, text: str) -> LLMResult:

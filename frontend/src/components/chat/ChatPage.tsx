@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { ArrowDown, PanelLeft, Send, SquarePen } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -9,10 +10,12 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { useChat } from "@/hooks/useChat"
 import { cn } from "@/lib/utils"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
+import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { ChatEmpty } from "./ChatEmpty"
 import { Composer } from "./Composer"
 import { ThreadRail } from "./ThreadRail"
 import { UserMessage } from "./UserMessage"
+import { ThreadTitle } from "./ThreadTitle"
 
 /** 스크롤 컨테이너 하단에서 이 거리 이내면 "바닥" — 자동 스크롤 허용 */
 const BOTTOM_PX = 80
@@ -26,6 +29,7 @@ export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeId = searchParams.get("id") ? Number(searchParams.get("id")) : null
   const [question, setQuestion] = useState(searchParams.get("q") ?? "")
+  const [quote, setQuote] = useState<QuoteRef | null>(null)
   const [railOpen, setRailOpen] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
 
@@ -33,7 +37,7 @@ export default function ChatPage() {
     setSearchParams({ id: String(id) })
     setSheetOpen(false)
   }, [setSearchParams])
-  const newThread = () => { setSearchParams({}); setQuestion(""); setSheetOpen(false) }
+  const newThread = () => { setSearchParams({}); setQuestion(""); setQuote(null); setSheetOpen(false) }
 
   const chat = useChat(activeId, openThread)
   const { detail, messages, awaiting, stalled, draft, ask } = chat
@@ -41,8 +45,12 @@ export default function ChatPage() {
 
   const submit = () => {
     const q = question.trim()
-    if (!q || busy) return
-    ask.mutate({ question: q, conversation_id: activeId ?? undefined }, { onSuccess: () => setQuestion("") })
+    // 인용만 붙이고 전송해도 된다 — "이 대목 더 설명해줘"가 기본 의도
+    if ((!q && !quote) || busy) return
+    ask.mutate(
+      { question: q || "이 대목을 더 자세히 설명해줘", conversation_id: activeId ?? undefined, quote: quote ?? undefined },
+      { onSuccess: () => { setQuestion(""); setQuote(null) } },
+    )
     stickRef.current = true
   }
 
@@ -104,7 +112,9 @@ export default function ChatPage() {
           </Button>
           {thread && (
             <>
-              <h2 className="min-w-0 truncate text-sm font-medium">{thread.title || "(제목 없음)"}</h2>
+              <ThreadTitle id={thread.id} title={thread.title} />
+              {thread.study_project && <Button variant="outline" size="sm" asChild><Link to={`/study/projects/${thread.study_project.id}`}>프로젝트에서 계속 공부하기</Link></Button>}
+              {thread.study && <Button variant="outline" size="sm" asChild><Link to={`/study/${thread.study.id}`}>문서에서 계속 공부하기</Link></Button>}
               {thread.channel === "telegram" && (
                 <Badge variant="outline" className="shrink-0 gap-1 text-[10px] font-normal"><Send className="size-2.5" /> 텔레그램</Badge>
               )}
@@ -116,12 +126,20 @@ export default function ChatPage() {
           )}
         </header>
 
+        {!!thread?.attached_documents?.length && <Collapsible className="my-2 rounded-xl border px-3 py-2">
+          <CollapsibleTrigger asChild><Button size="sm" variant="ghost">함께 읽는 수집 자료 {thread.attached_documents.length}개</Button></CollapsibleTrigger>
+          <CollapsibleContent className="space-y-2 pb-2">
+            <p className="text-xs text-muted-foreground">이 대화의 후속 질문에서도 참고합니다. 다른 주제는 새 대화로 시작할 수 있습니다.</p>
+            {thread.attached_documents.map(doc => <Link className="block text-sm text-primary hover:underline" key={doc.id} to={`/experiments/expectations?read=${doc.id}`}>{doc.title || '수집 자료'}</Link>)}
+            <Button size="sm" variant="outline" onClick={newThread}>첨부 없이 새 대화</Button>
+          </CollapsibleContent>
+        </Collapsible>}
         {!activeId && !ask.isPending ? (
           /* Empty — 인사 + 중앙 컴포저 + 제안 카드 */
           <div className="min-h-0 flex-1 overflow-y-auto">
             <ChatEmpty onPick={setQuestion}>
               <Composer value={question} onChange={setQuestion} onSubmit={submit} busy={busy}
-                placeholder={composerPlaceholder} autoFocus />
+                placeholder={composerPlaceholder} autoFocus quote={quote} onClearQuote={() => setQuote(null)} />
               {ask.isError && <p className="pt-2 text-center text-xs text-destructive">질문을 보내지 못했습니다. 다시 시도해주세요.</p>}
             </ChatEmpty>
           </div>
@@ -142,10 +160,11 @@ export default function ChatPage() {
                 {detail.isError && (
                   <ErrorState message="대화를 불러올 수 없습니다." onRetry={() => detail.refetch()} />
                 )}
-                {messages.map((m) =>
+                {messages.map((m, i) =>
                   m.role === "user"
                     ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
-                    : <AssistantMessage key={m.id} m={m} />
+                    : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1}
+                        onQuote={setQuote} onPick={setQuestion} />
                 )}
                 {/* 제출 직후 찰나(서버 적재 전) — 낙관적 표시 */}
                 {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} pending />}
@@ -169,7 +188,7 @@ export default function ChatPage() {
               )}
               {ask.isError && <p className="pb-1.5 text-xs text-destructive">질문을 보내지 못했습니다. 입력은 보존되어 있으니 다시 시도해주세요.</p>}
               <Composer value={question} onChange={setQuestion} onSubmit={submit} busy={busy}
-                placeholder={composerPlaceholder}
+                placeholder={composerPlaceholder} quote={quote} onClearQuote={() => setQuote(null)}
                 hint={awaiting ? "답변을 생성하는 동안에는 이어서 질문할 수 없습니다" : undefined} />
             </div>
           </>

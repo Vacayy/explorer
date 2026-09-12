@@ -68,13 +68,18 @@ def _related_threads(conn, conversation_id: int, entities: list[dict], chat_id) 
     return [{"id": r["id"], "title": r["title"], "note": r["summary"], "updated_at": r["updated_at"]} for r in rows]
 
 
-def context_block(ctx: dict, chars: int = RECENT_CHARS) -> str:
-    """종합·라우터 공용 대화 맥락 블록."""
+def context_block(ctx: dict, chars: int = RECENT_CHARS, skip_ids: set[int] | None = None) -> str:
+    """종합·라우터 공용 대화 맥락 블록.
+
+    skip_ids: 여기서 뺄 메시지 id — 인용된 답변은 별도 블록에 **전문**으로 들어가므로
+    500자 잘린 사본을 중복으로 싣지 않는다 (D-146).
+    """
     parts = []
     if ctx.get("note"):
         parts.append("[이 스레드의 작업 노트 — 지금까지의 맥락]\n" + ctx["note"])
-    if ctx.get("recent"):
-        lines = [f"{'사용자' if m['role'] == 'user' else '이전 답변'}: {(m['content'] or '')[:chars]}" for m in ctx["recent"]]
+    recent = [m for m in (ctx.get("recent") or []) if not (skip_ids and m.get("id") in skip_ids)]
+    if recent:
+        lines = [f"{'사용자' if m['role'] == 'user' else '이전 답변'}: {(m['content'] or '')[:chars]}" for m in recent]
         parts.append("[최근 대화]\n" + "\n".join(lines))
     if ctx.get("related"):
         lines = [f"- ({r['updated_at'][:10]}) {r['title']}: {(r['note'] or '')[:300]}" for r in ctx["related"]]
@@ -158,3 +163,17 @@ def maybe_compact(conversation_id: int) -> bool:
     finally:
         conn.close()
     return True
+
+
+def set_attached_documents(conversation_id: int, doc_ids: list[int]) -> None:
+    """Explicit reading selection; [] clears it. Retained independently of used citations."""
+    conn = get_connection()
+    try:
+        row = conn.execute('SELECT state_json FROM conversations WHERE id=?', (conversation_id,)).fetchone()
+        state = json.loads((row['state_json'] if row else None) or '{}')
+        state['attached_doc_ids'] = doc_ids[:12]
+        conn.execute('UPDATE conversations SET state_json=? WHERE id=?',
+                     (json.dumps(state, ensure_ascii=False), conversation_id))
+        conn.commit()
+    finally:
+        conn.close()
