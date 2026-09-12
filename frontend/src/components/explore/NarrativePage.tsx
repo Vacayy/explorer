@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react"
-import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { Anchor, ArrowLeft, ArrowRight, GitMerge, HelpCircle, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
+import { Anchor, MessageCircle, ArrowRight, GitMerge, HelpCircle, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { EmptyState } from "@/components/shared/ErrorState"
+import SegmentTabs from "@/components/shared/SegmentTabs"
+import { DetailLayout, DetailSection } from "@/components/shared/DetailLayout"
+import { DetailLink as Link, useDetailOrigin, rememberDetailOrigin } from "@/components/shared/DetailNavigation"
+import { askQuestion } from "@/api/spine"
+import { EmptyState, ErrorState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import SaveButton from "@/components/shared/SaveButton"
@@ -41,10 +44,16 @@ const LENS_LABEL: Record<string, string> = {
 }
 
 export default function NarrativePage() {
-  const [sp] = useSearchParams()
+  const [sp, setSp] = useSearchParams()
+  const location = useLocation()
+  const origin = useDetailOrigin()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const topic = sp.get("topic") ?? ""
+  const tab = ['current','evidence','history','explore'].includes(sp.get('detail_tab') || '') ? sp.get('detail_tab')! : 'current'
+  const discussion = useMutation({ mutationFn: (question: string) => askQuestion({ question }),
+    onSuccess: result => { if (result.conversation_id) navigate(`/chat?id=${result.conversation_id}`) } })
+
 
   const cached = useQuery(
     apiQuery<Narrative>({
@@ -86,113 +95,28 @@ export default function NarrativePage() {
 
   // topic 없이 진입 = 월드모델>내러티브 탭 랜딩 → 내러티브 목록
   if (!topic) return <NarrativeLanding />
-  if (cached.isLoading) return <PageContainer gap="sm"><Skeleton className="h-8 w-96" /><Skeleton className="h-64 w-full rounded-xl" /></PageContainer>
-
+  if (cached.isLoading) return <DetailLayout title="내러티브 불러오는 중" fallback="/narrative" backLabel="내러티브 목록으로"><Skeleton className="h-64 w-full" /></DetailLayout>
   const generating = fresh.isFetching
-  const empty = n?.status === "empty" && !n?.narrative && !generating
-  const lenses = (cached.data?.category ?? n?.category ?? "").split(",").filter(Boolean)
-  const version = cached.data?.version
-  const narrativeId = cached.data?.narrative_id
-
-  return (
-    <PageContainer gap="sm" width="reading">
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/narrative")}>
-          <ArrowLeft className="h-4 w-4" /> 내러티브
-        </Button>
-        <Badge variant="secondary" className="text-[10px]">내러티브</Badge>
-        {lenses.map((l) => (
-          <Badge key={l} variant="outline" className="text-[10px]">{LENS_LABEL[l] ?? l}</Badge>
-        ))}
-        {version && version > 1 && (
-          <Badge variant="outline" className="text-[10px] text-muted-foreground">v{version}</Badge>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          {createdAt && (
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              최근 갱신 {createdAt.slice(0, 16).replace("T", " ")}
-            </span>
-          )}
-          {narrativeId != null && (
-            <SaveButton
-              kind="narrative"
-              refId={String(narrativeId)}
-              url={`/narrative/history?topic=${encodeURIComponent(topic)}&v=${narrativeId}`}
-              title={topic}
-              subtitle={version && version > 1 ? `v${version}` : "내러티브"}
-            />
-          )}
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground"
-            disabled={generating} onClick={() => setRefreshNonce((k) => k + 1)}
-            title="새 문서가 있으면 내러티브를 다시 생성 (없으면 갱신 없음)">
-            <RefreshCw className={cn("h-3.5 w-3.5", generating && "animate-spin")} /> 새로고침
-          </Button>
-        </div>
-      </div>
-
-      {empty ? (
-        <EmptyState message={`'${topic}' 관련 문서가 아직 충분하지 않습니다 (3건 이상 필요).`} />
-      ) : (
-        <>
-          <h1 className="text-xl font-bold leading-snug flex items-start gap-2">
-            <Sparkles className="h-5 w-5 text-hypothesis shrink-0 mt-0.5" />
-            {n?.title ?? topic}
-          </h1>
-          {generating && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              최근 문서를 엮어 내러티브 생성 중… (수십 초)
-            </div>
-          )}
-          {n?.narrative && (
-            <Tabs defaultValue="narrative">
-              <TabsList>
-                <TabsTrigger value="narrative">서사</TabsTrigger>
-                <TabsTrigger value="mer">인과 흐름 (메르 모드)</TabsTrigger>
-              </TabsList>
-              <TabsContent value="narrative">
-                <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_6%,var(--card))]">
-                  <CardContent className="py-4">
-                    <Markdown>{n.narrative}</Markdown>
-                    <div className="text-right mt-2">
-                      <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
-                        AI 내러티브 · 문서 집합 변경 시 갱신 — 검증 필요
-                        {n.created_at && ` · ${n.created_at.slice(0, 10)}`}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              <TabsContent value="mer">
-                <MerNarrativeCard topic={topic} />
-              </TabsContent>
-            </Tabs>
-          )}
-          {/* 재생성 이력 타임라인 — 본문 아래, 파급 시나리오 위. 도트 클릭 시 디테일 페이지에서 열람 */}
-          <NarrativeTimeline
-            topic={topic}
-            heading="이력 — 재생성 타임라인"
-            onSelectVersion={(id) => navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`)}
-          />
-          <ScenarioSection topic={topic} />
-          {narrativeId && <NarrativeQuestions narrativeId={narrativeId} />}
-          <ReportLinkCard topic={topic} />
-          {narrativeId && <CausalChain narrativeId={narrativeId} />}
-          {narrativeId && <ChainPaths narrativeId={narrativeId} />}
-          <Card><CardContent className="py-3">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Sparkles className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">언급 상위 종목</span>
-              <span className="text-[11px] text-muted-foreground">참고 · 이 테마와 자주 함께 언급 (공동언급) · RS·밸류</span>
-            </div>
-            <BeneficiaryList sector={topic} />
-          </CardContent></Card>
-          {narrativeId && <Grounding narrativeId={narrativeId} />}
-          {narrativeId && <RelatedNarratives narrativeId={narrativeId} />}
-        </>
-      )}
-    </PageContainer>
-  )
+  const version = n?.version
+  const narrativeId = n?.narrative_id
+  const lenses = (n?.category || '').split(',').filter(Boolean)
+  return <DetailLayout title={n?.title || topic} fallback="/narrative" backLabel="내러티브 목록으로"
+    context={<><span className="text-hypothesis">Explorer · AI 내러티브 · 검증 필요</span>{lenses.map(l => <Badge key={l} variant="outline" className="text-caption">{LENS_LABEL[l] || l}</Badge>)}{version && <span>v{version}</span>}{n?.created_at && <time dateTime={n.created_at}>생성 {n.created_at.slice(0,16).replace('T',' ')}</time>}</>}
+    actions={<>{narrativeId != null && <SaveButton kind="narrative" refId={String(narrativeId)} url={`/narrative/history?topic=${encodeURIComponent(topic)}&v=${narrativeId}`} title={topic} subtitle={version ? `v${version}` : '내러티브'} showLabel />}
+      <Button variant="ghost" size="sm" disabled={!n?.narrative || discussion.isPending} onClick={() => discussion.mutate(`아래 저장된 AI 내러티브의 핵심 주장과 근거, 반론을 검토해줘. 원문 사실과 AI 해석을 구분해줘.\n\n주제: ${topic}\n버전: ${version ?? '미상'} (ID ${narrativeId ?? '미상'})\n생성: ${n?.created_at ?? '미상'}\n\n${n?.narrative || ''}`)}><MessageCircle aria-hidden="true" />{discussion.isPending ? '대화 준비 중' : '이 내러티브로 대화'}</Button>
+      <Button variant="outline" size="sm" disabled={generating} onClick={() => setRefreshNonce(k => k + 1)}><RefreshCw aria-hidden="true" className={generating ? 'animate-spin' : ''} />갱신</Button></>}
+    navigation={<SegmentTabs tabs={[{value:'current',label:'현재 해석'},{value:'evidence',label:'근거'},{value:'history',label:'변경 이력'},{value:'explore',label:'추가 탐구'}]} value={tab} onChange={value => setSp(prev => {const next = new URLSearchParams(prev);next.set('detail_tab',value);return next}, {replace:true,state:location.state})} />}
+    aside={<><h2 className="mb-3 text-section font-semibold">이 해석의 맥락</h2><p className="mb-4 text-sm">{topic}</p><p className="text-caption text-muted-foreground">여러 자료를 연결한 시스템의 해석입니다. 개별 출처의 발언과 구분해서 읽으세요.</p><DetailSection title="관련 질문">{narrativeId ? <NarrativeQuestions narrativeId={narrativeId} /> : <EmptyState message="연결된 버전이 없습니다." />}</DetailSection><DetailSection title="관련 리포트"><ReportLinkCard topic={topic} /></DetailSection></>}
+    related={narrativeId ? <RelatedNarratives narrativeId={narrativeId} /> : undefined}>
+    {cached.isError && <ErrorState message="저장된 내러티브를 불러오지 못했습니다." onRetry={() => void cached.refetch()} />}
+    {fresh.isError && <p role="alert" className="mb-4 text-sm text-destructive">갱신에 실패했습니다. 저장된 내용은 계속 읽을 수 있습니다.</p>}
+    {discussion.isError && <p role="alert" className="mb-4 text-sm text-destructive">대화를 시작하지 못했습니다. 다시 시도해 주세요.</p>}
+    {generating && <p role="status" className="mb-4 text-caption text-muted-foreground">새 자료로 내러티브를 갱신하고 있습니다.</p>}
+    {tab === 'current' && (n?.narrative ? <Markdown className="[overflow-wrap:anywhere] [&_pre]:overflow-x-auto">{n.narrative}</Markdown> : !cached.isError && <EmptyState message="저장된 내러티브가 없습니다. 갱신 버튼으로 생성을 요청할 수 있습니다." />)}
+    {tab === 'evidence' && <div className="space-y-4"><p className="text-caption text-muted-foreground">저장된 지식 연결과 인과 구조입니다. 문장별 원문 인용을 뜻하지 않습니다.</p>{narrativeId ? <><Grounding narrativeId={narrativeId} /><CausalChain narrativeId={narrativeId} /><ChainPaths narrativeId={narrativeId} /></> : <EmptyState message="연결된 근거가 없습니다." />}</div>}
+    {tab === 'history' && <NarrativeTimeline topic={topic} heading="저장된 버전과 변경 이력" onSelectVersion={id => {rememberDetailOrigin(origin);navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`, {state:{detailOrigin:origin}})}} />}
+    {tab === 'explore' && <div className="space-y-4"><DetailSection title="인과 흐름 (메르 모드)"><MerNarrativeCard topic={topic} /></DetailSection><DetailSection title="파급 시나리오"><ScenarioSection topic={topic} /></DetailSection><DetailSection title="언급 상위 종목"><p className="text-caption text-muted-foreground">이 테마와 자주 함께 언급되는 대상입니다.</p><BeneficiaryList sector={topic} /></DetailSection></div>}
+  </DetailLayout>
 }
 
 /* ---------- 이 서사의 핵심질문 (D-067 2d 미러링) — 질문 트래커와 내러티브 연결 ---------- */
@@ -659,7 +583,8 @@ function Grounding({ narrativeId }: { narrativeId: number }) {
     }),
   )
   if (isLoading) return <Skeleton className="h-16 w-full rounded-xl" />
-  if (isError || !data || data.status !== "ok" || data.grounding.length === 0) return null
+  if (isError) return <p role="alert" className="text-sm text-destructive">지식 연결을 불러오지 못했습니다.</p>
+  if (!data || data.status !== "ok" || data.grounding.length === 0) return <EmptyState message="저장된 지식 연결이 없습니다." />
 
   return (
     <Card>
@@ -694,7 +619,6 @@ interface RelatedNarrative {
 interface RelatedResponse { status: string; related: RelatedNarrative[] }
 
 function RelatedNarratives({ narrativeId }: { narrativeId: number }) {
-  const navigate = useNavigate()
   const { data, isLoading, isError } = useQuery(
     apiQuery<RelatedResponse>({
       key: ["spine", "narrative", "related", narrativeId],
@@ -716,13 +640,13 @@ function RelatedNarratives({ narrativeId }: { narrativeId: number }) {
         <ul className="space-y-1.5">
           {data.related.map((r) => (
             <li key={r.narrative_id}>
-              <button
-                onClick={() => navigate(`/narrative?topic=${encodeURIComponent(r.topic)}`)}
+              <Link
+                to={`/narrative?topic=${encodeURIComponent(r.topic)}`}
                 className="flex flex-wrap items-center gap-1.5 text-left text-sm hover:underline"
               >
                 <Badge variant="secondary" className="text-[10px]">{r.topic}</Badge>
                 <span className="text-muted-foreground text-xs truncate">{r.title}</span>
-              </button>
+              </Link>
               <div className="pl-1 text-[11px] text-muted-foreground">
                 공유 노드: {r.shared_nodes.join(" · ")}
               </div>

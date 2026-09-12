@@ -25,10 +25,9 @@ export function SignalSummaryCard({ title, subtitle, rows, onOpen }: {
   rows: SummaryRow[]
   onOpen?: () => void
 }) {
-  if (rows.length === 0) return null
   return (
     <Card className={cn(onOpen && "cursor-pointer hover:border-primary/40 transition-colors")}>
-      <CardHeader className="pb-2 flex-row items-center gap-2" onClick={onOpen}>
+      <CardHeader className="pb-2 flex-row flex-wrap items-center gap-2" onClick={onOpen}>
         <CardTitle className="text-sm">{title}</CardTitle>
         {subtitle && <span className="text-[11px] text-muted-foreground">{subtitle}</span>}
         {onOpen && (
@@ -38,7 +37,8 @@ export function SignalSummaryCard({ title, subtitle, rows, onOpen }: {
         )}
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+        <div className="grid grid-cols-1 gap-y-1">
+          {rows.length === 0 && <p className="text-sm text-muted-foreground">표시할 순위가 없습니다.</p>}
           {rows.map((r) => (
             <div key={r.key} className="flex items-center gap-2 py-1 text-sm min-w-0">
               <span className="w-5 text-right text-xs text-muted-foreground tabular-nums shrink-0">{r.rank}</span>

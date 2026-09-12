@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { useTheme } from "next-themes"
-import { Archive, Building2, Ellipsis, Moon, PanelRight, Search, SlidersHorizontal, Sun } from "lucide-react"
+import { Archive, Building2, Ellipsis, FileSearch, Rss, FlaskConical, Moon, PanelRight, Search, SlidersHorizontal, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -47,7 +47,7 @@ export default function Dock({ stockCode, companyName }: Props) {
 
   return (
     <nav aria-label="주 메뉴"
-      className="fixed bottom-4 left-1/2 z-40 flex h-14 -translate-x-1/2 items-center gap-0.5 rounded-2xl bg-card/85 p-1 shadow-lg ring-1 ring-border backdrop-blur-md">
+      className="fixed bottom-4 left-1/2 z-40 flex h-14 -translate-x-1/2 items-center gap-0.5 rounded-2xl glass-surface p-1">
       <DockItem icon={Search} label="검색" onClick={openOmnibar} aria-label="검색 · 이동 · 질문 (⌘K)" data-search-input />
       <Divider />
 
@@ -126,7 +126,10 @@ function MoreMenu() {
         <DropdownMenuItem onSelect={() => setTheme(dark ? "light" : "dark")}>
           {dark ? <Sun /> : <Moon />} {dark ? "라이트 모드" : "다크 모드"}
         </DropdownMenuItem>
+        <DropdownMenuItem asChild><Link to="/feed?view=documents"><FileSearch /> 문서 검색</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link to="/sources"><Rss /> 소스 관리</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link to="/admin"><SlidersHorizontal /> 관리자</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link to="/experiments/expectations"><FlaskConical /> 메모리 리서치</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link to="/archive"><Archive /> 보관함</Link></DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -145,7 +148,7 @@ function MobileTabBar({ activeL1, activeSub }: { activeL1: string; activeSub: st
     <>
       {/* 열린 도시에 탭은 인페이지 SubNav가 이미 보여준다(모바일은 상단 스트립만) */}
       <nav aria-label="주 메뉴"
-        className="fixed inset-x-0 bottom-0 z-40 grid h-[var(--dock-height)] grid-cols-6 items-center border-t bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+        className="fixed inset-x-0 bottom-0 z-40 grid h-[var(--dock-height)] grid-cols-6 items-center glass-surface px-1 pb-[env(safe-area-inset-bottom)]">
         {MODES.map((m) => {
           const active = activeL1 === m.key
           // 활성 + 하위 탭 있음 → 이동 대신 L2 Sheet (iOS "탭 재탭" 관용구)
@@ -175,11 +178,14 @@ function MobileTabBar({ activeL1, activeSub }: { activeL1: string; activeSub: st
           <SheetHeader><SheetTitle>더보기</SheetTitle></SheetHeader>
           <div className="grid grid-cols-4 gap-1 px-4 pb-2" onClick={(e) => { if ((e.target as HTMLElement).closest("a,button")) setMore(false) }}>
             <DockItem icon={Search} label="검색" className="w-full" onClick={openOmnibar} />
+            <DockItem icon={FileSearch} label="문서 검색" to="/feed?view=documents" className="w-full" />
+            <DockItem icon={Rss} label="소스 관리" to="/sources" className="w-full" />
             <ApprovalsInbox compact />
             <SavedInbox compact />
             <RailToggle compact />
             <DockItem icon={dark ? Sun : Moon} label={dark ? "라이트" : "다크"} className="w-full" onClick={() => setTheme(dark ? "light" : "dark")} />
             <DockItem icon={SlidersHorizontal} label="관리자" to="/admin" className="w-full" />
+            <DockItem icon={FlaskConical} label="메모리 리서치" to="/experiments/expectations" className="w-full" />
             <DockItem icon={Archive} label="보관함" to="/archive" className="w-full" />
           </div>
         </SheetContent>

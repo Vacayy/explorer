@@ -4,7 +4,7 @@ import { MODES } from "@/components/layout/navConfig"
 import { openOmnibar } from "@/components/layout/Dock"
 
 /**
- * 전역 단축키 — `/` 옴니바 · ⌥1~5 모드 이동(Home·팔로우·피드·월드모델·대화). ⌘K는 Omnibar, ⌘B는 Sidebar가 직접 듣는다.
+ * 전역 단축키 — `/` 옴니바 · ⌥1~4 모드 이동(Home·관심목록·월드모델·대화). ⌘K는 Omnibar, ⌘B는 Sidebar가 직접 듣는다.
  * ⌘1~9는 브라우저가 탭 전환으로 선점해 페이지에서 가로챌 수 없어 ⌥(Option)을 쓴다.
  */
 export function useKeyboardShortcuts() {
