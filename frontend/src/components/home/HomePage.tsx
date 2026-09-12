@@ -1,77 +1,50 @@
-import { Link } from "react-router-dom"
+import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { FileText, Inbox, LineChart, Route, Sparkles, Workflow } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import { useHome } from "@/hooks/useHome"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { PageContainer } from '@/components/shared/PageContainer'
+import { EmptyState } from "@/components/shared/ErrorState"
+import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
 import { ProposalPanel } from "@/components/shared/ProposalPanel"
-import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
 import { IndexStrip } from "@/components/home/IndexStrip"
-import { MarketRegime } from "@/components/home/MarketRegime"
-import { MacroLiquidity } from "@/components/home/MacroLiquidity"
+import { MarketContext } from "@/components/home/MarketContext"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { KrMoversSection } from "@/components/home/KrMoversSection"
+import { ChannelReader } from "@/components/feed/ChannelReader"
+import SegmentTabs from "@/components/shared/SegmentTabs"
+import { useHomeMode } from "@/hooks/useHomeMode"
 import { DigestBriefs } from "@/components/home/DigestBriefs"
 
-/**
- * /home — 아침 브리핑 + 신호 대시보드 (morning terminal, D-056·D-057).
- * 기계의 3줄 → 승인 배너 → 월드모델 델타(변한 내러티브·최근 리포트, 매일 여는 것) →
- * 신호(언급 모멘텀·주목 주제·인과 활동 — 탐색 해체로 이관).
- * 승인 대기는 헤더 상시 배지가 주 진입 — 여기선 카운트 배너만.
- * 신호 상세 목록은 /explore?list= (pill 없는 도시에).
- */
+/** Full-width market overview or a source directory and article reader. */
 export default function HomePage() {
-  const { data, isLoading, isError, refetch } = useHome()
-
-  if (isLoading) return <HomeSkeleton />
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
-
+  const { mode, setMode } = useHomeMode()
   return (
-    <PageContainer>
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-bold">Home</h2>
-        <FreshnessStamp asOf={data.as_of} />
-      </div>
-
-      {/* 주요 지수 — 판이 어디에 서 있나 (미국·한국·홍콩·일본, 최상단, D-110) */}
-      <IndexStrip />
-
-      {/* 어젯밤 미국장 브리핑 — 아침 분위기 파악 (자금이 어디로 쏠렸나, D-095) */}
-      <UsBriefingSection />
-
-      {/* 전일 국장 거래대금 — 미국장의 국장 대응물, LLM 0 (D-108) */}
-      <KrMoversSection />
-
-      {/* 종목 요약 — 어제 확정 구간, 언급 상위 5종목의 내용까지 (D-124).
-          전엔 'AI가 최근 만든 것'에 제목만 떠서 내용을 보려면 종목 페이지로 들어가야 했다 */}
-      <DigestBriefs />
-
-      {/* AI가 최근 만든 것 (지난 7일) — 자동/승인 생성물 최신순 피드. 공지(브리핑)·승인은 인박스로(D-054) */}
-      <AiActivityFeed />
-
-      {/* 시장 국면 — 매크로 리스크 포스처 (그날의 렌즈니 델타 위, D-076) */}
-      <MarketRegime />
-
-      {/* 매크로·유동성 — 배경 조건 트래킹 (금리·달러·순유동성·신용·원자재, D-101) */}
-      <MacroLiquidity />
-
-      {/* 월드모델 델타 — 매일 여는 것을 진입 요약으로 (내러티브 + 리포트) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        <NarrativeDeltaCard />
-        <RecentReportsCard />
-      </div>
-
-      {/* 신호 대시보드 — 탐색 해체로 Home 흡수 (세로 스택) */}
-      <MomentumSection />
-      <ThemeSurgeSummary />
-      <GraphActivitySection />
-    </PageContainer>
+    <PageLayout mode={mode === 'feed' ? 'reader' : 'document'}
+      header={<PageHeader title="Home" actions={<SegmentTabs tabs={[{ value: 'market', label: '시장' }, { value: 'feed', label: '피드' }]} value={mode} onChange={setMode} />} />}
+      overview={<IndexStrip />}>
+      {mode === 'feed' ? <ChannelReader /> : <div className="@container/market space-y-5">
+        <MarketContext />
+        <UsBriefingSection />
+        <KrMoversSection />
+        <div className="market-module-grid" data-home-row="signals">
+          <ThemeSurgeSummary />
+          <MomentumSection />
+        </div>
+        <div className="market-module-grid" data-home-row="generated">
+          <AiActivityFeed />
+          <NarrativeDeltaCard />
+        </div>
+        <div className="market-module-grid" data-home-row="reports">
+          <DigestBriefs />
+          <RecentReportsCard />
+        </div>
+        <GraphActivitySection />
+      </div>}
+    </PageLayout>
   )
 }
 
@@ -109,7 +82,7 @@ function AiActivityFeed() {
       icon={Sparkles} title="AI가 최근 만든 것" subtitle="지난 7일 · 최신순" count={items.length}
       maxHeight="46vh" contentClassName="px-0 divide-y"
       action={approvals.length > 0
-        ? <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40 gap-1">
+        ? <Badge variant="outline" className="text-caption text-hypothesis border-hypothesis/40 gap-1">
             <Inbox className="h-3 w-3" /> 승인 대기 {approvals.length} · 우상단 인박스
           </Badge>
         : undefined}>
@@ -121,9 +94,9 @@ function AiActivityFeed() {
           <Link key={`${a.type}-${a.topic}-${i}`} to={actLink(a)}
             className="flex items-center gap-2 px-4 py-1.5 hover:bg-muted/50">
             <m.Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <Badge variant="outline" className={`text-[9px] shrink-0 ${m.cls}`}>{m.label}</Badge>
+            <Badge variant="outline" className={`text-caption shrink-0 ${m.cls}`}>{m.label}</Badge>
             <span className="text-sm truncate min-w-0 flex-1">{a.title}</span>
-            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{a.created_at.slice(5, 16)}</span>
+            <span className="text-caption text-muted-foreground tabular-nums shrink-0">{a.created_at.slice(5, 16)}</span>
           </Link>
         )
       })}
@@ -139,7 +112,7 @@ function NarrativeDeltaCard() {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-hypothesis" /> 내러티브 — 지금 움직이는 주제
-          <Link to="/narrative" className="ml-auto text-[11px] font-normal text-muted-foreground hover:text-foreground">전체 →</Link>
+          <Link to="/narrative" className="ml-auto text-caption font-normal text-muted-foreground hover:text-foreground">전체 →</Link>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -168,7 +141,7 @@ function RecentReportsCard() {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <FileText className="h-4 w-4 text-muted-foreground" /> 최근 리포트
-          <Link to="/report" className="ml-auto text-[11px] font-normal text-muted-foreground hover:text-foreground">전체 →</Link>
+          <Link to="/report" className="ml-auto text-caption font-normal text-muted-foreground hover:text-foreground">전체 →</Link>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -182,8 +155,8 @@ function RecentReportsCard() {
                   <FileText className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm leading-snug group-hover:underline">{r.title || `${r.anchor_topic} 통합 리포트`}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
-                      <Badge variant="secondary" className="text-[10px] font-normal">{r.anchor_topic}</Badge>
+                    <div className="flex items-center gap-1.5 mt-0.5 text-caption text-muted-foreground">
+                      <Badge variant="secondary" className="text-caption font-normal">{r.anchor_topic}</Badge>
                       <span>내러티브 {r.n_members} · 종목 {r.n_stocks}</span>
                       <span className="tabular-nums">· {r.created_at.slice(0, 10)}</span>
                     </div>
@@ -195,21 +168,5 @@ function RecentReportsCard() {
         )}
       </CardContent>
     </Card>
-  )
-}
-
-/* ---------- Loading skeleton ---------- */
-
-function HomeSkeleton() {
-  return (
-    <PageContainer>
-      <Skeleton className="h-6 w-24" />
-      {[80, 160, 180].map((h, i) => (
-        <div key={i} className="border rounded-xl p-4 space-y-3">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton style={{ height: h }} className="w-full" />
-        </div>
-      ))}
-    </PageContainer>
   )
 }

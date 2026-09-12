@@ -43,11 +43,13 @@ def blog_category(url: str, platform: str) -> str:
     return "news" if is_news_domain(url) else "article"
 
 
-def url_belongs(doc_url: str, source_url: str) -> bool:
+def url_belongs(doc_url: str, source_url: str, *, prefix_only: bool = False) -> bool:
     """문서가 이 소스 소속인가 — 프리픽스 우선, 피드형 소스만 도메인 fallback."""
-    if (doc_url or "").startswith(source_url):
+    prefix = (source_url or "").rstrip("/")
+    if prefix and ((doc_url or "") == prefix or any(
+            (doc_url or "").startswith(prefix + boundary) for boundary in ("/", "?", "#"))):
         return True
-    if not is_feedlike(source_url):
+    if prefix_only or not is_feedlike(source_url):
         return False
     d = norm_domain(doc_url)
     return bool(d) and d == norm_domain(source_url)
