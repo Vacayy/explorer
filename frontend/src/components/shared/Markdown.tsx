@@ -37,9 +37,9 @@ export function Markdown({ children, className, components }: { children: string
   return (
     <div className={cn(
       "text-sm leading-relaxed break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-      "[&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-5 [&_h1]:mb-2",
-      "[&_h2]:text-[15px] [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2",
-      "[&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1.5",
+      "[&_h1]:text-xl [&_h1]:font-bold [&_h1]:mt-5 [&_h1]:mb-2",
+      "[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2",
+      "[&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1.5",
       "[&_p]:my-2.5 [&_p]:leading-relaxed",
       "[&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:my-2 [&_ol]:pl-5 [&_ol]:list-decimal",
       "[&_li]:my-1 [&_li]:leading-relaxed [&_li]:marker:text-muted-foreground",

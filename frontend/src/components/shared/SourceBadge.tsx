@@ -21,7 +21,7 @@ export function SourceBadge({ sourceType }: { sourceType: string }) {
   return (
     <Badge
       variant={unverified ? "outline" : "secondary"}
-      className={cn("text-[11px] font-normal", unverified && "border-hypothesis/40 text-hypothesis")}
+      className={cn("text-caption font-normal", unverified && "border-hypothesis/40 text-hypothesis")}
     >
       {SOURCE_LABEL[sourceType] ?? sourceType}
     </Badge>

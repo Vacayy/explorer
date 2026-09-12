@@ -1,7 +1,35 @@
 # Explorer 디자인 시스템
 
-> 최종 갱신: 2026-07-11 · 참고 모델: Meta astryx (CSS 변수 테마 · 강한 컨벤션 · 조합 가능한 컴포넌트 · "guidance over enforcement")
+> 최종 갱신: 2026-09-10 · 참고 모델: Meta astryx (CSS 변수 테마 · 강한 컨벤션 · 조합 가능한 컴포넌트 · "guidance over enforcement")
 > 관련: CLAUDE.md 프론트엔드 Hard Rules · docs/policies/number-formatting.md · docs/policies/ui-states.md
+
+## 2026-09-10 점검 상태
+
+### 승인된 통합안 — 구현 계약 (D-152, D-153)
+
+사용자가 마켓 홈 통합안 구현을 승인했다. 첫 적용 범위는 전역 토큰·Card/Button/Input 기본값, 공통 페이지 레이아웃, 홈·통합 피드·문서 검색, 도크 재질이다. 나머지 페이지의 개별 조합과 임의 글자 크기는 후속 이행 대상으로 남긴다.
+
+- 서체: 자체 호스팅 IBM Plex Sans / Sans KR 400·500·600·700. 페이지 24/32, 섹션 18/26, 카드 제목 16/24, 읽기 본문 14/22, UI 14/20, 캡션 12/18. 일반 콘텐츠 기본은 14px이며 Markdown h1/h2/h3는 20/18/16px로 본문보다 크게 유지한다. 숫자는 tabular-nums.
+- 단색 중립 배경 + 기존 멀버리 액션색. 카드 radius 20px, control 10px, overlay 16px. 카드 패딩 20px(모바일 16px), 열 간격 24px. 그림자는 도크·오버레이에 제한.
+- PageLayout의 header / overview / toolbar / footer / children 슬롯. mode=document|workspace|reader, width=full|reading. 문서형은 페이지 스크롤. SplitWorkspace는 label·content·surface를 가진 두 패널을 조합하고 URL 상태는 페이지가 소유한다.
+- Home은 상단 시장/피드 모드 전환. 시장 document는 가용 폭 1000px부터 모듈 2열. 피드 reader는 760px부터 300px 목록 + 연속 본문, 그 미만은 목록/본문 전환. 화면 높이 740px 미만은 문서 스크롤로 복귀한다. SplitWorkspace의 900px 두 열 계약은 다른 사용처를 위해 보존한다. 셸이 외부 여백·도크 예약과 --shell-offset을 소유한다.
+- 피드는 하나의 둥근 표면 + 아티클 구분선. 카드/행 표현은 FeedPost의 명시적 variant로 구분하며 데이터 모델·링크·필터·펼침은 보존한다.
+- 브리핑은 사용자 후속 요청에 따라 일반 Card 표면을 사용한다. 별도 반전 대비는 해제했다. 날짜·데이터·차트·상태·새로고침 기능은 보존한다.
+- 글래스는 도크·일부 탐색 버튼만. reduced-transparency / 미지원 브라우저에서는 불투명 배경으로 폴백한다.
+- 공식 shadcn/Radix의 동작·API는 유지하며 기반 스타일의 관리된 수정을 허용한다. 기존 ui/ 수제작 금지는 새 동작 재구현에 적용하고, 승인된 토큰·기본값 수정은 허용한다.
+
+- DetailLayout은 PageLayout 위에서 복귀/context/header/actions/navigation/body/aside/related를 조합한다. /doc, 주제 내러티브, 버전 상세에 적용했다. 본문 최대 760px, 보조 220px는 가용 폭 1000px부터 옆에, 그 미만은 아래로 배치한다. 단일 Card 표면·14px 본문·24px 제목. 상세에서는 팔로우 레일과 월드모델 서브탭을 기본 크롬에서 내린다.
+- 원문/요약·내러티브 상세 탭·선택 버전은 URL에 보존한다. DetailLink는 출발 경로/이력 상태를 전달하고, 탭 단위 UI 메모리는 스크롤·포커스만 최대 100개 보존한다. 직접 링크는 출처·목록 fallback을 사용한다.
+
+아래 과거 규칙과 충돌하면 이 구현 계약을 우선한다. 적용 범위와 남은 이행 작업은 DESIGN_REVIEW에서 관리한다.
+
+후속 사용자 피드백으로 시각 방향을 **마켓 홈 통합안**으로 좁혔다: 나의 마켓 홈의 둥근 표면·대비 브리핑, 정밀한 분석 데스크의 하나로 이어지는 피드, 도크·일부 탐색 요소의 절제된 글래스. 배경은 단색이며 무지개 형태의 다색 그라데이션은 사용하지 않는다. [기존 제품 사례 HTML](prototypes/product-design-study.html)의 기본 화면을 이 조합으로 갱신했다. 채택된 라운딩·테마·서체는 위 구현 계약에 반영했다. HTML은 비교 이력으로 유지한다.
+
+[제품 사례 연구·시각 방향 3안](prototypes/product-design-study.html)은 Revolut·Stripe·Apple·Linear·Mercury의 공식 자료를 바탕으로 균형형 레이아웃의 표면·정보 위계·상호작용을 비교한다. 글래스는 탐색 층에 한정한 후보이며, 기존 토큰 기획안과 다른 크기·라운딩은 채택 시 이 문서의 단일 기준으로 통합한다. 채택된 통합안은 위 구현 계약으로 적용했다.
+
+사용자가 레이아웃 방향으로 **균형형 워크스페이스**를 선택했다. [디자인 토큰·컴포넌트 HTML 기획안](prototypes/balanced-design-system.html)에서 IBM 타이포그래피, 색상·밀도, 컴포넌트 계약, 페이지 슬롯 및 단계별 적용을 검토한다. 당시 제안 중 채택된 값은 위 구현 계약에 통합했다. [앞선 레이아웃 3안](prototypes/page-layout-concepts.html)은 비교 이력이다.
+
+[DESIGN_REVIEW](DESIGN_REVIEW.md)에 전체 코드 감사와 IBM Plex 기반 재설계 제안을 정리했다. 아래는 기존 규칙이며 코드와 불일치하는 항목(특히 CardHeader grid/flex, 카드 radius, 글자 크기)이 있다. **IBM Plex Sans/KR은 현재 자체 호스팅 폰트로 적용됐다.** 디자인 기준 개편 시 이 문서를 갱신하고, 감사/후속 문서를 별도로 늘리지 않는다.
 
 ## 원칙 (astryx에서 차용)
 
@@ -38,9 +66,9 @@
 - **보더리스**: 카드색(card) vs stone 바탕 대비로 층 표현. 카드는 ring+shadow. 도크는 `bg-card/85 backdrop-blur ring-1 shadow-lg`.
 - 토스트(sonner)는 **우상단** — 하단은 도크·대화 컴포저 자리.
 
-### 페이지 컨테이너 (shared/PageContainer)
+### 레거시 페이지 컨테이너 (shared/PageContainer)
 
-모든 라우팅 페이지의 최상위는 `<PageContainer>`:
+미이행 페이지는 `<PageContainer>`로 호환 유지. 홈·피드는 위의 `PageLayout` 계약을 따른다:
 
 | prop | 값 | 용도 |
 |---|---|---|
@@ -70,12 +98,12 @@
 | 레이아웃 | `--layout-shell` `--dock-height` `--dock-reserve` `--subnav-height` `--shell-offset` | §1 참조 |
 | 라운딩 | `--radius`(0.75rem) 파생 sm~4xl | 카드=`rounded-xl` |
 
-폰트: Inter Variable + Noto Sans KR fallback, 숫자는 전역 `tabular-nums` (td/th 자동).
+폰트: 자체 호스팅 IBM Plex Sans / Sans KR, 숫자는 전역 `tabular-nums` (td/th 자동).
 
 ## 3. 컴포넌트 계층과 컨벤션
 
 ```
-ui/      shadcn 공식 CLI 설치본만. 수정·수제작 금지.
+ui/      shadcn 공식 기반. 관리된 토큰·스타일 수정 허용(D-152), 동작 수제 재구현 금지.
 shared/  ui/를 조합한 서비스 공통 (PageContainer, SegmentTabs, ChartCard, DataTable…)
 layout/  셸 전용 (Dock·DockItem·Inboxes, SubNav, navConfig, FollowRail)
 charts/  lightweight-charts 래퍼
