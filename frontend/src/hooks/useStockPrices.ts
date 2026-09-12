@@ -27,3 +27,4 @@ export function useValuation(stockCode: string, fromDate?: string, toDate?: stri
     staleTime: 5 * 60_000,
   });
 }
+

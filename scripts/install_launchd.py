@@ -5,7 +5,7 @@
      claude CLI 자격증명이 키체인(`Claude Code-credentials`)에 있어 cron의 모든 LLM 호출이
      `Not logged in · Please run /login`으로 실패했다(로그 45,294건, 7/17~8/18).
      → enrich는 키워드 fallback, 유튜브 정리본은 failed 223/ok 116으로 고착.
-  ② cron은 **놓친 스케줄을 재실행하지 않는다**. 08:00에 랩탑이 자고 있으면 그날 브리핑은 증발.
+  ② cron은 **놓친 스케줄을 재실행하지 않는다**. 07:00에 랩탑이 자고 있으면 그날 브리핑은 증발.
      평일 22일 중 발송 9일(41%)의 원인.
 
 launchd user agent는 사용자 Aqua 세션에 적재되어 키체인이 열리고(①),
@@ -48,11 +48,11 @@ JOBS = [
      [{"Weekday": d, "Hour": 16, "Minute": 10} for d in range(1, 6)]),
     ("krmovers", [PY, "scripts/snapshot_kr_movers.py"],          # D-108 — 신규진입 판정에 일별 필요
      [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
-    # 미국장 브리핑은 발송(08:00)보다 **먼저** 데워야 그날 것이 실린다 (D-112).
+    # 미국장 브리핑은 발송(07:00)보다 **먼저** 데워야 그날 것이 실린다 (D-112). 2026-09-09 발송 08:00→07:00(사용자 요청), 웜업도 06:30으로.
     # 매일 — 주말은 TradingView 값이 금요일과 같아 signature 캐시로 sonnet 0콜.
-    ("usbriefing", [PY, "scripts/compute_briefing.py"], {"Hour": 7, "Minute": 30}),
+    ("usbriefing", [PY, "scripts/compute_briefing.py"], {"Hour": 6, "Minute": 30}),
     ("briefing", [PY, "scripts/send_briefing.py"],
-     [{"Weekday": d, "Hour": 8, "Minute": 0} for d in range(1, 6)]),
+     [{"Weekday": d, "Hour": 7, "Minute": 0} for d in range(1, 6)]),
     # 재태깅 백필 야간 창(D-118) — 02:00 시작, 스크립트가 04:00에 자진 종료.
     # 유휴 시간대라 주간 세션 사용량에 영향이 없고, 백로그가 비면 즉시 종료된다(대상 0건).
     ("backfill", [str(PROJECT / "scripts" / "run_backfill.sh")], {"Hour": 2, "Minute": 0}),
@@ -67,6 +67,8 @@ JOBS = [
     ("contradictions", [PY, "scripts/scan_contradictions.py"], {"Hour": 6, "Minute": 45}),
     ("proposals", [PY, "scripts/scan_agent_proposals.py"], {"Weekday": 0, "Hour": 7, "Minute": 20}),
     ("questions", [PY, "scripts/refresh_questions.py"], {"Hour": 7, "Minute": 40}),
+    # 수출입(D-140) — 매일 09:20 신선도 1콜: 원천 최신월이 적재분보다 앞서면 그때만 전체 수집(관세청 현행화 '15일경').
+    ("trade", [PY, "scripts/collect_trade.py", "--if-fresh"], {"Hour": 9, "Minute": 20}),
 ]
 
 

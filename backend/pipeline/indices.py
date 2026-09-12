@@ -22,6 +22,7 @@ INDICES: list[tuple[str, str, str, str, str]] = [
     ("kosdaq", "코스닥", "^KQ11", "한국", "kr"),
     ("hsi", "항셍", "^HSI", "홍콩", "hk"),
     ("nikkei", "니케이225", "^N225", "일본", "jp"),
+    ("twii", "대만증시", "^TWII", "대만", "tw"),
 ]
 
 # 시장별 정규장 세션 — (현지 시간대, [(시작, 끝)…]) 현지시각. 점심 휴장이 있는 시장은 2세션.
@@ -30,6 +31,7 @@ INDICES: list[tuple[str, str, str, str, str]] = [
 KST = ZoneInfo("Asia/Seoul")
 MARKETS: dict[str, tuple[str, list[tuple[str, str]]]] = {
     "us": ("America/New_York", [("09:30", "16:00")]),
+    "tw": ("Asia/Taipei", [("09:00", "13:30")]),
     "kr": ("Asia/Seoul", [("09:00", "15:30")]),
     "hk": ("Asia/Hong_Kong", [("09:30", "12:00"), ("13:00", "16:00")]),   # 점심 휴장
     "jp": ("Asia/Tokyo", [("09:00", "11:30"), ("12:30", "15:30")]),        # 점심 휴장

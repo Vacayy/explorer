@@ -4,17 +4,20 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import Header from "@/components/layout/Header"
+import Dock from "@/components/layout/Dock"
+import { SubNav } from "@/components/layout/SubNav"
+import { FEED_TABS, FOLLOW_TABS, WORLDMODEL_TABS, analyzeTabs, getActiveMode, getActiveSubTab, isDocumentFeed } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
-import ModeNavigation from "@/components/layout/ModeNavigation"
 import FollowRail from "@/components/layout/FollowRail"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
 import { useCompany } from "@/hooks/useCompanySearch"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 // Home
+import { getHomeMode } from "@/hooks/useHomeMode"
+import { DetailNavigationMemory } from "@/components/shared/DetailNavigation"
 import HomePage from "@/components/home/HomePage"
-import FollowPage from "@/components/follow/FollowPage"
+import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
@@ -24,6 +27,9 @@ import SavedPage from "@/components/follow/SavedPage"
 import ExplorePage from "@/components/explore/ExplorePage"
 import ChatPage from "@/components/chat/ChatPage"
 import ActionsPage from "@/components/actions/ActionsPage"
+import ProjectsPage from "@/components/study/ProjectsPage"
+import ProjectPage from "@/components/study/ProjectPage"
+import StudyPage from "@/components/study/StudyPage"
 import DocPage from "@/components/doc/DocPage"
 import SynthesisPage from "@/components/synthesis/SynthesisPage"
 import SourcePage from "@/components/source/SourcePage"
@@ -41,6 +47,8 @@ import WorldviewPage from "@/components/explore/WorldviewPage"
 import ReportsPage from "@/components/explore/ReportsPage"
 import ArchivePage from "@/components/archive/ArchivePage"
 import AdminPage from "@/components/admin/AdminPage"
+import MemoryReadingPage from "@/components/expectations/MemoryReadingPage"
+import ExpectationsPage from "@/components/expectations/ExpectationsPage"
 
 // Discovery
 import IndustryPage from "@/components/industry/IndustryPage"
@@ -67,41 +75,66 @@ import CatalystsPage from "@/components/research/CatalystsPage"
 
 const queryClient = createQueryClient()
 
+/** 모드별 인페이지 L2 — 도크 팝오버와 같은 navConfig를 읽는다 (docs/specs/dock-navigation.md §2) */
+function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
+  if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
+  const mode = getActiveMode(pathname)
+  const activeKey = getActiveSubTab(pathname, search)
+  if (mode === "follow" || mode === "us") return { tabs: FOLLOW_TABS, activeKey }
+  if (mode === "feed" && pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey }
+  if (mode === "worldmodel") return { tabs: WORLDMODEL_TABS, activeKey }
+  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode), activeKey, context: companyName ?? stockCode }
+  return null
+}
+
 function Layout() {
   useKeyboardShortcuts()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
 
   // Extract stockCode from /analyze/:stockCode/... paths (exclude special routes like /analyze/compare)
   const stockCodeMatch = pathname.match(/^\/analyze\/([^/]+)/)
   const rawCode = stockCodeMatch ? stockCodeMatch[1] : null
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
+  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
 
   // 넓은 데스크톱에선 팔로우 레일 펼침, 그 이하에선 접힘(토글/오버레이) — 사용자 의도
-  const [railDefaultOpen] = useState(
+  const [railOpen, setRailOpen] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches,
   )
+
+  const [feedRailOpen, setFeedRailOpen] = useState(false)
+  const [detailRailOpen, setDetailRailOpen] = useState(false)
+  const detailRoute = pathname.startsWith("/study/") || pathname.startsWith("/doc/") || (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic"))
+  const homeFeed = pathname === "/home" && getHomeMode(search) === "feed"
 
   return (
     <div className="min-h-screen bg-background">
       <Omnibar />
+      <DetailNavigationMemory />
       <SidebarProvider
-        defaultOpen={railDefaultOpen}
+        open={detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
+        onOpenChange={detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
         style={{ "--sidebar-width": "16rem" } as CSSProperties}
       >
         <SidebarInset className="min-w-0 bg-background">
-          <Header />
-          <ModeNavigation stockCode={stockCode} companyName={company?.corp_name} />
-          <div className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 p-6">
+          {/* 상단 크롬 없음(D-136) — 콘텐츠가 뷰포트 최상단에서 시작. 하단은 도크 예약(--dock-reserve).
+              --shell-offset(풀하이트 페이지 차감량)은 SubNav 유무로 달라져 여기서 확정한다 */}
+          <div
+            className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-inset)] pb-[var(--dock-reserve)]"
+            style={{ "--shell-offset": subNav ? "calc(var(--page-inset) + var(--dock-reserve) + var(--subnav-height))" : "calc(var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
+          >
+            {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
             <Outlet />
           </div>
         </SidebarInset>
+        <Dock stockCode={stockCode} companyName={company?.corp_name} />
 
         {/* 팔로우 레일 — 종목·채널·블로그 통합, shadcn Sidebar (docs/specs/follow-rail.md) */}
         <FollowRail currentStockCode={stockCode} />
       </SidebarProvider>
       <AnswerWatcher />
-      <Toaster />
+      <Toaster position="top-right" />
     </div>
   )
 }
@@ -168,6 +201,7 @@ export default function App() {
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
             <Route path="follow" element={<FollowPage />} />
+            <Route path="sources" element={<SourcesPage />} />
             <Route path="follow/universe" element={<UniversePage />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
@@ -175,6 +209,8 @@ export default function App() {
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />
+            <Route path="experiments/expectations" element={<MemoryReadingPage />} />
+            <Route path="experiments/expectations/review" element={<ExpectationsPage />} />
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />
@@ -215,6 +251,9 @@ export default function App() {
 
             {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
             <Route path="feed" element={<UnifiedFeedPage />} />
+            <Route path="study" element={<ProjectsPage />} />
+            <Route path="study/projects/:id" element={<ProjectPage />} />
+            <Route path="study/:id" element={<StudyPage />} />
             <Route path="doc/:docId" element={<DocPage />} />
             <Route path="synthesis/:synthesisId" element={<SynthesisPage />} />
             <Route path="source" element={<SourcePage />} />

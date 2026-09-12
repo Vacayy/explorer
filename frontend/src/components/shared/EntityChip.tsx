@@ -15,7 +15,7 @@ export function EntityChip({ tag, onFilter }: {
     <Badge
       variant={tag.link_type === "stock" ? "default" : "outline"}
       className={cn(
-        "text-[10px] font-normal cursor-pointer select-none",
+        "text-caption font-normal cursor-pointer select-none",
         tag.link_type === "stock" && "bg-primary/10 text-primary border-transparent hover:bg-primary/20",
         lowConfidence && "opacity-60",
       )}

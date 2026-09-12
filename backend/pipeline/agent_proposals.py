@@ -108,7 +108,7 @@ def scan_devils_advocate(conn) -> int:
             'JSON만 출력: {"question": "..."}')
         try:
             proc = subprocess.run(
-                [_claude_bin(), "-p", "--model", DEVILS_MODEL, "--output-format", "json", prompt],
+                [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", DEVILS_MODEL, "--output-format", "json", prompt],
                 capture_output=True, text=True, timeout=120)
             raw = json.loads(proc.stdout).get("result", "")
             q = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]).get("question", "").strip()
@@ -244,8 +244,26 @@ def run_all(include_llm: bool = True) -> dict:
     return stats
 
 
+def propose_entity_alias(query: str, entity_id: int, entity_name: str, rationale: str, conversation_id: int | None = None) -> bool:
+    """대화에서 이름 해석을 '가정'으로 통과시킨 표기(예: '삼양라면'→삼양식품)를 별칭 제안으로 올린다 (LLM 0).
+    승인 시 entity_keywords(active)에 들어가 resolve_entity 3단계(키워드)에서 결정적으로 맞는다. 이미 활성 별칭이면 제안 안 함."""
+    conn = get_connection()
+    try:
+        dup = conn.execute("SELECT 1 FROM entity_keywords WHERE entity_id=? AND keyword=? AND (status='active' OR status IS NULL)",
+                           (entity_id, query)).fetchone()
+        if dup:
+            return False
+        made = _insert(conn, "entity_alias", f"'{query}' → {entity_name} 별칭 등록",
+                       rationale, {"entity_id": entity_id, "keyword": query, "entity_name": entity_name,
+                                   "conversation_id": conversation_id}, f"{entity_id}:{query}")
+        conn.commit()
+        return made
+    finally:
+        conn.close()
+
+
 def approve_proposal(proposal_id: int) -> dict:
-    """승인 — kind별 액션 실행. neglect=stock_brief(opus), contested_edge=opus 조정,
+    """승인 — kind별 액션 실행. neglect=stock_brief(opus), contested_edge=opus 조정, entity_alias=별칭 등록(LLM 0),
     devils_advocate·falsifier_watch=확인만(액션 없음)."""
     conn = get_connection()
     row = conn.execute("SELECT * FROM agent_proposals WHERE id=?", (proposal_id,)).fetchone()
@@ -270,6 +288,17 @@ def approve_proposal(proposal_id: int) -> dict:
         import threading
         threading.Thread(target=_bg_build_report, args=(payload["topic"],), daemon=True).start()
         result = {"report": "생성 시작 — 수 분 후 리포트 탭에서 확인"}
+    elif kind == "entity_alias" and payload.get("entity_id") and payload.get("keyword"):
+        mc = get_connection()
+        try:
+            mc.execute("INSERT OR IGNORE INTO entity_keywords (entity_id, keyword, status) VALUES (?, ?, 'active')",
+                       (payload["entity_id"], payload["keyword"]))
+            mc.execute("UPDATE entity_keywords SET status='active' WHERE entity_id=? AND keyword=?",
+                       (payload["entity_id"], payload["keyword"]))
+            mc.commit()
+            result = {"alias": payload["keyword"], "entity": payload.get("entity_name")}
+        finally:
+            mc.close()
     elif kind == "vocab_merge" and payload.get("survivor_id") and payload.get("loser_id"):
         from pipeline.vocab import merge_entities
         mc = get_connection()

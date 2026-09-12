@@ -31,6 +31,23 @@ class KrCluster(BaseModel):
     names: list[str] = []
 
 
+class KrBriefingDocument(BaseModel):
+    doc_id: int
+    title: str | None = None
+    source_type: str
+    published_at: str | None = None
+    excerpt: str | None = None
+    excerpt_kind: str | None = None
+
+
+class KrBriefingItem(BaseModel):
+    stock_code: str
+    name: str
+    rank: int
+    parent_company_context: bool = False
+    documents: list[KrBriefingDocument] = []
+
+
 class KrMovers(BaseModel):
     status: str                          # ok | stale | error (FE가 정상/경고/에러 구분)
     source: str
@@ -40,3 +57,4 @@ class KrMovers(BaseModel):
     items: list[KrMoverItem] = []
     clusters: list[KrCluster] = []
     idiosyncratic: list[KrMoverItem] = []
+    briefing: list[KrBriefingItem] = []

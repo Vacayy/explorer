@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"

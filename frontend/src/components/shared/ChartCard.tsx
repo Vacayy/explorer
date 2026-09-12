@@ -15,7 +15,7 @@ export default function ChartCard({ title, headerRight, subtitle, children, clas
   return (
     <Card className={cn("overflow-hidden", className)}>
       {(title || headerRight) && (
-        <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex flex-wrap items-center justify-between space-y-0">
           <div>
             {title && <CardTitle>{title}</CardTitle>}
             {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}

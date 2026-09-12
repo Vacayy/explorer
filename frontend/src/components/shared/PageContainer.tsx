@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 import type { ReactNode } from 'react'
 
 /**
- * 페이지 최상위 컨테이너 — 전 페이지 공통 레이아웃 컨트랙트 (docs/DESIGN_SYSTEM.md).
+ * 레거시 페이지 호환 컨테이너 — 신규 조합은 PageLayout 사용 (docs/DESIGN_SYSTEM.md).
  *
  * - width="full"    : 셸 폭 전부 사용 (데이터 밀집 화면 기본값)
  * - width="reading" : max-w-3xl — 읽기 중심 문서 화면 (doc/source/archive)

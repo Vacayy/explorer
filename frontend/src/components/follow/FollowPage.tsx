@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Search, X } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -15,7 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { PageContainer } from "@/components/shared/PageContainer"
+import { PageLayout, PageHeader } from "@/components/shared/PageLayout"
+import { Button } from "@/components/ui/button"
 import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { formatKrw, formatNumber } from "@/utils/format"
 import { cn } from "@/lib/utils"
@@ -28,32 +29,27 @@ import type { WatchlistItem } from "@/types"
  */
 export default function FollowPage() {
   const navigate = useNavigate()
-
-  return (
-    <PageContainer>
-      <h2 className="text-xl font-bold">팔로우</h2>
-
-      {/* 소스 4종을 2열로 — 각 패널이 소비 지표(30일 태깅·종목·인과)까지 담아 행이 길어져
-          3열에선 잘렸다. 종목은 목록이 길고 표 형태라 최하단 전폭으로 내렸다(사용자 요청). */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        <ChannelsCard onGo={(key) => navigate(`/source?kind=telegram&key=${encodeURIComponent(key)}`)} />
-        <BlogSourcesCard title="블로그" placeholder="네이버/티스토리 블로그 URL"
-          match={(s) => s.platform !== "rss"}
-          onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
-        <BlogSourcesCard title="뉴스 및 아티클" placeholder="RSS 피드 URL (뉴스·뉴스레터)"
-          match={(s) => s.platform === "rss"}
-          onGo={(key) => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
-        <YouTubeCard onGo={(cid) => navigate(`/source?kind=youtube&key=${encodeURIComponent(cid)}`)} />
+  return <PageLayout header={<PageHeader title="관심목록" description="추적하는 기업·인물·산업·테마" actions={<Button asChild variant="outline" size="sm"><Link to="/sources">소스 관리</Link></Button>} />}>
+    <div className="space-y-5">
+      <StocksSection onGo={code => navigate(`/analyze/${code}/summary`)} />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <FollowedPeopleCard onGo={name => navigate(`/person?name=${encodeURIComponent(name)}`)} />
+        <FollowedTagsCard onGo={(type, name) => navigate(`/feed?${type === 'sector' ? 'industry' : 'topic'}=${encodeURIComponent(name)}`)} />
       </div>
+    </div>
+  </PageLayout>
+}
 
-      <FollowedPeopleCard onGo={(name) => navigate(`/person?name=${encodeURIComponent(name)}`)} />
-
-      <FollowedTagsCard onGo={(type, name) =>
-        navigate(`/feed?${type === "sector" ? "industry" : "topic"}=${encodeURIComponent(name)}`)} />
-
-      <StocksSection onGo={(code) => navigate(`/analyze/${code}/summary`)} />
-    </PageContainer>
-  )
+export function SourcesPage() {
+  const navigate = useNavigate()
+  return <PageLayout header={<PageHeader title="소스 관리" description="피드에서 읽을 채널·블로그·유튜브를 관리합니다" actions={<Button asChild variant="outline" size="sm"><Link to="/home?home_view=feed">피드로 돌아가기</Link></Button>} />}>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <ChannelsCard onGo={key => navigate(`/source?kind=telegram&key=${encodeURIComponent(key)}`)} />
+      <BlogSourcesCard title="블로그" placeholder="네이버/티스토리 블로그 URL" match={s => s.platform !== 'rss'} onGo={key => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
+      <BlogSourcesCard title="뉴스 및 아티클" placeholder="RSS 피드 URL (뉴스·뉴스레터)" match={s => s.platform === 'rss'} onGo={key => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
+      <YouTubeCard onGo={cid => navigate(`/source?kind=youtube&key=${encodeURIComponent(cid)}`)} />
+    </div>
+  </PageLayout>
 }
 
 /* ── 종목 (워치리스트 관리 통합: 정렬·편집·삭제 + 전체 검색) ── */

@@ -26,14 +26,22 @@ def main():
         # 매크로(D-101)는 라우터의 lazy 게이트가 `as_of is None`일 때만 걸려, 한 번 채워지면
         # 수동 버튼 외엔 영구히 묵는다(실측 6일). 브리핑 ② 섹션의 입력이라 여기서 먼저 갱신한다.
         # 실패는 흡수 — 매크로가 없어도 브리핑은 나가야 한다 (D-112).
-        try:
-            from pipeline.macro import snapshot_macro
-            snap = snapshot_macro()
-            print(f"[briefing] 매크로 갱신 {snap.get('rows')}행 · "
-                  f"지표 {len(snap.get('indicators') or [])} · "
-                  f"degraded={snap.get('degraded') or '없음'}")
-        except Exception as e:  # noqa: BLE001
-            print(f"[briefing] 매크로 갱신 실패(무시): {type(e).__name__}: {str(e)[:120]}")
+        # 기상 직후엔 망이 아직 안 붙어 yfinance·FRED가 전부 실패한다(실측 2026-09-09: degraded 10/10, 그날 브리핑이 9/4 값으로 나갔다).
+        # 전부 실패면 60초 간격 3회 재시도 — 일부 실패는 원천 지연(휴장·미발표)일 수 있어 재시도하지 않는다.
+        import time as _t
+        from pipeline.macro import snapshot_macro
+        for attempt in range(3):
+            try:
+                snap = snapshot_macro()
+                deg = snap.get("degraded") or []
+                print(f"[briefing] 매크로 갱신 {snap.get('rows')}행 · 지표 {len(snap.get('indicators') or [])} · "
+                      f"degraded={deg or '없음'}" + (f" (시도 {attempt + 1})" if attempt else ""), flush=True)
+                if snap.get("indicators") or not deg:
+                    break
+            except Exception as e:  # noqa: BLE001
+                print(f"[briefing] 매크로 갱신 실패: {type(e).__name__}: {str(e)[:120]} (시도 {attempt + 1})", flush=True)
+            if attempt < 2:
+                _t.sleep(60)
 
         # 지수(① 섹션 입력)도 자체 스케줄이 없어 묶는다. 모듈이 아직 없거나 이름이 바뀌면
         # 조용히 건너뛴다 — 지수 없으면 ① 섹션만 빠지고 브리핑은 정상 발행된다 (D-112).

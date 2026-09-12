@@ -161,8 +161,20 @@ export async function fetchSpineSignals(type?: string, days?: number): Promise<S
   return data;
 }
 
-export async function askQuestion(params: { question: string; conversation_id?: number }): Promise<AskResponse> {
+export async function askQuestion(params: {
+  question: string;
+  document_ids?: number[];
+  conversation_id?: number;
+  /** 드래그 인용 — 선택 문장 + 문단 맥락 + 그 대목의 근거 (D-146) */
+  quote?: { message_id: number; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
+}): Promise<AskResponse> {
   const { data } = await api.post<AskResponse>("/api/spine/ask", params, { timeout: 300_000 });
+  return data;
+}
+
+/** 스레드 제목 편집 (D-145) */
+export async function renameConversation(params: { id: number; title: string }): Promise<ConversationItem> {
+  const { data } = await api.patch<ConversationItem>(`/api/spine/conversations/${params.id}`, { title: params.title });
   return data;
 }
 
