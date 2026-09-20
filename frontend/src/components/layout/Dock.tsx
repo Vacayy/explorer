@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { useTheme } from "next-themes"
-import { Archive, Building2, Ellipsis, FileSearch, Rss, FlaskConical, Moon, PanelRight, Search, SlidersHorizontal, Sun } from "lucide-react"
+import { Archive, Building2, BookOpen, Ellipsis, FileSearch, Rss, FlaskConical, Moon, PanelRight, Search, SlidersHorizontal, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -11,7 +11,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { DockItem } from "./DockItem"
 import { ApprovalsInbox, SavedInbox } from "./Inboxes"
-import { MODES, analyzeTabs, dockModeOf, getActiveMode, getActiveSubTab, type ModeDef, type SubTab } from "./navConfig"
+import { MODES, analyzeTabs, companyResearchSearch, dockModeOf, getActiveMode, getActiveSubTab, type ModeDef, type SubTab } from "@/components/layout/navConfig"
 
 interface Props {
   stockCode: string | null
@@ -40,7 +40,7 @@ export default function Dock({ stockCode, companyName }: Props) {
   // 열린 도시에 — KR 종목(/analyze/:code) 또는 미국 티커(/us/:ticker)
   const usTicker = pathname.match(/^\/us\/([^/]+)/)?.[1] ?? null
   const dossier = stockCode
-    ? { label: companyName ?? stockCode, to: `/analyze/${stockCode}/summary`, tabs: analyzeTabs(stockCode) }
+    ? { label: companyName ?? stockCode, to: `/analyze/${stockCode}/summary${companyResearchSearch(search)}`, tabs: analyzeTabs(stockCode, search) }
     : usTicker ? { label: usTicker, to: `/us/${usTicker}`, tabs: [] as SubTab[] } : null
 
   if (isMobile) return <MobileTabBar activeL1={activeL1} activeSub={activeSub} />
@@ -149,14 +149,14 @@ function MobileTabBar({ activeL1, activeSub }: { activeL1: string; activeSub: st
       {/* 열린 도시에 탭은 인페이지 SubNav가 이미 보여준다(모바일은 상단 스트립만) */}
       <nav aria-label="주 메뉴"
         className="fixed inset-x-0 bottom-0 z-40 grid h-[var(--dock-height)] grid-cols-6 items-center glass-surface px-1 pb-[env(safe-area-inset-bottom)]">
-        {MODES.map((m) => {
+        {MODES.filter(m => m.key !== 'study').map((m) => {
           const active = activeL1 === m.key
           // 활성 + 하위 탭 있음 → 이동 대신 L2 Sheet (iOS "탭 재탭" 관용구)
           return active && m.tabs
             ? <DockItem key={m.key} icon={m.icon} label={m.label} active className="w-full" onClick={() => setL2(m)} />
             : <DockItem key={m.key} icon={m.icon} label={m.label} to={m.path} active={active} className="w-full" />
         })}
-        <DockItem icon={Ellipsis} label="더보기" className="w-full" onClick={() => setMore(true)} />
+        <DockItem icon={Ellipsis} label="더보기" active={activeL1 === 'study'} className="w-full" onClick={() => setMore(true)} />
       </nav>
 
       <Sheet open={!!l2} onOpenChange={(o) => !o && setL2(null)}>
@@ -178,6 +178,7 @@ function MobileTabBar({ activeL1, activeSub }: { activeL1: string; activeSub: st
           <SheetHeader><SheetTitle>더보기</SheetTitle></SheetHeader>
           <div className="grid grid-cols-4 gap-1 px-4 pb-2" onClick={(e) => { if ((e.target as HTMLElement).closest("a,button")) setMore(false) }}>
             <DockItem icon={Search} label="검색" className="w-full" onClick={openOmnibar} />
+            <DockItem icon={BookOpen} label="스터디" to="/study" active={activeL1 === 'study'} className="w-full" />
             <DockItem icon={FileSearch} label="문서 검색" to="/feed?view=documents" className="w-full" />
             <DockItem icon={Rss} label="소스 관리" to="/sources" className="w-full" />
             <ApprovalsInbox compact />

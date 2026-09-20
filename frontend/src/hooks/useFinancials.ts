@@ -8,13 +8,13 @@ export function useFinancials(
   period: string,
   years: number,
   fs_div: string = "CFS",
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; storedOnly?: boolean }
 ) {
   return useQuery<FinancialResponse>({
-    queryKey: ["financials", stockCode, sj_div, period, years, fs_div],
+    queryKey: ["financials", stockCode, sj_div, period, years, fs_div, !!options?.storedOnly],
     queryFn: async () => {
       const { data } = await api.get(`/api/financials/${stockCode}`, {
-        params: { sj_div, period, years, fs_div },
+        params: { sj_div, period, years, fs_div, stored_only: options?.storedOnly },
       });
       return data;
     },

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Bell, Building2, CalendarDays, FileSearch, Home, LineChart, ListChecks,
-  MessageCircleQuestion, Newspaper, NotebookPen, Rss, Send, Sparkles, Table2,
+  MessageCircleQuestion, Newspaper, NotebookPen, Rss, Send, Sparkles, Table2, ScanSearch,
 } from "lucide-react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -19,6 +19,7 @@ import {
  */
 
 const PAGES = [
+  { label: "종목 발견 — 자연어 검색·전략·기업 조사", to: "/discover", icon: ScanSearch, keywords: "discover screening 스크리닝 전략 시장 분석" },
   { label: "스터디 — 자료를 모아 함께 공부하기", to: "/study", icon: NotebookPen, keywords: "study 스터디 공부 프로젝트" },
   { label: "오늘 — 내 종목 업데이트", to: "/home", icon: Home, keywords: "home stream 홈" },
   { label: "관심목록 — 기업·인물·산업·테마", to: "/follow", icon: Building2, keywords: "follow stocks watchlist 종목 소스" },
@@ -119,6 +120,10 @@ export default function Omnibar() {
           <>
             <CommandSeparator />
             <CommandGroup heading="검색·질문">
+              <CommandItem forceMount value={`discover-${q}`} onSelect={() => go(`/discover?q=${encodeURIComponent(q)}`)}>
+                <ScanSearch className="h-3.5 w-3.5" />
+                <span>"{q}" 조건으로 종목 찾기</span>
+              </CommandItem>
               <CommandItem forceMount value={`search-${q}`} onSelect={() => go(`/feed?q=${encodeURIComponent(q)}`)}>
                 <FileSearch className="h-3.5 w-3.5" />
                 <span>"{q}" 문서 검색</span>

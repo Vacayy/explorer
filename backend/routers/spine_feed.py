@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 from database import get_connection
+from pydantic import BaseModel, Field
+from datetime import date
 from models.spine import EntityTag, FeedDocument, FeedResponse
 from models.timeline import TimelineResponse, TimelineChannelsResponse
 
@@ -48,6 +50,73 @@ def resolve_channels(conn, rows) -> dict[int, dict | None]:
     """문서별 출처 채널/블로그 {name, kind, key} — 판정은 pipeline/sources.py 한 곳 (D-143)."""
     from pipeline.sources import source_names
     return source_names(conn, rows)
+
+
+@router.get("/company-prices")
+def get_company_prices(company: str = Query(..., min_length=1, max_length=200),
+                       market: Literal["kr", "us"] = "kr"):
+    # Table name is chosen from a fixed allowlist; company stays a SQL parameter.
+    table = "stock_prices" if market == "kr" else "us_prices"
+    conn = get_connection()
+    try:
+        rows = conn.execute(f"SELECT trade_date, open, high, low, close, volume FROM {table} WHERE stock_code=? ORDER BY trade_date DESC LIMIT 1500", (company,)).fetchall()
+        return {"items": [dict(r) for r in reversed(rows)]}
+    finally:
+        conn.close()
+
+
+class CompanySummaryRequest(BaseModel):
+    company: str = Field(min_length=1, max_length=200)
+    start: date
+    end: date
+    market: Literal["kr", "us"] = "kr"
+    cutoff: Literal["end", "close"] = "end"
+    after: bool = False
+    source: str = Field(default="", max_length=40)
+    q: str = Field(default="", max_length=200)
+
+
+@router.post("/company-evidence/summary")
+def summarize_evidence(body: CompanySummaryRequest):
+    from fastapi import HTTPException
+    from pipeline.company_summary import summarize_company_evidence
+    if body.start > body.end:
+        raise HTTPException(422, "시작일은 종료일보다 늦을 수 없습니다.")
+    try:
+        params = body.model_dump(mode="json")
+        company = params.pop("company")
+        return summarize_company_evidence(company, **params)
+    except ValueError as exc:
+        raise HTTPException(502, "요약 결과를 확인하지 못했습니다. 다시 시도해 주세요.") from exc
+    except Exception as exc:
+        raise HTTPException(503, "요약을 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.") from exc
+
+
+@router.get("/company-evidence")
+def get_company_evidence(
+    company: str = Query(..., min_length=1, max_length=200),
+    start: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    end: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    cutoff: Literal["end", "close"] = "end",
+    after: bool = False,
+    source: str = Query("", max_length=40),
+    q: str = Query("", max_length=200),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=50),
+    market: Literal["kr", "us"] = "kr",
+):
+    from fastapi import HTTPException
+    from pipeline.company_evidence import company_evidence
+    conn = get_connection()
+    try:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("BEGIN")
+        return company_evidence(conn, company, start=start, end=end, cutoff=cutoff,
+                                after=after, source=source, q=q, page=page, size=size, market=market)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    finally:
+        conn.close()
 
 
 @router.get("", response_model=FeedResponse)

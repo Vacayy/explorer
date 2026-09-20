@@ -1,27 +1,28 @@
-import { Link, useParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import { usDossierQuery, usMentionsQuery, usWorldModelQuery } from "@/api/spine"
-import { PageContainer } from "@/components/shared/PageContainer"
-import { ErrorState } from "@/components/shared/ErrorState"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { LensView } from "@/components/lens/LensPage"
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { usDossierQuery, usWorldModelQuery } from '@/api/spine'
+import { PageContainer } from '@/components/shared/PageContainer'
+import { ErrorState } from '@/components/shared/ErrorState'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Card, CardContent } from '@/components/ui/card'
+import api from '@/api/client'
+import { CompanyPriceResearch } from '@/components/company/CompanyPriceResearch'
+import { CompanyEvidence } from '@/components/company/CompanyEvidence'
+import { Button } from '@/components/ui/button'
+import type { StockPriceItem } from '@/types'
+import { LensView } from '@/components/lens/LensPage'
 
-const SRC_LABEL: Record<string, string> = {
-  transcript: "컨콜", youtube: "유튜브", blog: "블로그", news: "뉴스", article: "아티클",
-  telegram: "텔레그램", canon: "역사", note: "메모",
-}
+const EMPTY_PRICES: StockPriceItem[] = []
 
 function usd(v?: number | null) {
-  if (v == null) return "-"
+  if (v == null) return '-'
   const a = Math.abs(v)
   if (a >= 1e9) return `$${(v / 1e9).toFixed(1)}B`
   if (a >= 1e6) return `$${(v / 1e6).toFixed(0)}M`
   return `$${v.toLocaleString()}`
 }
 function num(v?: number | null, d = 1) {
-  return v == null ? "-" : v.toFixed(d)
+  return v == null ? '-' : v.toFixed(d)
 }
 
 /**
@@ -29,8 +30,21 @@ function num(v?: number | null, d = 1) {
  * 헤더(yfinance 시세·밸류) + 투자 렌즈(가치/추세, market='us') + 컨콜·언급 링크.
  */
 export default function UsDossierPage() {
-  const { ticker = "" } = useParams<{ ticker: string }>()
+  const { ticker = '' } = useParams<{ ticker: string }>()
   const q = useQuery(usDossierQuery(ticker))
+  const [sp, setSp] = useSearchParams()
+  const tab = sp.get('tab') || 'overview'
+  const prices = useQuery({
+    queryKey: ['company-prices', ticker, 'us'],
+    queryFn: async ({ signal }) =>
+      (
+        await api.get<{ items: StockPriceItem[] }>(
+          '/api/spine/feed/company-prices',
+          { params: { company: ticker, market: 'us' }, signal },
+        )
+      ).data,
+    staleTime: 300_000,
+  })
 
   if (q.isLoading)
     return (
@@ -63,23 +77,35 @@ export default function UsDossierPage() {
               <span>
                 현재가 <b>${num(f.price, 2)}</b>
               </span>
-              <span className="text-muted-foreground">시총 {usd(f.market_cap)}</span>
-              <span className="text-muted-foreground">Fwd PER {num(f.fwd_pe)}배</span>
-              <span className="text-muted-foreground">trailing {num(f.trailing_pe)}배</span>
+              <span className="text-muted-foreground">
+                시총 {usd(f.market_cap)}
+              </span>
+              <span className="text-muted-foreground">
+                Fwd PER {num(f.fwd_pe)}배
+              </span>
+              <span className="text-muted-foreground">
+                trailing {num(f.trailing_pe)}배
+              </span>
               {up != null && (
-                <span className={up >= 0 ? "text-up" : "text-down"}>
-                  목표가 대비 {up >= 0 ? "+" : ""}
+                <span className={up >= 0 ? 'text-up' : 'text-down'}>
+                  목표가 대비 {up >= 0 ? '+' : ''}
                   {up.toFixed(0)}%
                 </span>
               )}
             </div>
           ) : (
-            <p className="mt-2 text-sm text-muted-foreground">시세 데이터를 불러오지 못했습니다.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              시세 데이터를 불러오지 못했습니다.
+            </p>
           )}
           <div className="mt-2 flex gap-3 text-xs">
             {d.latest_transcript && (
-              <Link to="/follow/transcripts" className="text-primary hover:underline">
-                최근 컨콜 {d.latest_transcript.fiscal_year} {d.latest_transcript.fiscal_period} →
+              <Link
+                to="/follow/transcripts"
+                className="text-primary hover:underline"
+              >
+                최근 컨콜 {d.latest_transcript.fiscal_year}{' '}
+                {d.latest_transcript.fiscal_period} →
               </Link>
             )}
             <Link to="/us" className="text-muted-foreground hover:underline">
@@ -89,11 +115,83 @@ export default function UsDossierPage() {
         </CardContent>
       </Card>
 
-      <LensView code={d.ticker} market="us" />
-
-      <WorldModelSection ticker={d.ticker} name={d.name} />
-
-      <MentionsSection ticker={d.ticker} name={d.name} />
+      <nav aria-label="기업 상세" className="flex gap-2">
+        {[
+          ['overview', '개요'],
+          ['financials', '실적·사업'],
+          ['evidence', '자료'],
+        ].map(([key, label]) => (
+          <Button
+            key={key}
+            variant={tab === key ? 'default' : 'outline'}
+            onClick={() => setSp({ tab: key })}
+          >
+            {label}
+          </Button>
+        ))}
+      </nav>
+      {tab === 'evidence' ? (
+        <CompanyEvidence key={ticker} company={ticker} market="us" />
+      ) : tab === 'financials' ? (
+        <Card>
+          <CardContent className="space-y-4 pt-5">
+            <h2 className="text-section font-semibold">확보된 재무 정보</h2>
+            <p className="text-sm text-muted-foreground">
+              현재 미국 재무 저장본에는 분기별 계열·회계기간·사업부 구성이
+              없습니다. 이 값들로 분기 추이를 만들지 않습니다.
+            </p>
+            <dl className="grid grid-cols-2 gap-4">
+              {[
+                ['매출액', f?.revenue],
+                ['순이익', f?.net_income],
+                ['영업현금흐름', f?.ocf],
+                ['잉여현금흐름', f?.fcf],
+              ].map(([label, value]) => (
+                <div key={String(label)}>
+                  <dt className="text-caption text-muted-foreground">
+                    {label} · 기간 확인 필요
+                  </dt>
+                  <dd className="text-lg font-semibold">
+                    {usd(value as number | null)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <Link
+              className="text-sm text-primary"
+              to={`/us/${ticker}?tab=evidence&source=transcript`}
+            >
+              컨콜 원문 확인 →
+            </Link>
+          </CardContent>
+        </Card>
+      ) : tab === 'analysis' ? (
+        <>
+          <LensView code={d.ticker} market="us" />
+          <WorldModelSection ticker={d.ticker} name={d.name} />
+        </>
+      ) : (
+        <CompanyPriceResearch
+          key={ticker}
+          company={ticker}
+          market="us"
+          prices={prices.data?.items || EMPTY_PRICES}
+          loading={prices.isPending}
+          error={prices.isError}
+          retry={() => void prices.refetch()}
+          overview={
+            <>
+              <CompanyEvidence company={ticker} market="us" preview />
+              <Link
+                className="text-sm text-primary"
+                to={`/us/${ticker}?tab=analysis`}
+              >
+                기존 투자 렌즈·월드모델 보기 →
+              </Link>
+            </>
+          }
+        />
+      )}
     </PageContainer>
   )
 }
@@ -116,7 +214,8 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
         <CardContent className="py-4">
           <span className="text-sm font-semibold">월드모델 · 인과 위치</span>
           <p className="mt-2 text-xs text-muted-foreground">
-            아직 이 종목 노드에 연결된 인과 관계·내러티브가 없습니다 — 컨콜·문서가 쌓이면 그래프에 편입됩니다.
+            아직 이 종목 노드에 연결된 인과 관계·내러티브가 없습니다 —
+            컨콜·문서가 쌓이면 그래프에 편입됩니다.
           </p>
         </CardContent>
       </Card>
@@ -128,7 +227,10 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
         <div className="flex items-baseline justify-between">
           <span className="text-sm font-semibold">월드모델 · 인과 위치</span>
           {w.entity_id != null && (
-            <Link to={`/knowledge/ontology?focus=${w.entity_id}`} className="text-xs text-primary hover:underline">
+            <Link
+              to={`/knowledge/ontology?focus=${w.entity_id}`}
+              className="text-xs text-primary hover:underline"
+            >
               온톨로지 그래프에서 보기 →
             </Link>
           )}
@@ -138,14 +240,19 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
           <ul className="space-y-1">
             {w.edges.map((e, i) => {
               const dirCls =
-                e.direction === "positive" ? "text-up" : e.direction === "negative" ? "text-down" : "text-muted-foreground"
+                e.direction === 'positive'
+                  ? 'text-up'
+                  : e.direction === 'negative'
+                    ? 'text-down'
+                    : 'text-muted-foreground'
               return (
                 <li key={i} className="text-xs flex items-baseline gap-1.5">
                   <span className={dirCls}>●</span>
                   <span className="text-muted-foreground">
-                    <b className="text-foreground">{e.src}</b> {e.rel_type === "CAUSES" ? "→" : "←수혜"}{" "}
+                    <b className="text-foreground">{e.src}</b>{' '}
+                    {e.rel_type === 'CAUSES' ? '→' : '←수혜'}{' '}
                     <b className="text-foreground">{e.dst}</b>
-                    {e.mechanism ? ` · ${e.mechanism}` : ""}
+                    {e.mechanism ? ` · ${e.mechanism}` : ''}
                   </span>
                 </li>
               )
@@ -155,7 +262,9 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
 
         {w.narratives.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 border-t pt-2">
-            <span className="text-[10px] text-muted-foreground shrink-0">걸린 내러티브</span>
+            <span className="text-[10px] text-muted-foreground shrink-0">
+              걸린 내러티브
+            </span>
             {w.narratives.map((n) => (
               <Link
                 key={n.id}
@@ -169,53 +278,9 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
           </div>
         )}
         <p className="text-[10px] text-muted-foreground">
-          {name} 노드가 걸린 인과 엣지·내러티브 — 가치 렌즈의 '구조적 동인·해자'가 여기서 온다(hypothesis).
+          {name} 노드가 걸린 인과 엣지·내러티브 — 가치 렌즈의 '구조적
+          동인·해자'가 여기서 온다(hypothesis).
         </p>
-      </CardContent>
-    </Card>
-  )
-}
-
-/** 여론 — 이 종목 언급 문서(entity_links). 컨콜·유튜브·인물·뉴스 혼합, US 소스는 Phase 3로 확충. */
-function MentionsSection({ ticker, name }: { ticker: string; name: string }) {
-  const q = useQuery(usMentionsQuery(ticker))
-  const items = q.data ?? []
-  return (
-    <Card>
-      <CardContent className="py-4">
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm font-semibold">여론 · 최근 언급 {items.length ? `(${items.length})` : ""}</span>
-          <Link to={`/feed?q=${encodeURIComponent(name)}`} className="text-xs text-primary hover:underline">
-            더 보기 →
-          </Link>
-        </div>
-        {q.isLoading ? (
-          <Skeleton className="mt-3 h-16 w-full rounded-lg" />
-        ) : items.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            아직 이 종목을 언급한 수집 문서가 없습니다 — 컨콜·US 유튜브·인물 소스를 구독하면 채워집니다.
-          </p>
-        ) : (
-          <ul className="mt-2 divide-y">
-            {items.map((m) => (
-              <li key={m.id} className="py-2">
-                <Link to={`/doc/${m.id}`} className="flex items-start gap-2 group">
-                  <Badge variant="secondary" className="text-[10px] font-normal shrink-0 mt-0.5">
-                    {SRC_LABEL[m.source_type] ?? m.source_type}
-                  </Badge>
-                  <span className="min-w-0 flex-1">
-                    <span className="text-sm group-hover:underline line-clamp-1">{m.title || m.excerpt || "(제목 없음)"}</span>
-                    {m.published_at && (
-                      <span className="block text-[10px] text-muted-foreground tabular-nums">
-                        {m.published_at.slice(0, 10)}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
       </CardContent>
     </Card>
   )

@@ -1,3 +1,5 @@
+/* A2UI injects a reset at runtime; keep Explorer controls above that reset. */
+@layer a2ui-reset, theme, base, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -540,3 +542,16 @@
 .project-unified-notes .study-notes { flex:none; overflow:visible; padding-top:0; padding-bottom:0; }
 .project-unified-notes .study-panel-header[hidden] { display:none; }
 .study-source-tag { display:block; max-width:100%; height:auto; min-height:24px; padding:3px 8px; margin-bottom:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:400; color:var(--muted-foreground); border-radius:6px; }
+
+/* Company investigation uses the available content width, including the follow rail. */
+.company-research-host { container-type: inline-size; }
+.company-research-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 24px; align-items: start; }
+.company-research-chart, .company-research-evidence { min-width: 0; }
+@media (min-height: 740px) {
+  @container (min-width: 900px) {
+    .company-research-grid { grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr); }
+    .company-research-chart { position: sticky; top: 20px; }
+    .company-research-evidence { max-height: calc(100dvh - var(--shell-offset)); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  }
+}
+@media print { .company-research-grid { display:block; } .company-research-chart { position:static; } .company-research-evidence { max-height:none; overflow:visible; } }
