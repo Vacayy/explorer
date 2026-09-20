@@ -126,7 +126,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 - **DART 데이터**
   - 계정명 정규화: `_normalize_account_name()` 통해 변형 통합 (영업이익 = 영업이익(손실))
   - CFS 우선, OFS fallback
-  - IS/CF는 분기 차감 (Q2=H1-Q1), BS는 시점 데이터 그대로
+  - CF만 분기 차감 (Q2=H1-Q1). IS/CIS는 finstate_all의 thstrm_amount가 이미 단일 분기라 그대로 쓰고 Q4=연간-(Q1+Q2+Q3)만 계산(D-183). BS는 시점 데이터 그대로
 - **캐시**: 모든 외부 API 호출은 `cache_service.is_cached()` → `set_cache()` 패턴 사용
 - **검증**: 모든 BE 변경 후 `python -c "from main import app"` 통과 필수
 
