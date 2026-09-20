@@ -30,9 +30,9 @@ SJ_DIV_QUERY = {
     "CF": ("CF",),
 }
 
-# Flow statements (IS, CF) are cumulative in DART → need quarterly decomposition
-# Stock statements (BS) are point-in-time → no decomposition
-CUMULATIVE_STATEMENTS = {"IS", "CF"}
+# finstate_all: interim IS/CIS thstrm_amount is a single quarter; only CF is cumulative.
+# https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
+CUMULATIVE_STATEMENTS = {"CF"}
 
 
 def _parse_amount(val) -> int | None:
@@ -98,16 +98,23 @@ def fetch_financial_statements(
     return result
 
 
-def _store_financial_df(corp_code: str, year: int, reprt_code: str, fs_div: str, df):
-    conn = get_connection()
+def _store_financial_df(corp_code: str, year: int, reprt_code: str, fs_div: str, df,
+                        *, connection=None, only_missing=False):
+    """The trusted research collector inserts missing rows in its scoped transaction.
+
+    Existing callers retain their behavior. No replacement of previously stored
+    source rows is permitted through the missing-data preparation path.
+    """
+    conn = connection if connection is not None else get_connection()
+    insert = "INSERT OR IGNORE" if only_missing else "INSERT OR REPLACE"
     for _, row in df.iterrows():
         sj = row.get("sj_div", "")
         account = row.get("account_nm", "")
         if not sj or not account:
             continue
         conn.execute(
-            """
-            INSERT OR REPLACE INTO financial_statements
+            f"""
+            {insert} INTO financial_statements
             (corp_code, bsns_year, reprt_code, fs_div, sj_div, account_nm, thstrm_amount, frmtrm_amount, bfefrmtrm_amount, ord)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -120,8 +127,9 @@ def _store_financial_df(corp_code: str, year: int, reprt_code: str, fs_div: str,
                 row.get("ord", 0),
             ),
         )
-    conn.commit()
-    conn.close()
+    if connection is None:
+        conn.commit()
+        conn.close()
 
 
 def _period_label(year: int, reprt_code: str) -> str:
@@ -183,6 +191,10 @@ def _build_financial_response(
                 q2 = _subtract(h1_val, q1_val)
                 q3 = _subtract(q3_val, h1_val)
                 q4 = _subtract(ann_val, q3_val)
+            elif sj_div in ("IS", "CIS"):
+                q1, q2, q3 = q1_val, h1_val, q3_val
+                # Missing quarters must not become zero or an invented fourth quarter.
+                q4 = ann_val - q1 - q2 - q3 if all(v is not None for v in (ann_val, q1, q2, q3)) else None
             else:
                 # BS: point-in-time, use raw values
                 q1 = q1_val

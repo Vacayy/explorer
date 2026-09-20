@@ -1,0 +1,1036 @@
+{
+  "checked_at": "2026-09-19",
+  "resources": [
+    {
+      "id": "B01",
+      "kind": "book",
+      "topics": [
+        "기초",
+        "지표",
+        "패턴"
+      ],
+      "priority": "core",
+      "title": "Technical Analysis of the Financial Markets",
+      "author": "John J. Murphy",
+      "edition": "1999",
+      "access": "유료 서적 · 출판사 소개 확인",
+      "summary": "추세, 지지·저항, 차트 패턴과 지표를 넓게 연결하는 입문 기준서. 개별 지표를 추가하기 전에 용어와 분석 단위를 맞추는 데 적합하다.",
+      "application": "이동평균·돌파·거래량·패턴 도구의 설명 체계를 통일하고, 각 신호에 무엇을 관찰하는 계산인지 붙인다.",
+      "limitation": "분석 개념의 교재다. 책에 등장한다는 사실만으로 특정 신호의 현재 국내 주식 수익성이 입증되지는 않는다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.penguinrandomhouse.com/books/350647/technical-analysis-of-the-financial-markets-by-john-j-murphy/"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B02",
+      "kind": "book",
+      "topics": [
+        "기초",
+        "지표",
+        "추세추종"
+      ],
+      "priority": "reference",
+      "title": "Technical Analysis Explained",
+      "author": "Martin J. Pring",
+      "edition": "5판 · 2014",
+      "access": "유료 서적 · 출판사 소개·목차 확인",
+      "summary": "가격 추세와 모멘텀, 거래량, 시장 사이클을 함께 설명한다. 서로 다른 기간의 움직임을 해석할 때 보완 교재로 읽기 좋다.",
+      "application": "단기 이평 반전과 장기 추세를 구별하고, 지표 신호를 추세·모멘텀·거래량 계열로 분류한다.",
+      "limitation": "서로 비슷한 지표 여러 개가 동시에 맞는 것을 독립적인 증거 여러 개로 세지 않는다. 표기는 5판 저작권 연도 기준이며 전자책 발행은 2013년 말이다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.mheducation.com/highered/mhp/product/technical-analysis-explained-fifth-edition-successful-investor-s-guide-spotting-investment-trends-turning-points.html"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B03",
+      "kind": "book",
+      "topics": [
+        "패턴",
+        "기초"
+      ],
+      "priority": "reference",
+      "title": "Technical Analysis of Stock Trends",
+      "author": "Robert D. Edwards · John Magee · W.H.C. Bassetti",
+      "edition": "11판 · 2019",
+      "access": "유료 서적 · 출판사 목차 확인",
+      "summary": "고전적 차트 패턴, 추세선, 갭, 지지·저항과 매매 관리를 다루는 교재. 패턴 계열을 확장할 때 형태의 언어를 정리하는 출발점이다.",
+      "application": "역헤드앤숄더 다음으로 이중 바닥, 삼각형, 갭 등을 추가할 때 구조·확인 조건·실패 조건을 함께 명세한다.",
+      "limitation": "사람이 차트에서 인식하는 모양을 코드로 옮길 때는 피벗 간격·대칭 허용치·돌파 확정 시점을 별도로 정해야 한다.",
+      "links": [
+        {
+          "label": "출판사 목차",
+          "url": "https://www.routledge.com/Technical-Analysis-of-Stock-Trends/Edwards-Magee-Bassetti/p/book/9781032241821"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B04",
+      "kind": "book",
+      "topics": [
+        "패턴",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "Encyclopedia of Chart Patterns",
+      "author": "Thomas N. Bulkowski",
+      "edition": "3판 · 2021",
+      "access": "유료 서적 · 출판사 소개 확인",
+      "summary": "다양한 차트 패턴을 분류하고 관측 통계와 실패 사례를 함께 다루는 패턴 사전. 이름 목록보다 판정 조건과 실패의 정의를 읽는 데 가치가 있다.",
+      "application": "패턴마다 탐지 구간, 돌파 방향, 확인 시점, 실패 조건, 후속 수익률 측정 기간을 분리한 테스트 사례를 만든다.",
+      "limitation": "책의 패턴별 통계는 해당 표본과 정의에 의존한다. 그 숫자를 Explorer의 탐지 정확도나 국내 시장 기대수익으로 가져오면 안 된다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.wiley-vch.de/de/fachgebiete/finanzen-wirtschaft-recht/encyclopedia-of-chart-patterns-978-1-119-73968-5"
+        },
+        {
+          "label": "저자 공식 서지",
+          "url": "https://www.thepatternsite.com/mybooks.html"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B05",
+      "kind": "book",
+      "topics": [
+        "패턴",
+        "지표"
+      ],
+      "priority": "reference",
+      "title": "Japanese Candlestick Charting Techniques",
+      "author": "Steve Nison",
+      "edition": "개정판 · 2001",
+      "access": "유료 서적 · 출판사 소개 확인",
+      "summary": "캔들 몸통과 꼬리, 캔들 조합을 읽는 대표 교재. 서구의 추세·지표 분석과 캔들 관찰을 연결한다.",
+      "application": "향후 캔들 도구에 몸통/전체 범위 비율, 이전 추세, 갭 여부, 확인 봉을 명시한다. TA-Lib의 캔들 함수와 비교할 기준을 만든다.",
+      "limitation": "도지·망치처럼 이름이 같은 패턴도 라이브러리마다 허용 범위가 다를 수 있다. 모양의 발생과 매수 후 수익률은 별도 평가 대상이다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.penguinrandomhouse.com/books/350650/japanese-candlestick-charting-techniques-by-steve-nison/"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B06",
+      "kind": "book",
+      "topics": [
+        "지표",
+        "추세추종",
+        "검증"
+      ],
+      "priority": "reference",
+      "title": "Trading Systems and Methods",
+      "author": "Perry J. Kaufman",
+      "edition": "6판 · 2019",
+      "access": "유료 서적 · 출판사 소개 확인",
+      "summary": "거래 시스템과 분석 방법을 폭넓게 비교하는 참고서. 지표 목록을 넘어서 규칙의 조합과 시스템 설계를 살펴보는 용도에 맞다.",
+      "application": "도구별 입력, 신호, 포지션 구성, 위험 관리, 평가를 분리하고 동일 계열 전략의 중복을 관리한다.",
+      "limitation": "방법이 많다는 이유로 모두 같은 데이터에 최적화하면 선택 편향이 커진다. 비교한 전체 실험 수를 기록해야 한다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.wiley-vch.de/en/areas-interest/finance-economics-law/trading-systems-and-methods-978-1-119-60535-5"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B07",
+      "kind": "book",
+      "topics": [
+        "추세추종",
+        "기초"
+      ],
+      "priority": "reference",
+      "title": "Trend Following",
+      "author": "Michael W. Covel",
+      "edition": "5판 · 2017",
+      "access": "유료 서적 · 출판사 소개 확인",
+      "summary": "추세추종의 철학과 실무자 사례를 통해 규칙의 일관성, 손실 감내, 장기적 관점을 설명하는 책이다.",
+      "application": "왜 작은 손실과 긴 부진 기간을 포함한 전체 분포를 봐야 하는지, 단일 신호보다 운용 규칙이 왜 필요한지 읽는다.",
+      "limitation": "실무자 성공 사례와 인터뷰는 재현 가능한 통제 실험과 성격이 다르다. 구현은 Clenow·Carver, 실증은 논문과 함께 본다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.wiley-vch.de/de/fachgebiete/finanzen-wirtschaft-recht/trend-following-978-1-119-37187-8"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B08",
+      "kind": "book",
+      "topics": [
+        "추세추종",
+        "포트폴리오"
+      ],
+      "priority": "core",
+      "title": "Following the Trend: Diversified Managed Futures Trading",
+      "author": "Andreas F. Clenow",
+      "edition": "2판 · 2023",
+      "access": "유료 서적 · 출판사 목차 확인",
+      "summary": "여러 선물 시장을 대상으로 추세추종 시스템을 구성하는 실무서. 진입 규칙과 함께 분산, 위험, 포지션 규모를 읽을 자료다.",
+      "application": "돌파·이평 신호 위에 변동성에 따른 비중, 시장 간 분산, 청산 규칙을 올리는 구조를 참고한다.",
+      "limitation": "선물의 양방향 거래와 여러 자산 분산은 국내 개별주식 매수 전용 스크리너와 다르다. 계약 승수·롤오버·레버리지까지 옮기는 작업은 별도다.",
+      "links": [
+        {
+          "label": "출판사 목차",
+          "url": "https://www.wiley-vch.de/de/fachgebiete/finanzen-wirtschaft-recht/following-the-trend-978-1-119-90898-2"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B09",
+      "kind": "book",
+      "topics": [
+        "추세추종",
+        "포트폴리오",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "Systematic Trading",
+      "author": "Robert Carver",
+      "edition": "2015",
+      "access": "유료 서적 · 출판사 소개 확인",
+      "summary": "예측을 실제 포지션으로 바꾸는 체계와 위험 관리, 비용, 분산을 함께 다룬다. 신호 계산 이후 무엇이 필요한지 이해하는 데 적합하다.",
+      "application": "신호 강도, 변동성 추정, 목표 위험, 종목별 비중을 독립적인 계산으로 설계한다. pysystemtrade와 연결해서 구조를 살펴본다.",
+      "limitation": "책의 시스템과 현재 한국 주식 데이터는 자산·거래 조건이 다르다. 비용과 거래 가능성을 포함한 별도 검증이 필요하다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.harriman-house.com/authors/robert-carver/systematic-trading/9780857194459"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B10",
+      "kind": "book",
+      "topics": [
+        "모멘텀",
+        "포트폴리오"
+      ],
+      "priority": "core",
+      "title": "Stocks on the Move",
+      "author": "Andreas F. Clenow",
+      "edition": "2015",
+      "access": "유료 서적 · 저자 소개 확인",
+      "summary": "주식 모멘텀을 종목 순위, 시장 상황, 포지션 관리와 결합하는 자료. 현재 개별주식 기반 Explorer에 연결하기 좋은 실무서다.",
+      "application": "수익률 순위 도구를 장기 모멘텀 순위로 확장하고, 시장 필터·정기 리밸런싱·변동성 비중을 별도 규칙으로 구성한다.",
+      "limitation": "현재의 20일 대비율 순위와 책의 모멘텀 모델은 같지 않다. 시점별 편입 종목과 상장폐지 이력을 갖춘 데이터가 있어야 과거 성과 비교가 의미 있다.",
+      "links": [
+        {
+          "label": "저자 공식 소개",
+          "url": "https://www.followingthetrend.com/stocks-on-the-move/"
+        },
+        {
+          "label": "2015년 출간 안내",
+          "url": "https://www.followingthetrend.com/2015/06/stocks-on-the-move-is-out/"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B11",
+      "kind": "book",
+      "topics": [
+        "추세추종",
+        "포트폴리오"
+      ],
+      "priority": "reference",
+      "title": "Way of the Turtle",
+      "author": "Curtis Faith",
+      "edition": "2007",
+      "access": "유료 서적 · 출판사 소개 확인",
+      "summary": "터틀 트레이딩 경험을 통해 규칙 기반 운용과 위험 수용, 매매 원칙을 설명한다. 추세추종의 운용 맥락을 읽을 자료다.",
+      "application": "향후 돈치안 돌파, ATR 기반 위험 단위, 청산 규칙을 연구할 때 진입 신호 하나와 전체 거래 시스템을 구별하는 읽기 자료로 둔다.",
+      "limitation": "참여자의 회고와 사례를 모든 시장에 적용되는 수익성 증명으로 읽지 않는다. 구체적인 규칙은 원문과 구현 명세를 다시 대조한다.",
+      "links": [
+        {
+          "label": "출판사 소개",
+          "url": "https://www.mheducation.com/highered/mhp/product/way-turtle-secret-methods-turned-ordinary-people-into-legendary-traders.html"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "B12",
+      "kind": "book",
+      "topics": [
+        "검증",
+        "머신러닝"
+      ],
+      "priority": "advanced",
+      "title": "Advances in Financial Machine Learning",
+      "author": "Marcos López de Prado",
+      "edition": "2018",
+      "access": "유료 서적 · 출판사 목차 확인",
+      "summary": "금융 데이터의 특성을 고려한 모델 연구와 교차검증, 백테스트 문제를 다루는 고급 자료. 전통 지표를 넘어 예측 모델을 만들 때 읽는다.",
+      "application": "라벨이 겹치는 시계열 실험의 누수와 검증 설계를 다루는 후속 학습 자료로 활용한다. 먼저 단순 규칙의 시간 순서 검증부터 갖춘다.",
+      "limitation": "현재 50개 조건 계산에는 머신러닝이 필요하지 않다. 고급 기법을 붙여도 데이터 누락이나 부정확한 체결 가정이 해결되지는 않는다.",
+      "links": [
+        {
+          "label": "출판사 목차",
+          "url": "https://www.wiley-vch.de/en?isbn=9781119482086&option=com_eshop&view=product"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "P01",
+      "kind": "paper",
+      "topics": [
+        "지표",
+        "돌파",
+        "검증"
+      ],
+      "priority": "reference",
+      "title": "Simple Technical Trading Rules and the Stochastic Properties of Stock Returns",
+      "author": "William Brock · Josef Lakonishok · Blake LeBaron",
+      "edition": "1992 · Journal of Finance 47(5)",
+      "access": "학술지 초록 공개 · 본문 접근 조건 확인",
+      "summary": "1897–1986년 다우지수의 이동평균·거래 범위 돌파 규칙을 검정한 고전 연구. 연구 표본에서 기술적 규칙의 정보력을 지지하는 결과를 보고했다.",
+      "application": "현재의 이평 교차·신고가 돌파를 검증할 때 단순한 기준 전략을 정의하는 출발점으로 삼는다.",
+      "limitation": "매우 오래된 지수 표본이다. 이후 기간에 대한 Fang 등의 반증 연구와 함께 읽고, 당시 결과를 현재 거래비용 차감 수익으로 옮기지 않는다.",
+      "links": [
+        {
+          "label": "논문·초록",
+          "url": "https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1992.tb04681.x"
+        }
+      ],
+      "evidence": "표본 내 지지"
+    },
+    {
+      "id": "P02",
+      "kind": "paper",
+      "topics": [
+        "패턴",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "Foundations of Technical Analysis: Computational Algorithms, Statistical Inference, and Empirical Implementation",
+      "author": "Andrew W. Lo · Harry Mamaysky · Jiang Wang",
+      "edition": "2000 · Journal of Finance 55(4) / NBER WP 7613",
+      "access": "NBER 요약·공개 작업논문",
+      "summary": "차트 형태를 커널 회귀 등으로 자동 인식하고 통계적으로 평가했다. 1962–1996년 미국 주식에서 일부 패턴의 조건부 수익률 분포가 추가 정보를 제공한다고 보고한다.",
+      "application": "역헤드앤숄더 탐지의 피벗·평활·형태 조건을 기계적으로 정의하고, 탐지 시점 이후의 분포를 평가하는 연구 설계에 연결한다.",
+      "limitation": "조건부 분포가 다르다는 결과와 비용 차감 후 매매 수익은 다른 주장이다. 과거 차트를 매끈하게 만드는 과정에서 미래 관측치를 쓰지 않아야 한다.",
+      "links": [
+        {
+          "label": "NBER 논문 소개",
+          "url": "https://www.nber.org/papers/w7613"
+        },
+        {
+          "label": "공개 작업논문 PDF",
+          "url": "https://www.nber.org/papers/w7613.pdf"
+        }
+      ],
+      "evidence": "패턴의 정보력"
+    },
+    {
+      "id": "P03",
+      "kind": "paper",
+      "topics": [
+        "모멘텀",
+        "돌파",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "The 52-Week High and Momentum Investing",
+      "author": "Thomas J. George · Chuan-Yang Hwang",
+      "edition": "2004 · Journal of Finance 59(5)",
+      "access": "학술지 초록 공개 · 본문 접근 조건 확인",
+      "summary": "현재 가격이 52주 최고가에 얼마나 가까운지가 모멘텀 수익을 설명하는 데 유용하다고 보고한 주식 연구다.",
+      "application": "52주 최고가 대비 거리라는 연속형 점수를 별도 후보 도구로 고려한다. 이미 구현된 새 고점 돌파 이벤트와 비교하는 실험을 설계할 수 있다.",
+      "limitation": "고점에 대한 근접도와 그날의 신규 돌파는 다르다. 이 논문은 역헤드앤숄더 → 넥라인 → 52주 돌파라는 복합 조건의 수익성을 검증하지 않았다.",
+      "links": [
+        {
+          "label": "논문·초록",
+          "url": "https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.2004.00695.x"
+        }
+      ],
+      "evidence": "근접도 모멘텀"
+    },
+    {
+      "id": "P04",
+      "kind": "paper",
+      "topics": [
+        "기초",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "What Do We Know About the Profitability of Technical Analysis?",
+      "author": "Cheol-Ho Park · Scott H. Irwin",
+      "edition": "2007 · Journal of Economic Surveys 21(4)",
+      "access": "대학 연구정보의 초록 공개",
+      "summary": "기술적 분석 수익성 연구를 검토한 문헌 리뷰. 검토한 현대 연구 95편 중 56편은 긍정, 20편은 부정, 19편은 혼합 결과였다.",
+      "application": "새 신호를 추가할 때 시장·표본 기간·비용·위험 조정·사후 선택 여부를 함께 기록하는 근거로 읽는다.",
+      "limitation": "연구별 방법과 시장이 달라 찬성 논문 수만으로 결론을 낼 수 없다. 저자들도 데이터 탐색 편향, 규칙 사후 선택, 비용 추정의 문제를 지적한다.",
+      "links": [
+        {
+          "label": "저자 소속 대학의 초록",
+          "url": "https://experts.illinois.edu/en/publications/what-do-we-know-about-the-profitability-of-technical-analysis/"
+        }
+      ],
+      "evidence": "혼합·방법론 한계"
+    },
+    {
+      "id": "P05",
+      "kind": "paper",
+      "topics": [
+        "추세추종",
+        "모멘텀",
+        "포트폴리오"
+      ],
+      "priority": "core",
+      "title": "Time Series Momentum",
+      "author": "Tobias J. Moskowitz · Yao Hua Ooi · Lasse H. Pedersen",
+      "edition": "2012 · Journal of Financial Economics 104(2)",
+      "access": "저자 소속 기관의 연구 소개·논문 링크",
+      "summary": "58개 선물·선도 계약에서 자산 자신의 과거 12개월 초과수익과 이후 수익의 관계를 연구했다. 여러 자산군에서 시계열 모멘텀을 보고한다.",
+      "application": "자기 자신의 과거 수익 부호를 이용하는 신호와 종목 사이의 수익률 순위 신호를 다른 도구로 정의한다. AQR 공개 요인 자료와도 연결된다.",
+      "limitation": "국내 개별주식 매수 전용, 단기 이평 교차 또는 차트 패턴에 대한 직접 검증이 아니다. 분산·위험 규모·양방향 거래가 결과 해석의 일부다.",
+      "links": [
+        {
+          "label": "저자 소속 기관의 논문 소개",
+          "url": "https://www.aqr.com/Insights/Research/Journal-Article/Time-Series-Momentum"
+        }
+      ],
+      "evidence": "다자산 추세 지지"
+    },
+    {
+      "id": "P06",
+      "kind": "paper",
+      "topics": [
+        "추세추종",
+        "포트폴리오",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "A Century of Evidence on Trend-Following Investing",
+      "author": "Brian Hurst · Yao Hua Ooi · Lasse H. Pedersen",
+      "edition": "2017 · Journal of Portfolio Management",
+      "access": "저자 소속 기관의 공개 PDF",
+      "summary": "추세추종의 역사적 검증을 1880년까지 확장한 연구. 장기간과 여러 시장에 걸친 모의 성과를 통해 단일 시기 의존성을 살펴본다.",
+      "application": "추세추종 검증을 장기·다자산·위기 및 비위기 구간으로 나누는 설계에 참고한다. 현재 확보한 약 2년 일봉만으로 같은 수준의 결론을 내리지 않는다.",
+      "limitation": "재구성된 과거 데이터와 비용 모형을 사용한 시뮬레이션이다. 연구 저자들의 운용사 소속도 맥락으로 읽으며 국내 단일 시장에 그대로 일반화하지 않는다.",
+      "links": [
+        {
+          "label": "논문 소개",
+          "url": "https://www.aqr.com/insights/research/journal-article/a-century-of-evidence-on-trend-following-investing"
+        },
+        {
+          "label": "공개 논문 PDF",
+          "url": "https://www.aqr.com/-/media/AQR/Documents/Insights/Journal-Article/AQR-JPM-Fall-2017.pdf"
+        }
+      ],
+      "evidence": "장기 역사 표본"
+    },
+    {
+      "id": "P07",
+      "kind": "paper",
+      "topics": [
+        "검증",
+        "지표"
+      ],
+      "priority": "core",
+      "title": "Data-Snooping, Technical Trading Rule Performance, and the Bootstrap",
+      "author": "Ryan Sullivan · Allan Timmermann · Halbert White",
+      "edition": "1999 · Journal of Finance 54(5)",
+      "access": "학술지 초록 공개 · 본문 접근 조건 확인",
+      "summary": "많은 기술적 매매 규칙을 비교한 뒤 좋은 것만 선택하는 데이터 탐색 편향을 다룬다. 전체 후보 규칙 집합에 대한 부트스트랩 검정을 적용한다.",
+      "application": "LLM이 조건·기간·임계값을 반복 수정한 전체 실험 이력을 남긴다. 최종 선택된 전략 하나만 저장해서는 검정 대상의 규모를 복원하기 어렵다.",
+      "limitation": "과거 수익이 높은 규칙 하나를 고르고 그 규칙의 단일 검정값만 보고하면 선택 과정을 빠뜨린다. 고정한 후보군과 표본 밖 검증을 함께 설계한다.",
+      "links": [
+        {
+          "label": "논문·초록",
+          "url": "https://onlinelibrary.wiley.com/doi/10.1111/0022-1082.00163"
+        }
+      ],
+      "evidence": "다중 탐색 검정"
+    },
+    {
+      "id": "P08",
+      "kind": "paper",
+      "topics": [
+        "지표",
+        "돌파",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "Predictability of the Simple Technical Trading Rules: An Out-of-Sample Test",
+      "author": "Jiali Fang · Ben Jacobsen · Yafeng Qin",
+      "edition": "2014 · Review of Financial Economics 23(1)",
+      "access": "학술지 초록 · SSRN 작업논문 안내",
+      "summary": "Brock 등의 단순 규칙을 1987–2011년 표본 밖 기간에서 재검증했다. 검정한 규칙들에 대해 기존의 예측력을 뒷받침하는 증거를 찾지 못했다고 보고한다.",
+      "application": "과거에 잘 작동한 이동평균·돌파를 고정한 뒤 이후 구간에서 다시 검사하는 검증 기준으로 삼는다.",
+      "limitation": "특정 규칙과 시장·기간의 반증이다. 모든 기술적 분석이 언제나 무효라는 결론으로 확대해서도 안 된다.",
+      "links": [
+        {
+          "label": "학술지 초록",
+          "url": "https://www.sciencedirect.com/science/article/pii/S1058330013000396"
+        },
+        {
+          "label": "2012년 SSRN 작업논문",
+          "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2066182"
+        }
+      ],
+      "evidence": "표본 밖 반증"
+    },
+    {
+      "id": "P09",
+      "kind": "paper",
+      "topics": [
+        "검증",
+        "머신러닝"
+      ],
+      "priority": "advanced",
+      "title": "The Probability of Backtest Overfitting",
+      "author": "David H. Bailey · Jonathan M. Borwein · Marcos López de Prado · Qiji Jim Zhu",
+      "edition": "2017 · Journal of Computational Finance / 공개 원고 2015",
+      "access": "저자 공개 PDF 확인",
+      "summary": "백테스트에서 선택한 최적 규칙이 다른 표본에서 성능을 잃는 문제를 정량화한다. 조합 대칭 교차검증(CSCV)과 과적합 확률(PBO)을 제안한다.",
+      "application": "조건 조합을 대량 실험하는 단계에서 후보별 성과 행렬과 전체 탐색 범위를 보존한다. 이후 과적합 평가를 붙일 자료 구조를 준비한다.",
+      "limitation": "PBO가 낮아도 시장 변화·부정확한 체결·데이터 누수를 해결해 주지는 않는다. 시간 순서를 지킨 외부 검증을 대체하는 만능 점수로 쓰지 않는다.",
+      "links": [
+        {
+          "label": "저자 공개 원고 PDF",
+          "url": "https://www.davidhbailey.com/dhbpapers/backtest-prob.pdf"
+        }
+      ],
+      "evidence": "선택 과적합 평가"
+    },
+    {
+      "id": "P10",
+      "kind": "paper",
+      "topics": [
+        "검증",
+        "포트폴리오"
+      ],
+      "priority": "advanced",
+      "title": "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting and Non-Normality",
+      "author": "David H. Bailey · Marcos López de Prado",
+      "edition": "2014 · Journal of Portfolio Management",
+      "access": "저자 공개 PDF 확인",
+      "summary": "많은 시도 중 좋은 결과를 선택하는 편향과 수익률의 비정규성을 고려해 관측된 샤프비율을 평가하는 방법을 제시한다.",
+      "application": "성과 보고서에 단순 샤프비율만 넣는 대신 시도 수, 표본 길이, 왜도·첨도와 선택 과정까지 남길 설계를 검토한다.",
+      "limitation": "DSR을 계산하려면 신뢰할 수 있는 수익률 시계열과 시도 수에 대한 가정이 필요하다. 후보 종목을 찾는 현재 스크리너 출력만으로는 계산할 수 없다.",
+      "links": [
+        {
+          "label": "저자 공개 논문 PDF",
+          "url": "https://www.davidhbailey.com/dhbpapers/deflated-sharpe.pdf"
+        }
+      ],
+      "evidence": "성과 과장 보정"
+    },
+    {
+      "id": "R01",
+      "kind": "repo",
+      "topics": [
+        "지표",
+        "패턴"
+      ],
+      "priority": "core",
+      "title": "TA-Lib / ta-lib-python",
+      "author": "TA-Lib",
+      "edition": "Python · 네이티브 TA-Lib 연동",
+      "access": "공개 소스",
+      "summary": "기술 지표와 캔들 패턴을 제공하는 TA-Lib의 Python 래퍼. 기본 지표의 수치 비교 기준을 확보하기 좋다.",
+      "application": "SMA·MACD·Stochastic과 향후 RSI·ATR·ADX에 대해 명시적인 초기화 조건을 맞춘 비교 데이터를 만든다.",
+      "limitation": "네이티브 의존성과 준비 구간·NaN·EMA 초기화 차이를 확인해야 한다. 현재 Explorer의 이벤트별 고정 준비 구간과 무조건 동일한 결과를 기대하지 않는다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/TA-Lib/ta-lib-python"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/TA-Lib/ta-lib-python"
+        }
+      ],
+      "evidence": "",
+      "license": "BSD-2-Clause",
+      "last_push_utc": "2026-09-15T18:45:16Z",
+      "archived": false
+    },
+    {
+      "id": "R02",
+      "kind": "repo",
+      "topics": [
+        "지표"
+      ],
+      "priority": "core",
+      "title": "ta",
+      "author": "bukosabino",
+      "edition": "Python · pandas / NumPy",
+      "access": "공개 소스",
+      "summary": "OHLCV를 바탕으로 기술 지표를 계산하는 Python 라이브러리. 모멘텀·추세·거래량 지표의 구현을 비교하기 쉽다.",
+      "application": "추가할 지표를 작은 순수 계산 함수로 유지하면서 수식과 결측값 처리를 대조하는 참고 구현으로 사용한다.",
+      "limitation": "지표 생성 라이브러리이며 체결·비용·포지션을 검증하는 엔진은 별도로 필요하다. fillna 설정으로 부족한 이력이 정상 값처럼 보이지 않게 한다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/bukosabino/ta"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/bukosabino/ta"
+        }
+      ],
+      "evidence": "",
+      "license": "MIT",
+      "last_push_utc": "2026-03-18T13:04:55Z",
+      "archived": false
+    },
+    {
+      "id": "R03",
+      "kind": "repo",
+      "topics": [
+        "지표",
+        "패턴"
+      ],
+      "priority": "reference",
+      "title": "pandas-ta-classic",
+      "author": "xgboosted",
+      "edition": "Python · pandas 확장",
+      "access": "공개 소스",
+      "summary": "pandas 기반 기술 지표를 제공하는 커뮤니티 계열 프로젝트. 폭넓은 지표 후보를 탐색하는 데 유용하다.",
+      "application": "지표 이름의 사전을 확장할 때 참고하되, 각 함수의 산식·입력·준비 기간을 Explorer 명세로 다시 고정한다.",
+      "limitation": "원래 pandas-ta와 같은 패키지라고 가정하지 않는다. 저장소와 버전을 명시하고 기본값·선택 의존성을 확인한다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/xgboosted/pandas-ta-classic"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/xgboosted/pandas-ta-classic"
+        }
+      ],
+      "evidence": "",
+      "license": "MIT",
+      "last_push_utc": "2026-09-16T14:39:22Z",
+      "archived": false
+    },
+    {
+      "id": "R04",
+      "kind": "repo",
+      "topics": [
+        "패턴",
+        "검증"
+      ],
+      "priority": "advanced",
+      "title": "TradingPatternScanner",
+      "author": "white07S",
+      "edition": "Python · 차트 패턴 탐지",
+      "access": "공개 소스 · 비상업 조건 확인",
+      "summary": "헤드앤숄더·역헤드앤숄더 등을 탐지하는 실험적 예제. 평활·필터링을 활용한 여러 접근을 비교한다.",
+      "application": "패턴 테스트 사례를 만드는 참고 자료로 한정한다. 과거 시점에 알 수 있었던 피벗만 사용하는지 별도 검토한다.",
+      "limitation": "README의 정확도 평가는 합성 데이터 기반이다. 실거래 수익성이나 실제 시장 정확도로 해석하지 않는다. 2023년 이후 push가 없고 라이선스에 비상업 조건이 있다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/white07S/TradingPatternScanner"
+        },
+        {
+          "label": "라이선스 원문",
+          "url": "https://github.com/white07S/TradingPatternScanner/blob/main/LICENSE.md"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/white07S/TradingPatternScanner"
+        }
+      ],
+      "evidence": "",
+      "license": "CC BY-NC-SA 4.0",
+      "last_push_utc": "2023-08-02T02:49:59Z",
+      "archived": false
+    },
+    {
+      "id": "R05",
+      "kind": "repo",
+      "topics": [
+        "백테스트",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "backtesting.py",
+      "author": "kernc",
+      "edition": "Python · 전략 시뮬레이션",
+      "access": "공개 소스",
+      "summary": "OHLC 기반 전략을 간결하게 구현하고 시뮬레이션하는 프레임워크. 작은 기준 전략을 재현하는 초기 검증에 맞다.",
+      "application": "이평 교차나 돌파의 신호 확정 다음 봉 진입, 청산, 수수료를 고정한 최소 백테스트를 별도 연구 환경에서 만든다.",
+      "limitation": "기본 체결 모형이 한국 시장의 상·하한가, 거래정지, 유동성 제약을 자동으로 해결한다고 가정하지 않는다. AGPL 조건도 도입 전에 검토한다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/kernc/backtesting.py"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/kernc/backtesting.py"
+        }
+      ],
+      "evidence": "",
+      "license": "AGPL-3.0",
+      "last_push_utc": "2026-08-05T12:39:16Z",
+      "archived": false
+    },
+    {
+      "id": "R06",
+      "kind": "repo",
+      "topics": [
+        "백테스트",
+        "포트폴리오",
+        "검증"
+      ],
+      "priority": "reference",
+      "title": "vectorbt",
+      "author": "polakowo",
+      "edition": "Python · NumPy / Numba",
+      "access": "공개 코드 · 추가 라이선스 조건",
+      "summary": "배열 중심 계산으로 많은 전략·매개변수 조합을 빠르게 비교하는 연구 도구다.",
+      "application": "기간·임계값 민감도 표를 만들고 최적점 주변에서도 결과가 유지되는지 검사하는 연구 환경에 검토한다.",
+      "limitation": "빠른 탐색은 과적합 시도도 늘린다. 전체 실험 수를 기록해야 한다. Community 코드와 PRO 기능을 구분하며 Apache 2.0에 Commons Clause 조건이 추가되어 있다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/polakowo/vectorbt"
+        },
+        {
+          "label": "라이선스 원문",
+          "url": "https://github.com/polakowo/vectorbt/blob/master/LICENSE.md"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/polakowo/vectorbt"
+        }
+      ],
+      "evidence": "",
+      "license": "Apache-2.0 + Commons Clause",
+      "last_push_utc": "2026-09-17T20:38:03Z",
+      "archived": false
+    },
+    {
+      "id": "R07",
+      "kind": "repo",
+      "topics": [
+        "백테스트",
+        "포트폴리오"
+      ],
+      "priority": "reference",
+      "title": "backtrader",
+      "author": "mementum",
+      "edition": "Python · 이벤트 기반 엔진",
+      "access": "공개 소스",
+      "summary": "전략, 주문, 데이터 피드를 중심으로 구성하는 백테스트 프레임워크. 여러 피드와 시간 단위를 다루는 구조를 참고할 수 있다.",
+      "application": "일봉과 분봉을 함께 다루거나 체결·수수료·슬리피지를 명시해야 하는 후속 연구에 검토한다.",
+      "limitation": "확인한 최근 push는 2024년이다. 현재 Python·pandas와의 호환성 검증이 필요하며, 오래되었다는 이유로 저장소가 archived 상태인 것은 아니다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/mementum/backtrader"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/mementum/backtrader"
+        }
+      ],
+      "evidence": "",
+      "license": "GPL-3.0",
+      "last_push_utc": "2024-08-19T17:47:36Z",
+      "archived": false
+    },
+    {
+      "id": "R08",
+      "kind": "repo",
+      "topics": [
+        "추세추종",
+        "포트폴리오"
+      ],
+      "priority": "core",
+      "title": "pysystemtrade",
+      "author": "pst-group · Robert Carver",
+      "edition": "Python · 시스템 트레이딩",
+      "access": "공개 소스",
+      "summary": "Carver의 시스템 트레이딩 접근을 코드로 읽을 수 있는 프로젝트. 예측, 위험 조정, 포지션 구성 등 전체 운용 구조를 참고할 가치가 있다.",
+      "application": "신호 계산 이후 위험 규모와 포트폴리오를 만드는 계층을 읽는다. 현재 공식 이동 대상인 pst-group 저장소를 기준으로 확인한다.",
+      "limitation": "실거래·데이터 갱신 구성도 포함하므로 읽기 전용 CodeAct 안에 전체 시스템을 넣지 않는다. 연구할 계산 부분과 운영 IO를 분리해야 한다.",
+      "links": [
+        {
+          "label": "현재 저장소·README",
+          "url": "https://github.com/pst-group/pysystemtrade"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/pst-group/pysystemtrade"
+        }
+      ],
+      "evidence": "",
+      "license": "GPL-3.0",
+      "last_push_utc": "2026-07-18T13:30:24Z",
+      "archived": false
+    },
+    {
+      "id": "R09",
+      "kind": "repo",
+      "topics": [
+        "백테스트",
+        "포트폴리오"
+      ],
+      "priority": "advanced",
+      "title": "LEAN",
+      "author": "QuantConnect",
+      "edition": "C# / Python · 거래 엔진",
+      "access": "공개 소스",
+      "summary": "백테스트와 실거래를 포괄하는 거래 엔진. 데이터, 주문, 포트폴리오를 포함하는 큰 시스템의 참고 구조다.",
+      "application": "장기적으로 다자산·주문 시뮬레이션이 필요해질 때 별도 엔진 후보로 검토한다.",
+      "limitation": "현재 종목 검색 기능에 비해 범위와 운영 부담이 크다. 읽기 전용 스크리너에 즉시 통합할 이유는 적다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/QuantConnect/Lean"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/QuantConnect/Lean"
+        }
+      ],
+      "evidence": "",
+      "license": "Apache-2.0",
+      "last_push_utc": "2026-09-18T16:29:18Z",
+      "archived": false
+    },
+    {
+      "id": "R10",
+      "kind": "repo",
+      "topics": [
+        "머신러닝",
+        "검증",
+        "백테스트"
+      ],
+      "priority": "advanced",
+      "title": "Qlib",
+      "author": "Microsoft",
+      "edition": "Python · 퀀트 연구 플랫폼",
+      "access": "공개 소스",
+      "summary": "데이터·예측 모델·평가를 연결하는 AI 지향 퀀트 연구 플랫폼. README는 RD-Agent를 통한 연구 자동화도 소개한다.",
+      "application": "향후 조건 검색을 넘어 예측 점수·학습 파이프라인으로 확장할 때 연구 단계와 평가 단계 분리를 참고한다.",
+      "limitation": "MACD·이평 조건 계산에 바로 필요한 의존성은 아니다. 기본 데이터와 시간 순서 검증이 확보된 뒤 도입 여부를 판단한다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/microsoft/qlib"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/microsoft/qlib"
+        }
+      ],
+      "evidence": "",
+      "license": "MIT",
+      "last_push_utc": "2026-09-17T16:40:12Z",
+      "archived": false
+    },
+    {
+      "id": "R11",
+      "kind": "repo",
+      "topics": [
+        "포트폴리오",
+        "백테스트"
+      ],
+      "priority": "core",
+      "title": "bt",
+      "author": "pmorissette",
+      "edition": "Python · 포트폴리오 백테스트",
+      "access": "공개 소스",
+      "summary": "선택·가중치·리밸런싱 등의 동작을 조합해 포트폴리오 전략을 만드는 프레임워크다.",
+      "application": "현재 순위 조건의 결과를 정기적으로 포트폴리오에 반영하는 연구에 맞다. 종목 선택과 비중 결정, 재조정 시점을 분리한다.",
+      "limitation": "비중을 지정할 수 있다는 것과 실제로 그 가격에 체결된다는 것은 별개다. 국내 시장 비용·거래 가능성 가정은 따로 검증한다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/pmorissette/bt"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/pmorissette/bt"
+        }
+      ],
+      "evidence": "",
+      "license": "MIT",
+      "last_push_utc": "2026-09-18T15:19:49Z",
+      "archived": false
+    },
+    {
+      "id": "R12",
+      "kind": "repo",
+      "topics": [
+        "포트폴리오",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "QuantStats",
+      "author": "ranaroussi",
+      "edition": "Python · 성과 분석 / HTML 보고서",
+      "access": "공개 소스",
+      "summary": "수익률 시계열을 입력받아 지표와 차트, HTML 성과 보고서를 만든다. 검증한 백테스트의 결과를 읽기 쉽게 보여주는 계층이다.",
+      "application": "후속 백테스트에서 벤치마크 대비 성과, 낙폭, 변동성 등을 보고할 때 검토한다. 보고서는 검증된 수익률을 만든 뒤 생성한다.",
+      "limitation": "체결이나 포지션을 시뮬레이션하는 엔진이 아니다. 양의 수익률 기간 비율과 거래 단위 승률도 구분해야 한다.",
+      "links": [
+        {
+          "label": "저장소·README",
+          "url": "https://github.com/ranaroussi/quantstats"
+        },
+        {
+          "label": "GitHub 메타데이터",
+          "url": "https://api.github.com/repos/ranaroussi/quantstats"
+        }
+      ],
+      "evidence": "",
+      "license": "Apache-2.0",
+      "last_push_utc": "2026-07-20T14:12:56Z",
+      "archived": false
+    },
+    {
+      "id": "G01",
+      "kind": "guide",
+      "topics": [
+        "기초",
+        "지표"
+      ],
+      "priority": "core",
+      "title": "Technical Indicator Guide",
+      "author": "Fidelity",
+      "edition": "공식 교육 자료",
+      "access": "무료 웹 문서",
+      "summary": "지표를 빠르게 조회하는 공식 교육 자료. MACD와 Stochastic 등의 정의와 해석을 개별 문서에서 확인할 수 있다.",
+      "application": "사용자에게 보여줄 지표 설명의 출처로 연결하고, 계산의 기본 구성과 신호 판정을 분리해서 기록한다.",
+      "limitation": "교육용 해석은 수익성 검정이 아니다. 플랫폼과 Explorer의 EMA 초기화·준비 기간·교차 경계까지 같다는 의미는 아니다.",
+      "links": [
+        {
+          "label": "지표 안내",
+          "url": "https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide"
+        },
+        {
+          "label": "MACD",
+          "url": "https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/macd"
+        },
+        {
+          "label": "Fast Stochastic",
+          "url": "https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/fast-stochastic"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "G02",
+      "kind": "guide",
+      "topics": [
+        "지표"
+      ],
+      "priority": "core",
+      "title": "영웅문 지표 도움말: SONAR",
+      "author": "키움증권",
+      "edition": "공식 한글 도움말",
+      "access": "무료 웹 문서",
+      "summary": "SONAR를 지수이동평균의 시차 차분으로 설명하고 Signal을 SONAR의 EMA로 정의한다.",
+      "application": "현재 SONAR가 퍼센트 변화율이 아니라 EMA 차분인 이유를 확인하는 출처다. 이미지의 (20,9,9)는 Explorer 명세에 별도로 기록했다.",
+      "limitation": "도움말의 기본값과 사용자가 제공한 이미지의 매개변수는 같지 않다. 이 페이지를 원본 HTS 전체 결과와의 호환성 보장으로 사용하지 않는다.",
+      "links": [
+        {
+          "label": "키움증권 SONAR 도움말",
+          "url": "https://download.kiwoom.com/hero4_help_new/guide-26.htm"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "G03",
+      "kind": "guide",
+      "topics": [
+        "추세추종",
+        "모멘텀",
+        "검증"
+      ],
+      "priority": "core",
+      "title": "Time Series Momentum: Factors, Monthly",
+      "author": "AQR",
+      "edition": "공개 요인 자료 · 페이지 표기 2026-05-29",
+      "access": "공개 자료 · 이용 조건 확인",
+      "summary": "12개월 시계열 모멘텀 신호와 1개월 보유에 기반한 월별 초과수익 자료. 58개 유동성 높은 선물·선도 계약을 바탕으로 자산군별 요인을 제공한다.",
+      "application": "추세추종 논문을 읽고 요인 수준의 성과를 재현해 보는 학습 자료로 사용한다.",
+      "limitation": "요인 수익률 자료이며 국내 개별주식 OHLCV나 원시 선물 계약 데이터를 대체하지 않는다. 원문은 과거 논문 자료의 갱신·확장판임을 밝힌다.",
+      "links": [
+        {
+          "label": "자료·설명·이용 조건",
+          "url": "https://www.aqr.com/Insights/Datasets/Time-Series-Momentum-Factors-Monthly"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "G04",
+      "kind": "guide",
+      "topics": [
+        "추세추종",
+        "포트폴리오"
+      ],
+      "priority": "reference",
+      "title": "Free Trend Following Trading System Rules",
+      "author": "Andreas F. Clenow",
+      "edition": "2014 · 저자 공개 글",
+      "access": "무료 웹 문서",
+      "summary": "현재 가격과 1년 전 가격을 비교하는 단순한 규칙을 여러 선물 시장에 적용한 설명이다. 핵심 개념과 운용 구조에 집중하자는 취지다.",
+      "application": "복잡한 복합 조건의 비교 대상이 될 단순한 기준 전략을 설계하는 데 참고한다.",
+      "limitation": "글의 성과는 수수료 전 예시이며 정식 재현 검증과 다르다. 해당 숫자를 국내 주식의 기대수익으로 사용하지 않는다.",
+      "links": [
+        {
+          "label": "저자 원문",
+          "url": "https://www.followingthetrend.com/2014/03/free-trend-following-trading-system-rules/"
+        }
+      ],
+      "evidence": ""
+    },
+    {
+      "id": "G05",
+      "kind": "guide",
+      "topics": [
+        "기초",
+        "지표"
+      ],
+      "priority": "reference",
+      "title": "ChartSchool: Technical Indicators",
+      "author": "StockCharts",
+      "edition": "공식 교육 자료",
+      "access": "무료 웹 문서",
+      "summary": "지표별 계산과 예제를 제공하는 사전형 자료. ADX 문서는 방향과 추세 강도를 구분하고 Wilder 평활의 초기화 영향을 설명한다.",
+      "application": "향후 ADX·ATR 등 추가 시 준비 구간과 평활 규약을 명시하는 자료로 사용한다.",
+      "limitation": "ADX의 큰 값이 상승 방향을 뜻하지는 않는다. 시각적 설명을 매수·매도 규칙으로 옮길 때 별도 방향 조건과 검증이 필요하다.",
+      "links": [
+        {
+          "label": "기술 지표 사전",
+          "url": "https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators"
+        },
+        {
+          "label": "ADX 산식·초기화 설명",
+          "url": "https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/average-directional-index-adx"
+        }
+      ],
+      "evidence": ""
+    }
+  ]
+}

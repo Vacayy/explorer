@@ -16,6 +16,8 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 // Home
 import { getHomeMode } from "@/hooks/useHomeMode"
 import { DetailNavigationMemory } from "@/components/shared/DetailNavigation"
+import { DiscoveryNavigationMemory } from "@/components/shared/DiscoveryNavigationMemory"
+import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrail"
 import HomePage from "@/components/home/HomePage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
@@ -58,7 +60,10 @@ import ScreenerPage from "@/components/discovery/ScreenerPage"
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
 import SummaryPage from "@/components/summary/SummaryPage"
-import FinancialsPage from "@/components/financials/FinancialsPage"
+import BacktestPage from "@/components/analysis/BacktestPage"
+import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
+import CompanyFinancials from "@/components/company/CompanyFinancials"
+import { CompanyEvidence } from "@/components/company/CompanyEvidence"
 import BusinessPage from "@/components/business/BusinessPage"
 import DisclosurePage from "@/components/disclosures/DisclosurePage"
 import ValuationPage from "@/components/valuation/ValuationPage"
@@ -83,7 +88,7 @@ function subNavFor(pathname: string, search: string, stockCode: string | null, c
   if (mode === "follow" || mode === "us") return { tabs: FOLLOW_TABS, activeKey }
   if (mode === "feed" && pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey }
   if (mode === "worldmodel") return { tabs: WORLDMODEL_TABS, activeKey }
-  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode), activeKey, context: companyName ?? stockCode }
+  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey, context: companyName ?? stockCode }
   return null
 }
 
@@ -106,6 +111,10 @@ function Layout() {
   const [feedRailOpen, setFeedRailOpen] = useState(false)
   const [detailRailOpen, setDetailRailOpen] = useState(false)
   const detailRoute = pathname.startsWith("/study/") || pathname.startsWith("/doc/") || (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic"))
+  const [companyRailOpen, setCompanyRailOpen] = useState(false)
+  const [discoveryRailOpen, setDiscoveryRailOpen] = useState(false)
+  const discoveryRoute = pathname === "/discover" || pathname.startsWith("/analysis/backtests")
+  const companyRoute = !!stockCode || /^\/us\/[^/]+/.test(pathname) || pathname === "/company"
   const homeFeed = pathname === "/home" && getHomeMode(search) === "feed"
 
   return (
@@ -113,8 +122,9 @@ function Layout() {
       <Omnibar />
       <DetailNavigationMemory />
       <SidebarProvider
-        open={detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
-        onOpenChange={detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
+      <DiscoveryNavigationMemory />
+        open={discoveryRoute ? discoveryRailOpen : companyRoute ? companyRailOpen : detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
+        onOpenChange={discoveryRoute ? setDiscoveryRailOpen : companyRoute ? setCompanyRailOpen : detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
         style={{ "--sidebar-width": "16rem" } as CSSProperties}
       >
         <SidebarInset className="min-w-0 bg-background">
@@ -126,6 +136,7 @@ function Layout() {
           >
             {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
             <Outlet />
+            {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
           </div>
         </SidebarInset>
         <Dock stockCode={stockCode} companyName={company?.corp_name} />
@@ -153,7 +164,7 @@ function AnalyzePage({ tab }: { tab: string }) {
     case "summary":
       return <SummaryPage stockCode={stockCode} corpCode={corpCode} />
     case "financials":
-      return <FinancialsPage stockCode={stockCode} corpCode={corpCode} />
+      return <CompanyFinancials key={stockCode} stockCode={stockCode} corpCode={corpCode} />
     case "business":
       return <BusinessPage stockCode={stockCode} corpCode={corpCode} />
     case "disclosures":
@@ -163,8 +174,7 @@ function AnalyzePage({ tab }: { tab: string }) {
     case "lens":
       return <LensPage code={stockCode} market="kr" />
     case "mentions":
-      // 언급 탭은 종목 홈 우측 컬럼으로 흡수 — 기존 링크는 홈으로
-      return <Navigate to={`/analyze/${stockCode}/summary`} replace />
+      return <CompanyEvidence key={stockCode} company={stockCode} />
     default:
       return <Navigate to={`/analyze/${stockCode}/summary`} replace />
   }
@@ -230,7 +240,7 @@ export default function App() {
             <Route path="actions" element={<ActionsPage />} />
 
             {/* Discovery */}
-            <Route path="discover" element={<Navigate to="/explore" replace />} />
+            <Route path="discover" element={<MarketAnalysisPage />} />
             <Route path="discover/industry" element={<IndustryRoute />} />
             <Route path="discover/screener" element={<ScreenerPage />} />
             <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
@@ -239,6 +249,7 @@ export default function App() {
             {/* Analysis */}
             <Route path="analyze/compare" element={<ComparePage />} />
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
+            <Route path="analysis/backtests" element={<BacktestPage />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
             <Route path="analyze/:stockCode/financials" element={<AnalyzePage tab="financials" />} />
             <Route path="analyze/:stockCode/valuation" element={<AnalyzePage tab="valuation" />} />
