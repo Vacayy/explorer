@@ -32,7 +32,7 @@ from .process_guard import guarded_command
 SEOUL = ZoneInfo("Asia/Seoul")
 LANES = (("market", "시장의 이야기"), ("industry", "사업·전방 산업"),
          ("earnings", "실적·공시"), ("call", "컨퍼런스콜"), ("trade", "수출입 통계"),
-         ("web", "웹 조사 · 사업보고서·IR·뉴스·리포트"))
+         ("web", "웹 조사 · 사업보고서 본문·IR·뉴스·리포트"))
 ROW_LIMIT = 180
 DOCUMENT_LIMIT = 6
 EXCERPT_LIMIT = 2200
@@ -484,14 +484,15 @@ def _web(reader: _Reader, company: dict, lane: dict) -> None:
         return
     rows = reader.rows("SELECT id,title,url,published_at,fetched_at,"
                        "substr(COALESCE(NULLIF(markdown,''),raw_content,''),1,4000) body FROM raw_documents "
-                       "WHERE source_type='web' AND source_id LIKE ? ORDER BY published_at DESC, id DESC LIMIT 20",
+                       "WHERE source_type IN ('web','dart_business') AND source_id LIKE ? ORDER BY published_at DESC, id DESC LIMIT 20",
                        (company["stock_code"] + ":%",))
     for row in rows:
         if not reader.available(row, uncertain=row.get("published_at") is None):
             continue
         _, precision = _stamp(row.get("published_at"))
         lane["items"].append(_item(f"doc:{row['id']}", row["title"] or row["url"] or "웹 발췌", row["body"][:EXCERPT_LIMIT],
-                                   source="web", published_at=row["published_at"], precision=precision, url=row["url"]))
+                                   source="dart_business" if str(row.get("url") or "").startswith("http://dart.fss.or.kr/report/viewer") else "web",
+                                   published_at=row["published_at"], precision=precision, url=row["url"]))
         if len(lane["items"]) >= DOCUMENT_LIMIT:
             break
     if lane["items"]:

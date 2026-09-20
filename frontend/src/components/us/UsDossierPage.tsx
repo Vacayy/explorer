@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import api from '@/api/client'
 import { CompanyPriceResearch } from '@/components/company/CompanyPriceResearch'
 import { CompanyEvidence } from '@/components/company/CompanyEvidence'
+import { CompanyOverview } from '@/components/company/CompanyOverview'
 import { Button } from '@/components/ui/button'
 import type { StockPriceItem } from '@/types'
 import { LensView } from '@/components/lens/LensPage'
@@ -115,6 +116,12 @@ export default function UsDossierPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardContent className="space-y-2 py-4 text-sm">
+          <h2 className="font-semibold">기업 개요</h2>
+          <CompanyOverview stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다. SEC 10-K·IR·뉴스를 웹에서 조사해 개요를 만들 수 있습니다.</p>} />
+        </CardContent>
+      </Card>
       <nav aria-label="기업 상세" className="flex gap-2">
         {[
           ['overview', '개요'],

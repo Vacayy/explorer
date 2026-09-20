@@ -12,23 +12,23 @@ import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { CompanyWebProfile } from '@/types'
 
 const KIND: Record<string, string> = { filing: '공시', ir: 'IR', news: '뉴스', report: '리포트', other: '기타' }
-const profileKey = (code: string) => ['spine', 'company-profile', code] as const
+const profileKey = (code: string, market: string) => ['spine', 'company-profile', market, code] as const
 
-export function useCompanyProfile(code: string) {
-  return useQuery({ queryKey: profileKey(code), queryFn: async () => (await api.get<{ profile: CompanyWebProfile | null; reuse_hours: number }>(`/api/spine/company-profile/${code}`)).data, staleTime: 60_000 })
+export function useCompanyProfile(code: string, market: 'kr' | 'us' = 'kr') {
+  return useQuery({ queryKey: profileKey(code, market), queryFn: async () => (await api.get<{ profile: CompanyWebProfile | null; reuse_hours: number }>(`/api/spine/company-profile/${code}`, { params: { market } })).data, staleTime: 60_000 })
 }
 
-function useBuildProfile(code: string) {
+function useBuildProfile(code: string, market: 'kr' | 'us') {
   const client = useQueryClient()
   return useMutation({
     mutationFn: async (body: { reason?: string; force?: boolean }) => {
-      try { return (await api.post<{ profile: CompanyWebProfile; reused: boolean; reuse_hours: number }>(`/api/spine/company-profile/${code}`, body)).data }
+      try { return (await api.post<{ profile: CompanyWebProfile; reused: boolean; reuse_hours: number }>(`/api/spine/company-profile/${code}`, body, { params: { market } })).data }
       catch (error) {
         const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
         throw new Error(typeof detail === 'string' ? detail : '웹 조사를 마치지 못했습니다.')
       }
     },
-    onSuccess: data => client.setQueryData(profileKey(code), { profile: data.profile, reuse_hours: data.reuse_hours }),
+    onSuccess: data => client.setQueryData(profileKey(code, market), { profile: data.profile, reuse_hours: data.reuse_hours }),
   })
 }
 
@@ -36,10 +36,10 @@ function Cited({ text, ids, sources }: { text: string; ids: number[]; sources: C
   return <span>{text}{ids.length > 0 && <span className="ml-1 text-caption text-muted-foreground">{ids.map(id => { const source = sources.find(s => s.id === id); return source ? <a key={id} className="mr-1 hover:underline" href={source.url} target="_blank" rel="noreferrer" title={source.title}>[{id}]</a> : null })}</span>}</span>
 }
 
-/** "이 기업은 무엇을 하나": 웹 조사(사업보고서·IR·뉴스·리포트)로 만든 구조화 개요 보고서. D-188. */
-export function CompanyOverview({ stockCode, fallback }: { stockCode: string; fallback: ReactNode }) {
-  const query = useCompanyProfile(stockCode)
-  const build = useBuildProfile(stockCode)
+/** "기업 개요": 웹 조사(사업보고서·IR·뉴스·리포트)로 만든 구조화 개요 보고서. D-188. */
+export function CompanyOverview({ stockCode, fallback, market = 'kr' }: { stockCode: string; fallback: ReactNode; market?: 'kr' | 'us' }) {
+  const query = useCompanyProfile(stockCode, market)
+  const build = useBuildProfile(stockCode, market)
   const [sourcesOpen, setSourcesOpen] = useState(false)
   const profile = query.data?.profile ?? null
   async function run(force: boolean) {
@@ -54,10 +54,11 @@ export function CompanyOverview({ stockCode, fallback }: { stockCode: string; fa
   </Button>
   if (query.isPending) return <div className="space-y-2" role="status" aria-label="기업 개요 불러오는 중"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div>
   if (query.isError) return <ErrorState message="기업 개요를 불러오지 못했습니다." onRetry={() => query.refetch()} />
-  if (!profile) return <div className="space-y-3 text-sm">{fallback}<div className="flex flex-wrap items-center gap-2">{action}<span className="text-caption text-muted-foreground">사업보고서·IR·뉴스·리포트를 웹에서 찾아 구조화합니다. 누를 때만 모델을 한 번 호출합니다.</span></div>{build.error && <p role="alert" className="text-sm text-destructive">{build.error.message}</p>}</div>
+  if (!profile) return <div className="space-y-3 text-sm">{fallback}<div className="flex flex-wrap items-center gap-2">{action}<span className="text-caption text-muted-foreground">{market === 'us' ? 'SEC 10-K·IR·뉴스·애널리스트 기사를' : '사업보고서·IR·뉴스·리포트를'} 웹에서 찾아 구조화합니다. 누를 때만 모델을 한 번 호출합니다.</span></div>{build.error && <p role="alert" className="text-sm text-destructive">{build.error.message}</p>}</div>
   const sources = profile.sources
   return <div className="space-y-4 text-sm">
     <p className="leading-relaxed">{profile.overview}</p>
+    {profile.official_report && <p className="text-caption text-muted-foreground">공식 자료: <a className="hover:underline" href={profile.official_report.url} target="_blank" rel="noreferrer">DART {profile.official_report.report_nm}{profile.official_report.rcept_dt ? ` (접수 ${profile.official_report.rcept_dt})` : ''}</a>의 ‘사업의 내용’ 본문을 출처 [1]로 사용했습니다.</p>}
     {profile.business_lines.length > 0 && <section aria-label="사업부" className="space-y-1.5">
       <h3 className="text-caption font-medium text-muted-foreground">사업 구성</h3>
       <ul className="space-y-1">{profile.business_lines.map((line, index) => <li key={index} className="flex flex-wrap items-baseline gap-x-2"><span className="font-medium">{line.name}</span>{line.share_pct != null && <Badge variant="outline" className="font-normal">매출 {formatNumber(line.share_pct)}%</Badge>}{line.description && <Cited text={line.description} ids={line.source_ids} sources={sources} />}</li>)}</ul>

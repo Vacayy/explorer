@@ -83,7 +83,7 @@ export default function SummaryPage({
         {!research && (
           <Card>
             <CardHeader>
-              <CardTitle>이 기업은 무엇을 하나</CardTitle>
+              <CardTitle>기업 개요</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <CompanyOverview stockCode={stockCode} fallback={<>

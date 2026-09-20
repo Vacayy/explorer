@@ -167,7 +167,8 @@ def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text, 
         raise RuntimeError(f"claude -p 스트림 결과 없음 rc={proc.returncode} "
                            f"err={(proc.stderr.read() or '').strip()[:200]!r}")
     if final.get("is_error"):
-        raise RuntimeError(f"claude -p 오류: {str(final.get('result'))[:200]}")
+        detail = final.get("result") or (final.get("errors") or [None])[0] or final.get("subtype") or "원인 미기재"
+        raise RuntimeError(f"claude -p 오류: {str(detail)[:200]}")
     result = _from_result_event(final, model, "".join(parts) or final.get("result", ""))
     result.tool_results = tool_results
     return result
