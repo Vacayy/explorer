@@ -196,19 +196,21 @@ def search_chunks(q: str, k: int = 40, pool: int = 80, variants: list[str] | Non
     if vconn is not None:
         try:
             has = vconn.execute("SELECT count(*) FROM chunk_vec").fetchone()[0]
+            if has:
+                embs = list(_get_model(local_files_only=True).embed(queries))
+                for j, emb in enumerate(embs):
+                    vrows = vconn.execute("SELECT rowid FROM chunk_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+                                          (_serialize(emb), pool)).fetchall()
+                    w = 1.0 if j == 0 else 0.7
+                    for i, r in enumerate(vrows):
+                        ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + w / (60 + i)
+                        if r["rowid"] not in vec_ids:
+                            vec_ids.append(r["rowid"])
         except Exception:
-            has = 0
-        if has:
-            embs = list(_get_model().embed(queries))
-            for j, emb in enumerate(embs):
-                vrows = vconn.execute("SELECT rowid FROM chunk_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-                                      (_serialize(emb), pool)).fetchall()
-                w = 1.0 if j == 0 else 0.7        # 변형은 원문보다 약하게
-                for i, r in enumerate(vrows):
-                    ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + w / (60 + i)
-                    if r["rowid"] not in vec_ids:
-                        vec_ids.append(r["rowid"])
-        vconn.close()
+            # Keep BM25 candidates when the local embedding cache is unavailable.
+            pass
+        finally:
+            vconn.close()
     if not ranks:
         return []
 

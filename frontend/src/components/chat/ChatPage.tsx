@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
-import { ArrowDown, PanelLeft, Send, SquarePen } from "lucide-react"
+import { Link, Navigate, useSearchParams } from "react-router-dom"
+import { ArrowDown, ChartNoAxesCombined, PanelLeft, Send, SquarePen } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,15 @@ const BOTTOM_PX = 80
  * URL ?id= 가 활성 스레드의 단일 상태 소스, ?q= 는 옴니바 프리필. 데이터·진행 규약은 hooks/useChat.ts.
  */
 export default function ChatPage() {
+  const [searchParams] = useSearchParams()
+  const legacyParams = new URLSearchParams(searchParams)
+  legacyParams.delete('mode')
+  return searchParams.get('mode') === 'analysis'
+    ? <Navigate to={`/discover${legacyParams.size ? `?${legacyParams}` : ''}`} replace />
+    : <ConversationPage />
+}
+
+function ConversationPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeId = searchParams.get("id") ? Number(searchParams.get("id")) : null
   const [question, setQuestion] = useState(searchParams.get("q") ?? "")
@@ -103,6 +112,7 @@ export default function ChatPage() {
       <section className="flex min-w-0 flex-1 flex-col">
         {/* 헤더 — 슬림 1줄 */}
         <header className="flex h-9 items-center gap-2">
+          <Button variant="outline" size="sm" asChild><Link to={`/discover${activeId ? `?id=${activeId}` : ''}`}><ChartNoAxesCombined className="size-4" />종목 발견</Link></Button>
           <Button variant="ghost" size="icon-sm" aria-label="대화 목록" className="lg:hidden" onClick={() => setSheetOpen(true)}>
             <PanelLeft className="size-4" />
           </Button>

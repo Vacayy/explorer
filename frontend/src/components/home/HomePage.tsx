@@ -1,5 +1,5 @@
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
-import { FileText, Inbox, LineChart, Route, Sparkles, Workflow } from "lucide-react"
+import { FileText, Inbox, LineChart, Route, Sparkles, SquarePlay, Workflow } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -52,7 +52,7 @@ export default function HomePage() {
 /* ---------- AI 자동생성 피드 (지난 7일 · 최신순, 승인 대기 칩 통합) ---------- */
 
 interface AiActivityItem {
-  type: string; title: string; topic: string; code: string | null; question_id?: number | null; created_at: string
+  type: string; title: string; topic: string; code: string | null; question_id?: number | null; doc_id?: number | null; created_at: string
 }
 const ACT_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }>; cls: string }> = {
   narrative: { label: "내러티브", Icon: Sparkles, cls: "text-hypothesis border-hypothesis/40" },
@@ -60,8 +60,10 @@ const ACT_META: Record<string, { label: string; Icon: React.ComponentType<{ clas
   report: { label: "리포트", Icon: FileText, cls: "text-primary border-primary/40" },
   scenario: { label: "파급", Icon: Route, cls: "text-muted-foreground" },
   digest: { label: "요약", Icon: LineChart, cls: "text-muted-foreground" },
+  youtube_digest: { label: "유튜브 요약", Icon: SquarePlay, cls: "text-muted-foreground" },
 }
 function actLink(a: AiActivityItem): string {
+  if (a.type === "youtube_digest" && a.doc_id) return `/doc/${a.doc_id}?reading=digest`
   if (a.type === "report") return `/report?topic=${encodeURIComponent(a.topic)}`
   if (a.type === "digest" && a.code) return `/analyze/${a.code}/summary`
   if (a.type === "mega") return "/narrative"

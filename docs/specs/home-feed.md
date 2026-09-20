@@ -14,6 +14,8 @@
 - URL: `home_view`, `channel`, `reading`, `reader_page`, `reader_until`, `reader_open`. 목록 검색/종류도 URL 보존. 모드 전환 시 선택·스크롤 복원.
 - `/feed` 기본 진입은 `/home?home_view=feed`로 이동한다. 기존 `feed_*` 타임라인 필터 및 문서 검색/태그 URL은 유지한다. 메시지 전송·조회수·반응·읽음 동기화는 포함하지 않는다.
 
+`AI가 최근 만든 것`은 지난 7일간 생성된 내러티브·리포트·파급·종목 요약과 **완료된 유튜브 AI 정리본**을 최신순으로 함께 표시한다. 유튜브 행은 `유튜브 요약` 배지와 영상 제목을 보여주고 `/doc/:id?reading=digest`로 연결한다. 생성 시각은 성공한 `youtube_digest_jobs.updated_at`을 사용하며, 작업 기록이 없는 기존 정리본은 본문 저장 시 갱신된 `raw_documents.fetched_at`을 사용한다. 영상 게시일이나 짧은 enrichment 생성일을 정리본 생성일로 사용하지 않는다. 미생성·실패·본문 없는 영상은 제외하며, 목록 조회는 저장 자료만 읽는다.
+
 ## Home 중심 탐색과 시장 요약 (D-155)
 
 Dock은 Home·관심목록·월드모델·대화 4개이며 피드 읽기는 Home으로 통합한다. `/follow`는 관심 기업·인물·산업·테마, `/sources`는 기존 텔레그램·블로그·RSS·유튜브 소스 관리다. Home 피드의 소스 관리, 더보기, 검색에서 접근한다. 문서 검색은 `/feed?view=documents`에 유지한다.

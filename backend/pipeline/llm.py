@@ -50,7 +50,8 @@ class LLMResult:
 
 def run(prompt: str, *, system: str | None = None, model: str = "sonnet",
         effort: str | None = None, tools: tuple[str, ...] = (), timeout: int = 300,
-        job: str = "", on_text: OnText | None = None) -> LLMResult:
+        job: str = "", on_text: OnText | None = None,
+        json_schema: dict | None = None) -> LLMResult:
     """LLM 1회 호출. on_text가 있으면 본문 델타를 스트리밍으로 넘긴다(반환값은 동일).
 
     tools: 빈 튜플이면 도구 전부 비활성(기본). 필요한 것만 명시(예: ("Read",)).
@@ -62,9 +63,13 @@ def run(prompt: str, *, system: str | None = None, model: str = "sonnet",
     err = None
     try:
         if eng == "claude-code":
-            res = _run_claude_code(prompt, system=system, model=model, effort=effort,
-                                   tools=tools, timeout=timeout, on_text=on_text)
+            options = dict(system=system, model=model, effort=effort, tools=tools, timeout=timeout, on_text=on_text)
+            if json_schema is not None:
+                options["json_schema"] = json_schema
+            res = _run_claude_code(prompt, **options)
         else:
+            if json_schema is not None:
+                raise ValueError("json_schema 강제 출력은 claude-code 엔진에서 지원합니다")
             res = _run_api(prompt, system=system, model=model, on_text=on_text)
         res.duration_ms = res.duration_ms or int((time.time() - t0) * 1000)
         return res
@@ -96,9 +101,13 @@ def _argv(model: str, effort: str | None, tools: tuple[str, ...], system: str | 
     return argv
 
 
-def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text) -> LLMResult:
+def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text, json_schema=None) -> LLMResult:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     argv = _argv(model, effort, tools, system, stream=on_text is not None or bool(set(tools) & {"WebSearch","WebFetch"}))
+    if json_schema is not None:
+        if on_text is not None or tools:
+            raise ValueError("json_schema는 도구 없는 비스트리밍 호출에만 사용하세요")
+        argv += ["--json-schema", json.dumps(json_schema, ensure_ascii=False)]
     if on_text is None and not (set(tools) & {"WebSearch","WebFetch"}):
         proc = subprocess.run(argv, input=prompt, capture_output=True, text=True,
                               timeout=timeout, cwd=RUNTIME_DIR)
@@ -107,6 +116,12 @@ def _run_claude_code(prompt, *, system, model, effort, tools, timeout, on_text) 
             raise RuntimeError(f"claude -p 실패 rc={proc.returncode} "
                                f"out={proc.stdout.strip()[:200]!r} err={proc.stderr.strip()[:120]!r}")
         env = json.loads(proc.stdout)
+        if env.get("is_error"):
+            raise RuntimeError("claude -p 결과 오류: " + str(env.get("subtype", "unknown")))
+        if json_schema is not None:
+            if not isinstance(env.get("structured_output"), dict):
+                raise ValueError("claude -p structured_output이 없습니다")
+            return _from_result_event(env, model, json.dumps(env["structured_output"], ensure_ascii=False))
         return _from_result_event(env, model, env.get("result", ""))
 
     # 스트리밍: stdout 라인 단위 이벤트, 텍스트 델타를 on_text로
