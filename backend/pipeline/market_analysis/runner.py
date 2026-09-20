@@ -34,7 +34,9 @@ require_ma=false, min_market_cap=0 as appropriate). Never silently replace MA20 
 MA5 or add a 14-day deadline between breakout and the subsequent 52-week high.
 The 52-week breakout uses close > maximum high of the preceding 365 calendar days,
 excluding the breakout day itself; equal prices are not a breakout.
-Preserve explicit parameters. Ask only necessary, unresolved interpretation by
+If context.default_within_days is present, use it as within_days for every daily catalog condition
+whose period the question does not state; a period written in the question wins, and ranking or
+intraday conditions stay at 1. Preserve explicit parameters. Ask only necessary, unresolved interpretation by
 listing fields window_scope (breakout date vs full formation in lookback window),
 price_basis (close vs intraday low for MA), include_same_day (whether subsequent
 high may be on breakout date). Do not ask fields already specified in the question.
@@ -308,6 +310,8 @@ class AnalysisService:
         if (state["spec"] or {}).get("expression"):
             from .expression import expression_conditions
             selected.update(c["strategy_id"] for c in expression_conditions(state["spec"]["expression"]))
+        if state["_request"].get("default_within_days"):
+            context["default_within_days"] = state["_request"]["default_within_days"]
         context["strategy_catalog"] = {"version": CATALOG_VERSION, "items": [
             {key: item[key] for key in ("id", "label", "category", "timeframe", "formula", "defaults", "parameters", "available")}
             for item in catalog() if state["spec"] is None or item["id"] in selected]}
