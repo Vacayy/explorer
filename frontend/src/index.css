@@ -492,6 +492,9 @@
 .project-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--border); }
 .project-columns { display:grid; grid-template-columns:220px minmax(0,1fr) 350px; height:calc(100dvh - 250px); min-height:550px; }
 .project-workspace[data-library=false] .project-columns { grid-template-columns:minmax(0,1fr) 350px; }
+.project-workspace[data-notes=false] .project-columns { grid-template-columns:220px minmax(0,1fr); }
+.project-workspace[data-library=false][data-notes=false] .project-columns { grid-template-columns:minmax(0,1fr); }
+.project-panel[hidden] { display:none; }
 .project-library { overflow:auto; padding:16px 10px; border-right:1px solid var(--border); min-width:0; }
 .project-source { display:flex; align-items:start; gap:4px; padding:10px 8px; border-radius:12px; margin:4px 0; }
 .project-desk,.project-primary { min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
@@ -525,7 +528,9 @@
  .project-library { grid-column:1/-1; max-height:180px; border-bottom:1px solid var(--border); }
  .project-workspace[data-library=true] .project-columns { height:auto; }
  .project-workspace[data-library=false] .project-columns { grid-template-columns:minmax(0,1fr) 320px; }
- .project-desk,.project-panel { height:65dvh; min-height:480px; }
+ .project-workspace[data-notes=false] .project-columns,.project-workspace[data-library=false][data-notes=false] .project-columns { grid-template-columns:minmax(0,1fr); }
+ /* Only the stacked library needs explicit heights; otherwise the row height fills the card. */
+ .project-workspace[data-library=true] .project-desk,.project-workspace[data-library=true] .project-panel { height:65dvh; min-height:480px; }
 }
 @container page (max-width:760px) {
  .project-columns,.project-workspace[data-library=false] .project-columns { grid-template-columns:minmax(0,1fr); height:auto; }
