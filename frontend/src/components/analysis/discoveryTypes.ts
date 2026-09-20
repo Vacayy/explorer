@@ -11,6 +11,8 @@ export interface SavedStrategy {
 }
 
 export interface DiscoveryRecommendation {
+  group?: string
+  phrase?: string | null
   id: string
   name: string
   purpose: string

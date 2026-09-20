@@ -20,6 +20,26 @@ DEFAULT_ROOT = Path(__file__).resolve().parents[3] / "logs" / "market-discovery"
 ACTIVE = {"queued", "running"}
 
 
+PHRASES = {
+    "trend-volume": "5·20·60일 이동평균이 정배열이고 전일 대비 거래량이 증가",
+    "liquid-trend": "5·20·60일 이동평균이 정배열인 종목 중 거래량 상위 20개",
+    "trend-strength": "5·20·60일 이동평균이 정배열인 종목 중 20일 수익률 상위 20개",
+    "new-high": "52주 신고가를 기록",
+    "high-20d-volume": "20일 신고가를 갱신하고 전일 대비 거래량이 증가",
+    "ytd-high": "연중 신고가를 기록",
+    "profile-breakout": "최근 5거래일 안에 20일 매물대를 상향 돌파",
+    "pullback": "최근 5거래일 안에 10일 신고가를 돌파한 뒤 1% 되돌림",
+    "trend-transition": "최근 5거래일 안에 20일 이동평균이 60일 이동평균을 골든크로스",
+    "short-cross": "최근 5거래일 안에 5일 이동평균이 20일 이동평균을 골든크로스",
+    "slope-up": "최근 5거래일 안에 20일 이동평균이 상승 반전",
+    "reversal-confirmed": "최근 5거래일 안에 20일 기준 추세전환이 3일 연속 확인",
+    "macd-zero": "최근 5거래일 안에 MACD(12,26,9)가 0선을 상향 돌파",
+    "stochastic-buy": "최근 5거래일 안에 Stochastic slow(10,5,5) 과매도 매수 신호 발생",
+    "low-52w": "52주 신저가를 기록",
+    "volume-growth": "거래량 증가율 상위 20개",
+}
+
+
 class DiscoveryService:
     def __init__(self, analysis, root=DEFAULT_ROOT, source_db=None, packet_builder=None, synthesizer=None,
                  preparer=None):
@@ -101,18 +121,32 @@ class DiscoveryService:
         return self.analysis.store.public(state)
 
     def recommendations(self, run_id=None, stock_code=None):
+        # (id, 그룹, 이름, 목적, [(strategy_id, within_days)]) — 보유 일봉으로 계산하는 목적별 예시. PHRASES는 입력창에 덧붙이는 조건 문장.
+        # 상태 조건은 기준일(1), 사건 조건(교차·돌파·반전)은 최근 5거래일 안 발생으로 잡아 후보를 확보한다.
         templates = [
-            ("trend-volume", "정배열 + 거래량 증가", "지속되는 추세에 거래가 붙는 후보 발견", ["sma_bullish_order", "volume_increase"]),
-            ("new-high", "52주 신고가", "긴 박스권을 벗어나는 종목 조사", ["high_52w"]),
-            ("trend-transition", "중기 추세 전환", "중기 방향이 바뀐 기업의 새 재료 조사", ["golden_cross_20_60"]),
-            ("liquid-trend", "정배열 중 거래량 상위", "거래가 활발한 추세 후보 발견", ["sma_bullish_order", "rank_volume"]),
+            ("trend-volume", "추세 지속", "정배열 + 거래량 증가", "지속되는 추세에 거래가 붙는 후보 발견", [("sma_bullish_order", 1), ("volume_increase", 1)]),
+            ("liquid-trend", "추세 지속", "정배열 중 거래량 상위", "거래가 활발한 추세 후보 발견", [("sma_bullish_order", 1), ("rank_volume", 1)]),
+            ("trend-strength", "추세 지속", "정배열 중 20일 수익률 상위", "최근 한 달 가장 강했던 추세 종목 발견", [("sma_bullish_order", 1), ("rank_return_20d", 1)]),
+            ("new-high", "돌파·신고가", "52주 신고가", "긴 박스권을 벗어나는 종목 조사", [("high_52w", 1)]),
+            ("high-20d-volume", "돌파·신고가", "20일 신고가 + 거래량 증가", "단기 고점을 거래량과 함께 넘는 후보 발견", [("high_20d", 1), ("volume_increase", 1)]),
+            ("ytd-high", "돌파·신고가", "연중 신고가", "올해 최고가를 새로 쓴 종목 조사", [("high_ytd", 1)]),
+            ("profile-breakout", "돌파·신고가", "20일 매물대 상향돌파", "저항 구간을 최근 5거래일 안에 넘은 후보 발견", [("volume_profile_up_20d", 5)]),
+            ("pullback", "돌파·신고가", "신고가 돌파 후 눌림", "10일 신고가를 넘긴 뒤 1% 되돌린 종목 관찰", [("breakout_pullback_10d", 5)]),
+            ("trend-transition", "추세 전환", "중기 추세 전환", "중기 방향이 바뀐 기업의 새 재료 조사", [("golden_cross_20_60", 5)]),
+            ("short-cross", "추세 전환", "단기 골든크로스(5,20)", "짧은 조정 뒤 다시 방향을 잡는 종목 발견", [("golden_cross_5_20", 5)]),
+            ("slope-up", "추세 전환", "20일 이평 상승반전", "하락하던 중기선이 고개를 든 종목 조사", [("sma_slope_up_20d", 5)]),
+            ("reversal-confirmed", "추세 전환", "추세전환 확인형", "전환 뒤 며칠 유지된 종목만 추리기", [("trend_reversal_confirmed", 5)]),
+            ("macd-zero", "모멘텀 지표", "MACD 0선 상향돌파", "모멘텀이 플러스로 넘어온 종목 발견", [("macd_zero_cross", 5)]),
+            ("stochastic-buy", "모멘텀 지표", "Stochastic 과매도 매수 신호", "짧은 과매도 뒤 반등 초입 후보 관찰", [("stochastic_slow_buy", 5)]),
+            ("low-52w", "바닥·역발상", "52주 신저가", "장기 바닥권에 있는 기업의 사정 조사", [("low_52w", 1)]),
+            ("volume-growth", "거래 활황", "거래량 증가율 상위", "전일 대비 거래가 가장 크게 늘어난 종목 관찰", [("rank_volume_growth", 1)]),
         ]
         definitions = {item["id"]: item for item in catalog()}
         items = []
-        for key, name, purpose, ids in templates:
+        for key, group, name, purpose, conditions in templates:
             spec = AnalysisSpec.model_validate({"mode": "catalog", "strategy_conditions": [
-                {"strategy_id": code, "params": definitions[code]["defaults"], "within_days": 1} for code in ids]}).model_dump(mode="json")
-            items.append({"id": key, "name": name, "purpose": purpose,
+                {"strategy_id": code, "params": definitions[code]["defaults"], "within_days": within} for code, within in conditions]}).model_dump(mode="json")
+            items.append({"id": key, "group": group, "name": name, "purpose": purpose, "phrase": PHRASES.get(key),
                           "reason": "보유 일봉으로 계산하는 목적별 탐색 예시입니다. 성과 순위에 따른 추천이 아닙니다.",
                           "limitations": ["종목별 이력 부족·가격 보정·관측 거래일의 한계는 실행 결과에서 확인합니다.",
                                            "기술적 신호만으로 자금 유입의 원인을 확인할 수 없습니다."],
