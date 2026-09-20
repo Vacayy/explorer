@@ -389,3 +389,12 @@ Explorer는 WAL을 사용하므로 실행 중인 `.db` 파일만 파일 복사�
 - CodeAct/조사 모델에는 원본 쓰기나 수집 도구를 주지 않는다. 신뢰된 수집기만 허용된 자료를 보강한다. 전 시장 재수집·원본 삭제·글로벌 콜/인과 파이프라인 실행은 포함하지 않는다.
 - 공개일과 수집일을 구분한다. 과거 조사에서 새로 확보한 정정본을 당시 이용 가능한 자료로 가장하지 않는다. 이전 검색 스냅샷·조사 근거는 재작성하지 않는다. 콜/IR/HS의 지원 경로·귀속이 없으면 공백을 명시한다.
 
+## 13. 검색 전 질문 다듬기 (2026-09-20, D-186)
+
+사용자 요구: 시간축·세부 매개변수가 애매한 채로 검색되지 않게 하고, "바닥 찍고 올라오는 거"처럼 두루뭉술한 말도 전략으로 풀어 주기. 결정: 다듬기는 **버튼으로만**(검색마다 자동 개입 없음), 결과는 **문장으로 입력창에 반영**하고 실행은 기존 해석 경로를 그대로 탄다(확정 spec 직접 실행은 기각 — 사용자가 문장을 더 고치는 여지를 남긴다).
+
+- `POST /api/analysis/refine {question}` → `pipeline/market_analysis/refine.py`. 모델 1콜(`model.structured_call`, 도구 없음, 상한 $0.30·90초), 실행(run)을 만들지 않는다. 입력은 질문 + 일봉 카탈로그(10분봉 제외).
+- 응답: `restatement`(재진술) · `conditions[]`(text·원문 구절·strategy_id·params·within_days·confidence·`alternatives[]`) · `unsupported[]`(카탈로그로 평가 불가, 이유) · `clarifications[]`(id·질문·options[label,text]·selected) · `question`(조립 문장). 호스트는 strategy_id/params를 `normalize_condition`으로 검증해 어긋나면 unsupported로 옮기고, `within_days`·`min_market_cap`은 질문에 명시(`specified`)되지 않았으면 항상 선택지를 붙인다.
+- 두루뭉술한 표현: 모델이 대표 해석 하나를 고르고 2~3개 대안을 초보자가 구분할 수 있는 문장으로 제시, confidence low. 실측: "바닥 찍고 올라오는" → 20일 이평 상승반전(대안: 추세전환 확인형·단기 골든크로스·Stochastic 매수), "요즘 거래 많이 붙는" → 5일 최고거래량 갱신(대안: 전일 대비 거래량 증가), "너무 작은 회사는 빼고" → 시총 하한 선택지. $0.09.
+- 화면(`analysis/QuestionRefiner`): 입력창 아래 "AI와 다듬기" → 재진술 · 조건(대안 있으면 Select) · 평가 불가 조건 안내 · 정해지지 않은 점(ToggleGroup 칩) · 조립 문장 미리보기 → "입력창에 반영". 조립 규칙은 서버 `compose_question`과 동일("다음 조건을 모두 만족하는 종목을 찾아줘." + 조건 줄 + 선택지 줄).
+

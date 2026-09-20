@@ -3,6 +3,7 @@ import asyncio
 import json
 import threading
 
+from pydantic import BaseModel, ConfigDict, Field
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
@@ -53,6 +54,24 @@ def stop_worker():
 def create_run(body: RunRequest):
     try:
         return service().create(body.model_dump(mode="json"))
+    except Exception as exc:
+        error(exc)
+
+
+class RefineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    question: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/refine")
+def refine(body: RefineRequest):
+    """질문 다듬기(D-186) — 사용자 클릭 1회당 모델 1콜, 실행은 만들지 않는다."""
+    from pipeline.market_analysis.model import ModelError
+    from pipeline.market_analysis.refine import refine_question
+    try:
+        return refine_question(body.question)
+    except ModelError as exc:
+        raise HTTPException(502, str(exc)) from exc
     except Exception as exc:
         error(exc)
 

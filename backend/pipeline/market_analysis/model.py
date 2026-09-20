@@ -8,6 +8,7 @@ import selectors
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -152,3 +153,72 @@ class ClaudeModel:
             raise ModelError("모델 액션이 검증 스키마와 일치하지 않습니다.", cost) from exc
         return ModelReply(action=action, cost_usd=float(cost))
 
+
+def structured_call(system: str, context: dict, schema: dict, *, budget: float, timeout: float,
+                    model: str | None = None) -> tuple[dict, float]:
+    """One tool-free CLI call that must return JSON matching `schema`. Returns (payload, cost_usd).
+
+    Shares the audited isolation flags of ClaudeModel; used by host features that need a
+    structured answer without the CodeAct loop (question refinement, research synthesis).
+    """
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="explorer-structured-") as directory:
+        cwd = Path(directory).resolve(strict=True)
+        adapter = ClaudeModel(cwd, model=model)
+        adapter._preflight()
+        command = adapter.command(system, budget)
+        command[command.index("--json-schema") + 1] = json.dumps(schema)
+        keep = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
+        env = {k: v for k, v in os.environ.items() if k in keep}
+        env.update({"CLAUDE_CODE_SAFE_MODE": "1", "DISABLE_AUTOUPDATER": "1"})
+        path = cwd / "request.json"
+        path.write_bytes(json.dumps(context, ensure_ascii=False, allow_nan=False).encode())
+        remaining = timeout - (time.monotonic() - started)
+        if remaining <= 1:
+            raise ModelError("모델 호출 시간이 남지 않았습니다.", 0)
+        with path.open("rb") as stdin:
+            # Guard fires one second after our own deadline so the loop reports the timeout.
+            process = subprocess.Popen(guarded_command(cwd, command, remaining + 1), stdin=stdin,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env,
+                                       close_fds=True, start_new_session=True)
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        selector = selectors.DefaultSelector()
+        try:
+            for name in buffers:
+                stream = getattr(process, name)
+                os.set_blocking(stream.fileno(), False)
+                selector.register(stream, selectors.EVENT_READ, name)
+            while selector.get_map():
+                if time.monotonic() - started > timeout:
+                    raise ModelError("모델이 시간 제한 안에 응답하지 않았습니다. 호출 비용은 미확인입니다.")
+                for key, _ in selector.select(.1):
+                    chunk = os.read(key.fileobj.fileno(), 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    buffers[key.data].extend(chunk)
+                    if sum(map(len, buffers.values())) > 2 * 1024 * 1024:
+                        raise ModelError("모델 출력 크기 제한을 초과했습니다.")
+            process.wait(timeout=5)
+        finally:
+            selector.close()
+            kill_group(process)
+            process.stdout.close()
+            process.stderr.close()
+    try:
+        response = json.loads(buffers["stdout"])
+    except (ValueError, TypeError) as exc:
+        detail = buffers["stderr"].decode(errors="replace").strip()[:300]
+        raise ModelError(f"모델이 JSON을 반환하지 않았습니다 (종료 코드 {process.returncode})." + (f" stderr: {detail}" if detail else "")) from exc
+    cost = response.get("total_cost_usd")
+    if not isinstance(cost, (int, float)) or isinstance(cost, bool) or not math.isfinite(cost) or cost < 0:
+        raise ModelError("모델 비용을 확인할 수 없습니다.")
+    if process.returncode or response.get("is_error"):
+        raise ModelError("모델 호출 실패: " + str(response.get("result", ""))[:500], cost)
+    raw = response.get("structured_output")
+    if raw is None:
+        try:
+            raw = json.loads(response["result"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise ModelError("모델 결과 형식이 올바르지 않습니다.", cost) from exc
+    return raw, float(cost)
