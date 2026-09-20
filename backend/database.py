@@ -20,6 +20,8 @@ def init_db():
     cur.executescript(STUDY_SCHEMA)
     from pipeline.watch_rules import SCHEMA as WATCH_SCHEMA  # 종목 묶음·감시 (D-185)
     cur.executescript(WATCH_SCHEMA)
+    from pipeline.company_profile import SCHEMA as PROFILE_SCHEMA  # 웹 조사 기업 개요 (D-188)
+    cur.executescript(PROFILE_SCHEMA)
     from pipeline.study_projects import migrate as migrate_study_projects
     migrate_study_projects(conn)
     from pipeline.study_actions import migrate as migrate_study_actions

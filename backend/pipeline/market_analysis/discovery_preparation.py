@@ -45,6 +45,7 @@ def pending_preparation():
         {"id": "disclosures", "label": "최근 공시", "status": "pending", "detail": "최근 1년의 공시 목록을 확인합니다."},
         {"id": "call", "label": "IR·컨퍼런스콜", "status": "unsupported", "detail": "국내 기업의 자동 수집 경로가 없습니다. 기존 저장 원문은 조사에 활용합니다."},
         {"id": "trade", "label": "수출입 통계", "status": "unsupported", "detail": "기업·품목 연결의 확인이 필요합니다. 기존 통계와 연결 근거를 읽습니다."},
+        {"id": "web", "label": "웹 조사 · 사업보고서·IR·뉴스·리포트", "status": "pending", "detail": "자료 준비 뒤 웹에서 기업 개요와 최근 사건의 발췌를 확보합니다."},
     ]}
 
 

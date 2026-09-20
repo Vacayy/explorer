@@ -36,6 +36,7 @@ class CreateCase(Action):
     stock_code: str = Field(pattern=r"^[0-9A-Z]{6}$")
     question: str = Field(default="이 종목에 관심이 모이는 이유와 반대 근거를 조사해 주세요.", min_length=1, max_length=4000)
     start_research: bool = False
+    web: bool = True  # 웹 조사 레인(D-188) — 사업보고서·IR·뉴스·리포트 발췌
 
 
 class SaveNote(Action):
@@ -56,6 +57,7 @@ class SaveNote(Action):
 class ResearchRequest(Action):
     question: str = Field(min_length=1, max_length=4000)
     as_of: date | None = None
+    web: bool = True
 
     @field_validator("as_of")
     @classmethod

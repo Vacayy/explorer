@@ -148,6 +148,40 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(second["changes"]["added_ids"], ["doc:2"])
         self.assertEqual(second["changes"]["previous_run_id"], first["id"])
 
+    def test_web_lane_records_collector_outcome_without_failing_research(self):
+        from pipeline.market_analysis.discovery_preparation import pending_preparation
+        case = self.case()
+        self.service.preparer = lambda *args, **kwargs: {**pending_preparation(), "status": "completed"}
+        self.service.packet_builder = lambda *args, **kwargs: {"as_of": "2026-09-19", "warnings": [], "lanes": [{"id": "web", "status": "partial", "items": [{"id": "doc:7", "excerpt": "웹 발췌"}]}]}
+        self.service.synthesizer = lambda *args, **kwargs: {"summary": "요약", "claims": [], "questions": [], "limitations": []}
+        calls = []
+        def collector(code, name, sector, reason, *, cancel):
+            calls.append((code, name, reason))
+            return {"sources": [{"id": 1}, {"id": 2}], "overview": "고압 수소 어닐링 장비 회사"}, False
+        self.service.web_collector = collector
+        run = self.service.research(case["id"], {"question": "웹 포함 조사", "request_key": "research-web-1", "web": True})
+        self.service._execute(run["id"])
+        done = self.service.case(case["id"])["research_runs"][0]
+        web = next(i for i in done["preparation"]["items"] if i["id"] == "web")
+        self.assertEqual(web["status"], "collected", web)
+        self.assertIn("출처 2건", web["detail"])
+        self.assertEqual(calls[0][:2], ("000001", "테스트"))
+        self.assertEqual(calls[0][2], "추세가 유지되는 기업", "the discovery question is passed as the research reason")
+        self.assertEqual(done["status"], "partial")
+        # Unchecked box → skipped, collector never called; collector failure → lane failed, research still completes.
+        skipped = self.service.research(case["id"], {"question": "웹 제외", "request_key": "research-web-2", "web": False})
+        self.service._execute(skipped["id"])
+        self.assertEqual(next(i for i in self.service.case(case["id"])["research_runs"][0]["preparation"]["items"] if i["id"] == "web")["status"], "skipped")
+        self.assertEqual(len(calls), 1)
+        def broken(*args, **kwargs):
+            raise RuntimeError("검색 도구 오류")
+        self.service.web_collector = broken
+        failed = self.service.research(case["id"], {"question": "웹 실패", "request_key": "research-web-3"})
+        self.service._execute(failed["id"])
+        latest = self.service.case(case["id"])["research_runs"][0]
+        self.assertEqual(next(i for i in latest["preparation"]["items"] if i["id"] == "web")["status"], "failed")
+        self.assertEqual(latest["status"], "partial", "web failure degrades the lane, not the research")
+
     def test_cancel_running_research_cannot_be_overwritten_by_completion(self):
         case = self.case()
         run = self.service.research(case["id"], {"question": "조사", "request_key": "research-001"})

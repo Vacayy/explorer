@@ -41,7 +41,7 @@ export function discoveryPriceAdjustment(value: unknown): string | undefined {
 }
 
 export function preparationStatus(status: string): string {
-  return ({ pending: '확인 대기', checking: '보유 자료 확인 중', collecting: '수집 중', available: '보유 자료 확인', collected: '수집 완료', unpublished: '자료원에서 미제공', unsupported: '자동 수집하지 않음', failed: '수집 실패 · 재시도 가능' } as Record<string, string>)[status] ?? '확인 필요'
+  return ({ pending: '확인 대기', checking: '보유 자료 확인 중', collecting: '수집 중', available: '보유 자료 확인', collected: '수집 완료', unpublished: '자료원에서 미제공', unsupported: '자동 수집하지 않음', failed: '수집 실패 · 재시도 가능', skipped: '이번 조사에서 생략' } as Record<string, string>)[status] ?? '확인 필요'
 }
 
 export function researchPhase(phase: string | undefined, status: string): string {
