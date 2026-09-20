@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { type ColumnDef, type SortingState, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ExternalLink, FolderPlus } from 'lucide-react'
@@ -24,6 +24,16 @@ const CHECK_LABELS: Record<string, string> = { market_cap: '시가총액', ihs: 
 function CandidateChart({ runId, candidate, maPeriod, catalog = false, definitions = [] }: { runId: string; candidate: AnalysisCandidate; maPeriod: number; catalog?: boolean; definitions?: StrategyDefinition[] }) {
   const chart = useAnalysisChart(runId, candidate.code)
   const addMember = useAddMember()
+  const [wholeRange, setWholeRange] = useState(false)
+  // Structure verdicts live in a short window; open the chart there (with ~20 bars of context) instead of the full history.
+  const structureRange = useMemo(() => {
+    if (!chart.data) return null
+    const times = [...(chart.data.lines ?? []).flatMap(line => line.points.map(point => point.time)), ...chart.data.markers.filter(marker => marker.kind === 'pivot').map(marker => marker.time)]
+    if (!times.length || !chart.data.prices.length) return null
+    const earliest = times.reduce((min, time) => time < min ? time : min)
+    const start = Math.max(0, chart.data.prices.findIndex(bar => bar.time >= earliest) - 20)
+    return { from: chart.data.prices[start].time, to: chart.data.prices[chart.data.prices.length - 1].time }
+  }, [chart.data])
   return <Card id="discovery-candidate-preview" className="min-w-0 scroll-mt-4">
     <CardHeader className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="text-section font-semibold">{candidate.name}</h3><p className="mt-1 text-caption text-muted-foreground">{candidate.code} · 시가총액 {formatKrw(candidate.market_cap)}</p></div><div className="flex flex-wrap items-start gap-2"><GroupPicker label="묶음에 추가" icon={<FolderPlus className="size-3.5" />} busy={addMember.isPending} onPick={async id => { const detail = await addMember.mutateAsync({ groupId: id, stock_code: candidate.code }); toast.success(`${candidate.name}을(를) ‘${detail.name}’에 추가했습니다.`) }} /><CandidateDiscovery runId={runId} candidate={candidate} /></div></div>
@@ -36,9 +46,9 @@ function CandidateChart({ runId, candidate, maPeriod, catalog = false, definitio
         <div role="img" aria-label={catalog ? `${candidate.name} 일봉과 확인된 전략 신호 날짜` : `${candidate.name} 일봉과 ${maPeriod}일 이동평균, 넥라인, 확인된 패턴 날짜`}>
           <CandlestickChart data={chart.data.prices} height={280}
             markers={chart.data.markers.map(marker => ({ time: marker.time, direction: marker.kind === 'head' || marker.kind.includes('shoulder') ? 'up' : 'down', text: marker.label }))}
-            overlays={[...(chart.data.ma.length ? [{ id: 'ma', title: `SMA${maPeriod}`, token: '--chart-1', data: chart.data.ma }] : []), ...(chart.data.neckline.length ? [{ id: 'neckline', title: '넥라인', token: '--chart-2', data: chart.data.neckline, dashed: true }] : []), ...(chart.data.lines ?? []).map((line, index) => ({ id: line.id, title: line.label, token: `--chart-${(index % 3) + 3}`, data: line.points, dashed: true }))]} />
+            initialRange={wholeRange ? null : structureRange} overlays={[...(chart.data.ma.length ? [{ id: 'ma', title: `SMA${maPeriod}`, token: '--chart-1', data: chart.data.ma }] : []), ...(chart.data.neckline.length ? [{ id: 'neckline', title: '넥라인', token: '--chart-2', data: chart.data.neckline, dashed: true }] : []), ...(chart.data.lines ?? []).map((line, index) => ({ id: line.id, title: line.label, token: `--chart-${(index % 3) + 3}`, data: line.points, dashed: true }))]} />
         </div>
-        <p className="text-caption text-muted-foreground">일봉{chart.data.ma.length > 0 && ` · SMA${maPeriod}`}{chart.data.neckline.length > 0 && ' · 넥라인(점선)'}{(chart.data.lines?.length ?? 0) > 0 && ' · 구조선(점선)과 스윙 점'}. 마커는 이 실행에서 확인한 날짜를 표시합니다.</p>
+        <p className="text-caption text-muted-foreground">일봉{chart.data.ma.length > 0 && ` · SMA${maPeriod}`}{chart.data.neckline.length > 0 && ' · 넥라인(점선)'}{(chart.data.lines?.length ?? 0) > 0 && ' · 구조선(점선)과 스윙 점'}. 마커는 이 실행에서 확인한 날짜를 표시합니다.{structureRange && <Button type="button" variant="ghost" size="sm" className="ml-2 h-6 px-2 text-caption" onClick={() => setWholeRange(value => !value)}>{wholeRange ? '구조 구간만 보기' : '전체 기간 보기'}</Button>}</p>
         {!!chart.data.markers.length && <div className="flex flex-wrap gap-2">{chart.data.markers.map((marker, index) => <Badge key={`${marker.time}-${index}`} variant="outline" className="font-normal">{marker.label} {marker.time} · {formatNumber(marker.price)}원</Badge>)}</div>}
       </> : <p className="text-sm text-muted-foreground">이 실행의 차트 자료가 없습니다.</p>)}
       {catalog || definitions.length > 0 ? <Table aria-label={`${candidate.name} 조건별 계산 값`}>

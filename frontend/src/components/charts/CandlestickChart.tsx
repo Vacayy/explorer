@@ -19,6 +19,8 @@ interface CandlestickChartProps {
   height?: number
   formatValue?: (value: number) => string
   overlays?: { id: string; title: string; token: string; data: { time: string; value: number }[]; dashed?: boolean }[]
+  /** Initial visible window (inclusive dates present in `data`). Omitted → fit all data. */
+  initialRange?: { from: string; to: string } | null
 }
 
 // Korean stock convention: red = up, blue = down
@@ -35,6 +37,7 @@ export default function CandlestickChart({
   height = 400,
   formatValue,
   overlays,
+  initialRange,
 }: CandlestickChartProps) {
   const onMarkerClickRef = useRef(onMarkerClick)
   onMarkerClickRef.current = onMarkerClick
@@ -121,8 +124,12 @@ export default function CandlestickChart({
   useEffect(() => {
     if (!candleSeriesRef.current) return
     candleSeriesRef.current.setData(data)
-    chartRef.current?.timeScale().fitContent()
-  }, [data])
+    const scale = chartRef.current?.timeScale()
+    if (!scale) return
+    const known = new Set(data.map(bar => bar.time))
+    if (initialRange && known.has(initialRange.from) && known.has(initialRange.to)) scale.setVisibleRange({ from: initialRange.from, to: initialRange.to })
+    else scale.fitContent()
+  }, [data, initialRange?.from, initialRange?.to])
 
   // 특징일 마커 — 상승=아래 빨강 화살표, 하락=위 파랑 화살표
   useEffect(() => {
