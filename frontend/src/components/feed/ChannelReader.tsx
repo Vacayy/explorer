@@ -29,10 +29,11 @@ export function ChannelReader() {
   const reading = params.get('reading') === 'summary' ? 'summary' : 'original'
   const page = Math.max(1, Math.min(100, Math.floor(Number(params.get('reader_page'))) || 1))
   const query = params.get('channel_q') || ''
-  const platform = params.get('channel_type') || 'all'
+  const requestedPlatform = params.get('channel_type') || 'all'
+  const platform = Object.hasOwn(platforms, requestedPlatform) ? requestedPlatform as keyof typeof platforms : 'all'
   const readerOpen = params.get('reader_open') === '1' || (!params.has('reader_open') && !!channel)
   const directory = useTimelineChannels(until)
-  const timeline = useTimeline({ scope: 'all', kind: 'all', source: 'all', channel: channel || undefined, page, until })
+  const timeline = useTimeline({ scope: platform === 'system' ? 'system' : platform === 'all' ? 'all' : 'sources', kind: 'all', source: platform === 'system' ? 'all' : platform, channel: channel || undefined, page, until })
   const selected = directory.data?.items.find(item => item.id === channel)
   const entries = (directory.data?.items || []).filter(item =>
     (platform === 'all' || item.platform === platform) &&
@@ -41,7 +42,7 @@ export function ChannelReader() {
   const list = useRef<HTMLDivElement>(null)
   const reader = useRef<HTMLDivElement>(null)
   const focusTarget = useRef<'heading' | 'list' | null>(null)
-  const positionKey = `${channel}:${page}:${reading}`
+  const positionKey = `${platform}:${channel}:${page}:${reading}`
   const listKey = `directory:${platform}:${query}`
   const patch = (values: Record<string, string | null>, replace = false) => setParams(prev => {
     const next = new URLSearchParams(prev)
@@ -74,10 +75,18 @@ export function ChannelReader() {
   }
   function paginate(next: number) {
     focusTarget.current = 'heading'
-    scrollPositions.set(`${channel}:${next}:${reading}`, 0)
+    scrollPositions.set(`${platform}:${channel}:${next}:${reading}`, 0)
     patch({ reader_page: String(next), reader_until: timeline.data?.until || until, reader_open: '1' })
   }
-  const title = !channel ? '전체 업데이트' : selected?.name || (directory.isLoading ? '소스 불러오는 중' : '선택한 소스')
+  const allTitle = platform === 'all' ? '전체 업데이트' : `${platforms[platform]} 전체`
+  const allCount = (directory.data?.items || []).filter(item => platform === 'all' || item.platform === platform).reduce((sum, item) => sum + item.count, 0)
+  function selectPlatform(value: string) {
+    if (value === platform) return
+    focusTarget.current = 'heading'
+    scrollPositions.set(`${value}::1:${reading}`, 0)
+    patch({ channel_type: value === 'all' ? null : value, channel: null, reader_page: null, reader_until: until })
+  }
+  const title = !channel ? allTitle : selected?.name || (directory.isLoading ? '소스 불러오는 중' : '선택한 소스')
 
   return <div className="channel-workspace" data-reader-open={readerOpen}>
     <aside className="channel-directory" aria-label="피드 소스 목록">
@@ -85,13 +94,13 @@ export function ChannelReader() {
         <div className="flex items-center justify-between gap-2"><h2 className="text-section font-semibold">내 피드</h2><Button asChild variant="ghost" size="sm"><Link to="/sources">소스 관리</Link></Button></div>
         <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 size-4 text-muted-foreground" /><Input aria-label="소스 검색" placeholder="채널, 기업, 인물 검색" value={query} onChange={event => patch({ channel_q: event.target.value || null }, true)} className="pl-9" /></div>
         <div className="channel-type-strip" role="group" aria-label="소스 종류" tabIndex={0}>
-          {[['all', '전체'], ...Object.entries(platforms)].map(([value, label]) => <Button key={value} variant={platform === value ? 'secondary' : 'ghost'} size="sm" className="shrink-0 px-2 text-caption" aria-pressed={platform === value} onClick={() => patch({ channel_type: value === 'all' ? null : value })}>{label}</Button>)}
+          {[['all', '전체'], ...Object.entries(platforms)].map(([value, label]) => <Button key={value} variant={platform === value ? 'secondary' : 'ghost'} size="sm" className="shrink-0 px-2 text-caption" aria-pressed={platform === value} onClick={() => selectPlatform(value)}>{label}</Button>)}
         </div>
       </div>
       <div ref={list} className="channel-list" tabIndex={0} aria-label="소스 목록 스크롤" onScroll={event => { if (directory.data) scrollPositions.set(listKey, event.currentTarget.scrollTop) }}>
         <Button variant="ghost" className="channel-entry" aria-pressed={!channel} onClick={() => select('')}>
-          <span className="min-w-0 flex-1 text-left"><span className="block font-semibold">전체 업데이트</span><span className="block text-caption text-muted-foreground">팔로우한 소스와 Explorer</span></span>
-          {directory.data && <span className="channel-count" title="저장된 전체 게시물 수">{formatNumber(directory.data.total)}</span>}
+          <span className="min-w-0 flex-1 text-left"><span className="block font-semibold">{allTitle}</span><span className="block text-caption text-muted-foreground">{platform === 'all' ? '팔로우한 소스와 Explorer' : platform === 'system' ? 'Explorer의 저장된 업데이트' : `팔로우한 ${platforms[platform]} 소스`}</span></span>
+          {directory.data && <span className="channel-count" title="저장된 전체 게시물 수">{formatNumber(allCount)}</span>}
         </Button>
         {directory.isLoading && <div className="space-y-3 p-4" role="status" aria-label="소스 불러오는 중">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>}
         {directory.isError && <ErrorState message="소스 목록을 불러오지 못했습니다." onRetry={() => void directory.refetch()} />}
@@ -104,12 +113,12 @@ export function ChannelReader() {
       <header className="reader-header">
         <Button variant="ghost" size="icon" className="reader-back shrink-0" aria-label="소스 목록으로" onClick={() => { focusTarget.current = 'list'; patch({ reader_open: '0' }) }}><ArrowLeft aria-hidden="true" /></Button>
         <div className="min-w-0 flex-1"><h2 id="reader-title" ref={heading} tabIndex={-1} className="truncate text-section font-semibold outline-offset-4">{title}</h2><p className="text-caption text-muted-foreground">{selected ? `${channelLabel(selected)} · 저장 ${formatNumber(selected.count)}건 · ` : ''}최신순</p></div>
-        <div className="reader-actions">{selected?.platform !== 'system' && <SegmentTabs tabs={[{ value: 'original', label: '원문' }, { value: 'summary', label: '요약' }]} value={reading} onChange={value => patch({ reading: value })} />}
-          <Button variant="ghost" size="icon" aria-label="피드 새로고침" disabled={timeline.isFetching || directory.isFetching} onClick={() => { scrollPositions.set(`${channel}:1:${reading}`, 0); patch({ reader_until: new Date().toISOString(), reader_page: null }) }}><RefreshCw aria-hidden="true" className={timeline.isFetching ? 'animate-spin' : ''} /></Button></div>
+        <div className="reader-actions">{platform !== 'system' && selected?.platform !== 'system' && <SegmentTabs tabs={[{ value: 'original', label: '원문' }, { value: 'summary', label: '요약' }]} value={reading} onChange={value => patch({ reading: value })} />}
+          <Button variant="ghost" size="icon" aria-label="피드 새로고침" disabled={timeline.isFetching || directory.isFetching} onClick={() => { scrollPositions.set(`${platform}:${channel}:1:${reading}`, 0); patch({ reader_until: new Date().toISOString(), reader_page: null }) }}><RefreshCw aria-hidden="true" className={timeline.isFetching ? 'animate-spin' : ''} /></Button></div>
       </header>
       <div ref={reader} className="reader-scroll" tabIndex={0} aria-label="게시물 스크롤" onScroll={event => { if (timeline.data) scrollPositions.set(positionKey, event.currentTarget.scrollTop) }}>
         <div className="reader-articles" aria-busy={timeline.isFetching}>
-          <p className="pb-2 text-caption text-muted-foreground">{selected?.platform === 'system' ? 'Explorer가 저장한 요약과 수집 업데이트입니다.' : '내가 읽는 사람들의 생각과 쌓이는 시장 정보'}</p>
+          <p className="pb-2 text-caption text-muted-foreground">{(platform === 'system' || selected?.platform === 'system') ? 'Explorer가 저장한 요약과 수집 업데이트입니다.' : '내가 읽는 사람들의 생각과 쌓이는 시장 정보'}</p>
           {timeline.isLoading && <div role="status" aria-label="게시물 불러오는 중" className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-48 w-full" />)}</div>}
           {timeline.isError && <ErrorState message={timeline.data ? '갱신에 실패했습니다. 이전 자료를 표시합니다.' : '게시물을 불러오지 못했습니다.'} onRetry={() => void timeline.refetch()} />}
           {timeline.data?.items.map(item => item.document ? <DocumentCard key={item.id} doc={item.document} variant="row" timeLabel={item.time_label} reading={reading} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} /> : <SystemPost key={item.id} item={item} variant="row" presentation="reading" />)}

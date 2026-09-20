@@ -50,7 +50,7 @@ flowchart LR
 ## 4. 코드
 
 - `pipeline/chunks.py` — `chunk_text()` · `build_chunk_index(batch)`(변경·신규 문서만) · `search_chunks(q, k)`(RRF+쿼터 → 문서별 최고 청크).
-- `pipeline/rerank.py` — `rerank(query, texts)` lazy 싱글턴, `RERANK_MODEL=""`로 비활성, import 실패 시 None.
+- `pipeline/rerank.py` — `rerank(query, texts)` lazy 싱글턴, `RERANK_MODEL=""`로 비활성, import/캐시 로드 실패 시 None. **2026-09-18(D-175)**: 문서·청크 검색과 리랭커는 대화 요청 중 모델을 다운로드하지 않고 로컬 캐시만 사용한다. 없으면 BM25/RRF 순서를 유지한다. 인덱스 구축의 임베딩 모델 확보는 유지한다. 리랭커는 사전 확보된 캐시를 사용하며, 캐시 확보 후 프로세스를 다시 시작하면 로드를 재시도한다.
 - `pipeline/rag.retrieve_docs` — 청크 경로(후보 40 → 필터 → 리랭크 → k, excerpt=접두어+청크) / 폴백 문서 경로.
 - `scripts/build_search_index.py` — 기존 문서 인덱스 + 청크 인덱스 순차 빌드(cron 체인 동일 위치).
 

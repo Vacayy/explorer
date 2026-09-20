@@ -18,11 +18,11 @@ EMBED_DIM = 384
 _model = None  # lazy singleton (로드 ~2초)
 
 
-def _get_model():
+def _get_model(*, local_files_only=False):
     global _model
     if _model is None:
         from fastembed import TextEmbedding
-        _model = TextEmbedding(EMBED_MODEL)
+        _model = TextEmbedding(EMBED_MODEL, local_files_only=local_files_only)
     return _model
 
 
@@ -140,17 +140,24 @@ def search(q: str, k: int = 20) -> list[dict]:
     # 벡터
     vconn = _vec_conn()
     if vconn is not None:
-        has_vec = vconn.execute("SELECT count(*) FROM doc_vec").fetchone()[0]
-        if has_vec:
-            q_emb = list(_get_model().embed([q]))[0]
-            vec_rows = vconn.execute(
-                "SELECT rowid FROM doc_vec WHERE embedding MATCH ? AND k = 40 ORDER BY distance",
-                (_serialize(q_emb),),
-            ).fetchall()
-            for i, r in enumerate(vec_rows):
-                ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
-                vec_ids.append(r["rowid"])
-        vconn.close()
+        try:
+            has_vec = vconn.execute("SELECT count(*) FROM doc_vec").fetchone()[0]
+            if has_vec:
+                # Interactive reads must not wait for a model download. Index building
+                # remains responsible for warming the cache; BM25 is already available.
+                q_emb = list(_get_model(local_files_only=True).embed([q]))[0]
+                vec_rows = vconn.execute(
+                    "SELECT rowid FROM doc_vec WHERE embedding MATCH ? AND k = 40 ORDER BY distance",
+                    (_serialize(q_emb),),
+                ).fetchall()
+                for i, r in enumerate(vec_rows):
+                    ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
+                    vec_ids.append(r["rowid"])
+        except Exception:
+            # Missing/corrupt embeddings never discard the lexical matches above.
+            pass
+        finally:
+            vconn.close()
 
     half = max(1, k // 2)
     guaranteed = set(fts_ids[:half]) | set(vec_ids[:half])

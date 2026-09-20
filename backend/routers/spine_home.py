@@ -25,17 +25,18 @@ SIGNAL_LABEL = {
 
 
 class AiActivityItem(BaseModel):
-    type: str            # narrative | mega | report | scenario | digest
+    type: str            # narrative | mega | report | scenario | digest | youtube_digest
     title: str
     topic: str
     code: str | None = None          # digest면 종목코드(analyze 링크용)
     question_id: int | None = None   # scenario가 질문에 묶였으면(D-070) — /question/:id 링크용
+    doc_id: int | None = None        # 유튜브 AI 정리본의 /doc/:id 링크용
     created_at: str
 
 
 @router.get("/ai-activity", response_model=list[AiActivityItem])
 def ai_activity(days: int = Query(7, ge=1, le=30), limit: int = Query(30, ge=1, le=100)):
-    """지난 N일간 AI가 자동/승인 생성한 산출물 — 내러티브·리포트·파급·다이제스트, 최신순 통합 피드."""
+    """지난 N일간 AI가 생성한 산출물 — 유튜브 정리본 포함, 최신순 통합 피드."""
     conn = get_connection()
     since = f"-{days} days"
     items: list[dict] = []
@@ -58,6 +59,19 @@ def ai_activity(days: int = Query(7, ge=1, le=30), limit: int = Query(30, ge=1, 
         "WHERE d.created_at >= datetime('now', ?) AND e.aliases IS NOT NULL", (since,)):
         items.append({"type": "digest", "title": f"{r['name']} {r['period'].upper()} 요약",
                       "topic": r["name"], "code": r["code"], "created_at": r["created_at"]})
+    # Legacy digests have no job row; storing the completed digest updated fetched_at.
+    # A video's publication date is not the time its AI digest was generated.
+    for r in conn.execute("""
+        SELECT rd.id, rd.title,
+               COALESCE(datetime(j.updated_at, 'unixepoch'), datetime(rd.fetched_at)) AS created_at
+        FROM raw_documents rd
+        LEFT JOIN youtube_digest_jobs j ON j.doc_id=rd.id AND j.status='ok'
+        WHERE rd.source_type='youtube' AND rd.digest_status='ok'
+          AND trim(COALESCE(NULLIF(rd.markdown, ''), rd.raw_content, '')) <> ''
+          AND COALESCE(datetime(j.updated_at, 'unixepoch'), datetime(rd.fetched_at)) >= datetime('now', ?)
+        """, (since,)):
+        items.append({"type": "youtube_digest", "title": r["title"] or "유튜브 영상 요약",
+                      "topic": r["title"] or "", "doc_id": r["id"], "created_at": r["created_at"]})
     conn.close()
     items.sort(key=lambda x: x["created_at"] or "", reverse=True)
     return [AiActivityItem(**x) for x in items[:limit]]
