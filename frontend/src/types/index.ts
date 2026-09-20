@@ -829,3 +829,38 @@ export interface StudyAction {
     };
   } | null;
 }
+
+// 종목 묶음·기술적 감시 (docs/specs/portfolio-watch.md, D-185)
+export type StockGroupKind = 'watch' | 'portfolio';
+export interface WatchRule {
+  id: number; stock_code: string | null; strategy_id: string; label: string; params: Record<string, unknown>;
+  within_days: number; source_strategy_id: string | null; source_version: number | null;
+}
+export interface WatchRuleInput { strategy_id: string; params?: Record<string, unknown>; within_days?: number; source_strategy_id?: string | null; source_version?: number | null }
+export interface GroupSignal {
+  stock_code: string; name?: string; rule_id: number; as_of: string; strategy_id: string; label: string;
+  params: Record<string, unknown>; value: number | null; reference: number | null; signal_date: string | null;
+}
+export interface StockGroupMember {
+  id: number; group_id: number; stock_code: string; name: string; market: string | null;
+  quantity: number | null; avg_price: number | null; bought_at: string | null;
+  conviction: number | null; target_price: number | null; thesis: string | null; created_at: string;
+  close: number | null; change_pct: number | null; market_cap: number | null; price_date: string | null;
+  rule_count: number; signals: { rule_id: number; strategy_id: string; label: string; value: number | null; reference: number | null; signal_date: string | null }[];
+  unavailable: number; pnl: number | null; return_pct: number | null;
+}
+export interface StockGroupSummary {
+  id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
+  member_count: number; rule_count: number; last_as_of: string | null; today_signals: number;
+}
+export interface StockGroupList { items: StockGroupSummary[]; latest_trade_date: string | null; legacy_watchlist: { count: number; migrated: boolean } }
+export interface StockGroupDetail {
+  id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
+  members: StockGroupMember[]; rules: { default: WatchRule[]; members: Record<string, WatchRule[]> };
+  last_as_of: string | null; latest_trade_date: string | null; evaluation_pending: boolean; today_signals: number;
+}
+export interface StrategyCatalogItem {
+  id: string; label: string; category: string; timeframe?: string; description?: string; formula?: string;
+  parameters: Record<string, { type: 'integer' | 'number' | 'string'; label?: string; min?: number; max?: number; options?: string[] }>;
+  defaults: Record<string, unknown>;
+}

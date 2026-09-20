@@ -31,6 +31,7 @@ import ChatPage from "@/components/chat/ChatPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import ProjectsPage from "@/components/study/ProjectsPage"
 import ProjectPage from "@/components/study/ProjectPage"
+import StocksPage from "@/components/follow/StocksPage"
 import StudyPage from "@/components/study/StudyPage"
 import DocPage from "@/components/doc/DocPage"
 import SynthesisPage from "@/components/synthesis/SynthesisPage"
@@ -59,9 +60,9 @@ import ScreenerPage from "@/components/discovery/ScreenerPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
-import SummaryPage from "@/components/summary/SummaryPage"
 import BacktestPage from "@/components/analysis/BacktestPage"
 import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
+import SummaryPage from "@/components/summary/SummaryPage"
 import CompanyFinancials from "@/components/company/CompanyFinancials"
 import { CompanyEvidence } from "@/components/company/CompanyEvidence"
 import BusinessPage from "@/components/business/BusinessPage"
@@ -110,19 +111,19 @@ function Layout() {
 
   const [feedRailOpen, setFeedRailOpen] = useState(false)
   const [detailRailOpen, setDetailRailOpen] = useState(false)
-  const detailRoute = pathname.startsWith("/study/") || pathname.startsWith("/doc/") || (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic"))
   const [companyRailOpen, setCompanyRailOpen] = useState(false)
   const [discoveryRailOpen, setDiscoveryRailOpen] = useState(false)
   const discoveryRoute = pathname === "/discover" || pathname.startsWith("/analysis/backtests")
   const companyRoute = !!stockCode || /^\/us\/[^/]+/.test(pathname) || pathname === "/company"
+  const detailRoute = pathname.startsWith("/study/") || pathname.startsWith("/doc/") || (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic"))
   const homeFeed = pathname === "/home" && getHomeMode(search) === "feed"
 
   return (
     <div className="min-h-screen bg-background">
       <Omnibar />
       <DetailNavigationMemory />
-      <SidebarProvider
       <DiscoveryNavigationMemory />
+      <SidebarProvider
         open={discoveryRoute ? discoveryRailOpen : companyRoute ? companyRailOpen : detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
         onOpenChange={discoveryRoute ? setDiscoveryRailOpen : companyRoute ? setCompanyRailOpen : detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
         style={{ "--sidebar-width": "16rem" } as CSSProperties}
@@ -135,8 +136,8 @@ function Layout() {
             style={{ "--shell-offset": subNav ? "calc(var(--page-inset) + var(--dock-reserve) + var(--subnav-height))" : "calc(var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
           >
             {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
-            <Outlet />
             {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
+            <Outlet />
           </div>
         </SidebarInset>
         <Dock stockCode={stockCode} companyName={company?.corp_name} />
@@ -212,6 +213,7 @@ export default function App() {
             <Route path="home" element={<HomePage />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<SourcesPage />} />
+            <Route path="follow/stocks" element={<StocksPage />} />
             <Route path="follow/universe" element={<UniversePage />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
@@ -247,9 +249,9 @@ export default function App() {
             <Route path="discover/alt-data" element={<OnchainPage />} />
 
             {/* Analysis */}
+            <Route path="analysis/backtests" element={<BacktestPage />} />
             <Route path="analyze/compare" element={<ComparePage />} />
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
-            <Route path="analysis/backtests" element={<BacktestPage />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
             <Route path="analyze/:stockCode/financials" element={<AnalyzePage tab="financials" />} />
             <Route path="analyze/:stockCode/valuation" element={<AnalyzePage tab="valuation" />} />
