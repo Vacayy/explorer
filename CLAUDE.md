@@ -55,6 +55,9 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 - Phase 템플릿: skills/product-orchestrator/references/phases.md
 - 전문가 프롬프트: skills/product-orchestrator/references/expert-prompts.md
 
+### 기능 개발 외 작업
+- 버그 수정·리팩토링·조사는 오케스트레이터 대신 **.claude/skills/engineering-playbooks/SKILL.md** 플레이북을 따른다 (pstack 축약본, D-161). 글로벌 스킬 `how`·`blast-radius`·`tdd`·`interrogate`·`unslop`을 단계별로 호출한다.
+
 ---
 
 ## Integrity Rules (최우선 원칙)
