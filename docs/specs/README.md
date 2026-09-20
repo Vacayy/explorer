@@ -23,6 +23,13 @@
 
 두 파일의 역할은 중복하지 않는다. 실행 결과와 개인 소스 명단은 `logs/memory-coverage/`, 재현 도구는 `scripts/audit_memory_coverage.py`. 새 감사/후속/최종 spec을 만들지 않고 위 담당 파일을 갱신한다.
 
+## 구현·평가 중: Weekly 시장 진단
+
+| 문서 | 역할 | 상태 | 다음 단계 |
+|---|---|---|---|
+| [Weekly 에이전트 인계](weekly-agent-handoff.md) | 외부 대화 맥락과 기존 수집·분석 구조의 접점 | 설계 제안, 미확정. 2026-09-14 코드·보유 데이터 대조 | 원문·차트 재확보, 한 주차 질문·기간·사례·반증 조건 파일럿 구체화 |
+| [Weekly 분석 하네스 설계 (HTML)](weekly-harness-design.html#final-harness-design) | 브리핑 생산·실행/개선루프·결정 근거와 현행 CLI/API·시점 계약의 기준 문서 | D-173: [쟁점별 원문 조사·반론 재조사·판단·집필 실행](weekly-harness-design.html#research-runtime)을 기존 v2 경로에 연결. D-171·172 [목표 설계·다이어그램](../../logs/weekly-harness/final-design/index.html)은 유지하며 자동개선·릴리스 실행기는 보류. [보강 인계](weekly-agent-handoff%20(1).md) 참조 | [최종 Weekly](../../logs/weekly-harness/comparisons/weekly-research-20260916-r2/corrected.html)·[구현과 원문 대조](../../logs/weekly-harness/comparisons/weekly-research-20260916-r2/implementation-review.html) 완료(본문 추가 검사 통과·전문가 품질 미확정). 유가·펀더멘탈 분석 깊이 개선 → 미사용 주차 전문가 평가. 신규 외부 수집·사건별 계산·주간 갱신은 후속 |
+
 ## 문서를 늘리기 전 규칙
 
 1. 같은 기능/계약이면 기존 담당 문서를 수정한다. 날짜·라운드·v2/v3를 이유로 파일을 추가하지 않는다.
