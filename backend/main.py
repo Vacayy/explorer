@@ -21,6 +21,7 @@ from routers import spine_synthesis
 from routers import spine_lens
 from routers import spine_kr, spine_us
 from routers import experiment_expectations
+from routers import experiment_weekly
 
 app = FastAPI(title="Stock Explorer API")
 
@@ -90,6 +91,7 @@ app.include_router(spine_lens.router)
 app.include_router(spine_kr.router)
 app.include_router(spine_us.router)
 app.include_router(experiment_expectations.router)
+app.include_router(experiment_weekly.router)
 from routers import spine_study
 app.include_router(spine_study.router)
 from routers import spine_study_projects
