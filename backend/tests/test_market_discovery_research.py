@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -188,6 +189,21 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(len(seen),1)
 
     @staticmethod
+    def exiting_guard(code, stderr=""):
+        script=f"import sys; sys.stderr.write({stderr!r}); sys.exit({code})"
+        return lambda cwd, argv, timeout: [sys.executable, "-c", script]
+
+    def test_guard_timeout_and_cli_failure_are_named_instead_of_json_parse_error(self):
+        packet={"lanes":[{"items":[{"id":"doc:1"}]}]}
+        with patch("pipeline.market_analysis.discovery_research.ClaudeModel._preflight",lambda adapter: None):
+            with patch("pipeline.market_analysis.discovery_research.guarded_command",self.exiting_guard(124)):
+                with self.assertRaisesRegex(ModelError,"시간 제한"):
+                    _call_model(packet,lambda: False)
+            with patch("pipeline.market_analysis.discovery_research.guarded_command",self.exiting_guard(1,"Not logged in")):
+                with self.assertRaisesRegex(ModelError,r"종료 코드 1.*Not logged in"):
+                    _call_model(packet,lambda: False)
+
+    @staticmethod
     def model_result(evidence="doc:1"):
         return {"summary":f"작성자가 수주 증가를 주장했다. [{evidence}]",
                 "claims":[{"text":"수주 증가 주장", "kind":"source_claim", "evidence_ids":[evidence]}],
@@ -211,8 +227,8 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(result["cost_usd"],.5)
         self.assertEqual(observed[0]["budget"],1.5)
         self.assertEqual(observed[1]["budget"],1.25)
-        self.assertEqual(observed[0]["timeout"],180)
-        self.assertEqual(observed[1]["timeout"],160)
+        self.assertEqual(observed[0]["timeout"],300)
+        self.assertEqual(observed[1]["timeout"],280)
         self.assertEqual(observed[1]["repair"]["previous_output"],invalid)
         self.assertEqual(observed[1]["repair"]["invalid_ids"],["doc:unknown"])
         self.assertEqual(result["claims"][0]["evidence_ids"],["doc:1"])
@@ -245,7 +261,7 @@ class ResearchTests(unittest.TestCase):
     def test_repair_cannot_exceed_shared_cost_or_time_budget(self):
         self.doc(1)
         packet=self.packet()
-        for cost,elapsed in [(1.5,20),(.2,170)]:
+        for cost,elapsed in [(1.5,20),(.2,290)]:
             clock=[0.0]
             def model(*args,**kwargs):
                 clock[0]=elapsed
