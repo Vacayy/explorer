@@ -29,12 +29,12 @@ def result(identifier, rows, within_days=1, **params):
 
 
 class CatalogTests(unittest.TestCase):
-    def test_exact_50_distinct_catalog_entries_and_independent_copies(self):
+    def test_exact_60_distinct_catalog_entries_and_independent_copies(self):
         entries = catalog()
-        self.assertEqual(len(entries), 50)
-        self.assertEqual(len({item["id"] for item in entries}), 50)
+        self.assertEqual(len(entries), 60)
+        self.assertEqual(len({item["id"] for item in entries}), 60)
         self.assertEqual([sum(item["category"] == category for item in entries)
-                          for category in ("시세동향", "지표신호", "순위종목")], [19, 25, 6])
+                          for category in ("시세동향", "지표신호", "순위종목", "가격 구조")], [19, 25, 6, 10])
         self.assertTrue(CATALOG_VERSION)
         for item in entries:
             with self.subTest(strategy=item["id"]):
@@ -378,3 +378,85 @@ class DataAndRankingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+PAD = [10, 10.1] * 6  # 피벗을 만들지 않는 앞부분(폭 2 기준) — lookback 최소 20을 채우기 위한 이력
+
+
+def structure_bars(closes, lows=None, highs=None):
+    rows = bars(PAD + list(closes))
+    for offset, value in (lows or {}).items():
+        rows[len(PAD) + offset]["low"] = float(value)
+    for offset, value in (highs or {}).items():
+        rows[len(PAD) + offset]["high"] = float(value)
+    return rows
+
+
+class PriceStructureTests(unittest.TestCase):
+    """가격 구조(D-187): 피벗은 우측 폭이 지나야 확정되고, 선은 확정 피벗만으로 그린다."""
+
+    ZIGZAG = [10, 9, 8, 7, 6, 7, 8, 9, 10, 11, 10, 9, 8, 9, 10, 11, 12, 13, 12, 11, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+
+    def test_higher_lows_uses_confirmed_troughs_only(self):
+        rows = structure_bars(self.ZIGZAG)
+        out = result("higher_lows", rows, pivot_width=2, swings=3, lookback=30)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual([p["price"] for p in out["evidence"]["pivots"]], [5.0, 7.0, 9.0])
+        self.assertEqual((out["value"], out["reference"]), (9.0, 7.0))
+        # 확정 고점은 12·14 두 개(마지막 상승 구간은 아직 미확정) → 고점 낮추기 실패, 스윙 부족 시 사유 표시
+        lower = result("lower_highs", rows, pivot_width=2, swings=2, lookback=30)
+        self.assertEqual((lower["status"], lower["value"], lower["reference"]), ("fail", 14.0, 12.0))
+        self.assertEqual(result("lower_highs", rows, pivot_width=2, swings=4, lookback=30)["reason"], "insufficient_pivots")
+
+    def test_resistance_break_crosses_last_confirmed_peak(self):
+        series = [15, 17, 19, 20, 19, 17, 16, 15, 16, 17, 18, 19, 20, 21, 22]
+        out = result("resistance_break", structure_bars(series), pivot_width=2, lookback=20, min_break_pct=0)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual((out["value"], out["reference"]), (22.0, 21.0))
+        self.assertEqual(out["evidence"]["level"], 21.0)
+        before = result("resistance_break", structure_bars(series[:-1]), pivot_width=2, lookback=20, min_break_pct=0)
+        self.assertEqual(before["status"], "fail")
+        margin = result("resistance_break", structure_bars(series), pivot_width=2, lookback=20, min_break_pct=5)
+        self.assertEqual(margin["status"], "fail", "22 does not clear 21 × 1.05")
+
+    def test_trendline_break_up_reports_the_crossing_day_within_window(self):
+        series = [26, 28, 30, 28, 26, 24, 25, 26, 24, 22, 21, 22, 23, 24, 25]
+        rows = structure_bars(series)
+        out = result("trendline_break_up", rows, within_days=3, pivot_width=2, points=2, lookback=20)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual(out["date"], rows[len(PAD) + 13]["date"])
+        self.assertAlmostEqual(out["evidence"]["slope"], -0.8)
+        self.assertEqual([p["price"] for p in out["evidence"]["pivots"]], [31.0, 27.0])
+        self.assertEqual(result("trendline_break_up", rows, within_days=1, pivot_width=2, points=2, lookback=20)["status"], "fail")
+
+    def test_breakout_retest_rebreak_requires_touch_hold_and_new_high(self):
+        series = [15, 17, 19, 20, 19, 17, 16, 15, 16, 17, 18, 19, 20, 21, 22, 23, 21.5, 21.2, 22, 23.5, 25.5]
+        out = result("breakout_retest_rebreak", structure_bars(series, lows={17: 21.0}), pivot_width=2, lookback=20, tolerance_pct=2)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual(out["evidence"]["level"], 21.0)
+        self.assertEqual(out["evidence"]["breakout_date"], structure_bars(series)[len(PAD) + 14]["date"])
+        self.assertEqual((out["value"], out["reference"]), (25.5, 24.5))
+        broken = result("breakout_retest_rebreak", structure_bars(series[:-2] + [19.5, 25.5]), pivot_width=2, lookback=20, tolerance_pct=2)
+        self.assertEqual(broken["status"], "fail", "a close below level × 0.98 during the pullback is not a hold")
+
+    def test_trendline_support_hold_and_swing_channel_share_the_trough_line(self):
+        series = [10, 11, 12, 11, 10, 11, 12, 13, 12, 11, 12, 13, 14, 13, 12, 13, 14, 15, 14, 13.2, 14]
+        hold = result("trendline_support_hold", structure_bars(series, lows={20: 12.1}), pivot_width=2, points=2, lookback=20, tolerance_pct=2)
+        self.assertEqual(hold["status"], "pass", hold)
+        self.assertAlmostEqual(hold["reference"], 12.2)
+        far = result("trendline_support_hold", structure_bars(series), pivot_width=2, points=2, lookback=20, tolerance_pct=2)
+        self.assertEqual(far["status"], "fail", "low 13.0 is 6% above the line")
+        channel = result("channel_break_up", structure_bars(series[:-1] + [17]), pivot_width=2, points=2, lookback=20, method="swing", period=60, band_std=2)
+        self.assertEqual(channel["status"], "pass", channel)
+        self.assertAlmostEqual(channel["reference"], 16.6)
+        self.assertEqual(len(channel["evidence"]["channel"]["upper"]), 2)
+
+    def test_regression_channel_and_history_requirements(self):
+        series = [100 + i * 0.5 + (0.3 if i % 2 else -0.3) for i in range(30)] + [120]
+        out = result("channel_break_up", structure_bars(series), pivot_width=2, points=2, lookback=20, method="regression", period=20, band_std=2)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual(out["evidence"]["method"], "regression")
+        self.assertEqual(history_requirement(condition("higher_lows", pivot_width=5, swings=3, lookback=120), "2026-09-18")["sessions"], 127)
+        self.assertEqual(history_requirement(condition("channel_break_up", method="regression", period=200), "2026-09-18")["sessions"], 202)
+        short = result("higher_lows", bars([10, 11, 12]), pivot_width=2, swings=2, lookback=20)
+        self.assertEqual((short["status"], short["reason"]), ("unavailable", "insufficient_history"))

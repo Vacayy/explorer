@@ -42,7 +42,7 @@ Use price_adjustment='unknown'; source metadata determines whether it is verifie
 Report conditions unsupported by the fixed AnalysisSpec in unsupported_conditions.
 Do not pretend to have evaluated those conditions.
 
-The context supplies a versioned strategy_catalog with 50 named price, indicator,
+The context supplies a versioned strategy_catalog with named price, indicator, price-structure
 and ranking conditions. For these searches use mode='catalog', strategy_conditions
 with exact strategy_id, params and within_days (1 means as-of; N means any of the
 last N observed sessions). Disable legacy pattern/require_52w/require_ma and default

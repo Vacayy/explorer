@@ -36,9 +36,9 @@ function CandidateChart({ runId, candidate, maPeriod, catalog = false, definitio
         <div role="img" aria-label={catalog ? `${candidate.name} 일봉과 확인된 전략 신호 날짜` : `${candidate.name} 일봉과 ${maPeriod}일 이동평균, 넥라인, 확인된 패턴 날짜`}>
           <CandlestickChart data={chart.data.prices} height={280}
             markers={chart.data.markers.map(marker => ({ time: marker.time, direction: marker.kind === 'head' || marker.kind.includes('shoulder') ? 'up' : 'down', text: marker.label }))}
-            overlays={[...(chart.data.ma.length ? [{ id: 'ma', title: `SMA${maPeriod}`, token: '--chart-1', data: chart.data.ma }] : []), ...(chart.data.neckline.length ? [{ id: 'neckline', title: '넥라인', token: '--chart-2', data: chart.data.neckline, dashed: true }] : [])]} />
+            overlays={[...(chart.data.ma.length ? [{ id: 'ma', title: `SMA${maPeriod}`, token: '--chart-1', data: chart.data.ma }] : []), ...(chart.data.neckline.length ? [{ id: 'neckline', title: '넥라인', token: '--chart-2', data: chart.data.neckline, dashed: true }] : []), ...(chart.data.lines ?? []).map((line, index) => ({ id: line.id, title: line.label, token: `--chart-${(index % 3) + 3}`, data: line.points, dashed: true }))]} />
         </div>
-        <p className="text-caption text-muted-foreground">일봉{chart.data.ma.length > 0 && ` · SMA${maPeriod}`}{chart.data.neckline.length > 0 && ' · 넥라인(점선)'}. 마커는 이 실행에서 확인한 날짜를 표시합니다.</p>
+        <p className="text-caption text-muted-foreground">일봉{chart.data.ma.length > 0 && ` · SMA${maPeriod}`}{chart.data.neckline.length > 0 && ' · 넥라인(점선)'}{(chart.data.lines?.length ?? 0) > 0 && ' · 구조선(점선)과 스윙 점'}. 마커는 이 실행에서 확인한 날짜를 표시합니다.</p>
         {!!chart.data.markers.length && <div className="flex flex-wrap gap-2">{chart.data.markers.map((marker, index) => <Badge key={`${marker.time}-${index}`} variant="outline" className="font-normal">{marker.label} {marker.time} · {formatNumber(marker.price)}원</Badge>)}</div>}
       </> : <p className="text-sm text-muted-foreground">이 실행의 차트 자료가 없습니다.</p>)}
       {catalog || definitions.length > 0 ? <Table aria-label={`${candidate.name} 조건별 계산 값`}>

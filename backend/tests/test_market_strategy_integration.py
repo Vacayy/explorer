@@ -108,8 +108,8 @@ class CatalogScreenTests(unittest.TestCase):
         app.include_router(router)
         response = TestClient(app).get("/api/analysis/strategies")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()["items"]), 50)
-        self.assertEqual(len({item["id"] for item in catalog()}), 50)
+        self.assertEqual(len(response.json()["items"]), 60)
+        self.assertEqual(len({item["id"] for item in catalog()}), 60)
         for conditions in ([condition("invented")], [condition("rank_volume", top_n=float("nan"))],
                            [condition("rank_volume", injected=True)],
                            [condition("rank_volume"), condition("rank_volume")], [],

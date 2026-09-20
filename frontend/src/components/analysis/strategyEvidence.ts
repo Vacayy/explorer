@@ -20,6 +20,10 @@ export const EXCLUSION_LABELS: Record<string, string> = {
   invalid_shares: '상장주식 수가 유효하지 않음',
   missing_intraday_bars: '10분봉 구간 누락',
   no_prior_breakout: '선행 신고가 돌파 없음',
+  insufficient_pivots: '확정된 스윙 고점·저점 부족',
+  no_trend_pivots: '스윙 점이 한 방향으로 정렬되지 않음',
+  no_retest: '돌파 뒤 되돌림 구간 없음',
+  line_out_of_range: '추세선 연장값이 유효 범위 밖',
 }
 
 export function strategyCheck(value: unknown): StrategyCheck {
