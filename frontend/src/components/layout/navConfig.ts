@@ -31,6 +31,7 @@ export interface ModeDef {
 export const FOLLOW_TABS: readonly SubTab[] = [
   { key: "saved", path: "/follow/saved", label: "저장됨" },
   { key: "follow", path: "/follow", label: "관심목록" },
+  { key: "stocks", path: "/follow/stocks", label: "종목 묶음" },
   { key: "universe", path: "/follow/universe", label: "유니버스" },
   { key: "transcripts", path: "/follow/transcripts", label: "컨콜" },
   { key: "us", path: "/us", label: "미국" },
@@ -92,16 +93,16 @@ export const analyzeTabs = (stockCode: string, search = ''): SubTab[] => {
 
 export const MODES: readonly ModeDef[] = [
   { key: "home", label: "Home", path: "/home", icon: House },
-  { key: "follow", label: "관심목록", path: "/follow/saved", icon: Bookmark, dividerBefore: true, tabs: FOLLOW_TABS },
   { key: "discover", label: "종목 발견", path: "/discover", icon: ScanSearch },
+  { key: "follow", label: "관심목록", path: "/follow/saved", icon: Bookmark, dividerBefore: true, tabs: FOLLOW_TABS },
   { key: "worldmodel", label: "월드모델", path: "/narrative", icon: Globe, emphasis: true, tabs: WORLDMODEL_TABS },
   { key: "study", label: "스터디", path: "/study", icon: BookOpen },
   { key: "chat", label: "대화", path: "/chat", icon: MessageSquare, dividerBefore: true },
 ]
 
 export function getActiveMode(pathname: string): AppMode {
-  if (pathname.startsWith("/study")) return "study"
   if (pathname === "/discover" || pathname.startsWith("/analysis/backtests")) return "discover"
+  if (pathname.startsWith("/study")) return "study"
   if (pathname.startsWith("/home")) return "home"
   if (pathname.startsWith("/us")) return "us"
   // 팔로우 — 허브 + 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-057)
@@ -140,6 +141,7 @@ export function getActiveSubTab(pathname: string, search: string): string | null
   if (pathname.startsWith("/knowledge")) return "knowledge"
 
   // 팔로우 — /follow 하위(universe·transcripts)는 follow보다 먼저 매칭 + 커버리지 대상(D-057)
+  if (pathname.startsWith("/follow/stocks")) return "stocks"
   if (pathname.startsWith("/follow/universe")) return "universe"
   if (pathname.startsWith("/follow/transcripts")) return "transcripts"
   if (pathname.startsWith("/follow/trade")) return "trade"

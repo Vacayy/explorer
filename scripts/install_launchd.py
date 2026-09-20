@@ -69,6 +69,9 @@ JOBS = [
     ("questions", [PY, "scripts/refresh_questions.py"], {"Hour": 7, "Minute": 40}),
     # 수출입(D-140) — 매일 09:20 신선도 1콜: 원천 최신월이 적재분보다 앞서면 그때만 전체 수집(관세청 현행화 '15일경').
     ("trade", [PY, "scripts/collect_trade.py", "--if-fresh"], {"Hour": 9, "Minute": 20}),
+    # 종목 묶음 감시(D-185) — 일별 시세(16:10) 뒤 평가. 모델 호출 0, 같은 기준일 재실행은 건너뛴다(멱등).
+    ("watch", [PY, "scripts/evaluate_watch_rules.py"],
+     [{"Weekday": d, "Hour": 16, "Minute": 40} for d in range(1, 6)]),
 ]
 
 
