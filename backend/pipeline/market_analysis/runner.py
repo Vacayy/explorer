@@ -256,21 +256,36 @@ class AnalysisService:
     def _emit(self, target_id, kind, **values):
         return self.store.emit(target_id, protocol.event(kind, **values))
 
-    def _pause(self, run_id: str, fields: list[str]):
+    @staticmethod
+    def _askable(state: dict, fields: list[str]) -> tuple[list[str], list[str]]:
+        """Fields the user can still be asked, and the ones dropped because the spec never enabled them.
+
+        The model sometimes lists every interpretation field even after disabling the
+        pattern; that must not fail the search (2026-09-19 incident), only skip the ask.
+        """
+        spec, keep, dropped = state["spec"], [], []
+        for field in dict.fromkeys(fields):
+            asked = field in state["_asked_fields"]
+            inapplicable = ((field == "price_basis" and not spec["require_ma"])
+                            or (field == "window_scope" and spec["pattern"] == "none")
+                            or (field == "include_same_day" and (not spec["require_52w"] or spec["pattern"] == "none")))
+            (dropped if asked or inapplicable else keep).append(field)
+        return keep, dropped
+
+    def _pause(self, run_id: str, fields: list[str]) -> bool:
+        """Ask the user the applicable fields. Returns False (and asks nothing) when none apply."""
         state = self.store.read(run_id)
-        fields = list(dict.fromkeys(fields))
-        if not fields or set(fields) & set(state["_asked_fields"]):
-            raise ValueError("이미 확인한 조건을 다시 물을 수 없습니다.")
-        if "price_basis" in fields and not state["spec"]["require_ma"]:
-            raise ValueError("요청하지 않은 이동평균 조건을 물을 수 없습니다.")
-        if "window_scope" in fields and state["spec"]["pattern"] == "none":
-            raise ValueError("요청하지 않은 패턴 조건을 물을 수 없습니다.")
-        if "include_same_day" in fields and (not state["spec"]["require_52w"] or state["spec"]["pattern"] == "none"):
-            raise ValueError("사건 순서 조건을 확인할 필요가 없습니다.")
+        fields, dropped = self._askable(state, fields)
+        if dropped:
+            self._emit(run_id, "CUSTOM", name="analysis.plan",
+                       value={"text": "요청에 없는 조건은 확인하지 않고 진행합니다: " + ", ".join(dropped)})
+        if not fields:
+            return False
         pending = protocol.pending_form(fields, state["spec"])
         self._update(run_id, status="waiting_input", phase="interpretation", pending=pending,
                      _asked_fields=state["_asked_fields"] + fields)
         self._emit(run_id, "CUSTOM", name="a2ui", value=pending)
+        return True
 
     def _call(self, run_id, model, *, finalizing=False) -> ModelAction:
         state = self.store.read(run_id)
@@ -509,8 +524,7 @@ class AnalysisService:
                     spec["as_of"] = request["as_of"]
                 inherited = list(parent.get("_unsupported", [])) if parent else []
                 self._update(run_id, spec=spec, _unsupported=list(dict.fromkeys(inherited + action.unsupported_conditions)))
-                if action.fields:
-                    self._pause(run_id, action.fields)
+                if action.fields and self._pause(run_id, action.fields):
                     return
             self._snapshot(run_id)
             if self._cancelled(run_id):
@@ -561,8 +575,13 @@ class AnalysisService:
                         outcome = self._execute(run_id, sandbox, action.code)
                         failures = failures + 1 if outcome["exit_code"] else 0
                     elif action.action == "ask_user":
-                        self._pause(run_id, action.fields)
-                        return
+                        if self._pause(run_id, action.fields):
+                            return
+                        # Nothing left to ask: tell the model and let it continue with the spec as is.
+                        self.store.mutate(run_id, lambda st: st["_observations"].append(
+                            {"id": f"ask-{len(st['_observations'])+1}", "exit_code": 1, "stdout": "",
+                             "stderr": "요청하지 않았거나 이미 확인한 조건은 물을 수 없습니다. 현재 spec 그대로 계산을 진행하세요.",
+                             "timed_out": False, "cancelled": False}))
                     elif action.action == "finish":
                         self._finish(run_id, action)
                         return

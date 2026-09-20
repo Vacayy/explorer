@@ -20,6 +20,7 @@ from pipeline.market_analysis.store import Conflict, RunStore, StoreError, atomi
 class FixtureModel:
     calls = 0
     ask = False
+    ask_everything = False  # lists pattern-only fields although pattern='none' (2026-09-19 incident)
     corrupt = False
     no_execution = False
 
@@ -31,7 +32,8 @@ class FixtureModel:
         if context["spec"] is None:
             spec = AnalysisSpec(pattern="none", require_52w=False, require_ma=self.ask,
                                 min_market_cap=0, ma_period=2, hold_days=1).model_dump(mode="json")
-            action = {"action": "interpret", "spec": spec, "fields": ["price_basis"] if self.ask else []}
+            fields = ["window_scope", "price_basis", "include_same_day"] if self.ask_everything else (["price_basis"] if self.ask else [])
+            action = {"action": "interpret", "spec": spec, "fields": fields}
         elif context["observations"] or self.no_execution:
             action = {"action": "finish", "result_path": "result.json",
                       "evidence_ids": [context["observations"][-1]["id"]] if context["observations"] else ["made-up"]}
@@ -63,7 +65,7 @@ class HarnessTests(unittest.TestCase):
         connection.close()
         self.before = hashlib.sha256(self.source.read_bytes()).hexdigest()
         FixtureModel.calls = 0
-        FixtureModel.ask = FixtureModel.corrupt = FixtureModel.no_execution = False
+        FixtureModel.ask = FixtureModel.corrupt = FixtureModel.no_execution = FixtureModel.ask_everything = False
         self.service = AnalysisService(self.root / "state", source_db=self.source,
                                        model_factory=FixtureModel, preflight=lambda: {})
         # Drive deterministically without an asynchronous worker in most tests.
@@ -125,6 +127,24 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(final["spec"]["price_basis"], "low")
         self.assertEqual(final["status"], "partial", final["error"])
         self.assertEqual(FixtureModel.calls, 3)
+
+    def test_inapplicable_ask_fields_are_skipped_instead_of_failing(self):
+        # pattern='none' and require_ma=False: none of the listed fields apply, so the search must just proceed.
+        FixtureModel.ask_everything = True
+        run = self.create()
+        self.service.process(run["id"])
+        final = self.service.store.read(run["id"])
+        self.assertEqual(final["status"], "partial", final["error"])
+        self.assertIsNone(final["pending"])
+        notes = [e["value"]["text"] for e in self.service.store.events(run["id"]) if e.get("name") == "analysis.plan" and "확인하지 않고" in e["value"]["text"]]
+        self.assertTrue(notes and "window_scope" in notes[0] and "include_same_day" in notes[0], notes)
+        # With MA requested only price_basis survives the filter and is actually asked.
+        FixtureModel.ask = True
+        second = self.create("fixture-request-0002")
+        self.service.process(second["id"])
+        paused = self.service.store.read(second["id"])
+        self.assertEqual(paused["status"], "waiting_input", paused["error"])
+        self.assertEqual(paused["pending"]["fields"], ["price_basis"])
 
     def test_cancel_before_work_does_not_call_model(self):
         run = self.create()
