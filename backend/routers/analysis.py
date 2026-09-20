@@ -78,6 +78,14 @@ def get_run(run_id: str):
         error(exc)
 
 
+@router.get("/runs/{run_id}/thread")
+def thread(run_id: str):
+    try:
+        return service().store.thread(run_id)
+    except Exception as exc:
+        error(exc)
+
+
 @router.get("/runs/{run_id}/events")
 async def events(run_id: str, request: Request, after: int = Query(0, ge=0)):
     owner = service()

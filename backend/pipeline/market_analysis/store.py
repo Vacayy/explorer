@@ -187,6 +187,34 @@ class RunStore:
                     continue
         return sorted(states, key=lambda s: s["created_at"], reverse=True)[:limit]
 
+    @staticmethod
+    def parent_of(state: dict) -> str | None:
+        lineage = state.get("lineage") or {}
+        return lineage.get("parent_run_id") or (state.get("_request") or {}).get("parent_run_id")
+
+    def thread(self, run_id: str) -> dict:
+        """Every run sharing this run's root search, oldest first (D-184)."""
+        states = {state["id"]: state for state in self.list(limit=10_000)}
+        states.setdefault(run_id, self.read(run_id))
+        root, seen = run_id, {run_id}
+        while (up := self.parent_of(states[root])) and up in states and up not in seen:
+            seen.add(up)
+            root = up
+        children: dict[str, list[str]] = {}
+        for state in states.values():
+            if up := self.parent_of(state):
+                children.setdefault(up, []).append(state["id"])
+        members, queue = [], [root]
+        while queue:
+            current = queue.pop(0)
+            if current in members:
+                continue
+            members.append(current)
+            queue.extend(children.get(current, []))
+        # Creation order; a parent precedes its children when timestamps tie.
+        ordered = sorted(members, key=lambda m: (states[m]["created_at"], members.index(m)))
+        return {"root_id": root, "items": [{**self.public(states[m]), "parent_run_id": self.parent_of(states[m])} for m in ordered]}
+
     def _emit(self, state: dict, event: dict) -> dict:
         # Sequence is derived from durable event files, so a crash between event
         # and state writes cannot overwrite or reuse an existing event number.
