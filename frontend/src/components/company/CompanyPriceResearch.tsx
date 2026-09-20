@@ -1,6 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import CandlestickChart from '@/components/charts/CandlestickChart'
+import { Activity } from 'lucide-react'
+import { TechnicalScan, scanToChart, useTechnicalScan } from './TechnicalScan'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +30,11 @@ export function CompanyPriceResearch({
   compact?: boolean
 }) {
   const [sp, setSp] = useSearchParams()
+  const [scanOpen, setScanOpen] = useState(false) // 기술적 분석 패널(D-190)
+  const [scanWithin, setScanWithin] = useState(5)
+  const [scanOnChart, setScanOnChart] = useState(true)
+  const scan = useTechnicalScan(company, market, scanWithin, scanOpen)
+  const scanChart = useMemo(() => scanToChart(scanOpen && scanOnChart ? scan.data : undefined), [scan.data, scanOpen, scanOnChart])
   const [notice, setNotice] = useState('')
   const months = [3, 12, 60].includes(Number(sp.get('months')))
     ? Number(sp.get('months'))
@@ -158,6 +165,9 @@ export function CompanyPriceResearch({
                       </p>
                     )}
                   </div>
+                  <Button variant={scanOpen ? 'secondary' : 'outline'} size="sm" aria-pressed={scanOpen} onClick={() => setScanOpen(value => !value)}>
+                    <Activity className="size-4" />기술적 분석
+                  </Button>
                   {selected && (
                     <Button
                       variant="outline"
@@ -232,6 +242,8 @@ export function CompanyPriceResearch({
                     selectedTime={selected}
                     selectionStart={start}
                     onMarkerClick={choose}
+                    markers={scanChart.markers}
+                    overlays={scanChart.overlays}
                   />
                 ) : (
                   <p className="py-20 text-center text-muted-foreground">
@@ -242,6 +254,7 @@ export function CompanyPriceResearch({
                   캔들을 클릭하면 해당 날짜 이전 자료를 탐색합니다. 휠·드래그로
                   차트를 확대·이동할 수 있습니다.
                 </p>
+                {scanOpen && <TechnicalScan code={company} market={market} within={scanWithin} onWithin={setScanWithin} onChart={scanOnChart} onToggleChart={setScanOnChart} onClose={() => setScanOpen(false)} />}
                 {(notice || (requested && !selected && !loading)) && (
                   <p role="status" className="text-sm text-primary">
                     {notice ||
