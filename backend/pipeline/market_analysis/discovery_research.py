@@ -613,8 +613,14 @@ def validate_synthesis(raw: dict, packet: dict) -> dict:
     return result
 
 
-def _call_model(packet: dict, cancel: Callable[[], bool], *, budget: float = 1.50,
-                timeout: float = 180.0, repair: dict | None = None) -> tuple[dict, float]:
+# One research run (all attempts) may use this much wall time and cost. A
+# 100KB packet took ~110s on an idle laptop; 180s failed under load.
+TIME_LIMIT = 300.0
+COST_LIMIT = 1.50
+
+
+def _call_model(packet: dict, cancel: Callable[[], bool], *, budget: float = COST_LIMIT,
+                timeout: float = TIME_LIMIT, repair: dict | None = None) -> tuple[dict, float]:
     """Reuse the audited tool-free CLI flags and process supervisor, in a fresh cwd."""
     started = time.monotonic()
     # The shared CLI preflight can take at most 15 seconds. Do not begin it
@@ -651,7 +657,9 @@ def _call_model(packet: dict, cancel: Callable[[], bool], *, budget: float = 1.5
         if remaining <= 0:
             raise ModelError("조사 모델의 남은 실행 시간을 초과했습니다.", 0)
         with path.open("rb") as stdin:
-            process = subprocess.Popen(guarded_command(cwd, command, remaining), stdin=stdin,
+            # The guard kills one second after our own deadline so the loop
+            # below reports the timeout instead of an empty-stdout parse error.
+            process = subprocess.Popen(guarded_command(cwd, command, remaining + 1), stdin=stdin,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env, close_fds=True, start_new_session=True)
         selector = selectors.DefaultSelector()
         buffers = {"stdout": bytearray(), "stderr": bytearray()}
@@ -682,7 +690,11 @@ def _call_model(packet: dict, cancel: Callable[[], bool], *, budget: float = 1.5
         try:
             response = json.loads(buffers["stdout"])
         except (ValueError, TypeError) as exc:
-            raise ModelError("조사 모델이 JSON을 반환하지 않았습니다.") from exc
+            if process.returncode == 124:
+                raise ModelError("조사 모델이 시간 제한 안에 응답하지 않았습니다. 호출 비용은 미확인입니다.") from exc
+            detail = buffers["stderr"].decode(errors="replace").strip()[:300]
+            raise ModelError(f"조사 모델이 JSON을 반환하지 않았습니다 (종료 코드 {process.returncode})."
+                             + (f" stderr: {detail}" if detail else "")) from exc
         cost = response.get("total_cost_usd")
         if not isinstance(cost, (int, float)) or isinstance(cost, bool) or not math.isfinite(cost) or cost < 0:
             raise ModelError("조사 모델 비용을 확인할 수 없습니다.")
@@ -720,8 +732,8 @@ def synthesize(packet: dict, *, cancel: Callable[[], bool] | None = None) -> dic
     for _ in range(2):
         if cancel():
             raise attach(ModelCancelled("조사가 취소되었습니다.", total_cost))
-        remaining = 180.0 - (time.monotonic()-started)
-        budget = 1.50 - total_cost
+        remaining = TIME_LIMIT - (time.monotonic()-started)
+        budget = COST_LIMIT - total_cost
         if remaining < 16 or budget <= 0:
             raise attach(ResearchError("조사 응답 검증을 수정할 남은 시간 또는 비용 한도가 부족합니다."))
         attempts += 1
@@ -735,7 +747,7 @@ def synthesize(packet: dict, *, cancel: Callable[[], bool] | None = None) -> dic
         total_cost += cost
         if cancel():
             raise attach(ModelCancelled("조사가 취소되었습니다.", total_cost))
-        if total_cost > 1.50 or time.monotonic()-started > 180.0:
+        if total_cost > COST_LIMIT or time.monotonic()-started > TIME_LIMIT:
             raise attach(ResearchError("조사 모델의 전체 시간 또는 비용 한도를 초과했습니다."))
         try:
             result = validate_synthesis(raw, packet)
