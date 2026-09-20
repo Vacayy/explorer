@@ -130,3 +130,17 @@ export interface AnalysisChart {
   markers: { time: string; label: string; price: number; kind: string }[]
   neckline: { time: string; value: number }[]
 }
+
+// 질문 다듬기 (D-186) — backend/pipeline/market_analysis/refine.py
+export interface RefinementAlternative { text: string; strategy_id: string | null; params: Record<string, unknown>; within_days: number }
+export interface RefinementCondition extends RefinementAlternative { source: string; confidence: 'high' | 'medium' | 'low'; alternatives: RefinementAlternative[] }
+export interface Refinement {
+  restatement: string
+  conditions: RefinementCondition[]
+  unsupported: { text: string; reason: string }[]
+  clarifications: { id: string; question: string; options: { label: string; text: string }[]; selected: number }[]
+  specified: string[]
+  cost_usd: number
+  catalog_version: string
+  question: string
+}
