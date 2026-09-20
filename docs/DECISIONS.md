@@ -12,13 +12,13 @@
 
 ## D-188 · 2026-09-20 · 웹 검색은 CodeAct 격리 밖의 호스트 수집기로 두고, 기업 조사 레인과 기업 개요 보고서에 연결
 
-**결정**: 웹 검색을 종목 발견 CodeAct 안에 넣지 않는다(D-176 격리 유지). 대신 D-182의 재무·공시와 같은 자리인 **신뢰된 호스트 수집기**로 `pipeline/company_profile.py`를 만들어 Claude CLI를 WebSearch·WebFetch만 허용해 1콜 돌리고, 사업보고서·IR·뉴스·리포트를 조사한 **구조화 기업 개요 보고서**를 `company_profiles`에 버전으로 저장한다. 출처는 발췌만 `raw_documents(source_type='web')`에 남긴다. 기업 조사에는 `web` 레인(기본 켠 체크, 24시간 재사용, 과거 기준일은 미실행)을 추가하고, 기업 페이지 "이 기업은 무엇을 하나"를 이 보고서로 채운다. 대화(/chat)의 웹 검색은 후속.
+**결정**: 웹 검색을 종목 발견 CodeAct 안에 넣지 않는다(D-176 격리 유지). 대신 D-182의 재무·공시와 같은 자리인 **신뢰된 호스트 수집기**로 `pipeline/company_profile.py`를 만들어 Claude CLI를 WebSearch·WebFetch만 허용해 1콜 돌리고, 사업보고서·IR·뉴스·리포트를 조사한 **구조화 기업 개요 보고서**를 `company_profiles`에 버전으로 저장한다. 출처는 발췌만 `raw_documents(source_type='web')`에 남긴다. 기업 조사에는 `web` 레인(기본 켠 체크, 24시간 재사용, 과거 기준일은 미실행)을 추가하고, 기업 페이지 "이 기업은 무엇을 하나"를 이 보고서로 채운다. 미국 도시에(`/us/:ticker`)에도 같은 카드를 붙이되 DART 단계 없이 SEC 우선 순서로 조사한다(EDGAR 본문 직접 확보는 후속). 대화(/chat)의 웹 검색은 후속.
 
 **맥락·이유**: 사용자 — "CodeAct로 웹 검색도 구현할 수 있나?", "특정 기업 초기 조사 때 웹으로 사업보고서·IR·뉴스·리포트를 조사해 구조화된 개요 보고서를 써 주면 좋겠다. '이 기업은 무엇을 하나'가 지금 많이 약하다." 스터디 모드가 이미 같은 CLI 경로로 웹 확인을 하고 있어(D-159) 새 검색 API 키가 필요 없다. 기존 개요 카드는 업종명과 저장 사업부 이름만 보여줬다. 조사 종합 모델(도구 없음)에는 다른 레인과 똑같이 읽기 전용 발췌로만 들어가므로 인용 ID 검증이 그대로 적용된다.
 
 **기각한 대안**: ① 생성 코드(CodeAct 샌드박스)에 네트워크 허용 — 스크리닝 재현성·검증이 무너지고 가격 조건 검색에 웹은 필요 없음. ② 본문 전체 수집·태깅 — 비용·시간 증가, 사용자가 발췌만 원함; 본문은 스터디로 열 때. ③ 조사마다 항상 웹 호출 — 24시간 재사용과 체크로 게이트(D-072). ④ 검색 API(Tavily 등) 별도 연동 — 키 관리 부담, CLI 도구로 충분.
 
-**참조**: backend/pipeline/company_profile.py · routers/company_profile.py · discovery_service.py(`_web_step`) · discovery_research.py(`_web`) · discovery_preparation.py(`web` 항목) · models/discovery.py(`web`) · frontend/src/components/company/CompanyOverview.tsx · DiscoveryResearch.tsx(웹도 확인) · docs/specs/company-research.md §웹 조사 레인 · D-159 · D-176 · D-182
+**참조**: backend/pipeline/company_profile.py · pipeline/dart_business.py(공식 사업의 내용 본문, 출처 1 고정) · routers/company_profile.py · discovery_service.py(`_web_step`) · discovery_research.py(`_web`) · discovery_preparation.py(`web` 항목) · models/discovery.py(`web`) · frontend/src/components/company/CompanyOverview.tsx · DiscoveryResearch.tsx(웹도 확인) · docs/specs/company-research.md §웹 조사 레인 · D-159 · D-176 · D-182
 
 ---
 

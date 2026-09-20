@@ -878,4 +878,5 @@ export interface CompanyWebProfile {
   recent_events: { date: string | null; title: string; source_ids: number[] }[];
   sources: CompanyWebSource[];
   gaps: string[];
+  official_report?: { rcept_no: string; report_nm: string; rcept_dt: string | null; url: string } | null;
 }

@@ -60,6 +60,9 @@ class StoreTests(unittest.TestCase):
         conn.commit(); conn.close()
         patch.object(cp, "connect", self.connect).start()
         patch.object(cp.llm, "llm_engine", lambda: "claude-code").start()
+        from pipeline import dart_business
+        # Never reach the real DART API from tests; the official-text test overrides this stub.
+        patch.object(dart_business, "ensure_business_text", side_effect=dart_business.DartBusinessUnavailable("테스트에서는 DART를 호출하지 않습니다.")).start()
         self.addCleanup(patch.stopall)
 
     def connect(self):
@@ -89,6 +92,42 @@ class StoreTests(unittest.TestCase):
         self.assertFalse(reused); self.assertEqual(forced["version"], 2)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM raw_documents").fetchone()[0], 2, "same URLs are not duplicated")
         conn.close()
+
+    def test_official_dart_text_is_pinned_as_source_one_and_fed_to_the_prompt(self):
+        self.prompts = []
+        official = {"rcept_no": "20260814004015", "report_nm": "반기보고서 (2026.06)", "rcept_dt": "2026-08-14",
+                    "url": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260814004015",
+                    "sections": [{"key": "overview", "title": "1. 사업의 개요", "text": "당사는 고압 수소 어닐링 장비를 만든다.", "url": "u1"}]}
+        from pipeline import dart_business
+        with patch.object(dart_business, "ensure_business_text", lambda *a, **k: official):
+            profile, _ = cp.ensure_profile("403870", "HPSP", "반도체 장비", runner=self.runner, force=True)
+        self.assertIn("[공식 자료 · 출처 id 1]", self.prompts[0][0])
+        self.assertIn("고압 수소 어닐링 장비를 만든다", self.prompts[0][0])
+        first = profile["sources"][0]
+        self.assertEqual((first["id"], first["kind"], first["publisher"], first["fetched"]), (1, "filing", "DART", True))
+        self.assertEqual(profile["official_report"]["rcept_no"], "20260814004015")
+        self.assertEqual([s["id"] for s in profile["sources"]], [1, 2], "the model's own id 1 is replaced by the official filing")
+        self.assertEqual(profile["business_lines"][0]["source_ids"], [1])
+        with patch.object(dart_business, "ensure_business_text", side_effect=dart_business.DartBusinessUnavailable("DART 인증 설정이 없습니다.")):
+            degraded, _ = cp.ensure_profile("403870", "HPSP", runner=self.runner, force=True)
+        self.assertTrue(degraded["gaps"][0].startswith("DART 사업보고서 본문을 받지 못했습니다"))
+        self.assertIsNone(degraded["official_report"])
+
+    def test_us_market_skips_dart_and_uses_sec_first_prompt(self):
+        self.prompts = []
+        profile, _ = cp.ensure_profile("NVDA", "NVIDIA", None, runner=self.runner, market="us")
+        prompt, kwargs = self.prompts[0]
+        self.assertIn("티커 NVDA, 미국 상장", prompt)
+        self.assertNotIn("[공식 자료", prompt)
+        self.assertIn("SEC EDGAR", kwargs["system"])
+        self.assertNotIn("DART", kwargs["system"].split("규칙:")[0])
+        self.assertIsNone(profile["official_report"])
+        self.assertFalse(any(g.startswith("DART 사업보고서 본문을 받지") for g in profile["gaps"]), "no DART gap is invented for US tickers")
+        app = FastAPI(); app.include_router(router); client = TestClient(app)
+        with patch("pipeline.us_data.resolve_us", lambda conn, t: (None, "NVIDIA")):
+            got = client.get("/api/spine/company-profile/nvda", params={"market": "us"}).json()
+        self.assertEqual((got["market"], got["profile"]["stock_code"]), ("us", "NVDA"))
+        self.assertEqual(client.get("/api/spine/company-profile/bad-ticker!", params={"market": "us"}).status_code, 404)
 
     def test_router_returns_profile_and_maps_failures(self):
         self.prompts = []
