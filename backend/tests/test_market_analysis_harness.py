@@ -146,6 +146,20 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(paused["status"], "waiting_input", paused["error"])
         self.assertEqual(paused["pending"]["fields"], ["price_basis"])
 
+    def test_default_within_days_reaches_the_model_context(self):
+        seen = []
+        class Capturing(FixtureModel):
+            def call(self, system, context, **kwargs):
+                seen.append(context.get("default_within_days"))
+                return super().call(system, context, **kwargs)
+        self.service.model_factory = Capturing
+        run = self.service.create(RunRequest(question="시총 조건만 조회", request_key="fixture-request-0003", default_within_days=5).model_dump(mode="json"))
+        self.service.process(run["id"])
+        self.assertEqual(seen[0], 5)
+        self.assertEqual(self.service.store.read(run["id"])["status"], "partial")
+        with self.assertRaises(ValueError):
+            RunRequest(question="x", request_key="fixture-request-0004", default_within_days=0)
+
     def test_cancel_before_work_does_not_call_model(self):
         run = self.create()
         self.service.cancel(run["id"])

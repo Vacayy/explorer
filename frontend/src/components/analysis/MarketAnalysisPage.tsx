@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,6 +31,7 @@ const EXAMPLES = [
   { label: '거래량 변화', question: '20일과 60일 이동평균이 정배열이고 전일 대비 거래량이 증가한 종목을 찾아줘' },
   { label: '패턴 돌파', question: '시가총액 5000억원 이상 종목 중 최근 90 영업일 이내 역헤드앤숄더 패턴 이후 넥라인과 52주 신고가를 차례로 돌파하고, 최근 14영업일 동안 20일 이평선 아래로 내려간 적 없는 종목을 찾아줘' },
 ]
+const WITHIN_OPTIONS = [{ value: 1, label: '기준일 당일' }, { value: 3, label: '최근 3거래일' }, { value: 5, label: '최근 5거래일' }, { value: 10, label: '최근 10거래일' }, { value: 20, label: '최근 20거래일' }, { value: 60, label: '최근 60거래일' }]
 const STATUS: Record<RunStatus, string> = { queued: '대기', preparing: '데이터 준비', running: '분석 중', waiting_input: '조건 확인', completed: '완료', partial: '일부 평가', blocked: '진행 불가', failed: '실행 오류', cancelled: '취소됨', interrupted: '실행 중단' }
 const PHASE: Record<string, string> = { queued: '실행을 기다리고 있습니다', preparing: '보유 시장 데이터를 준비하고 있습니다', isolation: '안전한 분석 환경을 확인하고 있습니다', snapshot: '분석 기준일의 데이터를 준비하고 있습니다', interpretation: '분석 조건을 확인하고 있습니다', interpreting: '요청 조건을 해석하고 있습니다', planning: '분석 조건을 정리하고 있습니다', analysis: '요청한 조건을 분석하고 있습니다', calculation: '조건에 맞는 종목을 계산하고 있습니다', executing: '조건에 맞는 종목을 계산하고 있습니다', verification: '계산 결과와 종목별 근거를 검증하고 있습니다', validating: '계산 결과와 종목별 근거를 검증하고 있습니다', finalizing: '결과를 정리하고 있습니다', cancelling: '분석을 중단하고 있습니다', finished: '실행이 끝났습니다', done: '실행이 끝났습니다', waiting_input: '입력한 조건으로 분석을 이어갑니다' }
 
@@ -66,6 +68,7 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
   }, [turns, runId])
   const [question, setQuestion] = useState(initialQuestion)
   const [asOf, setAsOf] = useState('')
+  const [within, setWithin] = useState(1) // 문장에 기간이 없는 조건의 판정 범위(거래일)
   const requestKey = useRef<{ input: string; key: string } | null>(null)
   const submitting = useRef(false)
   const busy = !!run && !isTerminal(run.status)
@@ -87,7 +90,7 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
   }
 
   async function submit(strategy?: StrategySubmission | FollowupSubmission) {
-    const body = strategy ?? { question: question.trim(), ...(asOf ? { as_of: asOf } : {}) }
+    const body = strategy ?? { question: question.trim(), ...(asOf ? { as_of: asOf } : {}), ...(within > 1 ? { default_within_days: within } : {}) }
     if (!body.question || analysis.start.isPending || submitting.current) return
     submitting.current = true
     const input = JSON.stringify(body)
@@ -129,7 +132,7 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
             <Textarea id="analysis-question" value={question} onChange={event => setQuestion(event.target.value)} placeholder="예: 신고가 돌파 후 거래량이 붙고, 20일 이평선 위를 유지하는 종목을 찾아줘" className="min-h-28 resize-y text-base" disabled={analysis.start.isPending} maxLength={12000} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }} />
             <div className="flex flex-wrap items-center gap-2"><span className="text-caption text-muted-foreground">질문 예시</span>{EXAMPLES.map(example => <Button key={example.label} type="button" variant="secondary" size="sm" disabled={analysis.start.isPending} onClick={() => { setQuestion(example.question); document.getElementById('analysis-question')?.focus() }}>{example.label}</Button>)}</div>
             <QuestionRefiner question={question} disabled={analysis.start.isPending} onApply={text => { setQuestion(text); const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null; field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }} />
-            <div className="flex flex-wrap items-center justify-between gap-3"><Collapsible><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="sm">{asOf ? `${asOf} 기준` : '최신 보유일 기준'}<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-2"><Label htmlFor="analysis-as-of">다른 기준일 선택</Label><Input id="analysis-as-of" type="date" value={asOf} onChange={event => setAsOf(event.target.value)} disabled={analysis.start.isPending} /><p className="text-caption text-muted-foreground">비워 두면 최신 보유일을 사용합니다.</p></CollapsibleContent></Collapsible><Button type="submit" disabled={!question.trim() || analysis.start.isPending}>{analysis.start.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}종목 찾기</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-2"><Label htmlFor="analysis-within" className="text-sm text-muted-foreground">판정 범위</Label><Select value={String(within)} onValueChange={value => setWithin(Number(value))} disabled={analysis.start.isPending}><SelectTrigger id="analysis-within" size="sm" className="w-auto min-w-36" aria-label="조건 판정 범위"><SelectValue /></SelectTrigger><SelectContent>{WITHIN_OPTIONS.map(option => <SelectItem key={option.value} value={String(option.value)}>{option.label}</SelectItem>)}</SelectContent></Select><span className="text-caption text-muted-foreground">문장에 기간이 없는 조건에 적용 · 순위 조건은 당일</span><Collapsible><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="sm">{asOf ? `${asOf} 기준` : '최신 보유일 기준'}<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-2"><Label htmlFor="analysis-as-of">다른 기준일 선택</Label><Input id="analysis-as-of" type="date" value={asOf} onChange={event => setAsOf(event.target.value)} disabled={analysis.start.isPending} /><p className="text-caption text-muted-foreground">비워 두면 최신 보유일을 사용합니다.</p></CollapsibleContent></Collapsible></div><Button type="submit" disabled={!question.trim() || analysis.start.isPending}>{analysis.start.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}종목 찾기</Button></div>
           </form></CardContent>
         </Card>
         {!analysis.start.isPending && <section aria-label="추천 검색" className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-card-title font-medium">목적에 맞는 검색으로 시작하기</h2><Button variant="ghost" size="sm" onClick={() => setLibrary(true)}>저장한 전략 보기</Button></div><DiscoveryRecommendations onAppend={appendCondition} compact onOpen={onOpen} /></section>}

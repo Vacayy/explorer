@@ -83,6 +83,8 @@ class RunRequest(StrictModel):
     scope: Literal["universe", "candidates"] = "universe"
     date_policy: Literal["same", "latest"] = "same"
     spec_patch: dict[str, Any] | None = Field(default=None, max_length=24)
+    # 문장에 기간이 없는 일봉 조건의 within_days 기본값 (D-187 후속). 순위 조건은 항상 1.
+    default_within_days: int | None = Field(default=None, ge=1, le=250)
 
     @model_validator(mode="after")
     def nonblank(self):

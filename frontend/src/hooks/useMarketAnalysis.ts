@@ -109,7 +109,7 @@ export function useMarketAnalysis(runId: string | null, onCreated: (id: string) 
     client.invalidateQueries({ queryKey: listKey })
   }
   const start = useMutation({
-    mutationFn: (body: { question: string; request_key: string; as_of?: string; spec?: Partial<AnalysisSpec>; parent_run_id?: string; scope?: 'universe' | 'candidates'; date_policy?: 'same' | 'latest' }) => request<AnalysisRun>('', body),
+    mutationFn: (body: { question: string; request_key: string; as_of?: string; spec?: Partial<AnalysisSpec>; parent_run_id?: string; scope?: 'universe' | 'candidates'; date_policy?: 'same' | 'latest'; default_within_days?: number }) => request<AnalysisRun>('', body),
     onSuccess: (run, body) => {
       update(run)
       if (body.parent_run_id) {
