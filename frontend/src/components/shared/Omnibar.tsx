@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { useAddMember, useGroups } from "@/hooks/useGroups"
+import { useProjects } from "@/components/study/useProjects"
 import { readRecentStocks, rememberRecentStock } from "@/lib/recentStocks"
 import { formatKrw, formatNumber, formatPercent } from "@/utils/format"
 import {
@@ -20,7 +21,7 @@ import {
  * 빈 상태는 "돌아갈 곳"(최근 본 종목·오늘 켜진 신호·핀 이동), 종목 행에서 Tab은 그 종목에 대한 행동을 펼친다.
  */
 
-interface SearchCompany { stock_code: string; name: string; market: string | null; sector: string | null; close: number | null; change_pct: number | null; market_cap: number | null; in_groups: string[] }
+interface SearchCompany { stock_code: string; name: string; market: string | null; sector: string | null; close: number | null; change_pct: number | null; market_cap: number | null; in_groups: string[]; alias?: string | null }
 interface SearchResponse {
   query: string
   companies: SearchCompany[]
@@ -28,6 +29,8 @@ interface SearchResponse {
   entities: { id: number; type: string; name: string }[]
   groups: { id: number; name: string; kind: string; member_count: number }[]
   projects: { id: number; title: string }[]
+  mentions: { id: number; type: string; name: string; stock_code: string | null }[]
+  choseong: boolean
 }
 interface TodaySignal { stock_code: string; name: string; label: string; group_id: number; group_name: string; as_of: string }
 
@@ -48,22 +51,23 @@ const PAGES = [
   { label: "보관함", hint: "예전 화면", to: "/archive", icon: Home, keywords: "archive 보관함 스크리너 비교 메모 산업군" },
 ] as const
 
-type Intent = "empty" | "code" | "ticker" | "name" | "sentence"
+type Intent = "empty" | "code" | "ticker" | "choseong" | "name" | "sentence"
 
 /** 입력 형태로 의도를 정한다. 판별이 틀려도 다른 그룹은 그대로 보이므로 값싸게 틀려도 된다. */
 function classify(q: string): Intent {
   if (!q) return "empty"
   if (/^\d{6}$/.test(q)) return "code"
   if (/^[A-Z][A-Z0-9.\-]{0,5}$/.test(q)) return "ticker"
+  if (/^[ㄱ-ㅎ]+$/.test(q)) return "choseong"
   if (/(찾아줘|추려줘|골라줘|보여줘|알려줘|뭐야|왜|어때|\?)$/.test(q) || q.split(/\s+/).length >= 3) return "sentence"
   return "name"
 }
 /** 문장의 기본 행동: "찾아줘"류·종목 언급은 발견, 질문형은 대화. */
 function discoverFirst(q: string): boolean {
   if (/(찾아줘|추려줘|골라줘|스크리닝|종목|조건)/.test(q)) return true
-  return !/(\?|알려줘|뭐야|왜|어때|어떻게)$/.test(q)
+  return !/(\?|알려줘|뭐야|왜|어때|어떻게|비교해줘|설명해줘|정리해줘|분석해줘|요약해줘)$/.test(q)
 }
-const INTENT_LABEL: Record<Intent, string> = { empty: "", code: "종목 코드", ticker: "미국 티커", name: "이름", sentence: "문장" }
+const INTENT_LABEL: Record<Intent, string> = { empty: "", code: "종목 코드", ticker: "미국 티커", choseong: "초성", name: "이름", sentence: "문장" }
 
 function Highlight({ text, q }: { text: string; q: string }) {
   if (!q) return <>{text}</>
@@ -101,6 +105,19 @@ export default function Omnibar() {
   const today = useQuery({ queryKey: ["spine", "search", "today"], queryFn: async () => (await api.get<{ items: TodaySignal[]; as_of: string | null }>("/api/spine/search/today")).data, enabled: open && !q, staleTime: 60_000 })
   const groups = useGroups()
   const addMember = useAddMember()
+  const projects = useProjects()
+  // 종목의 최근 저장 자료(최대 5건)를 스터디 프로젝트 자료함에 넣는다. projectId 0 = 종목 이름으로 새 프로젝트.
+  const toProject = useMutation({
+    mutationFn: async ({ projectId, code, name }: { projectId: number; code: string; name: string }) => {
+      const evidence = (await api.get<{ items: { doc_id: number | null }[] }>("/api/spine/feed/company-evidence", { params: { company: code, market: "kr", size: 5, page: 1 } })).data
+      const ids = [...new Set(evidence.items.map(item => item.doc_id).filter((id): id is number => typeof id === "number"))]
+      if (!ids.length) throw new Error("이 종목에 저장된 자료가 없어 프로젝트에 넣을 수 없습니다.")
+      let id = projectId, title = projects.data?.find(item => item.id === projectId)?.title ?? ""
+      if (!id) { const created = (await api.post<{ id: number }>("/api/spine/study-projects", { title: `${name} 스터디` })).data; id = created.id; title = `${name} 스터디` }
+      await api.post(`/api/spine/study-projects/${id}/documents`, { document_ids: ids })
+      return { id, title, added: ids.length }
+    },
+  })
   const recent = useMemo(() => open ? readRecentStocks() : [], [open])
 
   useEffect(() => {
@@ -154,6 +171,7 @@ export default function Omnibar() {
     if (value.startsWith("kr-")) { const c = companies.find(item => item.stock_code === value.slice(3)); return c ? { code: c.stock_code, name: c.name, market: "kr" } : null }
     if (value.startsWith("us-")) { const u = data?.us.find(item => item.ticker === value.slice(3)); return u ? { code: u.ticker, name: u.name, market: "us" } : null }
     if (value.startsWith("recent-")) { const [, market, code] = value.split("-"); const r = recent.find(item => item.code === code && item.market === market); return r ? { code: r.code, name: r.name, market: r.market } : null }
+    if (value.startsWith("mention-")) { const m = data?.mentions.find(item => `mention-${item.id}` === value); return m?.stock_code ? { code: m.stock_code, name: m.name, market: "kr" } : null }
     if (value.startsWith("today-")) { const t = today.data?.items.find(item => value === `today-${item.stock_code}-${item.label}`); return t ? { code: t.stock_code, name: t.name, market: "kr" } : null }
     return null
   }
@@ -169,7 +187,8 @@ export default function Omnibar() {
           {(intent !== "empty" || focus) && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{focus ? `${focus.name} · 행동` : INTENT_LABEL[intent]}</span>}
         </div>
         <CommandList className="max-h-[60vh]">
-          {focus ? <StockActions focus={focus} groups={groups.data?.items ?? []} adding={addMember.isPending} onOpen={path => openCompany(focus, path)} onBack={() => setFocus(null)}
+          {focus ? <StockActions focus={focus} groups={groups.data?.items ?? []} projects={projects.data ?? []} adding={addMember.isPending || toProject.isPending} onOpen={path => openCompany(focus, path)} onBack={() => setFocus(null)}
+            onAddToProject={async projectId => { try { const result = await toProject.mutateAsync({ projectId, code: focus.code, name: focus.name }); toast.success(`${focus.name} 자료 ${result.added}건을 ‘${result.title}’에 추가했습니다.`); go(`/study/projects/${result.id}`) } catch (error) { toast.error(error instanceof Error ? error.message : "프로젝트에 추가하지 못했습니다.") } }}
             onAddToGroup={async groupId => { try { const detail = await addMember.mutateAsync({ groupId, stock_code: focus.code }); toast.success(`${focus.name}을(를) ‘${detail.name}’에 추가했습니다.`); setOpen(false) } catch (error) { toast.error(error instanceof Error ? error.message : "묶음에 추가하지 못했습니다.") } }} /> : <>
           {!q && <>
             {recent.length > 0 && <CommandGroup heading="최근 본 종목">
@@ -190,12 +209,17 @@ export default function Omnibar() {
               : <CommandItem key="chat" value="sentence-chat" onSelect={() => go(`/chat?q=${encodeURIComponent(q)}`)}><Row icon={<Sparkles className="size-4 text-hypothesis" />} title="대화에서 질문" sub="수집 문서 근거로 답변" /></CommandItem>)}
             <CommandItem value="sentence-docs" onSelect={() => go(`/feed?q=${encodeURIComponent(q)}`)}><Row icon={<FileSearch className="size-4" />} title="문서 검색" sub="의미 기반 · 전체 수집 자료" /></CommandItem>
           </CommandGroup>}
+          {q && !!data?.mentions.length && <CommandGroup heading="문장 안에서 알아본 것">
+            <div className="flex flex-wrap gap-1.5 px-2 pb-2">{data.mentions.map(m => <CommandItem key={`m-${m.id}`} value={`mention-${m.id}`} data-stock={m.stock_code ?? undefined} data-name={m.name} data-market="kr" className="h-7 rounded-full border px-3 py-0 text-xs data-[selected=true]:border-primary"
+              onSelect={() => m.type === "company" && m.stock_code ? openCompany({ code: m.stock_code, name: m.name, market: "kr" }) : go(m.type === "person" ? `/person?name=${encodeURIComponent(m.name)}` : `/feed?industry=${encodeURIComponent(m.name)}`)}>
+              {m.type === "company" ? <Building2 className="size-3" /> : m.type === "person" ? <User className="size-3" /> : <Tag className="size-3" />}{m.name}</CommandItem>)}</div>
+          </CommandGroup>}
 
           {q && companies.length > 0 && <CommandGroup heading={`종목 · 시가총액순${companies.length > 5 ? ` · ${formatNumber(companies.length)}개` : ""}`}>
             {visibleCompanies.map(c => <CommandItem key={c.stock_code} value={`kr-${c.stock_code}`} data-stock={c.stock_code} data-name={c.name} data-market="kr" onSelect={() => openCompany({ code: c.stock_code, name: c.name, market: "kr" })}>
-              <Row icon={<Building2 className="size-4" />} title={<Highlight text={c.name} q={q} />}
-                sub={[c.market, c.sector, c.in_groups.length ? `${c.in_groups[0]}에 있음` : null].filter(Boolean).join(" · ")}
-                right={<span className="flex flex-col items-end leading-tight"><span>{c.close != null ? <>{formatNumber(c.close)} <span className={c.change_pct == null ? "" : c.change_pct > 0 ? "text-up" : c.change_pct < 0 ? "text-down" : ""}>{c.change_pct != null ? formatPercent(c.change_pct) : ""}</span></> : c.stock_code}</span><span>{c.market_cap != null ? formatKrw(c.market_cap) : c.stock_code}</span></span>} />
+              <Row icon={<Building2 className="size-4" />} title={intent === "choseong" ? c.name : <Highlight text={c.name} q={q} />}
+                sub={[c.alias ? `별칭 “${c.alias}”` : null, c.market, c.sector, c.in_groups.length ? `${c.in_groups[0]}에 있음` : null].filter(Boolean).join(" · ")}
+                right={<span className="flex flex-col items-end leading-tight"><span>{c.close != null ? <>{formatNumber(c.close)} <span className={c.change_pct == null ? "" : c.change_pct > 0 ? "text-up" : c.change_pct < 0 ? "text-down" : ""}>{c.change_pct != null ? formatPercent(c.change_pct) : ""}</span></> : c.stock_code}</span><span>{c.market_cap != null ? formatKrw(c.market_cap) : c.close == null ? "시세 없음" : ""}</span></span>} />
             </CommandItem>)}
             {companies.length > 5 && !showAll && <CommandItem value="more-companies" onSelect={() => setShowAll(true)}><Row icon={<span className="text-xs">+{companies.length - 5}</span>} title="더 보기" sub="시가총액순 나머지" /></CommandItem>}
           </CommandGroup>}
@@ -241,7 +265,7 @@ export default function Omnibar() {
   )
 }
 
-function StockActions({ focus, groups, adding, onOpen, onBack, onAddToGroup }: { focus: Focus; groups: { id: number; name: string; kind: string; member_count: number }[]; adding: boolean; onOpen: (path?: string) => void; onBack: () => void; onAddToGroup: (groupId: number) => void }) {
+function StockActions({ focus, groups, projects, adding, onOpen, onBack, onAddToGroup, onAddToProject }: { focus: Focus; groups: { id: number; name: string; kind: string; member_count: number }[]; projects: { id: number; title: string }[]; adding: boolean; onOpen: (path?: string) => void; onBack: () => void; onAddToGroup: (groupId: number) => void; onAddToProject: (projectId: number) => void }) {
   const base = focus.market === "us" ? `/us/${focus.code}` : `/analyze/${focus.code}`
   return <>
     <CommandGroup heading={`${focus.name} · ${focus.code}`}>
@@ -256,6 +280,10 @@ function StockActions({ focus, groups, adding, onOpen, onBack, onAddToGroup }: {
     {focus.market === "kr" && <CommandGroup heading="묶음에 추가">
       {groups.length === 0 && <CommandItem value="no-groups" onSelect={() => onOpen("/follow/stocks")}><Row icon={<FolderPlus className="size-4" />} title="아직 묶음이 없습니다 — 종목 묶음에서 만들기" /></CommandItem>}
       {groups.map(g => <CommandItem key={g.id} value={`add-${g.id}`} disabled={adding} onSelect={() => onAddToGroup(g.id)}><Row icon={<Layers className="size-4" />} title={g.name} sub={`${g.kind === "portfolio" ? "포트폴리오" : "관심"} · ${formatNumber(g.member_count)}종목`} /></CommandItem>)}
+    </CommandGroup>}
+    {focus.market === "kr" && <CommandGroup heading="스터디 프로젝트에 자료 추가 · 최근 저장 자료 5건">
+      <CommandItem value="project-new" disabled={adding} onSelect={() => onAddToProject(0)}><Row icon={<FolderPlus className="size-4" />} title={`새 프로젝트 “${focus.name} 스터디”`} sub="만들고 자료 넣기" /></CommandItem>
+      {projects.slice(0, 6).map(p => <CommandItem key={p.id} value={`project-add-${p.id}`} disabled={adding} onSelect={() => onAddToProject(p.id)}><Row icon={<NotebookPen className="size-4" />} title={p.title} sub="기존 프로젝트" /></CommandItem>)}
     </CommandGroup>}
   </>
 }
