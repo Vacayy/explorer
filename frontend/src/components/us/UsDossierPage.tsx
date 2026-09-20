@@ -1,5 +1,7 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { rememberRecentStock } from '@/lib/recentStocks'
 import { usDossierQuery, usWorldModelQuery } from '@/api/spine'
 import { PageContainer } from '@/components/shared/PageContainer'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -33,6 +35,7 @@ function num(v?: number | null, d = 1) {
 export default function UsDossierPage() {
   const { ticker = '' } = useParams<{ ticker: string }>()
   const q = useQuery(usDossierQuery(ticker))
+  useEffect(() => { if (q.data?.name) rememberRecentStock({ code: q.data.ticker, name: q.data.name, market: 'us' }) }, [q.data?.ticker, q.data?.name])
   const [sp, setSp] = useSearchParams()
   const tab = sp.get('tab') || 'overview'
   const prices = useQuery({

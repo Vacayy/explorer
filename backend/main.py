@@ -10,6 +10,7 @@ from routers import blog_feed
 from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_digests, spine_keywords, spine_sources
 from routers import spine_groups
 from routers import company_profile
+from routers import spine_search
 from routers import spine_brief, spine_conversations, spine_person, spine_knowledge, spine_approvals
 from routers import spine_quotes, spine_sector_map, spine_feature_days, spine_company, spine_narrative, spine_research, spine_report, spine_admin
 from routers import spine_causal
@@ -60,6 +61,7 @@ app.include_router(spine_feature_days.router)
 app.include_router(spine_company.router)
 app.include_router(spine_groups.router)
 app.include_router(company_profile.router)
+app.include_router(spine_search.router)
 app.include_router(spine_narrative.router)
 app.include_router(spine_research.router)
 app.include_router(spine_report.router)

@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { rememberRecentStock } from '@/lib/recentStocks'
 import api from '@/api/client'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCompany } from '@/hooks/useCompanySearch'
@@ -43,6 +45,7 @@ export default function SummaryPage({
       .filter((s) => s.bsns_year === year)
       .map((s) => s.segment_name) || []
   const research = sp.get('mode') === 'research'
+  useEffect(() => { if (company?.corp_name) rememberRecentStock({ code: stockCode, name: company.corp_name, market: 'kr' }) }, [stockCode, company?.corp_name])
   const discoveryId = sp.get('discovery')
   return (
     <PageLayout
