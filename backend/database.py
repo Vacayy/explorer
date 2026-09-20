@@ -22,6 +22,8 @@ def init_db():
     migrate_study_projects(conn)
     from pipeline.youtube_digest import SCHEMA as YOUTUBE_DIGEST_SCHEMA
     cur.executescript(YOUTUBE_DIGEST_SCHEMA)
+    from pipeline.study_actions import migrate as migrate_study_actions
+    migrate_study_actions(conn)
 
     # 사전 마이그레이션: 구 reports(anchor_topic PK, id 없음) → append-only(id PK)로 전환 (D-047).
     # reports는 재생성 가능한 캐시라 구 표는 버린다(id 생기면 재실행 안 됨). 히스토리는 이후부터 누적.
