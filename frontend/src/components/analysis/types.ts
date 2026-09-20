@@ -50,7 +50,7 @@ export interface StrategyParameter {
 export interface StrategyDefinition {
   id: string
   label: string
-  category: '시세동향' | '지표신호' | '순위종목'
+  category: '시세동향' | '지표신호' | '순위종목' | '가격 구조'
   timeframe: '1d' | '10m'
   description: string
   formula: string
@@ -129,6 +129,7 @@ export interface AnalysisChart {
   ma: { time: string; value: number }[]
   markers: { time: string; label: string; price: number; kind: string }[]
   neckline: { time: string; value: number }[]
+  lines?: { id: string; label: string; points: { time: string; value: number }[] }[]
 }
 
 // 질문 다듬기 (D-186) — backend/pipeline/market_analysis/refine.py

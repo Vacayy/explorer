@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { AnalysisSpec, StrategyCondition, StrategyDefinition } from '@/components/analysis/types'
 
-const CATEGORIES = ['시세동향', '지표신호', '순위종목'] as const
+const CATEGORIES = ['시세동향', '지표신호', '가격 구조', '순위종목'] as const
 const DATA_LABELS: Record<string, string> = {
   daily_ohlcv: '일봉 시세', ohlcv: '시세와 거래량', intraday_10m: '10분봉 시세',
   ohlcv_10m: '10분봉 시세', trading_value: '실제 거래대금', shares: '상장주식 수',

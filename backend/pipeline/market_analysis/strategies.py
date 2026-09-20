@@ -151,6 +151,49 @@ def _build_catalog() -> None:
 _build_catalog()
 
 
+def _build_structure() -> None:
+    structure = "가격 구조"
+    pivot = {"pivot_width": _integer("피벗 폭 (좌우 봉 수)", 1, 30), "lookback": _integer("피벗 탐색 구간 (봉)", 20, 250)}
+    ohlc = ("high", "low", "close")
+    _add("higher_lows", "저점 높이기", structure, "higher_lows",
+         "최근 스윙 저점 N개가 연속 상승 (피벗 = 좌우 폭만큼의 저가보다 낮은 저가, 우측 봉이 지나야 확정)",
+         {"pivot_width": 5, "swings": 3, "lookback": 120}, {**pivot, "swings": _integer("비교할 스윙 수", 2, 6)}, ohlc)
+    _add("lower_highs", "고점 낮추기", structure, "lower_highs",
+         "최근 스윙 고점 N개가 연속 하락 (피벗 = 좌우 폭만큼의 고가보다 높은 고가)",
+         {"pivot_width": 5, "swings": 3, "lookback": 120}, {**pivot, "swings": _integer("비교할 스윙 수", 2, 6)}, ohlc)
+    _add("resistance_break", "전고점 돌파", structure, "resistance_break",
+         "직전 확정 스윙 고점 수준을 종가가 상향 교차 (전일 종가 ≤ 수준 × (1+여유율) < 당일 종가)",
+         {"pivot_width": 5, "lookback": 120, "min_break_pct": 0}, {**pivot, "min_break_pct": _number("돌파 여유율 (%)", 0, 10)}, ohlc)
+    _add("support_break", "전저점 이탈", structure, "support_break",
+         "직전 확정 스윙 저점 수준을 종가가 하향 교차",
+         {"pivot_width": 5, "lookback": 120, "min_break_pct": 0}, {**pivot, "min_break_pct": _number("이탈 여유율 (%)", 0, 10)}, ohlc)
+    _add("breakout_retest_rebreak", "돌파 후 지지·재돌파", structure, "breakout_retest_rebreak",
+         "전고점 돌파 뒤 되돌림 저가가 돌파 수준 ±허용률 안에서 멈추고(종가 이탈 없음) 당일 종가가 되돌림 구간 최고가를 넘음",
+         {"pivot_width": 5, "lookback": 120, "tolerance_pct": 2}, {**pivot, "tolerance_pct": _number("지지 허용률 (%)", 0, 10)}, ohlc)
+    points = {"points": _integer("선을 잇는 스윙 수", 2, 4)}
+    _add("trendline_break_up", "하락 추세선 상향 돌파", structure, "trendline_break_up",
+         "연속 하락하는 최근 스윙 고점 N개를 이은 선(3개 이상은 최소제곱)을 종가가 상향 교차",
+         {"pivot_width": 5, "points": 2, "lookback": 120}, {**pivot, **points}, ohlc)
+    _add("trendline_break_down", "상승 추세선 하향 이탈", structure, "trendline_break_down",
+         "연속 상승하는 최근 스윙 저점 N개를 이은 선을 종가가 하향 교차",
+         {"pivot_width": 5, "points": 2, "lookback": 120}, {**pivot, **points}, ohlc)
+    _add("trendline_support_hold", "상승 추세선 지지 반등", structure, "trendline_support_hold",
+         "상승 추세선(스윙 저점 연결) ±허용률 안까지 당일 저가가 내려왔다가 종가는 선 위에서 마감",
+         {"pivot_width": 5, "points": 2, "lookback": 120, "tolerance_pct": 1.5}, {**pivot, **points, "tolerance_pct": _number("접촉 허용률 (%)", 0, 10)}, ohlc)
+    channel = {**pivot, **points, "method": _choice("채널 정의", ["swing", "regression"]),
+               "period": _integer("회귀 구간 (봉)", 10, 250), "band_std": _number("회귀 밴드 (표준편차 배수)", 0.5, 4)}
+    channel_defaults = {"pivot_width": 5, "points": 2, "lookback": 120, "method": "swing", "period": 60, "band_std": 2}
+    _add("channel_break_up", "채널 상단 돌파", structure, "channel_break_up",
+         "swing: 스윙 저점 선에 평행하게 스윙 고점 최대 이격을 지나는 상단선 / regression: 종가 회귀선 + k·표준편차. 종가가 상단선을 상향 교차",
+         dict(channel_defaults), channel, ohlc)
+    _add("channel_break_down", "채널 하단 이탈", structure, "channel_break_down",
+         "swing: 스윙 저점을 이은 기준선 / regression: 종가 회귀선 − k·표준편차. 종가가 하단선을 하향 교차",
+         dict(channel_defaults), channel, ohlc)
+
+
+_build_structure()
+
+
 def catalog() -> list[dict]:
     """Return independent JSON-serializable catalog entries in screenshot order."""
     return deepcopy(list(_ENTRIES.values()))
@@ -229,6 +272,9 @@ def _base_sessions(kind: str, p: dict) -> int:
         return max(250, 5 * p["period"] + p["lag"] + p["signal"])
     if kind.startswith("stoch_"):
         return p["period"] + (p.get("k_period", 1) - 1) + p["d_period"]
+    if kind in STRUCTURE_KINDS:
+        needed = p["lookback"] + p["pivot_width"] + 2
+        return max(needed, p["period"] + 2) if kind.startswith("channel_") and p.get("method") == "regression" else needed
     if kind == "rank_return_20d":
         return 21
     if kind in {"rank_volume", "rank_trading_value", "rank_turnover"}:
@@ -311,8 +357,48 @@ def _le(a: float, b: float) -> bool:
     return a <= b or _equal(a, b)
 
 
+def _cross_exact(previous: float, current: float, before_reference: float, reference: float, direction: str = "up") -> bool:
+    """Cross with machine-precision equality treated as a touch, not a break (fitted lines carry rounding noise)."""
+    if direction == "up":
+        return _le(previous, before_reference) and current > reference and not _equal(current, reference)
+    return _ge(previous, before_reference) and current < reference and not _equal(current, reference)
+
+
+STRUCTURE_KINDS = frozenset({"higher_lows", "lower_highs", "resistance_break", "support_break", "breakout_retest_rebreak",
+                             "trendline_break_up", "trendline_break_down", "trendline_support_hold",
+                             "channel_break_up", "channel_break_down"})
+
+
+def _pivot_indexes(rows: list[dict], width: int, key: str, low: bool) -> list[int]:
+    """Strict swing points: lower (higher) than every bar within `width` on both sides. Same rule as the H&S detector."""
+    out = []
+    for index in range(width, len(rows) - width):
+        value = rows[index][key]
+        neighbors = [rows[j][key] for j in range(index - width, index + width + 1) if j != index]
+        if (value < min(neighbors)) if low else (value > max(neighbors)):
+            out.append(index)
+    return out
+
+
+def _fit_line(points: list[tuple[int, float]]) -> tuple[float, float]:
+    """y = a + b·x through two points, or least squares for more."""
+    if len(points) == 2:
+        (x0, y0), (x1, y1) = points
+        b = (y1 - y0) / (x1 - x0)
+        return y0 - b * x0, b
+    n = len(points)
+    mx = math.fsum(x for x, _ in points) / n
+    my = math.fsum(y for _, y in points) / n
+    sxx = math.fsum((x - mx) ** 2 for x, _ in points)
+    b = math.fsum((x - mx) * (y - my) for x, y in points) / sxx
+    return my - b * mx, b
+
+
 def _lines(rows: list[dict], kind: str, p: dict) -> dict[str, list]:
     closes = [row.get("close") for row in rows]
+    if kind in STRUCTURE_KINDS:
+        width = p["pivot_width"]
+        return {"peaks": _pivot_indexes(rows, width, "high", False), "troughs": _pivot_indexes(rows, width, "low", True)}
     if kind.startswith("sma_") or kind == "trend_reversal":
         return {"ma": _sma(closes, p["period"])}
     if kind.startswith("ma_") or kind.startswith("order_"):
@@ -342,6 +428,8 @@ def _at(rows: list[dict], i: int, kind: str, p: dict, lines: dict) -> dict:
     day = row["timestamp"] if kind.startswith("intraday_") else row["date"]
     previous = rows[i - 1] if i else {}
     close = row.get("close")
+    if kind in STRUCTURE_KINDS:
+        return _structure_at(rows, i, kind, p, lines)
     if kind == "flat":
         value = 100 * abs(close / previous["close"] - 1)
         return _decision(_le(value, p["tolerance_pct"]), value, p["tolerance_pct"], day)
@@ -458,6 +546,120 @@ def _at(rows: list[dict], i: int, kind: str, p: dict, lines: dict) -> dict:
         reference = p["threshold_pct"] if kind == "intraday_surge" else -p["threshold_pct"]
         return _decision(_ge(value, reference) if kind == "intraday_surge" else _le(value, reference), value, reference, day)
     raise AssertionError(f"unhandled strategy kind {kind}")
+
+
+def _structure_at(rows: list[dict], i: int, kind: str, p: dict, lines: dict) -> dict:
+    """Price-structure conditions. Only pivots confirmed by `pivot_width` later bars (k + width <= i) are visible at bar i."""
+    row, previous = rows[i], rows[i - 1]
+    day, close = row["date"], row["close"]
+    width, lookback = p["pivot_width"], p["lookback"]
+    peaks = [k for k in lines["peaks"] if k + width <= i and k >= i - lookback]
+    troughs = [k for k in lines["troughs"] if k + width <= i and k >= i - lookback]
+
+    def points(indexes, key):
+        return [{"date": rows[k]["date"], "price": rows[k][key]} for k in indexes]
+
+    def segment(a, b, start, end):
+        return [{"date": rows[start]["date"], "price": a + b * start}, {"date": rows[end]["date"], "price": a + b * end}]
+
+    if kind in {"higher_lows", "lower_highs"}:
+        rising = kind == "higher_lows"
+        key, idx = ("low", troughs) if rising else ("high", peaks)
+        idx = idx[-p["swings"]:]
+        if len(idx) < p["swings"]:
+            return _out("fail", day=day, reason="insufficient_pivots", evidence={"pivots": points(idx, key)})
+        values = [rows[k][key] for k in idx]
+        ok = all((b > a) if rising else (b < a) for a, b in zip(values, values[1:]))
+        return _decision(ok, values[-1], values[-2], day, evidence={"pivots": points(idx, key)})
+
+    if kind in {"resistance_break", "support_break"}:
+        resistance = kind == "resistance_break"
+        key, idx = ("high", peaks) if resistance else ("low", troughs)
+        if not idx:
+            return _out("fail", day=day, reason="insufficient_pivots")
+        k = idx[-1]
+        level = rows[k][key]
+        margin = p["min_break_pct"] / 100
+        reference = level * (1 + margin) if resistance else level * (1 - margin)
+        ok = _cross_exact(previous["close"], close, reference, reference, "up" if resistance else "down")
+        return _decision(ok, close, reference, day, evidence={"level": level, "level_date": rows[k]["date"],
+                                                              "line": [{"date": rows[k]["date"], "price": level}, {"date": day, "price": level}]})
+
+    if kind == "breakout_retest_rebreak":
+        tolerance = p["tolerance_pct"] / 100
+        for j in range(i - 1, max(i - lookback, width + 1), -1):
+            prior = [k for k in lines["peaks"] if k + width <= j and k >= j - lookback]
+            if not prior:
+                continue
+            level = rows[prior[-1]]["high"]
+            if not _cross_exact(rows[j - 1]["close"], rows[j]["close"], level, level, "up"):
+                continue
+            between = rows[j + 1:i]
+            if not between:
+                return _out("fail", day=day, reason="no_retest", evidence={"breakout_date": rows[j]["date"], "level": level})
+            pullback = min(between, key=lambda item: item["low"])
+            touched = pullback["low"] <= level * (1 + tolerance)
+            held = all(item["close"] >= level * (1 - tolerance) for item in between)
+            rebreak = max(item["high"] for item in between)
+            ok = touched and held and close > rebreak and not _equal(close, rebreak)
+            return _decision(ok, close, rebreak, day, evidence={
+                "breakout_date": rows[j]["date"], "level": level, "pullback_date": pullback["date"], "pullback_low": pullback["low"],
+                "line": [{"date": rows[prior[-1]]["date"], "price": level}, {"date": day, "price": level}]})
+        return _out("fail", day=day, reason="no_prior_breakout")
+
+    if kind.startswith("trendline_"):
+        from_peaks = kind == "trendline_break_up"
+        key, idx = ("high", peaks) if from_peaks else ("low", troughs)
+        idx = idx[-p["points"]:]
+        if len(idx) < p["points"]:
+            return _out("fail", day=day, reason="insufficient_pivots", evidence={"pivots": points(idx, key)})
+        values = [rows[k][key] for k in idx]
+        if not all((b < a) if from_peaks else (b > a) for a, b in zip(values, values[1:])):
+            return _out("fail", day=day, reason="no_trend_pivots", evidence={"pivots": points(idx, key)})
+        a, b = _fit_line([(k, rows[k][key]) for k in idx])
+        y_now, y_prev = a + b * i, a + b * (i - 1)
+        if y_now <= 0:
+            return _out("fail", day=day, reason="line_out_of_range")
+        evidence = {"pivots": points(idx, key), "line": segment(a, b, idx[0], i), "slope": b}
+        if kind == "trendline_break_up":
+            return _decision(_cross_exact(previous["close"], close, y_prev, y_now, "up"), close, y_now, day, evidence=evidence)
+        if kind == "trendline_break_down":
+            return _decision(_cross_exact(previous["close"], close, y_prev, y_now, "down"), close, y_now, day, evidence=evidence)
+        tolerance = p["tolerance_pct"] / 100
+        ok = abs(row["low"] - y_now) <= y_now * tolerance and close > y_now
+        return _decision(ok, row["low"], y_now, day, evidence=evidence)
+
+    if kind.startswith("channel_"):
+        upward = kind == "channel_break_up"
+        if p["method"] == "regression":
+            n = p["period"]
+            xs = list(range(i - n, i))
+            a, b = _fit_line([(x, rows[x]["close"]) for x in xs])
+            residuals = [rows[x]["close"] - (a + b * x) for x in xs]
+            std = math.sqrt(math.fsum(r * r for r in residuals) / n)
+            if std <= 0:
+                return _out("unavailable", day=day, reason="zero_price_range")
+            offset = p["band_std"] * std
+            upper = (a + offset, b)
+            lower = (a - offset, b)
+            start = xs[0]
+        else:
+            idx = troughs[-p["points"]:]
+            if len(idx) < p["points"]:
+                return _out("fail", day=day, reason="insufficient_pivots", evidence={"pivots": points(idx, "low")})
+            a, b = _fit_line([(k, rows[k]["low"]) for k in idx])
+            span_peaks = [k for k in peaks if k >= idx[0]]
+            if not span_peaks:
+                return _out("fail", day=day, reason="insufficient_pivots", evidence={"pivots": points(idx, "low")})
+            offset = max(rows[k]["high"] - (a + b * k) for k in span_peaks)
+            upper, lower, start = (a + offset, b), (a, b), idx[0]
+        line = upper if upward else lower
+        y_now, y_prev = line[0] + line[1] * i, line[0] + line[1] * (i - 1)
+        if y_now <= 0:
+            return _out("fail", day=day, reason="line_out_of_range")
+        ok = _cross_exact(previous["close"], close, y_prev, y_now, "up" if upward else "down")
+        return _decision(ok, close, y_now, day, evidence={"channel": {"upper": segment(*upper, start, i), "lower": segment(*lower, start, i)}, "method": p["method"]})
+    raise ValueError(f"unknown structure kind {kind}")
 
 
 def evaluate_strategy(rows: list[dict], condition: dict) -> dict:

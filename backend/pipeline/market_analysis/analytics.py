@@ -441,11 +441,25 @@ def chart_data(data_dir: str | Path, code: str, spec: dict, *, verified_result: 
         # Do not imply an unrequested MA20 or pattern was part of this search.
         ma = []
     by_day = {row["date"]: row["close"] for row in rows}
+    lines = []
     for key, check in (selected or {}).get("checks", {}).items():
         if check.get("status") == "pass" and check.get("date") in by_day and check.get("label"):
             markers.append({"time": check["date"], "price": by_day[check["date"]],
                             "kind": key, "label": check["label"]})
+        # Price-structure evidence (D-187): the swing points and fitted lines that produced the verdict.
+        evidence = check.get("evidence") if isinstance(check.get("evidence"), dict) else {}
+        label = check.get("label") or key
+        for point in evidence.get("pivots", []):
+            if point.get("date") in by_day:
+                markers.append({"time": point["date"], "price": point["price"], "kind": "pivot", "label": "스윙"})
+        if evidence.get("line"):
+            lines.append({"id": key, "label": label, "points": [{"time": pt["date"], "value": pt["price"]} for pt in evidence["line"]]})
+        for side, name in (("upper", "상단"), ("lower", "하단")):
+            for pts in [evidence.get("channel", {}).get(side)] if evidence.get("channel") else []:
+                lines.append({"id": f"{key}:{side}", "label": f"{label} {name}", "points": [{"time": pt["date"], "value": pt["price"]} for pt in pts]})
+    # Several conditions can share a swing point; show each once.
+    markers = list({(m["time"], m["kind"], m["price"]): m for m in markers}.values())
     markers.sort(key=lambda marker: marker["time"])
     return {"code": code, "name": name_row[0] if name_row else code, "prices": prices, "ma": ma,
-            "markers": markers, "neckline": neckline, "as_of": result["as_of"],
+            "markers": markers, "neckline": neckline, "lines": lines, "as_of": result["as_of"],
             "status": selected["status"] if selected else "not_matched"}
