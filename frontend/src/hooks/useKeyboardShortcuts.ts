@@ -20,7 +20,7 @@ export function useKeyboardShortcuts() {
         openOmnibar()
         return
       }
-      if (e.altKey && !e.metaKey && !e.ctrlKey && /^Digit[1-5]$/.test(e.code)) {
+      if (e.altKey && !e.metaKey && !e.ctrlKey && /^Digit[1-6]$/.test(e.code)) {
         const mode = MODES[Number(e.code.slice(5)) - 1]
         if (mode) { e.preventDefault(); navigate(mode.path) }
       }

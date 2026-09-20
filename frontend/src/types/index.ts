@@ -792,3 +792,40 @@ export interface TimelineChannelsResponse {
   total: number
   until: string
 }
+export type StudyIntent = 'explain' | 'critique' | 'related';
+export type StudyTool = 'read' | 'highlight' | 'comment' | StudyIntent;
+export interface StudyActionRequest {
+  intent: StudyIntent;
+  selection?: { start: number; end: number; exact: string };
+  annotation?: { id: number; revision: number };
+  parent_id?: number;
+  retry_of?: number;
+  question?: string;
+  research?: 'auto' | 'web';
+}
+export interface StudyAction {
+  id: number;
+  study_id: number;
+  annotation_id: number;
+  annotation_revision: number;
+  intent: StudyIntent;
+  status: 'queued' | 'running' | 'complete' | 'error' | 'cancelled';
+  question: string;
+  parent_id: number | null;
+  retry_of: number | null;
+  queue_position: number;
+  created_at: string;
+  started_at: string | null;
+  error: string | null;
+  prompt_version: string;
+  result: {
+    answer?: string;
+    citations?: ChatMessage['citations'];
+    model?: string;
+    research?: {
+      intent: string;
+      notes?: string[];
+      results: { title: string; href?: string | null; date?: string | null; kind?: string; doc_id?: number; text?: string; read_scope?: string }[];
+    };
+  } | null;
+}

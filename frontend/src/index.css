@@ -454,6 +454,17 @@
 .study-highlight { background:color-mix(in oklch, var(--chart-warning, #d8b74a) 28%, transparent); border-radius:2px; }
 .study-comment-anchor { text-decoration:underline; text-decoration-color:var(--primary); text-underline-offset:4px; text-decoration-style:dotted; }
 .study-picked { box-shadow:inset 0 -2px 0 color-mix(in oklch,var(--primary) 45%,transparent); }
+.study-tool-group { flex-wrap:wrap; gap:2px; }
+.study-tool { gap:5px; padding-inline:9px; }
+.study-tool svg { width:15px; height:15px; }
+.study-tool[data-state=on][data-intent=explain],.study-highlight[data-intent=explain] { background:color-mix(in oklch,var(--primary) 15%,transparent); }
+.study-tool[data-state=on][data-intent=critique],.study-highlight[data-intent=critique] { background:color-mix(in oklch,var(--chart-4) 22%,transparent); }
+.study-tool[data-state=on][data-intent=related],.study-highlight[data-intent=related] { background:color-mix(in oklch,var(--chart-2) 20%,transparent); }
+.study-text[data-tool=explain],.study-text[data-tool=critique],.study-text[data-tool=related] { cursor:crosshair; }
+.study-note[data-focused=true] { border-color:color-mix(in oklch,var(--primary) 45%,var(--border)); }
+.study-annotation-actions { margin-top:12px; padding-top:8px; border-top:1px solid var(--border); }
+.study-action-answer { font-size:13px; line-height:1.7; }
+.study-action-answer p { font-size:13px; }
 .study-aside { border-left:1px solid var(--border); display:flex; flex-direction:column; min-width:0; min-height:0; }
 .study-panel-header { padding:12px 16px; border-bottom:1px solid var(--border); }
 .study-notes,.study-chat { padding:16px; overflow:auto; overscroll-behavior:contain; min-height:0; flex:1; }

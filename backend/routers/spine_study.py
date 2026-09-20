@@ -3,6 +3,8 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel, Field
 from pipeline import study
+from pipeline import study_actions
+from models.study_actions import AnnotationActionRequest
 
 router=APIRouter(prefix='/api/spine/studies',tags=['study'])
 class OpenStudy(BaseModel):
@@ -46,3 +48,26 @@ def ask(study_id:int,body:StudyQuestion,background:BackgroundTasks):
 
 @router.post('/{study_id}/turns/{turn_id}/recover')
 def recover(study_id:int,turn_id:int):return study.recover_turn(study_id,turn_id)
+
+@router.get('/{study_id}/actions')
+def actions(study_id:int):return study_actions.list_actions(study_id)
+
+@router.post('/{study_id}/actions')
+def act(study_id:int,body:AnnotationActionRequest,background:BackgroundTasks):
+    result=study_actions.queue_action(study_id,body)
+    background.add_task(study_actions.drain,result['owner_key'])
+    return result
+
+@router.post('/{study_id}/actions/resume')
+def resume_actions(study_id:int,background:BackgroundTasks):
+    background.add_task(study_actions.drain,study_actions.owner_for(study_id))
+    return {'ok':True}
+
+@router.post('/{study_id}/actions/{action_id}/cancel')
+def cancel_action(study_id:int,action_id:int):return study_actions.cancel(study_id,action_id)
+
+@router.post('/{study_id}/actions/{action_id}/recover')
+def recover_action(study_id:int,action_id:int,background:BackgroundTasks):
+    result=study_actions.recover(study_id,action_id)
+    background.add_task(study_actions.drain,study_actions.owner_for(study_id))
+    return result

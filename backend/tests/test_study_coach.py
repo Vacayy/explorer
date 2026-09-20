@@ -84,3 +84,13 @@ class CoachTests(unittest.TestCase):
   result=SimpleNamespace(tool_results=[{'name':'WebFetch','input':{'url':'https://invented.example'},'content':'unsupported content','is_error':False}])
   with patch.object(llm,'llm_engine',return_value='claude-code'),patch.object(llm,'run',return_value=result):items,note=coach.web_evidence('topic')
   self.assertEqual(items,[]);self.assertTrue(note)
+
+ def test_http_access_error_is_not_a_read_web_source(self):
+  result=SimpleNamespace(tool_results=[
+   {'name':'WebSearch','content':'Links: [{"title":"차단된 원문","url":"https://example.com/blocked"},{"title":"읽은 원문","url":"https://example.com/read"}]','is_error':False},
+   {'name':'WebFetch','input':{'url':'https://example.com/blocked'},'content':'The server returned HTTP 403 Forbidden.\nThe response body was not retrieved.','is_error':False},
+   {'name':'WebFetch','input':{'url':'https://example.com/read'},'content':'원문에서 확인한 연구 내용','is_error':False},
+  ])
+  with patch.object(llm,'llm_engine',return_value='claude-code'),patch.object(llm,'run',return_value=result):items,note=coach.web_evidence('topic')
+  self.assertEqual([e['href'] for e in items],['https://example.com/read'])
+  self.assertIn('접근하지 못',note)
