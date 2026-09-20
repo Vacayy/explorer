@@ -864,3 +864,18 @@ export interface StrategyCatalogItem {
   parameters: Record<string, { type: 'integer' | 'number' | 'string'; label?: string; min?: number; max?: number; options?: string[] }>;
   defaults: Record<string, unknown>;
 }
+
+// 웹 조사 기업 개요 보고서 (docs/specs/company-research.md §웹 조사 레인, D-188)
+export interface CompanyWebSource { id: number; url: string; title: string; publisher: string; published_at: string | null; kind: 'filing' | 'ir' | 'news' | 'report' | 'other'; excerpt: string; fetched: boolean }
+export interface CompanyWebProfile {
+  id: number; stock_code: string; version: number; created_at: string; model: string | null; cost_usd: number | null; reason: string | null; source_count: number;
+  overview: string;
+  business_lines: { name: string; description: string; share_pct: number | null; source_ids: number[] }[];
+  products_customers: { text: string; source_ids: number[] }[];
+  competitors: string[];
+  drivers: { text: string; source_ids: number[] }[];
+  risks: { text: string; source_ids: number[] }[];
+  recent_events: { date: string | null; title: string; source_ids: number[] }[];
+  sources: CompanyWebSource[];
+  gaps: string[];
+}

@@ -11,6 +11,7 @@ import { CompanyPriceResearch } from '@/components/company/CompanyPriceResearch'
 import { CompanyEvidence } from '@/components/company/CompanyEvidence'
 import { FinancialPreview } from '@/components/company/CompanyFinancials'
 import { DiscoveryResearch } from '@/components/company/DiscoveryResearch'
+import { CompanyOverview } from '@/components/company/CompanyOverview'
 import SaveButton from '@/components/shared/SaveButton'
 import { toast } from 'sonner'
 
@@ -85,22 +86,21 @@ export default function SummaryPage({
               <CardTitle>이 기업은 무엇을 하나</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <p>
-                {company?.sector
-                  ? `${company.sector} 업종의 기업입니다.`
-                  : '사업 설명을 아직 확보하지 못했습니다.'}
-                {names.length > 0 &&
-                  ` 저장된 사업부는 ${names.join(', ')}입니다 (${year}년).`}
-              </p>
-              <p className="text-caption text-muted-foreground">
-                제품·고객·수익 구조는 사업보고서 원문에서 확인하세요.
-              </p>
-              <Link
-                className="inline-block text-primary hover:underline"
-                to={`/analyze/${stockCode}/mentions?source=disclosure&q=${encodeURIComponent('사업보고서')}`}
-              >
-                사업보고서 확인 →
-              </Link>
+              <CompanyOverview stockCode={stockCode} fallback={<>
+                <p>
+                  {company?.sector
+                    ? `${company.sector} 업종의 기업입니다.`
+                    : '사업 설명을 아직 확보하지 못했습니다.'}
+                  {names.length > 0 &&
+                    ` 저장된 사업부는 ${names.join(', ')}입니다 (${year}년).`}
+                </p>
+                <Link
+                  className="inline-block text-primary hover:underline"
+                  to={`/analyze/${stockCode}/mentions?source=disclosure&q=${encodeURIComponent('사업보고서')}`}
+                >
+                  사업보고서 확인 →
+                </Link>
+              </>} />
             </CardContent>
           </Card>
         )}

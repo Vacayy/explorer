@@ -41,7 +41,7 @@ PHRASES = {
 
 
 class DiscoveryService:
-    def __init__(self, analysis, root=DEFAULT_ROOT, source_db=None, packet_builder=None, synthesizer=None,
+    def __init__(self, analysis, root=DEFAULT_ROOT, source_db=None, packet_builder=None, synthesizer=None, web_collector=None,
                  preparer=None):
         self.analysis = analysis
         self.store = DiscoveryStore(Path(root))
@@ -51,6 +51,7 @@ class DiscoveryService:
         self.source_db = Path(source_db)
         self.packet_builder = packet_builder
         self.synthesizer = synthesizer
+        self.web_collector = web_collector  # 테스트 주입; 기본은 company_profile.ensure_profile
         self.preparer = preparer
         self._stop = threading.Event()
         self._wake = threading.Event()
@@ -219,7 +220,7 @@ class DiscoveryService:
                     return
             # Case and initial job commit atomically. Reload/retries never rerun
             # completed, failed or cancelled jobs; explicit research POST does.
-            self.store.put(conn, "research", self._new_research(item, request["question"], None))
+            self.store.put(conn, "research", self._new_research(item, request["question"], None, request.get("web", True)))
         item = self.store.once("case:new", request, "case", create)
         if request.get("start_research"):
             self.start()
@@ -250,19 +251,19 @@ class DiscoveryService:
         def create(conn):
             item = self.store._get(conn, "case", case_id)
             # Capture the user's actual note revision at the time of this request.
-            return self._new_research(item, request["question"], request.get("as_of"))
+            return self._new_research(item, request["question"], request.get("as_of"), request.get("web", True))
         result = self.store.once(f"research:{case_id}", request, "research", create)
         self.start()
         self._wake.set()
         return result
 
-    def _new_research(self, item, question, as_of):
+    def _new_research(self, item, question, as_of, web=True):
         from .discovery_preparation import pending_preparation
         # Research defaults to today's knowledge, not the last trading day of
         # its originating screen. Pin it at request time, even across midnight.
         day = as_of or datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
         return self.store.fresh(case_id=item["id"], status="queued", phase="preparing", question=question,
-                                as_of=day, note_revision=len(item["notes"]), error=None,
+                                as_of=day, note_revision=len(item["notes"]), error=None, web=bool(web),
                                 preparation=pending_preparation())
 
     def cancel(self, case_id, research_id):
@@ -322,6 +323,40 @@ class DiscoveryService:
         finally:
             os.close(fd)
 
+    def _web_step(self, case, run, preparation, progress, cancelled):
+        """웹 조사 레인(D-188): DART 수집(90초 예산)과 분리된 별도 단계. 실패는 레인 상태로만 남긴다."""
+        from datetime import date as _date
+        item = next((i for i in preparation.get("items", []) if i["id"] == "web"), None)
+        if item is None:
+            return preparation
+        def publish(status, detail):
+            item.update(status=status, detail=detail)
+            progress(preparation)
+        if not run.get("web", True):
+            publish("skipped", "이번 조사에서는 웹 확인을 생략했습니다.")
+            return preparation
+        if run.get("as_of") and _date.fromisoformat(run["as_of"]) < datetime.now(ZoneInfo("Asia/Seoul")).date():
+            publish("unsupported", "과거 시점 조사에서는 새 웹 조사를 하지 않습니다. 저장된 발췌만 읽습니다.")
+            return preparation
+        publish("collecting", "웹에서 사업보고서·IR·뉴스·리포트를 조사하고 있습니다(최대 3분).")
+        try:
+            collector = self.web_collector
+            if collector is None:
+                from pipeline.company_profile import ensure_profile as collector
+            profile, reused = collector(case["stock_code"], case.get("name") or case["stock_code"], None,
+                                        (case.get("discovery") or {}).get("question"), cancel=cancelled)
+            count = len(profile.get("sources", []))
+            if count == 0:
+                publish("unpublished", "웹 조사에서 인용할 수 있는 출처를 확보하지 못했습니다.")
+            else:
+                publish("available" if reused else "collected",
+                        f"{'최근 24시간 보고서 재사용' if reused else '새 조사'} · 출처 {count}건 · " + (profile.get("overview") or "")[:120])
+        except Exception as exc:
+            if cancelled():
+                return preparation
+            publish("failed", f"웹 조사 실패: {str(exc)[:200]}")
+        return preparation
+
     def _execute(self, research_id):
         from .discovery_research import build_packet, synthesize
         from .discovery_preparation import prepare_company, PreparationCancelled
@@ -343,6 +378,9 @@ class DiscoveryService:
                                   if r["status"] == "running" else None)
             preparation = (self.preparer or prepare_company)(self.source_db, self.store.root, case,
                 as_of=run["as_of"], progress=progress, cancel=cancelled)
+            if cancelled():
+                return
+            preparation = self._web_step(case, run, preparation, progress, cancelled)
             if cancelled():
                 return
             self.store.mutate("research", research_id, lambda r: r.update(phase="reading", preparation=preparation)

@@ -7,6 +7,7 @@ import type { DiscoveryCase, DiscoveryNote, ResearchEvidence, ResearchRun } from
 import { ErrorState } from '@/components/shared/ErrorState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -184,6 +185,7 @@ function ResearchWorkspace({ item }: { item: DiscoveryCase }) {
   const [question, setQuestion] = useState(item.question)
   const [asOf, setAsOf] = useState('')
   const [settings, setSettings] = useState(false)
+  const [web, setWeb] = useState(true) // 웹 조사 레인(D-188)
   const selected = sp.get('research')
   const tab = ['answer', 'sources', 'judgment'].includes(sp.get('researchTab') ?? '') ? sp.get('researchTab')! : 'answer'
   const history = [...item.research_runs].sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -196,7 +198,7 @@ function ResearchWorkspace({ item }: { item: DiscoveryCase }) {
   async function research() {
     if (busy || !question.trim()) return
     try {
-      const run = await start.mutateAsync({ path: `/cases/${item.id}/research`, body: { question: question.trim(), ...(asOf ? { as_of: asOf } : {}) } })
+      const run = await start.mutateAsync({ path: `/cases/${item.id}/research`, body: { question: question.trim(), ...(asOf ? { as_of: asOf } : {}), web } })
       setSp(previous => { const next = new URLSearchParams(previous); next.set('research', run.id); next.set('researchTab', 'answer'); return next }, { replace: true })
       setSettings(false)
     } catch { /* Retain question/date and idempotency key for a deliberate retry. */ }
@@ -212,6 +214,7 @@ function ResearchWorkspace({ item }: { item: DiscoveryCase }) {
             <form className="space-y-4" onSubmit={event => { event.preventDefault(); void research() }}>
               <div className="space-y-2"><Label htmlFor={`${id}-question`}>이번에 조사할 질문</Label><Textarea id={`${id}-question`} value={question} onChange={event => setQuestion(event.target.value)} maxLength={4000} disabled={busy} className="min-h-36" /></div>
               <div className="space-y-2"><Label htmlFor={`${id}-date`}>자료 기준일 · 선택</Label><Input id={`${id}-date`} type="date" value={asOf} onChange={event => setAsOf(event.target.value)} disabled={busy} /><p className="text-caption text-muted-foreground">비우면 현재 시점에서 조사합니다. 과거 기준일을 선택하면 신규 수집을 생략하고, 공개 시점을 확인할 수 있는 저장 자료를 사용합니다.</p></div>
+              <label className="flex items-start gap-2 text-sm"><Checkbox checked={web} onCheckedChange={value => setWeb(value === true)} disabled={busy} aria-label="웹도 확인" className="mt-0.5" /><span>웹도 확인 — 사업보고서·IR·뉴스·리포트를 검색해 발췌를 확보합니다<span className="block text-caption text-muted-foreground">모델 1콜(최대 3분). 최근 24시간 안의 웹 조사가 있으면 재사용합니다.</span></span></label>
               {start.error && <p role="alert" className="text-sm text-destructive">{start.error.message}</p>}
               <Button type="submit" disabled={busy || !question.trim()}>{busy && <LoaderCircle className="size-4 animate-spin" />}{history.length ? '새 자료로 후속 조사' : '기업 조사 시작'}</Button>
             </form>

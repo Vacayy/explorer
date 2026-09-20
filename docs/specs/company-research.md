@@ -119,3 +119,30 @@ Empty는 조사 전/근거 없음, Loading은 검색·원문 확인·정리 진�
 - 국내 DART 수집기는 최대 30요청/90초로 선택 기업만 준비한다. 기존 일반 조회용 DART 함수의 광역/오류 캐시 경로를 사용하지 않고 검증된 성공과 공식 미제공 응답만 별도 캐시한다. 공시 전문·최신 정정 전수 확인·국내 콜 커넥터 신설은 이번 범위에 포함하지 않는다.
 
 구현 계약·검증: [시장 발견 §12](market-codeact.md#12-발견조사-ux-개편과-필요한-자료-준비-2026-09-19).
+
+## 웹 조사 레인과 기업 개요 보고서 (2026-09-20, D-188)
+
+사용자 결정: 웹 검색은 기업 조사에 먼저 붙이고(대화는 후속), 저장은 **발췌**만, 조사 시 "웹도 확인"은 기본 켠 체크. 초기 기업 조사에서 사업보고서·IR 자료·뉴스·리포트를 웹으로 조사해 **구조화된 기업 개요 보고서**를 만들고, 기업 페이지 "이 기업은 무엇을 하나"에 연결한다.
+
+### 격리 원칙과의 관계
+- 종목 발견 CodeAct(D-176)는 그대로 망이 끊긴다. 웹은 **신뢰된 호스트 수집기**(D-182의 재무·공시와 같은 자리)가 수행한다.
+- 수집기는 `pipeline/llm.run(tools=("WebSearch","WebFetch"))`(스터디 웹 확인 D-159와 같은 경로)로 모델 1콜을 돌리고, 마지막 JSON만 받아 호스트가 검증한다. 조사 종합 모델(도구 없음)에는 다른 레인과 같이 읽기 전용 발췌로만 전달된다.
+
+### 기업 개요 보고서 (`pipeline/company_profile.py`)
+- 입력: 종목코드·기업명·업종·(있으면) 발견 이유. 출력 `WebProfile`: `overview`(한 문단), `business_lines[{name, description, share_pct?, source_ids}]`, `products_customers[{text, source_ids}]`, `competitors[]`, `drivers[]`, `risks[]`, `recent_events[{date, title, source_ids}]`, `sources[{id, url, title, publisher, published_at, kind: filing|ir|news|report|other, excerpt}]`, `gaps[]`(확인 못 한 것).
+- 호스트 검증: URL 스킴 http(s)만, 존재하지 않는 `source_ids` 제거, 출처 0건이면 `unpublished`. 모델이 실제 WebFetch로 연 URL은 `fetched=true`로 표시한다(검색 결과 요약만 본 출처와 구분).
+- 저장: `company_profiles`(종목코드·버전·생성 시각·모델·비용·payload) append-only. 출처 발췌는 `raw_documents(source_type='web', source_id='{code}:{sha1(url)[:16]}')`에 제목·URL·발행일·발췌로 INSERT OR IGNORE(본문 수집·태깅 없음). 이후 조사 패킷·대화·스터디가 같은 문서를 읽는다.
+- 비용: 사용자 클릭 또는 조사 1회당 웹 호출 1번, sonnet, 180초. 24시간 안의 보고서가 있으면 재사용한다(`force`로 재생성).
+
+### 조사 레인 `web`
+- `pending_preparation`에 `web`(웹 조사 · 사업보고서·IR·뉴스·리포트) 항목 추가. 상태: pending → collected(새 조사)/available(24시간 내 보고서 재사용)/unpublished(출처 0)/failed/skipped(체크 해제)/unsupported(과거 기준일).
+- 실행 위치: DART 수집(90초 예산) 뒤, `discovery_service._execute`가 별도 단계로 호출한다. 취소를 존중하고 실패는 레인 상태로만 남긴다(조용한 폴백 금지).
+- 패킷: `build_packet` LANES에 `web`(웹 조사)을 추가하고 `raw_documents`의 web 문서를 발행일 기준으로 읽는다. 과거 기준일 조사에서는 공개일 미확인 발췌를 제외한다(D-182 공개일·수집일 구분).
+- 요청: `CreateCase.web`·`ResearchRequest.web`(기본 true). 조사 폼의 "웹도 확인" 체크.
+
+### 화면
+- 기업 페이지 "이 기업은 무엇을 하나" → `company/CompanyOverview`: 개요 문단 · 사업부(비중 배지) · 제품/고객·경쟁사 칩 · 성장 동인/리스크 두 열 · 최근 이벤트 · 출처 목록(종류 배지·발행일·링크·원문 확인 여부) · 확인 못 한 항목 · 생성 시각과 "웹으로 다시 조사". Empty는 기존 업종·사업부 문장 + "웹에서 조사해 개요 만들기". Loading 골격, Error 재시도.
+- 조사 준비 목록에 `web` 항목이 자동 표시된다(기존 `preparationStatus` 라벨에 `skipped` 추가).
+
+### 범위 밖
+- 대화(/chat)의 웹 검색, 본문 전체 수집·태깅, 웹 결과의 인과 그래프 반영, 자동 정기 갱신.
