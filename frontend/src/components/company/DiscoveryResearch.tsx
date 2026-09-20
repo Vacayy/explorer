@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, ExternalLink, History, LoaderCircle, Settings2, Square } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, BookOpen, Building2, Check, ChevronDown, ExternalLink, History, LoaderCircle, Settings2, Square, Table2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AnalysisConditions } from '@/components/analysis/AnalysisConditions'
 import type { DiscoveryCase, DiscoveryNote, ResearchEvidence, ResearchRun } from '@/components/analysis/discoveryTypes'
@@ -40,6 +40,12 @@ function DiscoveryEvidence({ value }: { value: unknown }) {
 
 function EvidenceDetail({ item, label }: { item: ResearchEvidence; label?: string }) {
   const url = safeEvidenceUrl(item.url)
+  const { stockCode } = useParams<{ stockCode: string }>()
+  // Internal destinations for the evidence: stored document reader, financial tables, or the originating screen.
+  const internal = item.id.startsWith('doc:') ? { to: `/doc/${encodeURIComponent(item.id.slice(4))}`, label: '저장 원문·스터디로 열기', icon: BookOpen }
+    : item.id.startsWith('financial:') && stockCode ? { to: `/analyze/${stockCode}/financials`, label: '실적 표 보기', icon: Table2 }
+    : item.id.startsWith('discovery:') && stockCode ? { to: `/discover?run=${encodeURIComponent(item.id.slice(10))}&candidate=${stockCode}`, label: '발견 조건·차트 보기', icon: ArrowLeft }
+    : null
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -55,7 +61,10 @@ function EvidenceDetail({ item, label }: { item: ResearchEvidence; label?: strin
           <SourceExcerpt item={item} />
           {item.warnings?.map((warning, index) => <p key={index} className="text-caption text-muted-foreground">{warning}</p>)}
           <p className="text-caption text-muted-foreground">이번 조사에서 읽은 발췌입니다. 자료의 주장과 모델 해석을 구분해 확인하세요.</p>
-          {url ? <Button asChild variant="outline" size="sm"><a href={url} target="_blank" rel="noopener noreferrer">원문 열기 <ExternalLink className="size-3.5" /></a></Button> : <p className="text-caption text-muted-foreground">연결된 원문 URL이 없습니다.</p>}
+          <div className="flex flex-wrap gap-2">
+            {internal && <Button asChild variant="secondary" size="sm"><Link to={internal.to}><internal.icon className="size-3.5" />{internal.label}</Link></Button>}
+            {url ? <Button asChild variant="outline" size="sm"><a href={url} target="_blank" rel="noopener noreferrer">원문 열기 <ExternalLink className="size-3.5" /></a></Button> : !internal && <p className="text-caption text-muted-foreground">연결된 원문 URL이 없습니다.</p>}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -291,6 +300,7 @@ export function DiscoveryResearch({ caseId, stockCode, priceContext }: { caseId:
     <div className="flex flex-wrap items-center justify-between gap-3">
       <Button asChild variant="ghost" size="sm"><Link to={`/discover?${returnQuery}`}><ArrowLeft className="size-4" />후보 목록으로</Link></Button>
       <nav aria-label="기존 기업 자료 더 보기" className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm"><Link to={`/analyze/${stockCode}/summary`}><Building2 className="size-4" />기업 개요·차트</Link></Button>
         <Button asChild variant="ghost" size="sm"><Link to={`/analyze/${stockCode}/financials?${sp}`}>실적·사업</Link></Button>
         <Button asChild variant="ghost" size="sm"><Link to={`/analyze/${stockCode}/mentions?${sp}`}>시장·공시 자료</Link></Button>
       </nav>
