@@ -10,6 +10,18 @@
 
 ---
 
+## D-161 · 2026-09-15 · pstack 전면 도입 대신 선별 이식
+
+**결정**: Cursor 플러그인 pstack(poteto-mode)으로 코딩 스킬을 전면 대체하지 않는다. 독립 실행 가능한 스킬 6개(how, blast-radius, tdd, interrogate, unslop, technical-writing)만 Cursor 의존(모델 슬러그, cursor-team-kit 스킬 참조, PR 강제, `~/.cursor/rules`)을 제거해 글로벌 `~/.claude/skills/`에 두고, 버그 수정·리팩토링·조사 플레이북 3개는 이 프로젝트 규율(SYSTEM/DECISIONS 동기화, unittest·tsc 검증 표면, development 직접 커밋)에 맞게 축약해 `.claude/skills/engineering-playbooks/`에 둔다. product-orchestrator는 기능 개발 진입점으로 유지한다.
+
+**맥락·이유**: product-orchestrator는 스스로 "버그 수정·단일 파일 편집·리서치에는 쓰지 말라"고 명시해 기능 개발 외 작업의 절차가 비어 있었다. pstack은 그 부분(재현 먼저, 이분 탐색, 실패 테스트 선행 커밋, 동작 핀 고정 후 리팩토링, 적대적 리뷰)이 강하다. 반면 전체 도입은 맞지 않는다. ① 전제가 팀·PR 스택·CI·다중 벤더 모델(grok, sol) 환경이고 이 저장소는 1인 개발·development 직접 커밋이다. ② poteto-mode는 코드 작성을 서브에이전트에 강제 위임하고 architect·arena·interrogate 패널을 띄워 비용이 크다(D-072 비용 의식과 충돌). ③ 기획·화면설계·디자인리뷰 단계와 5-state, docs/specs 연결이 pstack에는 없다. ④ Laziness Protocol, Prove It Works, Never Block on the Human 등은 글로벌 CLAUDE.md §1~4와 Integrity Rules에 이미 있어 중복이다.
+
+**기각한 대안**: poteto-mode 47개 스킬 전면 도입(위 ①~④). 아무것도 안 함(비기능 작업 절차 공백 유지). 47개를 프로젝트 `.claude/skills/`에 그대로 복사(Cursor 참조가 매 실행 빈 호출을 만들고, 프로젝트 규율과 충돌).
+
+**참조**: `.claude/skills/engineering-playbooks/SKILL.md` · CLAUDE.md "기능 개발 외 작업" · 글로벌 `~/.claude/skills/{how,blast-radius,tdd,interrogate,unslop,technical-writing}` (저장소 밖, 각 SKILL.md의 metadata.origin에 출처 표기) · 원본 github.com/cursor/plugins/tree/main/pstack (MIT, v0.15.2) · [[D-072]] · [[D-014]]
+
+---
+
 ## D-160 · 2026-09-11 · 스터디 노트를 하나로 통합
 
 **결정**: 문서 노트/프로젝트 노트 탭 대신 노트/AI 대화만 제공한다. 모든 포함 자료의 인용 카드를 한 목록에 모으고 작은 출처 문서 태그를 붙인다. 태그는 해당 원문 위치로 연결한다. 기존 자유 메모와 초안은 같은 영역에서 편집하며 저장 데이터는 보존한다.
