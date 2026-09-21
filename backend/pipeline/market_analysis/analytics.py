@@ -144,15 +144,17 @@ def _series(connection, folder: Path, as_of: str, code: str | None = None):
         "FROM read_parquet(?) WHERE date <= ? AND (? IS NULL OR code = ?) ORDER BY code,date",
         [str(folder / "daily.parquet"), as_of, code, code],
     )
-    columns = [entry[0] for entry in cursor.description]
+    # Arrow batches converted in C (to_pylist) halve the row-materialisation cost
+    # versus dict(zip(...)) per row; values keep the same Python types (str/float/None).
     current, records = None, []
-    while batch := cursor.fetchmany(4096):
-        for row in batch:
-            if current is not None and row[0] != current:
+    for batch in cursor.to_arrow_reader(4096):
+        for row in batch.to_pylist():
+            code_value = row["code"]
+            if current is not None and code_value != current:
                 yield current, records
                 records = []
-            current = row[0]
-            records.append(dict(zip(columns, row)))
+            current = code_value
+            records.append(row)
     if current is not None:
         yield current, records
 
