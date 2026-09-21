@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, RefreshCw, Sparkles, X } from 'lucide-react'
 import api from '@/api/client'
@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
+import { ChartStructureCard, type StructureParams } from '@/components/structure/ChartStructureCard'
+import { PenLine } from 'lucide-react'
 
 /** 기업 페이지 차트의 '기술적 분석': 카탈로그 전략 51개를 이 종목 시세에 전부 돌린 결과. D-190. */
 export interface ScanEntry { id: string; label: string; category: string; status: 'pass' | 'fail' | 'unavailable'; date: string | null; value: number | null; reference: number | null; reason: string | null; within_days: number }
@@ -105,6 +107,8 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
   const rest = useMemo(() => (scan?.signals ?? []).filter(s => !isNotable(s)), [scan])
   const grouped = useMemo(() => { const map = new Map<string, ScanEntry[]>(); for (const s of rest) map.set(s.category, [...(map.get(s.category) ?? []), s]); return [...map.entries()] }, [rest])
   const activeStates = scan?.states.filter(s => s.status === 'pass') ?? []
+  const [structure, setStructure] = useState<StructureParams>({ code, market, kind: 'channel', window: 'ytd', swing: 5, fit: 'two_point' })
+  const [drawOpen, setDrawOpen] = useState(false)
   return <section aria-label="기술적 분석" className="space-y-4 rounded-xl border p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap items-center gap-3">
@@ -133,6 +137,8 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
       </div>
       {grouped.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption">잦은 신호 {formatNumber(rest.length)}개 보기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
         <CollapsibleContent className="space-y-3 pt-2">{grouped.map(([category, items]) => <div key={category} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{GROUP_LABEL[category] ?? category}</p><ul className="space-y-1">{items.map(s => <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-sm"><span>{s.label}</span><span className="tabular-nums text-caption text-muted-foreground">{s.date}</span></li>)}</ul></div>)}</CollapsibleContent></Collapsible>}
+      <Collapsible open={drawOpen} onOpenChange={setDrawOpen}><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption"><PenLine className="size-3.5" />구조 그리기 (채널·추세선)<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">{drawOpen && <ChartStructureCard compact params={{ ...structure, code, market }} onChange={setStructure} height={300} />}</CollapsibleContent></Collapsible>
       <Commentary code={code} market={market} within={within} enabled={!!scan} />
       {scan.unavailable.length > 0 && <p className="text-caption text-muted-foreground">평가하지 못한 조건 {formatNumber(scan.unavailable.length)}개: {scan.unavailable.slice(0, 4).map(u => u.label).join(' · ')}{scan.unavailable.length > 4 ? ' 외' : ''} (시세 이력 부족)</p>}
       <p className="text-caption text-muted-foreground">카탈로그 기본 매개변수로 계산한 결정적 판정입니다. 신호는 조건 성립 사실이고 수익성이나 추천을 뜻하지 않습니다.</p>

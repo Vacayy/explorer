@@ -384,6 +384,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `/api/spine/company-profile/{code}?market=kr\|us` | **웹 조사 기업 개요(D-188)** — GET(최신 보고서 또는 null) · POST `{reason?, force?}`(동기, 모델 1콜; 24시간 내 보고서 재사용; 502에 실패 사유). `market=us`는 티커(대문자)·`resolve_us` 이름·DART 단계 없음(SEC 우선 프롬프트). 라우터 `routers/company_profile.py` |
 | `GET /api/spine/search?q=` · `/search/today` | **옴니바 통합 검색(D-189)** — 국내 종목(정확›접두›포함, 시총순, 시세·묶음 포함; 초성 색인·`entity_keywords` 별칭)·미국 티커·인물/테마·묶음·스터디 프로젝트·문장 속 언급(`mentions`)을 그룹별로. `/today`는 묶음 최신 기준일의 새 신호. `routers/spine_search.py`, 모델 호출 0 |
 | `GET /api/spine/technical-scan/{code}?market&within` | **기술적 분석 스캔(D-190)** — 카탈로그 일봉 51개를 종목 시세에 전부 적용해 상태(당일)/신호(최근 N거래일)/미평가와 차트 마커·구조선을 돌려줌. `pipeline/technical_scan.py`, 모델 호출 0 |
+| `GET /api/spine/chart-structure/{code}?market&kind&window&swing&fit` · `POST /api/spine/chart-structure/interpret` | **차트 구조 그리기(D-195, docs/specs/chart-structure.md)** — 종목 하나의 기간 안 스윙 고점·저점으로 채널/고점 추세선/저점 추세선을 결정적으로 적합(두 점 연결 기본·회귀 옵션, 스윙 폭 자동 완화). interpret는 "종목 + 구조 단어 + 그리기 동사 − 검색 동사" 규칙으로 질문을 매개변수로 옮김. `pipeline/chart_structure.py`, 모델 호출 0 |
 | `GET/POST /api/spine/technical-scan/{code}/commentary?market&within[&force]` | **스캔 AI 해설(D-191)** — POST는 스캔 결과+가격 위치 통계만 모델에 주고(도구 없음, sonnet) 문장마다 근거 id를 받아 검증·저장, 같은 종목·기준일·범위 24시간 재사용. GET은 저장분만(없으면 404). `pipeline/technical_commentary.py` |
 | `POST /api/analysis/refine` | **질문 다듬기(D-186)** — 실행 전 모델 1콜로 재진술·카탈로그 조건(+대안)·평가 불가·확인 항목(시간축·시총 하한 항상)을 돌려주고 문장으로 조립. `pipeline/market_analysis/refine.py`, 공용 `model.structured_call`. 실행은 만들지 않음 |
 | `GET·POST /api/spine/synthesis` | **문서 교차 종합(D-104, docs/specs/doc-synthesis.md)** — POST(`{doc_ids}` 2~12건 → 교차 종합 sonnet, ~60~90초 실측) · GET(최신 목록, 재열람 경로) · GET `/{id}`(단건+엮은 문서 메타, LLM 0). FE: `/follow/saved`에서 문서 체크박스 다중선택 → 액션 바 '엮어 종합' → `/synthesis/:id`(SynthesisPage) + 종합을 다시 북마크(kind=`synthesis`) |
@@ -424,7 +425,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 외부 의존성 추가(2026-09-19): `@tanstack/react-table` **v8**(9.x는 API가 달라 고정). shadcn Table 위에 정렬 표를 만들 때 쓴다. 첫 사용처는 `analysis/AnalysisResults`의 후보 목록(시가총액 정렬, 행 선택 → `candidate` URL). 스펙 초안 [종목 묶음·감시](specs/portfolio-watch.md)의 묶음 상세 표도 같은 패턴을 쓴다.
 
-가격 카드(`company/CompanyPriceResearch`)의 **기술적 분석**(D-190, `company/TechnicalScan`): 특이점·현재 상태·잦은 신호(접힘)·평가 못 함, 신호 범위 1~20거래일, '차트에 표시'로 특이점 마커·스윙·구조선 오버레이. 국내·미국 공통. 패널 안 **AI 해설**(D-191)은 버튼으로만 생성, 문장마다 근거 조건 칩, "모델 의견(가설)" 라벨.
+가격 카드(`company/CompanyPriceResearch`)의 **기술적 분석**(D-190, `company/TechnicalScan`): 특이점·현재 상태·잦은 신호(접힘)·평가 못 함, 신호 범위 1~20거래일, '차트에 표시'로 특이점 마커·스윙·구조선 오버레이. 국내·미국 공통. 패널 안 **AI 해설**(D-191)은 버튼으로만 생성, 문장마다 근거 조건 칩, "모델 의견(가설)" 라벨. **구조 그리기**(D-195) Collapsible은 같은 종목의 채널·추세선을 `structure/ChartStructureCard`로 그림. 종목 발견(`/discover`)은 그리기 질문을 `?mode=draw&code&kind&window&swing&fit&q`로 받아 같은 카드를 대화 자리에 올린다(조건 검색 실행을 만들지 않음).
 
 옴니바(`shared/Omnibar.tsx`, D-189): 서버 통합 검색 위에서 의도 배지(코드·티커·이름·문장)·시총순 종목 행(시장·업종·시세·묶음)·미국 종목·인물/테마·묶음/프로젝트·빈 상태(최근 본 종목 `lib/recentStocks.ts`·오늘 신호·핀 이동)·종목 행 Tab 행동(개요·실적·자료·조사·묶음 추가). 계약은 [dock-navigation.md §옴니바 재설계](specs/dock-navigation.md).
 

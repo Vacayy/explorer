@@ -25,6 +25,8 @@ import { DiscoveryLibrary, DiscoveryRecommendations, SaveDiscoveryStrategy } fro
 import { DiscoveryFollowup, type FollowupSubmission } from '@/components/analysis/DiscoveryFollowup'
 import { isTerminal } from '@/components/analysis/events'
 import type { AnalysisRun, RunStatus } from '@/components/analysis/types'
+import api from '@/api/client'
+import { ChartStructureCard, type StructureFit, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
 
 const EXAMPLES = [
   { label: '강한 추세', question: '시가총액 5000억원 이상 종목 중 52주 신고가를 돌파하고 최근 14거래일 동안 20일 이동평균 위를 유지한 종목을 찾아줘' },
@@ -90,9 +92,36 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
     field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
 
+  const [drawNotice, setDrawNotice] = useState<string | null>(null)
+  const drawParams: StructureParams | null = params.get('mode') === 'draw' && params.get('code') ? {
+    code: params.get('code')!, market: (params.get('market') === 'us' ? 'us' : 'kr'), kind: (params.get('kind') as StructureKind) || 'channel',
+    window: params.get('window') || 'ytd', swing: Number(params.get('swing')) || 5, fit: (params.get('fit') as StructureFit) || 'two_point',
+  } : null
+  const setDraw = (next: StructureParams, q?: string) => setParams(previous => {
+    const draft = new URLSearchParams(previous)
+    for (const key of ['run', 'candidate', 'view', 'panel']) draft.delete(key)
+    draft.set('mode', 'draw'); draft.set('code', next.code); draft.set('market', next.market); draft.set('kind', next.kind); draft.set('window', next.window); draft.set('swing', String(next.swing)); draft.set('fit', next.fit)
+    if (q !== undefined) draft.set('q', q)
+    return draft
+  })
+
   async function submit(strategy?: StrategySubmission | FollowupSubmission) {
     const body = strategy ?? { question: question.trim(), ...(asOf ? { as_of: asOf } : {}), ...(within > 1 ? { default_within_days: within } : {}) }
     if (!body.question || analysis.start.isPending || submitting.current) return
+    if (!strategy && /채널|추세선|고점|저점|지지선|저항선/.test(body.question) && /그려|그리|표시|보여|찍어|그어/.test(body.question)) {
+      // 종목 하나의 차트에 구조를 그리는 요청은 조건 검색이 아니다 (D-195). 서버 규칙이 확정한다.
+      submitting.current = true
+      try {
+        const { data } = await api.post<{ draw: boolean; code?: string | null; market?: 'kr' | 'us'; kind?: StructureKind; window?: string; swing?: number; fit?: StructureFit; reason?: string }>('/api/spine/chart-structure/interpret', { question: body.question })
+        if (data.draw) {
+          if (!data.code) { setDrawNotice(data.reason ?? '어느 종목인지 찾지 못했습니다.'); return }
+          setDrawNotice(null)
+          setDraw({ code: data.code, market: data.market ?? 'kr', kind: data.kind ?? 'channel', window: data.window ?? 'ytd', swing: data.swing ?? 5, fit: data.fit ?? 'two_point' }, body.question)
+          return
+        }
+      } catch { /* 해석 실패 시 조건 검색으로 진행 */ }
+      finally { submitting.current = false }
+    }
     submitting.current = true
     const input = JSON.stringify(body)
     if (requestKey.current?.input !== input) requestKey.current = { input, key: crypto.randomUUID() }
@@ -126,6 +155,8 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
 
     {library && <DiscoveryLibrary onOpen={onOpen} />}
     <div hidden={library} className="space-y-5">
+      {drawParams && !runId && <ChartStructureCard params={drawParams} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} />}
+      {drawNotice && <p role="alert" className="rounded-lg bg-muted/40 p-3 text-sm">{drawNotice} 종목 이름이나 코드를 문장에 넣어 다시 요청하거나, 그대로 조건 검색으로 진행하려면 "찾아줘"처럼 검색 동사를 써 주세요.</p>}
       {!runId && <>
         <Card><CardHeader><h2 className="text-section font-semibold">어떤 종목을 발견하고 싶나요?</h2><p className="text-sm text-muted-foreground">원하는 흐름을 말로 적으면, 조건에 맞는 종목과 계산 근거를 찾아드립니다.</p></CardHeader>
           <CardContent><form onSubmit={event => { event.preventDefault(); void submit() }} className="space-y-3">
@@ -167,8 +198,8 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
 export default function MarketAnalysisPage() {
   const [params, setParams] = useSearchParams()
   const runId = params.get('run')
-  const openRun = useCallback((id: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('run', id); for (const key of ['mode', 'q', 'candidate', 'view', 'panel']) next.delete(key); return next }), [setParams])
-  const newRun = (question = '') => setParams(previous => { const next = new URLSearchParams(previous); for (const key of ['mode', 'run', 'candidate', 'view', 'panel']) next.delete(key); if (question) next.set('q', question); else next.delete('q'); return next })
+  const openRun = useCallback((id: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('run', id); for (const key of ['mode', 'q', 'candidate', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); return next }), [setParams])
+  const newRun = (question = '') => setParams(previous => { const next = new URLSearchParams(previous); for (const key of ['mode', 'run', 'candidate', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); if (question) next.set('q', question); else next.delete('q'); return next })
   return <PageLayout header={<PageHeader title="종목 발견" description="조건으로 발견하고, 근거를 조사하고, 내 판단으로 이어갑니다." actions={runId ? <Button variant="outline" size="sm" onClick={() => newRun()}><Plus className="size-4" />새 검색</Button> : params.get('view') === 'library' ? <Button variant="ghost" size="sm" onClick={() => newRun()}><ArrowLeft className="size-4" />검색으로</Button> : undefined} />}>
     <AnalysisWorkspace key={runId ?? `new:${params.get('q') ?? ''}`} runId={runId} initialQuestion={params.get('q') ?? ''} onOpen={openRun} onNew={newRun} />
   </PageLayout>
