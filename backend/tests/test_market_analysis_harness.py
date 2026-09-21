@@ -23,6 +23,7 @@ class FixtureModel:
     ask_everything = False  # lists pattern-only fields although pattern='none' (2026-09-19 incident)
     corrupt = False
     no_execution = False
+    exploratory = False  # first run_python saves an exploratory JSON, not the screen result (D-192 host finish must wait)
 
     def __init__(self, cwd):
         self.cwd = cwd
@@ -34,9 +35,11 @@ class FixtureModel:
                                 min_market_cap=0, ma_period=2, hold_days=1).model_dump(mode="json")
             fields = ["window_scope", "price_basis", "include_same_day"] if self.ask_everything else (["price_basis"] if self.ask else [])
             action = {"action": "interpret", "spec": spec, "fields": fields}
-        elif context["observations"] or self.no_execution:
+        elif self.no_execution or (context["observations"] and not (self.exploratory and len(context["observations"]) == 1)):
             action = {"action": "finish", "result_path": "result.json",
                       "evidence_ids": [context["observations"][-1]["id"]] if context["observations"] else ["made-up"]}
+        elif self.exploratory and not context["observations"]:
+            action = {"action": "run_python", "code": "import json\nwith open('result.json','w') as f: json.dump({'peek': 1},f)\nprint('peek')\n"}
         else:
             code = (f"import sys,json\nsys.path.insert(0,{context['skill_dir']!r})\nimport analytics\n"
                     f"result=analytics.screen({context['data_dir']!r},{context['spec']!r})\n")
@@ -65,7 +68,7 @@ class HarnessTests(unittest.TestCase):
         connection.close()
         self.before = hashlib.sha256(self.source.read_bytes()).hexdigest()
         FixtureModel.calls = 0
-        FixtureModel.ask = FixtureModel.corrupt = FixtureModel.no_execution = FixtureModel.ask_everything = False
+        FixtureModel.ask = FixtureModel.corrupt = FixtureModel.no_execution = FixtureModel.ask_everything = FixtureModel.exploratory = False
         self.service = AnalysisService(self.root / "state", source_db=self.source,
                                        model_factory=FixtureModel, preflight=lambda: {})
         # Drive deterministically without an asynchronous worker in most tests.
@@ -88,8 +91,10 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result["result"]["verification"]["status"], "matched")
         self.assertEqual(result["result"]["items"][0]["status"], "provisional")
         self.assertEqual(result["steps"], 1)
-        self.assertEqual(FixtureModel.calls, 3)
-        self.assertAlmostEqual(result["cost_usd"], .03)
+        # D-192: 완성된 result.json을 본 호스트가 finish를 합성하므로 모델은 해석·코드 2콜만 한다.
+        self.assertEqual(FixtureModel.calls, 2)
+        self.assertAlmostEqual(result["cost_usd"], .02)
+        self.assertEqual(result["_history"][-1], {"role": "host", "finish": result["result"]["verification"]["evidence_ids"][0]})
         self.assertEqual({a["kind"] for a in result["artifacts"]}, {"json", "csv"})
         chart = self.service.chart(run["id"], "000001")
         self.assertEqual(len(chart["prices"]), 2)
@@ -126,7 +131,7 @@ class HarnessTests(unittest.TestCase):
         final = self.service.store.read(run["id"])
         self.assertEqual(final["spec"]["price_basis"], "low")
         self.assertEqual(final["status"], "partial", final["error"])
-        self.assertEqual(FixtureModel.calls, 3)
+        self.assertEqual(FixtureModel.calls, 2)  # 해석·코드. finish는 호스트 합성(D-192)
 
     def test_inapplicable_ask_fields_are_skipped_instead_of_failing(self):
         # pattern='none' and require_ma=False: none of the listed fields apply, so the search must just proceed.
@@ -167,6 +172,17 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(FixtureModel.calls, 0)
         self.assertEqual(self.service.store.read(run["id"])["status"], "cancelled")
 
+    def test_host_finish_waits_for_a_complete_screen_result(self):
+        FixtureModel.exploratory = True
+        run = self.create()
+        self.service.process(run["id"])
+        result = self.service.store.read(run["id"])
+        self.assertEqual(result["status"], "partial", result.get("error"))
+        self.assertEqual(result["result"]["verification"]["status"], "matched")
+        self.assertEqual(result["steps"], 2)  # 탐색 저장 → 호스트가 끝내지 않음 → 진짜 계산 → 호스트 finish
+        self.assertEqual(FixtureModel.calls, 3)
+        self.assertEqual(result["result"]["verification"]["evidence_ids"], [result["_observations"][1]["id"]])
+
     def test_finish_without_execution_is_rejected(self):
         FixtureModel.no_execution = True
         run = self.create()
@@ -202,7 +218,7 @@ class HarnessTests(unittest.TestCase):
         snapshot.write_bytes(b"modified")
         self.service.process(run["id"])
         self.assertEqual(self.service.store.read(run["id"])["status"], "blocked")
-        self.assertEqual(FixtureModel.calls, 3)
+        self.assertEqual(FixtureModel.calls, 2)  # 스냅샷 변조는 호스트 finish의 해시 검증에서 차단
 
     def test_file_reads_reject_links_traversal_and_oversize(self):
         work = self.root / "work"

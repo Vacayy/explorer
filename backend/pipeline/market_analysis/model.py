@@ -143,7 +143,9 @@ class ClaudeModel:
         if not isinstance(cost, (int, float)) or not math.isfinite(cost) or cost < 0:
             raise ModelError("모델 비용을 확인할 수 없어 추가 호출을 중단했습니다.")
         if process.returncode or result.get("is_error"):
-            raise ModelError("모델 호출이 실패했습니다: " + str(result.get("result", ""))[:1000], cost)
+            detail = str(result.get("result") or "") or " ".join(
+                str(part) for part in (result.get("subtype"), result.get("errors"), buffers["stderr"].decode(errors="replace")[-400:].strip()) if part)
+            raise ModelError("모델 호출이 실패했습니다: " + detail[:1000], cost)
         raw = result.get("structured_output")
         try:
             if raw is None:

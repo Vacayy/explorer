@@ -413,6 +413,27 @@ class AnalysisService:
             raise ModelCancelled("분석이 취소되었습니다.", 0)
         return observation
 
+    def _host_finish(self, run_id: str, outcome: dict) -> bool:
+        """성공한 실행이 완성된 result.json을 남겼으면 호스트가 finish를 합성한다 (D-192).
+
+        모델에게 "끝났다"고 말하게 하는 왕복(~10초, 실행 비용의 1/3)을 없앤다. 완성 판정은 결정적이다:
+        exit 0, 워크스페이스의 result.json이 analytics.screen 반환 형태(status·items·spec·counts)를 가진다.
+        독립 재계산·스냅샷 해시 검증은 _finish에서 그대로 수행한다. 재계산과 어긋나면 호스트 거절로
+        기록하고 모델 루프로 돌아간다(모델이 관찰과 거절 사유를 보고 고친다).
+        """
+        workspace = self.store.root / "workspaces" / run_id
+        try:
+            candidate = read_json(workspace, "result.json")
+        except (StoreError, ValueError, OSError):
+            return False
+        if not isinstance(candidate, dict) or not {"status", "items", "spec", "counts"} <= set(candidate):
+            return False
+        action = ModelAction(action="finish", result_path="result.json", evidence_ids=[outcome["id"]])
+        self.store.mutate(run_id, lambda s: s["_history"].append({"role": "host", "finish": outcome["id"]}))
+        self._emit(run_id, "CUSTOM", name="analysis.host_finish", value={"evidence_id": outcome["id"]})
+        self._finish(run_id, action)
+        return True
+
     def _finish(self, run_id: str, action: ModelAction):
         state = self.store.read(run_id)
         observations = {o["id"]: o for o in state["_observations"]}
@@ -578,6 +599,8 @@ class AnalysisService:
                             raise ModelError("같은 코드를 반복하여 진행을 중단했습니다.", 0)
                         outcome = self._execute(run_id, sandbox, action.code)
                         failures = failures + 1 if outcome["exit_code"] else 0
+                        if not outcome["exit_code"] and self._host_finish(run_id, outcome):
+                            return
                     elif action.action == "ask_user":
                         if self._pause(run_id, action.fields):
                             return
