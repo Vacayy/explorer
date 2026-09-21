@@ -26,7 +26,9 @@ import { DiscoveryFollowup, type FollowupSubmission } from '@/components/analysi
 import { isTerminal } from '@/components/analysis/events'
 import type { AnalysisRun, RunStatus } from '@/components/analysis/types'
 import api from '@/api/client'
-import { ChartStructureCard, type StructureFit, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
+import { ChartStructureCard, STRUCTURE_PRESETS, type StructureFit, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
+import { readRecentStocks } from '@/lib/recentStocks'
+import { PenLine } from 'lucide-react'
 
 const EXAMPLES = [
   { label: '강한 추세', question: '시가총액 5000억원 이상 종목 중 52주 신고가를 돌파하고 최근 14거래일 동안 20일 이동평균 위를 유지한 종목을 찾아줘' },
@@ -93,30 +95,40 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
   }
 
   const [drawNotice, setDrawNotice] = useState<string | null>(null)
-  const drawParams: StructureParams | null = params.get('mode') === 'draw' && params.get('code') ? {
-    code: params.get('code')!, market: (params.get('market') === 'us' ? 'us' : 'kr'), kind: (params.get('kind') as StructureKind) || 'channel',
+  const drawCodes = (params.get('code') ?? '').split(',').filter(Boolean) // 여러 종목 비교는 code=000500,005930
+  const drawParams: StructureParams | null = params.get('mode') === 'draw' && drawCodes.length > 0 ? {
+    code: drawCodes[0], market: (params.get('market') === 'us' ? 'us' : 'kr'), kind: (params.get('kind') as StructureKind) || 'channel',
     window: params.get('window') || 'ytd', swing: Number(params.get('swing')) || 5, fit: (params.get('fit') as StructureFit) || 'two_point',
   } : null
-  const setDraw = (next: StructureParams, q?: string) => setParams(previous => {
+  const setDraw = (next: StructureParams, q?: string, codes?: string[]) => setParams(previous => {
     const draft = new URLSearchParams(previous)
     for (const key of ['run', 'candidate', 'view', 'panel']) draft.delete(key)
-    draft.set('mode', 'draw'); draft.set('code', next.code); draft.set('market', next.market); draft.set('kind', next.kind); draft.set('window', next.window); draft.set('swing', String(next.swing)); draft.set('fit', next.fit)
+    draft.set('mode', 'draw'); draft.set('code', (codes ?? drawCodes.length > 0 ? (codes ?? drawCodes) : [next.code]).join(',')); draft.set('market', next.market); draft.set('kind', next.kind); draft.set('window', next.window); draft.set('swing', String(next.swing)); draft.set('fit', next.fit)
     if (q !== undefined) draft.set('q', q)
     return draft
   })
+  /** 추천 구조 프리셋 → 최근 본 종목 이름을 붙여 질문으로. 최근 종목이 없으면 [종목] 자리를 선택해 둔다. */
+  function applyPreset(phrase: string) {
+    const recent = readRecentStocks().find(item => item.market === 'kr') ?? readRecentStocks()[0]
+    const text = recent ? `${recent.name} ${phrase}` : `[종목] ${phrase}`
+    setQuestion(text)
+    const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null
+    field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    if (!recent && field) requestAnimationFrame(() => field.setSelectionRange(0, 4))
+  }
 
   async function submit(strategy?: StrategySubmission | FollowupSubmission) {
     const body = strategy ?? { question: question.trim(), ...(asOf ? { as_of: asOf } : {}), ...(within > 1 ? { default_within_days: within } : {}) }
     if (!body.question || analysis.start.isPending || submitting.current) return
-    if (!strategy && /채널|추세선|고점|저점|지지선|저항선/.test(body.question) && /그려|그리|표시|보여|찍어|그어/.test(body.question)) {
+    if (!strategy && /채널|추세선|고점|저점|지지|저항|레벨/.test(body.question) && /그려|그리|표시|보여|찍어|그어/.test(body.question)) {
       // 종목 하나의 차트에 구조를 그리는 요청은 조건 검색이 아니다 (D-195). 서버 규칙이 확정한다.
       submitting.current = true
       try {
-        const { data } = await api.post<{ draw: boolean; code?: string | null; market?: 'kr' | 'us'; kind?: StructureKind; window?: string; swing?: number; fit?: StructureFit; reason?: string }>('/api/spine/chart-structure/interpret', { question: body.question })
+        const { data } = await api.post<{ draw: boolean; code?: string | null; codes?: string[]; market?: 'kr' | 'us'; kind?: StructureKind; window?: string; swing?: number; fit?: StructureFit; reason?: string }>('/api/spine/chart-structure/interpret', { question: body.question })
         if (data.draw) {
           if (!data.code) { setDrawNotice(data.reason ?? '어느 종목인지 찾지 못했습니다.'); return }
           setDrawNotice(null)
-          setDraw({ code: data.code, market: data.market ?? 'kr', kind: data.kind ?? 'channel', window: data.window ?? 'ytd', swing: data.swing ?? 5, fit: data.fit ?? 'two_point' }, body.question)
+          setDraw({ code: data.code, market: data.market ?? 'kr', kind: data.kind ?? 'channel', window: data.window ?? 'ytd', swing: data.swing ?? 5, fit: data.fit ?? 'two_point' }, body.question, data.codes && data.codes.length > 1 ? data.codes : undefined)
           return
         }
       } catch { /* 해석 실패 시 조건 검색으로 진행 */ }
@@ -155,7 +167,7 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
 
     {library && <DiscoveryLibrary onOpen={onOpen} />}
     <div hidden={library} className="space-y-5">
-      {drawParams && !runId && <ChartStructureCard params={drawParams} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} />}
+      {drawParams && !runId && <ChartStructureCard params={drawParams} codes={drawCodes} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} />}
       {drawNotice && <p role="alert" className="rounded-lg bg-muted/40 p-3 text-sm">{drawNotice} 종목 이름이나 코드를 문장에 넣어 다시 요청하거나, 그대로 조건 검색으로 진행하려면 "찾아줘"처럼 검색 동사를 써 주세요.</p>}
       {!runId && <>
         <Card><CardHeader><h2 className="text-section font-semibold">어떤 종목을 발견하고 싶나요?</h2><p className="text-sm text-muted-foreground">원하는 흐름을 말로 적으면, 조건에 맞는 종목과 계산 근거를 찾아드립니다.</p></CardHeader>
@@ -168,6 +180,8 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
           </form></CardContent>
         </Card>
         {!analysis.start.isPending && <section aria-label="추천 검색" className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-card-title font-medium">목적에 맞는 검색으로 시작하기</h2><Button variant="ghost" size="sm" onClick={() => setLibrary(true)}>저장한 전략 보기</Button></div><DiscoveryRecommendations onAppend={appendCondition} compact onOpen={onOpen} /></section>}
+        {!analysis.start.isPending && !drawParams && <section aria-label="차트에 구조 그리기" className="space-y-3"><div className="space-y-1"><h2 className="flex items-center gap-2 text-card-title font-medium"><PenLine className="size-4" />종목 하나의 차트에 구조 그리기</h2><p className="text-caption text-muted-foreground">종목 이름과 함께 누르면 질문이 채워집니다. 조건 검색이 아니라 그 종목 차트에 채널·추세선·지지/저항 레벨을 바로 그립니다(모델 호출 없음).</p></div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{STRUCTURE_PRESETS.map(preset => <article key={preset.id} className="flex min-w-0 flex-col gap-2 rounded-xl bg-card p-4 ring-1 ring-border/50"><div className="space-y-1"><h4 className="font-medium">{preset.label}</h4><p className="text-sm text-muted-foreground">{preset.purpose}</p></div><Button size="sm" variant="outline" className="mt-auto self-start" onClick={() => applyPreset(preset.phrase)} aria-label={`${preset.label} 질문 채우기`}><PenLine className="size-3.5" />질문에 넣기</Button></article>)}</div></section>}
       </>}
       {runId && analysis.detail.isPending && <div aria-label="검색 불러오는 중" role="status" className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-80 w-full" /></div>}
       {runId && analysis.detail.isError && <ErrorState message="검색 기록을 불러오지 못했습니다." onRetry={() => analysis.detail.refetch()} />}

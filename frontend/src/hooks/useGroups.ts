@@ -72,3 +72,18 @@ export function useAppendDefaultRules() {
     return (await api.put<StockGroupDetail>(`${ROOT}/${groupId}/rules`, { default: merged, members })).data
   })
 }
+
+/** 그린 차트 구조를 종목별 감시 규칙으로 덧붙인다(D-196). 종목이 묶음에 없으면 먼저 넣는다. 같은 전략·매개변수는 한 번만. */
+export function useAppendMemberRule() {
+  return useGroupWrite(async ({ groupId, stockCode, rule }: { groupId: number; stockCode: string; rule: WatchRuleInput }) => {
+    let detail = (await api.get<StockGroupDetail>(`${ROOT}/${groupId}`)).data
+    if (!detail.members.some(member => member.stock_code === stockCode)) detail = (await api.post<StockGroupDetail>(`${ROOT}/${groupId}/members`, { stock_code: stockCode })).data
+    const toInput = (item: { strategy_id: string; params: Record<string, unknown>; within_days: number; source_strategy_id?: string | null; source_version?: number | null }): WatchRuleInput =>
+      ({ strategy_id: item.strategy_id, params: item.params, within_days: item.within_days, source_strategy_id: item.source_strategy_id ?? null, source_version: item.source_version ?? null })
+    const key = (item: WatchRuleInput) => `${item.strategy_id}:${JSON.stringify(item.params ?? {})}:${item.within_days ?? 1}`
+    const members = Object.fromEntries(Object.entries(detail.rules.members).map(([code, list]) => [code, list.map(toInput)]))
+    const current = members[stockCode] ?? []
+    if (!current.some(item => key(item) === key(rule))) members[stockCode] = [...current, rule]
+    return (await api.put<StockGroupDetail>(`${ROOT}/${groupId}/rules`, { default: detail.rules.default.map(toInput), members })).data
+  })
+}
