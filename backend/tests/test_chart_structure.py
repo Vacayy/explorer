@@ -108,3 +108,51 @@ class Interpret(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Levels(unittest.TestCase):
+    def test_levels_cluster_touches_and_split_by_role(self):
+        r = rows(n=120, slope=0.0)  # 수평 박스: 고점 106, 저점 94가 반복
+        out = cs.structure(r, "levels", 5)
+        self.assertEqual(out["kind"], "levels")
+        prices = sorted(round(l["price"]) for l in out["summary"]["levels"])
+        self.assertIn(106, prices); self.assertIn(94, prices)
+        top = max(out["summary"]["levels"], key=lambda l: l["touches"])
+        self.assertGreaterEqual(top["touches"], 4)
+        roles = {round(l["price"]): l["role"] for l in out["summary"]["levels"]}
+        self.assertEqual(roles[106], "resistance"); self.assertEqual(roles[94], "support")
+        self.assertEqual(out["summary"]["nearest_resistance"], next(l["price"] for l in out["summary"]["levels"] if round(l["price"]) == 106))
+        self.assertTrue(all(len(l["points"]) == 2 and l["points"][0]["value"] == l["points"][1]["value"] for l in out["lines"]))
+
+    def test_conditions_are_valid_catalog_conditions(self):
+        for kind in cs.KINDS:
+            for fit in cs.FITS:
+                for item in cs.to_conditions(kind, 10, fit, 171):
+                    self.assertEqual(item["params"]["pivot_width"], 10)
+                    self.assertEqual(item["params"]["lookback"], 171)
+                    self.assertIn("phrase", item)
+        self.assertEqual(cs.to_conditions("channel", 40, "two_point", 5)[0]["params"]["pivot_width"], 30)
+        self.assertEqual(cs.to_conditions("channel", 2, "two_point", 5)[0]["params"]["lookback"], 20)
+
+
+class InterpretP1(unittest.TestCase):
+    def setUp(self):
+        Interpret.setUp(self)
+
+    def test_multiple_stocks_and_levels(self):
+        out = cs.interpret(self.conn, "삼성전자와 SK하이닉스 1년 지지·저항 레벨 그려서 비교해줘", assist=None)
+        self.assertEqual(out["codes"], ["005930", "000660"])
+        self.assertEqual(out["kind"], "levels")
+        self.assertIn("종목 2개 비교", out["matched"])
+
+    def test_model_assist_only_when_rules_fail(self):
+        calls = []
+        def assist(text): calls.append(text); return ["가온 전선"]
+        out = cs.interpret(self.conn, "그 전선회사 올해 채널 그려줘", assist=assist)
+        self.assertEqual(out["code"], "000500"); self.assertEqual(len(calls), 1)
+        self.assertTrue(any("모델 보조" in m for m in out["matched"]))
+        out = cs.interpret(self.conn, "가온전선 올해 채널 그려줘", assist=assist)
+        self.assertEqual(len(calls), 1)  # 규칙이 찾으면 모델을 부르지 않음
+        def broken(text): raise RuntimeError("cli down")
+        out = cs.interpret(self.conn, "그 전선회사 올해 채널 그려줘", assist=broken)
+        self.assertIsNone(out["code"]); self.assertIn("모델 보조 실패", out["matched"])
