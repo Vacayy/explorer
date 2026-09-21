@@ -1,5 +1,6 @@
 """Dynamic discovery: temporal truth, immutable parent scope and real sandbox replay."""
 import hashlib
+import sqlite3
 import json
 import unittest
 from unittest.mock import patch
@@ -260,11 +261,17 @@ class FollowupHarnessTests(unittest.TestCase):
 
     def test_latest_exports_new_snapshot_and_keeps_candidate_scope(self):
         parent = self.parent()
+        # D-193: 원본이 그대로면 '최신'도 같은 스냅샷을 재사용한다. 원본에 새 거래일이 들어오면 새로 내보낸다.
+        connection = sqlite3.connect(self.source)
+        connection.execute("INSERT INTO stock_prices VALUES('000001','2025-01-06',105,110,104,108,12,650000000000,100)")
+        connection.commit(); connection.close()
+        self.before = hashlib.sha256(self.source.read_bytes()).hexdigest()
         child = self.child(parent, scope="candidates", date_policy="latest", spec_patch={})
         self.service.process(child["id"])
         result = self.service.store.read(child["id"])
         self.assertIsNone(result["error"])
         self.assertNotEqual(result["_snapshot_id"], parent["_snapshot_id"])
+        self.assertEqual(result["snapshot"]["as_of"], "2025-01-06")
         self.assertEqual(result["spec"]["universe_codes"], ["000001"])
         self.assertIsNone(result["spec"]["as_of"])
 

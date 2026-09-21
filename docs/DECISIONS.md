@@ -10,6 +10,16 @@
 
 ---
 
+## D-193 · 2026-09-21 · 스냅샷은 실행마다 새로 만들지 않고 원본 내용 지문이 같으면 재사용한다
+
+**결정**: 발견 실행의 시세 스냅샷(Parquet)은 원본 내용 지문(`snapshot.source_fingerprint`: 내보내기가 읽는 모든 테이블의 행 수·최신일·합계 + 요청 기준일 + 내보내기 코드 해시)을 키로 `logs/market-analysis/snapshots/index.json`에 등록하고, 지문이 같고 폴더의 파일 해시가 등록값과 일치하면 재사용한다. 실행별 `_snapshot_hashes` 기록과 시작·종료 시 해시 검증(D-176)은 그대로다.
+
+**맥락·이유**: 시세는 하루 한 번 바뀌는데 실행마다 137만 행을 다시 내보내 7.4초와 21MB를 썼다(실측 22개·440MB). D-176이 "실행마다 고정 스냅샷"을 둔 이유는 실행 중 입력이 바뀌지 않음을 해시로 증명하기 위한 것이고, 재사용 스냅샷도 읽기 전용·해시 고정이라 그 증명은 동일하다. 지문을 파일 mtime이 아니라 내용 집계로 만든 이유는 WAL 체크포인트·무관한 테이블 쓰기로 mtime이 자주 바뀌어 재사용이 거의 안 걸리기 때문이다. 실측 snapshot 7.4s → 0.2s.
+
+**기각한 대안**: (1) 최신 스냅샷을 무조건 재사용 — 원본 재수집(가격 정정)을 놓친다. (2) 하루 1회 배치로 스냅샷 생성 — 랩탑 스케줄 결손(로컬 실행 제약)에 걸리고 요청 기준일(as_of)별 스냅샷을 못 만든다. (3) 스냅샷을 없애고 원본 DB를 샌드박스에 읽기 전용으로 노출 — D-176의 격리(원본 경로 비노출)를 깬다.
+
+**참조**: `backend/pipeline/market_analysis/snapshot.py` `source_fingerprint`, `runner.py` `_snapshot`/`_registered_snapshot`/`_register_snapshot`, docs/specs/market-discovery-performance.md §6.2.
+
 ## D-192 · 2026-09-21 · CodeAct의 완료 판단은 결과가 완성형이면 호스트가 내린다 (finish 콜 제거)
 
 **결정**: `run_python`이 exit 0으로 끝나고 워크스페이스 `result.json`이 `analytics.screen` 반환 형태(`status`·`items`·`spec`·`counts`)를 가지면 호스트가 `finish{result_path, evidence_ids=[그 관찰]}`을 합성해 기존 `_finish`(스냅샷 해시 검증 → 독립 재계산 대조)로 들어간다. 형태가 아니면 지금처럼 관찰을 모델에 돌려주고, 재계산과 어긋나면 호스트 거절로 기록해 모델 루프를 잇는다.
