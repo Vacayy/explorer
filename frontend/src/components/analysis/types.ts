@@ -92,6 +92,8 @@ export interface AnalysisResult {
   warnings: string[]
   unsupported_conditions?: string[]
   strategy_definitions?: StrategyDefinition[]
+  /** 서버 독립 재계산 결과. cached_from이 있으면 같은 자료·조건으로 검증한 이전 실행의 결과를 재사용한 것(D-194). */
+  verification?: { status: string; cached_from?: string }
 }
 
 export interface AnalysisPending {
