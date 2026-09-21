@@ -67,6 +67,8 @@ def _digest(path: Path) -> str:
 
 
 def _number(value: object) -> float | None:
+    if type(value) is float:  # fast path: 9.6M calls per export, almost all already float
+        return value if math.isfinite(value) else None
     try:
         number = float(value) if value is not None else None
     except (TypeError, ValueError, OverflowError):
@@ -75,14 +77,12 @@ def _number(value: object) -> float | None:
 
 
 def _bad_prices(row: dict) -> bool:
-    o, h, low, c = (row[key] for key in ("open", "high", "low", "close"))
-    return (
-        any(value is None or value <= 0 for value in (o, h, low, c))
-        or h < max(o, low, c)
-        or low > min(o, h, c)
-        or row["volume"] is None
-        or row["volume"] < 0
-    )
+    # Expanded comparisons (no generators/max/min): same truth table, ~3x faster over 1.3M rows.
+    o, h, low, c, volume = row["open"], row["high"], row["low"], row["close"], row["volume"]
+    if o is None or h is None or low is None or c is None or o <= 0 or h <= 0 or low <= 0 or c <= 0:
+        return True
+    return (h < o or h < low or h < c or low > o or low > h or low > c
+            or volume is None or volume < 0)
 
 
 def source_fingerprint(source_db: Path, as_of: str | None = None) -> str:
@@ -204,6 +204,9 @@ def export_snapshot(
         per_code_dates: dict[str, set[str]] = {}
         rows = 0
         invalid_identifiers = 0
+        # Codes and dates repeat across 1.3M rows; remember the ones that passed validation.
+        valid_codes: set[str] = set()
+        valid_days: set[str] = set()
         if history_meta:
             cursor = connection.execute('''
                 SELECT p.code,p.date,p.open,p.high,p.low,p.close,p.volume,s.market_cap,s.shares
@@ -229,17 +232,25 @@ def export_snapshot(
                 records = []
                 for raw in batch:
                     code, day = raw[0], raw[1]
-                    try:
-                        # KRX identifiers include alphabetic characters in new
-                        # listings and preferred shares (e.g. 0001A0, 00088K).
-                        valid = isinstance(code, str) and re.fullmatch(r"[0-9A-Z]{6}", code)
-                        _iso_date(day)
-                    except (ValueError, TypeError):
-                        valid = False
+                    if code in valid_codes and day in valid_days:
+                        valid = True
+                    else:
+                        try:
+                            # KRX identifiers include alphabetic characters in new
+                            # listings and preferred shares (e.g. 0001A0, 00088K).
+                            valid = isinstance(code, str) and re.fullmatch(r"[0-9A-Z]{6}", code)
+                            _iso_date(day)
+                        except (ValueError, TypeError):
+                            valid = False
+                        if valid:
+                            valid_codes.add(code)
+                            valid_days.add(day)
                     if not valid:
                         invalid_identifiers += 1
                         continue
-                    row = dict(zip(DAILY_COLUMNS, (code, day, *map(_number, raw[2:]))))
+                    row = {"code": code, "date": day, "open": _number(raw[2]), "high": _number(raw[3]),
+                           "low": _number(raw[4]), "close": _number(raw[5]), "volume": _number(raw[6]),
+                           "mktcap": _number(raw[7]), "shares": _number(raw[8])}
                     records.append(row)
                     observed_dates.add(day)
                     days = per_code_dates.setdefault(code, set())
