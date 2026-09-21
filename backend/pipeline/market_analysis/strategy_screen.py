@@ -1,6 +1,7 @@
 """Read-only catalog screening over the same immutable inputs as pattern search."""
 from __future__ import annotations
 
+import bisect
 import math
 
 if __package__:
@@ -87,13 +88,18 @@ def screen_catalog(data_dir, spec: dict, *, base_result: dict | None = None) -> 
                 continue
             days = [row["date"] for row in rows]
             day_set = set(days)
+            # Rows arrive sorted by date and cut at as_of, so the per-condition window
+            # checks reduce to index arithmetic: the last invalid row and the count of
+            # observed sessions from the window start (days ⊆ calendar once duplicates
+            # are excluded, so "a calendar day is missing" ⇔ the counts differ).
+            last_invalid = max((i for i, row in enumerate(rows) if not _valid_price(row)), default=-1)
             checks = dict(base_items.get(code, {}).get("checks", {}))
             unavailable = []
             for condition in conditions:
                 key = condition["strategy_id"]
                 definition, requirement = definitions[key], requirements[key]
                 start = requirement["required_start"]
-                relevant = [row for row in rows if row["date"] >= start]
+                first = bisect.bisect_left(days, start)
                 reason = None
                 if definition["timeframe"] != "1d":
                     reason = "missing_intraday"
@@ -103,9 +109,9 @@ def screen_catalog(data_dir, spec: dict, *, base_result: dict | None = None) -> 
                     reason = "insufficient_history"
                 elif requirement.get("start_date") and days[0] > requirement["start_date"]:
                     reason = "insufficient_history"
-                elif any(not _valid_price(row) for row in relevant):
+                elif last_invalid >= first:
                     reason = "invalid_ohlcv"
-                elif any(day not in day_set for day in calendar if start <= day <= as_of):
+                elif len(days) - first != len(calendar) - bisect.bisect_left(calendar, start):
                     reason = "missing_observed_sessions"
                 check = ({"status": "unavailable", "reason": reason, "value": None, "date": None}
                          if reason else evaluate_strategy(rows, condition))

@@ -200,12 +200,34 @@ def catalog() -> list[dict]:
 
 
 def _finite_number(value: Any) -> bool:
+    kind = type(value)
+    if kind is float or kind is int:  # fast path: the ABC check below dominated screening time
+        try:
+            return math.isfinite(value)
+        except (OverflowError, TypeError, ValueError):
+            return False
     if isinstance(value, bool) or not isinstance(value, Real):
         return False
     try:
         return math.isfinite(value)
     except (OverflowError, TypeError, ValueError):
         return False
+
+
+# Validated ISO dates repeat across every stock (about 1,300 trading days), so the
+# strict parse+roundtrip is memoised. Only strings that survive the roundtrip are stored.
+_DATES: dict[str, date] = {}
+
+
+def _strict_date(value: Any) -> date | None:
+    key = _DATES.get(value)
+    if key is None:
+        key = date.fromisoformat(value)
+        if key.isoformat() != value:
+            return None
+        if len(_DATES) < 50_000:
+            _DATES[value] = key
+    return key
 
 
 def normalize_condition(condition: dict) -> dict:
@@ -314,7 +336,7 @@ def _sma(values: list[float | None], period: int) -> list[float | None]:
     result: list[float | None] = [None] * len(values)
     for i in range(period - 1, len(values)):
         window = values[i - period + 1:i + 1]
-        if all(value is not None for value in window):
+        if None not in window:
             result[i] = math.fsum(value / period for value in window)
     return result
 
@@ -689,10 +711,10 @@ def evaluate_strategy(rows: list[dict], condition: dict) -> dict:
         if not isinstance(item, dict):
             return _out("unavailable", reason="invalid_history")
         try:
-            key = datetime.fromisoformat(item["timestamp"]) if intraday else date.fromisoformat(item["date"])
+            key = datetime.fromisoformat(item["timestamp"]) if intraday else _strict_date(item["date"])
             if intraday and ("T" not in item["timestamp"] and " " not in item["timestamp"]):
                 return _out("unavailable", reason="missing_intraday")
-            if not intraday and key.isoformat() != item["date"]:
+            if key is None:
                 return _out("unavailable", reason="invalid_dates")
             if last_key is not None and key <= last_key:
                 return _out("unavailable", reason="invalid_dates")
