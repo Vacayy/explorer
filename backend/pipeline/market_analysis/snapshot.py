@@ -85,6 +85,46 @@ def _bad_prices(row: dict) -> bool:
     )
 
 
+def source_fingerprint(source_db: Path, as_of: str | None = None) -> str:
+    """원본이 바뀌었는지 판별하는 내용 지문 (D-193 스냅샷 재사용).
+
+    실행마다 137만 행을 다시 내보내지 않기 위해, 내보내기가 읽는 모든 원천(stock_prices·companies·
+    수집 이력 DB의 prices/coverage/metadata)의 행 수·최신일·합계와 요청 기준일, 그리고 이 파일 자체의
+    해시(내보내기 로직이 바뀌면 재사용하지 않음)를 sha256으로 접는다. 읽기 전용, 실측 0.4초.
+    """
+    source_db = Path(source_db).absolute()
+    if as_of is not None:
+        as_of = _iso_date(as_of)
+    _reject_link_ancestors(source_db)
+    _regular_file(source_db)
+    source_db = source_db.resolve(strict=True)
+    history_path = source_db.with_name("market_history.sqlite")
+    has_history = history_path.exists() or history_path.is_symlink()
+    connection = sqlite3.connect(source_db.as_uri() + "?mode=ro", uri=True, timeout=2)
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        parts: dict = {"as_of": as_of, "export_code": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+        parts["main"] = list(connection.execute(
+            "SELECT COUNT(*), MAX(trade_date), MIN(trade_date), TOTAL(close), TOTAL(volume), TOTAL(market_cap) "
+            "FROM stock_prices WHERE (? IS NULL OR trade_date <= ?)", (as_of, as_of)).fetchone())
+        parts["companies"] = list(connection.execute(
+            "SELECT COUNT(*), TOTAL(LENGTH(corp_name)), TOTAL(LENGTH(market)) FROM companies WHERE stock_code IS NOT NULL").fetchone())
+        if has_history:
+            _reject_link_ancestors(history_path)
+            _regular_file(history_path)
+            connection.execute("ATTACH DATABASE ? AS history", (history_path.as_uri() + "?mode=ro",))
+            parts["history"] = {
+                "metadata": sorted(connection.execute("SELECT key,value FROM history.metadata").fetchall()),
+                "coverage": list(connection.execute("SELECT COUNT(*), TOTAL(LENGTH(code)) FROM history.coverage WHERE status='collected'").fetchone()),
+                "prices": list(connection.execute(
+                    "SELECT COUNT(*), MAX(date), MIN(date), TOTAL(close), TOTAL(volume) FROM history.prices "
+                    "WHERE (? IS NULL OR date <= ?)", (as_of, as_of)).fetchone()),
+            }
+    finally:
+        connection.close()
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+
+
 def export_snapshot(
     source_db: Path,
     destination: Path,

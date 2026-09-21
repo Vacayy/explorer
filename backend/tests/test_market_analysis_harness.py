@@ -183,6 +183,40 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(FixtureModel.calls, 3)
         self.assertEqual(result["result"]["verification"]["evidence_ids"], [result["_observations"][1]["id"]])
 
+    def test_unchanged_source_reuses_snapshot_and_changed_source_exports_fresh(self):
+        first = self.create("snapshot-reuse-1")
+        self.service.process(first["id"])
+        second = self.create("snapshot-reuse-2")
+        self.service.process(second["id"])
+        a, b = self.service.store.read(first["id"]), self.service.store.read(second["id"])
+        self.assertEqual(b["status"], "partial", b.get("error"))
+        self.assertEqual(a["_snapshot_id"], b["_snapshot_id"])  # D-193: 원본 지문 동일 → 같은 스냅샷
+        self.assertEqual(a["_snapshot_hashes"], b["_snapshot_hashes"])
+        self.assertTrue(b["snapshot"]["reused"])
+        self.assertNotIn("reused", a["snapshot"])
+        self.assertEqual(b["result"]["counts"], a["result"]["counts"])
+        directories = [d for d in (self.service.store.root / "snapshots").iterdir() if d.is_dir()]
+        self.assertEqual(len(directories), 1)
+        # 원본이 바뀌면(시세 한 행 추가) 지문이 달라져 새로 내보낸다.
+        connection = sqlite3.connect(self.source)
+        connection.execute("INSERT INTO stock_prices VALUES('000001','2025-01-06',105,110,104,108,12,650000000000,100)")
+        connection.commit(); connection.close()
+        self.before = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        third = self.create("snapshot-reuse-3")
+        self.service.process(third["id"])
+        c = self.service.store.read(third["id"])
+        self.assertEqual(c["status"], "partial", c.get("error"))
+        self.assertNotEqual(c["_snapshot_id"], a["_snapshot_id"])
+        self.assertEqual(c["snapshot"]["as_of"], "2025-01-06")
+        # 등록된 스냅샷이 디스크에서 변조되면 차단이 아니라 새로 내보낸다.
+        parquet = self.service.store.root / "snapshots" / c["_snapshot_id"] / "daily.parquet"
+        parquet.chmod(0o600); parquet.write_bytes(b"modified")
+        fourth = self.create("snapshot-reuse-4")
+        self.service.process(fourth["id"])
+        d = self.service.store.read(fourth["id"])
+        self.assertEqual(d["status"], "partial", d.get("error"))
+        self.assertNotIn(d["_snapshot_id"], {a["_snapshot_id"], c["_snapshot_id"]})
+
     def test_finish_without_execution_is_rejected(self):
         FixtureModel.no_execution = True
         run = self.create()

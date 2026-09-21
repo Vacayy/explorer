@@ -5,9 +5,11 @@ import fcntl
 import hashlib
 import json
 import os
+import sqlite3
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from models.market_analysis import AnalysisSpec, ModelAction, RunRequest
@@ -343,7 +345,7 @@ class AnalysisService:
         return action
 
     def _snapshot(self, run_id: str):
-        from .snapshot import export_snapshot
+        from .snapshot import SnapshotError, export_snapshot, source_fingerprint
         state = self.store.read(run_id)
         if state["_snapshot_id"]:
             self._verify_snapshot(state)
@@ -353,11 +355,23 @@ class AnalysisService:
             source_db = DB_PATH
         else:
             source_db = self.source_db
-        snapshot_id = uuid.uuid4().hex
-        destination = self.store.root / "snapshots" / snapshot_id
         self._update(run_id, phase="snapshot")
         started = time.monotonic()
+        fingerprint = None
         try:
+            # D-193: 원본 내용 지문이 같고 파일 해시가 그대로인 스냅샷이 있으면 다시 내보내지 않는다.
+            if self.exporter is None:
+                try:
+                    fingerprint = source_fingerprint(source_db, state["spec"].get("as_of"))
+                except (SnapshotError, OSError, sqlite3.Error):
+                    fingerprint = None
+                entry = self._registered_snapshot(fingerprint) if fingerprint else None
+                if entry:
+                    self._update(run_id, _snapshot_id=entry["id"], _snapshot_hashes=entry["hashes"],
+                                 snapshot={**entry["summary"], "reused": True})
+                    return
+            snapshot_id = uuid.uuid4().hex
+            destination = self.store.root / "snapshots" / snapshot_id
             manifest = (self.exporter or export_snapshot)(source_db, destination,
                 as_of=state["spec"].get("as_of"), cancel=lambda: self._cancelled(run_id))
         finally:
@@ -370,6 +384,40 @@ class AnalysisService:
                    "price_adjustment": manifest.get("price_adjustment"),
                    "warnings": manifest.get("warnings", []), "id": snapshot_id}
         self._update(run_id, _snapshot_id=snapshot_id, _snapshot_hashes=files, snapshot=summary)
+        if fingerprint:
+            self._register_snapshot(fingerprint, snapshot_id, files, summary)
+
+    def _snapshot_index(self) -> Path:
+        return self.store.root / "snapshots" / "index.json"
+
+    def _registered_snapshot(self, fingerprint: str) -> dict | None:
+        """지문에 등록된 스냅샷이 디스크에 그대로 있으면 돌려준다. 파일이 없거나 해시가 다르면 무시(새로 내보냄)."""
+        try:
+            index = json.loads(self._snapshot_index().read_bytes())
+        except (OSError, ValueError):
+            return None
+        entry = index.get(fingerprint) if isinstance(index, dict) else None
+        if not isinstance(entry, dict):
+            return None
+        directory = self.store.root / "snapshots" / str(entry.get("id", ""))
+        try:
+            for name, digest in entry["hashes"].items():
+                if hashlib.sha256(read_bytes(directory, name, 512 * 1024 * 1024)).hexdigest() != digest:
+                    return None
+        except (KeyError, StoreError, OSError, AttributeError):
+            return None
+        return entry
+
+    def _register_snapshot(self, fingerprint: str, snapshot_id: str, hashes: dict, summary: dict) -> None:
+        try:
+            index = json.loads(self._snapshot_index().read_bytes())
+            if not isinstance(index, dict):
+                index = {}
+        except (OSError, ValueError):
+            index = {}
+        index[fingerprint] = {"id": snapshot_id, "hashes": hashes, "summary": summary,
+                              "created_at": datetime.now(timezone.utc).isoformat()}
+        atomic_write(self._snapshot_index(), encode(index))
 
     def _verify_snapshot(self, state: dict):
         directory = self.store.root / "snapshots" / state["_snapshot_id"]
