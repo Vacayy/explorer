@@ -217,6 +217,36 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(d["status"], "partial", d.get("error"))
         self.assertNotIn(d["_snapshot_id"], {a["_snapshot_id"], c["_snapshot_id"]})
 
+    def test_identical_inputs_reuse_verified_result_without_recomputing(self):
+        first = self.create("cache-first-run")
+        self.service.process(first["id"])
+        a = self.service.store.read(first["id"])
+        self.assertEqual(a["status"], "partial", a.get("error"))
+        FixtureModel.calls = 0
+        second = self.create("cache-second-run")
+        self.service.process(second["id"])
+        b = self.service.store.read(second["id"])
+        self.assertEqual(b["status"], "partial", b.get("error"))
+        # D-194: 같은 스냅샷·spec·스킬 → 검증된 결과 재사용. 코드 콜·계산·재계산 없음(해석 콜만).
+        self.assertEqual(FixtureModel.calls, 1)
+        self.assertEqual(b["steps"], 0)
+        self.assertEqual(b["result"]["verification"]["cached_from"], first["id"])
+        self.assertEqual(b["result"]["verification"]["status"], "matched")
+        self.assertEqual(b["result"]["items"], a["result"]["items"])
+        self.assertEqual(b["result"]["counts"], a["result"]["counts"])
+        self.assertEqual({x["kind"] for x in b["artifacts"]}, {"json", "csv"})
+        self.assertEqual(b["_history"][-1], {"role": "host", "cached_result": first["id"]})
+        self.assertEqual(len(self.service.chart(second["id"], "000001")["prices"]), 2)
+        # spec이 다르면(선택 실행, 시총 하한 변경) 캐시를 쓰지 않는다.
+        spec = {**a["spec"], "min_market_cap": 1}
+        spec.pop("price_adjustment", None)
+        third = self.service.create(RunRequest(question="선택 실행", request_key="cache-third-run", spec=spec).model_dump(mode="json"))
+        self.service.process(third["id"])
+        c = self.service.store.read(third["id"])
+        self.assertEqual(c["status"], "partial", c.get("error"))
+        self.assertNotIn("cached_from", c["result"]["verification"])
+        self.assertEqual(c["steps"], 1)
+
     def test_finish_without_execution_is_rejected(self):
         FixtureModel.no_execution = True
         run = self.create()

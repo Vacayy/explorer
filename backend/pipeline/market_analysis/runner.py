@@ -545,6 +545,65 @@ class AnalysisService:
         atomic_write(export_dir / "results.csv", output.getvalue().encode())
         self.store.register_artifact(run_id, export_dir, "results.csv")
         self._update(run_id, status=status, phase="finished", result=verified, pending=None, error=None)
+        self._register_result(run_id, state)
+
+    # --- 검증 결과 캐시 (D-194) -------------------------------------------------------------
+    # 같은 스냅샷 해시·같은 spec·같은 스킬 해시·같은 미지원 목록이면 계산은 결정적이라 결과가 같다.
+    # 이미 독립 재계산까지 통과한 결과를 다시 계산하지 않고 그대로 쓴다.
+
+    def _result_key(self, state: dict) -> str | None:
+        if not state.get("_snapshot_hashes") or not state.get("_skill_hashes") or state.get("spec") is None:
+            return None
+        material = {"snapshot": state["_snapshot_hashes"], "skills": state["_skill_hashes"], "spec": state["spec"],
+                    "unsupported": state.get("_unsupported") or []}
+        return hashlib.sha256(json.dumps(material, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+
+    def _result_index(self) -> Path:
+        return self.store.root / "control" / "results-index.json"
+
+    def _read_result_index(self) -> dict:
+        try:
+            index = json.loads(self._result_index().read_bytes())
+        except (OSError, ValueError):
+            return {}
+        return index if isinstance(index, dict) else {}
+
+    def _register_result(self, run_id: str, state: dict) -> None:
+        key = self._result_key(state)
+        if not key:
+            return
+        index = self._read_result_index()
+        index[key] = {"run_id": run_id, "created_at": datetime.now(timezone.utc).isoformat()}
+        atomic_write(self._result_index(), encode(index))
+
+    def _finish_from_cache(self, run_id: str) -> bool:
+        state = self.store.read(run_id)
+        key = self._result_key(state)
+        entry = self._read_result_index().get(key) if key else None
+        if not isinstance(entry, dict) or not entry.get("run_id") or entry["run_id"] == run_id:
+            return False
+        source_dir = self.store.root / "control" / str(entry["run_id"]) / "exports"
+        try:
+            cached = read_json(source_dir, "result.json")
+            csv_bytes = read_bytes(source_dir, "results.csv", 64 * 1024 * 1024)
+        except (StoreError, ValueError, OSError):
+            return False
+        if not isinstance(cached, dict) or (cached.get("verification") or {}).get("status") != "matched":
+            return False
+        self._verify_snapshot(state)
+        result = dict(cached)
+        result["verification"] = {**cached["verification"], "cached_from": entry["run_id"]}
+        export_dir = self.store.root / "control" / run_id / "exports"
+        secure_directory(export_dir)
+        atomic_write(export_dir / "result.json", encode(result))
+        atomic_write(export_dir / "results.csv", csv_bytes)
+        self.store.register_artifact(run_id, export_dir, "result.json")
+        self.store.register_artifact(run_id, export_dir, "results.csv")
+        self.store.mutate(run_id, lambda s: s["_history"].append({"role": "host", "cached_result": entry["run_id"]}))
+        self._emit(run_id, "CUSTOM", name="analysis.cached_result", value={"run_id": entry["run_id"]})
+        status = "completed" if result.get("status") in {"complete", "completed"} else "partial"
+        self._update(run_id, status=status, phase="finished", result=result, pending=None, error=None)
+        return True
 
     def process(self, run_id: str):
         """Process one queued run. Worker lock must be held by the caller."""
@@ -615,6 +674,8 @@ class AnalysisService:
                 atomic_write(control / "skills" / name, value)
             self._update(run_id, status="running", phase="analysis", _skill_hash=digest,
                          _skill_hashes={name: hashlib.sha256(value).hexdigest() for name, value in skills.items()})
+            if self._finish_from_cache(run_id):
+                return
             sandbox = self._sandbox(run_id)
             if explicit:
                 # Concrete user selections still get isolated execution and verification.
