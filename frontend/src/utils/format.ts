@@ -51,6 +51,14 @@ export function formatPercent(value: number | null | undefined): string {
 }
 
 /**
+ * Format a share/ratio as percentage without a sign (e.g. 15.3%). Use formatPercent for changes.
+ */
+export function formatRatio(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${value.toFixed(1)}%`
+}
+
+/**
  * Format plain number with Korean locale commas.
  */
 export function formatNumber(value: number | null | undefined): string {

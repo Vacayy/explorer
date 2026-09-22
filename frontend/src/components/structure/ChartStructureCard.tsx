@@ -15,10 +15,10 @@ import { Slider } from '@/components/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { useAppendMemberRule } from '@/hooks/useGroups'
-import { formatNumber, formatPercent, formatPrice } from '@/utils/format'
+import { formatNumber, formatPercent, formatPrice, formatRatio } from '@/utils/format'
 
 /** 종목의 차트에 채널·추세선·지지/저항 레벨을 그리는 결정적 계산 (docs/specs/chart-structure.md, D-195·D-196). 모델 호출 0. */
-export type StructureKind = 'channel' | 'trendline_high' | 'trendline_low' | 'levels'
+export type StructureKind = 'channel' | 'trendline_high' | 'trendline_low' | 'levels' | 'profile'
 export type StructureFit = 'two_point' | 'regression'
 export interface StructureParams { code: string; market: 'kr' | 'us'; kind: StructureKind; window: string; swing: number; fit: StructureFit }
 export interface StructureCondition { strategy_id: string; label: string; params: Record<string, unknown>; within_days: number; phrase: string; note: string }
@@ -29,12 +29,15 @@ export interface StructureResult {
   candles: { time: string; open: number; high: number; low: number; close: number }[]
   pivots: { time: string; price: number; side: 'high' | 'low'; anchor: boolean }[]
   lines: { id: string; label: string; points: { time: string; value: number }[] }[]
-  summary: { upper_now?: number; lower_now?: number; line_now?: number; close: number; position_pct?: number | null; width_pct?: number | null; distance_pct?: number | null; touches_upper?: number; touches_lower?: number; touches?: number; slope_pct_per_session: number | null; sessions: number; levels?: StructureLevel[]; nearest_resistance?: number | null; nearest_support?: number | null; resistance_distance_pct?: number | null; support_distance_pct?: number | null }
+  summary: { upper_now?: number; lower_now?: number; line_now?: number; close: number; position_pct?: number | null; width_pct?: number | null; distance_pct?: number | null; touches_upper?: number; touches_lower?: number; touches?: number; slope_pct_per_session: number | null; sessions: number; levels?: StructureLevel[]; nearest_resistance?: number | null; nearest_support?: number | null; resistance_distance_pct?: number | null; support_distance_pct?: number | null; poc?: number; poc_share_pct?: number; poc_distance_pct?: number; value_area_low?: number; value_area_high?: number; value_area_share_pct?: number; position?: ProfilePosition; thin_zones?: { low: number; high: number; share_pct: number }[]; bins?: ProfileBin[] }
   conditions: StructureCondition[]
   notes: string[]
 }
 
-export const KIND_LABEL: Record<StructureKind, string> = { channel: '채널', trendline_high: '고점 추세선', trendline_low: '저점 추세선', levels: '지지·저항 레벨' }
+export const KIND_LABEL: Record<StructureKind, string> = { channel: '채널', trendline_high: '고점 추세선', trendline_low: '저점 추세선', levels: '지지·저항 레벨', profile: '매물대' }
+export type ProfilePosition = 'poc' | 'value_area' | 'thin' | 'above_value_area' | 'below_value_area' | 'outside_range'
+export interface ProfileBin { low: number; high: number; volume: number; share_pct: number; poc: boolean; in_value_area: boolean }
+const POSITION_LABEL: Record<ProfilePosition, string> = { poc: '거래 가장 몰린 구간(POC) 안', value_area: '가치 영역 안', thin: '희박 구간(거래 적음) 안', above_value_area: '가치 영역 위', below_value_area: '가치 영역 아래', outside_range: '기간 가격 범위 밖' }
 export const WINDOW_LABEL: Record<string, string> = { ytd: '올해', '3m': '3개월', '6m': '6개월', '1y': '1년', '2y': '2년' }
 
 /** 바로 꺼내 쓰는 구조 프리셋. 문장은 종목 발견 질문에 그대로 넣을 수 있게 해석 규칙과 같은 단어를 쓴다. */
@@ -44,6 +47,7 @@ export const STRUCTURE_PRESETS: { id: string; label: string; purpose: string; pa
   { id: '1y-support-trend', label: '1년 저점 추세선', purpose: '상승 추세의 지지선이 아직 살아 있는지', params: { kind: 'trendline_low', window: '1y', swing: 5, fit: 'two_point' }, phrase: '1년 저점들을 연결한 추세선을 그려줘' },
   { id: '3m-resistance-trend', label: '3개월 고점 추세선', purpose: '단기 하락 추세선을 돌파했는지', params: { kind: 'trendline_high', window: '3m', swing: 3, fit: 'two_point' }, phrase: '최근 3개월 고점을 연결한 추세선을 그려줘' },
   { id: '1y-levels', label: '1년 지지·저항 레벨', purpose: '여러 번 닿은 가격대와 현재가의 거리', params: { kind: 'levels', window: '1y', swing: 5, fit: 'two_point' }, phrase: '1년 지지·저항 레벨을 그려줘' },
+  { id: '1y-profile', label: '1년 매물대', purpose: '거래가 몰린 가격대(POC·가치 영역 70%)와 현재가의 위치', params: { kind: 'profile', window: '1y', swing: 5, fit: 'two_point' }, phrase: '1년 매물대를 그려줘' },
   { id: 'ytd-regression-channel', label: '올해 회귀 채널', purpose: '고점 전체를 평균한 완만한 채널', params: { kind: 'channel', window: 'ytd', swing: 5, fit: 'regression' }, phrase: '올해 고점 전체를 회귀로 적합한 채널을 그려줘' },
 ]
 
@@ -101,11 +105,13 @@ function StructureChart({ params, onChange, height, compact }: { params: Structu
       <p className="text-sm">
         {result.kind === 'channel' && <>상단 {price(result.summary.upper_now ?? 0)} · 하단 {price(result.summary.lower_now ?? 0)} · 종가 {price(result.summary.close)} → 채널 안 위치 {result.summary.position_pct == null ? '-' : `${formatNumber(Math.round(result.summary.position_pct))}%`}{result.summary.position_pct != null && result.summary.position_pct > 100 ? ' (상단 위)' : result.summary.position_pct != null && result.summary.position_pct < 0 ? ' (하단 아래)' : ''} · 접촉 상단 {formatNumber(result.summary.touches_upper ?? 0)}회 / 하단 {formatNumber(result.summary.touches_lower ?? 0)}회</>}
         {(result.kind === 'trendline_high' || result.kind === 'trendline_low') && <>추세선 {price(result.summary.line_now ?? 0)} · 종가 {price(result.summary.close)} ({formatPercent(result.summary.distance_pct)}) · 접촉 {formatNumber(result.summary.touches ?? 0)}회</>}
+        {result.kind === 'profile' && <>종가 {price(result.summary.close)} · POC {price(result.summary.poc ?? 0)} (거래 {formatRatio(result.summary.poc_share_pct)}, 종가와 {formatPercent(result.summary.poc_distance_pct)}) · 가치 영역 {price(result.summary.value_area_low ?? 0)} ~ {price(result.summary.value_area_high ?? 0)} (거래 {formatRatio(result.summary.value_area_share_pct)}) · 현재가는 {POSITION_LABEL[result.summary.position ?? 'outside_range']}</>}
         {result.kind === 'levels' && <>종가 {price(result.summary.close)} · 가까운 저항 {result.summary.nearest_resistance != null ? `${price(result.summary.nearest_resistance)} (${formatPercent(result.summary.resistance_distance_pct)} 위)` : '없음'} · 가까운 지지 {result.summary.nearest_support != null ? `${price(result.summary.nearest_support)} (${formatPercent(result.summary.support_distance_pct)} 아래)` : '없음'} · 레벨 {formatNumber(result.summary.levels?.length ?? 0)}개</>}
         {result.summary.slope_pct_per_session != null && <> · 기울기 세션당 {formatPercent(result.summary.slope_pct_per_session)}</>}
       </p>
       {result.kind === 'levels' && result.summary.levels && result.summary.levels.length > 0 && <ul className="flex flex-wrap gap-1.5">{[...result.summary.levels].sort((a, b) => b.price - a.price).map(level => <li key={level.price}><Badge variant={level.role === 'resistance' ? 'default' : 'secondary'} className="font-normal tabular-nums">{level.role === 'resistance' ? '저항' : '지지'} {price(level.price)} · {formatNumber(level.touches)}회</Badge></li>)}</ul>}
-      <p className="text-caption text-muted-foreground">{result.window.from} ~ {result.window.to} · {formatNumber(result.window.sessions)}거래일 · 기준점 {formatNumber(result.pivots.filter(p => p.anchor).length)}개 / 스윙 {formatNumber(result.pivots.length)}개. 구조는 규칙(스윙 폭·적합 방식)으로 그린 결정적 선이고 예측이 아닙니다.</p>
+      {result.kind === 'profile' && result.summary.bins && <ProfileBars bins={result.summary.bins} close={result.summary.close} price={price} />}
+      <p className="text-caption text-muted-foreground">{result.window.from} ~ {result.window.to} · {formatNumber(result.window.sessions)}거래일{result.kind === 'profile' ? <>. 매물대는 일봉 대표가격 (고+저+종)/3에 그날 거래량을 배정한 근사이고 체결가별 실제 거래량이 아닙니다. 긴 기간은 여러 국면이 섞이니 3·6개월로 좁혀 비교하세요.</> : <> · 기준점 {formatNumber(result.pivots.filter(p => p.anchor).length)}개 / 스윙 {formatNumber(result.pivots.length)}개. 구조는 규칙(스윙 폭·적합 방식)으로 그린 결정적 선이고 예측이 아닙니다.</>}</p>
       {result.conditions.length > 0 && <div className="flex flex-wrap items-end gap-2 rounded-lg bg-muted/40 p-3" aria-label="이 구조를 조건으로">
         <div className="space-y-1"><Label htmlFor={`${id}-condition`} className="text-caption text-muted-foreground">이 구조를 조건으로</Label>
           <Select value={condition?.strategy_id} onValueChange={setConditionId}><SelectTrigger id={`${id}-condition`} size="sm" className="h-8 w-auto min-w-44"><SelectValue /></SelectTrigger>
@@ -119,6 +125,21 @@ function StructureChart({ params, onChange, height, compact }: { params: Structu
   </div>
 }
 
+/** 가격 구간별 거래량 막대(가격 내림차순). POC는 진하게, 가치 영역은 중간, 나머지는 옅게. 현재가가 든 구간은 테두리. */
+function ProfileBars({ bins, close, price }: { bins: ProfileBin[]; close: number; price: (value: number) => string }) {
+  const max = Math.max(...bins.map(b => b.share_pct), 0.01)
+  return <ol className="space-y-0.5" aria-label="가격 구간별 거래량">
+    {[...bins].reverse().map(bin => {
+      const here = bin.low <= close && (close < bin.high || bin === bins[bins.length - 1])
+      return <li key={bin.low} className={`flex items-center gap-2 rounded px-1 text-caption tabular-nums ${here ? 'ring-1 ring-foreground/40' : ''}`}>
+        <span className="w-28 shrink-0 text-muted-foreground sm:w-36">{price(bin.low)}~</span>
+        <span className="h-2.5 flex-1"><span className={`block h-full rounded-sm ${bin.poc ? 'bg-primary' : bin.in_value_area ? 'bg-primary/40' : 'bg-muted-foreground/25'}`} style={{ width: `${Math.max(1, bin.share_pct / max * 100)}%` }} /></span>
+        <span className="w-12 shrink-0 text-right text-muted-foreground">{formatRatio(bin.share_pct)}</span>
+      </li>
+    })}
+  </ol>
+}
+
 export function ChartStructureCard({ params, codes, onChange, question, height = 360, compact = false }: {
   params: StructureParams; codes?: string[]; onChange: (next: StructureParams) => void; question?: string; height?: number; compact?: boolean
 }) {
@@ -126,6 +147,7 @@ export function ChartStructureCard({ params, codes, onChange, question, height =
   const [swingDraft, setSwingDraft] = useState<number | null>(null) // 드래그 중 표시값. 계산은 놓을 때(onValueCommit)만
   const targets = codes && codes.length > 0 ? codes : [params.code]
   const isLevels = params.kind === 'levels'
+  const isProfile = params.kind === 'profile'
   return <section aria-label="차트 구조 그리기" className={compact ? 'space-y-3' : 'space-y-4 rounded-xl border bg-card p-4'}>
     {!compact && <div className="space-y-1">
       {question && <p className="text-sm text-muted-foreground">{question}</p>}
@@ -142,9 +164,9 @@ export function ChartStructureCard({ params, codes, onChange, question, height =
           <SelectTrigger id={`${id}-window`} size="sm" className="h-8 w-28"><SelectValue /></SelectTrigger>
           <SelectContent>{Object.entries(WINDOW_LABEL).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}{!(params.window in WINDOW_LABEL) && <SelectItem value="custom">{params.window}</SelectItem>}</SelectContent>
         </Select></div>
-      <div className="min-w-44 space-y-1"><Label htmlFor={`${id}-swing`} className="text-caption text-muted-foreground">스윙 폭 {swingDraft ?? params.swing}봉 {(swingDraft ?? params.swing) >= 10 ? '(큰 구조)' : (swingDraft ?? params.swing) <= 3 ? '(세밀)' : ''}</Label>
-        <Slider id={`${id}-swing`} min={2} max={30} step={1} value={[swingDraft ?? params.swing]} onValueChange={([value]) => setSwingDraft(value)} onValueCommit={([value]) => { setSwingDraft(null); onChange({ ...params, swing: value }) }} aria-label="스윙 폭" /></div>
-      {!isLevels && <div className="space-y-1"><Label className="text-caption text-muted-foreground">적합</Label>
+      {!isProfile && <div className="min-w-44 space-y-1"><Label htmlFor={`${id}-swing`} className="text-caption text-muted-foreground">스윙 폭 {swingDraft ?? params.swing}봉 {(swingDraft ?? params.swing) >= 10 ? '(큰 구조)' : (swingDraft ?? params.swing) <= 3 ? '(세밀)' : ''}</Label>
+        <Slider id={`${id}-swing`} min={2} max={30} step={1} value={[swingDraft ?? params.swing]} onValueChange={([value]) => setSwingDraft(value)} onValueCommit={([value]) => { setSwingDraft(null); onChange({ ...params, swing: value }) }} aria-label="스윙 폭" /></div>}
+      {!isLevels && !isProfile && <div className="space-y-1"><Label className="text-caption text-muted-foreground">적합</Label>
         <ToggleGroup type="single" variant="outline" size="sm" value={params.fit} onValueChange={value => { if (value) onChange({ ...params, fit: value as StructureFit }) }} aria-label="적합 방식">
           <ToggleGroupItem value="two_point" className="h-8 px-3 text-sm">두 점 연결</ToggleGroupItem><ToggleGroupItem value="regression" className="h-8 px-3 text-sm">회귀선</ToggleGroupItem>
         </ToggleGroup></div>}

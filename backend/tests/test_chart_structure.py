@@ -139,6 +139,8 @@ class Levels(unittest.TestCase):
 
     def test_conditions_are_valid_catalog_conditions(self):
         for kind in cs.KINDS:
+            if kind == "profile":
+                continue
             for fit in cs.FITS:
                 for item in cs.to_conditions(kind, 10, fit, 171):
                     self.assertEqual(item["params"]["pivot_width"], 10)
@@ -169,3 +171,69 @@ class InterpretP1(unittest.TestCase):
         def broken(text): raise RuntimeError("cli down")
         out = cs.interpret(self.conn, "그 전선회사 올해 채널 그려줘", assist=broken)
         self.assertIsNone(out["code"]); self.assertIn("모델 보조 실패", out["matched"])
+
+
+class Profile(unittest.TestCase):
+    """매물대(D-197 ③): 일봉 대표가격 근사, POC·가치 영역 70%·희박 구간. 카탈로그 volume_profile_*와 같은 배정 규칙."""
+
+    def test_poc_value_area_and_thin_zones_are_deterministic(self):
+        r = rows(n=120, slope=0.0)  # 수평 박스: 대표가격이 94~106 사이, 거래량 균등 1000
+        heavy = [dict(x) for x in r]
+        for x in heavy[40:60]:
+            x["volume"] = 20000  # 40~60번째 봉에 거래 집중
+        out = cs.structure(heavy, "profile", 5)
+        self.assertEqual(out["kind"], "profile")
+        s = out["summary"]
+        self.assertEqual(len(s["bins"]), cs.PROFILE_BINS)
+        self.assertAlmostEqual(sum(b["share_pct"] for b in s["bins"]), 100, places=1)
+        poc_bin = next(b for b in s["bins"] if b["poc"])
+        self.assertTrue(poc_bin["low"] <= s["poc"] <= poc_bin["high"])
+        self.assertTrue(poc_bin["in_value_area"])
+        self.assertGreaterEqual(s["value_area_share_pct"], 70)
+        self.assertTrue(s["value_area_low"] <= s["poc"] <= s["value_area_high"])
+        self.assertEqual([l["id"] for l in out["lines"]], ["profile:poc", "profile:va_high", "profile:va_low"])
+        self.assertTrue(all(l["points"][0]["value"] == l["points"][1]["value"] for l in out["lines"]))
+        self.assertIn(s["position"], {"poc", "value_area", "thin", "above_value_area", "below_value_area", "outside_range"})
+        self.assertEqual(out["pivots"], [])
+        # 같은 입력은 같은 출력(동률 규칙 포함)
+        self.assertEqual(cs.structure(heavy, "profile", 5)["summary"], s)
+
+    def test_profile_matches_catalog_center_line_and_conditions(self):
+        from pipeline.market_analysis.strategies import evaluate_strategy
+        r = rows(n=80, slope=0.3)
+        for i, x in enumerate(r):
+            x["volume"] = 500 + (i % 7) * 300
+        out = cs.structure(r, "profile", 5)
+        # 카탈로그는 판정일 직전 N봉을 보므로 마지막 봉을 하나 덧붙여 같은 창을 만든다
+        probe = r + [{**r[-1], "date": "2026-12-31", "close": r[-1]["close"] * 3, "high": r[-1]["high"] * 3, "low": r[-1]["low"] * 3, "open": r[-1]["open"] * 3}]
+        catalog_result = evaluate_strategy(probe, {"strategy_id": "volume_profile_up_60d", "params": {"period": 80, "bins": cs.PROFILE_BINS}, "within_days": 1})
+        self.assertIn(catalog_result["status"], {"pass", "fail"})
+        self.assertAlmostEqual(catalog_result["reference"], out["summary"]["poc"], places=3)
+        conditions = cs.to_conditions("profile", 5, "two_point", 80)
+        self.assertEqual([c["strategy_id"] for c in conditions], ["volume_profile_up_60d", "volume_profile_down_60d"])
+        self.assertEqual(conditions[0]["params"], {"period": 80, "bins": cs.PROFILE_BINS})
+
+    def test_profile_needs_volume_and_spread(self):
+        r = rows(n=40)
+        for x in r:
+            x["volume"] = 0
+        with self.assertRaises(cs.StructureUnavailable):
+            cs.structure(r, "profile", 5)
+        flat = [{"date": f"2026-01-{i + 1:02d}", "open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0, "volume": 100} for i in range(10)]
+        with self.assertRaises(cs.StructureUnavailable):
+            cs.structure(flat, "profile", 5)
+
+
+class InterpretProfile(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:"); self.conn.row_factory = sqlite3.Row
+        self.conn.execute("CREATE TABLE companies (stock_code TEXT, corp_name TEXT)")
+        self.conn.execute("INSERT INTO companies VALUES ('005930', '삼성전자')")
+
+    def test_profile_words_route_to_profile(self):
+        for question in ("삼성전자 1년 매물대를 그려줘", "삼성전자 볼륨 프로파일 보여줘", "삼성전자 거래가 몰린 가격대 표시해줘"):
+            out = cs.interpret(self.conn, question, assist=None)
+            self.assertTrue(out["draw"], out)
+            self.assertEqual(out["kind"], "profile", question)
+        self.assertEqual(cs.interpret(self.conn, "삼성전자 1년 매물대를 그려줘", assist=None)["window"], "1y")
+        self.assertFalse(cs.interpret(self.conn, "매물대 위에 있는 종목 찾아줘", assist=None)["draw"])

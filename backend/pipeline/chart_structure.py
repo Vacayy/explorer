@@ -13,7 +13,10 @@ from datetime import date, timedelta
 from pipeline.market_analysis.strategies import _fit_line, _pivot_indexes, normalize_condition
 from pipeline.technical_scan import load_rows
 
-KINDS = {"channel": "채널", "trendline_high": "고점 추세선", "trendline_low": "저점 추세선", "levels": "지지·저항 레벨"}
+KINDS = {"channel": "채널", "trendline_high": "고점 추세선", "trendline_low": "저점 추세선", "levels": "지지·저항 레벨", "profile": "매물대"}
+PROFILE_BINS = 20            # 카탈로그 volume_profile_*의 기본 bins와 같다
+VALUE_AREA_SHARE = 0.70      # Value Area = POC에서 양쪽으로 넓혀 거래량 70%
+THIN_SHARE_OF_POC = 0.25     # POC 거래량의 25% 이하인 구간 = 희박 구간
 LEVEL_TOLERANCE = 0.015  # 스윙 가격이 서로 1.5% 안이면 같은 레벨
 MAX_LEVELS = 6
 FITS = ("two_point", "regression")
@@ -117,6 +120,70 @@ def _levels(rows: list[dict], swing: int) -> dict:
             "summary": summary, "notes": notes, "first": rows[0]["date"], "last": rows[last]["date"]}
 
 
+def _profile(rows: list[dict]) -> dict:
+    """볼륨 프로파일(일봉 근사): 대표가격 (고+저+종)/3에 일 거래량을 배정한 동일 폭 20구간. POC·Value Area 70%·희박 구간.
+
+    카탈로그 `volume_profile_*`와 같은 배정 규칙이라 period = 기간 세션 수이면 중심선이 일치한다. 체결가별 실제 거래량이 아니다.
+    """
+    volumes = [r["volume"] if isinstance(r.get("volume"), (int, float)) and math.isfinite(r["volume"]) and r["volume"] > 0 else 0.0 for r in rows]
+    total = math.fsum(volumes)
+    if total <= 0:
+        raise StructureUnavailable("기간 안에 거래량 자료가 없어 매물대를 계산할 수 없습니다.")
+    typical = [math.fsum(r[k] / 3 for k in ("high", "low", "close")) for r in rows]
+    lo, hi = min(typical), max(typical)
+    if hi <= lo:
+        raise StructureUnavailable("기간 안 가격이 한 값이라 매물대를 나눌 수 없습니다.")
+    width = (hi - lo) / PROFILE_BINS
+    weights = [0.0] * PROFILE_BINS
+    for price, volume in zip(typical, volumes):
+        weights[min(PROFILE_BINS - 1, int((price - lo) / width))] += volume
+    poc = max(range(PROFILE_BINS), key=lambda i: (weights[i], -i))
+    low_i = high_i = poc
+    covered = weights[poc]
+    while covered < VALUE_AREA_SHARE * total and (low_i > 0 or high_i < PROFILE_BINS - 1):
+        below = weights[low_i - 1] if low_i > 0 else -1.0
+        above = weights[high_i + 1] if high_i < PROFILE_BINS - 1 else -1.0
+        if below >= above:  # 동률은 아래(낮은 가격)로 — 결정적
+            low_i -= 1; covered += weights[low_i]
+        else:
+            high_i += 1; covered += weights[high_i]
+    edge = lambda i: round(lo + i * width, 4)  # noqa: E731
+    bins = [{"low": edge(i), "high": edge(i + 1), "volume": weights[i], "share_pct": round(100 * weights[i] / total, 2),
+             "poc": i == poc, "in_value_area": low_i <= i <= high_i} for i in range(PROFILE_BINS)]
+    thin, run = [], None
+    for i in range(PROFILE_BINS):
+        if weights[i] <= THIN_SHARE_OF_POC * weights[poc]:
+            run = [i, i] if run is None else [run[0], i]
+        elif run is not None:
+            thin.append(run); run = None
+    if run is not None:
+        thin.append(run)
+    thin_zones = [{"low": edge(a), "high": edge(b + 1), "share_pct": round(100 * math.fsum(weights[a:b + 1]) / total, 2)} for a, b in thin]
+    last = len(rows) - 1
+    close = rows[last]["close"]
+    poc_price = round(lo + (poc + 0.5) * width, 4)
+    va_low, va_high = edge(low_i), edge(high_i + 1)
+    if close < lo or close > hi:
+        position = "outside_range"
+    elif edge(poc) <= close < edge(poc + 1) or (poc == PROFILE_BINS - 1 and close == hi):
+        position = "poc"
+    elif va_low <= close <= va_high:
+        position = "value_area"
+    elif any(z["low"] <= close <= z["high"] for z in thin_zones):
+        position = "thin"
+    else:
+        position = "above_value_area" if close > va_high else "below_value_area"
+    first, end = rows[0]["date"], rows[last]["date"]
+    horizontal = lambda identifier, label, value: {"id": identifier, "label": label, "points": [{"time": first, "value": value}, {"time": end, "value": value}]}  # noqa: E731
+    lines = [horizontal("profile:poc", "매물대 POC", poc_price), horizontal("profile:va_high", "가치 영역 상단", va_high), horizontal("profile:va_low", "가치 영역 하단", va_low)]
+    summary = {"close": close, "poc": poc_price, "poc_share_pct": bins[poc]["share_pct"], "poc_distance_pct": round((close / poc_price - 1) * 100, 2),
+               "value_area_low": va_low, "value_area_high": va_high, "value_area_share_pct": round(100 * covered / total, 1),
+               "position": position, "thin_zones": thin_zones, "bins": bins, "range": {"low": round(lo, 4), "high": round(hi, 4)},
+               "sessions": len(rows), "slope_pct_per_session": None}
+    return {"kind": "profile", "fit": "two_point", "swing": 0, "requested_swing": 0, "lines": lines, "pivots": [],
+            "summary": summary, "notes": [], "first": first, "last": end}
+
+
 def valid_bars(rows: list[dict]) -> list[dict]:
     """OHLC가 모두 유효한 양수인 봉만. yfinance가 NaN으로 준 봉(us_prices의 null close)은 계산에서도 차트에서도 뺀다."""
     return [r for r in rows if all(isinstance(r.get(k), (int, float)) and math.isfinite(r[k]) and r[k] > 0 for k in ("open", "high", "low", "close"))]
@@ -133,6 +200,8 @@ def structure(rows: list[dict], kind: str, swing: int, fit: str = "two_point") -
         raise StructureUnavailable("기간 안에 유효한 시세가 5거래일 미만입니다.")
     if kind == "levels":
         return _levels(rows, swing)
+    if kind == "profile":
+        return _profile(rows)
     key, low = ("low", True) if kind == "trendline_low" else ("high", False)
     used, indexes, notes = swing, [], []
     while used >= MIN_SWING:
@@ -193,6 +262,15 @@ def to_conditions(kind: str, swing: int, fit: str, sessions: int) -> list[dict]:
     그린 구조에서 가져오고, 차이는 note로 알린다. 모든 결과는 normalize_condition을 통과한다.
     """
     lookback = max(20, min(250, sessions))
+    if kind == "profile":
+        period = max(2, min(250, sessions))
+        out = []
+        for strategy_id, label in (("volume_profile_up_60d", "매물대 중심선 상향 돌파"), ("volume_profile_down_60d", "매물대 중심선 하향 돌파")):
+            condition = normalize_condition({"strategy_id": strategy_id, "params": {"period": period, "bins": PROFILE_BINS}, "within_days": 1})
+            out.append({"strategy_id": strategy_id, "label": label, "params": condition["params"], "within_days": 1,
+                        "phrase": f"{label} (최근 {period}봉 매물대)",
+                        "note": "카탈로그 조건은 판정일 직전 N봉으로 매물대를 다시 계산합니다. 같은 배정 규칙이지만 창이 하루씩 움직입니다."})
+        return out
     width = max(1, min(30, swing))
     points = 2 if fit == "two_point" else 3
     base = {"pivot_width": width, "lookback": lookback}
@@ -240,12 +318,14 @@ def draw(conn: sqlite3.Connection, code: str, market: str, kind: str, window: st
 
 # --- 질문 해석 (규칙) ------------------------------------------------------------------------
 
-STRUCTURE_WORDS = re.compile(r"채널|추세선|고점.{0,4}(연결|선)|저점.{0,4}(연결|선)|전고점|전저점|지지선|저항선|지지 ?라인|저항 ?라인|지지.{0,3}저항|저항.{0,3}지지|레벨|매물대 ?선")
+STRUCTURE_WORDS = re.compile(r"채널|추세선|고점.{0,4}(연결|선)|저점.{0,4}(연결|선)|전고점|전저점|지지선|저항선|지지 ?라인|저항 ?라인|지지.{0,3}저항|저항.{0,3}지지|레벨|매물대|볼륨 ?프로파일|프로파일|POC|가치 ?영역|밸류 ?에리어|거래.{0,4}몰린")
+PROFILE_WORDS = re.compile(r"매물대|볼륨 ?프로파일|프로파일|POC|가치 ?영역|밸류 ?에리어|거래.{0,4}몰린")
 DRAW_VERBS = re.compile(r"그려|그리|표시|보여|찍어|그어")
 SEARCH_VERBS = re.compile(r"찾아|검색|골라|추려|종목들|조건|스크리닝|필터")
 PARTICLES = re.compile(r"(에\s*대해서|에\s*대해|에\s*관해|의|은|는|을|를|이|가|도|만|으로|로|에서|에)$")
 STOPWORDS = {"올해", "연초", "최근", "기반으로", "기반", "기준으로", "큰", "작은", "채널", "추세선", "전고점", "전고점들", "전저점", "전저점들",
-             "고점", "저점", "그려줘", "그려", "보여줘", "표시해줘", "차트", "차트에", "지지선", "저항선", "회귀", "평균", "레벨", "비교", "비교해서", "함께", "같이", "각각", "그리고", "와", "과"}
+             "고점", "저점", "그려줘", "그려", "보여줘", "표시해줘", "차트", "차트에", "지지선", "저항선", "회귀", "평균", "레벨", "비교", "비교해서", "함께", "같이", "각각", "그리고", "와", "과",
+             "매물대", "볼륨", "프로파일", "POC", "가치", "영역", "밸류", "에리어"}
 
 
 def _tokens(question: str) -> list[str]:
@@ -317,7 +397,7 @@ def interpret(conn: sqlite3.Connection, question: str, *, assist=model_assist) -
     text = question.strip()
     matched = []
     if not STRUCTURE_WORDS.search(text):
-        return {"draw": False, "reason": "구조 단어(채널·추세선·고점/저점 연결·지지/저항선·레벨)가 없습니다."}
+        return {"draw": False, "reason": "구조 단어(채널·추세선·고점/저점 연결·지지/저항선·레벨·매물대)가 없습니다."}
     if not DRAW_VERBS.search(text):
         return {"draw": False, "reason": "그리기 동사(그려·표시·보여)가 없습니다."}
     if SEARCH_VERBS.search(text):
@@ -340,7 +420,9 @@ def interpret(conn: sqlite3.Connection, question: str, *, assist=model_assist) -
     if assisted:
         matched.append("종목 이름은 모델 보조(haiku)로 찾음")
     stock = stocks[0]
-    if re.search(r"레벨|지지.{0,3}저항|저항.{0,3}지지|매물대 ?선", text) or (re.search(r"지지선|저항선", text) and not re.search(r"고점|저점|추세|연결", text)):
+    if PROFILE_WORDS.search(text):
+        kind = "profile"; matched.append("매물대 → 볼륨 프로파일(POC·가치 영역)")
+    elif re.search(r"레벨|지지.{0,3}저항|저항.{0,3}지지", text) or (re.search(r"지지선|저항선", text) and not re.search(r"고점|저점|추세|연결", text)):
         kind = "levels"; matched.append("지지·저항 → 수평 레벨")
     elif "채널" in text:
         kind = "channel"; matched.append("채널")

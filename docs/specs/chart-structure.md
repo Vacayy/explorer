@@ -6,6 +6,7 @@
 
 - **P0**: 종목 1개(국내·미국), 구조 3종(채널 · 고점 추세선 · 저점 추세선), 기간(올해·3/6개월·1/2년·직접 날짜), 스윙 폭(잔파동 무시 정도), 적합 방식(두 점 연결 기본 · 회귀 옵션). 종목 발견 대화 안의 차트 카드 + 기업 페이지 기술적 분석 패널의 "구조 그리기". 질문 문장 → 매개변수 해석은 규칙 기반.
 - **P1 (2026-09-21 구현, D-196)**: 수평 지지·저항 레벨(`kind=levels`), 여러 종목 비교(`code=A,B`), 그린 구조 → 감시 규칙(D-185)·검색 조건 변환(가장 가까운 카탈로그 조건으로 근사), 규칙이 종목을 못 찾을 때만 모델 보조(haiku 1콜), 추천 프리셋 6개(카드 '바로 그리기' 칩 + 종목 발견 첫 화면 '종목 하나의 차트에 구조 그리기' 섹션).
+- **P2 (2026-09-22 구현, D-197 ③)**: 매물대(`kind=profile`) — 볼륨 프로파일 POC·가치 영역 70%·희박 구간을 수평선 3개 + 구간별 거래량 막대로. 프리셋 '1년 매물대' 추가(7개).
 - **Out of scope**: 이미지(PNG) 생성, 사용자가 손으로 선을 끄는 편집.
 
 ## 계산 (`backend/pipeline/chart_structure.py`)
@@ -18,16 +19,17 @@
 - **저점 추세선**(`trendline_low`): 대칭(최저 스윙 저점 → 이후 최저). 상승 지지선.
 - **스윙 폭 자동 완화**: 요청 폭에서 스윙이 2개 미만이면 폭을 1씩 줄여 2개 이상이 되는 첫 폭을 쓰고 `notes`에 남긴다. 2까지 줄여도 없으면 422 "기간이 짧거나 변동이 작아 구조를 그릴 수 없습니다".
 - **지지·저항 레벨**(`levels`): 스윙 고점·저점 가격을 1.5% 안에서 묶어 레벨로. 두 번 이상 닿은 레벨을 접촉 순으로 먼저, 남는 자리(최대 6)는 현재가에 가까운 단일 스윙으로 채운다(급등 종목은 고점대가 한 번씩만 닿는다). 역할은 현재가 위=저항, 아래=지지. 요약은 가까운 저항·지지와 거리(%).
+- **매물대**(`profile`, D-197 ③): 기간 안 봉의 대표가격 `(고+저+종)/3`에 그날 거래량을 배정한 동일 폭 **20구간**(카탈로그 `volume_profile_*`의 기본 bins와 같은 규칙 — `period`가 기간 세션 수면 중심선이 일치). **POC** = 최대 거래량 구간 중심(동률은 낮은 구간). **가치 영역** = POC에서 양쪽 이웃 중 거래량이 큰 쪽으로 넓혀 전체의 70% 이상(동률은 아래). **희박 구간** = POC 거래량의 25% 이하인 연속 구간. 현재가 위치 `position` ∈ poc · value_area · thin · above_value_area · below_value_area · outside_range. 거래량 자료가 없거나 가격이 한 값이면 422. 스윙 폭·적합은 무시하고 `pivots`는 빈 배열. 선은 POC·가치 영역 상단·하단 수평선 3개, `summary.bins[]`(low·high·share_pct·poc·in_value_area)로 막대를 그린다. 체결가별 실제 거래량이 아닌 근사이며 화면 캡션에 그대로 적는다. 긴 창은 국면이 섞여 POC가 옛 매집 구간에 박힐 수 있어(삼성전자 1년: POC 10.3만 vs 종가 27.3만) 3·6개월로 좁혀 보라고 안내한다.
 - **선은 두 끝점**으로 돌려준다(첫 기준점 봉 → 마지막 봉). lightweight-charts는 점 사이를 직선으로 잇는다.
 - **요약**: 상·하단 현재값, 종가의 채널 내 위치(%), 기울기(세션당 %), 채널 폭(%), 상·하단 접촉 횟수(선에서 0.5% 이내 고가/저가).
 
 ## 그린 구조 → 조건 (`to_conditions`, D-196)
 
-응답의 `conditions[]`는 그린 구조를 **가장 가까운 카탈로그 조건**으로 옮긴 것이다: 채널 → `channel_break_up`/`channel_break_down`, 고점 추세선 → `trendline_break_up`, 저점 추세선 → `trendline_break_down`/`trendline_support_hold`, 레벨 → `resistance_break`/`support_break`. 매개변수는 그린 구조에서(`pivot_width`=스윙 폭, `points`=두 점 2/회귀 3, `lookback`=기간 세션 수, 20~250 클램프) 가져오고 `normalize_condition`을 통과한다. 카탈로그는 "최근 N개 스윙"으로 선을 다시 적합하므로 기준점이 그린 선과 다를 수 있다 — 이 차이를 `note`로 화면에 그대로 보인다. 화면의 "감시 규칙으로"는 GroupPicker로 묶음을 고른 뒤 종목이 없으면 넣고 종목별 규칙에 덧붙인다(국내만). "이 조건으로 종목 찾기"는 `phrase`를 종목 발견 질문으로 넘긴다.
+응답의 `conditions[]`는 그린 구조를 **가장 가까운 카탈로그 조건**으로 옮긴 것이다: 채널 → `channel_break_up`/`channel_break_down`, 고점 추세선 → `trendline_break_up`, 저점 추세선 → `trendline_break_down`/`trendline_support_hold`, 레벨 → `resistance_break`/`support_break`, 매물대 → `volume_profile_up_60d`/`volume_profile_down_60d`(`period`=기간 세션 수 2~250, `bins` 20; 카탈로그는 판정일 직전 N봉으로 창이 하루씩 움직인다는 note). 매개변수는 그린 구조에서(`pivot_width`=스윙 폭, `points`=두 점 2/회귀 3, `lookback`=기간 세션 수, 20~250 클램프) 가져오고 `normalize_condition`을 통과한다. 카탈로그는 "최근 N개 스윙"으로 선을 다시 적합하므로 기준점이 그린 선과 다를 수 있다 — 이 차이를 `note`로 화면에 그대로 보인다. 화면의 "감시 규칙으로"는 GroupPicker로 묶음을 고른 뒤 종목이 없으면 넣고 종목별 규칙에 덧붙인다(국내만). "이 조건으로 종목 찾기"는 `phrase`를 종목 발견 질문으로 넘긴다.
 
 ## 해석 규칙 (`interpret(question)`)
 
-그리기 요청 = **구조 단어**(채널 · 추세선 · 고점/저점 연결 · 지지선/저항선) **and 그리기 동사**(그려 · 그리 · 표시 · 보여 · 찍어) **and 종목 해소** **and 검색 동사 없음**(찾아 · 검색 · 골라 · 추려 · 종목들 · 조건). 셋 중 하나라도 빠지면 종목 발견의 조건 검색으로 간다(오탐이 나면 종목이 걸러지는 쪽으로 틀리는 게 낫다).
+그리기 요청 = **구조 단어**(채널 · 추세선 · 고점/저점 연결 · 지지선/저항선 · 레벨 · 매물대) **and 그리기 동사**(그려 · 그리 · 표시 · 보여 · 찍어) **and 종목 해소** **and 검색 동사 없음**(찾아 · 검색 · 골라 · 추려 · 종목들 · 조건). 셋 중 하나라도 빠지면 종목 발견의 조건 검색으로 간다(오탐이 나면 종목이 걸러지는 쪽으로 틀리는 게 낫다).
 
 | 단서 | 값 |
 |---|---|
@@ -35,13 +37,14 @@
 | 올해·연초·YTD / N개월 / N년 / 없음 | ytd / Nm / Ny / 1y |
 | 큰·장기·주요·메이저 / 작은·단기·세밀 / 없음 | swing 10 / 3 / 5 |
 | 회귀·평균·전체 고점 | fit regression (기본 two_point) |
-| 레벨 · 지지·저항 · 매물대선 / 지지선·저항선(고점·저점·추세·연결 없이) | levels |
+| 매물대 · 볼륨 프로파일 · POC · 가치 영역 · 거래 몰린 (레벨보다 먼저 판정) | profile |
+| 레벨 · 지지·저항 / 지지선·저항선(고점·저점·추세·연결 없이) | levels |
 | 종목 | 조사(에 대해서·의·은/는/을/를, 나열의 와/과/랑) 제거한 토큰을 `companies.corp_name` 정확·접두·포함 순으로 해소(접두·포함은 3자 이상). 여러 개면 등장 순서로 `codes`. 대문자 1~5자는 미국 티커(`resolve_us`) |
 | 종목 미해소 | **모델 보조**: haiku 1콜(도구 없음, $0.02·20초)로 회사 이름 후보만 뽑아 같은 규칙으로 해소. 규칙이 찾으면 부르지 않음. 실패는 `matched`에 "모델 보조 실패"로 남김 |
 
 ## API
 
-- `GET /api/spine/chart-structure/{code}?market=kr|us&kind=channel|trendline_high|trendline_low|levels&window=ytd|3m|6m|1y|2y|YYYY-MM-DD:YYYY-MM-DD&swing=2..30&fit=two_point|regression` → `{code,name,market,kind,fit,swing,requested_swing,window:{from,to,sessions},candles:[{time,open,high,low,close}],pivots:[{time,price,side}],lines:[{id,label,points:[{time,value}×2]}],summary,conditions:[{strategy_id,label,params,within_days,phrase,note}],notes}`. candles는 기간 앞 20봉을 문맥으로 포함. 404 시세 없음, 422 그릴 수 없음.
+- `GET /api/spine/chart-structure/{code}?market=kr|us&kind=channel|trendline_high|trendline_low|levels|profile&window=ytd|3m|6m|1y|2y|YYYY-MM-DD:YYYY-MM-DD&swing=2..30&fit=two_point|regression` → `{code,name,market,kind,fit,swing,requested_swing,window:{from,to,sessions},candles:[{time,open,high,low,close}],pivots:[{time,price,side}],lines:[{id,label,points:[{time,value}×2]}],summary,conditions:[{strategy_id,label,params,within_days,phrase,note}],notes}`. candles는 기간 앞 20봉을 문맥으로 포함. 404 시세 없음, 422 그릴 수 없음.
 - `POST /api/spine/chart-structure/interpret` `{question}` → `{draw:true, code,name,market,codes[],names[],kind,window,swing,fit, matched:[…단서]}` 또는 `{draw:false, reason}`. 규칙이 종목을 못 찾을 때만 haiku 1콜.
 
 ## 화면
@@ -54,7 +57,7 @@
 | Loading | 차트 자리 Skeleton + "스윙 점을 찾고 있습니다" |
 | Partial | 스윙 폭이 자동 완화됨(notes 배지), 기간 앞이 시세 시작으로 잘림 |
 | Error | 422 사유 그대로 + 스윙 폭 줄이기·기간 늘리기 버튼, 그 외 ErrorState 재시도 |
-| Ideal | 캔들 + 상·하단선(파선) + 스윙 점 마커 + 요약 한 줄(위치 %·기울기·접촉) + 컨트롤 + "기업 페이지에서 보기"/"이 종목 조건 검색" 링크 |
+| Ideal | 캔들 + 상·하단선(파선) + 스윙 점 마커 + 요약 한 줄(위치 %·기울기·접촉) + 컨트롤 + "기업 페이지에서 보기"/"이 종목 조건 검색" 링크. 매물대는 POC·가치 영역 수평선 3개 + 가격 구간별 거래량 막대(POC 진하게·가치 영역 중간·현재가 구간 테두리), 스윙·적합 컨트롤 숨김 |
 
 캡션: "구조는 규칙(스윙 폭·적합 방식)으로 그린 결정적 선이고 예측이 아닙니다."
 
