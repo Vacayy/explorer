@@ -54,6 +54,8 @@ def fetch_prices(ticker: str, period: str = "2y", force: bool = False) -> int:
         return 0
     n = 0
     for idx, row in hist.iterrows():
+        if _f(row.get("Close")) is None:  # 장중 미완성·NaN 봉은 저장하지 않는다(차트·전략 계산이 깨진다)
+            continue
         d = idx.date().isoformat()
         conn.execute("""
             INSERT INTO us_prices (stock_code, trade_date, open, high, low, close, volume, fetched_at)
@@ -102,6 +104,8 @@ def collect_prices(ticker: str, period: str = "2y") -> dict:
     try:
         n = 0
         for idx, row in hist.iterrows():
+            if _f(row.get("Close")) is None:  # 장중 미완성·NaN 봉 제외
+                continue
             conn.execute("""
                 INSERT INTO us_prices (stock_code, trade_date, open, high, low, close, volume, fetched_at)
                 VALUES (?,?,?,?,?,?,?, datetime('now'))
