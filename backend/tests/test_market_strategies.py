@@ -29,12 +29,12 @@ def result(identifier, rows, within_days=1, **params):
 
 
 class CatalogTests(unittest.TestCase):
-    def test_exact_78_distinct_catalog_entries_and_independent_copies(self):
+    def test_exact_81_distinct_catalog_entries_and_independent_copies(self):
         entries = catalog()
-        self.assertEqual(len(entries), 78)
-        self.assertEqual(len({item["id"] for item in entries}), 78)
+        self.assertEqual(len(entries), 81)
+        self.assertEqual(len({item["id"] for item in entries}), 81)
         self.assertEqual([sum(item["category"] == category for item in entries)
-                          for category in ("시세동향", "지표신호", "순위종목", "가격 구조", "평균회귀", "추세·모멘텀")], [19, 25, 6, 10, 11, 7])
+                          for category in ("시세동향", "지표신호", "순위종목", "가격 구조", "평균회귀", "추세·모멘텀")], [19, 25, 6, 13, 11, 7])
         self.assertTrue(CATALOG_VERSION)
         for item in entries:
             with self.subTest(strategy=item["id"]):
@@ -582,3 +582,45 @@ class TrendMomentumTests(unittest.TestCase):
         self.assertEqual(result("close_above_sma", flat, period=200)["status"], "fail")
         self.assertEqual(result("close_below_sma", flat, period=200)["status"], "fail")
         self.assertEqual(result("close_above_sma", rows[-199:], period=200)["reason"], "insufficient_history")
+
+
+class FalseBreakTests(unittest.TestCase):
+    """거짓 돌파·스프링·박스권(D-197 ④): 돌파 뒤 첫 복귀 마감일에만 한 번, 박스는 상·하단을 증거로."""
+
+    BREAK_UP = [15, 17, 19, 20, 19, 17, 16, 15, 16, 17, 18, 19, 20, 21, 22]  # 확정 고점 21(=20+1) 을 22가 돌파
+
+    def test_upthrust_fires_once_on_first_close_back_below(self):
+        base = self.BREAK_UP
+        out = result("false_breakout_up", structure_bars(base + [20.5]), pivot_width=2, lookback=20, confirm=3)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual((out["evidence"]["level"], out["evidence"]["bars_beyond"], out["reference"]), (21.0, 0, 21.0))
+        self.assertEqual(out["evidence"]["breakout_date"], structure_bars(base)[-1]["date"])
+        held = result("false_breakout_up", structure_bars(base + [21.5, 20.5]), pivot_width=2, lookback=20, confirm=3)
+        self.assertEqual((held["status"], held["evidence"]["bars_beyond"], held["evidence"]["extreme"]), ("pass", 1, 23.0))
+        # 이미 전날 복귀했으면 오늘은 사건이 아니고(already_returned), within_days로 찾으면 첫 복귀일이 나온다
+        later = structure_bars(base + [20.5, 20.0])
+        self.assertEqual(result("false_breakout_up", later, pivot_width=2, lookback=20, confirm=3)["reason"], "already_returned")
+        self.assertEqual(result("false_breakout_up", later, within_days=2, pivot_width=2, lookback=20, confirm=3)["date"], later[-2]["date"])
+        # 돌파 뒤 계속 위에 있으면 실패, 확인 구간을 넘긴 돌파는 보지 않는다
+        self.assertEqual(result("false_breakout_up", structure_bars(base + [23, 24]), pivot_width=2, lookback=20, confirm=3)["status"], "fail")
+        self.assertEqual(result("false_breakout_up", structure_bars(base + [23] * 6 + [20.5]), pivot_width=2, lookback=20, confirm=3)["reason"], "no_prior_breakout")
+        self.assertEqual(history_requirement(condition("false_breakout_up"), "2026-09-22")["sessions"], 132)
+
+    def test_spring_is_the_mirror_image(self):
+        base = [25, 23, 21, 20, 21, 23, 24, 25, 24, 23, 22, 21, 20, 19, 18]  # 확정 저점 19(=20−1) 를 18이 이탈
+        out = result("false_breakdown", structure_bars(base + [19.5]), pivot_width=2, lookback=20, confirm=3)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual((out["evidence"]["level"], out["value"]), (19.0, 19.5))
+        self.assertEqual(result("false_breakdown", structure_bars(base + [17]), pivot_width=2, lookback=20, confirm=3)["status"], "fail")
+        self.assertEqual(result("false_breakout_up", structure_bars(base + [19.5]), pivot_width=2, lookback=20, confirm=3)["reason"], "no_prior_breakout")
+
+    def test_trading_range_needs_flat_tops_and_bottoms(self):
+        box = [10, 11, 12, 11, 10, 9, 8, 9, 10, 11, 12, 11, 10, 9, 8, 9, 10]  # 고점 13·13, 저점 7·7
+        out = result("trading_range", structure_bars(box), pivot_width=2, lookback=20, swings=2, tolerance_pct=3)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertEqual((out["value"], out["reference"]), (13.0, 7.0))
+        self.assertTrue(out["evidence"]["inside"])
+        self.assertEqual(len(out["evidence"]["channel"]["upper"]), 2)
+        rising = result("trading_range", structure_bars(PriceStructureTests.ZIGZAG), pivot_width=2, lookback=30, swings=2, tolerance_pct=3)
+        self.assertEqual(rising["status"], "fail", "troughs 7 → 9 are not within 3%")
+        self.assertEqual(result("trading_range", structure_bars(box), pivot_width=2, lookback=20, swings=4, tolerance_pct=3)["reason"], "insufficient_pivots")

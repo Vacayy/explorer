@@ -189,6 +189,19 @@ def _build_structure() -> None:
     _add("channel_break_down", "채널 하단 이탈", structure, "channel_break_down",
          "swing: 스윙 저점을 이은 기준선 / regression: 종가 회귀선 − k·표준편차. 종가가 하단선을 하향 교차",
          dict(channel_defaults), channel, ohlc)
+    confirm = {"confirm": _integer("되돌림 확인 구간 (봉)", 1, 20)}
+    _add("false_breakout_up", "거짓 상향 돌파(업스러스트)", structure, "false_breakout_up",
+         "최근 확인 구간 안에 종가가 직전 확정 스윙 고점을 상향 돌파했고, 그 뒤 종가가 계속 위에 있다가 당일 처음으로 수준 아래로 마감",
+         {"pivot_width": 5, "lookback": 120, "confirm": 5}, {**pivot, **confirm}, ohlc,
+         description="와이코프의 업스러스트와 같은 모양. 박스 상단은 직전 확정 스윙 고점으로 대신하며 매집·분산 국면은 판정하지 않습니다. 첫 복귀 마감일에만 한 번 성립합니다.")
+    _add("false_breakdown", "거짓 하향 이탈(스프링)", structure, "false_breakdown",
+         "최근 확인 구간 안에 종가가 직전 확정 스윙 저점을 하향 이탈했고, 그 뒤 종가가 계속 아래에 있다가 당일 처음으로 수준 위로 마감",
+         {"pivot_width": 5, "lookback": 120, "confirm": 5}, {**pivot, **confirm}, ohlc,
+         description="와이코프의 스프링과 같은 모양. 박스 하단은 직전 확정 스윙 저점으로 대신하며 국면은 판정하지 않습니다. 첫 복귀 마감일에만 한 번 성립합니다.")
+    _add("trading_range", "박스권(고점·저점 수평)", structure, "trading_range",
+         "최근 확정 스윙 고점 N개가 서로 허용률 안에 있고 스윙 저점 N개도 허용률 안에 있음 (상태)",
+         {"pivot_width": 5, "lookback": 120, "swings": 2, "tolerance_pct": 3}, {**pivot, "swings": _integer("비교할 스윙 수", 2, 6), "tolerance_pct": _number("수평 허용률 (%)", 0.5, 15)}, ohlc,
+         description="횡보 박스의 상·하단을 증거에 남깁니다. 매집인지 분산인지는 말하지 않습니다.")
 
 
 _build_structure()
@@ -374,7 +387,7 @@ def _base_sessions(kind: str, p: dict) -> int:
     if kind in {"above_sma", "below_sma"}:
         return p["period"]
     if kind in STRUCTURE_KINDS:
-        needed = p["lookback"] + p["pivot_width"] + 2
+        needed = p["lookback"] + p["pivot_width"] + 2 + p.get("confirm", 0)
         return max(needed, p["period"] + 2) if kind.startswith("channel_") and p.get("method") == "regression" else needed
     if kind == "rank_return_20d":
         return 21
@@ -550,7 +563,7 @@ def _cross_exact(previous: float, current: float, before_reference: float, refer
 
 STRUCTURE_KINDS = frozenset({"higher_lows", "lower_highs", "resistance_break", "support_break", "breakout_retest_rebreak",
                              "trendline_break_up", "trendline_break_down", "trendline_support_hold",
-                             "channel_break_up", "channel_break_down"})
+                             "channel_break_up", "channel_break_down", "false_breakout_up", "false_breakdown", "trading_range"})
 
 
 def _pivot_indexes(rows: list[dict], width: int, key: str, low: bool) -> list[int]:
@@ -867,6 +880,43 @@ def _structure_at(rows: list[dict], i: int, kind: str, p: dict, lines: dict) -> 
                 "breakout_date": rows[j]["date"], "level": level, "pullback_date": pullback["date"], "pullback_low": pullback["low"],
                 "line": [{"date": rows[prior[-1]]["date"], "price": level}, {"date": day, "price": level}]})
         return _out("fail", day=day, reason="no_prior_breakout")
+
+    if kind in {"false_breakout_up", "false_breakdown"}:
+        upthrust = kind == "false_breakout_up"
+        key, source, direction = ("high", lines["peaks"], "up") if upthrust else ("low", lines["troughs"], "down")
+        for j in range(i - 1, max(i - p["confirm"] - 1, width), -1):
+            prior = [k for k in source if k + width <= j and k >= j - lookback]
+            if not prior:
+                continue
+            level = rows[prior[-1]][key]
+            if not _cross_exact(rows[j - 1]["close"], rows[j]["close"], level, level, direction):
+                continue
+            between = rows[j + 1:i]
+            stayed = all((item["close"] > level and not _equal(item["close"], level)) if upthrust else (item["close"] < level and not _equal(item["close"], level)) for item in between)
+            back = (close < level and not _equal(close, level)) if upthrust else (close > level and not _equal(close, level))
+            evidence = {"level": level, "level_date": rows[prior[-1]]["date"], "breakout_date": rows[j]["date"], "bars_beyond": len(between),
+                        "extreme": (max if upthrust else min)(item[key] for item in rows[j:i]),
+                        "line": [{"date": rows[prior[-1]]["date"], "price": level}, {"date": day, "price": level}]}
+            if not stayed:
+                return _out("fail", day=day, reason="already_returned", evidence=evidence)
+            return _decision(back, close, level, day, evidence=evidence)
+        return _out("fail", day=day, reason="no_prior_breakout")
+
+    if kind == "trading_range":
+        n, tolerance = p["swings"], p["tolerance_pct"] / 100
+        top, bottom = peaks[-n:], troughs[-n:]
+        if len(top) < n or len(bottom) < n:
+            return _out("fail", day=day, reason="insufficient_pivots", evidence={"pivots": points(top, "high") + points(bottom, "low")})
+        highs, lows = [rows[k]["high"] for k in top], [rows[k]["low"] for k in bottom]
+        top_mean, bottom_mean = math.fsum(highs) / n, math.fsum(lows) / n
+        flat_top = max(highs) - min(highs) <= tolerance * top_mean
+        flat_bottom = max(lows) - min(lows) <= tolerance * bottom_mean
+        start = min(top[0], bottom[0])
+        evidence = {"pivots": points(top, "high") + points(bottom, "low"), "top": top_mean, "bottom": bottom_mean,
+                    "height_pct": 100 * (top_mean / bottom_mean - 1) if bottom_mean > 0 else None, "inside": bottom_mean <= close <= top_mean,
+                    "channel": {"upper": [{"date": rows[start]["date"], "price": top_mean}, {"date": day, "price": top_mean}],
+                                "lower": [{"date": rows[start]["date"], "price": bottom_mean}, {"date": day, "price": bottom_mean}]}}
+        return _decision(flat_top and flat_bottom, top_mean, bottom_mean, day, evidence=evidence)
 
     if kind.startswith("trendline_"):
         from_peaks = kind == "trendline_break_up"

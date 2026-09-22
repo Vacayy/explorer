@@ -132,7 +132,7 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
       </div>
       <div className="space-y-1">
         <h4 className="text-caption font-medium text-muted-foreground">현재 상태 · {scan.as_of}</h4>
-        {activeStates.length === 0 ? <p className="text-sm text-muted-foreground">정배열·역배열, 저점 높이기·고점 낮추기, 신고가 근접, 모멘텀·ADX·200일선 위치, 이격·RSI·볼린저 밴드 위치 중 성립한 것이 없습니다.</p>
+        {activeStates.length === 0 ? <p className="text-sm text-muted-foreground">정배열·역배열, 저점 높이기·고점 낮추기·박스권, 신고가 근접, 모멘텀·ADX·200일선 위치, 이격·RSI·볼린저 밴드 위치 중 성립한 것이 없습니다.</p>
           : <div className="flex flex-wrap gap-1.5">{activeStates.map(s => <Badge key={s.id} variant="secondary" className="font-normal">{s.label}</Badge>)}</div>}
       </div>
       {grouped.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption">잦은 신호 {formatNumber(rest.length)}개 보기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
