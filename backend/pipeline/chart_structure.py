@@ -117,13 +117,18 @@ def _levels(rows: list[dict], swing: int) -> dict:
             "summary": summary, "notes": notes, "first": rows[0]["date"], "last": rows[last]["date"]}
 
 
+def valid_bars(rows: list[dict]) -> list[dict]:
+    """OHLC가 모두 유효한 양수인 봉만. yfinance가 NaN으로 준 봉(us_prices의 null close)은 계산에서도 차트에서도 뺀다."""
+    return [r for r in rows if all(isinstance(r.get(k), (int, float)) and math.isfinite(r[k]) and r[k] > 0 for k in ("open", "high", "low", "close"))]
+
+
 def structure(rows: list[dict], kind: str, swing: int, fit: str = "two_point") -> dict:
     """기간 안 일봉(rows, 날짜 오름차순)에 구조를 그린다. 순수 계산."""
     if kind not in KINDS or fit not in FITS:
         raise StructureUnavailable("지원하지 않는 구조 또는 적합 방식입니다.")
     if not MIN_SWING <= swing <= MAX_SWING:
         raise StructureUnavailable("스윙 폭은 2~30 사이여야 합니다.")
-    rows = [r for r in rows if all(isinstance(r.get(k), (int, float)) and math.isfinite(r[k]) and r[k] > 0 for k in ("open", "high", "low", "close"))]
+    rows = valid_bars(rows)
     if len(rows) < 5:
         raise StructureUnavailable("기간 안에 유효한 시세가 5거래일 미만입니다.")
     if kind == "levels":
@@ -212,6 +217,10 @@ def draw(conn: sqlite3.Connection, code: str, market: str, kind: str, window: st
     rows = load_rows(conn, code, market, limit=800)
     if not rows:
         raise LookupError("저장된 시세가 없는 종목입니다.")
+    dropped = len(rows) - len(valid_bars(rows))
+    rows = valid_bars(rows)  # 캔들도 같은 기준으로 — null 봉은 차트 라이브러리가 단언 실패로 죽는다
+    if not rows:
+        raise StructureUnavailable("저장된 시세에 유효한 봉이 없습니다.")
     start, end = window_bounds(window, rows[-1]["date"])
     inside = [r for r in rows if start <= r["date"] <= end]
     if not inside:
@@ -222,6 +231,8 @@ def draw(conn: sqlite3.Connection, code: str, market: str, kind: str, window: st
     notes = list(result["notes"])
     if inside[0]["date"] > start and first_index == 0:
         notes.append(f"저장된 시세가 {inside[0]['date']}부터라 기간 앞부분이 잘렸습니다.")
+    if dropped:
+        notes.append(f"값이 비어 있는 봉 {dropped}개는 제외했습니다.")
     candles = [{"time": r["date"], "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"]} for r in context + inside]
     return {"code": code, "market": market, "window": {"from": inside[0]["date"], "to": inside[-1]["date"], "requested_from": start, "sessions": len(inside)},
             "candles": candles, "conditions": to_conditions(result["kind"], result["swing"], result["fit"], len(inside)), **{**result, "notes": notes}}

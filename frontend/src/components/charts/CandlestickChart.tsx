@@ -123,10 +123,12 @@ export default function CandlestickChart({
   // Update candlestick data
   useEffect(() => {
     if (!candleSeriesRef.current) return
-    candleSeriesRef.current.setData(data)
+    // 값이 비어 있는 봉(null/NaN)은 라이브러리가 단언 실패로 던져 화면 전체가 죽는다. 한 봉 때문에 페이지가 죽지 않게 걸러 그린다.
+    const bars = data.filter(bar => [bar.open, bar.high, bar.low, bar.close].every(value => typeof value === "number" && Number.isFinite(value)))
+    candleSeriesRef.current.setData(bars)
     const scale = chartRef.current?.timeScale()
     if (!scale) return
-    const known = new Set(data.map(bar => bar.time))
+    const known = new Set(bars.map(bar => bar.time))
     if (initialRange && known.has(initialRange.from) && known.has(initialRange.to)) scale.setVisibleRange({ from: initialRange.from, to: initialRange.to })
     else scale.fitContent()
   }, [data, initialRange?.from, initialRange?.to])

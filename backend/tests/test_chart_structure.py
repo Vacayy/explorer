@@ -110,6 +110,19 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class Draw(unittest.TestCase):
+    def test_null_bars_are_excluded_from_candles_and_noted(self):
+        conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row
+        conn.executescript("CREATE TABLE us_prices (stock_code TEXT, trade_date TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL, fetched_at TEXT);")
+        for r in rows(n=150):
+            conn.execute("INSERT INTO us_prices VALUES ('INTC',?,?,?,?,?,?,NULL)", (r["date"], r["open"], r["high"], r["low"], r["close"], r["volume"]))
+        conn.execute("INSERT INTO us_prices VALUES ('INTC','2026-09-21',NULL,NULL,NULL,NULL,NULL,NULL)")  # yfinance NaN 봉
+        out = cs.draw(conn, "INTC", "us", "channel", "2026-01-01:2026-12-31", 5, "two_point")
+        self.assertTrue(all(isinstance(c["close"], float) for c in out["candles"]))
+        self.assertNotIn("2026-09-21", [c["time"] for c in out["candles"]])
+        self.assertTrue(any("비어 있는 봉 1개" in n for n in out["notes"]))
+
+
 class Levels(unittest.TestCase):
     def test_levels_cluster_touches_and_split_by_role(self):
         r = rows(n=120, slope=0.0)  # 수평 박스: 고점 106, 저점 94가 반복
