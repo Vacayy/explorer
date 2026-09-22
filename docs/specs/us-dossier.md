@@ -36,6 +36,7 @@ CREATE TABLE us_fundamentals (      -- yfinance .info/.income_stmt/.cashflow 스
 ```
 - `pipeline/us_data.py`: `fetch_prices(ticker, period='2y')`(→us_prices 멱등)·`fetch_fundamentals(ticker)`(info: price·marketCap·forwardPE·trailingPE·forwardEps / income_stmt: revenue·netIncome / cashflow: OCF·CAPEX→FCF → us_fundamentals). 캐시 히트 시 조회 없음.
 - **시세 갱신**: 팔로우된 US 티커(transcript_follow active)만 EOD cron(기존 `ingest_prices` 옆) 또는 도시에 진입 시 lazy. 전체 시장 안 긁음(관통 원칙).
+- **시세 수집 버튼 (2026-09-22)**: 실제로는 추세 렌즈를 열 때만 `fetch_prices`가 돌아 렌즈를 안 본 종목은 시세가 비고(팔로우 35 중 10개만 보유), 본 종목도 몇 달 묵었다(INTC 사례). D-100 원칙대로 **버튼 주도**로 채운다 — `GET /api/spine/us/{ticker}/prices/status`(행 수·최신 거래일·수집 시각·`missing|stale|fresh`, stale = 다른 종목 최신일보다 3일 넘게 뒤) · `POST /api/spine/us/{ticker}/prices/collect?period=2y`(`us_data.collect_prices`: yfinance 강제 조회 → 멱등 적재, 실패는 0이 아니라 502 사유). 도시에 헤더의 `UsPriceCollect`가 현황 한 줄 + "시세 수집/갱신" 버튼, 성공 시 시세·기술적 분석·구조 그리기 쿼리를 무효화. 팔로우되지 않은 티커(INTC)도 yfinance에 있으면 도시에·시세·스캔이 모두 동작. 실측 INTC 2년 500행 1.0초.
 
 ## 페이지 구성 — `/us/:ticker`
 
