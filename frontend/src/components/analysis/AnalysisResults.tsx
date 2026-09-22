@@ -37,7 +37,7 @@ function CandidateChart({ runId, candidate, maPeriod, catalog = false, definitio
   return <Card id="discovery-candidate-preview" className="min-w-0 scroll-mt-4">
     <CardHeader className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="text-section font-semibold">{candidate.name}</h3><p className="mt-1 text-caption text-muted-foreground">{candidate.code} · 시가총액 {formatKrw(candidate.market_cap)}</p></div><div className="flex flex-wrap items-start gap-2"><GroupPicker label="묶음에 추가" icon={<FolderPlus className="size-3.5" />} busy={addMember.isPending} onPick={async id => { const detail = await addMember.mutateAsync({ groupId: id, stock_code: candidate.code }); toast.success(`${candidate.name}을(를) ‘${detail.name}’에 추가했습니다.`) }} /><CandidateDiscovery runId={runId} candidate={candidate} /></div></div>
-      <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">차트와 충족 근거</p><Button variant="ghost" size="sm" asChild><Link to={`/analyze/${candidate.code}/summary`}>기업 개요 <ExternalLink className="size-3.5" /></Link></Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">차트와 충족 근거</p><span className="flex flex-wrap gap-1"><Button variant="ghost" size="sm" asChild><Link to={`/analyze/${candidate.code}/summary?scan=1`}>기술적 분석 열기 <ExternalLink className="size-3.5" /></Link></Button><Button variant="ghost" size="sm" asChild><Link to={`/analyze/${candidate.code}/summary`}>기업 개요 <ExternalLink className="size-3.5" /></Link></Button></span></div>
     </CardHeader>
     <CardContent className="min-w-0 space-y-4">
       {chart.isPending && <Skeleton className="h-80 w-full" />}

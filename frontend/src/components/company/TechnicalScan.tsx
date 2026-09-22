@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, RefreshCw, Sparkles, X } from 'lucide-react'
 import api from '@/api/client'
@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
-import { ChartStructureCard, type StructureParams } from '@/components/structure/ChartStructureCard'
+import { ChartStructureCard, KIND_LABEL, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
 import { PenLine } from 'lucide-react'
 
 /** 기업 페이지 차트의 '기술적 분석': 카탈로그 전략 51개를 이 종목 시세에 전부 돌린 결과. D-190. */
@@ -23,6 +23,10 @@ export interface TechnicalScanResult {
   counts: { evaluated: number; passed: number; failed: number; unavailable: number }
   markers: { time: string; label: string; kind: 'signal' | 'pivot'; price?: number | null }[]
   lines: { id: string; label: string; points: { time: string; value: number }[] }[]
+  /** 한 줄 읽기(D-198): 계열 5개 질문마다 판정 값을 채운 평서문. basis는 값을 준 조건 id(또는 price.*). */
+  readings: { group: string; question: string; text: string; basis: string[] }[]
+  /** 자동 캔버스(D-198): 스캔 결과로 고른 '먼저 그릴 구조'. */
+  canvas: { kind: StructureKind; window: string; swing: number; fit: 'two_point' | 'regression'; reason: string; basis: string[] } | null
 }
 
 /** AI 해설(D-191): 모델은 차트가 아니라 위 스캔 결과만 읽고, 문장마다 근거 id를 붙인다. 근거 없는 문장은 서버가 버린다. */
@@ -50,7 +54,6 @@ const DOWN = /(하향|신저가|데드|이탈|하락)/
 const GROUP_LABEL: Record<string, string> = { '가격 구조': '구조 (스윙·추세선·채널)', 시세동향: '가격·거래량', 지표신호: '이동평균·지표', '추세·모멘텀': '추세·모멘텀 (수익률·ADX·장기 이평)', 평균회귀: '평균회귀 (이격·RSI·볼린저)' }
 // 계열이 시장을 읽는 핵심 질문(D-197). 상태 배지를 이 질문 아래 묶어 '무엇을 말하는 상태인지'를 먼저 보인다.
 const GROUP_QUESTION: Record<string, string> = { '가격 구조': '주요 가격대에서 어떻게 반응하는가', 시세동향: '가격·거래량이 극값인가', 지표신호: '이동평균·지표가 어디에 있는가', '추세·모멘텀': '나타난 방향성이 이어지고 있는가', 평균회귀: '기준에서 얼마나 멀어졌는가' }
-const GROUP_ORDER = ['가격 구조', '시세동향', '지표신호', '추세·모멘텀', '평균회귀']
 
 export function isNotable(entry: { id: string; category: string }) { return entry.category === '가격 구조' || NOTABLE.has(entry.id) }
 
@@ -110,8 +113,12 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
   const rest = useMemo(() => (scan?.signals ?? []).filter(s => !isNotable(s)), [scan])
   const grouped = useMemo(() => { const map = new Map<string, ScanEntry[]>(); for (const s of rest) map.set(s.category, [...(map.get(s.category) ?? []), s]); return [...map.entries()] }, [rest])
   const activeStates = scan?.states.filter(s => s.status === 'pass') ?? []
-  const [structure, setStructure] = useState<StructureParams>({ code, market, kind: 'channel', window: 'ytd', swing: 5, fit: 'two_point' })
-  const [drawOpen, setDrawOpen] = useState(false)
+  const [structure, setStructure] = useState<StructureParams>({ code, market, kind: 'levels', window: '1y', swing: 5, fit: 'two_point' })
+  const [drawOpen, setDrawOpen] = useState(true)
+  const touched = useRef(false) // 사용자가 구조를 직접 바꾼 뒤에는 자동 선택이 덮어쓰지 않는다
+  const canvas = scan?.canvas ?? null
+  useEffect(() => { if (canvas && !touched.current) setStructure(previous => ({ ...previous, kind: canvas.kind, window: canvas.window, swing: canvas.swing, fit: canvas.fit })) }, [canvas])
+  const labelOf = (id: string) => scan?.states.find(s => s.id === id)?.label ?? scan?.signals.find(s => s.id === id)?.label ?? PRICE_LABEL[id] ?? id
   return <section aria-label="기술적 분석" className="space-y-4 rounded-xl border p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap items-center gap-3">
@@ -128,23 +135,25 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
     {query.isPending && <div className="space-y-2" role="status" aria-label="분석 중"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-4 w-3/5" /></div>}
     {query.isError && <ErrorState message="기술적 분석을 계산하지 못했습니다." onRetry={() => query.refetch()} />}
     {scan && <>
+      {scan.readings?.length > 0 && <div className="space-y-2" aria-label="한 줄 읽기">
+        <h4 className="text-caption font-medium text-muted-foreground">한 줄 읽기 · {scan.as_of} · 판정 값을 문장으로 옮긴 것이고 예측이 아닙니다</h4>
+        <ul className="divide-y">{scan.readings.map(reading => <li key={reading.group} className="space-y-1 py-2 first:pt-0 last:pb-0">
+          <p className="text-caption text-muted-foreground" title={GROUP_LABEL[reading.group]}>{reading.question ?? GROUP_QUESTION[reading.group]}</p>
+          <p className="text-sm">{reading.text}</p>
+          <div className="flex flex-wrap gap-1">{reading.basis.map(id => <Badge key={id} variant="outline" className="h-5 px-1.5 text-[11px] font-normal text-muted-foreground">{labelOf(id)}</Badge>)}{activeStates.filter(s => s.category === reading.group && !reading.basis.includes(s.id)).map(s => <Badge key={s.id} variant="secondary" className="h-5 px-1.5 text-[11px] font-normal">{s.label}</Badge>)}</div>
+        </li>)}</ul>
+      </div>}
       <div className="space-y-2">
         <h4 className="text-caption font-medium text-muted-foreground">특이점</h4>
         {notable.length === 0 ? <p className="text-sm text-muted-foreground">최근 {within}거래일 안에 드문 신호(구조·52주/연중 극값·중기 교차·추세전환 확인·MACD 0선·RSI 탈출·볼린저 복귀·ADX 통과)는 없습니다.{rest.length > 0 && ` 잦은 신호 ${formatNumber(rest.length)}개는 아래에 있습니다.`}</p>
           : <ul className="space-y-1.5">{notable.map(s => <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-sm"><Badge className="font-normal">{s.label}</Badge><span className="tabular-nums text-caption text-muted-foreground">{s.date}</span>{s.value != null && s.reference != null && <span className="text-caption text-muted-foreground">{formatNumber(Math.round(s.value))} / 기준 {formatNumber(Math.round(s.reference))}</span>}</li>)}</ul>}
       </div>
-      <div className="space-y-1">
-        <h4 className="text-caption font-medium text-muted-foreground">현재 상태 · {scan.as_of}</h4>
-        {activeStates.length === 0 ? <p className="text-sm text-muted-foreground">정배열·역배열, 저점 높이기·고점 낮추기·박스권, 신고가 근접, 모멘텀·ADX·200일선 위치, 이격·RSI·볼린저 밴드 위치 중 성립한 것이 없습니다.</p>
-          : <div className="space-y-1.5">{GROUP_ORDER.filter(group => activeStates.some(s => s.category === group)).map(group => <div key={group} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="text-caption text-muted-foreground" title={GROUP_LABEL[group]}>{GROUP_QUESTION[group]}</span>
-            {activeStates.filter(s => s.category === group).map(s => <Badge key={s.id} variant="secondary" className="font-normal">{s.label}</Badge>)}
-          </div>)}</div>}
-      </div>
+
       {grouped.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption">잦은 신호 {formatNumber(rest.length)}개 보기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
         <CollapsibleContent className="space-y-3 pt-2">{grouped.map(([category, items]) => <div key={category} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{GROUP_LABEL[category] ?? category}</p><ul className="space-y-1">{items.map(s => <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-sm"><span>{s.label}</span><span className="tabular-nums text-caption text-muted-foreground">{s.date}</span></li>)}</ul></div>)}</CollapsibleContent></Collapsible>}
-      <Collapsible open={drawOpen} onOpenChange={setDrawOpen}><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption"><PenLine className="size-3.5" />구조 그리기 (채널·추세선)<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
-        <CollapsibleContent className="pt-2">{drawOpen && <ChartStructureCard compact params={{ ...structure, code, market }} onChange={setStructure} height={300} />}</CollapsibleContent></Collapsible>
+      <Collapsible open={drawOpen} onOpenChange={setDrawOpen}><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption"><PenLine className="size-3.5" />구조 그리기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
+        {canvas && !touched.current && <span className="text-caption text-muted-foreground">자동 선택: <span className="font-medium text-foreground">{KIND_LABEL[canvas.kind]}</span> · {canvas.reason}. 아래에서 바꿀 수 있습니다.</span>}</div>
+        <CollapsibleContent className="pt-2">{drawOpen && <ChartStructureCard compact params={{ ...structure, code, market }} onChange={next => { touched.current = true; setStructure(next) }} height={300} />}</CollapsibleContent></Collapsible>
       <Commentary code={code} market={market} within={within} enabled={!!scan} />
       {scan.unavailable.length > 0 && <p className="text-caption text-muted-foreground">평가하지 못한 조건 {formatNumber(scan.unavailable.length)}개: {scan.unavailable.slice(0, 4).map(u => u.label).join(' · ')}{scan.unavailable.length > 4 ? ' 외' : ''} (시세 이력 부족)</p>}
       <p className="text-caption text-muted-foreground">카탈로그 기본 매개변수로 계산한 결정적 판정입니다. 신호는 조건 성립 사실이고 수익성이나 추천을 뜻하지 않습니다.</p>

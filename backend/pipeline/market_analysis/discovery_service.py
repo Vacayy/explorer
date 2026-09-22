@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from models.market_analysis import AnalysisSpec, RunRequest
 from .discovery_store import DiscoveryStore
 from .store import Conflict, encode
-from .strategies import CATALOG_VERSION, catalog
+from .strategies import CATALOG_VERSION, catalog, normalize_condition
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[3] / "logs" / "market-discovery"
 ACTIVE = {"queued", "running"}
@@ -37,7 +37,35 @@ PHRASES = {
     "stochastic-buy": "최근 5거래일 안에 Stochastic slow(10,5,5) 과매도 매수 신호 발생",
     "low-52w": "52주 신저가를 기록",
     "volume-growth": "거래량 증가율 상위 20개",
+    "lens-range-break": "고점·저점이 수평인 박스권이면서 최근 5거래일 안에 전고점을 상향 돌파",
+    "lens-spring": "최근 5거래일 안에 전저점을 이탈한 뒤 다시 위로 마감(거짓 하향 이탈)",
+    "lens-pullback-20": "200일 이동평균 위에 있고 20일 이격도가 98.5~101.5",
+    "lens-squeeze": "볼린저 밴드폭이 120봉 최소(스퀴즈)",
+    "lens-oversold-exit": "최근 10거래일 안에 RSI(14)가 30을 위로 벗어났고 저점이 높아지는 중",
+    "lens-momentum-strong": "12-1 모멘텀이 양이고 ADX(14) 25 이상이며 200일 이동평균 위",
+    "lens-profile-above": "최근 5거래일 안에 60일 매물대 중심선을 상향 돌파했고 200일 이동평균 위",
+    "lens-reenter-lower": "최근 5거래일 안에 볼린저 하단 밖에서 안으로 복귀",
 }
+
+# 상황 렌즈(D-198): 지표 이름을 모르는 사용자가 '상황'으로 고르는 조합. (id, 이름, 보는 것, 못 보는 것, [(strategy_id, within, params)])
+LENSES = [
+    ("lens-range-break", "박스권 상단을 막 넘은 종목", "고점·저점이 수평이던 박스의 상단을 최근 5거래일 안에 종가로 넘은 종목",
+     "넘은 뒤 되돌아올지(거짓 돌파)는 며칠 뒤에야 판정됩니다.", [("trading_range", 1, {}), ("resistance_break", 5, {})]),
+    ("lens-spring", "바닥을 깨는 듯하다 되돌아온 종목(스프링)", "직전 저점을 종가로 깼다가 곧 다시 위로 마감한 종목",
+     "매집인지 분산인지, 왜 되돌아왔는지는 판정하지 않습니다.", [("false_breakdown", 5, {})]),
+    ("lens-pullback-20", "장기 추세 위에서 20일선까지 되돌아온 종목", "200일선 위에 있으면서 종가가 20일선 ±1.5% 안으로 내려온 종목",
+     "되돌림이 여기서 멈출지는 알 수 없습니다.", [("close_above_sma", 1, {}), ("disparity_low", 1, {"threshold_pct": 101.5}), ("disparity_high", 1, {"threshold_pct": 98.5})]),
+    ("lens-squeeze", "변동성이 가장 좁아진 종목(볼린저 스퀴즈)", "볼린저 밴드폭이 최근 120봉 중 가장 좁은 종목",
+     "좁아진 뒤 어느 방향으로 벌어질지는 말하지 않습니다.", [("bollinger_squeeze", 1, {})]),
+    ("lens-oversold-exit", "과매도에서 빠져나오며 저점을 높이는 종목", "RSI가 30을 위로 벗어났고(10거래일 안) 스윙 저점이 높아지는 종목",
+     "반등의 이유와 지속 여부는 보지 않습니다.", [("rsi_exit_oversold", 10, {}), ("higher_lows", 1, {})]),
+    ("lens-momentum-strong", "1년 모멘텀이 양이고 추세가 강한 종목", "12-1 모멘텀 양, ADX 25 이상, 200일선 위를 모두 만족",
+     "모멘텀이 언제 꺾일지는 보지 않습니다. 강한 추세는 이미 많이 오른 뒤일 수 있습니다.", [("momentum_up", 1, {}), ("adx_strong_trend", 1, {}), ("close_above_sma", 1, {})]),
+    ("lens-profile-above", "매물대 위로 올라선 종목", "60일 매물대 중심선을 최근 5거래일 안에 넘었고 200일선 위인 종목",
+     "매물대는 일봉 근사라 체결가별 실제 매물이 아닙니다.", [("volume_profile_up_60d", 5, {}), ("close_above_sma", 1, {})]),
+    ("lens-reenter-lower", "볼린저 하단 밖에서 안으로 복귀한 종목", "종가가 하단 밖에 있다가 최근 5거래일 안에 밴드 안으로 돌아온 종목",
+     "밴드 접촉·복귀 자체는 반전 신호가 아닙니다(Bollinger 규칙).", [("bollinger_reenter_lower", 5, {})]),
+]
 
 
 class DiscoveryService:
@@ -144,13 +172,17 @@ class DiscoveryService:
         ]
         definitions = {item["id"]: item for item in catalog()}
         items = []
-        for key, group, name, purpose, conditions in templates:
-            spec = AnalysisSpec.model_validate({"mode": "catalog", "strategy_conditions": [
-                {"strategy_id": code, "params": definitions[code]["defaults"], "within_days": within} for code, within in conditions]}).model_dump(mode="json")
-            items.append({"id": key, "group": group, "name": name, "purpose": purpose, "phrase": PHRASES.get(key),
+        generic = ["종목별 이력 부족·가격 보정·관측 거래일의 한계는 실행 결과에서 확인합니다.",
+                   "기술적 신호만으로 자금 유입의 원인을 확인할 수 없습니다."]
+        entries = [(key, group, name, purpose, None, [(code, within, {}) for code, within in conditions]) for key, group, name, purpose, conditions in templates]
+        entries += [(key, "상황 렌즈", name, purpose, misses, conditions) for key, name, purpose, misses, conditions in LENSES]
+        for key, group, name, purpose, misses, conditions in entries:
+            normalized = [normalize_condition({"strategy_id": code, "params": {**definitions[code]["defaults"], **params}, "within_days": within})
+                          for code, within, params in conditions]
+            spec = AnalysisSpec.model_validate({"mode": "catalog", "strategy_conditions": normalized}).model_dump(mode="json")
+            items.append({"id": key, "group": group, "name": name, "purpose": purpose, "phrase": PHRASES.get(key), "misses": misses,
                           "reason": "보유 일봉으로 계산하는 목적별 탐색 예시입니다. 성과 순위에 따른 추천이 아닙니다.",
-                          "limitations": ["종목별 이력 부족·가격 보정·관측 거래일의 한계는 실행 결과에서 확인합니다.",
-                                           "기술적 신호만으로 자금 유입의 원인을 확인할 수 없습니다."],
+                          "limitations": ([misses] if misses else []) + generic,
                           "spec": spec, "availability": "일봉 도구 지원 · 종목별 자료 충족 여부는 실행 시 판정",
                           "catalog_version": CATALOG_VERSION})
         if bool(run_id) != bool(stock_code):

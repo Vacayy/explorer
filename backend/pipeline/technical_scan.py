@@ -100,6 +100,10 @@ def chart_overlays(scan: dict) -> dict:
 
 
 def scan_company(conn: sqlite3.Connection, code: str, market: str = "kr", within: int = 5) -> dict:
+    from pipeline.technical_commentary import price_context  # 지연 import: commentary가 이 모듈을 쓴다
+    from pipeline.technical_reading import canvas, readings
     rows = load_rows(conn, code, market)
     result = scan_rows(rows, within=within)
-    return {"code": code, "market": market, **result, **chart_overlays(result)}
+    reading = readings(result, price_context(rows) if rows else {}) if rows else []
+    return {"code": code, "market": market, **result, **chart_overlays(result),
+            "readings": reading, "canvas": canvas(result) if rows else None}

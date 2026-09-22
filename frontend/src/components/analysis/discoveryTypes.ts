@@ -13,6 +13,7 @@ export interface SavedStrategy {
 export interface DiscoveryRecommendation {
   group?: string
   phrase?: string | null
+  misses?: string | null
   id: string
   name: string
   purpose: string

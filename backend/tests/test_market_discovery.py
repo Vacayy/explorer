@@ -116,6 +116,21 @@ class DiscoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             SaveNote.model_validate({**first, "watch_items": ["x" * 1001]})
 
+    def test_situation_lenses_are_valid_catalog_conditions_with_misses(self):
+        from pipeline.market_analysis.strategies import normalize_condition
+        items = self.service.recommendations()
+        lenses = [item for item in items if item["group"] == "상황 렌즈"]
+        self.assertEqual(len(lenses), 8)
+        for item in items:
+            for condition in item["spec"]["strategy_conditions"]:
+                self.assertEqual(normalize_condition(condition), condition, item["id"])
+            self.assertTrue(item["phrase"], item["id"])
+        for item in lenses:
+            self.assertTrue(item["misses"] and item["misses"] == item["limitations"][0], item["id"])
+        pullback = next(item for item in lenses if item["id"] == "lens-pullback-20")
+        thresholds = {c["strategy_id"]: c["params"]["threshold_pct"] for c in pullback["spec"]["strategy_conditions"] if c["strategy_id"].startswith("disparity_")}
+        self.assertEqual(thresholds, {"disparity_low": 101.5, "disparity_high": 98.5})
+
     def test_recommendations_never_start_analysis_on_read(self):
         count = len(self.analysis.store.list())
         items = self.service.recommendations(self.run["id"], "000001")

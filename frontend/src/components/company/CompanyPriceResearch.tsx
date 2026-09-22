@@ -30,7 +30,7 @@ export function CompanyPriceResearch({
   compact?: boolean
 }) {
   const [sp, setSp] = useSearchParams()
-  const [scanOpen, setScanOpen] = useState(false) // 기술적 분석 패널(D-190)
+  const [scanOpen, setScanOpen] = useState(sp.get('scan') === '1') // 기술적 분석 패널(D-190). ?scan=1 은 발견 결과에서 바로 여는 진입(D-198)
   const [scanWithin, setScanWithin] = useState(5)
   const [scanOnChart, setScanOnChart] = useState(true)
   const scan = useTechnicalScan(company, market, scanWithin, scanOpen)
