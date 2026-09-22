@@ -194,6 +194,43 @@ def _build_structure() -> None:
 _build_structure()
 
 
+def _build_mean_reversion() -> None:
+    """평균회귀 계열: 기준(이평·밴드)에서 얼마나 멀어졌는가를 상태·복귀 사건으로 읽는다. 접촉·이격 자체는 반전 예측이 아니다."""
+    reversion = "평균회귀"
+    sma = {"period": _integer("이평 기간 (영업일)", 2)}
+    for side, label, default, formula in (("low", "이격도 하한 이하", 90, "≤ 하한"), ("high", "이격도 상한 이상", 110, "≥ 상한")):
+        _add(f"disparity_{side}", f"20일 {label}", reversion, f"disparity_{side}",
+             f"이격도 = 종가 / 종가 단순이평(당일 포함) × 100 {formula}",
+             {"period": 20, "threshold_pct": default}, {**sma, "threshold_pct": _number("기준 이격도 (%)", 50, 200)},
+             description="이평에서 멀어진 상태. 이격 확대 자체는 반전 신호가 아니며 추세 종목은 오래 유지될 수 있습니다.")
+    rsi = {"period": _integer("RSI 기간 (영업일)", 2), "level": _number("기준선", 1, 99)}
+    rsi_formula = "RSI = 100 × 평균상승 / (평균상승 + 평균하락); Wilder 평활(첫 값은 기간 평균, 이후 (이전×(기간−1)+당일)/기간); SMA 시드, 최소 250봉 고정 준비기간"
+    for side, label, level in (("low", "과매도", 30), ("high", "과매수", 70)):
+        _add(f"rsi_over{'sold' if side == 'low' else 'bought'}", f"RSI(14) {label} {'이하' if side == 'low' else '이상'}", reversion, f"rsi_state_{side}",
+             rsi_formula + f"; RSI {'≤' if side == 'low' else '≥'} 기준선", {"period": 14, "level": level}, rsi)
+    for side, label, level, move in (("low", "과매도 탈출", 30, "전일 RSI ≤ 기준선, 당일 RSI > 기준선"), ("high", "과매수 이탈", 70, "전일 RSI ≥ 기준선, 당일 RSI < 기준선")):
+        _add(f"rsi_exit_over{'sold' if side == 'low' else 'bought'}", f"RSI(14) {label}", reversion, f"rsi_exit_{side}",
+             rsi_formula + "; " + move, {"period": 14, "level": level}, rsi)
+    band = {**sma, "band_std": _number("밴드 폭 (표준편차 배수)", 0.5, 4)}
+    band_formula = "중심 = 종가 단순이평, σ = 같은 구간 종가의 모표준편차(n으로 나눔), 상단/하단 = 중심 ± k·σ"
+    band_note = "밴드 접촉·이탈 자체는 반전 신호가 아닙니다(Bollinger 규칙). %B와 밴드폭을 증거에 남깁니다."
+    _add("bollinger_below_lower", "볼린저 하단 아래 마감", reversion, "bb_below", band_formula + "; 종가 < 하단",
+         {"period": 20, "band_std": 2}, band, description=band_note)
+    _add("bollinger_above_upper", "볼린저 상단 위 마감", reversion, "bb_above", band_formula + "; 종가 > 상단",
+         {"period": 20, "band_std": 2}, band, description=band_note)
+    _add("bollinger_reenter_lower", "볼린저 하단 밖 → 안 복귀", reversion, "bb_reenter_low", band_formula + "; 전일 종가 < 전일 하단, 당일 종가 ≥ 당일 하단",
+         {"period": 20, "band_std": 2}, band, description=band_note)
+    _add("bollinger_reenter_upper", "볼린저 상단 밖 → 안 복귀", reversion, "bb_reenter_high", band_formula + "; 전일 종가 > 전일 상단, 당일 종가 ≤ 당일 상단",
+         {"period": 20, "band_std": 2}, band, description=band_note)
+    _add("bollinger_squeeze", "볼린저 밴드폭 최소(스퀴즈)", reversion, "bb_squeeze",
+         band_formula + "; 밴드폭 = (상단 − 하단) / 중심 × 100 이 비교 구간(당일 포함) 최소",
+         {"period": 20, "band_std": 2, "lookback": 120}, {**band, "lookback": _integer("밴드폭 비교 구간 (봉)", 20, 250)},
+         description="변동성 수축 상태. 방향을 말하지 않으며 이후 확대의 방향은 별도 조건으로 봅니다.")
+
+
+_build_mean_reversion()
+
+
 def catalog() -> list[dict]:
     """Return independent JSON-serializable catalog entries in screenshot order."""
     return deepcopy(list(_ENTRIES.values()))
@@ -294,6 +331,14 @@ def _base_sessions(kind: str, p: dict) -> int:
         return max(250, 5 * p["period"] + p["lag"] + p["signal"])
     if kind.startswith("stoch_"):
         return p["period"] + (p.get("k_period", 1) - 1) + p["d_period"]
+    if kind.startswith("disparity_") or kind in {"bb_below", "bb_above"}:
+        return p["period"]
+    if kind.startswith("bb_reenter"):
+        return p["period"] + 1
+    if kind == "bb_squeeze":
+        return p["period"] + p["lookback"] - 1
+    if kind.startswith("rsi_"):
+        return max(250, 10 * p["period"] + 1)
     if kind in STRUCTURE_KINDS:
         needed = p["lookback"] + p["pivot_width"] + 2
         return max(needed, p["period"] + 2) if kind.startswith("channel_") and p.get("method") == "regression" else needed
@@ -358,6 +403,44 @@ def _ema(values: list[float | None], period: int) -> list[float | None]:
             previous = alpha * value + (1 - alpha) * previous
         result[i] = previous
     return result
+
+
+def _population_std(values: list[float | None], period: int, means: list[float | None]) -> list[float | None]:
+    result: list[float | None] = [None] * len(values)
+    for i in range(period - 1, len(values)):
+        window = values[i - period + 1:i + 1]
+        if None not in window and means[i] is not None:
+            result[i] = math.sqrt(math.fsum((value - means[i]) ** 2 for value in window) / period)
+    return result
+
+
+def _rsi(values: list[float | None], period: int) -> list[float | None]:
+    """Wilder RSI: first averages are simple means of the first `period` changes, then (prev·(n−1)+current)/n. Reset on gaps."""
+    result: list[float | None] = [None] * len(values)
+    gain = loss = None
+    gains: list[float] = []
+    losses: list[float] = []
+    for i in range(1, len(values)):
+        if values[i] is None or values[i - 1] is None:
+            gain = loss = None
+            gains, losses = [], []
+            continue
+        change = values[i] - values[i - 1]
+        up, down = max(change, 0.0), max(-change, 0.0)
+        if gain is None:
+            gains.append(up)
+            losses.append(down)
+            if len(gains) < period:
+                continue
+            gain, loss = math.fsum(gains) / period, math.fsum(losses) / period
+        else:
+            gain, loss = (gain * (period - 1) + up) / period, (loss * (period - 1) + down) / period
+        result[i] = None if gain + loss == 0 else 100 * gain / (gain + loss)
+    return result
+
+
+# Recursive indicators evaluate each candidate bar on a fixed local seed window (see evaluate_strategy).
+RECURSIVE_PREFIXES = ("macd_", "sonar_", "rsi_")
 
 
 def _cross(previous: float, current: float, before_reference: float,
@@ -433,6 +516,17 @@ def _lines(rows: list[dict], kind: str, p: dict) -> dict[str, list]:
         base, lag = _ema(closes, p["period"]), p["lag"]
         values = [base[i] - base[i - lag] if i >= lag and base[i] is not None and base[i - lag] is not None else None for i in range(len(rows))]
         return {"value": values, "signal": _ema(values, p["signal"])}
+    if kind.startswith("disparity_"):
+        return {"ma": _sma(closes, p["period"])}
+    if kind.startswith("bb_"):
+        ma = _sma(closes, p["period"])
+        std = _population_std(closes, p["period"], ma)
+        upper = [m + p["band_std"] * s if m is not None and s is not None else None for m, s in zip(ma, std)]
+        lower = [m - p["band_std"] * s if m is not None and s is not None else None for m, s in zip(ma, std)]
+        width = [100 * (u - l) / m if u is not None and m else None for u, l, m in zip(upper, lower, ma)]
+        return {"ma": ma, "upper": upper, "lower": lower, "width": width}
+    if kind.startswith("rsi_"):
+        return {"rsi": _rsi(closes, p["period"])}
     if kind.startswith("stoch_"):
         values: list[float | None] = [None] * len(rows)
         for i in range(p["period"] - 1, len(rows)):
@@ -533,6 +627,46 @@ def _at(rows: list[dict], i: int, kind: str, p: dict, lines: dict) -> dict:
         values = lines["value"]
         before_ref, reference = (0, 0) if kind.endswith("zero") else (lines["signal"][i - 1], lines["signal"][i])
         return _decision(_cross(values[i - 1], values[i], before_ref, reference, p["direction"]), values[i], reference, day)
+    if kind.startswith("disparity_"):
+        ma = lines["ma"][i]
+        value = 100 * close / ma
+        passed = _le(value, p["threshold_pct"]) if kind == "disparity_low" else _ge(value, p["threshold_pct"])
+        return _decision(passed, value, p["threshold_pct"], day, evidence={"sma": ma, "period": p["period"]})
+    if kind.startswith("bb_"):
+        upper, lower, middle = lines["upper"][i], lines["lower"][i], lines["ma"][i]
+        band = {"upper": upper, "middle": middle, "lower": lower, "bandwidth_pct": lines["width"][i],
+                "percent_b": (close - lower) / (upper - lower) if upper > lower else None}
+        if kind == "bb_below":
+            return _decision(close < lower and not _equal(close, lower), close, lower, day, evidence=band)
+        if kind == "bb_above":
+            return _decision(close > upper and not _equal(close, upper), close, upper, day, evidence=band)
+        if kind == "bb_reenter_low":
+            before = lines["lower"][i - 1]
+            passed = previous["close"] < before and not _equal(previous["close"], before) and _ge(close, lower)
+            return _decision(passed, close, lower, day, evidence={**band, "previous_close": previous["close"], "previous_lower": before})
+        if kind == "bb_reenter_high":
+            before = lines["upper"][i - 1]
+            passed = previous["close"] > before and not _equal(previous["close"], before) and _le(close, upper)
+            return _decision(passed, close, upper, day, evidence={**band, "previous_close": previous["close"], "previous_upper": before})
+        widths = lines["width"][i - p["lookback"] + 1:i + 1]
+        if max(widths) == 0:
+            return _out("unavailable", day=day, reason="zero_price_range")
+        reference = min(widths[:-1]) if len(widths) > 1 else widths[-1]
+        return _decision(_le(widths[-1], reference), widths[-1], reference, day, evidence={**band, "lookback": p["lookback"]})
+    if kind.startswith("rsi_"):
+        values = lines["rsi"]
+        if values[i] is None or (kind.startswith("rsi_exit") and values[i - 1] is None):
+            return _out("unavailable", day=day, reason="zero_price_range")
+        level = p["level"]
+        if kind == "rsi_state_low":
+            passed = _le(values[i], level)
+        elif kind == "rsi_state_high":
+            passed = _ge(values[i], level)
+        elif kind == "rsi_exit_low":
+            passed = _le(values[i - 1], level) and values[i] > level and not _equal(values[i], level)
+        else:
+            passed = _ge(values[i - 1], level) and values[i] < level and not _equal(values[i], level)
+        return _decision(passed, values[i], level, day, evidence={"previous_rsi": values[i - 1], "period": p["period"]})
     if kind.startswith("stoch_"):
         k, d = lines["k"], lines["d"]
         if any(value is None for value in (k[i - 1], k[i], d[i - 1], d[i])):
@@ -752,7 +886,7 @@ def evaluate_strategy(rows: list[dict], condition: dict) -> dict:
     if intraday:
         rows = [{**item, "date": item["timestamp"][:10]} for item in rows]
     try:
-        if kind.startswith(("macd_", "sonar_")):
+        if kind.startswith(RECURSIVE_PREFIXES):
             # Evaluate recursive indicators using a fixed local seed for each
             # candidate. Changing the search window cannot move a crossover.
             span = _base_sessions(kind, p)
@@ -760,7 +894,7 @@ def evaluate_strategy(rows: list[dict], condition: dict) -> dict:
             for i in range(len(rows) - 1, len(rows) - within - 1, -1):
                 window = rows[i - span + 1:i + 1]
                 response = _at(window, span - 1, kind, p, _lines(window, kind, p))
-                response["evidence"] = {"ema_seed": "sma", "seed_start": window[0]["date"], "seed_sessions": span}
+                response["evidence"] = {**response.get("evidence", {}), "ema_seed": "sma", "seed_start": window[0]["date"], "seed_sessions": span}
                 results.append(response)
         else:
             lines = _lines(rows, kind, p)

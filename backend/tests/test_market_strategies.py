@@ -29,12 +29,12 @@ def result(identifier, rows, within_days=1, **params):
 
 
 class CatalogTests(unittest.TestCase):
-    def test_exact_60_distinct_catalog_entries_and_independent_copies(self):
+    def test_exact_71_distinct_catalog_entries_and_independent_copies(self):
         entries = catalog()
-        self.assertEqual(len(entries), 60)
-        self.assertEqual(len({item["id"] for item in entries}), 60)
+        self.assertEqual(len(entries), 71)
+        self.assertEqual(len({item["id"] for item in entries}), 71)
         self.assertEqual([sum(item["category"] == category for item in entries)
-                          for category in ("시세동향", "지표신호", "순위종목", "가격 구조")], [19, 25, 6, 10])
+                          for category in ("시세동향", "지표신호", "순위종목", "가격 구조", "평균회귀")], [19, 25, 6, 10, 11])
         self.assertTrue(CATALOG_VERSION)
         for item in entries:
             with self.subTest(strategy=item["id"]):
@@ -460,3 +460,72 @@ class PriceStructureTests(unittest.TestCase):
         self.assertEqual(history_requirement(condition("channel_break_up", method="regression", period=200), "2026-09-18")["sessions"], 202)
         short = result("higher_lows", bars([10, 11, 12]), pivot_width=2, swings=2, lookback=20)
         self.assertEqual((short["status"], short["reason"]), ("unavailable", "insufficient_history"))
+
+
+class MeanReversionTests(unittest.TestCase):
+    """평균회귀(D-197): 이격도·RSI·볼린저는 상태와 복귀 사건만 말하고, 접촉 자체를 반전으로 치지 않는다."""
+
+    def test_disparity_uses_sma_including_today(self):
+        rows = bars([100] * 19 + [90])
+        out = result("disparity_low", rows, period=20, threshold_pct=91)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertAlmostEqual(out["value"], 100 * 90 / 99.5)
+        self.assertEqual(out["evidence"]["sma"], 99.5)
+        self.assertEqual(result("disparity_low", rows, period=20, threshold_pct=90)["status"], "fail")
+        self.assertEqual(result("disparity_high", bars([100] * 19 + [130]), period=20, threshold_pct=110)["status"], "pass")
+        self.assertEqual(result("disparity_low", rows[-19:], period=20, threshold_pct=91)["reason"], "insufficient_history")
+
+    def test_rsi_wilder_known_values_and_exit_event(self):
+        # Flat seed, then 14 declines of 1 → RSI 0 (no gains). Then +13: Wilder avg gain = 13/14,
+        # avg loss = (1 − (13/14)^14)·(13/14) → RSI = 100 / (2 − (13/14)^14) ≈ 60.77.
+        closes = [300.0] * 236 + [300.0 - i for i in range(1, 15)] + [286.0 + 13]
+        rows = bars(closes)
+        state = result("rsi_oversold", rows[:-1], period=14, level=30)
+        self.assertEqual(state["status"], "pass", state)
+        self.assertAlmostEqual(state["value"], 0.0)
+        exit_ = result("rsi_exit_oversold", rows, period=14, level=30)
+        self.assertEqual(exit_["status"], "pass", exit_)
+        self.assertAlmostEqual(exit_["value"], 100 / (2 - (13 / 14) ** 14))
+        self.assertAlmostEqual(exit_["evidence"]["previous_rsi"], 0.0)
+        self.assertEqual(exit_["evidence"]["seed_sessions"], 250)
+        self.assertEqual(result("rsi_overbought", rows, period=14, level=70)["status"], "fail")
+        self.assertEqual(result("rsi_exit_overbought", rows, period=14, level=70)["status"], "fail")
+        # Flat prices have no gain and no loss: unavailable, never a match.
+        self.assertEqual(result("rsi_oversold", bars([100] * 250), period=14, level=30)["reason"], "zero_price_range")
+        # Same fixed seed regardless of extra history or search window.
+        longer = bars([250.0] * 100 + closes)
+        self.assertEqual(result("rsi_exit_oversold", longer, period=14, level=30)["value"], exit_["value"])
+        self.assertEqual(result("rsi_exit_oversold", longer, within_days=5, period=14, level=30)["date"], longer[-1]["date"])
+        self.assertEqual(history_requirement(condition("rsi_oversold"), "2026-09-22")["sessions"], 250)
+
+    def test_bollinger_population_std_bands_and_reentry(self):
+        # 19 × 100 and one 120: mean 101, population σ = √19 → upper 101 + 2√19 ≈ 109.72.
+        rows = bars([100] * 19 + [120])
+        above = result("bollinger_above_upper", rows, period=20, band_std=2)
+        self.assertEqual(above["status"], "pass", above)
+        self.assertAlmostEqual(above["reference"], 101 + 2 * math.sqrt(19))
+        self.assertAlmostEqual(above["evidence"]["bandwidth_pct"], 100 * 4 * math.sqrt(19) / 101)
+        self.assertGreater(above["evidence"]["percent_b"], 1)
+        self.assertEqual(result("bollinger_below_lower", rows, period=20, band_std=2)["status"], "fail")
+        below = result("bollinger_below_lower", bars([100] * 19 + [80]), period=20, band_std=2)
+        self.assertEqual(below["status"], "pass", below)
+        self.assertAlmostEqual(below["reference"], 99 - 2 * math.sqrt(19))
+        # Back inside after a close below the lower band; the touch alone (previous bar) is not the event.
+        back = bars([100] * 19 + [80, 100])
+        reenter = result("bollinger_reenter_lower", back, period=20, band_std=2)
+        self.assertEqual(reenter["status"], "pass", reenter)
+        self.assertEqual(reenter["evidence"]["previous_close"], 80.0)
+        self.assertEqual(result("bollinger_reenter_lower", bars([100] * 20 + [80]), period=20, band_std=2)["status"], "fail")
+        self.assertEqual(result("bollinger_reenter_upper", bars([100] * 19 + [120, 100]), period=20, band_std=2)["status"], "pass")
+
+    def test_bollinger_squeeze_is_lookback_minimum_bandwidth(self):
+        # Alternating ±2 then ±1 then ±0.5: bandwidth shrinks, so the last bar is the 20-bar minimum.
+        closes = [100 + (2 if i % 2 else -2) for i in range(20)] + [100 + (1 if i % 2 else -1) for i in range(10)] + [100 + (0.5 if i % 2 else -0.5) for i in range(20)]
+        rows = bars(closes)
+        out = result("bollinger_squeeze", rows, period=20, band_std=2, lookback=20)
+        self.assertEqual(out["status"], "pass", out)
+        self.assertLess(out["value"], out["reference"])
+        widening = bars(closes + [110, 90, 112, 88])
+        self.assertEqual(result("bollinger_squeeze", widening, period=20, band_std=2, lookback=20)["status"], "fail")
+        self.assertEqual(history_requirement(condition("bollinger_squeeze", period=20, lookback=120), "2026-09-22")["sessions"], 139)
+        self.assertEqual(result("bollinger_squeeze", bars([100] * 40), period=20, band_std=2, lookback=20)["reason"], "zero_price_range")

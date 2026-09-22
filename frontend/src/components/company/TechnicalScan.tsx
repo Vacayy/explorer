@@ -44,10 +44,10 @@ export function useTechnicalScan(code: string, market: 'kr' | 'us', within: numb
 }
 
 // 드물고 방향이 분명한 조건만 '특이점'으로 앞세운다. 갭·5일선 교차처럼 잦은 것은 뒤로.
-const NOTABLE = new Set(['high_52w', 'low_52w', 'high_ytd', 'low_ytd', 'golden_cross_20_60', 'dead_cross_20_60', 'trend_reversal_confirmed', 'macd_zero_cross', 'breakout_pullback_10d', 'volume_profile_up_60d', 'volume_profile_down_60d'])
+const NOTABLE = new Set(['high_52w', 'low_52w', 'high_ytd', 'low_ytd', 'golden_cross_20_60', 'dead_cross_20_60', 'trend_reversal_confirmed', 'macd_zero_cross', 'breakout_pullback_10d', 'volume_profile_up_60d', 'volume_profile_down_60d', 'rsi_exit_oversold', 'rsi_exit_overbought', 'bollinger_reenter_lower', 'bollinger_reenter_upper'])
 const UP = /(상향|신고가|골든|매수|상승|지지|재돌파)/
 const DOWN = /(하향|신저가|데드|이탈|하락)/
-const GROUP_LABEL: Record<string, string> = { '가격 구조': '구조 (스윙·추세선·채널)', 시세동향: '가격·거래량', 지표신호: '이동평균·지표' }
+const GROUP_LABEL: Record<string, string> = { '가격 구조': '구조 (스윙·추세선·채널)', 시세동향: '가격·거래량', 지표신호: '이동평균·지표', 평균회귀: '평균회귀 (이격·RSI·볼린저)' }
 
 export function isNotable(entry: { id: string; category: string }) { return entry.category === '가격 구조' || NOTABLE.has(entry.id) }
 
@@ -127,12 +127,12 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
     {scan && <>
       <div className="space-y-2">
         <h4 className="text-caption font-medium text-muted-foreground">특이점</h4>
-        {notable.length === 0 ? <p className="text-sm text-muted-foreground">최근 {within}거래일 안에 드문 신호(구조·52주/연중 극값·중기 교차·추세전환 확인·MACD 0선)는 없습니다.{rest.length > 0 && ` 잦은 신호 ${formatNumber(rest.length)}개는 아래에 있습니다.`}</p>
+        {notable.length === 0 ? <p className="text-sm text-muted-foreground">최근 {within}거래일 안에 드문 신호(구조·52주/연중 극값·중기 교차·추세전환 확인·MACD 0선·RSI 탈출·볼린저 복귀)는 없습니다.{rest.length > 0 && ` 잦은 신호 ${formatNumber(rest.length)}개는 아래에 있습니다.`}</p>
           : <ul className="space-y-1.5">{notable.map(s => <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-sm"><Badge className="font-normal">{s.label}</Badge><span className="tabular-nums text-caption text-muted-foreground">{s.date}</span>{s.value != null && s.reference != null && <span className="text-caption text-muted-foreground">{formatNumber(Math.round(s.value))} / 기준 {formatNumber(Math.round(s.reference))}</span>}</li>)}</ul>}
       </div>
       <div className="space-y-1">
         <h4 className="text-caption font-medium text-muted-foreground">현재 상태 · {scan.as_of}</h4>
-        {activeStates.length === 0 ? <p className="text-sm text-muted-foreground">정배열·역배열, 저점 높이기·고점 낮추기, 신고가 근접 중 성립한 것이 없습니다.</p>
+        {activeStates.length === 0 ? <p className="text-sm text-muted-foreground">정배열·역배열, 저점 높이기·고점 낮추기, 신고가 근접, 이격·RSI·볼린저 밴드 위치 중 성립한 것이 없습니다.</p>
           : <div className="flex flex-wrap gap-1.5">{activeStates.map(s => <Badge key={s.id} variant="secondary" className="font-normal">{s.label}</Badge>)}</div>}
       </div>
       {grouped.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption">잦은 신호 {formatNumber(rest.length)}개 보기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
