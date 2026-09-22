@@ -48,6 +48,9 @@ const NOTABLE = new Set(['high_52w', 'low_52w', 'high_ytd', 'low_ytd', 'golden_c
 const UP = /(상향|신고가|골든|매수|상승|지지|재돌파)/
 const DOWN = /(하향|신저가|데드|이탈|하락)/
 const GROUP_LABEL: Record<string, string> = { '가격 구조': '구조 (스윙·추세선·채널)', 시세동향: '가격·거래량', 지표신호: '이동평균·지표', '추세·모멘텀': '추세·모멘텀 (수익률·ADX·장기 이평)', 평균회귀: '평균회귀 (이격·RSI·볼린저)' }
+// 계열이 시장을 읽는 핵심 질문(D-197). 상태 배지를 이 질문 아래 묶어 '무엇을 말하는 상태인지'를 먼저 보인다.
+const GROUP_QUESTION: Record<string, string> = { '가격 구조': '주요 가격대에서 어떻게 반응하는가', 시세동향: '가격·거래량이 극값인가', 지표신호: '이동평균·지표가 어디에 있는가', '추세·모멘텀': '나타난 방향성이 이어지고 있는가', 평균회귀: '기준에서 얼마나 멀어졌는가' }
+const GROUP_ORDER = ['가격 구조', '시세동향', '지표신호', '추세·모멘텀', '평균회귀']
 
 export function isNotable(entry: { id: string; category: string }) { return entry.category === '가격 구조' || NOTABLE.has(entry.id) }
 
@@ -133,7 +136,10 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
       <div className="space-y-1">
         <h4 className="text-caption font-medium text-muted-foreground">현재 상태 · {scan.as_of}</h4>
         {activeStates.length === 0 ? <p className="text-sm text-muted-foreground">정배열·역배열, 저점 높이기·고점 낮추기·박스권, 신고가 근접, 모멘텀·ADX·200일선 위치, 이격·RSI·볼린저 밴드 위치 중 성립한 것이 없습니다.</p>
-          : <div className="flex flex-wrap gap-1.5">{activeStates.map(s => <Badge key={s.id} variant="secondary" className="font-normal">{s.label}</Badge>)}</div>}
+          : <div className="space-y-1.5">{GROUP_ORDER.filter(group => activeStates.some(s => s.category === group)).map(group => <div key={group} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-caption text-muted-foreground" title={GROUP_LABEL[group]}>{GROUP_QUESTION[group]}</span>
+            {activeStates.filter(s => s.category === group).map(s => <Badge key={s.id} variant="secondary" className="font-normal">{s.label}</Badge>)}
+          </div>)}</div>}
       </div>
       {grouped.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption">잦은 신호 {formatNumber(rest.length)}개 보기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
         <CollapsibleContent className="space-y-3 pt-2">{grouped.map(([category, items]) => <div key={category} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{GROUP_LABEL[category] ?? category}</p><ul className="space-y-1">{items.map(s => <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-sm"><span>{s.label}</span><span className="tabular-nums text-caption text-muted-foreground">{s.date}</span></li>)}</ul></div>)}</CollapsibleContent></Collapsible>}
