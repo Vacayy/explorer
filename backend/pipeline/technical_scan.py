@@ -15,9 +15,10 @@ from pipeline.market_analysis.strategies import catalog, evaluate_strategy
 # 기준일의 '상태'로 읽는 조건. 나머지는 발생일이 의미 있는 '사건'이라 최근 N거래일을 본다.
 STATE_IDS = frozenset({"sma_bullish_order", "sma_bearish_order", "higher_lows", "lower_highs", "near_high_10d", "price_flat",
                        "disparity_low", "disparity_high", "rsi_oversold", "rsi_overbought",
-                       "bollinger_below_lower", "bollinger_above_upper", "bollinger_squeeze"})
+                       "bollinger_below_lower", "bollinger_above_upper", "bollinger_squeeze",
+                       "momentum_up", "momentum_down", "adx_strong_trend", "adx_weak_trend", "close_above_sma", "close_below_sma"})
 # 신호를 읽는 순서: 구조 → 돌파/신고가 → 추세 전환 → 모멘텀 → 거래량/기타 → 평균회귀 복귀.
-CATEGORY_ORDER = {"가격 구조": 0, "시세동향": 1, "지표신호": 2, "평균회귀": 3}
+CATEGORY_ORDER = {"가격 구조": 0, "시세동향": 1, "지표신호": 2, "추세·모멘텀": 3, "평균회귀": 4}
 ROWS = 420
 
 

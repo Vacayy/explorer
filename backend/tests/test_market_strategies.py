@@ -29,12 +29,12 @@ def result(identifier, rows, within_days=1, **params):
 
 
 class CatalogTests(unittest.TestCase):
-    def test_exact_71_distinct_catalog_entries_and_independent_copies(self):
+    def test_exact_78_distinct_catalog_entries_and_independent_copies(self):
         entries = catalog()
-        self.assertEqual(len(entries), 71)
-        self.assertEqual(len({item["id"] for item in entries}), 71)
+        self.assertEqual(len(entries), 78)
+        self.assertEqual(len({item["id"] for item in entries}), 78)
         self.assertEqual([sum(item["category"] == category for item in entries)
-                          for category in ("시세동향", "지표신호", "순위종목", "가격 구조", "평균회귀")], [19, 25, 6, 10, 11])
+                          for category in ("시세동향", "지표신호", "순위종목", "가격 구조", "평균회귀", "추세·모멘텀")], [19, 25, 6, 10, 11, 7])
         self.assertTrue(CATALOG_VERSION)
         for item in entries:
             with self.subTest(strategy=item["id"]):
@@ -529,3 +529,56 @@ class MeanReversionTests(unittest.TestCase):
         self.assertEqual(result("bollinger_squeeze", widening, period=20, band_std=2, lookback=20)["status"], "fail")
         self.assertEqual(history_requirement(condition("bollinger_squeeze", period=20, lookback=120), "2026-09-22")["sessions"], 139)
         self.assertEqual(result("bollinger_squeeze", bars([100] * 40), period=20, band_std=2, lookback=20)["reason"], "zero_price_range")
+
+
+class TrendMomentumTests(unittest.TestCase):
+    """추세·모멘텀(D-197 ②): 과거 수익률 부호와 ADX 강도는 상태이고, 방향 지속을 약속하지 않는다."""
+
+    def test_momentum_skips_recent_window_and_validates_skip(self):
+        closes = [100.0] * 10 + [100.0 + i for i in range(1, 30)] + [90.0] * 5  # rises, then a recent slump
+        rows = bars(closes)
+        twelve_one = result("momentum_up", rows, lookback=30, skip=5, threshold_pct=0)
+        self.assertEqual(twelve_one["status"], "pass", twelve_one)
+        self.assertAlmostEqual(twelve_one["value"], 100 * (rows[-6]["close"] / rows[-31]["close"] - 1))
+        self.assertEqual((twelve_one["evidence"]["from_close"], twelve_one["evidence"]["to_close"]), (104.0, 129.0))
+        tsmom = result("momentum_up", rows, lookback=30, skip=0, threshold_pct=0)
+        self.assertEqual(tsmom["status"], "fail", "skip=0 sees the slump: 90 / 100 − 1 < 0")
+        self.assertEqual(result("momentum_down", rows, lookback=30, skip=0, threshold_pct=5)["status"], "pass")
+        with self.assertRaises(ValueError):
+            normalize_condition(condition("momentum_up", lookback=20, skip=20))
+        self.assertEqual(history_requirement(condition("momentum_up"), "2026-09-22")["sessions"], 253)
+        self.assertEqual(result("momentum_up", rows[-30:], lookback=30, skip=5, threshold_pct=0)["reason"], "insufficient_history")
+
+    def test_adx_constant_uptrend_is_100_with_plus_di_only(self):
+        # bars(): high = close + 1, low = close − 1. A +1/day drift gives TR 2, +DM 1, −DM 0 → +DI 50, −DI 0, DX 100, ADX 100.
+        rows = bars([100.0 + i for i in range(260)])
+        strong = result("adx_strong_trend", rows, period=14, level=25)
+        self.assertEqual(strong["status"], "pass", strong)
+        self.assertAlmostEqual(strong["value"], 100.0)
+        self.assertAlmostEqual(strong["evidence"]["plus_di"], 50.0)
+        self.assertAlmostEqual(strong["evidence"]["minus_di"], 0.0)
+        self.assertEqual(strong["evidence"]["seed_sessions"], 250)
+        self.assertEqual(result("adx_weak_trend", rows, period=14, level=20)["status"], "fail")
+        self.assertEqual(result("adx_rise_above", rows, period=14, level=25)["status"], "fail", "already above: no crossing today")
+        # Flat prices: TR 2 but no directional movement → DI 0/0 → unavailable, never a match.
+        self.assertEqual(result("adx_strong_trend", bars([100.0] * 260), period=14, level=25)["reason"], "zero_price_range")
+        # Chop then trend: ADX crosses the level once, on the same day regardless of search window or extra history.
+        chop = [100.0 + (1 if i % 2 else -1) for i in range(260)]
+        rows = bars(chop + [100.0 + 2 * i for i in range(1, 30)])
+        rise = result("adx_rise_above", rows, within_days=30, period=14, level=25)
+        self.assertEqual(rise["status"], "pass", rise)
+        self.assertLess(rise["evidence"]["previous_adx"], 25)
+        self.assertGreaterEqual(rise["value"], 25)
+        longer = bars([50.0] * 40 + chop + [100.0 + 2 * i for i in range(1, 30)])
+        self.assertEqual(result("adx_rise_above", longer, within_days=30, period=14, level=25)["value"], rise["value"])
+
+    def test_close_versus_long_sma_is_strict(self):
+        rows = bars([100.0] * 199 + [120.0])
+        above = result("close_above_sma", rows, period=200)
+        self.assertEqual(above["status"], "pass", above)
+        self.assertAlmostEqual(above["reference"], 100.1)
+        self.assertEqual(result("close_below_sma", rows, period=200)["status"], "fail")
+        flat = bars([100.0] * 200)
+        self.assertEqual(result("close_above_sma", flat, period=200)["status"], "fail")
+        self.assertEqual(result("close_below_sma", flat, period=200)["status"], "fail")
+        self.assertEqual(result("close_above_sma", rows[-199:], period=200)["reason"], "insufficient_history")

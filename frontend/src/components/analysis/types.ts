@@ -50,7 +50,7 @@ export interface StrategyParameter {
 export interface StrategyDefinition {
   id: string
   label: string
-  category: '시세동향' | '지표신호' | '순위종목' | '가격 구조' | '평균회귀'
+  category: '시세동향' | '지표신호' | '순위종목' | '가격 구조' | '평균회귀' | '추세·모멘텀'
   timeframe: '1d' | '10m'
   description: string
   formula: string

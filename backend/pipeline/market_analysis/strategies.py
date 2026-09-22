@@ -231,6 +231,34 @@ def _build_mean_reversion() -> None:
 _build_mean_reversion()
 
 
+def _build_trend() -> None:
+    """추세·모멘텀 계열: 이미 나타난 방향성이 이어지는가. 과거 수익률 부호와 추세 강도(ADX)를 상태로 읽는다."""
+    trend = "추세·모멘텀"
+    momentum = {"lookback": _integer("수익률 구간 (봉)", 2, 500), "skip": _integer("최근 제외 구간 (봉, 0=시계열 모멘텀)", 0, 60),
+                "threshold_pct": _number("기준 수익률 (%)", 0, 500)}
+    for side, label, rule in (("up", "양(+)", "≥ 기준"), ("down", "음(−)", "≤ −기준")):
+        _add(f"momentum_{side}", f"12-1 모멘텀 {label}", trend, f"momentum_{side}",
+             f"(제외 구간 직전 종가 / 수익률 구간 시작 종가 − 1) × 100 {rule}; 기본 252봉 수익률에서 최근 21봉 제외(12-1)",
+             {"lookback": 252, "skip": 21, "threshold_pct": 0}, momentum,
+             description="Jegadeesh-Titman식 12-1 모멘텀. skip=0이면 시계열 모멘텀(종가 / N봉 전 종가). 방향 지속을 전제하지 않는 상태 값입니다.")
+    adx = {"period": _integer("ADX 기간 (영업일)", 2), "level": _number("기준선", 1, 99)}
+    adx_formula = ("TR = max(고가−저가, |고가−전일 종가|, |저가−전일 종가|); +DM = 고가−전일 고가(전일 저가−저가보다 크고 0 초과일 때), −DM 대칭; "
+                   "Wilder 누적 평활; +DI/−DI = 100 × 평활 DM / 평활 TR; DX = 100 × |+DI − −DI| / (+DI + −DI); ADX = DX의 Wilder 평활; 최소 250봉 고정 준비기간")
+    _add("adx_strong_trend", "ADX(14) 추세 강함", trend, "adx_state_high", adx_formula + "; ADX ≥ 기준선", {"period": 14, "level": 25}, adx, ("high", "low", "close"),
+         description="추세의 '강도'만 말하고 방향은 +DI/−DI를 증거에 남깁니다. 강한 추세가 이어진다는 뜻이 아닙니다.")
+    _add("adx_weak_trend", "ADX(14) 추세 약함", trend, "adx_state_low", adx_formula + "; ADX < 기준선", {"period": 14, "level": 20}, adx, ("high", "low", "close"),
+         description="방향성이 약한 구간. 횡보 판단의 보조 상태입니다.")
+    _add("adx_rise_above", "ADX(14) 기준선 상향 통과", trend, "adx_rise", adx_formula + "; 전일 ADX < 기준선, 당일 ADX ≥ 기준선", {"period": 14, "level": 25}, adx, ("high", "low", "close"),
+         description="추세 강도가 기준선을 넘은 사건. 방향은 +DI/−DI로 따로 봅니다.")
+    sma = {"period": _integer("이평 기간 (영업일)", 2, 500)}
+    _add("close_above_sma", "200일 이평 위", trend, "above_sma", "종가 > 종가 단순이평(기간, 당일 포함)", {"period": 200}, sma,
+         description="장기 추세 필터 상태(Faber식 10개월 이평 규칙과 같은 종류). 교차 사건은 '이평 상향돌파' 조건을 씁니다.")
+    _add("close_below_sma", "200일 이평 아래", trend, "below_sma", "종가 < 종가 단순이평(기간, 당일 포함)", {"period": 200}, sma)
+
+
+_build_trend()
+
+
 def catalog() -> list[dict]:
     """Return independent JSON-serializable catalog entries in screenshot order."""
     return deepcopy(list(_ENTRIES.values()))
@@ -294,6 +322,8 @@ def normalize_condition(condition: dict) -> dict:
         raise ValueError("fast must be less than slow")
     if "middle" in params and not params["fast"] < params["middle"] < params["slow"]:
         raise ValueError("fast < middle < slow is required")
+    if "skip" in params and not params["skip"] < params["lookback"]:
+        raise ValueError("skip must be less than lookback")
     within = condition.get("within_days", 1)
     if isinstance(within, bool) or not isinstance(within, int) or not 1 <= within <= 250:
         raise ValueError("within_days must be an integer between 1 and 250")
@@ -337,8 +367,12 @@ def _base_sessions(kind: str, p: dict) -> int:
         return p["period"] + 1
     if kind == "bb_squeeze":
         return p["period"] + p["lookback"] - 1
-    if kind.startswith("rsi_"):
+    if kind.startswith("rsi_") or kind.startswith("adx_"):
         return max(250, 10 * p["period"] + 1)
+    if kind.startswith("momentum_"):
+        return p["lookback"] + 1
+    if kind in {"above_sma", "below_sma"}:
+        return p["period"]
     if kind in STRUCTURE_KINDS:
         needed = p["lookback"] + p["pivot_width"] + 2
         return max(needed, p["period"] + 2) if kind.startswith("channel_") and p.get("method") == "regression" else needed
@@ -439,8 +473,53 @@ def _rsi(values: list[float | None], period: int) -> list[float | None]:
     return result
 
 
+def _adx(rows: list[dict], period: int) -> dict[str, list[float | None]]:
+    """Wilder ADX: TR/+DM/−DM accumulate (first = sum of `period`, then prev − prev/n + current); ADX = Wilder mean of DX."""
+    n = len(rows)
+    adx: list[float | None] = [None] * n
+    plus: list[float | None] = [None] * n
+    minus: list[float | None] = [None] * n
+    tr_s = up_s = down_s = None
+    seed_tr: list[float] = []
+    seed_up: list[float] = []
+    seed_down: list[float] = []
+    dx_seed: list[float] = []
+    average = None
+    for i in range(1, n):
+        cur, prev = rows[i], rows[i - 1]
+        tr = max(cur["high"] - cur["low"], abs(cur["high"] - prev["close"]), abs(cur["low"] - prev["close"]))
+        up_move, down_move = cur["high"] - prev["high"], prev["low"] - cur["low"]
+        up = up_move if up_move > down_move and up_move > 0 else 0.0
+        down = down_move if down_move > up_move and down_move > 0 else 0.0
+        if tr_s is None:
+            seed_tr.append(tr)
+            seed_up.append(up)
+            seed_down.append(down)
+            if len(seed_tr) < period:
+                continue
+            tr_s, up_s, down_s = math.fsum(seed_tr), math.fsum(seed_up), math.fsum(seed_down)
+        else:
+            tr_s, up_s, down_s = tr_s - tr_s / period + tr, up_s - up_s / period + up, down_s - down_s / period + down
+        if tr_s <= 0:
+            continue
+        plus[i], minus[i] = 100 * up_s / tr_s, 100 * down_s / tr_s
+        total = plus[i] + minus[i]
+        if total == 0:
+            continue
+        dx = 100 * abs(plus[i] - minus[i]) / total
+        if average is None:
+            dx_seed.append(dx)
+            if len(dx_seed) < period:
+                continue
+            average = math.fsum(dx_seed) / period
+        else:
+            average = (average * (period - 1) + dx) / period
+        adx[i] = average
+    return {"adx": adx, "plus_di": plus, "minus_di": minus}
+
+
 # Recursive indicators evaluate each candidate bar on a fixed local seed window (see evaluate_strategy).
-RECURSIVE_PREFIXES = ("macd_", "sonar_", "rsi_")
+RECURSIVE_PREFIXES = ("macd_", "sonar_", "rsi_", "adx_")
 
 
 def _cross(previous: float, current: float, before_reference: float,
@@ -527,6 +606,10 @@ def _lines(rows: list[dict], kind: str, p: dict) -> dict[str, list]:
         return {"ma": ma, "upper": upper, "lower": lower, "width": width}
     if kind.startswith("rsi_"):
         return {"rsi": _rsi(closes, p["period"])}
+    if kind.startswith("adx_"):
+        return _adx(rows, p["period"])
+    if kind in {"above_sma", "below_sma"}:
+        return {"ma": _sma(closes, p["period"])}
     if kind.startswith("stoch_"):
         values: list[float | None] = [None] * len(rows)
         for i in range(p["period"] - 1, len(rows)):
@@ -667,6 +750,28 @@ def _at(rows: list[dict], i: int, kind: str, p: dict, lines: dict) -> dict:
         else:
             passed = _ge(values[i - 1], level) and values[i] < level and not _equal(values[i], level)
         return _decision(passed, values[i], level, day, evidence={"previous_rsi": values[i - 1], "period": p["period"]})
+    if kind.startswith("momentum_"):
+        start, end = rows[i - p["lookback"]], rows[i - p["skip"]]
+        value = 100 * (end["close"] / start["close"] - 1)
+        passed = _ge(value, p["threshold_pct"]) if kind == "momentum_up" else _le(value, -p["threshold_pct"])
+        return _decision(passed, value, p["threshold_pct"] if kind == "momentum_up" else -p["threshold_pct"], day,
+                         evidence={"from_date": start["date"], "from_close": start["close"], "to_date": end["date"], "to_close": end["close"], "skip": p["skip"]})
+    if kind.startswith("adx_"):
+        values = lines["adx"]
+        if values[i] is None or (kind == "adx_rise" and values[i - 1] is None):
+            return _out("unavailable", day=day, reason="zero_price_range")
+        level = p["level"]
+        if kind == "adx_state_high":
+            passed = _ge(values[i], level)
+        elif kind == "adx_state_low":
+            passed = values[i] < level and not _equal(values[i], level)
+        else:
+            passed = values[i - 1] < level and not _equal(values[i - 1], level) and _ge(values[i], level)
+        return _decision(passed, values[i], level, day, evidence={"plus_di": lines["plus_di"][i], "minus_di": lines["minus_di"][i], "previous_adx": values[i - 1], "period": p["period"]})
+    if kind in {"above_sma", "below_sma"}:
+        ma = lines["ma"][i]
+        passed = close > ma and not _equal(close, ma) if kind == "above_sma" else close < ma and not _equal(close, ma)
+        return _decision(passed, close, ma, day, evidence={"period": p["period"]})
     if kind.startswith("stoch_"):
         k, d = lines["k"], lines["d"]
         if any(value is None for value in (k[i - 1], k[i], d[i - 1], d[i])):
