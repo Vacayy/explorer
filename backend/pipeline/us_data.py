@@ -69,6 +69,55 @@ def fetch_prices(ticker: str, period: str = "2y", force: bool = False) -> int:
     return n
 
 
+def price_status(conn, ticker: str) -> dict:
+    """us_prices 보유 현황. 화면의 '시세 수집' 버튼이 무엇을 할지 정하는 사실(행 수·최신 거래일·수집 시각·묵음)."""
+    ticker = ticker.upper()
+    row = conn.execute("SELECT COUNT(*) n, MIN(trade_date) first, MAX(trade_date) last, MAX(fetched_at) fetched FROM us_prices WHERE stock_code=?",
+                       (ticker,)).fetchone()
+    latest_any = conn.execute("SELECT MAX(trade_date) FROM us_prices").fetchone()[0]
+    stale_days = None
+    if row["last"] and latest_any:
+        stale_days = conn.execute("SELECT CAST(julianday(?) - julianday(?) AS INTEGER)", (latest_any, row["last"])).fetchone()[0]
+    return {"ticker": ticker, "rows": row["n"], "first_date": row["first"], "last_date": row["last"],
+            "fetched_at": (row["fetched"].replace(" ", "T") + "Z") if row["fetched"] else None,
+            "latest_available": latest_any, "stale_days": stale_days,
+            "state": "missing" if not row["n"] else ("stale" if (stale_days or 0) > 3 else "fresh")}
+
+
+class PriceCollectError(RuntimeError):
+    pass
+
+
+def collect_prices(ticker: str, period: str = "2y") -> dict:
+    """버튼 주도 수집(D-100): yfinance history를 강제로 받아 us_prices에 멱등 적재. 실패는 조용히 0이 아니라 예외로."""
+    ticker = ticker.upper()
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(ticker).history(period=period, auto_adjust=False)
+    except Exception as exc:  # 망·티커 오류를 화면에 그대로 보인다
+        raise PriceCollectError(f"yfinance 조회 실패: {type(exc).__name__}: {str(exc)[:200]}") from exc
+    if hist is None or hist.empty:
+        raise PriceCollectError(f"yfinance에 {ticker} 시세가 없습니다. 티커를 확인해 주세요.")
+    conn = get_connection()
+    try:
+        n = 0
+        for idx, row in hist.iterrows():
+            conn.execute("""
+                INSERT INTO us_prices (stock_code, trade_date, open, high, low, close, volume, fetched_at)
+                VALUES (?,?,?,?,?,?,?, datetime('now'))
+                ON CONFLICT(stock_code, trade_date) DO UPDATE SET
+                  close=excluded.close, volume=excluded.volume, high=excluded.high,
+                  low=excluded.low, open=excluded.open, fetched_at=excluded.fetched_at
+            """, (ticker, idx.date().isoformat(), _f(row.get("Open")), _f(row.get("High")), _f(row.get("Low")),
+                  _f(row.get("Close")), _f(row.get("Volume"))))
+            n += 1
+        conn.commit()
+        status = price_status(conn, ticker)
+    finally:
+        conn.close()
+    return {**status, "collected_rows": n, "source": "yfinance", "period": period}
+
+
 def _f(v):
     try:
         return None if v is None else float(v)

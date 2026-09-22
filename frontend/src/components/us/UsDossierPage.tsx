@@ -14,6 +14,7 @@ import { CompanyOverview } from '@/components/company/CompanyOverview'
 import { Button } from '@/components/ui/button'
 import type { StockPriceItem } from '@/types'
 import { LensView } from '@/components/lens/LensPage'
+import { UsPriceCollect } from '@/components/us/UsPriceCollect'
 
 const EMPTY_PRICES: StockPriceItem[] = []
 
@@ -102,6 +103,7 @@ export default function UsDossierPage() {
               시세 데이터를 불러오지 못했습니다.
             </p>
           )}
+          <UsPriceCollect ticker={d.ticker} />
           <div className="mt-2 flex gap-3 text-xs">
             {d.latest_transcript && (
               <Link
