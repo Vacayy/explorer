@@ -10,6 +10,18 @@
 
 ---
 
+## D-200 · 2026-09-23 · 피드 소스 목록의 숫자는 저장 건수가 아니라 '안 읽은 게시물 수'로 (D-153 일부 번복)
+
+**결정**: `/feed` 소스 목록의 배지를 **안 읽은 게시물 수**로 바꾼다. 소스별 `read_until`을 `channel_reads`(문서 코퍼스와 분리된 상태 테이블)에 두고, 소스를 열어 게시물이 화면에 오면 그 소스의 최신 시각까지 읽음으로 표시한다(`POST /api/spine/feed/channels/read`). 안 읽음 = `read_until`(행이 없으면 `'*'` 기준선 = 기능 도입 시각) 이후 게시물 수. 목록 조회(`GET /channels`)는 여전히 읽기 전용이고 `unread`·`total_unread`를 함께 돌려준다. 0이면 배지를 숨기고, 헤더에 "저장 N건 · 안 읽음 K건"을 유지해 저장 건수도 볼 수 있다. 읽음은 뒤로 가지 않는다.
+
+**맥락·이유**: 사용자 — "피드 목록에서 지금 포스팅 전체 숫자가 보이는 거지? 그게 아니라 아직 안 읽은 숫자를 카운팅해 줄 수 있나?" D-153은 "숫자는 저장 건수이며 읽지 않음·조회수·반응·메시지 전송은 구현하지 않는다"고 정했다. 그중 **안 읽음 수만** 번복한다 — 저장 건수(451, 671, 1,082)는 채널 크기라 매일 보는 사람에게 정보가 없고, 필요한 건 "내가 마지막으로 본 뒤 몇 개가 왔나"다. 조회수·반응·전송은 여전히 하지 않는다. 기준선을 '*' 한 행으로 둔 이유: 도입 순간 모든 소스가 수백 건 안 읽음으로 시작하지 않게 하고, 뒤에 등록되는 소스도 기준선 이후 게시물만 세게 하기 위해서다. 읽음 단위를 문서가 아니라 소스+시각으로 둔 이유: 리더가 게시물을 목록으로 보여 개별 열람이 없고, 텔레그램 자체의 읽음 모델과 같다.
+
+**기각한 대안**: ① 문서별 읽음 표시 — 리더에서 문서를 하나씩 열지 않으므로 표시할 계기가 없고, 스크롤 노출 추적은 부정확하다. ② 조회 시 첫 기준선 자동 생성 — GET을 읽기 전용으로 유지하는 원칙(D-153)과 어긋나 `init_db`에서 한 번만 만든다. ③ 클라이언트 localStorage에 읽음 저장 — 기기·브라우저마다 달라지고 서버 집계와 어긋난다. ④ 저장 건수 배지를 함께 표시 — 숫자 둘이 나란히 있으면 어느 것이 무엇인지 매번 읽어야 해서 헤더로 옮겼다.
+
+**참조**: backend/database.py(`channel_reads`) · pipeline/timeline.py(`channels` unread, `mark_read`) · models/timeline.py · routers/spine_feed.py(`/channels/read`) · tests/test_timeline.py · frontend/src/components/feed/ChannelReader.tsx · hooks/useTimeline.ts(`useMarkChannelRead`) · docs/specs/home-feed.md · D-153
+
+---
+
 ## D-199 · 2026-09-23 · 소스 하나를 버튼으로 지금 수집한다 — 같은 커넥터·적재 경로를 프로세스 안 스레드로, 상태는 메모리·기록은 job_runs
 
 **결정**: `/follow` 소스 행과 `/source` 도시에 헤더에 '지금 수집' 버튼을 둔다. `POST /api/spine/sources/refresh {kind,key}`가 그 소스 하나에 `run_source(connector)`를 백그라운드 스레드로 돌리고(`pipeline/source_refresh.py`), `GET /refresh?kind&key`로 idle·running·done·skipped·error를 폴링한다. 커넥터·적재(`store_document`, 새 문서만 haiku enrich)는 30분 체인의 `scripts/ingest.py --source X --target Y`와 같다. 유튜브 커넥터에 `channel_ids`를 추가해 채널 하나만(활성·수집 플래그 무시) 새 영상을 찾게 했다. 같은 소스가 15분 안에 돌고 있으면 새로 시작하지 않고 그 상태를 돌려준다. 실행은 `run_job("refresh_source")`로 감싸 관리자 on/off와 job_runs 기록을 받는다. 끝나면 화면이 소스 계기판·채널 목록·타임라인·도시에 쿼리를 다시 읽고 "새 글 N개 · 갱신 M개"를 알린다.
@@ -623,6 +635,8 @@
 **기각한 대안**: 세 개 상시 열(좁은 읽기 폭 반복), Telegram 메시지 UI 그대로 복제(작성 주체·생성 요약 구분과 글 읽기에 부적합), 클라이언트 첫 페이지 소스 필터(과거 자료 누락), 조회 시 LLM 실행(읽기 지연·비용).
 
 **참조**: `docs/specs/home-feed.md`, `ChannelReader.tsx`, `useHomeMode.ts`, `pipeline/timeline.py`, `models/timeline.py`. 검증 산출물 `logs/home-reader/`.
+
+→ 숫자(저장 건수·읽지 않음 미구현)는 D-200에서 일부 번복: 배지를 안 읽은 게시물 수로 바꿈. 조회수·반응·전송은 유지.
 
 ---
 

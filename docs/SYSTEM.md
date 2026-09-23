@@ -146,7 +146,7 @@
 ## 홈·피드 개편 (D-151 → D-153, 2026-09-10)
 
 - `/home`: 상단 `시장 / 피드` 모드 전환. 시장은 전체 폭 브리핑 + 기존 모듈 그리드, 피드는 `ChannelReader` 소스 목록 + 원문/저장 요약. `useHomeMode`는 URL 우선/마지막 모드 복원. App은 피드 레일 기본 접힘/일반 레일 상태를 각각 유지한다. 지수는 공통 한 줄 캐러셀. 각 모듈은 독립 상태.
-- `GET /api/spine/feed/channels`: 활성 구독 및 시스템 대상 전체 투영에 window 집계, 대상별 최신 발췌·시각·저장 건수와 빈 활성 구독 반환. `timeline?channel=...`은 페이지 전 필터. 소스 플랫폼+키, 기업 entity ID, 인물 key, 컨콜 ticker, 수출입 그룹이 안정 식별자. 조회 시 쓰기·생성 없음.
+- `GET /api/spine/feed/channels`: 활성 구독 및 시스템 대상 전체 투영에 window 집계, 대상별 최신 발췌·시각·저장 건수·**안 읽음 수**(`unread`, D-200: `channel_reads.read_until` 또는 `'*'` 기준선 이후 게시물)와 빈 활성 구독 반환. `POST /channels/read {channel, read_until}`은 소스를 열었을 때 읽음 표시(뒤로 가지 않음, 코퍼스 미변경). `timeline?channel=...`은 페이지 전 필터. 소스 플랫폼+키, 기업 entity ID, 인물 key, 컨콜 ticker, 수출입 그룹이 안정 식별자. 조회 시 쓰기·생성 없음.
 - `/feed`: 기본 진입은 Home 피드로 이동, `feed_*` 필터가 있으면 기존 통합 타임라인. `view=documents` 또는 기존 `q/source/stock/industry/topic/page` 쿼리는 기존 문서 검색으로 연결, 검색 카드도 `FeedPost.DocumentCard` 공유. 필터 `feed_scope`(all/sources/system)·`feed_kind`·`feed_source`·`feed_density`·`feed_page`·`feed_until`은 URL 상태.
 - `GET /api/spine/feed/timeline` → `pipeline/timeline.py`, `models/timeline.py`. **읽기 전용 SQL 투영**, 기존 DB·생성 파이프라인 유지, 조회 시 LLM/수집/백필 없음. 활성 Telegram/블로그/YouTube + 저장 기업 요약·인물 프로필 + 활성 구독 컨콜 + 관심 품목 최신월 수출입 묶음. 게시/생성/수집 시각을 UTC 정규화, 시간순+안정 ID 정렬, 페이지당 20(최대 50), 최대 100페이지, 조회 상한 시각 고정. 수정 가능한 캐시의 불변 이력까지 보장하지 않음.
 - 수출입 과거 백필은 신규 업데이트로 나열하지 않고 각 활성 품목의 최신 통계월만 월별 묶음. 인물은 저장된 `source_digests(kind=person)`만, 신규 자동 생성 스케줄 추가 없음. AI 해석/자료 수/기준 기간을 표시하며, 원문과 시스템 요약의 작성 주체를 구분.
@@ -285,7 +285,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 `companies`(3,975) · `stock_prices`(**711,478** — 전종목 380일 백필+일별) · `financial_statements` ·
 **`kr_movers`**(전일 국장 거래대금 상위 일별 스냅샷 — rank·거래대금·등락률·섹터(sector_map 대분류)·is_new, 7일 보존, D-108) ·
-`disclosures` · `fundamentals` · `watchlist` · `catalysts` · `consensus` · `telegram_channels` ·
+`disclosures` · `fundamentals` · `watchlist` · `catalysts` · `consensus` · `channel_reads`(피드 읽음 표시, D-200) · `telegram_channels` ·
 `blog_sources`(+blog_name·author 닉네임) · `industry_groups/members` · `ir_notes` · `business_segments`
 > 소스 레지스트리 3종(telegram_channels·blog_sources·youtube_channels)은 **두 개의 독립 축**을 갖는다(D-126):
 > `is_active`=개인 노출(뮤트) · **`collect_enabled`=수집 자체**. 전엔 blog·telegram 수집기가 조건 없이

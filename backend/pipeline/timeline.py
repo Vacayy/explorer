@@ -171,11 +171,16 @@ def channels(conn, *, until=None):
     """Aggregate the entire visible corpus, loading only each channel's latest excerpt."""
     until = utc(until) if until else datetime.now(timezone.utc).isoformat()
     sql, params = _projection(conn)
+    # 안 읽음(D-200): 소스별 read_until(없으면 '*' 기준선) 이후 게시물 수. 조회는 여전히 읽기 전용.
     rows = conn.execute(f"""
         WITH updates AS ({sql}), ranked AS (
-          SELECT *, COUNT(*) OVER (PARTITION BY channel) count,
-            ROW_NUMBER() OVER (PARTITION BY channel ORDER BY julianday(ts) DESC,id DESC) rank
-          FROM updates WHERE julianday(ts)<=julianday(?)
+          SELECT u.*, COUNT(*) OVER (PARTITION BY u.channel) count,
+            SUM(CASE WHEN julianday(u.ts) > julianday(COALESCE(r.read_until,
+                  (SELECT read_until FROM channel_reads WHERE channel='*'), '1970-01-01')) THEN 1 ELSE 0 END)
+              OVER (PARTITION BY u.channel) unread,
+            ROW_NUMBER() OVER (PARTITION BY u.channel ORDER BY julianday(u.ts) DESC,u.id DESC) rank
+          FROM updates u LEFT JOIN channel_reads r ON r.channel=u.channel
+          WHERE julianday(u.ts)<=julianday(?)
         ) SELECT * FROM ranked WHERE rank=1
     """, [*params, until]).fetchall()
     registered = {}
@@ -191,7 +196,25 @@ def channels(conn, *, until=None):
         ident = r['channel']
         registered[ident] = TimelineChannel(
             id=ident, name=registered[ident].name if ident in registered else r['name'] or ident,
-            platform=r['platform'], count=r['count'], latest_at=utc(r['ts']), preview=r['preview'] or '',
+            platform=r['platform'], count=r['count'], unread=r['unread'] or 0, latest_at=utc(r['ts']), preview=r['preview'] or '',
         )
     items = sorted(registered.values(), key=lambda i: (i.latest_at or '', i.id), reverse=True)
-    return TimelineChannelsResponse(items=items, total=sum(i.count for i in items), until=until)
+    return TimelineChannelsResponse(items=items, total=sum(i.count for i in items),
+                                    total_unread=sum(i.unread for i in items), until=until)
+
+
+def mark_read(conn, channel: str, read_until: str) -> dict:
+    """소스를 read_until까지 읽음으로 표시 (D-200). 뒤로 가지 않는다 — 이미 더 나중까지 읽었으면 유지."""
+    if not channel or len(channel) > 300:
+        raise ValueError('channel required')
+    stamp = utc(read_until)
+    conn.execute("""
+        INSERT INTO channel_reads (channel, read_until, updated_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(channel) DO UPDATE SET
+          read_until = CASE WHEN julianday(excluded.read_until) > julianday(channel_reads.read_until)
+                            THEN excluded.read_until ELSE channel_reads.read_until END,
+          updated_at = datetime('now')
+    """, (channel, stamp))
+    conn.commit()
+    row = conn.execute('SELECT read_until FROM channel_reads WHERE channel=?', (channel,)).fetchone()
+    return {'channel': channel, 'read_until': row['read_until']}

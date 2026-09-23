@@ -3,12 +3,12 @@ import json
 from typing import Literal
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from database import get_connection
 from pydantic import BaseModel, Field
 from datetime import date
 from models.spine import EntityTag, FeedDocument, FeedResponse
-from models.timeline import TimelineResponse, TimelineChannelsResponse
+from models.timeline import MarkReadRequest, TimelineResponse, TimelineChannelsResponse
 
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
 
@@ -42,6 +42,19 @@ def get_timeline_channels(until: datetime | None = None):
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
         return channels(conn, until=until.isoformat() if until else None)
+    finally:
+        conn.close()
+
+
+@router.post("/channels/read")
+def mark_channel_read(body: MarkReadRequest):
+    """소스를 read_until까지 읽음으로 표시 (D-200). 문서 코퍼스에는 쓰지 않고 channel_reads만 갱신."""
+    from pipeline.timeline import mark_read
+    conn = get_connection()
+    try:
+        return mark_read(conn, body.channel, body.read_until)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     finally:
         conn.close()
 

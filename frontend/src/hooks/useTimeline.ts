@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import api from '@/api/client'
 import { getJson, STALE } from '@/api/query'
 import type { TimelineResponse, TimelineChannelsResponse } from '@/types'
 
@@ -26,5 +27,15 @@ export function useTimelineChannels(until?: string) {
     queryKey: ['spine', 'timeline-channels', until],
     queryFn: () => getJson<TimelineChannelsResponse>('/api/spine/feed/channels', { until }),
     staleTime: STALE.medium,
+  })
+}
+
+/** 소스를 read_until까지 읽음으로 표시 (D-200). 소스를 열어 게시물이 보이면 호출한다. 문서 코퍼스에는 쓰지 않는다. */
+export function useMarkChannelRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: { channel: string; read_until: string }) =>
+      (await api.post<{ channel: string; read_until: string }>('/api/spine/feed/channels/read', v)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['spine', 'timeline-channels'] }),
   })
 }

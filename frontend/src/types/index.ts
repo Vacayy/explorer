@@ -784,10 +784,13 @@ export interface TimelineChannel {
   name: string
   platform: 'telegram' | 'blog' | 'youtube' | 'system'
   count: number
+  /** 읽음 표시(read_until, 없으면 기준선) 이후 게시물 수 (D-200) */
+  unread: number
   latest_at: string | null
   preview: string
 }
 export interface TimelineChannelsResponse {
+  total_unread: number
   items: TimelineChannel[]
   total: number
   until: string

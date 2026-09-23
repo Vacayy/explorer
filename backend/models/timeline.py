@@ -40,6 +40,7 @@ class TimelineChannel(BaseModel):
     name: str
     platform: Literal["telegram", "blog", "youtube", "system"]
     count: int = 0
+    unread: int = 0          # read_until(없으면 '*' 기준선) 이후 게시물 수 (D-200)
     latest_at: str | None = None
     preview: str = ""
 
@@ -47,4 +48,10 @@ class TimelineChannel(BaseModel):
 class TimelineChannelsResponse(BaseModel):
     items: list[TimelineChannel]
     total: int
+    total_unread: int = 0
     until: str
+
+
+class MarkReadRequest(BaseModel):
+    channel: str
+    read_until: str

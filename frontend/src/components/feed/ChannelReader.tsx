@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState, EmptyState } from '@/components/shared/ErrorState'
 import SegmentTabs from '@/components/shared/SegmentTabs'
 import { DocumentCard, SystemPost } from './FeedPost'
-import { useTimeline, useTimelineChannels } from '@/hooks/useTimeline'
+import { useMarkChannelRead, useTimeline, useTimelineChannels } from '@/hooks/useTimeline'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { TimelineChannel } from '@/types'
 
@@ -17,7 +17,7 @@ function channelLabel(item: TimelineChannel) {
   const kind = { company: '기업 요약', person: '인물 요약', transcript: '컨콜', trade: '수출입' }[item.id.split(':')[0]]
   return item.platform === 'system' && kind ? `Explorer · ${kind}` : platforms[item.platform]
 }
-// UI-only positions. No inferred unread state and no writes to the document corpus.
+// UI-only positions. Read marks live in channel_reads (D-200), never in the document corpus.
 const scrollPositions = sessionMemory<number>('explorer.reader.positions')
 
 export function ChannelReader() {
@@ -35,6 +35,7 @@ export function ChannelReader() {
   const directory = useTimelineChannels(until)
   const timeline = useTimeline({ scope: platform === 'system' ? 'system' : platform === 'all' ? 'all' : 'sources', kind: 'all', source: platform === 'system' ? 'all' : platform, channel: channel || undefined, page, until })
   const selected = directory.data?.items.find(item => item.id === channel)
+  const markRead = useMarkChannelRead()
   const entries = (directory.data?.items || []).filter(item =>
     (platform === 'all' || item.platform === platform) &&
     `${item.name} ${item.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
@@ -55,6 +56,12 @@ export function ChannelReader() {
       const next = new URLSearchParams(prev); next.set('reader_until', initialSnapshot); return next
     }, { replace: true })
   }, [params, setParams, initialSnapshot])
+
+  // 소스를 열어 게시물이 화면에 오면 최신 시각까지 읽음으로 표시한다 (D-200). 목록 배지가 0이 되고 새 글이 오면 다시 센다.
+  useEffect(() => {
+    if (!channel || !selected || selected.unread <= 0 || !selected.latest_at || !timeline.data || markRead.isPending) return
+    markRead.mutate({ channel, read_until: selected.latest_at })
+  }, [channel, selected, timeline.data, markRead])
 
   useLayoutEffect(() => {
     if (directory.data && list.current) list.current.scrollTop = scrollPositions.get(listKey) || 0
@@ -79,7 +86,7 @@ export function ChannelReader() {
     patch({ reader_page: String(next), reader_until: timeline.data?.until || until, reader_open: '1' })
   }
   const allTitle = platform === 'all' ? '전체 업데이트' : `${platforms[platform]} 전체`
-  const allCount = (directory.data?.items || []).filter(item => platform === 'all' || item.platform === platform).reduce((sum, item) => sum + item.count, 0)
+  const allUnread = (directory.data?.items || []).filter(item => platform === 'all' || item.platform === platform).reduce((sum, item) => sum + item.unread, 0)
   function selectPlatform(value: string) {
     if (value === platform) return
     focusTarget.current = 'heading'
@@ -100,19 +107,19 @@ export function ChannelReader() {
       <div ref={list} className="channel-list" tabIndex={0} aria-label="소스 목록 스크롤" onScroll={event => { if (directory.data) scrollPositions.set(listKey, event.currentTarget.scrollTop) }}>
         <Button variant="ghost" className="channel-entry" aria-pressed={!channel} onClick={() => select('')}>
           <span className="min-w-0 flex-1 text-left"><span className="block font-semibold">{allTitle}</span><span className="block text-caption text-muted-foreground">{platform === 'all' ? '팔로우한 소스와 Explorer' : platform === 'system' ? 'Explorer의 저장된 업데이트' : `팔로우한 ${platforms[platform]} 소스`}</span></span>
-          {directory.data && <span className="channel-count" title="저장된 전체 게시물 수">{formatNumber(allCount)}</span>}
+          {directory.data && allUnread > 0 && <span className="channel-count channel-count-unread" title="안 읽은 게시물 수">{formatNumber(allUnread)}</span>}
         </Button>
         {directory.isLoading && <div className="space-y-3 p-4" role="status" aria-label="소스 불러오는 중">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>}
         {directory.isError && <ErrorState message="소스 목록을 불러오지 못했습니다." onRetry={() => void directory.refetch()} />}
         {entries.map(item => <ChannelEntry key={item.id} item={item} selected={channel === item.id} onSelect={() => select(item.id)} />)}
         {directory.data && entries.length === 0 && <EmptyState message={query || platform !== 'all' ? '조건에 맞는 소스가 없습니다.' : '팔로우한 소스가 아직 없습니다.'} />}
-        <p className="px-4 py-5 text-caption text-muted-foreground">숫자는 저장된 게시물 수입니다.</p>
+        <p className="px-4 py-5 text-caption text-muted-foreground">숫자는 아직 읽지 않은 게시물 수입니다. 소스를 열면 그때까지의 게시물이 읽음으로 표시됩니다.</p>
       </div>
     </aside>
     <section className="channel-reader" aria-labelledby="reader-title">
       <header className="reader-header">
         <Button variant="ghost" size="icon" className="reader-back shrink-0" aria-label="소스 목록으로" onClick={() => { focusTarget.current = 'list'; patch({ reader_open: '0' }) }}><ArrowLeft aria-hidden="true" /></Button>
-        <div className="min-w-0 flex-1"><h2 id="reader-title" ref={heading} tabIndex={-1} className="truncate text-section font-semibold outline-offset-4">{title}</h2><p className="text-caption text-muted-foreground">{selected ? `${channelLabel(selected)} · 저장 ${formatNumber(selected.count)}건 · ` : ''}최신순</p></div>
+        <div className="min-w-0 flex-1"><h2 id="reader-title" ref={heading} tabIndex={-1} className="truncate text-section font-semibold outline-offset-4">{title}</h2><p className="text-caption text-muted-foreground">{selected ? `${channelLabel(selected)} · 저장 ${formatNumber(selected.count)}건${selected.unread > 0 ? ` · 안 읽음 ${formatNumber(selected.unread)}건` : ''} · ` : ''}최신순</p></div>
         <div className="reader-actions">{platform !== 'system' && selected?.platform !== 'system' && <SegmentTabs tabs={[{ value: 'original', label: '원문' }, { value: 'summary', label: '요약' }]} value={reading} onChange={value => patch({ reading: value })} />}
           <Button variant="ghost" size="icon" aria-label="피드 새로고침" disabled={timeline.isFetching || directory.isFetching} onClick={() => { scrollPositions.set(`${platform}:${channel}:1:${reading}`, 0); patch({ reader_until: new Date().toISOString(), reader_page: null }) }}><RefreshCw aria-hidden="true" className={timeline.isFetching ? 'animate-spin' : ''} /></Button></div>
       </header>
@@ -141,7 +148,7 @@ function ChannelEntry({ item, selected, onSelect }: { item: TimelineChannel; sel
     <span className="min-w-0 flex-1 text-left">
       <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate font-semibold">{item.name}</span>{item.latest_at && <time className="shrink-0 text-caption text-muted-foreground" dateTime={item.latest_at} title={item.latest_at}>{formatRelativeTime(item.latest_at)}</time>}</span>
       <span className="mt-0.5 block text-caption text-muted-foreground">{channelLabel(item)}</span>
-      <span className="mt-1 flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm font-normal text-muted-foreground">{snippet || '아직 저장된 게시물이 없습니다'}</span><span className="channel-count" title="저장된 게시물 수">{formatNumber(item.count)}</span></span>
+      <span className="mt-1 flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm font-normal text-muted-foreground">{snippet || '아직 저장된 게시물이 없습니다'}</span>{item.unread > 0 && <span className="channel-count channel-count-unread" title={`안 읽은 게시물 ${formatNumber(item.unread)} · 저장 ${formatNumber(item.count)}`}>{formatNumber(item.unread)}</span>}</span>
     </span>
   </Button>
 }

@@ -959,6 +959,15 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_job_runs ON job_runs(id);
 
+    -- 피드 '읽음' 표시 (D-200) — 소스(channel)별 어디까지 읽었나. '*'는 기준선(기능 도입 시각): 행이 없는 소스는
+    -- 기준선 이후 게시물을 안 읽음으로 센다. 문서 코퍼스에는 쓰지 않는 별도 상태 테이블.
+    CREATE TABLE IF NOT EXISTS channel_reads (
+        channel    TEXT PRIMARY KEY,   -- 'telegram:<name>' | 'youtube:<id>' | 'blog:<url>' | 'company:<id>' … | '*'
+        read_until TEXT NOT NULL,      -- UTC ISO — 이 시각 이하 게시물은 읽음
+        updated_at TEXT DEFAULT (datetime('now'))
+    );
+    INSERT OR IGNORE INTO channel_reads (channel, read_until) VALUES ('*', strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+
     -- LLM 호출 원장 (D-130, pipeline/llm.py) — 콜당 usage·cost·소요. 비용 결정은 유추 말고 실측(D-117).
     CREATE TABLE IF NOT EXISTS llm_calls (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
