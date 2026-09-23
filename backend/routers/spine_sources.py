@@ -428,6 +428,39 @@ def set_collect(body: CollectToggle):
     return {"kind": body.kind, "key": body.key, "collect_enabled": body.enabled}
 
 
+class RefreshRequest(BaseModel):
+    kind: str            # telegram | blog | youtube
+    key: str             # channel_name | url | channel_id
+
+
+@router.post("/refresh")
+def refresh_source(body: RefreshRequest):
+    """소스 하나를 지금 수집 (D-199). 백그라운드로 돌리고 즉시 상태를 돌려준다 — 진행은 GET /refresh로 폴링.
+
+    같은 커넥터·적재 경로(새 문서만 enrich)를 소스 하나에만 돌린다. 이미 돌고 있으면 그 상태를 돌려준다(중복 시작 없음).
+    """
+    from pipeline import source_refresh
+    if body.kind not in source_refresh.KINDS:
+        raise HTTPException(400, "알 수 없는 kind")
+    conn = get_connection()
+    try:
+        known = source_refresh.registered(conn, body.kind, body.key)
+    finally:
+        conn.close()
+    if not known:
+        raise HTTPException(404, "등록되지 않은 소스입니다")
+    return source_refresh.start(body.kind, body.key)
+
+
+@router.get("/refresh")
+def refresh_status(kind: str, key: str):
+    """즉시 수집 진행 상태 — idle | running | done | skipped | error. 새 작업을 만들지 않는다."""
+    from pipeline import source_refresh
+    if kind not in source_refresh.KINDS:
+        raise HTTPException(400, "알 수 없는 kind")
+    return source_refresh.status(kind, key)
+
+
 @router.get("/health", response_model=SourcesHealthResponse)
 def sources_health():
     from datetime import datetime, timezone

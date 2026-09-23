@@ -10,6 +10,18 @@
 
 ---
 
+## D-199 · 2026-09-23 · 소스 하나를 버튼으로 지금 수집한다 — 같은 커넥터·적재 경로를 프로세스 안 스레드로, 상태는 메모리·기록은 job_runs
+
+**결정**: `/follow` 소스 행과 `/source` 도시에 헤더에 '지금 수집' 버튼을 둔다. `POST /api/spine/sources/refresh {kind,key}`가 그 소스 하나에 `run_source(connector)`를 백그라운드 스레드로 돌리고(`pipeline/source_refresh.py`), `GET /refresh?kind&key`로 idle·running·done·skipped·error를 폴링한다. 커넥터·적재(`store_document`, 새 문서만 haiku enrich)는 30분 체인의 `scripts/ingest.py --source X --target Y`와 같다. 유튜브 커넥터에 `channel_ids`를 추가해 채널 하나만(활성·수집 플래그 무시) 새 영상을 찾게 했다. 같은 소스가 15분 안에 돌고 있으면 새로 시작하지 않고 그 상태를 돌려준다. 실행은 `run_job("refresh_source")`로 감싸 관리자 on/off와 job_runs 기록을 받는다. 끝나면 화면이 소스 계기판·채널 목록·타임라인·도시에 쿼리를 다시 읽고 "새 글 N개 · 갱신 M개"를 알린다.
+
+**맥락·이유**: 사용자 — "특정 텔레그램 채널, 유튜브 채널 등에서 버튼 클릭해서 최신화하는 기능. 지금 cron job 돌기 전에는 최신화가 안 돼서 무조건 기다려야 한다." 소스 등록 시 이미 `_ingest_telegram/_ingest_blog/_ingest_youtube`가 백그라운드 첫 수집을 하고 있어 경로는 있었고 진입점과 진행 표시만 없었다. 홈 카드의 '지금 업데이트'(D-100)와 같은 "버튼 주도 갱신" 원칙의 소스 버전이다. 실측: cahier_de_market 14건 중 새 글 2건 44초(enrich 포함), 유튜브 채널 새 영상 없음 2초.
+
+**기각한 대안**: ① `scripts/ingest.py`를 서브프로세스로 띄우기 — 체인의 `pgrep ingest.py` 가드가 이를 잡아 그 회차를 통째로 건너뛰고, 상태를 파일로 주고받아야 한다. 프로세스 안 스레드는 SQLite WAL·busy_timeout 30s와 `UNIQUE(source_type, source_id)`로 체인과 동시 실행해도 안전하다(같은 문서는 내용 해시로 skip). ② 전체 소스 일괄 '지금 수집' — 30분 체인과 같은 일이라 의미가 없고 haiku 비용이 한 번에 몰린다. 필요한 것은 "내가 보고 있는 이 채널"이다. ③ 상태를 DB 테이블에 — 한 사람이 쓰는 로컬 앱에서 진행 상태는 프로세스 메모리로 충분하고, 결과 기록은 job_runs가 이미 담당한다. 서버가 재시작되면 진행 중 표시만 사라진다. ④ 동기 응답 — 텔레그램 한 채널이 enrich까지 40초 넘게 걸려 요청이 끊긴다.
+
+**참조**: backend/pipeline/source_refresh.py · connectors/youtube.py(`channel_ids`) · routers/spine_sources.py(`/refresh`) · ops.py(`JOBS: refresh_source`) · tests/test_source_refresh.py · frontend/src/hooks/useRefreshSource.ts · components/follow/FollowPage.tsx(`SourceRow.onRefresh`) · components/source/SourcePage.tsx · docs/specs/source-dossier.md §지금 수집 · D-100 · D-115 · D-126
+
+---
+
 ## D-198 · 2026-09-22 · 비전문가를 위한 기술적 분석은 요약 점수가 아니라 "시스템이 고른 그림 + 규칙 문장 + 상황 렌즈"로
 
 **결정**: 기술적 분석 위에 읽기 층을 얹는다(docs/specs/technical-reading.md). ① **자동 캔버스** — 스캔 결과로 그릴 구조(박스권→레벨, 채널 신호→채널, 저점 높이기→저점 추세선…)를 규칙으로 골라 구조 그리기를 기본으로 펼친다. ② **한 줄 읽기** — 계열 5개 질문마다 상태·신호 값을 채운 평서문 1개, 모델 없음, 문장마다 근거 조건 id. 기존 '현재 상태' 배지 절을 대신한다. ③ **상황 렌즈** — 종목 발견의 목적별 추천에 "박스권 상단을 막 넘은 종목"처럼 상황 이름으로 고르는 조합 8개를 더하고, 카드마다 '못 보는 것'을 쓴다. ④ 발견 후보에서 `?scan=1`로 기업 페이지 패널을 연 채 진입한다.

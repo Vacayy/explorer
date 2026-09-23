@@ -22,6 +22,7 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("backfill_enrich", "재태깅 백필", "sonnet — 키워드 폴백 문서 재태깅 (백로그 7,871건, 우선순위·예산 제어, D-117)", "scripts/backfill_enrich_batch.py"),
     ("extract_events", "이미지 비전 분석", "haiku — 첨부 이미지 판독·증시일정 이벤트 추출 (미분석 백로그 ~2,000장, D-116)", "scripts/extract_events.py"),
     ("extract_doc_causal", "문서 인과 추출", "sonnet — 문서에서 명시 인과만 추출 (백로그 1,177건, D-116)", "scripts/extract_doc_causal.py"),
+    ("refresh_source", "소스 즉시 수집", "버튼 — 텔레그램·유튜브·블로그 소스 하나를 지금 수집 (haiku enrich는 새 문서만, D-199)", "pipeline/source_refresh.py"),
     ("refresh_questions", "질문 트래커 갱신", "일 1회 — 자동도출(지배 내러티브) + 프록시 관측 갱신(numeric/sentiment) + 재판정", "scripts/refresh_questions.py"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}

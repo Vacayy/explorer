@@ -37,6 +37,16 @@
 - Error: 소스 미등록(404)/네트워크 → ErrorState + 재시도
 - Ideal: 프로필 + 엔티티 + 최근 글
 
+## 지금 수집 (2026-09-23, D-199)
+
+30분 체인을 기다리지 않고 **이 소스 하나**를 지금 수집하는 버튼. 도시에 헤더(이름 옆 새로고침 아이콘)와 `/follow` 소스 행(hover 시 아이콘, 진행 중엔 항상 표시·스핀)에 있다.
+
+- `POST /api/spine/sources/refresh {kind: telegram|youtube|blog, key}` → 즉시 `{status: running, started_at, …}`. 등록되지 않은 소스 404, 모르는 kind 400. 같은 소스가 15분 안에 돌고 있으면 `already_running: true`와 그 상태를 돌려준다(중복 시작 없음).
+- `GET /api/spine/sources/refresh?kind&key` → `{status: idle|running|done|skipped|error, stats: {refs, docs, new, updated, unchanged}, error}`. 새 작업을 만들지 않는다.
+- 계산은 체인과 같다: `run_source(TelegramConnector([channel]) | BlogConnector([url]) | YouTubeConnector(channel_ids=[cid]))` → `store_document`(내용 해시 같으면 skip, 새 문서만 haiku enrich). 유튜브는 그 채널 RSS의 미수집 영상 자막만(정리본은 D-115대로 열 때). 관리자 페이지 '소스 즉시 수집' 작업을 끄면 `skipped`.
+- 화면 5-state: 버튼 idle → 스핀(running, 2초 폴링) → 토스트 "이름: 새 글 N개 · 갱신 M개"(done; 0개면 "변화 없음 K개" 설명) / 경고 토스트(skipped) / 오류 토스트(error, 사유) → 계기판·채널 목록·타임라인·도시에 쿼리 재조회. 시작 실패(404/400/네트워크)는 오류 토스트.
+- 실측(2026-09-23): cahier_de_market 14건 중 새 글 2건 44초(enrich 포함), 유튜브 채널 새 영상 0건 2초. 체인과 동시에 돌아도 SQLite WAL·`UNIQUE(source_type, source_id)`·내용 해시 skip으로 안전하다.
+
 ## 진입점 (앤티-분산: 새 탭 0개)
 - 피드 카드의 채널명 → 링크 (FeedDocument에 channel_kind/channel_key 추가)
 - 옴니바: 등록 소스 목록 "소스" 그룹

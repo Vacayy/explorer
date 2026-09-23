@@ -238,17 +238,24 @@ def redigest_youtube(limit: int = 5) -> dict:
 class YouTubeConnector:
     source_type = "youtube"
 
-    def __init__(self, video_ids: list[str] | None = None):
-        # video_ids 지정 시 그것만(링크 단건), 아니면 활성 채널 신규 영상 전체
+    def __init__(self, video_ids: list[str] | None = None, channel_ids: list[str] | None = None):
+        # video_ids 지정 시 그것만(링크 단건), channel_ids 지정 시 그 채널만(즉시 수집, D-199 — 활성·수집 플래그 무시),
+        # 아니면 활성 채널 신규 영상 전체
         self._video_ids = video_ids
+        self._channel_ids = channel_ids
 
     def discover(self) -> list[SourceRef]:
         if self._video_ids is not None:
             return [SourceRef(key=v) for v in self._video_ids]
         conn = get_connection()
-        channels = conn.execute(
-            "SELECT channel_id, title FROM youtube_channels "
-            "WHERE is_active=1 AND COALESCE(collect_enabled,1)=1").fetchall()
+        if self._channel_ids:
+            marks = ",".join("?" * len(self._channel_ids))
+            channels = conn.execute(f"SELECT channel_id, title FROM youtube_channels WHERE channel_id IN ({marks})",
+                                    tuple(self._channel_ids)).fetchall()
+        else:
+            channels = conn.execute(
+                "SELECT channel_id, title FROM youtube_channels "
+                "WHERE is_active=1 AND COALESCE(collect_enabled,1)=1").fetchall()
         # seen은 video_id 기준 (source_id는 channel/vid 또는 vid 혼재)
         seen = {r["source_id"].split("/")[-1] for r in conn.execute(
             "SELECT source_id FROM raw_documents WHERE source_type='youtube'")}

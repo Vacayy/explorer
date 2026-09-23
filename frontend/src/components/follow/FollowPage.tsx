@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button"
 import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { formatKrw, formatNumber } from "@/utils/format"
 import { cn } from "@/lib/utils"
+import { RefreshButton } from "@/components/shared/RefreshButton"
+import { useRefreshSource } from "@/hooks/useRefreshSource"
 import type { WatchlistItem } from "@/types"
 
 /**
@@ -270,7 +272,7 @@ function useSourcesHealth() {
   })
 }
 
-function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onToggleCollect }: {
+function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onToggleCollect, onRefresh, refreshing }: {
   name: string
   sub: string
   warning?: boolean
@@ -279,6 +281,9 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
   onClick: () => void
   onToggle: () => void
   onToggleCollect?: () => void
+  /** 지금 수집 (D-199) — cron을 기다리지 않고 이 소스만 수집 */
+  onRefresh?: () => void
+  refreshing?: boolean
 }) {
   // 소비 지표 — 30일 수집량 대비 무엇이 실제로 쓰였나 (D-127)
   const collecting = health?.collect_enabled !== false
@@ -315,6 +320,12 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
           )}
         </div>
       </div>
+      {/* 지금 수집 (D-199) — 30분 체인을 기다리지 않고 이 소스만. 진행 중엔 항상 보이고 스핀 */}
+      {onRefresh && (
+        <span onClick={(e) => e.stopPropagation()} className={cn("shrink-0 transition-opacity", refreshing ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+          <RefreshButton onClick={onRefresh} pending={!!refreshing} title="지금 수집 — 새 글만 가져와 태깅합니다" />
+        </span>
+      )}
       {/* 수집 축 토글 — is_active(뮤트)와 독립 (D-126) */}
       {onToggleCollect && (
         <button
@@ -371,6 +382,7 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
   const { data: health } = useSourcesHealth()
   const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "telegram").map((i) => [i.key, i]))
   const collect = useToggleCollect()
+  const refresher = useRefreshSource()
   const toggle = useToggleTelegramChannel()
   const qc = useQueryClient()
   const add = useMutation({
@@ -403,6 +415,8 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
             onToggle={() => toggle.mutate({ id: ch.id, is_active: !(ch.is_active === 1) })}
             onToggleCollect={() => collect.mutate({ kind: "telegram", key: ch.channel_name,
               enabled: h?.collect_enabled === false })}
+            onRefresh={() => refresher.refresh("telegram", ch.channel_name, ch.display_name || ch.channel_name)}
+            refreshing={refresher.isRefreshing("telegram", ch.channel_name)}
           />
         )
       })}
@@ -438,6 +452,7 @@ function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
   const { data: health } = useSourcesHealth()
   const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "youtube").map((i) => [i.key, i]))
   const collect = useToggleCollect()
+  const refresher = useRefreshSource()
 
   return (
     <ProposalPanel title="유튜브" count={channels.length} maxHeight="50vh"
@@ -456,6 +471,8 @@ function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
             onToggle={() => toggle.mutate({ id: ch.channel_id, active: !ch.is_active })}
             onToggleCollect={() => collect.mutate({ kind: "youtube", key: ch.channel_id,
               enabled: h?.collect_enabled === false })}
+            onRefresh={() => refresher.refresh("youtube", ch.channel_id, ch.title || ch.channel_id)}
+            refreshing={refresher.isRefreshing("youtube", ch.channel_id)}
           />
         )
       })}
@@ -476,6 +493,7 @@ function BlogSourcesCard({ title, placeholder, match, onGo }: {
   const { data: health } = useSourcesHealth()
   const healthMap = new Map((health?.items ?? []).filter((i) => i.kind === "blog").map((i) => [i.key, i]))
   const collect = useToggleCollect()
+  const refresher = useRefreshSource()
   const toggle = useToggleBlogSource()
   const qc = useQueryClient()
   const add = useMutation({
@@ -508,6 +526,8 @@ function BlogSourcesCard({ title, placeholder, match, onGo }: {
             onToggle={() => toggle.mutate({ id: src.id, is_active: !(src.is_active === 1) })}
             onToggleCollect={() => collect.mutate({ kind: "blog", key: src.url,
               enabled: h?.collect_enabled === false })}
+            onRefresh={() => refresher.refresh("blog", src.url, src.blog_name || src.url)}
+            refreshing={refresher.isRefreshing("blog", src.url)}
           />
         )
       })}

@@ -409,6 +409,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET·POST·DELETE /api/spine/follows` | 엔티티 팔로우 |
 | `GET·POST·DELETE /api/spine/keywords` | 매칭 키워드 (등록 시 소급 링크) |
 | `POST /api/spine/sources/telegram·blog·youtube` | 소스 등록 (실검증→저장→백그라운드 첫 수집). youtube=영상 링크 단건 또는 채널 @handle/URL 구독 |
+| `POST /api/spine/sources/refresh {kind,key}` · `GET /sources/refresh?kind&key` | **소스 즉시 수집(D-199, `pipeline/source_refresh.py`)** — 텔레그램 채널·유튜브 채널·블로그 하나를 cron 체인을 기다리지 않고 지금 수집. 같은 커넥터·적재(새 문서만 enrich)를 프로세스 안 스레드로, 상태(idle/running/done/skipped/error·stats)는 메모리, 기록은 `job_runs('refresh_source')`(관리자 on/off 대상). 같은 소스 중복 시작 없음. FE: `/follow` 소스 행 hover 새로고침 아이콘 + `/source` 도시에 헤더(`useRefreshSource`, 2초 폴링, 끝나면 계기판·목록·타임라인·도시에 재조회 + 토스트) |
 | `GET /api/spine/sources/health` · **`POST /sources/collect`** | **소스 계기판(D-127)** — 유입(7일·24h·최근 문서)에 **소비 지표 30일**(태깅실패·종목연결·**인과기여**[`entity_relations.source_doc_id`])을 더해 '들어온 문서가 실제로 쓰이나'까지 한 표에서 본다. telegram·blog·**youtube** 3종 전부(전엔 유튜브 15채널이 빠져 있었다). `collect_enabled` 반출 + `POST /collect`로 **수집 축 토글**(뮤트와 독립, D-126). 경고는 **수집 켜진 활성 소스**의 7일 유입 0만(끈 소스는 정상). `shared_domain` 플래그 — 같은 도메인 피드가 여럿이면 문서가 서로 중복 집계되므로 그 사실을 드러낸다(실측: mk.co.kr 3피드가 같은 기사에 모두 매칭돼 '경제'에 전부 귀속). `last_fetch_at`은 `raw_documents.fetched_at` 최대값 — 레지스트리 `last_fetched_at`은 **갱신 코드가 없는 죽은 컬럼**(blog 0/31·telegram 0/27). FE: `/follow` 소스 패널(새 탭 0개, D-013) — 소스 4종 2열 + `수집OFF` 배지·`수집중단/재개` 버튼, 종목 카드는 최하단 전폭 |
 
 기존 라우터(companies·financials·disclosures·stock_prices·watchlist·screener 등 17종)는 종목 디테일·리서치노트·스크리너가 계속 사용.
