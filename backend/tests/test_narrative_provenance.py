@@ -81,3 +81,37 @@ class Persist(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EdgeSourceDetail(unittest.TestCase):
+    def setUp(self):
+        from pipeline.narrative import edge_source
+        self.edge_source = edge_source
+        self.c = db()
+        self.c.executescript("""
+            ALTER TABLE raw_documents ADD COLUMN source_type TEXT; ALTER TABLE raw_documents ADD COLUMN source_id TEXT;
+            ALTER TABLE raw_documents ADD COLUMN url TEXT; ALTER TABLE raw_documents ADD COLUMN published_at TEXT;
+            ALTER TABLE entity_relations ADD COLUMN legacy_source_doc_id INTEGER;
+            CREATE TABLE narratives(id INTEGER PRIMARY KEY, title TEXT);
+            CREATE TABLE telegram_channels(channel_name TEXT, display_name TEXT);
+            CREATE TABLE blog_sources(url TEXT, blog_name TEXT); CREATE TABLE youtube_channels(channel_id TEXT, title TEXT);
+            CREATE TABLE scrap_links(doc_id INTEGER, channel TEXT);
+            UPDATE raw_documents SET source_type='telegram', source_id='teamctrine/15706' WHERE id=1;
+            UPDATE raw_documents SET source_type='blog', source_id='https://about.fb.com/x', url='https://about.fb.com/x' WHERE id=2;
+            INSERT INTO telegram_channels VALUES ('teamctrine', '팀 크트린');
+        """)
+
+    def test_verified_shows_doc_quote_channel_and_flags_thin_posts(self):
+        good = {"edges": [{**EDGE, "evidence": ["D1"], "quote": "앱스토어 매출이 10년 만에 처음으로 감소"}]}
+        _persist_causal(self.c, 7, None, good, labels=doc_labels([{"id": 1}, {"id": 2}]))
+        d = self.edge_source(self.c, 1)
+        self.assertEqual((d["status"], d["doc"]["id"], d["doc"]["channel"], d["doc"]["thin"]), ("verified", 1, "팀 크트린", True))
+        self.assertEqual(d["quote"], "앱스토어 매출이 10년 만에 처음으로 감소")
+        self.assertEqual(len(d["evidence"]), 1)
+
+    def test_legacy_edge_never_presents_the_recorded_doc_as_its_source(self):
+        self.c.execute("INSERT INTO entities(type,name) VALUES ('event','앱스토어 매출 감소'),('sector','인터넷 플랫폼 섹터')")
+        self.c.execute("INSERT INTO entity_relations(src_id,dst_id,rel_type,source_doc_id) VALUES (1,2,'CAUSES',2)")
+        d = self.edge_source(self.c, 1)
+        self.assertEqual((d["status"], d["doc"], d["recorded_doc_id"]), ("legacy_unverified", None, 2))
+        self.assertIsNone(self.edge_source(self.c, 99))

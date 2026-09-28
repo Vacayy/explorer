@@ -13,7 +13,7 @@
 import json
 
 from database import get_connection
-from pipeline.narrative import causal_subgraph
+from pipeline.narrative import causal_subgraph, source_status_of
 
 MAX_DEPTH = 6
 MAX_BRANCH = 4     # 노드당 다음 후보 상한 — 그래프 폭발 방지
@@ -197,6 +197,7 @@ def narrative_chain(conn, narrative_id: int, top_k: int = TOP_K) -> dict:
     return {"status": "ok" if candidates else "empty", "paths": candidates[:top_k]}
 
 
+
 def full_causal_graph(conn, category: str | None = None) -> dict:
     """전역 인과 그래프 — narrative_id 스코프 없이 전체 CAUSES/BENEFITS_FROM 엣지·노드
     (세계관 뷰, 그래프 시각화 기획서 §2). 엣지마다 교차검증 정보(causal_subgraph와 동일 계산)를
@@ -206,7 +207,7 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation,
                er.confidence, er.effect_direction, er.effect_strength,
-               er.promoted_knowledge_id, er.feedback_note, er.geo_scope,
+               er.promoted_knowledge_id, er.feedback_note, er.geo_scope, er.source_status, er.source_doc_id,
                s.id sid, s.name sname, s.type stype, s.meta_json smeta,
                d.id did, d.name dname, d.type dtype, d.meta_json dmeta
         FROM entity_relations er
@@ -274,6 +275,7 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
             "corroborated_by": n_narratives, "contested": contested,
             "feedback_note": e["feedback_note"], "geo_scope": e["geo_scope"],
             "promoted_knowledge_id": e["promoted_knowledge_id"],
+            "id": e["id"], "source_status": source_status_of(e),   # 출처 상세는 /edge/{id}/source (D-204)
         })
 
     for nid, node in nodes.items():

@@ -16,6 +16,8 @@ export interface WEdge {
   feedback_note?: string | null   // both_temporal 해소 근거 (D-029)
   geo_scope?: string | null       // 인과 주장의 장소 스코프 (통제어휘, D-034)
   flywheel?: boolean
+  id?: number
+  source_status?: import("./EdgeSource").SourceStatus | null   // 출처 검증 상태 (D-204)
 }
 
 export interface Worldview { nodes: WNode[]; edges: WEdge[] }

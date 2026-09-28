@@ -14,6 +14,7 @@ import {
 import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import { NODE_LABEL, type WEdge } from "./types"
+import { EdgeSourceBadge } from "./EdgeSource"
 
 const CHAIN_STAGES = ["소재", "부품", "장비", "완제품", "서비스", "기타"]
 
@@ -34,6 +35,7 @@ export function EdgeContextRow({ e, dir }: { e: WEdge; dir: "in" | "out" }) {
         {e.geo_scope && <Badge variant="outline" className="text-[9px]">{e.geo_scope}</Badge>}
         {e.corroborated_by >= 2 && <Badge variant="outline" className="text-[9px] text-primary border-primary/40">{e.corroborated_by}개 확인</Badge>}
         {e.contested && <Badge variant="destructive" className="text-[9px]">상충</Badge>}
+        <EdgeSourceBadge edgeId={e.id} status={e.source_status} />
       </div>
       {e.mechanism && <p className="text-xs text-muted-foreground leading-snug">{e.mechanism}</p>}
     </li>

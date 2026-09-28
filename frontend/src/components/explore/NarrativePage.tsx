@@ -22,6 +22,7 @@ import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
 import { FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { EdgeSourceBadge, type SourceStatus } from "@/components/explore/graph/EdgeSource"
 
 /**
  * /narrative?topic= — 주제 내러티브 (theme_surge 고도화, D-023 인과 그래프 위 서브그래프).
@@ -317,6 +318,7 @@ interface CausalEdge {
   reference_period: string | null; confidence: number | null
   effect_direction?: string | null; effect_strength?: string | null
   corroborated_by?: number; contested?: boolean; promoted_knowledge_id?: number | null
+  id?: number; source_status?: SourceStatus | null   // 출처 검증 (D-204)
   obs_confirmed?: boolean
 }
 interface CausalGraph { nodes: { name: string; type: string }[]; edges: CausalEdge[] }
@@ -407,6 +409,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
                       관측 확증
                     </Badge>
                   )}
+                  <EdgeSourceBadge edgeId={e.id} status={e.source_status} />
                   {e.mechanism && (
                     <span className="text-[11px] text-muted-foreground w-full pl-1">↳ {e.mechanism}</span>
                   )}

@@ -584,6 +584,49 @@ def compute_urgent_narratives() -> dict:
     return {"picked": picked, "results": results, "skipped": skipped, "signal_date": latest}
 
 
+def source_status_of(row) -> str:
+    """엣지 출처 상태(D-204). 컬럼이 비어 있으면(마이그레이션 전 행) 이전 방식으로 기록된 것으로 본다."""
+    status = row["source_status"]
+    if status:
+        return status
+    return "legacy_unverified" if row["source_doc_id"] else "unverified"
+
+
+def edge_source(conn, edge_id: int) -> dict | None:
+    """엣지 하나의 출처 상세 — 상태·인용·출처 문서(채널·게시일·길이·발췌)·내러티브별 확인된 근거. LLM 없음."""
+    er = conn.execute("""SELECT er.id, er.source_status, er.source_doc_id, er.source_quote, er.legacy_source_doc_id,
+                                er.epistemic_type, er.confidence, er.mechanism, s.name sname, d.name dname
+                         FROM entity_relations er JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
+                         WHERE er.id=?""", (edge_id,)).fetchone()
+    if not er:
+        return None
+    status = source_status_of(er)
+
+    def doc(doc_id):
+        if not doc_id:
+            return None
+        row = conn.execute("SELECT id, source_type, source_id, url, title, published_at, length(COALESCE(markdown,'')) chars, "
+                           "substr(COALESCE(markdown,''),1,280) excerpt FROM raw_documents WHERE id=?", (doc_id,)).fetchone()
+        if not row:
+            return None
+        from pipeline.sources import source_names
+        channel = source_names(conn, [row]).get(row["id"]) or {}
+        return {"id": row["id"], "source_type": row["source_type"], "channel": channel.get("name"),
+                "channel_kind": channel.get("kind"), "channel_key": channel.get("key"), "title": row["title"],
+                "published_at": row["published_at"], "url": row["url"], "chars": row["chars"], "excerpt": row["excerpt"],
+                "thin": row["chars"] < 120}   # 한두 줄짜리 전언 — 수치·데이터 출처가 본문에 없을 가능성이 높다
+    # legacy는 기록된 문서를 '출처'로 보여주지 않는다 — 입력 묶음의 마지막 문서였을 뿐이다
+    primary = doc(er["source_doc_id"]) if status in ("document", "verified") else None
+    evidence = [{"narrative_id": r["narrative_id"], "narrative_title": r["title"], "quote": r["quote"], "doc": doc(r["doc_id"])}
+                for r in conn.execute("""SELECT nee.narrative_id, nee.doc_id, nee.quote, n.title FROM narrative_edge_evidence nee
+                                         LEFT JOIN narratives n ON n.id=nee.narrative_id
+                                         WHERE nee.entity_relation_id=? AND nee.doc_id IS NOT NULL ORDER BY nee.id""", (edge_id,))]
+    return {"edge_id": er["id"], "from": er["sname"], "to": er["dname"], "status": status, "quote": er["source_quote"],
+            "epistemic_type": er["epistemic_type"], "confidence": er["confidence"], "mechanism": er["mechanism"],
+            "doc": primary, "evidence": evidence,
+            "recorded_doc_id": er["source_doc_id"] or er["legacy_source_doc_id"] if status == "legacy_unverified" else None}
+
+
 def causal_subgraph(conn, narrative_id: int) -> dict:
     """한 내러티브의 인과 서브그래프 — 노드·엣지 (프론트 구조 뷰용).
     엣지마다 교차검증 정보(Phase 2 §2-4)도 얹는다: corroborated_by(이 엣지를 주장한 독립
@@ -591,7 +634,8 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
     edges = conn.execute("""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
                er.effect_direction, er.effect_strength, er.obs_confirmed_at,
-               er.promoted_knowledge_id, er.feedback_note, er.geo_scope, s.id sid, s.name sname, s.type stype, d.id did, d.name dname, d.type dtype
+               er.promoted_knowledge_id, er.feedback_note, er.geo_scope, er.source_status, er.source_doc_id,
+               s.id sid, s.name sname, s.type stype, d.id did, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
         WHERE er.narrative_id=? AND er.rel_type IN ('CAUSES','BENEFITS_FROM')
@@ -617,7 +661,8 @@ def causal_subgraph(conn, narrative_id: int) -> dict:
                           "corroborated_by": n_narratives,
                           "contested": contested, "feedback_note": e["feedback_note"],
                           "geo_scope": e["geo_scope"], "obs_confirmed": bool(e["obs_confirmed_at"]),
-                          "promoted_knowledge_id": e["promoted_knowledge_id"]})
+                          "promoted_knowledge_id": e["promoted_knowledge_id"],
+                          "id": e["id"], "source_status": source_status_of(e)})
     return {"nodes": list(nodes.values()), "edges": out_edges}
 
 

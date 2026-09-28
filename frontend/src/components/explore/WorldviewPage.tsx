@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { X, Maximize2, Minimize2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
+import { NodeSourceSummary } from "@/components/explore/graph/EdgeSource"
 import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
@@ -514,6 +515,7 @@ function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WE
       onClose={onClose}
     >
       <div className="space-y-4 text-sm">
+        <NodeSourceSummary statuses={incident.map((e) => e.source_status)} />
         {(periods.length > 0 || geos.length > 0) && (
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground border-b pb-2">
             {periods.length > 0 && <span>관측 시점: {periods.join(" · ")}</span>}

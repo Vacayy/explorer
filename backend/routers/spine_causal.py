@@ -1,5 +1,5 @@
 """전역 인과 그래프 API — 세계관 뷰 (narrative_id 스코프 없는 전체 그래프, 그래프 시각화 기획서)."""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from database import get_connection
@@ -67,6 +67,20 @@ class GraphActivityNode(BaseModel):
     is_new: bool
     new_edges: int
     beneficiaries: list[ActivityBeneficiary] = []
+
+
+@router.get("/edge/{edge_id}/source")
+def get_edge_source(edge_id: int):
+    """인과 엣지의 출처 — 상태(document|verified|unverified|scenario|legacy_unverified)·인용·출처 문서·내러티브별 근거 (D-204). LLM 없음."""
+    from pipeline.narrative import edge_source
+    conn = get_connection()
+    try:
+        found = edge_source(conn, edge_id)
+    finally:
+        conn.close()
+    if not found:
+        raise HTTPException(404, "엣지를 찾을 수 없습니다")
+    return found
 
 
 @router.get("/activity", response_model=list[GraphActivityNode])
