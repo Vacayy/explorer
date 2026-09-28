@@ -114,6 +114,15 @@
 - 기존 원문·수집·요약 정책을 보존한다. 다중 자료는 위 프로젝트 스터디로 확장했다. 새 URL 자동 수집과 이미지/PDF 주석은 미구현이다. 웹 리서치는 D-159의 제한된 WebSearch/WebFetch 경로로 구현했다. 2026-09-11 격리 환경에서 실제 모델·수집 검색·웹 원문 읽기를 확인했으며 검증 범위는 상단 D-159 항목을 참고한다.
 - 현행 계약: `specs/study-mode.md`. 검증: `backend/tests/test_study.py`, `logs/study-implementation/`.
 
+## Home Risk 모니터링 (2026-09-28, D-205)
+
+- 시장 모드에서 `MarketContext` 다음에 `RiskMonitoring`의 네 추이 카드가 기본 표시된다. 장단기 금리차(10Y−2Y), 10Y와 신용 스프레드(분리축·공통 날짜), VIX, CNN 공포탐욕(0–100). 2열/모바일 1열, 금리·신용 기간은 `risk_macro_range`(기본 10년, 3개월~전체), 심리 기간은 `risk_range`(기본 3개월), 신용 계열은 `risk_credit` URL로 복원한다. 신용 설명 팝오버에서 다섯 지표의 역할과 한계를 확인한다. 피드에는 표시하지 않고 기존 상단 띠의 중복 지표는 제거했다.
+- `pipeline/risk.py`·`models/risk.py`·`routers/spine_risk.py`: GET `/api/spine/risk`는 저장 읽기만, POST `/snapshot`은 소스별 6시간 캐시·실패 독립 수집. `market_indicators`의 `risk_*`에 원천값·출처/수집시각(`extra_json`), `risk_sync_*`에 수집 결과를 저장한다. 새 DB 테이블·환경변수 없음. 기존 CNN/Yahoo/FRED 함수를 재사용하며 2Y/10Y는 FRED로 통일했다.
+- 장기 이력은 금리차 1976-06-01, Aaa−10Y 1983-01-03, Baa−10Y 1986-01-02부터 실제 수집했다. 장기 4개 원천은 최초 백필 후 최근 400일만 갱신하고 기존 이력을 계속 조회한다. OAS는 FRED 제공 제한에 따라 최근 3년을 수집하며 화면에서 미제공 구간을 명시한다.
+- FRED HY·BBB·AAA OAS와 Aaa/Baa−10Y를 구분한다. 동시 경계는 20 공통 관측일 10Y ≤−30bp·HY OAS ≥+75bp가 3회 지속된 실험 규칙이다. 결측을 채우지 않고 필수 자료 지연·실패/공통 관측 부족은 보류한다. 미국 연방 공휴일+Good Friday 달력 근사(비정기 휴장 미반영), 기대일은 직전 미국 영업일, 2영업일 초과 지연은 보류한다.
+- `scripts/snapshot_market.py` 실행 마지막에 Risk 수집을 연결했다. OS 크론 등록 자체는 변경하지 않았다. Home의 갱신 버튼도 같은 수집기를 호출한다. 초기 실제 소스 9개 수집 성공, 파생 금리차 포함 10개 응답 검증.
+- 검증: Risk 15개+기존 매크로 3개 테스트, FastAPI import/응답 스키마, FE 타입·프로덕션 빌드, 실데이터 차트·선택 복원·잘못된 URL·모바일·5-state·피드 제외. [계약](specs/home-feed.md#risk-모니터링-구현-계약-2026-09-28). 실험 임계값의 예측력 검증과 장기 위기 백테스트는 미완료다.
+
 ## 시장 홈 행 구성 보완 (2026-09-10)
 
 - 지수 스트립은 S&P500·나스닥·코스피·코스닥·항셍·니케이225·대만증시 순. `pipeline/indices`에 ^TWII/Asia-Taipei 세션 추가, 기존 index_* 저장소 재사용. 16px 값·20px 추이로 압축.
@@ -126,7 +135,7 @@
 
 - Dock: Home·관심목록·월드모델·대화. 관심목록 기본 목적지는 `/follow/saved`이며 저장됨이 첫 하위 탭이다. 모바일은 더보기 포함 5칸, Alt+1–4. `/follow`는 관심 대상, `/sources`는 기존 소스 CRUD를 분리한 관리 화면. Home 피드·더보기·Omnibar에서 관리 화면에 접근한다.
 - `/feed` 기본 진입은 Home 피드로 이동. `view=documents`와 기존 문서 검색 쿼리, `feed_*` 타임라인 필터는 호환 유지한다. 문서 검색은 더보기와 Omnibar에 보존한다.
-- `home/MarketContext`: 시장 모드 상단의 비고정·접이식 지표 요약. VIX·공포탐욕·2Y/10Y·달러원·WTI·금·BTC와 개별 관측일. 기본 접힘과 설정 복원, 상세에서 기존 시장 국면·매크로 모듈 사용. 하단 중복 제거, 피드에는 미노출.
+- `home/MarketContext`: 시장 모드 상단의 비고정·접이식 지표 요약. 달러원·WTI·금·BTC와 개별 관측일. VIX·공포탐욕·2Y/10Y는 D-205의 Risk 기본 차트로 이관. 기본 접힘과 설정 복원, 상세에서 기존 시장 국면·매크로 모듈 사용. 하단 중복 제거, 피드에는 미노출.
 - `shared/MetricTrend`: 시장 상단 지표의 hover/클릭/터치/키보드 추이 버블. 실제 관측일·범위·개수 및 결측 상태를 표시하며 매크로의 `dated_series`를 사용한다.
 - 스터디 1차 구현: 아래 스터디 항목과 `specs/study-mode.md` 참조. 새 URL 수집·외부 리서치는 후속이다.
 - `pipeline/macro.py`: 기존 `market_indicators`에 `macro_us2y`(FRED DGS2 공개 CSV), `macro_usdkrw`(Yahoo KRW=X)를 추가. 각 지표의 실제 마지막 관측일 `as_of` 반환, 소스 실패는 개별 처리. 새 테이블 없이 기존 수집·신호 생성 정책 유지.
@@ -252,7 +261,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | 테이블 | 행수 | 역할 |
 |---|---|---|
 | `entities` | 4,135+ | 노드: company·sector·theme·person + **macro·policy·event**(인과 그래프 노드, D-023 활성화) |
-| `entity_relations` | 2,760+ | 엣지: MEMBER_OF(기업→섹터, fact) + **CAUSES·BENEFITS_FROM**(인과, hypothesis — 내러티브 산출). epistemic_type·confidence(이 인과가 참이라는 **확신**만, D-065)·**effect_strength**(효과 크기 범주형 3단계 weak/moderate/strong+unknown, D-066)·**effect_direction**(positive/negative/mixed — 확신과 분리된 별개 축, D-065)·valid_from/to + mechanism·reference_period·time_orientation·narrative_id(D-023) + feedback_note(both_temporal 해소 근거 — non-null이면 상충 아닌 시점 다른 피드백 나선, contested 계산서 제외, D-029) + geo_scope(인과 주장의 장소 스코프 — 통제어휘 한국·미국·중국·유럽·일본·대만·글로벌·기타, reference_period와 대칭, backfill_geo_scope.py, D-034) + **source_status·source_quote·legacy_source_doc_id**(출처 검증 D-204: document=문서 단위 추출 / verified=내러티브가 댄 근거 인용을 원문에서 확인 / unverified=근거 못 댐·인용 불일치, source_doc_id NULL / scenario=가정 사건, 문서 출처 없음 / legacy_unverified=D-204 이전 내러티브 엣지) + **obs_confirmed_at·obs_confirmed_qid**(관측→엣지 환류 D-087 — 딛고 선 추적 질문이 confirm=leaning_yes+aligned 도달 시 '실데이터로 확인됨' 주석. **confidence와 별개 축**[축 분리 D-022/D-065], 성긴 매핑이라 blunt 수학 대신 가시 주석) |
+| `entity_relations` | 2,760+ | 엣지: MEMBER_OF(기업→섹터, fact) + **CAUSES·BENEFITS_FROM**(인과, hypothesis — 내러티브 산출). epistemic_type·confidence(이 인과가 참이라는 **확신**만, D-065)·**effect_strength**(효과 크기 범주형 3단계 weak/moderate/strong+unknown, D-066)·**effect_direction**(positive/negative/mixed — 확신과 분리된 별개 축, D-065)·valid_from/to + mechanism·reference_period·time_orientation·narrative_id(D-023) + feedback_note(both_temporal 해소 근거 — non-null이면 상충 아닌 시점 다른 피드백 나선, contested 계산서 제외, D-029) + geo_scope(인과 주장의 장소 스코프 — 통제어휘 한국·미국·중국·유럽·일본·대만·글로벌·기타, reference_period와 대칭, backfill_geo_scope.py, D-034) + **source_status·source_quote·legacy_source_doc_id**(출처 검증 D-204: document=문서 단위 추출 / verified=내러티브가 댄 근거 인용을 원문에서 확인 / unverified=근거 못 댐·인용 불일치, source_doc_id NULL / scenario=가정 사건, 문서 출처 없음 / legacy_unverified=D-204 이전 내러티브 엣지. 2026-09-28 백필(`scripts/backfill_edge_sources.py`, 백업 `backend/db/backups/stock_explorer-pre-D204-20260928-101451.db`): canon 236·문서 추출 1,207 → document, 시나리오 시각 202 → scenario, 내러티브·출처 불명 3,880 → legacy_unverified(출처 칸 비움, `legacy_source_doc_id`에 보존). 살아 있는 내러티브의 legacy 엣지는 `scripts/reverify_edge_sources.py`(내러티브당 haiku 1콜 + 같은 인용 확인)로 현재 문서에서 재검증 — 2026-09-28 실행: 58개 내러티브, 847개 중 139개 확인(verified 144개), haiku $4.48, 실패 0. 결과 분포 document 1,443 · verified 144 · scenario 202 · legacy_unverified 3,736. 소스 계기판의 '인과기여'는 이제 실제 출처만 센다) + **obs_confirmed_at·obs_confirmed_qid**(관측→엣지 환류 D-087 — 딛고 선 추적 질문이 confirm=leaning_yes+aligned 도달 시 '실데이터로 확인됨' 주석. **confidence와 별개 축**[축 분리 D-022/D-065], 성긴 매핑이라 blunt 수학 대신 가시 주석) |
 | `narratives` | 버전별 | 내러티브 1급 객체 — topic별 version 보존(supersede, 드리프트 추적)·title·body(md)·category(도메인 렌즈)·doc_ids_hash. 인과 서브그래프는 entity_relations의 narrative_id로 연결 (D-023). **제목=주장형(D-120)**: 결론을 단언하는 평서문(40자 내외·수치 예측 금지) — 제목만 노출되는 자리(목록·홈 피드·브리핑 인용)에서 자기충족적이게. 관통 질문은 **`core_question`**으로 분리 저장해 질문 트래커 제안(`propose_from_narratives`)에 공급. **구 버전(213건)은 백필 안 함** — 그 시절 title이 질문형이라 소비처가 `COALESCE(core_question, title)`로 두 세대 공존 |
 | `raw_documents` | 264 | 모든 소스의 문서 원본+markdown+media_json. UNIQUE(source_type, source_id) |
 | `enrichments` | 문서당 1 | 요약·감성·**time_orientation·reference_period**(시간 정박 D-021)·모델 (content_hash 캐시) |

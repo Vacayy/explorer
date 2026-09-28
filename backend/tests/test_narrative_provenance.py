@@ -115,3 +115,28 @@ class EdgeSourceDetail(unittest.TestCase):
         d = self.edge_source(self.c, 1)
         self.assertEqual((d["status"], d["doc"], d["recorded_doc_id"]), ("legacy_unverified", None, 2))
         self.assertIsNone(self.edge_source(self.c, 99))
+
+
+class Reverify(unittest.TestCase):
+    def test_only_quotes_found_in_current_docs_become_verified(self):
+        from unittest import mock
+        from pipeline import narrative as nv
+        c = db()
+        c.executescript("""
+            CREATE TABLE narratives(id INTEGER PRIMARY KEY, topic TEXT);
+            INSERT INTO narratives VALUES (345, '인터넷/플랫폼');
+            INSERT INTO entities(type,name) VALUES ('event','앱스토어 매출 감소'),('sector','인터넷 플랫폼 섹터'),('theme','소비자 AI');
+            INSERT INTO entity_relations(src_id,dst_id,rel_type,source_status) VALUES (1,2,'CAUSES','legacy_unverified'),(3,1,'CAUSES','legacy_unverified');
+            INSERT INTO narrative_edge_evidence(entity_relation_id,narrative_id) VALUES (1,345),(2,345);
+        """)
+        docs = [{"id": 1, "title": "애플($AAPL)의 앱스토어 매출이 10년 만에 처음으로 감소했습니다.", "ex": "", "source_type": "telegram"},
+                {"id": 2, "title": "Launching Bill Payments in India", "ex": "", "source_type": "blog"}]
+        answer = {"edges": [{"id": 1, "evidence": ["D1"], "quote": "앱스토어 매출이 10년 만에 처음으로 감소"},
+                            {"id": 2, "evidence": ["D2"], "quote": "소비 접점이 AI로 이동"},
+                            {"id": 99, "evidence": ["D1"], "quote": "앱스토어 매출이 10년 만에 처음으로 감소"}]}
+        with mock.patch.object(nv, "_resolve", return_value={"id": 1}), mock.patch.object(nv, "gather", return_value=docs):
+            out = nv.reverify_legacy_edges(c, 345, call=lambda prompt: answer)
+        self.assertEqual((out["checked"], out["verified"]), (2, 1))
+        rows = [tuple(r) for r in c.execute("SELECT id, source_status, source_doc_id FROM entity_relations ORDER BY id")]
+        self.assertEqual(rows, [(1, "verified", 1), (2, "legacy_unverified", None)])
+        self.assertEqual(c.execute("SELECT doc_id FROM narrative_edge_evidence WHERE entity_relation_id=1").fetchone()[0], 1)

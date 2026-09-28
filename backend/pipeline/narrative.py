@@ -592,6 +592,60 @@ def source_status_of(row) -> str:
     return "legacy_unverified" if row["source_doc_id"] else "unverified"
 
 
+REVERIFY_SYSTEM = ("너는 인과 주장의 근거를 문서에서 찾는 검증자다. 주장을 새로 만들거나 고치지 않는다. "
+                   "각 엣지마다 그 인과를 직접 뒷받침하는 문서 번호와, 그 문서의 제목·발췌에서 글자 그대로 복사한 10~60자 인용을 낸다. "
+                   "요약·번역·의역 금지. 직접 근거가 없으면 evidence=[]·quote=\"\"로 둔다 — 근거를 지어내지 마라. JSON만 출력.")
+REVERIFY_SCHEMA = {"type": "object", "properties": {"edges": {"type": "array", "items": {"type": "object", "properties": {
+    "id": {"type": "integer"}, "evidence": {"type": "array", "items": {"type": "string"}}, "quote": {"type": "string"}},
+    "required": ["id", "evidence", "quote"]}}}, "required": ["edges"]}
+
+
+def reverify_legacy_edges(conn, narrative_id: int, *, call=None) -> dict:
+    """이전 방식(legacy_unverified) 엣지의 근거를 그 내러티브 주제의 현재 문서에서 다시 찾는다 (D-204 백필).
+
+    모델 1콜(haiku)로 엣지마다 근거 번호·인용을 받고 verify_edge_evidence로 원문 확인된 것만 verified로 바꾼다.
+    확인 못 한 엣지는 legacy_unverified로 둔다. call(prompt) → dict는 테스트용 주입.
+    """
+    n = conn.execute("SELECT id, topic FROM narratives WHERE id=?", (narrative_id,)).fetchone()
+    ent = _resolve(conn, n["topic"]) if n else None
+    if not ent:
+        return {"narrative_id": narrative_id, "status": "no_topic", "checked": 0, "verified": 0}
+    edges = [dict(r) for r in conn.execute("""SELECT DISTINCT er.id, s.name sname, d.name dname, er.mechanism FROM entity_relations er
+        JOIN narrative_edge_evidence nee ON nee.entity_relation_id=er.id JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
+        WHERE nee.narrative_id=? AND er.source_status='legacy_unverified' ORDER BY er.id""", (narrative_id,))]
+    docs = gather(conn, ent["id"])
+    if not edges or not docs:
+        return {"narrative_id": narrative_id, "status": "nothing", "checked": len(edges), "verified": 0}
+    labels = doc_labels(docs)
+    doc_list = "\n".join(f"[D{i}] ({d['source_type']}) {d['title']}\n  {(d['ex'] or '').strip()[:300]}" for i, d in enumerate(docs, 1))
+    edge_list = "\n".join(f"- id={e['id']}: {e['sname']} → {e['dname']} — {e['mechanism'] or ''}" for e in edges)
+    prompt = f"[엣지]\n{edge_list}\n\n[문서]\n{doc_list}\n\n엣지마다 {{\"id\", \"evidence\": [\"D번호\"], \"quote\"}}를 edges 배열로."
+    if call is None:
+        from pipeline.llm import run
+
+        def call(text):
+            res = run(text, system=REVERIFY_SYSTEM, model="haiku", timeout=180, job="reverify_edge_sources", json_schema=REVERIFY_SCHEMA)
+            raw = res.text
+            return json.loads(raw[raw.find("{"):raw.rfind("}") + 1]), res.cost_usd
+    answer = call(prompt)
+    data, cost = answer if isinstance(answer, tuple) else (answer, None)
+    known = {e["id"] for e in edges}
+    verified = 0
+    for item in (data or {}).get("edges") or []:
+        if not isinstance(item, dict) or item.get("id") not in known:
+            continue
+        doc_id, quote = verify_edge_evidence(conn, item, labels)
+        if not doc_id:
+            continue
+        conn.execute("UPDATE entity_relations SET source_doc_id=?, source_quote=?, source_status='verified' "
+                     "WHERE id=? AND source_status='legacy_unverified'", (doc_id, quote, item["id"]))
+        conn.execute("UPDATE narrative_edge_evidence SET doc_id=?, quote=? WHERE entity_relation_id=? AND narrative_id=?",
+                     (doc_id, quote, item["id"], narrative_id))
+        verified += 1
+    conn.commit()
+    return {"narrative_id": narrative_id, "status": "done", "checked": len(edges), "verified": verified, "cost_usd": cost}
+
+
 def edge_source(conn, edge_id: int) -> dict | None:
     """엣지 하나의 출처 상세 — 상태·인용·출처 문서(채널·게시일·길이·발췌)·내러티브별 확인된 근거. LLM 없음."""
     er = conn.execute("""SELECT er.id, er.source_status, er.source_doc_id, er.source_quote, er.legacy_source_doc_id,
