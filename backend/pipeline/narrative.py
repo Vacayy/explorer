@@ -56,6 +56,11 @@ def gather(conn, entity_id: int) -> list[dict]:
         ORDER BY rd.published_at ASC LIMIT {DOCS}""", (entity_id,))]
 
 
+def doc_labels(docs: list[dict]) -> dict[str, int]:
+    """프롬프트의 문서 번호(D1, D2, …) → raw_documents.id. _build_prompt와 같은 순서."""
+    return {f"D{i}": d["id"] for i, d in enumerate(docs, 1)}
+
+
 def _hash(docs: list[dict]) -> str:
     return hashlib.sha256("|".join(str(d["id"]) for d in docs).encode()).hexdigest()
 
@@ -115,12 +120,48 @@ def _resolve_or_create_node(conn, name: str, type_: str, layer: str | None = Non
     return eid
 
 
+_QUOTE_STRIP = re.compile(r"[\s\"'“”‘’`·.,!?()\[\]{}<>~\-–—:;/|*#_]+")
+MIN_QUOTE = 6     # 정규화 후 이보다 짧은 인용은 우연 일치가 많아 근거로 받지 않는다
+QUOTE_MAX = 200
+
+
+def _norm(text: str) -> str:
+    return _QUOTE_STRIP.sub("", (text or "")).lower()
+
+
+def verify_edge_evidence(conn, edge: dict, labels: dict[str, int]) -> tuple[int | None, str | None]:
+    """모델이 댄 근거(evidence=["D3"], quote="…")를 원문에서 확인한다 (D-204).
+
+    인용을 공백·문장부호를 뗀 형태로 비교해, 근거로 든 문서(제목+본문)에 실제로 있으면 (doc_id, quote).
+    근거 번호가 없거나 인용이 짧거나 어느 문서에도 없으면 (None, None) — 출처 미확인으로 저장된다.
+    """
+    quote = (edge.get("quote") or "").strip()
+    if len(_norm(quote)) < MIN_QUOTE:
+        return None, None
+    refs = edge.get("evidence") or []
+    if isinstance(refs, str):
+        refs = [refs]
+    needle = _norm(quote)
+    for ref in refs:
+        doc_id = labels.get(str(ref).strip().upper().strip("[]"))
+        if doc_id is None:
+            continue
+        row = conn.execute("SELECT title, markdown FROM raw_documents WHERE id=?", (doc_id,)).fetchone()
+        if row and needle in _norm(f"{row['title'] or ''} {row['markdown'] or ''}"):
+            return doc_id, quote[:QUOTE_MAX]
+    return None, None
+
+
 def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, causal: dict,
-                     conf_cap: float = 1.0, epistemic: str = "hypothesis") -> int:
+                     conf_cap: float = 1.0, epistemic: str = "hypothesis", *,
+                     source_status: str = "document", labels: dict[str, int] | None = None) -> int:
     """인과 노드·엣지를 entity_relations에 적재. 같은 (src,dst,rel) 재적재는 confidence 강화.
     narrative_id=None이면 문서 레벨 추출(D-028 레버 3) — 근거 이력(narrative_edge_evidence)은 건너뛴다.
     conf_cap: 초기 confidence 상한 (문서 레벨은 0.5 — 반복 확인돼야 커진다).
-    epistemic: 'hypothesis'(시장 가설, 기본) | 'observed'(canon 역사 해석 — 널리 수용된 사실 사슬, D-030)."""
+    epistemic: 'hypothesis'(시장 가설, 기본) | 'observed'(canon 역사 해석 — 널리 수용된 사실 사슬, D-030).
+    출처(D-204): labels가 있으면(내러티브) 엣지마다 verify_edge_evidence로 근거 문서를 확인하고, 확인 못 하면
+    source_doc_id=NULL·source_status='unverified'. labels가 없으면 source_doc_id·source_status를 그대로 쓴다
+    (문서 단위 추출='document', 시나리오='scenario')."""
     ntype = {str(n.get("name")).strip(): (n.get("type") or "theme")
              for n in (causal.get("nodes") or []) if n.get("name")}
     nlayer = {str(n.get("name")).strip(): n.get("layer")
@@ -142,8 +183,13 @@ def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, c
         conf = min(conf, conf_cap)
         es = e.get("effect_strength") if e.get("effect_strength") in EFFECT_STRENGTHS else "unknown"
         ed = e.get("effect_direction") if e.get("effect_direction") in EFFECT_DIRECTIONS else None
+        if labels is not None:
+            doc_id, quote = verify_edge_evidence(conn, e, labels)
+            status = "verified" if doc_id else "unverified"
+        else:
+            doc_id, quote, status = source_doc_id, None, source_status
         existing = conn.execute(
-            "SELECT id, confidence FROM entity_relations WHERE src_id=? AND dst_id=? AND rel_type=?",
+            "SELECT id, confidence, source_status FROM entity_relations WHERE src_id=? AND dst_id=? AND rel_type=?",
             (sid, did, rel)).fetchone()
         if existing:  # 반복 확인 → confidence 강화(상한 0.95), 최신 내러티브로 연결 (교차검증의 씨앗)
             # 문서 레벨 재확인(narrative_id=None)이 기존 내러티브 태그를 지우지 않게 COALESCE
@@ -155,13 +201,17 @@ def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, c
                 (min(0.95, (existing["confidence"] or conf) + 0.05), narrative_id,
                  e.get("mechanism"), _norm_geo(e.get("geo")), es, ed, existing["id"]))
             rel_id = existing["id"]
+            # 기존 엣지의 출처가 확인되지 않았고 이번에 확인된 근거가 있으면 출처를 채운다 (D-204). 확인된 출처는 덮어쓰지 않는다.
+            if status in ("verified", "document") and doc_id and existing["source_status"] not in ("verified", "document"):
+                conn.execute("UPDATE entity_relations SET source_doc_id=?, source_quote=?, source_status=? WHERE id=?",
+                             (doc_id, quote, status, rel_id))
         else:
             cur = conn.execute(
                 "INSERT INTO entity_relations (src_id, dst_id, rel_type, epistemic_type, confidence, "
                 "effect_strength, effect_direction, "
-                "source_doc_id, mechanism, reference_period, time_orientation, narrative_id, geo_scope, valid_from) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-                (sid, did, rel, epistemic, conf, es, ed, source_doc_id, e.get("mechanism"),
+                "source_doc_id, source_status, source_quote, mechanism, reference_period, time_orientation, narrative_id, geo_scope, valid_from) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                (sid, did, rel, epistemic, conf, es, ed, doc_id, status, quote, e.get("mechanism"),
                  e.get("reference_period"), e.get("orientation"), narrative_id, _norm_geo(e.get("geo"))))
             rel_id = cur.lastrowid
             made += 1
@@ -169,8 +219,8 @@ def _persist_causal(conn, narrative_id: int | None, source_doc_id: int | None, c
         # 문서 레벨 추출은 내러티브가 아니므로 건너뜀 (source_doc_id로 별도 추적)
         if narrative_id is not None:
             conn.execute(
-                "INSERT OR IGNORE INTO narrative_edge_evidence (entity_relation_id, narrative_id) VALUES (?, ?)",
-                (rel_id, narrative_id))
+                "INSERT OR IGNORE INTO narrative_edge_evidence (entity_relation_id, narrative_id, doc_id, quote) VALUES (?, ?, ?, ?)",
+                (rel_id, narrative_id, doc_id if status == "verified" else None, quote if status == "verified" else None))
     return made
 
 
@@ -191,7 +241,9 @@ def _persist_narrative(conn, topic: str, data: dict, docs: list[dict], h: str) -
          data.get("narrative"), category, len(docs), h,
          f"claude-code/{NARRATIVE_MODEL}"))
     nid = cur.lastrowid
-    made = _persist_causal(conn, nid, docs[-1]["id"] if docs else None, data.get("causal") or {})
+    # 출처는 엣지마다 모델이 댄 근거 번호(D1…)와 인용을 원문에서 확인해 붙인다 (D-204). 전에는 모든 엣지에
+    # 입력 묶음의 마지막 문서(docs[-1])를 붙여, 무관한 문서가 출처로 보였다.
+    made = _persist_causal(conn, nid, None, data.get("causal") or {}, labels=doc_labels(docs))
     return nid, version, made
 
 
@@ -223,8 +275,8 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         if ref:
             tag += f"(대상: {ref})"
         return tag
-    tl = "\n".join(f"- 수집 {(d['published_at'] or '')[:10]} {_mark(d)} ({d['source_type']}) {d['title']}"
-                   f"\n  {(d['ex'] or '').strip()[:160]}" for d in docs)
+    tl = "\n".join(f"- [D{i}] 수집 {(d['published_at'] or '')[:10]} {_mark(d)} ({d['source_type']}) {d['title']}"
+                   f"\n  {(d['ex'] or '').strip()[:160]}" for i, d in enumerate(docs, 1))
     first = min((d["published_at"] or "")[:10] for d in docs) if docs else ""
     from pipeline.knowledge_recall import knowledge_block
     from pipeline.lenses import LENS_WORLDVIEW
@@ -282,7 +334,11 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         f"  ★기존 노드가 있으면 새로 만들지 말고 정확히 그 이름을 재사용: {', '.join(node_vocab[:60])}\n"
         "- causal.edges: 인과 고리. 각 "
         "{\"from\",\"to\",\"rel\",\"mechanism\",\"orientation\",\"reference_period\",\"geo\","
-        "\"effect_direction\",\"effect_strength\",\"confidence\"}.\n"
+        "\"effect_direction\",\"effect_strength\",\"confidence\",\"evidence\",\"quote\"}.\n"
+        "  ★근거(D-204, 반드시): evidence=이 인과를 뒷받침하는 문서 번호 배열(예 [\"D3\"], 아래 목록의 [D번호]), "
+        "quote=그 문서의 제목이나 발췌에서 **글자 그대로 복사한** 10~60자(요약·번역·의역 금지). "
+        "호스트가 인용을 원문에서 찾아 출처로 붙이고, 못 찾으면 '출처 미확인'으로 표시한다. "
+        "문서에 직접 근거가 없는 추론 고리라면 evidence=[]·quote=\"\"로 두고 confidence를 낮춰라 — 근거를 지어내지 마라.\n"
         "  rel='CAUSES'(원인→결과). 수혜 섹터는 rel='BENEFITS_FROM'(from=수혜 섹터, to=체인 말단 동인).\n"
         "  앞의 끝(근본 원인)은 policy/regime/structure 노드까지 거슬러라. "
         "뒤의 끝(수혜)은 sector까지만 — 개별 종목 금지.\n"

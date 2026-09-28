@@ -1203,6 +1203,14 @@ def init_db():
         "ALTER TABLE entity_relations ADD COLUMN geo_scope TEXT",  # 인과 주장의 장소 스코프 (통제어휘 GEO_VOCAB, D-034)
         "ALTER TABLE entity_relations ADD COLUMN effect_strength TEXT",   # 효과 크기 unknown|weak|moderate|strong — 확신과 별개 축 (D-065, 3단계 D-066)
         "ALTER TABLE entity_relations ADD COLUMN effect_direction TEXT",  # 효과 방향 positive|negative|mixed (D-065)
+        # 엣지 출처 검증 (D-204) — 내러티브 엣지는 모델이 댄 근거 문서의 인용을 호스트가 원문에서 확인한 뒤에만 출처로 붙인다.
+        # source_status: document(문서 단위 추출 — 그 문서가 곧 출처) | verified(인용 확인) | unverified(근거 못 댐/인용 불일치)
+        #                | scenario(가정 사건 시나리오 — 문서 출처 없음) | legacy_unverified(D-204 이전 내러티브 엣지, 마지막 입력 문서가 기록됐었음)
+        "ALTER TABLE entity_relations ADD COLUMN source_status TEXT",
+        "ALTER TABLE entity_relations ADD COLUMN source_quote TEXT",          # 근거 문서에서 확인한 인용(최대 200자)
+        "ALTER TABLE entity_relations ADD COLUMN legacy_source_doc_id INTEGER",  # D-204 백필 전 source_doc_id 보존(되돌리기용)
+        "ALTER TABLE narrative_edge_evidence ADD COLUMN doc_id INTEGER",      # 이 내러티브에서 이 엣지의 확인된 근거 문서
+        "ALTER TABLE narrative_edge_evidence ADD COLUMN quote TEXT",
         # 메르식 서사 (Phase 2 §2-2) — 순회 top-1 경로를 opus가 하나의 흐르는 글로
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
         "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
