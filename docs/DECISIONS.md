@@ -2589,3 +2589,13 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **구현 경계**: 이슈 추출 sonnet 1콜 추가(프롬프트 해시 캐시). 인용은 원문(텔레그램 본문, 뉴스 제목+요약)에 공백·따옴표 정규화 후 그대로 있어야 채택한다. 검증 출처가 0인 이슈는 버린다(Weekly D-173 규율 차용). 출처 번호는 모델이 `[S n]`으로 달고, 코드가 두 문단 공통 등장 순으로 재번호한다. 모르는 번호는 지운다. 채널 목록은 코드 상수 `MACRO_CHANNELS`이며 설정 화면은 없다. 이벤트 캘린더·일간 이슈와 Weekly 연결은 범위 밖이다. 구 행의 `index_summary`는 읽기 호환하고 `flow`는 읽지 않는다.
 
 **참조·검증**: docs/specs/us-briefing.md, pipeline/us_briefing.py(`_macro_issues`·`_verify_issues`·`_link_citations`·`_rate_bp`), pipeline/macro_news.py, scripts/fetch_macro_news.py(30분 체인), notify.py, UsBriefingSection.tsx. 단위 테스트 14개, 12피드 실제 수집, 2026-09-28 실제 생성(검증 출처 9개), FastAPI import·API 응답·tsc 확인.
+
+---
+
+## D-207 · 2026-09-29 · 공개 저장소에서 일회성 작업 문서는 추적하지 않는다
+
+**결정**: 저장소는 공개로 유지한다(사용자 확인). HTML 기획안(`docs/prototypes/`, 제3자 화면 캡처 포함), 제품 검토(`docs/reviews/`), 세션·대화 인계(`docs/HANDOFF.md`, `docs/specs/weekly-agent-handoff.md`), 구 문서(`docs/archive/`)는 추적을 해제하고 .gitignore에 넣는다. 로컬 파일은 그대로 둔다. 현행 구조·결정·정책·진행 중 spec, 그리고 README가 소개하는 `docs/research/` 조사 문서는 계속 추적한다.
+
+**이유·기각한 대안**: 일회성 문서가 공개 저장소에 쌓이면 현행 문서와 구분이 어렵다. 또 타인의 보고서 링크·외부 대화 인계·제3자 캡처·로컬 절대경로처럼 공개 의도가 없는 내용이 섞인다. 결정의 이유는 이미 DECISIONS에 요약돼 있다. 저장소 비공개 전환은 사용자가 공개를 원해 기각했다. 전부 삭제하는 안도 기각했다. 로컬 작업 중 링크로 다시 여는 용도가 있다. 이미 올라간 히스토리는 재작성하지 않았다(비밀값 없음 확인, 필요 시 별도 결정).
+
+**참조**: .gitignore · CLAUDE.md 문서 지도 · docs/specs/README.md

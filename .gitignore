@@ -46,3 +46,11 @@ docs/specs/chat-eval-runs/
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
 backend/graft/
+
+# 일회성 작업 문서 — 로컬 전용 (D-207, 공개 저장소). 기획 HTML·제품 검토·세션 인계·구 문서.
+# 결정 이유는 docs/DECISIONS.md, 현행 구조는 docs/SYSTEM.md에 남긴다.
+docs/prototypes/
+docs/reviews/
+docs/archive/
+docs/HANDOFF.md
+docs/specs/weekly-agent-handoff*.md

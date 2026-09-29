@@ -26,7 +26,8 @@
 - 전략·지표: docs/STRATEGY.md · 백로그: docs/BACKLOG.md · 온톨로지: docs/ontology.md
 - 스펙: docs/specs/ · 정책: docs/policies/
 - **스펙 진입점/수명주기: docs/specs/README.md**. 기존 담당 spec을 먼저 갱신한다. 새 spec은 독립된 계약/커버리지일 때만 만들고 인덱스에 상태·역할·다음 단계를 등록한다. 작업일별 설계/리포트 복제 금지. 개인 원문·실험 산출물은 로컬 logs, 현행 구조는 SYSTEM, 결정 이유는 DECISIONS에 둔다. 종료된 spec은 구현 계약으로 축소하거나 대체 문서를 명시해 archive로 이관한다.
-- **docs/archive/** — 낡은 구 문서 (ARCHITECTURE.md, PLAN.md). 현행 판단의 근거로 사용 금지.
+- **docs/archive/** — 낡은 구 문서 (ARCHITECTURE.md, PLAN.md). 현행 판단의 근거로 사용 금지. (로컬 전용)
+- **공개 저장소 — 일회성 작업 문서는 git 제외(D-207)**: HTML 기획안(`docs/prototypes/`)·제품 검토(`docs/reviews/`)·세션/대화 인계 문서는 로컬에만 둔다(.gitignore). 추적 문서에서 이들에 거는 링크는 GitHub에서 열리지 않으므로, 결정에 필요한 내용은 DECISIONS·spec 본문에 요약한다. 새 일회성 문서도 이 경로에 만든다.
 
 ---
 
