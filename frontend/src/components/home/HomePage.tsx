@@ -29,9 +29,9 @@ export default function HomePage() {
       overview={<IndexStrip />}>
       {mode === 'feed' ? <ChannelReader /> : <div className="@container/market space-y-5">
         <MarketContext />
-        <RiskMonitoring />
         <UsBriefingSection />
         <KrMoversSection />
+        <RiskMonitoring />
         <div className="market-module-grid" data-home-row="signals">
           <ThemeSurgeSummary />
           <MomentumSection />
