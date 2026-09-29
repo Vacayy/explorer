@@ -29,7 +29,7 @@
 
 ## 어젯밤 매크로 이슈 — 지정 소스 (D-206)
 구 ②문단은 매크로 지표를 읽고 태그로 고른 담론 발췌(180자)를 덧붙이는 구조라 "무슨 일이 있었나"가 비었다. 이제 **이슈가 문단의 주어이고, 지표는 그 이슈의 시장 반응 근거**다.
-- **지정 텔레그램 채널**(`MACRO_CHANNELS`, 코드 상수): 카이에 de market · Macro Jungle · Macro Trader · YIELD & SPREAD · 삼성 매크로 정성태 · 허재환(유진 전략) · 한지영(키움 전략/시황). 트럼프 발언 채널은 제외(사용자 지정).
+- **지정 텔레그램 채널**(`MACRO_CHANNELS`, 코드 상수): 카이에 de market · Macro Jungle · Macro Trader · YIELD & SPREAD · 삼성 매크로 정성태 · 허재환(유진 전략) · 한지영(키움 전략/시황) · KK Kontemporaries(2026-09-29 추가). 트럼프 발언 채널은 제외(사용자 지정).
 - **미국 주요 매체 RSS**(`pipeline/macro_news.py`, 무키): Bloomberg(Markets·Economics) · CNBC(Economy·Finance) · NYT(Business·Economy·Politics) · Politico(Politics) · MarketWatch(Top Stories) · Washington Post(Business) + 공식 Fed(보도자료·연설, 은행 인가·제재 항목 제외). 제목+요약만 쓴다(본문은 유료 벽). WSJ·Reuters·AP·BLS·재무부는 피드가 폐지·차단돼 제외(2026-09-29 실측).
 - **시간창**: 직전 거래일 미국장 마감(UTC 20:00) ~ 기준일 다음날 UTC 00:00(KST 09:00). 날짜 문자열 일치가 아니라 시각 구간.
 - **이슈 추출(sonnet 1콜, 프롬프트 해시 캐시 `us_macro_issues`)**: 창 안의 지정 채널 원문 + 뉴스 헤드라인 → 이슈 최대 5개 `{title, what, reaction, sources[{ref, quote}]}`. **인용 검증**: quote가 해당 원문(텔레그램 본문, 뉴스 제목+요약)에 공백 정규화 후 그대로 있어야 채택, 검증 인용이 0개인 이슈는 버린다(Weekly 하네스 D-173 인용 규율 차용).

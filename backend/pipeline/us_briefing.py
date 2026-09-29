@@ -451,7 +451,7 @@ def _macro_context() -> dict:
 # 어젯밤 매크로 이슈 (D-206) — 지정 소스에서 이슈를 뽑고, 인용이 원문에 그대로 있는 것만 남긴다.
 # 사용자 지정: 매크로·전략 텔레그램 채널 + 미국 주요 매체·Fed RSS. 트럼프 발언 채널(goddessTTF)은 제외.
 MACRO_CHANNELS = ("cahier_de_market", "Macrojunglemicrolens", "MacroAllocation", "yieldnspread",
-                  "samsung_macro", "huhjae", "hedgecat0301")
+                  "samsung_macro", "huhjae", "hedgecat0301", "kkkontemp")
 _MACRO_DOCS = 30          # 텔레그램 글 상한(최신순)
 _MACRO_DOC_CHARS = 2500   # 글당 원문 길이 상한
 _MACRO_NEWS = 80          # 헤드라인 상한(최신순)
