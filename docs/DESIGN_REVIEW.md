@@ -14,7 +14,7 @@ D-153 후속: Home을 상단 시장/피드 전환, 전체 폭 시장 그리드, 
 
 ## 상세 화면 후속 — 승인된 구현 계약
 
-[상세 읽기 HTML 기획안](prototypes/detail-reading-workspace.html): 문서와 내러티브의 실제 구조를 확인하고, 같은 읽기 레이아웃으로 묶는 안이다. 사용자가 상세 이행을 승인했다. 문서 상세·복귀 동선과 내러티브 상세·버전 화면을 같은 DetailLayout으로 적용한다.
+상세 읽기 HTML 기획안(로컬 전용 `prototypes/detail-reading-workspace.html`): 문서와 내러티브의 실제 구조를 확인하고, 같은 읽기 레이아웃으로 묶는 안이다. 사용자가 상세 이행을 승인했다. 문서 상세·복귀 동선과 내러티브 상세·버전 화면을 같은 DetailLayout으로 적용한다.
 
 현재 단절: DocPage는 PageContainer·작은 메타·요약/이미지/본문 카드가 분리되고 `navigate(-1)` 복귀만 사용한다. NarrativePage는 별도 상단 액션, 본문 아래 이력/질문/시나리오/인과/근거/관련 항목이 길게 이어진다. 홈 원문 리더와 글 표시 방식도 달라진다. 문서의 원시 텍스트/Markdown 구분은 DocPage의 원문 보존 규칙을 공통 DocumentBody로 추출했다. Telegram·블로그 등은 저장 텍스트를 보존하고 YouTube/canon/note 및 저장 요약은 Markdown으로 표시한다. 피드와 상세가 이 규칙을 공유하며 영상 본문은 AI 정리본일 수 있음을 표시한다.
 

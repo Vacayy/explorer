@@ -37,11 +37,11 @@
 | 문서 | 역할 | 상태 | 다음 단계 |
 |---|---|---|---|
 | Weekly 에이전트 인계 (`weekly-agent-handoff.md`, 로컬 전용) | 외부 대화 맥락과 기존 수집·분석 구조의 접점 | 설계 제안, 미확정. 2026-09-14 코드·보유 데이터 대조 | 원문·차트 재확보, 한 주차 질문·기간·사례·반증 조건 파일럿 구체화 |
-| [Weekly 분석 하네스 설계 (HTML)](weekly-harness-design.html#final-harness-design) | 브리핑 생산·실행/개선루프·결정 근거와 현행 CLI/API·시점 계약의 기준 문서 | D-173: [쟁점별 원문 조사·반론 재조사·판단·집필 실행](weekly-harness-design.html#research-runtime)을 기존 v2 경로에 연결. D-171·172 [목표 설계·다이어그램](../../logs/weekly-harness/final-design/index.html)은 유지하며 자동개선·릴리스 실행기는 보류. [보강 인계](weekly-agent-handoff%20(1).md) 참조 | [최종 Weekly](../../logs/weekly-harness/comparisons/weekly-research-20260916-r2/corrected.html)·[구현과 원문 대조](../../logs/weekly-harness/comparisons/weekly-research-20260916-r2/implementation-review.html) 완료(본문 추가 검사 통과·전문가 품질 미확정). 유가·펀더멘탈 분석 깊이 개선 → 미사용 주차 전문가 평가. 신규 외부 수집·사건별 계산·주간 갱신은 후속 |
+| [Weekly 분석 하네스 설계 (HTML)](weekly-harness-design.html#final-harness-design) | 브리핑 생산·실행/개선루프·결정 근거와 현행 CLI/API·시점 계약의 기준 문서 | D-173: [쟁점별 원문 조사·반론 재조사·판단·집필 실행](weekly-harness-design.html#research-runtime)을 기존 v2 경로에 연결. D-171·172 [목표 설계·다이어그램](../../logs/weekly-harness/final-design/index.html)은 유지하며 자동개선·릴리스 실행기는 보류. 보강 인계(로컬 전용 `weekly-agent-handoff%20(1`).md) 참조 | [최종 Weekly](../../logs/weekly-harness/comparisons/weekly-research-20260916-r2/corrected.html)·[구현과 원문 대조](../../logs/weekly-harness/comparisons/weekly-research-20260916-r2/implementation-review.html) 완료(본문 추가 검사 통과·전문가 품질 미확정). 유가·펀더멘탈 분석 깊이 개선 → 미사용 주차 전문가 평가. 신규 외부 수집·사건별 계산·주간 갱신은 후속 |
 
 ## 구현·검증: 시장 데이터 CodeAct
 
-제품 흐름과 클릭 가능한 화면 예시는 [발견에서 판단까지 — HTML 기획안](../prototypes/discovery-research-plan.html)에서 확인한다. 후속 기능 설계이며, 가상 자료로 된 예시와 실제 구현·자료 현황을 구분한다.
+제품 흐름과 클릭 가능한 화면 예시는 발견에서 판단까지 — HTML 기획안(로컬 전용 `prototypes/discovery-research-plan.html`)에서 확인한다. 후속 기능 설계이며, 가상 자료로 된 예시와 실제 구현·자료 현황을 구분한다.
 
 | 문서 | 역할 | 상태 | 다음 단계 |
 |---|---|---|---|

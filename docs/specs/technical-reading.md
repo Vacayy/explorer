@@ -94,7 +94,7 @@ API: `GET /api/spine/technical-scan/{code}` 응답에 `readings[]`·`canvas`를 
 
 ## 신뢰·조작 개선 묶음 A (2026-09-23, D-201)
 
-[승인한 HTML 기획안](../prototypes/discovery-technical-improvement-plan.html)의 첫 묶음. 계산·감시 엔진을 바꾸지 않고 저장된 결과와 현재 API의 의미를 정확히 연결한다.
+승인한 HTML 기획안(로컬 전용 `prototypes/discovery-technical-improvement-plan.html`)의 첫 묶음. 계산·감시 엔진을 바꾸지 않고 저장된 결과와 현재 API의 의미를 정확히 연결한다.
 
 - **관측과 판정:** `scanEvidence.readingEvidence`는 RSI·이동평균 배열·ADX·이격·볼린저 위치의 참조 조건을 중립 지표로 묶는다. RSI 60에 과매도 `fail`을 참조해도 ‘RSI · 중립’이다. 빠진 조건은 중립으로 추정하지 않는다. 나머지 조건에는 충족/불충족/미평가를 붙인다. `TechnicalEvidence`의 Dialog에서 개별 조건·원 판정·계산 값·비교 기준·날짜를 확인하고 닫으면 원 버튼으로 초점이 복귀한다. 정밀 값은 최대 소수 15자리로 보존한다. 충족 개수는 접힌 평가 범위로 옮긴다.
 - **발견 당시 / 현재:** `DiscoveryTechnicalContext`는 `useAnalysisRun`으로 원 실행을 읽고 기존 `CandidateChart`를 재사용한다. 당시 보기는 그 실행의 고정된 차트와 조건만 표시한다. 현재 보기는 최신 보유 시세와 기본 스캔을 보여주고 원 질문·기준일·검색 범위를 보존한다. 현재 스캔의 매개변수가 당시 검색과 다를 수 있다고 명시한다. 동일 조건 버전의 변화 비교는 묶음 C에 남긴다.
