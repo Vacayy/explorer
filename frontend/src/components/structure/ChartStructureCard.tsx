@@ -112,14 +112,14 @@ function StructureChart({ params, onChange, height, compact }: { params: Structu
       {result.kind === 'levels' && result.summary.levels && result.summary.levels.length > 0 && <ul className="flex flex-wrap gap-1.5">{[...result.summary.levels].sort((a, b) => b.price - a.price).map(level => <li key={level.price}><Badge variant={level.role === 'resistance' ? 'default' : 'secondary'} className="font-normal tabular-nums">{level.role === 'resistance' ? '저항' : '지지'} {price(level.price)} · {formatNumber(level.touches)}회</Badge></li>)}</ul>}
       {result.kind === 'profile' && result.summary.bins && <ProfileBars bins={result.summary.bins} close={result.summary.close} price={price} />}
       <p className="text-caption text-muted-foreground">{result.window.from} ~ {result.window.to} · {formatNumber(result.window.sessions)}거래일{result.kind === 'profile' ? <>. 매물대는 일봉 대표가격 (고+저+종)/3에 그날 거래량을 배정한 근사이고 체결가별 실제 거래량이 아닙니다. 긴 기간은 여러 국면이 섞이니 3·6개월로 좁혀 비교하세요.</> : <> · 기준점 {formatNumber(result.pivots.filter(p => p.anchor).length)}개 / 스윙 {formatNumber(result.pivots.length)}개. 구조는 규칙(스윙 폭·적합 방식)으로 그린 결정적 선이고 예측이 아닙니다.</>}</p>
-      {result.conditions.length > 0 && <div className="flex flex-wrap items-end gap-2 rounded-lg bg-muted/40 p-3" aria-label="이 구조를 조건으로">
-        <div className="space-y-1"><Label htmlFor={`${id}-condition`} className="text-caption text-muted-foreground">이 구조를 조건으로</Label>
-          <Select value={condition?.strategy_id} onValueChange={setConditionId}><SelectTrigger id={`${id}-condition`} size="sm" className="h-8 w-auto min-w-44"><SelectValue /></SelectTrigger>
+      {result.conditions.length > 0 && <div className="flex flex-wrap items-end gap-2 rounded-lg bg-muted/40 p-3" aria-label="유사 조건으로 관찰">
+        <div className="w-full min-w-0 space-y-1 sm:w-auto"><Label htmlFor={`${id}-condition`} className="text-caption text-muted-foreground">유사한 동적 조건 선택</Label>
+          <Select value={condition?.strategy_id} onValueChange={setConditionId}><SelectTrigger id={`${id}-condition`} className="h-auto min-h-9 w-full max-w-full min-w-0 whitespace-normal sm:min-w-44 [&>span]:line-clamp-none [&>span]:text-left [&_svg]:shrink-0"><SelectValue /></SelectTrigger>
             <SelectContent>{result.conditions.map(item => <SelectItem key={item.strategy_id} value={item.strategy_id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
-        {params.market === 'kr' && <GroupPicker label={appendRule.isPending ? '추가 중…' : '감시 규칙으로'} icon={<Bell className="size-3.5" />} onPick={watch} busy={appendRule.isPending} />}
+        {params.market === 'kr' && <GroupPicker description="저장할 규칙은 매 평가 시 최신 시세로 기준선을 다시 계산합니다. 현재 그림의 선과 다른 가격에서 신호가 발생할 수 있습니다." label={appendRule.isPending ? '추가 중…' : '유사 조건 감시'} icon={<Bell className="size-3.5" />} onPick={watch} busy={appendRule.isPending} />}
         <Button asChild variant="outline" size="sm"><Link to={`/discover?q=${encodeURIComponent(searchQuestion)}`}><Search className="size-3.5" />이 조건으로 종목 찾기</Link></Button>
-        {!compact && <Button asChild variant="ghost" size="sm"><Link to={params.market === 'us' ? `/us/${params.code}` : `/analyze/${params.code}/summary`}><ExternalLink className="size-3.5" />기업 페이지</Link></Button>}
-        <p className="basis-full text-caption text-muted-foreground">{condition?.note}</p>
+        {!compact && <Button asChild variant="ghost" size="sm"><Link to={`${params.market === 'us' ? `/us/${params.code}` : `/analyze/${params.code}/summary`}?${new URLSearchParams({ scan: '1', scan_view: 'structure', structure_kind: params.kind, structure_window: params.window, structure_swing: String(params.swing), structure_fit: params.fit })}`}><ExternalLink className="size-3.5" />기업 페이지</Link></Button>}
+        <p className="basis-full text-sm">매 평가 시 최신 시세로 기준선을 다시 계산합니다. 지금 보이는 선을 고정해 감시하는 기능은 아닙니다.</p><p className="basis-full text-caption text-muted-foreground">{condition?.note}</p>
       </div>}
     </>}
   </div>
@@ -155,13 +155,13 @@ export function ChartStructureCard({ params, codes, onChange, question, height =
     </div>}
     <StructurePresetChips params={params} onPick={preset => onChange({ ...params, ...preset })} />
     <div className="flex flex-wrap items-end gap-3">
-      <div className="space-y-1"><Label className="text-caption text-muted-foreground">구조</Label>
-        <ToggleGroup type="single" variant="outline" size="sm" value={params.kind} onValueChange={value => { if (value) onChange({ ...params, kind: value as StructureKind }) }} aria-label="구조 종류">
-          {(Object.keys(KIND_LABEL) as StructureKind[]).map(kind => <ToggleGroupItem key={kind} value={kind} className="h-8 px-3 text-sm">{KIND_LABEL[kind]}</ToggleGroupItem>)}
+      <div className="min-w-0 max-w-full space-y-1"><Label className="text-caption text-muted-foreground">구조</Label>
+        <ToggleGroup type="single" variant="outline" size="sm" value={params.kind} onValueChange={value => { if (value) onChange({ ...params, kind: value as StructureKind }) }} aria-label="구조 종류" className="max-w-full flex-wrap justify-start">
+          {(Object.keys(KIND_LABEL) as StructureKind[]).map(kind => <ToggleGroupItem key={kind} value={kind} className="min-h-11 px-3 text-sm">{KIND_LABEL[kind]}</ToggleGroupItem>)}
         </ToggleGroup></div>
       <div className="space-y-1"><Label htmlFor={`${id}-window`} className="text-caption text-muted-foreground">기간</Label>
         <Select value={params.window in WINDOW_LABEL ? params.window : 'custom'} onValueChange={value => { if (value !== 'custom') onChange({ ...params, window: value }) }}>
-          <SelectTrigger id={`${id}-window`} size="sm" className="h-8 w-28"><SelectValue /></SelectTrigger>
+          <SelectTrigger id={`${id}-window`} className="h-8 w-28"><SelectValue /></SelectTrigger>
           <SelectContent>{Object.entries(WINDOW_LABEL).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}{!(params.window in WINDOW_LABEL) && <SelectItem value="custom">{params.window}</SelectItem>}</SelectContent>
         </Select></div>
       {!isProfile && <div className="min-w-44 space-y-1"><Label htmlFor={`${id}-swing`} className="text-caption text-muted-foreground">스윙 폭 {swingDraft ?? params.swing}봉 {(swingDraft ?? params.swing) >= 10 ? '(큰 구조)' : (swingDraft ?? params.swing) <= 3 ? '(세밀)' : ''}</Label>

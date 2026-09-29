@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, LoaderCircle, Search, X } from 'lucide-react'
-import { API_BASE } from '@/api/client'
+import { useAnalysisStrategies } from '@/hooks/useAnalysisStrategies'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,16 +38,7 @@ function StrategyDefinitionText({ definition }: { definition: StrategyDefinition
 }
 
 export function StrategyLibrary({ busy, onStart }: { busy: boolean; onStart: (submission: StrategySubmission) => Promise<void> }) {
-  const catalog = useQuery({
-    queryKey: ['market-analysis', 'strategies'],
-    queryFn: async ({ signal }): Promise<{ version: string; items: StrategyDefinition[] }> => {
-      const response = await fetch(`${API_BASE}/api/analysis/strategies`, { signal })
-      if (!response.ok) throw new Error('전략 도구를 불러오지 못했습니다.')
-      return response.json()
-    },
-    staleTime: 60_000,
-    retry: 1,
-  })
+  const catalog = useAnalysisStrategies()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('전체')
   const [conditions, setConditions] = useState<StrategyCondition[]>([])

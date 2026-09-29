@@ -31,6 +31,17 @@ export function analysisArtifactUrl(runId: string, artifactId: string) {
   return `${ROOT}/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}`
 }
 
+/** Read a saved discovery without opening event streams or starting work. */
+export function useAnalysisRun(runId: string | null) {
+  return useQuery({
+    queryKey: runKey(runId),
+    queryFn: ({ signal }) => request<AnalysisRun>(`/${encodeURIComponent(runId!)}`, undefined, signal),
+    enabled: !!runId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+}
+
 export function useAnalysisChart(runId: string, code: string | null) {
   return useQuery({
     queryKey: ['market-analysis', 'chart', runId, code],

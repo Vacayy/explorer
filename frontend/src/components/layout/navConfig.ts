@@ -74,19 +74,26 @@ const ANALYZE_TAB_DEFS = [
 export function companyResearchSearch(search = ''): string {
   const source = new URLSearchParams(search)
   const discovery = source.get('discovery')
-  if (!discovery) return ''
-  const params = new URLSearchParams({ discovery })
-  for (const key of ['research', 'researchTab', 'lane']) {
+  const params = new URLSearchParams()
+  if (discovery) params.set('discovery', discovery)
+  for (const key of discovery ? ['research', 'researchTab', 'lane'] : []) {
     const value = source.get(key)
     if (value) params.set(key, value)
   }
-  return `?${params}`
+  const sourceRun = source.get('source_run')
+  if (sourceRun) params.set('source_run', sourceRun)
+  for (const key of ['scan', 'scan_within', 'scan_chart', 'scan_view', 'structure_kind', 'structure_window', 'structure_swing', 'structure_fit', ...(sourceRun ? ['scan_at', 'source_compare', 'source_sort'] : [])]) {
+    const value = source.get(key)
+    if (value) params.set(key, value)
+  }
+  return params.size ? `?${params}` : ''
 }
 
 export const analyzeTabs = (stockCode: string, search = ''): SubTab[] => {
   const context = companyResearchSearch(search)
+  const hasDiscovery = new URLSearchParams(context).has('discovery')
   return ANALYZE_TAB_DEFS.map((t) => ({
-    key: t.key, label: context && t.key === 'summary' ? '기업 조사' : t.label,
+    key: t.key, label: hasDiscovery && t.key === 'summary' ? '기업 조사' : t.label,
     path: `/analyze/${stockCode}/${t.key}${context}`,
   }))
 }

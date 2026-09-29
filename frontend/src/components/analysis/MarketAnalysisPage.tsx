@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, CornerDownRight, Download, History, Library, LoaderCircle, Plus, Search, SlidersHorizontal, Square } from 'lucide-react'
 import { PageHeader, PageLayout } from '@/components/shared/PageLayout'
 import { ErrorState } from '@/components/shared/ErrorState'
-import { FreshnessStamp } from '@/components/shared/FreshnessStamp'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -23,12 +22,13 @@ import { QuestionRefiner } from '@/components/analysis/QuestionRefiner'
 import { StrategyLibrary, type StrategySubmission } from '@/components/analysis/StrategyLibrary'
 import { DiscoveryLibrary, DiscoveryRecommendations, SaveDiscoveryStrategy } from '@/components/analysis/DiscoveryLibrary'
 import { DiscoveryFollowup, type FollowupSubmission } from '@/components/analysis/DiscoveryFollowup'
+import { DiscoveryStart } from '@/components/analysis/DiscoveryStart'
+import { useSessionDraft } from '@/hooks/useSessionDraft'
+import { isSearchDraft } from '@/components/analysis/discoveryDraft'
 import { isTerminal } from '@/components/analysis/events'
 import type { AnalysisRun, RunStatus } from '@/components/analysis/types'
 import api from '@/api/client'
-import { ChartStructureCard, STRUCTURE_PRESETS, type StructureFit, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
-import { readRecentStocks } from '@/lib/recentStocks'
-import { PenLine } from 'lucide-react'
+import { ChartStructureCard, type StructureFit, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
 
 const EXAMPLES = [
   { label: '강한 추세', question: '시가총액 5000억원 이상 종목 중 52주 신고가를 돌파하고 최근 14거래일 동안 20일 이동평균 위를 유지한 종목을 찾아줘' },
@@ -70,10 +70,18 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
     scrolled.current = true
     focused.current?.scrollIntoView({ block: 'start' })
   }, [turns, runId])
-  const [question, setQuestion] = useState(initialQuestion)
-  const [asOf, setAsOf] = useState('')
-  const [within, setWithin] = useState(1) // 문장에 기간이 없는 조건의 판정 범위(거래일)
-  const [customWithin, setCustomWithin] = useState(false)
+  const [draft, setDraft, stored] = useSessionDraft(`explorer:discovery:natural:v1:${initialQuestion}`, { question: initialQuestion, asOf: '', within: 1 }, isSearchDraft)
+  const { question, asOf, within } = draft
+  const setQuestion = (next: SetStateAction<string>) => setDraft(previous => ({ ...previous, question: typeof next === 'function' ? next(previous.question) : next }))
+  const setAsOf = (asOf: string) => setDraft(previous => ({ ...previous, asOf }))
+  const setWithin = (within: number) => setDraft(previous => ({ ...previous, within }))
+  const [customWithin, setCustomWithin] = useState(!WITHIN_OPTIONS.some(option => option.value === within))
+  const naturalOpen = (params.get('intent') ?? (initialQuestion ? 'natural' : '')) === 'natural'
+  const setNaturalOpen = (open: boolean) => setParams(previous => { const next = new URLSearchParams(previous); if (open) next.set('intent', 'natural'); else next.set('intent', ''); return next }, { replace: true, preventScrollReset: true })
+  const focusQuestion = () => {
+    setNaturalOpen(true)
+    requestAnimationFrame(() => { const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null; field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' }) })
+  }
   const requestKey = useRef<{ input: string; key: string } | null>(null)
   const submitting = useRef(false)
   const busy = !!run && !isTerminal(run.status)
@@ -90,32 +98,27 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
       const base = previous.trim() ? previous.trimEnd() : '다음 조건을 모두 만족하는 종목을 찾아줘.'
       return `${base}\n- ${phrase}`
     })
-    const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null
-    field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    focusQuestion()
   }
 
   const [drawNotice, setDrawNotice] = useState<string | null>(null)
-  const drawCodes = (params.get('code') ?? '').split(',').filter(Boolean) // 여러 종목 비교는 code=000500,005930
-  const drawParams: StructureParams | null = params.get('mode') === 'draw' && drawCodes.length > 0 ? {
+  const drawingMode = params.get('mode') === 'draw'
+  const drawingCodes = params.get('code') ?? ''
+  const drawCodes = drawingCodes.split(',').filter(Boolean) // 여러 종목 비교는 code=000500,005930
+  const drawParams: StructureParams | null = drawingMode && drawCodes.length > 0 ? {
     code: drawCodes[0], market: (params.get('market') === 'us' ? 'us' : 'kr'), kind: (params.get('kind') as StructureKind) || 'channel',
     window: params.get('window') || 'ytd', swing: Number(params.get('swing')) || 5, fit: (params.get('fit') as StructureFit) || 'two_point',
   } : null
   const setDraw = (next: StructureParams, q?: string, codes?: string[]) => setParams(previous => {
     const draft = new URLSearchParams(previous)
-    for (const key of ['run', 'candidate', 'view', 'panel']) draft.delete(key)
-    draft.set('mode', 'draw'); draft.set('code', (codes ?? drawCodes.length > 0 ? (codes ?? drawCodes) : [next.code]).join(',')); draft.set('market', next.market); draft.set('kind', next.kind); draft.set('window', next.window); draft.set('swing', String(next.swing)); draft.set('fit', next.fit)
-    if (q !== undefined) draft.set('q', q)
+    for (const key of ['run', 'candidate', 'compare', 'sort', 'intent', 'view', 'panel']) draft.delete(key)
+    draft.set('mode', 'draw'); draft.set('code', (codes ?? (drawCodes.length > 0 ? drawCodes : [next.code])).join(',')); draft.set('market', next.market); draft.set('kind', next.kind); draft.set('window', next.window); draft.set('swing', String(next.swing)); draft.set('fit', next.fit)
+    if (q !== undefined) { if (q) draft.set('q', q); else draft.delete('q') }
     return draft
   })
-  /** 추천 구조 프리셋 → 최근 본 종목 이름을 붙여 질문으로. 최근 종목이 없으면 [종목] 자리를 선택해 둔다. */
-  function applyPreset(phrase: string) {
-    const recent = readRecentStocks().find(item => item.market === 'kr') ?? readRecentStocks()[0]
-    const text = recent ? `${recent.name} ${phrase}` : `[종목] ${phrase}`
-    setQuestion(text)
-    const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null
-    field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    if (!recent && field) requestAnimationFrame(() => field.setSelectionRange(0, 4))
-  }
+  useEffect(() => {
+    if (!runId && drawingMode && drawingCodes) document.getElementById('discovery-structure-workspace')?.scrollIntoView({ block: 'start' })
+  }, [runId, drawingMode, drawingCodes])
 
   async function submit(strategy?: StrategySubmission | FollowupSubmission) {
     const body = strategy ?? { question: question.trim(), ...(asOf ? { as_of: asOf } : {}), ...(within > 1 ? { default_within_days: within } : {}) }
@@ -167,28 +170,31 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
 
     {library && <DiscoveryLibrary onOpen={onOpen} />}
     <div hidden={library} className="space-y-5">
-      {drawParams && !runId && <ChartStructureCard params={drawParams} codes={drawCodes} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} />}
+      {drawParams && !runId && <div id="discovery-structure-workspace" className="scroll-mt-4"><ChartStructureCard params={drawParams} codes={drawCodes} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} /></div>}
       {drawNotice && <p role="alert" className="rounded-lg bg-muted/40 p-3 text-sm">{drawNotice} 종목 이름이나 코드를 문장에 넣어 다시 요청하거나, 그대로 조건 검색으로 진행하려면 "찾아줘"처럼 검색 동사를 써 주세요.</p>}
       {!runId && <>
+        <DiscoveryStart busy={analysis.start.isPending} onStart={submit} onDraw={next => setDraw(next, '', [next.code])} />
+        <Collapsible open={naturalOpen} onOpenChange={setNaturalOpen} className="rounded-xl bg-card"><CollapsibleTrigger asChild><Button variant="ghost" className="min-h-12 w-full justify-between whitespace-normal px-5">직접 조건을 설명해서 찾기<ChevronDown className="size-4 shrink-0" /></Button></CollapsibleTrigger><CollapsibleContent>
         <Card><CardHeader><h2 className="text-section font-semibold">어떤 종목을 발견하고 싶나요?</h2><p className="text-sm text-muted-foreground">원하는 흐름을 말로 적으면, 조건에 맞는 종목과 계산 근거를 찾아드립니다.</p></CardHeader>
           <CardContent><form onSubmit={event => { event.preventDefault(); void submit() }} className="space-y-3">
             <Label htmlFor="analysis-question" className="sr-only">찾고 싶은 종목의 조건</Label>
             <Textarea id="analysis-question" value={question} onChange={event => setQuestion(event.target.value)} placeholder="예: 신고가 돌파 후 거래량이 붙고, 20일 이평선 위를 유지하는 종목을 찾아줘" className="min-h-28 resize-y text-base" disabled={analysis.start.isPending} maxLength={12000} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }} />
             <div className="flex flex-wrap items-center gap-2"><span className="text-caption text-muted-foreground">질문 예시</span>{EXAMPLES.map(example => <Button key={example.label} type="button" variant="secondary" size="sm" disabled={analysis.start.isPending} onClick={() => { setQuestion(example.question); document.getElementById('analysis-question')?.focus() }}>{example.label}</Button>)}</div>
             <QuestionRefiner question={question} disabled={analysis.start.isPending} onApply={text => { setQuestion(text); const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null; field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }} />
-            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-2"><Label htmlFor="analysis-within" className="text-sm text-muted-foreground">판정 범위</Label><Select value={customWithin ? 'custom' : String(within)} onValueChange={value => { if (value === 'custom') setCustomWithin(true); else { setCustomWithin(false); setWithin(Number(value)) } }} disabled={analysis.start.isPending}><SelectTrigger id="analysis-within" size="sm" className="w-auto min-w-36" aria-label="조건 판정 범위"><SelectValue>{customWithin ? `직접 입력 · ${within}거래일` : undefined}</SelectValue></SelectTrigger><SelectContent>{WITHIN_OPTIONS.map(option => <SelectItem key={option.value} value={String(option.value)}>{option.label}</SelectItem>)}<SelectItem value="custom">직접 입력</SelectItem></SelectContent></Select>{customWithin && <Input type="number" inputMode="numeric" min={1} max={250} step={1} className="h-8 w-24" aria-label="판정 범위 직접 입력 (거래일)" value={within} onChange={event => { const next = Math.trunc(Number(event.target.value)); if (Number.isFinite(next)) setWithin(Math.min(250, Math.max(1, next))) }} disabled={analysis.start.isPending} />}<span className="text-caption text-muted-foreground">문장에 기간이 없는 조건에 적용 · 순위 조건은 당일</span><Collapsible><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="sm">{asOf ? `${asOf} 기준` : '최신 보유일 기준'}<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-2"><Label htmlFor="analysis-as-of">다른 기준일 선택</Label><Input id="analysis-as-of" type="date" value={asOf} onChange={event => setAsOf(event.target.value)} disabled={analysis.start.isPending} /><p className="text-caption text-muted-foreground">비워 두면 최신 보유일을 사용합니다.</p></CollapsibleContent></Collapsible></div><Button type="submit" disabled={!question.trim() || analysis.start.isPending}>{analysis.start.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}종목 찾기</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-2"><Label htmlFor="analysis-within" className="text-sm text-muted-foreground">판정 범위</Label><Select value={customWithin ? 'custom' : String(within)} onValueChange={value => { if (value === 'custom') setCustomWithin(true); else { setCustomWithin(false); setWithin(Number(value)) } }} disabled={analysis.start.isPending}><SelectTrigger id="analysis-within" className="w-auto min-w-36" aria-label="조건 판정 범위"><SelectValue>{customWithin ? `직접 입력 · ${within}거래일` : undefined}</SelectValue></SelectTrigger><SelectContent>{WITHIN_OPTIONS.map(option => <SelectItem key={option.value} value={String(option.value)}>{option.label}</SelectItem>)}<SelectItem value="custom">직접 입력</SelectItem></SelectContent></Select>{customWithin && <Input type="number" inputMode="numeric" min={1} max={250} step={1} className="h-8 w-24" aria-label="판정 범위 직접 입력 (거래일)" value={within} onChange={event => { const next = Math.trunc(Number(event.target.value)); if (Number.isFinite(next)) setWithin(Math.min(250, Math.max(1, next))) }} disabled={analysis.start.isPending} />}<span className="text-caption text-muted-foreground">문장에 기간이 없는 조건에 적용 · 순위 조건은 당일</span><Collapsible><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="sm">{asOf ? `${asOf} 기준` : '최신 보유일 기준'}<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-2"><Label htmlFor="analysis-as-of">다른 기준일 선택</Label><Input id="analysis-as-of" type="date" value={asOf} onChange={event => setAsOf(event.target.value)} disabled={analysis.start.isPending} /><p className="text-caption text-muted-foreground">비워 두면 최신 보유일을 사용합니다.</p></CollapsibleContent></Collapsible></div><Button type="submit" disabled={!question.trim() || analysis.start.isPending}>{analysis.start.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}종목 찾기</Button></div>
+            <p className="text-caption text-muted-foreground">{stored === false ? '이 브라우저에서 초안을 보존하지 못했습니다.' : '질문·기준일·판정 범위는 이 탭에서 자동 보존됩니다.'}</p>
           </form></CardContent>
         </Card>
-        {!analysis.start.isPending && <section aria-label="추천 검색" className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-card-title font-medium">목적에 맞는 검색으로 시작하기</h2><Button variant="ghost" size="sm" onClick={() => setLibrary(true)}>저장한 전략 보기</Button></div><DiscoveryRecommendations onAppend={appendCondition} compact onOpen={onOpen} /></section>}
-        {!analysis.start.isPending && !drawParams && <section aria-label="차트에 구조 그리기" className="space-y-3"><div className="space-y-1"><h2 className="flex items-center gap-2 text-card-title font-medium"><PenLine className="size-4" />종목 하나의 차트에 구조 그리기</h2><p className="text-caption text-muted-foreground">종목 이름과 함께 누르면 질문이 채워집니다. 조건 검색이 아니라 그 종목 차트에 채널·추세선·지지/저항 레벨을 바로 그립니다(모델 호출 없음).</p></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{STRUCTURE_PRESETS.map(preset => <article key={preset.id} className="flex min-w-0 flex-col gap-2 rounded-xl bg-card p-4 ring-1 ring-border/50"><div className="space-y-1"><h4 className="font-medium">{preset.label}</h4><p className="text-sm text-muted-foreground">{preset.purpose}</p></div><Button size="sm" variant="outline" className="mt-auto self-start" onClick={() => applyPreset(preset.phrase)} aria-label={`${preset.label} 질문 채우기`}><PenLine className="size-3.5" />질문에 넣기</Button></article>)}</div></section>}
+        </CollapsibleContent></Collapsible>
+        {!analysis.start.isPending && <Collapsible className="rounded-xl bg-card p-3"><CollapsibleTrigger asChild><Button variant="ghost" className="w-full justify-between">더 많은 검색 조건 살펴보기<ChevronDown className="size-4" /></Button></CollapsibleTrigger><CollapsibleContent className="pt-3"><section aria-label="추천 검색" className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-card-title font-medium">목적에 맞는 검색으로 시작하기</h2><Button variant="ghost" size="sm" onClick={() => setLibrary(true)}>저장한 전략 보기</Button></div><DiscoveryRecommendations onAppend={appendCondition} compact onOpen={onOpen} /></section></CollapsibleContent></Collapsible>}
+
       </>}
       {runId && analysis.detail.isPending && <div aria-label="검색 불러오는 중" role="status" className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-80 w-full" /></div>}
       {runId && analysis.detail.isError && <ErrorState message="검색 기록을 불러오지 못했습니다." onRetry={() => analysis.detail.refetch()} />}
       {mutationError && <div role="alert"><ErrorState message={mutationError.message} /></div>}
       {run && <ol aria-label="검색 스레드" className="space-y-4">{(turns.some(turn => turn.id === run.id) ? turns : [run]).map(turn => turn.id !== run.id ? <li key={turn.id}><ThreadTurn turn={turn as Turn} onOpen={onOpen} /></li> : <li key={turn.id} ref={focused} className="scroll-mt-4 space-y-5">
         <section aria-label="현재 검색" className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{STATUS[run.status]}</Badge><span className="text-caption text-hypothesis">AI 조건 해석</span><span className="ml-auto"><FreshnessStamp asOf={run.updated_at} /></span>{run.result && ['completed', 'partial'].includes(run.status) && <SaveDiscoveryStrategy run={run} />}</div>
+          <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{STATUS[run.status]}</Badge><span className="text-caption text-hypothesis">검색 조건</span><span className="ml-auto text-caption text-muted-foreground">검색 실행 {formatRelativeTime(run.created_at)}{run.result && ` · 시세 ${run.result.as_of} 기준`}</span>{run.result && ['completed', 'partial'].includes(run.status) && <SaveDiscoveryStrategy run={run} />}</div>
           <Collapsible><div className="flex items-start gap-2"><h2 className="min-w-0 flex-1 line-clamp-2 text-card-title font-medium leading-relaxed">{run.question}</h2><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="shrink-0">조건 상세<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger></div><CollapsibleContent className="space-y-3 rounded-xl bg-card p-4 mt-3"><p className="whitespace-pre-wrap text-sm">{run.question}</p>{run.spec && <AnalysisConditions spec={run.spec} priceAdjustment={run.snapshot?.price_adjustment?.status} definitions={run.result?.strategy_definitions} />}{run.saved_strategy && <p className="text-caption text-muted-foreground">저장 전략 {run.saved_strategy.name} · v{run.saved_strategy.version} · {run.saved_strategy.date_policy === 'fixed' ? '기준일 고정' : '최신 보유일'}</p>}{run.lineage && <p className="text-caption text-muted-foreground"><Link className="text-primary hover:underline" to={`/discover?run=${run.lineage.parent_run_id}`}>이전 검색 보기</Link> · {run.lineage.scope === 'candidates' ? '이전 후보 범위' : '이전 검색 대상 전체'} · {run.lineage.date_policy === 'same' ? '동일 데이터' : '최신 데이터'}</p>}</CollapsibleContent></Collapsible>
           {busy && <div className="space-y-2 rounded-xl bg-card p-4"><div className="flex flex-wrap items-center justify-between gap-3"><p role="status" aria-live="polite" className="flex items-center gap-2 text-sm">{run.status !== 'waiting_input' && <LoaderCircle className="size-4 animate-spin text-primary" />}{PHASE[run.phase] ?? STATUS[run.status]}</p><Button variant="outline" size="sm" disabled={analysis.cancel.isPending} onClick={() => analysis.cancel.mutate()}><Square className="size-3" />{analysis.cancel.isPending ? '취소 요청 중…' : '분석 취소'}</Button></div><p className="text-caption text-muted-foreground">화면을 나가도 실행은 이어집니다. 이전 검색에서 다시 확인할 수 있습니다.</p>{analysis.disconnected && <p className="text-caption text-muted-foreground">진행 연결을 복구하고 있습니다. 저장된 실행 상태를 확인 중입니다.</p>}</div>}
         </section>
@@ -204,7 +210,7 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
           <Button asChild variant="outline" size="sm"><Link to="/analysis/backtests">백테스트로 전략 비교</Link></Button>
         </CollapsibleContent></Collapsible>
       </li>)}</ol>}
-      {run?.result && ['completed', 'partial'].includes(run.status) && <DiscoveryFollowup runId={run.id} busy={analysis.start.isPending} onSubmit={submit} />}
+      {run?.result && ['completed', 'partial'].includes(run.status) && <DiscoveryFollowup key={run.id} runId={run.id} empty={!run.result.items.length} busy={analysis.start.isPending} onSubmit={submit} />}
     </div>
   </div>
 }
@@ -212,8 +218,8 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
 export default function MarketAnalysisPage() {
   const [params, setParams] = useSearchParams()
   const runId = params.get('run')
-  const openRun = useCallback((id: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('run', id); for (const key of ['mode', 'q', 'candidate', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); return next }), [setParams])
-  const newRun = (question = '') => setParams(previous => { const next = new URLSearchParams(previous); for (const key of ['mode', 'run', 'candidate', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); if (question) next.set('q', question); else next.delete('q'); return next })
+  const openRun = useCallback((id: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('run', id); for (const key of ['mode', 'q', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); return next }), [setParams])
+  const newRun = (question = '') => setParams(previous => { const next = new URLSearchParams(previous); for (const key of ['mode', 'run', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); if (question) next.set('q', question); else next.delete('q'); return next })
   return <PageLayout header={<PageHeader title="종목 발견" description="조건으로 발견하고, 근거를 조사하고, 내 판단으로 이어갑니다." actions={runId ? <Button variant="outline" size="sm" onClick={() => newRun()}><Plus className="size-4" />새 검색</Button> : params.get('view') === 'library' ? <Button variant="ghost" size="sm" onClick={() => newRun()}><ArrowLeft className="size-4" />검색으로</Button> : undefined} />}>
     <AnalysisWorkspace key={runId ?? `new:${params.get('q') ?? ''}`} runId={runId} initialQuestion={params.get('q') ?? ''} onOpen={openRun} onNew={newRun} />
   </PageLayout>

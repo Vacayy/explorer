@@ -6,6 +6,8 @@ export interface Company {
   sector: string | null;
 }
 
+export type RecentCompanySearch = Pick<Company, 'corp_name'> & { stock_code: string };
+
 export interface FinancialRow {
   account_nm: string;
   values: (string | null)[];

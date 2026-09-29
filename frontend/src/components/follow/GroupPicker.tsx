@@ -12,8 +12,8 @@ import type { StockGroupKind } from '@/types'
 const KIND_LABEL: Record<StockGroupKind, string> = { watch: '관심', portfolio: '포트폴리오' }
 
 /** 묶음 하나를 고르는 메뉴. 발견 후보의 "묶음에 추가", 저장 전략의 "이 조건으로 감시"가 함께 쓴다. */
-export function GroupPicker({ label, icon, onPick, busy = false, variant = 'outline', size = 'sm' }: {
-  label: string; icon?: ReactNode; onPick: (groupId: number) => Promise<void> | void; busy?: boolean
+export function GroupPicker({ label, description, icon, onPick, busy = false, variant = 'outline', size = 'sm' }: {
+  label: string; description?: string; icon?: ReactNode; onPick: (groupId: number) => Promise<void> | void; busy?: boolean
   variant?: 'outline' | 'ghost' | 'secondary'; size?: 'sm' | 'xs'
 }) {
   const groups = useGroups()
@@ -37,6 +37,7 @@ export function GroupPicker({ label, icon, onPick, busy = false, variant = 'outl
       <DropdownMenuTrigger asChild><Button variant={variant} size={size} disabled={busy}>{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : icon}{label}</Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-56">
         <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        {description && <p className="max-w-64 px-2 pb-2 text-caption text-muted-foreground">{description}</p>}
         {groups.isPending && <DropdownMenuItem disabled>묶음을 불러오는 중…</DropdownMenuItem>}
         {groups.isError && <DropdownMenuItem disabled>묶음을 불러오지 못했습니다.</DropdownMenuItem>}
         {groups.data?.items.map(group => <DropdownMenuItem key={group.id} onSelect={() => void pick(group.id)}>

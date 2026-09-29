@@ -176,7 +176,7 @@ export default function Omnibar() {
     return null
   }
   const visibleCompanies = showAll ? companies : companies.slice(0, 5)
-  const pages = q ? PAGES.filter(p => `${p.label} ${p.hint} ${p.keywords}`.toLowerCase().includes(q.toLowerCase())).slice(0, 5) : PAGES.filter(p => p.pinned)
+  const pages = q ? PAGES.filter(p => `${p.label} ${p.hint} ${p.keywords}`.toLowerCase().includes(q.toLowerCase())).slice(0, 5) : PAGES.filter(p => 'pinned' in p && p.pinned)
   const hasResults = !!data && (companies.length || data.us.length || data.entities.length || data.groups.length || data.projects.length)
 
   return (

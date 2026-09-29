@@ -18,6 +18,8 @@ import { getHomeMode } from "@/hooks/useHomeMode"
 import { DetailNavigationMemory } from "@/components/shared/DetailNavigation"
 import { DiscoveryNavigationMemory } from "@/components/shared/DiscoveryNavigationMemory"
 import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrail"
+import { DiscoveryTechnicalContext } from "@/components/company/DiscoveryTechnicalContext"
+import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import HomePage from "@/components/home/HomePage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
@@ -153,11 +155,15 @@ function Layout() {
 
 function AnalyzePage({ tab }: { tab: string }) {
   const { stockCode } = useParams<{ stockCode: string }>()
+  const { search } = useLocation()
   const { data: company, isLoading } = useCompany(stockCode ?? null)
+  const sourceRun = new URLSearchParams(search).get('source_run')
 
   if (!stockCode) return null
   if (isLoading) return <div className="text-center py-20 text-muted-foreground">로딩 중...</div>
-  if (!company) return <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
+  if (!company) return sourceRun
+    ? <PageLayout header={<PageHeader title={stockCode} description="기업 기초정보 미확인 · 저장된 발견 근거" />}><DiscoveryTechnicalContext runId={sourceRun} code={stockCode} original currentUnavailable="기업 기초정보를 찾지 못해 현재 기업 분석을 열 수 없습니다. 발견 당시 저장된 차트와 판정은 아래에서 확인할 수 있습니다." /></PageLayout>
+    : <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
 
   const corpCode = company.corp_code
 

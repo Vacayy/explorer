@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import CandlestickChart from '@/components/charts/CandlestickChart'
-import { Activity } from 'lucide-react'
+import { Activity, PenLine } from 'lucide-react'
 import { TechnicalScan, scanToChart, useTechnicalScan } from './TechnicalScan'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { CompanyEvidence } from './CompanyEvidence'
 import { shiftDay, validDay } from '@/utils/companyResearch'
 import type { StockPriceItem } from '@/types'
+import { DiscoveryTechnicalContext } from '@/components/company/DiscoveryTechnicalContext'
 
 export function CompanyPriceResearch({
   company,
@@ -30,11 +31,12 @@ export function CompanyPriceResearch({
   compact?: boolean
 }) {
   const [sp, setSp] = useSearchParams()
-  const [scanOpen, setScanOpen] = useState(sp.get('scan') === '1') // 기술적 분석 패널(D-190). ?scan=1 은 발견 결과에서 바로 여는 진입(D-198)
-  const [scanWithin, setScanWithin] = useState(5)
-  const [scanOnChart, setScanOnChart] = useState(true)
-  const scan = useTechnicalScan(company, market, scanWithin, scanOpen)
-  const scanChart = useMemo(() => scanToChart(scanOpen && scanOnChart ? scan.data : undefined), [scan.data, scanOpen, scanOnChart])
+  const scanOpen = sp.get('scan') === '1'
+  const scanWithin = [1, 3, 5, 10, 20].includes(Number(sp.get('scan_within'))) ? Number(sp.get('scan_within')) : 5
+  const scanOnChart = sp.get('scan_chart') !== '0'
+  const sourceRun = market === 'kr' ? sp.get('source_run') : null
+  const original = !!sourceRun && sp.get('scan_at') !== 'latest'
+  const scanAnchor = useRef<HTMLDivElement>(null)
   const [notice, setNotice] = useState('')
   const months = [3, 12, 60].includes(Number(sp.get('months')))
     ? Number(sp.get('months'))
@@ -78,6 +80,15 @@ export function CompanyPriceResearch({
   const cutoff = sp.get('cutoff') === 'close' ? 'close' : 'end'
   const after = sp.get('after') === '1'
   const latest = dates.at(-1)
+  // The scan endpoint only evaluates the latest stored rows. Never mix it into a historical selection.
+  const historical = sp.get('mode') === 'research' && !!requested && requested !== latest
+  const scanEnabled = scanOpen && !original && !historical && !loading && !error && !!latest
+  const scan = useTechnicalScan(company, market, scanWithin, scanEnabled)
+  useEffect(() => {
+    if (scanOpen) scanAnchor.current?.scrollIntoView({ block: 'start' })
+  }, [company, scanOpen, original, scanEnabled])
+  const sameDate = scan.data?.as_of === latest
+  const scanChart = useMemo(() => scanToChart(scanEnabled && scanOnChart && sameDate ? scan.data : undefined), [scan.data, scanEnabled, scanOnChart, sameDate])
   const oldest = latest ? shiftDay(latest, -months * 31) : ''
   // Keep the same data reference while moving within the displayed interval: do not reset zoom.
   const chartStart = selected && selected < oldest ? dates[0] : oldest
@@ -135,11 +146,57 @@ export function CompanyPriceResearch({
       },
       { replace: true },
     )
+  const setScanOpen = (open: boolean) => setSp(previous => {
+    const next = new URLSearchParams(previous)
+    if (open) next.set('scan', '1')
+    else next.delete('scan')
+    return next
+  }, { replace: true, preventScrollReset: true })
+  const viewCurrent = () => setSp(previous => {
+    const next = new URLSearchParams(previous)
+    next.set('scan', '1')
+    next.set('scan_at', 'latest')
+    for (const key of ['mode', 'date', 'days', 'from', 'cutoff', 'after', 'page']) next.delete(key)
+    return next
+  }, { replace: true })
   const current = candles.find((p) => p.time === selected) || candles.at(-1)
   const fieldClass = 'rounded-md border bg-background px-3 py-2 text-sm'
+  const priceChart = <>
+    {loading ? (
+      <p className="flex h-80 items-center justify-center text-muted-foreground">
+        주가를 불러오는 중입니다.
+      </p>
+    ) : error ? (
+      <div role="alert">
+        <p>주가를 불러오지 못했습니다.</p>
+        <Button onClick={retry}>다시 시도</Button>
+      </div>
+    ) : candles.length ? (
+      <CandlestickChart
+        data={chartData}
+        volumeData={volumes}
+        height={compact && !selected && !scanEnabled ? 160 : 360}
+        formatValue={value => market === 'us' ? `$${value.toFixed(2)}` : value.toLocaleString('ko-KR')}
+        selectedTime={selected}
+        selectionStart={start}
+        onMarkerClick={choose}
+        markers={scanChart.markers}
+        overlays={scanChart.overlays}
+      />
+    ) : (
+      <p className="py-20 text-center text-muted-foreground">
+        보유한 주가 데이터가 없습니다.
+      </p>
+    )}
+    <p className="text-caption text-muted-foreground">
+      캔들을 클릭하면 해당 날짜 이전 자료를 탐색합니다. 휠·드래그로
+      차트를 확대·이동할 수 있습니다.
+    </p>
+  </>
   return (
     <>
-      <div className="company-research-host">
+      {sourceRun && <div ref={scanAnchor} className="mb-4 scroll-mt-4"><DiscoveryTechnicalContext runId={sourceRun} code={company} original={original} latest={latest} onView={showOriginal => { if (showOriginal) update('scan_at', 'discovery'); else viewCurrent() }} /></div>}
+      {!original && <div className="company-research-host">
         <div
           className={selected ? 'company-research-grid' : ''}
           data-testid="company-research"
@@ -165,9 +222,10 @@ export function CompanyPriceResearch({
                       </p>
                     )}
                   </div>
-                  <Button variant={scanOpen ? 'secondary' : 'outline'} size="sm" aria-pressed={scanOpen} onClick={() => setScanOpen(value => !value)}>
-                    <Activity className="size-4" />기술적 분석
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant={scanOpen ? 'secondary' : 'outline'} size="sm" className="min-h-11" aria-pressed={scanOpen} onClick={() => setScanOpen(!scanOpen)}><Activity className="size-4" />기술적 분석</Button>
+                    {!historical && <Button variant={scanOpen && sp.get('scan_view') === 'structure' ? 'secondary' : 'outline'} size="sm" className="min-h-11" disabled={!latest || loading || error} onClick={() => setSp(previous => { const next = new URLSearchParams(previous); next.set('scan', '1'); next.set('scan_view', 'structure'); return next }, { replace: true, preventScrollReset: true })}><PenLine className="size-4" />구조 그리기</Button>}
+                  </div>
                   {selected && (
                     <Button
                       variant="outline"
@@ -224,37 +282,16 @@ export function CompanyPriceResearch({
                     />
                   </label>
                 </div>
-                {loading ? (
-                  <p className="flex h-80 items-center justify-center text-muted-foreground">
-                    주가를 불러오는 중입니다.
-                  </p>
-                ) : error ? (
-                  <div role="alert">
-                    <p>주가를 불러오지 못했습니다.</p>
-                    <Button onClick={retry}>다시 시도</Button>
-                  </div>
-                ) : candles.length ? (
-                  <CandlestickChart
-                    data={chartData}
-                    volumeData={volumes}
-                    height={compact && !selected ? 160 : 360}
-                    formatValue={value => market === 'us' ? `$${value.toFixed(2)}` : value.toLocaleString('ko-KR')}
-                    selectedTime={selected}
-                    selectionStart={start}
-                    onMarkerClick={choose}
-                    markers={scanChart.markers}
-                    overlays={scanChart.overlays}
-                  />
-                ) : (
-                  <p className="py-20 text-center text-muted-foreground">
-                    보유한 주가 데이터가 없습니다.
-                  </p>
-                )}
-                <p className="text-caption text-muted-foreground">
-                  캔들을 클릭하면 해당 날짜 이전 자료를 탐색합니다. 휠·드래그로
-                  차트를 확대·이동할 수 있습니다.
-                </p>
-                {scanOpen && <TechnicalScan code={company} market={market} within={scanWithin} onWithin={setScanWithin} onChart={scanOnChart} onToggleChart={setScanOnChart} onClose={() => setScanOpen(false)} />}
+                {!scanEnabled && priceChart}
+                {scanOpen && <div ref={sourceRun ? undefined : scanAnchor} className="scroll-mt-4">
+                  {historical ? <section aria-label="선택일 기술적 분석" className="space-y-3 rounded-xl border p-4">
+                    <h3 className="text-sm font-semibold">{requested} 기술적 분석 미지원</h3>
+                    <p className="text-sm text-muted-foreground">선택한 날짜의 전체 기술적 분석은 제공하지 않습니다. 이 화면의 차트에는 최신 신호를 표시하지 않습니다.</p>
+                    <Button variant="outline" size="sm" onClick={viewCurrent}>현재 기술적 분석 보기{latest ? ` · ${latest}` : ''}</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setScanOpen(false)}>기술적 분석 닫기</Button>
+                  </section> : scanEnabled ? <TechnicalScan key={company} chart={priceChart} code={company} market={market} within={scanWithin} onWithin={value => update('scan_within', String(value))} onChart={scanOnChart} onToggleChart={value => update('scan_chart', value ? '1' : '0')} onClose={() => setScanOpen(false)} /> : <p className="text-sm text-muted-foreground">가격 자료를 확인한 뒤 기술적 분석을 표시합니다.</p>}
+                  {scanEnabled && scan.data && !sameDate && <p role="status" className="mt-2 text-caption text-muted-foreground">가격 차트({latest})와 분석({scan.data.as_of ?? '미확인'})의 시세 기준일이 달라 신호를 차트에 겹쳐 표시하지 않습니다.</p>}
+                </div>}
                 {(notice || (requested && !selected && !loading)) && (
                   <p role="status" className="text-sm text-primary">
                     {notice ||
@@ -368,8 +405,8 @@ export function CompanyPriceResearch({
             </div>
           )}
         </div>
-      </div>
-      {!selected && overview}
+      </div>}
+      {!original && !selected && overview}
     </>
   )
 }

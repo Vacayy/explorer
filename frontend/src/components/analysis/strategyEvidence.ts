@@ -30,9 +30,9 @@ export function strategyCheck(value: unknown): StrategyCheck {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as StrategyCheck : {}
 }
 
-export function evidenceValue(value: unknown): string {
+export function evidenceValue(value: unknown, maximumFractionDigits = 4): string {
   if (value == null) return '—'
-  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString('ko-KR', { maximumFractionDigits: 4 }) : '—'
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString('ko-KR', { maximumFractionDigits }) : '—'
   if (typeof value === 'string') return value || '—'
   if (typeof value === 'boolean') return value ? '예' : '아니요'
   return '—'
