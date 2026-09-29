@@ -57,6 +57,16 @@
 ## 프론트 (홈 상단 승격, `UsBriefingSection`)
 아침 터미널의 첫 카드. 2문단 산문(매크로 문단에 출처 위첨자 링크) + **섹터 쏠림 바** + 개별 이슈 리스트(사유 배지) + 신규 진입 + 스터디/공유 후보. 상위 20 전체는 Collapsible로 접어둠. 종목 → `/us/:ticker`, 클러스터/내러티브 → `/narrative`.
 
+## 소스 관리 — 브리핑 재료 목록 (D-206 후속)
+카드 헤더의 **'소스 관리' 버튼 → Dialog**. 브리핑이 어떤 출처를 쓰는지와 각 출처의 최근 수집 상태를 보여준다. 읽기 전용(목록 편집은 범위 밖, 채널·피드는 코드 상수 `MACRO_CHANNELS`·`FEEDS`).
+- `GET /api/spine/us/briefing/sources` (LLM·네트워크 0, DB 읽기만) → `groups[]{key, label, used_for, items[]{name, detail, url, last_seen, recent_count, status}}`.
+  - `macro_telegram` 매크로 문단 · 텔레그램 채널 — 최근 글 시각, 24시간 글 수. 미등록·수집 꺼짐도 그대로 표시.
+  - `macro_news` 매크로 문단 · 미국 매체·Fed RSS — 피드별 최근 기사 시각, 24시간 기사 수.
+  - `company` 기업 문단 — TradingView 거래대금 상위 20, Yahoo Finance 종목 헤드라인, 수집 문서 언급.
+  - `indicators` 시장 반응 근거 — 지수, 매크로 지표(Yahoo·FRED).
+- `status`: `ok`(최근 2일 내 자료) · `quiet`(그보다 오래됨·자료 없음) · `off`(미등록·비활성).
+- 5-state(Dialog 내부): Loading=Skeleton · Error=ErrorState+재시도 · Empty=그룹 0(발생 불가지만 EmptyState) · Partial=`quiet`/`off` 항목은 경고 배지로 · Ideal=그룹별 목록.
+
 ## 갱신 케이던스 — 버튼 주도 (D-099·D-100)
 아침에 전날 미국장을 보는 용도라 **자동 갱신 없이 버튼으로만** 갱신한다.
 - **일반 로드(`GET`)**: 최신 스냅샷을 **순수 읽기**(`read_leaders`) — 네트워크·뉴스조회·LLM 전부 없음. 저장된 종합을 그대로 보여준다(`_read_synthesis`). → 로드가 절대 느려지지 않고, 자동으로 값이 바뀌지 않음.

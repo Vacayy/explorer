@@ -143,6 +143,27 @@ class UsMacroBlock(BaseModel):
     degraded: list[str] = []
 
 
+class UsBriefingSourceItem(BaseModel):
+    name: str
+    detail: str | None = None
+    url: str | None = None
+    last_seen: str | None = None      # 최근 자료 시각(ISO UTC) 또는 날짜(YYYY-MM-DD)
+    recent_count: int | None = None   # 최근 24시간 자료 수(해당 없으면 None)
+    status: str                       # ok | quiet | off
+
+
+class UsBriefingSourceGroup(BaseModel):
+    key: str
+    label: str
+    used_for: str                     # 어느 문단의 재료인가
+    items: list[UsBriefingSourceItem] = []
+
+
+class UsBriefingSources(BaseModel):
+    """'소스 관리' — 브리핑 재료 목록과 최근 수집 상태 (D-206 후속)."""
+    groups: list[UsBriefingSourceGroup] = []
+
+
 class UsBriefingListItem(BaseModel):
     trade_date: str
     model: str | None = None

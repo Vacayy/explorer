@@ -12,6 +12,7 @@ import { RefreshButton } from "@/components/shared/RefreshButton"
 import { formatNumber, formatUsd, formatPercent } from "@/utils/format"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
+import { UsBriefingSourcesDialog } from "@/components/home/UsBriefingSourcesDialog"
 import type { UsBriefingSource, UsMoverBrief } from "@/types"
 
 /**
@@ -36,7 +37,10 @@ export function UsBriefingSection() {
           <CardTitle className="text-card-title flex items-center gap-1.5">
             <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
           </CardTitle>
-          <div className="ml-auto"><RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트" /></div>
+          <div className="ml-auto flex items-center gap-1.5">
+            <UsBriefingSourcesDialog />
+            <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트" />
+          </div>
         </CardHeader>
         <CardContent>
           <EmptyState message={refreshing ? "전날 미국장을 불러오는 중…" : "‘지금 업데이트’를 눌러 전날 미국장 브리핑을 생성하세요."} />
@@ -74,6 +78,7 @@ export function UsBriefingSection() {
               </SelectContent>
             </Select>
           )}
+          <UsBriefingSourcesDialog />
           {data.fetched_at && <FreshnessStamp asOf={data.fetched_at} />}
           {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
           <Link to="/us" className="text-caption text-muted-foreground hover:text-foreground">미국 종목 →</Link>

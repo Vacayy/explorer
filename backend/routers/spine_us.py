@@ -9,7 +9,7 @@ import json
 import re
 
 from database import get_connection
-from models.us import (UsBriefing, UsBriefingListItem, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
+from models.us import (UsBriefing, UsBriefingListItem, UsBriefingSources, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
                         UsMoverItem, UsMoversResponse, UsNarrativeRef, UsWorldModel)
 
 router = APIRouter(prefix="/api/spine/us", tags=["spine"])
@@ -75,6 +75,13 @@ def us_briefing_list(limit: int = 30):
     """
     from pipeline.us_briefing import list_briefings
     return [UsBriefingListItem(**x) for x in list_briefings(limit=limit)]
+
+
+@router.get("/briefing/sources", response_model=UsBriefingSources)
+def us_briefing_sources():
+    """'소스 관리' — 브리핑이 쓰는 출처 목록과 출처별 최근 수집 상태. DB 읽기만 (docs/specs/us-briefing.md)."""
+    from pipeline.us_briefing import briefing_sources
+    return UsBriefingSources(**briefing_sources())
 
 
 @router.get("/briefing", response_model=UsBriefing)

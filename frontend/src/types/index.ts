@@ -632,6 +632,15 @@ export interface UsMacroBlock {
   as_of: string | null; items: UsMacroItem[]; lookback: string | null;
   signal: UsMacroSignal | null; degraded: string[];
 }
+/** '소스 관리' — 브리핑 재료 목록과 최근 수집 상태 (D-206 후속). */
+export interface UsBriefingSourceItem {
+  name: string; detail: string | null; url: string | null;
+  last_seen: string | null;        // ISO UTC 또는 날짜(YYYY-MM-DD)
+  recent_count: number | null;     // 최근 24시간 자료 수
+  status: "ok" | "quiet" | "off";
+}
+export interface UsBriefingSourceGroup { key: string; label: string; used_for: string; items: UsBriefingSourceItem[] }
+export interface UsBriefingSources { groups: UsBriefingSourceGroup[] }
 export interface UsBriefingListItem { trade_date: string; model: string | null; created_at: string | null }
 export interface UsMarketTheme { name: string; count: number }
 export interface UsMarketDoc {

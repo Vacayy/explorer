@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, getJson, STALE } from "@/api/query"
-import type { UsBriefing, UsBriefingListItem } from "@/types"
+import type { UsBriefing, UsBriefingListItem, UsBriefingSources } from "@/types"
 
 const KEY = ["spine", "us", "briefing"] as const
 
@@ -24,5 +24,13 @@ export function useUsBriefingDates() {
   return useQuery(apiQuery<UsBriefingListItem[]>({
     key: ["spine", "us", "briefing", "list"],
     url: "/api/spine/us/briefing/list", staleTime: STALE.long,
+  }))
+}
+
+/** '소스 관리' 다이얼로그 — 브리핑 재료 목록과 출처별 최근 수집 상태. 열었을 때만 조회. */
+export function useUsBriefingSources(enabled: boolean) {
+  return useQuery(apiQuery<UsBriefingSources>({
+    key: ["spine", "us", "briefing", "sources"],
+    url: "/api/spine/us/briefing/sources", staleTime: STALE.medium, enabled,
   }))
 }

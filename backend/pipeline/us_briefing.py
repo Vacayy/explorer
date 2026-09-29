@@ -825,6 +825,77 @@ def _synthesize(conn, trade_date: str, clusters, idio, movers,
     return synthesis
 
 
+_SOURCE_FRESH_DAYS = 2    # 이보다 최근 자료가 있으면 ok
+
+
+def _source_item(conn, name: str, detail: str | None, url: str | None,
+                 last_seen: str | None, recent_count: int | None, enabled: bool = True) -> dict:
+    status = "off"
+    if enabled:
+        age = conn.execute("SELECT julianday('now') - julianday(?) d", (last_seen,)).fetchone()["d"] if last_seen else None
+        status = "ok" if age is not None and age <= _SOURCE_FRESH_DAYS else "quiet"
+    if last_seen and len(last_seen) == 19 and last_seen[10] == " ":     # SQLite datetime('now') = 표기 없는 UTC
+        last_seen = last_seen.replace(" ", "T") + "+00:00"
+    return {"name": name, "detail": detail, "url": url, "last_seen": last_seen,
+            "recent_count": recent_count, "status": status}
+
+
+def briefing_sources() -> dict:
+    """브리핑 재료 목록 + 출처별 최근 수집 상태 — '소스 관리' 다이얼로그용. DB 읽기만(LLM·네트워크 0).
+
+    published_at은 ISO('T' 구분)라 경계도 strftime('%Y-%m-%dT…')로 만든다 — datetime()의 공백 구분
+    문자열과 비교하면 같은 날짜의 글이 전부 '최근'으로 잡힌다.
+    """
+    from pipeline.macro_news import FEEDS
+    conn = get_connection()
+    try:
+        tg = []
+        for ch in MACRO_CHANNELS:
+            meta = conn.execute("SELECT display_name, is_active, collect_enabled FROM telegram_channels "
+                                "WHERE channel_name=?", (ch,)).fetchone()
+            agg = conn.execute(
+                "SELECT max(published_at) last, sum(published_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 day')) n "
+                "FROM raw_documents "
+                "WHERE source_type='telegram' AND source_id LIKE ? || '/%'", (ch,)).fetchone()
+            tg.append(_source_item(conn, (meta["display_name"] if meta else None) or ch,
+                                   "미등록 채널" if not meta else f"@{ch}", f"https://t.me/{ch}",
+                                   agg["last"], agg["n"] or 0,
+                                   enabled=bool(meta and meta["is_active"] and meta["collect_enabled"])))
+        news = []
+        for f in FEEDS:
+            agg = conn.execute(
+                "SELECT max(published_at) last, sum(published_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 day')) n "
+                "FROM macro_news WHERE feed=?", (f["key"],)).fetchone()
+            news.append(_source_item(conn, f["publisher"], f["section"], f["url"], agg["last"], agg["n"] or 0))
+
+        mv = conn.execute("SELECT max(fetched_at) last FROM us_movers").fetchone()["last"]
+        hd = conn.execute("SELECT max(fetched_at) last FROM us_ticker_news").fetchone()["last"]
+        docs = conn.execute("SELECT max(published_at) last, sum(published_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)) n "
+                            "FROM raw_documents", (f"-{_MENTION_HOURS} hours",)).fetchone()
+        company = [
+            _source_item(conn, "TradingView 스크리너", "전일 거래대금 상위 20 (섹터·등락률)", None, mv, None),
+            _source_item(conn, "Yahoo Finance 종목 뉴스", "개별 이슈 종목의 헤드라인", None, hd, None),
+            _source_item(conn, "수집 문서 언급", f"구독 소스 전체, 최근 {_MENTION_HOURS}시간 · 내러티브 요지", None,
+                         docs["last"], docs["n"] or 0),
+        ]
+        idx = conn.execute("SELECT max(snapshot_date) last FROM market_indicators "
+                           "WHERE indicator IN ('index_sp500','index_nasdaq','index_dow')").fetchone()["last"]
+        mac = conn.execute("SELECT max(snapshot_date) last FROM market_indicators "
+                           "WHERE indicator LIKE 'macro_%'").fetchone()["last"]
+        indicators = [
+            _source_item(conn, "미국 지수", "S&P 500 · 나스닥 · 다우 종가", None, idx, None),
+            _source_item(conn, "매크로 지표 (Yahoo·FRED)", "금리 · 달러 · 유가 · 금 · 신용 · 유동성", None, mac, None),
+        ]
+    finally:
+        conn.close()
+    return {"groups": [
+        {"key": "macro_telegram", "label": "텔레그램 매크로 채널", "used_for": "매크로 문단", "items": tg},
+        {"key": "macro_news", "label": "미국 매체 · Fed", "used_for": "매크로 문단", "items": news},
+        {"key": "company", "label": "거래대금 · 종목 재료", "used_for": "기업 문단", "items": company},
+        {"key": "indicators", "label": "시장 지표", "used_for": "시장 반응 근거", "items": indicators},
+    ]}
+
+
 def list_briefings(limit: int = 30) -> list[dict]:
     """저장된 브리핑 목록(최신순) — 과거 조회 진입점 (D-112).
 
