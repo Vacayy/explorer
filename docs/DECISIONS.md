@@ -1090,6 +1090,8 @@
 
 **참조**: `backend/pipeline/us_briefing.py`(`_index_moves`·`_macro_context`·`_flow_history`·`_normalize_synthesis`·`_staleness`·`_read_past`·`list_briefings`) · `backend/pipeline/us_movers.py`·`kr_movers.py`(RETAIN_DAYS 30) · `scripts/compute_briefing.py`(매크로·지수 선갱신) · `scripts/install_launchd.py`(usbriefing 잡·bootstrap 재시도) · `backend/models/us.py` · `backend/routers/spine_us.py` · `frontend/src/components/home/UsBriefingSection.tsx`(4섹션·비중추이·날짜 셀렉터·묵음 경고) · `backend/pipeline/notify.py`(텔레그램 4섹션) · [[D-101]](매크로 — 델타 산출 주체) · [[D-100]](버튼 주도 — pre-warm과의 관계)
 
+→ D-206에서 번복(4섹션 → 매크로·기업 이슈 2문단, ④흐름 폐지)
+
 ---
 
 ## D-111 · 2026-08-18 · 로딩은 말풍선 대체로(기록에 안 남김) · 워딩이 상태를 드러내게 · 기계의 3줄 제외 (D-107·D-109 후속, feat/conviction-loop)
@@ -2575,3 +2577,15 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **구현 경계**: GET은 저장 읽기, POST/일별 스크립트에서만 수집. 기존 market_indicators에 독립 네임스페이스·출처·시각·수집 결과를 보존한다. 필수 소스 지연·실패는 보류하며 정상으로 바꾸지 않는다. 연방 공휴일+Good Friday 달력은 근사이고 비정기 휴장은 미반영이다. 장기 이력/규칙 예측력·알림·자동 매매는 이번 범위 밖이다. `snapshot_market.py` 실행에 수집을 연결하되 OS 스케줄 등록은 변경하지 않았다.
 
 **참조·검증**: docs/specs/home-feed.md, pipeline/risk.py, RiskMonitoring.tsx, RiskTrendChart.tsx. Risk 15개·기존 매크로 3개 검사, 실제 원천 9개 수집, API·타입/프로덕션 빌드·브라우저 5-state·모바일 확인.
+
+---
+
+## D-206 · 2026-09-29 · 미국장 브리핑을 '지정 소스 매크로 이슈 + 거래대금 기업 이슈' 2문단으로 (D-112 4섹션 번복)
+
+**결정**: 어젯밤 미국장 브리핑의 종합을 두 문단으로 줄인다. ① 매크로 문단은 지표 읽기가 아니라 지정 소스에서 뽑은 어젯밤 이슈를 주어로 쓰고, 문장마다 원문 링크 `[n]`을 단다. 지정 소스는 국내 매크로·전략 텔레그램 7채널(트럼프 발언 채널 제외, 사용자 지정)과 미국 주요 매체·Fed RSS 12피드(Bloomberg·CNBC·NYT·Politico·MarketWatch·Washington Post·Fed)다. ② 기업 문단은 기존 거래대금 이슈 문단을 유지한다. 구 ①지수 문단(상단 지수 타일과 중복)과 구 ④섹터 비중 흐름 문단·비중 추이 차트는 폐지한다. 금리 변화는 %가 아니라 bp로 쓴다.
+
+**이유·기각한 대안**: 구 ②문단은 지표 국면을 읽고 태그로 고른 담론 발췌 180자를 덧붙이는 구조라 "무슨 일이 있었나"가 비었고, 프롬프트의 판정 어휘(방아쇠·배경 조건)가 본문에 드러났다(사용자 피드백). 매크로 전문 소스를 정해 두고 그 안에서 이슈를 정리하자는 사용자 제안을 채택했다. 태그 기반 선별 유지는 기각했다(예측 가능성이 낮다). 이슈 추출과 종합을 한 호출로 합치는 안도 기각했다. 원문 전문이 종합 프롬프트를 키우고, 인용 검증을 종합 산문에 걸 수 없다. 뉴스는 WSJ·Reuters·AP·BLS·재무부가 피드 폐지·차단(2026-09-29 실측)이라 목록에 없다. FT는 미국 현지 매체가 아니라 제외했다. ④문단은 사용자 판단(쓸모 낮음)으로 폐지했다. 그 결과 직전 브리핑과 판단을 대조하던 연속/단절 판정도 사라진다.
+
+**구현 경계**: 이슈 추출 sonnet 1콜 추가(프롬프트 해시 캐시). 인용은 원문(텔레그램 본문, 뉴스 제목+요약)에 공백·따옴표 정규화 후 그대로 있어야 채택한다. 검증 출처가 0인 이슈는 버린다(Weekly D-173 규율 차용). 출처 번호는 모델이 `[S n]`으로 달고, 코드가 두 문단 공통 등장 순으로 재번호한다. 모르는 번호는 지운다. 채널 목록은 코드 상수 `MACRO_CHANNELS`이며 설정 화면은 없다. 이벤트 캘린더·일간 이슈와 Weekly 연결은 범위 밖이다. 구 행의 `index_summary`는 읽기 호환하고 `flow`는 읽지 않는다.
+
+**참조·검증**: docs/specs/us-briefing.md, pipeline/us_briefing.py(`_macro_issues`·`_verify_issues`·`_link_citations`·`_rate_bp`), pipeline/macro_news.py, scripts/fetch_macro_news.py(30분 체인), notify.py, UsBriefingSection.tsx. 단위 테스트 14개, 12피드 실제 수집, 2026-09-28 실제 생성(검증 출처 9개), FastAPI import·API 응답·tsc 확인.

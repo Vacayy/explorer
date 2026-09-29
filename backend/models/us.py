@@ -89,14 +89,26 @@ class UsCluster(BaseModel):
     tickers: list[str] = []
 
 
+class UsBriefingSource(BaseModel):
+    """매크로 문단 출처 표식 `[n]`의 대상 (D-206)."""
+    n: int
+    kind: str                    # telegram | news | official
+    publisher: str
+    title: str | None = None
+    url: str | None = None
+    doc_id: int | None = None    # 텔레그램 글이면 내부 문서 id
+    published_at: str | None = None
+
+
 class UsBriefingSynthesis(BaseModel):
-    """4섹션 종합 (D-112). 구 스키마(`mood` 단일)는 파이프라인이 issues로 승계한다."""
-    index_summary: str = ""      # ① 지수 마감 — 어디서 어떻게 끝났나
-    drivers: str = ""            # ② 시장을 움직인 요인 — 매크로 × 담론
-    issues: str = ""             # ③ 거래대금 기반 이슈 (구 mood)
-    flow: str = ""               # ④ 시계열 흐름 — 연속인가 단절인가
+    """2문단 종합 (D-206): 매크로 + 거래대금 기업 이슈. 구 스키마(`mood`)는 파이프라인이 issues로 승계한다."""
+    index_summary: str = ""      # D-206 이전 행 호환(새 종합은 빈 값)
+    drivers: str = ""            # 매크로 — 검증된 이슈 중심, `[n]` 출처 표식
+    issues: str = ""             # 거래대금 기반 기업 이슈 (구 mood)
     study_candidates: list[str] = []
     share_candidates: list[str] = []
+    sources: list[UsBriefingSource] = []
+    source_gaps: list[str] = []  # 피드 수집 실패·이슈 추출 실패 등 빠진 재료
 
 
 class UsIndexMove(BaseModel):
@@ -131,35 +143,6 @@ class UsMacroBlock(BaseModel):
     degraded: list[str] = []
 
 
-class UsFlowPoint(BaseModel):
-    date: str
-    share_pct: float
-
-
-class UsFlowTrend(BaseModel):
-    """비중 시계열의 국면 판정 (LLM 0, D-113) — 확대/축소 추세·되돌림·반등·횡보."""
-    label: str
-    delta_pp: float | None = None
-    detail: str | None = None
-
-
-class UsFlowSector(BaseModel):
-    label: str
-    series: list[UsFlowPoint] = []
-    trend: UsFlowTrend | None = None
-
-
-class UsFlowConcentration(BaseModel):
-    series: list[UsFlowPoint] = []
-    trend: UsFlowTrend | None = None
-
-
-class UsFlowBlock(BaseModel):
-    dates: list[str] = []
-    sectors: list[UsFlowSector] = []
-    concentration: UsFlowConcentration | None = None
-
-
 class UsBriefingListItem(BaseModel):
     trade_date: str
     model: str | None = None
@@ -191,8 +174,7 @@ class UsBriefing(BaseModel):
     market_themes: list[UsMarketTheme] = []   # 그날 지배 테마(왜·무슨 얘기)
     market_docs: list[UsMarketDoc] = []       # 시장구조 코멘터리 문서
     indices: UsIndexBlock = Field(default_factory=UsIndexBlock)   # ① (D-112)
-    macro: UsMacroBlock = Field(default_factory=UsMacroBlock)     # ② (D-112)
-    flow: UsFlowBlock = Field(default_factory=UsFlowBlock)        # ④ (D-112)
+    macro: UsMacroBlock = Field(default_factory=UsMacroBlock)     # 매크로 지표 (D-112)
     synthesis: UsBriefingSynthesis | None = None   # None=LLM 미가용(스켈레톤만)
 
 

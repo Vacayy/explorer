@@ -72,10 +72,22 @@ def action_link(label: str, kind: str, ident: int) -> str:
     return link(label, f"https://t.me/{user}?start={kind}_{ident}")
 
 
+def _cite_links(text: str, urls: dict) -> str:
+    """이스케이프된 본문의 `[n]` 출처 표식 → 원문 링크 (D-206). url 없는 번호는 평문으로 둔다."""
+    import re
+    from pipeline.telegram_md import link
+
+    def repl(m):
+        u = urls.get(int(m.group(1)))
+        return link(f"[{m.group(1)}]", u) if u else m.group(0)
+    return re.sub(r"\[(\d+)\]", repl, text)
+
+
 def _us_section(lines: list[str]) -> None:
     """어젯밤 미국장 — 이미 만들어진 스냅샷·종합 캐시를 읽기만 한다 (LLM·네트워크 0).
 
-    4섹션 종합(D-112: 지수·요인·이슈·흐름)을 **소제목 없이 한 편의 글로** 싣는다(D-114).
+    2문단 종합(D-206: 매크로·거래대금 기업 이슈)을 **소제목 없이 한 편의 글로** 싣는다(D-114).
+    매크로 문단의 `[n]`은 원문 링크다.
     force=False 경로라 아직 종합이 없으면 결정적 스켈레톤(쏠림·개별이슈)만 나간다 (Partial 상태).
     """
     from pipeline.telegram_md import esc
@@ -95,12 +107,13 @@ def _us_section(lines: list[str]) -> None:
     if stale and stale > 1:
         lines.append(f"  ⚠️ <i>스냅샷이 {stale}일 전 것입니다 (자동 갱신 실패 의심)</i>")
 
-    # 소제목 없이 문단만 이어 붙인다 (D-114) — 네 항목은 절이 아니라 한 글의 단락이다
+    # 소제목 없이 문단만 이어 붙인다 (D-114) — 매크로·기업 이슈 두 단락 (D-206)
     syn = b.get("synthesis") or {}
-    for key in ("index_summary", "drivers", "issues", "flow"):
+    urls = {s["n"]: s.get("url") for s in (syn.get("sources") or [])}
+    for key in ("index_summary", "drivers", "issues"):
         if syn.get(key):
             lines.append("")
-            lines.append(esc(syn[key]))
+            lines.append(_cite_links(esc(syn[key]), urls))
 
     # 지수 수치는 ① 산문이 이미 담는다(D-113 형식) — 여기서 반복하지 않는다.
     # 산문에 없는 수치 근거만 짧게 붙인다.
@@ -112,11 +125,6 @@ def _us_section(lines: list[str]) -> None:
     if idio:
         lines.append("  · 이슈: " + " · ".join(
             f"{esc(m['ticker'])} {esc('/'.join(m['flags']))}" for m in idio[:3]))
-    sectors = (b.get("flow") or {}).get("sectors") or []
-    if sectors:
-        lines.append("  · 국면: " + " · ".join(
-            f"{esc(x['label'])} {esc((x.get('trend') or {}).get('label') or '')}"
-            for x in sectors[:3]))
     for sc in (syn.get("study_candidates") or [])[:2]:
         lines.append(f"  · 스터디: {esc(sc)}")
 

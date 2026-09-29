@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { AlertTriangle, ChevronDown, Clock, GraduationCap,
+import { AlertTriangle, ChevronDown, GraduationCap,
   Info, Newspaper, Share2, TrendingUp } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,16 +10,13 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { RefreshButton } from "@/components/shared/RefreshButton"
 import { formatNumber, formatUsd, formatPercent } from "@/utils/format"
-import { ShareTrendChart } from "@/components/charts/ShareTrendChart"
-import type { TrendSeries } from "@/components/charts/ShareTrendChart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
-import type { UsFlowBlock, UsMoverBrief } from "@/types"
+import type { UsBriefingSource, UsMoverBrief } from "@/types"
 
 /**
  * 홈 상단 — 어젯밤 미국장 브리핑 (docs/specs/us-briefing.md). 아침 분위기 파악 가속기.
- * **4섹션 종합(D-112)**: ① 지수 마감 ② 시장을 움직인 요인 ③ 거래대금 이슈 ④ 시계열 흐름.
- * 하루치 스냅샷에 지수·매크로·비중추이를 얹어 '오늘이 흐름의 어디쯤인지'를 읽게 한다.
+ * **2문단 종합(D-206)**: 매크로(지정 채널·미국 매체에서 인용 검증된 이슈, `[n]` 원문 링크) + 거래대금 기업 이슈.
  * 과거 브리핑은 헤더 날짜 셀렉터로 조회(읽기 전용). 상위 20 전체는 Collapsible.
  * 5-state: Loading / Error / Partial(stale·묵은 스냅샷·synthesis=null) / Empty / Ideal.
  */
@@ -48,6 +45,9 @@ export function UsBriefingSection() {
     )
 
   const { clusters, idiosyncratic, movers, synthesis } = data
+  // D-206 이전 서버 응답에는 두 필드가 없다 — 없다고 화면 전체가 죽지 않게 빈 배열로 읽는다
+  const sources = synthesis?.sources ?? []
+  const gaps = synthesis?.source_gaps ?? []
   const topShare = clusters[0]
 
   return (
@@ -104,19 +104,23 @@ export function UsBriefingSection() {
           <Banner tone="info">LLM 종합이 아직 없습니다 — 아래 구조화 브리핑(섹터 쏠림·개별 이슈)만 표시합니다.</Banner>
         )}
 
-        {/* 종합 — 4문단을 소제목 없이 한 편의 글로 (D-114: 분단된 느낌 대신 흐르는 글) */}
-        {synthesis && (
-          <div className="space-y-2">
-            {[synthesis.index_summary, synthesis.drivers, synthesis.issues, synthesis.flow]
-              .filter(Boolean)
-              .map((para, i) => (
-                <p key={i} className="text-reading text-foreground/90">{para}</p>
-              ))}
-          </div>
+        {gaps.length > 0 && (
+          <Banner tone="info">빠진 재료: {gaps.join(" · ")}</Banner>
         )}
 
-        {/* 섹터 비중 추이 — ④ 산문의 근거 (LLM 0). 숫자 나열보다 모양이 읽히도록 차트로 */}
-        {data.flow.sectors.length > 1 && <FlowChart flow={data.flow} />}
+        {/* 종합 — 소제목 없이 한 편의 글로 (D-114). 매크로 문단의 [n]은 원문 링크 (D-206) */}
+        {synthesis && (
+          <div className="space-y-2">
+            {[synthesis.index_summary, synthesis.drivers, synthesis.issues]
+              .filter(Boolean)
+              .map((para, i) => (
+                <p key={i} className="text-reading text-foreground/90">
+                  <CitedText text={para} sources={sources} />
+                </p>
+              ))}
+            {sources.length > 0 && <SourceList sources={sources} />}
+          </div>
+        )}
 
         {/* 섹터 쏠림 */}
         <div>
@@ -234,45 +238,34 @@ function CandidateList({ icon: Icon, title, items, accent }: {
   )
 }
 
-/**
- * 섹터 거래대금 비중 추이 — 종합 마지막 문단(국면)의 근거.
- * 색은 디자인 토큰(`--color-chart-N`) — SVG는 CSS 변수를 그대로 받아 라이트·다크가 자동 대응한다.
- */
-const FLOW_COLORS = [
-  "var(--color-chart-1)", "var(--color-chart-4)",
-  "var(--color-chart-3)", "var(--color-chart-2)",
-]
+/** `[n]` 출처 표식 → 위첨자 링크. 출처 목록에 없는 번호는 평문으로 둔다(구 브리핑 호환). */
+function CitedText({ text, sources }: { text: string; sources: UsBriefingSource[] }) {
+  const byN = new Map(sources.map((s) => [s.n, s]))
+  return <>{text.split(/(\[\d+\])/).map((part, i) => {
+    const src = byN.get(Number(part.match(/^\[(\d+)\]$/)?.[1]))
+    return src ? <sup key={i}><SourceLink src={src} className="px-px text-primary hover:underline">{part}</SourceLink></sup> : part
+  })}</>
+}
 
-function FlowChart({ flow }: { flow: UsFlowBlock }) {
-  const series: TrendSeries[] = flow.sectors.map((sec, i) => ({
-    name: sec.label,
-    color: FLOW_COLORS[i % FLOW_COLORS.length],
-    points: sec.series.map((pt) => ({ label: pt.date, value: pt.share_pct })),
-  }))
+function SourceLink({ src, className, children }: { src: UsBriefingSource; className?: string; children: React.ReactNode }) {
+  const label = `${src.publisher}${src.title ? ` · ${src.title}` : ""}`
+  if (src.kind === "telegram" && src.doc_id != null)
+    return <Link to={`/doc/${src.doc_id}`} title={label} className={className}>{children}</Link>
+  return <a href={src.url ?? undefined} target="_blank" rel="noreferrer" title={label} className={className}>{children}</a>
+}
 
+function SourceList({ sources }: { sources: UsBriefingSource[] }) {
   return (
-    <div className="rounded-lg border p-2.5">
-      <div className="mb-1 flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
-        <Clock className="h-3.5 w-3.5" /> 섹터 거래대금 비중 추이
-        <span className="ml-auto tabular-nums">스냅샷 {flow.dates.length}개</span>
-      </div>
-      <ShareTrendChart series={series} height={168} />
-      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-        {flow.sectors.map((sec, i) => (
-          <span key={sec.label} className="flex items-center gap-1 text-caption">
-            <span className="h-1.5 w-1.5 rounded-full shrink-0"
-              style={{ background: FLOW_COLORS[i % FLOW_COLORS.length] }} />
-            <span className="text-muted-foreground">{sec.label}</span>
-            <span className="font-medium text-foreground/80">{sec.trend?.label}</span>
-            {sec.trend?.delta_pp != null && (
-              <span className={`tabular-nums ${chg(sec.trend.delta_pp)}`}>
-                {sec.trend.delta_pp > 0 ? "+" : ""}{sec.trend.delta_pp}%p
-              </span>
-            )}
-          </span>
-        ))}
-      </div>
-    </div>
+    <ol className="space-y-0.5 border-t pt-2">
+      {sources.map((s) => (
+        <li key={s.n} className="flex min-w-0 gap-1.5 text-caption text-muted-foreground">
+          <span className="shrink-0 tabular-nums">[{s.n}]</span>
+          <SourceLink src={s} className="min-w-0 truncate hover:text-foreground">
+            <span className="text-foreground/70">{s.publisher}</span>{s.title ? ` · ${s.title}` : ""}
+          </SourceLink>
+        </li>
+      ))}
+    </ol>
   )
 }
 

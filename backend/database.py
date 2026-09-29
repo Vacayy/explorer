@@ -564,6 +564,26 @@ def init_db():
         PRIMARY KEY(ticker, url)
     );
 
+    -- 미국 주요 매체·Fed RSS 헤드라인 (D-206, 어젯밤 매크로 이슈 재료, pipeline/macro_news.py).
+    CREATE TABLE IF NOT EXISTS macro_news (
+        url          TEXT PRIMARY KEY,
+        feed         TEXT NOT NULL,          -- FEEDS key
+        publisher    TEXT NOT NULL,
+        kind         TEXT NOT NULL,          -- news | official
+        title        TEXT NOT NULL,
+        summary      TEXT,
+        published_at TEXT,                   -- UTC ISO
+        fetched_at   TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 어젯밤 매크로 이슈 추출 캐시 (D-206) — 인용 검증을 통과한 이슈만 저장, signature=프롬프트 해시.
+    CREATE TABLE IF NOT EXISTS us_macro_issues (
+        trade_date   TEXT PRIMARY KEY,
+        signature    TEXT NOT NULL,
+        issues_json  TEXT NOT NULL,
+        created_at   TEXT DEFAULT (datetime('now'))
+    );
+
     -- 매크로·유동성 신호등 해설 캐시 (D-102, sonnet 산문 · signature 불변이면 재사용, docs/specs/macro.md).
     CREATE TABLE IF NOT EXISTS macro_signals (
         as_of      TEXT PRIMARY KEY,       -- 스냅샷 기준일

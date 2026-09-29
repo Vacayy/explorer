@@ -9,6 +9,7 @@ LLM 종합(하루 1콜·캐시): 구조화 팩트 + 담론 입력 → 분위기 
 """
 import hashlib
 import json
+import re
 import statistics
 
 from database import get_connection
@@ -313,8 +314,6 @@ def _gather_discourse(conn, trade_date: str) -> dict:
 _INDEX_KR = {"index_sp500": "S&P 500", "index_nasdaq": "나스닥", "index_dow": "다우"}
 _MACRO_KR = {"macro_us10y": "미 10Y", "macro_dxy": "달러(DXY)", "macro_gold": "금",
              "macro_oil": "WTI", "macro_hyg": "HYG(하이일드)", "macro_btc": "비트코인"}
-_FLOW_DAYS = 10        # 섹터 쏠림 시계열 조회 스냅샷 수
-_PRIOR_MOODS = 3       # 종합에 넣을 직전 브리핑 수 (흐름의 연속/단절 판정용)
 
 
 def _pct_change(rows: list) -> float | None:
@@ -406,6 +405,19 @@ def _last_move(series: list[float]) -> dict | None:
             "dir": "상승" if pct > 0.01 else "하락" if pct < -0.01 else "보합"}
 
 
+_RATE_KEYS = ("us2y", "us10y")
+
+
+def _rate_bp(item: dict) -> dict | None:
+    """금리 변화는 %가 아니라 bp (D-206). 실측: 10Y 5.24의 '+1.16%'는 약 +6bp인데 %로 나가 과장돼 읽혔다.
+    구간은 D-101과 같은 5관측 전 대비와 직전 관측 대비."""
+    vals = [v for v in (item.get("series") or []) if v is not None]
+    if len(vals) < 2:
+        return None
+    return {"last": round((vals[-1] - vals[-2]) * 100, 1),
+            "short": round((vals[-1] - vals[-6]) * 100, 1) if len(vals) >= 6 else None}
+
+
 def _macro_context() -> dict:
     """② 시장을 움직인 요인 — D-101 매크로 리더를 **그대로** 재사용 (LLM 0, D-112).
 
@@ -425,7 +437,8 @@ def _macro_context() -> dict:
     items = [{"name": i["label"], "value": i["value"], "change_pct": i["change_pct"],
               "group": i.get("group_label"), "group_key": i.get("group"),
               "regime": _macro_regime(i.get("series") or []),
-              "last_move": _last_move(i.get("series") or [])}
+              "last_move": _last_move(i.get("series") or []),
+              "bp": _rate_bp(i) if i.get("key") in _RATE_KEYS else None}
              for i in m.get("items", []) if i.get("change_pct") is not None]
     sig = m.get("signal") or {}
     return {"as_of": m.get("as_of"), "items": items, "lookback": "5관측 전 대비",
@@ -435,111 +448,145 @@ def _macro_context() -> dict:
             "degraded": m.get("degraded") or []}
 
 
-TREND_PP = 3.0          # 추세로 볼 최소 비중 변화(pp)
-REVERSAL_PP = 3.0       # 고점/저점에서 되돌린 것으로 볼 폭(pp)
-RANGE_PP = 5.0          # 횡보로 볼 최대 진폭(pp)
+# 어젯밤 매크로 이슈 (D-206) — 지정 소스에서 이슈를 뽑고, 인용이 원문에 그대로 있는 것만 남긴다.
+# 사용자 지정: 매크로·전략 텔레그램 채널 + 미국 주요 매체·Fed RSS. 트럼프 발언 채널(goddessTTF)은 제외.
+MACRO_CHANNELS = ("cahier_de_market", "Macrojunglemicrolens", "MacroAllocation", "yieldnspread",
+                  "samsung_macro", "huhjae", "hedgecat0301")
+_MACRO_DOCS = 30          # 텔레그램 글 상한(최신순)
+_MACRO_DOC_CHARS = 2500   # 글당 원문 길이 상한
+_MACRO_NEWS = 80          # 헤드라인 상한(최신순)
+_MACRO_ISSUES = 5
+_QUOTE_MIN = 8            # 이보다 짧은 인용은 검증 의미가 없다
 
 
-def _classify_trend(series: list[dict]) -> dict:
-    """섹터 비중 시계열의 **국면을 결정적으로 판정** (LLM 0, D-113).
+def _macro_window(conn, trade_date: str) -> tuple[str, str]:
+    """직전 거래일 미국장 마감(UTC 20:00) ~ 기준일 다음날 UTC 00:00(KST 09:00).
 
-    왜 계산해서 주나: 프롬프트로 "국면을 규정하라"고만 하면 모델이 근거 삼을 어휘가 없어
-    날짜별 수치를 읊는 것으로 도피한다(실측: "8/12 51.3%에서 8/17 61.6%로 급등했다가…").
-    추세·되돌림·횡보를 먼저 이름 붙여 주면 산문이 국면 서술로 올라간다.
-
-    라벨은 **방향 + 모양**의 합성이다 — 순증인데 고점에선 눌린 경우처럼 둘 다 참인 상황이
-    흔해, 하나만 고르면 "고점 되돌림(+5.6pp)"처럼 모순으로 읽힌다.
+    날짜 문자열 일치로 자르면 주말·휴장 사이 이슈(금 마감 후 발표 등)가 빠진다. 직전 거래일은
+    us_movers 스냅샷에서 찾고, 없으면 하루 전. 창이 과하게 길어지지 않게 4일로 자른다.
     """
-    pts = [p["share_pct"] for p in series if p.get("share_pct") is not None]
-    if len(pts) < 2:
-        return {"label": "관측 부족", "delta_pp": None, "detail": "스냅샷 1개 이하"}
-    first, last = pts[0], pts[-1]
-    delta = round(last - first, 1)
-    hi, lo = max(pts), min(pts)
-    hi_i, lo_i = pts.index(hi), pts.index(lo)
-    span = round(hi - lo, 1)
-    detail = f"{first}% → {last}% · 고점 {hi}% · 저점 {lo}% · 진폭 {span}pp"
-
-    if len(pts) < 3:
-        d = "상승" if delta > 0 else ("하락" if delta < 0 else "보합")
-        return {"label": f"{d}(관측 2개)", "delta_pp": delta, "detail": f"{first}% → {last}%"}
-
-    direction = ("확대" if delta >= TREND_PP else
-                 "축소" if delta <= -TREND_PP else
-                 "횡보" if span <= RANGE_PP else "등락")
-    # 끝점만 보면 안 보이는 모양. 극값이 **내부**일 때만 의미가 있다 —
-    # 단조 상승은 시작점이 곧 저점이라, 끝점을 허용하면 전부 '저점 반등'으로 잡힌다.
-    interior_hi = 0 < hi_i < len(pts) - 1
-    interior_lo = 0 < lo_i < len(pts) - 1
-    pulled_back = interior_hi and hi - last >= REVERSAL_PP
-    bounced = interior_lo and last - lo >= REVERSAL_PP
-
-    # 방향과 어울리는 모양만 붙인다 — 축소인데 '고점 대비 되돌림'은 동어반복이다
-    if direction == "횡보":
-        label = "횡보"
-    elif direction == "확대":
-        label = "확대 후 되돌림" if pulled_back else "확대 추세"
-    elif direction == "축소":
-        label = "축소 후 반등" if bounced else "축소 추세"
-    elif pulled_back:
-        label = "고점 대비 되돌림"
-    elif bounced:
-        label = "저점 대비 반등"
-    else:
-        label = "방향 불명"
-    return {"label": label, "delta_pp": delta, "detail": detail}
+    from datetime import date, timedelta
+    d = date.fromisoformat(trade_date[:10])
+    row = conn.execute("SELECT max(trade_date) p FROM us_movers WHERE trade_date < ?", (trade_date,)).fetchone()
+    prev = date.fromisoformat(row["p"][:10]) if row and row["p"] else d - timedelta(days=1)
+    prev = max(prev, d - timedelta(days=4))
+    return f"{prev.isoformat()}T20:00:00+00:00", f"{(d + timedelta(days=1)).isoformat()}T00:00:00+00:00"
 
 
-def _flow_history(conn, trade_date: str) -> dict:
-    """④ 시계열 흐름 — 최근 스냅샷의 섹터 쏠림 추이 + 직전 브리핑들의 판단 (LLM 0, D-112).
+def _gather_macro_sources(conn, trade_date: str) -> list[dict]:
+    """창 안의 지정 채널 글(T*) + 매체·Fed 헤드라인(N*). text = 인용 검증 대상 원문."""
+    from pipeline.macro_news import read_window
+    start, end = _macro_window(conn, trade_date)
+    ph = ",".join("?" * len(MACRO_CHANNELS))
+    tg = conn.execute(
+        f"SELECT rd.id, rd.title, rd.url, rd.published_at, rd.markdown, "
+        f"       COALESCE(tc.display_name, tc.channel_name) publisher "
+        f"FROM raw_documents rd JOIN telegram_channels tc ON rd.source_id LIKE tc.channel_name || '/%' "
+        f"WHERE rd.source_type='telegram' AND tc.channel_name IN ({ph}) "
+        f"  AND rd.published_at >= ? AND rd.published_at < ? AND length(rd.markdown) >= 40 "
+        f"ORDER BY rd.published_at DESC LIMIT ?", (*MACRO_CHANNELS, start, end, _MACRO_DOCS)).fetchall()
+    out = [{"ref": f"T{i}", "kind": "telegram", "publisher": r["publisher"], "title": (r["title"] or "")[:120],
+            "url": r["url"], "doc_id": r["id"], "published_at": r["published_at"],
+            "text": (r["markdown"] or "")[:_MACRO_DOC_CHARS]} for i, r in enumerate(tg, 1)]
+    for i, n in enumerate(read_window(conn, start, end)[:_MACRO_NEWS], 1):
+        out.append({"ref": f"N{i}", "kind": n["kind"], "publisher": n["publisher"], "title": n["title"],
+                    "url": n["url"], "doc_id": None, "published_at": n["published_at"],
+                    "text": n["title"] + ("\n" + n["summary"] if n["summary"] else "")})
+    return out
 
-    하루치만 보면 '오늘 반도체 61%'가 평소인지 이례인지 알 수 없다. 같은 섹터의 비중이
-    며칠에 걸쳐 어떻게 움직였는지, 그리고 내가 직전에 뭐라고 읽었는지를 함께 준다.
-    us_movers 보존이 30 스냅샷이라 여기서 실제 추이가 나온다(D-112 전까지는 7이라 불가).
-    """
-    dates = [r["trade_date"] for r in conn.execute(
-        "SELECT DISTINCT trade_date FROM us_movers WHERE trade_date <= ? "
-        "ORDER BY trade_date DESC LIMIT ?", (trade_date, _FLOW_DAYS))]
-    sector_share: dict[str, list] = {}
-    for d in reversed(dates):                       # 과거 → 최신 순으로 시계열 구성
-        rows = conn.execute(
-            "SELECT sector, sum(dollar_volume) dv FROM us_movers WHERE trade_date=? GROUP BY sector",
-            (d,)).fetchall()
-        total = sum(r["dv"] or 0 for r in rows) or 1
-        for r in rows:
-            label = _cluster_label(r["sector"])
-            sector_share.setdefault(label, []).append(
-                {"date": d, "share_pct": round((r["dv"] or 0) / total * 100, 1)})
 
-    # 최신 비중 상위 섹터만 (추이가 의미 있는 것)
-    ranked = sorted(sector_share.items(),
-                    key=lambda kv: kv[1][-1]["share_pct"] if kv[1] else 0, reverse=True)[:4]
-    prior = [dict(r) for r in conn.execute(
-        "SELECT trade_date, synthesis_json FROM us_briefings WHERE trade_date < ? "
-        "ORDER BY trade_date DESC LIMIT ?", (trade_date, _PRIOR_MOODS))]
-    moods = []
-    for p in prior:
-        try:
-            j = json.loads(p["synthesis_json"])
-        except Exception:
+def _macro_issue_prompt(trade_date: str, sources: list[dict]) -> str:
+    def fmt(s):
+        body = s["text"].strip()
+        return f"<{s['ref']} | {s['publisher']} | {(s['published_at'] or '')[:16]}Z>\n{body}\n</{s['ref']}>"
+    tg = "\n\n".join(fmt(s) for s in sources if s["kind"] == "telegram") or "(없음)"
+    news = "\n\n".join(fmt(s) for s in sources if s["kind"] != "telegram") or "(없음)"
+    return (
+        f"당신은 미국장 매크로 담당 애널리스트다. {trade_date} 미국장 전후에 나온 자료에서 "
+        "**어젯밤 미국 시장 전체에 영향을 준 매크로·정책·정치·금융 이슈**를 최대 5개 뽑는다.\n\n"
+        f"[국내 매크로·전략 텔레그램 채널 글 (T*)]\n{tg}\n\n"
+        f"[미국 주요 매체·Fed 헤드라인과 요약 (N*)]\n{news}\n\n"
+        "규칙:\n"
+        "- 개별 기업 실적·종목 뉴스는 제외한다. 시장 전체(금리·달러·유가·신용·지수)에 파급된 경우만 넣는다.\n"
+        "- 중요도 순으로 정렬한다: 여러 출처가 다룬 것, 가격 반응이 언급된 것이 앞이다. 미국과 무관한 해외 지역 뉴스는 "
+        "미국 시장 반응이 언급될 때만 넣는다.\n"
+        "- what은 출처에 있는 사실만 1~2문장 한국어로. 출처에 없는 수치·일정·인과를 보태지 마라.\n"
+        "- reaction은 출처가 언급한 시장 반응(예: '10년물 금리 상승', '금 7주 저점'). 없으면 빈 문자열.\n"
+        "- sources의 quote는 해당 출처 원문에서 **글자 그대로 복사한** 연속 구간(15~150자)이다. 번역·요약·말줄임 금지 — "
+        "영문 출처는 영문 그대로 복사한다. 원문과 한 글자라도 다르면 그 출처는 버려진다.\n"
+        "- 이슈가 없으면 빈 배열을 낸다. 지어내지 마라.\n\n"
+        "JSON만 출력: {\"issues\": [{\"title\": \"짧은 한국어 제목\", \"what\": \"…\", \"reaction\": \"…\", "
+        "\"sources\": [{\"ref\": \"N3\", \"quote\": \"원문 그대로\"}]}]}"
+    )
+
+
+_QUOTE_TR = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', " ": " "})
+
+
+def _norm_quote(text: str) -> str:
+    return " ".join((text or "").translate(_QUOTE_TR).split())
+
+
+def _verify_issues(raw: list, sources: list[dict]) -> list[dict]:
+    """인용 검증 — quote가 해당 출처 원문에 공백·따옴표 정규화 후 그대로 있어야 채택 (Weekly D-173 규율 차용).
+    검증된 출처가 하나도 없는 이슈는 버린다."""
+    by_ref = {s["ref"]: s for s in sources}
+    out = []
+    for it in raw if isinstance(raw, list) else []:
+        if not isinstance(it, dict) or not it.get("title"):
             continue
-        text = j.get("issues") or j.get("mood") or ""     # 구 스키마(mood) 호환
-        if text:
-            moods.append({"trade_date": p["trade_date"], "text": text[:400]})
-    sectors = [{"label": k, "series": v, "trend": _classify_trend(v)} for k, v in ranked]
-    # 시장 전체 쏠림 — 스냅샷별 '최상위 섹터 비중'의 추이 (한 섹터로 모이는 중인가 흩어지는가)
-    top_share = []
-    for d in reversed(dates):
-        rows = conn.execute(
-            "SELECT sector, sum(dollar_volume) dv FROM us_movers WHERE trade_date=? GROUP BY sector",
-            (d,)).fetchall()
-        total = sum(r["dv"] or 0 for r in rows) or 1
-        if rows:
-            top_share.append({"date": d,
-                              "share_pct": round(max(r["dv"] or 0 for r in rows) / total * 100, 1)})
-    return {"dates": dates, "sectors": sectors,
-            "concentration": {"series": top_share, "trend": _classify_trend(top_share)},
-            "prior_moods": moods}
+        refs = []
+        for c in it.get("sources") or []:
+            if not isinstance(c, dict):
+                continue
+            src = by_ref.get(str(c.get("ref") or "").strip())
+            q = _norm_quote(c.get("quote")).strip("\"' ")
+            if src and len(q) >= _QUOTE_MIN and q in _norm_quote(src["text"]) and src["ref"] not in refs:
+                refs.append(src["ref"])
+        if refs:
+            out.append({"title": str(it["title"])[:80], "what": str(it.get("what") or "")[:400],
+                        "reaction": str(it.get("reaction") or "")[:200], "refs": refs})
+        if len(out) >= _MACRO_ISSUES:
+            break
+    return out
+
+
+def _macro_issues(conn, trade_date: str) -> dict:
+    """어젯밤 매크로 이슈 {issues, sources(ref→메타), gaps} — 버튼·아침 잡 경로에서만 호출.
+
+    sonnet 1콜, 프롬프트 해시 캐시 — 창 안의 원문이 안 바뀌면 재호출하지 않는다.
+    """
+    empty = {"issues": [], "sources": {}, "gaps": []}
+    sources = _gather_macro_sources(conn, trade_date)
+    if not sources:
+        return {**empty, "gaps": ["지정 매크로 소스에 해당 시간창 자료 없음"]}
+    prompt = _macro_issue_prompt(trade_date, sources)
+    signature = _prompt_signature(trade_date, prompt)
+    row = conn.execute("SELECT signature, issues_json FROM us_macro_issues WHERE trade_date=?",
+                       (trade_date,)).fetchone()
+    if row and row["signature"] == signature:
+        return json.loads(row["issues_json"])
+    if llm_engine() != "claude-code":
+        return {**empty, "gaps": ["LLM 미가용 — 매크로 이슈 추출 생략"]}
+    try:
+        data = _parse_json(_call_claude_code(prompt, model="sonnet", timeout=300))
+    except Exception as e:  # noqa: BLE001
+        print(f"[us_briefing] 매크로 이슈 추출 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
+        return {**empty, "gaps": ["매크로 이슈 추출 실패"]}
+    raw = data.get("issues") if isinstance(data, dict) else None
+    issues = _verify_issues(raw, sources)
+    dropped = len(raw or []) - len(issues)
+    if dropped > 0:
+        print(f"[us_briefing] 매크로 이슈 {dropped}개 인용 검증 실패로 제외", flush=True)
+    used = {r for it in issues for r in it["refs"]}
+    result = {"issues": issues,
+              "sources": {s["ref"]: {k: s[k] for k in ("kind", "publisher", "title", "url", "doc_id", "published_at")}
+                          for s in sources if s["ref"] in used},
+              "gaps": []}
+    conn.execute("INSERT OR REPLACE INTO us_macro_issues (trade_date, signature, issues_json, created_at) "
+                 "VALUES (?,?,?, datetime('now'))", (trade_date, signature, json.dumps(result, ensure_ascii=False)))
+    conn.commit()
+    return result
 
 
 def _prompt_signature(trade_date: str, prompt: str) -> str:
@@ -556,12 +603,12 @@ def _prompt_signature(trade_date: str, prompt: str) -> str:
     return hashlib.sha256((trade_date + "|" + prompt).encode()).hexdigest()
 
 
-def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, trade_date) -> str:
-    """4섹션 브리핑 프롬프트 (D-112) — 하루치 스냅샷에 **맥락 3층**을 얹는다.
+def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, macro_issues, trade_date) -> str:
+    """2문단 브리핑 프롬프트 (D-206) — 매크로 브리핑 + 거래대금 기반 기업 이슈 브리핑.
 
-    v1은 거래대금 쏠림 + 그날 담론만 봤다. 그러면 '오늘 반도체 61%'가 평소인지 이례인지,
-    무엇이 시장 전체를 밀었는지 알 수 없다. 지수(어디서 끝났나)·매크로(무엇이 밀었나)·
-    시계열(며칠째 흐름인가)을 함께 넣어 하루를 흐름 위에 놓는다.
+    D-112의 4섹션에서 ① 지수 문단(카드 상단 타일과 중복)과 ④ 섹터 비중 흐름 문단(사용자 판단:
+    쓸모 낮음)을 걷어냈다. 매크로 문단은 지표 읽기가 아니라 **지정 소스에서 검증된 이슈**가 주어이고,
+    지표는 그 이슈의 시장 반응 근거로만 쓴다.
     """
     def fmt_c(c):
         return (f"- {c['label']}: {c['n']}종목·거래대금비중 {c['share_pct']}%·대표등락 "
@@ -590,53 +637,42 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
                + ")\n" + "\n".join(
                    f"- {i['name']}: {i['close']:,} ({i['change_pct']:+.2f}%)" for i in indices["items"]))
 
+    # 매크로 이슈 — 출처 번호 S1..Sn은 이슈 순서대로 매긴다(본문 표식 → 화면 링크)
+    snum = _source_numbers(macro_issues)
+    iss = "- 없음 (지정 매크로 소스에서 검증된 이슈가 없다)"
+    if macro_issues.get("issues"):
+        srcs = macro_issues.get("sources") or {}
+        iss = "\n".join(
+            f"- {it['title']}: {it['what']}"
+            + (f" · 시장 반응: {it['reaction']}" if it.get("reaction") else "")
+            + "\n    출처: " + ", ".join(
+                f"[S{snum[r]}] {srcs.get(r, {}).get('publisher', '?')}" for r in it["refs"] if r in snum)
+            for it in macro_issues["issues"])
+
     mac = "- 없음"
     if macro.get("items"):
-        # 구조 지표(유동성·신용)와 가격 지표(금리·달러·원자재)를 나눠 제시 —
-        # 앞은 국면으로, 뒤는 국면 + 단기 변화 둘 다로 읽어야 한다 (D-114)
+        # 구조 지표(유동성·신용)는 국면만, 가격 지표는 국면 + 그날 방향 (D-114·D-128)
         slow = [i for i in macro["items"] if i.get("group_key") in ("liquidity", "credit")]
         fast = [i for i in macro["items"] if i.get("group_key") not in ("liquidity", "credit")]
 
         def fmt_m(i, with_short: bool):
-            """구조 지표엔 단기 델타를 **주지 않는다**(D-114).
-
-            프롬프트로 '국면으로 읽어라'고만 하면 모델은 눈앞의 숫자를 집는다(실측: 국면을
-            함께 줬는데도 '순유동성 -0.75%'로 시작했다). 쓰지 않기를 바라는 재료는 넣지 않는 게
-            확실하다 — 구조 지표의 하루치 변화는 사용자 지적대로 애초에 의미가 얕다.
-            """
             r = i.get("regime") or {}
-            reg = (f"{r['label']} · {r['where']}({r['band_pos']}%) · "
-                   f"{r['obs']}관측 구간 {r['span_pct']:+}%" if r else "관측 부족")
-            short = f" (단기 {i['change_pct']:+.2f}%)" if with_short else ""
-            # 방아쇠 판정은 그날 방향으로만 — 5관측 누적치와 섞이지 않게 라벨을 분리 (D-128)
-            lm = i.get("last_move")
-            day = f" · 직전 관측 대비 {lm['dir']}({lm['pct']:+.2f}%)" if (with_short and lm) else ""
-            return f"  - {i['name']}: {i['value']:,}{short}{day} · {reg}"
+            reg = f"{r['label']} · {r['where']}" if r else "관측 부족"
+            if not with_short:
+                return f"  - {i['name']}: {i['value']:,} · {reg}"
+            bp, lm = i.get("bp"), i.get("last_move")
+            if bp:                                    # 금리는 bp (D-206)
+                day = f"그날 {bp['last']:+.1f}bp" + (f" · 5관측 {bp['short']:+.1f}bp" if bp.get("short") is not None else "")
+            else:
+                day = (f"그날 {lm['pct']:+.2f}% · " if lm else "") + f"5관측 {i['change_pct']:+.2f}%"
+            return f"  - {i['name']}: {i['value']:,} ({day}) · {reg}"
 
-        mac = f"({macro.get('as_of')} 기준 · '단기'는 {macro.get('lookback')})\n"
-        mac += ("· 구조 지표 — **국면만 준다**(유동성·신용). 하루치 변화는 이 층위에서 의미가 얕아 "
-                "일부러 제외했다 — 국면·위치로만 말하라\n")
+        mac = f"({macro.get('as_of')} 기준)\n· 구조 지표 — 국면만\n"
         mac += ("\n".join(fmt_m(i, with_short=False) for i in slow) or "  - 없음")
-        mac += "\n· 가격 지표 — 국면과 단기 변화 둘 다 의미 있는 것(금리·달러·원자재)\n"
+        mac += "\n· 가격 지표 — '그날'이 방향 판단의 기준, 5관측은 누적 배경\n"
         mac += ("\n".join(fmt_m(i, with_short=True) for i in fast) or "  - 없음")
-        if macro.get("signal"):
-            mac += (f"\n- 매크로 신호등({macro['signal']['as_of']}): "
-                    f"{macro['signal']['signal']} — {macro['signal']['headline']}")
         if macro.get("degraded"):
             mac += f"\n- (수집 실패로 빠진 지표: {', '.join(macro['degraded'])})"
-
-    fl = "- 없음"
-    if flow.get("sectors"):
-        fl = "\n".join(
-            f"- {s['label']}: **{s['trend']['label']}** ({s['trend']['delta_pp']:+}pp) · {s['trend']['detail']}"
-            for s in flow["sectors"])
-        conc = (flow.get("concentration") or {}).get("trend")
-        if conc:
-            fl += f"\n- [시장 전체 쏠림: 최상위 섹터 비중] **{conc['label']}** · {conc['detail']}"
-        fl += f"\n(스냅샷 {len(flow.get('dates') or [])}개 구간)"
-        if flow.get("prior_moods"):
-            fl += "\n\n[직전 브리핑에서 내가 읽은 것]\n" + "\n".join(
-                f"- {m['trade_date']}: {m['text']}" for m in flow["prior_moods"])
 
     themes = ", ".join(f"{t['name']}({t['count']})" for t in discourse.get("themes", [])) or "없음"
     docs = "\n".join(
@@ -644,80 +680,98 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, t
         for d in discourse.get("docs", [])) or "- 없음"
 
     return (
-        "당신은 미국장 마감 후 아침 브리핑을 쓰는 애널리스트다. 아래 재료로 4개 섹션을 쓴다.\n\n"
-        f"[1. 지수 마감]\n{idx}\n\n"
-        f"[2. 매크로 — 국면(장기 추이) 우선, 단기 변화는 참고]\n{mac}\n\n"
-        f"[3-a. 거래대금 섹터 쏠림]\n" + "\n".join(fmt_c(c) for c in clusters) + "\n\n"
-        f"[3-b. 거래대금 개별 이슈 종목]\n" + ("\n".join(fmt_i(m) for m in idio) or "- 없음") + "\n\n"
-        f"[3-c. 그날 시장 담론 — 지배 테마(문서수)]\n{themes}\n\n"
-        f"[3-d. 그날 시장 담론 — 시장구조 코멘터리]\n{docs}\n\n"
-        f"[4. 최근 스냅샷의 섹터 거래대금 비중 추이(과거→최신)]\n{fl}\n\n"
-        "임무 — 각 항목을 하나의 문단으로. **분량 예산을 지켜라. 짧게 쓰는 것이 요구사항이다.**\n"
-        "**네 문단은 화면에서 소제목 없이 이어 붙여 한 편의 글로 읽힌다(D-114).** 그러니 "
-        "'지수 마감은…', '요인으로는…' 처럼 항목 이름을 문단 앞에 달지 말고, 앞 문단을 이어받아 "
-        "자연스럽게 넘어가라(예: ③이 ①의 '잠잠한 지수'를 받아 '그러나 거래대금은…'으로). "
-        "각 문단은 독립된 절이 아니라 한 글의 단락이다.\n"
-        "① index_summary — **1~2문장.** 지수 등락률(숫자)과 마감 성격만. 예: "
-        "'8/14 종가 기준 S&P500 7,785.76(-0.17%), 나스닥 26,729.16(-0.28%), 다우 53,732.41(-0.20%)로 "
-        "세 지수 모두 소폭 하락에 그쳐 표면적으로는 잠잠한 하루였다.' "
-        "이 정도면 충분하다. 거래대금 이야기는 ③의 몫이니 여기서 하지 마라. "
-        "지수 날짜가 거래대금 기준일과 다르면 날짜만 밝히고 넘어가라.\n"
-        "② drivers — **2~3문장.** 매크로([2])와 담론([3-c],[3-d])을 교차해 '무엇이 위험선호를 밀거나 눌렀나' "
-        "핵심만. 지표를 전부 나열하지 말고 **방향을 가른 것 1~2개**만 집어라.\n"
-        "   **매크로는 국면으로 읽어라(D-114).** 유동성·M2·신용 같은 구조 지표는 **하루치 변화가 아니라 "
-        "추이·위치가 시장에 작용한다** — '순유동성이 -0.75% 줄었다'가 아니라 '순유동성은 저점권에서 "
-        "횡보 중'처럼 국면과 밴드 위치로 말하라. 금리·달러·원자재는 국면과 단기 변화를 함께 봐도 좋다. "
-        "구조 지표의 국면이 배경(실탄이 있나)이고 가격 지표의 단기 변화가 방아쇠라는 층위를 지켜라.\n"
-        "   **규율: 재료에 없는 이벤트를 지어내지 마라.** FOMC·CPI 같은 발표 일정 정보는 여기 없다. "
-        "지표가 '어떤 국면이다'까지만 말하고, 원인을 모르면 모른다고 한 문장으로 끝내라.\n"
-        "③ issues — **3~4문장.** 중요한 것만 남겨라: 쏠린 섹터 1~2개, 그룹으로 안 풀리는 개별 종목 "
+        "당신은 미국장 마감 후 아침 브리핑을 쓰는 애널리스트다. 아래 재료로 2개 문단을 쓴다.\n\n"
+        f"[A. 지수 마감]\n{idx}\n\n"
+        f"[B. 어젯밤 매크로 이슈 — 지정 소스에서 인용 검증을 통과한 것, 중요도 순]\n{iss}\n\n"
+        f"[C. 매크로 지표 — 이슈의 시장 반응을 확인하는 근거]\n{mac}\n\n"
+        f"[D-1. 거래대금 섹터 쏠림]\n" + "\n".join(fmt_c(c) for c in clusters) + "\n\n"
+        f"[D-2. 거래대금 개별 이슈 종목]\n" + ("\n".join(fmt_i(m) for m in idio) or "- 없음") + "\n\n"
+        f"[D-3. 그날 시장 담론 — 지배 테마(문서수)]\n{themes}\n\n"
+        f"[D-4. 그날 시장 담론 — 시장구조 코멘터리]\n{docs}\n\n"
+        "임무 — 두 문단. 화면에서 소제목 없이 이어 붙여 한 편의 글로 읽힌다(D-114). "
+        "항목 이름을 문단 앞에 달지 말고 자연스럽게 넘어가라. 지수 수치는 화면 상단에 따로 보이니 나열하지 마라.\n"
+        "① drivers(매크로) — **4~6문장.** 첫 문장은 지수 마감의 성격을 한 구절로 짚고 가장 중요한 매크로 이슈로 들어간다. "
+        "[B]의 이슈 2~3개를 **사건 중심으로** 쓴다: 무슨 일이 있었나 → 시장이 어떻게 반응했나([C]의 수치로 확인, "
+        "금리는 bp로) → 누가 그렇게 봤나. 지표를 이슈와 무관하게 나열하지 마라. 구조 지표(유동성·신용)는 "
+        "필요할 때 마지막 한 문장의 배경으로만 국면·위치를 말한다.\n"
+        "   **출처 표식 필수**: [B]의 이슈에서 가져온 문장 끝에 그 이슈의 출처 번호를 `[S1]`, `[S2][S4]`처럼 붙인다. "
+        "[B]에 없는 번호를 만들지 마라. [C] 지표만으로 쓴 문장에는 표식을 달지 않는다.\n"
+        "   **귀속은 출처 이름으로만**: [B]의 출처 이름은 채널·매체 이름이지 글쓴이가 아니다(한 채널에 다른 사람 글이 "
+        "올라온다). 'OO 채널은', '블룸버그는'처럼 쓰고 특정인의 견해로 단정하지 마라. 여러 출처가 함께 뒷받침한 사실을 "
+        "한 곳의 견해로 쓰지 마라.\n"
+        "   [B]가 비었으면 '지정 매크로 소스에서 확인된 이슈가 없다'고 밝히고 [C]의 국면으로 2문장만 쓴다. "
+        "재료에 없는 이벤트(FOMC·CPI 등)를 지어내지 마라.\n"
+        "② issues(기업) — **3~4문장.** 중요한 것만 남겨라: 쏠린 섹터 1~2개, 그룹으로 안 풀리는 개별 종목 "
         "**가장 중요한 2~3개**, 그리고 거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·되돌림인지). "
         "종목을 빠짐없이 훑지 마라 — 덜 중요한 건 버리고 스터디 후보로 넘겨라. "
-"**개별 종목은 라벨이 아니라 사건으로 쓴다**: '단일 촉매 확인'·'촉매 실체 불명' 같은 판정어만 쓰지 말고, "
+        "**개별 종목은 라벨이 아니라 사건으로 쓴다**: '단일 촉매 확인'·'촉매 실체 불명' 같은 판정어만 쓰지 말고, "
         "수집 문서 언급·헤드라인에 있는 **무슨 일이 있었는지**(예: 'CPU 가격 10% 인상 발표', '네비우스 실적 발표에 동반 상승')를 그 종목 문장에 넣어라. "
         "언급도 헤드라인도 없을 때만 '수집 문서·헤드라인에 촉매 없음'이라고 쓴다. "
-        "헤드라인이 있으면 그 종목의 촉매로 삼고, 담론이 사건을 지목하면 이름을 명시하라. "
-        "**내러티브를 끌어올 때는 제목만 던지지 마라(D-114).** 제목은 서사를 한 줄로 압축한 것이라 "
-        "근거·전개가 빠져 있다(구 버전은 물음 형태라 더욱 그렇다) — `(내러티브 요지: …)`에 실체가 "
-        "있으니 **그 요지가 주장하는 바를 한 구절로 풀어** 브리핑만 읽고도 내용이 파악되게 하라.\n"
-        "④ flow — **3~4문장. 날짜별 수치를 읊지 마라.** ([4]에 이미 국면 판정이 계산돼 있다.) "
-        "지금이 **어떤 국면인지**를 말하라: 추세가 이어지는 중인가, 횡보인가, 기간 조정인가, "
-        "고점을 지나 눌리는 중인가, 바닥에서 돌아서는 중인가. "
-        "그 위에서 자금이 어디에서 어디로 옮겨가는 큰 흐름인지, "
-        "[직전 브리핑에서 내가 읽은 것]과 견줘 그 판단이 유지되는지 뒤집혔는지 한 문장으로 덧붙여라. "
-        "'8/17은 이랬고 8/18은 저랬다'式 일자별 서술 금지 — 국면과 방향으로 말하라. "
-        "스냅샷이 2개 이하면 판단 근거가 부족하다고 밝혀라.\n\n"
+        "**내러티브를 끌어올 때는 제목만 던지지 마라(D-114).** `(내러티브 요지: …)`에 실체가 "
+        "있으니 **그 요지가 주장하는 바를 한 구절로 풀어** 브리핑만 읽고도 내용이 파악되게 하라. "
+        "[B]의 이슈에 있는 내용을 쓰면 여기서도 같은 `[S n]` 표식을 붙인다.\n\n"
         "공통 규율: 근거 있는 것만. 촉매를 모르면 지어내지 말고 스터디 후보로 돌려라. "
-        "예산을 넘기면 안 된다 — 길게 쓰는 것보다 버리는 것이 어렵고 중요하다.\n"
+        "분량 예산을 넘기지 마라 — 길게 쓰는 것보다 버리는 것이 어렵고 중요하다.\n"
         "\n"
         "톤 규율 (D-128 — 사용자 피드백, 위반이 반복 관측됨):\n"
         "- **하루치를 구조 전환의 시초로 읽지 마라.** 대부분의 하루는 위험 인식 조정에 따른 "
         "**자본 재배치**이고 수급에 따라 며칠 안에 반대로 움직인다. '임계점', '자금줄', '균열', "
-        "'국면 전환의 신호' 같은 서술은 그것을 뒷받침하는 재료가 있을 때만 쓴다. 되돌림으로 "
-        "설명되는 움직임이면 되돌림이라고 쓰고, 되돌 수 있는 성격이면 그 점을 밝혀라.\n"
-        "- **방아쇠는 그날 방향으로만 판정하라.** 가격 지표의 '단기'는 5관측 누적이다. 5일 누적이 "
-        "올랐어도 `직전 관측 대비`가 하락이면 그 지표를 그날 하락의 방아쇠로 쓸 수 없다 — "
-        "그때는 '수준이 높게 유지되는 배경 조건'이라고 쓰고, 방아쇠는 개별 실적·수급에서 찾아라.\n"
+        "'국면 전환의 신호' 같은 서술은 그것을 뒷받침하는 재료가 있을 때만 쓴다.\n"
+        "- **움직임의 원인은 그날 방향으로만 판정하라.** 5관측 누적이 올랐어도 '그날'이 하락이면 그 지표를 "
+        "그날 하락의 원인으로 쓸 수 없다 — 그때는 '높은 수준이 이어지고 있다'고 쓴다.\n"
         "- **자금 이탈과 재배치를 구분하라.** 거래대금 비중이 유지·확대되는데 등락만 꺾였으면 "
-        "업종에서 자금이 빠진 것이 아니라 업종 안에 남은 채 가격이 조정된 것이다(차익실현·재평가). "
-        "'자금이 이탈했다'고 쓰지 마라.\n"
-        "- **한 곳의 견해를 시장의 합의나 논쟁으로 부풀리지 마라.** 특정 증권사·인물의 코멘트는 "
-        "'누가 어디서 말했다'로 귀속해 쓴다. 담론 문서 1~2건을 '시장의 관심은 …이 됐다'로 "
-        "일반화하는 것이 반복 관측된 오류다.\n"
-        "- **구어체·수사 금지.** 직접적인 평서문으로 쓴다. 독자에게 묻거나 권하지 말고, "
-        "비유·감탄·강조 부사를 덜어내라.\n"
-        "- **투자 대응·매매 처방을 쓰지 마라.** 이 브리핑의 목적은 시장의 색깔을 재료로 요약하는 "
-        "것이다. 비중 조절·매수·헤지 조언은 범위 밖이다(스터디·공유 후보는 그대로 남긴다).\n"
-        "- **재료 섹션 번호를 본문에 노출하지 마라.** 독자는 `[1]`~`[4]` 재료를 보지 않는다. "
-        "'[4]를 보면'이 아니라 '최근 스냅샷을 보면'처럼 내용으로 지칭하라.\n"
-        "JSON만 출력: {\"index_summary\": \"…\", \"drivers\": \"…\", \"issues\": \"…\", \"flow\": \"…\", "
+        "'자금이 이탈했다'고 쓰지 마라(차익실현·재평가).\n"
+        "- **한 곳의 견해를 시장의 합의나 논쟁으로 부풀리지 마라.** 한 매체·채널만 말한 것은 "
+        "'누가 어디서 말했다'로 귀속해 쓴다.\n"
+        "- **내부 판정 어휘를 쓰지 마라**: '방아쇠', '배경 조건', '밴드 상단/하단', '5관측' 같은 재료의 용어는 "
+        "독자에게 뜻이 없다. '최근 범위의 위쪽', '며칠째 오름세'처럼 풀어 쓴다.\n"
+        "- **구어체·수사 금지.** 직접적인 평서문으로 쓴다. 비유·감탄·강조 부사를 덜어내라.\n"
+        "- **투자 대응·매매 처방을 쓰지 마라.** 비중 조절·매수·헤지 조언은 범위 밖이다(스터디·공유 후보는 그대로 남긴다).\n"
+        "- **재료 구획 이름을 본문에 노출하지 마라.** '[C]를 보면'이 아니라 내용으로 지칭하라. "
+        "허용되는 괄호 표식은 출처 번호 `[S n]`뿐이다.\n"
+        "JSON만 출력: {\"drivers\": \"…\", \"issues\": \"…\", "
         "\"movers_why\": [{\"ticker\": \"INTC\", \"why\": \"+9.1% — 무슨 일(출처 종류). 사건이 없으면 '촉매 없음'\"}] (개별 이슈 종목 전부, 각 60자 이내), "
         "\"study_candidates\": [\"티커 — 왜 스터디해야 하는지 한 줄\"], "
         "\"share_candidates\": [\"티커/주제 — 이미 내러티브 있어 공유할 만한 것 한 줄\"]}"
     )
 
 
-SYNTH_SECTIONS = ("index_summary", "drivers", "issues", "flow")
+def _source_numbers(macro_issues: dict) -> dict:
+    """이슈 출처 ref(T3·N12) → 프롬프트 번호 S1.. (이슈 순서, 첫 등장 순)."""
+    out: dict[str, int] = {}
+    for it in macro_issues.get("issues") or []:
+        for r in it["refs"]:
+            out.setdefault(r, len(out) + 1)
+    return out
+
+
+_CITE_RE = re.compile(r"\[\s*S\s*\d+(?:\s*[,，]\s*S?\s*\d+)*\s*\]")
+
+
+def _link_citations(texts: list[str], macro_issues: dict) -> tuple[list[str], list[dict]]:
+    """본문들의 `[S n]` 표식 → 화면 번호 `[1]`..(두 문단 통틀어 등장 순 재번호) + 출처 목록 (D-206).
+
+    기업 문단도 매크로 이슈 출처(예: 오라클 불가항력 보도)를 인용할 수 있어 번호를 공유한다.
+    프롬프트에 없던 번호는 지운다(지어낸 출처를 링크로 만들지 않는다).
+    """
+    by_num = {n: ref for ref, n in _source_numbers(macro_issues).items()}
+    srcs = macro_issues.get("sources") or {}
+    order: dict[str, int] = {}
+
+    def repl(m):
+        nums = [int(x) for x in re.findall(r"\d+", m.group(0))]
+        refs = [by_num[n] for n in nums if n in by_num and by_num[n] in srcs]
+        return "".join(f"[{order.setdefault(r, len(order) + 1)}]" for r in dict.fromkeys(refs))
+
+    out = []
+    for text in texts:
+        linked = re.sub(r"\s+(?=\[\s*S\s*\d)", "", text or "")     # 표식 앞 공백은 붙인다
+        out.append(_CITE_RE.sub(repl, linked))
+    return out, [{"n": n, **srcs[ref]} for ref, n in order.items()]
+
+
+# index_summary는 D-206 이전 행 호환용(새 종합은 비워 둔다)
+SYNTH_SECTIONS = ("index_summary", "drivers", "issues")
 
 
 def _normalize_synthesis(data: dict) -> dict:
@@ -725,6 +779,7 @@ def _normalize_synthesis(data: dict) -> dict:
 
     D-112 이전 행은 `mood` 하나뿐이다 — 그 시절 산문은 지금의 issues에 해당하므로
     거기로 흘려보내 과거 브리핑도 그대로 읽히게 한다(히스토리를 깨지 않는다).
+    D-206 이전 행의 `flow` 문단은 폐지된 구성이라 읽지 않는다.
     """
     out = {k: (data.get(k) or "") for k in SYNTH_SECTIONS}
     if not out["issues"] and data.get("mood"):
@@ -732,13 +787,15 @@ def _normalize_synthesis(data: dict) -> dict:
     out["study_candidates"] = data.get("study_candidates") or []
     out["share_candidates"] = data.get("share_candidates") or []
     out["movers_why"] = [x for x in (data.get("movers_why") or []) if isinstance(x, dict) and x.get("ticker")]
+    out["sources"] = [x for x in (data.get("sources") or []) if isinstance(x, dict) and x.get("n")]
+    out["source_gaps"] = [x for x in (data.get("source_gaps") or []) if isinstance(x, str)]
     return out
 
 
 def _synthesize(conn, trade_date: str, clusters, idio, movers,
-                discourse, indices, macro, flow) -> dict | None:
+                discourse, indices, macro, macro_issues, feed_gaps: list[str]) -> dict | None:
     """LLM 종합 — 프롬프트 해시로 캐시 판정. 엔진 미가용이면 None(구조화 스켈레톤만)."""
-    prompt = _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, flow, trade_date)
+    prompt = _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, macro_issues, trade_date)
     signature = _prompt_signature(trade_date, prompt)
     cached = conn.execute(
         "SELECT signature, synthesis_json FROM us_briefings WHERE trade_date=?", (trade_date,)).fetchone()
@@ -754,6 +811,9 @@ def _synthesize(conn, trade_date: str, clusters, idio, movers,
     except Exception as e:  # noqa: BLE001 — 원인을 로그로 남긴다(구 silent-None 대비)
         print(f"[us_briefing] 종합 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return None
+    (data["drivers"], data["issues"]), data["sources"] = _link_citations(
+        [data.get("drivers") or "", data.get("issues") or ""], macro_issues)
+    data["source_gaps"] = list(macro_issues.get("gaps") or []) + feed_gaps
     synthesis = _normalize_synthesis(data)
     if not any(synthesis[k] for k in SYNTH_SECTIONS):     # 전 섹션 공백이면 저장 가치 없음
         return None
@@ -797,10 +857,10 @@ def _staleness(trade_date: str | None) -> int | None:
 
 
 def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
-    """어젯밤 미국장 브리핑 — 구조화(LLM 0) + 4섹션 종합(하루 1콜·캐시, D-112).
+    """어젯밤 미국장 브리핑 — 구조화(LLM 0) + 매크로 이슈 추출·2문단 종합(각 sonnet 1콜·캐시, D-206).
 
     반환 {status, trade_date, fetched_at, error, stale_days, clusters, idiosyncratic,
-          movers, market_themes, market_docs, indices, macro, flow, synthesis|None}.
+          movers, market_themes, market_docs, indices, macro, synthesis|None}.
     LLM 미가용이어도 결정적 스켈레톤은 항상 채워진다.
 
     trade_date: 과거 브리핑 조회(읽기 전용 — 재수집·재종합 없음, D-112).
@@ -814,7 +874,7 @@ def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
             "fetched_at": lead["fetched_at"], "error": lead["error"],
             "stale_days": _staleness(lead["trade_date"]),
             "clusters": [], "idiosyncratic": [], "movers": [], "market_themes": [],
-            "market_docs": [], "indices": {}, "macro": {}, "flow": {}, "synthesis": None}
+            "market_docs": [], "indices": {}, "macro": {}, "synthesis": None}
     if not lead["items"]:
         return base
 
@@ -827,11 +887,14 @@ def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
         idio = [m for m in movers if m["flags"]]
         discourse = _gather_discourse(conn, lead["trade_date"])
         indices = _index_moves(conn)                        # ① 지수 (D-112)
-        macro = _macro_context()                            # ② 매크로 (D-112)
-        flow = _flow_history(conn, lead["trade_date"])      # ④ 시계열 (D-112)
+        macro = _macro_context()                            # 매크로 지표 (D-112)
         if force:                                          # 버튼: 재종합(sonnet, 프롬프트 해시 캐시)
+            from pipeline.macro_news import fetch_feeds
+            feeds = fetch_feeds()                           # 매체·Fed 헤드라인 (D-206)
+            feed_gaps = [f"{f['publisher']} 피드 수집 실패({f['reason']})" for f in feeds["failed"]]
+            macro_issues = _macro_issues(conn, lead["trade_date"])
             synthesis = _synthesize(conn, lead["trade_date"], clusters, idio, movers,
-                                    discourse, indices, macro, flow)
+                                    discourse, indices, macro, macro_issues, feed_gaps)
         else:                                              # 로드: 저장된 종합 읽기(LLM 없음)
             synthesis = _read_synthesis(conn, lead["trade_date"])
     finally:
@@ -839,7 +902,7 @@ def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
 
     base.update({"clusters": clusters, "idiosyncratic": idio, "movers": movers,
                  "market_themes": discourse["themes"], "market_docs": discourse["docs"],
-                 "indices": indices, "macro": macro, "flow": flow, "synthesis": synthesis})
+                 "indices": indices, "macro": macro, "synthesis": synthesis})
     return base
 
 
@@ -858,7 +921,7 @@ def _read_past(trade_date: str) -> dict:
                 "error": None if (snapshot or synthesis) else "해당 날짜의 브리핑이 없습니다",
                 "stale_days": _staleness(trade_date),
                 "clusters": [], "idiosyncratic": [], "movers": [], "market_themes": [],
-                "market_docs": [], "indices": {}, "macro": {}, "flow": {}, "synthesis": synthesis}
+                "market_docs": [], "indices": {}, "macro": {}, "synthesis": synthesis}
         if not snapshot:
             if synthesis:
                 base["error"] = "근거 스냅샷은 보존 기간이 지나 삭제됐습니다 (종합만 표시)"

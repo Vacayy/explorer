@@ -610,13 +610,19 @@ export interface UsCluster {
   label: string; n: number; dollar_volume: number; share_pct: number;
   median_change: number; has_new: boolean; tickers: string[];
 }
-/** 4섹션 종합 (D-112). 구 스키마(mood 단일)는 백엔드가 issues로 승계해 내려준다. */
+/** 매크로 문단 출처 표식 `[n]`의 대상 (D-206). */
+export interface UsBriefingSource {
+  n: number; kind: "telegram" | "news" | "official"; publisher: string;
+  title: string | null; url: string | null; doc_id: number | null; published_at: string | null;
+}
+/** 2문단 종합 (D-206): 매크로 + 거래대금 기업 이슈. 구 스키마(mood 단일)는 백엔드가 issues로 승계해 내려준다. */
 export interface UsBriefingSynthesis {
-  index_summary: string;   // ① 지수 마감
-  drivers: string;         // ② 시장을 움직인 요인
-  issues: string;          // ③ 거래대금 기반 이슈
-  flow: string;            // ④ 시계열 흐름
+  index_summary: string;   // D-206 이전 행 호환(새 종합은 빈 값)
+  drivers: string;         // 매크로 — `[n]` 출처 표식 포함
+  issues: string;          // 거래대금 기반 기업 이슈
   study_candidates: string[]; share_candidates: string[];
+  sources: UsBriefingSource[];
+  source_gaps: string[];   // 빠진 재료(피드 수집 실패 등)
 }
 export interface UsIndexMove { name: string; close: number; change_pct: number }
 export interface UsIndexBlock { as_of: string | null; items: UsIndexMove[] }
@@ -625,14 +631,6 @@ export interface UsMacroSignal { as_of: string | null; signal: string | null; he
 export interface UsMacroBlock {
   as_of: string | null; items: UsMacroItem[]; lookback: string | null;
   signal: UsMacroSignal | null; degraded: string[];
-}
-export interface UsFlowPoint { date: string; share_pct: number }
-/** 비중 시계열 국면 판정 (D-113) — 확대/축소 추세·되돌림·반등·횡보 */
-export interface UsFlowTrend { label: string; delta_pp: number | null; detail: string | null }
-export interface UsFlowSector { label: string; series: UsFlowPoint[]; trend: UsFlowTrend | null }
-export interface UsFlowConcentration { series: UsFlowPoint[]; trend: UsFlowTrend | null }
-export interface UsFlowBlock {
-  dates: string[]; sectors: UsFlowSector[]; concentration: UsFlowConcentration | null
 }
 export interface UsBriefingListItem { trade_date: string; model: string | null; created_at: string | null }
 export interface UsMarketTheme { name: string; count: number }
@@ -646,7 +644,7 @@ export interface UsBriefing {
   stale_days: number | null;                 // 스냅샷 경과일 — 며칠 묵었나 (D-112)
   clusters: UsCluster[]; idiosyncratic: UsMoverBrief[]; movers: UsMoverBrief[];
   market_themes: UsMarketTheme[]; market_docs: UsMarketDoc[];
-  indices: UsIndexBlock; macro: UsMacroBlock; flow: UsFlowBlock;   // D-112
+  indices: UsIndexBlock; macro: UsMacroBlock;   // D-112
   synthesis: UsBriefingSynthesis | null;
 }
 
