@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCompanySearch } from '@/hooks/useCompanySearch'
 import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, useMigrateWatchlist, usePutRules, useRemoveMember, useStrategyCatalog } from '@/hooks/useGroups'
-import { formatKrw, formatNumber, formatPercent, formatRelativeTime } from '@/utils/format'
+import { formatKrw, formatNumber, formatPercent } from '@/utils/format'
 import type { StockGroupDetail, StockGroupKind, StockGroupMember, StrategyCatalogItem, WatchRule, WatchRuleInput } from '@/types'
 
 const KIND_LABEL: Record<StockGroupKind, string> = { watch: '관심', portfolio: '포트폴리오' }
@@ -168,7 +168,7 @@ function AddMember({ detail }: { detail: StockGroupDetail }) {
     </div>
     {query.trim() && <ul className="max-h-56 space-y-1 overflow-y-auto" aria-label="검색 결과">
       {search.isPending && <li className="text-caption text-muted-foreground">검색 중…</li>}
-      {search.data?.slice(0, 8).map(company => <li key={company.stock_code}><Button variant="ghost" size="sm" className="w-full justify-between" disabled={add.isPending || existing.has(company.stock_code)} onClick={() => void pick(company.stock_code)}><span>{company.corp_name}<span className="ml-2 text-caption text-muted-foreground">{company.stock_code}</span></span><span className="text-caption text-muted-foreground">{existing.has(company.stock_code) ? '이미 있음' : '추가'}</span></Button></li>)}
+      {search.data?.filter((company): company is typeof company & { stock_code: string } => !!company.stock_code).slice(0, 8).map(company => <li key={company.stock_code}><Button variant="ghost" size="sm" className="w-full justify-between" disabled={add.isPending || existing.has(company.stock_code)} onClick={() => void pick(company.stock_code)}><span>{company.corp_name}<span className="ml-2 text-caption text-muted-foreground">{company.stock_code}</span></span><span className="text-caption text-muted-foreground">{existing.has(company.stock_code) ? '이미 있음' : '추가'}</span></Button></li>)}
       {search.data && search.data.length === 0 && <li className="text-caption text-muted-foreground">일치하는 종목이 없습니다.</li>}
     </ul>}
   </CardContent></Card>

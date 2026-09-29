@@ -56,7 +56,7 @@ export function usePutRules(groupId: number) {
 export function useEvaluateGroup(groupId: number) {
   return useGroupWrite(async (force = false) => (await api.post<{ summary: unknown; group: StockGroupDetail }>(`${ROOT}/${groupId}/evaluate`, null, { params: { force } })).data.group)
 }
-export function useMigrateWatchlist() { return useGroupWrite(async () => (await api.post<{ group: StockGroupDetail }>(`${ROOT}/migrate-watchlist`)).data.group) }
+export function useMigrateWatchlist() { return useGroupWrite<void>(async () => (await api.post<{ group: StockGroupDetail }>(`${ROOT}/migrate-watchlist`)).data.group) }
 
 /** 발견 화면의 저장 전략 조건을 묶음 기본 규칙에 덧붙인다(같은 전략·매개변수는 한 번만). */
 export function useAppendDefaultRules() {

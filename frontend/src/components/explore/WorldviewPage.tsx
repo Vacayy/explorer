@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { X, Maximize2, Minimize2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
-import { NodeSourceSummary } from "@/components/explore/graph/EdgeSource"
+import { NodeSourceSummary, type SourceStatus } from "@/components/explore/graph/EdgeSource"
 import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
@@ -49,6 +49,7 @@ interface WNode {
   pace_layer?: string | null   // event|flow|cycle|structure|regime — 노드 중력 (D-030)
 }
 interface WEdge {
+  source_status?: SourceStatus | null
   from: string; from_id: number; from_type: string | null
   to: string; to_id: number; to_type: string | null
   rel: string; mechanism: string | null; orientation: string | null
