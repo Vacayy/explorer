@@ -11,6 +11,7 @@ import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { MomentumSection, ThemeSurgeSummary, GraphActivitySection } from "@/components/home/HomeSignals"
 import { IndexStrip } from "@/components/home/IndexStrip"
+import { RiskMonitoring } from '@/components/home/RiskMonitoring'
 import { MarketContext } from "@/components/home/MarketContext"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { KrMoversSection } from "@/components/home/KrMoversSection"
@@ -28,6 +29,7 @@ export default function HomePage() {
       overview={<IndexStrip />}>
       {mode === 'feed' ? <ChannelReader /> : <div className="@container/market space-y-5">
         <MarketContext />
+        <RiskMonitoring />
         <UsBriefingSection />
         <KrMoversSection />
         <div className="market-module-grid" data-home-row="signals">

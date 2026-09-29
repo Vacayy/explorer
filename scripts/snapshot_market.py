@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
 from pipeline.market_regime import snapshot_market
+from pipeline.risk import snapshot_risk
 
 
 def main():
@@ -26,6 +27,10 @@ def main():
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     deg = f" | degraded: {', '.join(result['degraded'])}" if result["degraded"] else ""
     print(f"[{ts}] snapshot_market — {result['rows']}행 · {', '.join(result['indicators'])}{deg}")
+
+    risk = snapshot_risk()
+    failed = [r["key"] for r in risk["results"] if r["status"] == "error"]
+    print(f"[{ts}] snapshot_risk — {sum(r['rows'] for r in risk['results'])}행 · 실패 {failed}")
 
 
 if __name__ == "__main__":

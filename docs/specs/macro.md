@@ -33,3 +33,9 @@ Home 시장 모드 상단의 비고정 요약 띠에서 VIX·공포탐욕과 주
 
 ## 5-state
 Loading(skeleton) / Error(ErrorState+재시도) / Partial(일부 지표 degraded — 유동성 키 안내) / Empty(전 지표 없음) / Ideal(4그룹 타일).
+
+## Risk 차트 분리 (D-205, 2026-09-28)
+
+Home 기본 금리·신용·VIX·공포탐욕 표시는 [Risk 계약](home-feed.md#risk-모니터링-구현-계약-2026-09-28)을 따른다. 기존 MacroLiquidity 상세와 매크로 해설 입력은 유지한다. Risk는 10Y/2Y를 FRED DGS10/DGS2로 통일하며 기존 Yahoo macro_us10y와 섞지 않는다. 상단 MarketContext 요약 띠는 달러원·WTI·금·BTC만 유지한다.
+
+Risk 금리·신용은 기본 10년이며 `risk_macro_range`에서 3개월~전체로 전환한다. FRED 장기 백필은 기존 market_indicators에 보존하고 최초 백필 이후 최근 400일만 갱신한다. HY/BBB/AAA OAS의 최근 3년 제공 제한과 Aaa/Baa−10Y의 정의 차이는 카드·설명 팝오버에서 안내한다.

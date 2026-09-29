@@ -883,3 +883,44 @@ export interface CompanyWebProfile {
   gaps: string[];
   official_report?: { rcept_no: string; report_nm: string; rcept_dt: string | null; url: string } | null;
 }
+
+// Home Risk — dated observations and an explicitly experimental joint condition.
+export interface RiskIndicator {
+  key: string
+  label: string
+  unit: string
+  source: string
+  source_url: string
+  value: number | null
+  as_of: string | null
+  fetched_at: string | null
+  attempted_at: string | null
+  error: string | null
+  quality: 'fresh' | 'missing' | 'stale' | 'error'
+  lag_days: number | null
+  points: [string, number][]
+  change_5: number | null
+  change_20: number | null
+}
+export interface RiskResponse {
+  items: RiskIndicator[]
+  signal: {
+    status: 'unavailable' | 'joint' | 'watch' | 'credit' | 'rates' | 'clear'
+    label: string
+    as_of: string | null
+    rate_change_bp: number | null
+    credit_change_bp: number | null
+    consecutive: number
+    common_observations: number
+    rule_version: string
+    reason: string
+  }
+  expected_date: string
+  generated_at: string
+  calendar_note: string
+  empty: boolean
+}
+export interface RiskSnapshotResponse {
+  busy: boolean
+  results: { key: string; status: 'cached' | 'updated' | 'error'; rows: number; error: string | null }[]
+}
