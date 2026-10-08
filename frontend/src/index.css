@@ -426,15 +426,12 @@
 /* Market-only, non-sticky summary: charts and explanations are opt-in. */
 .market-context { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--card); overflow: hidden; }
 .market-context-summary { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
-.market-context-title { width: 152px; flex-shrink: 0; }
 .market-metric-strip { display: flex; min-width: 0; flex: 1; gap: 16px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: 2px; }
 .market-metric { display: flex; flex-direction: column; flex-shrink: 0; min-width: 96px; }
 .market-context-details { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 @container page (min-width: 1000px) { .market-context-details { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container page (max-width: 600px) {
-  .market-context-summary { flex-wrap: wrap; padding: 10px 12px; gap: 8px; }
-  .market-context-title { width: auto; flex: 1; }
-  .market-metric-strip { flex-basis: 100%; order: 3; }
+  .market-context-summary { padding: 10px 12px; gap: 8px; }
 }
 
 /* Document stays in place while annotations and the existing chat run beside it. */

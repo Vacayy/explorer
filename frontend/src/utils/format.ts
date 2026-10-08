@@ -51,6 +51,15 @@ export function formatPercent(value: number | null | undefined): string {
 }
 
 /**
+ * Format a percentage-point change with sign (e.g. +0.35%p) — 금리 등 이미 %인 값의 변동.
+ */
+export function formatPp(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined) return "-"
+  const sign = value > 0 ? "+" : ""
+  return `${sign}${value.toFixed(digits)}%p`
+}
+
+/**
  * Format a share/ratio as percentage without a sign (e.g. 15.3%). Use formatPercent for changes.
  */
 export function formatRatio(value: number | null | undefined): string {

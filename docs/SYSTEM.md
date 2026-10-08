@@ -135,10 +135,10 @@
 
 - Dock: Home·관심목록·월드모델·대화. 관심목록 기본 목적지는 `/follow/saved`이며 저장됨이 첫 하위 탭이다. 모바일은 더보기 포함 5칸, Alt+1–4. `/follow`는 관심 대상, `/sources`는 기존 소스 CRUD를 분리한 관리 화면. Home 피드·더보기·Omnibar에서 관리 화면에 접근한다.
 - `/feed` 기본 진입은 Home 피드로 이동. `view=documents`와 기존 문서 검색 쿼리, `feed_*` 타임라인 필터는 호환 유지한다. 문서 검색은 더보기와 Omnibar에 보존한다.
-- `home/MarketContext`: 시장 모드 상단의 비고정·접이식 지표 요약. 달러원·WTI·금·BTC와 개별 관측일. VIX·공포탐욕·2Y/10Y는 D-205의 Risk 기본 차트로 이관. 기본 접힘과 설정 복원, 상세에서 기존 시장 국면·매크로 모듈 사용. 하단 중복 제거, 피드에는 미노출.
+- `home/MarketContext`: 시장 모드 상단의 비고정·접이식 지표 요약(좌측 제목 없음, D-210). 달러원·엔/원(100엔)·미국 2Y·10Y·WTI·금·BTC와 MoM(금리 %p, 나머지 %)·개별 관측일. VIX·공포탐욕은 D-205의 Risk 기본 차트. 기본 접힘과 설정 복원, 상세에서 기존 시장 국면·매크로 모듈 사용. 하단 중복 제거, 피드에는 미노출.
 - `shared/MetricTrend`: 시장 상단 지표의 hover/클릭/터치/키보드 추이 버블. 실제 관측일·범위·개수 및 결측 상태를 표시하며 매크로의 `dated_series`를 사용한다.
 - 스터디 1차 구현: 아래 스터디 항목과 `specs/study-mode.md` 참조. 새 URL 수집·외부 리서치는 후속이다.
-- `pipeline/macro.py`: 기존 `market_indicators`에 `macro_us2y`(FRED DGS2 공개 CSV), `macro_usdkrw`(Yahoo KRW=X)를 추가. 각 지표의 실제 마지막 관측일 `as_of` 반환, 소스 실패는 개별 처리. 새 테이블 없이 기존 수집·신호 생성 정책 유지.
+- `pipeline/macro.py`: 기존 `market_indicators`에 `macro_us2y`(FRED DGS2 공개 CSV), `macro_usdkrw`(Yahoo KRW=X), `macro_jpykrw`(Yahoo JPYKRW=X, 표시 시 ×100 = 100엔당, D-210)를 추가. 각 지표의 실제 마지막 관측일 `as_of` 반환, 소스 실패는 개별 처리. 새 테이블 없이 기존 수집·신호 생성 정책 유지.
 - 계약은 `specs/dock-navigation.md`, `specs/home-feed.md`, `specs/macro.md`. 검증: 백엔드 50개, 프론트엔드 빌드, 실제 데이터 브라우저와 모바일 점검(`logs/dock-market/`).
 
 ## 상세 읽기 화면 (2026-09-10)

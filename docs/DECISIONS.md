@@ -2581,6 +2581,8 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 
 **참조·검증**: docs/specs/home-feed.md, pipeline/risk.py, RiskMonitoring.tsx, RiskTrendChart.tsx. Risk 15개·기존 매크로 3개 검사, 실제 원천 9개 수집, API·타입/프로덕션 빌드·브라우저 5-state·모바일 확인.
 
+→ 요약 띠의 2Y/10Y 제거는 D-210에서 번복(MoM과 함께 다시 표시).
+
 ---
 
 ## D-206 · 2026-09-29 · 미국장 브리핑을 '지정 소스 매크로 이슈 + 거래대금 기업 이슈' 2문단으로 (D-112 4섹션 번복)
@@ -2626,3 +2628,13 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **이유·기각한 대안**: 사용자 판단 — 피드에 들어왔을 때 지수보다 "AI가 새로 만든 게 뭔지"를 먼저 보고 싶다. D-208은 생성물을 Explorer 소스로 타임라인에 섞었지만 팔로우 소스 사이에 흩어져 한눈에 안 보인다. D-208이 기각한 '하단 모듈 전부를 피드 상단 카드로'와 달리 제목 목록 카드 하나만 올리므로 리더가 대시보드로 돌아가지 않는다. 지수 띠는 시장 상태라 시장 탭에만 둔다. 프레임 전체를 고정하면 상단 카드가 창 높이 안에서 리더 자리를 계속 차지한다. 고정을 아예 푸는 안(페이지 스크롤만)은 기각했다 — 목록과 본문을 따로 훑을 수 없고 채널별 스크롤 위치 복원이 깨진다.
 
 **참조**: frontend/src/components/home/AiActivityFeed.tsx · HomePage.tsx · docs/specs/home-feed.md.
+
+---
+
+## D-210 · 2026-10-08 · 시장 요약 띠에 엔/원·미국 2Y·10Y와 MoM을 싣고 좌측 제목을 뺀다
+
+**결정**: Home 시장 탭 `MarketContext` 요약 띠를 달러/원 · 엔/원(100엔) · 미국 2Y · 미국 10Y · WTI · 금 · BTC로 하고, 각 값 아래에 MoM(기준일 한 달 전 이전 마지막 관측 대비; 금리는 %p, 나머지는 %)을 적는다. 좌측 '시장 국면 · 매크로' 제목과 국면 한 줄은 뺀다(국면은 '상세'에서 그대로 본다). 엔/원은 `macro_jpykrw`(Yahoo JPYKRW=X)로 새로 수집하고 국내 관행대로 100엔당으로 표시한다(`INDICATORS.scale`).
+
+**이유·기각한 대안**: 사용자 판단 — 한 줄에서 환율·금리의 수준과 한 달 변화를 같이 보고 싶다. D-205는 Risk 차트와 겹친다며 2Y/10Y를 띠에서 뺐지만, Risk 카드는 금리차·추이를 보는 곳이고 띠는 현재 수준+한 달 변화를 보는 곳이라 역할이 다르다. 띠의 금리는 기존 매크로 시계열(2Y=FRED DGS2, 10Y=Yahoo ^TNX)을 쓴다. Risk의 FRED DGS10으로 맞추는 안은 기각 — 띠 하나 때문에 두 번째 조회를 붙이게 되고, 10Y 원천이 달라 수치가 몇 bp 다를 수 있음은 감수한다. 1주 변화(`change_pct`, 5관측)를 재사용하는 안도 기각 — 사용자가 MoM을 지정했다.
+
+**참조**: frontend/src/components/home/MarketContext.tsx · MacroLiquidity.tsx(fmtValue) · utils/format.ts(formatPp) · backend/pipeline/macro.py · docs/specs/macro.md · docs/specs/home-feed.md.
