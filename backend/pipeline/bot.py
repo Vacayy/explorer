@@ -52,7 +52,7 @@ def _send(chat_id: str, text: str, markdown: bool = True) -> int | None:
     return first
 
 
-def _replace(chat_id: str, message_id: int, text: str, markdown: bool = True) -> None:
+def _replace(chat_id: str, message_id: int, text: str, markdown: bool = True) -> bool:
     """로딩 말풍선을 결과로 **대체**한다 (D-111).
 
     '생성 중…'은 진행 표시일 뿐 대화 기록에 남을 내용이 아니다. editMessageText로
@@ -63,12 +63,14 @@ def _replace(chat_id: str, message_id: int, text: str, markdown: bool = True) ->
     chunks = _render(text, markdown)
     if not chunks:
         _delete(chat_id, message_id)
-        return
-    if not _edit(chat_id, message_id, chunks[0]):
+        return True
+    ok = _edit(chat_id, message_id, chunks[0])
+    if not ok:
         _delete(chat_id, message_id)
-        _post(chat_id, chunks[0])
+        ok = _post(chat_id, chunks[0]) is not None
     for chunk in chunks[1:]:
-        _post(chat_id, chunk)
+        ok = (_post(chat_id, chunk) is not None) and ok
+    return ok
 
 
 def _call(method: str, payload: dict):
@@ -291,17 +293,33 @@ def _run_narrative(entity_id: int) -> str:
     return f"{head}\n\n{r.get('narrative') or ''}"
 
 
-def _run_youtube(doc_id: int) -> str:
-    """영상 버튼 — spine_doc.get_document의 lazy 재요약 경로를 그대로 탄다."""
+def _run_youtube(doc_id: int) -> tuple[str, bool]:
+    """영상 버튼 — 웹의 '정리본 만들기'와 같은 작업(youtube_digest.queue → execute)을 이 스레드에서 끝까지 돌린다.
+
+    문서 GET(get_document)은 생성하지 않는다(6289353에서 lazy 생성 제거). 예전처럼 문서를 열어
+    정리본이 생기길 기대하면 원본 자막이 그대로 발송된다(실측: 영어 자동 자막 원문이 '정리본'으로 나갔다).
+    작업 기록·중복 방지·실패 사유는 웹과 같은 youtube_digest_jobs를 쓴다.
+    반환 (발송 문구, 정리본 확보 여부) — 실패 사유도 사용자에게 보내므로 성공 여부를 따로 돌려 기록에 쓴다.
+    """
+    from fastapi import HTTPException
+    from pipeline import youtube_digest
     from routers.spine_doc import get_document
+    try:
+        job = youtube_digest.queue(doc_id)
+    except HTTPException as e:              # 문서 없음·자막 부족
+        return f"📺 정리본을 만들 수 없습니다 — {e.detail}", False
+    if job["token"]:
+        youtube_digest.execute(doc_id, job["token"])
     try:
         doc = get_document(doc_id)
     except Exception as e:  # noqa: BLE001 — 404 등
-        return f"문서를 열 수 없습니다 ({type(e).__name__})."
-    body = (doc.content or "").strip()
-    if not body:
-        return f"📺 {doc.title}\n\n정리본이 비어 있습니다 (자막 없음)."
-    return f"📺 {doc.channel or '유튜브'} — {doc.title}\n{doc.url}\n\n{body}"
+        return f"문서를 열 수 없습니다 ({type(e).__name__}).", False
+    head = f"📺 {doc.channel or '유튜브'} — {doc.title}\n{doc.url}"
+    if doc.video_digest:
+        return f"{head}\n\n{doc.video_digest.strip()}", True
+    if doc.digest_status == "generating":   # 웹 등 다른 곳에서 이미 정리 중
+        return f"{head}\n\n다른 곳에서 정리 중입니다 — 1~2분 뒤 다시 눌러 주세요.", False
+    return f"{head}\n\n정리본을 만들지 못했습니다 — {doc.digest_error or '사유를 확인하지 못했습니다'}", False
 
 
 _ACTIONS = {
@@ -315,11 +333,13 @@ def _pending_text(kind: str, ident: int) -> str:
     if kind == "y":
         conn = get_connection()
         row = conn.execute(
-            "SELECT digest_status FROM raw_documents WHERE id=?", (ident,)).fetchone()
+            "SELECT digest_status, length(raw_content) n FROM raw_documents WHERE id=?", (ident,)).fetchone()
         conn.close()
         if row and row["digest_status"] == "ok":
             return "📺 정리본 불러오는 중…"
-        return "📺 정리본 생성 중… 1~2분 걸립니다"
+        # 긴 자막(실측 4만 자 이상)은 수 분 걸린다 — '1~2분'만 보이면 멈춘 것으로 읽힌다
+        eta = "3~6분" if row and (row["n"] or 0) > 20000 else "1~2분"
+        return f"📺 정리본 생성 중… {eta} 걸립니다"
     return "🧠 내러티브 준비 중… (새 문서가 있으면 1~2분)"
 
 
@@ -342,21 +362,42 @@ def start_action(kind: str, ident: str, chat_id: str) -> str:
     pending_id = _post(chat_id, _pending_text(kind, int(ident)))
 
     def _work():
+        started = time.time()
         try:
-            out = fn(int(ident))
+            res = fn(int(ident))
+            out, done = res if isinstance(res, tuple) else (res, True)
         except Exception as e:  # noqa: BLE001 — 사용자에게 사유를 돌려준다
-            out = f"생성 실패 — {type(e).__name__}: {str(e)[:200]}"
+            out, done = f"생성 실패 — {type(e).__name__}: {str(e)[:200]}", False
+        delivered = False
         try:
             if pending_id:
-                _replace(chat_id, pending_id, out)   # 로딩 말풍선 → 결과
+                delivered = _replace(chat_id, pending_id, out)   # 로딩 말풍선 → 결과
             else:
-                _send(chat_id, out)                  # 말풍선 확보 실패 시 새 메시지
+                delivered = _send(chat_id, out) is not None       # 말풍선 확보 실패 시 새 메시지
         finally:
             with _inflight_lock:
                 _inflight.discard(key)
+            _record_action(kind, ident, out, done, delivered, started)
 
     threading.Thread(target=_work, daemon=True, name=f"tg-{kind}-{ident}").start()
     return ""
+
+
+def _record_action(kind: str, ident: str, out: str, done: bool, delivered: bool, started: float) -> None:
+    """봇 액션 결과를 job_runs(`bot_y`·`bot_n`)에 남긴다.
+
+    서버 출력은 터미널로만 가서 지나간 시도를 추적할 수 없었다(2026-10-06 실측: 유튜브 정리본
+    문제를 조사하려 했으나 봇 시도 기록이 어디에도 없었다). 결과·전달 여부·사유 첫 줄을 남긴다.
+    """
+    from pipeline.ops import record_run
+    lines = [ln for ln in (out or "").splitlines() if ln.strip()]
+    reason = (lines[0] if done else lines[-1]) if lines else ""   # 성공=제목 줄, 실패=사유 줄
+    summary = f"{kind}_{ident} · {len(out or '')}자 · 전달 {'ok' if delivered else '실패'} · {reason[:160]}"
+    try:
+        record_run(f"bot_{kind}", "ok" if done and delivered else "error", summary,
+                   int((time.time() - started) * 1000))
+    except Exception:  # noqa: BLE001 — 기록 실패가 응답을 막지 않는다
+        pass
 
 
 def handle_callback(data: str, chat_id: str, cq_id: str) -> None:

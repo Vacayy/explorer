@@ -82,4 +82,57 @@ class YouTubeDigestTests(unittest.TestCase):
             self.assertIsNone(digest_transcript('test','자막' * 100))
             run.assert_called_once();sleep.assert_not_called()
 
+    # 텔레그램 봇 영상 액션 — GET은 생성하지 않으므로 봇이 직접 작업을 돌려야 한다 (원본 자막이 그대로 나가던 버그)
+    def bot(self, id):
+        from pipeline import bot
+        with patch('routers.spine_feed.resolve_channels', return_value={}): return bot._run_youtube(id)[0]
+    def bot_ok(self, id):
+        from pipeline import bot
+        with patch('routers.spine_feed.resolve_channels', return_value={}): return bot._run_youtube(id)[1]
+    def test_bot_generates_digest_instead_of_sending_transcript(self):
+        def done(doc_id):
+            c=self.connect();c.execute("UPDATE raw_documents SET markdown='## 봇 정리본',raw_content='## 봇 정리본',digest_status='ok' WHERE id=?",(doc_id,));c.commit();c.close()
+            return True
+        with patch('pipeline.connectors.youtube._digest_stored', side_effect=done) as generate:
+            out=self.bot(1)
+        generate.assert_called_once_with(1)
+        self.assertIn('## 봇 정리본', out);self.assertNotIn('원본 자막', out)
+    def test_bot_reports_failure_without_transcript(self):
+        with patch('pipeline.connectors.youtube._digest_stored', return_value=False):
+            out=self.bot(3)
+        self.assertIn('정리본을 만들지 못했습니다', out);self.assertNotIn('다른 자막', out)
+    def test_bot_reuses_existing_digest(self):
+        with patch('pipeline.connectors.youtube._digest_stored') as generate:
+            out=self.bot(2)
+        generate.assert_not_called();self.assertIn('## 기존 긴 정리본', out)
+    def test_bot_does_not_duplicate_running_job(self):
+        service.queue(1)
+        with patch('pipeline.connectors.youtube._digest_stored') as generate:
+            out=self.bot(1)
+        generate.assert_not_called();self.assertIn('정리 중', out);self.assertNotIn('원본 자막', out)
+    def test_bot_short_transcript_message(self):
+        c=self.connect();c.execute("INSERT INTO raw_documents VALUES(4,'youtube','4','짧은 영상','u','2026-09-10','짧음','짧음','pending',NULL)");c.commit();c.close()
+        self.assertIn('자막이 충분하지 않습니다', self.bot(4))
+
+    def test_bot_reports_success_flag(self):
+        with patch('pipeline.connectors.youtube._digest_stored', return_value=False):
+            self.assertFalse(self.bot_ok(3))
+        self.assertTrue(self.bot_ok(2))
+
+    def test_bot_action_outcome_is_recorded(self):
+        import threading
+        from pipeline import bot
+        runs = []
+        with patch.object(bot, '_post', return_value=10), patch.object(bot, '_edit', return_value=True), \
+             patch('pipeline.ops.record_run', side_effect=lambda *a: runs.append(a)), \
+             patch('routers.spine_feed.resolve_channels', return_value={}), \
+             patch('pipeline.connectors.youtube._digest_stored', return_value=False), \
+             patch.object(bot, 'get_connection', side_effect=self.connect):
+            bot.start_action('y', '3', 'chat')
+            for t in threading.enumerate():
+                if t.name == 'tg-y-3': t.join()
+        job, status, summary, _ms = runs[0]
+        self.assertEqual((job, status), ('bot_y', 'error'))
+        self.assertIn('y_3', summary); self.assertIn('전달 ok', summary); self.assertIn('정리본을 만들지 못했습니다', summary)
+
 if __name__ == '__main__': unittest.main()
