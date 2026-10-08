@@ -1,5 +1,6 @@
 import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
 import { IndexStrip } from "@/components/home/IndexStrip"
+import { AiActivityFeed } from "@/components/home/AiActivityFeed"
 import { RiskMonitoring } from '@/components/home/RiskMonitoring'
 import { MarketContext } from "@/components/home/MarketContext"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
@@ -14,7 +15,7 @@ export default function HomePage() {
   return (
     <PageLayout mode={mode === 'feed' ? 'reader' : 'document'}
       header={<PageHeader title="Home" actions={<SegmentTabs tabs={[{ value: 'market', label: '시장' }, { value: 'feed', label: '피드' }]} value={mode} onChange={setMode} />} />}
-      overview={<IndexStrip />}>
+      overview={mode === 'feed' ? <AiActivityFeed /> : <IndexStrip />}>
       {mode === 'feed' ? <ChannelReader /> : <div className="@container/market space-y-5">
         <MarketContext />
         <UsBriefingSection />

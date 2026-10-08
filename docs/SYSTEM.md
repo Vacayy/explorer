@@ -152,8 +152,8 @@
 ## 통합 마켓 홈 디자인 기반 (D-152, 2026-09-10)
 
 - `index.css`: 자체 호스팅 IBM Plex Sans/KR(`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-sans-kr`), 역할별 타입, 단색 라이트·다크, 기존 멀버리 포인트. Card 20px·Button/Input 10px 라운딩. glass-surface는 도크·탐색 링크에 한정하고 미지원/투명도 감소는 단색 폴백.
-- `shared/PageLayout.tsx`: header/overview/toolbar/footer/children 슬롯, PageHeader, SplitWorkspace. 홈 시장은 document·full, 홈 피드는 reader·full(D-153), 단독 피드는 document·reading, 문서 검색은 document. PageContainer는 레거시 호환 유지.
-- Home 피드는 가용 폭 ≥760px에서 300px 목록 + 리더, 그 미만은 URL 목록/본문 전환. 화면 높이 ≥740px은 `100dvh - --shell-offset` 독립 스크롤, 짧은 화면은 문서 흐름. 시장 모듈은 가용 폭 ≥1000px에서 2열. 셸 --page-inset은 데스크톱24/모바일16px.
+- `shared/PageLayout.tsx`: header/overview/toolbar/footer/children 슬롯, PageHeader, SplitWorkspace. 홈 시장은 document·full, 홈 피드는 reader·full(D-153·D-209), 단독 피드는 document·reading, 문서 검색은 document. PageContainer는 레거시 호환 유지.
+- Home 피드는 가용 폭 ≥760px에서 300px 목록 + 리더, 그 미만은 URL 목록/본문 전환. 화면 높이 ≥740px은 피드 본문만 `100dvh - --shell-offset`로 고정해 목록/본문 독립 스크롤, 헤더·AI 카드는 페이지 스크롤(D-209). 짧은 화면은 문서 흐름. 시장 모듈은 가용 폭 ≥1000px에서 2열. 셸 --page-inset은 데스크톱24/모바일16px.
 - UsBriefingSection의 기존 데이터·날짜·상태는 일반 Card 표면에 표시한다(후속 요청으로 대비 배경 해제). Timeline은 FeedPost의 row variant로 하나의 표면 안에서 연속 읽기. 기존 필터·펼침·페이지·원문 경로 유지.
 - 적용 범위·후속은 DESIGN_REVIEW, UI 계약은 DESIGN_SYSTEM. 검증 자료는 `logs/market-redesign/`, `logs/home-feed/`.
 
@@ -167,7 +167,7 @@
 - 소스 URL 소속 판정은 경로 경계 확인(`/alice2`를 `/alice`로 오귀속하지 않음), 카드 출처도 같은 `url_belongs` 규칙 사용.
 - `shared/HorizontalCarousel`은 네이티브 가로 스크롤과 shadcn Button을 조합하며, resize·스크롤 끝 버튼 상태·reduced-motion을 처리한다.
 - 기획·조사·행동 계약: [home-feed](specs/home-feed.md). 검증 산출물: `logs/home-feed/`.
-- 홈 피드는 셸 가용 높이 안에서 목록/본문 독립 스크롤. 모바일은 선택한 한 영역을 스크롤한다. 조회 상한·선택·페이지·읽기 방식은 URL, 목록/리더 위치는 UI 메모리에 보존한다. 검증: `logs/home-reader/`.
+- 홈 피드 본문은 창 높이 안에서 목록/본문 독립 스크롤, 그 위 헤더·AI 카드는 페이지와 함께 스크롤(D-209). 모바일은 선택한 한 영역을 스크롤한다. 조회 상한·선택·페이지·읽기 방식은 URL, 목록/리더 위치는 UI 메모리에 보존한다. 검증: `logs/home-reader/`.
 
 ## 1. 제품 한 줄 정의
 
@@ -386,7 +386,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 ### 5-2. API (spine 라우터 13종)
 | 엔드포인트 | 기능 |
 |---|---|
-| `GET /api/spine/home` · `/home/ai-activity?days=` · **`/home/digests?period=&limit=`** | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 / **AI 자동생성 피드**(D-053, 지난 N일 내러티브·리포트·파급·다이제스트 최신순 통합, LLM 0) — (D-208로 홈 카드 제거, 엔드포인트는 유지) 홈 최상단 AiActivityFeed(구 승인 배너 대체) / **종목 요약 내용(D-124)**: 가장 최근 닫힌 구간의 언급 상위 5종목 다이제스트를 **본문까지** 반출(LLM 0). 전엔 ai-activity에 "OO 1D 요약" 제목만 떠 내용을 보려면 종목 페이지로 들어가야 했다. FE `DigestBriefs`(접힘=insights/첫 문장, 펼침=본문) |
+| `GET /api/spine/home` · `/home/ai-activity?days=` · **`/home/digests?period=&limit=`** | 캘린더(내 종목 우선)+왓치리스트·팔로우 delta 스트림+시장 하이라이트 / **AI 자동생성 피드**(D-053, 지난 N일 내러티브·리포트·파급·다이제스트 최신순 통합, LLM 0) — FE `home/AiActivityFeed`: Home **피드 탭** 최상단(IndexStrip 대신, D-209). 시장 탭에선 D-208로 제거 / **종목 요약 내용(D-124)**: 가장 최근 닫힌 구간의 언급 상위 5종목 다이제스트를 **본문까지** 반출(LLM 0). 전엔 ai-activity에 "OO 1D 요약" 제목만 떠 내용을 보려면 종목 페이지로 들어가야 했다. FE `DigestBriefs`(접힘=insights/첫 문장, 펼침=본문) |
 | `GET /api/spine/feed` | 문서 검색 피드(기존 URL 호환) — q(하이브리드 검색)·source(telegram·blog·news·article·people·canon·youtube·transcript)·stock·industry·topic 필터, published_at DESC. source 세분류: blog=개인블로그(platform≠rss)·news=언론사RSS·article=간행물RSS(pipeline/urls.blog_category)·people=팔로우 인물 언급 문서·transcript=미국 컨콜(D-061) |
 | `GET /api/spine/trade/*` | **수출입 팔로우(D-064 · D-140)** — `/follow`(그룹별 품목+최신월·YoY **+ mom·qoq·yoy3m·z·flag·reason·contribution**) · **`/highlights`**(급등·급감 랭킹, 기여도 순 기본; `period·flow·mode·metric·z_threshold·min_usd·rank`) · `/{hs}`(월별 시계열+관련종목) · **`/{hs}/metrics`**(수출·수입 파생지표 시계열) · POST `/follow`(구독) · POST `/seed`(기본 11 + 개인 CSV) · POST `/{hs}/beneficiaries`(관련종목 LLM 지목). FE: /follow/trade 2분할(기존 필드만, 판정 격자는 후속) |
 | `GET·POST·DELETE /api/spine/questions` (+`/propose`·`/from-doc`·`/scenario`·`/{id}`·`/{id}/rollup`·`/{id}/approve`·`/proxy/{id}`) | **핵심질문 트래커(D-067·D-068·D-069)** — GET `/proxy/{id}`(프록시 디테일 — 메타[무엇을 측정·'예' 방향·하위질문]+전체 관측 시계열+출처 문서, LLM 0; 질문 트리서 프록시 클릭 시 모달, D-083) · POST(질문 주입→자동분해→numeric+sentiment 추출→트리, ~수 분; `created_by` user|thesis[논지 감사 승격, D-082] 화이트리스트) · GET(미결 목록, `narrative_id`·`status` 필터, LLM 0 — conviction·created_by·source_doc_id 포함해 원장 렌즈 서빙) · `/{id}`(트리+2층 판정, LLM 0) · POST `/propose`(지배 내러티브서 질문 후보, 생성자 ①) · POST `/{id}/approve`(제안 승인→분해) · **POST `/from-doc`(Q5 — 단일 소스 문서서 딥다이브 핵심질문 후보 도출, sonnet)** · **POST `/{id}/scenario`(질문=허브 D-070 — 질문에 묶어 파급 시나리오 생성, opus)** · POST `/{id}/rollup` · DELETE(dismiss) · **GET `/{id}/synthesis`(질문 종합 결산 캐시+stale, LLM 0)** · **POST `/{id}/synthesis/compute`(D-093 — 결산 리포트 sonnet → 그걸 출발 조건으로 파급 시나리오 opus 체인, ~수 분)**. `/{id}` 트리는 **묶인 시나리오·소스 문서 포함**(허브) |
@@ -406,7 +406,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `POST /api/analysis/refine` | **질문 다듬기(D-186)** — 실행 전 모델 1콜로 재진술·카탈로그 조건(+대안)·평가 불가·확인 항목(시간축·시총 하한 항상)을 돌려주고 문장으로 조립. `pipeline/market_analysis/refine.py`, 공용 `model.structured_call`. 실행은 만들지 않음 |
 | `GET·POST /api/spine/synthesis` | **문서 교차 종합(D-104, docs/specs/doc-synthesis.md)** — POST(`{doc_ids}` 2~12건 → 교차 종합 sonnet, ~60~90초 실측) · GET(최신 목록, 재열람 경로) · GET `/{id}`(단건+엮은 문서 메타, LLM 0). FE: `/follow/saved`에서 문서 체크박스 다중선택 → 액션 바 '엮어 종합' → `/synthesis/:id`(SynthesisPage) + 종합을 다시 북마크(kind=`synthesis`) |
 | `GET /api/spine/market-regime` · `POST /snapshot` | **시장 국면(D-076)** — 양 시장 리스크 포스처+근거+스파크라인 series(LLM 0, 첫 진입 시 lazy 스냅샷). / EOD 일별 스냅샷 적재(scripts/snapshot_market.py=수동·cron) |
-| `GET /api/spine/indices` · `POST /snapshot` | **주요 지수(D-110)** — 7종 지수 종가·전일대비·1Y 스파크라인·개장 상태·지수별 수집 시각(LLM 0·무키) / 강제 재수집(동기). **GET은 외부 fetch를 절대 기다리지 않는다** — TTL 만료 시 `BackgroundTasks`로 갱신을 넘기고 저장분 즉시 반환(측정 4ms; 홈 첫 로딩이 yfinance에 걸리면 안 됨, 콜드 100s 목격). 스탬피드는 TTL 선점 후 예약으로 차단, 전부 실패 시 캐시 무효화로 즉시 재시도. FE: Home **최상단** IndexStrip(전 폭 한 줄 캐러셀·초과 시 가로 스크롤, 상승=빨강·하락=파랑, 개장 점+`장중`+개장시간 KST+`HH:MM 수집`, **개장 중 10분·휴장 30분 폴링**·비활성 탭 폴링 없음, 실패 지수는 '수집 실패'·지연 지수는 ⚠) |
+| `GET /api/spine/indices` · `POST /snapshot` | **주요 지수(D-110)** — 7종 지수 종가·전일대비·1Y 스파크라인·개장 상태·지수별 수집 시각(LLM 0·무키) / 강제 재수집(동기). **GET은 외부 fetch를 절대 기다리지 않는다** — TTL 만료 시 `BackgroundTasks`로 갱신을 넘기고 저장분 즉시 반환(측정 4ms; 홈 첫 로딩이 yfinance에 걸리면 안 됨, 콜드 100s 목격). 스탬피드는 TTL 선점 후 예약으로 차단, 전부 실패 시 캐시 무효화로 즉시 재시도. FE: Home **시장 탭** 최상단 IndexStrip(피드 탭은 AiActivityFeed, D-209; 전 폭 한 줄 캐러셀·초과 시 가로 스크롤, 상승=빨강·하락=파랑, 개장 점+`장중`+개장시간 KST+`HH:MM 수집`, **개장 중 10분·휴장 30분 폴링**·비활성 탭 폴링 없음, 실패 지수는 '수집 실패'·지연 지수는 ⚠) |
 | `GET /api/spine/macro` · `POST /snapshot` | **매크로·유동성(D-101, docs/specs/macro.md)** — 배경 조건 트래킹(금리·달러·순유동성·신용·원자재). 하이브리드: yfinance(무키: ^TNX·DXY·유가·금·HYG·BTC) + FRED(무료키 `FRED_API_KEY`: WALCL·TGA·RRP·M2). **순유동성=WALCL−TGA−RRP**(= MacroMicro US Liquidity Index, 읽을 때 계산). `market_indicators` 재사용(`macro_*` 프리픽스). GET=순수 읽기+lazy, POST=재수집(버튼 주도 D-100). FRED 키 없으면 유동성만 degraded |
 | `POST /api/spine/thesis/audit` · `GET /audits` · `GET /{id}` | **논지 감사(D-078)** — thesis 주입→인과그래프 대질 감사(read-only·연쇄 LLM ~수 분, 저장) / 히스토리 / 저장분 재조회(LLM 0). 격리: 그래프 무변경 |
 | `GET /api/spine/stock/{code}/lens?market=` · POST `/lens/compute?type=&market=&refresh=` | **투자 렌즈(D-090·D-091)** — 캐시 판독 번들(value/trend)+**4상한(quadrant)**+stale(LLM 0) / 원칙·재료 변경 시만 생성(sonnet, `type=value\|trend`, `market=kr\|us`, 멱등). 재료·원칙 없는 렌즈는 응답에서 생략 |

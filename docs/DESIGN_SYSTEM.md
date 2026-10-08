@@ -12,7 +12,7 @@
 - 서체: 자체 호스팅 IBM Plex Sans / Sans KR 400·500·600·700. 페이지 24/32, 섹션 18/26, 카드 제목 16/24, 읽기 본문 14/22, UI 14/20, 캡션 12/18. 일반 콘텐츠 기본은 14px이며 Markdown h1/h2/h3는 20/18/16px로 본문보다 크게 유지한다. 숫자는 tabular-nums.
 - 단색 중립 배경 + 기존 멀버리 액션색. 카드 radius 20px, control 10px, overlay 16px. 카드 패딩 20px(모바일 16px), 열 간격 24px. 그림자는 도크·오버레이에 제한.
 - PageLayout의 header / overview / toolbar / footer / children 슬롯. mode=document|workspace|reader, width=full|reading. 문서형은 페이지 스크롤. SplitWorkspace는 label·content·surface를 가진 두 패널을 조합하고 URL 상태는 페이지가 소유한다.
-- Home은 상단 시장/피드 모드 전환. 시장 document는 가용 폭 1000px부터 모듈 2열. 피드 reader는 760px부터 300px 목록 + 연속 본문, 그 미만은 목록/본문 전환. 화면 높이 740px 미만은 문서 스크롤로 복귀한다. SplitWorkspace의 900px 두 열 계약은 다른 사용처를 위해 보존한다. 셸이 외부 여백·도크 예약과 --shell-offset을 소유한다.
+- Home은 상단 시장/피드 모드 전환. 시장 document는 가용 폭 1000px부터 모듈 2열. 피드 reader는 760px부터 300px 목록 + 연속 본문, 그 미만은 목록/본문 전환. reader는 본문 슬롯만 창 높이(`100dvh - --shell-offset`)로 고정하고 위 슬롯은 페이지 스크롤(D-209). 화면 높이 740px 미만은 문서 스크롤로 복귀한다. SplitWorkspace의 900px 두 열 계약은 다른 사용처를 위해 보존한다. 셸이 외부 여백·도크 예약과 --shell-offset을 소유한다.
 - 피드는 하나의 둥근 표면 + 아티클 구분선. 카드/행 표현은 FeedPost의 명시적 variant로 구분하며 데이터 모델·링크·필터·펼침은 보존한다.
 - 브리핑은 사용자 후속 요청에 따라 일반 Card 표면을 사용한다. 별도 반전 대비는 해제했다. 날짜·데이터·차트·상태·새로고침 기능은 보존한다.
 - 글래스는 도크·일부 탐색 버튼만. reduced-transparency / 미지원 브라우저에서는 불투명 배경으로 폴백한다.

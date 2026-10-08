@@ -394,8 +394,7 @@
   .reader-back { display: none; }
 }
 @media (min-height: 740px) {
-  .page-layout[data-mode=reader] > .page-layout-frame { height: calc(100dvh - var(--shell-offset)); }
-  .page-layout[data-mode=reader] .page-layout-body { display: flex; flex: 1; flex-direction: column; }
+  .page-layout[data-mode=reader] .page-layout-body { display: flex; flex-direction: column; height: calc(100dvh - var(--shell-offset)); }
   .channel-workspace { flex: 1; }
   .channel-list, .reader-scroll { flex: 1; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
 }

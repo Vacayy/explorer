@@ -689,6 +689,7 @@
 **참조**: `docs/specs/home-feed.md`, `ChannelReader.tsx`, `useHomeMode.ts`, `pipeline/timeline.py`, `models/timeline.py`. 검증 산출물 `logs/home-reader/`.
 
 → 숫자(저장 건수·읽지 않음 미구현)는 D-200에서 일부 번복: 배지를 안 읽은 게시물 수로 바꿈. 조회수·반응·전송은 유지.
+→ 창 높이 고정 대상은 D-209에서 프레임 전체 → 피드 본문으로 변경(독립 스크롤 유지).
 
 ---
 
@@ -2613,3 +2614,15 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **구현 경계**: 읽기 투영만 한다(LLM·생성 0). 새 소스도 기존 안 읽음 배지(D-200)를 쓴다. 주제로 거른 화면은 읽음 표시를 하지 않는다(일부만 보이므로). `/home/ai-activity`·`/home/digests` 엔드포인트는 남긴다. 승인 대기 배지는 우상단 인박스로 대신한다.
 
 **참조·검증**: docs/specs/home-feed.md, pipeline/timeline.py, ChannelReader.tsx(TopicChips), hooks/useFeedTopics.ts, explore/GraphActivitySection.tsx. timeline 테스트 18개(신규 3), 실데이터 투영(내러티브 353·리포트 9·파급 19, 주제 필터 0.6초), 앱·노드 타입 검사, FE 테스트 31개, 프로덕션 빌드.
+
+→ D-209에서 일부 번복(피드 탭 상단에 AI 생성물 목록 카드).
+
+---
+
+## D-209 · 2026-10-08 · Home 피드 탭 상단은 지수 띠 대신 'AI가 최근 만든 것'
+
+**결정**: Home 피드 탭의 overview 자리에 IndexStrip 대신 `home/AiActivityFeed`(`/api/spine/home/ai-activity?days=7`, 최신순)를 둔다. 시장 탭 overview는 IndexStrip 그대로다. 카드는 5행 높이(10.25rem)에서 스크롤한다. reader 모드가 창 높이로 고정하던 대상을 페이지 프레임 전체(D-153)에서 피드 본문(목록+리더)으로 좁힌다. 헤더·AI 카드는 페이지와 함께 스크롤되어 밀려 올라가고, 목록/본문 독립 스크롤은 유지한다. 승인 대기 배지는 다시 붙이지 않는다(우상단 인박스, D-208 유지).
+
+**이유·기각한 대안**: 사용자 판단 — 피드에 들어왔을 때 지수보다 "AI가 새로 만든 게 뭔지"를 먼저 보고 싶다. D-208은 생성물을 Explorer 소스로 타임라인에 섞었지만 팔로우 소스 사이에 흩어져 한눈에 안 보인다. D-208이 기각한 '하단 모듈 전부를 피드 상단 카드로'와 달리 제목 목록 카드 하나만 올리므로 리더가 대시보드로 돌아가지 않는다. 지수 띠는 시장 상태라 시장 탭에만 둔다. 프레임 전체를 고정하면 상단 카드가 창 높이 안에서 리더 자리를 계속 차지한다. 고정을 아예 푸는 안(페이지 스크롤만)은 기각했다 — 목록과 본문을 따로 훑을 수 없고 채널별 스크롤 위치 복원이 깨진다.
+
+**참조**: frontend/src/components/home/AiActivityFeed.tsx · HomePage.tsx · docs/specs/home-feed.md.
