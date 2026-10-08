@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { Bookmark, Globe, House, MessageSquare, BookOpen, ScanSearch } from "lucide-react"
+import { Bookmark, Briefcase, Globe, House, MessageSquare, BookOpen, ScanSearch } from "lucide-react"
 
 /**
  * 내비게이션 단일 소스 — 도크(L1·팝오버)와 인페이지 SubNav(L2)가 같은 정의를 읽는다 (docs/specs/dock-navigation.md §2).
@@ -8,7 +8,7 @@ import { Bookmark, Globe, House, MessageSquare, BookOpen, ScanSearch } from "luc
  * Home은 흐름의 아침 요약 + 신호 대시보드(진입), 대화는 횡단 도구 — 둘은 흐름에서 구분선으로 격리.
  * 월드모델은 매일 여는 종착점이라 약한 강조. 도시에(/analyze, /us)는 네비가 아니라 목적지 — 도크에 '열린 도시에' 임시 항목으로만.
  */
-export type AppMode = "study" | "home" | "discover" | "follow" | "feed" | "worldmodel" | "chat" | "analyze" | "us" | "archive"
+export type AppMode = "study" | "home" | "discover" | "portfolio" | "follow" | "feed" | "worldmodel" | "chat" | "analyze" | "us" | "archive"
 
 export interface SubTab {
   key: string
@@ -101,7 +101,8 @@ export const analyzeTabs = (stockCode: string, search = ''): SubTab[] => {
 export const MODES: readonly ModeDef[] = [
   { key: "home", label: "Home", path: "/home", icon: House },
   { key: "discover", label: "종목 발견", path: "/discover", icon: ScanSearch },
-  { key: "follow", label: "관심목록", path: "/follow/saved", icon: Bookmark, dividerBefore: true, tabs: FOLLOW_TABS },
+  { key: "portfolio", label: "포트폴리오", path: "/portfolio", icon: Briefcase, dividerBefore: true },   // D-212
+  { key: "follow", label: "관심목록", path: "/follow/saved", icon: Bookmark, tabs: FOLLOW_TABS },
   { key: "worldmodel", label: "월드모델", path: "/narrative", icon: Globe, emphasis: true, tabs: WORLDMODEL_TABS },
   { key: "study", label: "스터디", path: "/study", icon: BookOpen },
   { key: "chat", label: "대화", path: "/chat", icon: MessageSquare, dividerBefore: true },
@@ -110,6 +111,7 @@ export const MODES: readonly ModeDef[] = [
 export function getActiveMode(pathname: string): AppMode {
   if (pathname === "/discover" || pathname.startsWith("/analysis/backtests")) return "discover"
   if (pathname.startsWith("/study")) return "study"
+  if (pathname.startsWith("/portfolio")) return "portfolio"
   if (pathname.startsWith("/home")) return "home"
   if (pathname.startsWith("/us")) return "us"
   // 팔로우 — 허브 + 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-057)

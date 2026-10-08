@@ -20,6 +20,12 @@ def init_db():
     cur.executescript(STUDY_SCHEMA)
     from pipeline.watch_rules import SCHEMA as WATCH_SCHEMA  # 종목 묶음·감시 (D-185)
     cur.executescript(WATCH_SCHEMA)
+    from pipeline.portfolio import SCHEMA as PORTFOLIO_SCHEMA  # 포트폴리오 거래 원장 (D-212)
+    cur.executescript(PORTFOLIO_SCHEMA)
+    from pipeline.portfolio_alerts import SCHEMA as PORTFOLIO_ALERTS_SCHEMA  # 포트폴리오 알림 발송 기록 (D-214)
+    cur.executescript(PORTFOLIO_ALERTS_SCHEMA)
+    from pipeline.portfolio_events import SCHEMA as PORTFOLIO_EVENTS_SCHEMA  # 포트폴리오 예상 이벤트
+    cur.executescript(PORTFOLIO_EVENTS_SCHEMA)
     from pipeline.company_profile import SCHEMA as PROFILE_SCHEMA  # 웹 조사 기업 개요 (D-188)
     cur.executescript(PROFILE_SCHEMA)
     from pipeline.technical_commentary import SCHEMA as COMMENTARY_SCHEMA  # 기술적 분석 AI 해설 (D-191)
@@ -1329,6 +1335,11 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
         """)
         conn.commit()
+
+    # 보유 종목 논지(portfolio-intelligence §2) — questions 생성 뒤에 붙여야 새 DB에서도 칼럼이 생긴다
+    from pipeline.portfolio_thesis import ensure_schema as ensure_thesis_schema
+    ensure_thesis_schema(conn)
+    conn.commit()
 
     conn.close()
 

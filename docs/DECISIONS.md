@@ -242,6 +242,8 @@
 
 **참조**: backend/pipeline/watch_rules.py · backend/routers/spine_groups.py · backend/models/groups.py · scripts/evaluate_watch_rules.py · scripts/install_launchd.py(`watch`) · frontend/src/components/follow/StocksPage.tsx · GroupPicker.tsx · hooks/useGroups.ts · docs/specs/portfolio-watch.md · D-180 · D-182
 
+→ 포트폴리오의 수량·매수가 입력은 D-212에서 거래 원장으로 구현(묶음 객체는 유지, 멤버 수량·평단은 비움).
+
 ---
 
 ## D-184 · 2026-09-19 · 후속 검색은 발견 화면 안의 스레드로 쌓고, 대화(/chat)와는 통합하지 않는다
@@ -2643,6 +2645,21 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 
 ---
 
+
+---
+
+## D-212 · 2026-10-08 · 포트폴리오는 별도 메뉴, 금액은 로컬 원장에만 두고 화면·API·AI는 비율만
+
+**결정**: 도크에 독립 메뉴 '포트폴리오'(`/portfolio`)를 둔다. 보유는 거래 원장 `portfolio_transactions`(매수·매도·입금·출금을 원화 금액으로 입력)에서 재생해 계산한다. 원화 금액은 로컬 DB에만 저장하고 어떤 GET 응답·화면·AI 입력에도 싣지 않는다 — 계좌 시간가중 수익률·비중·종목 수익률·평단·현재가만 보인다. 묶음 객체는 D-185의 `stock_groups(kind=portfolio)`를 그대로 쓰고, 멤버에는 종목·편입일만 넣는다. 화면: 수익률·비중 파이·보유 표·일별 누적 수익률 → 종목 탭(평단선·편입 마커 차트, 기술적 분석 요약, 공시 5, 뉴스·관련 자료 5).
+
+**이유·기각한 대안**: 사용자 판단 — 원금은 절대 노출하지 말되 추가 매수·매도·입출금을 금액으로 쉽게 기록하고 싶다. ① 비중+평단만 저장(금액 미저장) — 사용자가 금액 입력 편의를 택해 기각. ② 묶음 멤버의 `quantity`·`avg_price`에 저장 — 기존 묶음 API가 `kind=portfolio`에서 원화 `pnl`을 계산·반환하므로 기각(멤버 칸은 의도적으로 비운다). ③ 단순 수익률(평가/원금) — 입출금이 수익률을 왜곡해 시간가중으로. ④ 별도 일일 스냅샷 수집 — 수량이 원장으로 확정되고 전종목 일별 시세가 이미 있어 조회 시 계산. 매일 LLM 0(D-072).
+
+**경계**: 저장소가 공개라 spec·코드·테스트·커밋에 실제 보유 금액을 쓰지 않는다(테스트는 가상 금액, 실제 원장은 로컬 DB에만 시드). 대화 도구·CodeAct 스냅샷은 이 표를 읽지 않는다 — AI 연결은 비율 요약 함수로만(P1).
+
+**참조**: docs/specs/portfolio-ledger.md · backend/pipeline/portfolio.py · routers/portfolio.py · models/portfolio.py · tests/test_portfolio.py · frontend/src/components/portfolio/ · hooks/usePortfolio.ts · D-185.
+
+---
+
 ## D-213 · 2026-10-08 · 기술적 분석 패널에서 '다음 확인'·AI 해설·평가 범위 고지를 뺀다
 
 **결정**: 공통 `company/TechnicalScan` 패널(기업 화면·포트폴리오 종목 탭)에서 '다음 확인' 블록(D-202), 'AI 해설 보기'(D-191), '평가 범위·계산 기준' 고지를 제거한다. 차트·핵심 관측 3개·구조 그리기·'전체 지표·최근 신호와 계산 근거'는 유지한다. AI 해설 백엔드(`/api/spine/technical-scan/{code}/commentary`, `technical_commentaries`)는 그대로 두되 이를 부르는 화면은 없다.
@@ -2650,6 +2667,16 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **이유**: 사용자 판단 — 세 블록이 차트 읽기에 보태는 것이 적고 패널만 길어진다. 다음 확인은 최근 신호 이름을 되풀이하고, 충족 개수 고지는 전체 지표 펼침에서 충분하며, AI 해설은 누를 때만 쓰는 부가 기능이다.
 
 **참조**: frontend/src/components/company/TechnicalScan.tsx · docs/specs/technical-reading.md · docs/specs/market-strategies.md §AI 해설.
+
+---
+
+## D-214 · 2026-10-08 · 포트폴리오 알림은 텔레그램으로 먼저 보낸다 (급등락·공시·기술적 신호·일일 요약)
+
+**결정**: 화면을 열지 않아도 기존 텔레그램 봇으로 네 가지를 보낸다. ① 장중 급등락 — 평일 09:00–18:00 30분 launchd(`pfintraday`)가 장중에는 보유 종목 실시간 시세를 받아 전일 대비 ±5%p 구간, 평단 대비 ±10%p 구간에 처음 들어설 때 ② 신규 공시 — 같은 작업이 DART 오늘 공시를 직접 조회 ③ 주요 기술적 신호 — 16:50(`pfclose`, 종가 16:35·감시 16:40 뒤) 기업 화면 '주요 신호'와 같은 기준으로 오늘 새로 충족한 것 ④ 일일 계좌 요약 — 같은 16:50. 메시지는 비율·가격만(D-212). 보낸 알림은 `portfolio_alerts_sent` 키로 한 번만, 발송 실패면 키를 풀어 다음 점검에서 다시 보낸다. 실패는 `job_runs`(`pf_intraday`·`pf_close`)에 남긴다. LLM 0.
+
+**이유·기각한 대안**: 사용자 판단 — 포트폴리오 화면을 열지 않아도 먼저 신호를 받고 싶다. 공용 `fetch_disclosures`는 DART 실패를 삼키고 빈 결과를 하루 캐시해 알림이 조용히 빠지므로 쓰지 않았다. 매번 모든 등락을 보내는 안은 소음이라 구간 진입 1회로 했다(구간 폭은 상수 `DAY_STEP`·`AVG_STEP`). 장중 작업이 30분 TTL 시세를 한 주기 더 묵히지 않게 작업은 1분 TTL로 강제 갱신한다.
+
+**참조**: backend/pipeline/portfolio_alerts.py · scripts/portfolio_alerts.py · scripts/install_launchd.py(`pfintraday`·`pfclose`) · tests/test_portfolio_alerts.py · docs/specs/portfolio-ledger.md §알림.
 
 ---
 
@@ -2662,3 +2689,13 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **기각한 대안**: 네이버 차트 API(siseJson·fchart·api.stock.naver.com) — 모두 통합 시세라 KRX 정규장과 다르다(10-08 저가가 NXT 프리마켓 값). KIS 등 키가 필요한 공식 API — 키 사용 불가(로컬 제약). 통합 기준 — 사용자가 KRX 정규장 기준을 택했다.
 
 **참조**: scripts/ingest_prices.py(`ingest_daily`·`repair`·`verify`) · backend/services/krx_service.py · scripts/install_launchd.py(`prices` 16:35) · 백업 ~/backups/explorer/db-20261008-125439.sqlite.gz.
+
+---
+
+## D-216 · 2026-10-08 · 포트폴리오 인텔리전스 — 공통 변수·이벤트·자료 흐름·논지 감시를 기존 자산 위에 얹는다
+
+**결정**: 포트폴리오에 네 기능을 더한다(docs/specs/portfolio-intelligence.md). ① 공통 변수 — 인과 그래프·문서 동시 언급·밸류체인 세 출처를 합쳐 '무엇에 걸린 비중'을 보이고 출처를 배지로 표시한다. ② 다가오는 이벤트 — DART 예고 공시 본문의 예정일은 기존 `catalysts`에, 추정치(작년 같은 분기+364일·법정 기한)는 별도 `portfolio_event_estimates`에, 관련 해외 실적일은 체인 대표 미국 기업으로. ③ 자료 흐름 — 14일 언급·논조와 1D 다이제스트, 보유 종목은 상위 5개 밖이어도 새 문서가 있는 날 요약. ④ 논지 감시 — `questions.stock_code`로 묶어 기존 핵심질문 추적기를 그대로 쓰고, 판정이 나빠지면 텔레그램.
+
+**이유·기각한 대안**: 사용자 판단 — 수익률 표 너머로 "무엇에 베팅 중인가·산 이유가 유효한가·시장이 어떻게 말하나·무슨 일이 예정됐나"가 필요하다. 조사(2026-10-08) 결과 인과 그래프는 SK하이닉스 70간선·두산테스나 0이라 단일 출처는 기각, 동시 언급은 종목 수십 개를 나열한 시황 글이 소형주를 오염시켜(바이오·2차전지) 문서당 1/종목수 가중과 글 성격 태그 제외를 넣었다. 업종·회사 묶음의 방향은 간선 하나의 잡음이라 표시하지 않는다. 기존 일정 데이터는 모두 지났거나 비어 새로 모으되, 추정치가 기존 일정에 섞이지 않게 분리했다. 논지 감시용 새 판정 엔진은 기각 — 추적기의 결정적 롤업을 재사용하고, 국내 숫자 지표 어댑터(시세·DART·수출입)는 P1로 미뤘다(분해 시 미국 관련 기업 티커로 보완). 매일 도는 부분은 LLM 0, LLM은 논지 분해(버튼)와 보유 종목 1D 요약(새 문서가 있는 날)만(D-072).
+
+**참조**: backend/pipeline/portfolio_exposure.py · portfolio_events.py · portfolio_flow.py · portfolio_thesis.py · portfolio_alerts.py · scripts/refresh_questions.py · frontend/src/components/portfolio/(ExposureCard·EventsCard·FlowCard·ThesisCard) · tests/test_portfolio_*.py.

@@ -21,6 +21,7 @@ import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrai
 import { DiscoveryTechnicalContext } from "@/components/company/DiscoveryTechnicalContext"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import HomePage from "@/components/home/HomePage"
+import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
@@ -224,6 +225,7 @@ export default function App() {
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
             <Route path="follow/saved" element={<SavedPage />} />
+            <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />

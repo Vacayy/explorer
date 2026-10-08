@@ -49,15 +49,18 @@ def _slugify(label: str, qid: int, i: int) -> str:
 
 
 def decompose_question(text: str, created_by: str = "user",
-                       narrative_id: int | None = None, source_doc_id: int | None = None) -> dict:
-    """새 질문을 적재하고 즉시 서브질문·프록시로 분해·추출·판정 (생성자 ②: 사용자 주입)."""
+                       narrative_id: int | None = None, source_doc_id: int | None = None,
+                       stock_code: str | None = None, hint: str = "") -> dict:
+    """새 질문을 적재하고 즉시 서브질문·프록시로 분해·추출·판정 (생성자 ②: 사용자 주입).
+
+    stock_code: 보유 종목 논지(portfolio-intelligence §2)면 종목을 묶는다. hint: 분해 프롬프트에만 덧붙이는 안내(질문 본문에는 안 남김)."""
     conn = get_connection()
     qid = conn.execute(
-        "INSERT INTO questions (text, narrative_id, source_doc_id, created_by, status) VALUES (?, ?, ?, ?, 'tracking')",
-        (text.strip(), narrative_id, source_doc_id, created_by)).lastrowid
+        "INSERT INTO questions (text, narrative_id, source_doc_id, created_by, status, stock_code) VALUES (?, ?, ?, ?, 'tracking', ?)",
+        (text.strip(), narrative_id, source_doc_id, created_by, stock_code)).lastrowid
     conn.commit()
     conn.close()
-    r = _decompose_and_track(qid, text)
+    r = _decompose_and_track(qid, text + hint)
     if "error" in r:
         _hard_delete(qid)   # 빈 질문 잔재 방지
     return r

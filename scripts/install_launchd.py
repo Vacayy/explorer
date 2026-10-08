@@ -73,6 +73,12 @@ JOBS = [
     # 종목 묶음 감시(D-185) — 일별 시세(16:10) 뒤 평가. 모델 호출 0, 같은 기준일 재실행은 건너뛴다(멱등).
     ("watch", [PY, "scripts/evaluate_watch_rules.py"],
      [{"Weekday": d, "Hour": 16, "Minute": 40} for d in range(1, 6)]),
+    # 포트폴리오 알림(D-214) — 장중 급등락·공시는 평일 09:00–18:00 30분마다, 요약·기술적 신호는 종가·감시 뒤 16:50.
+    ("pfintraday", [PY, "scripts/portfolio_alerts.py", "--intraday"],
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h in range(9, 18) for m in (0, 30)] +
+     [{"Weekday": d, "Hour": 18, "Minute": 0} for d in range(1, 6)]),
+    ("pfclose", [PY, "scripts/portfolio_alerts.py", "--close"],
+     [{"Weekday": d, "Hour": 16, "Minute": 50} for d in range(1, 6)]),
 ]
 
 

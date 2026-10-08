@@ -933,3 +933,60 @@ export interface RiskSnapshotResponse {
   busy: boolean
   results: { key: string; status: 'cached' | 'updated' | 'error'; rows: number; error: string | null }[]
 }
+
+/* ---------- 포트폴리오 (D-212) — 비율·가격만, 원화 금액·수량 없음 ---------- */
+export interface PortfolioHolding {
+  code: string
+  name: string
+  weight_pct: number | null
+  return_pct: number | null
+  day_change_pct: number | null
+  avg_price: number
+  last_close: number | null
+  last_date: string | null
+  entry_date: string
+  price_source: 'live' | 'close'   // live = 장중 시세(30분 갱신)
+  quoted_at: string | null
+}
+export interface PortfolioSummary {
+  as_of: string | null
+  total_return_pct: number | null
+  day_return_pct: number | null
+  cash_weight_pct: number | null
+  holdings: PortfolioHolding[]
+  quoted_at: string | null
+}
+export interface PortfolioHistoryPoint { date: string; cum_return_pct: number; day_return_pct: number }
+export type PortfolioTxKind = 'buy' | 'sell' | 'deposit' | 'withdraw'
+export interface PortfolioTransaction { id: number; trade_date: string; kind: PortfolioTxKind; stock_code: string | null; name: string | null; price: number | null }
+export interface PortfolioTxInput { trade_date: string; kind: PortfolioTxKind; stock_code?: string; amount: number; price?: number; fund_shortfall?: boolean }
+export interface ExposureDriver {
+  key: string; name: string; type: string
+  exposure_pct: number; holdings: string[]
+  sources: ('graph' | 'comention' | 'chain')[]
+  direction: string | null; confidence: number | null; hops: number | null
+}
+export interface PortfolioExposure {
+  drivers: ExposureDriver[]
+  coverage: Record<string, { graph: number; comention: number; chain: string | null; stage: string | null }>
+  held: string[]
+}
+export interface PortfolioEvent {
+  date: string
+  kind: 'ir' | 'earnings_notice' | 'agm' | 'earnings_est' | 'report_deadline' | 'us_earnings' | string
+  title: string; code: string | null; name: string | null
+  estimated: boolean; url: string | null; basis: string | null
+}
+export interface HoldingFlow {
+  code: string; name: string
+  series: { date: string; n: number; pos: number; neg: number }[]
+  today: number; avg7: number; surge: boolean; tone_shift: boolean
+  neg_today_pct: number | null; neg_prev_pct: number
+  digest: { date: string; insights: string | null; lead: string | null; docs: number } | null
+}
+export type QuestionVerdict = 'leaning_yes' | 'leaning_no' | 'mixed' | 'unknown' | null
+export interface HoldingThesis {
+  id: number; text: string; lead: QuestionVerdict; confirm: QuestionVerdict; divergence: string | null; summary: string | null
+  sub_questions: { text: string; falsifier: string | null; verdict: QuestionVerdict }[]
+  warnings: string[]
+}
