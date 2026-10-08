@@ -194,6 +194,8 @@ RSI는 Wilder 평활이다. 첫 평균상승·평균하락은 최초 `period`개
 
 ### AI 해설 (2026-09-21, D-191)
 
+> D-213(2026-10-08): 화면에서 제거. API·저장 표는 유지, 호출하는 화면 없음.
+
 스캔 패널 안의 **AI 해설** 블록. 모델은 차트·시세 원본을 보지 않고 위 스캔 결과(신호·상태·미평가)와 호스트가 계산한 가격 위치 통계(`price.close/ret_20d/ret_60d/ret_120d/from_52w_high_pct/from_52w_low_pct/volume_vs_20d_avg`)만 읽는다. `pipeline/technical_commentary.py`.
 
 - `POST /api/spine/technical-scan/{code}/commentary?market&within[&force]` — 버튼 1회 = 도구 없는 `structured_call` 1회(sonnet, 예산 $0.25, 90초). 같은 종목·기준일·범위는 24시간 재사용(`technical_commentaries` 테이블). `GET …/commentary`는 저장분만 돌려주고(없으면 404) 모델을 부르지 않는다.

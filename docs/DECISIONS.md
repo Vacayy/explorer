@@ -44,6 +44,8 @@
 
 **참조**: docs/specs/technical-reading.md · docs/prototypes/discovery-technical-improvement-plan.html · frontend/src/components/analysis/DiscoveryStart.tsx · CandidateComparison.tsx · company/TechnicalScan.tsx.
 
+→ 기술적 분석 패널의 '다음 확인'은 D-213에서 제거.
+
 → D-203에서 시작 화면의 목적 구성과 구조 그리기의 접힌 기본 배치를 변경.
 
 ---
@@ -2638,3 +2640,13 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **이유·기각한 대안**: 사용자 판단 — 한 줄에서 환율·금리의 수준과 한 달 변화를 같이 보고 싶다. D-205는 Risk 차트와 겹친다며 2Y/10Y를 띠에서 뺐지만, Risk 카드는 금리차·추이를 보는 곳이고 띠는 현재 수준+한 달 변화를 보는 곳이라 역할이 다르다. 띠의 금리는 기존 매크로 시계열(2Y=FRED DGS2, 10Y=Yahoo ^TNX)을 쓴다. Risk의 FRED DGS10으로 맞추는 안은 기각 — 띠 하나 때문에 두 번째 조회를 붙이게 되고, 10Y 원천이 달라 수치가 몇 bp 다를 수 있음은 감수한다. 1주 변화(`change_pct`, 5관측)를 재사용하는 안도 기각 — 사용자가 MoM을 지정했다.
 
 **참조**: frontend/src/components/home/MarketContext.tsx · MacroLiquidity.tsx(fmtValue) · utils/format.ts(formatPp) · backend/pipeline/macro.py · docs/specs/macro.md · docs/specs/home-feed.md.
+
+---
+
+## D-213 · 2026-10-08 · 기술적 분석 패널에서 '다음 확인'·AI 해설·평가 범위 고지를 뺀다
+
+**결정**: 공통 `company/TechnicalScan` 패널(기업 화면·포트폴리오 종목 탭)에서 '다음 확인' 블록(D-202), 'AI 해설 보기'(D-191), '평가 범위·계산 기준' 고지를 제거한다. 차트·핵심 관측 3개·구조 그리기·'전체 지표·최근 신호와 계산 근거'는 유지한다. AI 해설 백엔드(`/api/spine/technical-scan/{code}/commentary`, `technical_commentaries`)는 그대로 두되 이를 부르는 화면은 없다.
+
+**이유**: 사용자 판단 — 세 블록이 차트 읽기에 보태는 것이 적고 패널만 길어진다. 다음 확인은 최근 신호 이름을 되풀이하고, 충족 개수 고지는 전체 지표 펼침에서 충분하며, AI 해설은 누를 때만 쓰는 부가 기능이다.
+
+**참조**: frontend/src/components/company/TechnicalScan.tsx · docs/specs/technical-reading.md · docs/specs/market-strategies.md §AI 해설.

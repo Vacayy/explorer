@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChartCandlestick, ChevronDown, RefreshCw, Sparkles, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ChartCandlestick, ChevronDown, X } from 'lucide-react'
 import api from '@/api/client'
 import type { ChartMarker } from '@/components/charts/CandlestickChart'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ErrorState } from '@/components/shared/ErrorState'
-import { formatNumber, formatRelativeTime } from '@/utils/format'
+import { formatNumber } from '@/utils/format'
 import { ChartStructureCard, KIND_LABEL, WINDOW_LABEL, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
 import { PenLine } from 'lucide-react'
 import { technicalHighlights } from '@/components/company/scanEvidence'
@@ -32,14 +32,6 @@ export interface TechnicalScanResult {
   readings: { group: string; question: string; text: string; basis: string[] }[]
   /** 자동 캔버스(D-198): 스캔 결과로 고른 '먼저 그릴 구조'. */
   canvas: { kind: StructureKind; window: string; swing: number; fit: 'two_point' | 'regression'; reason: string; basis: string[] } | null
-}
-
-/** AI 해설(D-191): 모델은 차트가 아니라 위 스캔 결과만 읽고, 문장마다 근거 id를 붙인다. 근거 없는 문장은 서버가 버린다. */
-export interface CommentaryPoint { text: string; basis: string[] }
-export interface TechnicalCommentary {
-  id: number; created_at: string; model: string | null; cost_usd: number | null; as_of: string; within: number; reused: boolean
-  summary: string; reading: CommentaryPoint[]; caveats: string[]; watch: CommentaryPoint[]
-  basis_labels: Record<string, string>; dropped_unsupported: number
 }
 
 const PRICE_LABEL: Record<string, string> = { 'price.close': '기준일 종가', 'price.ret_20d': '20거래일 수익률', 'price.ret_60d': '60거래일 수익률', 'price.ret_120d': '120거래일 수익률', 'price.from_52w_high_pct': '52주 고점 대비', 'price.from_52w_low_pct': '52주 저점 대비', 'price.volume_vs_20d_avg': '거래량 / 20일 평균', 'price.sessions': '시세 기간', 'price.as_of': '기준일' }
@@ -71,44 +63,6 @@ export function scanToChart(scan: TechnicalScanResult | undefined) {
   return { markers, overlays }
 }
 
-function Commentary({ code, market, within, enabled }: { code: string; market: 'kr' | 'us'; within: number; enabled: boolean }) {
-  const client = useQueryClient()
-  const key = ['spine', 'technical-commentary', market, code, within]
-  const stored = useQuery({
-    queryKey: key, enabled, staleTime: 5 * 60_000, retry: false,
-    queryFn: async () => {
-      try { return (await api.get<TechnicalCommentary>(`/api/spine/technical-scan/${code}/commentary`, { params: { market, within } })).data }
-      catch (error) { if ((error as { response?: { status?: number } }).response?.status === 404) return null; throw error }
-    },
-  })
-  const generate = useMutation({
-    mutationFn: async (force: boolean) => (await api.post<TechnicalCommentary>(`/api/spine/technical-scan/${code}/commentary`, null, { params: { market, within, force } })).data,
-    onSuccess: data => client.setQueryData(key, data),
-  })
-  const commentary = stored.data ?? null
-  const basisLabel = (id: string) => commentary?.basis_labels[id] ?? PRICE_LABEL[id] ?? id
-  const errorMessage = (error: unknown) => (error as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'AI 해설을 만들지 못했습니다.'
-  return <div className="space-y-2 rounded-lg bg-muted/40 p-3">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h4 className="flex items-center gap-1.5 text-caption font-medium text-muted-foreground"><Sparkles className="size-3.5" />AI 해설<span className="font-normal">· 위 판정만 읽은 모델 의견(가설)</span></h4>
-      {commentary && <div className="flex items-center gap-2 text-caption text-muted-foreground"><span>{formatRelativeTime(commentary.created_at)}</span>
-        <Button variant="ghost" size="sm" className="h-6 px-1.5 text-caption" disabled={generate.isPending} onClick={() => generate.mutate(true)} aria-label="AI 해설 다시 만들기"><RefreshCw className={`size-3 ${generate.isPending ? 'animate-spin' : ''}`} />다시 만들기</Button></div>}
-    </div>
-    {generate.isPending && <div className="space-y-2" role="status" aria-label="해설 생성 중"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-2/3" /><p className="text-caption text-muted-foreground">모델이 판정 결과를 읽고 있습니다. 보통 20~40초.</p></div>}
-    {!generate.isPending && generate.isError && <ErrorState message={errorMessage(generate.error)} onRetry={() => generate.mutate(false)} />}
-    {!generate.isPending && !generate.isError && !commentary && <div className="flex flex-wrap items-center gap-3">
-      <p className="text-sm text-muted-foreground">성립한 조건·상태·가격 위치를 모델이 서로 연결해 읽어줍니다. 문장마다 근거 조건이 붙고, 예측·추천은 하지 않습니다.</p>
-      <Button size="sm" variant="outline" disabled={stored.isPending} onClick={() => generate.mutate(false)}><Sparkles className="size-3.5" />AI 해설 만들기</Button></div>}
-    {!generate.isPending && commentary && <div className="space-y-3">
-      <p className="text-sm">{commentary.summary}</p>
-      {commentary.reading.length > 0 && <ul className="space-y-1.5">{commentary.reading.map((point, index) => <li key={index} className="text-sm"><span>{point.text}</span><span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">{point.basis.map(id => <Badge key={id} variant="outline" className="h-5 px-1.5 text-[11px] font-normal text-muted-foreground">{basisLabel(id)}</Badge>)}</span></li>)}</ul>}
-      {commentary.watch.length > 0 && <div className="space-y-1"><p className="text-caption font-medium text-muted-foreground">이 읽기가 바뀌는지 볼 것</p><ul className="space-y-1">{commentary.watch.map((point, index) => <li key={index} className="text-sm"><span>{point.text}</span><span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">{point.basis.map(id => <Badge key={id} variant="outline" className="h-5 px-1.5 text-[11px] font-normal text-muted-foreground">{basisLabel(id)}</Badge>)}</span></li>)}</ul></div>}
-      {commentary.caveats.length > 0 && <p className="text-caption text-muted-foreground">보지 않은 것: {commentary.caveats.join(' · ')}</p>}
-      <p className="text-caption text-muted-foreground">{commentary.as_of} 기준 · 최근 {commentary.within}거래일 판정을 읽음{commentary.dropped_unsupported > 0 && ` · 근거 없는 문장 ${formatNumber(commentary.dropped_unsupported)}개 제외`}. 매수·매도 판단이 아닙니다.</p>
-    </div>}
-  </div>
-}
-
 export function TechnicalScan({ code, market, within, onWithin, onChart, onToggleChart, onClose, chart }: {
   chart?: ReactNode; code: string; market: 'kr' | 'us'; within: number; onWithin: (value: number) => void; onChart: boolean; onToggleChart: (value: boolean) => void; onClose: () => void
 }) {
@@ -120,7 +74,6 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
   const activeStates = scan?.states.filter(s => s.status === 'pass') ?? []
   const [params, setParams] = useSearchParams()
   const view = params.get('scan_view') === 'structure' ? 'structure' : 'reading'
-  const [commentaryOpen, setCommentaryOpen] = useState(false)
   const canvas = scan?.canvas ?? null
   const defaults = canvas ?? { kind: 'levels' as const, window: '1y', swing: 5, fit: 'two_point' as const }
   const kind = params.get('structure_kind')
@@ -140,7 +93,6 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
     next.set('structure_swing', String(value.swing)); next.set('structure_fit', value.fit)
     return next
   }, { replace: true, preventScrollReset: true })
-  const latestSignal = [...notable].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))[0]
   const entries = scan ? [...scan.states, ...scan.signals, ...scan.unavailable] : []
   return <section aria-label="기술적 분석" className="space-y-4 rounded-xl border p-3 sm:p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -164,10 +116,10 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
       {chart && <div className="min-w-0 space-y-2" aria-label="분석 가격 차트">{chart}</div>}
       {scan && <section aria-label="핵심 관측 세 가지" className="min-w-0 space-y-3"><h4 className="text-sm font-medium">지금 차트에서 확인할 것</h4><ol className="divide-y rounded-lg bg-muted/30 px-3">{technicalHighlights(scan.readings).map((reading, index) => <li key={reading.group} className="space-y-2 py-3"><h5 className="text-caption font-medium text-muted-foreground">0{index + 1} · {reading.title}</h5><p className="text-sm leading-relaxed">{reading.text}</p>{reading.ids.length > 0 && <TechnicalEvidence ids={reading.ids} entries={entries} asOf={scan.as_of} priceLabels={PRICE_LABEL} />}</li>)}</ol><p className="text-caption text-muted-foreground">{scan.as_of} 시세의 관측입니다. 전체 지표와 최근 신호는 아래에서 확인하세요.</p></section>}
     </div>
-      {scan && <section aria-label="다음 확인" className="space-y-2 rounded-lg border p-3"><h4 className="text-sm font-medium">다음 확인</h4>{latestSignal ? <><p className="text-sm">최근 확인한 변화: {latestSignal.label} · {latestSignal.date ?? '날짜 미확인'}. 다음 시세에서 이 신호 이후의 가격 변화와 거래량을 함께 확인하세요.</p><TechnicalEvidence ids={[latestSignal.id]} entries={entries} asOf={scan.as_of} priceLabels={PRICE_LABEL} /></> : <p className="text-sm text-muted-foreground">계산 가능한 조건에서 최근 {within}거래일의 주요 변화는 확인되지 않았습니다. 다음 시세에서 이동평균 대비 위치와 거래량 변화를 확인하세요.</p>}</section>}
       </TabsContent>
       <TabsContent value="structure" className="min-w-0 space-y-4">
-        <div className="space-y-1"><h4 className="text-sm font-semibold">채널·추세선·지지와 저항을 직접 살펴보세요</h4><p className="text-caption text-muted-foreground">기간과 구조를 바꾸며 현재 가격의 위치를 확인합니다. 여기서 그리는 선은 신호 판정선과 별도로 계산합니다.</p>{canvas && !customStructure && <p className="text-caption text-muted-foreground">현재 관측에서 먼저 살펴볼 구조: {WINDOW_LABEL[canvas.window] ?? canvas.window} {KIND_LABEL[canvas.kind]}</p>}</div>
+        <div className="space-y-1">
+        {canvas && !customStructure && <p className="text-caption text-muted-foreground">현재 관측에서 먼저 살펴볼 구조: {WINDOW_LABEL[canvas.window] ?? canvas.window} {KIND_LABEL[canvas.kind]}</p>}</div>
         {query.isPending && !customStructure ? <Skeleton className="h-80 w-full" aria-label="첫 구조 준비 중" /> : <ChartStructureCard compact params={structure} onChange={changeStructure} height={360} />}
       </TabsContent>
     </Tabs>
@@ -190,9 +142,7 @@ export function TechnicalScan({ code, market, within, onWithin, onChart, onToggl
       {grouped.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-2 text-caption">잦은 신호 {formatNumber(rest.length)}개 보기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
         <CollapsibleContent className="space-y-3 pt-2">{grouped.map(([category, items]) => <div key={category} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{GROUP_LABEL[category] ?? category}</p><ul className="space-y-1">{items.map(s => <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-sm"><span>{s.label}</span><span className="tabular-nums text-caption text-muted-foreground">{s.date}</span></li>)}</ul></div>)}</CollapsibleContent></Collapsible>}
       </CollapsibleContent></Collapsible>
-      <Collapsible open={commentaryOpen} onOpenChange={setCommentaryOpen}><CollapsibleTrigger asChild><Button variant="ghost" className="min-h-11 h-auto w-full justify-between whitespace-normal text-left"><span className="flex items-center gap-2"><Sparkles className="size-4" />AI 해설 보기</span><ChevronDown className="size-4 shrink-0" /></Button></CollapsibleTrigger><CollapsibleContent className="pt-2">{commentaryOpen && <Commentary code={code} market={market} within={within} enabled={!!scan} />}</CollapsibleContent></Collapsible>
       {scan.unavailable.length > 0 && <p className="text-caption text-muted-foreground">평가하지 못한 조건 {formatNumber(scan.unavailable.length)}개: {scan.unavailable.slice(0, 4).map(u => `${u.label}${u.reason ? ` (${EXCLUSION_LABELS[u.reason] ?? u.reason})` : ''}`).join(' · ')}{scan.unavailable.length > 4 ? ' 외' : ''}</p>}
-      <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="text-caption">평가 범위·계산 기준<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-2 text-caption text-muted-foreground"><p>검사 {formatNumber(scan.counts.evaluated)}개 · 충족 {formatNumber(scan.counts.passed)} · 불충족 {formatNumber(scan.counts.failed)} · 미평가 {formatNumber(scan.counts.unavailable)}</p><p>기본 매개변수의 정해진 규칙으로 계산합니다. 상승·하락 조건이 함께 있으므로 충족 개수는 투자 매력 점수가 아닙니다.</p></CollapsibleContent></Collapsible>
     </>}
   </section>
 }
