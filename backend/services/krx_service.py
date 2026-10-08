@@ -123,7 +123,7 @@ def _fetch_and_store_prices(stock_code: str, from_date: str, to_date: str):
     td = f"{to_date[:4]}-{to_date[4:6]}-{to_date[6:8]}"
 
     try:
-        hist = ticker.history(start=fd, end=td)
+        hist = ticker.history(start=fd, end=td, auto_adjust=False)   # 기본값(True)은 배당 조정가 — 호가 단위에 안 맞는 종가가 저장됐다
     except Exception:
         return
 
@@ -157,9 +157,10 @@ def _fetch_and_store_prices(stock_code: str, from_date: str, to_date: str):
         volume_int = int(row.get("Volume", 0)) or None
         mcap = int(close * shares) if shares and close else None
 
+        # 빈 날만 채운다 — 일별 KRX 종가(scripts/ingest_prices.py)를 덮어쓰지 않게 (2026-10-08)
         conn.execute(
             """
-            INSERT OR REPLACE INTO stock_prices
+            INSERT OR IGNORE INTO stock_prices
             (stock_code, trade_date, open, high, low, close, volume, market_cap, shares)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,

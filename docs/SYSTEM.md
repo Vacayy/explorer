@@ -210,12 +210,12 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
 
 ```
 [소스]  텔레그램(텍스트+이미지) · 블로그(네이버/티스토리/RSS) · **링크 스크랩(D-142, 미검증)** · vault/notes(내 가설)
-        DART(전시장 공시) · FDR(전종목 주가) — (대기: 관세청 무역)
+        DART(전시장 공시) · 네이버 실시간 KRX(전종목 일봉, D-215) — (대기: 관세청 무역)
    │
    ▼  30분 cron 체인 (run_chain.sh — 겹침 방지 락, logs/ingest.log)
 ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → extract_doc_causal(문서레벨 인과 엣지, 회당 10, D-088) → compute_signals → compute_narratives → extract_events(이미지 비전)
   → scan_actions(기업활동) → compute_digests(1D 오늘+1W 이번 주) → vault_sync --export → build_search_index(문서 인덱스 + **청크 인덱스**, D-132)
-   +  평일 16:10: ingest_prices --daily (전종목 OHLCV)
+   +  평일 16:35: ingest_prices --daily (전종목 KRX 정규장 OHLCV, 체결일 기준·마감분만, 빈 날 yfinance 보충 — D-215)
    +  (선택) 일 06:30(KST) usbriefing 웜업 / 07:00 텔레그램 발송: compute_briefing + snapshot_market — **기본은 홈 카드 '지금 업데이트' 버튼 주도**(D-100). 일반 로드는 순수 읽기(재종합 없음), 버튼만 재수집·재종합. 크론은 아침 pre-warm 원할 때만
    │
    ▼
@@ -299,7 +299,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 ### 4-2. 도메인 원본 (옛 세계 — 유지, 척추가 읽기 참조)
 
-`companies`(3,975) · `stock_prices`(**711,478** — 전종목 380일 백필+일별) · `financial_statements` ·
+`companies`(3,975) · `stock_prices`(**711,478** — 전종목 380일 백필+일별. 07-08 이후 KRX 정규장 종가로 재수집, 이전은 통합 일봉 — D-215) · `financial_statements` ·
 **`kr_movers`**(전일 국장 거래대금 상위 일별 스냅샷 — rank·거래대금·등락률·섹터(sector_map 대분류)·is_new, 7일 보존, D-108) ·
 `disclosures` · `fundamentals` · `watchlist` · `catalysts` · `consensus` · `channel_reads`(피드 읽음 표시, D-200) · `telegram_channels` ·
 `blog_sources`(+blog_name·author 닉네임) · `industry_groups/members` · `ir_notes` · `business_segments`

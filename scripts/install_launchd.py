@@ -44,8 +44,9 @@ PATH = ":".join(p for p in [_NODE_BIN, "/opt/homebrew/bin", "/usr/local/bin",
 # (label, 실행 인자, 스케줄) — 스케줄은 int(초 간격) 또는 StartCalendarInterval dict/list
 JOBS = [
     ("chain", [str(PROJECT / "scripts" / "run_chain.sh")], 1800),
+    # KRX 종가는 16:30에 확정 송출(네이버 closePriceSendTime) — 그 뒤에 수집. 감시(16:40)보다 앞.
     ("prices", [PY, "scripts/ingest_prices.py", "--daily"],
-     [{"Weekday": d, "Hour": 16, "Minute": 10} for d in range(1, 6)]),
+     [{"Weekday": d, "Hour": 16, "Minute": 35} for d in range(1, 6)]),
     ("krmovers", [PY, "scripts/snapshot_kr_movers.py"],          # D-108 — 신규진입 판정에 일별 필요
      [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
     # 미국장 브리핑은 발송(07:00)보다 **먼저** 데워야 그날 것이 실린다 (D-112). 2026-09-09 발송 08:00→07:00(사용자 요청), 웜업도 06:30으로.

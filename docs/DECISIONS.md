@@ -2650,3 +2650,15 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **이유**: 사용자 판단 — 세 블록이 차트 읽기에 보태는 것이 적고 패널만 길어진다. 다음 확인은 최근 신호 이름을 되풀이하고, 충족 개수 고지는 전체 지표 펼침에서 충분하며, AI 해설은 누를 때만 쓰는 부가 기능이다.
 
 **참조**: frontend/src/components/company/TechnicalScan.tsx · docs/specs/technical-reading.md · docs/specs/market-strategies.md §AI 해설.
+
+---
+
+## D-215 · 2026-10-08 · 일별 시세는 KRX 정규장 종가로 — 네이버 실시간 API를 체결일 기준으로, yfinance는 무조정·빈칸 보충만
+
+**결정**: `ingest_prices --daily`(16:35로 이동)는 네이버 실시간 API의 KRX 시세(`closePrice`; NXT는 별도 필드)를 전 종목 묶음 조회해 **각 시세의 체결일(`localTradedAt`)로**, `marketStatus=CLOSE`인 것만 저장한다. 이어서 최근 10일 중 빈 날이 있는 종목만 yfinance(`auto_adjust=False`)로 보충한다. `krx_service`의 yfinance 경로는 무조정 가격으로 바꾸고 `INSERT OR IGNORE`(빈칸만)로 낮춘다. 2026-07-08 이후 구간은 yfinance KRX 종가로 재수집하고 `--verify`(직전 거래일 종가를 네이버 KRX 전일 종가와 대조)로 확인한다.
+
+**원인(2026-10-08 확인)**: 기존 일별 수집은 FDR `StockListing('KRX')` 스냅샷을 실행일 날짜로 박았다. NXT가 20:00까지 거래해 16:10 '현재가'는 KRX 종가가 아니었고(SK하이닉스 10-07 저장 1,743,000 vs KRX 1,723,000), 휴장일·늦은 기상에는 유령 행(10-05)이 생겼다. 여기에 종목 화면의 yfinance 경로가 배당 조정가(호가 단위에 안 맞는 272,250 등)로 행을 `INSERT OR REPLACE`했다. 07-08 이전은 원래 백필(FDR DataReader = 네이버 통합 KRX+NXT 일봉)이라 KRX와 약간 다를 수 있다.
+
+**기각한 대안**: 네이버 차트 API(siseJson·fchart·api.stock.naver.com) — 모두 통합 시세라 KRX 정규장과 다르다(10-08 저가가 NXT 프리마켓 값). KIS 등 키가 필요한 공식 API — 키 사용 불가(로컬 제약). 통합 기준 — 사용자가 KRX 정규장 기준을 택했다.
+
+**참조**: scripts/ingest_prices.py(`ingest_daily`·`repair`·`verify`) · backend/services/krx_service.py · scripts/install_launchd.py(`prices` 16:35) · 백업 ~/backups/explorer/db-20261008-125439.sqlite.gz.
