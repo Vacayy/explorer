@@ -14,7 +14,7 @@ import { DocumentCard, SystemPost } from './FeedPost'
 import type { EntityTag } from '@/types'
 
 const scopes = [{ value: 'all', label: '전체' }, { value: 'sources', label: '소스' }, { value: 'system', label: 'Explorer' }]
-const kinds = [{ value: 'all', label: '모든 업데이트' }, { value: 'company', label: '기업 요약' }, { value: 'person', label: '인물 요약' }, { value: 'transcript', label: '컨콜' }, { value: 'trade', label: '수출입' }]
+const kinds = [{ value: 'all', label: '모든 업데이트' }, { value: 'company', label: '기업 요약' }, { value: 'person', label: '인물 요약' }, { value: 'transcript', label: '컨콜' }, { value: 'trade', label: '수출입' }, { value: 'narrative', label: '내러티브' }, { value: 'report', label: '리포트' }, { value: 'scenario', label: '파급 분석' }]
 const sources = [{ value: 'all', label: '모든 소스' }, { value: 'telegram', label: '텔레그램' }, { value: 'blog', label: '블로그·뉴스' }, { value: 'youtube', label: '유튜브' }]
 const valid = (v: string | null, options: { value: string }[]) => options.some(x => x.value === v) ? v! : 'all'
 

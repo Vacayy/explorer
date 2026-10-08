@@ -24,6 +24,9 @@ class TimelineTests(unittest.TestCase):
         CREATE TABLE trade_stats(hs_code TEXT,period TEXT,fetched_at TEXT);
         CREATE TABLE trade_follow(hs_code TEXT,item_name TEXT,group_label TEXT,active INTEGER);
         CREATE TABLE channel_reads(channel TEXT PRIMARY KEY, read_until TEXT NOT NULL, updated_at TEXT);
+        CREATE TABLE narratives(id INTEGER PRIMARY KEY, topic TEXT, version INTEGER, title TEXT, body TEXT, doc_count INTEGER, created_at TEXT);
+        CREATE TABLE reports(id INTEGER PRIMARY KEY, anchor_topic TEXT, title TEXT, body TEXT, members_json TEXT, created_at TEXT);
+        CREATE TABLE scenarios(topic TEXT PRIMARY KEY, answer TEXT, question_id INTEGER, created_at TEXT);
         INSERT INTO channel_reads VALUES ('*','2026-09-09T09:00:00Z',NULL);
         INSERT INTO telegram_channels VALUES ('active','활성 채널',1),('muted','뮤트 채널',0);
         INSERT INTO youtube_channels VALUES ('yt','영상',1),('muted_yt','뮤트 영상',0);
@@ -213,5 +216,44 @@ class TimelineTests(unittest.TestCase):
         d = channels(self.c, until='2026-09-10T00:00:00Z')
         self.assertEqual(d.total_unread, 1)
         self.assertEqual(before, self.c.total_changes)
+
+
+    # D-208: Explorer 생성물을 피드 소스로, 주제 칩 필터
+    def explorer(self):
+        long_tail = '\n'.join(f'- 근거 {i}' for i in range(200))
+        self.c.executescript(f"""
+        INSERT INTO narratives VALUES (1,'반도체',3,'AI 캐펙스는 어디로 가나','## 3줄 요약\n- 요점 하나\n- 요점 둘\n\n## 무엇이 다뤄지고 있나\n{long_tail}',12,'2026-09-09 11:00:00');
+        INSERT INTO narratives VALUES (2,'빈 내러티브',1,'빈','  ',0,'2026-09-09 11:30:00');
+        INSERT INTO reports VALUES (1,'전력','전력 통합 리포트','## 결론\n\n**A — Buy**\n\n## 근거\n긴 본문','["전력","원전"]','2026-09-09 12:00:00');
+        INSERT INTO scenarios VALUES ('금리','금리 상승이 은행 마진에 미치는 경로',7,'2026-09-09 13:00:00');
+        INSERT INTO entities VALUES (50,'반도체','theme',NULL);
+        """)
+
+    def test_explorer_outputs_are_projected_as_summaries(self):
+        self.explorer()
+        items = {i.kind: i for i in self.read(scope='system').items}
+        self.assertEqual({'narrative', 'report', 'scenario'} <= set(items), True)
+        n = items['narrative']
+        self.assertEqual(n.title, 'AI 캐펙스는 어디로 가나')
+        self.assertIn('요점 하나', n.body); self.assertNotIn('근거 150', n.body)   # 3줄 요약만
+        self.assertEqual(n.to, '/narrative?topic=%EB%B0%98%EB%8F%84%EC%B2%B4'); self.assertTrue(n.ai_generated)
+        self.assertIn('Buy', items['report'].body); self.assertNotIn('긴 본문', items['report'].body)
+        self.assertEqual(items['report'].evidence_count, 2)
+        self.assertEqual(items['scenario'].to, '/question/7')
+        self.assertNotIn('narrative:2', {i.id for i in self.read(scope='system').items})   # 빈 본문 제외
+
+    def test_explorer_channels_listed_with_unread(self):
+        self.explorer()
+        ch = {c.id: c for c in channels(self.c, until='2026-09-10T00:00:00Z').items}
+        self.assertEqual(ch['narrative:all'].name, 'Explorer · 내러티브')
+        self.assertEqual(ch['report:all'].platform, 'system'); self.assertEqual(ch['scenario:all'].unread, 1)
+
+    def test_topic_filter_matches_linked_docs_and_same_topic_outputs(self):
+        self.explorer()
+        self.doc(1); self.doc(2)
+        self.c.execute("INSERT INTO entity_links VALUES (1,50,'topic',1.0)")
+        ids = {i.id for i in self.read(topic='반도체').items}
+        self.assertEqual(ids, {'source:1', 'narrative:1'})
+        self.assertEqual(self.read(topic='없는 주제').items, [])
 
 if __name__ == '__main__':unittest.main()

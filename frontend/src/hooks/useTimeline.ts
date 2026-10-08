@@ -9,6 +9,7 @@ export interface TimelineFilters {
   source: string
   page: number
   channel?: string
+  topic?: string   // 주제 칩 (D-208)
   until?: string
 }
 

@@ -374,8 +374,6 @@
 }
 
 /* D-153: full-width Home modes, source directory + continuous reading surface. */
-.market-module-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
-.market-module-grid > * { min-width: 0; }
 .channel-workspace { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--card); overflow: hidden; }
 .channel-directory, .channel-reader { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .channel-list, .reader-scroll { min-width: 0; min-height: 0; }
@@ -394,9 +392,6 @@
   .channel-workspace[data-reader-open] .channel-reader, .channel-workspace[data-reader-open] .channel-directory { display: flex; }
   .channel-directory { border-right: 1px solid var(--border); }
   .reader-back { display: none; }
-}
-@container page (min-width: 1000px) {
-  .market-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-height: 740px) {
   .page-layout[data-mode=reader] > .page-layout-frame { height: calc(100dvh - var(--shell-offset)); }

@@ -12,7 +12,7 @@ class TimelineLink(BaseModel):
 
 class TimelineItem(BaseModel):
     id: str
-    kind: Literal["source", "company", "person", "transcript", "trade"]
+    kind: Literal["source", "company", "person", "transcript", "trade", "narrative", "report", "scenario"]
     title: str
     body: str = ""
     occurred_at: str

@@ -17,6 +17,7 @@ import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import SaveButton from "@/components/shared/SaveButton"
 import { NarrativeList } from "@/components/explore/NarrativeList"
+import { GraphActivitySection } from "@/components/explore/GraphActivitySection"
 import { MegaNarrativeSection } from "@/components/knowledge/MegaNarrativeSection"
 import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
@@ -178,6 +179,8 @@ function NarrativeLanding() {
       {/* 엮인 서사(구 '세계관' 배지) — 내러티브 축의 상위 진입점이라 목록 위에 둔다 (D-123).
           지식 축 종합인 '세계관 브리핑'은 지식 탭에 남는다 — 이름·자리로 두 축을 분리. */}
       <MegaNarrativeSection />
+      {/* 최근 7일 인과 그래프 변화 — Home 시장 탭에서 이동 (D-208) */}
+      <GraphActivitySection />
       <NarrativeList empty="state" controls />
     </PageContainer>
   )

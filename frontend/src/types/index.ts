@@ -764,7 +764,7 @@ export interface ReadingHistory {
 // Home and /feed share the same stored-update contract (docs/specs/home-feed.md).
 export interface TimelineItem {
   id: string
-  kind: 'source' | 'company' | 'person' | 'transcript' | 'trade'
+  kind: 'source' | 'company' | 'person' | 'transcript' | 'trade' | 'narrative' | 'report' | 'scenario'
   title: string
   body: string
   occurred_at: string

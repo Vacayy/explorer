@@ -1,7 +1,7 @@
 import { sessionMemory } from "@/lib/sessionMemory"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -9,12 +9,13 @@ import { ErrorState, EmptyState } from '@/components/shared/ErrorState'
 import SegmentTabs from '@/components/shared/SegmentTabs'
 import { DocumentCard, SystemPost } from './FeedPost'
 import { useMarkChannelRead, useTimeline, useTimelineChannels } from '@/hooks/useTimeline'
+import { useFeedTopics } from '@/hooks/useFeedTopics'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { TimelineChannel } from '@/types'
 
 const platforms = { telegram: '텔레그램', blog: '블로그', youtube: '유튜브', system: 'Explorer' }
 function channelLabel(item: TimelineChannel) {
-  const kind = { company: '기업 요약', person: '인물 요약', transcript: '컨콜', trade: '수출입' }[item.id.split(':')[0]]
+  const kind = { company: '기업 요약', person: '인물 요약', transcript: '컨콜', trade: '수출입', narrative: '내러티브', report: '리포트', scenario: '파급 분석' }[item.id.split(':')[0]]
   return item.platform === 'system' && kind ? `Explorer · ${kind}` : platforms[item.platform]
 }
 // UI-only positions. Read marks live in channel_reads (D-200), never in the document corpus.
@@ -26,14 +27,20 @@ export function ChannelReader() {
   const [initialSnapshot] = useState(() => new Date().toISOString())
   const until = params.get('reader_until') || initialSnapshot
   const channel = params.get('channel') || ''
-  const reading = params.get('reading') === 'summary' ? 'summary' : 'original'
   const page = Math.max(1, Math.min(100, Math.floor(Number(params.get('reader_page'))) || 1))
   const query = params.get('channel_q') || ''
+  const topic = params.get('reader_topic') || ''   // 주제 칩 (D-208)
   const requestedPlatform = params.get('channel_type') || 'all'
   const platform = Object.hasOwn(platforms, requestedPlatform) ? requestedPlatform as keyof typeof platforms : 'all'
+  // 블로그·유튜브는 원문이 길어 요약을 기본으로 연다. 소스 ID 접두사(`youtube:…`)로 판단해 목록 로딩 전에도 같다.
+  // URL의 명시적 `reading`이 항상 우선한다.
+  const contextPlatform = channel ? channel.split(':')[0] : platform
+  const requestedReading = params.get('reading')
+  const reading = requestedReading === 'summary' || requestedReading === 'original' ? requestedReading
+    : contextPlatform === 'blog' || contextPlatform === 'youtube' ? 'summary' : 'original'
   const readerOpen = params.get('reader_open') === '1' || (!params.has('reader_open') && !!channel)
   const directory = useTimelineChannels(until)
-  const timeline = useTimeline({ scope: platform === 'system' ? 'system' : platform === 'all' ? 'all' : 'sources', kind: 'all', source: platform === 'system' ? 'all' : platform, channel: channel || undefined, page, until })
+  const timeline = useTimeline({ scope: platform === 'system' ? 'system' : platform === 'all' ? 'all' : 'sources', kind: 'all', source: platform === 'system' ? 'all' : platform, channel: channel || undefined, topic: topic || undefined, page, until })
   const selected = directory.data?.items.find(item => item.id === channel)
   const markRead = useMarkChannelRead()
   const entries = (directory.data?.items || []).filter(item =>
@@ -43,7 +50,7 @@ export function ChannelReader() {
   const list = useRef<HTMLDivElement>(null)
   const reader = useRef<HTMLDivElement>(null)
   const focusTarget = useRef<'heading' | 'list' | null>(null)
-  const positionKey = `${platform}:${channel}:${page}:${reading}`
+  const positionKey = `${platform}:${channel}:${topic}:${page}:${reading}`
   const listKey = `directory:${platform}:${query}`
   const patch = (values: Record<string, string | null>, replace = false) => setParams(prev => {
     const next = new URLSearchParams(prev)
@@ -59,7 +66,8 @@ export function ChannelReader() {
 
   // 소스를 열어 게시물이 화면에 오면 최신 시각까지 읽음으로 표시한다 (D-200). 목록 배지가 0이 되고 새 글이 오면 다시 센다.
   useEffect(() => {
-    if (!channel || !selected || selected.unread <= 0 || !selected.latest_at || !timeline.data || markRead.isPending) return
+    // 주제로 거른 화면은 일부만 보이므로 소스 전체를 읽음으로 표시하지 않는다 (D-208)
+    if (topic || !channel || !selected || selected.unread <= 0 || !selected.latest_at || !timeline.data || markRead.isPending) return
     markRead.mutate({ channel, read_until: selected.latest_at })
   }, [channel, selected, timeline.data, markRead])
 
@@ -78,7 +86,7 @@ export function ChannelReader() {
 
   function select(id: string) {
     focusTarget.current = 'heading'
-    patch({ channel: id || null, reader_open: '1', reader_page: null, reader_until: until })
+    patch({ channel: id || null, reading: null, reader_topic: null, reader_open: '1', reader_page: null, reader_until: until })
   }
   function paginate(next: number) {
     focusTarget.current = 'heading'
@@ -91,7 +99,7 @@ export function ChannelReader() {
     if (value === platform) return
     focusTarget.current = 'heading'
     scrollPositions.set(`${value}::1:${reading}`, 0)
-    patch({ channel_type: value === 'all' ? null : value, channel: null, reader_page: null, reader_until: until })
+    patch({ channel_type: value === 'all' ? null : value, channel: null, reading: null, reader_topic: null, reader_page: null, reader_until: until })
   }
   const title = !channel ? allTitle : selected?.name || (directory.isLoading ? '소스 불러오는 중' : '선택한 소스')
 
@@ -126,10 +134,11 @@ export function ChannelReader() {
       <div ref={reader} className="reader-scroll" tabIndex={0} aria-label="게시물 스크롤" onScroll={event => { if (timeline.data) scrollPositions.set(positionKey, event.currentTarget.scrollTop) }}>
         <div className="reader-articles" aria-busy={timeline.isFetching}>
           <p className="pb-2 text-caption text-muted-foreground">{(platform === 'system' || selected?.platform === 'system') ? 'Explorer가 저장한 요약과 수집 업데이트입니다.' : '내가 읽는 사람들의 생각과 쌓이는 시장 정보'}</p>
+          <TopicChips active={topic} onPick={value => { focusTarget.current = 'heading'; patch({ reader_topic: value, reader_page: null }) }} />
           {timeline.isLoading && <div role="status" aria-label="게시물 불러오는 중" className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-48 w-full" />)}</div>}
           {timeline.isError && <ErrorState message={timeline.data ? '갱신에 실패했습니다. 이전 자료를 표시합니다.' : '게시물을 불러오지 못했습니다.'} onRetry={() => void timeline.refetch()} />}
           {timeline.data?.items.map(item => item.document ? <DocumentCard key={item.id} doc={item.document} variant="row" timeLabel={item.time_label} reading={reading} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} /> : <SystemPost key={item.id} item={item} variant="row" presentation="reading" />)}
-          {timeline.data?.items.length === 0 && <EmptyState message={channel ? '이 소스에 저장된 게시물이 없습니다.' : '아직 저장된 업데이트가 없습니다.'} />}
+          {timeline.data?.items.length === 0 && <EmptyState message={topic ? `‘${topic}’ 주제의 게시물이 없습니다.` : channel ? '이 소스에 저장된 게시물이 없습니다.' : '아직 저장된 업데이트가 없습니다.'} />}
           {timeline.data && <nav className="flex flex-wrap items-center justify-between gap-3 border-t pt-5" aria-label="게시물 페이지">
             <Button variant="outline" size="sm" disabled={page === 1} onClick={() => paginate(page - 1)}><ChevronLeft aria-hidden="true" />이전</Button>
             <span className="text-caption text-muted-foreground" role="status">{page}페이지{!timeline.data.has_more && ' · 마지막'}</span>
@@ -139,6 +148,23 @@ export function ChannelReader() {
         </div>
       </div>
     </section>
+  </div>
+}
+
+/** 피드 상단 주제 칩 (D-208) — 시장 탭에서 옮겨 온 주목 주제·부상 종목. 누르면 그 주제로 피드를 거른다. */
+function TopicChips({ active, onPick }: { active: string; onPick: (topic: string | null) => void }) {
+  const { themes, stocks } = useFeedTopics()
+  if (active) return <div className="flex items-center gap-2 pb-3">
+    <span className="text-caption text-muted-foreground">주제</span>
+    <Button variant="secondary" size="sm" className="h-7 gap-1 px-2.5 text-caption" onClick={() => onPick(null)} aria-label={`주제 ${active} 해제`}>{active}<X aria-hidden="true" className="size-3" /></Button>
+  </div>
+  const groups = [{ label: '주목 주제', names: themes }, { label: '부상 종목', names: stocks }].filter(g => g.names.length > 0)
+  if (groups.length === 0) return null   // 로딩·오류·빈 신호 모두 칩 줄을 생략한다(피드 본문과 독립)
+  return <div className="space-y-1.5 pb-3">
+    {groups.map(g => <div key={g.label} className="flex flex-wrap items-center gap-1.5">
+      <span className="w-14 shrink-0 text-caption text-muted-foreground">{g.label}</span>
+      {g.names.map(name => <Button key={name} variant="outline" size="sm" className="h-7 px-2.5 text-caption font-normal" onClick={() => onPick(name)}>{name}</Button>)}
+    </div>)}
   </div>
 }
 
