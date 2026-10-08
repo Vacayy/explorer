@@ -1,20 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
-import { Markdown } from '@/components/shared/Markdown'
-import type { FeedDocument } from '@/types'
+import { DetailLink } from '@/components/shared/DetailNavigation'
 import { CompanyEvidenceSummary } from './CompanyEvidenceSummary'
+
+const titleLink =
+  'block text-left text-sm font-semibold leading-relaxed hover:underline focus-visible:outline-2 focus-visible:outline-primary'
 
 export const sourceLabels: Record<string, string> = {
   telegram: '텔레그램',
@@ -88,8 +83,6 @@ export function CompanyEvidence({
     q,
     page,
   ])
-  const [opened, setOpened] = useState<EvidenceItem | null>(null)
-  const trigger = useRef<HTMLButtonElement | null>(null)
   const params = {
     company,
     market,
@@ -109,18 +102,6 @@ export function CompanyEvidence({
         })
       ).data,
     staleTime: 60_000,
-  })
-  const doc = useQuery({
-    queryKey: ['spine', 'doc', String(opened?.doc_id)],
-    queryFn: async ({ signal }) =>
-      (
-        await api.get<FeedDocument>(`/api/spine/doc/${opened?.doc_id}`, {
-          signal,
-        })
-      ).data,
-    enabled: !!opened?.doc_id,
-    staleTime: 300_000,
-    refetchOnWindowFocus: false,
   })
   const change = (key: string, value: string) =>
     setSp(
@@ -145,8 +126,7 @@ export function CompanyEvidence({
       </CardHeader>
       <CardContent className="space-y-4">
         {!preview && range.start && range.end && <CompanyEvidenceSummary company={company} market={market} range={range} source={source} q={q}
-          disabled={feed.isPending || feed.isError || feed.data?.total === 0}
-          onRead={(item, button) => { trigger.current = button; setOpened(item) }} />}
+          disabled={feed.isPending || feed.isError || feed.data?.total === 0} />}
 
         {!preview && (
           <form
@@ -254,15 +234,17 @@ export function CompanyEvidence({
                           : '장 마감 당시 공개 여부 미확인'}
                       </p>
                     )}
-                    <button
-                      className="text-left text-sm font-semibold leading-relaxed hover:underline focus-visible:outline-2 focus-visible:outline-primary"
-                      onClick={(e) => {
-                        trigger.current = e.currentTarget
-                        setOpened(item)
-                      }}
-                    >
-                      {item.title || '제목 없는 자료'}
-                    </button>
+                    {item.doc_id ? (
+                      <DetailLink to={`/doc/${item.doc_id}`} className={titleLink}>
+                        {item.title || '제목 없는 자료'}
+                      </DetailLink>
+                    ) : /^https?:\/\//i.test(item.url) ? (
+                      <a className={titleLink} href={item.url} target="_blank" rel="noopener noreferrer">
+                        {item.title || '제목 없는 자료'} ↗
+                      </a>
+                    ) : (
+                      <p className="text-sm font-semibold leading-relaxed">{item.title || '제목 없는 자료'}</p>
+                    )}
                     {item.excerpt && (
                       <p className="line-clamp-3 whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground">
                         {item.excerpt}
@@ -321,66 +303,6 @@ export function CompanyEvidence({
           같은 기간의 자료가 주가 변동의 원인이라는 뜻은 아닙니다.
         </p>
       </CardContent>
-      <Dialog
-        open={!!opened}
-        onOpenChange={(open) => {
-          if (!open) setOpened(null)
-        }}
-      >
-        <DialogContent
-          className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl"
-          onCloseAutoFocus={(e) => {
-            e.preventDefault()
-            trigger.current?.focus({ preventScroll: true })
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>{opened?.title || '자료 읽기'}</DialogTitle>
-            <DialogDescription>
-              {opened?.publisher} · {opened?.published_at} ·{' '}
-              {opened?.time_precision === 'date'
-                ? '공개시각 미상'
-                : '공개 시점'}
-            </DialogDescription>
-          </DialogHeader>
-          {opened?.status !== 'within' && (
-            <p className="text-sm text-primary">
-              {opened?.status === 'after'
-                ? '선택 시점 이후에 공개된 자료입니다.'
-                : '장 마감 당시 공개 여부가 확인되지 않았습니다.'}
-            </p>
-          )}
-          {opened?.doc_id ? (
-            doc.isPending ? (
-              <p>원문을 불러오는 중입니다.</p>
-            ) : doc.isError ? (
-              <Button onClick={() => void doc.refetch()}>
-                원문 다시 불러오기
-              </Button>
-            ) : (
-              <Markdown>
-                {doc.data?.transcript ||
-                  doc.data?.content ||
-                  '저장된 본문이 없습니다.'}
-              </Markdown>
-            )
-          ) : (
-            <p className="text-sm">
-              공시 전문은 DART 원문에서 확인할 수 있습니다.
-            </p>
-          )}
-          {opened && /^https?:\/\//i.test(opened.url) && (
-            <a
-              className="text-sm text-primary underline"
-              href={opened.url}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              원문 사이트 열기 ↗
-            </a>
-          )}
-        </DialogContent>
-      </Dialog>
     </Card>
   )
 }

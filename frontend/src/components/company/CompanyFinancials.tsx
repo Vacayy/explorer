@@ -21,7 +21,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { PageContainer } from '@/components/shared/PageContainer'
 import FinancialsPage from '@/components/financials/FinancialsPage'
-import { formatKrw } from '@/utils/format'
+import { formatKrw, formatPercent, formatRatio } from '@/utils/format'
+import { useKpi } from '@/hooks/useKpi'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { quarterRows } from '@/utils/companyResearch'
 import { companyResearchSearch } from '@/components/layout/navConfig'
 
@@ -30,8 +32,17 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
   const query = useFinancials(stockCode, 'IS', 'quarterly', 3, 'CFS', {
     storedOnly: true,
   })
-  const rows = quarterRows(query.data),
-    latest = rows.at(-1)
+  const kpi = useKpi(stockCode)
+  // 아직 공시되지 않은 분기(값 전부 빈칸)는 건너뛰고, 직전 4분기 대비 매출 YoY를 붙인다
+  const all = quarterRows(query.data)
+  const rows = all
+    .map((r, i) => {
+      const prev = all[i - 4]?.revenue
+      return { ...r, yoy: r.revenue != null && prev != null && prev > 0 ? ((r.revenue - prev) / prev) * 100 : null }
+    })
+    .filter((r) => r.revenue != null || r.profit != null)
+    .slice(-5)
+  const latest = rows.at(-1)
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
@@ -43,7 +54,20 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
           실적·사업 보기 →
         </Link>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            ['시가총액', kpi.isPending ? '…' : formatKrw(kpi.data?.market_cap)],
+            ['매출액', formatKrw(latest?.revenue)],
+            ['영업이익', formatKrw(latest?.profit)],
+            ['영업이익률', formatRatio(latest?.margin)],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-caption text-muted-foreground">{label}</dt>
+              <dd className="mt-1 text-lg font-semibold tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
         {query.isPending ? (
           <p className="text-sm text-muted-foreground">
             실적을 불러오는 중입니다.
@@ -54,37 +78,32 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
           </Button>
         ) : latest ? (
           <>
-            <p className="mb-3 text-caption text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {latest.period} · {query.data?.fs_div === 'CFS' ? '연결' : '별도'}{' '}
               · 단일 분기 · DART 최신 확보본
             </p>
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {[
-                [
-                  '매출액',
-                  latest.revenue == null ? '미확보' : formatKrw(latest.revenue),
-                ],
-                [
-                  '영업이익',
-                  latest.profit == null ? '미확보' : formatKrw(latest.profit),
-                ],
-                [
-                  '영업이익률',
-                  latest.margin == null
-                    ? '산출 불가'
-                    : latest.margin.toFixed(1) + '%',
-                ],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-caption text-muted-foreground">
-                    {label}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">
-                    {value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>분기</TableHead>
+                  <TableHead className="text-right">매출액</TableHead>
+                  <TableHead className="text-right">영업이익</TableHead>
+                  <TableHead className="text-right">영업이익률</TableHead>
+                  <TableHead className="text-right">매출 YoY</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.period}>
+                    <TableCell className="tabular-nums">{r.period}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatKrw(r.revenue)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatKrw(r.profit)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatRatio(r.margin)}</TableCell>
+                    <TableCell className={`text-right tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up' : r.yoy < 0 ? 'text-down' : ''}`}>{formatPercent(r.yoy)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </>
         ) : (
           <p className="text-sm text-muted-foreground">

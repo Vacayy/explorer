@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { DetailLink } from '@/components/shared/DetailNavigation'
 import type { EvidenceItem, EvidenceRange } from './CompanyEvidence'
 
 interface Summary {
@@ -13,9 +14,9 @@ interface Summary {
   truncated_count?: number
   generated_at: string | null
 }
-export function CompanyEvidenceSummary({ company, market, range, source, q, disabled, onRead }: {
+export function CompanyEvidenceSummary({ company, market, range, source, q, disabled }: {
   company: string; market: 'kr' | 'us'; range: EvidenceRange; source: string; q: string
-  disabled: boolean; onRead: (item: EvidenceItem, trigger: HTMLButtonElement) => void
+  disabled: boolean
 }) {
   const params = { company, market, start: range.start, end: range.end, cutoff: range.cutoff || 'end', after: !!range.after, source, q }
   const scope = JSON.stringify(params)
@@ -47,7 +48,12 @@ export function CompanyEvidenceSummary({ company, market, range, source, q, disa
         <p className="text-caption text-muted-foreground">AI 요약 · 조회 결과 {result.data.total}건 중 {result.data.used_count}건 사용{result.data.generated_at && ` · ${new Date(result.data.generated_at).toLocaleString('ko-KR')}`}</p>
         {result.data.points.length === 0 ? <p className="text-sm">요약할 자료가 없습니다.</p> : <ul className="space-y-4">{result.data.points.map((point, i) => <li key={i} className="text-sm leading-relaxed"><p>{point.text}</p><div className="mt-1 flex flex-wrap gap-1">{point.sources.map(n => {
           const item = result.data.sources[n-1]
-          return item ? <button key={n} className="rounded border bg-background px-2 py-1 text-caption text-primary hover:underline" title={item.title} onClick={e => onRead(item, e.currentTarget)}>[{n}] {item.source_type === 'disclosure' ? '공시' : '자료'}{item.status === 'after' ? ' · 이후 공개' : item.status === 'uncertain' ? ' · 당시 공개 미확인' : ''}</button> : null
+          if (!item) return null
+          const chip = 'rounded border bg-background px-2 py-1 text-caption text-primary hover:underline'
+          const text = `[${n}] ${item.source_type === 'disclosure' ? '공시' : '자료'}${item.status === 'after' ? ' · 이후 공개' : item.status === 'uncertain' ? ' · 당시 공개 미확인' : ''}`
+          return item.doc_id ? <DetailLink key={n} className={chip} title={item.title} to={`/doc/${item.doc_id}`}>{text}</DetailLink>
+            : /^https?:\/\//i.test(item.url) ? <a key={n} className={chip} title={item.title} href={item.url} target="_blank" rel="noopener noreferrer">{text} ↗</a>
+            : <span key={n} className={chip} title={item.title}>{text}</span>
         })}</div></li>)}</ul>}
         <p className="text-caption text-muted-foreground">긴 본문은 발췌하여 사용합니다.{!!result.data.title_only_count && ` ${result.data.title_only_count}건은 제목만 확인했습니다.`} 해석은 근거 원문과 대조해 주세요.</p>
       </>}
