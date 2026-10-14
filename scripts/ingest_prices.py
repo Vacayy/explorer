@@ -16,7 +16,8 @@ pykrx 시장 단위 엔드포인트는 KRX 로그인이 필요해져 FinanceData
 import argparse
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -29,6 +30,7 @@ def _clean(v):
     return v
 
 
+KST = ZoneInfo("Asia/Seoul")
 NAVER_RT = "https://polling.finance.naver.com/api/realtime/domestic/stock/{codes}"
 UPSERT = """INSERT INTO stock_prices (stock_code, trade_date, open, high, low, close, volume, market_cap, shares)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -45,14 +47,19 @@ def _kr_codes(conn) -> list[str]:
 def ingest_daily(repair_days: int = 10):
     """KRX 정규장 일봉 — 네이버 실시간 API(closePrice=KRX, NXT는 별도 필드)를 장 마감 뒤 일괄 조회.
 
-    날짜는 실행일이 아니라 각 시세의 체결 시각(localTradedAt)에서 가져오고, marketStatus가 CLOSE인 것만 저장한다.
-    → 휴장일 실행은 직전 거래일을 같은 값으로 덮을 뿐 유령 행을 만들지 않고, 노트북이 늦게 깨도 올바른 날짜로 들어가며,
-      장중 실행은 아무것도 쓰지 않는다. 이전 FDR StockListing 스냅샷은 16:10 'NXT 포함 현재가'를 오늘 날짜로 박았다(2026-10-08 확인).
+    날짜는 실행일이 아니라 각 시세의 체결 시각(localTradedAt)에서 가져온다. 체결일이 오늘 이전이거나, 오늘이면 KRX 정규장
+    종료(15:30) 뒤 실행일 때만 저장한다 → 휴장일 실행은 직전 거래일을 같은 값으로 덮을 뿐 유령 행을 만들지 않고, 노트북이
+    늦게 깨도 올바른 날짜로 들어가며, 장중 실행은 아무것도 쓰지 않는다. 이전 FDR StockListing 스냅샷은 16:10 'NXT 포함
+    현재가'를 오늘 날짜로 박았다(2026-10-08 확인).
+    marketStatus는 시간외 단일가(16:00–18:00)·NXT(~20:00) 동안 OPEN이라 판정에 쓰지 않는다 — 10-12·13은 16:35에
+    2,600여 종목이 OPEN으로 걸러져 105종목만 저장됐다. 20:20 재실행(모든 세션 종료 뒤)이 같은 값을 덮어쓰고 바뀐 종가 수를 남긴다.
     """
     import requests
 
     conn = get_connection()
     codes = _kr_codes(conn)
+    now = datetime.now(KST)
+    today, closed = now.date().isoformat(), now.strftime("%H%M") >= "1530"
     rows, skipped, failed = [], {}, 0
     for k in range(0, len(codes), 200):
         batch = codes[k:k + 200]
@@ -65,38 +72,44 @@ def ingest_daily(repair_days: int = 10):
             print(f"[daily] 배치 실패 {k}: {type(e).__name__}")
             continue
         for d in datas:
-            status = d.get("marketStatus")
-            if status != "CLOSE":
-                skipped[status] = skipped.get(status, 0) + 1
-                continue
             num = lambda key: _clean(float(d[key])) if d.get(key) not in (None, "", "-") else None  # noqa: E731
             close, cap = num("closePriceRaw"), num("marketValueFullRaw")
             day = (d.get("localTradedAt") or "")[:10]
             if not close or not day:
                 continue
+            if day == today and not closed:
+                skipped["장중"] = skipped.get("장중", 0) + 1
+                continue
             rows.append((d["itemCode"], day, num("openPriceRaw"), num("highPriceRaw"), num("lowPriceRaw"), close,
                          num("accumulatedTradingVolumeRaw"), cap, round(cap / close) if cap and close else None))
         time.sleep(0.1)
+    before = {(r[0], r[1]): r[2] for r in conn.execute(
+        "SELECT stock_code, trade_date, close FROM stock_prices WHERE trade_date IN (%s)" % ",".join("?" * len({r[1] for r in rows})),
+        sorted({r[1] for r in rows}))} if rows else {}
+    changed = sum(1 for r in rows if (r[0], r[1]) in before and before[(r[0], r[1])] != r[5])
     conn.executemany(UPSERT, rows)
     conn.commit()
     days = sorted({r[1] for r in rows})
-    print(f"[daily] KRX 종가 {len(rows)}종목 upsert · 거래일 {days} · 건너뜀 {skipped or '-'} · 실패 {failed}")
+    print(f"[daily] KRX 종가 {len(rows)}종목 upsert · 거래일 {days} · 기존과 다른 종가 {changed} · 건너뜀 {skipped or '-'} · 실패 {failed}")
     if skipped and not rows:
         print("[daily] 장이 아직 마감되지 않아 저장하지 않았습니다(장중 실행). 다음 실행 또는 --repair가 채웁니다.")
     if repair_days:
-        # 최근 거래일(전 종목 절반 이상이 가진 날) 중 비어 있는 종목만 yfinance로 보충 — 전 종목을 매일 부르면 속도 제한에 걸린다
+        # 최근 거래일 중 비어 있는 (종목, 날짜)만 yfinance로 보충 — 전 종목을 매일 부르면 속도 제한에 걸린다.
+        # 거래일은 KOSPI 지수 일봉(index_kospi) 달력, 대상은 최근 30일에 시세가 있는 종목. 일별 수집이 통째로 빠진 날도 잡힌다.
         since = (date.today() - timedelta(days=repair_days)).isoformat()
-        days_ = [r[0] for r in conn.execute("SELECT trade_date FROM stock_prices WHERE trade_date >= ? GROUP BY trade_date "
-                                            "HAVING count(*) > ?", (since, len(codes) // 2))]
+        days_ = [r[0] for r in conn.execute("SELECT DISTINCT snapshot_date FROM market_indicators WHERE indicator='index_kospi' "
+                                            "AND snapshot_date >= ? AND snapshot_date < ?", (since, today))]
         have = {(r[0], r[1]) for r in conn.execute("SELECT stock_code, trade_date FROM stock_prices WHERE trade_date >= ?", (since,))}
-        listed = {r[0] for r in rows}
-        gaps = sorted({c for c in listed for d in days_ if (c, d) not in have})
+        active = {r[0] for r in conn.execute("SELECT DISTINCT stock_code FROM stock_prices WHERE trade_date >= ?",
+                                             ((date.today() - timedelta(days=30)).isoformat(),))}
+        gaps = sorted({c for c in active for d in days_ if (c, d) not in have})
         print(f"[daily] 최근 {repair_days}일 빈 날 있는 종목 {len(gaps)}")
         conn.close()
         if gaps:
             repair(repair_days, only_missing=True, codes=gaps)
     else:
         conn.close()
+    return {"upsert": len(rows), "days": ",".join(days), "changed": changed, "failed": failed}
 
 
 def _yf_batch(yf, tickers: list[str], start: str, end: str, tries: int = 4):
@@ -265,7 +278,8 @@ if __name__ == "__main__":
 
     init_db()
     if args.daily:
-        ingest_daily()
+        from pipeline.ops import run_job
+        run_job("prices", ingest_daily)  # job_runs 기록 — 관리자 화면에서 실행 이력이 보이게 (D-222)
         _refresh_valuation()  # 전종목 PER·ROE — 소외 신호 재료 (일 1회)
     elif args.repair:
         repair(args.days, since=args.since, codes=args.codes.split(",") if args.codes else None)

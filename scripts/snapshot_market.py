@@ -34,4 +34,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from pipeline.ops import run_job
+    run_job("snapshot_market", main)  # job_runs 기록 (D-222)

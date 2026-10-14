@@ -350,6 +350,7 @@
 **계약**: HTTP timeout·재시도·속도 제한, 재개 가능한 staging, OHLCV·중복 검증, 출처·수집 시각·범위 기록, 검증 후 원자적 게시. 저장소 파일은 읽기 전용이며 CodeAct가 갱신하지 않는다. 공식 거래일 달력은 여전히 미확인이다. 자동 수집 스케줄은 이번 작업에서 변경하지 않는다.
 
 **기각한 대안**: 원본 전체 덮어쓰기, 원본에 보정 기준이 다른 행을 빈 날짜만 삽입, 종가만 보정해서 기존 고가·저가와 결합. 원본 보존과 동일 가격 기준을 동시에 만족하지 못한다.
+→ D-220에서 자동 수집 스케줄 추가(평일 20:40 재게시).
 
 **참조**: `scripts/collect_market_history.py`, `backend/pipeline/market_analysis/snapshot.py`, `tests/test_market_history_collection.py`, [시장 분석 계약](specs/market-codeact.md). 가격 소스의 조정 기준은 [FinanceDataReader 안내](https://github.com/FinanceData/FinanceDataReader/wiki/Quick-Start), 소스 선택은 [공식 README](https://github.com/FinanceData/FinanceDataReader) 참조.
 
@@ -2690,6 +2691,7 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **기각한 대안**: 네이버 차트 API(siseJson·fchart·api.stock.naver.com) — 모두 통합 시세라 KRX 정규장과 다르다(10-08 저가가 NXT 프리마켓 값). KIS 등 키가 필요한 공식 API — 키 사용 불가(로컬 제약). 통합 기준 — 사용자가 KRX 정규장 기준을 택했다.
 
 **참조**: scripts/ingest_prices.py(`ingest_daily`·`repair`·`verify`) · backend/services/krx_service.py · scripts/install_launchd.py(`prices` 16:35) · 백업 ~/backups/explorer/db-20261008-125439.sqlite.gz.
+→ D-220에서 `marketStatus=CLOSE` 판정을 시각 판정으로 변경, 20:20 재실행 추가.
 
 ---
 
@@ -2712,3 +2714,30 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **기각한 대안**: 노드 캔버스(React Flow로 AND/OR·N개 중 K개 연결) — 표현력은 높지만 학습 비용이 크고 모바일에 불리하다. OR 그룹 — 백엔드 `expression`이 지원하지만 순위 조건을 넣을 수 없고 결과 근거 표시가 `strategy_conditions` 기준이라 이번에는 AND만 한다. 블록별 실시간 통과 종목 수 — 검색이 실행 단위로 무거워 새 카운트 API·캐시가 필요하므로 1차에서 뺐다(사용자 동의).
 
 **참조**: frontend/src/components/analysis/ConditionStackBuilder.tsx · DiscoveryStart.tsx · StrategyConditionEditor.tsx · discoveryDraft.ts(`stackConditions`) · docs/specs/technical-reading.md.
+
+---
+
+## D-220 · 2026-10-14 · 시세 수집은 장 상태가 아니라 시각으로 판정하고, 발견용 이력은 매일 다시 게시한다
+
+**결정**: ① `ingest_prices --daily`는 `marketStatus=CLOSE` 대신 "체결일이 오늘 이전이거나, 오늘이면 KRX 정규장 종료(15:30) 뒤 실행"일 때 저장한다. 16:35에 더해 20:20(시간외 단일가·NXT까지 끝난 뒤)에 다시 돌려 같은 값을 덮어쓰고, 16:35 값과 달라진 종가 수를 로그에 남긴다. ② 빈 날 보충은 KOSPI 지수 일봉(`index_kospi`)을 거래일 달력으로, 최근 30일에 시세가 있는 종목 전체를 대상으로 찾는다. ③ 발견용 `market_history.sqlite`(D-177)는 launchd `history`가 평일 20:40에 `refresh_market_history.py`로 전 종목 전체 기간을 다시 받아 게시한다. 수집 성공 종목이 직전 게시본의 90% 미만이면 게시하지 않는다.
+
+**원인(2026-10-14 확인)**: 사용자 — 발견 결과가 "시세 2026-09-18 기준"에 머문다. 두 고장이 겹쳤다. (a) exporter가 기준일을 이력 파일 as_of 이하로 자르는데, D-177이 스케줄을 두지 않아 9-19 1회 게시가 마지막이었다. (b) D-215 이후 거래일 16:35엔 시간외 단일가·NXT 때문에 2,600여 종목이 `OPEN`이라 10-08·12·13은 105종목만 저장됐다(10-08분은 휴장인 10-09 실행이 채움). 보충 단계도 "절반 이상 저장된 날 × 오늘 저장된 종목"만 봐서 이 공백을 못 메웠다. 10-12·13을 yfinance로 5,436행 보충(남은 ~115종목은 yfinance에 없는 코드), `--verify` 불일치 10/3,975.
+
+**기각한 대안**: 이력 파일에 일별 행만 이어붙이기 — 분할·병합이 생기면 조정 기준이 섞여 D-177이 막으려던 가짜 단절이 생긴다. 일별 수집을 20:20 한 번으로 옮기기 — 16:40 감시 규칙·16:50 포트폴리오 요약이 당일 종가를 잃는다. exporter가 이력 as_of 뒤를 `stock_prices`로 잇기 — 같은 이유로 가격 기준을 섞는다.
+
+**남은 불확실성**: 16:35의 `closePrice`가 시간외 단일가에 영향받지 않는지는 확인 전이다. 20:20 재실행 로그의 "기존과 다른 종가" 수로 며칠 관찰한다(0이 아니면 20:20 값이 정본으로 덮어씀).
+
+**참조**: scripts/ingest_prices.py(`ingest_daily`) · scripts/refresh_market_history.py · scripts/collect_market_history.py · scripts/install_launchd.py(`prices`·`history`) · backend/pipeline/market_analysis/snapshot.py.
+---
+
+## D-222 · 2026-10-14 · 운영 감시는 작업 종료 코드가 아니라 결과 데이터의 신선도로 한다
+
+**결정**: `pipeline/health.py`에 결과 데이터 레지스트리를 두고 각 항목의 최신 시점을 기대치와 비교한다. 국내 장 마감 데이터는 KOSPI 지수 일봉으로 확인된 거래일 기준으로 지연 거래일 수를 세고(휴장일 오탐 없음), 일별 시세는 저장 종목 수도 본다. 나머지는 경과 시간, launchd는 마지막 종료 코드. 전체는 관리자 화면 표, '경고' 항목의 지연만 홈 브리핑·텔레그램 아침 브리핑에 한 줄 올린다.
+
+**맥락·이유**: 사용자 — "자동으로 도는 것, 방문할 때 트리거되는 것, 수집하는 것이 여럿인데 모니터링이 부족하다". 같은 날 확인한 세 정체(일별 시세 105종목·발견 이력 4주·시장 국면 한 달)는 모두 종료 코드 0이거나 스케줄 자체가 없어 `job_runs`로는 보이지 않았다. 방문 트리거·버튼 주도 데이터도 결과 테이블은 같으므로 하나의 틀로 덮는다. LLM 엔진 경고(D-106)와 같은 '아래 숫자를 믿을 수 없다'는 메타 경보라 텔레그램 최상단 예외(D-111)에 넣는다.
+
+**기각한 대안**: 작업별 `job_runs` 실패 감시만 — 종료 코드 0인 부분 실패와 미등록 스케줄을 못 잡는다. 모든 지연을 텔레그램에 — 비중요 항목까지 올리면 D-111이 걷어낸 낮은 신호 소음이 돌아온다. 공휴일 달력 하드코딩 — 대체공휴일·임시휴장을 놓치고 매년 관리가 필요하다.
+
+**함께 고친 것**: 점검이 처음 잡은 시장 국면(19거래일)·리스크(10거래일) 정체는 `snapshot_market`이 launchd에 등록된 적이 없어서였다 — `market`(평일 16:20)으로 등록.
+
+**참조**: backend/pipeline/health.py · routers/spine_admin.py(`/health`) · routers/spine_home.py · pipeline/notify.py · frontend/src/components/admin/AdminPage.tsx · scripts/ingest_prices.py · backend/tests/test_health.py · docs/specs/ops-health.md.

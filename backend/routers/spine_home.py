@@ -131,6 +131,12 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
             text=f"LLM 엔진 응답 실패 — 태깅·요약 품질 저하 중 ({llm_down})",
             to="/admin"))
 
+    # 데이터 신선도 (D-222) — 수집 작업이 종료 코드 0으로 끝나도 결과가 묵을 수 있다
+    from pipeline.health import alert_line
+    stale = alert_line(conn)
+    if stale:
+        briefing.append(BriefItem(kind="warning", text=f"데이터 갱신 지연 — {stale}", to="/admin"))
+
     # 소스 경고 — '조용함'이 수집 고장이면 그것부터 알려야 한다
     from routers.spine_sources import compute_source_health
     dead = [i for i in compute_source_health(conn) if i["warning"]]

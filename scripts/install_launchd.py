@@ -45,8 +45,15 @@ PATH = ":".join(p for p in [_NODE_BIN, "/opt/homebrew/bin", "/usr/local/bin",
 JOBS = [
     ("chain", [str(PROJECT / "scripts" / "run_chain.sh")], 1800),
     # KRX 종가는 16:30에 확정 송출(네이버 closePriceSendTime) — 그 뒤에 수집. 감시(16:40)보다 앞.
+    # 20:20 재실행은 시간외 단일가·NXT까지 끝난 뒤 같은 값을 덮어쓴다(D-220 — 16:35엔 marketStatus가 OPEN이라 판정에 안 씀).
     ("prices", [PY, "scripts/ingest_prices.py", "--daily"],
-     [{"Weekday": d, "Hour": 16, "Minute": 35} for d in range(1, 6)]),
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((16, 35), (20, 20))]),
+    # 발견용 시세 이력(D-177 저장소) 재게시 — 일별 시세 20:20 뒤. 전 종목 재수집 20~40분, 모델 호출 0 (D-220).
+    ("history", [PY, "scripts/refresh_market_history.py"],
+     [{"Weekday": d, "Hour": 20, "Minute": 40} for d in range(1, 6)]),
+    # 시장 국면·리스크 지표(D-076) — 국내 마감 뒤. 문서엔 '권장'으로만 있고 등록이 빠져 9-10부터 한 달 묵었다(D-222 점검으로 발견).
+    ("market", [PY, "scripts/snapshot_market.py"],
+     [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
     ("krmovers", [PY, "scripts/snapshot_kr_movers.py"],          # D-108 — 신규진입 판정에 일별 필요
      [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
     # 미국장 브리핑은 발송(07:00)보다 **먼저** 데워야 그날 것이 실린다 (D-112). 2026-09-09 발송 08:00→07:00(사용자 요청), 웜업도 06:30으로.

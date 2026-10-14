@@ -209,6 +209,17 @@ def compose_briefing() -> str | None:
         lines.append(f"⚠️ <b>LLM 엔진 응답 실패</b> — 아래 내용이 열화됐을 수 있습니다 "
                      f"({esc(llm_down)})")
 
+    # 데이터 신선도(D-222)도 같은 메타 경보 — 시세·국면이 묵으면 아래 숫자를 믿을 수 없다
+    from pipeline.health import alert_line
+    health_conn = get_connection()
+    try:
+        stale = alert_line(health_conn)
+    finally:
+        health_conn.close()
+    if stale:
+        lines.append("")
+        lines.append(f"⚠️ <b>데이터 갱신 지연</b> — {esc(stale)}")
+
     _us_section(lines)
 
     conn = get_connection()
