@@ -31,6 +31,7 @@
 **기각한 대안**: 변동성 축소나 거래량 증가만으로 가격 상승을 추정하지 않는다. 구조를 강조하기 위해 읽기와 구조 차트를 동시에 기본 노출하지 않는다. 두 상단 탭 중 활성 보기의 차트만 그려 기존 읽기 흐름을 유지한다.
 
 **참조**: docs/specs/technical-reading.md · docs/specs/chart-structure.md · frontend/src/components/analysis/discoveryScenarios.ts · DiscoveryStart.tsx · company/TechnicalScan.tsx.
+→ D-219에서 상황 카드의 단일 선택을 조건 블록 쌓기로 변경.
 
 ---
 
@@ -2699,3 +2700,15 @@ frontend CausalDetail.tsx(ScenarioBeneficiaries)·NarrativePage.tsx · D-023(수
 **이유·기각한 대안**: 사용자 판단 — 수익률 표 너머로 "무엇에 베팅 중인가·산 이유가 유효한가·시장이 어떻게 말하나·무슨 일이 예정됐나"가 필요하다. 조사(2026-10-08) 결과 인과 그래프는 SK하이닉스 70간선·두산테스나 0이라 단일 출처는 기각, 동시 언급은 종목 수십 개를 나열한 시황 글이 소형주를 오염시켜(바이오·2차전지) 문서당 1/종목수 가중과 글 성격 태그 제외를 넣었다. 업종·회사 묶음의 방향은 간선 하나의 잡음이라 표시하지 않는다. 기존 일정 데이터는 모두 지났거나 비어 새로 모으되, 추정치가 기존 일정에 섞이지 않게 분리했다. 논지 감시용 새 판정 엔진은 기각 — 추적기의 결정적 롤업을 재사용하고, 국내 숫자 지표 어댑터(시세·DART·수출입)는 P1로 미뤘다(분해 시 미국 관련 기업 티커로 보완). 매일 도는 부분은 LLM 0, LLM은 논지 분해(버튼)와 보유 종목 1D 요약(새 문서가 있는 날)만(D-072).
 
 **참조**: backend/pipeline/portfolio_exposure.py · portfolio_events.py · portfolio_flow.py · portfolio_thesis.py · portfolio_alerts.py · scripts/refresh_questions.py · frontend/src/components/portfolio/(ExposureCard·EventsCard·FlowCard·ThesisCard) · tests/test_portfolio_*.py.
+
+---
+
+## D-219 · 2026-10-14 · 종목 발견의 조건은 블록으로 쌓는다 — 상황 카드는 빠른 시작, 조건 편집기는 하나로
+
+**결정**: 발견 시작 화면의 상황 카드를 한 번에 하나만 고르던 방식(`intent` → 그 목적의 조건 편집기)을 `analysis/ConditionStackBuilder`로 바꾼다. 상황 카드는 '빠른 시작'이 되어 누를 때마다 그 서버 추천 spec의 조건을 스택에 쌓고, 다시 누르면 뺀다. 그 옆 팔레트(81개 카탈로그, 검색·분류·계산 기준 Popover)의 +로 조건을 하나씩 더한다. 쌓인 블록은 번호와 '그리고'로 이어 보이고 제자리에서 수정·제거한다. 제출은 기존 `strategy_conditions` AND 목록(최대 12개, 같은 조건 중복 불가 — 이미 쌓인 블록은 설정을 유지하고 건너뜀)이다. 초안은 sessionStorage 하나(`explorer:discovery:stack:v1`)다. 같은 일을 하던 '조건 직접 구성' Sheet(`StrategyLibrary`)는 흡수해 없앤다.
+
+**맥락·이유**: 사용자 — "한 번에 하나밖에 클릭이 안 된다, 조건을 추가·추가해서 stack처럼 쌓고 싶다". 조건 추가 기능은 이미 있었지만 카드를 고른 뒤에야 나오는 Select 안에 숨어 있었고, 같은 목적의 빌더가 Sheet에 따로 있었다. 레퍼런스로 노드 캔버스(파워 서치형)도 받았지만 사용자가 세로 스택을 골랐다.
+
+**기각한 대안**: 노드 캔버스(React Flow로 AND/OR·N개 중 K개 연결) — 표현력은 높지만 학습 비용이 크고 모바일에 불리하다. OR 그룹 — 백엔드 `expression`이 지원하지만 순위 조건을 넣을 수 없고 결과 근거 표시가 `strategy_conditions` 기준이라 이번에는 AND만 한다. 블록별 실시간 통과 종목 수 — 검색이 실행 단위로 무거워 새 카운트 API·캐시가 필요하므로 1차에서 뺐다(사용자 동의).
+
+**참조**: frontend/src/components/analysis/ConditionStackBuilder.tsx · DiscoveryStart.tsx · StrategyConditionEditor.tsx · discoveryDraft.ts(`stackConditions`) · docs/specs/technical-reading.md.

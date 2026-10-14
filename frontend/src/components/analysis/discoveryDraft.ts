@@ -15,6 +15,19 @@ export function isPurposeDraft(value: unknown): value is PurposeDraft {
       && Object.values(c.params).every(v => typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))))
 }
 
+export const MAX_STACKED_CONDITIONS = 12
+/** The server rejects duplicate strategy ids, so an already stacked block keeps its edited settings. */
+export function stackConditions(current: StrategyCondition[], incoming: StrategyCondition[]) {
+  const conditions = [...current]
+  let duplicate = 0, overflow = 0
+  for (const condition of incoming) {
+    if (conditions.some(c => c.strategy_id === condition.strategy_id)) duplicate++
+    else if (conditions.length >= MAX_STACKED_CONDITIONS) overflow++
+    else conditions.push(condition)
+  }
+  return { conditions, added: conditions.length - current.length, duplicate, overflow }
+}
+
 export function comparisonCodes(value: string | null, available: string[]): string[] {
   return [...new Set((value ?? '').split(','))].filter(code => available.includes(code)).slice(0, 3)
 }

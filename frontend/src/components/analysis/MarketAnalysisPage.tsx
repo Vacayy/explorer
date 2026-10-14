@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, CornerDownRight, Download, History, Library, LoaderCircle, Plus, Search, SlidersHorizontal, Square } from 'lucide-react'
+import { ArrowLeft, ChevronDown, CornerDownRight, Download, History, Library, LoaderCircle, Plus, Search, Square } from 'lucide-react'
 import { PageHeader, PageLayout } from '@/components/shared/PageLayout'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +19,7 @@ import { AnalysisConditions } from '@/components/analysis/AnalysisConditions'
 import { AnalysisQuestion } from '@/components/analysis/AnalysisQuestion'
 import { AnalysisResults } from '@/components/analysis/AnalysisResults'
 import { QuestionRefiner } from '@/components/analysis/QuestionRefiner'
-import { StrategyLibrary, type StrategySubmission } from '@/components/analysis/StrategyLibrary'
+import type { StrategySubmission } from '@/components/analysis/ConditionStackBuilder'
 import { DiscoveryLibrary, DiscoveryRecommendations, SaveDiscoveryStrategy } from '@/components/analysis/DiscoveryLibrary'
 import { DiscoveryFollowup, type FollowupSubmission } from '@/components/analysis/DiscoveryFollowup'
 import { DiscoveryStart } from '@/components/analysis/DiscoveryStart'
@@ -152,13 +152,6 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
       <Button variant={library ? 'ghost' : 'secondary'} size="sm" onClick={() => setLibrary(false)}><Search className="size-4" />{runId ? '검색 결과' : '새 검색'}</Button>
       <Button variant={library ? 'secondary' : 'ghost'} size="sm" onClick={() => setLibrary(true)}><Library className="size-4" />저장 전략·조사</Button>
       <div className="ml-auto flex flex-wrap gap-1">
-        <Sheet open={panel === 'tools'} onOpenChange={open => setPanel(open ? 'tools' : null)}>
-          <SheetTrigger asChild><Button variant="ghost" size="sm"><SlidersHorizontal className="size-4" />조건 직접 구성</Button></SheetTrigger>
-          <SheetContent className="w-full overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
-            <SheetHeader><SheetTitle>전략 도구로 조건 구성</SheetTitle><SheetDescription>계산 기준을 확인하고 원하는 신호를 조합합니다.</SheetDescription></SheetHeader>
-            <div className="min-w-0 px-4 pb-6 sm:px-6"><StrategyLibrary busy={analysis.start.isPending || busy} onStart={submit} />{analysis.start.error && <p role="alert" className="mt-3 text-sm text-destructive">{analysis.start.error.message}</p>}</div>
-          </SheetContent>
-        </Sheet>
         <Sheet open={panel === 'history'} onOpenChange={open => setPanel(open ? 'history' : null)}>
           <SheetTrigger asChild><Button variant="ghost" size="sm"><History className="size-4" />이전 검색</Button></SheetTrigger>
           <SheetContent className="overflow-y-auto"><SheetHeader><SheetTitle>이전 검색</SheetTitle><SheetDescription>저장된 결과를 다시 열어 탐색을 이어갑니다.</SheetDescription></SheetHeader>
