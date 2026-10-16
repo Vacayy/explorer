@@ -17,6 +17,7 @@
 ### 작업 종료 시 (커밋에 포함)
 - **구조가 바뀌었으면 SYSTEM.md를 같은 커밋에서 갱신**한다. "구조"란: DB 테이블/컬럼, pipeline/ 모듈, 라우터/API, cron 체인, IA(페이지/탭), 외부 의존성, .env 키. 문서 갱신이 빠진 구조 변경 커밋은 미완성이다.
 - **중요한 결정이 있었으면 DECISIONS.md에 항목을 추가**한다. 기록 대상: 되돌리기 비싼 결정, 대안을 기각한 결정, 나중에 "왜 이렇게 돼 있지?"가 나올 결정. 단순 버그 수정·사소한 구현 선택은 커밋 메시지로 충분.
+- DECISIONS.md는 `docs/private/`(비공개 저장소 `Vacayy/explorer-private`)에 있다 — 결정 기록은 **그 저장소에서 따로 커밋·푸시**한다. 공개 저장소 커밋만으로 끝내지 않는다. 새 환경에서는 `git clone https://github.com/Vacayy/explorer-private docs/private`.
 - DECISIONS.md는 **append-only**: 기존 항목 수정·삭제 금지. 번복은 새 항목 + 원 항목에 `→ D-0XX에서 번복` 한 줄.
 
 ### 문서 지도
