@@ -1194,3 +1194,30 @@ export interface RetailPoint {
   credit_growth: number | null; credit_growth_pct: number | null; deposit_growth_pct: number | null; value_growth_pct: number | null
   leverage: number | null; turnover: number | null; indiv_share: number | null; forced_20_pct: number | null
 }
+
+/* ---------- 프록시 보드 (D-240, docs/specs/question-proxy.md §프록시 보드) ---------- */
+export type ProxyDirection = 'up' | 'down'
+export interface ProxyBoardSummary {
+  id: number; name: string; description: string | null
+  question_id: number | null; narrative_id: number | null; group_id: number | null
+  created_at: string | null; updated_at: string | null
+  item_count: number; in_warn_count: number
+}
+export interface ProxyLatest {
+  value: number | null; as_of: string | null; change: number | null; change_pct: number | null
+  change_basis: string | null; direction: 'up' | 'down' | 'flat' | null; unit: string | null
+}
+export interface ProxyBoardItem {
+  proxy_id: number; position: number; label: string; adapter: string | null; adapter_ref: string | null
+  unit: string | null; warn_direction: ProxyDirection | null; rationale: string | null; missing: boolean
+  latest: ProxyLatest; in_warn: boolean; series: { date: string; value: number }[]
+}
+export interface ProxyBoardDetail extends ProxyBoardSummary { items: ProxyBoardItem[] }
+export interface ProxyAdapter { kind: string; label: string; ref_format: string; description: string; change_basis: string }
+export interface ProxyCatalogEntry { ref: string; label: string; unit: string | null }
+export interface ProxyCandidate {
+  label: string; adapter: string; adapter_ref: string; unit: string | null; warn_direction: ProxyDirection | null
+  rationale: string | null; lead_or_confirm: 'lead' | 'confirm' | null; source_label: string
+}
+export interface ProxyNeedsSource { label: string; adapter: string | null; adapter_ref: string | null; rationale: string | null; reason: string }
+export interface ProxySuggestion { topic: string; candidates: ProxyCandidate[]; needs_source: ProxyNeedsSource[] }

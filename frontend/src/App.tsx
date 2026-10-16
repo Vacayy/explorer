@@ -25,6 +25,7 @@ import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrai
 import { DiscoveryTechnicalContext } from "@/components/company/DiscoveryTechnicalContext"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import HomePage, { HomeBriefingPage, HomeMacroPage, HomeRiskPage } from "@/components/home/HomePage"
+import ProxyBoardsPage from "@/components/proxy/ProxyBoardsPage"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
@@ -218,6 +219,7 @@ export default function App() {
             <Route path="home/briefing" element={<HomeBriefingPage />} />
             <Route path="home/risk" element={<HomeRiskPage />} />
             <Route path="home/macro" element={<HomeMacroPage />} />
+            <Route path="proxy-boards" element={<ProxyBoardsPage />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="follow/stocks" element={<StocksPage />} />

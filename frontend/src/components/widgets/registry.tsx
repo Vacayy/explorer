@@ -9,6 +9,7 @@ import { EXPLORE_WIDGETS } from "./explore"
 import { PORTFOLIO_WIDGETS } from "./portfolio"
 import { CANVAS_WIDGETS } from "./canvas"
 import { WORLD_WIDGETS } from "./world"
+import { PROXY_WIDGETS } from "./proxy"
 
 const risk = (id: string, metric: string, title: string, description: string): WidgetDef => ({
   id, title, description, section: "home", group: "국면·리스크", size: { w: 3, h: 3, minW: 2, minH: 2 },
@@ -39,6 +40,7 @@ export const WIDGETS: readonly WidgetDef[] = [
   ...PORTFOLIO_WIDGETS,
   ...CANVAS_WIDGETS,
   ...WORLD_WIDGETS,
+  ...PROXY_WIDGETS,
 ]
 
 export const WIDGET_BY_ID: Record<string, WidgetDef> = Object.fromEntries(WIDGETS.map(w => [w.id, w]))
