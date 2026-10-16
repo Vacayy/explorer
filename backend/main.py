@@ -116,6 +116,8 @@ from routers import dashboard  # 홈 위젯 배치 저장
 app.include_router(dashboard.router)
 from routers import proxy_boards  # 프록시 보드 (D-240)
 app.include_router(proxy_boards.router)
+from routers import spine_world  # 월드모델 읽기 전용(지금 랜딩·체크포인트·위젯)
+app.include_router(spine_world.router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)
