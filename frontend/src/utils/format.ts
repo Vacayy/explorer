@@ -159,3 +159,11 @@ export function formatBp(value: number | null | undefined, signed = false): stri
   const rounded = Math.round(value)
   return `${signed && rounded > 0 ? "+" : ""}${rounded.toLocaleString("ko-KR")}`
 }
+
+/**
+ * Format an index level or point value with two decimals (e.g. 5,779.14 · 16.46).
+ */
+export function formatLevel(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return value.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}

@@ -27,6 +27,9 @@ export interface SectionDef {
 export const SECTIONS: readonly SectionDef[] = [
   { key: "home", label: "홈", path: "/home", tabs: [
     { key: "dashboard", path: "/home", label: "대시보드", match: ["/home"] },
+    { key: "briefing", path: "/home/briefing", label: "시장 브리핑", match: ["/home/briefing"] },
+    { key: "risk", path: "/home/risk", label: "국면·리스크", match: ["/home/risk", "/retail"] },
+    { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro"] },
   ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
     { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover", "/analysis/backtests"] },

@@ -23,7 +23,7 @@ import { DiscoveryNavigationMemory } from "@/components/shared/DiscoveryNavigati
 import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrail"
 import { DiscoveryTechnicalContext } from "@/components/company/DiscoveryTechnicalContext"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
-import HomePage from "@/components/home/HomePage"
+import HomePage, { HomeBriefingPage, HomeMacroPage, HomeRiskPage } from "@/components/home/HomePage"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
@@ -227,6 +227,9 @@ export default function App() {
 
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
+            <Route path="home/briefing" element={<HomeBriefingPage />} />
+            <Route path="home/risk" element={<HomeRiskPage />} />
+            <Route path="home/macro" element={<HomeMacroPage />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="follow/stocks" element={<StocksPage />} />
