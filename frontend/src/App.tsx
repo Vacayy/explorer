@@ -64,7 +64,6 @@ import ExpectationsPage from "@/components/expectations/ExpectationsPage"
 
 // Discovery
 import OnchainPage from "@/components/onchain/OnchainPage"
-import ScreenerPage from "@/components/discovery/ScreenerPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
@@ -257,7 +256,7 @@ export default function App() {
             {/* Discovery */}
             <Route path="discover" element={<MarketAnalysisPage />} />
             <Route path="discover/industry" element={<Navigate to="/map?view=chains" replace />} />
-            <Route path="discover/screener" element={<ScreenerPage />} />
+            <Route path="discover/screener" element={<Navigate to="/discover" replace />} />
             <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
             <Route path="discover/alt-data" element={<OnchainPage />} />
 

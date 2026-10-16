@@ -69,7 +69,7 @@
 - [chat-harness](chat-harness.md) — 대화(챗봇) 하네스 — 현황 분석 + 아키텍처 레퍼런스 (2026-09-08)
 - [chat-page](chat-page.md) — /chat 화면 리뉴얼 — 메신저에서 "판단 도구"로 (2026-09-08)
 - [chat-retrieval](chat-retrieval.md) — 대화 검색 품질 — 청크 인덱스 · 문맥 접두어 · 리랭커 (C 단계, 2026-09-08)
-- [discover-screener](discover-screener.md) — 화면 기획서: 스크리너
+- [discover-screener](discover-screener.md) — 화면 기획서: 스크리너 — **제거됨 (D-241)**
 - [discover-signals](discover-signals.md) — 화면 기획서: 시그널 피드 — **현행 신호 탭은 [explore-core](explore-core.md) §2**
 - [doc-causal-extraction](doc-causal-extraction.md) — 기획서 — 문서 레벨 인과 추출 (제2 인과 공급원)
 - [doc-synthesis](doc-synthesis.md) — 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기

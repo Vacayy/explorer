@@ -1,3 +1,5 @@
+> **제거됨 (D-241)** — `/discover/screener` 화면과 `/api/screener`는 삭제되고 `/discover`(종목 발견)로 리다이렉트한다.
+
 # 화면 기획서: 스크리너
 
 > 경로: `/discover/screener`
