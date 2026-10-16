@@ -2,9 +2,11 @@
 // + 문서 다중선택 → 교차 종합 (D-104, docs/specs/doc-synthesis.md)
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Bookmark, Layers } from "lucide-react"
+import { Layers } from "lucide-react"
 import { toast } from "sonner"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { PageHeader } from "@/components/shared/PageLayout"
+import { formatNumber } from "@/utils/format"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
@@ -60,11 +62,7 @@ export default function SavedPage() {
 
   return (
     <PageContainer>
-      <div className="flex items-center gap-2">
-        <Bookmark className="h-5 w-5" />
-        <h1 className="text-xl font-bold">저장됨</h1>
-        {items.length > 0 && <span className="text-sm text-muted-foreground">{items.length}건</span>}
-      </div>
+      <PageHeader title="저장됨" description={`북마크와 메모${items.length > 0 ? ` · ${formatNumber(items.length)}건` : ""}`} />
 
       {isLoading ? (
         <Card><CardContent className="py-4"><TableSkeleton rows={5} /></CardContent></Card>

@@ -45,7 +45,7 @@ export default function FollowPage() {
 
 export function SourcesPage() {
   const navigate = useNavigate()
-  return <PageLayout header={<PageHeader title="소스 관리" description="피드에서 읽을 채널·블로그·유튜브를 관리합니다" actions={<Button asChild variant="outline" size="sm"><Link to="/home?home_view=feed">피드로 돌아가기</Link></Button>} />}>
+  return <PageLayout header={<PageHeader title="소스 관리" description="피드에서 읽을 채널·블로그·유튜브를 관리합니다" />}>
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <ChannelsCard onGo={key => navigate(`/source?kind=telegram&key=${encodeURIComponent(key)}`)} />
       <BlogSourcesCard title="블로그" placeholder="네이버/티스토리 블로그 URL" match={s => s.platform !== 'rss'} onGo={key => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
