@@ -13,6 +13,8 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
+import { useSectorMap } from "@/hooks/useSectorMap"
+import type { SectorGroup } from "@/types"
 
 /**
  * /map — 산업/섹터 맵 (RS 4사분면).
@@ -22,11 +24,6 @@ import { cn } from "@/lib/utils"
  * 산업·섹터 탭(SectorsPage)의 '산업 맵' 뷰. 선택 섹터 = ?group= (다른 화면이 이 섹터로 링크한다).
  */
 
-interface TrailPoint { weeks_ago: number; rs_long: number | null; rs_short: number | null }
-interface SectorGroup {
-  name: string; market_cap: number; stocks: number
-  rs_long: number | null; rs_short: number | null; chg_5d: number; trail: TrailPoint[]
-}
 interface MemberRow {
   stock_code: string; corp_name: string; market_cap: number | null
   rs_long: number | null; rs_short: number | null; ret_1m: number | null; ret_12m: number | null
@@ -48,11 +45,7 @@ export default function SectorMapPage() {
     else next.delete("group")
     return next
   }, { replace: true })
-  const { data, isLoading, isError, refetch } = useQuery(
-    apiQuery<{ as_of: string | null; groups: SectorGroup[] }>({
-      key: ["spine", "sector-map"], url: "/api/spine/sector-map", staleTime: STALE.medium,
-    }),
-  )
+  const { data, isLoading, isError, refetch } = useSectorMap()
 
   const totalMcap = useMemo(
     () => (data?.groups ?? []).reduce((s, g) => s + g.market_cap, 0), [data])

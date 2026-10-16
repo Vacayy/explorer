@@ -429,6 +429,14 @@ export interface SpineSignalsResponse {
   as_of: string;
 }
 
+/** GET /api/spine/sector-map — 18 대분류 RS 사분면. trail = 1·2·3주 전 위치 */
+export interface SectorTrailPoint { weeks_ago: number; rs_long: number | null; rs_short: number | null }
+export interface SectorGroup {
+  name: string; market_cap: number; stocks: number
+  rs_long: number | null; rs_short: number | null; chg_5d: number; trail: SectorTrailPoint[]
+}
+export interface SectorMap { as_of: string | null; groups: SectorGroup[] }
+
 /** GET /api/spine/signals/summary — 유형별 최신일 건수·상위 3. as_of = 신호 최신일 */
 export interface SignalsSummaryType {
   type: string;
