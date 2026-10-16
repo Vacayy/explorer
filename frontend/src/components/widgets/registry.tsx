@@ -5,6 +5,10 @@ import {
   ContextBody, IndicesBody, KrBody, RegimeBody, RetailBody, RiskBody, UsBody,
   useContextMeta, useIndicesMeta, useKrMeta, useRegimeMeta, useRetailMeta, useRiskMeta, useUsMeta,
 } from "./market"
+import { EXPLORE_WIDGETS } from "./explore"
+import { PORTFOLIO_WIDGETS } from "./portfolio"
+import { CANVAS_WIDGETS } from "./canvas"
+import { WORLD_WIDGETS } from "./world"
 
 const risk = (id: string, metric: string, title: string, description: string): WidgetDef => ({
   id, title, description, section: "home", group: "국면·리스크", size: { w: 3, h: 3, minW: 2, minH: 2 },
@@ -30,6 +34,11 @@ export const WIDGETS: readonly WidgetDef[] = [
   risk("risk.hy", "hy", "HY 스프레드", "하이일드 OAS · 20일 변화 · 3개월 추이"),
   { id: "retail.heat", title: "개인 투자 열기 Δ", description: "20일 새 백분위가 가장 크게 움직인 지표", section: "home", group: "국면·리스크",
     size: { w: 6, h: 3, minW: 3, minH: 2 }, detailPath: "/home/risk", useMeta: useRetailMeta, Body: RetailBody },
+  // 영역별 위젯 — 각 파일에서만 더한다(병렬 작업 충돌 방지)
+  ...EXPLORE_WIDGETS,
+  ...PORTFOLIO_WIDGETS,
+  ...CANVAS_WIDGETS,
+  ...WORLD_WIDGETS,
 ]
 
 export const WIDGET_BY_ID: Record<string, WidgetDef> = Object.fromEntries(WIDGETS.map(w => [w.id, w]))
