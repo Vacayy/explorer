@@ -6,9 +6,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { ErrorState } from '@/components/shared/ErrorState'
 import { usePortfolioEvents } from '@/hooks/usePortfolio'
 
-const KIND: Record<string, string> = { ir: 'IR', earnings_notice: '실적 예고', agm: '주총', earnings_est: '실적', report_deadline: '보고서', us_earnings: '해외 실적' }
+export const EVENT_KIND: Record<string, string> = { ir: 'IR', earnings_notice: '실적 예고', agm: '주총', earnings_est: '실적', report_deadline: '보고서', us_earnings: '해외 실적' }
 
-function dday(date: string) {
+export function dday(date: string) {
   const today = new Date(new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10))
   const n = Math.round((new Date(date).getTime() - today.getTime()) / 86_400_000)
   return n === 0 ? '오늘' : `D-${n}`
@@ -34,7 +34,7 @@ export function EventsCard() {
                 ? <a href={e.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{e.title}<ArrowUpRight aria-hidden="true" className="ml-0.5 inline size-3" /></a>
                 : e.title}</p>
               <div className="flex flex-wrap gap-1">
-                <Badge variant="secondary" className="text-caption font-normal">{KIND[e.kind] ?? e.kind}</Badge>
+                <Badge variant="secondary" className="text-caption font-normal">{EVENT_KIND[e.kind] ?? e.kind}</Badge>
                 {e.estimated && <Tooltip><TooltipTrigger asChild><Badge variant="outline" className="text-caption font-normal text-muted-foreground">예상</Badge></TooltipTrigger>
                   <TooltipContent>{e.basis ?? '추정'}</TooltipContent></Tooltip>}
                 {e.kind === 'us_earnings' && <Badge variant="outline" className="text-caption font-normal text-muted-foreground">관련 해외 기업</Badge>}
