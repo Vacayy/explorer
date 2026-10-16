@@ -94,7 +94,7 @@ def list_groups():
         out.append(group)
     latest = wr.latest_trade_date(conn)
     legacy = conn.execute("SELECT COUNT(*) n FROM watchlist").fetchone()["n"]
-    migrated = conn.execute("SELECT 1 FROM stock_groups WHERE name=? AND kind='watch'", (wr.LEGACY_GROUP_NAME,)).fetchone() is not None
+    migrated = conn.execute("SELECT 1 FROM stock_groups WHERE name=? AND kind='watch'", (wr.DEFAULT_WATCH_GROUP_NAME,)).fetchone() is not None
     conn.close()
     return {"items": out, "latest_trade_date": latest, "legacy_watchlist": {"count": legacy, "migrated": migrated}}
 

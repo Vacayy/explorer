@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS watch_evaluations (
 CREATE INDEX IF NOT EXISTS idx_watch_eval_group_date ON watch_evaluations(group_id, as_of);
 """
 
-LEGACY_GROUP_NAME = "관심 종목"
+DEFAULT_WATCH_GROUP_NAME = "관심 종목"  # 기본 관심 묶음 — 이름으로 찾는다(레거시 watchlist 이관 대상)
 
 
 def connect() -> sqlite3.Connection:
@@ -192,22 +192,72 @@ def signals(conn: sqlite3.Connection, group_id: int, days: int = 30, stock_code:
     return sorted(out, key=lambda s: (s["as_of"], s["stock_code"]), reverse=True)
 
 
-def migrate_watchlist(conn: sqlite3.Connection) -> dict:
-    """레거시 watchlist → 기본 묶음 '관심 종목'. 멱등: 같은 종목은 건너뛴다."""
-    group = conn.execute("SELECT id FROM stock_groups WHERE name=? AND kind='watch' ORDER BY id LIMIT 1", (LEGACY_GROUP_NAME,)).fetchone()
-    if group:
-        group_id = group["id"]
-    else:
-        group_id = conn.execute("INSERT INTO stock_groups (name, kind, note) VALUES (?, 'watch', ?)",
-                                (LEGACY_GROUP_NAME, "기존 관심종목(watchlist)에서 옮겨온 묶음")).lastrowid
-    legacy = conn.execute("SELECT stock_code, conviction, target_price, thesis FROM watchlist ORDER BY id").fetchall()
-    added = 0
-    for row in legacy:
-        cur = conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, conviction, target_price, thesis) VALUES (?,?,?,?,?)",
-                           (group_id, row["stock_code"], row["conviction"], row["target_price"], row["thesis"]))
-        added += cur.rowcount
+def default_watch_group_id(conn: sqlite3.Connection, create: bool = True) -> int | None:
+    """기본 관심 묶음(이름 '관심 종목', 종류 watch) — 기업 화면 ★·논지 쓰기가 여기로 간다. 없으면 만든다."""
+    row = conn.execute("SELECT id FROM stock_groups WHERE name=? AND kind='watch' ORDER BY id LIMIT 1",
+                       (DEFAULT_WATCH_GROUP_NAME,)).fetchone()
+    if row:
+        return row["id"]
+    if not create:
+        return None
+    group_id = conn.execute("INSERT INTO stock_groups (name, kind, note) VALUES (?, 'watch', ?)",
+                            (DEFAULT_WATCH_GROUP_NAME, "기본 관심 묶음 — 기업 화면의 ★가 이 묶음에 넣고 뺍니다")).lastrowid
     conn.commit()
-    return {"group_id": group_id, "legacy": len(legacy), "added": added}
+    return group_id
+
+
+def watched(conn: sqlite3.Connection) -> dict[str, str]:
+    """관심 종목 = 모든 관심(watch) 묶음 멤버의 합집합. 종목코드 → 회사명(먼저 넣은 순)."""
+    rows = conn.execute(
+        "SELECT m.stock_code, MAX(c.corp_name) name FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id "
+        "LEFT JOIN companies c ON c.stock_code=m.stock_code WHERE g.kind='watch' GROUP BY m.stock_code ORDER BY MIN(m.id)").fetchall()
+    return {r["stock_code"]: r["name"] or r["stock_code"] for r in rows}
+
+
+def watch_thesis(conn: sqlite3.Connection, stock_code: str) -> sqlite3.Row | None:
+    """종목의 관심 논지·확신도·목표가. 논지가 있는 멤버 → 기본 묶음 → 오래된 묶음 순."""
+    return conn.execute(
+        "SELECT m.thesis, m.conviction, m.target_price FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id "
+        "WHERE g.kind='watch' AND m.stock_code=? ORDER BY (m.thesis IS NULL OR m.thesis=''), (g.name=?) DESC, g.id LIMIT 1",
+        (stock_code, DEFAULT_WATCH_GROUP_NAME)).fetchone()
+
+
+MIGRATED_FIELDS = ("conviction", "target_price", "thesis")
+
+
+def migrate_watchlist(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
+    """레거시 watchlist → 기본 관심 묶음. 멱등: 없는 종목은 넣고, 있는 종목은 묶음 쪽 빈 칸만 레거시 값으로 채운다.
+
+    `dry_run`이면 아무것도 쓰지 않고 계획만 돌려준다. watchlist 테이블은 지우지 않는다.
+    """
+    group_id = default_watch_group_id(conn, create=False)
+    legacy = conn.execute("SELECT stock_code, corp_name, conviction, target_price, thesis FROM watchlist ORDER BY id").fetchall()
+    members = {r["stock_code"]: r for r in conn.execute(
+        "SELECT stock_code, conviction, target_price, thesis FROM stock_group_members WHERE group_id=?", (group_id,)).fetchall()} if group_id else {}
+    plan = {"group_id": group_id, "create_group": group_id is None, "legacy": len(legacy), "add": [], "fill": [], "same": [],
+            "group_only": sorted(set(members) - {r["stock_code"] for r in legacy})}
+    for row in legacy:
+        member = members.get(row["stock_code"])
+        if member is None:
+            plan["add"].append({"stock_code": row["stock_code"], "name": row["corp_name"],
+                                "fields": [f for f in MIGRATED_FIELDS if row[f] not in (None, "")]})
+            continue
+        fill = [f for f in MIGRATED_FIELDS if member[f] in (None, "") and row[f] not in (None, "")]
+        plan["fill" if fill else "same"].append({"stock_code": row["stock_code"], "name": row["corp_name"], "fields": fill})
+    if dry_run:
+        return plan
+    group_id = plan["group_id"] = default_watch_group_id(conn)
+    by_code = {r["stock_code"]: r for r in legacy}
+    for item in plan["add"]:
+        row = by_code[item["stock_code"]]
+        conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, conviction, target_price, thesis) VALUES (?,?,?,?,?)",
+                     (group_id, row["stock_code"], row["conviction"], row["target_price"], row["thesis"]))
+    for item in plan["fill"]:
+        row = by_code[item["stock_code"]]
+        conn.execute(f"UPDATE stock_group_members SET {', '.join(f'{f}=?' for f in item['fields'])} WHERE group_id=? AND stock_code=?",
+                     (*(row[f] for f in item["fields"]), group_id, row["stock_code"]))
+    conn.commit()
+    return plan
 
 
 def today() -> str:
