@@ -44,8 +44,12 @@ def _cached(key: tuple, fn: Callable[[], object]):
 
 
 def _match(q: str | None, *texts) -> bool:
+    """부분 일치(대소문자 무시). 3자 이하 영문 토큰은 단어 경계로만 — 'AI'가 Airbnb·AIR 쿨러에 걸리지 않게."""
     if not q:
         return True
+    if q.isascii() and len(q) <= 3:
+        pat = re.compile(rf"(?<![A-Za-z]){re.escape(q)}(?![A-Za-z])", re.I)
+        return any(pat.search(t or "") for t in texts)
     q = q.lower()
     return any(q in (t or "").lower() for t in texts)
 
@@ -67,6 +71,9 @@ class Adapter:
 
 
 # ── credit (회사채 스프레드, D-230) ───────────────────────────────────────────
+
+CREDIT_CARRY_DAYS = 10
+
 
 def _credit_bonds(conn) -> dict[str, str]:
     from pipeline import credit_spreads as cs
@@ -113,9 +120,17 @@ def _credit_series(conn, body, since):
     per = [s for s in per if s]
     if not per:
         return []
-    # 구성이 바뀌는 날의 평균 점프를 피하려고 구성사 전원이 값을 가진 날만 쓴다
-    days = sorted(set.intersection(*(set(s) for s in per)))
-    return [(d, round(sum(s[d] for s in per) / len(per), 1)) for d in days]
+    # 회사채는 거래가 드문 종목이 많다(TRACE). 각 구성사의 마지막 값을 최대 CREDIT_CARRY_DAYS일 이어 쓰고,
+    # 구성이 바뀌는 날의 평균 점프를 피하려고 구성사 전원이 값을 가진 날만 평균한다
+    out, last = [], [None] * len(per)
+    for d in sorted(set().union(*per)):
+        cutoff = (date.fromisoformat(d) - timedelta(days=CREDIT_CARRY_DAYS)).isoformat()
+        for i, s in enumerate(per):
+            if d in s:
+                last[i] = (d, s[d])
+        if all(x and x[0] >= cutoff for x in last):
+            out.append((d, round(sum(x[1] for x in last) / len(last), 1)))
+    return out
 
 
 # ── trade (수출입, D-140) ────────────────────────────────────────────────────
@@ -143,7 +158,7 @@ def _trade_label(name: str, flow: str, metric: str) -> str:
 def _trade_catalog(conn, q=None, limit=50):
     rows = conn.execute("SELECT tf.hs_code, tf.item_name, tf.group_label FROM trade_follow tf "
                         "WHERE tf.active=1 AND EXISTS (SELECT 1 FROM trade_stats ts WHERE ts.hs_code=tf.hs_code) "
-                        "ORDER BY tf.group_label, tf.hs_code").fetchall()
+                        "ORDER BY tf.rowid").fetchall()   # 등록 순 — 기본 팔로우(메모리·시스템반도체…)가 앞
     out = []
     for r in rows:
         if not _match(q, r["hs_code"], r["item_name"], r["group_label"]):
@@ -465,7 +480,9 @@ def _obs_catalog_for(kind):
         mods = _obs_modalities(kind)
         rows = conn.execute(
             f"SELECT pr.id, pr.label, pr.unit, pr.modality FROM proxy_registry pr WHERE pr.active=1 AND COALESCE(pr.modality,'numeric') IN "
-            f"({','.join('?' * len(mods))}) AND EXISTS (SELECT 1 FROM proxy_observations po WHERE po.proxy_id=pr.id) ORDER BY pr.id", mods).fetchall()
+            f"({','.join('?' * len(mods))}) AND EXISTS (SELECT 1 FROM proxy_observations po WHERE po.proxy_id=pr.id AND "
+            f"(po.value_num IS NOT NULL OR (COALESCE(pr.modality,'numeric')!='numeric' AND po.direction IN ('up','down','flat')))) "
+            f"ORDER BY pr.id", mods).fetchall()   # 값이 하나라도 있는 프록시만
         return [{"ref": f"{kind}:{r['id']}", "label": r["label"], "unit": _obs_unit(r)} for r in rows if _match(q, r["label"])][:limit]
     return catalog
 
