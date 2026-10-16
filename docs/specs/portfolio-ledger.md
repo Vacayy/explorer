@@ -59,12 +59,21 @@ portfolio_transactions(
 | `GET /transactions` | items[id·trade_date·kind·stock_code·name·price] (금액·수량 없음) |
 | `POST /transactions` | body {trade_date, kind, stock_code?, amount?, price?, fund_shortfall?, sell_all?} → {ok, id}. `sell_all`(매도만)이면 금액 대신 그날까지의 보유 수량 × 체결가(비우면 그날 종가)를 서버가 계산 — 화면은 수량을 모른다(2026-10-15) |
 | `DELETE /transactions/{id}` | 삭제 후 원장 재검증(음수 수량·현금이 되면 409로 거부) |
+| `GET /alerts?days=` | items[kind·label·code·name·date·sent_at(KST)·url] — 보낸 텔레그램 알림 키를 푼 것, 읽기만 |
 
-## 화면 (`/portfolio`, 도크 독립 메뉴 '포트폴리오')
+## 화면 (L1 '포트폴리오', L2 탭 = URL)
 
-1. 헤더: 제목, `거래 입력`(Dialog: 매수·매도·입금·출금, 종목 검색·날짜·금액·체결가 선택. 매수·매도는 '금액 / 수량 × 체결가' 입력 방식 선택 — 수량 방식은 체결가 필수, 계산 금액은 폼 안에서만 보임. 매도는 '전량' 체크 시 `sell_all`), `거래 내역`(Sheet: 금액 없는 목록, 삭제).
-2. 요약: 계좌 수익률·오늘·현금 비중 → 비중 파이차트 + 보유 표(비중·평단·현재가·수익률·전일비) → 일별 누적 수익률 차트.
-3. 종목 탭(URL `?stock=`): 가격 차트(평단 점선, 편입일 마커)에 기업 화면과 같은 기술적 분석(`TechnicalScan`: 신호 마커·구조선·핵심 관측·구조 그리기)을 기본으로 붙인다(`scan=0`이면 닫힘, `scan_within`·`scan_chart`는 기업 화면과 같은 URL 키) · 최근 공시 5 · 뉴스·관련 자료 5(누르면 `/doc/:id`, 뒤로가기 복귀).
+| 탭 | URL | 내용 |
+|---|---|---|
+| 개요 | `/portfolio` | 계좌 수익률·오늘·실현·미실현·현금 비중 → 비중 도넛(범례 → 보유 탭 상세) + 일별 누적 수익률 차트 → 공통 변수(portfolio-intelligence §1) |
+| 보유 | `/portfolio/holdings?stock=` | 보유 표(비중·평단·현재가·수익률·전일비, 행 클릭 = `?stock=` + 상세로 스크롤) → 청산 내역 → 종목 상세 |
+| 원칙 | `/portfolio/principles` | 지금 상태(어기는 규칙) → 운용 원칙 카드 → 알림 이력(14일) |
+| 일정 | `/portfolio/events` | 다가오는 이벤트(45일) |
+| 종목 묶음 | `/follow/stocks` | portfolio-watch.md |
+
+1. 머리(모든 탭 공통): 제목·시세 기준, `시세 갱신`, `거래 입력`(Dialog: 매수·매도·입금·출금, 종목 검색·날짜·금액·체결가 선택. 매수·매도는 '금액 / 수량 × 체결가' 입력 방식 선택 — 수량 방식은 체결가 필수, 계산 금액은 폼 안에서만 보임. 매도는 '전량' 체크 시 `sell_all`), `거래 내역`(Sheet: 금액 없는 목록, 삭제).
+2. 종목 상세(보유 탭, URL `?stock=`, 없으면 첫 종목): 가격 차트(평단 점선, 편입일 마커)에 기업 화면과 같은 기술적 분석(`TechnicalScan`: 신호 마커·구조선·핵심 관측·구조 그리기)을 기본으로 붙인다(`scan=0`이면 닫힘, `scan_within`·`scan_chart`는 기업 화면과 같은 URL 키) · 보유 논지 · 자료 흐름 · 최근 공시 5 · 뉴스·관련 자료 5(누르면 `/doc/:id`, 뒤로가기 복귀). 옛 `/portfolio?stock=`는 보유 탭으로 넘긴다.
+3. 알림 이력(`GET /alerts?days=14`): `portfolio_alerts_sent` 키만 풀어 시각(KST)·유형(급등락·평단 구간·기술적 신호·공시·마감 요약)·종목·구간(예: 전일 대비 −5%p 이하)을 보인다. 메시지 본문은 저장하지 않으므로 가격도 나오지 않는다. 원칙 위반 알림은 '지금 상태'가 대신한다.
 
 5-state: Empty(거래 없음 → 입금/매수 안내) · Loading(Skeleton) · Partial(종가 미수집 종목은 '-'·평가 제외 표시) · Error(재시도) · Ideal.
 

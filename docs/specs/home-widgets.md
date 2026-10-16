@@ -58,6 +58,19 @@ interface WidgetDef {
 | risk.hy | HY 스프레드 | 〃 | 3×3 | 〃 |
 | retail.heat | 개인 투자 열기 Δ | `/retail` | 6×3 | 20일 백분위 변화가 가장 큰 지표 · 국면 · 나머지 지표 |
 
+### 포트폴리오·관심 위젯 6종 (P6c, `widgets/portfolio.tsx`)
+
+비율·날짜만(D-212). `/api/portfolio`는 저장된 시세만 읽는다(갱신 POST는 포트폴리오 화면에만). 묶음 위젯은 기본 관심 묶음(`/spine/groups/default-watch`)을 쓴다. 위젯별 묶음 선택(`params`)은 위젯 틀이 아직 `params`를 본문에 넘기지 않아 다음 단계로 미룬다.
+
+| id | 이름 | 원천 | 크기 | 기준 시각 · 큰 숫자 · 한 줄 · 목록 |
+|---|---|---|---|---|
+| portfolio.today | 포트폴리오 오늘 | `/portfolio`, `/portfolio/history` | 4×3 | 장중 시세 시각/종가일 · 오늘 % · 누적 TWR·현금 비중 · 누적 수익률 스파크 |
+| portfolio.events | 다가오는 일정 | `/portfolio/events` | 4×4 | (없음) · 다음 일정 D-n · 제목(예상 표시) · 다음 일정 목록 |
+| portfolio.exposure | 공통 변수 노출 | `/portfolio/exposure` | 4×3 | 비중 기준일 · 최대 노출 % · 변수명·방향 · 상위 3 막대 |
+| portfolio.flow | 보유 종목 자료 흐름 | `/portfolio/flow` | 4×3 | 집계일 · 급증+부정 전환 건수 · 각 건수 · 종목별 배지·오늘 언급 |
+| watch.signals | 묶음 오늘 신호 | `/spine/groups/{id}/signals?days=1` | 4×3 | 마지막 평가일(최신 거래일 평가 전이면 주의 색) · 새 신호 수 · 종목·조건 |
+| watch.digests | 관심 종목 오늘 요약 | `/spine/groups/{id}/digests` | 4×4 | 최신 요약일 · 그날 요약 종목 수 · 종목별 '새로운 점' 또는 첫 줄 |
+
 ## 4. 저장
 
 `GET/PUT /api/dashboard/layouts/home` — `{items: [{i, widget, x, y, w, h, params}]}`. 없으면(404) '기본' 프리셋. 편집을 끝낼 때 한 번 저장한다(끌 때마다 저장하지 않음). 저장 실패는 토스트 + 편집 상태 유지. 알 수 없는 widget id는 렌더하지 않고 다음 저장에서 빠진다.
