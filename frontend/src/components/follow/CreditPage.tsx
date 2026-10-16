@@ -12,27 +12,31 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { useCreditHistory, useCreditTable } from '@/hooks/useCredit'
+import { byWidening, useCreditHistory, useCreditTable } from '@/hooks/useCredit'
 import { useChartPalette } from '@/hooks/useChartPalette'
 import { formatBp, formatRatio, formatYield } from '@/utils/format'
 import type { CreditRow } from '@/types'
 
 const MAX_SELECTED = 6
-const DEFAULT_SELECTED = ['ORCL', 'META']
+type SortKey = 'chg_1m' | 'spread' | 'group'
 const tone = (v: number | null) => v == null || v === 0 ? 'text-muted-foreground' : v > 0 ? 'text-up' : 'text-down'   // 스프레드 확대 = 빨강
 /** "Oracle Corporation 4.8% 26-SEP-2032" → "4.8% 2032" */
 const shortBond = (bond: string | null) => bond?.match(/(\d+(?:\.\d+)?%)\s+\d{2}-[A-Z]{3}-(\d{4})/)?.slice(1).join(' ') ?? bond ?? '-'
 
 /**
  * 회사채 스프레드(D-230, docs/specs/credit-spreads.md) — 회사마다 대표 채권 하나의 수익률과 같은 만기 국채의 차이.
- * 선택 회사는 URL `credit`, 차트 모드는 `credit_view`, 묶음 필터는 `credit_group`.
+ * 선택 회사는 URL `credit`(없으면 1개월 확대 상위 2곳), 차트 모드는 `credit_view`, 묶음 필터는 `credit_group`,
+ * 표 정렬은 `credit_sort`(기본 1개월 변화 순 · spread · group).
  */
 export default function CreditPage() {
   const [params, setParams] = useSearchParams()
   const table = useCreditTable()
-  const selected = (params.get('credit')?.split(',').filter(Boolean) ?? DEFAULT_SELECTED).slice(0, MAX_SELECTED)
+  const widest = useMemo(() => [...(table.data?.rows ?? [])].filter(r => r.chg_1m != null).sort(byWidening), [table.data])
+  const selected = (params.get('credit')?.split(',').filter(Boolean) ?? widest.slice(0, 2).map(r => r.ticker)).slice(0, MAX_SELECTED)
   const view = params.get('credit_view') === 'spread' ? 'spread' : 'yield'
   const group = params.get('credit_group') ?? 'all'
+  const sortParam = params.get('credit_sort')
+  const sort: SortKey = sortParam === 'spread' || sortParam === 'group' ? sortParam : 'chg_1m'
   const set = (key: string, value: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (value) n.set(key, value); else n.delete(key); return n }, { replace: true })
   const toggle = (ticker: string) => set('credit', (selected.includes(ticker) ? selected.filter(t => t !== ticker) : [...selected, ticker].slice(-MAX_SELECTED)).join(',') || '-')
 
@@ -47,6 +51,11 @@ export default function CreditPage() {
       <h2 className="text-xl font-bold">회사채 스프레드</h2>
       <span className="text-caption text-muted-foreground">회사당 대표 채권 1개 · 일별 종가 수익률 − 같은 만기 미 국채{data.as_of ? ` · ${data.as_of} 기준` : ''}</span>
     </div>
+    {widest[0] && (widest[0].chg_1m ?? 0) > 0 && <p className="text-sm text-muted-foreground">
+      1개월 새 가장 벌어진 곳 <span className="font-medium text-foreground">{widest[0].name}</span> <span className="tabular-nums text-up">{formatBp(widest[0].chg_1m, true)}bp</span>
+      {widest.slice(1, 3).filter(r => (r.chg_1m ?? 0) > 0).map(r => <span key={r.ticker}> · {r.name} <span className="tabular-nums text-up">{formatBp(r.chg_1m, true)}bp</span></span>)}
+      {rows.some(r => r.hy) && <> · HY {rows.filter(r => r.hy).length}곳</>}
+    </p>}
     {!data.configured ? <Card><CardContent className="space-y-2 py-10 text-center">
         <p className="font-medium">채권 데이터 원천이 설정되지 않았습니다</p>
         <p className="text-sm text-muted-foreground">이 기능은 로컬 데이터 원천 어댑터(backend/local_sources/credit_source.py, 공개 저장소 밖)가 있어야 수집합니다. 국채 곡선과 계산은 준비돼 있습니다.</p>
@@ -57,7 +66,8 @@ export default function CreditPage() {
       </CardContent></Card>
       : <>
         <SpreadChart rows={rows} selected={selected} view={view} onView={v => set('credit_view', v === 'spread' ? 'spread' : null)} onToggle={toggle} />
-        <SpreadTable rows={rows} asOf={data.as_of} groups={data.groups} group={group} onGroup={g => set('credit_group', g === 'all' ? null : g)} selected={selected} onToggle={toggle} />
+        <SpreadTable rows={rows} asOf={data.as_of} groups={data.groups} group={group} onGroup={g => set('credit_group', g === 'all' ? null : g)}
+          sort={sort} onSort={v => set('credit_sort', v === 'chg_1m' ? null : v)} selected={selected} onToggle={toggle} />
       </>}
   </PageContainer>
 }
@@ -106,16 +116,28 @@ function SpreadChart({ rows, selected, view, onView, onToggle }: {
   </Card>
 }
 
-function SpreadTable({ rows, asOf, groups, group, onGroup, selected, onToggle }: {
-  rows: CreditRow[]; asOf: string | null; groups: { key: string; label: string }[]; group: string; onGroup: (g: string) => void; selected: string[]; onToggle: (t: string) => void
+function SpreadTable({ rows, asOf, groups, group, onGroup, sort, onSort, selected, onToggle }: {
+  rows: CreditRow[]; asOf: string | null; groups: { key: string; label: string }[]; group: string; onGroup: (g: string) => void
+  sort: SortKey; onSort: (v: string) => void; selected: string[]; onToggle: (t: string) => void
 }) {
   // 체결이 드문 채권은 마지막 값이 며칠 묵는다 — 기준일보다 3일 넘게 오래되면 날짜를 보인다
   const stale = (d: string | null) => !!d && !!asOf && (new Date(asOf).getTime() - new Date(d).getTime()) / 86_400_000 > 3
   const max = Math.max(1, ...rows.map(r => r.spread_bp ?? 0))
   const shown = groups.filter(g => group === 'all' || g.key === group)
+  const groupLabel = Object.fromEntries(groups.map(g => [g.key, g.label]))
+  const bySpread = (a: CreditRow, b: CreditRow) => (b.spread_bp ?? -1) - (a.spread_bp ?? -1)
+  // 묶음별 보기는 묶음 머리 + 스프레드 순, 나머지는 한 줄 순위(묶음 이름은 회사 옆에)
+  const sections: { key: string; label: string | null; items: CreditRow[] }[] = sort === 'group'
+    ? shown.map(g => ({ key: g.key, label: g.label, items: rows.filter(r => r.group === g.key).sort(bySpread) }))
+    : [{ key: 'all', label: null, items: rows.filter(r => group === 'all' || r.group === group).sort(sort === 'spread' ? bySpread : byWidening) }]
   return <Card>
     <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
       <CardTitle>회사별 스프레드</CardTitle>
+      <ToggleGroup type="single" value={sort} onValueChange={v => { if (v) onSort(v) }} variant="outline" size="sm" className="justify-start" aria-label="정렬">
+        <ToggleGroupItem value="chg_1m" className="px-3">1개월 변화 순</ToggleGroupItem>
+        <ToggleGroupItem value="spread" className="px-3">스프레드 순</ToggleGroupItem>
+        <ToggleGroupItem value="group" className="px-3">묶음별</ToggleGroupItem>
+      </ToggleGroup>
       <ToggleGroup type="single" value={group} onValueChange={v => { if (v) onGroup(v) }} variant="outline" size="sm" className="flex-wrap justify-start" aria-label="묶음">
         <ToggleGroupItem value="all" className="px-3">전체</ToggleGroupItem>
         {groups.map(g => <ToggleGroupItem key={g.key} value={g.key} className="px-3">{g.label}</ToggleGroupItem>)}
@@ -128,15 +150,16 @@ function SpreadTable({ rows, asOf, groups, group, onGroup, selected, onToggle }:
           <TableHead className="text-right">수익률</TableHead><TableHead className="text-right">국채</TableHead><TableHead className="text-right">스프레드</TableHead>
           <TableHead className="text-right">1개월</TableHead><TableHead className="text-right">3개월</TableHead><TableHead className="text-right">1년</TableHead><TableHead className="text-right">부도확률</TableHead>
         </TableRow></TableHeader>
-        <TableBody>{shown.map(g => {
-          const items = rows.filter(r => r.group === g.key).sort((a, b) => (b.spread_bp ?? -1) - (a.spread_bp ?? -1))
-          return [<TableRow key={`h-${g.key}`} className="hover:bg-transparent"><TableCell colSpan={11} className="pb-1 pt-4 text-caption text-muted-foreground">{g.label}</TableCell></TableRow>,
+        <TableBody>{sections.map(g => {
+          const items = g.items
+          return [...(g.label ? [<TableRow key={`h-${g.key}`} className="hover:bg-transparent"><TableCell colSpan={11} className="pb-1 pt-4 text-caption text-muted-foreground">{g.label}</TableCell></TableRow>] : []),
             ...items.map(r => {
               const on = selected.includes(r.ticker)
               return <TableRow key={r.ticker} className={on ? 'bg-primary/5' : ''}>
                 <TableCell><Button variant={on ? 'default' : 'outline'} size="icon-sm" className="size-7 rounded-full" disabled={r.spread_bp == null}
                   aria-label={on ? `${r.name} 차트에서 빼기` : `${r.name} 차트에 더하기`} onClick={() => onToggle(r.ticker)}>{on ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}</Button></TableCell>
                 <TableCell className="whitespace-nowrap"><span className="font-medium">{r.name}</span> <span className="text-caption text-muted-foreground">{r.ticker}</span>
+                  {!g.label && <span className="ml-1.5 text-[10px] text-muted-foreground">{groupLabel[r.group] ?? r.group}</span>}
                   {r.hy && <Badge variant="outline" className="ml-1.5 border-up/40 px-1 text-[10px] text-up">HY</Badge>}
                   {r.source === '유럽 거래소' && <span className="ml-1.5 text-[10px] text-muted-foreground" title="미국 체결이 아니라 유럽 거래소 호가에서 나온 수익률">유럽 호가</span>}</TableCell>
                 <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground" title={r.bond ?? undefined}>{shortBond(r.bond)}</TableCell>
