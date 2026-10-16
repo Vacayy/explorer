@@ -125,6 +125,18 @@ export function formatKstTime(utc: string | null | undefined): string {
   });
 }
 
+/** UTC 시각(SQLite·ISO) → KST "MM-DD HH:MM" 표기 */
+export function formatKstDateTime(utc: string | null | undefined): string {
+  if (!utc) return "-";
+  const iso = utc.includes("T") ? utc : utc.replace(" ", "T");
+  const d = new Date(iso.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
+  if (Number.isNaN(d.getTime())) return "-";
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(d).map(x => [x.type, x.value]));
+  return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
 /** ISO 시각 → 상대 시간 표기 ("3분 전", "2시간 전", "어제", "6/28") */
 export function formatRelativeTime(iso: string): string {
   if (!iso) return "-";

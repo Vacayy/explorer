@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { AI_ACTIVITY, useAiActivity, type AiActivityItem } from "@/hooks/useAiActivity"
 import { aiCoverageLabel } from "@/lib/canvas"
+import { formatKstDateTime } from "@/utils/format"
 
 /* ---------- AI가 최근 만든 것 — 캔버스 › 피드 최상단, AI 생성물이 모이는 한 곳 (D-209, canvas.md §1) ---------- */
 
@@ -32,7 +33,7 @@ export function AiActivityFeed() {
   if (q.isLoading) return <Skeleton className="h-28 w-full rounded-xl" />
   return (
     <ProposalPanel
-      icon={Sparkles} title="AI가 최근 만든 것" subtitle={`${aiCoverageLabel(items.map(a => a.created_at), AI_ACTIVITY.limit, AI_ACTIVITY.days)} · 최신순`}
+      icon={Sparkles} title="AI가 최근 만든 것" subtitle={`${aiCoverageLabel(items.map(a => a.created_at), AI_ACTIVITY.limit, AI_ACTIVITY.days, formatKstDateTime)} · 최신순`}
       count={q.isError ? undefined : items.length}
       maxHeight="10.25rem" /* 5행: 32px × 5 + 구분선 4px */ maxWidth="100%" contentClassName="px-0 divide-y">
       {q.isError ? (
@@ -50,7 +51,7 @@ export function AiActivityFeed() {
             <m.Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <Badge variant="outline" className={`text-caption shrink-0 ${m.cls}`}>{m.label}</Badge>
             <span className="text-sm truncate min-w-0 flex-1">{a.title}</span>
-            <span className="text-caption text-muted-foreground tabular-nums shrink-0">{a.created_at.slice(5, 16)}</span>
+            <span className="text-caption text-muted-foreground tabular-nums shrink-0">{formatKstDateTime(a.created_at)}</span>
           </Link>
         )
       })}
