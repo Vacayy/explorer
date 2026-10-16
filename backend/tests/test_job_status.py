@@ -48,6 +48,26 @@ class RunJobStatusTests(unittest.TestCase):
         self.assertEqual(self.run_with({"status": "stale"}), "ok")  # 브리핑의 stale은 데이터 기준일 표시라 실패가 아니다
 
 
+class SecretMaskTests(unittest.TestCase):
+    """requests 예외 메시지에 실린 URL의 API 키가 job_runs에 평문으로 남았다(scan_actions·pf_intraday 82행)."""
+
+    def test_query_keys_and_bot_tokens_are_masked(self):
+        raw = ("ConnectionError: HTTPSConnectionPool(host='opendart.fss.or.kr'): url: /api/list.json?crtfc_key=abc123DEF&bgn_de=20261013 "
+               "| /query?function=X&apikey=AVKEY9 | ?serviceKey=gov%2Bkey== | ?api_key=fred1 "
+               "| https://api.telegram.org/bot123456:AA-bb_CC/sendMessage")
+        out = ops.mask_secrets(raw)
+        for secret in ("abc123DEF", "AVKEY9", "gov%2Bkey==", "fred1", "123456:AA-bb_CC"):
+            self.assertNotIn(secret, out)
+        self.assertIn("crtfc_key=***&bgn_de=20261013", out)
+
+    def test_record_run_writes_masked_summary(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE job_runs(job TEXT, status TEXT, summary TEXT, duration_ms INT, ran_at TEXT)")
+        with patch.object(ops, "get_connection", return_value=KeepOpen(conn)):
+            ops.record_run("scan_actions", "error", "url: /api/list.json?crtfc_key=abc123DEF&x=1")
+        self.assertEqual(conn.execute("SELECT summary FROM job_runs").fetchone()[0], "url: /api/list.json?crtfc_key=***&x=1")
+
+
 class DailyPricesStatusTests(unittest.TestCase):
     def setUp(self):
         self.mod = load_script("ingest_prices")

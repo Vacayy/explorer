@@ -4,6 +4,7 @@
 게이트: 각 생성 스크립트 main을 run_job(name, fn)으로 감싸 ①플래그 off면 skip ②실행 기록.
 """
 import json
+import re
 import time
 
 from database import get_connection
@@ -66,7 +67,18 @@ def retry_locked(fn, tries: int = 6, wait: float = 10.0):
             time.sleep(wait * (k + 1))
 
 
+_SECRET_PARAM = re.compile(r"(?i)\b(crtfc_key|api_?key|servicekey|access_token|token|key)=[^&\s'\")]+")
+_BOT_TOKEN = re.compile(r"/bot\d+:[A-Za-z0-9_-]+")
+
+
+def mask_secrets(text: str) -> str:
+    """URL 쿼리의 API 키·텔레그램 봇 토큰을 가린다 — requests 예외 메시지가 요청 URL을 그대로 싣는다."""
+    return _BOT_TOKEN.sub("/bot***", _SECRET_PARAM.sub(lambda m: f"{m.group(1)}=***", text))
+
+
 def record_run(job: str, status: str, summary: str = "", duration_ms: int | None = None) -> None:
+    summary = mask_secrets(summary or "")
+
     def _write():
         conn = get_connection()
         try:
