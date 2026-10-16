@@ -60,7 +60,12 @@ def main():
         syn = "종합O" if b["synthesis"] else "종합X(스켈레톤)"
         print(f"[briefing] status={b['status']} trade_date={b['trade_date']} "
               f"상위섹터={top} {syn} movers={len(b['movers'])} idio={len(b['idiosyncratic'])}")
-        return {"status": b["status"], "movers": len(b["movers"]), "synthesis": bool(b["synthesis"])}
+        failed = b.get("headline_failed") or []
+        if failed:
+            print(f"[briefing] 종목 헤드라인 수집 실패 {len(failed)}종목: {', '.join(failed)}")
+        status = "partial" if failed and b["status"] == "ok" else b["status"]
+        return {"status": status, "movers": len(b["movers"]), "synthesis": bool(b["synthesis"]),
+                "headline_failed": len(failed)}
 
     run_job("compute_briefing", _work)   # 관리자 플래그 게이트 + 실행 로그 (D-055)
 

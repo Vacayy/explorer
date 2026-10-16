@@ -187,19 +187,28 @@ def _build_movers(conn, items: list[dict]) -> list[dict]:
     return out
 
 
-def _attach_headlines(conn, movers: list[dict], fetch: bool = True) -> None:
-    """개별 이슈 종목의 US 원천 헤드라인 부착 (D-097). fetch=True면 병렬 조회(버튼), False면 캐시 읽기만."""
+def _attach_headlines(conn, movers: list[dict], fetch: bool = True) -> list[str]:
+    """개별 이슈 종목의 US 원천 헤드라인 부착 (D-097). fetch=True면 병렬 조회(버튼), False면 캐시 읽기만.
+    반환: 조회에 실패한 티커 — 브리핑은 계속 내되 잡 상태에 남긴다(09-30~ 조용히 비었던 원인)."""
     from concurrent.futures import ThreadPoolExecutor
-    from pipeline.us_news import fetch_news, get_news
+    from pipeline import us_news
     targets = [m["ticker"] for m in movers if m["flags"]]   # 튀는 종목만(비용 바운드)
     if not targets:
-        return
+        return []
+    failed = []
     if fetch:
+        def _fetch(t):
+            try:
+                us_news.fetch_news(t)                       # 캐시 미스만 실제 조회
+            except Exception as e:  # noqa: BLE001 — 한 종목 실패가 브리핑을 막지 않게, 실패 목록으로 올린다
+                print(f"[us_news] {t} 헤드라인 수집 실패: {type(e).__name__}: {str(e)[:120]}")
+                return t
         with ThreadPoolExecutor(max_workers=8) as ex:
-            list(ex.map(fetch_news, targets))              # 캐시 미스만 실제 조회
+            failed = [t for t in ex.map(_fetch, targets) if t]
     for m in movers:
         if m["flags"]:
-            m["headlines"] = _relevant_headlines(m, get_news(conn, m["ticker"]))
+            m["headlines"] = _relevant_headlines(m, us_news.get_news(conn, m["ticker"]))
+    return failed
 
 
 def _relevant_headlines(m: dict, items: list[dict]) -> list[dict]:
@@ -954,7 +963,7 @@ def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
         movers = _build_movers(conn, lead["items"])
         clusters = _clusters(movers)
         _flag_idiosyncratic(movers, clusters)
-        _attach_headlines(conn, movers, fetch=force)       # 버튼만 새 뉴스 조회, 로드는 캐시 읽기
+        base["headline_failed"] = _attach_headlines(conn, movers, fetch=force)   # 버튼만 새 뉴스 조회, 로드는 캐시 읽기
         idio = [m for m in movers if m["flags"]]
         discourse = _gather_discourse(conn, lead["trade_date"])
         indices = _index_moves(conn)                        # ① 지수 (D-112)
