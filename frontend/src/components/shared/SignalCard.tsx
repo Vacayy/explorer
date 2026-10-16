@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { SpineSignal } from "@/types"
 
-const SIGNAL_LABEL: Record<string, string> = {
+/** 신호 유형 이름 — 신호 탭·위젯·카드가 같이 쓴다 */
+export const SIGNAL_LABEL: Record<string, string> = {
   mention_surge: "언급 급증",
   neglect: "소외",
   export_change: "수출 변화",
@@ -15,6 +16,7 @@ const SIGNAL_LABEL: Record<string, string> = {
   volume_spike: "거래량 급증",
   quadrant_gap: "가격-관측 괴리",
   theme_surge: "주목 주제",
+  call_momentum: "실적 발언 모멘텀",
 }
 
 /**
@@ -39,6 +41,10 @@ export function SignalCard({ signal: s, onKeywordClick }: {
           {s.stock_code ? (
             <Link to={`/analyze/${s.stock_code}/summary`} className="font-semibold text-primary hover:underline">
               {s.entity_name}
+            </Link>
+          ) : p.ticker ? (
+            <Link to={`/us/${p.ticker}`} className="font-semibold text-primary hover:underline">
+              {s.entity_name} <span className="text-xs font-normal text-muted-foreground">{p.ticker}</span>
             </Link>
           ) : (
             <span className="font-semibold">{s.entity_name}</span>
@@ -116,6 +122,21 @@ export function SignalCard({ signal: s, onKeywordClick }: {
           </div>
         )}
 
+        {s.signal_type === "call_momentum" && (
+          <div className="text-sm space-y-1">
+            <div>
+              점수 <span className="font-bold text-base tabular-nums">{p.score ?? "-"}</span>
+              <span className="text-xs text-muted-foreground"> · 직전 분기 대비 새로 생기거나 빨라진 성장 동인</span>
+            </div>
+            {(p.drivers ?? []).filter((d) => d.status === "new" || d.status === "accelerating").slice(0, 3).map((d) => (
+              <p key={d.name} className="text-xs text-muted-foreground line-clamp-1">
+                <span className="font-medium text-foreground">{d.name}</span>{d.magnitude ? ` · ${d.magnitude}` : ""}
+              </p>
+            ))}
+            <Link to="/follow/transcripts?view=momentum" className="text-xs text-primary hover:underline">실적 모멘텀 전체 보기</Link>
+          </div>
+        )}
+
         {/* 키워드 칩 → 피드 필터로 */}
         {p.keywords && p.keywords.length > 0 && (
           <div className="flex flex-wrap gap-1">
@@ -172,4 +193,11 @@ export function SignalCard({ signal: s, onKeywordClick }: {
       </CardContent>
     </Card>
   )
+}
+
+/** 신호 대상의 목적지 — 국내 종목 도시에 · 미국 도시에 · 그 외(테마·비상장)는 피드 검색 */
+export function signalEntityPath(t: { name: string; stock_code: string | null; ticker?: string | null }): string {
+  if (t.stock_code) return `/analyze/${t.stock_code}/summary`
+  if (t.ticker) return `/us/${t.ticker}`
+  return `/feed?q=${encodeURIComponent(t.name)}`
 }

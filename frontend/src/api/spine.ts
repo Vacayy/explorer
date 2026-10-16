@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief, UsDossier, UsList, UsMention, UsWorldModel } from "@/types";
+import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SignalsSummary, SpineSignalsResponse, StockBrief, UsDossier, UsList, UsMention, UsWorldModel } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -18,6 +18,7 @@ export const spineKeys = {
   home: () => [...spineKeys.all, "home"] as const,
   feed: (params: SpineFeedParams) => [...spineKeys.all, "feed", params] as const,
   signals: (type?: string, days?: number) => [...spineKeys.all, "signals", type ?? "all", days ?? 7] as const,
+  signalsSummary: (days: number) => [...spineKeys.all, "signals", "summary", days] as const,
   sourceDossier: (kind: string, key: string) => [...spineKeys.all, "source-dossier", kind, key] as const,
   sourceSummary: (kind: string, key: string) => [...spineKeys.all, "source-summary", kind, key] as const,
   stockBrief: (code: string) => [...spineKeys.all, "stock-brief", code] as const,
@@ -151,6 +152,11 @@ export async function fetchHome(): Promise<HomeResponse> {
 
 export async function fetchSpineFeed(params: SpineFeedParams): Promise<SpineFeedResponse> {
   const { data } = await api.get<SpineFeedResponse>("/api/spine/feed", { params });
+  return data;
+}
+
+export async function fetchSignalsSummary(days = 7): Promise<SignalsSummary> {
+  const { data } = await api.get<SignalsSummary>("/api/spine/signals/summary", { params: { days } });
   return data;
 }
 

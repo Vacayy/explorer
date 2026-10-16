@@ -11,7 +11,7 @@ import IndustryPage from "@/components/industry/IndustryPage"
  * · 산업군 지도(industry_groups 밸류체인 표). 섹터 원천 두 개는 합치지 않고 함께 보이기만 한다.
  * 상태 = ?view= (map 기본). 옛 /follow/universe, /discover/industry는 이 탭으로 리다이렉트.
  */
-export const SECTOR_VIEWS = [
+const SECTOR_VIEWS = [
   { key: "map", label: "산업 맵" },
   { key: "universe", label: "유니버스" },
   { key: "chains", label: "산업군 지도" },

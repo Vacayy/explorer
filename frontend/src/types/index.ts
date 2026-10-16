@@ -415,6 +415,10 @@ export interface SpineSignal {
     share_pct?: number;
     share_delta_pp?: number;
     is_new?: boolean;
+    // call_momentum (실적 발언 모멘텀, 미국 기업)
+    ticker?: string;
+    score?: number;
+    drivers?: { name: string; status?: string; magnitude?: string; quote?: string; verified?: boolean }[];
   };
   interpretation: string | null;
   interpretation_model: string | null;
@@ -423,6 +427,19 @@ export interface SpineSignal {
 export interface SpineSignalsResponse {
   items: SpineSignal[];
   as_of: string;
+}
+
+/** GET /api/spine/signals/summary — 유형별 최신일 건수·상위 3. as_of = 신호 최신일 */
+export interface SignalsSummaryType {
+  type: string;
+  latest_date: string;
+  count_latest: number;
+  count_window: number;
+  top: { entity_id: number; name: string; stock_code: string | null; ticker: string | null }[];
+}
+export interface SignalsSummary {
+  as_of: string | null;
+  types: SignalsSummaryType[];
 }
 
 export interface CalendarEvent {

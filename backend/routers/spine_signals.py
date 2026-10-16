@@ -53,6 +53,63 @@ def get_signals(
     )
 
 
+# 유형별 '센 순서' — 상위 3 칩용. payload 키가 유형마다 달라 여기서만 정한다
+_RANK_KEY = {
+    "mention_surge": lambda p: p.get("count_7d") or 0,
+    "theme_surge": lambda p: p.get("share_delta_pp") or 0,
+    "neglect": lambda p: p.get("market_cap") or 0,
+    "high_52w": lambda p: p.get("breakout_pct") or 0,
+    "volume_spike": lambda p: p.get("ratio") or 0,
+    "quadrant_gap": lambda p: abs(p.get("return_3m") or 0),
+    "consensus_extreme": lambda p: p.get("ratio") or 0,
+    "call_momentum": lambda p: p.get("score") or 0,
+}
+
+
+class SummaryTop(BaseModel):
+    entity_id: int
+    name: str
+    stock_code: str | None
+    ticker: str | None = None     # 미국 기업(call_momentum) — /us/:ticker
+
+
+class SummaryType(BaseModel):
+    type: str
+    latest_date: str
+    count_latest: int             # 그 유형 최신일의 건수
+    count_window: int             # 최신일 포함 최근 days일 건수
+    top: list[SummaryTop]
+
+
+class SignalsSummary(BaseModel):
+    as_of: str | None             # 원천 시각 = 신호 최신일 (서버 현재 시각 아님)
+    types: list[SummaryType]
+
+
+@router.get("/summary", response_model=SignalsSummary)
+def signals_summary(days: int = Query(7, ge=1, le=90)):
+    """유형별 최신일 건수·상위 3 — 탐색 › 신호 인덱스와 '오늘의 신호' 위젯. 읽기 전용(계산·외부 호출 없음).
+    유형마다 최신일이 다르다(가격 신호는 전 거래일, 언급 신호는 오늘) — 각자의 최신일 기준."""
+    conn = get_connection()
+    latest = conn.execute("SELECT signal_type, max(date) d FROM signals GROUP BY signal_type").fetchall()
+    out = []
+    for r in latest:
+        t, d = r["signal_type"], r["d"]
+        start = (date.fromisoformat(d) - timedelta(days=days - 1)).isoformat()
+        n_win = conn.execute("SELECT count(*) FROM signals WHERE signal_type=? AND date>=? AND date<=?", (t, start, d)).fetchone()[0]
+        rows = conn.execute(
+            "SELECT s.entity_id, s.payload_json, e.name, e.aliases FROM signals s JOIN entities e ON e.id=s.entity_id "
+            "WHERE s.signal_type=? AND s.date=?", (t, d)).fetchall()
+        key = _RANK_KEY.get(t, lambda p: 0)
+        ranked = sorted(((json.loads(x["payload_json"] or "{}"), x) for x in rows), key=lambda px: -key(px[0]))
+        out.append(SummaryType(type=t, latest_date=d, count_latest=len(rows), count_window=n_win, top=[
+            SummaryTop(entity_id=x["entity_id"], name=x["name"], stock_code=x["aliases"], ticker=p.get("ticker"))
+            for p, x in ranked[:3]]))
+    conn.close()
+    out.sort(key=lambda x: (x.latest_date, x.count_latest), reverse=True)
+    return SignalsSummary(as_of=max((x.latest_date for x in out), default=None), types=out)
+
+
 class MomentumRow(BaseModel):
     rank: int
     entity_id: int
