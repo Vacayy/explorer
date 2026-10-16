@@ -1128,6 +1128,13 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_transcripts_ticker ON transcripts(ticker, fiscal_year, fiscal_period);
     CREATE INDEX IF NOT EXISTS idx_proxy_obs ON proxy_observations(proxy_id, observed_at);
+    -- 컨콜 프록시 추출을 마친 (프록시, 컨콜) 쌍 — 못 찾은 쌍도 남겨 매일 다시 부르지 않는다(2026-10-16)
+    CREATE TABLE IF NOT EXISTS proxy_scans (
+        proxy_id      INTEGER NOT NULL,
+        transcript_id INTEGER NOT NULL,
+        scanned_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (proxy_id, transcript_id)
+    );
 
     -- 핵심질문 트래커 (D-067·D-068, docs/specs/question-proxy.md) — 분할정복:
     -- 질문 → 서브질문 → 프록시 → 관측 → 판정. 질문 = 지식의 미결 버전(판정되면 knowledge로 승격).

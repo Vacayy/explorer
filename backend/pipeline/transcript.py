@@ -279,7 +279,7 @@ JSON만 출력:
 
 def extract_proxies(limit: int = 40) -> dict:
     """활성 프록시 × 관련 티커의 미추출 transcript에서 지표 값 추출 → proxy_observations.
-    멱등: (proxy_id, transcript_id) 이미 있으면 스킵. haiku(값싸게)."""
+    멱등: (proxy_id, transcript_id)를 관측했거나 이미 판정했으면(proxy_scans) 스킵. haiku(값싸게)."""
     import json
     from pipeline.enrich import _call_claude_code, llm_available
     if not llm_available():
@@ -298,7 +298,9 @@ def extract_proxies(limit: int = 40) -> dict:
             if scanned >= limit:
                 break
             exists = conn.execute(
-                "SELECT 1 FROM proxy_observations WHERE proxy_id=? AND transcript_id=?", (p["id"], r["id"])).fetchone()
+                "SELECT 1 FROM proxy_observations WHERE proxy_id=? AND transcript_id=? "
+                "UNION ALL SELECT 1 FROM proxy_scans WHERE proxy_id=? AND transcript_id=?",
+                (p["id"], r["id"], p["id"], r["id"])).fetchone()
             if exists:
                 continue
             scanned += 1
@@ -310,6 +312,9 @@ def extract_proxies(limit: int = 40) -> dict:
             except Exception as e:  # noqa: BLE001
                 print(f"[proxy] {p['label']} {r['ticker']} 실패: {e}")
                 continue
+            # 판정을 받은 쌍은 찾았든 못 찾았든 남긴다 — 못 찾음을 안 남기면 같은 쌍을 매일 다시 불렀다
+            conn.execute("INSERT OR IGNORE INTO proxy_scans (proxy_id, transcript_id) VALUES (?, ?)", (p["id"], r["id"]))
+            conn.commit()
             if not d.get("found"):
                 continue
             conn.execute(

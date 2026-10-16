@@ -298,12 +298,15 @@ def propose_from_digests(budget: int = 5) -> dict:
 def refresh_all(propose: int = 3) -> dict:
     """일 1회 cron — 자동도출 + 관측 갱신(numeric 컨콜·sentiment 코퍼스) + 전 추적 질문 재판정.
     event-driven 편승: 새 컨콜/문서 없으면 멱등 스킵으로 사실상 no-op(D-068)."""
+    from pipeline.ops import flag_enabled
     out: dict = {"proposed": 0, "digest_proposed": 0, "numeric": 0, "sentiment": 0, "rerolled": 0}
-    out["proposed"] = propose_from_narratives(limit=propose).get("proposed", 0)
-    try:
-        out["digest_proposed"] = propose_from_digests().get("proposed", 0)   # 다이제스트 언섬(D-085)
-    except Exception as e:  # noqa: BLE001
-        print(f"[refresh] digest 제안 실패: {e}")
+    # 자동 제안은 승인 대기만 늘려(24건 적체) 기본 off — 질문은 사용자가 직접 등록한다(2026-10-16 재가동 결정)
+    if flag_enabled("question_autopropose", default=False):
+        out["proposed"] = propose_from_narratives(limit=propose).get("proposed", 0)
+        try:
+            out["digest_proposed"] = propose_from_digests().get("proposed", 0)   # 다이제스트 언섬(D-085)
+        except Exception as e:  # noqa: BLE001
+            print(f"[refresh] digest 제안 실패: {e}")
     try:
         from pipeline.transcript import extract_proxies
         out["numeric"] = extract_proxies(limit=40).get("extracted", 0)   # 새 컨콜만 (멱등)
