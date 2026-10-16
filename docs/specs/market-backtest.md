@@ -1,3 +1,5 @@
+> **제거됨 (D-241)** — `/analysis/backtests` 화면, `/api/analysis/backtests` API, `pipeline/market_analysis/backtest_*` 엔진을 삭제했다. 아래는 당시 계약 기록이다.
+
 # 시장 전략 비교 백테스트
 
 상태: **첫 버전 구현·실제 비교 검증 완료** (2026-09-19).

@@ -32,7 +32,7 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro"] },
   ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
-    { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover", "/analysis/backtests"] },
+    { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover"] },
     { key: "signals", path: "/explore", label: "신호", match: ["/explore"] },
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
     { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },

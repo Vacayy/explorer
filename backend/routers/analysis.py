@@ -10,11 +10,9 @@ from fastapi.responses import Response, StreamingResponse
 from models.market_analysis import ResumeRequest, RunRequest
 from pipeline.market_analysis.runner import AnalysisService
 from pipeline.market_analysis.store import Conflict, StoreError, TERMINAL
-from routers.backtests import router as backtests_router
 from routers.discovery import router as discovery_router
 
 router = APIRouter(prefix="/api/analysis", tags=["market-analysis"])
-router.include_router(backtests_router)
 router.include_router(discovery_router)
 _service = None
 _service_lock = threading.Lock()

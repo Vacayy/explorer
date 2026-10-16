@@ -64,7 +64,6 @@ import ExpectationsPage from "@/components/expectations/ExpectationsPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
-import BacktestPage from "@/components/analysis/BacktestPage"
 import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
 import SummaryPage from "@/components/summary/SummaryPage"
 import CompanyFinancials from "@/components/company/CompanyFinancials"
@@ -258,7 +257,7 @@ export default function App() {
             <Route path="discover/alt-data" element={<Navigate to="/discover" replace />} />
 
             {/* Analysis */}
-            <Route path="analysis/backtests" element={<BacktestPage />} />
+            <Route path="analysis/backtests" element={<Navigate to="/discover" replace />} />
             <Route path="analyze/compare" element={<ComparePage />} />
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
