@@ -8,12 +8,10 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { STRUCTURE_PRESETS, type StructureParams } from '@/components/structure/ChartStructureCard'
-import { ConditionStackBuilder, type StrategySubmission } from '@/components/analysis/ConditionStackBuilder'
 import type { Company } from '@/types'
 
-export function DiscoveryStart({ busy, onStart, onDraw }: {
-  busy: boolean; onStart: (body: StrategySubmission) => Promise<void>; onDraw: (params: StructureParams) => void
-}) {
+/** 아는 종목 분석 — 종목을 골라 기술적 분석을 열거나 구조를 바로 그린다(D-203, D-224부터 발견 도구 줄의 패널). */
+export function DiscoveryStart({ busy, onDraw }: { busy: boolean; onDraw: (params: StructureParams) => void }) {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const [company, setCompany] = useState<Pick<Company, 'corp_name' | 'stock_code'> | null>(null)
@@ -48,6 +46,5 @@ export function DiscoveryStart({ busy, onStart, onDraw }: {
         </section>
       </CardContent>
     </Card>
-    <ConditionStackBuilder busy={busy} onStart={onStart} />
   </div>
 }

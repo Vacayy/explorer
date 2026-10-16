@@ -92,6 +92,8 @@ export interface AnalysisResult {
   warnings: string[]
   unsupported_conditions?: string[]
   strategy_definitions?: StrategyDefinition[]
+  /** 조건별 통과 수와 '이 조건만 빼면 나오는 종목 수'(D-223). 순위 조건 제외, 이전 실행 결과엔 없다. */
+  condition_funnel?: { evaluated: number; conditions: { strategy_id: string; passed: number; sole_blocker: number }[] }
   /** 서버 독립 재계산 결과. cached_from이 있으면 같은 자료·조건으로 검증한 이전 실행의 결과를 재사용한 것(D-194). */
   verification?: { status: string; cached_from?: string }
 }

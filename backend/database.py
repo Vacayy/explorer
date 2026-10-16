@@ -26,6 +26,16 @@ def init_db():
     cur.executescript(PORTFOLIO_ALERTS_SCHEMA)
     from pipeline.portfolio_events import SCHEMA as PORTFOLIO_EVENTS_SCHEMA  # 포트폴리오 예상 이벤트
     cur.executescript(PORTFOLIO_EVENTS_SCHEMA)
+    from pipeline.credit_spreads import SCHEMA as CREDIT_SCHEMA  # 회사채 스프레드 (D-230)
+    cur.executescript(CREDIT_SCHEMA)
+    from pipeline.retail_heat import SCHEMA as RETAIL_SCHEMA  # 개인 투자 열기 (D-231)
+    cur.executescript(RETAIL_SCHEMA)
+    from pipeline.sec_filings import SCHEMA as SEC_SCHEMA  # 실적 8-K 첨부 (D-217)
+    cur.executescript(SEC_SCHEMA)
+    from pipeline.call_momentum import SCHEMA as CALL_MOMENTUM_SCHEMA  # 실적 발언 모멘텀 (D-217)
+    cur.executescript(CALL_MOMENTUM_SCHEMA)
+    from pipeline.doc_claims import SCHEMA as DOC_CLAIMS_SCHEMA  # 문서 상세 논점별 관련 자료 (D-233)
+    cur.executescript(DOC_CLAIMS_SCHEMA)
     from pipeline.company_profile import SCHEMA as PROFILE_SCHEMA  # 웹 조사 기업 개요 (D-188)
     cur.executescript(PROFILE_SCHEMA)
     from pipeline.technical_commentary import SCHEMA as COMMENTARY_SCHEMA  # 기술적 분석 AI 해설 (D-191)
@@ -1339,6 +1349,8 @@ def init_db():
     # 보유 종목 논지(portfolio-intelligence §2) — questions 생성 뒤에 붙여야 새 DB에서도 칼럼이 생긴다
     from pipeline.portfolio_thesis import ensure_schema as ensure_thesis_schema
     ensure_thesis_schema(conn)
+    from pipeline.sec_filings import ensure_schema as ensure_sec_schema   # transcript_follow.fiscal_year_end (D-217)
+    ensure_sec_schema(conn)
     conn.commit()
 
     conn.close()

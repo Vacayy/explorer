@@ -15,6 +15,7 @@ import { TransactionSheet } from '@/components/portfolio/TransactionSheet'
 import { HoldingDetail } from '@/components/portfolio/HoldingDetail'
 import { ExposureCard } from '@/components/portfolio/ExposureCard'
 import { EventsCard } from '@/components/portfolio/EventsCard'
+import { PrinciplesCard } from '@/components/portfolio/PrinciplesCard'
 import { usePortfolio, usePortfolioHistory, useRefreshPortfolioQuotes } from '@/hooks/usePortfolio'
 import { formatNumber, formatPercent, formatRatio } from '@/utils/format'
 import type { PortfolioSummary } from '@/types'
@@ -52,12 +53,14 @@ function Overview({ data }: { data: PortfolioSummary }) {
   const [sp, setSp] = useSearchParams()
   const selected = data.holdings.find(h => h.code === sp.get('stock')) ?? data.holdings[0]
   return <>
-    <Card><CardContent className="grid grid-cols-3 gap-3 py-4">
+    <Card><CardContent className="grid grid-cols-2 gap-3 py-4 @2xl/portfolio:grid-cols-5">
       {([['계좌 수익률', formatPercent(data.total_return_pct), tone(data.total_return_pct)],
         ['오늘', formatPercent(data.day_return_pct), tone(data.day_return_pct)],
+        ['실현 손익', formatPercent(data.realized_pct), tone(data.realized_pct)],
+        ['미실현 손익', formatPercent(data.unrealized_pct), tone(data.unrealized_pct)],
         ['현금 비중', formatRatio(data.cash_weight_pct), '']] as const).map(([label, value, cls]) =>
         <div key={label}><p className="text-caption text-muted-foreground">{label}</p><p className={`mt-1 text-2xl font-semibold tabular-nums ${cls}`}>{value}</p></div>)}
-      <p className="col-span-3 text-caption text-muted-foreground">계좌 수익률은 입출금 영향을 뺀 시간가중 수익률입니다. 장중에는 보유 종목을 30분마다 실시간 시세로 다시 평가하고, 16:10 종가 수집 뒤에는 종가로 바뀝니다.</p>
+      <p className="col-span-2 text-caption text-muted-foreground @2xl/portfolio:col-span-5">계좌 수익률은 입출금 영향을 뺀 시간가중 수익률입니다. 실현·미실현 손익은 원금(입금 − 출금) 대비 비율입니다. 장중에는 보유 종목을 30분마다 실시간 시세로 다시 평가하고, 16:10 종가 수집 뒤에는 종가로 바뀝니다.</p>
     </CardContent></Card>
 
     <div className="grid gap-4 @3xl/portfolio:grid-cols-[280px_minmax(0,1fr)]">
@@ -81,12 +84,30 @@ function Overview({ data }: { data: PortfolioSummary }) {
       </CardContent></Card>
     </div>
 
+    {data.closed.length > 0 && <Card><CardHeader><CardTitle>청산 내역</CardTitle></CardHeader><CardContent>
+      <Table><TableHeader><TableRow>
+        <TableHead>종목</TableHead><TableHead>보유 기간</TableHead><TableHead className="text-right">평단</TableHead>
+        <TableHead className="text-right">매도가</TableHead><TableHead className="text-right">실현 수익률</TableHead><TableHead className="text-right">구분</TableHead>
+      </TableRow></TableHeader><TableBody>
+        {data.closed.map(c => <TableRow key={`${c.code}-${c.sell_date}-${c.sell_price}`}>
+          <TableCell className="font-medium">{c.name}</TableCell>
+          <TableCell className="tabular-nums text-muted-foreground">{c.entry_date} → {c.sell_date}{c.holding_days != null && <span className="block text-caption">{formatNumber(c.holding_days)}일</span>}</TableCell>
+          <TableCell className="text-right tabular-nums">{formatNumber(Math.round(c.avg_price))}</TableCell>
+          <TableCell className="text-right tabular-nums">{formatNumber(c.sell_price)}</TableCell>
+          <TableCell className={`text-right tabular-nums ${tone(c.return_pct)}`}>{formatPercent(c.return_pct)}</TableCell>
+          <TableCell className="text-right text-muted-foreground">{c.full ? '전량' : '일부'}</TableCell>
+        </TableRow>)}
+      </TableBody></Table>
+    </CardContent></Card>}
+
     <div className="grid gap-4 @5xl/portfolio:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <ExposureCard holdings={data.holdings} />
       <EventsCard />
     </div>
 
     <ReturnHistory live={!!data.quoted_at} />
+
+    <PrinciplesCard />
 
     {selected && <section className="space-y-3">
       <SegmentTabs tabs={data.holdings.map(h => ({ value: h.code, label: h.name }))} value={selected.code}

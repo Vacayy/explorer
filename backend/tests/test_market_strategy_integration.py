@@ -59,6 +59,19 @@ class CatalogScreenTests(unittest.TestCase):
         self.assertEqual(first["items"], second["items"])
         self.assertEqual(first["counts"]["failed"], 2)
 
+    def test_condition_funnel_counts_passes_and_sole_blockers(self):
+        self.insert(data_fixtures.prices("000001", count=25, close=100), "000001")  # 보합 통과·신고가 탈락
+        rows = data_fixtures.prices("000002", count=25, close=100)
+        row = list(rows[-1]); row[2:7] = [100, 130, 99, 125, row[6]]
+        rows[-1] = tuple(row)
+        self.insert(rows, "000002")  # 신고가 통과·보합 탈락
+        result = screen(self.snapshot(verified=True), spec(condition("high_5d"), condition("price_flat"), condition("rank_volume")))
+        funnel = {c["strategy_id"]: c for c in result["condition_funnel"]["conditions"]}
+        self.assertEqual(result["condition_funnel"]["evaluated"], 2)
+        self.assertNotIn("rank_volume", funnel)  # 순위는 통과 집단에 따라 바뀌어 집계하지 않는다
+        self.assertEqual((funnel["high_5d"]["passed"], funnel["high_5d"]["sole_blocker"]), (1, 1))
+        self.assertEqual((funnel["price_flat"]["passed"], funnel["price_flat"]["sole_blocker"]), (1, 1))
+
     def test_missing_cap_does_not_exclude_unrequested_cap(self):
         rows = data_fixtures.prices(count=25, cap=None)
         self.insert(rows)

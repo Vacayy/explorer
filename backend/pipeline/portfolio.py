@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from database import get_connection
 
@@ -101,6 +101,45 @@ def replay(txs: list[dict]) -> Ledger:
     for tx in sorted(txs, key=lambda t: (t["trade_date"], t["id"])):
         apply(ledger, tx)
     return ledger
+
+
+def realized_trades(txs: list[dict]) -> tuple[list[dict], float]:
+    """매도마다 실현 손익(매도는 평단 유지라 (매도가 − 그 시점 평단) × 매도 수량). 
+
+    반환: (비율·가격만 담은 매도 목록, 내부 계산용 실현 손익 합계[원화 — 응답에 싣지 않는다]).
+    """
+    ledger, out, gain = Ledger(), [], 0.0
+    for tx in sorted(txs, key=lambda t: (t["trade_date"], t["id"])):
+        before = ledger.positions.get(tx["stock_code"]) if tx["kind"] == "sell" else None
+        avg, entry = (before.avg, before.entry_date) if before else (0.0, "")
+        apply(ledger, tx)
+        if tx["kind"] != "sell":
+            continue
+        gain += tx["amount"] / tx["price"] * (tx["price"] - avg)
+        out.append({"code": tx["stock_code"], "entry_date": entry, "sell_date": tx["trade_date"],
+                    "avg_price": round(avg, 2), "sell_price": tx["price"],
+                    "return_pct": round((tx["price"] / avg - 1) * 100, 2) if avg > EPS else None,
+                    "holding_days": (date.fromisoformat(tx["trade_date"]) - date.fromisoformat(entry)).days if entry else None,
+                    "full": tx["stock_code"] not in ledger.positions})
+    return out, gain
+
+
+def entry_weights(txs: list[dict], prices: dict[str, list[tuple[str, float]]]) -> dict[str, float]:
+    """지금 보유 중인 포지션마다 '처음 연 매수'가 그 시점 계좌(현금 + 보유 평가액)에서 차지한 비중(%).
+
+    이후 추가 매수는 보지 않는다 — '처음부터 크게 들어가지 말라'는 원칙(신규 진입 비중 상한, D-227 후속)의 재료.
+    전량 청산 후 다시 사면 새 진입이다. 평가는 그날 이전 마지막 종가(없으면 평단).
+    """
+    ledger, out = Ledger(), {}
+    for tx in sorted(txs, key=lambda t: (t["trade_date"], t["id"])):
+        if tx["kind"] == "buy":
+            pos = ledger.positions.get(tx["stock_code"])
+            if not pos or pos.qty <= EPS:
+                value = ledger.cash + sum(p.qty * (_close_on(prices.get(c, []), tx["trade_date"]) or p.avg)
+                                          for c, p in ledger.positions.items())
+                out[tx["stock_code"]] = round(tx["amount"] / value * 100, 2) if value > EPS else None
+        apply(ledger, tx)
+    return {code: w for code, w in out.items() if code in ledger.positions}
 
 
 def _close_on(series: list[tuple[str, float]], day: str) -> float | None:
@@ -257,6 +296,11 @@ def add_transaction(conn: sqlite3.Connection, tx: dict, fund_shortfall: bool = T
     else:
         tx["stock_code"], tx["price"] = None, None
     existing = _txs(conn, gid)
+    if tx.pop("sell_all", False):
+        pos = replay([t for t in existing if t["trade_date"] <= tx["trade_date"]]).positions.get(tx["stock_code"])
+        if not pos:
+            raise LedgerError(f"{tx['trade_date']}에 보유하지 않은 종목입니다.")
+        tx["amount"] = pos.qty * tx["price"]
     pending = []
     if tx["kind"] == "buy" and fund_shortfall:
         cash = replay([t for t in existing if t["trade_date"] <= tx["trade_date"]]).cash
@@ -329,18 +373,21 @@ def summary(conn: sqlite3.Connection) -> dict:
     gid = group_id(conn)
     txs = _txs(conn, gid)
     if not txs:
-        return {"as_of": None, "total_return_pct": None, "day_return_pct": None, "cash_weight_pct": None, "holdings": [], "quoted_at": None}
+        return {"as_of": None, "total_return_pct": None, "day_return_pct": None, "cash_weight_pct": None, "holdings": [], "quoted_at": None,
+                "realized_pct": None, "unrealized_pct": None, "closed": []}
     ledger = replay(txs)
     prices, live = _priced(conn, txs, ledger)
     hist = valuation(txs, prices)
     names = _names(conn, set(ledger.positions))
-    rows, total = [], ledger.cash
+    entries = entry_weights(txs, prices)
+    rows, total, unrealized = [], ledger.cash, 0.0
     for code, pos in ledger.positions.items():
         ser = prices.get(code, [])
         close = ser[-1][1] if ser else None
         prev = ser[-2][1] if len(ser) > 1 else None
         value = pos.qty * (close if close is not None else pos.avg)
         total += value
+        unrealized += value - pos.qty * pos.avg
         lv = live.get(code)
         day_change = lv["change_pct"] if lv and lv["change_pct"] is not None else \
             round((close / prev - 1) * 100, 2) if close is not None and prev else None   # 장중은 거래소 전일 종가 대비
@@ -348,7 +395,7 @@ def summary(conn: sqlite3.Connection) -> dict:
                      "last_close": close, "last_date": ser[-1][0] if ser else None, "entry_date": pos.entry_date,
                      "price_source": "live" if lv else "close", "quoted_at": lv["at"] if lv else None,
                      "return_pct": round((close / pos.avg - 1) * 100, 2) if close is not None else None,
-                     "day_change_pct": day_change})
+                     "day_change_pct": day_change, "entry_weight_pct": entries.get(code)})
     holdings = []
     for r in sorted(rows, key=lambda r: -r["value"]):
         weight = r.pop("value") / total * 100 if total > EPS else None
@@ -358,4 +405,15 @@ def summary(conn: sqlite3.Connection) -> dict:
             "day_return_pct": hist[-1]["day_return_pct"] if hist else None,
             "cash_weight_pct": round(ledger.cash / total * 100, 2) if total > EPS else None,
             "holdings": holdings,
-            "quoted_at": max((v["at"] for v in live.values()), default=None)}
+            "quoted_at": max((v["at"] for v in live.values()), default=None),
+            **_realized_summary(conn, txs, unrealized)}
+
+
+def _realized_summary(conn: sqlite3.Connection, txs: list[dict], unrealized: float) -> dict:
+    """실현·미실현 손익을 원금(순입금) 대비 %로 — 원화는 내보내지 않는다. 계좌 수익률(TWR)과는 별개의 단순 비율."""
+    closed, gain = realized_trades(txs)
+    principal = sum(t["amount"] for t in txs if t["kind"] == "deposit") - sum(t["amount"] for t in txs if t["kind"] == "withdraw")
+    names = _names(conn, {c["code"] for c in closed})
+    pct = (lambda v: round(v / principal * 100, 2)) if principal > EPS else (lambda v: None)
+    return {"realized_pct": pct(gain), "unrealized_pct": pct(unrealized),
+            "closed": [{**c, "name": names.get(c["code"], c["code"])} for c in reversed(closed)]}

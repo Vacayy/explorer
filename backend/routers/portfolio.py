@@ -4,12 +4,13 @@ response_model이 금액·수량 필드를 갖지 않으므로 실수로 섞여�
 """
 from fastapi import APIRouter, HTTPException, Query
 
-from models.portfolio import (Exposure, HistoryPoint, HoldingFlow, PortfolioEvent, PortfolioSummary, ThesisCreate,
-                              TransactionCreate, TransactionItem)
+from models.portfolio import (Exposure, HistoryPoint, HoldingFlow, PortfolioEvent, PortfolioSummary, Principle, PrincipleCreate,
+                              PrincipleParse, PrincipleParseRequest, PrincipleText, ThesisCreate, TransactionCreate, TransactionItem)
 from pipeline import portfolio as pf
 from pipeline import portfolio_events as pe
 from pipeline import portfolio_exposure as px
 from pipeline import portfolio_flow as fl
+from pipeline import portfolio_principles as pp
 from pipeline import portfolio_thesis as pt
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
@@ -136,5 +137,72 @@ def remove_transaction(tx_id: int):
         return {"ok": True}
     except pf.LedgerError as e:
         raise HTTPException(409, str(e))
+    finally:
+        conn.close()
+
+
+# ── 운용 원칙 (D-227) — 원문은 로컬 DB에만. 위반은 화면이 아니라 텔레그램으로만 알린다 ─────────────
+
+@router.get("/principles", response_model=list[Principle])
+def list_principles():
+    conn = pf.connect()
+    try:
+        return pp.principles(conn)
+    finally:
+        conn.close()
+
+
+@router.post("/principles/parse", response_model=PrincipleParse)
+def parse_principle(body: PrincipleParseRequest):
+    """원칙 문장 → 수치 규칙 미리보기(haiku 1회, 저장하지 않음). 원장은 모델에 보내지 않는다."""
+    try:
+        return pp.parse(body.text)
+    except Exception as e:  # noqa: BLE001 — 모델 실패는 503으로
+        raise HTTPException(503, f"원칙을 해석하지 못했습니다: {type(e).__name__}")
+
+
+@router.post("/principles", status_code=201)
+def create_principle(body: PrincipleCreate):
+    conn = pf.connect()
+    try:
+        return {"id": pp.add(conn, body.text, [r.model_dump(exclude={"summary"}) for r in body.rules], body.notes)}
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    finally:
+        conn.close()
+
+
+@router.patch("/principles/{principle_id}")
+def update_principle_text(principle_id: int, body: PrincipleText):
+    """원문만 수정 — 점검 규칙은 그대로."""
+    conn = pf.connect()
+    try:
+        if not pp.update_text(conn, principle_id, body.text):
+            raise HTTPException(404, "원칙을 찾을 수 없습니다.")
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@router.put("/principles/{principle_id}")
+def replace_principle(principle_id: int, body: PrincipleCreate):
+    """다시 풀기 — 원문·점검 규칙·참고 목록을 함께 교체."""
+    conn = pf.connect()
+    try:
+        if not pp.replace(conn, principle_id, body.text, [r.model_dump(exclude={"summary"}) for r in body.rules], body.notes):
+            raise HTTPException(404, "원칙을 찾을 수 없습니다.")
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    finally:
+        conn.close()
+
+
+@router.delete("/principles/{principle_id}")
+def delete_principle(principle_id: int):
+    conn = pf.connect()
+    try:
+        pp.remove(conn, principle_id)
+        return {"ok": True}
     finally:
         conn.close()

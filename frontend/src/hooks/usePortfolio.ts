@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { apiQuery, postJson, STALE, toApiError } from "@/api/query"
-import type { HoldingFlow, HoldingThesis, PortfolioEvent, PortfolioExposure, PortfolioHistoryPoint, PortfolioSummary, PortfolioTransaction, PortfolioTxInput } from "@/types"
+import type { HoldingFlow, HoldingThesis, PortfolioEvent, PortfolioPrinciple, PrincipleParse, PrincipleRule, PortfolioExposure, PortfolioHistoryPoint, PortfolioSummary, PortfolioTransaction, PortfolioTxInput } from "@/types"
 
 const KEY = ["portfolio"] as const
 
@@ -70,5 +70,46 @@ export function useDeletePortfolioTransaction() {
       try { await api.delete(`/api/portfolio/transactions/${id}`) } catch (e) { throw toApiError(e) }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+}
+
+/** 운용 원칙(D-227) — 원문은 로컬 DB에만, 위반은 텔레그램으로만. */
+export function usePortfolioPrinciples() {
+  return useQuery(apiQuery<PortfolioPrinciple[]>({ key: [...KEY, "principles"], url: "/api/portfolio/principles", staleTime: STALE.short }))
+}
+/** 원칙 문장을 수치 규칙으로 풀어 미리보기(haiku 1회, 저장 안 함). */
+export function useParsePrinciple() {
+  return useMutation({ mutationFn: (text: string) => postJson<PrincipleParse>("/api/portfolio/principles/parse", { text }, { timeout: 90_000 }) })
+}
+export function useSavePrinciple() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { text: string; rules: PrincipleRule[]; notes: string[] }) => postJson<{ id: number }>("/api/portfolio/principles", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...KEY, "principles"] }),
+  })
+}
+/** 원문만 고친다 — 점검 규칙은 그대로(모델 재호출 없음). */
+export function useUpdatePrincipleText() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: { id: number; text: string }) => { try { return (await api.patch(`/api/portfolio/principles/${body.id}`, { text: body.text })).data } catch (e) { throw toApiError(e) } },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...KEY, "principles"] }),
+  })
+}
+/** 다시 풀기 — 원문·점검 규칙·참고 목록을 함께 교체. */
+export function useReplacePrinciple() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: { id: number; text: string; rules: PrincipleRule[]; notes: string[] }) => {
+      try { return (await api.put(`/api/portfolio/principles/${body.id}`, { text: body.text, rules: body.rules, notes: body.notes })).data } catch (e) { throw toApiError(e) }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...KEY, "principles"] }),
+  })
+}
+export function useDeletePrinciple() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => { try { return (await api.delete(`/api/portfolio/principles/${id}`)).data } catch (e) { throw toApiError(e) } },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...KEY, "principles"] }),
   })
 }

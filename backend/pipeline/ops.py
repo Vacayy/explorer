@@ -52,13 +52,31 @@ def list_flags() -> dict[str, bool]:
     return {r["name"]: bool(r["enabled"]) for r in rows}
 
 
+def retry_locked(fn, tries: int = 6, wait: float = 10.0):
+    """'database is locked'면 기다렸다 다시. 30분 체인 스크립트(compute_signals 등)가 busy_timeout(30s)보다
+    오래 쓰기 잠금을 쥐어, 그 사이에 도는 수집·기록이 통째로 죽었다(2026-10-13 Fool 수집·job_runs 기록)."""
+    import sqlite3
+    import time
+    for k in range(tries):
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e) or k == tries - 1:
+                raise
+            time.sleep(wait * (k + 1))
+
+
 def record_run(job: str, status: str, summary: str = "", duration_ms: int | None = None) -> None:
-    conn = get_connection()
-    conn.execute(
-        "INSERT INTO job_runs (job, status, summary, duration_ms, ran_at) "
-        "VALUES (?, ?, ?, ?, datetime('now'))", (job, status, summary[:500], duration_ms))
-    conn.commit()
-    conn.close()
+    def _write():
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO job_runs (job, status, summary, duration_ms, ran_at) "
+                "VALUES (?, ?, ?, ?, datetime('now'))", (job, status, summary[:500], duration_ms))
+            conn.commit()
+        finally:
+            conn.close()
+    retry_locked(_write)
 
 
 def recent_runs(limit: int = 50) -> list[dict]:

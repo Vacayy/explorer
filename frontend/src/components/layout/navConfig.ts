@@ -36,6 +36,7 @@ export const FOLLOW_TABS: readonly SubTab[] = [
   { key: "transcripts", path: "/follow/transcripts", label: "컨콜" },
   { key: "us", path: "/us", label: "미국" },
   { key: "trade", path: "/follow/trade", label: "수출입" },
+  { key: "credit", path: "/follow/credit", label: "회사채" },
   { key: "map", path: "/map", label: "산업 맵" },
   { key: "people", path: "/people", label: "인물" },
   { key: "actions", path: "/actions", label: "기업활동" },

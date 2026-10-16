@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
-import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupSignal } from '@/types'
+import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupSignal, WatchReason } from '@/types'
 
 const ROOT = '/api/spine/groups'
 export const groupKeys = {
@@ -85,5 +85,18 @@ export function useAppendMemberRule() {
     const current = members[stockCode] ?? []
     if (!current.some(item => key(item) === key(rule))) members[stockCode] = [...current, rule]
     return (await api.put<StockGroupDetail>(`${ROOT}/${groupId}/rules`, { default: detail.rules.default.map(toInput), members })).data
+  })
+}
+
+/** 관심 종목 이유(D-227) — 판정은 매일 07:40, 알림은 텔레그램만. */
+export function useGroupReasons(id: number) {
+  return useQuery({ queryKey: ['spine', 'group-reasons', id], queryFn: async () => (await api.get<Record<string, WatchReason>>(`${ROOT}/${id}/reasons`)).data })
+}
+/** 이유 감시 시작 — 서버가 sonnet 1회로 분해(1~3분). */
+export function useStartReason(id: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: { stock_code: string; why: string; trigger: string }) => (await api.post<{ id: number }>(`${ROOT}/${id}/reasons`, body, { timeout: 300_000 })).data,
+    onSuccess: () => client.invalidateQueries({ queryKey: ['spine', 'group-reasons', id] }),
   })
 }

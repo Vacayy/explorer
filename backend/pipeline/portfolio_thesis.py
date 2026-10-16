@@ -35,11 +35,12 @@ def start(code: str, name: str, why: str, falsifier: str) -> dict:
                               hint=KR_HINT.format(name=name, code=code))
 
 
-def theses(conn: sqlite3.Connection, codes: list[str]) -> dict[str, dict]:
-    """종목별 가장 최근 추적 중 논지 — 판정·하위 질문(반증 조건)만."""
+def theses(conn: sqlite3.Connection, codes: list[str], created_by: str = "portfolio") -> dict[str, dict]:
+    """종목별 가장 최근 추적 중 논지 — 판정·하위 질문(반증 조건)만. created_by로 보유 논지와 관심 이유(watch)를 나눈다."""
     out = {}
     for code in codes:
-        q = conn.execute("SELECT * FROM questions WHERE stock_code=? AND status='tracking' ORDER BY id DESC LIMIT 1", (code,)).fetchone()
+        q = conn.execute("SELECT * FROM questions WHERE stock_code=? AND status='tracking' AND created_by=? ORDER BY id DESC LIMIT 1",
+                         (code, created_by)).fetchone()
         if not q:
             continue
         subs = [{"text": r["text"], "falsifier": r["falsifier"], "verdict": r["verdict"]}

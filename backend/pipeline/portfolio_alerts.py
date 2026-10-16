@@ -174,6 +174,11 @@ def run(mode: str, dry_run: bool = False, conn: sqlite3.Connection | None = None
         if mode == "intraday":
             if pf.market_hours(now):
                 sent += _send(conn, price_moves(summary, today), "", send, dry_run)
+                try:   # 운용 원칙(D-227) — 장중 규칙만. 실패해도 다른 알림은 보낸다
+                    from pipeline import portfolio_principles as pp
+                    sent += pp.alert(conn, summary, send, live_only=True, today=today, dry_run=dry_run)
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"principles: {type(e).__name__}: {str(e)[:120]}")
             sent += _send(conn, new_disclosures(summary["holdings"], today), "", send, dry_run)
         elif mode == "close":
             try:
@@ -205,6 +210,13 @@ def run(mode: str, dry_run: bool = False, conn: sqlite3.Connection | None = None
                 s = (s[0], s[1] + ("\n" + soon if soon else ""))
                 sent += _send(conn, [s], "", send, dry_run)
             sent += _send(conn, technical_signals(conn, summary["holdings"]), "📐 <b>오늘 새 기술적 신호</b>", send, dry_run)
+            try:   # 운용 원칙(D-227) — 전체 규칙(공통 변수 노출·계좌 손실 포함)
+                from pipeline import portfolio_exposure as px
+                from pipeline import portfolio_principles as pp
+                hs = [{"code": h["code"], "name": h["name"], "weight_pct": h["weight_pct"]} for h in summary["holdings"]]
+                sent += pp.alert(conn, summary, send, exposure=lambda: px.cached_exposure(conn, hs), today=today, dry_run=dry_run)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"principles: {type(e).__name__}: {str(e)[:120]}")
             sent += _send(conn, new_disclosures(summary["holdings"], today), "", send, dry_run)
         else:
             raise ValueError(mode)

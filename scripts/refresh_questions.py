@@ -24,6 +24,7 @@ def main():
         return r
     run_job("refresh_questions", _work)
     _portfolio_thesis_alert()
+    _watch_reason_alert()
 
 
 def _portfolio_thesis_alert():
@@ -39,6 +40,24 @@ def _portfolio_thesis_alert():
         record_run("pf_thesis", "ok", f"sent {n}", int((time.time() - started) * 1000))
     except Exception as e:  # noqa: BLE001
         record_run("pf_thesis", "error", f"{type(e).__name__}: {str(e)[:200]}", int((time.time() - started) * 1000))
+    finally:
+        conn.close()
+
+
+
+def _watch_reason_alert():
+    """관심 종목 이유 판정이 어느 쪽으로든 기울면 텔레그램(portfolio-intelligence §6, D-227). 실패는 job_runs에."""
+    import time
+    from pipeline import portfolio as pf, watch_reasons as wr
+    from pipeline.ops import record_run
+    started = time.time()
+    conn = pf.connect()
+    try:
+        members = wr.watch_members(conn)
+        n = wr.alert(conn, members) if members else 0
+        record_run("watch_reason", "ok", f"sent {n}", int((time.time() - started) * 1000))
+    except Exception as e:  # noqa: BLE001
+        record_run("watch_reason", "error", f"{type(e).__name__}: {str(e)[:200]}", int((time.time() - started) * 1000))
     finally:
         conn.close()
 

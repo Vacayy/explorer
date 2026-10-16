@@ -246,6 +246,14 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
         except (ValueError, TypeError):
             return None
 
+    # 교차검증 수·역방향 상충은 일괄 2쿼리로 (엣지마다 2쿼리 → 5,713엣지에서 3초, D-211)
+    corroboration = {r[0]: r[1] for r in conn.execute(
+        "SELECT entity_relation_id, COUNT(DISTINCT narrative_id) FROM narrative_edge_evidence "
+        "GROUP BY entity_relation_id")}
+    causes_pairs = {(r[0], r[1]) for r in conn.execute(
+        "SELECT s.name, d.name FROM entity_relations er JOIN entities s ON s.id=er.src_id "
+        "JOIN entities d ON d.id=er.dst_id WHERE er.rel_type='CAUSES'")}
+
     nodes: dict[int, dict] = {}
     out_edges = []
     for e in edges:
@@ -256,14 +264,10 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
                                      "pace_layer": _layer(e["dmeta"]),
                                      "in_degree": 0, "out_degree": 0})
         union(e["sid"], e["did"])
-        n_narratives = conn.execute(
-            "SELECT COUNT(DISTINCT narrative_id) c FROM narrative_edge_evidence WHERE entity_relation_id=?",
-            (e["id"],)).fetchone()["c"]
+        n_narratives = corroboration.get(e["id"], 0)
         # feedback_note가 있으면 opus가 '상충 아닌 시점 다른 피드백 나선'으로 해소한 것 → contested 제외(D-029)
-        contested = e["rel_type"] == "CAUSES" and not e["feedback_note"] and conn.execute(
-            "SELECT 1 FROM entity_relations er2 JOIN entities s2 ON s2.id=er2.src_id "
-            "JOIN entities d2 ON d2.id=er2.dst_id WHERE er2.rel_type='CAUSES' AND s2.name=? AND d2.name=?",
-            (e["dname"], e["sname"])).fetchone() is not None
+        contested = (e["rel_type"] == "CAUSES" and not e["feedback_note"]
+                     and (e["dname"], e["sname"]) in causes_pairs)
         nodes[e["sid"]]["out_degree"] += 1
         nodes[e["did"]]["in_degree"] += 1
         out_edges.append({
@@ -283,6 +287,65 @@ def full_causal_graph(conn, category: str | None = None) -> dict:
 
     _mark_flywheels(nodes, out_edges)
     return {"nodes": list(nodes.values()), "edges": out_edges}
+
+
+CORE_MAX = 400          # 흐름 뷰 부분 그래프 상한 — dagre 배치가 노드 수에 급격히 느려진다(150 0.4초·600 10초, D-211)
+# 같은 연결 수면 느린 층 먼저 — 체제·구조만 1,490개라 층을 1순위로 두면 핵심 150을 층 하나가 채운다
+_LAYER_RANK = {"regime": 0, "structure": 1, "cycle": 2, "flow": 3, "event": 4}
+
+
+def _degree(n: dict) -> int:
+    return n["in_degree"] + n["out_degree"]
+
+
+def _induced(g: dict, keep: set[int]) -> tuple[list, list]:
+    return ([n for n in g["nodes"] if n["id"] in keep],
+            [e for e in g["edges"] if e["from_id"] in keep and e["to_id"] in keep])
+
+
+def core_subgraph(conn, limit: int = 150, category: str | None = None) -> dict:
+    """흐름 뷰 기본 화면 — 연결 수(유입+유출) 상위 limit 노드와 그 사이 엣지. 동률은 느린 층 먼저 (D-211)."""
+    g = full_causal_graph(conn, category=category)
+    limit = max(1, min(limit, CORE_MAX))
+    ranked = sorted(g["nodes"], key=lambda n: (-_degree(n), _LAYER_RANK.get(n.get("pace_layer"), 5), n["id"]))
+    nodes, edges = _induced(g, {n["id"] for n in ranked[:limit]})
+    return {"nodes": nodes, "edges": edges, "total_nodes": len(g["nodes"]),
+            "total_edges": len(g["edges"]), "truncated": len(g["nodes"]) > limit}
+
+
+def neighborhood(conn, node_id: int, depth: int = 2, limit: int = 300, category: str | None = None) -> dict | None:
+    """노드 중심 무향 N홉 이웃 (D-211). 가까운 홉부터, 같은 홉은 연결 수 순으로 limit까지. 노드가 없으면 None."""
+    g = full_causal_graph(conn, category=category)
+    by_id = {n["id"]: n for n in g["nodes"]}
+    if node_id not in by_id:
+        return None
+    adj: dict[int, set[int]] = {}
+    for e in g["edges"]:
+        adj.setdefault(e["from_id"], set()).add(e["to_id"])
+        adj.setdefault(e["to_id"], set()).add(e["from_id"])
+    limit = max(1, min(limit, CORE_MAX))
+    keep, frontier, truncated = [node_id], [node_id], False
+    seen = {node_id}
+    for _ in range(max(1, min(depth, 3))):
+        ring = sorted({nb for x in frontier for nb in adj.get(x, ()) if nb not in seen},
+                      key=lambda i: (-_degree(by_id[i]), i))
+        room = limit - len(keep)
+        if len(ring) > room:
+            ring, truncated = ring[:room], True
+        keep += ring
+        seen.update(ring)
+        frontier = ring
+        if truncated or not ring:
+            break
+    nodes, edges = _induced(g, set(keep))
+    return {"nodes": nodes, "edges": edges, "total_nodes": len(g["nodes"]),
+            "total_edges": len(g["edges"]), "truncated": truncated}
+
+
+def node_index(conn) -> list[dict]:
+    """검색용 노드 목록 — 엣지 없이 이름·종류·연결 수만 (D-211)."""
+    return [{"id": n["id"], "name": n["name"], "type": n["type"], "pace_layer": n.get("pace_layer"), "degree": _degree(n)}
+            for n in full_causal_graph(conn)["nodes"]]
 
 
 def _mark_flywheels(nodes: dict[int, dict], edges: list[dict]) -> None:

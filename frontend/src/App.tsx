@@ -26,6 +26,8 @@ import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
+import CreditPage from "@/components/follow/CreditPage"
+import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
 // Explore (탐색 — 신호)
@@ -224,6 +226,8 @@ export default function App() {
             <Route path="follow/universe" element={<UniversePage />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
+            <Route path="follow/credit" element={<CreditPage />} />
+            <Route path="retail" element={<RetailHeatPage />} />
             <Route path="follow/saved" element={<SavedPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />

@@ -68,6 +68,21 @@ def add_telegram(body: AddTelegramRequest, background: BackgroundTasks):
 
 
 @router.post("/blog", status_code=201)
+def normalize_naver_blog(url: str) -> str:
+    """네이버 글 주소 → 블로그 루트. 글 주소로 등록하면 피드가 그 한 글만 이 소스의 글로 보고 나머지(수집은 됨)를
+    숨긴다(2026-10-13 KK Kontemporaries: 23건 중 1건만 보여 '수집 중단'처럼 보임)."""
+    import re
+    from urllib.parse import parse_qs, urlparse
+    m = re.match(r"https?://blog\.naver\.com/([A-Za-z0-9_\-]+)/\d+", url)
+    if m:
+        return f"https://blog.naver.com/{m.group(1)}"
+    if "blog.naver.com" in url and ("PostView" in url or "PostList" in url):
+        bid = parse_qs(urlparse(url).query).get("blogId", [None])[0]
+        if bid:
+            return f"https://blog.naver.com/{bid}"
+    return url
+
+
 def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     url = body.url.strip().rstrip("/")
     if not url.startswith("http"):
@@ -75,6 +90,7 @@ def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     # 네이버 모바일 URL 정규화 — 포스트 URL(blog.naver.com)과 프리픽스 매칭돼야
     # 채널명 표시·소스 건강 집계가 정확해진다
     url = url.replace("://m.blog.naver.com/", "://blog.naver.com/")
+    url = normalize_naver_blog(url)
 
     from services.blog_service import detect_platform_and_feed_url, fetch_blog_author, verify_and_fetch
     platform, feed_url = detect_platform_and_feed_url(url)

@@ -50,3 +50,11 @@ class RuleInput(Strict):
 class RulesPut(Strict):
     default: list[RuleInput] = Field(default_factory=list, max_length=24)
     members: dict[str, list[RuleInput]] = Field(default_factory=dict)
+
+
+class ReasonCreate(BaseModel):
+    """관심 종목 이유 감시 시작(D-227) — 왜 보고 있나 / 무엇이 오면 움직이나."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    stock_code: str = Field(pattern=r"^[0-9A-Z]{6}$")
+    why: str = Field(min_length=5, max_length=4000)             # 멤버 메모(thesis) 한도와 같게
+    trigger: str = Field(default="", max_length=1000)

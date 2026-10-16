@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+from config import FASTEMBED_CACHE
 from pipeline import search, chunks, rerank
 
 
@@ -45,7 +46,7 @@ class OfflineSearchTests(unittest.TestCase):
         with patch.object(rerank, '_enc', None), patch.object(rerank, '_failed', False), \
              patch('fastembed.rerank.cross_encoder.TextCrossEncoder', side_effect=ValueError('not cached')) as encoder:
             self.assertIsNone(rerank.rerank('NVLink', ['관련 자료']))
-            encoder.assert_called_once_with(rerank.RERANK_MODEL, local_files_only=True)
+            encoder.assert_called_once_with(rerank.RERANK_MODEL, cache_dir=FASTEMBED_CACHE, local_files_only=True)
 
 
 if __name__ == '__main__':

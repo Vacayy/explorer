@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, HTTPException, Query
 
-from models.groups import GroupCreate, GroupUpdate, MemberCreate, MemberUpdate, RulesPut
+from models.groups import GroupCreate, GroupUpdate, MemberCreate, MemberUpdate, ReasonCreate, RulesPut
 from pipeline import watch_rules as wr
 
 router = APIRouter(prefix="/api/spine/groups", tags=["spine"])
@@ -257,3 +257,40 @@ def migrate_watchlist():
     detail = _detail(conn, result["group_id"])
     conn.close()
     return {**result, "group": detail}
+
+
+# ── 관심 종목 이유 감시 (D-227, portfolio-intelligence §6) — 판정은 매일 07:40, 알림은 텔레그램만 ──────────
+
+@router.get("/{group_id}/reasons")
+def get_reasons(group_id: int):
+    """관심 묶음 종목별 추적 중인 이유 — 판정(선행·확정·괴리)·하위 질문·기운 신호."""
+    from pipeline import watch_reasons as wrs
+    conn = wr.connect()
+    try:
+        _group(conn, group_id)
+        codes = [r["stock_code"] for r in conn.execute("SELECT stock_code FROM stock_group_members WHERE group_id=?", (group_id,))]
+        return {code: {**t, "signals": wrs.signals(t)} for code, t in wrs.reasons(conn, codes).items()}
+    finally:
+        conn.close()
+
+
+@router.post("/{group_id}/reasons", status_code=201)
+def create_reason(group_id: int, body: ReasonCreate):
+    """이유 감시 시작 — 핵심질문 추적기로 분해(sonnet 1회, 1~3분). 이후 매일 07:40 판정."""
+    from pipeline import watch_reasons as wrs
+    conn = wr.connect()
+    try:
+        group = _group(conn, group_id)
+        if group["kind"] != "watch":
+            raise HTTPException(409, "관심 묶음에서만 이유를 감시합니다. 보유 종목은 포트폴리오의 ‘보유 논지’를 쓰세요.")
+        row = conn.execute("""SELECT c.corp_name FROM stock_group_members m LEFT JOIN companies c ON c.stock_code = m.stock_code
+                              WHERE m.group_id=? AND m.stock_code=?""", (group_id, body.stock_code)).fetchone()
+        if not row:
+            raise HTTPException(404, "이 묶음의 종목이 아닙니다.")
+        name = row["corp_name"] or body.stock_code
+    finally:
+        conn.close()
+    r = wrs.start(body.stock_code, name, body.why, body.trigger)
+    if "error" in r:
+        raise HTTPException(503, r["error"])
+    return {"id": r["id"]}

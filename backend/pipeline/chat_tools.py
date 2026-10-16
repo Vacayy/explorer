@@ -965,6 +965,56 @@ def get_us_briefing(trade_date: str | None = None) -> ToolResult:
         "date": r["trade_date"], "doc_id": None, "href": "/home"}], fallback)
 
 
+def get_portfolio() -> ToolResult:
+    """내 포트폴리오(비율·가격만)와 운용 원칙 원문·기계 점검 규칙·지금 위반·청산 내역 (D-228).
+
+    원화 금액·수량은 싣지 않는다(D-212의 '비율 전용 요약'). 원칙 원문은 로컬 DB에서 읽어 이 대화의 맥락으로만 쓴다.
+    """
+    from pipeline import portfolio as pf
+    from pipeline import portfolio_principles as pp
+    conn = pf.connect()
+    try:
+        s = pf.summary(conn)
+        principles = pp.principles(conn)
+        broken = []
+        if principles and s["holdings"] is not None:
+            needs_exposure = any(r["type"] == "max_exposure" for p in principles for r in p["rules"])
+            exposure = None
+            if needs_exposure and s["holdings"]:
+                from pipeline import portfolio_exposure as px
+                exposure = px.cached_exposure(conn, [{"code": h["code"], "name": h["name"], "weight_pct": h["weight_pct"]} for h in s["holdings"]])
+            broken = pp.violations(principles, s, exposure)
+    except Exception as e:  # noqa: BLE001
+        return ToolResult("get_portfolio", {}, [], f"포트폴리오 조회 실패: {type(e).__name__}")
+    finally:
+        conn.close()
+    pct = lambda v: "-" if v is None else f"{v:+.1f}%"  # noqa: E731
+    items = []
+    if s["as_of"] is None and not principles:
+        return ToolResult("get_portfolio", {}, [], "기록된 거래와 운용 원칙이 없음")
+    if s["as_of"] is not None:
+        lines = [f"기준 {s['as_of']}{' (장중 시세)' if s.get('quoted_at') else ' 종가'} · 계좌 수익률(시간가중) {pct(s['total_return_pct'])} · 오늘 {pct(s['day_return_pct'])} · "
+                 f"현금 비중 {s['cash_weight_pct']:.1f}% · 원금 대비 실현 손익 {pct(s.get('realized_pct'))} · 미실현 {pct(s.get('unrealized_pct'))}"]
+        lines += [f"- {h['name']}({h['code']}) 비중 {h['weight_pct']:.1f}% · 평단 {h['avg_price']:,.0f} · 현재가 {h['last_close'] or 0:,.0f} · 평단 대비 {pct(h['return_pct'])} · "
+                  f"전일비 {pct(h['day_change_pct'])} · 편입 {h['entry_date']}" for h in s["holdings"]]
+        lines += [f"- 청산 {c['name']} {c['entry_date']}→{c['sell_date']}({c['holding_days']}일) 평단 {c['avg_price']:,.0f} → 매도 {c['sell_price']:,.0f} · 실현 {pct(c['return_pct'])} · {'전량' if c['full'] else '일부'}"
+                  for c in s.get("closed", [])[:10]]
+        items.append({"kind": "portfolio", "title": "내 포트폴리오 (비율·가격만)", "text": "\n".join(lines),
+                      "date": s["as_of"], "doc_id": None, "href": "/portfolio"})
+    if principles:
+        lines = []
+        for p in principles:
+            lines.append(f"[원칙 {p['id']}] 기계 점검 규칙: " + (", ".join(r["summary"] for r in p["rules"]) or "없음"))
+            if p.get("notes"):
+                lines.append("  판단 기준(시스템이 원문에서 정리, 사용자 확인):")
+                lines += [f"  - {n}" for n in p["notes"]]
+            lines.append(f"  원문(사용자가 쓴 그대로 — 정리 목록과 다르면 원문이 우선):\n{p['text']}")
+        lines.append("지금 어긴 규칙: " + ("; ".join(f"{v['message']} [{v['rule']}]" for v in broken) if broken else "없음"))
+        items.append({"kind": "principles", "title": "내 운용 원칙 (사용자 원문)", "text": "\n".join(lines),
+                      "date": None, "doc_id": None, "href": "/portfolio"})
+    return ToolResult("get_portfolio", {}, items)
+
+
 # ── 레지스트리 (라우터 카탈로그 + 인자 화이트리스트) ──────────────────────────
 
 TOOLS: dict[str, dict] = {
@@ -1008,6 +1058,10 @@ TOOLS: dict[str, dict] = {
     "get_transcripts": {"fn": get_transcripts, "args": {"companies", "n_per"},
                         "desc": "미국 기업 실적 컨콜 핵심 정리(실적 하이라이트·가이던스·경영진 코멘트·Q&A). '실적발표·컨콜·가이던스·경영진이 뭐라 했나' 질문에 반드시. "
                                 "args: companies(회사명 한/영 또는 티커 배열, 예: [\"아마존\", \"Oracle\", \"NBIS\"]), n_per(회사별 최신 건수 1~3)"},
+    "get_portfolio": {"fn": get_portfolio, "args": set(),
+                      "desc": "사용자 본인의 포트폴리오(비중·평단 대비 수익률·현금 비중·실현/미실현·청산 내역, 비율·가격만)와 "
+                              "**사용자가 적은 운용 원칙 원문 전체**·기계 점검 규칙·지금 어긴 규칙. '내 계좌·내 포지션·내 종목·비중·팔까/더 살까·"
+                              "물타기·손절·원칙에 맞나·내 원칙대로라면' 질문에 반드시. 판단은 원칙 원문을 기준으로 하고, 원칙에 없는 매매 지시는 하지 않는다. args 없음"},
     "get_us_briefing": {"fn": get_us_briefing, "args": {"trade_date"},
                         "desc": "어젯밤 미국장 브리핑(거래대금 상위·섹터 쏠림·개별 이슈). args: trade_date(YYYY-MM-DD, 선택=최신)"},
 }

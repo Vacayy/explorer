@@ -54,3 +54,6 @@ docs/reviews/
 docs/archive/
 docs/HANDOFF.md
 docs/specs/weekly-agent-handoff*.md
+
+# 공개 저장소 밖에 두는 데이터 원천 어댑터 (D-230) — 비공식 엔드포인트 접근 코드
+backend/local_sources/

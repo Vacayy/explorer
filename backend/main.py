@@ -111,6 +111,10 @@ from routers import spine_study
 app.include_router(spine_study.router)
 from routers import spine_study_projects
 app.include_router(spine_study_projects.router)
+from routers import spine_credit  # 회사채 스프레드 (D-230)
+app.include_router(spine_credit.router)
+from routers import spine_retail  # 개인 투자 열기 (D-231)
+app.include_router(spine_retail.router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)

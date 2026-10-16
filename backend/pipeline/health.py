@@ -54,6 +54,10 @@ CHECKS: list[tuple[str, str, str, str, object, str, bool]] = [
      "launchd usbriefing 06:30 · 홈 갱신 버튼", False),
     ("us_briefing", "미국장 브리핑", "age", "SELECT max(created_at) FROM us_briefings", 100,
      "launchd usbriefing 06:30", False),
+    ("retail", "개인 투자 열기(신용융자·예탁금)", "trading", "SELECT max(date) FROM retail_flows WHERE credit_total IS NOT NULL", "2400",   # 협회는 다음 날 게시 — 어제까지 기대
+     "launchd retail 평일 18:30", False),
+    ("credit", "회사채 스프레드", "age", "SELECT max(date) FROM credit_quotes", 100,
+     "launchd credit 07:30 (로컬 어댑터)", False),
     ("backup", "DB 백업", "age", "SELECT max(ran_at) FROM job_runs WHERE job='backup' AND status='ok'", 36,
      "launchd backup 04:30", False),
 ]
@@ -98,12 +102,12 @@ def _age_hours(value: str, now: datetime | None) -> float:
     return ((now or datetime.now(timezone.utc)) - at).total_seconds() / 3600
 
 
-def price_coverage(conn: sqlite3.Connection, day: str) -> tuple[int, int]:
-    """그날 저장 종목 수와 직전 5거래일 중앙값."""
-    count = conn.execute("SELECT count(*) FROM stock_prices WHERE trade_date=?", (day,)).fetchone()[0]
+def price_coverage(conn: sqlite3.Connection, day: str) -> tuple[int, int, int]:
+    """그날 저장 종목 수, 직전 5거래일 중앙값, 그날 시가총액 보유 종목 수."""
+    count, caps = conn.execute("SELECT count(*), count(market_cap) FROM stock_prices WHERE trade_date=?", (day,)).fetchone()
     prior = sorted(r[0] for r in conn.execute(
         "SELECT count(*) FROM stock_prices WHERE trade_date < ? GROUP BY trade_date ORDER BY trade_date DESC LIMIT 5", (day,)))
-    return count, prior[len(prior) // 2] if prior else 0
+    return count, prior[len(prior) // 2] if prior else 0, caps
 
 
 def launchd_failures() -> list[str]:
@@ -141,9 +145,11 @@ def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool 
             elif lag:
                 item.update(status="stale", detail=f"{lag}거래일 지연")
             if key == "prices" and latest and item["status"] == "ok":
-                count, usual = price_coverage(conn, latest)
+                count, usual, caps = price_coverage(conn, latest)
                 if usual and count < usual * 0.9:
                     item.update(status="stale", detail=f"{latest} 저장 {count:,}종목 · 평소 {usual:,}종목")
+                elif count and caps < count * 0.9:  # 시총이 비면 발견의 시총 표시·조건이 무너진다(10-12·13 사례)
+                    item.update(status="stale", detail=f"{latest} 시가총액 {caps:,}/{count:,}종목만 보유")
         else:
             item["expected"] = f"{limit}시간 이내"
             if latest is None:

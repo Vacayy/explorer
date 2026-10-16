@@ -6,15 +6,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import init_db
-from pipeline.chunks import build_chunk_index
+from pipeline.chunks import build_chunk_index, reembed_all
+from pipeline.rerank import ensure_model
 from pipeline.search import build_index
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--chunks-only", action="store_true")
     ap.add_argument("--limit-docs", type=int, default=None, help="청크 빌드 문서 수 상한(첫 백필 분할용)")
+    ap.add_argument("--reembed", action="store_true", help="기존 청크 전부 재임베딩 + 문서 대표 벡터 재계산(임베딩 규칙 변경 시 1회)")
     args = ap.parse_args()
     init_db()
+    if args.reembed:
+        print("[reembed]", reembed_all(), flush=True)
+        sys.exit(0)
     if not args.chunks_only:
         print("[search-index]", build_index(), flush=True)
     print("[chunk-index]", build_chunk_index(limit_docs=args.limit_docs), flush=True)
+    print("[rerank-model]", ensure_model(), flush=True)

@@ -9,6 +9,7 @@
 Provider 추상 — 한 제공처에 락인되지 않게 어댑터로. TRANSCRIPT_PROVIDER env로 스위치.
 1차 구현은 FMP(무료 티어 250 req/day + dates-by-symbol 폴링). 필요 시 earningscall/alphavantage 추가.
 """
+import re
 import time
 from datetime import date, datetime, timezone
 from typing import Protocol
@@ -342,9 +343,80 @@ def project_numeric_observations() -> int:
     return n
 
 
-def _followed(only: list[str] | None = None) -> list[dict]:
+NASDAQ100_API = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
+SHARE_CLASS_DUPES = {"GOOG"}   # 같은 회사의 다른 주식 종류 — GOOGL로 수집(공시·컨콜이 같다)
+_NAME_SUFFIX = re.compile(r"\b(common stock|class [abc]|ordinary shares|american depositary shares|ads|inc\.?|corporation|corp\.?|"
+                          r"incorporated|holdings?|plc|n\.v\.|ltd\.?|co\.?|company|group)\b|[,.()]", re.I)
+
+
+def _clean_company(name: str) -> str:
+    return re.sub(r"\s+", " ", _NAME_SUFFIX.sub(" ", name or "")).strip()
+
+
+def sync_nasdaq100(fetch=None) -> dict:
+    """나스닥 100 구성종목을 transcript_follow에 반영(docs/specs/transcript-momentum.md). 키 없는 나스닥 공식 목록.
+    새 종목은 group_label='NDX'로 추가, 빠진 NDX 종목은 비활성화(기존 팔로우는 그대로). 엔티티는 정리한 회사명으로만 연결한다."""
+    if fetch is None:
+        import requests
+
+        def fetch():
+            r = requests.get(NASDAQ100_API, headers={"User-Agent": "Mozilla/5.0 (Macintosh) Chrome/120 Safari/537.36",
+                                                     "Accept": "application/json"}, timeout=20)
+            r.raise_for_status()
+            return [(x["symbol"].upper(), x["companyName"], x.get("marketCap")) for x in r.json()["data"]["data"]["rows"]]
+    rows = [(r + (None,))[:3] for r in fetch()]
+    if len(rows) < 90:      # 응답이 비정상이면 구성종목을 지우지 않는다
+        raise RuntimeError(f"나스닥 100 목록이 {len(rows)}개뿐 — 갱신 중단")
     conn = get_connection()
-    q = "SELECT ticker, company_name, group_label FROM transcript_follow WHERE active=1"
+    symbols = {t for t, _, _ in rows}
+    added = 0
+    for ticker, raw_name, cap in rows:
+        name = _clean_company(raw_name)
+        ent = conn.execute("SELECT id FROM entities WHERE type='company' AND (lower(name)=lower(?) OR upper(name)=?) ORDER BY id LIMIT 1",
+                           (name, ticker)).fetchone()
+        cur = conn.execute("INSERT OR IGNORE INTO transcript_follow (ticker, company_name, entity_id, group_label) VALUES (?,?,?, 'NDX')",
+                           (ticker, name, ent["id"] if ent else None))
+        added += cur.rowcount
+        try:
+            mc = float(str(cap).replace(",", "")) if cap else None
+        except ValueError:
+            mc = None
+        if mc:
+            conn.execute("UPDATE transcript_follow SET market_cap=? WHERE ticker=?", (mc, ticker))
+        if not cur.rowcount and ticker not in AV_UNCOVERED:
+            conn.execute("UPDATE transcript_follow SET active=1 WHERE ticker=? AND group_label='NDX'", (ticker,))
+    conn.executemany("UPDATE transcript_follow SET active=0 WHERE ticker=?", [(t,) for t in SHARE_CLASS_DUPES])
+    dropped = conn.execute(f"UPDATE transcript_follow SET active=0 WHERE group_label='NDX' AND ticker NOT IN ({','.join('?' * len(symbols))})",
+                           tuple(symbols)).rowcount
+    conn.commit()
+    total = conn.execute("SELECT count(*) FROM transcript_follow WHERE active=1").fetchone()[0]
+    conn.close()
+    filled = refresh_market_caps(only_missing=True)    # NDX 밖 기존 팔로우(CRWV·IREN 등)는 yfinance로
+    return {"ndx": len(rows), "added": added, "dropped": dropped, "active_total": total, "caps_from_yfinance": filled}
+
+
+def refresh_market_caps(only_missing: bool = False) -> int:
+    import yfinance as yf
+    conn = get_connection()
+    q = "SELECT ticker FROM transcript_follow WHERE active=1" + (" AND market_cap IS NULL" if only_missing else "")
+    n = 0
+    for (t,) in conn.execute(q).fetchall():
+        try:
+            mc = yf.Ticker(t).fast_info.get("marketCap")
+        except Exception:  # noqa: BLE001 — 시가총액은 정렬용, 못 받으면 비워 둔다(목록 맨 뒤)
+            mc = None
+        if mc:
+            conn.execute("UPDATE transcript_follow SET market_cap=? WHERE ticker=?", (float(mc), t))
+            n += 1
+    conn.commit()
+    conn.close()
+    return n
+
+
+def _followed(only: list[str] | None = None) -> list[dict]:
+    """활성 팔로우 — 시가총액 큰 순(같은 순번 안에서 큰 회사부터 받는다)."""
+    conn = get_connection()
+    q = "SELECT ticker, company_name, group_label FROM transcript_follow WHERE active=1 ORDER BY market_cap IS NULL, market_cap DESC, ticker"
     rows = [dict(r) for r in conn.execute(q).fetchall()]
     conn.close()
     if only:
@@ -518,6 +590,118 @@ def _record_empty(ticker: str, year: int, period: str) -> None:
     conn.close()
 
 
+def fiscal_label(filing_date: str, fye: str) -> tuple[int, int]:
+    """실적 발표일 + 결산 월(SEC fiscalYearEnd 'MMDD') → AV 라벨(회계연도, 회계분기).
+    방금 끝난 분기 = 발표일 7일 전 이전에 시작한 마지막 '분기말 달'(결산 월에서 3개월씩). 회계연도는 그 해 결산이 끝나는 해.
+    실측 일치(2026-10-13): NVDA 0131 2025-08-27→2026Q2 · MSFT 0630 2025-10-29→2026Q1 · AAPL 0926 2026-01-29→2026Q1 ·
+    AVGO 1101 2026-06-03→2026Q2 · COST 0830 2025-12-11→2026Q1."""
+    d = date.fromisoformat(filing_date[:10])
+    m = int(fye[:2])
+    cutoff = date.fromordinal(d.toordinal() - 7)
+    best = None
+    for back in range(0, 15):                      # 최근 15개월 안에서 분기말 달 찾기
+        y, mo = d.year, d.month - back
+        while mo <= 0:
+            mo, y = mo + 12, y - 1
+        if (mo - m) % 3 == 0 and date(y, mo, 1) <= cutoff:
+            best = (y, mo)
+            break
+    y, mo = best
+    quarter = {0: 4, 3: 1, 6: 2, 9: 3}[(mo - m) % 12]
+    fy = y if mo <= m else y + 1
+    return fy, quarter
+
+
+def cy_label(fiscal_year: int | None, fiscal_period: str | None, fye: str | None) -> str | None:
+    """회계분기(FY) → 달력분기(CY) 표시 라벨. 화면 표시 전용 — 조회·저장 키는 FY 그대로(AV·Fool이 FY로 이름 붙인다).
+    분기 3개월의 가운데 달이 속한 달력분기(증권사 관행: NVDA 5~7월 분기 = CY Q2). 52/53주 회계로 결산일이 월초(≤7일)면
+    결산 월을 전달로 본다(AVGO 1101 → 10월, COST 0830은 그대로 8월)."""
+    try:
+        q = int(str(fiscal_period)[1:])
+    except (TypeError, ValueError):
+        return None
+    if not fiscal_year or not fye or len(fye) != 4 or q not in (1, 2, 3, 4):
+        return None
+    m, d = int(fye[:2]), int(fye[2:])
+    if d <= 7:
+        m -= 1
+        if m == 0:
+            m = 12
+    end_m, year = m - 3 * (4 - q), fiscal_year
+    if d <= 7 and int(fye[:2]) == 1:     # 1월 초 결산 → 전년 12월 결산
+        year -= 1
+    while end_m <= 0:
+        end_m, year = end_m + 12, year - 1
+    mid, mid_year = end_m - 1, year
+    if mid == 0:
+        mid, mid_year = 12, year - 1
+    return f"CY{mid_year} Q{(mid - 1) // 3 + 1}"
+
+
+def reconcile_call_dates(conn=None, today: str | None = None) -> dict:
+    """콜 날짜를 SEC 실적 발표일로 바로잡는다 — 비어 있거나, 미래이거나, SEC 발표일과 14일 넘게 다르면.
+    AV는 날짜를 안 줘 '회계분기×3월 1일'로 근사했고(FY2026 Q4 → 2026-12-01), yfinance 보정이 못 맞춘 행이 남았다
+    (2026-10-13 IREN). 며칠 차이(공시가 콜보다 늦게 제출)는 기존 날짜를 둔다.
+    문서 게시일(raw_documents.published_at)도 콜 날짜와 14일 넘게 어긋나면 맞춘다(D-084 동기화) — yfinance 보정이
+    다른 분기 날짜를 넣었거나 Fool 수집 시각이 남아 화면 날짜가 틀렸다(2026-10-14 COST FY26 Q3 = 09-24)."""
+    own = conn is None
+    conn = conn or get_connection()
+    today = today or date.today().isoformat()
+    fixed, synced = [], 0
+    for r in conn.execute("SELECT t.id, t.raw_doc_id, t.ticker, t.fiscal_year, t.fiscal_period, t.call_date, "
+                          "tf.fiscal_year_end fye, rd.published_at FROM transcripts t JOIN transcript_follow tf ON tf.ticker=t.ticker "
+                          "LEFT JOIN raw_documents rd ON rd.id=t.raw_doc_id WHERE tf.fiscal_year_end IS NOT NULL").fetchall():
+        try:
+            want = (r["fiscal_year"], int(r["fiscal_period"][1:]))
+        except (TypeError, ValueError):
+            continue
+        # 같은 회계분기의 Item 2.02 공시 중 '마지막'이 본 실적 — 인도량(TSLA)·잠정 실적(SMCI)·월간 업데이트(IREN)가 먼저 나온다
+        match = max((d for (d,) in conn.execute("SELECT DISTINCT filing_date FROM earnings_releases WHERE ticker=?", (r["ticker"],))
+                     if fiscal_label(d, r["fye"]) == want), default=None)
+        cur = (r["call_date"] or "")[:10]
+        if not match:
+            continue
+        off = abs((date.fromisoformat(cur) - date.fromisoformat(match)).days) if cur else None
+        if not cur or cur > today or off > 14:
+            conn.execute("UPDATE transcripts SET call_date=? WHERE id=?", (match, r["id"]))
+            fixed.append(f"{r['ticker']} FY{r['fiscal_year']}{r['fiscal_period']} {cur or '-'}→{match}")
+            cur = match
+        pub = (r["published_at"] or "")[:10]
+        if r["raw_doc_id"] and (not pub or abs((date.fromisoformat(pub) - date.fromisoformat(cur)).days) > 14):
+            conn.execute("UPDATE raw_documents SET published_at=? WHERE id=?", (cur, r["raw_doc_id"]))
+            synced += 1
+    conn.commit()
+    if own:
+        conn.close()
+    return {"fixed": len(fixed), "published_synced": synced, "rows": fixed[:20]}
+
+
+def _event_targets(companies: list[dict]) -> dict[str, list[dict]]:
+    """회사별 실제 실적 발표(SEC 8-K) → AV 요청 대상 분기(최신순). 결산 월을 모르면 비워 둔다(추측으로 대체)."""
+    conn = get_connection()
+    out = {}
+    for f in companies:
+        fye = conn.execute("SELECT fiscal_year_end FROM transcript_follow WHERE ticker=?", (f["ticker"],)).fetchone()
+        if not fye or not fye[0]:
+            continue
+        # 실적 수치(매출·주당이익)가 있는 보도자료만 — 인도량(TSLA 10/2)처럼 콜이 아직 없는 2.02 공시를 대상으로 삼으면
+        # AV 빈응답이 45일 네거티브 캐시에 걸려 정작 실적 콜(10/21경)을 놓친다
+        dates = [r[0] for r in conn.execute(
+            "SELECT DISTINCT er.filing_date FROM earnings_releases er JOIN raw_documents rd ON rd.id=er.doc_id WHERE er.ticker=? "
+            "AND (rd.markdown LIKE '%revenue%' OR rd.markdown LIKE '%sales%') AND (rd.markdown LIKE '%per share%' OR rd.markdown LIKE '%diluted%') "
+            "ORDER BY er.filing_date DESC", (f["ticker"],))]
+        seen, targets = set(), []
+        for d in dates:
+            fy, q = fiscal_label(d, fye[0])
+            if (fy, q) not in seen:
+                seen.add((fy, q))
+                targets.append({"year": fy, "quarter": q, "date": d})
+        if targets:
+            out[f["ticker"]] = targets
+    conn.close()
+    return out
+
+
 def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float = 13.0,
                        only: list[str] | None = None, cooldown_days: int = 45,
                        use_calendar: bool = True, dry_run: bool = False) -> dict:
@@ -534,7 +718,12 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
             refresh_calendar([c["ticker"] for c in companies])   # UI용 발표일 캐시 (게이트 아님)
         except Exception as e:  # noqa: BLE001
             print(f"[calendar] 갱신 실패(무시): {e}")
-    cands = _recent_quarters(ranks)   # 최신순
+    # 요청 대상: SEC 실적 발표가 있으면 그 분기들만(정확한 회계분기 라벨), 없으면(해외 발행사 등) 최근 4분기 추측.
+    # 예전엔 전 종목에 '내년 1분기'부터 12분기를 추측해 첫 며칠을 미래 분기 빈응답으로 날렸다(2026-10-13: 22요청 0건, 대기 1,245).
+    targets = _event_targets(companies)
+    guess = _recent_quarters(min(ranks, 4))
+    per = {f["ticker"]: targets.get(f["ticker"], guess) for f in companies}
+    cands = [{"rank": i} for i in range(max((len(v) for v in per.values()), default=0))]
     existing = _bucket_map("SELECT ticker, fiscal_year, fiscal_period FROM transcripts")
     empties = _bucket_map(
         "SELECT ticker, fiscal_year, fiscal_period FROM transcript_probe WHERE checked_at > datetime('now', ?)",
@@ -542,12 +731,15 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
     used, stored, empty, skip_cache = 0, 0, 0, 0
     planned: list[str] = []
     done = False
-    for q in cands:                    # 랭크(분기) 바깥 = 최신 분기부터
+    for rank in cands:                 # 랭크 바깥 = 회사마다 가장 최근 발표부터
         if done:
             break
-        period = f"Q{q['quarter']}"
-        for f in companies:            # 기업 안쪽 = 그 분기를 전 기업에 걸쳐
+        for f in companies:            # 기업 안쪽 = 그 순번을 전 기업에 걸쳐
             tk = f["ticker"]
+            if rank["rank"] >= len(per[tk]):
+                continue
+            q = per[tk][rank["rank"]]
+            period = f"Q{q['quarter']}"
             if (q["year"], period) in existing.get(tk, ()):
                 continue               # 저장됨 — 요청 없이 스킵
             if (q["year"], period) in empties.get(tk, ()):
@@ -570,6 +762,12 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
             used += 1
             if ok:
                 stored += 1
+                if q.get("date") and tk in targets:   # SEC 실적 발표일 = 실제 콜 날짜(AV는 날짜를 안 줘 분기로 근사한다)
+                    conn = get_connection()
+                    conn.execute("UPDATE transcripts SET call_date=? WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
+                                 (q["date"], tk, q["year"], period))
+                    conn.commit()
+                    conn.close()
                 print(f"[transcript] +{tk} {q['year']}{period}")
             else:
                 empty += 1
@@ -588,13 +786,24 @@ def collect_and_process(budget: int = 22, only: list[str] | None = None) -> dict
     인라인 `_work`였다). 버튼이 '지금 돌리기'인데 사슬이 다르면 결과가 갈린다.
     호출자가 `run_job`으로 감싸 플래그 게이트·실행 로그를 붙인다.
     """
+    # Motley Fool 먼저(D-218 — 공개 녹취록, 하루 40건), 남은 분기만 AV(무료 22요청). 실패해도 AV는 돈다.
+    from pipeline import fool_transcripts
+    try:
+        fr = fool_transcripts.collect(only=only)
+    except Exception as e:  # noqa: BLE001 — 사유를 결과에 남긴다
+        fr = {"stored": 0, "error": f"{type(e).__name__}: {str(e)[:120]}"}
+    print(f"[transcript] Fool {fr}")
     r = collect_roundrobin(request_budget=budget, only=only)
     print(f"[transcript] 요청 {r['requests']}/{r['budget']} · 신규 {r['stored']}건 적재 · "
           f"빈응답 {r['empty']} · 캐시 스킵 {r['skipped_cache']} · 예산소진={r['exhausted']}")
-    if r["stored"]:
+    r = {**r, "fool": fr}
+    if r["stored"] or fr.get("stored"):
         bc = backfill_call_dates(only=only)   # 신규분 call_date를 실제 발표일로 (yfinance, D-084)
         print(f"[transcript] 발표일 교정 {bc['updated']}건")
-    n = digest_pending(limit=max(r["stored"], 5))   # 신규분 핵심 정리 생성(sonnet)
+    rc = reconcile_call_dates()               # 남은 근사·미래 날짜를 SEC 실적 발표일로
+    if rc["fixed"]:
+        print(f"[transcript] SEC 발표일로 교정 {rc['fixed']}건: {rc['rows']}")
+    n = digest_pending(limit=max(r["stored"] + fr.get("stored", 0), 5))   # 신규분 핵심 정리 생성(sonnet)
     print(f"[transcript] 핵심 정리 {n}건 생성")
     seed_proxies()
     px = extract_proxies()                          # 관찰 프록시 트래킹 (haiku, 멱등)

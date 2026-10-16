@@ -5,7 +5,6 @@ import { useEffect, useRef } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ExternalLink, MessageCircle } from 'lucide-react'
 import api from '@/api/client'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -17,6 +16,7 @@ import SegmentTabs from '@/components/shared/SegmentTabs'
 import SaveButton from '@/components/shared/SaveButton'
 import { SourceDeepDive } from './SourceDeepDive'
 import { DocumentBody } from './DocumentBody'
+import { DocRelated } from './DocRelated'
 import { useReadingDiscussion } from '@/hooks/useMemoryReading'
 import { formatRelativeTime } from '@/utils/format'
 import type { EntityTag, FeedDocument } from '@/types'
@@ -67,7 +67,7 @@ export default function DocPage() {
       <h3 className="mb-2 text-card-title font-semibold">연결된 대상</h3><div className="mb-4 flex flex-wrap gap-2">{doc.entities.length ? doc.entities.map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />) : <p className="text-caption text-muted-foreground">연결된 대상이 없습니다.</p>}</div>
       <DetailSection title="출처·생성 정보"><p className="break-words text-caption text-muted-foreground">게시 시각: {doc.published_at || '미상'}</p>{doc.enrich_model && <p className="text-caption text-muted-foreground">태깅 모델: {doc.enrich_model}</p>}</DetailSection>
       <DetailSection title="추가 탐구"><p className="text-caption text-muted-foreground">이 자료에서 질문 후보를 생성합니다.</p><SourceDeepDive docId={doc.id} /></DetailSection></>}
-    related={<RelatedSection docId={doc.id} />}>
+    related={<DocRelated docId={doc.id} />}>
     {discussion.isError && <p role="alert" className="mb-3 text-sm text-destructive">대화를 시작하지 못했습니다. 다시 시도해 주세요.</p>}
     {isVideo && !doc.video_digest && <div className="mb-4 rounded-xl border bg-muted/40 p-4 text-sm" aria-live="polite">
       <p>{digest.isPending || doc.digest_status === 'generating' ? 'AI 정리본을 만드는 중입니다. 원본 자막과 짧은 요약은 지금 읽을 수 있습니다.' :
@@ -78,34 +78,4 @@ export default function DocPage() {
     </div>}
     <DocumentBody doc={doc} reading={reading} />
   </DetailLayout>
-}
-
-function RelatedSection({ docId }: { docId: number }) {
-  const { data } = useQuery({
-    queryKey: ["spine", "doc", docId, "related"],
-    queryFn: async () =>
-      (await api.get(`/api/spine/doc/${docId}/related`)).data as {
-        id: number; source_type: string; title: string | null; published_at: string | null
-      }[],
-    staleTime: 10 * 60_000,
-  })
-  if (!data || data.length === 0) return null
-  return (
-    <Card>
-      <CardContent className="py-3">
-        <div className="text-caption text-muted-foreground mb-1.5">관련 문서 (의미 유사)</div>
-        <ul className="space-y-1">
-          {data.map((r) => (
-            <li key={r.id} className="flex items-center gap-2 text-xs">
-              <SourceBadge sourceType={r.source_type} />
-              <Link to={`/doc/${r.id}`} className="truncate hover:underline">{r.title || "(제목 없음)"}</Link>
-              <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
-                {(r.published_at || "").slice(0, 10)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  )
 }

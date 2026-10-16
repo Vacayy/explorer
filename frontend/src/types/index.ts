@@ -948,6 +948,12 @@ export interface PortfolioHolding {
   price_source: 'live' | 'close'   // live = 장중 시세(30분 갱신)
   quoted_at: string | null
 }
+/** 매도 한 건의 실현 결과 — 비율·가격만 */
+export interface PortfolioClosedTrade {
+  code: string; name: string; entry_date: string; sell_date: string
+  avg_price: number; sell_price: number; return_pct: number | null; holding_days: number | null
+  full: boolean   // 이 매도로 전량 청산
+}
 export interface PortfolioSummary {
   as_of: string | null
   total_return_pct: number | null
@@ -955,11 +961,18 @@ export interface PortfolioSummary {
   cash_weight_pct: number | null
   holdings: PortfolioHolding[]
   quoted_at: string | null
+  realized_pct: number | null     // 실현 손익 ÷ 원금(순입금)
+  unrealized_pct: number | null   // 미실현 손익 ÷ 원금
+  closed: PortfolioClosedTrade[]  // 최근 매도부터
 }
+/** 운용 원칙(D-227) — 수치 규칙 하나 */
+export interface PrincipleRule { type: string; params: Record<string, number>; summary?: string | null }
+export interface PortfolioPrinciple { id: number; text: string; created_at: string; rules: PrincipleRule[]; notes: string[] }  // notes = 대화에서 참고하는 원칙(시스템 정리·사용자 확인)
+export interface PrincipleParse { rules: PrincipleRule[]; unparsed: string[] }
 export interface PortfolioHistoryPoint { date: string; cum_return_pct: number; day_return_pct: number }
 export type PortfolioTxKind = 'buy' | 'sell' | 'deposit' | 'withdraw'
 export interface PortfolioTransaction { id: number; trade_date: string; kind: PortfolioTxKind; stock_code: string | null; name: string | null; price: number | null }
-export interface PortfolioTxInput { trade_date: string; kind: PortfolioTxKind; stock_code?: string; amount: number; price?: number; fund_shortfall?: boolean }
+export interface PortfolioTxInput { trade_date: string; kind: PortfolioTxKind; stock_code?: string; amount?: number; price?: number; fund_shortfall?: boolean; sell_all?: boolean }
 export interface ExposureDriver {
   key: string; name: string; type: string
   exposure_pct: number; holdings: string[]
@@ -989,4 +1002,87 @@ export interface HoldingThesis {
   id: number; text: string; lead: QuestionVerdict; confirm: QuestionVerdict; divergence: string | null; summary: string | null
   sub_questions: { text: string; falsifier: string | null; verdict: QuestionVerdict }[]
   warnings: string[]
+}
+
+/** 관심 종목 이유 감시(D-227) — 보유 논지와 같은 판정, 신호는 지지·약화 양쪽 */
+export type WatchReason = Omit<HoldingThesis, 'warnings'> & { signals: string[] }
+
+/* ---------- 실적 발언 모멘텀 (D-217) ---------- */
+export interface CallDriver { name: string; type: string; status: 'new' | 'accelerating' | 'steady' | 'decelerating'; magnitude?: string; quote: string; source: string }
+export interface CallGuidance { metric: string; direction: 'raised' | 'lowered' | 'maintained' | 'initiated'; quote: string; source: string }
+export interface CallMomentumCandidate {
+  ticker: string; name: string | null; event_date: string; score: number; first_candidate_at: string | null
+  drivers: CallDriver[]; guidance: CallGuidance[]; tone: number | null; prev_tone: number | null; sources: string[]; qa_focus: string[]
+}
+export interface CallMomentumSeason { key: string; label: string; start: string }
+export interface CallMomentum {
+  season: CallMomentumSeason & { reported: number }
+  candidates: CallMomentumCandidate[]          // 이번 실적 시즌만
+  history: (CallMomentumSeason & { candidates: CallMomentumCandidate[] })[]
+  coverage: { universe: number; with_releases: number; with_transcripts: number; extracted_docs: number; failed_docs: number; comparable: number }
+  sec_configured: boolean
+}
+
+/** 문서 디테일 '관련 문서' — GET /api/spine/doc/{id}/related (D-221) */
+export interface RelatedDoc {
+  id: number
+  source_type: string
+  title: string | null
+  published_at: string | null
+  channel: string | null
+  similarity: number
+  reasons: string[]   // 겹치는 종목·인물·산업
+}
+
+/** 문서 상세 '논점별 관련 자료' — GET /api/spine/doc/{id}/claims (D-233) */
+export interface ClaimRelated {
+  id: number
+  source_type: string
+  title: string | null
+  published_at: string | null
+  channel: string | null
+  quote: string | null   // 찾은 대목의 원문 문장 (LLM 작성 아님)
+  score: number
+}
+
+export interface DocClaim {
+  claim: string          // LLM이 뽑은 논점(해석)
+  related: ClaimRelated[]
+}
+
+export interface DocClaims {
+  status: 'none' | 'running' | 'ok' | 'failed' | 'skipped'
+  error: string | null
+  claims: DocClaim[]
+}
+
+/* ---------- 회사채 스프레드 (D-230) ---------- */
+export interface CreditRow {
+  ticker: string; name: string; group: string; bond: string | null; rating: string | null; hy: boolean
+  source: string | null   // TRACE | 유럽 거래소
+  ytm: number | null; treasury: number | null; spread_bp: number | null
+  chg_1m: number | null; chg_3m: number | null; chg_1y: number | null
+  pd_pct: number | null   // 5년 누적 부도확률(위험중립 근사, 회수율 40%)
+  last_date: string | null
+}
+export interface CreditTable { configured: boolean; as_of: string | null; groups: { key: string; label: string }[]; rows: CreditRow[] }
+export interface CreditHistory { tickers: string[]; points: Record<string, number | string | null>[] }
+
+/* ---------- 개인 투자 열기 (D-231) ---------- */
+export type RetailRegimeKey = 'deleveraging' | 'leverage_led' | 'churn' | 'broad_inflow' | 'neutral'
+export interface RetailRegime { key: RetailRegimeKey; label: string; reasons: string[] }
+export interface RetailMetric {
+  key: string; label: string; unit: 'rate' | 'ratio' | 'krw'
+  value: number | null; pctile: number | null; pctile_change: number | null   // 과거 5년 백분위(그날 이전 값만)
+}
+export interface RetailSummary {
+  as_of: string | null; regime: RetailRegime | null; metrics: RetailMetric[]
+  levels: { credit_total?: number; deposits?: number; kospi_close?: number }
+  krx_configured: boolean; accounts_available: boolean
+}
+export interface RetailSnapshot { episode: string; date: string; name: string; regime: RetailRegime; metrics: RetailMetric[]; levels: RetailSummary['levels'] }
+export interface RetailPoint {
+  date: string; credit_total: number | null; deposits: number | null; kospi_close: number | null; value: number | null
+  credit_growth: number | null; credit_growth_pct: number | null; deposit_growth_pct: number | null; value_growth_pct: number | null
+  leverage: number | null; turnover: number | null; indiv_share: number | null; forced_20_pct: number | null
 }

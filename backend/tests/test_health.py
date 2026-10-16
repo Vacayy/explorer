@@ -20,15 +20,16 @@ class HealthTests(unittest.TestCase):
         self.conn = sqlite3.connect(":memory:")
         self.conn.executescript("""
             CREATE TABLE market_indicators(snapshot_date TEXT, indicator TEXT, value REAL);
-            CREATE TABLE stock_prices(stock_code TEXT, trade_date TEXT);
+            CREATE TABLE stock_prices(stock_code TEXT, trade_date TEXT, market_cap REAL);
             CREATE TABLE watch_evaluations(as_of TEXT); CREATE TABLE kr_movers(trade_date TEXT);
             CREATE TABLE raw_documents(source_type TEXT, fetched_at TEXT);
             CREATE TABLE job_runs(job TEXT, status TEXT, ran_at TEXT); CREATE TABLE us_briefings(created_at TEXT);
         """)
         self.conn.executemany("INSERT INTO market_indicators VALUES (?, 'index_kospi', 1)", [(d,) for d in DAYS])
 
-    def prices(self, day: str, n: int):
-        self.conn.executemany("INSERT INTO stock_prices VALUES (?, ?)", [(f"{i:06d}", day) for i in range(n)])
+    def prices(self, day: str, n: int, caps: int | None = None):
+        caps = n if caps is None else caps
+        self.conn.executemany("INSERT INTO stock_prices VALUES (?, ?, ?)", [(f"{i:06d}", day, 1e11 if i < caps else None) for i in range(n)])
 
     def test_holiday_is_not_counted_and_today_waits_for_close(self):
         self.assertEqual(health.expected_trading_day(self.conn, "1730", at("2026-10-13", "1500")), "2026-10-12")
@@ -44,6 +45,15 @@ class HealthTests(unittest.TestCase):
             item = next(i for i in health.report(self.conn, at("2026-10-12", "1800")) if i["key"] == "prices")
         self.assertEqual(item["status"], "stale")
         self.assertIn("105종목", item["detail"])
+
+    def test_missing_market_caps_on_the_latest_day_are_stale(self):
+        for day in DAYS[:3]:
+            self.prices(day, 2870)
+        self.prices("2026-10-12", 2755, caps=105)  # yfinance 보충분은 시총이 비어 있었다
+        with patch.object(health, "launchd_failures", return_value=[]), patch.object(health, "_history_as_of", return_value=None):
+            item = next(i for i in health.report(self.conn, at("2026-10-12", "1800")) if i["key"] == "prices")
+        self.assertEqual(item["status"], "stale")
+        self.assertIn("시가총액 105/2,755", item["detail"])
 
     def test_age_checks_and_alerts_only_carry_critical_items(self):
         now = at("2026-10-13", "1800")

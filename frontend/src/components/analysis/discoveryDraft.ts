@@ -1,7 +1,8 @@
 import type { StrategyCondition, StrategyDefinition, AnalysisSpec } from '@/components/analysis/types'
 
 export interface SearchDraft { question: string; asOf: string; within: number }
-export interface PurposeDraft { conditions: StrategyCondition[]; market: AnalysisSpec['market']; minimumCap: string; asOf: string }
+/** off = 쌓아 두었지만 꺼 둔 블록의 strategy_id (워크스페이스에서 넣다 빼기, D-224) */
+export interface PurposeDraft { conditions: StrategyCondition[]; market: AnalysisSpec['market']; minimumCap: string; asOf: string; off?: string[] }
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const day = (value: unknown) => typeof value === 'string' && (value === '' || /^\d{4}-\d{2}-\d{2}$/.test(value))
 export function isSearchDraft(value: unknown): value is SearchDraft {
@@ -10,6 +11,7 @@ export function isSearchDraft(value: unknown): value is SearchDraft {
 export function isPurposeDraft(value: unknown): value is PurposeDraft {
   return object(value) && ['all', 'KOSPI', 'KOSDAQ'].includes(String(value.market)) && day(value.asOf)
     && typeof value.minimumCap === 'string' && value.minimumCap.length <= 20
+    && (value.off === undefined || (Array.isArray(value.off) && value.off.length <= 12 && value.off.every(id => typeof id === 'string')))
     && Array.isArray(value.conditions) && value.conditions.length <= 12
     && value.conditions.every(c => object(c) && typeof c.strategy_id === 'string' && object(c.params) && Number.isInteger(c.within_days) && Number(c.within_days) >= 0 && Number(c.within_days) <= 250
       && Object.values(c.params).every(v => typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))))
@@ -26,6 +28,12 @@ export function stackConditions(current: StrategyCondition[], incoming: Strategy
     else conditions.push(condition)
   }
   return { conditions, added: conditions.length - current.length, duplicate, overflow }
+}
+
+/** 같은 조건 조합인지 — 서버가 숫자 매개변수를 다른 표기(0 ↔ 0.0)로 돌려줘도 같게 본다. */
+export function conditionSignature(conditions: StrategyCondition[]): string {
+  return JSON.stringify(conditions.map(c => [c.strategy_id, c.within_days,
+    Object.keys(c.params).sort().map(key => [key, typeof c.params[key] === 'number' ? Number(c.params[key]) : c.params[key]])]))
 }
 
 export function comparisonCodes(value: string | null, available: string[]): string[] {

@@ -9,7 +9,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { RefreshButton } from "@/components/shared/RefreshButton"
-import { formatNumber, formatUsd, formatPercent } from "@/utils/format"
+import { formatNumber, formatUsd, formatPercent, formatRelativeTime } from "@/utils/format"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
 import { UsBriefingSourcesDialog } from "@/components/home/UsBriefingSourcesDialog"
@@ -123,7 +124,6 @@ export function UsBriefingSection() {
                   <CitedText text={para} sources={sources} />
                 </p>
               ))}
-            {sources.length > 0 && <SourceList sources={sources} />}
           </div>
         )}
 
@@ -243,35 +243,28 @@ function CandidateList({ icon: Icon, title, items, accent }: {
   )
 }
 
-/** `[n]` 출처 표식 → 위첨자 링크. 출처 목록에 없는 번호는 평문으로 둔다(구 브리핑 호환). */
+/** `[n]` 출처 표식 → 위첨자 링크. 마우스를 올리면 출처(매체·제목·시각)를 보인다 — 하단 출처 목록 대신.
+ * 출처 목록에 없는 번호는 평문으로 둔다(구 브리핑 호환). */
 function CitedText({ text, sources }: { text: string; sources: UsBriefingSource[] }) {
   const byN = new Map(sources.map((s) => [s.n, s]))
   return <>{text.split(/(\[\d+\])/).map((part, i) => {
     const src = byN.get(Number(part.match(/^\[(\d+)\]$/)?.[1]))
-    return src ? <sup key={i}><SourceLink src={src} className="px-px text-primary hover:underline">{part}</SourceLink></sup> : part
+    return src ? <sup key={i}><HoverCard openDelay={150} closeDelay={100}>
+      <HoverCardTrigger asChild><SourceLink src={src} className="px-px text-primary hover:underline">{part}</SourceLink></HoverCardTrigger>
+      <HoverCardContent side="top" className="w-80 space-y-1 text-sm">
+        <p className="text-caption text-muted-foreground">[{src.n}] {src.publisher}{src.published_at ? ` · ${formatRelativeTime(src.published_at)}` : ""}</p>
+        {src.title && <p className="font-medium leading-snug">{src.title}</p>}
+        <p className="text-caption text-primary">{src.kind === "telegram" && src.doc_id != null ? "자료 상세 보기" : "원문 열기"} →</p>
+      </HoverCardContent>
+    </HoverCard></sup> : part
   })}</>
 }
 
-function SourceLink({ src, className, children }: { src: UsBriefingSource; className?: string; children: React.ReactNode }) {
-  const label = `${src.publisher}${src.title ? ` · ${src.title}` : ""}`
+/** HoverCardTrigger(asChild)가 넘기는 포인터 이벤트·ref를 그대로 링크에 전달한다. */
+function SourceLink({ src, className, children, ...rest }: { src: UsBriefingSource; className?: string; children: React.ReactNode } & React.ComponentProps<"a">) {
   if (src.kind === "telegram" && src.doc_id != null)
-    return <Link to={`/doc/${src.doc_id}`} title={label} className={className}>{children}</Link>
-  return <a href={src.url ?? undefined} target="_blank" rel="noreferrer" title={label} className={className}>{children}</a>
-}
-
-function SourceList({ sources }: { sources: UsBriefingSource[] }) {
-  return (
-    <ol className="space-y-0.5 border-t pt-2">
-      {sources.map((s) => (
-        <li key={s.n} className="flex min-w-0 gap-1.5 text-caption text-muted-foreground">
-          <span className="shrink-0 tabular-nums">[{s.n}]</span>
-          <SourceLink src={s} className="min-w-0 truncate hover:text-foreground">
-            <span className="text-foreground/70">{s.publisher}</span>{s.title ? ` · ${s.title}` : ""}
-          </SourceLink>
-        </li>
-      ))}
-    </ol>
-  )
+    return <Link {...rest} to={`/doc/${src.doc_id}`} className={className}>{children}</Link>
+  return <a {...rest} href={src.url ?? undefined} target="_blank" rel="noreferrer" className={className}>{children}</a>
 }
 
 function Banner({ tone, children }: { tone: "warn" | "info"; children: React.ReactNode }) {

@@ -2,6 +2,7 @@ import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
 import { IndexStrip } from "@/components/home/IndexStrip"
 import { AiActivityFeed } from "@/components/home/AiActivityFeed"
 import { RiskMonitoring } from '@/components/home/RiskMonitoring'
+import { RetailHeatCard } from '@/components/home/RetailHeatCard'
 import { MarketContext } from "@/components/home/MarketContext"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { KrMoversSection } from "@/components/home/KrMoversSection"
@@ -21,6 +22,7 @@ export default function HomePage() {
         <UsBriefingSection />
         <KrMoversSection />
         <RiskMonitoring />
+        <RetailHeatCard />
       </div>}
     </PageLayout>
   )

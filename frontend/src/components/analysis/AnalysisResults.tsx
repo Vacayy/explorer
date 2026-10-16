@@ -93,7 +93,7 @@ function CandidateTable({ items, selected, onSelect, signals, compared, onCompar
   </div>
 }
 
-export function AnalysisResults({ runId, result, onOpen, warnings = result.warnings }: { runId: string; result: AnalysisResult; onOpen: (id: string) => void; warnings?: string[] }) {
+export function AnalysisResults({ runId, result, onOpen, warnings = result.warnings, stacked = false }: { runId: string; result: AnalysisResult; onOpen: (id: string) => void; warnings?: string[]; stacked?: boolean }) {
   const [params, setParams] = useSearchParams()
   const ascending = params.get('sort') === 'cap_asc'
   const sorted = [...result.items].sort((a, b) => a.market_cap == null ? (b.market_cap == null ? 0 : 1) : b.market_cap == null ? -1 : ascending ? a.market_cap - b.market_cap : b.market_cap - a.market_cap)
@@ -113,7 +113,7 @@ export function AnalysisResults({ runId, result, onOpen, warnings = result.warni
   }, {})).sort((a, b) => b[1] - a[1])
   function select(code: string) {
     setParams(previous => { const next = new URLSearchParams(previous); next.set('candidate', code); return next }, { replace: true, preventScrollReset: true })
-    if (window.matchMedia('(max-width: 1023px)').matches) document.getElementById('discovery-candidate-preview')?.scrollIntoView({ block: 'start' })
+    if (stacked || window.matchMedia('(max-width: 1023px)').matches) document.getElementById('discovery-candidate-preview')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
   return <section aria-label="분석 결과" className="space-y-4">
     <div className="space-y-2">
@@ -125,15 +125,15 @@ export function AnalysisResults({ runId, result, onOpen, warnings = result.warni
 
     {candidate && params.get('candidate') && !result.items.some(item => item.code === params.get('candidate')) && <p role="status" className="text-sm text-muted-foreground">선택했던 종목이 이 결과에 없어 현재 정렬의 첫 후보를 표시합니다.</p>}
     {candidate && <CandidateComparison runId={runId} result={result} items={compared.flatMap(code => result.items.filter(item => item.code === code))} ascending={ascending} onClear={() => setCompared([])} />}
-    {candidate ? <div className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(260px,0.75fr)_minmax(0,1.65fr)]">
-      <section aria-label="후보 목록" className="min-w-0 rounded-xl bg-card p-2 lg:sticky lg:top-4">
+    {candidate ? <div className={`grid min-w-0 grid-cols-1 items-start gap-4 ${stacked ? '' : 'lg:grid-cols-[minmax(260px,0.75fr)_minmax(0,1.65fr)]'}`}>
+      <section aria-label="후보 목록" className={`min-w-0 rounded-xl bg-card p-2 ${stacked ? 'max-h-80 overflow-y-auto border' : 'lg:sticky lg:top-4'}`}>
         <p className="px-3 pb-2 pt-1 text-caption text-muted-foreground">종목을 선택해 차트와 근거를 확인하세요.</p>
         <CandidateTable items={sorted} selected={candidate.code} onSelect={select} signals={signals} compared={compared} onCompare={toggleCompare} ascending={ascending} onSort={toggleSort} />
       </section>
       <div className="min-w-0 space-y-3"><CandidateChart key={candidate.code} runId={runId} candidate={candidate} asOf={result.as_of} maPeriod={result.spec.ma_period} catalog={catalog} definitions={definitions} compared={compared} ascending={ascending} onBackToList={() => document.getElementById(`discovery-candidate-${candidate.code}`)?.focus()} />
         <Collapsible className="rounded-xl bg-card p-3"><CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-between whitespace-normal text-left">{candidate.name}에서 확인한 신호로 다른 종목 찾기<ChevronDown className="size-4 shrink-0" /></Button></CollapsibleTrigger><CollapsibleContent className="pt-3"><DiscoveryRecommendations compact key={candidate.code} runId={runId} stockCode={candidate.code} onOpen={onOpen} /></CollapsibleContent></Collapsible>
       </div>
-    </div> : <Card><CardContent className="space-y-2 py-8 text-center"><p className="font-medium">{counts.evaluated === 0 ? '평가 가능한 종목이 없습니다.' : '평가한 종목 중 모든 조건을 통과한 종목이 없습니다.'}</p><p className="text-sm text-muted-foreground">기간·시가총액 등 변경할 조건을 적으면 이전 검색 대상 전체에서 다시 찾습니다.</p><Button variant="outline" onClick={() => { const field = document.getElementById('discovery-followup-question'); field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }}>조건 완화해서 다시 찾기</Button></CardContent></Card>}
+    </div> : <Card><CardContent className="space-y-2 py-8 text-center"><p className="font-medium">{counts.evaluated === 0 ? '평가 가능한 종목이 없습니다.' : '평가한 종목 중 모든 조건을 통과한 종목이 없습니다.'}</p><p className="text-sm text-muted-foreground">{stacked ? '가운데 블록 중 ‘빼면 +N종목’이 붙은 조건을 끄고 다시 검색해 보세요.' : '기간·시가총액 등 변경할 조건을 적으면 이전 검색 대상 전체에서 다시 찾습니다.'}</p>{!stacked && <Button variant="outline" onClick={() => { const field = document.getElementById('discovery-followup-question'); field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }}>조건 완화해서 다시 찾기</Button>}</CardContent></Card>}
 
     {(counts.excluded > 0 || warnings.length > 0) && <Collapsible className="rounded-xl bg-card px-4 py-2"><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto w-full justify-between whitespace-normal text-left">자료 범위·미평가 사유 확인<ChevronDown className="size-4 shrink-0" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-4 pb-3 pt-3">
       <p className="text-caption text-muted-foreground">미평가 종목은 조건 탈락에 포함하지 않습니다. 조건 탈락에는 시가총액 등 앞선 조건에서 제외된 종목도 포함됩니다.</p>

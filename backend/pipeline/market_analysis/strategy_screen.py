@@ -47,6 +47,11 @@ def screen_catalog(data_dir, spec: dict, *, base_result: dict | None = None) -> 
         requirements[key] = {**requirement, "required_start": start}
 
     counts = {"universe": 0, "evaluated": 0, "matched": 0, "excluded": 0, "failed": 0, "unevaluated": 0}
+    # 조건별 집계(D-223): 결과 화면에서 어떤 블록을 빼면 몇 종목이 나오는지 보여준다. 순위 조건은
+    # 통과 집단에 따라 순위가 바뀌므로 제외. sole_blocker = 이 조건만 탈락·평가 불가이고 나머지는 통과.
+    plain = [c["strategy_id"] for c in conditions if c not in ranks]
+    funnel = {key: {"strategy_id": key, "passed": 0, "sole_blocker": 0} for key in plain}
+    funnel_evaluated = 0
     excluded, candidates, seen = [], [], set()
     scope = set(spec["universe_codes"]) if spec.get("universe_codes") is not None else None
     base_items = {item["code"]: item for item in (base_result or {}).get("items", [])}
@@ -120,6 +125,13 @@ def screen_catalog(data_dir, spec: dict, *, base_result: dict | None = None) -> 
                 if check["status"] == "unavailable":
                     unavailable.append({"strategy_id": key, "label": definition["label"],
                                         "reason": check.get("reason") or "insufficient_history"})
+            blocking = [key for key in plain if checks[key]["status"] != "pass"]
+            if len(blocking) == 1:
+                funnel[blocking[0]]["sole_blocker"] += 1
+            if not unavailable:
+                funnel_evaluated += 1
+                for key in plain:
+                    funnel[key]["passed"] += checks[key]["status"] == "pass"
             if unavailable:
                 excluded.append({**detail, "reason": unavailable[0]["reason"], "conditions": unavailable,
                                  "required_start": min(r["required_start"] for r in requirements.values())})
@@ -169,5 +181,6 @@ def screen_catalog(data_dir, spec: dict, *, base_result: dict | None = None) -> 
             "snapshot_id": manifest["snapshot_id"], "skill_version": SKILL_VERSION,
             "catalog_version": CATALOG_VERSION, "counts": counts, "items": items,
             "excluded": excluded, "warnings": list(dict.fromkeys(warnings)),
+            "condition_funnel": {"evaluated": funnel_evaluated, "conditions": list(funnel.values())},
             "strategy_definitions": [definitions[c["strategy_id"]] for c in conditions],
             **({"pattern_definition": base_result["pattern_definition"]} if base_result else {})}

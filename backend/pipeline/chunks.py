@@ -2,7 +2,10 @@
 
 - 문서 ≤ SINGLE_MAX 자는 1청크. 장문은 문단 경계로 CHUNK_CHARS 근처에서 끊고 OVERLAP만큼 겹친다.
 - 접두어 = "[소스·날짜] 제목 — 요약" (enrichments.summary 재사용). Anthropic Contextual Retrieval의
-  '청크를 문서 안에 위치시키기'를 이미 낸 비용으로 얻는다. 임베딩·BM25 둘 다 접두어+본문에 건다.
+  '청크를 문서 안에 위치시키기'를 이미 낸 비용으로 얻는다. BM25·근거 표시는 이 접두어+본문.
+- 임베딩은 요약을 뺀 "[소스·날짜] 제목" + 본문 — 모델(MiniLM)이 128토큰에서 자르는데 요약 접두어가 ~95토큰을
+  차지해 본문이 거의 안 들어갔다(한 영상 50청크 상호 유사도 0.95, D-221).
+- 문서 대표 벡터 doc_centroid_vec = 청크 벡터 평균(정규화) — 문서 디테일 '관련 문서'용(D-221).
 - 멱등: doc_chunks.content_hash == raw_documents.content_hash 면 스킵. 변경·신규만 재청킹·재임베딩.
 - 피드 검색(search.py, 문서 단위)은 그대로. 여기는 대화 근거 전용.
 """
@@ -66,6 +69,24 @@ def _serialize(vec) -> bytes:
 
 def _ensure_tables(vconn) -> None:
     vconn.execute(f"CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(embedding float[{EMBED_DIM}])")
+    vconn.execute(f"CREATE VIRTUAL TABLE IF NOT EXISTS doc_centroid_vec USING vec0(embedding float[{EMBED_DIM}])")
+
+
+def _embed_text(r, text: str) -> str:
+    return f"{make_prefix(r['source_type'], r['published_at'], r['title'], None)}\n{text}"
+
+
+def _store_centroids(conn, doc_ids) -> None:
+    """청크 벡터 평균(정규화)을 문서 대표 벡터로."""
+    import numpy as np
+    for did in doc_ids:
+        vecs = [np.frombuffer(e[0], dtype=np.float32) for e in conn.execute(
+            "SELECT v.embedding FROM chunk_vec v JOIN doc_chunks c ON c.id = v.rowid WHERE c.doc_id=?", (did,))]
+        conn.execute("DELETE FROM doc_centroid_vec WHERE rowid=?", (did,))
+        if vecs:
+            m = np.mean([v / (np.linalg.norm(v) or 1) for v in vecs], axis=0)
+            conn.execute("INSERT INTO doc_centroid_vec (rowid, embedding) VALUES (?, ?)",
+                         (did, _serialize(m / (np.linalg.norm(m) or 1))))
 
 
 def build_chunk_index(batch: int = 64, limit_docs: int | None = None) -> dict:
@@ -114,11 +135,13 @@ def build_chunk_index(batch: int = 64, limit_docs: int | None = None) -> dict:
                 "INSERT INTO doc_chunks (doc_id, idx, text, prefix, content_hash) VALUES (?,?,?,?,?)",
                 (r["id"], idx, text, prefix, r["content_hash"])).lastrowid
             conn.execute("INSERT INTO chunk_fts (rowid, prefix, text) VALUES (?,?,?)", (cid, prefix, text))
-            pending.append((cid, f"{prefix}\n{text}"))
+            pending.append((cid, _embed_text(r, text)))
             n_chunks += 1
         if len(pending) >= batch:
             flush()
     flush()
+    _store_centroids(conn, [r["id"] for r in todo])
+    conn.commit()
     total = conn.execute("SELECT COUNT(*) FROM doc_chunks").fetchone()[0]
     conn.close()
     return {"docs": len(todo), "chunks": n_chunks, "total_chunks": total, "orphans": len(orphans), "vec": "ok"}
@@ -132,7 +155,35 @@ def _delete_doc_chunks(conn, doc_id: int) -> None:
             conn.execute("DELETE FROM chunk_vec WHERE rowid=?", (cid,))
         except Exception:
             pass
+    try:
+        conn.execute("DELETE FROM doc_centroid_vec WHERE rowid=?", (doc_id,))
+    except Exception:
+        pass
     conn.execute("DELETE FROM doc_chunks WHERE doc_id=?", (doc_id,))
+
+
+def reembed_all(batch: int = 256) -> dict:
+    """기존 청크 전부를 현행 임베딩 텍스트로 다시 임베딩 + 문서 대표 벡터 재계산(재청킹 없음).
+    임베딩 텍스트 규칙을 바꿨을 때 1회 (scripts/build_search_index.py --reembed)."""
+    vconn = _vec_conn()
+    if vconn is None:
+        return {"vec": "unavailable"}
+    _ensure_tables(vconn)
+    model = _get_model()
+    rows = vconn.execute("""SELECT c.id, c.doc_id, c.text, rd.source_type, rd.published_at, rd.title
+        FROM doc_chunks c JOIN raw_documents rd ON rd.id = c.doc_id ORDER BY c.doc_id, c.idx""").fetchall()
+    for i in range(0, len(rows), batch):
+        chunk = rows[i:i + batch]
+        for r, emb in zip(chunk, model.embed([_embed_text(r, r["text"]) for r in chunk])):
+            vconn.execute("DELETE FROM chunk_vec WHERE rowid=?", (r["id"],))
+            vconn.execute("INSERT INTO chunk_vec (rowid, embedding) VALUES (?, ?)", (r["id"], _serialize(emb)))
+        vconn.commit()
+    docs = sorted({r["doc_id"] for r in rows})
+    for i in range(0, len(docs), 500):
+        _store_centroids(vconn, docs[i:i + 500])
+        vconn.commit()
+    vconn.close()
+    return {"chunks": len(rows), "docs": len(docs)}
 
 
 def chunk_index_ready() -> bool:

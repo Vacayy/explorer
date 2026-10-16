@@ -52,6 +52,10 @@ JOBS = [
     ("history", [PY, "scripts/refresh_market_history.py"],
      [{"Weekday": d, "Hour": 20, "Minute": 40} for d in range(1, 6)]),
     # 시장 국면·리스크 지표(D-076) — 국내 마감 뒤. 문서엔 '권장'으로만 있고 등록이 빠져 9-10부터 한 달 묵었다(D-222 점검으로 발견).
+    # 회사채 스프레드(D-230) — 미국 장 마감 뒤. 채권 데이터는 로컬 어댑터(git 제외)가 있을 때만, 없으면 skipped.
+    ("credit", [PY, "scripts/collect_credit.py"], {"Hour": 7, "Minute": 30}),
+    # 개인 투자 열기(D-231) — 협회 당일 집계 뒤. 한국거래소 개인 거래는 .env KRX_ID·KRX_PW 있을 때만.
+    ("retail", [PY, "scripts/collect_retail.py"], [{"Weekday": d, "Hour": 18, "Minute": 30} for d in range(1, 6)]),
     ("market", [PY, "scripts/snapshot_market.py"],
      [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
     ("krmovers", [PY, "scripts/snapshot_kr_movers.py"],          # D-108 — 신규진입 판정에 일별 필요
@@ -86,6 +90,9 @@ JOBS = [
      [{"Weekday": d, "Hour": 18, "Minute": 0} for d in range(1, 6)]),
     ("pfclose", [PY, "scripts/portfolio_alerts.py", "--close"],
      [{"Weekday": d, "Hour": 16, "Minute": 50} for d in range(1, 6)]),
+    # 실적 발언 모멘텀(D-217) — 매일 SEC 8-K·AV 컨콜 수집·추출·판정(미국 장 마감 뒤 아침), 주간 알림은 월요일 브리핑 뒤.
+    ("callmomentum", [PY, "scripts/call_momentum.py", "--daily"], {"Hour": 7, "Minute": 20}),
+    ("callmomentumweekly", [PY, "scripts/call_momentum.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 10}),
 ]
 
 

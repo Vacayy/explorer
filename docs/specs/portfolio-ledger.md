@@ -12,7 +12,7 @@
 - **어떤 GET 응답에도 원화 금액·수량을 싣지 않는다.** 응답은 비율(%)·가격(평단·종가)·날짜·종목만. 거래 내역 조회도 금액·수량 없이 날짜·유형·종목·체결가만.
 - 화면은 금액을 표시하지 않는다. 입력 폼에서 사용자가 친 금액만 예외(전송 후 폼 초기화).
 - 묶음 멤버(`stock_group_members`)에는 종목·편입일만 넣고 `quantity`·`avg_price`는 비워 둔다 — 기존 묶음 API가 `kind=portfolio`에서 원화 손익(`pnl`)을 계산하지 않게.
-- AI(대화 도구·브리핑·CodeAct 스냅샷)는 이 원장을 읽지 않는다. 나중에 AI 연결이 필요하면 비율 전용 요약 함수만 노출한다.
+- AI(브리핑·CodeAct 스냅샷)는 이 원장을 읽지 않는다. 대화(웹·텔레그램)는 비율 전용 요약 도구 `chat_tools.get_portfolio`만 쓴다(D-228) — 비중·평단 대비 수익률·평단·현재가·현금 비중·실현/미실현(원금 대비 %)·청산 내역과 운용 원칙 원문. 원화 금액·수량은 없다.
 - 저장소가 공개이므로 spec·코드·테스트·커밋에 실제 보유 금액을 쓰지 않는다(테스트는 가상 금액).
 
 ## 데이터
@@ -41,19 +41,28 @@ portfolio_transactions(
 - 종목 수익률 = 종가/평단 − 1. 비중 = 종목 평가액/총평가액(현금 포함).
 - **장중 시세(2026-10-08)**: 평일 09:00–15:40 KST에 포트폴리오를 조회하면, 보유 종목의 마지막 시세가 30분 넘었을 때만 네이버 실시간 시세(`pipeline/quotes.fetch_quotes`)로 `portfolio_quotes`(종목당 1행)를 갱신한다. 시세 날짜가 저장 종가보다 새로울 때만 '오늘' 평가에 쓰고(전일비는 거래소 전일 종가 대비 등락률), 16:10 종가가 들어오면 종가가 이긴다. 화면은 장중 시세를 쓰는 동안 30분마다 다시 조회하며 종목별 시세 시각을 보인다(조회 실패 시 시각이 그대로 남아 오래된 시세임이 드러난다). 별도 launchd 작업은 두지 않았다 — 장중 시세를 쓰는 곳이 이 화면뿐이고 랩탑 수면 중에는 어차피 돌지 않는다. 헤더 '시세 갱신' 버튼(`POST /api/portfolio/quotes/refresh`)은 30분 주기·장 시간과 무관하게 지금 다시 받는다(장 마감 뒤 16:35 일별 수집 전에도 오늘 KRX 종가를 바로 반영).
 
+## 실현 손익 (2026-10-14, D-226)
+
+매도는 평단을 유지하므로 매도 한 건의 실현 손익 = (매도가 − 그 시점 평단) × 매도 수량이다(`realized_trades`, 원장 재생 중 계산). 원화 합계는 내부 계산에만 쓰고 응답에는 비율만 싣는다.
+
+- **요약**: `realized_pct` = 실현 손익 합 ÷ 원금(입금 − 출금) × 100, `unrealized_pct` = 보유 종목 (평가액 − 평단 × 수량) 합 ÷ 원금 × 100. 계좌 수익률(TWR)은 그대로 주 지표다 — 입출금이 중간에 있으면 두 값의 합과 TWR이 다를 수 있다(원금 대비 단순 비율이기 때문).
+- **청산 내역**: 매도마다 종목·매수일(포지션 편입일)·매도일·보유 일수·평단·매도가·실현 수익률(매도가/평단 − 1)·전량/일부. 최근 매도부터.
+- 화면: 요약 카드에 '실현 손익'·'미실현 손익' 두 칸, 보유 종목 아래 '청산 내역' 표(매도가 없으면 숨김).
+- 수수료·거래세는 반영하지 않는다(범위 밖). 매도가는 사용자가 입력한 체결가.
+
 ## API (`routers/portfolio.py`, prefix `/api/portfolio`)
 
 | | 응답(비율 전용) |
 |---|---|
-| `GET /` | as_of, total_return_pct(TWR), day_return_pct, cash_weight_pct, holdings[code·name·weight_pct·return_pct·day_change_pct·avg_price·last_close·entry_date] |
+| `GET /` | as_of, total_return_pct(TWR), day_return_pct, cash_weight_pct, holdings[code·name·weight_pct·return_pct·day_change_pct·avg_price·last_close·entry_date], realized_pct·unrealized_pct(원금 대비), closed[code·name·entry_date·sell_date·holding_days·avg_price·sell_price·return_pct·full] |
 | `GET /history` | points[date·cum_return_pct·day_return_pct] |
 | `GET /transactions` | items[id·trade_date·kind·stock_code·name·price] (금액·수량 없음) |
-| `POST /transactions` | body {trade_date, kind, stock_code?, amount, price?, fund_shortfall?} → {ok, id} |
+| `POST /transactions` | body {trade_date, kind, stock_code?, amount?, price?, fund_shortfall?, sell_all?} → {ok, id}. `sell_all`(매도만)이면 금액 대신 그날까지의 보유 수량 × 체결가(비우면 그날 종가)를 서버가 계산 — 화면은 수량을 모른다(2026-10-15) |
 | `DELETE /transactions/{id}` | 삭제 후 원장 재검증(음수 수량·현금이 되면 409로 거부) |
 
 ## 화면 (`/portfolio`, 도크 독립 메뉴 '포트폴리오')
 
-1. 헤더: 제목, `거래 입력`(Dialog: 매수·매도·입금·출금, 종목 검색·날짜·금액·체결가 선택), `거래 내역`(Sheet: 금액 없는 목록, 삭제).
+1. 헤더: 제목, `거래 입력`(Dialog: 매수·매도·입금·출금, 종목 검색·날짜·금액·체결가 선택. 매수·매도는 '금액 / 수량 × 체결가' 입력 방식 선택 — 수량 방식은 체결가 필수, 계산 금액은 폼 안에서만 보임. 매도는 '전량' 체크 시 `sell_all`), `거래 내역`(Sheet: 금액 없는 목록, 삭제).
 2. 요약: 계좌 수익률·오늘·현금 비중 → 비중 파이차트 + 보유 표(비중·평단·현재가·수익률·전일비) → 일별 누적 수익률 차트.
 3. 종목 탭(URL `?stock=`): 가격 차트(평단 점선, 편입일 마커)에 기업 화면과 같은 기술적 분석(`TechnicalScan`: 신호 마커·구조선·핵심 관측·구조 그리기)을 기본으로 붙인다(`scan=0`이면 닫힘, `scan_within`·`scan_chart`는 기업 화면과 같은 URL 키) · 최근 공시 5 · 뉴스·관련 자료 5(누르면 `/doc/:id`, 뒤로가기 복귀).
 
@@ -74,4 +83,4 @@ portfolio_transactions(
 
 ## 범위 밖 (P1+)
 
-배당·수수료·세금, 해외 주식, 실현손익 분리 표시, 벤치마크(코스피) 대비, 브리핑·텔레그램 한 줄, AI 비율 요약 도구.
+배당·수수료·세금(실현 손익은 세전·수수료 전), 해외 주식, 벤치마크(코스피) 대비, 브리핑·텔레그램 한 줄, AI 비율 요약 도구.

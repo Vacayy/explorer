@@ -173,9 +173,26 @@ def repair(days: int, only_missing: bool = False, since: str | None = None, code
             conn.commit()
             n += len(rows)
             time.sleep(2)
+    filled = fill_market_cap(conn, start)
     conn.close()
-    print(f"[repair] {start}~ {'빈 날만' if only_missing else '교체'} {n}행 · 갱신 {len(done)}/{len(markets)}종목")
+    print(f"[repair] {start}~ {'빈 날만' if only_missing else '교체'} {n}행 · 갱신 {len(done)}/{len(markets)}종목 · 시총 보충 {filled}행")
     return done
+
+
+def fill_market_cap(conn, since: str) -> int:
+    """시가총액·주식 수가 빈 행(yfinance 보충분)을 같은 종목의 직전 주식 수 × 그날 종가로 채운다.
+
+    yfinance에는 시총·주식 수가 없어 보충 행이 비어 있었고, 발견 검색이 기준일 시총을 읽어 '-'·시총 조건 미평가가 됐다
+    (2026-10-14 확인: 10-12·13 2,755종목 중 105종목만 시총 보유). 주식 수는 증자·분할이 없으면 며칠 사이 그대로다.
+    """
+    cur = conn.execute("""UPDATE stock_prices AS s SET
+          shares = (SELECT p.shares FROM stock_prices p WHERE p.stock_code = s.stock_code AND p.trade_date < s.trade_date
+                    AND p.shares IS NOT NULL ORDER BY p.trade_date DESC LIMIT 1)
+        WHERE s.trade_date >= ? AND s.shares IS NULL AND s.close IS NOT NULL""", (since,))
+    conn.execute("""UPDATE stock_prices SET market_cap = shares * close
+        WHERE trade_date >= ? AND market_cap IS NULL AND shares IS NOT NULL AND close IS NOT NULL""", (since,))
+    conn.commit()
+    return cur.rowcount
 
 
 def verify(sample: list[str] | None = None) -> list[str]:
@@ -274,6 +291,7 @@ if __name__ == "__main__":
     parser.add_argument("--codes", default=None, help="쉼표 구분 종목코드 (repair 대상 제한)")
     parser.add_argument("--verify", action="store_true", help="직전 거래일 종가를 네이버 KRX 값과 대조")
     parser.add_argument("--fix", action="store_true", help="--verify 불일치 종목을 --since부터 다시 교체")
+    parser.add_argument("--fill-cap", action="store_true", help="--since부터 시총·주식 수 빈 행을 직전 주식 수로 채움")
     args = parser.parse_args()
 
     init_db()
@@ -288,6 +306,10 @@ if __name__ == "__main__":
         if bad and args.fix:
             repair(args.days, since=args.since, codes=bad)
             verify(bad)
+    elif args.fill_cap:
+        conn = get_connection()
+        print(f"[fill-cap] {args.since} 이후 {fill_market_cap(conn, args.since)}행")
+        conn.close()
     elif args.backfill:
         backfill(args.days, args.limit)
     else:

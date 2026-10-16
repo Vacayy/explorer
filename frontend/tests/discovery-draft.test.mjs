@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { conditionInputError, comparisonCodes, isFollowupDraft, isPurposeDraft, isSearchDraft, recoveryScope, stackConditions } from '../src/components/analysis/discoveryDraft.ts'
+import { conditionInputError, comparisonCodes, isFollowupDraft, isPurposeDraft, isSearchDraft, recoveryScope, stackConditions, conditionSignature } from '../src/components/analysis/discoveryDraft.ts'
 
 test('comparison URL accepts only result members, without duplicates and at most three', () => {
   assert.deepEqual(comparisonCodes('000001,000001,missing,000002,000003,000004', ['000001', '000002', '000003', '000004']), ['000001', '000002', '000003'])
@@ -50,4 +50,14 @@ test('stacking presets keeps existing blocks, skips duplicates and stops at twel
   const capped = stackConditions(full, [c('a'), c('b')])
   assert.equal(capped.conditions.length, 12)
   assert.deepEqual([capped.added, capped.overflow], [1, 1])
+})
+
+test('workspace drafts keep switched-off blocks and compare conditions by value', () => {
+  const draft = { market: 'all', asOf: '', minimumCap: '0', conditions: [], off: ['high_52w'] }
+  assert.equal(isPurposeDraft(draft), true)
+  assert.equal(isPurposeDraft({ ...draft, off: [1] }), false)
+  const a = [{ strategy_id: 'momentum_up', params: { skip: 21, lookback: 252 }, within_days: 1 }]
+  const b = [{ strategy_id: 'momentum_up', params: { lookback: 252.0, skip: 21 }, within_days: 1 }]
+  assert.equal(conditionSignature(a), conditionSignature(b))
+  assert.notEqual(conditionSignature(a), conditionSignature([{ ...a[0], within_days: 5 }]))
 })

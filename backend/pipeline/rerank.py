@@ -26,11 +26,26 @@ def _get():
         if _enc is None and not _failed:
             try:
                 from fastembed.rerank.cross_encoder import TextCrossEncoder
-                _enc = TextCrossEncoder(RERANK_MODEL, local_files_only=True)
+                from config import FASTEMBED_CACHE
+                _enc = TextCrossEncoder(RERANK_MODEL, cache_dir=FASTEMBED_CACHE, local_files_only=True)
             except Exception as e:  # noqa: BLE001 — 미가용은 조용히 degrade하되 이유는 남긴다
                 _failed = True
                 print(f"[rerank] 비활성 — {type(e).__name__}: {str(e)[:120]}", flush=True)
     return _enc
+
+
+def ensure_model() -> str:
+    """리랭커 모델 파일 확보(인덱스 빌드 잡에서 호출 — 대화 요청 중에는 받지 않는다, D-175).
+    이미 받아 두었으면 로드 없이 'cached'. 캐시가 지워졌으면 다시 받는다(D-232)."""
+    if not RERANK_MODEL:
+        return "disabled"
+    from pathlib import Path
+    from config import FASTEMBED_CACHE
+    if any(Path(FASTEMBED_CACHE).glob(f"models--*{RERANK_MODEL.split('/')[-1]}*/snapshots/*/**/*.onnx")):
+        return "cached"
+    from fastembed.rerank.cross_encoder import TextCrossEncoder
+    TextCrossEncoder(RERANK_MODEL, cache_dir=FASTEMBED_CACHE)
+    return "downloaded"
 
 
 def rerank(query: str, texts: list[str]) -> list[float] | None:

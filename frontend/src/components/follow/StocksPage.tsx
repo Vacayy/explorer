@@ -18,6 +18,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCompanySearch } from '@/hooks/useCompanySearch'
+import { WatchReasonsCard } from '@/components/follow/WatchReasonsCard'
 import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, useMigrateWatchlist, usePutRules, useRemoveMember, useStrategyCatalog } from '@/hooks/useGroups'
 import { formatKrw, formatNumber, formatPercent } from '@/utils/format'
 import type { StockGroupDetail, StockGroupKind, StockGroupMember, StrategyCatalogItem, WatchRule, WatchRuleInput } from '@/types'
@@ -105,6 +106,7 @@ function GroupDetail({ groupId, onBack }: { groupId: number; onBack: () => void 
         {detail.rules.default.length === 0 && Object.keys(detail.rules.members).length === 0 && <span className="text-hypothesis">조건이 없습니다. ‘기본 조건’에서 전략을 추가하세요.</span>}
       </div>
       <MemberTable detail={detail} onEditRules={code => setEditing(code)} />
+      {detail.kind === 'watch' && <WatchReasonsCard detail={detail} />}
       <AddMember detail={detail} />
       <SignalHistory groupId={groupId} />
       <RulesSheet detail={detail} target={editing} onClose={() => setEditing(false)} />

@@ -115,8 +115,9 @@ def _embed_statements(texts: list[str]) -> list[list[float]]:
     global _embed_model
     if _embed_model is None:
         from fastembed import TextEmbedding
+        from config import FASTEMBED_CACHE
         from pipeline.search import EMBED_MODEL
-        _embed_model = TextEmbedding(EMBED_MODEL)
+        _embed_model = TextEmbedding(EMBED_MODEL, cache_dir=FASTEMBED_CACHE)
     return [list(e) for e in _embed_model.embed(texts)]
 
 

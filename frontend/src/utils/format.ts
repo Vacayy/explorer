@@ -142,3 +142,20 @@ export function formatRelativeTime(iso: string): string {
   const d = new Date(t);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
+
+/**
+ * Format an interest-rate level with 2 decimals (e.g. 7.45%) — 채권 수익률·국채 금리 수준.
+ */
+export function formatYield(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${value.toFixed(2)}%`
+}
+
+/**
+ * Format basis points (e.g. 239, signed change +71 / -6). 0은 부호 없이.
+ */
+export function formatBp(value: number | null | undefined, signed = false): string {
+  if (value === null || value === undefined) return "-"
+  const rounded = Math.round(value)
+  return `${signed && rounded > 0 ? "+" : ""}${rounded.toLocaleString("ko-KR")}`
+}

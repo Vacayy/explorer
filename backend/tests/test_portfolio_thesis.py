@@ -11,11 +11,12 @@ def db():
     c = sqlite3.connect(":memory:")
     c.row_factory = sqlite3.Row
     c.executescript("""CREATE TABLE questions (id INTEGER PRIMARY KEY, text TEXT, status TEXT, lead_verdict TEXT, confirm_verdict TEXT,
-        divergence TEXT, verdict_summary TEXT);
+        divergence TEXT, verdict_summary TEXT, created_by TEXT DEFAULT 'portfolio');
         CREATE TABLE sub_questions (id INTEGER PRIMARY KEY, question_id INT, text TEXT, falsifier TEXT, verdict TEXT);""" + pa.SCHEMA)
     pt.ensure_schema(c)
     pt.ensure_schema(c)                                         # 두 번 불러도 안전
-    c.execute("INSERT INTO questions VALUES (1,'가 논지','tracking','leaning_yes','mixed','none',NULL,'000001')")
+    c.execute("INSERT INTO questions (id, text, status, lead_verdict, confirm_verdict, divergence, verdict_summary, stock_code) "
+              "VALUES (1,'가 논지','tracking','leaning_yes','mixed','none',NULL,'000001')")
     c.execute("INSERT INTO sub_questions VALUES (1,1,'HBM 수요 유지?','HBM 가격 하락 전환','leaning_yes')")
     return c
 

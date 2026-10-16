@@ -39,6 +39,18 @@ class LedgerTests(unittest.TestCase):
         self.assertAlmostEqual(pos.qty, 15.0)          # 20 - 150/30
         self.assertAlmostEqual(led.cash, 850.0)
 
+    def test_realized_trades_use_average_at_sale_and_mark_full_exit(self):
+        txs = [
+            {"id": 1, "trade_date": "2026-01-01", "kind": "deposit", "amount": 1000, "stock_code": None, "price": None},
+            {"id": 2, "trade_date": "2026-01-01", "kind": "buy", "amount": 200, "stock_code": "AAAAAA", "price": 10},   # 20주
+            {"id": 3, "trade_date": "2026-01-05", "kind": "sell", "amount": 120, "stock_code": "AAAAAA", "price": 12},  # 10주 +20
+            {"id": 4, "trade_date": "2026-01-08", "kind": "sell", "amount": 80, "stock_code": "AAAAAA", "price": 8},    # 10주 −20
+        ]
+        closed, gain = pf.realized_trades(txs)
+        self.assertAlmostEqual(gain, 0.0)
+        self.assertEqual([(c["return_pct"], c["full"], c["holding_days"]) for c in closed], [(20.0, False, 4), (-20.0, True, 7)])
+        self.assertEqual({c["avg_price"] for c in closed}, {10.0})   # 매도는 평단 유지
+
     def test_twr_ignores_deposit(self):
         txs = [
             {"id": 1, "trade_date": "2026-01-01", "kind": "deposit", "amount": 100, "stock_code": None, "price": None},
@@ -82,6 +94,16 @@ class StoreTests(unittest.TestCase):
             pf.add_transaction(self.conn, {"trade_date": "2026-01-02", "kind": "buy", "stock_code": "AAAAAA",
                                            "amount": 1, "price": 10, "note": ""}, fund_shortfall=False)
 
+    def test_sell_all_uses_holding_quantity_at_trade_date(self):
+        tx(self.conn, trade_date="2026-01-01", kind="deposit", amount=1000)
+        tx(self.conn, trade_date="2026-01-01", kind="buy", stock_code="AAAAAA", amount=500, price=10)   # 50주
+        tx(self.conn, trade_date="2026-01-03", kind="sell", stock_code="AAAAAA", amount=None, price=12, sell_all=True)
+        led = pf.replay(pf._txs(self.conn, pf.group_id(self.conn)))
+        self.assertNotIn("AAAAAA", led.positions)
+        self.assertAlmostEqual(led.cash, 500 + 600)
+        with self.assertRaises(pf.LedgerError):
+            tx(self.conn, trade_date="2026-01-04", kind="sell", stock_code="AAAAAA", amount=None, price=12, sell_all=True)
+
     def test_price_defaults_to_last_close(self):
         tx(self.conn, trade_date="2026-01-03", kind="buy", stock_code="AAAAAA", amount=120)
         self.assertEqual(self.conn.execute("SELECT price FROM portfolio_transactions WHERE kind='buy'").fetchone()["price"], 12)
@@ -89,9 +111,13 @@ class StoreTests(unittest.TestCase):
     def test_read_outputs_carry_no_amounts_or_quantities(self):
         tx(self.conn, trade_date="2026-01-01", kind="deposit", amount=777)
         tx(self.conn, trade_date="2026-01-01", kind="buy", stock_code="AAAAAA", amount=500, price=10)
+        tx(self.conn, trade_date="2026-01-02", kind="sell", stock_code="AAAAAA", amount=120, price=12)
         s = pf.summary(self.conn)
-        self.assertAlmostEqual(s["total_return_pct"], (277 + 50 * 12) / 777 * 100 - 100, places=1)
-        self.assertAlmostEqual(s["cash_weight_pct"], 277 / 877 * 100, places=1)
+        self.assertAlmostEqual(s["total_return_pct"], (397 + 40 * 12) / 777 * 100 - 100, places=1)
+        self.assertAlmostEqual(s["realized_pct"], 10 * 2 / 777 * 100, places=2)      # 원금 대비 비율만
+        self.assertAlmostEqual(s["unrealized_pct"], 40 * 2 / 777 * 100, places=2)
+        self.assertEqual(len(s["closed"]), 1)
+        self.assertAlmostEqual(s["cash_weight_pct"], 397 / (397 + 40 * 12) * 100, places=1)
         blobs = [s, pf.history(self.conn), pf.transactions(self.conn)]
         text = repr(blobs)
         for banned in ("amount", "qty", "quantity", "value", "777", "500", "277"):
