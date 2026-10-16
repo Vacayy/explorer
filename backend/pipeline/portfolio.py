@@ -234,18 +234,19 @@ def market_hours(now: datetime | None = None) -> bool:
     return now.weekday() < 5 and (9, 0) <= (now.hour, now.minute) < (15, 40)
 
 
-def refresh_quotes(conn: sqlite3.Connection, codes: set[str], fetch=None, ttl: int = QUOTE_TTL, force: bool = False) -> None:
-    """장중이고 마지막 갱신이 30분 넘었으면 네이버 실시간 시세로 portfolio_quotes를 덮어쓴다.
+def refresh_quotes(conn: sqlite3.Connection, codes: set[str], fetch=None, ttl: int = QUOTE_TTL, force: bool = False) -> bool:
+    """장중이고 마지막 갱신이 30분 넘었으면 네이버 실시간 시세로 portfolio_quotes를 덮어쓴다. 받으러 갔으면 True.
 
+    조회(summary·history)는 이 함수를 부르지 않는다 — 갱신은 POST /quotes/refresh와 pfintraday 작업만.
     조회 실패 시 기존 값을 유지하되, 응답의 quoted_at(종목별 시세 시각)이 그대로 남아 화면이 오래된 시세임을 드러낸다.
     """
     if not codes or not (force or market_hours()):      # force = 화면의 '시세 갱신' 버튼(장 시간·TTL 무시)
-        return
+        return False
     q = ",".join("?" * len(codes))
     rows = conn.execute(f"SELECT stock_code, fetched_at FROM portfolio_quotes WHERE stock_code IN ({q})", tuple(codes)).fetchall()
     fresh = {r["stock_code"] for r in rows if r["fetched_at"] and time.time() - r["fetched_at"] < ttl}
     if fresh >= codes and not force:
-        return
+        return False
     if fetch is None:
         from pipeline.quotes import fetch_quotes as fetch
     now = time.time()
@@ -254,6 +255,7 @@ def refresh_quotes(conn: sqlite3.Connection, codes: set[str], fetch=None, ttl: i
             conn.execute("INSERT OR REPLACE INTO portfolio_quotes VALUES (?,?,?,?,?,?)",
                          (qt["stock_code"], qt["price"], qt.get("change_pct"), qt.get("market_status"), qt.get("traded_at"), now))
     conn.commit()
+    return True
 
 
 def _live(conn: sqlite3.Connection, codes: set[str], prices: dict[str, list[tuple[str, float]]]) -> dict[str, dict]:
@@ -340,23 +342,25 @@ def transactions(conn: sqlite3.Connection) -> list[dict]:
 
 
 def _priced(conn: sqlite3.Connection, txs: list[dict], ledger: Ledger):
-    """종가 시계열 + (장중이면) 보유 종목 최신 시세."""
+    """종가 시계열 + 저장된 보유 종목 장중 시세(종가보다 새 날짜만). 읽기 전용 — 네트워크·쓰기 없음."""
     codes = {t["stock_code"] for t in txs if t["stock_code"]}
-    refresh_quotes(conn, set(ledger.positions))
     prices = _prices(conn, codes, txs[0]["trade_date"])
     live = _live(conn, set(ledger.positions), prices)
     return _with_live(prices, live), live
 
 
-def refresh_now(conn: sqlite3.Connection) -> dict:
-    """보유 종목 시세를 지금 다시 받는다. 받은 시각을 돌려준다(실패하면 이전 시각 그대로 — 화면이 오래된 시세임을 보인다)."""
+def refresh_now(conn: sqlite3.Connection, force: bool = True) -> dict:
+    """보유 종목 시세를 다시 받는다. force=False면 장 시간·30분 TTL을 지킨다(화면 진입·주기 갱신).
+
+    받은 시각을 돌려준다(실패하면 이전 시각 그대로 — 화면이 오래된 시세임을 보인다). refreshed = 실제로 받으러 갔는지.
+    """
     held = set(replay(_txs(conn, group_id(conn))).positions)
-    refresh_quotes(conn, held, force=True)
+    refreshed = refresh_quotes(conn, held, force=force)
     if not held:
-        return {"quoted_at": None, "count": 0}
+        return {"quoted_at": None, "count": 0, "refreshed": False}
     q = ",".join("?" * len(held))
     row = conn.execute(f"SELECT max(traded_at) at, count(*) n FROM portfolio_quotes WHERE stock_code IN ({q})", tuple(held)).fetchone()
-    return {"quoted_at": row["at"], "count": row["n"]}
+    return {"quoted_at": row["at"], "count": row["n"], "refreshed": refreshed}
 
 
 def history(conn: sqlite3.Connection) -> list[dict]:

@@ -100,11 +100,11 @@ def create_thesis(body: ThesisCreate):
 
 
 @router.post("/quotes/refresh")
-def refresh_quotes():
-    """'시세 갱신' 버튼 — 30분 주기·장 시간과 무관하게 보유 종목 네이버 실시간 시세를 지금 받는다."""
+def refresh_quotes(force: bool = Query(True, description="false면 장 시간·30분 TTL을 지킨다(화면 진입·주기 갱신)")):
+    """보유 종목 네이버 실시간 시세 갱신. 기본은 '시세 갱신' 버튼(장 시간·TTL 무시). GET 조회는 저장된 시세만 읽는다."""
     conn = pf.connect()
     try:
-        return pf.refresh_now(conn)
+        return pf.refresh_now(conn, force=force)
     finally:
         conn.close()
 

@@ -16,7 +16,7 @@ import { HoldingDetail } from '@/components/portfolio/HoldingDetail'
 import { ExposureCard } from '@/components/portfolio/ExposureCard'
 import { EventsCard } from '@/components/portfolio/EventsCard'
 import { PrinciplesCard } from '@/components/portfolio/PrinciplesCard'
-import { usePortfolio, usePortfolioHistory, useRefreshPortfolioQuotes } from '@/hooks/usePortfolio'
+import { useAutoRefreshPortfolioQuotes, usePortfolio, usePortfolioHistory, useRefreshPortfolioQuotes } from '@/hooks/usePortfolio'
 import { formatNumber, formatPercent, formatRatio } from '@/utils/format'
 import type { PortfolioSummary } from '@/types'
 
@@ -27,6 +27,7 @@ const tone = (v: number | null | undefined) => v == null || v === 0 ? '' : v > 0
 export default function PortfolioPage() {
   const summary = usePortfolio()
   const refresh = useRefreshPortfolioQuotes()
+  useAutoRefreshPortfolioQuotes(!!summary.data?.holdings.length)
   const quoted = summary.data?.quoted_at
   const basis = quoted ? `장중 ${quoted.slice(11, 16)} 시세 · 30분마다 갱신` : summary.data?.as_of ? `${summary.data.as_of} 종가 기준` : ''
   return <PageLayout header={<PageHeader title="포트폴리오" description={basis ? `${basis} · 비율만 표시` : '비율만 표시'}
