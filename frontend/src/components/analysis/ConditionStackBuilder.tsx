@@ -11,9 +11,10 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { StrategyConditionEditor } from '@/components/analysis/StrategyConditionEditor'
-import { DISCOVERY_SCENARIOS, SCENARIO_GROUPS, scenarioGroup, type ScenarioGroup } from '@/components/analysis/discoveryScenarios'
+import { SCENARIO_GROUPS, scenarioGroup, type ScenarioGroup } from '@/components/analysis/discoveryScenarios'
 import { MAX_STACKED_CONDITIONS, stackConditions, type PurposeDraft } from '@/components/analysis/discoveryDraft'
 import type { AnalysisResult, AnalysisSpec, StrategyCondition, StrategyDefinition } from '@/components/analysis/types'
 import { formatNumber } from '@/utils/format'
@@ -79,8 +80,9 @@ export function ConditionPalette({ draft, definitions, busy, onChange }: {
   const [params, setParams] = useSearchParams()
   const presets = useRecommendations()
   const [search, setSearch] = useState('')
-  const group = scenarioGroup(params.get('scenario'), params.get('intent') ?? '')
-  const scenarios = DISCOVERY_SCENARIOS.filter(item => group === 'all' || item.group === group)
+  const all = presets.data?.items ?? []
+  const group = scenarioGroup(params.get('scenario'), params.get('intent') ?? '', all)
+  const scenarios = all.filter(item => item.scenario && (group === 'all' || item.scenario === group))
   const stacked = new Set(draft.conditions.map(c => c.strategy_id))
   const full = draft.conditions.length >= MAX_STACKED_CONDITIONS
   const term = search.trim().toLocaleLowerCase()
@@ -96,10 +98,11 @@ export function ConditionPalette({ draft, definitions, busy, onChange }: {
       <h3 className="text-sm font-medium">빠른 시작</h3>
       <ToggleGroup type="single" value={group} onValueChange={value => { if (value) changeGroup(value as ScenarioGroup) }} variant="outline" size="sm" aria-label="빠른 시작 범위" className="max-w-full flex-wrap justify-start">{SCENARIO_GROUPS.map(option => <ToggleGroupItem key={option.id} value={option.id} disabled={busy} className="min-h-9 px-2.5 text-caption">{option.label}</ToggleGroupItem>)}</ToggleGroup>
       {presets.isError && <ErrorState message="빠른 시작 조건을 불러오지 못했습니다." onRetry={() => presets.refetch()} />}
+      {presets.isPending && <div className="space-y-1">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>}
       <ul className="space-y-1">{scenarios.map(scenario => {
         const conditions = presetConditions(scenario.id)
         const applied = conditions.length > 0 && conditions.every(c => stacked.has(c.strategy_id))
-        return <li key={scenario.id}><Button type="button" variant="ghost" disabled={busy || !conditions.length} aria-pressed={applied} title={scenario.description}
+        return <li key={scenario.id}><Button type="button" variant="ghost" disabled={busy || !conditions.length} aria-pressed={applied} title={scenario.purpose}
           className={`h-auto min-h-10 w-full justify-between gap-2 whitespace-normal px-2 py-1.5 text-left font-normal ${applied ? 'bg-primary/5 text-primary' : ''}`} onClick={() => togglePreset(scenario.id)}>
           <span className="min-w-0"><span className="block break-keep text-sm">{scenario.name}</span><span className="block text-caption text-muted-foreground">{scenario.tag} · 조건 {conditions.length || '–'}개</span></span>
           {applied ? <Check className="size-4 shrink-0" aria-hidden="true" /> : <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}

@@ -20,51 +20,98 @@ DEFAULT_ROOT = Path(__file__).resolve().parents[3] / "logs" / "market-discovery"
 ACTIVE = {"queued", "running"}
 
 
-PHRASES = {
-    "trend-volume": "5·20·60일 이동평균이 정배열이고 전일 대비 거래량이 증가",
-    "liquid-trend": "5·20·60일 이동평균이 정배열인 종목 중 거래량 상위 20개",
-    "trend-strength": "5·20·60일 이동평균이 정배열인 종목 중 20일 수익률 상위 20개",
-    "new-high": "52주 신고가를 기록",
-    "high-20d-volume": "20일 신고가를 갱신하고 전일 대비 거래량이 증가",
-    "ytd-high": "연중 신고가를 기록",
-    "profile-breakout": "최근 5거래일 안에 20일 매물대를 상향 돌파",
-    "pullback": "최근 5거래일 안에 10일 신고가를 돌파한 뒤 1% 되돌림",
-    "trend-transition": "최근 5거래일 안에 20일 이동평균이 60일 이동평균을 골든크로스",
-    "short-cross": "최근 5거래일 안에 5일 이동평균이 20일 이동평균을 골든크로스",
-    "slope-up": "최근 5거래일 안에 20일 이동평균이 상승 반전",
-    "reversal-confirmed": "최근 5거래일 안에 20일 기준 추세전환이 3일 연속 확인",
-    "macd-zero": "최근 5거래일 안에 MACD(12,26,9)가 0선을 상향 돌파",
-    "stochastic-buy": "최근 5거래일 안에 Stochastic slow(10,5,5) 과매도 매수 신호 발생",
-    "low-52w": "52주 신저가를 기록",
-    "volume-growth": "거래량 증가율 상위 20개",
-    "lens-range-break": "고점·저점이 수평인 박스권이면서 최근 5거래일 안에 전고점을 상향 돌파",
-    "lens-spring": "최근 5거래일 안에 전저점을 이탈한 뒤 다시 위로 마감(거짓 하향 이탈)",
-    "lens-pullback-20": "200일 이동평균 위에 있고 20일 이격도가 98.5~101.5",
-    "lens-squeeze": "볼린저 밴드폭이 120봉 최소(스퀴즈)",
-    "lens-oversold-exit": "최근 10거래일 안에 RSI(14)가 30을 위로 벗어났고 저점이 높아지는 중",
-    "lens-momentum-strong": "12-1 모멘텀이 양이고 ADX(14) 25 이상이며 200일 이동평균 위",
-    "lens-profile-above": "최근 5거래일 안에 60일 매물대 중심선을 상향 돌파했고 200일 이동평균 위",
-    "lens-reenter-lower": "최근 5거래일 안에 볼린저 하단 밖에서 안으로 복귀",
-}
-
-# 상황 렌즈(D-198): 지표 이름을 모르는 사용자가 '상황'으로 고르는 조합. (id, 이름, 보는 것, 못 보는 것, [(strategy_id, within, params)])
-LENSES = [
-    ("lens-range-break", "박스권 상단을 막 넘은 종목", "고점·저점이 수평이던 박스의 상단을 최근 5거래일 안에 종가로 넘은 종목",
-     "넘은 뒤 되돌아올지(거짓 돌파)는 며칠 뒤에야 판정됩니다.", [("trading_range", 1, {}), ("resistance_break", 5, {})]),
-    ("lens-spring", "바닥을 깨는 듯하다 되돌아온 종목(스프링)", "직전 저점을 종가로 깼다가 곧 다시 위로 마감한 종목",
-     "매집인지 분산인지, 왜 되돌아왔는지는 판정하지 않습니다.", [("false_breakdown", 5, {})]),
-    ("lens-pullback-20", "장기 추세 위에서 20일선까지 되돌아온 종목", "200일선 위에 있으면서 종가가 20일선 ±1.5% 안으로 내려온 종목",
-     "되돌림이 여기서 멈출지는 알 수 없습니다.", [("close_above_sma", 1, {}), ("disparity_low", 1, {"threshold_pct": 101.5}), ("disparity_high", 1, {"threshold_pct": 98.5})]),
-    ("lens-squeeze", "변동성이 가장 좁아진 종목(볼린저 스퀴즈)", "볼린저 밴드폭이 최근 120봉 중 가장 좁은 종목",
-     "좁아진 뒤 어느 방향으로 벌어질지는 말하지 않습니다.", [("bollinger_squeeze", 1, {})]),
-    ("lens-oversold-exit", "과매도에서 빠져나오며 저점을 높이는 종목", "RSI가 30을 위로 벗어났고(10거래일 안) 스윙 저점이 높아지는 종목",
-     "반등의 이유와 지속 여부는 보지 않습니다.", [("rsi_exit_oversold", 10, {}), ("higher_lows", 1, {})]),
-    ("lens-momentum-strong", "1년 모멘텀이 양이고 추세가 강한 종목", "12-1 모멘텀 양, ADX 25 이상, 200일선 위를 모두 만족",
-     "모멘텀이 언제 꺾일지는 보지 않습니다. 강한 추세는 이미 많이 오른 뒤일 수 있습니다.", [("momentum_up", 1, {}), ("adx_strong_trend", 1, {}), ("close_above_sma", 1, {})]),
-    ("lens-profile-above", "매물대 위로 올라선 종목", "60일 매물대 중심선을 최근 5거래일 안에 넘었고 200일선 위인 종목",
-     "매물대는 일봉 근사라 체결가별 실제 매물이 아닙니다.", [("volume_profile_up_60d", 5, {}), ("close_above_sma", 1, {})]),
-    ("lens-reenter-lower", "볼린저 하단 밖에서 안으로 복귀한 종목", "종가가 하단 밖에 있다가 최근 5거래일 안에 밴드 안으로 돌아온 종목",
-     "밴드 접촉·복귀 자체는 반전 신호가 아닙니다(Bollinger 규칙).", [("bollinger_reenter_lower", 5, {})]),
+# 추천 조건 묶음 — 단일 목록 (P6a: 빠른 시작 12·상황 렌즈 8·목적별 추천 16을 하나로).
+# 좌측 '빠른 시작'·라이브러리 '검색 제안'·문장으로 찾기의 '조건 추가'가 모두 이 목록을 읽는다.
+# scenario = 빠른 시작 범위(rising 상승 후보 · recovery 반등·전환 · other 방향 미정 — 방향 없는 관찰을 상승으로 넣지 않는다)
+# group = 라이브러리 묶음 · tag = 빠른 시작 한 줄 · misses = 이 조건이 못 보는 것(상황 렌즈, D-198)
+# phrase = 문장으로 찾기 입력창에 덧붙이는 조건 문장 · conditions = [(strategy_id, within_days, params)]
+# 상태 조건은 기준일(1), 사건 조건(교차·돌파·반전)은 최근 5거래일 안 발생으로 잡아 후보를 확보한다.
+PRESETS = [
+    # 상승 후보
+    {"id": "high-20d-volume", "scenario": "rising", "group": "돌파·신고가", "name": "거래량을 동반한 돌파", "tag": "돌파",
+     "purpose": "20일 고점을 넘으며 거래량이 증가한 종목", "phrase": "20일 신고가를 갱신하고 전일 대비 거래량이 증가",
+     "conditions": [("high_20d", 1, {}), ("volume_increase", 1, {})]},
+    {"id": "new-high", "scenario": "rising", "group": "돌파·신고가", "name": "52주 신고가 갱신", "tag": "신고가",
+     "purpose": "지난 1년의 고점을 새로 넘어선 종목", "phrase": "52주 신고가를 기록", "conditions": [("high_52w", 1, {})]},
+    {"id": "lens-range-break", "scenario": "rising", "group": "상황 렌즈", "name": "횡보 구간의 돌파", "tag": "돌파",
+     "purpose": "고점·저점이 수평이던 박스의 상단을 최근 5거래일 안에 종가로 넘은 종목",
+     "misses": "넘은 뒤 되돌아올지(거짓 돌파)는 며칠 뒤에야 판정됩니다.",
+     "phrase": "고점·저점이 수평인 박스권이면서 최근 5거래일 안에 전고점을 상향 돌파",
+     "conditions": [("trading_range", 1, {}), ("resistance_break", 5, {})]},
+    {"id": "lens-momentum-strong", "scenario": "rising", "group": "상황 렌즈", "name": "강한 상승 추세", "tag": "추세 지속",
+     "purpose": "12-1 모멘텀 양, ADX 25 이상, 200일선 위를 모두 만족",
+     "misses": "모멘텀이 언제 꺾일지는 보지 않습니다. 강한 추세는 이미 많이 오른 뒤일 수 있습니다.",
+     "phrase": "12-1 모멘텀이 양이고 ADX(14) 25 이상이며 200일 이동평균 위",
+     "conditions": [("momentum_up", 1, {}), ("adx_strong_trend", 1, {}), ("close_above_sma", 1, {})]},
+    {"id": "lens-pullback-20", "scenario": "rising", "group": "상황 렌즈", "name": "상승 흐름의 되돌림", "tag": "눌림",
+     "purpose": "200일선 위에 있으면서 종가가 20일선 ±1.5% 안으로 내려온 종목",
+     "misses": "되돌림이 여기서 멈출지는 알 수 없습니다.", "phrase": "200일 이동평균 위에 있고 20일 이격도가 98.5~101.5",
+     "conditions": [("close_above_sma", 1, {}), ("disparity_low", 1, {"threshold_pct": 101.5}), ("disparity_high", 1, {"threshold_pct": 98.5})]},
+    {"id": "lens-profile-above", "scenario": "rising", "group": "상황 렌즈", "name": "매물대 위로 올라선 흐름", "tag": "가격대 돌파",
+     "purpose": "60일 매물대 중심선을 최근 5거래일 안에 넘었고 200일선 위인 종목",
+     "misses": "매물대는 일봉 근사라 체결가별 실제 매물이 아닙니다.",
+     "phrase": "최근 5거래일 안에 60일 매물대 중심선을 상향 돌파했고 200일 이동평균 위",
+     "conditions": [("volume_profile_up_60d", 5, {}), ("close_above_sma", 1, {})]},
+    {"id": "trend-volume", "scenario": "rising", "group": "추세 지속", "name": "정배열 + 거래량 증가", "tag": "추세 지속",
+     "purpose": "지속되는 추세에 거래가 붙는 후보 발견", "phrase": "5·20·60일 이동평균이 정배열이고 전일 대비 거래량이 증가",
+     "conditions": [("sma_bullish_order", 1, {}), ("volume_increase", 1, {})]},
+    {"id": "liquid-trend", "scenario": "rising", "group": "추세 지속", "name": "정배열 중 거래량 상위", "tag": "추세 지속",
+     "purpose": "거래가 활발한 추세 후보 발견", "phrase": "5·20·60일 이동평균이 정배열인 종목 중 거래량 상위 20개",
+     "conditions": [("sma_bullish_order", 1, {}), ("rank_volume", 1, {})]},
+    {"id": "trend-strength", "scenario": "rising", "group": "추세 지속", "name": "정배열 중 20일 수익률 상위", "tag": "추세 지속",
+     "purpose": "최근 한 달 가장 강했던 추세 종목 발견", "phrase": "5·20·60일 이동평균이 정배열인 종목 중 20일 수익률 상위 20개",
+     "conditions": [("sma_bullish_order", 1, {}), ("rank_return_20d", 1, {})]},
+    {"id": "ytd-high", "scenario": "rising", "group": "돌파·신고가", "name": "연중 신고가", "tag": "신고가",
+     "purpose": "올해 최고가를 새로 쓴 종목 조사", "phrase": "연중 신고가를 기록", "conditions": [("high_ytd", 1, {})]},
+    {"id": "profile-breakout", "scenario": "rising", "group": "돌파·신고가", "name": "20일 매물대 상향돌파", "tag": "가격대 돌파",
+     "purpose": "저항 구간을 최근 5거래일 안에 넘은 후보 발견", "phrase": "최근 5거래일 안에 20일 매물대를 상향 돌파",
+     "conditions": [("volume_profile_up_20d", 5, {})]},
+    {"id": "pullback", "scenario": "rising", "group": "돌파·신고가", "name": "신고가 돌파 후 눌림", "tag": "눌림",
+     "purpose": "10일 신고가를 넘긴 뒤 1% 되돌린 종목 관찰", "phrase": "최근 5거래일 안에 10일 신고가를 돌파한 뒤 1% 되돌림",
+     "conditions": [("breakout_pullback_10d", 5, {})]},
+    # 반등·전환
+    {"id": "reversal-confirmed", "scenario": "recovery", "group": "추세 전환", "name": "전환 후 유지되는 흐름", "tag": "전환 확인",
+     "purpose": "방향 전환 뒤 일정 기간 조건을 유지한 종목", "phrase": "최근 5거래일 안에 20일 기준 추세전환이 3일 연속 확인",
+     "conditions": [("trend_reversal_confirmed", 5, {})]},
+    {"id": "lens-oversold-exit", "scenario": "recovery", "group": "상황 렌즈", "name": "과매도 후 회복", "tag": "회복",
+     "purpose": "RSI가 30을 위로 벗어났고(10거래일 안) 스윙 저점이 높아지는 종목",
+     "misses": "반등의 이유와 지속 여부는 보지 않습니다.",
+     "phrase": "최근 10거래일 안에 RSI(14)가 30을 위로 벗어났고 저점이 높아지는 중",
+     "conditions": [("rsi_exit_oversold", 10, {}), ("higher_lows", 1, {})]},
+    {"id": "lens-spring", "scenario": "recovery", "group": "상황 렌즈", "name": "저점 이탈 후 재진입", "tag": "가격 회복",
+     "purpose": "직전 저점을 종가로 깼다가 곧 다시 위로 마감한 종목",
+     "misses": "매집인지 분산인지, 왜 되돌아왔는지는 판정하지 않습니다.",
+     "phrase": "최근 5거래일 안에 전저점을 이탈한 뒤 다시 위로 마감(거짓 하향 이탈)",
+     "conditions": [("false_breakdown", 5, {})]},
+    {"id": "lens-reenter-lower", "scenario": "recovery", "group": "상황 렌즈", "name": "밴드 하단에서 복귀", "tag": "평균 회귀",
+     "purpose": "종가가 하단 밖에 있다가 최근 5거래일 안에 밴드 안으로 돌아온 종목",
+     "misses": "밴드 접촉·복귀 자체는 반전 신호가 아닙니다(Bollinger 규칙).",
+     "phrase": "최근 5거래일 안에 볼린저 하단 밖에서 안으로 복귀", "conditions": [("bollinger_reenter_lower", 5, {})]},
+    {"id": "trend-transition", "scenario": "recovery", "group": "추세 전환", "name": "중기 추세 전환", "tag": "전환",
+     "purpose": "중기 방향이 바뀐 기업의 새 재료 조사", "phrase": "최근 5거래일 안에 20일 이동평균이 60일 이동평균을 골든크로스",
+     "conditions": [("golden_cross_20_60", 5, {})]},
+    {"id": "short-cross", "scenario": "recovery", "group": "추세 전환", "name": "단기 골든크로스(5,20)", "tag": "전환",
+     "purpose": "짧은 조정 뒤 다시 방향을 잡는 종목 발견", "phrase": "최근 5거래일 안에 5일 이동평균이 20일 이동평균을 골든크로스",
+     "conditions": [("golden_cross_5_20", 5, {})]},
+    {"id": "slope-up", "scenario": "recovery", "group": "추세 전환", "name": "20일 이평 상승반전", "tag": "전환",
+     "purpose": "하락하던 중기선이 고개를 든 종목 조사", "phrase": "최근 5거래일 안에 20일 이동평균이 상승 반전",
+     "conditions": [("sma_slope_up_20d", 5, {})]},
+    {"id": "macd-zero", "scenario": "recovery", "group": "모멘텀 지표", "name": "MACD 0선 상향돌파", "tag": "모멘텀",
+     "purpose": "모멘텀이 플러스로 넘어온 종목 발견", "phrase": "최근 5거래일 안에 MACD(12,26,9)가 0선을 상향 돌파",
+     "conditions": [("macd_zero_cross", 5, {})]},
+    {"id": "stochastic-buy", "scenario": "recovery", "group": "모멘텀 지표", "name": "Stochastic 과매도 매수 신호", "tag": "반등 초입",
+     "purpose": "짧은 과매도 뒤 반등 초입 후보 관찰", "phrase": "최근 5거래일 안에 Stochastic slow(10,5,5) 과매도 매수 신호 발생",
+     "conditions": [("stochastic_slow_buy", 5, {})]},
+    # 방향 미정 — 다음 방향을 말하지 않는 관찰
+    {"id": "lens-squeeze", "scenario": "other", "group": "상황 렌즈", "name": "변동성이 좁아진 구간", "tag": "방향 미정",
+     "purpose": "볼린저 밴드폭이 최근 120봉 중 가장 좁은 종목",
+     "misses": "좁아진 뒤 어느 방향으로 벌어질지는 말하지 않습니다.", "phrase": "볼린저 밴드폭이 120봉 최소(스퀴즈)",
+     "conditions": [("bollinger_squeeze", 1, {})]},
+    {"id": "volume-growth", "scenario": "other", "group": "거래 활황", "name": "거래량이 급증한 흐름", "tag": "거래 변화",
+     "purpose": "전일 대비 거래량 증가율 상위 · 가격 방향은 별도 확인", "phrase": "거래량 증가율 상위 20개",
+     "conditions": [("rank_volume_growth", 1, {})]},
+    {"id": "low-52w", "scenario": "other", "group": "바닥·역발상", "name": "52주 신저가", "tag": "바닥권",
+     "purpose": "장기 바닥권에 있는 기업의 사정 조사", "phrase": "52주 신저가를 기록", "conditions": [("low_52w", 1, {})]},
 ]
 
 
@@ -150,37 +197,17 @@ class DiscoveryService:
         return self.analysis.store.public(state)
 
     def recommendations(self, run_id=None, stock_code=None):
-        # (id, 그룹, 이름, 목적, [(strategy_id, within_days)]) — 보유 일봉으로 계산하는 목적별 예시. PHRASES는 입력창에 덧붙이는 조건 문장.
-        # 상태 조건은 기준일(1), 사건 조건(교차·돌파·반전)은 최근 5거래일 안 발생으로 잡아 후보를 확보한다.
-        templates = [
-            ("trend-volume", "추세 지속", "정배열 + 거래량 증가", "지속되는 추세에 거래가 붙는 후보 발견", [("sma_bullish_order", 1), ("volume_increase", 1)]),
-            ("liquid-trend", "추세 지속", "정배열 중 거래량 상위", "거래가 활발한 추세 후보 발견", [("sma_bullish_order", 1), ("rank_volume", 1)]),
-            ("trend-strength", "추세 지속", "정배열 중 20일 수익률 상위", "최근 한 달 가장 강했던 추세 종목 발견", [("sma_bullish_order", 1), ("rank_return_20d", 1)]),
-            ("new-high", "돌파·신고가", "52주 신고가", "긴 박스권을 벗어나는 종목 조사", [("high_52w", 1)]),
-            ("high-20d-volume", "돌파·신고가", "20일 신고가 + 거래량 증가", "단기 고점을 거래량과 함께 넘는 후보 발견", [("high_20d", 1), ("volume_increase", 1)]),
-            ("ytd-high", "돌파·신고가", "연중 신고가", "올해 최고가를 새로 쓴 종목 조사", [("high_ytd", 1)]),
-            ("profile-breakout", "돌파·신고가", "20일 매물대 상향돌파", "저항 구간을 최근 5거래일 안에 넘은 후보 발견", [("volume_profile_up_20d", 5)]),
-            ("pullback", "돌파·신고가", "신고가 돌파 후 눌림", "10일 신고가를 넘긴 뒤 1% 되돌린 종목 관찰", [("breakout_pullback_10d", 5)]),
-            ("trend-transition", "추세 전환", "중기 추세 전환", "중기 방향이 바뀐 기업의 새 재료 조사", [("golden_cross_20_60", 5)]),
-            ("short-cross", "추세 전환", "단기 골든크로스(5,20)", "짧은 조정 뒤 다시 방향을 잡는 종목 발견", [("golden_cross_5_20", 5)]),
-            ("slope-up", "추세 전환", "20일 이평 상승반전", "하락하던 중기선이 고개를 든 종목 조사", [("sma_slope_up_20d", 5)]),
-            ("reversal-confirmed", "추세 전환", "추세전환 확인형", "전환 뒤 며칠 유지된 종목만 추리기", [("trend_reversal_confirmed", 5)]),
-            ("macd-zero", "모멘텀 지표", "MACD 0선 상향돌파", "모멘텀이 플러스로 넘어온 종목 발견", [("macd_zero_cross", 5)]),
-            ("stochastic-buy", "모멘텀 지표", "Stochastic 과매도 매수 신호", "짧은 과매도 뒤 반등 초입 후보 관찰", [("stochastic_slow_buy", 5)]),
-            ("low-52w", "바닥·역발상", "52주 신저가", "장기 바닥권에 있는 기업의 사정 조사", [("low_52w", 1)]),
-            ("volume-growth", "거래 활황", "거래량 증가율 상위", "전일 대비 거래가 가장 크게 늘어난 종목 관찰", [("rank_volume_growth", 1)]),
-        ]
         definitions = {item["id"]: item for item in catalog()}
         items = []
         generic = ["종목별 이력 부족·가격 보정·관측 거래일의 한계는 실행 결과에서 확인합니다.",
                    "기술적 신호만으로 자금 유입의 원인을 확인할 수 없습니다."]
-        entries = [(key, group, name, purpose, None, [(code, within, {}) for code, within in conditions]) for key, group, name, purpose, conditions in templates]
-        entries += [(key, "상황 렌즈", name, purpose, misses, conditions) for key, name, purpose, misses, conditions in LENSES]
-        for key, group, name, purpose, misses, conditions in entries:
+        for preset in PRESETS:
+            misses = preset.get("misses")
             normalized = [normalize_condition({"strategy_id": code, "params": {**definitions[code]["defaults"], **params}, "within_days": within})
-                          for code, within, params in conditions]
+                          for code, within, params in preset["conditions"]]
             spec = AnalysisSpec.model_validate({"mode": "catalog", "strategy_conditions": normalized}).model_dump(mode="json")
-            items.append({"id": key, "group": group, "name": name, "purpose": purpose, "phrase": PHRASES.get(key), "misses": misses,
+            items.append({"id": preset["id"], "scenario": preset["scenario"], "group": preset["group"], "name": preset["name"],
+                          "tag": preset["tag"], "purpose": preset["purpose"], "phrase": preset["phrase"], "misses": misses,
                           "reason": "보유 일봉으로 계산하는 목적별 탐색 예시입니다. 성과 순위에 따른 추천이 아닙니다.",
                           "limitations": ([misses] if misses else []) + generic,
                           "spec": spec, "availability": "일봉 도구 지원 · 종목별 자료 충족 여부는 실행 시 판정",
