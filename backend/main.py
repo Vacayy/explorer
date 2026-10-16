@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config import MEDIA_PATH
 from database import init_db
-from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, onchain, kpi
+from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, kpi
 from routers import signals, compare, consensus, index_data
 from routers import telegram_feed
 from routers import blog_feed
@@ -46,7 +46,6 @@ app.include_router(ir_notes.router)
 app.include_router(stock_prices.router)
 app.include_router(business.router)
 app.include_router(industries.router)
-app.include_router(onchain.router)
 app.include_router(kpi.router)
 app.include_router(signals.router)
 app.include_router(compare.router)

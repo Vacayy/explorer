@@ -62,9 +62,6 @@ import AdminPage from "@/components/admin/AdminPage"
 import MemoryReadingPage from "@/components/expectations/MemoryReadingPage"
 import ExpectationsPage from "@/components/expectations/ExpectationsPage"
 
-// Discovery
-import OnchainPage from "@/components/onchain/OnchainPage"
-
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
 import BacktestPage from "@/components/analysis/BacktestPage"
@@ -258,7 +255,7 @@ export default function App() {
             <Route path="discover/industry" element={<Navigate to="/map?view=chains" replace />} />
             <Route path="discover/screener" element={<Navigate to="/discover" replace />} />
             <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
-            <Route path="discover/alt-data" element={<OnchainPage />} />
+            <Route path="discover/alt-data" element={<Navigate to="/discover" replace />} />
 
             {/* Analysis */}
             <Route path="analysis/backtests" element={<BacktestPage />} />
@@ -295,7 +292,7 @@ export default function App() {
 
             {/* Legacy redirects */}
             <Route path="industry" element={<Navigate to="/discover/industry" replace />} />
-            <Route path="onchain" element={<Navigate to="/discover/alt-data" replace />} />
+            <Route path="onchain" element={<Navigate to="/discover" replace />} />
             <Route path="company/:stockCode/:tab" element={<LegacyRedirect />} />
 
             {/* Catch all */}
