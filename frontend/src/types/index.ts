@@ -106,6 +106,8 @@ export interface IndustryMember {
 export interface IndustryDetail {
   group: IndustryGroup;
   members: IndustryMember[];
+  /** 멤버가 속한 산업 맵 대분류(sector_map) 상위 3 — 두 섹터 체계를 잇는 링크용 */
+  map_groups?: { name: string; members: number }[];
 }
 
 export interface IndustryCandidate {

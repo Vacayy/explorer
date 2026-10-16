@@ -44,7 +44,7 @@ import type { IndustryMember, IndustryCandidate } from "@/types"
 const CATEGORY_OPTIONS = ["소재", "부품", "장비", "완제품", "서비스", "기타"]
 
 /**
- * /follow/universe — 담당 섹터 커버리지(밸류체인) 큐레이션.
+ * 산업·섹터 › 유니버스(/map?view=universe, 옛 /follow/universe) — 담당 섹터 커버리지(밸류체인) 큐레이션.
  * 기계가 후보 제안 → 사람이 체크·승인. 산업 그룹 → 밸류체인 단계(category)별 멤버.
  */
 export default function UniversePage() {
@@ -147,6 +147,17 @@ export default function UniversePage() {
           <div className="flex items-center gap-3">
             {detail?.group.description && (
               <p className="text-sm text-muted-foreground">{detail.group.description}</p>
+            )}
+            {/* 산업 맵(sector_map 대분류)으로 — 체계가 달라 멤버가 속한 대분류 상위를 보인다 */}
+            {!!detail?.map_groups?.length && (
+              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                <span>산업 맵에서 보기</span>
+                {detail.map_groups.map((g) => (
+                  <Badge key={g.name} variant="outline" className="font-normal" asChild>
+                    <Link to={`/map?group=${encodeURIComponent(g.name)}`}>{g.name} <span className="tabular-nums text-muted-foreground">{g.members}</span></Link>
+                  </Badge>
+                ))}
+              </div>
             )}
             <Button
               size="sm"

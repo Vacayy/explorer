@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   CartesianGrid, Cell, LabelList, ReferenceLine, ResponsiveContainer,
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
  * x=장기 RS(11개월 수익률 백분위, 구조적 강도) · y=단기 RS(1개월, 현재 수급)
  * 크기=시총 · 색=5일 흐름 · hover=1~3주 전 궤적. 사분면: 주도/부상/소외/과열·경계.
  * 그룹 축: KSIC 165 → 투자 언어 대분류 18 (LLM 시드, sector_map).
+ * 산업·섹터 탭(SectorsPage)의 '산업 맵' 뷰. 선택 섹터 = ?group= (다른 화면이 이 섹터로 링크한다).
  */
 
 interface TrailPoint { weeks_ago: number; rs_long: number | null; rs_short: number | null }
@@ -39,7 +40,14 @@ const flowColor = (chg: number) => {
 export default function SectorMapPage() {
   const navigate = useNavigate()
   const [hovered, setHovered] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [params, setParams] = useSearchParams()
+  const selected = params.get("group")
+  const setSelected = (g: string | null) => setParams((prev) => {
+    const next = new URLSearchParams(prev)
+    if (g) next.set("group", g)
+    else next.delete("group")
+    return next
+  }, { replace: true })
   const { data, isLoading, isError, refetch } = useQuery(
     apiQuery<{ as_of: string | null; groups: SectorGroup[] }>({
       key: ["spine", "sector-map"], url: "/api/spine/sector-map", staleTime: STALE.medium,
@@ -111,7 +119,7 @@ export default function SectorMapPage() {
                   onClick={(g) => setSelected((g as unknown as SectorGroup).name)}>
                   {data.groups.map((g) => (
                     <Cell key={g.name} fill={flowColor(g.chg_5d)} stroke="var(--card)" strokeWidth={1}
-                      opacity={hovered && hovered !== g.name ? 0.25 : 1} cursor="pointer" />
+                      opacity={(hovered ?? selected) && (hovered ?? selected) !== g.name ? 0.25 : 1} cursor="pointer" />
                   ))}
                   <LabelList dataKey="name" position="top" style={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
                 </Scatter>
@@ -120,6 +128,10 @@ export default function SectorMapPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* 선택 섹터 — 다른 화면에서 ?group=으로 들어오면 바로 보이게 표 위에 */}
+      {selected && <ValueChain group={selected} onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
+      {selected && <GroupMembers group={selected} onGo={(code) => navigate(`/analyze/${code}/summary`)} />}
 
       {/* 구성 테이블 */}
       <Card>
@@ -167,8 +179,6 @@ export default function SectorMapPage() {
 
       {/* 글로벌 AI 컴퓨트 스택 — 국내 섹터가 아니라 산점도엔 없지만 밸류체인은 상시 노출 */}
       {!selected && <ValueChain group="AI 컴퓨트·인프라" onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
-      {selected && <ValueChain group={selected} onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
-      {selected && <GroupMembers group={selected} onGo={(code) => navigate(`/analyze/${code}/summary`)} />}
     </PageContainer>
   )
 }
@@ -247,7 +257,8 @@ function GroupMembers({ group, onGo }: { group: string; onGo: (code: string) => 
         <CardTitle className="text-sm">{group} — 소속 종목 <span className="font-normal text-muted-foreground">(RS는 전 종목 대비 백분위)</span></CardTitle>
       </CardHeader>
       <CardContent className="px-0 overflow-x-auto">
-        {isLoading ? <div className="px-4 py-3"><Skeleton className="h-5 w-full" /></div> : (
+        {isLoading ? <div className="px-4 py-3"><Skeleton className="h-5 w-full" /></div>
+          : !data?.items.length ? <p className="px-4 py-3 text-sm text-muted-foreground">산업 맵 대분류에 '{group}' 소속 종목이 없습니다.</p> : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">

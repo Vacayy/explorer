@@ -99,7 +99,7 @@ def get_group_detail(group_id: int):
 
     if not stock_codes:
         conn.close()
-        return {"group": dict(group), "members": []}
+        return {"group": dict(group), "members": [], "map_groups": []}
 
     sc_placeholders = ",".join("?" for _ in stock_codes)
 
@@ -167,6 +167,15 @@ def get_group_detail(group_id: int):
             if name not in bs_by_corp[cc][year]:
                 bs_by_corp[cc][year][name] = _parse_amount(r["thstrm_amount"])
 
+    # 산업 맵 대분류(sector_map) 분포 — 두 섹터 체계를 합치지 않고 '맵에서 보기' 링크만 (P6a)
+    from pipeline.sector_rs import _members as _map_members
+    map_of = _map_members(conn)
+    tally: dict[str, int] = {}
+    for sc in stock_codes:
+        if map_of.get(sc):
+            tally[map_of[sc]] = tally.get(map_of[sc], 0) + 1
+    map_groups = [{"name": g, "members": n} for g, n in sorted(tally.items(), key=lambda kv: -kv[1])[:3]]
+
     conn.close()
 
     # 4. Compute per-member metrics
@@ -209,6 +218,7 @@ def get_group_detail(group_id: int):
     return {
         "group": dict(group),
         "members": enriched,
+        "map_groups": map_groups,
     }
 
 

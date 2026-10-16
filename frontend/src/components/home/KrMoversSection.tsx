@@ -79,7 +79,7 @@ export function KrMoversSection() {
           <div className="space-y-1">
             {clusters.map((c) => (
               <div key={c.label} className="flex items-center gap-2 text-xs">
-                <span className="w-28 shrink-0 truncate">{c.label}</span>
+                <Link to={`/map?group=${encodeURIComponent(c.label)}`} title="산업 맵에서 이 섹터 보기" className="w-28 shrink-0 truncate hover:underline">{c.label}</Link>
                 <div className="relative h-3 flex-1 rounded bg-muted overflow-hidden">
                   <div className="absolute inset-y-0 left-0 bg-primary/70 rounded" style={{ width: `${c.share_pct}%` }} />
                 </div>

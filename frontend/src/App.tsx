@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type CSSProperties } from "react"
-import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, Outlet } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
@@ -26,7 +26,6 @@ import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import HomePage, { HomeBriefingPage, HomeMacroPage, HomeRiskPage } from "@/components/home/HomePage"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
-import UniversePage from "@/components/follow/UniversePage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
 import CreditPage from "@/components/follow/CreditPage"
@@ -51,7 +50,7 @@ import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import QuestionsPage from "@/components/knowledge/QuestionsPage"
 import ThesisAuditPage from "@/components/thesis/ThesisAuditPage"
 import QuestionDetail from "@/components/knowledge/QuestionDetail"
-import SectorMapPage from "@/components/map/SectorMapPage"
+import SectorsPage from "@/components/sectors/SectorsPage"
 import NarrativePage from "@/components/explore/NarrativePage"
 import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import WorldviewPage from "@/components/explore/WorldviewPage"
@@ -62,7 +61,6 @@ import MemoryReadingPage from "@/components/expectations/MemoryReadingPage"
 import ExpectationsPage from "@/components/expectations/ExpectationsPage"
 
 // Discovery
-import IndustryPage from "@/components/industry/IndustryPage"
 import OnchainPage from "@/components/onchain/OnchainPage"
 import ScreenerPage from "@/components/discovery/ScreenerPage"
 
@@ -203,19 +201,6 @@ function AskRedirect() {
   return <Navigate to={`/chat${search}`} replace />
 }
 
-function IndustryRoute() {
-  const navigate = useNavigate()
-  return (
-    <IndustryPage
-      onSelectCompany={(c) => {
-        if (c.stock_code) {
-          navigate(`/analyze/${c.stock_code}/summary`)
-        }
-      }}
-    />
-  )
-}
-
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -233,7 +218,7 @@ export default function App() {
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="follow/stocks" element={<StocksPage />} />
-            <Route path="follow/universe" element={<UniversePage />} />
+            <Route path="follow/universe" element={<Navigate to="/map?view=universe" replace />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
             <Route path="follow/credit" element={<CreditPage />} />
@@ -251,7 +236,7 @@ export default function App() {
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />
-            <Route path="map" element={<SectorMapPage />} />
+            <Route path="map" element={<SectorsPage />} />
             <Route path="narrative" element={<NarrativePage />} />
             <Route path="narrative/history" element={<NarrativeHistory />} />
             <Route path="knowledge/ontology" element={<WorldviewPage />} />
@@ -268,7 +253,7 @@ export default function App() {
 
             {/* Discovery */}
             <Route path="discover" element={<MarketAnalysisPage />} />
-            <Route path="discover/industry" element={<IndustryRoute />} />
+            <Route path="discover/industry" element={<Navigate to="/map?view=chains" replace />} />
             <Route path="discover/screener" element={<ScreenerPage />} />
             <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
             <Route path="discover/alt-data" element={<OnchainPage />} />
