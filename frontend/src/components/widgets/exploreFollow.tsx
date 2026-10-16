@@ -40,7 +40,7 @@ export function TradeBody({ h }: WidgetBodyProps) {
   return <div className="flex h-full flex-col gap-2">
     <WidgetHero value={<span className={tone(top.yoy)}>{formatPercent(top.yoy == null ? null : top.yoy * 100)}</span>}
       aside={<span className="truncate text-sm text-muted-foreground">{top.item_name} · 기여 {formatRatio((top.contribution ?? 0) * 100)}</span>} />
-    <p className="text-[13px] text-muted-foreground">전년 동월 대비 · 급등 <span className="text-up">{d.surge.length}</span> · 급감 <span className="text-down">{d.plunge.length}</span></p>
+    <p className="text-[13px] text-muted-foreground">전년 동월 대비 · 급등 <span className="text-up">{d.groups.reduce((n, g) => n + g.surge, 0)}</span> · 급감 <span className="text-down">{d.groups.reduce((n, g) => n + g.plunge, 0)}</span></p>
     {h > 2 && <ul className="min-h-0 divide-y overflow-hidden text-[13px]">
       {rows.slice(1, h > 3 ? 5 : 3).map(r => (
         <li key={r.hs_code} className="flex items-center gap-2 py-1.5">

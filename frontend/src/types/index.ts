@@ -1112,7 +1112,8 @@ export interface TradeHighlightRow {
 }
 export interface TradeHighlights {
   period: string | null; total_usd: number
-  surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]
+  surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]   // 상위 limit개만
+  groups: { group_label: string; count: number; value: number; surge: number; plunge: number }[]   // 판정 수는 전 품목 기준
 }
 export interface TradeStockItem {
   hs_code: string; item_name: string; rel: string | null; period: string | null

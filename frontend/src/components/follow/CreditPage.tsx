@@ -51,7 +51,7 @@ export default function CreditPage() {
       <h2 className="text-xl font-bold">회사채 스프레드</h2>
       <span className="text-caption text-muted-foreground">회사당 대표 채권 1개 · 일별 종가 수익률 − 같은 만기 미 국채{data.as_of ? ` · ${data.as_of} 기준` : ''}</span>
     </div>
-    {widest[0] && (widest[0].chg_1m ?? 0) > 0 && <p className="text-sm text-muted-foreground">
+    {data.configured && collected && widest[0] && (widest[0].chg_1m ?? 0) > 0 && <p className="text-sm text-muted-foreground">
       1개월 새 가장 벌어진 곳 <span className="font-medium text-foreground">{widest[0].name}</span> <span className="tabular-nums text-up">{formatBp(widest[0].chg_1m, true)}bp</span>
       {widest.slice(1, 3).filter(r => (r.chg_1m ?? 0) > 0).map(r => <span key={r.ticker}> · {r.name} <span className="tabular-nums text-up">{formatBp(r.chg_1m, true)}bp</span></span>)}
       {rows.some(r => r.hy) && <> · HY {rows.filter(r => r.hy).length}곳</>}

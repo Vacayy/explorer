@@ -54,7 +54,7 @@ export default function TradePage() {
 
   const effective = selected ?? ranked[0]?.hs_code ?? null
   const period = follows.find((f) => f.latest_period)?.latest_period
-  const surge = follows.filter((f) => f.flag === "surge" || f.flag === "new").length
+  const surge = follows.filter((f) => f.flag === "surge").length
   const plunge = follows.filter((f) => f.flag === "plunge").length
 
   return (
