@@ -1,6 +1,6 @@
 """엔티티 팔로우 CRUD — 섹터·테마(·기타 엔티티) 팔로우.
 
-종목 팔로우는 기존 watchlist가 담당. 여기는 그래프 엔티티 일반.
+종목 팔로우는 관심 묶음(stock_groups kind=watch)이 담당. 여기는 그래프 엔티티 일반.
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

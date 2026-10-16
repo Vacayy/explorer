@@ -206,6 +206,10 @@ def default_watch_group_id(conn: sqlite3.Connection, create: bool = True) -> int
     return group_id
 
 
+# 관심 종목코드 서브쿼리 — 다른 SQL에 `IN (...)`으로 끼워 쓴다
+WATCHED_CODES_SQL = "SELECT m.stock_code FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id WHERE g.kind='watch'"
+
+
 def watched(conn: sqlite3.Connection) -> dict[str, str]:
     """관심 종목 = 모든 관심(watch) 묶음 멤버의 합집합. 종목코드 → 회사명(먼저 넣은 순)."""
     rows = conn.execute(

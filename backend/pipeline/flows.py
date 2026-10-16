@@ -45,7 +45,8 @@ def collect_flows(stock_codes: list[str] | None = None) -> dict:
     """워치리스트(기본) 종목의 최근 30일 수급 upsert — 멱등."""
     conn = get_connection()
     if stock_codes is None:
-        stock_codes = [r["stock_code"] for r in conn.execute("SELECT stock_code FROM watchlist")]
+        from pipeline.watch_rules import watched
+        stock_codes = list(watched(conn))
     stats = {"stocks": len(stock_codes), "rows": 0, "failed": 0}
     for code in stock_codes:
         try:

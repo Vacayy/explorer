@@ -11,6 +11,7 @@
 import json
 
 from database import get_connection
+from pipeline.watch_rules import WATCHED_CODES_SQL
 
 _FAST = ("sentiment", "stance")
 
@@ -278,8 +279,8 @@ def propose_from_digests(budget: int = 5) -> dict:
     rows = conn.execute("""
         SELECT ed.id, e.name, ed.period, ed.insights FROM entity_digests ed
         JOIN entities e ON e.id = ed.entity_id
-        JOIN watchlist w ON w.stock_code = e.aliases
-        WHERE ed.period IN ('1w','1m') AND ed.insights IS NOT NULL
+        WHERE e.aliases IN (""" + WATCHED_CODES_SQL + """)
+          AND ed.period IN ('1w','1m') AND ed.insights IS NOT NULL
           AND COALESCE(ed.insight_proposed, 0) = 0
         ORDER BY (ed.period='1m') DESC, ed.period_start DESC LIMIT ?""", (budget,)).fetchall()
     proposed = 0

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query
 from database import get_connection
+from pipeline.watch_rules import watched
 from datetime import date, timedelta
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
@@ -17,20 +18,18 @@ def get_signals(
 ):
     conn = get_connection()
 
+    # 관심 종목(모든 watch 묶음) — 기본 대상이자 in_watchlist 표시 기준
+    watchlist_set = set(watched(conn))
+
     # Resolve stock_codes
     if stock_codes:
         codes = [c.strip() for c in stock_codes.split(",") if c.strip()]
     else:
-        rows = conn.execute("SELECT stock_code FROM watchlist").fetchall()
-        codes = [r["stock_code"] for r in rows]
+        codes = list(watchlist_set)
 
     if not codes:
         conn.close()
         return {"items": [], "total": 0}
-
-    # Get watchlist set for in_watchlist flag
-    wl_rows = conn.execute("SELECT stock_code FROM watchlist").fetchall()
-    watchlist_set = {r["stock_code"] for r in wl_rows}
 
     since = (date.today() - timedelta(days=days)).strftime("%Y%m%d")
 

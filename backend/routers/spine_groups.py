@@ -109,6 +109,15 @@ def create_group(body: GroupCreate):
     return detail
 
 
+@router.get("/default-watch")
+def get_default_watch():
+    """기본 관심 묶음 상세 — 기업 화면 ★·내 목록 종목·논지 쓰기의 대상. 없으면 만든다."""
+    conn = wr.connect()
+    detail = _detail(conn, wr.default_watch_group_id(conn))
+    conn.close()
+    return detail
+
+
 @router.get("/{group_id}")
 def get_group(group_id: int):
     conn = wr.connect()

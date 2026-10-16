@@ -88,12 +88,15 @@ def scan_falsifier_watch(conn) -> int:
 
 def scan_devils_advocate(conn) -> int:
     """내 논지에 대한 반대 관점 질문 (BACKLOG '불편한 질문 브리핑' 흡수, thesis_check의 능동형).
-    watchlist 중 thesis가 있는 종목 대상, haiku. 주 1회 배치에서만 호출(비용)."""
+    관심 묶음 종목 중 논지(thesis)가 있는 종목 대상, haiku. 주 1회 배치에서만 호출(비용)."""
     if llm_engine() != "claude-code":
         return 0
-    rows = conn.execute(
-        "SELECT stock_code, corp_name, thesis FROM watchlist "
-        "WHERE thesis IS NOT NULL AND length(thesis) > 10").fetchall()
+    from pipeline.watch_rules import watch_thesis, watched
+    rows = []
+    for code, name in watched(conn).items():
+        t = watch_thesis(conn, code)
+        if t and t["thesis"] and len(t["thesis"]) > 10:
+            rows.append({"stock_code": code, "corp_name": name, "thesis": t["thesis"]})
     made = 0
     for r in rows:
         # 종목당 미해소 devils_advocate가 이미 있으면 skip (질문 홍수 방지)

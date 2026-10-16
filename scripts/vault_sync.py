@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from config import VAULT_PATH
 from database import get_connection, init_db
+from pipeline.watch_rules import WATCHED_CODES_SQL
 
 
 def _safe_filename(name: str) -> str:
@@ -32,7 +33,7 @@ def export_entities():
         FROM entities e
         WHERE e.id IN (SELECT entity_id FROM entity_links)
            OR e.id IN (SELECT entity_id FROM signals)
-           OR e.aliases IN (SELECT stock_code FROM watchlist)
+           OR e.aliases IN (""" + WATCHED_CODES_SQL + """)
     """).fetchall()
 
     out_dir = VAULT_PATH / "entities"

@@ -167,6 +167,14 @@ class WatchRulesTests(unittest.TestCase):
         self.assertIsNone(wr.watch_thesis(conn, "000003"))
         conn.close()
 
+    def test_default_watch_endpoint_creates_once_and_lists_members(self):
+        first = self.client.get("/api/spine/groups/default-watch").json()
+        self.assertEqual((first["name"], first["kind"], first["members"]), (wr.DEFAULT_WATCH_GROUP_NAME, "watch", []))
+        self.client.post(f"/api/spine/groups/{first['id']}/members", json={"stock_code": "000001"})
+        again = self.client.get("/api/spine/groups/default-watch").json()
+        self.assertEqual(again["id"], first["id"])
+        self.assertEqual([m["name"] for m in again["members"]], ["가나"])
+
     def test_portfolio_members_expose_pnl(self):
         group = self.client.post("/api/spine/groups", json={"name": "보유", "kind": "portfolio"}).json()
         detail = self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "000001", "quantity": 10, "avg_price": 70}).json()

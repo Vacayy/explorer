@@ -1,7 +1,7 @@
 """홈(내 종목 follow-up) API — product-v2.md v2.1.
 
-- calendar: 오늘~7일 이벤트, 내 종목(왓치리스트) 우선 정렬
-- watchlist_updates: 왓치리스트 종목의 최근 문서 언급 + 신호 (delta 스트림)
+- calendar: 오늘~7일 이벤트, 내 종목(관심 묶음 멤버) 우선 정렬
+- watchlist_updates: 관심 종목(모든 watch 묶음)의 최근 문서 언급 + 신호 (delta 스트림, 필드명은 호환 유지)
 - market_highlights: 전체 최근 신호 (내 종목 업데이트가 적은 날 프론트에서 승격)
 """
 import json
@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from database import get_connection
+from pipeline.watch_rules import WATCHED_CODES_SQL, watched
 from models.spine import BriefItem, CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
@@ -115,8 +116,7 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
     conn = get_connection()
     today = date.today()
 
-    wl = conn.execute("SELECT stock_code, corp_name FROM watchlist").fetchall()
-    wl_codes = {r["stock_code"]: r["corp_name"] for r in wl}
+    wl_codes = watched(conn)  # 관심 종목 = 모든 watch 묶음 멤버
 
     # ⓪ 기계가 먼저 말하는 3줄 — 저장된 재료의 결정적 조합 (추가 LLM 호출 없음)
     #    우선순위: 내 종목/팔로우 insight > 시장 insight > 오늘 기업활동 > 오늘 신호
@@ -186,7 +186,7 @@ def get_home(days: int = Query(3, ge=1, le=14, description="업데이트 스트�
         FROM entity_digests d JOIN entities e ON d.entity_id = e.id
         WHERE d.period='1d' AND d.insights IS NOT NULL
           AND d.period_start >= date('now', '-1 day')
-        ORDER BY (e.aliases IN (SELECT stock_code FROM watchlist)) DESC, d.period_start DESC
+        ORDER BY (e.aliases IN (""" + WATCHED_CODES_SQL + """)) DESC, d.period_start DESC
         LIMIT 4
     """).fetchall()
     for r in ins_rows[:2]:
