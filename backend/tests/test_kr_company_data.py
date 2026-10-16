@@ -96,9 +96,11 @@ class FinancialTests(DbCase):
 
     def test_due_periods_are_newest_first_and_skip_unfinished_quarters(self):
         periods = kr.due_periods(TODAY, years=1)
-        self.assertEqual(periods[:3], [(2026, "11014"), (2026, "11012"), (2026, "11013")])
-        self.assertNotIn((2026, "11011"), periods)   # 2026 연간은 아직 안 끝났다
-        self.assertEqual(len(periods), 7)
+        self.assertEqual(periods[:3], [(2026, "11012"), (2026, "11013"), (2025, "11011")])
+        self.assertNotIn((2026, "11014"), periods)   # 3분기는 09-30에 끝나 제출 전 — 10-30부터 묻는다
+        self.assertEqual(len(periods), 6)
+        self.assertIn((2026, "11014"), kr.due_periods(date(2026, 10, 31), years=0))
+        self.assertNotIn((2025, "11011"), kr.due_periods(date(2026, 2, 28), years=1))   # 연간은 말일+60일부터
 
     def test_budget_stops_the_run_and_the_next_run_resumes_without_refetching(self):
         tgts = kr.targets(self.conn, top_n=0)[:1]
@@ -107,14 +109,14 @@ class FinancialTests(DbCase):
         self.assertEqual(first["calls"], 5)
         self.assertEqual(first["periods_added"], 5)
         self.assertEqual(first["budget_exhausted"], 1)
-        self.assertEqual(first["remaining_periods"], 2)
+        self.assertEqual(first["remaining_periods"], 1)
         self.assertNotIn("status", first)     # 예산 소진은 실패가 아니다
 
         client2, fake2 = self.client(self.handler, budget=100)
         second = kr.collect_financials(self.conn, client2, tgts, TODAY, years=1)
-        self.assertEqual(second["periods_added"], 2)
+        self.assertEqual(second["periods_added"], 1)
         asked = {(p["bsns_year"], p["reprt_code"]) for _, p in fake2.calls}
-        self.assertEqual(asked, {("2025", "11013"), ("2025", "11012")})   # 저장된 기간은 다시 묻지 않는다
+        self.assertEqual(asked, {("2025", "11013")})   # 저장된 기간은 다시 묻지 않는다
 
         client3, fake3 = self.client(self.handler)
         kr.collect_financials(self.conn, client3, tgts, TODAY, years=1)
@@ -128,7 +130,7 @@ class FinancialTests(DbCase):
         client, fake = self.client(handler)
         tgts = [{"stock_code": "000001", "corp_code": "00000001", "tier": "portfolio"}]
         r = kr.collect_financials(self.conn, client, tgts, date(2026, 4, 1), years=1)
-        self.assertEqual(r["periods_added"], 5)   # 2026 Q1 + 2025 Q1·H1·Q3·연간
+        self.assertEqual(r["periods_added"], 4)   # 2025 Q1·H1·Q3·연간 (2026 Q1은 04-30부터)
         divs = {x[0] for x in self.conn.execute("SELECT DISTINCT fs_div FROM financial_statements")}
         self.assertEqual(divs, {"OFS"})
 
@@ -143,8 +145,8 @@ class FinancialTests(DbCase):
         client, fake = self.client(lambda e, p: FakeResp({"status": "013"}))
         tgts = [{"stock_code": "000001", "corp_code": "00000001", "tier": "portfolio"}]
         r = kr.collect_financials(self.conn, client, tgts, TODAY, years=0)
-        self.assertEqual(r["no_data"], 3)
-        self.assertEqual(len(fake.calls), 6)   # 기간마다 CFS·OFS
+        self.assertEqual(r["no_data"], 2)
+        self.assertEqual(len(fake.calls), 4)   # 기간마다 CFS·OFS
         client2, fake2 = self.client(lambda e, p: FakeResp({"status": "013"}))
         kr.collect_financials(self.conn, client2, tgts, TODAY, years=0)
         self.assertEqual(fake2.calls, [])

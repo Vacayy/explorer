@@ -34,6 +34,7 @@ MIN_LISTED = 2000          # 종목 마스터 응답의 상장사 수가 이보�
 
 # (보고서 코드, 기간 말일 월·일)
 REPORTS = (("11013", 3, 31), ("11012", 6, 30), ("11014", 9, 30), ("11011", 12, 31))
+FILING_LAG = {"11013": 30, "11012": 30, "11014": 30, "11011": 60}
 FATAL = {"010": "등록되지 않은 키", "011": "사용할 수 없는 키", "012": "접근할 수 없는 IP",
          "020": "요청 제한 초과", "901": "키 기간 만료", "800": "시스템 점검"}
 
@@ -246,11 +247,12 @@ def collect_disclosures(conn, client: DartClient, tgts: list[dict], today: date,
 # ── 분기 재무제표 ─────────────────────────────────────────────────────────
 
 def due_periods(today: date, years: int = FIN_YEARS) -> list[tuple[int, str]]:
-    """기간 말일이 지난 (연도, 보고서) — 최신부터. 예산이 끊겨도 최근 분기가 먼저 찬다."""
+    """제출이 시작됐을 (연도, 보고서) — 최신부터. 예산이 끊겨도 최근 분기가 먼저 찬다.
+    기간 말일 뒤 FILING_LAG일(분기 30·연간 60, 법정 기한 45·90일보다 앞)부터 묻는다 — 더 일찍 물으면 대상 전부가 013이다."""
     out = []
     for year in range(today.year, today.year - years - 1, -1):
         for rc, m, d in reversed(REPORTS):
-            if date(year, m, d) < today:
+            if date(year, m, d) + timedelta(days=FILING_LAG[rc]) < today:
                 out.append((year, rc))
     return out
 
