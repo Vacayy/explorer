@@ -48,8 +48,8 @@ export const WIDGET_SIZES: Record<string, SizeSpec> = Object.fromEntries(WIDGETS
 export const PRESETS: readonly { key: string; label: string; widgets: string[] }[] = [
   { key: "base", label: "기본", widgets: ["market.indices", "market.context", "market.us", "market.kr", "risk.curve", "risk.vix", "risk.fear", "risk.hy", "risk.regime", "retail.heat"] },
   { key: "delever", label: "디레버리징", widgets: ["market.indices", "risk.hy", "risk.curve", "risk.vix", "risk.fear", "retail.heat", "risk.regime"] },
-  { key: "export", label: "수출 사이클", widgets: ["market.indices", "market.kr", "market.us", "market.context"] },
-  { key: "event", label: "이벤트 장세", widgets: ["market.indices", "market.us", "market.kr", "risk.regime"] },
+  { key: "export", label: "수출 사이클", widgets: ["market.indices", "market.kr", "market.us", "market.context", "explore.trade", "explore.credit"] },
+  { key: "event", label: "이벤트 장세", widgets: ["market.indices", "market.us", "market.kr", "risk.regime", "explore.actions", "explore.rights", "explore.people"] },
 ]
 
 /** 추가 창 탭 순서 — 위젯이 아직 없는 탭은 '다음 단계' 안내 */

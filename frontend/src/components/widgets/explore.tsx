@@ -8,6 +8,10 @@ import { quadrantOf, useSectorMap } from "@/hooks/useSectorMap"
 import { cn } from "@/lib/utils"
 import { formatNumber } from "@/utils/format"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
+import {
+  ActionsBody, CreditBody, PeopleBody, RightsBody, TradeBody,
+  useActionsMeta, useCreditMeta, usePeopleMeta, useRightsMeta, useTradeMeta,
+} from "./exploreFollow"
 
 /* ───────────────────────── P6a 탐색: 신호 · 컨콜 · 산업·섹터 ─────────────────────────
  * docs/specs/home-widgets.md §2 계약 — 캐시된 GET만(signals/summary · transcript/momentum · transcript/recent · sector-map),
@@ -167,4 +171,15 @@ export const EXPLORE_WIDGETS: WidgetDef[] = [
   { id: "explore.sectorShift", title: "섹터 사분면 이동", description: "1주 전과 RS 사분면이 바뀐 대분류", section: "explore", group: "산업·섹터",
     size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/map", useMeta: useSectorMeta, Body: SectorShiftBody },
   // P6a 끝
+  // P6b — 수출입·회사채·인물·기업활동 (본문은 exploreFollow.tsx)
+  { id: "explore.trade", title: "Trade Pulse", description: "이번 통계월 급등·급감 품목 · 기여도 순", section: "explore", group: "수출입",
+    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/follow/trade", useMeta: useTradeMeta, Body: TradeBody },
+  { id: "explore.credit", title: "신용 긴장 Top", description: "1개월 새 회사채 스프레드가 가장 벌어진 곳", section: "explore", group: "회사채",
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/follow/credit", useMeta: useCreditMeta, Body: CreditBody },
+  { id: "explore.people", title: "팔로우 인물 이번 주", description: "7일 언급 · 지난주 대비 · 최신 문서", section: "explore", group: "인물",
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/people", useMeta: usePeopleMeta, Body: PeopleBody },
+  { id: "explore.actions", title: "오늘 기업활동", description: "원공시만 · 내 종목 먼저 · 최근 7일", section: "explore", group: "기업활동",
+    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/actions", useMeta: useActionsMeta, Body: ActionsBody },
+  { id: "explore.rights", title: "유무증 D-day", description: "7일 안 권리락·청약·신주 상장", section: "explore", group: "기업활동",
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/actions?view=pro", useMeta: useRightsMeta, Body: RightsBody },
 ]
