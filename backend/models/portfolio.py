@@ -171,3 +171,29 @@ class PrincipleText(BaseModel):
     """원문만 고친다 — 확인된 점검 규칙은 그대로(모델 재호출 없음)."""
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     text: str = Field(min_length=3, max_length=20000)
+
+
+class PrincipleViolation(BaseModel):
+    """지금 어기고 있는 규칙 하나 — 문장은 종목명·비율·한도만(D-212)."""
+    key: str
+    principle_id: int
+    rule: str
+    message: str
+    alerted_since: str | None          # 텔레그램으로 알린 때(UTC). None이면 다음 점검에서 보냄
+
+
+class PrincipleState(BaseModel):
+    as_of: str | None                  # 판정에 쓴 시세 기준(장중 시각 또는 종가일)
+    rules: int
+    items: list[PrincipleViolation]
+
+
+class AlertItem(BaseModel):
+    """보낸 텔레그램 알림 한 건 — 키에서 푼 유형·종목·구간·시각만(본문·가격 없음)."""
+    kind: str                          # day | avg | tech | disc | summary
+    label: str
+    code: str | None
+    name: str | None
+    date: str | None
+    sent_at: str                       # KST 'YYYY-MM-DD HH:MM'
+    url: str | None

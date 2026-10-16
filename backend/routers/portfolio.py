@@ -4,8 +4,9 @@ response_model이 금액·수량 필드를 갖지 않으므로 실수로 섞여�
 """
 from fastapi import APIRouter, HTTPException, Query
 
-from models.portfolio import (Exposure, HistoryPoint, HoldingFlow, PortfolioEvent, PortfolioSummary, Principle, PrincipleCreate,
-                              PrincipleParse, PrincipleParseRequest, PrincipleText, ThesisCreate, TransactionCreate, TransactionItem)
+from models.portfolio import (AlertItem, Exposure, HistoryPoint, HoldingFlow, PortfolioEvent, PortfolioSummary, Principle, PrincipleCreate,
+                              PrincipleParse, PrincipleParseRequest, PrincipleState, PrincipleText, ThesisCreate, TransactionCreate,
+                              TransactionItem)
 from pipeline import portfolio as pf
 from pipeline import portfolio_events as pe
 from pipeline import portfolio_exposure as px
@@ -149,6 +150,30 @@ def list_principles():
     conn = pf.connect()
     try:
         return pp.principles(conn)
+    finally:
+        conn.close()
+
+
+@router.get("/principles/state", response_model=PrincipleState)
+def principle_state():
+    """지금 어기고 있는 규칙 — 저장된 시세로 다시 판정만 한다(알림·상태 기록 없음)."""
+    conn = pf.connect()
+    try:
+        s = pf.summary(conn)
+        holdings = [{"code": h["code"], "name": h["name"], "weight_pct": h["weight_pct"]} for h in s["holdings"]]
+        state = pp.current(conn, s, exposure=lambda: px.cached_exposure(conn, holdings) if holdings else None)
+        return {"as_of": s.get("quoted_at") or s.get("as_of"), **state}
+    finally:
+        conn.close()
+
+
+@router.get("/alerts", response_model=list[AlertItem])
+def list_alerts(days: int = Query(14, ge=1, le=90)):
+    """보낸 텔레그램 알림 이력(앱 안) — 유형·종목·구간·시각만."""
+    from pipeline import portfolio_alerts as pa
+    conn = pf.connect()
+    try:
+        return pa.history(conn, days)
     finally:
         conn.close()
 

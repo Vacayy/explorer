@@ -255,6 +255,27 @@ def group_evaluations(group_id: int, as_of: str | None = Query(None, pattern=r"^
                                        "params": json.loads(r["params_json"] or "{}")} for r in rows]}
 
 
+@router.get("/{group_id}/digests")
+def group_digests(group_id: int, days: int = Query(7, ge=1, le=30)):
+    """묶음 종목별 최신 1D 요약(entity_digests) — 읽기만. 생성(LLM)은 저녁 잡이 한다. days보다 오래된 요약은 뺀다."""
+    from datetime import date, timedelta
+    from pipeline.portfolio_exposure import company_entity
+    from pipeline.portfolio_flow import latest_digest
+    conn = wr.connect()
+    _group(conn, group_id)
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    items = []
+    for r in conn.execute("SELECT m.stock_code, c.corp_name FROM stock_group_members m LEFT JOIN companies c ON c.stock_code=m.stock_code "
+                          "WHERE m.group_id=? ORDER BY m.id", (group_id,)).fetchall():
+        ent = company_entity(conn, r["stock_code"])
+        d = latest_digest(conn, ent["id"]) if ent else None
+        if d and d["date"] >= cutoff:
+            items.append({"code": r["stock_code"], "name": r["corp_name"] or r["stock_code"], **d})
+    conn.close()
+    items.sort(key=lambda x: (x["date"], x["docs"] or 0), reverse=True)
+    return {"as_of": items[0]["date"] if items else None, "items": items}
+
+
 # ── 관심 종목 이유 감시 (D-227, portfolio-intelligence §6) — 판정은 매일 07:40, 알림은 텔레그램만 ──────────
 
 @router.get("/{group_id}/reasons")

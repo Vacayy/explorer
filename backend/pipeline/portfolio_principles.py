@@ -219,6 +219,18 @@ def violations(items: list[dict], summary: dict, exposure: dict | None = None, t
     return out
 
 
+def current(conn: sqlite3.Connection, summary: dict, exposure=None, today: str | None = None) -> dict:
+    """지금 어기고 있는 규칙(화면 표시용, 읽기만) — 알림 상태와 같은 키로 '이미 알렸는지·언제부터'를 붙인다. 원문은 싣지 않는다."""
+    ensure_schema(conn)
+    items = principles(conn)
+    if callable(exposure):
+        exposure = exposure() if any(r["type"] == "max_exposure" for p in items for r in p["rules"]) else None
+    since = {r["key"]: r["since"] for r in conn.execute("SELECT key, since FROM portfolio_principle_state")}
+    return {"rules": sum(len(p["rules"]) for p in items),
+            "items": [{"key": v["key"], "principle_id": v["principle_id"], "rule": v["rule"], "message": v["message"],
+                       "alerted_since": since.get(v["key"])} for v in violations(items, summary, exposure, today)]}
+
+
 def alert(conn: sqlite3.Connection, summary: dict, send, *, exposure=None, live_only: bool = False,
           today: str | None = None, dry_run: bool = False) -> int:
     """새로 어긴 규칙만 보낸다. 장중 점검(live_only)은 장중 규칙만 보고, 그 밖의 규칙 상태는 건드리지 않는다.
