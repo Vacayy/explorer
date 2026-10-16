@@ -17,8 +17,9 @@ import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import SaveButton from "@/components/shared/SaveButton"
 import { NarrativeList } from "@/components/explore/NarrativeList"
-import { GraphActivitySection } from "@/components/explore/GraphActivitySection"
-import { MegaNarrativeSection } from "@/components/knowledge/MegaNarrativeSection"
+import { BigPictureCard } from "@/components/world/BigPictureCard"
+import { NarrativeChangesCard } from "@/components/world/NarrativeChanges"
+import { NarrativeCheckpoint } from "@/components/world/NarrativeCheckpoint"
 import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
 import { FileText } from "lucide-react"
@@ -114,6 +115,7 @@ export default function NarrativePage() {
     {fresh.isError && <p role="alert" className="mb-4 text-sm text-destructive">갱신에 실패했습니다. 저장된 내용은 계속 읽을 수 있습니다.</p>}
     {discussion.isError && <p role="alert" className="mb-4 text-sm text-destructive">대화를 시작하지 못했습니다. 다시 시도해 주세요.</p>}
     {generating && <p role="status" className="mb-4 text-caption text-muted-foreground">새 자료로 내러티브를 갱신하고 있습니다.</p>}
+    {tab === 'current' && <NarrativeCheckpoint topic={topic} />}
     {tab === 'current' && (n?.narrative ? <Markdown className="[overflow-wrap:anywhere] [&_pre]:overflow-x-auto">{n.narrative}</Markdown> : !cached.isError && <EmptyState message="저장된 내러티브가 없습니다. 갱신 버튼으로 생성을 요청할 수 있습니다." />)}
     {tab === 'evidence' && <div className="space-y-4"><p className="text-caption text-muted-foreground">저장된 지식 연결과 인과 구조입니다. 문장별 원문 인용을 뜻하지 않습니다.</p>{narrativeId ? <><Grounding narrativeId={narrativeId} /><CausalChain narrativeId={narrativeId} /><ChainPaths narrativeId={narrativeId} /></> : <EmptyState message="연결된 근거가 없습니다." />}</div>}
     {tab === 'history' && <NarrativeTimeline topic={topic} heading="저장된 버전과 변경 이력" onSelectVersion={id => {rememberDetailOrigin(origin);navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`, {state:{detailOrigin:origin}})}} />}
@@ -143,10 +145,10 @@ function NarrativeQuestions({ narrativeId }: { narrativeId: number }) {
       <div className="flex items-center gap-1.5">
         <HelpCircle className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">이 서사가 던지는 핵심질문</span>
-        <span className="text-[11px] text-muted-foreground">분할정복으로 추적 · 지식 탭에서 상세</span>
+        <span className="text-[11px] text-muted-foreground">분할정복으로 추적 · 질문을 누르면 상세</span>
       </div>
       {data.map((q) => (
-        <Link key={q.id} to="/knowledge"
+        <Link key={q.id} to={`/question/${q.id}`}
           className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 hover:border-primary">
           <span className="text-[13px] flex-1">{q.text}</span>
           {q.status === "proposed" ? (
@@ -169,19 +171,20 @@ function NarrativeQuestions({ narrativeId }: { narrativeId: number }) {
 
 /* ---------- 랜딩 (월드모델>내러티브 탭 — topic 없이 진입) ---------- */
 
+/** 월드모델 › 지금 (docs/specs/world-model.md §2) — 큰 그림 → 바뀐 것 → 전체 목록. 전부 저장분 조회 */
 function NarrativeLanding() {
   return (
     <PageContainer gap="sm">
       <div className="flex items-baseline gap-2">
-        <h2 className="text-xl font-bold">내러티브</h2>
-        <span className="text-[11px] text-muted-foreground">주목받는 주제들을 관통하는 시장의 서사</span>
+        <h2 className="text-xl font-bold">지금</h2>
+        <span className="text-[11px] text-muted-foreground">지금 시장에서 도는 서사와 이번 주에 바뀐 것</span>
       </div>
-      {/* 엮인 서사(구 '세계관' 배지) — 내러티브 축의 상위 진입점이라 목록 위에 둔다 (D-123).
-          지식 축 종합인 '세계관 브리핑'은 지식 탭에 남는다 — 이름·자리로 두 축을 분리. */}
-      <MegaNarrativeSection />
-      {/* 최근 7일 인과 그래프 변화 — Home 시장 탭에서 이동 (D-208) */}
-      <GraphActivitySection />
-      <NarrativeList empty="state" controls />
+      <BigPictureCard />
+      <NarrativeChangesCard />
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">서사 목록</h3>
+        <NarrativeList empty="state" controls />
+      </section>
     </PageContainer>
   )
 }

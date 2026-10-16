@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { useQuery } from "@tanstack/react-query"
 import dagre from "dagre"
@@ -610,10 +610,10 @@ function NodeGraphPanel({ nodeId, category, onClose }: { nodeId: number; categor
             <ul className="space-y-1">
               {(data ?? []).map((n) => (
                 <li key={n.id}>
-                  <a href={`/narrative?topic=${encodeURIComponent(n.topic)}`} className="text-xs hover:underline">
+                  <Link to={`/narrative?topic=${encodeURIComponent(n.topic)}`} className="text-xs hover:underline">
                     <Badge variant="secondary" className="text-[10px] mr-1">{n.topic}</Badge>
                     {n.title}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

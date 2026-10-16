@@ -1221,3 +1221,41 @@ export interface ProxyCandidate {
 }
 export interface ProxyNeedsSource { label: string; adapter: string | null; adapter_ref: string | null; rationale: string | null; reason: string }
 export interface ProxySuggestion { topic: string; candidates: ProxyCandidate[]; needs_source: ProxyNeedsSource[] }
+
+/* ---------- 월드모델 읽기 전용 (docs/specs/world-model.md) — 전부 저장분, LLM 없음 ---------- */
+export interface WorldMega {
+  id: number; name: string; title: string | null; narrative: string | null
+  members: string[]; version: number; created_at: string | null
+}
+export interface WorldBigPicture {
+  mega: WorldMega[]
+  worldview: { briefing: string | null; created_at: string | null; stale: boolean } | null
+  as_of: string | null
+}
+export interface WorldEdgeBrief { from: string; to: string; rel: string; effect_direction: string | null }
+export interface WorldNarrativeChange {
+  topic: string; narrative_id: number; version: number; title: string | null; category: string | null
+  created_at: string | null; drift_summary: string | null; versions_in_window: number; is_first: boolean
+  added_count: number; removed_count: number; added_edges: WorldEdgeBrief[]; removed_edges: WorldEdgeBrief[]
+}
+export interface WorldNarrativeChanges { days: number; items: WorldNarrativeChange[]; as_of: string | null }
+export interface WorldContestedItem {
+  id: number; statement: string; pace_layer: string; contested_at: string | null; refute: number; support: number
+  latest_refute: { doc_id: number | null; title: string | null; observed_at: string | null } | null
+}
+export interface WorldContested { items: WorldContestedItem[]; as_of: string | null }
+export interface WorldStockNarratives {
+  stock_code: string; name: string | null; kinds: StockGroupKind[]
+  narratives: { topic: string; narrative_id: number; title: string | null; version: number; created_at: string | null
+    drift_summary: string | null; edges: number; via: 'edge' | 'neighbor' }[]
+  latest_drift: string | null; latest_at: string | null
+}
+export interface WorldMyStocks { stocks: WorldStockNarratives[]; members: number; covered: number; as_of: string | null }
+export interface WorldCheckpoint {
+  status: 'ok' | 'empty'; topic: string; narrative_id?: number | null; title?: string | null
+  core_question?: string | null
+  question?: { id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null } | null
+  falsifiers?: { condition: string; source: 'knowledge' | 'question'; about: string | null }[]
+  beneficiaries?: { name: string; type: string; via: 'chain' | 'claim'; stock_code: string | null }[]
+  my_stocks?: { stock_code: string; name: string | null; kinds: StockGroupKind[]; edges: number }[]
+}

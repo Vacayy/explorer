@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -6,8 +7,10 @@ import { apiQuery, STALE } from "@/api/query"
 import { Badge } from "@/components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { EmptyState } from "@/components/shared/ErrorState"
-import { formatRelativeTime } from "@/utils/format"
+import { dbAgeDays, formatRelativeTime } from "@/utils/format"
 import { cn } from "@/lib/utils"
 
 /** SQLite UTC 시각("YYYY-MM-DD HH:MM:SS")을 상대 표기로 — Z 부착해 로컬 오파싱 방지(D-059). */
@@ -48,6 +51,9 @@ const SORT: { value: SortKey; label: string }[] = [
   { value: "surge", label: "급등순" },
 ]
 
+/** 이 일수보다 오래된 서사는 기본으로 접고(목록 아래 토글), 보일 때도 흐리게 */
+const STALE_DAYS = 30
+
 const sortFns: Record<SortKey, (a: NarrativeItem, b: NarrativeItem) => number> = {
   // 변화순(D-123) — '무엇이 바뀌었나'가 있는 것을 위로. 다 읽을 수 없으니 변한 것만 훑게.
   changed: (a, b) => Number(!!b.drift_summary) - Number(!!a.drift_summary)
@@ -77,6 +83,11 @@ export function NarrativeList({
 
   const [lenses, setLenses] = useState<string[]>([])
   const [sort, setSort] = useState<SortKey>("changed")   // 델타 우선 (D-123)
+  // 오래된 서사 보기 — URL이 상태 소스(?old=1)
+  const [params, setParams] = useSearchParams()
+  const showOld = params.get("old") === "1"
+  const setShowOld = (on: boolean) => setParams(prev => { const next = new URLSearchParams(prev); if (on) next.set("old", "1"); else next.delete("old"); return next }, { replace: true, preventScrollReset: true })
+  const isOld = (n: NarrativeItem) => dbAgeDays(n.created_at) > STALE_DAYS
 
   const filtered = useMemo(() => {
     if (!controls) return items   // 티저 등 — 백엔드 순서(급증 우선) 유지
@@ -86,13 +97,15 @@ export function NarrativeList({
       : items
     return [...matched].sort(sortFns[sort])
   }, [items, lenses, sort, controls])
+  const oldCount = controls ? filtered.filter(isOld).length : 0
+  const visible = controls && !showOld ? filtered.filter(n => !isOld(n)) : filtered
 
   if (items.length === 0) {
     return empty === "state"
       ? <EmptyState message="아직 생성된 내러티브가 없습니다 — 주목 주제가 쌓이면 나타납니다." />
       : null
   }
-  const shown = limit ? filtered.slice(0, limit) : filtered
+  const shown = limit ? visible.slice(0, limit) : visible
 
   return (
     <div className="space-y-3">
@@ -117,6 +130,10 @@ export function NarrativeList({
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Switch id="narrative-old" checked={showOld} onCheckedChange={setShowOld} />
+            <Label htmlFor="narrative-old" className="text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 {oldCount}개 보기</Label>
+          </div>
           <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
             <SelectTrigger className="h-7 w-28 text-xs">
               <SelectValue />
@@ -133,14 +150,14 @@ export function NarrativeList({
       )}
 
       {shown.length === 0 ? (
-        <EmptyState message="선택한 카테고리에 해당하는 내러티브가 없습니다." />
+        <EmptyState message={oldCount && !showOld ? `최근 ${STALE_DAYS}일 안에 갱신된 서사가 없습니다. 오래된 서사 ${oldCount}개를 켜서 볼 수 있습니다.` : "선택한 카테고리에 해당하는 내러티브가 없습니다."} />
       ) : (
         <div className="space-y-2.5">
           {shown.map((n) => (
             <Link
               key={n.topic}
               to={`/narrative?topic=${encodeURIComponent(n.topic)}`}
-              className="flex items-start gap-2 group"
+              className={cn("flex items-start gap-2 group", controls && isOld(n) && "opacity-60")}
             >
               <Sparkles className="h-4 w-4 text-hypothesis shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">

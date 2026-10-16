@@ -179,3 +179,17 @@ export function formatLevel(value: number | null | undefined): string {
   if (value === null || value === undefined) return "-"
   return value.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
+
+/** DB 시각(SQLite UTC 'YYYY-MM-DD HH:MM:SS' 또는 시간대 붙은 ISO) → 상대 표기. 비면 "-" */
+export function formatDbRelative(value: string | null | undefined): string {
+  if (!value) return "-"
+  const iso = value.includes("T") ? value : value.replace(" ", "T") + "Z"
+  return formatRelativeTime(iso)
+}
+
+/** DB 시각이 지금부터 며칠 전인가 (UTC 기준). 비면 Infinity */
+export function dbAgeDays(value: string | null | undefined): number {
+  if (!value) return Infinity
+  const t = new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z").getTime()
+  return Number.isNaN(t) ? Infinity : (Date.now() - t) / 86_400_000
+}

@@ -40,7 +40,7 @@ export function ProxyDashboard() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-muted-foreground">
-          컨콜에서 추출한 선행지표 — 리포트 <Link to="/report" className="underline hover:text-foreground">핵심 질문</Link>이 지켜보라는 값들.
+          컨콜에서 추출한 선행지표 — <Link to="/questions" className="underline hover:text-foreground">핵심 질문</Link>이 지켜보라는 값들.
         </p>
         <Button size="sm" variant="outline" onClick={() => extract.mutate()} disabled={extract.isPending}>
           <Activity className="h-3.5 w-3.5" /> {extract.isPending ? "추출 중… (수 분)" : "프록시 추출 실행"}

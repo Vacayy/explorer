@@ -2,13 +2,12 @@ import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 /**
- * 전망(미래·확률) 상위 탭 내부 토글 — 질문(핵심질문 추적) ↔ 리포트(투자 판단·콜). D-073.
- * 인식론적 시간축: 지식=과거·검증 / 내러티브=현재·서사 / 전망=미래·확률.
- * 미래-확률이 질문·리포트로 흩어져 있던 것을 한 상위 탭으로 집약 (지식↔온톨로지와 동형).
+ * 월드모델 › 내 판단 안의 보기 전환 (docs/specs/world-model.md §4) — 질문(기본) · 논지 감사 · 리포트.
+ * 질문이 1급 객체다: 보유 논지·관심 이유·논지 감사 승격·서사 도출이 모두 같은 질문 행으로 쌓인다.
  */
 const TABS = [
-  { to: "/thesis", label: "논지 감사", active: (p: string) => p.startsWith("/thesis") },
   { to: "/questions", label: "질문", active: (p: string) => p.startsWith("/question") },
+  { to: "/thesis", label: "논지 감사", active: (p: string) => p.startsWith("/thesis") },
   { to: "/report", label: "리포트", active: (p: string) => p.startsWith("/report") },
 ] as const
 

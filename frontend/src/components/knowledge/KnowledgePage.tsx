@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link } from "react-router-dom"
 import { Markdown } from "@/components/shared/Markdown"
 import {
-  BookOpenCheck, ChevronDown, Globe2, Loader2, Swords, Plus, Trash2, Check, X, Inbox,
+  BookOpenCheck, ChevronDown, Globe2, Loader2, Swords, Plus, Trash2,
 } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -23,6 +23,8 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Expandable } from "@/components/shared/Expandable"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
+import { GraphActivitySection } from "@/components/explore/GraphActivitySection"
+import { ContestedPremisesCard } from "@/components/world/ContestedPremises"
 import { SourceBadge } from "@/components/shared/SourceBadge"
 import { cn } from "@/lib/utils"
 
@@ -122,8 +124,10 @@ export default function KnowledgePage() {
 
       <StructureMap />
       {overview && <OverviewStrip o={overview} />}
+      {/* 승인 대기는 이 화면이 아니라 상단 승인 인박스에서 처리한다 (world-model.md §3) */}
+      <GraphActivitySection />
+      <ContestedPremisesCard />
       <InjectConsole onDone={invalidate} />
-      <PendingQueue onDone={invalidate} />
       <WorldviewCard />
 
       {data.length === 0 ? (
@@ -221,58 +225,6 @@ function OverviewStrip({ o }: { o: Overview }) {
           <div key={c.label} className="text-center">
             <div className={cn("text-lg font-bold tabular-nums", c.cls)}>{c.value}</div>
             <div className="text-[10px] text-muted-foreground">{c.label}</div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  )
-}
-
-/* 승격 대기 큐 — proposed 지식 인라인 승인/거부 */
-function PendingQueue({ onDone }: { onDone: () => void }) {
-  const { data = [] } = useQuery(
-    apiQuery<KnowledgeItem[]>({
-      key: ["spine", "knowledge", "items", "proposed"],
-      url: "/api/spine/knowledge/items?status=proposed", staleTime: STALE.short,
-    }),
-  )
-  const qc = useQueryClient()
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["spine", "knowledge", "items", "proposed"] })
-    onDone()
-  }
-  const approve = useMutation({
-    mutationFn: (id: number) => api.post(`/api/spine/knowledge/items/${id}/approve`),
-    onSuccess: () => { toast.success("지식 승격 — 활성화됨"); refresh() },
-  })
-  const reject = useMutation({
-    mutationFn: (id: number) => api.post(`/api/spine/knowledge/items/${id}/reject`),
-    onSuccess: () => { toast.success("거부 — 후보 제거됨"); refresh() },
-  })
-  if (data.length === 0) return null
-  return (
-    <Card className="border-l-2 border-l-hypothesis">
-      <CardHeader className="pb-2 flex-row items-center gap-2">
-        <Inbox className="h-4 w-4 text-hypothesis" />
-        <CardTitle className="text-sm">승격 대기</CardTitle>
-        <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{data.length}</Badge>
-        <span className="ml-auto text-[11px] text-muted-foreground">기계의 제안 — 결정은 사람이</span>
-      </CardHeader>
-      <CardContent className="divide-y">
-        {data.map((k) => (
-          <div key={k.id} className="flex items-center gap-2 py-1.5">
-            <Badge variant="secondary" className="text-[9px] shrink-0">{LAYER_LABEL[k.pace_layer] ?? k.pace_layer}</Badge>
-            <span className="text-sm truncate">{k.statement}</span>
-            <span className="ml-auto flex gap-1 shrink-0">
-              <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
-                disabled={approve.isPending} onClick={() => approve.mutate(k.id)}>
-                <Check className="h-3 w-3" /> 승인
-              </Button>
-              <Button size="xs" variant="ghost" className="h-6 px-2 text-muted-foreground hover:text-destructive"
-                disabled={reject.isPending} onClick={() => reject.mutate(k.id)}>
-                <X className="h-3 w-3" /> 거부
-              </Button>
-            </span>
           </div>
         ))}
       </CardContent>

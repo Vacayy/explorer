@@ -37,7 +37,17 @@ export interface QTree {
 interface QListItem {
   id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null
   divergence: string | null; verdict_summary: string | null; sub_count: number; updated_at: string
-  conviction: number | null; created_by: string; source_doc_id: number | null
+  conviction: number | null; created_by: string; source_doc_id: number | null; stock_code: string | null
+}
+
+/** 질문의 출처 — 보유 논지·관심 이유·논지 감사·서사 도출이 모두 같은 질문 객체다 (world-model.md §4) */
+export const QUESTION_ORIGIN: Record<string, { label: string; cls: string }> = {
+  portfolio: { label: "보유 논지", cls: "text-primary border-primary/40" },
+  watch: { label: "관심 이유", cls: "text-primary border-primary/40" },
+  thesis: { label: "논지 감사", cls: "text-hypothesis border-hypothesis/40" },
+  system: { label: "서사 도출", cls: "text-hypothesis border-hypothesis/40" },
+  digest: { label: "언급", cls: "text-muted-foreground border-border" },
+  user: { label: "직접 입력", cls: "text-muted-foreground border-border" },
 }
 
 /* 원장 렌즈 (#3, D-082) — 괴리(선행/확정 어긋남) 우선, 그다음 확신 순. 최근순은 updated_at 유지. */
@@ -295,11 +305,11 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
         <div className="flex flex-wrap items-center gap-1.5">
           <VerdictBadge v={item.confirm_verdict} prefix="확정 " />
           <VerdictBadge v={item.lead_verdict} prefix="선행 " />
-          {item.created_by === "thesis" && (
-            <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">논지</Badge>
+          {QUESTION_ORIGIN[item.created_by] && (
+            <Badge variant="outline" className={cn("text-[9px]", QUESTION_ORIGIN[item.created_by].cls)}>{QUESTION_ORIGIN[item.created_by].label}</Badge>
           )}
-          {item.created_by === "digest" && (
-            <Badge variant="outline" className="text-[9px] text-muted-foreground border-border">언급</Badge>
+          {item.stock_code && (
+            <Badge asChild variant="secondary" className="text-[9px]"><Link to={`/analyze/${item.stock_code}/summary`}>{item.stock_code}</Link></Badge>
           )}
           {div && <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{div}</Badge>}
           <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">서브질문 {item.sub_count}</span>
