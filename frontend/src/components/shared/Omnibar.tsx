@@ -47,7 +47,6 @@ const PAGES = [
   { label: "문서 검색", hint: "전체 수집 자료", to: "/feed?view=documents", icon: FileSearch, keywords: "feed documents 문서 텔레그램 블로그" },
   { label: "소스 관리", hint: "채널·블로그·유튜브", to: "/sources", icon: Globe, keywords: "source 소스 구독 관리 채널 블로그 유튜브" },
   { label: "미국 종목", hint: "도시에·컨콜", to: "/us", icon: Globe, keywords: "us 미국 컨콜 transcript" },
-  { label: "카탈리스트 캘린더", hint: "", to: "/research/catalysts", icon: LineChart, keywords: "calendar 일정 카탈리스트" },
   { label: "보관함", hint: "예전 화면", to: "/archive", icon: Home, keywords: "archive 보관함 스크리너 비교 산업군" },
 ] as const
 

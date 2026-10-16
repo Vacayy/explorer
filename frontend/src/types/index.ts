@@ -144,18 +144,6 @@ export interface SignalItem {
   in_watchlist: boolean;
 }
 
-export interface CatalystItem {
-  id: number;
-  stock_code: string | null;
-  corp_code: string | null;
-  corp_name: string | null;
-  event_type: string;
-  event_date: string;
-  title: string;
-  description: string | null;
-  created_at: string;
-}
-
 // ---------- Spine (그래프 척추) API ----------
 
 export interface EntityTag {

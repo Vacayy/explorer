@@ -87,7 +87,7 @@
 - [phase1-etl-spine](phase1-etl-spine.md) — Phase 1 — ETL 척추 (greenfield spine)
 - [phase2-rag](phase2-rag.md) — Phase 2 — RAG (검색 레이어 구현됨 / 생성은 LLM 키 대기)
 - [question-proxy](question-proxy.md) — 핵심질문 ↔ 프록시 — 분할정복 질문 트래커 + 프록시 보드(D-240, 결정적 어댑터·보드 API 구현 계약)
-- [research-catalysts](research-catalysts.md) — 화면 기획서: 카탈리스트 캘린더
+- [research-catalysts](research-catalysts.md) — 화면 기획서: 카탈리스트 캘린더 — **제거됨 (D-241)**
 - [research-memos](research-memos.md) — 화면 기획서: 투자메모 — **제거됨 (D-241)**
 - [research-watchlist](research-watchlist.md) — 화면 기획서: 워치리스트 (대체됨 → portfolio-watch 기본 관심 묶음)
 - [saved-items](saved-items.md) — 저장됨 (Saved / Bookmarks) — 산출물 북마크
