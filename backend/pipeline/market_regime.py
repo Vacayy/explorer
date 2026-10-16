@@ -7,6 +7,7 @@
 - 포스처·근거 = frame (규칙 기반 템플릿, 검증된 지식 아님).
 - 저장 = market_indicators 일별 스냅샷(원지표만). 파생(EMA·RSI·vol·기울기)은 읽을 때 계산.
 
+F&G·VIX는 정본(pipeline.indicator_canon, Risk 수집기의 `risk_*`)을 읽고, 스냅샷 때 갱신을 위임한다.
 fetch 실패는 부분(degraded)으로 흡수 — 국장 추세(KOSPI)만 있어도 국장 포스처는 나온다.
 """
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from database import get_connection
+from pipeline import indicator_canon
 
 # 브라우저 UA — CNN F&G는 무헤더 시 418 봇차단 (feasibility 실측 2026-07-28)
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -21,7 +23,9 @@ _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 # 원지표 (스냅샷 저장 대상). 파생(EMA·RSI·vol·기울기)은 읽을 때 계산.
 # kospi = 국장 오실레이터(RSI14) 계산 입력. sp500 미저장 — 추세 게이트는 오실레이터의 EMA라 지수 불요.
+# fear_greed·vix는 여기서 저장하지 않고 정본 계열(risk_*)을 읽는다.
 RAW_INDICATORS = ("fear_greed", "vix", "kospi", "vkospi")
+CANON_SENTIMENT = ("fear_greed", "vix")
 
 
 # ──────────────────────────── fetch ────────────────────────────
@@ -112,8 +116,6 @@ def snapshot_market() -> dict:
         except Exception as e:
             degraded.append(f"{name}({type(e).__name__})")
 
-    _try("fear_greed", _fear_greed_history)
-    _try("vix", lambda: _yf_history("^VIX"))
     _try("kospi", lambda: _yf_history("^KS11"))   # 국장 오실레이터(RSI14) 입력
     _try("vkospi", _vkospi_history)
 
@@ -134,7 +136,10 @@ def snapshot_market() -> dict:
             n += 1
     conn.commit()
     conn.close()
-    return {"rows": n, "indicators": list(fetched.keys()), "degraded": degraded}
+    failed = indicator_canon.refresh(CANON_SENTIMENT)
+    degraded += failed
+    refreshed = [k for k in CANON_SENTIMENT if not any(f.startswith(f"{k}(") for f in failed)]
+    return {"rows": n, "indicators": list(fetched.keys()) + refreshed, "degraded": degraded}
 
 
 # ──────────────────────────── posture (LLM 0) ────────────────────────────
@@ -220,7 +225,7 @@ def get_regime() -> dict:
     반등해도 EMA가 우하향이면 '보류' — 반등이 속임수일 수 있으니 EMA 눕기 대기.
     """
     conn = get_connection()
-    ser = {ind: _series(conn, ind) for ind in (*RAW_INDICATORS, "kospi_vol")}
+    ser = {ind: _series(conn, indicator_canon.CANONICAL.get(ind, ind)) for ind in (*RAW_INDICATORS, "kospi_vol")}
     conn.close()
 
     degraded = [ind for ind in RAW_INDICATORS if not ser[ind]]

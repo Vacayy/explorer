@@ -3,8 +3,8 @@
 홈의 배경 조건 트래킹 카드. 시장 국면(D-076, "오늘 얼마나 실을까" 포스처)과 **역할 분리** — 이건 "판이 어떻게 깔렸나"(금리·달러·유동성·신용·원자재).
 
 ## 데이터 (하이브리드)
-- **매크로 (키 없음, yfinance)**: 미 10Y 금리(^TNX)·달러원(KRW=X)·엔원(JPYKRW=X, 100엔당 표시)·달러 DXY(DX-Y.NYB)·유가 WTI(CL=F)·금(GC=F)·신용 HYG·비트코인(BTC-USD).
-- **미 2Y 금리 (키 없음)**: [FRED DGS2](https://fred.stlouisfed.org/series/DGS2)의 공개 CSV. 결측 관측은 건너뛰고 원래 % 단위와 관측일을 보존한다. 달러원은 [Yahoo Finance KRW=X](https://finance.yahoo.com/quote/KRW%3DX/)를 사용한다.
+- **매크로 (키 없음, yfinance)**: 달러원(KRW=X)·엔원(JPYKRW=X, 100엔당 표시)·달러 DXY(DX-Y.NYB)·유가 WTI(CL=F)·금(GC=F)·신용 HYG·비트코인(BTC-USD).
+- **미 2Y·10Y 금리 (키 없음)**: [FRED DGS2](https://fred.stlouisfed.org/series/DGS2)·[DGS10](https://fred.stlouisfed.org/series/DGS10)의 공개 CSV. 정본 계열 `risk_us2y`·`risk_us10y`(`pipeline/indicator_canon.py`)를 읽고 스냅샷은 Risk 수집기에 위임한다(2026-10-16, 이전의 ^TNX `macro_us10y`는 수집 중단). 결측 관측은 건너뛰고 원래 % 단위와 관측일을 보존한다. 달러원은 [Yahoo Finance KRW=X](https://finance.yahoo.com/quote/KRW%3DX/)를 사용한다.
 - **유동성 (FRED 무료키 `FRED_API_KEY`)**: Fed 대차대조표(WALCL)·TGA(WTREGEN)·역레포(RRPONTSYD)·M2(M2SL).
   - **순유동성 = WALCL − TGA − RRP** (읽을 때 계산, 혼합 주기 forward-fill 정렬). = **MacroMicro US Liquidity Index**의 공식(유료 사이트 스크래핑 대신 동일 공식을 무료 FRED 원데이터로 재현). 위험자산과 가장 잘 붙는 유동성 지표.
   - 단위 정규화: WALCL·WTREGEN 백만$→십억$, 표시는 조($T).
@@ -36,6 +36,6 @@ Loading(skeleton) / Error(ErrorState+재시도) / Partial(일부 지표 degraded
 
 ## Risk 차트 분리 (D-205, 2026-09-28)
 
-Home 기본 금리·신용·VIX·공포탐욕 표시는 [Risk 계약](home-feed.md#risk-모니터링-구현-계약-2026-09-28)을 따른다. 기존 MacroLiquidity 상세와 매크로 해설 입력은 유지한다. Risk는 10Y/2Y를 FRED DGS10/DGS2로 통일하며 기존 Yahoo macro_us10y와 섞지 않는다. 상단 MarketContext 요약 띠는 달러원·엔원·미국 2Y·10Y(매크로 시계열, Risk의 FRED와 별개)·WTI·금·BTC와 MoM을 표시한다(D-210).
+Home 기본 금리·신용·VIX·공포탐욕 표시는 [Risk 계약](home-feed.md#risk-모니터링-구현-계약-2026-09-28)을 따른다. 기존 MacroLiquidity 상세와 매크로 해설 입력은 유지한다. Risk·매크로·요약 띠 모두 10Y/2Y를 같은 FRED DGS10/DGS2 정본에서 읽는다(2026-10-16). 상단 MarketContext 요약 띠는 달러원·엔원·미국 2Y·10Y·WTI·금·BTC와 MoM을 표시한다(D-210).
 
 Risk 금리·신용은 기본 10년이며 `risk_macro_range`에서 3개월~전체로 전환한다. FRED 장기 백필은 기존 market_indicators에 보존하고 최초 백필 이후 최근 400일만 갱신한다. HY/BBB/AAA OAS의 최근 3년 제공 제한과 Aaa/Baa−10Y의 정의 차이는 카드·설명 팝오버에서 안내한다.

@@ -32,7 +32,7 @@
 | 컬럼 | 설명 |
 |---|---|
 | `snapshot_date` TEXT | KST 날짜 (YYYY-MM-DD) |
-| `indicator` TEXT | `fear_greed`·`vix`·`kospi`·`vkospi`·`kospi_vol`. **원지표만 저장** — 파생(RSI14·오실레이터 20EMA·기울기)은 읽을 때 계산 |
+| `indicator` TEXT | `kospi`·`vkospi`·`kospi_vol` (F&G·VIX는 2026-10-16부터 정본 `risk_fear_greed`·`risk_vix`를 읽음, 레거시 `fear_greed`·`vix` 행은 보존). **원지표만 저장** — 파생(RSI14·오실레이터 20EMA·기울기)은 읽을 때 계산 |
 | `value` REAL | 값 |
 | `extra_json` TEXT | rating·slope·percentile 등 부수 (nullable) |
 | PK | (snapshot_date, indicator) |

@@ -31,7 +31,7 @@ CHECKS: list[tuple[str, str, str, str, object, str, bool]] = [
     ("market_history", "발견용 시세 이력", "trading", "HISTORY", "2130",
      "launchd history 평일 20:40", True),
     ("regime", "시장 국면 지표", "trading",
-     "SELECT max(snapshot_date) FROM market_indicators WHERE indicator IN ('vix','kospi','fear_greed')", "1730",
+     "SELECT max(snapshot_date) FROM market_indicators WHERE indicator IN ('risk_vix','kospi','risk_fear_greed')", "1730",
      "launchd market 평일 16:20", True),
     ("risk", "리스크 지표", "trading",
      "SELECT max(snapshot_date) FROM market_indicators WHERE indicator LIKE 'risk\\_%' ESCAPE '\\' "
