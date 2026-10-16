@@ -8,8 +8,10 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useProjects } from './useProjects'
 import { errorMessage } from './useStudy'
-export function AddToStudy({documentId}:{documentId:number}){
- const [open,setOpen]=useState(false),[title,setTitle]=useState(''),[busy,setBusy]=useState(false)
+/** 자료를 스터디 프로젝트에 담는다. open/onOpenChange를 주면 바깥(선택 팔레트의 '스터디에 담기')에서도 연다 */
+export function AddToStudy({documentId,open:controlled,onOpenChange}:{documentId:number;open?:boolean;onOpenChange?:(v:boolean)=>void}){
+ const [own,setOwn]=useState(false),[title,setTitle]=useState(''),[busy,setBusy]=useState(false)
+ const open=controlled??own,setOpen=(v:boolean)=>{setOwn(v);onOpenChange?.(v)}
  const cache=useQueryClient()
  return <><Button size="sm" variant="ghost" onClick={()=>setOpen(true)}><FolderPlus aria-hidden="true"/>스터디에 추가</Button><Dialog open={open} onOpenChange={v=>!busy&&setOpen(v)}><DialogContent><DialogHeader><DialogTitle>함께 공부할 프로젝트</DialogTitle><DialogDescription>자료만 추가하고 지금 읽던 화면에 머무릅니다.</DialogDescription></DialogHeader><ProjectPicker busy={busy} onPick={async pid=>{setBusy(true);try{await api.post(`/api/spine/study-projects/${pid}/documents`,{document_ids:[documentId]});await cache.invalidateQueries({queryKey:['spine','study-projects']});await cache.invalidateQueries({queryKey:['spine','study-project',pid]});setOpen(false);toast.success('스터디에 추가했습니다.')}catch(e){toast.error(errorMessage(e))}finally{setBusy(false)}}}/><form className="flex gap-2 border-t pt-4" onSubmit={async e=>{e.preventDefault();setBusy(true);try{const {data}=await api.post('/api/spine/study-projects',{title:title.trim()||'새 스터디'});await api.post(`/api/spine/study-projects/${data.id}/documents`,{document_ids:[documentId]});await cache.invalidateQueries({queryKey:['spine','study-projects']});setOpen(false);setTitle('');toast.success('새 스터디에 추가했습니다.')}catch(e){toast.error(errorMessage(e))}finally{setBusy(false)}}}><Input aria-label="새 스터디 이름" placeholder="새 스터디 이름 (나중에 변경 가능)" value={title} maxLength={160} onChange={e=>setTitle(e.target.value)}/><Button disabled={busy} type="submit">새로 만들고 추가</Button></form></DialogContent></Dialog></>
 }

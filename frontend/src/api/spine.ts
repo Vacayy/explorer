@@ -179,7 +179,8 @@ export async function askQuestion(params: {
   document_ids?: number[];
   conversation_id?: number;
   /** 드래그 인용 — 선택 문장 + 문단 맥락 + 그 대목의 근거 (D-146) */
-  quote?: { message_id: number; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
+  /** 문서에서 지목했으면 message_id 대신 doc_id·doc_title (docs/specs/canvas.md §2) */
+  quote?: { message_id?: number; doc_id?: number; doc_title?: string; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
   /** AI 대화 패널이 보는 화면 — 지시어 해석용, 메시지 본문에는 저장되지 않는다 (docs/specs/app-shell.md §5) */
   page_context?: PageContext;
 }): Promise<AskResponse> {

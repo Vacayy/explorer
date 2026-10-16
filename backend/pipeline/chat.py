@@ -175,11 +175,13 @@ def _quote_block(turn: Turn) -> str | None:
     q = turn.quote
     if not q or not (q.get("selected") or "").strip():
         return None
-    if q.get("doc_id") and not q.get("message_id"):
-        # 문서 읽기 화면의 'AI에게 묻기' — 출처가 이전 답변이 아니라 수집 문서다 (canvas.md §2)
+    if (q.get("doc_id") or q.get("doc_title")) and not q.get("message_id"):
+        # 문서·스터디 읽기 화면의 'AI에게 묻기' — 출처가 이전 답변이 아니라 읽던 자료다 (canvas.md §2).
+        # 붙여넣은 스터디 자료는 수집 문서가 아니라 doc_id가 없다
         title = str(q.get("doc_title") or "").strip()[:120]
         head = (f"[사용자가 문서 「{title}」(doc_id {q['doc_id']})를 읽다가 드래그해 지목한 대목 — 이 질문은 이 부분에 대한 것이다. "
-                "문서 전체가 필요하면 open_doc(doc_id)]")
+                "문서 전체가 필요하면 open_doc(doc_id)]") if q.get("doc_id") else \
+            f"[사용자가 자료 「{title}」를 읽다가 드래그해 지목한 대목 — 이 질문은 이 부분에 대한 것이다]"
     else:
         head = "[사용자가 직전 답변에서 드래그해 지목한 대목 — 이 질문은 이 부분에 대한 것이다]"
     lines = [head, f"지목: 「{(q.get('selected') or '')[:500]}」"]

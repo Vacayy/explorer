@@ -27,6 +27,12 @@ class DocQuoteTests(unittest.TestCase):
         self.assertNotIn("직전 답변", text)
         self.assertIn("HBM 출하가 3분기에 두 배로 늘었다", text)   # 문단 맥락
 
+    def test_pasted_study_material_without_doc_id_is_still_a_document(self):
+        text = chat._quote_block(self.turn({"selected": "마진 개선", "doc_title": "붙여넣은 메모"}))
+        self.assertIn("붙여넣은 메모", text)
+        self.assertNotIn("직전 답변", text)
+        self.assertNotIn("open_doc", text)
+
     def test_answer_quote_still_says_previous_answer(self):
         text = chat._quote_block(self.turn({"message_id": 9, "selected": "급증했다"}))
         self.assertIn("직전 답변", text)

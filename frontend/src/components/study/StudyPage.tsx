@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, ArrowLeft, Send, Trash2 } from 'lucide-react'
+import { Sparkles, ArrowLeft, Send, Trash2, Highlighter, BookOpen, ScanSearch, Search, MessageSquarePlus, MessageSquareQuote } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
 import { Markdown } from '@/components/shared/Markdown'
 import { ErrorState } from '@/components/shared/ErrorState'
+import { SelectionPalette, type SelectionAction } from '@/components/shared/SelectionPalette'
+import { askAboutText } from '@/lib/aiPanel'
 import SegmentTabs from '@/components/shared/SegmentTabs'
 import { citationComponents, linkifyCitations } from '@/components/chat/citations'
 import type { ChatMessage, StudyTool, StudyIntent } from '@/types'
@@ -105,11 +107,22 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
  const displayedAnnotations=historical?[...s.annotations,historical]:s.annotations
  const selectedHighlights=(refs.length?refs:s.annotations).filter(a=>a.kind==='highlight')
  const Frame=embedded?StudyFrame:PageLayout
+ // 읽기 모드에서 문장을 고르면 공통 선택 팔레트 — 도구를 먼저 고르는 기존 흐름(D-175)과 같은 동작을 선택 뒤에 고른다 (canvas.md §2)
+ const picked_=()=>selection()||selectionRef.current
+ const withSel=(fn:(sel:Selection)=>void)=>()=>{const sel=picked_();if(sel){selectionRef.current=null;fn(sel)}}
+ const paletteActions:SelectionAction[]=[
+  {key:'highlight',label:'하이라이트',Icon:Highlighter,onSelect:withSel(sel=>void add(sel,'highlight'))},
+  {key:'explain',label:'설명',Icon:BookOpen,onSelect:withSel(sel=>void addAction(sel,'explain'))},
+  {key:'critique',label:'검토',Icon:ScanSearch,onSelect:withSel(sel=>void addAction(sel,'critique'))},
+  {key:'related',label:'관련 자료',Icon:Search,onSelect:withSel(sel=>void addAction(sel,'related'))},
+  {key:'comment',label:'코멘트',Icon:MessageSquarePlus,onSelect:withSel(sel=>{setPending(sel);setComment('');side('notes')})},
+  {key:'ask',label:'AI에게 묻기',Icon:MessageSquareQuote,primary:true,onSelect:sel=>askAboutText(sel,{docId:s.document_id,title:s.title})},
+ ]
  return <TooltipProvider><Frame header={<PageHeader title={s.title} description={`스터디 · ${s.body_kind} · 고정 본문`} actions={<><Button variant="ghost" size="sm" asChild><Link to={s.document_id?`/doc/${s.document_id}`:`/study/projects/${s.project_id}`}><ArrowLeft/>문서 상세</Link></Button><Button variant="ghost" size="sm" asChild><Link to="/study">스터디 목록</Link></Button></>}/> }>
  <div className="study-workspace" data-panel={mobile}>
   <div className="study-palette" role="toolbar" aria-label="스터디 도구 팔레트">
    <StudyPalette value={mode} onChange={value=>{setMode(value);setMobile('read')}}/>
-   <span className="text-caption text-muted-foreground">{saving?'저장 중…':mode==='highlight'?'드래그하면 표시 · Esc로 읽기':mode==='comment'?'문장을 클릭하면 코멘트':mode==='read'?'표시를 누르면 저장된 답변 확인':`${intentLabel(mode)} · 드래그하면 AI에 바로 질문 · Esc로 읽기`}</span>
+   <span className="text-caption text-muted-foreground">{saving?'저장 중…':mode==='highlight'?'드래그하면 표시 · Esc로 읽기':mode==='comment'?'문장을 클릭하면 코멘트':mode==='read'?'문장을 고르면 할 일이 뜹니다 · 표시를 누르면 저장된 답변 확인':`${intentLabel(mode)} · 드래그하면 AI에 바로 질문 · Esc로 읽기`}</span>
    {mode!=='read'&&<Button size="sm" variant="ghost" onPointerDown={e=>e.preventDefault()} onClick={()=>applySelection(true)}>선택 영역에 적용</Button>}
    {embedded&&<Button size="sm" variant="ghost" onClick={()=>side('notes')}>노트 {s.annotations.length}</Button>}
    <Button className="ml-auto" size="sm" variant="outline" disabled={busy||generating||!selectedHighlights.length} onClick={()=>send('summarize',selectedHighlights)}><Sparkles aria-hidden="true"/>하이라이트 요약</Button>
@@ -121,8 +134,9 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
     <p className="mb-5 text-caption text-muted-foreground">{s.source_type} · {s.body_kind} · 주석을 보존하기 위해 처음 연 본문을 유지합니다.</p>
     {historical&&<p className="mb-3 text-caption text-muted-foreground">삭제된 주석의 당시 위치를 표시합니다. 인용과 코멘트는 대화 이력에 보존돼 있습니다.</p>}
     <div ref={textRef} className="study-text" tabIndex={0} aria-label="선택 가능한 원문" data-tool={mode} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();applySelection(true)}}} onPointerUp={e=>{if(mode!=='read'&&mode!=='comment')setTimeout(()=>applySelection(),e.pointerType==='touch'?250:0)}} onClick={clickText}>
-     {blocks.map(block=>{const marks=displayedAnnotations.filter(a=>a.start_offset<block.end&&a.end_offset>block.start);const cuts=[...new Set([block.start,block.end,...marks.flatMap(a=>[Math.max(block.start,a.start_offset),Math.min(block.end,a.end_offset)])])].sort((a,b)=>a-b);return <div key={block.start} data-block-start={block.start} tabIndex={mode==='comment'?0:undefined} onKeyDown={e=>{if(mode==='comment'&&e.key==='Enter'){e.preventDefault();setPending({start:block.start,end:block.end,exact:block.text});setComment('');side('notes')}}}>{cuts.slice(0,-1).map((start,i)=>{const end=cuts[i+1],active=marks.filter(a=>a.start_offset<end&&a.end_offset>start),highlight=active.some(a=>a.kind==='highlight'),note=active.some(a=>a.comment||a.kind==='comment');return <span key={start} data-annotation={active.map(a=>a.id).join(' ')} data-intent={active.find(a=>a.intent&&a.intent!=='highlight')?.intent??'highlight'} className={`${highlight?'study-highlight ':''}${note?'study-comment-anchor ':''}${active.some(a=>picked.includes(a.id))?'study-picked':''}`} title={active.map(a=>`${a.kind==='comment'?'코멘트':intentLabel(a.intent??'highlight')}${a.comment?`: ${a.comment}`:''}`).join('\n')}>{chars.slice(start,end).join('')}</span>})}</div>})}
+     {blocks.map(block=>{const marks=displayedAnnotations.filter(a=>a.start_offset<block.end&&a.end_offset>block.start);const cuts=[...new Set([block.start,block.end,...marks.flatMap(a=>[Math.max(block.start,a.start_offset),Math.min(block.end,a.end_offset)])])].sort((a,b)=>a-b);return <div key={block.start} data-block-start={block.start} data-selection-block="" tabIndex={mode==='comment'?0:undefined} onKeyDown={e=>{if(mode==='comment'&&e.key==='Enter'){e.preventDefault();setPending({start:block.start,end:block.end,exact:block.text});setComment('');side('notes')}}}>{cuts.slice(0,-1).map((start,i)=>{const end=cuts[i+1],active=marks.filter(a=>a.start_offset<end&&a.end_offset>start),highlight=active.some(a=>a.kind==='highlight'),note=active.some(a=>a.comment||a.kind==='comment');return <span key={start} data-annotation={active.map(a=>a.id).join(' ')} data-intent={active.find(a=>a.intent&&a.intent!=='highlight')?.intent??'highlight'} className={`${highlight?'study-highlight ':''}${note?'study-comment-anchor ':''}${active.some(a=>picked.includes(a.id))?'study-picked':''}`} title={active.map(a=>`${a.kind==='comment'?'코멘트':intentLabel(a.intent??'highlight')}${a.comment?`: ${a.comment}`:''}`).join('\n')}>{chars.slice(start,end).join('')}</span>})}</div>})}
     </div>
+    <SelectionPalette containerRef={textRef} enabled={mode==='read'} actions={paletteActions}/>
     {/^https?:\/\//i.test(s.source_url||'')&&<a href={s.source_url} target="_blank" rel="noreferrer" className="mt-6 block text-caption text-primary underline">원문 사이트 ↗</a>}
    </article>
    <StudyAside embedded={embedded} active={unifiedNotes||active} host={noteHost}><aside className="study-aside" aria-label="스터디 노트와 AI 대화">

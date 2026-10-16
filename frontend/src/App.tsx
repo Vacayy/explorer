@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
@@ -10,6 +10,7 @@ import { MyListPanel } from "@/components/layout/MyListPanel"
 import { DesktopOnly } from "@/components/layout/DesktopOnly"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { PREF, readPref, writePref } from "@/lib/shellPrefs"
+import { onAskAi } from "@/lib/aiPanel"
 import { SubNav } from "@/components/layout/SubNav"
 import { FEED_TABS, SECTIONS, analyzeTabOf, analyzeTabs, feedSourceTab, isDocumentFeed, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
@@ -117,6 +118,8 @@ function Layout() {
     return !v
   }), [])
   useKeyboardShortcuts(toggleAi)
+  // 'AI에게 묻기' — 어느 화면에서 보내든 패널을 연다. 인용은 패널이 받는다 (lib/aiPanel)
+  useEffect(() => onAskAi(() => { setAiOpen(true); writePref(PREF.ai, "1") }), [])
 
   // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
   const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null

@@ -35,7 +35,7 @@ export function Composer({ value, onChange, onSubmit, busy, placeholder, autoFoc
         <div className="flex items-start gap-2 rounded-xl border border-hypothesis/30 bg-[color-mix(in_srgb,var(--hypothesis)_6%,var(--card))] px-3 py-2">
           <Quote className="mt-0.5 size-3.5 shrink-0 text-hypothesis" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] text-muted-foreground">답변에서 지목한 대목{quote.citations.length > 0 && ` · 근거 ${quote.citations.length}건 함께 전달`}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{quote.doc_id ? `문서 「${quote.doc_title || `#${quote.doc_id}`}」에서 지목한 대목` : "답변에서 지목한 대목"}{quote.citations.length > 0 && ` · 근거 ${quote.citations.length}건 함께 전달`}</p>
             <p className="line-clamp-2 text-[13px] leading-snug">{quote.selected}</p>
           </div>
           <Button variant="ghost" size="icon-xs" aria-label="인용 빼기" onClick={onClearQuote}>

@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { useChat } from "@/hooks/useChat"
 import { usePageContext } from "@/hooks/usePageContext"
 import { PREF, readPref, setPanelThread, writePref } from "@/lib/shellPrefs"
+import { onAskAi, takePendingAsk, type AskAiRequest } from "@/lib/aiPanel"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { Composer } from "./Composer"
@@ -47,16 +48,34 @@ export function ChatPanel({ companyName, onClose, inputRef }: {
   const { detail, messages, awaiting, stalled, draft, ask } = chat
   const busy = ask.isPending || awaiting
 
-  const submit = (text?: string) => {
+  const submit = (text?: string, withQuote: QuoteRef | null = quote) => {
     const q = (text ?? question).trim()
-    if ((!q && !quote) || busy) return
+    if ((!q && !withQuote) || busy) return
     ask.mutate(
-      { question: q || "이 대목을 더 자세히 설명해줘", conversation_id: activeId ?? undefined, quote: quote ?? undefined,
+      { question: q || "이 대목을 더 자세히 설명해줘", conversation_id: activeId ?? undefined, quote: withQuote ?? undefined,
         page_context: withPage && page ? page : undefined },
       { onSuccess: () => { setQuestion(""); setQuote(null) } },
     )
     stickRef.current = true
   }
+
+  // 'AI에게 묻기' (lib/aiPanel) — 다른 화면에서 고른 문장을 인용으로 받는다. 닫혀 있다 열렸으면 대기 요청을 가져간다
+  const submitRef = useRef(submit)
+  submitRef.current = submit
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  useEffect(() => {
+    const receive = (r: AskAiRequest) => {
+      takePendingAsk()
+      if (r.send && r.question && !busyRef.current) { submitRef.current(r.question, r.quote); return }
+      setQuote(r.quote)
+      if (r.question) setQuestion(r.question)
+      requestAnimationFrame(() => inputRef?.current?.focus())
+    }
+    const waiting = takePendingAsk()
+    if (waiting) receive(waiting)
+    return onAskAi(receive)
+  }, [inputRef])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
