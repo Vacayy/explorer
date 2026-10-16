@@ -109,7 +109,8 @@ def ingest_daily(repair_days: int = 10):
             repair(repair_days, only_missing=True, codes=gaps)
     else:
         conn.close()
-    return {"upsert": len(rows), "days": ",".join(days), "changed": changed, "failed": failed}
+    status = "error" if failed and not rows else "partial" if failed else "ok"
+    return {"upsert": len(rows), "days": ",".join(days), "changed": changed, "failed": failed, "status": status}
 
 
 def _yf_batch(yf, tickers: list[str], start: str, end: str, tries: int = 4):

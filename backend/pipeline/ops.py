@@ -103,7 +103,9 @@ def run_job(name: str, fn):
     t0 = time.time()
     try:
         r = fn()
-        record_run(name, "ok", _summarize(r), int((time.time() - t0) * 1000))
+        # 예외 없이 끝나도 결과가 실패를 말하면 그대로 남긴다 — prices가 전 종목 실패를 ok로 남긴 적이 있다(2026-10-15)
+        status = r.get("status") if isinstance(r, dict) and r.get("status") in ("partial", "error") else "ok"
+        record_run(name, status, _summarize(r), int((time.time() - t0) * 1000))
         return r
     except Exception as e:  # noqa: BLE001 — 기록 후 재전파
         record_run(name, "error", f"{type(e).__name__}: {str(e)[:200]}", int((time.time() - t0) * 1000))

@@ -27,7 +27,7 @@ interface HealthItem {
 interface JobRun { job: string; status: string; summary: string | null; duration_ms: number | null; ran_at: string }
 
 const STATUS_CLS: Record<string, string> = {
-  ok: "text-up border-up/40", skipped: "text-muted-foreground", error: "text-down border-down/50",
+  ok: "text-up border-up/40", skipped: "text-muted-foreground", error: "text-down border-down/50", partial: "text-down border-down/30",
 }
 
 export default function AdminPage() {
