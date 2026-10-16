@@ -44,6 +44,16 @@ function blockOf(node: Node | null, root: HTMLElement): Element | null {
   return null
 }
 
+/** 줄글(pre-wrap) 본문은 문단 요소가 없다 — 선택이 든 텍스트 노드에서 빈 줄로 나뉜 문단을 잘라 온다 */
+function paragraphAround(range: Range): string | null {
+  const node = range.startContainer
+  if (node.nodeType !== 3 || node !== range.endContainer) return null
+  const text = node.textContent || ""
+  const start = text.lastIndexOf("\n\n", range.startOffset)
+  const end = text.indexOf("\n\n", range.endOffset)
+  return text.slice(start < 0 ? 0 : start + 2, end < 0 ? text.length : end).replace(/[ \t]+/g, " ").trim() || null
+}
+
 /**
  * 공통 선택 팔레트 (docs/specs/canvas.md §2) — 컨테이너 안에서 텍스트를 고르면 선택 위에 동작 버튼이 뜬다.
  * 문서 읽기·스터디·대화 답변이 같은 부품을 쓰고, 화면마다 지원하는 동작만 넘긴다(하이라이트·설명·검토·스터디에 담기·AI에게 묻기).
@@ -75,7 +85,8 @@ export function SelectionPalette({ containerRef, actions, enabled = true, ignore
       if (!selected) { setSel(null); return }
       const blockEl = blockOf(range.commonAncestorContainer, root) ?? blockOf(s.anchorNode, root)
       rect.current = range.getBoundingClientRect()
-      setSel({ selected: selected.slice(0, MAX_SELECTED), block: (blockEl ? cleanText(blockEl, ignore) : selected).slice(0, MAX_BLOCK), range, blockEl })
+      const block = blockEl ? cleanText(blockEl, ignore) : paragraphAround(range) ?? selected
+      setSel({ selected: selected.slice(0, MAX_SELECTED), block: block.slice(0, MAX_BLOCK), range, blockEl })
     }
     document.addEventListener("mouseup", onUp)
     return () => document.removeEventListener("mouseup", onUp)
@@ -86,7 +97,7 @@ export function SelectionPalette({ containerRef, actions, enabled = true, ignore
     <Popover open={!!sel} onOpenChange={open => { if (!open) close() }}>
       <PopoverAnchor virtualRef={{ current: { getBoundingClientRect: () => rect.current } }} />
       <PopoverContent ref={contentRef} side="top" align="center" sideOffset={6} role="toolbar" aria-label="선택한 문장으로 할 일"
-        className="flex w-auto items-center gap-0.5 rounded-lg p-1 shadow-md"
+        className="flex w-auto flex-row items-center gap-0.5 rounded-lg p-1 shadow-md"
         onOpenAutoFocus={e => e.preventDefault()} onCloseAutoFocus={e => e.preventDefault()}
         // 버튼을 눌러도 화면의 선택 표시가 남게
         onPointerDown={e => e.preventDefault()}>

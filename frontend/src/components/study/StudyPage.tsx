@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, ArrowLeft, Send, Trash2, Highlighter, BookOpen, ScanSearch, Search, MessageSquarePlus, MessageSquareQuote } from 'lucide-react'
+import { Sparkles, ArrowLeft, Send, Trash2, Highlighter, MessageSquarePlus, MessageSquareQuote } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ import { askAboutText } from '@/lib/aiPanel'
 import SegmentTabs from '@/components/shared/SegmentTabs'
 import { citationComponents, linkifyCitations } from '@/components/chat/citations'
 import type { ChatMessage, StudyTool, StudyIntent } from '@/types'
-import { StudyPalette, intentLabel } from '@/components/study/StudyPalette'
+import { StudyPalette, INTENTS, intentLabel } from '@/components/study/StudyPalette'
 import { AnnotationActions } from '@/components/study/AnnotationActions'
 import { useStudyActions, type StudyActionsController } from '@/hooks/useStudyActions'
 import { type Annotation, errorMessage, useStudy } from '@/components/study/useStudy'
@@ -111,10 +111,9 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
  const picked_=()=>selection()||selectionRef.current
  const withSel=(fn:(sel:Selection)=>void)=>()=>{const sel=picked_();if(sel){selectionRef.current=null;fn(sel)}}
  const paletteActions:SelectionAction[]=[
-  {key:'highlight',label:'하이라이트',Icon:Highlighter,onSelect:withSel(sel=>void add(sel,'highlight'))},
-  {key:'explain',label:'설명',Icon:BookOpen,onSelect:withSel(sel=>void addAction(sel,'explain'))},
-  {key:'critique',label:'검토',Icon:ScanSearch,onSelect:withSel(sel=>void addAction(sel,'critique'))},
-  {key:'related',label:'관련 자료',Icon:Search,onSelect:withSel(sel=>void addAction(sel,'related'))},
+  // 이름은 같은 화면의 도구 팔레트와 맞춘다(강조·이해하기·검토하기·관련 자료)
+  {key:'highlight',label:'강조',Icon:Highlighter,onSelect:withSel(sel=>void add(sel,'highlight'))},
+  ...INTENTS.map(i=>({key:i.key,label:i.label,Icon:i.Icon,onSelect:withSel(sel=>void addAction(sel,i.key))})),
   {key:'comment',label:'코멘트',Icon:MessageSquarePlus,onSelect:withSel(sel=>{setPending(sel);setComment('');side('notes')})},
   {key:'ask',label:'AI에게 묻기',Icon:MessageSquareQuote,primary:true,onSelect:sel=>askAboutText(sel,{docId:s.document_id,title:s.title})},
  ]
