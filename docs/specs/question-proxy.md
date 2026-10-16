@@ -214,6 +214,84 @@ proxy_observations(  -- 확장
 (도출→후보 반환) · 기존 `decompose_question`·`build_scenario` 재사용 · FE: `/doc/:id`·피드에 "이 소스로 파보기" 버튼
 → 후보 픽 모달 → 질문 트래커 + 시나리오 진입.
 
+## 프록시 보드 (D-240)
+
+프록시를 '질문의 서브질문에 매단 LLM 추출값'에서 **주제·논지를 지켜보는 지표 묶음(보드)**으로 넓힌다. 보드 = 이름 +
+지표 목록 + (선택) 연결된 핵심질문·서사·종목 묶음. 사용자가 필요할 때 직접 만들고, 만들 때 한 번 지표 정의를 제안받는다.
+보드 값은 판정 엔진(`refresh_questions`)과 무관하게 원천이 갱신되는 대로 산다. 판정 엔진은 이 값들을 입력으로 쓰는 상위 층으로 남는다.
+
+### 데이터 모델
+
+- `proxy_registry` 확장: `adapter`(어댑터 kind, NULL=기존 질문 프록시)·`adapter_ref`(`kind:body`)·`warn_direction`(up|down|NULL — 어느 방향이 '주의'인가)·`rationale`(왜 이 주제의 신호인가).
+- `proxy_boards(id, name UNIQUE, description, question_id?, narrative_id?, group_id?, created_at, updated_at)`
+- `proxy_board_items(board_id, proxy_id, position, PK(board_id, proxy_id))`
+- **결정적 어댑터의 값은 `proxy_observations`에 쓰지 않는다.** 원천 테이블을 요청 시 읽는다(중복 저장·갱신 시점 어긋남 회피).
+- 보드에서 새로 정의한 지표는 보드 소유 행(`adapter` NOT NULL, `sub_question_id` NULL)이다. 어느 보드에도 없게 되면 지운다.
+  기존 질문 프록시(`adapter` NULL)는 보드에서 빼도 남는다. 기존 프록시를 이름·주의 방향을 붙여 담고 싶으면
+  `transcript:<id>`·`corpus:<id>` 정의로 보드 소유 행을 만든다(원 프록시를 덮어쓰지 않음).
+
+### 어댑터 (`pipeline/proxy_adapters.py`, LLM 0·네트워크 0)
+
+| kind | ref 형식 | 값 | 원천 · 재사용 계산 | 변화 기준 |
+|---|---|---|---|---|
+| credit | `credit:<티커>` · `credit:group:<묶음키>` | 회사채 스프레드(bp). 묶음은 구성사 평균(거래 없는 날은 최대 10일 이어 씀, 구성사 전원 값이 있는 날만) | `credit_quotes`·`credit_bonds`·`treasury_curve` · `credit_spreads.spread_series` | 30일 전 |
+| trade | `trade:<HS>[:import][:mom\|yoy\|yoy3m\|z]` | 월 수출액(USD), 접미사면 증가율(%)·YoY z | `trade_stats`·`trade_follow` · `trade_metrics.derive` | 전월 |
+| call_momentum | `call_momentum:<집계키>` · `call_momentum:<티커>` | 실적 시즌별 기업 수(집계) / 발표별 모멘텀 점수(티커, 첫 발표 제외) | `call_momentum.reasons`(판정 뒤 동인·가이던스) · `call_momentum.season` | 집계: 직전 시즌의 같은 경과 시점 / 티커: 직전 발표 |
+| indicator | `indicator:<market_indicators 키>` · `indicator:risk_curve` | 지표 값. `risk_*`는 정본 정제(`risk.clean_rows`)와 bp 환산, `risk_curve`=(10Y−2Y)×100bp | `market_indicators` | 30일 전 |
+| retail | `retail:<지표키>[_pct]` | 20일 파생지표, `_pct`는 5년 백분위 | `retail_flows` · `retail_heat.computed` | 30일 전 |
+| sector | `sector:<대분류>[:rs_long]` | 단기 RS(1M, 기본)·장기 RS(12M) 백분위 | `sector_map`·`stock_prices` · `sector_rs.compute_sector_map`(현재 + 1·2·3주 전 궤적, 15분 캐시) | 3주 전 |
+| price | `price:<종목코드>` | 종가(원) | `stock_prices` | 30일 전 |
+| transcript | `transcript:<proxy_id>` | 기존 컨콜 추출 수치(태세는 방향 +1/0/−1) | `proxy_observations` | 직전 관측 |
+| corpus | `corpus:<proxy_id>` | 기존 문서 여론 방향 +1/0/−1 | `proxy_observations` | 직전 관측 |
+
+컨콜 모멘텀 집계키: `guidance_raised_count`(성장 지표 가이던스 상향) · `capex_raised_count`(CAPEX 가이던스 상향) ·
+`new_driver_count`(새 성장 동인) · `ai_driver_count`(AI 관련 동인 new·accelerating) · `candidate_count`(모멘텀 후보).
+진행 중인 시즌을 직전 시즌 전체와 비교하면 시즌 초마다 급감으로 보이므로, 직전 시즌도 같은 경과 일수까지만 센다.
+`indicator` 카탈로그는 `risk_sync_*`(수집 기록)와 정본이 따로 있는 레거시 계열(`vix`·`fear_greed`·`macro_us2y`·`macro_us10y`)을 뺀다.
+
+어댑터 계약: `catalog(conn, q, limit)` → `[{ref, label, unit}]`(값이 있는 것만) · `describe(conn, ref)` → 원천에 없으면 None ·
+`series(conn, ref, since)` → `[(date, value)]` · `latest` → `{value, as_of, change, change_pct, change_basis, direction, unit}`.
+**`as_of`는 원천 날짜다(지금 시각이 아니다).** 수출입은 `YYYY-MM`. `change`는 값과 같은 단위의 차이, `change_pct`는 수준 지표
+(가격·수출액)에만 붙는다. `in_warn` = `warn_direction`이 있고 `direction`과 같을 때.
+
+### API (`routers/proxy_boards.py`, prefix `/api/spine/proxy-boards`)
+
+| 메서드 | 경로 | 내용 | LLM |
+|---|---|---|---|
+| GET | `/` | 보드 목록 + `item_count` + `in_warn_count`(주의 방향으로 움직인 지표 수) | 0 |
+| POST | `/` | 생성 `{name, description?, question_id?, narrative_id?, group_id?}` · 이름 중복 409 | 0 |
+| GET | `/{id}?days=` | 상세 — 항목별 label·adapter·adapter_ref·unit·latest·warn_direction·in_warn·series. `days` 없으면 어댑터 기본 길이(일간 3개월, 수출입 13개월, 컨콜 2년, 섹터 궤적) | 0 |
+| PATCH | `/{id}` | 이름·설명·연결 수정 | 0 |
+| DELETE | `/{id}` | 보드와 항목 삭제(보드 소유 지표 정리) | 0 |
+| POST | `/{id}/items` | `{proxy_id}` 또는 `{label, adapter, adapter_ref, unit?, warn_direction?, rationale?}`. 모르는 어댑터·원천에 없는 ref·없는 프록시·둘 다 보냄 → 422, 중복 → 409 | 0 |
+| DELETE | `/{id}/items/{proxy_id}` | 항목 빼기 | 0 |
+| PUT | `/{id}/items/order` | `{proxy_ids}` — 현재 항목 전체의 순열이 아니면 422 | 0 |
+| GET | `/adapters` · `/adapters/{kind}/catalog?q=` | 항목 추가 UI용 어댑터 목록·카탈로그 | 0 |
+| POST | `/suggest` | `{topic, question_id?, narrative_id?}` → 지표 후보 제안 | sonnet 1회 |
+
+### 지표 제안 (`pipeline/proxy_boards.suggest`)
+
+보드를 만들 때만 POST로 부른다. GET 경로에서는 부르지 않는다.
+
+1. 주제(+연결된 질문·서사 문장)에서 키워드를 뽑아 어댑터별 카탈로그 요약을 만든다 — 어댑터별 기본 상위 몇 개 + 키워드에 걸린 참조.
+   실제 데이터가 있는 참조만 들어간다.
+2. sonnet 1회(`enrich._call_claude_code`, `llm_calls` 원장에 `proxy_boards`로 기록). 출력은 JSON 배열
+   `[{label, adapter, adapter_ref, unit, warn_direction, rationale, lead_or_confirm, needed}]`. 원천이 없으면 adapter·adapter_ref를 null로 두고 `needed`에 필요한 데이터를 적게 한다.
+3. 모든 후보를 카탈로그로 다시 검증한다. 통과 → `candidates`(단위는 원천 기준으로 덮어씀, 최대 10개).
+   adapter 없음·모르는 어댑터·원천에 없는 ref·값 없음 → `needs_source`에 사유와 함께. 조용히 버리지 않고, 지어낸 ref는 받지 않는다.
+4. LLM을 쓸 수 없으면 503, 응답을 읽지 못하면 502.
+
+사용자가 고르고 고친 후보만 `POST /{id}/items`로 보드에 들어간다.
+
+### 5-state (보드 상세)
+
+- **Empty**: 보드에 지표 없음 → 카탈로그에서 추가 또는 제안 받기.
+- **Loading**: 상세 첫 요청은 섹터 RS 계산 때문에 수 초 걸릴 수 있다(이후 15분 캐시).
+- **Partial**: 일부 항목의 `latest.value`가 null이거나 `change`가 null(기준점 이전 이력 부족) → 항목별로 '값 없음'·'변화 기준 없음'.
+  `missing: true` 항목은 프록시가 지워진 것(질문 삭제 등).
+- **Error**: 상세 요청 실패 → ErrorState.
+- **Ideal**: 항목별 최신값·원천 날짜·변화(기준 표기)·주의 배지·스파크라인.
+
 ## 미해결 / 후속 (Phase 밖)
 
 - ~~판정 주기(Tracking) 트리거~~ — **해소(D-068)**: 관측 추출·판정 롤업 모두 event-driven 편승, 재료 없으면 no-op.
