@@ -138,7 +138,7 @@
 ## Home 중심 탐색과 시장 요약 (D-155, 2026-09-10)
 
 - Dock: Home·포트폴리오(D-212, `/portfolio`)·관심목록·월드모델·대화. 관심목록 기본 목적지는 `/follow/saved`이며 저장됨이 첫 하위 탭이다. 모바일은 더보기 포함 5칸, Alt+1–4. `/follow`는 관심 대상, `/sources`는 기존 소스 CRUD를 분리한 관리 화면. Home 피드·더보기·Omnibar에서 관리 화면에 접근한다.
-- `/feed` 기본 진입은 Home 피드로 이동. `view=documents`와 기존 문서 검색 쿼리, `feed_*` 타임라인 필터는 호환 유지한다. 문서 검색은 더보기와 Omnibar에 보존한다.
+- `/feed` 기본 진입은 Home 피드로 이동. `view=documents`와 기존 문서 검색 쿼리는 호환 유지한다(`feed_*` 통합 타임라인 화면은 D-241에서 제거 — Home 피드로 이동). 문서 검색은 더보기와 Omnibar에 보존한다.
 - `home/MarketContext`: 시장 모드 상단의 비고정·접이식 지표 요약(좌측 제목 없음, D-210). 달러원·엔/원(100엔)·미국 2Y·10Y·WTI·금·BTC와 MoM(금리 %p, 나머지 %)·개별 관측일. VIX·공포탐욕은 D-205의 Risk 기본 차트. 기본 접힘과 설정 복원, 상세에서 기존 시장 국면·매크로 모듈 사용. 하단 중복 제거, 피드에는 미노출.
 - `shared/MetricTrend`: 시장 상단 지표의 hover/클릭/터치/키보드 추이 버블. 실제 관측일·범위·개수 및 결측 상태를 표시하며 매크로의 `dated_series`를 사용한다.
 - 스터디 1차 구현: 아래 스터디 항목과 `specs/study-mode.md` 참조. 새 URL 수집·외부 리서치는 후속이다.
@@ -156,16 +156,16 @@
 ## 통합 마켓 홈 디자인 기반 (D-152, 2026-09-10)
 
 - `index.css`: 자체 호스팅 IBM Plex Sans/KR(`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-sans-kr`), 역할별 타입, 단색 라이트·다크, 기존 멀버리 포인트. Card 20px·Button/Input 10px 라운딩. glass-surface는 도크·탐색 링크에 한정하고 미지원/투명도 감소는 단색 폴백.
-- `shared/PageLayout.tsx`: header/overview/toolbar/footer/children 슬롯, PageHeader, SplitWorkspace. 홈 시장은 document·full, 홈 피드는 reader·full(D-153·D-209), 단독 피드는 document·reading, 문서 검색은 document. PageContainer는 레거시 호환 유지.
+- `shared/PageLayout.tsx`: header/overview/toolbar/footer/children 슬롯, PageHeader, SplitWorkspace. 홈 시장은 document·full, 홈 피드는 reader·full(D-153·D-209), 문서 검색은 document. PageContainer는 레거시 호환 유지.
 - Home 피드는 가용 폭 ≥760px에서 300px 목록 + 리더, 그 미만은 URL 목록/본문 전환. 화면 높이 ≥740px은 피드 본문만 `100dvh - --shell-offset`로 고정해 목록/본문 독립 스크롤, 헤더·AI 카드는 페이지 스크롤(D-209). 짧은 화면은 문서 흐름. 시장 모듈은 가용 폭 ≥1000px에서 2열. 셸 --page-inset은 데스크톱24/모바일16px.
-- UsBriefingSection의 기존 데이터·날짜·상태는 일반 Card 표면에 표시한다(후속 요청으로 대비 배경 해제). Timeline은 FeedPost의 row variant로 하나의 표면 안에서 연속 읽기. 기존 필터·펼침·페이지·원문 경로 유지.
+- UsBriefingSection의 기존 데이터·날짜·상태는 일반 Card 표면에 표시한다(후속 요청으로 대비 배경 해제).
 - 적용 범위·후속은 DESIGN_REVIEW, UI 계약은 DESIGN_SYSTEM. 검증 자료는 `logs/market-redesign/`, `logs/home-feed/`.
 
 ## 홈·피드 개편 (D-151 → D-153, 2026-09-10)
 
 - `/home`: 상단 `시장 / 피드` 모드 전환. 시장은 전체 폭 브리핑 + 기존 모듈 그리드, 피드는 `ChannelReader` 소스 목록 + 원문/저장 요약. `useHomeMode`는 URL 우선/마지막 모드 복원. App은 피드 레일 기본 접힘/일반 레일 상태를 각각 유지한다. 지수는 공통 한 줄 캐러셀. 각 모듈은 독립 상태.
 - `GET /api/spine/feed/channels`: 활성 구독 및 시스템 대상 전체 투영에 window 집계, 대상별 최신 발췌·시각·저장 건수·**안 읽음 수**(`unread`, D-200: `channel_reads.read_until` 또는 `'*'` 기준선 이후 게시물)와 빈 활성 구독 반환. `POST /channels/read {channel, read_until}`은 소스를 열었을 때 읽음 표시(뒤로 가지 않음, 코퍼스 미변경). `timeline?channel=...`은 페이지 전 필터. 소스 플랫폼+키, 기업 entity ID, 인물 key, 컨콜 ticker, 수출입 그룹이 안정 식별자. 조회 시 쓰기·생성 없음.
-- `/feed`: 기본 진입은 Home 피드로 이동, `feed_*` 필터가 있으면 기존 통합 타임라인. `view=documents` 또는 기존 `q/source/stock/industry/topic/page` 쿼리는 기존 문서 검색으로 연결, 검색 카드도 `FeedPost.DocumentCard` 공유. 필터 `feed_scope`(all/sources/system)·`feed_kind`·`feed_source`·`feed_density`·`feed_page`·`feed_until`은 URL 상태.
+- `/feed`: 기본 진입은 Home 피드로 이동(`feed_*` 통합 타임라인은 D-241에서 제거). `view=documents` 또는 기존 `q/source/stock/industry/topic/page` 쿼리는 기존 문서 검색으로 연결, 검색 카드도 `FeedPost.DocumentCard` 공유.
 - `GET /api/spine/feed/timeline` → `pipeline/timeline.py`, `models/timeline.py`. **읽기 전용 SQL 투영**, 기존 DB·생성 파이프라인 유지, 조회 시 LLM/수집/백필 없음. 활성 Telegram/블로그/YouTube + 저장 기업 요약·인물 프로필 + 활성 구독 컨콜 + 관심 품목 최신월 수출입 묶음. 게시/생성/수집 시각을 UTC 정규화, 시간순+안정 ID 정렬, 페이지당 20(최대 50), 최대 100페이지, 조회 상한 시각 고정. 수정 가능한 캐시의 불변 이력까지 보장하지 않음. **D-208**: Explorer 생성물 `narrative`·`report`·`scenario`(채널 `*:all`, 요약 구간만 600자 — 내러티브 `## 3줄 요약`·리포트 `## 결론`·파급 답변 앞부분)과 `topic` 필터(소스 글=엔티티 링크, 생성물·기업 요약=같은 토픽명). 주제로 거른 화면은 읽음 표시를 하지 않는다.
 - 수출입 과거 백필은 신규 업데이트로 나열하지 않고 각 활성 품목의 최신 통계월만 월별 묶음. 인물은 저장된 `source_digests(kind=person)`만, 신규 자동 생성 스케줄 추가 없음. AI 해석/자료 수/기준 기간을 표시하며, 원문과 시스템 요약의 작성 주체를 구분.
 - 소스 URL 소속 판정은 경로 경계 확인(`/alice2`를 `/alice`로 오귀속하지 않음), 카드 출처도 같은 `url_belongs` 규칙 사용.

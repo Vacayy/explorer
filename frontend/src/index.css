@@ -340,8 +340,6 @@
 .workspace-panel { min-width: 0; min-height: 0; }
 .workspace-panel[data-active=false] { display: none; }
 .workspace-panel[data-surface=card] { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-card); }
-.timeline-surface { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 1.25rem; }
-.workspace-panel[data-surface=card] .timeline-surface { border: 0; background: transparent; }
 .feed-post-row { padding: 1.5rem 0; border-bottom: 1px solid var(--border); }
 .feed-post-row:last-child { border-bottom: 0; }
 @container page (min-width: 900px) {
@@ -358,7 +356,6 @@
 }
 @media (max-width: 767px) {
   :root { --page-inset: 1rem; }
-  .timeline-surface { padding: 1rem; }
   [data-slot=button]:not([data-size=icon-xs]):not([data-size=xs]) { min-height: 44px; }
   [data-slot=input] { min-height: 44px; font-size: 16px; }
 }

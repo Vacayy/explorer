@@ -1,4 +1,3 @@
-import { Timeline } from './Timeline'
 import { DocumentCard } from './FeedPost'
 import { isDocumentFeed } from '@/components/layout/navConfig'
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
@@ -24,7 +23,6 @@ import type { EntityTag } from "@/types"
 export default function UnifiedFeedPage() {
   const [params] = useSearchParams()
   if (isDocumentFeed(params.toString())) return <DocumentFeedPage />
-  if ([...params.keys()].some(key => key.startsWith('feed_'))) return <PageLayout width="reading"><Timeline /></PageLayout>
   return <Navigate to="/home?home_view=feed" replace />
 }
 

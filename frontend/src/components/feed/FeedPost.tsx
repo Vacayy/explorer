@@ -29,8 +29,8 @@ function preview(text: string) {
   return text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^[#>\-\s]+/gm, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()
 }
 
-export function DocumentCard({ doc, onChipFilter, compact = false, timeLabel = '게시', variant = 'card', reading }: {
-  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; compact?: boolean; timeLabel?: string; variant?: PostVariant; reading?: 'original' | 'summary'
+export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', variant = 'card', reading }: {
+  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; variant?: PostVariant; reading?: 'original' | 'summary'
 }) {
   const [open, setOpen] = useState(false)
   const excerpt = preview(doc.summary || doc.content || '')
@@ -59,7 +59,7 @@ export function DocumentCard({ doc, onChipFilter, compact = false, timeLabel = '
               {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer">원문 사이트<ArrowUpRight aria-hidden="true" /></a></Button>}
             </div>
           </div> : <Collapsible open={open} onOpenChange={setOpen}>
-            {!compact && !open && excerpt && (
+            {!open && excerpt && (
               <div className="flex gap-3">
                 <div className="min-w-0 flex-1">
                   <span className={`text-caption ${doc.summary ? 'text-hypothesis' : 'text-muted-foreground'}`}>{doc.summary ? 'AI 요약' : '본문 발췌'}</span>
@@ -99,7 +99,7 @@ export function DocumentCard({ doc, onChipFilter, compact = false, timeLabel = '
   )
 }
 
-export function SystemPost({ item, compact = false, variant = 'card', presentation = 'preview' }: { item: TimelineItem; compact?: boolean; variant?: PostVariant; presentation?: 'preview' | 'reading' }) {
+export function SystemPost({ item, variant = 'card', presentation = 'preview' }: { item: TimelineItem; variant?: PostVariant; presentation?: 'preview' | 'reading' }) {
   const [open, setOpen] = useState(false)
   return (
     <article aria-label={item.title} className={variant === 'row' ? 'feed-post-row' : undefined}>
@@ -111,7 +111,7 @@ export function SystemPost({ item, compact = false, variant = 'card', presentati
           </div>
           <h3 className="break-words text-card-title font-semibold text-pretty"><Link to={item.to} className={focusLink}>{item.title}</Link></h3>
           <Collapsible open={presentation === 'reading' || open} onOpenChange={setOpen}>
-            {presentation === 'preview' && !compact && !open && <p className="line-clamp-3 break-words text-sm leading-relaxed text-muted-foreground">{preview(item.body)}</p>}
+            {presentation === 'preview' && !open && <p className="line-clamp-3 break-words text-sm leading-relaxed text-muted-foreground">{preview(item.body)}</p>}
             <CollapsibleContent>
               <div tabIndex={0} aria-label="업데이트 내용" className="break-words text-reading"><Markdown className="text-[length:var(--text-reading)] leading-[var(--text-reading--line-height)] [&_h2]:text-[length:var(--text-section)] [&_h3]:text-[length:var(--text-card-title)] [overflow-wrap:anywhere] [&_pre]:overflow-x-auto">{item.body}</Markdown></div>
             </CollapsibleContent>
