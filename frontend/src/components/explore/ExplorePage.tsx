@@ -30,7 +30,7 @@ const LIST_DAYS: Record<string, number> = { theme_surge: 14, call_momentum: 90 }
 const PAGE_SIZE = 12
 
 /**
- * /explore — 탐색 › 신호 (docs/specs/discover-signals.md).
+ * /explore — 탐색 › 신호 (docs/specs/explore-core.md §2).
  * 인덱스 = 유형별 최신일 건수·상위 3 · ?list=<type> = 유형별 개별 카드 목록.
  */
 export default function ExplorePage() {

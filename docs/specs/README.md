@@ -10,6 +10,7 @@
 |---|---|---|---|
 | [앱 셸](app-shell.md) | 상단 5탭·3칸(내 목록·본문·AI 대화)·L1/L2 판정 표·화면 맥락 첨부·데스크톱 전용 | P3a 구현(2026-10-16) | P3b URL 이전·리다이렉트, P4 홈 위젯 |
 | [홈 위젯 대시보드](home-widgets.md) | 위젯 계약·격자·추가 창·프리셋·서버 저장·시장 위젯 10종 | P4 구현(2026-10-16) | 탐색·포트폴리오·캔버스·월드모델 위젯(P5~P7) |
+| [탐색 핵심](explore-core.md) | 종목 발견 추천 묶음 단일 목록·신호 탭·컨콜 하위 탭과 실적 캘린더·산업·섹터 3뷰 통합·탐색 위젯 4종 | P6a 구현(2026-10-16) | 섹터 원천 두 개 통합 여부 결정 |
 | [홈과 통합 피드](home-feed.md) | 피드 리더·원문/시스템 카드·조회 계약(Home 시장 탭 구성은 home-widgets가 대체) | 구현·검증 완료 | 캔버스 이전(P5) |
 | [데이터 신선도 점검](ops-health.md) | 결과 데이터 최신 시점 감시 레지스트리·관리자 표·홈/텔레그램 경고 계약 | 구현(2026-10-14, D-222) | 실사용에서 오탐·누락 조정, 방문 트리거 작업 항목 보강 |
 | [문서 상세 관련 자료](doc-related-claims.md) | 상세 하단 논점별 관련 자료(논점 LLM·연결 검색/리랭커·원문 인용) + 유사도 기반 목록 | 구현(2026-10-14, D-233) | 실사용에서 리랭커 오판 관찰, P1 관계 표시(보강/반대/사례) |
@@ -66,7 +67,7 @@
 - [chat-page](chat-page.md) — /chat 화면 리뉴얼 — 메신저에서 "판단 도구"로 (2026-09-08)
 - [chat-retrieval](chat-retrieval.md) — 대화 검색 품질 — 청크 인덱스 · 문맥 접두어 · 리랭커 (C 단계, 2026-09-08)
 - [discover-screener](discover-screener.md) — 화면 기획서: 스크리너
-- [discover-signals](discover-signals.md) — 화면 기획서: 시그널 피드
+- [discover-signals](discover-signals.md) — 화면 기획서: 시그널 피드 — **현행 신호 탭은 [explore-core](explore-core.md) §2**
 - [doc-causal-extraction](doc-causal-extraction.md) — 기획서 — 문서 레벨 인과 추출 (제2 인과 공급원)
 - [doc-synthesis](doc-synthesis.md) — 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기
 - [dock-navigation](dock-navigation.md) — 셸 대개편 — 헤더·네비 제거, macOS 도크형 내비게이션 (2026-09-08) — **대체됨 → [app-shell](app-shell.md)**

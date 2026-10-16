@@ -6,7 +6,7 @@ import UniversePage from "@/components/follow/UniversePage"
 import IndustryPage from "@/components/industry/IndustryPage"
 
 /**
- * /map — 탐색 › 산업·섹터 (docs/specs/sector-aggregation.md §화면 통합).
+ * /map — 탐색 › 산업·섹터 (docs/specs/explore-core.md §4).
  * 세 화면을 한 탭에서 본다: 산업 맵(sector_map 18 대분류 RS 사분면) · 유니버스(industry_groups 큐레이션·섹터 서사)
  * · 산업군 지도(industry_groups 밸류체인 표). 섹터 원천 두 개는 합치지 않고 함께 보이기만 한다.
  * 상태 = ?view= (map 기본). 옛 /follow/universe, /discover/industry는 이 탭으로 리다이렉트.
