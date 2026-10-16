@@ -1203,6 +1203,14 @@ def init_db():
         UNIQUE(hs_code, name)
     );
     CREATE INDEX IF NOT EXISTS idx_trade_stats ON trade_stats(hs_code, period);
+
+    -- 홈 위젯 배치 (단일 사용자, 이름별 한 벌 — routers/dashboard.py)
+    CREATE TABLE IF NOT EXISTS dashboard_layouts (
+        id            INTEGER PRIMARY KEY,
+        name          TEXT NOT NULL UNIQUE,
+        layout_json   TEXT NOT NULL,        -- [{i, widget, x, y, w, h, params}]
+        updated_at    TEXT NOT NULL
+    );
     """)
 
     conn.commit()

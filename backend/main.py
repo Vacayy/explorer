@@ -115,6 +115,8 @@ from routers import spine_credit  # 회사채 스프레드 (D-230)
 app.include_router(spine_credit.router)
 from routers import spine_retail  # 개인 투자 열기 (D-231)
 app.include_router(spine_retail.router)
+from routers import dashboard  # 홈 위젯 배치 저장
+app.include_router(dashboard.router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)
