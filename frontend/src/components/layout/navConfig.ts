@@ -57,7 +57,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { key: "world", label: "월드모델", path: "/narrative", tabs: [
     { key: "now", path: "/narrative", label: "지금", match: ["/narrative"] },
     { key: "graph", path: "/knowledge/ontology", label: "그래프", match: ["/knowledge"] },
-    { key: "judgment", path: "/questions", label: "내 판단", match: ["/questions", "/question/", "/thesis", "/report"] },
+    { key: "judgment", path: "/questions", label: "내 판단", match: ["/questions", "/question/", "/thesis", "/report", "/proxy-boards"] },
   ] },
 ]
 

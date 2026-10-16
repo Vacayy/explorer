@@ -20,24 +20,27 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import { SparkLine } from "@/components/shared/Spark"
+import { OutlookSubNav } from "@/components/explore/OutlookSubNav"
 import {
   useAddProxyItem, useCreateProxyBoard, useDeleteProxyBoard, useProxyAdapters, useProxyBoard, useProxyBoards,
   useProxyCatalog, useRemoveProxyItem, useSuggestProxies, type NewItem,
 } from "@/hooks/useProxyBoards"
 import { cn } from "@/lib/utils"
-import { formatLevel, formatPercent } from "@/utils/format"
+import { formatKrw, formatLevel, formatPercent, formatPrice, formatUsd } from "@/utils/format"
 import type { ProxyBoardItem, ProxyCandidate, ProxyDirection } from "@/types"
 
 /** 단위가 붙은 값 — 원천마다 단위가 다르다(bp·%·$B·pt·원) */
 export function proxyValue(v: number | null, unit: string | null) {
   if (v == null) return "-"
+  if (unit === "USD" || unit === "$") return Math.abs(v) >= 1e3 ? formatUsd(v) : formatPrice(v)
+  if (unit === "원" || unit === "KRW") return formatKrw(v)
   return unit ? `${formatLevel(v)} ${unit}` : formatLevel(v)
 }
 export function proxyChange(item: Pick<ProxyBoardItem, "latest" | "unit">) {
   const l = item.latest
   if (l.change_pct != null) return formatPercent(l.change_pct)
   if (l.change == null) return "-"
-  return `${l.change > 0 ? "+" : ""}${proxyValue(l.change, item.unit)}`
+  return `${l.change > 0 ? "+" : l.change < 0 ? "−" : ""}${proxyValue(Math.abs(l.change), item.unit)}`
 }
 const DIR_LABEL: Record<ProxyDirection, string> = { up: "오르면 주의", down: "내리면 주의" }
 
@@ -55,6 +58,7 @@ export default function ProxyBoardsPage() {
   return (
     <PageLayout mode="document" header={<PageHeader title="프록시 보드" description="주제마다 지켜볼 지표를 묶어 매일 원천 데이터로 봅니다"
       actions={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-3.5" />새 보드</Button>} />}>
+      <OutlookSubNav />
       {boards.isPending ? <Skeleton className="h-40 w-full rounded-xl" />
         : boards.isError ? <ErrorState message="보드를 불러오지 못했습니다." onRetry={() => void boards.refetch()} />
         : !boards.data.length ? (

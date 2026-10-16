@@ -40,6 +40,7 @@ const CASES = [
   ['/question/4', '', 'world', 'judgment'],
   ['/thesis', '', 'world', 'judgment'],
   ['/report', '', 'world', 'judgment'],
+  ['/proxy-boards', '?board=1', 'world', 'judgment'],
 ]
 
 test('every route lands on the L1/L2 in the shell contract', () => {
