@@ -3,7 +3,7 @@ import re
 import unittest
 
 from pipeline import technical_scan as ts
-from pipeline.technical_commentary import price_context
+from pipeline.technical_scan import price_context
 from pipeline.technical_reading import GROUPS, canvas, readings
 
 FORBIDDEN = re.compile(r"(?<!과)매수|(?<!과)매도|추천|유망|전망|오를|내릴|상승할|하락할")

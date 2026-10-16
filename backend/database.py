@@ -38,8 +38,6 @@ def init_db():
     cur.executescript(DOC_CLAIMS_SCHEMA)
     from pipeline.company_profile import SCHEMA as PROFILE_SCHEMA  # 웹 조사 기업 개요 (D-188)
     cur.executescript(PROFILE_SCHEMA)
-    from pipeline.technical_commentary import SCHEMA as COMMENTARY_SCHEMA  # 기술적 분석 AI 해설 (D-191)
-    cur.executescript(COMMENTARY_SCHEMA)
     from pipeline.study_projects import migrate as migrate_study_projects
     migrate_study_projects(conn)
     from pipeline.study_actions import migrate as migrate_study_actions
@@ -253,16 +251,6 @@ def init_db():
         added_at     TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS telegram_messages (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        channel_name TEXT NOT NULL,
-        message_id   TEXT,
-        content      TEXT,
-        date         TEXT,
-        link         TEXT,
-        fetched_at   TEXT DEFAULT (datetime('now')),
-        UNIQUE(channel_name, message_id)
-    );
 
     CREATE TABLE IF NOT EXISTS blog_sources (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,27 +262,7 @@ def init_db():
         added_at     TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS blog_posts (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        source_id    INTEGER NOT NULL,
-        title        TEXT NOT NULL,
-        summary      TEXT,
-        content      TEXT,
-        author       TEXT,
-        url          TEXT,
-        published_at TEXT,
-        fetched_at   TEXT DEFAULT (datetime('now')),
-        UNIQUE(source_id, url)
-    );
 
-    CREATE TABLE IF NOT EXISTS blog_post_tags (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id      INTEGER NOT NULL,
-        tag_type     TEXT NOT NULL,
-        tag_value    TEXT NOT NULL,
-        UNIQUE(post_id, tag_type, tag_value)
-    );
-    CREATE INDEX IF NOT EXISTS idx_blog_post_tags ON blog_post_tags(tag_type, tag_value);
 
     -- ============================================================
     -- 그래프 척추 (Phase 1 ETL spine) — 신규 단일 진실원천.
@@ -1228,7 +1196,6 @@ def init_db():
         "ALTER TABLE telegram_channels ADD COLUMN last_fetched_at TEXT",
         "ALTER TABLE blog_sources ADD COLUMN is_active INTEGER DEFAULT 1",
         "ALTER TABLE blog_sources ADD COLUMN last_fetched_at TEXT",
-        "ALTER TABLE blog_posts ADD COLUMN author TEXT",
         "ALTER TABLE blog_sources ADD COLUMN author TEXT",
         "ALTER TABLE entity_keywords ADD COLUMN status TEXT DEFAULT 'active'",
         "ALTER TABLE knowledge ADD COLUMN contested_at TEXT",  # K2: contested 전환 시각 (알림 쿨다운 기준)

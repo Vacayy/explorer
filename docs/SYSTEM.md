@@ -65,7 +65,7 @@
 - `review.py`, `render.py`: 사실/해석/가설 문단 스키마, 읽은 구절과 정확한 인용 검사, 수치 JSON pointer를 통한 값·단위 렌더링, 시점/출처 검증과 별도 논증 검토. 미해결 blocking·공백·예산 종료는 `partial`. `briefing.html/json`, 고정 근거 JSON, 계산/차트, 검토/결정/도구 로그를 남긴다.
 - 공용 `pipeline/llm.run(json_schema=...)`의 선택적 Claude CLI 스키마 출력 지원을 추가했다. Weekly는 tool별 인자 union을 `action` 객체 아래 넣어 구조를 강제하고, 실제 1회 호출에서 확인했다(`logs/weekly-harness/schema-smoke.json`). API 엔진은 기존 텍스트 JSON+호스트 검증을 사용하며 강제 출력 여부를 실행 로그에 표시한다. 기존 호출은 옵션을 주지 않아 동작을 유지한다. CLI 비용 값은 공급자 추정치이며 실제 청구액으로 표시하지 않는다.
 - `store.py`: **별도** `backend/db/weekly_experiment.sqlite`의 `runs`, `events`; 원문/생성물은 `logs/weekly-harness/runs/<run_id>/`. 운영 스키마 변경 없음. 실행별 `corpus.sqlite`에는 `items`, `search`(FTS5), `manifest`. 단일 worker를 프로세스 간 파일 잠금으로 제한, request key 중복 방지, 도구별 checkpoint, 같은 근거로 cancel/recover/resume. 재개는 예산을 명시적으로 연장하며 신규 외부 자료는 새 실행에서 확보한다. 이전 판단은 완료 시각까지 cutoff 이전인 것만 기억으로 제공하고 증거로 세지 않는다. 모델 입출력/구현 파일 hash도 보존하며 공용 `llm.run()`의 기존 호출 통계 기록은 유지한다.
-- `routers/experiment_weekly.py`, `models/weekly.py`: `/api/experiments/weekly/runs` POST/GET, `/{id}`·`/{id}/events`·`/{id}/artifacts/{path}` GET, cancel/resume/recover POST. GET 생성·수집·실험 DB 초기화 없음. 실행 환경을 고르는 CLI `scripts/run_weekly.py`는 운영 서버나 봇을 시작하지 않는다. 운영 UI·스케줄·외부 발행은 미연결이다.
+- 실험 API(`/api/experiments/weekly/*`)는 2026-10-16 제거(D-241). 실험 파이프라인(`pipeline/weekly/`)과 CLI(`scripts/run_weekly.py` 등)는 남아 있다.
 - `evaluation.py`, `scripts/evaluate_weekly.py`: 같은 읽은 근거로 단일 작성 기준선, 같은 실행의 검토 전 초안/최종본, 순서를 가린 HTML과 빈 전문가 평가표. 기존 평가 기록은 덮어쓰지 않는다. 실제 전문가 평가·기준 Weekly 원문/차트 대조·미사용/미래 주차 실험은 미완료이다.
 - 기준 Notion Weekly 본문과 이미지 12개를 브라우저에서 재확보하고 `logs/weekly-harness/benchmark-access/`에 hash·시각·상품/표본/기간 검토 목록을 보존했다. `evaluate_weekly.py --reference-manifest`로 평가에 연결하며 분석/기준선 작성 입력에는 넣지 않는다. 원문의 주간 요약과 추가 문단 시점이 다르고, 이미지별 상품·측정일도 달라 동일 cutoff의 정답으로 취급하지 않는다. 원 데이터 수치 대조·전문가 채점은 미실시다.
 - 첫 실제 Opus/high 실행 `6562786dd0e14e07a57af3b64fd04546`은 1회 재개 후 `partial`: 기계 검사 0건, 최종 논증 차단 1건·경고 7건. 자체 계산과 배치되는 배타적 결론을 통과시키지 않았다. 누적 모델 38회·도구 31회·기록 시간 약 42.1분. 같은 읽은 근거의 단일 작성도 실제 생성해 검토 전 초안/최종본과 `evaluation/index.html`에 묶었으며 전문가 채점은 비어 있다. 실제 실패·변경 이유는 설계 HTML의 구현 현황에 기록했다.
@@ -317,7 +317,6 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `portfolio_quotes` | 포트폴리오 보유 종목 장중 최신 시세(D-212 후속) | 종목당 1행: 가격·등락률·marketStatus·체결 시각·fetched_at. 장중 조회 시 30분 TTL로 네이버 실시간 갱신, 저장 종가보다 새 날짜일 때만 '오늘' 평가에 사용 |
 | `portfolio_alerts_sent` | 포트폴리오 텔레그램 알림 발송 기록(D-214) | 키(`day:날짜:종목:구간`·`avg:종목:편입일:구간`·`disc:접수번호`·`tech:종목:날짜:신호`·`summary:날짜`) — 같은 알림 1회 |
 | `portfolio_event_estimates` | 포트폴리오 예상 일정(D-216) | 종목·종류(`earnings_est` 작년 같은 분기 잠정실적+364일 · `report_deadline` 법정 기한)·날짜·근거. 확정 일정(DART 예고 공시)은 기존 `catalysts`에 저장해 홈 캘린더에도 노출 |
-| `technical_commentaries` | 기술적 분석 스캔의 AI 해설(D-191, docs/specs/market-strategies.md §AI 해설) | 종목코드·market·as_of·within·모델·비용·payload(summary·reading[basis]·watch·caveats·basis_labels·dropped_unsupported). append-only, 최신 행 재사용. 스키마 `pipeline/technical_commentary.SCHEMA` |
 | `company_profiles` | 웹 조사 기업 개요(D-188, docs/specs/company-research.md §웹 조사) | 종목코드·버전(append-only)·모델·비용·payload(개요·사업 구성·제품/고객·경쟁·동인·리스크·최근 사건·출처·공백). 출처 발췌는 `raw_documents(source_type='web', source_id='{code}:{sha1(url)[:16]}')`로 저장(INSERT OR IGNORE, 태깅 없음). 스키마 `pipeline/company_profile.SCHEMA` |
 
 ### 4-2. 도메인 원본 (옛 세계 — 유지, 척추가 읽기 참조)
@@ -332,7 +331,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 > 전량 조회해(주석: "수집은 항상") 뮤트해도 수집이 계속됐고 유튜브만 `is_active`를 존중해 3종이
 > 서로 다르게 동작했다. 이제 세 수집기 모두 `COALESCE(collect_enabled,1)=1`을 본다.
 > PHILOSOPHY §1 "수집(공공재)/판단(개인) 분리"를 코드로 지킨 것 — 뮤트가 코퍼스 성장을 막지 않는다.
-(휴면: telegram_messages, blog_posts, blog_post_tags — cutover로 미사용)
+(구 피드 테이블 telegram_messages·blog_posts·blog_post_tags는 2026-10-16 제거, D-241. 블로그·텔레그램 라우터는 소스 목록·켜기/끄기만 남음)
 
 ### 4-3. 파일 저장
 - `media/telegram/` — 첨부 이미지 로컬 보관 (CDN 만료 대비, /media로 서빙)
@@ -440,7 +439,6 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `GET /api/spine/search?q=` · `/search/today` | **옴니바 통합 검색(D-189)** — 국내 종목(정확›접두›포함, 시총순, 시세·묶음 포함; 초성 색인·`entity_keywords` 별칭)·미국 티커·인물/테마·묶음·스터디 프로젝트·문장 속 언급(`mentions`)을 그룹별로. `/today`는 묶음 최신 기준일의 새 신호. `routers/spine_search.py`, 모델 호출 0 |
 | `GET /api/spine/technical-scan/{code}?market&within` | **기술적 분석 스캔(D-190)** — 카탈로그 일봉 51개를 종목 시세에 전부 적용해 상태(당일)/신호(최근 N거래일)/미평가와 차트 마커·구조선을 돌려줌. `pipeline/technical_scan.py`, 모델 호출 0 응답에 `readings[]`(한 줄 읽기)·`canvas`(자동 캔버스) 포함(D-198, docs/specs/technical-reading.md). |
 | `GET /api/spine/chart-structure/{code}?market&kind&window&swing&fit` · `POST /api/spine/chart-structure/interpret` | **차트 구조 그리기(D-195, docs/specs/chart-structure.md)** — 종목 하나의 기간 안 스윙 고점·저점으로 채널/고점 추세선/저점 추세선/지지·저항 레벨을 결정적으로 적합(두 점 연결 기본·회귀 옵션, 스윙 폭 자동 완화). `kind=profile`(D-197 ③)은 일봉 대표가격 근사 볼륨 프로파일 — POC·가치 영역 70%·희박 구간 수평선 + 20구간 거래량 막대. 응답의 `conditions[]`는 가장 가까운 카탈로그 조건(감시 규칙·검색용, D-196). interpret는 "종목(여러 개 가능) + 구조 단어 + 그리기 동사 − 검색 동사" 규칙, 종목 미해소 때만 haiku 1콜 보조. `pipeline/chart_structure.py` |
-| `GET/POST /api/spine/technical-scan/{code}/commentary?market&within[&force]` | **스캔 AI 해설(D-191)** — POST는 스캔 결과+가격 위치 통계만 모델에 주고(도구 없음, sonnet) 문장마다 근거 id를 받아 검증·저장, 같은 종목·기준일·범위 24시간 재사용. GET은 저장분만(없으면 404). `pipeline/technical_commentary.py` |
 | `POST /api/analysis/refine` | **질문 다듬기(D-186)** — 실행 전 모델 1콜로 재진술·카탈로그 조건(+대안)·평가 불가·확인 항목(시간축·시총 하한 항상)을 돌려주고 문장으로 조립. `pipeline/market_analysis/refine.py`, 공용 `model.structured_call`. 실행은 만들지 않음 |
 | `GET·POST /api/spine/synthesis` | **문서 교차 종합(D-104, docs/specs/doc-synthesis.md)** — POST(`{doc_ids}` 2~12건 → 교차 종합 sonnet, ~60~90초 실측) · GET(최신 목록, 재열람 경로) · GET `/{id}`(단건+엮은 문서 메타, LLM 0). FE: `/follow/saved`에서 문서 체크박스 다중선택 → 액션 바 '엮어 종합' → `/synthesis/:id`(SynthesisPage) + 종합을 다시 북마크(kind=`synthesis`) |
 | `GET /api/spine/market-regime` · `POST /snapshot` | **시장 국면(D-076)** — 양 시장 리스크 포스처+근거+스파크라인 series(LLM 0, 첫 진입 시 lazy 스냅샷). / EOD 일별 스냅샷 적재(scripts/snapshot_market.py=수동·cron) |
