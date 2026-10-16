@@ -72,7 +72,7 @@
 - [discover-screener](discover-screener.md) — 화면 기획서: 스크리너 — **제거됨 (D-241)**
 - [discover-signals](discover-signals.md) — 화면 기획서: 시그널 피드 — **현행 신호 탭은 [explore-core](explore-core.md) §2**
 - [doc-causal-extraction](doc-causal-extraction.md) — 기획서 — 문서 레벨 인과 추출 (제2 인과 공급원)
-- [doc-synthesis](doc-synthesis.md) — 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기
+- [doc-synthesis](doc-synthesis.md) — 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기 — **제거됨 (D-241)**
 - [dock-navigation](dock-navigation.md) — 셸 대개편 — 헤더·네비 제거, macOS 도크형 내비게이션 (2026-09-08) — **대체됨 → [app-shell](app-shell.md)**
 - [follow-rail](follow-rail.md) — 팔로우 레일 — 사이드바 통합 — **대체됨 → [app-shell](app-shell.md) §4 내 목록**
 - [geo-scope](geo-scope.md) — geo_scope — 인과 주장에 장소 정박 (A방향: 보편 노드 + 스코프 있는 엣지)

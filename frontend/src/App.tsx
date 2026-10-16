@@ -43,7 +43,6 @@ import ProjectPage from "@/components/study/ProjectPage"
 import StocksPage from "@/components/follow/StocksPage"
 import StudyPage from "@/components/study/StudyPage"
 import DocPage from "@/components/doc/DocPage"
-import SynthesisPage from "@/components/synthesis/SynthesisPage"
 import SourcePage from "@/components/source/SourcePage"
 import PersonPage from "@/components/person/PersonPage"
 import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
@@ -274,7 +273,7 @@ export default function App() {
             <Route path="study/projects/:id" element={<ProjectPage />} />
             <Route path="study/:id" element={<StudyPage />} />
             <Route path="doc/:docId" element={<DocPage />} />
-            <Route path="synthesis/:synthesisId" element={<SynthesisPage />} />
+            <Route path="synthesis/:synthesisId" element={<Navigate to="/study" replace />} />
             <Route path="source" element={<SourcePage />} />
             <Route path="person" element={<PersonPage />} />
             <Route path="company" element={<CompanyPage />} />

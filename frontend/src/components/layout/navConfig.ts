@@ -49,7 +49,7 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks", "/follow"] },
   ] },
   { key: "canvas", label: "캔버스", path: "/home?home_view=feed", tabs: [
-    { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source", "/synthesis/"] },
+    { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },
     { key: "study", path: "/study", label: "스터디", match: ["/study"] },
     { key: "saved", path: "/follow/saved", label: "저장됨", match: ["/follow/saved"] },
     { key: "sources", path: "/sources", label: "소스", match: ["/sources"] },

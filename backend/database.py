@@ -846,25 +846,14 @@ def init_db():
     -- 내러티브·리포트는 버전 행 PK를 ref로 저장(보던 그 버전 고정). UNIQUE(kind, ref)로 토글 멱등.
     CREATE TABLE IF NOT EXISTS saved_items (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind         TEXT NOT NULL,          -- company | doc | narrative | report | synthesis
-        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id | synthesis id
+        kind         TEXT NOT NULL,          -- company | doc | narrative | report
+        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id
         url          TEXT NOT NULL,
         title        TEXT,
         subtitle     TEXT,
         note         TEXT,
         created_at   TEXT DEFAULT (datetime('now')),
         UNIQUE(kind, ref)
-    );
-
-    -- 문서 교차 종합 — 사람이 고른 문서 묶음을 엮어 읽은 산출물 (D-104, docs/specs/doc-synthesis.md)
-    -- 일회성: 묶음 객체 없음. 같은 조합 재생성은 새 행(append-only 히스토리).
-    CREATE TABLE IF NOT EXISTS doc_syntheses (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        doc_ids      TEXT NOT NULL,          -- json 배열(정렬된 raw_documents.id) — 무엇을 엮었나 스냅샷
-        title        TEXT,
-        body         TEXT NOT NULL,          -- 마크다운 산출물
-        model        TEXT,
-        created_at   TEXT DEFAULT (datetime('now'))
     );
 
     -- 이미지 비전 분석 캐시 (이미지당 1회 — 증시일정표 → 이벤트 추출)
