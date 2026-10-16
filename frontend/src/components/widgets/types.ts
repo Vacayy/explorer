@@ -3,7 +3,7 @@ import type { SectionKey } from "@/components/layout/navConfig"
 import type { SizeSpec } from "./layout"
 
 /** 위젯 본문이 받는 현재 크기(격자 칸) — 작으면 큰 숫자·한 줄만 */
-export interface WidgetBodyProps { w: number; h: number }
+export interface WidgetBodyProps { w: number; h: number; params?: Record<string, unknown> }
 /** 머리에 보일 원천 기준 시각과 고장 여부 */
 export interface WidgetMeta { asOf: string | null; stale?: boolean }
 

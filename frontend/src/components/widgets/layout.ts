@@ -20,14 +20,17 @@ export function pack(widgets: string[], sizes: Record<string, SizeSpec>): Layout
   return out
 }
 
-/** 맨 아래에 하나 붙인다 */
+/** 빈자리 중 가장 위·왼쪽에 하나 넣는다(없으면 맨 아래) */
 export function append(layout: LayoutEntry[], widget: string, sizes: Record<string, SizeSpec>): LayoutEntry[] {
   const s = sizes[widget]
   if (!s) return layout
   const bottom = layout.reduce((m, e) => Math.max(m, e.y + e.h), 0)
+  const hits = (x: number, y: number) => layout.some(e => x < e.x + e.w && x + s.w > e.x && y < e.y + e.h && y + s.h > e.y)
+  let spot = { x: 0, y: bottom }
+  search: for (let y = 0; y <= bottom; y++) for (let x = 0; x + s.w <= COLS; x++) if (!hits(x, y)) { spot = { x, y }; break search }
   let n = 0
   while (layout.some(e => e.i === `${widget}#${n}`)) n++
-  return [...layout, { i: `${widget}#${n}`, widget, x: 0, y: bottom, w: s.w, h: s.h }]
+  return [...layout, { i: `${widget}#${n}`, widget, ...spot, w: s.w, h: s.h }]
 }
 
 /** 저장본·편집 결과 정리 — 모르는 위젯 제거, 중복 id 제거, 크기 하한·열 폭 상한 */

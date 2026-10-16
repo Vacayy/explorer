@@ -137,7 +137,7 @@ function WidgetItem({ def, entry, editing, onRemove }: { def: WidgetDef; entry: 
   const flat = def.flat && entry.h <= 1
   return (
     <WidgetFrame title={def.title} asOf={meta.asOf} stale={meta.stale} detailPath={def.detailPath} editing={editing} onRemove={onRemove} flat={flat}>
-      <def.Body w={entry.w} h={entry.h} />
+      <def.Body w={entry.w} h={entry.h} params={entry.params} />
     </WidgetFrame>
   )
 }

@@ -10,10 +10,12 @@ test('presets pack left to right and wrap rows', () => {
   assert.equal(new Set(l.map(e => e.i)).size, l.length)
 })
 
-test('append goes below everything with a fresh id', () => {
-  const l = append(pack(['b', 'c'], SIZES), 'c', SIZES)
+test('append fills the first free spot, else goes below, with a fresh id', () => {
+  const l = append(pack(['b', 'c'], SIZES), 'c', SIZES)   // b(0..5) c(6..8) → 9..11 비어 있음
   const last = l.at(-1)
-  assert.equal(last.y, 4)
+  assert.deepEqual([last.x, last.y], [9, 0])
+  const full = append(pack(['a'], SIZES), 'b', SIZES)      // a가 한 줄을 다 차지 → 아래로
+  assert.deepEqual([full.at(-1).x, full.at(-1).y], [0, 1])
   assert.equal(new Set(l.map(e => e.i)).size, l.length)   // 기존 id와 겹치지 않는다
 })
 
