@@ -9,11 +9,10 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 
 from database import get_connection
 from pipeline.visibility import unverified_sql
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
 NARRATIVE_MODEL = os.getenv("NARRATIVE_MODEL", "opus")
 DOCS = 25
@@ -363,12 +362,8 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
 
 
 def _call(prompt: str, model: str = NARRATIVE_MODEL) -> dict:
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", model, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=400)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    raw = json.loads(proc.stdout).get("result", "")
+    from pipeline.enrich import _call_claude_code   # llm_calls 원장에 남는 공용 경로
+    raw = _call_claude_code(prompt, model=model, timeout=400)
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 
