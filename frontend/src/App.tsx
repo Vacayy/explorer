@@ -84,7 +84,6 @@ import UsIndexPage from "@/components/us/UsIndexPage"
 import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
 
 // Research
-import MemosPage from "@/components/research/MemosPage"
 import CatalystsPage from "@/components/research/CatalystsPage"
 
 const queryClient = createQueryClient()
@@ -293,7 +292,7 @@ export default function App() {
             {/* Research */}
             <Route path="research" element={<Navigate to="/follow" replace />} />
             <Route path="research/watchlist" element={<Navigate to="/follow" replace />} />
-            <Route path="research/memos" element={<MemosPage />} />
+            <Route path="research/memos" element={<Navigate to="/follow/stocks" replace />} />
             <Route path="research/catalysts" element={<CatalystsPage />} />
 
             {/* Legacy redirects */}

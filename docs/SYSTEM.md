@@ -521,7 +521,7 @@ Home(/home)        홈 = 위젯 대시보드(docs/specs/home-widgets.md, 2026-10
                    새로운시각·매칭 키워드 관리·신호 이력·언급 문서)
 미국(/us · /us/:ticker) **미국 종목 디렉토리+도시에(D-091·D-092)** — `/us`=팔로우 서브탭 '미국'(transcript_follow 그룹별 카드 → 도시에, 렌즈 stance 배지). `/us/:ticker`=경량 도시에(헤더 yfinance + 투자 렌즈 가치/추세 market='us' + **월드모델(인과 엣지·걸린 내러티브·온톨로지 딥링크)** + **여론(언급 문서)**). 컨콜 팔로우 상세 '도시에 →'로도 진입. `/analyze`(DART 한국 전용)와 분리
 대화(/chat)        **판단 인터페이스 — 리뉴얼(D-135, docs/specs/chat-page.md)**: 좌 스레드 레일(260px 접힘 가능·`lg` 미만 Sheet, 새 대화·검색·날짜 그룹[오늘/어제/지난 7일/이전], 웹·텔레그램 공용 풀) + 중앙 **768px 읽기 컬럼** + 하단 고정 성장형 컴포저(Enter 전송). 어시스턴트는 **말풍선 없이** 풀폭 마크다운(15px/leading-7), LLM 산출 마커는 hypothesis 라벨("● AI 종합 · 모델 · 시각"). 답 **위**에 접힌 '답변 경로 · 도구 N · 근거 M · N초'(생성 중엔 같은 자리가 SSE status), 본문 `[n]`은 **인라인 인용 칩**(Tooltip=종류·제목, 클릭=근거 href)으로 변환(`chat/citations.tsx`), 갭은 hypothesis 틴트 블록, 하단 근거 카드(종류 라벨·6개+더보기). 스크롤은 바닥일 때만 자동 추적 + '최신으로' 플로팅. 호버 액션: 복사·다시 질문. 빈 상태=인사+중앙 컴포저+제안 카드 4. 데이터 층은 `hooks/useChat.ts`(폴링 2.5초·SSE·5분 stall, D-130 규약 그대로). 컴포넌트: ChatPage·ThreadRail·ChatEmpty·Composer·UserMessage·AssistantMessage(+StreamingMessage)·RoutePanel. 없는 것(API 부재): 스레드 이름 변경·삭제, 정지 버튼
-VS 비교 · 리서치노트(워치리스트/투자메모/카탈리스트)
+VS 비교 · 리서치노트(워치리스트/카탈리스트) — 투자메모 화면 제거(D-241, 공시 탭 IR 메모는 유지)
 ```
 
 ### 공통 시스템

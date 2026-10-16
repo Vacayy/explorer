@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query, HTTPException
 from database import get_connection
-from models.ir_note import IRNoteCreate, IRNoteUpdate, IRNoteResponse
+from models.ir_note import IRNoteCreate, IRNoteResponse
 
 router = APIRouter(prefix="/api/ir-notes", tags=["ir_notes"])
 
@@ -69,37 +69,6 @@ def create_note(stock_code: str, body: IRNoteCreate):
     row = conn.execute(
         "SELECT * FROM ir_notes WHERE id = ?", (note_id,)
     ).fetchone()
-    conn.close()
-    return dict(row)
-
-
-@router.put("/{note_id}", response_model=IRNoteResponse)
-def update_note(note_id: int, body: IRNoteUpdate):
-    conn = get_connection()
-    existing = conn.execute("SELECT * FROM ir_notes WHERE id = ?", (note_id,)).fetchone()
-    if not existing:
-        conn.close()
-        raise HTTPException(404, "Note not found")
-
-    updates = {}
-    if body.title is not None:
-        updates["title"] = body.title
-    if body.content is not None:
-        updates["content"] = body.content
-    if body.note_date is not None:
-        updates["note_date"] = body.note_date
-    if body.memo_type is not None:
-        updates["memo_type"] = body.memo_type
-
-    if updates:
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        conn.execute(
-            f"UPDATE ir_notes SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
-            list(updates.values()) + [note_id],
-        )
-        conn.commit()
-
-    row = conn.execute("SELECT * FROM ir_notes WHERE id = ?", (note_id,)).fetchone()
     conn.close()
     return dict(row)
 

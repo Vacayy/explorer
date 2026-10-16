@@ -1,3 +1,5 @@
+> **제거됨 (D-241)** — `/research/memos` 화면은 삭제되고 `/follow/stocks`로 리다이렉트한다. IR 메모 API(조회·작성·삭제)는 공시 탭이 계속 쓴다.
+
 # 화면 기획서: 투자메모
 
 > 경로: `/research/memos`
