@@ -20,6 +20,7 @@ D-140에서 별도 프로젝트 data-watcher의 커넥터·수집 규율을 이�
 import csv
 import os
 import random
+import re
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -208,6 +209,39 @@ def read_watchlist_csv(path: Path | None = None) -> list[dict]:
     return out
 
 
+# 워치리스트 원본의 라벨 오기 — HS로 고정한다(조사 D: 하이라이트 2위에 '총수출 +532%'로 노출됐다).
+# 8542321010은 854232(메모리) 아래 최대 세목(2026-09 $16.8B / $37.6B) = D램.
+HS_LABEL_FIX: dict[str, tuple[str, str]] = {"8542321010": ("D램", "반도체")}
+_NUM_SUFFIX = re.compile(r"\s*\(\d+\)$")
+
+
+def clean_item_name(hs_code: str, name: str) -> str:
+    """표시용 품목명 — 알려진 오기 교정, 'OLDE' 오타, 원본 시트의 '(2)' 같은 번호 접미 제거."""
+    fix = HS_LABEL_FIX.get(hs_code)
+    if fix:
+        return fix[0]
+    return _NUM_SUFFIX.sub("", (name or "").replace("OLDE", "OLED")).strip() or hs_code
+
+
+def normalize_labels(conn) -> int:
+    """trade_follow 라벨 정리(멱등) — 번호 접미를 떼서 이름이 겹치면 'HS'를 붙여 구분한다.
+    CSV 재시드가 원본 라벨로 되돌리므로 시드 직후마다 다시 돈다. 바뀐 행 수를 돌려준다."""
+    rows = [dict(r) for r in conn.execute("SELECT hs_code, item_name, group_label FROM trade_follow")]
+    base = {r["hs_code"]: clean_item_name(r["hs_code"], r["item_name"]) for r in rows}
+    counts: dict[str, int] = {}
+    for name in base.values():
+        counts[name] = counts.get(name, 0) + 1
+    changed = 0
+    for r in rows:
+        hs = r["hs_code"]
+        name = base[hs] if counts[base[hs]] == 1 else f"{base[hs]} · {hs}"
+        group = HS_LABEL_FIX[hs][1] if hs in HS_LABEL_FIX else r["group_label"]
+        if name != r["item_name"] or group != r["group_label"]:
+            conn.execute("UPDATE trade_follow SET item_name=?, group_label=? WHERE hs_code=?", (name, group, hs))
+            changed += 1
+    return changed
+
+
 def seed_watchlist(path: Path | None = None) -> dict:
     """CSV → trade_follow 멱등 반영(이름·그룹 갱신, 신규 추가). CSV에 없는 기존 품목은 건드리지 않는다
     (기본 세트·UI에서 추가한 팔로우가 공존)."""
@@ -222,6 +256,7 @@ def seed_watchlist(path: Path | None = None) -> dict:
             "ON CONFLICT(hs_code) DO UPDATE SET item_name=excluded.item_name, group_label=excluded.group_label, active=1",
             (it["hs_code"], it["item_name"], it["group_label"]))
         n_new += 1 if cur.rowcount == 1 else 0
+    normalize_labels(conn)
     conn.commit()
     conn.close()
     return {"seeded": len(items), "source": str(path or WATCHLIST_CSV)}
@@ -233,6 +268,7 @@ def seed_default_follows() -> int:
     for hs, name, group in DEFAULT_FOLLOWS:
         n += conn.execute("INSERT OR IGNORE INTO trade_follow (hs_code, item_name, group_label) VALUES (?, ?, ?)",
                           (hs, name, group)).rowcount
+    normalize_labels(conn)
     conn.commit()
     conn.close()
     return n

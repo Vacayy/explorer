@@ -121,8 +121,21 @@ def classify_all(point: dict, *, mode: str, z_threshold: float, fixed_threshold:
             for m in LOOKBACK}
 
 
+def nesting(codes) -> dict[str, str]:
+    """팔로우 HS 중 다른 팔로우 HS의 하위인 것 → 가장 가까운 상위 HS. 예: 8542321010 → 854232.
+    관세청은 상위 부호 조회에 하위 세목을 합산해 돌려주므로(trade.py ②), 둘을 함께 더하면 이중 집계다."""
+    codes = sorted(set(codes), key=len)
+    out = {}
+    for c in codes:
+        parents = [p for p in codes if len(p) < len(c) and c.startswith(p)]
+        if parents:
+            out[c] = max(parents, key=len)
+    return out
+
+
 def add_contribution(rows: list[dict]) -> list[dict]:
-    total = sum(abs(r.get("delta_usd") or 0) for r in rows)
+    """기여도 분모는 최상위 품목만 — 하위 세목은 상위에 이미 들어 있다(nested_in)."""
+    total = sum(abs(r.get("delta_usd") or 0) for r in rows if not r.get("nested_in"))
     for r in rows:
         d = r.get("delta_usd") or 0
         r["contribution"] = (abs(d) / total) if total else None
@@ -199,12 +212,18 @@ def table(period: str | None = None, flow: str = "export", **opt) -> dict:
                          "delta_usd": (v - prev_year) if (v is not None and prev_year is not None) else None, **verdict})
     finally:
         conn.close()
+    parent = nesting(r["hs_code"] for r in rows)
+    group_of = {r["hs_code"]: r["group_label"] for r in rows}
+    for r in rows:
+        r["nested_in"] = parent.get(r["hs_code"])
     add_contribution(rows)
     groups: dict[str, dict] = {}
     for r in rows:
         g = groups.setdefault(r["group_label"] or "미분류", {"group_label": r["group_label"] or "미분류", "count": 0, "value": 0.0, "surge": 0, "plunge": 0})
         g["count"] += 1
-        g["value"] += r.get("value") or 0
+        # 같은 분류 안에 상위 품목이 있으면 금액은 상위 쪽에만 센다(분류가 다르면 그 분류의 품목으로 센다)
+        if not (r["nested_in"] and group_of.get(r["nested_in"]) == r["group_label"]):
+            g["value"] += r.get("value") or 0
         if r["flag"] == "surge":
             g["surge"] += 1
         elif r["flag"] == "plunge":
@@ -222,6 +241,6 @@ def highlights(period: str | None = None, flow: str = "export", limit: int = 8, 
     else:
         flagged.sort(key=lambda r: (-(r.get("contribution") or 0), -(r.get("intensity") or 0)))
     return {"period": t["period"], "periods": t.get("periods", []), "flow": flow, "options": {**t["options"], "rank": rank},
-            "total_usd": sum(r.get("value") or 0 for r in t["rows"]),
+            "total_usd": sum(r.get("value") or 0 for r in t["rows"] if not r.get("nested_in")),
             "surge": [r for r in flagged if r["flag"] in ("surge", "new")][:limit],
             "plunge": [r for r in flagged if r["flag"] == "plunge"][:limit], "groups": t["groups"]}
