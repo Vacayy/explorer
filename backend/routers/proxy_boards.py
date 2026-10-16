@@ -149,7 +149,9 @@ def delete_board(board_id: int):
 # ── 항목 ────────────────────────────────────────────────────────────────────
 
 def _new_proxy(conn, body: ItemAdd) -> int:
-    """새 정의 → 어댑터·참조 검증 → proxy_registry 행. 기존 프록시를 가리키는 kind(transcript·corpus)면 그 행을 쓴다."""
+    """새 정의 → 어댑터·참조 검증 → 보드가 소유하는 proxy_registry 행.
+    transcript·corpus 참조도 새 행(adapter_ref가 기존 프록시를 가리킴)으로 만든다 — 보드의 이름·주의 방향을 기존
+    질문 프록시에 덮어쓰지 않고, 버리지도 않는다."""
     if not body.label or not body.label.strip():
         raise HTTPException(422, "새 지표에는 label이 필요합니다.")
     if body.adapter not in pa.ADAPTERS:
@@ -157,8 +159,6 @@ def _new_proxy(conn, body: ItemAdd) -> int:
     meta = pa.describe(conn, body.adapter_ref or "", body.adapter)
     if not meta:
         raise HTTPException(422, f"'{body.adapter_ref}'는 {body.adapter} 원천에 없는 참조입니다.")
-    if body.adapter in pa.OBS_KINDS:
-        return int(meta["ref"].partition(":")[2])
     cur = conn.execute(
         "INSERT INTO proxy_registry (key, label, unit, adapter, adapter_ref, warn_direction, rationale) VALUES (?,?,?,?,?,?,?)",
         (f"adp:{meta['ref']}:{secrets.token_hex(3)}", body.label.strip(), body.unit or meta["unit"], body.adapter, meta["ref"],

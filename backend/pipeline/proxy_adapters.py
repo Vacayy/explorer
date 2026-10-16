@@ -539,7 +539,6 @@ ADAPTERS: dict[str, Adapter] = {a.kind: a for a in [
     Adapter("corpus", "문서 여론(기존)", "corpus:<proxy_id>", "기존 질문 프록시의 문서 여론 방향(+1/0/−1)",
             _obs_catalog_for("corpus"), _obs_describe_for("corpus"), _obs_series_for("corpus"), ("points", 1), "직전 관측", span_days=730),
 ]}
-OBS_KINDS = ("transcript", "corpus")       # 기존 proxy_registry 행 자체를 가리키는 kind
 
 
 def parse(ref: str | None, kind: str | None = None) -> tuple[str, str] | None:

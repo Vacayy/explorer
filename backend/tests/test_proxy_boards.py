@@ -81,6 +81,9 @@ class ProxyBoardTests(unittest.TestCase):
         self.assertEqual(self.add(bid, label="HY", adapter="indicator", adapter_ref="risk_hy", warn_direction="up").status_code, 201)
         self.assertEqual(self.add(bid, proxy_id=50).status_code, 201)
         self.assertEqual(self.add(bid, proxy_id=50).status_code, 409)
+        wrap = self.add(bid, label="CAPEX(보드)", adapter="transcript", adapter_ref="transcript:50", warn_direction="down")
+        self.assertEqual(wrap.status_code, 201, wrap.text)
+        self.assertNotEqual(wrap.json()["proxy_id"], 50)             # 기존 질문 프록시를 덮어쓰지 않고 보드 소유 행을 만든다
         # 검증 실패는 422 — 모르는 어댑터·원천에 없는 ref·다른 어댑터의 ref·없는 프록시·필수값 누락·둘 다 보냄
         for bad in [dict(label="x", adapter="weather", adapter_ref="weather:seoul"),
                     dict(label="x", adapter="credit", adapter_ref="credit:NOPE"),
@@ -93,7 +96,9 @@ class ProxyBoardTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 self.assertEqual(self.add(bid, **bad).status_code, 422)
         detail = self.client.get(f"{BASE}/{bid}").json()
-        self.assertEqual([i["adapter_ref"] for i in detail["items"]], ["credit:ORCL", "indicator:risk_hy", "transcript:50"])
+        self.assertEqual([i["adapter_ref"] for i in detail["items"]], ["credit:ORCL", "indicator:risk_hy", "transcript:50", "transcript:50"])
+        self.assertEqual([i["warn_direction"] for i in detail["items"][2:]], [None, "down"])
+        self.assertEqual(detail["items"][3]["latest"]["value"], 28.0)
         ids = [i["proxy_id"] for i in detail["items"]]
         self.assertEqual(self.client.put(f"{BASE}/{bid}/items/order", json={"proxy_ids": ids[:2]}).status_code, 422)
         self.assertEqual(self.client.put(f"{BASE}/{bid}/items/order", json={"proxy_ids": list(reversed(ids))}).status_code, 204)
