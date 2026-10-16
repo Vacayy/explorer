@@ -53,3 +53,8 @@ docs/private/
 
 # 공개 저장소 밖에 두는 데이터 원천 어댑터 (D-230) — 비공식 엔드포인트 접근 코드
 backend/local_sources/
+
+# graft 로컬 도구 설정 — 설치 경로(홈 디렉터리)가 박혀 있어 공개하지 않는다. 각자 `graft` 설치 시 생성
+.claude/helpers/
+.claude/settings.json
+.claude/settings.local.json
