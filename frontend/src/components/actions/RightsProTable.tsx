@@ -1,41 +1,10 @@
 import { Link, useSearchParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import api from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { useRights } from "@/hooks/useActions"
 import { cn } from "@/lib/utils"
-
-interface RightsRow {
-  rcp_no: string
-  stock_code: string | null
-  corp_name: string | null
-  action_type: string | null
-  method: string | null
-  price_1st: number | null
-  price_2nd: number | null
-  price_final: number | null
-  latest_close: number | null
-  diff_w: number | null
-  diff_pct: number | null
-  old_shares: number | null
-  new_shares: number | null
-  ratio_pct: number | null
-  date_disclosure: string | null
-  date_price_1st: string | null
-  date_ex_rights: string | null
-  date_record: string | null
-  date_rights_listing_start: string | null
-  date_price_fix: string | null
-  date_sub_start: string | null
-  date_public_start: string | null
-  date_payment: string | null
-  date_rights_listing_end: string | null
-  date_new_listing: string | null
-  underwriter: string | null
-  major_holder: string | null
-  dart_url: string
-}
+import type { RightsRow } from "@/types"
 
 const DATE_COLS: { key: keyof RightsRow; label: string }[] = [
   { key: "date_disclosure", label: "공시일" },
@@ -64,11 +33,7 @@ const METHOD_FILTERS = ["전체", "주주배정", "제3자배정", "일반공모
 export default function RightsProTable() {
   const [searchParams, setSearchParams] = useSearchParams()
   const method = searchParams.get("method") ?? ""
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["spine", "actions", "rights"],
-    queryFn: async () => (await api.get("/api/spine/actions/rights")).data as { items: RightsRow[]; as_of: string | null },
-    staleTime: 5 * 60_000,
-  })
+  const { data, isLoading, isError, refetch } = useRights()
 
   if (isLoading) return <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />

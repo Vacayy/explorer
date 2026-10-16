@@ -12,50 +12,64 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { TradeFlagBadge } from "@/components/follow/tradeFormat"
+import { useTradeFollows } from "@/hooks/useTrade"
 import { cn } from "@/lib/utils"
+import { formatPercent, formatUsd } from "@/utils/format"
+import type { TradeFollowRow } from "@/types"
 
 /**
  * /follow/trade — 수출입(무역) 전용 페이지 (docs/specs/trade-follow.md, 2분할).
- * 좌: 팔로우 품목(구독) · 우: 수출입 추이 차트 + 관련 종목(LLM 논리 지목, D-036).
+ * 좌: 팔로우 품목 — 서버 판정(급등·급감 배지, 사유 툴팁), 기본 '이번 달 기여도 순' · 우: 수출입 추이 차트 + 관련 종목(LLM 논리 지목, D-036).
  */
-interface FollowRow { hs_code: string; item_name: string; group_label: string | null; latest_period: string | null; latest_export: number | null; yoy_pct: number | null }
 interface Stat { period: string; export_usd: number | null; import_usd: number | null; balance_usd: number | null }
 interface Beneficiary { name: string; stock_code: string | null; rel: string | null; reason: string | null; rs: number | null; per: number | null; in_universe: boolean; universe_groups: string[] }
 interface Detail { hs_code: string; item_name: string; series: Stat[]; beneficiaries: Beneficiary[] }
 
-const usdB = (v: number | null) => v == null ? "-" : `$${(v / 1e9).toFixed(1)}B`
-const GROUP_ORDER = ["반도체", "IT", "2차전지", "자동차", "에너지", "소재", "기계"]
+const usdB = (v: number | null) => v == null ? "-" : formatUsd(v)
+type RailSort = "contribution" | "group"
 
 export default function TradePage() {
   const [params, setParams] = useSearchParams()
   const selected = params.get("hs")
-  const { data: follows = [], isLoading, isError, refetch } = useQuery(
-    apiQuery<FollowRow[]>({ key: ["spine", "trade", "follow"], url: "/api/spine/trade/follow", staleTime: STALE.short }),
-  )
+  const sort: RailSort = params.get("trade_sort") === "group" ? "group" : "contribution"
+  const { data: follows = [], isLoading, isError, refetch } = useTradeFollows()
   const qc = useQueryClient()
   const seed = useMutation({
     mutationFn: () => api.post("/api/spine/trade/seed").then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "trade", "follow"] }),
   })
-  const pick = (hs: string) => setParams({ hs }, { replace: true })
+  const setParam = (k: string, v: string | null) => setParams((p) => {
+    const n = new URLSearchParams(p)
+    if (v) n.set(k, v); else n.delete(k)
+    return n
+  }, { replace: true })
 
+  const ranked = useMemo(() => rankByContribution(follows), [follows])
   if (isLoading) return <PageContainer><Skeleton className="h-96 w-full rounded-xl" /></PageContainer>
   if (isError) return <PageContainer><ErrorState onRetry={() => refetch()} /></PageContainer>
 
-  const effective = selected ?? follows[0]?.hs_code ?? null
+  const effective = selected ?? ranked[0]?.hs_code ?? null
+  const period = follows.find((f) => f.latest_period)?.latest_period
+  const surge = follows.filter((f) => f.flag === "surge" || f.flag === "new").length
+  const plunge = follows.filter((f) => f.flag === "plunge").length
 
   return (
     <PageContainer>
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-xl font-bold">수출입</h2>
-        <span className="text-xs text-muted-foreground">관세청 품목별 무역통계 · 팔로우 {follows.length}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          관세청 품목별 무역통계{period && ` · ${period} 기준`} · 팔로우 {follows.length}
+          {follows.length > 0 && <> · <span className="text-up">급등 {surge}</span> · <span className="text-down">급감 {plunge}</span></>}
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4 items-start">
-        <Card className="md:sticky md:top-16">
-          <CardContent className="p-2 max-h-[70vh] overflow-y-auto">
+      <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 items-start">
+        <Card className="md:sticky md:top-16 py-0">
+          <CardContent className="p-2 space-y-2">
             {follows.length === 0 ? (
               <div className="p-3 space-y-3">
                 <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 품목 세트를 불러오세요.</p>
@@ -63,7 +77,18 @@ export default function TradePage() {
                   {seed.isPending ? "불러오는 중…" : "기본 품목 팔로우"}
                 </Button>
               </div>
-            ) : <ItemRail follows={follows} effective={effective} onPick={pick} />}
+            ) : <>
+              <ToggleGroup type="single" size="sm" variant="outline" value={sort} className="w-full"
+                onValueChange={(v) => v && setParam("trade_sort", v === "contribution" ? null : v)}>
+                <ToggleGroupItem value="contribution" className="flex-1 text-xs">이번 달 기여도</ToggleGroupItem>
+                <ToggleGroupItem value="group" className="flex-1 text-xs">분류별</ToggleGroupItem>
+              </ToggleGroup>
+              <div className="max-h-[70vh] overflow-y-auto">
+                {sort === "contribution"
+                  ? <div className="space-y-0.5">{ranked.map((f) => <RailItem key={f.hs_code} f={f} follows={follows} active={f.hs_code === effective} onPick={(hs) => setParam("hs", hs)} />)}</div>
+                  : <GroupRail follows={follows} effective={effective} onPick={(hs) => setParam("hs", hs)} />}
+              </div>
+            </>}
           </CardContent>
         </Card>
 
@@ -77,32 +102,54 @@ export default function TradePage() {
   )
 }
 
-function ItemRail({ follows, effective, onPick }: { follows: FollowRow[]; effective: string | null; onPick: (hs: string) => void }) {
-  const byGroup = useMemo(() => {
-    const m = new Map<string, FollowRow[]>()
-    for (const f of follows) { const g = f.group_label ?? "기타"; (m.get(g) ?? m.set(g, []).get(g))!.push(f) }
-    return m
+/** 이번 달 기여도 내림차순 — 판정 있는 품목이 같은 기여도면 앞, 기여도 없음은 뒤 */
+function rankByContribution(follows: TradeFollowRow[]): TradeFollowRow[] {
+  const flagged = (f: TradeFollowRow) => (f.flag && f.flag !== "none" ? 1 : 0)
+  return [...follows].sort((a, b) => (b.contribution ?? -1) - (a.contribution ?? -1) || flagged(b) - flagged(a))
+}
+
+function RailItem({ f, follows, active, onPick }: { f: TradeFollowRow; follows: TradeFollowRow[]; active: boolean; onPick: (hs: string) => void }) {
+  const parent = f.nested_in ? follows.find((x) => x.hs_code === f.nested_in)?.item_name ?? f.nested_in : null
+  return (
+    <Button variant="ghost" onClick={() => onPick(f.hs_code)}
+      className={cn("h-auto w-full justify-start gap-2 px-2 py-1.5 text-left font-normal", active && "bg-accent text-accent-foreground")}>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm">{f.item_name}</span>
+          <TradeFlagBadge flag={f.flag} reason={f.reason} contribution={f.contribution} nestedIn={parent} />
+        </div>
+        <div className="text-[10px] text-muted-foreground tabular-nums">
+          {usdB(f.latest_export)}
+          {f.yoy_pct != null && <span className={f.yoy_pct >= 0 ? "text-up" : "text-down"}> {formatPercent(f.yoy_pct)}</span>}
+          {parent && <span> · {parent}의 세목</span>}
+        </div>
+      </div>
+    </Button>
+  )
+}
+
+/** 분류별 보기 — 분류는 최상위 품목 금액 합이 큰 순(하위 세목은 합에서 제외) */
+function GroupRail({ follows, effective, onPick }: { follows: TradeFollowRow[]; effective: string | null; onPick: (hs: string) => void }) {
+  const groups = useMemo(() => {
+    const m = new Map<string, { rows: TradeFollowRow[]; value: number }>()
+    for (const f of follows) {
+      const g = f.group_label ?? "기타"
+      const e = m.get(g) ?? m.set(g, { rows: [], value: 0 }).get(g)!
+      e.rows.push(f)
+      if (!f.nested_in) e.value += f.latest_export ?? 0
+    }
+    return [...m.entries()].sort((a, b) => b[1].value - a[1].value)
   }, [follows])
-  const groups = [...GROUP_ORDER.filter((g) => byGroup.has(g)), ...[...byGroup.keys()].filter((g) => !GROUP_ORDER.includes(g))]
   return (
     <div className="space-y-1">
-      {groups.map((g) => (
+      {groups.map(([g, e]) => (
         <Collapsible key={g} defaultOpen>
           <CollapsibleTrigger className="flex w-full items-center gap-1 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground">
             <ChevronRight className="h-3 w-3 transition-transform data-[state=open]:rotate-90" /> {g}
+            <span className="ml-auto tabular-nums">{usdB(e.value)}</span>
           </CollapsibleTrigger>
           <CollapsibleContent className="pl-1">
-            {byGroup.get(g)!.map((f) => (
-              <button key={f.hs_code} onClick={() => onPick(f.hs_code)}
-                className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left",
-                  f.hs_code === effective ? "bg-accent text-accent-foreground" : "hover:bg-muted")}>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm truncate">{f.item_name}</div>
-                  <div className="text-[10px] text-muted-foreground tabular-nums">{usdB(f.latest_export)}
-                    {f.yoy_pct != null && <span className={f.yoy_pct >= 0 ? "text-up" : "text-down"}> {f.yoy_pct >= 0 ? "+" : ""}{f.yoy_pct}%</span>}</div>
-                </div>
-              </button>
-            ))}
+            {e.rows.map((f) => <RailItem key={f.hs_code} f={f} follows={follows} active={f.hs_code === effective} onPick={onPick} />)}
           </CollapsibleContent>
         </Collapsible>
       ))}

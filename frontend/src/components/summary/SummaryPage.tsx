@@ -14,6 +14,7 @@ import { CompanyEvidence } from '@/components/company/CompanyEvidence'
 import { FinancialPreview } from '@/components/company/CompanyFinancials'
 import { DiscoveryResearch } from '@/components/company/DiscoveryResearch'
 import { CompanyOverview } from '@/components/company/CompanyOverview'
+import { StockActivityStrip } from '@/components/summary/StockActivityStrip'
 import SaveButton from '@/components/shared/SaveButton'
 import { toast } from 'sonner'
 
@@ -101,6 +102,7 @@ export default function SummaryPage({ stockCode }: { stockCode: string }) {
             </CardContent>
           </Card>
         )}
+        <StockActivityStrip stockCode={stockCode} />
         <CompanyPriceResearch
           key={stockCode}
           company={stockCode}

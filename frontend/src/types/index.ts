@@ -1096,6 +1096,58 @@ export interface CreditRow {
 export interface CreditTable { configured: boolean; as_of: string | null; groups: { key: string; label: string }[]; rows: CreditRow[] }
 export interface CreditHistory { tickers: string[]; points: Record<string, number | string | null>[] }
 
+/* ---------- 수출입 (trade-follow.md, D-140) ---------- */
+export type TradeFlag = 'surge' | 'plunge' | 'new' | 'none'
+export interface TradeFollowRow {
+  hs_code: string; item_name: string; group_label: string | null
+  latest_period: string | null; latest_export: number | null; yoy_pct: number | null
+  z: number | null; flag: TradeFlag | null; reason: string | null
+  contribution: number | null   // 0~1 — 이번 달 전년 동월 대비 증감액 기여도(최상위 품목 합 기준)
+  nested_in: string | null      // 이 품목을 포함하는 상위 팔로우 HS — 합계에서 제외
+}
+export interface TradeHighlightRow {
+  hs_code: string; item_name: string; group_label: string | null; value: number | null
+  yoy: number | null; z: number | null; flag: TradeFlag; reason: string | null
+  contribution: number | null; nested_in: string | null
+}
+export interface TradeHighlights {
+  period: string | null; total_usd: number
+  surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]
+}
+export interface TradeStockItem {
+  hs_code: string; item_name: string; rel: string | null; period: string | null
+  yoy_pct: number | null; flag: TradeFlag | null; reason: string | null
+}
+
+/* ---------- 기업활동 (spine_actions) ---------- */
+export type ActionKind = 'all' | 'original' | 'correction'
+export type MyGroup = '보유' | '관심'
+export interface CorporateAction {
+  id: number; rcp_no: string; corp_name: string | null; stock_code: string | null
+  market: string | null          // Y=유가 K=코스닥
+  action_type: string; report_nm: string | null
+  rcept_dt: string               // YYYYMMDD
+  market_cap: number | null; summary: string | null; dart_url: string
+  is_correction: boolean         // [기재정정]·[첨부정정]
+  my_group: MyGroup | null       // 내 묶음(stock_groups) 멤버
+}
+export interface ActionsResponse {
+  items: CorporateAction[]; total: number
+  as_of: string | null           // 마지막 DART 스캔 성공 시각(UTC)
+  counts: { original: number; correction: number } | null
+}
+export interface RightsRow {
+  rcp_no: string; stock_code: string | null; corp_name: string | null; action_type: string | null; method: string | null
+  price_1st: number | null; price_2nd: number | null; price_final: number | null; latest_close: number | null
+  diff_w: number | null; diff_pct: number | null; old_shares: number | null; new_shares: number | null; ratio_pct: number | null
+  date_disclosure: string | null; date_price_1st: string | null; date_ex_rights: string | null; date_record: string | null
+  date_rights_listing_start: string | null; date_price_fix: string | null; date_sub_start: string | null
+  date_public_start: string | null; date_payment: string | null; date_rights_listing_end: string | null
+  date_new_listing: string | null; underwriter: string | null; major_holder: string | null; dart_url: string
+  my_group: MyGroup | null
+}
+export interface RightsResponse { items: RightsRow[]; as_of: string | null }
+
 /* ---------- 개인 투자 열기 (D-231) ---------- */
 export type RetailRegimeKey = 'deleveraging' | 'leverage_led' | 'churn' | 'broad_inflow' | 'neutral'
 export interface RetailRegime { key: RetailRegimeKey; label: string; reasons: string[] }
