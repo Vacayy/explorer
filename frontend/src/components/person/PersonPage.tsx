@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom"
 import { Markdown } from "@/components/shared/Markdown"
-import { BellPlus, BellOff, Lightbulb, Loader2, User } from "lucide-react"
+import { ArrowLeft, ArrowRight, BellPlus, BellOff, GitBranch, Lightbulb, Loader2, RefreshCw, User } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
@@ -12,25 +12,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Expandable } from "@/components/shared/Expandable"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { formatNumber } from "@/utils/format"
+import type { PersonDossier, PersonProfile, PersonRelation } from "@/types"
 
 /**
  * /person?name= — 인물 도시에 (knowledge-system.md ③).
  * 언급·발언 흐름 + 연관 엔티티(파급 경로) + 게으른 프로필 + 팔로우.
  * 프로필은 (kind='person') source_digests 재사용 — 소스 도시에와 동일 규율.
+ * 프로필 이후 새 언급 수를 머리에 보이고, '등장하는 내러티브·인과 엣지'로 인물 → 메커니즘 → 대상을 잇는다(읽기 전용).
  */
-
-interface PersonDossier {
-  entity_id: number
-  name: string
-  total_docs: number
-  first_doc_at: string | null
-  last_doc_at: string | null
-  following: boolean
-  profile: { status: string; digest: string | null; insights: string | null; created_at: string | null } | null
-  profile_stale: boolean
-  co_entities: { entity_id: number; name: string; link_type: string; aliases: string | null; count: number }[]
-  recent_docs: { id: number; title: string; published_at: string | null }[]
-}
 
 const personKeys = {
   dossier: (name: string) => ["spine", "person", name] as const,
@@ -51,7 +41,7 @@ export default function PersonPage() {
     }),
   )
   const profile = useQuery(
-    apiComputeQuery<NonNullable<PersonDossier["profile"]>>({
+    apiComputeQuery<PersonProfile>({
       key: personKeys.profile(name),
       url: `/api/spine/person/${encodeURIComponent(name)}/profile`,
       enabled: !!data?.profile_stale,
@@ -79,6 +69,8 @@ export default function PersonPage() {
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
 
   const p = profile.data ?? data.profile
+  // 새로 만들었거나(fresh) 이미 최신(cached)이면 '새 언급' 안내를 내린다 — 실패·LLM 미연결이면 남긴다
+  const refreshed = !!profile.data && ["fresh", "cached"].includes(profile.data.status)
   const stocks = data.co_entities.filter((e) => e.link_type === "stock")
   const people = data.co_entities.filter((e) => e.link_type === "person")
   const tags = data.co_entities.filter((e) => !["stock", "person"].includes(e.link_type))
@@ -117,7 +109,15 @@ export default function PersonPage() {
               {p?.created_at && (
                 <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
                   {p.created_at.slice(0, 10)} 기준
+                  {!refreshed && (data.new_since_profile ?? 0) > 0 &&
+                    <span className="ml-1.5 text-chart-warning">· 프로필 이후 새 언급 {formatNumber(data.new_since_profile)}건</span>}
                 </span>
+              )}
+              {data.profile_stale && !refreshed && (
+                <Button variant="ghost" size="xs" className={p?.created_at ? "" : "ml-auto"} disabled={profile.isFetching}
+                  onClick={() => void profile.refetch()}>
+                  <RefreshCw className="h-3 w-3" /> 다시 만들기
+                </Button>
               )}
             </CardHeader>
             <CardContent className="space-y-3">
@@ -152,6 +152,8 @@ export default function PersonPage() {
               )}
             </CardContent>
           </Card>
+
+          {data.relations.length > 0 && <RelationsCard relations={data.relations} />}
 
           {/* 파급 경로 — 이 인물과 함께 언급되는 것들 */}
           {data.co_entities.length > 0 && (
@@ -207,6 +209,63 @@ export default function PersonPage() {
       )}
     </PageContainer>
   )
+}
+
+/** 등장하는 내러티브·인과 엣지 — entity_relations에서 이 인물이 끝점인 엣지(최신 20). 내러티브 링크는 주제의 현행 버전 */
+function RelationsCard({ relations }: { relations: PersonRelation[] }) {
+  const topics = [...new Set(relations.map((r) => r.narrative_topic).filter(Boolean))] as string[]
+  const titleOf = Object.fromEntries(relations.filter((r) => r.narrative_topic).map((r) => [r.narrative_topic!, r.narrative_title]))
+  return (
+    <Card>
+      <CardHeader className="pb-2 flex-row items-baseline gap-2">
+        <CardTitle className="text-sm flex items-center gap-1.5"><GitBranch className="h-3.5 w-3.5" /> 등장하는 내러티브·인과 엣지</CardTitle>
+        <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">내러티브 {topics.length} · 엣지 {relations.length}</span>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {topics.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {topics.map((t) => (
+              <Link key={t} to={`/narrative?topic=${encodeURIComponent(t)}`}>
+                <Badge variant="outline" className="text-xs gap-1 hover:border-primary hover:text-primary">
+                  {t}{titleOf[t] && titleOf[t] !== t && <span className="max-w-56 truncate text-muted-foreground">· {titleOf[t]}</span>}
+                </Badge>
+              </Link>
+            ))}
+          </div>
+        )}
+        <ul className="divide-y text-sm">
+          {relations.map((r) => (
+            <li key={r.id} className="py-1.5 space-y-0.5">
+              <div className="flex items-center gap-1.5">
+                {r.direction === "out" ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ArrowLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                <OtherLink r={r} />
+                <span className="text-[10px] text-muted-foreground">{r.rel_type}</span>
+                {r.epistemic_type === "hypothesis" && <Badge variant="outline" className="h-4 px-1 text-[9px] text-hypothesis border-hypothesis/40">가설</Badge>}
+                {r.narrative_topic && (
+                  <Link to={`/narrative?topic=${encodeURIComponent(r.narrative_topic)}`} className="ml-auto shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
+                    title={r.narrative_superseded ? "이 엣지를 만든 버전은 새 버전으로 대체됐습니다 — 현행 버전으로 갑니다" : undefined}>
+                    {r.narrative_topic}{r.narrative_superseded && " (이전 버전)"}
+                  </Link>
+                )}
+                <span className={r.narrative_topic ? "shrink-0 text-[11px] text-muted-foreground tabular-nums" : "ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums"}>{(r.created_at ?? "").slice(0, 10)}</span>
+              </div>
+              {r.mechanism && <p className="pl-5 text-xs text-muted-foreground">{r.mechanism}</p>}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+function OtherLink({ r }: { r: PersonRelation }) {
+  if (r.other_type === "company") {
+    return <Link to={r.other_aliases ? `/analyze/${r.other_aliases}/summary` : `/company?name=${encodeURIComponent(r.other_name)}`} className="font-medium hover:underline hover:text-primary">{r.other_name}</Link>
+  }
+  if (r.other_type === "person") {
+    return <Link to={`/person?name=${encodeURIComponent(r.other_name)}`} className="font-medium text-hypothesis hover:underline">{r.other_name}</Link>
+  }
+  return <span className="font-medium">{r.other_name}</span>
 }
 
 function PersonSkeleton() {

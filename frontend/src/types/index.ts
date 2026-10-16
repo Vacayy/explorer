@@ -1148,6 +1148,33 @@ export interface RightsRow {
 }
 export interface RightsResponse { items: RightsRow[]; as_of: string | null }
 
+/* ---------- 인물 (spine_person) ---------- */
+export interface PersonRow {
+  entity_id: number; name: string; doc_count: number
+  last_doc_at: string | null; last_doc_title: string | null; last_doc_id: number | null
+  following: boolean; top_stocks: string[]
+  mentions_7d: number; mentions_prev_7d: number; delta_7d: number   // 최근 7일 − 직전 7일
+}
+export interface PeopleDirectory { items: PersonRow[]; total: number; hidden_tail: number; as_of: string | null }
+export interface FollowedPeopleWeek { items: PersonRow[]; as_of: string | null }
+export type PeopleSort = 'surge' | 'total' | 'recent'
+export interface PersonRelation {
+  id: number; direction: 'out' | 'in'; rel_type: string
+  other_id: number; other_name: string; other_type: string; other_aliases: string | null
+  mechanism: string | null; epistemic_type: string; created_at: string | null
+  narrative_topic: string | null; narrative_title: string | null; narrative_superseded: boolean
+}
+export interface PersonProfile { status: string; digest: string | null; insights: string | null; created_at: string | null }
+export interface PersonDossier {
+  entity_id: number; name: string; total_docs: number
+  first_doc_at: string | null; last_doc_at: string | null; following: boolean
+  profile: PersonProfile | null; profile_stale: boolean
+  new_since_profile: number | null   // 프로필 생성 이후 수집된 언급 수
+  co_entities: { entity_id: number; name: string; link_type: string; aliases: string | null; count: number }[]
+  recent_docs: { id: number; title: string; published_at: string | null }[]
+  relations: PersonRelation[]
+}
+
 /* ---------- 개인 투자 열기 (D-231) ---------- */
 export type RetailRegimeKey = 'deleveraging' | 'leverage_led' | 'churn' | 'broad_inflow' | 'neutral'
 export interface RetailRegime { key: RetailRegimeKey; label: string; reasons: string[] }
