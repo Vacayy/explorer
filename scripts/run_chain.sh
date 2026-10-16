@@ -37,21 +37,44 @@ fi
 
 echo "$(ts) [chain] 시작" >> "$LOG"
 
-# --- 수집보다 먼저: 값싸고 빠른 운영 점검 (수집 실패에 발목 잡히지 않도록 && 밖) ---
-$PY scripts/probe_llm.py                     >> "$LOG" 2>&1   # LLM 엔진 생사 (D-106)
-$PY scripts/send_briefing.py --catch-up      >> "$LOG" 2>&1   # 미발송 브리핑 보전 (D-106)
-$PY scripts/fetch_macro_news.py              >> "$LOG" 2>&1   # 미국 매체·Fed 헤드라인 (D-206)
+# 단계마다 독립 실행하고 실패한 단계를 모아 job_runs('chain')에 남긴다.
+# 예전엔 && 연결이라 한 단계가 죽으면 뒤 단계가 조용히 건너뛰어졌고(DART 장애 때 다이제스트·검색 인덱스까지),
+# 마지막 줄 `rc=$?`도 $(ts)가 먼저 돌아 늘 0이었다(10-16 07:24 전 단계 'database is locked'에도 rc=0).
+# 각 단계는 멱등이라 앞 단계 실패 뒤에 돌아도 같은 데이터를 다시 처리할 뿐이다.
+FAILED=()
+STEPS=0
+step() {
+  local name="$1"; shift
+  STEPS=$((STEPS + 1))
+  "$PY" "$@" >> "$LOG" 2>&1
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    FAILED+=("$name(rc=$rc)")
+    echo "$(ts) [chain] $name 실패 rc=$rc" >> "$LOG"
+  fi
+}
 
-# 기존 crontab의 && 의미 보존 (한 단계 실패 시 이후 중단)
+# --- 수집보다 먼저: 값싸고 빠른 운영 점검 ---
+step probe_llm          scripts/probe_llm.py                 # LLM 엔진 생사 (D-106)
+step briefing_catchup   scripts/send_briefing.py --catch-up  # 미발송 브리핑 보전 (D-106)
+step macro_news         scripts/fetch_macro_news.py          # 미국 매체·Fed 헤드라인 (D-206)
+
 # redigest_youtube 제거(D-115) — 구독 채널 신규 영상 전부를 opus로 정리하면 아무도 안 읽는
 # 영상까지 값을 치른다. 정리는 문서를 열 때만(spine_doc lazy / 텔레그램 액션).
-$PY scripts/ingest.py            >> "$LOG" 2>&1 && \
-$PY scripts/extract_doc_causal.py --limit 10 >> "$LOG" 2>&1 && \
-$PY scripts/compute_signals.py   >> "$LOG" 2>&1 && \
-$PY scripts/compute_narratives.py --urgent >> "$LOG" 2>&1 && \
-$PY scripts/extract_events.py --limit 40 >> "$LOG" 2>&1 && \
-$PY scripts/scan_actions.py      >> "$LOG" 2>&1 && \
-$PY scripts/compute_digests.py   >> "$LOG" 2>&1 && \
-$PY scripts/vault_sync.py --export >> "$LOG" 2>&1 && \
-$PY scripts/build_search_index.py >> "$LOG" 2>&1
-echo "$(ts) [chain] 종료(rc=$?)" >> "$LOG"
+step ingest             scripts/ingest.py
+step extract_doc_causal scripts/extract_doc_causal.py --limit 10
+step compute_signals    scripts/compute_signals.py
+step compute_narratives scripts/compute_narratives.py --urgent
+step extract_events     scripts/extract_events.py --limit 40
+step scan_actions       scripts/scan_actions.py
+step compute_digests    scripts/compute_digests.py
+step vault_sync         scripts/vault_sync.py --export
+step build_search_index scripts/build_search_index.py
+
+if [ ${#FAILED[@]} -eq 0 ]; then STATUS=ok
+elif [ ${#FAILED[@]} -eq "$STEPS" ]; then STATUS=error
+else STATUS=partial; fi
+SUMMARY="단계 ${STEPS}개 중 실패 ${#FAILED[@]}개${FAILED[*]:+: ${FAILED[*]}}"
+"$PY" -c 'import sys; sys.path.insert(0, "backend"); from pipeline.ops import record_run; record_run("chain", sys.argv[1], sys.argv[2])' \
+  "$STATUS" "$SUMMARY" >> "$LOG" 2>&1 || echo "$(ts) [chain] job_runs 기록 실패" >> "$LOG"
+echo "$(ts) [chain] 종료 $STATUS — $SUMMARY" >> "$LOG"
