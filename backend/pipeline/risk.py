@@ -203,6 +203,24 @@ def evaluate_signal(items: dict, expected: date) -> dict:
     return result
 
 
+RANGES = {'1m': 1, '3m': 3, '1y': 12, '3y': 36, '5y': 60, '10y': 120, '20y': 240, 'all': None}   # 개월
+KEYS = (*META, 'curve')
+
+
+def window(data: dict, span: str | None, keys: list[str] | None) -> dict:
+    """위젯용 창: 고른 계열만, 기대일 기준 span 이후 관측만 싣는다. 값·변화·품질·신호는 전체 이력 기준 그대로."""
+    months = RANGES.get(span) if span else None
+    start = None
+    if months:
+        d = date.fromisoformat(data['expected_date'])
+        y, m = divmod(d.year * 12 + d.month - 1 - months, 12)
+        start = date(y, m + 1, min(d.day, 28 if m + 1 == 2 else 30 if m + 1 in (4, 6, 9, 11) else 31)).isoformat()
+    items = [item for item in data['items'] if keys is None or item['key'] in keys]
+    if start:
+        items = [{**item, 'points': [p for p in item['points'] if p[0] >= start]} for item in items]
+    return {**data, 'items': items}
+
+
 def get_risk(now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     expected = expected_date(now)
