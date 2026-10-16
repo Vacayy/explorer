@@ -59,8 +59,6 @@ import WorldviewPage from "@/components/explore/WorldviewPage"
 import ReportsPage from "@/components/explore/ReportsPage"
 import ArchivePage from "@/components/archive/ArchivePage"
 import AdminPage from "@/components/admin/AdminPage"
-import MemoryReadingPage from "@/components/expectations/MemoryReadingPage"
-import ExpectationsPage from "@/components/expectations/ExpectationsPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
@@ -229,8 +227,8 @@ export default function App() {
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />
-            <Route path="experiments/expectations" element={<MemoryReadingPage />} />
-            <Route path="experiments/expectations/review" element={<ExpectationsPage />} />
+            <Route path="experiments/expectations" element={<Navigate to="/chat" replace />} />
+            <Route path="experiments/expectations/review" element={<Navigate to="/chat" replace />} />
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />

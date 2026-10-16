@@ -191,26 +191,13 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
 
 ## 2. 아키텍처 조감
 
-### 별도 실험: 기대 변화 관측 (2026-09-09, D-148·D-149·D-150)
+### 대화 문서 첨부 (기대 변화 관측 실험의 잔존분, D-148 → D-241)
 
-- UI `/experiments/expectations` (더보기 → 메모리 리서치, 대화 시작 화면에서도 진입): 최근 수집 요약·본문 발췌 → 자료/과거 자료 첨부 → 기존 챗봇 대화.
-  발언 승인 없이 읽기/비교를 시작한다. 기존 원장은 `/experiments/expectations/review`의 보조 검토 도구로 유지한다.
-- `expectation_reading.py`: 읽기 전용 최근 1/7/30일 자료·같은 소스의 이전 90일 관련 자료, 정확한 본문 반복 묶음, 채널/소스 분산 첨부 목록.
-  GET `reading`, `reading/{id}/history`. 최대 4,000행 검사/24카드/과거 3건. 보존된 요약이 주제와 맞지 않으면 관련 발췌를 표시한다.
-- 기존 `POST /api/spine/ask`의 document_ids(최대 12개)를 conversations.state_json.attached_doc_ids에 저장한다.
-  chat.run_turn에서 원문을 검색보다 먼저 확보하고 후속 질문에서도 유지한다. 긴 문서는 도입·메모리 관련 구간·결론을 제한 발췌한다.
-  첨부 재조회는 이미 확보된 본문으로 처리한다. ConversationDetail과 ChatPage는 함께 읽는 자료/원문 링크를 표시한다.
-  대화·LLM 사용 기록은 기존 정상 저장 경로를 사용하며 수집 코퍼스에 쓰지 않는다.
-- API `/api/experiments/expectations`: documents, extractions/jobs/cancel, statements/review/comparison/evidence/history/notes.
-- `expectation_evidence.py`는 기존 raw_documents를 SQLite mode=ro/query_only로만 읽는다. 정리본은 직접 발언 추출에서 제외한다.
-- `expectation_workflow.py`는 인용 검증·승인·보수적 비교 및 단일 프로세스 워커를 담당한다. 24,000자/8초안/150초, 대기 포함 4작업 상한.
-  Claude CLI 격리 호출, 진행/실패/취소·버전·비용은 실험에만 기록. 운영 llm_calls에는 쓰지 않는다.
-- `expectation_store.py`가 **별도** `backend/db/expectations_experiment.sqlite`의 snapshots/jobs/statements/reviews/notes를 관리한다.
-  원문 보존본·초안·검토 이력·메모를 보존하며 승인 시 원문 해시·편집 revision 충돌을 검사한다.
-- 발언의 사업/주가/심리/거래 태도/수급 해석, 수준/성장률/가속도/시점/확신을 분리한다. 같은 화자·제품·대상·층위·지표·축·전망 기간·기준·단위·조건만 비교한다.
-  실제 시장 가격·사업 관측·파생/수급 자료 자동 연결과 변경 판정 품질 평가는 아직 미구현/미완료다.
-- 기존 시스템은 유지하며 main 라우터 등록 및 별도 FE 경로/더보기 진입으로 연결한다. 수집/스케줄/기존 API를 실험에서 변경하지 않는다.
-  상세 동작·검증 계약: 기대 관측 설계 §8(비공개 문서).
+- 기대 변화 관측 실험 화면(`/experiments/expectations`, `/review`)과 `/api/experiments/expectations`, `expectation_workflow.py`·`expectation_store.py`는 D-241에서 제거했다. 두 URL은 `/chat`으로 리다이렉트한다. 별도 실험 DB `backend/db/expectations_experiment.sqlite` 파일은 디스크에 남아 있다.
+- 기존 `POST /api/spine/ask`의 document_ids(최대 12개, 문서 상세의 '이 자료로 대화')를 conversations.state_json.attached_doc_ids에 저장한다.
+  chat.run_turn에서 원문을 검색보다 먼저 확보하고 후속 질문에서도 유지한다. 긴 문서는 도입·메모리 관련 구간·결론을 제한 발췌한다(`expectation_reading.attached_evidence`).
+  첨부 재조회는 이미 확보된 본문으로 처리한다. ChatPage는 함께 읽는 자료를 `/doc/:id` 링크로 표시한다.
+- `expectation_evidence.py`는 기존 raw_documents를 SQLite mode=ro/query_only로만 읽는다(`get_document`). 정리본은 직접 발언 인용 금지로 표시한다.
 
 ```
 [소스]  텔레그램(텍스트+이미지) · 블로그(네이버/티스토리/RSS) · **링크 스크랩(D-142, 미검증)** · vault/notes(내 가설)

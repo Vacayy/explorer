@@ -1,5 +1,4 @@
 import { Newspaper, Scale, TrendingUp, Waypoints } from "lucide-react"
-import { Link } from "react-router-dom"
 import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -26,7 +25,6 @@ export function ChatEmpty({ onPick, children }: { onPick: (q: string) => void; c
         </p>
       </div>
 
-      <Button asChild variant="outline"><Link to="/experiments/expectations">수집한 메모리 자료부터 읽기</Link></Button>
       <div className="w-full">{children}</div>
 
       <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">

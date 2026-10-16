@@ -19,7 +19,7 @@ import { askAboutText } from '@/lib/aiPanel'
 import { SourceDeepDive } from './SourceDeepDive'
 import { DocumentBody } from './DocumentBody'
 import { DocRelated } from './DocRelated'
-import { useReadingDiscussion } from '@/hooks/useMemoryReading'
+import { useReadingDiscussion } from '@/hooks/useDocumentDiscussion'
 import { formatRelativeTime } from '@/utils/format'
 import type { EntityTag, FeedDocument } from '@/types'
 

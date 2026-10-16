@@ -140,7 +140,7 @@ function ConversationPage() {
           <CollapsibleTrigger asChild><Button size="sm" variant="ghost">함께 읽는 수집 자료 {thread.attached_documents.length}개</Button></CollapsibleTrigger>
           <CollapsibleContent className="space-y-2 pb-2">
             <p className="text-xs text-muted-foreground">이 대화의 후속 질문에서도 참고합니다. 다른 주제는 새 대화로 시작할 수 있습니다.</p>
-            {thread.attached_documents.map(doc => <Link className="block text-sm text-primary hover:underline" key={doc.id} to={`/experiments/expectations?read=${doc.id}`}>{doc.title || '수집 자료'}</Link>)}
+            {thread.attached_documents.map(doc => <Link className="block text-sm text-primary hover:underline" key={doc.id} to={`/doc/${doc.id}`}>{doc.title || '수집 자료'}</Link>)}
             <Button size="sm" variant="outline" onClick={newThread}>첨부 없이 새 대화</Button>
           </CollapsibleContent>
         </Collapsible>}
