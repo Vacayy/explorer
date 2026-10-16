@@ -1,4 +1,4 @@
-"""논지 감사 API (thesis audit, docs/specs/thesis-audit.md).
+"""논지 감사 API (thesis audit, docs/private/specs/thesis-audit.md).
 
 POST /api/spine/thesis/audit   — thesis 주입 → 인과그래프 대질 감사 (read-only, ~수 분 LLM)
 GET  /api/spine/thesis/audits  — 감사 히스토리(append-only)

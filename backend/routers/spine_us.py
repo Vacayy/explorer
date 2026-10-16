@@ -6,9 +6,10 @@
 from fastapi import APIRouter, HTTPException
 
 import json
+import re
 
 from database import get_connection
-from models.us import (UsBriefing, UsBriefingListItem, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
+from models.us import (UsBriefing, UsBriefingListItem, UsBriefingSources, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
                         UsMoverItem, UsMoversResponse, UsNarrativeRef, UsWorldModel)
 
 router = APIRouter(prefix="/api/spine/us", tags=["spine"])
@@ -76,6 +77,13 @@ def us_briefing_list(limit: int = 30):
     return [UsBriefingListItem(**x) for x in list_briefings(limit=limit)]
 
 
+@router.get("/briefing/sources", response_model=UsBriefingSources)
+def us_briefing_sources():
+    """'소스 관리' — 브리핑이 쓰는 출처 목록과 출처별 최근 수집 상태. DB 읽기만 (docs/specs/us-briefing.md)."""
+    from pipeline.us_briefing import briefing_sources
+    return UsBriefingSources(**briefing_sources())
+
+
 @router.get("/briefing", response_model=UsBriefing)
 def us_briefing(force: bool = False, trade_date: str | None = None):
     """어젯밤 미국장 브리핑 — 4섹션 종합(지수·요인·이슈·흐름, docs/specs/us-briefing.md).
@@ -85,6 +93,33 @@ def us_briefing(force: bool = False, trade_date: str | None = None):
     """
     from pipeline.us_briefing import build_briefing
     return UsBriefing(**build_briefing(force=force, trade_date=trade_date))
+
+
+@router.get("/{ticker}/prices/status")
+def us_price_status(ticker: str):
+    """us_prices 보유 현황(행 수·최신 거래일·수집 시각·missing/stale/fresh). 외부 호출 0."""
+    from pipeline.us_data import price_status
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9.\-]{0,9}", ticker):
+        raise HTTPException(404, "티커 형식이 아닙니다.")
+    conn = get_connection()
+    try:
+        return price_status(conn, ticker)
+    finally:
+        conn.close()
+
+
+@router.post("/{ticker}/prices/collect")
+def us_price_collect(ticker: str, period: str = "2y"):
+    """버튼 주도 시세 수집(D-100): yfinance 2년 일봉을 us_prices에 멱등 적재하고 현황을 돌려준다."""
+    from pipeline.us_data import PriceCollectError, collect_prices
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9.\-]{0,9}", ticker):
+        raise HTTPException(404, "티커 형식이 아닙니다.")
+    if period not in {"1y", "2y", "5y", "max"}:
+        raise HTTPException(422, "기간은 1y·2y·5y·max 중 하나입니다.")
+    try:
+        return collect_prices(ticker, period)
+    except PriceCollectError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @router.get("/{ticker}/mentions", response_model=list[UsMention])

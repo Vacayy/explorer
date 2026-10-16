@@ -22,6 +22,7 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("backfill_enrich", "재태깅 백필", "sonnet — 키워드 폴백 문서 재태깅 (백로그 7,871건, 우선순위·예산 제어, D-117)", "scripts/backfill_enrich_batch.py"),
     ("extract_events", "이미지 비전 분석", "haiku — 첨부 이미지 판독·증시일정 이벤트 추출 (미분석 백로그 ~2,000장, D-116)", "scripts/extract_events.py"),
     ("extract_doc_causal", "문서 인과 추출", "sonnet — 문서에서 명시 인과만 추출 (백로그 1,177건, D-116)", "scripts/extract_doc_causal.py"),
+    ("refresh_source", "소스 즉시 수집", "버튼 — 텔레그램·유튜브·블로그 소스 하나를 지금 수집 (haiku enrich는 새 문서만, D-199)", "pipeline/source_refresh.py"),
     ("refresh_questions", "질문 트래커 갱신", "일 1회 — 자동도출(지배 내러티브) + 프록시 관측 갱신(numeric/sentiment) + 재판정", "scripts/refresh_questions.py"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}
@@ -51,13 +52,31 @@ def list_flags() -> dict[str, bool]:
     return {r["name"]: bool(r["enabled"]) for r in rows}
 
 
+def retry_locked(fn, tries: int = 6, wait: float = 10.0):
+    """'database is locked'면 기다렸다 다시. 30분 체인 스크립트(compute_signals 등)가 busy_timeout(30s)보다
+    오래 쓰기 잠금을 쥐어, 그 사이에 도는 수집·기록이 통째로 죽었다(2026-10-13 Fool 수집·job_runs 기록)."""
+    import sqlite3
+    import time
+    for k in range(tries):
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e) or k == tries - 1:
+                raise
+            time.sleep(wait * (k + 1))
+
+
 def record_run(job: str, status: str, summary: str = "", duration_ms: int | None = None) -> None:
-    conn = get_connection()
-    conn.execute(
-        "INSERT INTO job_runs (job, status, summary, duration_ms, ran_at) "
-        "VALUES (?, ?, ?, ?, datetime('now'))", (job, status, summary[:500], duration_ms))
-    conn.commit()
-    conn.close()
+    def _write():
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO job_runs (job, status, summary, duration_ms, ran_at) "
+                "VALUES (?, ?, ?, ?, datetime('now'))", (job, status, summary[:500], duration_ms))
+            conn.commit()
+        finally:
+            conn.close()
+    retry_locked(_write)
 
 
 def recent_runs(limit: int = 50) -> list[dict]:

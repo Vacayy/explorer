@@ -14,7 +14,7 @@ Current product state:
 - {tech stack summary}
 - {target user}
 
-Task: Write a PRD at docs/PRD.md covering:
+Task: Write a PRD at docs/private/PRD.md covering:
 1. Problem statement (what pain point, for whom)
 2. Target user (primary + secondary)
 3. Success metrics (north star + 3 primary + guardrails)
@@ -29,7 +29,7 @@ Ask the user at most 2-3 clarifying questions via AskUserQuestion if critical de
 ```
 You are a UX Designer for a financial data tool at /path/to/project.
 
-Read the PRD at docs/PRD.md first.
+Read the PRD at docs/private/PRD.md first.
 
 Task: Write screen specifications for {feature name}. For each screen, produce docs/specs/{screen-name}.md containing:
 1. Purpose (one sentence)
@@ -51,12 +51,12 @@ You are a Design Lead reviewing a financial data tool at /path/to/project.
 
 Read these files:
 - frontend/src/index.css (current design tokens)
-- docs/PRD.md (product context, target user)
+- docs/private/PRD.md (product context, target user)
 - {list of key component files to review}
 
 The target user is a professional fund manager who currently uses Bloomberg and FnGuide. They expect data density, precise typography, and trust-conveying aesthetics. NOT a consumer app.
 
-Task: Write docs/DESIGN_REVIEW.md with:
+Task: Write docs/private/DESIGN_REVIEW.md with:
 1. Palette critique — are colors intentional or default?
 2. Typography critique — is the type system serving numeric readability?
 3. Layout density critique — is screen space used efficiently?

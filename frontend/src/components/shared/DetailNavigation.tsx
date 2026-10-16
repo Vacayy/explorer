@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate, useNavigationType, type LinkProps } fro
 
 type Origin = { url: string; key: string; index: number; label: string; state: unknown }
 const positions = sessionMemory<{ y: number; focus: string }>('explorer.detail.positions')
-const pathLabel = (path: string) => path.startsWith('/home') || path.startsWith('/feed') ? '피드' : path.startsWith('/doc/') ? '자료' : path.startsWith('/narrative') ? '내러티브' : '이전 화면'
+const pathLabel = (path: string) => path.startsWith('/home') || path.startsWith('/feed') ? '피드' : path.startsWith('/doc/') ? '자료' : path.startsWith('/narrative') ? '내러티브' : path.startsWith('/analyze/') ? '기업 개요' : '이전 화면'
 
 export function useDetailOrigin() {
   const location = useLocation()

@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react"
-import { createChart, ColorType } from "lightweight-charts"
+import { createChart, ColorType, LineStyle } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
 import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
 
@@ -14,8 +14,13 @@ interface CandlestickChartProps {
   volumeData?: { time: string; value: number; color: string }[]
   markers?: ChartMarker[]
   onMarkerClick?: (time: string) => void
+  selectedTime?: string
+  selectionStart?: string
   height?: number
   formatValue?: (value: number) => string
+  overlays?: { id: string; title: string; token: string; data: { time: string; value: number }[]; dashed?: boolean }[]
+  /** Initial visible window (inclusive dates present in `data`). Omitted → fit all data. */
+  initialRange?: { from: string; to: string } | null
 }
 
 // Korean stock convention: red = up, blue = down
@@ -27,12 +32,17 @@ export default function CandlestickChart({
   volumeData,
   markers,
   onMarkerClick,
+  selectedTime,
+  selectionStart,
   height = 400,
   formatValue,
+  overlays,
+  initialRange,
 }: CandlestickChartProps) {
   const onMarkerClickRef = useRef(onMarkerClick)
   onMarkerClickRef.current = onMarkerClick
   const containerRef = useRef<HTMLDivElement>(null)
+  const shadeRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null)
@@ -87,8 +97,10 @@ export default function CandlestickChart({
 
     // 특징일 마커 클릭 → 가장 가까운 마커 시각 콜백
     chart.subscribeClick((param) => {
-      if (!param.time || !onMarkerClickRef.current) return
-      onMarkerClickRef.current(String(param.time))
+      if (!param.time || !param.seriesData.has(candleSeries) || !onMarkerClickRef.current) return
+      const t = param.time
+      const day = typeof t === 'object' ? `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}` : typeof t === 'number' ? new Date(t * 1000).toISOString().slice(0, 10) : t
+      onMarkerClickRef.current(day)
     })
 
     const ro = new ResizeObserver((entries) => {
@@ -110,10 +122,16 @@ export default function CandlestickChart({
 
   // Update candlestick data
   useEffect(() => {
-    if (!candleSeriesRef.current || data.length === 0) return
-    candleSeriesRef.current.setData(data)
-    chartRef.current?.timeScale().fitContent()
-  }, [data])
+    if (!candleSeriesRef.current) return
+    // 값이 비어 있는 봉(null/NaN)은 라이브러리가 단언 실패로 던져 화면 전체가 죽는다. 한 봉 때문에 페이지가 죽지 않게 걸러 그린다.
+    const bars = data.filter(bar => [bar.open, bar.high, bar.low, bar.close].every(value => typeof value === "number" && Number.isFinite(value)))
+    candleSeriesRef.current.setData(bars)
+    const scale = chartRef.current?.timeScale()
+    if (!scale) return
+    const known = new Set(bars.map(bar => bar.time))
+    if (initialRange && known.has(initialRange.from) && known.has(initialRange.to)) scale.setVisibleRange({ from: initialRange.from, to: initialRange.to })
+    else scale.fitContent()
+  }, [data, initialRange?.from, initialRange?.to])
 
   // 특징일 마커 — 상승=아래 빨강 화살표, 하락=위 파랑 화살표
   useEffect(() => {
@@ -125,8 +143,9 @@ export default function CandlestickChart({
       shape: m.direction === "up" ? "arrowUp" as const : "arrowDown" as const,
       text: m.text,
     }))
-    candleSeriesRef.current.setMarkers(ms)
-  }, [markers])
+    const selection = selectedTime && data.some(d => d.time === selectedTime) ? [{ time: selectedTime, position: 'aboveBar' as const, color: '#80506f', shape: 'circle' as const, text: `선택 ${selectedTime}` }] : []
+    candleSeriesRef.current.setMarkers([...ms, ...selection].sort((a, b) => a.time.localeCompare(b.time)))
+  }, [markers, selectedTime, data])
 
   // Update volume data
   useEffect(() => {
@@ -139,5 +158,48 @@ export default function CandlestickChart({
     }
   }, [volumeData, data])
 
-  return <div ref={containerRef} style={{ width: "100%", height }} />
+  // Optional analysis overlays share the candle price scale; existing consumers are unchanged.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !containerRef.current) return
+    const theme = getComputedStyle(containerRef.current)
+    const series = (overlays ?? []).filter(overlay => overlay.data.length > 0).map(overlay => {
+      const line = chart.addLineSeries({
+        title: overlay.title,
+        color: theme.getPropertyValue(overlay.token).trim() || theme.getPropertyValue('--foreground').trim(),
+        lineWidth: 2,
+        lineStyle: overlay.dashed ? LineStyle.Dashed : LineStyle.Solid,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      })
+      line.setData(overlay.data)
+      return line
+    })
+    return () => { if (chartRef.current === chart) series.forEach(line => chart.removeSeries(line)) }
+  }, [overlays, height])
+
+  useEffect(() => {
+    const chart = chartRef.current, shade = shadeRef.current, container = containerRef.current
+    if (!chart || !shade || !container) return
+    const sync = () => {
+      if (!selectedTime || !selectionStart) { shade.style.display = 'none'; return }
+      const from = data.find(d => d.time >= selectionStart)?.time
+      const left = from ? chart.timeScale().timeToCoordinate(from) : null
+      const right = chart.timeScale().timeToCoordinate(selectedTime)
+      if (left == null || right == null) { shade.style.display = 'none'; return }
+      shade.style.display = 'block'
+      shade.style.left = `${Math.max(0, left - 3)}px`
+      shade.style.width = `${Math.max(0, Math.min(container.clientWidth, right + 3) - Math.max(0, left - 3))}px`
+    }
+    sync()
+    chart.timeScale().subscribeVisibleLogicalRangeChange(sync)
+    const observer = new ResizeObserver(sync)
+    observer.observe(container)
+    return () => { observer.disconnect(); chart.timeScale().unsubscribeVisibleLogicalRangeChange(sync) }
+  }, [data, selectedTime, selectionStart, height])
+
+  return <div style={{ position: 'relative', width: '100%' }}>
+    <div ref={containerRef} style={{ width: "100%", height }} />
+    <div ref={shadeRef} aria-hidden="true" className="pointer-events-none absolute top-0 bottom-8 bg-primary/10" style={{ display: 'none' }} />
+  </div>
 }

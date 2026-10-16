@@ -3,7 +3,7 @@
 > 2026-07-30 기획. 배경: 미국 종목은 컨콜(transcript)·인과 노드로 **월드모델엔 있지만**, 한 종목을
 > 펼쳐볼 **앞면(도시에)이 없다** — `/analyze`는 DART 기반 한국 전용. 투자 렌즈(D-090)도 KR에 먼저
 > 섰다. 이 스펙은 미국 티커에 **경량 통합 도시에**를 세우고, 그 데이터 위에 렌즈를 US로 확장한다.
-> (배경 결정: DECISIONS.md D-091 예정 · 렌즈: D-090 · 컨콜: D-061 · 브레인스토밍 2026-07-30)
+> (배경 결정: DECISIONS.md D-091 예정 · 렌즈: D-090 · 컨콜: D-061)
 
 ## 관통 원칙 (비타협)
 
@@ -36,6 +36,7 @@ CREATE TABLE us_fundamentals (      -- yfinance .info/.income_stmt/.cashflow 스
 ```
 - `pipeline/us_data.py`: `fetch_prices(ticker, period='2y')`(→us_prices 멱등)·`fetch_fundamentals(ticker)`(info: price·marketCap·forwardPE·trailingPE·forwardEps / income_stmt: revenue·netIncome / cashflow: OCF·CAPEX→FCF → us_fundamentals). 캐시 히트 시 조회 없음.
 - **시세 갱신**: 팔로우된 US 티커(transcript_follow active)만 EOD cron(기존 `ingest_prices` 옆) 또는 도시에 진입 시 lazy. 전체 시장 안 긁음(관통 원칙).
+- **시세 수집 버튼 (2026-09-22)**: 실제로는 추세 렌즈를 열 때만 `fetch_prices`가 돌아 렌즈를 안 본 종목은 시세가 비고(팔로우 35 중 10개만 보유), 본 종목도 몇 달 묵었다(INTC 사례). D-100 원칙대로 **버튼 주도**로 채운다 — `GET /api/spine/us/{ticker}/prices/status`(행 수·최신 거래일·수집 시각·`missing|stale|fresh`, stale = 다른 종목 최신일보다 3일 넘게 뒤) · `POST /api/spine/us/{ticker}/prices/collect?period=2y`(`us_data.collect_prices`: yfinance 강제 조회 → 멱등 적재, 실패는 0이 아니라 502 사유). 도시에 헤더의 `UsPriceCollect`가 현황 한 줄 + "시세 수집/갱신" 버튼, 성공 시 시세·기술적 분석·구조 그리기 쿼리를 무효화. 팔로우되지 않은 티커(INTC)도 yfinance에 있으면 도시에·시세·스캔이 모두 동작. 실측 INTC 2년 500행 1.0초.
 
 ## 페이지 구성 — `/us/:ticker`
 
@@ -94,7 +95,7 @@ CREATE TABLE us_fundamentals (      -- yfinance .info/.income_stmt/.cashflow 스
 - 실시간 시세 — EOD 배치로 충분.
 
 ## 참조
-- 렌즈: docs/specs/investor-lens.md([[D-090]]) · 컨콜: docs/specs/transcript-follow.md([[D-061]])
+- 렌즈: docs/private/specs/investor-lens.md([[D-090]]) · 컨콜: docs/specs/transcript-follow.md([[D-061]])
 - yfinance 패턴: backend/pipeline/peers.py(get_peer_metrics 24h 캐시)·market_regime.py(get_regime().us)
 - 엔티티: transcript_follow(ticker↔entity_id) · spine_company(비상장/해외 프로필)
-- 인식론: docs/PHILOSOPHY.md §3(말뭉치 최신편향 탈출) · SYSTEM.md §4·§5·§6
+- 인식론: docs/private/PHILOSOPHY.md §3(말뭉치 최신편향 탈출) · SYSTEM.md §4·§5·§6

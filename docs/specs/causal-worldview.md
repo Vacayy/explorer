@@ -92,6 +92,19 @@
    노드-링크 시각화는 특히 렌더링을 눈으로 봐야 하는 기능이라, 로컬 `npm run dev`로 직접 클릭해보는
    과정이 다른 기능보다 훨씬 중요함.
 
+## 6-b. 규모 대응 — 흐름 뷰는 부분 그래프만 (2026-10-08, D-211)
+
+그래프가 노드 3,558·엣지 5,713으로 커지자 기본 흐름 뷰(줄기만 2,273노드)의 dagre 배치가 **115초**, 백엔드가 3.1초(엣지마다 쿼리 2회)가 됐다. 노드 수가 늘면 dagre 시간이 급격히 늘어난다(150노드 0.4초·300노드 3초·600노드 10초).
+
+- **백엔드**: `full_causal_graph`의 엣지별 쿼리(교차검증 수·역방향 상충)를 일괄 쿼리 2회로(3초 → 수 ms, 결과 동일).
+- **API**
+  - `GET /api/spine/causal/worldview/core?limit=150&category=` — 핵심 부분 그래프. 연결 수(유입+유출) 상위 `limit`개(최대 400), 동률이면 느린 층(체제→구조→…) 먼저 — 체제·구조만 1,490개라 층을 1순위로 두면 한 층이 다 채운다. 그 노드들 사이의 엣지만. `total_nodes`·`total_edges` 동봉.
+  - `GET /api/spine/causal/worldview/neighborhood/{id}?depth=1..3&limit=300&category=` — 무향 BFS N홉 이웃. 가까운 홉부터 채우고 같은 홉은 연결 수 순, `limit` 초과분은 잘라 `truncated=true`. 노드 상세 패널은 depth=1로 연결 엣지 전부를 받는다.
+  - `GET /api/spine/causal/worldview/index` — 검색용 노드 목록(id·이름·종류·연결 수, 엣지 없음).
+  - 기존 `GET /worldview`(전체)는 **관계망 뷰 전용**으로 남긴다(canvas force-graph라 수천 노드를 견딘다).
+- **흐름 뷰**: 초점 없으면 core 150, '더 보기'로 300. 노드를 고르면 neighborhood로 다시 그린다(초점 재중심, 기존 동작). 펼친 노드 위치를 고정하는 증분 배치는 후속. React Flow `onlyRenderVisibleElements`로 화면 밖 요소를 그리지 않는다. '줄기만'·'작은 조각' 필터는 관계망 뷰에만 적용된다(흐름 뷰는 이미 부분 그래프).
+- 5-state(흐름 뷰): Loading=Skeleton(부분 그래프만 기다림) · Error=ErrorState · Empty=엣지 0이면 EmptyState · Partial=이웃 잘림 시 '상위 N개만 표시' 안내 · Ideal=부분 그래프 + 전체 규모 표시('전체 3,558개 중 150개').
+
 ## 7. Out of Scope (이번 트랙)
 - 실시간 협업/멀티 유저 뷰 동기화
 - 그래프 편집(수동 노드/엣지 추가) — 읽기 전용 관측 뷰

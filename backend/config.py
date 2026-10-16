@@ -14,6 +14,8 @@ ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "")
 DATA_GO_KR_KEY = os.getenv("DATA_GO_KR_KEY", "")
 TRANSCRIPT_PROVIDER = os.getenv("TRANSCRIPT_PROVIDER", "alphavantage")  # alphavantage | fmp
 DB_PATH = Path(__file__).resolve().parent / "db" / "stock_explorer.db"
+# 로컬 임베딩·리랭커 모델 캐시. fastembed 기본값은 OS 임시 폴더라 macOS가 비우면 리랭커가 조용히 꺼졌다(2026-10-14, D-232)
+FASTEMBED_CACHE = os.getenv("FASTEMBED_CACHE_PATH", str(Path.home() / ".cache" / "fastembed"))
 
 # 가설·메모 vault (소유권 분할: notes/=사람 원본, entities/=DB 투영 — 수정 무시)
 VAULT_PATH = Path(os.getenv("VAULT_PATH", str(Path(__file__).resolve().parent.parent / "vault")))

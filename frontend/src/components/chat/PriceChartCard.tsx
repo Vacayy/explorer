@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
+import { useChartPalette } from "@/hooks/useChartPalette"
 import { Link } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import api from "@/api/client"
@@ -31,15 +32,6 @@ export function priceTargets(citations: Citation[] | null): { targets: Target[];
   return { targets: targets.slice(0, 4), days: days || 10 }
 }
 
-/** 캔버스 차트는 CSS 변수를 못 읽는다 — 마운트 시 계산값으로 해석(라이트·다크 대응) */
-function useChartPalette(n: number) {
-  const [colors, setColors] = useState<string[]>([])
-  useEffect(() => {
-    const cs = getComputedStyle(document.documentElement)
-    setColors(Array.from({ length: n }, (_, i) => cs.getPropertyValue(`--chart-${(i % 5) + 1}`).trim() || "#888"))
-  }, [n])
-  return colors
-}
 
 /**
  * 시세 차트 카드 — 답변이 `prices` 근거를 인용했을 때 본문 아래에 자동으로 붙는다 (docs/specs/chat-page.md §4).

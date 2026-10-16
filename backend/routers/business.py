@@ -40,7 +40,7 @@ def get_segments(
         """
         SELECT id, corp_code, bsns_year, segment_type, segment_name, revenue, ratio
         FROM business_segments
-        WHERE corp_code = ? AND segment_type = ? AND bsns_year >= ?
+        WHERE corp_code = ? AND segment_type = ? AND bsns_year >= ? AND reprt_code = '11011'
         ORDER BY bsns_year, segment_name
         """,
         (corp_row["corp_code"], segment_type, start_year),

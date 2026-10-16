@@ -22,7 +22,7 @@ function PostSurface({ variant, children }: { variant: PostVariant; children: Re
 }
 
 const focusLink = 'rounded-sm hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-4'
-const labels = { source: '소스', company: '기업 요약', person: '인물 요약', transcript: '컨콜', trade: '수출입' }
+const labels = { source: '소스', company: '기업 요약', person: '인물 요약', transcript: '컨콜', trade: '수출입', narrative: '내러티브', report: '리포트', scenario: '파급 분석' }
 
 // Preview only: preserve full stored Markdown inside the expanded body / original page.
 function preview(text: string) {

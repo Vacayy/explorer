@@ -16,11 +16,18 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 // Home
 import { getHomeMode } from "@/hooks/useHomeMode"
 import { DetailNavigationMemory } from "@/components/shared/DetailNavigation"
+import { DiscoveryNavigationMemory } from "@/components/shared/DiscoveryNavigationMemory"
+import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrail"
+import { DiscoveryTechnicalContext } from "@/components/company/DiscoveryTechnicalContext"
+import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import HomePage from "@/components/home/HomePage"
+import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
 import UniversePage from "@/components/follow/UniversePage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
+import CreditPage from "@/components/follow/CreditPage"
+import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
 // Explore (탐색 — 신호)
@@ -29,6 +36,7 @@ import ChatPage from "@/components/chat/ChatPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import ProjectsPage from "@/components/study/ProjectsPage"
 import ProjectPage from "@/components/study/ProjectPage"
+import StocksPage from "@/components/follow/StocksPage"
 import StudyPage from "@/components/study/StudyPage"
 import DocPage from "@/components/doc/DocPage"
 import SynthesisPage from "@/components/synthesis/SynthesisPage"
@@ -57,8 +65,11 @@ import ScreenerPage from "@/components/discovery/ScreenerPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
+import BacktestPage from "@/components/analysis/BacktestPage"
+import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
 import SummaryPage from "@/components/summary/SummaryPage"
-import FinancialsPage from "@/components/financials/FinancialsPage"
+import CompanyFinancials from "@/components/company/CompanyFinancials"
+import { CompanyEvidence } from "@/components/company/CompanyEvidence"
 import BusinessPage from "@/components/business/BusinessPage"
 import DisclosurePage from "@/components/disclosures/DisclosurePage"
 import ValuationPage from "@/components/valuation/ValuationPage"
@@ -83,7 +94,7 @@ function subNavFor(pathname: string, search: string, stockCode: string | null, c
   if (mode === "follow" || mode === "us") return { tabs: FOLLOW_TABS, activeKey }
   if (mode === "feed" && pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey }
   if (mode === "worldmodel") return { tabs: WORLDMODEL_TABS, activeKey }
-  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode), activeKey, context: companyName ?? stockCode }
+  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey, context: companyName ?? stockCode }
   return null
 }
 
@@ -105,6 +116,10 @@ function Layout() {
 
   const [feedRailOpen, setFeedRailOpen] = useState(false)
   const [detailRailOpen, setDetailRailOpen] = useState(false)
+  const [companyRailOpen, setCompanyRailOpen] = useState(false)
+  const [discoveryRailOpen, setDiscoveryRailOpen] = useState(false)
+  const discoveryRoute = pathname === "/discover" || pathname.startsWith("/analysis/backtests")
+  const companyRoute = !!stockCode || /^\/us\/[^/]+/.test(pathname) || pathname === "/company"
   const detailRoute = pathname.startsWith("/study/") || pathname.startsWith("/doc/") || (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic"))
   const homeFeed = pathname === "/home" && getHomeMode(search) === "feed"
 
@@ -112,9 +127,10 @@ function Layout() {
     <div className="min-h-screen bg-background">
       <Omnibar />
       <DetailNavigationMemory />
+      <DiscoveryNavigationMemory />
       <SidebarProvider
-        open={detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
-        onOpenChange={detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
+        open={discoveryRoute ? discoveryRailOpen : companyRoute ? companyRailOpen : detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
+        onOpenChange={discoveryRoute ? setDiscoveryRailOpen : companyRoute ? setCompanyRailOpen : detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
         style={{ "--sidebar-width": "16rem" } as CSSProperties}
       >
         <SidebarInset className="min-w-0 bg-background">
@@ -125,6 +141,7 @@ function Layout() {
             style={{ "--shell-offset": subNav ? "calc(var(--page-inset) + var(--dock-reserve) + var(--subnav-height))" : "calc(var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
           >
             {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
+            {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
             <Outlet />
           </div>
         </SidebarInset>
@@ -141,11 +158,15 @@ function Layout() {
 
 function AnalyzePage({ tab }: { tab: string }) {
   const { stockCode } = useParams<{ stockCode: string }>()
+  const { search } = useLocation()
   const { data: company, isLoading } = useCompany(stockCode ?? null)
+  const sourceRun = new URLSearchParams(search).get('source_run')
 
   if (!stockCode) return null
   if (isLoading) return <div className="text-center py-20 text-muted-foreground">로딩 중...</div>
-  if (!company) return <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
+  if (!company) return sourceRun
+    ? <PageLayout header={<PageHeader title={stockCode} description="기업 기초정보 미확인 · 저장된 발견 근거" />}><DiscoveryTechnicalContext runId={sourceRun} code={stockCode} original currentUnavailable="기업 기초정보를 찾지 못해 현재 기업 분석을 열 수 없습니다. 발견 당시 저장된 차트와 판정은 아래에서 확인할 수 있습니다." /></PageLayout>
+    : <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
 
   const corpCode = company.corp_code
 
@@ -153,7 +174,7 @@ function AnalyzePage({ tab }: { tab: string }) {
     case "summary":
       return <SummaryPage stockCode={stockCode} corpCode={corpCode} />
     case "financials":
-      return <FinancialsPage stockCode={stockCode} corpCode={corpCode} />
+      return <CompanyFinancials key={stockCode} stockCode={stockCode} corpCode={corpCode} />
     case "business":
       return <BusinessPage stockCode={stockCode} corpCode={corpCode} />
     case "disclosures":
@@ -163,8 +184,7 @@ function AnalyzePage({ tab }: { tab: string }) {
     case "lens":
       return <LensPage code={stockCode} market="kr" />
     case "mentions":
-      // 언급 탭은 종목 홈 우측 컬럼으로 흡수 — 기존 링크는 홈으로
-      return <Navigate to={`/analyze/${stockCode}/summary`} replace />
+      return <CompanyEvidence key={stockCode} company={stockCode} />
     default:
       return <Navigate to={`/analyze/${stockCode}/summary`} replace />
   }
@@ -202,10 +222,14 @@ export default function App() {
             <Route path="home" element={<HomePage />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<SourcesPage />} />
+            <Route path="follow/stocks" element={<StocksPage />} />
             <Route path="follow/universe" element={<UniversePage />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
+            <Route path="follow/credit" element={<CreditPage />} />
+            <Route path="retail" element={<RetailHeatPage />} />
             <Route path="follow/saved" element={<SavedPage />} />
+            <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />
@@ -230,13 +254,14 @@ export default function App() {
             <Route path="actions" element={<ActionsPage />} />
 
             {/* Discovery */}
-            <Route path="discover" element={<Navigate to="/explore" replace />} />
+            <Route path="discover" element={<MarketAnalysisPage />} />
             <Route path="discover/industry" element={<IndustryRoute />} />
             <Route path="discover/screener" element={<ScreenerPage />} />
             <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
             <Route path="discover/alt-data" element={<OnchainPage />} />
 
             {/* Analysis */}
+            <Route path="analysis/backtests" element={<BacktestPage />} />
             <Route path="analyze/compare" element={<ComparePage />} />
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />

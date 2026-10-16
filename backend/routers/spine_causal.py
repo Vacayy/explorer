@@ -1,5 +1,5 @@
 """전역 인과 그래프 API — 세계관 뷰 (narrative_id 스코프 없는 전체 그래프, 그래프 시각화 기획서)."""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from database import get_connection
@@ -15,6 +15,7 @@ class WorldviewNode(BaseModel):
     out_degree: int
     cluster_id: int
     in_flywheel: bool = False   # 자기강화 루프(SCC) 소속 (D-027 반사성)
+    pace_layer: str | None = None   # 노드 중력(D-030) — 모델에 없어 응답에서 빠지고 있었다(D-211에서 발견)
 
 
 class Worldview(BaseModel):
@@ -24,6 +25,21 @@ class Worldview(BaseModel):
                          #   feedback_note, promoted_knowledge_id}]  feedback_note=both_temporal 해소 근거(D-029),
                          #   geo_scope=인과 주장의 장소 스코프(D-034)
                          # from이 파이썬 예약어라 CausalGraph(spine_narrative.py)와 동일하게 dict로 통과
+
+
+class WorldviewSubgraph(Worldview):
+    """흐름 뷰용 부분 그래프 (D-211) — 전체 규모와 잘림 여부를 함께 준다."""
+    total_nodes: int
+    total_edges: int
+    truncated: bool = False
+
+
+class WorldviewIndexItem(BaseModel):
+    id: int
+    name: str
+    type: str
+    pace_layer: str | None = None
+    degree: int
 
 
 class NodeNarrative(BaseModel):
@@ -40,6 +56,43 @@ def get_worldview(category: str | None = None):
     g = full_causal_graph(conn, category=category)
     conn.close()
     return Worldview(nodes=g["nodes"], edges=g["edges"])
+
+
+@router.get("/worldview/core", response_model=WorldviewSubgraph)
+def get_worldview_core(limit: int = Query(150, ge=1, le=400), category: str | None = None):
+    """흐름 뷰 기본 화면 — 연결 수 상위 노드의 부분 그래프 (D-211). LLM 없음."""
+    from pipeline.narrative_graph import core_subgraph
+    conn = get_connection()
+    try:
+        return WorldviewSubgraph(**core_subgraph(conn, limit=limit, category=category))
+    finally:
+        conn.close()
+
+
+@router.get("/worldview/neighborhood/{entity_id}", response_model=WorldviewSubgraph)
+def get_worldview_neighborhood(entity_id: int, depth: int = Query(2, ge=1, le=3),
+                               limit: int = Query(300, ge=1, le=400), category: str | None = None):
+    """노드 중심 N홉 이웃 (D-211) — 흐름 뷰 초점·노드 상세 패널(depth=1)."""
+    from pipeline.narrative_graph import neighborhood
+    conn = get_connection()
+    try:
+        g = neighborhood(conn, entity_id, depth=depth, limit=limit, category=category)
+    finally:
+        conn.close()
+    if g is None:
+        raise HTTPException(404, "그래프에 없는 노드입니다")
+    return WorldviewSubgraph(**g)
+
+
+@router.get("/worldview/index", response_model=list[WorldviewIndexItem])
+def get_worldview_index():
+    """노드 검색용 목록 — 엣지 없이 이름·종류·연결 수 (D-211)."""
+    from pipeline.narrative_graph import node_index
+    conn = get_connection()
+    try:
+        return [WorldviewIndexItem(**x) for x in node_index(conn)]
+    finally:
+        conn.close()
 
 
 @router.get("/node/{entity_id}/narratives", response_model=list[NodeNarrative])
@@ -67,6 +120,20 @@ class GraphActivityNode(BaseModel):
     is_new: bool
     new_edges: int
     beneficiaries: list[ActivityBeneficiary] = []
+
+
+@router.get("/edge/{edge_id}/source")
+def get_edge_source(edge_id: int):
+    """인과 엣지의 출처 — 상태(document|verified|unverified|scenario|legacy_unverified)·인용·출처 문서·내러티브별 근거 (D-204). LLM 없음."""
+    from pipeline.narrative import edge_source
+    conn = get_connection()
+    try:
+        found = edge_source(conn, edge_id)
+    finally:
+        conn.close()
+    if not found:
+        raise HTTPException(404, "엣지를 찾을 수 없습니다")
+    return found
 
 
 @router.get("/activity", response_model=list[GraphActivityNode])

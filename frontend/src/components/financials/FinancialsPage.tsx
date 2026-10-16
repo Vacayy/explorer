@@ -1,7 +1,7 @@
 import { useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import NextQuestions from "@/components/shared/NextQuestions"
 import { useFinancials } from "@/hooks/useFinancials"
-import AnnualOverview from "@/components/financials/AnnualOverview"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import PeriodToggle from "@/components/shared/PeriodToggle"
 import YearToggle from "@/components/shared/YearToggle"
@@ -33,13 +33,14 @@ const CHART_ACCOUNTS: Record<string, string[]> = {
 }
 
 export default function FinancialsPage({ stockCode }: Props) {
+  const [params] = useSearchParams()
   const [sjDiv, setSjDiv] = useState("IS")
   const [period, setPeriod] = useState("annual")
   const [years, setYears] = useState(5)
   const [fsDiv, setFsDiv] = useState("CFS")
   const [viewMode, setViewMode] = useState<"table" | "chart">("table")
 
-  const { data, isLoading } = useFinancials(stockCode, sjDiv, period, years, fsDiv)
+  const { data, isLoading } = useFinancials(stockCode, sjDiv, period, years, fsDiv, { storedOnly: params.has('discovery') })
 
   const chartAccounts = CHART_ACCOUNTS[sjDiv] || []
   const periods = data?.periods || []
@@ -53,77 +54,18 @@ export default function FinancialsPage({ stockCode }: Props) {
         point[row.account_nm] = val ? Math.round(parseFloat(val) / 1e8) : null
       }
     }
-    // OPM + stacked segments for IS
     if (sjDiv === "IS") {
-      const revRow = data?.rows.find((r) => r.account_nm.includes("매출액"))
-      const opRow = data?.rows.find((r) => r.account_nm.includes("영업이익"))
-      const niRow = data?.rows.find((r) => r.account_nm.includes("당기순이익"))
-      const revRaw = revRow?.values[i]
-      const opRaw = opRow?.values[i]
-      const niRaw = niRow?.values[i]
-      const rev = revRaw ? Math.round(parseFloat(revRaw) / 1e8) : 0
-      const op = opRaw ? Math.round(parseFloat(opRaw) / 1e8) : 0
-      const ni = niRaw ? Math.round(parseFloat(niRaw) / 1e8) : 0
-
-      if (revRaw && opRaw) {
-        const margin = (parseFloat(opRaw) / parseFloat(revRaw)) * 100
-        point["OPM(%)"] = Math.round(margin * 10) / 10
-      }
-
-      // Stacked segments: 당기순이익 (bottom) → 영업이익 초과분 → 매출액 초과분 (top)
-      // Handle negatives: clamp segments to 0 when relationship breaks
-      if (rev > 0) {
-        point["_ni"] = Math.max(ni, 0)
-        point["_opExtra"] = Math.max(op - Math.max(ni, 0), 0)
-        point["_revExtra"] = Math.max(rev - Math.max(op, 0), 0)
-      } else {
-        // Negative revenue: show as single bar
-        point["_ni"] = 0
-        point["_opExtra"] = 0
-        point["_revExtra"] = rev
-      }
-      // Store original values for labels/tooltip
-      point["_rev"] = rev
-      point["_op"] = op
-      point["_niOrig"] = ni
+      const rev = Number(data?.rows.find(r => r.account_nm === "매출액")?.values[i])
+      const rawOp = data?.rows.find(r => r.account_nm === "영업이익")?.values[i]
+      point["OPM(%)"] = rev > 0 && rawOp != null ? Number(rawOp) / rev * 100 : null
     }
     return point
   })
 
   const COLORS = ["var(--color-chart-blue)", "var(--color-chart-orange)", "var(--color-chart-green)"]
 
-  // Custom tooltip for IS stacked bars
-  const ISTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null
-    const d = payload[0]?.payload
-    if (!d) return null
-    return (
-      <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
-        <p className="font-medium mb-1">{label}</p>
-        <p style={{ color: "var(--color-chart-blue)" }}>매출액: {(d._rev ?? 0).toLocaleString()}억</p>
-        <p style={{ color: "var(--color-chart-orange)" }}>영업이익: {(d._op ?? 0).toLocaleString()}억</p>
-        <p style={{ color: "var(--color-chart-green)" }}>당기순이익: {(d._niOrig ?? 0).toLocaleString()}억</p>
-        {d["OPM(%)"] != null && <p style={{ color: "var(--color-chart-gray, #6b7280)" }}>OPM: {d["OPM(%)"]}%</p>}
-      </div>
-    )
-  }
-
-  // Label that shows the original 매출액 value at the top of the stacked bar
-  const RevenueTotalLabel = ({ x = 0, y = 0, width = 0, index = 0 }: any) => {
-    const d = chartData[index]
-    if (!d || !d._rev) return null
-    const rev = d._rev as number
-    return (
-      <text x={x + width / 2} y={y - 5} textAnchor="middle" fontSize={9} fontWeight={500} fill="#374151">
-        {rev.toLocaleString("ko-KR")}
-      </text>
-    )
-  }
-
   return (
     <PageContainer>
-      {/* 연간 개요 — 종목 홈에서 이관 (손익 차트 + 연도별 실적표·컨센서스) */}
-      <AnnualOverview stockCode={stockCode} />
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
@@ -170,35 +112,14 @@ export default function FinancialsPage({ stockCode }: Props) {
               {sjDiv === "IS" && (
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v}%`} axisLine={false} tickLine={false} />
               )}
-              {sjDiv === "IS" ? (
-                <>
-                  <Tooltip content={<ISTooltip />} />
-                  {/* recharts 3.x: Legend payload prop 제거됨 — Bar name/fill에서 자동 생성 */}
-                  <Legend iconType="rect" wrapperStyle={{ fontSize: 12 }} />
-                  {/* Stack order: bottom → top = 당기순이익 → 영업이익 초과분 → 매출액 초과분 */}
-                  <Bar yAxisId="left" dataKey="_ni" stackId="is" name="당기순이익"
-                    fill="var(--color-chart-green)" barSize={32} />
-                  <Bar yAxisId="left" dataKey="_opExtra" stackId="is" name="영업이익"
-                    fill="var(--color-chart-orange)" opacity={0.7} barSize={32} />
-                  <Bar yAxisId="left" dataKey="_revExtra" stackId="is" name="매출액"
-                    fill="var(--color-chart-blue)" opacity={0.35} radius={[2, 2, 0, 0]} barSize={32}>
-                    <LabelList content={<RevenueTotalLabel />} />
-                  </Bar>
-                </>
-              ) : (
-                <>
-                  <Tooltip formatter={(v, name) => String(name) === "OPM(%)" ? `${Number(v)}%` : `${Number(v).toLocaleString()}억`} />
-                  <Legend iconType="rect" wrapperStyle={{ fontSize: 12 }} />
-                  {(data?.rows || [])
-                    .filter((r) => chartAccounts.some((a) => r.account_nm.includes(a)))
-                    .map((r, idx) => (
-                      <Bar key={r.account_nm} yAxisId="left" dataKey={r.account_nm}
-                        fill={COLORS[idx % COLORS.length]} radius={[2, 2, 0, 0]} barSize={24}>
-                        <LabelList dataKey={r.account_nm} content={<EokLabel />} />
-                      </Bar>
-                    ))}
-                </>
-              )}
+              <Tooltip formatter={(v, name) => String(name) === "OPM(%)" ? `${Number(v).toFixed(1)}%` : `${Number(v).toLocaleString()}억`} />
+              <Legend iconType="rect" wrapperStyle={{ fontSize: 12 }} />
+              {(data?.rows || []).filter(r => chartAccounts.some(a => r.account_nm.includes(a))).map((r, idx) => (
+                <Bar key={r.account_nm} yAxisId="left" dataKey={r.account_nm}
+                  fill={COLORS[idx % COLORS.length]} barSize={24}>
+                  <LabelList dataKey={r.account_nm} content={<EokLabel />} />
+                </Bar>
+              ))}
               {sjDiv === "IS" && (
                 <Line yAxisId="right" type="monotone" dataKey="OPM(%)" stroke="var(--color-chart-gray)" strokeWidth={2.5}
                   dot={{ r: 3, fill: "var(--color-chart-gray)", stroke: "#fff", strokeWidth: 2 }}>

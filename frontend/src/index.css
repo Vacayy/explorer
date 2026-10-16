@@ -1,3 +1,5 @@
+/* A2UI injects a reset at runtime; keep Explorer controls above that reset. */
+@layer a2ui-reset, theme, base, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -13,7 +15,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * 디자인 토큰 (docs/specs/frontend-plan.md Phase A1)
+ * 디자인 토큰 (docs/private/specs/frontend-plan.md Phase A1)
  * - 컴포넌트는 semantic 토큰만 사용한다 (하드코딩 hex 금지)
  * - 실제 색상 값은 :root(light) / .dark 에서만 정의한다
  * - 상승=빨강, 하락=파랑 (한국 주식 컨벤션, number-formatting.md)
@@ -123,7 +125,7 @@
   :root { --dock-reserve: calc(var(--dock-height) + 1rem + env(safe-area-inset-bottom)); }
 }
 
-/* ---------- Light — 쿨 스톤 & 멀버리 (docs/DECISIONS.md D-016) ---------- */
+/* ---------- Light — 쿨 스톤 & 멀버리 (docs/private/DECISIONS.md D-016) ---------- */
 :root {
   --background: #f3f3f5;
   --foreground: #202630;
@@ -182,7 +184,7 @@
   --chart-teal: #5ac8fa;
 }
 
-/* ---------- Dark — 더스크 플럼 (웜 오베르진 밝은 버전, docs/DECISIONS.md D-016) ---------- */
+/* ---------- Dark — 더스크 플럼 (웜 오베르진 밝은 버전, docs/private/DECISIONS.md D-016) ---------- */
 .dark {
   --background: #181c23;
   --foreground: #eef1f6;
@@ -372,8 +374,6 @@
 }
 
 /* D-153: full-width Home modes, source directory + continuous reading surface. */
-.market-module-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
-.market-module-grid > * { min-width: 0; }
 .channel-workspace { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--card); overflow: hidden; }
 .channel-directory, .channel-reader { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .channel-list, .reader-scroll { min-width: 0; min-height: 0; }
@@ -381,6 +381,7 @@
 .channel-entry { width: 100%; height: auto !important; min-height: 72px; justify-content: start; gap: 10px; padding: 10px; border-radius: 12px; white-space: normal; }
 .channel-entry[aria-pressed=true] { background: var(--accent); color: var(--accent-foreground); }
 .channel-count { flex-shrink: 0; border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; padding: 2px 7px; font-variant-numeric: tabular-nums; }
+.channel-count-unread { background: var(--primary); color: var(--primary-foreground); font-weight: 600; }
 .reader-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; flex: none; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .reader-actions { display: flex; align-items: center; gap: 8px; }
 .reader-articles { max-width: 860px; margin-inline: auto; padding: 16px 24px 24px; }
@@ -392,12 +393,8 @@
   .channel-directory { border-right: 1px solid var(--border); }
   .reader-back { display: none; }
 }
-@container page (min-width: 1000px) {
-  .market-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (min-height: 740px) {
-  .page-layout[data-mode=reader] > .page-layout-frame { height: calc(100dvh - var(--shell-offset)); }
-  .page-layout[data-mode=reader] .page-layout-body { display: flex; flex: 1; flex-direction: column; }
+  .page-layout[data-mode=reader] .page-layout-body { display: flex; flex-direction: column; height: calc(100dvh - var(--shell-offset)); }
   .channel-workspace { flex: 1; }
   .channel-list, .reader-scroll { flex: 1; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
 }
@@ -429,15 +426,12 @@
 /* Market-only, non-sticky summary: charts and explanations are opt-in. */
 .market-context { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--card); overflow: hidden; }
 .market-context-summary { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
-.market-context-title { width: 152px; flex-shrink: 0; }
 .market-metric-strip { display: flex; min-width: 0; flex: 1; gap: 16px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: 2px; }
 .market-metric { display: flex; flex-direction: column; flex-shrink: 0; min-width: 96px; }
 .market-context-details { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 @container page (min-width: 1000px) { .market-context-details { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container page (max-width: 600px) {
-  .market-context-summary { flex-wrap: wrap; padding: 10px 12px; gap: 8px; }
-  .market-context-title { width: auto; flex: 1; }
-  .market-metric-strip { flex-basis: 100%; order: 3; }
+  .market-context-summary { padding: 10px 12px; gap: 8px; }
 }
 
 /* Document stays in place while annotations and the existing chat run beside it. */
@@ -452,6 +446,17 @@
 .study-highlight { background:color-mix(in oklch, var(--chart-warning, #d8b74a) 28%, transparent); border-radius:2px; }
 .study-comment-anchor { text-decoration:underline; text-decoration-color:var(--primary); text-underline-offset:4px; text-decoration-style:dotted; }
 .study-picked { box-shadow:inset 0 -2px 0 color-mix(in oklch,var(--primary) 45%,transparent); }
+.study-tool-group { flex-wrap:wrap; gap:2px; }
+.study-tool { gap:5px; padding-inline:9px; }
+.study-tool svg { width:15px; height:15px; }
+.study-tool[data-state=on][data-intent=explain],.study-highlight[data-intent=explain] { background:color-mix(in oklch,var(--primary) 15%,transparent); }
+.study-tool[data-state=on][data-intent=critique],.study-highlight[data-intent=critique] { background:color-mix(in oklch,var(--chart-4) 22%,transparent); }
+.study-tool[data-state=on][data-intent=related],.study-highlight[data-intent=related] { background:color-mix(in oklch,var(--chart-2) 20%,transparent); }
+.study-text[data-tool=explain],.study-text[data-tool=critique],.study-text[data-tool=related] { cursor:crosshair; }
+.study-note[data-focused=true] { border-color:color-mix(in oklch,var(--primary) 45%,var(--border)); }
+.study-annotation-actions { margin-top:12px; padding-top:8px; border-top:1px solid var(--border); }
+.study-action-answer { font-size:13px; line-height:1.7; }
+.study-action-answer p { font-size:13px; }
 .study-aside { border-left:1px solid var(--border); display:flex; flex-direction:column; min-width:0; min-height:0; }
 .study-panel-header { padding:12px 16px; border-bottom:1px solid var(--border); }
 .study-notes,.study-chat { padding:16px; overflow:auto; overscroll-behavior:contain; min-height:0; flex:1; }
@@ -479,6 +484,9 @@
 .project-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--border); }
 .project-columns { display:grid; grid-template-columns:220px minmax(0,1fr) 350px; height:calc(100dvh - 250px); min-height:550px; }
 .project-workspace[data-library=false] .project-columns { grid-template-columns:minmax(0,1fr) 350px; }
+.project-workspace[data-notes=false] .project-columns { grid-template-columns:220px minmax(0,1fr); }
+.project-workspace[data-library=false][data-notes=false] .project-columns { grid-template-columns:minmax(0,1fr); }
+.project-panel[hidden] { display:none; }
 .project-library { overflow:auto; padding:16px 10px; border-right:1px solid var(--border); min-width:0; }
 .project-source { display:flex; align-items:start; gap:4px; padding:10px 8px; border-radius:12px; margin:4px 0; }
 .project-desk,.project-primary { min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
@@ -512,7 +520,9 @@
  .project-library { grid-column:1/-1; max-height:180px; border-bottom:1px solid var(--border); }
  .project-workspace[data-library=true] .project-columns { height:auto; }
  .project-workspace[data-library=false] .project-columns { grid-template-columns:minmax(0,1fr) 320px; }
- .project-desk,.project-panel { height:65dvh; min-height:480px; }
+ .project-workspace[data-notes=false] .project-columns,.project-workspace[data-library=false][data-notes=false] .project-columns { grid-template-columns:minmax(0,1fr); }
+ /* Only the stacked library needs explicit heights; otherwise the row height fills the card. */
+ .project-workspace[data-library=true] .project-desk,.project-workspace[data-library=true] .project-panel { height:65dvh; min-height:480px; }
 }
 @container page (max-width:760px) {
  .project-columns,.project-workspace[data-library=false] .project-columns { grid-template-columns:minmax(0,1fr); height:auto; }
@@ -540,3 +550,16 @@
 .project-unified-notes .study-notes { flex:none; overflow:visible; padding-top:0; padding-bottom:0; }
 .project-unified-notes .study-panel-header[hidden] { display:none; }
 .study-source-tag { display:block; max-width:100%; height:auto; min-height:24px; padding:3px 8px; margin-bottom:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:400; color:var(--muted-foreground); border-radius:6px; }
+
+/* Company investigation uses the available content width, including the follow rail. */
+.company-research-host { container-type: inline-size; }
+.company-research-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 24px; align-items: start; }
+.company-research-chart, .company-research-evidence { min-width: 0; }
+@media (min-height: 740px) {
+  @container (min-width: 900px) {
+    .company-research-grid { grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr); }
+    .company-research-chart { position: sticky; top: 20px; }
+    .company-research-evidence { max-height: calc(100dvh - var(--shell-offset)); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  }
+}
+@media print { .company-research-grid { display:block; } .company-research-chart { position:static; } .company-research-evidence { max-height:none; overflow:visible; } }

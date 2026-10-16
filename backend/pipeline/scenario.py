@@ -153,8 +153,8 @@ def build_scenario(event: str, report_context: str | None = None) -> dict:
     if data.get("causal"):
         conn = get_connection()
         try:
-            _persist_causal(conn, None, docs[0]["id"] if docs else None,
-                            data["causal"], conf_cap=0.5)
+            # 가정 사건에서 출발한 체인이라 문서 출처가 없다 (D-204). 전에는 검색 1위 문서를 출처로 붙였다.
+            _persist_causal(conn, None, None, data["causal"], conf_cap=0.5, source_status="scenario")
             conn.commit()
         finally:
             conn.close()

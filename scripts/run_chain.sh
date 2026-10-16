@@ -40,6 +40,7 @@ echo "$(ts) [chain] 시작" >> "$LOG"
 # --- 수집보다 먼저: 값싸고 빠른 운영 점검 (수집 실패에 발목 잡히지 않도록 && 밖) ---
 $PY scripts/probe_llm.py                     >> "$LOG" 2>&1   # LLM 엔진 생사 (D-106)
 $PY scripts/send_briefing.py --catch-up      >> "$LOG" 2>&1   # 미발송 브리핑 보전 (D-106)
+$PY scripts/fetch_macro_news.py              >> "$LOG" 2>&1   # 미국 매체·Fed 헤드라인 (D-206)
 
 # 기존 crontab의 && 의미 보존 (한 단계 실패 시 이후 중단)
 # redigest_youtube 제거(D-115) — 구독 채널 신규 영상 전부를 opus로 정리하면 아무도 안 읽는

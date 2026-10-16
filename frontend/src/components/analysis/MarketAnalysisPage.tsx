@@ -1,0 +1,245 @@
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ChartCandlestick, ChevronDown, CornerDownRight, Download, History, Library, LoaderCircle, MessageSquareText, Plus, Search, Square } from 'lucide-react'
+import { PageHeader, PageLayout } from '@/components/shared/PageLayout'
+import { ErrorState } from '@/components/shared/ErrorState'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
+import { analysisArtifactUrl, useAnalysisThread, useMarketAnalysis, type ThreadTurn as Turn } from '@/hooks/useMarketAnalysis'
+import { formatNumber, formatRelativeTime } from '@/utils/format'
+import { AnalysisConditions } from '@/components/analysis/AnalysisConditions'
+import { AnalysisQuestion } from '@/components/analysis/AnalysisQuestion'
+import { AnalysisResults } from '@/components/analysis/AnalysisResults'
+import { QuestionRefiner } from '@/components/analysis/QuestionRefiner'
+import type { StrategySubmission } from '@/components/analysis/ConditionStackBuilder'
+import { DiscoveryLibrary, DiscoveryRecommendations, SaveDiscoveryStrategy } from '@/components/analysis/DiscoveryLibrary'
+import { DiscoveryFollowup, type FollowupSubmission } from '@/components/analysis/DiscoveryFollowup'
+import { DiscoveryStart } from '@/components/analysis/DiscoveryStart'
+import { DiscoveryWorkspace } from '@/components/analysis/DiscoveryWorkspace'
+import { useSessionDraft } from '@/hooks/useSessionDraft'
+import { isSearchDraft } from '@/components/analysis/discoveryDraft'
+import { isTerminal } from '@/components/analysis/events'
+import type { AnalysisRun, RunStatus } from '@/components/analysis/types'
+import api from '@/api/client'
+import { ChartStructureCard, type StructureFit, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
+
+const EXAMPLES = [
+  { label: '강한 추세', question: '시가총액 5000억원 이상 종목 중 52주 신고가를 돌파하고 최근 14거래일 동안 20일 이동평균 위를 유지한 종목을 찾아줘' },
+  { label: '거래량 변화', question: '20일과 60일 이동평균이 정배열이고 전일 대비 거래량이 증가한 종목을 찾아줘' },
+  { label: '패턴 돌파', question: '시가총액 5000억원 이상 종목 중 최근 90 영업일 이내 역헤드앤숄더 패턴 이후 넥라인과 52주 신고가를 차례로 돌파하고, 최근 14영업일 동안 20일 이평선 아래로 내려간 적 없는 종목을 찾아줘' },
+]
+const WITHIN_OPTIONS = [{ value: 1, label: '기준일 당일' }, { value: 3, label: '최근 3거래일' }, { value: 5, label: '최근 5거래일' }, { value: 10, label: '최근 10거래일' }, { value: 20, label: '최근 20거래일' }, { value: 60, label: '최근 60거래일' }]
+const STATUS: Record<RunStatus, string> = { queued: '대기', preparing: '데이터 준비', running: '분석 중', waiting_input: '조건 확인', completed: '완료', partial: '일부 평가', blocked: '진행 불가', failed: '실행 오류', cancelled: '취소됨', interrupted: '실행 중단' }
+const PHASE: Record<string, string> = { queued: '실행을 기다리고 있습니다', preparing: '보유 시장 데이터를 준비하고 있습니다', isolation: '안전한 분석 환경을 확인하고 있습니다', snapshot: '분석 기준일의 데이터를 준비하고 있습니다', interpretation: '분석 조건을 확인하고 있습니다', interpreting: '요청 조건을 해석하고 있습니다', planning: '분석 조건을 정리하고 있습니다', analysis: '요청한 조건을 분석하고 있습니다', calculation: '조건에 맞는 종목을 계산하고 있습니다', executing: '조건에 맞는 종목을 계산하고 있습니다', verification: '계산 결과와 종목별 근거를 검증하고 있습니다', validating: '계산 결과와 종목별 근거를 검증하고 있습니다', finalizing: '결과를 정리하고 있습니다', cancelling: '분석을 중단하고 있습니다', finished: '실행이 끝났습니다', done: '실행이 끝났습니다', waiting_input: '입력한 조건으로 분석을 이어갑니다' }
+
+const FIELD_LABELS: Record<string, string> = { min_market_cap: '최소 시가총액', strategy_conditions: '전략 조건', expression: '복합 조건식', universe_codes: '대상 종목', market: '시장', ma_period: '이동평균 기간', hold_days: '유지 기간', lookback_days: '탐색 기간', require_52w: '52주 신고가 조건', pattern: '패턴', mode: '검색 방식', as_of: '기준일', include_same_day: '같은 날 포함', window_scope: '탐색 구간', pivot_width: '피벗 폭', shoulder_tolerance: '어깨 허용 오차', price_adjustment: '수정주가' }
+function ThreadTurn({ turn, onOpen }: { turn: Turn; onOpen: (id: string) => void }) {
+  const changes = turn.lineage?.changes ?? []
+  const matched = turn.result?.counts.matched
+  return <Button variant="ghost" className="h-auto w-full flex-col items-stretch gap-1 whitespace-normal rounded-xl bg-card p-4 text-left" onClick={() => onOpen(turn.id)} aria-label={`${turn.question} 결과 다시 보기`}>
+    <span className="flex flex-wrap items-center gap-2 text-caption font-normal text-muted-foreground">{turn.parent_run_id && <CornerDownRight className="size-3.5" aria-hidden="true" />}<Badge variant="outline">{STATUS[turn.status]}</Badge>{matched != null && <span>후보 {formatNumber(matched)}개</span>}<span className="ml-auto">{formatRelativeTime(turn.created_at)}</span></span>
+    <span className="line-clamp-2 text-sm font-medium">{turn.question}</span>
+    {changes.length > 0 && <span className="text-caption font-normal text-muted-foreground">바뀐 조건 · {changes.map(change => FIELD_LABELS[change.field] ?? change.field).join(' · ')}</span>}
+  </Button>
+}
+
+function RunHistory({ runs, selected, onOpen }: { runs: AnalysisRun[]; selected: string | null; onOpen: (id: string) => void }) {
+  return <div className="space-y-1">{runs.map(run => <Button key={run.id} variant={run.id === selected ? 'secondary' : 'ghost'} className="h-auto w-full flex-col items-start gap-1 whitespace-normal px-3 py-3 text-left" onClick={() => onOpen(run.id)} aria-current={run.id === selected ? 'page' : undefined}>
+    <span className="line-clamp-2 text-sm font-normal">{run.question}</span><span className="text-caption font-normal text-muted-foreground">{STATUS[run.status]} · {formatRelativeTime(run.created_at)}</span>
+  </Button>)}</div>
+}
+
+function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: string | null; initialQuestion: string; onOpen: (id: string) => void; onNew: (question?: string) => void }) {
+  const scrolledRun = useRef(runId)
+  const [params, setParams] = useSearchParams()
+  const analysis = useMarketAnalysis(runId, onOpen)
+  const run = analysis.detail.data
+  const thread = useAnalysisThread(runId)
+  const turns = thread.data?.items ?? []
+  const focused = useRef<HTMLLIElement>(null)
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (scrolledRun.current !== runId) { scrolledRun.current = runId; scrolled.current = false }
+    // Opening a later turn of a thread lands on it; earlier turns stay reachable above.
+    if (scrolled.current || turns.length < 2 || turns[0].id === runId) return
+    scrolled.current = true
+    focused.current?.scrollIntoView({ block: 'start' })
+  }, [turns, runId])
+  const [draft, setDraft, stored] = useSessionDraft(`explorer:discovery:natural:v1:${initialQuestion}`, { question: initialQuestion, asOf: '', within: 1 }, isSearchDraft)
+  const { question, asOf, within } = draft
+  const setQuestion = (next: SetStateAction<string>) => setDraft(previous => ({ ...previous, question: typeof next === 'function' ? next(previous.question) : next }))
+  const setAsOf = (asOf: string) => setDraft(previous => ({ ...previous, asOf }))
+  const setWithin = (within: number) => setDraft(previous => ({ ...previous, within }))
+  const [customWithin, setCustomWithin] = useState(!WITHIN_OPTIONS.some(option => option.value === within))
+  const naturalOpen = (params.get('intent') ?? (initialQuestion ? 'natural' : '')) === 'natural'
+  const setNaturalOpen = (open: boolean) => setParams(previous => { const next = new URLSearchParams(previous); if (open) next.set('intent', 'natural'); else next.set('intent', ''); return next }, { replace: true, preventScrollReset: true })
+  const focusQuestion = () => {
+    setNaturalOpen(true)
+    requestAnimationFrame(() => { const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null; field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' }) })
+  }
+  const requestKey = useRef<{ input: string; key: string } | null>(null)
+  const submitting = useRef(false)
+  const busy = !!run && !isTerminal(run.status)
+  const library = params.get('view') === 'library'
+  const panel = params.get('panel')
+  const warnings = [...new Set([...(run?.snapshot?.warnings ?? []), ...(run?.result?.warnings ?? []), ...(run?.result?.unsupported_conditions ?? []).map(condition => `지원하지 않는 요청 조건: ${condition}`)])]
+  const mutationError = analysis.start.error ?? analysis.resume.error ?? analysis.cancel.error
+  const setPanel = (value: string | null) => setParams(previous => { const next = new URLSearchParams(previous); if (value) next.set('panel', value); else next.delete('panel'); return next }, { replace: true })
+  const setLibrary = (value: boolean) => setParams(previous => { const next = new URLSearchParams(previous); if (value) next.set('view', 'library'); else next.delete('view'); return next })
+
+  function appendCondition(phrase: string) {
+    setQuestion(previous => {
+      if (previous.includes(phrase)) return previous
+      const base = previous.trim() ? previous.trimEnd() : '다음 조건을 모두 만족하는 종목을 찾아줘.'
+      return `${base}\n- ${phrase}`
+    })
+    focusQuestion()
+  }
+
+  const [drawNotice, setDrawNotice] = useState<string | null>(null)
+  const drawingMode = params.get('mode') === 'draw'
+  const drawingCodes = params.get('code') ?? ''
+  const drawCodes = drawingCodes.split(',').filter(Boolean) // 여러 종목 비교는 code=000500,005930
+  const drawParams: StructureParams | null = drawingMode && drawCodes.length > 0 ? {
+    code: drawCodes[0], market: (params.get('market') === 'us' ? 'us' : 'kr'), kind: (params.get('kind') as StructureKind) || 'channel',
+    window: params.get('window') || 'ytd', swing: Number(params.get('swing')) || 5, fit: (params.get('fit') as StructureFit) || 'two_point',
+  } : null
+  const setDraw = (next: StructureParams, q?: string, codes?: string[]) => setParams(previous => {
+    const draft = new URLSearchParams(previous)
+    for (const key of ['run', 'candidate', 'compare', 'sort', 'intent', 'view', 'panel']) draft.delete(key)
+    draft.set('mode', 'draw'); draft.set('code', (codes ?? (drawCodes.length > 0 ? drawCodes : [next.code])).join(',')); draft.set('market', next.market); draft.set('kind', next.kind); draft.set('window', next.window); draft.set('swing', String(next.swing)); draft.set('fit', next.fit)
+    if (q !== undefined) { if (q) draft.set('q', q); else draft.delete('q') }
+    return draft
+  })
+  useEffect(() => {
+    if (!runId && drawingMode && drawingCodes) document.getElementById('discovery-structure-workspace')?.scrollIntoView({ block: 'start' })
+  }, [runId, drawingMode, drawingCodes])
+
+  async function submit(strategy?: StrategySubmission | FollowupSubmission) {
+    const body = strategy ?? { question: question.trim(), ...(asOf ? { as_of: asOf } : {}), ...(within > 1 ? { default_within_days: within } : {}) }
+    if (!body.question || analysis.start.isPending || submitting.current) return
+    if (!strategy && /채널|추세선|고점|저점|지지|저항|레벨/.test(body.question) && /그려|그리|표시|보여|찍어|그어/.test(body.question)) {
+      // 종목 하나의 차트에 구조를 그리는 요청은 조건 검색이 아니다 (D-195). 서버 규칙이 확정한다.
+      submitting.current = true
+      try {
+        const { data } = await api.post<{ draw: boolean; code?: string | null; codes?: string[]; market?: 'kr' | 'us'; kind?: StructureKind; window?: string; swing?: number; fit?: StructureFit; reason?: string }>('/api/spine/chart-structure/interpret', { question: body.question })
+        if (data.draw) {
+          if (!data.code) { setDrawNotice(data.reason ?? '어느 종목인지 찾지 못했습니다.'); return }
+          setDrawNotice(null)
+          setDraw({ code: data.code, market: data.market ?? 'kr', kind: data.kind ?? 'channel', window: data.window ?? 'ytd', swing: data.swing ?? 5, fit: data.fit ?? 'two_point' }, body.question, data.codes && data.codes.length > 1 ? data.codes : undefined)
+          return
+        }
+      } catch { /* 해석 실패 시 조건 검색으로 진행 */ }
+      finally { submitting.current = false }
+    }
+    submitting.current = true
+    const input = JSON.stringify(body)
+    if (requestKey.current?.input !== input) requestKey.current = { input, key: crypto.randomUUID() }
+    try {
+      await analysis.start.mutateAsync({ ...body, request_key: requestKey.current.key })
+      requestKey.current = null
+    } catch { /* Preserve input and request key for retry. */ }
+    finally { submitting.current = false }
+  }
+
+  const legacy = !!run && ((!!run.spec && (run.spec.mode !== 'catalog' || !!run.spec.expression)) || turns.length > 1 || !!run.lineage)
+  const drawing = !!drawParams && !runId
+  const mode = library || legacy || drawing ? 'document' : 'workspace'
+
+  // 자동 재검색이 계산되는 몇 초 동안 직전 결과를 흐리게 남겨 맥락을 잃지 않게 한다.
+  const previous = useRef<AnalysisRun | null>(null)
+  useEffect(() => { if (run?.result) previous.current = run }, [run])
+
+  const renderRun = (run: AnalysisRun, compact: boolean) => <>
+        <section aria-label="현재 검색" className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{STATUS[run.status]}</Badge><span className="text-caption text-hypothesis">검색 조건</span><span className="ml-auto text-caption text-muted-foreground">검색 실행 {formatRelativeTime(run.created_at)}{run.result && ` · 시세 ${run.result.as_of} 기준`}</span>{run.result && ['completed', 'partial'].includes(run.status) && <SaveDiscoveryStrategy run={run} />}</div>
+          <Collapsible><div className={compact ? 'flex justify-end' : 'flex items-start gap-2'}>{!compact && <h2 className="min-w-0 flex-1 line-clamp-2 text-card-title font-medium leading-relaxed">{run.question}</h2>}<CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="shrink-0">조건 상세<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger></div><CollapsibleContent className="space-y-3 rounded-xl bg-card p-4 mt-3"><p className="whitespace-pre-wrap text-sm">{run.question}</p>{run.spec && <AnalysisConditions spec={run.spec} priceAdjustment={run.snapshot?.price_adjustment?.status} definitions={run.result?.strategy_definitions} />}{run.saved_strategy && <p className="text-caption text-muted-foreground">저장 전략 {run.saved_strategy.name} · v{run.saved_strategy.version} · {run.saved_strategy.date_policy === 'fixed' ? '기준일 고정' : '최신 보유일'}</p>}{run.lineage && <p className="text-caption text-muted-foreground"><Link className="text-primary hover:underline" to={`/discover?run=${run.lineage.parent_run_id}`}>이전 검색 보기</Link> · {run.lineage.scope === 'candidates' ? '이전 후보 범위' : '이전 검색 대상 전체'} · {run.lineage.date_policy === 'same' ? '동일 데이터' : '최신 데이터'}</p>}</CollapsibleContent></Collapsible>
+          {busy && <div className="space-y-2 rounded-xl bg-card p-4"><div className="flex flex-wrap items-center justify-between gap-3"><p role="status" aria-live="polite" className="flex items-center gap-2 text-sm">{run.status !== 'waiting_input' && <LoaderCircle className="size-4 animate-spin text-primary" />}{PHASE[run.phase] ?? STATUS[run.status]}</p><Button variant="outline" size="sm" disabled={analysis.cancel.isPending} onClick={() => analysis.cancel.mutate()}><Square className="size-3" />{analysis.cancel.isPending ? '취소 요청 중…' : '분석 취소'}</Button></div><p className="text-caption text-muted-foreground">화면을 나가도 실행은 이어집니다. 이전 검색에서 다시 확인할 수 있습니다.</p>{analysis.disconnected && <p className="text-caption text-muted-foreground">진행 연결을 복구하고 있습니다. 저장된 실행 상태를 확인 중입니다.</p>}</div>}
+        </section>
+        {run.pending && ['waiting_input', 'interrupted'].includes(run.status) && !run.cost_uncertain && <AnalysisQuestion key={run.pending.id} pending={run.pending} busy={analysis.resume.isPending || analysis.cancel.isPending} onAnswer={payload => analysis.resume.mutateAsync({ interrupt_id: run.pending!.id, payload })} />}
+        {busy && run.status !== 'waiting_input' && !run.result && !(compact && previous.current) && <div aria-label="검색 결과를 준비하고 있습니다" className="space-y-3"><Skeleton className="h-20 w-full" /><Skeleton className="h-72 w-full" /></div>}
+        {(run.error || ['blocked', 'failed', 'interrupted', 'cancelled'].includes(run.status)) && <Card><CardContent className="space-y-3 pt-5"><p role="alert" className={run.status === 'cancelled' ? 'text-sm text-muted-foreground' : 'text-sm text-destructive'}>{run.error || (run.status === 'cancelled' ? '사용자 요청으로 검색을 취소했습니다.' : run.status === 'interrupted' ? run.pending && !run.cost_uncertain ? '같은 데이터와 조건으로 재개할 수 있습니다.' : '서버가 중단되어 이 실행을 계속할 수 없습니다.' : '검색을 완료하지 못했습니다.')}</p>{run.cost_uncertain && <p className="text-sm text-muted-foreground">중단된 호출의 비용을 확인할 수 없어 기존 실행을 재개할 수 없습니다. 새 검색으로 시작해 주세요.</p>}<Button variant="outline" size="sm" disabled={analysis.start.isPending} onClick={() => run.spec?.mode === 'catalog' ? void submit({ question: run.question, spec: run.spec }) : onNew(run.question)}>{run.spec?.mode === 'catalog' ? '같은 조건으로 새 검색' : '같은 질문으로 새 검색'}</Button></CardContent></Card>}
+        {run.result && <AnalysisResults key={run.id} runId={run.id} result={run.result} onOpen={onOpen} warnings={warnings} stacked={compact} />}
+        {!run.result && warnings.length > 0 && !(compact && busy) && <div className="rounded-xl bg-hypothesis/10 p-4"><p className="text-sm font-medium">자료 확인이 필요합니다</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
+        <Collapsible className="rounded-xl bg-card px-4 py-2"><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="w-full justify-between">실행 기록·결과 파일<ChevronDown className="size-4" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-3 pb-3 pt-2">
+          {!!run.artifacts.length && <div className="flex flex-wrap items-center gap-2" aria-label="검색 결과 파일">{run.artifacts.map(artifact => <Button key={artifact.id} asChild variant="outline" size="sm"><a href={analysisArtifactUrl(run.id, artifact.id)} download={artifact.name}><Download className="size-3.5" />{artifact.name}</a></Button>)}</div>}
+          <p className="text-caption text-muted-foreground">{formatNumber(run.steps)}단계 · 사용 비용 ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(run.cost_usd)} · 실행 시간 {formatNumber(Math.round(run.active_seconds))}초</p><p className="text-caption text-muted-foreground">비용은 추정치이며 입력 대기 시간은 제외합니다. 분석은 원본 시장 데이터를 변경하지 않습니다.</p>{run.snapshot && <p className="text-caption text-muted-foreground">자료 기준일 {run.snapshot.as_of} · {formatNumber(run.snapshot.stocks)}종목 · {formatNumber(run.snapshot.rows)}개 시세</p>}{run.result?.verification?.cached_from && <p className="text-caption text-muted-foreground">같은 자료·조건으로 이미 검증한 결과를 재사용했습니다. 계산을 다시 하지 않았습니다.</p>}
+          {analysis.logs.length ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 font-mono text-caption">{analysis.logs.map(log => `[${log.sequence}] ${log.text}`).join('\n\n')}</pre> : <p className="text-caption text-muted-foreground">저장된 실행 이벤트를 불러오면 여기에 표시합니다.</p>}
+          <Button asChild variant="outline" size="sm"><Link to="/analysis/backtests">백테스트로 전략 비교</Link></Button>
+        </CollapsibleContent></Collapsible>
+</>
+
+  const results = !runId ? <div className="flex h-full min-h-60 flex-col items-center justify-center gap-1 rounded-xl border border-dashed p-6 text-center"><p className="text-sm font-medium">결과가 여기에 나옵니다</p><p className="text-caption text-muted-foreground">가운데에 조건을 쌓고 검색을 누르세요.</p></div>
+    : analysis.detail.isPending ? <div aria-label="검색 불러오는 중" role="status" className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-80 w-full" /></div>
+    : analysis.detail.isError ? <ErrorState message="검색 기록을 불러오지 못했습니다." onRetry={() => analysis.detail.refetch()} />
+    : run ? <div className="min-w-0 space-y-4">{renderRun(run, true)}
+      {busy && !run.result && previous.current && previous.current.id !== run.id && previous.current.result && <div aria-label="직전 결과" className="pointer-events-none space-y-2 opacity-50">
+        <p className="text-caption text-muted-foreground">직전 결과 · 새 결과가 나오면 바뀝니다</p>
+        <AnalysisResults key={previous.current.id} runId={previous.current.id} result={previous.current.result} onOpen={onOpen} stacked />
+      </div>}</div> : null
+
+  const toolbar = <div className="flex flex-wrap items-center gap-2" aria-label="발견 작업 도구">
+      <Button variant={library ? 'ghost' : 'secondary'} size="sm" onClick={() => setLibrary(false)}><Search className="size-4" />{runId ? '검색 결과' : '새 검색'}</Button>
+      <Button variant={library ? 'secondary' : 'ghost'} size="sm" onClick={() => setLibrary(true)}><Library className="size-4" />저장 전략·조사</Button>
+      <div className="ml-auto flex flex-wrap gap-1">
+        <Sheet open={panel === 'known'} onOpenChange={open => setPanel(open ? 'known' : null)}>
+          <SheetTrigger asChild><Button variant="ghost" size="sm"><ChartCandlestick className="size-4" />아는 종목 분석</Button></SheetTrigger>
+          <SheetContent className="w-full overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"><SheetHeader><SheetTitle>아는 종목 분석</SheetTitle><SheetDescription>종목을 정했다면 기술적 분석을 열거나 차트에 구조를 바로 그립니다.</SheetDescription></SheetHeader>
+            <div className="px-4 pb-6"><DiscoveryStart busy={analysis.start.isPending} onDraw={next => setDraw(next, '', [next.code])} /></div>
+          </SheetContent>
+        </Sheet>
+        <Sheet open={naturalOpen} onOpenChange={setNaturalOpen}>
+          <SheetTrigger asChild><Button variant="ghost" size="sm"><MessageSquareText className="size-4" />문장으로 찾기</Button></SheetTrigger>
+          <SheetContent className="w-full overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"><SheetHeader><SheetTitle>문장으로 찾기</SheetTitle><SheetDescription>원하는 흐름을 말로 적으면 조건으로 풀어 찾습니다. 카탈로그 조건이면 결과가 워크스페이스 블록으로 열립니다.</SheetDescription></SheetHeader>
+            <div className="space-y-5 px-4 pb-6"><Card className="border-0 shadow-none"><CardHeader className="px-0"><h2 className="text-section font-semibold">어떤 종목을 발견하고 싶나요?</h2><p className="text-sm text-muted-foreground">원하는 흐름을 말로 적으면, 조건에 맞는 종목과 계산 근거를 찾아드립니다.</p></CardHeader>
+          <CardContent className="px-0"><form onSubmit={event => { event.preventDefault(); void submit() }} className="space-y-3">
+            <Label htmlFor="analysis-question" className="sr-only">찾고 싶은 종목의 조건</Label>
+            <Textarea id="analysis-question" value={question} onChange={event => setQuestion(event.target.value)} placeholder="예: 신고가 돌파 후 거래량이 붙고, 20일 이평선 위를 유지하는 종목을 찾아줘" className="min-h-28 resize-y text-base" disabled={analysis.start.isPending} maxLength={12000} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }} />
+            <div className="flex flex-wrap items-center gap-2"><span className="text-caption text-muted-foreground">질문 예시</span>{EXAMPLES.map(example => <Button key={example.label} type="button" variant="secondary" size="sm" disabled={analysis.start.isPending} onClick={() => { setQuestion(example.question); document.getElementById('analysis-question')?.focus() }}>{example.label}</Button>)}</div>
+            <QuestionRefiner question={question} disabled={analysis.start.isPending} onApply={text => { setQuestion(text); const field = document.getElementById('analysis-question') as HTMLTextAreaElement | null; field?.focus(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }} />
+            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-2"><Label htmlFor="analysis-within" className="text-sm text-muted-foreground">판정 범위</Label><Select value={customWithin ? 'custom' : String(within)} onValueChange={value => { if (value === 'custom') setCustomWithin(true); else { setCustomWithin(false); setWithin(Number(value)) } }} disabled={analysis.start.isPending}><SelectTrigger id="analysis-within" className="w-auto min-w-36" aria-label="조건 판정 범위"><SelectValue>{customWithin ? `직접 입력 · ${within}거래일` : undefined}</SelectValue></SelectTrigger><SelectContent>{WITHIN_OPTIONS.map(option => <SelectItem key={option.value} value={String(option.value)}>{option.label}</SelectItem>)}<SelectItem value="custom">직접 입력</SelectItem></SelectContent></Select>{customWithin && <Input type="number" inputMode="numeric" min={1} max={250} step={1} className="h-8 w-24" aria-label="판정 범위 직접 입력 (거래일)" value={within} onChange={event => { const next = Math.trunc(Number(event.target.value)); if (Number.isFinite(next)) setWithin(Math.min(250, Math.max(1, next))) }} disabled={analysis.start.isPending} />}<span className="text-caption text-muted-foreground">문장에 기간이 없는 조건에 적용 · 순위 조건은 당일</span><Collapsible><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="sm">{asOf ? `${asOf} 기준` : '최신 보유일 기준'}<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-2"><Label htmlFor="analysis-as-of">다른 기준일 선택</Label><Input id="analysis-as-of" type="date" value={asOf} onChange={event => setAsOf(event.target.value)} disabled={analysis.start.isPending} /><p className="text-caption text-muted-foreground">비워 두면 최신 보유일을 사용합니다.</p></CollapsibleContent></Collapsible></div><Button type="submit" disabled={!question.trim() || analysis.start.isPending}>{analysis.start.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}종목 찾기</Button></div>
+            <p className="text-caption text-muted-foreground">{stored === false ? '이 브라우저에서 초안을 보존하지 못했습니다.' : '질문·기준일·판정 범위는 이 탭에서 자동 보존됩니다.'}</p>
+          </form></CardContent>
+        </Card>
+              <section aria-label="추천 검색" className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-card-title font-medium">목적에 맞는 검색으로 시작하기</h2><Button variant="ghost" size="sm" onClick={() => setLibrary(true)}>저장한 전략 보기</Button></div><DiscoveryRecommendations onAppend={appendCondition} compact onOpen={onOpen} /></section>
+            </div>
+          </SheetContent>
+        </Sheet>
+        <Sheet open={panel === 'history'} onOpenChange={open => setPanel(open ? 'history' : null)}>
+          <SheetTrigger asChild><Button variant="ghost" size="sm"><History className="size-4" />이전 검색</Button></SheetTrigger>
+          <SheetContent className="overflow-y-auto"><SheetHeader><SheetTitle>이전 검색</SheetTitle><SheetDescription>저장된 결과를 다시 열어 탐색을 이어갑니다.</SheetDescription></SheetHeader>
+            <div className="px-4 pb-6">{analysis.runs.isPending && <Skeleton className="h-36 w-full" />}{analysis.runs.isError && <ErrorState message="이전 검색을 불러오지 못했습니다." onRetry={() => analysis.runs.refetch()} />}{analysis.runs.data && (analysis.runs.data.items.length ? <RunHistory runs={analysis.runs.data.items} selected={runId} onOpen={onOpen} /> : <p className="py-6 text-sm text-muted-foreground">아직 실행한 검색이 없습니다.</p>)}</div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </div>
+
+  return <PageLayout mode={mode} toolbar={toolbar} header={<PageHeader title="종목 발견" description="조건을 쌓으면 바로 찾고, 근거를 조사하고, 내 판단으로 이어갑니다." actions={runId ? <Button variant="outline" size="sm" onClick={() => onNew()}><Plus className="size-4" />새 검색</Button> : library ? <Button variant="ghost" size="sm" onClick={() => onNew()}><ArrowLeft className="size-4" />검색으로</Button> : undefined} />}>
+    {library && <DiscoveryLibrary onOpen={onOpen} />}
+    <div hidden={library} className={mode === 'workspace' ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-5'}>
+      {drawing && <div id="discovery-structure-workspace" className="scroll-mt-4"><ChartStructureCard params={drawParams} codes={drawCodes} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} /></div>}
+      {drawNotice && <p role="alert" className="rounded-lg bg-muted/40 p-3 text-sm">{drawNotice} 종목 이름이나 코드를 문장에 넣어 다시 요청하거나, 그대로 조건 검색으로 진행하려면 "찾아줘"처럼 검색 동사를 써 주세요.</p>}
+      {mutationError && <div role="alert"><ErrorState message={mutationError.message} /></div>}
+      {legacy && run ? <>
+        <ol aria-label="검색 스레드" className="space-y-4">{(turns.some(turn => turn.id === run.id) ? turns : [run]).map(turn => turn.id !== run.id ? <li key={turn.id}><ThreadTurn turn={turn as Turn} onOpen={onOpen} /></li> : <li key={turn.id} ref={focused} className="scroll-mt-4 space-y-5">{renderRun(run, false)}</li>)}</ol>
+        {run.result && ['completed', 'partial'].includes(run.status) && <DiscoveryFollowup key={run.id} runId={run.id} empty={!run.result.items.length} busy={analysis.start.isPending} onSubmit={submit} />}
+      </> : !drawing && <DiscoveryWorkspace run={run} runLoading={!!runId && analysis.detail.isPending} startPending={analysis.start.isPending} onStart={submit} results={results} />}
+    </div>
+  </PageLayout>
+}
+
+export default function MarketAnalysisPage() {
+  const [params, setParams] = useSearchParams()
+  const runId = params.get('run')
+  const openRun = useCallback((id: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('run', id); for (const key of ['mode', 'q', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); return next }), [setParams])
+  const newRun = (question = '') => setParams(previous => { const next = new URLSearchParams(previous); for (const key of ['mode', 'run', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); if (question) next.set('q', question); else next.delete('q'); return next })
+  return <AnalysisWorkspace key={params.get('q') ?? ''} runId={runId} initialQuestion={params.get('q') ?? ''} onOpen={openRun} onNew={newRun} />
+}

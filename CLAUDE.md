@@ -2,31 +2,33 @@
 
 ## Context Discipline (모든 작업의 시작과 끝)
 
-문서는 변경 빈도별 3층 구조다. 이 규율이 세션 간 맥락 유실을 막는다 (배경: docs/DECISIONS.md D-014).
+문서는 변경 빈도별 3층 구조다. 이 규율이 세션 간 맥락 유실을 막는다 (배경: docs/private/DECISIONS.md D-014).
 
 | 층 | 파일 | 역할 |
 |---|---|---|
 | 규칙 | CLAUDE.md (본 문서) | 안정적 규칙 + 포인터. 아키텍처 *내용*을 여기 쓰지 않는다 |
 | 상태 | **docs/SYSTEM.md** | 살아있는 시스템 지도 — 아키텍처·DB·파이프라인·API·IA의 현행 |
-| 결정 | **docs/DECISIONS.md** | append-only 의사결정 로그 — 결정의 이유와 기각한 대안 |
+| 결정 | **docs/private/DECISIONS.md** (비공개 저장소) | append-only 의사결정 로그 — 결정의 이유와 기각한 대안 |
 
 ### 작업 시작 전 (필수)
 - 사소하지 않은 작업이면 **docs/SYSTEM.md를 먼저 읽고** 전체 그림 위에서 판단한다. 코드를 뒤지기 전에 지도부터.
-- 설계 판단이 필요하면 **docs/DECISIONS.md의 관련 항목을 확인**한다. 기존 결정과 충돌하는 방향이면 조용히 우회하지 말고 사용자에게 알린다 — 뒤집기로 하면 새 D-항목으로 기록.
+- 설계 판단이 필요하면 **docs/private/DECISIONS.md의 관련 항목을 확인**한다. 기존 결정과 충돌하는 방향이면 조용히 우회하지 말고 사용자에게 알린다 — 뒤집기로 하면 새 D-항목으로 기록.
 
 ### 작업 종료 시 (커밋에 포함)
 - **구조가 바뀌었으면 SYSTEM.md를 같은 커밋에서 갱신**한다. "구조"란: DB 테이블/컬럼, pipeline/ 모듈, 라우터/API, cron 체인, IA(페이지/탭), 외부 의존성, .env 키. 문서 갱신이 빠진 구조 변경 커밋은 미완성이다.
 - **중요한 결정이 있었으면 DECISIONS.md에 항목을 추가**한다. 기록 대상: 되돌리기 비싼 결정, 대안을 기각한 결정, 나중에 "왜 이렇게 돼 있지?"가 나올 결정. 단순 버그 수정·사소한 구현 선택은 커밋 메시지로 충분.
+- DECISIONS.md는 `docs/private/`(비공개 저장소 `Vacayy/explorer-private`)에 있다 — 결정 기록은 **그 저장소에서 따로 커밋·푸시**한다. 공개 저장소 커밋만으로 끝내지 않는다. 새 환경에서는 `git clone https://github.com/Vacayy/explorer-private docs/private`.
 - DECISIONS.md는 **append-only**: 기존 항목 수정·삭제 금지. 번복은 새 항목 + 원 항목에 `→ D-0XX에서 번복` 한 줄.
 
 ### 문서 지도
-- 현행 시스템: docs/SYSTEM.md · 결정 이력: docs/DECISIONS.md
-- **설계 철학(관통 원칙): docs/PHILOSOPHY.md** — 개별 결정 뒤의 세계관(인식론·인과 세계모델·시장 인식론·인간기계 R&R). 설계 판단 시 원칙 정박점
+- 현행 시스템: docs/SYSTEM.md · 결정 이력: docs/private/DECISIONS.md
+- **설계 철학(관통 원칙): docs/private/PHILOSOPHY.md** — 개별 결정 뒤의 세계관(인식론·인과 세계모델·시장 인식론·인간기계 R&R). 설계 판단 시 원칙 정박점
 - 디자인 시스템: docs/DESIGN_SYSTEM.md (레이아웃 컨트랙트·토큰·패턴별 지정 구현)
-- 전략·지표: docs/STRATEGY.md · 백로그: docs/BACKLOG.md · 온톨로지: docs/ontology.md
+- 전략·지표: docs/private/STRATEGY.md · 백로그: docs/private/BACKLOG.md · 온톨로지: docs/ontology.md
 - 스펙: docs/specs/ · 정책: docs/policies/
 - **스펙 진입점/수명주기: docs/specs/README.md**. 기존 담당 spec을 먼저 갱신한다. 새 spec은 독립된 계약/커버리지일 때만 만들고 인덱스에 상태·역할·다음 단계를 등록한다. 작업일별 설계/리포트 복제 금지. 개인 원문·실험 산출물은 로컬 logs, 현행 구조는 SYSTEM, 결정 이유는 DECISIONS에 둔다. 종료된 spec은 구현 계약으로 축소하거나 대체 문서를 명시해 archive로 이관한다.
-- **docs/archive/** — 낡은 구 문서 (ARCHITECTURE.md, PLAN.md). 현행 판단의 근거로 사용 금지.
+- **docs/private/archive/** — 낡은 구 문서 (ARCHITECTURE.md, PLAN.md). 현행 판단의 근거로 사용 금지. (로컬 전용)
+- **공개/비공개 문서 분리(D-234, D-207 대체)**: 저장소는 공개다. `docs/` 공개분에는 다른 개발자가 아키텍처를 읽는 데 필요한 것만 둔다 — SYSTEM·TECH_DECISIONS·DESIGN_SYSTEM·DEPLOYMENT·ontology·policies/·현행 기능의 구현 계약 spec·research/. 결정 로그·설계 철학·전략·백로그·PRD·기획 청사진·디자인 리뷰·HTML 기획안(`docs/private/prototypes/`)·제품 검토(`docs/private/reviews/`)·세션 인계는 **`docs/private/`**(gitignore, 별도 비공개 저장소 클론)에 둔다. 공개 문서에는 사용자 발언 인용·개인 투자 맥락(보유·거래·원칙)을 쓰지 않는다 — 결정 배경은 비공개 DECISIONS에만. 공개 문서에서 비공개 문서로 링크하지 않는다(GitHub에서 안 열림). 새 문서를 만들 때 공개 여부부터 정한다.
 
 ---
 
@@ -41,7 +43,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 ### Phases (필요한 것만 선택)
 1. **기획** — PRD, scope → 스펙: docs/specs/, docs/policies/
 2. **화면설계** — Screen spec, 5-state 정의 → docs/specs/{feature}.md
-3. **디자인리뷰** — Visual critique → docs/DESIGN_REVIEW.md
+3. **디자인리뷰** — Visual critique → docs/private/DESIGN_REVIEW.md
 4. **백엔드** — API, DB, Service → backend/routers/, database.py
 5. **프론트엔드** — Component, Hook, Type → frontend/src/
 6. **검증** — tsc --noEmit, API curl, 5-state audit
@@ -54,6 +56,9 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 ### Reference
 - Phase 템플릿: skills/product-orchestrator/references/phases.md
 - 전문가 프롬프트: skills/product-orchestrator/references/expert-prompts.md
+
+### 기능 개발 외 작업
+- 버그 수정·리팩토링·조사는 오케스트레이터 대신 **.claude/skills/engineering-playbooks/SKILL.md** 플레이북을 따른다 (pstack 축약본, D-161). 글로벌 스킬 `how`·`blast-radius`·`tdd`·`interrogate`·`unslop`을 단계별로 호출한다.
 
 ---
 
@@ -123,7 +128,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 - **DART 데이터**
   - 계정명 정규화: `_normalize_account_name()` 통해 변형 통합 (영업이익 = 영업이익(손실))
   - CFS 우선, OFS fallback
-  - IS/CF는 분기 차감 (Q2=H1-Q1), BS는 시점 데이터 그대로
+  - CF만 분기 차감 (Q2=H1-Q1). IS/CIS는 finstate_all의 thstrm_amount가 이미 단일 분기라 그대로 쓰고 Q4=연간-(Q1+Q2+Q3)만 계산(D-183). BS는 시점 데이터 그대로
 - **캐시**: 모든 외부 API 호출은 `cache_service.is_cached()` → `set_cache()` 패턴 사용
 - **검증**: 모든 BE 변경 후 `python -c "from main import app"` 통과 필수
 
@@ -143,7 +148,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 
 ## Tech Stack
 - Backend: FastAPI + SQLite + OpenDartReader + pykrx + yfinance
-- Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4 + shadcn/ui + Recharts + lightweight-charts + React Flow(@xyflow/react, 노드-링크 그래프) + dagre(그래프 레이아웃) + TanStack Query
+- Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4 + shadcn/ui + Recharts + lightweight-charts + React Flow(@xyflow/react, 노드-링크 그래프) + dagre(그래프 레이아웃) + TanStack Query + TanStack Table v8(shadcn Table 위 정렬 표, `analysis/AnalysisResults` 후보 목록)
 - Routing: react-router-dom v6 (URL = single source of truth)
 
 ## Component Hierarchy

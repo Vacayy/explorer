@@ -24,6 +24,19 @@ def _company_link(name: str, code: str | None) -> str:
     return f"/feed?view=documents&q={quote(name, safe='')}"
 
 
+EXCERPT_CHARS = 600
+
+
+def _excerpt(body: str | None, heading: str | None) -> str:
+    """긴 생성 문서는 피드에 요약만 싣는다 (D-208) — 지정 소제목 구간, 없으면 앞부분. 전문은 상세 링크로."""
+    text = (body or "").strip()
+    if heading and f"## {heading}" in text:
+        text = text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0].strip()
+    if len(text) > EXCERPT_CHARS:
+        text = text[:EXCERPT_CHARS].rsplit("\n", 1)[0].rstrip() + " …"
+    return text
+
+
 def _documents(conn, ids: list[int]) -> dict[int, FeedDocument]:
     if not ids:
         return {}
@@ -74,7 +87,7 @@ def _projection(conn, scope="all", source="all"):
                rd.source_type || ':' || CASE WHEN rd.source_type='blog' THEN feed_blog_key(rd.url)
                  ELSE substr(rd.source_id,1,instr(rd.source_id,'/')-1) END channel,
                rd.source_type platform, '' name,
-               substr(COALESCE(NULLIF(rd.title,''),rd.markdown,''),1,180) preview
+               substr(COALESCE(NULLIF(rd.title,''),rd.markdown,''),1,180) preview, NULL topic
         FROM raw_documents rd WHERE
         (?='all' OR rd.source_type=?) AND (
           (rd.source_type='telegram' AND EXISTS (
@@ -90,21 +103,33 @@ def _projection(conn, scope="all", source="all"):
         )
     """
     system_sql = """
-        SELECT 'company:' || d.id id, 'company' kind, d.id ref, d.created_at ts, 'company:' || e.id channel, 'system' platform, e.name name, substr(d.digest,1,180) preview
+        SELECT 'company:' || d.id id, 'company' kind, d.id ref, d.created_at ts, 'company:' || e.id channel, 'system' platform, e.name name, substr(d.digest,1,180) preview, e.name topic
         FROM entity_digests d JOIN entities e ON e.id=d.entity_id
         WHERE e.type='company' AND trim(COALESCE(d.digest,''))!=''
         UNION ALL
-        SELECT 'person:' || id, 'person', id, created_at, 'person:' || key, 'system', key, substr(digest,1,180) FROM source_digests
+        SELECT 'person:' || id, 'person', id, created_at, 'person:' || key, 'system', key, substr(digest,1,180), NULL FROM source_digests
         WHERE kind='person' AND trim(COALESCE(digest,''))!=''
         UNION ALL
-        SELECT 'transcript:' || t.id, 'transcript', t.id, t.fetched_at, 'transcript:' || t.ticker, 'system', COALESCE(f.company_name,t.ticker) || ' · 컨콜', substr(COALESCE(t.digest,'새 컨콜 원문'),1,180) FROM transcripts t
+        SELECT 'transcript:' || t.id, 'transcript', t.id, t.fetched_at, 'transcript:' || t.ticker, 'system', COALESCE(f.company_name,t.ticker) || ' · 컨콜', substr(COALESCE(t.digest,'새 컨콜 원문'),1,180), NULL FROM transcripts t
         JOIN transcript_follow f ON f.ticker=t.ticker AND f.active=1
         JOIN raw_documents rd ON rd.id=t.raw_doc_id
         UNION ALL
-        SELECT 'trade:' || s.period, 'trade', s.period, MAX(s.fetched_at), 'trade:all', 'system', '관심 수출입 품목', s.period || ' 수출입 통계'
+        SELECT 'trade:' || s.period, 'trade', s.period, MAX(s.fetched_at), 'trade:all', 'system', '관심 수출입 품목', s.period || ' 수출입 통계', NULL
         FROM trade_stats s JOIN trade_follow f ON f.hs_code=s.hs_code AND f.active=1
         WHERE s.period=(SELECT MAX(s2.period) FROM trade_stats s2 WHERE s2.hs_code=s.hs_code)
         GROUP BY s.period
+        UNION ALL
+        SELECT 'narrative:' || n.id, 'narrative', n.id, n.created_at, 'narrative:all', 'system', 'Explorer · 내러티브',
+               substr(COALESCE(NULLIF(n.title,''),n.topic),1,180), n.topic
+        FROM narratives n WHERE trim(COALESCE(n.body,''))!=''
+        UNION ALL
+        SELECT 'report:' || r.id, 'report', r.id, r.created_at, 'report:all', 'system', 'Explorer · 리포트',
+               substr(COALESCE(NULLIF(r.title,''),r.anchor_topic),1,180), r.anchor_topic
+        FROM reports r WHERE trim(COALESCE(r.body,''))!=''
+        UNION ALL
+        SELECT 'scenario:' || sc.topic, 'scenario', sc.topic, sc.created_at, 'scenario:all', 'system', 'Explorer · 파급 분석',
+               substr(sc.topic || ' 파급 분석',1,180), sc.topic
+        FROM scenarios sc WHERE trim(COALESCE(sc.answer,''))!=''
     """
     parts, params = [], []
     if scope in ("all", "sources"):
@@ -115,15 +140,17 @@ def _projection(conn, scope="all", source="all"):
     return " UNION ALL ".join(parts), params
 
 
-def timeline(conn, *, scope="all", kind="all", source="all", channel=None, page=1, size=20, until=None):
+def timeline(conn, *, scope="all", kind="all", source="all", channel=None, topic=None, page=1, size=20, until=None):
     now = datetime.now(timezone.utc).isoformat()
     until = utc(until) if until else now
     sql, params = _projection(conn, scope, source)
     rows = conn.execute(f"""
         WITH updates AS ({sql}) SELECT * FROM updates
         WHERE julianday(ts)<=julianday(?) AND (?='all' OR kind=?) AND (? IS NULL OR channel=?)
+          AND (? IS NULL OR topic=? OR (kind='source' AND ref IN (
+                SELECT el.doc_id FROM entity_links el JOIN entities e ON e.id=el.entity_id WHERE e.name=?)))
         ORDER BY julianday(ts) DESC, id DESC LIMIT ? OFFSET ?
-    """, [*params, until, kind, kind, channel, channel, size + 1, (page - 1) * size]).fetchall()
+    """, [*params, until, kind, kind, channel, channel, topic, topic, topic, size + 1, (page - 1) * size]).fetchall()
     has_more = len(rows) > size
     rows = rows[:size]
     docs = _documents(conn, [r["ref"] for r in rows if r["kind"] == "source"])
@@ -156,6 +183,26 @@ def timeline(conn, *, scope="all", kind="all", source="all", channel=None, page=
                                 period=f"회계분기 {period}", time_label="수집", evidence_count=1,
                                 ai_generated=bool(r["digest"]), to=f"/follow/transcripts?t={ref}",
                                 links=[TimelineLink(label="컨콜 원문", to=f"/doc/{r['raw_doc_id']}")])
+        elif item_kind == "narrative":
+            r = conn.execute("SELECT * FROM narratives WHERE id=?", (ref,)).fetchone()
+            item = TimelineItem(**base, title=r["title"] or r["topic"], subject=r["topic"],
+                                body=_excerpt(r["body"], "3줄 요약"), period=f"v{r['version']}",
+                                time_label="생성", evidence_count=r["doc_count"], ai_generated=True,
+                                to=f"/narrative?topic={quote(r['topic'], safe='')}")
+        elif item_kind == "report":
+            r = conn.execute("SELECT * FROM reports WHERE id=?", (ref,)).fetchone()
+            try:
+                members = len(json.loads(r["members_json"] or "[]"))
+            except (ValueError, TypeError):
+                members = None
+            item = TimelineItem(**base, title=r["title"] or f"{r['anchor_topic']} 통합 리포트", subject=r["anchor_topic"],
+                                body=_excerpt(r["body"], "결론"), time_label="발간", evidence_count=members,
+                                ai_generated=True, to=f"/report?topic={quote(r['anchor_topic'], safe='')}")
+        elif item_kind == "scenario":
+            r = conn.execute("SELECT * FROM scenarios WHERE topic=?", (ref,)).fetchone()
+            to = f"/question/{r['question_id']}" if r["question_id"] else f"/narrative?topic={quote(r['topic'], safe='')}"
+            item = TimelineItem(**base, title=f"{r['topic']} 파급 분석", subject=r["topic"],
+                                body=_excerpt(r["answer"], None), time_label="생성", ai_generated=True, to=to)
         else:
             stats = conn.execute("SELECT f.hs_code,f.item_name FROM trade_stats s JOIN trade_follow f ON f.hs_code=s.hs_code AND f.active=1 WHERE s.period=? AND s.period=(SELECT MAX(s2.period) FROM trade_stats s2 WHERE s2.hs_code=s.hs_code) ORDER BY f.group_label,f.hs_code", (ref,)).fetchall()
             names = " · ".join(r["item_name"] for r in stats[:3])
@@ -171,11 +218,16 @@ def channels(conn, *, until=None):
     """Aggregate the entire visible corpus, loading only each channel's latest excerpt."""
     until = utc(until) if until else datetime.now(timezone.utc).isoformat()
     sql, params = _projection(conn)
+    # 안 읽음(D-200): 소스별 read_until(없으면 '*' 기준선) 이후 게시물 수. 조회는 여전히 읽기 전용.
     rows = conn.execute(f"""
         WITH updates AS ({sql}), ranked AS (
-          SELECT *, COUNT(*) OVER (PARTITION BY channel) count,
-            ROW_NUMBER() OVER (PARTITION BY channel ORDER BY julianday(ts) DESC,id DESC) rank
-          FROM updates WHERE julianday(ts)<=julianday(?)
+          SELECT u.*, COUNT(*) OVER (PARTITION BY u.channel) count,
+            SUM(CASE WHEN julianday(u.ts) > julianday(COALESCE(r.read_until,
+                  (SELECT read_until FROM channel_reads WHERE channel='*'), '1970-01-01')) THEN 1 ELSE 0 END)
+              OVER (PARTITION BY u.channel) unread,
+            ROW_NUMBER() OVER (PARTITION BY u.channel ORDER BY julianday(u.ts) DESC,u.id DESC) rank
+          FROM updates u LEFT JOIN channel_reads r ON r.channel=u.channel
+          WHERE julianday(u.ts)<=julianday(?)
         ) SELECT * FROM ranked WHERE rank=1
     """, [*params, until]).fetchall()
     registered = {}
@@ -191,7 +243,25 @@ def channels(conn, *, until=None):
         ident = r['channel']
         registered[ident] = TimelineChannel(
             id=ident, name=registered[ident].name if ident in registered else r['name'] or ident,
-            platform=r['platform'], count=r['count'], latest_at=utc(r['ts']), preview=r['preview'] or '',
+            platform=r['platform'], count=r['count'], unread=r['unread'] or 0, latest_at=utc(r['ts']), preview=r['preview'] or '',
         )
     items = sorted(registered.values(), key=lambda i: (i.latest_at or '', i.id), reverse=True)
-    return TimelineChannelsResponse(items=items, total=sum(i.count for i in items), until=until)
+    return TimelineChannelsResponse(items=items, total=sum(i.count for i in items),
+                                    total_unread=sum(i.unread for i in items), until=until)
+
+
+def mark_read(conn, channel: str, read_until: str) -> dict:
+    """소스를 read_until까지 읽음으로 표시 (D-200). 뒤로 가지 않는다 — 이미 더 나중까지 읽었으면 유지."""
+    if not channel or len(channel) > 300:
+        raise ValueError('channel required')
+    stamp = utc(read_until)
+    conn.execute("""
+        INSERT INTO channel_reads (channel, read_until, updated_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(channel) DO UPDATE SET
+          read_until = CASE WHEN julianday(excluded.read_until) > julianday(channel_reads.read_until)
+                            THEN excluded.read_until ELSE channel_reads.read_until END,
+          updated_at = datetime('now')
+    """, (channel, stamp))
+    conn.commit()
+    row = conn.execute('SELECT read_until FROM channel_reads WHERE channel=?', (channel,)).fetchone()
+    return {'channel': channel, 'read_until': row['read_until']}

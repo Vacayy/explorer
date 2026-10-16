@@ -1,10 +1,10 @@
-import { ResearchResults } from './ResearchResults'
-import { ResearchMode, type ResearchScope } from './ResearchMode'
+import { ResearchResults } from '@/components/study/ResearchResults'
+import { ResearchMode, type ResearchScope } from '@/components/study/ResearchMode'
 import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Highlighter, MessageSquarePlus, MousePointer2, Sparkles, ArrowLeft, Send, Trash2 } from 'lucide-react'
+import { Sparkles, ArrowLeft, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -16,14 +16,21 @@ import { Markdown } from '@/components/shared/Markdown'
 import { ErrorState } from '@/components/shared/ErrorState'
 import SegmentTabs from '@/components/shared/SegmentTabs'
 import { citationComponents, linkifyCitations } from '@/components/chat/citations'
-import type { ChatMessage } from '@/types'
-import { type Annotation, errorMessage, useStudy } from './useStudy'
+import type { ChatMessage, StudyTool, StudyIntent } from '@/types'
+import { StudyPalette, intentLabel } from '@/components/study/StudyPalette'
+import { AnnotationActions } from '@/components/study/AnnotationActions'
+import { useStudyActions, type StudyActionsController } from '@/hooks/useStudyActions'
+import { type Annotation, errorMessage, useStudy } from '@/components/study/useStudy'
 
 type Selection={start:number;end:number;exact:string}
-type Mode='read'|'highlight'|'comment'
+type Mode=StudyTool
 export default function StudyPage(){const {id}=useParams();return <StudyWorkspace key={id} id={Number(id)}/>}
 export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, noteHost, initialPicked, history, onNotes, onAsk, onSelection, onDirty}: {id:number; embedded?:boolean; active?:boolean; unifiedNotes?:boolean; noteHost?:HTMLElement|null; initialPicked?:number[]; history?:Annotation[]; onNotes?:()=>void; onAsk?:(id:number,annotations:Annotation[],question:string)=>void; onSelection?:(id:number,annotations:Annotation[])=>void; onDirty?:(id:number,dirty:boolean)=>void}){
  const q=useStudy(id),cache=useQueryClient(),s=q.data
+ const actions=useStudyActions(id)
+ const [focusedAnnotation,setFocusedAnnotation]=useState<number|null>(null)
+ const selectionRef=useRef<Selection|null>(null),interactionRef=useRef(0)
+ const [failedSelections,setFailedSelections]=useState<{selection:Selection;intent:StudyIntent}[]>([])
  const [params,setParams]=useSearchParams()
  const [mode,setMode]=useState<Mode>('read'),[panel,setPanel]=useState('notes'),[mobile,setMobile]=useState('read')
  const [dirtyIds,setDirtyIds]=useState<number[]>([])
@@ -44,9 +51,10 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
  const chars=useMemo(()=>Array.from(s?.body??''),[s?.body])
  const blocks=useMemo(()=>{const out:{text:string;start:number;end:number}[]=[];let pos=0;for(const match of (s?.body??'').matchAll(/[^\n]*\n|[^\n]+$/g)){const text=match[0],end=pos+Array.from(text).length;out.push({text,start:pos,end});pos=end}return out},[s?.body])
  useEffect(()=>{if(s&&active&&!restored.current&&readerRef.current){try{readerRef.current.scrollTop=Number(sessionStorage.getItem(`study-position-${id}`)||0)}catch{/* storage unavailable */}restored.current=true}},[s,id,active])
- useEffect(()=>{const target=Number(params.get('annotation'));if(s&&target&&active){setMobile('read');requestAnimationFrame(()=>textRef.current?.querySelector(`[data-annotation~="${target}"]`)?.scrollIntoView({block:'center'}))}},[params,s?.id,active])
+ useEffect(()=>{const target=Number(params.get('annotation'));if(s&&target&&active){setFocusedAnnotation(target);setMobile('read');requestAnimationFrame(()=>textRef.current?.querySelector(`[data-annotation~="${target}"]`)?.scrollIntoView({block:'center'}))}},[params,s?.id,active])
  useEffect(()=>{if(panel==='chat')chatRef.current?.scrollTo({top:chatRef.current.scrollHeight,behavior:'smooth'})},[conv.data?.messages.length,panel])
- useEffect(()=>{const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'){setMode('read');setPending(null)}};document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[])
+ useEffect(()=>{const remember=()=>{const current=selection();if(current)selectionRef.current=current};document.addEventListener('selectionchange',remember);return()=>document.removeEventListener('selectionchange',remember)},[])
+ useEffect(()=>{const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'){setMode('read');setPending(null);selectionRef.current=null}};document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[])
  async function reload(){await q.refetch();await cache.invalidateQueries({queryKey:['spine','studies']});if(s?.project_id)await cache.invalidateQueries({queryKey:['spine','study-project',s.project_id]})}
  function side(value:string){if(embedded){if(value==='chat'){onAsk?.(id,refs,question||'선택한 부분과 내 코멘트를 함께 보고 설명해 주세요.');return}onNotes?.()}setPanel(value);setMobile(value)}
  function selection():Selection|null{const el=textRef.current,sel=window.getSelection();if(!el||!sel?.rangeCount||!sel.toString().trim()||!el.contains(sel.anchorNode)||!el.contains(sel.focusNode))return null;const r=sel.getRangeAt(0),pre=r.cloneRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);const start=Array.from(pre.toString()).length,exact=r.toString();return{start,end:start+Array.from(exact).length,exact}}
@@ -55,9 +63,15 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
   try{const {data}=await api.post<Annotation>(`/api/spine/studies/${id}/annotations`,{...sel,kind,comment:note});setPicked(p=>[...p,data.id]);await reload();setPending(null);setComment('');window.getSelection()?.removeAllRanges();toast.success(kind==='highlight'?'하이라이트 저장됨':'코멘트 저장됨')}
   catch(e){toast.error(errorMessage(e))}finally{savingRef.current=false;setSaving(false)}
  }
- function applySelection(){const sel=selection();if(!sel)return;if(mode==='highlight')void add(sel,'highlight');else if(mode==='comment'){setPending(sel);setComment('');side('notes')}}
+ function revealAnnotation(aid:number){setFocusedAnnotation(aid);side('notes');requestAnimationFrame(()=>{const card=document.getElementById(`study-note-${id}-${aid}`);const scroller=card?.closest('.project-unified-notes')??card?.closest('.study-notes');if(card&&scroller){const delta=card.getBoundingClientRect().top-scroller.getBoundingClientRect().top;scroller.scrollTop+=delta-12}})}
+ async function addAction(sel:Selection,intent:StudyIntent){
+  const interaction=++interactionRef.current;selectionRef.current=null;window.getSelection()?.removeAllRanges()
+  try{const result=await actions.submit({intent,selection:sel});setFailedSelections(previous=>previous.filter(item=>item.intent!==intent||item.selection.start!==sel.start||item.selection.end!==sel.end));if(interaction===interactionRef.current)revealAnnotation(result.annotation_id);toast.success(`${intentLabel(intent)} 요청됨`)}
+  catch(e){setFailedSelections(previous=>previous.some(item=>item.intent===intent&&item.selection.start===sel.start&&item.selection.end===sel.end)?previous:[...previous,{selection:sel,intent}]);toast.error(errorMessage(e))}
+ }
+ function applySelection(remembered=false){const sel=selection()||(remembered?selectionRef.current:null);if(!sel)return;selectionRef.current=null;if(mode==='highlight')void add(sel,'highlight');else if(mode==='comment'){setPending(sel);setComment('');side('notes')}else if(mode!=='read')void addAction(sel,mode)}
  function clickText(e:React.MouseEvent){
-  if(mode==='read'){const ids=(e.target as HTMLElement).closest('[data-annotation]')?.getAttribute('data-annotation')?.split(' ').filter(Boolean).map(Number)??[];if(ids.length){setPicked(ids);side('notes')}return}
+  if(!selection()){const ids=(e.target as HTMLElement).closest('[data-annotation]')?.getAttribute('data-annotation')?.split(' ').filter(Boolean).map(Number)??[];if(ids.length){interactionRef.current++;setPicked(ids);const target=ids.find(aid=>s?.annotations.some(a=>a.id===aid&&a.intent===mode))??[...ids].reverse().find(aid=>actions.data?.some(a=>a.annotation_id===aid))??ids[0];revealAnnotation(target);return}}
   if(mode!=='comment')return
   const sel=selection();if(sel){setPending(sel);setComment('');side('notes');return}
   const el=textRef.current;if(!el)return
@@ -94,19 +108,20 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
  return <TooltipProvider><Frame header={<PageHeader title={s.title} description={`스터디 · ${s.body_kind} · 고정 본문`} actions={<><Button variant="ghost" size="sm" asChild><Link to={s.document_id?`/doc/${s.document_id}`:`/study/projects/${s.project_id}`}><ArrowLeft/>문서 상세</Link></Button><Button variant="ghost" size="sm" asChild><Link to="/study">스터디 목록</Link></Button></>}/> }>
  <div className="study-workspace" data-panel={mobile}>
   <div className="study-palette" role="toolbar" aria-label="스터디 도구 팔레트">
-   {([{key:'read',label:'읽기',Icon:MousePointer2},{key:'highlight',label:'하이라이트',Icon:Highlighter},{key:'comment',label:'코멘트',Icon:MessageSquarePlus}] as const).map(t=><Button key={t.key} variant={mode===t.key?'secondary':'ghost'} size="sm" aria-pressed={mode===t.key} onClick={()=>{setMode(t.key);setMobile('read')}}><t.Icon aria-hidden="true"/>{t.label}</Button>)}
-   <span className="text-caption text-muted-foreground">{saving?'저장 중…':mode==='highlight'?'드래그하면 표시 · Esc로 읽기':mode==='comment'?'문장을 클릭하면 코멘트':'표시한 문장을 눌러 위치 확인'}</span>
-   {mode==='highlight'&&<Button size="sm" variant="ghost" onClick={applySelection}>선택 영역 표시</Button>}
+   <StudyPalette value={mode} onChange={value=>{setMode(value);setMobile('read')}}/>
+   <span className="text-caption text-muted-foreground">{saving?'저장 중…':mode==='highlight'?'드래그하면 표시 · Esc로 읽기':mode==='comment'?'문장을 클릭하면 코멘트':mode==='read'?'표시를 누르면 저장된 답변 확인':`${intentLabel(mode)} · 드래그하면 AI에 바로 질문 · Esc로 읽기`}</span>
+   {mode!=='read'&&<Button size="sm" variant="ghost" onPointerDown={e=>e.preventDefault()} onClick={()=>applySelection(true)}>선택 영역에 적용</Button>}
    {embedded&&<Button size="sm" variant="ghost" onClick={()=>side('notes')}>노트 {s.annotations.length}</Button>}
    <Button className="ml-auto" size="sm" variant="outline" disabled={busy||generating||!selectedHighlights.length} onClick={()=>send('summarize',selectedHighlights)}><Sparkles aria-hidden="true"/>하이라이트 요약</Button>
   </div>
+  {failedSelections.map(item=><div key={`${item.intent}-${item.selection.start}-${item.selection.end}`} className="p-3 text-sm border-b" role="alert">{intentLabel(item.intent)} · “{item.selection.exact.slice(0,45)}” 요청을 확인하지 못했습니다.<Button size="sm" variant="outline" className="ml-2" onClick={()=>addAction(item.selection,item.intent)}>표시 요청 다시 보내기</Button></div>)}
   <div className="study-mobile-tabs"><SegmentTabs tabs={[{value:'read',label:'문서'},{value:'notes',label:`노트 ${s.annotations.length}`},{value:'chat',label:'AI 대화'}]} value={mobile} onChange={v=>{setMobile(v);if(v!=='read')setPanel(v)}}/></div>
   <div className="study-columns">
    <article className="study-reader" aria-label="스터디 원문" ref={readerRef} onScroll={()=>{if(!active)return;try{sessionStorage.setItem(`study-position-${id}`,String(readerRef.current?.scrollTop??0))}catch{/* private storage */}}}>
     <p className="mb-5 text-caption text-muted-foreground">{s.source_type} · {s.body_kind} · 주석을 보존하기 위해 처음 연 본문을 유지합니다.</p>
     {historical&&<p className="mb-3 text-caption text-muted-foreground">삭제된 주석의 당시 위치를 표시합니다. 인용과 코멘트는 대화 이력에 보존돼 있습니다.</p>}
-    <div ref={textRef} className="study-text" data-tool={mode} onPointerUp={()=>{if(mode==='highlight')setTimeout(applySelection,0)}} onClick={clickText}>
-     {blocks.map(block=>{const marks=displayedAnnotations.filter(a=>a.start_offset<block.end&&a.end_offset>block.start);const cuts=[...new Set([block.start,block.end,...marks.flatMap(a=>[Math.max(block.start,a.start_offset),Math.min(block.end,a.end_offset)])])].sort((a,b)=>a-b);return <div key={block.start} data-block-start={block.start} tabIndex={mode==='comment'?0:undefined} onKeyDown={e=>{if(mode==='comment'&&e.key==='Enter'){e.preventDefault();setPending({start:block.start,end:block.end,exact:block.text});setComment('');side('notes')}}}>{cuts.slice(0,-1).map((start,i)=>{const end=cuts[i+1],active=marks.filter(a=>a.start_offset<end&&a.end_offset>start),highlight=active.some(a=>a.kind==='highlight'),note=active.some(a=>a.comment||a.kind==='comment');return <span key={start} data-annotation={active.map(a=>a.id).join(' ')} className={`${highlight?'study-highlight ':''}${note?'study-comment-anchor ':''}${active.some(a=>picked.includes(a.id))?'study-picked':''}`} title={active.map(a=>a.comment).filter(Boolean).join('\n')}>{chars.slice(start,end).join('')}</span>})}</div>})}
+    <div ref={textRef} className="study-text" tabIndex={0} aria-label="선택 가능한 원문" data-tool={mode} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();applySelection(true)}}} onPointerUp={e=>{if(mode!=='read'&&mode!=='comment')setTimeout(()=>applySelection(),e.pointerType==='touch'?250:0)}} onClick={clickText}>
+     {blocks.map(block=>{const marks=displayedAnnotations.filter(a=>a.start_offset<block.end&&a.end_offset>block.start);const cuts=[...new Set([block.start,block.end,...marks.flatMap(a=>[Math.max(block.start,a.start_offset),Math.min(block.end,a.end_offset)])])].sort((a,b)=>a-b);return <div key={block.start} data-block-start={block.start} tabIndex={mode==='comment'?0:undefined} onKeyDown={e=>{if(mode==='comment'&&e.key==='Enter'){e.preventDefault();setPending({start:block.start,end:block.end,exact:block.text});setComment('');side('notes')}}}>{cuts.slice(0,-1).map((start,i)=>{const end=cuts[i+1],active=marks.filter(a=>a.start_offset<end&&a.end_offset>start),highlight=active.some(a=>a.kind==='highlight'),note=active.some(a=>a.comment||a.kind==='comment');return <span key={start} data-annotation={active.map(a=>a.id).join(' ')} data-intent={active.find(a=>a.intent&&a.intent!=='highlight')?.intent??'highlight'} className={`${highlight?'study-highlight ':''}${note?'study-comment-anchor ':''}${active.some(a=>picked.includes(a.id))?'study-picked':''}`} title={active.map(a=>`${a.kind==='comment'?'코멘트':intentLabel(a.intent??'highlight')}${a.comment?`: ${a.comment}`:''}`).join('\n')}>{chars.slice(start,end).join('')}</span>})}</div>})}
     </div>
     {/^https?:\/\//i.test(s.source_url||'')&&<a href={s.source_url} target="_blank" rel="noreferrer" className="mt-6 block text-caption text-primary underline">원문 사이트 ↗</a>}
    </article>
@@ -115,8 +130,9 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
     {embedded||panel==='notes'?<div className="study-notes">
      {pending&&<section className="study-note"><h2 className="text-sm font-semibold">이 문장에 코멘트</h2>{unifiedNotes&&<p className="text-caption text-muted-foreground">{s.title}</p>}<blockquote className="my-2 text-sm text-muted-foreground">{pending.exact}</blockquote><Textarea autoFocus value={comment} onChange={e=>setComment(e.target.value)} maxLength={10000} aria-label="새 코멘트" placeholder="어떤 생각이나 궁금증이 들었나요?"/><div className="mt-2 flex gap-2"><Button size="sm" disabled={saving||!comment.trim()} onClick={()=>add(pending,'comment',comment)}>코멘트 저장</Button><Button size="sm" variant="ghost" onClick={()=>setPending(null)}>취소</Button></div></section>}
      {!unifiedNotes&&<p className="text-caption text-muted-foreground">체크한 주석과 저장된 코멘트를 AI에 함께 보냅니다.</p>}
-     {!unifiedNotes&&!s.annotations.length&&!pending&&<p className="py-6 text-sm text-muted-foreground">팔레트에서 하이라이트를 선택하고 드래그하거나, 코멘트를 선택하고 문장을 클릭해 보세요.</p>}
-     {s.annotations.map(a=><AnnotationEditor key={a.id} annotation={a} sourceTitle={unifiedNotes?s.title:undefined} studyId={id} onDirty={dirty=>setDirtyIds(p=>dirty?[...new Set([...p,a.id])]:p.filter(x=>x!==a.id))} picked={picked.includes(a.id)} onPick={v=>setPicked(p=>v?[...p,a.id]:p.filter(x=>x!==a.id))} onJump={()=>jump(a)} onSaved={reload} onAsk={()=>{if(embedded){onAsk?.(id,[a],'이 문장과 내 코멘트를 설명해 주세요.');return}setPicked([a.id]);setQuestion('이 문장에서 내가 남긴 코멘트를 바탕으로 궁금한 점을 설명해 주세요.');side('chat')}}/>)}
+     {!unifiedNotes&&!s.annotations.length&&!pending&&<p className="py-6 text-sm text-muted-foreground">강조는 표시만 저장합니다. 이해하기·검토하기·관련 자료를 선택하고 드래그하면 여기에 AI 답변이 붙습니다.</p>}
+     {actions.isError&&<p role="alert" className="text-sm text-destructive">표시별 AI 답변을 불러오지 못했습니다.<Button size="xs" variant="outline" onClick={()=>actions.refetch()}>답변 다시 불러오기</Button></p>}
+     {s.annotations.map(a=><AnnotationEditor actions={actions} expanded={focusedAnnotation===a.id} onExpand={v=>setFocusedAnnotation(v?a.id:null)} key={a.id} annotation={a} sourceTitle={unifiedNotes?s.title:undefined} studyId={id} onDirty={dirty=>setDirtyIds(p=>dirty?[...new Set([...p,a.id])]:p.filter(x=>x!==a.id))} picked={picked.includes(a.id)} onPick={v=>setPicked(p=>v?[...p,a.id]:p.filter(x=>x!==a.id))} onJump={()=>jump(a)} onSaved={reload} onAsk={()=>{if(embedded){onAsk?.(id,[a],'이 문장과 내 코멘트를 설명해 주세요.');return}setPicked([a.id]);setQuestion('이 문장에서 내가 남긴 코멘트를 바탕으로 궁금한 점을 설명해 주세요.');side('chat')}}/>)}
      {refs.length>0&&<Button variant="outline" size="sm" className="w-full" onClick={()=>{side('chat');setQuestion('선택한 부분과 내 코멘트를 함께 보고 설명해 주세요.')}}><Send/>선택한 코멘트·주석을 AI에 넘기기</Button>}
     </div>:<>
      <div className="study-chat" ref={chatRef} aria-live="polite">
@@ -140,9 +156,9 @@ export function StudyWorkspace({id, embedded, active=true, unifiedNotes=false, n
 }
 function StudyFrame({children}:{children:React.ReactNode;header?:React.ReactNode}){return <div className="project-study-reader">{children}</div>}
 function StudyAside({embedded,active,host,children}:{embedded?:boolean;active:boolean;host?:HTMLElement|null;children:React.ReactNode}){return embedded?(host?createPortal(<div className="project-document-notes" hidden={!active}>{children}</div>,host):null):children}
-function AnnotationEditor({annotation:a,sourceTitle,studyId,picked,onPick,onJump,onSaved,onAsk,onDirty}:{annotation:Annotation;sourceTitle?:string;studyId:number;picked:boolean;onPick:(v:boolean)=>void;onJump:()=>void;onSaved:()=>Promise<void>;onAsk:()=>void;onDirty:(dirty:boolean)=>void}){
+function AnnotationEditor({annotation:a,sourceTitle,studyId,picked,onPick,onJump,onSaved,onAsk,onDirty,actions,expanded,onExpand}:{actions:StudyActionsController;expanded:boolean;onExpand:(v:boolean)=>void;annotation:Annotation;sourceTitle?:string;studyId:number;picked:boolean;onPick:(v:boolean)=>void;onJump:()=>void;onSaved:()=>Promise<void>;onAsk:()=>void;onDirty:(dirty:boolean)=>void}){
  const [draft,setDraft]=useState(a.comment),[busy,setBusy]=useState(false),[error,setError]=useState('')
  const dirty=draft!==a.comment
  async function save(remove=false){setBusy(true);setError('');try{await api.patch(`/api/spine/studies/${studyId}/annotations/${a.id}`,{revision:a.revision,comment:draft,delete:remove});onDirty(false);await onSaved()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
- return <section className="study-note">{sourceTitle&&<Button variant="secondary" size="xs" className="study-source-tag" title={sourceTitle} aria-label={`${sourceTitle} 인용 위치로 이동`} onClick={onJump}>{sourceTitle}</Button>}<div className="flex items-start gap-2"><Checkbox aria-label={`AI에 포함 주석 ${a.id}`} checked={picked} onCheckedChange={v=>onPick(v===true)}/><Button variant="ghost" className="h-auto min-w-0 flex-1 whitespace-normal text-left justify-start p-0 text-sm font-normal" onClick={onJump}>{a.exact}</Button></div><Textarea className="mt-3" aria-label={`코멘트 ${a.id}`} value={draft} onChange={e=>{setDraft(e.target.value);onDirty(e.target.value!==a.comment)}} maxLength={10000} placeholder="내 생각이나 궁금증을 남기세요"/><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy||!dirty} onClick={()=>save()}>{busy?'저장 중…':dirty?'코멘트 저장':'저장됨'}</Button><Button size="sm" variant="ghost" disabled={busy||dirty} onClick={onAsk}>AI에 넘기기</Button><Button size="icon-sm" variant="ghost" className="ml-auto" aria-label={`주석 ${a.id} 삭제`} disabled={busy} onClick={()=>save(true)}><Trash2 aria-hidden="true"/></Button></div>{dirty&&<p className="text-caption text-muted-foreground mt-1">저장 후 AI에 넘길 수 있습니다.</p>}{error&&<p role="alert" className="text-caption text-destructive mt-1">{error} 입력 내용은 유지됩니다.</p>}</section>
+ return <section className="study-note" id={`study-note-${studyId}-${a.id}`} data-focused={expanded}><p className="text-caption text-muted-foreground mb-2">{a.kind==='comment'?'코멘트':intentLabel(a.intent??'highlight')}</p>{sourceTitle&&<Button variant="secondary" size="xs" className="study-source-tag" title={sourceTitle} aria-label={`${sourceTitle} 인용 위치로 이동`} onClick={onJump}>{sourceTitle}</Button>}<div className="flex items-start gap-2"><Checkbox aria-label={`AI에 포함 주석 ${a.id}`} checked={picked} onCheckedChange={v=>onPick(v===true)}/><Button variant="ghost" className="h-auto min-w-0 flex-1 whitespace-normal text-left justify-start p-0 text-sm font-normal" onClick={onJump}>{a.exact}</Button></div><AnnotationActions annotation={a} controller={actions} disabled={busy||dirty} expanded={expanded} onExpand={onExpand} onAdopt={text=>{setDraft(d=>d+(d?'\n\n':'')+'AI 답변에서 가져옴\n'+text);onDirty(true);toast('코멘트 초안에 가져왔습니다. 수정 후 저장해 주세요.')}}/><label className="block mt-3 text-caption text-muted-foreground" htmlFor={`annotation-comment-${a.id}`}>내 코멘트</label><Textarea id={`annotation-comment-${a.id}`} className="mt-1" aria-label={`코멘트 ${a.id}`} value={draft} onChange={e=>{setDraft(e.target.value);onDirty(e.target.value!==a.comment)}} maxLength={10000} placeholder="내 생각이나 궁금증을 남기세요"/><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy||!dirty} onClick={()=>save()}>{busy?'저장 중…':dirty?'코멘트 저장':'저장됨'}</Button><Button size="sm" variant="ghost" disabled={busy||dirty} onClick={onAsk}>AI에 넘기기</Button><Button size="icon-sm" variant="ghost" className="ml-auto" aria-label={`주석 ${a.id} 삭제`} disabled={busy} onClick={()=>save(true)}><Trash2 aria-hidden="true"/></Button></div>{dirty&&<p className="text-caption text-muted-foreground mt-1">저장 후 AI에 넘길 수 있습니다.</p>}{error&&<p role="alert" className="text-caption text-destructive mt-1">{error} 입력 내용은 유지됩니다.</p>}</section>
 }

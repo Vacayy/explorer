@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from database import get_connection
+from pipeline.transcript import cy_label
 
 router = APIRouter(prefix="/api/spine/transcript", tags=["spine"])
 
@@ -18,6 +19,7 @@ class LatestCall(BaseModel):
     transcript_id: int
     fiscal_year: int | None
     fiscal_period: str | None
+    cy: str | None = None          # 달력분기 표시 라벨(CY2026 Q2) — 표시 전용, 키는 FY
     call_date: str | None
     has_digest: bool
 
@@ -30,12 +32,17 @@ class FollowRow(BaseModel):
     latest: LatestCall | None
     last_report_date: str | None = None   # yfinance 실적 발표일 캐시 (D-081)
     next_report_date: str | None = None
+    market_cap: float | None = None       # 정렬용(시가총액순)
+    category: str | None = None           # 사업분류 — 손으로 붙인 그룹, NDX 추가 종목은 SEC SIC 분류
+    latest_results_date: str | None = None   # 가장 최근 '본 실적'(컨콜 또는 실적 수치가 있는 보도자료) 날짜
+    season_updated: bool = False          # 이번 실적 시즌에 실적이 나왔나(목록 태그)
 
 
 class QuarterRow(BaseModel):
     transcript_id: int
     fiscal_year: int | None
     fiscal_period: str | None
+    cy: str | None = None
     call_date: str | None
     has_digest: bool
 
@@ -46,6 +53,7 @@ class Detail(BaseModel):
     company_name: str
     fiscal_year: int | None
     fiscal_period: str | None
+    cy: str | None = None
     call_date: str | None
     digest: str | None
     body: str
@@ -64,8 +72,18 @@ class FollowReq(BaseModel):
 @router.get("/follow", response_model=list[FollowRow])
 def list_follow():
     conn = get_connection()
-    rows = conn.execute("SELECT ticker, company_name, group_label FROM transcript_follow "
+    from pipeline.call_momentum import season
+    from pipeline.sec_filings import industry_label
+    from datetime import date as _date
+    season_start = season(_date.today().isoformat())["start"]
+    rows = conn.execute("SELECT ticker, company_name, group_label, market_cap, sic, fiscal_year_end FROM transcript_follow "
                         "WHERE active=1 ORDER BY group_label, ticker").fetchall()
+    # 본 실적 보도자료 = 매출과 주당 이익이 함께 있는 것(TSLA 인도량 공시도 'net income'을 한 번 언급해 그것만으론 못 가른다)
+    results = {}
+    for r in conn.execute("SELECT er.ticker, max(er.filing_date) d FROM earnings_releases er JOIN raw_documents rd ON rd.id=er.doc_id "
+                          "WHERE (rd.markdown LIKE '%revenue%' OR rd.markdown LIKE '%sales%') AND (rd.markdown LIKE '%per share%' OR rd.markdown LIKE '%diluted%') "
+                          "GROUP BY er.ticker"):
+        results[r["ticker"]] = r["d"]
     cal = {r["ticker"]: r for r in conn.execute(
         "SELECT ticker, last_report_date, next_report_date FROM transcript_calendar").fetchall()}
     out = []
@@ -77,13 +95,20 @@ def list_follow():
         if calls:
             c = calls[0]
             latest = LatestCall(transcript_id=c["id"], fiscal_year=c["fiscal_year"],
-                                fiscal_period=c["fiscal_period"], call_date=c["call_date"],
+                                fiscal_period=c["fiscal_period"], cy=cy_label(c["fiscal_year"], c["fiscal_period"], r["fiscal_year_end"]),
+                                call_date=c["call_date"],
                                 has_digest=bool(c["digest"]))
         cr = cal.get(r["ticker"])
+        call_d = max(((c["call_date"] or "")[:10] for c in calls), default="") or None
+        latest_results = max(filter(None, [call_d, results.get(r["ticker"])]), default=None)
         out.append(FollowRow(ticker=r["ticker"], company_name=r["company_name"],
                              group_label=r["group_label"], n_calls=len(calls), latest=latest,
                              last_report_date=cr["last_report_date"] if cr else None,
-                             next_report_date=cr["next_report_date"] if cr else None))
+                             next_report_date=cr["next_report_date"] if cr else None,
+                             market_cap=r["market_cap"],
+                             category=(industry_label(r["sic"]) or "기타") if r["group_label"] == "NDX" else r["group_label"],
+                             latest_results_date=latest_results,
+                             season_updated=bool(latest_results and latest_results >= season_start)))
     conn.close()
     return out
 
@@ -149,8 +174,8 @@ def collect_status():
     """진행 중 여부 + 마지막 실행 결과(job_runs) + 플래그 상태 — 버튼이 결과를 말할 수 있게."""
     from pipeline.ops import flag_enabled
     conn = get_connection()
-    row = conn.execute(
-        "SELECT status, summary, duration_ms, ran_at FROM job_runs WHERE job=? "
+    row = conn.execute(   # 버튼 실행(JOB)과 매일 07:20 정기 실행(cm_av, D-217) 중 최근 것
+        "SELECT status, summary, duration_ms, ran_at FROM job_runs WHERE job IN (?, 'cm_av') "
         "ORDER BY id DESC LIMIT 1", (JOB,)).fetchone()
     conn.close()
     return {"running": _collecting["running"], "started_at": _collecting["started_at"],
@@ -173,16 +198,17 @@ def list_quarters(ticker: str):
     rows = conn.execute(
         "SELECT id, fiscal_year, fiscal_period, call_date, digest FROM transcripts "
         "WHERE ticker=? ORDER BY fiscal_year DESC, fiscal_period DESC", (ticker.upper(),)).fetchall()
+    fye = (conn.execute("SELECT fiscal_year_end FROM transcript_follow WHERE ticker=?", (ticker.upper(),)).fetchone() or [None])[0]
     conn.close()
     return [QuarterRow(transcript_id=r["id"], fiscal_year=r["fiscal_year"],
-                       fiscal_period=r["fiscal_period"], call_date=r["call_date"],
+                       fiscal_period=r["fiscal_period"], cy=cy_label(r["fiscal_year"], r["fiscal_period"], fye), call_date=r["call_date"],
                        has_digest=bool(r["digest"])) for r in rows]
 
 
 def _detail_row(conn, transcript_id: int):
     return conn.execute(
         "SELECT t.id, t.raw_doc_id, t.ticker, t.fiscal_year, t.fiscal_period, t.call_date, t.digest, "
-        "rd.markdown, f.company_name FROM transcripts t "
+        "rd.markdown, f.company_name, f.fiscal_year_end FROM transcripts t "
         "JOIN raw_documents rd ON rd.id = t.raw_doc_id "
         "LEFT JOIN transcript_follow f ON f.ticker = t.ticker WHERE t.id=?", (transcript_id,)).fetchone()
 
@@ -206,6 +232,7 @@ def _build_detail(conn, row) -> "Detail":
     return Detail(transcript_id=row["id"], ticker=row["ticker"],
                   company_name=row["company_name"] or row["ticker"],
                   fiscal_year=row["fiscal_year"], fiscal_period=row["fiscal_period"],
+                  cy=cy_label(row["fiscal_year"], row["fiscal_period"], row["fiscal_year_end"]),
                   call_date=row["call_date"], digest=row["digest"], body=row["markdown"] or "",
                   nodes=g["nodes"], causal_edges=g["edges"])
 
@@ -326,3 +353,45 @@ def run_extract():
     from pipeline.transcript import extract_proxies, seed_proxies
     seed_proxies()
     return extract_proxies()
+
+
+@router.get("/momentum")
+def momentum():
+    """실적 발언 새 모멘텀(D-217) — 이번 실적 시즌 후보는 전면, 지난 시즌은 history로. 판정은 매일 07:20 call_momentum --daily."""
+    import os
+    from database import get_connection
+    from pipeline import call_momentum as cm
+    conn = get_connection()
+    try:
+        return {**cm.by_season(conn), "coverage": cm.coverage(conn),
+                "sec_configured": "@" in (os.getenv("SEC_USER_AGENT") or "")}
+    finally:
+        conn.close()
+
+
+class RecentCall(BaseModel):
+    transcript_id: int
+    ticker: str
+    company_name: str | None
+    fiscal_year: int
+    fiscal_period: str
+    cy: str | None = None
+    call_date: str | None
+    provider: str | None
+    fetched_at: str | None
+    has_digest: bool
+
+
+@router.get("/recent", response_model=list[RecentCall])
+def recent_calls(days: int = 7, limit: int = 40):
+    """최근 받은 컨콜(D-218) — 수집 시각 최신순. Fool·AV 어느 출처로 들어왔는지 함께."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT t.id transcript_id, t.ticker, tf.company_name, t.fiscal_year, t.fiscal_period, t.call_date, t.provider, "
+            "t.fetched_at, t.digest IS NOT NULL AND t.digest != '' has_digest, tf.fiscal_year_end FROM transcripts t "
+            "LEFT JOIN transcript_follow tf ON tf.ticker=t.ticker WHERE t.fetched_at >= datetime('now', ?) "
+            "ORDER BY t.fetched_at DESC LIMIT ?", (f"-{days} day", limit)).fetchall()
+        return [{**dict(r), "cy": cy_label(r["fiscal_year"], r["fiscal_period"], r["fiscal_year_end"])} for r in rows]
+    finally:
+        conn.close()

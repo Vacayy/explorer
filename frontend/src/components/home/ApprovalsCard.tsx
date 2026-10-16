@@ -22,7 +22,7 @@ interface ApprovalItem {
   stock_code: string | null
 }
 
-// 에이전트 제안함 kind (진화계획 3단계 v1, docs/specs/agent-proposals.md)
+// 에이전트 제안함 kind (진화계획 3단계 v1, docs/private/specs/agent-proposals.md)
 const AGENT_KINDS = new Set(["neglect", "contested_edge", "devils_advocate", "falsifier_watch", "vocab_merge", "report_suggest", "entity_alias"])
 // kind별 메타 + 카드 표시 순서 (에이전트 제안 먼저, 별칭·지식은 뒤)
 type KindMeta = { label: string; Icon: React.ComponentType<{ className?: string }> }

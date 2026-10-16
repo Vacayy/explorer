@@ -44,8 +44,20 @@ PATH = ":".join(p for p in [_NODE_BIN, "/opt/homebrew/bin", "/usr/local/bin",
 # (label, 실행 인자, 스케줄) — 스케줄은 int(초 간격) 또는 StartCalendarInterval dict/list
 JOBS = [
     ("chain", [str(PROJECT / "scripts" / "run_chain.sh")], 1800),
+    # KRX 종가는 16:30에 확정 송출(네이버 closePriceSendTime) — 그 뒤에 수집. 감시(16:40)보다 앞.
+    # 20:20 재실행은 시간외 단일가·NXT까지 끝난 뒤 같은 값을 덮어쓴다(D-220 — 16:35엔 marketStatus가 OPEN이라 판정에 안 씀).
     ("prices", [PY, "scripts/ingest_prices.py", "--daily"],
-     [{"Weekday": d, "Hour": 16, "Minute": 10} for d in range(1, 6)]),
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((16, 35), (20, 20))]),
+    # 발견용 시세 이력(D-177 저장소) 재게시 — 일별 시세 20:20 뒤. 전 종목 재수집 20~40분, 모델 호출 0 (D-220).
+    ("history", [PY, "scripts/refresh_market_history.py"],
+     [{"Weekday": d, "Hour": 20, "Minute": 40} for d in range(1, 6)]),
+    # 시장 국면·리스크 지표(D-076) — 국내 마감 뒤. 문서엔 '권장'으로만 있고 등록이 빠져 9-10부터 한 달 묵었다(D-222 점검으로 발견).
+    # 회사채 스프레드(D-230) — 미국 장 마감 뒤. 채권 데이터는 로컬 어댑터(git 제외)가 있을 때만, 없으면 skipped.
+    ("credit", [PY, "scripts/collect_credit.py"], {"Hour": 7, "Minute": 30}),
+    # 개인 투자 열기(D-231) — 협회 당일 집계 뒤. 한국거래소 개인 거래는 .env KRX_ID·KRX_PW 있을 때만.
+    ("retail", [PY, "scripts/collect_retail.py"], [{"Weekday": d, "Hour": 18, "Minute": 30} for d in range(1, 6)]),
+    ("market", [PY, "scripts/snapshot_market.py"],
+     [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
     ("krmovers", [PY, "scripts/snapshot_kr_movers.py"],          # D-108 — 신규진입 판정에 일별 필요
      [{"Weekday": d, "Hour": 16, "Minute": 20} for d in range(1, 6)]),
     # 미국장 브리핑은 발송(07:00)보다 **먼저** 데워야 그날 것이 실린다 (D-112). 2026-09-09 발송 08:00→07:00(사용자 요청), 웜업도 06:30으로.
@@ -69,6 +81,18 @@ JOBS = [
     ("questions", [PY, "scripts/refresh_questions.py"], {"Hour": 7, "Minute": 40}),
     # 수출입(D-140) — 매일 09:20 신선도 1콜: 원천 최신월이 적재분보다 앞서면 그때만 전체 수집(관세청 현행화 '15일경').
     ("trade", [PY, "scripts/collect_trade.py", "--if-fresh"], {"Hour": 9, "Minute": 20}),
+    # 종목 묶음 감시(D-185) — 일별 시세(16:10) 뒤 평가. 모델 호출 0, 같은 기준일 재실행은 건너뛴다(멱등).
+    ("watch", [PY, "scripts/evaluate_watch_rules.py"],
+     [{"Weekday": d, "Hour": 16, "Minute": 40} for d in range(1, 6)]),
+    # 포트폴리오 알림(D-214) — 장중 급등락·공시는 평일 09:00–18:00 30분마다, 요약·기술적 신호는 종가·감시 뒤 16:50.
+    ("pfintraday", [PY, "scripts/portfolio_alerts.py", "--intraday"],
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h in range(9, 18) for m in (0, 30)] +
+     [{"Weekday": d, "Hour": 18, "Minute": 0} for d in range(1, 6)]),
+    ("pfclose", [PY, "scripts/portfolio_alerts.py", "--close"],
+     [{"Weekday": d, "Hour": 16, "Minute": 50} for d in range(1, 6)]),
+    # 실적 발언 모멘텀(D-217) — 매일 SEC 8-K·AV 컨콜 수집·추출·판정(미국 장 마감 뒤 아침), 주간 알림은 월요일 브리핑 뒤.
+    ("callmomentum", [PY, "scripts/call_momentum.py", "--daily"], {"Hour": 7, "Minute": 20}),
+    ("callmomentumweekly", [PY, "scripts/call_momentum.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 10}),
 ]
 
 

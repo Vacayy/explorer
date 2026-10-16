@@ -1,4 +1,4 @@
-"""투자 렌즈 API (docs/specs/investor-lens.md) — 브리프와 동일한 2단 패턴:
+"""투자 렌즈 API (docs/private/specs/investor-lens.md) — 브리프와 동일한 2단 패턴:
 GET = LLM 없이 즉시(캐시 + stale) / POST = 재료 변경 시만 생성(멱등).
 
 1차: 가치 렌즈(value). 추세 렌즈(trend)는 재료 미구현이라 GET에서 자연히 빠진다(후속).

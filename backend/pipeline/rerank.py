@@ -2,7 +2,7 @@
 
 - 모델: jinaai/jina-reranker-v2-base-multilingual (fastembed, 1.1GB). 실측 한국어 쌍 판별 정상, 40쌍 1.4초.
 - `RERANK_MODEL=""` 로 비활성. import·로드 실패 시 None을 돌려 호출부가 RRF 순으로 degrade.
-- 첫 로드는 모델 다운로드(수 분)를 포함하므로 lazy 싱글턴 — 서버 기동을 막지 않는다.
+- 준비된 로컬 캐시만 lazy 로드한다. 캐시가 없으면 원래 검색 순서를 유지하며 요청 중 다운로드하지 않는다.
 """
 import os
 import threading
@@ -26,11 +26,26 @@ def _get():
         if _enc is None and not _failed:
             try:
                 from fastembed.rerank.cross_encoder import TextCrossEncoder
-                _enc = TextCrossEncoder(RERANK_MODEL)
+                from config import FASTEMBED_CACHE
+                _enc = TextCrossEncoder(RERANK_MODEL, cache_dir=FASTEMBED_CACHE, local_files_only=True)
             except Exception as e:  # noqa: BLE001 — 미가용은 조용히 degrade하되 이유는 남긴다
                 _failed = True
                 print(f"[rerank] 비활성 — {type(e).__name__}: {str(e)[:120]}", flush=True)
     return _enc
+
+
+def ensure_model() -> str:
+    """리랭커 모델 파일 확보(인덱스 빌드 잡에서 호출 — 대화 요청 중에는 받지 않는다, D-175).
+    이미 받아 두었으면 로드 없이 'cached'. 캐시가 지워졌으면 다시 받는다(D-232)."""
+    if not RERANK_MODEL:
+        return "disabled"
+    from pathlib import Path
+    from config import FASTEMBED_CACHE
+    if any(Path(FASTEMBED_CACHE).glob(f"models--*{RERANK_MODEL.split('/')[-1]}*/snapshots/*/**/*.onnx")):
+        return "cached"
+    from fastembed.rerank.cross_encoder import TextCrossEncoder
+    TextCrossEncoder(RERANK_MODEL, cache_dir=FASTEMBED_CACHE)
+    return "downloaded"
 
 
 def rerank(query: str, texts: list[str]) -> list[float] | None:

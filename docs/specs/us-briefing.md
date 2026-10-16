@@ -1,6 +1,6 @@
 # 어젯밤 미국장 브리핑 — 분위기 파악 가속기
 
-**목적**: 리서치를 *대신*하지 않고, 아침에 **분위기를 30초에 잡게** 한다. 전일 미국장에서 자금이 어디로 쏠렸나 → 어떤 내러티브인가 → 새 흐름인가 → **뭘 스터디하고 뭘 공유할지 조준**. (배경: 펀드매니저 피드백, DECISIONS D-095)
+**목적**: 리서치를 *대신*하지 않고, 아침에 **분위기를 30초에 잡게** 한다. 전일 미국장에서 자금이 어디로 쏠렸나 → 어떤 내러티브인가 → 새 흐름인가 → **뭘 스터디하고 뭘 공유할지 조준**. (배경: DECISIONS D-095)
 
 거래대금 상위(=주목의 raw 신호)를 두 층으로 읽는다: **쏠림(섹터/내러티브)** + **개별(idiosyncratic)**.
 
@@ -27,13 +27,22 @@
 - 종합 주입: 개별 이슈 종목에 헤드라인이 있으면 그걸 그 종목의 '왜'로 삼음. **헤드라인이 촉매를 설명하면 스터디 후보가 아니라 공유 후보로**(승격), 헤드라인이 있어도 설명 못 하면 LLM이 스터디 후보로 정직하게 남김.
 - 응답: `movers[].headlines`(FE가 개별 이슈 행 밑에 '왜' 줄로 노출, 원문 링크). signature에 헤드라인 url 포함(뉴스 바뀌면 재종합).
 
-## LLM 종합 (하루 1회·캐시, sonnet 1콜)
-구조화 팩트(클러스터·개별·커버리지) **+ 그날 담론(테마·문서) + 개별 헤드라인** 입력 → `{mood, study_candidates, share_candidates}`.
-- `mood`: 3~5문장. 어젯밤 자금이 어디로·(아는 범위의)왜·새 흐름인가.
-- `study_candidates`: 커버 안 됐거나 촉매 미상인 주목 종목 + 한 줄 이유.
-- `share_candidates`: 이미 내러티브 있는 것 중 공유할 만한 것.
-- **규율**: 미상 촉매를 지어내지 말 것 — 모르면 스터디 후보로.
-- 캐시: `us_briefings(trade_date PK, signature, synthesis_json, model, created_at)`. signature=구조화 요약 해시. 안 바뀌면 재사용.
+## 어젯밤 매크로 이슈 — 지정 소스 (D-206)
+구 ②문단은 매크로 지표를 읽고 태그로 고른 담론 발췌(180자)를 덧붙이는 구조라 "무슨 일이 있었나"가 비었다. 이제 **이슈가 문단의 주어이고, 지표는 그 이슈의 시장 반응 근거**다.
+- **지정 텔레그램 채널**(`MACRO_CHANNELS`, 코드 상수): 카이에 de market · Macro Jungle · Macro Trader · YIELD & SPREAD · 삼성 매크로 정성태 · 허재환(유진 전략) · 한지영(키움 전략/시황) · KK Kontemporaries(2026-09-29 추가). 트럼프 발언 채널은 제외.
+- **미국 주요 매체 RSS**(`pipeline/macro_news.py`, 무키): Bloomberg(Markets·Economics) · CNBC(Economy·Finance) · NYT(Business·Economy·Politics) · Politico(Politics) · MarketWatch(Top Stories) · Washington Post(Business) + 공식 Fed(보도자료·연설, 은행 인가·제재 항목 제외). 제목+요약만 쓴다(본문은 유료 벽). WSJ·Reuters·AP·BLS·재무부는 피드가 폐지·차단돼 제외(2026-09-29 실측).
+- **시간창**: 직전 거래일 미국장 마감(UTC 20:00) ~ 기준일 다음날 UTC 00:00(KST 09:00). 날짜 문자열 일치가 아니라 시각 구간.
+- **이슈 추출(sonnet 1콜, 프롬프트 해시 캐시 `us_macro_issues`)**: 창 안의 지정 채널 원문 + 뉴스 헤드라인 → 이슈 최대 5개 `{title, what, reaction, sources[{ref, quote}]}`. **인용 검증**: quote가 해당 원문(텔레그램 본문, 뉴스 제목+요약)에 공백 정규화 후 그대로 있어야 채택, 검증 인용이 0개인 이슈는 버린다(Weekly 하네스 D-173 인용 규율 차용).
+- **실패 공개**: 피드별 수집 실패는 `macro_news.failed`로 반출 → 화면 안내(조용한 fallback 금지).
+
+## LLM 종합 (하루 1회·캐시, sonnet 1콜) — 2문단 (D-206)
+구성은 **매크로 브리핑 + 거래대금 기반 기업 이슈 브리핑** 두 문단. 지수 수치는 카드 상단 지수 타일이 이미 보여주므로 별도 문단을 두지 않는다. 구 ④ 섹터 비중 흐름 문단·비중 추이 차트는 폐지(쓸모 낮음).
+- `drivers`(매크로): 4~6문장. 검증된 매크로 이슈 2~3개를 사건 중심으로, 각 문장 끝에 `[S n]` 출처 표식. 지표는 그 이슈의 반응 근거로만(금리 변화는 **bp**). 한 매체·한 채널만 말한 것은 누가 말했는지 귀속.
+- `issues`(기업): 3~4문장. 기존 규율 그대로(쏠린 섹터 1~2개, 중요 개별 종목 2~3개를 사건으로).
+- `sources`: 표식이 가리키는 출처 목록 `{n, kind(telegram|news|official), publisher, title, url, doc_id}` — 과거 브리핑도 자기충족적이게 종합과 함께 저장.
+- `study_candidates`·`share_candidates`·`movers_why`는 유지. 구 행(`index_summary`·`flow`)은 읽기만 호환.
+- **규율**: 재료에 없는 이벤트를 지어내지 않는다. 판정 어휘(방아쇠·배경 조건)를 본문에 노출하지 않는다.
+- 캐시: `us_briefings(trade_date PK, signature, synthesis_json, model, created_at)`. signature=프롬프트 해시.
 
 ## 활용 연결 (기존 프리미티브)
 - 클러스터/개별 → `narrative`(주제 내러티브)·`sector_narratives`(N:M) 딥링크.
@@ -46,7 +55,17 @@
 `/movers`(us-movers.md)는 raw 리스트로 유지.
 
 ## 프론트 (홈 상단 승격, `UsBriefingSection`)
-아침 터미널의 첫 카드. mood 산문 + **섹터 쏠림 바** + 개별 이슈 리스트(사유 배지) + 신규 진입 + 스터디/공유 후보. 상위 20 전체는 Collapsible로 접어둠. 종목 → `/us/:ticker`, 클러스터/내러티브 → `/narrative`.
+아침 터미널의 첫 카드. 2문단 산문(매크로 문단에 출처 위첨자 링크 — 마우스를 올리면 HoverCard로 매체·제목·시각, 클릭은 원문. 하단 출처 목록은 두지 않는다, 2026-10-08) + **섹터 쏠림 바** + 개별 이슈 리스트(사유 배지) + 신규 진입 + 스터디/공유 후보. 상위 20 전체는 Collapsible로 접어둠. 종목 → `/us/:ticker`, 클러스터/내러티브 → `/narrative`.
+
+## 소스 관리 — 브리핑 재료 목록 (D-206 후속)
+카드 헤더의 **'소스 관리' 버튼 → Dialog**. 브리핑이 어떤 출처를 쓰는지와 각 출처의 최근 수집 상태를 보여준다. 읽기 전용(목록 편집은 범위 밖, 채널·피드는 코드 상수 `MACRO_CHANNELS`·`FEEDS`).
+- `GET /api/spine/us/briefing/sources` (LLM·네트워크 0, DB 읽기만) → `groups[]{key, label, used_for, items[]{name, detail, url, last_seen, recent_count, status}}`.
+  - `macro_telegram` 매크로 문단 · 텔레그램 채널 — 최근 글 시각, 24시간 글 수. 미등록·수집 꺼짐도 그대로 표시.
+  - `macro_news` 매크로 문단 · 미국 매체·Fed RSS — 피드별 최근 기사 시각, 24시간 기사 수.
+  - `company` 기업 문단 — TradingView 거래대금 상위 20, Yahoo Finance 종목 헤드라인, 수집 문서 언급.
+  - `indicators` 시장 반응 근거 — 지수, 매크로 지표(Yahoo·FRED).
+- `status`: `ok`(최근 2일 내 자료) · `quiet`(그보다 오래됨·자료 없음) · `off`(미등록·비활성).
+- 5-state(Dialog 내부): Loading=Skeleton · Error=ErrorState+재시도 · Empty=그룹 0(발생 불가지만 EmptyState) · Partial=`quiet`/`off` 항목은 경고 배지로 · Ideal=그룹별 목록.
 
 ## 갱신 케이던스 — 버튼 주도 (D-099·D-100)
 아침에 전날 미국장을 보는 용도라 **자동 갱신 없이 버튼으로만** 갱신한다.

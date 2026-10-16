@@ -1,4 +1,4 @@
-"""대화 영속화 — P2-0 (docs/specs/product-v3.md §2).
+"""대화 영속화 — P2-0 (docs/private/specs/product-v3.md §2).
 
 - 웹(/ask)·텔레그램 봇의 전 문답을 conversations/chat_messages에 적재
 - 질문에 종목 엔티티 링크 (store._link와 동일한 결정적 매칭 — LLM 0토큰)

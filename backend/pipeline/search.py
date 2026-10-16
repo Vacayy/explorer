@@ -8,6 +8,7 @@
 질의응답 생성(RAG의 나머지 반쪽)은 ANTHROPIC_API_KEY 확보 후:
 검색 결과 + 출처 인용 + 갭 분석(인용 없는 주장·모순·오래된 문서)을 일급 출력으로.
 """
+import math
 import re
 import struct
 
@@ -18,11 +19,12 @@ EMBED_DIM = 384
 _model = None  # lazy singleton (로드 ~2초)
 
 
-def _get_model():
+def _get_model(*, local_files_only=False):
     global _model
     if _model is None:
         from fastembed import TextEmbedding
-        _model = TextEmbedding(EMBED_MODEL)
+        from config import FASTEMBED_CACHE
+        _model = TextEmbedding(EMBED_MODEL, cache_dir=FASTEMBED_CACHE, local_files_only=local_files_only)
     return _model
 
 
@@ -140,17 +142,24 @@ def search(q: str, k: int = 20) -> list[dict]:
     # 벡터
     vconn = _vec_conn()
     if vconn is not None:
-        has_vec = vconn.execute("SELECT count(*) FROM doc_vec").fetchone()[0]
-        if has_vec:
-            q_emb = list(_get_model().embed([q]))[0]
-            vec_rows = vconn.execute(
-                "SELECT rowid FROM doc_vec WHERE embedding MATCH ? AND k = 40 ORDER BY distance",
-                (_serialize(q_emb),),
-            ).fetchall()
-            for i, r in enumerate(vec_rows):
-                ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
-                vec_ids.append(r["rowid"])
-        vconn.close()
+        try:
+            has_vec = vconn.execute("SELECT count(*) FROM doc_vec").fetchone()[0]
+            if has_vec:
+                # Interactive reads must not wait for a model download. Index building
+                # remains responsible for warming the cache; BM25 is already available.
+                q_emb = list(_get_model(local_files_only=True).embed([q]))[0]
+                vec_rows = vconn.execute(
+                    "SELECT rowid FROM doc_vec WHERE embedding MATCH ? AND k = 40 ORDER BY distance",
+                    (_serialize(q_emb),),
+                ).fetchall()
+                for i, r in enumerate(vec_rows):
+                    ranks[r["rowid"]] = ranks.get(r["rowid"], 0) + 1 / (60 + i)
+                    vec_ids.append(r["rowid"])
+        except Exception:
+            # Missing/corrupt embeddings never discard the lexical matches above.
+            pass
+        finally:
+            vconn.close()
 
     half = max(1, k // 2)
     guaranteed = set(fts_ids[:half]) | set(vec_ids[:half])
@@ -160,25 +169,91 @@ def search(q: str, k: int = 20) -> list[dict]:
     return [{"doc_id": d, "score": ranks[d]} for d in final[:k]]
 
 
+RELATED_MIN_SIM = 0.65      # 이 아래는 5개를 채우려 억지로 붙이지 않는다(실측: 0.60~0.64는 무관한 글이 섞임)
+RELATED_PER_SOURCE = 2      # 한 채널·블로그에서 최대 — 같은 채널 영상만 다섯 개 나오지 않게
+RELATED_RECENCY_W = 0.03    # 발행 시점이 가까울수록 약간 가산(최대 +0.03, 30일 감쇠)
+_REASON_KIND = {"stock": 0, "person": 1, "industry": 2}   # 주제(매크로·투자전략 등)는 너무 넓어 이유로 안 씀
+
+
+def _norm_title(t: str | None) -> str:
+    return re.sub(r"\s+", "", (t or "").lower())
+
+
+def _days(a: str | None, b: str | None) -> float:
+    from datetime import datetime
+    try:
+        return abs((datetime.fromisoformat(a[:10]) - datetime.fromisoformat(b[:10])).days)
+    except (TypeError, ValueError):
+        return 365.0
+
+
+def _shared_entities(conn, doc_id: int, ids: list[int], cap: int = 3) -> dict[int, list[str]]:
+    """겹치는 종목·인물·산업 — 드문 것 먼저. 낮은 확신 종목 매칭(0.6: '온'·'커서' 같은 일반어 오탐)은 뺀다."""
+    def links(where, params):
+        return conn.execute(f"""SELECT el.doc_id, el.entity_id, e.name, el.link_type FROM entity_links el
+            JOIN entities e ON e.id = el.entity_id
+            WHERE {where} AND el.link_type IN ('stock','person','industry')
+              AND (el.link_type != 'stock' OR el.confidence >= 0.7)""", params).fetchall()
+    mine = {r["entity_id"]: r for r in links("el.doc_id = ?", (doc_id,))}
+    if not mine or not ids:
+        return {}
+    ph = ",".join("?" * len(ids))
+    df = {r[0]: r[1] for r in conn.execute(
+        f"SELECT entity_id, count(*) FROM entity_links WHERE entity_id IN ({','.join('?' * len(mine))}) GROUP BY 1", list(mine))}
+    out: dict[int, list[tuple]] = {}
+    for r in links(f"el.doc_id IN ({ph})", ids):
+        if r["entity_id"] in mine and r["name"] not in [x[2] for x in out.get(r["doc_id"], [])]:
+            out.setdefault(r["doc_id"], []).append((_REASON_KIND[r["link_type"]], df.get(r["entity_id"], 0), r["name"]))
+    return {d: [n for *_, n in sorted(v)[:cap]] for d, v in out.items()}
+
+
 def related_docs(doc_id: int, k: int = 5) -> list[dict]:
-    """임베딩 유사 문서 — 문서 디테일의 '관련 문서' (doc_vec 재사용, LLM 불필요)."""
+    """문서 디테일 '관련 문서' — 문서 대표 벡터(청크 평균, D-221) 유사도 + 정리 규칙(LLM 0).
+
+    유사도 RELATED_MIN_SIM 미만 제외 · 같은 제목 1개 · 출처당 RELATED_PER_SOURCE개 · 발행 시점 근접 소폭 가산.
+    각 항목에 겹치는 종목·인물·산업(reasons)을 붙인다."""
+    from pipeline.sources import source_names
     vconn = _vec_conn()
     if vconn is None:
         return []
-    row = vconn.execute("SELECT embedding FROM doc_vec WHERE rowid = ?", (doc_id,)).fetchone()
-    if not row:
+    try:
+        try:
+            row = vconn.execute("SELECT embedding FROM doc_centroid_vec WHERE rowid = ?", (doc_id,)).fetchone()
+        except Exception:   # 청크 인덱스가 아직 없음
+            row = None
+        if not row:
+            return []
+        hits = vconn.execute(
+            "SELECT rowid, distance FROM doc_centroid_vec WHERE embedding MATCH ? AND k = 60 ORDER BY distance",
+            (row["embedding"],)).fetchall()
+        sims = {h["rowid"]: 1 - h["distance"] ** 2 / 2 for h in hits if h["rowid"] != doc_id}   # 정규화 벡터: L2 → 코사인
+        sims = {d: s for d, s in sims.items() if s >= RELATED_MIN_SIM}
+        if not sims:
+            return []
+        ph = ",".join("?" * (len(sims) + 1))
+        meta = {r["id"]: r for r in vconn.execute(
+            f"SELECT id, source_type, source_id, url, title, published_at FROM raw_documents WHERE id IN ({ph})",
+            [doc_id, *sims])}
+        if doc_id not in meta:
+            return []
+        me = meta[doc_id]
+        channels = source_names(vconn, list(meta.values()))
+        ranked = sorted((d for d in sims if d in meta), key=lambda d: -(
+            sims[d] + RELATED_RECENCY_W * math.exp(-_days(meta[d]["published_at"], me["published_at"]) / 30)))
+        out, titles, per_source = [], {_norm_title(me["title"])}, {}
+        for d in ranked:
+            t, ch = _norm_title(meta[d]["title"]), (channels.get(d) or {}).get("name")
+            if (t and t in titles) or (ch and per_source.get(ch, 0) >= RELATED_PER_SOURCE):
+                continue
+            titles.add(t)
+            if ch:
+                per_source[ch] = per_source.get(ch, 0) + 1
+            out.append(d)
+            if len(out) >= k:
+                break
+        reasons = _shared_entities(vconn, doc_id, out)
+        return [{"id": d, "source_type": meta[d]["source_type"], "title": meta[d]["title"],
+                 "published_at": meta[d]["published_at"], "channel": (channels.get(d) or {}).get("name"),
+                 "similarity": round(sims[d], 3), "reasons": reasons.get(d, [])} for d in out]
+    finally:
         vconn.close()
-        return []
-    hits = vconn.execute(
-        "SELECT rowid, distance FROM doc_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-        (row["embedding"], k + 1),
-    ).fetchall()
-    ids = [h["rowid"] for h in hits if h["rowid"] != doc_id][:k]
-    if not ids:
-        vconn.close()
-        return []
-    ph = ",".join("?" for _ in ids)
-    rows = {r["id"]: r for r in vconn.execute(f"""
-        SELECT id, source_type, title, published_at FROM raw_documents WHERE id IN ({ph})""", ids)}
-    vconn.close()
-    return [dict(rows[i]) for i in ids if i in rows]

@@ -17,9 +17,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { formatNumber } from "@/utils/format"
 import { X, Maximize2, Minimize2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
+import { NodeSourceSummary, type SourceStatus } from "@/components/explore/graph/EdgeSource"
 import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
@@ -48,6 +51,7 @@ interface WNode {
   pace_layer?: string | null   // event|flow|cycle|structure|regime — 노드 중력 (D-030)
 }
 interface WEdge {
+  source_status?: SourceStatus | null
   from: string; from_id: number; from_type: string | null
   to: string; to_id: number; to_type: string | null
   rel: string; mechanism: string | null; orientation: string | null
@@ -59,6 +63,11 @@ interface WEdge {
   flywheel?: boolean
 }
 interface Worldview { nodes: WNode[]; edges: WEdge[] }
+// 흐름 뷰 부분 그래프 (D-211) — 전체 규모·잘림 여부 동봉
+interface WorldviewSubgraph extends Worldview { total_nodes: number; total_edges: number; truncated: boolean }
+interface WIndexItem { id: number; name: string; type: string; pace_layer: string | null; degree: number }
+const CORE_STEPS = [150, 300]   // 흐름 뷰 핵심 노드 수 — dagre 배치는 노드 수에 급격히 느려진다(150 0.4초·300 3초)
+const FOCUS_LIMIT = 200          // 초점 이웃 상한
 interface NodeNarrative { id: number; topic: string; title: string | null }
 
 const NODE_LABEL: Record<string, string> = {
@@ -153,22 +162,47 @@ export default function WorldviewPage() {
   const focusParam = searchParams.get("focus")
   const [focusId, setFocusId] = useState<number | null>(focusParam ? Number(focusParam) : null)
   const [depth, setDepth] = useState(2)                     // 초점 N홉
-  const [selectedNode, setSelectedNode] = useState<WNode | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
+  const [coreLimit, setCoreLimit] = useState(CORE_STEPS[0])
   const [selectedEdge, setSelectedEdge] = useState<WEdge | null>(null)
   // 백엔드는 현재 단일 category만 지원 — 2개 이상 선택 시 필터 없이(합집합) 보여줌
   const category = lenses.length === 1 ? lenses[0] : undefined
 
-  const { data, isLoading, isError } = useQuery(
+  // 흐름 뷰는 부분 그래프만 받는다(D-211) — 전체 2천여 노드를 dagre로 배치하면 2분 가까이 멈췄다.
+  // 전체 그래프는 관계망 뷰(canvas force-graph) 전용.
+  const isFlow = view === "structure"
+  const catParam = category ? `&category=${encodeURIComponent(category)}` : ""
+  const sub = useQuery(
+    apiQuery<WorldviewSubgraph>({
+      key: ["spine", "causal", "worldview", "sub", focusId ?? `core-${coreLimit}`, depth, category ?? "all"],
+      url: focusId != null
+        ? `/api/spine/causal/worldview/neighborhood/${focusId}?depth=${depth}&limit=${FOCUS_LIMIT}${catParam}`
+        : `/api/spine/causal/worldview/core?limit=${coreLimit}${catParam}`,
+      staleTime: STALE.short, enabled: isFlow,
+    }),
+  )
+  const full = useQuery(
     apiQuery<Worldview>({
       key: ["spine", "causal", "worldview", category ?? "all"],
       url: `/api/spine/causal/worldview${category ? `?category=${encodeURIComponent(category)}` : ""}`,
-      staleTime: STALE.short,
+      staleTime: STALE.short, enabled: !isFlow,
     }),
   )
+  const index = useQuery(
+    apiQuery<WIndexItem[]>({
+      key: ["spine", "causal", "worldview", "index"],
+      url: "/api/spine/causal/worldview/index", staleTime: STALE.short,
+    }),
+  )
+  const data = isFlow ? sub.data : full.data
+  const isLoading = isFlow ? sub.isLoading : full.isLoading
+  const isError = isFlow ? sub.isError : full.isError
 
-  // 1단계: 작은 연결요소 숨김 → base. 그 위에 초점(로컬 N홉) 또는 백본(줄기) 필터.
-  // 세 뷰(구조·3D·옵시디언)가 공유하는 visNodes/visEdges.
+  // 관계망 뷰: 전체 그래프에서 작은 연결요소 숨김 → base, 그 위에 초점(로컬 N홉) 또는 백본(줄기) 필터.
+  // 흐름 뷰: 서버가 고른 부분 그래프(핵심 또는 초점 이웃)를 그대로 쓴다.
   const { visNodes, visEdges, hiddenCount } = useMemo(() => {
+    if (isFlow) return { visNodes: sub.data?.nodes ?? [], visEdges: sub.data?.edges ?? [], hiddenCount: 0 }
+    const data = full.data
     if (!data) return { visNodes: [] as WNode[], visEdges: [] as WEdge[], hiddenCount: 0 }
     const clusterSize = new Map<number, number>()
     data.nodes.forEach((n) => clusterSize.set(n.cluster_id, (clusterSize.get(n.cluster_id) ?? 0) + 1))
@@ -211,14 +245,13 @@ export default function WorldviewPage() {
     }
 
     return { visNodes: baseN, visEdges: baseE, hiddenCount: smallHidden }
-  }, [data, showSmall, backboneOnly, focusId, depth])
+  }, [isFlow, sub.data, full.data, showSmall, backboneOnly, focusId, depth])
 
-  const focalNode = useMemo(
-    () => (focusId != null ? data?.nodes.find((n) => n.id === focusId) ?? null : null),
-    [data, focusId])
+  const focalName = focusId == null ? null
+    : visNodes.find((n) => n.id === focusId)?.name ?? index.data?.find((n) => n.id === focusId)?.name ?? null
 
   // 노드 클릭 = 초점 재중심 + 상세 패널(초점 이동 시 같은 패널이 갱신되어 맥락을 따라간다).
-  const focusNode = (n: WNode) => { setFocusId(n.id); setSelectedNode(n); setSelectedEdge(null) }
+  const focusNode = (id: number) => { setFocusId(id); setSelectedNodeId(id); setSelectedEdge(null) }
 
   // 2단계: 구조 뷰(React Flow) 전용 — dagre 좌→우 배치 변환
   const { nodes: builtNodes, edges: builtEdges } = useMemo(() => {
@@ -263,7 +296,9 @@ export default function WorldviewPage() {
   useEffect(() => setRfEdges(builtEdges), [builtEdges, setRfEdges])
 
   if (isLoading) return <PageContainer gap="sm"><Skeleton className="h-[620px] w-full rounded-xl" /></PageContainer>
-  if (isError) return <ErrorState message="세계관 그래프를 불러오지 못했습니다" />
+  // 초점 노드가 선택한 렌즈의 그래프에 없으면(404) 페이지 전체가 아니라 그래프 자리에서 안내한다
+  const focusMissing = isFlow && focusId != null && sub.isError
+  if (isError && !focusMissing) return <ErrorState message="세계관 그래프를 불러오지 못했습니다" />
 
   return (
     <PageContainer gap="sm">
@@ -284,7 +319,7 @@ export default function WorldviewPage() {
         </ToggleGroup>
       </div>
 
-      {data && <NodeSearch nodes={data.nodes} onPick={focusNode} />}
+      {index.data && <NodeSearch nodes={index.data} onPick={(n) => focusNode(n.id)} />}
 
       <div className="flex items-center gap-3 flex-wrap text-xs">
         {LENSES.map((l) => (
@@ -298,16 +333,19 @@ export default function WorldviewPage() {
             {LENS_LABEL[l]}
           </label>
         ))}
-        <label className={cn("flex items-center gap-1.5 cursor-pointer ml-auto text-muted-foreground",
-          focusId != null && "opacity-40 pointer-events-none")}>
-          <Checkbox checked={backboneOnly} onCheckedChange={(v) => setBackboneOnly(!!v)} />
-          줄기만
-        </label>
-        <label className={cn("flex items-center gap-1.5 cursor-pointer text-muted-foreground",
-          focusId != null && "opacity-40 pointer-events-none")}>
-          <Checkbox checked={showSmall} onCheckedChange={(v) => setShowSmall(!!v)} />
-          작은 조각{hiddenCount > 0 && !showSmall ? ` (숨김 ${hiddenCount})` : ""}
-        </label>
+        {/* 줄기·조각 필터는 전체 그래프를 보는 관계망 뷰 전용 — 흐름 뷰는 이미 부분 그래프다 (D-211) */}
+        {!isFlow && <>
+          <label className={cn("flex items-center gap-1.5 cursor-pointer ml-auto text-muted-foreground",
+            focusId != null && "opacity-40 pointer-events-none")}>
+            <Checkbox checked={backboneOnly} onCheckedChange={(v) => setBackboneOnly(!!v)} />
+            줄기만
+          </label>
+          <label className={cn("flex items-center gap-1.5 cursor-pointer text-muted-foreground",
+            focusId != null && "opacity-40 pointer-events-none")}>
+            <Checkbox checked={showSmall} onCheckedChange={(v) => setShowSmall(!!v)} />
+            작은 조각{hiddenCount > 0 && !showSmall ? ` (숨김 ${hiddenCount})` : ""}
+          </label>
+        </>}
       </div>
 
       {view === "structure" && (
@@ -329,10 +367,23 @@ export default function WorldviewPage() {
         </div>
       )}
 
-      {focalNode && (
+      {isFlow && sub.data && (
+        <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+          <span>전체 {formatNumber(sub.data.total_nodes)}개 노드 중 {formatNumber(sub.data.nodes.length)}개 표시
+            {focusId == null ? " · 연결 많은 순" : sub.data.truncated ? ` · 이웃이 많아 연결 많은 ${FOCUS_LIMIT}개만` : ""}</span>
+          {focusId == null && sub.data.truncated && coreLimit < CORE_STEPS[CORE_STEPS.length - 1] && (
+            <Button variant="link" size="sm" className="h-auto p-0 text-[11px]" onClick={() => setCoreLimit(CORE_STEPS[1])}>
+              {CORE_STEPS[1]}개까지 보기
+            </Button>
+          )}
+          <span>· 노드를 누르면 그 주변으로 다시 그립니다. 전체 지도는 '관계망' 뷰에서 볼 수 있습니다.</span>
+        </div>
+      )}
+
+      {focusId != null && focalName && (
         <div className="flex items-center gap-2 text-xs flex-wrap rounded-lg border border-primary/30 bg-accent/40 px-3 py-1.5">
           <Badge className="text-[10px]">초점</Badge>
-          <span className="font-medium">{focalNode.name}</span>
+          <span className="font-medium">{focalName}</span>
           <span className="text-muted-foreground">이웃 {visNodes.length - 1}개</span>
           <span className="ml-2 text-muted-foreground">깊이</span>
           <ToggleGroup type="single" value={String(depth)}
@@ -344,15 +395,17 @@ export default function WorldviewPage() {
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          <button onClick={() => setSelectedNode(focalNode)}
+          <button onClick={() => setSelectedNodeId(focusId)}
             className="ml-auto text-primary hover:underline">상세</button>
           <button onClick={() => setFocusId(null)}
             className="text-primary hover:underline">전체 보기 ✕</button>
         </div>
       )}
 
-      {!data || data.edges.length === 0 ? (
-        <EmptyState message="인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다." />
+      {focusMissing ? (
+        <EmptyState message="이 렌즈의 그래프에는 이 노드가 없습니다 — 렌즈를 바꾸거나 전체 보기로 돌아가세요." />
+      ) : !data || data.edges.length === 0 ? (
+        <EmptyState message={focusId != null ? "이 노드 주변에 연결된 인과가 없습니다." : "인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다."} />
       ) : (
         <div
           style={fullscreen ? undefined : { height: "calc(100vh - 160px)", minHeight: 620 }}
@@ -363,17 +416,18 @@ export default function WorldviewPage() {
         >
           {view === "structure" ? (
             <ReactFlow
-              key={`${focusId ?? "all"}-${depth}-${backboneOnly}-${fullscreen}`}   // 초점·필터·전체화면 변경 시 재마운트 → fitView
+              key={`${focusId ?? `core-${coreLimit}`}-${depth}-${fullscreen}`}   // 초점·범위·전체화면 변경 시 재마운트 → fitView
               nodes={rfNodes}
               edges={rfEdges}
               nodeTypes={nodeTypes}
               colorMode={isDark ? "dark" : "light"}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
-              onNodeClick={(_, n) => focusNode(n.data as unknown as WNode)}
-              onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNode(null) }}
+              onNodeClick={(_, n) => focusNode(Number(n.id))}
+              onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNodeId(null) }}
               fitView
               fitViewOptions={{ maxZoom: 0.9 }}
+              onlyRenderVisibleElements   // 화면 밖 노드·엣지는 그리지 않는다 (D-211)
               minZoom={0.08}
               maxZoom={4}
             >
@@ -383,7 +437,7 @@ export default function WorldviewPage() {
             </ReactFlow>
           ) : (
             <Suspense fallback={<Skeleton className="h-full w-full" />}>
-              <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={focusNode}
+              <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={(n) => focusNode(n.id)}
                 isDark={isDark} focusId={focusId} />
             </Suspense>
           )}
@@ -398,9 +452,8 @@ export default function WorldviewPage() {
           </button>
 
           {/* 상세 — blur 드로어 대신 그래프 영역 안에 뜨는 패널 */}
-          {selectedNode && (
-            <NodeGraphPanel node={selectedNode} allEdges={data?.edges ?? []}
-              onClose={() => setSelectedNode(null)} />
+          {selectedNodeId != null && (
+            <NodeGraphPanel nodeId={selectedNodeId} category={category} onClose={() => setSelectedNodeId(null)} />
           )}
           {selectedEdge && (
             <EdgeGraphPanel edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
@@ -413,20 +466,20 @@ export default function WorldviewPage() {
 }
 
 /* 노드 검색 — 이름으로 찾아 초점 이동(focusNode 재활용). 매치 후보는 차수순 상위 8개. */
-function NodeSearch({ nodes, onPick }: { nodes: WNode[]; onPick: (n: WNode) => void }) {
+function NodeSearch({ nodes, onPick }: { nodes: WIndexItem[]; onPick: (n: WIndexItem) => void }) {
   const [q, setQ] = useState("")
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const results = useMemo(() => {
     const s = q.trim().toLowerCase()
-    if (!s) return [] as WNode[]
+    if (!s) return [] as WIndexItem[]
     return nodes
       .filter((n) => n.name.toLowerCase().includes(s))
-      .sort((a, b) => (b.in_degree + b.out_degree) - (a.in_degree + a.out_degree))
+      .sort((a, b) => b.degree - a.degree)
       .slice(0, 8)
   }, [q, nodes])
 
-  const pick = (n: WNode | undefined) => {
+  const pick = (n: WIndexItem | undefined) => {
     if (!n) return
     onPick(n); setQ(""); setOpen(false); setActive(0)
   }
@@ -463,7 +516,7 @@ function NodeSearch({ nodes, onPick }: { nodes: WNode[]; onPick: (n: WNode) => v
                 {n.pace_layer && LAYER_KO[n.pace_layer] && (
                   <span className="shrink-0 text-[9px] text-muted-foreground">{LAYER_KO[n.pace_layer]}</span>
                 )}
-                <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">연결 {n.in_degree + n.out_degree}</span>
+                <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">연결 {n.degree}</span>
               </button>
             </li>
           ))}
@@ -493,15 +546,25 @@ function GraphPanel({ title, subtitle, onClose, children }: {
   )
 }
 
-function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WEdge[]; onClose: () => void }) {
+/* 노드 상세 — 연결 엣지는 화면의 부분 그래프가 아니라 1홉 이웃 API로 전부 받는다 (D-211, 최대 연결 수 92 < 상한 400) */
+function NodeGraphPanel({ nodeId, category, onClose }: { nodeId: number; category?: string; onClose: () => void }) {
   const { data } = useQuery(
     apiQuery<NodeNarrative[]>({
-      key: ["spine", "causal", "node", node.id, "narratives"],
-      url: `/api/spine/causal/node/${node.id}/narratives`,
+      key: ["spine", "causal", "node", nodeId, "narratives"],
+      url: `/api/spine/causal/node/${nodeId}/narratives`,
     }),
   )
-  const causes = allEdges.filter((e) => e.to_id === node.id)      // 이 노드로 들어오는 (원인)
-  const effects = allEdges.filter((e) => e.from_id === node.id)   // 이 노드에서 나가는 (결과)
+  const around = useQuery(
+    apiQuery<WorldviewSubgraph>({
+      key: ["spine", "causal", "worldview", "sub", nodeId, 1, category ?? "all", "panel"],
+      url: `/api/spine/causal/worldview/neighborhood/${nodeId}?depth=1&limit=400${category ? `&category=${encodeURIComponent(category)}` : ""}`,
+      staleTime: STALE.short,
+    }),
+  )
+  const node = around.data?.nodes.find((n) => n.id === nodeId)
+  const allEdges = around.data?.edges ?? []
+  const causes = allEdges.filter((e) => e.to_id === nodeId)      // 이 노드로 들어오는 (원인)
+  const effects = allEdges.filter((e) => e.from_id === nodeId)   // 이 노드에서 나가는 (결과)
   // 보편 노드의 "언제·어디서" — 연결된 인과 주장들의 시점·지역 집합 (D-034)
   const incident = [...causes, ...effects]
   const periods = [...new Set(incident.map((e) => e.reference_period).filter(Boolean))]
@@ -509,11 +572,14 @@ function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WE
 
   return (
     <GraphPanel
-      title={node.name}
-      subtitle={`${NODE_LABEL[node.type] ?? node.type} · 유입 ${node.in_degree} · 유출 ${node.out_degree}`}
+      title={node?.name ?? "노드"}
+      subtitle={node ? `${NODE_LABEL[node.type] ?? node.type} · 유입 ${node.in_degree} · 유출 ${node.out_degree}` : undefined}
       onClose={onClose}
     >
+      {around.isLoading ? <Skeleton className="h-40 w-full" /> : around.isError || !node
+        ? <div className="text-xs text-muted-foreground">이 노드의 연결을 불러오지 못했습니다.</div> : (
       <div className="space-y-4 text-sm">
+        <NodeSourceSummary statuses={incident.map((e) => e.source_status)} />
         {(periods.length > 0 || geos.length > 0) && (
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground border-b pb-2">
             {periods.length > 0 && <span>관측 시점: {periods.join(" · ")}</span>}
@@ -554,6 +620,7 @@ function NodeGraphPanel({ node, allEdges, onClose }: { node: WNode; allEdges: WE
           )}
         </div>
       </div>
+      )}
     </GraphPanel>
   )
 }

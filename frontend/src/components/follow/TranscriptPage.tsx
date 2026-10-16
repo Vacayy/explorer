@@ -16,6 +16,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { ProxyDashboard } from "@/components/follow/ProxyDashboard"
+import SegmentTabs from "@/components/shared/SegmentTabs"
+import { CallMomentumPanel } from "@/components/follow/CallMomentumPanel"
+import { RecentCalls } from "@/components/follow/RecentCalls"
 import { cn } from "@/lib/utils"
 
 /**
@@ -30,12 +33,21 @@ const GROUP_LABEL: Record<string, string> = {
 }
 const GROUP_ORDER = ["M7", "hyperscaler", "nasdaq", "ai-datacenter", "space", "energy", "cpo", "software", "web3"]
 
-interface LatestCall { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; has_digest: boolean }
-interface FollowRow { ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null; last_report_date?: string | null; next_report_date?: string | null }
-interface Quarter { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; has_digest: boolean }
+interface LatestCall { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; cy?: string | null; call_date: string | null; has_digest: boolean }
+interface FollowRow {
+  ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null
+  last_report_date?: string | null; next_report_date?: string | null
+  market_cap?: number | null; category?: string | null; latest_results_date?: string | null; season_updated?: boolean
+}
+type RailSort = "cap" | "category" | "recent"
+const RAIL_SORTS: { value: RailSort; label: string }[] = [{ value: "cap", label: "시가총액" }, { value: "category", label: "사업분류" }, { value: "recent", label: "최근 발표" }]
+/** 지금 실적 시즌이 보고하는 분기(10~12월 → 3Q) — 백엔드 call_momentum.season과 같은 규칙 */
+const seasonQ = () => { const q = Math.floor(new Date().getMonth() / 3); return q === 0 ? 4 : q }
+const usd = (v?: number | null) => v == null ? "–" : v >= 1e12 ? `$${(v / 1e12).toFixed(1)}T` : `$${Math.round(v / 1e9)}B`
+interface Quarter { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; cy?: string | null; call_date: string | null; has_digest: boolean }
 interface TxNode { id: number; name: string; type: string; link_type: string }
 interface TxEdge { rel_type: string; effect_direction: string | null; from: string; from_id: number; from_type: string; to: string; to_id: number; to_type: string }
-interface Detail { transcript_id: number; ticker: string; company_name: string; fiscal_year: number | null; fiscal_period: string | null; call_date: string | null; digest: string | null; body: string; nodes?: TxNode[]; causal_edges?: TxEdge[] }
+interface Detail { transcript_id: number; ticker: string; company_name: string; fiscal_year: number | null; fiscal_period: string | null; cy?: string | null; call_date: string | null; digest: string | null; body: string; nodes?: TxNode[]; causal_edges?: TxEdge[] }
 
 const NODE_LABEL: Record<string, string> = {
   company: "기업", sector: "섹터", theme: "테마", person: "인물",
@@ -54,6 +66,9 @@ function OntoChip({ id, name, type }: { id: number; name: string; type: string }
 }
 
 const periodOf = (y: number | null, p: string | null) => `FY${y ?? "?"} ${p ?? ""}`.trim()
+/** 기본 표시는 달력분기(CY) — 회사 회계분기(FY)는 보조. CY를 못 구하면(결산 월 미상) FY 그대로 */
+const quarterLabel = (cy: string | null | undefined, y: number | null, p: string | null) => cy ?? periodOf(y, p)
+const shortQuarter = (cy: string | null | undefined, p: string | null) => cy ? `${cy.slice(4, 6)}${cy.slice(-2)}` : (p ?? "–")   // 26Q2
 
 /** 발표일까지 남은 일수 (오늘 0, 미래 양수, 지난 날 음수) */
 function daysUntil(iso?: string | null): number | null {
@@ -69,12 +84,13 @@ const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 
 export default function TranscriptPage() {
   const [params, setParams] = useSearchParams()
   const selectedId = params.get("t")
-  const view = params.get("view") === "proxies" ? "proxies" : "calls"
+  const view = ["proxies", "momentum"].includes(params.get("view") ?? "") ? params.get("view")! : "calls"
+  const railSort: RailSort = (["cap", "category", "recent"] as const).find((v) => v === params.get("rail")) ?? "cap"
   const qc = useQueryClient()
 
   const setView = (v: string) => {
     const next = new URLSearchParams(params)
-    if (v === "proxies") next.set("view", "proxies")
+    if (v === "proxies" || v === "momentum") next.set("view", v)
     else next.delete("view")
     setParams(next, { replace: true })
   }
@@ -113,15 +129,20 @@ export default function TranscriptPage() {
         <TabsList>
           <TabsTrigger value="calls">컨콜</TabsTrigger>
           <TabsTrigger value="proxies">프록시</TabsTrigger>
+          <TabsTrigger value="momentum">모멘텀</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {view === "proxies" ? (
+      {view === "momentum" ? (
+        <CallMomentumPanel />
+      ) : view === "proxies" ? (
         <ProxyDashboard />
       ) : (
       <>
       {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
       <CollectTranscripts />
+
+      <RecentCalls onSelect={selectId} selectedId={selectedId} />
 
       <UpcomingEarnings follows={follows} onSelect={selectId}
         onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
@@ -137,7 +158,12 @@ export default function TranscriptPage() {
                 </Button>
               </div>
             ) : (
-              <GroupedRail follows={follows} effectiveId={effectiveId} onSelect={selectId} />
+              <>
+                <SegmentTabs tabs={RAIL_SORTS} value={railSort} onChange={(v) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("rail", v); return n }, { replace: true })} className="mb-2 w-full" />
+                {railSort === "category"
+                  ? <GroupedRail follows={follows} effectiveId={effectiveId} onSelect={selectId} />
+                  : <FlatRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={selectId} />}
+              </>
             )}
           </CardContent>
         </Card>
@@ -214,8 +240,8 @@ function GroupedRail({ follows, effectiveId, onSelect }: {
 }) {
   const byGroup = useMemo(() => {
     const m = new Map<string, FollowRow[]>()
-    for (const f of follows) {
-      const g = f.group_label ?? "기타"
+    for (const f of [...follows].sort((a, b) => (b.market_cap ?? 0) - (a.market_cap ?? 0))) {
+      const g = f.category ?? f.group_label ?? "기타"
       if (!m.has(g)) m.set(g, [])
       m.get(g)!.push(f)
     }
@@ -232,41 +258,46 @@ function GroupedRail({ follows, effectiveId, onSelect }: {
             {GROUP_LABEL[g] ?? g}
           </CollapsibleTrigger>
           <CollapsibleContent className="pl-1">
-            {byGroup.get(g)!.map((f) => {
-              const active = f.latest && String(f.latest.transcript_id) === effectiveId
-              const dd = daysUntil(f.next_report_date)
-              const imminent = dd != null && dd >= 0 && dd <= 14
-              return (
-                <button
-                  key={f.ticker}
-                  onClick={() => f.latest && onSelect(f.latest.transcript_id)}
-                  disabled={!f.latest}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
-                    active ? "bg-accent text-accent-foreground font-semibold" : "hover:bg-muted",
-                    !f.latest && "opacity-40 cursor-default",
-                  )}
-                >
-                  <span className="font-medium tabular-nums">{f.ticker}</span>
-                  <span className="truncate text-xs text-muted-foreground flex-1">{f.company_name}</span>
-                  {imminent && (
-                    <span className="text-[9px] font-medium tabular-nums shrink-0 rounded bg-primary/10 px-1 text-primary"
-                      title={`다음 실적 ${f.next_report_date}`}>
-                      {ddayLabel(dd!)}
-                    </span>
-                  )}
-                  {f.latest ? (
-                    <span className="text-[10px] text-muted-foreground shrink-0">{f.latest.fiscal_period}</span>
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground shrink-0">–</span>
-                  )}
-                </button>
-              )
-            })}
+            {byGroup.get(g)!.map((f) => <RailRow key={f.ticker} f={f} effectiveId={effectiveId} onSelect={onSelect} />)}
           </CollapsibleContent>
         </Collapsible>
       ))}
     </div>
+  )
+}
+
+/* ---------- 좌 레일: 시가총액순 / 최근 발표순 (평평한 목록) ---------- */
+function FlatRail({ follows, sort, effectiveId, onSelect }: {
+  follows: FollowRow[]; sort: "cap" | "recent"; effectiveId: string | null; onSelect: (id: number) => void
+}) {
+  const rows = useMemo(() => [...follows].sort((a, b) => sort === "cap"
+    ? (b.market_cap ?? 0) - (a.market_cap ?? 0)
+    : (b.latest_results_date ?? "").localeCompare(a.latest_results_date ?? "")), [follows, sort])
+  return <div className="space-y-0.5">{rows.map((f) => <RailRow key={f.ticker} f={f} effectiveId={effectiveId} onSelect={onSelect}
+    meta={sort === "cap" ? usd(f.market_cap) : f.latest_results_date ? mmdd(f.latest_results_date) : "–"} />)}</div>
+}
+
+function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId: string | null; onSelect: (id: number) => void; meta?: string }) {
+  const active = f.latest && String(f.latest.transcript_id) === effectiveId
+  const dd = daysUntil(f.next_report_date)
+  const imminent = dd != null && dd >= 0 && dd <= 14
+  return (
+    <Button variant="ghost" onClick={() => f.latest && onSelect(f.latest.transcript_id)} disabled={!f.latest}
+      title={f.season_updated ? `이번 시즌 실적 발표 ${f.latest_results_date}` : undefined}
+      className={cn("h-auto w-full justify-start gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal",
+        active && "bg-accent text-accent-foreground font-semibold", !f.latest && "opacity-40")}>
+      <span className="font-medium tabular-nums">{f.ticker}</span>
+      <span className="truncate text-xs text-muted-foreground flex-1">{f.company_name}</span>
+      {f.season_updated && <span className="shrink-0 rounded bg-up/10 px-1 text-[9px] font-medium text-up">{seasonQ()}Q 실적</span>}
+      {imminent && !f.season_updated && (
+        <span className="text-[9px] font-medium tabular-nums shrink-0 rounded bg-primary/10 px-1 text-primary" title={`다음 실적 ${f.next_report_date}`}>
+          {ddayLabel(dd!)}
+        </span>
+      )}
+      {meta && <span className="text-[10px] tabular-nums text-muted-foreground shrink-0">{meta}</span>}
+      <span className="text-[10px] tabular-nums text-muted-foreground shrink-0" title={f.latest ? periodOf(f.latest.fiscal_year, f.latest.fiscal_period) : undefined}>
+        {f.latest ? shortQuarter(f.latest.cy, f.latest.fiscal_period) : "–"}</span>
+    </Button>
   )
 }
 
@@ -298,7 +329,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
                 title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에 →</Link>
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">
-              {periodOf(data.fiscal_year, data.fiscal_period)}{data.call_date ? ` · ${data.call_date}` : ""}
+              {quarterLabel(data.cy, data.fiscal_year, data.fiscal_period)}{data.cy ? ` (회사 회계 ${periodOf(data.fiscal_year, data.fiscal_period)})` : ""}{data.call_date ? ` · ${data.call_date}` : ""}
             </div>
           </div>
           <QuarterSelect ticker={data.ticker} current={transcriptId} onSelect={onSelect} />
@@ -376,7 +407,7 @@ function QuarterSelect({ ticker, current, onSelect }: { ticker: string; current:
       <SelectContent>
         {quarters.map((q) => (
           <SelectItem key={q.transcript_id} value={String(q.transcript_id)} className="text-xs">
-            {periodOf(q.fiscal_year, q.fiscal_period)}
+            {quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}
           </SelectItem>
         ))}
       </SelectContent>

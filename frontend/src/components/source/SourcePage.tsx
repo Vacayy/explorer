@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from "@/components/shared/PageContainer"
 import type { DossierSummary, SourceDossier } from "@/types"
+import { RefreshButton } from "@/components/shared/RefreshButton"
+import { useRefreshSource, type RefreshKind } from "@/hooks/useRefreshSource"
 
 /**
  * /source?kind=telegram|blog&key= — 소스 도시에 (docs/specs/source-dossier.md)
@@ -26,6 +28,7 @@ export default function SourcePage() {
   const { data, isLoading, isError, refetch } = useQuery(sourceDossierQuery(kind, key))
   // 계산 쿼리: stale일 때만 발화. 결과 불변(staleTime ∞) — 재방문 시 즉시 표시.
   const summary = useQuery(sourceSummaryQuery(kind, key, !!data?.summary_stale))
+  const refresher = useRefreshSource()
 
   if (!kind || !key) return <ErrorState message="소스 정보가 없습니다 (kind/key 필요)" />
   if (isLoading) return <SourceSkeleton />
@@ -50,6 +53,9 @@ export default function SourcePage() {
             {data.kind === "telegram" ? "텔레그램" : data.kind === "youtube" ? "유튜브" : "블로그"}
           </Badge>
           {!data.is_active && <Badge variant="outline" className="text-[10px]">숨김 — 내 피드·답변 제외</Badge>}
+          {(data.kind === "telegram" || data.kind === "youtube" || data.kind === "blog") && (
+            <RefreshButton onClick={() => refresher.refresh(data.kind as RefreshKind, key, data.name)} pending={refresher.isRefreshing(data.kind as RefreshKind, key)} title="지금 수집 — 30분 체인을 기다리지 않고 이 소스의 새 글만 가져와 태깅합니다" />
+          )}
         </div>
         <p className="text-xs text-muted-foreground tabular-nums">
           수집 {data.total_docs}건 · 최근 7일 {data.docs_7d}건

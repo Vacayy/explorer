@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.analysis-venv/
 *.egg-info/
 
 # Database
@@ -41,3 +42,19 @@ docs/references/
 
 # 대화 평가 run 산출물 — 수집 문서 발췌·답변이 담겨 축적물 취급 (D-129: git은 로직만). 로컬 채점용
 docs/specs/chat-eval-runs/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+backend/graft/
+
+# 비공개 문서 — 별도 비공개 저장소를 여기에 클론한다 (D-234). 결정 로그·전략·백로그·설계 철학·기획 청사진과
+# 일회성 작업 문서(기획 HTML·제품 검토·세션 인계·구 문서). 공개 docs/에는 현행 구조·정책·구현 계약만 둔다.
+docs/private/
+
+# 공개 저장소 밖에 두는 데이터 원천 어댑터 (D-230) — 비공식 엔드포인트 접근 코드
+backend/local_sources/
+
+# graft 로컬 도구 설정 — 설치 경로(홈 디렉터리)가 박혀 있어 공개하지 않는다. 각자 `graft` 설치 시 생성
+.claude/helpers/
+.claude/settings.json
+.claude/settings.local.json

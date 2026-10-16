@@ -1,6 +1,6 @@
 """매크로·유동성 트래킹 (docs/specs/macro.md) — market_indicators 스냅샷 재사용.
 
-매크로(키 없음, yfinance): 미10Y(^TNX)·달러 DXY·유가(WTI)·금·신용 HYG·비트코인.
+매크로(키 없음, yfinance): 미10Y(^TNX)·달러/원·엔/원·달러 DXY·유가(WTI)·금·신용 HYG·비트코인.
 유동성(FRED 무료키 FRED_API_KEY): Fed 대차대조표(WALCL)·TGA(WTREGEN)·역레포(RRPONTSYD)·M2(M2SL).
   → **순유동성 = WALCL − TGA − RRP** (= MacroMicro US Liquidity Index, 읽을 때 계산).
 FRED 키 없으면 유동성 축만 degraded(매크로는 정상).
@@ -22,7 +22,7 @@ from database import get_connection
 from pipeline.market_regime import _series, _yf_history
 
 # 키 없음 (yfinance) — 종가 시계열
-YF = {"us10y": "^TNX", "usdkrw": "KRW=X", "dxy": "DX-Y.NYB", "oil": "CL=F", "gold": "GC=F", "hyg": "HYG", "btc": "BTC-USD"}
+YF = {"us10y": "^TNX", "usdkrw": "KRW=X", "jpykrw": "JPYKRW=X", "dxy": "DX-Y.NYB", "oil": "CL=F", "gold": "GC=F", "hyg": "HYG", "btc": "BTC-USD"}
 # Public FRED Treasury series; no key required for the official CSV export.
 PUBLIC_FRED = {"us2y": "DGS2"}
 # FRED (무료키) — 유동성 구성요소
@@ -34,6 +34,7 @@ _FRED_TO_B = {"fed_bs": 1 / 1000, "tga": 1 / 1000, "rrp": 1.0, "m2": 1.0}
 INDICATORS = [
     {"key": "us2y", "label": "미 2Y 금리", "group": "rates", "fmt": "pct"},
     {"key": "usdkrw", "label": "달러/원", "group": "rates", "fmt": "num"},
+    {"key": "jpykrw", "label": "엔/원(100엔)", "group": "rates", "fmt": "num", "scale": 100},   # 1엔 시세 → 국내 관행 100엔당
     {"key": "us10y", "label": "미 10Y 금리", "group": "rates", "fmt": "pct"},
     {"key": "dxy", "label": "달러 DXY", "group": "rates", "fmt": "num"},
     {"key": "net_liq", "label": "순유동성", "group": "liquidity", "fmt": "trillion_b"},
@@ -266,6 +267,9 @@ def get_macro(with_signal: bool = True) -> dict:
         if meta["fmt"] == "trillion_b":   # $B → $T 표시용
             value = round(value / 1000, 2)
             ser = [(d, round(v / 1000, 3)) for d, v in ser]
+        if meta.get("scale"):
+            value = round(value * meta["scale"], 2)
+            ser = [(d, round(v * meta["scale"], 2)) for d, v in ser]
         items.append({
             "key": k, "label": meta["label"], "group": meta["group"], "group_label": GROUP_LABEL[meta["group"]],
             "fmt": meta["fmt"], "as_of": ser[-1][0], "value": value, "change_pct": _change_pct(ser),

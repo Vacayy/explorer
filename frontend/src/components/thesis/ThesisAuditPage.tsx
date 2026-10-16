@@ -16,7 +16,7 @@ import { useRunThesisAudit, useThesisAudits, useThesisAudit } from "@/hooks/useT
 import type { ThesisAudit, ThesisClaim, ThesisEdge, ThesisPendulum, ThesisQuadrant, ThesisVerdict } from "@/types"
 
 /**
- * /thesis — 논지 감사 (thesis audit, docs/specs/thesis-audit.md). 전망(미래·확률) 서브탭.
+ * /thesis — 논지 감사 (thesis audit, docs/private/specs/thesis-audit.md). 전망(미래·확률) 서브탭.
  * 내 thesis를 축적된 인과그래프에 **대질**(read-only 감사, 등재 아님) — 일치/충돌/반박/신규 델타.
  * moat는 추론이 아니라 정박: 모든 판정이 코퍼스 근거(엣지·독립 소스·시점)를 가리킨다.
  */

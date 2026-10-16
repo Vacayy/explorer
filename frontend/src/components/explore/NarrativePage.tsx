@@ -17,11 +17,13 @@ import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import SaveButton from "@/components/shared/SaveButton"
 import { NarrativeList } from "@/components/explore/NarrativeList"
+import { GraphActivitySection } from "@/components/explore/GraphActivitySection"
 import { MegaNarrativeSection } from "@/components/knowledge/MegaNarrativeSection"
 import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
 import { FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { EdgeSourceBadge, type SourceStatus } from "@/components/explore/graph/EdgeSource"
 
 /**
  * /narrative?topic= — 주제 내러티브 (theme_surge 고도화, D-023 인과 그래프 위 서브그래프).
@@ -177,6 +179,8 @@ function NarrativeLanding() {
       {/* 엮인 서사(구 '세계관' 배지) — 내러티브 축의 상위 진입점이라 목록 위에 둔다 (D-123).
           지식 축 종합인 '세계관 브리핑'은 지식 탭에 남는다 — 이름·자리로 두 축을 분리. */}
       <MegaNarrativeSection />
+      {/* 최근 7일 인과 그래프 변화 — Home 시장 탭에서 이동 (D-208) */}
+      <GraphActivitySection />
       <NarrativeList empty="state" controls />
     </PageContainer>
   )
@@ -317,6 +321,7 @@ interface CausalEdge {
   reference_period: string | null; confidence: number | null
   effect_direction?: string | null; effect_strength?: string | null
   corroborated_by?: number; contested?: boolean; promoted_knowledge_id?: number | null
+  id?: number; source_status?: SourceStatus | null   // 출처 검증 (D-204)
   obs_confirmed?: boolean
 }
 interface CausalGraph { nodes: { name: string; type: string }[]; edges: CausalEdge[] }
@@ -407,6 +412,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
                       관측 확증
                     </Badge>
                   )}
+                  <EdgeSourceBadge edgeId={e.id} status={e.source_status} />
                   {e.mechanism && (
                     <span className="text-[11px] text-muted-foreground w-full pl-1">↳ {e.mechanism}</span>
                   )}

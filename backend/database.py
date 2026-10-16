@@ -18,8 +18,32 @@ def init_db():
     cur = conn.cursor()
     from pipeline.study import SCHEMA as STUDY_SCHEMA
     cur.executescript(STUDY_SCHEMA)
+    from pipeline.watch_rules import SCHEMA as WATCH_SCHEMA  # 종목 묶음·감시 (D-185)
+    cur.executescript(WATCH_SCHEMA)
+    from pipeline.portfolio import SCHEMA as PORTFOLIO_SCHEMA  # 포트폴리오 거래 원장 (D-212)
+    cur.executescript(PORTFOLIO_SCHEMA)
+    from pipeline.portfolio_alerts import SCHEMA as PORTFOLIO_ALERTS_SCHEMA  # 포트폴리오 알림 발송 기록 (D-214)
+    cur.executescript(PORTFOLIO_ALERTS_SCHEMA)
+    from pipeline.portfolio_events import SCHEMA as PORTFOLIO_EVENTS_SCHEMA  # 포트폴리오 예상 이벤트
+    cur.executescript(PORTFOLIO_EVENTS_SCHEMA)
+    from pipeline.credit_spreads import SCHEMA as CREDIT_SCHEMA  # 회사채 스프레드 (D-230)
+    cur.executescript(CREDIT_SCHEMA)
+    from pipeline.retail_heat import SCHEMA as RETAIL_SCHEMA  # 개인 투자 열기 (D-231)
+    cur.executescript(RETAIL_SCHEMA)
+    from pipeline.sec_filings import SCHEMA as SEC_SCHEMA  # 실적 8-K 첨부 (D-217)
+    cur.executescript(SEC_SCHEMA)
+    from pipeline.call_momentum import SCHEMA as CALL_MOMENTUM_SCHEMA  # 실적 발언 모멘텀 (D-217)
+    cur.executescript(CALL_MOMENTUM_SCHEMA)
+    from pipeline.doc_claims import SCHEMA as DOC_CLAIMS_SCHEMA  # 문서 상세 논점별 관련 자료 (D-233)
+    cur.executescript(DOC_CLAIMS_SCHEMA)
+    from pipeline.company_profile import SCHEMA as PROFILE_SCHEMA  # 웹 조사 기업 개요 (D-188)
+    cur.executescript(PROFILE_SCHEMA)
+    from pipeline.technical_commentary import SCHEMA as COMMENTARY_SCHEMA  # 기술적 분석 AI 해설 (D-191)
+    cur.executescript(COMMENTARY_SCHEMA)
     from pipeline.study_projects import migrate as migrate_study_projects
     migrate_study_projects(conn)
+    from pipeline.study_actions import migrate as migrate_study_actions
+    migrate_study_actions(conn)
     from pipeline.youtube_digest import SCHEMA as YOUTUBE_DIGEST_SCHEMA
     cur.executescript(YOUTUBE_DIGEST_SCHEMA)
 
@@ -460,7 +484,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
 
-    -- 투자 렌즈 판독 (docs/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단.
+    -- 투자 렌즈 판독 (docs/private/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단.
     -- append-only 히스토리(판단 변화 추적). principles/material 해시로 게으른 재생성 가드.
     CREATE TABLE IF NOT EXISTS lens_readings (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -554,6 +578,26 @@ def init_db():
         summary      TEXT,
         fetched_at   TEXT,
         PRIMARY KEY(ticker, url)
+    );
+
+    -- 미국 주요 매체·Fed RSS 헤드라인 (D-206, 어젯밤 매크로 이슈 재료, pipeline/macro_news.py).
+    CREATE TABLE IF NOT EXISTS macro_news (
+        url          TEXT PRIMARY KEY,
+        feed         TEXT NOT NULL,          -- FEEDS key
+        publisher    TEXT NOT NULL,
+        kind         TEXT NOT NULL,          -- news | official
+        title        TEXT NOT NULL,
+        summary      TEXT,
+        published_at TEXT,                   -- UTC ISO
+        fetched_at   TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 어젯밤 매크로 이슈 추출 캐시 (D-206) — 인용 검증을 통과한 이슈만 저장, signature=프롬프트 해시.
+    CREATE TABLE IF NOT EXISTS us_macro_issues (
+        trade_date   TEXT PRIMARY KEY,
+        signature    TEXT NOT NULL,
+        issues_json  TEXT NOT NULL,
+        created_at   TEXT DEFAULT (datetime('now'))
     );
 
     -- 매크로·유동성 신호등 해설 캐시 (D-102, sonnet 산문 · signature 불변이면 재사용, docs/specs/macro.md).
@@ -701,7 +745,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_falsifiers_knowledge ON knowledge_falsifiers(knowledge_id);
 
-    -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
+    -- 대화 영속화 (P2-0, docs/private/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
     CREATE TABLE IF NOT EXISTS conversations (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -761,7 +805,7 @@ def init_db():
         UNIQUE(topic, version)
     );
 
-    -- 에이전트 제안함 (진화계획 3단계 v1, docs/specs/agent-proposals.md) — 시스템이 그래프·지식
+    -- 에이전트 제안함 (진화계획 3단계 v1, docs/private/specs/agent-proposals.md) — 시스템이 그래프·지식
     -- 상태를 감시하다 먼저 "조사해볼까요?"를 던진다. 제안-전용: 승인 전엔 어떤 행동도 없음.
     CREATE TABLE IF NOT EXISTS agent_proposals (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -951,6 +995,15 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_job_runs ON job_runs(id);
 
+    -- 피드 '읽음' 표시 (D-200) — 소스(channel)별 어디까지 읽었나. '*'는 기준선(기능 도입 시각): 행이 없는 소스는
+    -- 기준선 이후 게시물을 안 읽음으로 센다. 문서 코퍼스에는 쓰지 않는 별도 상태 테이블.
+    CREATE TABLE IF NOT EXISTS channel_reads (
+        channel    TEXT PRIMARY KEY,   -- 'telegram:<name>' | 'youtube:<id>' | 'blog:<url>' | 'company:<id>' … | '*'
+        read_until TEXT NOT NULL,      -- UTC ISO — 이 시각 이하 게시물은 읽음
+        updated_at TEXT DEFAULT (datetime('now'))
+    );
+    INSERT OR IGNORE INTO channel_reads (channel, read_until) VALUES ('*', strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+
     -- LLM 호출 원장 (D-130, pipeline/llm.py) — 콜당 usage·cost·소요. 비용 결정은 유추 말고 실측(D-117).
     CREATE TABLE IF NOT EXISTS llm_calls (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -983,7 +1036,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_market_ind ON market_indicators(indicator, snapshot_date);
 
-    -- 논지 감사 (thesis audit, docs/specs/thesis-audit.md) — thesis를 인과그래프에 대질한 read-only 감사 결과.
+    -- 논지 감사 (thesis audit, docs/private/specs/thesis-audit.md) — thesis를 인과그래프에 대질한 read-only 감사 결과.
     -- append-only 히스토리(판단이 시간에 따라 어떻게 변했나). 사용자 주장은 여기 저장되지 그래프에 안 써진다(격리).
     CREATE TABLE IF NOT EXISTS thesis_audits (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1186,6 +1239,14 @@ def init_db():
         "ALTER TABLE entity_relations ADD COLUMN geo_scope TEXT",  # 인과 주장의 장소 스코프 (통제어휘 GEO_VOCAB, D-034)
         "ALTER TABLE entity_relations ADD COLUMN effect_strength TEXT",   # 효과 크기 unknown|weak|moderate|strong — 확신과 별개 축 (D-065, 3단계 D-066)
         "ALTER TABLE entity_relations ADD COLUMN effect_direction TEXT",  # 효과 방향 positive|negative|mixed (D-065)
+        # 엣지 출처 검증 (D-204) — 내러티브 엣지는 모델이 댄 근거 문서의 인용을 호스트가 원문에서 확인한 뒤에만 출처로 붙인다.
+        # source_status: document(문서 단위 추출 — 그 문서가 곧 출처) | verified(인용 확인) | unverified(근거 못 댐/인용 불일치)
+        #                | scenario(가정 사건 시나리오 — 문서 출처 없음) | legacy_unverified(D-204 이전 내러티브 엣지, 마지막 입력 문서가 기록됐었음)
+        "ALTER TABLE entity_relations ADD COLUMN source_status TEXT",
+        "ALTER TABLE entity_relations ADD COLUMN source_quote TEXT",          # 근거 문서에서 확인한 인용(최대 200자)
+        "ALTER TABLE entity_relations ADD COLUMN legacy_source_doc_id INTEGER",  # D-204 백필 전 source_doc_id 보존(되돌리기용)
+        "ALTER TABLE narrative_edge_evidence ADD COLUMN doc_id INTEGER",      # 이 내러티브에서 이 엣지의 확인된 근거 문서
+        "ALTER TABLE narrative_edge_evidence ADD COLUMN quote TEXT",
         # 메르식 서사 (Phase 2 §2-2) — 순회 top-1 경로를 opus가 하나의 흐르는 글로
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
         "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
@@ -1284,6 +1345,13 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
         """)
         conn.commit()
+
+    # 보유 종목 논지(portfolio-intelligence §2) — questions 생성 뒤에 붙여야 새 DB에서도 칼럼이 생긴다
+    from pipeline.portfolio_thesis import ensure_schema as ensure_thesis_schema
+    ensure_thesis_schema(conn)
+    from pipeline.sec_filings import ensure_schema as ensure_sec_schema   # transcript_follow.fiscal_year_end (D-217)
+    ensure_sec_schema(conn)
+    conn.commit()
 
     conn.close()
 

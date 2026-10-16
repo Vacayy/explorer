@@ -1,4 +1,4 @@
-"""논지 감사 (thesis audit, docs/specs/thesis-audit.md) — 내 thesis를 축적된 인과그래프에 대질.
+"""논지 감사 (thesis audit, docs/private/specs/thesis-audit.md) — 내 thesis를 축적된 인과그래프에 대질.
 
 **read-only 감사**(등재 아님). 산출 = 델타: 각 주장이 그래프와 일치/충돌/신규/선반영인가.
 moat는 추론이 아니라 정박 — 모든 판정이 코퍼스 포인터(엣지 id·독립 소스 수·created_at·내러티브 버전)를 가리킨다.

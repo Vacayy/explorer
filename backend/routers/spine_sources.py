@@ -68,6 +68,21 @@ def add_telegram(body: AddTelegramRequest, background: BackgroundTasks):
 
 
 @router.post("/blog", status_code=201)
+def normalize_naver_blog(url: str) -> str:
+    """네이버 글 주소 → 블로그 루트. 글 주소로 등록하면 피드가 그 한 글만 이 소스의 글로 보고 나머지(수집은 됨)를
+    숨긴다(2026-10-13 KK Kontemporaries: 23건 중 1건만 보여 '수집 중단'처럼 보임)."""
+    import re
+    from urllib.parse import parse_qs, urlparse
+    m = re.match(r"https?://blog\.naver\.com/([A-Za-z0-9_\-]+)/\d+", url)
+    if m:
+        return f"https://blog.naver.com/{m.group(1)}"
+    if "blog.naver.com" in url and ("PostView" in url or "PostList" in url):
+        bid = parse_qs(urlparse(url).query).get("blogId", [None])[0]
+        if bid:
+            return f"https://blog.naver.com/{bid}"
+    return url
+
+
 def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     url = body.url.strip().rstrip("/")
     if not url.startswith("http"):
@@ -75,6 +90,7 @@ def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     # 네이버 모바일 URL 정규화 — 포스트 URL(blog.naver.com)과 프리픽스 매칭돼야
     # 채널명 표시·소스 건강 집계가 정확해진다
     url = url.replace("://m.blog.naver.com/", "://blog.naver.com/")
+    url = normalize_naver_blog(url)
 
     from services.blog_service import detect_platform_and_feed_url, fetch_blog_author, verify_and_fetch
     platform, feed_url = detect_platform_and_feed_url(url)
@@ -426,6 +442,39 @@ def set_collect(body: CollectToggle):
     if not cur.rowcount:
         raise HTTPException(404, "해당 소스를 찾을 수 없습니다")
     return {"kind": body.kind, "key": body.key, "collect_enabled": body.enabled}
+
+
+class RefreshRequest(BaseModel):
+    kind: str            # telegram | blog | youtube
+    key: str             # channel_name | url | channel_id
+
+
+@router.post("/refresh")
+def refresh_source(body: RefreshRequest):
+    """소스 하나를 지금 수집 (D-199). 백그라운드로 돌리고 즉시 상태를 돌려준다 — 진행은 GET /refresh로 폴링.
+
+    같은 커넥터·적재 경로(새 문서만 enrich)를 소스 하나에만 돌린다. 이미 돌고 있으면 그 상태를 돌려준다(중복 시작 없음).
+    """
+    from pipeline import source_refresh
+    if body.kind not in source_refresh.KINDS:
+        raise HTTPException(400, "알 수 없는 kind")
+    conn = get_connection()
+    try:
+        known = source_refresh.registered(conn, body.kind, body.key)
+    finally:
+        conn.close()
+    if not known:
+        raise HTTPException(404, "등록되지 않은 소스입니다")
+    return source_refresh.start(body.kind, body.key)
+
+
+@router.get("/refresh")
+def refresh_status(kind: str, key: str):
+    """즉시 수집 진행 상태 — idle | running | done | skipped | error. 새 작업을 만들지 않는다."""
+    from pipeline import source_refresh
+    if kind not in source_refresh.KINDS:
+        raise HTTPException(400, "알 수 없는 kind")
+    return source_refresh.status(kind, key)
 
 
 @router.get("/health", response_model=SourcesHealthResponse)

@@ -35,6 +35,7 @@ flowchart LR
 | 항목 | 선택 | 이유 · 기각 |
 |---|---|---|
 | 문맥 접두어 | **LLM 0**: `[소스·YYYY-MM-DD] 제목 — 요약(≤160자)` (요약은 태깅 때 이미 haiku가 만든 `enrichments.summary`, 98% 커버) | Anthropic 방식(청크별 haiku 문맥)은 장문 5,089건 × 문서 전체 입력 ≈ 20M 토큰·수십 시간. 접두어의 핵심 효과(청크를 문서 안에 위치시키기)는 제목+요약으로 대부분 얻는다. 청크별 LLM 문맥은 컨콜·유튜브(537건)에 한정한 업그레이드 경로로 남긴다 |
+| 임베딩 텍스트 (D-221) | `[소스·날짜] 제목` + 본문 — 요약 접두어는 BM25·근거 표시·리랭커에만 | MiniLM이 128토큰에서 잘라 요약 접두어(~95토큰)가 본문을 밀어냈다(청크 간 유사도 0.95) |
 | 청크 크기 | 1,200자, 겹침 150, 문단 경계 우선, 문서당 ≤80 | 근거 발췌 상한(1,200자)과 일치. 281K자 문서는 96K자까지만(상한 명시) |
 | 리랭커 | `jinaai/jina-reranker-v2-base-multilingual` (fastembed, 1.1GB, 로컬) — 실측 한국어 쌍 판별 정상, 40쌍 1.4초, 첫 로드 7.5분(1회 다운로드) | bge-reranker-base는 영·중만. ms-marco MiniLM은 영어. LLM 리랭크(haiku)는 턴당 콜 추가·비결정적. 미가용 시 RRF 순으로 degrade |
 | 피드 검색 | 문서 단위 `search()` 유지 | 피드는 문서 목록이 결과라 문서 임베딩이 맞다. 청크 인덱스는 대화 근거 전용 |
@@ -50,7 +51,7 @@ flowchart LR
 ## 4. 코드
 
 - `pipeline/chunks.py` — `chunk_text()` · `build_chunk_index(batch)`(변경·신규 문서만) · `search_chunks(q, k)`(RRF+쿼터 → 문서별 최고 청크).
-- `pipeline/rerank.py` — `rerank(query, texts)` lazy 싱글턴, `RERANK_MODEL=""`로 비활성, import 실패 시 None.
+- `pipeline/rerank.py` — `rerank(query, texts)` lazy 싱글턴, `RERANK_MODEL=""`로 비활성, import/캐시 로드 실패 시 None. **2026-09-18(D-175)**: 문서·청크 검색과 리랭커는 대화 요청 중 모델을 다운로드하지 않고 로컬 캐시만 사용한다. 없으면 BM25/RRF 순서를 유지한다. 인덱스 구축의 임베딩 모델 확보는 유지한다. 리랭커는 사전 확보된 캐시를 사용하며, 캐시 확보 후 프로세스를 다시 시작하면 로드를 재시도한다.
 - `pipeline/rag.retrieve_docs` — 청크 경로(후보 40 → 필터 → 리랭크 → k, excerpt=접두어+청크) / 폴백 문서 경로.
 - `scripts/build_search_index.py` — 기존 문서 인덱스 + 청크 인덱스 순차 빌드(cron 체인 동일 위치).
 

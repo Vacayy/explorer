@@ -6,6 +6,8 @@ export interface Company {
   sector: string | null;
 }
 
+export type RecentCompanySearch = Pick<Company, 'corp_name'> & { stock_code: string };
+
 export interface FinancialRow {
   account_nm: string;
   values: (string | null)[];
@@ -206,7 +208,7 @@ export interface SpineFeedResponse {
   as_of: string;
 }
 
-// 종목 AI 브리프 (P2-1, docs/specs/product-v3.md §3)
+// 종목 AI 브리프 (P2-1, docs/private/specs/product-v3.md §3)
 export interface StockBrief {
   status: string;            // fresh | cached | empty | unavailable | failed
   brief: string | null;
@@ -219,7 +221,7 @@ export interface StockBrief {
   thesis?: string | null;    // 논지 원문 (불변 — AI는 점검만)
 }
 
-// 투자 렌즈 (docs/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)
+// 투자 렌즈 (docs/private/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)
 export interface LensReading {
   lens_type: string;         // value | trend
   status: string;            // cached | fresh | empty | unavailable | failed
@@ -608,13 +610,19 @@ export interface UsCluster {
   label: string; n: number; dollar_volume: number; share_pct: number;
   median_change: number; has_new: boolean; tickers: string[];
 }
-/** 4섹션 종합 (D-112). 구 스키마(mood 단일)는 백엔드가 issues로 승계해 내려준다. */
+/** 매크로 문단 출처 표식 `[n]`의 대상 (D-206). */
+export interface UsBriefingSource {
+  n: number; kind: "telegram" | "news" | "official"; publisher: string;
+  title: string | null; url: string | null; doc_id: number | null; published_at: string | null;
+}
+/** 2문단 종합 (D-206): 매크로 + 거래대금 기업 이슈. 구 스키마(mood 단일)는 백엔드가 issues로 승계해 내려준다. */
 export interface UsBriefingSynthesis {
-  index_summary: string;   // ① 지수 마감
-  drivers: string;         // ② 시장을 움직인 요인
-  issues: string;          // ③ 거래대금 기반 이슈
-  flow: string;            // ④ 시계열 흐름
+  index_summary: string;   // D-206 이전 행 호환(새 종합은 빈 값)
+  drivers: string;         // 매크로 — `[n]` 출처 표식 포함
+  issues: string;          // 거래대금 기반 기업 이슈
   study_candidates: string[]; share_candidates: string[];
+  sources: UsBriefingSource[];
+  source_gaps: string[];   // 빠진 재료(피드 수집 실패 등)
 }
 export interface UsIndexMove { name: string; close: number; change_pct: number }
 export interface UsIndexBlock { as_of: string | null; items: UsIndexMove[] }
@@ -624,14 +632,15 @@ export interface UsMacroBlock {
   as_of: string | null; items: UsMacroItem[]; lookback: string | null;
   signal: UsMacroSignal | null; degraded: string[];
 }
-export interface UsFlowPoint { date: string; share_pct: number }
-/** 비중 시계열 국면 판정 (D-113) — 확대/축소 추세·되돌림·반등·횡보 */
-export interface UsFlowTrend { label: string; delta_pp: number | null; detail: string | null }
-export interface UsFlowSector { label: string; series: UsFlowPoint[]; trend: UsFlowTrend | null }
-export interface UsFlowConcentration { series: UsFlowPoint[]; trend: UsFlowTrend | null }
-export interface UsFlowBlock {
-  dates: string[]; sectors: UsFlowSector[]; concentration: UsFlowConcentration | null
+/** '소스 관리' — 브리핑 재료 목록과 최근 수집 상태 (D-206 후속). */
+export interface UsBriefingSourceItem {
+  name: string; detail: string | null; url: string | null;
+  last_seen: string | null;        // ISO UTC 또는 날짜(YYYY-MM-DD)
+  recent_count: number | null;     // 최근 24시간 자료 수
+  status: "ok" | "quiet" | "off";
 }
+export interface UsBriefingSourceGroup { key: string; label: string; used_for: string; items: UsBriefingSourceItem[] }
+export interface UsBriefingSources { groups: UsBriefingSourceGroup[] }
 export interface UsBriefingListItem { trade_date: string; model: string | null; created_at: string | null }
 export interface UsMarketTheme { name: string; count: number }
 export interface UsMarketDoc {
@@ -644,7 +653,7 @@ export interface UsBriefing {
   stale_days: number | null;                 // 스냅샷 경과일 — 며칠 묵었나 (D-112)
   clusters: UsCluster[]; idiosyncratic: UsMoverBrief[]; movers: UsMoverBrief[];
   market_themes: UsMarketTheme[]; market_docs: UsMarketDoc[];
-  indices: UsIndexBlock; macro: UsMacroBlock; flow: UsFlowBlock;   // D-112
+  indices: UsIndexBlock; macro: UsMacroBlock;   // D-112
   synthesis: UsBriefingSynthesis | null;
 }
 
@@ -755,7 +764,7 @@ export interface ReadingHistory {
 // Home and /feed share the same stored-update contract (docs/specs/home-feed.md).
 export interface TimelineItem {
   id: string
-  kind: 'source' | 'company' | 'person' | 'transcript' | 'trade'
+  kind: 'source' | 'company' | 'person' | 'transcript' | 'trade' | 'narrative' | 'report' | 'scenario'
   title: string
   body: string
   occurred_at: string
@@ -784,11 +793,296 @@ export interface TimelineChannel {
   name: string
   platform: 'telegram' | 'blog' | 'youtube' | 'system'
   count: number
+  /** 읽음 표시(read_until, 없으면 기준선) 이후 게시물 수 (D-200) */
+  unread: number
   latest_at: string | null
   preview: string
 }
 export interface TimelineChannelsResponse {
+  total_unread: number
   items: TimelineChannel[]
   total: number
   until: string
+}
+export type StudyIntent = 'explain' | 'critique' | 'related';
+export type StudyTool = 'read' | 'highlight' | 'comment' | StudyIntent;
+export interface StudyActionRequest {
+  intent: StudyIntent;
+  selection?: { start: number; end: number; exact: string };
+  annotation?: { id: number; revision: number };
+  parent_id?: number;
+  retry_of?: number;
+  question?: string;
+  research?: 'auto' | 'web';
+}
+export interface StudyAction {
+  id: number;
+  study_id: number;
+  annotation_id: number;
+  annotation_revision: number;
+  intent: StudyIntent;
+  status: 'queued' | 'running' | 'complete' | 'error' | 'cancelled';
+  question: string;
+  parent_id: number | null;
+  retry_of: number | null;
+  queue_position: number;
+  created_at: string;
+  started_at: string | null;
+  error: string | null;
+  prompt_version: string;
+  result: {
+    answer?: string;
+    citations?: ChatMessage['citations'];
+    model?: string;
+    research?: {
+      intent: string;
+      notes?: string[];
+      results: { title: string; href?: string | null; date?: string | null; kind?: string; doc_id?: number; text?: string; read_scope?: string }[];
+    };
+  } | null;
+}
+
+// 종목 묶음·기술적 감시 (docs/specs/portfolio-watch.md, D-185)
+export type StockGroupKind = 'watch' | 'portfolio';
+export interface WatchRule {
+  id: number; stock_code: string | null; strategy_id: string; label: string; params: Record<string, unknown>;
+  within_days: number; source_strategy_id: string | null; source_version: number | null;
+}
+export interface WatchRuleInput { strategy_id: string; params?: Record<string, unknown>; within_days?: number; source_strategy_id?: string | null; source_version?: number | null }
+export interface GroupSignal {
+  stock_code: string; name?: string; rule_id: number; as_of: string; strategy_id: string; label: string;
+  params: Record<string, unknown>; value: number | null; reference: number | null; signal_date: string | null;
+}
+export interface StockGroupMember {
+  id: number; group_id: number; stock_code: string; name: string; market: string | null;
+  quantity: number | null; avg_price: number | null; bought_at: string | null;
+  conviction: number | null; target_price: number | null; thesis: string | null; created_at: string;
+  close: number | null; change_pct: number | null; market_cap: number | null; price_date: string | null;
+  rule_count: number; signals: { rule_id: number; strategy_id: string; label: string; value: number | null; reference: number | null; signal_date: string | null }[];
+  unavailable: number; pnl: number | null; return_pct: number | null;
+}
+export interface StockGroupSummary {
+  id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
+  member_count: number; rule_count: number; last_as_of: string | null; today_signals: number;
+}
+export interface StockGroupList { items: StockGroupSummary[]; latest_trade_date: string | null; legacy_watchlist: { count: number; migrated: boolean } }
+export interface StockGroupDetail {
+  id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
+  members: StockGroupMember[]; rules: { default: WatchRule[]; members: Record<string, WatchRule[]> };
+  last_as_of: string | null; latest_trade_date: string | null; evaluation_pending: boolean; today_signals: number;
+}
+export interface StrategyCatalogItem {
+  id: string; label: string; category: string; timeframe?: string; description?: string; formula?: string;
+  parameters: Record<string, { type: 'integer' | 'number' | 'string'; label?: string; min?: number; max?: number; options?: string[] }>;
+  defaults: Record<string, unknown>;
+}
+
+// 웹 조사 기업 개요 보고서 (docs/specs/company-research.md §웹 조사 레인, D-188)
+export interface CompanyWebSource { id: number; url: string; title: string; publisher: string; published_at: string | null; kind: 'filing' | 'ir' | 'news' | 'report' | 'other'; excerpt: string; fetched: boolean }
+export interface CompanyWebProfile {
+  id: number; stock_code: string; version: number; created_at: string; model: string | null; cost_usd: number | null; reason: string | null; source_count: number;
+  overview: string;
+  business_lines: { name: string; description: string; share_pct: number | null; source_ids: number[] }[];
+  products_customers: { text: string; source_ids: number[] }[];
+  competitors: string[];
+  drivers: { text: string; source_ids: number[] }[];
+  risks: { text: string; source_ids: number[] }[];
+  recent_events: { date: string | null; title: string; source_ids: number[] }[];
+  sources: CompanyWebSource[];
+  gaps: string[];
+  official_report?: { rcept_no: string; report_nm: string; rcept_dt: string | null; url: string } | null;
+}
+
+// Home Risk — dated observations and an explicitly experimental joint condition.
+export interface RiskIndicator {
+  key: string
+  label: string
+  unit: string
+  source: string
+  source_url: string
+  value: number | null
+  as_of: string | null
+  fetched_at: string | null
+  attempted_at: string | null
+  error: string | null
+  quality: 'fresh' | 'missing' | 'stale' | 'error'
+  lag_days: number | null
+  points: [string, number][]
+  change_5: number | null
+  change_20: number | null
+}
+export interface RiskResponse {
+  items: RiskIndicator[]
+  signal: {
+    status: 'unavailable' | 'joint' | 'watch' | 'credit' | 'rates' | 'clear'
+    label: string
+    as_of: string | null
+    rate_change_bp: number | null
+    credit_change_bp: number | null
+    consecutive: number
+    common_observations: number
+    rule_version: string
+    reason: string
+  }
+  expected_date: string
+  generated_at: string
+  calendar_note: string
+  empty: boolean
+}
+export interface RiskSnapshotResponse {
+  busy: boolean
+  results: { key: string; status: 'cached' | 'updated' | 'error'; rows: number; error: string | null }[]
+}
+
+/* ---------- 포트폴리오 (D-212) — 비율·가격만, 원화 금액·수량 없음 ---------- */
+export interface PortfolioHolding {
+  code: string
+  name: string
+  weight_pct: number | null
+  return_pct: number | null
+  day_change_pct: number | null
+  avg_price: number
+  last_close: number | null
+  last_date: string | null
+  entry_date: string
+  price_source: 'live' | 'close'   // live = 장중 시세(30분 갱신)
+  quoted_at: string | null
+}
+/** 매도 한 건의 실현 결과 — 비율·가격만 */
+export interface PortfolioClosedTrade {
+  code: string; name: string; entry_date: string; sell_date: string
+  avg_price: number; sell_price: number; return_pct: number | null; holding_days: number | null
+  full: boolean   // 이 매도로 전량 청산
+}
+export interface PortfolioSummary {
+  as_of: string | null
+  total_return_pct: number | null
+  day_return_pct: number | null
+  cash_weight_pct: number | null
+  holdings: PortfolioHolding[]
+  quoted_at: string | null
+  realized_pct: number | null     // 실현 손익 ÷ 원금(순입금)
+  unrealized_pct: number | null   // 미실현 손익 ÷ 원금
+  closed: PortfolioClosedTrade[]  // 최근 매도부터
+}
+/** 운용 원칙(D-227) — 수치 규칙 하나 */
+export interface PrincipleRule { type: string; params: Record<string, number>; summary?: string | null }
+export interface PortfolioPrinciple { id: number; text: string; created_at: string; rules: PrincipleRule[]; notes: string[] }  // notes = 대화에서 참고하는 원칙(시스템 정리·사용자 확인)
+export interface PrincipleParse { rules: PrincipleRule[]; unparsed: string[] }
+export interface PortfolioHistoryPoint { date: string; cum_return_pct: number; day_return_pct: number }
+export type PortfolioTxKind = 'buy' | 'sell' | 'deposit' | 'withdraw'
+export interface PortfolioTransaction { id: number; trade_date: string; kind: PortfolioTxKind; stock_code: string | null; name: string | null; price: number | null }
+export interface PortfolioTxInput { trade_date: string; kind: PortfolioTxKind; stock_code?: string; amount?: number; price?: number; fund_shortfall?: boolean; sell_all?: boolean }
+export interface ExposureDriver {
+  key: string; name: string; type: string
+  exposure_pct: number; holdings: string[]
+  sources: ('graph' | 'comention' | 'chain')[]
+  direction: string | null; confidence: number | null; hops: number | null
+}
+export interface PortfolioExposure {
+  drivers: ExposureDriver[]
+  coverage: Record<string, { graph: number; comention: number; chain: string | null; stage: string | null }>
+  held: string[]
+}
+export interface PortfolioEvent {
+  date: string
+  kind: 'ir' | 'earnings_notice' | 'agm' | 'earnings_est' | 'report_deadline' | 'us_earnings' | string
+  title: string; code: string | null; name: string | null
+  estimated: boolean; url: string | null; basis: string | null
+}
+export interface HoldingFlow {
+  code: string; name: string
+  series: { date: string; n: number; pos: number; neg: number }[]
+  today: number; avg7: number; surge: boolean; tone_shift: boolean
+  neg_today_pct: number | null; neg_prev_pct: number
+  digest: { date: string; insights: string | null; lead: string | null; docs: number } | null
+}
+export type QuestionVerdict = 'leaning_yes' | 'leaning_no' | 'mixed' | 'unknown' | null
+export interface HoldingThesis {
+  id: number; text: string; lead: QuestionVerdict; confirm: QuestionVerdict; divergence: string | null; summary: string | null
+  sub_questions: { text: string; falsifier: string | null; verdict: QuestionVerdict }[]
+  warnings: string[]
+}
+
+/** 관심 종목 이유 감시(D-227) — 보유 논지와 같은 판정, 신호는 지지·약화 양쪽 */
+export type WatchReason = Omit<HoldingThesis, 'warnings'> & { signals: string[] }
+
+/* ---------- 실적 발언 모멘텀 (D-217) ---------- */
+export interface CallDriver { name: string; type: string; status: 'new' | 'accelerating' | 'steady' | 'decelerating'; magnitude?: string; quote: string; source: string }
+export interface CallGuidance { metric: string; direction: 'raised' | 'lowered' | 'maintained' | 'initiated'; quote: string; source: string }
+export interface CallMomentumCandidate {
+  ticker: string; name: string | null; event_date: string; score: number; first_candidate_at: string | null
+  drivers: CallDriver[]; guidance: CallGuidance[]; tone: number | null; prev_tone: number | null; sources: string[]; qa_focus: string[]
+}
+export interface CallMomentumSeason { key: string; label: string; start: string }
+export interface CallMomentum {
+  season: CallMomentumSeason & { reported: number }
+  candidates: CallMomentumCandidate[]          // 이번 실적 시즌만
+  history: (CallMomentumSeason & { candidates: CallMomentumCandidate[] })[]
+  coverage: { universe: number; with_releases: number; with_transcripts: number; extracted_docs: number; failed_docs: number; comparable: number }
+  sec_configured: boolean
+}
+
+/** 문서 디테일 '관련 문서' — GET /api/spine/doc/{id}/related (D-221) */
+export interface RelatedDoc {
+  id: number
+  source_type: string
+  title: string | null
+  published_at: string | null
+  channel: string | null
+  similarity: number
+  reasons: string[]   // 겹치는 종목·인물·산업
+}
+
+/** 문서 상세 '논점별 관련 자료' — GET /api/spine/doc/{id}/claims (D-233) */
+export interface ClaimRelated {
+  id: number
+  source_type: string
+  title: string | null
+  published_at: string | null
+  channel: string | null
+  quote: string | null   // 찾은 대목의 원문 문장 (LLM 작성 아님)
+  score: number
+}
+
+export interface DocClaim {
+  claim: string          // LLM이 뽑은 논점(해석)
+  related: ClaimRelated[]
+}
+
+export interface DocClaims {
+  status: 'none' | 'running' | 'ok' | 'failed' | 'skipped'
+  error: string | null
+  claims: DocClaim[]
+}
+
+/* ---------- 회사채 스프레드 (D-230) ---------- */
+export interface CreditRow {
+  ticker: string; name: string; group: string; bond: string | null; rating: string | null; hy: boolean
+  source: string | null   // TRACE | 유럽 거래소
+  ytm: number | null; treasury: number | null; spread_bp: number | null
+  chg_1m: number | null; chg_3m: number | null; chg_1y: number | null
+  pd_pct: number | null   // 5년 누적 부도확률(위험중립 근사, 회수율 40%)
+  last_date: string | null
+}
+export interface CreditTable { configured: boolean; as_of: string | null; groups: { key: string; label: string }[]; rows: CreditRow[] }
+export interface CreditHistory { tickers: string[]; points: Record<string, number | string | null>[] }
+
+/* ---------- 개인 투자 열기 (D-231) ---------- */
+export type RetailRegimeKey = 'deleveraging' | 'leverage_led' | 'churn' | 'broad_inflow' | 'neutral'
+export interface RetailRegime { key: RetailRegimeKey; label: string; reasons: string[] }
+export interface RetailMetric {
+  key: string; label: string; unit: 'rate' | 'ratio' | 'krw'
+  value: number | null; pctile: number | null; pctile_change: number | null   // 과거 5년 백분위(그날 이전 값만)
+}
+export interface RetailSummary {
+  as_of: string | null; regime: RetailRegime | null; metrics: RetailMetric[]
+  levels: { credit_total?: number; deposits?: number; kospi_close?: number }
+  krx_configured: boolean; accounts_available: boolean
+}
+export interface RetailSnapshot { episode: string; date: string; name: string; regime: RetailRegime; metrics: RetailMetric[]; levels: RetailSummary['levels'] }
+export interface RetailPoint {
+  date: string; credit_total: number | null; deposits: number | null; kospi_close: number | null; value: number | null
+  credit_growth: number | null; credit_growth_pct: number | null; deposit_growth_pct: number | null; value_growth_pct: number | null
+  leverage: number | null; turnover: number | null; indiv_share: number | null; forced_20_pct: number | null
 }

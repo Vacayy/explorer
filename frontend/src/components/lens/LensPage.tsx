@@ -25,7 +25,7 @@ const TREND_STANCE: Record<string, { label: string; cls: string }> = {
 }
 
 /**
- * 투자 렌즈 — 원칙 원장(가치/추세)에 비춰 이 종목을 읽는다 (docs/specs/investor-lens.md).
+ * 투자 렌즈 — 원칙 원장(가치/추세)에 비춰 이 종목을 읽는다 (docs/private/specs/investor-lens.md).
  * 판정 오라클이 아니라 프레임(hypothesis). 두 렌즈가 갈리는 지점이 신호(4상한 미니뷰).
  * 게으른 생성: 원칙·재료(질적 추세 상태)가 바뀌면 stale → 자동 재생성.
  * LensPage = /analyze 탭용(PageContainer 래핑). LensView = 재사용(US 도시에 등에 임베드).

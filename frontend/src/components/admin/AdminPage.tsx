@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ErrorState } from "@/components/shared/ErrorState"
 import { cn } from "@/lib/utils"
 
 /**
@@ -16,6 +18,11 @@ import { cn } from "@/lib/utils"
 interface JobStatus {
   name: string; label: string; description: string; entrypoint: string; enabled: boolean
   last_run: { status: string; summary: string | null; duration_ms: number | null; ran_at: string } | null
+}
+/** 데이터 신선도 (D-222) — 작업 종료 코드가 아니라 결과 데이터의 최신 시점 */
+interface HealthItem {
+  key: string; label: string; kind: string; owner: string; critical: boolean
+  latest: string | null; expected: string | null; status: string; detail: string
 }
 interface JobRun { job: string; status: string; summary: string | null; duration_ms: number | null; ran_at: string }
 
@@ -31,6 +38,10 @@ export default function AdminPage() {
   const { data: runs = [] } = useQuery(
     apiQuery<JobRun[]>({ key: ["spine", "admin", "runs"], url: "/api/spine/admin/runs?limit=40", staleTime: STALE.short }),
   )
+  const health = useQuery(
+    apiQuery<HealthItem[]>({ key: ["spine", "admin", "health"], url: "/api/spine/admin/health", staleTime: STALE.short }),
+  )
+  const stale = (health.data ?? []).filter((h) => h.status !== "ok")
   const toggle = useMutation({
     mutationFn: async (b: { name: string; enabled: boolean }) =>
       (await api.post("/api/spine/admin/flag", b)).data,
@@ -47,6 +58,45 @@ export default function AdminPage() {
         <h2 className="text-xl font-bold">관리자</h2>
         <p className="text-sm text-muted-foreground">자동 생성 작업 on/off · 최근 실행 내역 — 비용·가시성 통제</p>
       </div>
+
+      {/* 데이터 신선도 */}
+      <section aria-label="데이터 신선도" className="space-y-1.5">
+        <div className="flex items-baseline gap-2">
+          <h3 className="text-sm font-medium">데이터 신선도</h3>
+          {health.data && (
+            <span className={cn("text-caption", stale.length ? "text-down" : "text-muted-foreground")}>
+              {stale.length ? `지연 ${stale.length}건` : "모두 최신"}
+            </span>
+          )}
+        </div>
+        <p className="text-caption text-muted-foreground">작업이 정상 종료돼도 결과가 비거나 묵을 수 있어, 저장된 데이터의 최신 시점을 기대치와 비교합니다. ‘경고’ 항목은 홈 브리핑·텔레그램에도 표시됩니다.</p>
+        {health.isPending && <Skeleton className="h-48 w-full rounded-xl" />}
+        {health.isError && <ErrorState message="신선도 점검을 불러오지 못했습니다." onRetry={() => health.refetch()} />}
+        {health.data && (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>데이터</TableHead><TableHead>상태</TableHead><TableHead>최신</TableHead>
+                <TableHead>기대</TableHead><TableHead className="hidden md:table-cell">채우는 곳</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {health.data.map((h) => (
+                  <TableRow key={h.key}>
+                    <TableCell className="text-sm">{h.label}{h.critical && <Badge variant="outline" className="ml-1.5 text-[9px]">경고</Badge>}</TableCell>
+                    <TableCell className="text-[11px]">
+                      <Badge variant="outline" className={cn("text-[9px]", h.status === "ok" ? STATUS_CLS.ok : STATUS_CLS.error)}>{h.status === "ok" ? "최신" : h.status === "stale" ? "지연" : "오류"}</Badge>
+                      {h.detail && <span className="ml-1.5 text-muted-foreground">{h.detail}</span>}
+                    </TableCell>
+                    <TableCell className="text-[11px] tabular-nums text-muted-foreground">{h.latest ? h.latest.slice(0, 16) : "-"}</TableCell>
+                    <TableCell className="text-[11px] tabular-nums text-muted-foreground">{h.expected ?? "-"}</TableCell>
+                    <TableCell className="hidden text-[11px] text-muted-foreground md:table-cell">{h.owner}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
 
       {/* 작업 on/off */}
       <div className="space-y-2">
