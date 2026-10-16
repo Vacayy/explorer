@@ -1179,6 +1179,25 @@ def init_db():
         layout_json   TEXT NOT NULL,        -- [{i, widget, x, y, w, h, params}]
         updated_at    TEXT NOT NULL
     );
+
+    -- 프록시 보드 (D-240, docs/specs/question-proxy.md) — 주제별 지표 묶음. 지표는 proxy_registry 행이고
+    -- 결정적 어댑터(adapter·adapter_ref)는 원천 테이블을 직접 읽는다(proxy_observations에 복사하지 않음)
+    CREATE TABLE IF NOT EXISTS proxy_boards (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        name          TEXT NOT NULL UNIQUE,
+        description   TEXT,
+        question_id   INTEGER,              -- 선택 연결: 핵심질문
+        narrative_id  INTEGER,              -- 선택 연결: 서사
+        group_id      INTEGER,              -- 선택 연결: 종목 묶음
+        created_at    TEXT DEFAULT (datetime('now')),
+        updated_at    TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS proxy_board_items (
+        board_id      INTEGER NOT NULL,
+        proxy_id      INTEGER NOT NULL,
+        position      INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (board_id, proxy_id)
+    );
     """)
 
     conn.commit()
@@ -1269,6 +1288,11 @@ def init_db():
         "ALTER TABLE youtube_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
         # 링크 스크랩 채널 (D-142) — 본문 없이 URL만 올리는 채널. 켜면 링크를 따라가 원문을 별도 문서로 적재한다.
         "ALTER TABLE telegram_channels ADD COLUMN expand_links INTEGER DEFAULT 0",
+        # 프록시 보드 (D-240) — 결정적 어댑터 지표. adapter_ref 예: credit:ORCL · trade:854232:yoy · indicator:risk_hy
+        "ALTER TABLE proxy_registry ADD COLUMN adapter TEXT",          # credit|trade|call_momentum|indicator|retail|sector|price (NULL=기존 컨콜·여론 프록시)
+        "ALTER TABLE proxy_registry ADD COLUMN adapter_ref TEXT",
+        "ALTER TABLE proxy_registry ADD COLUMN warn_direction TEXT",   # up|down|NULL — 어느 방향 움직임이 '주의'인가
+        "ALTER TABLE proxy_registry ADD COLUMN rationale TEXT",        # 왜 이 주제의 선행/확정 신호인가
     ]:
         try:
             conn.execute(migration)
