@@ -23,6 +23,8 @@ class ActionsFreshnessTests(unittest.TestCase):
             CREATE TABLE capital_raise_details(rcp_no TEXT, stock_code TEXT, action_type TEXT, date_disclosure TEXT);
             CREATE TABLE stock_prices(stock_code TEXT, trade_date TEXT, close REAL);
             CREATE TABLE job_runs(job TEXT, status TEXT, ran_at TEXT);
+            CREATE TABLE stock_groups(id INTEGER PRIMARY KEY, name TEXT, kind TEXT);
+            CREATE TABLE stock_group_members(group_id INT, stock_code TEXT);
             INSERT INTO job_runs VALUES ('scan_actions', 'ok', '2026-10-16 03:26:26'),
                                         ('scan_actions', 'error', '2026-10-16 04:39:17');
         """)

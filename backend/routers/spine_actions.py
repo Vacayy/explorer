@@ -1,5 +1,6 @@
 """기업활동 API — 시총 5,000억+ 유·무상증자/합병/분할/공개매수/감자."""
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -21,12 +22,20 @@ class CorporateAction(BaseModel):
     market_cap: int | None
     summary: str | None       # haiku 핵심 요약 (규모·비율·일정)
     dart_url: str
+    is_correction: bool = False   # report_nm에 '정정'([기재정정]·[첨부정정]) — 원공시를 고친 것
+    my_group: str | None = None   # 내 묶음(stock_groups) 멤버면 '보유'(portfolio) 또는 '관심'(watch)
+
+
+class ActionCounts(BaseModel):
+    original: int
+    correction: int
 
 
 class ActionsResponse(BaseModel):
     items: list[CorporateAction]
     total: int
     as_of: str | None         # 마지막 DART 스캔 성공 시각(UTC). 스캔 기록이 없으면 None
+    counts: ActionCounts | None = None   # kind 필터 전, 같은 기간·유형 안의 원공시·정정 수
 
 
 def _scanned_at(conn) -> str | None:
@@ -35,20 +44,42 @@ def _scanned_at(conn) -> str | None:
     return f"{r.replace(' ', 'T')}Z" if r else None
 
 
+_IS_CORRECTION = "COALESCE(report_nm, '') LIKE '%정정%'"
+
+
+def my_groups(conn) -> dict[str, str]:
+    """종목코드 → '보유'|'관심' — 보유(portfolio 묶음)가 관심보다 우선."""
+    out: dict[str, str] = {}
+    for r in conn.execute("SELECT m.stock_code, g.kind FROM stock_group_members m "
+                          "JOIN stock_groups g ON g.id = m.group_id ORDER BY g.kind = 'portfolio'"):
+        out[r["stock_code"]] = "보유" if r["kind"] == "portfolio" else "관심"
+    return out
+
+
 @router.get("", response_model=ActionsResponse)
 def list_actions(
     type: str | None = Query(None, description="유상증자|무상증자|공개매수|주식분할|합병|회사분할|감자"),
     days: int = Query(30, ge=1, le=180),
+    kind: Literal["all", "original", "correction"] = Query("all", description="원공시만 | 정정만 | 전체"),
+    stock_code: str | None = Query(None, description="한 종목만 (종목 도시에)"),
 ):
     conn = get_connection()
     where, params = ["rcept_dt >= ?"], [(date.today() - timedelta(days=days)).strftime("%Y%m%d")]
     if type:
         where.append("action_type = ?")
         params.append(type)
+    if stock_code:
+        where.append("stock_code = ?")
+        params.append(stock_code)
+    c = conn.execute(f"SELECT count(*) n, COALESCE(sum({_IS_CORRECTION}), 0) corr FROM corporate_actions "
+                     f"WHERE {' AND '.join(where)}", params).fetchone()
+    if kind != "all":
+        where.append(_IS_CORRECTION if kind == "correction" else f"NOT ({_IS_CORRECTION})")
     rows = conn.execute(f"""
         SELECT * FROM corporate_actions WHERE {" AND ".join(where)}
         ORDER BY rcept_dt DESC, id DESC LIMIT 200
     """, params).fetchall()
+    mine = my_groups(conn)
     as_of = _scanned_at(conn)
     conn.close()
     return ActionsResponse(
@@ -58,9 +89,11 @@ def list_actions(
             report_nm=r["report_nm"], rcept_dt=r["rcept_dt"], market_cap=r["market_cap"],
             summary=r["summary"],
             dart_url=f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r['rcp_no']}",
+            is_correction="정정" in (r["report_nm"] or ""), my_group=mine.get(r["stock_code"]),
         ) for r in rows],
         total=len(rows),
         as_of=as_of,
+        counts=ActionCounts(original=c["n"] - c["corr"], correction=c["corr"]),
     )
 
 
@@ -93,6 +126,7 @@ class RightsRow(BaseModel):
     underwriter: str | None
     major_holder: str | None
     dart_url: str
+    my_group: str | None = None
 
 
 class RightsResponse(BaseModel):
@@ -118,6 +152,7 @@ def list_rights():
             SELECT stock_code, max(trade_date) FROM stock_prices GROUP BY stock_code)
     """)}
     as_of = _scanned_at(conn)
+    mine = my_groups(conn)
     conn.close()
 
     items = []
@@ -141,5 +176,6 @@ def list_rights():
                 "date_new_listing", "underwriter", "major_holder")},
             latest_close=close, diff_w=diff_w, diff_pct=diff_pct, ratio_pct=ratio,
             dart_url=f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r['rcp_no']}",
+            my_group=mine.get(r["stock_code"]),
         ))
     return RightsResponse(items=items, as_of=as_of)
