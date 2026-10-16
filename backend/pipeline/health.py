@@ -60,6 +60,16 @@ CHECKS: list[tuple[str, str, str, str, object, str, bool]] = [
      "launchd credit 07:30 (로컬 어댑터)", False),
     ("backup", "DB 백업", "age", "SELECT max(ran_at) FROM job_runs WHERE job='backup' AND status='ok'", 36,
      "launchd backup 04:30", False),
+    # 국내 도시에 원천(kr_company_data) — 밸류는 그날 시세 기준, 공시는 접수일, 재무·마스터는 매일 실행 성공 여부.
+    ("kr_valuation", "국내 밸류 지표(PER·PBR)", "trading", "SELECT max(trade_date) FROM fundamentals", "2330",
+     "launchd krcompany 매일 21:30", False),
+    ("kr_disclosures", "DART 공시 목록", "age",
+     "SELECT substr(max(rcept_dt), 1, 4) || '-' || substr(max(rcept_dt), 5, 2) || '-' || substr(max(rcept_dt), 7, 2) "
+     "FROM disclosures", 100, "launchd krcompany 매일 21:30", False),
+    ("kr_financials", "국내 재무제표 수집", "age",
+     "SELECT max(ran_at) FROM job_runs WHERE job='kr_financials' AND status='ok'", 36, "launchd krcompany 매일 21:30", False),
+    ("kr_companies", "종목 마스터(DART)", "age",
+     "SELECT max(ran_at) FROM job_runs WHERE job='kr_companies' AND status='ok'", 36, "launchd krcompany 매일 21:30", False),
 ]
 
 

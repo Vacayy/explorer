@@ -67,6 +67,25 @@ class HealthTests(unittest.TestCase):
         self.assertTrue(any(line.startswith("피드 문서 유입") for line in lines))
         self.assertFalse(any("예약 작업" in line for line in lines))  # 비중요 항목은 관리자 화면에만
 
+    def test_kr_dossier_sources_flag_stale_valuation_and_disclosures(self):
+        self.conn.executescript("""
+            CREATE TABLE fundamentals(stock_code TEXT, trade_date TEXT);
+            CREATE TABLE disclosures(rcp_no TEXT, rcept_dt TEXT);
+            INSERT INTO fundamentals VALUES ('005930', '2026-09-07');
+            INSERT INTO disclosures VALUES ('1', '20260916');
+        """)
+        with patch.object(health, "launchd_failures", return_value=[]), patch.object(health, "_history_as_of", return_value=None):
+            status = {i["key"]: i for i in health.report(self.conn, at("2026-10-13", "2340"))}
+        self.assertEqual(status["kr_valuation"]["status"], "stale")   # 09-07에 멈춘 밸류(2026-10-16 실측)
+        self.assertEqual(status["kr_disclosures"]["status"], "stale")
+        self.assertEqual(status["kr_financials"]["detail"], "저장된 데이터 없음")
+        self.conn.execute("INSERT INTO fundamentals VALUES ('005930', '2026-10-13')")
+        self.conn.execute("INSERT INTO disclosures VALUES ('2', '20261013')")
+        with patch.object(health, "launchd_failures", return_value=[]), patch.object(health, "_history_as_of", return_value=None):
+            status = {i["key"]: i for i in health.report(self.conn, at("2026-10-13", "2340"))}
+        self.assertEqual(status["kr_valuation"]["status"], "ok")
+        self.assertEqual(status["kr_disclosures"]["status"], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -272,15 +272,6 @@ def backfill(days: int, limit: int | None):
     print(f"[backfill] 완료 {done}, 실패 {failed}")
 
 
-def _refresh_valuation():
-    """전종목 PER·ROE 갱신 (네이버 시세) — 소외 신호의 재료."""
-    from services.market_valuation import fetch_market_valuation
-    try:
-        print("[valuation]", fetch_market_valuation())
-    except Exception as e:
-        print(f"[valuation] 실패: {str(e)[:100]}")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--daily", action="store_true")
@@ -299,7 +290,7 @@ if __name__ == "__main__":
     if args.daily:
         from pipeline.ops import run_job
         run_job("prices", ingest_daily)  # job_runs 기록 — 관리자 화면에서 실행 이력이 보이게 (D-222)
-        _refresh_valuation()  # 전종목 PER·ROE — 소외 신호 재료 (일 1회)
+        # 전종목 밸류(PER·PBR)는 scripts/collect_kr_company_data.py(launchd krcompany)가 job_runs('kr_valuation')로 수집한다
     elif args.repair:
         repair(args.days, since=args.since, codes=args.codes.split(",") if args.codes else None)
     elif args.verify:
