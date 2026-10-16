@@ -43,6 +43,9 @@ export const SECTIONS: readonly SectionDef[] = [
   ] },
   { key: "portfolio", label: "포트폴리오", path: "/portfolio", tabs: [
     { key: "overview", path: "/portfolio", label: "개요", match: ["/portfolio"] },
+    { key: "holdings", path: "/portfolio/holdings", label: "보유", match: ["/portfolio/holdings"] },
+    { key: "principles", path: "/portfolio/principles", label: "원칙", match: ["/portfolio/principles"] },
+    { key: "events", path: "/portfolio/events", label: "일정", match: ["/portfolio/events"] },
     { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks", "/follow"] },
   ] },
   { key: "canvas", label: "캔버스", path: "/home?home_view=feed", tabs: [

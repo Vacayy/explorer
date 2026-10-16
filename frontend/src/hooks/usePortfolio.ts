@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { apiQuery, postJson, STALE, toApiError } from "@/api/query"
-import type { HoldingFlow, HoldingThesis, PortfolioEvent, PortfolioPrinciple, PrincipleParse, PrincipleRule, PortfolioExposure, PortfolioHistoryPoint, PortfolioSummary, PortfolioTransaction, PortfolioTxInput } from "@/types"
+import type { HoldingFlow, HoldingThesis, PortfolioAlert, PortfolioEvent, PortfolioPrinciple, PrincipleState, PrincipleParse, PrincipleRule, PortfolioExposure, PortfolioHistoryPoint, PortfolioSummary, PortfolioTransaction, PortfolioTxInput } from "@/types"
 
 const KEY = ["portfolio"] as const
 
@@ -93,6 +93,17 @@ export function useDeletePortfolioTransaction() {
 /** 운용 원칙(D-227) — 원문은 로컬 DB에만, 위반은 텔레그램으로만. */
 export function usePortfolioPrinciples() {
   return useQuery(apiQuery<PortfolioPrinciple[]>({ key: [...KEY, "principles"], url: "/api/portfolio/principles", staleTime: STALE.short }))
+}
+/** 지금 어기고 있는 규칙 — 저장된 시세로 다시 판정만(알림·기록 없음). 장중이면 현황과 같이 30분마다. */
+export function usePrincipleState(live = false) {
+  return useQuery({
+    ...apiQuery<PrincipleState>({ key: [...KEY, "principles", "state"], url: "/api/portfolio/principles/state", staleTime: STALE.short }),
+    refetchInterval: live ? LIVE_POLL : false,
+  })
+}
+/** 보낸 텔레그램 알림 이력 — 유형·종목·구간·시각만. */
+export function usePortfolioAlerts(days = 14) {
+  return useQuery(apiQuery<PortfolioAlert[]>({ key: [...KEY, "alerts", days], url: "/api/portfolio/alerts", params: { days }, staleTime: STALE.short }))
 }
 /** 원칙 문장을 수치 규칙으로 풀어 미리보기(haiku 1회, 저장 안 함). */
 export function useParsePrinciple() {

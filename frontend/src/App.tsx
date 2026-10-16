@@ -240,6 +240,9 @@ export default function App() {
             <Route path="retail" element={<RetailHeatPage />} />
             <Route path="follow/saved" element={<SavedPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
+            <Route path="portfolio/holdings" element={<PortfolioPage tab="holdings" />} />
+            <Route path="portfolio/principles" element={<PortfolioPage tab="principles" />} />
+            <Route path="portfolio/events" element={<PortfolioPage tab="events" />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />

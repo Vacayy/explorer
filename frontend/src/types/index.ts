@@ -954,6 +954,13 @@ export interface PortfolioSummary {
 export interface PrincipleRule { type: string; params: Record<string, number>; summary?: string | null }
 export interface PortfolioPrinciple { id: number; text: string; created_at: string; rules: PrincipleRule[]; notes: string[] }  // notes = 대화에서 참고하는 원칙(시스템 정리·사용자 확인)
 export interface PrincipleParse { rules: PrincipleRule[]; unparsed: string[] }
+/** 지금 어기고 있는 규칙 — 문장은 종목명·비율·한도만. alerted_since(UTC)가 없으면 다음 점검에서 알림 */
+export interface PrincipleViolation { key: string; principle_id: number; rule: string; message: string; alerted_since: string | null }
+export interface PrincipleState { as_of: string | null; rules: number; items: PrincipleViolation[] }
+/** 보낸 텔레그램 알림 한 건 — 유형·종목·구간·시각(KST)만 */
+export interface PortfolioAlert { kind: 'day' | 'avg' | 'tech' | 'disc' | 'summary' | string; label: string; code: string | null; name: string | null; date: string | null; sent_at: string; url: string | null }
+/** 묶음 종목의 최신 1D 요약 */
+export interface GroupDigest { code: string; name: string; date: string; lead: string | null; insights: string | null; docs: number | null }
 export interface PortfolioHistoryPoint { date: string; cum_return_pct: number; day_return_pct: number }
 export type PortfolioTxKind = 'buy' | 'sell' | 'deposit' | 'withdraw'
 export interface PortfolioTransaction { id: number; trade_date: string; kind: PortfolioTxKind; stock_code: string | null; name: string | null; price: number | null }

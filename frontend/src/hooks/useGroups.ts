@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
-import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupSignal, WatchReason } from '@/types'
+import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupDigest, GroupSignal, WatchReason } from '@/types'
 
 const ROOT = '/api/spine/groups'
 export const groupKeys = {
@@ -19,6 +19,10 @@ export function useGroup(id: number | null) {
 }
 export function useGroupSignals(id: number | null, days = 30) {
   return useQuery({ queryKey: groupKeys.signals(id, days), queryFn: async () => (await api.get<{ items: GroupSignal[] }>(`${ROOT}/${id}/signals`, { params: { days } })).data.items, enabled: id != null })
+}
+/** 묶음 종목별 최신 1D 요약 — 읽기만(생성은 저녁 잡) */
+export function useGroupDigests(id: number | null) {
+  return useQuery({ queryKey: ['spine', 'group-digests', id], queryFn: async () => (await api.get<{ as_of: string | null; items: GroupDigest[] }>(`${ROOT}/${id}/digests`)).data, enabled: id != null, staleTime: 300_000 })
 }
 /** 기본 관심 묶음('관심 종목') — 기업 화면 ★·내 목록 종목·논지가 쓰는 관심 종목의 진실원천. 서버가 없으면 만든다. */
 export function useDefaultWatchGroup() {
