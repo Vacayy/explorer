@@ -1034,6 +1034,13 @@ export interface CallMomentum {
   history: (CallMomentumSeason & { candidates: CallMomentumCandidate[] })[]
   coverage: { universe: number; with_releases: number; with_transcripts: number; extracted_docs: number; failed_docs: number; comparable: number }
   sec_configured: boolean
+  as_of?: string | null                        // 마지막 판정 시각(UTC, call_momentum.computed_at)
+}
+
+/** GET /api/spine/transcript/recent — 최근 받은 컨콜(수집 시각순) */
+export interface RecentCall {
+  transcript_id: number; ticker: string; company_name: string | null; fiscal_year: number; fiscal_period: string
+  cy: string | null; call_date: string | null; provider: string | null; fetched_at: string | null; has_digest: boolean
 }
 
 /** 문서 디테일 '관련 문서' — GET /api/spine/doc/{id}/related (D-221) */

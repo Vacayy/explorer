@@ -13,11 +13,11 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { ProxyDashboard } from "@/components/follow/ProxyDashboard"
 import SegmentTabs from "@/components/shared/SegmentTabs"
-import { CallMomentumPanel } from "@/components/follow/CallMomentumPanel"
+import { CallMomentumPanel, MomentumStrip } from "@/components/follow/CallMomentumPanel"
 import { RecentCalls } from "@/components/follow/RecentCalls"
 import { cn } from "@/lib/utils"
 
@@ -84,16 +84,9 @@ const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 
 export default function TranscriptPage() {
   const [params, setParams] = useSearchParams()
   const selectedId = params.get("t")
-  const view = ["proxies", "momentum"].includes(params.get("view") ?? "") ? params.get("view")! : "calls"
+  const view = (["proxies", "momentum"] as const).find((v) => v === params.get("view")) ?? "calls"
   const railSort: RailSort = (["cap", "category", "recent"] as const).find((v) => v === params.get("rail")) ?? "cap"
   const qc = useQueryClient()
-
-  const setView = (v: string) => {
-    const next = new URLSearchParams(params)
-    if (v === "proxies" || v === "momentum") next.set("view", v)
-    else next.delete("view")
-    setParams(next, { replace: true })
-  }
 
   const { data: follows = [], isLoading, isError, refetch } = useQuery(
     apiQuery<FollowRow[]>({ key: ["spine", "transcript", "follow"], url: "/api/spine/transcript/follow", staleTime: STALE.short }),
@@ -121,17 +114,11 @@ export default function TranscriptPage() {
   return (
     <PageContainer>
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-bold">Transcript</h2>
+        <h2 className="text-xl font-bold">컨콜</h2>
         <span className="text-xs text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
       </div>
 
-      <Tabs value={view} onValueChange={setView}>
-        <TabsList>
-          <TabsTrigger value="calls">컨콜</TabsTrigger>
-          <TabsTrigger value="proxies">프록시</TabsTrigger>
-          <TabsTrigger value="momentum">모멘텀</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <TranscriptTabs value={view} />
 
       {view === "momentum" ? (
         <CallMomentumPanel />
@@ -139,6 +126,9 @@ export default function TranscriptPage() {
         <ProxyDashboard />
       ) : (
       <>
+      {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 모멘텀' 보기) */}
+      <MomentumStrip />
+
       {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
       <CollectTranscripts />
 
@@ -152,7 +142,7 @@ export default function TranscriptPage() {
           <CardContent className="p-2 max-h-[70vh] overflow-y-auto">
             {follows.length === 0 ? (
               <div className="p-3 space-y-3">
-                <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트(미국 기업 21종)를 불러오세요.</p>
+                <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>
                 <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
                   {seed.isPending ? "불러오는 중…" : "기본 세트 팔로우"}
                 </Button>

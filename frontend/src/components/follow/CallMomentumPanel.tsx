@@ -1,13 +1,13 @@
-import { useQuery } from "@tanstack/react-query"
-import { AlertTriangle, ChevronDown } from "lucide-react"
-import { apiQuery, STALE } from "@/api/query"
+import { Link } from "react-router-dom"
+import { AlertTriangle, ChevronDown, ChevronRight, TrendingUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
-import type { CallMomentum, CallMomentumCandidate } from "@/types"
+import type { CallMomentumCandidate } from "@/types"
+import { useCallMomentum } from "@/hooks/useTranscripts"
 
 const STATUS = { new: { label: "새 동인", cls: "text-up border-up/40" }, accelerating: { label: "가속", cls: "text-hypothesis border-hypothesis/40" } } as const
 const SOURCE: Record<string, string> = { release: "보도자료", commentary: "CFO 코멘터리", transcript: "컨콜" }
@@ -16,7 +16,7 @@ const GUIDE: Record<string, string> = { raised: "상향", lowered: "하향", ini
 /** 실적 발언 새 모멘텀(D-217) — 직전 실적 발표 대비 새로 생기거나 빨라진 성장 동인. 인용문은 원문 대조를 통과한 것만.
  * 전면은 이번 실적 시즌 후보만, 지난 시즌은 접힌 기록으로(시즌 = 발표 시점 기준 분기). */
 export function CallMomentumPanel() {
-  const q = useQuery(apiQuery<CallMomentum>({ key: ["transcript", "momentum"], url: "/api/spine/transcript/momentum", staleTime: STALE.short }))
+  const q = useCallMomentum()
   if (q.isPending) return <Skeleton className="h-64 w-full rounded-xl" />
   if (q.isError) return <ErrorState onRetry={() => void q.refetch()} />
   const { season, candidates, history, coverage: cov, sec_configured } = q.data
@@ -47,6 +47,28 @@ export function CallMomentumPanel() {
       </Collapsible>)}
     </div>}
   </div>
+}
+
+/** 컨콜 브라우저 맨 위 한 줄 — 이번 시즌 후보 수·상위 3. 실패·로딩은 조용히(본 화면은 아래 컨콜) */
+export function MomentumStrip() {
+  const q = useCallMomentum()
+  if (q.isPending) return <Skeleton className="h-11 w-full rounded-xl" />
+  if (q.isError) return null
+  const { season, candidates } = q.data
+  const top = [...candidates].sort((a, b) => b.score - a.score).slice(0, 3)
+  return <Card className="py-0 shadow-none">
+    <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-sm">
+      <TrendingUp aria-hidden="true" className="size-4 text-primary" />
+      <span className="font-medium">실적 발언 모멘텀</span>
+      <span className="text-caption text-muted-foreground">{season.label} · 발표 분석 {season.reported}개사 · 새 모멘텀 {candidates.length}건</span>
+      {top.map(c => <Badge key={`${c.ticker}-${c.event_date}`} variant="outline" className="font-normal" asChild>
+        <Link to={`/us/${c.ticker}`}>{c.ticker} <span className="tabular-nums text-muted-foreground">{c.score.toFixed(0)}</span></Link>
+      </Badge>)}
+      <Button variant="ghost" size="xs" className="ml-auto" asChild>
+        <Link to="/follow/transcripts?view=momentum">자세히 <ChevronRight /></Link>
+      </Button>
+    </CardContent>
+  </Card>
 }
 
 function CandidateCard({ c }: { c: CallMomentumCandidate }) {

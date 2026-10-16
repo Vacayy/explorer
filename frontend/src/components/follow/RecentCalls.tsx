@@ -1,22 +1,16 @@
-import { useQuery } from "@tanstack/react-query"
 import { FileAudio } from "lucide-react"
-import { apiQuery, STALE } from "@/api/query"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { formatRelativeTime } from "@/utils/format"
-
-interface RecentCall {
-  transcript_id: number; ticker: string; company_name: string | null; fiscal_year: number; fiscal_period: string; cy: string | null
-  call_date: string | null; provider: string | null; fetched_at: string | null; has_digest: boolean
-}
+import { useRecentCalls } from "@/hooks/useTranscripts"
 const SOURCE: Record<string, string> = { fool: "Motley Fool", alphavantage: "Alpha Vantage" }
 
 /** 최근 받은 컨콜(D-218) — 'AI가 최근 만든 것'과 같은 목록. 누르면 아래 상세에서 그 녹취록을 연다. */
 export function RecentCalls({ onSelect, selectedId }: { onSelect: (id: number) => void; selectedId: string | null }) {
-  const q = useQuery(apiQuery<RecentCall[]>({ key: ["transcript", "recent"], url: "/api/spine/transcript/recent", params: { days: 7 }, staleTime: STALE.short }))
+  const q = useRecentCalls(7)
   if (q.isPending) return <Skeleton className="h-32 w-full rounded-xl" />
   if (q.isError) return <ErrorState onRetry={() => void q.refetch()} />
   const items = q.data

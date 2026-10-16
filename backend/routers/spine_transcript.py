@@ -365,7 +365,9 @@ def momentum():
     from pipeline import call_momentum as cm
     conn = get_connection()
     try:
-        return {**cm.by_season(conn), "coverage": cm.coverage(conn),
+        # as_of = 마지막 판정 시각(UTC) — 위젯 머리의 원천 시각. 매일 07:20 판정이 멈추면 여기서 드러난다
+        as_of = conn.execute("SELECT max(computed_at) FROM call_momentum").fetchone()[0]
+        return {**cm.by_season(conn), "coverage": cm.coverage(conn), "as_of": as_of,
                 "sec_configured": "@" in (os.getenv("SEC_USER_AGENT") or "")}
     finally:
         conn.close()

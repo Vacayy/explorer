@@ -5,6 +5,7 @@ import { PageContainer } from "@/components/shared/PageContainer"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
 import type { UsListItem } from "@/types"
 
 // group_label(백엔드 원시값) → 표시 라벨
@@ -19,6 +20,7 @@ const TREND_CLS: Record<string, string> = { 초입: "text-up border-up/40", 진�
 
 /**
  * 미국 종목 디렉토리 (docs/specs/us-dossier.md) — transcript_follow(=US 유니버스)를 그룹별로 브라우징.
+ * 탐색 › 컨콜의 '미국 기업' 보기 — 위에 컨콜 하위 탭을 같이 보인다.
  * 각 카드 → /us/:ticker 도시에. 렌즈 판독이 있으면 stance 배지로 미리보기.
  */
 export default function UsIndexPage() {
@@ -26,13 +28,15 @@ export default function UsIndexPage() {
 
   if (q.isLoading)
     return (
-      <PageContainer>
+      <PageContainer gap="sm">
+        <TranscriptTabs value="us" />
         <Skeleton className="h-64 w-full rounded-xl" />
       </PageContainer>
     )
   if (q.isError || !q.data)
     return (
-      <PageContainer>
+      <PageContainer gap="sm">
+        <TranscriptTabs value="us" />
         <ErrorState onRetry={() => q.refetch()} />
       </PageContainer>
     )
@@ -42,6 +46,7 @@ export default function UsIndexPage() {
 
   return (
     <PageContainer gap="sm">
+      <TranscriptTabs value="us" />
       <div className="flex items-baseline justify-between">
         <h1 className="text-lg font-semibold">미국 종목 {total}</h1>
         <span className="text-xs text-muted-foreground">
