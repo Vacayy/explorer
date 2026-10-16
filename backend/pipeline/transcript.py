@@ -476,7 +476,10 @@ def _store_call(provider, f: dict, year: int, quarter: int) -> bool:
 
 def refresh_calendar(tickers: list[str], max_age_hours: int = 24) -> int:
     """yfinance로 최근/차기 실적 발표일 캐시 (무료 — AV 25/day 예산과 무관, D-081).
-    max_age 내 최신 캐시는 스킵. 실패는 무시. **UI 표시·발표일 참고용**(D-084: 수집 게이트 폐지)."""
+    max_age 내 최신 캐시는 스킵. **UI 표시·발표일 참고용**(D-084: 수집 게이트 폐지).
+    조회 실패한 종목은 쓰지 않는다 — 기존 발표일과 checked_at을 그대로 둬 다음 실행이 다시 묻는다.
+    (2026-10-13 DNS 장애 때 113개 전부를 NULL로 덮고 '방금 확인'으로 찍어 캘린더가 비었다.)
+    연속 5번 실패하면 네트워크 장애로 보고 멈춘다. 반환 = 성공해 기록한 종목 수."""
     import yfinance as yf
     import pandas as pd
     conn = get_connection()
@@ -484,7 +487,7 @@ def refresh_calendar(tickers: list[str], max_age_hours: int = 24) -> int:
         "SELECT ticker FROM transcript_calendar WHERE checked_at > datetime('now', ?)",
         (f"-{max_age_hours} hours",)).fetchall()}
     today = datetime.now(timezone.utc).date().isoformat()
-    n = 0
+    n = streak = 0
     for tk in tickers:
         if tk in fresh:
             continue
@@ -500,7 +503,13 @@ def refresh_calendar(tickers: list[str], max_age_hours: int = 24) -> int:
                     elif dstr >= today and (nxt is None or dstr < nxt):
                         nxt = dstr
         except Exception as e:  # noqa: BLE001
-            print(f"[calendar] {tk} 조회 실패(무시): {e}")
+            print(f"[calendar] {tk} 조회 실패 — 기존 값 유지: {e}")
+            streak += 1
+            if streak >= 5:
+                print(f"[calendar] 연속 {streak}회 실패 — 네트워크 장애로 보고 중단")
+                break
+            continue
+        streak = 0
         conn.execute(
             "INSERT INTO transcript_calendar (ticker, last_report_date, next_report_date, checked_at) "
             "VALUES (?, ?, ?, datetime('now')) ON CONFLICT(ticker) DO UPDATE SET "

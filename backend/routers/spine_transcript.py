@@ -32,6 +32,7 @@ class FollowRow(BaseModel):
     latest: LatestCall | None
     last_report_date: str | None = None   # yfinance 실적 발표일 캐시 (D-081)
     next_report_date: str | None = None
+    calendar_checked_at: str | None = None   # 발표일을 마지막으로 확인한 시각(UTC) — 비었을 때 '언제 확인했나'를 보이려고
     market_cap: float | None = None       # 정렬용(시가총액순)
     category: str | None = None           # 사업분류 — 손으로 붙인 그룹, NDX 추가 종목은 SEC SIC 분류
     latest_results_date: str | None = None   # 가장 최근 '본 실적'(컨콜 또는 실적 수치가 있는 보도자료) 날짜
@@ -85,7 +86,7 @@ def list_follow():
                           "GROUP BY er.ticker"):
         results[r["ticker"]] = r["d"]
     cal = {r["ticker"]: r for r in conn.execute(
-        "SELECT ticker, last_report_date, next_report_date FROM transcript_calendar").fetchall()}
+        "SELECT ticker, last_report_date, next_report_date, checked_at FROM transcript_calendar").fetchall()}
     out = []
     for r in rows:
         calls = conn.execute(
@@ -105,6 +106,7 @@ def list_follow():
                              group_label=r["group_label"], n_calls=len(calls), latest=latest,
                              last_report_date=cr["last_report_date"] if cr else None,
                              next_report_date=cr["next_report_date"] if cr else None,
+                             calendar_checked_at=cr["checked_at"] if cr else None,
                              market_cap=r["market_cap"],
                              category=(industry_label(r["sic"]) or "기타") if r["group_label"] == "NDX" else r["group_label"],
                              latest_results_date=latest_results,

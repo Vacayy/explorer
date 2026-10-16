@@ -36,7 +36,7 @@ const GROUP_ORDER = ["M7", "hyperscaler", "nasdaq", "ai-datacenter", "space", "e
 interface LatestCall { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; cy?: string | null; call_date: string | null; has_digest: boolean }
 interface FollowRow {
   ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null
-  last_report_date?: string | null; next_report_date?: string | null
+  last_report_date?: string | null; next_report_date?: string | null; calendar_checked_at?: string | null
   market_cap?: number | null; category?: string | null; latest_results_date?: string | null; season_updated?: boolean
 }
 type RailSort = "cap" | "category" | "recent"
@@ -194,6 +194,9 @@ function UpcomingEarnings({ follows, onSelect, onRefresh, refreshing }: {
     .filter((x): x is { f: FollowRow; d: number } => x.d != null && x.d >= 0)
     .sort((a, b) => a.d - b.d)
     .slice(0, 12), [follows])
+  // 비었을 때 '정말 일정이 없나, 확인을 못 했나'를 가른다 — 조회 실패는 기존 값을 지우지 않는다(백엔드)
+  const known = follows.filter((f) => f.next_report_date || f.last_report_date).length
+  const lastChecked = follows.reduce<string | null>((m, f) => (f.calendar_checked_at && (!m || f.calendar_checked_at > m) ? f.calendar_checked_at : m), null)
 
   return (
     <Card>
@@ -205,7 +208,10 @@ function UpcomingEarnings({ follows, onSelect, onRefresh, refreshing }: {
           </Button>
         </div>
         {upcoming.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-1">예정된 발표일이 없습니다. '발표일 갱신'을 눌러 불러오세요.</p>
+          <p className="text-xs text-muted-foreground py-1">
+            예정된 발표일이 없습니다 · 발표일을 아는 기업 {known}/{follows.length}
+            {lastChecked && ` · 마지막 확인 ${mmdd(lastChecked)}`}. '발표일 갱신'으로 다시 불러오세요.
+          </p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {upcoming.map(({ f, d }) => (
