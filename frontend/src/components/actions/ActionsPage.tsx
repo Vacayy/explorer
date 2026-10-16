@@ -40,7 +40,7 @@ export default function ActionsPage() {
     queryKey: ["spine", "actions", type],
     queryFn: async () => {
       const { data } = await api.get("/api/spine/actions", { params: { type: type || undefined, days: 30 } })
-      return data as { items: CorporateAction[]; total: number; as_of: string }
+      return data as { items: CorporateAction[]; total: number; as_of: string | null }
     },
     staleTime: 5 * 60_000,
   })
@@ -55,7 +55,8 @@ export default function ActionsPage() {
           <h2 className="text-xl font-bold">기업활동</h2>
           <p className="text-xs text-muted-foreground mt-0.5">시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류</p>
         </div>
-        <FreshnessStamp asOf={data.as_of} />
+        {data.as_of ? <FreshnessStamp asOf={data.as_of} />
+          : <span className="text-caption text-muted-foreground">DART 스캔 성공 기록 없음</span>}
       </div>
 
       {/* 뷰 토글: 목록 | 유무증 Pro */}

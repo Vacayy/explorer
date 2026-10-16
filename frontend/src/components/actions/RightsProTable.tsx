@@ -66,7 +66,7 @@ export default function RightsProTable() {
   const method = searchParams.get("method") ?? ""
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["spine", "actions", "rights"],
-    queryFn: async () => (await api.get("/api/spine/actions/rights")).data as { items: RightsRow[]; as_of: string },
+    queryFn: async () => (await api.get("/api/spine/actions/rights")).data as { items: RightsRow[]; as_of: string | null },
     staleTime: 5 * 60_000,
   })
 

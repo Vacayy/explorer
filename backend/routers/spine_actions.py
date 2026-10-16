@@ -1,5 +1,5 @@
 """기업활동 API — 시총 5,000억+ 유·무상증자/합병/분할/공개매수/감자."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -26,7 +26,13 @@ class CorporateAction(BaseModel):
 class ActionsResponse(BaseModel):
     items: list[CorporateAction]
     total: int
-    as_of: str
+    as_of: str | None         # 마지막 DART 스캔 성공 시각(UTC). 스캔 기록이 없으면 None
+
+
+def _scanned_at(conn) -> str | None:
+    """마지막 scan_actions 성공 시각 — 서버 now를 쓰면 스캔이 실패해도 늘 '방금'으로 보였다."""
+    r = conn.execute("SELECT max(ran_at) FROM job_runs WHERE job='scan_actions' AND status='ok'").fetchone()[0]
+    return f"{r.replace(' ', 'T')}Z" if r else None
 
 
 @router.get("", response_model=ActionsResponse)
@@ -43,6 +49,7 @@ def list_actions(
         SELECT * FROM corporate_actions WHERE {" AND ".join(where)}
         ORDER BY rcept_dt DESC, id DESC LIMIT 200
     """, params).fetchall()
+    as_of = _scanned_at(conn)
     conn.close()
     return ActionsResponse(
         items=[CorporateAction(
@@ -53,7 +60,7 @@ def list_actions(
             dart_url=f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r['rcp_no']}",
         ) for r in rows],
         total=len(rows),
-        as_of=datetime.now(timezone.utc).isoformat(),
+        as_of=as_of,
     )
 
 
@@ -90,7 +97,7 @@ class RightsRow(BaseModel):
 
 class RightsResponse(BaseModel):
     items: list[RightsRow]
-    as_of: str
+    as_of: str | None
 
 
 @router.get("/rights", response_model=RightsResponse)
@@ -110,6 +117,7 @@ def list_rights():
         WHERE (stock_code, trade_date) IN (
             SELECT stock_code, max(trade_date) FROM stock_prices GROUP BY stock_code)
     """)}
+    as_of = _scanned_at(conn)
     conn.close()
 
     items = []
@@ -134,4 +142,4 @@ def list_rights():
             latest_close=close, diff_w=diff_w, diff_pct=diff_pct, ratio_pct=ratio,
             dart_url=f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r['rcp_no']}",
         ))
-    return RightsResponse(items=items, as_of=datetime.now(timezone.utc).isoformat())
+    return RightsResponse(items=items, as_of=as_of)
