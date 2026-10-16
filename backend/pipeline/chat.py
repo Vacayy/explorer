@@ -105,6 +105,7 @@ class Turn:
     review: dict | None = None                          # ②' 추가 수집 판단 {enough, reason}
     follow_ups: list[dict] = field(default_factory=list)  # 후속 질문 제안 [{kind, question}] (D-145, 종합 META — 추가 LLM 콜 0)
     quote: dict | None = None                   # 드래그 인용 {message_id, selected, block, citations[]} (D-146)
+    page_context: dict | None = None            # AI 패널이 보낸 '보고 있는 화면' {kind, label, path, ref} (app-shell.md §5)
 
     @property
     def standalone(self) -> str:
@@ -188,6 +189,17 @@ def _quote_block(turn: Turn) -> str | None:
     return "\n".join(lines)
 
 
+def _page_block(turn: Turn) -> str | None:
+    """AI 패널의 화면 맥락 → 프롬프트 블록. '이 종목·이 문서' 같은 지시어를 이 화면 기준으로 풀게 한다."""
+    p = turn.page_context
+    if not p or not (p.get("label") or "").strip():
+        return None
+    line = f"[사용자가 지금 보고 있는 화면] {str(p['label'])[:120]} ({str(p.get('path') or '')[:200]})"
+    if p.get("ref"):
+        line += f" · 식별자 {p.get('kind') or 'page'}={str(p['ref'])[:60]}"
+    return line + "\n질문의 '이 종목·이 문서·이 서사·여기' 같은 지시어는 이 화면을 가리킨다. 질문이 화면과 무관하면 무시한다."
+
+
 def _quoted_message(turn: Turn) -> tuple[str | None, set[int]]:
     """인용된 답변 전문 + 최근대화에서 뺄 id. 전문을 따로 싣고 잘린 사본은 중복이라 뺀다 (D-146).
 
@@ -214,6 +226,9 @@ def _router_user(turn: Turn) -> str:
     qb = _quote_block(turn)
     if qb:
         parts.append(qb)
+    pb = _page_block(turn)
+    if pb:
+        parts.append(pb)
     last = (turn.ctx.get("state") or {}).get("last_citations") or []
     if last:
         # 전부 나열 — 번호가 문서가 아닌 근거(시세·엣지)일 수 있어 "첫 번째 문서"를 고르려면 종류가 보여야 한다
@@ -431,6 +446,9 @@ def _synth_user(turn: Turn) -> str:
     qb = _quote_block(turn)
     if qb:
         parts.append(qb)
+    pb = _page_block(turn)
+    if pb:
+        parts.append(pb)
     q = f"질문: {turn.question}"
     if turn.standalone != turn.question.strip():
         q += f"\n(독립형으로 풀면: {turn.standalone})"
@@ -598,12 +616,14 @@ def _no_evidence_text(turn: "Turn") -> str:
 # ── 턴 실행 ──────────────────────────────────────────────────────────────────
 
 def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | None = None,
-             on_text=None, on_status=None, quote: dict | None = None, study_context: dict | None = None) -> Turn:
+             on_text=None, on_status=None, quote: dict | None = None, study_context: dict | None = None,
+             page_context: dict | None = None) -> Turn:
     """한 턴 실행(영속화 없음). ctx가 없으면 chat_memory.load_context로 로드.
     quote: 드래그 인용 {message_id, selected, block, citations[]} (D-146)."""
     from pipeline.chat_memory import load_context
     status = on_status or (lambda _: None)
     turn = Turn(question=question.strip(), conversation_id=conversation_id, quote=quote or None,
+                page_context=page_context or None,
                 ctx=ctx if ctx is not None else load_context(conversation_id, question))
     if study_context:
         turn.route = {'intent':'study', 'answer_style':'analysis', 'tools':[]}
@@ -630,7 +650,8 @@ def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | N
     return turn
 
 
-def generate_answer(conversation_id: int, question: str, quote: dict | None = None, *, study_context: dict | None = None) -> dict:
+def generate_answer(conversation_id: int, question: str, quote: dict | None = None, *, study_context: dict | None = None,
+                    page_context: dict | None = None) -> dict:
     """질문이 이미 적재된 스레드에 답변을 생성·append·기억 갱신. 어떤 경로로도 assistant로 닫는다.
 
     반환: {"answer", "citations", "gaps", "model", "error"?} — 봇 렌더용.
@@ -651,7 +672,8 @@ def generate_answer(conversation_id: int, question: str, quote: dict | None = No
             return {"answer": r.get("answer"), "citations": r.get("citations") or [], "gaps": r.get("gaps") or [],
                     "model": r.get("model")}
 
-        turn = run_turn(question, conversation_id=conversation_id, on_text=st.push, on_status=st.set_status, quote=quote, study_context=study_context)
+        turn = run_turn(question, conversation_id=conversation_id, on_text=st.push, on_status=st.set_status, quote=quote, study_context=study_context,
+                        page_context=page_context)
     except Exception as e:  # noqa: BLE001 — 실패도 스레드에 남긴다
         msg = f"답변 생성에 실패했습니다: {str(e)[:150]} — 다시 질문해주세요."
         append_assistant(conversation_id, msg)

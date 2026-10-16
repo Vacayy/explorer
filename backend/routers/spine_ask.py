@@ -21,10 +21,19 @@ class Quote(BaseModel):
     citations: list[dict] | None = None            # 그 대목이 딛던 근거 [{kind,title,doc_id}]
 
 
+class PageContext(BaseModel):
+    """AI 대화 패널이 보는 화면 (docs/specs/app-shell.md §5) — 지시어 해석용, 메시지 본문에는 저장하지 않는다."""
+    kind: str = Field(default="page", max_length=20)
+    label: str = Field(max_length=200)
+    path: str = Field(default="", max_length=500)
+    ref: str | None = Field(default=None, max_length=100)
+
+
 class AskRequest(BaseModel):
     question: str
     conversation_id: int | None = None   # 스레드 이어가기
     quote: Quote | None = None
+    page_context: PageContext | None = None
     document_ids: list[int] | None = Field(default=None, max_length=12)
 
 
@@ -52,10 +61,10 @@ class AskResponse(BaseModel):
     as_of: str
 
 
-def _generate_answer(conversation_id: int, question: str, quote: dict | None = None):
+def _generate_answer(conversation_id: int, question: str, quote: dict | None = None, *, page_context: dict | None = None):
     """백그라운드: 웹·봇 공용 경로 (pipeline/chat.py) — 어떤 경로로도 assistant 메시지로 닫힌다."""
     from pipeline.chat import generate_answer
-    generate_answer(conversation_id, question, quote)
+    generate_answer(conversation_id, question, quote, page_context=page_context)
 
 
 @router.post("", response_model=AskResponse)
@@ -74,7 +83,8 @@ def ask_question(body: AskRequest, background: BackgroundTasks):
         # Persist before generation: navigation/reload/follow-up keeps the selected corpus.
         from pipeline.chat_memory import set_attached_documents
         set_attached_documents(conv_id, list(dict.fromkeys(body.document_ids)))
-    background.add_task(_generate_answer, conv_id, q, body.quote.model_dump() if body.quote else None)
+    background.add_task(_generate_answer, conv_id, q, body.quote.model_dump() if body.quote else None,
+                        page_context=body.page_context.model_dump() if body.page_context else None)
 
     return AskResponse(
         answer=None, citations=[], gaps=[], model=None,
