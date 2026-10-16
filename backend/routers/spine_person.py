@@ -127,14 +127,15 @@ def aggregate_people(conn, *, days: int = 0, followed_only: bool = False, stock_
                    ROW_NUMBER() OVER (PARTITION BY el.entity_id ORDER BY rd.published_at DESC) rn
             FROM entity_links el JOIN raw_documents rd ON rd.id = el.doc_id
             WHERE el.link_type = 'person' {only}) WHERE rn = 1""")}
-    stock_since = (f"AND el1.doc_id IN (SELECT id FROM raw_documents WHERE datetime(published_at) >= "
-                   f"datetime('now', '-{int(stock_days)} days'))") if stock_days else ""
+    # 기간 필터는 인물 문서에 PK 조인으로 — raw_documents 전체를 훑는 IN 서브쿼리는 8초가 걸렸다
+    stock_join = "JOIN raw_documents rd1 ON rd1.id = el1.doc_id" if stock_days else ""
+    stock_since = f"AND datetime(rd1.published_at) >= datetime('now', '-{int(stock_days)} days')" if stock_days else ""
     stocks: dict[int, list[str]] = {}
     for r in conn.execute(f"""
         SELECT pid, name FROM (
             SELECT el1.entity_id pid, e2.name,
                    ROW_NUMBER() OVER (PARTITION BY el1.entity_id ORDER BY COUNT(*) DESC, e2.id) rn
-            FROM entity_links el1
+            FROM entity_links el1 {stock_join}
             JOIN entity_links el2 ON el2.doc_id = el1.doc_id AND el2.link_type = 'stock'
             JOIN entities e2 ON e2.id = el2.entity_id AND e2.type = 'company'
             WHERE el1.link_type = 'person' {only.replace('el.', 'el1.')} {stock_since}
