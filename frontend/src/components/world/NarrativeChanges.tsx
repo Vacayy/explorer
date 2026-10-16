@@ -1,4 +1,6 @@
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, ChevronDown } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -39,6 +41,8 @@ export function NarrativeChangeRow({ item, edges = 3 }: { item: WorldNarrativeCh
   </li>
 }
 
+const FIRST = 5   // 처음엔 최근 5편만 — 나머지는 펼쳐서
+
 /** 이번 주 바뀐 서사 — 최근 7일 새 버전 (저장된 drift + 결정적 diff, 생성 없음) */
 export function NarrativeChangesCard() {
   const q = useNarrativeChanges(7)
@@ -52,7 +56,19 @@ export function NarrativeChangesCard() {
       {q.isLoading ? <div className="space-y-3"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
         : q.isError ? <ErrorState message="바뀐 서사를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
         : !q.data?.items.length ? <EmptyState message="최근 7일 동안 새 버전이 나온 서사가 없습니다." />
-        : <ul className="space-y-3">{q.data.items.map(i => <NarrativeChangeRow key={i.narrative_id} item={i} />)}</ul>}
+        : <Collapsible className="space-y-3">
+            <ul className="space-y-3">{q.data.items.slice(0, FIRST).map(i => <NarrativeChangeRow key={i.narrative_id} item={i} />)}</ul>
+            {q.data.items.length > FIRST && <>
+              <CollapsibleContent><ul className="space-y-3">{q.data.items.slice(FIRST).map(i => <NarrativeChangeRow key={i.narrative_id} item={i} />)}</ul></CollapsibleContent>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="group text-muted-foreground">
+                  <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+                  <span className="group-data-[state=open]:hidden">{q.data.items.length - FIRST}편 더 보기</span>
+                  <span className="hidden group-data-[state=open]:inline">접기</span>
+                </Button>
+              </CollapsibleTrigger>
+            </>}
+          </Collapsible>}
     </CardContent>
   </Card>
 }

@@ -9,6 +9,7 @@
 | 문서 | 역할 | 상태 | 다음 단계 |
 |---|---|---|---|
 | [앱 셸](app-shell.md) | 상단 5탭·3칸(내 목록·본문·AI 대화)·L1/L2 판정 표·화면 맥락 첨부·데스크톱 전용 | P3a 구현(2026-10-16) | P3b URL 이전·리다이렉트, P4 홈 위젯 |
+| [월드모델](world-model.md) | 지금·그래프·내 판단 구성 · 서사 체크포인트 · 읽기 전용 /api/spine/world · 월드모델 위젯 4종 | P7 구현(2026-10-16) | URL 이전(/world/*), 프록시 보드, 세계관·메가 생성 통합 |
 | [홈 위젯 대시보드](home-widgets.md) | 위젯 계약·격자·추가 창·프리셋·서버 저장·시장 위젯 10종 | P4 구현(2026-10-16) | 탐색·포트폴리오·캔버스·월드모델 위젯(P5~P7) |
 | [탐색 핵심](explore-core.md) | 종목 발견 추천 묶음 단일 목록·신호 탭·컨콜 하위 탭과 실적 캘린더·산업·섹터 3뷰 통합·탐색 위젯 4종 | P6a 구현(2026-10-16) | 섹터 원천 두 개 통합 여부 결정 |
 | [캔버스](canvas.md) | 피드 디렉터리(Explorer 묶음)·AI 생성물 한 곳·공통 선택 팔레트·AI에게 묻기 다리·캔버스 위젯 4종 | P5 구현(2026-10-16) | URL 이전(`/canvas/*`), 휴면 기능 정리 |
@@ -77,7 +78,7 @@
 - [geo-scope](geo-scope.md) — geo_scope — 인과 주장에 장소 정박 (A방향: 보편 노드 + 스코프 있는 엣지)
 - [hypothesis-vault](hypothesis-vault.md) — 가설·메모 Vault — 소유권 분할 설계
 - [ia-map](ia-map.md) — IA 지도 — 페이지 진입로 & 화면 구성 (현행)
-- [knowledge-page](knowledge-page.md) — 화면 기획서 — 지식 체계 관측·주입 페이지 (`/knowledge` 개편)
+- [knowledge-page](knowledge-page.md) — 화면 기획서 — 지식 체계 관측·주입 페이지 (`/knowledge` 개편) — 화면 배치(승격 대기 큐 등)는 **[world-model](world-model.md) §3이 대체**
 - [link-scrap](link-scrap.md) — 링크 스크랩 — URL만 올리는 채널의 원문 확장 + 미검증 소스 격리 (2026-09-09)
 - [macro](macro.md) — 매크로·유동성 트래킹
 - [market-regime](market-regime.md) — 시장 국면 — 홈 리스크 포스처 섹션
