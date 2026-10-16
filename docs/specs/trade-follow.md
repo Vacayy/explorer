@@ -142,3 +142,15 @@ CREATE TABLE trade_beneficiaries (
 **대화 도구 `get_trade`**: 품목 지정=월별 수출·YoY·z·지표별 판정·수혜종목, 미지정=최신월 급등·급감 하이라이트+분류별 합계.
 
 **남은 것**: 국가별 축(별도 API 활용신청 필요, watcher D-014) · 다중 HS 합산 품목 15건(list-review.md) · FE 판정 격자.
+
+---
+
+## 2026-10-16 · 판정 노출과 데이터 위생 (P6b)
+
+화면·위젯 계약은 [explore-data](explore-data.md) §1·§5.
+
+- FE 레일이 서버 판정(`flag`·`reason`·`contribution`)을 배지·툴팁으로 보이고, 기본 정렬은 이번 달 기여도다.
+- `normalize_labels`(시드 직후마다 멱등)가 HS 오기('총수출' → 'D램'), 'OLDE' 오타, 번호 접미 중복명을 정리한다.
+- `trade_metrics.nesting`이 하위 세목(`nested_in`)을 수출 합계·기여도 분모·같은 분류 합계에서 뺀다.
+- `GET /by-stock/{code}`: 종목 → 품목 역링크.
+- 남은 것: 새 통계월 적재 때 급등 품목의 관련 종목을 일괄 지목하는 일(이벤트 구동, 비용 결정 필요)과 피드 카드 제목에 급등 품목을 넣는 일.
