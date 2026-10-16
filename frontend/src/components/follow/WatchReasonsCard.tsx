@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { DetailLink } from '@/components/shared/DetailNavigation'
+import { JudgingPausedNotice } from '@/components/shared/JudgingPausedNotice'
 import { useGroupReasons, useStartReason } from '@/hooks/useGroups'
 import type { QuestionVerdict, StockGroupDetail } from '@/types'
 
@@ -46,7 +47,9 @@ export function WatchReasonsCard({ detail }: { detail: StockGroupDetail }) {
       {reasons.isPending ? <Skeleton className="h-32 w-full" />
         : reasons.isError ? <ErrorState message="관심 이유를 불러오지 못했습니다." onRetry={() => void reasons.refetch()} />
         : !detail.members.length ? <p className="text-sm text-muted-foreground">묶음에 종목을 먼저 추가하세요.</p>
-        : <ul className="divide-y" aria-label="종목별 관심 이유">{detail.members.map(m => {
+        : <>{Object.values(reasons.data).some(r => !r.judging) && <JudgingPausedNotice
+            judgedAt={Object.values(reasons.data).map(r => r.judged_at).filter(Boolean).sort().at(-1) ?? null} />}
+        <ul className="divide-y" aria-label="종목별 관심 이유">{detail.members.map(m => {
           const r = reasons.data[m.stock_code]
           return <li key={m.stock_code} className="space-y-2 py-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -73,7 +76,7 @@ export function WatchReasonsCard({ detail }: { detail: StockGroupDetail }) {
               </div>
             </form>}
           </li>
-        })}</ul>}
+        })}</ul></>}
     </CardContent>
   </Card>
 }

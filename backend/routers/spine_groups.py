@@ -269,7 +269,9 @@ def get_reasons(group_id: int):
     try:
         _group(conn, group_id)
         codes = [r["stock_code"] for r in conn.execute("SELECT stock_code FROM stock_group_members WHERE group_id=?", (group_id,))]
-        return {code: {**t, "signals": wrs.signals(t)} for code, t in wrs.reasons(conn, codes).items()}
+        from pipeline.portfolio_thesis import judging as judging_on
+        judging = judging_on()
+        return {code: {**t, "signals": wrs.signals(t), "judging": judging} for code, t in wrs.reasons(conn, codes).items()}
     finally:
         conn.close()
 

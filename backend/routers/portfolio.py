@@ -77,7 +77,8 @@ def get_theses():
     conn = pf.connect()
     try:
         codes = [h["code"] for h in pf.summary(conn)["holdings"]]
-        return {code: {**t, "warnings": pt.warnings(t)} for code, t in pt.theses(conn, codes).items()}
+        judging = pt.judging()
+        return {code: {**t, "warnings": pt.warnings(t), "judging": judging} for code, t in pt.theses(conn, codes).items()}
     finally:
         conn.close()
 

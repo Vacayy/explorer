@@ -1002,6 +1002,8 @@ export interface HoldingThesis {
   id: number; text: string; lead: QuestionVerdict; confirm: QuestionVerdict; divergence: string | null; summary: string | null
   sub_questions: { text: string; falsifier: string | null; verdict: QuestionVerdict }[]
   warnings: string[]
+  judged_at: string | null   // 마지막 판정 시각(UTC)
+  judging: boolean           // 판정 엔진이 꺼져 있으면 false — 판정·알림이 judged_at에서 멈춤
 }
 
 /** 관심 종목 이유 감시(D-227) — 보유 논지와 같은 판정, 신호는 지지·약화 양쪽 */
