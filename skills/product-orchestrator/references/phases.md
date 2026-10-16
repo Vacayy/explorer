@@ -7,7 +7,7 @@ Each phase has defined inputs, outputs, and quality gates.
 **Expert**: Product Owner
 **Input**: User's goal statement, existing product context
 **Output**:
-- `docs/PRD.md` — Problem, user, vision, metrics, scope (P0/P1/P2), out-of-scope
+- `docs/private/PRD.md` — Problem, user, vision, metrics, scope (P0/P1/P2), out-of-scope
 - Scope confirmation from stakeholder
 
 **Quality gate**: Stakeholder approves scope. "Out of scope" section is explicit.
@@ -38,7 +38,7 @@ Each phase has defined inputs, outputs, and quality gates.
 **Expert**: Design Lead
 **Input**: Screen specs, current CSS/component code
 **Output**:
-- `docs/DESIGN_REVIEW.md` — Critique of palette, typography, layout density, chart colors
+- `docs/private/DESIGN_REVIEW.md` — Critique of palette, typography, layout density, chart colors
 - Specific recommendations with hex values and font names
 
 **Quality gate**: Recommendations are actionable (not "consider improving colors" but "#1B2559 for nav, #2563EB for links").

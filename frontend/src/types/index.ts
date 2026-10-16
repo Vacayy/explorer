@@ -208,7 +208,7 @@ export interface SpineFeedResponse {
   as_of: string;
 }
 
-// 종목 AI 브리프 (P2-1, docs/specs/product-v3.md §3)
+// 종목 AI 브리프 (P2-1, docs/private/specs/product-v3.md §3)
 export interface StockBrief {
   status: string;            // fresh | cached | empty | unavailable | failed
   brief: string | null;
@@ -221,7 +221,7 @@ export interface StockBrief {
   thesis?: string | null;    // 논지 원문 (불변 — AI는 점검만)
 }
 
-// 투자 렌즈 (docs/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)
+// 투자 렌즈 (docs/private/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)
 export interface LensReading {
   lens_type: string;         // value | trend
   status: string;            // cached | fresh | empty | unavailable | failed

@@ -200,7 +200,7 @@ proxy_observations(  -- 확장
    ▼
 핵심질문 후보 → 사용자 픽/편집
    ├─(a) decompose_question(text, source_doc_id=doc_id) — 질문 트래커 (기존 ② 재사용)
-   └─(b) build_scenario(event) — 파급 시나리오도 함께(scenarios 캐시)   ← 사용자 확정
+   └─(b) build_scenario(event) — 파급 시나리오도 함께(scenarios 캐시)
 ```
 
 **확정 결정 (2026-07-26)**:

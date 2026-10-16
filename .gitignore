@@ -47,13 +47,9 @@ docs/specs/chat-eval-runs/
 /graft/
 backend/graft/
 
-# 일회성 작업 문서 — 로컬 전용 (D-207, 공개 저장소). 기획 HTML·제품 검토·세션 인계·구 문서.
-# 결정 이유는 docs/DECISIONS.md, 현행 구조는 docs/SYSTEM.md에 남긴다.
-docs/prototypes/
-docs/reviews/
-docs/archive/
-docs/HANDOFF.md
-docs/specs/weekly-agent-handoff*.md
+# 비공개 문서 — 별도 비공개 저장소를 여기에 클론한다 (D-234). 결정 로그·전략·백로그·설계 철학·기획 청사진과
+# 일회성 작업 문서(기획 HTML·제품 검토·세션 인계·구 문서). 공개 docs/에는 현행 구조·정책·구현 계약만 둔다.
+docs/private/
 
 # 공개 저장소 밖에 두는 데이터 원천 어댑터 (D-230) — 비공식 엔드포인트 접근 코드
 backend/local_sources/

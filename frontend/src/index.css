@@ -15,7 +15,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * 디자인 토큰 (docs/specs/frontend-plan.md Phase A1)
+ * 디자인 토큰 (docs/private/specs/frontend-plan.md Phase A1)
  * - 컴포넌트는 semantic 토큰만 사용한다 (하드코딩 hex 금지)
  * - 실제 색상 값은 :root(light) / .dark 에서만 정의한다
  * - 상승=빨강, 하락=파랑 (한국 주식 컨벤션, number-formatting.md)
@@ -125,7 +125,7 @@
   :root { --dock-reserve: calc(var(--dock-height) + 1rem + env(safe-area-inset-bottom)); }
 }
 
-/* ---------- Light — 쿨 스톤 & 멀버리 (docs/DECISIONS.md D-016) ---------- */
+/* ---------- Light — 쿨 스톤 & 멀버리 (docs/private/DECISIONS.md D-016) ---------- */
 :root {
   --background: #f3f3f5;
   --foreground: #202630;
@@ -184,7 +184,7 @@
   --chart-teal: #5ac8fa;
 }
 
-/* ---------- Dark — 더스크 플럼 (웜 오베르진 밝은 버전, docs/DECISIONS.md D-016) ---------- */
+/* ---------- Dark — 더스크 플럼 (웜 오베르진 밝은 버전, docs/private/DECISIONS.md D-016) ---------- */
 .dark {
   --background: #181c23;
   --foreground: #eef1f6;

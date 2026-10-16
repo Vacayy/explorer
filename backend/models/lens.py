@@ -1,4 +1,4 @@
-"""투자 렌즈 API 스키마 (docs/specs/investor-lens.md)."""
+"""투자 렌즈 API 스키마 (docs/private/specs/investor-lens.md)."""
 from pydantic import BaseModel
 
 

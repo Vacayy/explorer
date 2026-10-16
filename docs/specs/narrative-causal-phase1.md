@@ -1,7 +1,7 @@
 # 기획서 — 내러티브 인과 그래프 물질화 (Phase 1)
 
 > 2026-07-17. 상태: **구현 완료** (stakeholder 승인 2026-07-17, 결정 D-023). Phase 2는 후속(필수 commit).
-> 비전·결정: docs/specs/narrative-causal-graph.md (§5-0 결정 5개 확정) · 현행 내러티브: pipeline/narrative.py
+> 비전·결정: docs/private/specs/narrative-causal-graph.md (§5-0 결정 5개 확정) · 현행 내러티브: pipeline/narrative.py
 > 엣지 규약: D-005 · 온톨로지 reserved vocab: D-004 · 시간 정박: D-021 · 5-state: docs/policies/ui-states.md
 > 착수 승인 시 DECISIONS.md에 항목 추가.
 

@@ -1,7 +1,7 @@
 # 어휘 통합 (vocab consolidation) — theme·macro 노드 파편화 치유
 
 > 2026-07-19. 상태: **확정 — 구현 착수** (D-033).
-> 배경: 온톨로지 점검 대화(2026-07-19)에서 실측으로 확인된 병목.
+> 배경: 온톨로지 점검(2026-07-19)에서 실측으로 확인된 병목.
 
 ## 1. 문제 (실측)
 
@@ -83,4 +83,4 @@ CREATE TABLE IF NOT EXISTS entity_merges (
 
 - company 정체성 해소(무코드 627개) — 별도 트랙.
 - 쓰기 시 임베딩/LLM 해소 — 배치로 충분함이 반증되면 재논의.
-- observations 채움·falsifier 숫자 정박 — 다음 우선순위(같은 대화에서 2순위로 확정), 별도 스펙.
+- observations 채움·falsifier 숫자 정박 — 다음 우선순위, 별도 스펙.

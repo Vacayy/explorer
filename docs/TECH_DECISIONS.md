@@ -1,7 +1,7 @@
 # 구현 구조와 기술 선택
 
 이 문서는 Explorer의 주요 기능이 **어떤 경로로 실행되고, 어디에 저장되며, 왜 그렇게 구현됐는지** 설명합니다.
-전체 API·운영 목록은 [SYSTEM.md](SYSTEM.md), 원칙은 [PHILOSOPHY.md](PHILOSOPHY.md), 당시 결정과 측정 기록은 [DECISIONS.md](DECISIONS.md)에 있습니다.
+전체 API·운영 목록은 [SYSTEM.md](SYSTEM.md), 원칙은 PHILOSOPHY.md(비공개 문서), 당시 결정과 측정 기록은 DECISIONS.md(비공개 문서)에 있습니다.
 
 2026-09-12 코드 대조 기준입니다. 아래의 구현 설명과 향후 과제는 구분해서 읽어주세요. 과거 운영 수량이나 응답 시간을 현재 성능으로 사용하지 않습니다.
 
@@ -156,7 +156,7 @@ sequenceDiagram
 기대 변화 관측은 [experiment_expectations.py](../backend/routers/experiment_expectations.py)의 별도 라우터로 추가했습니다.
 [expectation_store.py](../backend/pipeline/expectation_store.py)는 검토 결과를 운영 DB 옆 `expectations_experiment.sqlite`에 저장합니다.
 기존 데이터는 읽기 참조하고 원장 검토가 운영 그래프를 교체하지 않습니다. 메모리 자료를 읽고 첨부해 대화하는 경로와 발언 검토 원장은 구현돼 있습니다.
-가격·펀더멘털·심리·수급의 자동 결합은 [공통 설계](specs/expectation-observatory-greenfield.md)에 있는 후속 범위입니다.
+가격·펀더멘털·심리·수급의 자동 결합은 공통 설계(비공개 문서)에 있는 후속 범위입니다.
 
 <a id="from-epistemology"></a>
 ## 사실·해석·시간을 기록하는 방법

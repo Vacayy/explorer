@@ -484,7 +484,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
 
-    -- 투자 렌즈 판독 (docs/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단.
+    -- 투자 렌즈 판독 (docs/private/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단.
     -- append-only 히스토리(판단 변화 추적). principles/material 해시로 게으른 재생성 가드.
     CREATE TABLE IF NOT EXISTS lens_readings (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -745,7 +745,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_falsifiers_knowledge ON knowledge_falsifiers(knowledge_id);
 
-    -- 대화 영속화 (P2-0, docs/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
+    -- 대화 영속화 (P2-0, docs/private/specs/product-v3.md §2) — 질문·후속질문 = 사용자 의도 데이터
     -- 에코챔버 방지: chat_messages는 검색 인덱스(doc_fts/doc_vec) 대상이 아니다
     CREATE TABLE IF NOT EXISTS conversations (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -805,7 +805,7 @@ def init_db():
         UNIQUE(topic, version)
     );
 
-    -- 에이전트 제안함 (진화계획 3단계 v1, docs/specs/agent-proposals.md) — 시스템이 그래프·지식
+    -- 에이전트 제안함 (진화계획 3단계 v1, docs/private/specs/agent-proposals.md) — 시스템이 그래프·지식
     -- 상태를 감시하다 먼저 "조사해볼까요?"를 던진다. 제안-전용: 승인 전엔 어떤 행동도 없음.
     CREATE TABLE IF NOT EXISTS agent_proposals (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1036,7 +1036,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_market_ind ON market_indicators(indicator, snapshot_date);
 
-    -- 논지 감사 (thesis audit, docs/specs/thesis-audit.md) — thesis를 인과그래프에 대질한 read-only 감사 결과.
+    -- 논지 감사 (thesis audit, docs/private/specs/thesis-audit.md) — thesis를 인과그래프에 대질한 read-only 감사 결과.
     -- append-only 히스토리(판단이 시간에 따라 어떻게 변했나). 사용자 주장은 여기 저장되지 그래프에 안 써진다(격리).
     CREATE TABLE IF NOT EXISTS thesis_audits (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,6 +1,6 @@
 """공고화(consolidation) — 반복 관측된 주장을 지식으로 승격 (K0).
 
-설계: docs/specs/knowledge-hierarchy-design.md
+설계: docs/private/specs/knowledge-hierarchy-design.md
 - 승격 기준: 독립 관측 2+ (릴레이 접기, A-3) × 시간 분산 (간격 요건, F-1)
   × 느린 층만 (event 제외, A-5) × 증거 doc_id 인용 강제 (환각 방어)
 - 확증편향 보정: 후보마다 반대 증거 탐색 1회 의무 (A-6)

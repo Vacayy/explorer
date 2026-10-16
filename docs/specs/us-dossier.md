@@ -3,7 +3,7 @@
 > 2026-07-30 기획. 배경: 미국 종목은 컨콜(transcript)·인과 노드로 **월드모델엔 있지만**, 한 종목을
 > 펼쳐볼 **앞면(도시에)이 없다** — `/analyze`는 DART 기반 한국 전용. 투자 렌즈(D-090)도 KR에 먼저
 > 섰다. 이 스펙은 미국 티커에 **경량 통합 도시에**를 세우고, 그 데이터 위에 렌즈를 US로 확장한다.
-> (배경 결정: DECISIONS.md D-091 예정 · 렌즈: D-090 · 컨콜: D-061 · 브레인스토밍 2026-07-30)
+> (배경 결정: DECISIONS.md D-091 예정 · 렌즈: D-090 · 컨콜: D-061)
 
 ## 관통 원칙 (비타협)
 
@@ -95,7 +95,7 @@ CREATE TABLE us_fundamentals (      -- yfinance .info/.income_stmt/.cashflow 스
 - 실시간 시세 — EOD 배치로 충분.
 
 ## 참조
-- 렌즈: docs/specs/investor-lens.md([[D-090]]) · 컨콜: docs/specs/transcript-follow.md([[D-061]])
+- 렌즈: docs/private/specs/investor-lens.md([[D-090]]) · 컨콜: docs/specs/transcript-follow.md([[D-061]])
 - yfinance 패턴: backend/pipeline/peers.py(get_peer_metrics 24h 캐시)·market_regime.py(get_regime().us)
 - 엔티티: transcript_follow(ticker↔entity_id) · spine_company(비상장/해외 프로필)
-- 인식론: docs/PHILOSOPHY.md §3(말뭉치 최신편향 탈출) · SYSTEM.md §4·§5·§6
+- 인식론: docs/private/PHILOSOPHY.md §3(말뭉치 최신편향 탈출) · SYSTEM.md §4·§5·§6

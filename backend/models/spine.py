@@ -1,4 +1,4 @@
-"""spine 읽기 API 응답 스키마 (docs/specs/frontend-plan.md Phase B)."""
+"""spine 읽기 API 응답 스키마 (docs/private/specs/frontend-plan.md Phase B)."""
 from pydantic import BaseModel
 
 

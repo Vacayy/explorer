@@ -1,6 +1,6 @@
 """에이전트 제안함 — 시스템이 스스로 '뭘 조사할지' 포착해 제안 (진화계획 3단계 v1, D-020·D-022 계승).
 
-docs/specs/agent-proposals.md. 제안-전용: 감지는 전부 자동, 실행은 항상 사람 승인 후.
+docs/private/specs/agent-proposals.md. 제안-전용: 감지는 전부 자동, 실행은 항상 사람 승인 후.
 kind 5종: neglect · contested_edge · devils_advocate · falsifier_watch · vocab_merge(유사 노드 통합, D-050)
 · falsifier_watch(딛고 선 전제의 반증 조건 리마인드).
 """

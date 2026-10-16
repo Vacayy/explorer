@@ -1,6 +1,6 @@
 """지식 소환 (K1) — 승격된 지식을 소비 지점(RAG·브리프)에 공급.
 
-설계 (docs/specs/knowledge-hierarchy-design.md §소비 지점):
+설계 (docs/private/specs/knowledge-hierarchy-design.md §소비 지점):
 - activation은 저장하지 않고 조회 시 계산 (A-2) — 증거 타임스탬프 × 층별 감쇠율
 - 랭킹: relevance × f(activation) × g(epistemic — corroborated > observed > contested)
 - pace layer 라벨을 항상 동반한다 — "지금 시끄러운 것"(event/flow)과

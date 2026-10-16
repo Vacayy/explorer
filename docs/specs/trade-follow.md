@@ -3,7 +3,7 @@
 > 2026-07-24 기획. BACKLOG "게이트 대기: 무역 커넥터 ← 관세청 API 키" 해제 착수.
 > transcript 팔로우(D-061)와 같은 골격: **팔로우 탭 + 전용 페이지**. 특수 케이스(문서가 아니라 통계 시계열)라
 > 자체 페이지에서 **각 품목의 수출입 추이 + 관련 종목(파급 논리)**을 본다.
-> 사용자 결정(2026-07-24): 관심 품목 팔로우(시드+추가) · 관련 종목=LLM 논리 지목 · 국가 차원은 후속(품목 총계만 MVP).
+> 결정(2026-07-24): 관심 품목 팔로우(시드+추가) · 관련 종목=LLM 논리 지목 · 국가 차원은 후속(품목 총계만 MVP).
 
 ## 관통 원칙
 1. **관심 품목 팔로우** — 전체 HS를 긁지 않고 사용자가 핵심 품목을 구독(transcript式). 시드 세트 제공.
@@ -115,7 +115,7 @@ CREATE TABLE trade_beneficiaries (
 
 ## 참조
 - 관세청 품목별 수출입실적: data.go.kr/data/15101609 · 품목별 국가별: /15100475
-- 파급 논리 수혜 종목: docs/DECISIONS.md D-036 · pipeline/beneficiary.resolve_and_enrich · scenario.py
+- 파급 논리 수혜 종목: docs/private/DECISIONS.md D-036 · pipeline/beneficiary.resolve_and_enrich · scenario.py
 - 편입 고리(③→①): D-037 · 같은 골격: docs/specs/transcript-follow.md · 시계열 스키마 배경: D-004(observations)
 
 
@@ -129,7 +129,7 @@ CREATE TABLE trade_beneficiaries (
 
 **수집(`collect_followed`)**: 최신 window부터 역순, 루프 바깥은 기간(첫 패스에 전 품목 최근치가 찬다) · 품목 단위 실패는 삼키되 `collect_status()`가 ok/partial/error/noop 판정 · DB 커넥션은 쓰기 순간에만 · 시작월 `TRADE_COLLECT_START_YYYYMM`(기본 202101 — YoY z에 24개월↑).
 
-**워치리스트**: `scripts/trade_watchlist.local.csv`(gitignore, 168품목·15분류 — 종목 힌트가 든 개인 큐레이션, universe.local.json과 같은 취급) → `seed_watchlist()` 멱등 시드. CSV에 없는 기존 팔로우는 유지(기본 11품목·UI 추가와 공존). 선행 0 유실 보정.
+**워치리스트**: `scripts/trade_watchlist.local.csv`(gitignore, 168품목·15분류 — 종목 힌트가 든 로컬 큐레이션, universe.local.json과 같은 취급) → `seed_watchlist()` 멱등 시드. CSV에 없는 기존 팔로우는 유지(기본 11품목·UI 추가와 공존). 선행 0 유실 보정.
 
 **파생지표(`pipeline/trade_metrics.py`, 저장 안 함)**: mom·yoy·qoq(직전 3개월 합 vs 그 앞 3개월)·yoy3m · 지표별 로버스트 z(median/MAD, 관측 8↑) · 판정 surge/plunge/new/none(규모 게이트 $10M, zscore |z|≥2 / fixed 임계) · '이력 부족'과 '신규' 구분 · 기여도 |Δ|/Σ|Δ|.
 

@@ -112,7 +112,7 @@ CREATE TABLE proxy_observations (
 );
 ```
 
-**기본 팔로우 세트 시드** (미국 기업, 사용자 확정 2026-07-23 — 전력반도체·바이오 제외, 비상장 제외):
+**기본 팔로우 세트 시드** (미국 기업 — 전력반도체·바이오 제외, 비상장 제외):
 - **M7**: AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA
 - **하이퍼스케일러/클라우드**: ORCL (M7 중복 제외)
 - **나스닥 최상위/반도체**: AVGO, AMD
@@ -224,5 +224,5 @@ DART 기반 **한국 종목 전용**이라 미국 티커엔 페이지가 없어 
 - 프록시 자동 수치 차트의 정교한 파싱(단위 정규화) — 1차는 value_text 인용 우선, 수치화는 점진
 
 ## 참조
-- 핵심질문·프록시 근거: docs/DECISIONS.md D-048·D-049 · 리포트 엔진: docs/specs/report-v2-agents.md
-- 팔로우/유니버스 연결: docs/specs/universe-curation.md · docs/specs/follow-rail.md
+- 핵심질문·프록시 근거: docs/private/DECISIONS.md D-048·D-049 · 리포트 엔진: docs/private/specs/report-v2-agents.md
+- 팔로우/유니버스 연결: docs/private/specs/universe-curation.md · docs/specs/follow-rail.md

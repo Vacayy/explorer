@@ -1,4 +1,4 @@
-"""투자 렌즈 — 가치/추세 관점의 종목 판단 (docs/specs/investor-lens.md).
+"""투자 렌즈 — 가치/추세 관점의 종목 판단 (docs/private/specs/investor-lens.md).
 
 투자관을 원칙 원장(vault/principles/{value,trend}.md)에 사람이 촘촘히 쌓고, 렌즈는 그 원칙
 전문을 **압축 없이 통째 주입**해 종목 재료 위에서 "이 관점이라면 이 종목을 어떻게 읽는가"를

@@ -12,7 +12,7 @@ pstack의 버그 수정·리팩토링·조사 플레이북을 이 프로젝트�
 ## 공통 규칙
 
 - **지도부터.** docs/SYSTEM.md의 해당 절을 읽고, graft로 위치를 잡은 뒤(`graft ask "<질문>"`, `graft callers <symbol>`, `graft grep "<리터럴>"`) 소스를 연다.
-- **이유는 기록에서.** "왜 이렇게 돼 있나"는 docs/DECISIONS.md와 `git log`로 답한다. pstack의 `why` 스킬은 이 두 곳이 대신한다.
+- **이유는 기록에서.** "왜 이렇게 돼 있나"는 docs/private/DECISIONS.md와 `git log`로 답한다. pstack의 `why` 스킬은 이 두 곳이 대신한다.
 - **기본은 직접 작업.** 서브에이전트는 읽기 전용 탐색 팬아웃(Explore)이나 기계적 대량 편집에만 쓴다. 위임했으면 diff를 직접 검토하고 요약을 그대로 전달하지 않는다.
 - **검증 표면.** 백엔드는 `python -c "from main import app"`, `../.venv/bin/python -m unittest discover -s tests`(backend/에서), 필요하면 uvicorn 기동 후 curl. 프론트엔드는 `npx tsc --noEmit`, `node --test frontend/tests/*.test.mjs`, 실제 화면 확인. "컴파일된다"는 검증이 아니다.
 - **커밋.** development 브랜치에 작은 단위로 직접 커밋한다. 메시지는 한국어(글로벌 CLAUDE.md §5). PR 절차는 없다.

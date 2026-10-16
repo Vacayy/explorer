@@ -1,7 +1,7 @@
 # 화면 기획서 — 지식 체계 관측·주입 페이지 (`/knowledge` 개편)
 
-> 2026-07-17. 상태: **P0+P1 구현 완료** (stakeholder 승인 2026-07-17, 결정 이력 D-022).
-> 배경: 대화(2026-07-17). 설계 원본은 docs/specs/knowledge-hierarchy-design.md,
+> 2026-07-17. 상태: **P0+P1 구현 완료** (결정 이력 D-022).
+> 설계 원본은 docs/private/specs/knowledge-hierarchy-design.md,
 > 5-state 정책은 docs/policies/ui-states.md, 숫자·색 토큰은 docs/DESIGN_SYSTEM.md.
 > P2(홈 갭 패널·소스 트랙레코드 가중)는 후속 — §8 Out of Scope 참조.
 
