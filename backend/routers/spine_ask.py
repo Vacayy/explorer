@@ -19,6 +19,8 @@ class Quote(BaseModel):
     selected: str                                  # 사용자가 지목한 문장
     block: str | None = None                       # 그 문장이 속한 문단 전체
     citations: list[dict] | None = None            # 그 대목이 딛던 근거 [{kind,title,doc_id}]
+    doc_id: int | None = None                      # 문서에서 지목했으면 그 문서 (message_id 없음, canvas.md §2)
+    doc_title: str | None = Field(default=None, max_length=300)
 
 
 class PageContext(BaseModel):
