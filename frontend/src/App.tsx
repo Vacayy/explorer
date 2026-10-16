@@ -1,20 +1,23 @@
-import { useState, type CSSProperties } from "react"
+import { useCallback, useRef, useState, type CSSProperties } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import Dock from "@/components/layout/Dock"
+import { TopBar } from "@/components/layout/TopBar"
+import { MyListPanel } from "@/components/layout/MyListPanel"
+import { DesktopOnly } from "@/components/layout/DesktopOnly"
+import { ChatPanel } from "@/components/chat/ChatPanel"
+import { PREF, readPref, writePref } from "@/lib/shellPrefs"
 import { SubNav } from "@/components/layout/SubNav"
-import { FEED_TABS, FOLLOW_TABS, WORLDMODEL_TABS, analyzeTabs, getActiveMode, getActiveSubTab, isDocumentFeed } from "@/components/layout/navConfig"
+import { FEED_TABS, SECTIONS, analyzeTabOf, analyzeTabs, feedSourceTab, isDocumentFeed, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
-import FollowRail from "@/components/layout/FollowRail"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
 import { useCompany } from "@/hooks/useCompanySearch"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 // Home
-import { getHomeMode } from "@/hooks/useHomeMode"
 import { DetailNavigationMemory } from "@/components/shared/DetailNavigation"
 import { DiscoveryNavigationMemory } from "@/components/shared/DiscoveryNavigationMemory"
 import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrail"
@@ -86,73 +89,77 @@ import CatalystsPage from "@/components/research/CatalystsPage"
 
 const queryClient = createQueryClient()
 
-/** 모드별 인페이지 L2 — 도크 팝오버와 같은 navConfig를 읽는다 (docs/specs/dock-navigation.md §2) */
+/** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭, 문서 검색은 소스 탭 */
 function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
+  if (stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey: analyzeTabOf(pathname), context: companyName ?? stockCode }
   if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
-  const mode = getActiveMode(pathname)
-  const activeKey = getActiveSubTab(pathname, search)
-  if (mode === "follow" || mode === "us") return { tabs: FOLLOW_TABS, activeKey }
-  if (mode === "feed" && pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey }
-  if (mode === "worldmodel") return { tabs: WORLDMODEL_TABS, activeKey }
-  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey, context: companyName ?? stockCode }
-  return null
+  if (pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey: feedSourceTab(search) }
+  const here = locate(pathname, search)
+  const section = here && SECTIONS.find(s => s.key === here.section)
+  if (!section || section.tabs.length < 2) return null
+  return { tabs: section.tabs, activeKey: here.tab }
+}
+
+/** 폭 ≥1440이면 패널 기본 펼침. 사용자가 고른 값이 있으면 그 값 */
+function initialOpen(key: string): boolean {
+  const saved = readPref(key)
+  if (saved != null) return saved === "1"
+  return typeof window !== "undefined" && window.matchMedia("(min-width: 1440px)").matches
 }
 
 function Layout() {
-  useKeyboardShortcuts()
   const { pathname, search } = useLocation()
+  const [leftOpen, setLeftOpen] = useState(() => initialOpen(PREF.left))
+  const [aiOpen, setAiOpen] = useState(() => initialOpen(PREF.ai))
+  const aiInput = useRef<HTMLTextAreaElement | null>(null)
+  const setLeft = (v: boolean) => { setLeftOpen(v); writePref(PREF.left, v ? "1" : "0") }
+  const toggleAi = useCallback(() => setAiOpen(v => {
+    writePref(PREF.ai, v ? "0" : "1")
+    if (!v) requestAnimationFrame(() => aiInput.current?.focus())
+    return !v
+  }), [])
+  useKeyboardShortcuts(toggleAi)
 
-  // Extract stockCode from /analyze/:stockCode/... paths (exclude special routes like /analyze/compare)
-  const stockCodeMatch = pathname.match(/^\/analyze\/([^/]+)/)
-  const rawCode = stockCodeMatch ? stockCodeMatch[1] : null
+  // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
+  const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
   const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
-
-  // 넓은 데스크톱에선 팔로우 레일 펼침, 그 이하에선 접힘(토글/오버레이) — 사용자 의도
-  const [railOpen, setRailOpen] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches,
-  )
-
-  const [feedRailOpen, setFeedRailOpen] = useState(false)
-  const [detailRailOpen, setDetailRailOpen] = useState(false)
-  const [companyRailOpen, setCompanyRailOpen] = useState(false)
-  const [discoveryRailOpen, setDiscoveryRailOpen] = useState(false)
-  const discoveryRoute = pathname === "/discover" || pathname.startsWith("/analysis/backtests")
-  const companyRoute = !!stockCode || /^\/us\/[^/]+/.test(pathname) || pathname === "/company"
-  const detailRoute = pathname.startsWith("/study/") || pathname.startsWith("/doc/") || (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic"))
-  const homeFeed = pathname === "/home" && getHomeMode(search) === "feed"
+  const showAi = aiOpen && !pathname.startsWith("/chat")
 
   return (
-    <div className="min-h-screen bg-background">
-      <Omnibar />
-      <DetailNavigationMemory />
-      <DiscoveryNavigationMemory />
-      <SidebarProvider
-        open={discoveryRoute ? discoveryRailOpen : companyRoute ? companyRailOpen : detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
-        onOpenChange={discoveryRoute ? setDiscoveryRailOpen : companyRoute ? setCompanyRailOpen : detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
-        style={{ "--sidebar-width": "16rem" } as CSSProperties}
-      >
-        <SidebarInset className="min-w-0 bg-background">
-          {/* 상단 크롬 없음(D-136) — 콘텐츠가 뷰포트 최상단에서 시작. 하단은 도크 예약(--dock-reserve).
-              --shell-offset(풀하이트 페이지 차감량)은 SubNav 유무로 달라져 여기서 확정한다 */}
-          <div
-            className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-inset)] pb-[var(--dock-reserve)]"
-            style={{ "--shell-offset": subNav ? "calc(var(--page-inset) + var(--dock-reserve) + var(--subnav-height))" : "calc(var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
-          >
-            {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
-            {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
-            <Outlet />
+    <DesktopOnly>
+      <TooltipProvider delayDuration={300}>
+      <div className="min-h-screen bg-background">
+        <Omnibar />
+        <DetailNavigationMemory />
+        <DiscoveryNavigationMemory />
+        <SidebarProvider open={leftOpen} onOpenChange={setLeft} className="flex-col"
+          style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
+          <TopBar aiOpen={showAi} onToggleAi={toggleAi} />
+          <div className="flex min-h-0 w-full flex-1">
+            <MyListPanel currentStockCode={stockCode} />
+            <SidebarInset className="min-w-0 bg-background">
+              {/* --shell-offset: 풀하이트 화면이 뺄 높이 = 상단 바 + 위아래 여백 + (L2가 있으면) L2 (app-shell.md §8) */}
+              <div
+                className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-inset)] pb-[var(--dock-reserve)]"
+                style={{ "--shell-offset": subNav
+                  ? "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve) + var(--subnav-height))"
+                  : "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
+              >
+                {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
+                {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
+                <Outlet />
+              </div>
+            </SidebarInset>
+            {showAi && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
           </div>
-        </SidebarInset>
-        <Dock stockCode={stockCode} companyName={company?.corp_name} />
-
-        {/* 팔로우 레일 — 종목·채널·블로그 통합, shadcn Sidebar (docs/specs/follow-rail.md) */}
-        <FollowRail currentStockCode={stockCode} />
-      </SidebarProvider>
-      <AnswerWatcher />
-      <Toaster position="top-right" />
-    </div>
+        </SidebarProvider>
+        <AnswerWatcher />
+        <Toaster position="top-right" />
+      </div>
+      </TooltipProvider>
+    </DesktopOnly>
   )
 }
 

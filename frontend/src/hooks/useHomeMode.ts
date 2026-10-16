@@ -1,21 +1,11 @@
-import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-export function getHomeMode(search: string) {
-  const explicit = new URLSearchParams(search).get('home_view')
-  if (explicit) return explicit === 'feed' ? 'feed' : 'market'
-  try { return localStorage.getItem('explorer.home.mode') === 'feed' ? 'feed' : 'market' }
-  catch { return 'market' }
+/** /home의 보기 — URL만이 상태 소스. 시장은 홈 › 대시보드, 피드(home_view=feed)는 캔버스 › 피드 (docs/specs/app-shell.md §2) */
+export function getHomeMode(search: string): 'market' | 'feed' {
+  return new URLSearchParams(search).get('home_view') === 'feed' ? 'feed' : 'market'
 }
 
 export function useHomeMode() {
-  const [params, setParams] = useSearchParams()
-  const mode = getHomeMode(params.toString())
-  useEffect(() => { try { localStorage.setItem('explorer.home.mode', mode) } catch { /* private storage */ } }, [mode])
-  return { mode, setMode: (value: string) => {
-    try { localStorage.setItem('explorer.home.mode', value) } catch { /* private storage */ }
-    setParams(prev => {
-      const next = new URLSearchParams(prev); next.set('home_view', value); return next
-    })
-  } }
+  const [params] = useSearchParams()
+  return getHomeMode(params.toString())
 }

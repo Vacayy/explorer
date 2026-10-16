@@ -8,6 +8,7 @@
 
 | 문서 | 역할 | 상태 | 다음 단계 |
 |---|---|---|---|
+| [앱 셸](app-shell.md) | 상단 5탭·3칸(내 목록·본문·AI 대화)·L1/L2 판정 표·화면 맥락 첨부·데스크톱 전용 | P3a 구현(2026-10-16) | P3b URL 이전·리다이렉트, P4 홈 위젯 |
 | [홈과 통합 피드](home-feed.md) | 홈 두 열 배치·원문/시스템 카드·조회 계약·UX 조사 | 구현·검증 완료 | 실사용에서 정보 밀도 확인 |
 | [데이터 신선도 점검](ops-health.md) | 결과 데이터 최신 시점 감시 레지스트리·관리자 표·홈/텔레그램 경고 계약 | 구현(2026-10-14, D-222) | 실사용에서 오탐·누락 조정, 방문 트리거 작업 항목 보강 |
 | [문서 상세 관련 자료](doc-related-claims.md) | 상세 하단 논점별 관련 자료(논점 LLM·연결 검색/리랭커·원문 인용) + 유사도 기반 목록 | 구현(2026-10-14, D-233) | 실사용에서 리랭커 오판 관찰, P1 관계 표시(보강/반대/사례) |
@@ -67,8 +68,8 @@
 - [discover-signals](discover-signals.md) — 화면 기획서: 시그널 피드
 - [doc-causal-extraction](doc-causal-extraction.md) — 기획서 — 문서 레벨 인과 추출 (제2 인과 공급원)
 - [doc-synthesis](doc-synthesis.md) — 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기
-- [dock-navigation](dock-navigation.md) — 셸 대개편 — 헤더·네비 제거, macOS 도크형 내비게이션 (2026-09-08)
-- [follow-rail](follow-rail.md) — 팔로우 레일 — 사이드바 통합
+- [dock-navigation](dock-navigation.md) — 셸 대개편 — 헤더·네비 제거, macOS 도크형 내비게이션 (2026-09-08) — **대체됨 → [app-shell](app-shell.md)**
+- [follow-rail](follow-rail.md) — 팔로우 레일 — 사이드바 통합 — **대체됨 → [app-shell](app-shell.md) §4 내 목록**
 - [geo-scope](geo-scope.md) — geo_scope — 인과 주장에 장소 정박 (A방향: 보편 노드 + 스코프 있는 엣지)
 - [hypothesis-vault](hypothesis-vault.md) — 가설·메모 Vault — 소유권 분할 설계
 - [ia-map](ia-map.md) — IA 지도 — 페이지 진입로 & 화면 구성 (현행)

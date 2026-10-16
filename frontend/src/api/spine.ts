@@ -161,12 +161,21 @@ export async function fetchSpineSignals(type?: string, days?: number): Promise<S
   return data;
 }
 
+export interface PageContext {
+  kind: 'stock' | 'us_stock' | 'doc' | 'narrative' | 'question' | 'page'
+  label: string
+  path: string
+  ref?: string
+}
+
 export async function askQuestion(params: {
   question: string;
   document_ids?: number[];
   conversation_id?: number;
   /** 드래그 인용 — 선택 문장 + 문단 맥락 + 그 대목의 근거 (D-146) */
   quote?: { message_id: number; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
+  /** AI 대화 패널이 보는 화면 — 지시어 해석용, 메시지 본문에는 저장되지 않는다 (docs/specs/app-shell.md §5) */
+  page_context?: PageContext;
 }): Promise<AskResponse> {
   const { data } = await api.post<AskResponse>("/api/spine/ask", params, { timeout: 300_000 });
   return data;

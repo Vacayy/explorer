@@ -10,12 +10,12 @@
 첫 적용 범위는 전역 토큰·Card/Button/Input 기본값, 공통 페이지 레이아웃, 홈·통합 피드·문서 검색, 도크 재질이다. 나머지 페이지의 개별 조합과 임의 글자 크기는 후속 이행 대상으로 남긴다.
 
 - 서체: 자체 호스팅 IBM Plex Sans / Sans KR 400·500·600·700. 페이지 24/32, 섹션 18/26, 카드 제목 16/24, 읽기 본문 14/22, UI 14/20, 캡션 12/18. 일반 콘텐츠 기본은 14px이며 Markdown h1/h2/h3는 20/18/16px로 본문보다 크게 유지한다. 숫자는 tabular-nums.
-- 단색 중립 배경 + 기존 멀버리 액션색. 카드 radius 20px, control 10px, overlay 16px. 카드 패딩 20px(모바일 16px), 열 간격 24px. 그림자는 도크·오버레이에 제한.
+- 단색 중립 배경 + 기존 멀버리 액션색. 카드 radius 20px, control 10px, overlay 16px. 카드 패딩 20px(모바일 16px), 열 간격 24px. 그림자는 오버레이에 제한.
 - PageLayout의 header / overview / toolbar / footer / children 슬롯. mode=document|workspace|reader, width=full|reading. 문서형은 페이지 스크롤. SplitWorkspace는 label·content·surface를 가진 두 패널을 조합하고 URL 상태는 페이지가 소유한다.
-- Home은 상단 시장/피드 모드 전환. 시장 document는 가용 폭 1000px부터 모듈 2열. 피드 reader는 760px부터 300px 목록 + 연속 본문, 그 미만은 목록/본문 전환. reader는 본문 슬롯만 창 높이(`100dvh - --shell-offset`)로 고정하고 위 슬롯은 페이지 스크롤(D-209). 화면 높이 740px 미만은 문서 스크롤로 복귀한다. SplitWorkspace의 900px 두 열 계약은 다른 사용처를 위해 보존한다. 셸이 외부 여백·도크 예약과 --shell-offset을 소유한다.
+- Home은 상단 시장/피드 모드 전환. 시장 document는 가용 폭 1000px부터 모듈 2열. 피드 reader는 760px부터 300px 목록 + 연속 본문, 그 미만은 목록/본문 전환. reader는 본문 슬롯만 창 높이(`100dvh - --shell-offset`)로 고정하고 위 슬롯은 페이지 스크롤(D-209). 화면 높이 740px 미만은 문서 스크롤로 복귀한다. SplitWorkspace의 900px 두 열 계약은 다른 사용처를 위해 보존한다. 셸이 외부 여백·하단 여백(--dock-reserve)과 --shell-offset을 소유한다.
 - 피드는 하나의 둥근 표면 + 아티클 구분선. 카드/행 표현은 FeedPost의 명시적 variant로 구분하며 데이터 모델·링크·필터·펼침은 보존한다.
 - 브리핑은 일반 Card 표면을 사용한다. 별도 반전 대비는 해제했다. 날짜·데이터·차트·상태·새로고침 기능은 보존한다.
-- 글래스는 도크·일부 탐색 버튼만. reduced-transparency / 미지원 브라우저에서는 불투명 배경으로 폴백한다.
+- 글래스는 일부 탐색 버튼만. reduced-transparency / 미지원 브라우저에서는 불투명 배경으로 폴백한다.
 - 공식 shadcn/Radix의 동작·API는 유지하며 기반 스타일의 관리된 수정을 허용한다. 기존 ui/ 수제작 금지는 새 동작 재구현에 적용하고, 승인된 토큰·기본값 수정은 허용한다.
 
 - DetailLayout은 PageLayout 위에서 복귀/context/header/actions/navigation/body/aside/related를 조합한다. /doc, 주제 내러티브, 버전 상세에 적용했다. 본문 최대 760px, 보조 220px는 가용 폭 1000px부터 옆에, 그 미만은 아래로 배치한다. 단일 Card 표면·14px 본문·24px 제목. 상세에서는 팔로우 레일과 월드모델 서브탭을 기본 크롬에서 내린다.
@@ -40,25 +40,31 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
 
 ## 1. 레이아웃 컨트랙트
 
-### 셸 (App.tsx Layout — shadcn Sidebar 기반, D-017 → 상단 크롬 제거·하단 도크, D-136)
+### 셸 (App.tsx Layout — 상단 5탭 · 3칸, docs/specs/app-shell.md)
 
 ```
-<div min-h-screen>
-  <Omnibar/>                              ⌘K 오버레이 (CommandDialog)
-  <SidebarProvider defaultOpen={≥1280px} --sidebar-width:16rem>
-    <SidebarInset>                        메인 컬럼 (=main) — 상단 크롬 없음
-      <div mx-auto max-w-[var(--layout-shell)] px-6 pt-6 pb-[var(--dock-reserve)]>
-        <SubNav/>                         모드 안 L2 (있을 때만, h-8 + mb-5 = --subnav-height)
-        ← 페이지 렌더 슬롯
+<DesktopOnly>                             폭 <1024px면 '데스크톱에서 열어 주세요'만
+  <TooltipProvider>
+    <Omnibar/>                            ⌘K 오버레이 (CommandDialog)
+    <SidebarProvider open={내 목록} --sidebar-width:15.5rem className=flex-col>
+      <TopBar/>                           sticky · h-(--topbar-height)=52px · L1 5탭·검색·운영 상태·인박스·설정·AI 토글
+      <div flex>
+        <MyListPanel/>                    shadcn <Sidebar side=left collapsible=offcanvas>, 상단 바 아래 고정
+        <SidebarInset>                    본문
+          <div mx-auto max-w-[var(--layout-shell)] px-6 pt-6 pb-[var(--dock-reserve)]>
+            <SubNav/>                     L2 (탭이 둘 이상일 때, h-8 + mb-5 = --subnav-height)
+            ← 페이지 렌더 슬롯
+          </div>
+        </SidebarInset>
+        <ChatPanel/>                      aside sticky · w-(--ai-panel-width)=360px · /chat에서는 숨김
       </div>
-    </SidebarInset>
-    <Dock/>                               fixed bottom-4 · 뷰포트 중앙 · 플로팅 pill (docs/specs/dock-navigation.md)
-    <FollowRail/>                         shadcn <Sidebar side=right collapsible=offcanvas>
-  </SidebarProvider>
-</div>
+    </SidebarProvider>
+  </TooltipProvider>
+</DesktopOnly>
 ```
 
-- 폭 상한 토큰: `--layout-shell: 1440px` (index.css). 본문 슬롯이 이 토큰을 쓴다. 도크는 뷰포트 중앙 고정(레일 열림/닫힘에 흔들리지 않게).
+- 폭 상한 토큰: `--layout-shell: 1440px` (index.css). 본문 슬롯이 이 토큰을 쓴다.
+- 풀하이트 화면은 `calc(100dvh - var(--shell-offset))`. 셸이 상단 바·여백·L2 유무로 `--shell-offset`을 확정한다.
 - 페이지는 슬롯 안에서 렌더되므로 **자체 padding·margin·max-w를 지정하지 않는다.**
 - **도크(layout/Dock.tsx)** = `[검색] │ Home ┃ 팔로우 · 피드 · 월드모델 ┃ 대화 │ [열린 도시에] │ 승인 · 저장 · 레일 · 더보기`. 아이템=아이콘 20+라벨 11 상시(`DockItem`), 활성=primary 틴트+하단 점, 배지=우상단 원형 숫자(승인=hypothesis, 저장=primary). L2가 있는 항목은 호버 250ms → `ui/hover-card` 팝오버(모드 간 점프). `<768`은 전폭 하단 탭바(5모드+더보기, 활성 탭 재탭 → L2 Sheet).
 - **SubNav(layout/SubNav.tsx)** = 모드 안 형제 탭 한 행(pill). 탭 목록은 `layout/navConfig.ts` 한 곳 — 도크 팝오버와 공유.

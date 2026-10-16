@@ -10,21 +10,20 @@ import { useHome } from "@/hooks/useHome"
 import { useSaved } from "@/hooks/useSaved"
 import SavedList from "@/components/follow/SavedList"
 import { EmptyState } from "@/components/shared/ErrorState"
-import { DockItem } from "./DockItem"
+import { ShellButton } from "./ShellButton"
 
 /**
  * 저장됨 인박스 — 저장 건수 배지 + 클릭 시 Sheet(SavedList compact). (D-077)
- * 목록 쿼리는 SavedPage·SaveButton과 같은 queryKey라 캐시 공유. 헤더에서 도크로 이동(D-136).
+ * 목록 쿼리는 SavedPage·SaveButton과 같은 queryKey라 캐시 공유. 상단 바에 둔다(docs/specs/app-shell.md §3).
  */
-export function SavedInbox({ compact }: { compact?: boolean }) {
+export function SavedInbox() {
   const [open, setOpen] = useState(false)
   const { data: items = [] } = useSaved()
   const count = items.length
 
   return (
     <>
-      <DockItem icon={Bookmark} label="저장" badge={count} onClick={() => setOpen(true)}
-        aria-label={`저장됨 ${count}건`} className={compact ? "w-full" : undefined} />
+      <ShellButton icon={Bookmark} label="저장됨" badge={count} onClick={() => setOpen(true)} aria-label={`저장됨 ${count}건`} />
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
@@ -53,10 +52,10 @@ export function SavedInbox({ compact }: { compact?: boolean }) {
 }
 
 /**
- * 승인 인박스 — 대기 건수 배지 + 클릭 시 Sheet(ApprovalsCard 재활용). "어느 화면에서든"(D-056)은 도크 상시 배지로 유지.
+ * 승인 인박스 — 대기 건수 배지 + 클릭 시 Sheet(ApprovalsCard 재활용). "어느 화면에서든"(D-056)은 상단 바 상시 배지로 유지.
  * count 쿼리는 ApprovalsCard와 같은 queryKey라 캐시를 공유한다.
  */
-export function ApprovalsInbox({ compact }: { compact?: boolean }) {
+export function ApprovalsInbox() {
   const [open, setOpen] = useState(false)
   const { data: items = [] } = useQuery(
     apiQuery<{ id: number }[]>({ key: ["spine", "approvals"], url: "/api/spine/approvals", staleTime: STALE.short }),
@@ -65,8 +64,7 @@ export function ApprovalsInbox({ compact }: { compact?: boolean }) {
 
   return (
     <>
-      <DockItem icon={Inbox} label="승인" badge={count} badgeTone="hypothesis" onClick={() => setOpen(true)}
-        aria-label={`승인 대기 ${count}건`} className={compact ? "w-full" : undefined} />
+      <ShellButton icon={Inbox} label="인박스 · 승인 대기" badge={count} badgeTone="hypothesis" onClick={() => setOpen(true)} aria-label={`승인 대기 ${count}건`} />
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>

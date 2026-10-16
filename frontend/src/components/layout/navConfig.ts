@@ -1,14 +1,10 @@
-import type { LucideIcon } from "lucide-react"
-import { Bookmark, Briefcase, Globe, House, MessageSquare, BookOpen, ScanSearch } from "lucide-react"
-
 /**
- * 내비게이션 단일 소스 — 도크(L1·팝오버)와 인페이지 SubNav(L2)가 같은 정의를 읽는다 (docs/specs/dock-navigation.md §2).
+ * 내비게이션 단일 소스 — 상단 L1 5탭과 인페이지 L2가 같은 정의를 읽는다 (docs/specs/app-shell.md §2).
  *
- * L1 = 파이프라인 흐름을 좌→우로 드러낸다: 입력(팔로우)→원천(피드)→종합(월드모델). (D-057: 탐색 해체)
- * Home은 흐름의 아침 요약 + 신호 대시보드(진입), 대화는 횡단 도구 — 둘은 흐름에서 구분선으로 격리.
- * 월드모델은 매일 여는 종착점이라 약한 강조. 도시에(/analyze, /us)는 네비가 아니라 목적지 — 도크에 '열린 도시에' 임시 항목으로만.
+ * L1 = 홈 · 탐색 · 포트폴리오 · 캔버스 · 월드모델. P3a에서 L2는 지금 URL을 가리킨다(URL 이전은 P3b).
+ * 종목 도시에(/analyze, /us/:ticker, /company)는 L1이 아니라 목적지 — L2 자리에 도시에 탭을 보인다.
  */
-export type AppMode = "study" | "home" | "discover" | "portfolio" | "follow" | "feed" | "worldmodel" | "chat" | "analyze" | "us" | "archive"
+export type SectionKey = "home" | "explore" | "portfolio" | "canvas" | "world"
 
 export interface SubTab {
   key: string
@@ -16,38 +12,75 @@ export interface SubTab {
   label: string
 }
 
-export interface ModeDef {
-  key: AppMode
-  label: string
-  path: string
-  icon: LucideIcon
-  emphasis?: boolean
-  /** 앞에 구분선 — Home·대화를 가운데 흐름에서 시각적으로 격리 */
-  dividerBefore?: boolean
-  tabs?: readonly SubTab[]
+interface TabDef extends SubTab {
+  /** 이 탭으로 판정하는 경로 접두어. 'path?key=value'면 그 쿼리일 때만 */
+  match: readonly string[]
 }
 
-// 팔로우 — 내가 따라가는 것(허브) + 담당 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-057)
-export const FOLLOW_TABS: readonly SubTab[] = [
-  { key: "saved", path: "/follow/saved", label: "저장됨" },
-  { key: "follow", path: "/follow", label: "관심목록" },
-  { key: "stocks", path: "/follow/stocks", label: "종목 묶음" },
-  { key: "universe", path: "/follow/universe", label: "유니버스" },
-  { key: "transcripts", path: "/follow/transcripts", label: "컨콜" },
-  { key: "us", path: "/us", label: "미국" },
-  { key: "trade", path: "/follow/trade", label: "수출입" },
-  { key: "credit", path: "/follow/credit", label: "회사채" },
-  { key: "map", path: "/map", label: "산업 맵" },
-  { key: "people", path: "/people", label: "인물" },
-  { key: "actions", path: "/actions", label: "기업활동" },
+export interface SectionDef {
+  key: SectionKey
+  label: string
+  path: string
+  tabs: readonly TabDef[]
+}
+
+export const SECTIONS: readonly SectionDef[] = [
+  { key: "home", label: "홈", path: "/home", tabs: [
+    { key: "dashboard", path: "/home", label: "대시보드", match: ["/home"] },
+  ] },
+  { key: "explore", label: "탐색", path: "/discover", tabs: [
+    { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover", "/analysis/backtests"] },
+    { key: "signals", path: "/explore", label: "신호", match: ["/explore"] },
+    { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
+    { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },
+    { key: "trade", path: "/follow/trade", label: "수출입", match: ["/follow/trade"] },
+    { key: "credit", path: "/follow/credit", label: "회사채", match: ["/follow/credit"] },
+    { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
+    { key: "actions", path: "/actions", label: "기업활동", match: ["/actions"] },
+  ] },
+  { key: "portfolio", label: "포트폴리오", path: "/portfolio", tabs: [
+    { key: "overview", path: "/portfolio", label: "개요", match: ["/portfolio"] },
+    { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks", "/follow"] },
+  ] },
+  { key: "canvas", label: "캔버스", path: "/home?home_view=feed", tabs: [
+    { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source", "/synthesis/"] },
+    { key: "study", path: "/study", label: "스터디", match: ["/study"] },
+    { key: "saved", path: "/follow/saved", label: "저장됨", match: ["/follow/saved"] },
+    { key: "sources", path: "/sources", label: "소스", match: ["/sources"] },
+  ] },
+  { key: "world", label: "월드모델", path: "/narrative", tabs: [
+    { key: "now", path: "/narrative", label: "지금", match: ["/narrative"] },
+    { key: "graph", path: "/knowledge/ontology", label: "그래프", match: ["/knowledge"] },
+    { key: "judgment", path: "/questions", label: "내 판단", match: ["/questions", "/question/", "/thesis", "/report"] },
+  ] },
 ]
 
-// 월드모델 — 인식론적 시간축으로 L2 구성 (D-073): 내러티브(현재·서사) · 전망(미래·확률) · 지식(과거·검증).
-export const WORLDMODEL_TABS: readonly SubTab[] = [
-  { key: "narrative", path: "/narrative", label: "내러티브" },
-  { key: "outlook", path: "/thesis", label: "전망" },        // 전망 하위 [논지 감사·질문·리포트], 랜딩=논지 감사 (D-083)
-  { key: "knowledge", path: "/knowledge", label: "지식" },   // 지식 안에서 지식↔온톨로지(그래프) 토글 (D-052)
-]
+/** 접두어가 경로 경계에서 맞는가 — '/follow'가 '/followers'에 걸리지 않게 */
+function prefixMatch(pathname: string, prefix: string): boolean {
+  if (prefix.endsWith("/")) return pathname.startsWith(prefix)
+  return pathname === prefix || pathname.startsWith(prefix + "/")
+}
+
+function tabMatches(pathname: string, search: string, rule: string): number {
+  const [path, query] = rule.split("?")
+  if (!prefixMatch(pathname, path)) return 0
+  if (query) {
+    const [k, v] = query.split("=")
+    if (new URLSearchParams(search).get(k) !== v) return 0
+  }
+  return path.length + (query ? 1000 : 0)   // 더 구체적인 규칙(쿼리 > 긴 경로)이 이긴다
+}
+
+/** 현재 위치의 (L1, L2). 도시에·대화·관리자 등은 null */
+export function locate(pathname: string, search = ""): { section: SectionKey; tab: string } | null {
+  if (/^\/us\/[^/]+/.test(pathname)) return null     // 미국 종목 도시에 — /us 목록만 탐색 › 컨콜
+  let best: { section: SectionKey; tab: string; score: number } | null = null
+  for (const s of SECTIONS) for (const t of s.tabs) for (const rule of t.match) {
+    const score = tabMatches(pathname, search, rule)
+    if (score && (!best || score > best.score)) best = { section: s.key, tab: t.key, score }
+  }
+  return best && { section: best.section, tab: best.tab }
+}
 
 export const FEED_TABS: readonly SubTab[] = [
   { key: "all", path: "/home?home_view=feed", label: "Home 피드" },
@@ -99,71 +132,20 @@ export const analyzeTabs = (stockCode: string, search = ''): SubTab[] => {
   }))
 }
 
-export const MODES: readonly ModeDef[] = [
-  { key: "home", label: "Home", path: "/home", icon: House },
-  { key: "discover", label: "종목 발견", path: "/discover", icon: ScanSearch },
-  { key: "portfolio", label: "포트폴리오", path: "/portfolio", icon: Briefcase, dividerBefore: true },   // D-212
-  { key: "follow", label: "관심목록", path: "/follow/saved", icon: Bookmark, tabs: FOLLOW_TABS },
-  { key: "worldmodel", label: "월드모델", path: "/narrative", icon: Globe, emphasis: true, tabs: WORLDMODEL_TABS },
-  { key: "study", label: "스터디", path: "/study", icon: BookOpen },
-  { key: "chat", label: "대화", path: "/chat", icon: MessageSquare, dividerBefore: true },
-]
-
-export function getActiveMode(pathname: string): AppMode {
-  if (pathname === "/discover" || pathname.startsWith("/analysis/backtests")) return "discover"
-  if (pathname.startsWith("/study")) return "study"
-  if (pathname.startsWith("/portfolio")) return "portfolio"
-  if (pathname.startsWith("/home")) return "home"
-  if (pathname.startsWith("/us")) return "us"
-  // 팔로우 — 허브 + 유니버스 + 커버리지 대상(산업맵·인물·기업활동, D-057)
-  if (pathname.startsWith("/follow") || pathname.startsWith("/stocks")
-      || pathname.startsWith("/map") || pathname.startsWith("/people") || pathname.startsWith("/person")
-      || pathname.startsWith("/actions")) return "follow"
-  if (pathname.startsWith("/chat") || pathname.startsWith("/ask")) return "chat"
-  if (pathname.startsWith("/feed") || pathname.startsWith("/doc/") || pathname.startsWith("/source")) return "feed"
-  if (pathname.startsWith("/analyze")) return "analyze"
-  // 월드모델 — 내러티브·리포트·세계관·지식 (D-031)
-  if (pathname.startsWith("/narrative") || pathname.startsWith("/question") || pathname.startsWith("/knowledge")
-      || pathname.startsWith("/report") || pathname.startsWith("/thesis")) return "worldmodel"
-  // /explore(신호 상세)·/discover/*·/onchain·/archive·/admin — pill 없는 도시에 (D-057)
-  return "archive"
-}
-
-/** 도크 L1 활성 — /us 도시에는 팔로우 흐름(미국 서브탭)에 속한다 */
-export function dockModeOf(mode: AppMode): AppMode {
-  return mode === "us" ? "follow" : mode === "feed" ? "home" : mode
-}
-
 /** Existing document URLs remain valid alongside the home timeline. */
 export function isDocumentFeed(search: string): boolean {
   const params = new URLSearchParams(search)
   return params.get('view') === 'documents' || ['q', 'source', 'stock', 'industry', 'topic', 'page'].some(k => params.has(k))
 }
 
-/** 현재 경로의 L2 탭 key. 피드는 ?source= 쿼리가 상태 소스 */
-export function getActiveSubTab(pathname: string, search: string): string | null {
-  if (pathname.startsWith("/feed")) return new URLSearchParams(search).get("source") ?? (isDocumentFeed(search) ? "documents" : "all")
+/** 피드 문서 검색의 소스 탭 key — ?source= 쿼리가 상태 소스 */
+export function feedSourceTab(search: string): string {
+  return new URLSearchParams(search).get("source") ?? (isDocumentFeed(search) ? "documents" : "all")
+}
 
-  // 월드모델 — 시간축(D-073): 전망 상위탭 하위에 질문(/question*)·리포트(/report), 둘 다 '전망(outlook)' 활성.
-  // 온톨로지(그래프)는 지식 탭 하위(/knowledge/ontology), 둘 다 '지식' 탭 활성 (D-052)
-  if (pathname.startsWith("/narrative")) return "narrative"
-  if (pathname.startsWith("/question") || pathname.startsWith("/report") || pathname.startsWith("/thesis")) return "outlook"
-  if (pathname.startsWith("/knowledge")) return "knowledge"
-
-  // 팔로우 — /follow 하위(universe·transcripts)는 follow보다 먼저 매칭 + 커버리지 대상(D-057)
-  if (pathname.startsWith("/follow/stocks")) return "stocks"
-  if (pathname.startsWith("/follow/universe")) return "universe"
-  if (pathname.startsWith("/follow/transcripts")) return "transcripts"
-  if (pathname.startsWith("/follow/trade")) return "trade"
-  if (pathname.startsWith("/follow/saved")) return "saved"
-  if (pathname.startsWith("/us")) return "us"
-  if (pathname.startsWith("/follow")) return "follow"
-  if (pathname.startsWith("/map")) return "map"
-  if (pathname.startsWith("/people") || pathname.startsWith("/person")) return "people"
-  if (pathname.startsWith("/actions")) return "actions"
-
-  const analyzeMatch = pathname.match(/^\/analyze\/[^/]+\/(\w+)/)
-  if (analyzeMatch) return ["business", "valuation"].includes(analyzeMatch[1]) ? "financials" : analyzeMatch[1] === "disclosures" ? "mentions" : analyzeMatch[1]
-
-  return null
+/** 종목 도시에 탭 key — 옛 탭(사업·밸류·공시)은 가까운 탭으로 */
+export function analyzeTabOf(pathname: string): string | null {
+  const m = pathname.match(/^\/analyze\/[^/]+\/(\w+)/)
+  if (!m) return null
+  return ["business", "valuation"].includes(m[1]) ? "financials" : m[1] === "disclosures" ? "mentions" : m[1]
 }

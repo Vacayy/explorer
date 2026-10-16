@@ -19,13 +19,15 @@ interface Props {
   /** 드래그로 지목한 답변 대목 — 입력 위 칩으로 붙는다 (D-146) */
   quote?: QuoteRef | null
   onClearQuote?: () => void
+  /** AI 패널이 ⌘J로 열릴 때 포커스 */
+  textareaRef?: React.Ref<HTMLTextAreaElement>
 }
 
 /**
  * 컴포저 — 내용에 맞게 자라는 입력(상한 후 스크롤) + 입력 안 우측 하단 전송 버튼.
  * Enter 전송 / Shift+Enter 줄바꿈. 정지 버튼은 없다(취소 API 부재, spec §7).
  */
-export function Composer({ value, onChange, onSubmit, busy, placeholder, autoFocus, className, hint, quote, onClearQuote }: Props) {
+export function Composer({ value, onChange, onSubmit, busy, placeholder, autoFocus, className, hint, quote, onClearQuote, textareaRef }: Props) {
   const canSend = !busy && (value.trim().length > 0 || !!quote)
   return (
     <div className={cn("space-y-1.5", className)}>
@@ -43,6 +45,7 @@ export function Composer({ value, onChange, onSubmit, busy, placeholder, autoFoc
       )}
       <div className="flex items-end gap-2 rounded-2xl bg-card p-2 pl-4 ring-1 ring-border shadow-sm transition-shadow focus-within:ring-ring focus-within:shadow-md">
         <Textarea
+          ref={textareaRef}
           value={value}
           autoFocus={autoFocus}
           onChange={(e) => onChange(e.target.value)}

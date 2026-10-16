@@ -112,17 +112,15 @@
 
 /* ---------- Layout tokens (docs/DESIGN_SYSTEM.md) ---------- */
 :root {
-  /* 셸 폭 상한 — Header/ModeNavigation/본문이 공유하는 유일한 폭 기준 */
+  /* 셸 폭 상한 — 본문 컬럼의 유일한 폭 기준 */
   --layout-shell: 1440px;
-  /* 도크(D-136, docs/specs/dock-navigation.md §5): 높이 · 하단 예약(도크+여백) · 인페이지 서브탭 행(h-8 + mb-5) */
-  --dock-height: 56px;
-  --dock-reserve: calc(var(--dock-height) + 2rem);
+  /* 앱 셸(docs/specs/app-shell.md §1·§8): 상단 바 · AI 대화 패널 폭 · 본문 아래 여백 · 인페이지 서브탭 행(h-8 + mb-5) */
+  --topbar-height: 52px;
+  --ai-panel-width: 360px;
+  --dock-reserve: 1.5rem;
   --subnav-height: 3.25rem;
-  /* 풀하이트 페이지의 뷰포트 차감량 — 상단 p-6 + 하단 도크 예약(+ SubNav). App.tsx Layout이 인라인으로 확정한다 */
-  --shell-offset: calc(1.5rem + var(--dock-reserve));
-}
-@media (max-width: 767px) {
-  :root { --dock-reserve: calc(var(--dock-height) + 1rem + env(safe-area-inset-bottom)); }
+  /* 풀하이트 페이지의 뷰포트 차감량 — 상단 바 + 위아래 여백(+ SubNav). App.tsx Layout이 인라인으로 확정한다 */
+  --shell-offset: calc(var(--topbar-height) + 1.5rem + var(--dock-reserve));
 }
 
 /* ---------- Light — 쿨 스톤 & 멀버리 (docs/private/DECISIONS.md D-016) ---------- */

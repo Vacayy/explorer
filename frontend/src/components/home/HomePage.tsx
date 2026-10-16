@@ -7,15 +7,14 @@ import { MarketContext } from "@/components/home/MarketContext"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { KrMoversSection } from "@/components/home/KrMoversSection"
 import { ChannelReader } from "@/components/feed/ChannelReader"
-import SegmentTabs from "@/components/shared/SegmentTabs"
 import { useHomeMode } from "@/hooks/useHomeMode"
 
-/** Full-width market overview or a source directory and article reader. */
+/** 홈 › 대시보드(시장) 또는 캔버스 › 피드(소스 디렉터리 + 리더). 보기는 URL home_view만 따른다. */
 export default function HomePage() {
-  const { mode, setMode } = useHomeMode()
+  const mode = useHomeMode()
   return (
     <PageLayout mode={mode === 'feed' ? 'reader' : 'document'}
-      header={<PageHeader title="Home" actions={<SegmentTabs tabs={[{ value: 'market', label: '시장' }, { value: 'feed', label: '피드' }]} value={mode} onChange={setMode} />} />}
+      header={<PageHeader title={mode === 'feed' ? '피드' : '홈'} />}
       overview={mode === 'feed' ? <AiActivityFeed /> : <IndexStrip />}>
       {mode === 'feed' ? <ChannelReader /> : <div className="@container/market space-y-5">
         <MarketContext />

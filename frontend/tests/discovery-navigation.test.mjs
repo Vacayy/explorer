@@ -1,12 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { analyzeTabs, companyResearchSearch, getActiveMode, MODES } from '../src/components/layout/navConfig.ts'
+import { analyzeTabs, companyResearchSearch, locate, SECTIONS } from '../src/components/layout/navConfig.ts'
 
-test('discovery has a primary entry and backtests remain in its context', () => {
-  assert.equal(MODES.find(mode => mode.key === 'discover')?.path, '/discover')
-  assert.equal(getActiveMode('/discover'), 'discover')
-  assert.equal(getActiveMode('/analysis/backtests'), 'discover')
-  assert.equal(getActiveMode('/chat'), 'chat')
+test('discovery is the explore landing and backtests remain in its context', () => {
+  assert.equal(SECTIONS.find(s => s.key === 'explore')?.path, '/discover')
+  assert.deepEqual(locate('/discover'), { section: 'explore', tab: 'discover' })
+  assert.deepEqual(locate('/analysis/backtests'), { section: 'explore', tab: 'discover' })
+  assert.equal(locate('/chat'), null)
 })
 
 test('company tab changes preserve research selection but never unrelated search filters', () => {
