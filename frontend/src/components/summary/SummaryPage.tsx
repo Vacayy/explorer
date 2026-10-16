@@ -4,7 +4,7 @@ import { rememberRecentStock } from '@/lib/recentStocks'
 import api from '@/api/client'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCompany } from '@/hooks/useCompanySearch'
-import { useWatchlist, useAddToWatchlist } from '@/hooks/useWatchlist'
+import { useDefaultWatchGroup, useToggleWatch } from '@/hooks/useGroups'
 import { useBusinessSegments } from '@/hooks/useBusiness'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,13 +18,7 @@ import SaveButton from '@/components/shared/SaveButton'
 import { toast } from 'sonner'
 
 const EMPTY_PRICES: import('@/types').StockPriceItem[] = []
-export default function SummaryPage({
-  stockCode,
-  corpCode,
-}: {
-  stockCode: string
-  corpCode: string
-}) {
+export default function SummaryPage({ stockCode }: { stockCode: string }) {
   const { data: company } = useCompany(stockCode)
   const [sp] = useSearchParams()
   const prices = useQuery({
@@ -55,7 +49,7 @@ export default function SummaryPage({
           description={`${stockCode} · ${company?.market || '국내 상장'}${company?.sector ? ' · ' + company.sector : ''}`}
           actions={
             <>
-              <WatchlistButton stockCode={stockCode} corpCode={corpCode} />
+              <WatchButton stockCode={stockCode} />
               <SaveButton
                 kind="company"
                 refId={stockCode}
@@ -135,43 +129,29 @@ export default function SummaryPage({
   )
 }
 
-function WatchlistButton({
-  stockCode,
-  corpCode,
-}: {
-  stockCode: string
-  corpCode: string
-}) {
-  const { data: watchlist = [] } = useWatchlist()
-  const addToWatchlist = useAddToWatchlist()
-  const isInWatchlist = watchlist.some((w) => w.stock_code === stockCode)
-
-  if (isInWatchlist) {
-    return (
-      <span className="text-xs text-muted-foreground flex items-center gap-1">
-        <span className="text-amber-500">★</span> 워치리스트
-      </span>
-    )
-  }
-
+/** ★ — 기본 관심 묶음('관심 종목')에 넣고 뺀다. 관심 종목의 진실원천은 stock_groups 하나. */
+function WatchButton({ stockCode }: { stockCode: string }) {
+  const group = useDefaultWatchGroup()
+  const toggle = useToggleWatch()
+  if (!group.data) return null
+  const watched = group.data.members.some((m) => m.stock_code === stockCode)
   return (
     <Button
       variant="outline"
       size="xs"
-      onClick={() => {
-        addToWatchlist.mutate(
+      aria-pressed={watched}
+      disabled={toggle.isPending}
+      onClick={() =>
+        toggle.mutate(
+          { stockCode, watched: !watched },
           {
-            stock_code: stockCode,
-            corp_code: corpCode,
-            corp_name: '',
-            conviction: 3,
+            onSuccess: (detail) => toast.success(watched ? `‘${detail.name}’에서 뺐습니다` : `‘${detail.name}’에 추가했습니다`),
+            onError: () => toast.error('관심 종목을 바꾸지 못했습니다'),
           },
-          { onSuccess: () => toast.success('워치리스트에 추가되었습니다') },
         )
-      }}
-      disabled={addToWatchlist.isPending}
+      }
     >
-      + 워치리스트
+      <span className={watched ? 'text-amber-500' : undefined}>{watched ? '★' : '☆'}</span> 관심 종목
     </Button>
   )
 }

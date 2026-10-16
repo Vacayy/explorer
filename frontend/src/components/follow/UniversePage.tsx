@@ -13,7 +13,7 @@ import {
   useAddMember,
   useRemoveMember,
 } from "@/hooks/useIndustry"
-import { useWatchlist, useAddToWatchlist, useDeleteWatchlistItem } from "@/hooks/useWatchlist"
+import { useDefaultWatchGroup, useToggleWatch } from "@/hooks/useGroups"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -59,17 +59,14 @@ export default function UniversePage() {
   const { data: detail, isLoading: detailLoading } = useIndustryDetail(activeId)
   const removeMember = useRemoveMember(activeId ?? 0)
 
-  // 팔로우(watchlist) 연결 — 커버리지 중 '능동 추적'을 ★로 표시 (역할 분리, 겹침 해소)
-  const { data: watchlist = [] } = useWatchlist()
-  const addFollow = useAddToWatchlist()
-  const delFollow = useDeleteWatchlistItem()
-  const followById = useMemo(
-    () => new Map(watchlist.map((w) => [w.stock_code, w.id])), [watchlist])
-  const toggleFollow = (code: string) => {
-    const id = followById.get(code)
-    if (id != null) delFollow.mutate(id)
-    else addFollow.mutate({ stock_code: code })
-  }
+  // 팔로우(기본 관심 묶음) 연결 — 커버리지 중 '능동 추적'을 ★로 표시 (역할 분리, 겹침 해소)
+  const watchGroup = useDefaultWatchGroup()
+  const toggleWatch = useToggleWatch()
+  const followedCodes = useMemo(
+    () => new Set((watchGroup.data?.members ?? []).map((m) => m.stock_code)), [watchGroup.data])
+  const toggleFollow = (code: string) =>
+    toggleWatch.mutate({ stockCode: code, watched: !followedCodes.has(code) },
+      { onError: () => toast.error("관심 종목을 바꾸지 못했습니다") })
 
   // 멤버를 category별로 묶고 시총 합 내림차순 정렬
   const grouped = useMemo(() => {
@@ -184,7 +181,7 @@ export default function UniversePage() {
                   </span>
                 </div>
                 <MemberTable members={members} onRemove={(id) => removeMember.mutate(id)}
-                  followById={followById} onToggleFollow={toggleFollow} />
+                  followedCodes={followedCodes} onToggleFollow={toggleFollow} />
               </div>
             ))}
 
@@ -271,10 +268,10 @@ function SectorNarratives({ groupId, groupName }: { groupId: number; groupName: 
 
 /* ── 멤버 테이블 (밸류체인 단계별) — 팔로우 종목 테이블과 동형 ── */
 
-function MemberTable({ members, onRemove, followById, onToggleFollow }: {
+function MemberTable({ members, onRemove, followedCodes, onToggleFollow }: {
   members: IndustryMember[]
   onRemove: (id: number) => void
-  followById: Map<string, number>
+  followedCodes: Set<string>
   onToggleFollow: (code: string) => void
 }) {
   const num = (v: number | null, suffix: string, digits = 1) =>
@@ -296,7 +293,7 @@ function MemberTable({ members, onRemove, followById, onToggleFollow }: {
         </TableHeader>
         <TableBody>
           {members.map((m) => {
-            const followed = followById.has(m.stock_code)
+            const followed = followedCodes.has(m.stock_code)
             return (
             <TableRow key={m.id} className="group">
               <TableCell>

@@ -27,7 +27,7 @@
 
 | 기존 | 처리 |
 |---|---|
-| `watchlist` 15건 | 기본 묶음 "관심 종목"(종류 watch)으로 1회 이관. 확신도·목표가·논지 유지. 종목 개요의 별 버튼은 "묶음에 추가"로 바뀌고 기본 묶음에 넣는다. 레거시 API는 이관 후 읽기 호환만 남기고 제거 시점을 SYSTEM에 기록 |
+| `watchlist` 15건 | 기본 묶음 "관심 종목"(종류 watch)으로 이관(`scripts/migrate_watchlist_to_groups.py --dry-run`, 멱등 — 없는 종목 추가, 묶음 빈 칸만 채움). 확신도·목표가·논지 유지. 종목 개요의 ★는 기본 묶음에 넣고 뺀다. **2026-10-16: 레거시 `/api/watchlist`와 모든 읽기·쓰기 경로 제거** — 관심 종목은 `stock_groups` 하나(FE `useDefaultWatchGroup`·`useToggleWatch`·`useSetWatchThesis`, BE `watch_rules.watched`·`watch_thesis`). 테이블은 이관 확인 뒤 정리 |
 | `follows` | 그대로 둔다(인물·테마 팔로우). 종목은 묶음이 담당한다고 관심목록 화면에서 분리해 보여준다 |
 | `industry_groups` | 그대로 둔다. 유니버스 그룹 상세에 "이 그룹으로 묶음 만들기" 액션만 추가(복사, 연결 아님) |
 | 발견 후보 목록 | 후보 행에 "묶음에 추가" 액션. 저장 전략 카드에 "이 조건으로 감시" 액션(조건 세트를 묶음 기본 조건으로 복사) |
@@ -62,6 +62,7 @@
 
 ```
 GET    /api/spine/groups                       묶음 목록(+오늘 신호 수)
+GET    /api/spine/groups/default-watch         기본 관심 묶음 상세(없으면 생성)
 POST   /api/spine/groups                       {name, kind, note}
 PATCH  /api/spine/groups/:id
 DELETE /api/spine/groups/:id
@@ -73,7 +74,6 @@ PUT    /api/spine/groups/:id/rules             전체 교체(멱등) — {defaul
 POST   /api/spine/groups/:id/evaluate          수동 평가 → job_runs id
 GET    /api/spine/groups/:id/signals?days=30   날짜별 pass 전이
 GET    /api/spine/groups/:id/evaluations?date= 특정 날 전체 판정(unavailable 포함)
-POST   /api/spine/groups/migrate-watchlist     레거시 15건 이관(1회, 멱등)
 ```
 
 라우터 `routers/spine_groups.py`, 스키마 `models/groups.py`, 평가 `pipeline/watch_rules.py`(순수 계산 모듈 `strategies.py`만 호출, DB 읽기는 `stock_prices` 읽기 전용).

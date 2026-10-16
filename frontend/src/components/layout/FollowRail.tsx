@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { cn } from "@/lib/utils"
-import { useWatchlist } from "@/hooks/useWatchlist"
+import { useDefaultWatchGroup } from "@/hooks/useGroups"
 import { useTelegramChannels, useToggleTelegramChannel } from "@/hooks/useTelegram"
 import { useBlogSources, useToggleBlogSource, type BlogSource } from "@/hooks/useBlogFeed"
 import { formatNumber, formatPercent } from "@/utils/format"
@@ -18,22 +18,13 @@ import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupAction, SidebarGroupContent,
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import type { WatchlistItem } from "@/types"
+import type { StockGroupMember } from "@/types"
 
 /**
  * 팔로우 레일 — shadcn Sidebar(side=right, collapsible=offcanvas) 기반.
  * 넓은 데스크톱=펼침, 그 이하=토글/오버레이(모바일 Sheet). 토글은 헤더의 패널 버튼(⌘B).
  * 종목·채널·블로그는 같은 프리미티브("내가 팔로우하는 대상"): 행=도시에 이동, hover=수집 토글, [+]=추가.
  */
-
-function gapColor(gap: number | null): string {
-  if (gap === null) return "text-muted-foreground"
-  if (gap >= 30) return "text-emerald-600"
-  if (gap >= 10) return "text-emerald-500"
-  if (gap >= 0) return "text-emerald-400"
-  if (gap >= -10) return "text-rose-400"
-  return "text-rose-600"
-}
 
 function useSourcesHealth() {
   return useQuery({
@@ -160,27 +151,31 @@ function EmptyRow({ message }: { message: string }) {
 
 function StockSection({ currentStockCode }: { currentStockCode: string | null }) {
   const navigate = useNavigate()
-  const { data: items = [], isLoading } = useWatchlist()
-  if (isLoading) return <div className="px-3 py-2"><Skeleton className="h-4 w-full" /></div>
+  const group = useDefaultWatchGroup()
+  if (group.isPending) return <div className="px-3 py-2"><Skeleton className="h-4 w-full" /></div>
+  const items = group.data?.members ?? []
 
   return (
-    <Section title="종목" count={items.length} onAdd={() => navigate("/follow")} addLabel="워치리스트 관리">
+    <Section title="종목" count={items.length} onAdd={() => navigate("/follow")} addLabel="관심 종목 관리">
       <SidebarMenu>
-        {items.length === 0 && <EmptyRow message="아직 없음 — +로 추가" />}
-        {items.map((item: WatchlistItem) => (
+        {group.isError && <EmptyRow message="관심 종목을 불러오지 못했습니다" />}
+        {group.data && items.length === 0 && <EmptyRow message="아직 없음 — +로 추가" />}
+        {items.map((item: StockGroupMember) => (
           <Row
-            key={item.id}
+            key={item.stock_code}
             active={item.stock_code === currentStockCode}
             onClick={() => navigate(`/analyze/${item.stock_code}/summary`)}
-            name={item.corp_name}
+            name={item.name}
             sub={
               <span className="flex items-center gap-1.5">
-                <span className="text-amber-400 text-[10px] tracking-tighter">
-                  {"★".repeat(item.conviction)}{"☆".repeat(5 - item.conviction)}
-                </span>
-                <span>{item.latest_close != null ? formatNumber(item.latest_close) : "-"}</span>
-                {item.gap_pct != null && (
-                  <span className={cn("font-medium", gapColor(item.gap_pct))}>{formatPercent(item.gap_pct)}</span>
+                {item.conviction != null && (
+                  <span className="text-amber-400 text-[10px] tracking-tighter">
+                    {"★".repeat(item.conviction)}{"☆".repeat(5 - item.conviction)}
+                  </span>
+                )}
+                <span>{item.close != null ? formatNumber(item.close) : "-"}</span>
+                {item.change_pct != null && (
+                  <span className={cn("font-medium", item.change_pct > 0 ? "text-up" : item.change_pct < 0 ? "text-down" : "text-muted-foreground")}>{formatPercent(item.change_pct)}</span>
                 )}
               </span>
             }

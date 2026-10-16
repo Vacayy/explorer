@@ -83,7 +83,7 @@
 - [question-proxy](question-proxy.md) — 핵심질문 ↔ 프록시 — 분할정복 질문 트래커
 - [research-catalysts](research-catalysts.md) — 화면 기획서: 카탈리스트 캘린더
 - [research-memos](research-memos.md) — 화면 기획서: 투자메모
-- [research-watchlist](research-watchlist.md) — 화면 기획서: 워치리스트
+- [research-watchlist](research-watchlist.md) — 화면 기획서: 워치리스트 (대체됨 → portfolio-watch 기본 관심 묶음)
 - [saved-items](saved-items.md) — 저장됨 (Saved / Bookmarks) — 산출물 북마크
 - [sector-aggregation](sector-aggregation.md) — 섹터 집약 — 유니버스 그룹을 커버리지 단위로
 - [signals-spine](signals-spine.md) — 신호(Signals) 계층 — 척추 위의 파생 분석 (기획 기록)

@@ -93,10 +93,8 @@ def list_groups():
         group["today_signals"] = len([s for s in wr.signals(conn, group["id"], days=1) if s["as_of"] == last_as_of]) if last_as_of else 0
         out.append(group)
     latest = wr.latest_trade_date(conn)
-    legacy = conn.execute("SELECT COUNT(*) n FROM watchlist").fetchone()["n"]
-    migrated = conn.execute("SELECT 1 FROM stock_groups WHERE name=? AND kind='watch'", (wr.DEFAULT_WATCH_GROUP_NAME,)).fetchone() is not None
     conn.close()
-    return {"items": out, "latest_trade_date": latest, "legacy_watchlist": {"count": legacy, "migrated": migrated}}
+    return {"items": out, "latest_trade_date": latest}
 
 
 @router.post("", status_code=201)
@@ -257,15 +255,6 @@ def group_evaluations(group_id: int, as_of: str | None = Query(None, pattern=r"^
     conn.close()
     return {"as_of": as_of, "items": [{**dict(r), "label": labels.get(r["strategy_id"], r["strategy_id"]),
                                        "params": json.loads(r["params_json"] or "{}")} for r in rows]}
-
-
-@router.post("/migrate-watchlist")
-def migrate_watchlist():
-    conn = wr.connect()
-    result = wr.migrate_watchlist(conn)
-    detail = _detail(conn, result["group_id"])
-    conn.close()
-    return {**result, "group": detail}
 
 
 # ── 관심 종목 이유 감시 (D-227, portfolio-intelligence §6) — 판정은 매일 07:40, 알림은 텔레그램만 ──────────

@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { useScreener } from "@/hooks/useScreener"
 import type { ScreenerParams, ScreenerItem } from "@/hooks/useScreener"
-import { useAddToWatchlist } from "@/hooks/useWatchlist"
+import { useToggleWatch } from "@/hooks/useGroups"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -61,7 +61,7 @@ function filtersToQueryParams(f: FilterValues): ScreenerParams {
 export default function ScreenerPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const addToWatchlist = useAddToWatchlist()
+  const toggleWatch = useToggleWatch()
 
   // Local filter state (drives inputs)
   const [filters, setFilters] = useState<FilterValues>(() => paramsToFilters(searchParams))
@@ -138,14 +138,12 @@ export default function ScreenerPage() {
 
   const handleAddWatchlist = (e: React.MouseEvent, item: ScreenerItem) => {
     e.stopPropagation()
-    addToWatchlist.mutate(
+    toggleWatch.mutate(
+      { stockCode: item.stock_code, watched: true },
       {
-        stock_code: item.stock_code,
-        corp_code: "",
-        corp_name: item.corp_name,
-        conviction: 3,
-      },
-      { onSuccess: () => toast.success("워치리스트에 추가되었습니다") }
+        onSuccess: (detail) => toast.success(`${item.corp_name}을(를) ‘${detail.name}’에 추가했습니다`),
+        onError: () => toast.error("관심 종목에 추가하지 못했습니다"),
+      }
     )
   }
 
@@ -299,7 +297,7 @@ export default function ScreenerPage() {
                       className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
                       onClick={(e) => handleAddWatchlist(e, item)}
                     >
-                      + 워치
+                      + 관심
                     </Button>
                   </td>
                 </tr>

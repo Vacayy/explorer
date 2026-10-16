@@ -7,7 +7,9 @@ export const groupKeys = {
   list: ['spine', 'groups'] as const,
   detail: (id: number | null) => ['spine', 'group', id] as const,
   signals: (id: number | null, days: number) => ['spine', 'group-signals', id, days] as const,
+  defaultWatch: ['spine', 'group', 'default-watch'] as const,
 }
+const defaultWatchQuery = { queryKey: groupKeys.defaultWatch, queryFn: async () => (await api.get<StockGroupDetail>(`${ROOT}/default-watch`)).data }
 
 export function useGroups() {
   return useQuery({ queryKey: groupKeys.list, queryFn: async () => (await api.get<StockGroupList>(ROOT)).data })
@@ -17,6 +19,10 @@ export function useGroup(id: number | null) {
 }
 export function useGroupSignals(id: number | null, days = 30) {
   return useQuery({ queryKey: groupKeys.signals(id, days), queryFn: async () => (await api.get<{ items: GroupSignal[] }>(`${ROOT}/${id}/signals`, { params: { days } })).data.items, enabled: id != null })
+}
+/** 기본 관심 묶음('관심 종목') — 기업 화면 ★·내 목록 종목·논지가 쓰는 관심 종목의 진실원천. 서버가 없으면 만든다. */
+export function useDefaultWatchGroup() {
+  return useQuery(defaultWatchQuery)
 }
 export function useStrategyCatalog() {
   return useQuery({ queryKey: ['market-analysis', 'strategies'], queryFn: async () => (await api.get<{ version: string; items: StrategyCatalogItem[] }>('/api/analysis/strategies')).data.items, staleTime: Infinity })
@@ -31,6 +37,7 @@ function useGroupWrite<TVariables>(mutationFn: (variables: TVariables) => Promis
       client.setQueryData(groupKeys.detail(detail.id), detail)
       client.invalidateQueries({ queryKey: groupKeys.list })
       client.invalidateQueries({ queryKey: ['spine', 'group-signals', detail.id] })
+      client.invalidateQueries({ queryKey: groupKeys.defaultWatch })
     },
   })
 }
@@ -56,7 +63,25 @@ export function usePutRules(groupId: number) {
 export function useEvaluateGroup(groupId: number) {
   return useGroupWrite(async (force = false) => (await api.post<{ summary: unknown; group: StockGroupDetail }>(`${ROOT}/${groupId}/evaluate`, null, { params: { force } })).data.group)
 }
-export function useMigrateWatchlist() { return useGroupWrite<void>(async () => (await api.post<{ group: StockGroupDetail }>(`${ROOT}/migrate-watchlist`)).data.group) }
+/** ★ — 기본 관심 묶음에 넣거나 뺀다. */
+export function useToggleWatch() {
+  const client = useQueryClient()
+  return useGroupWrite(async ({ stockCode, watched }: { stockCode: string; watched: boolean }) => {
+    const group = await client.ensureQueryData(defaultWatchQuery)
+    return watched
+      ? (await api.post<StockGroupDetail>(`${ROOT}/${group.id}/members`, { stock_code: stockCode })).data
+      : (await api.delete<StockGroupDetail>(`${ROOT}/${group.id}/members/${stockCode}`)).data
+  })
+}
+/** 종목 논지 저장 — 기본 관심 묶음 멤버의 thesis. 묶음에 없으면 먼저 넣는다(종목 브리프의 논지 점검 기준). */
+export function useSetWatchThesis() {
+  const client = useQueryClient()
+  return useGroupWrite(async ({ stockCode, thesis }: { stockCode: string; thesis: string }) => {
+    const group = await client.ensureQueryData(defaultWatchQuery)
+    await api.post(`${ROOT}/${group.id}/members`, { stock_code: stockCode })
+    return (await api.patch<StockGroupDetail>(`${ROOT}/${group.id}/members/${stockCode}`, { thesis })).data
+  })
+}
 
 /** 발견 화면의 저장 전략 조건을 묶음 기본 규칙에 덧붙인다(같은 전략·매개변수는 한 번만). */
 export function useAppendDefaultRules() {

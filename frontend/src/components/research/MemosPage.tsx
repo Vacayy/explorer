@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import { useWatchlist } from "@/hooks/useWatchlist"
+import { useDefaultWatchGroup } from "@/hooks/useGroups"
 import { useIRNotes, useCreateIRNote, useDeleteIRNote, useUpdateIRNote } from "@/hooks/useIRNotes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -411,7 +411,9 @@ const SUB_TABS = [
 ]
 
 export default function MemosPage() {
-  const { data: watchlist = [], isLoading: watchlistLoading } = useWatchlist()
+  const watchGroup = useDefaultWatchGroup()
+  const watchlist = watchGroup.data?.members ?? []
+  const watchlistLoading = watchGroup.isPending
   const [selectedStockCode, setSelectedStockCode] = useState<string>("")
   const [activeTab, setActiveTab] = useState<"thesis" | "general">("thesis")
 
@@ -430,7 +432,7 @@ export default function MemosPage() {
             <SelectContent>
               {watchlist.map((item) => (
                 <SelectItem key={item.stock_code} value={item.stock_code ?? ""}>
-                  {item.corp_name} ({item.stock_code})
+                  {item.name} ({item.stock_code})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -451,7 +453,7 @@ export default function MemosPage() {
                   size="sm"
                   onClick={() => setSelectedStockCode(item.stock_code ?? "")}
                 >
-                  {item.corp_name}
+                  {item.name}
                 </Button>
               ))}
             </div>

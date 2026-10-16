@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCompanySearch } from '@/hooks/useCompanySearch'
 import { WatchReasonsCard } from '@/components/follow/WatchReasonsCard'
-import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, useMigrateWatchlist, usePutRules, useRemoveMember, useStrategyCatalog } from '@/hooks/useGroups'
+import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, usePutRules, useRemoveMember, useStrategyCatalog } from '@/hooks/useGroups'
 import { formatKrw, formatNumber, formatPercent } from '@/utils/format'
 import type { StockGroupDetail, StockGroupKind, StockGroupMember, StrategyCatalogItem, WatchRule, WatchRuleInput } from '@/types'
 
@@ -40,7 +40,6 @@ export default function StocksPage() {
 function GroupList({ onOpen }: { onOpen: (id: number) => void }) {
   const groups = useGroups()
   const create = useCreateGroup()
-  const migrate = useMigrateWatchlist()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [kind, setKind] = useState<StockGroupKind>('watch')
@@ -49,14 +48,9 @@ function GroupList({ onOpen }: { onOpen: (id: number) => void }) {
     try { const detail = await create.mutateAsync({ name: name.trim(), kind }); setCreating(false); setName(''); onOpen(detail.id) }
     catch (error) { toast.error(error instanceof Error ? error.message : '묶음을 만들지 못했습니다.') }
   }
-  const legacy = groups.data?.legacy_watchlist
   return <PageLayout header={<PageHeader title="종목 묶음" description="포트폴리오와 관심 종목을 묶고, 종목별 기술적 조건을 매일 평가해 신호를 봅니다." actions={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" />새 묶음</Button>} />}>
     {groups.isPending && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="묶음 불러오는 중" role="status">{[0, 1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}</div>}
     {groups.isError && <ErrorState message="묶음을 불러오지 못했습니다." onRetry={() => groups.refetch()} />}
-    {legacy && legacy.count > 0 && !legacy.migrated && <Card className="border-hypothesis/30 bg-hypothesis/5"><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-      <div><p className="text-sm font-medium">기존 관심종목 {formatNumber(legacy.count)}개가 아직 묶음에 없습니다.</p><p className="text-caption text-muted-foreground">확신도·목표가·논지를 그대로 옮겨 ‘관심 종목’ 묶음을 만듭니다.</p></div>
-      <Button size="sm" variant="secondary" disabled={migrate.isPending} onClick={() => migrate.mutateAsync().then(detail => onOpen(detail.id)).catch(error => toast.error(error instanceof Error ? error.message : '이관하지 못했습니다.'))}>{migrate.isPending ? '옮기는 중…' : '묶음으로 옮기기'}</Button>
-    </CardContent></Card>}
     {groups.data && (groups.data.items.length === 0 ? <Card><CardContent className="space-y-3 py-10 text-center"><p className="font-medium">아직 묶음이 없습니다.</p><p className="text-sm text-muted-foreground">포트폴리오나 관심 종목 묶음을 만들고 조건을 걸면 매일 장 마감 후 신호를 평가합니다.</p><Button onClick={() => setCreating(true)}><Plus className="size-4" />첫 묶음 만들기</Button></CardContent></Card>
       : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{groups.data.items.map(group => <Button key={group.id} variant="ghost" className="h-auto flex-col items-stretch gap-2 whitespace-normal rounded-xl border bg-card p-4 text-left" onClick={() => onOpen(group.id)}>
         <span className="flex items-start justify-between gap-2"><span className="font-semibold">{group.name}</span><Badge variant="outline">{KIND_LABEL[group.kind]}</Badge></span>

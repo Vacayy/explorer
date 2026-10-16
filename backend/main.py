@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from config import MEDIA_PATH
 from database import init_db
 from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, onchain, kpi
-from routers import watchlist, screener, signals, catalysts, compare, consensus, index_data
+from routers import screener, signals, catalysts, compare, consensus, index_data
 from routers import telegram_feed
 from routers import blog_feed
 from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_digests, spine_keywords, spine_sources
@@ -49,7 +49,6 @@ app.include_router(business.router)
 app.include_router(industries.router)
 app.include_router(onchain.router)
 app.include_router(kpi.router)
-app.include_router(watchlist.router)
 app.include_router(screener.router)
 app.include_router(signals.router)
 app.include_router(catalysts.router)

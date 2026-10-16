@@ -154,21 +154,6 @@ export interface CatalystItem {
   created_at: string;
 }
 
-export interface WatchlistItem {
-  id: number;
-  stock_code: string;
-  corp_code: string;
-  corp_name: string;
-  conviction: number;
-  target_price: number | null;
-  thesis: string | null;
-  created_at: string;
-  updated_at: string;
-  latest_close: number | null;
-  latest_market_cap: number | null;
-  gap_pct: number | null;
-}
-
 // ---------- Spine (그래프 척추) API ----------
 
 export interface EntityTag {
@@ -865,7 +850,7 @@ export interface StockGroupSummary {
   id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
   member_count: number; rule_count: number; last_as_of: string | null; today_signals: number;
 }
-export interface StockGroupList { items: StockGroupSummary[]; latest_trade_date: string | null; legacy_watchlist: { count: number; migrated: boolean } }
+export interface StockGroupList { items: StockGroupSummary[]; latest_trade_date: string | null }
 export interface StockGroupDetail {
   id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
   members: StockGroupMember[]; rules: { default: WatchRule[]; members: Record<string, WatchRule[]> };

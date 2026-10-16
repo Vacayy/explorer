@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { ChevronDown, Loader2, Scale, TrendingDown, TrendingUp, Minus } from "lucide-react"
 import { Markdown } from "@/components/shared/Markdown"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import api from "@/api/client"
 import { stockBriefQuery, stockBriefComputeQuery, stockBriefHistoryQuery } from "@/api/spine"
 import { ProposalPanel } from "@/components/shared/ProposalPanel"
+import { useSetWatchThesis } from "@/hooks/useGroups"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -105,17 +105,15 @@ function ThesisView({ stockCode, thesis }: { stockCode: string; thesis: string }
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(thesis)
   const qc = useQueryClient()
-  const save = useMutation({
-    mutationFn: async () =>
-      (await api.post("/api/watchlist", { stock_code: stockCode, thesis: text.trim() })).data,
-    onSuccess: () => {
-      toast.success("논지 수정 — 다음 브리프에 반영됩니다")
-      setEditing(false)
-      qc.invalidateQueries({ queryKey: ["spine", "stock-brief", stockCode] })
-      qc.invalidateQueries({ queryKey: ["watchlist"] })
-    },
-    onError: () => toast.error("수정 실패 — 잠시 후 다시 시도해주세요"),
-  })
+  const save = useSetWatchThesis()
+  const submit = () => save.mutate({ stockCode, thesis: text.trim() }, {
+      onSuccess: () => {
+        toast.success("논지 수정 — 다음 브리프에 반영됩니다")
+        setEditing(false)
+        qc.invalidateQueries({ queryKey: ["spine", "stock-brief", stockCode] })
+      },
+      onError: () => toast.error("수정 실패 — 잠시 후 다시 시도해주세요"),
+    })
 
   return (
     <Collapsible>
@@ -131,7 +129,7 @@ function ThesisView({ stockCode, thesis }: { stockCode: string; thesis: string }
             <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} className="text-sm" />
             <div className="flex justify-end gap-2">
               <Button size="xs" variant="ghost" onClick={() => { setEditing(false); setText(thesis) }}>취소</Button>
-              <Button size="xs" disabled={!text.trim() || save.isPending} onClick={() => save.mutate()}>
+              <Button size="xs" disabled={!text.trim() || save.isPending} onClick={submit}>
                 {save.isPending ? "저장 중…" : "저장"}
               </Button>
             </div>
@@ -155,17 +153,15 @@ function ThesisPrompt({ stockCode }: { stockCode: string }) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState("")
   const qc = useQueryClient()
-  const save = useMutation({
-    mutationFn: async () =>
-      (await api.post("/api/watchlist", { stock_code: stockCode, thesis: text.trim() })).data,
-    onSuccess: () => {
-      toast.success("논지 등록 — 다음 브리프부터 새 증거가 이 논지를 지지/반박하는지 점검합니다")
-      setOpen(false)
-      qc.invalidateQueries({ queryKey: ["spine", "stock-brief", stockCode] })
-      qc.invalidateQueries({ queryKey: ["watchlist"] })
-    },
-    onError: () => toast.error("등록 실패 — 잠시 후 다시 시도해주세요"),
-  })
+  const save = useSetWatchThesis()
+  const submit = () => save.mutate({ stockCode, thesis: text.trim() }, {
+      onSuccess: () => {
+        toast.success("논지 등록 — 다음 브리프부터 새 증거가 이 논지를 지지/반박하는지 점검합니다")
+        setOpen(false)
+        qc.invalidateQueries({ queryKey: ["spine", "stock-brief", stockCode] })
+      },
+      onError: () => toast.error("등록 실패 — 잠시 후 다시 시도해주세요"),
+    })
 
   if (!open) {
     return (
@@ -185,7 +181,7 @@ function ThesisPrompt({ stockCode }: { stockCode: string }) {
         placeholder="한두 문장이면 충분합니다" className="text-sm" />
       <div className="flex justify-end gap-2">
         <Button size="xs" variant="ghost" onClick={() => setOpen(false)}>취소</Button>
-        <Button size="xs" disabled={!text.trim() || save.isPending} onClick={() => save.mutate()}>
+        <Button size="xs" disabled={!text.trim() || save.isPending} onClick={submit}>
           {save.isPending ? "저장 중…" : "논지 등록"}
         </Button>
       </div>

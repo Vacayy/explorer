@@ -172,7 +172,7 @@ function AnalyzePage({ tab }: { tab: string }) {
 
   switch (tab) {
     case "summary":
-      return <SummaryPage stockCode={stockCode} corpCode={corpCode} />
+      return <SummaryPage stockCode={stockCode} />
     case "financials":
       return <CompanyFinancials key={stockCode} stockCode={stockCode} corpCode={corpCode} />
     case "business":

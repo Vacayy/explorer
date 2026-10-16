@@ -1,7 +1,7 @@
 # 화면 기획서: 워치리스트
 
 > 경로: `/research/watchlist`
-> 상태: 기획 완료, 구현 대기
+> 상태: **대체됨** — 관심 종목은 종목 묶음(`stock_groups`)의 기본 관심 묶음으로 옮겼다([portfolio-watch.md](portfolio-watch.md)). `/api/watchlist`는 제거됐다
 
 ---
 
