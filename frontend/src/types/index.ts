@@ -840,11 +840,11 @@ export interface GroupSignal {
 }
 export interface StockGroupMember {
   id: number; group_id: number; stock_code: string; name: string; market: string | null;
-  quantity: number | null; avg_price: number | null; bought_at: string | null;
+  bought_at: string | null;
   conviction: number | null; target_price: number | null; thesis: string | null; created_at: string;
   close: number | null; change_pct: number | null; market_cap: number | null; price_date: string | null;
   rule_count: number; signals: { rule_id: number; strategy_id: string; label: string; value: number | null; reference: number | null; signal_date: string | null }[];
-  unavailable: number; pnl: number | null; return_pct: number | null;
+  unavailable: number;
 }
 export interface StockGroupSummary {
   id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;

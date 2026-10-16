@@ -21,19 +21,14 @@ class GroupUpdate(Strict):
 
 
 class MemberCreate(Strict):
+    """수량·매수가는 받지 않는다 — 포트폴리오 보유는 거래 원장(portfolio_transactions, D-212)만 기록한다."""
     stock_code: str = Field(pattern=r"^[0-9A-Z]{6}$")
-    quantity: float | None = Field(default=None, ge=0)
-    avg_price: float | None = Field(default=None, ge=0)
-    bought_at: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     conviction: int | None = Field(default=None, ge=1, le=5)
     target_price: int | None = Field(default=None, ge=0)
     thesis: str | None = Field(default=None, max_length=4000)
 
 
 class MemberUpdate(Strict):
-    quantity: float | None = Field(default=None, ge=0)
-    avg_price: float | None = Field(default=None, ge=0)
-    bought_at: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     conviction: int | None = Field(default=None, ge=1, le=5)
     target_price: int | None = Field(default=None, ge=0)
     thesis: str | None = Field(default=None, max_length=4000)

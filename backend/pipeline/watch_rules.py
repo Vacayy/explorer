@@ -1,6 +1,6 @@
 """종목 묶음(포트폴리오·관심)과 기술적 감시 규칙의 일일 평가 (docs/specs/portfolio-watch.md, D-185).
 
-- 묶음 하나에 종류(watch|portfolio)만 다르다. 멤버는 종목 + 선택 입력(수량·매수가·확신도·목표가·논지).
+- 묶음 하나에 종류(watch|portfolio)만 다르다. 멤버는 종목 + 선택 입력(확신도·목표가·논지). 포트폴리오 보유·수량은 거래 원장(D-212).
 - 규칙은 묶음 기본(stock_code NULL) + 종목별. 같은 strategy_id는 종목 규칙이 기본을 덮는다.
 - 평가는 `market_analysis.strategies.evaluate_strategy`(순수 계산, 모델 호출 0)로 하고 (규칙, 종목, 기준일)마다
   한 번만 저장한다. `unavailable`은 실패로 바꾸지 않는다.

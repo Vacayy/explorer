@@ -19,7 +19,7 @@
 새 객체를 두 개(포트폴리오·관심 그룹) 만들지 않고 **묶음(group)** 하나에 종류만 둔다.
 
 - **묶음** `stock_groups`: 이름 · 종류 `portfolio | watch` · 메모 · 기본 조건 세트.
-- **멤버** `stock_group_members`: 묶음 × 종목. 종류가 `portfolio`면 수량·평균 매수가·매수일을 선택 입력한다. 레거시 `watchlist`의 확신도·목표가·논지는 멤버 필드로 그대로 옮긴다.
+- **멤버** `stock_group_members`: 묶음 × 종목. 종류가 `portfolio`면 멤버는 거래 원장([portfolio-ledger](portfolio-ledger.md), D-212)이 종목·편입일로 채운다 — 묶음 API는 수량·평균 매수가를 받지도 돌려주지도 않는다(칼럼은 NULL로 남김). 레거시 `watchlist`의 확신도·목표가·논지는 멤버 필드로 그대로 옮긴다.
 - **감시 조건** `watch_rules`: 묶음 기본 조건 또는 특정 멤버에만 붙는 조건. 조건 본문은 전략 카탈로그 형식 `{strategy_id, params, within_days}`(D-180 계약)을 그대로 쓰고, 저장 전략을 참조할 때는 버전 번호를 고정한다. 종목별 조건은 기본 조건에 **추가**되며, 같은 `strategy_id`는 종목 조건이 기본을 덮는다.
 - **평가 결과** `watch_evaluations`: (멤버, 조건, 기준일) → `pass | fail | unavailable` · value · reference · reason. 날짜별 append-only. `unavailable`은 실패로 바꾸지 않는다(D-180 규약).
 
@@ -45,7 +45,7 @@
 관심목록(`/follow`) 하위 탭 "종목"으로 등록한다(`navConfig.FOLLOW_TABS`). 최상위는 `shared/PageContainer`.
 
 1. **묶음 목록**: 카드 또는 표. 이름 · 종류 · 종목 수 · 오늘 켜진 신호 수 · 마지막 평가 시각. 새 묶음 만들기.
-2. **묶음 상세**: TanStack Table(`@tanstack/react-table` v8 + shadcn Table). 열: 종목 · 현재가 · 전일 대비 · (포트폴리오) 평가손익 · 오늘 신호 · 조건 수 · 마지막 평가. 시총·등락·손익 정렬. 행 확장 또는 Sheet로 종목 조건 편집.
+2. **묶음 상세**: TanStack Table(`@tanstack/react-table` v8 + shadcn Table). 열: 종목 · 현재가 · 전일 대비 · 오늘 신호 · 조건 수 · 마지막 평가. 시총·등락 정렬. 포트폴리오 묶음은 '종목 추가' 대신 원장(`/portfolio`) 안내. 행 확장 또는 Sheet로 종목 조건 편집.
 3. **조건 편집(Sheet)**: 카탈로그에서 전략 선택 → 매개변수 폼(카탈로그 정의의 범위 검증 재사용) → 기본/종목 조건 구분. 저장 전략 불러오기.
 4. **신호 히스토리**: 묶음 또는 종목 단위 날짜별 목록. 켜진 날짜 클릭 → 기업 개요(`/analyze/:code/summary`)로 이동. 후보 차트와 같은 `CandlestickChart` 마커 재사용은 P1.
 
@@ -66,8 +66,8 @@ GET    /api/spine/groups/default-watch         기본 관심 묶음 상세(없�
 POST   /api/spine/groups                       {name, kind, note}
 PATCH  /api/spine/groups/:id
 DELETE /api/spine/groups/:id
-POST   /api/spine/groups/:id/members           {stock_code, quantity?, avg_price?, bought_at?}
-PATCH  /api/spine/groups/:id/members/:code     수량·메모·확신도
+POST   /api/spine/groups/:id/members           {stock_code, conviction?, target_price?, thesis?}
+PATCH  /api/spine/groups/:id/members/:code     확신도·목표가·논지
 DELETE /api/spine/groups/:id/members/:code
 GET    /api/spine/groups/:id/rules             기본 + 종목별 조건
 PUT    /api/spine/groups/:id/rules             전체 교체(멱등) — {default:[...], members:{code:[...]}}

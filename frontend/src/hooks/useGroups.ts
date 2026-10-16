@@ -49,11 +49,11 @@ export function useDeleteGroup() {
   return useMutation({ mutationFn: async (id: number) => { await api.delete(`${ROOT}/${id}`) }, onSuccess: () => client.invalidateQueries({ queryKey: groupKeys.list }) })
 }
 export function useAddMember() {
-  return useGroupWrite(async ({ groupId, ...body }: { groupId: number; stock_code: string; quantity?: number; avg_price?: number; bought_at?: string; conviction?: number; target_price?: number; thesis?: string }) =>
+  return useGroupWrite(async ({ groupId, ...body }: { groupId: number; stock_code: string; conviction?: number; target_price?: number; thesis?: string }) =>
     (await api.post<StockGroupDetail>(`${ROOT}/${groupId}/members`, body)).data)
 }
 export function useUpdateMember(groupId: number) {
-  return useGroupWrite(async ({ stockCode, ...body }: { stockCode: string; quantity?: number | null; avg_price?: number | null; bought_at?: string | null; conviction?: number | null; target_price?: number | null; thesis?: string | null }) =>
+  return useGroupWrite(async ({ stockCode, ...body }: { stockCode: string; conviction?: number | null; target_price?: number | null; thesis?: string | null }) =>
     (await api.patch<StockGroupDetail>(`${ROOT}/${groupId}/members/${stockCode}`, body)).data)
 }
 export function useRemoveMember(groupId: number) { return useGroupWrite(async (stockCode: string) => (await api.delete<StockGroupDetail>(`${ROOT}/${groupId}/members/${stockCode}`)).data) }

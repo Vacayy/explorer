@@ -175,13 +175,16 @@ class WatchRulesTests(unittest.TestCase):
         self.assertEqual(again["id"], first["id"])
         self.assertEqual([m["name"] for m in again["members"]], ["가나"])
 
-    def test_portfolio_members_expose_pnl(self):
+    def test_portfolio_members_take_no_amounts_and_expose_none(self):
+        """D-212: 수량·매수가는 거래 원장에만 — 묶음 API는 받지도 돌려주지도 않는다."""
         group = self.client.post("/api/spine/groups", json={"name": "보유", "kind": "portfolio"}).json()
-        detail = self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "000001", "quantity": 10, "avg_price": 70}).json()
+        rejected = self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "000001", "quantity": 10, "avg_price": 70})
+        self.assertEqual(rejected.status_code, 422)
+        self.assertEqual(self.client.patch(f"/api/spine/groups/{group['id']}/members/000001", json={"avg_price": 70}).status_code, 422)
+        detail = self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "000001"}).json()
         member = detail["members"][0]
         self.assertEqual(member["close"], 98)
-        self.assertEqual(member["pnl"], 280)
-        self.assertAlmostEqual(member["return_pct"], 40.0)
+        self.assertTrue({"pnl", "return_pct", "quantity", "avg_price"}.isdisjoint(member))
         removed = self.client.delete(f"/api/spine/groups/{group['id']}/members/000001").json()
         self.assertEqual(removed["members"], [])
         self.assertEqual(self.client.delete(f"/api/spine/groups/{group['id']}").status_code, 204)

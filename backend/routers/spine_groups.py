@@ -61,10 +61,9 @@ def _member(conn, group: dict, row, last_as_of: str | None, labels) -> dict:
             "rule_count": len(wr.effective_rules(conn, group["id"], code)),
             "signals": [{"rule_id": h["rule_id"], "strategy_id": h["strategy_id"], "label": labels.get(h["strategy_id"], h["strategy_id"]),
                          "value": h["value"], "reference": h["reference"], "signal_date": h["signal_date"]} for h in hits],
-            "unavailable": unavailable, "pnl": None, "return_pct": None}
-    if group["kind"] == "portfolio" and row["quantity"] and row["avg_price"] and close is not None:
-        item["pnl"] = (close - row["avg_price"]) * row["quantity"]
-        item["return_pct"] = (close - row["avg_price"]) / row["avg_price"] * 100
+            "unavailable": unavailable}
+    for private in ("quantity", "avg_price"):  # 원장 밖 금액·수량은 응답에 싣지 않는다(D-212)
+        item.pop(private, None)
     return item
 
 
@@ -155,9 +154,8 @@ def add_member(group_id: int, body: MemberCreate):
     if not conn.execute("SELECT 1 FROM companies WHERE stock_code=?", (body.stock_code,)).fetchone():
         conn.close()
         raise HTTPException(404, "등록되지 않은 종목 코드입니다.")
-    conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, quantity, avg_price, bought_at, conviction, target_price, thesis) "
-                 "VALUES (?,?,?,?,?,?,?,?)", (group_id, body.stock_code, body.quantity, body.avg_price, body.bought_at,
-                                              body.conviction, body.target_price, body.thesis))
+    conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, conviction, target_price, thesis) VALUES (?,?,?,?,?)",
+                 (group_id, body.stock_code, body.conviction, body.target_price, body.thesis))
     conn.execute("UPDATE stock_groups SET updated_at=datetime('now') WHERE id=?", (group_id,))
     conn.commit()
     detail = _detail(conn, group_id)
