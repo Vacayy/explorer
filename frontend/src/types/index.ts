@@ -1157,3 +1157,10 @@ export interface WorldCheckpoint {
   beneficiaries?: { name: string; type: string; via: 'chain' | 'claim'; stock_code: string | null }[]
   my_stocks?: { stock_code: string; name: string | null; kinds: StockGroupKind[]; edges: number }[]
 }
+
+/** 가파른 추세 종목 — GET /api/spine/trend-leaders (탐색 위젯) */
+export interface TrendLeader {
+  stock_code: string; name: string; sector: string | null; market_cap: number | null; close: number
+  ret_20: number; ret_60: number; r2: number; adx: number; gap_ma20: number; score: number; new: boolean; spark: number[]
+}
+export interface TrendLeadersResponse { as_of: string | null; criteria: string; universe: number; passed: number; items: TrendLeader[] }

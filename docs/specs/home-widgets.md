@@ -51,16 +51,29 @@ interface WidgetDef {
 
 | id | 이름 | 원천 | 기본 크기 | 큰 숫자 · 한 줄 · 목록 |
 |---|---|---|---|---|
-| market.indices | 지수 띠 | `/indices` | 12×1 | 지수별 값·등락 가로 띠 |
-| market.context | 시장 요약 | `/macro` | 12×1 | 환율·금리·유가·금·BTC 가로 띠 |
-| market.us | 어젯밤 미국장 | `/us/briefing` | 6×4 | 최대 쏠림 섹터 비중 · 종합 첫 문장 · 개별 이슈 3 |
-| market.kr | 전일 국장 거래대금 | `/kr/movers` | 6×4 | 최대 쏠림 섹터 비중 · 섹터 중앙 등락 · 상위 5 막대 |
+| market.indices | 지수 띠 | `/indices` | 12×1 | 지수별 값·등락 · 1Y 스파크(남는 높이를 채움) 가로 띠 |
+| market.context | 시장 요약 | `/macro` | 12×1 | 환율·금리·유가·금·BTC 가로 띠 · 올리면 추이 차트(`MetricTrend`) |
+| market.us | 어젯밤 미국장 | `/us/briefing` | 6×9 | 넉넉하면 `UsBriefingSection embedded` 전체를 위젯 안에서 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 종합 첫 문장 · 개별 이슈 3 |
+| market.kr | 전일 국장 거래대금 | `/kr/movers` | 6×9 | 넉넉하면 `KrMoversSection embedded` 전체를 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 섹터 중앙 등락 · 상위 5 막대 |
 | risk.regime | 시장 국면 | `/market-regime` | 6×3 | 국장·미장 포스처 · 근거 한 줄 · 공포탐욕·VIX 타일 |
-| risk.curve | 금리차 10Y−2Y | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 3×3 | 값 · 20일 변화 · 3개월 스파크 |
+| risk.curve | 금리차 10Y−2Y | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 3×3 | 값 · 20일 변화 · 3개월 스파크 · 누르면 Risk 모니터링 카드(`RiskCard`) 상세 창 |
 | risk.vix | VIX | 〃 | 3×3 | 〃 |
 | risk.fear | 공포·탐욕 | 〃 | 3×3 | 〃 |
 | risk.hy | HY 스프레드 | 〃 | 3×3 | 〃 |
 | retail.heat | 개인 투자 열기 Δ | `/retail` | 6×3 | 20일 백분위 변화가 가장 큰 지표 · 국면 · 나머지 지표 |
+
+### 추가 위젯 (2026-10-17)
+
+| id | 이름 | 원천 | 크기 | 내용 |
+|---|---|---|---|---|
+| explore.trend | 가파른 추세 | `/spine/trend-leaders` | 6×5 | 시세 최신일 · 통과 수/모집단 · 종목별 60일 스파크·수익률·고름(R²)·ADX·MA20 이격·신규(5거래일 전 미통과) → 기술적 분석(`?scan=1`) |
+| canvas.feed | 피드 | `/spine/feed/timeline`(sources, 1쪽) | 6×9 | 최신 게시 시각 · 피드와 같은 게시물 행(요약 보기)을 스크롤, 높이 3 이하면 제목 목록. 읽음 표시는 하지 않는다 |
+
+**가파른 추세 조건**(`pipeline/trend_leaders.py`, 모두 AND): 시총 3,000억+ · 60거래일 +30%+ · 60거래일 log(종가) 회귀 R² 0.75+ · 종가>MA20>MA60, MA60이 20거래일 전보다 높음 · ADX(14) 25+ & +DI>−DI. 순위 = 연율 로그 기울기 × R². LLM 0·네트워크 0, 시세 최신일 단위로 프로세스 메모리 캐시.
+
+### 상세 창
+
+`WidgetDef.Detail`이 있는 위젯은 본문을 누르면(Enter·Space 포함) 원래 화면과 같은 카드를 Dialog로 띄운다. 열림 상태는 URL `?widget=<위젯 id>`. 지금은 리스크 4종(`RiskMonitoring`의 `useRiskView`+`RiskCard` 재사용, 기간·계열 선택도 같은 URL 키).
 
 ### 포트폴리오·관심 위젯 6종 (P6c, `widgets/portfolio.tsx`)
 
