@@ -96,10 +96,41 @@ JOBS = [
     # 국내 도시에 원천 — 종목 마스터·DART 공시·분기 재무(호출 예산 안에서 보유→관심→시총 상위 순)·밸류(PER·PBR).
     # 일별 시세 20:20 뒤라 밸류가 그날 종가 기준이 된다. 매일 — 주말엔 밸류가 '이미 있음'으로 건너뛰고 재무 백필만 이어간다.
     ("krcompany", [PY, "scripts/collect_kr_company_data.py"], {"Hour": 21, "Minute": 30}),
+    # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
+    ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
+
+# 따라잡기 대상(D-249, backend/pipeline/catchup.py) — launchd는 이 작업들을 scripts/run_daily.py <label>로 감싸 부른다.
+# record: 스크립트가 스스로 남기는 job_runs 이름(종료코드 0이어도 그 기록이 error면 실패로 본다).
+# window_h: 늦으면 의미 없는 작업은 정기 시각 뒤 이 시간까지만 따라잡는다. 없으면 다음 회차까지.
+# 빠진 것: chain(30분 간격 자체), pfintraday(장중 30분 알림 — 지난 회차는 의미 없음), backfill(야간 기회 작업), catchup 자신.
+CATCHUP = {
+    "prices": {"record": "prices"},
+    "history": {"record": "market_history"},
+    "credit": {"record": "credit"},
+    "retail": {"record": "retail"},
+    "market": {"record": "snapshot_market"},
+    "krmovers": {"record": "snapshot_kr_movers"},
+    "usbriefing": {"record": "compute_briefing"},
+    "briefing": {"window_h": 5},               # 아침 텔레그램 — 점심 넘어 보내면 의미가 없다
+    "narratives": {"record": "compute_narratives"},
+    "backup": {"record": "backup"},
+    "promote": {"record": "promote_knowledge"},
+    "contradictions": {},
+    "proposals": {"record": "agent_proposals"},
+    "questions": {"record": "refresh_questions"},
+    "trade": {"record": "collect_trade"},
+    "watch": {},
+    "pfclose": {"window_h": 7},                # 종가 요약 — 그날 밤까지만
+    "callmomentum": {},
+    "callmomentumweekly": {"window_h": 24},
+    "krcompany": {},
+}
 
 
 def build(label: str, argv: list[str], schedule) -> dict:
+    if label in CATCHUP:      # 성공 기록 확인 → 실행 → sched:<label> 기록 (D-249)
+        argv = [PY, str(PROJECT / "scripts" / "run_daily.py"), label]
     d = {
         "Label": PREFIX + label,
         "ProgramArguments": argv,
