@@ -10,7 +10,7 @@ sector·industry·전일 등락률까지 같은 1콜로 받아 브리핑 클러�
 import json
 import urllib.error
 import urllib.request
-from datetime import date, datetime
+from datetime import datetime, timedelta
 
 from database import get_connection
 from services import cache_service
@@ -31,13 +31,25 @@ class MoversSchemaError(Exception):
     """TradingView 응답 구조가 기대와 다름 — 스키마 변경·차단·네트워크 실패 감지."""
 
 
+def last_completed_session(now: datetime | None = None) -> str:
+    """마지막으로 마감된 미국 정규장 날짜 (US/Eastern 16:00 마감, 주말 건너뜀 · 미국 공휴일은 반영 안 함).
+
+    예전에는 '뉴욕 기준 오늘'을 썼다 — 06:30 KST 실행은 맞지만, 한국 오후(뉴욕 자정 이후)나 주말에 다시 만들면
+    아직 열리지 않은/없는 날짜(토요일 등)가 붙어 '어젯밤'이 언제인지 흐려졌다(2026-10-17).
+    """
+    from zoneinfo import ZoneInfo
+    et = (now or datetime.now(ZoneInfo("America/New_York"))).astimezone(ZoneInfo("America/New_York"))
+    d = et.date()
+    if et.weekday() >= 5 or et.hour < 16:
+        d -= timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d.isoformat()
+
+
 def _session_date() -> str:
-    """스냅샷 세션 날짜 = US/Eastern 기준 오늘(직전 완료 세션 근사). tz 미가용 시 로컬."""
-    try:
-        from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
-    except Exception:
-        return date.today().isoformat()
+    """스냅샷 세션 날짜 = 마지막으로 마감된 미국 정규장"""
+    return last_completed_session()
 
 
 def _fetch_raw() -> list[dict]:

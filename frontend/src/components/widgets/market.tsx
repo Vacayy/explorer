@@ -77,7 +77,9 @@ export function ContextBody(_: WidgetBodyProps) {
 export function useUsMeta(): WidgetMeta {
   const q = useUsBriefing(null)
   const d = q.data
-  return { asOf: d?.trade_date ?? null, stale: !!d && (d.status !== "ok" || (d.stale_days ?? 0) > 1) }
+  // 머리 = 반영한 미국 장 날짜. 어젯밤 장이 아니거나 정기 생성이 실패했으면 주의 색
+  const missed = !!d?.expected_session && d.trade_date !== d.expected_session
+  return { asOf: d?.trade_date ?? null, stale: !!d && (d.status !== "ok" || missed || (!!d.last_run && d.last_run.status !== "ok")) }
 }
 /** 넉넉한 위젯 — 원래 섹션 전체를 위젯 안에서 스크롤 (요약은 작게 줄였을 때만) */
 function Full({ children }: { children: ReactNode }) {

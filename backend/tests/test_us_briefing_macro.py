@@ -102,3 +102,23 @@ class WindowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionDateTests(unittest.TestCase):
+    """스냅샷 날짜 = 마지막으로 마감된 미국 정규장 (뉴욕 자정 이후·주말 재생성에도 같은 날짜)"""
+    def at(self, text):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from pipeline.us_movers import last_completed_session
+        return last_completed_session(datetime.strptime(text, "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("America/New_York")))
+
+    def test_after_close_is_today(self):
+        self.assertEqual(self.at("2026-10-16 17:30"), "2026-10-16")
+
+    def test_after_midnight_and_weekend_stay_on_friday(self):
+        self.assertEqual(self.at("2026-10-17 01:26"), "2026-10-16")
+        self.assertEqual(self.at("2026-10-18 12:00"), "2026-10-16")
+        self.assertEqual(self.at("2026-10-19 09:00"), "2026-10-16")
+
+    def test_before_close_is_previous_day(self):
+        self.assertEqual(self.at("2026-10-16 10:00"), "2026-10-15")

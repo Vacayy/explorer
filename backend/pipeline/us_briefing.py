@@ -15,7 +15,7 @@ import statistics
 from database import get_connection
 from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
 from pipeline.us_data import resolve_us
-from pipeline.us_movers import get_leaders, read_leaders, read_snapshot
+from pipeline.us_movers import get_leaders, last_completed_session, read_leaders, read_snapshot
 
 # TradingView sector(유한 집합) → KR 라벨. 미매핑은 원문 유지.
 _SECTOR_KR = {
@@ -958,6 +958,7 @@ def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
     base = {"status": lead["status"], "trade_date": lead["trade_date"],
             "fetched_at": lead["fetched_at"], "error": lead["error"],
             "stale_days": _staleness(lead["trade_date"]),
+            "expected_session": last_completed_session(), "synthesized_at": None, "last_run": _last_run(),
             "clusters": [], "idiosyncratic": [], "movers": [], "market_themes": [],
             "market_docs": [], "indices": {}, "macro": {}, "synthesis": None}
     if not lead["items"]:
@@ -987,8 +988,32 @@ def build_briefing(force: bool = False, trade_date: str | None = None) -> dict:
 
     base.update({"clusters": clusters, "idiosyncratic": idio, "movers": movers,
                  "market_themes": discourse["themes"], "market_docs": discourse["docs"],
-                 "indices": indices, "macro": macro, "synthesis": synthesis})
+                 "indices": indices, "macro": macro, "synthesis": synthesis,
+                 "synthesized_at": _synthesized_at(lead["trade_date"]) if synthesis else None})
     return base
+
+
+def _last_run() -> dict | None:
+    """정기 생성(compute_briefing, 매일 06:30 KST)의 마지막 실행 — 실패한 날을 화면에서 바로 알아보게"""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT status, summary, ran_at FROM job_runs WHERE job='compute_briefing' "
+                           "ORDER BY ran_at DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _synthesized_at(trade_date: str | None) -> str | None:
+    """종합이 저장된 시각(UTC, us_briefings.created_at) — '언제 만든 글인가'를 화면에 밝힌다"""
+    if not trade_date:
+        return None
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT created_at FROM us_briefings WHERE trade_date=?", (trade_date,)).fetchone()
+        return row["created_at"] if row else None
+    finally:
+        conn.close()
 
 
 def _read_past(trade_date: str) -> dict:
@@ -1005,6 +1030,8 @@ def _read_past(trade_date: str) -> dict:
                 "trade_date": trade_date, "fetched_at": snapshot[0]["fetched_at"] if snapshot else None,
                 "error": None if (snapshot or synthesis) else "해당 날짜의 브리핑이 없습니다",
                 "stale_days": _staleness(trade_date),
+                "expected_session": last_completed_session(),
+                "synthesized_at": _synthesized_at(trade_date) if synthesis else None,
                 "clusters": [], "idiosyncratic": [], "movers": [], "market_themes": [],
                 "market_docs": [], "indices": {}, "macro": {}, "synthesis": synthesis}
         if not snapshot:

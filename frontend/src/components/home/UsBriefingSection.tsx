@@ -7,14 +7,13 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { RefreshButton } from "@/components/shared/RefreshButton"
-import { formatNumber, formatUsd, formatPercent, formatRelativeTime } from "@/utils/format"
+import { formatKstDateTime, formatNumber, formatUsd, formatPercent, formatRelativeTime } from "@/utils/format"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
 import { UsBriefingSourcesDialog } from "@/components/home/UsBriefingSourcesDialog"
-import type { UsBriefingSource, UsMoverBrief } from "@/types"
+import type { UsBriefing, UsBriefingSource, UsMoverBrief } from "@/types"
 
 /**
  * 홈 상단 — 어젯밤 미국장 브리핑 (docs/specs/us-briefing.md). 아침 분위기 파악 가속기.
@@ -57,38 +56,42 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
   const gaps = synthesis?.source_gaps ?? []
   const topShare = clusters[0]
 
+  const controls = (
+    <div className="ml-auto flex items-center gap-1">
+      {dates.length > 1 && (
+        <Select value={pickedDate ?? "latest"}
+          onValueChange={(v) => setPickedDate(v === "latest" ? null : v)}>
+          <SelectTrigger className="h-7 w-24 text-caption" aria-label="브리핑 날짜">
+            <SelectValue placeholder="날짜" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="latest" className="text-xs">최신</SelectItem>
+            {dates.map((d) => (
+              <SelectItem key={d.trade_date} value={d.trade_date} className="text-xs">
+                {d.trade_date}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {!embedded && <UsBriefingSourcesDialog />}
+      {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
+      {!embedded && <Link to="/us" className="text-caption text-muted-foreground hover:text-foreground">미국 종목 →</Link>}
+    </div>
+  )
   return (
     <Card data-home-briefing className={embedded ? EMBED : undefined}>
-      <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
+      {/* 위젯 안에서는 제목을 위젯 틀이 맡고 컨트롤은 기준 띠 오른쪽으로 — 한 줄을 아낀다 */}
+      {!embedded && <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
         <CardTitle className="text-card-title flex items-center gap-1.5">
           <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
         </CardTitle>
         <span className="text-caption text-muted-foreground">전일 거래대금 상위 20 · 자금이 어디로 쏠렸나</span>
-        <div className="ml-auto flex items-center gap-1.5">
-          {dates.length > 1 && (
-            <Select value={pickedDate ?? "latest"}
-              onValueChange={(v) => setPickedDate(v === "latest" ? null : v)}>
-              <SelectTrigger className="w-36 text-caption">
-                <SelectValue placeholder="날짜" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="latest" className="text-xs">최신</SelectItem>
-                {dates.map((d) => (
-                  <SelectItem key={d.trade_date} value={d.trade_date} className="text-xs">
-                    {d.trade_date}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <UsBriefingSourcesDialog />
-          {data.fetched_at && <FreshnessStamp asOf={data.fetched_at} />}
-          {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
-          <Link to="/us" className="text-caption text-muted-foreground hover:text-foreground">미국 종목 →</Link>
-        </div>
-      </CardHeader>
+        {controls}
+      </CardHeader>}
 
       <CardContent className="space-y-3">
+        <SessionStrip data={data} past={!!pickedDate} controls={embedded ? controls : undefined} />
         {/* 핵심 요약 — 줄글 앞에 bullet로 먼저 (2026-10-17 이후 종합에만 있다) */}
         {!!synthesis?.key_points?.length && (
           <section aria-label="핵심 요약" className="rounded-lg bg-muted/40 px-3 py-2.5">
@@ -108,12 +111,6 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
         </div>}
         {data.status === "stale" && (
           <Banner tone="warn">실시간 갱신 실패 — 마지막 성공 데이터를 표시합니다.{data.error ? ` (${data.error})` : ""}</Banner>
-        )}
-        {/* '어젯밤'을 자처하는데 스냅샷이 며칠 묵었으면 프레임이 거짓이 된다 — 먼저 밝힌다 (D-112) */}
-        {!pickedDate && (data.stale_days ?? 0) > 1 && (
-          <Banner tone="warn">
-            거래대금 스냅샷이 {data.stale_days}일 전({data.trade_date}) 것입니다 — ‘지금 업데이트’로 갱신하세요.
-          </Banner>
         )}
         {data.status === "partial" && (
           <Banner tone="info">근거 스냅샷은 보존 기간이 지나 삭제됐습니다 — 저장된 종합만 표시합니다.</Banner>
@@ -287,4 +284,39 @@ function Banner({ tone, children }: { tone: "warn" | "info"; children: React.Rea
       <Icon className="h-3.5 w-3.5 shrink-0 mt-0.5" /> <span>{children}</span>
     </div>
   )
+}
+
+/** SQLite UTC('YYYY-MM-DD HH:MM:SS') → KST 표기 */
+const kst = (utc?: string | null) => utc ? formatKstDateTime(utc.includes("T") ? utc : `${utc.replace(" ", "T")}Z`) : "-"
+const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"]
+const sessionLabel = (d: string) => `${d.slice(5).replace("-", "/")}(${WEEKDAY[new Date(`${d}T00:00:00Z`).getUTCDay()]})`
+
+/**
+ * 기준 띠 — '어젯밤'을 정말 반영했나를 먼저 밝힌다. 조용히 실패한 날(정기 생성 실패·늦은 실행)이 있어
+ * 미국 장 날짜 · 어젯밤 여부 · 종합 생성 시각 · 정기 생성 결과를 한 줄에 둔다.
+ * expected_session은 서버가 ET 16:00 마감·주말 제외로 계산(미국 공휴일 미반영).
+ */
+function SessionStrip({ data, past, controls }: { data: UsBriefing; past: boolean; controls?: React.ReactNode }) {
+  const td = data.trade_date, expected = data.expected_session
+  const fresh = !!td && !!expected && td === expected
+  const run = data.last_run
+  const runFailed = !!run && run.status !== "ok"
+  return <div className={`rounded-lg border px-3 py-2 text-caption ${!past && !fresh ? "border-chart-warning/40 bg-chart-warning/5" : ""}`}>
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="font-medium text-foreground">미국 {td ? sessionLabel(td) : "-"} 장 마감 기준</span>
+      {past ? <Badge variant="outline" className="text-[11px]">과거 브리핑</Badge>
+        : fresh ? <Badge variant="outline" className="border-chart-green/40 text-[11px] text-chart-green">어젯밤 반영</Badge>
+        : <Badge variant="outline" className="border-chart-warning/50 text-[11px] text-chart-warning">
+            <AlertTriangle className="size-3" />어젯밤{expected ? ` ${sessionLabel(expected)}` : ""} 미반영
+          </Badge>}
+      {controls}
+    </div>
+    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
+      <span>종합 생성 {data.synthesis ? kst(data.synthesized_at) : "없음"}</span>
+      <span>거래대금 수집 {kst(data.fetched_at)}</span>
+      {!past && run && <span className={runFailed ? "text-chart-warning" : ""} title={run.summary ?? undefined}>
+        정기 생성(06:30) {kst(run.ran_at)} {runFailed ? `실패 — ${run.summary ?? run.status}` : "성공"}
+      </span>}
+    </div>
+  </div>
 }

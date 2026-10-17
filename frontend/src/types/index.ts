@@ -630,6 +630,9 @@ export interface UsBriefing {
   status: "ok" | "stale" | "partial" | "error";
   trade_date: string | null; fetched_at: string | null; error: string | null;
   stale_days: number | null;                 // 스냅샷 경과일 — 며칠 묵었나 (D-112)
+  expected_session?: string | null;          // 마지막으로 마감된 미국 정규장(ET, 공휴일 미반영) — trade_date와 다르면 어젯밤 미반영
+  synthesized_at?: string | null;            // 종합 저장 시각(UTC)
+  last_run?: { status: string; summary: string | null; ran_at: string } | null   // 정기 생성(06:30 KST) 마지막 실행
   clusters: UsCluster[]; idiosyncratic: UsMoverBrief[]; movers: UsMoverBrief[];
   market_themes: UsMarketTheme[]; market_docs: UsMarketDoc[];
   indices: UsIndexBlock; macro: UsMacroBlock;   // D-112

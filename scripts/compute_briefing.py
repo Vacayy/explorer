@@ -54,8 +54,20 @@ def main():
         except Exception as e:  # noqa: BLE001
             print(f"[briefing] 지수 갱신 실패(무시): {type(e).__name__}: {str(e)[:120]}")
 
+        import sqlite3
+        import time
         from pipeline.us_briefing import build_briefing
-        b = build_briefing(force=True)
+        # 노트북이 늦게 깨면 밀린 잡(시세 이력 재수집 등)이 한꺼번에 돌아 DB 쓰기 잠금이 30초를 넘는다 —
+        # 2026-10-17 'database is locked'로 그날 브리핑이 통째로 빠졌다. 잠금이면 2분 간격으로 세 번까지 다시 한다.
+        for attempt in range(3):
+            try:
+                b = build_briefing(force=True)
+                break
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e) or attempt == 2:
+                    raise
+                print(f"[briefing] DB 잠금 — 120초 뒤 재시도({attempt + 1}/2)")
+                time.sleep(120)
         top = b["clusters"][0]["label"] if b["clusters"] else "-"
         syn = "종합O" if b["synthesis"] else "종합X(스켈레톤)"
         print(f"[briefing] status={b['status']} trade_date={b['trade_date']} "
