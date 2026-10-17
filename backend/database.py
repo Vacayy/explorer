@@ -1203,6 +1203,7 @@ def init_db():
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
         "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
         "ALTER TABLE narratives ADD COLUMN drift_summary TEXT",  # 직전 버전 대비 변화 한 줄 (Phase 2 §2-3)
+        "ALTER TABLE narratives ADD COLUMN change_summary TEXT",  # 서사가 어떻게 옮겨 갔나 1~2문장 — 본 생성 호출이 같이 냄 (홈 위젯)
         # 메가 내러티브 층 (D-031) — 공유노드 군집의 상위 세계관 서사. kind='mega'면
         # topic=군집 라벨(LLM 명명), members_json=구성 sub-story 토픽들, doc_ids_hash=멤버 해시
         "ALTER TABLE narratives ADD COLUMN kind TEXT DEFAULT 'topic'",   # topic | mega

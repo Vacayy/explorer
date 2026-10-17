@@ -1137,6 +1137,7 @@ export interface WorldEdgeBrief { from: string; to: string; rel: string; effect_
 export interface WorldNarrativeChange {
   topic: string; narrative_id: number; version: number; title: string | null; category: string | null
   created_at: string | null; drift_summary: string | null; versions_in_window: number; is_first: boolean
+  change_summary: string | null   // 서사가 어떻게 옮겨 갔나 1~2문장 (홈 위젯)
   added_count: number; removed_count: number; added_edges: WorldEdgeBrief[]; removed_edges: WorldEdgeBrief[]
 }
 export interface WorldNarrativeChanges { days: number; items: WorldNarrativeChange[]; as_of: string | null }

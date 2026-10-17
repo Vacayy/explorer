@@ -32,6 +32,7 @@ class NarrativeChange(BaseModel):
     category: str | None
     created_at: str | None
     drift_summary: str | None
+    change_summary: str | None   # 서사가 어떻게 옮겨 갔나 1~2문장 (저장분 → 없으면 drift 첫 문장, 첫 버전은 null)
     versions_in_window: int
     is_first: bool           # 첫 버전 — 비교할 직전 버전이 없다
     added_count: int

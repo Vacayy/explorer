@@ -4,7 +4,7 @@
 worldview/narrative compute)는 쓰지 않는다 — 위젯이 열릴 때마다 생성이 돌면 안 되기 때문이다.
 """
 from pipeline.mega_narrative import list_mega
-from pipeline.narrative import _version_diff, causal_subgraph, narrative_grounding
+from pipeline.narrative import _version_diff, causal_subgraph, change_summary_fallback, narrative_grounding
 from pipeline.narrative_graph import narrative_chain
 from pipeline.worldview import gather as worldview_gather, get_cached as worldview_cached, inputs_hash
 
@@ -41,9 +41,10 @@ def big_picture(conn) -> dict:
 
 
 def narrative_changes(conn, days: int = 7, limit: int = 20) -> dict:
-    """최근 days일에 새 버전이 나온 주제 — 바뀐 것 한 줄(저장분) + 직전 버전 대비 추가·삭제 고리(결정적)."""
+    """최근 days일에 새 버전이 나온 주제 — 바뀐 것 한 줄(저장분) + 직전 버전 대비 추가·삭제 고리(결정적).
+    change_summary는 생성 때 저장된 1~2문장, 없는 옛 버전은 드리프트 첫 문장을 결정적으로 줄여 쓴다."""
     rows = conn.execute("""
-        SELECT n.id, n.topic, n.version, n.title, n.category, n.created_at, n.drift_summary,
+        SELECT n.id, n.topic, n.version, n.title, n.category, n.created_at, n.drift_summary, n.change_summary,
                (SELECT COUNT(*) FROM narratives n2 WHERE n2.topic=n.topic
                   AND n2.created_at >= datetime('now', ?)) versions_in_window
         FROM narratives n
@@ -58,10 +59,12 @@ def narrative_changes(conn, days: int = 7, limit: int = 20) -> dict:
         ok = d["status"] == "ok"
         added = d.get("added_edges", []) if ok else []
         removed = d.get("removed_edges", []) if ok else []
+        is_first = d["status"] == "no_prior_version"
         items.append({
             "topic": r["topic"], "narrative_id": r["id"], "version": r["version"], "title": r["title"],
             "category": r["category"], "created_at": r["created_at"], "drift_summary": r["drift_summary"],
-            "versions_in_window": r["versions_in_window"], "is_first": d["status"] == "no_prior_version",
+            "change_summary": None if is_first else (r["change_summary"] or change_summary_fallback(r["drift_summary"])),
+            "versions_in_window": r["versions_in_window"], "is_first": is_first,
             "added_count": len(added), "removed_count": len(removed),
             "added_edges": [_edge_brief(e) for e in added[:5]],
             "removed_edges": [_edge_brief(e) for e in removed[:5]],

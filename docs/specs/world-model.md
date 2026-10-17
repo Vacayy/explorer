@@ -17,7 +17,7 @@
 위에서 아래로:
 
 1. **이번 주 큰 그림** (`world/BigPictureCard`) — 살아 있는 엮인 서사(메가)마다 제목 · 관통하는 주제 칩 · 펼치면 본문. 아래에 저장된 세계관 브리핑(접힘, 저장 시각). 저장 이후 입력이 바뀌었으면 주의 색 한 줄 + 그래프 › 변화·검증 지식 링크. **이 카드는 생성하지 않는다.**
-2. **이번 주 바뀐 서사** (`world/NarrativeChanges`) — 최근 7일 새 버전이 나온 주제(주제별 최신본). 제목 · 주제 · 버전 · 상대 시각 · 바뀐 것 한 줄(저장된 `drift_summary`) · 새로 생긴 고리(+)·사라진 고리(−) 칩과 개수. 첫 버전이면 "새로 생긴 서사". 처음엔 5편, 나머지는 펼친다.
+2. **이번 주 바뀐 서사** (`world/NarrativeChanges`) — 최근 7일 새 버전이 나온 주제(주제별 최신본). 제목 · 주제 · 버전 · 상대 시각 · 바뀐 것 한 줄(저장된 `drift_summary`) · 새로 생긴 고리(+)·사라진 고리(−) 칩과 개수. 첫 버전이면 "새로 생긴 서사". 처음엔 5편, 나머지는 펼친다. 홈 위젯(world.changes)은 이 행을 쓰지 않고 '바뀐 것'·고리 칩 대신 `change_summary` 1~2문장만 보인다.
 3. **서사 목록** (`explore/NarrativeList`) — 기존 렌즈·정렬. 30일 넘게 갱신되지 않은 서사는 기본으로 숨기고 `?old=1`(스위치)로 보인다. 보일 때는 흐리게.
 
 ### 서사 상세 (`/narrative?topic=`) — 체크포인트
@@ -55,7 +55,7 @@
 | GET `/api/spine/world/…` | 응답 | 쓰는 곳 |
 |---|---|---|
 | `big-picture` | `{mega[], worldview{briefing, created_at, stale}\|null, as_of}` | 큰 그림 카드·위젯 |
-| `changes?days=7&limit=20` | `{days, items[{topic, narrative_id, version, title, category, created_at, drift_summary, versions_in_window, is_first, added_count, removed_count, added_edges[≤5], removed_edges[≤5]}], as_of}` — 고리 비교는 직전 버전과의 결정적 diff | 바뀐 서사 카드·위젯 |
+| `changes?days=7&limit=20` | `{days, items[{topic, narrative_id, version, title, category, created_at, drift_summary, change_summary, versions_in_window, is_first, added_count, removed_count, added_edges[≤5], removed_edges[≤5]}], as_of}` — 고리 비교는 직전 버전과의 결정적 diff. `change_summary`(서사가 어떻게 옮겨 갔나 1~2문장)는 저장분, 없는 옛 버전은 `drift_summary` 첫 문장을 100자 안으로 결정적으로 줄인 값, 첫 버전은 null | 바뀐 서사 카드·위젯 |
 | `contested?limit=10` | `{items[{id, statement, pace_layer, contested_at, refute, support, latest_refute{doc_id, title, observed_at}}], as_of}` — 활성·충돌 중 지식만 | 흔들리는 전제 카드·위젯 |
 | `my-stocks?per_stock=3` | `{stocks[{stock_code, name, kinds[], narratives[{topic, narrative_id, title, version, created_at, drift_summary, edges, via}], latest_drift, latest_at}], members, covered, as_of}` | 내 종목 위젯 |
 | `checkpoint?topic=` | `{status ok\|empty, topic, narrative_id, title, core_question, question, falsifiers[], beneficiaries[], my_stocks[]}` | 서사 상세 체크포인트 |
@@ -66,7 +66,7 @@
 
 | id | 이름 | 묶음 | 기본 크기 | 원천 | 큰 숫자 · 목록 |
 |---|---|---|---|---|---|
-| world.changes | 이번 주 바뀐 서사 | 지금 | 6×4 | `changes` | 편수 · 서사 행(h≥5면 고리 칩) |
+| world.changes | 이번 주 바뀐 서사 | 지금 | 6×4 | `changes` | 편수 · 서사 행(제목 2줄 · 주제 배지 · 버전/상대 시각 · `change_summary` 2줄). 고리 칩·'바뀐 것'·고리 개수는 위젯에 두지 않는다(랜딩 카드 전용) |
 | world.big | 이번 주 큰 그림 | 지금 | 6×3 | `big-picture` | 메가 제목 · 주제 칩 · (h≥4) 세계관 첫 문장 |
 | world.mystocks | 내 종목을 움직이는 서사 | 지금 | 6×4 | `my-stocks` | 걸린 종목/묶음 종목 · 종목별 서사 칩 · (h≥4) 바뀐 것 |
 | world.contested | 흔들리는 전제 | 그래프 | 4×3 | `contested` | 건수 · 진술·층·반박/지지·반례 문서 |

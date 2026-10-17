@@ -110,10 +110,19 @@ class WorldReadsTests(unittest.TestCase):
         self.assertEqual([i["topic"] for i in d["items"]], ["메모리"])   # 40일 된 반도체는 빠진다
         item = d["items"][0]
         self.assertEqual(item["drift_summary"], "AI 수요→메모리 고리가 새로 들어왔다")
+        self.assertEqual(item["change_summary"], "AI 수요→메모리 고리가 새로 들어왔다")   # 저장분 없음 → drift 첫 문장
         self.assertFalse(item["is_first"])
         self.assertEqual(item["added_count"], 3)   # 엣지 태그가 최신 버전(11)에만 있어 v1은 빈 서브그래프
         self.assertIn({"from": "AI 수요", "to": "메모리 반도체", "rel": "CAUSES", "effect_direction": "positive"},
                       item["added_edges"])
+
+    def test_changes_prefers_stored_change_summary_over_drift_fallback(self):
+        conn = spine_world.get_connection()
+        conn.execute("UPDATE narratives SET change_summary='공급 부족 이야기에서 AI 증설 병목 이야기로 옮겨 갔다' WHERE id=11")
+        conn.commit()
+        conn.close()
+        item = self.get("/api/spine/world/changes")["items"][0]
+        self.assertEqual(item["change_summary"], "공급 부족 이야기에서 AI 증설 병목 이야기로 옮겨 갔다")
 
     def test_contested_only_active_with_latest_refute_doc(self):
         d = self.get("/api/spine/world/contested")

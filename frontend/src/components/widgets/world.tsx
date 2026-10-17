@@ -1,11 +1,11 @@
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Badge } from "@/components/ui/badge"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
-import { NarrativeChangeRow } from "@/components/world/NarrativeChanges"
 import { ContestedRow } from "@/components/world/ContestedPremises"
 import { useBigPicture, useContestedPremises, useMyStockNarratives, useNarrativeChanges } from "@/hooks/useWorld"
 import { cn } from "@/lib/utils"
 import { dbAgeDays, formatDbRelative } from "@/utils/format"
+import type { WorldNarrativeChange } from "@/types"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
 
 /**
@@ -21,6 +21,18 @@ function useChangesMeta(): WidgetMeta {
   const q = useNarrativeChanges(7)
   return { asOf: asOf(q.data?.as_of), stale: !!q.data && dbAgeDays(q.data.as_of) > 7 }
 }
+/** 위젯용 한 줄 — 제목 · 라벨 · 버전/시각 · 어떻게 옮겨 갔나 1~2문장. 고리 칩은 '지금' 랜딩(NarrativeChangeRow)에만 둔다 */
+function ChangeRow({ item }: { item: WorldNarrativeChange }) {
+  const summary = item.is_first ? "새로 생긴 서사입니다." : item.change_summary
+  return <li className="space-y-1">
+    <Link to={`/narrative?topic=${encodeURIComponent(item.topic)}`} className="line-clamp-2 text-sm font-semibold leading-snug hover:underline">{item.title ?? item.topic}</Link>
+    <div className="flex items-center gap-2">
+      <Badge variant="outline" className="max-w-[60%] truncate text-[10px]">{item.topic}</Badge>
+      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">v{item.version} · {formatDbRelative(item.created_at)}</span>
+    </div>
+    {summary && <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{summary}</p>}
+  </li>
+}
 function ChangesBody({ h }: WidgetBodyProps) {
   const q = useNarrativeChanges(7)
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
@@ -30,7 +42,7 @@ function ChangesBody({ h }: WidgetBodyProps) {
     <WidgetHero value={`${items.length}편`} aside={<span className="text-sm text-muted-foreground">최근 7일 새 버전</span>} />
     {h <= 2
       ? <p className="truncate text-[13px] text-muted-foreground">{items[0].title ?? items[0].topic}</p>
-      : <ul className="min-h-0 space-y-2.5 overflow-y-auto">{items.slice(0, h * 2).map(i => <NarrativeChangeRow key={i.narrative_id} item={i} edges={h >= 5 ? 2 : 0} />)}</ul>}
+      : <ul className="min-h-0 space-y-3 overflow-y-auto">{items.slice(0, h * 2).map(i => <ChangeRow key={i.narrative_id} item={i} />)}</ul>}
   </div>
 }
 
@@ -105,7 +117,7 @@ function MyStocksBody({ h }: WidgetBodyProps) {
 
 /** 월드모델 위젯 — registry.tsx가 이 배열을 그대로 펼친다 */
 export const WORLD_WIDGETS: WidgetDef[] = [
-  { id: "world.changes", title: "이번 주 바뀐 서사", description: "최근 7일 새 버전 · 바뀐 것 한 줄 · 새로 생긴 인과 고리", section: "world", group: "지금",
+  { id: "world.changes", title: "이번 주 바뀐 서사", description: "최근 7일 새 버전 · 서사가 어떻게 옮겨 갔는지 한두 문장", section: "world", group: "지금",
     size: { w: 6, h: 4, minW: 4, minH: 2 }, detailPath: "/narrative", useMeta: useChangesMeta, Body: ChangesBody },
   { id: "world.big", title: "이번 주 큰 그림", description: "여러 서사를 관통하는 엮인 서사 · 세계관 브리핑", section: "world", group: "지금",
     size: { w: 6, h: 3, minW: 4, minH: 2 }, detailPath: "/narrative", useMeta: useBigMeta, Body: BigBody },

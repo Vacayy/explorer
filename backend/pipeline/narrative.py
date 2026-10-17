@@ -233,17 +233,53 @@ def _persist_narrative(conn, topic: str, data: dict, docs: list[dict], h: str) -
     if isinstance(cats, str):
         cats = [cats]
     category = ",".join(c for c in (str(x).strip() for x in cats) if c in DOMAIN_LENSES) or None
+    # 첫 버전엔 비교할 직전 서사가 없으니 모델이 뭘 내도 버린다
+    change = normalize_change_summary(data.get("change_summary")) if prev else None
     cur = conn.execute(
         "INSERT INTO narratives (topic, version, title, core_question, body, category, "
-        "doc_count, doc_ids_hash, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "doc_count, doc_ids_hash, model, change_summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (topic, version, data.get("title"), (data.get("core_question") or "").strip() or None,
          data.get("narrative"), category, len(docs), h,
-         f"claude-code/{NARRATIVE_MODEL}"))
+         f"claude-code/{NARRATIVE_MODEL}", change))
     nid = cur.lastrowid
     # 출처는 엣지마다 모델이 댄 근거 번호(D1…)와 인용을 원문에서 확인해 붙인다 (D-204). 전에는 모든 엣지에
     # 입력 묶음의 마지막 문서(docs[-1])를 붙여, 무관한 문서가 출처로 보였다.
     made = _persist_causal(conn, nid, None, data.get("causal") or {}, labels=doc_labels(docs))
     return nid, version, made
+
+
+CHANGE_SUMMARY_MAX = 100   # 위젯 두 줄에 들어가는 길이. 프롬프트는 80자 이내를 요구하고, 넘치면 여기서 자른다
+
+
+def _clip(text: str, limit: int) -> str:
+    """limit 안에서 쉼표·공백 경계로 자르고 '…'를 붙인다. 경계가 너무 앞이면 글자 단위로 자른다."""
+    if len(text) <= limit:
+        return text
+    head = text[:limit - 1]
+    cut = head.rfind(", ")
+    if cut < limit // 3:
+        cut = head.rfind(" ")
+    if cut < limit // 3:
+        cut = len(head)
+    return head[:cut].rstrip(" ,·") + "…"
+
+
+def normalize_change_summary(v) -> str | None:
+    """모델이 낸 change_summary 정리 — 문자열만 받고, 입력 주석 태그·감싼 따옴표를 떼고, 공백을 접고, 길이를 제한한다."""
+    if not isinstance(v, str):
+        return None
+    text = re.sub(r"\[(?:현재|회고|전망|시점미상)[^\]]*\]", "", v)
+    text = re.sub(r"\s+", " ", text).strip().strip("\"'“”‘’").strip()
+    return _clip(text, CHANGE_SUMMARY_MAX) if text else None
+
+
+def change_summary_fallback(drift: str | None) -> str | None:
+    """change_summary가 없는 옛 버전용 — 저장된 드리프트 한 줄의 첫 문장을 결정적으로 줄인다(LLM 없음)."""
+    text = re.sub(r"\s+", " ", drift or "").strip()
+    if not text:
+        return None
+    first = re.split(r"(?<=[.!?])\s|(?<=다):\s", text, maxsplit=1)[0].strip()
+    return _clip(first, CHANGE_SUMMARY_MAX)
 
 
 _ORIENT_KO = {"past": "회고", "current": "현재", "forward": "전망", "mixed": "회고+전망"}
@@ -266,7 +302,22 @@ def _norm_geo(v) -> str | None:
     return v if v in _GEO_SET else None
 
 
-def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_vocab: list[str]) -> str:
+def _change_block(prev) -> str:
+    """직전 버전이 있을 때만 — 서사가 어떻게 옮겨 갔는지 한두 문장(change_summary)을 본 생성 호출에서 같이 받는다."""
+    if not prev:
+        return ""
+    return (
+        f"★직전 버전(v{prev['version']})과 비교: 이 주제에는 이미 서사가 있다.\n"
+        f"직전 제목: {prev['title'] or '(없음)'}\n직전 3줄 요약: {_summary(prev['body']) or '(없음)'}\n"
+        "change_summary: 직전 서사에서 이번 서사로 **이야기의 무게가 어떻게 옮겨 갔는지** 한국어 평서문 1~2문장, "
+        "80자 이내. 인과 고리(A→B)를 나열하지 말고 서사의 핵심 이동만 써라(예: '공급 부족 이야기에서 장기 계약·"
+        "사이클 장기화 이야기로 무게가 옮겨 갔다'). 큰 변화가 없으면 '큰 줄기는 그대로이고 ~가 더해졌다'처럼 써라. "
+        "JSON에 \"change_summary\" 키로 함께 넣어라.\n"
+    )
+
+
+def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_vocab: list[str],
+                  prev=None) -> str:
     def _mark(d):
         o = _ORIENT_KO.get(d.get("time_orientation") or "")
         ref = d.get("reference_period")
@@ -308,6 +359,7 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         "core_question: 같은 서사를 **질문으로** 벼린 한 문장(예: '병목은 어디까지 내려가나?'). "
         "이 값은 핵심질문 트래커의 후보로 쓰이므로 추적 가능한 물음이어야 한다 — "
         "제목(주장)과 짝을 이루되 같은 문장을 물음표만 붙여 되풀이하지 마라.\n"
+        f"{_change_block(prev)}"
         "가독성 규율: 논리 단위마다 줄을 나눠라. 불릿은 각각 '- '로 시작하는 별도 줄, "
         "여러 갈래(①②)나 시나리오(긍정/기본/부정)는 각각 자기 줄에 둔다. 한 문단에 여러 논점을 "
         "몰아넣지 마라.\n"
@@ -393,7 +445,7 @@ def compute_narrative(topic: str) -> dict:
     from pipeline.knowledge_recall import recall_for_query
     knowledge = recall_for_query(conn, topic)
     try:
-        data = _call(_build_prompt(topic, docs, knowledge, _node_vocab(conn)))
+        data = _call(_build_prompt(topic, docs, knowledge, _node_vocab(conn), prev))
     except Exception:
         conn.close()
         return {"status": "failed", "title": None, "narrative": None, "created_at": None}
