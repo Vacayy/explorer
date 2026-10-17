@@ -18,7 +18,8 @@ import { formatPercent } from "@/utils/format"
 import type { PropRow, VcEdge, VcNode } from "@/types"
 
 /**
- * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 ← 대만 공급 단계 ← 한국 종목.
+ * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
+ * 화면은 돈(주문)의 흐름으로 그린다: 왼쪽 최종 수요 → 오른쪽 상류(장비·소재). 저장된 엣지는 공급 방향(from이 to에 판다)이라 그릴 때 뒤집는다.
  * 위: 번지는 중(한국 확인 전·엇갈림·선행 경보). 가운데: 지도(노드 = 이번 달 상태, 엣지 = 측정 판정·시차). 아래: 한국 확인 신호 전체.
  * 선택한 노드는 URL node. 예측력은 '대만은 매달, 한국은 분기'라는 공시 시차에서 나온다(D-251).
  */
@@ -37,7 +38,7 @@ type ChainNodeData = { node?: VcNode; demand?: { name: string; description: stri
 function ChainNode({ data }: NodeProps) {
   const d = data as unknown as ChainNodeData
   if (d.demand) return <div className="w-[188px] rounded-md border-2 border-dashed px-2 py-1.5 text-xs">
-    <Handle type="target" position={Position.Left} className="!opacity-0" />
+    <Handle type="source" position={Position.Right} className="!opacity-0" />
     <div className="font-semibold">{d.demand.name}</div>
     <div className="truncate text-[10px] text-muted-foreground">{d.demand.description}</div>
   </div>
@@ -88,7 +89,7 @@ export default function ValueChainPage() {
   const graph = useMemo(() => {
     if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[] }
     const keys = [...vc.data.nodes.map(n => n.key), ...vc.data.demands.map(d => d.key)]
-    const pos = layout(keys, vc.data.edges.map(e => [e.from, e.to]))
+    const pos = layout(keys, vc.data.edges.map(e => [e.to, e.from]))   // 돈의 흐름: 사는 쪽 → 파는 쪽
     const nodes: Node[] = [
       ...vc.data.nodes.map(n => ({ id: n.key, type: "chain", position: pos[n.key], data: { node: n, selected: n.key === selected } })),
       ...vc.data.demands.map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: false } })),
@@ -97,7 +98,7 @@ export default function ValueChainPage() {
       const s = EDGE_STYLE[e.verdict]
       const show = (e.verdict === "확인" || e.verdict === "부분") && e.lag != null
       return {
-        id: `${e.from}-${e.to}`, source: e.from, target: e.to,
+        id: `${e.from}-${e.to}`, source: e.to, target: e.from,
         label: show ? (e.lag === 0 ? "동행" : `${e.lag! > 0 ? "+" : "−"}${Math.abs(e.lag!)}M${e.lag_consistent ? "" : "?"}`) : undefined,
         labelStyle: { fontSize: 10 }, labelBgPadding: [3, 1] as [number, number],
         style: { stroke: s.stroke, strokeWidth: s.width, strokeDasharray: s.dash, opacity: e.from === selected || e.to === selected ? 1 : s.opacity },
@@ -136,7 +137,8 @@ export default function ValueChainPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-card-title">공급 지도</CardTitle>
           <p className="text-caption text-muted-foreground">
-            왼쪽이 상류(장비·소재), 오른쪽이 최종 수요입니다. 칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화). 선 = 측정 판정
+            왼쪽이 최종 수요, 오른쪽으로 갈수록 상류(부품 → 칩 → 장비·소재)입니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
+            칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화). 선 = 측정 판정
             (굵은 실선 확인 · 실선 부분 · 점선 미확인), 숫자 = 시차(+공급이 앞섬, −수요가 앞섬, ?는 두 신호 시차 불일치).
             {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ).`}
           </p>
