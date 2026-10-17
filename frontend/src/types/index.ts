@@ -1213,3 +1213,19 @@ export interface TwLink {
   evidence: { best_lag: number | null; n: number; corr: number | null; same_dir: number | null }
 }
 export interface TwLinksResponse { as_of: string | null; items: TwLink[] }
+
+/** 한국 확인 신호 — GET /api/spine/tw/confirm (docs/specs/value-chain.md §4) */
+export type KrDirection = "up" | "down" | "flat" | null
+export interface KrTradeSignal {
+  hs: string; period: string | null; yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]
+  relation: "direct" | "demand"; note: string; confidence: "상" | "중" | "하"
+}
+export interface KrConfirm {
+  stock_code: string; taiwan: TwLink | null; trade: KrTradeSignal[]; trade_counted: string | null
+  disclosure: {
+    contracts_90d: number; contracts_prev_90d: number; capex_180d: number; last_contract: string | null
+    last_prelim: { date: string; title: string; url: string | null } | null; direction: "up" | "down" | "flat"
+  }
+  directions: { taiwan: KrDirection; trade: KrDirection; disclosure: KrDirection }
+  agree_up: number; observed: number
+}

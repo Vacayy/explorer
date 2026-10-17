@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import type { TwLinksResponse, TwRevenueResponse } from "@/types"
+import type { KrConfirm, TwLinksResponse, TwRevenueResponse } from "@/types"
 
 /** 대만 월매출 91개사 — 저장분 읽기(수집은 매일 11:00 launchd twrevenue) */
 export function useTwRevenue() {
@@ -11,5 +11,12 @@ export function useTwRevenue() {
 export function useTwLinks(kr?: string) {
   return useQuery(apiQuery<TwLinksResponse>({
     key: ["spine", "tw", "links", kr ?? "all"], url: "/api/spine/tw/links", params: kr ? { kr } : undefined, staleTime: STALE.long,
+  }))
+}
+
+/** 한국 확인 신호 — 대만·수출·공시 세 원천 방향. kr를 주면 그 종목만 */
+export function useKrConfirm(kr?: string) {
+  return useQuery(apiQuery<KrConfirm[]>({
+    key: ["spine", "tw", "confirm", kr ?? "all"], url: "/api/spine/tw/confirm", params: kr ? { kr } : undefined, staleTime: STALE.long,
   }))
 }

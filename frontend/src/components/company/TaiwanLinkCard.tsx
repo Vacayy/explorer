@@ -3,8 +3,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { SparkLine } from "@/components/shared/Spark"
-import { TW_RELATION, TwStateBadge, twEvidenceText } from "@/components/shared/TwLinkSignal"
-import { useTwLinks } from "@/hooks/useTwRevenue"
+import { KrConfirmStrip, TW_RELATION, TwStateBadge, twEvidenceText } from "@/components/shared/TwLinkSignal"
+import { useKrConfirm, useTwLinks } from "@/hooks/useTwRevenue"
 import { formatPercent } from "@/utils/format"
 
 /**
@@ -13,6 +13,7 @@ import { formatPercent } from "@/utils/format"
  */
 export function TaiwanLinkCard({ stockCode }: { stockCode: string }) {
   const q = useTwLinks(stockCode)
+  const confirm = useKrConfirm(stockCode)
   if (q.isLoading) return <Skeleton className="h-28 w-full rounded-xl" />
   if (q.isError) return <ErrorState message="대만 연결 신호를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
   const items = q.data?.items ?? []
@@ -24,6 +25,11 @@ export function TaiwanLinkCard({ stockCode }: { stockCode: string }) {
       </CardTitle>
     </CardHeader>
     <CardContent className="space-y-3">
+      {/* 한국 쪽 교차 확인 — 대만 신호가 한국 수출·공시에서도 보이나 */}
+      {confirm.data?.[0] && <div className="space-y-1.5 border-b pb-3">
+        <p className="text-caption font-medium text-muted-foreground">한국 확인 신호</p>
+        <KrConfirmStrip c={confirm.data[0]} />
+      </div>}
       {items.map(l => (
         <div key={`${l.relation}-${l.tw.map(t => t.code).join("")}`} className="grid gap-x-4 gap-y-1 border-b pb-3 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_120px]">
           <div className="min-w-0 space-y-1">

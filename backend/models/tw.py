@@ -74,3 +74,40 @@ class TwLink(BaseModel):
 class TwLinksResponse(BaseModel):
     as_of: str | None
     items: list[TwLink]
+
+
+class KrTradeSignal(BaseModel):
+    hs: str
+    period: str | None
+    yoy_3m: float | None
+    yoy_3m_prev: float | None
+    state: str | None
+    relation: str                  # direct | demand
+    note: str
+    confidence: str                # 상 | 중 | 하 — 집계에는 상·중만
+
+
+class KrPrelim(BaseModel):
+    date: str
+    title: str
+    url: str | None
+
+
+class KrDisclosureSignal(BaseModel):
+    contracts_90d: int
+    contracts_prev_90d: int
+    capex_180d: int
+    last_contract: str | None
+    last_prelim: KrPrelim | None
+    direction: str                 # up | down | flat
+
+
+class KrConfirm(BaseModel):
+    stock_code: str
+    taiwan: TwLink | None
+    trade: list[KrTradeSignal]
+    trade_counted: str | None      # 집계에 쓴 HS
+    disclosure: KrDisclosureSignal
+    directions: dict[str, str | None]
+    agree_up: int
+    observed: int
