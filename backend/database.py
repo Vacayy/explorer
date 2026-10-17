@@ -187,18 +187,6 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_industry_members_group ON industry_members(group_id, category);
 
-    CREATE TABLE IF NOT EXISTS watchlist (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        stock_code   TEXT NOT NULL UNIQUE,
-        corp_code    TEXT NOT NULL,
-        corp_name    TEXT NOT NULL,
-        conviction   INTEGER DEFAULT 3 CHECK(conviction BETWEEN 1 AND 5),
-        target_price INTEGER,
-        thesis       TEXT,
-        created_at   TEXT DEFAULT (datetime('now')),
-        updated_at   TEXT DEFAULT (datetime('now'))
-    );
-
     CREATE TABLE IF NOT EXISTS catalysts (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         stock_code   TEXT,

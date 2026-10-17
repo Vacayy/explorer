@@ -311,7 +311,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 
 `companies`(3,975) · `stock_prices`(**711,478** — 전종목 380일 백필+일별. 07-08 이후 KRX 정규장 종가로 재수집, 이전은 통합 일봉 — D-215) · `financial_statements` ·
 **`kr_movers`**(전일 국장 거래대금 상위 일별 스냅샷 — rank·거래대금·등락률·섹터(sector_map 대분류)·is_new, 7일 보존, D-108) ·
-`disclosures` · `fundamentals` · `watchlist`(레거시, 읽기·쓰기 경로 없음 — 관심 종목은 `stock_groups`) · `catalysts` · `consensus` · `channel_reads`(피드 읽음 표시, D-200) · `telegram_channels` ·
+`disclosures` · `fundamentals` · `watchlist`(레거시 — `init_db`가 더는 만들지 않고 `scripts/migrate_watchlist_to_groups.py` 이관만 읽는다, D-241. 관심 종목은 `stock_groups`) · `catalysts` · `consensus` · `channel_reads`(피드 읽음 표시, D-200) · `telegram_channels` ·
 `blog_sources`(+blog_name·author 닉네임) · `industry_groups/members` · `ir_notes` · `business_segments`
 > **국내 도시에 원천의 갱신 경로**(2026-10-16 복구): `companies`·`disclosures`·`financial_statements`·`fundamentals`는 launchd `krcompany`(매일 21:30, `scripts/collect_kr_company_data.py` → `pipeline/kr_company_data.py` + `services/market_valuation.py`)가 채운다. 도시에 화면은 `stored_only`로 읽기만 한다. `business_segments`는 수집기가 없고 사업 화면의 수동 입력(`POST /api/business/{code}/segments`)만 있다.
 > 소스 레지스트리 3종(telegram_channels·blog_sources·youtube_channels)은 **두 개의 독립 축**을 갖는다(D-126):
