@@ -4,6 +4,8 @@ import { MetricTrend } from "@/components/shared/MetricTrend"
 import { SparkLine } from "@/components/shared/Spark"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { fmtValue } from "@/components/home/MacroLiquidity"
+import { RiskCard, useRiskView, type RiskCardKind } from "@/components/home/RiskMonitoring"
+import { Card } from "@/components/ui/card"
 import { useIndices, useRiskWindow } from "@/hooks/useDashboard"
 import { useKrMovers } from "@/hooks/useKrMovers"
 import { useMacro } from "@/hooks/useMacro"
@@ -176,6 +178,13 @@ export function RiskBody({ metric, h }: WidgetBodyProps & { metric: string }) {
     {item.quality !== "fresh" && <p className="text-[11px] text-chart-warning">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : "수집 오류"}</p>}
     {h > 2 && <div className="mt-auto"><SparkLine data={item.points.map(p => p[1])} height={Math.max(28, (h - 2) * 40)} /></div>}
   </div>
+}
+
+/** 리스크 위젯 상세 — Risk 모니터링 화면의 카드 그대로(기간·계열 선택 포함) */
+export function RiskDetail({ kind }: { kind: RiskCardKind }) {
+  const view = useRiskView()
+  if (!view.data) return <Card className="p-6"><WidgetState loading={view.query.isLoading} error={view.query.isError} onRetry={() => void view.query.refetch()} /></Card>
+  return <RiskCard view={view} kind={kind} />
 }
 
 /* ── 개인 투자 열기 Δ ── */

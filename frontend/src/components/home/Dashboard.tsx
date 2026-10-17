@@ -7,7 +7,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ErrorState } from "@/components/shared/ErrorState"
@@ -55,6 +57,7 @@ function presetBoard(widgets: string[]): Board {
  */
 export default function Dashboard() {
   const saved = useDashboardLayout(LAYOUT_NAME)
+  const [params, setParams] = useSearchParams()
   const [board, setBoard] = useState<Board | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [presetAsk, setPresetAsk] = useState<string | null>(null)
@@ -159,9 +162,13 @@ export default function Dashboard() {
     setPresetAsk(null)
   }
 
+  const openDetail = (id: string) => setParams(prev => { const next = new URLSearchParams(prev); next.set("widget", id); return next }, { preventScrollReset: true })
+  const closeDetail = () => setParams(prev => { const next = new URLSearchParams(prev); next.delete("widget"); return next }, { replace: true, preventScrollReset: true })
+
   if (saved.isError) return <ErrorState message="대시보드 배치를 불러오지 못했습니다." onRetry={() => void saved.refetch()} />
 
   const ids = board?.rows.flat() ?? []
+  const detailDef = WIDGET_BY_ID[params.get("widget") ?? ""]
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -202,12 +209,21 @@ export default function Dashboard() {
               const h = p?.h ?? board.heights[i] ?? 10
               return <div key={i}>
                 <WidgetItem defId={def.id} w={p?.w ?? def.size.w} fine={h} params={board.params[i]}
-                  onRemove={() => removeIds([i], `'${def.title}'을 뺐어요.`)} />
+                  onRemove={() => removeIds([i], `'${def.title}'을 뺐어요.`)} onOpen={def.Detail && (() => openDetail(def.id))} />
               </div>
             })}
           </ReactGridLayout>
         )}
       </div>
+
+      {/* 위젯 상세 — URL ?widget=<id>가 단일 소스(뒤로 가기로 닫힌다) */}
+      <Dialog open={!!detailDef?.Detail} onOpenChange={v => !v && closeDetail()}>
+        <DialogContent showCloseButton={false} className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">
+          <DialogTitle className="sr-only">{detailDef?.title}</DialogTitle>
+          <DialogDescription className="sr-only">{detailDef?.description}</DialogDescription>
+          {detailDef?.Detail && <detailDef.Detail />}
+        </DialogContent>
+      </Dialog>
 
       <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} active={active} onAdd={add}
         onRemove={w => removeIds(ids.filter(i => board?.widgetOf[i] === w), `'${WIDGET_BY_ID[w]?.title}'을 뺐어요.`)} />
@@ -228,12 +244,12 @@ export default function Dashboard() {
   )
 }
 
-function WidgetItem({ defId, w, fine, params, onRemove }: { defId: string; w: number; fine: number; params?: Record<string, unknown>; onRemove: () => void }) {
+function WidgetItem({ defId, w, fine, params, onRemove, onOpen }: { defId: string; w: number; fine: number; params?: Record<string, unknown>; onRemove: () => void; onOpen?: () => void }) {
   const def = WIDGET_BY_ID[defId]
   const meta = def.useMeta()
   const h = coarseH(fine)
   return (
-    <WidgetFrame title={def.title} asOf={meta.asOf} stale={meta.stale} detailPath={def.detailPath} onRemove={onRemove} flat={def.flat && h <= 1}>
+    <WidgetFrame title={def.title} asOf={meta.asOf} stale={meta.stale} detailPath={def.detailPath} onRemove={onRemove} onOpen={onOpen} flat={def.flat && h <= 1}>
       <def.Body w={w} h={h} params={params} />
     </WidgetFrame>
   )

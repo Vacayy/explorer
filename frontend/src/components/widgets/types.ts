@@ -20,6 +20,8 @@ export interface WidgetDef {
   /** 띠형(높이 1) — 평소엔 머리 없이 */
   flat?: boolean
   detailPath?: string
+  /** 본문을 누르면 띄우는 상세 — 원래 화면과 같은 수준의 카드 (?widget=<id>) */
+  Detail?: ComponentType
   useMeta: () => WidgetMeta
   Body: ComponentType<WidgetBodyProps>
 }

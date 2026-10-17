@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { KeyboardEvent, ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { GripVertical, Maximize2, MoreHorizontal, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,13 +12,15 @@ import { cn } from "@/lib/utils"
  * 손잡이(.widget-handle)만 끌 수 있다 — 본문의 링크·표를 누를 때 끌려가지 않게. 손잡이와 메뉴는 늘 있고 손잡이는 올렸을 때 진해진다.
  * 띠형(flat)은 머리 없이 본문만, 올렸을 때 손잡이·메뉴를 겹쳐 띄운다.
  */
-export function WidgetFrame({ title, asOf, stale, detailPath, onRemove, flat, children }: {
+export function WidgetFrame({ title, asOf, stale, detailPath, onRemove, onOpen, flat, children }: {
   title: string
   asOf?: string | null
   /** 원천이 묵었거나 일부 실패 — 기준 시각을 주의 색으로 */
   stale?: boolean
   detailPath?: string
   onRemove: () => void
+  /** 본문을 누르면 상세 창 — 본문에 다른 링크가 없는 위젯만 */
+  onOpen?: () => void
   flat?: boolean
   children: ReactNode
 }) {
@@ -51,7 +53,9 @@ export function WidgetFrame({ title, asOf, stale, detailPath, onRemove, flat, ch
           <span className={cn(!asOf && "ml-auto")}>{menu}</span>
         </header>
       )}
-      <div className={cn("min-h-0 flex-1 overflow-hidden", flat ? "px-1 py-2" : "p-3")}>{children}</div>
+      <div className={cn("min-h-0 flex-1 overflow-hidden", flat ? "px-1 py-2" : "p-3", onOpen && "cursor-pointer transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none")}
+        {...(onOpen && { role: "button", tabIndex: 0, "aria-label": `${title} 자세히 보기`, onClick: onOpen,
+          onKeyDown: (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen() } } })}>{children}</div>
     </Card>
   )
 }
