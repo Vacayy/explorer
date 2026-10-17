@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { MetricTrend } from "@/components/shared/MetricTrend"
@@ -5,6 +6,8 @@ import { SparkLine } from "@/components/shared/Spark"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { fmtValue } from "@/components/home/MacroLiquidity"
 import { RiskCard, useRiskView, type RiskCardKind } from "@/components/home/RiskMonitoring"
+import { UsBriefingSection } from "@/components/home/UsBriefingSection"
+import { KrMoversSection } from "@/components/home/KrMoversSection"
 import { Card } from "@/components/ui/card"
 import { useIndices, useRiskWindow } from "@/hooks/useDashboard"
 import { useKrMovers } from "@/hooks/useKrMovers"
@@ -76,7 +79,14 @@ export function useUsMeta(): WidgetMeta {
   const d = q.data
   return { asOf: d?.trade_date ?? null, stale: !!d && (d.status !== "ok" || (d.stale_days ?? 0) > 1) }
 }
+/** 넉넉한 위젯 — 원래 섹션 전체를 위젯 안에서 스크롤 (요약은 작게 줄였을 때만) */
+function Full({ children }: { children: ReactNode }) {
+  return <div className="@container/market -mr-2 h-full overflow-y-auto pr-2">{children}</div>
+}
 export function UsBody({ h }: WidgetBodyProps) {
+  return h > 3 ? <Full><UsBriefingSection embedded /></Full> : <UsSummary h={h} />
+}
+function UsSummary({ h }: { h: number }) {
   const q = useUsBriefing(null)
   const d = q.data
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
@@ -104,6 +114,9 @@ export function useKrMeta(): WidgetMeta {
   return { asOf: q.data?.trade_date ?? null, stale: !!q.data && q.data.status !== "ok" }
 }
 export function KrBody({ h }: WidgetBodyProps) {
+  return h > 3 ? <Full><KrMoversSection embedded /></Full> : <KrSummary h={h} />
+}
+function KrSummary({ h }: { h: number }) {
   const q = useKrMovers()
   const d = q.data
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />

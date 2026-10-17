@@ -17,7 +17,9 @@ import type { KrMoverItem } from "@/types"
  * 차이: LLM 종합(분위기 산문) 없음 — 표 + 섹터 쏠림 + 개별 이슈까지 전부 결정적 계산.
  * 5-state: Loading / Error(status=error·쿼리실패) / Partial(stale) / Empty / Ideal.
  */
-export function KrMoversSection() {
+/** 위젯 안에 넣을 때 — 바깥 카드 틀과 제목은 위젯 틀이 맡는다 */
+const EMBED = "gap-3 border-0 bg-transparent py-0 shadow-none [&>[data-slot=card-content]]:px-0 [&>[data-slot=card-header]]:px-0 [&_[data-slot=card-title]]:sr-only"
+export function KrMoversSection({ embedded = false }: { embedded?: boolean }) {
   const { data, isLoading, isError, refetch, refresh, refreshing } = useKrMovers()
   const [open, setOpen] = useState(false)
 
@@ -41,7 +43,7 @@ export function KrMoversSection() {
 
   if (data.items.length === 0)
     return (
-      <Card>
+      <Card className={embedded ? EMBED : undefined}>
         {header}
         <CardContent>
           <EmptyState message={refreshing ? "전일 거래대금을 불러오는 중…" : "‘지금 업데이트’를 눌러 전일 거래대금 상위를 수집하세요."} />
@@ -53,7 +55,7 @@ export function KrMoversSection() {
   const top = clusters[0]
 
   return (
-    <Card data-home-section="kr-movers">
+    <Card data-home-section="kr-movers" className={embedded ? EMBED : undefined}>
       {header}
       <CardContent className="space-y-3">
         {data.status === "stale" && (

@@ -1,12 +1,13 @@
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { ACT_META, actLink } from "@/components/home/AiActivityFeed"
+import { DocumentCard } from "@/components/feed/FeedPost"
 import { useProjects } from "@/components/study/useProjects"
 import { AI_ACTIVITY, useAiActivity } from "@/hooks/useAiActivity"
 import { useFeedTopics } from "@/hooks/useFeedTopics"
-import { useTimelineChannels } from "@/hooks/useTimeline"
+import { useTimeline, useTimelineChannels } from "@/hooks/useTimeline"
 import { aiCoverageLabel, groupDirectory } from "@/lib/canvas"
 import { formatKstDateTime, formatNumber, formatRelativeTime } from "@/utils/format"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
@@ -19,6 +20,35 @@ import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
 const FEED = "/home?home_view=feed"
 const PLATFORM: Record<string, string> = { telegram: "텔레그램", blog: "블로그", youtube: "유튜브" }
 const newest = (xs: (string | null | undefined)[]) => xs.filter(Boolean).sort().at(-1) ?? null
+
+/* ── 피드 — 팔로우한 소스의 최신 글 (읽음 표시는 안 한다: 위젯은 GET만) ── */
+const FEED_QUERY = { scope: "sources", kind: "all", source: "all", page: 1 } as const
+function useFeedMeta(): WidgetMeta {
+  const q = useTimeline(FEED_QUERY)
+  const latest = q.data?.items[0]?.occurred_at
+  return { asOf: latest ? formatKstDateTime(latest) : null }
+}
+function FeedBody({ h }: WidgetBodyProps) {
+  const q = useTimeline(FEED_QUERY)
+  const navigate = useNavigate()
+  if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
+  const docs = q.data.items.filter(i => i.document)
+  if (!docs.length) return <WidgetState empty emptyText="팔로우한 소스의 글이 아직 없어요. 캔버스 › 소스에서 등록합니다." />
+  // 작게 줄이면 제목만, 넉넉하면 피드와 같은 게시물 행(요약 보기)을 위젯 안에서 스크롤
+  if (h <= 3) return <ul className="divide-y overflow-hidden text-[13px]">
+    {docs.slice(0, Math.max(1, h * 2 - 1)).map(i => (
+      <li key={i.id}><Link to={`/doc/${i.document!.id}`} className="flex items-center gap-2 py-1.5 hover:underline">
+        <span className="min-w-0 flex-1 truncate">{i.document!.title || i.title}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{formatRelativeTime(i.occurred_at)}</span>
+      </Link></li>
+    ))}
+  </ul>
+  return <div className="-mr-2 h-full overflow-y-auto pr-2">
+    {docs.map(i => <DocumentCard key={i.id} doc={i.document!} variant="row" timeLabel={i.time_label} reading="summary"
+      onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />)}
+    <Button asChild variant="ghost" size="sm" className="mt-2 w-full"><Link to={FEED}>피드에서 더 보기</Link></Button>
+  </div>
+}
 
 /* ── 안 읽은 소스 ── */
 function useUnreadMeta(): WidgetMeta {
@@ -128,6 +158,8 @@ function StudyBody({ h }: WidgetBodyProps) {
 
 /** 캔버스 위젯 — registry.tsx가 이 배열을 그대로 펼친다 */
 export const CANVAS_WIDGETS: WidgetDef[] = [
+  { id: "canvas.feed", title: "피드", description: "팔로우한 텔레그램·블로그·유튜브의 최신 글 — 요약으로 훑기", section: "canvas", group: "피드",
+    size: { w: 6, h: 9, minW: 3, minH: 2 }, detailPath: FEED, useMeta: useFeedMeta, Body: FeedBody },
   { id: "canvas.unread", title: "안 읽은 소스", description: "팔로우한 텔레그램·블로그·유튜브 중 안 읽은 글이 많은 곳", section: "canvas", group: "피드",
     size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: FEED, useMeta: useUnreadMeta, Body: UnreadBody },
   { id: "canvas.ai", title: "AI가 최근 만든 것", description: "내러티브·종목 요약·유튜브 정리본 등 최신 생성물", section: "canvas", group: "피드",

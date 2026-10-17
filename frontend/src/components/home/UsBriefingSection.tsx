@@ -22,7 +22,9 @@ import type { UsBriefingSource, UsMoverBrief } from "@/types"
  * 과거 브리핑은 헤더 날짜 셀렉터로 조회(읽기 전용). 상위 20 전체는 Collapsible.
  * 5-state: Loading / Error / Partial(stale·묵은 스냅샷·synthesis=null) / Empty / Ideal.
  */
-export function UsBriefingSection() {
+/** 위젯 안에 넣을 때 — 바깥 카드 틀과 제목은 위젯 틀이 맡는다 */
+const EMBED = "gap-3 border-0 bg-transparent py-0 shadow-none [&>[data-slot=card-content]]:px-0 [&>[data-slot=card-header]]:px-0 [&_[data-slot=card-title]]:sr-only"
+export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) {
   const [pickedDate, setPickedDate] = useState<string | null>(null)
   const { data, isLoading, isError, refetch, refresh, refreshing } = useUsBriefing(pickedDate)
   const { data: dates = [] } = useUsBriefingDates()
@@ -33,7 +35,7 @@ export function UsBriefingSection() {
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
   if (data.movers.length === 0)
     return (
-      <Card data-home-briefing>
+      <Card data-home-briefing className={embedded ? EMBED : undefined}>
         <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
           <CardTitle className="text-card-title flex items-center gap-1.5">
             <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
@@ -56,7 +58,7 @@ export function UsBriefingSection() {
   const topShare = clusters[0]
 
   return (
-    <Card data-home-briefing>
+    <Card data-home-briefing className={embedded ? EMBED : undefined}>
       <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
         <CardTitle className="text-card-title flex items-center gap-1.5">
           <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
