@@ -148,7 +148,7 @@
 ## 상세 읽기 화면 (2026-09-10)
 
 - `shared/DetailLayout`: PageLayout 조합, 복귀/제목/메타/액션/탭/본문/보조/관련 슬롯. `/doc/:id`, `/narrative?topic=`, `/narrative/history?topic=&v=` 적용. 상세 레일은 별도 기본 접힘, 주제 상세의 월드모델 SubNav는 생략.
-- `doc/DocumentBody`: FeedPost와 DocPage의 원문·저장 요약·첨부 렌더 공유. 원시 텍스트 보존, 영상 정리본 가능성 표기. DocPage는 저장/원문/문서 ID 첨부 대화, 대상 태그, 기존 SourceDeepDive와 관련 문서를 유지.
+- `doc/DocumentBody`: FeedPost와 DocPage의 원문·저장 요약·첨부 렌더 공유. 원시 텍스트 보존, 영상 정리본 가능성 표기. DocPage는 저장/원문/문서 ID 첨부 대화, 대상 태그와 관련 문서를 유지(문서 추가 탐구 SourceDeepDive는 D-241에서 제거).
 - 내러티브: 현재 해석/근거/변경 이력/추가 탐구 URL 탭. 저장된 지식 연결과 인과 구조를 근거로 표시하되 문장별 인용으로 과장하지 않음. 버전 선택은 `v` URL에 반영. 대화 요청은 선택한 저장 본문·주제·버전 정보를 기존 ask API 질문에 포함.
 - `DetailNavigation`, `lib/sessionMemory`: 출발 URL/history index/state, 스크롤·복귀 링크를 보존. POP과 직접 복귀에 지연 렌더 완료 후 위치/포커스 복원. 저장 내용은 UI 상태뿐이며 탭 단위 최대 100개. 피드 로딩 중 스크롤은 기존 저장 위치를 덮지 않음.
 - 내러티브의 기존 7일 stale 자동 재생성·수동 갱신 정책은 유지한다. 정책 변경은 이번 레이아웃 이행에 포함하지 않음. 기획·이행 기준은 DESIGN_REVIEW/DESIGN_SYSTEM, 검증은 `logs/detail/`.

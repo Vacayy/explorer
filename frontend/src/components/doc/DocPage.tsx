@@ -16,7 +16,6 @@ import SegmentTabs from '@/components/shared/SegmentTabs'
 import SaveButton from '@/components/shared/SaveButton'
 import { SelectionPalette } from '@/components/shared/SelectionPalette'
 import { askAboutText } from '@/lib/aiPanel'
-import { SourceDeepDive } from './SourceDeepDive'
 import { DocumentBody } from './DocumentBody'
 import { DocRelated } from './DocRelated'
 import { useReadingDiscussion } from '@/hooks/useDocumentDiscussion'
@@ -70,8 +69,7 @@ export default function DocPage() {
     navigation={<SegmentTabs tabs={isVideo ? [{ value: 'digest', label: 'AI 정리본' }, { value: 'transcript', label: '원본 자막' }, { value: 'summary', label: '짧은 요약' }] : [{ value: 'original', label: '원문' }, { value: 'summary', label: '저장 요약' }]} value={reading} onChange={value => setParams(prev => { const next = new URLSearchParams(prev); next.set('reading', value); return next }, { replace: true, state: location.state })} />}
     aside={<><h2 className="mb-3 text-section font-semibold">이 자료의 맥락</h2><p className="mb-4 text-caption text-muted-foreground">개별 출처의 자료입니다. 시스템의 종합 해석과 구분해 읽으세요.</p>
       <h3 className="mb-2 text-card-title font-semibold">연결된 대상</h3><div className="mb-4 flex flex-wrap gap-2">{doc.entities.length ? doc.entities.map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />) : <p className="text-caption text-muted-foreground">연결된 대상이 없습니다.</p>}</div>
-      <DetailSection title="출처·생성 정보"><p className="break-words text-caption text-muted-foreground">게시 시각: {doc.published_at || '미상'}</p>{doc.enrich_model && <p className="text-caption text-muted-foreground">태깅 모델: {doc.enrich_model}</p>}</DetailSection>
-      <DetailSection title="추가 탐구"><p className="text-caption text-muted-foreground">이 자료에서 질문 후보를 생성합니다.</p><SourceDeepDive docId={doc.id} /></DetailSection></>}
+      <DetailSection title="출처·생성 정보"><p className="break-words text-caption text-muted-foreground">게시 시각: {doc.published_at || '미상'}</p>{doc.enrich_model && <p className="text-caption text-muted-foreground">태깅 모델: {doc.enrich_model}</p>}</DetailSection></>}
     related={<DocRelated docId={doc.id} />}>
     {discussion.isError && <p role="alert" className="mb-3 text-sm text-destructive">대화를 시작하지 못했습니다. 다시 시도해 주세요.</p>}
     {isVideo && !doc.video_digest && <div className="mb-4 rounded-xl border bg-muted/40 p-4 text-sm" aria-live="polite">
