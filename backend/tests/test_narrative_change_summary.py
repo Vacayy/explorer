@@ -23,9 +23,10 @@ class NormalizeTests(unittest.TestCase):
             self.assertIsNone(normalize_change_summary(v), v)
 
     def test_long_text_is_clipped_at_a_boundary_with_ellipsis(self):
-        s = normalize_change_summary("가" * 60 + ", " + "나" * 80)
+        head = CHANGE_SUMMARY_MAX // 2
+        s = normalize_change_summary("가" * head + ", " + "나" * CHANGE_SUMMARY_MAX)
         self.assertLessEqual(len(s), CHANGE_SUMMARY_MAX)
-        self.assertEqual(s, "가" * 60 + "…")
+        self.assertEqual(s, "가" * head + "…")
 
 
 class FallbackTests(unittest.TestCase):
@@ -37,7 +38,7 @@ class FallbackTests(unittest.TestCase):
                          "인과 구조가 재편됐다")
 
     def test_long_single_sentence_is_clipped_at_comma(self):
-        drift = "유가→금리 고리가 빠지고 " + "자본 흐름 " * 12 + "이 새로 들어왔으며, " + "축이 이동했다 " * 10
+        drift = "유가→금리 고리가 빠지고 " + "자본 흐름 " * 20 + "이 새로 들어왔으며, " + "축이 이동했다 " * 30
         s = change_summary_fallback(drift)
         self.assertLessEqual(len(s), CHANGE_SUMMARY_MAX)
         self.assertTrue(s.endswith("들어왔으며…"), s)

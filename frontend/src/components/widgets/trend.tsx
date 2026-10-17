@@ -45,19 +45,33 @@ export function TrendBody({ w, h }: WidgetBodyProps) {
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   const tab = params.get("trend_tab") === "events" ? "events" : "trend"
   const picked = d.items.find(i => i.stock_code === params.get("trend"))
+  // 넓으면(10칸 이상) 탭 없이 좌우로 나란히 — 각 절반이 6칸 폭이라 추세 표도 넓은 열을 쓴다
+  const split = w >= 10
+  const stamp = <span className="ml-auto text-[11px] text-muted-foreground" title="계산에 쓴 시세의 마지막 수집 시각 — 평일 16:35 수집, 20:20 재수집">
+    시세 {formatKstDateTime(d.computed_from ? d.computed_from.replace(" ", "T") + "Z" : null)} 수집분
+  </span>
+  const trendList = <TrendList items={d.items} universe={d.universe} passed={d.passed} criteria={d.criteria} wide={split || w >= 6} short={h <= 3} onPick={code => set("trend", code)} />
+  const eventList = <EventList events={d.events} short={h <= 3} />
   return <div className="flex h-full flex-col gap-2">
-    <div className="flex flex-wrap items-center gap-2">
-      <SegmentTabs value={tab} onChange={v => set("trend_tab", v === "trend" ? null : v)}
-        tabs={[{ value: "trend", label: `추세 ${formatNumber(d.passed)}` }, { value: "events", label: `신고가·매물대 ${formatNumber(d.events.length)}` }]} />
-      <span className="ml-auto text-[11px] text-muted-foreground" title="계산에 쓴 시세의 마지막 수집 시각 — 평일 16:35 수집, 20:20 재수집">
-        시세 {formatKstDateTime(d.computed_from ? d.computed_from.replace(" ", "T") + "Z" : null)} 수집분
-      </span>
-    </div>
-    <div className="min-h-0 flex-1">
-      {tab === "trend"
-        ? <TrendList items={d.items} universe={d.universe} passed={d.passed} criteria={d.criteria} wide={w >= 6} short={h <= 3} onPick={code => set("trend", code)} />
-        : <EventList events={d.events} short={h <= 3} />}
-    </div>
+    {split ? <>
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
+        <section aria-label="추세" className="flex min-h-0 min-w-0 flex-col gap-1.5">
+          <h4 className="text-[12px] font-medium">추세 {formatNumber(d.passed)}</h4>
+          <div className="min-h-0 flex-1">{trendList}</div>
+        </section>
+        <section aria-label="신고가·매물대" className="flex min-h-0 min-w-0 flex-col gap-1.5 border-l pl-4">
+          <h4 className="flex items-baseline text-[12px] font-medium">신고가·매물대 {formatNumber(d.events.length)}{stamp}</h4>
+          <div className="min-h-0 flex-1">{eventList}</div>
+        </section>
+      </div>
+    </> : <>
+      <div className="flex flex-wrap items-center gap-2">
+        <SegmentTabs value={tab} onChange={v => set("trend_tab", v === "trend" ? null : v)}
+          tabs={[{ value: "trend", label: `추세 ${formatNumber(d.passed)}` }, { value: "events", label: `신고가·매물대 ${formatNumber(d.events.length)}` }]} />
+        {stamp}
+      </div>
+      <div className="min-h-0 flex-1">{tab === "trend" ? trendList : eventList}</div>
+    </>}
     <TrendEvidenceDialog item={picked} criteria={d.criteria} onClose={() => set("trend", null)} />
   </div>
 }
@@ -84,7 +98,7 @@ function TrendList({ items, universe, passed, criteria, wide, short, onPick }: {
           <Button variant="ghost" onClick={() => onPick(t.stock_code)} aria-label={`${t.name} 추세 근거 보기`}
             className={cn("grid h-auto w-full items-center gap-x-3 rounded-sm px-1 py-1 text-left text-[13px] font-normal", wide ? COLS_WIDE : COLS_NARROW)}>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate font-medium">{t.name}</span>
+              <span className="shrink-0 font-medium">{t.name}</span>
               {t.new && <Badge variant="outline" className="shrink-0 px-1 text-[10px] text-primary">신규</Badge>}
               {t.events.map(k => <Badge key={k} variant="secondary" className="shrink-0 px-1 text-[10px]">{EVENT_LABEL[k]}</Badge>)}
               {wide && t.sector && <span className="truncate text-[11px] text-muted-foreground">{t.sector}</span>}

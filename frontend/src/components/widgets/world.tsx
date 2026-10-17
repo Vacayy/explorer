@@ -24,13 +24,14 @@ function useChangesMeta(): WidgetMeta {
 /** 위젯용 한 줄 — 제목 · 라벨 · 버전/시각 · 어떻게 옮겨 갔나 1~2문장. 고리 칩은 '지금' 랜딩(NarrativeChangeRow)에만 둔다 */
 function ChangeRow({ item }: { item: WorldNarrativeChange }) {
   const summary = item.is_first ? "새로 생긴 서사입니다." : item.change_summary
+  // 라벨 · 제목 · 갱신 시각 한 줄, 아래에 서사 변화 요약 전문(자르지 않는다)
   return <li className="space-y-1">
-    <Link to={`/narrative?topic=${encodeURIComponent(item.topic)}`} className="line-clamp-2 text-sm font-semibold leading-snug hover:underline">{item.title ?? item.topic}</Link>
-    <div className="flex items-center gap-2">
-      <Badge variant="outline" className="max-w-[60%] truncate text-[10px]">{item.topic}</Badge>
-      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">v{item.version} · {formatDbRelative(item.created_at)}</span>
+    <div className="flex items-start gap-1.5">
+      <Badge variant="outline" className="mt-px max-w-[40%] shrink-0 truncate text-[10px]">{item.topic}</Badge>
+      <Link to={`/narrative?topic=${encodeURIComponent(item.topic)}`} className="min-w-0 flex-1 text-sm font-semibold leading-snug hover:underline">{item.title ?? item.topic}</Link>
+      <span className="mt-0.5 shrink-0 text-[11px] text-muted-foreground tabular-nums">{formatDbRelative(item.created_at)}</span>
     </div>
-    {summary && <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{summary}</p>}
+    {summary && <p className="text-xs leading-relaxed text-muted-foreground">{summary}</p>}
   </li>
 }
 function ChangesBody({ h }: WidgetBodyProps) {
@@ -39,7 +40,7 @@ function ChangesBody({ h }: WidgetBodyProps) {
   const items = q.data.items
   if (!items.length) return <WidgetState empty emptyText="최근 7일 동안 새 버전이 나온 서사가 없어요." />
   return <div className="flex h-full flex-col gap-2">
-    <WidgetHero value={`${items.length}편`} aside={<span className="text-sm text-muted-foreground">최근 7일 새 버전</span>} />
+    <p className="text-[12px] text-muted-foreground"><span className="font-medium text-foreground">{items.length}편</span> · 최근 7일 새 버전</p>
     {h <= 2
       ? <p className="truncate text-[13px] text-muted-foreground">{items[0].title ?? items[0].topic}</p>
       : <ul className="min-h-0 space-y-3 overflow-y-auto">{items.slice(0, h * 2).map(i => <ChangeRow key={i.narrative_id} item={i} />)}</ul>}

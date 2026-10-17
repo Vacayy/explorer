@@ -248,7 +248,7 @@ def _persist_narrative(conn, topic: str, data: dict, docs: list[dict], h: str) -
     return nid, version, made
 
 
-CHANGE_SUMMARY_MAX = 100   # 위젯 두 줄에 들어가는 길이. 프롬프트는 80자 이내를 요구하고, 넘치면 여기서 자른다
+CHANGE_SUMMARY_MAX = 220   # 안전 상한만 — 위젯은 요약을 자르지 않고 다 보인다(2026-10-17). 프롬프트는 80자 이내를 요구한다
 
 
 def _clip(text: str, limit: int) -> str:
