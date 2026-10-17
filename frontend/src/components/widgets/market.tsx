@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
+import { MetricTrend } from "@/components/shared/MetricTrend"
 import { SparkLine } from "@/components/shared/Spark"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { fmtValue } from "@/components/home/MacroLiquidity"
@@ -32,9 +33,13 @@ export function IndicesBody(_: WidgetBodyProps) {
   return <div className="flex h-full items-stretch overflow-hidden">
     {q.data.items.map(r => (
       <div key={r.key} className={stripCell}>
-        <span className="truncate text-[11px] text-muted-foreground"><span className={cn("mr-1 inline-block size-1.5 rounded-full align-middle", r.is_open ? "bg-chart-green" : "bg-muted-foreground/40")} />{r.label}</span>
+        <span className="flex items-baseline justify-between gap-1 text-[11px]">
+          <span className="truncate text-muted-foreground"><span className={cn("mr-1 inline-block size-1.5 rounded-full align-middle", r.is_open ? "bg-chart-green" : "bg-muted-foreground/40")} />{r.label}</span>
+          <span className={cn("shrink-0 tabular-nums", tone(r.change_pct))}>{formatPercent(r.change_pct)}</span>
+        </span>
         <span className="truncate text-sm font-semibold tabular-nums">{formatLevel(r.price)}</span>
-        <span className={cn("text-[11px] tabular-nums", tone(r.change_pct))}>{formatPercent(r.change_pct)}</span>
+        {/* 1Y 추이 — 남는 높이를 채운다(위젯을 키우면 같이 커진다) */}
+        <div className="mt-1 min-h-3 flex-1"><SparkLine data={r.spark} height={20} className="h-full w-full" /></div>
       </div>
     ))}
   </div>
@@ -52,11 +57,13 @@ export function ContextBody(_: WidgetBodyProps) {
   const items = CONTEXT_KEYS.map(k => q.data!.items.find(i => i.key === k)).filter(Boolean) as NonNullable<typeof q.data>["items"]
   return <div className="flex h-full items-stretch overflow-hidden">
     {items.map(m => (
-      <div key={m.key} className={stripCell}>
+      // 올리면(클릭·키보드도) 추이 차트 — 시장 브리핑 지표 띠와 같은 MetricTrend
+      <MetricTrend key={m.key} label={m.label} points={m.dated_series} format={v => fmtValue({ ...m, value: v })}
+        className={cn(stripCell, "h-full items-start gap-0 rounded-none py-0 text-left font-normal")}>
         <span className="truncate text-[11px] text-muted-foreground">{m.label}</span>
         <span className="truncate text-sm font-semibold tabular-nums">{fmtValue(m)}</span>
         <span className={cn("text-[11px] tabular-nums", tone(m.change_pct))}>{formatPercent(m.change_pct)}</span>
-      </div>
+      </MetricTrend>
     ))}
   </div>
 }
