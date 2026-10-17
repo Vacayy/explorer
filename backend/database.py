@@ -1131,6 +1131,27 @@ def init_db():
         updated_at    TEXT NOT NULL
     );
 
+    -- 대만 월매출 (docs/specs/tw-revenue.md) — 91개사(pipeline/tw_universe), 단위 천 TWD, ym=YYYY-MM.
+    -- 최신 월은 TWSE·TPEx Open API, 과거 월은 MOPS 월별 요약. 공시가 1~10일에 나눠 올라와 매일 덮어쓴다
+    CREATE TABLE IF NOT EXISTS tw_monthly_revenue (
+        code          TEXT NOT NULL,
+        ym            TEXT NOT NULL,
+        name_zh       TEXT,
+        market        TEXT,                 -- TWSE(상장) | TPEx(장외)
+        revenue       REAL,                 -- 당월
+        prev_month    REAL,
+        last_year     REAL,                 -- 전년 동월
+        mom_pct       REAL,
+        yoy_pct       REAL,
+        cum           REAL,                 -- 당해 누적
+        cum_last_year REAL,
+        cum_pct       REAL,
+        note          TEXT,                 -- 회사가 단 증감 사유
+        source        TEXT,                 -- openapi | mops
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (code, ym)
+    );
+
     -- 프록시 보드 (D-240, docs/specs/question-proxy.md) — 주제별 지표 묶음. 지표는 proxy_registry 행이고
     -- 결정적 어댑터(adapter·adapter_ref)는 원천 테이블을 직접 읽는다(proxy_observations에 복사하지 않음)
     CREATE TABLE IF NOT EXISTS proxy_boards (

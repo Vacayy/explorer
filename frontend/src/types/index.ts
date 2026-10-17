@@ -1189,3 +1189,15 @@ export interface TranscriptFollowSummary {
   ticker: string; company_name: string; next_report_date?: string | null; calendar_checked_at?: string | null
   latest: { transcript_id: number } | null
 }
+
+/** 대만 월매출 — GET /api/spine/tw/revenue (금액 단위 천 TWD) */
+export interface TwRevenuePoint { ym: string; revenue: number | null; yoy_pct: number | null }
+export interface TwRevenueItem {
+  code: string; name: string; layer: string; role: string; market: string | null
+  ym: string | null; revenue: number | null; yoy_pct: number | null; mom_pct: number | null; yoy_3m: number | null
+  lagging: boolean; note: string | null; series: TwRevenuePoint[]
+}
+export interface TwRevenueResponse {
+  as_of: string | null; fetched_at: string | null; reported: number; total: number
+  layers: { key: string; label: string }[]; items: TwRevenueItem[]
+}

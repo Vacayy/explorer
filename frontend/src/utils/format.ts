@@ -193,3 +193,12 @@ export function dbAgeDays(value: string | null | undefined): number {
   const t = new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z").getTime()
   return Number.isNaN(t) ? Infinity : (Date.now() - t) / 86_400_000
 }
+
+/** 대만 월매출(원천 단위 천 TWD) → 억 TWD 표기. 1,000억 이상은 정수, 그 아래는 소수 1자리. 비면 "-" */
+export function formatTwdEok(thousand: number | null | undefined): string {
+  if (thousand === null || thousand === undefined) return "-"
+  const eok = thousand / 100_000
+  return Math.abs(eok) >= 1000
+    ? `${Math.round(eok).toLocaleString("ko-KR")}억`
+    : `${eok.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}억`
+}

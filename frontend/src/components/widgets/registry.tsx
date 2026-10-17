@@ -10,6 +10,7 @@ import { PORTFOLIO_WIDGETS } from "./portfolio"
 import { CANVAS_WIDGETS } from "./canvas"
 import { WORLD_WIDGETS } from "./world"
 import { PROXY_WIDGETS } from "./proxy"
+import { TW_WIDGETS } from "./twRevenue"
 
 const risk = (id: string, metric: string, card: RiskCardKind, title: string, description: string): WidgetDef => ({
   id, title, description, section: "home", group: "국면·리스크", size: { w: 4, h: 3, minW: 3, minH: 2 },
@@ -38,6 +39,7 @@ export const WIDGETS: readonly WidgetDef[] = [
     size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/home/risk", useMeta: useRetailMeta, Body: RetailBody },
   // 영역별 위젯 — 각 파일에서만 더한다(병렬 작업 충돌 방지)
   ...EXPLORE_WIDGETS,
+  ...TW_WIDGETS,
   ...PORTFOLIO_WIDGETS,
   ...CANVAS_WIDGETS,
   ...WORLD_WIDGETS,

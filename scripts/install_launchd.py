@@ -96,6 +96,8 @@ JOBS = [
     # 국내 도시에 원천 — 종목 마스터·DART 공시·분기 재무(호출 예산 안에서 보유→관심→시총 상위 순)·밸류(PER·PBR).
     # 일별 시세 20:20 뒤라 밸류가 그날 종가 기준이 된다. 매일 — 주말엔 밸류가 '이미 있음'으로 건너뛰고 재무 백필만 이어간다.
     ("krcompany", [PY, "scripts/collect_kr_company_data.py"], {"Hour": 21, "Minute": 30}),
+    # 대만 월매출(docs/specs/tw-revenue.md) — 91개사. 공시가 매달 1~10일에 나눠 올라와 매일 한 번 최신 월을 덮어쓴다. LLM 0
+    ("twrevenue", [PY, "scripts/collect_tw_revenue.py"], {"Hour": 11, "Minute": 0}),
     # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
@@ -125,6 +127,7 @@ CATCHUP = {
     "callmomentum": {},
     "callmomentumweekly": {"window_h": 24},
     "krcompany": {},
+    "twrevenue": {"record": "tw_revenue"},
 }
 
 
