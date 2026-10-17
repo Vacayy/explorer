@@ -1,6 +1,5 @@
 import type { SectionKey } from "@/components/layout/navConfig"
-import type { SizeSpec } from "./layout"
-import type { WidgetBodyProps, WidgetDef } from "./types"
+import type { SizeSpec, WidgetBodyProps, WidgetDef } from "./types"
 import {
   ContextBody, IndicesBody, KrBody, RegimeBody, RetailBody, RiskBody, UsBody,
   useContextMeta, useIndicesMeta, useKrMeta, useRegimeMeta, useRetailMeta, useRiskMeta, useUsMeta,
@@ -12,7 +11,7 @@ import { WORLD_WIDGETS } from "./world"
 import { PROXY_WIDGETS } from "./proxy"
 
 const risk = (id: string, metric: string, title: string, description: string): WidgetDef => ({
-  id, title, description, section: "home", group: "국면·리스크", size: { w: 3, h: 3, minW: 2, minH: 2 },
+  id, title, description, section: "home", group: "국면·리스크", size: { w: 4, h: 3, minW: 3, minH: 2 },
   detailPath: "/home/risk", useMeta: () => useRiskMeta(metric),
   Body: (p: WidgetBodyProps) => <RiskBody {...p} metric={metric} />,
 })
@@ -28,13 +27,13 @@ export const WIDGETS: readonly WidgetDef[] = [
   { id: "market.kr", title: "전일 국장 거래대금", description: "거래대금 상위 · 섹터 쏠림 · 급등락", section: "home", group: "시장 브리핑",
     size: { w: 6, h: 4, minW: 4, minH: 2 }, detailPath: "/home/briefing", useMeta: useKrMeta, Body: KrBody },
   { id: "risk.regime", title: "시장 국면", description: "국장·미장 포스처 · 공포탐욕·VIX", section: "home", group: "국면·리스크",
-    size: { w: 6, h: 3, minW: 3, minH: 2 }, detailPath: "/home/risk", useMeta: useRegimeMeta, Body: RegimeBody },
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/home/risk", useMeta: useRegimeMeta, Body: RegimeBody },
   risk("risk.curve", "curve", "금리차 10Y−2Y", "장단기 금리차 · 20일 변화 · 3개월 추이"),
   risk("risk.vix", "vix", "VIX", "변동성 지수 · 20일 변화 · 3개월 추이"),
   risk("risk.fear", "fear_greed", "공포·탐욕", "CNN 0–100 · 20일 변화 · 3개월 추이"),
   risk("risk.hy", "hy", "HY 스프레드", "하이일드 OAS · 20일 변화 · 3개월 추이"),
   { id: "retail.heat", title: "개인 투자 열기 Δ", description: "20일 새 백분위가 가장 크게 움직인 지표", section: "home", group: "국면·리스크",
-    size: { w: 6, h: 3, minW: 3, minH: 2 }, detailPath: "/home/risk", useMeta: useRetailMeta, Body: RetailBody },
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/home/risk", useMeta: useRetailMeta, Body: RetailBody },
   // 영역별 위젯 — 각 파일에서만 더한다(병렬 작업 충돌 방지)
   ...EXPLORE_WIDGETS,
   ...PORTFOLIO_WIDGETS,

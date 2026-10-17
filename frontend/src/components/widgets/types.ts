@@ -1,6 +1,8 @@
 import type { ComponentType } from "react"
 import type { SectionKey } from "@/components/layout/navConfig"
-import type { SizeSpec } from "./layout"
+
+/** 기본 크기(12칸 폭 · 72px 행 기준 높이)와 최소값 — 대시보드가 10px 행으로 바꿔 쓴다 */
+export interface SizeSpec { w: number; h: number; minW: number; minH: number }
 
 /** 위젯 본문이 받는 현재 크기(격자 칸) — 작으면 큰 숫자·한 줄만 */
 export interface WidgetBodyProps { w: number; h: number; params?: Record<string, unknown> }

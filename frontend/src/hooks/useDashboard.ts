@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import axios from "axios"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
-import type { LayoutEntry } from "@/components/widgets/layout"
+import type { Entry as LayoutEntry } from "@/components/widgets/rows"
 import type { RiskResponse } from "@/types"
 
 /** 지수 — IndexStrip과 같은 캐시 키(위젯과 전체 보기가 한 번만 받는다) */

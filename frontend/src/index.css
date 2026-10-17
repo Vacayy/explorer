@@ -33,9 +33,9 @@
   --text-reading--line-height: 1.375rem;
   --text-caption: .75rem;
   --text-caption--line-height: 1.125rem;
-  --radius-card: 1.25rem;
-  --radius-control: .625rem;
-  --radius-overlay: 1rem;
+  --radius-card: 0.625rem;   /* 10px — 2026-10-17 덜 둥글게(위젯·카드) */
+  --radius-control: .5rem;
+  --radius-overlay: .75rem;
 
   /* shadcn semantic */
   --color-background: var(--background);
@@ -104,10 +104,11 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* 덜 둥글게(2026-10-17): shadcn atom이 쓰는 2xl~4xl을 10~12px로 묶는다(기본 --radius 8px) */
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.25);
+  --radius-3xl: calc(var(--radius) * 1.5);
+  --radius-4xl: calc(var(--radius) * 1.5);
 }
 
 /* ---------- Layout tokens (docs/DESIGN_SYSTEM.md) ---------- */
@@ -144,7 +145,7 @@
   --border: #dce1e8;
   --input: #dce1e8;
   --ring: #8e4162;
-  --radius: 0.75rem;
+  --radius: 0.5rem;
 
   --sidebar: #f2f3f5;
   --sidebar-foreground: #202630;
@@ -376,7 +377,7 @@
 .channel-directory, .channel-reader { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .channel-list, .reader-scroll { min-width: 0; min-height: 0; }
 .channel-list { padding: 8px; }
-.channel-entry { width: 100%; height: auto !important; min-height: 72px; justify-content: start; gap: 10px; padding: 10px; border-radius: 12px; white-space: normal; }
+.channel-entry { width: 100%; height: auto !important; min-height: 72px; justify-content: start; gap: 10px; padding: 10px; border-radius: 8px; white-space: normal; }
 .channel-entry[aria-pressed=true] { background: var(--accent); color: var(--accent-foreground); }
 .channel-count { flex-shrink: 0; border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; padding: 2px 7px; font-variant-numeric: tabular-nums; }
 .channel-count-unread { background: var(--primary); color: var(--primary-foreground); font-weight: 600; }
@@ -433,7 +434,7 @@
 }
 
 /* Document stays in place while annotations and the existing chat run beside it. */
-.study-workspace { border: 1px solid var(--border); border-radius: var(--radius-card,20px); overflow: hidden; background: var(--card); }
+.study-workspace { border: 1px solid var(--border); border-radius: var(--radius-card,10px); overflow: hidden; background: var(--card); }
 .study-palette { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:12px 16px; border-bottom:1px solid var(--border); }
 .study-columns { display:grid; grid-template-columns:minmax(0,1fr) 360px; height:calc(100dvh - 240px); min-height:460px; max-height:1000px; }
 .study-reader { padding:28px 32px 64px; min-width:0; overflow:auto; overscroll-behavior:contain; }
@@ -458,11 +459,11 @@
 .study-aside { border-left:1px solid var(--border); display:flex; flex-direction:column; min-width:0; min-height:0; }
 .study-panel-header { padding:12px 16px; border-bottom:1px solid var(--border); }
 .study-notes,.study-chat { padding:16px; overflow:auto; overscroll-behavior:contain; min-height:0; flex:1; }
-.study-note { border:1px solid var(--border); border-radius:14px; padding:12px; margin:12px 0; overflow-wrap:anywhere; }
+.study-note { border:1px solid var(--border); border-radius:8px; padding:12px; margin:12px 0; overflow-wrap:anywhere; }
 .study-note textarea,.study-composer textarea { font-size:14px; max-height:180px; overflow:auto; }
 .study-message { font-size:14px; padding:12px 0; overflow-wrap:anywhere; }
 .study-message p { font-size:14px; }
-.study-question { background:var(--muted); padding:12px; border-radius:14px; margin:8px 0; }
+.study-question { background:var(--muted); padding:12px; border-radius:8px; margin:8px 0; }
 .study-composer { padding:12px 16px; border-top:1px solid var(--border); }
 .study-composer details[open] { max-height:150px; overflow:auto; }
 .study-mobile-tabs { display:none; }
@@ -486,11 +487,11 @@
 .project-workspace[data-library=false][data-notes=false] .project-columns { grid-template-columns:minmax(0,1fr); }
 .project-panel[hidden] { display:none; }
 .project-library { overflow:auto; padding:16px 10px; border-right:1px solid var(--border); min-width:0; }
-.project-source { display:flex; align-items:start; gap:4px; padding:10px 8px; border-radius:12px; margin:4px 0; }
+.project-source { display:flex; align-items:start; gap:4px; padding:10px 8px; border-radius:8px; margin:4px 0; }
 .project-desk,.project-primary { min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
 .project-primary > div:not([hidden]) { flex:1; min-height:0; }
 .project-tabs { display:flex; overflow-x:auto; flex-shrink:0; border-bottom:1px solid var(--border); padding:6px; scrollbar-width:thin; }
-.project-tab { max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:8px 10px; border-radius:10px; font-size:13px; color:var(--muted-foreground); }
+.project-tab { max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:8px 10px; border-radius:6px; font-size:13px; color:var(--muted-foreground); }
 .project-tab:focus-visible { outline:2px solid var(--ring); outline-offset:-2px; }
 .project-readers { display:grid; grid-template-columns:minmax(0,1fr); flex:1; min-height:0; }
 .project-readers.is-comparing { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -561,3 +562,20 @@
   }
 }
 @media print { .company-research-grid { display:block; } .company-research-chart { position:static; } .company-research-evidence { max-height:none; overflow:visible; } }
+
+
+/* ---------- 위젯 보드 (react-grid-layout, docs/specs/home-widgets.md) ---------- */
+/* 끄거나 크기를 바꾸는 동안 놓일 자리 */
+.react-grid-item.react-grid-placeholder { background: var(--primary); opacity: .1; border-radius: var(--radius-card); }
+/* 끄는 동안 글자가 함께 선택되지 않게, 끄는 카드는 살짝 띄운다 */
+body:has(.react-draggable-dragging, .react-grid-item.resizing) { user-select: none; }
+.react-grid-item.react-draggable-dragging > *, .react-grid-item.resizing > * { box-shadow: 0 8px 24px color-mix(in oklab, var(--foreground) 12%, transparent); }
+/* 크기 손잡이 — 라이브러리 CSS가 뒤에 읽히므로 .react-grid-layout으로 한 단계 높인다. 평소엔 숨기고 올렸을 때 얇은 막대로(아래=높이, 오른쪽=이웃과 폭 주고받기) */
+.react-grid-layout .react-grid-item > .react-resizable-handle { opacity: 0; transition: opacity 150ms; background: none; transform: none; }
+.react-grid-layout .react-grid-item:hover > .react-resizable-handle, .react-grid-layout .react-grid-item.resizing > .react-resizable-handle { opacity: 1; }
+.react-grid-layout .react-grid-item > .react-resizable-handle::after { border: 0 !important; border-radius: 9999px; background: var(--muted-foreground); opacity: .55; }
+.react-grid-layout .react-grid-item > .react-resizable-handle.react-resizable-handle-s { transform: none; bottom: -2px; left: 50%; width: 40px; height: 10px; margin-left: -20px; cursor: ns-resize; }
+.react-grid-layout .react-grid-item > .react-resizable-handle.react-resizable-handle-s::after { left: 4px; right: 4px; bottom: 4px; width: auto; height: 3px; }
+.react-grid-layout .react-grid-item > .react-resizable-handle.react-resizable-handle-e { transform: none; right: -2px; top: 50%; width: 10px; height: 40px; margin-top: -20px; cursor: ew-resize; }
+.react-grid-layout .react-grid-item > .react-resizable-handle.react-resizable-handle-e::after { top: 4px; bottom: 4px; right: 4px; width: 3px; height: auto; }
+@media (prefers-reduced-motion: reduce) { .react-grid-item, .react-grid-layout { transition: none !important; } }
