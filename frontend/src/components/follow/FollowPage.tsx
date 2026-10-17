@@ -26,19 +26,16 @@ import { useRefreshSource } from "@/hooks/useRefreshSource"
 import type { StockGroupMember } from "@/types"
 
 /**
- * /follow — 팔로우 허브 (L1). 내가 따라가는 모든 것: 종목·채널·블로그·태그.
- * 행 클릭 = 도시에 (종목→/analyze, 소스→/source, 태그→피드 필터).
+ * /follow — 팔로우 허브 (L1). 내가 따라가는 종목·인물.
+ * 행 클릭 = 도시에 (종목→/analyze, 인물→/person).
  * 새 소스 종류(유튜브·리포트 등)가 늘면 여기에 섹션이 추가된다.
  */
 export default function FollowPage() {
   const navigate = useNavigate()
-  return <PageLayout header={<PageHeader title="관심목록" description="추적하는 기업·인물·산업·테마" actions={<Button asChild variant="outline" size="sm"><Link to="/sources">소스 관리</Link></Button>} />}>
+  return <PageLayout header={<PageHeader title="관심목록" description="추적하는 기업·인물" actions={<Button asChild variant="outline" size="sm"><Link to="/sources">소스 관리</Link></Button>} />}>
     <div className="space-y-5">
       <StocksSection onGo={code => navigate(`/analyze/${code}/summary`)} />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <FollowedPeopleCard onGo={name => navigate(`/person?name=${encodeURIComponent(name)}`)} />
-        <FollowedTagsCard onGo={(type, name) => navigate(`/feed?${type === 'sector' ? 'industry' : 'topic'}=${encodeURIComponent(name)}`)} />
-      </div>
+      <FollowedPeopleCard onGo={name => navigate(`/person?name=${encodeURIComponent(name)}`)} />
     </div>
   </PageLayout>
 }
@@ -574,56 +571,6 @@ function FollowedPeopleCard({ onGo }: { onGo: (name: string) => void }) {
             {people.map((f) => (
               <Badge key={f.entity_id} variant="outline" className="text-xs gap-1 pr-1 cursor-pointer text-hypothesis border-hypothesis/40 hover:bg-hypothesis/10"
                 onClick={() => onGo(f.name)}>
-                {f.name}
-                <button
-                  onClick={(e) => { e.stopPropagation(); unfollow.mutate(f.entity_id) }}
-                  className="hover:text-destructive" aria-label="팔로우 해제">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-/* ── 팔로우 태그 (섹터·테마) ── */
-
-function FollowedTagsCard({ onGo }: { onGo: (type: string, name: string) => void }) {
-  const qc = useQueryClient()
-  const { data: allFollows = [] } = useQuery({
-    queryKey: ["spine", "follows"],
-    queryFn: async () => (await api.get("/api/spine/follows")).data as
-      { entity_id: number; type: string; name: string }[],
-    staleTime: 60_000,
-  })
-  const follows = allFollows.filter((f) => f.type !== "person")
-  const unfollow = useMutation({
-    mutationFn: unfollowEntity,
-    onSuccess: () => {
-      toast.success("팔로우 해제 — 홈 업데이트에서 제외됩니다")
-      qc.invalidateQueries({ queryKey: ["spine", "follows"] })
-      qc.invalidateQueries({ queryKey: spineKeys.home() })
-    },
-  })
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">태그 팔로우 <span className="font-normal text-muted-foreground">{follows.length}</span></CardTitle>
-      </CardHeader>
-      <CardContent>
-        {follows.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            팔로우한 산업·테마가 없습니다 — 피드에서 태그 필터 후 "이 태그 팔로우"를 눌러보세요.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {follows.map((f) => (
-              <Badge key={f.entity_id} variant="secondary" className="text-xs gap-1 pr-1 cursor-pointer"
-                onClick={() => onGo(f.type, f.name)}>
                 {f.name}
                 <button
                   onClick={(e) => { e.stopPropagation(); unfollow.mutate(f.entity_id) }}

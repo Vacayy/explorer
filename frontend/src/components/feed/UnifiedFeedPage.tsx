@@ -1,10 +1,7 @@
 import { DocumentCard } from './FeedPost'
 import { isDocumentFeed } from '@/components/layout/navConfig'
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
-import { BellPlus, Search, X } from "lucide-react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
-import { followEntity, spineKeys } from "@/api/spine"
+import { Search, X } from "lucide-react"
 import { useSpineFeed } from "@/hooks/useSpineFeed"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -39,14 +36,6 @@ function DocumentFeedPage() {
     size: 20,
   }
   const { data, isLoading, isError, refetch, isPlaceholderData } = useSpineFeed(filters)
-  const qc = useQueryClient()
-  const follow = useMutation({
-    mutationFn: followEntity,
-    onSuccess: (_d, v) => {
-      toast.success(`'${v.name}' 팔로우 — 홈 업데이트에 반영됩니다`)
-      qc.invalidateQueries({ queryKey: spineKeys.home() })
-    },
-  })
 
   const setFilter = (key: string, value: string | null) => {
     setSearchParams((prev) => {
@@ -107,17 +96,6 @@ function DocumentFeedPage() {
               </Button>
             </Badge>
           ))}
-          {(filters.industry || filters.topic) && (
-            <Button
-              variant="outline" size="xs"
-              disabled={follow.isPending}
-              onClick={() => follow.mutate(filters.industry
-                ? { type: "sector", name: filters.industry }
-                : { type: "theme", name: filters.topic! })}
-            >
-              <BellPlus className="h-3 w-3" /> 이 태그 팔로우
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="xs"
