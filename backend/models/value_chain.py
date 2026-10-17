@@ -57,3 +57,31 @@ class ValueChainResponse(BaseModel):
     nodes: list[VcNode]
     edges: list[VcEdge]
     thresholds: dict[str, float]   # 위약 상위 5% 상관(신호별)
+
+
+class PropRow(BaseModel):
+    stock_code: str
+    name: str
+    directions: dict[str, str | None]
+    agree_up: int
+    observed: int
+
+
+class PropLead(BaseModel):
+    leader: str
+    leader_name: str
+    leader_state: str
+    follower: str
+    follower_name: str
+    follower_state: str | None
+    months: int
+    verdict: str
+    status: str                    # 반영됨 | 대기
+    kr: list[VcCompany]
+
+
+class PropagationResponse(BaseModel):
+    as_of: str | None
+    waiting: list[PropRow]         # 대만 ↑, 한국 수출·공시 아직
+    diverging: list[PropRow]       # 원천끼리 방향 반대
+    leads: list[PropLead]          # 확인된 선행 엣지에서 앞선 칸이 방향을 바꿈

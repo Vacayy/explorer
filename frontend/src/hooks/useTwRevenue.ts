@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import type { KrConfirm, TwLinksResponse, TwRevenueResponse } from "@/types"
+import type { KrConfirm, PropagationResponse, TwLinksResponse, TwRevenueResponse, ValueChainResponse } from "@/types"
 
 /** 대만 월매출 91개사 — 저장분 읽기(수집은 매일 11:00 launchd twrevenue) */
 export function useTwRevenue() {
@@ -19,4 +19,12 @@ export function useKrConfirm(kr?: string) {
   return useQuery(apiQuery<KrConfirm[]>({
     key: ["spine", "tw", "confirm", kr ?? "all"], url: "/api/spine/tw/confirm", params: kr ? { kr } : undefined, staleTime: STALE.long,
   }))
+}
+
+/** 밸류체인 지도(노드 신호·엣지 시차)와 번지는 중 판정 */
+export function useValueChain() {
+  return useQuery(apiQuery<ValueChainResponse>({ key: ["spine", "tw", "value-chain"], url: "/api/spine/tw/value-chain", staleTime: STALE.long }))
+}
+export function usePropagation() {
+  return useQuery(apiQuery<PropagationResponse>({ key: ["spine", "tw", "propagation"], url: "/api/spine/tw/propagation", staleTime: STALE.long }))
 }

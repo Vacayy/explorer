@@ -37,6 +37,7 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
     { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },
     { key: "trade", path: "/follow/trade", label: "수출입", match: ["/follow/trade"] },
+    { key: "valuechain", path: "/value-chain", label: "밸류체인", match: ["/value-chain"] },
     { key: "credit", path: "/follow/credit", label: "회사채", match: ["/follow/credit"] },
     { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
     { key: "actions", path: "/actions", label: "기업활동", match: ["/actions"] },

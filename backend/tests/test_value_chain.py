@@ -44,3 +44,23 @@ class LagTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PropagationTests(unittest.TestCase):
+    def test_waiting_diverging_and_leads(self):
+        from pipeline.value_chain import propagation
+        vmap = {"as_of": "2026-09", "nodes": [
+            {"key": "a", "name": "A", "kr": [{"code": "1", "name": "일"}], "state": "가속"},
+            {"key": "b", "name": "B", "kr": [{"code": "2", "name": "이"}], "state": "유지"},
+            {"key": "c", "name": "C", "kr": [], "state": "가속"}],
+            "edges": [{"from": "a", "to": "b", "verdict": "확인", "lag": 3, "lag_consistent": True},
+                      {"from": "c", "to": "b", "verdict": "확인", "lag": 1, "lag_consistent": True},      # 1개월은 경보 아님
+                      {"from": "b", "to": "c", "verdict": "미확인", "lag": 4, "lag_consistent": True}]}   # 미확인은 제외
+        confirms = [
+            {"stock_code": "1", "directions": {"taiwan": "up", "trade": None, "disclosure": "flat"}, "agree_up": 1, "observed": 2},
+            {"stock_code": "2", "directions": {"taiwan": "up", "trade": "down", "disclosure": "up"}, "agree_up": 2, "observed": 3}]
+        p = propagation(vmap, confirms)
+        self.assertEqual([w["stock_code"] for w in p["waiting"]], ["1"])
+        self.assertEqual([w["stock_code"] for w in p["diverging"]], ["2"])
+        self.assertEqual(len(p["leads"]), 1)
+        self.assertEqual((p["leads"][0]["leader"], p["leads"][0]["follower"], p["leads"][0]["status"]), ("a", "b", "대기"))

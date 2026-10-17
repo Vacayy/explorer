@@ -433,6 +433,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `/api/spine/company-profile/{code}?market=kr\|us` | **웹 조사 기업 개요(D-188)** — GET(최신 보고서 또는 null) · POST `{reason?, force?}`(동기, 모델 1콜; 24시간 내 보고서 재사용; 502에 실패 사유). `market=us`는 티커(대문자)·`resolve_us` 이름·DART 단계 없음(SEC 우선 프롬프트). 라우터 `routers/company_profile.py` |
 | `GET /api/spine/search?q=` · `/search/today` | **옴니바 통합 검색(D-189)** — 국내 종목(정확›접두›포함, 시총순, 시세·묶음 포함; 초성 색인·`entity_keywords` 별칭)·미국 티커·인물/테마·묶음·스터디 프로젝트·문장 속 언급(`mentions`)을 그룹별로. `/today`는 묶음 최신 기준일의 새 신호. `routers/spine_search.py`, 모델 호출 0 |
 | `GET /api/spine/tw/confirm[?kr=]` | **한국 확인 신호** — `pipeline/kr_confirm.confirm()` 종목별 세 원천 방향. 종목 상세 `TaiwanLinkCard` |
+| `GET /api/spine/tw/propagation` | **번지는 중** — 한국 확인 전·엇갈림·선행 경보(`value_chain.propagation`). 화면 탐색 › 밸류체인(`/value-chain`, `explore/ValueChainPage`) |
 | `GET /api/spine/tw/value-chain` | **밸류체인 지도** — 노드(대만·한국 구성, 3개월 YoY·상태), 엣지(판정·시차·신호별 상관), 위약 기준. `pipeline/value_chain.read_map()` |
 | `GET /api/spine/tw/links[?kr=]` | **대만 → 한국 연결 신호** — `pipeline/tw_links.read_links()`. 종목 상세 `TaiwanLinkCard`·홈 위젯 `explore.twLinks`. 프록시 어댑터 `tw:`(대만 월매출·YoY·3개월 YoY, 층 합계) |
 | `GET /api/spine/tw/revenue?months=36` | **대만 월매출** — `pipeline/tw_revenue.read()`(as_of·reported/total·layers·items[최신 월·YoY·3개월 YoY·lagging·note·series]). `routers/spine_tw.py`, `models/tw.py`. 홈 위젯 `explore.twRevenue` |
@@ -508,6 +509,7 @@ Home(/home)        홈 = 위젯 대시보드(docs/specs/home-widgets.md, 2026-10
                    **유니버스**(/follow/universe: 담당 섹터 커버리지 — 산업 맵 그룹×밸류체인 단계를 기계 제안(후보)→사람 승인으로 큐레이션, UniversePage, D-037·D-039. + **'이 섹터의 내러티브' 집약 뷰 + 섹터 리포트**(D-074: 그룹을 건드리는 내러티브가 섹터 단위로 모임, 월드모델로 링크 + '섹터 리포트 생성'(compute-group)·'리포트 보기' — 섹터=팔로우×월드모델 cross-cutting 앵커)) ·
                    **컨콜**(/follow/transcripts: 미국 기업 실적 컨콜 2분할 브라우저 — 좌 그룹 팔로우, 우 핵심 정리+원문, D-061. + 상단 '곧 발표' 실적 캘린더·팔로우 행 D-day 배지·발표일 갱신, D-081) ·
                    **수출입**(/follow/trade: 관세청 품목별 무역통계 2분할 — 좌 품목 팔로우, 우 수출입 추이 차트+관련 종목(파급 논리), D-064) ·
+                   **밸류체인**(/value-chain: 탐색 L2 — 대만 월매출 공급 지도(React Flow)·번지는 중(한국 확인 전·엇갈림·선행 경보)·한국 확인 신호, docs/specs/value-chain.md, D-251) ·
                    **저장됨**(/follow/saved: 산출물 북마크 목록 — kind 필터 + 인라인 메모·삭제, SavedPage, D-078. 문서 교차 종합은 D-241에서 제거, `/synthesis/:id`→`/study`) ·
                    **산업 맵**(/map: 산업/섹터 4사분면 RS) · **인물**(/people: 디렉토리 → /person 도시에) · **기업활동**(/actions: 목록+요약 | 유무증 Pro) — 탐색에서 이관(D-057, 전부 '내가 커버하는 대상'). ※2026-10-16: `/map` = 탐색 › 산업·섹터(산업 맵·유니버스·산업군 지도를 `?view=map|universe|chains`로), `/follow/universe`·`/discover/industry`는 리다이렉트 ([explore-core](specs/explore-core.md))
 월드모델           **지금 · 그래프 · 내 판단 (docs/specs/world-model.md, 2026-10-16 — 아래 D-073 시간축 분할 배치를 대체)**: 지금=/narrative(이번 주 큰 그림[메가+저장된 세계관 브리핑, 표시만] · 이번 주 바뀐 서사[drift+추가/삭제 고리] · 서사 목록[30일 넘은 것은 ?old=1], 상세 맨 위 체크포인트[핵심질문→/question/:id·흔들릴 조건·수혜 섹터·종목·내 종목·종목 발견 입력 초안]) · 그래프=/knowledge/ontology(온톨로지) ↔ /knowledge(인과 그래프 업데이트·흔들리는 전제·검증 지식, 승인 대기 큐는 상단 인박스로만) · 내 판단=/questions(질문 기본, 출처 배지 통일) ↔ /thesis ↔ /report. 읽기 전용 `/api/spine/world/*`(LLM 0).

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query
 
 from models.tw import KrConfirm, TwLinksResponse, TwRevenueResponse
-from models.value_chain import ValueChainResponse
+from models.value_chain import PropagationResponse, ValueChainResponse
 
 router = APIRouter(prefix="/api/spine/tw", tags=["spine"])
 
@@ -34,3 +34,10 @@ def kr_confirm(kr: str | None = None):
     from pipeline.tw_links import LINKS
     codes = [kr] if kr else sorted({link[0] for link in LINKS})
     return [confirm(c) for c in codes]
+
+
+@router.get("/propagation", response_model=PropagationResponse)
+def propagation():
+    """번지는 중 — 한국 확인 전·엇갈림·선행 경보 (docs/specs/value-chain.md §5)"""
+    from pipeline.value_chain import propagation as compute
+    return compute()

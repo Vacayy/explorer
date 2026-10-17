@@ -1229,3 +1229,25 @@ export interface KrConfirm {
   directions: { taiwan: KrDirection; trade: KrDirection; disclosure: KrDirection }
   agree_up: number; observed: number
 }
+
+/** 밸류체인 지도 — GET /api/spine/tw/value-chain (docs/specs/value-chain.md) */
+export interface VcNode {
+  key: string; name: string; description: string
+  tw: { code: string; name: string }[]; kr: { code: string; name: string }[]
+  yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]; series: { ym: string; yoy: number }[]
+}
+export interface VcEdge {
+  from: string; to: string; kind: "supply" | "capex"; reason: string
+  verdict: "확인" | "부분" | "미확인" | "관측 불가"; lag?: number | null; lag_consistent?: boolean | null
+  signals: Record<string, { best_lag: number | null; corr: number | null; n: number; passed: boolean }>
+}
+export interface ValueChainResponse {
+  as_of: string | null; demands: { key: string; name: string; description: string }[]
+  nodes: VcNode[]; edges: VcEdge[]; thresholds: Record<string, number>
+}
+export interface PropRow { stock_code: string; name: string; directions: KrConfirm["directions"]; agree_up: number; observed: number }
+export interface PropLead {
+  leader: string; leader_name: string; leader_state: string; follower: string; follower_name: string
+  follower_state: string | null; months: number; verdict: string; status: "반영됨" | "대기"; kr: { code: string; name: string }[]
+}
+export interface PropagationResponse { as_of: string | null; waiting: PropRow[]; diverging: PropRow[]; leads: PropLead[] }

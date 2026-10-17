@@ -166,7 +166,7 @@ function TwLinksBody({ w, h }: WidgetBodyProps) {
 
 export const TW_WIDGETS: WidgetDef[] = [
   { id: "explore.twLinks", title: "대만 → 한국 연결", description: "대만 월매출이 가속·둔화한 밸류체인과 이어진 한국 종목 · 사업 근거·숫자 근거", section: "explore", group: "대만",
-    size: { w: 6, h: 5, minW: 3, minH: 2 }, useMeta: useTwLinksMeta, Body: TwLinksBody },
+    size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/value-chain", useMeta: useTwLinksMeta, Body: TwLinksBody },
   { id: "explore.twRevenue", title: "대만 월매출", description: "대만 반도체·IT 하드웨어·해운 91개사 월매출 · YoY · 3개월 YoY (밸류체인 층별)", section: "explore", group: "대만",
-    size: { w: 6, h: 5, minW: 3, minH: 2 }, useMeta: useTwMeta, Body: TwRevenueBody },
+    size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/value-chain", useMeta: useTwMeta, Body: TwRevenueBody },
 ]

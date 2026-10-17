@@ -146,3 +146,47 @@ def read_map() -> dict:
     measured = measure_all()
     return {"as_of": as_of, "demands": [{"key": k, "name": n, "description": d} for k, n, d in DEMANDS],
             "nodes": nodes, "edges": measured["edges"], "thresholds": measured["thresholds"]}
+
+
+def propagation(vmap: dict | None = None, confirms: list[dict] | None = None) -> dict:
+    """번지는 중 — 한국 확인 전·엇갈림·선행 경보 (docs/specs/value-chain.md §5).
+
+    - 한국 확인 전: 대만이 오르는데(↑) 한국 수출·공시 어느 쪽도 오르지 않은 종목 — 공시 시차의 빈칸
+    - 엇갈림: 관측한 원천끼리 방향이 반대(↑와 ↓가 함께)
+    - 선행 경보: 판정이 확인·부분이고 시차가 일관된 엣지 중 |시차|≥2개월, 앞선 칸이 방향을 바꿨다(가속·둔화·전환).
+      뒤따를 칸이 이미 같은 방향이면 '반영됨', 아니면 '대기'
+    """
+    from pipeline.kr_confirm import confirm
+    from pipeline.tw_links import LINKS
+    vmap = vmap or read_map()
+    if confirms is None:
+        confirms = [confirm(c) for c in sorted({link[0] for link in LINKS})]
+    names = {k["code"]: k["name"] for n in vmap["nodes"] for k in n["kr"]}
+    waiting, diverging = [], []
+    for c in confirms:
+        d = c["directions"]
+        observed = {k: v for k, v in d.items() if v}
+        row = {"stock_code": c["stock_code"], "name": names.get(c["stock_code"], c["stock_code"]), "directions": d,
+               "agree_up": c["agree_up"], "observed": c["observed"]}
+        if "up" in observed.values() and "down" in observed.values():
+            diverging.append(row)
+        elif d.get("taiwan") == "up" and d.get("trade") != "up" and d.get("disclosure") != "up":
+            waiting.append(row)
+    state_dir = {"가속": "up", "전환↑": "up", "둔화": "down", "전환↓": "down"}
+    nodes = {n["key"]: n for n in vmap["nodes"]}
+    leads = []
+    for e in vmap["edges"]:
+        lag = e.get("lag")
+        if e["verdict"] not in ("확인", "부분") or not e.get("lag_consistent") or lag is None or abs(lag) < 2:
+            continue
+        leader, follower = (e["from"], e["to"]) if lag > 0 else (e["to"], e["from"])
+        ls = nodes.get(leader, {}).get("state")
+        if ls not in state_dir:
+            continue
+        fs = nodes.get(follower, {}).get("state")
+        leads.append({"leader": leader, "leader_name": nodes[leader]["name"], "leader_state": ls,
+                      "follower": follower, "follower_name": nodes[follower]["name"], "follower_state": fs,
+                      "months": abs(lag), "verdict": e["verdict"],
+                      "status": "반영됨" if state_dir.get(fs) == state_dir[ls] else "대기",
+                      "kr": nodes[follower]["kr"]})
+    return {"as_of": vmap["as_of"], "waiting": waiting, "diverging": diverging, "leads": leads}
