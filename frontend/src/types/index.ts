@@ -183,19 +183,6 @@ export interface SpineFeedResponse {
   as_of: string;
 }
 
-// 종목 AI 브리프 (P2-1, docs/private/specs/product-v3.md §3)
-export interface StockBrief {
-  status: string;            // fresh | cached | empty | unavailable | failed
-  brief: string | null;
-  thesis_check: string | null;  // 내 논지 vs 새 증거 충돌·지지
-  revision_call: { direction: "up" | "down" | "hold"; rationale: string | null } | null;  // 추정치 방향 콜 (실측 대조용 기록)
-  created_at: string | null;
-  stale: boolean;
-  evidence?: string[];       // 근거 재료 인벤토리 (다이제스트·신호·공시·일정·논지)
-  has_thesis?: boolean;      // false면 논지 등록 유도 표시
-  thesis?: string | null;    // 논지 원문 (불변 — AI는 점검만)
-}
-
 // 투자 렌즈 (docs/private/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)
 export interface LensReading {
   lens_type: string;         // value | trend
@@ -260,14 +247,6 @@ export interface UsGroup {
 }
 export interface UsList {
   groups: UsGroup[];
-}
-export interface UsMention {
-  id: number;
-  source_type: string;
-  title: string | null;
-  url: string | null;
-  published_at: string | null;
-  excerpt: string | null;
 }
 export interface UsEdge {
   src: string;

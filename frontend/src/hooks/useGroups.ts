@@ -47,7 +47,6 @@ function useGroupWrite<TVariables>(mutationFn: (variables: TVariables) => Promis
 }
 
 export function useCreateGroup() { return useGroupWrite(async (body: { name: string; kind: StockGroupKind; note?: string }) => (await api.post<StockGroupDetail>(ROOT, body)).data) }
-export function useUpdateGroup(id: number) { return useGroupWrite(async (body: { name?: string; kind?: StockGroupKind; note?: string }) => (await api.patch<StockGroupDetail>(`${ROOT}/${id}`, body)).data) }
 export function useDeleteGroup() {
   const client = useQueryClient()
   return useMutation({ mutationFn: async (id: number) => { await api.delete(`${ROOT}/${id}`) }, onSuccess: () => client.invalidateQueries({ queryKey: groupKeys.list }) })
@@ -77,16 +76,6 @@ export function useToggleWatch() {
       : (await api.delete<StockGroupDetail>(`${ROOT}/${group.id}/members/${stockCode}`)).data
   })
 }
-/** 종목 논지 저장 — 기본 관심 묶음 멤버의 thesis. 묶음에 없으면 먼저 넣는다(종목 브리프의 논지 점검 기준). */
-export function useSetWatchThesis() {
-  const client = useQueryClient()
-  return useGroupWrite(async ({ stockCode, thesis }: { stockCode: string; thesis: string }) => {
-    const group = await client.ensureQueryData(defaultWatchQuery)
-    await api.post(`${ROOT}/${group.id}/members`, { stock_code: stockCode })
-    return (await api.patch<StockGroupDetail>(`${ROOT}/${group.id}/members/${stockCode}`, { thesis })).data
-  })
-}
-
 /** 발견 화면의 저장 전략 조건을 묶음 기본 규칙에 덧붙인다(같은 전략·매개변수는 한 번만). */
 export function useAppendDefaultRules() {
   return useGroupWrite(async ({ groupId, rules }: { groupId: number; rules: WatchRuleInput[] }) => {

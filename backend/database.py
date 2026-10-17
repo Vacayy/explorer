@@ -588,22 +588,6 @@ def init_db():
         created_at     TEXT DEFAULT (datetime('now'))
     );
 
-    -- Peer 그룹 (LLM 큐레이션 1회 캐시) + 지표 캐시 (KR=자체, 해외=yfinance 24h)
-    CREATE TABLE IF NOT EXISTS stock_peers (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        stock_code TEXT NOT NULL,
-        name       TEXT NOT NULL,
-        ticker     TEXT NOT NULL,          -- 야후 티커 (005930.KS, MU 등)
-        market     TEXT NOT NULL,          -- KR | US | JP | ...
-        created_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(stock_code, ticker)
-    );
-    CREATE TABLE IF NOT EXISTS peer_metrics (
-        ticker       TEXT PRIMARY KEY,
-        metrics_json TEXT NOT NULL,
-        fetched_at   TEXT NOT NULL
-    );
-
     -- 지식 계층 (K0, knowledge-hierarchy-design.md) — 신피질: 승격된 통합 지식
     CREATE TABLE IF NOT EXISTS knowledge (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -678,16 +662,6 @@ def init_db():
         is_active   INTEGER DEFAULT 1,
         last_fetched_at TEXT,
         added_at    TEXT DEFAULT (datetime('now'))
-    );
-    -- 특징일 설명 캐시 — 급등락일 원인 (마커 클릭 시 1콜, 영구 캐시)
-    CREATE TABLE IF NOT EXISTS feature_day_notes (
-        stock_code TEXT NOT NULL,
-        date       TEXT NOT NULL,
-        note       TEXT,               -- NULL이면 status 참조 (no_docs 등)
-        status     TEXT NOT NULL,      -- ok | no_docs | failed
-        model      TEXT,
-        created_at TEXT,
-        PRIMARY KEY (stock_code, date)
     );
     -- 밸류체인 구조 (맵 v2) — 대분류별 단계·테마 (LLM 시드)
     CREATE TABLE IF NOT EXISTS value_chains (

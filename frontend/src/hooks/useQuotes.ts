@@ -27,8 +27,3 @@ export function useQuotes(codes: string[]) {
     refetchInterval: 10_000,   // 장중 준실시간 (BE 10초 캐시와 짝)
   })
 }
-
-export function useQuote(code: string): LiveQuote | undefined {
-  const { data } = useQuotes(code ? [code] : [])
-  return data?.find((q) => q.stock_code === code)
-}
