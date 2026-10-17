@@ -2,7 +2,7 @@
 
 - 상태: P5 구현 계약 (2026-10-16). 셸은 [app-shell](app-shell.md), 위젯 계약은 [home-widgets](home-widgets.md) §2, 피드 조회 계약은 [home-feed](home-feed.md), 스터디는 [study-mode](study-mode.md).
 - 목적: 좋은 자료를 읽고, 공부하고, 남기는 작업대.
-- 범위 밖(후속): URL 이전(`/canvas/*`)과 리다이렉트, 통합 타임라인(`/feed?feed_*`)·문서 교차 종합 같은 휴면 기능 정리.
+- 범위 밖(후속): URL 이전(`/canvas/*`)과 리다이렉트, 통합 타임라인(`/feed?feed_*`)·문서 교차 종합 같은 휴면 기능 정리(D-241에서 제거 완료).
 
 | L2 | 지금 URL | 화면 |
 |---|---|---|

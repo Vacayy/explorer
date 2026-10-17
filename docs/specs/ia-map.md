@@ -19,7 +19,7 @@
 | `/archive` | 보관함 (네비 허브) | Header 아이콘 |
 
 ### 보관함 (2군 — 라우트 유지, 네비에서 제거)
-`/analyze/compare` · `/research/watchlist` · `/research/memos` · `/research/catalysts` · `/discover/industry` · `/discover/screener` · `/discover/alt-data`
+`/analyze/compare` · `/research/watchlist` · `/discover/industry` (투자메모·카탈리스트·스크리너·대안데이터는 D-241에서 제거 — 리다이렉트만 남음)
 
 ### 리다이렉트 (레거시 호환)
 `/`→`/home` · `/discover`,`/discover/signals`→`/explore` · `/industry`→`/discover/industry` · `/onchain`→`/discover/alt-data` · `/feed/telegram·blogs`→`/feed?source=` · `/research`→`/research/watchlist` · `/company/:code/:tab`→`/analyze/...` · **catch-all `*`→`/discover/industry`** ← 보관함 화면이 404 기본값 (개편 시 `/home`으로)
@@ -91,10 +91,9 @@ flowchart TD
   MENT -->|언급 문서| DOC
   SUMM["/analyze 요약탭"] -.->|공시| DART
 
-  AR["/archive 보관함"] --> CMP["/analyze/compare"] & WL & MEMO["/research/memos"] & CAT["/research/catalysts"] & IND["/discover/industry"] & SCR["/discover/screener"] & ALT["/discover/alt-data"]
+  AR["/archive 보관함"] --> CMP["/analyze/compare"] & WL & IND["/discover/industry"]
   CMP --> AN
   WL --> AN
-  SCR --> AN
   IND --> AN
 ```
 
