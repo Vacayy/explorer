@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Query
 
 from models.tw import TwLinksResponse, TwRevenueResponse
+from models.value_chain import ValueChainResponse
 
 router = APIRouter(prefix="/api/spine/tw", tags=["spine"])
 
@@ -17,3 +18,10 @@ def tw_links(kr: str | None = None):
     """대만 → 한국 연결 — 연결별 대만 신호(3개월 YoY·가속/둔화)와 숫자 근거(시차별 상관)"""
     from pipeline.tw_links import read_links
     return read_links(kr)
+
+
+@router.get("/value-chain", response_model=ValueChainResponse)
+def value_chain():
+    """밸류체인 지도 — 노드별 대만 신호, 엣지별 측정 시차·위약 보정 판정 (docs/specs/value-chain.md)"""
+    from pipeline.value_chain import read_map
+    return read_map()
