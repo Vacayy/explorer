@@ -62,6 +62,15 @@ class CitationTests(unittest.TestCase):
         self.assertEqual(ub._link_citations(["지표만."], {"issues": []}), (["지표만."], []))
 
 
+class KeyPointsTests(unittest.TestCase):
+    def test_strips_citations_drops_blanks_caps_at_five(self):
+        out = ub._normalize_synthesis({"key_points": ["금리 10bp 하락 [S1]", " ", 3, "a", "b", "c", "d", "e"]})
+        self.assertEqual(out["key_points"], ["금리 10bp 하락", "a", "b", "c", "d"])
+
+    def test_old_rows_have_empty_list(self):
+        self.assertEqual(ub._normalize_synthesis({"drivers": "x"})["key_points"], [])
+
+
 class RateBpTests(unittest.TestCase):
     def test_bp_not_percent(self):
         bp = ub._rate_bp({"series": [5.10, 5.12, 5.15, 5.16, 5.18, 5.18, 5.24]})

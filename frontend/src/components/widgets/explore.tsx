@@ -3,12 +3,13 @@ import { Badge } from "@/components/ui/badge"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { SIGNAL_LABEL, signalEntityPath } from "@/components/shared/SignalCard"
 import { useSignalsSummary } from "@/hooks/useSpineSignals"
-import { useCallMomentum, useRecentCalls } from "@/hooks/useTranscripts"
+import { useCallMomentum, useRecentCalls, useTranscriptFollow } from "@/hooks/useTranscripts"
 import { quadrantOf, useSectorMap } from "@/hooks/useSectorMap"
 import { cn } from "@/lib/utils"
 import { SparkLine } from "@/components/shared/Spark"
 import { useTrendLeaders } from "@/hooks/useTrendLeaders"
 import { formatLevel, formatNumber, formatPercent } from "@/utils/format"
+import type { TranscriptFollowSummary } from "@/types"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
 import {
   ActionsBody, CreditBody, PeopleBody, RightsBody, TradeBody,
@@ -106,14 +107,43 @@ function useCallsMeta(): WidgetMeta {
   const latest = (q.data ?? []).reduce<string | null>((m, c) => (c.fetched_at && (!m || c.fetched_at > m) ? c.fetched_at : m), null)
   return { asOf: kstStamp(latest) }
 }
+/** 오늘(로컬 자정)부터 며칠 뒤 — 지난 날짜는 음수 */
+const daysUntil = (iso?: string | null) => {
+  if (!iso) return null
+  const d = new Date(iso + "T00:00:00"), today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Number.isNaN(d.getTime()) ? null : Math.round((d.getTime() - today.getTime()) / 86_400_000)
+}
 function CallsBody({ h }: WidgetBodyProps) {
   const q = useRecentCalls(7)
+  const follow = useTranscriptFollow()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  if (!q.data.length) return <WidgetState empty emptyText="지난 7일간 새로 받은 컨콜이 없어요. 매일 07:20에 수집합니다." />
-  // 받은 순이 아니라 발표일 순 — 늦게 받은 옛 분기 콜이 '최근'으로 보이지 않게
-  const rows = [...q.data].sort((a, b) => (b.call_date ?? "").localeCompare(a.call_date ?? "")).slice(0, h > 3 ? 5 : h === 3 ? 3 : 1)
-  return <div className="flex h-full flex-col gap-2">
-    <WidgetHero value={`${formatNumber(q.data.length)}건`} aside={<span className="text-sm text-muted-foreground">지난 7일 수집</span>} />
+  // 위: 곧 발표할 팔로우 기업(발표일 가까운 순) — 컨콜 탭 '곧 발표'와 같은 원천
+  const upcoming = (follow.data ?? []).map(f => ({ f, d: daysUntil(f.next_report_date) }))
+    .filter((x): x is { f: TranscriptFollowSummary; d: number } => x.d != null && x.d >= 0)
+    .sort((a, b) => a.d - b.d).slice(0, h > 3 ? 5 : 2)
+  // 아래: 받은 순이 아니라 발표일 순 — 늦게 받은 옛 분기 콜이 '최근'으로 보이지 않게
+  const rows = [...q.data].sort((a, b) => (b.call_date ?? "").localeCompare(a.call_date ?? "")).slice(0, h > 3 ? 5 : 2)
+  return <div className="flex h-full flex-col gap-2 overflow-hidden">
+    <p className="text-[11px] font-medium text-muted-foreground">곧 발표 · 실적 캘린더</p>
+    {follow.isError ? <p className="text-[13px] text-muted-foreground">발표 일정을 불러오지 못했어요.</p>
+      : !follow.data ? <p className="text-[13px] text-muted-foreground">불러오는 중…</p>
+      : !upcoming.length ? <p className="text-[13px] text-muted-foreground">확인된 발표 예정이 없어요. 컨콜 탭에서 발표일을 갱신할 수 있어요.</p>
+      : <ul className="divide-y text-[13px]">
+        {upcoming.map(({ f, d }) => (
+          <li key={f.ticker}>
+            <Link to={f.latest ? `/follow/transcripts?t=${f.latest.transcript_id}` : "/follow/transcripts"} title={`${f.company_name} · ${f.next_report_date}`}
+              className="flex items-center gap-2 py-1.5 hover:underline">
+              <Badge variant={d <= 3 ? "default" : "secondary"} className="w-11 shrink-0 justify-center px-1 text-[11px] tabular-nums">{d === 0 ? "오늘" : `D-${d}`}</Badge>
+              <span className="font-medium">{f.ticker}</span>
+              <span className="min-w-0 truncate text-muted-foreground">{f.company_name}</span>
+              <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{f.next_report_date!.slice(5)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>}
+    <p className="mt-1 border-t pt-2 text-[11px] font-medium text-muted-foreground">최근 받은 컨콜 · 지난 7일 {formatNumber(q.data.length)}건</p>
+    {!q.data.length ? <p className="text-[13px] text-muted-foreground">지난 7일간 새로 받은 컨콜이 없어요. 매일 07:20에 수집합니다.</p> :
     <ul className="min-h-0 divide-y overflow-hidden text-[13px]">
       {rows.map(c => (
         <li key={c.transcript_id} className="flex items-center gap-2 py-1.5 first:pt-0">
@@ -122,7 +152,7 @@ function CallsBody({ h }: WidgetBodyProps) {
           <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{c.call_date ? `${c.call_date.slice(5)} 발표` : "-"}</span>
         </li>
       ))}
-    </ul>
+    </ul>}
   </div>
 }
 
@@ -215,8 +245,8 @@ export const EXPLORE_WIDGETS: WidgetDef[] = [
     size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/explore", useMeta: useSignalsMeta, Body: SignalsBody },
   { id: "explore.momentum", title: "이번 시즌 실적 모멘텀", description: "새로 생기거나 빨라진 성장 동인 · 미국 기업", section: "explore", group: "컨콜",
     size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/follow/transcripts?view=momentum", useMeta: useMomentumMeta, Body: MomentumBody },
-  { id: "explore.calls", title: "최근 받은 컨콜", description: "지난 7일 수집 · 발표일 순", section: "explore", group: "컨콜",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/follow/transcripts", useMeta: useCallsMeta, Body: CallsBody },
+  { id: "explore.calls", title: "컨콜 · 실적 발표", description: "곧 발표할 팔로우 기업(D-day) · 지난 7일 받은 컨콜", section: "explore", group: "컨콜",
+    size: { w: 4, h: 5, minW: 3, minH: 2 }, detailPath: "/follow/transcripts", useMeta: useCallsMeta, Body: CallsBody },
   { id: "explore.sectorShift", title: "섹터 사분면 이동", description: "1주 전과 RS 사분면이 바뀐 대분류", section: "explore", group: "산업·섹터",
     size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/map", useMeta: useSectorMeta, Body: SectorShiftBody },
   // P6a 끝

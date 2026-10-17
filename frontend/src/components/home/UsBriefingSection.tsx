@@ -89,7 +89,17 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {data.indices.items.length > 0 && <div className="grid grid-cols-1 gap-3 border-b pb-4 @[420px]/market:grid-cols-3">
+        {/* 핵심 요약 — 줄글 앞에 bullet로 먼저 (2026-10-17 이후 종합에만 있다) */}
+        {!!synthesis?.key_points?.length && (
+          <section aria-label="핵심 요약" className="rounded-lg bg-muted/40 px-3 py-2.5">
+            <p className="mb-1.5 text-caption font-medium text-muted-foreground">핵심 요약</p>
+            <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed marker:text-muted-foreground">
+              {synthesis.key_points.map((point, i) => <li key={i}>{point}</li>)}
+            </ul>
+          </section>
+        )}
+        {/* 위젯 안에서는 지수 띠가 따로 있어 생략 */}
+        {!embedded && data.indices.items.length > 0 && <div className="grid grid-cols-1 gap-3 border-b pb-4 @[420px]/market:grid-cols-3">
           {data.indices.items.slice(0, 3).map(index => <div key={index.name}>
             <p className="text-caption text-muted-foreground">{index.name}</p>
             <p className="mt-1 text-2xl font-semibold tabular-nums">{formatNumber(index.close)}</p>

@@ -1,9 +1,10 @@
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { ACT_META, actLink } from "@/components/home/AiActivityFeed"
 import { DocumentCard } from "@/components/feed/FeedPost"
+import SegmentTabs from "@/components/shared/SegmentTabs"
 import { useProjects } from "@/components/study/useProjects"
 import { AI_ACTIVITY, useAiActivity } from "@/hooks/useAiActivity"
 import { useFeedTopics } from "@/hooks/useFeedTopics"
@@ -28,12 +29,24 @@ function useFeedMeta(): WidgetMeta {
   const latest = q.data?.items[0]?.occurred_at
   return { asOf: latest ? formatKstDateTime(latest) : null }
 }
+const FEED_TABS = [{ value: "all", label: "전체" }, { value: "telegram", label: "텔레그램" }, { value: "blog", label: "블로그" }, { value: "youtube", label: "유튜브" }]
 function FeedBody({ h }: WidgetBodyProps) {
-  const q = useTimeline(FEED_QUERY)
+  // 출처 탭은 URL(feed_src)이 단일 소스 — 새로고침·뒤로 가기에도 유지
+  const [params, setParams] = useSearchParams()
+  const requested = params.get("feed_src") ?? "all"
+  const source = FEED_TABS.some(t => t.value === requested) ? requested : "all"
+  const setSource = (v: string) => setParams(prev => { const next = new URLSearchParams(prev); if (v === "all") next.delete("feed_src"); else next.set("feed_src", v); return next }, { replace: true, preventScrollReset: true })
+  return <div className="flex h-full flex-col gap-2">
+    <SegmentTabs tabs={FEED_TABS} value={source} onChange={setSource} />
+    <div className="min-h-0 flex-1"><FeedList h={h} source={source} /></div>
+  </div>
+}
+function FeedList({ h, source }: { h: number; source: string }) {
+  const q = useTimeline({ ...FEED_QUERY, source })
   const navigate = useNavigate()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   const docs = q.data.items.filter(i => i.document)
-  if (!docs.length) return <WidgetState empty emptyText="팔로우한 소스의 글이 아직 없어요. 캔버스 › 소스에서 등록합니다." />
+  if (!docs.length) return <WidgetState empty emptyText={source === "all" ? "팔로우한 소스의 글이 아직 없어요. 캔버스 › 소스에서 등록합니다." : "이 출처의 최신 글이 없어요."} />
   // 작게 줄이면 제목만, 넉넉하면 피드와 같은 게시물 행(요약 보기)을 위젯 안에서 스크롤
   if (h <= 3) return <ul className="divide-y overflow-hidden text-[13px]">
     {docs.slice(0, Math.max(1, h * 2 - 1)).map(i => (
@@ -46,7 +59,7 @@ function FeedBody({ h }: WidgetBodyProps) {
   return <div className="-mr-2 h-full overflow-y-auto pr-2">
     {docs.map(i => <DocumentCard key={i.id} doc={i.document!} variant="row" timeLabel={i.time_label} reading="summary"
       onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />)}
-    <Button asChild variant="ghost" size="sm" className="mt-2 w-full"><Link to={FEED}>피드에서 더 보기</Link></Button>
+    <Button asChild variant="ghost" size="sm" className="mt-2 w-full"><Link to={source === "all" ? FEED : `${FEED}&channel_type=${source}`}>피드에서 더 보기</Link></Button>
   </div>
 }
 

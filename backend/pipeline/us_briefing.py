@@ -699,6 +699,9 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, macro_i
         f"[D-4. 그날 시장 담론 — 시장구조 코멘터리]\n{docs}\n\n"
         "임무 — 두 문단. 화면에서 소제목 없이 이어 붙여 한 편의 글로 읽힌다(D-114). "
         "항목 이름을 문단 앞에 달지 말고 자연스럽게 넘어가라. 지수 수치는 화면 상단에 따로 보이니 나열하지 마라.\n"
+        "⓪ key_points(핵심 요약) — **3~5개 bullet.** 화면 맨 위에 먼저 보인다. 각 항목은 50자 안팎의 한 줄 평서문으로, "
+        "아래 두 문단에서 가장 중요한 사실만 사건 중심으로 뽑는다(매크로 1~2개 → 기업·자금 쏠림 1~3개 순). "
+        "수치는 핵심 하나만, 출처 표식은 붙이지 마라. 두 문단에 없는 내용을 새로 쓰지 마라.\n"
         "① drivers(매크로) — **4~6문장.** 첫 문장은 지수 마감의 성격을 한 구절로 짚고 가장 중요한 매크로 이슈로 들어간다. "
         "[B]의 이슈 2~3개를 **사건 중심으로** 쓴다: 무슨 일이 있었나 → 시장이 어떻게 반응했나([C]의 수치로 확인, "
         "금리는 bp로) → 누가 그렇게 봤나. 지표를 이슈와 무관하게 나열하지 마라. 구조 지표(유동성·신용)는 "
@@ -738,7 +741,7 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, macro_i
         "- **투자 대응·매매 처방을 쓰지 마라.** 비중 조절·매수·헤지 조언은 범위 밖이다(스터디·공유 후보는 그대로 남긴다).\n"
         "- **재료 구획 이름을 본문에 노출하지 마라.** '[C]를 보면'이 아니라 내용으로 지칭하라. "
         "허용되는 괄호 표식은 출처 번호 `[S n]`뿐이다.\n"
-        "JSON만 출력: {\"drivers\": \"…\", \"issues\": \"…\", "
+        "JSON만 출력: {\"key_points\": [\"…\"], \"drivers\": \"…\", \"issues\": \"…\", "
         "\"movers_why\": [{\"ticker\": \"INTC\", \"why\": \"+9.1% — 무슨 일(출처 종류). 사건이 없으면 '촉매 없음'\"}] (개별 이슈 종목 전부, 각 60자 이내), "
         "\"study_candidates\": [\"티커 — 왜 스터디해야 하는지 한 줄\"], "
         "\"share_candidates\": [\"티커/주제 — 이미 내러티브 있어 공유할 만한 것 한 줄\"]}"
@@ -793,6 +796,8 @@ def _normalize_synthesis(data: dict) -> dict:
     out = {k: (data.get(k) or "") for k in SYNTH_SECTIONS}
     if not out["issues"] and data.get("mood"):
         out["issues"] = data["mood"]
+    # 핵심 요약 bullet(2026-10-17) — 이전 행에는 없다(빈 목록). 출처 표식은 본문에만 둔다
+    out["key_points"] = [_CITE_RE.sub("", x).strip() for x in (data.get("key_points") or []) if isinstance(x, str) and x.strip()][:5]
     out["study_candidates"] = data.get("study_candidates") or []
     out["share_candidates"] = data.get("share_candidates") or []
     out["movers_why"] = [x for x in (data.get("movers_why") or []) if isinstance(x, dict) and x.get("ticker")]

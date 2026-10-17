@@ -51,7 +51,7 @@
 |---|---|---|---|---|---|
 | explore.signals | 오늘의 신호 | `/signals/summary` | 4×3 | 기준일 건수 · 유형 수 · 유형별 건수+상위 칩 | 신호 최신일 1일 초과 |
 | explore.momentum | 이번 시즌 실적 모멘텀 | `/transcript/momentum` | 4×4 | 새 모멘텀 수 · 시즌·발표 분석 수 · 상위 3(티커·점수·대표 동인) | 판정 2일 초과 · SEC 미설정 |
-| explore.calls | 최근 받은 컨콜 | `/transcript/recent?days=7` | 4×3 | 7일 수집 수 · 발표일 순 목록(받은 순 아님) | — (머리 = 마지막 수집 KST) |
+| explore.calls | 컨콜 · 실적 발표 | `/transcript/follow` + `/transcript/recent?days=7` | 4×5 | 위: 곧 발표할 팔로우 기업(D-day·발표일, 가까운 순 — 컨콜 탭 '곧 발표'와 같은 원천) · 아래: 7일 수집 수 · 발표일 순 목록(받은 순 아님) | — (머리 = 마지막 수집 KST) |
 | explore.sectorShift | 섹터 사분면 이동 | `/sector-map` | 4×4 | 사분면이 바뀐 대분류 수 · 1주 전 → 지금 · 단기 RS 변화 큰 순 | 시세 기준일 3일 초과 |
 
 사분면: 장기 RS ≥50·단기 ≥50 주도 / 장기 <50·단기 ≥50 부상 / <50·<50 소외 / ≥50·<50 과열·경계 (`hooks/useSectorMap.quadrantOf`).

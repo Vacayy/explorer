@@ -599,7 +599,7 @@ export interface UsBriefingSynthesis {
   index_summary: string;   // D-206 이전 행 호환(새 종합은 빈 값)
   drivers: string;         // 매크로 — `[n]` 출처 표식 포함
   issues: string;          // 거래대금 기반 기업 이슈
-  study_candidates: string[]; share_candidates: string[];
+  key_points?: string[]; study_candidates: string[]; share_candidates: string[];
   sources: UsBriefingSource[];
   source_gaps: string[];   // 빠진 재료(피드 수집 실패 등)
 }
@@ -1164,3 +1164,9 @@ export interface TrendLeader {
   ret_20: number; ret_60: number; r2: number; adx: number; gap_ma20: number; score: number; new: boolean; spark: number[]
 }
 export interface TrendLeadersResponse { as_of: string | null; criteria: string; universe: number; passed: number; items: TrendLeader[] }
+
+/** GET /api/spine/transcript/follow 중 위젯이 읽는 필드 (전체 행은 follow/TranscriptPage) */
+export interface TranscriptFollowSummary {
+  ticker: string; company_name: string; next_report_date?: string | null; calendar_checked_at?: string | null
+  latest: { transcript_id: number } | null
+}

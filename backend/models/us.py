@@ -102,6 +102,7 @@ class UsBriefingSource(BaseModel):
 
 class UsBriefingSynthesis(BaseModel):
     """2문단 종합 (D-206): 매크로 + 거래대금 기업 이슈. 구 스키마(`mood`)는 파이프라인이 issues로 승계한다."""
+    key_points: list[str] = []   # 핵심 요약 bullet 3~5 (2026-10-17 이후 종합만)
     index_summary: str = ""      # D-206 이전 행 호환(새 종합은 빈 값)
     drivers: str = ""            # 매크로 — 검증된 이슈 중심, `[n]` 출처 표식
     issues: str = ""             # 거래대금 기반 기업 이슈 (구 mood)

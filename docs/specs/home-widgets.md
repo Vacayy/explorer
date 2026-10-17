@@ -53,7 +53,7 @@ interface WidgetDef {
 |---|---|---|---|---|
 | market.indices | 지수 띠 | `/indices` | 12×1 | 지수별 값·등락 · 1Y 스파크(남는 높이를 채움) 가로 띠 |
 | market.context | 시장 요약 | `/macro` | 12×1 | 환율·금리·유가·금·BTC 가로 띠 · 올리면 추이 차트(`MetricTrend`) |
-| market.us | 어젯밤 미국장 | `/us/briefing` | 6×9 | 넉넉하면 `UsBriefingSection embedded` 전체를 위젯 안에서 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 종합 첫 문장 · 개별 이슈 3 |
+| market.us | 어젯밤 미국장 | `/us/briefing` | 6×9 | 넉넉하면 `UsBriefingSection embedded` 전체(핵심 요약 bullet 먼저, 지수 타일 생략)를 위젯 안에서 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 종합 첫 문장 · 개별 이슈 3 |
 | market.kr | 전일 국장 거래대금 | `/kr/movers` | 6×9 | 넉넉하면 `KrMoversSection embedded` 전체를 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 섹터 중앙 등락 · 상위 5 막대 |
 | risk.regime | 시장 국면 | `/market-regime` | 6×3 | 국장·미장 포스처 · 근거 한 줄 · 공포탐욕·VIX 타일 |
 | risk.curve | 금리차 10Y−2Y | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 3×3 | 값 · 20일 변화 · 3개월 스파크 · 누르면 Risk 모니터링 카드(`RiskCard`) 상세 창 |
@@ -67,7 +67,7 @@ interface WidgetDef {
 | id | 이름 | 원천 | 크기 | 내용 |
 |---|---|---|---|---|
 | explore.trend | 가파른 추세 | `/spine/trend-leaders` | 6×5 | 시세 최신일 · 통과 수/모집단 · 종목별 60일 스파크·수익률·고름(R²)·ADX·MA20 이격·신규(5거래일 전 미통과) → 기술적 분석(`?scan=1`) |
-| canvas.feed | 피드 | `/spine/feed/timeline`(sources, 1쪽) | 6×9 | 최신 게시 시각 · 피드와 같은 게시물 행(요약 보기)을 스크롤, 높이 3 이하면 제목 목록. 읽음 표시는 하지 않는다 |
+| canvas.feed | 피드 | `/spine/feed/timeline`(sources, 1쪽) | 6×9 | 최신 게시 시각 · 출처 탭(전체·텔레그램·블로그·유튜브, URL `feed_src`) · 피드와 같은 게시물 행(요약 보기)을 스크롤, 높이 3 이하면 제목 목록. 읽음 표시는 하지 않는다 |
 
 **가파른 추세 조건**(`pipeline/trend_leaders.py`, 모두 AND): 시총 3,000억+ · 60거래일 +30%+ · 60거래일 log(종가) 회귀 R² 0.75+ · 종가>MA20>MA60, MA60이 20거래일 전보다 높음 · ADX(14) 25+ & +DI>−DI. 순위 = 연율 로그 기울기 × R². LLM 0·네트워크 0, 시세 최신일 단위로 프로세스 메모리 캐시.
 
