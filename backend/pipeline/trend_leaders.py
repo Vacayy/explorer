@@ -7,7 +7,15 @@
 - 정배열: 종가 > MA20 > MA60, MA60이 20거래일 전보다 높다
 - 강도: ADX(14) 25 이상이고 +DI > −DI (strategies._adx 재사용)
 순위 = 연율 로그 기울기 × R² (Clenow식 '추세의 질'). 5거래일 전엔 조건 밖이었으면 new.
-stock_prices 최신일 기준으로 계산해 프로세스 메모리에 둔다(시세가 바뀌면 다시 계산).
+종목마다 근거(evidence: 조건별 실제 값·120일 종가·MA20·MA60·회귀선)를 함께 돌려준다.
+
+이벤트(같은 모집단, 추세 조건과 별개):
+- 52주 신고가 돌파: 최근 5거래일 안에 종가가 직전 250거래일 고가 최고치를 처음 넘었다
+- 매물대 돌파 후 지지: 20거래일 전까지 250거래일의 최대 매물대(종가·거래량 20구간 POC) 윗선을
+  최근 20거래일 안에 종가로 돌파(돌파 뒤 2거래일 이상) → 되돌림 저가가 그 선 −2%~+3% 안에서 멈췄고(종가 이탈 없음) 오늘 종가가 선 위
+
+정해진 시각에 도는 잡이 아니다. GET 때 stock_prices로 계산하고, (최신 거래일, 그날 행의 최신 fetched_at)이
+같으면 메모리 캐시를 쓴다 — 시세 수집(평일 16:35·20:20 재수집)이 끝나면 다음 조회에서 다시 계산된다.
 """
 import math
 
@@ -21,13 +29,18 @@ MIN_RET = 30.0
 MIN_R2 = 0.75
 MIN_ADX = 25.0
 NEW_LAG = 5
-HISTORY = 160          # ADX 평활이 수렴하고 MA60을 20일 전과 비교할 만큼
+HISTORY = 272          # 52주(250) 신고가·매물대(250+20)와 ADX 평활 수렴에 충분히
+EVIDENCE_DAYS = 120
+HIGH_LOOKBACK = 250
+EVENT_DAYS = 5         # 신고가 돌파를 '최근'으로 보는 기간
+VP_BASE, VP_RECENT, VP_BINS = 250, 20, 20
+VP_LOW, VP_HIGH = 0.98, 1.03   # 되돌림 저가가 멈춰야 하는 범위(돌파선 대비)
 LIMIT = 20
 
 CRITERIA = (f"시총 3,000억+ · {WINDOW}거래일 +{MIN_RET:.0f}%+ · 상승 고름 R² {MIN_R2}+ · "
             f"종가>MA20>MA60(MA60 상승) · ADX {MIN_ADX:.0f}+(+DI>−DI)")
 
-_cache: dict[str, dict] = {}
+_cache: dict[tuple, dict] = {}
 
 
 def _ma(closes: list[float], end: int, n: int) -> float | None:
@@ -71,7 +84,14 @@ def evaluate(rows: list[dict], end: int) -> dict | None:
     a, p, m = adx["adx"][end], adx["plus_di"][end], adx["minus_di"][end]
     if a is None or a < MIN_ADX or p is None or m is None or p <= m:
         return None
+    n = len(win)
+    start = math.exp(sum(math.log(c) for c in win) / n - slope * (n - 1) / 2)   # 회귀선의 시작점(가격)
     return {
+        "evidence": {
+            "close": closes[end], "ma20": round(ma20, 2), "ma60": round(ma60, 2), "ma60_prev": round(ma60_prev, 2),
+            "plus_di": round(p, 1), "minus_di": round(m, 1),
+            "fit_start": round(start, 2), "fit_end": round(start * math.exp(slope * (n - 1)), 2),
+        },
         "ret_20": round((closes[end] / closes[end - 20] - 1) * 100, 1),
         "ret_60": round(ret60, 1),
         "r2": round(r2, 2),
@@ -79,6 +99,58 @@ def evaluate(rows: list[dict], end: int) -> dict | None:
         "gap_ma20": round((closes[end] / ma20 - 1) * 100, 1),
         "score": round(slope * 250 * 100 * r2, 1),   # 연율 로그 기울기(%) × R² — 정렬 기준
     }
+
+
+def _series_ma(closes: list[float], n: int) -> list[float | None]:
+    out, run = [], 0.0
+    for i, c in enumerate(closes):
+        run += c
+        if i >= n:
+            run -= closes[i - n]
+        out.append(round(run / n, 2) if i >= n - 1 else None)
+    return out
+
+
+def high_52w(rows: list[dict]) -> dict | None:
+    """최근 EVENT_DAYS 안에 종가가 직전 250거래일 고가 최고치를 처음 넘은 날"""
+    for i in range(len(rows) - 1, max(HIGH_LOOKBACK, len(rows) - EVENT_DAYS) - 1, -1):
+        level = max(r["high"] for r in rows[i - HIGH_LOOKBACK:i])
+        if rows[i]["close"] > level >= rows[i - 1]["close"]:
+            return {"kind": "high52", "date": rows[i]["date"], "level": level,
+                    "held": rows[-1]["close"] >= level,
+                    "detail": f"직전 250거래일 최고가 {level:,.0f} 돌파"}
+    return None
+
+
+def volume_node_retest(rows: list[dict]) -> dict | None:
+    """최대 매물대 윗선 돌파 → 그 선 근처까지 되돌림 → 종가 이탈 없이 위에서 마감"""
+    if len(rows) < VP_BASE + VP_RECENT + 1:
+        return None
+    base = rows[-(VP_BASE + VP_RECENT):-VP_RECENT]
+    lo, hi = min(r["close"] for r in base), max(r["close"] for r in base)
+    if hi <= lo:
+        return None
+    width = (hi - lo) / VP_BINS
+    buckets = [0.0] * VP_BINS
+    for r in base:
+        buckets[min(int((r["close"] - lo) / width), VP_BINS - 1)] += r["volume"] or 0
+    total = sum(buckets) or 1
+    poc = max(range(VP_BINS), key=lambda i: buckets[i])
+    level = lo + (poc + 1) * width            # 매물대 윗선
+    recent = rows[-VP_RECENT - 1:]
+    for k in range(1, len(recent) - 2):        # 돌파 뒤 최소 2거래일은 지켜봐야 '지지'라 부른다
+        if not (recent[k - 1]["close"] <= level < recent[k]["close"]):
+            continue
+        after = recent[k + 1:]
+        if any(r["close"] < level * VP_LOW for r in after):
+            return None
+        touch = min(after, key=lambda r: r["low"])
+        if not (level * VP_LOW <= touch["low"] <= level * VP_HIGH) or rows[-1]["close"] <= level:
+            return None
+        return {"kind": "vp_retest", "date": recent[k]["date"], "level": round(level, 2), "held": True,
+                "detail": f"매물대({lo + poc * width:,.0f}~{level:,.0f}, 거래량 {buckets[poc] / total * 100:.0f}%) 윗선 돌파 → "
+                          f"{touch['date'][5:]} 저가 {touch['low']:,.0f}에서 지지"}
+    return None
 
 
 def compute() -> dict:
@@ -89,34 +161,47 @@ def compute() -> dict:
         if not dates:
             return {"as_of": None, "criteria": CRITERIA, "universe": 0, "items": []}
         as_of = dates[0]
-        if as_of in _cache:
-            return _cache[as_of]
+        stamp = conn.execute("SELECT max(fetched_at) FROM stock_prices WHERE trade_date = ?", (as_of,)).fetchone()[0]
+        if (as_of, stamp) in _cache:
+            return _cache[(as_of, stamp)]
         latest = {r["stock_code"]: r for r in conn.execute(
             "SELECT sp.stock_code, sp.market_cap, c.corp_name FROM stock_prices sp JOIN companies c ON c.stock_code = sp.stock_code "
             "WHERE sp.trade_date = ? AND sp.market_cap >= ?", (as_of, MIN_MCAP))}
         series: dict[str, list[dict]] = {code: [] for code in latest}
         for r in conn.execute(
-                "SELECT stock_code, high, low, close FROM stock_prices WHERE trade_date >= ? AND close IS NOT NULL "
+                "SELECT stock_code, trade_date, high, low, close, volume FROM stock_prices WHERE trade_date >= ? AND close IS NOT NULL "
                 "ORDER BY stock_code, trade_date", (dates[-1],)):
             if r["stock_code"] in series and r["high"] is not None and r["low"] is not None:
-                series[r["stock_code"]].append({"high": r["high"], "low": r["low"], "close": r["close"]})
+                series[r["stock_code"]].append({"date": r["trade_date"], "high": r["high"], "low": r["low"],
+                                                "close": r["close"], "volume": r["volume"]})
         sectors = _members(conn)
     finally:
         conn.close()
 
-    items = []
+    items, events = [], []
     for code, rows in series.items():
+        base = {"stock_code": code, "name": latest[code]["corp_name"], "sector": sectors.get(code)}
+        found = [e for e in (high_52w(rows), volume_node_retest(rows)) if e]
+        events += [{**base, "close": rows[-1]["close"], **e} for e in found]
         hit = evaluate(rows, len(rows) - 1)
         if not hit:
             continue
+        tail = rows[-EVIDENCE_DAYS:]
+        closes = [r["close"] for r in rows]
+        hit["evidence"].update({
+            "dates": [r["date"] for r in tail], "closes": [r["close"] for r in tail],
+            "ma20_series": _series_ma(closes, 20)[-EVIDENCE_DAYS:], "ma60_series": _series_ma(closes, 60)[-EVIDENCE_DAYS:],
+        })
         items.append({
-            "stock_code": code, "name": latest[code]["corp_name"], "sector": sectors.get(code),
-            "market_cap": latest[code]["market_cap"], "close": rows[-1]["close"], **hit,
+            **base, "market_cap": latest[code]["market_cap"], "close": rows[-1]["close"], **hit,
             "new": evaluate(rows, len(rows) - 1 - NEW_LAG) is None,
+            "events": [e["kind"] for e in found],
             "spark": [r["close"] for r in rows[-WINDOW:]],
         })
     items.sort(key=lambda x: x["score"], reverse=True)
-    result = {"as_of": as_of, "criteria": CRITERIA, "universe": len(latest), "passed": len(items), "items": items[:LIMIT]}
+    events.sort(key=lambda e: (e["date"], e["kind"]), reverse=True)
+    result = {"as_of": as_of, "computed_from": stamp, "criteria": CRITERIA, "universe": len(latest),
+              "passed": len(items), "items": items[:LIMIT], "events": events}
     _cache.clear()
-    _cache[as_of] = result
+    _cache[(as_of, stamp)] = result
     return result

@@ -6,11 +6,10 @@ import { useSignalsSummary } from "@/hooks/useSpineSignals"
 import { useCallMomentum, useRecentCalls, useTranscriptFollow } from "@/hooks/useTranscripts"
 import { quadrantOf, useSectorMap } from "@/hooks/useSectorMap"
 import { cn } from "@/lib/utils"
-import { SparkLine } from "@/components/shared/Spark"
-import { useTrendLeaders } from "@/hooks/useTrendLeaders"
-import { formatLevel, formatNumber, formatPercent } from "@/utils/format"
+import { formatNumber } from "@/utils/format"
 import type { TranscriptFollowSummary } from "@/types"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
+import { TrendBody, useTrendMeta } from "./trend"
 import {
   ActionsBody, CreditBody, PeopleBody, RightsBody, TradeBody,
   useActionsMeta, useCreditMeta, usePeopleMeta, useRightsMeta, useTradeMeta,
@@ -192,53 +191,8 @@ function SectorShiftBody({ h }: WidgetBodyProps) {
 }
 
 /** 탐색 위젯 — 이 영역 단계에서 채운다 (docs/specs/home-widgets.md §2 계약). registry.tsx가 이 배열을 그대로 펼친다 */
-/* ── 가파른 추세 — 빠르게, 그러면서 고르게 오른 종목 (pipeline/trend_leaders) ── */
-function useTrendMeta(): WidgetMeta {
-  const q = useTrendLeaders()
-  return { asOf: q.data?.as_of ?? null, stale: olderThan(q.data?.as_of, 4) }
-}
-function TrendBody({ w, h }: WidgetBodyProps) {
-  const q = useTrendLeaders()
-  const d = q.data
-  if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  if (!d.items.length) return <WidgetState empty emptyText={`조건을 모두 통과한 종목이 없어요. (${d.criteria})`} />
-  const wide = w >= 6
-  const fresh = d.items.filter(i => i.new).length
-  return <div className="flex h-full flex-col gap-2">
-    <p className="text-[12px] text-muted-foreground" title={d.criteria}>
-      시총 3,000억+ {formatNumber(d.universe)}종목 중 <span className="font-medium text-foreground">{formatNumber(d.passed)}</span>개
-      {fresh > 0 && <> · 5거래일 새 진입 {formatNumber(fresh)}</>}
-    </p>
-    <div className={cn("grid items-center gap-x-3 border-b pb-1 text-[11px] text-muted-foreground", wide ? "grid-cols-[minmax(0,1fr)_64px_52px_40px_40px_48px]" : "grid-cols-[minmax(0,1fr)_56px_52px]")}>
-      <span>종목</span><span>60일</span><span className="text-right">수익률</span>
-      {wide && <><span className="text-right" title="60거래일 log 가격 회귀의 R² — 1에 가까울수록 고르게 올랐다">고름</span>
-        <span className="text-right" title="ADX(14) — 추세 강도">ADX</span>
-        <span className="text-right" title="20일 이동평균 대비 — 클수록 단기 과열">이격</span></>}
-    </div>
-    <ul className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2 text-[13px]">
-      {d.items.slice(0, h > 3 ? d.items.length : 4).map(t => (
-        <li key={t.stock_code}>
-          <Link to={`/analyze/${t.stock_code}/summary?scan=1`} title={`${t.name} 기술적 분석 열기`}
-            className={cn("grid items-center gap-x-3 rounded-sm py-1 hover:bg-muted/50", wide ? "grid-cols-[minmax(0,1fr)_64px_52px_40px_40px_48px]" : "grid-cols-[minmax(0,1fr)_56px_52px]")}>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate font-medium">{t.name}</span>
-              {t.new && <Badge variant="outline" className="shrink-0 px-1 text-[10px] text-primary">신규</Badge>}
-              {wide && t.sector && <span className="truncate text-[11px] text-muted-foreground">{t.sector}</span>}
-            </span>
-            <SparkLine data={t.spark} height={18} />
-            <span className="text-right tabular-nums text-up">{formatPercent(t.ret_60)}</span>
-            {wide && <><span className="text-right tabular-nums text-muted-foreground">{formatLevel(t.r2)}</span>
-              <span className="text-right tabular-nums text-muted-foreground">{formatNumber(Math.round(t.adx))}</span>
-              <span className={cn("text-right tabular-nums", t.gap_ma20 >= 15 ? "text-chart-warning" : "text-muted-foreground")}>{formatPercent(t.gap_ma20)}</span></>}
-          </Link>
-        </li>
-      ))}
-    </ul>
-  </div>
-}
-
 export const EXPLORE_WIDGETS: WidgetDef[] = [
-  { id: "explore.trend", title: "가파른 추세", description: "60거래일 +30% 이상을 고르게 오르며 정배열·ADX 25+인 국내 종목", section: "explore", group: "기술적 분석",
+  { id: "explore.trend", title: "가파른 추세", description: "60거래일 +30% 이상을 고르게 오르며 정배열·ADX 25+인 국내 종목 · 52주 신고가·매물대 돌파 후 지지", section: "explore", group: "기술적 분석",
     size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/discover", useMeta: useTrendMeta, Body: TrendBody },
   // P6a — 신호 · 컨콜 · 산업·섹터
   { id: "explore.signals", title: "오늘의 신호", description: "유형별 오늘 건수 · 상위 종목", section: "explore", group: "신호",

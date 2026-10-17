@@ -1159,11 +1159,26 @@ export interface WorldCheckpoint {
 }
 
 /** 가파른 추세 종목 — GET /api/spine/trend-leaders (탐색 위젯) */
+/** 조건별 실제 값 + 최근 120거래일 차트 재료 */
+export interface TrendEvidence {
+  close: number; ma20: number; ma60: number; ma60_prev: number; plus_di: number; minus_di: number
+  fit_start: number; fit_end: number; dates: string[]; closes: number[]; ma20_series: (number | null)[]; ma60_series: (number | null)[]
+}
+/** high52 = 52주 신고가 돌파 · vp_retest = 매물대 돌파 후 지지 */
+export type TrendEventKind = "high52" | "vp_retest"
+export interface TrendEvent {
+  stock_code: string; name: string; sector: string | null; close: number
+  kind: TrendEventKind; date: string; level: number; held: boolean; detail: string
+}
 export interface TrendLeader {
   stock_code: string; name: string; sector: string | null; market_cap: number | null; close: number
-  ret_20: number; ret_60: number; r2: number; adx: number; gap_ma20: number; score: number; new: boolean; spark: number[]
+  ret_20: number; ret_60: number; r2: number; adx: number; gap_ma20: number; score: number; new: boolean
+  events: TrendEventKind[]; evidence: TrendEvidence; spark: number[]
 }
-export interface TrendLeadersResponse { as_of: string | null; criteria: string; universe: number; passed: number; items: TrendLeader[] }
+export interface TrendLeadersResponse {
+  as_of: string | null; computed_from: string | null; criteria: string; universe: number; passed: number
+  items: TrendLeader[]; events: TrendEvent[]
+}
 
 /** GET /api/spine/transcript/follow 중 위젯이 읽는 필드 (전체 행은 follow/TranscriptPage) */
 export interface TranscriptFollowSummary {
