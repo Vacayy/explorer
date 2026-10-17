@@ -1201,3 +1201,15 @@ export interface TwRevenueResponse {
   as_of: string | null; fetched_at: string | null; reported: number; total: number
   layers: { key: string; label: string }[]; items: TwRevenueItem[]
 }
+
+/** 대만 → 한국 연결 — GET /api/spine/tw/links (docs/specs/tw-revenue.md §6) */
+export type TwLinkRelation = "peer" | "demand" | "capex"
+export interface TwLink {
+  kr_code: string; kr_name: string; relation: TwLinkRelation; confidence: "상" | "중" | "중하"; reason: string
+  tw: { code: string; name: string }[]
+  ym: string | null; yoy: number | null; yoy_3m: number | null; yoy_3m_prev: number | null
+  state: "가속" | "둔화" | "전환↑" | "전환↓" | "유지" | null
+  series: { ym: string; yoy: number }[]
+  evidence: { best_lag: number | null; n: number; corr: number | null; same_dir: number | null }
+}
+export interface TwLinksResponse { as_of: string | null; items: TwLink[] }

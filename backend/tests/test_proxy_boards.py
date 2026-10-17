@@ -128,7 +128,7 @@ class ProxyBoardTests(unittest.TestCase):
 
     def test_adapters_and_catalog(self):
         kinds = [a["kind"] for a in self.client.get(f"{BASE}/adapters").json()]
-        self.assertEqual(kinds, ["credit", "trade", "call_momentum", "indicator", "retail", "sector", "price", "transcript", "corpus"])
+        self.assertEqual(kinds, ["credit", "trade", "call_momentum", "indicator", "retail", "sector", "tw", "price", "transcript", "corpus"])
         self.assertIn("credit:ORCL", [e["ref"] for e in self.client.get(f"{BASE}/adapters/credit/catalog?q=오라클").json()])
         self.assertEqual(self.client.get(f"{BASE}/adapters/weather/catalog").status_code, 404)
 

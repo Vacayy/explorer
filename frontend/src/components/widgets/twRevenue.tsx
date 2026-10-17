@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { WidgetState } from "@/components/shared/WidgetFrame"
-import { useTwRevenue } from "@/hooks/useTwRevenue"
+import { useTwLinks, useTwRevenue } from "@/hooks/useTwRevenue"
+import { Link } from "react-router-dom"
+import { TW_RELATION, TwStateBadge, twEvidenceText } from "@/components/shared/TwLinkSignal"
 import { cn } from "@/lib/utils"
 import { formatPercent, formatTwdEok } from "@/utils/format"
 import type { TwRevenueItem } from "@/types"
@@ -124,7 +126,47 @@ function TwRevenueDialog({ item, onClose }: { item?: TwRevenueItem; onClose: () 
   </Dialog>
 }
 
+/* ── 대만 → 한국 연결 — 이번 달 꺾이거나 가속한 대만 신호와 이어진 한국 종목 ── */
+const STATE_ORDER: Record<string, number> = { "전환↓": 0, "전환↑": 1, "둔화": 2, "가속": 3, "유지": 4 }
+function useTwLinksMeta(): WidgetMeta {
+  const q = useTwLinks()
+  return { asOf: q.data?.as_of ? `${q.data.as_of} 공시` : null }
+}
+function TwLinksBody({ w, h }: WidgetBodyProps) {
+  const q = useTwLinks()
+  if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
+  if (!q.data.items.length) return <WidgetState empty emptyText="대만 연결이 아직 없어요." />
+  const rows = [...q.data.items].sort((a, b) => (STATE_ORDER[a.state ?? "유지"] ?? 9) - (STATE_ORDER[b.state ?? "유지"] ?? 9))
+  const counts = rows.reduce<Record<string, number>>((m, l) => ({ ...m, [l.state ?? "-"]: (m[l.state ?? "-"] ?? 0) + 1 }), {})
+  return <div className="flex h-full flex-col gap-2">
+    <p className="text-[12px] text-muted-foreground">
+      연결 {rows.length}개 · {Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(" · ")} · 3개월 YoY가 3개월 전보다 ±10%p면 가속·둔화
+    </p>
+    <ul className="-mr-2 min-h-0 flex-1 divide-y overflow-y-auto pr-2 text-[13px]">
+      {rows.slice(0, h <= 3 ? 4 : rows.length).map(l => (
+        <li key={`${l.kr_code}-${l.relation}-${l.tw[0]?.code}`}>
+          <Link to={`/analyze/${l.kr_code}/summary`} className="block space-y-0.5 rounded-sm px-1 py-1.5 hover:bg-muted/50">
+            <span className="flex items-center gap-1.5">
+              <span className="font-medium">{l.kr_name}</span>
+              <Badge variant="secondary" className="shrink-0 px-1 text-[10px]">{TW_RELATION[l.relation]}</Badge>
+              <span className="min-w-0 truncate text-muted-foreground">← {l.tw.map(t => t.name).join("·")}</span>
+              <span className="ml-auto flex shrink-0 items-center gap-1.5 tabular-nums">
+                <span className="text-[11px] text-muted-foreground">{formatPercent(l.yoy_3m_prev)} →</span>
+                <span className={tone(l.yoy_3m)}>{formatPercent(l.yoy_3m)}</span>
+                <TwStateBadge link={l} />
+              </span>
+            </span>
+            {w >= 6 && <span className="block truncate text-[11px] text-muted-foreground">사업 근거 {l.confidence} · {twEvidenceText(l.evidence)} · {l.reason}</span>}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  </div>
+}
+
 export const TW_WIDGETS: WidgetDef[] = [
+  { id: "explore.twLinks", title: "대만 → 한국 연결", description: "대만 월매출이 가속·둔화한 밸류체인과 이어진 한국 종목 · 사업 근거·숫자 근거", section: "explore", group: "대만",
+    size: { w: 6, h: 5, minW: 3, minH: 2 }, useMeta: useTwLinksMeta, Body: TwLinksBody },
   { id: "explore.twRevenue", title: "대만 월매출", description: "대만 반도체·IT 하드웨어·해운 91개사 월매출 · YoY · 3개월 YoY (밸류체인 층별)", section: "explore", group: "대만",
     size: { w: 6, h: 5, minW: 3, minH: 2 }, useMeta: useTwMeta, Body: TwRevenueBody },
 ]

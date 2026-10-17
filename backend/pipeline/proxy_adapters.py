@@ -12,6 +12,7 @@
 | retail | `retail:forced_20` · `retail:forced_20_pct` | 개인 투자 파생지표, `_pct`는 5년 백분위 | 30일 전 |
 | sector | `sector:반도체·전자부품` · `sector:반도체·전자부품:rs_long` | 대분류 단기 RS(기본)·장기 RS 백분위 | 3주 전(궤적) |
 | price | `price:005930` | 종가(원) | 30일 전 |
+| tw | `tw:2330` · `tw:2330:yoy3m` · `tw:layer:server:yoy3m` | 대만 월매출(억 TWD)·YoY·3개월 YoY(%), 층 합계 | 전월 |
 | transcript | `transcript:<proxy_id>` | 컨콜 추출 수치(태세는 방향 +1/0/−1) | 직전 관측 |
 | corpus | `corpus:<proxy_id>` | 문서 여론 방향 +1/0/−1 | 직전 관측 |
 
@@ -458,6 +459,68 @@ def _price_series(conn, body, since):
         (body, since))]
 
 
+# ── tw (대만 월매출, docs/specs/tw-revenue.md) ──────────────────────────────
+
+_TW_METRICS = {None: ("월매출", "억 TWD"), "yoy": ("월매출 YoY", "%"), "yoy3m": ("월매출 3개월 YoY", "%")}
+
+
+def _tw_parse(body: str) -> tuple[list[str], str, str | None] | None:
+    """'2330' · '2330:yoy3m' · 'layer:server:yoy3m' → (회사 코드들, 이름, 지표)"""
+    from pipeline.tw_universe import COMPANIES, LAYERS
+    parts = body.split(":")
+    if parts[0] == "layer" and len(parts) >= 2:
+        label = dict(LAYERS).get(parts[1])
+        codes = [c for c, _, l, _ in COMPANIES if l == parts[1]]
+        metric = parts[2] if len(parts) > 2 else None
+        return (codes, f"대만 {label} 합계", metric) if label and metric in _TW_METRICS else None
+    name = next((n for c, n, *_ in COMPANIES if c == parts[0]), None)
+    metric = parts[1] if len(parts) > 1 else None
+    return ([parts[0]], f"대만 {name}", metric) if name and metric in _TW_METRICS else None
+
+
+def _tw_catalog(conn, q=None, limit=50):
+    from pipeline.tw_universe import COMPANIES, LAYERS
+    out = []
+    for key, label in LAYERS:
+        if _match(q, label, "대만", "layer"):
+            out += [{"ref": f"tw:layer:{key}:yoy3m", "label": f"대만 {label} 합계 월매출 3개월 YoY", "unit": "%"}]
+    for code, name, _, role in COMPANIES:
+        if _match(q, name, code, role, "대만"):
+            out += [{"ref": f"tw:{code}:yoy3m", "label": f"대만 {name} 월매출 3개월 YoY", "unit": "%"},
+                    {"ref": f"tw:{code}", "label": f"대만 {name} 월매출", "unit": "억 TWD"}]
+    return out[:limit]
+
+
+def _tw_describe(conn, body):
+    p = _tw_parse(body)
+    if not p or not conn.execute("SELECT 1 FROM tw_monthly_revenue WHERE code=? LIMIT 1", (p[0][0],)).fetchone():
+        return None
+    title, unit = _TW_METRICS[p[2]]
+    return {"label": f"{p[1]} {title}", "unit": unit}
+
+
+def _tw_series(conn, body, since):
+    p = _tw_parse(body)
+    if not p:
+        return []
+    codes, _, metric = p
+    rows = conn.execute(f"SELECT ym, SUM(revenue) r, SUM(last_year) ly, COUNT(*) n FROM tw_monthly_revenue WHERE code IN "
+                        f"({','.join('?' * len(codes))}) GROUP BY ym ORDER BY ym", codes).fetchall()
+    months = [(r["ym"], r["r"], r["ly"]) for r in rows if r["n"] == len(codes)]
+    out = []
+    for i, (ym, rev, ly) in enumerate(months):
+        if metric is None:
+            v = rev / 100_000                                   # 천 TWD → 억 TWD
+        elif metric == "yoy":
+            v = (rev / ly - 1) * 100 if ly else None
+        else:
+            win = months[max(0, i - 2):i + 1]
+            v = (sum(m[1] for m in win) / sum(m[2] for m in win) - 1) * 100 if len(win) == 3 and all(m[2] for m in win) else None
+        if v is not None and ym >= since[:7]:
+            out.append((ym, round(v, 2)))
+    return out
+
+
 # ── transcript · corpus (기존 프록시 관측, proxy_observations) ──────────────
 
 _DIR = {"up": 1.0, "flat": 0.0, "down": -1.0}
@@ -532,6 +595,9 @@ ADAPTERS: dict[str, Adapter] = {a.kind: a for a in [
     Adapter("sector", "섹터 RS", "sector:<대분류>[:rs_long]",
             "대분류 시총가중 수익률의 백분위(단기 1M 기본, 장기 12M). 현재와 1·2·3주 전 궤적", _sector_catalog, _sector_describe, _sector_series,
             ("points", 3), "3주 전", span_days=30),
+    Adapter("tw", "대만 월매출", "tw:<코드>[:yoy|yoy3m] | tw:layer:<층>[:yoy|yoy3m]",
+            "대만 91개사 월매출(억 TWD)·YoY·3개월 YoY, 층 합계도 가능", _tw_catalog, _tw_describe, _tw_series,
+            ("points", 1), "전월", span_days=730),
     Adapter("price", "가격", "price:<종목코드>", "국내 종목 일별 종가(원)", _price_catalog, _price_describe, _price_series, ("days", 30), "30일 전",
             pct_change=True),
     Adapter("transcript", "컨콜 추출(기존)", "transcript:<proxy_id>", "기존 질문 프록시의 컨콜 추출 수치·태세",

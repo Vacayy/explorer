@@ -15,6 +15,7 @@ import { FinancialPreview } from '@/components/company/CompanyFinancials'
 import { DiscoveryResearch } from '@/components/company/DiscoveryResearch'
 import { CompanyOverview } from '@/components/company/CompanyOverview'
 import { StockActivityStrip } from '@/components/summary/StockActivityStrip'
+import { TaiwanLinkCard } from '@/components/company/TaiwanLinkCard'
 import SaveButton from '@/components/shared/SaveButton'
 import { toast } from 'sonner'
 
@@ -103,6 +104,7 @@ export default function SummaryPage({ stockCode }: { stockCode: string }) {
           </Card>
         )}
         <StockActivityStrip stockCode={stockCode} />
+        <TaiwanLinkCard stockCode={stockCode} />
         <CompanyPriceResearch
           key={stockCode}
           company={stockCode}

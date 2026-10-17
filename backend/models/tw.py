@@ -36,3 +36,41 @@ class TwRevenueResponse(BaseModel):
     total: int
     layers: list[TwLayer]
     items: list[TwRevenueItem]
+
+
+class TwLinkEvidence(BaseModel):
+    best_lag: int | None           # 대만이 몇 분기 앞설 때 가장 잘 맞나
+    n: int                         # 짝지은 분기 수
+    corr: float | None             # 분기 YoY 상관
+    same_dir: float | None         # YoY 부호가 같은 비율
+
+
+class TwLinkTw(BaseModel):
+    code: str
+    name: str
+
+
+class TwLinkYoy(BaseModel):
+    ym: str
+    yoy: float
+
+
+class TwLink(BaseModel):
+    kr_code: str
+    kr_name: str
+    relation: str                  # peer | demand | capex
+    confidence: str                # 사업 근거 확신도 상 | 중 | 중하
+    reason: str
+    tw: list[TwLinkTw]
+    ym: str | None                 # 대만 합계의 최신 월
+    yoy: float | None
+    yoy_3m: float | None
+    yoy_3m_prev: float | None      # 3개월 전의 3개월 YoY
+    state: str | None              # 가속 | 둔화 | 전환↑ | 전환↓ | 유지
+    series: list[TwLinkYoy]
+    evidence: TwLinkEvidence
+
+
+class TwLinksResponse(BaseModel):
+    as_of: str | None
+    items: list[TwLink]

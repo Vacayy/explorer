@@ -27,3 +27,43 @@ class TwLinksTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TwSignalTests(unittest.TestCase):
+    """연결 회사 합계의 3개월 YoY와 3개월 전 대비 상태"""
+    def setUp(self):
+        import sqlite3
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("CREATE TABLE tw_monthly_revenue (code TEXT, ym TEXT, revenue REAL, last_year REAL)")
+
+    def fill(self, yoys):
+        for i, y in enumerate(yoys):
+            ym = f"2026-{i + 1:02d}"
+            self.conn.execute("INSERT INTO tw_monthly_revenue VALUES ('A', ?, ?, 100)", (ym, 100 + y))
+
+    def test_acceleration(self):
+        from pipeline.tw_links import tw_signal
+        self.fill([10, 10, 10, 30, 30, 30])
+        s = tw_signal(self.conn, ["A"])
+        self.assertEqual((s["yoy_3m_prev"], s["yoy_3m"], s["state"]), (10.0, 30.0, "가속"))
+
+    def test_turn_down(self):
+        from pipeline.tw_links import tw_signal
+        self.fill([5, 5, 5, -5, -5, -5])
+        self.assertEqual(tw_signal(self.conn, ["A"])["state"], "전환↓")
+
+    def test_steady(self):
+        from pipeline.tw_links import tw_signal
+        self.fill([20, 20, 20, 25, 25, 25])
+        self.assertEqual(tw_signal(self.conn, ["A"])["state"], "유지")
+
+
+class TwAdapterTests(unittest.TestCase):
+    def test_parse_refs(self):
+        from pipeline.proxy_adapters import _tw_parse
+        self.assertEqual(_tw_parse("2330:yoy3m")[0], ["2330"])
+        self.assertEqual(_tw_parse("2330")[2], None)
+        self.assertGreater(len(_tw_parse("layer:server:yoy")[0]), 5)
+        self.assertIsNone(_tw_parse("9999"))
+        self.assertIsNone(_tw_parse("2330:bad"))

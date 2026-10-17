@@ -3,7 +3,7 @@
 배경(2026-10-16 실측): 도시에는 재무를 `stored_only`로 읽기만 하고, 수집은 발견 조사 버튼에서만 일어나 19개사에 머물렀다.
 공시는 열 때 수집하던 옛 공시 탭이 내비에서 빠진 뒤 09-16에서 멈췄고, 종목 마스터는 `seed_companies.py` 수동 실행(07-06)뿐이었다.
 
-- 대상 순서 `targets`: 보유(portfolio) → 관심(watch) 묶음 종목 → 최신 시가총액 상위 `TOP_N`.
+- 대상 순서 `targets`: 보유(portfolio) → 관심(watch) 묶음 종목 → 대만 연결 종목(`tw_links`) → 최신 시가총액 상위 `TOP_N`.
 - 예산: 한 번 실행의 DART 호출을 `DAILY_BUDGET`회로 묶는다. OpenDART 일 한도(약 2만 회)를 기업활동 스캔(30분 체인)·
   포트폴리오 알림·발견 조사와 나눠 쓰므로 여유를 크게 둔다. 예산 소진은 실패가 아니라 남은 양으로 요약에 남는다.
 - 멱등: 재무는 이미 저장된 (기업, 연도, 보고서)를 건너뛰고, DART '데이터 없음'(013)은 cache_meta에 음성 캐시한다.
@@ -117,6 +117,11 @@ def targets(conn, top_n: int = TOP_N) -> list[dict]:
         SELECT m.stock_code, c.corp_code, g.kind FROM stock_group_members m
         JOIN stock_groups g ON g.id = m.group_id JOIN companies c ON c.stock_code = m.stock_code
         WHERE g.kind != 'portfolio' ORDER BY m.id""").fetchall(), "watch")
+    # 대만 연결 종목(pipeline/tw_links) — 연결 근거 계산에 분기 재무가 필요하다
+    from pipeline.tw_links import LINKS
+    codes = sorted({link[0] for link in LINKS})
+    add(conn.execute(f"SELECT stock_code, corp_code FROM companies WHERE stock_code IN ({','.join('?' * len(codes))})",
+                     codes).fetchall(), "tw_link")
     add(conn.execute("""
         SELECT p.stock_code, c.corp_code FROM stock_prices p JOIN companies c ON c.stock_code = p.stock_code
         WHERE p.trade_date = (SELECT max(trade_date) FROM stock_prices WHERE market_cap IS NOT NULL)
