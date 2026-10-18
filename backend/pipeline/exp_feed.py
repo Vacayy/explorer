@@ -26,6 +26,20 @@ ORGS = ["골드만", "Goldman", "모건스탠리", "Morgan Stanley", "JP모건",
 CHIP = ["HBM", "DRAM", "D램", "디램", "NAND", "낸드", "반도체", "파운드리", "foundry", "AI 서버", "AI server", "GPU", "가속기", "CoWoS",
         "패키징", "기판", "MLCC", "CCL", "PCB", "광모듈", "트랜시버", "데이터센터", "data center", "capex", "설비투자", "웨이퍼", "장비"]
 
+# 기관 이름 통일(문서마다 영문·한글이 섞인다) — 같은 전망을 한 줄로 묶는 기준
+ORG_ALIASES = {"goldman sachs": "골드만삭스", "goldman": "골드만삭스", "morgan stanley": "모건스탠리", "jpmorgan": "JP모건",
+               "j.p. morgan": "JP모건", "jp morgan": "JP모건", "citi": "씨티", "citigroup": "씨티", "bank of america": "BofA",
+               "bofa securities": "BofA", "bernstein": "번스타인", "jefferies": "제프리스", "macquarie": "맥쿼리", "nomura": "노무라",
+               "barclays": "바클레이즈", "deutsche bank": "도이치뱅크", "wells fargo": "웰스파고", "evercore": "에버코어", "evercore isi": "에버코어",
+               "melius": "멜리우스", "trendforce": "TrendForce", "트렌드포스": "TrendForce", "counterpoint": "카운터포인트", "gartner": "가트너",
+               "omdia": "옴디아", "semianalysis": "SemiAnalysis", "세미애널리시스": "SemiAnalysis"}
+
+
+def norm_org(org: str) -> str:
+    o = (org or "").strip()
+    return ORG_ALIASES.get(o.lower(), o)
+
+
 METRICS = ["price_qoq", "price_yoy", "shipments_yoy", "shipments_qoq", "revenue_yoy", "revenue_qoq", "capex_yoy", "market_yoy",
            "demand_yoy", "supply_yoy", "growth_yoy", "eps_yoy", "target_price", "tam"]
 
@@ -133,7 +147,7 @@ def _store(doc: dict, claims: list[dict]) -> None:
                 " unit, direction, quote, url, doc_id) VALUES ('feed',?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(source, url, node_key, subject, metric, target_period) DO UPDATE SET source_org=excluded.source_org,"
                 " value_low=excluded.value_low, value_high=excluded.value_high, unit=excluded.unit, direction=excluded.direction, quote=excluded.quote",
-                (c["source_org"], doc["published_at"], c["node_key"] or "", c["subject"] or "", c["metric"], c["target_period"] or "",
+                (norm_org(c["source_org"]), doc["published_at"], c["node_key"] or "", c["subject"] or "", c["metric"], c["target_period"] or "",
                  c["value_low"], c["value_high"], c["unit"], c["direction"], c["quote"][:300], doc["url"] or f"doc:{doc['id']}", doc["id"]))
         conn.commit()
     finally:

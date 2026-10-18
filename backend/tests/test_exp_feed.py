@@ -34,6 +34,12 @@ class ExpFeedTests(unittest.TestCase):
         self.assertIn("", enum)
         self.assertIn("memory", enum)
 
+    def test_org_names_are_unified(self):
+        from pipeline.exp_feed import norm_org
+        self.assertEqual(norm_org("Goldman Sachs"), "골드만삭스")
+        self.assertEqual(norm_org("J.P. Morgan"), "JP모건")
+        self.assertEqual(norm_org("메리츠증권"), "메리츠증권")       # 목록에 없으면 그대로
+
 
 if __name__ == "__main__":
     unittest.main()

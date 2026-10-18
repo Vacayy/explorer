@@ -159,10 +159,18 @@ def read(conn=None) -> dict:
             t["periods"][r["period"]] = {k: r[k] for k in ("rev_avg", "rev_growth", "analysts", "eps_avg", "eps_30d", "eps_90d")}
         old = {(r["ticker"], r["period"]): r["rev_avg"] for r in conn.execute(
             "SELECT ticker, period, rev_avg FROM consensus_snapshots WHERE snap_date=?", (month_ago,))} if month_ago and month_ago < snap else {}
+        from pipeline.exp_feed import norm_org
         claims: dict[str, list[dict]] = {}
+        seen_claim: set[tuple] = set()
         for r in conn.execute("SELECT * FROM expectation_claims WHERE node_key != '' ORDER BY published_at DESC"):
+            # 같은 리포트가 여러 문서에 인용된다 — 기관·지표·기간·값이 같으면 최신 하나만
+            sig = (r["node_key"], norm_org(r["source_org"]), r["metric"], r["target_period"], r["value_low"], r["value_high"])
+            if sig in seen_claim:
+                continue
+            seen_claim.add(sig)
             claims.setdefault(r["node_key"], []).append({k: r[k] for k in ("source", "source_org", "published_at", "subject", "metric", "target_period",
-                                                                              "value_low", "value_high", "unit", "direction", "quote", "url")})
+                                                                              "value_low", "value_high", "unit", "direction", "quote", "url")}
+                                                        | {"source_org": norm_org(r["source_org"])})
         nodes = {}
         for key, syms in node_symbols(conn).items():
             members = []
