@@ -12,6 +12,23 @@ class VcPoint(BaseModel):
     yoy: float
 
 
+class CustomerShare(BaseModel):
+    label: str | None              # 이름 공시면 회사명, 익명이면 None
+    pct: float                     # 매출 대비 %
+
+
+class CustomerTrendPoint(BaseModel):
+    period_end: str
+    top_pct: float                 # 그 분기 최대 고객 비중(%)
+
+
+class CustomerConcentration(BaseModel):
+    period_end: str
+    period_kind: str               # Q | FY
+    customers: list[CustomerShare]
+    top_trend: list[CustomerTrendPoint]
+
+
 class UsMember(BaseModel):
     ticker: str
     name: str
@@ -20,6 +37,7 @@ class UsMember(BaseModel):
     value: float                   # USD
     yoy: float | None
     qoq_delta: float | None = None # 잔액 지표(RPO)의 전 분기 대비 순증가(USD)
+    customers: CustomerConcentration | None = None   # 10% 이상 고객 비중(us_customers)
 
 
 class VcAux(BaseModel):

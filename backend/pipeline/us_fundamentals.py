@@ -224,6 +224,7 @@ NAMES = {"MSFT": "마이크로소프트", "GOOGL": "알파벳(구글)", "AMZN": 
 
 def members(conn, use_key: str) -> list[dict]:
     """용도별 구성 회사의 최신 분기 값과 YoY — 수요 칸 상세"""
+    from pipeline.us_customers import latest as customer_latest
     out = []
     for ticker, metric, use in TARGETS + EXTERNAL + [(a, b, c) for a, b, c, _ in YF_TARGETS]:
         if use != use_key:
@@ -240,5 +241,6 @@ def members(conn, use_key: str) -> list[dict]:
         qoq = rows[q] - rows[qs[-2]] if metric in INSTANT and len(qs) > 1 else None   # 잔액은 전 분기 대비 순증가가 핵심
         out.append({"ticker": ticker, "name": NAMES.get(ticker, ticker),
                     "metric": {"capex": "설비투자", "rpo": "수주잔고(RPO)", "debt_issue": "장기채 발행"}.get(metric, "매출"),
-                    "q": q, "value": rows[q], "yoy": round(yoy, 1) if yoy is not None else None, "qoq_delta": qoq})
+                    "q": q, "value": rows[q], "yoy": round(yoy, 1) if yoy is not None else None, "qoq_delta": qoq,
+                    "customers": customer_latest(conn, ticker)})
     return out

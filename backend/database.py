@@ -1156,6 +1156,22 @@ def init_db():
         PRIMARY KEY (ticker, q, metric)
     );
 
+    -- 미국 기업 고객 집중도 (pipeline/us_customers) — 10-K/10-Q XBRL 인스턴스의 ConcentrationRiskPercentage1 × srt:MajorCustomersAxis.
+    -- customer = 멤버 로컬명(익명 'CustomerA' 등, 공시마다 같은 글자가 같은 회사라는 보장 없음), period_kind = Q|FY|YTD|I(시점)
+    CREATE TABLE IF NOT EXISTS us_customer_concentration (
+        ticker      TEXT NOT NULL,
+        period_end  TEXT NOT NULL,          -- YYYY-MM-DD
+        period_kind TEXT NOT NULL,
+        customer    TEXT NOT NULL,
+        benchmark   TEXT NOT NULL,          -- revenue | receivables
+        pct         REAL,                   -- 퍼센트(0.12 → 12.0)
+        extra_dims  TEXT,                   -- 고객·기준·유형 외 차원(예: 사업부 귀속) — 있으면 '축=멤버;...'
+        form        TEXT,
+        accession   TEXT,
+        fetched_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, period_end, period_kind, customer, benchmark)
+    );
+
     -- 대만 월매출 (docs/specs/tw-revenue.md) — 91개사(pipeline/tw_universe), 단위 천 TWD, ym=YYYY-MM.
     -- 최신 월은 TWSE·TPEx Open API, 과거 월은 MOPS 월별 요약. 공시가 1~10일에 나눠 올라와 매일 덮어쓴다
     CREATE TABLE IF NOT EXISTS tw_monthly_revenue (

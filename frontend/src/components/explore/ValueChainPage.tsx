@@ -13,8 +13,8 @@ import { SparkLine } from "@/components/shared/Spark"
 import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
-import { formatLevel, formatNumber, formatPercent, formatUsd } from "@/utils/format"
-import type { FlowResponse, FlowRow, PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
+import { formatLevel, formatNumber, formatPercent, formatRatio, formatUsd } from "@/utils/format"
+import type { CustomerConcentration, FlowResponse, FlowRow, PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -291,14 +291,24 @@ function NodePanel({ node, edges, nodes, demands, onSelect }: { node?: VcNode; e
 /** 미국 수요 기업 최신 분기 — 회사·지표·분기·값·YoY */
 function UsMembers({ members }: { members: UsMember[] }) {
   return <ul className="mt-2 divide-y text-caption">
-    {members.map(m => <li key={m.ticker} className="flex items-baseline gap-2 py-1">
+    {members.map(m => <li key={m.ticker} className="flex flex-wrap items-baseline gap-x-2 py-1">
       <span className="shrink-0 font-medium">{m.name}</span><span className="min-w-0 truncate text-muted-foreground">{m.metric} · {m.q}</span>
       <span className="ml-auto tabular-nums">{formatUsd(m.value)}</span>
       {m.qoq_delta != null && <span className="w-20 text-right tabular-nums text-muted-foreground" title="전 분기 대비 순증가">
         {m.qoq_delta >= 0 ? "+" : "−"}{formatUsd(Math.abs(m.qoq_delta))} QoQ</span>}
       <span className={cn("w-16 text-right tabular-nums", (m.yoy ?? 0) >= 0 ? "text-up" : "text-down")}>{formatPercent(m.yoy)}</span>
+      {m.customers && <CustomerLine c={m.customers} />}
     </li>)}
   </ul>
+}
+
+/** 10% 이상 고객 비중 한 줄 — 최신 기간 고객별 비중 + 분기 최대 고객 비중 추이(집중도가 풀리는지·쏠리는지) */
+function CustomerLine({ c }: { c: CustomerConcentration }) {
+  const trend = c.top_trend.map(p => formatRatio(p.top_pct)).join(" → ")
+  return <span className="basis-full pl-2 text-muted-foreground">
+    10% 이상 고객({c.period_kind === "Q" ? "분기" : "연간"} {c.period_end}): {c.customers.map(x => x.label ? `${x.label} ${formatRatio(x.pct)}` : formatRatio(x.pct)).join(" · ")}
+    {c.top_trend.length > 1 && <span title="분기별 최대 고객 비중"> · 최대 고객 {trend}</span>}
+  </span>
 }
 
 /** 최종 수요 상세 — 관측 원천·회사별 최신 분기·분기 YoY 추이·이 수요에 파는 칸 */

@@ -1245,7 +1245,15 @@ export interface VcMarket { ref: string; label: string; missing: boolean; as_of?
 /** 교차 확인 지표 — 월간 외부 시계열(WSTS·Census·SEAJ·대만 수출수주), missing=아직 수집 전 */
 export interface VcAux { series: string; label: string; missing: boolean; period?: string | null; yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: string | null }
 /** 미국 수요 기업 최신 분기 값 — 수요 칸·AI 가속기 상세 */
-export interface UsMember { ticker: string; name: string; metric: string; q: string; value: number; yoy: number | null; qoq_delta?: number | null }
+/** 10% 이상 고객 비중(SEC 10-K/10-Q 주석) — label null은 익명 고객(글자가 공시마다 같은 회사라는 보장 없음) */
+export interface CustomerConcentration {
+  period_end: string; period_kind: "Q" | "FY"; customers: { label: string | null; pct: number }[]
+  top_trend: { period_end: string; top_pct: number }[]
+}
+export interface UsMember {
+  ticker: string; name: string; metric: string; q: string; value: number; yoy: number | null; qoq_delta?: number | null
+  customers?: CustomerConcentration | null
+}
 /** 최종 수요 — AI·스마트폰은 미국 분기 실적으로 관측(obs_label), PC는 대리 관측만 */
 export interface VcDemand {
   key: string; name: string; description: string; obs_label?: string | null; us_members?: UsMember[]; aux?: VcAux[]
