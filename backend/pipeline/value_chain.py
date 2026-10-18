@@ -184,6 +184,8 @@ def read_map() -> dict:
         conn.close()
     measured = measure_all()
     return {"as_of": as_of, "demands": demands,
+            "tiers": [{"key": k, "label": v} for k, v in TIERS], "lanes": [{"key": k, "label": v} for k, v in LANES],
+            "layout": {k: {"tier": t, "lane": l} for k, (t, l) in LAYOUT.items()},
             "nodes": nodes, "edges": measured["edges"], "thresholds": measured["thresholds"]}
 
 
@@ -229,3 +231,37 @@ def propagation(vmap: dict | None = None, confirms: list[dict] | None = None) ->
                       "status": "반영됨" if state_dir.get(fs) == state_dir[ls] else "대기",
                       "kr": nodes[follower]["kr"]})
     return {"as_of": vmap["as_of"], "waiting": waiting, "diverging": diverging, "leads": leads}
+
+
+# ── 스윔레인 배치 (2026-10-18) — 열 = 밸류체인 단계(돈의 흐름: 수요 → 상류), 행 = 수요처 레인 ──
+TIERS = [
+    ("demand", "최종 수요"), ("system", "완제품·조립"), ("module", "부품·모듈"),
+    ("chip", "칩(설계·메모리)"), ("fab", "칩 생산·후공정"), ("material", "소재·장비"),
+]
+LANES = [
+    ("ai", "AI 데이터센터"), ("pc", "PC·노트북"), ("mobile", "스마트폰"),
+    ("common", "공통 — 여러 수요에 함께 공급"),
+]
+# 칸 → (단계, 레인). 여러 수요에 공급하는 칸은 공통 레인
+LAYOUT = {
+    "ai": ("demand", "ai"), "pc": ("demand", "pc"), "mobile": ("demand", "mobile"),
+    "ai_odm": ("system", "ai"), "dc_network": ("system", "ai"),
+    "pc_brand": ("system", "pc"), "nb_odm": ("system", "pc"),
+    "mobile_asm": ("system", "mobile"),
+    "ai_accel": ("module", "ai"), "server_parts": ("module", "ai"), "optical": ("module", "ai"), "pcb": ("module", "ai"),
+    "mem_module": ("module", "pc"), "display": ("module", "pc"),
+    "mlcc": ("module", "common"), "kr_smt_insp": ("material", "common"),
+    "ic_design": ("chip", "common"), "memory": ("chip", "common"),
+    "foundry": ("fab", "common"), "osat": ("fab", "common"), "test": ("fab", "common"),
+    "ccl": ("material", "ai"), "abf": ("material", "common"), "wafer": ("material", "common"),
+    "fab_equip": ("material", "common"), "kr_pkg_equip": ("material", "common"),
+    "kr_sub_equip": ("material", "common"), "kr_stf": ("material", "common"),
+}
+
+
+def validate_layout() -> list[str]:
+    tiers, lanes = {t for t, _ in TIERS}, {l for l, _ in LANES}
+    keys = set(NODE_BY_KEY) | DEMAND_KEYS
+    errs = [f"배치 없음: {k}" for k in sorted(keys - set(LAYOUT))]
+    errs += [f"알 수 없는 배치 {k}: {v}" for k, v in LAYOUT.items() if v[0] not in tiers or v[1] not in lanes or k not in keys]
+    return errs

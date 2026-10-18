@@ -9,6 +9,17 @@ class MapTests(unittest.TestCase):
     def test_map_is_consistent(self):
         self.assertEqual(validate(), [])
 
+    def test_every_node_has_a_swimlane_cell(self):
+        from pipeline.value_chain import validate_layout
+        self.assertEqual(validate_layout(), [])
+
+    def test_money_flows_left_to_right(self):
+        """돈의 흐름(사는 쪽 → 파는 쪽)으로 그리면 사는 쪽 단계가 파는 쪽보다 왼쪽이거나 같아야 한다"""
+        from pipeline.value_chain import LAYOUT, TIERS
+        order = {t: i for i, (t, _) in enumerate(TIERS)}
+        back = [(a, b) for a, b, _, _ in EDGES if order[LAYOUT[b][0]] > order[LAYOUT[a][0]]]
+        self.assertEqual(back, [])
+
     def test_direction_queries(self):
         self.assertIn(("pcb", "supply"), upstream("ai_odm"))
         self.assertIn(("pcb", "supply"), downstream("ccl"))

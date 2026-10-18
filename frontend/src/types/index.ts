@@ -1249,6 +1249,8 @@ export interface VcEdge {
 }
 export interface ValueChainResponse {
   as_of: string | null; demands: VcDemand[]
+  tiers: { key: string; label: string }[]; lanes: { key: string; label: string }[]
+  layout: Record<string, { tier: string; lane: string }>
   nodes: VcNode[]; edges: VcEdge[]; thresholds: Record<string, number>
 }
 export interface PropRow { stock_code: string; name: string; directions: KrConfirm["directions"]; agree_up: number; observed: number }

@@ -1,7 +1,6 @@
 import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
-import dagre from "dagre"
 import { ReactFlow, Background, Controls, Handle, Position, MarkerType, type Edge, type Node, type NodeProps } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +14,7 @@ import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
 import { formatPercent } from "@/utils/format"
-import type { PropRow, VcDemand, VcEdge, VcNode } from "@/types"
+import type { PropRow, ValueChainResponse, VcDemand, VcEdge, VcNode } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -65,16 +64,43 @@ function ChainNode({ data }: NodeProps) {
     {n.kr.length > 0 && <div className="truncate text-[10px] font-medium text-primary">한국 {n.kr.map(k => k.name).join("·")}</div>}
   </div>
 }
-const nodeTypes = { chain: ChainNode }
+const nodeTypes = { chain: ChainNode, lane: LaneBand, tier: TierHeader }
 
-function layout(nodes: string[], edges: [string, string][]) {
-  const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: "LR", nodesep: 10, ranksep: 90 })
-  g.setDefaultEdgeLabel(() => ({}))
-  nodes.forEach(k => g.setNode(k, { width: NODE_W, height: NODE_H }))
-  edges.forEach(([a, b]) => g.setEdge(a, b))
-  dagre.layout(g)
-  return Object.fromEntries(nodes.map(k => { const p = g.node(k); return [k, { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }] }))
+/* 스윔레인 격자 — 열 = 단계(왼쪽 수요 → 오른쪽 상류), 행 = 수요처 레인. 같은 칸(단계·레인)에 여럿이면 세로로 쌓는다 */
+const LANE_LABEL_W = 112
+const COL_W = 232
+const CELL_GAP = 12
+const LANE_PAD = 34
+
+function LaneBand({ data }: NodeProps) {
+  const d = data as { label: string; width: number; height: number; shade: boolean }
+  return <div style={{ width: d.width, height: d.height }} className={cn("pointer-events-none rounded-md border border-dashed", d.shade && "bg-muted/30")}>
+    <div className="px-2 pt-1.5 text-[11px] font-semibold text-muted-foreground" style={{ width: LANE_LABEL_W }}>{d.label}</div>
+  </div>
+}
+function TierHeader({ data }: NodeProps) {
+  const d = data as { label: string }
+  return <div style={{ width: NODE_W }} className="pointer-events-none border-b pb-1 text-center text-[11px] font-semibold text-muted-foreground">{d.label}</div>
+}
+
+function swimlane(vc: ValueChainResponse) {
+  const tierIdx = Object.fromEntries(vc.tiers.map((t, i) => [t.key, i]))
+  const keys = [...vc.demands.map(d => d.key), ...vc.nodes.map(n => n.key)]
+  const cells: Record<string, string[]> = {}
+  keys.forEach(k => { const c = vc.layout[k]; if (c) (cells[`${c.lane}|${c.tier}`] ??= []).push(k) })
+  const pos: Record<string, { x: number; y: number }> = {}
+  const bands: { key: string; label: string; y: number; height: number }[] = []
+  let y = 0
+  vc.lanes.forEach(lane => {
+    const depth = Math.max(1, ...vc.tiers.map(t => cells[`${lane.key}|${t.key}`]?.length ?? 0))
+    const height = LANE_PAD + depth * (NODE_H + CELL_GAP) + 8
+    vc.tiers.forEach(t => (cells[`${lane.key}|${t.key}`] ?? []).forEach((k, i) => {
+      pos[k] = { x: LANE_LABEL_W + tierIdx[t.key] * COL_W + 16, y: y + LANE_PAD + i * (NODE_H + CELL_GAP) }
+    }))
+    bands.push({ key: lane.key, label: lane.label, y, height })
+    y += height + 10
+  })
+  return { pos, bands, width: LANE_LABEL_W + vc.tiers.length * COL_W + 16 }
 }
 
 const EDGE_STYLE: Record<VcEdge["verdict"], { stroke: string; width: number; dash?: string; opacity: number }> = {
@@ -95,11 +121,14 @@ export default function ValueChainPage() {
 
   const graph = useMemo(() => {
     if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[] }
-    const keys = [...vc.data.nodes.map(n => n.key), ...vc.data.demands.map(d => d.key)]
-    const pos = layout(keys, vc.data.edges.map(e => [e.to, e.from]))   // 돈의 흐름: 사는 쪽 → 파는 쪽
+    const { pos, bands, width } = swimlane(vc.data)
     const nodes: Node[] = [
-      ...vc.data.nodes.map(n => ({ id: n.key, type: "chain", position: pos[n.key], data: { node: n, selected: n.key === selected } })),
-      ...vc.data.demands.map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: false } })),
+      ...bands.map((b, i) => ({ id: `lane-${b.key}`, type: "lane", position: { x: 0, y: b.y }, draggable: false, selectable: false, zIndex: -1,
+        data: { label: b.label, width, height: b.height, shade: i % 2 === 1 } })),
+      ...vc.data.tiers.map((t, i) => ({ id: `tier-${t.key}`, type: "tier", position: { x: LANE_LABEL_W + i * COL_W + 16, y: -30 }, draggable: false, selectable: false,
+        data: { label: t.label } })),
+      ...vc.data.nodes.filter(n => pos[n.key]).map(n => ({ id: n.key, type: "chain", position: pos[n.key], data: { node: n, selected: n.key === selected } })),
+      ...vc.data.demands.filter(d => pos[d.key]).map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: false } })),
     ]
     const edges: Edge[] = vc.data.edges.map(e => {
       const s = EDGE_STYLE[e.verdict]
@@ -144,7 +173,7 @@ export default function ValueChainPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-card-title">공급 지도</CardTitle>
           <p className="text-caption text-muted-foreground">
-            왼쪽이 최종 수요, 오른쪽으로 갈수록 상류(부품 → 칩 → 장비·소재)입니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
+            열은 밸류체인 단계(왼쪽 최종 수요 → 오른쪽 소재·장비), 행은 수요처 레인입니다. 여러 수요에 함께 공급하는 칸은 '공통' 레인에 둡니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
             칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화) — AI 데이터센터·스마트폰 수요와 AI 가속기는 미국 분기 실적(SEC)의 분기 YoY를 직전 분기와 비교. 선 = 측정 판정
             (굵은 실선 확인 · 실선 부분 · 점선 미확인), 숫자 = 시차(+공급이 앞섬, −수요가 앞섬, ?는 두 신호 시차 불일치).
             {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ).`}
@@ -158,7 +187,7 @@ export default function ValueChainPage() {
               <div className="h-[680px] rounded-lg border">
                 <ReactFlow nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.02, minZoom: 0.65 }}
                   colorMode={resolvedTheme === "dark" ? "dark" : "light"} nodesDraggable={false} nodesConnectable={false} minZoom={0.2} maxZoom={2}
-                  onNodeClick={(_, n) => select(n.id === selected ? null : n.id)} onPaneClick={() => select(null)} proOptions={{ hideAttribution: true }}>
+                  onNodeClick={(_, n) => { if (n.type === "chain") select(n.id === selected ? null : n.id) }} onPaneClick={() => select(null)} proOptions={{ hideAttribution: true }}>
                   <Background gap={20} size={1} />
                   <Controls showInteractive={false} />
                 </ReactFlow>

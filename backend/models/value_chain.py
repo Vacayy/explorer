@@ -60,8 +60,21 @@ class VcDemand(BaseModel):
     series: list[VcPoint] = []
 
 
+class VcAxis(BaseModel):
+    key: str
+    label: str
+
+
+class VcCell(BaseModel):
+    tier: str
+    lane: str
+
+
 class ValueChainResponse(BaseModel):
     as_of: str | None
+    tiers: list[VcAxis] = []           # 스윔레인 열(단계)
+    lanes: list[VcAxis] = []           # 스윔레인 행(수요처)
+    layout: dict[str, VcCell] = {}     # 칸·수요 → (단계, 레인)
     demands: list[VcDemand]
     nodes: list[VcNode]
     edges: list[VcEdge]
