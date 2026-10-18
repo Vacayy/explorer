@@ -15,9 +15,15 @@ from datetime import date
 # (티커, 지표, 용도)
 TARGETS = [
     ("MSFT", "capex", "ai"), ("GOOGL", "capex", "ai"), ("AMZN", "capex", "ai"), ("META", "capex", "ai"), ("ORCL", "capex", "ai"),
-    ("NVDA", "revenue", "ai_accel"), ("AMD", "revenue", "ai_accel"),
+    ("NVDA", "revenue", "ai_accel"), ("AMD", "revenue", "ai_accel"), ("AVGO", "revenue", "ai_accel"),
     ("AAPL", "revenue", "mobile"),
+    ("QCOM", "revenue", "mobile_soc"),
+    ("INTC", "revenue", "cpu"),
+    ("AMAT", "revenue", "semi_equip"), ("KLAC", "revenue", "semi_equip"), ("LRCX", "revenue", "semi_equip"),
 ]
+# SEC에 분기 XBRL이 없는 회사(20-F 연간뿐) — yfinance 최근 분기를 받아 쌓는다(매 수집마다 upsert라 이력이 늘어난다)
+YF_TARGETS = [("ASML", "revenue", "semi_equip", "EUR")]
+FX_CONST = {"EUR": 1.1}   # 합산용 고정 환율 — 회사별 YoY가 원통화 YoY와 같게 유지된다(환율 변동을 섞지 않음)
 TAGS = {
     "capex": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
     "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
@@ -102,31 +108,64 @@ def collect() -> dict:
                 failed.append(f"{ticker}: {type(e).__name__}")
     finally:
         conn.close()
+    stored_yf, failed_yf = collect_yf()
+    stored += stored_yf
+    failed += failed_yf
     return {"stored": stored, "failed": failed, "status": "error" if not stored else "partial" if failed else "ok"}
 
 
+def collect_yf() -> tuple[int, list[str]]:
+    """yfinance 분기 매출(최근 4~5분기) → us_quarterly. 고정 환율로 USD 환산, tag에 원통화 표시"""
+    import yfinance as yf
+    from database import get_connection
+    stored, failed = 0, []
+    conn = get_connection()
+    try:
+        for ticker, metric, use, ccy in YF_TARGETS:
+            try:
+                q = yf.Ticker(ticker).quarterly_income_stmt
+                row = q.loc["Total Revenue"].dropna()
+                for col, v in row.items():
+                    end = str(col)[:10]
+                    conn.execute("INSERT INTO us_quarterly (ticker, q, metric, value, tag, use_key, fetched_at) VALUES (?,?,?,?,?,?, datetime('now')) "
+                                 "ON CONFLICT(ticker, q, metric) DO UPDATE SET value=excluded.value, tag=excluded.tag, use_key=excluded.use_key, "
+                                 "fetched_at=excluded.fetched_at",
+                                 (ticker, _quarter_key(end), metric, float(v) * FX_CONST.get(ccy, 1.0), f"yfinance:Total Revenue({ccy}×{FX_CONST.get(ccy, 1.0)})", use))
+                    stored += 1
+                conn.commit()
+            except Exception as e:  # noqa: BLE001
+                failed.append(f"{ticker}: {type(e).__name__}")
+    finally:
+        conn.close()
+    return stored, failed
+
+
 def demand_series(conn, use_key: str) -> dict[str, float]:
-    """용도별 합계의 분기 YoY(%) — 그 분기에 대상 티커가 모두 있을 때만"""
-    tickers = [t for t, _, u in TARGETS if u == use_key]
-    rows = conn.execute(f"SELECT q, SUM(value) v, COUNT(*) n FROM us_quarterly WHERE use_key=? AND ticker IN "
-                        f"({','.join('?' * len(tickers))}) GROUP BY q", (use_key, *tickers)).fetchall()
-    total = {r["q"]: r["v"] for r in rows if r["n"] == len(tickers)}
+    """용도별 분기 YoY(%) — 그 분기와 전년 같은 분기에 둘 다 값이 있는 회사들만 합산(같은 회사 묶음끼리 비교).
+    구성 회사의 절반 이상이 짝지어질 때만 낸다 — 이력이 짧은 회사(ASML 등)가 끼어도 칸 전체 이력이 줄지 않게"""
+    tickers = [t for t, _, u in TARGETS + [(a, b, c) for a, b, c, _ in YF_TARGETS] if u == use_key]
+    vals: dict[str, dict[str, float]] = {}
+    for r in conn.execute(f"SELECT ticker, q, value FROM us_quarterly WHERE use_key=? AND ticker IN "
+                          f"({','.join('?' * len(tickers))})", (use_key, *tickers)):
+        vals.setdefault(r["q"], {})[r["ticker"]] = r["value"]
     out = {}
-    for q, v in total.items():
-        prev = f"{int(q[:4]) - 1}{q[4:]}"
-        if prev in total and total[prev]:
-            out[q] = (v / total[prev] - 1) * 100
+    for q, cur in vals.items():
+        prev = vals.get(f"{int(q[:4]) - 1}{q[4:]}", {})
+        both = [t for t in cur if t in prev and prev[t]]
+        if len(both) * 2 >= len(tickers):
+            out[q] = (sum(cur[t] for t in both) / sum(prev[t] for t in both) - 1) * 100
     return dict(sorted(out.items()))
 
 
 NAMES = {"MSFT": "마이크로소프트", "GOOGL": "알파벳(구글)", "AMZN": "아마존", "META": "메타", "ORCL": "오라클",
-         "NVDA": "엔비디아", "AMD": "AMD", "AAPL": "애플"}
+         "NVDA": "엔비디아", "AMD": "AMD", "AVGO": "브로드컴", "AAPL": "애플", "QCOM": "퀄컴", "INTC": "인텔",
+         "AMAT": "어플라이드 머티리얼즈", "KLAC": "KLA", "LRCX": "램리서치", "ASML": "ASML"}
 
 
 def members(conn, use_key: str) -> list[dict]:
     """용도별 구성 회사의 최신 분기 값과 YoY — 수요 칸 상세"""
     out = []
-    for ticker, metric, use in TARGETS:
+    for ticker, metric, use in TARGETS + [(a, b, c) for a, b, c, _ in YF_TARGETS]:
         if use != use_key:
             continue
         rows = {r["q"]: r["value"] for r in conn.execute(

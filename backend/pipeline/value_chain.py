@@ -24,7 +24,10 @@ NODES = [
     ("pc_brand", "PC 브랜드", ["2357", "2353", "2377"], [], "노트북·데스크톱·게이밍"),
     ("nb_odm", "노트북 ODM", ["2324"], [], "노트북 위탁 생산"),
     ("mobile_asm", "스마트폰 조립·부품", ["4938", "3008"], [], "아이폰 조립·카메라 렌즈"),
-    ("ai_accel", "AI 가속기", [], [], "엔비디아·AMD GPU·가속기(미국 분기 매출로 관측)"),
+    ("ai_accel", "AI 가속기", [], [], "엔비디아·AMD GPU, 브로드컴 맞춤형 ASIC(미국 분기 매출로 관측)"),
+    ("mobile_soc", "모바일 AP(퀄컴)", [], [], "스마트폰 AP·모뎀(미국 분기 매출로 관측)"),
+    ("cpu", "x86 CPU(인텔)", [], [], "PC·서버 CPU(미국 분기 매출로 관측)"),
+    ("semi_equip", "글로벌 반도체 장비", [], [], "AMAT·KLA·램리서치·ASML(분기 매출로 관측)"),
     ("dc_network", "데이터센터 네트워크", ["2345", "3380"], [], "스위치·네트워크 장비"),
     # 부품
     ("server_parts", "서버 전원·냉각·기구", ["2308", "2301", "3017", "3324", "3653", "2421", "8210", "2059", "3665", "3533"], [], "전원·수랭·섀시·레일·케이블·소켓"),
@@ -71,6 +74,12 @@ EDGES = [
     ("foundry", "ai_accel", "supply", "GPU 웨이퍼·CoWoS 패키징"),
     ("osat", "ai_accel", "supply", "후공정·테스트"),
     ("mobile_asm", "mobile", "supply", "아이폰 조립·카메라 렌즈"),
+    ("mobile_soc", "mobile", "supply", "안드로이드 스마트폰 AP·모뎀"),
+    ("foundry", "mobile_soc", "supply", "AP 웨이퍼 생산"),
+    ("cpu", "nb_odm", "supply", "노트북 CPU"),
+    ("cpu", "ai_odm", "supply", "서버 CPU"),
+    ("semi_equip", "foundry", "capex", "파운드리 증설(노광·증착·식각·검사)"),
+    ("semi_equip", "memory", "capex", "메모리 증설"),
     ("memory", "mobile_asm", "supply", "모바일 DRAM·NAND"),
     ("mlcc", "mobile_asm", "supply", "스마트폰 MLCC"),
     ("memory", "mem_module", "supply", "모듈용 메모리 칩"),
@@ -99,7 +108,10 @@ EDGES = [
 
 # 대만 월매출 대신 미국 분기 실적으로 관측하는 칸·수요 → us_quarterly.use_key
 US_OBS = {"ai": ("ai", "하이퍼스케일러 설비투자(MSFT·GOOGL·AMZN·META·ORCL)"),
-          "ai_accel": ("ai_accel", "엔비디아·AMD 매출"),
+          "ai_accel": ("ai_accel", "엔비디아·AMD·브로드컴 매출"),
+          "mobile_soc": ("mobile_soc", "퀄컴 매출"),
+          "cpu": ("cpu", "인텔 매출"),
+          "semi_equip": ("semi_equip", "AMAT·KLA·램리서치·ASML 매출(ASML은 유로 고정 환율 환산·최근 분기부터 누적)"),
           "mobile": ("mobile", "애플 매출")}
 
 # 대만 동종이 없는 한국 고유 칸 → 한국 수출 통계(HS, kr_confirm 조사) 합산으로 관측
@@ -267,6 +279,7 @@ LAYOUT = {
     "ai_odm": ("system", "ai"), "dc_network": ("system", "ai"),
     "pc_brand": ("system", "pc"), "nb_odm": ("system", "pc"),
     "mobile_asm": ("system", "mobile"),
+    "mobile_soc": ("chip", "mobile"), "cpu": ("chip", "pc"), "semi_equip": ("material", "common"),
     "ai_accel": ("module", "ai"), "server_parts": ("module", "ai"), "optical": ("module", "ai"), "pcb": ("module", "ai"),
     "mem_module": ("module", "pc"), "display": ("module", "pc"),
     "mlcc": ("module", "common"), "kr_smt_insp": ("material", "common"),
