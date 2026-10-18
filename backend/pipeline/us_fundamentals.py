@@ -22,6 +22,13 @@ TARGETS = [
     ("AMAT", "revenue", "dep_etch"), ("LRCX", "revenue", "dep_etch"), ("KLAC", "revenue", "metrology"),
     # AI 프론티어 랩 수요의 대리 — 랩과 맺은 다년 컴퓨트 계약이 쌓이는 수주잔고(RPO, 분기 말 시점 잔액)
     ("ORCL", "rpo", "frontier"), ("CRWV", "rpo", "frontier"),
+    # 네트워크·인터커넥트(2026-10-18 조사: AI 데이터센터 비중이 공시로 확인된 회사만)
+    ("ANET", "revenue", "dc_switch"), ("CLS", "revenue", "dc_switch"), ("CIEN", "revenue", "dci"),
+    ("ALAB", "revenue", "ic_link"), ("CRDO", "revenue", "ic_link"), ("MRVL", "revenue", "ic_link"),
+    ("APH", "revenue", "copper"), ("COHR", "revenue", "optics"), ("LITE", "revenue", "optics"), ("FN", "revenue", "optics"),
+    # 전력·냉각
+    ("MPWR", "revenue", "power_semi"), ("VRT", "revenue", "dc_infra"), ("NVT", "revenue", "dc_infra"), ("MOD", "revenue", "dc_infra"),
+    ("GEV", "revenue", "power_grid"),
     # 자본 조달 — 장기채 발행액(현금흐름표, 분기 누적은 차감). 분기마다 들쭉날쭉해 최근 4분기 합으로 본다(TTM)
     ("MSFT", "debt_issue", "funding"), ("GOOGL", "debt_issue", "funding"), ("AMZN", "debt_issue", "funding"),
     ("META", "debt_issue", "funding"), ("ORCL", "debt_issue", "funding"), ("CRWV", "debt_issue", "funding"),
@@ -33,7 +40,8 @@ EXTERNAL = [("ASML", "revenue", "litho")]   # pipeline/asml_6k: SEC 6-K 분기 �
 FX_CONST = {"EUR": 1.1}   # 합산용 고정 환율 — 회사별 YoY가 원통화 YoY와 같게 유지된다(환율 변동을 섞지 않음)
 TAGS = {
     "capex": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
-    "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
+    "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet",
+                "RevenueFromContractWithCustomerIncludingAssessedTax"],   # LITE는 2025-03 이후 이 계정
     "rpo": ["RevenueRemainingPerformanceObligation"],
     "debt_issue": ["ProceedsFromIssuanceOfLongTermDebt", "ProceedsFromIssuanceOfSeniorLongTermDebt", "ProceedsFromIssuanceOfDebt",
                    "ProceedsFromIssuanceOfUnsecuredDebt",
@@ -100,9 +108,9 @@ def _pick_tag(gaap: dict, metric: str) -> tuple[str, list[dict]] | None:
     for tag in TAGS[metric]:
         units = gaap.get(tag, {}).get("units", {}).get("USD")
         if units:
-            last = max(u["end"] for u in units)
-            if best is None or last > best[0]:
-                best = (last, tag, units)
+            key = (max(u["end"] for u in units), len(units))    # 끝 날짜가 같으면 사실이 많은 계정(LITE: 연간만 남은 계정 회피)
+            if best is None or key > best[0]:
+                best = (key, tag, units)
     return (best[1], best[2]) if best else None
 
 
@@ -208,7 +216,10 @@ def demand_series(conn, use_key: str) -> dict[str, float]:
 
 NAMES = {"MSFT": "마이크로소프트", "GOOGL": "알파벳(구글)", "AMZN": "아마존", "META": "메타", "ORCL": "오라클",
          "NVDA": "엔비디아", "AMD": "AMD", "AVGO": "브로드컴", "AAPL": "애플", "QCOM": "퀄컴", "INTC": "인텔",
-         "AMAT": "어플라이드 머티리얼즈", "KLAC": "KLA", "LRCX": "램리서치", "ASML": "ASML", "CRWV": "코어위브"}
+         "AMAT": "어플라이드 머티리얼즈", "KLAC": "KLA", "LRCX": "램리서치", "ASML": "ASML", "CRWV": "코어위브",
+         "ANET": "아리스타", "CLS": "셀레스티카", "CIEN": "시에나", "ALAB": "아스테라랩스", "CRDO": "크레도", "MRVL": "마벨",
+         "APH": "앰페놀", "COHR": "코히런트", "LITE": "루멘텀", "FN": "패브리넷", "MPWR": "모놀리식파워", "VRT": "버티브",
+         "NVT": "엔벤트", "MOD": "모딘", "GEV": "GE버노바"}
 
 
 def members(conn, use_key: str) -> list[dict]:
