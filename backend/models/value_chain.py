@@ -44,6 +44,7 @@ class VcAux(BaseModel):
     series: str
     label: str
     missing: bool                  # 아직 수집되지 않음 — 숨기지 않고 표시
+    note: str | None = None        # 이 지표를 이렇게 보는 이유·한계(화면 툴팁)
     period: str | None = None
     yoy_3m: float | None = None
     yoy_3m_prev: float | None = None
@@ -80,7 +81,7 @@ class VcNode(BaseModel):
     tw: list[VcCompany]
     kr: list[VcCompany]
     freq: str = "M"                # M = 월간(3개월 YoY) · Q = 미국 분기 실적(분기 YoY)
-    source: str | None = None      # tw(대만 월매출) | us(미국 분기 실적) | kr_trade(한국 수출 HS) | None(관측 없음)
+    source: str | None = None      # tw(대만 월매출) | us(미국 분기 실적) | kr_trade(한국 수출 HS) | ext(중국 세관·일본 무역통계) | None
     us_members: list[UsMember] = []
     aux: list[VcAux] = []          # 교차 확인 지표(월간 외부 시계열)
     market: list[VcMarket] = []    # 신용·금리 여건(자본 조달 칸)
@@ -121,7 +122,8 @@ class VcDemand(BaseModel):
     key: str
     name: str
     description: str
-    obs_label: str | None = None   # 관측 원천(미국 분기 실적) — 없으면 대리 관측만
+    obs_label: str | None = None   # 관측 원천(미국 분기 실적·중국 세관 월간) — 없으면 대리 관측만
+    freq: str = "Q"                # Q = 분기 YoY · M = 3개월 YoY(외부 월간 시계열)
     us_members: list[UsMember] = []
     aux: list[VcAux] = []
     yoy_3m: float | None = None    # 최신 분기 YoY

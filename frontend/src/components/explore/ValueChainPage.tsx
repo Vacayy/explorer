@@ -11,6 +11,8 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import { SparkLine } from "@/components/shared/Spark"
 import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
+import { MetricHint } from "@/components/shared/MetricHint"
+import { Info } from "lucide-react"
 import { useKrConfirm, usePropagation, useValueChain, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatNumber, formatPercent, formatRatio, formatSigma, formatUsd } from "@/utils/format"
@@ -47,7 +49,7 @@ function ChainNode({ data }: NodeProps) {
       {d.demand.state && <span className={cn("ml-auto shrink-0 text-[10px]", stateTone(d.demand.state))}>{d.demand.state}</span>}
     </div>
     {d.demand.obs_label
-      ? <div className="truncate text-[10px] tabular-nums text-muted-foreground" title={d.demand.obs_label}>분기 YoY {formatPercent(d.demand.yoy_3m)} · {d.demand.obs_label}</div>
+      ? <div className="truncate text-[10px] tabular-nums text-muted-foreground" title={d.demand.obs_label}>{d.demand.freq === "M" ? "3M" : "분기"} YoY {formatPercent(d.demand.yoy_3m)} · {d.demand.obs_label}</div>
       : <div className="truncate text-[10px] text-muted-foreground">{d.demand.description} · 대만 브랜드로 대리 관측</div>}
   </div>
   const n = d.node!
@@ -63,7 +65,8 @@ function ChainNode({ data }: NodeProps) {
       {n.state && <span className={cn("ml-auto shrink-0 text-[10px]", stateTone(n.state))}>{n.state}</span>}
     </div>
     <div className="text-[10px] tabular-nums text-muted-foreground">
-      {krOnly ? "관측 없음" : quarterly ? `분기 YoY ${formatPercent(n.yoy_3m)} · 미국 실적` : krTrade ? `수출 3M YoY ${formatPercent(n.yoy_3m)} · 한국 HS` : `3M YoY ${formatPercent(n.yoy_3m)}`}
+      {krOnly ? "관측 없음" : quarterly ? `분기 YoY ${formatPercent(n.yoy_3m)} · ${n.key === "jp_backend" ? "IR 실적" : "미국 실적"}` : krTrade ? `수출 3M YoY ${formatPercent(n.yoy_3m)} · 한국 HS`
+        : n.source === "ext" ? `3M YoY ${formatPercent(n.yoy_3m)} · 무역통계` : `3M YoY ${formatPercent(n.yoy_3m)}`}
     </div>
     {n.kr.length > 0 && <div className="truncate text-[10px] font-medium text-primary">한국 {n.kr.map(k => k.name).join("·")}</div>}
   </div>
@@ -273,6 +276,7 @@ function NodePanel({ node, edges, nodes, demands, onSelect }: { node?: VcNode; e
       {node.freq === "Q"
         ? <p className="mt-1 text-caption tabular-nums">분기 YoY {formatPercent(node.yoy_3m)} (직전 분기 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label} (SEC 분기 실적)</p>
         : node.tw.length > 0 && <p className="mt-1 text-caption tabular-nums">3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period}</p>}
+      {node.source === "ext" && <p className="mt-1 text-caption tabular-nums">3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label}</p>}
       {node.source === "kr_trade" && <p className="mt-1 text-caption tabular-nums">수출 3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label}</p>}
       {node.series.length > 1 && <div className="mt-1"><SparkLine data={node.series.map(p => p.yoy)} height={32} /></div>}
       {!!node.us_members?.length && <UsMembers members={node.us_members} />}
@@ -323,7 +327,9 @@ function DemandPanel({ demand, edges, nodes, onSelect }: { demand: VcDemand; edg
       <div className="flex items-center gap-2"><span className="font-semibold">{demand.name}</span>{demand.state && <Badge variant="outline" className="text-[11px]">{demand.state}</Badge>}</div>
       <p className="text-caption text-muted-foreground">{demand.description}</p>
       {demand.obs_label
-        ? <p className="mt-1 text-caption tabular-nums">분기 YoY {formatPercent(demand.yoy_3m)} (직전 분기 {formatPercent(demand.yoy_3m_prev)}) · {demand.period} · {demand.obs_label} 합계 (SEC 분기 실적)</p>
+        ? demand.freq === "M"
+          ? <p className="mt-1 text-caption tabular-nums">3M YoY {formatPercent(demand.yoy_3m)} (3개월 전 {formatPercent(demand.yoy_3m_prev)}) · {demand.period} · {demand.obs_label}</p>
+          : <p className="mt-1 text-caption tabular-nums">분기 YoY {formatPercent(demand.yoy_3m)} (직전 분기 {formatPercent(demand.yoy_3m_prev)}) · {demand.period} · {demand.obs_label} 합계 (SEC 분기 실적)</p>
         : <p className="mt-1 text-caption text-muted-foreground">직접 관측 원천이 없습니다 — 이 수요에 파는 대만 칸(PC 브랜드)이 대리 관측합니다.</p>}
       {(demand.series?.length ?? 0) > 1 && <div className="mt-1"><SparkLine data={demand.series!.map(p => p.yoy)} height={32} /></div>}
     </div>
@@ -342,7 +348,9 @@ function AuxList({ aux }: { aux: VcAux[] }) {
     <p className="text-caption font-medium text-muted-foreground">교차 확인 지표</p>
     <ul className="divide-y text-caption">
       {aux.map(a => <li key={a.series} className="flex items-baseline gap-2 py-1">
-        <span className="min-w-0 flex-1">{a.label}</span>
+        <span className="min-w-0 flex-1">{a.note
+          ? <MetricHint hint={a.note}><span className="underline decoration-dotted underline-offset-2">{a.label}</span> <Info className="inline size-3 text-muted-foreground" /></MetricHint>
+          : a.label}</span>
         {a.missing ? <span className="text-muted-foreground">수집 전</span> : <>
           <span className="shrink-0 tabular-nums text-muted-foreground">{a.period}</span>
           <span className={cn("shrink-0 tabular-nums", stateTone(a.state))}>3M YoY {formatPercent(a.yoy_3m)}</span>

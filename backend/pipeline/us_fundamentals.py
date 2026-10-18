@@ -36,7 +36,8 @@ TARGETS = [
 # SEC에 분기 XBRL이 없는 회사(20-F 연간뿐) — yfinance 최근 분기를 받아 쌓는다(매 수집마다 upsert라 이력이 늘어난다)
 YF_TARGETS: list[tuple[str, str, str, str]] = []   # ASML은 SEC 6-K 보도자료(pipeline/asml_6k)로 옮겼다 — 공식 원천이 이긴다
 # 다른 수집기가 us_quarterly에 넣는 회사(집계·상세에 포함) — (티커, 지표, 용도)
-EXTERNAL = [("ASML", "revenue", "litho")]   # pipeline/asml_6k: SEC 6-K 분기 보도자료, 2010~
+EXTERNAL = [("ASML", "revenue", "litho"),    # pipeline/asml_6k: SEC 6-K 분기 보도자료, 2010~
+            ("DISCO", "revenue", "jp_backend")]   # pipeline/disco_ir: IR 분기 엑셀, 2000~ (엔화 ÷150)
 FX_CONST = {"EUR": 1.1}   # 합산용 고정 환율 — 회사별 YoY가 원통화 YoY와 같게 유지된다(환율 변동을 섞지 않음)
 TAGS = {
     "capex": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
@@ -199,6 +200,14 @@ def collect() -> dict:
             failed.append(f"ASML 6-K: {r.get('error') or 'error'}")
     except Exception as e:  # noqa: BLE001
         failed.append(f"ASML 6-K: {type(e).__name__}")
+    try:                                  # 디스코 IR 분기 엑셀(일본 회사 중 유일한 키 없는 분기 원천)
+        from pipeline.disco_ir import collect as collect_disco
+        r = collect_disco()
+        stored += r.get("stored", 0)
+        if r.get("status") == "error":
+            failed.append(f"디스코 IR: {r.get('error') or 'error'}")
+    except Exception as e:  # noqa: BLE001
+        failed.append(f"디스코 IR: {type(e).__name__}")
     return {"stored": stored, "failed": failed, "status": "error" if not stored else "partial" if failed else "ok"}
 
 
@@ -269,7 +278,7 @@ NAMES = {"MSFT": "마이크로소프트", "GOOGL": "알파벳(구글)", "AMZN": 
          "AMAT": "어플라이드 머티리얼즈", "KLAC": "KLA", "LRCX": "램리서치", "ASML": "ASML", "CRWV": "코어위브",
          "ANET": "아리스타", "CLS": "셀레스티카", "CIEN": "시에나", "ALAB": "아스테라랩스", "CRDO": "크레도", "MRVL": "마벨",
          "APH": "앰페놀", "COHR": "코히런트", "LITE": "루멘텀", "FN": "패브리넷", "MPWR": "모놀리식파워", "VRT": "버티브",
-         "NVT": "엔벤트", "MOD": "모딘", "GEV": "GE버노바"}
+         "NVT": "엔벤트", "MOD": "모딘", "GEV": "GE버노바", "DISCO": "디스코"}
 
 
 def members(conn, use_key: str) -> list[dict]:

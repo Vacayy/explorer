@@ -1237,14 +1237,14 @@ export interface VcNode {
   yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]; series: { ym: string; yoy: number }[]
   freq?: "M" | "Q"; obs_label?: string | null; period?: string | null
   state_z?: number | null; obs_kind?: "direct" | "proxy" | null; obs_caveat?: string | null
-  source?: "tw" | "us" | "kr_trade" | null; us_members?: UsMember[]; aux?: VcAux[]; market?: VcMarket[]; pxq?: VcPxq[]
+  source?: "tw" | "us" | "kr_trade" | "ext" | null; us_members?: UsMember[]; aux?: VcAux[]; market?: VcMarket[]; pxq?: VcPxq[]
 }
 /** 한국 수출 P×Q 분해 — 금액 = 단가·구성(금액/kg) × 물량(kg), 3개월 YoY */
 export interface VcPxq { hs: string; item: string; period: string; value_yoy: number; qty_yoy: number; price_yoy: number; price_share: number | null; verdict: string }
 /** 신용·금리 여건 — 수준과 약 3개월 변화(change_days가 실제 비교 기간), 긴축·완화·유지 */
 export interface VcMarket { ref: string; label: string; missing: boolean; as_of?: string | null; value?: number | null; unit?: string | null; change_3m?: number | null; change_days?: number | null; state?: string | null }
 /** 교차 확인 지표 — 월간 외부 시계열(WSTS·Census·SEAJ·대만 수출수주), missing=아직 수집 전 */
-export interface VcAux { series: string; label: string; missing: boolean; period?: string | null; yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: string | null }
+export interface VcAux { series: string; label: string; missing: boolean; note?: string | null; period?: string | null; yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: string | null }
 /** 미국 수요 기업 최신 분기 값 — 수요 칸·AI 가속기 상세 */
 /** 10% 이상 고객 비중(SEC 10-K/10-Q 주석) — label null은 익명 고객(글자가 공시마다 같은 회사라는 보장 없음) */
 export interface CustomerConcentration {
@@ -1259,6 +1259,7 @@ export interface UsMember {
 export interface VcDemand {
   key: string; name: string; description: string; obs_label?: string | null; us_members?: UsMember[]; aux?: VcAux[]
   yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: TwLink["state"]; period?: string | null; series?: { ym: string; yoy: number }[]
+  freq?: "M" | "Q"; state_z?: number | null
 }
 export interface VcEdge {
   from: string; to: string; kind: "supply" | "capex"; reason: string

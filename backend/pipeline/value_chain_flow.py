@@ -72,6 +72,22 @@ def _kr_increment(conn, hs_codes: list[str], back: int = 0) -> tuple[float | Non
     return sum(tot[p] for p in ps) - sum(tot[p] for p in prev), ps[-1]
 
 
+def _ext_increment(conn, series: str, back: int = 0) -> tuple[float | None, str | None]:
+    """외부 월간 시계열 칸 최근 3개월 − 전년 같은 3개월(USD). 단위: USD thousand ×1000, JPY thousand ×1000/150, USD 그대로"""
+    rows = conn.execute("SELECT period, value, unit FROM ext_series WHERE series=? ORDER BY period", (series,)).fetchall()
+    if not rows:
+        return None, None
+    fx = {"USD": 1.0, "USD thousand": 1000.0, "JPY thousand": 1000.0 / 150}.get(rows[-1]["unit"])
+    if fx is None:
+        return None, None
+    tot = {r["period"]: r["value"] for r in rows}
+    ps = sorted(tot)[:len(tot) - 3 * back][-3:]
+    prev = [f"{int(p[:4]) - 1}{p[4:]}" for p in ps]
+    if len(ps) < 3 or any(p not in tot for p in prev):
+        return None, None
+    return (sum(tot[p] for p in ps) - sum(tot[p] for p in prev)) * fx, ps[-1]
+
+
 def _kr_return(conn, codes: list[str]) -> float | None:
     """한국 종목 63거래일 수익률 평균(%)"""
     rets = []
@@ -103,7 +119,7 @@ def _disclosure(conn, codes: list[str]) -> tuple[int, int]:
 
 def compute(vmap: dict | None = None) -> dict:
     from database import get_connection
-    from pipeline.value_chain import KR_OBS, NODES, US_OBS, obs_kind, read_map
+    from pipeline.value_chain import EXT_OBS, KR_OBS, NODES, US_OBS, obs_kind, read_map
     vmap = vmap or read_map()
     nodes = {n["key"]: n for n in vmap["nodes"]}
     conn = get_connection()
@@ -116,6 +132,8 @@ def compute(vmap: dict | None = None) -> dict:
                 kind = "stock" if US_OBS[key][0] in ("frontier",) else "flow"    # RPO는 흐름이 아니라 잔액
             elif key in KR_OBS:
                 fn, arg, kind = _kr_increment, KR_OBS[key][0], "flow"
+            elif key in EXT_OBS:
+                fn, arg, kind = _ext_increment, EXT_OBS[key][0], "flow"
             elif tw:
                 fn, arg, kind = _tw_increment, tw, "flow"
             else:

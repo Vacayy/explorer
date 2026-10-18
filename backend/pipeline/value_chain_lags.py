@@ -49,7 +49,34 @@ def kr_monthly(conn, hs: list[str]) -> dict[str, float]:
 
 def kr_yoy3m(conn, hs: list[str]) -> dict[str, float]:
     """한국 수출 칸(KR_OBS)의 3개월 YoY — 대만 노드와 같은 신호로 시차를 잰다(2026-10-18 메모리 칸 관측 교체)"""
-    m = kr_monthly(conn, hs)
+    return _yoy3m_of(kr_monthly(conn, hs))
+
+
+def kr_yoy(conn, hs: list[str]) -> dict[str, float]:
+    return _yoy_of(kr_monthly(conn, hs))
+
+
+def kr_quarterly_yoy(conn, hs: list[str]) -> dict[str, float]:
+    return _quarterly_of(kr_monthly(conn, hs))
+
+
+def ext_yoy3m(conn, series: str) -> dict[str, float]:
+    """외부 월간 시계열이 주 관측인 칸(EXT_OBS — 중국 세관·일본 무역통계)"""
+    from pipeline.ext_series import read
+    return _yoy3m_of(read(conn, series))
+
+
+def ext_yoy(conn, series: str) -> dict[str, float]:
+    from pipeline.ext_series import read
+    return _yoy_of(read(conn, series))
+
+
+def ext_quarterly_yoy(conn, series: str) -> dict[str, float]:
+    from pipeline.ext_series import read
+    return _quarterly_of(read(conn, series))
+
+
+def _yoy3m_of(m: dict[str, float]) -> dict[str, float]:
     out = {}
     for p in m:
         cur = [_shift_ym(p, -i) for i in range(3)]
@@ -59,13 +86,11 @@ def kr_yoy3m(conn, hs: list[str]) -> dict[str, float]:
     return out
 
 
-def kr_yoy(conn, hs: list[str]) -> dict[str, float]:
-    m = kr_monthly(conn, hs)
+def _yoy_of(m: dict[str, float]) -> dict[str, float]:
     return {p: (v / m[_shift_ym(p, -12)] - 1) * 100 for p, v in m.items() if m.get(_shift_ym(p, -12))}
 
 
-def kr_quarterly_yoy(conn, hs: list[str]) -> dict[str, float]:
-    m = kr_monthly(conn, hs)
+def _quarterly_of(m: dict[str, float]) -> dict[str, float]:
     q: dict[str, list[str]] = {}
     for p in m:
         q.setdefault(f"{p[:4]}-{((int(p[5:]) - 1) // 3 + 1) * 3:02d}", []).append(p)
@@ -167,11 +192,13 @@ def tw_quarterly_yoy(conn, codes: list[str]) -> dict[str, float]:
 
 def node_quarterly(conn, key: str) -> dict[str, float]:
     from pipeline.us_fundamentals import demand_series
-    from pipeline.value_chain import KR_OBS, NODE_BY_KEY, US_OBS
+    from pipeline.value_chain import EXT_OBS, KR_OBS, NODE_BY_KEY, US_OBS
     if key in US_OBS:
         return demand_series(conn, US_OBS[key][0])
     if key in KR_OBS:
         return kr_quarterly_yoy(conn, KR_OBS[key][0])
+    if key in EXT_OBS:
+        return ext_quarterly_yoy(conn, EXT_OBS[key][0])
     codes = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
     return tw_quarterly_yoy(conn, codes) if codes else {}
 
@@ -211,11 +238,12 @@ _memo: dict[tuple, dict] = {}
 def measure_all() -> dict:
     """엣지마다 두 신호의 최적 시차·상관과 위약 보정 판정. 반환 {thresholds, edges}. 대만 수집 시각이 같으면 캐시"""
     from database import get_connection
-    from pipeline.value_chain import EDGES, KR_OBS, NODE_BY_KEY, US_OBS
+    from pipeline.value_chain import EDGES, EXT_OBS, KR_OBS, NODE_BY_KEY, US_OBS
     conn = get_connection()
     stamp = tuple(conn.execute("SELECT MAX(ym), MAX(fetched_at) FROM tw_monthly_revenue").fetchone()) + \
         tuple(conn.execute("SELECT MAX(q), MAX(fetched_at) FROM us_quarterly").fetchone()) + \
-        tuple(conn.execute("SELECT MAX(period), MAX(fetched_at) FROM trade_stats").fetchone())
+        tuple(conn.execute("SELECT MAX(period), MAX(fetched_at) FROM trade_stats").fetchone()) + \
+        tuple(conn.execute("SELECT MAX(period), MAX(fetched_at) FROM ext_series").fetchone())
     if stamp in _memo:
         conn.close()
         return _memo[stamp]
@@ -227,6 +255,7 @@ def measure_all() -> dict:
         cache: dict[tuple, dict] = {}
 
         kr_fn = {"yoy3m": kr_yoy3m, "yoy": kr_yoy}
+        ext_fn = {"yoy3m": ext_yoy3m, "yoy": ext_yoy}
         for name, fn in SIGNALS:                       # 한국 위약 — 모든 관측 칸(대만·한국 수출) 시계열과 맞대 본다
             all_series = [fn(conn, c) for c in observed] + [kr_fn[name](conn, v[0]) for v in KR_OBS.values()]
             thresholds[f"{name}_kr"] = max(thresholds[name], placebo_threshold_kr(conn, name, all_series))
@@ -235,6 +264,8 @@ def measure_all() -> dict:
             if (name, key) not in cache:
                 if key in KR_OBS:                      # 한국 수출로 관측하는 칸 — 같은 신호를 수출 시계열로
                     cache[(name, key)] = kr_fn[name](conn, KR_OBS[key][0])
+                elif key in EXT_OBS:                   # 외부 월간 시계열 칸 — 대만 위약 기준을 그대로 쓴다
+                    cache[(name, key)] = ext_fn[name](conn, EXT_OBS[key][0])
                 else:
                     codes = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
                     cache[(name, key)] = fn(conn, codes) if codes else {}

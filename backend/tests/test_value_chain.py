@@ -38,6 +38,15 @@ class MapTests(unittest.TestCase):
         self.assertEqual(set(by["tw_memory"][2]), {"2408", "2344", "2337"})
         self.assertNotIn("005930", by["foundry"][3])     # 주가가 두 칸에 중복 반영되지 않게
 
+    def test_china_demand_is_not_observed_by_korean_equipment_exports(self):
+        """한국 → 중국 장비 수출은 삼성·SK 자기 중국 공장향이 섞여 주 관측으로 쓰지 않고, 이유를 툴팁으로 단다(2026-10-18 사용자 결정)"""
+        from pipeline.value_chain import AUX, EXT_OBS
+        self.assertFalse(any(v[0].startswith("kr_exp:") for v in EXT_OBS.values()))
+        kr_cn = [a for a in AUX["china_fab"] if a[0] == "kr_exp:8486x:CN"]
+        self.assertTrue(kr_cn and len(kr_cn[0]) == 3 and "자기 회사의 중국 공장" in kr_cn[0][2])
+        hk = [a for k in AUX for a in AUX[k] if a[0].endswith(":HK")]
+        self.assertTrue(hk and all(len(a) == 3 for a in hk))     # 홍콩 포함 이유 툴팁
+
 
 class RelativeStateTests(unittest.TestCase):
     """칸 자기 이력 대비 상태 — 호황기에 ±10%p 고정 기준이 대부분 칸을 '가속'으로 만들던 문제(2026-10-18)"""
