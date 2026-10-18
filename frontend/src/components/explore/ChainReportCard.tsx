@@ -3,11 +3,17 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { useChainPreview, useChainReport, useChainReports, useCreateChainReport } from "@/hooks/useTwRevenue"
 import { formatKstDateTime, formatUsd } from "@/utils/format"
-import type { ChainRef, ChainTreeNode } from "@/types"
+import type { ChainOutline, ChainRef, ChainTreeNode } from "@/types"
+
+const OUTLINE: Record<ChainOutline, { label: string; hint: string }> = {
+  bottom_up: { label: "칸 → 수요", hint: "고른 칸에서 시작해 수요 쪽으로 올라가며 쓴다" },
+  top_down: { label: "수요 → 칸", hint: "돈의 출처·최종 수요(거시)에서 시작해 고른 칸으로 내려오며 쓴다(산업 → 기업)" },
+}
 
 /**
  * 트리 보고서(docs/specs/value-chain.md §16) — 고른 칸에서 그 물건을 사는 쪽(수요)으로 타고 올라가며(bottom-up) 사실·기대·문서를 모은 자연어 보고서.
@@ -34,8 +40,9 @@ function Tree({ tree }: { tree: ChainTreeNode[] }) {
   </ul>
 }
 
-export function ChainReportCard({ root, rootName, pickedDemand, reportId, onReport }: {
+export function ChainReportCard({ root, rootName, pickedDemand, reportId, onReport, outline, onOutline }: {
   root: string; rootName: string; pickedDemand: string | null; reportId: number | null; onReport: (id: number | null) => void
+  outline: ChainOutline; onOutline: (o: ChainOutline) => void
 }) {
   const preview = useChainPreview(root)
   const list = useChainReports(root)
@@ -49,14 +56,20 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
     <CardHeader className="pb-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <CardTitle className="text-card-title">밸류체인 보고서 — {rootName}</CardTitle>
-        <Button size="sm" disabled={running || preview.isLoading} onClick={() => create.mutate(root, { onSuccess: x => onReport(x.id) })}>
-          {running ? "만드는 중…" : "보고서 만들기"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-caption text-muted-foreground">목차</span>
+          <ToggleGroup type="single" size="sm" variant="outline" value={outline} onValueChange={v => v && onOutline(v as ChainOutline)} aria-label="목차 순서">
+            {(Object.keys(OUTLINE) as ChainOutline[]).map(k => <ToggleGroupItem key={k} value={k} title={OUTLINE[k].hint} className="px-3 text-xs">{OUTLINE[k].label}</ToggleGroupItem>)}
+          </ToggleGroup>
+          <Button size="sm" disabled={running || preview.isLoading} onClick={() => create.mutate({ root, outline }, { onSuccess: x => onReport(x.id) })}>
+            {running ? "만드는 중…" : "보고서 만들기"}
+          </Button>
+        </div>
       </div>
       <p className="text-caption text-muted-foreground">
         지도에서 고른 칸에서 그 물건을 사는 쪽(수요)으로 깊이 4·칸 12까지 타고 올라가며(직접 판로는 모두, 그 위는 추정 증가액이 큰 가지 우선) — 이 칸으로 들어오는 돈이 어느 수요에서 오고 이어지는지를 사실·시장 기대·컨퍼런스콜·피드로 씁니다.
         {preview.data && ` 칸 메모 ${preview.data.models.note} 최대 ${preview.data.calls.node_notes_max}회(자료가 그대로인 칸은 재사용) → 분석 메모 ${preview.data.models.synthesis} 1회(목차·근거 설계, 웹 검색 최대 ${preview.data.calls.web_search_cap}회) → 애널리스트 문체 글쓰기 ${preview.data.models.writer ?? "sonnet"} 1회.`}
-        {" "}출처 없는 문장은 쓰지 않고, 사실과 기대를 구분합니다. 버튼을 누를 때만 만듭니다.
+        {" "}재료는 언제나 칸 → 수요(bottom-up)로 모으고, 목차 순서만 고릅니다 — {OUTLINE[outline].hint}. 출처 없는 문장은 쓰지 않고, 사실과 기대를 구분합니다. 버튼을 누를 때만 만듭니다.
       </p>
       {pickedDemand && <p className="text-caption text-muted-foreground">'{pickedDemand}'는 수요 칸이라 더 올라갈 곳이 없어 {rootName} 기준으로 보여 줍니다 — 지도에서 공급 칸을 고르면 그 칸이 루트가 됩니다.</p>}
       {create.isError && <p className="text-caption text-destructive">보고서 요청에 실패했습니다.</p>}
@@ -69,7 +82,8 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
         {!!list.data?.length && <div><p className="mb-1 text-caption font-medium text-muted-foreground">이전 보고서</p>
           <ul className="space-y-0.5">{list.data.map(x => <li key={x.id}>
             <Button variant={x.id === current ? "secondary" : "ghost"} size="sm" onClick={() => onReport(x.id)} className="h-auto w-full justify-between px-2 py-1 text-caption font-normal">
-              <span className="tabular-nums">{formatKstDateTime(x.created_at)}</span><span className="text-muted-foreground">{STATUS[x.status] ?? x.status}</span>
+              <span className="tabular-nums">{formatKstDateTime(x.created_at)}</span>
+              <span className="text-muted-foreground">{OUTLINE[x.outline ?? "bottom_up"].label} · {STATUS[x.status] ?? x.status}</span>
             </Button></li>)}</ul></div>}
       </div>
       <div className="min-w-0">
@@ -78,11 +92,11 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
           : !r ? <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">아직 이 루트의 보고서가 없습니다. 왼쪽 트리를 확인하고 '보고서 만들기'를 누르세요.</div>
           : r.status === "running" ? <div className="space-y-2 rounded-lg border p-4 text-sm"><p className="font-medium">만드는 중 — {r.progress ?? "준비 중"}</p>
             <p className="text-caption text-muted-foreground">칸 메모를 쓰고 종합합니다. 몇 분 걸리며, 이 화면을 떠나도 계속 만들어집니다.</p><Skeleton className="h-40 w-full" /></div>
-          : r.status === "error" ? <ErrorState message={`보고서를 만들지 못했습니다: ${r.error ?? "알 수 없는 오류"}`} onRetry={() => create.mutate(root, { onSuccess: x => onReport(x.id) })} />
+          : r.status === "error" ? <ErrorState message={`보고서를 만들지 못했습니다: ${r.error ?? "알 수 없는 오류"}`} onRetry={() => create.mutate({ root, outline }, { onSuccess: x => onReport(x.id) })} />
           : <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
               <Badge variant={r.status === "done" ? "secondary" : "outline"}>{STATUS[r.status]}</Badge>
-              <span className="tabular-nums">{formatKstDateTime(r.finished_at ?? r.created_at)}</span><span>· {r.model}</span>
+              <span className="tabular-nums">{formatKstDateTime(r.finished_at ?? r.created_at)}</span><span>· 목차 {OUTLINE[r.outline ?? "bottom_up"].label} · {r.model}</span>
               {r.missing.length > 0 && <span className="text-destructive">메모 실패로 빠진 칸: {r.missing.map(m => m.name).join(", ")}</span>}
             </div>
             <Markdown>{linkify(r.body ?? "", r.refs)}</Markdown>

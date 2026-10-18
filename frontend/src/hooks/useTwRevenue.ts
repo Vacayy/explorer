@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
-import type { ChainPreview, ChainReport, ChainReportItem, ExpectationsResponse, FlowResponse, KrConfirm, PropagationResponse, TwLinksResponse, TwRevenueResponse, ValueChainResponse } from "@/types"
+import type { ChainOutline, ChainPreview, ChainReport, ChainReportItem, ExpectationsResponse, FlowResponse, KrConfirm, PropagationResponse, TwLinksResponse, TwRevenueResponse, ValueChainResponse } from "@/types"
 
 /** 대만 월매출 92개사 — 저장분 읽기(수집은 매일 11:00 launchd twrevenue) */
 export function useTwRevenue() {
@@ -65,7 +65,8 @@ export function useChainReport(id: number | null) {
 export function useCreateChainReport() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (root: string) => (await api.post<ChainReport>("/api/spine/tw/chain-report", null, { params: { root } })).data,
+    mutationFn: async ({ root, outline }: { root: string; outline: ChainOutline }) =>
+      (await api.post<ChainReport>("/api/spine/tw/chain-report", null, { params: { root, outline } })).data,
     onSuccess: r => { void qc.invalidateQueries({ queryKey: ["spine", "tw", "chain-reports", r.root] }) },
   })
 }

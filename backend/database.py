@@ -1293,6 +1293,7 @@ def init_db():
     for migration in [
         "ALTER TABLE raw_documents ADD COLUMN media_json TEXT",
         "ALTER TABLE chain_reports ADD COLUMN analysis TEXT",   # 트리 보고서 분석 메모(글쓰기 단계의 뼈대, D-265)
+        "ALTER TABLE chain_reports ADD COLUMN outline TEXT",    # 트리 보고서 목차 순서 bottom_up | top_down (D-266)
         "ALTER TABLE conversations ADD COLUMN chat_id TEXT",  # 사용자 분리 (텔레그램 chat_id, 웹=NULL=오너)
         "ALTER TABLE conversations ADD COLUMN summary TEXT",     # 스레드 작업 노트 (컴팩션, D-131)
         "ALTER TABLE conversations ADD COLUMN state_json TEXT",  # 스레드 상태: 엔티티·마지막 intent·도구·근거 (D-131)

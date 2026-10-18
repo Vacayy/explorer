@@ -72,13 +72,13 @@ def chain_report_preview(root: str):
 
 
 @router.post("/chain-report", response_model=ChainReport)
-def chain_report_create(root: str, background: BackgroundTasks):
+def chain_report_create(root: str, background: BackgroundTasks, outline: str = Query("bottom_up", pattern="^(bottom_up|top_down)$")):
     """트리 보고서 생성 — 버튼으로 요청할 때만(비싼 생성은 승인 뒤로). 백그라운드에서 칸 메모(sonnet) → 종합(opus + 웹 검색)"""
     _valid_root(root)
     from pipeline.chain_report import build, read, start
-    rid, created = start(root)
-    if created:                                       # 이미 같은 루트가 돌고 있으면 그 진행 상태만 돌려준다(중복 생성 방지)
-        background.add_task(build, rid, root)
+    rid, created = start(root, outline)
+    if created:                                       # 이미 같은 루트·목차가 돌고 있으면 그 진행 상태만 돌려준다(중복 생성 방지)
+        background.add_task(build, rid, root, outline)
     return read(rid)
 
 

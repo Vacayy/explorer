@@ -340,6 +340,7 @@ class ChainReport(BaseModel):
     progress: str | None = None
     body: str | None = None
     analysis: str | None = None        # 분석 메모(핵심 주장·목차·근거) — 글쓰기 단계의 뼈대
+    outline: str = "bottom_up"         # 목차 순서 bottom_up(칸 → 수요) | top_down(수요 → 칸)
     model: str | None = None
     error: str | None = None
     created_at: str | None = None
@@ -353,5 +354,6 @@ class ChainReportItem(BaseModel):
     id: int
     root: str
     status: str
+    outline: str = "bottom_up"
     created_at: str | None = None
     finished_at: str | None = None

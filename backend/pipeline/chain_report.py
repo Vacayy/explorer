@@ -45,12 +45,21 @@ SYNTH_SYSTEM = f"""너는 반도체·IT 하드웨어 밸류체인 수석 애널�
 - 예측이 아니라 조준이다: 매수·매도 권유를 하지 않는다.
 분석 메모 형식(마크다운):
 ## 핵심 주장 — 한 문장(보고서 제목이 될 수준의 판단)
-## 목차 — 4~6개 섹션. 섹션 제목은 주제가 아니라 주장문(예: '메모리의 돈은 AI에서 오지만, 그 끝은 부채다'). 섹션마다:
+## 목차 — 4~6개 섹션. {{order}} 섹션 제목은 주제가 아니라 주장문(예: '메모리의 돈은 AI에서 오지만, 그 끝은 부채다'). 섹션마다:
   - 논점: 이 섹션이 설득해야 할 것 1~2문장
   - 근거 숫자: 3~6개(값·기간·출처)
   - 연결: 앞 섹션에서 이어지는 논리, 다음 섹션으로 넘기는 질문
 ## 핵심 수치 표 후보 — 표 1~2개로 정리할 숫자(행·열 제안)
 ## 반증 조건과 확인할 이벤트 — 날짜가 있으면 날짜와 함께"""
+
+# 목차 순서 — 재료는 언제나 bottom-up 트리로 모으고, 글의 순서만 고른다(D-266: top-down 목차 비교 테스트)
+OUTLINES = {
+    "bottom_up": "목차 순서는 루트 칸에서 시작해 수요 쪽으로 올라간다(루트 칸 → 직접 고객 → 최종 수요 → 돈의 출처).",
+    "top_down": ("목차 순서는 위에서 아래로다 — 돈의 출처·최종 수요(거시)에서 시작해 중간 칸(완제품·부품·칩)을 거쳐 마지막 섹션에서 루트 칸으로 "
+                 "내려온다(증권사 리포트의 산업 → 기업 흐름). 각 섹션은 다음(아래) 칸에 무엇을 넘기는지(돈·가격·물량)로 끝나고, "
+                 "마지막 섹션은 루트 칸에 대한 판단으로 수렴한다. 핵심 주장은 루트 칸에 대한 결론으로 쓴다."),
+}
+OUTLINE_LABEL = {"bottom_up": "칸 → 수요", "top_down": "수요 → 칸"}
 
 WRITER_SYSTEM = """너는 증권사 리서치센터의 시니어 애널리스트다. 분석 메모를 받아 한국어 산업 리포트를 쓴다.
 문체(가장 중요):
@@ -59,7 +68,7 @@ WRITER_SYSTEM = """너는 증권사 리서치센터의 시니어 애널리스트
 - 숫자는 문장 안에 녹인다(예: '하이퍼스케일러 5사의 설비투자는 전년 대비 86.5% 늘어 분기 1,935억 달러에 이르렀다').
 - 불릿은 '리스크'와 '확인할 지표·이벤트'처럼 본래 목록인 정보에만 쓴다. 본문 서술을 불릿으로 쪼개지 않는다.
 - 사실과 기대는 문장 표현으로 구분한다('관측된 수출은…', '시장은 …를 기대한다', '컨센서스는 …를 가정한다').
-- 섹션 제목은 분석 메모의 주장문을 다듬어 쓴다.
+- 섹션 제목은 분석 메모의 주장문을 다듬어 쓰고, 섹션 순서는 분석 메모 목차 순서를 그대로 따른다.
 구성(마크다운):
 # 제목 — 핵심 주장을 한 줄 헤드라인으로
 ## 요약 — 3~4문단 줄글. 결론과 가장 중요한 숫자, 기대와의 괴리, 지켜볼 것
@@ -221,23 +230,23 @@ def _update(rid: int, **cols) -> None:
         conn.close()
 
 
-def start(root: str) -> tuple[int, bool]:
+def start(root: str, outline: str = "bottom_up") -> tuple[int, bool]:
     """보고서 행을 만들고 (id, 새로 만들었나)를 돌려준다(생성은 build가 백그라운드에서). 같은 루트가 30분 안에 돌고 있으면 그 id"""
     conn = get_connection()
     try:
-        r = conn.execute("SELECT id FROM chain_reports WHERE root=? AND status='running' AND created_at >= datetime('now','-30 minutes') "
-                         "ORDER BY id DESC LIMIT 1", (root,)).fetchone()
+        r = conn.execute("SELECT id FROM chain_reports WHERE root=? AND IFNULL(outline,'bottom_up')=? AND status='running' "
+                         "AND created_at >= datetime('now','-30 minutes') ORDER BY id DESC LIMIT 1", (root, outline)).fetchone()
         if r:
             return r["id"], False
-        cur = conn.execute("INSERT INTO chain_reports (root, status, progress, model) VALUES (?, 'running', '트리 고르는 중', ?)",
-                           (root, f"{NOTE_MODEL}+{SYNTH_MODEL}+{WRITER_MODEL}"))
+        cur = conn.execute("INSERT INTO chain_reports (root, status, progress, model, outline) VALUES (?, 'running', '트리 고르는 중', ?, ?)",
+                           (root, f"{NOTE_MODEL}+{SYNTH_MODEL}+{WRITER_MODEL}", outline))
         conn.commit()
         return cur.lastrowid, True
     finally:
         conn.close()
 
 
-def build(rid: int, root: str) -> None:
+def build(rid: int, root: str, outline: str = "bottom_up") -> None:
     """트리 → 칸 자료 묶음 → 칸 메모(n/m) → 종합(웹 검색) → 저장. 실패는 status와 job_runs에 남긴다(조용한 실패 금지)"""
     from pipeline.llm import run
     from pipeline.ops import record_run
@@ -277,7 +286,7 @@ def build(rid: int, root: str) -> None:
                   f"## 칸 메모\n{body_notes}\n\n"
                   + (f"## 메모가 빠진 칸\n{', '.join(m['name'] for m in missing)}\n\n" if missing else "")
                   + "위 칸 메모들로 분석 메모를 써라.")
-        analysis = run(prompt, system=SYNTH_SYSTEM, model=SYNTH_MODEL, tools=("WebSearch", "WebFetch"), timeout=1200, job="chain_report").text.strip()
+        analysis = run(prompt, system=SYNTH_SYSTEM.replace("{order}", OUTLINES[outline]), model=SYNTH_MODEL, tools=("WebSearch", "WebFetch"), timeout=1200, job="chain_report").text.strip()
         _update(rid, analysis=analysis, progress="애널리스트 문체로 보고서 쓰는 중")
         # 글쓰기 — 분석 메모가 뼈대, 칸 메모는 숫자 확인용(새 숫자를 지어내지 않게 둘 다 준다)
         wprompt = (f"## 분석 메모\n{analysis}\n\n## 칸 메모(숫자·출처 확인용)\n{body_notes}\n\n"
@@ -322,13 +331,14 @@ def read(rid: int) -> dict | None:
         return None
     j = lambda v: json.loads(v) if v else []  # noqa: E731
     return {**{k: r[k] for k in ("id", "root", "status", "progress", "body", "analysis", "model", "error", "created_at", "finished_at")},
+            "outline": r["outline"] or "bottom_up",
             "tree": j(r["tree_json"]), "refs": j(r["refs_json"]), "missing": j(r["missing_json"])}
 
 
 def history(root: str, limit: int = 10) -> list[dict]:
     conn = get_connection()
     try:
-        return [dict(r) for r in conn.execute("SELECT id, root, status, created_at, finished_at FROM chain_reports WHERE root=? "
+        return [dict(r) for r in conn.execute("SELECT id, root, status, IFNULL(outline,'bottom_up') outline, created_at, finished_at FROM chain_reports WHERE root=? "
                                               "ORDER BY id DESC LIMIT ?", (root, limit))]
     finally:
         conn.close()

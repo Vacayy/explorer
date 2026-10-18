@@ -293,7 +293,8 @@ export default function ValueChainPage() {
 
       {/* 트리 보고서 — 고른 공급 칸(없거나 수요 칸이면 메모리)에서 수요 쪽으로 타고 올라간다(§16, bottom-up) */}
       {vc.data && <ChainReportCard root={node?.key ?? "memory"} rootName={node?.name ?? vc.data.nodes.find(n => n.key === "memory")?.name ?? "메모리"}
-        pickedDemand={demand?.name ?? null} reportId={reportId} onReport={id => setParam("report", id == null ? null : String(id))} />}
+        pickedDemand={demand?.name ?? null} reportId={reportId} onReport={id => setParam("report", id == null ? null : String(id))}
+        outline={params.get("outline") === "top_down" ? "top_down" : "bottom_up"} onOutline={o => setParam("outline", o === "bottom_up" ? null : o)} />}
 
       {/* 한국 확인 신호 전체 */}
       <Card>

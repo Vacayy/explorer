@@ -1318,6 +1318,9 @@ export interface ChainPreview { root: string; tree: ChainTreeNode[]; calls: Reco
 export interface ChainRef { ref: string; title?: string | null; url?: string | null; date?: string | null; kind?: string | null }
 export interface ChainReport {
   id: number; root: string; status: "running" | "done" | "partial" | "error"; progress?: string | null; body?: string | null; analysis?: string | null; model?: string | null
+  outline?: ChainOutline
   error?: string | null; created_at?: string | null; finished_at?: string | null; tree: ChainTreeNode[]; refs: ChainRef[]; missing: { key: string; name: string; error: string }[]
 }
-export interface ChainReportItem { id: number; root: string; status: string; created_at?: string | null; finished_at?: string | null }
+/** 목차 순서 — 재료는 언제나 bottom-up으로 모으고 글의 순서만 고른다 */
+export type ChainOutline = "bottom_up" | "top_down"
+export interface ChainReportItem { id: number; root: string; status: string; outline?: ChainOutline; created_at?: string | null; finished_at?: string | null }
