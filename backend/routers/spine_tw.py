@@ -1,8 +1,8 @@
 """대만 월매출 API — 홈 위젯용 (pipeline/tw_revenue, LLM·네트워크 0)."""
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from models.tw import KrConfirm, TwLinksResponse, TwRevenueResponse
-from models.value_chain import ExpectationsResponse, FlowResponse, PropagationResponse, ValueChainResponse
+from models.value_chain import ChainPreview, ChainReport, ChainReportItem, ExpectationsResponse, FlowResponse, PropagationResponse, ValueChainResponse
 
 router = APIRouter(prefix="/api/spine/tw", tags=["spine"])
 
@@ -55,3 +55,43 @@ def value_chain_expectations():
     """시장 기대치 (docs/specs/value-chain.md §15) — 칸 구성 회사 컨센서스·리서치 전망, 관측과 나란히(섞지 않음)"""
     from pipeline.vc_expectations import with_observed
     return with_observed()
+
+
+def _valid_root(root: str) -> None:
+    from pipeline.value_chain import DEMAND_KEYS, NODE_BY_KEY
+    if root not in DEMAND_KEYS and root not in NODE_BY_KEY:
+        raise HTTPException(404, f"알 수 없는 칸: {root}")
+
+
+@router.get("/chain-report/preview", response_model=ChainPreview)
+def chain_report_preview(root: str):
+    """트리 보고서 생성 전 확인 — 고른 트리(깊이 3·칸 12, 추정 증가액 큰 가지 우선)와 예상 LLM 호출 수 (§16)"""
+    _valid_root(root)
+    from pipeline.chain_report import preview
+    return preview(root)
+
+
+@router.post("/chain-report", response_model=ChainReport)
+def chain_report_create(root: str, background: BackgroundTasks):
+    """트리 보고서 생성 — 버튼으로 요청할 때만(비싼 생성은 승인 뒤로). 백그라운드에서 칸 메모(sonnet) → 종합(opus + 웹 검색)"""
+    _valid_root(root)
+    from pipeline.chain_report import build, read, start
+    rid, created = start(root)
+    if created:                                       # 이미 같은 루트가 돌고 있으면 그 진행 상태만 돌려준다(중복 생성 방지)
+        background.add_task(build, rid, root)
+    return read(rid)
+
+
+@router.get("/chain-report/{rid}", response_model=ChainReport)
+def chain_report_get(rid: int):
+    from pipeline.chain_report import read
+    r = read(rid)
+    if not r:
+        raise HTTPException(404, "보고서 없음")
+    return r
+
+
+@router.get("/chain-reports", response_model=list[ChainReportItem])
+def chain_report_list(root: str):
+    from pipeline.chain_report import history
+    return history(root)

@@ -307,3 +307,50 @@ class ExpectationsResponse(BaseModel):
     nodes: dict[str, ExpNode]
     ahead: list[ExpGapRow] = []        # 관측이 기대보다 크게 높은 칸
     behind: list[ExpGapRow] = []       # 기대가 관측보다 크게 높은 칸
+
+
+
+class ChainTreeNode(BaseModel):
+    key: str
+    name: str
+    parent: str | None = None
+    depth: int
+    flow_usd: float | None = None      # 부모 칸으로 가는 추정 증가액(§14)
+
+
+class ChainPreview(BaseModel):
+    root: str
+    tree: list[ChainTreeNode]
+    calls: dict[str, int]
+    models: dict[str, str]
+
+
+class ChainRef(BaseModel):
+    ref: str                           # D문서번호 · C티커 날짜
+    title: str | None = None
+    url: str | None = None
+    date: str | None = None
+    kind: str | None = None
+
+
+class ChainReport(BaseModel):
+    id: int
+    root: str
+    status: str                        # running | done | partial | error
+    progress: str | None = None
+    body: str | None = None
+    model: str | None = None
+    error: str | None = None
+    created_at: str | None = None
+    finished_at: str | None = None
+    tree: list[ChainTreeNode] = []
+    refs: list[ChainRef] = []
+    missing: list[dict] = []
+
+
+class ChainReportItem(BaseModel):
+    id: int
+    root: str
+    status: str
+    created_at: str | None = None
+    finished_at: str | None = None

@@ -1195,6 +1195,32 @@ def init_db():
         UNIQUE (source, url, node_key, subject, metric, target_period)
     );
 
+    -- 밸류체인 트리 보고서 (docs/specs/value-chain.md §16, pipeline/chain_report) — append-only, 버튼으로 요청할 때만 생성
+    CREATE TABLE IF NOT EXISTS chain_reports (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        root        TEXT NOT NULL,          -- 루트 칸(value_chain 수요·칸 key)
+        status      TEXT NOT NULL,          -- running | done | partial | error
+        progress    TEXT,                   -- 진행 단계(화면 표시)
+        tree_json   TEXT,                   -- 고른 트리 [{key,name,parent,depth,flow_usd}]
+        body        TEXT,                   -- 보고서 마크다운
+        refs_json   TEXT,                   -- 인용 문서 [{ref,title,url,date,kind}]
+        missing_json TEXT,                  -- 메모 실패로 빠진 칸
+        inputs_hash TEXT,
+        model       TEXT,
+        error       TEXT,
+        created_at  TEXT DEFAULT (datetime('now')),
+        finished_at TEXT
+    );
+    -- 칸 메모 캐시 — 같은 자료 묶음(입력 해시)이면 다시 쓰지 않는다(비용 원칙)
+    CREATE TABLE IF NOT EXISTS chain_node_notes (
+        node_key    TEXT NOT NULL,
+        inputs_hash TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        model       TEXT,
+        created_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (node_key, inputs_hash)
+    );
+
     -- 미국 기업 고객 집중도 (pipeline/us_customers) — 10-K/10-Q XBRL 인스턴스의 ConcentrationRiskPercentage1 × srt:MajorCustomersAxis.
     -- customer = 멤버 로컬명(익명 'CustomerA' 등, 공시마다 같은 글자가 같은 회사라는 보장 없음), period_kind = Q|FY|YTD|I(시점)
     CREATE TABLE IF NOT EXISTS us_customer_concentration (

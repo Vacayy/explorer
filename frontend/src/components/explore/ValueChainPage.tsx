@@ -17,6 +17,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { MAG_HINT, ValueChainSankey, gravity, streamWidth, type SankeyLane } from "@/components/explore/ValueChainSankey"
 import { useKrConfirm, usePropagation, useValueChain, useValueChainExpectations, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { ExpGapCard, ExpectationPanel } from "@/components/explore/ValueChainExpectations"
+import { ChainReportCard } from "@/components/explore/ChainReportCard"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatNumber, formatPercent, formatRatio, formatSigma, formatUsd } from "@/utils/format"
 import type { CustomerConcentration, FlowResponse, FlowRow, PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
@@ -173,7 +174,9 @@ export default function ValueChainPage() {
       min: known.length ? Math.min(...known) : 0, max: known.length ? Math.max(...known) : 0,
       maxFlow: Math.max(0, ...flows.map(f => f.flow_usd ?? 0)), hasAny: known.length > 0 }
   }, [flow.data])
-  const select = (k: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (k) n.set("node", k); else n.delete("node"); return n }, { replace: true, preventScrollReset: true })
+  // 칸을 바꾸면 보고서 선택(report)은 그 칸 기준으로 다시 고른다
+  const select = (k: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (k) n.set("node", k); else n.delete("node"); n.delete("report"); return n }, { replace: true, preventScrollReset: true })
+  const reportId = params.get("report") ? Number(params.get("report")) : null
 
   const graph = useMemo(() => {
     if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[] }
@@ -287,6 +290,10 @@ export default function ValueChainPage() {
             </div>}
         </CardContent>
       </Card>
+
+      {/* 트리 보고서 — 고른 칸(없으면 AI 데이터센터 투자)을 루트로(§16) */}
+      {vc.data && <ChainReportCard root={selected ?? "ai"} rootName={(node?.name ?? demand?.name) ?? vc.data.demands.find(d => d.key === "ai")?.name ?? "AI 데이터센터 투자"}
+        reportId={reportId} onReport={id => setParam("report", id == null ? null : String(id))} />}
 
       {/* 한국 확인 신호 전체 */}
       <Card>

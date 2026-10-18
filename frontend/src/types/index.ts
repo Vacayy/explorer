@@ -1311,3 +1311,13 @@ export interface ExpNode {
 }
 export interface ExpGapRow { key: string; name: string; observed: number; exp_0q: number; gap_pp: number; eps_rev_30d?: number | null; eps_rev_90d?: number | null }
 export interface ExpectationsResponse { as_of: string | null; revision_base?: string | null; gap_pp: number; nodes: Record<string, ExpNode>; ahead: ExpGapRow[]; behind: ExpGapRow[] }
+
+/** 트리 보고서(§16) — 루트에서 공급 쪽으로 타고 들어간 칸들(flow_usd = 부모 칸으로 가는 추정 증가액) */
+export interface ChainTreeNode { key: string; name: string; parent: string | null; depth: number; flow_usd: number | null }
+export interface ChainPreview { root: string; tree: ChainTreeNode[]; calls: Record<string, number>; models: Record<string, string> }
+export interface ChainRef { ref: string; title?: string | null; url?: string | null; date?: string | null; kind?: string | null }
+export interface ChainReport {
+  id: number; root: string; status: "running" | "done" | "partial" | "error"; progress?: string | null; body?: string | null; model?: string | null
+  error?: string | null; created_at?: string | null; finished_at?: string | null; tree: ChainTreeNode[]; refs: ChainRef[]; missing: { key: string; name: string; error: string }[]
+}
+export interface ChainReportItem { id: number; root: string; status: string; created_at?: string | null; finished_at?: string | null }
