@@ -102,6 +102,8 @@ JOBS = [
     ("usfund", [PY, "scripts/collect_us_fundamentals.py"], {"Hour": 8, "Minute": 10}),
     # 외부 월간 시계열(docs/specs/value-chain.md §7) — WSTS·Census 데이터센터·SEAJ·대만 수출수주. LLM 0
     ("extseries", [PY, "scripts/collect_ext_series.py"], {"Hour": 10, "Minute": 30}),
+    # 피드 증권사 전망 추출(docs/specs/value-chain.md §15) — LLM(haiku), 최근 3일·상한 25건, 한 문서는 한 번만. 관리자 플래그 exp_feed
+    ("expfeed", [PY, "scripts/collect_exp_feed.py"], {"Hour": 12, "Minute": 0}),
     # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
@@ -134,6 +136,7 @@ CATCHUP = {
     "twrevenue": {"record": "tw_revenue"},
     "usfund": {"record": "us_fundamentals"},
     "extseries": {"record": "ext_series"},
+    "expfeed": {"record": "exp_feed"},
 }
 
 

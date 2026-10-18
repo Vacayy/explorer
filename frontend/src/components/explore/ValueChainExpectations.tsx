@@ -59,9 +59,10 @@ export function ExpectationPanel({ exp, asOf }: { exp?: ExpNode; asOf?: string |
       })}</TableBody>
     </Table>}
     {exp.claims.length > 0 && <div>
-      <p className="text-caption font-medium text-muted-foreground">리서치 전망</p>
+      <p className="text-caption font-medium text-muted-foreground">리서치·증권사 전망</p>
       <ul className="divide-y text-caption">{exp.claims.map((c, i) => <li key={i} className="flex flex-wrap items-baseline gap-x-2 py-1">
-        <Badge variant="outline" className="text-[10px]">{c.source_org ?? c.source}</Badge>
+        <Badge variant={c.source === "feed" ? "secondary" : "outline"} className="text-[10px]" title={c.source === "feed" ? "피드 문서에서 추출한 증권사·기관 전망(원문 인용 확인)" : "리서치 기관 공개 전망"}>
+          {c.source_org ?? c.source}{c.source === "feed" ? " · 피드" : ""}</Badge>
         <MetricHint hint={c.quote ?? ""}><span className={cn("underline decoration-dotted underline-offset-2", c.direction === "up" ? "text-up" : c.direction === "down" ? "text-down" : "")}>{claimText(c)}</span></MetricHint>
         <span className="text-muted-foreground">{c.published_at?.slice(0, 10)}</span>
         {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-muted-foreground underline underline-offset-2">원문</a>}

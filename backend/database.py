@@ -1195,6 +1195,16 @@ def init_db():
         UNIQUE (source, url, node_key, subject, metric, target_period)
     );
 
+    -- 피드 증권사 전망 추출 처리 기록(§15 3단계, pipeline/exp_feed) — 한 문서는 한 번만 처리(비용 원칙)
+    CREATE TABLE IF NOT EXISTS exp_feed_docs (
+        doc_id       INTEGER PRIMARY KEY,   -- raw_documents.id
+        status       TEXT NOT NULL,         -- ok | none(전망 없음) | error
+        n_claims     INTEGER DEFAULT 0,
+        n_dropped    INTEGER DEFAULT 0,     -- 원문에 인용문이 없어 버린 수(환각 방지)
+        error        TEXT,
+        processed_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- 밸류체인 트리 보고서 (docs/specs/value-chain.md §16, pipeline/chain_report) — append-only, 버튼으로 요청할 때만 생성
     CREATE TABLE IF NOT EXISTS chain_reports (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
