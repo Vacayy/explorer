@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import type { KrConfirm, PropagationResponse, TwLinksResponse, TwRevenueResponse, ValueChainResponse } from "@/types"
+import type { FlowResponse, KrConfirm, PropagationResponse, TwLinksResponse, TwRevenueResponse, ValueChainResponse } from "@/types"
 
 /** 대만 월매출 92개사 — 저장분 읽기(수집은 매일 11:00 launchd twrevenue) */
 export function useTwRevenue() {
@@ -27,4 +27,9 @@ export function useValueChain() {
 }
 export function usePropagation() {
   return useQuery(apiQuery<PropagationResponse>({ key: ["spine", "tw", "propagation"], url: "/api/spine/tw/propagation", staleTime: STALE.long }))
+}
+
+/** 돈의 흐름 — 흐름 크기 상위·스포트라이트 가설·의심받는 칸·식는 칸 */
+export function useValueChainFlow() {
+  return useQuery(apiQuery<FlowResponse>({ key: ["spine", "tw", "flow"], url: "/api/spine/tw/flow", staleTime: STALE.long }))
 }

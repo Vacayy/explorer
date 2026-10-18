@@ -11,10 +11,10 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
 import { SparkLine } from "@/components/shared/Spark"
 import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
-import { useKrConfirm, usePropagation, useValueChain } from "@/hooks/useTwRevenue"
+import { useKrConfirm, usePropagation, useValueChain, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatNumber, formatPercent, formatUsd } from "@/utils/format"
-import type { PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
+import type { FlowResponse, FlowRow, PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -125,6 +125,7 @@ export default function ValueChainPage() {
   const vc = useValueChain()
   const prop = usePropagation()
   const confirms = useKrConfirm()
+  const flow = useValueChainFlow()
   const [params, setParams] = useSearchParams()
   const { resolvedTheme } = useTheme()
   const selected = params.get("node")
@@ -160,6 +161,10 @@ export default function ValueChainPage() {
 
   return <PageLayout mode="document" header={<PageHeader title="밸류체인" description={`대만 월매출로 보는 공급 단계별 흐름과 한국 종목 · ${vc.data?.as_of ?? "-"} 공시 기준`} />}>
     <div className="space-y-5">
+      {/* 돈의 흐름 — 지금 어디로 가장 많이 흐르고, 다음 스포트라이트는 어디일 수 있나(가설) */}
+      {flow.isLoading ? <Skeleton className="h-48 w-full rounded-xl" />
+        : flow.isError ? <ErrorState message="흐름 분석을 불러오지 못했습니다." onRetry={() => void flow.refetch()} />
+        : flow.data && <FlowCard data={flow.data} onSelect={select} />}
       {/* 번지는 중 */}
       {prop.isLoading ? <Skeleton className="h-40 w-full rounded-xl" />
         : prop.isError ? <ErrorState message="전파 판정을 불러오지 못했습니다." onRetry={() => void prop.refetch()} />
@@ -372,4 +377,47 @@ function PxqList({ pxq }: { pxq: VcPxq[] }) {
       </li>)}
     </ul>
   </div>
+}
+
+/** 돈의 흐름 카드 — 흐름 크기 막대, 스포트라이트 가설(반증 조건 포함), 시장이 의심하는 칸, 식는 칸 */
+function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string) => void }) {
+  const max = Math.max(...data.flows.map(f => f.increment_usd ?? 0), 1)
+  const Row = ({ r, tone }: { r: FlowRow; tone: string }) => <Button variant="ghost" onClick={() => onSelect(r.key)}
+    className="block h-auto w-full whitespace-normal rounded-md px-2 py-1.5 text-left text-sm font-normal">
+    <span className={cn("font-medium", tone)}>{r.name}</span>
+    {r.kr.length > 0 && <span className="ml-1.5 text-caption text-muted-foreground">{r.kr.slice(0, 4).join("·")}{r.kr.length > 4 ? " 외" : ""}</span>}
+    {r.why && <span className="block text-caption text-muted-foreground">{r.why}</span>}
+    {r.falsifier && <span className="block text-caption text-muted-foreground">반증: {r.falsifier}</span>}
+  </Button>
+  return <Card>
+    <CardHeader className="pb-2">
+      <CardTitle className="text-card-title">돈의 흐름</CardTitle>
+      <p className="text-caption text-muted-foreground">
+        흐름 크기 = 최근 3개월(분기 칸은 최신 분기) 전년 대비 증가 금액(대만달러는 고정 {data.twd_usd}로 환산). 아래 목록은 예측이 아니라 반증 조건이 붙은 가설입니다 —
+        칸 사이 선행 시차는 대부분 통계적으로 확인되지 않았습니다. 시장 반응 = 칸 한국 종목 3개월 수익률(중앙값 {formatPercent(data.median_kr_return_3m)}), 관심 = 최근 30일 문서 수.
+      </p>
+    </CardHeader>
+    <CardContent className="grid gap-5 lg:grid-cols-2">
+      <div>
+        <p className="mb-1.5 text-caption font-medium text-muted-foreground">지금 가장 많이 흐르는 칸</p>
+        <ul className="space-y-1">
+          {data.flows.map(f => <li key={f.key}>
+            <Button variant="ghost" onClick={() => onSelect(f.key)} className="grid h-auto w-full grid-cols-[120px_minmax(0,1fr)_72px] items-center gap-2 px-1 py-1 text-left text-caption font-normal">
+              <span className="truncate font-medium">{f.name}</span>
+              <span className="h-2 rounded-full bg-chart-blue/70" style={{ width: `${Math.max(4, ((f.increment_usd ?? 0) / max) * 100)}%` }} />
+              <span className="text-right tabular-nums">+{formatUsd(f.increment_usd ?? 0)}</span>
+            </Button>
+          </li>)}
+        </ul>
+      </div>
+      <div className="space-y-3">
+        <div><p className="text-caption font-medium text-muted-foreground">다음 스포트라이트 가설 — 흐름은 가속, 시장은 아직 조용</p>
+          {data.spotlight.length ? data.spotlight.map(r => <Row key={r.key} r={r} tone="text-up" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
+        <div><p className="text-caption font-medium text-muted-foreground">흐름은 가속인데 시장이 의심하는 칸 — 이유 확인 대상</p>
+          {data.doubted.length ? data.doubted.map(r => <Row key={r.key} r={{ ...r, falsifier: null }} tone="" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
+        <div><p className="text-caption font-medium text-muted-foreground">식는 칸 — 흐름은 둔화, 관심·주가는 아직 높음</p>
+          {data.fading.length ? data.fading.map(r => <Row key={r.key} r={r} tone="text-down" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
+      </div>
+    </CardContent>
+  </Card>
 }

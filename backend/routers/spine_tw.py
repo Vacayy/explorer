@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query
 
 from models.tw import KrConfirm, TwLinksResponse, TwRevenueResponse
-from models.value_chain import PropagationResponse, ValueChainResponse
+from models.value_chain import FlowResponse, PropagationResponse, ValueChainResponse
 
 router = APIRouter(prefix="/api/spine/tw", tags=["spine"])
 
@@ -40,4 +40,11 @@ def kr_confirm(kr: str | None = None):
 def propagation():
     """번지는 중 — 한국 확인 전·엇갈림·선행 경보 (docs/specs/value-chain.md §5)"""
     from pipeline.value_chain import propagation as compute
+    return compute()
+
+
+@router.get("/flow", response_model=FlowResponse)
+def value_chain_flow():
+    """돈의 흐름·다음 스포트라이트 가설 (docs/specs/value-chain.md §11) — 예측이 아니라 반증 조건이 붙은 가설"""
+    from pipeline.value_chain_flow import compute
     return compute()

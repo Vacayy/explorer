@@ -157,3 +157,33 @@ class PropagationResponse(BaseModel):
     waiting: list[PropRow]         # 대만 ↑, 한국 수출·공시 아직
     diverging: list[PropRow]       # 원천끼리 방향 반대
     leads: list[PropLead]          # 확인된 선행 엣지에서 앞선 칸이 방향을 바꿈
+
+
+class FlowRow(BaseModel):
+    key: str
+    name: str
+    state: str | None
+    score: int
+    yoy: float | None
+    increment_usd: float | None    # 최근 3개월(분기) 전년 대비 증가 금액, USD
+    period: str | None
+    kind: str                      # flow | stock(잔액 — RPO)
+    cross_agree: float | None      # 교차 확인 지표 중 같은 방향 비율
+    kr: list[str]
+    kr_return_3m: float | None     # 칸 한국 종목 63거래일 수익률 평균
+    attention: int                 # 칸 한국 종목 문서 수(최근 30일)
+    attention_prev: int
+    why: str | None = None
+    falsifier: str | None = None
+
+
+class FlowResponse(BaseModel):
+    as_of: str | None
+    twd_usd: float
+    median_kr_return_3m: float | None
+    median_attention: float
+    flows: list[FlowRow]           # 지금 돈이 가장 많이 흐르는 칸
+    spotlight: list[FlowRow]       # 다음 스포트라이트 가설(조용한 가속)
+    doubted: list[FlowRow]         # 흐름은 가속인데 시장이 의심하는 칸
+    fading: list[FlowRow]          # 식는 칸
+    nodes: list[FlowRow]
