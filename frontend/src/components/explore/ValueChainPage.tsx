@@ -13,7 +13,7 @@ import { SparkLine } from "@/components/shared/Spark"
 import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
-import { formatLevel, formatNumber, formatPercent, formatRatio, formatUsd } from "@/utils/format"
+import { formatLevel, formatNumber, formatPercent, formatRatio, formatSigma, formatUsd } from "@/utils/format"
 import type { CustomerConcentration, FlowResponse, FlowRow, PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
 
 /**
@@ -191,7 +191,7 @@ export default function ValueChainPage() {
           <CardTitle className="text-card-title">공급 지도</CardTitle>
           <p className="text-caption text-muted-foreground">
             열은 밸류체인 단계(왼쪽 최종 수요 → 오른쪽 소재·장비), 행은 수요처 레인입니다. 관측 원천: 대만 월매출 · 미국 분기 실적(수요·가속기) · 한국 수출 HS(한국 고유 칸), 점선은 관측 없음. 여러 수요에 함께 공급하는 칸은 '공통' 레인에 둡니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
-            칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화) — AI 데이터센터·스마트폰 수요와 AI 가속기는 미국 분기 실적(SEC)의 분기 YoY를 직전 분기와 비교. 선 = 측정 판정
+            칸 색 = 성장률(3개월 YoY, 미국 분기 칸은 분기 YoY)의 3개월·한 분기 전 대비 변화가 그 칸 평소 변동의 ±1σ 이상이면 가속·둔화(이력이 짧은 칸은 ±10%p). 한국 장비·소재 칸은 업계 전체 수출로 보는 대리 관측입니다. 선 = 측정 판정
             (굵은 실선 확인 · 실선 부분 · 점선 미확인), 숫자 = 시차(+공급이 앞섬, −수요가 앞섬, ?는 두 신호 시차 불일치).
             {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ)`}
             {vc.data?.thresholds.yoy3m_kr != null && `, 한국 수출 칸이 걸린 선은 무관한 한국 수출 품목 위약까지 넘어야 함 r>${vc.data.thresholds.yoy3m_kr}·${vc.data.thresholds.yoy_kr}`}{vc.data && "."}
@@ -265,8 +265,11 @@ function NodePanel({ node, edges, nodes, demands, onSelect }: { node?: VcNode; e
   </Button>
   return <div className="grid gap-4 rounded-lg border p-3 text-sm md:grid-cols-3">
     <div>
-      <div className="flex items-center gap-2"><span className="font-semibold">{node.name}</span>{node.state && <Badge variant="outline" className="text-[11px]">{node.state}</Badge>}</div>
+      <div className="flex items-center gap-2"><span className="font-semibold">{node.name}</span>{node.state && <Badge variant="outline" className="text-[11px]">{node.state}</Badge>}
+        {node.state_z != null && <span className="text-caption tabular-nums text-muted-foreground" title="성장률 변화가 이 칸의 평소 변동(표준편차)의 몇 배인지 — ±1σ 이상이면 가속·둔화">평소 변동 대비 {formatSigma(node.state_z)}</span>}
+        {node.obs_kind === "proxy" && <Badge variant="secondary" className="text-[11px]">대리 관측</Badge>}</div>
       <p className="text-caption text-muted-foreground">{node.description}</p>
+      {node.obs_caveat && <p className="mt-1 text-caption text-muted-foreground">{node.obs_caveat}</p>}
       {node.freq === "Q"
         ? <p className="mt-1 text-caption tabular-nums">분기 YoY {formatPercent(node.yoy_3m)} (직전 분기 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label} (SEC 분기 실적)</p>
         : node.tw.length > 0 && <p className="mt-1 text-caption tabular-nums">3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period}</p>}
@@ -404,7 +407,7 @@ function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string
     <CardHeader className="pb-2">
       <CardTitle className="text-card-title">돈의 흐름</CardTitle>
       <p className="text-caption text-muted-foreground">
-        흐름 크기 = 최근 3개월(분기 칸은 최신 분기) 전년 대비 증가 금액(대만달러는 고정 {data.twd_usd}로 환산). 아래 목록은 예측이 아니라 반증 조건이 붙은 가설입니다 —
+        흐름 크기 = 최근 3개월(분기 칸은 최신 분기, 회사채는 최근 4분기 합) 전년 대비 증가 금액(대만달러는 고정 {data.twd_usd}로 환산). 가속 = 성장률 변화가 그 칸의 평소 변동의 1배(1σ) 이상. 아래 목록은 예측이 아니라 반증 조건이 붙은 가설입니다 —
         칸 사이 선행 시차는 대부분 통계적으로 확인되지 않았습니다. 시장 반응 = 칸 한국 종목 3개월 수익률(중앙값 {formatPercent(data.median_kr_return_3m)}), 관심 = 최근 30일 문서 수.
       </p>
     </CardHeader>
@@ -428,6 +431,8 @@ function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string
           {data.doubted.length ? data.doubted.map(r => <Row key={r.key} r={{ ...r, falsifier: null }} tone="" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
         <div><p className="text-caption font-medium text-muted-foreground">식는 칸 — 흐름은 둔화, 관심·주가는 아직 높음</p>
           {data.fading.length ? data.fading.map(r => <Row key={r.key} r={r} tone="text-down" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
+        {!!data.needs_check?.length && <div><p className="text-caption font-medium text-muted-foreground">확인 필요 — 업계 수출은 가속이지만 대리 관측이고 종목 공시가 받쳐 주지 않음</p>
+          {data.needs_check.map(r => <Row key={r.key} r={r} tone="" />)}</div>}
       </div>
     </CardContent>
   </Card>

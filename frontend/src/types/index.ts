@@ -1236,6 +1236,7 @@ export interface VcNode {
   tw: { code: string; name: string }[]; kr: { code: string; name: string }[]
   yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]; series: { ym: string; yoy: number }[]
   freq?: "M" | "Q"; obs_label?: string | null; period?: string | null
+  state_z?: number | null; obs_kind?: "direct" | "proxy" | null; obs_caveat?: string | null
   source?: "tw" | "us" | "kr_trade" | null; us_members?: UsMember[]; aux?: VcAux[]; market?: VcMarket[]; pxq?: VcPxq[]
 }
 /** 한국 수출 P×Q 분해 — 금액 = 단가·구성(금액/kg) × 물량(kg), 3개월 YoY */
@@ -1282,8 +1283,9 @@ export interface FlowRow {
   key: string; name: string; state: string | null; score: number; yoy: number | null; increment_usd: number | null; period: string | null
   kind: "flow" | "stock"; cross_agree: number | null; kr: string[]; kr_return_3m: number | null; attention: number; attention_prev: number
   why?: string | null; falsifier?: string | null
+  obs_kind?: "direct" | "proxy"; disclosure_up?: number | null; disclosure_n?: number | null
 }
 export interface FlowResponse {
   as_of: string | null; twd_usd: number; median_kr_return_3m: number | null; median_attention: number
-  flows: FlowRow[]; spotlight: FlowRow[]; doubted: FlowRow[]; fading: FlowRow[]; nodes: FlowRow[]
+  flows: FlowRow[]; spotlight: FlowRow[]; doubted: FlowRow[]; fading: FlowRow[]; needs_check?: FlowRow[]; nodes: FlowRow[]
 }

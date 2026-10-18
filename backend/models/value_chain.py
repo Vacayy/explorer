@@ -89,7 +89,10 @@ class VcNode(BaseModel):
     period: str | None = None      # 최신 관측 월·분기
     yoy_3m: float | None
     yoy_3m_prev: float | None
-    state: str | None              # 가속 | 둔화 | 전환↑ | 전환↓ | 유지
+    state: str | None              # 가속 | 둔화 | 전환↑ | 전환↓ | 유지 — 자기 이력 대비(±1σ), 이력이 짧으면 ±10%p
+    state_z: float | None = None   # 성장률 변화의 자기 이력 표준편차 배수
+    obs_kind: str | None = None    # direct | proxy(업계 전체 통계 — 종목 매출 아님)
+    obs_caveat: str | None = None
     series: list[VcPoint]
 
 
@@ -124,6 +127,7 @@ class VcDemand(BaseModel):
     yoy_3m: float | None = None    # 최신 분기 YoY
     yoy_3m_prev: float | None = None
     state: str | None = None
+    state_z: float | None = None
     period: str | None = None
     series: list[VcPoint] = []
 
@@ -193,6 +197,9 @@ class FlowRow(BaseModel):
     attention_prev: int
     why: str | None = None
     falsifier: str | None = None
+    obs_kind: str = "direct"       # direct(붙은 회사 매출) | proxy(업계 전체 수출 통계)
+    disclosure_up: int | None = None   # 대리 관측 칸: 붙은 종목 중 공시 방향 up 수
+    disclosure_n: int | None = None
 
 
 class FlowResponse(BaseModel):
@@ -204,4 +211,5 @@ class FlowResponse(BaseModel):
     spotlight: list[FlowRow]       # 다음 스포트라이트 가설(조용한 가속)
     doubted: list[FlowRow]         # 흐름은 가속인데 시장이 의심하는 칸
     fading: list[FlowRow]          # 식는 칸
+    needs_check: list[FlowRow] = []   # 대리 관측이라 종목 공시로 확인이 필요한 칸
     nodes: list[FlowRow]

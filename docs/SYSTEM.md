@@ -441,7 +441,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `/api/spine/company-profile/{code}?market=kr\|us` | **웹 조사 기업 개요(D-188)** — GET(최신 보고서 또는 null) · POST `{reason?, force?}`(동기, 모델 1콜; 24시간 내 보고서 재사용; 502에 실패 사유). `market=us`는 티커(대문자)·`resolve_us` 이름·DART 단계 없음(SEC 우선 프롬프트). 라우터 `routers/company_profile.py` |
 | `GET /api/spine/search?q=` · `/search/today` | **옴니바 통합 검색(D-189)** — 국내 종목(정확›접두›포함, 시총순, 시세·묶음 포함; 초성 색인·`entity_keywords` 별칭)·미국 티커·인물/테마·묶음·스터디 프로젝트·문장 속 언급(`mentions`)을 그룹별로. `/today`는 묶음 최신 기준일의 새 신호. `routers/spine_search.py`, 모델 호출 0 |
 | `GET /api/spine/tw/confirm[?kr=]` | **한국 확인 신호** — `pipeline/kr_confirm.confirm()` 종목별 세 원천 방향. 종목 상세 `TaiwanLinkCard` |
-| `GET /api/spine/tw/flow` | **돈의 흐름·스포트라이트 가설** — `pipeline/value_chain_flow.compute()`(칸별 흐름 크기 USD·가속·교차 확인·한국 종목 3개월 수익률·문서 관심도 → 흐름 상위·스포트라이트·의심·식는 칸). 밸류체인 화면 '돈의 흐름' 카드 |
+| `GET /api/spine/tw/flow` | **돈의 흐름·스포트라이트 가설** — `pipeline/value_chain_flow.compute()`(칸별 흐름 크기 USD·가속·교차 확인·한국 종목 3개월 수익률·문서 관심도 → 흐름 상위·스포트라이트·의심·식는 칸·확인 필요[대리 관측인데 종목 공시가 받쳐 주지 않는 칸]). 칸 상태는 자기 이력 대비 ±1σ(`value_chain.relative_state`). 밸류체인 화면 '돈의 흐름' 카드 |
 | `GET /api/spine/tw/propagation` | **번지는 중** — 한국 확인 전·엇갈림·선행 경보(`value_chain.propagation`). 화면 탐색 › 밸류체인(`/value-chain`, `explore/ValueChainPage`) |
 | `GET /api/spine/tw/value-chain` | **밸류체인 지도** — 노드(대만·한국 구성, 3개월 YoY·상태), 엣지(판정·시차·신호별 상관), 위약 기준. `pipeline/value_chain.read_map()` |
 | `GET /api/spine/tw/links[?kr=]` | **대만 → 한국 연결 신호** — `pipeline/tw_links.read_links()`. 종목 상세 `TaiwanLinkCard`·홈 위젯 `explore.twLinks`. 프록시 어댑터 `tw:`(대만 월매출·YoY·3개월 YoY, 층 합계) |

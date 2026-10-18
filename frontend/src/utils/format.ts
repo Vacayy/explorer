@@ -51,6 +51,15 @@ export function formatPercent(value: number | null | undefined): string {
 }
 
 /**
+ * Format a z-score as signed sigma multiple (e.g. +1.4σ) — 칸 상태의 '평소 변동 대비' 크기.
+ */
+export function formatSigma(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  const sign = value > 0 ? "+" : value < 0 ? "−" : ""
+  return `${sign}${Math.abs(value).toFixed(1)}σ`
+}
+
+/**
  * Format a percentage-point change with sign (e.g. +0.35%p) — 금리 등 이미 %인 값의 변동.
  */
 export function formatPp(value: number | null | undefined, digits = 2): string {

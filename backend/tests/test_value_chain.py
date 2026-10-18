@@ -39,6 +39,36 @@ class MapTests(unittest.TestCase):
         self.assertNotIn("005930", by["foundry"][3])     # 주가가 두 칸에 중복 반영되지 않게
 
 
+class RelativeStateTests(unittest.TestCase):
+    """칸 자기 이력 대비 상태 — 호황기에 ±10%p 고정 기준이 대부분 칸을 '가속'으로 만들던 문제(2026-10-18)"""
+
+    def hist(self, values):
+        out, y, m = {}, 2020, 1
+        for v in values:
+            out[f"{y}-{m:02d}"] = v
+            y, m = (y, m + 1) if m < 12 else (y + 1, 1)
+        return out
+
+    def test_big_level_with_usual_swing_is_steady(self):
+        from pipeline.value_chain import relative_state
+        import math
+        vals = [300 + 40 * math.sin(i * 1.3) for i in range(40)] + [310]   # +260~+340%를 늘 오가는 칸 — 10%p 넘는 변화도 평소 수준
+        state, z = relative_state(self.hist(vals))
+        self.assertEqual(state, "유지")
+        self.assertLess(abs(z), 1)
+
+    def test_unusual_jump_is_acceleration(self):
+        from pipeline.value_chain import relative_state
+        vals = [10 + (1 if i % 2 else -1) for i in range(40)] + [40]
+        self.assertEqual(relative_state(self.hist(vals))[0], "가속")
+
+    def test_sign_change_and_short_history(self):
+        from pipeline.value_chain import relative_state
+        vals = [5 + (1 if i % 2 else -1) for i in range(40)] + [-3]
+        self.assertEqual(relative_state(self.hist(vals))[0], "전환↓")
+        self.assertEqual(relative_state(self.hist([1, 2, 3, 4, 5])), (None, None))
+
+
 class KrSeriesTests(unittest.TestCase):
     def test_kr_yoy3m_from_exports(self):
         import sqlite3

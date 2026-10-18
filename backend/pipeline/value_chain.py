@@ -10,6 +10,9 @@
 """
 from __future__ import annotations
 
+import math
+import statistics
+
 # 최종 수요. AI·스마트폰은 미국 수요 기업 분기 실적(pipeline/us_fundamentals)으로 관측한다(US_OBS). PC는 대만 PC 브랜드가 대리 관측
 # 자본 조달 — 설비 투자의 돈이 어디서 오나. 칸은 NODES의 cap_debt(맨 왼쪽 열)
 DEMANDS = [
@@ -269,6 +272,55 @@ def us_signal(conn, key: str) -> dict:
             "series": [{"ym": q, "yoy": round(s[q], 1)} for q in qs[-12:]]}
 
 
+STATE_Z = 1.0   # 가속·둔화 = 성장률 변화(로그)가 그 칸의 평소 변동(표준편차)의 ±1배 이상
+
+
+def _shift_ym(ym: str, months: int) -> str:
+    i = int(ym[:4]) * 12 + int(ym[5:]) - 1 + months
+    return f"{i // 12}-{i % 12 + 1:02d}"
+
+
+def relative_state(hist: dict[str, float], step: int = 3) -> tuple[str | None, float | None]:
+    """칸 자기 이력 대비 상태 — (상태, z). 이력이 짧으면 (None, None)이고 호출자가 ±10%p 규칙으로 떨어진다.
+
+    ±10%p 고정 기준은 호황기에 변별력을 잃는다: +390% 칸에서 10%p는 소음이고 +7% 칸에서는 큰 변화다(2026-10-18 점검,
+    52칸 중 28칸이 '가속'). 그래서 성장률을 log(1+YoY)로 바꿔 step개월(분기 칸은 한 분기) 전 대비 변화를 재고,
+    그 칸의 과거 같은 변화들의 표준편차로 나눈다. 부호 전환은 그대로 전환이다."""
+    ks = sorted(k for k in hist if hist[k] > -100)
+    lv = {k: math.log1p(hist[k] / 100) for k in ks}
+    back = lambda k: _shift_ym(k, -step)  # noqa: E731
+    d = {k: lv[k] - lv[back(k)] for k in ks if back(k) in lv}
+    if len(d) < 12 or not ks or ks[-1] not in d:
+        return None, None
+    last = ks[-1]
+    now, prev = hist[last], hist[back(last)]
+    sd = statistics.pstdev(d.values())
+    z = d[last] / sd if sd else 0.0
+    state = ("전환↑" if prev < 0 <= now else "전환↓" if prev >= 0 > now else
+             "가속" if z >= STATE_Z else "둔화" if z <= -STATE_Z else "유지")
+    return state, round(z, 2)
+
+
+def _history(conn, key: str) -> dict[str, float]:
+    """상태 판정용 칸 성장률 이력 — 주 관측과 같은 원천(미국 분기 YoY · 한국 수출 3개월 YoY · 대만 3개월 YoY)"""
+    from pipeline.value_chain_lags import kr_yoy3m, node_quarterly, node_yoy3m
+    if key in US_OBS:
+        return node_quarterly(conn, key)
+    if key in KR_OBS:
+        return kr_yoy3m(conn, KR_OBS[key][0])
+    tw = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
+    return node_yoy3m(conn, tw) if tw else {}
+
+
+# 대리 관측 — 칸의 주 관측이 붙은 종목의 매출이 아니라 업계 전체 통계인 칸. 메모리 수출은 사실상 삼성·SK 두 회사라 직접 관측으로 본다
+PROXY_CAVEAT = ("업계 전체 수출 통계라 붙은 종목의 매출이 아닙니다 — 비상장사(세메스 등)·외국계 한국 공장·"
+                "국내 대기업 해외 팹(시안·우시·다롄)으로 가는 설비가 섞이고, 국가별 분리가 안 됩니다. 종목 공시로 확인이 필요합니다")
+
+
+def obs_kind(key: str) -> str:
+    return "proxy" if key in KR_OBS and key != "memory" else "direct"
+
+
 def pxq_one(conn, hs: str) -> dict | None:
     """품목 P×Q 분해 + 품목명"""
     from pipeline.pxq import decompose
@@ -345,7 +397,10 @@ def read_map() -> dict:
         demands = []
         for k, n, d in DEMANDS:
             sig = us_signal(conn, k) if k in US_OBS else {}
-            demands.append({"key": k, "name": n, "description": d, "obs_label": US_OBS[k][1] if k in US_OBS else None,
+            rs, dz = relative_state(_history(conn, k)) if k in US_OBS else (None, None)
+            if rs:
+                sig = {**sig, "state": rs}
+            demands.append({"state_z": dz, "key": k, "name": n, "description": d, "obs_label": US_OBS[k][1] if k in US_OBS else None,
                             "us_members": members(conn, US_OBS[k][0]) if k in US_OBS else [], "aux": aux_signals(conn, k),
                             "yoy_3m": sig.get("yoy_3m"), "yoy_3m_prev": sig.get("yoy_3m_prev"), "state": sig.get("state"),
                             "period": sig.get("period"), "series": sig.get("series", [])})
@@ -360,7 +415,12 @@ def read_map() -> dict:
                        "series": []}
             else:
                 sig = tw_signal(conn, tw) if tw else {}
+            rs, z = relative_state(_history(conn, key))
+            if rs:                                   # 자기 이력 대비 상태(이력이 짧은 칸은 ±10%p 규칙 그대로)
+                sig = {**sig, "state": rs}
             nodes.append({"key": key, "name": name, "description": desc, "freq": "Q" if us else "M",
+                          "state_z": z, "obs_kind": obs_kind(key) if (us or kro or tw) else None,
+                          "obs_caveat": PROXY_CAVEAT if obs_kind(key) == "proxy" else None,
                           "source": "us" if us else "kr_trade" if kro else "tw" if tw else None,
                           "us_members": members(conn, US_OBS[key][0]) if us else [],
                           "aux": aux_signals(conn, key), "market": market_signals(conn, key),
