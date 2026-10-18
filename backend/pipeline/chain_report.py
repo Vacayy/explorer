@@ -1,7 +1,8 @@
-"""밸류체인 트리 보고서 (docs/specs/value-chain.md §16) — 루트에서 공급 쪽으로 타고 들어가며 칸마다 사실·기대·문서를 모아 자연어 보고서.
+"""밸류체인 트리 보고서 (docs/specs/value-chain.md §16) — 고른 칸에서 수요 쪽으로 타고 올라가며(bottom-up) 칸마다 사실·기대·문서를 모아 자연어 보고서.
 
 버튼으로 요청할 때만 만든다(사용자 결정, 비싼 생성은 승인 뒤로). 단계:
-1. 트리 고르기(LLM 0): 루트에서 공급 방향 연결을 따라 깊이 3·칸 12까지, 추정 증가액(§14)이 큰 가지 우선
+1. 트리 고르기(LLM 0): 루트 칸에서 그 칸의 물건을 사는 쪽(수요)으로 깊이 4·칸 12까지, 추정 증가액(§14)이 큰 가지 우선.
+   처음엔 공급 쪽으로 내려갔는데(top-down), 사용자가 '이 칸으로 들어오는 돈이 어느 수요에서 오나'를 보는 bottom-up을 택했다(D-263)
 2. 칸별 자료 묶음(LLM 0): 사실(read_map)·기대(vc_expectations)·컨퍼런스콜 요약(transcripts.digest)·피드(한국 종목 연결 + 칸 이름)
 3. 칸 메모(sonnet): 입력 해시가 같으면 chain_node_notes에서 재사용 — 재료가 바뀐 칸만 다시 쓴다
 4. 종합(opus + 웹 검색 상시, 사용자 결정): 칸 메모 → 보고서. 출처 없는 문장 금지, 사실과 기대 구분
@@ -16,7 +17,7 @@ import re
 
 from database import get_connection
 
-DEPTH, MAX_NODES = 3, 12
+DEPTH, MAX_NODES = 4, 12      # 소재·장비 칸에서 최종 수요까지 4단계가 필요할 때가 있다(포토 소재 → 메모리 → 서버 ODM → AI 투자)
 NOTE_MODEL, SYNTH_MODEL = "sonnet", "opus"
 DOCS_PER_NODE, DOC_CHARS, DOC_DAYS = 6, 700, 30
 WEB_SEARCH_CAP = 5
@@ -32,22 +33,24 @@ NOTE_SYSTEM = """너는 반도체·IT 하드웨어 밸류체인 애널리스트�
   **반증 조건** — 이 흐름이 틀렸다고 판단할 관측 1~2개
   **자료 공백** — 판단에 필요한데 없는 것(종합 단계에서 웹으로 보충할 대상)"""
 
-SYNTH_SYSTEM = f"""너는 반도체·IT 하드웨어 밸류체인 수석 애널리스트다. 루트에서 공급 쪽으로 내려가는 트리의 칸 메모들을 종합해 한국어 보고서를 쓴다.
+SYNTH_SYSTEM = f"""너는 반도체·IT 하드웨어 밸류체인 수석 애널리스트다. 루트 칸에서 그 물건을 사는 쪽(수요)으로 타고 올라가는 트리의 칸 메모들을 종합해 한국어 보고서를 쓴다(bottom-up).
+보고서의 질문: 루트 칸으로 들어오는 돈은 어느 수요에서 오고, 그 수요는 이어지는가. 기대는 어디서 앞서거나 뒤처지는가.
 규칙:
 - 사실과 기대를 문단 안에서도 구분한다(예: '관측: … / 기대: …').
 - 모든 주장에 출처를 단다: 칸 메모의 [D…]·[C…]·[데이터]를 그대로 옮기고, 웹에서 찾은 내용은 [W: URL]로. 출처 없는 문장은 쓰지 않는다.
 - 웹 검색은 칸 메모의 '자료 공백' 중 판단에 중요한 것만, 최대 {WEB_SEARCH_CAP}회. 검색 결과도 사실과 전망을 구분한다.
 - 예측이 아니라 조준이다: 결론은 '어디를 더 봐야 하나'와 반증 조건으로 끝낸다. 매수·매도 권유를 하지 않는다.
 - 목차(마크다운 ##):
-  ## 결론 먼저 — 돈이 지금 어디로 가장 세게 흐르고, 기대는 어디서 앞서거나 뒤처지는가 (3~5불릿)
-  ## 흐름 경로 — 루트에서 칸으로 이어지는 돈의 길(추정 증가액이 큰 순)
-  ## 칸별 사실·기대·괴리 — 칸마다 ### 소제목
+  ## 결론 먼저 — 루트 칸의 돈은 어느 수요에서 가장 많이 오고, 그 수요는 이어지는가, 기대와의 괴리는 어디인가 (3~5불릿)
+  ## 돈이 들어오는 길 — 최종 수요에서 루트 칸까지(추정 증가액이 큰 순)
+  ## 칸별 사실·기대·괴리 — 루트부터 수요 쪽 순서로 칸마다 ### 소제목
   ## 반증 조건 — 전체 그림이 틀렸다고 볼 관측
   ## 확인할 것 — 다음 데이터 발표·이벤트"""
 
 
 def select_tree(root: str, vmap: dict, flows: list[dict], depth: int = DEPTH, max_nodes: int = MAX_NODES) -> list[dict]:
-    """루트에서 공급 방향으로(이 칸에 파는 칸들) — 추정 증가액이 큰 연결부터 꺼내는 최대 힙. 같은 칸은 한 번만"""
+    """루트에서 수요 방향으로(이 칸의 물건을 사는 칸들) — 추정 증가액이 큰 연결부터 꺼내는 최대 힙. 같은 칸은 한 번만.
+    parent = 이 칸에 파는 칸(트리에서 한 단계 아래)"""
     from pipeline.value_chain import EDGES
     name = {n["key"]: n["name"] for n in vmap["nodes"]} | {d["key"]: d["name"] for d in vmap["demands"]}
     flow = {(f["from"], f["to"]): f.get("flow_usd") for f in flows}
@@ -55,23 +58,32 @@ def select_tree(root: str, vmap: dict, flows: list[dict], depth: int = DEPTH, ma
     seen, heap = {root}, []
 
     def push(node: str, d: int):
-        for a, b, *_ in EDGES:                        # a가 b에 판다 → b(사는 칸)에서 a(파는 칸)로 내려간다
-            if b == node and a not in seen:
-                heapq.heappush(heap, (-(flow.get((a, b)) or 0.0), d + 1, a, b))
+        for a, b, *_ in EDGES:                        # a가 b에 판다 → a(파는 칸)에서 b(사는 칸)로 올라간다
+            if a == node and b not in seen:
+                heapq.heappush(heap, (-(flow.get((a, b)) or 0.0), d + 1, b, a))
+    # 루트가 직접 파는 칸은 모두 먼저 — 증가액 큰 가지가 칸 상한을 다 차지하면 다른 판로(예: 식각 장비 → 파운드리)가 빠진다
     push(root, 0)
+    first = sorted(heap)
+    heap.clear()
+    for neg, d, b, a in first[:max_nodes - 1]:
+        if b not in seen:
+            seen.add(b)
+            tree.append({"key": b, "name": name.get(b, b), "parent": a, "depth": d, "flow_usd": -neg or None})
+    for t in tree[1:]:
+        push(t["key"], 1)
     while heap and len(tree) < max_nodes:
-        neg, d, a, b = heapq.heappop(heap)
-        if a in seen or d > depth:
+        neg, d, b, a = heapq.heappop(heap)
+        if b in seen or d > depth:
             continue
-        seen.add(a)
-        tree.append({"key": a, "name": name.get(a, a), "parent": b, "depth": d, "flow_usd": -neg or None})
-        push(a, d)
+        seen.add(b)
+        tree.append({"key": b, "name": name.get(b, b), "parent": a, "depth": d, "flow_usd": -neg or None})
+        push(b, d)
     return _dfs(tree)
 
 
 def _dfs(tree: list[dict]) -> list[dict]:
     """부모 바로 아래에 자식이 오는 순서(추정 증가액 큰 자식 먼저) — 꺼낸 순서대로 들여쓰기만 하면
-    부모를 잘못 읽는다(첫 보고서가 '구리 → ASML'을 공급 관계로 오독, 실제 부모는 파운드리)"""
+    부모를 잘못 읽는다(첫 보고서가 트리 관계를 오독)"""
     kids: dict[str | None, list[dict]] = {}
     for t in tree:
         kids.setdefault(t["parent"], []).append(t)
@@ -230,12 +242,13 @@ def build(rid: int, root: str) -> None:
         refs = _refs(dossiers)
         _update(rid, progress="종합 보고서 쓰는 중(웹 검색 포함)")
         names = {t["key"]: t["name"] for t in tree}
-        path = "\n".join(f"{'  ' * t['depth']}- {t['name']}" + (f" (→ {names[t['parent']]}에 판다, 이 연결 추정 증가액 {t['flow_usd'] / 1e9:+.1f}B USD)"
-                                                              if t["parent"] else "") for t in tree)
+        path = "\n".join(f"{'  ' * t['depth']}- {t['name']}" + (f" (← {names[t['parent']]}의 물건을 산다, 이 연결 추정 증가액 {t['flow_usd'] / 1e9:+.1f}B USD)"
+                                                              if t["parent"] else " (루트)") for t in tree)
         body_notes = "\n\n".join(f"### {t['name']} ({t['key']})\n{notes[t['key']]}" for t in tree if t["key"] in notes)
-        prompt = (f"루트: {tree[0]['name']}\n\n## 트리(루트 → 공급 쪽, 들여쓰기 = 깊이, 자식은 부모 바로 아래)\n{path}\n\n"
-                  "'이 연결 추정 증가액'은 실제 거래액이 아니다 — 파는 칸의 전년 대비 증가액을 그 칸이 파는 칸들에 사는 칸 규모 비례로 나눈 몫이라, "
-                  "칸 메모의 칸 전체 증가액보다 작을 수 있고 위아래로 더할 수 없다. 이 차이를 보고서에서 오류로 지적하지 마라.\n\n"
+        prompt = (f"루트: {tree[0]['name']}\n\n## 트리(루트 → 수요 쪽, 들여쓰기 = 깊이, 사는 칸은 파는 칸 바로 아래)\n{path}\n\n"
+                  "'이 연결 추정 증가액'은 실제 거래액이 아니다 — 파는 칸의 전년 대비 증가액을 그 칸이 파는 칸들(사는 칸)에 사는 칸 규모 비례로 나눈 몫이라, "
+                  "칸 메모의 칸 전체 증가액보다 작을 수 있고 위아래로 더할 수 없다. 이 차이를 보고서에서 오류로 지적하지 마라. "
+                  "같은 칸은 트리에 한 번만 나온다 — 여러 파는 칸이 같은 수요 칸에 팔아도 처음 닿은 가지 아래에만 있다.\n\n"
                   f"## 칸 메모\n{body_notes}\n\n"
                   + (f"## 메모가 빠진 칸\n{', '.join(m['name'] for m in missing)}\n\n" if missing else "")
                   + "위 칸 메모들로 보고서를 써라.")

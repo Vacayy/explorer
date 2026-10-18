@@ -291,9 +291,9 @@ export default function ValueChainPage() {
         </CardContent>
       </Card>
 
-      {/* 트리 보고서 — 고른 칸(없으면 AI 데이터센터 투자)을 루트로(§16) */}
-      {vc.data && <ChainReportCard root={selected ?? "ai"} rootName={(node?.name ?? demand?.name) ?? vc.data.demands.find(d => d.key === "ai")?.name ?? "AI 데이터센터 투자"}
-        reportId={reportId} onReport={id => setParam("report", id == null ? null : String(id))} />}
+      {/* 트리 보고서 — 고른 공급 칸(없거나 수요 칸이면 메모리)에서 수요 쪽으로 타고 올라간다(§16, bottom-up) */}
+      {vc.data && <ChainReportCard root={node?.key ?? "memory"} rootName={node?.name ?? vc.data.nodes.find(n => n.key === "memory")?.name ?? "메모리"}
+        pickedDemand={demand?.name ?? null} reportId={reportId} onReport={id => setParam("report", id == null ? null : String(id))} />}
 
       {/* 한국 확인 신호 전체 */}
       <Card>
