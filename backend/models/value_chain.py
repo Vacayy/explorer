@@ -12,13 +12,24 @@ class VcPoint(BaseModel):
     yoy: float
 
 
+class UsMember(BaseModel):
+    ticker: str
+    name: str
+    metric: str                    # 설비투자 | 매출
+    q: str                         # 최신 분기(달력 분기 끝)
+    value: float                   # USD
+    yoy: float | None
+
+
 class VcNode(BaseModel):
     key: str
     name: str
     description: str
     tw: list[VcCompany]
     kr: list[VcCompany]
-    freq: str = "M"                # M = 대만 월매출(3개월 YoY) · Q = 미국 분기 실적(분기 YoY)
+    freq: str = "M"                # M = 월간(3개월 YoY) · Q = 미국 분기 실적(분기 YoY)
+    source: str | None = None      # tw(대만 월매출) | us(미국 분기 실적) | kr_trade(한국 수출 HS) | None(관측 없음)
+    us_members: list[UsMember] = []
     obs_label: str | None = None   # 분기 관측 원천 설명
     period: str | None = None      # 최신 관측 월·분기
     yoy_3m: float | None
@@ -53,6 +64,7 @@ class VcDemand(BaseModel):
     name: str
     description: str
     obs_label: str | None = None   # 관측 원천(미국 분기 실적) — 없으면 대리 관측만
+    us_members: list[UsMember] = []
     yoy_3m: float | None = None    # 최신 분기 YoY
     yoy_3m_prev: float | None = None
     state: str | None = None

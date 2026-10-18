@@ -117,3 +117,25 @@ def demand_series(conn, use_key: str) -> dict[str, float]:
         if prev in total and total[prev]:
             out[q] = (v / total[prev] - 1) * 100
     return dict(sorted(out.items()))
+
+
+NAMES = {"MSFT": "마이크로소프트", "GOOGL": "알파벳(구글)", "AMZN": "아마존", "META": "메타", "ORCL": "오라클",
+         "NVDA": "엔비디아", "AMD": "AMD", "AAPL": "애플"}
+
+
+def members(conn, use_key: str) -> list[dict]:
+    """용도별 구성 회사의 최신 분기 값과 YoY — 수요 칸 상세"""
+    out = []
+    for ticker, metric, use in TARGETS:
+        if use != use_key:
+            continue
+        rows = {r["q"]: r["value"] for r in conn.execute(
+            "SELECT q, value FROM us_quarterly WHERE ticker=? AND metric=? ORDER BY q", (ticker, metric))}
+        if not rows:
+            continue
+        q = max(rows)
+        prev = f"{int(q[:4]) - 1}{q[4:]}"
+        yoy = (rows[q] / rows[prev] - 1) * 100 if rows.get(prev) else None
+        out.append({"ticker": ticker, "name": NAMES.get(ticker, ticker), "metric": "설비투자" if metric == "capex" else "매출",
+                    "q": q, "value": rows[q], "yoy": round(yoy, 1) if yoy is not None else None})
+    return out

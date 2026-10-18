@@ -50,10 +50,14 @@ def _state(now: float | None, prev: float | None) -> str | None:
     return "유지"
 
 
-def trade_signal(conn, hs: str) -> dict:
-    """품목 수출액(USD)의 3개월 YoY — 같은 달 전년과 3개월 합을 비교"""
-    rows = {r["period"]: r["export_usd"] for r in conn.execute(
-        "SELECT period, export_usd FROM trade_stats WHERE hs_code=? AND export_usd IS NOT NULL ORDER BY period", (hs,))}
+def trade_signal(conn, hs: str | list[str]) -> dict:
+    """품목 수출액(USD)의 3개월 YoY — 같은 달 전년과 3개월 합을 비교. 여러 HS면 합산(모든 품목이 있는 달만)"""
+    codes = [hs] if isinstance(hs, str) else list(hs)
+    agg: dict[str, list[float]] = {}
+    for r in conn.execute(f"SELECT period, export_usd FROM trade_stats WHERE hs_code IN ({','.join('?' * len(codes))}) "
+                          "AND export_usd IS NOT NULL", codes):
+        agg.setdefault(r["period"], []).append(r["export_usd"])
+    rows = {p: sum(v) for p, v in agg.items() if len(v) == len(codes)}
     periods = sorted(rows)
 
     def yoy3(i):
@@ -67,7 +71,9 @@ def trade_signal(conn, hs: str) -> dict:
 
     now = yoy3(len(periods) - 1) if periods else None
     prev = yoy3(len(periods) - 4) if len(periods) >= 4 else None
-    return {"hs": hs, "period": periods[-1] if periods else None, "yoy_3m": now, "yoy_3m_prev": prev, "state": _state(now, prev)}
+    return {"hs": hs if isinstance(hs, str) else ",".join(codes), "period": periods[-1] if periods else None,
+            "yoy_3m": now, "yoy_3m_prev": prev, "state": _state(now, prev),
+            "series": [{"ym": p, "usd": rows[p]} for p in periods[-24:]]}
 
 
 def disclosure_signal(conn, stock_code: str, today: date | None = None) -> dict:

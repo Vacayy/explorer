@@ -102,6 +102,12 @@ US_OBS = {"ai": ("ai", "하이퍼스케일러 설비투자(MSFT·GOOGL·AMZN·ME
           "ai_accel": ("ai_accel", "엔비디아·AMD 매출"),
           "mobile": ("mobile", "애플 매출")}
 
+# 대만 동종이 없는 한국 고유 칸 → 한국 수출 통계(HS, kr_confirm 조사) 합산으로 관측
+KR_OBS = {"kr_pkg_equip": (["8486402093", "8486402010"], "한국 수출: 웨이퍼 범핑용 기기 + 다이 부착기·TC 본더"),
+          "kr_smt_insp": (["9031499000"], "한국 수출: 광학식 검사기기(SPI·AOI 포함)"),
+          "kr_sub_equip": (["8534009000"], "한국 수출: PCB·기판(장비 수요 대리)"),
+          "kr_stf": (["9030901000"], "한국 수출: 반도체 검사기 부분품(프로브카드 등)")}
+
 NODE_BY_KEY = {n[0]: n for n in NODES}
 DEMAND_KEYS = {d[0] for d in DEMANDS}
 
@@ -154,8 +160,10 @@ def read_map() -> dict:
     """화면용 지도 — 노드(대만 회사·한국 종목·이번 달 3개월 YoY와 상태), 엣지(측정 시차·판정), 위약 기준.
     분기 관측 칸·수요(US_OBS)는 미국 분기 실적의 YoY와 상태(freq='Q')."""
     from database import get_connection
+    from pipeline.kr_confirm import trade_signal
     from pipeline.tw_links import tw_signal
     from pipeline.tw_universe import COMPANIES
+    from pipeline.us_fundamentals import members
     from pipeline.value_chain_lags import measure_all
     names = {c: n for c, n, *_ in COMPANIES}
     conn = get_connection()
@@ -168,14 +176,25 @@ def read_map() -> dict:
         for k, n, d in DEMANDS:
             sig = us_signal(conn, k) if k in US_OBS else {}
             demands.append({"key": k, "name": n, "description": d, "obs_label": US_OBS[k][1] if k in US_OBS else None,
+                            "us_members": members(conn, US_OBS[k][0]) if k in US_OBS else [],
                             "yoy_3m": sig.get("yoy_3m"), "yoy_3m_prev": sig.get("yoy_3m_prev"), "state": sig.get("state"),
                             "period": sig.get("period"), "series": sig.get("series", [])})
         nodes = []
         for key, name, tw, kr, desc in NODES:
-            us = key in US_OBS
-            sig = us_signal(conn, key) if us else (tw_signal(conn, tw) if tw else {})
+            us, kro = key in US_OBS, key in KR_OBS
+            if us:
+                sig = us_signal(conn, key)
+            elif kro:
+                t = trade_signal(conn, KR_OBS[key][0])
+                sig = {"yoy_3m": t["yoy_3m"], "yoy_3m_prev": t["yoy_3m_prev"], "state": t["state"], "period": t["period"],
+                       "series": []}
+            else:
+                sig = tw_signal(conn, tw) if tw else {}
             nodes.append({"key": key, "name": name, "description": desc, "freq": "Q" if us else "M",
-                          "obs_label": US_OBS[key][1] if us else None, "period": sig.get("period") if us else sig.get("ym"),
+                          "source": "us" if us else "kr_trade" if kro else "tw" if tw else None,
+                          "us_members": members(conn, US_OBS[key][0]) if us else [],
+                          "obs_label": US_OBS[key][1] if us else KR_OBS[key][1] if kro else None,
+                          "period": sig.get("period") if (us or kro) else sig.get("ym"),
                           "tw": [{"code": c, "name": names.get(c, c)} for c in tw],
                           "kr": [{"code": c, "name": kr_names.get(c, c)} for c in kr],
                           "yoy_3m": sig.get("yoy_3m"), "yoy_3m_prev": sig.get("yoy_3m_prev"), "state": sig.get("state"),

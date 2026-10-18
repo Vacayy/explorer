@@ -13,8 +13,8 @@ import { SparkLine } from "@/components/shared/Spark"
 import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
-import { formatPercent } from "@/utils/format"
-import type { PropRow, ValueChainResponse, VcDemand, VcEdge, VcNode } from "@/types"
+import { formatPercent, formatUsd } from "@/utils/format"
+import type { PropRow, UsMember, ValueChainResponse, VcDemand, VcEdge, VcNode } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -37,7 +37,9 @@ const stateTone = (s?: string | null) => !s ? "text-muted-foreground" : s === "�
 
 function ChainNode({ data }: NodeProps) {
   const d = data as unknown as ChainNodeData
-  if (d.demand) return <div className={cn("w-[188px] rounded-md border-2 border-dashed px-2 py-1.5 text-xs", d.demand.state ? STATE_CLS[d.demand.state] : "")}>
+  // 관측이 있는 수요는 실선(굵게), 관측이 없는 수요(PC)만 점선
+  if (d.demand) return <div className={cn("w-[188px] rounded-md border-2 bg-card px-2 py-1.5 text-xs", d.demand.obs_label ? "" : "border-dashed",
+    d.demand.state ? STATE_CLS[d.demand.state] : "", d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
     <Handle type="source" position={Position.Right} className="!opacity-0" />
     <div className="flex items-center gap-1">
       <span className="truncate font-semibold">{d.demand.name}</span>
@@ -49,7 +51,8 @@ function ChainNode({ data }: NodeProps) {
   </div>
   const n = d.node!
   const quarterly = n.freq === "Q"
-  const krOnly = !n.tw.length && !quarterly
+  const krTrade = n.source === "kr_trade"
+  const krOnly = !n.source           // 정말 관측이 없는 칸만 점선
   return <div className={cn("w-[188px] rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm", n.state ? STATE_CLS[n.state] : "", krOnly && "border-dashed",
     d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
     <Handle type="target" position={Position.Left} className="!opacity-0" />
@@ -59,7 +62,7 @@ function ChainNode({ data }: NodeProps) {
       {n.state && <span className={cn("ml-auto shrink-0 text-[10px]", stateTone(n.state))}>{n.state}</span>}
     </div>
     <div className="text-[10px] tabular-nums text-muted-foreground">
-      {krOnly ? "대만 관측 없음 — 한국 원천으로" : quarterly ? `분기 YoY ${formatPercent(n.yoy_3m)} · 미국 실적` : `3M YoY ${formatPercent(n.yoy_3m)}`}
+      {krOnly ? "관측 없음" : quarterly ? `분기 YoY ${formatPercent(n.yoy_3m)} · 미국 실적` : krTrade ? `수출 3M YoY ${formatPercent(n.yoy_3m)} · 한국 HS` : `3M YoY ${formatPercent(n.yoy_3m)}`}
     </div>
     {n.kr.length > 0 && <div className="truncate text-[10px] font-medium text-primary">한국 {n.kr.map(k => k.name).join("·")}</div>}
   </div>
@@ -128,7 +131,7 @@ export default function ValueChainPage() {
       ...vc.data.tiers.map((t, i) => ({ id: `tier-${t.key}`, type: "tier", position: { x: LANE_LABEL_W + i * COL_W + 16, y: -30 }, draggable: false, selectable: false,
         data: { label: t.label } })),
       ...vc.data.nodes.filter(n => pos[n.key]).map(n => ({ id: n.key, type: "chain", position: pos[n.key], data: { node: n, selected: n.key === selected } })),
-      ...vc.data.demands.filter(d => pos[d.key]).map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: false } })),
+      ...vc.data.demands.filter(d => pos[d.key]).map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: d.key === selected } })),
     ]
     const edges: Edge[] = vc.data.edges.map(e => {
       const s = EDGE_STYLE[e.verdict]
@@ -145,6 +148,7 @@ export default function ValueChainPage() {
   }, [vc.data, selected])
 
   const node = vc.data?.nodes.find(n => n.key === selected)
+  const demand = vc.data?.demands.find(d => d.key === selected)
 
   return <PageLayout mode="document" header={<PageHeader title="밸류체인" description={`대만 월매출로 보는 공급 단계별 흐름과 한국 종목 · ${vc.data?.as_of ?? "-"} 공시 기준`} />}>
     <div className="space-y-5">
@@ -173,7 +177,7 @@ export default function ValueChainPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-card-title">공급 지도</CardTitle>
           <p className="text-caption text-muted-foreground">
-            열은 밸류체인 단계(왼쪽 최종 수요 → 오른쪽 소재·장비), 행은 수요처 레인입니다. 여러 수요에 함께 공급하는 칸은 '공통' 레인에 둡니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
+            열은 밸류체인 단계(왼쪽 최종 수요 → 오른쪽 소재·장비), 행은 수요처 레인입니다. 관측 원천: 대만 월매출 · 미국 분기 실적(수요·가속기) · 한국 수출 HS(한국 고유 칸), 점선은 관측 없음. 여러 수요에 함께 공급하는 칸은 '공통' 레인에 둡니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
             칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화) — AI 데이터센터·스마트폰 수요와 AI 가속기는 미국 분기 실적(SEC)의 분기 YoY를 직전 분기와 비교. 선 = 측정 판정
             (굵은 실선 확인 · 실선 부분 · 점선 미확인), 숫자 = 시차(+공급이 앞섬, −수요가 앞섬, ?는 두 신호 시차 불일치).
             {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ).`}
@@ -192,7 +196,8 @@ export default function ValueChainPage() {
                   <Controls showInteractive={false} />
                 </ReactFlow>
               </div>
-              <NodePanel node={node} edges={vc.data.edges} nodes={vc.data.nodes} onSelect={select} />
+              {demand ? <DemandPanel demand={demand} edges={vc.data.edges} nodes={vc.data.nodes} onSelect={select} />
+                : <NodePanel node={node} edges={vc.data.edges} nodes={vc.data.nodes} onSelect={select} />}
             </div>}
         </CardContent>
       </Card>
@@ -251,7 +256,9 @@ function NodePanel({ node, edges, nodes, onSelect }: { node?: VcNode; edges: VcE
       {node.freq === "Q"
         ? <p className="mt-1 text-caption tabular-nums">분기 YoY {formatPercent(node.yoy_3m)} (직전 분기 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label} (SEC 분기 실적)</p>
         : node.tw.length > 0 && <p className="mt-1 text-caption tabular-nums">3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period}</p>}
+      {node.source === "kr_trade" && <p className="mt-1 text-caption tabular-nums">수출 3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label}</p>}
       {node.series.length > 1 && <div className="mt-1"><SparkLine data={node.series.map(p => p.yoy)} height={32} /></div>}
+      {!!node.us_members?.length && <UsMembers members={node.us_members} />}
     </div>
     <div className="space-y-2">
       {node.tw.length > 0 && <div><p className="text-caption font-medium text-muted-foreground">대만 구성</p><p className="text-caption">{node.tw.map(t => t.name).join(" · ")}</p></div>}
@@ -262,5 +269,36 @@ function NodePanel({ node, edges, nodes, onSelect }: { node?: VcNode; edges: VcE
       {ups.length > 0 && <div><p className="text-caption font-medium text-muted-foreground">앞 칸(이 칸에 판다)</p>{ups.map(e => <EdgeLine key={e.from} e={e} other={e.from} />)}</div>}
       {downs.length > 0 && <div><p className="text-caption font-medium text-muted-foreground">다음 칸(이 칸이 판다)</p>{downs.map(e => <EdgeLine key={e.to} e={e} other={e.to} />)}</div>}
     </div>
+  </div>
+}
+
+/** 미국 수요 기업 최신 분기 — 회사·지표·분기·값·YoY */
+function UsMembers({ members }: { members: UsMember[] }) {
+  return <ul className="mt-2 divide-y text-caption">
+    {members.map(m => <li key={m.ticker} className="flex items-baseline gap-2 py-1">
+      <span className="shrink-0 font-medium">{m.name}</span><span className="min-w-0 truncate text-muted-foreground">{m.metric} · {m.q}</span>
+      <span className="ml-auto tabular-nums">{formatUsd(m.value)}</span>
+      <span className={cn("w-16 text-right tabular-nums", (m.yoy ?? 0) >= 0 ? "text-up" : "text-down")}>{formatPercent(m.yoy)}</span>
+    </li>)}
+  </ul>
+}
+
+/** 최종 수요 상세 — 관측 원천·회사별 최신 분기·분기 YoY 추이·이 수요에 파는 칸 */
+function DemandPanel({ demand, edges, nodes, onSelect }: { demand: VcDemand; edges: VcEdge[]; nodes: VcNode[]; onSelect: (k: string) => void }) {
+  const sellers = edges.filter(e => e.to === demand.key)
+  return <div className="grid gap-4 rounded-lg border p-3 text-sm md:grid-cols-3">
+    <div>
+      <div className="flex items-center gap-2"><span className="font-semibold">{demand.name}</span>{demand.state && <Badge variant="outline" className="text-[11px]">{demand.state}</Badge>}</div>
+      <p className="text-caption text-muted-foreground">{demand.description}</p>
+      {demand.obs_label
+        ? <p className="mt-1 text-caption tabular-nums">분기 YoY {formatPercent(demand.yoy_3m)} (직전 분기 {formatPercent(demand.yoy_3m_prev)}) · {demand.period} · {demand.obs_label} 합계 (SEC 분기 실적)</p>
+        : <p className="mt-1 text-caption text-muted-foreground">직접 관측 원천이 없습니다 — 이 수요에 파는 대만 칸(PC 브랜드)이 대리 관측합니다.</p>}
+      {(demand.series?.length ?? 0) > 1 && <div className="mt-1"><SparkLine data={demand.series!.map(p => p.yoy)} height={32} /></div>}
+    </div>
+    <div>{!!demand.us_members?.length && <><p className="text-caption font-medium text-muted-foreground">구성 회사 최신 분기</p><UsMembers members={demand.us_members} /></>}</div>
+    <div>{sellers.length > 0 && <><p className="text-caption font-medium text-muted-foreground">이 수요에 파는 칸</p>
+      {sellers.map(e => <Button key={e.from} variant="ghost" onClick={() => onSelect(e.from)} className="block h-auto w-full whitespace-normal px-1 py-0.5 text-left text-caption font-normal">
+        {nodes.find(n => n.key === e.from)?.name ?? e.from} <span className="text-muted-foreground">· {e.verdict}</span>
+      </Button>)}</>}</div>
   </div>
 }

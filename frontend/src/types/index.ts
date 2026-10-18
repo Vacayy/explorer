@@ -1236,10 +1236,13 @@ export interface VcNode {
   tw: { code: string; name: string }[]; kr: { code: string; name: string }[]
   yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]; series: { ym: string; yoy: number }[]
   freq?: "M" | "Q"; obs_label?: string | null; period?: string | null
+  source?: "tw" | "us" | "kr_trade" | null; us_members?: UsMember[]
 }
+/** 미국 수요 기업 최신 분기 값 — 수요 칸·AI 가속기 상세 */
+export interface UsMember { ticker: string; name: string; metric: string; q: string; value: number; yoy: number | null }
 /** 최종 수요 — AI·스마트폰은 미국 분기 실적으로 관측(obs_label), PC는 대리 관측만 */
 export interface VcDemand {
-  key: string; name: string; description: string; obs_label?: string | null
+  key: string; name: string; description: string; obs_label?: string | null; us_members?: UsMember[]
   yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: TwLink["state"]; period?: string | null; series?: { ym: string; yoy: number }[]
 }
 export interface VcEdge {
