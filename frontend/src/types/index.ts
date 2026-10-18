@@ -1289,7 +1289,7 @@ export interface FlowRow {
   level_usd?: number | null
 }
 /** 금액 규모(§14) — 수요 칸 규모·증가액, 선별 추정 증가액(공급 칸 증가액을 사는 칸 규모 비례로 나눔, 거래액 아님) */
-export interface FlowDemand { key: string; name: string; level_usd: number | null; increment_usd: number | null }
+export interface FlowDemand { key: string; name: string; level_usd: number | null; increment_usd: number | null; level_note?: string | null }
 export interface EdgeFlow { from: string; to: string; flow_usd: number | null; basis: "estimate"; buyer_level_imputed: boolean }
 export interface FlowResponse {
   as_of: string | null; twd_usd: number; median_kr_return_3m: number | null; median_attention: number

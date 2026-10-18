@@ -31,12 +31,17 @@ const LANES: { key: SankeyLane; label: string }[] = [
   { key: "all", label: "전체" }, { key: "ai", label: "AI 데이터센터" }, { key: "pc", label: "PC" }, { key: "mobile", label: "스마트폰" }, { key: "china", label: "중국" },
 ]
 
-type SNode = { name: string; key: string; level: number | null }
+type SNode = { name: string; key: string; level: number | null; state: string | null }
+const LABEL_MAX = 13   // 옆 열과 겹치지 않게 이름을 줄인다(전체 이름은 툴팁)
+const short = (s: string) => s.length > LABEL_MAX ? `${s.slice(0, LABEL_MAX - 1)}…` : s
+/** 칸 색 = 격자와 같은 상태색(가속·전환↑ 상승색, 둔화·전환↓ 하락색, 그 밖 회색) */
+const stateFill = (st: string | null) => st === "가속" || st === "전환↑" ? "var(--color-chart-up)" : st === "둔화" || st === "전환↓" ? "var(--color-chart-down)" : "var(--color-chart-gray)"
 type SLink = { source: number; target: number; value: number; from: string; to: string }
 
 /** 생키 데이터 — 돈은 사는 쪽(저장 엣지의 to) → 파는 쪽(from). 레인 필터 후 추정 증가액 상위 N, 순환을 만드는 연결은 뺀다 */
 export function buildSankey(vc: ValueChainResponse, flows: EdgeFlow[], level: Record<string, number | null>, lane: SankeyLane, top = SANKEY_TOP) {
   const name = (k: string) => vc.nodes.find(n => n.key === k)?.name ?? vc.demands.find(d => d.key === k)?.name ?? k
+  const state = (k: string) => vc.nodes.find(n => n.key === k)?.state ?? vc.demands.find(d => d.key === k)?.state ?? null
   const inLane = (k: string) => lane === "all" || vc.layout[k]?.lane === lane
   const cand = flows.filter(f => inLane(f.from) || inLane(f.to))
   const positive = cand.filter(f => (f.flow_usd ?? 0) > 0).sort((a, b) => b.flow_usd! - a.flow_usd!)
@@ -49,7 +54,7 @@ export function buildSankey(vc: ValueChainResponse, flows: EdgeFlow[], level: Re
   }
   const nodes: SNode[] = []
   const idx: Record<string, number> = {}
-  const id = (k: string) => (idx[k] ??= nodes.push({ name: name(k), key: k, level: level[k] ?? null }) - 1)
+  const id = (k: string) => (idx[k] ??= nodes.push({ name: name(k), key: k, level: level[k] ?? null, state: state(k) }) - 1)
   const links: SLink[] = []
   for (const f of picked) {
     const src = f.to, dst = f.from                                    // 돈: 사는 칸 → 파는 칸
@@ -64,11 +69,12 @@ function SankeyNode(props: { x: number; y: number; width: number; height: number
   const { x, y, width, height, payload } = props
   // 라벨은 항상 막대 오른쪽 — 맨 오른쪽 열은 오른쪽 여백(margin.right)에 들어간다
   return <Layer>
-    <Rectangle x={x} y={y} width={width} height={Math.max(height, 2)} fill="var(--color-chart-blue)" fillOpacity={0.85} />
-    <text x={x + width + 6} y={y + height / 2} textAnchor="start" dominantBaseline="middle" fontSize={11} fill="var(--foreground)"
+    <Rectangle x={x} y={y} width={width} height={Math.max(height, 2)} fill={stateFill(payload.state)} fillOpacity={0.9} />
+    {/* 이름·규모 두 줄 — 한 줄이면 옆 열 칸과 겹친다 */}
+    <text x={x + width + 6} y={y + height / 2} textAnchor="start" fontSize={11} fill="var(--foreground)"
       paintOrder="stroke" stroke="var(--background)" strokeWidth={3} strokeLinejoin="round">
-      {payload.name}
-      <tspan fill="var(--muted-foreground)">{payload.level ? ` · ${formatUsd(payload.level)}` : ""}</tspan>
+      <tspan x={x + width + 6} dy={payload.level ? "-0.2em" : "0.35em"}>{short(payload.name)}</tspan>
+      {payload.level ? <tspan x={x + width + 6} dy="1.15em" fontSize={10} fill="var(--muted-foreground)">{formatUsd(payload.level)}</tspan> : null}
     </text>
   </Layer>
 }
@@ -76,7 +82,7 @@ function SankeyNode(props: { x: number; y: number; width: number; height: number
 /** 툴팁 — 띠(연결)는 우리가 실어 둔 from·to로 구분한다(Recharts의 source 인덱스 0은 거짓으로 읽혀 판정에 못 쓴다) */
 function SankeyTip({ active, payload, names }: {
   active?: boolean; names: Record<string, string>
-  payload?: { payload: { from?: string; to?: string; value?: number; name?: string; level?: number | null; payload?: { from?: string; to?: string; value?: number } } }[]
+  payload?: { payload: { from?: string; to?: string; value?: number; name?: string; level?: number | null; state?: string | null; payload?: { from?: string; to?: string; value?: number } } }[]
 }) {
   if (!active || !payload?.length) return null
   const raw = payload[0].payload
@@ -86,7 +92,7 @@ function SankeyTip({ active, payload, names }: {
       ? <><div className="font-medium">{names[link.from!] ?? link.from} → {names[link.to!] ?? link.to}</div>
         <div className="tabular-nums">추정 증가액 +{formatUsd(link.value ?? 0)}</div>
         <div className="mt-1 text-muted-foreground">{MAG_HINT}</div></>
-      : <><div className="font-medium">{raw.name}</div><div className="tabular-nums">규모 {raw.level ? formatUsd(raw.level) : "-"}</div></>}
+      : <><div className="font-medium">{raw.name}</div><div className="tabular-nums">규모 {raw.level ? formatUsd(raw.level) : "-"}{raw.state ? ` · ${raw.state}` : ""}</div></>}
   </div>
 }
 
@@ -101,7 +107,7 @@ export function ValueChainSankey({ vc, flows, level, lane, onLane, onSelect }: {
         {LANES.map(l => <ToggleGroupItem key={l.key} value={l.key} className="px-3 text-xs">{l.label}</ToggleGroupItem>)}
       </ToggleGroup>
       <span className="text-caption text-muted-foreground">
-        띠 두께 = 추정 증가액 상위 {data.links.length}개{data.hidden > 0 ? ` · 그리지 않은 연결 ${data.hidden}개` : ""}{data.nonPositive > 0 ? ` · 증가액 0 이하 ${data.nonPositive}개 제외` : ""}
+        띠 두께 = 추정 증가액 상위 {data.links.length}개 · 막대 색 = 칸 상태(가속·둔화·유지){data.hidden > 0 ? ` · 그리지 않은 연결 ${data.hidden}개` : ""}{data.nonPositive > 0 ? ` · 증가액 0 이하 ${data.nonPositive}개 제외` : ""}
       </span>
     </div>
     {!data.links.length ? <EmptyState message="그릴 증가액 연결이 없습니다 — 다른 레인을 골라 보세요." />

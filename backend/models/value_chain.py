@@ -212,6 +212,7 @@ class FlowDemand(BaseModel):
     name: str
     level_usd: float | None = None
     increment_usd: float | None = None
+    level_note: str | None = None   # 규모를 그리지 않는 이유(잔액 지표·관측 없음)
 
 
 class EdgeFlow(BaseModel):

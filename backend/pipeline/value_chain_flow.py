@@ -204,7 +204,10 @@ def compute(vmap: dict | None = None) -> dict:
         for k, name, _ in DEMANDS:                     # 수요 칸도 규모·증가액(사는 칸 규모로 쓰고, 랩·자본으로 파는 공급 칸이기도 하다)
             fn, arg = ((_us_increment, US_OBS[k][0]) if k in US_OBS and US_OBS[k][0] != "frontier" else
                        (_ext_increment, EXT_OBS[k][0]) if k in EXT_OBS else (None, None))
-            demands.append({"key": k, "name": name, "level_usd": _level(conn, k), "increment_usd": fn(conn, arg)[0] if fn else None})
+            lv = _level(conn, k)
+            note = ("수주잔고(잔액) 지표라 흐름 규모로 그리지 않습니다" if k in US_OBS and US_OBS[k][0] == "frontier" else
+                    "직접 관측 원천이 없습니다(대만 PC 브랜드가 대리 관측)" if not lv and k not in US_OBS and k not in EXT_OBS else None)
+            demands.append({"key": k, "name": name, "level_usd": lv, "increment_usd": fn(conn, arg)[0] if fn else None, "level_note": note})
     finally:
         conn.close()
     level = {r["key"]: r["level_usd"] for r in rows} | {d["key"]: d["level_usd"] for d in demands}

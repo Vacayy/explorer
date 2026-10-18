@@ -36,12 +36,12 @@ const STATE_CLS: Record<string, string> = {
 const DIR: Record<string, string> = { up: "↑", down: "↓", flat: "→" }
 const lagText = (lag: number | null | undefined) => lag == null ? "" : lag === 0 ? "동행" : lag > 0 ? `공급 ${lag}개월 앞섬` : `수요 ${-lag}개월 앞섬`
 
-type ChainNodeData = { node?: VcNode; demand?: VcDemand; selected: boolean; mag?: { level: number | null; dia: number | null } }
+type ChainNodeData = { node?: VcNode; demand?: VcDemand; selected: boolean; mag?: { level: number | null; dia: number | null; note?: string | null } }
 
 /** 칸의 중력(§14) — 원 지름 = 규모(로그), 아래 금액. 규모를 모르면 점선 빈 원 */
 function Gravity({ mag }: { mag?: ChainNodeData["mag"] }) {
   if (!mag) return null
-  return <div className="flex w-9 shrink-0 flex-col items-center justify-center gap-0.5" title={mag.level ? `최근 3개월(분기 칸은 최신 분기) 규모 ${formatUsd(mag.level)}` : "규모 없음 — 매출·수출액 원천이 없거나 이력이 부족"}>
+  return <div className="flex w-9 shrink-0 flex-col items-center justify-center gap-0.5" title={mag.level ? `최근 3개월(분기 칸은 최신 분기) 규모 ${formatUsd(mag.level)}` : mag.note ?? "규모 없음 — 매출·수출액 원천이 없거나 이력이 부족"}>
     {mag.dia ? <span className="rounded-full bg-chart-blue/70" style={{ width: mag.dia, height: mag.dia }} />
       : <span className="size-3 rounded-full border border-dashed border-muted-foreground" />}
     <span className="text-[9px] leading-none tabular-nums text-muted-foreground">{mag.level ? formatUsd(mag.level) : "-"}</span>
@@ -176,7 +176,8 @@ export default function ValueChainPage() {
   const graph = useMemo(() => {
     if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[] }
     const { pos, bands, width, tierX, subCols } = swimlane(vc.data)
-    const magOf = (k: string) => flow.data ? { level: mag.level[k] ?? null, dia: gravity(mag.level[k], mag.min, mag.max) } : undefined
+    const magOf = (k: string) => flow.data ? { level: mag.level[k] ?? null, dia: gravity(mag.level[k], mag.min, mag.max),
+      note: flow.data.demands?.find(d => d.key === k)?.level_note } : undefined
     const nodes: Node[] = [
       ...bands.map((b, i) => ({ id: `lane-${b.key}`, type: "lane", position: { x: 0, y: b.y }, draggable: false, selectable: false, zIndex: -1,
         data: { label: b.label, width, height: b.height, shade: i % 2 === 1 } })),
