@@ -19,6 +19,17 @@ class UsMember(BaseModel):
     q: str                         # 최신 분기(달력 분기 끝)
     value: float                   # USD
     yoy: float | None
+    qoq_delta: float | None = None # 잔액 지표(RPO)의 전 분기 대비 순증가(USD)
+
+
+class VcAux(BaseModel):
+    series: str
+    label: str
+    missing: bool                  # 아직 수집되지 않음 — 숨기지 않고 표시
+    period: str | None = None
+    yoy_3m: float | None = None
+    yoy_3m_prev: float | None = None
+    state: str | None = None
 
 
 class VcNode(BaseModel):
@@ -30,6 +41,7 @@ class VcNode(BaseModel):
     freq: str = "M"                # M = 월간(3개월 YoY) · Q = 미국 분기 실적(분기 YoY)
     source: str | None = None      # tw(대만 월매출) | us(미국 분기 실적) | kr_trade(한국 수출 HS) | None(관측 없음)
     us_members: list[UsMember] = []
+    aux: list[VcAux] = []          # 교차 확인 지표(월간 외부 시계열)
     obs_label: str | None = None   # 분기 관측 원천 설명
     period: str | None = None      # 최신 관측 월·분기
     yoy_3m: float | None
@@ -65,6 +77,7 @@ class VcDemand(BaseModel):
     description: str
     obs_label: str | None = None   # 관측 원천(미국 분기 실적) — 없으면 대리 관측만
     us_members: list[UsMember] = []
+    aux: list[VcAux] = []
     yoy_3m: float | None = None    # 최신 분기 YoY
     yoy_3m_prev: float | None = None
     state: str | None = None

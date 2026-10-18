@@ -19,15 +19,21 @@ TARGETS = [
     ("AAPL", "revenue", "mobile"),
     ("QCOM", "revenue", "mobile_soc"),
     ("INTC", "revenue", "cpu"),
-    ("AMAT", "revenue", "semi_equip"), ("KLAC", "revenue", "semi_equip"), ("LRCX", "revenue", "semi_equip"),
+    ("AMAT", "revenue", "dep_etch"), ("LRCX", "revenue", "dep_etch"), ("KLAC", "revenue", "metrology"),
+    # AI 프론티어 랩 수요의 대리 — 랩과 맺은 다년 컴퓨트 계약이 쌓이는 수주잔고(RPO, 분기 말 시점 잔액)
+    ("ORCL", "rpo", "frontier"), ("CRWV", "rpo", "frontier"),
 ]
 # SEC에 분기 XBRL이 없는 회사(20-F 연간뿐) — yfinance 최근 분기를 받아 쌓는다(매 수집마다 upsert라 이력이 늘어난다)
-YF_TARGETS = [("ASML", "revenue", "semi_equip", "EUR")]
+YF_TARGETS: list[tuple[str, str, str, str]] = []   # ASML은 SEC 6-K 보도자료(pipeline/asml_6k)로 옮겼다 — 공식 원천이 이긴다
+# 다른 수집기가 us_quarterly에 넣는 회사(집계·상세에 포함) — (티커, 지표, 용도)
+EXTERNAL = [("ASML", "revenue", "litho")]   # pipeline/asml_6k: SEC 6-K 분기 보도자료, 2010~
 FX_CONST = {"EUR": 1.1}   # 합산용 고정 환율 — 회사별 YoY가 원통화 YoY와 같게 유지된다(환율 변동을 섞지 않음)
 TAGS = {
     "capex": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
     "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
+    "rpo": ["RevenueRemainingPerformanceObligation"],
 }
+INSTANT = {"rpo"}          # 기간이 아니라 시점 잔액 — 분기 말 값을 그대로 쓴다
 
 
 def _quarter_key(end: str) -> str:
@@ -70,6 +76,17 @@ def quarterly(entries: list[dict]) -> dict[str, float]:
     return out
 
 
+def quarterly_instant(entries: list[dict]) -> dict[str, float]:
+    """시점 값(잔액) → 분기 말 값 {분기키: 값}. 같은 날짜는 가장 늦게 제출된 값"""
+    by: dict[str, dict] = {}
+    for e in entries:
+        if e.get("form") not in ("10-Q", "10-K", "10-Q/A", "10-K/A"):
+            continue
+        if e["end"] not in by or e.get("filed", "") > by[e["end"]].get("filed", ""):
+            by[e["end"]] = e
+    return {_quarter_key(end): e["val"] for end, e in sorted(by.items())}
+
+
 def _pick_tag(gaap: dict, metric: str) -> tuple[str, list[dict]] | None:
     best = None
     for tag in TAGS[metric]:
@@ -98,7 +115,7 @@ def collect() -> dict:
                     failed.append(f"{ticker}: {metric} 계정 없음")
                     continue
                 tag, units = picked
-                for q, v in quarterly(units).items():
+                for q, v in (quarterly_instant(units) if metric in INSTANT else quarterly(units)).items():
                     conn.execute("INSERT INTO us_quarterly (ticker, q, metric, value, tag, use_key, fetched_at) VALUES (?,?,?,?,?,?, datetime('now')) "
                                  "ON CONFLICT(ticker, q, metric) DO UPDATE SET value=excluded.value, tag=excluded.tag, "
                                  "use_key=excluded.use_key, fetched_at=excluded.fetched_at", (ticker, q, metric, v, tag, use))
@@ -111,6 +128,14 @@ def collect() -> dict:
     stored_yf, failed_yf = collect_yf()
     stored += stored_yf
     failed += failed_yf
+    try:                                  # ASML 최근 2년 6-K만 다시 확인(전체 이력은 한 번 백필함)
+        from pipeline.asml_6k import collect as collect_asml
+        r = collect_asml(since_year=date.today().year - 1)
+        stored += r.get("stored", 0)
+        if r.get("status") == "error":
+            failed.append(f"ASML 6-K: {r.get('error') or 'error'}")
+    except Exception as e:  # noqa: BLE001
+        failed.append(f"ASML 6-K: {type(e).__name__}")
     return {"stored": stored, "failed": failed, "status": "error" if not stored else "partial" if failed else "ok"}
 
 
@@ -143,7 +168,7 @@ def collect_yf() -> tuple[int, list[str]]:
 def demand_series(conn, use_key: str) -> dict[str, float]:
     """용도별 분기 YoY(%) — 그 분기와 전년 같은 분기에 둘 다 값이 있는 회사들만 합산(같은 회사 묶음끼리 비교).
     구성 회사의 절반 이상이 짝지어질 때만 낸다 — 이력이 짧은 회사(ASML 등)가 끼어도 칸 전체 이력이 줄지 않게"""
-    tickers = [t for t, _, u in TARGETS + [(a, b, c) for a, b, c, _ in YF_TARGETS] if u == use_key]
+    tickers = [t for t, _, u in TARGETS + EXTERNAL + [(a, b, c) for a, b, c, _ in YF_TARGETS] if u == use_key]
     vals: dict[str, dict[str, float]] = {}
     for r in conn.execute(f"SELECT ticker, q, value FROM us_quarterly WHERE use_key=? AND ticker IN "
                           f"({','.join('?' * len(tickers))})", (use_key, *tickers)):
@@ -159,13 +184,13 @@ def demand_series(conn, use_key: str) -> dict[str, float]:
 
 NAMES = {"MSFT": "마이크로소프트", "GOOGL": "알파벳(구글)", "AMZN": "아마존", "META": "메타", "ORCL": "오라클",
          "NVDA": "엔비디아", "AMD": "AMD", "AVGO": "브로드컴", "AAPL": "애플", "QCOM": "퀄컴", "INTC": "인텔",
-         "AMAT": "어플라이드 머티리얼즈", "KLAC": "KLA", "LRCX": "램리서치", "ASML": "ASML"}
+         "AMAT": "어플라이드 머티리얼즈", "KLAC": "KLA", "LRCX": "램리서치", "ASML": "ASML", "CRWV": "코어위브"}
 
 
 def members(conn, use_key: str) -> list[dict]:
     """용도별 구성 회사의 최신 분기 값과 YoY — 수요 칸 상세"""
     out = []
-    for ticker, metric, use in TARGETS + [(a, b, c) for a, b, c, _ in YF_TARGETS]:
+    for ticker, metric, use in TARGETS + EXTERNAL + [(a, b, c) for a, b, c, _ in YF_TARGETS]:
         if use != use_key:
             continue
         rows = {r["q"]: r["value"] for r in conn.execute(
@@ -175,6 +200,9 @@ def members(conn, use_key: str) -> list[dict]:
         q = max(rows)
         prev = f"{int(q[:4]) - 1}{q[4:]}"
         yoy = (rows[q] / rows[prev] - 1) * 100 if rows.get(prev) else None
-        out.append({"ticker": ticker, "name": NAMES.get(ticker, ticker), "metric": "설비투자" if metric == "capex" else "매출",
-                    "q": q, "value": rows[q], "yoy": round(yoy, 1) if yoy is not None else None})
+        qs = sorted(rows)
+        qoq = rows[q] - rows[qs[-2]] if metric in INSTANT and len(qs) > 1 else None   # 잔액은 전 분기 대비 순증가가 핵심
+        out.append({"ticker": ticker, "name": NAMES.get(ticker, ticker),
+                    "metric": {"capex": "설비투자", "rpo": "수주잔고(RPO)"}.get(metric, "매출"),
+                    "q": q, "value": rows[q], "yoy": round(yoy, 1) if yoy is not None else None, "qoq_delta": qoq})
     return out

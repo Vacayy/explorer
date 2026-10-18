@@ -14,7 +14,7 @@ import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
 import { formatPercent, formatUsd } from "@/utils/format"
-import type { PropRow, UsMember, ValueChainResponse, VcDemand, VcEdge, VcNode } from "@/types"
+import type { PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcNode } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -40,6 +40,7 @@ function ChainNode({ data }: NodeProps) {
   // 관측이 있는 수요는 실선(굵게), 관측이 없는 수요(PC)만 점선
   if (d.demand) return <div className={cn("w-[188px] rounded-md border-2 bg-card px-2 py-1.5 text-xs", d.demand.obs_label ? "" : "border-dashed",
     d.demand.state ? STATE_CLS[d.demand.state] : "", d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
+    <Handle type="target" position={Position.Left} className="!opacity-0" />
     <Handle type="source" position={Position.Right} className="!opacity-0" />
     <div className="flex items-center gap-1">
       <span className="truncate font-semibold">{d.demand.name}</span>
@@ -259,6 +260,7 @@ function NodePanel({ node, edges, nodes, onSelect }: { node?: VcNode; edges: VcE
       {node.source === "kr_trade" && <p className="mt-1 text-caption tabular-nums">수출 3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label}</p>}
       {node.series.length > 1 && <div className="mt-1"><SparkLine data={node.series.map(p => p.yoy)} height={32} /></div>}
       {!!node.us_members?.length && <UsMembers members={node.us_members} />}
+      {!!node.aux?.length && <AuxList aux={node.aux} />}
     </div>
     <div className="space-y-2">
       {node.tw.length > 0 && <div><p className="text-caption font-medium text-muted-foreground">대만 구성</p><p className="text-caption">{node.tw.map(t => t.name).join(" · ")}</p></div>}
@@ -278,6 +280,8 @@ function UsMembers({ members }: { members: UsMember[] }) {
     {members.map(m => <li key={m.ticker} className="flex items-baseline gap-2 py-1">
       <span className="shrink-0 font-medium">{m.name}</span><span className="min-w-0 truncate text-muted-foreground">{m.metric} · {m.q}</span>
       <span className="ml-auto tabular-nums">{formatUsd(m.value)}</span>
+      {m.qoq_delta != null && <span className="w-20 text-right tabular-nums text-muted-foreground" title="전 분기 대비 순증가">
+        {m.qoq_delta >= 0 ? "+" : "−"}{formatUsd(Math.abs(m.qoq_delta))} QoQ</span>}
       <span className={cn("w-16 text-right tabular-nums", (m.yoy ?? 0) >= 0 ? "text-up" : "text-down")}>{formatPercent(m.yoy)}</span>
     </li>)}
   </ul>
@@ -295,10 +299,28 @@ function DemandPanel({ demand, edges, nodes, onSelect }: { demand: VcDemand; edg
         : <p className="mt-1 text-caption text-muted-foreground">직접 관측 원천이 없습니다 — 이 수요에 파는 대만 칸(PC 브랜드)이 대리 관측합니다.</p>}
       {(demand.series?.length ?? 0) > 1 && <div className="mt-1"><SparkLine data={demand.series!.map(p => p.yoy)} height={32} /></div>}
     </div>
-    <div>{!!demand.us_members?.length && <><p className="text-caption font-medium text-muted-foreground">구성 회사 최신 분기</p><UsMembers members={demand.us_members} /></>}</div>
+    <div>{!!demand.us_members?.length && <><p className="text-caption font-medium text-muted-foreground">구성 회사 최신 분기</p><UsMembers members={demand.us_members} /></>}
+      {!!demand.aux?.length && <AuxList aux={demand.aux} />}</div>
     <div>{sellers.length > 0 && <><p className="text-caption font-medium text-muted-foreground">이 수요에 파는 칸</p>
       {sellers.map(e => <Button key={e.from} variant="ghost" onClick={() => onSelect(e.from)} className="block h-auto w-full whitespace-normal px-1 py-0.5 text-left text-caption font-normal">
         {nodes.find(n => n.key === e.from)?.name ?? e.from} <span className="text-muted-foreground">· {e.verdict}</span>
       </Button>)}</>}</div>
+  </div>
+}
+
+/** 교차 확인 지표 — 같은 흐름을 다른 원천(월간)에서 본 3개월 YoY·상태 */
+function AuxList({ aux }: { aux: VcAux[] }) {
+  return <div className="mt-3">
+    <p className="text-caption font-medium text-muted-foreground">교차 확인 지표</p>
+    <ul className="divide-y text-caption">
+      {aux.map(a => <li key={a.series} className="flex items-baseline gap-2 py-1">
+        <span className="min-w-0 flex-1">{a.label}</span>
+        {a.missing ? <span className="text-muted-foreground">수집 전</span> : <>
+          <span className="shrink-0 tabular-nums text-muted-foreground">{a.period}</span>
+          <span className={cn("shrink-0 tabular-nums", stateTone(a.state))}>3M YoY {formatPercent(a.yoy_3m)}</span>
+          {a.state && <Badge variant="outline" className="shrink-0 px-1 text-[10px]">{a.state}</Badge>}
+        </>}
+      </li>)}
+    </ul>
   </div>
 }

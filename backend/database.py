@@ -1131,6 +1131,18 @@ def init_db():
         updated_at    TEXT NOT NULL
     );
 
+    -- 외부 월간 시계열 (docs/specs/value-chain.md §7) — WSTS 세계 반도체 매출·SEAJ 일본 장비·Census 데이터센터 건설·
+    -- 대만 수출수주 등. series는 'wsts:world' 같은 출처:키, period=YYYY-MM(월) 또는 분기 끝 월
+    CREATE TABLE IF NOT EXISTS ext_series (
+        series      TEXT NOT NULL,
+        period      TEXT NOT NULL,
+        value       REAL,
+        unit        TEXT,
+        source      TEXT,                   -- 원천 URL 또는 파일명
+        fetched_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (series, period)
+    );
+
     -- 미국 수요 기업 분기 실적 (docs/specs/value-chain.md §6) — SEC XBRL companyfacts, 분기 단독 값(누적은 차감).
     -- use_key = 밸류체인 최종 수요 키(ai·ai_accel·mobile), q = 달력 분기 끝 'YYYY-MM'
     CREATE TABLE IF NOT EXISTS us_quarterly (

@@ -100,6 +100,8 @@ JOBS = [
     ("twrevenue", [PY, "scripts/collect_tw_revenue.py"], {"Hour": 11, "Minute": 0}),
     # 미국 수요 기업 분기 실적(docs/specs/value-chain.md §6) — 하이퍼스케일러 설비투자·엔비디아·AMD·애플, SEC XBRL. LLM 0
     ("usfund", [PY, "scripts/collect_us_fundamentals.py"], {"Hour": 8, "Minute": 10}),
+    # 외부 월간 시계열(docs/specs/value-chain.md §7) — WSTS·Census 데이터센터·SEAJ·대만 수출수주. LLM 0
+    ("extseries", [PY, "scripts/collect_ext_series.py"], {"Hour": 10, "Minute": 30}),
     # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
@@ -131,6 +133,7 @@ CATCHUP = {
     "krcompany": {},
     "twrevenue": {"record": "tw_revenue"},
     "usfund": {"record": "us_fundamentals"},
+    "extseries": {"record": "ext_series"},
 }
 
 

@@ -6,6 +6,8 @@ pykrx
 yfinance          # 주가 수집 (krx_service — pykrx 차단 시 대체 경로)
 aiosqlite
 pandas
+openpyxl     # WSTS·Census xlsx (pipeline/ext_wsts·ext_census_dc)
+xlrd         # SEAJ 구형 xls (pipeline/ext_seaj)
 httpx
 beautifulsoup4
 lxml

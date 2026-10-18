@@ -1236,13 +1236,15 @@ export interface VcNode {
   tw: { code: string; name: string }[]; kr: { code: string; name: string }[]
   yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]; series: { ym: string; yoy: number }[]
   freq?: "M" | "Q"; obs_label?: string | null; period?: string | null
-  source?: "tw" | "us" | "kr_trade" | null; us_members?: UsMember[]
+  source?: "tw" | "us" | "kr_trade" | null; us_members?: UsMember[]; aux?: VcAux[]
 }
+/** 교차 확인 지표 — 월간 외부 시계열(WSTS·Census·SEAJ·대만 수출수주), missing=아직 수집 전 */
+export interface VcAux { series: string; label: string; missing: boolean; period?: string | null; yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: string | null }
 /** 미국 수요 기업 최신 분기 값 — 수요 칸·AI 가속기 상세 */
-export interface UsMember { ticker: string; name: string; metric: string; q: string; value: number; yoy: number | null }
+export interface UsMember { ticker: string; name: string; metric: string; q: string; value: number; yoy: number | null; qoq_delta?: number | null }
 /** 최종 수요 — AI·스마트폰은 미국 분기 실적으로 관측(obs_label), PC는 대리 관측만 */
 export interface VcDemand {
-  key: string; name: string; description: string; obs_label?: string | null; us_members?: UsMember[]
+  key: string; name: string; description: string; obs_label?: string | null; us_members?: UsMember[]; aux?: VcAux[]
   yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: TwLink["state"]; period?: string | null; series?: { ym: string; yoy: number }[]
 }
 export interface VcEdge {
