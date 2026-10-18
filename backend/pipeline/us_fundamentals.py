@@ -22,6 +22,9 @@ TARGETS = [
     ("AMAT", "revenue", "dep_etch"), ("LRCX", "revenue", "dep_etch"), ("KLAC", "revenue", "metrology"),
     # AI 프론티어 랩 수요의 대리 — 랩과 맺은 다년 컴퓨트 계약이 쌓이는 수주잔고(RPO, 분기 말 시점 잔액)
     ("ORCL", "rpo", "frontier"), ("CRWV", "rpo", "frontier"),
+    # 자본 조달 — 장기채 발행액(현금흐름표, 분기 누적은 차감). 분기마다 들쭉날쭉해 최근 4분기 합으로 본다(TTM)
+    ("MSFT", "debt_issue", "funding"), ("GOOGL", "debt_issue", "funding"), ("AMZN", "debt_issue", "funding"),
+    ("META", "debt_issue", "funding"), ("ORCL", "debt_issue", "funding"), ("CRWV", "debt_issue", "funding"),
 ]
 # SEC에 분기 XBRL이 없는 회사(20-F 연간뿐) — yfinance 최근 분기를 받아 쌓는다(매 수집마다 upsert라 이력이 늘어난다)
 YF_TARGETS: list[tuple[str, str, str, str]] = []   # ASML은 SEC 6-K 보도자료(pipeline/asml_6k)로 옮겼다 — 공식 원천이 이긴다
@@ -32,7 +35,12 @@ TAGS = {
     "capex": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
     "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
     "rpo": ["RevenueRemainingPerformanceObligation"],
+    "debt_issue": ["ProceedsFromIssuanceOfLongTermDebt", "ProceedsFromIssuanceOfSeniorLongTermDebt", "ProceedsFromIssuanceOfDebt",
+                   "ProceedsFromIssuanceOfUnsecuredDebt",
+                   "ProceedsFromDebtMaturingInMoreThanThreeMonths",   # MSFT
+                   "ProceedsFromDebtNetOfIssuanceCosts"],             # GOOGL
 }
+TTM = {"funding"}          # 최근 4분기 합으로 YoY — 발행·인수처럼 분기마다 들쭉날쭉한 지표
 INSTANT = {"rpo"}          # 기간이 아니라 시점 잔액 — 분기 말 값을 그대로 쓴다
 
 
@@ -173,6 +181,22 @@ def demand_series(conn, use_key: str) -> dict[str, float]:
     for r in conn.execute(f"SELECT ticker, q, value FROM us_quarterly WHERE use_key=? AND ticker IN "
                           f"({','.join('?' * len(tickers))})", (use_key, *tickers)):
         vals.setdefault(r["q"], {})[r["ticker"]] = r["value"]
+    if use_key in TTM:                    # 회사별 최근 4분기 합으로 바꾼다(4분기가 연속으로 있을 때만)
+        def back(q, k):
+            y, m = int(q[:4]), int(q[5:])
+            i = y * 12 + m - 1 - 3 * k
+            return f"{i // 12}-{i % 12 + 1:02d}"
+        # 발행이 없는 분기는 10-Q가 항목을 아예 보고하지 않는다 → 그 회사의 보고 기간 안의 빈 분기는 0으로 본다
+        span = {t: (min(q for q in vals if t in vals[q]), max(q for q in vals if t in vals[q])) for t in tickers
+                if any(t in v for v in vals.values())}
+        ttm: dict[str, dict[str, float]] = {}
+        for q in sorted(vals):
+            for t, (lo, hi) in span.items():
+                window = [back(q, k) for k in range(4)]
+                if window[-1] < lo or q > hi:
+                    continue
+                ttm.setdefault(q, {})[t] = sum(vals.get(w, {}).get(t, 0.0) for w in window)
+        vals = ttm
     out = {}
     for q, cur in vals.items():
         prev = vals.get(f"{int(q[:4]) - 1}{q[4:]}", {})
@@ -199,10 +223,11 @@ def members(conn, use_key: str) -> list[dict]:
             continue
         q = max(rows)
         prev = f"{int(q[:4]) - 1}{q[4:]}"
-        yoy = (rows[q] / rows[prev] - 1) * 100 if rows.get(prev) else None
+        # 발행처럼 분기마다 들쭉날쭉한 지표(TTM)는 회사별 분기 YoY가 뜻이 없어 내지 않는다
+        yoy = (rows[q] / rows[prev] - 1) * 100 if rows.get(prev) and use not in TTM else None
         qs = sorted(rows)
         qoq = rows[q] - rows[qs[-2]] if metric in INSTANT and len(qs) > 1 else None   # 잔액은 전 분기 대비 순증가가 핵심
         out.append({"ticker": ticker, "name": NAMES.get(ticker, ticker),
-                    "metric": {"capex": "설비투자", "rpo": "수주잔고(RPO)"}.get(metric, "매출"),
+                    "metric": {"capex": "설비투자", "rpo": "수주잔고(RPO)", "debt_issue": "장기채 발행"}.get(metric, "매출"),
                     "q": q, "value": rows[q], "yoy": round(yoy, 1) if yoy is not None else None, "qoq_delta": qoq})
     return out

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 # 최종 수요. AI·스마트폰은 미국 수요 기업 분기 실적(pipeline/us_fundamentals)으로 관측한다(US_OBS). PC는 대만 PC 브랜드가 대리 관측
+# 자본 조달 — 설비 투자의 돈이 어디서 오나. 칸은 NODES의 cap_debt(맨 왼쪽 열)
 DEMANDS = [
     ("frontier", "AI 프론티어 랩", "OpenAI·앤트로픽 등 — 클라우드와 맺은 다년 컴퓨트 계약(비상장이라 계약 상대의 수주잔고로 관측)"),
     ("ai", "AI 데이터센터 투자", "하이퍼스케일러 설비 투자 — 랩·기업 고객의 클라우드 수요를 받아 데이터센터를 짓는다"),
@@ -21,6 +22,7 @@ DEMANDS = [
 # (키, 이름, 대만 회사 코드, 한국 종목 코드, 한 줄 설명)
 NODES = [
     # 조립·브랜드(수요에 가장 가까운 대만 단계)
+    ("cap_debt", "회사채 조달", [], [], "하이퍼스케일러·오라클·코어위브가 회사채로 설비 투자 자금을 조달(자본시장 → 데이터센터)"),
     ("ai_odm", "AI 서버 ODM", ["2382", "3231", "6669", "2317"], [], "GPU 서버 랙 조립"),
     ("pc_brand", "PC 브랜드", ["2357", "2353", "2377"], [], "노트북·데스크톱·게이밍"),
     ("nb_odm", "노트북 ODM", ["2324"], [], "노트북 위탁 생산"),
@@ -53,9 +55,15 @@ NODES = [
     ("wafer", "실리콘 웨이퍼", ["6488", "3532"], [], "실리콘 웨이퍼"),
     ("fab_equip", "팹·패키징 장비(대만)", ["3131", "3583", "3680"], [], "습식 세정·도금 장비·EUV 마스크 포드"),
     ("fab_build", "팹 시공·클린룸", ["6196", "2404"], [], "팹 설비 시공·클린룸(팹 증설의 가장 앞단)"),
-    ("photo_mat", "포토 소재", [], [], "포토레지스트·블랭크마스크(한국 수출 HS로 관측, 후보: 동진쎄미켐·에스앤에스텍)"),
-    ("fab_chem", "팹 케미컬", [], [], "전구체·과산화수소·석영(한국 수출 HS로 관측, 후보: 한솔케미칼·솔브레인·디엔에프·원익QnC)"),
-    ("pkg_mat", "패키징 소재", [], [], "EMC(봉지재)·솔더볼(한국 수출 HS로 관측)"),
+    ("photo_mat", "포토 소재", [], ["005290", "101490", "112290", "036810"], "포토레지스트·블랭크마스크·펠리클(한국 수출 HS로 관측)"),
+    ("fab_chem", "팹 케미컬", [], ["014680", "357780", "092070", "104830", "171010", "317330", "281740", "102710"],
+     "전구체·식각액·과산화수소·특수가스(디엔에프는 솔브레인 종속 — 이중 집계 주의)"),
+    ("fab_parts", "팹 소모부품", [], ["166090", "064760", "272110", "074600"], "실리콘·SiC 링, 석영 — 팹과 장비사(TEL·램) 양쪽에 공급"),
+    ("pkg_mat", "패키징 소재", [], ["033160", "077360"], "본딩와이어·솔더볼(EMC는 전업 상장사 없음)"),
+    ("kr_dep", "한국 증착 장비", [], ["240810", "036930", "084370", "095610"], "CVD·ALD·LPCVD·PECVD — 국내 납품은 수출에 안 잡히고 중국·마이크론향이 보인다"),
+    ("kr_etch_clean", "한국 식각·세정 장비", [], ["319660", "079370", "089970"], "드라이 스트립·세정(피에스케이)·습식 세정(제우스)·건식식각(브이엠)"),
+    ("kr_cmp", "CMP 장비·소재", [], ["281820", "083500"], "CMP 장비·슬러리(케이씨텍)·패드(에프엔에스테크)"),
+    ("kr_metrology", "한국 계측·검사 장비", [], ["348210", "322310", "140860"], "웨이퍼 광학검사(넥스틴)·오버레이(오로스)·AFM(파크시스템스)"),
     # 한국 고유 단계(대만 동종 없음 — 관측은 한국 쪽 원천으로)
     ("kr_pkg_equip", "첨단 패키징 장비(한국)", [], ["031980", "042700"], "리플로우·TC 본더"),
     ("kr_smt_insp", "SMT 검사장비(한국)", [], ["098460"], "SPI·AOI"),
@@ -65,6 +73,7 @@ NODES = [
 
 # (from, to, kind, 이유) — from이 to에 판다(supply) / to의 투자가 from의 매출(capex). to가 DEMANDS 키면 최종 수요
 EDGES = [
+    ("ai", "cap_debt", "supply", "회사채를 발행해 자본시장에서 설비 투자 자금을 받는다"),
     ("ai", "frontier", "supply", "클라우드 컴퓨트를 랩에 제공(오라클·코어위브·MS·구글·AWS)"),
     ("ai_odm", "ai", "supply", "GPU 서버 랙을 하이퍼스케일러에 납품"),
     ("dc_network", "ai", "supply", "데이터센터 스위치"),
@@ -114,7 +123,13 @@ EDGES = [
     ("photo_mat", "memory", "supply", "노광 소재"),
     ("fab_chem", "foundry", "supply", "공정 케미컬"),
     ("fab_chem", "memory", "supply", "공정 케미컬"),
-    ("pkg_mat", "osat", "supply", "봉지재·솔더볼"),
+    ("pkg_mat", "osat", "supply", "본딩와이어·솔더볼"),
+    ("fab_parts", "foundry", "supply", "소모부품(링·석영)"), ("fab_parts", "memory", "supply", "소모부품(링·석영)"),
+    ("fab_parts", "dep_etch", "supply", "장비사에 부품 공급(TEL·램 국내향)"),
+    ("kr_dep", "memory", "capex", "메모리 증착 장비"), ("kr_dep", "foundry", "capex", "파운드리 증착 장비"),
+    ("kr_etch_clean", "memory", "capex", "스트립·세정·식각 장비"), ("kr_etch_clean", "foundry", "capex", "스트립·세정 장비"),
+    ("kr_cmp", "memory", "capex", "CMP 장비·슬러리"), ("kr_cmp", "foundry", "capex", "CMP 장비·슬러리"),
+    ("kr_metrology", "memory", "capex", "계측·검사"), ("kr_metrology", "foundry", "capex", "계측·검사"),
     ("pkg_mat", "memory", "supply", "봉지재·솔더볼(자체 후공정)"),
     ("wafer", "foundry", "supply", "웨이퍼"),
     ("wafer", "memory", "supply", "웨이퍼"),
@@ -132,7 +147,8 @@ EDGES = [
 ]
 
 # 대만 월매출 대신 미국 분기 실적으로 관측하는 칸·수요 → us_quarterly.use_key
-US_OBS = {"frontier": ("frontier", "오라클·코어위브 수주잔고(RPO) — 다년 계약이 한 번에 들어와 계단식으로 뛴다"),
+US_OBS = {"cap_debt": ("funding", "장기채 발행액 최근 4분기 합(MSFT·GOOGL·AMZN·META·ORCL·CRWV) — 분기마다 들쭉날쭉"),
+          "frontier": ("frontier", "오라클·코어위브 수주잔고(RPO) — 다년 계약이 한 번에 들어와 계단식으로 뛴다"),
           "ai": ("ai", "하이퍼스케일러 설비투자(MSFT·GOOGL·AMZN·META·ORCL)"),
           "ai_accel": ("ai_accel", "엔비디아·AMD·브로드컴 매출"),
           "mobile_soc": ("mobile_soc", "퀄컴 매출"),
@@ -148,7 +164,12 @@ KR_OBS = {"kr_pkg_equip": (["8486402093", "8486402010"], "한국 수출: 웨이�
           "kr_sub_equip": (["8534009000"], "한국 수출: PCB·기판(장비 수요 대리)"),
           "kr_stf": (["9030901000"], "한국 수출: 반도체 검사기 부분품(프로브카드 등)"),
           "photo_mat": (["3707901010", "3701991000"], "한국 수출: 포토레지스트 + 블랭크마스크"),
-          "fab_chem": (["2931909090", "2847002000", "7020001013"], "한국 수출: 전구체 + 과산화수소 + 석영"),
+          "fab_chem": (["2931909090", "2847002000"], "한국 수출: 전구체 + 과산화수소(식각액·특수가스는 특정할 HS가 없음)"),
+          "fab_parts": (["8486902040", "7020001013"], "한국 수출: 도포·증착·식각 장비 부품 + 석영(부품 코드는 A/S가 섞여 확신도 낮음)"),
+          "kr_dep": (["8486204000"], "한국 수출: 웨이퍼 막 형성·증착 기계(외국계 한국 공장 물량 섞임)"),
+          "kr_etch_clean": (["8486208420", "8486207000", "8486208410"], "한국 수출: 플라스마 스트립·세정 + 습식 세정 + 건식식각"),
+          "kr_cmp": (["8486209310", "3405909000"], "한국 수출: 웨이퍼 연마기 + 연마 조제품(CMP 슬러리, 일반 연마제 섞임)"),
+          "kr_metrology": (["9031419000"], "한국 수출: 웨이퍼·마스크 광학 검사기기"),
           "pkg_mat": (["3907301000", "7106100000"], "한국 수출: EMC(봉지재) + 솔더볼")}
 
 # 교차 확인 지표(ext_series 월간) — 칸의 주 관측과 별개로 같은 흐름을 다른 원천에서 본다 (§7)
@@ -163,6 +184,12 @@ AUX = {
     "nb_odm": [("tw_orders:ict", "대만 수출수주 — 정보통신 제품(경제부, 월간 선행)")],
     "mobile_asm": [("tw_orders:electronics", "대만 수출수주 — 전자 제품(경제부)")],
 }
+
+# 시장 여건(신용 스프레드·금리) — 수준과 3개월 변화. 스프레드·금리가 오르면 조달이 어려워진다(긴축)
+MARKET = {"cap_debt": [("credit:group:hyperscaler", "하이퍼스케일러 회사채 스프레드", 25.0),
+                       ("credit:group:ai_cloud", "AI 클라우드(코어위브 등) 회사채 스프레드", 25.0),
+                       ("indicator:risk_hy", "미국 하이일드 스프레드(HY OAS)", 25.0),
+                       ("indicator:risk_us10y", "미국 10년 국채 금리", 0.25)]}
 
 NODE_BY_KEY = {n[0]: n for n in NODES}
 DEMAND_KEYS = {d[0] for d in DEMANDS}
@@ -210,6 +237,31 @@ def us_signal(conn, key: str) -> dict:
     r = lambda v: round(v, 1) if v is not None else None  # noqa: E731
     return {"yoy_3m": r(now), "yoy_3m_prev": r(prev), "state": state, "period": qs[-1] if qs else None,
             "series": [{"ym": q, "yoy": round(s[q], 1)} for q in qs[-12:]]}
+
+
+def market_signals(conn, key: str) -> list[dict]:
+    """신용·금리 여건 — 최신 수준, 약 3개월(90일) 전 대비 변화, 상태(긴축 = 기준 이상 상승, 완화 = 기준 이상 하락)"""
+    from datetime import date, timedelta
+    from pipeline import proxy_adapters as pa
+    out = []
+    for ref, label, step in MARKET.get(key, []):
+        desc = pa.describe(conn, ref)
+        pts = pa.series(conn, ref, (date.today() - timedelta(days=200)).isoformat()) if desc else []
+        if not pts:
+            out.append({"ref": ref, "label": label, "missing": True})
+            continue
+        last_d, last_v = pts[-1]
+        cutoff = (date.fromisoformat(last_d[:10]) - timedelta(days=90)).isoformat()
+        base = [(d, v) for d, v in pts if d[:10] <= cutoff]
+        if not base and (date.fromisoformat(last_d[:10]) - date.fromisoformat(pts[0][0][:10])).days >= 30:
+            base = [pts[0]]                       # 이력이 90일보다 짧으면 가장 오래된 값(30일 이상 전)과 — 기간을 함께 밝힌다
+        change = last_v - base[-1][1] if base else None
+        days = (date.fromisoformat(last_d[:10]) - date.fromisoformat(base[-1][0][:10])).days if base else None
+        state = None if change is None else "긴축" if change >= step else "완화" if change <= -step else "유지"
+        out.append({"ref": ref, "label": label, "missing": False, "as_of": last_d[:10], "value": round(last_v, 2),
+                    "unit": desc.get("unit"), "change_3m": round(change, 2) if change is not None else None,
+                    "change_days": days, "state": state})
+    return out
 
 
 def aux_signals(conn, key: str) -> list[dict]:
@@ -270,7 +322,7 @@ def read_map() -> dict:
             nodes.append({"key": key, "name": name, "description": desc, "freq": "Q" if us else "M",
                           "source": "us" if us else "kr_trade" if kro else "tw" if tw else None,
                           "us_members": members(conn, US_OBS[key][0]) if us else [],
-                          "aux": aux_signals(conn, key),
+                          "aux": aux_signals(conn, key), "market": market_signals(conn, key),
                           "obs_label": US_OBS[key][1] if us else KR_OBS[key][1] if kro else None,
                           "period": sig.get("period") if (us or kro) else sig.get("ym"),
                           "tw": [{"code": c, "name": names.get(c, c)} for c in tw],
@@ -332,7 +384,7 @@ def propagation(vmap: dict | None = None, confirms: list[dict] | None = None) ->
 
 # ── 스윔레인 배치 (2026-10-18) — 열 = 밸류체인 단계(돈의 흐름: 수요 → 상류), 행 = 수요처 레인 ──
 TIERS = [
-    ("end", "AI 랩·최종 고객"), ("demand", "최종 수요"), ("system", "완제품·조립"), ("module", "부품·모듈"),
+    ("capital", "자본 조달"), ("end", "AI 랩·최종 고객"), ("demand", "최종 수요"), ("system", "완제품·조립"), ("module", "부품·모듈"),
     ("chip", "칩(설계·메모리)"), ("fab", "칩 생산·후공정"), ("equip", "장비·시공"), ("material", "소재·부품 원판"),
 ]
 LANES = [
@@ -341,7 +393,7 @@ LANES = [
 ]
 # 칸 → (단계, 레인). 여러 수요에 공급하는 칸은 공통 레인
 LAYOUT = {
-    "frontier": ("end", "ai"), "ai": ("demand", "ai"), "pc": ("demand", "pc"), "mobile": ("demand", "mobile"),
+    "cap_debt": ("capital", "ai"), "frontier": ("end", "ai"), "ai": ("demand", "ai"), "pc": ("demand", "pc"), "mobile": ("demand", "mobile"),
     "ai_odm": ("system", "ai"), "dc_network": ("system", "ai"),
     "pc_brand": ("system", "pc"), "nb_odm": ("system", "pc"),
     "mobile_asm": ("system", "mobile"),
@@ -349,6 +401,8 @@ LAYOUT = {
     "litho": ("equip", "common"), "dep_etch": ("equip", "common"), "metrology": ("equip", "common"),
     "test_equip": ("equip", "common"), "fab_build": ("equip", "common"),
     "photo_mat": ("material", "common"), "fab_chem": ("material", "common"), "pkg_mat": ("material", "common"),
+    "fab_parts": ("material", "common"),
+    "kr_dep": ("equip", "common"), "kr_etch_clean": ("equip", "common"), "kr_cmp": ("equip", "common"), "kr_metrology": ("equip", "common"),
     "ai_accel": ("module", "ai"), "server_parts": ("module", "ai"), "optical": ("module", "ai"), "pcb": ("module", "ai"),
     "mem_module": ("module", "pc"), "display": ("module", "pc"),
     "mlcc": ("module", "common"), "kr_smt_insp": ("equip", "common"),

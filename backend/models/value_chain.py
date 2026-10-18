@@ -32,6 +32,18 @@ class VcAux(BaseModel):
     state: str | None = None
 
 
+class VcMarket(BaseModel):
+    ref: str
+    label: str
+    missing: bool
+    as_of: str | None = None
+    value: float | None = None
+    unit: str | None = None
+    change_3m: float | None = None # 약 90일 전 대비 변화(bp 또는 %p)
+    change_days: int | None = None # 실제 비교 기간(일) — 이력이 짧으면 90보다 짧다
+    state: str | None = None       # 긴축 | 완화 | 유지
+
+
 class VcNode(BaseModel):
     key: str
     name: str
@@ -42,6 +54,7 @@ class VcNode(BaseModel):
     source: str | None = None      # tw(대만 월매출) | us(미국 분기 실적) | kr_trade(한국 수출 HS) | None(관측 없음)
     us_members: list[UsMember] = []
     aux: list[VcAux] = []          # 교차 확인 지표(월간 외부 시계열)
+    market: list[VcMarket] = []    # 신용·금리 여건(자본 조달 칸)
     obs_label: str | None = None   # 분기 관측 원천 설명
     period: str | None = None      # 최신 관측 월·분기
     yoy_3m: float | None

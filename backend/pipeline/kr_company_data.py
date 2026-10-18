@@ -117,9 +117,10 @@ def targets(conn, top_n: int = TOP_N) -> list[dict]:
         SELECT m.stock_code, c.corp_code, g.kind FROM stock_group_members m
         JOIN stock_groups g ON g.id = m.group_id JOIN companies c ON c.stock_code = m.stock_code
         WHERE g.kind != 'portfolio' ORDER BY m.id""").fetchall(), "watch")
-    # 대만 연결 종목(pipeline/tw_links) — 연결 근거 계산에 분기 재무가 필요하다
+    # 대만 연결 종목(pipeline/tw_links)·밸류체인 칸의 한국 종목(pipeline/value_chain) — 근거 계산에 분기 재무가 필요하다
     from pipeline.tw_links import LINKS
-    codes = sorted({link[0] for link in LINKS})
+    from pipeline.value_chain import NODES
+    codes = sorted({link[0] for link in LINKS} | {k for n in NODES for k in n[3]})
     add(conn.execute(f"SELECT stock_code, corp_code FROM companies WHERE stock_code IN ({','.join('?' * len(codes))})",
                      codes).fetchall(), "tw_link")
     add(conn.execute("""

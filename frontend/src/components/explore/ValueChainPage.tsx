@@ -13,8 +13,8 @@ import { SparkLine } from "@/components/shared/Spark"
 import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
-import { formatPercent, formatUsd } from "@/utils/format"
-import type { PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcNode } from "@/types"
+import { formatLevel, formatNumber, formatPercent, formatUsd } from "@/utils/format"
+import type { PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -83,28 +83,35 @@ function LaneBand({ data }: NodeProps) {
   </div>
 }
 function TierHeader({ data }: NodeProps) {
-  const d = data as { label: string }
-  return <div style={{ width: NODE_W }} className="pointer-events-none border-b pb-1 text-center text-[11px] font-semibold text-muted-foreground">{d.label}</div>
+  const d = data as { label: string; width?: number }
+  return <div style={{ width: d.width ?? NODE_W }} className="pointer-events-none border-b pb-1 text-center text-[11px] font-semibold text-muted-foreground">{d.label}</div>
 }
 
+const MAX_STACK = 6   // 한 칸(단계·레인)에 이보다 많으면 그 열 안에서 옆으로 한 줄 더 쌓는다
+
 function swimlane(vc: ValueChainResponse) {
-  const tierIdx = Object.fromEntries(vc.tiers.map((t, i) => [t.key, i]))
   const keys = [...vc.demands.map(d => d.key), ...vc.nodes.map(n => n.key)]
   const cells: Record<string, string[]> = {}
   keys.forEach(k => { const c = vc.layout[k]; if (c) (cells[`${c.lane}|${c.tier}`] ??= []).push(k) })
+  // 열 폭 = 그 단계에서 가장 많이 쌓인 칸의 줄 수
+  const subCols = Object.fromEntries(vc.tiers.map(t => [t.key,
+    Math.max(1, ...vc.lanes.map(l => Math.ceil((cells[`${l.key}|${t.key}`]?.length ?? 0) / MAX_STACK)))]))
+  const tierX: Record<string, number> = {}
+  let x = LANE_LABEL_W + 16
+  vc.tiers.forEach(t => { tierX[t.key] = x; x += subCols[t.key] * COL_W })
   const pos: Record<string, { x: number; y: number }> = {}
   const bands: { key: string; label: string; y: number; height: number }[] = []
   let y = 0
   vc.lanes.forEach(lane => {
-    const depth = Math.max(1, ...vc.tiers.map(t => cells[`${lane.key}|${t.key}`]?.length ?? 0))
+    const depth = Math.max(1, ...vc.tiers.map(t => Math.min(MAX_STACK, cells[`${lane.key}|${t.key}`]?.length ?? 0)))
     const height = LANE_PAD + depth * (NODE_H + CELL_GAP) + 8
     vc.tiers.forEach(t => (cells[`${lane.key}|${t.key}`] ?? []).forEach((k, i) => {
-      pos[k] = { x: LANE_LABEL_W + tierIdx[t.key] * COL_W + 16, y: y + LANE_PAD + i * (NODE_H + CELL_GAP) }
+      pos[k] = { x: tierX[t.key] + Math.floor(i / MAX_STACK) * COL_W, y: y + LANE_PAD + (i % MAX_STACK) * (NODE_H + CELL_GAP) }
     }))
     bands.push({ key: lane.key, label: lane.label, y, height })
     y += height + 10
   })
-  return { pos, bands, width: LANE_LABEL_W + vc.tiers.length * COL_W + 16 }
+  return { pos, bands, width: x, tierX, subCols }
 }
 
 const EDGE_STYLE: Record<VcEdge["verdict"], { stroke: string; width: number; dash?: string; opacity: number }> = {
@@ -125,12 +132,12 @@ export default function ValueChainPage() {
 
   const graph = useMemo(() => {
     if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[] }
-    const { pos, bands, width } = swimlane(vc.data)
+    const { pos, bands, width, tierX, subCols } = swimlane(vc.data)
     const nodes: Node[] = [
       ...bands.map((b, i) => ({ id: `lane-${b.key}`, type: "lane", position: { x: 0, y: b.y }, draggable: false, selectable: false, zIndex: -1,
         data: { label: b.label, width, height: b.height, shade: i % 2 === 1 } })),
-      ...vc.data.tiers.map((t, i) => ({ id: `tier-${t.key}`, type: "tier", position: { x: LANE_LABEL_W + i * COL_W + 16, y: -30 }, draggable: false, selectable: false,
-        data: { label: t.label } })),
+      ...vc.data.tiers.map(t => ({ id: `tier-${t.key}`, type: "tier", position: { x: tierX[t.key], y: -30 }, draggable: false, selectable: false,
+        data: { label: t.label, width: subCols[t.key] * COL_W - (COL_W - NODE_W) } })),
       ...vc.data.nodes.filter(n => pos[n.key]).map(n => ({ id: n.key, type: "chain", position: pos[n.key], data: { node: n, selected: n.key === selected } })),
       ...vc.data.demands.filter(d => pos[d.key]).map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: d.key === selected } })),
     ]
@@ -198,7 +205,7 @@ export default function ValueChainPage() {
                 </ReactFlow>
               </div>
               {demand ? <DemandPanel demand={demand} edges={vc.data.edges} nodes={vc.data.nodes} onSelect={select} />
-                : <NodePanel node={node} edges={vc.data.edges} nodes={vc.data.nodes} onSelect={select} />}
+                : <NodePanel node={node} edges={vc.data.edges} nodes={vc.data.nodes} demands={vc.data.demands} onSelect={select} />}
             </div>}
         </CardContent>
       </Card>
@@ -241,10 +248,10 @@ function PropCard({ title, hint, rows }: { title: string; hint: string; rows: Pr
   </Card>
 }
 
-function NodePanel({ node, edges, nodes, onSelect }: { node?: VcNode; edges: VcEdge[]; nodes: VcNode[]; onSelect: (k: string) => void }) {
+function NodePanel({ node, edges, nodes, demands, onSelect }: { node?: VcNode; edges: VcEdge[]; nodes: VcNode[]; demands: VcDemand[]; onSelect: (k: string) => void }) {
   if (!node) return <div className="rounded-lg border p-3 text-sm text-muted-foreground">칸을 누르면 구성 회사·한국 종목·앞뒤 칸과의 측정 결과가 여기 보입니다.</div>
   // 지도 아래 가로 배치 — 지도가 전체 폭을 쓰게
-  const name = (k: string) => nodes.find(n => n.key === k)?.name ?? k
+  const name = (k: string) => nodes.find(n => n.key === k)?.name ?? demands.find(d => d.key === k)?.name ?? k
   const ups = edges.filter(e => e.to === node.key), downs = edges.filter(e => e.from === node.key)
   const EdgeLine = ({ e, other }: { e: VcEdge; other: string }) => <Button variant="ghost" onClick={() => onSelect(other)}
     className="block h-auto w-full whitespace-normal px-1 py-0.5 text-left text-caption font-normal" title={e.reason}>
@@ -261,6 +268,7 @@ function NodePanel({ node, edges, nodes, onSelect }: { node?: VcNode; edges: VcE
       {node.series.length > 1 && <div className="mt-1"><SparkLine data={node.series.map(p => p.yoy)} height={32} /></div>}
       {!!node.us_members?.length && <UsMembers members={node.us_members} />}
       {!!node.aux?.length && <AuxList aux={node.aux} />}
+      {!!node.market?.length && <MarketList market={node.market} />}
     </div>
     <div className="space-y-2">
       {node.tw.length > 0 && <div><p className="text-caption font-medium text-muted-foreground">대만 구성</p><p className="text-caption">{node.tw.map(t => t.name).join(" · ")}</p></div>}
@@ -319,6 +327,26 @@ function AuxList({ aux }: { aux: VcAux[] }) {
           <span className="shrink-0 tabular-nums text-muted-foreground">{a.period}</span>
           <span className={cn("shrink-0 tabular-nums", stateTone(a.state))}>3M YoY {formatPercent(a.yoy_3m)}</span>
           {a.state && <Badge variant="outline" className="shrink-0 px-1 text-[10px]">{a.state}</Badge>}
+        </>}
+      </li>)}
+    </ul>
+  </div>
+}
+
+/** 신용·금리 여건 — 스프레드·금리가 오르면 조달이 어려워진다(긴축) */
+function MarketList({ market }: { market: VcMarket[] }) {
+  const tone = (s?: string | null) => s === "긴축" ? "text-down" : s === "완화" ? "text-up" : "text-muted-foreground"
+  return <div className="mt-3">
+    <p className="text-caption font-medium text-muted-foreground">신용·금리 여건</p>
+    <ul className="divide-y text-caption">
+      {market.map(m => <li key={m.ref} className="flex items-baseline gap-2 py-1">
+        <span className="min-w-0 flex-1">{m.label}</span>
+        {m.missing ? <span className="text-muted-foreground">데이터 없음</span> : <>
+          <span className="shrink-0 tabular-nums">{m.unit === "%" ? `${formatLevel(m.value)}%` : `${formatNumber(Math.round(m.value ?? 0))}${m.unit ?? ""}`}</span>
+          <span className="shrink-0 tabular-nums text-muted-foreground" title={m.change_days ? `${m.change_days}일 전 대비` : undefined}>
+            {m.change_3m == null ? "변화 계산 불가(이력 짧음)" : `${m.change_3m >= 0 ? "+" : ""}${m.unit === "%" ? `${formatLevel(m.change_3m)}%p` : `${formatNumber(Math.round(m.change_3m))}bp`} (${m.change_days}일)`}
+          </span>
+          {m.state && <Badge variant="outline" className={cn("shrink-0 px-1 text-[10px]", tone(m.state))}>{m.state}</Badge>}
         </>}
       </li>)}
     </ul>

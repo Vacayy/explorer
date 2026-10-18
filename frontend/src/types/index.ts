@@ -1236,8 +1236,10 @@ export interface VcNode {
   tw: { code: string; name: string }[]; kr: { code: string; name: string }[]
   yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]; series: { ym: string; yoy: number }[]
   freq?: "M" | "Q"; obs_label?: string | null; period?: string | null
-  source?: "tw" | "us" | "kr_trade" | null; us_members?: UsMember[]; aux?: VcAux[]
+  source?: "tw" | "us" | "kr_trade" | null; us_members?: UsMember[]; aux?: VcAux[]; market?: VcMarket[]
 }
+/** 신용·금리 여건 — 수준과 약 3개월 변화(change_days가 실제 비교 기간), 긴축·완화·유지 */
+export interface VcMarket { ref: string; label: string; missing: boolean; as_of?: string | null; value?: number | null; unit?: string | null; change_3m?: number | null; change_days?: number | null; state?: string | null }
 /** 교차 확인 지표 — 월간 외부 시계열(WSTS·Census·SEAJ·대만 수출수주), missing=아직 수집 전 */
 export interface VcAux { series: string; label: string; missing: boolean; period?: string | null; yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: string | null }
 /** 미국 수요 기업 최신 분기 값 — 수요 칸·AI 가속기 상세 */
