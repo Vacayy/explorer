@@ -1281,6 +1281,7 @@ export interface PropagationResponse { as_of: string | null; waiting: PropRow[];
 /** 돈의 흐름·스포트라이트 가설 — GET /api/spine/tw/flow (docs/specs/value-chain.md §11) */
 export interface FlowRow {
   key: string; name: string; state: string | null; score: number; yoy: number | null; increment_usd: number | null; period: string | null
+  increment_prev_usd?: number | null; increment_change_usd?: number | null
   kind: "flow" | "stock"; cross_agree: number | null; kr: string[]; kr_return_3m: number | null; attention: number; attention_prev: number
   why?: string | null; falsifier?: string | null
   obs_kind?: "direct" | "proxy"; disclosure_up?: number | null; disclosure_n?: number | null

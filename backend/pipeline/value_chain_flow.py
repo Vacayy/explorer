@@ -7,7 +7,7 @@
 - 시장 반응: 칸에 붙은 한국 종목 3개월(63거래일) 주가 수익률 평균, 미국 분기 칸은 구성 회사 주가(us_prices에 있을 때)
 - 관심도: 칸 한국 종목을 다룬 문서 수, 최근 30일 대 직전 30일
 목록:
-- 지금 흐름: 흐름 크기 상위
+- 지금 흐름: 증가 금액이 직전 창(3개월·한 분기 전)보다 많이 늘어난 칸 상위(흐름의 가속)
 - 스포트라이트 가설: 가속 + 교차 확인 과반 + 시장 반응이 칸 중앙값 이하 + 관심도가 칸 중앙값 이하(아직 조용함) — 반증 조건을 붙인다
 - 엇갈림: 가속 + 교차 확인 과반인데 주가가 칸 중앙값 이하이고 관심은 이미 많은 칸(시장이 흐름을 의심하는 곳 — 이유 확인 대상)
 - 식는 칸: 둔화인데 관심도·주가가 높은 칸
@@ -24,45 +24,48 @@ TWD_USD = 32.0
 STATE_SCORE = {"가속": 1, "전환↑": 1, "유지": 0, "둔화": -1, "전환↓": -1}
 
 
-def _tw_increment(conn, codes: list[str]) -> tuple[float | None, str | None]:
-    """대만 칸 최근 3개월 매출 − 전년 같은 3개월(천 TWD → USD)"""
+def _tw_increment(conn, codes: list[str], back: int = 0) -> tuple[float | None, str | None]:
+    """대만 칸 최근 3개월 매출 − 전년 같은 3개월(천 TWD → USD). back=1이면 그 직전 3개월"""
     ph = ",".join("?" * len(codes))
     rows = conn.execute(f"SELECT ym, SUM(revenue) r, SUM(last_year) ly, COUNT(*) n FROM tw_monthly_revenue WHERE code IN ({ph}) "
-                        f"GROUP BY ym ORDER BY ym DESC LIMIT 3", codes).fetchall()
+                        f"GROUP BY ym ORDER BY ym DESC LIMIT 3 OFFSET {3 * back}", codes).fetchall()
     if len(rows) < 3 or any(r["n"] != len(codes) or r["ly"] is None for r in rows):
         return None, None
     return sum(r["r"] - r["ly"] for r in rows) * 1000 / TWD_USD, rows[0]["ym"]
 
 
-def _us_increment(conn, use_key: str) -> tuple[float | None, str | None]:
-    """미국 분기 칸 최신 분기 − 전년 같은 분기(둘 다 있는 회사만)"""
+def _us_increment(conn, use_key: str, back: int = 0) -> tuple[float | None, str | None]:
+    """미국 분기 칸 최신 분기 − 전년 같은 분기(둘 다 있는 회사만). back=1이면 그 직전 분기"""
     rows = conn.execute("SELECT ticker, q, value FROM us_quarterly WHERE use_key=?", (use_key,)).fetchall()
     by: dict[str, dict[str, float]] = {}
     for r in rows:
         by.setdefault(r["q"], {})[r["ticker"]] = r["value"]
     from pipeline.us_fundamentals import TTM
     if use_key in TTM:                    # 발행처럼 들쭉날쭉한 지표는 최근 4분기 합 − 전년 4분기 합(미보고 분기는 수집 때 0으로 채워짐)
-        qs = sorted(by)
+        qs = sorted(by)[:len(by) - back]
         if len(qs) < 8:
             return None, None
         tot = lambda win: sum(sum(by[q].values()) for q in win)  # noqa: E731
         return tot(qs[-4:]) - tot(qs[-8:-4]), qs[-1]
+    found = 0
     for q in sorted(by, reverse=True):
         prev = by.get(f"{int(q[:4]) - 1}{q[4:]}", {})
         both = [t for t in by[q] if t in prev]
         if both:
-            return sum(by[q][t] - prev[t] for t in both), q
+            if found == back:
+                return sum(by[q][t] - prev[t] for t in both), q
+            found += 1
     return None, None
 
 
-def _kr_increment(conn, hs_codes: list[str]) -> tuple[float | None, str | None]:
-    """한국 수출 최근 3개월 − 전년 같은 3개월(USD, 모든 품목이 있는 달만)"""
+def _kr_increment(conn, hs_codes: list[str], back: int = 0) -> tuple[float | None, str | None]:
+    """한국 수출 최근 3개월 − 전년 같은 3개월(USD, 모든 품목이 있는 달만). back=1이면 그 직전 3개월"""
     ph = ",".join("?" * len(hs_codes))
     agg: dict[str, list[float]] = {}
     for r in conn.execute(f"SELECT period, export_usd FROM trade_stats WHERE hs_code IN ({ph}) AND export_usd IS NOT NULL", hs_codes):
         agg.setdefault(r["period"], []).append(r["export_usd"])
     tot = {p: sum(v) for p, v in agg.items() if len(v) == len(hs_codes)}
-    ps = sorted(tot)[-3:]
+    ps = sorted(tot)[:len(tot) - 3 * back][-3:]
     prev = [f"{int(p[:4]) - 1}{p[4:]}" for p in ps]
     if len(ps) < 3 or any(p not in tot for p in prev):
         return None, None
@@ -109,16 +112,16 @@ def compute(vmap: dict | None = None) -> dict:
         for key, name, tw, kr, _ in NODES:
             n = nodes.get(key, {})
             if key in US_OBS:
-                inc, period = _us_increment(conn, US_OBS[key][0])
+                fn, arg = _us_increment, US_OBS[key][0]
                 kind = "stock" if US_OBS[key][0] in ("frontier",) else "flow"    # RPO는 흐름이 아니라 잔액
             elif key in KR_OBS:
-                inc, period = _kr_increment(conn, KR_OBS[key][0])
-                kind = "flow"
+                fn, arg, kind = _kr_increment, KR_OBS[key][0], "flow"
             elif tw:
-                inc, period = _tw_increment(conn, tw)
-                kind = "flow"
+                fn, arg, kind = _tw_increment, tw, "flow"
             else:
-                inc, period, kind = None, None, "flow"
+                fn, arg, kind = None, None, "flow"
+            inc, period = fn(conn, arg) if fn else (None, None)
+            inc_prev, _ = fn(conn, arg, back=1) if fn else (None, None)     # 직전 창(3개월·한 분기 전)의 증가 금액
             aux = [a for a in n.get("aux", []) if not a.get("missing")]
             agree = (sum(1 for a in aux if (a.get("yoy_3m") or 0) > 0) / len(aux)) if aux else None
             att_now, att_prev = _attention(conn, kr)
@@ -126,12 +129,15 @@ def compute(vmap: dict | None = None) -> dict:
             disc_up, disc_n = _disclosure(conn, kr) if proxy and kr else (0, 0)
             rows.append({"obs_kind": obs_kind(key), "disclosure_up": disc_up if proxy else None, "disclosure_n": disc_n if proxy else None,
                          "key": key, "name": name, "state": n.get("state"), "score": STATE_SCORE.get(n.get("state"), 0),
-                         "yoy": n.get("yoy_3m"), "increment_usd": inc, "period": period, "kind": kind,
+                         "yoy": n.get("yoy_3m"), "increment_usd": inc, "period": period, "kind": kind, "increment_prev_usd": inc_prev,
+                         "increment_change_usd": inc - inc_prev if inc is not None and inc_prev is not None else None,
                          "cross_agree": round(agree, 2) if agree is not None else None, "kr": [k["name"] for k in n.get("kr", [])],
                          "kr_return_3m": _kr_return(conn, kr) if kr else None, "attention": att_now, "attention_prev": att_prev})
     finally:
         conn.close()
-    flows = sorted([r for r in rows if r["kind"] == "flow" and (r["increment_usd"] or 0) > 0], key=lambda r: -r["increment_usd"])[:8]
+    # 지금 흐름: 규모 순은 큰 회사 순일 뿐이라(폭스콘·엔비디아) 증가 금액이 직전 창보다 얼마나 늘었는지(가속)로 고른다
+    flows = sorted([r for r in rows if r["kind"] == "flow" and (r["increment_change_usd"] or 0) > 0 and (r["increment_usd"] or 0) > 0],
+                   key=lambda r: -r["increment_change_usd"])[:8]
     rets = [r["kr_return_3m"] for r in rows if r["kr_return_3m"] is not None]
     med_ret = statistics.median(rets) if rets else None
     atts = [r["attention"] for r in rows if r["kr"]]

@@ -79,12 +79,24 @@ def quarterly(entries: list[dict], zero_omit: bool = False) -> dict[str, float]:
     zero_omit: 미보고 분기 = 0인 지표(발행). 회계연도 누적 사슬에서 빠진 분기 끝은 직전 누적을 이어 받는다
     (현금흐름표는 10-Q에 연초 누적으로 실리므로, 1분기 10-Q에 항목이 없으면 1분기 = 0)"""
     by: dict[tuple[str, str], dict] = {}
+    vers: dict[tuple[str, str], list[dict]] = {}       # 같은 기간의 모든 공시 판본(수정 전·후)
     for e in entries:
         if not e.get("start") or e.get("form") not in ("10-Q", "10-K", "10-Q/A", "10-K/A"):
             continue
         k = (e["start"], e["end"])
+        vers.setdefault(k, []).append(e)
         if k not in by or e.get("filed", "") > by[k].get("filed", ""):
             by[k] = e
+
+    def pair(k0: tuple[str, str], k1: tuple[str, str]) -> tuple[float, float]:
+        """누적값 차감용 두 기간의 판본 — 제출일이 가장 가까운 판본끼리(같으면 늦은 쪽). 사업 매각으로 연간만 소급 수정되고
+        수정된 9개월은 공시되지 않으면, 최신 연간 − 원래 9개월이 4분기를 왜곡한다(엔벤트 2022 4분기 1.28억 달러)"""
+        def key(ab):
+            fa, fb = (date.fromisoformat(x.get("filed") or "1900-01-01") for x in ab)
+            return abs((fa - fb).days), -max(fa, fb).toordinal()
+        best = min(((a, b) for a in vers[k0] for b in vers[k1]), key=key)
+        return best[0]["val"], best[1]["val"]
+
     out: dict[str, float] = {}
     for (s, t), e in by.items():                       # 1) 3개월 값
         if 80 <= _days(s, t) <= 100:
@@ -96,8 +108,9 @@ def quarterly(entries: list[dict], zero_omit: bool = False) -> dict[str, float]:
     for s, cums in groups.items():
         q1 = [(t, by[(ss, t)]["val"]) for (ss, t) in by if ss == s and 80 <= _days(s, t) <= 100]   # 회계연도 첫 분기
         chain = sorted(q1 + cums)
-        for (t0, v0), (t1, v1) in zip(chain, chain[1:]):
+        for (t0, _), (t1, _) in zip(chain, chain[1:]):
             if 80 <= _days(t0, t1) <= 100 and _quarter_key(t1) not in out:
+                v0, v1 = pair((s, t0), (s, t1))
                 out[_quarter_key(t1)] = v1 - v0
         if zero_omit:
             cum = {_quarter_key(t): v for t, v in chain}

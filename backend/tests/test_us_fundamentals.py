@@ -27,6 +27,13 @@ class QuarterlyTests(unittest.TestCase):
         self.assertEqual(quarterly(facts)["2026-03"], 30.9)
 
 
+    def test_restated_annual_is_not_mixed_with_original_nine_months(self):
+        # 엔벤트: 2022 연간이 2025년 10-K에서 사업 매각 반영으로 2,909 → 2,295로 수정. 수정된 9개월은 공시된 적 없다
+        facts = [e("2022-01-01", "2022-09-30", 2167, filed="2022-10-28"), e("2022-01-01", "2022-09-30", 2167, filed="2023-10-27"),
+                 e("2022-01-01", "2022-12-31", 2909, "10-K", filed="2023-02-28"), e("2022-01-01", "2022-12-31", 2909, "10-K", filed="2024-02-20"),
+                 e("2022-01-01", "2022-12-31", 2295, "10-K", filed="2025-02-18")]
+        self.assertEqual(quarterly(facts)["2022-12"], 742)
+
 
 class FundingTests(unittest.TestCase):
     """회사채 발행 — 계정 전환(오라클)·발행 없는 분기 미보고(메타·MSFT) 회귀 (2026-10-18 점검)"""

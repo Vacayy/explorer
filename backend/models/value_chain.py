@@ -188,6 +188,8 @@ class FlowRow(BaseModel):
     score: int
     yoy: float | None
     increment_usd: float | None    # 최근 3개월(분기) 전년 대비 증가 금액, USD
+    increment_prev_usd: float | None = None     # 직전 창(3개월·한 분기 전)의 증가 금액
+    increment_change_usd: float | None = None   # 증가 금액의 변화(흐름의 가속)
     period: str | None
     kind: str                      # flow | stock(잔액 — RPO)
     cross_agree: float | None      # 교차 확인 지표 중 같은 방향 비율
@@ -207,7 +209,7 @@ class FlowResponse(BaseModel):
     twd_usd: float
     median_kr_return_3m: float | None
     median_attention: float
-    flows: list[FlowRow]           # 지금 돈이 가장 많이 흐르는 칸
+    flows: list[FlowRow]           # 증가 금액이 가장 빨리 늘어나는 칸
     spotlight: list[FlowRow]       # 다음 스포트라이트 가설(조용한 가속)
     doubted: list[FlowRow]         # 흐름은 가속인데 시장이 의심하는 칸
     fading: list[FlowRow]          # 식는 칸

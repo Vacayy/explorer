@@ -395,7 +395,7 @@ function PxqList({ pxq }: { pxq: VcPxq[] }) {
 
 /** 돈의 흐름 카드 — 흐름 크기 막대, 스포트라이트 가설(반증 조건 포함), 시장이 의심하는 칸, 식는 칸 */
 function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string) => void }) {
-  const max = Math.max(...data.flows.map(f => f.increment_usd ?? 0), 1)
+  const max = Math.max(...data.flows.map(f => f.increment_change_usd ?? 0), 1)
   const Row = ({ r, tone }: { r: FlowRow; tone: string }) => <Button variant="ghost" onClick={() => onSelect(r.key)}
     className="block h-auto w-full whitespace-normal rounded-md px-2 py-1.5 text-left text-sm font-normal">
     <span className={cn("font-medium", tone)}>{r.name}</span>
@@ -407,19 +407,20 @@ function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string
     <CardHeader className="pb-2">
       <CardTitle className="text-card-title">돈의 흐름</CardTitle>
       <p className="text-caption text-muted-foreground">
-        흐름 크기 = 최근 3개월(분기 칸은 최신 분기, 회사채는 최근 4분기 합) 전년 대비 증가 금액(대만달러는 고정 {data.twd_usd}로 환산). 가속 = 성장률 변화가 그 칸의 평소 변동의 1배(1σ) 이상. 아래 목록은 예측이 아니라 반증 조건이 붙은 가설입니다 —
+        흐름 = 최근 3개월(분기 칸은 최신 분기, 회사채는 최근 4분기 합) 전년 대비 증가 금액(대만달러는 고정 {data.twd_usd}로 환산), 막대 = 그 증가 금액이 직전 창(3개월·한 분기 전)보다 늘어난 만큼(금액 기준이라 큰 칸이 위에 옵니다 — 크기와 무관한 비교는 칸 상태 σ). 가속 = 성장률 변화가 그 칸의 평소 변동의 1배(1σ) 이상. 아래 목록은 예측이 아니라 반증 조건이 붙은 가설입니다 —
         칸 사이 선행 시차는 대부분 통계적으로 확인되지 않았습니다. 시장 반응 = 칸 한국 종목 3개월 수익률(중앙값 {formatPercent(data.median_kr_return_3m)}), 관심 = 최근 30일 문서 수.
       </p>
     </CardHeader>
     <CardContent className="grid gap-5 lg:grid-cols-2">
       <div>
-        <p className="mb-1.5 text-caption font-medium text-muted-foreground">지금 가장 많이 흐르는 칸</p>
+        <p className="mb-1.5 text-caption font-medium text-muted-foreground">흐름이 빨라지는 칸 — 증가 금액이 직전 창보다 늘어난 만큼</p>
         <ul className="space-y-1">
           {data.flows.map(f => <li key={f.key}>
-            <Button variant="ghost" onClick={() => onSelect(f.key)} className="grid h-auto w-full grid-cols-[120px_minmax(0,1fr)_72px] items-center gap-2 px-1 py-1 text-left text-caption font-normal">
+            <Button variant="ghost" onClick={() => onSelect(f.key)} className="grid h-auto w-full grid-cols-[120px_minmax(0,1fr)_72px] items-center gap-2 px-1 py-1 text-left text-caption font-normal"
+              title={`증가 금액 +${formatUsd(f.increment_usd ?? 0)} (직전 창 +${formatUsd(f.increment_prev_usd ?? 0)}) · ${f.period}`}>
               <span className="truncate font-medium">{f.name}</span>
-              <span className="h-2 rounded-full bg-chart-blue/70" style={{ width: `${Math.max(4, ((f.increment_usd ?? 0) / max) * 100)}%` }} />
-              <span className="text-right tabular-nums">+{formatUsd(f.increment_usd ?? 0)}</span>
+              <span className="h-2 rounded-full bg-chart-blue/70" style={{ width: `${Math.max(4, ((f.increment_change_usd ?? 0) / max) * 100)}%` }} />
+              <span className="text-right tabular-nums">+{formatUsd(f.increment_change_usd ?? 0)}</span>
             </Button>
           </li>)}
         </ul>

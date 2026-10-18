@@ -85,6 +85,20 @@ class KrSeriesTests(unittest.TestCase):
         self.assertAlmostEqual(kr_quarterly_yoy(conn, ["A"])["2025-06"], 50.0)
 
 
+class FlowIncrementTests(unittest.TestCase):
+    def test_previous_window_increment(self):
+        """흐름 가속 = 최근 3개월 증가 금액 − 직전 3개월 증가 금액"""
+        import sqlite3
+        from pipeline.value_chain_flow import _kr_increment
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE trade_stats (hs_code, period, export_usd)")
+        conn.executemany("INSERT INTO trade_stats VALUES ('A', ?, ?)",
+                         [(f"2025-{m:02d}", 100.0) for m in range(1, 13)] + [(f"2026-{m:02d}", 100.0 + 10 * m) for m in range(1, 7)])
+        self.assertEqual(_kr_increment(conn, ["A"]), (150.0, "2026-06"))           # 4·5·6월 +40+50+60
+        self.assertEqual(_kr_increment(conn, ["A"], back=1), (60.0, "2026-03"))    # 1·2·3월 +10+20+30
+
+
 class LagTests(unittest.TestCase):
     def series(self, values, start=(2023, 1)):
         y, m = start
