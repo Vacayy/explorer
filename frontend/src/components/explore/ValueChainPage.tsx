@@ -15,7 +15,7 @@ import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
 import { formatPercent } from "@/utils/format"
-import type { PropRow, VcEdge, VcNode } from "@/types"
+import type { PropRow, VcDemand, VcEdge, VcNode } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -33,27 +33,34 @@ const STATE_CLS: Record<string, string> = {
 const DIR: Record<string, string> = { up: "↑", down: "↓", flat: "→" }
 const lagText = (lag: number | null | undefined) => lag == null ? "" : lag === 0 ? "동행" : lag > 0 ? `공급 ${lag}개월 앞섬` : `수요 ${-lag}개월 앞섬`
 
-type ChainNodeData = { node?: VcNode; demand?: { name: string; description: string }; selected: boolean }
+type ChainNodeData = { node?: VcNode; demand?: VcDemand; selected: boolean }
+const stateTone = (s?: string | null) => !s ? "text-muted-foreground" : s === "가속" || s === "전환↑" ? "text-up" : s === "유지" ? "text-muted-foreground" : "text-down"
 
 function ChainNode({ data }: NodeProps) {
   const d = data as unknown as ChainNodeData
-  if (d.demand) return <div className="w-[188px] rounded-md border-2 border-dashed px-2 py-1.5 text-xs">
+  if (d.demand) return <div className={cn("w-[188px] rounded-md border-2 border-dashed px-2 py-1.5 text-xs", d.demand.state ? STATE_CLS[d.demand.state] : "")}>
     <Handle type="source" position={Position.Right} className="!opacity-0" />
-    <div className="font-semibold">{d.demand.name}</div>
-    <div className="truncate text-[10px] text-muted-foreground">{d.demand.description}</div>
+    <div className="flex items-center gap-1">
+      <span className="truncate font-semibold">{d.demand.name}</span>
+      {d.demand.state && <span className={cn("ml-auto shrink-0 text-[10px]", stateTone(d.demand.state))}>{d.demand.state}</span>}
+    </div>
+    {d.demand.obs_label
+      ? <div className="truncate text-[10px] tabular-nums text-muted-foreground" title={d.demand.obs_label}>분기 YoY {formatPercent(d.demand.yoy_3m)} · {d.demand.obs_label}</div>
+      : <div className="truncate text-[10px] text-muted-foreground">{d.demand.description} · 대만 브랜드로 대리 관측</div>}
   </div>
   const n = d.node!
-  const krOnly = !n.tw.length
+  const quarterly = n.freq === "Q"
+  const krOnly = !n.tw.length && !quarterly
   return <div className={cn("w-[188px] rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm", n.state ? STATE_CLS[n.state] : "", krOnly && "border-dashed",
     d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
     <Handle type="target" position={Position.Left} className="!opacity-0" />
     <Handle type="source" position={Position.Right} className="!opacity-0" />
     <div className="flex items-center gap-1">
       <span className="truncate font-semibold">{n.name}</span>
-      {n.state && <span className={cn("ml-auto shrink-0 text-[10px]", n.state.startsWith("가속") || n.state === "전환↑" ? "text-up" : n.state === "유지" ? "text-muted-foreground" : "text-down")}>{n.state}</span>}
+      {n.state && <span className={cn("ml-auto shrink-0 text-[10px]", stateTone(n.state))}>{n.state}</span>}
     </div>
     <div className="text-[10px] tabular-nums text-muted-foreground">
-      {krOnly ? "대만 관측 없음 — 한국 원천으로" : `3M YoY ${formatPercent(n.yoy_3m)}`}
+      {krOnly ? "대만 관측 없음 — 한국 원천으로" : quarterly ? `분기 YoY ${formatPercent(n.yoy_3m)} · 미국 실적` : `3M YoY ${formatPercent(n.yoy_3m)}`}
     </div>
     {n.kr.length > 0 && <div className="truncate text-[10px] font-medium text-primary">한국 {n.kr.map(k => k.name).join("·")}</div>}
   </div>
@@ -138,7 +145,7 @@ export default function ValueChainPage() {
           <CardTitle className="text-card-title">공급 지도</CardTitle>
           <p className="text-caption text-muted-foreground">
             왼쪽이 최종 수요, 오른쪽으로 갈수록 상류(부품 → 칩 → 장비·소재)입니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
-            칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화). 선 = 측정 판정
+            칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화) — AI 데이터센터·스마트폰 수요와 AI 가속기는 미국 분기 실적(SEC)의 분기 YoY를 직전 분기와 비교. 선 = 측정 판정
             (굵은 실선 확인 · 실선 부분 · 점선 미확인), 숫자 = 시차(+공급이 앞섬, −수요가 앞섬, ?는 두 신호 시차 불일치).
             {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ).`}
           </p>
@@ -212,7 +219,9 @@ function NodePanel({ node, edges, nodes, onSelect }: { node?: VcNode; edges: VcE
     <div>
       <div className="flex items-center gap-2"><span className="font-semibold">{node.name}</span>{node.state && <Badge variant="outline" className="text-[11px]">{node.state}</Badge>}</div>
       <p className="text-caption text-muted-foreground">{node.description}</p>
-      {node.tw.length > 0 && <p className="mt-1 text-caption tabular-nums">3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)})</p>}
+      {node.freq === "Q"
+        ? <p className="mt-1 text-caption tabular-nums">분기 YoY {formatPercent(node.yoy_3m)} (직전 분기 {formatPercent(node.yoy_3m_prev)}) · {node.period} · {node.obs_label} (SEC 분기 실적)</p>
+        : node.tw.length > 0 && <p className="mt-1 text-caption tabular-nums">3M YoY {formatPercent(node.yoy_3m)} (3개월 전 {formatPercent(node.yoy_3m_prev)}) · {node.period}</p>}
       {node.series.length > 1 && <div className="mt-1"><SparkLine data={node.series.map(p => p.yoy)} height={32} /></div>}
     </div>
     <div className="space-y-2">

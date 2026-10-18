@@ -18,9 +18,12 @@ class VcNode(BaseModel):
     description: str
     tw: list[VcCompany]
     kr: list[VcCompany]
+    freq: str = "M"                # M = 대만 월매출(3개월 YoY) · Q = 미국 분기 실적(분기 YoY)
+    obs_label: str | None = None   # 분기 관측 원천 설명
+    period: str | None = None      # 최신 관측 월·분기
     yoy_3m: float | None
     yoy_3m_prev: float | None
-    state: str | None              # 가속 | 둔화 | 전환↑ | 전환↓ | 유지 (대만 관측 노드만)
+    state: str | None              # 가속 | 둔화 | 전환↑ | 전환↓ | 유지
     series: list[VcPoint]
 
 
@@ -49,6 +52,12 @@ class VcDemand(BaseModel):
     key: str
     name: str
     description: str
+    obs_label: str | None = None   # 관측 원천(미국 분기 실적) — 없으면 대리 관측만
+    yoy_3m: float | None = None    # 최신 분기 YoY
+    yoy_3m_prev: float | None = None
+    state: str | None = None
+    period: str | None = None
+    series: list[VcPoint] = []
 
 
 class ValueChainResponse(BaseModel):

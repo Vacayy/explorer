@@ -1,4 +1,4 @@
-"""대만 월매출 — 91개사(pipeline/tw_universe) 월별 매출·MoM·YoY (docs/specs/tw-revenue.md, LLM 0).
+"""대만 월매출 — 92개사(pipeline/tw_universe) 월별 매출·MoM·YoY (docs/specs/tw-revenue.md, LLM 0).
 
 대만 상장사는 매달 10일까지 전월 매출을 MOPS(公開資訊觀測站)에 공시해야 한다. 원천은 두 갈래다.
 - 최신 월: TWSE Open API(상장) + TPEx Open API(장외). JSON, 키 없음.
@@ -107,21 +107,30 @@ def fetch_latest() -> dict:
             "status": "error" if not recs else "partial" if missing else "ok"}
 
 
-def fetch_month(year: int, month: int, pause: float = 2.0) -> list[dict]:
+def fetch_month(year: int, month: int, pause: float = 4.0) -> list[dict]:
     """과거 한 달 — MOPS 4페이지(상장·장외 × 국내·외국). 페이지 실패는 예외로 올린다"""
     import requests
     roc, ym, recs = year - 1911, f"{year}-{month:02d}", []
     for board, market in (("sii", "TWSE"), ("otc", "TPEx")):
         for kind in (0, 1):
-            r = requests.get(MOPS.format(board=board, roc=roc, month=month, kind=kind), headers=UA, timeout=40)
-            r.raise_for_status()
+            # MOPS는 연속 요청이 길어지면 연결을 끊는다(2026-10-18, 20개월 뒤 ConnectionError 연속) — 쉬었다 세 번까지
+            for attempt in range(3):
+                try:
+                    r = requests.get(MOPS.format(board=board, roc=roc, month=month, kind=kind), headers=UA, timeout=40)
+                    r.raise_for_status()
+                    break
+                except requests.RequestException:
+                    if attempt == 2:
+                        raise
+                    time.sleep(30 * (attempt + 1))
             recs += parse_mops(r.content.decode("big5", errors="ignore"), ym, market)
             time.sleep(pause)            # MOPS는 빠른 연속 요청을 막는다
     return recs
 
 
-def backfill(months: int = 36, today: date | None = None, pause: float = 2.0) -> dict:
-    """최근 months개월(이번 달 제외)을 채운다. 이미 85개사 이상 있는 달은 건너뛴다(이어 받기)."""
+def backfill(months: int = 36, today: date | None = None, pause: float = 4.0, require: set[str] | None = None) -> dict:
+    """최근 months개월(이번 달 제외)을 채운다. 이어 받기: 이미 85개사 이상 있는 달은 건너뛴다.
+    require를 주면 그 회사들이 모두 있는 달만 건너뛴다 — 대상에 새 회사를 넣고 과거분을 채울 때."""
     today = today or date.today()
     y, m = today.year, today.month
     done, skipped, failed = [], [], []
@@ -130,8 +139,13 @@ def backfill(months: int = 36, today: date | None = None, pause: float = 2.0) ->
         for _ in range(months):
             y, m = (y, m - 1) if m > 1 else (y - 1, 12)
             ym = f"{y}-{m:02d}"
-            have = conn.execute("SELECT COUNT(*) FROM tw_monthly_revenue WHERE ym=?", (ym,)).fetchone()[0]
-            if have >= 85:
+            if require:
+                ph = ",".join("?" * len(require))
+                have_req = conn.execute(f"SELECT COUNT(*) FROM tw_monthly_revenue WHERE ym=? AND code IN ({ph})", (ym, *require)).fetchone()[0]
+                done_month = have_req == len(require)
+            else:
+                done_month = conn.execute("SELECT COUNT(*) FROM tw_monthly_revenue WHERE ym=?", (ym,)).fetchone()[0] >= 85
+            if done_month:
                 skipped.append(ym)
                 continue
             try:

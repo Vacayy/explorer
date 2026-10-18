@@ -90,21 +90,81 @@ def placebo_threshold(conn, fn, node_codes: list[list[str]], q: float = 0.95) ->
     return round(vals[min(len(vals) - 1, int(len(vals) * q))], 2) if vals else 1.0
 
 
+# ── 분기 신호: 미국 분기 실적으로 관측하는 칸(AI 수요·가속기·스마트폰)이 걸린 엣지 ──
+MAX_LAG_Q = 2
+MIN_PAIRS_Q = 12
+
+
+def tw_quarterly_yoy(conn, codes: list[str]) -> dict[str, float]:
+    """대만 회사 묶음의 달력 분기 매출 YoY(%) — 분기 3개월이 모두 있고 전년 값이 있을 때"""
+    ph = ",".join("?" * len(codes))
+    rows = conn.execute(f"SELECT ym, SUM(revenue) r, SUM(last_year) ly, COUNT(*) n FROM tw_monthly_revenue "
+                        f"WHERE code IN ({ph}) GROUP BY ym", codes).fetchall()
+    q: dict[str, list] = {}
+    for r in rows:
+        if r["n"] != len(codes) or not r["ly"]:
+            continue
+        y, m = int(r["ym"][:4]), int(r["ym"][5:])
+        q.setdefault(f"{y}-{((m - 1) // 3 + 1) * 3:02d}", []).append((r["r"], r["ly"]))
+    return {k: (sum(a for a, _ in v) / sum(b for _, b in v) - 1) * 100 for k, v in sorted(q.items()) if len(v) == 3}
+
+
+def node_quarterly(conn, key: str) -> dict[str, float]:
+    from pipeline.us_fundamentals import demand_series
+    from pipeline.value_chain import NODE_BY_KEY, US_OBS
+    if key in US_OBS:
+        return demand_series(conn, US_OBS[key][0])
+    codes = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
+    return tw_quarterly_yoy(conn, codes) if codes else {}
+
+
+def cross_lag_q(up: dict[str, float], down: dict[str, float]) -> dict:
+    """분기 YoY Δ끼리 시차(분기) −2~+2 — lag=k면 up의 t−k분기와 down의 t분기"""
+    du, dd = _delta(up), _delta(down)
+    by = {}
+    for k in range(-MAX_LAG_Q, MAX_LAG_Q + 1):
+        pairs = [(du[_shift_ym(t, -3 * k)], v) for t, v in dd.items() if _shift_ym(t, -3 * k) in du]
+        if len(pairs) >= MIN_PAIRS_Q:
+            c = _corr([a for a, _ in pairs], [b for _, b in pairs])
+            if c is not None:
+                by[k] = {"corr": round(c, 2), "n": len(pairs)}
+    if not by:
+        return {"best_lag": None, "corr": None, "n": 0, "by_lag": {}}
+    best = max(by, key=lambda k: by[k]["corr"])
+    return {"best_lag": best * 3, "corr": by[best]["corr"], "n": by[best]["n"],        # 시차는 개월로 통일
+            "by_lag": {str(k * 3): v["corr"] for k, v in sorted(by.items())}}
+
+
+def placebo_threshold_q(conn, keys: list[str], q: float = 0.95) -> float:
+    vals = []
+    for grp in PLACEBO:
+        p = tw_quarterly_yoy(conn, grp)
+        for k in keys:
+            s = node_quarterly(conn, k)
+            if s:
+                vals += [x for x in (cross_lag_q(p, s)["corr"], cross_lag_q(s, p)["corr"]) if x is not None]
+    vals.sort()
+    return round(vals[min(len(vals) - 1, int(len(vals) * q))], 2) if vals else 1.0
+
+
 _memo: dict[tuple, dict] = {}
 
 
 def measure_all() -> dict:
     """엣지마다 두 신호의 최적 시차·상관과 위약 보정 판정. 반환 {thresholds, edges}. 대만 수집 시각이 같으면 캐시"""
     from database import get_connection
-    from pipeline.value_chain import EDGES, NODE_BY_KEY
+    from pipeline.value_chain import EDGES, NODE_BY_KEY, US_OBS
     conn = get_connection()
-    stamp = tuple(conn.execute("SELECT MAX(ym), MAX(fetched_at) FROM tw_monthly_revenue").fetchone())
+    stamp = tuple(conn.execute("SELECT MAX(ym), MAX(fetched_at) FROM tw_monthly_revenue").fetchone()) + \
+        tuple(conn.execute("SELECT MAX(q), MAX(fetched_at) FROM us_quarterly").fetchone())
     if stamp in _memo:
         conn.close()
         return _memo[stamp]
     try:
         observed = [n[2] for n in NODE_BY_KEY.values() if n[2]]
         thresholds = {name: placebo_threshold(conn, fn, observed) for name, fn in SIGNALS}
+        q_keys = [k for k in NODE_BY_KEY if NODE_BY_KEY[k][2] or k in US_OBS] + [k for k in US_OBS if k not in NODE_BY_KEY]
+        thresholds["yoy_q"] = placebo_threshold_q(conn, q_keys)
         cache: dict[tuple, dict] = {}
 
         def series(name, fn, key):
@@ -116,6 +176,18 @@ def measure_all() -> dict:
         edges = []
         for a, b, kind, why in EDGES:
             row = {"from": a, "to": b, "kind": kind, "reason": why, "signals": {}}
+            if a in US_OBS or b in US_OBS:                 # 분기 관측 칸이 걸린 엣지 — 분기 신호 하나로
+                up, down = node_quarterly(conn, a), node_quarterly(conn, b)
+                if up and down:
+                    r = cross_lag_q(up, down)
+                    r["passed"] = r["corr"] is not None and r["corr"] > thresholds["yoy_q"]
+                    row["signals"]["yoy_q"] = r
+                    row["verdict"] = "확인" if r["passed"] else ("미확인" if r["corr"] is not None else "관측 불가")
+                    row["lag"], row["lag_consistent"] = r["best_lag"], True
+                else:
+                    row["verdict"] = "관측 불가"
+                edges.append(row)
+                continue
             for name, fn in SIGNALS:
                 up, down = series(name, fn, a), series(name, fn, b)
                 if up and down:

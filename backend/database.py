@@ -1131,6 +1131,19 @@ def init_db():
         updated_at    TEXT NOT NULL
     );
 
+    -- 미국 수요 기업 분기 실적 (docs/specs/value-chain.md §6) — SEC XBRL companyfacts, 분기 단독 값(누적은 차감).
+    -- use_key = 밸류체인 최종 수요 키(ai·ai_accel·mobile), q = 달력 분기 끝 'YYYY-MM'
+    CREATE TABLE IF NOT EXISTS us_quarterly (
+        ticker      TEXT NOT NULL,
+        q           TEXT NOT NULL,
+        metric      TEXT NOT NULL,          -- capex | revenue
+        value       REAL,                   -- USD
+        tag         TEXT,                   -- 쓴 XBRL 계정
+        use_key     TEXT,
+        fetched_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, q, metric)
+    );
+
     -- 대만 월매출 (docs/specs/tw-revenue.md) — 91개사(pipeline/tw_universe), 단위 천 TWD, ym=YYYY-MM.
     -- 최신 월은 TWSE·TPEx Open API, 과거 월은 MOPS 월별 요약. 공시가 1~10일에 나눠 올라와 매일 덮어쓴다
     CREATE TABLE IF NOT EXISTS tw_monthly_revenue (

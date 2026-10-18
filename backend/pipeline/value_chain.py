@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-# 최종 수요 — 대만 데이터로 직접 관측하지 않는다(가장 아래쪽 대만 노드가 대리 관측)
+# 최종 수요. AI·스마트폰은 미국 수요 기업 분기 실적(pipeline/us_fundamentals)으로 관측한다(US_OBS). PC는 대만 PC 브랜드가 대리 관측
 DEMANDS = [
     ("ai", "AI 데이터센터 수요", "하이퍼스케일러·AI 랩 설비 투자"),
     ("pc", "PC·노트북 수요", "소비자·기업 PC 교체"),
@@ -22,7 +22,9 @@ NODES = [
     # 조립·브랜드(수요에 가장 가까운 대만 단계)
     ("ai_odm", "AI 서버 ODM", ["2382", "3231", "6669", "2317"], [], "GPU 서버 랙 조립"),
     ("pc_brand", "PC 브랜드", ["2357", "2353", "2377"], [], "노트북·데스크톱·게이밍"),
-    ("nb_odm", "노트북 ODM", ["2324", "4938"], [], "노트북 위탁 생산"),
+    ("nb_odm", "노트북 ODM", ["2324"], [], "노트북 위탁 생산"),
+    ("mobile_asm", "스마트폰 조립·부품", ["4938", "3008"], [], "아이폰 조립·카메라 렌즈"),
+    ("ai_accel", "AI 가속기", [], [], "엔비디아·AMD GPU·가속기(미국 분기 매출로 관측)"),
     ("dc_network", "데이터센터 네트워크", ["2345", "3380"], [], "스위치·네트워크 장비"),
     # 부품
     ("server_parts", "서버 전원·냉각·기구", ["2308", "2301", "3017", "3324", "3653", "2421", "8210", "2059", "3665", "3533"], [], "전원·수랭·섀시·레일·케이블·소켓"),
@@ -63,7 +65,14 @@ EDGES = [
     ("abf", "osat", "supply", "패키지 기판"),
     ("mlcc", "ai_odm", "supply", "서버 보드 MLCC"),
     ("mlcc", "nb_odm", "supply", "노트북 보드 MLCC"),
-    ("memory", "ai_odm", "supply", "서버 DRAM·HBM(가속기 경유)"),
+    ("memory", "ai_odm", "supply", "서버 DRAM"),
+    ("ai_accel", "ai_odm", "supply", "GPU 보드·가속기를 서버 ODM에"),
+    ("memory", "ai_accel", "supply", "HBM"),
+    ("foundry", "ai_accel", "supply", "GPU 웨이퍼·CoWoS 패키징"),
+    ("osat", "ai_accel", "supply", "후공정·테스트"),
+    ("mobile_asm", "mobile", "supply", "아이폰 조립·카메라 렌즈"),
+    ("memory", "mobile_asm", "supply", "모바일 DRAM·NAND"),
+    ("mlcc", "mobile_asm", "supply", "스마트폰 MLCC"),
     ("memory", "mem_module", "supply", "모듈용 메모리 칩"),
     ("memory", "nb_odm", "supply", "노트북 DRAM·SSD"),
     ("mem_module", "pc", "supply", "소비자 모듈·SSD"),
@@ -87,6 +96,11 @@ EDGES = [
     ("kr_sub_equip", "pcb", "capex", "PCB 증설"),
     ("kr_stf", "test", "supply", "프로브카드용 세라믹 기판"),
 ]
+
+# 대만 월매출 대신 미국 분기 실적으로 관측하는 칸·수요 → us_quarterly.use_key
+US_OBS = {"ai": ("ai", "하이퍼스케일러 설비투자(MSFT·GOOGL·AMZN·META·ORCL)"),
+          "ai_accel": ("ai_accel", "엔비디아·AMD 매출"),
+          "mobile": ("mobile", "애플 매출")}
 
 NODE_BY_KEY = {n[0]: n for n in NODES}
 DEMAND_KEYS = {d[0] for d in DEMANDS}
@@ -120,8 +134,25 @@ def upstream(key: str) -> list[tuple[str, str]]:
     return [(a, kind) for a, b, kind, _ in EDGES if b == key]
 
 
+def us_signal(conn, key: str) -> dict:
+    """분기 관측 칸(US_OBS) — 최신 분기 YoY, 직전 분기 YoY, 상태(±10%p·부호 전환), 최근 12분기"""
+    from pipeline.tw_links import ACCEL_PP
+    from pipeline.value_chain_lags import node_quarterly
+    s = node_quarterly(conn, key)
+    qs = sorted(s)
+    now, prev = (s[qs[-1]] if qs else None), (s[qs[-2]] if len(qs) > 1 else None)
+    state = None
+    if now is not None and prev is not None:
+        state = ("전환↑" if prev < 0 <= now else "전환↓" if prev >= 0 > now else
+                 "가속" if now - prev >= ACCEL_PP else "둔화" if now - prev <= -ACCEL_PP else "유지")
+    r = lambda v: round(v, 1) if v is not None else None  # noqa: E731
+    return {"yoy_3m": r(now), "yoy_3m_prev": r(prev), "state": state, "period": qs[-1] if qs else None,
+            "series": [{"ym": q, "yoy": round(s[q], 1)} for q in qs[-12:]]}
+
+
 def read_map() -> dict:
-    """화면용 지도 — 노드(대만 회사·한국 종목·이번 달 3개월 YoY와 상태), 엣지(측정 시차·판정), 위약 기준"""
+    """화면용 지도 — 노드(대만 회사·한국 종목·이번 달 3개월 YoY와 상태), 엣지(측정 시차·판정), 위약 기준.
+    분기 관측 칸·수요(US_OBS)는 미국 분기 실적의 YoY와 상태(freq='Q')."""
     from database import get_connection
     from pipeline.tw_links import tw_signal
     from pipeline.tw_universe import COMPANIES
@@ -133,10 +164,18 @@ def read_map() -> dict:
             "SELECT stock_code, corp_name FROM companies WHERE stock_code IN (%s)" % ",".join("?" * len({k for n in NODES for k in n[3]})),
             sorted({k for n in NODES for k in n[3]}))}
         as_of = conn.execute("SELECT MAX(ym) FROM tw_monthly_revenue").fetchone()[0]
+        demands = []
+        for k, n, d in DEMANDS:
+            sig = us_signal(conn, k) if k in US_OBS else {}
+            demands.append({"key": k, "name": n, "description": d, "obs_label": US_OBS[k][1] if k in US_OBS else None,
+                            "yoy_3m": sig.get("yoy_3m"), "yoy_3m_prev": sig.get("yoy_3m_prev"), "state": sig.get("state"),
+                            "period": sig.get("period"), "series": sig.get("series", [])})
         nodes = []
         for key, name, tw, kr, desc in NODES:
-            sig = tw_signal(conn, tw) if tw else {}
-            nodes.append({"key": key, "name": name, "description": desc,
+            us = key in US_OBS
+            sig = us_signal(conn, key) if us else (tw_signal(conn, tw) if tw else {})
+            nodes.append({"key": key, "name": name, "description": desc, "freq": "Q" if us else "M",
+                          "obs_label": US_OBS[key][1] if us else None, "period": sig.get("period") if us else sig.get("ym"),
                           "tw": [{"code": c, "name": names.get(c, c)} for c in tw],
                           "kr": [{"code": c, "name": kr_names.get(c, c)} for c in kr],
                           "yoy_3m": sig.get("yoy_3m"), "yoy_3m_prev": sig.get("yoy_3m_prev"), "state": sig.get("state"),
@@ -144,7 +183,7 @@ def read_map() -> dict:
     finally:
         conn.close()
     measured = measure_all()
-    return {"as_of": as_of, "demands": [{"key": k, "name": n, "description": d} for k, n, d in DEMANDS],
+    return {"as_of": as_of, "demands": demands,
             "nodes": nodes, "edges": measured["edges"], "thresholds": measured["thresholds"]}
 
 

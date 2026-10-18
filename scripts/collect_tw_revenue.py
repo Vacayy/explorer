@@ -16,12 +16,14 @@ from pipeline.ops import run_job  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--backfill", type=int, default=0)
+    ap.add_argument("--require", default="", help="쉼표 구분 코드 — 이 회사들이 빠진 달은 다시 받는다(새 대상 과거분)")
     args = ap.parse_args()
     init_db()
     from pipeline import tw_revenue
 
     def work():
-        r = tw_revenue.backfill(args.backfill) if args.backfill else tw_revenue.fetch_latest()
+        req = {c.strip() for c in args.require.split(",") if c.strip()} or None
+        r = tw_revenue.backfill(args.backfill, require=req) if args.backfill else tw_revenue.fetch_latest()
         print(f"[tw_revenue] {r}", flush=True)
         return r
 

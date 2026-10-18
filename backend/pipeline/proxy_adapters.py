@@ -596,7 +596,7 @@ ADAPTERS: dict[str, Adapter] = {a.kind: a for a in [
             "대분류 시총가중 수익률의 백분위(단기 1M 기본, 장기 12M). 현재와 1·2·3주 전 궤적", _sector_catalog, _sector_describe, _sector_series,
             ("points", 3), "3주 전", span_days=30),
     Adapter("tw", "대만 월매출", "tw:<코드>[:yoy|yoy3m] | tw:layer:<층>[:yoy|yoy3m]",
-            "대만 91개사 월매출(억 TWD)·YoY·3개월 YoY, 층 합계도 가능", _tw_catalog, _tw_describe, _tw_series,
+            "대만 92개사 월매출(억 TWD)·YoY·3개월 YoY, 층 합계도 가능", _tw_catalog, _tw_describe, _tw_series,
             ("points", 1), "전월", span_days=730),
     Adapter("price", "가격", "price:<종목코드>", "국내 종목 일별 종가(원)", _price_catalog, _price_describe, _price_series, ("days", 30), "30일 전",
             pct_change=True),

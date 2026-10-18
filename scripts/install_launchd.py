@@ -98,6 +98,8 @@ JOBS = [
     ("krcompany", [PY, "scripts/collect_kr_company_data.py"], {"Hour": 21, "Minute": 30}),
     # 대만 월매출(docs/specs/tw-revenue.md) — 91개사. 공시가 매달 1~10일에 나눠 올라와 매일 한 번 최신 월을 덮어쓴다. LLM 0
     ("twrevenue", [PY, "scripts/collect_tw_revenue.py"], {"Hour": 11, "Minute": 0}),
+    # 미국 수요 기업 분기 실적(docs/specs/value-chain.md §6) — 하이퍼스케일러 설비투자·엔비디아·AMD·애플, SEC XBRL. LLM 0
+    ("usfund", [PY, "scripts/collect_us_fundamentals.py"], {"Hour": 8, "Minute": 10}),
     # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
@@ -128,6 +130,7 @@ CATCHUP = {
     "callmomentumweekly": {"window_h": 24},
     "krcompany": {},
     "twrevenue": {"record": "tw_revenue"},
+    "usfund": {"record": "us_fundamentals"},
 }
 
 

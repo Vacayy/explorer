@@ -14,7 +14,7 @@ import type { TwRevenueItem } from "@/types"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
 
 /**
- * 대만 월매출 위젯 (docs/specs/tw-revenue.md) — 91개사를 밸류체인 층별로. 층은 URL tw_layer, 회사 상세는 URL tw=<코드>.
+ * 대만 월매출 위젯 (docs/specs/tw-revenue.md) — 92개사를 밸류체인 층별로. 층은 URL tw_layer, 회사 상세는 URL tw=<코드>.
  * 행: 이름·역할 · 최근 24개월 막대 · 최신 월매출(억 TWD) · YoY · 3개월 YoY. 3개월 YoY 높은 순.
  */
 
@@ -167,6 +167,6 @@ function TwLinksBody({ w, h }: WidgetBodyProps) {
 export const TW_WIDGETS: WidgetDef[] = [
   { id: "explore.twLinks", title: "대만 → 한국 연결", description: "대만 월매출이 가속·둔화한 밸류체인과 이어진 한국 종목 · 사업 근거·숫자 근거", section: "explore", group: "대만",
     size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/value-chain", useMeta: useTwLinksMeta, Body: TwLinksBody },
-  { id: "explore.twRevenue", title: "대만 월매출", description: "대만 반도체·IT 하드웨어·해운 91개사 월매출 · YoY · 3개월 YoY (밸류체인 층별)", section: "explore", group: "대만",
+  { id: "explore.twRevenue", title: "대만 월매출", description: "대만 반도체·IT 하드웨어·해운 92개사 월매출 · YoY · 3개월 YoY (밸류체인 층별)", section: "explore", group: "대만",
     size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/value-chain", useMeta: useTwMeta, Body: TwRevenueBody },
 ]

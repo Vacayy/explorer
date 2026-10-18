@@ -1235,6 +1235,12 @@ export interface VcNode {
   key: string; name: string; description: string
   tw: { code: string; name: string }[]; kr: { code: string; name: string }[]
   yoy_3m: number | null; yoy_3m_prev: number | null; state: TwLink["state"]; series: { ym: string; yoy: number }[]
+  freq?: "M" | "Q"; obs_label?: string | null; period?: string | null
+}
+/** 최종 수요 — AI·스마트폰은 미국 분기 실적으로 관측(obs_label), PC는 대리 관측만 */
+export interface VcDemand {
+  key: string; name: string; description: string; obs_label?: string | null
+  yoy_3m?: number | null; yoy_3m_prev?: number | null; state?: TwLink["state"]; period?: string | null; series?: { ym: string; yoy: number }[]
 }
 export interface VcEdge {
   from: string; to: string; kind: "supply" | "capex"; reason: string
@@ -1242,7 +1248,7 @@ export interface VcEdge {
   signals: Record<string, { best_lag: number | null; corr: number | null; n: number; passed: boolean }>
 }
 export interface ValueChainResponse {
-  as_of: string | null; demands: { key: string; name: string; description: string }[]
+  as_of: string | null; demands: VcDemand[]
   nodes: VcNode[]; edges: VcEdge[]; thresholds: Record<string, number>
 }
 export interface PropRow { stock_code: string; name: string; directions: KrConfirm["directions"]; agree_up: number; observed: number }
