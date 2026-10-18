@@ -5,7 +5,8 @@
    처음엔 공급 쪽으로 내려갔는데(top-down), 사용자가 '이 칸으로 들어오는 돈이 어느 수요에서 오나'를 보는 bottom-up을 택했다(D-263)
 2. 칸별 자료 묶음(LLM 0): 사실(read_map)·기대(vc_expectations)·컨퍼런스콜 요약(transcripts.digest)·피드(한국 종목 연결 + 칸 이름)
 3. 칸 메모(sonnet): 입력 해시가 같으면 chain_node_notes에서 재사용 — 재료가 바뀐 칸만 다시 쓴다
-4. 종합(opus + 웹 검색 상시, 사용자 결정): 칸 메모 → 보고서. 출처 없는 문장 금지, 사실과 기대 구분
+4. 분석(opus + 웹 검색 상시): 칸 메모 → 분석 메모(핵심 주장·주장문 목차·섹션별 근거 숫자·반증 조건)
+5. 글쓰기(sonnet): 분석 메모 → 증권사 산업 리포트 문체의 줄글(내러티브+숫자, 불릿은 목록 정보에만). 출처 없는 숫자 금지, 사실과 기대 구분
 LLM 호출 동안 DB 쓰기 트랜잭션을 잡지 않는다(쓰기 순간에만 연결) — LLM 작업이 쓰기 잠금을 오래 쥐어 다른 수집이 실패하던 문제.
 """
 from __future__ import annotations
@@ -18,7 +19,7 @@ import re
 from database import get_connection
 
 DEPTH, MAX_NODES = 4, 12      # 소재·장비 칸에서 최종 수요까지 4단계가 필요할 때가 있다(포토 소재 → 메모리 → 서버 ODM → AI 투자)
-NOTE_MODEL, SYNTH_MODEL = "sonnet", "opus"
+NOTE_MODEL, SYNTH_MODEL, WRITER_MODEL = "sonnet", "opus", "sonnet"
 DOCS_PER_NODE, DOC_CHARS, DOC_DAYS = 6, 700, 30
 WEB_SEARCH_CAP = 5
 
@@ -33,19 +34,43 @@ NOTE_SYSTEM = """너는 반도체·IT 하드웨어 밸류체인 애널리스트�
   **반증 조건** — 이 흐름이 틀렸다고 판단할 관측 1~2개
   **자료 공백** — 판단에 필요한데 없는 것(종합 단계에서 웹으로 보충할 대상)"""
 
-SYNTH_SYSTEM = f"""너는 반도체·IT 하드웨어 밸류체인 수석 애널리스트다. 루트 칸에서 그 물건을 사는 쪽(수요)으로 타고 올라가는 트리의 칸 메모들을 종합해 한국어 보고서를 쓴다(bottom-up).
+# 분석(opus+웹)과 글쓰기(sonnet)를 나눈다 — 한 단계가 둘 다 하면 근거를 빠짐없이 나열하는 불릿 문체가 됐다(사용자 피드백, D-265)
+SYNTH_SYSTEM = f"""너는 반도체·IT 하드웨어 밸류체인 수석 애널리스트다. 지금은 글을 쓰지 않고, 보고서를 설계하는 '분석 메모'를 쓴다.
+재료: 루트 칸에서 그 물건을 사는 쪽(수요)으로 타고 올라가는 트리(bottom-up)와 칸 메모들.
 보고서의 질문: 루트 칸으로 들어오는 돈은 어느 수요에서 오고, 그 수요는 이어지는가. 기대는 어디서 앞서거나 뒤처지는가.
 규칙:
-- 사실과 기대를 문단 안에서도 구분한다(예: '관측: … / 기대: …').
-- 모든 주장에 출처를 단다: 칸 메모의 [D…]·[C…]·[데이터]를 그대로 옮기고, 웹에서 찾은 내용은 [W: URL]로. 출처 없는 문장은 쓰지 않는다.
+- 숫자·주장마다 출처를 단다: 칸 메모의 [D…]·[C…]·[데이터]를 그대로, 웹에서 찾은 것은 [W: URL]. 출처 없는 숫자는 쓰지 않는다.
 - 웹 검색은 칸 메모의 '자료 공백' 중 판단에 중요한 것만, 최대 {WEB_SEARCH_CAP}회. 검색 결과도 사실과 전망을 구분한다.
-- 예측이 아니라 조준이다: 결론은 '어디를 더 봐야 하나'와 반증 조건으로 끝낸다. 매수·매도 권유를 하지 않는다.
-- 목차(마크다운 ##):
-  ## 결론 먼저 — 루트 칸의 돈은 어느 수요에서 가장 많이 오고, 그 수요는 이어지는가, 기대와의 괴리는 어디인가 (3~5불릿)
-  ## 돈이 들어오는 길 — 최종 수요에서 루트 칸까지(추정 증가액이 큰 순)
-  ## 칸별 사실·기대·괴리 — 루트부터 수요 쪽 순서로 칸마다 ### 소제목
-  ## 반증 조건 — 전체 그림이 틀렸다고 볼 관측
-  ## 확인할 것 — 다음 데이터 발표·이벤트"""
+- 사실(관측)과 기대(컨센서스·전망)를 구분해 표시한다.
+- 예측이 아니라 조준이다: 매수·매도 권유를 하지 않는다.
+분석 메모 형식(마크다운):
+## 핵심 주장 — 한 문장(보고서 제목이 될 수준의 판단)
+## 목차 — 4~6개 섹션. 섹션 제목은 주제가 아니라 주장문(예: '메모리의 돈은 AI에서 오지만, 그 끝은 부채다'). 섹션마다:
+  - 논점: 이 섹션이 설득해야 할 것 1~2문장
+  - 근거 숫자: 3~6개(값·기간·출처)
+  - 연결: 앞 섹션에서 이어지는 논리, 다음 섹션으로 넘기는 질문
+## 핵심 수치 표 후보 — 표 1~2개로 정리할 숫자(행·열 제안)
+## 반증 조건과 확인할 이벤트 — 날짜가 있으면 날짜와 함께"""
+
+WRITER_SYSTEM = """너는 증권사 리서치센터의 시니어 애널리스트다. 분석 메모를 받아 한국어 산업 리포트를 쓴다.
+문체(가장 중요):
+- 증권사 산업 리포트처럼 내러티브와 숫자가 엮인 줄글로 쓴다. 평서체('~다').
+- 한 문단 = 하나의 주장 + 그것을 받치는 숫자 2~3개 + 그래서 무엇이 중요한가(시사점). 문단은 3~6문장.
+- 숫자는 문장 안에 녹인다(예: '하이퍼스케일러 5사의 설비투자는 전년 대비 86.5% 늘어 분기 1,935억 달러에 이르렀다').
+- 불릿은 '리스크'와 '확인할 지표·이벤트'처럼 본래 목록인 정보에만 쓴다. 본문 서술을 불릿으로 쪼개지 않는다.
+- 사실과 기대는 문장 표현으로 구분한다('관측된 수출은…', '시장은 …를 기대한다', '컨센서스는 …를 가정한다').
+- 섹션 제목은 분석 메모의 주장문을 다듬어 쓴다.
+구성(마크다운):
+# 제목 — 핵심 주장을 한 줄 헤드라인으로
+## 요약 — 3~4문단 줄글. 결론과 가장 중요한 숫자, 기대와의 괴리, 지켜볼 것
+## (분석 메모 목차의 섹션들) — 각 섹션 2~4문단, 필요하면 핵심 수치 표 1개
+## 리스크와 반증 조건 — 짧은 도입 문장 + 불릿
+## 확인할 지표와 이벤트 — 불릿(날짜가 있으면 날짜)
+규칙:
+- 분석 메모와 칸 메모에 있는 숫자·사실만 쓴다. 새 숫자나 주장을 지어내지 않는다.
+- 출처 표기를 지킨다: 숫자나 주장 뒤에 [D…]·[C…]·[W: URL]·[데이터]를 그대로 옮긴다(문단 끝에 몰아도 된다).
+- 매수·매도 권유를 하지 않는다. 결론은 '어디를 더 봐야 하나'로 맺는다.
+- 분량: 약 5,000~8,000자."""
 
 
 def select_tree(root: str, vmap: dict, flows: list[dict], depth: int = DEPTH, max_nodes: int = MAX_NODES) -> list[dict]:
@@ -205,7 +230,7 @@ def start(root: str) -> tuple[int, bool]:
         if r:
             return r["id"], False
         cur = conn.execute("INSERT INTO chain_reports (root, status, progress, model) VALUES (?, 'running', '트리 고르는 중', ?)",
-                           (root, f"{NOTE_MODEL}+{SYNTH_MODEL}"))
+                           (root, f"{NOTE_MODEL}+{SYNTH_MODEL}+{WRITER_MODEL}"))
         conn.commit()
         return cur.lastrowid, True
     finally:
@@ -240,7 +265,7 @@ def build(rid: int, root: str) -> None:
         if not notes:
             raise RuntimeError("칸 메모를 하나도 쓰지 못함: " + "; ".join(m["error"] for m in missing[:3]))
         refs = _refs(dossiers)
-        _update(rid, progress="종합 보고서 쓰는 중(웹 검색 포함)")
+        _update(rid, progress="분석 메모 쓰는 중(웹 검색 포함)")
         names = {t["key"]: t["name"] for t in tree}
         path = "\n".join(f"{'  ' * t['depth']}- {t['name']}" + (f" (← {names[t['parent']]}의 물건을 산다, 이 연결 추정 증가액 {t['flow_usd'] / 1e9:+.1f}B USD)"
                                                               if t["parent"] else " (루트)") for t in tree)
@@ -251,10 +276,15 @@ def build(rid: int, root: str) -> None:
                   "같은 칸은 트리에 한 번만 나온다 — 여러 파는 칸이 같은 수요 칸에 팔아도 처음 닿은 가지 아래에만 있다.\n\n"
                   f"## 칸 메모\n{body_notes}\n\n"
                   + (f"## 메모가 빠진 칸\n{', '.join(m['name'] for m in missing)}\n\n" if missing else "")
-                  + "위 칸 메모들로 보고서를 써라.")
-        res = run(prompt, system=SYNTH_SYSTEM, model=SYNTH_MODEL, tools=("WebSearch", "WebFetch"), timeout=1200, job="chain_report")
+                  + "위 칸 메모들로 분석 메모를 써라.")
+        analysis = run(prompt, system=SYNTH_SYSTEM, model=SYNTH_MODEL, tools=("WebSearch", "WebFetch"), timeout=1200, job="chain_report").text.strip()
+        _update(rid, analysis=analysis, progress="애널리스트 문체로 보고서 쓰는 중")
+        # 글쓰기 — 분석 메모가 뼈대, 칸 메모는 숫자 확인용(새 숫자를 지어내지 않게 둘 다 준다)
+        wprompt = (f"## 분석 메모\n{analysis}\n\n## 칸 메모(숫자·출처 확인용)\n{body_notes}\n\n"
+                   f"루트 칸: {tree[0]['name']}. 위 분석 메모의 목차와 근거로 산업 리포트를 써라.")
+        body = run(wprompt, system=WRITER_SYSTEM, model=WRITER_MODEL, timeout=900, job="chain_report_writer").text.strip()
         status = "partial" if missing else "done"
-        _update(rid, status=status, progress=None, body=res.text.strip(), refs_json=json.dumps(refs, ensure_ascii=False),
+        _update(rid, status=status, progress=None, body=body, refs_json=json.dumps(refs, ensure_ascii=False),
                 missing_json=json.dumps(missing, ensure_ascii=False), inputs_hash=_hash([notes, tree]), finished_at=_now())
         record_run("chain_report", "partial" if missing else "ok", f"root {root} · 칸 {len(notes)}/{len(tree)}")
     except Exception as e:  # noqa: BLE001
@@ -291,7 +321,7 @@ def read(rid: int) -> dict | None:
     if not r:
         return None
     j = lambda v: json.loads(v) if v else []  # noqa: E731
-    return {**{k: r[k] for k in ("id", "root", "status", "progress", "body", "model", "error", "created_at", "finished_at")},
+    return {**{k: r[k] for k in ("id", "root", "status", "progress", "body", "analysis", "model", "error", "created_at", "finished_at")},
             "tree": j(r["tree_json"]), "refs": j(r["refs_json"]), "missing": j(r["missing_json"])}
 
 
@@ -311,5 +341,5 @@ def preview(root: str) -> dict:
     vmap = read_map()
     flow = compute(vmap)
     tree = select_tree(root, vmap, flow.get("edge_flows", []))
-    return {"root": root, "tree": tree, "calls": {"node_notes_max": len(tree), "synthesis": 1, "web_search_cap": WEB_SEARCH_CAP},
-            "models": {"note": NOTE_MODEL, "synthesis": SYNTH_MODEL}}
+    return {"root": root, "tree": tree, "calls": {"node_notes_max": len(tree), "synthesis": 1, "writer": 1, "web_search_cap": WEB_SEARCH_CAP},
+            "models": {"note": NOTE_MODEL, "synthesis": SYNTH_MODEL, "writer": WRITER_MODEL}}

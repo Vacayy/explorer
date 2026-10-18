@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
@@ -54,7 +55,7 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
       </div>
       <p className="text-caption text-muted-foreground">
         지도에서 고른 칸에서 그 물건을 사는 쪽(수요)으로 깊이 4·칸 12까지 타고 올라가며(직접 판로는 모두, 그 위는 추정 증가액이 큰 가지 우선) — 이 칸으로 들어오는 돈이 어느 수요에서 오고 이어지는지를 사실·시장 기대·컨퍼런스콜·피드로 씁니다.
-        {preview.data && ` 칸 메모 ${preview.data.models.note} 최대 ${preview.data.calls.node_notes_max}회(자료가 그대로인 칸은 재사용) + 종합 ${preview.data.models.synthesis} 1회·웹 검색 최대 ${preview.data.calls.web_search_cap}회.`}
+        {preview.data && ` 칸 메모 ${preview.data.models.note} 최대 ${preview.data.calls.node_notes_max}회(자료가 그대로인 칸은 재사용) → 분석 메모 ${preview.data.models.synthesis} 1회(목차·근거 설계, 웹 검색 최대 ${preview.data.calls.web_search_cap}회) → 애널리스트 문체 글쓰기 ${preview.data.models.writer ?? "sonnet"} 1회.`}
         {" "}출처 없는 문장은 쓰지 않고, 사실과 기대를 구분합니다. 버튼을 누를 때만 만듭니다.
       </p>
       {pickedDemand && <p className="text-caption text-muted-foreground">'{pickedDemand}'는 수요 칸이라 더 올라갈 곳이 없어 {rootName} 기준으로 보여 줍니다 — 지도에서 공급 칸을 고르면 그 칸이 루트가 됩니다.</p>}
@@ -85,6 +86,10 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
               {r.missing.length > 0 && <span className="text-destructive">메모 실패로 빠진 칸: {r.missing.map(m => m.name).join(", ")}</span>}
             </div>
             <Markdown>{linkify(r.body ?? "", r.refs)}</Markdown>
+            {r.analysis && <Collapsible className="rounded-lg border border-dashed p-3">
+              <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto px-1 text-caption">분석 메모 보기 — 글쓰기 전 핵심 주장·목차·근거 설계</Button></CollapsibleTrigger>
+              <CollapsibleContent className="pt-2"><Markdown className="text-[13px]">{linkify(r.analysis, r.refs)}</Markdown></CollapsibleContent>
+            </Collapsible>}
             {r.refs.length > 0 && <div className="border-t pt-3">
               <p className="mb-1 text-caption font-medium text-muted-foreground">인용 가능한 자료 {r.refs.length}건</p>
               <ul className="grid gap-x-4 gap-y-0.5 text-caption sm:grid-cols-2">{r.refs.map(x => <li key={x.ref} className="truncate">

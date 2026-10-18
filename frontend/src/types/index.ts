@@ -1317,7 +1317,7 @@ export interface ChainTreeNode { key: string; name: string; parent: string | nul
 export interface ChainPreview { root: string; tree: ChainTreeNode[]; calls: Record<string, number>; models: Record<string, string> }
 export interface ChainRef { ref: string; title?: string | null; url?: string | null; date?: string | null; kind?: string | null }
 export interface ChainReport {
-  id: number; root: string; status: "running" | "done" | "partial" | "error"; progress?: string | null; body?: string | null; model?: string | null
+  id: number; root: string; status: "running" | "done" | "partial" | "error"; progress?: string | null; body?: string | null; analysis?: string | null; model?: string | null
   error?: string | null; created_at?: string | null; finished_at?: string | null; tree: ChainTreeNode[]; refs: ChainRef[]; missing: { key: string; name: string; error: string }[]
 }
 export interface ChainReportItem { id: number; root: string; status: string; created_at?: string | null; finished_at?: string | null }

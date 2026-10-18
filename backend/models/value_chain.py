@@ -339,6 +339,7 @@ class ChainReport(BaseModel):
     status: str                        # running | done | partial | error
     progress: str | None = None
     body: str | None = None
+    analysis: str | None = None        # 분석 메모(핵심 주장·목차·근거) — 글쓰기 단계의 뼈대
     model: str | None = None
     error: str | None = None
     created_at: str | None = None
