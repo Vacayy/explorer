@@ -191,6 +191,10 @@ MARKET = {"cap_debt": [("credit:group:hyperscaler", "하이퍼스케일러 회�
                        ("indicator:risk_hy", "미국 하이일드 스프레드(HY OAS)", 25.0),
                        ("indicator:risk_us10y", "미국 10년 국채 금리", 0.25)]}
 
+# P×Q 분해(§10) — 칸에 맞는 한국 수출 품목. KR_OBS 칸은 그 품목을 그대로 쓴다
+PXQ = {"memory": ["854232", "8542323000", "8542321010", "8542321030"], "mlcc": ["8532240000"], "abf": ["8542900000"],
+       "foundry": ["854231"]}
+
 NODE_BY_KEY = {n[0]: n for n in NODES}
 DEMAND_KEYS = {d[0] for d in DEMANDS}
 
@@ -237,6 +241,17 @@ def us_signal(conn, key: str) -> dict:
     r = lambda v: round(v, 1) if v is not None else None  # noqa: E731
     return {"yoy_3m": r(now), "yoy_3m_prev": r(prev), "state": state, "period": qs[-1] if qs else None,
             "series": [{"ym": q, "yoy": round(s[q], 1)} for q in qs[-12:]]}
+
+
+def pxq_one(conn, hs: str) -> dict | None:
+    """품목 P×Q 분해 + 품목명"""
+    from pipeline.pxq import decompose
+    d = decompose(conn, hs)
+    if not d:
+        return None
+    row = conn.execute("SELECT item_name FROM trade_follow WHERE hs_code=?", (hs,)).fetchone()
+    d.pop("history", None)
+    return {**d, "item": row["item_name"] if row else hs}
 
 
 def market_signals(conn, key: str) -> list[dict]:
@@ -323,6 +338,7 @@ def read_map() -> dict:
                           "source": "us" if us else "kr_trade" if kro else "tw" if tw else None,
                           "us_members": members(conn, US_OBS[key][0]) if us else [],
                           "aux": aux_signals(conn, key), "market": market_signals(conn, key),
+                          "pxq": [d for hs in PXQ.get(key, KR_OBS.get(key, ([], ""))[0]) if (d := pxq_one(conn, hs))],
                           "obs_label": US_OBS[key][1] if us else KR_OBS[key][1] if kro else None,
                           "period": sig.get("period") if (us or kro) else sig.get("ym"),
                           "tw": [{"code": c, "name": names.get(c, c)} for c in tw],

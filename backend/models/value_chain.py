@@ -44,6 +44,17 @@ class VcMarket(BaseModel):
     state: str | None = None       # 긴축 | 완화 | 유지
 
 
+class VcPxq(BaseModel):
+    hs: str
+    item: str
+    period: str
+    value_yoy: float               # 3개월 금액 YoY(%)
+    qty_yoy: float                 # 물량(kg)
+    price_yoy: float               # 단가·구성(금액/kg)
+    price_share: int | None        # 금액 변화 중 단가 기여(로그, %)
+    verdict: str                   # 가격 주도 | 물량 주도 | 동반 | 역행 | 정체
+
+
 class VcNode(BaseModel):
     key: str
     name: str
@@ -55,6 +66,7 @@ class VcNode(BaseModel):
     us_members: list[UsMember] = []
     aux: list[VcAux] = []          # 교차 확인 지표(월간 외부 시계열)
     market: list[VcMarket] = []    # 신용·금리 여건(자본 조달 칸)
+    pxq: list[VcPxq] = []          # 한국 수출 P×Q 분해
     obs_label: str | None = None   # 분기 관측 원천 설명
     period: str | None = None      # 최신 관측 월·분기
     yoy_3m: float | None

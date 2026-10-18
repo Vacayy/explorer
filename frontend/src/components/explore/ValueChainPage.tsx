@@ -14,7 +14,7 @@ import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { useKrConfirm, usePropagation, useValueChain } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatNumber, formatPercent, formatUsd } from "@/utils/format"
-import type { PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode } from "@/types"
+import type { PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
 
 /**
  * 탐색 › 밸류체인 (docs/specs/value-chain.md §5) — 최종 수요 → 대만 공급 단계 → 한국 종목.
@@ -269,6 +269,7 @@ function NodePanel({ node, edges, nodes, demands, onSelect }: { node?: VcNode; e
       {!!node.us_members?.length && <UsMembers members={node.us_members} />}
       {!!node.aux?.length && <AuxList aux={node.aux} />}
       {!!node.market?.length && <MarketList market={node.market} />}
+      {!!node.pxq?.length && <PxqList pxq={node.pxq} />}
     </div>
     <div className="space-y-2">
       {node.tw.length > 0 && <div><p className="text-caption font-medium text-muted-foreground">대만 구성</p><p className="text-caption">{node.tw.map(t => t.name).join(" · ")}</p></div>}
@@ -348,6 +349,26 @@ function MarketList({ market }: { market: VcMarket[] }) {
           </span>
           {m.state && <Badge variant="outline" className={cn("shrink-0 px-1 text-[10px]", tone(m.state))}>{m.state}</Badge>}
         </>}
+      </li>)}
+    </ul>
+  </div>
+}
+
+/** P×Q 분해 — 금액 변화가 단가·구성에서 왔나, 물량에서 왔나(한국 수출, kg 기준) */
+function PxqList({ pxq }: { pxq: VcPxq[] }) {
+  const pct = (v: number) => formatPercent(v)
+  return <div className="mt-3">
+    <p className="text-caption font-medium text-muted-foreground" title="3개월 합 기준 YoY. 칩은 kg이 물량을 대표하지 못해 단가에 제품 구성 변화가 섞인다">P×Q 분해 — 한국 수출(3개월 YoY)</p>
+    <ul className="divide-y text-caption">
+      {pxq.map(d => <li key={d.hs} className="space-y-0.5 py-1">
+        <div className="flex items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate" title={d.hs}>{d.item}</span>
+          <Badge variant="outline" className="shrink-0 px-1 text-[10px]">{d.verdict}</Badge>
+        </div>
+        <div className="flex flex-wrap gap-x-3 tabular-nums text-muted-foreground">
+          <span>금액 {pct(d.value_yoy)}</span><span>단가·구성 {pct(d.price_yoy)}</span><span>물량 {pct(d.qty_yoy)}</span>
+          {d.price_share != null && <span>단가 기여 {d.price_share}%</span>}<span className="ml-auto">{d.period}</span>
+        </div>
       </li>)}
     </ul>
   </div>
