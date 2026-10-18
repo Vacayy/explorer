@@ -15,7 +15,8 @@ import { MetricHint } from "@/components/shared/MetricHint"
 import { Info } from "lucide-react"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { MAG_HINT, ValueChainSankey, gravity, streamWidth, type SankeyLane } from "@/components/explore/ValueChainSankey"
-import { useKrConfirm, usePropagation, useValueChain, useValueChainFlow } from "@/hooks/useTwRevenue"
+import { useKrConfirm, usePropagation, useValueChain, useValueChainExpectations, useValueChainFlow } from "@/hooks/useTwRevenue"
+import { ExpGapCard, ExpectationPanel } from "@/components/explore/ValueChainExpectations"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatNumber, formatPercent, formatRatio, formatSigma, formatUsd } from "@/utils/format"
 import type { CustomerConcentration, FlowResponse, FlowRow, PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
@@ -154,6 +155,7 @@ export default function ValueChainPage() {
   const prop = usePropagation()
   const confirms = useKrConfirm()
   const flow = useValueChainFlow()
+  const exp = useValueChainExpectations()
   const [params, setParams] = useSearchParams()
   const { resolvedTheme } = useTheme()
   const selected = params.get("node")
@@ -216,6 +218,11 @@ export default function ValueChainPage() {
       {flow.isLoading ? <Skeleton className="h-48 w-full rounded-xl" />
         : flow.isError ? <ErrorState message="흐름 분석을 불러오지 못했습니다." onRetry={() => void flow.refetch()} />
         : flow.data && <FlowCard data={flow.data} onSelect={select} />}
+      {/* 사실 vs 기대 — 관측과 애널리스트 컨센서스의 차이(§15) */}
+      {exp.isLoading ? <Skeleton className="h-36 w-full rounded-xl" />
+        : exp.isError ? <ErrorState message="시장 기대치를 불러오지 못했습니다." onRetry={() => void exp.refetch()} />
+        : exp.data?.as_of ? <ExpGapCard data={exp.data} onSelect={select} />
+        : <EmptyState message="시장 기대치 스냅샷이 아직 없습니다 — 매일 08:10 수집 뒤 채워집니다." />}
       {/* 번지는 중 */}
       {prop.isLoading ? <Skeleton className="h-40 w-full rounded-xl" />
         : prop.isError ? <ErrorState message="전파 판정을 불러오지 못했습니다." onRetry={() => void prop.refetch()} />
@@ -276,6 +283,7 @@ export default function ValueChainPage() {
                 </div>}
               {demand ? <DemandPanel demand={demand} edges={vc.data.edges} nodes={vc.data.nodes} onSelect={select} />
                 : <NodePanel node={node} edges={vc.data.edges} nodes={vc.data.nodes} demands={vc.data.demands} onSelect={select} />}
+              {selected && exp.data?.as_of && <ExpectationPanel exp={exp.data.nodes[selected]} asOf={exp.data.as_of} />}
             </div>}
         </CardContent>
       </Card>

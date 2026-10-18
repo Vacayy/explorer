@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query
 
 from models.tw import KrConfirm, TwLinksResponse, TwRevenueResponse
-from models.value_chain import FlowResponse, PropagationResponse, ValueChainResponse
+from models.value_chain import ExpectationsResponse, FlowResponse, PropagationResponse, ValueChainResponse
 
 router = APIRouter(prefix="/api/spine/tw", tags=["spine"])
 
@@ -48,3 +48,10 @@ def value_chain_flow():
     """돈의 흐름·다음 스포트라이트 가설 (docs/specs/value-chain.md §11) — 예측이 아니라 반증 조건이 붙은 가설"""
     from pipeline.value_chain_flow import compute
     return compute()
+
+
+@router.get("/expectations", response_model=ExpectationsResponse)
+def value_chain_expectations():
+    """시장 기대치 (docs/specs/value-chain.md §15) — 칸 구성 회사 컨센서스·리서치 전망, 관측과 나란히(섞지 않음)"""
+    from pipeline.vc_expectations import with_observed
+    return with_observed()

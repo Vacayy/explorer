@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from database import init_db  # noqa: E402
 from pipeline.ops import run_job  # noqa: E402
 
-SOURCES = ["ext_wsts", "ext_census_dc", "ext_seaj", "ext_tw_orders", "ext_nbs", "ext_kr_country", "ext_jp_trade", "ext_gacc", "ext_comtrade"]
+SOURCES = ["ext_wsts", "ext_census_dc", "ext_seaj", "ext_tw_orders", "ext_nbs", "ext_kr_country", "ext_jp_trade", "ext_gacc", "ext_comtrade", "exp_research"]
 
 
 def main() -> int:

@@ -1296,3 +1296,18 @@ export interface FlowResponse {
   flows: FlowRow[]; spotlight: FlowRow[]; doubted: FlowRow[]; fading: FlowRow[]; needs_check?: FlowRow[]; nodes: FlowRow[]
   demands?: FlowDemand[]; edge_flows?: EdgeFlow[]
 }
+
+/** 시장 기대치(§15) — 사실(관측)과 분리. rev_growth는 소수(0.44 = +44%), 칸 합계·개정·차이는 % */
+export interface ExpPeriod { rev_avg?: number | null; rev_growth?: number | null; analysts?: number | null; eps_avg?: number | null; eps_30d?: number | null; eps_90d?: number | null }
+export interface ExpMember { symbol: string; name: string; currency?: string | null; snap_date: string; periods: Record<string, ExpPeriod>; rev_revision_30d?: number | null }
+export interface ExpClaim {
+  source: string; source_org?: string | null; published_at?: string | null; subject?: string | null; metric: string; target_period?: string | null
+  value_low?: number | null; value_high?: number | null; unit?: string | null; direction?: string | null; quote?: string | null; url?: string | null
+}
+export interface ExpNode {
+  name?: string | null; members: ExpMember[]; coverage: string; exp_0q?: number | null; exp_0y?: number | null; exp_1y?: number | null
+  eps_rev_30d?: number | null; eps_rev_90d?: number | null; rev_rev_30d?: number | null; claims: ExpClaim[]; note?: string | null
+  observed?: number | null; observed_period?: string | null; obs_kind?: string | null; gap_pp?: number | null
+}
+export interface ExpGapRow { key: string; name: string; observed: number; exp_0q: number; gap_pp: number; eps_rev_30d?: number | null; eps_rev_90d?: number | null }
+export interface ExpectationsResponse { as_of: string | null; revision_base?: string | null; gap_pp: number; nodes: Record<string, ExpNode>; ahead: ExpGapRow[]; behind: ExpGapRow[] }

@@ -236,3 +236,74 @@ class FlowResponse(BaseModel):
     demands: list[FlowDemand] = []
     edge_flows: list[EdgeFlow] = []
     nodes: list[FlowRow]
+
+
+
+class ExpPeriod(BaseModel):
+    rev_avg: float | None = None
+    rev_growth: float | None = None    # 소수(0.44 = +44%)
+    analysts: int | None = None
+    eps_avg: float | None = None
+    eps_30d: float | None = None
+    eps_90d: float | None = None
+
+
+class ExpMember(BaseModel):
+    symbol: str
+    name: str
+    currency: str | None = None
+    snap_date: str
+    periods: dict[str, ExpPeriod]      # 0q · +1q · 0y · +1y
+    rev_revision_30d: float | None = None
+
+
+class ExpClaim(BaseModel):
+    source: str
+    source_org: str | None = None
+    published_at: str | None = None
+    subject: str | None = None
+    metric: str
+    target_period: str | None = None
+    value_low: float | None = None
+    value_high: float | None = None
+    unit: str | None = None
+    direction: str | None = None
+    quote: str | None = None
+    url: str | None = None
+
+
+class ExpNode(BaseModel):
+    name: str | None = None
+    members: list[ExpMember] = []
+    coverage: str
+    exp_0q: float | None = None        # 칸 기대 성장률(%) — 이번 분기
+    exp_0y: float | None = None        # 올해
+    exp_1y: float | None = None        # 내년
+    eps_rev_30d: float | None = None   # 올해 EPS 추정 개정 중앙값(%)
+    eps_rev_90d: float | None = None
+    rev_rev_30d: float | None = None   # 올해 매출 추정 30일 개정 평균(%) — 스냅샷이 28일 이상 쌓인 뒤
+    claims: list[ExpClaim] = []
+    note: str | None = None            # 기대 구성 회사를 바꾼 이유 등
+    observed: float | None = None      # 칸 관측(최근 3개월·최신 분기 YoY)
+    observed_period: str | None = None
+    obs_kind: str | None = None
+    gap_pp: float | None = None        # 관측 − 기대(이번 분기), %p
+
+
+class ExpGapRow(BaseModel):
+    key: str
+    name: str
+    observed: float
+    exp_0q: float
+    gap_pp: float
+    eps_rev_30d: float | None = None
+    eps_rev_90d: float | None = None
+
+
+class ExpectationsResponse(BaseModel):
+    as_of: str | None
+    revision_base: str | None = None
+    gap_pp: float = 15.0
+    nodes: dict[str, ExpNode]
+    ahead: list[ExpGapRow] = []        # 관측이 기대보다 크게 높은 칸
+    behind: list[ExpGapRow] = []       # 기대가 관측보다 크게 높은 칸

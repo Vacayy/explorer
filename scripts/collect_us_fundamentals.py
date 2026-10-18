@@ -1,5 +1,5 @@
 """미국 수요 기업 분기 실적 수집 (docs/specs/value-chain.md §6) — SEC XBRL companyfacts, LLM 0.
-고객 집중도(us_customers, §12)는 주 1회 함께 돈다.
+고객 집중도(us_customers, §12)는 주 1회, 시장 기대치 스냅샷(vc_expectations, §15)은 매일 함께 돈다.
 
   python scripts/collect_us_fundamentals.py   # launchd usfund 매일 08:10 (실적 발표 뒤 10-Q가 올라오면 반영)
 """
@@ -38,6 +38,16 @@ def main() -> int:
             return rc
 
         run_job("us_customers", work_customers)
+
+    # 시장 기대치 — 칸 구성 회사 애널리스트 컨센서스 일별 스냅샷(§15). 매출 추정 개정은 스냅샷끼리 비교하므로 매일 쌓는다
+    from pipeline.vc_expectations import collect as collect_expectations
+
+    def work_expectations():
+        re_ = collect_expectations()
+        print(f"[vc_expectations] stored={re_['stored']} missing={re_['missing']} status={re_['status']}", flush=True)
+        return re_
+
+    run_job("vc_expectations", work_expectations)
     return 1 if isinstance(r, dict) and r.get("status") == "error" else 0
 
 

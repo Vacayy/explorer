@@ -1156,6 +1156,45 @@ def init_db():
         PRIMARY KEY (ticker, q, metric)
     );
 
+    -- 시장 기대치 — 칸 구성 회사 애널리스트 컨센서스 일별 스냅샷 (docs/specs/value-chain.md §15, pipeline/vc_expectations)
+    -- period: 0q(이번 분기)·+1q·0y(올해)·+1y. 매출 추정 개정은 스냅샷끼리 비교해 우리가 계산한다(yfinance는 EPS 추이만 준다)
+    CREATE TABLE IF NOT EXISTS consensus_snapshots (
+        ticker      TEXT NOT NULL,          -- yfinance 심볼(NVDA·2330.TW·6223.TWO·000660.KS)
+        snap_date   TEXT NOT NULL,          -- YYYY-MM-DD
+        period      TEXT NOT NULL,
+        rev_avg     REAL,                   -- 매출 추정 평균(현지 통화)
+        rev_growth  REAL,                   -- 전년 같은 기간 대비 추정 성장률(소수, 0.44 = +44%)
+        analysts    INTEGER,
+        eps_avg     REAL,
+        eps_30d     REAL,                   -- 30일 전 EPS 추정
+        eps_90d     REAL,
+        currency    TEXT,
+        PRIMARY KEY (ticker, snap_date, period)
+    );
+
+    -- 시장 기대치 — 전망 원장(§15). 리서치 기관 공개 전망(TrendForce·WSTS)과 피드의 증권사 전망을 같은 형식으로.
+    -- 사실(관측)과 섞지 않는다: 화면은 관측 옆에 '기대'로 따로 보인다
+    CREATE TABLE IF NOT EXISTS expectation_claims (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        source        TEXT NOT NULL,        -- trendforce | wsts | feed
+        source_org    TEXT,                 -- TrendForce · WSTS · JP Morgan …
+        published_at  TEXT,
+        node_key      TEXT NOT NULL DEFAULT '',   -- 밸류체인 칸(value_chain NODES/DEMANDS), 못 정하면 ''
+        subject       TEXT NOT NULL DEFAULT '',   -- 원문 대상(예: 'DRAM contract price', 'Memory market')
+        metric        TEXT NOT NULL,        -- price_qoq | price_yoy | market_yoy | shipments_yoy | revenue_yoy …
+        target_period TEXT NOT NULL DEFAULT '',   -- 2026Q4 · 2027 · 2026H2
+        value_low     REAL,                 -- 범위 하단(%, 단위는 unit)
+        value_high    REAL,
+        unit          TEXT,                 -- '%' | 'USD bn' …
+        direction     TEXT,                 -- up | down | flat
+        quote         TEXT,                 -- 원문 근거 문장
+        url           TEXT,
+        doc_id        INTEGER,              -- raw_documents.id(피드 추출일 때)
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        -- 빈 값은 NULL이 아니라 '' — SQLite는 NULL끼리를 다른 값으로 봐 매일 재수집 때 중복이 쌓인다
+        UNIQUE (source, url, node_key, subject, metric, target_period)
+    );
+
     -- 미국 기업 고객 집중도 (pipeline/us_customers) — 10-K/10-Q XBRL 인스턴스의 ConcentrationRiskPercentage1 × srt:MajorCustomersAxis.
     -- customer = 멤버 로컬명(익명 'CustomerA' 등, 공시마다 같은 글자가 같은 회사라는 보장 없음), period_kind = Q|FY|YTD|I(시점)
     CREATE TABLE IF NOT EXISTS us_customer_concentration (
