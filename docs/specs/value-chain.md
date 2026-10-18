@@ -345,7 +345,7 @@
 | `ext_nbs` | 중국 국가통계국 신 플랫폼 JSON(키 없음) | `nbs:ic_output`·`smartphone_output`·`mobile_output`·`pc_output`·`basestation_output` | 2018~(스마트폰 2023~). 1·2월은 합산 발표라 반씩 나눈다(교차 확인 툴팁에 표시). 카테고리는 이름으로 찾고, 못 찾으면 알려진 ID → 그래도 없으면 **오류로 크게 실패**(사용자 결정) |
 | `ext_gacc` | 중국 세관 영문 월보 표 (14)(키 없음) | `gacc:ic_import_usd`·`ic_import_qty`·`semi_equip_import_usd`·`ic_equip_import_usd` | 2018~, 약 18일 지연. 원천에 없는 달(2020-01·02, 2024-09·10)은 채우지 않는다 |
 | `ext_jp_trade` | 일본 재무성 무역통계 e-Stat CSV(키 없음) | `jp_exp:8486:ALL·CN·TW·KR·US`·`3707:ALL`·`3818:ALL`·`903082:ALL`·`903141:ALL` | 2019~, 천 엔. 확보(확정) 발표 때 갱신. 연도 목록 페이지를 긁어 파일 ID를 찾는다 |
-| `ext_comtrade` | UN Comtrade 무키 미리보기(수출국 신고 미러) | `comtrade:JP·NL·US:8486:CN` | 2019~, 1.5~2.5개월 지연, 호출 간격·일일 한도 있음. 중국 자신의 신고는 2024-12에 끊겨 쓰지 않는다 |
+| `ext_comtrade` | UN Comtrade 무키 미리보기(수출국 신고 미러) | `comtrade:JP·NL·US:8486:CN` | 2019~, 1.5~2.5개월 지연, 호출 간격·할당량 있음(약 200회에서 403, 약 1시간 뒤 회복 → 즉시 멈추고 다음 실행이 못 받은 달을 이어받는다). 2026-10-18 기준 미국 신고분은 백필 중. 중국 자신의 신고는 2024-12에 끊겨 쓰지 않는다 |
 | `ext_kr_country` | 관세청 품목별 국가별 수출입실적(같은 data.go.kr 키, 활용 신청 완료) | `kr_exp:8486x:CN`(평판디스플레이 장비 제외)·`8542:CN·HK`·`854232:CN·HK` | 2019~. 한국 메모리 수출 중 중국+홍콩 비중 2019년 79% → 2026년 56% |
 | `disco_ir` | 디스코 IR 분기 엑셀(키 없음) | `us_quarterly` DISCO revenue | 2000~. 수주는 2022-03에 공시가 중단돼 쓰지 않는다. `usfund` 잡에서 함께 돈다 |
 
