@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
-import { ReactFlow, Background, Controls, Handle, Position, MarkerType, type Edge, type Node, type NodeProps } from "@xyflow/react"
+import { ReactFlow, Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, Position, MarkerType, getBezierPath, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,8 @@ import { SparkLine } from "@/components/shared/Spark"
 import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { MetricHint } from "@/components/shared/MetricHint"
 import { Info } from "lucide-react"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { MAG_HINT, ValueChainSankey, gravity, streamWidth, type SankeyLane } from "@/components/explore/ValueChainSankey"
 import { useKrConfirm, usePropagation, useValueChain, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatNumber, formatPercent, formatRatio, formatSigma, formatUsd } from "@/utils/format"
@@ -25,7 +27,7 @@ import type { CustomerConcentration, FlowResponse, FlowRow, PropRow, UsMember, V
  * 선택한 노드는 URL node. 예측력은 '대만은 매달, 한국은 분기'라는 공시 시차에서 나온다(D-251).
  */
 
-const NODE_W = 188
+const NODE_W = 200
 const NODE_H = 66
 const STATE_CLS: Record<string, string> = {
   "가속": "border-up/60 bg-up/5", "전환↑": "border-up/60 bg-up/5",
@@ -34,16 +36,40 @@ const STATE_CLS: Record<string, string> = {
 const DIR: Record<string, string> = { up: "↑", down: "↓", flat: "→" }
 const lagText = (lag: number | null | undefined) => lag == null ? "" : lag === 0 ? "동행" : lag > 0 ? `공급 ${lag}개월 앞섬` : `수요 ${-lag}개월 앞섬`
 
-type ChainNodeData = { node?: VcNode; demand?: VcDemand; selected: boolean }
+type ChainNodeData = { node?: VcNode; demand?: VcDemand; selected: boolean; mag?: { level: number | null; dia: number | null } }
+
+/** 칸의 중력(§14) — 원 지름 = 규모(로그), 아래 금액. 규모를 모르면 점선 빈 원 */
+function Gravity({ mag }: { mag?: ChainNodeData["mag"] }) {
+  if (!mag) return null
+  return <div className="flex w-9 shrink-0 flex-col items-center justify-center gap-0.5" title={mag.level ? `최근 3개월(분기 칸은 최신 분기) 규모 ${formatUsd(mag.level)}` : "규모 없음 — 매출·수출액 원천이 없거나 이력이 부족"}>
+    {mag.dia ? <span className="rounded-full bg-chart-blue/70" style={{ width: mag.dia, height: mag.dia }} />
+      : <span className="size-3 rounded-full border border-dashed border-muted-foreground" />}
+    <span className="text-[9px] leading-none tabular-nums text-muted-foreground">{mag.level ? formatUsd(mag.level) : "-"}</span>
+  </div>
+}
+
+/** 물줄기 선 — 굵기 = 추정 증가액, 마우스를 올리면 금액·추정 근거 */
+function StreamEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, label, data }: EdgeProps) {
+  const [path, lx, ly] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
+  return <>
+    <g><title>{(data as { tip?: string } | undefined)?.tip}</title><BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} interactionWidth={18} /></g>
+    {label && <EdgeLabelRenderer>
+      <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)` }} className="nodrag nopan rounded bg-background/90 px-1 text-[10px] tabular-nums text-foreground">{label}</div>
+    </EdgeLabelRenderer>}
+  </>
+}
+const edgeTypes = { stream: StreamEdge }
 const stateTone = (s?: string | null) => !s ? "text-muted-foreground" : s === "가속" || s === "전환↑" ? "text-up" : s === "유지" ? "text-muted-foreground" : "text-down"
 
 function ChainNode({ data }: NodeProps) {
   const d = data as unknown as ChainNodeData
   // 관측이 있는 수요는 실선(굵게), 관측이 없는 수요(PC)만 점선
-  if (d.demand) return <div className={cn("w-[188px] rounded-md border-2 bg-card px-2 py-1.5 text-xs", d.demand.obs_label ? "" : "border-dashed",
+  if (d.demand) return <div className={cn("flex w-[200px] gap-1.5 rounded-md border-2 bg-card px-2 py-1.5 text-xs", d.demand.obs_label ? "" : "border-dashed",
     d.demand.state ? STATE_CLS[d.demand.state] : "", d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
     <Handle type="target" position={Position.Left} className="!opacity-0" />
     <Handle type="source" position={Position.Right} className="!opacity-0" />
+    <Gravity mag={d.mag} />
+    <div className="min-w-0 flex-1">
     <div className="flex items-center gap-1">
       <span className="truncate font-semibold">{d.demand.name}</span>
       {d.demand.state && <span className={cn("ml-auto shrink-0 text-[10px]", stateTone(d.demand.state))}>{d.demand.state}</span>}
@@ -51,15 +77,18 @@ function ChainNode({ data }: NodeProps) {
     {d.demand.obs_label
       ? <div className="truncate text-[10px] tabular-nums text-muted-foreground" title={d.demand.obs_label}>{d.demand.freq === "M" ? "3M" : "분기"} YoY {formatPercent(d.demand.yoy_3m)} · {d.demand.obs_label}</div>
       : <div className="truncate text-[10px] text-muted-foreground">{d.demand.description} · 대만 브랜드로 대리 관측</div>}
+    </div>
   </div>
   const n = d.node!
   const quarterly = n.freq === "Q"
   const krTrade = n.source === "kr_trade"
   const krOnly = !n.source           // 정말 관측이 없는 칸만 점선
-  return <div className={cn("w-[188px] rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm", n.state ? STATE_CLS[n.state] : "", krOnly && "border-dashed",
+  return <div className={cn("flex w-[200px] gap-1.5 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm", n.state ? STATE_CLS[n.state] : "", krOnly && "border-dashed",
     d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
     <Handle type="target" position={Position.Left} className="!opacity-0" />
     <Handle type="source" position={Position.Right} className="!opacity-0" />
+    <Gravity mag={d.mag} />
+    <div className="min-w-0 flex-1">
     <div className="flex items-center gap-1">
       <span className="truncate font-semibold">{n.name}</span>
       {n.state && <span className={cn("ml-auto shrink-0 text-[10px]", stateTone(n.state))}>{n.state}</span>}
@@ -69,13 +98,14 @@ function ChainNode({ data }: NodeProps) {
         : n.source === "ext" ? `3M YoY ${formatPercent(n.yoy_3m)} · 무역통계` : `3M YoY ${formatPercent(n.yoy_3m)}`}
     </div>
     {n.kr.length > 0 && <div className="truncate text-[10px] font-medium text-primary">한국 {n.kr.map(k => k.name).join("·")}</div>}
+    </div>
   </div>
 }
 const nodeTypes = { chain: ChainNode, lane: LaneBand, tier: TierHeader }
 
 /* 스윔레인 격자 — 열 = 단계(왼쪽 수요 → 오른쪽 상류), 행 = 수요처 레인. 같은 칸(단계·레인)에 여럿이면 세로로 쌓는다 */
 const LANE_LABEL_W = 112
-const COL_W = 232
+const COL_W = 244
 const CELL_GAP = 12
 const LANE_PAD = 34
 
@@ -117,12 +147,7 @@ function swimlane(vc: ValueChainResponse) {
   return { pos, bands, width: x, tierX, subCols }
 }
 
-const EDGE_STYLE: Record<VcEdge["verdict"], { stroke: string; width: number; dash?: string; opacity: number }> = {
-  "확인": { stroke: "var(--foreground)", width: 2.2, opacity: 0.85 },
-  "부분": { stroke: "var(--foreground)", width: 1.4, opacity: 0.6 },
-  "미확인": { stroke: "var(--muted-foreground)", width: 1, dash: "4 4", opacity: 0.45 },
-  "관측 불가": { stroke: "var(--muted-foreground)", width: 1, dash: "1 4", opacity: 0.4 },
-}
+const LABEL_TOP = 8   // 금액 라벨을 다는 굵은 선 수
 
 export default function ValueChainPage() {
   const vc = useValueChain()
@@ -132,32 +157,54 @@ export default function ValueChainPage() {
   const [params, setParams] = useSearchParams()
   const { resolvedTheme } = useTheme()
   const selected = params.get("node")
+  const view = params.get("view") === "sankey" ? "sankey" : "grid"
+  const lane = (["ai", "pc", "mobile", "china"].includes(params.get("lane") ?? "") ? params.get("lane") : "all") as SankeyLane
+  const setParam = (k: string, v: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (v) n.set(k, v); else n.delete(k); return n }, { replace: true, preventScrollReset: true })
+  // 금액 규모(§14) — 칸 규모·선별 추정 증가액. 흐름 API가 실패해도 지도는 그대로 그린다
+  const mag = useMemo(() => {
+    const level: Record<string, number | null> = {}
+    flow.data?.nodes.forEach(r => { level[r.key] = r.level_usd ?? null })
+    flow.data?.demands?.forEach(d => { level[d.key] = d.level_usd })
+    const flows = flow.data?.edge_flows ?? []
+    const known = Object.values(level).filter((v): v is number => !!v && v > 0)
+    return { level, flows, byEdge: Object.fromEntries(flows.map(f => [`${f.from}-${f.to}`, f])),
+      min: known.length ? Math.min(...known) : 0, max: known.length ? Math.max(...known) : 0,
+      maxFlow: Math.max(0, ...flows.map(f => f.flow_usd ?? 0)), hasAny: known.length > 0 }
+  }, [flow.data])
   const select = (k: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (k) n.set("node", k); else n.delete("node"); return n }, { replace: true, preventScrollReset: true })
 
   const graph = useMemo(() => {
     if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[] }
     const { pos, bands, width, tierX, subCols } = swimlane(vc.data)
+    const magOf = (k: string) => flow.data ? { level: mag.level[k] ?? null, dia: gravity(mag.level[k], mag.min, mag.max) } : undefined
     const nodes: Node[] = [
       ...bands.map((b, i) => ({ id: `lane-${b.key}`, type: "lane", position: { x: 0, y: b.y }, draggable: false, selectable: false, zIndex: -1,
         data: { label: b.label, width, height: b.height, shade: i % 2 === 1 } })),
       ...vc.data.tiers.map(t => ({ id: `tier-${t.key}`, type: "tier", position: { x: tierX[t.key], y: -30 }, draggable: false, selectable: false,
         data: { label: t.label, width: subCols[t.key] * COL_W - (COL_W - NODE_W) } })),
-      ...vc.data.nodes.filter(n => pos[n.key]).map(n => ({ id: n.key, type: "chain", position: pos[n.key], data: { node: n, selected: n.key === selected } })),
-      ...vc.data.demands.filter(d => pos[d.key]).map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: d.key === selected } })),
+      ...vc.data.nodes.filter(n => pos[n.key]).map(n => ({ id: n.key, type: "chain", position: pos[n.key], data: { node: n, selected: n.key === selected, mag: magOf(n.key) } })),
+      ...vc.data.demands.filter(d => pos[d.key]).map(d => ({ id: d.key, type: "chain", position: pos[d.key], data: { demand: d, selected: d.key === selected, mag: magOf(d.key) } })),
     ]
+    const top = new Set([...mag.flows].filter(f => (f.flow_usd ?? 0) > 0).sort((a, b) => b.flow_usd! - a.flow_usd!).slice(0, LABEL_TOP).map(f => `${f.from}-${f.to}`))
+    const name = (k: string) => vc.data!.nodes.find(n => n.key === k)?.name ?? vc.data!.demands.find(d => d.key === k)?.name ?? k
     const edges: Edge[] = vc.data.edges.map(e => {
-      const s = EDGE_STYLE[e.verdict]
-      const show = (e.verdict === "확인" || e.verdict === "부분") && e.lag != null
+      const id = `${e.from}-${e.to}`
+      const f = mag.byEdge[id]?.flow_usd
+      const up = (f ?? 0) > 0
+      const lag = (e.verdict === "확인" || e.verdict === "부분") && e.lag != null ? (e.lag === 0 ? "동행" : `${e.lag! > 0 ? "+" : "−"}${Math.abs(e.lag!)}M${e.lag_consistent ? "" : "?"}`) : null
+      const amt = top.has(id) ? `+${formatUsd(f!)}` : null
+      const near = e.from === selected || e.to === selected
       return {
-        id: `${e.from}-${e.to}`, source: e.to, target: e.from,
-        label: show ? (e.lag === 0 ? "동행" : `${e.lag! > 0 ? "+" : "−"}${Math.abs(e.lag!)}M${e.lag_consistent ? "" : "?"}`) : undefined,
-        labelStyle: { fontSize: 10 }, labelBgPadding: [3, 1] as [number, number],
-        style: { stroke: s.stroke, strokeWidth: s.width, strokeDasharray: s.dash, opacity: e.from === selected || e.to === selected ? 1 : s.opacity },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+        id, source: e.to, target: e.from, type: "stream",
+        label: [amt, lag].filter(Boolean).join(" · ") || undefined,
+        data: { tip: `${name(e.to)} → ${name(e.from)} (${e.reason})\n추정 증가액 ${f == null ? "알 수 없음" : `${f > 0 ? "+" : "−"}${formatUsd(Math.abs(f))}`} · 시차 판정 ${e.verdict}\n${MAG_HINT}` },
+        style: { stroke: up ? "var(--color-chart-blue)" : "var(--muted-foreground)", strokeWidth: streamWidth(f, mag.maxFlow),
+          opacity: near ? 0.95 : up ? 0.5 : 0.3 },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: up ? "var(--color-chart-blue)" : "var(--muted-foreground)" },
       }
     })
     return { nodes, edges }
-  }, [vc.data, selected])
+  }, [vc.data, selected, mag])
 
   const node = vc.data?.nodes.find(n => n.key === selected)
   const demand = vc.data?.demands.find(d => d.key === selected)
@@ -191,28 +238,41 @@ export default function ValueChainPage() {
       {/* 지도 */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-card-title">공급 지도</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-card-title">공급 지도</CardTitle>
+            <ToggleGroup type="single" size="sm" variant="outline" value={view} onValueChange={v => v && setParam("view", v === "grid" ? null : v)} aria-label="보기">
+              <ToggleGroupItem value="grid" className="px-3 text-xs">격자</ToggleGroupItem>
+              <ToggleGroupItem value="sankey" className="px-3 text-xs">돈의 물줄기(생키)</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
           <p className="text-caption text-muted-foreground">
-            열은 밸류체인 단계(왼쪽 최종 수요 → 오른쪽 소재·장비), 행은 수요처 레인입니다. 관측 원천: 대만 월매출 · 미국 분기 실적(수요·가속기) · 한국 수출 HS(한국 고유 칸), 점선은 관측 없음. 여러 수요에 함께 공급하는 칸은 '공통' 레인에 둡니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
-            칸 색 = 성장률(3개월 YoY, 미국 분기 칸은 분기 YoY)의 3개월·한 분기 전 대비 변화가 그 칸 평소 변동의 ±1σ 이상이면 가속·둔화(이력이 짧은 칸은 ±10%p). 한국 장비·소재 칸은 업계 전체 수출로 보는 대리 관측입니다. 선 = 측정 판정
-            (굵은 실선 확인 · 실선 부분 · 점선 미확인), 숫자 = 시차(+공급이 앞섬, −수요가 앞섬, ?는 두 신호 시차 불일치).
-            {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ)`}
-            {vc.data?.thresholds.yoy3m_kr != null && `, 한국 수출 칸이 걸린 선은 무관한 한국 수출 품목 위약까지 넘어야 함 r>${vc.data.thresholds.yoy3m_kr}·${vc.data.thresholds.yoy_kr}`}{vc.data && "."}
+            왼쪽 최종 수요 → 오른쪽 소재·장비로 주문과 돈이 흐릅니다. <b className="font-medium text-foreground">원 크기 = 칸 규모</b>(최근 3개월 매출·수출액, 분기 칸은 최신 분기 — 로그 스케일),{" "}
+            <MetricHint hint={MAG_HINT}><span className="font-medium text-foreground underline decoration-dotted underline-offset-2">선 굵기 = 추정 증가액 <Info className="inline size-3" /></span></MetricHint>(전년 대비 늘어난 금액, 회색은 줄었거나 모름).
+            굵은 상위 {LABEL_TOP}개 선에 금액, 시차가 확인된 선에 시차(+공급이 앞섬·−수요가 앞섬)를 답니다. 칸 색 = 성장률 변화가 그 칸 평소 변동의 ±1σ 이상이면 가속·둔화(이력이 짧은 칸은 ±10%p).
+            관측 원천: 대만 월매출 · 미국 분기 실적 · 한국 수출 HS(한국 장비·소재 칸은 업계 전체 수출로 보는 대리 관측) · 중국 세관·일본 무역통계, 점선 칸은 관측 없음. 회사 전체 매출이라 비 AI 사업이 섞입니다.
+            {vc.data && ` 시차 판정 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ)`}
+            {vc.data?.thresholds.yoy3m_kr != null && `, 한국 수출 칸이 걸린 선은 r>${vc.data.thresholds.yoy3m_kr}·${vc.data.thresholds.yoy_kr}`}{vc.data && "."}
           </p>
+          {flow.isError ? <p className="text-caption text-destructive">금액 규모를 불러오지 못해 원·굵기 없이 그렸습니다.</p>
+            : flow.data && !mag.hasAny && <p className="text-caption text-muted-foreground">규모 데이터가 없어 원·굵기 없이 그렸습니다.</p>}
         </CardHeader>
         <CardContent>
           {vc.isLoading ? <Skeleton className="h-[520px] w-full" />
             : vc.isError ? <ErrorState message="지도를 불러오지 못했습니다." onRetry={() => void vc.refetch()} />
             : !vc.data?.nodes.length ? <EmptyState message="지도 데이터가 없습니다." />
             : <div className="space-y-4">
-              <div className="h-[680px] rounded-lg border">
-                <ReactFlow nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.02, minZoom: 0.65 }}
-                  colorMode={resolvedTheme === "dark" ? "dark" : "light"} nodesDraggable={false} nodesConnectable={false} minZoom={0.2} maxZoom={2}
-                  onNodeClick={(_, n) => { if (n.type === "chain") select(n.id === selected ? null : n.id) }} onPaneClick={() => select(null)} proOptions={{ hideAttribution: true }}>
-                  <Background gap={20} size={1} />
-                  <Controls showInteractive={false} />
-                </ReactFlow>
-              </div>
+              {view === "sankey"
+                ? flow.isLoading ? <Skeleton className="h-[640px] w-full" />
+                  : flow.isError ? <ErrorState message="돈의 물줄기를 그릴 금액 규모를 불러오지 못했습니다." onRetry={() => void flow.refetch()} />
+                  : <ValueChainSankey vc={vc.data} flows={mag.flows} level={mag.level} lane={lane} onLane={l => setParam("lane", l === "all" ? null : l)} onSelect={select} />
+                : <div className="h-[680px] rounded-lg border">
+                  <ReactFlow nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: 0.02, minZoom: 0.65 }}
+                    colorMode={resolvedTheme === "dark" ? "dark" : "light"} nodesDraggable={false} nodesConnectable={false} minZoom={0.2} maxZoom={2}
+                    onNodeClick={(_, n) => { if (n.type === "chain") select(n.id === selected ? null : n.id) }} onPaneClick={() => select(null)} proOptions={{ hideAttribution: true }}>
+                    <Background gap={20} size={1} />
+                    <Controls showInteractive={false} />
+                  </ReactFlow>
+                </div>}
               {demand ? <DemandPanel demand={demand} edges={vc.data.edges} nodes={vc.data.nodes} onSelect={select} />
                 : <NodePanel node={node} edges={vc.data.edges} nodes={vc.data.nodes} demands={vc.data.demands} onSelect={select} />}
             </div>}

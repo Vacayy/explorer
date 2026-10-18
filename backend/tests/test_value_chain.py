@@ -107,6 +107,19 @@ class FlowIncrementTests(unittest.TestCase):
         self.assertEqual(_kr_increment(conn, ["A"]), (150.0, "2026-06"))           # 4·5·6월 +40+50+60
         self.assertEqual(_kr_increment(conn, ["A"], back=1), (60.0, "2026-03"))    # 1·2·3월 +10+20+30
 
+    def test_edge_flow_split_by_buyer_size(self):
+        """선 굵기 추정 — 공급 칸 증가액을 사는 칸 규모 비례로 나누고, 규모를 모르는 사는 칸은 중앙값(§14)"""
+        from pipeline.value_chain_flow import edge_flows
+        edges = [("s", "big", "supply", ""), ("s", "small", "supply", ""), ("s", "unknown", "supply", ""), ("t", "big", "supply", "")]
+        level = {"big": 300.0, "small": 100.0, "unknown": None, "s": 50.0, "t": 10.0}
+        inc = {"s": 70.0, "t": None}
+        out = {(e["from"], e["to"]): e for e in edge_flows(edges, level, inc)}
+        med = 75.0                                      # 규모 아는 칸 300·100·50·10의 중앙값
+        self.assertAlmostEqual(out[("s", "big")]["flow_usd"], 70 * 300 / (300 + 100 + med))
+        self.assertTrue(out[("s", "unknown")]["buyer_level_imputed"])
+        self.assertIsNone(out[("t", "big")]["flow_usd"])   # 공급 칸 증가액을 모르면 그리지 않는다
+        self.assertAlmostEqual(sum(out[("s", b)]["flow_usd"] for b in ("big", "small", "unknown")), 70.0)
+
 
 class LagTests(unittest.TestCase):
     def series(self, values, start=(2023, 1)):

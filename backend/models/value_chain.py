@@ -201,9 +201,25 @@ class FlowRow(BaseModel):
     attention_prev: int
     why: str | None = None
     falsifier: str | None = None
+    level_usd: float | None = None # 칸 규모 — 최근 3개월(분기 칸은 최신 분기) 매출·수출액 USD (§14)
     obs_kind: str = "direct"       # direct(붙은 회사 매출) | proxy(업계 전체 수출 통계)
     disclosure_up: int | None = None   # 대리 관측 칸: 붙은 종목 중 공시 방향 up 수
     disclosure_n: int | None = None
+
+
+class FlowDemand(BaseModel):
+    key: str
+    name: str
+    level_usd: float | None = None
+    increment_usd: float | None = None
+
+
+class EdgeFlow(BaseModel):
+    from_: str = Field(alias="from")   # JSON 키는 from
+    to: str
+    flow_usd: float | None          # 추정 — 공급 칸 증가액을 사는 칸 규모 비례로 나눔(거래액 아님)
+    basis: str = "estimate"
+    buyer_level_imputed: bool = False   # 사는 칸 규모를 몰라 중앙값으로 둠
 
 
 class FlowResponse(BaseModel):
@@ -216,4 +232,6 @@ class FlowResponse(BaseModel):
     doubted: list[FlowRow]         # 흐름은 가속인데 시장이 의심하는 칸
     fading: list[FlowRow]          # 식는 칸
     needs_check: list[FlowRow] = []   # 대리 관측이라 종목 공시로 확인이 필요한 칸
+    demands: list[FlowDemand] = []
+    edge_flows: list[EdgeFlow] = []
     nodes: list[FlowRow]

@@ -88,6 +88,54 @@ def _ext_increment(conn, series: str, back: int = 0) -> tuple[float | None, str 
     return (sum(tot[p] for p in ps) - sum(tot[p] for p in prev)) * fx, ps[-1]
 
 
+def _level(conn, key: str) -> float | None:
+    """칸 규모(USD) — 최근 3개월 매출·수출액, 분기 칸은 최신 분기, 회사채(TTM)는 최근 4분기 합. 잔액(RPO)은 흐름이 아니라 None (§14)"""
+    from pipeline.us_fundamentals import TTM
+    from pipeline.value_chain import EXT_OBS, KR_OBS, NODE_BY_KEY, US_OBS
+    if key in US_OBS:
+        use = US_OBS[key][0]
+        if use == "frontier":
+            return None
+        # 회사별 가장 최근 분기(회사채는 최근 4분기)의 합 — 같은 분기로 맞추면 먼저 발표한 회사만 남아 규모가 작게 잡힌다
+        per: dict[str, list[float]] = {}
+        for r in conn.execute("SELECT ticker, value FROM us_quarterly WHERE use_key=? ORDER BY q", (use,)):
+            per.setdefault(r["ticker"], []).append(r["value"] or 0.0)
+        return sum(sum(v[-4:]) if use in TTM else v[-1] for v in per.values()) if per else None
+    if key in KR_OBS:
+        hs = KR_OBS[key][0]
+        rows = conn.execute(f"SELECT period, SUM(export_usd) v, COUNT(*) n FROM trade_stats WHERE hs_code IN ({','.join('?' * len(hs))}) "
+                            "AND export_usd IS NOT NULL GROUP BY period ORDER BY period DESC LIMIT 3", hs).fetchall()
+        return sum(r["v"] for r in rows) if len(rows) == 3 and all(r["n"] == len(hs) for r in rows) else None
+    if key in EXT_OBS:
+        rows = conn.execute("SELECT value, unit FROM ext_series WHERE series=? ORDER BY period DESC LIMIT 3", (EXT_OBS[key][0],)).fetchall()
+        fx = {"USD": 1.0, "USD thousand": 1000.0, "JPY thousand": 1000.0 / 150}.get(rows[0]["unit"]) if rows else None
+        return sum(r["value"] for r in rows) * fx if len(rows) == 3 and fx else None
+    tw = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
+    if not tw:
+        return None
+    rows = conn.execute(f"SELECT SUM(revenue) r, COUNT(*) n FROM tw_monthly_revenue WHERE code IN ({','.join('?' * len(tw))}) "
+                        "GROUP BY ym ORDER BY ym DESC LIMIT 3", tw).fetchall()
+    return sum(r["r"] for r in rows) * 1000 / TWD_USD if len(rows) == 3 and all(r["n"] == len(tw) for r in rows) else None
+
+
+def edge_flows(edges, level: dict[str, float | None], increment: dict[str, float | None]) -> list[dict]:
+    """선별 추정 증가액 — 공급 칸 증가액을 그 칸이 파는 칸들에 사는 칸 규모 비례로 나눈다(실제 거래액 아님, §14).
+    규모를 모르는 사는 칸은 사는 칸 규모 중앙값으로 둔다. 공급 칸 증가액을 모르면 flow_usd None"""
+    known = [v for v in level.values() if v]
+    med = statistics.median(known) if known else 1.0
+    buyers: dict[str, list[str]] = {}
+    for a, b, *_ in edges:
+        buyers.setdefault(a, []).append(b)
+    out = []
+    for a, b, *_ in edges:
+        inc = increment.get(a)
+        w = {x: level.get(x) or med for x in buyers[a]}
+        flow = inc * w[b] / sum(w.values()) if inc is not None else None
+        out.append({"from": a, "to": b, "flow_usd": flow, "basis": "estimate",
+                    "buyer_level_imputed": not level.get(b)})
+    return out
+
+
 def _kr_return(conn, codes: list[str]) -> float | None:
     """한국 종목 63거래일 수익률 평균(%)"""
     rets = []
@@ -119,7 +167,7 @@ def _disclosure(conn, codes: list[str]) -> tuple[int, int]:
 
 def compute(vmap: dict | None = None) -> dict:
     from database import get_connection
-    from pipeline.value_chain import EXT_OBS, KR_OBS, NODES, US_OBS, obs_kind, read_map
+    from pipeline.value_chain import DEMANDS, EDGES, EXT_OBS, KR_OBS, NODES, US_OBS, obs_kind, read_map
     vmap = vmap or read_map()
     nodes = {n["key"]: n for n in vmap["nodes"]}
     conn = get_connection()
@@ -139,20 +187,29 @@ def compute(vmap: dict | None = None) -> dict:
             else:
                 fn, arg, kind = None, None, "flow"
             inc, period = fn(conn, arg) if fn else (None, None)
+            level = _level(conn, key)
             inc_prev, _ = fn(conn, arg, back=1) if fn else (None, None)     # 직전 창(3개월·한 분기 전)의 증가 금액
             aux = [a for a in n.get("aux", []) if not a.get("missing")]
             agree = (sum(1 for a in aux if (a.get("yoy_3m") or 0) > 0) / len(aux)) if aux else None
             att_now, att_prev = _attention(conn, kr)
             proxy = obs_kind(key) == "proxy"
             disc_up, disc_n = _disclosure(conn, kr) if proxy and kr else (0, 0)
-            rows.append({"obs_kind": obs_kind(key), "disclosure_up": disc_up if proxy else None, "disclosure_n": disc_n if proxy else None,
+            rows.append({"level_usd": level, "obs_kind": obs_kind(key), "disclosure_up": disc_up if proxy else None, "disclosure_n": disc_n if proxy else None,
                          "key": key, "name": name, "state": n.get("state"), "score": STATE_SCORE.get(n.get("state"), 0),
                          "yoy": n.get("yoy_3m"), "increment_usd": inc, "period": period, "kind": kind, "increment_prev_usd": inc_prev,
                          "increment_change_usd": inc - inc_prev if inc is not None and inc_prev is not None else None,
                          "cross_agree": round(agree, 2) if agree is not None else None, "kr": [k["name"] for k in n.get("kr", [])],
                          "kr_return_3m": _kr_return(conn, kr) if kr else None, "attention": att_now, "attention_prev": att_prev})
+        demands = []
+        for k, name, _ in DEMANDS:                     # 수요 칸도 규모·증가액(사는 칸 규모로 쓰고, 랩·자본으로 파는 공급 칸이기도 하다)
+            fn, arg = ((_us_increment, US_OBS[k][0]) if k in US_OBS and US_OBS[k][0] != "frontier" else
+                       (_ext_increment, EXT_OBS[k][0]) if k in EXT_OBS else (None, None))
+            demands.append({"key": k, "name": name, "level_usd": _level(conn, k), "increment_usd": fn(conn, arg)[0] if fn else None})
     finally:
         conn.close()
+    level = {r["key"]: r["level_usd"] for r in rows} | {d["key"]: d["level_usd"] for d in demands}
+    increment = {r["key"]: r["increment_usd"] for r in rows if r["kind"] == "flow"} | {d["key"]: d["increment_usd"] for d in demands}
+    flows_by_edge = edge_flows(EDGES, level, increment)
     # 지금 흐름: 규모 순은 큰 회사 순일 뿐이라(폭스콘·엔비디아) 증가 금액이 직전 창보다 얼마나 늘었는지(가속)로 고른다
     flows = sorted([r for r in rows if r["kind"] == "flow" and (r["increment_change_usd"] or 0) > 0 and (r["increment_usd"] or 0) > 0],
                    key=lambda r: -r["increment_change_usd"])[:8]
@@ -184,4 +241,4 @@ def compute(vmap: dict | None = None) -> dict:
             fading.append({**r, "why": f"흐름 {r['state']}인데 주가·관심은 아직 높음(3개월 {r['kr_return_3m']}%, 문서 {r['attention']}건)"})
     return {"as_of": vmap["as_of"], "twd_usd": TWD_USD, "median_kr_return_3m": med_ret, "median_attention": med_att, "flows": flows,
             "spotlight": sorted(spotlight, key=lambda r: r["kr_return_3m"]), "doubted": doubted, "fading": fading,
-            "needs_check": needs_check, "nodes": rows}
+            "needs_check": needs_check, "nodes": rows, "demands": demands, "edge_flows": flows_by_edge}
