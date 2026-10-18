@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 # (티커, 지표, 용도)
 TARGETS = [
@@ -49,6 +49,9 @@ TAGS = {
                    "ProceedsFromDebtNetOfIssuanceCosts"],             # GOOGL
 }
 TTM = {"funding"}          # 최근 4분기 합으로 YoY — 발행·인수처럼 분기마다 들쭉날쭉한 지표
+# 발행 계정은 회사가 분기 중에도 바꾸고(오라클 FY26: 1분기 LongTermDebt → 6개월부터 SeniorLongTermDebt),
+# 발행이 없는 분기는 항목 자체를 보고하지 않는다(메타 2026 1분기·MSFT FY26) → 계정을 기간별로 합치고, 빈 분기는 0
+MERGE = {"debt_issue"}
 INSTANT = {"rpo"}          # 기간이 아니라 시점 잔액 — 분기 말 값을 그대로 쓴다
 
 
@@ -66,8 +69,15 @@ def _days(a: str, b: str) -> int:
     return (date.fromisoformat(b) - date.fromisoformat(a)).days
 
 
-def quarterly(entries: list[dict]) -> dict[str, float]:
-    """XBRL 기간 값들 → 분기 값 {분기키: 값}"""
+def _add_months(qk: str, n: int) -> str:
+    i = int(qk[:4]) * 12 + int(qk[5:]) - 1 + n
+    return f"{i // 12}-{i % 12 + 1:02d}"
+
+
+def quarterly(entries: list[dict], zero_omit: bool = False) -> dict[str, float]:
+    """XBRL 기간 값들 → 분기 값 {분기키: 값}.
+    zero_omit: 미보고 분기 = 0인 지표(발행). 회계연도 누적 사슬에서 빠진 분기 끝은 직전 누적을 이어 받는다
+    (현금흐름표는 10-Q에 연초 누적으로 실리므로, 1분기 10-Q에 항목이 없으면 1분기 = 0)"""
     by: dict[tuple[str, str], dict] = {}
     for e in entries:
         if not e.get("start") or e.get("form") not in ("10-Q", "10-K", "10-Q/A", "10-K/A"):
@@ -89,6 +99,14 @@ def quarterly(entries: list[dict]) -> dict[str, float]:
         for (t0, v0), (t1, v1) in zip(chain, chain[1:]):
             if 80 <= _days(t0, t1) <= 100 and _quarter_key(t1) not in out:
                 out[_quarter_key(t1)] = v1 - v0
+        if zero_omit:
+            cum = {_quarter_key(t): v for t, v in chain}
+            first = _quarter_key((date.fromisoformat(s) + timedelta(days=85)).isoformat())
+            last, prev, k = max(cum), 0.0, first
+            while k <= last:
+                cur = cum.get(k, prev)
+                out.setdefault(k, cur - prev)
+                prev, k = cur, _add_months(k, 3)
     return out
 
 
@@ -101,6 +119,17 @@ def quarterly_instant(entries: list[dict]) -> dict[str, float]:
         if e["end"] not in by or e.get("filed", "") > by[e["end"]].get("filed", ""):
             by[e["end"]] = e
     return {_quarter_key(end): e["val"] for end, e in sorted(by.items())}
+
+
+def _merge_tags(gaap: dict, metric: str) -> tuple[list[str], list[dict]] | None:
+    """후보 계정을 모두 모아 기간별로 합친다 — 같은 기간은 가장 늦게 제출된 값(계정 무관)"""
+    tags, units = [], []
+    for tag in TAGS[metric]:
+        u = gaap.get(tag, {}).get("units", {}).get("USD")
+        if u:
+            tags.append(tag)
+            units += u
+    return (tags, units) if units else None
 
 
 def _pick_tag(gaap: dict, metric: str) -> tuple[str, list[dict]] | None:
@@ -126,12 +155,17 @@ def collect() -> dict:
         for ticker, metric, use in TARGETS:
             try:
                 facts = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{ciks[ticker]:010d}.json", as_json=True)
-                picked = _pick_tag(facts["facts"]["us-gaap"], metric)
+                gaap = facts["facts"]["us-gaap"]
+                picked = _merge_tags(gaap, metric) if metric in MERGE else _pick_tag(gaap, metric)
                 if not picked:
                     failed.append(f"{ticker}: {metric} 계정 없음")
                     continue
                 tag, units = picked
-                for q, v in (quarterly_instant(units) if metric in INSTANT else quarterly(units)).items():
+                tag = "+".join(tag) if isinstance(tag, list) else tag
+                if metric in MERGE:            # 계정을 합쳐 다시 계산 — 예전 단일 계정 값이 남지 않게 지운다
+                    conn.execute("DELETE FROM us_quarterly WHERE ticker=? AND metric=?", (ticker, metric))
+                qv = quarterly_instant(units) if metric in INSTANT else quarterly(units, zero_omit=metric in MERGE)
+                for q, v in qv.items():
                     conn.execute("INSERT INTO us_quarterly (ticker, q, metric, value, tag, use_key, fetched_at) VALUES (?,?,?,?,?,?, datetime('now')) "
                                  "ON CONFLICT(ticker, q, metric) DO UPDATE SET value=excluded.value, tag=excluded.tag, "
                                  "use_key=excluded.use_key, fetched_at=excluded.fetched_at", (ticker, q, metric, v, tag, use))
@@ -195,8 +229,11 @@ def demand_series(conn, use_key: str) -> dict[str, float]:
             i = y * 12 + m - 1 - 3 * k
             return f"{i // 12}-{i % 12 + 1:02d}"
         # 발행이 없는 분기는 10-Q가 항목을 아예 보고하지 않는다 → 그 회사의 보고 기간 안의 빈 분기는 0으로 본다
-        span = {t: (min(q for q in vals if t in vals[q]), max(q for q in vals if t in vals[q])) for t in tickers
-                if any(t in v for v in vals.values())}
+        # 끝은 그 회사가 어떤 지표든 분기를 보고한 마지막 분기 — 발행이 끊긴 회사(MSFT FY26)도 0으로 이어진다
+        filed = {r["ticker"]: r["q"] for r in conn.execute(
+            f"SELECT ticker, MAX(q) q FROM us_quarterly WHERE ticker IN ({','.join('?' * len(tickers))}) GROUP BY ticker", tickers)}
+        span = {t: (min(q for q in vals if t in vals[q]), max(filed.get(t, ""), max(q for q in vals if t in vals[q])))
+                for t in tickers if any(t in v for v in vals.values())}
         ttm: dict[str, dict[str, float]] = {}
         for q in sorted(vals):
             for t, (lo, hi) in span.items():

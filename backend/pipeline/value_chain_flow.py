@@ -1,7 +1,7 @@
 """돈의 흐름과 다음 스포트라이트 — 밸류체인 칸마다 흐름 크기·가속·교차 확인·시장 반응·관심도 (docs/specs/value-chain.md §11, LLM 0).
 
 예측이 아니라 가설이다(D-095 센스메이킹, D-251: 칸 사이 선행 시차는 대부분 유의하지 않았다).
-- 흐름 크기: 최근 3개월(분기 칸은 최신 분기)의 전년 대비 증가 금액(USD). 대만달러는 고정 환율 32로 환산 — 칸끼리 크기를 견주는 용도
+- 흐름 크기: 최근 3개월(분기 칸은 최신 분기, 발행은 최근 4분기 합)의 전년 대비 증가 금액(USD). 대만달러는 고정 환율 32로 환산 — 칸끼리 크기를 견주는 용도
 - 흐름 가속: 칸 상태(가속·전환↑ = +1, 둔화·전환↓ = −1)
 - 교차 확인: 교차 확인 지표 중 같은 방향(3개월 YoY > 0)인 비율
 - 시장 반응: 칸에 붙은 한국 종목 3개월(63거래일) 주가 수익률 평균, 미국 분기 칸은 구성 회사 주가(us_prices에 있을 때)
@@ -36,6 +36,13 @@ def _us_increment(conn, use_key: str) -> tuple[float | None, str | None]:
     by: dict[str, dict[str, float]] = {}
     for r in rows:
         by.setdefault(r["q"], {})[r["ticker"]] = r["value"]
+    from pipeline.us_fundamentals import TTM
+    if use_key in TTM:                    # 발행처럼 들쭉날쭉한 지표는 최근 4분기 합 − 전년 4분기 합(미보고 분기는 수집 때 0으로 채워짐)
+        qs = sorted(by)
+        if len(qs) < 8:
+            return None, None
+        tot = lambda win: sum(sum(by[q].values()) for q in win)  # noqa: E731
+        return tot(qs[-4:]) - tot(qs[-8:-4]), qs[-1]
     for q in sorted(by, reverse=True):
         prev = by.get(f"{int(q[:4]) - 1}{q[4:]}", {})
         both = [t for t in by[q] if t in prev]

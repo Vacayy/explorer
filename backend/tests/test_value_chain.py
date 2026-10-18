@@ -29,6 +29,31 @@ class MapTests(unittest.TestCase):
         placed = {k for n in NODES for k in n[3]}
         self.assertEqual({link[0] for link in LINKS} - placed, set())
 
+    def test_node_observation_matches_attached_stocks(self):
+        """칸의 주가(한국 종목)와 칸의 관측이 같은 회사들이어야 한다 — 삼성·SK 메모리를 대만 메모리 3사로 판정하던 오류(2026-10-18)"""
+        from pipeline.value_chain import KR_OBS
+        by = {n[0]: n for n in NODES}
+        self.assertIn("memory", KR_OBS)
+        self.assertEqual(by["memory"][2], [])
+        self.assertEqual(set(by["tw_memory"][2]), {"2408", "2344", "2337"})
+        self.assertNotIn("005930", by["foundry"][3])     # 주가가 두 칸에 중복 반영되지 않게
+
+
+class KrSeriesTests(unittest.TestCase):
+    def test_kr_yoy3m_from_exports(self):
+        import sqlite3
+        from pipeline.value_chain_lags import kr_quarterly_yoy, kr_yoy3m
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE trade_stats (hs_code, period, export_usd)")
+        rows = [("A", f"{y}-{m:02d}", 100.0 if y == 2024 else 150.0) for y in (2024, 2025) for m in range(1, 13)]
+        rows += [("B", f"{y}-{m:02d}", 10.0) for y in (2024, 2025) for m in range(1, 13)]
+        conn.executemany("INSERT INTO trade_stats VALUES (?,?,?)", rows)
+        s = kr_yoy3m(conn, ["A", "B"])
+        self.assertAlmostEqual(s["2025-03"], (160 / 110 - 1) * 100)
+        self.assertNotIn("2024-12", s)                  # 전년이 없는 달은 내지 않는다
+        self.assertAlmostEqual(kr_quarterly_yoy(conn, ["A"])["2025-06"], 50.0)
+
 
 class LagTests(unittest.TestCase):
     def series(self, values, start=(2023, 1)):

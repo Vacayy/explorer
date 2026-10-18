@@ -193,7 +193,8 @@ export default function ValueChainPage() {
             열은 밸류체인 단계(왼쪽 최종 수요 → 오른쪽 소재·장비), 행은 수요처 레인입니다. 관측 원천: 대만 월매출 · 미국 분기 실적(수요·가속기) · 한국 수출 HS(한국 고유 칸), 점선은 관측 없음. 여러 수요에 함께 공급하는 칸은 '공통' 레인에 둡니다. 화살표는 주문과 돈이 흐르는 방향(사는 쪽 → 파는 쪽)입니다.
             칸 색 = 이번 달 3개월 YoY가 3개월 전보다 ±10%p(가속·둔화) — AI 데이터센터·스마트폰 수요와 AI 가속기는 미국 분기 실적(SEC)의 분기 YoY를 직전 분기와 비교. 선 = 측정 판정
             (굵은 실선 확인 · 실선 부분 · 점선 미확인), 숫자 = 시차(+공급이 앞섬, −수요가 앞섬, ?는 두 신호 시차 불일치).
-            {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ).`}
+            {vc.data && ` 위약 기준 r>${vc.data.thresholds.yoy3m}(3개월 YoY Δ)·${vc.data.thresholds.yoy}(월 YoY Δ)`}
+            {vc.data?.thresholds.yoy3m_kr != null && `, 한국 수출 칸이 걸린 선은 무관한 한국 수출 품목 위약까지 넘어야 함 r>${vc.data.thresholds.yoy3m_kr}·${vc.data.thresholds.yoy_kr}`}{vc.data && "."}
           </p>
         </CardHeader>
         <CardContent>

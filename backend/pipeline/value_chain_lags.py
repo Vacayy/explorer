@@ -38,6 +38,45 @@ def node_yoy(conn, codes: list[str]) -> dict[str, float]:
     return {r["ym"]: (r["r"] / r["ly"] - 1) * 100 for r in rows if r["n"] == len(codes) and r["ly"]}
 
 
+def kr_monthly(conn, hs: list[str]) -> dict[str, float]:
+    """한국 수출(USD) 품목 합 — 모든 품목이 있는 달만"""
+    agg: dict[str, list[float]] = {}
+    for r in conn.execute(f"SELECT period, export_usd FROM trade_stats WHERE hs_code IN ({','.join('?' * len(hs))}) "
+                          "AND export_usd IS NOT NULL", hs):
+        agg.setdefault(r["period"], []).append(r["export_usd"])
+    return {p: sum(v) for p, v in sorted(agg.items()) if len(v) == len(hs)}
+
+
+def kr_yoy3m(conn, hs: list[str]) -> dict[str, float]:
+    """한국 수출 칸(KR_OBS)의 3개월 YoY — 대만 노드와 같은 신호로 시차를 잰다(2026-10-18 메모리 칸 관측 교체)"""
+    m = kr_monthly(conn, hs)
+    out = {}
+    for p in m:
+        cur = [_shift_ym(p, -i) for i in range(3)]
+        prev = [_shift_ym(c, -12) for c in cur]
+        if all(c in m for c in cur + prev) and sum(m[c] for c in prev):
+            out[p] = (sum(m[c] for c in cur) / sum(m[c] for c in prev) - 1) * 100
+    return out
+
+
+def kr_yoy(conn, hs: list[str]) -> dict[str, float]:
+    m = kr_monthly(conn, hs)
+    return {p: (v / m[_shift_ym(p, -12)] - 1) * 100 for p, v in m.items() if m.get(_shift_ym(p, -12))}
+
+
+def kr_quarterly_yoy(conn, hs: list[str]) -> dict[str, float]:
+    m = kr_monthly(conn, hs)
+    q: dict[str, list[str]] = {}
+    for p in m:
+        q.setdefault(f"{p[:4]}-{((int(p[5:]) - 1) // 3 + 1) * 3:02d}", []).append(p)
+    out = {}
+    for k, ps in q.items():
+        prev = [_shift_ym(p, -12) for p in ps]
+        if len(ps) == 3 and all(p in m for p in prev) and sum(m[p] for p in prev):
+            out[k] = (sum(m[p] for p in ps) / sum(m[p] for p in prev) - 1) * 100
+    return dict(sorted(out.items()))
+
+
 PLACEBO = (["2603", "2609", "2615"], ["2637", "2606", "2605"])   # 컨테이너·벌크 해운 — 반도체·IT 공급 관계 없음
 SIGNALS = (("yoy3m", node_yoy3m), ("yoy", node_yoy))
 
@@ -90,6 +129,23 @@ def placebo_threshold(conn, fn, node_codes: list[list[str]], q: float = 0.95) ->
     return round(vals[min(len(vals) - 1, int(len(vals) * q))], 2) if vals else 1.0
 
 
+# 한국 수출 칸이 걸린 쌍은 같은 통관 통계의 공통 요인(영업일 수 등)이 상관을 부풀릴 수 있다 —
+# 반도체와 무관한 한국 수출 품목을 위약으로 따로 재서, 대만 위약 기준과 둘 중 높은 쪽을 쓴다(2026-10-18)
+KR_PLACEBO = (["8703"], ["1902301010"], ["2402201000"], ["4011101000"])   # 승용차·라면·담배·타이어
+
+
+def placebo_threshold_kr(conn, name: str, series_list: list[dict], q: float = 0.95) -> float:
+    fn = {"yoy3m": kr_yoy3m, "yoy": kr_yoy}[name]
+    vals = []
+    for hs in KR_PLACEBO:
+        p = fn(conn, hs)
+        for s in series_list:
+            if p and s:
+                vals += [x for x in (cross_lag(p, s)["corr"], cross_lag(s, p)["corr"]) if x is not None]
+    vals.sort()
+    return round(vals[min(len(vals) - 1, int(len(vals) * q))], 2) if vals else 1.0
+
+
 # ── 분기 신호: 미국 분기 실적으로 관측하는 칸(AI 수요·가속기·스마트폰)이 걸린 엣지 ──
 MAX_LAG_Q = 2
 MIN_PAIRS_Q = 12
@@ -111,9 +167,11 @@ def tw_quarterly_yoy(conn, codes: list[str]) -> dict[str, float]:
 
 def node_quarterly(conn, key: str) -> dict[str, float]:
     from pipeline.us_fundamentals import demand_series
-    from pipeline.value_chain import NODE_BY_KEY, US_OBS
+    from pipeline.value_chain import KR_OBS, NODE_BY_KEY, US_OBS
     if key in US_OBS:
         return demand_series(conn, US_OBS[key][0])
+    if key in KR_OBS:
+        return kr_quarterly_yoy(conn, KR_OBS[key][0])
     codes = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
     return tw_quarterly_yoy(conn, codes) if codes else {}
 
@@ -153,10 +211,11 @@ _memo: dict[tuple, dict] = {}
 def measure_all() -> dict:
     """엣지마다 두 신호의 최적 시차·상관과 위약 보정 판정. 반환 {thresholds, edges}. 대만 수집 시각이 같으면 캐시"""
     from database import get_connection
-    from pipeline.value_chain import EDGES, NODE_BY_KEY, US_OBS
+    from pipeline.value_chain import EDGES, KR_OBS, NODE_BY_KEY, US_OBS
     conn = get_connection()
     stamp = tuple(conn.execute("SELECT MAX(ym), MAX(fetched_at) FROM tw_monthly_revenue").fetchone()) + \
-        tuple(conn.execute("SELECT MAX(q), MAX(fetched_at) FROM us_quarterly").fetchone())
+        tuple(conn.execute("SELECT MAX(q), MAX(fetched_at) FROM us_quarterly").fetchone()) + \
+        tuple(conn.execute("SELECT MAX(period), MAX(fetched_at) FROM trade_stats").fetchone())
     if stamp in _memo:
         conn.close()
         return _memo[stamp]
@@ -167,10 +226,18 @@ def measure_all() -> dict:
         thresholds["yoy_q"] = placebo_threshold_q(conn, q_keys)
         cache: dict[tuple, dict] = {}
 
+        kr_fn = {"yoy3m": kr_yoy3m, "yoy": kr_yoy}
+        for name, fn in SIGNALS:                       # 한국 위약 — 모든 관측 칸(대만·한국 수출) 시계열과 맞대 본다
+            all_series = [fn(conn, c) for c in observed] + [kr_fn[name](conn, v[0]) for v in KR_OBS.values()]
+            thresholds[f"{name}_kr"] = max(thresholds[name], placebo_threshold_kr(conn, name, all_series))
+
         def series(name, fn, key):
             if (name, key) not in cache:
-                codes = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
-                cache[(name, key)] = fn(conn, codes) if codes else {}
+                if key in KR_OBS:                      # 한국 수출로 관측하는 칸 — 같은 신호를 수출 시계열로
+                    cache[(name, key)] = kr_fn[name](conn, KR_OBS[key][0])
+                else:
+                    codes = NODE_BY_KEY[key][2] if key in NODE_BY_KEY else []
+                    cache[(name, key)] = fn(conn, codes) if codes else {}
             return cache[(name, key)]
 
         edges = []
@@ -192,7 +259,8 @@ def measure_all() -> dict:
                 up, down = series(name, fn, a), series(name, fn, b)
                 if up and down:
                     r = cross_lag(up, down)
-                    r["passed"] = r["corr"] is not None and r["corr"] > thresholds[name]
+                    th = thresholds[f"{name}_kr"] if (a in KR_OBS or b in KR_OBS) else thresholds[name]
+                    r["passed"] = r["corr"] is not None and r["corr"] > th
                     row["signals"][name] = r
             sig = row["signals"]
             if not sig:

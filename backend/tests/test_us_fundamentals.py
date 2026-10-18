@@ -1,7 +1,7 @@
 """미국 분기 실적 — 3개월 값 우선, 누적값 차감, 달력 분기 키."""
 import unittest
 
-from pipeline.us_fundamentals import _quarter_key, quarterly
+from pipeline.us_fundamentals import _merge_tags, _quarter_key, quarterly
 
 
 def e(start, end, val, form="10-Q", filed="2026-01-01"):
@@ -25,6 +25,30 @@ class QuarterlyTests(unittest.TestCase):
         facts = [e("2026-01-01", "2026-03-31", 30.0, filed="2026-04-30"), e("2026-01-01", "2026-03-31", 30.9, filed="2026-07-30"),
                  e("2025-07-01", "2026-03-31", 80.1)]
         self.assertEqual(quarterly(facts)["2026-03"], 30.9)
+
+
+
+class FundingTests(unittest.TestCase):
+    """회사채 발행 — 계정 전환(오라클)·발행 없는 분기 미보고(메타·MSFT) 회귀 (2026-10-18 점검)"""
+
+    def test_tag_switch_mid_year_is_merged(self):
+        # 오라클 FY26: 1분기는 LongTermDebt(0), 6·9개월·연간은 SeniorLongTermDebt
+        gaap = {"ProceedsFromIssuanceOfLongTermDebt": {"units": {"USD": [e("2025-06-01", "2025-08-31", 0.0, filed="2025-09-10")]}},
+                "ProceedsFromIssuanceOfSeniorLongTermDebt": {"units": {"USD": [
+                    e("2025-06-01", "2025-11-30", 17.9, filed="2025-12-10"), e("2025-06-01", "2026-02-28", 44.5, filed="2026-03-10"),
+                    e("2025-06-01", "2026-05-31", 46.1, "10-K", filed="2026-06-20")]}}}
+        tags, units = _merge_tags(gaap, "debt_issue")
+        q = {k: round(v, 1) for k, v in quarterly(units, zero_omit=True).items()}
+        self.assertEqual(q, {"2025-09": 0.0, "2025-12": 17.9, "2026-03": 26.6, "2026-06": 1.6})
+        self.assertEqual(len(tags), 2)
+
+    def test_missing_first_quarter_means_zero(self):
+        # 메타 2026: 1분기 10-Q에 항목 없음 → 6개월 누적 24.9는 전부 2분기
+        q = quarterly([e("2026-01-01", "2026-06-30", 24.9)], zero_omit=True)
+        self.assertEqual(q, {"2026-03": 0.0, "2026-06": 24.9})
+
+    def test_revenue_does_not_assume_zero(self):
+        self.assertEqual(quarterly([e("2026-01-01", "2026-06-30", 24.9)]), {})
 
 
 if __name__ == "__main__":
