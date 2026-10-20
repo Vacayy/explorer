@@ -1296,3 +1296,30 @@ export interface FlowResponse {
   flows: FlowRow[]; spotlight: FlowRow[]; doubted: FlowRow[]; fading: FlowRow[]; needs_check?: FlowRow[]; nodes: FlowRow[]
   demands?: FlowDemand[]; edge_flows?: EdgeFlow[]
 }
+
+/** 종목 추적 위젯(docs/specs/stock-tracker.md) — 차트·기술적 신호·수급·이슈·내 원칙 조건 */
+export type TrackerKind = "price_below" | "price_above" | "close_below_ma" | "close_above_ma" | "manual"
+export type TrackerRole = "entry" | "exit" | "check"
+export interface TrackerCondition {
+  id: number; stock_code: string; role: TrackerRole; kind: TrackerKind; level?: number | null; ma?: number | null; label: string; note?: string | null
+  done: number; status: "met" | "not_met" | "pending" | "unknown"; distance_pct?: number | null; ref?: number | null
+}
+export interface TrackerBar { t: string; o: number; h: number; l: number; c: number; v: number; ma20: number | null; ma60: number | null; ma120: number | null }
+export interface TrackerView {
+  code: string; name: string; price: number | null; change_pct: number | null; as_of: string | null; source: "live" | "close" | null; last_close_date: string | null
+  chart: { series: TrackerBar[] }
+  technicals: {
+    rsi14?: number | null; ma20_gap?: number | null; ma60_gap?: number | null; ma120_gap?: number | null; off_52w_high?: number | null; ret_1m?: number | null; ret_3m?: number | null
+    overhead_pct?: number | null; support_pct?: number | null; rs?: number | null; volume_ratio?: number | null
+    regime?: { posture?: string | null; reason?: string | null }; signals?: { date: string; label: string; id: string }[]; signals_as_of?: string | null; error?: string
+  }
+  flows: null | {
+    as_of: string; days: number; foreign_5d: number; foreign_20d: number; inst_5d: number; inst_20d: number; indiv_5d: number; indiv_20d: number
+    foreign_ratio: number | null; foreign_ratio_chg: number | null
+  }
+  issues: {
+    disclosures: { date: string; title: string; url: string | null; key: boolean }[]; docs_7d: number
+    docs: { id: number; title: string; published_at: string; source_type: string }[]; target_prices: { date: string; value: number; doc_id: number; title: string }[]
+  }
+  conditions: TrackerCondition[]
+}

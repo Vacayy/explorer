@@ -141,14 +141,15 @@ export default function Dashboard() {
   }
 
   const active = useMemo(() => new Set(Object.entries(board?.widgetOf ?? {}).filter(([i]) => board?.rows.some(r => r.includes(i))).map(([, w]) => w)), [board])
-  const add = (w: string) => {
+  const add = (w: string, wparams?: Record<string, unknown>) => {
     const b = boardRef.current, def = WIDGET_BY_ID[w]
     if (!b || !def) return
     let n = 0
     while (b.widgetOf[`${w}#${n}`]) n++
     const id = `${w}#${n}`
-    commit({ ...b, rows: [[id], ...b.rows], widgetOf: { ...b.widgetOf, [id]: w }, spans: { ...b.spans, [id]: COLS }, heights: { ...b.heights, [id]: fineH(def.size.h) } })
-    toast.success(`'${def.title}'을 맨 위에 넣었어요. 손잡이로 끌어 옮기세요.`)
+    commit({ ...b, rows: [[id], ...b.rows], widgetOf: { ...b.widgetOf, [id]: w }, spans: { ...b.spans, [id]: COLS }, heights: { ...b.heights, [id]: fineH(def.size.h) },
+      params: wparams ? { ...b.params, [id]: wparams } : b.params })
+    toast.success(`'${def.titleOf?.(wparams) ?? def.title}'을 맨 위에 넣었어요. 손잡이로 끌어 옮기세요.`)
   }
   const removeIds = (ids: string[], label: string) => {
     const b = boardRef.current
@@ -209,7 +210,7 @@ export default function Dashboard() {
               const h = p?.h ?? board.heights[i] ?? 10
               return <div key={i}>
                 <WidgetItem defId={def.id} w={p?.w ?? def.size.w} fine={h} params={board.params[i]}
-                  onRemove={() => removeIds([i], `'${def.title}'을 뺐어요.`)} onOpen={def.Detail && (() => openDetail(def.id))} />
+                  onRemove={() => removeIds([i], `'${def.titleOf?.(board.params[i]) ?? def.title}'을 뺐어요.`)} onOpen={def.Detail && (() => openDetail(def.id))} />
               </div>
             })}
           </ReactGridLayout>
@@ -246,10 +247,11 @@ export default function Dashboard() {
 
 function WidgetItem({ defId, w, fine, params, onRemove, onOpen }: { defId: string; w: number; fine: number; params?: Record<string, unknown>; onRemove: () => void; onOpen?: () => void }) {
   const def = WIDGET_BY_ID[defId]
-  const meta = def.useMeta()
+  const meta = def.useMeta(params)
   const h = coarseH(fine)
   return (
-    <WidgetFrame title={def.title} asOf={meta.asOf} stale={meta.stale} detailPath={def.detailPath} onRemove={onRemove} onOpen={onOpen} flat={def.flat && h <= 1}>
+    <WidgetFrame title={def.titleOf?.(params) ?? def.title} asOf={meta.asOf} stale={meta.stale} detailPath={def.detailPathOf?.(params) ?? def.detailPath}
+      onRemove={onRemove} onOpen={onOpen} flat={def.flat && h <= 1}>
       <def.Body w={w} h={h} params={params} />
     </WidgetFrame>
   )

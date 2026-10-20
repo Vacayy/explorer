@@ -22,6 +22,14 @@ export interface WidgetDef {
   detailPath?: string
   /** 본문을 누르면 띄우는 상세 — 원래 화면과 같은 수준의 카드 (?widget=<id>) */
   Detail?: ComponentType
-  useMeta: () => WidgetMeta
+  /** params가 있으면 위젯마다 기준 시각이 다르다(종목 추적 등) */
+  useMeta: (params?: Record<string, unknown>) => WidgetMeta
   Body: ComponentType<WidgetBodyProps>
+  /** 같은 위젯을 여러 개 놓을 수 있다(종목마다 하나 — docs/specs/stock-tracker.md) */
+  multi?: boolean
+  /** 추가할 때 고르는 설정 — 'stock'이면 종목 검색 단계를 거쳐 params {code, name}로 저장 */
+  pick?: "stock"
+  /** 머리 제목·전체 보기 경로를 위젯마다(예: 종목명) */
+  titleOf?: (params?: Record<string, unknown>) => string
+  detailPathOf?: (params?: Record<string, unknown>) => string
 }

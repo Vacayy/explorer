@@ -206,13 +206,19 @@ def run(mode: str, dry_run: bool = False, conn: sqlite3.Connection | None = None
     today = (now or datetime.now(pf.KST)).strftime("%Y-%m-%d")
     try:
         summary = pf.summary(conn)
+        tracker_sent, tracker_err = 0, None
+        try:   # 종목 추적 위젯(docs/specs/stock-tracker.md) — 보유가 없어도 돈다, 키를 공유해 보유와 겹쳐도 한 번만
+            from pipeline import stock_tracker
+            tracker_sent = stock_tracker.alert(conn, mode, send, today, now, dry_run)
+        except Exception as e:  # noqa: BLE001
+            tracker_err = f"tracker: {type(e).__name__}: {str(e)[:120]}"
         if not summary["holdings"]:
-            return {"mode": mode, "sent": 0, "reason": "보유 종목 없음"}
+            return {"mode": mode, "sent": tracker_sent, "reason": "보유 종목 없음", **({"errors": [tracker_err]} if tracker_err else {})}
         if mode == "intraday" and pf.market_hours(now):
             # 30분 주기 작업이 30분 TTL에 걸려 시세를 한 주기 더 묵히지 않게, 1분보다 오래된 시세는 새로 받는다
             pf.refresh_quotes(conn, {h["code"] for h in summary["holdings"]}, ttl=60)
             summary = pf.summary(conn)
-        sent, result, errors = 0, {}, []
+        sent, result, errors = tracker_sent, {}, ([tracker_err] if tracker_err else [])
         if mode == "intraday":
             if pf.market_hours(now):
                 sent += _send(conn, price_moves(summary, today), "", send, dry_run)

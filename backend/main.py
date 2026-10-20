@@ -9,6 +9,7 @@ from routers import telegram_feed
 from routers import blog_feed
 from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_keywords, spine_sources
 from routers import spine_groups
+from routers import spine_tracker
 from routers import portfolio
 from routers import company_profile
 from routers import spine_search
@@ -56,6 +57,7 @@ app.include_router(spine_tw.router)
 app.include_router(spine_sector_map.router)
 app.include_router(spine_company.router)
 app.include_router(spine_groups.router)
+app.include_router(spine_tracker.router)
 app.include_router(portfolio.router)
 app.include_router(company_profile.router)
 app.include_router(spine_search.router)

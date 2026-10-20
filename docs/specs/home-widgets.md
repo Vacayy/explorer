@@ -79,6 +79,12 @@ interface WidgetDef {
 
 `WidgetDef.Detail`이 있는 위젯은 본문을 누르면(Enter·Space 포함) 원래 화면과 같은 카드를 Dialog로 띄운다. 열림 상태는 URL `?widget=<위젯 id>`. 지금은 리스크 4종(`RiskMonitoring`의 `useRiskView`+`RiskCard` 재사용, 기간·계열 선택도 같은 URL 키).
 
+### 종목 추적 위젯 (2026-10-20, `widgets/tracker.tsx`, [stock-tracker.md](stock-tracker.md))
+
+- `track.stock`: 종목마다 하나 놓는다(`multi`). 추가할 때 종목을 고른다(`pick: "stock"` → 추가 창의 종목 검색 단계). 고른 값은 배치 항목 `params {code, name}`이다.
+- 위젯 틀 확장: `WidgetDef.multi`·`pick`·`titleOf(params)`·`detailPathOf(params)`·`useMeta(params)`. 머리 제목은 '종목명 추적', 기준 시각은 시세 시각(장중/종가)이다.
+- 기본 6×8. 높이 3 이하면 현재가·조건 충족 요약·최근 신호 한 줄만 보인다.
+
 ### 포트폴리오·관심 위젯 6종 (P6c, `widgets/portfolio.tsx`)
 
 비율·날짜만(D-212). `/api/portfolio`는 저장된 시세만 읽는다(갱신 POST는 포트폴리오 화면에만). 묶음 위젯은 기본 관심 묶음(`/spine/groups/default-watch`)을 쓴다. 위젯별 묶음 선택(`params`)은 위젯 틀이 아직 `params`를 본문에 넘기지 않아 다음 단계로 미룬다.
