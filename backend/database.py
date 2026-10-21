@@ -1124,6 +1124,16 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_trade_stats ON trade_stats(hs_code, period);
 
     -- 홈 위젯 배치 (단일 사용자, 이름별 한 벌 — routers/dashboard.py)
+    -- 내 프리셋 — 홈 보드 배치를 이름 붙여 저장해 두고 칩으로 불러온다(docs/specs/home-widgets.md §5, 기본 프리셋 대체)
+    CREATE TABLE IF NOT EXISTS dashboard_presets (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        board         TEXT NOT NULL DEFAULT 'home-v2',   -- 어느 보드의 배치인가(dashboard_layouts.name)
+        label         TEXT NOT NULL,
+        layout_json   TEXT NOT NULL,                     -- [{i, widget, x, y, w, h, params}] — 배치 저장과 같은 형식
+        created_at    TEXT DEFAULT (datetime('now')),
+        updated_at    TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS dashboard_layouts (
         id            INTEGER PRIMARY KEY,
         name          TEXT NOT NULL UNIQUE,

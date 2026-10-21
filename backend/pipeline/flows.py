@@ -44,9 +44,10 @@ def fetch_flows(stock_code: str) -> list[dict]:
 def collect_flows(stock_codes: list[str] | None = None) -> dict:
     """워치리스트(기본) 종목의 최근 30일 수급 upsert — 멱등."""
     conn = get_connection()
-    if stock_codes is None:
+    if stock_codes is None:            # 관심 묶음 + 홈의 종목 추적 위젯 종목(docs/specs/stock-tracker.md)
+        from pipeline.stock_tracker import tracked_codes
         from pipeline.watch_rules import watched
-        stock_codes = list(watched(conn))
+        stock_codes = list(dict.fromkeys([*watched(conn), *tracked_codes(conn)]))
     stats = {"stocks": len(stock_codes), "rows": 0, "failed": 0}
     for code in stock_codes:
         try:

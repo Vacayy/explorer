@@ -35,6 +35,22 @@ class DashboardLayoutTests(unittest.TestCase):
         app.include_router(dashboard.router)
         self.client = TestClient(app)
 
+    def test_presets_crud_keeps_params(self):
+        """내 프리셋 — 지금 배치를 이름 붙여 저장·불러오기·덮어쓰기·이름 바꾸기·삭제, 위젯 params(종목 추적)도 그대로"""
+        items = ITEMS + [{"i": "track.stock#0", "widget": "track.stock", "x": 0, "y": 3, "w": 6, "h": 8, "params": {"code": "144960", "name": "뉴파워프라즈마"}}]
+        made = self.client.post('/api/dashboard/presets', json={"label": "종목 추적", "items": items})
+        self.assertEqual(made.status_code, 200)
+        pid = made.json()["id"]
+        got = self.client.get('/api/dashboard/presets').json()
+        self.assertEqual([p["label"] for p in got], ["종목 추적"])
+        self.assertEqual(got[0]["items"][-1]["params"]["code"], "144960")
+        self.client.patch(f'/api/dashboard/presets/{pid}', json={"label": "아침 점검", "items": ITEMS})
+        got = self.client.get('/api/dashboard/presets').json()[0]
+        self.assertEqual((got["label"], len(got["items"])), ("아침 점검", 2))
+        self.assertEqual(self.client.post('/api/dashboard/presets', json={"label": "", "items": ITEMS}).status_code, 422)
+        self.client.delete(f'/api/dashboard/presets/{pid}')
+        self.assertEqual(self.client.get('/api/dashboard/presets').json(), [])
+
     def test_missing_layout_is_404_and_list_empty(self):
         self.assertEqual(self.client.get('/api/dashboard/layouts/home').status_code, 404)
         self.assertEqual(self.client.get('/api/dashboard/layouts').json(), [])

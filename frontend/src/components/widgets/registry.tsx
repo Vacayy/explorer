@@ -11,6 +11,7 @@ import { CANVAS_WIDGETS } from "./canvas"
 import { WORLD_WIDGETS } from "./world"
 import { PROXY_WIDGETS } from "./proxy"
 import { TW_WIDGETS } from "./twRevenue"
+import { TRACKER_WIDGETS } from "./tracker"
 
 const risk = (id: string, metric: string, card: RiskCardKind, title: string, description: string): WidgetDef => ({
   id, title, description, section: "home", group: "국면·리스크", size: { w: 4, h: 3, minW: 3, minH: 2 },
@@ -44,18 +45,14 @@ export const WIDGETS: readonly WidgetDef[] = [
   ...CANVAS_WIDGETS,
   ...WORLD_WIDGETS,
   ...PROXY_WIDGETS,
+  ...TRACKER_WIDGETS,
 ]
 
 export const WIDGET_BY_ID: Record<string, WidgetDef> = Object.fromEntries(WIDGETS.map(w => [w.id, w]))
 export const WIDGET_SIZES: Record<string, SizeSpec> = Object.fromEntries(WIDGETS.map(w => [w.id, w.size]))
 
-/** 프리셋 (home-widgets.md §5) */
-export const PRESETS: readonly { key: string; label: string; widgets: string[] }[] = [
-  { key: "base", label: "기본", widgets: ["market.indices", "market.context", "market.us", "market.kr", "risk.curve", "risk.vix", "risk.fear", "risk.hy", "risk.regime", "retail.heat"] },
-  { key: "delever", label: "디레버리징", widgets: ["market.indices", "risk.hy", "risk.curve", "risk.vix", "risk.fear", "retail.heat", "risk.regime"] },
-  { key: "export", label: "수출 사이클", widgets: ["market.indices", "explore.trade", "explore.sectorShift", "market.kr", "market.us", "explore.credit"] },
-  { key: "event", label: "이벤트 장세", widgets: ["market.indices", "market.us", "market.kr", "risk.regime", "explore.actions", "explore.rights", "explore.people"] },
-]
+/** 저장된 배치가 없을 때의 첫 화면 — 고정 프리셋 칩은 없애고 '내 프리셋'(저장·불러오기)으로 대체했다(home-widgets.md §5) */
+export const DEFAULT_WIDGETS: readonly string[] = ["market.indices", "market.context", "market.us", "market.kr", "risk.curve", "risk.vix", "risk.fear", "risk.hy", "risk.regime", "retail.heat"]
 
 /** 추가 창 탭 순서 — 위젯이 아직 없는 탭은 '다음 단계' 안내 */
 export const GALLERY_SECTIONS: readonly { key: SectionKey; label: string }[] = [

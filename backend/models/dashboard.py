@@ -40,3 +40,24 @@ class LayoutSummary(BaseModel):
     name: str
     updated_at: str
     count: int
+
+
+
+class PresetIn(LayoutBody):
+    label: str = Field(min_length=1, max_length=30)
+    board: str = Field(default='home-v2', pattern=r'^[a-z0-9_-]{1,40}$')
+
+
+class PresetPatch(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    label: str | None = Field(default=None, min_length=1, max_length=30)
+    items: list[LayoutItem] | None = Field(default=None, max_length=100)
+
+
+class Preset(BaseModel):
+    id: int
+    board: str
+    label: str
+    items: list[LayoutItem]
+    updated_at: str

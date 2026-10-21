@@ -46,3 +46,19 @@ export function useDashboardLayout(name = "home") {
   })
   return { ...query, save }
 }
+
+/** 내 프리셋 — 지금 배치를 이름 붙여 저장해 두고 칩으로 불러온다(docs/specs/home-widgets.md §5) */
+export interface DashboardPreset { id: number; board: string; label: string; items: LayoutEntry[]; updated_at: string }
+export function useDashboardPresets(board = "home-v2") {
+  const qc = useQueryClient()
+  const key = ["dashboard", "presets", board] as const
+  const query = useQuery({ queryKey: key, queryFn: async () => (await api.get<DashboardPreset[]>("/api/dashboard/presets", { params: { board } })).data, staleTime: Infinity })
+  const body = (items: LayoutEntry[]) => items.map(({ i, widget, x, y, w, h, params }) => ({ i, widget, x, y, w, h, params: params ?? {} }))
+  const refresh = () => qc.invalidateQueries({ queryKey: key })
+  const create = useMutation({ mutationFn: async ({ label, items }: { label: string; items: LayoutEntry[] }) =>
+    (await api.post<DashboardPreset>("/api/dashboard/presets", { label, items: body(items), board })).data, onSuccess: refresh })
+  const update = useMutation({ mutationFn: async ({ id, label, items }: { id: number; label?: string; items?: LayoutEntry[] }) =>
+    (await api.patch<DashboardPreset>(`/api/dashboard/presets/${id}`, { ...(label ? { label } : {}), ...(items ? { items: body(items) } : {}) })).data, onSuccess: refresh })
+  const remove = useMutation({ mutationFn: async (id: number) => (await api.delete(`/api/dashboard/presets/${id}`)).data, onSuccess: refresh })
+  return { ...query, create, update, remove }
+}
