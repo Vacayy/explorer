@@ -12,6 +12,10 @@ import { ChatPanel } from "@/components/chat/ChatPanel"
 import { PREF, readPref, writePref } from "@/lib/shellPrefs"
 import { onAskAi } from "@/lib/aiPanel"
 import { SubNav } from "@/components/layout/SubNav"
+import { NewBoardDialog } from "@/components/home/NewBoardDialog"
+import { Button } from "@/components/ui/button"
+import { Plus } from "lucide-react"
+import { useHomeBoards, type HomeBoard } from "@/hooks/useDashboard"
 import { FEED_TABS, SECTIONS, analyzeTabOf, analyzeTabs, feedSourceTab, isDocumentFeed, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
@@ -81,12 +85,17 @@ import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
 const queryClient = createQueryClient()
 
 /** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭, 문서 검색은 소스 탭 */
-function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
+function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null, homeBoards: readonly HomeBoard[] = []) {
   if (stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey: analyzeTabOf(pathname), context: companyName ?? stockCode }
   if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
   if (pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey: feedSourceTab(search) }
   const here = locate(pathname, search)
   const section = here && SECTIONS.find(s => s.key === here.section)
+  // 홈 L2 = 내 메뉴들(home_boards). /home은 첫 메뉴, 전체 보기 화면(/home/risk 등)은 활성 탭 없음 (home-widgets.md §5)
+  if (section?.key === "home") {
+    const id = pathname.match(/^\/home\/b\/(\d+)/)?.[1] ?? (pathname === "/home" ? homeBoards[0]?.id : undefined)
+    return { tabs: homeBoards.map(b => ({ key: `b${b.id}`, path: `/home/b/${b.id}`, label: b.label })), activeKey: id != null ? `b${id}` : null, home: true }
+  }
   if (!section || section.tabs.length < 2) return null
   return { tabs: section.tabs, activeKey: here.tab }
 }
@@ -117,7 +126,9 @@ function Layout() {
   const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
-  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
+  const { data: homeBoards } = useHomeBoards()
+  const [creatingBoard, setCreatingBoard] = useState(false)
+  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name, homeBoards)
   const showAi = aiOpen && !pathname.startsWith("/chat")
 
   return (
@@ -140,7 +151,9 @@ function Layout() {
                   ? "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve) + var(--subnav-height))"
                   : "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
               >
-                {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
+                {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context}
+                  trailing={subNav.home && <Button variant="ghost" size="sm" className="h-7 shrink-0 text-[13px] text-muted-foreground" onClick={() => setCreatingBoard(true)}><Plus className="size-3.5" />새 메뉴</Button>} />}
+                <NewBoardDialog open={creatingBoard} onOpenChange={setCreatingBoard} />
                 {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
                 <Outlet />
               </div>
@@ -207,6 +220,7 @@ export default function App() {
 
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
+            <Route path="home/b/:boardId" element={<HomePage />} />
             <Route path="home/briefing" element={<HomeBriefingPage />} />
             <Route path="home/risk" element={<HomeRiskPage />} />
             <Route path="home/macro" element={<HomeMacroPage />} />

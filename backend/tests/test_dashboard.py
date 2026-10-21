@@ -20,7 +20,7 @@ class DashboardLayoutTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        path = Path(tmp.name) / 'test.sqlite'
+        path = self.path = Path(tmp.name) / 'test.sqlite'
         with patch.object(database, 'DB_PATH', path):
             database.init_db()   # 실제 init_db의 DDL을 쓴다
 
@@ -35,21 +35,38 @@ class DashboardLayoutTests(unittest.TestCase):
         app.include_router(dashboard.router)
         self.client = TestClient(app)
 
-    def test_presets_crud_keeps_params(self):
-        """내 프리셋 — 지금 배치를 이름 붙여 저장·불러오기·덮어쓰기·이름 바꾸기·삭제, 위젯 params(종목 추적)도 그대로"""
+    def test_boards_crud_order_keeps_params(self):
+        """홈 메뉴 — 만들기(뒤에 붙음)·배치 저장·이름 바꾸기·순서·삭제, 위젯 params(종목 추적)도 그대로"""
         items = ITEMS + [{"i": "track.stock#0", "widget": "track.stock", "x": 0, "y": 3, "w": 6, "h": 8, "params": {"code": "144960", "name": "뉴파워프라즈마"}}]
-        made = self.client.post('/api/dashboard/presets', json={"label": "종목 추적", "items": items})
-        self.assertEqual(made.status_code, 200)
-        pid = made.json()["id"]
-        got = self.client.get('/api/dashboard/presets').json()
-        self.assertEqual([p["label"] for p in got], ["종목 추적"])
+        a = self.client.post('/api/dashboard/boards', json={"label": "종목 추적", "items": items}).json()
+        b = self.client.post('/api/dashboard/boards', json={"label": "매크로", "items": []}).json()
+        self.assertEqual((a["sort"], b["sort"]), (0, 1))
+        got = self.client.get('/api/dashboard/boards').json()
+        self.assertEqual([x["label"] for x in got], ["종목 추적", "매크로"])
         self.assertEqual(got[0]["items"][-1]["params"]["code"], "144960")
-        self.client.patch(f'/api/dashboard/presets/{pid}', json={"label": "아침 점검", "items": ITEMS})
-        got = self.client.get('/api/dashboard/presets').json()[0]
-        self.assertEqual((got["label"], len(got["items"])), ("아침 점검", 2))
-        self.assertEqual(self.client.post('/api/dashboard/presets', json={"label": "", "items": ITEMS}).status_code, 422)
-        self.client.delete(f'/api/dashboard/presets/{pid}')
-        self.assertEqual(self.client.get('/api/dashboard/presets').json(), [])
+        self.client.patch(f'/api/dashboard/boards/{a["id"]}', json={"label": "아침 점검", "items": ITEMS})
+        got = self.client.put('/api/dashboard/boards/order', json={"ids": [b["id"], a["id"]]}).json()
+        self.assertEqual([(x["label"], len(x["items"])) for x in got], [("매크로", 0), ("아침 점검", 2)])
+        self.assertEqual(self.client.post('/api/dashboard/boards', json={"label": "", "items": ITEMS}).status_code, 422)
+        self.assertEqual(self.client.patch('/api/dashboard/boards/999', json={"label": "x"}).status_code, 404)
+        self.client.delete(f'/api/dashboard/boards/{a["id"]}')
+        self.assertEqual([x["label"] for x in self.client.get('/api/dashboard/boards').json()], ["매크로"])
+
+    def test_presets_migrate_to_boards_once(self):
+        """옛 홈 배치 → 첫 메뉴 '대시보드', 내 프리셋 → 그 뒤 메뉴. 프리셋 표는 지우고, 다시 init_db해도 메뉴가 늘지 않는다"""
+        c = sqlite3.connect(self.path)
+        c.execute("DELETE FROM home_boards")
+        c.execute("CREATE TABLE dashboard_presets (id INTEGER PRIMARY KEY, board TEXT, label TEXT, layout_json TEXT)")
+        c.execute("INSERT INTO dashboard_layouts (name, layout_json, updated_at) VALUES ('home-v2', '[]', '')")
+        c.execute("INSERT INTO dashboard_presets VALUES (2, 'home-v2', '메인', '[]'), (3, 'home-v2', '보유/관심', '[]')")
+        c.commit(); c.close()
+        for _ in range(2):
+            with patch.object(database, 'DB_PATH', self.path):
+                database.init_db()
+        self.assertEqual([x["label"] for x in self.client.get('/api/dashboard/boards').json()], ["대시보드", "메인", "보유/관심"])
+        c = sqlite3.connect(self.path)
+        self.assertIsNone(c.execute("SELECT 1 FROM sqlite_master WHERE name='dashboard_presets'").fetchone())
+        c.close()
 
     def test_missing_layout_is_404_and_list_empty(self):
         self.assertEqual(self.client.get('/api/dashboard/layouts/home').status_code, 404)

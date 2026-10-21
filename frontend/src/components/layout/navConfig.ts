@@ -25,6 +25,7 @@ export interface SectionDef {
 }
 
 export const SECTIONS: readonly SectionDef[] = [
+  // 홈 L2 탭은 여기가 아니라 내 메뉴(home_boards)에서 그린다(App subNavFor). 아래 규칙은 위치 판정(전체 보기 화면 포함)용
   { key: "home", label: "홈", path: "/home", tabs: [
     { key: "dashboard", path: "/home", label: "대시보드", match: ["/home"] },
     { key: "briefing", path: "/home/briefing", label: "시장 브리핑", match: ["/home/briefing"] },

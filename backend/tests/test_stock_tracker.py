@@ -39,14 +39,15 @@ class TrackedTests(unittest.TestCase):
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         ensure(self.conn)
-        self.conn.executescript("""CREATE TABLE dashboard_layouts (name TEXT PRIMARY KEY, layout_json TEXT, updated_at TEXT);
+        self.conn.executescript("""CREATE TABLE home_boards (id INTEGER PRIMARY KEY, label TEXT, sort INTEGER, layout_json TEXT);
             CREATE TABLE companies (stock_code TEXT, corp_name TEXT, corp_code TEXT);
             CREATE TABLE stock_prices (stock_code TEXT, trade_date TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL);
             CREATE TABLE portfolio_quotes (stock_code TEXT, price REAL, change_pct REAL, market_status TEXT, traded_at TEXT, fetched_at REAL);""")
         items = [{"i": "track.stock#0", "widget": "track.stock", "params": {"code": "111111"}},
                  {"i": "market.us#0", "widget": "market.us", "params": None},
                  {"i": "track.stock#1", "widget": "track.stock", "params": {"code": "111111"}}]
-        self.conn.execute("INSERT INTO dashboard_layouts VALUES ('home-v2', ?, '')", (json.dumps(items),))
+        self.conn.execute("INSERT INTO home_boards VALUES (1, '대시보드', 0, ?)", (json.dumps(items),))
+        self.conn.execute("INSERT INTO home_boards VALUES (2, '보유', 1, ?)", (json.dumps(items[:1]),))
         self.conn.execute("INSERT INTO companies VALUES ('111111', '테스트', 'C1')")
         for i, c in enumerate([100] * 59 + [90]):
             self.conn.execute("INSERT INTO stock_prices VALUES ('111111', ?, ?, ?, ?, ?, 100)", (f"2026-0{1 + i // 28}-{i % 28 + 1:02d}", c, c, c, c))
@@ -54,7 +55,7 @@ class TrackedTests(unittest.TestCase):
         self.conn.execute("INSERT INTO tracker_conditions (stock_code, role, kind, ma, label) VALUES ('111111','exit','close_below_ma',60,'60일선 이탈')")
 
     def test_tracked_codes_come_from_home_widgets(self):
-        self.assertEqual(tracked_codes(self.conn), ["111111"])     # 같은 종목 위젯 두 개 → 한 번
+        self.assertEqual(tracked_codes(self.conn), ["111111"])     # 같은 종목 위젯이 여러 메뉴에 → 한 번
 
     def test_ma_condition_alerts_at_close_only(self):
         close = _items(self.conn, "close", "2026-03-05", live=False)

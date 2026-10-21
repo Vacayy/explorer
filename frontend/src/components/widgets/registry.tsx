@@ -51,8 +51,17 @@ export const WIDGETS: readonly WidgetDef[] = [
 export const WIDGET_BY_ID: Record<string, WidgetDef> = Object.fromEntries(WIDGETS.map(w => [w.id, w]))
 export const WIDGET_SIZES: Record<string, SizeSpec> = Object.fromEntries(WIDGETS.map(w => [w.id, w.size]))
 
-/** 저장된 배치가 없을 때의 첫 화면 — 고정 프리셋 칩은 없애고 '내 프리셋'(저장·불러오기)으로 대체했다(home-widgets.md §5) */
-export const DEFAULT_WIDGETS: readonly string[] = ["market.indices", "market.context", "market.us", "market.kr", "risk.curve", "risk.vix", "risk.fear", "risk.hy", "risk.regime", "retail.heat"]
+/** 시스템 프리셋 — 새 메뉴를 만들 때 고르는 출발점(home-widgets.md §5). 만든 뒤엔 그 메뉴의 배치일 뿐이다 */
+export const SYSTEM_PRESETS: readonly { key: string; label: string; description: string; widgets: string[] }[] = [
+  { key: "base", label: "기본", description: "지수·시장 맥락·미국장·국장·리스크 지표", widgets: ["market.indices", "market.context", "market.us", "market.kr", "risk.curve", "risk.vix", "risk.fear", "risk.hy", "risk.regime", "retail.heat"] },
+  { key: "briefing", label: "시장 브리핑", description: "지수와 미국장·국장 움직임", widgets: ["market.indices", "market.context", "market.us", "market.kr"] },
+  { key: "risk", label: "국면·리스크", description: "시장 국면·개인 과열·금리차·VIX·HY", widgets: ["risk.regime", "retail.heat", "risk.curve", "risk.vix", "risk.fear", "risk.hy"] },
+  { key: "macro", label: "매크로", description: "시장 맥락·금리차·HY·회사채·수출입", widgets: ["market.context", "market.indices", "risk.curve", "risk.hy", "explore.credit", "explore.trade"] },
+  { key: "portfolio", label: "보유 점검", description: "오늘 보유 종목·일정·수급·노출", widgets: ["portfolio.today", "portfolio.events", "portfolio.flow", "portfolio.exposure"] },
+  { key: "delever", label: "디레버리징", description: "신용 경색·변동성 신호 모아 보기", widgets: ["market.indices", "risk.hy", "risk.curve", "risk.vix", "risk.fear", "retail.heat", "risk.regime"] },
+  { key: "export", label: "수출 사이클", description: "수출입·섹터 이동·회사채", widgets: ["market.indices", "explore.trade", "explore.sectorShift", "market.kr", "market.us", "explore.credit"] },
+  { key: "event", label: "이벤트 장세", description: "기업활동·권리·인물 이벤트", widgets: ["market.indices", "market.us", "market.kr", "risk.regime", "explore.actions", "explore.rights", "explore.people"] },
+]
 
 /** 추가 창 탭 순서 — 위젯이 아직 없는 탭은 '다음 단계' 안내 */
 export const GALLERY_SECTIONS: readonly { key: SectionKey; label: string }[] = [

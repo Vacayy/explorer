@@ -1125,11 +1125,12 @@ def init_db():
 
     -- 홈 위젯 배치 (단일 사용자, 이름별 한 벌 — routers/dashboard.py)
     -- 내 프리셋 — 홈 보드 배치를 이름 붙여 저장해 두고 칩으로 불러온다(docs/specs/home-widgets.md §5, 기본 프리셋 대체)
-    CREATE TABLE IF NOT EXISTS dashboard_presets (
+    -- 홈 메뉴(보드) — 메뉴 하나 = 위젯 배치 하나(docs/specs/home-widgets.md §5). 홈 L2 탭이 이 행들이다
+    CREATE TABLE IF NOT EXISTS home_boards (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        board         TEXT NOT NULL DEFAULT 'home-v2',   -- 어느 보드의 배치인가(dashboard_layouts.name)
         label         TEXT NOT NULL,
-        layout_json   TEXT NOT NULL,                     -- [{i, widget, x, y, w, h, params}] — 배치 저장과 같은 형식
+        sort          INTEGER NOT NULL DEFAULT 0,        -- 탭 순서(작을수록 왼쪽)
+        layout_json   TEXT NOT NULL,                     -- [{i, widget, x, y, w, h, params}] — dashboard_layouts와 같은 형식
         created_at    TEXT DEFAULT (datetime('now')),
         updated_at    TEXT DEFAULT (datetime('now'))
     );
@@ -1451,6 +1452,17 @@ def init_db():
             DROP TABLE stock_briefs_old;
             CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
         """)
+        conn.commit()
+
+    # 내 프리셋 → 홈 메뉴(1회성): 옛 홈 배치('home-v2')를 첫 메뉴로, 저장해 둔 프리셋을 그 뒤 메뉴로 옮기고 프리셋 표를 지운다
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dashboard_presets'").fetchone():
+        if not conn.execute("SELECT 1 FROM home_boards").fetchone():
+            row = conn.execute("SELECT layout_json FROM dashboard_layouts WHERE name='home-v2'").fetchone()
+            if row:
+                conn.execute("INSERT INTO home_boards (label, sort, layout_json) VALUES ('대시보드', 0, ?)", (row[0],))
+            conn.execute("INSERT INTO home_boards (label, sort, layout_json) "
+                         "SELECT label, id, layout_json FROM dashboard_presets WHERE board='home-v2' ORDER BY id")
+        conn.execute("DROP TABLE dashboard_presets")
         conn.commit()
 
     # 보유 종목 논지(portfolio-intelligence §2) — questions 생성 뒤에 붙여야 새 DB에서도 칼럼이 생긴다

@@ -1,11 +1,11 @@
-"""홈 위젯 배치 저장 — 단일 사용자, 이름별 한 벌. 없으면 404 → FE가 기본 배치를 쓴다."""
+"""홈 위젯 배치 저장 — 단일 사용자. 이름별 배치 한 벌(layouts)과 홈 메뉴(boards, 메뉴 하나 = 배치 하나)."""
 import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Path
 
 from database import get_connection
-from models.dashboard import Layout, LayoutBody, LayoutSummary, Preset, PresetIn, PresetPatch
+from models.dashboard import Board, BoardIn, BoardOrder, BoardPatch, Layout, LayoutBody, LayoutSummary
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 Name = Path(pattern=r"^[a-z0-9_-]{1,40}$")
@@ -49,36 +49,48 @@ def put_layout(body: LayoutBody, name: str = Name):
 
 
 
-# ── 내 프리셋 — 지금 배치를 이름 붙여 저장·불러오기(기본 프리셋 대체) ──────────────
+# ── 홈 메뉴(보드) — 메뉴 하나 = 위젯 배치 하나. 옮겨 다니는 건 화면 이동, 배치는 놓을 때마다 저장 ──
 
-def _preset(r) -> dict:
-    return {"id": r["id"], "board": r["board"], "label": r["label"], "items": json.loads(r["layout_json"]), "updated_at": r["updated_at"]}
+def _board(r) -> dict:
+    return {"id": r["id"], "label": r["label"], "sort": r["sort"], "items": json.loads(r["layout_json"]), "updated_at": r["updated_at"]}
 
 
-@router.get("/presets", response_model=list[Preset])
-def list_presets(board: str = "home-v2"):
+@router.get("/boards", response_model=list[Board])
+def list_boards():
     conn = get_connection()
     try:
-        return [_preset(r) for r in conn.execute("SELECT * FROM dashboard_presets WHERE board=? ORDER BY id", (board,))]
+        return [_board(r) for r in conn.execute("SELECT * FROM home_boards ORDER BY sort, id")]
     finally:
         conn.close()
 
 
-@router.post("/presets", response_model=Preset)
-def create_preset(body: PresetIn):
+@router.post("/boards", response_model=Board)
+def create_board(body: BoardIn):
     items = [item.model_dump() for item in body.items]
     conn = get_connection()
     try:
-        cur = conn.execute("INSERT INTO dashboard_presets (board, label, layout_json) VALUES (?,?,?)",
-                           (body.board, body.label.strip(), json.dumps(items, ensure_ascii=False)))
+        cur = conn.execute("INSERT INTO home_boards (label, sort, layout_json) "
+                           "VALUES (?, (SELECT COALESCE(MAX(sort), -1) + 1 FROM home_boards), ?)",
+                           (body.label.strip(), json.dumps(items, ensure_ascii=False)))
         conn.commit()
-        return _preset(conn.execute("SELECT * FROM dashboard_presets WHERE id=?", (cur.lastrowid,)).fetchone())
+        return _board(conn.execute("SELECT * FROM home_boards WHERE id=?", (cur.lastrowid,)).fetchone())
     finally:
         conn.close()
 
 
-@router.patch("/presets/{pid}", response_model=Preset)
-def update_preset(pid: int, body: PresetPatch):
+@router.put("/boards/order", response_model=list[Board])
+def order_boards(body: BoardOrder):
+    conn = get_connection()
+    try:
+        conn.executemany("UPDATE home_boards SET sort=? WHERE id=?", [(n, bid) for n, bid in enumerate(body.ids)])
+        conn.commit()
+        return [_board(r) for r in conn.execute("SELECT * FROM home_boards ORDER BY sort, id")]
+    finally:
+        conn.close()
+
+
+@router.patch("/boards/{bid}", response_model=Board)
+def update_board(bid: int, body: BoardPatch):
     sets: dict = {}
     if body.label is not None:
         sets["label"] = body.label.strip()
@@ -87,22 +99,22 @@ def update_preset(pid: int, body: PresetPatch):
     conn = get_connection()
     try:
         if sets:
-            conn.execute(f"UPDATE dashboard_presets SET {', '.join(f'{k}=?' for k in sets)}, updated_at=datetime('now') WHERE id=?", (*sets.values(), pid))
+            conn.execute(f"UPDATE home_boards SET {', '.join(f'{k}=?' for k in sets)}, updated_at=datetime('now') WHERE id=?", (*sets.values(), bid))
             conn.commit()
-        r = conn.execute("SELECT * FROM dashboard_presets WHERE id=?", (pid,)).fetchone()
+        r = conn.execute("SELECT * FROM home_boards WHERE id=?", (bid,)).fetchone()
         if not r:
-            raise HTTPException(404, "프리셋이 없습니다.")
-        return _preset(r)
+            raise HTTPException(404, "메뉴가 없습니다.")
+        return _board(r)
     finally:
         conn.close()
 
 
-@router.delete("/presets/{pid}")
-def delete_preset(pid: int):
+@router.delete("/boards/{bid}")
+def delete_board(bid: int):
     conn = get_connection()
     try:
-        conn.execute("DELETE FROM dashboard_presets WHERE id=?", (pid,))
+        conn.execute("DELETE FROM home_boards WHERE id=?", (bid,))
         conn.commit()
-        return {"deleted": pid}
+        return {"deleted": bid}
     finally:
         conn.close()

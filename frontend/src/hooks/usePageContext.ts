@@ -1,6 +1,7 @@
 import { useLocation } from "react-router-dom"
 import type { PageContext } from "@/api/spine"
 import { SECTIONS, analyzeTabOf, locate } from "@/components/layout/navConfig"
+import { useHomeBoards } from "@/hooks/useDashboard"
 
 const ANALYZE_LABEL: Record<string, string> = { summary: "개요", financials: "실적·사업", mentions: "자료", lens: "렌즈" }
 
@@ -9,6 +10,7 @@ export function usePageContext(companyName?: string | null): PageContext | null 
   const { pathname, search } = useLocation()
   const path = pathname + search
   const params = new URLSearchParams(search)
+  const { data: homeBoards } = useHomeBoards()
 
   const kr = pathname.match(/^\/analyze\/([^/]+)/)
   if (kr && kr[1] !== "compare") {
@@ -28,6 +30,10 @@ export function usePageContext(companyName?: string | null): PageContext | null 
 
   const here = locate(pathname, search)
   if (!here) return null
+  // 홈 L2는 내 메뉴(home_boards) — 탭 이름이 메뉴 이름이다
+  const boardId = pathname.match(/^\/home\/b\/(\d+)/)?.[1]
+  const menu = boardId ? homeBoards?.find(b => String(b.id) === boardId) : pathname === "/home" && here.section === "home" ? homeBoards?.[0] : undefined
+  if (menu) return { kind: "page", path, label: `홈 · ${menu.label}` }
   const section = SECTIONS.find(s => s.key === here.section)!
   const tab = section.tabs.find(t => t.key === here.tab)!
   return { kind: "page", path, label: section.tabs.length > 1 ? `${section.label} · ${tab.label}` : section.label }
