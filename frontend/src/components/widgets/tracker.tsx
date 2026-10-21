@@ -32,7 +32,9 @@ const ROLE_LABEL: Record<TrackerRole, string> = { entry: "진입", exit: "손절
 
 function useTrackerMeta(params?: Record<string, unknown>): WidgetMeta {
   const q = useTracker(codeOf(params))
-  return { asOf: q.data ? `${q.data.as_of ?? "-"}${q.data.source === "live" ? " 장중" : " 종가"}` : null, stale: q.isError }
+  const t = q.data?.as_of ?? ""       // 장중 = ISO 시각('2026-10-21T09:30:06+09:00'), 종가 = 'YYYY-MM-DD'
+  const label = !q.data ? null : q.data.source === "live" ? `${t.slice(5, 10)} ${t.slice(11, 16)} 장중` : `${t.slice(5, 10) || "-"} 종가`
+  return { asOf: label, stale: q.isError }
 }
 
 function StatusBadge({ c }: { c: TrackerCondition }) {

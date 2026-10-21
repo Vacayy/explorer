@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import ReactGridLayout, { useContainerWidth, type Compactor, type EventCallback, type LayoutItem } from "react-grid-layout"
 import "react-grid-layout/css/styles.css"
-import { Plus } from "lucide-react"
+import { MoreHorizontal, Plus, Save } from "lucide-react"
 import { toast } from "sonner"
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -9,17 +9,18 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { WidgetFrame } from "@/components/shared/WidgetFrame"
-import { useDashboardLayout } from "@/hooks/useDashboard"
-import { PRESETS, WIDGET_BY_ID } from "@/components/widgets/registry"
+import { useDashboardLayout, useDashboardPresets, type DashboardPreset } from "@/hooks/useDashboard"
+import { DEFAULT_WIDGETS, WIDGET_BY_ID } from "@/components/widgets/registry"
 import { WidgetGallery } from "@/components/widgets/WidgetGallery"
 import {
   aimAt, COLS, fromEntries, MAX_IN_ROW, move, place, resizeWidth, tidy, toEntries,
-  type Heights, type Rows, type Spans, type Target,
+  type Entry, type Heights, type Rows, type Spans, type Target,
 } from "@/components/widgets/rows"
 
 /* 격자: 행 10px · 간격 12px — 높이를 촘촘하게 맞춘다. 1칸 높이(px) = 22h − 12 */
@@ -50,6 +51,13 @@ function presetBoard(widgets: string[]): Board {
   return b
 }
 
+/** 저장된 배치(또는 내 프리셋) → 보드. 알 수 없는 위젯은 버린다 */
+function boardFromEntries(entries: Entry[]): Board {
+  const known = entries.filter(e => WIDGET_BY_ID[e.widget])
+  const { rows, spans, heights } = fromEntries(known)
+  return { rows, spans, heights, widgetOf: Object.fromEntries(known.map(e => [e.i, e.widget])), params: Object.fromEntries(known.map(e => [e.i, e.params])) }
+}
+
 /**
  * 홈 › 대시보드 — 줄 배치 위젯 보드 (docs/specs/home-widgets.md).
  * 손잡이로 끌어 다른 줄에 끼우거나 새 줄로, 아래 가장자리로 높이, 위젯 사이 경계로 이웃과 폭을 주고받는다.
@@ -60,21 +68,21 @@ export default function Dashboard() {
   const [params, setParams] = useSearchParams()
   const [board, setBoard] = useState<Board | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
-  const [presetAsk, setPresetAsk] = useState<string | null>(null)
+  const presets = useDashboardPresets(LAYOUT_NAME)
+  const [presetAsk, setPresetAsk] = useState<DashboardPreset | null>(null)     // 불러오기 확인
+  const [deleteAsk, setDeleteAsk] = useState<DashboardPreset | null>(null)
+  const [nameFor, setNameFor] = useState<{ mode: "save" } | { mode: "rename"; preset: DashboardPreset } | null>(null)
+  const [nameValue, setNameValue] = useState("")
   const { width, containerRef, mounted } = useContainerWidth()
 
   useEffect(() => {
     if (board || saved.isPending || saved.isError) return
-    if (!saved.data) { setBoard(presetBoard(PRESETS[0].widgets)); return }
-    const known = saved.data.filter(e => WIDGET_BY_ID[e.widget])
-    const { rows, spans, heights } = fromEntries(known)
-    setBoard({ rows, spans, heights, widgetOf: Object.fromEntries(known.map(e => [e.i, e.widget])), params: Object.fromEntries(known.map(e => [e.i, e.params])) })
+    if (!saved.data) { setBoard(presetBoard([...DEFAULT_WIDGETS])); return }
+    setBoard(boardFromEntries(saved.data))
   }, [saved.data, saved.isPending, saved.isError, board])
 
-  const persist = (b: Board) => saved.save.mutate(
-    toEntries(b.rows, b.spans, b.heights, i => b.widgetOf[i], i => fineH(WIDGET_BY_ID[b.widgetOf[i]]?.size.h ?? 3), b.params),
-    { onError: () => toast.error("배치를 저장하지 못했습니다. 잠시 뒤 다시 바꿔 보세요.") },
-  )
+  const entriesOf = (b: Board) => toEntries(b.rows, b.spans, b.heights, i => b.widgetOf[i], i => fineH(WIDGET_BY_ID[b.widgetOf[i]]?.size.h ?? 3), b.params)
+  const persist = (b: Board) => saved.save.mutate(entriesOf(b), { onError: () => toast.error("배치를 저장하지 못했습니다. 잠시 뒤 다시 바꿔 보세요.") })
   const commit = (next: Board, undo?: { label: string; prev: Board }) => {
     setBoard(next); persist(next)
     if (undo) toast(undo.label, { action: { label: "되돌리기", onClick: () => { setBoard(undo.prev); persist(undo.prev) } } })
@@ -156,11 +164,30 @@ export default function Dashboard() {
     if (!b) return
     commit({ ...b, rows: b.rows.map(r => r.filter(i => !ids.includes(i))).filter(r => r.length) }, { label, prev: b })
   }
-  const applyPreset = (key: string) => {
-    const p = PRESETS.find(x => x.key === key), b = boardRef.current
-    if (!p || !b) return
-    commit(presetBoard(p.widgets), { label: `'${p.label}' 프리셋으로 바꿨어요.`, prev: b })
+  const applyPreset = (p: DashboardPreset) => {
+    const b = boardRef.current
+    if (!b) return
+    commit(boardFromEntries(p.items), { label: `'${p.label}' 배치로 바꿨어요.`, prev: b })
     setPresetAsk(null)
+  }
+  const openName = (v: { mode: "save" } | { mode: "rename"; preset: DashboardPreset }) => { setNameValue(v.mode === "rename" ? v.preset.label : ""); setNameFor(v) }
+  const submitName = () => {
+    const label = nameValue.trim(), b = boardRef.current
+    if (!label || !nameFor) return
+    if (nameFor.mode === "save") {
+      if (!b) return
+      presets.create.mutate({ label, items: entriesOf(b) }, {
+        onSuccess: () => toast.success(`지금 배치를 '${label}'로 저장했어요.`), onError: () => toast.error("프리셋을 저장하지 못했습니다.") })
+    } else {
+      presets.update.mutate({ id: nameFor.preset.id, label }, { onError: () => toast.error("이름을 바꾸지 못했습니다.") })
+    }
+    setNameFor(null)
+  }
+  const overwrite = (p: DashboardPreset) => {
+    const b = boardRef.current
+    if (!b) return
+    presets.update.mutate({ id: p.id, items: entriesOf(b) }, {
+      onSuccess: () => toast.success(`'${p.label}'을 지금 배치로 덮어썼어요.`), onError: () => toast.error("덮어쓰지 못했습니다.") })
   }
 
   const openDetail = (id: string) => setParams(prev => { const next = new URLSearchParams(prev); next.set("widget", id); return next }, { preventScrollReset: true })
@@ -173,10 +200,20 @@ export default function Dashboard() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">프리셋</span>
-        <ToggleGroup type="single" size="sm" variant="outline" value="" onValueChange={v => v && setPresetAsk(v)} aria-label="프리셋 적용">
-          {PRESETS.map(p => <ToggleGroupItem key={p.key} value={p.key} className="px-3 text-xs">{p.label}</ToggleGroupItem>)}
-        </ToggleGroup>
+        <span className="text-xs text-muted-foreground">내 프리셋</span>
+        {(presets.data ?? []).map(p => <div key={p.id} className="flex items-center rounded-md border">
+          <Button variant="ghost" size="sm" className="h-7 rounded-r-none px-3 text-xs" onClick={() => setPresetAsk(p)} title={`'${p.label}' 배치로 바꾸기`}>{p.label}</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-xs" className="h-7 rounded-l-none border-l" aria-label={`${p.label} 메뉴`}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => overwrite(p)}>지금 배치로 덮어쓰기</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openName({ mode: "rename", preset: p })}>이름 바꾸기</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setDeleteAsk(p)} className="text-destructive">삭제</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>)}
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openName({ mode: "save" })}><Save className="size-3.5" />지금 배치 저장</Button>
+        {presets.isSuccess && !presets.data.length && <span className="truncate text-xs text-muted-foreground">저장해 두면 칩으로 바로 불러와요</span>}
         <span className="ml-auto text-xs text-muted-foreground">손잡이로 옮기고, 아래·옆 가장자리로 크기를 바꿔요</span>
         <Button size="sm" onClick={() => setGalleryOpen(true)}><Plus className="size-3.5" />위젯 추가</Button>
       </div>
@@ -232,8 +269,8 @@ export default function Dashboard() {
       <AlertDialog open={!!presetAsk} onOpenChange={v => !v && setPresetAsk(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>'{PRESETS.find(p => p.key === presetAsk)?.label}' 프리셋으로 바꿀까요?</AlertDialogTitle>
-            <AlertDialogDescription>지금 배치를 이 프리셋 구성으로 바꿉니다. 바꾼 뒤에도 '되돌리기'로 돌아올 수 있어요.</AlertDialogDescription>
+            <AlertDialogTitle>'{presetAsk?.label}' 배치로 바꿀까요?</AlertDialogTitle>
+            <AlertDialogDescription>지금 배치를 저장해 둔 배치로 바꿉니다. 지금 배치를 남기려면 먼저 '지금 배치 저장'을 하세요. 바꾼 뒤에도 '되돌리기'로 돌아올 수 있어요.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
@@ -241,6 +278,34 @@ export default function Dashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={!!deleteAsk} onOpenChange={v => !v && setDeleteAsk(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>'{deleteAsk?.label}' 프리셋을 삭제할까요?</AlertDialogTitle>
+            <AlertDialogDescription>저장해 둔 배치만 지워지고, 지금 홈 화면은 그대로예요.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (deleteAsk) presets.remove.mutate(deleteAsk.id); setDeleteAsk(null) }}>삭제</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={!!nameFor} onOpenChange={v => !v && setNameFor(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{nameFor?.mode === "rename" ? "프리셋 이름 바꾸기" : "지금 배치 저장"}</DialogTitle>
+            <DialogDescription>{nameFor?.mode === "rename" ? "칩에 보일 이름이에요." : "지금 홈의 위젯과 배치(종목 추적 위젯의 종목 포함)를 이름 붙여 저장해요."}</DialogDescription>
+          </DialogHeader>
+          <Input autoFocus value={nameValue} maxLength={30} placeholder="예: 아침 점검, 종목 추적, 매크로" onChange={e => setNameValue(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submitName() }} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNameFor(null)}>취소</Button>
+            <Button disabled={!nameValue.trim()} onClick={submitName}>저장</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
