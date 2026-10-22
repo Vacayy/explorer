@@ -3,25 +3,36 @@ import { Check } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import MultiLineChart from "@/components/charts/MultiLineChart"
 import { WidgetState } from "@/components/shared/WidgetFrame"
 import { SparkLine } from "@/components/shared/Spark"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { useChartPalette } from "@/hooks/useChartPalette"
-import { useTrendLeaders } from "@/hooks/useTrendLeaders"
+import { useTrendChart, useTrendLeaders } from "@/hooks/useTrendLeaders"
 import { cn } from "@/lib/utils"
 import { formatKrw, formatKstDateTime, formatLevel, formatNumber, formatPercent } from "@/utils/format"
-import type { TrendEvent, TrendEventKind, TrendLeader } from "@/types"
+import type { TrendEvent, TrendEventKind, TrendHigh52, TrendLeader } from "@/types"
 import type { WidgetBodyProps, WidgetMeta } from "./types"
 
 /**
  * 가파른 추세 위젯 (pipeline/trend_leaders, docs/specs/home-widgets.md §3).
  * 탭: 추세(조건 모두 통과) | 신고가·매물대(52주 신고가 돌파 · 매물대 돌파 후 지지). 탭은 URL trend_tab,
- * 종목을 누르면 근거 창(URL trend=<코드>) — 조건별 실제 값과 120일 차트(MA20·MA60·60일 회귀선).
+ * 종목을 누르면 근거 창(URL trend=<코드>) — 조건별 실제 값과 2년 차트(MA20·MA60·52주 고점선·60일 회귀선).
+ * 추세 종목 중 52주 신고가 단계(돌파 · 돌파 후 지지·재반등)는 배지로 따로 표시하고 URL trend_stage로 골라 본다.
  */
 
 export const EVENT_LABEL: Record<TrendEventKind, string> = { high52: "52주 신고가", vp_retest: "매물대 지지" }
+const STAGE: Record<TrendHigh52["kind"], { label: string; cls: string; hint: string }> = {
+  breakout: { label: "신고가 돌파", cls: "border-transparent bg-primary text-primary-foreground",
+    hint: "최근 5거래일 안에 종가가 직전 250거래일 최고가를 넘었다" },
+  retest: { label: "돌파 후 지지", cls: "border-primary text-primary",
+    hint: "60거래일 안 전고점 돌파 → 돌파선 근처(저가 −5%~+3%)까지 되돌림, 종가는 −3% 아래로 안 빠짐 → 다시 올라 지금 돌파선 위" },
+}
+const StageBadge = ({ s, className }: { s: TrendHigh52; className?: string }) =>
+  <Badge variant="outline" title={`${STAGE[s.kind].label} — ${s.detail}`} className={cn("shrink-0 px-1 text-[10px]", STAGE[s.kind].cls, className)}>{STAGE[s.kind].label}</Badge>
 const olderThan = (iso: string | null | undefined, days: number) =>
   !!iso && Date.now() - new Date(iso.slice(0, 10) + "T00:00:00").getTime() > (days + 1) * 86_400_000
 const won = (v: number) => formatNumber(Math.round(v))
@@ -50,7 +61,9 @@ export function TrendBody({ w, h }: WidgetBodyProps) {
   const stamp = <span className="ml-auto text-[11px] text-muted-foreground" title="계산에 쓴 시세의 마지막 수집 시각 — 평일 16:35 수집, 20:20 재수집">
     시세 {formatKstDateTime(d.computed_from ? d.computed_from.replace(" ", "T") + "Z" : null)} 수집분
   </span>
-  const trendList = <TrendList items={d.items} universe={d.universe} passed={d.passed} criteria={d.criteria} wide={split || w >= 6} short={h <= 3} onPick={code => set("trend", code)} />
+  const stage = params.get("trend_stage")
+  const trendList = <TrendList items={d.items} universe={d.universe} passed={d.passed} criteria={d.criteria} wide={split || w >= 6} short={h <= 3}
+    stage={stage === "breakout" || stage === "retest" ? stage : null} onStage={v => set("trend_stage", v)} onPick={code => set("trend", code)} />
   const eventList = <EventList events={d.events} short={h <= 3} />
   return <div className="flex h-full flex-col gap-2">
     {split ? <>
@@ -76,16 +89,27 @@ export function TrendBody({ w, h }: WidgetBodyProps) {
   </div>
 }
 
-function TrendList({ items, universe, passed, criteria, wide, short, onPick }: {
-  items: TrendLeader[]; universe: number; passed: number; criteria: string; wide: boolean; short: boolean; onPick: (code: string) => void
+function TrendList({ items: all, universe, passed, criteria, wide, short, stage, onStage, onPick }: {
+  items: TrendLeader[]; universe: number; passed: number; criteria: string; wide: boolean; short: boolean
+  stage: TrendHigh52["kind"] | null; onStage: (v: string | null) => void; onPick: (code: string) => void
 }) {
-  if (!items.length) return <WidgetState empty emptyText={`조건을 모두 통과한 종목이 없어요. (${criteria})`} />
-  const fresh = items.filter(i => i.new).length
+  if (!all.length) return <WidgetState empty emptyText={`조건을 모두 통과한 종목이 없어요. (${criteria})`} />
+  const count = (k: TrendHigh52["kind"]) => all.filter(i => i.high52?.kind === k).length
+  const items = stage ? all.filter(i => i.high52?.kind === stage) : all.slice(0, 20)   // 상위 20 + 신고가 단계 종목(순위 밖 포함)
+  const fresh = all.filter(i => i.new).length
   return <div className="flex h-full flex-col gap-1.5">
     <p className="text-[12px] text-muted-foreground" title={criteria}>
       시총 3,000억+ {formatNumber(universe)}종목 중 <span className="font-medium text-foreground">{formatNumber(passed)}</span>개
       {fresh > 0 && <> · 5거래일 새 진입 {formatNumber(fresh)}</>} · 누르면 근거
     </p>
+    {(count("breakout") > 0 || count("retest") > 0) && (
+      <ToggleGroup type="single" size="sm" variant="outline" value={stage ?? "all"} onValueChange={v => v && onStage(v === "all" ? null : v)}
+        aria-label="52주 신고가 단계로 고르기" className="h-6">
+        <ToggleGroupItem value="all" className="h-6 px-2 text-[11px]">전체</ToggleGroupItem>
+        <ToggleGroupItem value="breakout" title={STAGE.breakout.hint} className="h-6 px-2 text-[11px]">신고가 돌파 {count("breakout")}</ToggleGroupItem>
+        <ToggleGroupItem value="retest" title={STAGE.retest.hint} className="h-6 px-2 text-[11px]">돌파 후 지지·재반등 {count("retest")}</ToggleGroupItem>
+      </ToggleGroup>
+    )}
     <div className={cn("grid items-center gap-x-3 border-b px-1 pb-1 text-[11px] text-muted-foreground", wide ? COLS_WIDE : COLS_NARROW)}>
       <span>종목</span><span>60일</span><span className="text-right">수익률</span>
       {wide && <><span className="text-right" title="60거래일 log 가격 회귀의 R² — 1에 가까울수록 고르게 올랐다">고름</span>
@@ -97,11 +121,16 @@ function TrendList({ items, universe, passed, criteria, wide, short, onPick }: {
         <li key={t.stock_code}>
           <Button variant="ghost" onClick={() => onPick(t.stock_code)} aria-label={`${t.name} 추세 근거 보기`}
             className={cn("grid h-auto w-full items-center gap-x-3 rounded-sm px-1 py-1 text-left text-[13px] font-normal", wide ? COLS_WIDE : COLS_NARROW)}>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="shrink-0 font-medium">{t.name}</span>
-              {t.new && <Badge variant="outline" className="shrink-0 px-1 text-[10px] text-primary">신규</Badge>}
-              {t.events.map(k => <Badge key={k} variant="secondary" className="shrink-0 px-1 text-[10px]">{EVENT_LABEL[k]}</Badge>)}
-              {wide && t.sector && <span className="truncate text-[11px] text-muted-foreground">{t.sector}</span>}
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="max-w-full shrink-0 truncate font-medium" title={t.name}>{t.name}</span>
+                {wide && t.sector && <span className="min-w-0 shrink-[100] truncate text-[11px] text-muted-foreground">{t.sector}</span>}
+              </span>
+              {(t.new || t.high52 || t.events.some(k => k !== "high52")) && <span className="flex flex-wrap gap-1">
+                {t.high52 && <StageBadge s={t.high52} />}
+                {t.new && <Badge variant="outline" className="shrink-0 px-1 text-[10px] text-primary">신규</Badge>}
+                {t.events.filter(k => k !== "high52").map(k => <Badge key={k} variant="secondary" className="shrink-0 px-1 text-[10px]">{EVENT_LABEL[k]}</Badge>)}
+              </span>}
             </span>
             <SparkLine data={t.spark} height={18} />
             <span className="text-right tabular-nums text-up">{formatPercent(t.ret_60)}</span>
@@ -138,7 +167,8 @@ function EventList({ events, short }: { events: TrendEvent[]; short: boolean }) 
 
 /** 근거 창 — 조건별 실제 값(전부 통과해야 목록에 오른다)과 차트 */
 function TrendEvidenceDialog({ item, criteria, onClose }: { item?: TrendLeader; criteria: string; onClose: () => void }) {
-  const palette = useChartPalette(4)
+  const palette = useChartPalette(5)
+  const chart = useTrendChart(item?.stock_code)
   const e = item?.evidence
   const rows = item && e ? [
     { label: "시가총액", rule: "3,000억 이상", value: formatKrw(item.market_cap) },
@@ -150,11 +180,13 @@ function TrendEvidenceDialog({ item, criteria, onClose }: { item?: TrendLeader; 
     { label: "방향 +DI / −DI", rule: "+DI > −DI", value: `${formatNumber(Math.round(e.plus_di))} > ${formatNumber(Math.round(e.minus_di))}` },
   ] : []
   // 60거래일 회귀선 — 로그 직선이라 가격으로는 지수 곡선
-  const fitFrom = e ? e.dates.length - 61 : 0
-  const data = e ? e.dates.map((time, i) => ({
-    time, close: e.closes[i], ma20: e.ma20_series[i], ma60: e.ma60_series[i],
+  const c = chart.data
+  const fitFrom = c ? c.dates.length - 61 : 0
+  const data = c && e ? c.dates.map((time, i) => ({
+    time, close: c.closes[i], ma20: c.ma20[i], ma60: c.ma60[i], high52: c.high52[i],
     fit: i >= fitFrom ? e.fit_start * (e.fit_end / e.fit_start) ** ((i - fitFrom) / 60) : null,
   })) : []
+  const years = c && c.dates.length ? (new Date(c.dates.at(-1)!).getTime() - new Date(c.dates[0]).getTime()) / (365.25 * 86_400_000) : 0
   return <Dialog open={!!item} onOpenChange={v => !v && onClose()}>
     <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
       {item && e && <>
@@ -162,16 +194,26 @@ function TrendEvidenceDialog({ item, criteria, onClose }: { item?: TrendLeader; 
           <DialogTitle className="flex flex-wrap items-center gap-2">
             {item.name}
             {item.sector && <span className="text-sm font-normal text-muted-foreground">{item.sector}</span>}
-            {item.events.map(k => <Badge key={k} variant="secondary" className="text-[11px]">{EVENT_LABEL[k]}</Badge>)}
+            {item.high52 && <StageBadge s={item.high52} className="px-1.5 text-[11px]" />}
+            {item.events.filter(k => k !== "high52").map(k => <Badge key={k} variant="secondary" className="text-[11px]">{EVENT_LABEL[k]}</Badge>)}
           </DialogTitle>
           <DialogDescription>가파른 추세 조건을 모두 통과했습니다 · {criteria}</DialogDescription>
         </DialogHeader>
-        <MultiLineChart data={data} height={220} formatValue={won} lines={[
-          { key: "close", label: "종가", color: palette[0] ?? "#888", lineWidth: 2 },
-          { key: "ma20", label: "MA20", color: palette[1] ?? "#888", lineWidth: 1 },
-          { key: "ma60", label: "MA60", color: palette[2] ?? "#888", lineWidth: 1 },
-          { key: "fit", label: "60일 회귀선", color: palette[3] ?? "#888", lineWidth: 1, lineStyle: 2 },
-        ]} />
+        {item.high52 && <p className="text-sm"><span className="font-medium">{STAGE[item.high52.kind].label}</span> · {item.high52.detail}</p>}
+        {chart.isPending ? <Skeleton className="h-[260px] w-full rounded-lg" />
+          : chart.isError || !data.length ? <p className="py-10 text-center text-sm text-muted-foreground">차트를 불러오지 못했습니다.</p>
+          : <>
+            <MultiLineChart data={data} height={260} formatValue={won} lines={[
+              { key: "close", label: "종가", color: palette[0] ?? "#888", lineWidth: 2 },
+              { key: "ma20", label: "MA20", color: palette[1] ?? "#888", lineWidth: 1 },
+              { key: "ma60", label: "MA60", color: palette[2] ?? "#888", lineWidth: 1 },
+              { key: "high52", label: "52주 고점선", color: palette[4] ?? "#888", lineWidth: 1, lineStyle: 2 },
+              { key: "fit", label: "60일 회귀선", color: palette[3] ?? "#888", lineWidth: 1, lineStyle: 2 },
+            ]} />
+            <p className="-mt-2 text-caption text-muted-foreground">
+              최근 {formatNumber(c!.dates.length)}거래일({years.toFixed(1)}년){years < 1.9 && " — 저장된 시세가 여기까지"} · 52주 고점선 = 그날의 직전 250거래일 최고가(넘으면 신고가)
+            </p>
+          </>}
         <Table>
           <TableHeader><TableRow><TableHead>조건</TableHead><TableHead>기준</TableHead><TableHead className="text-right">실제</TableHead><TableHead className="w-8" /></TableRow></TableHeader>
           <TableBody>

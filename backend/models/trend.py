@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 
 class TrendEvidence(BaseModel):
-    """조건별 실제 값 + 차트 재료(최근 120거래일)"""
+    """조건별 실제 값 + 60일 회귀선(차트는 GET /{code}/chart)"""
     close: float
     ma20: float
     ma60: float
@@ -12,10 +12,6 @@ class TrendEvidence(BaseModel):
     minus_di: float
     fit_start: float          # 60거래일 log 회귀선의 시작·끝(가격)
     fit_end: float
-    dates: list[str]
-    closes: list[float]
-    ma20_series: list[float | None]
-    ma60_series: list[float | None]
 
 
 class TrendEvent(BaseModel):
@@ -29,6 +25,26 @@ class TrendEvent(BaseModel):
     level: float
     held: bool                # 오늘 종가가 아직 돌파선 위
     detail: str
+
+
+class TrendHigh52(BaseModel):
+    """52주 신고가 단계 — breakout(최근 5거래일 전고점 돌파) · retest(60거래일 안 돌파 → 돌파선 근처 지지 → 재반등)"""
+    kind: str
+    date: str                 # 돌파일
+    level: float              # 돌파선(직전 250거래일 최고가)
+    touch_date: str | None = None
+    touch_low: float | None = None
+    detail: str
+
+
+class TrendChart(BaseModel):
+    """근거 창 차트 ≈ 2년 — 종가·MA20·MA60·52주 고점선(그날의 직전 250거래일 최고가)"""
+    stock_code: str
+    dates: list[str]
+    closes: list[float]
+    ma20: list[float | None]
+    ma60: list[float | None]
+    high52: list[float | None]
 
 
 class TrendLeader(BaseModel):
@@ -45,6 +61,7 @@ class TrendLeader(BaseModel):
     score: float
     new: bool
     events: list[str] = []
+    high52: TrendHigh52 | None = None
     evidence: TrendEvidence
     spark: list[float]
 

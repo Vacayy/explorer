@@ -12,6 +12,10 @@ pykrx 시장 단위 엔드포인트는 KRX 로그인이 필요해져 FinanceData
   python scripts/ingest_prices.py --backfill [--days 380] [--limit N]
       종목별 FDR DataReader(네이버 소스)로 과거 일봉 백필. 재실행 가능(이미 충분한
       종목은 건너뜀). 전 종목 1회 실행에 수십 분 소요 — 백그라운드 실행 권장.
+
+  python scripts/ingest_prices.py --extend --days 1100 [--min-cap 300000000000] [--codes A,B]
+      이력을 과거로 늘린다 — 종목마다 지금 가진 가장 이른 날 **전**만 FDR로 넣는다(있는 행은 안 건드린다,
+      KRX 정규장으로 교정한 최근 값 보존). 겹치는 2주의 종가 비로 수정주가 배율을 맞춰 이어 붙인다. 기본 대상 = 최신일 시총 3,000억+(가파른 추세 2년 차트, 2026-10-22).
 """
 import argparse
 import sys
@@ -272,10 +276,63 @@ def backfill(days: int, limit: int | None):
     print(f"[backfill] 완료 {done}, 실패 {failed}")
 
 
+def extend(days: int, min_cap: float, codes: list[str] | None = None):
+    import FinanceDataReader as fdr
+
+    start = (date.today() - timedelta(days=days)).isoformat()
+    conn = get_connection()
+    if not codes:
+        codes = [r[0] for r in conn.execute(
+            "SELECT stock_code FROM stock_prices WHERE trade_date=(SELECT max(trade_date) FROM stock_prices) AND market_cap >= ?",
+            (min_cap,))]
+    first = dict(conn.execute(
+        f"SELECT stock_code, min(trade_date) FROM stock_prices WHERE stock_code IN ({','.join('?' * len(codes))}) GROUP BY stock_code",
+        codes).fetchall())
+    todo = [c for c in codes if c in first and first[c] > start]
+    print(f"[extend] 대상 {len(todo)}/{len(codes)}종목, {start}~각 종목 첫날 전")
+    added = failed = scaled = 0
+    for i, code in enumerate(todo):
+        # 겹치는 2주를 함께 받아 이어 붙인다 — FDR은 오늘 기준 수정주가라 액면분할·무상증자가 있던 종목은
+        # 기존 행(다른 시점 기준)과 배율이 다르다(2026-10-22: 036800 4,520 → 22,600). 겹친 날 종가 비의 중앙값으로 맞춘다.
+        end = (date.fromisoformat(first[code]) + timedelta(days=14)).isoformat()
+        try:
+            df = fdr.DataReader(code, start, end)
+            have = dict(conn.execute("SELECT trade_date, close FROM stock_prices WHERE stock_code=? AND trade_date BETWEEN ? AND ?",
+                                     (code, first[code], end)).fetchall())
+            ratios = sorted(have[d] / c for idx, r in df.iterrows()
+                            if (d := idx.date().isoformat()) in have and (c := _clean(r.get("Close"))) and have[d])
+            if not ratios:
+                raise ValueError("겹치는 날이 없어 배율을 맞출 수 없음")
+            k = ratios[len(ratios) // 2]
+            k = 1.0 if abs(k - 1) < 0.005 else k
+            px = lambda v: round(v * k) if v is not None else None  # noqa: E731
+            rows = [(code, idx.date().isoformat(), px(_clean(r.get("Open"))), px(_clean(r.get("High"))),
+                     px(_clean(r.get("Low"))), px(_clean(r.get("Close"))), _clean(r.get("Volume")))
+                    for idx, r in df.iterrows() if _clean(r.get("Close")) and idx.date().isoformat() < first[code]]
+            if k != 1.0:
+                scaled += 1
+            cur = conn.executemany("INSERT OR IGNORE INTO stock_prices (stock_code, trade_date, open, high, low, close, volume) "
+                                   "VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+            conn.commit()
+            added += cur.rowcount
+        except Exception as e:
+            failed += 1
+            if failed <= 5:
+                print(f"  실패 {code}: {e}")
+        if (i + 1) % 100 == 0:
+            print(f"  진행 {i + 1}/{len(todo)} (+{added}행, 실패 {failed})")
+        time.sleep(0.05)
+    conn.close()
+    print(f"[extend] 완료 +{added}행, 배율 맞춤 {scaled}종목, 실패 {failed}")
+    return {"added": added, "failed": failed, "scaled": scaled, "codes": len(todo)}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--daily", action="store_true")
     parser.add_argument("--backfill", action="store_true")
+    parser.add_argument("--extend", action="store_true", help="가장 이른 날 전만 과거로 늘림(있는 행 보존)")
+    parser.add_argument("--min-cap", type=float, default=300_000_000_000)
     parser.add_argument("--days", type=int, default=380)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--repair", action="store_true")
@@ -304,5 +361,7 @@ if __name__ == "__main__":
         conn.close()
     elif args.backfill:
         backfill(args.days, args.limit)
+    elif args.extend:
+        extend(args.days, args.min_cap, args.codes.split(",") if args.codes else None)
     else:
         parser.error("--daily, --repair 또는 --backfill 지정")
