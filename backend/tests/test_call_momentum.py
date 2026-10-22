@@ -75,6 +75,17 @@ class MomentumTests(unittest.TestCase):
         self.assertEqual(rows["2026-05-20"], ("candidate", 6.0))   # new 3 + 상향 2 + 어조 +1 = 6 (기준 6일 때)
         self.assertEqual(c.execute("SELECT count(*) FROM signals WHERE signal_type='call_momentum'").fetchone()[0], 1)
         self.assertEqual(cm.judge(c)["new_candidates"], 0)         # 다시 돌려도 새 후보로 세지 않음
+        # AI 핵심 요약 — 이번 시즌 후보만, 근거가 같으면 다시 쓰지 않고, 매일 판정해도 지워지지 않는다
+        from datetime import date
+        asked = []
+        summ = lambda p: asked.append(p) or "AI 추론 플랫폼이 새 동인으로 등장했다."  # noqa: E731
+        self.assertEqual(cm.summarize(c, call=summ, today=date(2026, 5, 25))["summarized"], 1)
+        self.assertIn("Our new AI inference platform contributed $200 million", asked[0])
+        self.assertIn("가이던스 상향", asked[0])
+        self.assertEqual(cm.summarize(c, call=summ, today=date(2026, 5, 25))["unchanged"], 1)
+        cm.judge(c)
+        self.assertEqual(c.execute("SELECT summary FROM call_momentum WHERE status='candidate'").fetchone()[0], "AI 추론 플랫폼이 새 동인으로 등장했다.")
+        self.assertEqual(cm.summarize(c, call=summ, today=date(2026, 8, 1))["summarized"], 0)   # 지난 시즌 후보는 요약하지 않는다
         self.assertEqual(cm.weekly_message(c)[0], [])              # 옛 실적 발표(백필)는 주간 알림에 안 나간다
         c.execute("UPDATE call_momentum SET event_date=date('now','-3 day') WHERE status='candidate'")
         items, _ = cm.weekly_message(c)

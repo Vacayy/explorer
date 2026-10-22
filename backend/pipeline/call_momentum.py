@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS call_momentum (
     reasons     TEXT NOT NULL,           -- JSON: drivers·guidance·tone·sources
     first_candidate_at TEXT,             -- 처음 후보가 된 시각(주간 알림 기준)
     computed_at TEXT DEFAULT (datetime('now')),
+    summary     TEXT,                    -- AI 핵심 요약(이번 시즌 후보만, sonnet) — 근거가 바뀌면 다시 쓴다
+    summary_hash TEXT,                   -- 요약에 쓴 근거의 해시
     PRIMARY KEY (ticker, event_date)
 );
 """
@@ -157,7 +159,7 @@ def _commit(conn: sqlite3.Connection, tries: int = 6) -> None:
 
 
 def extract_pending(conn: sqlite3.Connection, limit: int = 40, call=None, only: list[str] | None = None) -> dict:
-    """아직 추출 안 한 문서를 회사별로 오래된 발표부터(직전 동인 목록이 먼저 있어야 new 판단이 된다)."""
+    """아직 추출 안 한 문서를 이번 시즌 회사 먼저, 회사 안에서는 오래된 발표부터(직전 동인 목록이 먼저 있어야 new 판단이 된다)."""
     if call is None:
         from pipeline.enrich import _call_claude_code, llm_available
         if not llm_available():
@@ -169,6 +171,11 @@ def extract_pending(conn: sqlite3.Connection, limit: int = 40, call=None, only: 
     tickers = [r[0] for r in conn.execute("SELECT ticker FROM transcript_follow WHERE active=1 ORDER BY ticker")]
     if only:
         tickers = [t for t in tickers if t in only]
+    from pipeline.transcript import FRESH_DAYS
+    # 이번 시즌(최근 14일 SEC 실적 발표) 회사 먼저 — 하루 한도를 지난 분기 백필이 먼저 써 버리지 않게(2026-10-22)
+    recent = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM earnings_releases WHERE filing_date >= date('now', ?)",
+                                         (f"-{FRESH_DAYS} days",))}
+    tickers.sort(key=lambda t: t not in recent)
     stats = {"extracted": 0, "failed": 0}
     for ticker in tickers:
         name = (conn.execute("SELECT company_name FROM transcript_follow WHERE ticker=?", (ticker,)).fetchone() or [ticker])[0]
@@ -296,12 +303,80 @@ def judge(conn: sqlite3.Connection, tickers: list[str] | None = None) -> dict:
                     conn.execute("INSERT INTO signals (signal_type, entity_id, date, payload_json) VALUES ('call_momentum', ?, ?, ?) "
                                  "ON CONFLICT(signal_type, entity_id, date) DO UPDATE SET payload_json=excluded.payload_json",
                                  (ent["entity_id"], ev, json.dumps({"ticker": ticker, "score": s, **cur}, ensure_ascii=False)))
-            conn.execute("INSERT OR REPLACE INTO call_momentum (ticker, event_date, score, status, reasons, first_candidate_at) VALUES (?,?,?,?,?,?)",
+            # 요약 칼럼은 그대로 둔다(INSERT OR REPLACE면 매일 판정 때 요약이 지워진다)
+            conn.execute("INSERT INTO call_momentum (ticker, event_date, score, status, reasons, first_candidate_at) VALUES (?,?,?,?,?,?) "
+                         "ON CONFLICT(ticker, event_date) DO UPDATE SET score=excluded.score, status=excluded.status, reasons=excluded.reasons, "
+                         "first_candidate_at=excluded.first_candidate_at, computed_at=datetime('now')",
                          (ticker, ev, s, status, json.dumps({**cur, "prev_tone": prev.get("tone") if prev else None}, ensure_ascii=False), first_at))
             prev, prev_ev = cur, ev
             history.append((s, status))
     conn.commit()
     return {"tickers": len(tickers), "new_candidates": new_candidates}
+
+
+SUMMARY_PROMPT = """너는 셀사이드 애널리스트다. 아래는 {company}({ticker})의 {date} 실적 발표에서 뽑은 성장 모멘텀 근거다(원문 인용 확인됨).
+한국어로 핵심을 요약하라.
+규칙:
+- 2~3문장, 280자 이내. 첫 문장은 결론부터: 이번 발표에서 무엇이 새로 나오거나 빨라졌나.
+- 숫자는 아래 근거에 있는 것만 쓴다. 근거에 없는 사실·전망·주가·투자 판단은 쓰지 않는다.
+- 제품·고객 이름은 영어 원문 그대로 써도 된다.
+- 성장 지표 가이던스 상향·하향이 있으면 한 번 언급한다. 애널리스트 질문 초점은 있으면 마지막에 짧게.
+요약문만 출력한다(머리말·불릿·따옴표 없이).
+
+[근거]
+{facts}"""
+_STATUS_KO = {"new": "새 동인", "accelerating": "가속", "steady": "유지", "decelerating": "둔화"}
+_GUIDE_KO = {"raised": "상향", "lowered": "하향", "maintained": "유지", "initiated": "제시"}
+
+
+def summary_facts(reasons: dict) -> str:
+    """요약 입력 — 카드에 보이는 것과 같은 근거(성장 동인·바뀐 가이던스·수요 어조·질문 초점)."""
+    lines = [f"- [{_STATUS_KO.get(d.get('status'), d.get('status'))}] {d.get('name')}"
+             + (f" ({d['magnitude']})" if d.get("magnitude") else "") + f": \"{d.get('quote', '')}\""
+             for d in reasons.get("drivers") or [] if d.get("status") in ("new", "accelerating", "decelerating")]
+    lines += [f"- 가이던스 {_GUIDE_KO.get(g.get('direction'), g.get('direction'))} · {g.get('metric')}: \"{g.get('quote', '')}\""
+              for g in reasons.get("guidance") or [] if g.get("direction") in ("raised", "lowered")]
+    if reasons.get("tone") is not None:
+        lines.append(f"- 수요 어조(1~5): 직전 {reasons.get('prev_tone', '-')} → 이번 {reasons['tone']}")
+    if reasons.get("qa_focus"):
+        lines.append(f"- 애널리스트 질문 초점: {', '.join(reasons['qa_focus'])}")
+    return "\n".join(lines)
+
+
+def summarize(conn: sqlite3.Connection, call=None, limit: int = 30, today: date | None = None) -> dict:
+    """이번 시즌 후보 카드의 AI 핵심 요약 — 근거 해시가 바뀐 것만(하루 판정마다 다시 쓰지 않는다). 실패는 다음 실행에서 다시."""
+    import hashlib
+    if call is None:
+        from pipeline.enrich import _call_claude_code, llm_available
+        if not llm_available():
+            return {"summarized": 0, "reason": "llm 미가용"}
+
+        def call(prompt):
+            return _call_claude_code(prompt, model="sonnet", timeout=180)
+    start = season((today or date.today()).isoformat())["start"]
+    rows = conn.execute("SELECT cm.ticker, cm.event_date, cm.reasons, cm.summary_hash, tf.company_name FROM call_momentum cm "
+                        "LEFT JOIN transcript_follow tf ON tf.ticker=cm.ticker WHERE cm.status='candidate' AND cm.event_date >= ? "
+                        "ORDER BY cm.event_date DESC", (start,)).fetchall()
+    stats = {"summarized": 0, "failed": 0, "unchanged": 0}
+    for r in rows:
+        facts = summary_facts(json.loads(r["reasons"]))
+        h = hashlib.sha1(facts.encode()).hexdigest()[:16]
+        if h == r["summary_hash"]:
+            stats["unchanged"] += 1
+            continue
+        if stats["summarized"] + stats["failed"] >= limit:
+            break
+        try:
+            text = call(SUMMARY_PROMPT.format(company=r["company_name"] or r["ticker"], ticker=r["ticker"], date=r["event_date"], facts=facts)).strip()
+            if not text:
+                raise ValueError("빈 응답")
+            conn.execute("UPDATE call_momentum SET summary=?, summary_hash=? WHERE ticker=? AND event_date=?", (text, h, r["ticker"], r["event_date"]))
+            _commit(conn)
+            stats["summarized"] += 1
+        except Exception as e:  # noqa: BLE001 — 요약이 없어도 카드는 근거로 보인다
+            print(f"[cm_summary] {r['ticker']} {r['event_date']} 실패: {type(e).__name__}: {e}")
+            stats["failed"] += 1
+    return stats
 
 
 def season(day: str) -> dict:
@@ -337,7 +412,7 @@ def candidates(conn: sqlite3.Connection, days: int = 120) -> list[dict]:
                           "WHERE cm.status='candidate' AND cm.event_date >= ? ORDER BY cm.event_date DESC, cm.score DESC", (since,)):
         reasons = json.loads(r["reasons"])
         out.append({"ticker": r["ticker"], "name": r["company_name"], "event_date": r["event_date"], "score": r["score"],
-                    "first_candidate_at": r["first_candidate_at"], **reasons})
+                    "first_candidate_at": r["first_candidate_at"], "summary": r["summary"], **reasons})
     return out
 
 
