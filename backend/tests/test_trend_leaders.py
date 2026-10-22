@@ -1,7 +1,7 @@
 """가파른 추세 판정 — 고르게 오른 상승만 통과하고, 한 번 튄 급등·횡보는 걸러진다."""
 import unittest
 
-from pipeline.trend_leaders import evaluate, high_52w, volume_node_retest
+from pipeline.trend_leaders import evaluate, high52_stage, high_52w, volume_node_retest
 
 
 def bars(closes, volumes=None):
@@ -29,6 +29,22 @@ class TrendLeaderTests(unittest.TestCase):
         closes = [100 * 1.002 ** i for i in range(160)]                     # 60일 +13%
         self.assertIsNone(evaluate(bars(closes), len(closes) - 1))
 
+
+    def test_high52_breakout_and_retest(self):
+        """전고점 100(고가 101) — 최근 5거래일 돌파는 breakout, 돌파 → 돌파선 근처 되돌림 → 재반등은 retest"""
+        flat = [100.0] * 260
+        self.assertEqual(high52_stage(bars(flat + [98, 99, 103])) ["kind"], "breakout")
+        run_up, pullback, rebound = [103, 106, 110, 114, 118], [114, 110, 107, 104, 102], [105, 109, 113]
+        got = high52_stage(bars(flat + [98] + run_up + pullback + rebound))
+        self.assertEqual(got["kind"], "retest")
+        self.assertAlmostEqual(got["level"], 101.0)
+        self.assertIn("지지", got["detail"])
+        # 되돌림이 돌파선 −3% 아래로 마감하면 지지 실패
+        self.assertIsNone(high52_stage(bars(flat + [98] + run_up + [112, 106, 100, 96, 99] + rebound)))
+        # 저점 뒤 아직 다시 오르지 않았으면(오늘이 저점) 재반등이 아니다
+        self.assertIsNone(high52_stage(bars(flat + [98] + run_up + pullback)))
+        # 돌파선까지 되돌리지 않고 계속 오른 종목은 retest가 아니다
+        self.assertIsNone(high52_stage(bars(flat + [98] + run_up + [116, 114, 113, 112, 114, 115, 116])))
 
     def test_evidence_has_values_and_fit_line(self):
         closes = [100.0] * 80 + [100 * 1.006 ** i for i in range(1, 81)]

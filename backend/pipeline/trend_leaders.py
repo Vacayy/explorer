@@ -7,7 +7,12 @@
 - 정배열: 종가 > MA20 > MA60, MA60이 20거래일 전보다 높다
 - 강도: ADX(14) 25 이상이고 +DI > −DI (strategies._adx 재사용)
 순위 = 연율 로그 기울기 × R² (Clenow식 '추세의 질'). 5거래일 전엔 조건 밖이었으면 new.
-종목마다 근거(evidence: 조건별 실제 값·120일 종가·MA20·MA60·회귀선)를 함께 돌려준다.
+종목마다 근거(evidence: 조건별 실제 값·60일 회귀선)를 함께 돌려준다. 근거 창 차트(2년)는 `chart(code)`가 따로 준다.
+
+52주 신고가 단계(추세 통과 종목, `high52`):
+- breakout: 최근 5거래일 안에 종가가 직전 250거래일 최고가(전고점)를 처음 넘었다
+- retest: 60거래일 안에 전고점(20거래일 넘게 신고가가 없던 뒤 처음 넘은 직전 250거래일 최고가)을 돌파 → 돌파선 근처(저가 −5%~+3%)까지 되돌림, 그동안 종가가 돌파선 −3% 아래로 안 빠졌고
+  → 그 저점 뒤 다시 올라 오늘 종가가 돌파선과 되돌림 날 종가 위
 
 이벤트(같은 모집단, 추세 조건과 별개):
 - 52주 신고가 돌파: 최근 5거래일 안에 종가가 직전 250거래일 고가 최고치를 처음 넘었다
@@ -29,12 +34,16 @@ MIN_RET = 30.0
 MIN_R2 = 0.75
 MIN_ADX = 25.0
 NEW_LAG = 5
-HISTORY = 272          # 52주(250) 신고가·매물대(250+20)와 ADX 평활 수렴에 충분히
-EVIDENCE_DAYS = 120
+HISTORY = 340          # 52주(250) 신고가 + 지지 확인 60일·매물대(250+20)·ADX 평활 수렴에 충분히
+CHART_DAYS = 500       # 근거 창 차트 ≈ 2년
 HIGH_LOOKBACK = 250
 EVENT_DAYS = 5         # 신고가 돌파를 '최근'으로 보는 기간
 VP_BASE, VP_RECENT, VP_BINS = 250, 20, 20
 VP_LOW, VP_HIGH = 0.98, 1.03   # 되돌림 저가가 멈춰야 하는 범위(돌파선 대비)
+RETEST_DAYS = 60                # 신고가 돌파 후 지지·재반등을 보는 기간
+RETEST_HOLD = 0.97              # 돌파 뒤 종가가 이 아래(돌파선 대비)로 빠지면 지지 실패
+RETEST_LOW, RETEST_HIGH = 0.95, 1.03   # 되돌림 저점이 돌파선 근처라고 보는 범위
+BASE_QUIET = 20                 # 이만큼 신고가가 없다가 처음 넘은 날 = 전고점 돌파일
 LIMIT = 20
 
 CRITERIA = (f"시총 3,000억+ · {WINDOW}거래일 +{MIN_RET:.0f}%+ · 상승 고름 R² {MIN_R2}+ · "
@@ -122,6 +131,56 @@ def high_52w(rows: list[dict]) -> dict | None:
     return None
 
 
+def high52_stage(rows: list[dict]) -> dict | None:
+    """52주 신고가 단계 — breakout(최근 5거래일 신고가) · retest(60거래일 안 전고점 돌파 → 돌파선 근처 되돌림에서 지지 → 재반등).
+    오르는 동안은 매일이 '직전 250거래일 최고가 돌파'라, retest의 돌파선은 20거래일 넘게 신고가가 없던 뒤의 첫 돌파(= 깨진 전고점)로 잡는다."""
+    last = len(rows) - 1
+    first = max(HIGH_LOOKBACK, last - RETEST_DAYS - BASE_QUIET)
+    levels = {i: max(r["high"] for r in rows[i - HIGH_LOOKBACK:i]) for i in range(first, last + 1)}
+    cross = [i for i in levels if rows[i]["close"] > levels[i]]
+    if not cross:
+        return None
+    if last - cross[-1] < EVENT_DAYS:
+        i = cross[-1]
+        return {"kind": "breakout", "date": rows[i]["date"], "level": round(levels[i], 2),
+                "detail": f"{rows[i]['date'][5:]} 직전 250거래일 최고가 {levels[i]:,.0f} 돌파"}
+    base = [i for i in cross if i >= last - RETEST_DAYS and not any(i - BASE_QUIET <= j < i for j in cross)]
+    if not base:
+        return None
+    i = base[-1]
+    level = levels[i]
+    after = rows[i + 1:]
+    if any(r["close"] < level * RETEST_HOLD for r in after):
+        return None
+    k = min(range(len(after)), key=lambda j: after[j]["low"])
+    touch = after[k]
+    if not (level * RETEST_LOW <= touch["low"] <= level * RETEST_HIGH) or k == len(after) - 1:
+        return None
+    if rows[-1]["close"] <= max(level, touch["close"]):
+        return None
+    return {"kind": "retest", "date": rows[i]["date"], "level": round(level, 2), "touch_date": touch["date"], "touch_low": touch["low"],
+            "detail": f"{rows[i]['date'][5:]} 전고점 {level:,.0f} 돌파 → {touch['date'][5:]} 저가 {touch['low']:,.0f}"
+                      f"(돌파선 {(touch['low'] / level - 1) * 100:+.1f}%)에서 지지 → 지금 돌파선 {(rows[-1]['close'] / level - 1) * 100:+.1f}%"}
+
+
+def chart(code: str, days: int = CHART_DAYS) -> dict:
+    """근거 창 차트 — 최근 days거래일 종가·MA20·MA60·52주 고점선(직전 250거래일 최고가 = 그날의 돌파선)"""
+    conn = get_connection()
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT trade_date date, high, close FROM stock_prices WHERE stock_code=? AND close IS NOT NULL "
+            "ORDER BY trade_date DESC LIMIT ?", (code, days + HIGH_LOOKBACK))][::-1]
+    finally:
+        conn.close()
+    closes = [r["close"] for r in rows]
+    highs = [r["high"] if r["high"] is not None else r["close"] for r in rows]
+    start = max(0, len(rows) - days)
+    ma20, ma60 = _series_ma(closes, 20), _series_ma(closes, 60)
+    return {"stock_code": code, "dates": [r["date"] for r in rows[start:]], "closes": closes[start:],
+            "ma20": ma20[start:], "ma60": ma60[start:],
+            "high52": [max(highs[i - HIGH_LOOKBACK:i]) if i >= HIGH_LOOKBACK else None for i in range(start, len(rows))]}
+
+
 def volume_node_retest(rows: list[dict]) -> dict | None:
     """최대 매물대 윗선 돌파 → 그 선 근처까지 되돌림 → 종가 이탈 없이 위에서 마감"""
     if len(rows) < VP_BASE + VP_RECENT + 1:
@@ -186,22 +245,19 @@ def compute() -> dict:
         hit = evaluate(rows, len(rows) - 1)
         if not hit:
             continue
-        tail = rows[-EVIDENCE_DAYS:]
-        closes = [r["close"] for r in rows]
-        hit["evidence"].update({
-            "dates": [r["date"] for r in tail], "closes": [r["close"] for r in tail],
-            "ma20_series": _series_ma(closes, 20)[-EVIDENCE_DAYS:], "ma60_series": _series_ma(closes, 60)[-EVIDENCE_DAYS:],
-        })
         items.append({
             **base, "market_cap": latest[code]["market_cap"], "close": rows[-1]["close"], **hit,
             "new": evaluate(rows, len(rows) - 1 - NEW_LAG) is None,
             "events": [e["kind"] for e in found],
+            "high52": high52_stage(rows),
             "spark": [r["close"] for r in rows[-WINDOW:]],
         })
     items.sort(key=lambda x: x["score"], reverse=True)
     events.sort(key=lambda e: (e["date"], e["kind"]), reverse=True)
+    # 상위 20 + 신고가 단계가 붙은 종목은 순위 밖이어도 싣는다(따로 골라 보게)
+    shown = items[:LIMIT] + [i for i in items[LIMIT:] if i["high52"]]
     result = {"as_of": as_of, "computed_from": stamp, "criteria": CRITERIA, "universe": len(latest),
-              "passed": len(items), "items": items[:LIMIT], "events": events}
+              "passed": len(items), "items": shown, "events": events}
     _cache.clear()
     _cache[(as_of, stamp)] = result
     return result

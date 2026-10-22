@@ -1167,7 +1167,15 @@ export interface WorldCheckpoint {
 /** 조건별 실제 값 + 최근 120거래일 차트 재료 */
 export interface TrendEvidence {
   close: number; ma20: number; ma60: number; ma60_prev: number; plus_di: number; minus_di: number
-  fit_start: number; fit_end: number; dates: string[]; closes: number[]; ma20_series: (number | null)[]; ma60_series: (number | null)[]
+  fit_start: number; fit_end: number
+}
+/** 52주 신고가 단계 — breakout(최근 5거래일 전고점 돌파) · retest(60거래일 안 돌파 → 돌파선 근처 지지 → 재반등) */
+export interface TrendHigh52 {
+  kind: "breakout" | "retest"; date: string; level: number; touch_date?: string | null; touch_low?: number | null; detail: string
+}
+/** GET /api/spine/trend-leaders/{code}/chart — 근거 창 차트 ≈ 2년(종가·MA20·MA60·52주 고점선) */
+export interface TrendChart {
+  stock_code: string; dates: string[]; closes: number[]; ma20: (number | null)[]; ma60: (number | null)[]; high52: (number | null)[]
 }
 /** high52 = 52주 신고가 돌파 · vp_retest = 매물대 돌파 후 지지 */
 export type TrendEventKind = "high52" | "vp_retest"
@@ -1178,7 +1186,7 @@ export interface TrendEvent {
 export interface TrendLeader {
   stock_code: string; name: string; sector: string | null; market_cap: number | null; close: number
   ret_20: number; ret_60: number; r2: number; adx: number; gap_ma20: number; score: number; new: boolean
-  events: TrendEventKind[]; evidence: TrendEvidence; spark: number[]
+  events: TrendEventKind[]; high52?: TrendHigh52 | null; evidence: TrendEvidence; spark: number[]
 }
 export interface TrendLeadersResponse {
   as_of: string | null; computed_from: string | null; criteria: string; universe: number; passed: number
