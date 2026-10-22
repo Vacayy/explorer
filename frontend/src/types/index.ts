@@ -934,6 +934,7 @@ export interface CallDriver { name: string; type: string; status: 'new' | 'accel
 export interface CallGuidance { metric: string; direction: 'raised' | 'lowered' | 'maintained' | 'initiated'; quote: string; source: string }
 export interface CallMomentumCandidate {
   ticker: string; name: string | null; event_date: string; score: number; first_candidate_at: string | null
+  summary?: string | null                      // AI 핵심 요약(이번 시즌 후보만, 근거 기반 sonnet) — 없으면 근거만
   drivers: CallDriver[]; guidance: CallGuidance[]; tone: number | null; prev_tone: number | null; sources: string[]; qa_focus: string[]
 }
 export interface CallMomentumSeason { key: string; label: string; start: string }

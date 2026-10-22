@@ -1,6 +1,7 @@
 """실적 발언 모멘텀 (D-217, docs/specs/transcript-momentum.md) — launchd dev.explorer.callmomentum / callmomentumweekly.
 
-  python scripts/call_momentum.py --daily     # 나스닥100 동기화(월 1회) → SEC 8-K → AV 컨콜 → 추출(최대 60건) → 판정
+  python scripts/call_momentum.py --daily     # 나스닥100 동기화(월 1회) → SEC 8-K → AV 컨콜 → 추출(최대 60건) → 판정 → 후보 AI 요약
+  python scripts/call_momentum.py --fresh     # 낮 회차: 이번 시즌 발표 중 아침에 없던 녹취록만(Fool) → 정리 → 그 회사만 추출 → 판정 → 후보 AI 요약
   python scripts/call_momentum.py --weekly    # 지난 7일 새 모멘텀 텔레그램
   python scripts/call_momentum.py --weekly --dry-run
 단계별 결과·실패는 job_runs(cm_*)에 남긴다. SEC 연락처(.env SEC_USER_AGENT)가 없으면 그 단계만 error로 남기고 나머지는 돈다.
@@ -45,6 +46,20 @@ def daily(extract_limit: int):
         step("cm_av", lambda: tr.collect_and_process(budget=22))
         step("cm_extract", lambda: cm.extract_pending(conn, limit=extract_limit))
         step("cm_judge", lambda: cm.judge(conn))
+        step("cm_summary", lambda: cm.summarize(conn))
+    finally:
+        conn.close()
+
+
+def fresh():
+    from pipeline import call_momentum as cm, transcript as tr
+    conn = get_connection()
+    try:
+        r = step("cm_fresh", tr.collect_fresh)
+        if r and r["tickers"]:
+            step("cm_extract", lambda: cm.extract_pending(conn, limit=20, only=r["tickers"]))
+            step("cm_judge", lambda: cm.judge(conn, r["tickers"]))
+            step("cm_summary", lambda: cm.summarize(conn))
     finally:
         conn.close()
 
@@ -70,11 +85,14 @@ if __name__ == "__main__":
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--daily", action="store_true")
     mode.add_argument("--weekly", action="store_true")
+    mode.add_argument("--fresh", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--extract-limit", type=int, default=60)
     args = ap.parse_args()
     init_db()
     if args.daily:
         daily(args.extract_limit)
+    elif args.fresh:
+        fresh()
     else:
         weekly(args.dry_run)

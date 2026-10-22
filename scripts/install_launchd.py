@@ -93,6 +93,8 @@ JOBS = [
     # 실적 발언 모멘텀(D-217) — 매일 SEC 8-K·AV 컨콜 수집·추출·판정(미국 장 마감 뒤 아침), 주간 알림은 월요일 브리핑 뒤.
     ("callmomentum", [PY, "scripts/call_momentum.py", "--daily"], {"Hour": 7, "Minute": 20}),
     ("callmomentumweekly", [PY, "scripts/call_momentum.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 10}),
+    # 미국 장 마감 뒤 실적 발표는 콜이 한국 아침 7시 전후에 끝나 07:20 회차엔 녹취록이 아직 없다 — 낮에 이번 시즌분만 다시 본다
+    ("callfresh", [PY, "scripts/call_momentum.py", "--fresh"], [{"Hour": 10, "Minute": 30}, {"Hour": 13, "Minute": 30}]),
     # 국내 도시에 원천 — 종목 마스터·DART 공시·분기 재무(호출 예산 안에서 보유→관심→시총 상위 순)·밸류(PER·PBR).
     # 일별 시세 20:20 뒤라 밸류가 그날 종가 기준이 된다. 매일 — 주말엔 밸류가 '이미 있음'으로 건너뛰고 재무 백필만 이어간다.
     ("krcompany", [PY, "scripts/collect_kr_company_data.py"], {"Hour": 21, "Minute": 30}),
@@ -132,6 +134,7 @@ CATCHUP = {
     "pfclose": {"window_h": 7},                # 종가 요약 — 그날 밤까지만
     "callmomentum": {},
     "callmomentumweekly": {"window_h": 24},
+    "callfresh": {"record": "cm_fresh", "window_h": 3},
     "krcompany": {},
     "twrevenue": {"record": "tw_revenue"},
     "usfund": {"record": "us_fundamentals"},

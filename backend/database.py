@@ -1390,6 +1390,8 @@ def init_db():
         # 링크 스크랩 채널 (D-142) — 본문 없이 URL만 올리는 채널. 켜면 링크를 따라가 원문을 별도 문서로 적재한다.
         "ALTER TABLE telegram_channels ADD COLUMN expand_links INTEGER DEFAULT 0",
         # 프록시 보드 (D-240) — 결정적 어댑터 지표. adapter_ref 예: credit:ORCL · trade:854232:yoy · indicator:risk_hy
+        "ALTER TABLE call_momentum ADD COLUMN summary TEXT",           # 실적 모멘텀 카드 AI 핵심 요약(2026-10-22)
+        "ALTER TABLE call_momentum ADD COLUMN summary_hash TEXT",
         "ALTER TABLE proxy_registry ADD COLUMN adapter TEXT",          # credit|trade|call_momentum|indicator|retail|sector|price (NULL=기존 컨콜·여론 프록시)
         "ALTER TABLE proxy_registry ADD COLUMN adapter_ref TEXT",
         "ALTER TABLE proxy_registry ADD COLUMN warn_direction TEXT",   # up|down|NULL — 어느 방향 움직임이 '주의'인가

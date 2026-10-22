@@ -94,11 +94,12 @@ class FoolProvider:
         return {"content": body, "date": c["event_date"]} if body else None
 
 
-def collect(budget: int = DAILY_LIMIT, only: list[str] | None = None) -> dict:
-    """SEC 실적 발표가 있었는데 녹취록이 없는 분기를 회사마다 최신순으로 라운드로빈."""
+def collect(budget: int = DAILY_LIMIT, only: list[str] | None = None, fresh_only: bool = False) -> dict:
+    """SEC 실적 발표가 있었는데 녹취록이 없는 분기 — 이번 시즌(최근 발표) 먼저, 그다음 회사마다 최신순 라운드로빈.
+    fresh_only=True면 이번 시즌만(낮 회차 — 아침에 아직 안 올라왔던 녹취록을 다시 본다)."""
     from database import get_connection
     from pipeline.ops import retry_locked
-    from pipeline.transcript import _bucket_map, _event_targets, _followed, _store_call
+    from pipeline.transcript import _bucket_map, _event_targets, _followed, _store_call, visit_order
     companies = _followed(only)
     targets = _event_targets(companies)
     have = _bucket_map("SELECT ticker, fiscal_year, fiscal_period FROM transcripts")
@@ -108,36 +109,34 @@ def collect(budget: int = DAILY_LIMIT, only: list[str] | None = None) -> dict:
     order = [f["ticker"] for f in companies if f["ticker"] in targets]   # _followed = 시가총액 큰 순
     missing = lambda t, q: (q["year"], f"Q{q['quarter']}") not in have.get(t, ())  # noqa: E731
     stats = {"stored": 0, "not_listed": 0, "parse_failed": 0, "pages": 0,
-             "remaining": sum(missing(t, q) for t in order for q in targets[t])}
+             "remaining": sum(missing(t, q) for t in order for q in targets[t]), "tickers": []}
     links_cache: dict[str, list[dict]] = {}
-    rank = 0
-    while stats["stored"] + stats["parse_failed"] < budget and any(rank < len(targets[t]) for t in order):
-        for ticker in order:
-            qs = targets[ticker]
-            if rank >= len(qs) or stats["stored"] + stats["parse_failed"] >= budget or not missing(ticker, qs[rank]):
-                continue
-            q = qs[rank]
-            if ticker not in links_cache:
-                links_cache[ticker] = transcript_links(ticker)
-                stats["pages"] += 1
-            c = pick(links_cache[ticker], q["year"], q["quarter"], q["date"])
-            if not c:
-                stats["not_listed"] += 1
-                continue
-            provider = FoolProvider({(ticker, q["year"], q["quarter"]): {**c, "event_date": q["date"]}})
-            if retry_locked(lambda: _store_call(provider, by[ticker], q["year"], q["quarter"])):   # 이미 저장된 분기는 _store_call이 건너뛴다
-                def _date():   # 콜 날짜 = SEC 실적 발표일(Fool 게시일은 며칠 늦을 수 있다)
-                    conn = get_connection()
-                    try:
-                        conn.execute("UPDATE transcripts SET call_date=? WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
-                                     (q["date"], ticker, q["year"], f"Q{q['quarter']}"))
-                        conn.commit()
-                    finally:
-                        conn.close()
-                retry_locked(_date)
-                stats["stored"] += 1
-                stats["remaining"] -= 1
-            else:
-                stats["parse_failed"] += 1
-        rank += 1
+    for ticker, q in visit_order(order, targets, fresh_only=fresh_only):
+        if stats["stored"] + stats["parse_failed"] >= budget:
+            break
+        if not missing(ticker, q):
+            continue
+        if ticker not in links_cache:
+            links_cache[ticker] = transcript_links(ticker)
+            stats["pages"] += 1
+        c = pick(links_cache[ticker], q["year"], q["quarter"], q["date"])
+        if not c:
+            stats["not_listed"] += 1
+            continue
+        provider = FoolProvider({(ticker, q["year"], q["quarter"]): {**c, "event_date": q["date"]}})
+        if retry_locked(lambda: _store_call(provider, by[ticker], q["year"], q["quarter"])):   # 이미 저장된 분기는 _store_call이 건너뛴다
+            def _date():   # 콜 날짜 = SEC 실적 발표일(Fool 게시일은 며칠 늦을 수 있다)
+                conn = get_connection()
+                try:
+                    conn.execute("UPDATE transcripts SET call_date=? WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
+                                 (q["date"], ticker, q["year"], f"Q{q['quarter']}"))
+                    conn.commit()
+                finally:
+                    conn.close()
+            retry_locked(_date)
+            stats["stored"] += 1
+            stats["remaining"] -= 1
+            stats["tickers"].append(ticker)
+        else:
+            stats["parse_failed"] += 1
     return stats

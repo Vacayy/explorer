@@ -27,7 +27,7 @@ export function CallMomentumPanel() {
     </div>}
     <p className="text-caption text-muted-foreground">
       대상 {cov.universe}개사 · 보도자료 {cov.with_releases}개사 · 컨콜 {cov.with_transcripts}개사 · 분석 문서 {cov.extracted_docs}건
-      {cov.failed_docs > 0 && ` (실패 ${cov.failed_docs})`} · 분기 비교 가능 {cov.comparable}개사. 매일 07:20 수집·분석, 월요일 07:10 텔레그램.
+      {cov.failed_docs > 0 && ` (실패 ${cov.failed_docs})`} · 분기 비교 가능 {cov.comparable}개사. 매일 07:20 수집·분석(10:30·13:30에 이번 시즌 녹취록 다시 확인), 월요일 07:10 텔레그램.
     </p>
     <h3 className="text-sm font-semibold">{season.label} <span className="font-normal text-muted-foreground">· {season.start.slice(5).replace("-", "/")}부터 · 발표 분석 {season.reported}개사</span></h3>
     {!candidates.length
@@ -86,6 +86,10 @@ function CandidateCard({ c }: { c: CallMomentumCandidate }) {
       </CardDescription>
     </CardHeader>
     <CardContent className="space-y-3">
+      {c.summary && <div className="rounded-lg bg-muted/50 px-3 py-2.5">
+        <p className="text-caption text-hypothesis">AI 요약 · 아래 근거로 작성</p>
+        <p className="mt-1 text-sm leading-relaxed">{c.summary}</p>
+      </div>}
       <ul className="space-y-2">{growth.map(d => <li key={d.name} className="space-y-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
           <Badge variant="outline" className={`text-caption ${STATUS[d.status as keyof typeof STATUS].cls}`}>{STATUS[d.status as keyof typeof STATUS].label}</Badge>

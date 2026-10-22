@@ -26,5 +26,21 @@ class FoolTests(unittest.TestCase):
         self.assertIsNone(ft.pick(links, 2026, 4, "2026-02-01"))                 # 창(−2~+10일) 밖
 
 
+class VisitOrderTests(unittest.TestCase):
+    """이번 시즌(최근 14일 SEC 발표) 먼저 발표일 최신순, 그다음 백필 라운드로빈 (2026-10-22 META 컨콜 미수집)"""
+    def test_fresh_first_then_backfill(self):
+        from datetime import date
+        from pipeline.transcript import visit_order
+        q = lambda d, n: {"year": 2026, "quarter": n, "date": d}  # noqa: E731
+        targets = {"AAPL": [q("2026-07-30", 3), q("2026-05-01", 2)],          # 시가총액 1위지만 지난 분기뿐
+                   "META": [q("2026-10-21", 3), q("2026-07-29", 2)],
+                   "SPCX": [q("2026-10-20", 3)]}
+        got = [(t, x["date"]) for t, x in visit_order(["AAPL", "META", "SPCX"], targets, today=date(2026, 10, 22))]
+        self.assertEqual(got[:2], [("META", "2026-10-21"), ("SPCX", "2026-10-20")])
+        self.assertEqual(got[2:], [("AAPL", "2026-07-30"), ("META", "2026-07-29"), ("AAPL", "2026-05-01")])
+        fresh = visit_order(["AAPL", "META", "SPCX"], targets, fresh_only=True, today=date(2026, 10, 22))
+        self.assertEqual([t for t, _ in fresh], ["META", "SPCX"])
+
+
 if __name__ == "__main__":
     unittest.main()
