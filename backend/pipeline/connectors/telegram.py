@@ -1,23 +1,18 @@
 """텔레그램 커넥터 — 기존 services/telegram_service.scrape_channel만 이식.
 
-이미지: CDN URL은 만료될 수 있어 MEDIA_PATH에 다운로드해 상대경로로 보관.
-파일명이 결정적(채널_메시지ID_순번)이라 재수집 시 중복 다운로드 없음.
+이미지: 파일은 저장하지 않는다. 이미지가 전달하려는 메시지를 AI가 해석해 그 메시지 뒤에 한 줄로 넣는다
+(docs/specs/image-reading.md). raw_content는 원문 그대로, 해석 줄은 markdown에만.
+예전에 받아둔 media/telegram/ 파일은 그대로 두고 media_json으로 계속 가리킨다.
 """
 import os
 import re
 from datetime import datetime
 
-import requests
-import urllib3
-
 from config import MEDIA_PATH
+from pipeline import image_reading
 from pipeline.base import RawDoc, SourceRef
 from database import get_connection
 from services.telegram_service import scrape_channel
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
 # 연속 타이핑 병합: 하나의 의도(메시지1+2+3 = 실제 메시지)를 한 문서로.
 # 2단 판정: ① 시간 창(JUDGE_WINDOW) 이내 = '심사 자격' ② haiku가 실제로
@@ -120,25 +115,10 @@ def group_bursts(messages: list[dict], channel: str | None = None) -> list[list[
     return groups
 
 
-def _download_images(channel: str, msg_id: str, urls: list[str]) -> list[str]:
-    """CDN 이미지 → media/telegram/ 저장. 반환: /media 기준 상대경로 목록."""
-    saved = []
-    out_dir = MEDIA_PATH / "telegram"
-    for i, url in enumerate(urls):
-        rel = f"telegram/{channel}_{msg_id}_{i}.jpg"
-        dest = MEDIA_PATH / rel
-        if dest.exists():
-            saved.append(rel)
-            continue
-        try:
-            resp = requests.get(url, headers=_HEADERS, timeout=20, verify=False)
-            if resp.status_code == 200 and resp.content:
-                out_dir.mkdir(parents=True, exist_ok=True)
-                dest.write_bytes(resp.content)
-                saved.append(rel)
-        except Exception:
-            continue  # 개별 이미지 실패는 문서 수집을 막지 않는다
-    return saved
+def _existing_images(channel: str, msg_id: str, urls: list[str]) -> list[str]:
+    """예전에 내려받아 둔 이미지 파일(/media 기준 상대경로) — 새로 받지는 않는다."""
+    rels = [f"telegram/{channel}_{msg_id}_{i}.jpg" for i in range(len(urls))]
+    return [r for r in rels if (MEDIA_PATH / r).exists()]
 
 
 class TelegramConnector:
@@ -165,14 +145,29 @@ class TelegramConnector:
         for group in group_bursts(messages, channel=channel):
             head = group[0]
             head_id = head.get("message_id", "")
-            contents, images = [], []
+            contents, images, slots = [], [], []
             for m in group:
-                if (m.get("content") or "").strip():
+                text = (m.get("content") or "").strip()
+                if text:
                     contents.append(m["content"])
-                images += _download_images(channel, m.get("message_id", ""), m.get("images", []))
+                mid = m.get("message_id", "")
+                urls = m.get("images", [])
+                images += _existing_images(channel, mid, urls)
+                slots.append((m["content"] if text else None,
+                              [{"key": f"telegram/{channel}_{mid}_{i}", "url": u} for i, u in enumerate(urls)]))
             content = "\n\n".join(contents)
+            notes = image_reading.read_images(
+                [{**it, "context": content} for _, its in slots for it in its],
+                published_at=head.get("date", ""), source="증권·산업 리서치 텔레그램 글",
+                source_url=head.get("link", ""))
+            pieces = []
+            for text, its in slots:
+                if text:
+                    pieces.append(text)
+                pieces += [n for n in (notes.get(it["key"]) for it in its) if n]
+            markdown = "\n\n".join(pieces)
             title = content.split("\n", 1)[0][:80] if content else (
-                f"[이미지] {channel} #{head_id}" if images else "")
+                f"[이미지] {channel} #{head_id}" if any(its for _, its in slots) else "")
             docs.append(RawDoc(
                 source_type="telegram",
                 source_id=f"{channel}/{head_id}",
@@ -182,5 +177,6 @@ class TelegramConnector:
                 raw_content=content,
                 kind="text",
                 images=images,
+                markdown=markdown if markdown != content else None,
             ))
         return docs

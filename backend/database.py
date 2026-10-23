@@ -830,6 +830,22 @@ def init_db():
         analyzed_at  TEXT DEFAULT (datetime('now'))
     );
 
+    -- 이미지 해석 캐시 (docs/specs/image-reading.md) — 이미지 파일은 저장하지 않고 해석만 남긴다.
+    -- 키: 텔레그램 'telegram/{채널}_{메시지}_{순번}', 블로그 이미지 URL. 재수집 시 같은 텍스트 → 문서 해시 안정.
+    CREATE TABLE IF NOT EXISTS image_readings (
+        image_key    TEXT PRIMARY KEY,
+        status       TEXT NOT NULL,     -- ok | skip(정보 가치 없음) | filtered(사전 필터) | failed
+        kind         TEXT,              -- chart | table | text | diagram | calendar | photo | other
+        title        TEXT,
+        insight      TEXT,              -- 이미지가 전달하려는 메시지
+        evidence     TEXT,              -- 받치는 근거 1~3개
+        events_json  TEXT,              -- calendar면 catalysts로 적재한 이벤트
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        error        TEXT,
+        model        TEXT,
+        updated_at   TEXT DEFAULT (datetime('now'))
+    );
+
     -- 전문 검색 (BM25) — raw_documents 외부 콘텐츠 방식 + 트리거 동기화.
     -- 벡터(doc_vec)는 sqlite-vec 확장이 필요해 pipeline/search.py에서 생성한다.
     CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(

@@ -57,7 +57,8 @@ class RerankUnavailable(RuntimeError):
 
 
 def _sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.!?。])\s+|\n+", text or "")
+    from pipeline.image_reading import strip_ai_notes
+    parts = re.split(r"(?<=[.!?。])\s+|\n+", strip_ai_notes(text))   # 원문 인용 — AI 이미지 해석 줄은 후보가 아니다
     return [s.strip(" -•·\t") for s in parts
             if 25 <= len(s.strip()) <= 220 and not _BOILERPLATE.search(s) and s.count("|") + s.count("●") < 2]   # 표 행·글머리 나열은 문장이 아니다
 
@@ -132,7 +133,8 @@ def compute(doc_id: int) -> dict:
         r = conn.execute("SELECT title, markdown, raw_content FROM raw_documents WHERE id=?", (doc_id,)).fetchone()
     finally:
         conn.close()
-    body = (r["markdown"] or r["raw_content"] or "")[:INPUT_CHARS]
+    from pipeline.image_reading import strip_ai_notes
+    body = strip_ai_notes(r["markdown"] or r["raw_content"] or "")[:INPUT_CHARS]   # 자료의 논점 — AI 이미지 해석은 저자의 말이 아니다
     res = llm.run(PROMPT.format(title=r["title"] or "", body=body), model=MODEL, job="doc_claims", timeout=180)
     claims = _parse(res.text)
     if not claims:
