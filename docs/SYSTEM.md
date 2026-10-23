@@ -243,7 +243,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | 용도 | 모델 | 시점 | 캐시/멱등 |
 |---|---|---|---|
 | 문서 태깅(종목 정규화·산업·토픽·요약·감성) | haiku | 수집 시 문서당 1회 | content_hash + model 티어 (keyword→LLM 자동 백필) |
-| 이미지 분류·증시일정 추출 | haiku (+Read 비전) | 이미지당 1회 | media_analysis |
+| 이미지 분류·증시일정 추출 (구 경로, 텔레그램 백로그용 · D-116 OFF) | haiku (+Read 비전) | 이미지당 1회 | media_analysis |
+| **이미지 해석(docs/specs/image-reading.md)** — 새 글(7일 이내) 이미지가 전달하려는 메시지 → 본문 자리에 `[이미지 해석·AI …]` 한 줄. 일정표면 catalysts 적재 | haiku (+Read, 격리 runner) | 이미지당 1회, 30분당 30콜, 문서 단위 원자성 | image_readings |
 | 공시 요약 / 유무증 구조화 추출 | haiku | 공시당 1회 | corporate_actions.summary / capital_raise_details |
 | 1D/1W/1M 다이제스트 + 새로운 시각 (캘린더 기준, D-085) | haiku | 문서 집합 변경 시만 | doc_ids_hash |
 | **대화 라우터**(`chat.route` — intent·독립형 질문·엔티티·도구 ≤4·렌즈) | haiku `--effort low` | 사용자 질문 시 | — (실측 컨텍스트 ~8.7K·output ~0.5K·6~8초) |
@@ -268,7 +269,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `entity_digests` | 30 | 종목별 **1D(오늘)·1W(월~일 주)·1M(월)** 요약+새로운시각 — 캘린더 기준(비롤링, D-085). (entity, period, period_start[1d=당일·1w=월요일·1m=1일]) 키로 영구 아카이브 |
 | `corporate_actions` | 57 | 시총 5,000억+ 유·무상증자/합병/분할/공개매수/감자 (DART 전시장 스캔+haiku 요약) |
 | `capital_raise_details` | 16 | 유무증 Pro: 발행가 1·2차·확정/구주·신주/기준일·권리락(파생)·청약·납입·상장/주관사 |
-| `media_analysis` | 31 | 이미지 비전 분류 캐시 (calendar면 → catalysts 적재) |
+| `media_analysis` | 31 | 이미지 비전 분류 캐시 (calendar면 → catalysts 적재) — 구 경로 |
+| `image_readings` | 이미지 해석 | 이미지 해석 캐시 (키: 텔레그램 `telegram/{채널}_{메시지}_{순번}` · 블로그 이미지 URL). status ok\|skip\|filtered\|failed(3회까지 재시도). 재수집 시 같은 텍스트 → 문서 해시 안정 |
 | `entity_keywords` | 6 | 종목별 사용자 매칭 키워드 (등록 시 소급 링크) |
 | `entity_merges` | 병합분 | 어휘 통합 audit+redirect (D-033) — 병합으로 사라진 (old_name, type) → survivor_id. 쓰기 시 재파편화 방지 리다이렉트 겸용 |
 | `follows` | 0 | 엔티티 팔로우 (섹터·테마 → 홈 스트림) |
@@ -333,7 +335,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 (구 피드 테이블 telegram_messages·blog_posts·blog_post_tags는 2026-10-16 제거, D-241. 블로그·텔레그램 라우터는 소스 목록·켜기/끄기만 남음)
 
 ### 4-3. 파일 저장
-- `media/telegram/` — 첨부 이미지 로컬 보관 (CDN 만료 대비, /media로 서빙)
+- `media/telegram/` — 2026-10-23 이전에 받은 첨부 이미지 (/media로 서빙). 이후로는 이미지 파일을 저장하지 않고 해석 텍스트만 남긴다(image-reading). 기존 파일은 실험·백로그용으로 보존
 - `vault/entities/` — 도시에 자동 투영(generated) / `vault/notes/` — 가설 마크다운 원본 (`[[위키링크]]`)
 - 전부 gitignore (개인 데이터 보호)
 
@@ -343,7 +345,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | 모듈 | 역할 |
 |---|---|
 | `base` / `runner` / `registry` | SourceConnector 프로토콜(discover→fetch) / 실행 / 커넥터 등록(blog·telegram·note) |
-| `connectors/telegram` | t.me/s 스크랩 + 이미지 다운로드 (이미지-only 메시지 포함) |
+| `connectors/telegram` | t.me/s 스크랩. 이미지는 저장하지 않고 `image_reading`으로 해석해 그 메시지 뒤에 넣는다 — `raw_content`는 원문, 해석 줄은 `RawDoc.markdown`에만. 예전 파일이 있으면 media_json으로 계속 가리킨다 |
 | `connectors/blog` | RSS + 네이버 iframe 본문 (기존 검증 로직 이식) |
 | `connectors/scrap` | **링크 스크랩(D-142, docs/specs/link-scrap.md)** — URL만 올리는 채널(`telegram_channels.expand_links=1` 옵트인)의 링크를 따라가 원문을 **URL당 문서 하나**(`source_type='scrap'`, source_id=url)로. 본문은 `blog_service.fetch_full_content` 재사용, 제목·작성자는 og:title·naverblog:nickname. 대장 `scrap_links`(url PK·seen_count·status pending\|ok\|failed\|duplicate·tries)가 처리 이력과 반복 노출을 센다. 상한: 본문 30K자·회차 20링크·간격 1초·재시도 3. 발행일은 원문 메타 부재로 **스크랩된 메시지 시각으로 근사**. runner의 선택적 `after_store` 훅으로 doc_id를 대장에 되쓴다. **미검증 소스라 §격리 규율 적용** |
 | `connectors/notes` | vault/notes → 척추 흡수 |
@@ -413,7 +415,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `knowledge` (K3) | 사용자 주입("기억해:" 또는 /knowledge 주입 콘솔, +rationale·source) → knowledge 행(hypothesis·model='user') + 검색 시딩 + 반증 조건 생성(반증우선) → 독립 지지 2+ corroborated / 반례 축적 contested → 홈 '가설 확인' 알림. 내 주입 지식은 삭제 가능(시스템 승격분은 superseded만) |
 | `knowledge_state` | salience×conviction (LLM 0) — 시장 주목(주체 엔티티 최근 언급량) × 근거 강도(독립 관측·소스 다양성·느린 층·반박)로 4상태 위치: 주목받지 않은 확신(기회)·주목받는 확신(선반영)·확신 대비 과한 주목(진자 경고)·단순 노이즈. /knowledge 카드 배지 (설계 §G 갭 계량의 축) |
 | 기업 프로필(spine_company) | 해외/비상장 기업(종목코드 없음) — 인물 프로필 동형: 언급·공출현·게으른 프로필(source_digests kind='company_profile')·팔로우. /company?name=. 표기 병합(merge_entity_aliases)·enrich 기업 vocab으로 파편화 방지 |
-| `vision` | 이미지 분류→증시일정 이벤트→catalysts |
+| `vision` | 이미지 분류→증시일정 이벤트→catalysts (구 경로 — `media/` 백로그용, D-116 OFF) |
+| `image_reading` | **이미지 해석(docs/specs/image-reading.md)** — 이미지를 임시로 받아 haiku(Read)로 '전달하려는 메시지'+근거를 읽고 지운다. 게이트: 플래그 `image_reading`·게시 7일 이내·30분당 30콜(`llm_calls` 기준)·문서 단위 원자성·문서당 12장·사전 필터(링크 미리보기·스티커·200px/5KB 미만). `strip_ai_notes`로 doc_claims 인용·doc_causal 추출에서 AI 줄 제외 |
 | `actions` / `rights` | 기업활동 스캔·요약 / 유무증 구조화 추출(종속회사 제외) |
 | `digests` | **1D(오늘)·1W(월~일)·1M(월) 캘린더 다이제스트**(D-085) — 각 주기가 자기 캘린더 구간 raw 문서 직접 요약(비롤링). `_compute_bucket` 공용. **`catch_up(stock)`**: 진입 시 소급 — 과거 완결 월 1M·이번 달 주 1W·오늘 1D 멱등 생성(상한 CATCHUP_MONTHS=3). 새로운 시각(이전 같은 주기 요약 대비). cron은 **닫힌 구간만**(어제 1D + 지난 주 1W, D-124) — 진행 중 구간을 대상으로 삼으면 새 문서마다 해시가 바뀌어 같은 요약을 반복 재생성했다(실측: 같은 종목 7일간 7회, 7일 371건). 닫힌 구간은 문서 집합 고정이라 첫 생성 뒤 unchanged=LLM 0이므로 30분 체인에 그대로 둔다. **상한 종목 5**(DAILY_CAP 20→5) · **스코프는 국적 혼합** — 선정 조건에 국가·종목코드 필터가 없어 해외·비상장(OpenAI·엔비디아·Anthropic 등)도 포함된다. 단일 종목/열람 경로가 `e.aliases`로만 조회해 코드 없는 기업은 catch_up·조회가 불가했던 비대칭을 **`(aliases = ? OR name = ?)`**로 해소(D-124). 진행 중 구간·과거 월은 진입 catch_up |
 | `llm` | **공용 LLM 러너(D-130)** — `run(prompt, system=, model=, effort=, tools=, job=, on_text=)`: 격리 cwd·설정/도구 미로드·`--append-system-prompt`·스트리밍·API 모드 폴백·`llm_calls` 기록. `split_meta()`(본문/META JSON 분리)·`visible_text()`(스트림 중 META 꼬리 숨김)·`extract_json()`. §3 참조 |
@@ -425,7 +428,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `rag` | 문서 검색 헬퍼 — `retrieve_docs(query, k, since_days, source, entity_id)`: **D-132** 청크 하이브리드(`chunks.search_chunks`, 후보 40 문서별 최고 청크; **D-133**: 필터 있으면 풀 320·후보 160으로 확대, 80자 미만 청크 제외) → 뮤트·기간·소스·엔티티 필터 → **로컬 리랭커**(`rerank.rerank`) → 상위 k. 근거 발췌 = 접두어+그 청크(전엔 문서 앞 1,200자). 청크 인덱스 비면 문서 단위 폴백. 종합은 `chat`으로 이동(D-131) |
 | `consolidation` | K0 공고화 — 주간 승격 배치(4중 검증·릴레이 접기·반박 탐색·statement 병합) → 승인 큐. **인과 엣지 승격(Phase 2 §2-5)**: `promote_causal_edges` — 문서 대신 인과 그래프 재적재(narrative_edge_evidence)가 입력이라는 점만 다르고 동일 규율(독립 관측 2+·시간 분산·병합·반박 탐색) 재사용 |
 | `knowledge_recall` | K1 지식 소환 — activation×epistemic 랭킹, 브리프용 1-hop 그래프 확산, RAG용 의미 유사 |
-| `dates` / `normalize` | ISO 정규화(KST 버킷) / markitdown(PDF)·HTML 텍스트화 |
+| `dates` / `normalize` | ISO 정규화(KST 버킷) / markitdown(PDF)·HTML 텍스트화 — 블록 요소 경계에서만 줄바꿈·연속 빈 줄 하나로(2026-10-23, 네이버 빈 줄 82% 문제), `<img>` 자리에 이미지 해석 줄. 커넥터가 `RawDoc.markdown`을 주면 그대로 쓴다 |
 | `proxy_adapters` / `proxy_boards` | **프록시 보드(D-240)** — 어댑터 9종(credit·trade·call_momentum·indicator·retail·sector·price + 기존 transcript·corpus)이 `kind:body` 참조로 원천 테이블을 읽는다(LLM 0·네트워크 0, 기존 계산 재사용: credit_spreads·trade_metrics·retail_heat·sector_rs·risk). `latest`의 as_of는 원천 날짜. `proxy_boards.suggest` = 보드 만들 때 sonnet 1회 지표 제안 → 카탈로그 재검증으로 candidates / needs_source 분리 |
 
 ### 5-2. API (spine 라우터 13종)

@@ -14,6 +14,7 @@ import subprocess
 from database import get_connection
 from pipeline.visibility import unverified_sql
 from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.image_reading import strip_ai_notes
 from pipeline.narrative import GEO_VOCAB, _node_vocab, _persist_causal
 
 DOC_CAUSAL_MODEL = os.getenv("DOC_CAUSAL_MODEL", "sonnet")
@@ -46,7 +47,7 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
         "- effect_direction ∈ positive|negative|mixed. effect_strength ∈ unknown|weak|moderate|strong "
         "(효과 크기 — 확신과 별개 축, 숫자 금지, 경계 애매하면 낮은 쪽).\n"
         "- confidence: 0~1 (이 인과가 참이라는 확신) — 문서가 단정하면 0.5, 조건부/추측이면 0.3.\n"
-        f"[문서]\n제목: {title}\n{(markdown or '')[:EXCERPT]}"
+        f"[문서]\n제목: {title}\n{strip_ai_notes(markdown)[:EXCERPT]}"   # 명시된 인과만 — AI 이미지 해석 줄은 문서의 서술이 아니다
     )
 
 
