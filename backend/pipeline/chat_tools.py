@@ -222,6 +222,13 @@ def _match_sources(conn, name: str) -> tuple[list[str], list, list[str]]:
     return conds, params, names
 
 
+def _coverage(conn, conds: list[str], params: list) -> str:
+    """채널 검색의 '조회 기간'과 그 소스의 '수집 범위'를 함께 적는다 — 종합이 조회 창(30일)을 수집 시작으로
+    말해 "메르 글은 10/17 이후만 수집"이라고 틀리게 답했다(chat 70, 2026-10-23)."""
+    n, first = conn.execute(f"SELECT count(*), min(rd.published_at) FROM raw_documents rd WHERE {' OR '.join(conds)}", params).fetchone()
+    return f"이 소스의 수집 문서는 모두 {n}건 · 가장 이른 글 {(first or '-')[:10]}"
+
+
 def _match_channels(conn, channel: str):
     """구독 유튜브 채널 매칭 — 공백 무시 부분일치, 실패 시 토큰(≥2자) 하나라도 포함."""
     rows = conn.execute("SELECT channel_id, title, handle FROM youtube_channels").fetchall()
@@ -275,6 +282,7 @@ def search_docs(query: str, since_days: int | None = None, source: str | None = 
     asm: dict = {}
     allow: set[int] | None = None
     cnames: list[str] = []
+    cover = None
     if entity:
         ent = resolve_entity_ex(conn, entity, asm=asm)
         if ent:
@@ -287,6 +295,7 @@ def search_docs(query: str, since_days: int | None = None, source: str | None = 
             return ToolResult("search_docs", args, [], f"'{channel}' 채널·블로거를 구독 소스에서 찾지 못함")
         allow = {r[0] for r in conn.execute(
             f"SELECT rd.id FROM raw_documents rd WHERE {' OR '.join(conds)}", cparams)}
+        cover = _coverage(conn, conds, cparams)
     conn.close()
     docs = retrieve_docs(query, k=k, since_days=since_days, source=source, entity_id=eid,
                          variants=vlist or None, entity_terms=terms, doc_ids=allow)
@@ -338,7 +347,10 @@ def search_docs(query: str, since_days: int | None = None, source: str | None = 
                 it["title"] = f"[{who}] {it['title'] or ''}"
     if items and cnames:
         note = (note or "") + f"('{channel}' → {', '.join(dict.fromkeys(cnames))} 범위 검색)"
-    return ToolResult("search_docs", args, items, note if items else (asm.get("ambiguous") or "검색 결과 없음"),
+    if cover:   # 조회 기간 ≠ 수집 범위 — 없다고 답할 때 어느 범위에서 없었는지 말하게
+        window = f"조회 기간 최근 {since_days}일" if since_days else "조회 기간 전체"
+        note = ((note or "") if items else (asm.get("ambiguous") or "검색 결과 없음")) + f" · {window} · {cover}"
+    return ToolResult("search_docs", args, items, note if (items or cover) else (asm.get("ambiguous") or "검색 결과 없음"),
                       assumed=asm.get("assumed", []))
 
 
@@ -394,6 +406,7 @@ def _list_recent(kind: str, entity: str | None = None, channel: str | None = Non
                 where.append("(" + " OR ".join(conds) + ")")
                 params += cparams
                 matched_names = cnames
+                cover = _coverage(conn, conds, cparams)
             if entity:
                 ent = resolve_entity_ex(conn, entity, asm=asm)
                 if ent:
@@ -426,6 +439,8 @@ def _list_recent(kind: str, entity: str | None = None, channel: str | None = Non
                 note = f"최근 {d}일 " + ("스크랩된 글 없음" if kind == "scrap" else "유입 문서 없음")
             elif matched_names:
                 note = f"'{channel}' → {', '.join(dict.fromkeys(matched_names))}의 문서 {len(items)}건"
+            if matched_names:
+                note += f" · 조회 기간 최근 {d}일 · {cover}"
             return ToolResult("list_recent", args, items, note)
 
         if kind == "disclosures":
@@ -711,6 +726,66 @@ def get_saved(kind: str | None = None, query: str | None = None, n: int = 15) ->
     finally:
         conn.close()
     return ToolResult("get_saved", {"kind": kind, "query": query}, items, None if items else "저장된 항목 없음")
+
+
+STUDY_DOC_CHARS = 5000   # 스터디 자료 한 건의 본문 상한 — 프로젝트 하나(자료 ~10건)가 종합 한 번에 들어가는 크기
+
+
+def _find_study(conn, project) -> tuple[dict | None, str | None]:
+    """스터디 프로젝트 — id(숫자·'/study/projects/8') 또는 이름. 이름은 공백·괄호 무시 부분일치, 여럿이면 최근 것."""
+    text = str(project or "").strip()
+    m = re.search(r"(?:projects/)?(\d+)$", text)
+    if m:
+        r = conn.execute("SELECT * FROM study_projects WHERE id=?", (int(m.group(1)),)).fetchone()
+        if r:
+            return dict(r), None
+    key = re.sub(r"[\s()\[\]·,]+", "", text).lower()
+    rows = [dict(r) for r in conn.execute("SELECT * FROM study_projects ORDER BY updated_at DESC, id DESC")]
+    norm = lambda t: re.sub(r"[\s()\[\]·,]+", "", t or "").lower()  # noqa: E731
+    hit = [r for r in rows if key and (key in norm(r["title"]) or norm(r["title"]) in key)]
+    if not hit:
+        toks = [t for t in re.split(r"[^0-9A-Za-z가-힣]+", text) if len(t) >= 2]
+        hit = [r for r in rows if toks and all(t.lower() in (r["title"] or "").lower() for t in toks)]
+    if not hit:
+        return None, "스터디 프로젝트를 찾지 못함 — 있는 프로젝트: " + " / ".join(r["title"] for r in rows[:10])
+    note = None if len(hit) == 1 else "이름이 맞는 프로젝트가 여럿이라 가장 최근 것: " + " / ".join(r["title"] for r in hit[:5])
+    return hit[0], note
+
+
+def get_study(project: str) -> ToolResult:
+    """스터디 프로젝트에 담긴 자료 전부 — 제목·출처·발행일·본문·내 주석/코멘트. '이 스터디·스터디 자료로' 질문의 근거."""
+    conn = get_connection()
+    try:
+        p, note = _find_study(conn, project)
+        if not p:
+            return ToolResult("get_study", {"project": project}, [], note)
+        rows = [dict(r) for r in conn.execute(
+            "SELECT s.* FROM study_project_members m JOIN study_sessions s ON s.id=m.study_id "
+            "WHERE m.project_id=? AND m.removed_at IS NULL ORDER BY s.published_at, s.id", (p["id"],))]
+        from pipeline.sources import source_names
+        docs = [{"id": r["document_id"], "source_type": r["source_type"], "source_id": d["source_id"], "url": d["url"]}
+                for r in rows if r["document_id"]
+                for d in [conn.execute("SELECT source_id, url FROM raw_documents WHERE id=?", (r["document_id"],)).fetchone()] if d]
+        who = {k: (v or {}).get("name") for k, v in source_names(conn, docs).items()} if docs else {}
+        items = []
+        for r in rows:
+            notes = [a for a in conn.execute(
+                "SELECT exact, comment FROM study_annotations WHERE study_id=? AND deleted_at IS NULL ORDER BY start_offset", (r["id"],))]
+            body = (r["body"] or "")[:STUDY_DOC_CHARS]
+            text = f"출처 종류: {r['source_type'] or '-'} · 발행 {(r['published_at'] or '-')[:10]}\n{body}"
+            if len(r["body"] or "") > STUDY_DOC_CHARS:
+                text += f"\n…(본문 {len(r['body']):,}자 중 앞 {STUDY_DOC_CHARS:,}자)"
+            if notes:
+                text += "\n[내 하이라이트·코멘트] " + " / ".join(
+                    f"“{(a['exact'] or '')[:80]}”" + (f" → {a['comment'][:120]}" if a["comment"] else "") for a in notes[:8])
+            author = who.get(r["document_id"])
+            items.append({"kind": "study", "title": f"[스터디 자료{' · ' + author if author else ''}] {r['title'] or ''}", "text": text,
+                          "date": (r["published_at"] or "")[:10], "doc_id": r["document_id"],
+                          "href": f"/study/projects/{p['id']}?doc={r['id']}"})
+        head = f"스터디 '{p['title']}'(id {p['id']}) 자료 {len(items)}건 전부" + (f" · {note}" if note else "")
+        return ToolResult("get_study", {"project": project}, items, head if items else f"스터디 '{p['title']}'에 담긴 자료가 없음")
+    finally:
+        conn.close()
 
 
 def get_proxies(query: str, n: int = 8) -> ToolResult:
@@ -1053,6 +1128,10 @@ TOOLS: dict[str, dict] = {
                           "미지정=최신월 급등·급감 하이라이트+분류별 합계. '수출·무역·수출입 추이·어떤 품목이 튀었나' 질문에. args: item(품목명·분류·HS 일부, 선택), months(3~36)"},
     "get_saved": {"fn": get_saved, "args": {"kind", "query", "n"},
                   "desc": "사용자가 '저장됨'에 북마크한 글·내러티브·종합(제목·부제·요약·내 메모). '내가 저장한/북마크한/모아둔' 질문에. args: kind(doc|narrative|synthesis, 선택), query(키워드, 선택), n"},
+    "get_study": {"fn": get_study, "args": {"project"},
+                  "desc": "**스터디 프로젝트에 담긴 자료 전부**(본문·출처·발행일·내 하이라이트/코멘트). 사용자가 스터디 이름('(261023) 이차전지, ESS')을 말하거나 "
+                          "'스터디 자료·이 스터디·스터디에 있는'을 언급하거나, 보고 있는 화면이 /study/projects/N이면 반드시 먼저. "
+                          "args: project(스터디 이름 그대로, 또는 프로젝트 번호)"},
     "get_proxies": {"fn": get_proxies, "args": {"query", "n"},
                     "desc": "핵심질문의 관측 프록시(무엇을 측정·'예' 방향·단위·티커)와 관측치 시계열(컨콜 등에서 추출). '프록시·관측 지표·추적 중인 수치·실데이터로 확인됐나' 질문에. args: query(주제·질문 키워드), n"},
     "get_transcripts": {"fn": get_transcripts, "args": {"companies", "n_per"},
