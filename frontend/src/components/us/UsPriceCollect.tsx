@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DownloadCloud, LoaderCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/api/client'
+import { toApiError } from '@/api/query'
 import { Button } from '@/components/ui/button'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 
@@ -24,7 +25,7 @@ export function UsPriceCollect({ ticker }: { ticker: string }) {
       client.invalidateQueries({ queryKey: ['spine', 'chart-structure'] })
       toast.success(`${ticker} 시세 ${formatNumber(data.collected_rows)}행을 받았습니다.`, { description: `최신 거래일 ${data.last_date ?? '-'} · yfinance 2년 일봉` })
     },
-    onError: error => toast.error('시세를 받지 못했습니다.', { description: (error as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? (error as Error).message }),
+    onError: error => toast.error('시세를 받지 못했습니다.', { description: toApiError(error).message }),
   })
   const s = status.data
   const label = !s ? '시세 확인 중…' : s.state === 'missing' ? '저장된 시세가 없습니다' : `시세 ${formatNumber(s.rows)}일 · 최신 ${s.last_date}${s.state === 'stale' ? ` (다른 종목 최신일보다 ${formatNumber(s.stale_days ?? 0)}일 뒤)` : ''}${s.fetched_at ? ` · ${formatRelativeTime(s.fetched_at)} 수집` : ''}`

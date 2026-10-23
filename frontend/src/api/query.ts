@@ -31,10 +31,15 @@ export class ApiError extends Error {
   }
 }
 
-/** axios 예외 → ApiError (FastAPI {detail} 우선) */
+/** axios 예외 → ApiError (FastAPI {detail} 우선). 검증 실패(422)의 detail은 문자열이 아니라 [{msg, loc…}] 배열이라
+ * 그대로 토스트에 넣으면 React가 객체를 그리다 화면이 죽는다(2026-10-23 소스 추가) — 항상 문자열로 만든다 */
 export function toApiError(e: unknown): ApiError {
-  const err = e as { response?: { status?: number; data?: { detail?: string } }; message?: string }
-  return new ApiError(err?.response?.data?.detail ?? err?.message ?? "요청 실패", err?.response?.status)
+  const err = e as { response?: { status?: number; data?: { detail?: unknown } }; message?: string }
+  const detail = err?.response?.data?.detail
+  const text = typeof detail === "string" ? detail
+    : Array.isArray(detail) ? detail.map(d => (typeof d?.msg === "string" ? d.msg : "입력값을 확인해 주세요.")).join(" · ")
+    : undefined
+  return new ApiError(text ?? err?.message ?? "요청 실패", err?.response?.status)
 }
 
 export async function getJson<T>(url: string, params?: Record<string, unknown>): Promise<T> {
