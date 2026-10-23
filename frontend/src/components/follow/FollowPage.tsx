@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { unfollowEntity, spineKeys } from "@/api/spine"
-import { apiQuery, STALE } from "@/api/query"
+import { apiQuery, STALE, toApiError } from "@/api/query"
 import { useDefaultWatchGroup, useRemoveMember, useUpdateMember } from "@/hooks/useGroups"
 import { useQuotes, type LiveQuote } from "@/hooks/useQuotes"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
@@ -394,7 +394,7 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
       qc.invalidateQueries({ queryKey: ["telegram-channels"] })
     },
     onError: (e: unknown) => {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "채널 등록 실패")
+      toast.error(toApiError(e).message || "채널 등록 실패")
     },
   })
 
@@ -443,7 +443,7 @@ function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
       qc.invalidateQueries({ queryKey: ["youtube-channels"] })
     },
     onError: (e: unknown) =>
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "등록 실패"),
+      toast.error(toApiError(e).message || "등록 실패"),
   })
   const toggle = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
@@ -505,7 +505,7 @@ function BlogSourcesCard({ title, placeholder, match, onGo }: {
       qc.invalidateQueries({ queryKey: ["blog-sources"] })
     },
     onError: (e: unknown) => {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "소스 등록 실패")
+      toast.error(toApiError(e).message || "소스 등록 실패")
     },
   })
 
