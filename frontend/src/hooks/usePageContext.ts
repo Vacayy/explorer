@@ -22,6 +22,9 @@ export function usePageContext(companyName?: string | null): PageContext | null 
   if (pathname.startsWith("/narrative") && params.get("topic")) {
     return { kind: "narrative", ref: params.get("topic")!, path, label: `서사 · ${params.get("topic")}` }
   }
+  // 스터디 프로젝트 — 채팅이 get_study로 그 자료를 먼저 읽게 번호를 넘긴다(chat 70: 화면을 알고도 전체 검색으로 답함)
+  const sp = pathname.match(/^\/study\/projects\/(\d+)/)
+  if (sp) return { kind: "study_project", ref: sp[1], path, label: `스터디 프로젝트 #${sp[1]}` }
   const q = pathname.match(/^\/question\/(\d+)/)
   if (q) return { kind: "question", ref: q[1], path, label: `질문 #${q[1]}` }
   if (pathname.startsWith("/chat")) return null

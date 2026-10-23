@@ -131,7 +131,7 @@ export async function fetchSpineSignals(type?: string, days?: number): Promise<S
 }
 
 export interface PageContext {
-  kind: 'stock' | 'us_stock' | 'doc' | 'narrative' | 'question' | 'page'
+  kind: 'stock' | 'us_stock' | 'doc' | 'narrative' | 'question' | 'study_project' | 'page'
   label: string
   path: string
   ref?: string
