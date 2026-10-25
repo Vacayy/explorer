@@ -66,6 +66,7 @@ step extract_doc_causal scripts/extract_doc_causal.py --limit 10
 step compute_signals    scripts/compute_signals.py
 step compute_narratives scripts/compute_narratives.py --urgent
 step extract_events     scripts/extract_events.py --limit 40
+step backfill_images    scripts/backfill_images.py --calls 200 --minutes 8   # 이미지 해석 백로그 — 켜져 있을 때 조금씩 (image-reading §9)
 step scan_actions       scripts/scan_actions.py
 step compute_digests    scripts/compute_digests.py
 step vault_sync         scripts/vault_sync.py --export

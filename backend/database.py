@@ -846,6 +846,12 @@ def init_db():
         updated_at   TEXT DEFAULT (datetime('now'))
     );
 
+    -- 이미지 해석 백로그 처리 완료 문서 (pipeline/image_backfill.py) — 본문 교체(또는 변경 없음 확인)까지 끝난 문서
+    CREATE TABLE IF NOT EXISTS image_backfill_docs (
+        doc_id      INTEGER PRIMARY KEY,
+        done_at     TEXT DEFAULT (datetime('now'))
+    );
+
     -- 전문 검색 (BM25) — raw_documents 외부 콘텐츠 방식 + 트리거 동기화.
     -- 벡터(doc_vec)는 sqlite-vec 확장이 필요해 pipeline/search.py에서 생성한다.
     CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(

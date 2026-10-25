@@ -23,6 +23,7 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("backfill_enrich", "재태깅 백필", "sonnet — 키워드 폴백 문서 재태깅 (백로그 7,871건, 우선순위·예산 제어, D-117)", "scripts/backfill_enrich_batch.py"),
     ("extract_events", "이미지 비전 분석", "haiku — 첨부 이미지 판독·증시일정 이벤트 추출 (미분석 백로그 ~2,000장, D-116)", "scripts/extract_events.py"),
     ("image_reading", "이미지 해석", "haiku — 수집 중 새 글(7일 이내)의 차트·표 이미지를 메시지로 해석해 본문 자리에 삽입, 30분당 30콜", "pipeline/image_reading.py (ingest 안)"),
+    ("image_backfill", "이미지 해석 백로그", "haiku — 7일 밖 문서의 이미지 해석 소급(텔레그램 옛 파일→블로그, 최신순) + 블로그 줄바꿈 소급. 30분 체인 회차당 8분·200콜, 태그는 새 해시로 이월(재태깅 없음)", "scripts/backfill_images.py"),
     ("extract_doc_causal", "문서 인과 추출", "sonnet — 문서에서 명시 인과만 추출 (백로그 1,177건, D-116)", "scripts/extract_doc_causal.py"),
     ("refresh_source", "소스 즉시 수집", "버튼 — 텔레그램·유튜브·블로그 소스 하나를 지금 수집 (haiku enrich는 새 문서만, D-199)", "pipeline/source_refresh.py"),
     ("kr_companies", "종목 마스터 갱신", "DART 고유번호 목록 — 신규 상장·이름 변경 반영 (DART 1콜)", "scripts/collect_kr_company_data.py"),
