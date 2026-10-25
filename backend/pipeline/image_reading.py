@@ -4,12 +4,18 @@
 - 해석은 image_readings에 캐시 — 재수집 때 LLM·다운로드 없이 같은 텍스트가 나와 문서 해시가 안정적이다.
 - 해석 줄은 AI_PREFIX로 시작한다. 저자의 말이 아니므로 원문 인용·인과 추출은 strip_ai_notes로 뺀다.
 - 게이트: 관리자 플래그 image_reading · 게시 7일 이내 · 30분당 30콜 · 문서 단위 원자성(일부만 해석하지 않음).
+- 백로그(7일 밖)는 backfill_mode 안에서만 읽는다 — 별도 job 라벨·회차 예산·마감 시각 (pipeline/image_backfill.py).
 """
 import io
 import json
 import os
 import re
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
@@ -27,6 +33,7 @@ MAX_PER_DOC = 12
 MAX_ATTEMPTS = 3
 MIN_SIDE = 200
 MIN_BYTES = 5_000
+WORKERS = 3
 
 KIND_LABEL = {"chart": "차트", "table": "표", "text": "텍스트", "diagram": "도식",
               "calendar": "일정표", "photo": "사진", "other": "기타"}
@@ -37,6 +44,42 @@ _SKIP_CLASS = ("se-oglink-thumbnail", "se-sticker", "emoji", "avatar")
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+
+@dataclass
+class Backfill:
+    calls_left: int      # 이번 회차에 남은 호출 수
+    deadline: float      # time.time() 기준 마감
+    job: str = "image_backfill"
+
+
+_backfill: ContextVar[Backfill | None] = ContextVar("image_backfill", default=None)
+
+
+@contextmanager
+def backfill_mode(bf: Backfill):
+    """이 블록 안의 read_images는 게시일 제한 없이, bf의 예산·마감으로 읽는다."""
+    token = _backfill.set(bf)
+    try:
+        yield bf
+    finally:
+        _backfill.reset(token)
+
+
+def unresolved(keys: list[str]) -> int:
+    """아직 해석이 필요한(캐시에 없거나 재시도 가능한 실패) 이미지 수."""
+    if not keys:
+        return 0
+    conn = get_connection()
+    try:
+        rows = _rows(conn, keys)
+    finally:
+        conn.close()
+    return len({k for k in keys if _needs(rows.get(k))})
+
+
+def _needs(row) -> bool:
+    return row is None or (row["status"] == "failed" and row["attempts"] < MAX_ATTEMPTS)
 
 PROMPT = (
     "Read 도구로 이 이미지를 읽어: {path}\n"
@@ -105,12 +148,17 @@ def _remaining_budget(conn) -> int:
     return BUDGET - used
 
 
-def _download(url: str, referer: str) -> tuple[bytes, str] | None:
-    """이미지 바이트와 확장자. 너무 작거나 이미지가 아니면 None(필터)."""
+def _load(it: dict) -> tuple[bytes, str] | None:
+    """이미지 바이트와 확장자 — 로컬 파일(it['file']) 또는 다운로드. 너무 작거나 이미지가 아니면 None(필터)."""
     from PIL import Image
-    resp = requests.get(url, headers={"User-Agent": _UA, "Referer": referer}, timeout=20, verify=False)  # 수집기 공통(blog_service·옛 텔레그램 다운로드)과 같은 설정
-    resp.raise_for_status()
-    data = resp.content
+    if it.get("file"):
+        with open(it["file"], "rb") as f:
+            data = f.read()
+    else:
+        resp = requests.get(it["url"], headers={"User-Agent": _UA, "Referer": it.get("referer") or it["url"]},
+                            timeout=20, verify=False)  # 수집기 공통(blog_service·옛 텔레그램 다운로드)과 같은 설정
+        resp.raise_for_status()
+        data = resp.content
     if len(data) < MIN_BYTES:
         return None
     try:
@@ -124,7 +172,7 @@ def _download(url: str, referer: str) -> tuple[bytes, str] | None:
     return data, "jpg" if fmt == "jpeg" else fmt
 
 
-def _call(data: bytes, ext: str, context: str, source: str, published_at: str) -> dict:
+def _call(data: bytes, ext: str, context: str, source: str, published_at: str, job: str = JOB) -> dict:
     from pipeline import llm
     llm.RUNTIME_DIR.joinpath("img").mkdir(parents=True, exist_ok=True)
     rel = f"img/{uuid.uuid4().hex}.{ext}"   # headless Read는 cwd(RUNTIME_DIR) 하위만 읽는다
@@ -133,7 +181,7 @@ def _call(data: bytes, ext: str, context: str, source: str, published_at: str) -
     try:
         res = llm.run(PROMPT.format(path=rel, source=source, context=(context or "")[:1200],
                                     date=(published_at or "")[:10]),
-                      model="haiku", effort="low", tools=("Read",), job=JOB, timeout=180)
+                      model="haiku", effort="low", tools=("Read",), job=job, timeout=180)
     finally:
         path.unlink(missing_ok=True)
     out = llm.extract_json(res.text)
@@ -158,7 +206,8 @@ def _save(conn, key: str, status: str, out: dict | None = None, error: str | Non
 
 
 def read_images(items: list[dict], *, published_at: str, source: str, source_url: str = "") -> dict[str, str | None]:
-    """items=[{key, url, context, referer}] → {키: 해석 줄 또는 None}.
+    """items=[{key, url|file, context, referer[, published_at, source_url]}] → {키: 해석 줄 또는 None}.
+    항목별 published_at·source_url은 여러 문서를 한 번에 읽는 백필용(없으면 인자값).
 
     캐시 우선. 미해석분은 게이트 통과 시 문서 단위로 한꺼번에 — 남은 예산으로 전부 못 읽으면 이번엔
     하나도 읽지 않는다(일부씩 들어가면 문서 해시가 여러 번 바뀌어 재태깅이 반복된다).
@@ -167,30 +216,45 @@ def read_images(items: list[dict], *, published_at: str, source: str, source_url
     if not items:
         return {}
     keys = [it["key"] for it in items]
+    bf = _backfill.get()
     conn = get_connection()
     try:
         rows = _rows(conn, keys)
-        todo = list({it["key"]: it for it in items if it["key"] not in rows   # 같은 이미지가 두 번 나와도 한 번
-                     or (rows[it["key"]]["status"] == "failed" and rows[it["key"]]["attempts"] < MAX_ATTEMPTS)}.values())
-        if todo and _in_scope(published_at) and len(todo) <= _remaining_budget(conn):
+        todo = list({it["key"]: it for it in items if _needs(rows.get(it["key"]))}.values())  # 같은 이미지는 한 번
+        if todo and _allowed(conn, published_at, len(todo), bf):
             from pipeline.vision import _insert_events
-            for it in todo:
+            job = bf.job if bf else JOB
+
+            def work(it):
                 try:
-                    got = _download(it["url"], it.get("referer") or it["url"])
+                    got = _load(it)
                     if got is None:
-                        _save(conn, it["key"], "filtered")
-                        continue
-                    out = _call(*got, context=it.get("context", ""), source=source, published_at=published_at)
-                    _save(conn, it["key"], "skip" if str(out.get("skip")).lower() == "true" else "ok", out)
-                    if out.get("kind") == "calendar" and out.get("events"):
-                        _insert_events(conn, out["events"], source_url)
-                        conn.commit()
+                        return it, "filtered", None, None
+                    out = _call(*got, context=it.get("context", ""), source=source,
+                                published_at=it.get("published_at") or published_at, job=job)
+                    return it, "skip" if str(out.get("skip")).lower() == "true" else "ok", out, None
                 except Exception as e:  # noqa: BLE001 — 이미지 하나의 실패가 수집을 막지 않는다
-                    _save(conn, it["key"], "failed", error=f"{type(e).__name__}: {str(e)[:200]}")
+                    return it, "failed", None, f"{type(e).__name__}: {str(e)[:200]}"
+            with ThreadPoolExecutor(min(WORKERS, len(todo))) as ex:
+                results = list(ex.map(work, todo))
+            for it, status, out, err in results:      # DB 쓰기는 한 스레드에서
+                _save(conn, it["key"], status, out, err)
+                if status != "filtered" and bf:
+                    bf.calls_left -= 1
+                if out and out.get("kind") == "calendar" and out.get("events"):
+                    _insert_events(conn, out["events"], it.get("source_url") or source_url)
+                    conn.commit()
             rows = _rows(conn, keys)
         return {k: format_note(rows.get(k)) for k in keys}
     finally:
         conn.close()
+
+
+def _allowed(conn, published_at: str, n: int, bf: Backfill | None) -> bool:
+    if bf:
+        from pipeline.enrich import llm_engine
+        return llm_engine() == "claude-code" and n <= bf.calls_left and time.time() < bf.deadline
+    return _in_scope(published_at) and n <= _remaining_budget(conn)
 
 
 def _rows(conn, keys: list[str]) -> dict:

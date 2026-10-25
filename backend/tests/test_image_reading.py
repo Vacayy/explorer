@@ -67,7 +67,7 @@ class ReadImagesTests(unittest.TestCase):
         conn.close()
         self.patches = [patch.object(ir, "get_connection", side_effect=self.connect),
                         patch.object(ir, "_in_scope", return_value=True),
-                        patch.object(ir, "_download", return_value=(b"x", "png"))]
+                        patch.object(ir, "_load", return_value=(b"x", "png"))]
         for p in self.patches:
             p.start()
 
@@ -142,6 +142,33 @@ class StripTests(unittest.TestCase):
         text = f"저자의 문장이 충분히 길게 이어져서 인용 후보가 된다.\n{NOTE} 이 해석 줄도 충분히 길다."
         self.assertEqual(ir.strip_ai_notes(text), "저자의 문장이 충분히 길게 이어져서 인용 후보가 된다.")
         self.assertEqual(doc_claims._sentences(text), ["저자의 문장이 충분히 길게 이어져서 인용 후보가 된다."])
+
+
+
+class BackfillTests(unittest.TestCase):
+    def test_apply_carries_tags_to_new_hash(self):
+        from pipeline import image_backfill as ib
+        f = tempfile.NamedTemporaryFile(suffix=".db")
+        conn = sqlite3.connect(f.name)
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE raw_documents (id INTEGER PRIMARY KEY, markdown TEXT, content_hash TEXT);
+            CREATE TABLE enrichments (doc_id INTEGER, content_hash TEXT, model TEXT, UNIQUE(doc_id, content_hash));
+            CREATE TABLE image_backfill_docs (doc_id INTEGER PRIMARY KEY, done_at TEXT);
+            INSERT INTO raw_documents VALUES (1, '글', 'old');
+            INSERT INTO enrichments VALUES (1, 'old', 'haiku');""")
+        r = conn.execute("SELECT * FROM raw_documents WHERE id=1").fetchone()
+        self.assertTrue(ib._apply(conn, r, f"글\n\n{NOTE}"))
+        h = conn.execute("SELECT content_hash FROM raw_documents").fetchone()[0]
+        self.assertEqual(conn.execute("SELECT content_hash FROM enrichments").fetchone()[0], h)   # 재태깅 없이 이월
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM image_backfill_docs").fetchone()[0], 1)
+        f.close()
+
+    def test_old_telegram_notes_go_to_end_in_image_order(self):
+        from pipeline import image_backfill as ib
+        r = {"raw_content": "본문"}
+        self.assertEqual(ib._telegram_md(r, ["a", "b"], {"a": None, "b": NOTE}), f"본문\n\n{NOTE}")
+        self.assertEqual(ib._telegram_md({"raw_content": ""}, ["a"], {"a": NOTE}), NOTE)
 
 
 if __name__ == "__main__":

@@ -204,7 +204,7 @@ LLM으로 태깅·요약하고, 지식그래프 위에서 신호·브리핑·질
         DART(전시장 공시) · 네이버 실시간 KRX(전종목 일봉, D-215) — (대기: 관세청 무역)
    │
    ▼  30분 cron 체인 (run_chain.sh — 겹침 방지 락, logs/ingest.log)
-ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → extract_doc_causal(문서레벨 인과 엣지, 회당 10, D-088) → compute_signals → compute_narratives → extract_events(이미지 비전)
+ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → extract_doc_causal(문서레벨 인과 엣지, 회당 10, D-088) → compute_signals → compute_narratives → extract_events(이미지 비전) → backfill_images(이미지 해석 백로그, 회차당 8분)
   → scan_actions(기업활동) → compute_digests(1D 오늘+1W 이번 주) → vault_sync --export → build_search_index(문서 인덱스 + **청크 인덱스**, D-132)
    +  평일 16:35·20:20: ingest_prices --daily (전종목 KRX 정규장 OHLCV, 체결일 기준·정규장 15:30 이후만[marketStatus 미사용], 20:20은 모든 세션 종료 뒤 덮어쓰기, 빈 날은 index_kospi 달력 기준 yfinance 보충·보충 행의 시총은 직전 주식 수 × 종가(`fill_market_cap`) — D-215·D-220)
    +  평일 16:20: snapshot_market (시장 국면 + 리스크 지표, LLM 0 — D-076, 2026-10-14 등록 D-222)
@@ -270,6 +270,7 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `corporate_actions` | 57 | 시총 5,000억+ 유·무상증자/합병/분할/공개매수/감자 (DART 전시장 스캔+haiku 요약) |
 | `capital_raise_details` | 16 | 유무증 Pro: 발행가 1·2차·확정/구주·신주/기준일·권리락(파생)·청약·납입·상장/주관사 |
 | `media_analysis` | 31 | 이미지 비전 분류 캐시 (calendar면 → catalysts 적재) — 구 경로 |
+| `image_backfill_docs` | 백로그 | 이미지 해석 백로그를 끝낸 문서 (doc_id PK) |
 | `image_readings` | 이미지 해석 | 이미지 해석 캐시 (키: 텔레그램 `telegram/{채널}_{메시지}_{순번}` · 블로그 이미지 URL). status ok\|skip\|filtered\|failed(3회까지 재시도). 재수집 시 같은 텍스트 → 문서 해시 안정 |
 | `entity_keywords` | 6 | 종목별 사용자 매칭 키워드 (등록 시 소급 링크) |
 | `entity_merges` | 병합분 | 어휘 통합 audit+redirect (D-033) — 병합으로 사라진 (old_name, type) → survivor_id. 쓰기 시 재파편화 방지 리다이렉트 겸용 |
@@ -416,7 +417,8 @@ API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code,
 | `knowledge_state` | salience×conviction (LLM 0) — 시장 주목(주체 엔티티 최근 언급량) × 근거 강도(독립 관측·소스 다양성·느린 층·반박)로 4상태 위치: 주목받지 않은 확신(기회)·주목받는 확신(선반영)·확신 대비 과한 주목(진자 경고)·단순 노이즈. /knowledge 카드 배지 (설계 §G 갭 계량의 축) |
 | 기업 프로필(spine_company) | 해외/비상장 기업(종목코드 없음) — 인물 프로필 동형: 언급·공출현·게으른 프로필(source_digests kind='company_profile')·팔로우. /company?name=. 표기 병합(merge_entity_aliases)·enrich 기업 vocab으로 파편화 방지 |
 | `vision` | 이미지 분류→증시일정 이벤트→catalysts (구 경로 — `media/` 백로그용, D-116 OFF) |
-| `image_reading` | **이미지 해석(docs/specs/image-reading.md)** — 이미지를 임시로 받아 haiku(Read)로 '전달하려는 메시지'+근거를 읽고 지운다. 게이트: 플래그 `image_reading`·게시 7일 이내·30분당 30콜(`llm_calls` 기준)·문서 단위 원자성·문서당 12장·사전 필터(링크 미리보기·스티커·200px/5KB 미만). `strip_ai_notes`로 doc_claims 인용·doc_causal 추출에서 AI 줄 제외 |
+| `image_reading` | **이미지 해석(docs/specs/image-reading.md)** — 이미지를 임시로 받아 haiku(Read)로 '전달하려는 메시지'+근거를 읽고 지운다. 게이트: 플래그 `image_reading`·게시 7일 이내·30분당 30콜(`llm_calls` 기준)·문서 단위 원자성·문서당 12장·사전 필터(링크 미리보기·스티커·200px/5KB 미만). `strip_ai_notes`로 doc_claims 인용·doc_causal 추출에서 AI 줄 제외. `backfill_mode`(회차 예산·마감, job `image_backfill`) |
+| `image_backfill` | **이미지 해석 백로그(image-reading §9)** — 30분 체인 단계. 7일 안 블로그 누락분 → 텔레그램 옛 파일 → 블로그 과거분, 회차당 8분·200콜·300문서. 본문 교체 시 enrichment를 새 해시로 이월(재태깅 없음), 원장 `image_backfill_docs` |
 | `actions` / `rights` | 기업활동 스캔·요약 / 유무증 구조화 추출(종속회사 제외) |
 | `digests` | **1D(오늘)·1W(월~일)·1M(월) 캘린더 다이제스트**(D-085) — 각 주기가 자기 캘린더 구간 raw 문서 직접 요약(비롤링). `_compute_bucket` 공용. **`catch_up(stock)`**: 진입 시 소급 — 과거 완결 월 1M·이번 달 주 1W·오늘 1D 멱등 생성(상한 CATCHUP_MONTHS=3). 새로운 시각(이전 같은 주기 요약 대비). cron은 **닫힌 구간만**(어제 1D + 지난 주 1W, D-124) — 진행 중 구간을 대상으로 삼으면 새 문서마다 해시가 바뀌어 같은 요약을 반복 재생성했다(실측: 같은 종목 7일간 7회, 7일 371건). 닫힌 구간은 문서 집합 고정이라 첫 생성 뒤 unchanged=LLM 0이므로 30분 체인에 그대로 둔다. **상한 종목 5**(DAILY_CAP 20→5) · **스코프는 국적 혼합** — 선정 조건에 국가·종목코드 필터가 없어 해외·비상장(OpenAI·엔비디아·Anthropic 등)도 포함된다. 단일 종목/열람 경로가 `e.aliases`로만 조회해 코드 없는 기업은 catch_up·조회가 불가했던 비대칭을 **`(aliases = ? OR name = ?)`**로 해소(D-124). 진행 중 구간·과거 월은 진입 catch_up |
 | `llm` | **공용 LLM 러너(D-130)** — `run(prompt, system=, model=, effort=, tools=, job=, on_text=)`: 격리 cwd·설정/도구 미로드·`--append-system-prompt`·스트리밍·API 모드 폴백·`llm_calls` 기록. `split_meta()`(본문/META JSON 분리)·`visible_text()`(스트림 중 META 꼬리 숨김)·`extract_json()`. §3 참조 |
