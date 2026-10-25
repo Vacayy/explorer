@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { WidgetFrame } from "@/components/shared/WidgetFrame"
 import { useHomeBoards, type HomeBoard } from "@/hooks/useDashboard"
-import { useMediaQuery, MOBILE_QUERY } from "@/hooks/useMediaQuery"
+import { useMediaQuery, MOBILE_QUERY, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
 import { WIDGET_BY_ID } from "@/components/widgets/registry"
 import { NewBoardDialog } from "@/components/home/NewBoardDialog"
 import { WidgetGallery } from "@/components/widgets/WidgetGallery"
@@ -76,6 +76,9 @@ export default function Dashboard({ menu }: { menu: HomeBoard }) {
   const { width, containerRef, mounted } = useContainerWidth()
   // 모바일: 저장된 배치 순서대로 1열, 끌기·크기 조절 없음. 저장된 데스크톱 배치는 건드리지 않는다 (home-widgets.md §모바일)
   const stacked = useMediaQuery(MOBILE_QUERY)
+  // 태블릿(768~1023): 같은 12칸 배치지만 칸이 좁다 — 본문 밀도는 실제 폭으로(데스크톱 1칸 ≈ 100px). 데스크톱은 저장된 칸 수 그대로
+  const narrow = !useMediaQuery(PANEL_INLINE_QUERY)
+  const densityW = (cols: number) => narrow ? Math.max(2, Math.round(cols * width / COLS / 100)) : cols
 
   const persist = (b: Board) => boards.update.mutate({ id: menu.id, items: entriesOf(b) }, { onError: () => toast.error("배치를 저장하지 못했습니다. 잠시 뒤 다시 바꿔 보세요.") })
   const commit = (next: Board, undo?: { label: string; prev: Board }) => {
@@ -212,7 +215,7 @@ export default function Dashboard({ menu }: { menu: HomeBoard }) {
               const p = gridLayout.find(x => x.i === i)
               const h = p?.h ?? board.heights[i] ?? 10
               return <div key={i}>
-                <WidgetItem defId={def.id} w={p?.w ?? def.size.w} fine={h} params={board.params[i]}
+                <WidgetItem defId={def.id} w={densityW(p?.w ?? def.size.w)} fine={h} params={board.params[i]}
                   onRemove={() => removeIds([i], `'${def.titleOf?.(board.params[i]) ?? def.title}'을 뺐어요.`)} onOpen={def.Detail && (() => openDetail(def.id))} />
               </div>
             })}

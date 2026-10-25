@@ -20,10 +20,11 @@ export function AlertHistoryCard() {
       {alerts.isPending ? <Skeleton className="h-32 w-full" />
         : alerts.isError ? <ErrorState onRetry={() => void alerts.refetch()} />
         : !items.length ? <p className="text-sm text-muted-foreground">최근 14일 보낸 알림이 없습니다.</p>
-        : <ul className="divide-y" aria-label="보낸 알림">{items.map((a, i) => <li key={`${a.sent_at}-${a.kind}-${a.code ?? ''}-${i}`} className="flex items-center gap-3 py-2">
+        : <ul className="divide-y" aria-label="보낸 알림">{items.map((a, i) => <li key={`${a.sent_at}-${a.kind}-${a.code ?? ''}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 md:flex-nowrap">
             <span className="w-24 shrink-0 font-mono text-caption tabular-nums text-muted-foreground">{a.sent_at.slice(5)}</span>
             <Badge variant="secondary" className="shrink-0 text-caption font-normal">{KIND[a.kind] ?? a.kind}</Badge>
-            <span className="min-w-0 flex-1 truncate text-sm">
+            {/* 좁은 화면은 본문을 다음 줄로 내려 자르지 않는다 */}
+            <span className="min-w-0 basis-full text-sm md:flex-1 md:basis-auto md:truncate">
               {a.name && <span className="font-medium">{a.name} </span>}
               {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{a.label}<ArrowUpRight aria-hidden="true" className="ml-0.5 inline size-3" /></a>
                 : <span className="text-muted-foreground">{a.label}</span>}

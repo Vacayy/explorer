@@ -47,7 +47,7 @@ export default function UsIndexPage() {
   return (
     <PageContainer gap="sm">
       <TranscriptTabs value="us" />
-      <div className="flex items-baseline justify-between">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h1 className="text-lg font-semibold">미국 종목 {total}</h1>
         <span className="text-xs text-muted-foreground">
           컨콜 팔로우 = 커버리지. 카드 → 도시에(시세·밸류·투자 렌즈)
@@ -62,7 +62,7 @@ export default function UsIndexPage() {
             <div className="text-xs font-medium text-muted-foreground">
               {GROUP_LABEL[g.label] ?? g.label} · {g.items.length}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {g.items.map((it) => (
                 <UsCard key={it.ticker} item={it} />
               ))}

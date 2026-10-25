@@ -56,7 +56,7 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', variant 
             <div className="flex flex-wrap items-center gap-2">
               {tags.map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
               <StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} /><Button asChild variant="ghost" size="sm" className="ml-auto"><Link to={`/doc/${doc.id}`}>자료 상세<ArrowUpRight aria-hidden="true" /></Link></Button>
-              {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer">원문 사이트<ArrowUpRight aria-hidden="true" /></a></Button>}
+              {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer"><span>원문<span className="max-md:hidden"> 사이트</span></span><ArrowUpRight aria-hidden="true" /></a></Button>}
             </div>
           </div> : <Collapsible open={open} onOpenChange={setOpen}>
             {!open && excerpt && (

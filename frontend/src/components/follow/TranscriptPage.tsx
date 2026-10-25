@@ -139,7 +139,7 @@ export default function TranscriptPage() {
       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4 items-start">
         {/* 좌 레일 — 팔로우 기업 그룹 (구독 관리 겸용) */}
         <Card className="md:sticky md:top-16">
-          <CardContent className="p-2 max-h-[70vh] overflow-y-auto">
+          <CardContent className="p-2 max-h-[45vh] md:max-h-[70vh] overflow-y-auto">
             {follows.length === 0 ? (
               <div className="p-3 space-y-3">
                 <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>

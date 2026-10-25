@@ -13,7 +13,7 @@ export function PctileBar({ value }: { value: number | null }) {
   if (value == null) return <span className="text-caption text-muted-foreground">-</span>
   const tone = value >= 80 ? 'bg-up' : value <= 20 ? 'bg-down' : 'bg-muted-foreground/60'
   return <span className="inline-flex items-center gap-2" title={`과거 5년 중 ${formatNumber(Math.round(value))}% 지점`}>
-    <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden="true"><span className={`block h-full rounded-full ${tone}`} style={{ width: `${value}%` }} /></span>
+    <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted max-sm:w-12" aria-hidden="true"><span className={`block h-full rounded-full ${tone}`} style={{ width: `${value}%` }} /></span>
     <span className="w-8 text-right tabular-nums">{formatNumber(Math.round(value))}</span>
   </span>
 }

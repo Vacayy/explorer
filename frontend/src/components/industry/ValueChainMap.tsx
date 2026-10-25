@@ -68,7 +68,8 @@ export default function ValueChainMap({ members, onSelectCompany }: Props) {
       </div>
 
       {/* Value chain cards */}
-      <div className="grid grid-cols-7 gap-2">
+      {/* 모바일 2열 → 태블릿 4열 → 데스크톱 7단계 한 줄 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {FLOW_ORDER.map((cat) => {
           const cfg = CATEGORY_CONFIG[cat]
           const items = grouped[cat] ?? []

@@ -113,8 +113,8 @@ export default function KnowledgePage() {
   return (
     <PageContainer gap="sm">
       <KnowledgeSubNav />
-      <div className="flex items-baseline gap-2">
-        <h2 className="text-xl font-bold flex items-center gap-2">
+      <div className="flex flex-col gap-1 md:flex-row md:items-baseline md:gap-2">
+        <h2 className="text-xl font-bold flex shrink-0 items-center gap-2">
           <BookOpenCheck className="h-5 w-5 text-muted-foreground" /> 지식 체계
         </h2>
         <span className="text-xs text-muted-foreground">

@@ -306,7 +306,7 @@ export default function WorldviewPage() {
       <div className={cn("flex flex-col gap-2", fullscreen && "fixed inset-0 z-50 bg-background p-4")}>
       <div className="flex items-baseline gap-2 flex-wrap">
         {!fullscreen && <KnowledgeSubNav />}
-        <h1 className="text-lg font-bold">온톨로지 (인과 그래프)</h1>
+        <h1 className="w-full text-lg font-bold md:w-auto">온톨로지 (인과 그래프)</h1>
         <span className="text-[11px] text-muted-foreground">전체 인과 지도(가설 포함) · 내러티브 갱신마다 상시 반영 — 검증된 핵심만 '지식'으로 승격</span>
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}
           className="ml-auto gap-1">
@@ -408,10 +408,10 @@ export default function WorldviewPage() {
         <EmptyState message={focusId != null ? "이 노드 주변에 연결된 인과가 없습니다." : "인과 그래프가 아직 비어 있습니다 — 내러티브가 재생성되며 쌓입니다."} />
       ) : (
         <div
-          style={fullscreen ? undefined : { height: "calc(100vh - 160px)", minHeight: 620 }}
           className={cn(
             "relative border overflow-hidden bg-background rounded-xl",
-            fullscreen && "flex-1 min-h-0",
+            // 모바일은 화면의 60%만 — 그래프 밖을 잡고 페이지를 스크롤할 여지를 남긴다
+            fullscreen ? "flex-1 min-h-0" : "h-[60svh] min-h-[380px] md:h-[calc(100vh-160px)] md:min-h-[620px]",
           )}
         >
           {view === "structure" ? (
@@ -433,7 +433,7 @@ export default function WorldviewPage() {
             >
               <Background />
               <Controls />
-              <MiniMap pannable zoomable />
+              <MiniMap pannable zoomable className="max-md:hidden" />
             </ReactFlow>
           ) : (
             <Suspense fallback={<Skeleton className="h-full w-full" />}>
@@ -445,7 +445,7 @@ export default function WorldviewPage() {
           {/* 전체화면 토글 — 그래프 영역이 화면을 덮게 */}
           <button
             onClick={() => setFullscreen((f) => !f)}
-            className="absolute top-3 left-3 z-10 rounded-lg border bg-card/85 p-1.5 text-muted-foreground shadow hover:text-foreground backdrop-blur"
+            className="absolute top-3 left-3 z-10 rounded-lg border bg-card/85 p-2.5 text-muted-foreground md:p-1.5 shadow hover:text-foreground backdrop-blur"
             aria-label={fullscreen ? "전체화면 종료" : "전체화면"}
           >
             {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -531,7 +531,7 @@ function GraphPanel({ title, subtitle, onClose, children }: {
   title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode
 }) {
   return (
-    <div className="absolute top-3 right-3 z-10 flex max-h-[calc(100%-24px)] w-[340px] flex-col rounded-xl border bg-card shadow-xl">
+    <div className="absolute top-3 right-3 left-3 z-10 flex max-h-[calc(100%-24px)] flex-col md:left-auto md:w-[340px] rounded-xl border bg-card shadow-xl">
       <div className="flex items-start gap-2 border-b px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{title}</div>

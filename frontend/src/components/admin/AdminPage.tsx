@@ -76,19 +76,25 @@ export default function AdminPage() {
           <div className="rounded-lg border">
             <Table>
               <TableHeader><TableRow>
-                <TableHead>데이터</TableHead><TableHead>상태</TableHead><TableHead>최신</TableHead>
-                <TableHead>기대</TableHead><TableHead className="hidden md:table-cell">채우는 곳</TableHead>
+                <TableHead>데이터</TableHead><TableHead>상태</TableHead><TableHead className="hidden md:table-cell">최신</TableHead>
+                <TableHead className="hidden md:table-cell">기대</TableHead><TableHead className="hidden md:table-cell">채우는 곳</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {health.data.map((h) => (
                   <TableRow key={h.key}>
-                    <TableCell className="text-sm">{h.label}{h.critical && <Badge variant="outline" className="ml-1.5 text-[9px]">경고</Badge>}</TableCell>
-                    <TableCell className="text-[11px]">
+                    <TableCell className="text-sm">
+                      {h.label}{h.critical && <Badge variant="outline" className="ml-1.5 text-[9px]">경고</Badge>}
+                      {/* 모바일: 최신·기대 열을 접고 데이터명 아래 한 줄로 */}
+                      <div className="text-[11px] tabular-nums text-muted-foreground md:hidden">
+                        최신 {h.latest ? h.latest.slice(0, 16) : "-"} · 기대 {h.expected ?? "-"}
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-normal text-[11px] md:whitespace-nowrap">
                       <Badge variant="outline" className={cn("text-[9px]", h.status === "ok" ? STATUS_CLS.ok : STATUS_CLS.error)}>{h.status === "ok" ? "최신" : h.status === "stale" ? "지연" : "오류"}</Badge>
                       {h.detail && <span className="ml-1.5 text-muted-foreground">{h.detail}</span>}
                     </TableCell>
-                    <TableCell className="text-[11px] tabular-nums text-muted-foreground">{h.latest ? h.latest.slice(0, 16) : "-"}</TableCell>
-                    <TableCell className="text-[11px] tabular-nums text-muted-foreground">{h.expected ?? "-"}</TableCell>
+                    <TableCell className="hidden text-[11px] tabular-nums text-muted-foreground md:table-cell">{h.latest ? h.latest.slice(0, 16) : "-"}</TableCell>
+                    <TableCell className="hidden text-[11px] tabular-nums text-muted-foreground md:table-cell">{h.expected ?? "-"}</TableCell>
                     <TableCell className="hidden text-[11px] text-muted-foreground md:table-cell">{h.owner}</TableCell>
                   </TableRow>
                 ))}

@@ -98,22 +98,22 @@ export default function PeopleDirectoryPage() {
           <CardContent className="divide-y">
             {data.items.slice(0, shown).map((p) => (
               <div key={p.entity_id} className="py-2.5 space-y-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <Link
                     to={`/person?name=${encodeURIComponent(p.name)}`}
-                    className="font-semibold text-sm hover:underline hover:text-primary"
+                    className="whitespace-nowrap font-semibold text-sm hover:underline hover:text-primary"
                   >
                     {p.name}
                   </Link>
                   {p.following && (
                     <Badge variant="outline" className="text-[9px] text-primary border-primary/40">팔로우 중</Badge>
                   )}
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                  <span className="whitespace-nowrap text-[11px] text-muted-foreground tabular-nums">
                     7일 {formatNumber(p.mentions_7d)}건
                     <span className={cn("ml-1", deltaTone(p.delta_7d))}>({signed(p.delta_7d)})</span>
                     {" · "}{days ? `${days}일` : "누적"} {formatNumber(p.doc_count)}건
                   </span>
-                  <span className="ml-auto flex gap-1">
+                  <span className="flex w-full gap-1 md:ml-auto md:w-auto">
                     {p.top_stocks.map((s) => (
                       <Badge key={s} variant="secondary" className="text-[10px] font-normal">{s}</Badge>
                     ))}

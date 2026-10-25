@@ -25,7 +25,9 @@ import type { WidgetBodyProps, WidgetMeta } from "./types"
  */
 
 const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
-const stripCell = "flex min-w-0 flex-1 flex-col justify-center border-l px-3 first:border-l-0"
+const stripCell = "flex min-w-0 flex-1 flex-col justify-center border-l px-3 first:border-l-0 max-lg:min-w-28"
+// 1024 미만은 칸을 줄이지 않고 띠 안에서 가로로 민다 — 숫자가 잘리거나 겹치지 않게
+const stripRow = "flex h-full items-stretch overflow-hidden max-lg:overflow-x-auto max-lg:overscroll-x-contain"
 
 /* ── 지수 띠 ── */
 export function useIndicesMeta(): WidgetMeta {
@@ -35,7 +37,7 @@ export function useIndicesMeta(): WidgetMeta {
 export function IndicesBody(_: WidgetBodyProps) {
   const q = useIndices()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  return <div className="flex h-full items-stretch overflow-hidden">
+  return <div className={stripRow}>
     {q.data.items.map(r => (
       <div key={r.key} className={stripCell}>
         <span className="flex items-baseline justify-between gap-1 text-[11px]">
@@ -60,7 +62,7 @@ export function ContextBody(_: WidgetBodyProps) {
   const q = useMacro()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   const items = CONTEXT_KEYS.map(k => q.data!.items.find(i => i.key === k)).filter(Boolean) as NonNullable<typeof q.data>["items"]
-  return <div className="flex h-full items-stretch overflow-hidden">
+  return <div className={stripRow}>
     {items.map(m => (
       // 올리면(클릭·키보드도) 추이 차트 — 시장 브리핑 지표 띠와 같은 MetricTrend
       <MetricTrend key={m.key} label={m.label} points={m.dated_series} format={v => fmtValue({ ...m, value: v })}

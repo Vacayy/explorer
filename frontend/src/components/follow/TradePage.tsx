@@ -59,7 +59,7 @@ export default function TradePage() {
 
   return (
     <PageContainer>
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="text-xl font-bold">수출입</h2>
         <span className="text-xs text-muted-foreground tabular-nums">
           관세청 품목별 무역통계{period && ` · ${period} 기준`} · 팔로우 {follows.length}
@@ -83,7 +83,7 @@ export default function TradePage() {
                 <ToggleGroupItem value="contribution" className="flex-1 text-xs">이번 달 기여도</ToggleGroupItem>
                 <ToggleGroupItem value="group" className="flex-1 text-xs">분류별</ToggleGroupItem>
               </ToggleGroup>
-              <div className="max-h-[70vh] overflow-y-auto">
+              <div className="max-h-[45vh] md:max-h-[70vh] overflow-y-auto">
                 {sort === "contribution"
                   ? <div className="space-y-0.5">{ranked.map((f) => <RailItem key={f.hs_code} f={f} follows={follows} active={f.hs_code === effective} onPick={(hs) => setParam("hs", hs)} />)}</div>
                   : <GroupRail follows={follows} effective={effective} onPick={(hs) => setParam("hs", hs)} />}

@@ -89,7 +89,7 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
     <Card>
       <CardHeader className="pb-2 flex-row items-center gap-3">
         <CardTitle className="text-sm">종목 <span className="font-normal text-muted-foreground">{items.length}</span></CardTitle>
-        <div className="relative ml-auto w-64">
+        <div className="relative ml-auto w-full sm:w-64">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="전체 상장사 검색…" className="pl-8 h-8 text-sm" />
@@ -99,7 +99,7 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
                 {results.slice(0, 8).map((c) => (
                   <button key={c.corp_code}
                     onClick={() => c.stock_code && onGo(c.stock_code)}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/60 text-left">
+                    className="flex w-full items-center gap-2 px-3 py-2.5 md:py-1.5 text-sm hover:bg-muted/60 text-left">
                     <span className="font-medium">{c.corp_name}</span>
                     <span className="ml-auto text-xs text-muted-foreground tabular-nums">{c.stock_code}</span>
                   </button>
@@ -118,21 +118,23 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
           </p>
         )}
         {items.length > 0 && (
-          <table className="w-full text-sm">
+          // 좁은 화면 — 열을 짓누르지 않고 표 단위로 가로 스크롤
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
             <thead>
-              <tr className="border-b text-xs text-muted-foreground">
+              <tr className="border-b text-xs text-muted-foreground whitespace-nowrap">
                 <th className="px-4 py-1.5 text-left font-medium cursor-pointer select-none" onClick={() => toggleSort("name")}>
                   종목명{arrow("name")}
                 </th>
-                <th className="py-1.5 text-left font-medium">코드</th>
+                <th className="hidden py-1.5 text-left font-medium md:table-cell">코드</th>
                 <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("close")}>
                   현재가{arrow("close")}
                 </th>
-                <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("market_cap")}>
+                <th className="pl-3 md:pl-0 py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("market_cap")}>
                   시가총액{arrow("market_cap")}
                 </th>
-                <th className="py-1.5 text-right font-medium">목표가</th>
-                <th className="py-1.5 text-left font-medium">논지</th>
+                <th className="pl-3 md:pl-0 py-1.5 text-right font-medium">목표가</th>
+                <th className="pl-3 md:pl-0 py-1.5 text-left font-medium">논지</th>
                 <th className="px-4 py-1.5 text-right font-medium w-24"></th>
               </tr>
             </thead>
@@ -149,6 +151,7 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -168,9 +171,9 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
   return (
     <>
       <tr className="border-b border-border/50 hover:bg-muted/50 cursor-pointer" onClick={onGo}>
-        <td className="px-4 py-2 font-medium">{item.name}</td>
-        <td className="py-2 text-xs text-muted-foreground tabular-nums">{item.stock_code}</td>
-        <td className="py-2 text-right tabular-nums text-xs">
+        <td className="px-4 py-2 font-medium whitespace-nowrap">{item.name}</td>
+        <td className="hidden py-2 text-xs text-muted-foreground tabular-nums md:table-cell">{item.stock_code}</td>
+        <td className="py-2 text-right tabular-nums text-xs whitespace-nowrap">
           {quote?.price != null ? (
             <>
               {formatNumber(quote.price)}
@@ -182,20 +185,20 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
             </>
           ) : item.close != null ? formatNumber(item.close) : "-"}
         </td>
-        <td className="py-2 text-right tabular-nums text-xs">
+        <td className="pl-3 md:pl-0 py-2 text-right tabular-nums text-xs whitespace-nowrap">
           {item.market_cap != null ? formatKrw(item.market_cap) : "-"}
         </td>
-        <td className="py-2 text-right tabular-nums text-xs">
+        <td className="pl-3 md:pl-0 py-2 text-right tabular-nums text-xs">
           {item.target_price != null ? formatNumber(item.target_price) : "-"}
         </td>
-        <td className="py-2 text-xs text-muted-foreground max-w-[240px]">
+        <td className="pl-3 md:pl-0 py-2 text-xs text-muted-foreground max-w-[240px]">
           <span className="block truncate" title={item.thesis ?? ""}>{item.thesis || "-"}</span>
         </td>
-        <td className="px-4 py-2 text-right">
+        <td className="px-4 py-2 text-right whitespace-nowrap">
           <button onClick={(e) => { e.stopPropagation(); onEdit() }}
-            className="text-[11px] text-muted-foreground hover:text-foreground mr-2">편집</button>
+            className="py-2.5 md:py-0 text-[11px] text-muted-foreground hover:text-foreground mr-2">편집</button>
           <button onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="text-[11px] text-muted-foreground hover:text-destructive">삭제</button>
+            className="py-2.5 md:py-0 text-[11px] text-muted-foreground hover:text-destructive">삭제</button>
         </td>
       </tr>
       {editing && (
@@ -220,7 +223,7 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
               <Input name="thesis" defaultValue={item.thesis ?? ""} className="h-7 flex-1 min-w-[200px] text-xs"
                 placeholder="핵심 논지 한 줄 — AI 브리프가 새 증거와 대조합니다" />
               <button type="submit" disabled={update.isPending}
-                className="h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">저장</button>
+                className="h-11 md:h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">저장</button>
             </form>
           </td>
         </tr>
@@ -321,9 +324,10 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
           )}
         </div>
       </div>
+      {/* 행 조작은 hover로 드러나지만 터치(pointer-coarse)에는 hover가 없어 항상 보인다 */}
       {/* 지금 수집 (D-199) — 30분 체인을 기다리지 않고 이 소스만. 진행 중엔 항상 보이고 스핀 */}
       {onRefresh && (
-        <span onClick={(e) => e.stopPropagation()} className={cn("shrink-0 transition-opacity", refreshing ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+        <span onClick={(e) => e.stopPropagation()} className={cn("shrink-0 transition-opacity", refreshing ? "opacity-100" : "opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100")}>
           <RefreshButton onClick={onRefresh} pending={!!refreshing} title="지금 수집 — 새 글만 가져와 태깅합니다" />
         </span>
       )}
@@ -332,7 +336,7 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
         <button
           onClick={(e) => { e.stopPropagation(); onToggleCollect() }}
           className={cn(
-            "shrink-0 rounded border px-1.5 py-0.5 text-[9px] transition-all opacity-0 group-hover:opacity-100",
+            "shrink-0 rounded border px-1.5 py-0.5 text-[9px] transition-all opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 pointer-coarse:py-1.5",
             collecting ? "border-border text-muted-foreground" : "border-hypothesis/40 text-hypothesis",
           )}
           title={collecting ? "수집 중단 — 문서·이력은 보존, 되돌릴 수 있음" : "수집 재개"}
@@ -344,8 +348,8 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
         onClick={(e) => { e.stopPropagation(); onToggle() }}
         className={cn(
           "shrink-0 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center transition-all",
-          "opacity-0 group-hover:opacity-100",
-          active ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
+          "opacity-0 group-hover:opacity-100 pointer-coarse:size-6",
+          active ? "border-primary bg-primary text-primary-foreground pointer-coarse:opacity-100" : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
         )}
         title={active ? "숨기기 — 내 피드·답변에서 제외" : "표시하기"}
       >
@@ -369,7 +373,7 @@ function AddForm({ placeholder, onSubmit, pending }: {
       }}>
       <Input name="v" placeholder={placeholder} disabled={pending} className="h-7 text-xs" />
       <button type="submit" disabled={pending}
-        className="shrink-0 h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">
+        className="shrink-0 h-11 md:h-7 px-3 md:px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">
         {pending ? "…" : "추가"}
       </button>
     </form>

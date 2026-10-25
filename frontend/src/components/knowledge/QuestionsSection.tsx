@@ -97,7 +97,7 @@ export function QuestionsSection() {
   }
 
   return (
-    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_5%,var(--card))]">
+    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_5%,var(--card))] max-sm:[--card-spacing:--spacing(3)]">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <HelpCircle className="h-4 w-4 text-hypothesis" /> 미결 질문
@@ -244,16 +244,16 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
       ) : (
         data.map((q) => (
           <div key={q.id} className="flex items-center gap-2 py-0.5">
-            <span className="text-[13px] truncate flex-1">
+            <span className="text-[13px] flex-1 max-md:line-clamp-2 md:truncate">
               {q.created_by === "digest" && <Badge variant="secondary" className="text-[8px] mr-1 align-middle">언급</Badge>}
               {q.text}
             </span>
             <span className="flex shrink-0 gap-1">
-              <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
+              <Button size="xs" variant="outline" className="h-8 px-2 text-emerald-600 md:h-6 hover:text-emerald-700"
                 disabled={approve.isPending} onClick={() => approve.mutate(q.id)}>
                 <Check className="h-3 w-3" /> 승인
               </Button>
-              <Button size="xs" variant="ghost" className="h-6 px-2 text-muted-foreground hover:text-destructive"
+              <Button size="xs" variant="ghost" className="h-8 px-2 text-muted-foreground hover:text-destructive md:h-6"
                 onClick={() => reject.mutate(q.id)}>
                 <X className="h-3 w-3" />
               </Button>
@@ -284,18 +284,18 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
   })
 
   return (
-    <Card>
+    <Card className="max-sm:[--card-spacing:--spacing(3)]">
       <CardContent className="py-3 space-y-2">
         <div className="flex items-start gap-2">
           <Link to={`/question/${item.id}`} className="text-sm leading-snug flex-1 hover:text-primary hover:underline">
             {item.text}
           </Link>
           <span className="flex shrink-0 items-center gap-1">
-            <button className="text-muted-foreground/60 hover:text-foreground" title="판정 재계산"
+            <button className="p-1.5 text-muted-foreground/60 hover:text-foreground md:p-0" title="판정 재계산"
               disabled={roll.isPending} onClick={() => roll.mutate()}>
               <RefreshCw className={cn("h-3.5 w-3.5", roll.isPending && "animate-spin")} />
             </button>
-            <button className="text-muted-foreground/60 hover:text-destructive" title="제거"
+            <button className="p-1.5 text-muted-foreground/60 hover:text-destructive md:p-0" title="제거"
               onClick={() => del.mutate()}>
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -373,10 +373,11 @@ function ProxyRow({ p }: { p: QProxy }) {
       <DialogTrigger asChild>
         <button className="w-full flex items-center gap-1.5 text-[11px] text-left rounded px-1 -mx-1 hover:bg-muted/60 transition-colors">
           <Badge variant="secondary" className="text-[9px] shrink-0">{MODALITY[p.modality] ?? p.modality}</Badge>
-          <span className="shrink-0 text-muted-foreground">{p.label}</span>
+          <span className="shrink-0 text-muted-foreground max-md:min-w-0 max-md:shrink max-md:truncate">{p.label}</span>
           {o ? (
-            <span className="ml-auto flex items-center gap-1.5 text-right text-muted-foreground min-w-0">
-              <span className="truncate max-w-[20rem]" title={o.value_text ?? ""}>{o.value_text}</span>
+            <span className="ml-auto flex items-center gap-1.5 text-right text-muted-foreground min-w-0 max-md:shrink-0">
+              {/* 모바일: 관측값 원문은 접고(모달에서 열람) 프록시명·방향·날짜만 */}
+              <span className="truncate max-w-[20rem] max-md:hidden" title={o.value_text ?? ""}>{o.value_text}</span>
               {o.direction && <span className="shrink-0 tabular-nums">{DIR[o.direction] ?? o.direction}</span>}
               <span className="shrink-0 tabular-nums text-[10px]">{o.observed_at?.slice(0, 10)}</span>
             </span>

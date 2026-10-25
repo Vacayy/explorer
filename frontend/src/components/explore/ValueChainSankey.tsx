@@ -111,7 +111,9 @@ export function ValueChainSankey({ vc, flows, level, lane, onLane, onSelect }: {
       </span>
     </div>
     {!data.links.length ? <EmptyState message="그릴 증가액 연결이 없습니다 — 다른 레인을 골라 보세요." />
-      : <div className="h-[640px] rounded-lg border p-2">
+      : <div className="h-[640px] rounded-lg border p-2 max-md:overflow-x-auto">
+        {/* <768: 단계 열과 오른쪽 라벨 자리(220px)가 눌리지 않게 최소 폭을 두고 가로로 스크롤 */}
+        <div className="h-full max-md:min-w-[720px]">
         <ResponsiveContainer width="100%" height="100%">
           <Sankey data={data} nodePadding={14} nodeWidth={10} iterations={64} margin={{ top: 8, right: 220, bottom: 8, left: 8 }}
             link={{ stroke: "var(--color-chart-blue)", strokeOpacity: 0.28 }}
@@ -120,6 +122,7 @@ export function ValueChainSankey({ vc, flows, level, lane, onLane, onSelect }: {
             <Tooltip content={<SankeyTip names={Object.fromEntries(data.nodes.map(n => [n.key, n.name]))} />} />
           </Sankey>
         </ResponsiveContainer>
+        </div>
       </div>}
   </div>
 }

@@ -61,9 +61,10 @@ export function StockActivityStrip({ stockCode }: { stockCode: string }) {
 
 function Row({ label, more, children }: { label: string; more: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span className="w-28 shrink-0 text-xs font-medium text-muted-foreground">{label}</span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">{children}</div>
+    // 모바일: 라벨·링크 한 줄, 내용은 아래 전폭 / md+: 라벨(고정폭)·내용·링크 한 줄
+    <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 md:flex md:flex-wrap">
+      <span className="text-xs font-medium text-muted-foreground md:w-28 md:shrink-0">{label}</span>
+      <div className="order-last col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 md:order-none md:flex-1">{children}</div>
       <span className="shrink-0 text-xs">{more}</span>
     </div>
   )

@@ -79,7 +79,7 @@ function HealthDot() {
     <Tooltip>
       <TooltipTrigger asChild>
         <Link to="/admin" aria-label={`운영 상태 — ${label}`}
-          className="hidden h-7 items-center gap-1.5 rounded-full md:flex border px-2.5 text-xs text-muted-foreground hover:text-foreground">
+          className="hidden h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs text-muted-foreground hover:text-foreground lg:flex">
           <span aria-hidden className={cn("size-[7px] rounded-full", isError || bad.length ? "bg-chart-warning" : data ? "bg-chart-green" : "bg-muted-foreground/40")} />
           {data ? (bad.length ? `운영 ${data.length - bad.length}/${data.length}` : "운영") : "운영"}
         </Link>

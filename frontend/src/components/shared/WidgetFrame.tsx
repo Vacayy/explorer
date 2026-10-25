@@ -42,15 +42,15 @@ export function WidgetFrame({ title, asOf, stale, detailPath, onRemove, onOpen, 
   return (
     <Card className="group/widget relative flex h-full min-h-0 flex-col gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none">
       {flat ? (
-        <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 rounded-sm border bg-background/95 px-0.5 opacity-0 shadow-sm transition-opacity group-hover/widget:opacity-100 focus-within:opacity-100">
+        <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 rounded-sm border bg-background/95 px-0.5 opacity-0 shadow-sm transition-opacity group-hover/widget:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
           {handle}{menu}
         </div>
       ) : (
-        <header className="flex h-10 shrink-0 items-center gap-1 border-b pr-1.5 pl-1">
+        <header className="@container flex h-10 shrink-0 items-center gap-1 border-b pr-1.5 pl-1">
           {handle}
           <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
-          {asOf && <span className={cn("ml-auto shrink-0 font-mono text-[11px] tabular-nums", stale ? "text-chart-warning" : "text-muted-foreground")}>{asOf}</span>}
-          <span className={cn(!asOf && "ml-auto")}>{menu}</span>
+          {asOf && <span className={cn("ml-auto shrink-0 max-lg:hidden max-lg:@[240px]:inline font-mono text-[11px] tabular-nums", stale ? "text-chart-warning" : "text-muted-foreground")}>{asOf}</span>}
+          <span className={cn(!asOf ? "ml-auto" : "max-lg:ml-auto max-lg:@[240px]:ml-0")}>{menu}</span>
         </header>
       )}
       <div className={cn("min-h-0 flex-1 overflow-hidden", flat ? "px-1 py-2" : "p-3", onOpen && "cursor-pointer transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none")}

@@ -139,7 +139,7 @@ export function CompanyEvidence({
               )
             }}
           >
-            <label className="text-caption">
+            <label className="w-full text-caption sm:w-auto">
               출처
               <select
                 aria-label="자료 출처"

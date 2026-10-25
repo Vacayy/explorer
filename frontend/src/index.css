@@ -361,6 +361,7 @@
   :root { --page-inset: 1rem; --dock-reserve: calc(var(--tabbar-height) + 1rem + env(safe-area-inset-bottom)); }
   [data-slot=button]:not([data-size=icon-xs]):not([data-size=xs]) { min-height: 44px; }
   [data-slot=input] { min-height: 44px; font-size: 16px; }
+  .study-palette { scrollbar-width: none; }
 }
 @supports not (backdrop-filter: blur(1px)) {
   .glass-surface { background: var(--card); }
@@ -535,7 +536,7 @@
 }
 .project-document-notes:not([hidden]) { display:flex; width:100%; min-height:0; flex:1; }
 @container page (max-width:760px) {
- .project-desk { height:36dvh; min-height:270px; position:sticky; top:0; z-index:10; background:var(--card); }
+ .project-desk { height:52dvh; min-height:320px; position:sticky; top:var(--topbar-height); z-index:10; background:var(--card); }
  .project-panel { height:58dvh; min-height:400px; }
 }
 @container page (max-width:760px) {

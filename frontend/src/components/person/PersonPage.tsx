@@ -236,18 +236,21 @@ function RelationsCard({ relations }: { relations: PersonRelation[] }) {
         <ul className="divide-y text-sm">
           {relations.map((r) => (
             <li key={r.id} className="py-1.5 space-y-0.5">
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                 {r.direction === "out" ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ArrowLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                 <OtherLink r={r} />
                 <span className="text-[10px] text-muted-foreground">{r.rel_type}</span>
                 {r.epistemic_type === "hypothesis" && <Badge variant="outline" className="h-4 px-1 text-[9px] text-hypothesis border-hypothesis/40">가설</Badge>}
-                {r.narrative_topic && (
-                  <Link to={`/narrative?topic=${encodeURIComponent(r.narrative_topic)}`} className="ml-auto shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
-                    title={r.narrative_superseded ? "이 엣지를 만든 버전은 새 버전으로 대체됐습니다 — 현행 버전으로 갑니다" : undefined}>
-                    {r.narrative_topic}{r.narrative_superseded && " (이전 버전)"}
-                  </Link>
-                )}
-                <span className={r.narrative_topic ? "shrink-0 text-[11px] text-muted-foreground tabular-nums" : "ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums"}>{(r.created_at ?? "").slice(0, 10)}</span>
+                {/* 내러티브·날짜는 한 덩어리 — 좁은 화면에서 줄바꿈돼도 함께 오른쪽에 */}
+                <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                  {r.narrative_topic && (
+                    <Link to={`/narrative?topic=${encodeURIComponent(r.narrative_topic)}`} className="shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
+                      title={r.narrative_superseded ? "이 엣지를 만든 버전은 새 버전으로 대체됐습니다 — 현행 버전으로 갑니다" : undefined}>
+                      {r.narrative_topic}{r.narrative_superseded && " (이전 버전)"}
+                    </Link>
+                  )}
+                  <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{(r.created_at ?? "").slice(0, 10)}</span>
+                </span>
               </div>
               {r.mechanism && <p className="pl-5 text-xs text-muted-foreground">{r.mechanism}</p>}
             </li>

@@ -15,7 +15,7 @@ export function RecentCalls({ onSelect, selectedId }: { onSelect: (id: number) =
   if (q.isError) return <ErrorState onRetry={() => void q.refetch()} />
   const items = q.data
   return (
-    <ProposalPanel icon={FileAudio} title="최근 받은 컨콜" subtitle="지난 7일 · 받은 순" count={items.length} maxHeight="16rem" maxWidth="100%" contentClassName="px-0 divide-y">
+    <ProposalPanel icon={FileAudio} title="최근 받은 컨콜" subtitle="지난 7일 · 받은 순" count={items.length} maxHeight="16rem" maxWidth="100%" contentClassName="px-0 divide-y [contain:inline-size]">
       {items.length === 0
         ? <p className="px-4 py-4 text-sm text-muted-foreground">지난 7일간 새로 받은 컨콜이 없습니다. 매일 07:20에 수집합니다.</p>
         : items.map(c => (
@@ -24,7 +24,7 @@ export function RecentCalls({ onSelect, selectedId }: { onSelect: (id: number) =
             <Badge variant="outline" className="shrink-0 text-caption tabular-nums">{c.ticker}</Badge>
             <span className="min-w-0 flex-1 truncate text-left text-sm">{c.company_name ?? c.ticker} <span className="text-muted-foreground" title={`회사 회계 FY${c.fiscal_year} ${c.fiscal_period}`}>{c.cy ?? `FY${c.fiscal_year} ${c.fiscal_period}`}{c.call_date ? ` · ${c.call_date.slice(5)} 발표` : ""}</span></span>
             {!c.has_digest && <span className="shrink-0 text-caption text-muted-foreground">요약 대기</span>}
-            <span className="shrink-0 text-caption text-muted-foreground">{SOURCE[c.provider ?? ""] ?? c.provider}</span>
+            <span className="hidden shrink-0 text-caption text-muted-foreground sm:inline">{SOURCE[c.provider ?? ""] ?? c.provider}</span>
             <span className="w-16 shrink-0 text-right text-caption tabular-nums text-muted-foreground">{c.fetched_at ? formatRelativeTime(c.fetched_at.replace(" ", "T") + "Z") : ""}</span>
           </Button>
         ))}

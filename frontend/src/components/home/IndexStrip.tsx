@@ -91,7 +91,7 @@ export function IndexStrip() {
         </div>
         }>
           {items.map((it) => (
-            <div key={it.key} className="min-w-32 flex-1 snap-start">
+            <div key={it.key} className="min-w-32 flex-1 snap-start max-md:min-w-[calc(50%-0.5rem)]">
               <div className="flex items-baseline gap-1">
                 <span
                   className={`mb-px h-1.5 w-1.5 shrink-0 rounded-full ${

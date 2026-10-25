@@ -93,7 +93,7 @@ export default function ValuationPage({ stockCode }: Props) {
 
       {isLoading && <p className="text-muted-foreground">로딩 중...</p>}
 
-      <div className="grid grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {pbrData.length > 0 && (
           <ChartCard title="PBR 밴드 (순자산 대비)">
             <MultiLineChart

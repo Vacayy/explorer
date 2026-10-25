@@ -126,17 +126,17 @@ export default function SectorMapPage() {
       {selected && <ValueChain group={selected} onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
       {selected && <GroupMembers group={selected} onGo={(code) => navigate(`/analyze/${code}/summary`)} />}
 
-      {/* 구성 테이블 */}
+      {/* 구성 테이블 — 모바일은 비중·종목 열을 숨기고 줄바꿈 대신 가로 스크롤 */}
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-sm">산업(섹터) 구성 — 클릭하면 소속 종목</CardTitle></CardHeader>
         <CardContent className="px-0 overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm max-lg:whitespace-nowrap max-lg:[&_td+td]:pl-3 max-lg:[&_th+th]:pl-3">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="px-4 py-1.5 text-left font-medium">대분류</th>
                 <th className="py-1.5 text-right font-medium">시총</th>
-                <th className="py-1.5 text-right font-medium">비중</th>
-                <th className="py-1.5 text-right font-medium">종목</th>
+                <th className="hidden sm:table-cell py-1.5 text-right font-medium">비중</th>
+                <th className="hidden sm:table-cell py-1.5 text-right font-medium">종목</th>
                 <th className="py-1.5 text-right font-medium">5일</th>
                 <th className="py-1.5 text-right font-medium">장기 RS</th>
                 <th className="px-4 py-1.5 text-right font-medium">단기 RS</th>
@@ -156,8 +156,8 @@ export default function SectorMapPage() {
                     {(g.rs_long ?? 50) <= 20 && <Badge variant="outline" className="ml-2 text-[9px] text-down border-down/40">약세</Badge>}
                   </td>
                   <td className="py-1.5 text-right tabular-nums text-xs">{formatKrw(g.market_cap)}</td>
-                  <td className="py-1.5 text-right tabular-nums text-xs">{totalMcap ? `${(g.market_cap / totalMcap * 100).toFixed(0)}%` : "-"}</td>
-                  <td className="py-1.5 text-right tabular-nums text-xs">{g.stocks}</td>
+                  <td className="hidden sm:table-cell py-1.5 text-right tabular-nums text-xs">{totalMcap ? `${(g.market_cap / totalMcap * 100).toFixed(0)}%` : "-"}</td>
+                  <td className="hidden sm:table-cell py-1.5 text-right tabular-nums text-xs">{g.stocks}</td>
                   <td className={cn("py-1.5 text-right tabular-nums text-xs", g.chg_5d >= 0 ? "text-up" : "text-down")}>
                     {g.chg_5d >= 0 ? "+" : ""}{g.chg_5d}%
                   </td>
@@ -252,7 +252,7 @@ function GroupMembers({ group, onGo }: { group: string; onGo: (code: string) => 
       <CardContent className="px-0 overflow-x-auto">
         {isLoading ? <div className="px-4 py-3"><Skeleton className="h-5 w-full" /></div>
           : !data?.items.length ? <p className="px-4 py-3 text-sm text-muted-foreground">산업 맵 대분류에 '{group}' 소속 종목이 없습니다.</p> : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm max-lg:whitespace-nowrap max-lg:[&_td+td]:pl-3 max-lg:[&_th+th]:pl-3">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="px-4 py-1.5 text-left font-medium">종목</th>

@@ -244,8 +244,8 @@ function SectorNarratives({ groupId, groupName }: { groupId: number; groupName: 
   if (isLoading || data.length === 0) return null
   return (
     <div className="space-y-2 border-t pt-4">
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-sm font-semibold">이 섹터의 내러티브</h3>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h3 className="shrink-0 text-sm font-semibold">이 섹터의 내러티브</h3>
         <span className="text-[11px] text-muted-foreground">
           이 섹터 종목을 다루는 내러티브가 모임 · 한 내러티브는 여러 섹터에 등장(공동언급 기반, 관련도순)
         </span>
@@ -296,9 +296,9 @@ function MemberTable({ members, onRemove, followedCodes, onToggleFollow }: {
             <TableHead>종목</TableHead>
             <TableHead className="text-right">시총</TableHead>
             <TableHead className="text-right">PER</TableHead>
-            <TableHead className="text-right">PBR</TableHead>
-            <TableHead className="text-right">영업이익률</TableHead>
-            <TableHead className="text-right">ROE</TableHead>
+            <TableHead className="text-right max-sm:hidden">PBR</TableHead>
+            <TableHead className="text-right max-sm:hidden">영업이익률</TableHead>
+            <TableHead className="text-right max-sm:hidden">ROE</TableHead>
             <TableHead className="w-8" />
           </TableRow>
         </TableHeader>
@@ -325,9 +325,9 @@ function MemberTable({ members, onRemove, followedCodes, onToggleFollow }: {
                 {m.latest_market_cap != null ? formatKrw(m.latest_market_cap) : "-"}
               </TableCell>
               <TableCell className="text-right tabular-nums text-xs">{num(m.per, "배")}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{num(m.pbr, "배", 2)}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{num(m.op_margin, "%")}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{num(m.roe, "%")}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs max-sm:hidden">{num(m.pbr, "배", 2)}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs max-sm:hidden">{num(m.op_margin, "%")}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs max-sm:hidden">{num(m.roe, "%")}</TableCell>
               <TableCell className="text-right">
                 <Button variant="ghost" size="icon" onClick={() => onRemove(m.id)} aria-label="멤버 삭제"
                   className="size-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive">

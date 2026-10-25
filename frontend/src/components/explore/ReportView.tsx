@@ -90,7 +90,7 @@ export function ReportView({ topic, initialVersionId = null }: { topic: string; 
   }
 
   return (
-    <Card>
+    <Card className="max-sm:[--card-spacing:--spacing(3)]">
       <CardContent className="py-3 space-y-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           <FileText className="h-4 w-4 text-muted-foreground" />
@@ -128,7 +128,7 @@ export function ReportView({ topic, initialVersionId = null }: { topic: string; 
           </div>
         )}
         {display?.answer && (
-          <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
+          <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))] max-sm:[--card-spacing:--spacing(3)]">
             <CardContent className="py-4 space-y-3">
               {display.stocks.length > 0 && (
                 <ReportCharts stocks={display.stocks} topPick={display.top_pick} />

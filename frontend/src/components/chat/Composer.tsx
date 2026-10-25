@@ -63,7 +63,8 @@ export function Composer({ value, onChange, onSubmit, busy, placeholder, autoFoc
         </Button>
       </div>
       <p className="px-1 text-center text-[11px] text-muted-foreground">
-        {hint ?? "Enter 전송 · Shift+Enter 줄바꿈 · 답변은 AI 종합이며 근거 밖 내용은 답하지 않습니다"}
+        {/* 키보드 안내는 터치 화면(<768)에서 뺀다 */}
+        {hint ?? <><span className="max-md:hidden">Enter 전송 · Shift+Enter 줄바꿈 · </span>답변은 AI 종합이며 근거 밖 내용은 답하지 않습니다</>}
       </p>
     </div>
   )

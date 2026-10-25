@@ -170,7 +170,8 @@ function TopicChips({ active, onPick }: { active: string; onPick: (topic: string
   const groups = [{ label: '주목 주제', names: themes }, { label: '부상 종목', names: stocks }].filter(g => g.names.length > 0)
   if (groups.length === 0) return null   // 로딩·오류·빈 신호 모두 칩 줄을 생략한다(피드 본문과 독립)
   return <div className="space-y-1.5 pb-3">
-    {groups.map(g => <div key={g.label} className="flex flex-wrap items-center gap-1.5">
+    {/* 모바일(<768)은 그룹마다 한 줄 가로 스크롤 — 칩이 본문을 밀어내지 않게 */}
+    {groups.map(g => <div key={g.label} className="flex flex-wrap items-center gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:overscroll-x-contain max-md:pb-1">
       <span className="w-14 shrink-0 text-caption text-muted-foreground">{g.label}</span>
       {g.names.map(name => <Button key={name} variant="outline" size="sm" className="h-7 px-2.5 text-caption font-normal" onClick={() => onPick(name)}>{name}</Button>)}
     </div>)}
