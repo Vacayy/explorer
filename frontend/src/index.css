@@ -120,6 +120,8 @@
   --ai-panel-width: 360px;
   --dock-reserve: 1.5rem;
   --subnav-height: 3.25rem;
+  /* 모바일 하단 탭바(layout/TabBar, <768) — 높이는 안전 영역 제외 */
+  --tabbar-height: 3.5rem;
   /* 풀하이트 페이지의 뷰포트 차감량 — 상단 바 + 위아래 여백(+ SubNav). App.tsx Layout이 인라인으로 확정한다 */
   --shell-offset: calc(var(--topbar-height) + 1.5rem + var(--dock-reserve));
 }
@@ -355,7 +357,8 @@
   }
 }
 @media (max-width: 767px) {
-  :root { --page-inset: 1rem; }
+  /* 본문 아래 여백이 하단 탭바를 비켜 간다 — --shell-offset에 그대로 반영된다 */
+  :root { --page-inset: 1rem; --dock-reserve: calc(var(--tabbar-height) + 1rem + env(safe-area-inset-bottom)); }
   [data-slot=button]:not([data-size=icon-xs]):not([data-size=xs]) { min-height: 44px; }
   [data-slot=input] { min-height: 44px; font-size: 16px; }
 }

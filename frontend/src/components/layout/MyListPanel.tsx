@@ -1,10 +1,10 @@
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery } from "@/api/query"
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu,
-  SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton,
+  SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, useSidebar,
 } from "@/components/ui/sidebar"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,10 @@ import { formatPercent } from "@/utils/format"
  * 관심 종목의 진실원천은 stock_groups. 소스(채널·블로그) 목록은 캔버스 › 소스로 옮겼다.
  */
 export function MyListPanel({ currentStockCode }: { currentStockCode: string | null }) {
+  // 모바일은 Sheet — 목록에서 고르면 닫혀서 고른 화면이 보인다
+  const { pathname, search } = useLocation()
+  const { setOpenMobile } = useSidebar()
+  useEffect(() => { setOpenMobile(false) }, [pathname, search, setOpenMobile])
   return (
     <Sidebar side="left" collapsible="offcanvas" aria-label="내 목록"
       className="top-(--topbar-height) h-[calc(100svh-var(--topbar-height))]">

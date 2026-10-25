@@ -7,7 +7,9 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { TopBar } from "@/components/layout/TopBar"
 import { MyListPanel } from "@/components/layout/MyListPanel"
-import { DesktopOnly } from "@/components/layout/DesktopOnly"
+import { TabBar } from "@/components/layout/TabBar"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
+import { useMediaQuery, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { PREF, readPref, writePref } from "@/lib/shellPrefs"
 import { onAskAi } from "@/lib/aiPanel"
@@ -100,8 +102,9 @@ function subNavFor(pathname: string, search: string, stockCode: string | null, c
   return { tabs: section.tabs, activeKey: here.tab }
 }
 
-/** 폭 ≥1440이면 패널 기본 펼침. 사용자가 고른 값이 있으면 그 값 */
+/** 폭 ≥1440이면 패널 기본 펼침. 사용자가 고른 값이 있으면 그 값. 폭 <1024에서는 오버레이라 늘 닫힌 채 시작 */
 function initialOpen(key: string): boolean {
+  if (typeof window !== "undefined" && !window.matchMedia(PANEL_INLINE_QUERY).matches) return false
   const saved = readPref(key)
   if (saved != null) return saved === "1"
   return typeof window !== "undefined" && window.matchMedia("(min-width: 1440px)").matches
@@ -112,15 +115,17 @@ function Layout() {
   const [leftOpen, setLeftOpen] = useState(() => initialOpen(PREF.left))
   const [aiOpen, setAiOpen] = useState(() => initialOpen(PREF.ai))
   const aiInput = useRef<HTMLTextAreaElement | null>(null)
-  const setLeft = (v: boolean) => { setLeftOpen(v); writePref(PREF.left, v ? "1" : "0") }
+  const panelInline = useMediaQuery(PANEL_INLINE_QUERY)
+  // 좁은 화면의 열고 닫기는 오버레이 조작이라 데스크톱 기본값(pref)에 남기지 않는다
+  const setLeft = (v: boolean) => { setLeftOpen(v); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.left, v ? "1" : "0") }
   const toggleAi = useCallback(() => setAiOpen(v => {
-    writePref(PREF.ai, v ? "0" : "1")
+    if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, v ? "0" : "1")
     if (!v) requestAnimationFrame(() => aiInput.current?.focus())
     return !v
   }), [])
   useKeyboardShortcuts(toggleAi)
   // 'AI에게 묻기' — 어느 화면에서 보내든 패널을 연다. 인용은 패널이 받는다 (lib/aiPanel)
-  useEffect(() => onAskAi(() => { setAiOpen(true); writePref(PREF.ai, "1") }), [])
+  useEffect(() => onAskAi(() => { setAiOpen(true); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, "1") }), [])
 
   // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
   const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null
@@ -130,9 +135,10 @@ function Layout() {
   const [creatingBoard, setCreatingBoard] = useState(false)
   const subNav = subNavFor(pathname, search, stockCode, company?.corp_name, homeBoards)
   const showAi = aiOpen && !pathname.startsWith("/chat")
+  // 오버레이 대화는 다른 화면으로 가면 닫는다(근거 링크를 누르면 그 화면이 보이게)
+  useEffect(() => { if (!window.matchMedia(PANEL_INLINE_QUERY).matches) setAiOpen(false) }, [pathname])
 
   return (
-    <DesktopOnly>
       <TooltipProvider delayDuration={300}>
       <div className="min-h-screen bg-background">
         <Omnibar />
@@ -158,14 +164,24 @@ function Layout() {
                 <Outlet />
               </div>
             </SidebarInset>
-            {showAi && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
+            {showAi && panelInline && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
           </div>
+          <TabBar />
         </SidebarProvider>
+        {/* 폭 <1024: AI 대화는 오른쪽 오버레이(모바일은 전체 폭) */}
+        {!panelInline && (
+          <Sheet open={showAi} onOpenChange={v => { if (v !== showAi) toggleAi() }}>
+            <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">
+              <SheetTitle className="sr-only">AI 대화</SheetTitle>
+              <SheetDescription className="sr-only">지금 보는 화면을 맥락으로 함께 보냅니다.</SheetDescription>
+              <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} overlay />
+            </SheetContent>
+          </Sheet>
+        )}
         <AnswerWatcher />
         <Toaster position="top-right" />
       </div>
       </TooltipProvider>
-    </DesktopOnly>
   )
 }
 

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { WidgetFrame } from "@/components/shared/WidgetFrame"
 import { useHomeBoards, type HomeBoard } from "@/hooks/useDashboard"
+import { useMediaQuery, MOBILE_QUERY } from "@/hooks/useMediaQuery"
 import { WIDGET_BY_ID } from "@/components/widgets/registry"
 import { NewBoardDialog } from "@/components/home/NewBoardDialog"
 import { WidgetGallery } from "@/components/widgets/WidgetGallery"
@@ -73,6 +74,8 @@ export default function Dashboard({ menu }: { menu: HomeBoard }) {
   const [board, setBoard] = useState<Board>(() => boardFromEntries(menu.items))
   const [galleryOpen, setGalleryOpen] = useState(false)
   const { width, containerRef, mounted } = useContainerWidth()
+  // 모바일: 저장된 배치 순서대로 1열, 끌기·크기 조절 없음. 저장된 데스크톱 배치는 건드리지 않는다 (home-widgets.md §모바일)
+  const stacked = useMediaQuery(MOBILE_QUERY)
 
   const persist = (b: Board) => boards.update.mutate({ id: menu.id, items: entriesOf(b) }, { onError: () => toast.error("배치를 저장하지 못했습니다. 잠시 뒤 다시 바꿔 보세요.") })
   const commit = (next: Board, undo?: { label: string; prev: Board }) => {
@@ -164,8 +167,8 @@ export default function Dashboard({ menu }: { menu: HomeBoard }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <BoardMenu menu={menu} />
-        <span className="ml-auto text-xs text-muted-foreground">손잡이로 옮기고, 아래·옆 가장자리로 크기를 바꿔요</span>
-        <Button size="sm" onClick={() => setGalleryOpen(true)}><Plus className="size-3.5" />위젯 추가</Button>
+        <span className="ml-auto text-xs text-muted-foreground max-md:hidden">손잡이로 옮기고, 아래·옆 가장자리로 크기를 바꿔요</span>
+        <Button size="sm" className="max-md:ml-auto" onClick={() => setGalleryOpen(true)}><Plus className="size-3.5" />위젯 추가</Button>
       </div>
 
       <div ref={containerRef} className="-mx-3">
@@ -174,6 +177,19 @@ export default function Dashboard({ menu }: { menu: HomeBoard }) {
         ) : !ids.length ? (
           <div className="mx-3 rounded-[var(--radius-card)] border border-dashed p-8 text-center text-sm text-muted-foreground">
             이 메뉴에 위젯이 없어요. <Button variant="link" className="h-auto p-0" onClick={() => setGalleryOpen(true)}>위젯 추가</Button>로 채우세요.
+          </div>
+        ) : stacked ? (
+          <div className="flex flex-col gap-3 px-3 [&_.widget-handle]:hidden">
+            {ids.map(i => {
+              const def = WIDGET_BY_ID[board.widgetOf[i]]
+              if (!def) return null
+              const h = board.heights[i] ?? 10
+              // 본문 밀도는 실제 폭으로 — 데스크톱 1칸 ≈ 100px
+              return <div key={i} style={{ height: h * (ROW_PX + GAP) - GAP }}>
+                <WidgetItem defId={def.id} w={Math.max(2, Math.round(width / 100))} fine={h} params={board.params[i]}
+                  onRemove={() => removeIds([i], `'${def.titleOf?.(board.params[i]) ?? def.title}'을 뺐어요.`)} onOpen={def.Detail && (() => openDetail(def.id))} />
+              </div>
+            })}
           </div>
         ) : (
           <ReactGridLayout
