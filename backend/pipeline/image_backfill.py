@@ -9,6 +9,7 @@
 - 블로그는 이미지가 없어도 줄바꿈 정규화 소급을 같은 패스에서 한다(LLM 0). 문서마다 본문은 한 번만 바뀐다.
 """
 import json
+import sqlite3
 import time
 
 from config import MEDIA_PATH
@@ -124,46 +125,52 @@ def run(*, calls: int = 200, minutes: float = 8, dry_run: bool = False) -> dict:
             return "calls"
         return None
 
-    with ir.backfill_mode(bf):
-        for source, rows in groups:
-            if source == "blog":
-                for r in rows:
-                    keys = _blog_keys(r)
-                    if (reason := stop_reason(ir.unresolved(keys))):
-                        stats["stopped"] = reason
-                        break
-                    before = bf.calls_left
-                    md = _blog_md(r)
-                    stats["calls"] += before - bf.calls_left
-                    finish(r, keys, md)
-            else:
-                # 텔레그램 문서는 대개 이미지 1장 — 여러 문서를 한 번에 읽어야 병렬 처리가 산다
-                batch: list[tuple] = []
-                for r in rows + [None]:
-                    if r is not None:
-                        items = _telegram_items(r)
-                        keys = [i["key"] for i in items]
-                        need = ir.unresolved(keys)
-                        if not need and ir.AI_PREFIX in (r["markdown"] or ""):
-                            _mark(r["id"])       # 수집 경로가 이미 메시지 자리에 넣은 문서 — 배치를 바꾸지 않는다
-                            stats["docs"] += 1
-                            continue
-                        if sum(len(b[1]) for b in batch) + len(items) <= ir.MAX_PER_DOC:
-                            batch.append((r, items, keys, need))
-                            continue
-                    if batch:
-                        if (reason := stop_reason(sum(b[3] for b in batch))):
+    try:
+        with ir.backfill_mode(bf):
+            for source, rows in groups:
+                if source == "blog":
+                    for r in rows:
+                        keys = _blog_keys(r)
+                        if (reason := stop_reason(ir.unresolved(keys))):
                             stats["stopped"] = reason
                             break
                         before = bf.calls_left
-                        notes = ir.read_images([i for b in batch for i in b[1]], published_at="",
-                                               source="증권·산업 리서치 텔레그램 글")
+                        md = _blog_md(r)
                         stats["calls"] += before - bf.calls_left
-                        for br, _, bkeys, _ in batch:
-                            finish(br, bkeys, _telegram_md(br, bkeys, notes))
-                    batch = [(r, items, keys, need)] if r is not None else []
-            if stats["stopped"]:
-                break
+                        finish(r, keys, md)
+                else:
+                    # 텔레그램 문서는 대개 이미지 1장 — 여러 문서를 한 번에 읽어야 병렬 처리가 산다
+                    batch: list[tuple] = []
+                    for r in rows + [None]:
+                        if r is not None:
+                            items = _telegram_items(r)
+                            keys = [i["key"] for i in items]
+                            need = ir.unresolved(keys)
+                            if not need and ir.AI_PREFIX in (r["markdown"] or ""):
+                                _mark(r["id"])       # 수집 경로가 이미 메시지 자리에 넣은 문서 — 배치를 바꾸지 않는다
+                                stats["docs"] += 1
+                                continue
+                            if sum(len(b[1]) for b in batch) + len(items) <= ir.MAX_PER_DOC:
+                                batch.append((r, items, keys, need))
+                                continue
+                        if batch:
+                            if (reason := stop_reason(sum(b[3] for b in batch))):
+                                stats["stopped"] = reason
+                                break
+                            before = bf.calls_left
+                            notes = ir.read_images([i for b in batch for i in b[1]], published_at="",
+                                                   source="증권·산업 리서치 텔레그램 글")
+                            stats["calls"] += before - bf.calls_left
+                            for br, _, bkeys, _ in batch:
+                                finish(br, bkeys, _telegram_md(br, bkeys, notes))
+                        batch = [(r, items, keys, need)] if r is not None else []
+                if stats["stopped"]:
+                    break
+    except sqlite3.OperationalError as e:
+        if "locked" not in str(e):
+            raise
+        # PC가 깨어날 때 밀린 정기 작업이 한꺼번에 DB를 쓴다 — 이번 회차만 접고 다음 회차에 이어 간다
+        stats["stopped"], stats["status"] = "locked", "partial"
     conn = get_connection()
     stats["remaining_docs"] = conn.execute(f"""
         SELECT COUNT(*) FROM raw_documents WHERE id NOT IN (SELECT doc_id FROM image_backfill_docs)

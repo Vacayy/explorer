@@ -164,6 +164,22 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM image_backfill_docs").fetchone()[0], 1)
         f.close()
 
+    def test_db_lock_ends_run_as_partial(self):
+        from pipeline import image_backfill as ib
+        row = {"id": 1, "source_type": "blog", "source_id": "u", "title": "", "url": "", "published_at": "",
+               "raw_content": "<p>a</p>", "markdown": "a", "content_hash": "h", "media_json": None}
+        with patch.object(ib, "_candidates", side_effect=[[row], [], []]), \
+             patch.object(ib, "_blog_md", side_effect=sqlite3.OperationalError("database is locked")), \
+             patch.object(ib, "get_connection", side_effect=lambda: self.fake_conn()):
+            out = ib.run(calls=5, minutes=1)
+        self.assertEqual((out["stopped"], out["status"]), ("locked", "partial"))
+
+    def fake_conn(self):
+        c = sqlite3.connect(":memory:")
+        c.execute("CREATE TABLE raw_documents (id INTEGER, published_at TEXT, source_type TEXT, media_json TEXT)")
+        c.execute("CREATE TABLE image_backfill_docs (doc_id INTEGER)")
+        return c
+
     def test_old_telegram_notes_go_to_end_in_image_order(self):
         from pipeline import image_backfill as ib
         r = {"raw_content": "본문"}
