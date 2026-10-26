@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
 def get_timeline(
     scope: Literal["all", "sources", "system"] = "all",
     kind: Literal["all", "company", "person", "transcript", "trade", "narrative", "report", "scenario"] = "all",
-    source: Literal["all", "telegram", "blog", "youtube"] = "all",
+    source: Literal["all", "telegram", "blog", "youtube", "memo"] = "all",
     page: int = Query(1, ge=1, le=100),
     size: int = Query(20, ge=1, le=50),
     until: datetime | None = None,

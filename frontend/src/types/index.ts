@@ -704,7 +704,7 @@ export interface TimelineResponse {
 export interface TimelineChannel {
   id: string
   name: string
-  platform: 'telegram' | 'blog' | 'youtube' | 'system'
+  platform: 'telegram' | 'blog' | 'youtube' | 'memo' | 'system'
   count: number
   /** 읽음 표시(read_until, 없으면 기준선) 이후 게시물 수 (D-200) */
   unread: number

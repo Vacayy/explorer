@@ -100,6 +100,7 @@ def _projection(conn, scope="all", source="all"):
             SELECT 1 FROM blog_sources c WHERE c.is_active=1 AND feed_url_belongs(rd.url,c.url))
             AND NOT EXISTS (SELECT 1 FROM blog_sources c
               WHERE c.is_active=0 AND feed_url_belongs(rd.url,c.url)))
+          OR rd.source_type='memo'
         )
     """
     system_sql = """
@@ -239,6 +240,9 @@ def channels(conn, *, until=None):
         for r in conn.execute(f'SELECT {key} key,{name} name FROM {table} WHERE is_active=1'):
             ident = f'{platform}:{r["key"]}'
             registered[ident] = TimelineChannel(id=ident, name=r['name'] or r['key'], platform=platform)
+    from pipeline.connectors.memo import SOURCES as MEMO_SOURCES   # 투자자 메모는 구독 표가 없고 코드 목록이 정본
+    for key, src in MEMO_SOURCES.items():
+        registered[f'memo:{key}'] = TimelineChannel(id=f'memo:{key}', name=src['name'], platform='memo')
     for r in rows:
         ident = r['channel']
         registered[ident] = TimelineChannel(

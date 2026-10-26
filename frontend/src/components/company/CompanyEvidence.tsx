@@ -22,6 +22,7 @@ export const sourceLabels: Record<string, string> = {
   scrap: '스크랩',
   note: '노트',
   canon: '역사',
+  memo: '투자자 메모',
 }
 export interface EvidenceItem {
   id: string

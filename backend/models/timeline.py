@@ -38,7 +38,7 @@ class TimelineResponse(BaseModel):
 class TimelineChannel(BaseModel):
     id: str
     name: str
-    platform: Literal["telegram", "blog", "youtube", "system"]
+    platform: Literal["telegram", "blog", "youtube", "memo", "system"]
     count: int = 0
     unread: int = 0          # read_until(없으면 '*' 기준선) 이후 게시물 수 (D-200)
     latest_at: str | None = None
