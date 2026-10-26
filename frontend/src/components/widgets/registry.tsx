@@ -12,6 +12,7 @@ import { WORLD_WIDGETS } from "./world"
 import { PROXY_WIDGETS } from "./proxy"
 import { TW_WIDGETS } from "./twRevenue"
 import { TRACKER_WIDGETS } from "./tracker"
+import { REGIME_WIDGETS } from "./regimes"
 
 const risk = (id: string, metric: string, card: RiskCardKind, title: string, description: string): WidgetDef => ({
   id, title, description, section: "home", group: "국면·리스크", size: { w: 4, h: 3, minW: 3, minH: 2 },
@@ -46,6 +47,7 @@ export const WIDGETS: readonly WidgetDef[] = [
   ...WORLD_WIDGETS,
   ...PROXY_WIDGETS,
   ...TRACKER_WIDGETS,
+  ...REGIME_WIDGETS,
 ]
 
 export const WIDGET_BY_ID: Record<string, WidgetDef> = Object.fromEntries(WIDGETS.map(w => [w.id, w]))

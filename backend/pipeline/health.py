@@ -37,6 +37,8 @@ CHECKS: list[tuple[str, str, str, str, object, str, bool]] = [
      "SELECT max(snapshot_date) FROM market_indicators WHERE indicator LIKE 'risk\\_%' ESCAPE '\\' "
      "AND indicator NOT LIKE 'risk\\_sync%' ESCAPE '\\'", "1730",
      "launchd market 평일 16:20 · 홈 Risk 갱신 버튼", False),
+    ("regimes", "국면 이력(S&P500·BRK 시세)", "age", "SELECT max(trade_date) FROM us_prices WHERE stock_code='^GSPC'", 100,
+     "launchd market 평일 16:20", False),
     ("watch", "종목 묶음 감시", "trading", "SELECT max(as_of) FROM watch_evaluations", "1730",
      "launchd watch 평일 16:40", False),
     ("krmovers", "거래대금 상위", "trading", "SELECT max(trade_date) FROM kr_movers", "1730",

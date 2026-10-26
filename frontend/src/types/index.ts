@@ -1359,3 +1359,69 @@ export interface TrackerView {
   }
   conditions: TrackerCondition[]
 }
+
+/* ---------- 국면 이력 (docs/specs/market-regimes.md) — 규칙 판정, LLM 0 ---------- */
+export type RegimeKind = 'bull' | 'bear'
+export interface RegimePhase {
+  kind: RegimeKind
+  start: string
+  end: string
+  start_close: number
+  end_close: number
+  change_pct: number
+  days: number
+  confirm_date: string | null
+  confirm_lag_days: number | null
+  provisional: boolean
+}
+export interface RegimeCorrection { start: string; trough: string; end: string | null; drawdown_pct: number; near_threshold: boolean }
+export interface RegimeTrend { state: 'up' | 'down'; start: string; end: string }
+export interface RegimeRecession { start: string; end: string; open: boolean }
+export interface RegimesResponse {
+  as_of: string | null
+  first_date: string | null
+  fetched_at: string | null
+  params: { bear: number; bull: number; correction: number; near: number; trend_months: number; version: string }
+  index: { ticker: string; label: string }
+  phases: RegimePhase[]
+  corrections: RegimeCorrection[]
+  trend: RegimeTrend[]
+  recessions: RegimeRecession[]
+  series: [string, number][]
+  current: { kind: RegimeKind; start: string; close: number; from_peak_pct: number; from_trough_pct: number; trend: 'up' | 'down' | null } | null
+}
+export type BrkBenchKey = 'sp500tr' | 'sp500' | 'nasdaq'
+export type BrkRange = '1y' | '3y' | '5y' | '10y' | '20y' | 'all'
+export interface RegimeBand { kind: 'bear' | 'recession'; start: string; end: string; provisional: boolean }
+export interface BrkPhase {
+  kind: RegimeKind
+  start: string
+  end: string
+  provisional: boolean
+  clipped_start: string | null
+  spx_change_pct: number
+  confirm_date: string | null
+  confirm_lag_days: number | null
+  brk_pct: number
+  bench_pct: number
+  excess_pct: number
+  beta: number | null
+  beta_adj_pct: number | null
+}
+export interface BrkSummary { n: number; brk_wins: number; median_excess_pct: number | null; beta_adj_wins: number; beta_adj_n: number }
+export interface BrkResponse {
+  bench: { key: BrkBenchKey; ticker: string; label: string; dividends: boolean; first_date: string | null }
+  brk_first_date: string | null
+  range: BrkRange
+  as_of: string | null
+  start: string | null
+  points: { date: string; brk_pct: number; bench_pct: number; rs: number }[]
+  rolling: { date: string; brk_12m: number; bench_12m: number; excess_12m: number; beta_36m: number | null; beta_adj_12m: number | null }[]
+  phases: BrkPhase[]
+  summary: Partial<Record<RegimeKind, BrkSummary>>
+  bands: RegimeBand[]
+}
+export interface RegimeCollectResponse {
+  results: { key: string; status: 'ok' | 'skip' | 'error'; rows: number; period: string | null; error: string | null }[]
+  collected_at: string
+}

@@ -38,6 +38,7 @@ import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
 import ValueChainPage from "@/components/explore/ValueChainPage"
 import CreditPage from "@/components/follow/CreditPage"
+import RegimesPage from "@/components/regimes/RegimesPage"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
@@ -249,6 +250,7 @@ export default function App() {
             <Route path="follow/trade" element={<TradePage />} />
             <Route path="value-chain" element={<ValueChainPage />} />
             <Route path="follow/credit" element={<CreditPage />} />
+            <Route path="regimes" element={<RegimesPage />} />
             <Route path="retail" element={<RetailHeatPage />} />
             <Route path="follow/saved" element={<SavedPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
