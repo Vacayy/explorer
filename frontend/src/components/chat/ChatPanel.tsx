@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { History, Maximize2, SquarePen, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { PREF, readPref, setPanelThread, writePref } from "@/lib/shellPrefs"
 import { onAskAi, takePendingAsk, type AskAiRequest } from "@/lib/aiPanel"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
+import { carriedFollowUps } from "./FollowUps"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { Composer } from "./Composer"
 import { ThreadRail } from "./ThreadRail"
@@ -49,6 +50,7 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
 
   const chat = useChat(activeId, openThread)
   const { detail, messages, awaiting, stalled, draft, ask } = chat
+  const carried = useMemo(() => carriedFollowUps(messages), [messages])
   const busy = ask.isPending || awaiting
 
   const submit = (text?: string, withQuote: QuoteRef | null = quote) => {
@@ -131,7 +133,7 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
             {detail.isError && <ErrorState message="대화를 불러올 수 없습니다." onRetry={() => detail.refetch()} />}
             {messages.map((m, i) => m.role === "user"
               ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
-              : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} onQuote={setQuote} onPick={setQuestion} />)}
+              : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried} onQuote={setQuote} onPick={setQuestion} />)}
             {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} pending />}
             {(awaiting || ask.isPending) && <StreamingMessage draft={draft} />}
             {stalled && <p className="rounded-xl border border-destructive/30 px-3 py-2 text-[13px] text-destructive">답변 생성이 멈춘 것 같습니다 (5분 초과). 다시 질문해 주세요.</p>}

@@ -91,10 +91,12 @@ function Sources({ citations }: { citations: NonNullable<ChatMessage["citations"
 }
 
 /** 완료된 어시스턴트 메시지 — 메타 · 과정 · 본문(인라인 인용) · 갭 · 근거 · 액션 */
-export function AssistantMessage({ m, isLast, onQuote, onPick }: {
+export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
   m: ChatMessage
   /** 마지막 답변에만 후속 질문을 보인다 — 스레드에 낡은 제안이 쌓이지 않게 */
   isLast?: boolean
+  /** 앞 답에서 남은 후속 질문 (carriedFollowUps) — 마지막 답변에만 */
+  carried?: { kind: string; question: string }[]
   /** 드래그한 대목을 컴포저에 인용으로 붙이기 (문단·근거 동반) */
   onQuote?: (q: QuoteRef) => void
   /** 후속 질문을 컴포저에 채우기 */
@@ -106,6 +108,7 @@ export function AssistantMessage({ m, isLast, onQuote, onPick }: {
   const prices = useMemo(() => priceTargets(m.citations), [m.citations])
   const bodyRef = useRef<HTMLDivElement>(null)
   const followUps = (isLast && m.route?.follow_ups) || []
+  const leftover = (isLast && carried) || []
   return (
     <article className="group/msg space-y-2">
       <MetaRow model={m.model} createdAt={m.created_at} />
@@ -144,7 +147,7 @@ export function AssistantMessage({ m, isLast, onQuote, onPick }: {
         </Button>
       </div>
 
-      {onPick && followUps.length > 0 && <FollowUps items={followUps} onPick={onPick} />}
+      {onPick && (followUps.length > 0 || leftover.length > 0) && <FollowUps items={followUps} carried={leftover} onPick={onPick} />}
     </article>
   )
 }

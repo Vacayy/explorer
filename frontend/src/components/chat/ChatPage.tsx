@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { ArrowDown, BookOpen, ChartNoAxesCombined, PanelLeft, Send, SquarePen } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { useChat } from "@/hooks/useChat"
 import { cn } from "@/lib/utils"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
+import { carriedFollowUps } from "./FollowUps"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { ChatEmpty } from "./ChatEmpty"
 import { Composer } from "./Composer"
@@ -50,6 +51,7 @@ function ConversationPage() {
 
   const chat = useChat(activeId, openThread)
   const { detail, messages, awaiting, stalled, draft, ask } = chat
+  const carried = useMemo(() => carriedFollowUps(messages), [messages])
   const busy = ask.isPending || awaiting
 
   const submit = () => {
@@ -173,7 +175,7 @@ function ConversationPage() {
                 {messages.map((m, i) =>
                   m.role === "user"
                     ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
-                    : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1}
+                    : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried}
                         onQuote={setQuote} onPick={setQuestion} />
                 )}
                 {/* 제출 직후 찰나(서버 적재 전) — 낙관적 표시 */}
