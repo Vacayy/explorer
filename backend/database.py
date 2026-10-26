@@ -968,6 +968,21 @@ def init_db():
     -- 시장 국면 (market regime, D-076, docs/specs/market-regime.md) — 매크로 리스크 포스처.
     -- 일별 스냅샷(EOD): F&G·VIX·S&P·KOSPI·20EMA·VKOSPI/실현변동성. 스파크라인 히스토리 = 축적.
     -- 지표 = fact (hypothesis 아님). 포스처 결합은 API에서 결정적 계산(LLM 0), 여기엔 원지표만.
+    CREATE TABLE IF NOT EXISTS era_checks (       -- 지금 시장 읽기 층 3: Marks 체크리스트 정성 항목(사람 판단, docs/specs/market-regimes.md §8)
+        key TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK (state IN ('hot','normal','cold')),
+        note TEXT,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS era_commentary (   -- 지금 시장 읽기 LLM 해설 — 입력 해시가 같으면 다시 만들지 않는다
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        input_hash TEXT NOT NULL UNIQUE,
+        input_json TEXT NOT NULL,
+        body TEXT NOT NULL,
+        model TEXT,
+        cost_usd REAL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS market_indicators (
         snapshot_date TEXT NOT NULL,        -- KST YYYY-MM-DD
         indicator     TEXT NOT NULL,        -- fear_greed | vix | sp500 | kospi | kospi_ema20 | vkospi | kospi_vol

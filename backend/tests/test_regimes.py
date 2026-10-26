@@ -46,5 +46,23 @@ class Trend(unittest.TestCase):
         self.assertEqual(t[0]["end"], t[1]["start"])
 
 
+class EraState(unittest.TestCase):
+    """지금 시장 읽기 층 1 — 가격 3종 판정(pipeline/era._price_flags)."""
+    def test_all_three_on_in_drawdown(self):
+        from pipeline.era import _price_flags
+        s = series([100 + i for i in range(300)] + [300 - 3 * i for i in range(40)])   # 오르다 꺾임
+        d, c = [x for x, _ in s], [v for _, v in s]
+        i = len(c) - 1
+        f = _price_flags(d, c, i, list(range(i - 9 * 21, i + 1, 21)))
+        self.assertTrue(f["below_10m"]["on"])
+        self.assertTrue(f["dd_52w"]["on"])          # 고점 399 → 282, −29%
+        self.assertFalse(f["mom_12m"]["on"])        # 1년 전(약 35)보다는 높다
+
+    def test_yoy(self):
+        from pipeline.era import _yoy
+        m = [(f"{y}-{mo:02d}-01", 100 * (1.03 ** (y - 2020))) for y in (2020, 2021) for mo in (1, 2)]
+        self.assertAlmostEqual(_yoy(m)[-1][1], 3.0, places=6)
+
+
 if __name__ == "__main__":
     unittest.main()

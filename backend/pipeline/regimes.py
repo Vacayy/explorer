@@ -338,6 +338,8 @@ def collect(force: bool = False) -> dict:
         except Exception as exc:  # noqa: BLE001 — 소스별 보고
             results.append({"key": t, "status": "error", "rows": 0, "error": str(exc)[:200]})
     results.append(_collect_usrec(force))
+    from pipeline.era import collect_era   # 지금 시장 읽기용 FRED·Yahoo 계열(market_indicators.era_*)
+    results += [{k: v for k, v in r.items() if k in ("key", "status", "rows", "error")} for r in collect_era(force)]
     return {"results": results, "collected_at": datetime.now(timezone.utc).isoformat()}
 
 

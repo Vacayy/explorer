@@ -1425,3 +1425,54 @@ export interface RegimeCollectResponse {
   results: { key: string; status: 'ok' | 'skip' | 'error'; rows: number; period: string | null; error: string | null }[]
   collected_at: string
 }
+
+/* ---------- 지금 시장 읽기 — 네 층 (pipeline/era.py, docs/specs/market-regimes.md §8) ---------- */
+export type EraHeat = 'hot' | 'normal' | 'cold'
+export interface EraFlag { on: boolean; value: number; label: string; detail: string }
+export interface EraLayerState {
+  available: boolean
+  as_of: string
+  close: number
+  flags: Record<'below_10m' | 'mom_12m' | 'dd_52w', EraFlag>
+  all_on: boolean
+  since: string | null
+  history: { months_on: number; categories: { bear: number; rebound: number; deep_correction: number; shallow: number }; bears_caught: number; bears_total: number }
+  recession_hint: { inverted_24m: boolean | null; min_24m: number | null }
+}
+export interface EraLayerMeaning {
+  available: boolean
+  as_of: string | null
+  corr_36m: number | null
+  corr_250d: number | null
+  regime: 'inflation' | 'disinflation' | null
+  cpi_yoy: number | null
+  cpi_month: string | null
+  rate_change_6m: { us10y: number; bill3m: number | null }
+  conditional_flag: boolean
+  rule: string
+  research: { a: string; b: string; note: string }
+  decades: Record<string, number>
+  corr_series: [string, number][]
+}
+export interface EraTempItem { key: string; label: string; value: number | string | null; unit: string; state: EraHeat; basis: string; source: string }
+export interface EraJudged { key: string; label: string; state: EraHeat | null; note: string | null; updated_at: string | null }
+export interface EraSource { doc_id: number | null; title: string; date: string; url: string | null }
+export interface EraPremise {
+  key: string
+  claim: string
+  who: string
+  kind: string
+  evidence: string[]
+  status: 'supports' | 'challenges' | 'mixed' | 'untestable' | 'nodata' | null
+  rule: string
+  sources: EraSource[]
+}
+export interface EraStateResponse {
+  state: EraLayerState
+  meaning: EraLayerMeaning
+  temperature: { items: EraTempItem[]; judged: EraJudged[]; hot: number; cold: number; normal: number; verdict: 'hot' | 'cold' | 'balanced'; missing: string[] }
+  premises: EraPremise[]
+  latest_memos: { doc_id: number; title: string; date: string }[]
+  generated_at: string
+}
+export interface EraCommentary { body: string | null; created_at: string | null; model: string | null; stale: boolean }

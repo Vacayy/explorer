@@ -1,6 +1,6 @@
 # 국면 이력 — 과거 시장 국면 지도와 버크셔 상대성과
 
-상태: P0 구현(2026-10-26). 화면 `/regimes`(탐색 › 국면 이력), 홈 위젯 `explore.brk`. 근거 조사: [research/market-regimes.md](../research/market-regimes.md).
+상태: P0 구현(2026-10-26) + §8 지금 시장 읽기(2026-10-26). 화면 `/regimes`(탐색 › 국면 이력), 홈 위젯 `explore.brk`. 근거 조사: [research/market-regimes.md](../research/market-regimes.md) · [regime-signals.md](../research/regime-signals.md) · [era-methodology.md](../research/era-methodology.md).
 
 홈 › 국면·리스크([market-regime](market-regime.md))는 **오늘의 비중 포스처**다. 이 문서는 **과거 국면 지도**다 — 지난 수십 년을 규칙으로 구간을 나누고, 그 위에 매크로 계열과 개별 자산의 상대성과를 겹쳐 본다.
 
@@ -72,7 +72,25 @@
 | Error | ErrorState + 다시 시도 |
 | Ideal | §6 |
 
-## 8. 범위 밖(다음 단계)
+## 8. 지금 시장 읽기 — 네 층 + AI 해설 (`pipeline/era.py`, `pipeline/era_commentary.py`)
+
+과거 지도(§2~§3) 위에 '지금 어디에 있나'를 얹는다. 판정은 전부 규칙(LLM 0)이고, AI는 판정을 문장으로 옮기기만 한다. 화면은 이 섹션이 맨 위, 국면 이력이 그 아래다.
+
+| 층 | 판정 규칙 | 근거(실험) |
+|---|---|---|
+| 1 상태 | S&P500 가격 3종(종가 < 10개월선[완결 9개 월말 + 오늘] · 1년 전 대비 < 0 · 52주 고점 대비 ≤ −10%)이 **모두** 켜지면 '하락 국면'. 1956년 이후 월말 통계(모두 켜진 달의 실제 상태 분해·약세장 포착 수)를 매번 다시 잰다. 보조: 최근 24개월 10Y−3M 역전(침체형 가능성) | regime-signals.md · 모두 켜진 달의 96%가 약세·직후 반등·−15% 조정, 포착 1956~89 7/7 · 1990~2025 5/6 |
+| 2 의미 국면 | 주식 월수익률과 10Y 월변화의 36개월 상관 < 0 = 인플레이션형(10Y 6개월 +0.75%p 초과 또는 3개월 금리 +1%p 초과가 경보), ≥ 0 = 디스인플레이션형(−0.75%p·−1%p 미만이 경보). 경보는 **가설** 배지 | 결과를 본 뒤 세운 규칙 — 1956~89 19% vs 9%, 1990~2025 24% vs 12% |
+| 3 온도 | Marks 체크리스트 정량 8항목 자동(실질 정책금리·CPI·10Y 수준·HY OAS 400~600bp·HY 실효수익률 6~7%·VIX·2년 연속 +20%·마지막 1년 이상 약세장 이후 연수) + 정성 8항목 사람 기록(`era_checks`, hot/normal/cold). 뜨거움−차가움 ≥ 3이면 한쪽 우세, 아니면 균형 | marks-memos-premises.md §2.2 |
+| 4 전제 원장 | 구루 전제 8개마다 반증 지표·판정 규칙 → 지지·반증 쪽·엇갈림·반증 불가(시점 없음)·데이터 없음. 근거 링크 = 수집된 Marks 메모(`/doc/:id`) 또는 외부 원문 | era-premises.md |
+
+- **수집**: `era.collect_era()` — FRED `DGS30`·`DFII10`·`T5YIFR`·`THREEFYTP10`·`T10Y3M`·`DTB3`·`DFF`·`CPIAUCSL`·`BAMLH0A0HYM2EY`, Yahoo `GC=F`·`DX-Y.NYB` → `market_indicators.era_*`(처음 전 이력, 이후 400일, 20시간 캐시). `regimes.collect()` 끝에서 호출(평일 16:20 체인).
+- **AI 해설**: 입력 = 네 층 판정(상관 시계열 제외) + 최신 Marks 메모 앞 2,500자. sonnet 1회, 고정 7섹션(한 줄 요약·하락 국면·금리의 뜻·온도·구루 전제·지켜볼 것·한계). JSON에 없는 숫자·예측·권유 금지. 입력·프롬프트·모델 해시가 같으면 저장본(`era_commentary`)을 돌려준다. 버튼으로만 만든다(자동 생성 없음). 화면에 생성 시각·모델·'숫자가 바뀌었어요'(stale) 표시.
+- **API**: `GET /api/spine/regimes/state` · `PUT /regimes/checks/{key}` `{state: hot|normal|cold|null, note}` · `GET·POST /regimes/commentary`.
+- **화면**: 요약 4칸(각 층으로 이동) → AI 해설 → 층 1~4 카드(카드마다 '읽는 법' 한 단락) → 국면 이력(§6). 상단 페이지 안 이동 칩.
+- **5-state**: Loading Skeleton · Error ErrorState · 해설 Empty('해설 만들기' 안내) · 해설 생성 중 스피너 · Partial = 데이터 없는 전제·미수집 온도 항목을 명시.
+
+## 9. 범위 밖(다음 단계)
 
 - P1: 사임 규칙·10Y−3M 역전 신호, Baa−10Y 1986 이전 월간 연장, 연준 EBP, 1980~87 S&P 총수익 근사(Shiller 배당).
 - P2: 성장×물가 4분면, Pagan–Sossounov 견고성 점검, 난류 지수, KOSPI 국면.
+- §8 후속: forward P/E·상위 종목 집중도·시총/GDP·HY 부도율·BDC 할인/PIK 수집(온도·전제 원장의 빈칸), 새 Marks 메모가 들어오면 바뀐 판단만 짚는 해설.

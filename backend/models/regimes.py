@@ -137,3 +137,71 @@ class RegimeCollectResult(BaseModel):
 class RegimeCollectResponse(BaseModel):
     results: list[RegimeCollectResult]
     collected_at: str
+
+
+# ── 지금 시장 읽기 (네 층, pipeline/era.py) ──
+class EraSource(BaseModel):
+    doc_id: int | None
+    title: str
+    date: str
+    url: str | None
+
+
+class EraPremise(BaseModel):
+    key: str
+    claim: str
+    who: str
+    kind: str
+    evidence: list[str]
+    status: Literal['supports', 'challenges', 'mixed', 'untestable', 'nodata'] | None
+    rule: str
+    sources: list[EraSource]
+
+
+class EraTempItem(BaseModel):
+    key: str
+    label: str
+    value: float | str | None
+    unit: str
+    state: Literal['hot', 'normal', 'cold']
+    basis: str
+    source: str
+
+
+class EraJudged(BaseModel):
+    key: str
+    label: str
+    state: Literal['hot', 'normal', 'cold'] | None
+    note: str | None
+    updated_at: str | None
+
+
+class EraTemperature(BaseModel):
+    items: list[EraTempItem]
+    judged: list[EraJudged]
+    hot: int
+    cold: int
+    normal: int
+    verdict: Literal['hot', 'cold', 'balanced']
+    missing: list[str]
+
+
+class EraStateResponse(BaseModel):
+    state: dict          # 층 1 — flags·history·recession_hint (pipeline/era.layer_state)
+    meaning: dict        # 층 2 — corr·regime·cpi·conditional_flag·corr_series
+    temperature: EraTemperature
+    premises: list[EraPremise]
+    latest_memos: list[dict]
+    generated_at: str
+
+
+class EraCheckBody(BaseModel):
+    state: Literal['hot', 'normal', 'cold'] | None
+    note: str | None = None
+
+
+class EraCommentaryResponse(BaseModel):
+    body: str | None
+    created_at: str | None
+    model: str | None
+    stale: bool

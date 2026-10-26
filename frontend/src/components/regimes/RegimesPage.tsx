@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { formatLevel, formatPercent } from "@/utils/format"
 import type { RegimesResponse } from "@/types"
 import { BrkPanel, tone } from "./BrkPanel"
+import { NowPanel } from "./NowPanel"
 
 const MAP_RANGES = { "10y": "10년", "20y": "20년", "50y": "50년", all: "전체" } as const
 type MapRange = keyof typeof MAP_RANGES
@@ -93,9 +94,18 @@ export default function RegimesPage() {
       <div className="flex items-center gap-2 text-caption text-muted-foreground">{d.as_of && <span>{d.as_of} 종가 기준</span>}{collectButton}</div>
     </div>
 
+    <nav aria-label="이 페이지에서" className="flex flex-wrap gap-1.5 text-caption">
+      {[["#now-state", "1 하락 국면"], ["#now-meaning", "2 금리의 뜻"], ["#now-temp", "3 온도"], ["#now-premises", "4 구루 전제"], ["#history", "국면 이력"], ["#brk", "버크셔 vs 지수"]].map(([href, label]) =>
+        <a key={href} href={href} className="rounded-full border px-2.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground">{label}</a>)}
+    </nav>
+    <NowPanel regimes={d} />
+    <div id="history" className="scroll-mt-24 space-y-1 pt-4">
+      <h3 className="text-base font-semibold">국면 이력 — 지난 백 년의 강세장과 약세장</h3>
+      <p className="text-caption text-muted-foreground">위의 '지금' 판정이 어떤 역사 위에 서 있는지 봅니다. 여기의 약세장 구간은 지나고 나서야 그을 수 있는 선(사후 판정)입니다.</p>
+    </div>
     <MapCard data={d} range={range} onRange={v => set("regime_range", v === "all" ? null : v)} />
     <OverlayCard data={d} range={range} overlay={overlay} onOverlay={v => set("regime_overlay", v === "curve" ? null : v)} />
-    <BrkPanel />
+    <div id="brk" className="scroll-mt-24"><BrkPanel /></div>
     <BearTable data={d} />
   </PageContainer>
 }
