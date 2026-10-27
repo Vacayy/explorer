@@ -1,6 +1,6 @@
 """지금 시장 읽기 — 네 층 (docs/specs/market-regimes.md §8, 근거 docs/research/era-methodology.md). 판정은 LLM 0.
 
-층 1 상태: 가격 3종(10개월선 아래·12개월 모멘텀<0·52주 고점 −10%)이 모두 켜지면 '하락 국면'. 1956년 이후 통계를 매번 다시 잰다.
+층 1 상태: 두 단계 — 경계(월말 종가 < 12개월선)·확정(252일 신저가 이탈 또는 200일선 하락). 1956년 이후 통계와 과거 에피소드의 이후 경로를 매번 다시 잰다.
 층 2 의미 국면: 주식–금리 상관의 부호(월간 36개월). 음(−)=인플레이션형(금리 급등·인상이 위험), 양(+)=디스인플레이션형(급락·인하가 위험).
 층 3 온도: Howard Marks 체크리스트 중 무료 데이터로 판정 가능한 정량 항목 + 사람이 체크하는 정성 항목(era_checks).
 층 4 전제 원장: 구루 전제마다 반증 지표와 판정 규칙. 시점 없는 전제는 '반증 불가'.
@@ -70,77 +70,148 @@ def _yoy(monthly: list[tuple[str, float]]) -> list[tuple[str, float]]:
 
 
 # ── 층 1 ────────────────────────────────────────────────────────────────────
+# 두 단계 판정(docs/research/regime-signals.md §07, 2026-10-27 실험): 이평 길이보다 '언제 확인하느냐'가 헛경보를 가른다.
+#   경계 = 월말 종가 < 12개월 이동평균(월말에만 바뀜). 1956–89·1990–2026 모두 약세장 전부 포착, 헛경보 10년에 약 2번
+#   확정 = 252일 신저가 이탈(이후 63일 유지) 또는 200일선 20일 기울기 < 0. 늦지만 헛경보가 거의 없다
+HORIZON = 252          # 이후 추이를 볼 거래일
+PATH_STEP = 5          # 경로 표본 간격(거래일)
+NEW_LOW_HOLD = 63
 
-def _price_flags(dates, closes, i, points):
-    """i일 기준 가격 3종. points = 10개월선을 이루는 월말 인덱스 10개(마지막이 i — 진행 중 월은 그날 종가)."""
-    import bisect
-    sma10 = sum(closes[k] for k in points) / len(points)
-    j = max(0, bisect.bisect_right(dates, _months_before(dates[i], 12)) - 1)
-    hi52 = max(closes[max(0, i - 252):i + 1])
-    return {
-        "below_10m": {"on": closes[i] < sma10, "value": round((closes[i] / sma10 - 1) * 100, 2), "label": "10개월 이동평균 아래",
-                      "detail": f"종가가 10개월선보다 {abs(closes[i] / sma10 - 1) * 100:.1f}% {'아래' if closes[i] < sma10 else '위'}"},
-        "mom_12m": {"on": closes[i] < closes[j], "value": round((closes[i] / closes[j] - 1) * 100, 2), "label": "12개월 수익률 마이너스",
-                    "detail": f"1년 전 대비 {(closes[i] / closes[j] - 1) * 100:+.1f}%"},
-        "dd_52w": {"on": closes[i] <= hi52 * 0.9, "value": round((closes[i] / hi52 - 1) * 100, 2), "label": "52주 고점 대비 −10% 이하",
-                   "detail": f"52주 고점 대비 {(closes[i] / hi52 - 1) * 100:+.1f}%"},
-    }
+
+def _signals(C: np.ndarray, dates: list[str]):
+    """일별 경계·확정 신호(불리언 배열)와 보조값."""
+    n = len(C)
+    me = [i for i in range(n - 1) if dates[i][:7] != dates[i + 1][:7]]   # 완결된 월말
+    warn = np.zeros(n, bool)
+    sma12_at = {}
+    for j in range(11, len(me)):
+        i = me[j]
+        sma = C[me[j - 11:j + 1]].mean()
+        sma12_at[i] = sma
+        end = me[j + 1] if j + 1 < len(me) else n
+        warn[i:end] = C[i] < sma        # 월말 판정을 다음 월말까지 유지
+    # 252일 신저가(그날 이전 252일 최저 종가 아래) → 63일 유지
+    low_prev = np.full(n, np.inf)
+    win = np.lib.stride_tricks.sliding_window_view(C, 252).min(axis=1)   # win[k] = C[k:k+252].min()
+    low_prev[252:] = win[:n - 252]
+    brk = C < low_prev
+    last = np.full(n, -10**9)
+    cur = -10**9
+    for i in range(n):
+        if brk[i]: cur = i
+        last[i] = cur
+    new_low = (np.arange(n) - last) <= NEW_LOW_HOLD
+    cs = np.cumsum(np.r_[0, C])
+    m200 = np.full(n, np.nan)
+    m200[199:] = (cs[200:] - cs[:-200]) / 200
+    slope_down = np.zeros(n, bool)
+    slope_down[220:] = m200[220:] < m200[200:-20]
+    confirm = new_low | slope_down
+    return warn, confirm, new_low, slope_down, m200, me, sma12_at, last
+
+
+def _episodes(sig, C, dates, inbear, deep, rebound, lo):
+    """꺼짐→켜짐 전환마다: 날짜·결과(bear|rebound|correction|false)·켜질 때 고점 대비·이후 경로(켜진 날 = 100).
+    rebound = 약세장이 끝난 뒤 6개월 안(52주 고점이 아직 약세 전 고점이라 낙폭 신호가 남는 구간)."""
+    n = len(C)
+    out = []
+    for i in range(max(lo, 1), n):
+        if not (sig[i] and not sig[i - 1]):
+            continue
+        hi52 = C[max(0, i - 252):i + 1].max()
+        end = min(n - 1, i + HORIZON)
+        path = [[k, round(float(C[i + k] / C[i] * 100), 2)] for k in range(0, end - i + 1, PATH_STEP)]
+        fut = C[i:end + 1]
+        out.append({"date": dates[i], "outcome": "bear" if inbear[i] else "rebound" if rebound[i] else "correction" if deep[i] else "false",
+                    "drawdown_at": round(float(C[i] / hi52 - 1) * 100, 1),
+                    "min_after": round(float(fut.min() / C[i] - 1) * 100, 1),
+                    "ret_after": round(float(C[end] / C[i] - 1) * 100, 1) if end - i >= HORIZON else None,
+                    "complete": end - i >= HORIZON, "path": path})
+    return out
+
+
+def _median_path(eps):
+    done = [e["path"] for e in eps if e["complete"]]
+    if not done:
+        return []
+    L = min(len(p) for p in done)
+    return [[done[0][k][0], round(float(np.median([p[k][1] for p in done])), 2)] for k in range(L)]
+
+
+def _stats(sig, C, dates, bears, inbear, deep, lo):
+    n = len(C)
+    yrs = (n - lo) / 252
+    B = [(a, b) for a, b in bears if a >= lo]
+    already, remain, caught = [], [], 0
+    for a, b in B:
+        hit = next((i for i in range(a + 1, b + 1) if sig[i]), None)
+        if hit is None:
+            continue
+        caught += 1
+        already.append(C[hit] / C[a] - 1)
+        remain.append(C[b] / C[hit] - 1)
+    on = [i for i in range(max(lo, 1), n) if sig[i] and not sig[i - 1]]
+    false = sum(1 for i in on if not inbear[i] and not deep[i])
+    return {"bears_caught": caught, "bears_total": len(B),
+            "drawdown_at_median": round(float(np.median(already)) * 100, 1) if already else None,
+            "remaining_median": round(float(np.median(remain)) * 100, 1) if remain else None,
+            "false_per_decade": round(false / yrs * 10, 1), "episodes": len(on), "false": false}
 
 
 def layer_state(conn) -> dict:
     s = _closes(conn, INDEX)
-    if len(s) < 300:
+    if len(s) < 600:
         return {"available": False}
-    dates, closes = [d for d, _ in s], [v for _, v in s]
-    me = [k for k in range(len(dates) - 1) if dates[k][:7] != dates[k + 1][:7]]   # 완결된 월말
-    last = len(dates) - 1
-    flags = _price_flags(dates, closes, last, me[-9:] + [last])
-    on_now = all(f["on"] for f in flags.values())
-
-    # 1956년 이후 월말 통계 — 모두 켜진 달의 실제 상태 분해, 약세장 포착
+    dates, C = [d for d, _ in s], np.array([v for _, v in s])
+    n = len(C)
+    warn, confirm, new_low, slope_down, m200, me, sma12_at, last_low = _signals(C, dates)
     ph = phases_of(s)
     co = corrections_of(s, ph)
-    bear_ranges = [(p["start"], p["end"]) for p in ph if p["kind"] == "bear" and not p["provisional"]]
-    cats = {"bear": 0, "rebound": 0, "deep_correction": 0, "shallow": 0}
-    caught = {p: False for p in bear_ranges if p[0] >= "1956"}
-    since = None
-    for n, k in enumerate(me):
-        if dates[k] < "1956-01" or n < 13:
-            continue
-        f = _price_flags(dates, closes, k, me[n - 9:n + 1])
-        all_on = all(x["on"] for x in f.values())
-        d = dates[k]
-        if all_on:
-            inside = next((r for r in bear_ranges if r[0] < d <= r[1]), None)
-            if inside:
-                cats["bear"] += 1
-                caught[inside] = True
-            elif any(r[1] < d <= _months_after(r[1], 6) for r in bear_ranges):
-                cats["rebound"] += 1
-            elif any(c["start"] <= d <= (c["end"] or "9999") and c["drawdown_pct"] <= -15 for c in co):
-                cats["deep_correction"] += 1
-            else:
-                cats["shallow"] += 1
-    # 지금 상태가 언제부터인가(월말 기준 연속)
-    for n in range(len(me) - 1, 12, -1):
-        f = _price_flags(dates, closes, me[n], me[n - 9:n + 1])
-        if all(x["on"] for x in f.values()) != on_now:
-            since = dates[me[n + 1]] if n + 1 < len(me) else dates[-1]
-            break
-    total = sum(cats.values())
-    # 침체형 보조 표시: 최근 24개월 안 10Y−3M 역전
+    idx = {d: i for i, d in enumerate(dates)}
+    bears = [(idx[p["start"]], idx[p["end"]]) for p in ph if p["kind"] == "bear" and not p["provisional"]]
+    inbear = np.zeros(n, bool)
+    for a, b in bears:
+        inbear[a + 1:b + 1] = True
+    deep = np.zeros(n, bool)
+    for c in co:
+        if c["drawdown_pct"] <= -15:
+            deep[idx[c["start"]]:(idx[c["end"]] if c["end"] else n - 1) + 1] = True
+    rebound = np.zeros(n, bool)
+    for a, b in bears:
+        rebound[b + 1:b + 127] = True
+    lo = next(i for i, d in enumerate(dates) if d >= "1956-01")
+
+    # 지금 — 경계는 마지막 완결 월말 판정 + 이번 달 잠정(완결 11개 월말 + 오늘)
+    last_me = me[-1]
+    sma_off = sma12_at[last_me]
+    sma_now = float((C[me[-11:]].sum() + C[-1]) / 12)
+    hi52 = C[max(0, n - 253):].max()
+    year_ago = C[max(0, n - 1 - 252)]
+    since = lambda sig: next((dates[i] for i in range(n - 1, 0, -1) if sig[i] != sig[i - 1]), None)
+    stage = "confirm" if confirm[-1] else "warn" if warn[-1] else "none"
+
+    def pack(sig, label, rule):
+        eps = _episodes(sig, C, dates, inbear, deep, rebound, lo)
+        return {"on": bool(sig[-1]), "since": since(sig), "label": label, "rule": rule, "stats": _stats(sig, C, dates, bears, inbear, deep, lo),
+                "episodes": eps, "median_path": {k: _median_path([e for e in eps if e["outcome"] == k]) for k in ("bear", "rebound", "correction", "false")}}
+
+    return {"available": True, "as_of": dates[-1], "close": float(C[-1]), "stage": stage,
+            "warn": {**pack(warn, "경계 — 월말 종가가 12개월 이동평균 아래", "월말에만 판정. 다음 월말까지 유지"),
+                     "month_end": dates[last_me], "vs_sma_pct": round(float(C[last_me] / sma_off - 1) * 100, 2),
+                     "provisional_on": bool(C[-1] < sma_now), "provisional_vs_sma_pct": round(float(C[-1] / sma_now - 1) * 100, 2)},
+            "confirm": {**pack(confirm, "확정 — 1년 신저가 이탈 또는 200일선이 꺾여 내려감", "둘 중 하나. 신저가 이탈은 이후 63거래일 유지"),
+                        "new_low": bool(new_low[-1]), "last_new_low": dates[int(last_low[-1])] if last_low[-1] >= 0 else None,
+                        "slope_down": bool(slope_down[-1]), "ma200_slope_pct": round(float(m200[-1] / m200[-21] - 1) * 100, 2)},
+            "reference": {"ret_12m": round(float(C[-1] / year_ago - 1) * 100, 1), "from_52w_high": round(float(C[-1] / hi52 - 1) * 100, 1)},
+            "current_path": [[k, round(float(C[i0 + k] / C[i0] * 100), 2)] for i0 in [next((i for i in range(n - 1, 0, -1) if not (warn | confirm)[i - 1] and (warn | confirm)[i]), n - 1)]
+                             for k in range(0, n - i0, PATH_STEP)] if (warn | confirm)[-1] else [],
+            "recession_hint": _recession_hint(conn, dates[-1])}
+
+
+def _recession_hint(conn, as_of):
     t = _series(conn, "era_t10y3m")
-    cutoff = _months_before(dates[-1], 24)
-    inverted = [v for d, v in t if d >= cutoff]
-    return {"available": True, "as_of": dates[-1], "close": closes[-1], "flags": flags, "all_on": on_now, "since": since,
-            "history": {"months_on": total, "categories": cats, "bears_caught": sum(caught.values()), "bears_total": len(caught)},
-            "recession_hint": {"inverted_24m": (min(inverted) < 0) if inverted else None,
-                               "min_24m": round(min(inverted), 2) if inverted else None}}
-
-
-def _months_after(d: str, n: int) -> str:
-    y, m = divmod(int(d[:4]) * 12 + int(d[5:7]) - 1 + n, 12)
-    return f"{y:04d}-{m + 1:02d}-31"
+    inverted = [v for d, v in t if d >= _months_before(as_of, 24)]
+    return {"inverted_24m": (min(inverted) < 0) if inverted else None, "min_24m": round(min(inverted), 2) if inverted else None}
 
 
 # ── 층 2 ────────────────────────────────────────────────────────────────────

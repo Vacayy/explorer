@@ -47,16 +47,27 @@ class Trend(unittest.TestCase):
 
 
 class EraState(unittest.TestCase):
-    """지금 시장 읽기 층 1 — 가격 3종 판정(pipeline/era._price_flags)."""
-    def test_all_three_on_in_drawdown(self):
-        from pipeline.era import _price_flags
-        s = series([100 + i for i in range(300)] + [300 - 3 * i for i in range(40)])   # 오르다 꺾임
-        d, c = [x for x, _ in s], [v for _, v in s]
-        i = len(c) - 1
-        f = _price_flags(d, c, i, list(range(i - 9 * 21, i + 1, 21)))
-        self.assertTrue(f["below_10m"]["on"])
-        self.assertTrue(f["dd_52w"]["on"])          # 고점 399 → 282, −29%
-        self.assertFalse(f["mom_12m"]["on"])        # 1년 전(약 35)보다는 높다
+    """지금 시장 읽기 층 1 — 두 단계 신호(pipeline/era._signals)."""
+    def test_warn_is_month_end_below_12m_sma(self):
+        from pipeline.era import _signals
+        import numpy as np
+        days = [(date(2000, 1, 3) + timedelta(days=i)).isoformat() for i in range(800)]
+        C = np.array([100 + i * 0.2 for i in range(700)] + [200 - i for i in range(100)], float)   # 오르다 마지막 100일 급락
+        warn, confirm, new_low, slope_down, *_ = _signals(C, days)
+        self.assertFalse(warn[600])                     # 오르는 동안 꺼짐
+        self.assertTrue(warn[-1])                       # 급락 뒤 월말 판정으로 켜짐
+        last_me = max(i for i in range(len(days) - 1) if days[i][:7] != days[i + 1][:7])
+        self.assertFalse(warn[last_me - 1] and not warn[last_me - 2])   # 월 중간에 바뀌지 않는다
+        self.assertTrue(slope_down[-1] or new_low[-1])
+
+    def test_new_low_holds_63_days(self):
+        from pipeline.era import _signals
+        import numpy as np
+        days = [(date(2000, 1, 3) + timedelta(days=i)).isoformat() for i in range(700)]
+        C = np.array([100.0] * 300 + [90.0] + [100.0] * 399)   # 300일째 하루 신저가
+        _, _, new_low, *_ = _signals(C, days)
+        self.assertTrue(new_low[300 + 63])
+        self.assertFalse(new_low[300 + 64])
 
     def test_yoy(self):
         from pipeline.era import _yoy

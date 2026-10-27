@@ -24,6 +24,7 @@ SYSTEM = """너는 개인 투자자에게 '지금 시장이 어떤 상태인지'
 - 인명은 한국어 표기로 통일한다: 하워드 막스, 레이 달리오, 스탠리 드러켄밀러.
 - 하워드 막스 메모 발췌가 있으면 '구루 전제 점검' 섹션에서 그의 관점과 지금 숫자가 어디서 맞고 어디서 어긋나는지 한두 문장으로 잇는다. 인용은 30단어 이하.
 - '이 해설의 한계'에는 규칙의 한계·빈 데이터·사후 통계라는 점만 쓴다.
+- 하락 국면은 두 단계다: 경계(월말 종가 < 12개월선, 빠르지만 헛경보 있음)와 확정(1년 신저가 이탈 또는 200일선 하락, 늦지만 헛경보 적음). stage가 none·warn·confirm 중 무엇인지, 과거 켜졌을 때 이후 얼마나 더 빠졌는지(통계)를 전한다. outcome은 bear=약세장, rebound=약세 직후 반등, correction=−15% 이상 조정, false=헛경보.
 - 아래 제목 그대로 마크다운 섹션 7개, 전체 1,200~1,800자.
 ## 한 줄 요약
 ## 지금 하락 국면인가
@@ -46,7 +47,21 @@ def _inputs() -> dict:
         conn.close()
     memo = {"title": row["title"], "date": (row["published_at"] or "")[:10], "excerpt": (row["markdown"] or "")[:MEMO_EXCERPT]} if row else None
     premises = [{k: p[k] for k in ("claim", "who", "kind", "evidence", "status", "rule")} for p in s["premises"]]
-    return {"state": s["state"], "meaning": m, "temperature": s["temperature"], "premises": premises, "latest_marks_memo": memo}
+    return {"state": _state_brief(s["state"]), "meaning": m, "temperature": s["temperature"], "premises": premises, "latest_marks_memo": memo}
+
+
+def _state_brief(st: dict) -> dict:
+    """경로 배열은 빼고 판정·통계·최근 에피소드 요약만 — LLM 입력 크기를 줄인다."""
+    if not st.get("available"):
+        return st
+    brief = {k: v for k, v in st.items() if k not in ("warn", "confirm", "current_path")}
+    for key in ("warn", "confirm"):
+        sig = st[key]
+        brief[key] = {k: v for k, v in sig.items() if k not in ("episodes", "median_path")}
+        brief[key]["recent_episodes"] = [{k: e[k] for k in ("date", "outcome", "drawdown_at", "min_after", "ret_after")} for e in sig["episodes"][-4:]]
+        done = [e for e in sig["episodes"] if e["complete"]]
+        brief[key]["outcome_counts"] = {o: sum(e["outcome"] == o for e in done) for o in ("bear", "rebound", "correction", "false")}
+    return brief
 
 
 def _hash(inputs: dict) -> str:

@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import type { ReactNode } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { BookOpen, ExternalLink, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import RegimeChart from "@/components/charts/RegimeChart"
@@ -16,8 +16,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useEraCommentary, useEraState, useGenerateCommentary, useSetEraCheck } from "@/hooks/useRegimes"
 import { cn } from "@/lib/utils"
-import { formatKstDateTime, formatPp } from "@/utils/format"
-import type { EraHeat, EraPremise, EraStateResponse, RegimesResponse } from "@/types"
+import { formatKstDateTime, formatPercent, formatPp } from "@/utils/format"
+import type { EraHeat, EraLayerState, EraPremise, EraStateResponse, RegimesResponse } from "@/types"
+import { EpisodePaths } from "./EpisodePaths"
 
 const HEAT: Record<EraHeat, { label: string; cls: string }> = {
   hot: { label: "뜨거움", cls: "border-up/40 text-up" },
@@ -71,8 +72,8 @@ function Summary({ data }: { data: EraStateResponse }) {
   const { state, meaning, temperature: t, premises } = data
   const count = (s: string) => premises.filter(p => p.status === s).length
   const tiles = [
-    { href: "#now-state", label: "1 지금 하락 국면인가", value: !state.available ? "-" : state.all_on ? "하락 국면" : "아니다",
-      sub: state.available ? `가격 신호 ${Object.values(state.flags).filter(f => f.on).length}/3 켜짐` : "", warn: state.all_on },
+    { href: "#now-state", label: "1 추세가 꺾였나", value: !state.available ? "-" : STAGE[state.stage].label,
+      sub: state.available ? `경계 ${state.warn.on ? "켜짐" : "꺼짐"} · 확정 ${state.confirm.on ? "켜짐" : "꺼짐"}` : "", warn: state.available && state.stage !== "none" },
     { href: "#now-meaning", label: "2 금리는 무슨 뜻인가", value: meaning.regime === "inflation" ? "인플레이션형" : meaning.regime === "disinflation" ? "디스인플레이션형" : "-",
       sub: meaning.regime === "inflation" ? "금리 급등이 위험 신호" : meaning.regime === "disinflation" ? "금리 급락이 위험 신호" : "", warn: meaning.conditional_flag },
     { href: "#now-temp", label: "3 막스식 온도", value: t.verdict === "hot" ? "뜨거움 우세" : t.verdict === "cold" ? "차가움 우세" : "균형",
@@ -121,42 +122,58 @@ function Commentary() {
   </Card>
 }
 
+const STAGE = {
+  none: { label: "추세 유지", sub: "경계·확정 모두 꺼짐", cls: "" },
+  warn: { label: "경계", sub: "추세 이탈 1단계", cls: "text-hypothesis" },
+  confirm: { label: "확정", sub: "하락 추세 확인", cls: "text-up" },
+} as const
+
+function SignalCard({ step, sig, active, detail }: { step: string; sig: EraLayerState["warn"] | EraLayerState["confirm"]; active: boolean; detail: ReactNode }) {
+  const st = sig.stats
+  return <div className={cn("space-y-2 rounded-xl border px-4 py-3", active && "border-up/40 bg-up/5")}>
+    <div className="flex items-center gap-2"><Light on={sig.on} /><span className="text-caption font-medium text-muted-foreground">{step}</span>
+      <span className={cn("text-sm font-semibold", sig.on && "text-up")}>{sig.on ? "켜짐" : "꺼짐"}</span>
+      {sig.since && <span className="text-caption text-muted-foreground">· {sig.since}부터</span>}</div>
+    <p className="text-sm">{sig.label}</p>
+    <div className="text-caption text-muted-foreground">{detail}</div>
+    <p className="text-caption text-muted-foreground">
+      1956년 이후 약세장 {st.bears_total}번 중 {st.bears_caught}번 포착 · 켜질 때 고점 대비 중앙 <b className="text-foreground">{formatPercent(st.drawdown_at_median)}</b>
+      {" "}· 그 뒤 바닥까지 중앙 <b className="text-down">{formatPercent(st.remaining_median)}</b> 더 · 헛경보 10년에 {st.false_per_decade}번
+    </p>
+  </div>
+}
+
 function StateSection({ data }: { data: EraStateResponse }) {
   const s = data.state
-  const h = s.history
-  const total = h.months_on || 1
-  const parts = [
-    { k: "bear", label: "실제 약세장 안", n: h.categories.bear, cls: "bg-down" },
-    { k: "rebound", label: "약세 끝난 뒤 6개월(바닥 직후)", n: h.categories.rebound, cls: "bg-down/50" },
-    { k: "deep", label: "−15% 이상 조정", n: h.categories.deep_correction, cls: "bg-chart-warning" },
-    { k: "shallow", label: "얕은 조정(헛경보)", n: h.categories.shallow, cls: "bg-muted-foreground/40" },
-  ]
-  return <Section id="now-state" step={1} title="지금 하락 국면인가"
-    how={<>S&P500 가격 신호 세 개가 <b>모두</b> 켜질 때만 '하락 국면'으로 봅니다. 하나만 켜지는 일은 흔해서 판단에 쓰지 않습니다. 이 판정은 하락을 잘 잡지만 끝은 늦게 압니다 — 앞으로의 방향이 아니라 지금 있는 자리를 말합니다.</>}>
-    <div className="grid gap-2 sm:grid-cols-3">
-      {Object.values(s.flags).map(f => <div key={f.label} className="flex items-start gap-2 rounded-lg border px-3 py-2.5">
-        <span className="mt-1.5"><Light on={f.on} /></span>
-        <div><div className="text-sm font-medium">{f.label}</div><div className="text-caption text-muted-foreground">{f.on ? "켜짐" : "꺼짐"} · {f.detail}</div></div>
-      </div>)}
+  const [params, setParams] = useSearchParams()
+  const which = params.get("now_sig") === "confirm" ? "confirm" : "warn"
+  const stage = STAGE[s.stage]
+  return <Section id="now-state" step={1} title="추세가 꺾였나 — 경계와 확정"
+    how={<>하락 추세 이탈을 두 단계로 봅니다. <b>경계</b>는 월말 종가가 12개월 이동평균 아래로 내려간 것 — 빠르지만 10년에 두 번쯤 헛경보가 납니다. <b>확정</b>은 1년 신저가를 깨거나 200일선이 꺾여 내려가는 것 — 늦지만 헛경보가 드뭅니다. 매일 판정하는 이평선은 헛경보가 열 배쯤 많아서 쓰지 않습니다. 이 판정은 '바닥'이 아니라 '지금 어디쯤인가'를 말합니다. 과거엔 신호가 켜진 뒤에도 하락의 절반 이상이 남아 있었습니다.</>}>
+    <p className="text-sm">지금: <span className={cn("text-base font-semibold", stage.cls)}>{stage.label}</span> <span className="text-muted-foreground">— {stage.sub}</span></p>
+    <div className="grid gap-3 md:grid-cols-2">
+      <SignalCard step="1단계 경계" sig={s.warn} active={s.stage === "warn"} detail={<>
+        {s.warn.month_end} 월말 종가는 12개월선보다 {formatPercent(s.warn.vs_sma_pct)} · 이번 달 지금 값으로는 {formatPercent(s.warn.provisional_vs_sma_pct)}
+        {s.warn.provisional_on !== s.warn.on && <Badge variant="outline" className="ml-1.5 border-hypothesis/40 font-normal text-hypothesis">월말에 바뀔 수 있음</Badge>}
+      </>} />
+      <SignalCard step="2단계 확정" sig={s.confirm} active={s.stage === "confirm"} detail={<>
+        1년 신저가 이탈 {s.confirm.new_low ? "있음" : "없음"}{s.confirm.last_new_low && ` (마지막 ${s.confirm.last_new_low})`}
+        {" "}· 200일선 20일 기울기 {formatPercent(s.confirm.ma200_slope_pct)} {s.confirm.slope_down ? "(하락)" : ""}
+      </>} />
     </div>
-    <p className="text-sm">
-      {s.all_on ? <span className="font-semibold text-up">세 신호가 모두 켜져 있습니다 — 하락 국면입니다.</span>
-        : <span className="font-semibold">하락 국면이 아닙니다.</span>}
-      {s.since && <span className="text-muted-foreground"> ({s.since.slice(0, 7)}부터 같은 상태)</span>}
-    </p>
-    <div className="space-y-1.5">
-      <p className="text-caption text-muted-foreground">1956년 이후 세 신호가 모두 켜졌던 {h.months_on}개월은 실제로 어땠나 — 약세장 {h.bears_total}번 중 {h.bears_caught}번을 잡았습니다</p>
-      <div className="flex h-3 w-full overflow-hidden rounded-full" role="img" aria-label="모두 켜진 달의 실제 상태 비율">
-        {parts.map(p => <div key={p.k} className={p.cls} style={{ width: `${(p.n / total) * 100}%` }} title={`${p.label} ${p.n}개월`} />)}
+    <p className="text-caption text-muted-foreground">참고(판정에 쓰지 않음): 12개월 수익률 {formatPercent(s.reference.ret_12m)} · 52주 고점 대비 {formatPercent(s.reference.from_52w_high)}
+      {s.recession_hint.inverted_24m != null && <> · 최근 24개월 10년−3개월 금리 역전 {s.recession_hint.inverted_24m ? `있음(최저 ${formatPp(s.recession_hint.min_24m)})` : "없음"} — 역전 이력이 있을 때 켜지면 경기침체형 약세일 가능성이 높았습니다</>}</p>
+    <div className="space-y-2 border-t pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">과거에 켜졌을 때, 이후 1년은 어떻게 흘렀나</p>
+        <ToggleGroup type="single" size="sm" variant="outline" value={which} aria-label="신호 고르기"
+          onValueChange={v => v && setParams(prev => { const n = new URLSearchParams(prev); if (v === "confirm") n.set("now_sig", v); else n.delete("now_sig"); return n }, { replace: true })}>
+          <ToggleGroupItem value="warn" className="px-3 text-caption">경계 {s.warn.episodes.length}번</ToggleGroupItem>
+          <ToggleGroupItem value="confirm" className="px-3 text-caption">확정 {s.confirm.episodes.length}번</ToggleGroupItem>
+        </ToggleGroup>
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted-foreground">
-        {parts.map(p => <span key={p.k} className="flex items-center gap-1.5"><span className={cn("size-2.5 rounded-sm", p.cls)} />{p.label} {Math.round((p.n / total) * 100)}%</span>)}
-      </div>
+      <EpisodePaths signal={s[which]} current={s[which].on ? s.current_path : undefined} />
     </div>
-    {s.recession_hint.inverted_24m != null && <p className="text-caption text-muted-foreground">
-      보조 표시 — 최근 24개월 안 10년−3개월 금리 역전 {s.recession_hint.inverted_24m ? `있음(최저 ${formatPp(s.recession_hint.min_24m)})` : "없음"}.
-      하락 국면이 켜졌을 때 역전 이력이 있으면 경기침체형 약세일 가능성이 높았습니다(1987·2020 같은 급락형은 역전 없이 왔습니다).
-    </p>}
   </Section>
 }
 

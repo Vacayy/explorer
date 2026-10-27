@@ -1428,15 +1428,36 @@ export interface RegimeCollectResponse {
 
 /* ---------- 지금 시장 읽기 — 네 층 (pipeline/era.py, docs/specs/market-regimes.md §8) ---------- */
 export type EraHeat = 'hot' | 'normal' | 'cold'
-export interface EraFlag { on: boolean; value: number; label: string; detail: string }
+export type EraOutcome = 'bear' | 'rebound' | 'correction' | 'false'
+export interface EraEpisode {
+  date: string
+  outcome: EraOutcome
+  drawdown_at: number
+  min_after: number
+  ret_after: number | null
+  complete: boolean
+  /** [켜진 뒤 거래일, 켜진 날 = 100 기준 지수] */
+  path: [number, number][]
+}
+export interface EraSignalStats { bears_caught: number; bears_total: number; drawdown_at_median: number | null; remaining_median: number | null; false_per_decade: number; episodes: number; false: number }
+export interface EraSignal {
+  on: boolean
+  since: string | null
+  label: string
+  rule: string
+  stats: EraSignalStats
+  episodes: EraEpisode[]
+  median_path: Record<EraOutcome, [number, number][]>
+}
 export interface EraLayerState {
   available: boolean
   as_of: string
   close: number
-  flags: Record<'below_10m' | 'mom_12m' | 'dd_52w', EraFlag>
-  all_on: boolean
-  since: string | null
-  history: { months_on: number; categories: { bear: number; rebound: number; deep_correction: number; shallow: number }; bears_caught: number; bears_total: number }
+  stage: 'none' | 'warn' | 'confirm'
+  warn: EraSignal & { month_end: string; vs_sma_pct: number; provisional_on: boolean; provisional_vs_sma_pct: number }
+  confirm: EraSignal & { new_low: boolean; last_new_low: string | null; slope_down: boolean; ma200_slope_pct: number }
+  reference: { ret_12m: number; from_52w_high: number }
+  current_path: [number, number][]
   recession_hint: { inverted_24m: boolean | null; min_24m: number | null }
 }
 export interface EraLayerMeaning {
