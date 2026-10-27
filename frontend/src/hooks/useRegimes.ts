@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
-import type { BrkBenchKey, BrkRange, BrkResponse, EraCommentary, EraHeat, EraStateResponse, RegimeCollectResponse, RegimesResponse, RiskResponse } from "@/types"
+import type { BrkBenchKey, BrkRange, BrkResponse, EraCommentary, EraHeat, EraStateResponse, PricingResponse, RegimeCollectResponse, RegimesResponse, RiskResponse } from "@/types"
 
 /** 국면 이력 — S&P500 국면·조정·10개월선·침체 (docs/specs/market-regimes.md) */
 export function useRegimes() {
@@ -60,5 +60,19 @@ export function useSetEraCheck() {
     mutationFn: async ({ key, state, note }: { key: string; state: EraHeat | null; note?: string | null }) =>
       (await api.put(`/api/spine/regimes/checks/${key}`, { state, note: note ?? null })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "regimes", "state"] }),
+  })
+}
+
+/** 시장 프라이싱 원장 — 브리핑에서 이어 본 전제와 가격 지표 변화 */
+export function usePricing(weeks = 8) {
+  return useQuery(apiQuery<PricingResponse>({ key: ["spine", "pricing", weeks], url: `/api/spine/pricing?weeks=${weeks}`, staleTime: STALE.medium }))
+}
+
+/** 아직 추출하지 않은 브리핑 날짜를 소급 추출(하루 LLM 1회, 수 분 걸릴 수 있음) */
+export function useExtractPricing() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => (await api.post<{ trade_date: string; status: string }[]>("/api/spine/pricing/extract", undefined, { timeout: 900_000 })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "pricing"] }),
   })
 }

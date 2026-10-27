@@ -968,6 +968,30 @@ def init_db():
     -- 시장 국면 (market regime, D-076, docs/specs/market-regime.md) — 매크로 리스크 포스처.
     -- 일별 스냅샷(EOD): F&G·VIX·S&P·KOSPI·20EMA·VKOSPI/실현변동성. 스파크라인 히스토리 = 축적.
     -- 지표 = fact (hypothesis 아님). 포스처 결합은 API에서 결정적 계산(LLM 0), 여기엔 원지표만.
+    CREATE TABLE IF NOT EXISTS pricing_claims (   -- 시장 프라이싱 원장(docs/specs/pricing-ledger.md): 시장이 전제로 삼는 기대
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        statement TEXT NOT NULL,
+        theme TEXT NOT NULL,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS pricing_observations (
+        trade_date TEXT NOT NULL,
+        claim_id INTEGER NOT NULL REFERENCES pricing_claims(id),
+        stance TEXT NOT NULL CHECK (stance IN ('present','stronger','weaker','contested')),
+        evidence TEXT,
+        sources_json TEXT,
+        PRIMARY KEY (trade_date, claim_id)
+    );
+    CREATE TABLE IF NOT EXISTS pricing_days (     -- 브리핑 하루 추출 기록 — signature가 같으면 다시 뽑지 않는다
+        trade_date TEXT PRIMARY KEY,
+        signature TEXT NOT NULL,
+        model TEXT,
+        new_claims INTEGER,
+        observed INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS era_checks (       -- 지금 시장 읽기 층 3: Marks 체크리스트 정성 항목(사람 판단, docs/specs/market-regimes.md §8)
         key TEXT PRIMARY KEY,
         state TEXT NOT NULL CHECK (state IN ('hot','normal','cold')),

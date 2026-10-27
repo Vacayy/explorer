@@ -1040,6 +1040,26 @@ def get_us_briefing(trade_date: str | None = None) -> ToolResult:
         "date": r["trade_date"], "doc_id": None, "href": "/home"}], fallback)
 
 
+def get_pricing_ledger(weeks: int | str | None = None) -> ToolResult:
+    """시장 프라이싱 원장 — 브리핑에서 이어 본 '시장이 전제로 삼는 것'과 상태(새로·강해짐·약해짐·사라짐)·가격 지표 1주·4주 변화."""
+    from pipeline.pricing_ledger import brief
+    try:
+        w = max(1, min(int(weeks or 4), 26))
+    except (TypeError, ValueError):
+        w = 4
+    d = brief(w)
+    if not d["claims"]:
+        return ToolResult("get_pricing_ledger", {"weeks": w}, [], "프라이싱 원장이 비어 있음(브리핑 추출 전)")
+    label = {"new": "새로 등장", "stronger": "강해짐", "weaker": "약해짐", "faded": "사라짐", "ongoing": "지속"}
+    lines = [f"- [{label.get(c['status'], c['status'])}·{c['theme']}] {c['statement']} (처음 {c['first_seen']}, 마지막 {c['last_seen']}, {c['days_seen']}일) — {c['latest_evidence'] or ''}"
+             for c in d["claims"]]
+    unit = {"bp": "bp", "pct": "%", "pt": "pt"}
+    px = [f"{p['label']} {p['value']}{p['unit']} (1주 {p['chg_1w']}{unit[p['mode']]}, 4주 {p['chg_4w']}{unit[p['mode']]})" for p in d["prices"] if p["value"] is not None]
+    text = f"기준 {d['as_of']} · 최근 {w}주 브리핑\n[전제]\n" + "\n".join(lines) + "\n[가격]\n" + " · ".join(px)
+    return ToolResult("get_pricing_ledger", {"weeks": w}, [{"kind": "pricing", "title": f"시장 프라이싱 원장 {d['as_of']}", "text": text[:BODY_CHARS + 1500],
+                                                            "date": d["as_of"], "doc_id": None, "href": "/regimes#now-pricing"}])
+
+
 def get_portfolio() -> ToolResult:
     """내 포트폴리오(비율·가격만)와 운용 원칙 원문·기계 점검 규칙·지금 위반·청산 내역 (D-228).
 
@@ -1141,6 +1161,9 @@ TOOLS: dict[str, dict] = {
                       "desc": "사용자 본인의 포트폴리오(비중·평단 대비 수익률·현금 비중·실현/미실현·청산 내역, 비율·가격만)와 "
                               "**사용자가 적은 운용 원칙 원문 전체**·기계 점검 규칙·지금 어긴 규칙. '내 계좌·내 포지션·내 종목·비중·팔까/더 살까·"
                               "물타기·손절·원칙에 맞나·내 원칙대로라면' 질문에 반드시. 판단은 원칙 원문을 기준으로 하고, 원칙에 없는 매매 지시는 하지 않는다. args 없음"},
+    "get_pricing_ledger": {"fn": get_pricing_ledger, "args": {"weeks"},
+                           "desc": "시장 프라이싱 원장 — 매일 브리핑을 이어 본 '시장이 지금 가격에 반영하는 전제'(새로 등장·강해짐·약해짐·사라짐, 처음·마지막 관측일)와 "
+                                   "2년·10년 금리·기대인플레·HY·VIX·유가·달러 1주·4주 변화. '시장이 뭘 반영/프라이싱하고 있나·요즘 바뀐 시장 전제·언제부터 그 얘기가 나왔나' 질문에. args: weeks(1~26, 기본 4)"},
     "get_us_briefing": {"fn": get_us_briefing, "args": {"trade_date"},
                         "desc": "어젯밤 미국장 브리핑(거래대금 상위·섹터 쏠림·개별 이슈). args: trade_date(YYYY-MM-DD, 선택=최신)"},
 }

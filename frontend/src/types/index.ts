@@ -1497,3 +1497,30 @@ export interface EraStateResponse {
   generated_at: string
 }
 export interface EraCommentary { body: string | null; created_at: string | null; model: string | null; stale: boolean }
+
+/* ---------- 시장 프라이싱 원장 (docs/specs/pricing-ledger.md) ---------- */
+export type PricingStance = 'present' | 'stronger' | 'weaker' | 'contested'
+export type PricingStatus = 'new' | 'stronger' | 'weaker' | 'faded' | 'ongoing' | 'dormant'
+export interface PricingPrice { key: string; label: string; unit: string; value: number | null; as_of: string | null; chg_1w: number | null; chg_4w: number | null; mode: 'bp' | 'pct' | 'pt' }
+export interface PricingSourceRef { publisher: string | null; title: string | null; url: string | null; doc_id: number | null }
+export interface PricingClaim {
+  id: number
+  statement: string
+  theme: string
+  first_seen: string
+  last_seen: string
+  days_seen: number
+  status: PricingStatus
+  dates: [string, PricingStance][]
+  latest: { date: string; stance: PricingStance; evidence: string | null; sources: PricingSourceRef[] } | null
+  related: string[]
+}
+export interface PricingResponse {
+  days: string[]
+  as_of: string | null
+  extracted_days: number
+  pending: number
+  prices: PricingPrice[]
+  claims: PricingClaim[]
+  summary: Record<'new' | 'stronger' | 'weaker' | 'faded', string[]>
+}

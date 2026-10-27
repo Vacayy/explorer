@@ -95,7 +95,7 @@ export default function RegimesPage() {
     </div>
 
     <nav aria-label="이 페이지에서" className="flex flex-wrap gap-1.5 text-caption">
-      {[["#now-state", "1 추세 이탈"], ["#now-meaning", "2 금리의 뜻"], ["#now-temp", "3 온도"], ["#now-premises", "4 구루 전제"], ["#history", "국면 이력"], ["#brk", "버크셔 vs 지수"]].map(([href, label]) =>
+      {[["#now-state", "1 추세 이탈"], ["#now-meaning", "2 금리의 뜻"], ["#now-temp", "3 온도"], ["#now-premises", "4 구루 전제"], ["#now-pricing", "5 시장 프라이싱"], ["#history", "국면 이력"], ["#brk", "버크셔 vs 지수"]].map(([href, label]) =>
         <a key={href} href={href} className="rounded-full border px-2.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground">{label}</a>)}
     </nav>
     <NowPanel regimes={d} />

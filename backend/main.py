@@ -105,6 +105,8 @@ from routers import spine_credit  # 회사채 스프레드 (D-230)
 app.include_router(spine_credit.router)
 from routers import spine_regimes  # 국면 이력 (docs/specs/market-regimes.md)
 app.include_router(spine_regimes.router)
+from routers import spine_pricing  # 시장 프라이싱 원장 (docs/specs/pricing-ledger.md)
+app.include_router(spine_pricing.router)
 from routers import spine_retail  # 개인 투자 열기 (D-231)
 app.include_router(spine_retail.router)
 from routers import dashboard  # 홈 위젯 배치 저장

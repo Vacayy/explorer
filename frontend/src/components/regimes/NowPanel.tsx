@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import type { ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { BookOpen, ExternalLink, Sparkles } from "lucide-react"
+import { ExternalLink, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import RegimeChart from "@/components/charts/RegimeChart"
 import type { RegimeBandSpec, RegimeSeries } from "@/components/charts/RegimeChart"
@@ -14,11 +14,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useEraCommentary, useEraState, useGenerateCommentary, useSetEraCheck } from "@/hooks/useRegimes"
+import { useEraCommentary, useEraState, useGenerateCommentary, usePricing, useSetEraCheck } from "@/hooks/useRegimes"
 import { cn } from "@/lib/utils"
 import { formatKstDateTime, formatPercent, formatPp } from "@/utils/format"
 import type { EraHeat, EraLayerState, EraPremise, EraStateResponse, RegimesResponse } from "@/types"
 import { EpisodePaths } from "./EpisodePaths"
+import { PricingSection } from "./PricingSection"
+import { Section } from "./Section"
 
 const HEAT: Record<EraHeat, { label: string; cls: string }> = {
   hot: { label: "뜨거움", cls: "border-up/40 text-up" },
@@ -32,19 +34,6 @@ const PREMISE: Record<NonNullable<EraPremise["status"]> | "none", { label: strin
   untestable: { label: "반증 불가", cls: "text-muted-foreground" },
   nodata: { label: "데이터 없음", cls: "text-muted-foreground" },
   none: { label: "판정 불가", cls: "text-muted-foreground" },
-}
-
-/** 섹션 머리 + '읽는 법' — 투자자가 숫자 전에 무엇을 보는지부터 알게 */
-function Section({ id, step, title, how, children }: { id: string; step: number; title: string; how: ReactNode; children: ReactNode }) {
-  return <Card id={id} className="scroll-mt-24">
-    <CardHeader className="space-y-2">
-      <CardTitle className="flex items-baseline gap-2"><span className="text-caption tabular-nums text-muted-foreground">{step}</span>{title}</CardTitle>
-      <div className="flex gap-2 rounded-lg bg-muted/50 px-3 py-2 text-caption leading-relaxed text-muted-foreground">
-        <BookOpen className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /><div><span className="font-medium text-foreground">읽는 법 </span>{how}</div>
-      </div>
-    </CardHeader>
-    <CardContent className="space-y-4">{children}</CardContent>
-  </Card>
 }
 
 const Light = ({ on }: { on: boolean }) => <span className={cn("inline-block size-2.5 shrink-0 rounded-full", on ? "bg-down" : "bg-muted-foreground/30")} aria-hidden="true" />
@@ -65,12 +54,14 @@ export function NowPanel({ regimes }: { regimes?: RegimesResponse }) {
     {d.meaning.available && <MeaningSection data={d} regimes={regimes} />}
     <TemperatureSection data={d} />
     <PremiseSection data={d} />
+    <PricingSection />
   </div>
 }
 
 function Summary({ data }: { data: EraStateResponse }) {
   const { state, meaning, temperature: t, premises } = data
   const count = (s: string) => premises.filter(p => p.status === s).length
+  const pricing = usePricing(8)
   const tiles = [
     { href: "#now-state", label: "1 추세가 꺾였나", value: !state.available ? "-" : STAGE[state.stage].label,
       sub: state.available ? `경계 ${state.warn.on ? "켜짐" : "꺼짐"} · 확정 ${state.confirm.on ? "켜짐" : "꺼짐"}` : "", warn: state.available && state.stage !== "none" },
@@ -79,10 +70,12 @@ function Summary({ data }: { data: EraStateResponse }) {
     { href: "#now-temp", label: "3 막스식 온도", value: t.verdict === "hot" ? "뜨거움 우세" : t.verdict === "cold" ? "차가움 우세" : "균형",
       sub: `뜨거움 ${t.hot} · 차가움 ${t.cold} · 보통 ${t.normal}`, warn: t.verdict === "hot" },
     { href: "#now-premises", label: "4 구루 전제", value: `지지 ${count("supports")}`, sub: `엇갈림 ${count("mixed")} · 반증 쪽 ${count("challenges")} · 판정 밖 ${count("untestable") + count("nodata")}`, warn: false },
+    { href: "#now-pricing", label: "5 시장이 반영하는 것", value: pricing.data ? `새로 ${pricing.data.summary.new.length}` : "-",
+      sub: pricing.data ? `강해짐 ${pricing.data.summary.stronger.length} · 약해짐 ${pricing.data.summary.weaker.length} · 사라짐 ${pricing.data.summary.faded.length}` : "", warn: false },
   ]
   return <div className="space-y-2">
     <h3 className="text-base font-semibold">지금 시장은</h3>
-    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
       {tiles.map(x => <a key={x.href} href={x.href} className="rounded-xl border bg-card px-4 py-3 transition-colors hover:bg-muted/50">
         <div className="text-caption text-muted-foreground">{x.label}</div>
         <div className={cn("mt-0.5 text-lg font-semibold", x.warn && "text-up")}>{x.value}</div>
