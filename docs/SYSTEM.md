@@ -213,7 +213,7 @@ ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → 
    +  평일 20:40: refresh_market_history (발견용 market_history.sqlite 전 종목 재수집·게시, 직전 게시본 90% 미만이면 보류 — D-220)
    +  평일 09:00–18:00 30분: portfolio_alerts --intraday (급등락·공시) · 16:50: --close (일정 수집·요약[+3일 이내 일정·자료 흐름]·기술적 신호) — D-214·D-216
    +  07:40 refresh_questions 직후: 보유 논지 판정 악화 알림 — D-216 · 관심 이유 판정 지지/약화 알림(`watch_reasons`, created_by=watch) — D-227
-   +  pfintraday(장중 규칙)·pfclose(전체): 운용 원칙 위반 알림(`portfolio_principles`, 모델 0 — 해석은 저장 전 haiku 1회) — D-227
+   +  pfintraday(장중 규칙)·pfclose(전체): 운용 원칙 위반 알림(`portfolio_principles`, 모델 0 — 해석은 저장 전 haiku 1회. 고점 기준 분할 매도 `peak_exit`는 `stock_prices` 종가로 장 마감 판정) — D-227
    +  (선택) 일 06:30(KST) usbriefing 웜업 / 07:00 텔레그램 발송: compute_briefing + snapshot_market — **기본은 홈 카드 '지금 업데이트' 버튼 주도**(D-100). 일반 로드는 순수 읽기(재종합 없음), 버튼만 재수집·재종합. 크론은 아침 pre-warm 원할 때만
    │
    ▼
