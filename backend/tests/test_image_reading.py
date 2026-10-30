@@ -100,6 +100,25 @@ class ReadImagesTests(unittest.TestCase):
         self.assertEqual(out["k0"], "[이미지 해석·AI · 차트] DRAM 수출 단가 — 급등했다. (근거: 68,000)")
         self.assertEqual(again, out)
 
+    def test_offline_is_not_counted_as_attempt(self):
+        import requests
+        bf = ir.Backfill(calls_left=10, deadline=10**12)
+        with patch.object(ir, "_load", side_effect=requests.ConnectionError("NameResolutionError")), \
+             patch.object(ir, "_online", return_value=False), ir.backfill_mode(bf):
+            ir.read_images(self.items(2), published_at="", source="s")
+        self.assertTrue(bf.offline)
+        self.assertEqual(bf.calls_left, 10)                              # LLM을 부르지 않았다
+        self.assertEqual(ir.unresolved(["k0", "k1"]), 2)                 # 기록 없음 → 다음 회차에 다시
+
+    def test_dead_host_while_online_counts_as_failure(self):
+        import requests
+        with patch.object(ir, "_remaining_budget", return_value=30), \
+             patch.object(ir, "_load", side_effect=requests.ConnectionError("x")), \
+             patch.object(ir, "_online", return_value=True):
+            ir.read_images(self.items(1), published_at="", source="s")
+        conn = self.connect()
+        self.assertEqual(conn.execute("SELECT status, attempts FROM image_readings").fetchone()[:], ("failed", 1))
+
     def test_skip_and_failure_retry_cap(self):
         with patch.object(ir, "_remaining_budget", return_value=30), \
              patch.object(ir, "_call", side_effect=[{"kind": "photo", "skip": True, "insight": "밈"}]):
