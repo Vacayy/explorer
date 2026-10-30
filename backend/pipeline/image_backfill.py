@@ -117,6 +117,8 @@ def run(*, calls: int = 200, minutes: float = 8, dry_run: bool = False) -> dict:
         stats["docs"] += 1
 
     def stop_reason(need: int) -> str | None:
+        if bf.offline:
+            return "offline"
         if stats["docs"] >= MAX_DOCS:
             return "docs"
         if time.time() >= bf.deadline:

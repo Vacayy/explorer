@@ -51,6 +51,7 @@ class Backfill:
     calls_left: int      # 이번 회차에 남은 호출 수
     deadline: float      # time.time() 기준 마감
     job: str = "image_backfill"
+    offline: bool = False  # 인터넷이 끊겨 있었다 — 회차를 접는다
 
 
 _backfill: ContextVar[Backfill | None] = ContextVar("image_backfill", default=None)
@@ -225,21 +226,32 @@ def read_images(items: list[dict], *, published_at: str, source: str, source_url
             from pipeline.vision import _insert_events
             job = bf.job if bf else JOB
 
-            def work(it):
+            def work(it):  # → (항목, 상태, 해석, 오류, LLM 호출 여부)
                 try:
                     got = _load(it)
-                    if got is None:
-                        return it, "filtered", None, None
+                except (requests.ConnectionError, requests.Timeout) as e:
+                    # PC가 오프라인이면 모든 다운로드가 즉시 실패한다 — 시도 횟수로 세면 멀쩡한 이미지를 포기하게 된다
+                    err = f"{type(e).__name__}: {str(e)[:200]}"
+                    return it, ("failed" if _online() else "offline"), None, err, False
+                except Exception as e:  # noqa: BLE001 — 이미지 하나의 실패가 수집을 막지 않는다
+                    return it, "failed", None, f"{type(e).__name__}: {str(e)[:200]}", False
+                if got is None:
+                    return it, "filtered", None, None, False
+                try:
                     out = _call(*got, context=it.get("context", ""), source=source,
                                 published_at=it.get("published_at") or published_at, job=job)
-                    return it, "skip" if str(out.get("skip")).lower() == "true" else "ok", out, None
-                except Exception as e:  # noqa: BLE001 — 이미지 하나의 실패가 수집을 막지 않는다
-                    return it, "failed", None, f"{type(e).__name__}: {str(e)[:200]}"
+                    return it, "skip" if str(out.get("skip")).lower() == "true" else "ok", out, None, True
+                except Exception as e:  # noqa: BLE001
+                    return it, "failed", None, f"{type(e).__name__}: {str(e)[:200]}", True
             with ThreadPoolExecutor(min(WORKERS, len(todo))) as ex:
                 results = list(ex.map(work, todo))
-            for it, status, out, err in results:      # DB 쓰기는 한 스레드에서
+            for it, status, out, err, called in results:      # DB 쓰기는 한 스레드에서
+                if status == "offline":
+                    if bf:
+                        bf.offline = True
+                    continue                                    # 기록하지 않는다 — 다음 회차에 그대로 다시
                 _save(conn, it["key"], status, out, err)
-                if status != "filtered" and bf:
+                if called and bf:
                     bf.calls_left -= 1
                 if out and out.get("kind") == "calendar" and out.get("events"):
                     _insert_events(conn, out["events"], it.get("source_url") or source_url)
@@ -248,6 +260,15 @@ def read_images(items: list[dict], *, published_at: str, source: str, source_url
         return {k: format_note(rows.get(k)) for k in keys}
     finally:
         conn.close()
+
+
+def _online() -> bool:
+    """다운로드 실패가 그 호스트 문제인지, PC가 오프라인인지."""
+    try:
+        requests.head("https://www.google.com", timeout=5, verify=False)
+        return True
+    except requests.RequestException:
+        return False
 
 
 def _allowed(conn, published_at: str, n: int, bf: Backfill | None) -> bool:
