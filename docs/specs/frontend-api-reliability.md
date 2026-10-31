@@ -53,6 +53,34 @@ return <QueryState query={query} isEmpty={data => data.items.length === 0}>
 </QueryState>
 ```
 
+## 오류 기록 (2026-10-31)
+
+계약 위반·5xx·timeout·네트워크 오류는 화면에 일반 문구만 보이고 원인(어느 API의 어느 필드)이 어디에도 남지 않았다. 실제로 주가 응답(`GET /api/spine/feed/company-prices`)의 `market_cap` 누락이 국내·미국 기업 상세 차트를 모두 막았지만, 원인을 찾으려면 브라우저 요청을 가로채 검증기를 직접 돌려야 했다. 그래서 응답 래퍼에서 원인을 붙여 남긴다.
+
+- `api/client.ts` 응답 interceptor가 `ApiError.endpoint`(`GET /api/...`, 쿼리 제외)를 붙인다. 계약 위반 issues는 그대로 유지한다.
+- `api/telemetry.ts` `reportApiError`: 계약 위반·5xx·timeout·네트워크를 콘솔(`[api]`)과 `POST /api/spine/client-errors`로 보낸다. 4xx(입력·없는 자원)는 보내지 않는다. 같은 API·종류·상태·필드는 10분에 한 번만 보낸다. 보고 실패는 무시한다.
+- 서버 `client_errors` 테이블은 같은 서명(API·종류·상태·필드)을 한 행으로 묶어 횟수·처음/마지막 시각·마지막 화면을 쌓는다. `GET /api/spine/client-errors?days=7`로 조회한다.
+- 운영 점검(`/api/spine/admin/health`, 상단 '운영' 배지)에 '화면 API 오류(24시간)' 항목: 최근 24시간 기록이 있으면 비정상, detail에 상위 3개 API·필드·횟수. 텔레그램 경고 대상(critical)은 아니다.
+- 화면 배너(`ActiveQueryStatus`)에 '자세히'를 두어 실패한 API·상태·첫 검증 실패 필드를 보인다.
+- 검증: `tests/api-telemetry.test.ts`(원인 포함 보고·같은 오류 1회·5xx만 보고).
+
+## 실제 응답 검사 (2026-10-31)
+
+`contracts:check`는 코드끼리(서버 모델·프론트 타입·생성물)만 비교해 실제 데이터에서만 나오는 `null`·새 enum 값·빠진 필드와 서버 응답 모델 오류(500)를 못 잡는다. 첫 실행에서 프론트 타입 추측 5건(주가 `market_cap`, 스터디 목록, 가이던스 `unknown`, 발견 레인 `web`, 스터디 검색 `published_at` null)과 서버 모델 이름 불일치로 석 달간 500이던 내러티브 경로·MER 2건이 나왔다.
+
+- `frontend/scripts/check-live-contracts.mjs`(`npm run contracts:live`): 실행 중인 백엔드의 GET 계약 전부를 `scripts/live-contract-samples.json` 예시 값으로 호출해 생성된 검증기로 검사한다. 실패는 콘솔과 `client_errors`(page='live-check')에 남기고 종료 코드 1. 예시 값이 없거나 non-200이면 '호출 못 함' 목록으로 알린다. 호출하면 수집이 도는 GET은 `skip`.
+- 정기 실행: `scripts/check_live_contracts.py` → `job_runs('live_contracts')`, launchd `contracts` 매일 08:40(따라잡기 대상). 백엔드가 떠 있지 않으면 skipped.
+- node에서는 ajv CJS 헬퍼를 쓰는 검증기(문자열 길이 제한, 대시보드)가 실행되지 않아 'node 검증 불가'로 따로 분류한다. 브라우저(vite)에서는 정상.
+
+## 서버 반영 (2026-10-31)
+
+백엔드는 `--reload` 없이 돈다(수 분짜리 백그라운드 작업이 코드 저장마다 끊기지 않게). 코드를 고친 뒤 재시작 전에는 옛 코드가 응답해, 즉시 반영되는 프론트와 계약이 어긋난다.
+
+- `pipeline/runtime.py`: 서버 시작 시각과 `backend/` .py 최신 수정 시각을 비교. `GET /api/spine/admin/runtime`(`stale`, 바뀐 파일, 경과 분).
+- 운영 점검 '백엔드 코드 반영'(서버 프로세스에서만 붙임): 시작 후 코드가 바뀌었으면 비정상 "재시작 필요 — N분 전 파일 변경".
+- 화면 배너: 계약 오류가 있을 때만 런타임을 조회해 `stale`이면 "백엔드가 N분 전 바뀐 코드로 아직 재시작되지 않았습니다"를 함께 보인다.
+- 작업 규칙: CLAUDE.md 'API 계약', 절차 `.claude/skills/api-contract/SKILL.md`, Codex용 `AGENTS.md`.
+
 ## 화면 상태 규약
 
 `components/shared/QueryState.tsx`는 아직 성공 응답이 없는 undefined와 정상적인 null/빈 배열을 구별한다.

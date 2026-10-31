@@ -107,6 +107,8 @@ JOBS = [
     # 피드 증권사 전망 추출(docs/specs/value-chain.md §15) — LLM(haiku), 최근 3일·상한 25건, 한 문서는 한 번만. 관리자 플래그 exp_feed
     ("expfeed", [PY, "scripts/collect_exp_feed.py"], {"Hour": 12, "Minute": 0}),
     # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
+    # 실제 응답 계약 검사 — 화면을 열기 전에 계약 위반·응답 모델 오류(500)를 잡는다(docs/specs/frontend-api-reliability.md)
+    ("contracts", [PY, "scripts/check_live_contracts.py"], {"Hour": 8, "Minute": 40}),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
 
@@ -133,6 +135,7 @@ CATCHUP = {
     "watch": {},
     "pfclose": {"window_h": 7},                # 종가 요약 — 그날 밤까지만
     "callmomentum": {},
+    "contracts": {"record": "live_contracts"},
     "callmomentumweekly": {"window_h": 24},
     "callfresh": {"record": "cm_fresh", "window_h": 3},
     "krcompany": {},

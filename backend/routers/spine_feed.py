@@ -73,7 +73,9 @@ def get_company_prices(company: str = Query(..., min_length=1, max_length=200),
     table = "stock_prices" if market == "kr" else "us_prices"
     conn = get_connection()
     try:
-        rows = conn.execute(f"SELECT trade_date, open, high, low, close, volume FROM {table} WHERE stock_code=? ORDER BY trade_date DESC LIMIT 1500", (company,)).fetchall()
+        # 응답 모양은 시장과 무관하게 같게 — 프런트 응답 계약(StockPriceItem)이 market_cap을 요구한다(2026-10-31: 빠져 있어 차트가 계약 오류)
+        cap = "market_cap" if market == "kr" else "NULL AS market_cap"
+        rows = conn.execute(f"SELECT trade_date, open, high, low, close, volume, {cap} FROM {table} WHERE stock_code=? ORDER BY trade_date DESC LIMIT 1500", (company,)).fetchall()
         return {"items": [dict(r) for r in reversed(rows)]}
     finally:
         conn.close()

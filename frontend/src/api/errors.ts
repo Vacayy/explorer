@@ -6,6 +6,8 @@ export class ApiError extends Error {
   readonly status?: number
   readonly kind: ApiErrorKind
   readonly issues?: readonly { path: PropertyKey[]; message: string }[]
+  /** 'GET /api/...' — 응답 래퍼가 붙인다. 화면 '자세히'와 오류 기록(telemetry)의 원인 표시용 */
+  endpoint?: string
   constructor(message: string, status?: number, options: {
     kind?: ApiErrorKind; cause?: unknown; issues?: readonly { path: PropertyKey[]; message: string }[]
   } = {}) {

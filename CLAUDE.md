@@ -132,6 +132,15 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 - **캐시**: 모든 외부 API 호출은 `cache_service.is_cached()` → `set_cache()` 패턴 사용
 - **검증**: 모든 BE 변경 후 `python -c "from main import app"` 통과 필수
 
+### API 계약 (백엔드 ↔ 프론트 합의) — 절차: `.claude/skills/api-contract/SKILL.md`
+프론트 응답 래퍼는 모든 응답을 생성된 계약으로 검증한다. 계약이 실제 응답과 다르면 화면이 "서버 응답 형식이 올바르지 않습니다"로 깨진다(2026-10-31 실측: 프론트 타입 추측 5건·서버 모델 이름 불일치로 석 달간 500 2건). 배경: docs/specs/frontend-api-reliability.md
+- **계약의 원본은 서버 응답 모델이다.** 새 API·응답 모양 변경은 `response_model`(Pydantic)을 반드시 선언한다. 프론트 타입을 서버 응답을 보고 손으로 추측해 쓰지 않는다 — 모델이 없으면 생성기가 프론트 타입을 계약으로 삼아 추측이 곧 런타임 장애가 된다.
+- **값의 범위는 서버가 책임진다.** LLM·외부 API가 만든 값(enum·null 가능 필드)은 저장 전에 허용값으로 정리하고 모델에 그대로 적는다(`'unknown'`·`null`이 나올 수 있으면 타입에 넣는다). 시장별로 필드가 다르면 없는 쪽도 `null`로 채워 모양을 같게 한다.
+- **같은 커밋에**: 백엔드 모델·라우터 + 프론트 타입·호출 + `cd frontend && npm run contracts:generate` 생성물. 커밋 전 `npm run contracts:check`.
+- **서버 재시작**: 백엔드는 `--reload` 없이 돈다. 백엔드 코드를 고쳤으면 화면 확인 전에 사용자에게 재시작을 요청한다(재시작 전 옛 코드가 응답한다). '운영' 점검의 '백엔드 코드 반영'이 비정상이면 재시작 필요.
+- **실제 응답 검사**: 백엔드 재시작 후 `cd frontend && npm run contracts:live`(실패 0이어야 함). 필수 파라미터가 있는 새 GET은 `frontend/scripts/live-contract-samples.json`에 예시 값을 넣는다. 매일 08:40 정기 실행(`contracts`).
+- **오류가 보이면**: 배너 '자세히'(API·필드), `GET /api/spine/client-errors`, 운영 점검 '화면 API 오류'부터 본다. 원인을 고치지 않고 계약·검증을 끄거나 느슨하게 만들어 덮지 않는다.
+
 ### 숫자 포맷 (docs/policies/number-formatting.md)
 - 금액: 억/조 단위 자동 전환 (`formatKrw()`)
 - 주가 변동: 상승=빨강(red), 하락=파랑(blue) — 한국 주식 컨벤션

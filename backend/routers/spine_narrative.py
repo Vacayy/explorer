@@ -80,7 +80,7 @@ class NarrativeVersion(BaseModel):
 class ChainPath(BaseModel):
     nodes: list[dict]      # [{name, type}] root → … → 수혜 섹터
     edges: list[dict]      # [{from, to, rel, mechanism, orientation, reference_period, confidence}]
-    confidence: float
+    path_confidence: float  # 경로 신뢰도(엣지 confidence 곱) — 파이프라인 이름과 맞춤(2026-07-25 이름 변경 후 모델만 남아 500, 2026-10-31)
     reaches_sector: bool
 
 

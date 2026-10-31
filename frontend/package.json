@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:api": "vitest run",
     "contracts:generate": "node scripts/generate-api-contracts.mjs",
-    "contracts:check": "node scripts/generate-api-contracts.mjs --check"
+    "contracts:check": "node scripts/generate-api-contracts.mjs --check",
+    "contracts:live": "node scripts/check-live-contracts.mjs"
   },
   "dependencies": {
     "@a2ui/react": "0.11.1",

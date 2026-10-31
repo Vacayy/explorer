@@ -64,11 +64,27 @@ def health():
     """데이터 신선도 점검 (D-222) — 결과 데이터의 최신 시점을 기대치와 비교. LLM 없음."""
     from pipeline.health import report
     from database import get_connection
+    from pipeline.runtime import health_item
     conn = get_connection()
-    try:
-        return [HealthItem(**i) for i in report(conn)]
+    try:   # '백엔드 코드 반영'은 서버 프로세스만 알 수 있어 여기서 붙인다(스크립트가 부르는 report에는 없음)
+        return [HealthItem(**i) for i in report(conn)] + [HealthItem(**health_item())]
     finally:
         conn.close()
+
+
+class RuntimeStatus(BaseModel):
+    started_at: str
+    code_changed_at: str | None
+    changed_file: str | None
+    stale: bool
+    stale_minutes: int
+
+
+@router.get("/runtime", response_model=RuntimeStatus)
+def runtime():
+    """실행 중인 백엔드가 최신 코드인가 — 화면이 계약 오류를 만났을 때 '재시작 필요'를 안내하려고."""
+    from pipeline.runtime import status
+    return RuntimeStatus(**status())
 
 
 @router.get("/runs", response_model=list[JobRun])

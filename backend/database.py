@@ -1164,6 +1164,21 @@ def init_db():
         PRIMARY KEY (ticker, graded_at, firm)
     );
 
+    -- 화면 API 오류 기록 — 프런트 응답 래퍼가 보고(계약 위반·5xx·timeout·네트워크). 같은 API·필드·종류는 한 행
+    CREATE TABLE IF NOT EXISTS client_errors (
+        signature     TEXT PRIMARY KEY,
+        endpoint      TEXT NOT NULL,        -- 'GET /api/...'
+        kind          TEXT NOT NULL,        -- schema | http | timeout | network | unknown
+        status        INTEGER,
+        field         TEXT,                 -- 첫 검증 실패 경로
+        detail        TEXT,
+        issues_json   TEXT,
+        page          TEXT,                 -- 마지막으로 난 화면
+        count         INTEGER DEFAULT 1,
+        first_seen    TEXT,
+        last_seen     TEXT
+    );
+
     -- 프록시 레지스트리 (사람이 세팅 — "무엇을 볼지") — 리포트 핵심질문(D-049)의 관찰 프록시
     CREATE TABLE IF NOT EXISTS proxy_registry (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -173,6 +173,7 @@ def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool 
                 if hours > float(limit):
                     item.update(status="stale", detail=f"{hours / 24:.1f}일 전" if hours >= 48 else f"{hours:.0f}시간 전")
         items.append(item)
+    items.append(client_error_item(conn))
     if not launchd:
         return items
     failed = launchd_failures()
@@ -180,6 +181,22 @@ def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool 
                   "critical": False, "latest": None, "expected": "모두 0",
                   "status": "stale" if failed else "ok", "detail": ", ".join(failed)})
     return items
+
+
+def client_error_item(conn: sqlite3.Connection) -> dict:
+    """화면 API 오류(프런트 응답 래퍼 보고) — 최근 24시간에 있으면 비정상. 원인 API·필드를 detail에."""
+    item = {"key": "client_errors", "label": "화면 API 오류(24시간)", "kind": "client", "owner": "GET /api/spine/client-errors",
+            "critical": False, "latest": None, "expected": "0건", "status": "ok", "detail": ""}
+    try:
+        rows = conn.execute("SELECT endpoint, field, kind, count, last_seen FROM client_errors WHERE last_seen >= datetime('now', '-1 day') "
+                            "ORDER BY last_seen DESC").fetchall()
+    except sqlite3.Error as exc:
+        item.update(status="error", detail=f"조회 실패: {exc}"[:200])
+        return item
+    if rows:
+        item.update(status="stale", latest=rows[0]["last_seen"],
+                    detail=" · ".join(f"{r['endpoint']}{' ' + r['field'] if r['field'] else ''} ({r['kind']} {r['count']}회)" for r in rows[:3])[:300])
+    return item
 
 
 def alerts(items: list[dict]) -> list[str]:

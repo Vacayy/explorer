@@ -115,6 +115,9 @@ from routers import proxy_boards  # 프록시 보드 (D-240)
 app.include_router(proxy_boards.router)
 from routers import spine_world  # 월드모델 읽기 전용(지금 랜딩·체크포인트·위젯)
 app.include_router(spine_world.router)
+import pipeline.runtime  # noqa: F401 — 서버 시작 시각 고정(재시작 필요 감지)
+from routers import spine_client_errors  # 화면 API 오류 기록(응답 계약 위반·5xx·timeout)
+app.include_router(spine_client_errors.router)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)

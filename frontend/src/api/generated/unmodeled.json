@@ -80,6 +80,11 @@
     "status": 200
   },
   {
+    "method": "post",
+    "path": "/api/spine/client-errors",
+    "status": 204
+  },
+  {
     "method": "get",
     "path": "/api/spine/conversations/{conversation_id}/stream",
     "status": 200
