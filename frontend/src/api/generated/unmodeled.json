@@ -303,5 +303,10 @@
     "method": "post",
     "path": "/api/spine/transcript/seed",
     "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/usage",
+    "status": 204
   }
 ]

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { track } from "@/lib/usage"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowLeft, BookOpen, Building2, CornerDownLeft, FileSearch, FolderPlus, Globe, Home, LineChart, MessageCircleQuestion,
@@ -113,6 +114,7 @@ export default function Omnibar() {
       if (!ids.length) throw new Error("이 종목에 저장된 자료가 없어 프로젝트에 넣을 수 없습니다.")
       let id = projectId, title = projects.data?.find(item => item.id === projectId)?.title ?? ""
       if (!id) { const created = (await api.post<{ id: number }>("/api/spine/study-projects", { title: `${name} 스터디` })).data; id = created.id; title = `${name} 스터디` }
+      track('action', 'study.add', { entity: id })
       await api.post(`/api/spine/study-projects/${id}/documents`, { document_ids: ids })
       return { id, title, added: ids.length }
     },

@@ -10,6 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { cn } from "@/lib/utils"
+import { useSearchParams } from "react-router-dom"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { ObservePanel } from "@/components/admin/ObservePanel"
 
 /**
  * /admin — 운영 관리자 (D-055). cron 생성 작업 on/off + 최근 실행 로그.
@@ -31,6 +34,29 @@ const STATUS_CLS: Record<string, string> = {
 }
 
 export default function AdminPage() {
+  const [params, setParams] = useSearchParams()
+  const view = params.get("view") === "observe" ? "observe" : "ops"
+  const tabs = (
+    <ToggleGroup type="single" value={view} variant="outline" size="sm" className="w-fit"
+      onValueChange={(v) => v && setParams(v === "observe" ? { view: "observe" } : {}, { replace: true })}>
+      <ToggleGroupItem value="ops">작업·신선도</ToggleGroupItem>
+      <ToggleGroupItem value="observe">관측</ToggleGroupItem>
+    </ToggleGroup>
+  )
+  if (view === "observe") return (
+    <PageContainer gap="sm">
+      <div>
+        <h2 className="text-xl font-bold">관리자</h2>
+        <p className="text-sm text-muted-foreground">잘 도는가 · 얼마나 드는가 · 무엇을 쓰는가 · 도움이 되는가 — 주간 요약은 월요일 07:05 텔레그램</p>
+      </div>
+      {tabs}
+      <ObservePanel />
+    </PageContainer>
+  )
+  return <OpsView tabs={tabs} />
+}
+
+function OpsView({ tabs }: { tabs: React.ReactNode }) {
   const qc = useQueryClient()
   const { data: jobs = [], isLoading } = useQuery(
     apiQuery<JobStatus[]>({ key: ["spine", "admin", "jobs"], url: "/api/spine/admin/jobs", staleTime: STALE.short }),
@@ -58,6 +84,7 @@ export default function AdminPage() {
         <h2 className="text-xl font-bold">관리자</h2>
         <p className="text-sm text-muted-foreground">자동 생성 작업 on/off · 최근 실행 내역 — 비용·가시성 통제</p>
       </div>
+      {tabs}
 
       {/* 데이터 신선도 */}
       <section aria-label="데이터 신선도" className="space-y-1.5">

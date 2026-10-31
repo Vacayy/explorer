@@ -1,6 +1,7 @@
 // 종목 단위 컨콜 버튼 — ① 가장 최근 실적 발표 조사(SEC 8-K·yfinance, AV 한도 무관) ② 이 종목만 수집.
 // 수집은 전체 수집과 같은 사슬(POST /collect?tickers=)이라 진행 상태는 위 '컨콜 수집' 카드가 보여 준다.
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { track } from "@/lib/usage"
 import { Download, Search } from "lucide-react"
 import { toast } from "sonner"
 import { postJson } from "@/api/query"
@@ -15,7 +16,7 @@ export function TranscriptTickerActions({ ticker, currentId, onSelect }: { ticke
   const qc = useQueryClient()
   const check = useCheckLatestCall()
   const collect = useMutation({
-    mutationFn: () => postJson(`/api/spine/transcript/collect`, null, { params: { tickers: ticker, budget: AV_BUDGET } }),
+    mutationFn: () => (track('action', 'transcript.collect', { entity: ticker }), postJson(`/api/spine/transcript/collect`, null, { params: { tickers: ticker, budget: AV_BUDGET } })),
     onSuccess: () => {
       toast.success(`${ticker} 수집을 시작했습니다 — 진행은 위 '컨콜 수집' 카드에서`)
       qc.invalidateQueries({ queryKey: ["spine", "transcript", "collect", "status"] })

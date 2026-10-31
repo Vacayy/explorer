@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, postJson, STALE } from "@/api/query"
+import { track } from "@/lib/usage"
 import type { CallMomentum, CallReaction, ChainDetail, Expectation, RecentCall, SectorDetail, SeasonOverview, TranscriptCheck, TranscriptFollowSummary } from "@/types"
 
 /** 실적 발언 모멘텀 — 컨콜 탭·모멘텀 띠·위젯 공용 (읽기 전용 GET, 판정은 매일 07:20) */
@@ -26,7 +27,7 @@ export function useCallReaction(transcriptId: number) {
 export function useComputeCallReaction(transcriptId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => postJson<CallReaction>(`/api/spine/transcript/detail/${transcriptId}/reaction`, null, { timeout: 300_000 }),
+    mutationFn: () => { track('action', 'reaction.make', { entity: transcriptId }); return postJson<CallReaction>(`/api/spine/transcript/detail/${transcriptId}/reaction`, null, { timeout: 300_000 }) },
     onSuccess: (d) => {
       qc.setQueryData(["spine", "transcript", "reaction", transcriptId], d)
       invalidateSeasonChain(qc)   // 반응 구조화 필드가 시즌·섹터·체인 화면에 들어간다
@@ -38,7 +39,7 @@ export function useComputeCallReaction(transcriptId: number) {
 export function useCheckLatestCall() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ticker: string) => postJson<TranscriptCheck>(`/api/spine/transcript/check/${ticker}`, null, { timeout: 120_000 }),
+    mutationFn: (ticker: string) => { track('action', 'transcript.check', { entity: ticker }); return postJson<TranscriptCheck>(`/api/spine/transcript/check/${ticker}`, null, { timeout: 120_000 }) },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "follow"] }),
   })
 }
@@ -68,7 +69,7 @@ export function useChain(transcriptId: number) {
 export function usePinCore() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (v: { ticker: string; pinned: boolean }) => postJson<{ ticker: string; pinned: boolean }>("/api/spine/transcript/core/pin", v),
+    mutationFn: (v: { ticker: string; pinned: boolean }) => { track('action', v.pinned ? 'core.pin' : 'core.unpin', { entity: v.ticker }); return postJson<{ ticker: string; pinned: boolean }>("/api/spine/transcript/core/pin", v) },
     onSuccess: () => invalidateSeasonChain(qc),
   })
 }
@@ -77,7 +78,7 @@ export function usePinCore() {
 export function useMakeExpectation() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (v: { ticker: string; snapshot?: "d7" | "d1" }) => postJson<Expectation>(`/api/spine/transcript/expectation/${v.ticker}`, null, { params: { snapshot: v.snapshot ?? "d7" }, timeout: 300_000 }),
+    mutationFn: (v: { ticker: string; snapshot?: "d7" | "d1" }) => { track('action', 'expectation.make', { entity: v.ticker }); return postJson<Expectation>(`/api/spine/transcript/expectation/${v.ticker}`, null, { params: { snapshot: v.snapshot ?? "d7" }, timeout: 300_000 }) },
     onSuccess: () => invalidateSeasonChain(qc),
   })
 }

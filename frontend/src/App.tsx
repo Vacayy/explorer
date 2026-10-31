@@ -69,6 +69,7 @@ import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import WorldviewPage from "@/components/explore/WorldviewPage"
 import ReportsPage from "@/components/explore/ReportsPage"
 import ArchivePage from "@/components/archive/ArchivePage"
+import { UsageTracker } from "@/components/shared/UsageTracker"
 import AdminPage from "@/components/admin/AdminPage"
 
 // Analysis
@@ -151,6 +152,7 @@ function Layout() {
         <Omnibar />
         <DetailNavigationMemory />
         <DiscoveryNavigationMemory />
+        <UsageTracker />
         <SidebarProvider open={leftOpen} onOpenChange={setLeft} className="flex-col"
           style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
           <TopBar aiOpen={showAi} onToggleAi={toggleAi} />

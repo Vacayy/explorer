@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react"
+import { track } from "@/lib/usage"
 import { Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { FileText, Megaphone, Network, Sparkles, ChevronRight } from "lucide-react"
@@ -370,7 +371,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
                 <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
               </div>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => setWantDigest(true)}>
+              <Button size="sm" variant="outline" onClick={() => { track('action', 'digest.make', { entity: transcriptId }); setWantDigest(true) }}>
                 <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
               </Button>
             )}

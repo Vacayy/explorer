@@ -1625,3 +1625,21 @@ export interface PricingResponse {
 
 /** GET /api/spine/admin/runtime — 실행 중인 백엔드가 최신 코드인가(재시작 필요 감지) */
 export interface RuntimeStatus { started_at: string; code_changed_at: string | null; changed_file: string | null; stale: boolean; stale_minutes: number }
+
+/* ---------- 관측 (docs/specs/observability.md) — GET /api/spine/admin/observe ---------- */
+export interface ObserveJobRow { job: string; name: string; n: number; ok: number | null; err: number | null; part: number | null; avg_ms?: number | null; last?: string | null }
+export interface ObserveApiRow { endpoint: string; count: number; errors_5xx: number; err_rate: number; avg_ms: number | null; p95_ms: number | null; max_ms: number }
+export interface ObserveSummary {
+  days: number; generated_at: string
+  jobs: { total: { runs: number; ok: number; err: number; partial: number }; failing: ObserveJobRow[]
+    streaks: { job: string; name: string; streak: number; last: string }[]; chronic: { job: string; name: string; runs: number }[]; table: ObserveJobRow[] }
+  api: { since: string | null; requests: number; errors_5xx: number; worst_errors: ObserveApiRow[]; slowest: ObserveApiRow[]; busiest: ObserveApiRow[] }
+  client_errors: { endpoint: string; field: string | null; kind: string; count: number; last_seen: string }[]
+  freshness: { label: string; detail: string }[]
+  costs: { usd: number; calls: number; prev_usd: number; change_pct: number | null
+    by_job: { job: string; name: string; usd: number | null; calls: number; failed: number | null; cache_pct: number | null; share: number }[]
+    daily: { day: string; usd: number | null }[] }
+  usage: { since: string | null; visits: number; sessions: number; screens: { name: string; visits: number; avg_dwell_ms: number | null }[]
+    paths: { ref: string; name: string; n: number }[]; actions: { name: string; n: number }[]; dropped: string[] }
+  value: { opens: { name: string; n: number; uniq: number }[]; expectation_grades: { hit: number; underweighted: number; noise: number; missed: number } }
+}

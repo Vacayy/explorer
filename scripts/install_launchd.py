@@ -109,6 +109,9 @@ JOBS = [
     # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
     # 실제 응답 계약 검사 — 화면을 열기 전에 계약 위반·응답 모델 오류(500)를 잡는다(docs/specs/frontend-api-reliability.md)
     ("contracts", [PY, "scripts/check_live_contracts.py"], {"Hour": 8, "Minute": 40}),
+    # 관측(docs/specs/observability.md) — 주간 리포트는 월요일 브리핑 뒤, 경고는 1시간마다(상태가 바뀔 때만 보냄)
+    ("observeweekly", [PY, "scripts/observe.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 5}),
+    ("observealerts", [PY, "scripts/observe.py", "--alerts"], 3600),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
 
@@ -136,6 +139,7 @@ CATCHUP = {
     "pfclose": {"window_h": 7},                # 종가 요약 — 그날 밤까지만
     "callmomentum": {},
     "contracts": {"record": "live_contracts"},
+    "observeweekly": {"record": "observe_weekly", "window_h": 24},
     "callmomentumweekly": {"window_h": 24},
     "callfresh": {"record": "cm_fresh", "window_h": 3},
     "krcompany": {},

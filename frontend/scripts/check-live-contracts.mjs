@@ -28,7 +28,7 @@ for (const r of routes) {
   const query = samples.query[r.path]
   const url = `${base}${encodeURI(path)}${query ? '?' + encodeURI(query) : ''}`
   let resp
-  try { resp = await fetch(url, { signal: AbortSignal.timeout(30_000) }) } catch (e) { result.unchecked.push(`${r.path} (${e.name === 'TimeoutError' ? '30초 초과' : '연결 실패'})`); continue }
+  try { resp = await fetch(url, { signal: AbortSignal.timeout(30_000), headers: { 'x-observe-skip': '1' } }) } catch (e) { result.unchecked.push(`${r.path} (${e.name === 'TimeoutError' ? '30초 초과' : '연결 실패'})`); continue }
   if (resp.status !== 200) { result.unchecked.push(`${r.path} (HTTP ${resp.status}${query ? '' : ' — 쿼리 예시 값 필요?'})`); continue }
   let data
   try { data = await resp.json() } catch { result.fail.push({ route: r.path, field: '', detail: 'JSON 아님' }); continue }

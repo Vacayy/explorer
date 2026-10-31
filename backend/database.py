@@ -1164,6 +1164,40 @@ def init_db():
         PRIMARY KEY (ticker, graded_at, firm)
     );
 
+    -- 관측 (docs/specs/observability.md, D-283) — API 요청 시간 단위 집계(경로 패턴·상태 계층·응답시간 구간)
+    CREATE TABLE IF NOT EXISTS api_requests_hourly (
+        hour          TEXT NOT NULL,        -- 'YYYY-MM-DD HH:00' UTC
+        method        TEXT NOT NULL,
+        route         TEXT NOT NULL,        -- '/api/spine/us/{ticker}' (실제 값 아님)
+        status_class  TEXT NOT NULL,        -- 2xx | 3xx | 4xx | 5xx
+        count         INTEGER DEFAULT 0,
+        total_ms      REAL DEFAULT 0,
+        max_ms        REAL DEFAULT 0,
+        b100 INTEGER DEFAULT 0, b300 INTEGER DEFAULT 0, b1000 INTEGER DEFAULT 0, b3000 INTEGER DEFAULT 0, bslow INTEGER DEFAULT 0,
+        PRIMARY KEY (hour, method, route, status_class)
+    );
+    -- 사용 이벤트 — 프런트가 묶어 보낸다. type: view | leave | action | open (종류는 스펙에 먼저 추가)
+    CREATE TABLE IF NOT EXISTS usage_events (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts            TEXT NOT NULL,        -- UTC ISO
+        session       TEXT,
+        type          TEXT NOT NULL,
+        name          TEXT NOT NULL,        -- 라우트 패턴 또는 동작 이름
+        ref           TEXT,                 -- 직전 화면 패턴(view)
+        entity        TEXT,                 -- 티커·종목코드·id
+        dwell_ms      INTEGER               -- leave: 보이는 동안 머문 시간
+    );
+    CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_usage_events_type ON usage_events(type, name);
+    -- 즉시 경고 상태 — 상태가 바뀔 때만 보내려고(같은 경고는 하루 1회)
+    CREATE TABLE IF NOT EXISTS alert_state (
+        key           TEXT PRIMARY KEY,     -- 'job_streak:pf_intraday' 등
+        active        INTEGER NOT NULL,
+        detail        TEXT,
+        changed_at    TEXT,
+        sent_at       TEXT
+    );
+
     -- 화면 API 오류 기록 — 프런트 응답 래퍼가 보고(계약 위반·5xx·timeout·네트워크). 같은 API·필드·종류는 한 행
     CREATE TABLE IF NOT EXISTS client_errors (
         signature     TEXT PRIMARY KEY,

@@ -1,4 +1,5 @@
 import { toApiError } from '@/api/errors'
+import { track } from "@/lib/usage"
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, Globe, LoaderCircle, RefreshCw } from 'lucide-react'
@@ -23,6 +24,7 @@ function useBuildProfile(code: string, market: 'kr' | 'us') {
   const client = useQueryClient()
   return useMutation({
     mutationFn: async (body: { reason?: string; force?: boolean }) => {
+      track('action', 'overview.make', { entity: code })
       try { return (await api.post<{ profile: CompanyWebProfile; reused: boolean; reuse_hours: number }>(`/api/spine/company-profile/${code}`, body, { params: { market }, timeout: 180_000 })).data }
       catch (error) {
         throw toApiError(error)
