@@ -15,10 +15,9 @@ import { Bullets, Cols, CoreBadge, Meta, Pp, SHORT_REASON, Section, VERDICT, Ver
 import type { CoreReason, EvalVerdict, SeasonItem, SeasonOverview } from "@/types"
 
 /** 종목 → 콜 상세(?t=). 녹취록이 없으면 굵은 글자만 */
+/** 종목 → 회사 상세(도시에: 무슨 회사·차트·기술적 분석·실적 발표 카드). 반응 한 줄은 콜 상세로 */
 function Ticker({ it }: { it: Pick<SeasonItem, "ticker" | "transcript_id" | "name"> }) {
-  return it.transcript_id
-    ? <Link to={`/follow/transcripts?t=${it.transcript_id}`} className="font-semibold hover:underline" title={it.name ?? undefined}>{it.ticker}</Link>
-    : <span className="font-semibold" title={it.name ?? undefined}>{it.ticker}</span>
+  return <Link to={`/us/${it.ticker}`} className="font-semibold hover:underline" title={it.name ? `${it.name} — 회사 상세` : "회사 상세"}>{it.ticker}</Link>
 }
 
 export function SeasonView() {
@@ -33,6 +32,29 @@ function SeasonBody({ d, season }: { d: SeasonOverview; season: string | null })
   return (
     <div className="space-y-4">
       <Header d={d} />
+      {/* 시장이 무엇에 돈을 냈나가 먼저 — 실망 목록보다 중요(2026-10-31) */}
+      <Cols>
+        <Section title="반응이 좋았던 발표" note="첫 거래일 업종 ETF 대비 높은 순">
+          {d.top_up.length ? <Bullets items={d.top_up.map((it) => <>
+            <Ticker it={it} /> <span className="text-muted-foreground">{it.sector_name}</span> · <Pp v={it.d1} />
+            {it.latest != null && it.latest_date && it.latest !== it.d1 && <> → <Pp v={it.latest} /></>}
+            {it.follow && <span className="text-muted-foreground"> · {it.follow}</span>}
+            {it.eps_surprise != null && <span className="text-caption text-muted-foreground"> · EPS {formatPercent(it.eps_surprise)}</span>}
+            {it.headline && (it.transcript_id
+              ? <Link to={`/follow/transcripts?t=${it.transcript_id}`} className="block text-caption text-muted-foreground hover:text-foreground hover:underline">{it.headline}</Link>
+              : <span className="block text-caption text-muted-foreground">{it.headline}</span>)}
+          </>)} /> : <Meta>첫 거래일에 업종보다 강했던 발표가 아직 없습니다.</Meta>}
+          <Meta>%p = 발표 후 첫 거래일까지 업종 ETF 대비 → 최근 거래일까지 누적. 종목을 누르면 회사 상세, 한 줄 요약을 누르면 콜 상세.</Meta>
+        </Section>
+        <Section title="실적은 아쉬웠는데 주가는 올랐다" note="EPS 컨센서스 하회 · 첫 거래일 업종 대비 상승">
+          {d.miss_up.length ? <Bullets items={d.miss_up.map((it) => <>
+            <Ticker it={it} /> EPS <span className="tabular-nums text-down">{formatPercent(it.eps_surprise)}</span> 하회 → <Pp v={it.d1} />
+            {it.follow && <span className="text-muted-foreground"> · {it.follow}</span>}
+            {it.eps_surprise != null && Math.abs(it.eps_surprise) > 200 && <span className="text-caption text-muted-foreground"> (EPS 숫자 왜곡 가능)</span>}
+          </>)} /> : <Meta>EPS가 컨센서스에 못 미쳤는데 업종보다 강했던 발표가 아직 없습니다.</Meta>}
+          <Meta>악재가 이미 주가에 반영됐거나, 시장이 숫자 말고 다른 것(가이던스·수주·구조 변화)을 본 경우. EPS는 GAAP·조정 기준이 섞여 참고용.</Meta>
+        </Section>
+      </Cols>
       <SectorList d={d} season={season} />
       <Cols>
         <Section title="실적은 좋았는데 주가는 약했다">
@@ -74,6 +96,8 @@ function Header({ d }: { d: SeasonOverview }) {
     <Section title={d.season.label} note={`${mmdd(d.season.start)}부터 · 매일 07:20 갱신`}>
       <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
         <span>발표 <b className="text-[15px] tabular-nums text-foreground">{c.reported}</b> / {c.followed}</span>
+        <span>첫 거래일 업종보다 강했다 <b className="text-[15px] tabular-nums text-up">{c.up}</b> / {c.reported}</span>
+        <span>컨센서스 하회에도 주가 강세 <b className="text-[15px] tabular-nums text-up">{c.miss_up}</b> / {c.miss}</span>
         <span>컨센서스 상회에도 주가 약세 <b className="text-[15px] tabular-nums text-down">{c.beat_down}</b> / {c.beat}</span>
         <span>첫 반응이 뒤집힘 <b className="text-[15px] tabular-nums text-foreground">{c.reversed}</b></span>
         <span>반응 정리 <b className="text-[15px] tabular-nums text-foreground">{c.reactions}</b> (확정 {c.reactions_final})</span>

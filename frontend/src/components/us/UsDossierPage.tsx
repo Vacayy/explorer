@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import type { StockPriceItem } from '@/types'
 import { LensView } from '@/components/lens/LensPage'
 import { UsPriceCollect } from '@/components/us/UsPriceCollect'
+import { UsEarningsCard } from '@/components/us/UsEarningsCard'
 
 const EMPTY_PRICES: StockPriceItem[] = []
 
@@ -95,7 +96,7 @@ export default function UsDossierPage() {
             <div className="mt-2 flex gap-3 text-xs">
               {d.latest_transcript && (
                 <Link
-                  to="/follow/transcripts"
+                  to={`/follow/transcripts?t=${d.latest_transcript.id}`}
                   className="text-primary hover:underline"
                 >
                   최근 컨콜 {d.latest_transcript.fiscal_year}{' '}
@@ -115,6 +116,7 @@ export default function UsDossierPage() {
             <CompanyOverview stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다. SEC 10-K·IR·뉴스를 웹에서 조사해 개요를 만들 수 있습니다.</p>} />
           </CardContent>
         </Card>
+        {typeof d.latest_transcript?.id === 'number' && <UsEarningsCard transcriptId={d.latest_transcript.id} />}
         <nav aria-label="기업 상세" className="flex gap-2">
           {[
             ['overview', '개요'],

@@ -166,7 +166,7 @@ function Companies({ companies }: { companies: SectorDetail["companies"] }) {
         <div className="flex flex-col">
           {companies.map((c) => (
             <div key={c.ticker} className="grid grid-cols-[60px_1fr_auto] items-baseline gap-x-3 border-t py-2.5 first:border-t-0">
-              <span className="font-semibold" title={c.name ?? undefined}>{c.ticker}</span>
+              <Link to={`/us/${c.ticker}`} className="font-semibold hover:underline" title={c.name ? `${c.name} — 회사 상세` : "회사 상세"}>{c.ticker}</Link>
               <div className="min-w-0 space-y-0.5">
                 {c.status === "reported" ? <>
                   <p className="text-caption text-muted-foreground">

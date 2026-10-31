@@ -1007,7 +1007,7 @@ export interface Expectation {
 }
 
 export interface SeasonItem {
-  ticker: string; name: string | null; sector: string; event_date: string; fiscal: string
+  ticker: string; name: string | null; sector: string; sector_name: string; event_date: string; fiscal: string
   transcript_id: number | null; reaction: "interim" | "final" | null; core: CoreReason[]
   eps_surprise: number | null; headline: string | null; interpretation: string | null
   d1?: number | null; d7?: number | null; d30?: number | null; latest?: number | null; latest_date?: string | null
@@ -1020,10 +1020,11 @@ export interface SeasonSectorRow {
 }
 export interface SeasonOverview {
   season: { key: string; label: string; start: string; is_current: boolean }
-  counts: { followed: number; reported: number; beat: number; beat_down: number; reversed: number; reactions: number; reactions_final: number }
+  counts: { followed: number; reported: number; beat: number; beat_down: number; reversed: number; reactions: number; reactions_final: number
+    up: number; miss: number; miss_up: number }   // up = 첫 거래일 업종 ETF보다 강했다, miss_up = EPS 하회인데 강했다
   changes: { reactions: string[]; themes: string[]; expectations: string[]; transcripts: string[] }
   last_run: string | null
-  sectors: SeasonSectorRow[]; beat_down: SeasonItem[]; reversed: SeasonItem[]; upcoming: SeasonItem[]
+  sectors: SeasonSectorRow[]; top_up: SeasonItem[]; miss_up: SeasonItem[]; beat_down: SeasonItem[]; reversed: SeasonItem[]; upcoming: SeasonItem[]
   evals: { hit: number; underweighted: number; noise: number; missed: number; cases: { ticker: string; issue: string; verdict: EvalVerdict }[] }
   core: { criteria: Record<CoreReason, string>; tickers: { ticker: string; name: string | null; reasons: CoreReason[] }[] }
   reported: SeasonItem[]
@@ -1621,3 +1622,6 @@ export interface PricingResponse {
   claims: PricingClaim[]
   summary: Record<'new' | 'stronger' | 'weaker' | 'faded', string[]>
 }
+
+/** GET /api/spine/admin/runtime — 실행 중인 백엔드가 최신 코드인가(재시작 필요 감지) */
+export interface RuntimeStatus { started_at: string; code_changed_at: string | null; changed_file: string | null; stale: boolean; stale_minutes: number }

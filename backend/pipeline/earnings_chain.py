@@ -665,6 +665,11 @@ def season_overview(season: str | None = None) -> dict:
                             "tickers": [{"ticker": i["ticker"], "d1": i["d1"]} for i in sorted(items, key=lambda i: -(fs[i["ticker"]]["market_cap"] or 0))][:5],
                             "dc_chain": key in DC_CHAIN})
     sector_rows.sort(key=lambda r: (-(r["verdict"] is not None), -r["n_reported"]))
+    for i in reported + upcoming:
+        i["sector_name"] = sector_name(i["sector"])
+    # 반응이 좋았던 발표가 시즌 화면의 맨 위 — 시장이 무엇에 돈을 냈나(2026-10-31 사용자: 실망 목록보다 더 중요)
+    top_up = sorted([i for i in reported if (i["d1"] or 0) > 0], key=lambda i: -i["d1"])[:10]
+    miss_up = sorted([i for i in reported if (i["eps_surprise"] or 0) < 0 and (i["d1"] or 0) > 0], key=lambda i: -i["d1"])[:8]
     beat_down = sorted([i for i in reported if (i["eps_surprise"] or 0) > 0 and (i["d1"] or 0) < 0], key=lambda i: i["d1"])[:8]
     reversed_ = [i for i in reported if i["follow"] in ("반전", "되돌림")]
     reversed_.sort(key=lambda i: -abs((i["d1"] or 0) - (i["latest"] or 0)))
@@ -694,10 +699,12 @@ def season_overview(season: str | None = None) -> dict:
     beat_n = sum(1 for i in reported if (i["eps_surprise"] or 0) > 0)
     return {"season": {"key": season, "label": s["label"], "start": s["start"], "is_current": season == cur["key"]},
             "counts": {"followed": len(fs), "reported": len(reported), "beat": beat_n, "beat_down": sum(1 for i in reported if (i["eps_surprise"] or 0) > 0 and (i["d1"] or 0) < 0),
-                       "reversed": sum(1 for i in reported if i["follow"] == "반전"), "reactions": sum(1 for i in reported if i["reaction"]),
+                       "reversed": sum(1 for i in reported if i["follow"] == "반전"),
+                       "up": sum(1 for i in reported if (i["d1"] or 0) > 0), "miss": sum(1 for i in reported if (i["eps_surprise"] or 0) < 0),
+                       "miss_up": len([i for i in reported if (i["eps_surprise"] or 0) < 0 and (i["d1"] or 0) > 0]), "reactions": sum(1 for i in reported if i["reaction"]),
                        "reactions_final": sum(1 for i in reported if i["reaction"] == "final")},
             "changes": changes, "last_run": last_run,
-            "sectors": sector_rows, "beat_down": beat_down, "reversed": reversed_[:8],
+            "sectors": sector_rows, "top_up": top_up, "miss_up": miss_up, "beat_down": beat_down, "reversed": reversed_[:8],
             "upcoming": sorted(upcoming, key=lambda i: i["event_date"])[:12],
             "evals": evals, "core": {"criteria": CORE_REASONS, "tickers": core_rows},
             "reported": reported}
