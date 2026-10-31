@@ -48,8 +48,8 @@ DEFAULT_FOLLOWS = [
     ("PLTR", "Palantir", "software"),
 ]
 
-# Alpha Vantage 트랜스크립트 미커버 종목 (D-081) — 해외 발행사(ADR). 신규 설치 시 active=0으로
-# 수집 대상에서 제외(예산 낭비 방지). 팔로우 기록은 유지 — 나중에 유료 소스 붙이면 재활성.
+# Alpha Vantage 트랜스크립트 미커버 종목 (D-081) — 해외 발행사(ADR). AV 요청에서만 뺀다(예산 낭비 방지).
+# 실적 발표는 SEC 6-K로, 녹취록은 Motley Fool로 받는다(2026-10-30, 전엔 팔로우째 비활성).
 AV_UNCOVERED = {"ASML", "TSM"}
 
 
@@ -168,8 +168,6 @@ def seed_default_follows() -> int:
             (ticker, name, group),
         )
         n += cur.rowcount
-    # AV 미커버(해외 발행사)는 수집 대상에서 제외 (D-081)
-    conn.executemany("UPDATE transcript_follow SET active=0 WHERE ticker=?", [(t,) for t in AV_UNCOVERED])
     conn.commit()
     conn.close()
     return n
@@ -704,12 +702,14 @@ def _event_targets(companies: list[dict]) -> dict[str, list[dict]]:
             "SELECT DISTINCT er.filing_date FROM earnings_releases er JOIN raw_documents rd ON rd.id=er.doc_id WHERE er.ticker=? "
             "AND (rd.markdown LIKE '%revenue%' OR rd.markdown LIKE '%sales%') AND (rd.markdown LIKE '%per share%' OR rd.markdown LIKE '%diluted%') "
             "ORDER BY er.filing_date DESC", (f["ticker"],))]
-        seen, targets = set(), []
+        # 같은 분기에 실적 공시가 여럿이면 가장 이른 것이 발표일이다 — TSMC는 실적 발표(7/16) 한 달 뒤
+        # 재무제표 6-K(8/14)를 또 내서, 늦은 쪽을 쓰면 발표일·반응 창이 한 달 밀린다(2026-10-30)
+        first: dict[tuple[int, int], str] = {}
         for d in dates:
             fy, q = fiscal_label(d, fye[0])
-            if (fy, q) not in seen:
-                seen.add((fy, q))
-                targets.append({"year": fy, "quarter": q, "date": d})
+            first[(fy, q)] = min(d, first.get((fy, q), d))
+        targets = [{"year": fy, "quarter": q, "date": d}
+                   for (fy, q), d in sorted(first.items(), key=lambda kv: kv[1], reverse=True)]
         if targets:
             out[f["ticker"]] = targets
     conn.close()
@@ -766,8 +766,8 @@ def collect_roundrobin(request_budget: int = 24, ranks: int = 12, sleep_s: float
     by = {f["ticker"]: f for f in companies}
     used, stored, empty, skip_cache = 0, 0, 0, 0
     planned: list[str] = []
-    for tk, q in visit_order([f["ticker"] for f in companies], per):   # 이번 시즌 먼저, 그다음 백필
-        f = by[tk]
+    for tk, q in visit_order([f["ticker"] for f in companies if f["ticker"] not in AV_UNCOVERED], per):   # 이번 시즌 먼저, 그다음 백필
+        f = by[tk]   # AV 미커버(해외 발행사)는 Motley Fool로만 받는다
         period = f"Q{q['quarter']}"
         if (q["year"], period) in existing.get(tk, ()):
             continue               # 저장됨 — 요청 없이 스킵
@@ -837,6 +837,54 @@ def collect_and_process(budget: int = 22, only: list[str] | None = None) -> dict
     px = extract_proxies()                          # 관찰 프록시 트래킹 (haiku, 멱등)
     print(f"[transcript] 프록시 추출 {px.get('extracted', 0)}건")
     return {**r, "digested": n, "proxies": px.get("extracted", 0)}
+
+
+def check_latest(ticker: str) -> dict:
+    """한 종목의 가장 최근 실적 발표를 지금 조사한다 — SEC 8-K 실적 발표와 yfinance 발표일을 다시 읽고,
+    그 분기 녹취록이 저장됐는지, 없으면 Motley Fool에 올라왔는지 본다. AV 한도는 쓰지 않는다.
+    (SEC 8-K는 매일 07:20 일괄 수집이라 그 사이 발표는 수집 대상 분기에 안 잡혔다.)"""
+    from pipeline import fool_transcripts, sec_filings
+    conn = get_connection()
+    row = conn.execute("SELECT ticker, company_name, entity_id FROM transcript_follow WHERE ticker=?", (ticker,)).fetchone()
+    if not row:
+        conn.close()
+        raise LookupError("팔로우하지 않는 종목입니다")
+    f = dict(row)
+    sec_error = None
+    try:
+        st = sec_filings.collect(conn, [f])
+        if st["errors"] or st["no_cik"]:
+            sec_error = "; ".join(st["errors"]) or "SEC에서 회사 번호(CIK)를 찾지 못했습니다"
+    except sec_filings.SecNotConfigured as e:
+        sec_error = f"SEC 연락처(.env SEC_USER_AGENT)가 없습니다: {e}"
+    finally:
+        conn.close()
+    refresh_calendar([ticker], max_age_hours=0)
+    latest = (_event_targets([f]).get(ticker) or [None])[0]   # 최신 발표순
+    conn = get_connection()
+    cal = conn.execute("SELECT last_report_date, next_report_date FROM transcript_calendar WHERE ticker=?", (ticker,)).fetchone()
+    fye = (conn.execute("SELECT fiscal_year_end FROM transcript_follow WHERE ticker=?", (ticker,)).fetchone() or [None])[0]
+    have = None
+    if latest:
+        have = conn.execute("SELECT id FROM transcripts WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
+                            (ticker, latest["year"], f"Q{latest['quarter']}")).fetchone()
+    conn.close()
+    fool = None
+    if latest and not have:
+        try:
+            c = fool_transcripts.pick(fool_transcripts.transcript_links(ticker), latest["year"], latest["quarter"], latest["date"])
+            fool = {"available": bool(c), "url": c["url"] if c else None}
+        except Exception as e:  # noqa: BLE001 — 확인 실패는 사유로 돌려준다
+            fool = {"available": None, "error": f"{type(e).__name__}: {str(e)[:80]}"}
+    return {
+        "ticker": ticker,
+        "latest_release": {"date": latest["date"], "fiscal_year": latest["year"], "fiscal_period": f"Q{latest['quarter']}",
+                           "cy": cy_label(latest["year"], f"Q{latest['quarter']}", fye)} if latest else None,
+        "calendar": {"last_report_date": cal["last_report_date"], "next_report_date": cal["next_report_date"]} if cal else None,
+        "transcript_id": have["id"] if have else None,
+        "fool": fool,
+        "sec_error": sec_error,
+    }
 
 
 def collect_fresh() -> dict:
