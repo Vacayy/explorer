@@ -1,3 +1,4 @@
+import { getJson, postJson } from "@/api/query"
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { EventType } from '@ag-ui/core'
@@ -14,17 +15,9 @@ export type ThreadTurn = AnalysisRun & { parent_run_id: string | null }
 export interface AnalysisThread { root_id: string; items: ThreadTurn[] }
 
 async function request<T>(path = '', body?: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${ROOT}${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
-  })
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new Error(typeof data?.detail === 'string' ? data.detail : `요청을 처리하지 못했습니다 (${response.status}).`)
-  }
-  return response.json() as Promise<T>
+  return body === undefined
+    ? getJson<T>(`${ROOT}${path}`, undefined, { signal })
+    : postJson<T>(`${ROOT}${path}`, body, { signal })
 }
 
 export function analysisArtifactUrl(runId: string, artifactId: string) {

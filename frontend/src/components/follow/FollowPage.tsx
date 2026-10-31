@@ -431,7 +431,7 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
 
 /* ── 유튜브 (채널 구독 + 영상 링크 단건) ── */
 
-interface YtChannel { channel_id: string; title: string | null; handle: string | null; is_active: boolean }
+export interface YtChannel { channel_id: string; title: string | null; handle: string | null; is_active: boolean }
 
 function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
   const qc = useQueryClient()

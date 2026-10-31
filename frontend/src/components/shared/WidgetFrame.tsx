@@ -1,3 +1,4 @@
+import { toApiError } from "@/api/errors"
 import type { KeyboardEvent, ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { GripVertical, Maximize2, MoreHorizontal, X } from "lucide-react"
@@ -62,11 +63,11 @@ export function WidgetFrame({ title, asOf, stale, detailPath, onRemove, onOpen, 
 
 /** 위젯 본문 공통 상태 — 로딩·오류·빈 상태 (5-state) */
 export function WidgetState({ loading, error, empty, onRetry, emptyText = "표시할 데이터가 아직 없어요" }: {
-  loading?: boolean; error?: boolean; empty?: boolean; onRetry?: () => void; emptyText?: string
+  loading?: boolean; error?: unknown; empty?: boolean; onRetry?: () => void; emptyText?: string
 }) {
-  if (loading) return <div className="space-y-2"><Skeleton className="h-7 w-1/2" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>
-  if (error) return <div className="space-y-2 text-sm text-muted-foreground"><p>불러오지 못했어요.</p>{onRetry && <Button variant="outline" size="sm" onClick={onRetry}>다시 시도</Button>}</div>
-  if (empty) return <p className="text-sm text-muted-foreground">{emptyText}</p>
+  if (loading) return <div role="status" aria-label="데이터 불러오는 중" aria-busy="true" className="space-y-2"><Skeleton className="h-7 w-1/2" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>
+  if (error) return <div role="alert" className="space-y-2 text-sm text-muted-foreground"><p>{error === true ? "불러오지 못했어요." : toApiError(error).message}</p>{onRetry && <Button variant="outline" size="sm" onClick={onRetry}>다시 시도</Button>}</div>
+  if (empty) return <p role="status" className="text-sm text-muted-foreground">{emptyText}</p>
   return null
 }
 

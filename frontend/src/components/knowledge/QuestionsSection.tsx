@@ -34,7 +34,7 @@ export interface QTree {
   divergence: string | null; verdict_summary: string | null; sub_questions: QSub[]
   scenario?: QScenario | null; source_doc?: { id: number; title: string | null; source_type: string } | null
 }
-interface QListItem {
+export interface QListItem {
   id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null
   divergence: string | null; verdict_summary: string | null; sub_count: number; updated_at: string
   conviction: number | null; created_by: string; source_doc_id: number | null; stock_code: string | null
@@ -206,9 +206,9 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
   const refresh = () => { qc.invalidateQueries({ queryKey: proposedKey }); onDone() }
 
   const propose = useMutation({
-    mutationFn: () => api.post("/api/spine/questions/propose"),
+    mutationFn: () => api.post<{ proposed: number }>("/api/spine/questions/propose"),
     onSuccess: (r) => {
-      const n = (r.data as { proposed: number }).proposed
+      const n = r.data.proposed
       toast.success(n ? `지배 내러티브에서 질문 후보 ${n}개 도출` : "새 후보 없음 — 이미 다 제안됨")
       refresh()
     },
@@ -397,7 +397,7 @@ interface ProxyObs {
   observed_at: string | null; value_num: number | null; value_text: string | null
   direction: string | null; confidence: number | null; source: { doc_id: number | null; label: string } | null
 }
-interface ProxyDetail {
+export interface ProxyDetail {
   id: number; label: string; modality: string; yes_direction: string | null; unit: string | null
   tickers: string | null; extract_hint: string | null; sub_question_text: string | null
   question_id: number | null; question_text: string | null; observations: ProxyObs[]

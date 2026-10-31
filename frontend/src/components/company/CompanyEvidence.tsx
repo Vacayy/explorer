@@ -38,7 +38,7 @@ export interface EvidenceItem {
   status: 'within' | 'after' | 'uncertain'
   relation: string
 }
-interface EvidenceResponse {
+export interface EvidenceResponse {
   items: EvidenceItem[]
   total: number
   page: number
@@ -108,7 +108,8 @@ export function CompanyEvidence({
     setSp(
       (prev) => {
         const n = new URLSearchParams(prev)
-        value ? n.set(key, value) : n.delete(key)
+        if (value) n.set(key, value)
+        else n.delete(key)
         if (key !== 'page') n.delete('page')
         return n
       },

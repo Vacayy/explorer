@@ -15,7 +15,7 @@ interface SourceDoc {
   id: number; source_type: string; channel: string | null; title: string | null; published_at: string | null
   url: string | null; chars: number; excerpt: string; thin: boolean
 }
-interface EdgeSourceDetail {
+export interface EdgeSourceDetail {
   edge_id: number; from: string; to: string; status: SourceStatus; quote: string | null
   epistemic_type: string | null; confidence: number | null; mechanism: string | null
   doc: SourceDoc | null

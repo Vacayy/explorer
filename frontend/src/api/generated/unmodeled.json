@@ -1,0 +1,302 @@
+[
+  {
+    "method": "get",
+    "path": "/api/analysis/runs/{run_id}/artifacts/{artifact_id}",
+    "status": 200
+  },
+  {
+    "method": "get",
+    "path": "/api/analysis/runs/{run_id}/events",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/business/{stock_code}/segments",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/business/segments/{segment_id}",
+    "status": 200
+  },
+  {
+    "method": "put",
+    "path": "/api/business/segments/{segment_id}",
+    "status": 200
+  },
+  {
+    "method": "get",
+    "path": "/api/consensus/{stock_code}",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/dashboard/boards/{bid}",
+    "status": 200
+  },
+  {
+    "method": "get",
+    "path": "/api/health",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/industries/{group_id}/fetch-prices",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/ir-notes/{note_id}",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/portfolio/principles/{principle_id}",
+    "status": 200
+  },
+  {
+    "method": "patch",
+    "path": "/api/portfolio/principles/{principle_id}",
+    "status": 200
+  },
+  {
+    "method": "put",
+    "path": "/api/portfolio/principles/{principle_id}",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/portfolio/transactions/{tx_id}",
+    "status": 200
+  },
+  {
+    "method": "get",
+    "path": "/api/signals",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/admin/flag",
+    "status": 200
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/conversations/{conversation_id}/stream",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/doc/{doc_id}/claims",
+    "status": 202
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/doc/{doc_id}/digest",
+    "status": 202
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/follows/{entity_id}",
+    "status": 204
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/groups/{group_id}",
+    "status": 204
+  },
+  {
+    "method": "patch",
+    "path": "/api/spine/groups/{group_id}",
+    "status": 200
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/groups/{group_id}/evaluations",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/indices/snapshot",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/keywords/{keyword_id}",
+    "status": 204
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/knowledge/items/{knowledge_id}",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/knowledge/items/{knowledge_id}/reject",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/macro/snapshot",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/market-regime/snapshot",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/proxy-boards/{board_id}",
+    "status": 204
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/proxy-boards/{board_id}/items/{proxy_id}",
+    "status": 204
+  },
+  {
+    "method": "put",
+    "path": "/api/spine/proxy-boards/{board_id}/items/order",
+    "status": 204
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/questions/{question_id}",
+    "status": 204
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/questions/{question_id}/approve",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/questions/{question_id}/rollup",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/questions/{question_id}/scenario",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/questions/{question_id}/synthesis/compute",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/questions/from-doc",
+    "status": 200
+  },
+  {
+    "method": "put",
+    "path": "/api/spine/regimes/checks/{key}",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/research/candidates/{candidate_id}/dismiss",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/saved/{item_id}",
+    "status": 204
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/sources/collect",
+    "status": 200
+  },
+  {
+    "method": "patch",
+    "path": "/api/spine/sources/youtube/{channel_id}",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/studies/{study_id}/actions/{action_id}/cancel",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/studies/{study_id}/actions/{action_id}/recover",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/studies/{study_id}/actions/resume",
+    "status": 200
+  },
+  {
+    "method": "patch",
+    "path": "/api/spine/studies/{study_id}/annotations/{annotation_id}",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/studies/{study_id}/ask",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/study-projects/{pid}/ask",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/tracker/{code}/prepare",
+    "status": 200
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/tracker/conditions/{cid}",
+    "status": 200
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/trade/{hs_code}/metrics",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/trade/follow",
+    "status": 201
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/trade/seed",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/calendar/refresh",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/collect",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/follow",
+    "status": 201
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/proxies",
+    "status": 201
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/proxies/extract",
+    "status": 200
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/seed",
+    "status": 200
+  }
+]

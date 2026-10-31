@@ -1,3 +1,7 @@
+import { ActiveQueryStatus } from "@/components/shared/ActiveQueryStatus"
+import { toast } from "sonner"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { QueryState } from "@/components/shared/QueryState"
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -85,7 +89,9 @@ import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
 
 // Research
 
-const queryClient = createQueryClient()
+const queryClient = createQueryClient((error, { background }) => {
+  toast.error(error.message, { id: `api-${error.message}`, description: background ? '최신 데이터 갱신에 실패했습니다.' : undefined })
+})
 
 /** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭, 문서 검색은 소스 탭 */
 function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null, homeBoards: readonly HomeBoard[] = []) {
@@ -160,9 +166,10 @@ function Layout() {
               >
                 {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context}
                   trailing={subNav.home && <Button variant="ghost" size="sm" className="h-7 shrink-0 text-[13px] text-muted-foreground" onClick={() => setCreatingBoard(true)}><Plus className="size-3.5" />새 메뉴</Button>} />}
+                <ActiveQueryStatus />
                 <NewBoardDialog open={creatingBoard} onOpenChange={setCreatingBoard} />
                 {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
-                <Outlet />
+                <ErrorBoundary key={pathname + search} onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><Outlet /></ErrorBoundary>
               </div>
             </SidebarInset>
             {showAi && panelInline && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
@@ -189,11 +196,12 @@ function Layout() {
 function AnalyzePage({ tab }: { tab: string }) {
   const { stockCode } = useParams<{ stockCode: string }>()
   const { search } = useLocation()
-  const { data: company, isLoading } = useCompany(stockCode ?? null)
+  const companyQuery = useCompany(stockCode ?? null)
+  const { data: company } = companyQuery
   const sourceRun = new URLSearchParams(search).get('source_run')
 
   if (!stockCode) return null
-  if (isLoading) return <div className="text-center py-20 text-muted-foreground">로딩 중...</div>
+  if (company === undefined) return <QueryState query={companyQuery}>{() => null}</QueryState>
   if (!company) return sourceRun
     ? <PageLayout header={<PageHeader title={stockCode} description="기업 기초정보 미확인 · 저장된 발견 근거" />}><DiscoveryTechnicalContext runId={sourceRun} code={stockCode} original currentUnavailable="기업 기초정보를 찾지 못해 현재 기업 분석을 열 수 없습니다. 발견 당시 저장된 차트와 판정은 아래에서 확인할 수 있습니다." /></PageLayout>
     : <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
@@ -229,7 +237,7 @@ function AskRedirect() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <ErrorBoundary onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
             {/* Default */}
@@ -329,7 +337,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </BrowserRouter></ErrorBoundary>
     </QueryClientProvider>
   )
 }

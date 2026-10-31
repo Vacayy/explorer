@@ -1,3 +1,5 @@
+import { useQueryClient } from "@tanstack/react-query"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { useMemo, useRef, useState } from "react"
 import ReactGridLayout, { useContainerWidth, type Compactor, type EventCallback, type LayoutItem } from "react-grid-layout"
 import "react-grid-layout/css/styles.css"
@@ -313,7 +315,7 @@ function BoardMenu({ menu }: { menu: HomeBoard }) {
   </>
 }
 
-function WidgetItem({ defId, w, fine, params, onRemove, onOpen }: { defId: string; w: number; fine: number; params?: Record<string, unknown>; onRemove: () => void; onOpen?: () => void }) {
+function WidgetContent({ defId, w, fine, params, onRemove, onOpen }: { defId: string; w: number; fine: number; params?: Record<string, unknown>; onRemove: () => void; onOpen?: () => void }) {
   const def = WIDGET_BY_ID[defId]
   const meta = def.useMeta(params)
   const h = coarseH(fine)
@@ -323,4 +325,9 @@ function WidgetItem({ defId, w, fine, params, onRemove, onOpen }: { defId: strin
       <def.Body w={w} h={h} params={params} />
     </WidgetFrame>
   )
+}
+
+function WidgetItem(props: React.ComponentProps<typeof WidgetContent>) {
+  const client = useQueryClient()
+  return <ErrorBoundary key={props.defId} onReset={() => { void client.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><WidgetContent {...props} /></ErrorBoundary>
 }

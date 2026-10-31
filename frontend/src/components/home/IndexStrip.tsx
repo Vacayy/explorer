@@ -25,7 +25,7 @@ interface IndexRow {
   lagging: boolean            // 다른 지수는 갱신됐는데 이것만 옛 값 = 이 지수만 수집 실패
 }
 
-interface IndicesResponse {
+export interface IndicesResponse {
   as_of: string | null
   items: IndexRow[]
   degraded: string[]

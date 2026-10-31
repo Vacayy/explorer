@@ -220,7 +220,7 @@ export default function UniversePage() {
 
 /* ── 이 섹터의 내러티브 (섹터 집약 뷰, D-074 Phase 1) — 파편화된 topic 내러티브가 섹터 단위로 모임 ── */
 
-interface SectorNarr {
+export interface SectorNarr {
   id: number; topic: string; title: string | null; co_docs: number; relevance: number
 }
 

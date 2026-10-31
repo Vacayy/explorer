@@ -22,7 +22,7 @@ import {
  */
 
 interface SearchCompany { stock_code: string; name: string; market: string | null; sector: string | null; close: number | null; change_pct: number | null; market_cap: number | null; in_groups: string[]; alias?: string | null }
-interface SearchResponse {
+export interface SearchResponse {
   query: string
   companies: SearchCompany[]
   us: { ticker: string; name: string; group_label: string | null }[]
@@ -32,7 +32,7 @@ interface SearchResponse {
   mentions: { id: number; type: string; name: string; stock_code: string | null }[]
   choseong: boolean
 }
-interface TodaySignal { stock_code: string; name: string; label: string; group_id: number; group_name: string; as_of: string }
+export interface TodaySignal { stock_code: string; name: string; label: string; group_id: number; group_name: string; as_of: string }
 
 const PAGES = [
   { label: "종목 발견", hint: "자연어 검색·전략·기업 조사", to: "/discover", icon: ScanSearch, keywords: "discover screening 스크리닝 전략 시장 분석 검색", pinned: true },
@@ -56,7 +56,7 @@ type Intent = "empty" | "code" | "ticker" | "choseong" | "name" | "sentence"
 function classify(q: string): Intent {
   if (!q) return "empty"
   if (/^\d{6}$/.test(q)) return "code"
-  if (/^[A-Z][A-Z0-9.\-]{0,5}$/.test(q)) return "ticker"
+  if (/^[A-Z][A-Z0-9.-]{0,5}$/.test(q)) return "ticker"
   if (/^[ㄱ-ㅎ]+$/.test(q)) return "choseong"
   if (/(찾아줘|추려줘|골라줘|보여줘|알려줘|뭐야|왜|어때|\?)$/.test(q) || q.split(/\s+/).length >= 3) return "sentence"
   return "name"

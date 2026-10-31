@@ -113,8 +113,8 @@ export async function fetchHome(): Promise<HomeResponse> {
   return data;
 }
 
-export async function fetchSpineFeed(params: SpineFeedParams): Promise<SpineFeedResponse> {
-  const { data } = await api.get<SpineFeedResponse>("/api/spine/feed", { params });
+export async function fetchSpineFeed(params: SpineFeedParams, signal?: AbortSignal): Promise<SpineFeedResponse> {
+  const { data } = await api.get<SpineFeedResponse>("/api/spine/feed", { params, signal });
   return data;
 }
 

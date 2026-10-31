@@ -13,7 +13,7 @@ import { Navigate, useParams } from "react-router-dom"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState } from "@/components/shared/ErrorState"
+import { QueryState } from "@/components/shared/QueryState"
 import Dashboard from "@/components/home/Dashboard"
 import { NewBoardDialog } from "@/components/home/NewBoardDialog"
 import { useHomeBoards } from "@/hooks/useDashboard"
@@ -35,18 +35,19 @@ function HomeMenu() {
   const { boardId } = useParams()
   const boards = useHomeBoards()
   const [creating, setCreating] = useState(false)
-  if (boards.isPending) return <div className="grid grid-cols-12 gap-3">{[12, 6, 6, 3, 3, 3, 3].map((w, n) => <Skeleton key={n} className="h-36 rounded-[var(--radius-card)]" style={{ gridColumn: `span ${w}` }} />)}</div>
-  if (boards.isError) return <ErrorState message="홈 메뉴를 불러오지 못했습니다." onRetry={() => void boards.refetch()} />
-  if (!boards.data.length) return <>
-    <div className="rounded-[var(--radius-card)] border border-dashed p-8 text-center text-sm text-muted-foreground">
-      <p>아직 메뉴가 없어요. 빈 메뉴나 시스템 프리셋에서 시작해 위젯을 골라 놓으세요.</p>
-      <Button className="mt-3" size="sm" onClick={() => setCreating(true)}><Plus className="size-3.5" />새 메뉴</Button>
-    </div>
-    <NewBoardDialog open={creating} onOpenChange={setCreating} />
-  </>
-  const menu = boardId ? boards.data.find(b => String(b.id) === boardId) : boards.data[0]
-  if (!menu) return <Navigate to="/home" replace />
-  return <Dashboard key={menu.id} menu={menu} />
+  const loading = <div className="grid grid-cols-12 gap-3">{[12, 6, 6, 3, 3, 3, 3].map((w, n) => <Skeleton key={n} className="h-36 rounded-[var(--radius-card)]" style={{ gridColumn: `span ${w}` }} />)}</div>
+  return <QueryState query={boards} loading={loading} isEmpty={() => false}>{data => {
+    if (!data.length) return <>
+      <div className="rounded-[var(--radius-card)] border border-dashed p-8 text-center text-sm text-muted-foreground">
+        <p>아직 메뉴가 없어요. 빈 메뉴나 시스템 프리셋에서 시작해 위젯을 골라 놓으세요.</p>
+        <Button className="mt-3" size="sm" onClick={() => setCreating(true)}><Plus className="size-3.5" />새 메뉴</Button>
+      </div>
+      <NewBoardDialog open={creating} onOpenChange={setCreating} />
+    </>
+    const menu = boardId ? data.find(b => String(b.id) === boardId) : data[0]
+    if (!menu) return <Navigate to="/home" replace />
+    return <Dashboard key={menu.id} menu={menu} />
+  }}</QueryState>
 }
 
 /** 홈 › 시장 브리핑 — 미국장·국장 전체 보기 (위젯 '전체 보기' 대상) */

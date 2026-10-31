@@ -1,3 +1,4 @@
+import { QueryState } from "@/components/shared/QueryState"
 import { Link, useSearchParams } from "react-router-dom"
 import { Markdown } from "@/components/shared/Markdown"
 import { Lightbulb, Loader2, MonitorPlay, Rss, Send } from "lucide-react"
@@ -25,104 +26,104 @@ export default function SourcePage() {
   const kind = searchParams.get("kind") ?? ""
   const key = searchParams.get("key") ?? ""
 
-  const { data, isLoading, isError, refetch } = useQuery(sourceDossierQuery(kind, key))
+  const query = useQuery(sourceDossierQuery(kind, key))
+  const { data } = query
   // 계산 쿼리: stale일 때만 발화. 결과 불변(staleTime ∞) — 재방문 시 즉시 표시.
   const summary = useQuery(sourceSummaryQuery(kind, key, !!data?.summary_stale))
   const refresher = useRefreshSource()
 
   if (!kind || !key) return <ErrorState message="소스 정보가 없습니다 (kind/key 필요)" />
-  if (isLoading) return <SourceSkeleton />
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
+  return <QueryState query={query} loading={<SourceSkeleton />} isEmpty={() => false}>{data => {
+    const stocks = data.top_entities.filter((e) => e.link_type === "stock")
+    const tags = data.top_entities.filter((e) => e.link_type !== "stock")
 
-  const stocks = data.top_entities.filter((e) => e.link_type === "stock")
-  const tags = data.top_entities.filter((e) => e.link_type !== "stock")
-
-  return (
-    <PageContainer width="reading" gap="sm">
-      {/* 헤더 */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          {data.kind === "telegram"
-            ? <Send className="h-4 w-4 text-muted-foreground" />
-            : data.kind === "youtube"
-            ? <MonitorPlay className="h-4 w-4 text-muted-foreground" />
-            : <Rss className="h-4 w-4 text-muted-foreground" />}
-          <h2 className="text-xl font-bold">{data.name}</h2>
-          {data.author && <span className="text-sm text-muted-foreground">{data.author}</span>}
-          <Badge variant="secondary" className="text-[10px]">
-            {data.kind === "telegram" ? "텔레그램" : data.kind === "youtube" ? "유튜브" : "블로그"}
-          </Badge>
-          {!data.is_active && <Badge variant="outline" className="text-[10px]">숨김 — 내 피드·답변 제외</Badge>}
-          {(data.kind === "telegram" || data.kind === "youtube" || data.kind === "blog") && (
-            <RefreshButton onClick={() => refresher.refresh(data.kind as RefreshKind, key, data.name)} pending={refresher.isRefreshing(data.kind as RefreshKind, key)} title="지금 수집 — 30분 체인을 기다리지 않고 이 소스의 새 글만 가져와 태깅합니다" />
-          )}
+    return (
+      <PageContainer width="reading" gap="sm">
+        {/* 헤더 */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            {data.kind === "telegram"
+              ? <Send className="h-4 w-4 text-muted-foreground" />
+              : data.kind === "youtube"
+              ? <MonitorPlay className="h-4 w-4 text-muted-foreground" />
+              : <Rss className="h-4 w-4 text-muted-foreground" />}
+            <h2 className="text-xl font-bold">{data.name}</h2>
+            {data.author && <span className="text-sm text-muted-foreground">{data.author}</span>}
+            <Badge variant="secondary" className="text-[10px]">
+              {data.kind === "telegram" ? "텔레그램" : data.kind === "youtube" ? "유튜브" : "블로그"}
+            </Badge>
+            {!data.is_active && <Badge variant="outline" className="text-[10px]">숨김 — 내 피드·답변 제외</Badge>}
+            {(data.kind === "telegram" || data.kind === "youtube" || data.kind === "blog") && (
+              <RefreshButton onClick={() => refresher.refresh(data.kind as RefreshKind, key, data.name)} pending={refresher.isRefreshing(data.kind as RefreshKind, key)} title="지금 수집 — 30분 체인을 기다리지 않고 이 소스의 새 글만 가져와 태깅합니다" />
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            수집 {data.total_docs}건 · 최근 7일 {data.docs_7d}건
+            {data.first_doc_at && data.last_doc_at &&
+              ` · ${data.first_doc_at.slice(0, 10)} ~ ${data.last_doc_at.slice(0, 10)}`}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground tabular-nums">
-          수집 {data.total_docs}건 · 최근 7일 {data.docs_7d}건
-          {data.first_doc_at && data.last_doc_at &&
-            ` · ${data.first_doc_at.slice(0, 10)} ~ ${data.last_doc_at.slice(0, 10)}`}
-        </p>
-      </div>
 
-      {data.total_docs === 0 ? (
-        <EmptyState message="아직 수집된 글이 없습니다. 다음 수집 주기(30분)에 반영됩니다." />
-      ) : (
-        <>
-          <ProfileCard
-            data={data}
-            fresh={summary.data}
-            pending={summary.isFetching}
-            failed={summary.isError}
-          />
+        {data.total_docs === 0 ? (
+          <EmptyState message="아직 수집된 글이 없습니다. 다음 수집 주기(30분)에 반영됩니다." />
+        ) : (
+          <>
+            <ProfileCard
+              data={data}
+              fresh={summary.data}
+              pending={summary.isFetching}
+              failed={summary.isError}
+            />
 
-          {/* 주로 다루는 것 (90일 링크 집계) */}
-          {data.top_entities.length > 0 && (
+            {/* 주로 다루는 것 (90일 링크 집계) */}
+            {data.top_entities.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">주로 다루는 것 <span className="text-[11px] font-normal text-muted-foreground">최근 90일</span></CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-1.5">
+                  {stocks.map((e) => (
+                    <Link key={`s-${e.entity_id}`} to={e.aliases ? `/analyze/${e.aliases}/summary` : "#"}>
+                      <Badge variant="outline" className="text-xs gap-1 hover:border-primary hover:text-primary">
+                        {e.name} <span className="text-muted-foreground tabular-nums">{e.count}</span>
+                      </Badge>
+                    </Link>
+                  ))}
+                  {tags.map((e) => (
+                    <Link
+                      key={`t-${e.entity_id}-${e.link_type}`}
+                      to={`/feed?${e.link_type === "industry" ? "industry" : "topic"}=${encodeURIComponent(e.name)}`}
+                    >
+                      <Badge variant="secondary" className="text-xs gap-1 hover:text-primary">
+                        {e.name} <span className="text-muted-foreground tabular-nums">{e.count}</span>
+                      </Badge>
+                    </Link>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 최근 글 */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">주로 다루는 것 <span className="text-[11px] font-normal text-muted-foreground">최근 90일</span></CardTitle>
+                <CardTitle className="text-sm">최근 글</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-wrap gap-1.5">
-                {stocks.map((e) => (
-                  <Link key={`s-${e.entity_id}`} to={e.aliases ? `/analyze/${e.aliases}/summary` : "#"}>
-                    <Badge variant="outline" className="text-xs gap-1 hover:border-primary hover:text-primary">
-                      {e.name} <span className="text-muted-foreground tabular-nums">{e.count}</span>
-                    </Badge>
-                  </Link>
-                ))}
-                {tags.map((e) => (
-                  <Link
-                    key={`t-${e.entity_id}-${e.link_type}`}
-                    to={`/feed?${e.link_type === "industry" ? "industry" : "topic"}=${encodeURIComponent(e.name)}`}
-                  >
-                    <Badge variant="secondary" className="text-xs gap-1 hover:text-primary">
-                      {e.name} <span className="text-muted-foreground tabular-nums">{e.count}</span>
-                    </Badge>
+              <CardContent className="divide-y">
+                {data.recent_docs.map((d) => (
+                  <Link key={d.id} to={`/doc/${d.id}`} className="flex items-baseline gap-2 py-1.5 group">
+                    <span className="text-sm truncate group-hover:underline">{d.title}</span>
+                    <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                      {(d.published_at ?? "").slice(0, 10)}
+                    </span>
                   </Link>
                 ))}
               </CardContent>
             </Card>
-          )}
-
-          {/* 최근 글 */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">최근 글</CardTitle>
-            </CardHeader>
-            <CardContent className="divide-y">
-              {data.recent_docs.map((d) => (
-                <Link key={d.id} to={`/doc/${d.id}`} className="flex items-baseline gap-2 py-1.5 group">
-                  <span className="text-sm truncate group-hover:underline">{d.title}</span>
-                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                    {(d.published_at ?? "").slice(0, 10)}
-                  </span>
-                </Link>
-              ))}
-            </CardContent>
-          </Card>
-        </>
-      )}
-    </PageContainer>
-  )
+          </>
+        )}
+      </PageContainer>
+    )
+  }}</QueryState>
 }
 
 function ProfileCard({ data, fresh, pending, failed }: {

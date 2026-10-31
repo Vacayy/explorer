@@ -1,8 +1,8 @@
+import { QueryState } from "@/components/shared/QueryState"
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Button } from '@/components/ui/button'
 import { DetailLink } from '@/components/shared/DetailNavigation'
 import { usePortfolioFlow } from '@/hooks/usePortfolio'
 
@@ -15,9 +15,7 @@ export function FlowCard({ code }: { code: string }) {
     <CardHeader className="flex-row items-center justify-between"><CardTitle>자료 흐름</CardTitle>
       <DetailLink to={`/analyze/${code}/mentions`} className="text-sm text-primary hover:underline">전체 →</DetailLink></CardHeader>
     <CardContent className="space-y-3">
-      {flows.isPending ? <Skeleton className="h-32 w-full" />
-        : flows.isError ? <Button variant="outline" size="sm" onClick={() => void flows.refetch()}>다시 불러오기</Button>
-        : !f || !total ? <p className="text-sm text-muted-foreground">최근 14일 팔로우 자료에서 언급이 없습니다.</p>
+      <QueryState query={flows} loading={<Skeleton className="h-32 w-full" />} isEmpty={() => false}>{() => (!f || !total ? <p className="text-sm text-muted-foreground">최근 14일 팔로우 자료에서 언급이 없습니다.</p>
         : <>
           <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
             <span>14일 {total}건 · 오늘 {f.today}건 · 7일 평균 {f.avg7}</span>
@@ -35,7 +33,7 @@ export function FlowCard({ code }: { code: string }) {
             {f.digest.insights && <p><span className="font-medium">새로운 점 </span>{f.digest.insights}</p>}
             {!f.digest.insights && f.digest.lead && <p className="line-clamp-3">{f.digest.lead}</p>}
           </div> : <p className="text-caption text-muted-foreground">아직 요약이 없습니다. 새 자료가 있는 날 16:50에 만듭니다.</p>}
-        </>}
+        </>)}</QueryState>
     </CardContent>
   </Card>
 }

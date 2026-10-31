@@ -236,7 +236,7 @@ function HeatNum({ value, fmt }: { value: number | null; fmt: (v: number) => str
   }
 
   // Color intensity based on value
-  let bg = ""
+  let bg: string
   if (value > 30) bg = "bg-emerald-100 text-emerald-800"
   else if (value > 15) bg = "bg-emerald-50 text-emerald-700"
   else if (value > 0) bg = "bg-emerald-50/50 text-emerald-600"

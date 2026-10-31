@@ -1,3 +1,4 @@
+import { toApiError } from '@/api/errors'
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, Globe, LoaderCircle, RefreshCw } from 'lucide-react'
@@ -15,17 +16,16 @@ const KIND: Record<string, string> = { filing: '공시', ir: 'IR', news: '뉴스
 const profileKey = (code: string, market: string) => ['spine', 'company-profile', market, code] as const
 
 export function useCompanyProfile(code: string, market: 'kr' | 'us' = 'kr') {
-  return useQuery({ queryKey: profileKey(code, market), queryFn: async () => (await api.get<{ profile: CompanyWebProfile | null; reuse_hours: number }>(`/api/spine/company-profile/${code}`, { params: { market } })).data, staleTime: 60_000 })
+  return useQuery({ queryKey: profileKey(code, market), queryFn: async () => (await api.get<{ profile: CompanyWebProfile | null; reuse_hours: number }>(`/api/spine/company-profile/${code}`, { params: { market }, timeout: 180_000 })).data, staleTime: 60_000 })
 }
 
 function useBuildProfile(code: string, market: 'kr' | 'us') {
   const client = useQueryClient()
   return useMutation({
     mutationFn: async (body: { reason?: string; force?: boolean }) => {
-      try { return (await api.post<{ profile: CompanyWebProfile; reused: boolean; reuse_hours: number }>(`/api/spine/company-profile/${code}`, body, { params: { market } })).data }
+      try { return (await api.post<{ profile: CompanyWebProfile; reused: boolean; reuse_hours: number }>(`/api/spine/company-profile/${code}`, body, { params: { market }, timeout: 180_000 })).data }
       catch (error) {
-        const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
-        throw new Error(typeof detail === 'string' ? detail : '웹 조사를 마치지 못했습니다.')
+        throw toApiError(error)
       }
     },
     onSuccess: data => client.setQueryData(profileKey(code, market), { profile: data.profile, reuse_hours: data.reuse_hours }),
