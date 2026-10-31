@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Network, Sparkles, ChevronRight } from "lucide-react"
+import { FileText, Megaphone, Network, Sparkles, ChevronRight } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -12,13 +12,20 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { ProxyDashboard } from "@/components/follow/ProxyDashboard"
 import SegmentTabs from "@/components/shared/SegmentTabs"
-import { CallMomentumPanel, MomentumStrip } from "@/components/follow/CallMomentumPanel"
+import { MomentumStrip } from "@/components/follow/CallMomentumPanel"
 import { RecentCalls } from "@/components/follow/RecentCalls"
+import { CallReaction } from "@/components/follow/CallReaction"
+import { TranscriptTickerActions } from "@/components/follow/TranscriptTickerActions"
+import { SeasonView } from "@/components/follow/season/SeasonView"
+import { SectorView } from "@/components/follow/season/SectorView"
+import { ChainCharts, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard } from "@/components/follow/season/ChainSections"
+import { useChain } from "@/hooks/useTranscripts"
+import { QueryState } from "@/components/shared/QueryState"
 import { cn } from "@/lib/utils"
 
 /**
@@ -84,7 +91,10 @@ const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 
 export default function TranscriptPage() {
   const [params, setParams] = useSearchParams()
   const selectedId = params.get("t")
-  const view = (["proxies", "momentum"] as const).find((v) => v === params.get("view")) ?? "calls"
+  // 옛 '실적 모멘텀' 링크(?view=momentum)는 실적 시즌으로 — 모멘텀은 시즌 보기 안의 한 섹션
+  const rawView = params.get("view") === "momentum" ? "season" : params.get("view")
+  const view = (["proxies", "season"] as const).find((v) => v === rawView) ?? "calls"
+  const sector = params.get("sector")
   const railSort: RailSort = (["cap", "category", "recent"] as const).find((v) => v === params.get("rail")) ?? "cap"
   const qc = useQueryClient()
 
@@ -120,13 +130,13 @@ export default function TranscriptPage() {
 
       <TranscriptTabs value={view} />
 
-      {view === "momentum" ? (
-        <CallMomentumPanel />
+      {view === "season" ? (
+        sector ? <SectorView key={sector} sectorKey={sector} /> : <SeasonView />
       ) : view === "proxies" ? (
         <ProxyDashboard />
       ) : (
       <>
-      {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 모멘텀' 보기) */}
+      {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 시즌' 보기) */}
       <MomentumStrip />
 
       {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
@@ -297,11 +307,12 @@ function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId
   )
 }
 
-/* ---------- 우 본문: 상세 (분기 셀렉터 + 정리 + 원문) ---------- */
+/* ---------- 우 본문: 콜 상세 — 분기 탭 · 차트 묶음 · 체인 네 단계 · 쟁점 · 분기별 기록 · 펼치기 (earnings-season.md §콜 상세) ---------- */
 function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelect: (id: number) => void }) {
   const { data, isLoading, isError, refetch } = useQuery(
     apiQuery<Detail>({ key: ["spine", "transcript", "detail", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}`, staleTime: STALE.medium }),
   )
+  const chain = useChain(transcriptId)
   const [wantDigest, setWantDigest] = useState(false)
   const computed = useQuery({
     ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),
@@ -311,103 +322,125 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
   if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
 
   const digest = computed.data?.digest ?? data.digest
+  const hasOnto = (data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0
+  const headline = chain.data?.reaction_meta?.headline
 
   return (
-    <Card>
-      <CardContent className="py-5 space-y-4">
-        {/* 헤더 + 분기 셀렉터 */}
-        <div className="flex items-center justify-between gap-3">
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="space-y-3">
+          {/* 헤더 — 회사·섹터·핵심 + 분기 탭(오래된 분기 → 최신이 오른쪽) */}
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-bold text-lg truncate">{data.company_name}</span>
               <Badge variant="secondary" className="text-[11px]">{data.ticker}</Badge>
               <Link to={`/us/${data.ticker}`} className="text-xs text-primary hover:underline whitespace-nowrap"
                 title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에 →</Link>
+              {chain.data && <ChainHeaderLinks chain={chain.data} />}
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">
               {quarterLabel(data.cy, data.fiscal_year, data.fiscal_period)}{data.cy ? ` (회사 회계 ${periodOf(data.fiscal_year, data.fiscal_period)})` : ""}{data.call_date ? ` · ${data.call_date}` : ""}
             </div>
           </div>
-          <QuarterSelect ticker={data.ticker} current={transcriptId} onSelect={onSelect} />
-        </div>
+          <QuarterTabs ticker={data.ticker} current={transcriptId} onSelect={onSelect} />
+          <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect} />
+          {headline && <p className="text-[15px] font-semibold">{headline}</p>}
+          {/* 같은 날짜 축의 작은 차트 묶음 — 체인은 별도 쿼리라 실패해도 아래 정리는 보인다 */}
+          <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-[440px] w-full rounded-lg" />}>
+            {(c) => <ChainCharts chain={c} />}
+          </QueryState>
+        </CardContent>
+      </Card>
 
-        {/* LLM 핵심 정리 (먼저) */}
-        <section>
-          <div className="flex items-center gap-1.5 mb-1.5 text-sm font-semibold">
-            <Sparkles className="h-4 w-4 text-hypothesis" /> 핵심 정리
-          </div>
-          {digest ? (
-            <div className="rounded-lg bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
-          ) : computed.isFetching ? (
-            <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
-              <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
-              <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
-            </div>
-          ) : (
-            <Button size="sm" variant="outline" onClick={() => setWantDigest(true)}>
-              <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
-            </Button>
-          )}
-        </section>
+      {chain.data && <>
+        <StagesCard chain={chain.data} transcriptId={transcriptId} />
+        <IssuesRow chain={chain.data} />
+        <HistoryCard chain={chain.data} transcriptId={transcriptId} onSelect={onSelect} />
+      </>}
 
-        {/* 온톨로지 연결 (D-089) — 이 콜이 편입된 노드·인과, 클릭 시 그래프로 */}
-        {((data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0) && (
-          <section>
-            <div className="flex items-center gap-1.5 mb-1.5 text-sm font-semibold">
-              <Network className="h-4 w-4 text-muted-foreground" /> 온톨로지 연결
-              <span className="text-[11px] font-normal text-muted-foreground">이 콜이 편입된 노드·인과 — 클릭 시 그래프로</span>
-            </div>
-            {(data.nodes?.length ?? 0) > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {data.nodes!.map((n) => <OntoChip key={n.id} id={n.id} name={n.name} type={n.type} />)}
+      {/* 전체 정리·원문·출처는 펼치기 */}
+      <Card>
+        <CardContent className="space-y-3">
+          <Fold icon={<Sparkles className="h-4 w-4 text-hypothesis" />} label="핵심 정리 (컨콜 전체)">
+            {digest ? (
+              <div className="rounded-lg bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
+            ) : computed.isFetching ? (
+              <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
+                <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
+                <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
               </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setWantDigest(true)}>
+                <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
+              </Button>
             )}
-            {(data.causal_edges?.length ?? 0) > 0 && (
-              <ul className="space-y-1">
-                {data.causal_edges!.map((e, i) => (
-                  <li key={i} className="flex flex-wrap items-center gap-1">
-                    <OntoChip id={e.from_id} name={e.from} type={e.from_type} />
-                    <span className="text-[10px] text-muted-foreground">{e.rel_type === "BENEFITS_FROM" ? "← 수혜" : "→ 인과"}</span>
-                    <OntoChip id={e.to_id} name={e.to} type={e.to_type} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-
-        {/* 원문 전문 (펼침) */}
-        <Collapsible>
-          <CollapsibleTrigger className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <FileText className="h-4 w-4" /> 원문 전문 펼치기
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mt-2 max-h-[60vh] overflow-y-auto rounded-lg border px-4 py-3 text-sm">
+          </Fold>
+          {/* 시장 반응 — 발표일~7일 내 자료·주가·헤드라인 */}
+          <Fold icon={<Megaphone className="h-4 w-4 text-muted-foreground" />} label="시장 반응 정리 전문·출처">
+            <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
+          </Fold>
+          {/* 온톨로지 연결 (D-089) — 이 콜이 편입된 노드·인과, 클릭 시 그래프로 */}
+          {hasOnto && (
+            <Fold icon={<Network className="h-4 w-4 text-muted-foreground" />} label="온톨로지 연결">
+              <p className="mb-1.5 text-[11px] text-muted-foreground">이 콜이 편입된 노드·인과 — 클릭 시 그래프로</p>
+              {(data.nodes?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {data.nodes!.map((n) => <OntoChip key={n.id} id={n.id} name={n.name} type={n.type} />)}
+                </div>
+              )}
+              {(data.causal_edges?.length ?? 0) > 0 && (
+                <ul className="space-y-1">
+                  {data.causal_edges!.map((e, i) => (
+                    <li key={i} className="flex flex-wrap items-center gap-1">
+                      <OntoChip id={e.from_id} name={e.from} type={e.from_type} />
+                      <span className="text-[10px] text-muted-foreground">{e.rel_type === "BENEFITS_FROM" ? "← 수혜" : "→ 인과"}</span>
+                      <OntoChip id={e.to_id} name={e.to} type={e.to_type} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Fold>
+          )}
+          {/* 원문 전문 (펼침) */}
+          <Fold icon={<FileText className="h-4 w-4" />} label="원문 전문">
+            <div className="max-h-[60vh] overflow-y-auto rounded-lg border px-4 py-3 text-sm">
               <Markdown>{data.body}</Markdown>
             </div>
-          </CollapsibleContent>
-        </Collapsible>
-      </CardContent>
-    </Card>
+          </Fold>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
-function QuarterSelect({ ticker, current, onSelect }: { ticker: string; current: number; onSelect: (id: number) => void }) {
+/** 펼치기 한 줄 — 기본 접힘 */
+function Fold({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="group flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
+        <ChevronRight className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />{icon} {label}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2">{children}</CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/** 분기 탭 — API는 최신 먼저라 뒤집어 최신 분기가 오른쪽 */
+function QuarterTabs({ ticker, current, onSelect }: { ticker: string; current: number; onSelect: (id: number) => void }) {
   const { data: quarters = [] } = useQuery(
     apiQuery<Quarter[]>({ key: ["spine", "transcript", "company", ticker], url: `/api/spine/transcript/company/${ticker}`, staleTime: STALE.short }),
   )
   if (quarters.length <= 1) return null
   return (
-    <Select value={String(current)} onValueChange={(v) => onSelect(Number(v))}>
-      <SelectTrigger className="h-8 w-32 text-xs shrink-0"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {quarters.map((q) => (
-          <SelectItem key={q.transcript_id} value={String(q.transcript_id)} className="text-xs">
-            {quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <ToggleGroup type="single" variant="outline" size="sm" value={String(current)} onValueChange={(v) => { if (v) onSelect(Number(v)) }}
+      aria-label="분기" className="flex-wrap justify-start">
+      {[...quarters].reverse().map((q) => (
+        <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className="px-2.5 text-caption tabular-nums"
+          title={`${quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}${q.call_date ? ` · ${q.call_date}` : ""}`}>
+          {q.cy ? shortQuarter(q.cy, q.fiscal_period) : periodOf(q.fiscal_year, q.fiscal_period)}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   )
 }
 

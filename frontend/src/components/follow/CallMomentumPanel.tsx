@@ -64,7 +64,7 @@ export function MomentumStrip() {
           <Link to={`/us/${c.ticker}`}>{c.ticker} <span className="tabular-nums text-muted-foreground">{c.score.toFixed(0)}</span></Link>
         </Badge>)}
         <Button variant="ghost" size="xs" className="ml-auto" asChild>
-          <Link to="/follow/transcripts?view=momentum">자세히 <ChevronRight /></Link>
+          <Link to="/follow/transcripts?view=season">자세히 <ChevronRight /></Link>
         </Button>
       </CardContent>
     </Card>
@@ -73,7 +73,7 @@ export function MomentumStrip() {
 
 function CandidateCard({ c }: { c: CallMomentumCandidate }) {
   const growth = c.drivers.filter(d => d.status === "new" || d.status === "accelerating")
-  const guide = c.guidance.filter(g => g.direction !== "maintained")
+  const guide = c.guidance.filter(g => g.direction !== "maintained" && g.direction !== "unknown")
   return <Card>
     <CardHeader className="pb-2">
       <CardTitle className="flex flex-wrap items-baseline gap-2 text-base">

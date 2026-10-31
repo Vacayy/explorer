@@ -931,7 +931,7 @@ export type WatchReason = Omit<HoldingThesis, 'warnings'> & { signals: string[] 
 
 /* ---------- 실적 발언 모멘텀 (D-217) ---------- */
 export interface CallDriver { name: string; type: string; status: 'new' | 'accelerating' | 'steady' | 'decelerating'; magnitude?: string; quote: string; source: string }
-export interface CallGuidance { metric: string; direction: 'raised' | 'lowered' | 'maintained' | 'initiated'; quote: string; source: string }
+export interface CallGuidance { metric: string; direction: 'raised' | 'lowered' | 'maintained' | 'initiated' | 'unknown'; quote: string; source: string }   // unknown = 추출 모델이 방향을 못 정함(PANW 2026-10)
 export interface CallMomentumCandidate {
   ticker: string; name: string | null; event_date: string; score: number; first_candidate_at: string | null
   summary?: string | null                      // AI 핵심 요약(이번 시즌 후보만, 근거 기반 sonnet) — 없으면 근거만
@@ -951,6 +951,103 @@ export interface CallMomentum {
 export interface RecentCall {
   transcript_id: number; ticker: string; company_name: string | null; fiscal_year: number; fiscal_period: string
   cy: string | null; call_date: string | null; provider: string | null; fetched_at: string | null; has_digest: boolean
+}
+
+/** POST /api/spine/transcript/check/{ticker} — 이 종목의 가장 최근 실적 발표 조사(SEC 8-K·yfinance·Fool) */
+export interface TranscriptCheck {
+  ticker: string
+  latest_release: { date: string; fiscal_year: number; fiscal_period: string; cy: string | null } | null   // SEC 8-K 실적 발표
+  calendar: { last_report_date: string | null; next_report_date: string | null } | null                    // yfinance
+  transcript_id: number | null          // 그 분기 녹취록이 저장돼 있으면
+  fool: { available: boolean | null; url?: string | null; error?: string } | null   // 미저장일 때만 확인
+  sec_error: string | null
+}
+
+/** GET·POST /api/spine/transcript/detail/{id}/reaction — 컨콜 시장 반응(발표일~7일) */
+export interface CallReactionSource {
+  n: number; kind: "doc" | "headline"; title: string | null; source: string | null; published_at: string | null; cited: boolean
+  doc_id?: number; source_type?: string; url?: string
+}
+export interface CallReaction {
+  transcript_id: number
+  window_start: string; window_end: string
+  status: "interim" | "final"          // interim = 기간 진행 중 중간 정리
+  body: string | null                  // null = 기간 안에 자료 없음
+  prices: { base_date: string; base_close: number; days: { date: string; close: number; ret: number | null; spy_ret: number | null }[] } | null
+  sources: CallReactionSource[]
+  n_docs: number                       // 기간 안에서 찾은 내 자료 수(정리엔 상위 40)
+  created_at: string
+  meta?: ReactionMeta | null           // 구조화 필드(실적 시즌 체인, D-277)
+}
+
+/* ---------- 실적 시즌 체인 (docs/specs/earnings-season.md) ---------- */
+export type CoreReason = "cap" | "mention" | "holding_chain" | "dc_chain" | "pinned"
+export type EvalVerdict = "hit" | "underweighted" | "noise" | "missed" | "minor"
+
+export interface ReactionGrade { issue: string; weight: "high" | "mid" | "low" | null; drove: "major" | "minor" | "none" | null; outcome: string | null; verdict: EvalVerdict | null }
+export interface ReactionMeta {
+  headline?: string; interpretation?: "positive" | "neutral" | "negative"
+  welcomed?: string[]; questioned?: string[]
+  surprise?: { revenue?: string; eps?: string; guidance?: string; one_off?: string | null }
+  call_points?: string[]; react_points?: string[]
+  issue_verdicts?: { issue: string; drove: string; outcome?: string }[]
+  missed?: string[]; vs_prev?: string[]
+  d1?: number | null; d7?: number | null       // 업종 ETF 대비 초과수익 %p
+  grades?: ReactionGrade[]; expectation_prompt?: string | null
+}
+
+export interface ExpectationIssue { issue: string; why?: string; good?: string; bad?: string; weight?: "high" | "mid" | "low"; cites?: number[] }
+export interface Expectation {
+  ticker: string; fiscal_year: number; fiscal_period: string; snapshot: "d7" | "d1"; event_date: string | null
+  quant: { etf?: string; eps_est?: number | null; rev_est?: number | null; eps_rev_up30?: number; eps_rev_down30?: number
+    runup30?: number | null; runup30_vs_spy?: number | null; runup30_vs_etf?: number | null
+    pt30?: { n: number; up: number; down: number; median_pct: number | null; examples: string[] }; implied_move?: number | null } | null
+  issues: ExpectationIssue[] | null; points: string[] | null; positioning: string | null; thin: string | null
+  n_docs: number | null; prompt_version: string | null; created_at: string
+}
+
+export interface SeasonItem {
+  ticker: string; name: string | null; sector: string; event_date: string; fiscal: string
+  transcript_id: number | null; reaction: "interim" | "final" | null; core: CoreReason[]
+  eps_surprise: number | null; headline: string | null; interpretation: string | null
+  d1?: number | null; d7?: number | null; d30?: number | null; latest?: number | null; latest_date?: string | null
+  follow?: "유지" | "확대" | "되돌림" | "반전" | null
+  expectation?: { d7: boolean; d1: boolean; qualitative: boolean }   // 곧 발표만
+}
+export interface SeasonSectorRow {
+  key: string; name: string; etf: string; verdict: string | null; one_line: string | null
+  n_reported: number; n_reactions: number; tickers: { ticker: string; d1: number | null }[]; dc_chain: boolean
+}
+export interface SeasonOverview {
+  season: { key: string; label: string; start: string; is_current: boolean }
+  counts: { followed: number; reported: number; beat: number; beat_down: number; reversed: number; reactions: number; reactions_final: number }
+  changes: { reactions: string[]; themes: string[]; expectations: string[]; transcripts: string[] }
+  last_run: string | null
+  sectors: SeasonSectorRow[]; beat_down: SeasonItem[]; reversed: SeasonItem[]; upcoming: SeasonItem[]
+  evals: { hit: number; underweighted: number; noise: number; missed: number; cases: { ticker: string; issue: string; verdict: EvalVerdict }[] }
+  core: { criteria: Record<CoreReason, string>; tickers: { ticker: string; name: string | null; reasons: CoreReason[] }[] }
+  reported: SeasonItem[]
+}
+export interface SectorTheme {
+  id: number; verdict: string | null; tickers: string; created_at: string
+  body: { one_line?: string; welcomed?: string[]; questioned?: string[]; change_note?: string | null; next?: string[]; vs_last_season?: string[] }
+}
+export interface SectorDetail {
+  key: string; name: string; etf: string; season: string; seasons: string[]
+  members: { ticker: string; name: string | null }[]
+  theme: SectorTheme | null; theme_history: SectorTheme[]
+  companies: (Partial<SeasonItem> & { ticker: string; name: string | null; status: "reported" | "upcoming" | "none"; core: CoreReason[] })[]
+  paths: Record<string, [number, number][]>      // ticker → [거래일 offset, 업종 ETF 대비 누적 %p]
+  history: { season: string; label: string; rows: { ticker: string; d1: number | null }[]; verdict: string | null; one_line: string | null }[]
+}
+export interface ChainDetail {
+  ticker: string; name: string | null; sector: string; sector_name: string; etf: string; event_date: string | null
+  expectation: Expectation | null; reaction_meta: ReactionMeta | null; reaction_status: "interim" | "final" | null
+  series: { date: string; offset: number; ret: number; bench: number; excess: number; volume: number | null }[]   // 발표 전 마지막 거래일 = 0
+  mentions: { day: string; n: number }[]          // 'MM-DD' 한국 시각
+  pt_after: { n: number; up: number; down: number; median_pct: number | null; examples: string[] } | null
+  history: { fiscal: string; event_date: string; season: string; transcript_id: number | null; d1: number | null; d7: number | null; d30: number | null
+    follow: string | null; pt_up: number | null; pt_down: number | null; headline: string | null; reaction: string | null }[]
 }
 
 /** 문서 디테일 '관련 문서' — GET /api/spine/doc/{id}/related (D-221) */
