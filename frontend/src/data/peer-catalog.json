@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-01.1",
+  "version": "2026-11-01.2",
   "asOf": "2026-11-01",
   "groups": [
     {
@@ -169,6 +169,42 @@
       "name": "복합 소재·반도체 투자 노출",
       "scope": "value_chain",
       "interpretation": "SKC 연결 범위에 ISC. 유리기판 등 미래사업을 현재 매출로 간주하지 않음."
+    },
+    {
+      "id": "battery_value_chain",
+      "name": "배터리 밸류체인",
+      "scope": "value_chain",
+      "interpretation": "배터리 셀과 양극재는 제조 단계가 다른 공급망. 전체 기업의 직접 경쟁 관계가 아님."
+    },
+    {
+      "id": "battery_cell",
+      "name": "배터리 셀",
+      "scope": "product",
+      "interpretation": "전기차·ESS용 셀 사업 중첩. 폼팩터·화학계·고객과 전자재료 등 다른 사업 노출 차이 보존."
+    },
+    {
+      "id": "battery_cathode",
+      "name": "배터리 양극재",
+      "scope": "product",
+      "interpretation": "양극재 제품 중첩. 화학계·고객·전구체 내재화와 음극재 등 사업 구성 차이 확인 필요."
+    },
+    {
+      "id": "beauty_value_chain",
+      "name": "화장품·뷰티 밸류체인",
+      "scope": "value_chain",
+      "interpretation": "브랜드·뷰티기기·ODM 제조를 포함한 넓은 수요 관찰군. 직접 경쟁과 공급망 관계 구분."
+    },
+    {
+      "id": "cosmetics_odm",
+      "name": "화장품 ODM 제조",
+      "scope": "product",
+      "interpretation": "화장품 연구개발·위탁제조 사업 중첩. 제품군·고객·국가와 연결 자회사의 의약품 노출 차이 보존."
+    },
+    {
+      "id": "beauty_brand_device",
+      "name": "뷰티 브랜드·기기",
+      "scope": "product",
+      "interpretation": "브랜드 판매와 뷰티 디바이스 사업. ODM 제조와 구분하며 단일기업 그룹은 Peer 기준선 미제공."
     },
     {
       "id": "power_infrastructure",
@@ -392,6 +428,36 @@
       ]
     },
     {
+      "code": "373220",
+      "name": "LG에너지솔루션",
+      "asOf": "2026-11-01",
+      "products": [
+        "자동차용 리튬이온 배터리 셀",
+        "ESS용 배터리"
+      ],
+      "aliases": [
+        "LG Energy Solution"
+      ],
+      "groupIds": [
+        "battery_value_chain",
+        "battery_cell"
+      ],
+      "caveats": [
+        "삼성SDI와 셀 제품층은 겹치지만 폼팩터·화학계·고객·EV/ESS 비중 차이 확인 필요.",
+        "양극재 업체는 셀 투입소재 공급단계로 구분. 셀과 소재를 같은 직접제품 Peer로 합치지 않음.",
+        "LG화학과 동일 법인으로 매칭하지 않음. 현행 FAQ는 제품 공급범위를 설명하며 전체 연결사업 범위를 대체하지 않는다.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://www.lgensol.com/kr/etc/cs-faq",
+          "claim": "완성차 업체에 배터리 셀 공급 및 ESS 배터리 공급 설명. 셀제품 사업근거",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        }
+      ]
+    },
+    {
       "code": "079550",
       "name": "LIG디펜스앤에어로스페이스",
       "asOf": "2026-11-01",
@@ -414,7 +480,8 @@
         "2026Q1 공시 I.1 회사의 개요에서 2026-03-31 사명 변경을 확인. 이전 명칭 LIG넥스원과 종목코드079550으로 연결하며, 거래소 단축명 적용일은 별도 검증 대상.",
         "항공전자 부품/체계와 완제기·엔진은 서로 다른 제품. 항공우주군 전체 직접Peer 아님.",
         "유도무기 외 감시정찰/통신사업도 포함하므로 순수 유도탄 회사로 단정하지 않음.",
-        "defense_value_chain은 서로 다른 플랫폼·부품을 포함하는 넓은 관찰군이며, 구성기업 전체가 직접 경쟁 Peer라는 의미가 아니다."
+        "defense_value_chain은 서로 다른 플랫폼·부품을 포함하는 넓은 관찰군이며, 구성기업 전체가 직접 경쟁 Peer라는 의미가 아니다.",
+        "2026-03-31 사명을 LIG디펜스앤에어로스페이스로 변경. 과거 LIG넥스원과 동일 종목코드079550으로 식별."
       ],
       "sources": [
         {
@@ -431,7 +498,7 @@
         },
         {
           "url": "https://kind.krx.co.kr/external/2026/05/15/001156/20260515002495/11013.htm",
-          "claim": "I.1 회사의 개요: 2026-03-31 LIG디펜스앤에어로스페이스로 사명 변경. 현재 법인명과 이전 명칭을 연결.",
+          "claim": "2026Q1 보고서 I.1 나/다에서 2026-03-31 LIG디펜스앤에어로스페이스로 사명변경 명시",
           "verification": "primary_full_text_parent_review",
           "period": "2026Q1",
           "publishedAt": "2026-05-15"
@@ -812,6 +879,43 @@
       ]
     },
     {
+      "code": "006400",
+      "name": "삼성SDI",
+      "asOf": "2026-11-01",
+      "products": [
+        "EV/PHEV용 각형·원통형 배터리",
+        "ESS·IT·전동기기용 배터리",
+        "반도체·디스플레이 전자재료"
+      ],
+      "aliases": [
+        "Samsung SDI"
+      ],
+      "groupIds": [
+        "battery_value_chain",
+        "battery_cell"
+      ],
+      "caveats": [
+        "LG에너지솔루션과 셀 제품영역 중첩. 전체회사는 전자재료도 포함하므로 배터리순수기업으로 간주하지 않음.",
+        "전고체 배터리 2027 양산계획은 현재 실현매출로 분류하지 않음.",
+        "양극재 업체와는 제조단계가 다른 공급망 관계.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://www.samsungsdi.co.kr/business/index.html",
+          "claim": "EV/PHEV·ESS·IT·전동기기 응용과 각형/원통형 배터리 제품",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        },
+        {
+          "url": "https://samsungsdi.co.kr/business/electronic-materials.html",
+          "claim": "반도체 패터닝/패키징 및 디스플레이 전자재료 사업 존재",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        }
+      ]
+    },
+    {
       "code": "009150",
       "name": "삼성전기",
       "asOf": "2026-11-01",
@@ -992,6 +1096,86 @@
           "claim": "연결 주요제품 표 CCSS91.3%, Wet3.6%, 기타5.1%. Wet에는 reflow 이외 공정 장비 포함.",
           "verification": "primary_original_verified",
           "period": "2025FY"
+        }
+      ]
+    },
+    {
+      "code": "278470",
+      "name": "에이피알",
+      "asOf": "2026-11-01",
+      "products": [
+        "메디큐브·에이프릴스킨 등 뷰티브랜드",
+        "메디큐브 AGE-R 홈 뷰티 디바이스",
+        "부스터프로 등 디바이스 연구개발"
+      ],
+      "aliases": [
+        "APR"
+      ],
+      "groupIds": [
+        "beauty_value_chain",
+        "beauty_brand_device"
+      ],
+      "caveats": [
+        "브랜드와 소비자용 미용기기 사업. 화장품 ODM 3사와 판매단계·브랜드/마케팅·제품경제성이 달라 직접Peer로 합치지 않음.",
+        "디바이스 자체개발/제조 설명이 있어도 타사브랜드 ODM주력이라는 의미는 아님.",
+        "뷰티기기의 의료기기 허가나 치료효능을 이 제품분류에서 추정하지 않음.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://www.apr-in.com/",
+          "claim": "메디큐브/에이프릴스킨 등 자사브랜드 구분",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        },
+        {
+          "url": "https://www.apr-in.com/apr_medicube.html",
+          "claim": "메디큐브 AGE-R 홈뷰티기기 브랜드 설명",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        },
+        {
+          "url": "https://www.apr-in.com/beauty_tech.html",
+          "claim": "디바이스 라인업과 자회사ADC 연구개발 설명",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        }
+      ]
+    },
+    {
+      "code": "247540",
+      "name": "에코프로비엠",
+      "asOf": "2026-11-01",
+      "products": [
+        "NCA 양극소재",
+        "NCM·CSG 양극소재"
+      ],
+      "aliases": [
+        "EcoPro BM"
+      ],
+      "groupIds": [
+        "battery_value_chain",
+        "battery_cathode"
+      ],
+      "caveats": [
+        "포스코퓨처엠과 양극재 제품층 비교 가능. 배터리셀 업체와는 소재-제품 관계.",
+        "LFP·Sodium 등 포트폴리오 확장 설명을 성숙 양산제품 매출로 단정하지 않음.",
+        "에코프로 지주회사 및 에코프로머티리얼즈와 별개 법인. 전구체/원료를 양극재 완제품과 구별.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://ecoprobm.com/sub020101",
+          "claim": "양극소재 전문사업, CSG(High-end NCM) 양산 및 NCA제품군 설명",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001227/20260515002672/11013.htm",
+          "claim": "2026Q1 사업내용에서 하이니켈NCA/NCM 양극재 생산과 원재료 전구체/리튬 구별 확인",
+          "verification": "primary_original_verified",
+          "period": "2026Q1",
+          "publishedAt": "2026-05-15"
         }
       ]
     },
@@ -1298,6 +1482,42 @@
       ]
     },
     {
+      "code": "192820",
+      "name": "코스맥스",
+      "asOf": "2026-11-01",
+      "products": [
+        "화장품 ODM 개발·처방·생산",
+        "고객 브랜드용 뷰티제품"
+      ],
+      "aliases": [
+        "COSMAX"
+      ],
+      "groupIds": [
+        "beauty_value_chain",
+        "cosmetics_odm"
+      ],
+      "caveats": [
+        "한국콜마·한국화장품제조와 개발제조 사업영역 중첩. 지역·고객·제품/제형·규모가 달라 전사 동질성 추가검증 필요.",
+        "공식서비스는 ODM뿐 아니라 OBM도 표시하므로 모든 매출을 전통ODM으로 단정하지 않음.",
+        "코스맥스비티아이 및 그룹 건강기능식품/제약 계열회사와192820을 혼동하지 않음.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://www.cosmax.com/en/",
+          "claim": "ODM/OBM 서비스 및 글로벌생산 네트워크 설명",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        },
+        {
+          "url": "https://www.cosmax.com/en/what-we-do/original-development-manufacturing/",
+          "claim": "화장품개발·처방·제조 ODM 공식서비스",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        }
+      ]
+    },
+    {
       "code": "219130",
       "name": "타이거일렉",
       "asOf": "2026-11-01",
@@ -1567,6 +1787,52 @@
       ]
     },
     {
+      "code": "003670",
+      "name": "포스코퓨처엠",
+      "asOf": "2026-11-01",
+      "products": [
+        "배터리 양극재",
+        "천연흑연·인조흑연 음극재",
+        "이차전지 소재"
+      ],
+      "aliases": [
+        "포스코케미칼",
+        "POSCO Future M"
+      ],
+      "groupIds": [
+        "battery_value_chain",
+        "battery_cathode"
+      ],
+      "caveats": [
+        "에코프로비엠과 양극재 부문 중첩이나 음극재도 생산하므로 전사 제품구성은 다름.",
+        "원료 확보→전구체/활물질→셀 단계 구분. 광물 가격과 판매단가 변화가 수량성장과 같은 의미는 아님.",
+        "포스코케미칼은 과거명. 이번 확인 자료의 현행 명칭은 포스코퓨처엠; 정확한 변경일은 이 파일의 원문검증 범위에 포함하지 않음.",
+        "홈페이지에 포함된 향후프로젝트/생산능력목표를 현재매출로 사용하지 않음.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://www.poscofuturem.com/business/energy.do",
+          "claim": "양극재 및 천연/인조흑연 음극재 사업과 소재공급망 설명",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001579/20260515003472/11013.htm",
+          "claim": "현행법인 포스코퓨처엠 및 양/음극재 소재사업 확인",
+          "verification": "primary_original_verified",
+          "period": "2026Q1",
+          "publishedAt": "2026-05-15"
+        },
+        {
+          "url": "https://newsroom.posco.com/kr/친환경-미래소재-기업-포스코퓨처엠-공식-출범/",
+          "claim": "포스코케미칼→포스코퓨처엠 과거명 매핑 보조근거. 공식검색결과에는2023-03-20변경승인 표기되나 원문502로 효력일 판정에 미사용. 제품분류는 위 원문확인자료만 사용.",
+          "verification": "primary_search_snippet_only_open_502",
+          "publishedAt": "2023-03-20"
+        }
+      ]
+    },
+    {
       "code": "319660",
       "name": "피에스케이",
       "asOf": "2026-11-01",
@@ -1705,6 +1971,43 @@
       ]
     },
     {
+      "code": "161890",
+      "name": "한국콜마",
+      "asOf": "2026-11-01",
+      "products": [
+        "고객 브랜드용 화장품 ODM",
+        "상품기획·개발·제조·출하 서비스"
+      ],
+      "aliases": [
+        "Kolmar Korea"
+      ],
+      "groupIds": [
+        "beauty_value_chain",
+        "cosmetics_odm"
+      ],
+      "caveats": [
+        "코스맥스·한국화장품제조와 화장품ODM 사업 비교 후보. APR브랜드/기기와는 공급단계가 다름.",
+        "한국콜마 자회사로 HK이노엔·연우 등 존재하는 공시 확인. 전사 연결실적을 화장품ODM 순수매출로 간주하지 않음.",
+        "콜마홀딩스와161890은 별도법인; 홀딩스 과거명 한국콜마홀딩스를161890 alias로 사용하지 않음.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://www.kolmar.co.kr/about/summary.php",
+          "claim": "고객브랜드용 기획/개발/생산 토털ODM 사업모델",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/14/000621/20260514001449/11013.htm",
+          "claim": "HK이노엔 공시 최대주주설명에 한국콜마와 콜마홀딩스 구별, 한국콜마 자회사 목록 확인",
+          "verification": "primary_original_verified",
+          "period": "2026Q1",
+          "publishedAt": "2026-05-14"
+        }
+      ]
+    },
+    {
       "code": "047810",
       "name": "한국항공우주",
       "asOf": "2026-11-01",
@@ -1728,6 +2031,43 @@
           "claim": "T-50기반 FA-50 개발·무장·공군운용을 설명하는 공식제품 원문",
           "verification": "primary_original_verified",
           "period": "게시일미상; 접근2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "003350",
+      "name": "한국화장품제조",
+      "asOf": "2026-11-01",
+      "products": [
+        "기초·색조 화장품 제조",
+        "화장품 OEM·ODM"
+      ],
+      "aliases": [
+        "Hankook Cosmetics Manufacturing"
+      ],
+      "groupIds": [
+        "beauty_value_chain",
+        "cosmetics_odm"
+      ],
+      "caveats": [
+        "코스맥스·한국콜마와OEM/ODM제품층 중첩을 공시에서도 언급. 고객구성/지역/규모차이 확인 전 동일배수 적용 불가.",
+        "2010-04-30 판매/부동산임대 사업분할 후 존속사가 한국화장품제조로 변경. 신설 한국화장품123690과003350은 다른 종목이므로 한국화장품을 무조건 alias로 넣지 않음.",
+        "한국화장품20%지분 관계를 원문에서 확인하나 보유지분과 연결종속 판정을 동일시하지 않음.",
+        "제품/사업 중첩을 관찰하기 위한 분류이며 업종배수 산정용 최종 직접Peer 확정이 아니다. 최신 사업별 매출비중은 이번 조사에서 검증하지 않았다."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/19/001838/20260319007530/11011.htm",
+          "claim": "기초/색조제조,OEM/ODM사업, 경쟁업체 및2010분할/명칭변경 설명",
+          "verification": "primary_original_verified",
+          "period": "2025FY",
+          "publishedAt": "2026-03-19"
+        },
+        {
+          "url": "https://www.hkcosm.com/04_product_system/prd.jsp",
+          "claim": "맞춤형 화장품제조와 생산설비 공식설명",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 페이지; 게시일 미표시"
         }
       ]
     },

@@ -42,7 +42,7 @@ function mount(entry: string) {
 }
 
 it('restores URL filters, opens evidence, and preserves search when changing groups and going back', async () => {
-  mount('/discover/peers?group=power_transformer&q=103590')
+  mount('/discover/peers?view=research&group=power_transformer&q=103590')
   expect(await screen.findByRole('link', { name: '일진전기' })).toBeTruthy()
   expect(screen.queryByRole('link', { name: '대한전선' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: /사업 근거/ }))
@@ -55,10 +55,10 @@ it('restores URL filters, opens evidence, and preserves search when changing gro
 })
 
 it('does not substitute all companies for an invalid group and resets explicitly', async () => {
-  mount('/discover/peers?group=does-not-exist&q=103590')
+  mount('/discover/peers?view=research&group=does-not-exist&q=103590')
   expect(await screen.findByRole('heading', { name: '그룹을 찾을 수 없습니다' })).toBeTruthy()
   expect(screen.queryByRole('link', { name: '일진전기' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '필터 초기화' }))
   expect(await screen.findByRole('link', { name: '일진전기' })).toBeTruthy()
-  expect(screen.getByLabelText('현재 URL').textContent).toBe('/discover/peers')
+  expect(screen.getByLabelText('현재 URL').textContent).toBe('/discover/peers?view=research')
 })

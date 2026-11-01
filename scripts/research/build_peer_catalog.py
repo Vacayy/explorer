@@ -8,6 +8,12 @@ import json
 from pathlib import Path
 
 EXTRA_GROUPS = {
+    'battery_value_chain': ('배터리 밸류체인', 'value_chain', '배터리 셀과 양극재는 제조 단계가 다른 공급망. 전체 기업의 직접 경쟁 관계가 아님.'),
+    'battery_cell': ('배터리 셀', 'product', '전기차·ESS용 셀 사업 중첩. 폼팩터·화학계·고객과 전자재료 등 다른 사업 노출 차이 보존.'),
+    'battery_cathode': ('배터리 양극재', 'product', '양극재 제품 중첩. 화학계·고객·전구체 내재화와 음극재 등 사업 구성 차이 확인 필요.'),
+    'beauty_value_chain': ('화장품·뷰티 밸류체인', 'value_chain', '브랜드·뷰티기기·ODM 제조를 포함한 넓은 수요 관찰군. 직접 경쟁과 공급망 관계 구분.'),
+    'cosmetics_odm': ('화장품 ODM 제조', 'product', '화장품 연구개발·위탁제조 사업 중첩. 제품군·고객·국가와 연결 자회사의 의약품 노출 차이 보존.'),
+    'beauty_brand_device': ('뷰티 브랜드·기기', 'product', '브랜드 판매와 뷰티 디바이스 사업. ODM 제조와 구분하며 단일기업 그룹은 Peer 기준선 미제공.'),
     'power_infrastructure': ('전력 인프라', 'value_chain', '전력 생산·송배전 관련 제품의 넓은 관찰군. 변압기·개폐장치·전선은 별도 제품군으로 비교.'),
     'power_transformer': ('전력 변압기', 'product', '변압기 제품 존재 기준. 정격전압·고객·지역·연결범위가 달라 회사 전체의 직접 경쟁을 뜻하지 않음.'),
     'switchgear': ('차단기·개폐장치', 'product', '차단기·개폐장치 제품 중첩. 제품 전압과 적용 시장 차이 및 다른 사업 노출을 함께 확인.'),
@@ -31,6 +37,7 @@ def build(root: Path):
     extras = []
     for filename in ['power.json', 'ship_defense.json']:
         extras.extend(json.loads((root / 'phase4' / filename).read_text()))
+    extras.extend(json.loads((root / 'phase5/coverage.json').read_text()))
     extra_ids = {g for c in extras for g in c['groups']}
     for gid, (name, scope, interpretation) in EXTRA_GROUPS.items():
         if gid in extra_ids:
@@ -39,7 +46,7 @@ def build(root: Path):
     assert len({c['code'] for c in companies}) == len(companies), 'duplicate company'
     known = {g['id'] for g in groups}
     assert all(set(c['groupIds']) <= known for c in companies), 'unknown group'
-    return dict(version='2026-11-01.1', asOf='2026-11-01', groups=groups, companies=sorted(companies, key=lambda c:c['name']))
+    return dict(version='2026-11-01.2', asOf='2026-11-01', groups=groups, companies=sorted(companies, key=lambda c:c['name']))
 
 def normalize(c, ids):
     sources = []

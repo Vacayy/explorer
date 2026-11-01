@@ -1,3 +1,5 @@
+import { PeerPerformancePanel } from '@/components/peers/PeerPerformancePanel'
+import PeriodToggle from '@/components/shared/PeriodToggle'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ExternalLink, ChevronDown } from 'lucide-react'
 import { PageContainer } from '@/components/shared/PageContainer'
@@ -40,7 +42,7 @@ function Catalog({ catalog }: { catalog: PeerCatalog }) {
     </div>
     <div className="border border-border bg-muted/30 p-4 text-sm" role="note">
       제품·공정의 중첩을 연구자가 분류한 자료입니다. 회사 전체의 직접 경쟁 관계나 같은 매출 노출을 뜻하지 않습니다.
-      <p className="mt-1 text-muted-foreground">가격 기준 검증 중으로 수익률 비교·자동 신호는 아직 제공하지 않습니다. 그룹별 기업 수는 신호 준비 상태가 아닙니다.</p>
+      <p className="mt-1 text-muted-foreground">성과 비교에서는 명시적 정규장 종가의 탐색용 가격변동률을 제공합니다. 기업행사 조정 미검증으로 자동 신호는 발행하지 않습니다.</p>
     </div>
     <div className="grid min-w-0 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
       <div className="lg:hidden">
@@ -111,10 +113,13 @@ function Catalog({ catalog }: { catalog: PeerCatalog }) {
 
 export default function PeerCatalogPage() {
   const catalog = usePeerCatalog()
+  const [params, setParams] = useSearchParams()
+  const view = params.get('view') ?? 'performance'
   return <PageContainer>
-    <PageHeader title="Peer 그룹" description="제품·공정이 겹치는 기업과 그 근거를 확인합니다." />
+    <PageHeader title="Peer 그룹" description="그룹의 가격 흐름과 내부 종목의 상대성과를 비교하고, 사업 근거를 확인합니다." />
+    <PeriodToggle value={view} onChange={value => setParams(previous => { const next = new URLSearchParams(previous); next.set('view', value); return next })} options={[{ value: 'performance', label: '성과 비교' }, { value: 'research', label: '사업 근거' }]} />
     <QueryState query={catalog} isEmpty={data => data.companies.length === 0} emptyMessage="아직 등록된 조사 기업이 없습니다.">
-      {data => <Catalog catalog={data} />}
+      {data => view === 'performance' ? <PeerPerformancePanel catalog={data} /> : view === 'research' ? <Catalog catalog={data} /> : <p role="status">존재하지 않는 보기입니다. 성과 비교 또는 사업 근거를 선택해 주세요.</p>}
     </QueryState>
   </PageContainer>
 }
