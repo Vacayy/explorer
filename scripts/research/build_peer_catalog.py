@@ -1,0 +1,61 @@
+"""Build the public business-evidence bundle from reviewed research artifacts.
+
+Usage: python scripts/research/build_peer_catalog.py --research-dir logs/peer-research/2026-11-01
+No DB/network access; never copies personal priorities, mentions, holdings or prices.
+"""
+import argparse
+import json
+from pathlib import Path
+
+EXTRA_GROUPS = {
+    'power_infrastructure': ('전력 인프라', 'value_chain', '전력 생산·송배전 관련 제품의 넓은 관찰군. 변압기·개폐장치·전선은 별도 제품군으로 비교.'),
+    'power_transformer': ('전력 변압기', 'product', '변압기 제품 존재 기준. 정격전압·고객·지역·연결범위가 달라 회사 전체의 직접 경쟁을 뜻하지 않음.'),
+    'switchgear': ('차단기·개폐장치', 'product', '차단기·개폐장치 제품 중첩. 제품 전압과 적용 시장 차이 및 다른 사업 노출을 함께 확인.'),
+    'power_cable': ('전력 케이블', 'product', '전력 케이블 사업 중첩. 해저·초고압·배전 등 세부 제품과 지주회사 구조 차이를 보존.'),
+    'shipbuilding': ('조선', 'value_chain', '상선·해양·특수선의 넓은 관찰군. 선종·군함 비중·엔진사업과 합병 이후 범위가 달라 직접 경쟁은 제품별로 확인.'),
+    'defense_value_chain': ('방산 밸류체인', 'value_chain', '지상·항공·유도무기·함정은 서로 다른 시장. 연결 자회사 중복 노출을 포함하므로 독립기업 동일가중 신호에 바로 사용하지 않음.'),
+    'defense_aerospace': ('방산 항공·우주', 'product', '항공기 체계·엔진·우주 사업은 밸류체인 역할이 다름. 제품 존재를 관찰하며 직접 대체 관계로 단정하지 않음.'),
+    'defense_ground': ('지상 방산', 'product', '지상 무기체계의 사업 존재 근거. 단일기업이면 그룹 상대강도 기준선으로 사용할 수 없음.'),
+    'defense_guided_weapons': ('유도무기', 'product', '유도무기 사업 존재 근거. 제품 체계·고객·독립기업 수 추가 검증 필요.'),
+}
+
+def build(root: Path):
+    source_companies = json.loads((root / 'phase2/companies41.json').read_text())
+    source_groups = json.loads((root / 'phase2/group_definitions.json').read_text())
+    groups = [dict(id=g['id'], name=g['name'], scope='value_chain' if g['id']=='diversified_materials' else 'product', interpretation=g['interpretation']) for g in source_groups]
+    groups.insert(0, dict(id='semiconductor_value_chain', name='반도체 밸류체인', scope='value_chain', interpretation='제조·설계·소재·부품·장비·서비스를 포함한 넓은 관찰군. 직접 경쟁 관계와 구분.'))
+    companies = []
+    for c in source_companies:
+        ids = ['semiconductor_value_chain'] + [g['id'] for g in source_groups if c['code'] in g['members']]
+        companies.append(normalize(c, ids))
+    extras = []
+    for filename in ['power.json', 'ship_defense.json']:
+        extras.extend(json.loads((root / 'phase4' / filename).read_text()))
+    extra_ids = {g for c in extras for g in c['groups']}
+    for gid, (name, scope, interpretation) in EXTRA_GROUPS.items():
+        if gid in extra_ids:
+            groups.append(dict(id=gid, name=name, scope=scope, interpretation=interpretation))
+    companies.extend(normalize(c, c['groups']) for c in extras)
+    assert len({c['code'] for c in companies}) == len(companies), 'duplicate company'
+    known = {g['id'] for g in groups}
+    assert all(set(c['groupIds']) <= known for c in companies), 'unknown group'
+    return dict(version='2026-11-01.1', asOf='2026-11-01', groups=groups, companies=sorted(companies, key=lambda c:c['name']))
+
+def normalize(c, ids):
+    sources = []
+    for s in c['sources']:
+        source = dict(url=s['url'], claim=s['claim'], verification=s.get('verification', s.get('access_status', 'research_record')))
+        if s.get('period'): source['period'] = s['period']
+        if s.get('publication_date'): source['publishedAt'] = s['publication_date']
+        sources.append(source)
+    return dict(code=c['code'], name=c['name'], asOf=c.get('as_of','2026-11-01'), products=[c['products']] if isinstance(c['products'], str) else c['products'], aliases=c.get('aliases', []), groupIds=ids, caveats=c['caveats'], sources=sources)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--research-dir', required=True, type=Path)
+    parser.add_argument('--output', type=Path, default=Path('frontend/src/data/peer-catalog.json'))
+    args = parser.parse_args()
+    catalog = build(args.research_dir)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(catalog, ensure_ascii=False, indent=2)+'\n')
+    print(f"{len(catalog['companies'])} companies / {len(catalog['groups'])} groups -> {args.output}")

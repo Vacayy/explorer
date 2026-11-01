@@ -74,6 +74,7 @@ import AdminPage from "@/components/admin/AdminPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
+import PeerCatalogPage from "@/components/peers/PeerCatalogPage"
 import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
 import SummaryPage from "@/components/summary/SummaryPage"
 import CompanyFinancials from "@/components/company/CompanyFinancials"
@@ -292,6 +293,7 @@ export default function App() {
 
             {/* Discovery */}
             <Route path="discover" element={<MarketAnalysisPage />} />
+            <Route path="discover/peers" element={<PeerCatalogPage />} />
             <Route path="discover/industry" element={<Navigate to="/map?view=chains" replace />} />
             <Route path="discover/screener" element={<Navigate to="/discover" replace />} />
             <Route path="discover/signals" element={<Navigate to="/explore" replace />} />

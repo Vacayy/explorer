@@ -34,6 +34,7 @@ export const SECTIONS: readonly SectionDef[] = [
   ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
     { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover"] },
+    { key: "peers", path: "/discover/peers", label: "Peer 그룹", match: ["/discover/peers"] },
     { key: "signals", path: "/explore", label: "신호", match: ["/explore"] },
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
     { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },

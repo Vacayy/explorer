@@ -1,0 +1,1910 @@
+{
+  "version": "2026-11-01.1",
+  "asOf": "2026-11-01",
+  "groups": [
+    {
+      "id": "semiconductor_value_chain",
+      "name": "반도체 밸류체인",
+      "scope": "value_chain",
+      "interpretation": "제조·설계·소재·부품·장비·서비스를 포함한 넓은 관찰군. 직접 경쟁 관계와 구분."
+    },
+    {
+      "id": "test_interface",
+      "name": "통합 테스트 인터페이스",
+      "scope": "product",
+      "interpretation": "보드·소켓 중첩. TSE 프로브카드·OLED, TFE COK 차이. 2사 개별 비교."
+    },
+    {
+      "id": "test_socket",
+      "name": "패키지 테스트 소켓·핀",
+      "scope": "product",
+      "interpretation": "제품군 관찰 그룹. TFE/TSE는 부분사업. 접촉 방식·고객·사업 비중 차이 보존."
+    },
+    {
+      "id": "burnin",
+      "name": "번인·모듈 테스트 부품",
+      "scope": "product",
+      "interpretation": "오킨스 테스트 용역, 마이크로컨텍솔 어플라이언스 존재. 2사 비교."
+    },
+    {
+      "id": "module_pcb",
+      "name": "메모리·SSD 모듈 PCB",
+      "scope": "product",
+      "interpretation": "심텍과 코리아써키트는 부분사업. 회사 전체 동일노출 아님."
+    },
+    {
+      "id": "package_substrate",
+      "name": "반도체 패키지 기판",
+      "scope": "product",
+      "interpretation": "삼성전기는 복합사업이므로 좁은 가격 기준선에서는 제외. 나머지도 메모리/FCBGA 구분 필요."
+    },
+    {
+      "id": "system_mlb",
+      "name": "시스템·네트워크 MLB",
+      "scope": "product",
+      "interpretation": "이수페타시스 중심; 대덕전자·코리아써키트는 부분사업."
+    },
+    {
+      "id": "test_pcb",
+      "name": "반도체 검사 PCB",
+      "scope": "product",
+      "interpretation": "타이거일렉 중심; 나머지는 부분사업. 타이거일렉과 TSE 중복 연결 주의."
+    },
+    {
+      "id": "memory",
+      "name": "메모리 제조",
+      "scope": "product",
+      "interpretation": "삼성전자 DS/메모리 사업 대 SK하이닉스. 삼성전자 전체를 메모리 단일사업으로 취급하지 않음."
+    },
+    {
+      "id": "foundry",
+      "name": "파운드리",
+      "scope": "product",
+      "interpretation": "DB하이텍과 삼성 파운드리 사업 비교. 공정·제품 차이와 삼성 복합사업."
+    },
+    {
+      "id": "ssd_controller",
+      "name": "SSD 컨트롤러 팹리스",
+      "scope": "product",
+      "interpretation": "국내 현재 후보군 내 직접 비교 표본 부족."
+    },
+    {
+      "id": "memory_fabless",
+      "name": "저전력 메모리 팹리스",
+      "scope": "product",
+      "interpretation": "제조업체와 팹리스 구분. 파두와 같은 팹리스라도 제품 상이."
+    },
+    {
+      "id": "osat",
+      "name": "패키징·테스트 서비스",
+      "scope": "product",
+      "interpretation": "하나마이크론 연결에 부품 사업 존재. 별도 OSAT 수익과 연결 전체 구분."
+    },
+    {
+      "id": "test_service",
+      "name": "웨이퍼·패키지 테스트 서비스",
+      "scope": "product",
+      "interpretation": "두산테스나 중심; 하나마이크론/SFA는 패키징 포함. 소켓·장비업체와 구별."
+    },
+    {
+      "id": "deposition",
+      "name": "증착 장비",
+      "scope": "product",
+      "interpretation": "ALD/LPCVD/PECVD 등 중첩 제품별 비교 후보. 공정별 매출·고객·디스플레이 노출 미통제."
+    },
+    {
+      "id": "dry_etch",
+      "name": "건식 식각 장비",
+      "scope": "product",
+      "interpretation": "부품업체 TCK/하나머티리얼즈와 공급단계 구분."
+    },
+    {
+      "id": "strip_clean",
+      "name": "드라이 스트립·세정 장비",
+      "scope": "product",
+      "interpretation": "피에스케이홀딩스와 다른 공정."
+    },
+    {
+      "id": "anneal",
+      "name": "고압 수소 어닐링",
+      "scope": "product",
+      "interpretation": "동일 전공정 CAPEX 노출과 직접 경쟁 구분."
+    },
+    {
+      "id": "laser",
+      "name": "레이저 가공 장비",
+      "scope": "product",
+      "interpretation": "마킹·어닐링·다이싱 등 용도별 공정 분리 필요."
+    },
+    {
+      "id": "bonding",
+      "name": "본딩·패키징 장비",
+      "scope": "product",
+      "interpretation": "HBM 관련성만으로 모든 후공정 업체를 직접 Peer로 묶지 않음."
+    },
+    {
+      "id": "descum_reflow",
+      "name": "디스컴·리플로우 장비",
+      "scope": "product",
+      "interpretation": "PSK의 전공정 strip/clean과 분리."
+    },
+    {
+      "id": "handler",
+      "name": "테스트 핸들러·검사 자동화",
+      "scope": "product",
+      "interpretation": "소켓 부품/테스트 서비스와 다른 단계."
+    },
+    {
+      "id": "metrology",
+      "name": "AFM 계측",
+      "scope": "product",
+      "interpretation": "검사·계측 장비 안에서도 측정기술 구분."
+    },
+    {
+      "id": "facility_supply",
+      "name": "화학약품 공급·공정 인프라",
+      "scope": "product",
+      "interpretation": "CCSS 중심; 리플로우 등 기타 장비는 별도 노출."
+    },
+    {
+      "id": "process_chemicals",
+      "name": "반도체 화학 소재",
+      "scope": "product",
+      "interpretation": "화학소재 상위 관찰군. 식각액·PR·과산화수소·전구체 등 제품 다르므로 직접 Peer 기준선 보류."
+    },
+    {
+      "id": "etch_parts",
+      "name": "식각용 Si·SiC 소모성 부품",
+      "scope": "product",
+      "interpretation": "SiC 부문 중첩; Si/SiC 매출·고객별 장비 차이 보존."
+    },
+    {
+      "id": "quartz",
+      "name": "쿼츠 부품·세정",
+      "scope": "product",
+      "interpretation": "TCK/하나머티리얼즈와 인접 공정부품 관찰은 가능, 소재와 공정 차이 존재."
+    },
+    {
+      "id": "diversified_materials",
+      "name": "복합 소재·반도체 투자 노출",
+      "scope": "value_chain",
+      "interpretation": "SKC 연결 범위에 ISC. 유리기판 등 미래사업을 현재 매출로 간주하지 않음."
+    },
+    {
+      "id": "power_infrastructure",
+      "name": "전력 인프라",
+      "scope": "value_chain",
+      "interpretation": "전력 생산·송배전 관련 제품의 넓은 관찰군. 변압기·개폐장치·전선은 별도 제품군으로 비교."
+    },
+    {
+      "id": "power_transformer",
+      "name": "전력 변압기",
+      "scope": "product",
+      "interpretation": "변압기 제품 존재 기준. 정격전압·고객·지역·연결범위가 달라 회사 전체의 직접 경쟁을 뜻하지 않음."
+    },
+    {
+      "id": "switchgear",
+      "name": "차단기·개폐장치",
+      "scope": "product",
+      "interpretation": "차단기·개폐장치 제품 중첩. 제품 전압과 적용 시장 차이 및 다른 사업 노출을 함께 확인."
+    },
+    {
+      "id": "power_cable",
+      "name": "전력 케이블",
+      "scope": "product",
+      "interpretation": "전력 케이블 사업 중첩. 해저·초고압·배전 등 세부 제품과 지주회사 구조 차이를 보존."
+    },
+    {
+      "id": "shipbuilding",
+      "name": "조선",
+      "scope": "value_chain",
+      "interpretation": "상선·해양·특수선의 넓은 관찰군. 선종·군함 비중·엔진사업과 합병 이후 범위가 달라 직접 경쟁은 제품별로 확인."
+    },
+    {
+      "id": "defense_value_chain",
+      "name": "방산 밸류체인",
+      "scope": "value_chain",
+      "interpretation": "지상·항공·유도무기·함정은 서로 다른 시장. 연결 자회사 중복 노출을 포함하므로 독립기업 동일가중 신호에 바로 사용하지 않음."
+    },
+    {
+      "id": "defense_aerospace",
+      "name": "방산 항공·우주",
+      "scope": "product",
+      "interpretation": "항공기 체계·엔진·우주 사업은 밸류체인 역할이 다름. 제품 존재를 관찰하며 직접 대체 관계로 단정하지 않음."
+    },
+    {
+      "id": "defense_ground",
+      "name": "지상 방산",
+      "scope": "product",
+      "interpretation": "지상 무기체계의 사업 존재 근거. 단일기업이면 그룹 상대강도 기준선으로 사용할 수 없음."
+    },
+    {
+      "id": "defense_guided_weapons",
+      "name": "유도무기",
+      "scope": "product",
+      "interpretation": "유도무기 사업 존재 근거. 제품 체계·고객·독립기업 수 추가 검증 필요."
+    }
+  ],
+  "companies": [
+    {
+      "code": "000990",
+      "name": "DB하이텍",
+      "asOf": "2026-11-01",
+      "products": [
+        "Analog CMOS·BCDMOS",
+        "CIS·MS/RF",
+        "전력반도체 공정"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "foundry"
+      ],
+      "caveats": [
+        "특화파운드리와 첨단 로직 파운드리는 공정/웨이퍼/고객 구성이 다름.",
+        "기업소개 페이지 timeout; 제품 포트폴리오 본문 확보. 매출비중 null."
+      ],
+      "sources": [
+        {
+          "url": "https://www.dbhitek.com/en/technology/portfolio/analog-cmos",
+          "claim": "Analog CMOS 및 BCDMOS/CIS/MSRF/전력반도체 공정 포트폴리오",
+          "verification": "primary_full_text",
+          "period": "현행 제품 페이지; 열람2026-11-01"
+        },
+        {
+          "url": "https://www.dbhitek.com/en/company/about",
+          "claim": "특화 파운드리 사업 소개",
+          "verification": "primary_search_snippet_only_open_timeout",
+          "period": "시점미상 현행 소개"
+        }
+      ]
+    },
+    {
+      "code": "267260",
+      "name": "HD현대일렉트릭",
+      "asOf": "2026-11-01",
+      "products": [
+        "전력변압기",
+        "고압차단기",
+        "배전반",
+        "중저압차단기",
+        "전동기·회전기",
+        "ESS 및 에너지 솔루션"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "power_infrastructure",
+        "power_transformer",
+        "switchgear"
+      ],
+      "caveats": [
+        "변압기·차단기 제품에서 효성중공업·일진전기·LS ELECTRIC과 제품군이 겹치지만 정격전압·고객·국가·수주 구조 검증 전 동일한 경쟁시장으로 확정하지 않음.",
+        "회전기기·배전기기·에너지솔루션도 포함한 복합 기업. 전력기기 매출 묶음을 변압기 단독 매출로 읽지 않음.",
+        "전선 제조 근거가 확인되지 않아 power_cable 그룹에는 넣지 않음."
+      ],
+      "sources": [
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814003228&dcmNo=11536334&eleId=10&offset=163569&length=2382&dtd=dart4.xsd",
+          "claim": "발전·송전 단계 전력변압기와 고압차단기, 배전 단계 배전반·중저압차단기 제조·공급을 명시.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        },
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814003228&dcmNo=11536334&eleId=11&offset=165955&length=2954&dtd=dart4.xsd",
+          "claim": "주요 제품 및 서비스 표에서 위 사업제품의 제조·판매를 재확인. 제품 묶음 매출을 단일 세부제품 비중으로 추정하지 않음.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        }
+      ]
+    },
+    {
+      "code": "329180",
+      "name": "HD현대중공업",
+      "asOf": "2026-11-01",
+      "products": [
+        "상선 건조",
+        "구축함·호위함·잠수함 등 함정",
+        "해양플랜트",
+        "엔진기계"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "shipbuilding",
+        "defense_value_chain"
+      ],
+      "caveats": [
+        "상선·군함·엔진 겸업이므로 순수 방산기업과 전체회사 직접 비교 불가.",
+        "HD현대미포를 2025-12-01 흡수합병. 2025연간에는 미포 1개월 매출만 반영되므로 합병전후 시계열 사업범위가 다르다.",
+        "329180 존속회사 HD현대중공업과 HD한국조선해양/과거 현대중공업 명칭을 혼동하지 않는다.",
+        "defense_value_chain은 서로 다른 플랫폼·부품을 포함하는 넓은 관찰군이며, 구성기업 전체가 직접 경쟁 Peer라는 의미가 아니다."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/20/001094/20260320004139/11011.htm",
+          "claim": "2025연간 조선·해양플랜트·엔진 사업 및 미포12/1흡수합병, 매출1개월반영 주석",
+          "verification": "primary_original_verified",
+          "period": "2025FY; 공개2026-03-20"
+        },
+        {
+          "url": "https://naval-special.hhi.co.kr/ko/media01_view/115",
+          "claim": "공식 함정사업 페이지 제품목록 구축함/호위함/잠수함 등, 합병승인 발표",
+          "verification": "primary_original_verified",
+          "period": "2025 합병 발표 및 현행 제품 메뉴"
+        }
+      ]
+    },
+    {
+      "code": "403870",
+      "name": "HPSP",
+      "asOf": "2026-11-01",
+      "products": [
+        "고압 수소 어닐링 GENI-SYS",
+        "장비 부품 및 AS"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "anneal"
+      ],
+      "caveats": [
+        "이오테크닉스 레이저 어닐링 및 원익IPS 열처리는 인접 공정이며 장비 원리·목적이 같다는 근거 없음.",
+        "2026Q1 보고서에 수록된 2025FY 비교기간 매출을 사용. 종속회사가 없어 별도 기준."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/002453/20260515005519/11013.htm",
+          "claim": "저온 고압 수소 어닐링과 GENI-SYS 매출 구성. 2025 장비89.1%, 부품/AS10.9%.",
+          "verification": "primary_original_verified",
+          "period": "2026Q1 (2025FY 비교표 포함)"
+        }
+      ]
+    },
+    {
+      "code": "095340",
+      "name": "ISC",
+      "asOf": "2026-11-01",
+      "products": [
+        "러버·번인·포고 소켓, 테스트 온도조절"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "test_socket"
+      ],
+      "caveats": [
+        "사업별 매출 최신화 및 고객/제품 세부 중첩 확인 필요"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/000123/20260515000186/11013.htm",
+          "claim": "러버·번인·포고 소켓, 테스트 온도조절",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2026Q1 / 2026-05-15"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/000123/20260515000186/11013.htm",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2026Q1"
+        }
+      ]
+    },
+    {
+      "code": "079550",
+      "name": "LIG디펜스앤에어로스페이스",
+      "asOf": "2026-11-01",
+      "products": [
+        "대공·대함·대잠·대지 정밀유도무기·탐색기",
+        "감시정찰 레이더·전자광학·수중감시",
+        "항공전자·전자전",
+        "지휘통제·통신"
+      ],
+      "aliases": [
+        "LIG넥스원",
+        "LIG디앤에이"
+      ],
+      "groupIds": [
+        "defense_value_chain",
+        "defense_guided_weapons",
+        "defense_aerospace"
+      ],
+      "caveats": [
+        "2026Q1 공시 I.1 회사의 개요에서 2026-03-31 사명 변경을 확인. 이전 명칭 LIG넥스원과 종목코드079550으로 연결하며, 거래소 단축명 적용일은 별도 검증 대상.",
+        "항공전자 부품/체계와 완제기·엔진은 서로 다른 제품. 항공우주군 전체 직접Peer 아님.",
+        "유도무기 외 감시정찰/통신사업도 포함하므로 순수 유도탄 회사로 단정하지 않음.",
+        "defense_value_chain은 서로 다른 플랫폼·부품을 포함하는 넓은 관찰군이며, 구성기업 전체가 직접 경쟁 Peer라는 의미가 아니다."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/23/001725/20260323007318/11011.htm",
+          "claim": "2025사업 PGM/ISR/AEW/C4I 설명 및 유도무기/항공전자 제품 확인",
+          "verification": "primary_original_verified",
+          "period": "2025FY; 공개2026-03-23"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001156/20260515002495/11013.htm",
+          "claim": "2026Q1 보고서 법인명 엘아이지디펜스앤에어로스페이스 확인",
+          "verification": "primary_original_verified",
+          "period": "2026Q1; 공개2026-05-15"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001156/20260515002495/11013.htm",
+          "claim": "I.1 회사의 개요: 2026-03-31 LIG디펜스앤에어로스페이스로 사명 변경. 현재 법인명과 이전 명칭을 연결.",
+          "verification": "primary_full_text_parent_review",
+          "period": "2026Q1",
+          "publishedAt": "2026-05-15"
+        }
+      ]
+    },
+    {
+      "code": "010120",
+      "name": "LS ELECTRIC",
+      "asOf": "2026-11-01",
+      "products": [
+        "전력기기·차단기·개폐기",
+        "배전반",
+        "변압기",
+        "송배전·전력시스템",
+        "ESS·태양광·철도 EPC",
+        "PLC·인버터 등 자동화"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "power_infrastructure",
+        "power_transformer",
+        "switchgear"
+      ],
+      "caveats": [
+        "변압기 생산·판매와 차단기/개폐기 사업은 원문 확인했지만 배전·자동화·EPC를 포함하므로 변압기 순수기업으로 취급하지 않음.",
+        "사업부문 표 매출은 연결조정 전이라 전력부문110.8% 등 비율이 발생. 제품 노출도 가중치로 그대로 사용 금지.",
+        "LS에코에너지/LS전선과 별도 상장 법인. LS 이름만으로 cable 그룹에 넣지 않음."
+      ],
+      "sources": [
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814003088&dcmNo=11535806&eleId=10&offset=144420&length=3127&dtd=dart4.xsd",
+          "claim": "주요 재화에 배전반·변압기·송배전시스템을 명시하고 제품표에서 차단기·ACB·개폐기를 확인. 연결 자회사 LS파워솔루션도 변압기 제조·판매.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        },
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814003088&dcmNo=11535806&eleId=11&offset=147551&length=25456&dtd=dart4.xsd",
+          "claim": "주요 제품 및 서비스 표에서 위 사업제품의 제조·판매를 재확인. 제품 묶음 매출을 단일 세부제품 비중으로 추정하지 않음.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        }
+      ]
+    },
+    {
+      "code": "229640",
+      "name": "LS에코에너지",
+      "asOf": "2026-11-01",
+      "products": [
+        "LS-VINA: HV·MV·LV 전력케이블",
+        "LS-VINA: 가공선·빌딩와이어·구리/알루미늄 로드",
+        "LSCV: MV·LV 전력케이블",
+        "LSCV: UTP·광케이블·버스덕트"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "power_infrastructure",
+        "power_cable"
+      ],
+      "caveats": [
+        "상장사는 외국기업 지배지주회사이며 케이블 생산은 연결 베트남 자회사 사업. 상장사 별도 배당·용역 매출과 제조사업을 구분.",
+        "통신·소재·버스덕트도 포함. 케이블 제품 존재 확인을 회사 전체 초고압 매출 비중으로 확대 해석하지 않음.",
+        "LS ELECTRIC과 다른 법인. 버스덕트는 전력 도체 시스템이며 차단기/개폐기 생산 근거로 삼지 않음.",
+        "2026H1 사업개요와 주요제품표의 LSCV 품목별 금액 배열 및 소재 비율에 불일치가 관찰되어 이 조사에서는 매출 비중 채택 안 함. 제품 존재에 대한 양 섹션 설명은 일치."
+      ],
+      "sources": [
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814002014&dcmNo=11531780&eleId=10&offset=157099&length=7547&dtd=dart4.xsd",
+          "claim": "LS-VINA의 초고압·중저압 전력케이블과 소재 생산, LSCV의 전력·통신케이블·버스덕트 생산 및 지주회사 구조를 명시.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        },
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814002014&dcmNo=11531780&eleId=11&offset=164650&length=16883&dtd=dart4.xsd",
+          "claim": "주요 제품 및 서비스 표에서 위 사업제품의 제조·판매를 재확인. 제품 묶음 매출을 단일 세부제품 비중으로 추정하지 않음.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        }
+      ]
+    },
+    {
+      "code": "036540",
+      "name": "SFA반도체",
+      "asOf": "2026-11-01",
+      "products": [
+        "메모리·비메모리 패키징/조립",
+        "테스트",
+        "범핑·모듈"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "osat",
+        "test_service"
+      ],
+      "caveats": [
+        "메모리81.2%는 메모리 칩 자체 제조 매출이 아니라 후공정 제품 매출 분류.",
+        "2026H1 정정본 존재 확인만 했으며 수치는 검증한2025 FY 기준."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/23/001039/20260323004733/11011.htm",
+          "claim": "반도체 조립·테스트 및 연결 제품별 매출표",
+          "verification": "primary_full_text",
+          "period": "2025 FY; 제출2026-03-23"
+        }
+      ]
+    },
+    {
+      "code": "011790",
+      "name": "SKC",
+      "asOf": "2026-11-01",
+      "products": [
+        "ISC 테스트 소켓",
+        "Absolics 유리기판",
+        "동박",
+        "PBAT"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "diversified_materials"
+      ],
+      "caveats": [
+        "전체회사는 소켓·유리기판 순수 Peer가 아님.",
+        "ISC 지분48.49% 및 지배관계는2026-03-31 공시 확인. 이후 변경 미검증.",
+        "SKC와 ISC를 독립 동일가중 Peer로 합치면 경제적 노출 중복.",
+        "유리기판 개발·양산 기대를 실현 매출비중으로 간주하지 않음."
+      ],
+      "sources": [
+        {
+          "url": "https://skc.co.kr/kor/main/index.do",
+          "claim": "동박·유리기판·테스트소켓·PBAT 사업 및 ISC/Absolics 관계사",
+          "verification": "primary_full_text",
+          "period": "현행 제품 페이지; 열람2026-11-01"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/000123/20260515000186/11013.htm",
+          "claim": "SKC ISC 지분48.49%, 차상위 지배기업, 상장 종속회사 명시",
+          "verification": "primary_full_text",
+          "period": "2026 Q1 / 2026-03-31"
+        }
+      ]
+    },
+    {
+      "code": "000660",
+      "name": "SK하이닉스",
+      "asOf": "2026-11-01",
+      "products": [
+        "DRAM·HBM",
+        "NAND·기업용 SSD"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "memory"
+      ],
+      "caveats": [
+        "HBM/범용DRAM/NAND 세부비중 미확보. 메모리 제조와 SSD 컨트롤러 설계를 분리."
+      ],
+      "sources": [
+        {
+          "url": "https://news.skhynix.com/en/q2-2026-business-results/",
+          "claim": "DRAM/HBM·NAND·enterprise SSD 사업",
+          "verification": "primary_full_text",
+          "period": "2026 Q2 발표 2026-07-29"
+        }
+      ]
+    },
+    {
+      "code": "353200",
+      "name": "대덕전자",
+      "asOf": "2026-11-01",
+      "products": [
+        "FCBGA 등 패키지 기판 및 MLB"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "package_substrate",
+        "system_mlb",
+        "test_pcb"
+      ],
+      "caveats": [
+        "패키지와 MLB 복수 제품; 공식 최신 분리비중 미확인"
+      ],
+      "sources": [
+        {
+          "url": "https://www.daeduck.com/board_data/0000000115/00000001152025000001_file4.pdf",
+          "claim": "FCBGA 등 패키지 기판 및 MLB",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2025 게시 자료"
+        }
+      ]
+    },
+    {
+      "code": "001440",
+      "name": "대한전선",
+      "asOf": "2026-11-01",
+      "products": [
+        "초고압 케이블",
+        "전력 및 절연선",
+        "나선·권선·Copper Rod",
+        "통신케이블",
+        "케이블 관련 전기공사"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "power_infrastructure",
+        "power_cable"
+      ],
+      "caveats": [
+        "나선·권선·소재 및 시공·통신케이블을 포함하므로 초고압 전력케이블 순수기업으로 취급하지 않음.",
+        "HVDC·해저케이블 개발/투자/설비 설명만으로 모든 제품의 양산·매출 규모를 추정하지 않음.",
+        "일진전기·LS에코에너지와 전력케이블 제품 영역이 겹치지만 전압등급·수주지역·해저/지중 여부가 달라 직접 경쟁 강도 확인 필요.",
+        "사업장 명칭인 전력기기공장만으로 변압기·차단기 제조를 추정하지 않아 transformer/switchgear 제외."
+      ],
+      "sources": [
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814003722&dcmNo=11538262&eleId=10&offset=146140&length=5756&dtd=dart4.xsd",
+          "claim": "초고압케이블을 포함한 전력선·소재·통신케이블의 생산판매와 케이블 전기공사 토탈솔루션을 명시.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        },
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260814003722&dcmNo=11538262&eleId=11&offset=151900&length=13547&dtd=dart4.xsd",
+          "claim": "주요 제품 및 서비스 표에서 위 사업제품의 제조·판매를 재확인. 제품 묶음 매출을 단일 세부제품 비중으로 추정하지 않음.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-14"
+        }
+      ]
+    },
+    {
+      "code": "005290",
+      "name": "동진쎄미켐",
+      "asOf": "2026-11-01",
+      "products": [
+        "Photoresist·BARC·SOC",
+        "CMP slurry·wet chemical",
+        "디스플레이 전자재료"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "process_chemicals"
+      ],
+      "caveats": [
+        "PR·하부막과 식각액·과산화수소를 같은 직접Peer로 단정하지 않음.",
+        "홈페이지에 발포제 등 비반도체 사업도 제시. 최신 분할/매각 반영 연결 매출비중 미확보."
+      ],
+      "sources": [
+        {
+          "url": "https://www.dongjin.com/company/overview.php",
+          "claim": "PR/BARC/SOC/CMP/wetchemical 및 디스플레이 재료",
+          "verification": "primary_full_text",
+          "period": "현행 소개; 열람2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "131970",
+      "name": "두산테스나",
+      "asOf": "2026-11-01",
+      "products": [
+        "Wafer Test 서비스",
+        "Package Test 서비스",
+        "Die Preparation 서비스"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "test_service"
+      ],
+      "caveats": [
+        "장비 제조사가 아니라 반도체 테스트 서비스 업체. 테크윙 장비·소켓업체는 공급망 인접.",
+        "2025-02-28 엔지온 흡수합병 확인. 2025FY/2026H1 매출 구성 원문 미확보로 null."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/05/15/001348/20250515003169/11013.htm",
+          "claim": "웨이퍼/패키지 테스트 및 양품 칩 재배열·분류 DP 서비스를 사업으로 명시. 엔지온 합병 확인.",
+          "verification": "primary_original_verified",
+          "period": "2025Q1"
+        }
+      ]
+    },
+    {
+      "code": "058470",
+      "name": "리노공업",
+      "asOf": "2026-11-01",
+      "products": [
+        "테스트 핀·IC 테스트 소켓·의료기기 부품"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "test_socket"
+      ],
+      "caveats": [
+        "사업별 매출 최신화 및 고객/제품 세부 중첩 확인 필요"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/000195/20260318000896/11011.htm",
+          "claim": "테스트 핀·IC 테스트 소켓·의료기기 부품",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2025 / 2026-03-18"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/000195/20260318000896/11011.htm",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2025FY"
+        }
+      ]
+    },
+    {
+      "code": "098120",
+      "name": "마이크로컨텍솔",
+      "asOf": "2026-11-01",
+      "products": [
+        "번인·모듈·테스트 소켓, SSD 인터페이스"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "burnin"
+      ],
+      "caveats": [
+        "사업별 매출 최신화 및 고객/제품 세부 중첩 확인 필요"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/08/14/003607/20250814011372/11012.htm",
+          "claim": "번인·모듈·테스트 소켓, SSD 인터페이스",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2025H1 / 2025-08-14"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2025/08/14/003607/20250814011372/11012.htm",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2025H1"
+        }
+      ]
+    },
+    {
+      "code": "089970",
+      "name": "브이엠",
+      "asOf": "2026-11-01",
+      "products": [
+        "300mm Poly Dry Etcher",
+        "장비 부품"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "dry_etch"
+      ],
+      "caveats": [
+        "PSK PR제거/클리닝과 주력 용도가 다름.",
+        "Oxide Etch·ALE 연구 과제를 기존 양산 제품 매출로 간주하지 않음.",
+        "확인된 2025매출 표는 내수/수출 구분이며 제품 믹스가 아님. 제품 구성 null."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/20/000801/20260320003160/11011.htm",
+          "claim": "300mm Poly Etcher 등 건식 식각 장비 및 부품 사업. 매출 내수/수출 표와 개발과제 구분.",
+          "verification": "primary_original_verified",
+          "period": "2025FY"
+        }
+      ]
+    },
+    {
+      "code": "009150",
+      "name": "삼성전기",
+      "asOf": "2026-11-01",
+      "products": [
+        "패키지솔루션·컴포넌트·광학솔루션"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "package_substrate"
+      ],
+      "caveats": [
+        "패키지 비중22.32%(Q2)로 복합사업: 좁은 순수 기판 바스켓에서 제외"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/11/14/003044/20251114007040/11013.htm",
+          "claim": "패키지솔루션·컴포넌트·광학솔루션",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2025Q3 / 2025-11-14"
+        },
+        {
+          "url": "https://www.samsungsem.com/global/newsroom/news/view.do?id=10462",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2026Q2"
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "asOf": "2026-11-01",
+      "products": [
+        "DRAM/NAND 메모리",
+        "System LSI·파운드리",
+        "스마트폰·TV·가전",
+        "디스플레이·Harman"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "memory",
+        "foundry"
+      ],
+      "caveats": [
+        "메모리 직접 Peer 판정은 사업 단위에 한정. 전체 주가에는 DX 등 다각화 노출.",
+        "공식 2025 DX52/DS36/SDC8/Harman4% 부문 비중은 부문매출 합계와 연결총매출의 분모가 달라 연결 비중으로 전용하지 않음. 따라서 revenue_mix null."
+      ],
+      "sources": [
+        {
+          "url": "https://news.samsung.com/kr/fast-facts",
+          "claim": "DX·DS 사업 구성",
+          "verification": "primary_full_text",
+          "period": "2025 FY 및 현행 소개"
+        },
+        {
+          "url": "https://www.samsung.com/sec/sustainability/digital-library/facts-figures/",
+          "claim": "연결 총매출333.6조, 부문매출 DX188.0/DS130.1/SDC29.8/Harman15.8조와 별도 표시된 부문 비중",
+          "verification": "primary_full_text",
+          "period": "2025 FY"
+        }
+      ]
+    },
+    {
+      "code": "010140",
+      "name": "삼성중공업",
+      "asOf": "2026-11-01",
+      "products": [
+        "FLNG 설계·건조",
+        "LNG 밸류체인 해양설비",
+        "컨테이너선"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "shipbuilding"
+      ],
+      "caveats": [
+        "공식 원문에서 확인한 조선·해양 사업을 근거로 편입. 방산 수주나 군함매출을 확인하지 않았으므로 defense_value_chain으로 확장하지 않음.",
+        "FLNG 기술승인·사업비전은 실현매출이 아니며, 최신선종별매출비중 미확보.",
+        "컨테이너선 근거는 과거2014수주발표로 사업이력만 확인. 최신선종구성은 미검증."
+      ],
+      "sources": [
+        {
+          "url": "https://www.samsungshi.com/En/Notice_news_view.aspx?no=155",
+          "claim": "Gastech2026 FLNG/LNG 사업 및 관련 상선수주 공지 연결",
+          "verification": "primary_original_verified",
+          "period": "공개2026-09-14"
+        },
+        {
+          "url": "https://www.samsungshi.com/En/Notice_news_view.aspx?keyfield=&keyword=&no=1",
+          "claim": "컨테이너선 5척 수주 공식발표로 해당선종 사업 이력 확인; 최신 수주/비중 근거로 사용하지 않음",
+          "verification": "primary_original_verified",
+          "period": "공개2014-01-08"
+        }
+      ]
+    },
+    {
+      "code": "357780",
+      "name": "솔브레인",
+      "asOf": "2026-11-01",
+      "products": [
+        "HF·BOE",
+        "CMP slurry·precursor",
+        "디스플레이 식각액·Thin Glass",
+        "2차전지 전해액"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "process_chemicals"
+      ],
+      "caveats": [
+        "솔브레인홀딩스와 별도 상장법인.",
+        "2026H1 문서 존재는 확인했으나 비중 원문 확보는2025 FY까지. 제품군별 세부비중은 미공개/미확보."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/16/002524/20260316007098/11011.htm",
+          "claim": "사업내용 주요제품 표, 연결포괄손익계산서 기준",
+          "verification": "primary_full_text",
+          "period": "2025 FY; 제출2026-03-16"
+        }
+      ]
+    },
+    {
+      "code": "222800",
+      "name": "심텍",
+      "asOf": "2026-11-01",
+      "products": [
+        "메모리 패키지 기판 및 모듈·SSD PCB"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "module_pcb",
+        "package_substrate"
+      ],
+      "caveats": [
+        "모듈 PCB는24%, 패키지76%: 티엘비와 모듈 부문 비교지만 전체 주가 노출은 다름"
+      ],
+      "sources": [
+        {
+          "url": "https://www.simmtech.co.kr/product/package02.aspx",
+          "claim": "메모리 패키지 기판 및 모듈·SSD PCB",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "게시일 미표시 / 조회 2026-11-01"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/13/001043/20260813002788/11012.htm",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2026H1"
+        }
+      ]
+    },
+    {
+      "code": "039440",
+      "name": "에스티아이",
+      "asOf": "2026-11-01",
+      "products": [
+        "CCSS 중앙 화학약품 공급 시스템",
+        "Wet System (세정·현상·식각·Reflow 등)"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "facility_supply"
+      ],
+      "caveats": [
+        "주력은 CCSS이며 순수 reflow 기업으로 분류하면 안 됨.",
+        "Wet System 묶음3.6% 중 reflow만의 비중 미공개.",
+        "사업개요 서술 Wet 매출133억원과 주요제품 표117.687억원이 불일치. 본값은 주요제품 표를 채택하고 불일치 유지."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/12/000583/20260312001678/11011.htm",
+          "claim": "연결 주요제품 표 CCSS91.3%, Wet3.6%, 기타5.1%. Wet에는 reflow 이외 공정 장비 포함.",
+          "verification": "primary_original_verified",
+          "period": "2025FY"
+        }
+      ]
+    },
+    {
+      "code": "080580",
+      "name": "오킨스전자",
+      "asOf": "2026-11-01",
+      "products": [
+        "번인·검사용 소켓 및 테스트 용역"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "burnin"
+      ],
+      "caveats": [
+        "사업별 매출 최신화 및 고객/제품 세부 중첩 확인 필요"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001408/20260515003065/11013.htm",
+          "claim": "번인·검사용 소켓 및 테스트 용역",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2026Q1 / 2026-05-15"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001408/20260515003065/11013.htm",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2026Q1"
+        }
+      ]
+    },
+    {
+      "code": "240810",
+      "name": "원익IPS",
+      "asOf": "2026-11-01",
+      "products": [
+        "반도체 PECVD·ALD",
+        "Diffusion 열처리",
+        "디스플레이 Dry Etcher·PECVD·LTPS Furnace·PI Curing",
+        "태양광 RIE"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "deposition"
+      ],
+      "caveats": [
+        "ALD/CVD 장비 관찰군. 막질·노드·고객·배치형 여부 검증 전 전체 직접 Peer로 확정하지 않음.",
+        "제품매출에 반도체·디스플레이·태양광 포함. 반도체 또는 ALD 비중으로 읽으면 안 됨."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/16/002353/20260316006727/11011.htm",
+          "claim": "반도체 증착·열처리와 디스플레이 등 공정장비 사업. 연결 제품86.5%, 상품/용역13.5%.",
+          "verification": "primary_original_verified",
+          "period": "2025FY"
+        }
+      ]
+    },
+    {
+      "code": "074600",
+      "name": "원익QnC",
+      "asOf": "2026-11-01",
+      "products": [
+        "반도체 quartz 부품·원재료",
+        "세라믹 공정 부품",
+        "부품 세정·코팅",
+        "엑시머램프"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "quartz"
+      ],
+      "caveats": [
+        "석영·Si·SiC는 대체 가능한 동일제품으로 간주하지 않음.",
+        "국내 홈페이지403으로 사업분류는2023 공식연간 공시와 현재 유럽법인 제품서비스에서 확인. 2026 연결구성/비중 추가 검증 필요."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2024/03/18/001073/20240318004675/11011.htm",
+          "claim": "석영가공·석영원재료·세라믹·세정코팅·램프 사업",
+          "verification": "primary_full_text",
+          "period": "2023 FY; 제출2024-03-18"
+        },
+        {
+          "url": "https://www.wonik.de/en/service/cleaning/",
+          "claim": "Quartz glass cleaning 서비스",
+          "verification": "primary_full_text",
+          "period": "현행 서비스 페이지; 열람2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "084370",
+      "name": "유진테크",
+      "asOf": "2026-11-01",
+      "products": [
+        "LPCVD",
+        "ALD",
+        "Plasma Treatment",
+        "전구체(연결 자회사)"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "deposition"
+      ],
+      "caveats": [
+        "LPCVD/ALD와 타사 PECVD 간 실제 적용막·제품 치환성 확인 필요.",
+        "연결에는 전구체 소재 사업 포함. 장비80.3%와 소재3.6%를 분리.",
+        "2025FY/2026H1 구성 미검증, 2026Q1 원문 수치를 사용."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/13/000821/20260513001831/11013.htm",
+          "claim": "LPCVD·플라즈마·ALD 제품 및 연결 매출 장비80.3%, 전구체3.6%, 기타16.1%.",
+          "verification": "primary_original_verified",
+          "period": "2026Q1"
+        }
+      ]
+    },
+    {
+      "code": "007660",
+      "name": "이수페타시스",
+      "asOf": "2026-11-01",
+      "products": [
+        "초고다층 MLB·RF PCB"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "system_mlb"
+      ],
+      "caveats": [
+        "MLB 중심으로 모듈·패키지와 구별",
+        "공식 세부 제품/전방 매출 비중 미확인"
+      ],
+      "sources": [
+        {
+          "url": "https://www.petasys.com/kor/company/domesticbusiness.jsp",
+          "claim": "초고다층 MLB·RF PCB",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "게시일 미표시 / 조회 2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "039030",
+      "name": "이오테크닉스",
+      "asOf": "2026-11-01",
+      "products": [
+        "레이저 마킹",
+        "레이저 절단·그루빙·드릴링",
+        "레이저 어닐링·디본딩"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "laser"
+      ],
+      "caveats": [
+        "레이저마커 및 응용기기 묶음이라 어닐링 단독 비중 알 수 없음.",
+        "반도체 외 PCB·디스플레이용 레이저 장비를 포함.",
+        "공정 일부가 겹치는 것과 회사 전체 직접 Peer는 구분."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/23/002295/20260323009640/11011.htm",
+          "claim": "레이저마커 및 응용기기74.5%, 상품등25.5%. 연결 매출과 합계 일치.",
+          "verification": "primary_original_verified",
+          "period": "2025FY"
+        },
+        {
+          "url": "https://expo.semi.org/west2025/Public/eBooth.aspx?BoothID=607325",
+          "claim": "회사 제공 전시 소개에서 marking/cutting/drilling/grooving/debonding/annealing 제품 확인.",
+          "verification": "primary_original_verified",
+          "period": "SEMICON West 2025"
+        }
+      ]
+    },
+    {
+      "code": "103590",
+      "name": "일진전기",
+      "asOf": "2026-11-01",
+      "products": [
+        "저압~초고압 전선",
+        "전력 및 절연선",
+        "동나선·알루미늄 나선",
+        "변압기",
+        "GIS·차단기·보호개폐장치"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "power_infrastructure",
+        "power_transformer",
+        "power_cable",
+        "switchgear"
+      ],
+      "caveats": [
+        "전선과 중전기를 모두 생산하여 변압기군·전선군 양쪽에 소속. 그룹 합산 시 중복 카운트 방지 필요.",
+        "전선 부문에는 나선 소재와 상품·공사도 포함. 전체 전선 매출을 초고압 완제품 케이블 매출로 취급하지 않음.",
+        "중전기 제품 묶음 안 변압기 단독 비중과 전압·고객별 직접 경쟁은 미확인."
+      ],
+      "sources": [
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260811000431&dcmNo=11518406&eleId=10&offset=122009&length=822&dtd=dart4.xsd",
+          "claim": "사업개요에서 전압별 전선과 변압기·차단기 생산을 명시. 제품표 중전기 품목에 GIS·변압기·보호개폐기장치 기재.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-11"
+        },
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260811000431&dcmNo=11518406&eleId=11&offset=122835&length=8259&dtd=dart4.xsd",
+          "claim": "주요 제품 및 서비스 표에서 위 사업제품의 제조·판매를 재확인. 제품 묶음 매출을 단일 세부제품 비중으로 추정하지 않음.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-11"
+        }
+      ]
+    },
+    {
+      "code": "080220",
+      "name": "제주반도체",
+      "asOf": "2026-11-01",
+      "products": [
+        "LPDRAM·DRAM",
+        "NAND·eMMC",
+        "NAND/eMCP/NOR MCP",
+        "CRAM"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "memory_fabless"
+      ],
+      "caveats": [
+        "MCP 제품을 판매한다고 패키징 외주서비스(OSAT)로 분류하지 않음.",
+        "메모리 제조 IDM과 사업모델·최종수요가 다르며 최신 매출비중 미확보."
+      ],
+      "sources": [
+        {
+          "url": "https://www.jeju-semi.com/",
+          "claim": "제품 MCP/LPDRAM/DRAM/NAND/eMMC/CRAM 및 자동차·IoT 응용",
+          "verification": "primary_full_text",
+          "period": "현행 제품 페이지; 열람2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "036930",
+      "name": "주성엔지니어링",
+      "asOf": "2026-11-01",
+      "products": [
+        "ALD·CVD 증착",
+        "반도체 SD System",
+        "디스플레이·태양광 제조장비"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "deposition"
+      ],
+      "caveats": [
+        "증착 공정 중첩 관찰군. ALD/LPCVD/PECVD 공정 차이를 보존.",
+        "제품85.8%는 반도체 ALD 단독 비중이 아님."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/000306/20260318001621/11011.htm",
+          "claim": "ALD/CVD 등 장비와 디스플레이/태양광 사업. 제품266451백만원85.8%, 상품44242백만원14.2%.",
+          "verification": "primary_original_verified",
+          "period": "2025FY"
+        }
+      ]
+    },
+    {
+      "code": "007810",
+      "name": "코리아써키트",
+      "asOf": "2026-11-01",
+      "products": [
+        "모듈·SSD·HDI·패키지·MLB"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "module_pcb",
+        "package_substrate",
+        "system_mlb"
+      ],
+      "caveats": [
+        "모듈·패키지·HDI 복수 제품; 별도/연결 범위와 자회사 효과 확인 필요",
+        "테라닉스 합병/연결 범위 변동은 후속 공시검증 필요"
+      ],
+      "sources": [
+        {
+          "url": "https://www.kcg.co.kr/?redirect=no",
+          "claim": "모듈·SSD·HDI·패키지·MLB",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "게시일 미표시 / 조회 2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "219130",
+      "name": "타이거일렉",
+      "asOf": "2026-11-01",
+      "products": [
+        "프로브카드·소켓보드·로드보드용 PCB"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "test_pcb"
+      ],
+      "caveats": [
+        "사업별 매출 최신화 및 고객/제품 세부 중첩 확인 필요"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001722/20260515003813/11013.htm",
+          "claim": "프로브카드·소켓보드·로드보드용 PCB",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2026Q1 / 2026-05-15"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001722/20260515003813/11013.htm",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2026Q1"
+        }
+      ]
+    },
+    {
+      "code": "095610",
+      "name": "테스",
+      "asOf": "2026-11-01",
+      "products": [
+        "PECVD (ACL·ARC·Gap Fill·Low-k 등)",
+        "Dry Cleaning GPE/RPE",
+        "Backside deposition"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "deposition"
+      ],
+      "caveats": [
+        "PECVD와 LPCVD/ALD 적용 차이 및 고객 검증 필요.",
+        "IR 개발 로드맵(OLEDoS·SiC/GaN 등)을 현재 주력 매출로 간주하지 않음.",
+        "2026Q1 제품소개 원문 확인, 제품별 매출 분모 확인 불가로 null."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/18578/TES_IR%20Presentation_1Q26%28KOR%29.pdf",
+          "claim": "PECVD·드라이클리닝 및 제품/개발 로드맵. 공정별 설명은 PDF11~12페이지.",
+          "verification": "primary_original_verified",
+          "period": "2026Q1 IR"
+        }
+      ]
+    },
+    {
+      "code": "089030",
+      "name": "테크윙",
+      "asOf": "2026-11-01",
+      "products": [
+        "메모리 Test Handler",
+        "SoC Test Handler",
+        "HBM Cube Prober",
+        "Probe Station",
+        "COK·TIB"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "handler"
+      ],
+      "caveats": [
+        "티에프이와 COK·테스트보드 일부 제품 영역 중첩. 주력 장비와 소켓기업을 동일 직접 Peer로 확정하지 않음.",
+        "2026 IR의 시장규모·예상 고객·장래 기회는 실현 매출과 구분.",
+        "장비 및 부품별 실현 매출 구성 확인 불가로 null."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/17957/TechWing%20IR%20Book.pdf",
+          "claim": "메모리/SoC handler, CubeProber, ProbeStation, COK/TIB 제품. 시장 및 기회 수치를 실제 매출 비중으로 사용하지 않음.",
+          "verification": "primary_original_verified",
+          "period": "2026 IR (회사 현황 2025-12-31)"
+        }
+      ]
+    },
+    {
+      "code": "064760",
+      "name": "티씨케이",
+      "asOf": "2026-11-01",
+      "products": [
+        "Solid SiC ring·wafer",
+        "고순도 graphite",
+        "Susceptor·SiC coating"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "etch_parts"
+      ],
+      "caveats": [
+        "2026Q1 비중으로 H1/연간을 대체하지 않음. 종속회사 없는 단일법인.",
+        "SiC 전력반도체 웨이퍼 업체와 SiC 공정소모품 업체를 구별."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/002296/20260515005133/11013.htm",
+          "claim": "제품군별 매출표 및 SolidSiC/흑연/서셉터 용도",
+          "verification": "primary_full_text",
+          "period": "2026 Q1"
+        },
+        {
+          "url": "https://tck.co.kr/jap/business/SolidSiC.php",
+          "claim": "dry etcher/diffusion용 SiC ring·showerhead·dummy wafer",
+          "verification": "primary_full_text",
+          "period": "현행 제품 페이지"
+        }
+      ]
+    },
+    {
+      "code": "131290",
+      "name": "티에스이",
+      "asOf": "2026-11-01",
+      "products": [
+        "프로브카드·테스트 인터페이스 보드·소켓·OLED 검사"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "test_interface",
+        "test_socket"
+      ],
+      "caveats": [
+        "프로브카드·OLED·연결 자회사 포함으로 순수 소켓업체와 다름",
+        "타이거일렉과 모자회사 중복 노출"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/17272/%5BTSE%5D%202025%EB%85%84%20IR%20BOOK%20%28Kor%29.pdf",
+          "claim": "프로브카드·테스트 인터페이스 보드·소켓·OLED 검사",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2025 IR"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001722/20260515003813/11013.htm",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2026Q1"
+        }
+      ]
+    },
+    {
+      "code": "425420",
+      "name": "티에프이",
+      "asOf": "2026-11-01",
+      "products": [
+        "테스트 소켓·보드·번인 보드·COK"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "test_interface",
+        "test_socket"
+      ],
+      "caveats": [
+        "2025 보드약53%에서 2026Q1 소켓39%·보드36%·COK24%로 구성 변화: 분류 시점 보존 필요",
+        "TSE와 통합 인터페이스 비교; ISC·리노공업은 소켓 부문 중첩"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/18251/%28TFE%29%202025%20IR%20BOOK_vF_20260325.pdf",
+          "claim": "테스트 소켓·보드·번인 보드·COK",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2026-03-25 / 2025 실적"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/18251/%28TFE%29%202025%20IR%20BOOK_vF_20260325.pdf",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2025FY"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/18627/%28TFE%29%202026%20IR%20BOOK_20260522.pdf",
+          "claim": "제품별 매출 금액·분모 확인",
+          "verification": "원문 확인",
+          "period": "2026Q1"
+        }
+      ]
+    },
+    {
+      "code": "356860",
+      "name": "티엘비",
+      "asOf": "2026-11-01",
+      "products": [
+        "메모리 모듈·SSD PCB 및 검사장비용 PCB"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "module_pcb",
+        "test_pcb"
+      ],
+      "caveats": [
+        "공시상 PCB 매출100%; 메모리 모듈/SSD/검사용 분리비중 미확인",
+        "PCB100%를 DRAM 모듈100%로 해석하지 않음"
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/12/000241/20260512000500/11013.htm",
+          "claim": "메모리 모듈·SSD PCB 및 검사장비용 PCB",
+          "verification": "원문 제품 근거 확인(1차 조사)",
+          "period": "2026Q1 / 2026-05-12"
+        }
+      ]
+    },
+    {
+      "code": "440110",
+      "name": "파두",
+      "asOf": "2026-11-01",
+      "products": [
+        "기업용 SSD 컨트롤러"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "ssd_controller"
+      ],
+      "caveats": [
+        "SSD 컨트롤러와 NAND 메모리칩은 다른 제품. 국내 직접Peer 이14사에서 확인 안 됨.",
+        "제품과 SSD솔루션별 최신매출비중 미확보."
+      ],
+      "sources": [
+        {
+          "url": "https://www.fadu.io/product/ssd-controllers",
+          "claim": "AI/hyperscale/HPC용 enterprise SSD controller 제품",
+          "verification": "primary_full_text",
+          "period": "현행 제품 페이지; 열람2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "140860",
+      "name": "파크시스템스",
+      "asOf": "2026-11-01",
+      "products": [
+        "연구용·산업용 AFM",
+        "웨이퍼 표면 나노계측",
+        "마스크 수리 및 관련 계측",
+        "타원편광·디지털 홀로그래피 계측"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "metrology"
+      ],
+      "caveats": [
+        "AFM 나노표면 계측은 전기적 칩 테스트 및 테스트 핸들러와 다른 기능.",
+        "공식 제품 페이지에 기간 표시 없음. 2025FY/2026H1 매출 구성 원문 미확보."
+      ],
+      "sources": [
+        {
+          "url": "https://www.parksystems.com/kr/company/about-us",
+          "claim": "공식 회사소개에서 연구용/산업용 AFM, wafer metrology, mask repair, ellipsometry 등의 제품 범주 확인.",
+          "verification": "primary_original_verified"
+        }
+      ]
+    },
+    {
+      "code": "319660",
+      "name": "피에스케이",
+      "asOf": "2026-11-01",
+      "products": [
+        "Dry Strip",
+        "Dry Cleaning/Selective Material Removal",
+        "New Hard Mask Strip",
+        "Bevel Etch"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "strip_clean"
+      ],
+      "caveats": [
+        "PSK홀딩스와 법인·주력 공정이 다름.",
+        "2025 IR의 Dry Strip88%/Dry Cleaning12%는 제품매출 내부 분모. 전체 매출 대비로 사용 금지.",
+        "브이엠 주력 식각은 재료 패터닝, PR제거와 같은 직접 Peer로 묶지 않음."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/23/000046/20260323000129/11011.htm",
+          "claim": "Dry strip 등 제품 설명 및 연결 장비53.6%, 부품/서비스46.4%.",
+          "verification": "primary_original_verified",
+          "period": "2025FY"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/18482/%E2%98%85PSKG_IR_BOOK_KOR_25Y.pdf",
+          "claim": "페이지5 제품 내부 Dry Strip88%, Dry Cleaning12%; 전체 매출과 제품 내부 분모 분리.",
+          "verification": "primary_original_downloaded_and_chart_verified",
+          "period": "2025FY IR"
+        }
+      ]
+    },
+    {
+      "code": "031980",
+      "name": "피에스케이홀딩스",
+      "asOf": "2026-11-01",
+      "products": [
+        "패키징 Descum",
+        "Fluxless Reflow",
+        "Hot DI Water Heater",
+        "Plasma Source"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "descum_reflow"
+      ],
+      "caveats": [
+        "전공정 strip의 PSK와 분리. 한미 TC본딩은 인접 공정.",
+        "2025IR 전체 매출 제품92%/부품서비스7%/기타1%. 제품 내부 Reflow62%/Descum33%/PlasmaSource3%/HotDI1%는 합계99% 반올림이며 전체 매출 비중 아님.",
+        "매출 구성 본값은 회계기준이 명시된 2026Q1 공시 사용. 2025IR 비율은 분모 주의 보조근거."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/15/001737/20260515003847/11013.htm",
+          "claim": "Descum·Reflow 사업 및 연결 장비75%, 부품/서비스25%.",
+          "verification": "primary_original_verified",
+          "period": "2026Q1"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/dst/irReference/18482/%E2%98%85PSKG_IR_BOOK_KOR_25Y.pdf",
+          "claim": "페이지5 전체 매출과 제품 내부 매출 파이 차트; 각각 분모가 다름.",
+          "verification": "primary_original_downloaded_and_chart_verified",
+          "period": "2025FY IR"
+        }
+      ]
+    },
+    {
+      "code": "067310",
+      "name": "하나마이크론",
+      "asOf": "2026-11-01",
+      "products": [
+        "반도체 패키징·테스트·모듈",
+        "범핑·웨이퍼테스트",
+        "연결 하나머티리얼즈 Si/SiC 부품"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "osat",
+        "test_service"
+      ],
+      "caveats": [
+        "연결재료부문 포함하므로 순수OSAT와 전체매출 비교에 주의.",
+        "하나머티리얼즈 지분33.33% 및 연결은2026-03-31 확인. 이후 미검증.",
+        "아래 매출표는 연결 사업부문 합계로 내부거래 차감 후 연결재무제표 총매출과 동일하다고 검증하지 않음."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/14/001312/20260514002860/11013.htm",
+          "claim": "사업부문별 제품매출표, 종속기업 하나머티리얼즈33.33%",
+          "verification": "primary_full_text",
+          "period": "2026 Q1"
+        },
+        {
+          "url": "https://hanamicron.com/contents/cont.do?mId=108&mPid=96&sCode=user",
+          "claim": "패키징·테스트·범핑·모듈",
+          "verification": "primary_full_text",
+          "period": "현행 사업소개"
+        }
+      ]
+    },
+    {
+      "code": "166090",
+      "name": "하나머티리얼즈",
+      "asOf": "2026-11-01",
+      "products": [
+        "Si electrode·ring",
+        "SiC ring",
+        "식각 공정 부품"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "etch_parts"
+      ],
+      "caveats": [
+        "하나마이크론2026-03-31 연결종속회사; 지분33.33%. 이후 변경 미검증.",
+        "모회사와 동시편입 시 중복노출. 최신 Si/SiC별 매출비중 미확보."
+      ],
+      "sources": [
+        {
+          "url": "https://en.hanamts.com/product-temp/",
+          "claim": "Si/SiC semiconductor parts",
+          "verification": "primary_full_text",
+          "period": "현행 제품 페이지; 열람2026-11-01"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/05/14/001312/20260514002860/11013.htm",
+          "claim": "연결종속회사33.33%; 반도체재료부문 Si/SiC parts와 electrode/ring 설명",
+          "verification": "primary_full_text",
+          "period": "2026 Q1 / 2026-03-31"
+        }
+      ]
+    },
+    {
+      "code": "047810",
+      "name": "한국항공우주",
+      "asOf": "2026-11-01",
+      "products": [
+        "FA-50 전투기",
+        "T-50 기반 항공기 체계"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "defense_value_chain",
+        "defense_aerospace"
+      ],
+      "caveats": [
+        "공식 FA-50 원문으로 확인한 완제기 사업을 분류근거로 사용. 기타 민수/우주/회전익 매출비중은 이번 조사에서 미확보.",
+        "한화에어로 항공엔진·LIG 항공전자와 같은 항공우주 공급망이지만 완제기-엔진-전자체계는 직접 대체제품이 아님.",
+        "defense_value_chain은 서로 다른 플랫폼·부품을 포함하는 넓은 관찰군이며, 구성기업 전체가 직접 경쟁 Peer라는 의미가 아니다."
+      ],
+      "sources": [
+        {
+          "url": "https://www.koreaaero.com/EN/Business/FA50.aspx",
+          "claim": "T-50기반 FA-50 개발·무장·공군운용을 설명하는 공식제품 원문",
+          "verification": "primary_original_verified",
+          "period": "게시일미상; 접근2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "042700",
+      "name": "한미반도체",
+      "asOf": "2026-11-01",
+      "products": [
+        "HBM TC Bonder",
+        "반도체 제조장비",
+        "Conversion Kit",
+        "EMI Shield"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "bonding"
+      ],
+      "caveats": [
+        "TC 본딩과 reflow는 인접 패키징 공정으로 취급.",
+        "장비매출84.62% 전체를 TC Bonder 비중으로 해석할 수 없음.",
+        "Hybrid Bonder 등의 개발계획을 현재 매출 제품으로 계산하지 않음."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/12/002053/20260312004659/11011.htm",
+          "claim": "TC Bonder·EMI Shield 설명과 장비/Conversion Kit 매출 구성. 연결/별도 합계 대조.",
+          "verification": "primary_original_verified",
+          "period": "2025FY"
+        }
+      ]
+    },
+    {
+      "code": "014680",
+      "name": "한솔케미칼",
+      "asOf": "2026-11-01",
+      "products": [
+        "고순도 과산화수소",
+        "반도체 precursor",
+        "전자재료 및 비반도체 화학소재"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "semiconductor_value_chain",
+        "process_chemicals"
+      ],
+      "caveats": [
+        "고순도과산화수소와 PR/식각액은 제품·경쟁구조가 다름.",
+        "연결에 Tapex 등 비반도체 사업 포함. 반도체 노출을 전체 매출로 간주하지 않음; 최신비중 null."
+      ],
+      "sources": [
+        {
+          "url": "https://hansolchemical.com/subsid-comp/",
+          "claim": "HS Materials 전구체, Xi'an 과산화수소,Tapex 사업",
+          "verification": "primary_full_text",
+          "period": "현행 관계회사 소개"
+        },
+        {
+          "url": "https://hansolchemical.com/thinf-mat/",
+          "claim": "반도체 박막 재료·전구체",
+          "verification": "primary_full_text",
+          "period": "현행 제품 소개"
+        }
+      ]
+    },
+    {
+      "code": "012450",
+      "name": "한화에어로스페이스",
+      "asOf": "2026-11-01",
+      "products": [
+        "K9 자주포·천무·장갑차·발사대 등 지상무기",
+        "항공기/함정용 엔진·부품 개발·생산·정비",
+        "정밀유도무기 및 방산체계"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "defense_value_chain",
+        "defense_ground",
+        "defense_aerospace",
+        "defense_guided_weapons"
+      ],
+      "caveats": [
+        "항공엔진 사업과 KAI의 완제기 사업은 공급단계가 달라 항공우주군 소속만으로 직접Peer가 아님.",
+        "천무 등 유도무기 사업도 존재하므로 지상화력만의 순수기업으로 단정하지 않음.",
+        "한화오션 연결편입으로 연결범위가 확대되었다는 공시 확인. 최신 연결지분율/전체 사업비중 미검증. shipbuilding은 이 파일에서 직접사업분류 위주로 사용하여 연결간접노출은 caveat로 보존.",
+        "defense_value_chain은 서로 다른 플랫폼·부품을 포함하는 넓은 관찰군이며, 구성기업 전체가 직접 경쟁 Peer라는 의미가 아니다."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/05/29/000010/20250529000020/10601.htm",
+          "claim": "K9/천무/발사대/정밀유도무기 사업 및 항공기·함정용 엔진 개발생산정비, 한화오션 연결편입",
+          "verification": "primary_original_verified",
+          "period": "공개2025-05-29"
+        },
+        {
+          "url": "https://www.hanwha.com/newsroom/news/press-releases/beyond-the-howitzer-hanwha-unveils-next-evolution-of-k9.do",
+          "claim": "K9 운용국 및 발전방향 공식사업보도; 개발로드맵을 실현제품매출과 구분",
+          "verification": "primary_original_verified",
+          "period": "현행 공식 보도; 접근2026-11-01"
+        }
+      ]
+    },
+    {
+      "code": "042660",
+      "name": "한화오션",
+      "asOf": "2026-11-01",
+      "products": [
+        "LNG·원유·컨테이너·LPG 운반선",
+        "FPSO·플랫폼·시추설비",
+        "잠수함·구축함·구난함·경비함",
+        "플랜트·풍력"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "shipbuilding",
+        "defense_value_chain"
+      ],
+      "caveats": [
+        "상선과 특수선 겸업. 삼성중공업/HD현대중공업과 선종별 비교 가능하나 전체 수익구조 동일하지 않음.",
+        "사업원문은2025H1로 최신2026 사업별비중을 확보한 것은 아님.",
+        "한화에어로스페이스 공시에 한화오션 연결편입이 나타나므로 두 종목 동시 비교 시 연결노출 중복에 주의; 현행정확 지분율 미검증.",
+        "defense_value_chain은 서로 다른 플랫폼·부품을 포함하는 넓은 관찰군이며, 구성기업 전체가 직접 경쟁 Peer라는 의미가 아니다."
+      ],
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/08/12/000516/20250812001269/11012.htm",
+          "claim": "사업개요에 상선·해양·특수선 및2024플랜트/풍력양수 사업 명시",
+          "verification": "primary_original_verified",
+          "period": "2025H1; 공개2025-08-12"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2025/05/29/000010/20250529000020/10601.htm",
+          "claim": "2024회계연도 이후 한화오션 연결편입 효과 명시",
+          "verification": "primary_original_verified",
+          "period": "공개2025-05-29"
+        }
+      ]
+    },
+    {
+      "code": "298040",
+      "name": "효성중공업",
+      "asOf": "2026-11-01",
+      "products": [
+        "변압기",
+        "차단기",
+        "배전반",
+        "전동기·발전기·감속기",
+        "HVDC·STATCOM·ESS 솔루션",
+        "건설"
+      ],
+      "aliases": [],
+      "groupIds": [
+        "power_infrastructure",
+        "power_transformer",
+        "switchgear"
+      ],
+      "caveats": [
+        "중공업과 건설을 함께 영위하므로 순수 변압기 기업처럼 전체 재무를 비교하지 않음.",
+        "HVDC·STATCOM·ESS는 솔루션 사업이며 전선 제품이라는 뜻이 아님.",
+        "변압기·차단기 제품 중첩은 확인했으나 같은 전압등급/고객입찰 직접 경쟁은 별도 확인 필요."
+      ],
+      "sources": [
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260813001554&dcmNo=11525540&eleId=10&offset=153256&length=2311&dtd=dart4.xsd",
+          "claim": "중공업 주요 제품을 변압기·차단기·배전반 및 회전기기로 명시. 건설 부문을 별도 사업으로 설명.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-13"
+        },
+        {
+          "url": "https://dart.fss.or.kr/report/viewer.do?rcpNo=20260813001554&dcmNo=11525540&eleId=11&offset=155571&length=5844&dtd=dart4.xsd",
+          "claim": "주요 제품 및 서비스 표에서 위 사업제품의 제조·판매를 재확인. 제품 묶음 매출을 단일 세부제품 비중으로 추정하지 않음.",
+          "verification": "primary_original_html_verified: DART report/viewer.do 원문 직접 조회 및 본문 대조; snippet 아님",
+          "period": "2026H1",
+          "publishedAt": "2026-08-13"
+        }
+      ]
+    }
+  ]
+}

@@ -10,6 +10,12 @@
 
 설계 원칙은 PHILOSOPHY(비공개 문서), 주요 기능의 요청·처리·저장 흐름과 기술 선택은 [TECH_DECISIONS](TECH_DECISIONS.md), 세부 계약은 [기능별 스펙](specs/README.md)에 있다. 이 문서는 전체 시스템 현황과 운영 항목을 관리한다. 2026-09-12 문서 대조에서 승인 범위·사용자 기록 소유권·스터디 웹 탐색·조회 정책의 적용 범위를 바로잡았다. 과거 운영 측정치는 측정 당시 기록이며 현재 값을 뜻하지 않는다.
 
+## Peer 그룹 카탈로그 (2026-11-01)
+
+- 탐색의 `/discover/peers`는 버전 고정된 공개 사업근거를 제품·공정 및 밸류체인 그룹으로 보여준다. 검색어 `q`와 그룹 `group`은 URL에 보존하고 기업 분석으로 연결한다.
+- `frontend/src/data/peer-catalog.json` → `lib/peerCatalog.ts`의 Zod·참조 검증 → `usePeerCatalog` → `components/peers/PeerCatalogPage`. 그룹 소속은 기업의 `groupIds`가 단일 원본이다. 로컬 조사자료에서 공개 사업근거만 추출하는 `scripts/research/build_peer_catalog.py`로 갱신한다.
+- 조회 시 외부 수집·DB 변경·AI 호출 없음. 실제 가격 세션과 기업행사 검증이 남아 수익률 비교·자동 신호는 제공하지 않는다. [계약](specs/peer-intelligence.md).
+
 ## 읽기 전용 시장 분석 CodeAct (D-176, 2026-09-19)
 
 - **아는 종목 검색 기록(2026-09-23)**: `useRecentCompanySearches`는 선택한 국내 종목 이름·코드를 이 브라우저의 localStorage에 최근 8개까지 보존한다. 상단 분석 카드에서 재선택·전체 삭제를 제공하며 기술적 분석·구조 그리기로 이어간다. 옴니바의 최근 본 종목과는 별도이며 서버 저장은 없다. [계약](specs/technical-reading.md#상승-후보-중심-탐색과-구조-그리기-우선순위-2026-09-23-d-203).
