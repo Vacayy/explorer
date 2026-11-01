@@ -43,6 +43,9 @@ PATH = ":".join(p for p in [_NODE_BIN, "/opt/homebrew/bin", "/usr/local/bin",
 
 # (label, 실행 인자, 스케줄) — 스케줄은 int(초 간격) 또는 StartCalendarInterval dict/list
 JOBS = [
+    # Peer 전용 정규장 원천; 관측 저장만, 외부 알림 없음.
+    ("peer", [PY, "scripts/refresh_peer_monitor.py"],
+     [{"Weekday": d, "Hour": 20, "Minute": 30} for d in range(1, 6)]),
     ("chain", [str(PROJECT / "scripts" / "run_chain.sh")], 1800),
     # KRX 종가는 16:30에 확정 송출(네이버 closePriceSendTime) — 그 뒤에 수집. 감시(16:40)보다 앞.
     # 20:20 재실행은 시간외 단일가·NXT까지 끝난 뒤 같은 값을 덮어쓴다(D-220 — 16:35엔 marketStatus가 OPEN이라 판정에 안 씀).
@@ -120,6 +123,7 @@ JOBS = [
 # window_h: 늦으면 의미 없는 작업은 정기 시각 뒤 이 시간까지만 따라잡는다. 없으면 다음 회차까지.
 # 빠진 것: chain(30분 간격 자체), pfintraday(장중 30분 알림 — 지난 회차는 의미 없음), backfill(야간 기회 작업), catchup 자신.
 CATCHUP = {
+    "peer": {"record": "peer_refresh", "window_h": 6},
     "prices": {"record": "prices"},
     "history": {"record": "market_history"},
     "credit": {"record": "credit"},
@@ -176,6 +180,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--uninstall", action="store_true")
+    ap.add_argument("--only", choices=[job[0] for job in JOBS], help="선택한 잡 하나만 설치/제거")
     args = ap.parse_args()
 
     domain = f"gui/{os.getuid()}"
@@ -183,6 +188,8 @@ def main() -> int:
     rc = 0
 
     for label, argv, schedule in JOBS:
+        if args.only and label != args.only:
+            continue
         full = PREFIX + label
         path = AGENTS / f"{full}.plist"
 

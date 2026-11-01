@@ -15,7 +15,9 @@
 - 탐색의 `/discover/peers`는 버전 고정된 공개 사업근거를 제품·공정 및 밸류체인 그룹으로 보여준다. 검색어 `q`와 그룹 `group`은 URL에 보존하고 기업 분석으로 연결한다.
 - `frontend/src/data/peer-catalog.json` → `lib/peerCatalog.ts`의 Zod·참조 검증 → `usePeerCatalog` → `components/peers/PeerCatalogPage`. 그룹 소속은 기업의 `groupIds`가 단일 원본이다. 로컬 조사자료에서 공개 사업근거만 추출하는 `scripts/research/build_peer_catalog.py`로 갱신한다.
 - `peer-prices.json`의 명시적 정규장 종가 → `lib/peerPerformance.ts` → `usePeerPrices` → `PeerPerformancePanel`·`PeerRelativeCandidates`: 5·20·60일 그룹 동일가중·자기 제외 Peer 대비·정규화 차트·상대 강약 후보. `view/days/benchmark/stock/overview/scope/relative`를 URL에 보존한다. `qualityIssues`의 기업행사 불연속을 횡단하면 해당 종목과 소속그룹 기준선을 미평가한다.
-- 61기업·43분류와 61일 가격을 고정 스냅샷으로 제공한다. `build_peer_price_snapshot.py`가 검토된 정규장·연속성 감사·공식 사건 근거를 내보낸다. 조회 시 외부 수집·DB 변경·AI 호출 없음. 기업행사 조정·주기 수집은 미완료이고 자동 신호를 발행하지 않는다. [계약](specs/peer-intelligence.md).
+- 61기업·43분류와 61일 가격을 고정 스냅샷으로 제공한다. `build_peer_price_snapshot.py`가 검토된 정규장·연속성 감사·공식 사건 근거를 내보낸다. 조회 시 외부 수집·DB 변경·AI 호출 없음. 기업행사 조정 검증은 미완료이고 자동 신호를 발행하지 않는다. [계약](specs/peer-intelligence.md).
+
+- `scripts/refresh_peer_monitor.py` → `research/peer_monitor.py`: 전체61기업 정규장 필드 검증, 파일 잠금·불변 스냅샷·원자적 `logs/peer-monitor/current.json` 게시, 실패 시 마지막 정상본 유지. 카탈로그/가격/정책 버전과 전진20일 상대성과 관측을 함께 저장하며 최초 과거 사건은 생성하지 않는다. 동일일 재수집은 유지일 수에 포함하지 않는다. `peer` launchd는 평일20:30, `install_launchd.py --only peer`로 선택 설치. 현재 화면의 배포 JSON과는 아직 미연결이며 자동 신호는 held 상태다.
 
 ## 읽기 전용 시장 분석 CodeAct (D-176, 2026-09-19)
 
