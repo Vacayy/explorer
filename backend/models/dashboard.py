@@ -43,21 +43,27 @@ class LayoutSummary(BaseModel):
 
 
 
-class PresetIn(LayoutBody):
+class BoardIn(LayoutBody):
+    """홈 메뉴 하나 — 빈 배치·시스템 프리셋·복제 모두 items로 받는다"""
     label: str = Field(min_length=1, max_length=30)
-    board: str = Field(default='home-v2', pattern=r'^[a-z0-9_-]{1,40}$')
 
 
-class PresetPatch(BaseModel):
+class BoardPatch(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     label: str | None = Field(default=None, min_length=1, max_length=30)
     items: list[LayoutItem] | None = Field(default=None, max_length=100)
 
 
-class Preset(BaseModel):
+class BoardOrder(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    ids: list[int] = Field(max_length=50)
+
+
+class Board(BaseModel):
     id: int
-    board: str
     label: str
+    sort: int
     items: list[LayoutItem]
     updated_at: str

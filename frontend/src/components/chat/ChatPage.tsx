@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
-import { ArrowDown, ChartNoAxesCombined, PanelLeft, Send, SquarePen } from "lucide-react"
+import { ArrowDown, BookOpen, ChartNoAxesCombined, PanelLeft, Send, SquarePen } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { useChat } from "@/hooks/useChat"
 import { cn } from "@/lib/utils"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
+import { carriedFollowUps } from "./FollowUps"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { ChatEmpty } from "./ChatEmpty"
 import { Composer } from "./Composer"
@@ -50,6 +51,7 @@ function ConversationPage() {
 
   const chat = useChat(activeId, openThread)
   const { detail, messages, awaiting, stalled, draft, ask } = chat
+  const carried = useMemo(() => carriedFollowUps(messages), [messages])
   const busy = ask.isPending || awaiting
 
   const submit = () => {
@@ -101,7 +103,7 @@ function ConversationPage() {
       </aside>
       {/* 모바일·태블릿 — Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="left" className="w-[300px] p-0 sm:max-w-[300px]">
+        <SheetContent side="left" className="w-[300px] p-0 pt-12 sm:max-w-[300px]">{/* pt-12: Sheet 닫기 버튼이 '새 대화'를 가리지 않게 */}
           <SheetTitle className="sr-only">대화 목록</SheetTitle>
           <ThreadRail threads={chat.threads} loading={chat.threadsLoading} error={chat.threadsError}
             activeId={activeId} onSelect={openThread} onNew={newThread} />
@@ -112,7 +114,7 @@ function ConversationPage() {
       <section className="flex min-w-0 flex-1 flex-col">
         {/* 헤더 — 슬림 1줄 */}
         <header className="flex h-9 items-center gap-2">
-          <Button variant="outline" size="sm" asChild><Link to={`/discover${activeId ? `?id=${activeId}` : ''}`}><ChartNoAxesCombined className="size-4" />종목 발견</Link></Button>
+          <Button variant="outline" size="sm" asChild><Link to={`/discover${activeId ? `?id=${activeId}` : ''}`}><ChartNoAxesCombined className="size-4" /><span className="max-md:sr-only">종목 발견</span></Link></Button>
           <Button variant="ghost" size="icon-sm" aria-label="대화 목록" className="lg:hidden" onClick={() => setSheetOpen(true)}>
             <PanelLeft className="size-4" />
           </Button>
@@ -123,12 +125,12 @@ function ConversationPage() {
           {thread && (
             <>
               <ThreadTitle id={thread.id} title={thread.title} />
-              {thread.study_project && <Button variant="outline" size="sm" asChild><Link to={`/study/projects/${thread.study_project.id}`}>프로젝트에서 계속 공부하기</Link></Button>}
-              {thread.study && <Button variant="outline" size="sm" asChild><Link to={`/study/${thread.study.id}`}>문서에서 계속 공부하기</Link></Button>}
+              {thread.study_project && <Button variant="outline" size="sm" asChild><Link to={`/study/projects/${thread.study_project.id}`}><BookOpen className="size-4 md:hidden" aria-hidden /><span className="max-md:sr-only">프로젝트에서 계속 공부하기</span></Link></Button>}
+              {thread.study && <Button variant="outline" size="sm" asChild><Link to={`/study/${thread.study.id}`}><BookOpen className="size-4 md:hidden" aria-hidden /><span className="max-md:sr-only">문서에서 계속 공부하기</span></Link></Button>}
               {thread.channel === "telegram" && (
                 <Badge variant="outline" className="shrink-0 gap-1 text-[10px] font-normal"><Send className="size-2.5" /> 텔레그램</Badge>
               )}
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{messages.length}개</span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground max-md:hidden">{messages.length}개</span>
               <Button variant="ghost" size="icon-sm" aria-label="새 대화" className="ml-auto lg:hidden" onClick={newThread}>
                 <SquarePen className="size-4" />
               </Button>
@@ -173,7 +175,7 @@ function ConversationPage() {
                 {messages.map((m, i) =>
                   m.role === "user"
                     ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
-                    : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1}
+                    : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried}
                         onQuote={setQuote} onPick={setQuestion} />
                 )}
                 {/* 제출 직후 찰나(서버 적재 전) — 낙관적 표시 */}

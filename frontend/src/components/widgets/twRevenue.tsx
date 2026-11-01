@@ -147,11 +147,12 @@ function TwLinksBody({ w, h }: WidgetBodyProps) {
         <li key={`${l.kr_code}-${l.relation}-${l.tw[0]?.code}`}>
           <Link to={`/analyze/${l.kr_code}/summary`} className="block space-y-0.5 rounded-sm px-1 py-1.5 hover:bg-muted/50">
             <span className="flex items-center gap-1.5">
-              <span className="font-medium">{l.kr_name}</span>
-              <Badge variant="secondary" className="shrink-0 px-1 text-[10px]">{TW_RELATION[l.relation]}</Badge>
-              <span className="min-w-0 truncate text-muted-foreground">← {l.tw.map(t => t.name).join("·")}</span>
+              {/* 아주 좁으면(태블릿 3열) 관계·대만 회사·직전 값을 접는다 — 이름과 오른쪽 숫자·상태가 잘리지 않게 */}
+              <span className={cn("font-medium whitespace-nowrap", w >= 3 ? "shrink-0" : "min-w-0 truncate")}>{l.kr_name}</span>
+              {w >= 3 && <Badge variant="secondary" className="shrink-0 px-1 text-[10px]">{TW_RELATION[l.relation]}</Badge>}
+              {w >= 3 && <span className="min-w-0 truncate text-muted-foreground">← {l.tw.map(t => t.name).join("·")}</span>}
               <span className="ml-auto flex shrink-0 items-center gap-1.5 tabular-nums">
-                <span className="text-[11px] text-muted-foreground">{formatPercent(l.yoy_3m_prev)} →</span>
+                {w >= 3 && <span className="text-[11px] text-muted-foreground">{formatPercent(l.yoy_3m_prev)} →</span>}
                 <span className={tone(l.yoy_3m)}>{formatPercent(l.yoy_3m)}</span>
                 <TwStateBadge link={l} />
               </span>

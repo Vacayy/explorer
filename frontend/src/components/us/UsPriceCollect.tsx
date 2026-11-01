@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { track } from "@/lib/usage"
 import { DownloadCloud, LoaderCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/api/client'
@@ -17,7 +18,7 @@ export function UsPriceCollect({ ticker }: { ticker: string }) {
   const client = useQueryClient()
   const status = useUsPriceStatus(ticker)
   const collect = useMutation({
-    mutationFn: async () => (await api.post<UsPriceStatus & { collected_rows: number }>(`/api/spine/us/${ticker}/prices/collect`, null, { params: { period: '2y' } })).data,
+    mutationFn: async () => (track('action', 'prices.collect', { entity: ticker }), await api.post<UsPriceStatus & { collected_rows: number }>(`/api/spine/us/${ticker}/prices/collect`, null, { params: { period: '2y' } })).data,
     onSuccess: data => {
       client.setQueryData(['spine', 'us-price-status', ticker], data)
       client.invalidateQueries({ queryKey: ['company-prices', ticker, 'us'] })

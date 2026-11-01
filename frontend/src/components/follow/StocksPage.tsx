@@ -28,6 +28,9 @@ const changeClass = (value: number | null) => value == null ? 'text-muted-foregr
 const signedPercent = (value: number | null) => value == null ? '-' : formatPercent(value)
 const ruleKey = (rule: WatchRuleInput) => `${rule.strategy_id}:${JSON.stringify(rule.params ?? {})}:${rule.within_days ?? 1}`
 const toInput = (rule: WatchRule): WatchRuleInput => ({ strategy_id: rule.strategy_id, params: rule.params, within_days: rule.within_days, source_strategy_id: rule.source_strategy_id, source_version: rule.source_version })
+// 좁은 화면 — 종목명·가격이 글자 단위로 꺾이지 않게 줄바꿈을 막고 표를 가로 스크롤한다
+const NOWRAP_MOBILE = new Set(['name', 'close', 'market_cap'])
+const NOWRAP_CELL = 'whitespace-nowrap md:whitespace-normal'
 const paramsText = (rule: { params: Record<string, unknown> }) => Object.entries(rule.params ?? {}).map(([key, value]) => `${key} ${String(value)}`).join(' · ')
 
 export default function StocksPage() {
@@ -137,7 +140,7 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
   return <div className="overflow-x-auto rounded-xl bg-card">
     <Table aria-label={`${detail.name} 종목`}>
       <TableHeader>{table.getHeaderGroups().map(group => <TableRow key={group.id}>{group.headers.map(header => <TableHead key={header.id} className={['close', 'market_cap'].includes(header.column.id) ? 'text-right' : undefined}>{flexRender(header.column.columnDef.header, header.getContext())}</TableHead>)}</TableRow>)}</TableHeader>
-      <TableBody>{table.getRowModel().rows.map(row => <TableRow key={row.id}>{row.getVisibleCells().map(cell => <TableCell key={cell.id} className="align-top whitespace-normal">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}</TableRow>)}</TableBody>
+      <TableBody>{table.getRowModel().rows.map(row => <TableRow key={row.id}>{row.getVisibleCells().map(cell => <TableCell key={cell.id} className={`align-top whitespace-normal ${NOWRAP_MOBILE.has(cell.column.id) ? NOWRAP_CELL : cell.column.id === 'signals' ? 'min-w-40 md:min-w-0' : ''}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}</TableRow>)}</TableBody>
     </Table>
   </div>
 }

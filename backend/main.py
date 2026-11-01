@@ -103,6 +103,10 @@ from routers import spine_study_projects
 app.include_router(spine_study_projects.router)
 from routers import spine_credit  # 회사채 스프레드 (D-230)
 app.include_router(spine_credit.router)
+from routers import spine_regimes  # 국면 이력 (docs/specs/market-regimes.md)
+app.include_router(spine_regimes.router)
+from routers import spine_pricing  # 시장 프라이싱 원장 (docs/specs/pricing-ledger.md)
+app.include_router(spine_pricing.router)
 from routers import spine_retail  # 개인 투자 열기 (D-231)
 app.include_router(spine_retail.router)
 from routers import dashboard  # 홈 위젯 배치 저장
@@ -111,10 +115,40 @@ from routers import proxy_boards  # 프록시 보드 (D-240)
 app.include_router(proxy_boards.router)
 from routers import spine_world  # 월드모델 읽기 전용(지금 랜딩·체크포인트·위젯)
 app.include_router(spine_world.router)
+import pipeline.runtime  # noqa: F401 — 서버 시작 시각 고정(재시작 필요 감지)
+from routers import spine_client_errors  # 화면 API 오류 기록(응답 계약 위반·5xx·timeout)
+from routers import spine_observe  # 관측(사용 이벤트·관측 탭 요약, D-283)
+app.include_router(spine_client_errors.router)
+app.include_router(spine_observe.router)
+
+
+@app.middleware("http")
+async def _observe_requests(request, call_next):
+    """API 요청을 경로 패턴(실제 값 아님)·상태 계층·응답시간 구간으로 시간 단위 집계 (pipeline/observe.py)."""
+    import time
+    from pipeline.observe import record_request
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        route = request.scope.get("route")
+        # 정기 실제 응답 검사(contracts:live)는 사용 트래픽이 아니라 집계에서 뺀다
+        if request.headers.get("x-observe-skip") != "1":
+            record_request(request.method, getattr(route, "path", None) or "(unmatched)", status, (time.perf_counter() - started) * 1000)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(MEDIA_PATH)), name="media")
+
+
+@app.on_event("shutdown")
+def _flush_observe():
+    """요청 집계 버퍼를 종료 전에 저장 — 재시작 때 마지막 1분이 사라지지 않게."""
+    from pipeline.observe import flush
+    flush()
 
 
 @app.on_event("startup")

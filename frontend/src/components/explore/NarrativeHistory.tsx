@@ -72,7 +72,7 @@ export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading 
     <Card>
       <CardContent className="py-3 space-y-2">
         {heading && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <History className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">{heading}</span>
             <span className="text-[11px] text-muted-foreground">버전 {asc.length}개 · 도트 클릭 시 해당 버전 열람</span>
@@ -244,12 +244,13 @@ function VersionBody({ id }: { id: number }) {
     return <EmptyState message="이 버전의 본문을 불러올 수 없습니다." />
   }
   return (
-    <Card className="border-0 ring-0">
+    <Card className="border-0 ring-0 max-sm:[--card-spacing:--spacing(0)]">
       <CardContent className="py-4">
-        <div className="flex items-baseline gap-2 mb-2">
+        {/* 모바일: 제목이 좁아지지 않게 버전·날짜를 다음 줄로 */}
+        <div className="flex items-baseline gap-2 mb-2 max-md:flex-wrap">
           <h2 className="text-base font-bold leading-snug">{data.title}</h2>
           <Badge variant="outline" className="text-[10px] shrink-0">v{data.version}</Badge>
-          <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">{fmtDate(data.created_at)}</span>
+          <span className="ml-auto whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">{fmtDate(data.created_at)}</span>
         </div>
         <Markdown>{data.narrative}</Markdown>
       </CardContent>

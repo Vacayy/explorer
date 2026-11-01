@@ -98,7 +98,7 @@ export function MacroLiquidity() {
             <div className="flex items-center gap-2">
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${LIGHT[data.signal.signal]?.dot ?? "bg-muted-foreground"}`} />
               <span className={`text-xs font-semibold ${LIGHT[data.signal.signal]?.text ?? "text-foreground"}`}>{data.signal.headline}</span>
-              <span className="ml-auto text-[9px] uppercase tracking-wide text-muted-foreground">해석</span>
+              <span className="ml-auto shrink-0 whitespace-nowrap text-[9px] uppercase tracking-wide text-muted-foreground">해석</span>
             </div>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{data.signal.comment}</p>
           </div>

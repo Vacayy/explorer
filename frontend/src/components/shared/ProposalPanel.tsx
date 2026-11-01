@@ -31,7 +31,7 @@ export function ProposalPanel({
 }: ProposalPanelProps) {
   return (
     <Card className={cn("w-full", className)} style={{ maxWidth }}>
-      <CardHeader className="pb-2 flex items-center gap-2">
+      <CardHeader className="pb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {Icon && <Icon className="h-4 w-4 text-muted-foreground shrink-0" />}
         <CardTitle className="text-sm">{title}</CardTitle>
         {count != null && <Badge variant="secondary" className="text-[10px]">{count}</Badge>}
@@ -39,7 +39,7 @@ export function ProposalPanel({
         {action && <span className="ml-auto shrink-0">{action}</span>}
       </CardHeader>
       {pinned && <div className="shrink-0">{pinned}</div>}
-      <ScrollArea viewportStyle={{ maxHeight }}>
+      <ScrollArea viewportStyle={{ maxHeight }} className="[&_[data-radix-scroll-area-viewport]>div]:!block">
         <CardContent className={contentClassName}>{children}</CardContent>
       </ScrollArea>
     </Card>

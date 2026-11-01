@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { History, Maximize2, SquarePen, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -7,9 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { useChat } from "@/hooks/useChat"
 import { usePageContext } from "@/hooks/usePageContext"
+import { cn } from "@/lib/utils"
 import { PREF, readPref, setPanelThread, writePref } from "@/lib/shellPrefs"
 import { onAskAi, takePendingAsk, type AskAiRequest } from "@/lib/aiPanel"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
+import { carriedFollowUps } from "./FollowUps"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { Composer } from "./Composer"
 import { ThreadRail } from "./ThreadRail"
@@ -22,10 +24,12 @@ const SUGGESTIONS = ["오늘 시장 세 줄로 요약해줘", "이번 주 바뀐
  * AI 대화 패널 — 오른쪽 360px, /chat 부품 재사용 (docs/specs/app-shell.md §5).
  * 보고 있는 화면을 page_context로 함께 보낸다(칩 ×로 이번 질문에서 뺄 수 있음). 활성 스레드는 localStorage.
  */
-export function ChatPanel({ companyName, onClose, inputRef }: {
+export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
   companyName?: string | null
   onClose: () => void
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
+  /** 폭 <1024 — Sheet 안에 들어가 전체 높이·폭을 채운다 (app-shell.md §6) */
+  overlay?: boolean
 }) {
   const [activeId, setActiveId] = useState<number | null>(() => {
     const v = Number(readPref(PREF.thread))
@@ -46,6 +50,7 @@ export function ChatPanel({ companyName, onClose, inputRef }: {
 
   const chat = useChat(activeId, openThread)
   const { detail, messages, awaiting, stalled, draft, ask } = chat
+  const carried = useMemo(() => carriedFollowUps(messages), [messages])
   const busy = ask.isPending || awaiting
 
   const submit = (text?: string, withQuote: QuoteRef | null = quote) => {
@@ -92,14 +97,15 @@ export function ChatPanel({ companyName, onClose, inputRef }: {
   const thread = detail.data
   return (
     <aside aria-label="AI 대화"
-      className="sticky top-(--topbar-height) flex h-[calc(100dvh-var(--topbar-height))] w-(--ai-panel-width) shrink-0 flex-col border-l bg-sidebar text-sidebar-foreground">
+      className={cn("flex flex-col bg-sidebar text-sidebar-foreground",
+        overlay ? "h-full w-full pb-[env(safe-area-inset-bottom)]" : "sticky top-(--topbar-height) h-[calc(100dvh-var(--topbar-height))] w-(--ai-panel-width) shrink-0 border-l")}>
       <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{thread?.title || "AI 대화"}</h2>
         <Popover open={listOpen} onOpenChange={setListOpen}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label="대화 목록"><History className="size-4" /></Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="h-[min(520px,70dvh)] w-[300px] p-0">
+          <PopoverContent align="end" className="h-[min(520px,70dvh)] w-[min(300px,calc(100vw-2rem))] p-0">
             <ThreadRail threads={chat.threads} loading={chat.threadsLoading} error={chat.threadsError}
               activeId={activeId} onSelect={openThread} onNew={newThread} />
           </PopoverContent>
@@ -127,7 +133,7 @@ export function ChatPanel({ companyName, onClose, inputRef }: {
             {detail.isError && <ErrorState message="대화를 불러올 수 없습니다." onRetry={() => detail.refetch()} />}
             {messages.map((m, i) => m.role === "user"
               ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
-              : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} onQuote={setQuote} onPick={setQuestion} />)}
+              : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried} onQuote={setQuote} onPick={setQuestion} />)}
             {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} pending />}
             {(awaiting || ask.isPending) && <StreamingMessage draft={draft} />}
             {stalled && <p className="rounded-xl border border-destructive/30 px-3 py-2 text-[13px] text-destructive">답변 생성이 멈춘 것 같습니다 (5분 초과). 다시 질문해 주세요.</p>}

@@ -18,6 +18,7 @@ import { MAG_HINT, ValueChainSankey, gravity, streamWidth, type SankeyLane } fro
 import { useKrConfirm, usePropagation, useValueChain, useValueChainExpectations, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { ExpGapCard, ExpectationPanel } from "@/components/explore/ValueChainExpectations"
 import { ChainReportCard } from "@/components/explore/ChainReportCard"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatNumber, formatPercent, formatRatio, formatSigma, formatUsd } from "@/utils/format"
 import type { CustomerConcentration, FlowResponse, FlowRow, PropRow, UsMember, ValueChainResponse, VcAux, VcDemand, VcEdge, VcMarket, VcNode, VcPxq } from "@/types"
@@ -159,6 +160,7 @@ export default function ValueChainPage() {
   const exp = useValueChainExpectations()
   const [params, setParams] = useSearchParams()
   const { resolvedTheme } = useTheme()
+  const isMobile = useIsMobile()
   const selected = params.get("node")
   const view = params.get("view") === "sankey" ? "sankey" : "grid"
   const lane = (["ai", "pc", "mobile", "china"].includes(params.get("lane") ?? "") ? params.get("lane") : "all") as SankeyLane
@@ -179,7 +181,7 @@ export default function ValueChainPage() {
   const reportId = params.get("report") ? Number(params.get("report")) : null
 
   const graph = useMemo(() => {
-    if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[] }
+    if (!vc.data) return { nodes: [] as Node[], edges: [] as Edge[], demandX: 0 }
     const { pos, bands, width, tierX, subCols } = swimlane(vc.data)
     const magOf = (k: string) => flow.data ? { level: mag.level[k] ?? null, dia: gravity(mag.level[k], mag.min, mag.max),
       note: flow.data.demands?.find(d => d.key === k)?.level_note } : undefined
@@ -209,7 +211,7 @@ export default function ValueChainPage() {
         markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: up ? "var(--color-chart-blue)" : "var(--muted-foreground)" },
       }
     })
-    return { nodes, edges }
+    return { nodes, edges, demandX: tierX.demand ?? 0 }
   }, [vc.data, selected, mag])
 
   const node = vc.data?.nodes.find(n => n.key === selected)
@@ -276,8 +278,10 @@ export default function ValueChainPage() {
                 ? flow.isLoading ? <Skeleton className="h-[640px] w-full" />
                   : flow.isError ? <ErrorState message="돈의 물줄기를 그릴 금액 규모를 불러오지 못했습니다." onRetry={() => void flow.refetch()} />
                   : <ValueChainSankey vc={vc.data} flows={mag.flows} level={mag.level} lane={lane} onLane={l => setParam("lane", l === "all" ? null : l)} onSelect={select} />
-                : <div className="h-[680px] rounded-lg border">
-                  <ReactFlow nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: 0.02, minZoom: 0.65 }}
+                : <div className="h-[480px] rounded-lg border md:h-[680px]">
+                  {/* <768: 전체 맞춤은 글자를 읽을 수 없을 만큼 작아져, 최종 수요 열에서 읽을 수 있는 배율로 시작하고 끌어서 따라간다 */}
+                  <ReactFlow key={isMobile ? "m" : "d"} nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+                    {...(isMobile ? { defaultViewport: { x: 8 - graph.demandX * 0.6, y: 28, zoom: 0.6 } } : { fitView: true, fitViewOptions: { padding: 0.02, minZoom: 0.65 } })}
                     colorMode={resolvedTheme === "dark" ? "dark" : "light"} nodesDraggable={false} nodesConnectable={false} minZoom={0.2} maxZoom={2}
                     onNodeClick={(_, n) => { if (n.type === "chain") select(n.id === selected ? null : n.id) }} onPaneClick={() => select(null)} proOptions={{ hideAttribution: true }}>
                     <Background gap={20} size={1} />

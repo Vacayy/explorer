@@ -133,7 +133,7 @@ export function SignalCard({ signal: s, onKeywordClick }: {
                 <span className="font-medium text-foreground">{d.name}</span>{d.magnitude ? ` · ${d.magnitude}` : ""}
               </p>
             ))}
-            <Link to="/follow/transcripts?view=momentum" className="text-xs text-primary hover:underline">실적 모멘텀 전체 보기</Link>
+            <Link to="/follow/transcripts?view=season" className="text-xs text-primary hover:underline">실적 시즌에서 보기</Link>
           </div>
         )}
 

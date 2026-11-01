@@ -43,8 +43,7 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
 ### 셸 (App.tsx Layout — 상단 5탭 · 3칸, docs/specs/app-shell.md)
 
 ```
-<DesktopOnly>                             폭 <1024px면 '데스크톱에서 열어 주세요'만
-  <TooltipProvider>
+<TooltipProvider>
     <Omnibar/>                            ⌘K 오버레이 (CommandDialog)
     <SidebarProvider open={내 목록} --sidebar-width:15.5rem className=flex-col>
       <TopBar/>                           sticky · h-(--topbar-height)=52px · L1 5탭·검색·운영 상태·인박스·설정·AI 토글
@@ -56,11 +55,11 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
             ← 페이지 렌더 슬롯
           </div>
         </SidebarInset>
-        <ChatPanel/>                      aside sticky · w-(--ai-panel-width)=360px · /chat에서는 숨김
+        <ChatPanel/>                      aside sticky · w-(--ai-panel-width)=360px · /chat에서는 숨김 · <1024는 Sheet
       </div>
+      <TabBar/>                           <768 하단 L1 5탭 (fixed, --tabbar-height + 안전 영역)
     </SidebarProvider>
-  </TooltipProvider>
-</DesktopOnly>
+</TooltipProvider>
 ```
 
 - 폭 상한 토큰: `--layout-shell: 1440px` (index.css). 본문 슬롯이 이 토큰을 쓴다.

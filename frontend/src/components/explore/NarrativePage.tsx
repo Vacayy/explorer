@@ -142,7 +142,7 @@ function NarrativeQuestions({ narrativeId }: { narrativeId: number }) {
   if (data.length === 0) return null
   return (
     <Card><CardContent className="py-3 space-y-2">
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <HelpCircle className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">이 서사가 던지는 핵심질문</span>
         <span className="text-[11px] text-muted-foreground">분할정복으로 추적 · 질문을 누르면 상세</span>
@@ -377,7 +377,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
   return (
     <Card>
       <CardContent className="py-3 space-y-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Workflow className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">인과 구조</span>
           <span className="text-[11px] text-muted-foreground">시간순 · 원인 → 결과 · 화살표 색=방향(<span className="text-up">정+</span>/<span className="text-down">부−</span>), 굵기=효과 크기</span>
@@ -537,7 +537,7 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
   return (
     <Card>
       <CardContent className="py-3 space-y-2.5">
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Route className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">근본 원인 → 수혜 경로</span>
           <span className="text-[11px] text-muted-foreground">전역 인과 그래프 순회</span>

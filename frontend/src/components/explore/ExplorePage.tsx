@@ -55,7 +55,7 @@ function SignalIndexView() {
         {data?.as_of && <span className="ml-auto text-xs text-muted-foreground tabular-nums">{data.as_of} 기준</span>}
       </div>
       {isLoading ? (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
         </div>
       ) : isError || !data ? (
@@ -63,7 +63,7 @@ function SignalIndexView() {
       ) : data.types.length === 0 ? (
         <EmptyState message="아직 계산된 신호가 없습니다. 수집이 쌓이면 나타납니다." />
       ) : (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {SIGNAL_TYPES.map((type) => {
             const t = byType.get(type)
             // 유형마다 최신일이 다르다(가격 신호=전 거래일). 2일 넘게 뒤처지면 멈춘 것으로 보고 주의 색
@@ -91,7 +91,7 @@ function SignalIndexView() {
                       </div>
                     </>
                   ) : <p className="text-xs text-muted-foreground">아직 신호가 없습니다</p>}
-                  <Button variant="ghost" size="xs" className="mt-auto self-start" asChild>
+                  <Button variant="ghost" size="xs" className="mt-auto self-start max-md:h-9" asChild>
                     <Link to={`/explore?list=${type}`}>목록 <ChevronRight /></Link>
                   </Button>
                 </CardContent>
@@ -122,7 +122,7 @@ function SignalListView({ type }: { type: string }) {
   const shown = items.slice(0, page * PAGE_SIZE)
   return (
     <PageContainer gap="sm">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => navigate("/explore")}>
           <ArrowLeft className="h-4 w-4" /> 신호
         </Button>

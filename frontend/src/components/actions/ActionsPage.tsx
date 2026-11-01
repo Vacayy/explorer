@@ -42,13 +42,15 @@ export default function ActionsPage() {
 
   return (
     <PageContainer gap="sm">
-      <div className="flex items-baseline justify-between">
-        <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-xl font-bold">기업활동</h2>
           <p className="text-xs text-muted-foreground mt-0.5">시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류{mineCount > 0 && ` · 내 종목 ${mineCount}건 위로`}</p>
         </div>
-        {data.as_of ? <FreshnessStamp asOf={data.as_of} />
-          : <span className="text-caption text-muted-foreground">DART 스캔 성공 기록 없음</span>}
+        <span className="shrink-0 whitespace-nowrap">
+          {data.as_of ? <FreshnessStamp asOf={data.as_of} />
+            : <span className="text-caption text-muted-foreground">DART 스캔 성공 기록 없음</span>}
+        </span>
       </div>
 
       {/* 뷰 토글: 목록 | 유무증 Pro */}
@@ -96,17 +98,17 @@ export default function ActionsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[90px]">접수일</TableHead>
+              <TableHead className="hidden w-[90px] md:table-cell">접수일</TableHead>
               <TableHead className="w-[90px]">유형</TableHead>
               <TableHead>기업</TableHead>
-              <TableHead className="text-right w-[90px]">시총</TableHead>
-              <TableHead>공시명</TableHead>
+              <TableHead className="hidden text-right w-[90px] md:table-cell">시총</TableHead>
+              <TableHead className="hidden lg:table-cell">공시명</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map((a) => (
               <TableRow key={a.id} className={cn(a.my_group && "bg-accent/40")}>
-                <TableCell className="tabular-nums text-xs text-muted-foreground">
+                <TableCell className="hidden tabular-nums text-xs text-muted-foreground md:table-cell">
                   {a.rcept_dt.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")}
                 </TableCell>
                 <TableCell>
@@ -116,6 +118,10 @@ export default function ActionsPage() {
                   )}>
                     {a.action_type}
                   </Badge>
+                  {/* 모바일: 접수일 열을 숨기고 유형 아래에 */}
+                  <div className="mt-1 text-[10px] tabular-nums text-muted-foreground md:hidden">
+                    {a.rcept_dt.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")}
+                  </div>
                 </TableCell>
                 <TableCell>
                   {a.stock_code ? (
@@ -127,11 +133,17 @@ export default function ActionsPage() {
                   )}
                   <span className="ml-1 text-[10px] text-muted-foreground">{a.market === "Y" ? "KOSPI" : "KOSDAQ"}</span>
                   {a.my_group && <Badge variant="outline" className="ml-1.5 h-4 px-1 text-[10px] border-up/40 text-up">{a.my_group}</Badge>}
+                  {/* lg 미만: 공시명 열 대신 기업 아래에 쌓는다 — 좁은 화면에서 가로 스크롤 없이 무슨 공시인지 보이게 */}
+                  <div className="mt-1 whitespace-normal lg:hidden">
+                    {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
+                    <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">{a.report_nm}</a>
+                    {a.summary && <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2" title={a.summary}>{a.summary}</p>}
+                  </div>
                 </TableCell>
-                <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground md:table-cell">
                   {a.market_cap ? formatKrw(a.market_cap) : "-"}
                 </TableCell>
-                <TableCell>
+                <TableCell className="hidden lg:table-cell">
                   {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
                   <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">
                     {a.report_nm}

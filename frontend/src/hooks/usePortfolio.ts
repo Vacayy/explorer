@@ -56,7 +56,7 @@ export function useAddPortfolioTransaction() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   })
 }
-type QuoteRefresh = { quoted_at: string | null; count: number; refreshed: boolean }
+export type QuoteRefresh = { quoted_at: string | null; count: number; refreshed: boolean }
 /** '시세 갱신' 버튼 — 보유 종목 실시간 시세를 지금 받고 화면 전체를 다시 계산한다. */
 export function useRefreshPortfolioQuotes() {
   const qc = useQueryClient()

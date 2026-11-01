@@ -1,3 +1,4 @@
+import { QueryState } from "@/components/shared/QueryState"
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -5,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { ErrorState } from '@/components/shared/ErrorState'
 import { usePortfolioExposure } from '@/hooks/usePortfolio'
 import { formatRatio } from '@/utils/format'
 import type { PortfolioHolding } from '@/types'
@@ -35,9 +35,7 @@ export function ExposureCard({ holdings }: { holdings: PortfolioHolding[] }) {
       <CardDescription>보유 종목들이 함께 기대는 변수와 그 변수에 걸린 비중입니다. 계산만 하며 AI 판단은 없습니다.</CardDescription>
     </CardHeader>
     <CardContent className="space-y-3">
-      {exposure.isPending ? <Skeleton className="h-48 w-full" />
-        : exposure.isError ? <ErrorState onRetry={() => void exposure.refetch()} />
-        : !drivers.length ? <p className="text-sm text-muted-foreground">공통 변수를 찾을 근거가 아직 없습니다. 인과 그래프 연결과 함께 언급된 자료가 쌓이면 표시합니다.</p>
+      <QueryState query={exposure} loading={<Skeleton className="h-48 w-full" />} isEmpty={() => false}>{() => (!drivers.length ? <p className="text-sm text-muted-foreground">공통 변수를 찾을 근거가 아직 없습니다. 인과 그래프 연결과 함께 언급된 자료가 쌓이면 표시합니다.</p>
         : <>
           <ul className="divide-y">{(all ? drivers : drivers.slice(0, 8)).map(d => {
             const dir = d.direction ? DIRECTION[d.direction] : null
@@ -61,7 +59,7 @@ export function ExposureCard({ holdings }: { holdings: PortfolioHolding[] }) {
           {drivers.length > 8 && <Button variant="ghost" size="sm" onClick={() => setAll(!all)}>{all ? '접기' : `${drivers.length - 8}개 더 보기`}</Button>}
           {thin.length > 0 && <p className="text-caption text-muted-foreground">
             {thin.map(([code]) => name(code)).join(' · ')}은 인과 그래프 연결이 없어 함께 언급·밸류체인으로만 반영했습니다.</p>}
-        </>}
+        </>)}</QueryState>
     </CardContent>
   </Card></TooltipProvider>
 }

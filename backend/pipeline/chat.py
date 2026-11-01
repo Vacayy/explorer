@@ -558,7 +558,7 @@ _INTENT_KO = {"lookup": "조회", "event": "사건 설명", "synthesis": "종합
 _TOOL_KO = {"search_docs": "수집 문서를 검색", "open_doc": "문서 전문을 열어", "list_recent": "최근 목록을 조회",
             "get_narrative": "주제 내러티브를 읽어", "get_worldmodel": "인과 그래프에서 위치를 확인", "get_knowledge": "승격 지식을 소환",
             "get_questions": "핵심질문 트래커를 조회", "get_lens": "투자 렌즈 판독을 읽어", "get_quote": "실시간 시세를 조회",
-            "get_price_history": "일별 시세를 조회", "get_regime": "시장 국면·매크로를 읽어", "get_us_briefing": "미국장 브리핑을 읽어",
+            "get_price_history": "일별 시세를 조회", "get_regime": "시장 국면·매크로를 읽어", "get_us_briefing": "미국장 브리핑을 읽어", "get_pricing_ledger": "시장 프라이싱 원장을 읽어",
             "get_transcripts": "실적 컨콜 정리를 읽어", "get_trade": "수출입 통계를 조회", "get_saved": "저장됨 목록을 조회",
             "get_proxies": "프록시 관측치를 조회"}
 

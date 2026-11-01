@@ -104,10 +104,20 @@ def earnings_filings(cik: int, since: str, meta: dict | None = None) -> list[dic
     rec = sub["filings"]["recent"]
     out = []
     for i, form in enumerate(rec["form"]):
-        if form in ("8-K", "8-K/A") and "2.02" in (rec["items"][i] or "") and rec["filingDate"][i] >= since:
+        if rec["filingDate"][i] < since:
+            continue
+        # 해외 발행사(TSMC·ASML)는 8-K 대신 6-K — 항목 번호가 없어 첨부 본문으로 분기 실적인지 가린다(is_quarterly_results)
+        if (form in ("8-K", "8-K/A") and "2.02" in (rec["items"][i] or "")) or form in ("6-K", "6-K/A"):
             out.append({"accession": rec["accessionNumber"][i], "filing_date": rec["filingDate"][i],
-                        "report_date": rec["reportDate"][i] or None})
+                        "report_date": rec["reportDate"][i] or None, "foreign": form.startswith("6-K")})
     return out
+
+
+def is_quarterly_results(text: str) -> bool:
+    """6-K 첨부가 분기 실적 발표인가 — 매출과 주당이익이 함께 있고 '분기'를 말한다(월매출 보고·이사회 결의 등 제외)."""
+    t = text[:20000].lower()
+    return (("revenue" in t or "net sales" in t) and ("per share" in t or "diluted" in t or "eps" in t)
+            and ("quarter" in t or "q1" in t or "q2" in t or "q3" in t or "q4" in t))
 
 
 def exhibits(cik: int, accession: str) -> list[dict]:
@@ -180,7 +190,7 @@ def collect(conn: sqlite3.Connection, follows: list[dict], days_back: int = 400)
                 stats["filings"] += 1
                 for ex in exhibits(cik, filing["accession"]):
                     text = to_text(_get(ex["url"]))
-                    if len(text) >= 500:
+                    if len(text) >= 500 and (not filing.get("foreign") or is_quarterly_results(text)):
                         fetched.append((filing, ex, text))
             if meta.get("fiscal_year_end"):
                 conn.execute("UPDATE transcript_follow SET fiscal_year_end=?, sic=COALESCE(?, sic) WHERE ticker=?",

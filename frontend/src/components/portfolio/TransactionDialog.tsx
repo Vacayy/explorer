@@ -65,7 +65,7 @@ export function TransactionDialog() {
           <Label htmlFor="pf-all" className="font-normal">전량 매도 (그날 보유 수량 전부)</Label></div>}
         {trade && !sellAll && <ToggleGroup type="single" value={mode} onValueChange={value => { if (value) setMode(value as 'amount' | 'quantity') }} variant="outline" size="sm" aria-label="입력 방식" className="justify-start">
           <ToggleGroupItem value="amount" className="px-3">금액</ToggleGroupItem><ToggleGroupItem value="quantity" className="px-3">수량 × 체결가</ToggleGroupItem></ToggleGroup>}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {byQuantity ? <div className="space-y-1.5"><Label htmlFor="pf-quantity">수량 (주)</Label>
               <Input id="pf-quantity" inputMode="numeric" autoComplete="off" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="예: 10" /></div>
             : !sellAll && <div className="space-y-1.5"><Label htmlFor="pf-amount">{kind === 'buy' ? '매수 금액' : kind === 'sell' ? '매도 금액' : kind === 'deposit' ? '입금액' : '출금액'} (만원)</Label>

@@ -102,10 +102,10 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
           </section>
         )}
         {/* 위젯 안에서는 지수 띠가 따로 있어 생략 */}
-        {!embedded && data.indices.items.length > 0 && <div className="grid grid-cols-1 gap-3 border-b pb-4 @[420px]/market:grid-cols-3">
+        {!embedded && data.indices.items.length > 0 && <div className="grid grid-cols-3 gap-3 border-b pb-4">
           {data.indices.items.slice(0, 3).map(index => <div key={index.name}>
             <p className="text-caption text-muted-foreground">{index.name}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{formatNumber(index.close)}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums @[420px]/market:text-2xl">{formatNumber(index.close)}</p>
             <p className={`text-caption tabular-nums ${chg(index.change_pct)}`}>{formatPercent(index.change_pct)}</p>
           </div>)}
         </div>}
@@ -150,7 +150,8 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
                 </div>
                 <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
                 <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
-                {c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}
+                {/* 좁은 화면은 막대 폭이 줄마다 같도록 배지 자리를 늘 비워 둔다 */}
+                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}</span>
                 <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.tickers.join(" · ")}</span>
               </div>
             ))}

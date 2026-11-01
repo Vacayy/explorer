@@ -146,8 +146,8 @@ function SpreadTable({ rows, asOf, groups, group, onGroup, sort, onSort, selecte
     <CardContent className="overflow-x-auto">
       <Table>
         <TableHeader><TableRow>
-          <TableHead className="w-10" /><TableHead>회사</TableHead><TableHead>대표 채권</TableHead><TableHead className="text-right">등급</TableHead>
-          <TableHead className="text-right">수익률</TableHead><TableHead className="text-right">국채</TableHead><TableHead className="text-right">스프레드</TableHead>
+          <TableHead className="w-10" /><TableHead>회사</TableHead><TableHead className="hidden md:table-cell">대표 채권</TableHead><TableHead className="hidden text-right md:table-cell">등급</TableHead>
+          <TableHead className="text-right">수익률</TableHead><TableHead className="hidden text-right lg:table-cell">국채</TableHead><TableHead className="text-right">스프레드</TableHead>
           <TableHead className="text-right">1개월</TableHead><TableHead className="text-right">3개월</TableHead><TableHead className="text-right">1년</TableHead><TableHead className="text-right">부도확률</TableHead>
         </TableRow></TableHeader>
         <TableBody>{sections.map(g => {
@@ -158,17 +158,17 @@ function SpreadTable({ rows, asOf, groups, group, onGroup, sort, onSort, selecte
               return <TableRow key={r.ticker} className={on ? 'bg-primary/5' : ''}>
                 <TableCell><Button variant={on ? 'default' : 'outline'} size="icon-sm" className="size-7 rounded-full" disabled={r.spread_bp == null}
                   aria-label={on ? `${r.name} 차트에서 빼기` : `${r.name} 차트에 더하기`} onClick={() => onToggle(r.ticker)}>{on ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}</Button></TableCell>
-                <TableCell className="whitespace-nowrap"><span className="font-medium">{r.name}</span> <span className="text-caption text-muted-foreground">{r.ticker}</span>
-                  {!g.label && <span className="ml-1.5 text-[10px] text-muted-foreground">{groupLabel[r.group] ?? r.group}</span>}
+                <TableCell className="min-w-28 whitespace-normal md:whitespace-nowrap"><span className="font-medium">{r.name}</span> <span className="text-caption text-muted-foreground">{r.ticker}</span>
+                  {!g.label && <span className="ml-1.5 hidden text-[10px] text-muted-foreground lg:inline">{groupLabel[r.group] ?? r.group}</span>}
                   {r.hy && <Badge variant="outline" className="ml-1.5 border-up/40 px-1 text-[10px] text-up">HY</Badge>}
                   {r.source === '유럽 거래소' && <span className="ml-1.5 text-[10px] text-muted-foreground" title="미국 체결이 아니라 유럽 거래소 호가에서 나온 수익률">유럽 호가</span>}</TableCell>
-                <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground" title={r.bond ?? undefined}>{shortBond(r.bond)}</TableCell>
-                <TableCell className="text-right">{r.rating ?? '-'}</TableCell>
+                <TableCell className="hidden whitespace-nowrap tabular-nums text-muted-foreground md:table-cell" title={r.bond ?? undefined}>{shortBond(r.bond)}</TableCell>
+                <TableCell className="hidden text-right md:table-cell">{r.rating ?? '-'}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatYield(r.ytm)}{stale(r.last_date) && <span className="block text-[10px] text-hypothesis" title="마지막 체결일">{r.last_date?.slice(5)} 체결</span>}</TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">{formatYield(r.treasury)}</TableCell>
+                <TableCell className="hidden text-right tabular-nums text-muted-foreground lg:table-cell">{formatYield(r.treasury)}</TableCell>
                 <TableCell className="text-right"><span className="inline-flex items-center justify-end gap-2">
                   <span className="font-semibold tabular-nums">{formatBp(r.spread_bp)}</span>
-                  <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden="true"><span className="block h-full rounded-full bg-up/70" style={{ width: `${Math.max(0, (r.spread_bp ?? 0) / max * 100)}%` }} /></span>
+                  <span className="hidden h-1.5 w-16 overflow-hidden md:block rounded-full bg-muted" aria-hidden="true"><span className="block h-full rounded-full bg-up/70" style={{ width: `${Math.max(0, (r.spread_bp ?? 0) / max * 100)}%` }} /></span>
                 </span></TableCell>
                 {[r.chg_1m, r.chg_3m, r.chg_1y].map((v, i) => <TableCell key={i} className={`text-right tabular-nums ${tone(v)}`}>{v == null ? '—' : formatBp(v, true)}</TableCell>)}
                 <TableCell className="text-right tabular-nums">{formatRatio(r.pd_pct)}</TableCell>

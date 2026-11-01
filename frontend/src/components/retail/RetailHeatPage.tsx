@@ -79,7 +79,7 @@ function MetricTable({ metrics }: { metrics: RetailMetric[] }) {
   return <div className="overflow-x-auto"><Table>
     <TableHeader><TableRow><TableHead>지표</TableHead><TableHead className="text-right">값</TableHead><TableHead>과거 5년 백분위</TableHead><TableHead className="text-right">20일 전 대비</TableHead></TableRow></TableHeader>
     <TableBody>{metrics.map(m => <TableRow key={m.key} className={m.value == null ? 'text-muted-foreground' : ''}>
-      <TableCell className="whitespace-nowrap">{m.label}</TableCell>
+      <TableCell className="whitespace-nowrap max-sm:min-w-32 max-sm:whitespace-normal max-sm:break-keep">{m.label}</TableCell>
       <TableCell className="text-right tabular-nums">{metricValue(m)}</TableCell>
       <TableCell><PctileBar value={m.pctile} /></TableCell>
       <TableCell className="text-right tabular-nums text-muted-foreground">{m.pctile_change == null ? '-' : `${m.pctile_change > 0 ? '+' : ''}${formatNumber(Math.round(m.pctile_change))}`}</TableCell>

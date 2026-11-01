@@ -1,3 +1,7 @@
+import { ActiveQueryStatus } from "@/components/shared/ActiveQueryStatus"
+import { toast } from "sonner"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { QueryState } from "@/components/shared/QueryState"
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -7,11 +11,17 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { TopBar } from "@/components/layout/TopBar"
 import { MyListPanel } from "@/components/layout/MyListPanel"
-import { DesktopOnly } from "@/components/layout/DesktopOnly"
+import { TabBar } from "@/components/layout/TabBar"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
+import { useMediaQuery, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { PREF, readPref, writePref } from "@/lib/shellPrefs"
 import { onAskAi } from "@/lib/aiPanel"
 import { SubNav } from "@/components/layout/SubNav"
+import { NewBoardDialog } from "@/components/home/NewBoardDialog"
+import { Button } from "@/components/ui/button"
+import { Plus } from "lucide-react"
+import { useHomeBoards, type HomeBoard } from "@/hooks/useDashboard"
 import { FEED_TABS, SECTIONS, analyzeTabOf, analyzeTabs, feedSourceTab, isDocumentFeed, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
@@ -32,6 +42,7 @@ import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
 import ValueChainPage from "@/components/explore/ValueChainPage"
 import CreditPage from "@/components/follow/CreditPage"
+import RegimesPage from "@/components/regimes/RegimesPage"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
@@ -58,6 +69,7 @@ import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import WorldviewPage from "@/components/explore/WorldviewPage"
 import ReportsPage from "@/components/explore/ReportsPage"
 import ArchivePage from "@/components/archive/ArchivePage"
+import { UsageTracker } from "@/components/shared/UsageTracker"
 import AdminPage from "@/components/admin/AdminPage"
 
 // Analysis
@@ -78,21 +90,29 @@ import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
 
 // Research
 
-const queryClient = createQueryClient()
+const queryClient = createQueryClient((error, { background }) => {
+  toast.error(error.message, { id: `api-${error.message}`, description: background ? '최신 데이터 갱신에 실패했습니다.' : undefined })
+})
 
 /** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭, 문서 검색은 소스 탭 */
-function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
+function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null, homeBoards: readonly HomeBoard[] = []) {
   if (stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey: analyzeTabOf(pathname), context: companyName ?? stockCode }
   if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
   if (pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey: feedSourceTab(search) }
   const here = locate(pathname, search)
   const section = here && SECTIONS.find(s => s.key === here.section)
+  // 홈 L2 = 내 메뉴들(home_boards). /home은 첫 메뉴, 전체 보기 화면(/home/risk 등)은 활성 탭 없음 (home-widgets.md §5)
+  if (section?.key === "home") {
+    const id = pathname.match(/^\/home\/b\/(\d+)/)?.[1] ?? (pathname === "/home" ? homeBoards[0]?.id : undefined)
+    return { tabs: homeBoards.map(b => ({ key: `b${b.id}`, path: `/home/b/${b.id}`, label: b.label })), activeKey: id != null ? `b${id}` : null, home: true }
+  }
   if (!section || section.tabs.length < 2) return null
   return { tabs: section.tabs, activeKey: here.tab }
 }
 
-/** 폭 ≥1440이면 패널 기본 펼침. 사용자가 고른 값이 있으면 그 값 */
+/** 폭 ≥1440이면 패널 기본 펼침. 사용자가 고른 값이 있으면 그 값. 폭 <1024에서는 오버레이라 늘 닫힌 채 시작 */
 function initialOpen(key: string): boolean {
+  if (typeof window !== "undefined" && !window.matchMedia(PANEL_INLINE_QUERY).matches) return false
   const saved = readPref(key)
   if (saved != null) return saved === "1"
   return typeof window !== "undefined" && window.matchMedia("(min-width: 1440px)").matches
@@ -103,30 +123,36 @@ function Layout() {
   const [leftOpen, setLeftOpen] = useState(() => initialOpen(PREF.left))
   const [aiOpen, setAiOpen] = useState(() => initialOpen(PREF.ai))
   const aiInput = useRef<HTMLTextAreaElement | null>(null)
-  const setLeft = (v: boolean) => { setLeftOpen(v); writePref(PREF.left, v ? "1" : "0") }
+  const panelInline = useMediaQuery(PANEL_INLINE_QUERY)
+  // 좁은 화면의 열고 닫기는 오버레이 조작이라 데스크톱 기본값(pref)에 남기지 않는다
+  const setLeft = (v: boolean) => { setLeftOpen(v); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.left, v ? "1" : "0") }
   const toggleAi = useCallback(() => setAiOpen(v => {
-    writePref(PREF.ai, v ? "0" : "1")
+    if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, v ? "0" : "1")
     if (!v) requestAnimationFrame(() => aiInput.current?.focus())
     return !v
   }), [])
   useKeyboardShortcuts(toggleAi)
   // 'AI에게 묻기' — 어느 화면에서 보내든 패널을 연다. 인용은 패널이 받는다 (lib/aiPanel)
-  useEffect(() => onAskAi(() => { setAiOpen(true); writePref(PREF.ai, "1") }), [])
+  useEffect(() => onAskAi(() => { setAiOpen(true); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, "1") }), [])
 
   // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
   const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
-  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
+  const { data: homeBoards } = useHomeBoards()
+  const [creatingBoard, setCreatingBoard] = useState(false)
+  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name, homeBoards)
   const showAi = aiOpen && !pathname.startsWith("/chat")
+  // 오버레이 대화는 다른 화면으로 가면 닫는다(근거 링크를 누르면 그 화면이 보이게)
+  useEffect(() => { if (!window.matchMedia(PANEL_INLINE_QUERY).matches) setAiOpen(false) }, [pathname])
 
   return (
-    <DesktopOnly>
       <TooltipProvider delayDuration={300}>
       <div className="min-h-screen bg-background">
         <Omnibar />
         <DetailNavigationMemory />
         <DiscoveryNavigationMemory />
+        <UsageTracker />
         <SidebarProvider open={leftOpen} onOpenChange={setLeft} className="flex-col"
           style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
           <TopBar aiOpen={showAi} onToggleAi={toggleAi} />
@@ -140,30 +166,44 @@ function Layout() {
                   ? "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve) + var(--subnav-height))"
                   : "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
               >
-                {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
+                {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context}
+                  trailing={subNav.home && <Button variant="ghost" size="sm" className="h-7 shrink-0 text-[13px] text-muted-foreground" onClick={() => setCreatingBoard(true)}><Plus className="size-3.5" />새 메뉴</Button>} />}
+                <ActiveQueryStatus />
+                <NewBoardDialog open={creatingBoard} onOpenChange={setCreatingBoard} />
                 {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
-                <Outlet />
+                <ErrorBoundary key={pathname + search} onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><Outlet /></ErrorBoundary>
               </div>
             </SidebarInset>
-            {showAi && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
+            {showAi && panelInline && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
           </div>
+          <TabBar />
         </SidebarProvider>
+        {/* 폭 <1024: AI 대화는 오른쪽 오버레이(모바일은 전체 폭) */}
+        {!panelInline && (
+          <Sheet open={showAi} onOpenChange={v => { if (v !== showAi) toggleAi() }}>
+            <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">
+              <SheetTitle className="sr-only">AI 대화</SheetTitle>
+              <SheetDescription className="sr-only">지금 보는 화면을 맥락으로 함께 보냅니다.</SheetDescription>
+              <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} overlay />
+            </SheetContent>
+          </Sheet>
+        )}
         <AnswerWatcher />
         <Toaster position="top-right" />
       </div>
       </TooltipProvider>
-    </DesktopOnly>
   )
 }
 
 function AnalyzePage({ tab }: { tab: string }) {
   const { stockCode } = useParams<{ stockCode: string }>()
   const { search } = useLocation()
-  const { data: company, isLoading } = useCompany(stockCode ?? null)
+  const companyQuery = useCompany(stockCode ?? null)
+  const { data: company } = companyQuery
   const sourceRun = new URLSearchParams(search).get('source_run')
 
   if (!stockCode) return null
-  if (isLoading) return <div className="text-center py-20 text-muted-foreground">로딩 중...</div>
+  if (company === undefined) return <QueryState query={companyQuery}>{() => null}</QueryState>
   if (!company) return sourceRun
     ? <PageLayout header={<PageHeader title={stockCode} description="기업 기초정보 미확인 · 저장된 발견 근거" />}><DiscoveryTechnicalContext runId={sourceRun} code={stockCode} original currentUnavailable="기업 기초정보를 찾지 못해 현재 기업 분석을 열 수 없습니다. 발견 당시 저장된 차트와 판정은 아래에서 확인할 수 있습니다." /></PageLayout>
     : <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
@@ -199,7 +239,7 @@ function AskRedirect() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <ErrorBoundary onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
             {/* Default */}
@@ -207,6 +247,7 @@ export default function App() {
 
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
+            <Route path="home/b/:boardId" element={<HomePage />} />
             <Route path="home/briefing" element={<HomeBriefingPage />} />
             <Route path="home/risk" element={<HomeRiskPage />} />
             <Route path="home/macro" element={<HomeMacroPage />} />
@@ -219,6 +260,7 @@ export default function App() {
             <Route path="follow/trade" element={<TradePage />} />
             <Route path="value-chain" element={<ValueChainPage />} />
             <Route path="follow/credit" element={<CreditPage />} />
+            <Route path="regimes" element={<RegimesPage />} />
             <Route path="retail" element={<RetailHeatPage />} />
             <Route path="follow/saved" element={<SavedPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
@@ -297,7 +339,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </BrowserRouter></ErrorBoundary>
     </QueryClientProvider>
   )
 }

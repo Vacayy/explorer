@@ -1,8 +1,9 @@
+import { QueryState } from "@/components/shared/QueryState"
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { usListQuery } from "@/api/spine"
 import { PageContainer } from "@/components/shared/PageContainer"
-import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { EmptyState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
@@ -26,52 +27,39 @@ const TREND_CLS: Record<string, string> = { 초입: "text-up border-up/40", 진�
 export default function UsIndexPage() {
   const q = useQuery(usListQuery())
 
-  if (q.isLoading)
+  return <QueryState query={q} loading={<Skeleton className="h-64 w-full rounded-xl" />} isEmpty={() => false}>{data => {
+    const groups = data.groups
+    const total = groups.reduce((n, g) => n + g.items.length, 0)
+
     return (
       <PageContainer gap="sm">
         <TranscriptTabs value="us" />
-        <Skeleton className="h-64 w-full rounded-xl" />
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h1 className="text-lg font-semibold">미국 종목 {total}</h1>
+          <span className="text-xs text-muted-foreground">
+            컨콜 팔로우 = 커버리지. 카드 → 도시에(시세·밸류·투자 렌즈)
+          </span>
+        </div>
+
+        {total === 0 ? (
+          <EmptyState message="팔로우한 미국 기업이 없습니다 — 컨콜 탭에서 기본 세트를 시드하세요." />
+        ) : (
+          groups.map((g) => (
+            <div key={g.label} className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">
+                {GROUP_LABEL[g.label] ?? g.label} · {g.items.length}
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                {g.items.map((it) => (
+                  <UsCard key={it.ticker} item={it} />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
       </PageContainer>
     )
-  if (q.isError || !q.data)
-    return (
-      <PageContainer gap="sm">
-        <TranscriptTabs value="us" />
-        <ErrorState onRetry={() => q.refetch()} />
-      </PageContainer>
-    )
-
-  const groups = q.data.groups
-  const total = groups.reduce((n, g) => n + g.items.length, 0)
-
-  return (
-    <PageContainer gap="sm">
-      <TranscriptTabs value="us" />
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-lg font-semibold">미국 종목 {total}</h1>
-        <span className="text-xs text-muted-foreground">
-          컨콜 팔로우 = 커버리지. 카드 → 도시에(시세·밸류·투자 렌즈)
-        </span>
-      </div>
-
-      {total === 0 ? (
-        <EmptyState message="팔로우한 미국 기업이 없습니다 — 컨콜 탭에서 기본 세트를 시드하세요." />
-      ) : (
-        groups.map((g) => (
-          <div key={g.label} className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">
-              {GROUP_LABEL[g.label] ?? g.label} · {g.items.length}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {g.items.map((it) => (
-                <UsCard key={it.ticker} item={it} />
-              ))}
-            </div>
-          </div>
-        ))
-      )}
-    </PageContainer>
-  )
+  }}</QueryState>
 }
 
 function UsCard({ item }: { item: UsListItem }) {

@@ -87,7 +87,8 @@ export function KrMoversSection({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
                 <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
-                {c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}
+                {/* 좁은 화면은 막대 폭이 줄마다 같도록 배지 자리를 늘 비워 둔다 */}
+                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}</span>
                 <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.names.join(" · ")}</span>
               </div>
             ))}
@@ -154,12 +155,12 @@ function chg(v: number | null): string {
 
 function MoverRow({ m }: { m: KrMoverItem }) {
   return (
-    <div className="flex items-center gap-2 py-1 text-sm min-w-0">
+    <div className="flex items-center gap-2 py-1 text-sm min-w-0 max-sm:flex-wrap">
       <Link to={`/analyze/${m.stock_code}/summary`} className="font-medium text-primary hover:underline shrink-0 truncate max-w-[40%]">{m.name}</Link>
       <span className={`text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>
         {m.change_pct != null ? formatPercent(m.change_pct) : ""}
       </span>
-      <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
+      <div className="flex items-center gap-1 min-w-0 flex-1 truncate max-sm:flex-none">
         {m.flags.map((f) => (
           <Badge key={f} variant="outline" className={`text-caption shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
         ))}

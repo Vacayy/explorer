@@ -1,10 +1,11 @@
+import { QueryState } from "@/components/shared/QueryState"
 // 저장됨 페이지 — /follow/saved. 전체 목록 + kind 필터 + 인라인 메모·삭제 (D-078)
 import { useState } from "react"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { PageHeader } from "@/components/shared/PageLayout"
 import { formatNumber } from "@/utils/format"
 import { Card, CardContent } from "@/components/ui/card"
-import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
+import { EmptyState } from "@/components/shared/ErrorState"
 import { TableSkeleton } from "@/components/shared/Skeleton"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import SavedList from "@/components/follow/SavedList"
@@ -19,7 +20,8 @@ const FILTERS = [
 ]
 
 export default function SavedPage() {
-  const { data: items = [], isLoading, isError, refetch } = useSaved()
+  const query = useSaved()
+  const items = query.data ?? []
   const [kind, setKind] = useState("all")
 
   const filtered = kind === "all" ? items : items.filter((it) => it.kind === kind)
@@ -28,13 +30,8 @@ export default function SavedPage() {
     <PageContainer>
       <PageHeader title="저장됨" description={`북마크와 메모${items.length > 0 ? ` · ${formatNumber(items.length)}건` : ""}`} />
 
-      {isLoading ? (
-        <Card><CardContent className="py-4"><TableSkeleton rows={5} /></CardContent></Card>
-      ) : isError ? (
-        <ErrorState onRetry={() => refetch()} />
-      ) : items.length === 0 ? (
-        <EmptyState message="아직 저장한 항목이 없어요. 기업·문서·내러티브·리포트 페이지의 북마크 아이콘으로 저장하세요." />
-      ) : (
+      <QueryState query={query} loading={<Card><CardContent className="py-4"><TableSkeleton rows={5} /></CardContent></Card>}
+        emptyMessage="아직 저장한 항목이 없어요. 기업·문서·내러티브·리포트 페이지의 북마크 아이콘으로 저장하세요.">{() => (
         <div className="space-y-3">
           <SegmentTabs tabs={FILTERS} value={kind} onChange={setKind} />
 
@@ -48,7 +45,7 @@ export default function SavedPage() {
             </Card>
           )}
         </div>
-      )}
+      )}</QueryState>
     </PageContainer>
   )
 }

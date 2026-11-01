@@ -1,4 +1,5 @@
 import { ArrowUp, Quote, X } from "lucide-react"
+import { track } from "@/lib/usage"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
@@ -50,20 +51,21 @@ export function Composer({ value, onChange, onSubmit, busy, placeholder, autoFoc
           autoFocus={autoFocus}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSubmit() }
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (canSend) track("action", "chat.ask"); onSubmit() }
           }}
           placeholder={placeholder}
           rows={1}
           aria-label="질문 입력"
           className="min-h-0 max-h-48 flex-1 rounded-none border-0 bg-transparent px-0 py-2 text-[15px] leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 md:text-[15px]"
         />
-        <Button size="icon" onClick={onSubmit} disabled={!canSend}
+        <Button size="icon" onClick={() => { track("action", "chat.ask"); onSubmit() }} disabled={!canSend}
           aria-label={busy ? "답변 생성 중" : "질문 보내기"} className="shrink-0 rounded-xl">
           {busy ? <Spinner className="size-4" /> : <ArrowUp className="size-4" />}
         </Button>
       </div>
       <p className="px-1 text-center text-[11px] text-muted-foreground">
-        {hint ?? "Enter 전송 · Shift+Enter 줄바꿈 · 답변은 AI 종합이며 근거 밖 내용은 답하지 않습니다"}
+        {/* 키보드 안내는 터치 화면(<768)에서 뺀다 */}
+        {hint ?? <><span className="max-md:hidden">Enter 전송 · Shift+Enter 줄바꿈 · </span>답변은 AI 종합이며 근거 밖 내용은 답하지 않습니다</>}
       </p>
     </div>
   )

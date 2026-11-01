@@ -198,7 +198,7 @@ export const EXPLORE_WIDGETS: WidgetDef[] = [
   { id: "explore.signals", title: "오늘의 신호", description: "유형별 오늘 건수 · 상위 종목", section: "explore", group: "신호",
     size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/explore", useMeta: useSignalsMeta, Body: SignalsBody },
   { id: "explore.momentum", title: "이번 시즌 실적 모멘텀", description: "새로 생기거나 빨라진 성장 동인 · 미국 기업", section: "explore", group: "컨콜",
-    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/follow/transcripts?view=momentum", useMeta: useMomentumMeta, Body: MomentumBody },
+    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/follow/transcripts?view=season", useMeta: useMomentumMeta, Body: MomentumBody },
   { id: "explore.calls", title: "컨콜 · 실적 발표", description: "곧 발표할 팔로우 기업(D-day) · 지난 7일 받은 컨콜", section: "explore", group: "컨콜",
     size: { w: 4, h: 5, minW: 3, minH: 2 }, detailPath: "/follow/transcripts", useMeta: useCallsMeta, Body: CallsBody },
   { id: "explore.sectorShift", title: "섹터 사분면 이동", description: "1주 전과 RS 사분면이 바뀐 대분류", section: "explore", group: "산업·섹터",

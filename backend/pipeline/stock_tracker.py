@@ -30,7 +30,6 @@ CREATE INDEX IF NOT EXISTS idx_tracker_cond ON tracker_conditions(stock_code);
 KINDS = {"price_below", "price_above", "close_below_ma", "close_above_ma", "manual"}
 ROLES = {"entry", "exit", "check"}
 WIDGET_ID = "track.stock"
-LAYOUT = "home-v2"
 DAY_STEP = 5.0
 KEY_DISCLOSURE = ("대량보유", "소유상황", "잠정", "공급계약", "유상증자", "전환사채", "신주인수권", "자기주식", "합병", "분할")
 STAMP_RE = re.compile(r"^\d{4}[.\-]\d{2}[.\-]\d{2}[ T]\d{2}:\d{2}")
@@ -42,18 +41,17 @@ def ensure(conn: sqlite3.Connection) -> None:
 
 
 def tracked_codes(conn: sqlite3.Connection) -> list[str]:
-    """홈 배치에 놓인 종목 추적 위젯의 종목들(순서 유지, 중복 제거)"""
+    """홈 메뉴들(home_boards)에 놓인 종목 추적 위젯의 종목들(메뉴 순서대로, 중복 제거)"""
     try:
-        row = conn.execute("SELECT layout_json FROM dashboard_layouts WHERE name=?", (LAYOUT,)).fetchone()
-    except sqlite3.OperationalError:          # 배치 테이블이 없는 DB(테스트 등) = 추적 위젯 없음
-        return []
-    if not row:
+        rows = conn.execute("SELECT layout_json FROM home_boards ORDER BY sort, id").fetchall()
+    except sqlite3.OperationalError:          # 메뉴 표가 없는 DB(테스트 등) = 추적 위젯 없음
         return []
     out: list[str] = []
-    for it in json.loads(row["layout_json"]):
-        code = (it.get("params") or {}).get("code") if it.get("widget") == WIDGET_ID else None
-        if code and code not in out:
-            out.append(str(code))
+    for row in rows:
+        for it in json.loads(row[0]):
+            code = (it.get("params") or {}).get("code") if it.get("widget") == WIDGET_ID else None
+            if code and code not in out:
+                out.append(str(code))
     return out
 
 

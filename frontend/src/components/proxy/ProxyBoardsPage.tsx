@@ -120,7 +120,7 @@ function BoardDetail({ id }: { id: number }) {
         {!b.items.length ? <p className="text-sm text-muted-foreground">지표가 없어요. '지표 추가'로 원천에서 고르세요.</p> : (
           <ul className="divide-y">
             {b.items.map(it => (
-              <li key={it.proxy_id} className="grid grid-cols-[minmax(0,1fr)_120px_96px_32px] items-center gap-3 py-2.5">
+              <li key={it.proxy_id} className="grid grid-cols-[minmax(0,1fr)_56px_80px_32px] items-center gap-2 py-2.5 sm:grid-cols-[minmax(0,1fr)_120px_96px_32px] sm:gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-1.5 truncate text-sm font-medium">
                     {it.in_warn && <AlertTriangle className="size-3.5 shrink-0 text-chart-warning" aria-label="주의 방향" />}

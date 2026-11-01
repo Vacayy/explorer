@@ -174,7 +174,8 @@ export function ConditionStack({ draft, definitions, busy, computing, result, re
       <div className="space-y-1.5"><Label htmlFor="stack-date">시세 기준일</Label><Input className="min-h-10" id="stack-date" type="date" value={draft.asOf} onChange={event => patch({ asOf: event.target.value })} /></div>
     </fieldset>
     {ranked && <p className="text-caption text-muted-foreground">순위 조건이 있으면 통과 집단에 따라 순위가 달라져 ‘빼면 몇 종목’은 표시하지 않습니다.</p>}
-    <div className="sticky bottom-0 -mx-3 flex flex-wrap items-center justify-between gap-2 border-t bg-card px-3 py-3">
+    {/* <768은 하단 탭바가 fixed로 덮으므로 그 위에 붙인다 */}
+    <div className="sticky bottom-0 max-md:bottom-[calc(var(--tabbar-height)+env(safe-area-inset-bottom))] -mx-3 flex flex-wrap items-center justify-between gap-2 border-t bg-card px-3 py-3">
       <p role="status" aria-live="polite" className="min-w-0 flex-1 text-caption text-muted-foreground">{status}</p>
       <Button type="submit" className="min-h-10" disabled={runDisabled}>{computing ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}{computing ? '찾는 중…' : `${active.length}개 조건으로 검색`}</Button>
     </div>

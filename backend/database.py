@@ -968,6 +968,45 @@ def init_db():
     -- 시장 국면 (market regime, D-076, docs/specs/market-regime.md) — 매크로 리스크 포스처.
     -- 일별 스냅샷(EOD): F&G·VIX·S&P·KOSPI·20EMA·VKOSPI/실현변동성. 스파크라인 히스토리 = 축적.
     -- 지표 = fact (hypothesis 아님). 포스처 결합은 API에서 결정적 계산(LLM 0), 여기엔 원지표만.
+    CREATE TABLE IF NOT EXISTS pricing_claims (   -- 시장 프라이싱 원장(docs/specs/pricing-ledger.md): 시장이 전제로 삼는 기대
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        statement TEXT NOT NULL,
+        theme TEXT NOT NULL,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS pricing_observations (
+        trade_date TEXT NOT NULL,
+        claim_id INTEGER NOT NULL REFERENCES pricing_claims(id),
+        stance TEXT NOT NULL CHECK (stance IN ('present','stronger','weaker','contested')),
+        evidence TEXT,
+        sources_json TEXT,
+        PRIMARY KEY (trade_date, claim_id)
+    );
+    CREATE TABLE IF NOT EXISTS pricing_days (     -- 브리핑 하루 추출 기록 — signature가 같으면 다시 뽑지 않는다
+        trade_date TEXT PRIMARY KEY,
+        signature TEXT NOT NULL,
+        model TEXT,
+        new_claims INTEGER,
+        observed INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS era_checks (       -- 지금 시장 읽기 층 3: Marks 체크리스트 정성 항목(사람 판단, docs/specs/market-regimes.md §8)
+        key TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK (state IN ('hot','normal','cold')),
+        note TEXT,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS era_commentary (   -- 지금 시장 읽기 LLM 해설 — 입력 해시가 같으면 다시 만들지 않는다
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        input_hash TEXT NOT NULL UNIQUE,
+        input_json TEXT NOT NULL,
+        body TEXT NOT NULL,
+        model TEXT,
+        cost_usd REAL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS market_indicators (
         snapshot_date TEXT NOT NULL,        -- KST YYYY-MM-DD
         indicator     TEXT NOT NULL,        -- fear_greed | vix | sp500 | kospi | kospi_ema20 | vkospi | kospi_vol
@@ -1040,6 +1079,138 @@ def init_db():
         last_report_date TEXT,              -- 최근 실적 발표일 (ISO date)
         next_report_date TEXT,              -- 차기 예정 발표일
         checked_at       TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 컨콜 시장 반응 — 발표일~7일 내 내 자료·주가·Yahoo 헤드라인을 sonnet으로 정리 (pipeline/call_reaction.py)
+    -- 창이 열려 있으면 interim(버튼), 닫힌 뒤 final(매일 callmomentum 회차가 한 번 확정)
+    CREATE TABLE IF NOT EXISTS transcript_reactions (
+        transcript_id INTEGER PRIMARY KEY,  -- FK transcripts.id
+        window_start  TEXT NOT NULL,        -- call_date
+        window_end    TEXT NOT NULL,        -- call_date + 7일
+        status        TEXT NOT NULL,        -- interim | final
+        body          TEXT,                 -- 마크다운 정리 ([n] 인용)
+        prices_json   TEXT,                 -- 발표 전 종가 대비 일별 누적 수익률(종목·SPY)
+        sources_json  TEXT,                 -- [n] → 문서·헤드라인
+        n_docs        INTEGER,              -- 기간 안에서 찾은 내 자료 수(정리에 넣기 전)
+        input_hash    TEXT,
+        created_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 실적 시즌 체인 (docs/specs/earnings-season.md, D-277) — 발표 한 건 = (ticker, 회계연도, 회계분기).
+    -- 녹취록보다 먼저 생긴다(예정 발표일 → 발표 전 기대를 붙이려고). 발표일은 SEC 실적 공시가 오면 그 날짜로 교정
+    CREATE TABLE IF NOT EXISTS earnings_events (
+        ticker        TEXT NOT NULL,
+        fiscal_year   INTEGER NOT NULL,
+        fiscal_period TEXT NOT NULL,        -- Q1..Q4
+        event_date    TEXT NOT NULL,        -- 미국 날짜
+        season        TEXT NOT NULL,        -- 2026Q3 (발표 시점 기준, call_momentum.season)
+        confirmed     INTEGER DEFAULT 0,    -- 1 = SEC 실적 공시로 확인, 0 = yfinance 예정일
+        eps_est       REAL,                 -- yfinance 발표 직전 컨센서스(지난 분기도 받을 수 있음)
+        eps_actual    REAL,
+        eps_surprise  REAL,                 -- % (GAAP·조정 혼재 — 참고용)
+        updated_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, fiscal_year, fiscal_period)
+    );
+    -- 발표 전 기대 — D-7·D-1 스냅샷. 정량(yfinance)은 전 종목, 정성(sonnet)은 핵심 종목만
+    CREATE TABLE IF NOT EXISTS earnings_expectations (
+        ticker        TEXT NOT NULL,
+        fiscal_year   INTEGER NOT NULL,
+        fiscal_period TEXT NOT NULL,
+        snapshot      TEXT NOT NULL,        -- d7 | d1
+        event_date    TEXT,
+        quant_json    TEXT,                 -- 컨센서스·추정치 수정·발표 전 상승폭·목표가 변경·내재 변동폭
+        issues_json   TEXT,                 -- [{issue, why, good, bad, weight high|mid|low, cites}]
+        positioning   TEXT,
+        points_json   TEXT,                 -- 화면 '발표 전' 불릿
+        thin          TEXT,
+        n_docs        INTEGER,
+        prompt_version TEXT,
+        input_hash    TEXT,
+        created_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, fiscal_year, fiscal_period, snapshot)
+    );
+    -- 섹터 요약 이력 — 입력이 바뀔 때마다 새 행(덮어쓰지 않음). '해석이 바뀐 과정'·'오늘 바뀐 것'의 원천
+    CREATE TABLE IF NOT EXISTS season_themes (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        season        TEXT NOT NULL,
+        sector        TEXT NOT NULL,
+        verdict       TEXT,                 -- 반김 우세 | 실망 우세 | 엇갈림
+        body_json     TEXT,                 -- {one_line, welcomed, questioned, change_note, next, vs_last_season}
+        tickers       TEXT,                 -- 근거 종목 CSV
+        input_hash    TEXT,
+        created_at    TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_season_themes ON season_themes(season, sector, id);
+    -- 핵심 종목 — 시즌마다 계산. reasons: cap|mention|holding_chain|dc_chain|pinned
+    CREATE TABLE IF NOT EXISTS earnings_core (
+        season        TEXT NOT NULL,
+        ticker        TEXT NOT NULL,
+        reasons       TEXT NOT NULL,        -- JSON 배열
+        mention_docs  INTEGER,
+        mention_sources INTEGER,
+        computed_at   TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (season, ticker)
+    );
+    -- 애널리스트 등급·목표가 변경 (yfinance upgrades_downgrades 캐시)
+    CREATE TABLE IF NOT EXISTS us_pt_changes (
+        ticker        TEXT NOT NULL,
+        graded_at     TEXT NOT NULL,
+        firm          TEXT NOT NULL,
+        action        TEXT,
+        to_grade      TEXT,
+        pt_from       REAL,
+        pt_to         REAL,
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, graded_at, firm)
+    );
+
+    -- 관측 (docs/specs/observability.md, D-283) — API 요청 시간 단위 집계(경로 패턴·상태 계층·응답시간 구간)
+    CREATE TABLE IF NOT EXISTS api_requests_hourly (
+        hour          TEXT NOT NULL,        -- 'YYYY-MM-DD HH:00' UTC
+        method        TEXT NOT NULL,
+        route         TEXT NOT NULL,        -- '/api/spine/us/{ticker}' (실제 값 아님)
+        status_class  TEXT NOT NULL,        -- 2xx | 3xx | 4xx | 5xx
+        count         INTEGER DEFAULT 0,
+        total_ms      REAL DEFAULT 0,
+        max_ms        REAL DEFAULT 0,
+        b100 INTEGER DEFAULT 0, b300 INTEGER DEFAULT 0, b1000 INTEGER DEFAULT 0, b3000 INTEGER DEFAULT 0, bslow INTEGER DEFAULT 0,
+        PRIMARY KEY (hour, method, route, status_class)
+    );
+    -- 사용 이벤트 — 프런트가 묶어 보낸다. type: view | leave | action | open (종류는 스펙에 먼저 추가)
+    CREATE TABLE IF NOT EXISTS usage_events (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts            TEXT NOT NULL,        -- UTC ISO
+        session       TEXT,
+        type          TEXT NOT NULL,
+        name          TEXT NOT NULL,        -- 라우트 패턴 또는 동작 이름
+        ref           TEXT,                 -- 직전 화면 패턴(view)
+        entity        TEXT,                 -- 티커·종목코드·id
+        dwell_ms      INTEGER               -- leave: 보이는 동안 머문 시간
+    );
+    CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_usage_events_type ON usage_events(type, name);
+    -- 즉시 경고 상태 — 상태가 바뀔 때만 보내려고(같은 경고는 하루 1회)
+    CREATE TABLE IF NOT EXISTS alert_state (
+        key           TEXT PRIMARY KEY,     -- 'job_streak:pf_intraday' 등
+        active        INTEGER NOT NULL,
+        detail        TEXT,
+        changed_at    TEXT,
+        sent_at       TEXT
+    );
+
+    -- 화면 API 오류 기록 — 프런트 응답 래퍼가 보고(계약 위반·5xx·timeout·네트워크). 같은 API·필드·종류는 한 행
+    CREATE TABLE IF NOT EXISTS client_errors (
+        signature     TEXT PRIMARY KEY,
+        endpoint      TEXT NOT NULL,        -- 'GET /api/...'
+        kind          TEXT NOT NULL,        -- schema | http | timeout | network | unknown
+        status        INTEGER,
+        field         TEXT,                 -- 첫 검증 실패 경로
+        detail        TEXT,
+        issues_json   TEXT,
+        page          TEXT,                 -- 마지막으로 난 화면
+        count         INTEGER DEFAULT 1,
+        first_seen    TEXT,
+        last_seen     TEXT
     );
 
     -- 프록시 레지스트리 (사람이 세팅 — "무엇을 볼지") — 리포트 핵심질문(D-049)의 관찰 프록시
@@ -1147,11 +1318,12 @@ def init_db():
 
     -- 홈 위젯 배치 (단일 사용자, 이름별 한 벌 — routers/dashboard.py)
     -- 내 프리셋 — 홈 보드 배치를 이름 붙여 저장해 두고 칩으로 불러온다(docs/specs/home-widgets.md §5, 기본 프리셋 대체)
-    CREATE TABLE IF NOT EXISTS dashboard_presets (
+    -- 홈 메뉴(보드) — 메뉴 하나 = 위젯 배치 하나(docs/specs/home-widgets.md §5). 홈 L2 탭이 이 행들이다
+    CREATE TABLE IF NOT EXISTS home_boards (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        board         TEXT NOT NULL DEFAULT 'home-v2',   -- 어느 보드의 배치인가(dashboard_layouts.name)
         label         TEXT NOT NULL,
-        layout_json   TEXT NOT NULL,                     -- [{i, widget, x, y, w, h, params}] — 배치 저장과 같은 형식
+        sort          INTEGER NOT NULL DEFAULT 0,        -- 탭 순서(작을수록 왼쪽)
+        layout_json   TEXT NOT NULL,                     -- [{i, widget, x, y, w, h, params}] — dashboard_layouts와 같은 형식
         created_at    TEXT DEFAULT (datetime('now')),
         updated_at    TEXT DEFAULT (datetime('now'))
     );
@@ -1418,6 +1590,9 @@ def init_db():
         "ALTER TABLE proxy_registry ADD COLUMN adapter_ref TEXT",
         "ALTER TABLE proxy_registry ADD COLUMN warn_direction TEXT",   # up|down|NULL — 어느 방향 움직임이 '주의'인가
         "ALTER TABLE proxy_registry ADD COLUMN rationale TEXT",        # 왜 이 주제의 선행/확정 신호인가
+        # 실적 시즌 체인 (D-277) — 반응 정리의 구조화 필드(해석·반긴 것·문제 삼은 것·쟁점 판정·화면 불릿)
+        "ALTER TABLE transcript_reactions ADD COLUMN meta_json TEXT",
+        "ALTER TABLE transcript_follow ADD COLUMN core_pinned INTEGER DEFAULT 0",   # 사용자가 핵심 종목으로 고정
     ]:
         try:
             conn.execute(migration)
@@ -1475,6 +1650,17 @@ def init_db():
             DROP TABLE stock_briefs_old;
             CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
         """)
+        conn.commit()
+
+    # 내 프리셋 → 홈 메뉴(1회성): 옛 홈 배치('home-v2')를 첫 메뉴로, 저장해 둔 프리셋을 그 뒤 메뉴로 옮기고 프리셋 표를 지운다
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dashboard_presets'").fetchone():
+        if not conn.execute("SELECT 1 FROM home_boards").fetchone():
+            row = conn.execute("SELECT layout_json FROM dashboard_layouts WHERE name='home-v2'").fetchone()
+            if row:
+                conn.execute("INSERT INTO home_boards (label, sort, layout_json) VALUES ('대시보드', 0, ?)", (row[0],))
+            conn.execute("INSERT INTO home_boards (label, sort, layout_json) "
+                         "SELECT label, id, layout_json FROM dashboard_presets WHERE board='home-v2' ORDER BY id")
+        conn.execute("DROP TABLE dashboard_presets")
         conn.commit()
 
     # 보유 종목 논지(portfolio-intelligence §2) — questions 생성 뒤에 붙여야 새 DB에서도 칼럼이 생긴다

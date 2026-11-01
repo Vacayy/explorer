@@ -162,7 +162,7 @@ function StudyBody({ h }: WidgetBodyProps) {
       <li key={p.id}>
         <Link to={`/study/projects/${p.id}`} className="flex items-center gap-2 py-1 hover:underline">
           <span className="min-w-0 flex-1 truncate">{p.title}</span>
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">자료 {formatNumber(p.document_count ?? p.documents?.length ?? 0)}</span>
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">자료 {formatNumber(p.document_count)}</span>
         </Link>
       </li>
     ))}

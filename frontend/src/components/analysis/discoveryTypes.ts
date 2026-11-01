@@ -78,7 +78,7 @@ export interface ResearchRun {
     created_at: string
     question: string
     company: unknown
-    lanes: { id: 'market' | 'industry' | 'earnings' | 'call' | 'trade'; label: string; status: string; items: ResearchEvidence[]; warnings: string[] }[]
+    lanes: { id: 'market' | 'industry' | 'earnings' | 'call' | 'trade' | 'web'; label: string; status: string; items: ResearchEvidence[]; warnings: string[] }[]
     warnings: string[]
   }
   result?: {

@@ -18,7 +18,7 @@ export function TransactionSheet() {
   const remove = useDeletePortfolioTransaction()
   return <Sheet open={open} onOpenChange={setOpen}>
     <SheetTrigger asChild><Button size="sm" variant="outline"><History aria-hidden="true" />거래 내역</Button></SheetTrigger>
-    <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+    <SheetContent className="w-full overflow-y-auto data-[side=right]:w-full sm:max-w-md">
       <SheetHeader>
         <SheetTitle>거래 내역</SheetTitle>
         <SheetDescription>금액은 표시하지 않습니다. 잘못 입력한 거래는 삭제 후 다시 입력하세요.</SheetDescription>

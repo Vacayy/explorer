@@ -15,7 +15,7 @@ import { formatNumber, formatRelativeTime } from '@/utils/format'
 import { SYSTEM_KIND_LABEL, groupDirectory, isSystemChannel, systemKind, type DirectoryGroup } from '@/lib/canvas'
 import type { TimelineChannel } from '@/types'
 
-const platforms = { telegram: '텔레그램', blog: '블로그', youtube: '유튜브', system: 'Explorer' }
+const platforms = { telegram: '텔레그램', blog: '블로그', youtube: '유튜브', memo: '투자자 메모', system: 'Explorer' }
 function channelLabel(item: TimelineChannel) {
   const kind = SYSTEM_KIND_LABEL[systemKind(item.id)]
   return item.platform === 'system' && kind ? `Explorer · ${kind}` : platforms[item.platform]
@@ -39,7 +39,7 @@ export function ChannelReader() {
   const contextPlatform = channel ? channel.split(':')[0] : platform
   const requestedReading = params.get('reading')
   const reading = requestedReading === 'summary' || requestedReading === 'original' ? requestedReading
-    : contextPlatform === 'blog' || contextPlatform === 'youtube' ? 'summary' : 'original'
+    : contextPlatform === 'blog' || contextPlatform === 'youtube' || contextPlatform === 'memo' ? 'summary' : 'original'
   const readerOpen = params.get('reader_open') === '1' || (!params.has('reader_open') && !!channel)
   const directory = useTimelineChannels(until)
   const timeline = useTimeline({ scope: platform === 'system' ? 'system' : 'sources', kind: 'all', source: platform === 'system' ? 'all' : platform, channel: channel || undefined, topic: topic || undefined, page, until })
@@ -119,7 +119,7 @@ export function ChannelReader() {
       </div>
       <div ref={list} className="channel-list" tabIndex={0} aria-label="소스 목록 스크롤" onScroll={event => { if (directory.data) scrollPositions.set(listKey, event.currentTarget.scrollTop) }}>
         <Button variant="ghost" className="channel-entry" aria-pressed={!channel} onClick={() => select('')}>
-          <span className="min-w-0 flex-1 text-left"><span className="block font-semibold">{allTitle}</span><span className="block text-caption text-muted-foreground">{platform === 'all' ? '텔레그램·블로그·유튜브' : platform === 'system' ? 'Explorer의 저장된 업데이트' : `팔로우한 ${platforms[platform]} 소스`}</span></span>
+          <span className="min-w-0 flex-1 text-left"><span className="block font-semibold">{allTitle}</span><span className="block text-caption text-muted-foreground">{platform === 'all' ? '텔레그램·블로그·유튜브·투자자 메모' : platform === 'system' ? 'Explorer의 저장된 업데이트' : `팔로우한 ${platforms[platform]} 소스`}</span></span>
           {directory.data && allUnread > 0 && <span className="channel-count channel-count-unread" title="안 읽은 게시물 수">{formatNumber(allUnread)}</span>}
         </Button>
         {directory.isLoading && <div className="space-y-3 p-4" role="status" aria-label="소스 불러오는 중">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>}
@@ -170,7 +170,8 @@ function TopicChips({ active, onPick }: { active: string; onPick: (topic: string
   const groups = [{ label: '주목 주제', names: themes }, { label: '부상 종목', names: stocks }].filter(g => g.names.length > 0)
   if (groups.length === 0) return null   // 로딩·오류·빈 신호 모두 칩 줄을 생략한다(피드 본문과 독립)
   return <div className="space-y-1.5 pb-3">
-    {groups.map(g => <div key={g.label} className="flex flex-wrap items-center gap-1.5">
+    {/* 모바일(<768)은 그룹마다 한 줄 가로 스크롤 — 칩이 본문을 밀어내지 않게 */}
+    {groups.map(g => <div key={g.label} className="flex flex-wrap items-center gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:overscroll-x-contain max-md:pb-1">
       <span className="w-14 shrink-0 text-caption text-muted-foreground">{g.label}</span>
       {g.names.map(name => <Button key={name} variant="outline" size="sm" className="h-7 px-2.5 text-caption font-normal" onClick={() => onPick(name)}>{name}</Button>)}
     </div>)}

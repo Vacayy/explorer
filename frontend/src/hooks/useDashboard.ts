@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
 import type { Entry as LayoutEntry } from "@/components/widgets/rows"
@@ -24,41 +23,22 @@ export function useRiskWindow() {
   }))
 }
 
-/** 대시보드 배치 — 서버 저장(docs/specs/home-widgets.md §4). 저장본이 없으면 null(기본 프리셋을 쓴다) */
-export function useDashboardLayout(name = "home") {
+/** 홈 메뉴(보드) — 메뉴 하나 = 위젯 배치 하나(docs/specs/home-widgets.md §5). 홈 L2 탭이 이 목록이다 */
+export interface HomeBoard { id: number; label: string; sort: number; items: LayoutEntry[]; updated_at: string }
+const BOARDS_KEY = ["dashboard", "boards"] as const
+const body = (items: LayoutEntry[]) => items.map(({ i, widget, x, y, w, h, params }) => ({ i, widget, x, y, w, h, params: params ?? {} }))
+export function useHomeBoards() {
   const qc = useQueryClient()
-  const key = ["dashboard", "layout", name] as const
-  const query = useQuery({
-    queryKey: key,
-    queryFn: async () => {
-      try {
-        return (await api.get<{ items: LayoutEntry[] }>(`/api/dashboard/layouts/${name}`)).data.items
-      } catch (e) {
-        if (axios.isAxiosError(e) && e.response?.status === 404) return null
-        throw e
-      }
-    },
-    staleTime: Infinity,
-  })
-  const save = useMutation({
-    mutationFn: async (items: LayoutEntry[]) => (await api.put(`/api/dashboard/layouts/${name}`, { items: items.map(({ i, widget, x, y, w, h, params }) => ({ i, widget, x, y, w, h, params: params ?? {} })) })).data,
-    onSuccess: (_d, items) => qc.setQueryData(key, items),
-  })
-  return { ...query, save }
-}
-
-/** 내 프리셋 — 지금 배치를 이름 붙여 저장해 두고 칩으로 불러온다(docs/specs/home-widgets.md §5) */
-export interface DashboardPreset { id: number; board: string; label: string; items: LayoutEntry[]; updated_at: string }
-export function useDashboardPresets(board = "home-v2") {
-  const qc = useQueryClient()
-  const key = ["dashboard", "presets", board] as const
-  const query = useQuery({ queryKey: key, queryFn: async () => (await api.get<DashboardPreset[]>("/api/dashboard/presets", { params: { board } })).data, staleTime: Infinity })
-  const body = (items: LayoutEntry[]) => items.map(({ i, widget, x, y, w, h, params }) => ({ i, widget, x, y, w, h, params: params ?? {} }))
-  const refresh = () => qc.invalidateQueries({ queryKey: key })
+  const query = useQuery({ queryKey: BOARDS_KEY, queryFn: async () => (await api.get<HomeBoard[]>("/api/dashboard/boards")).data, staleTime: Infinity })
+  const refresh = () => qc.invalidateQueries({ queryKey: BOARDS_KEY })
+  /** 서버가 돌려준 메뉴로 캐시만 바꾼다 — 배치 저장마다 목록을 다시 받지 않는다 */
+  const put = (b: HomeBoard) => qc.setQueryData<HomeBoard[]>(BOARDS_KEY, prev => prev?.map(x => x.id === b.id ? b : x))
   const create = useMutation({ mutationFn: async ({ label, items }: { label: string; items: LayoutEntry[] }) =>
-    (await api.post<DashboardPreset>("/api/dashboard/presets", { label, items: body(items), board })).data, onSuccess: refresh })
+    (await api.post<HomeBoard>("/api/dashboard/boards", { label, items: body(items) })).data, onSuccess: refresh })
   const update = useMutation({ mutationFn: async ({ id, label, items }: { id: number; label?: string; items?: LayoutEntry[] }) =>
-    (await api.patch<DashboardPreset>(`/api/dashboard/presets/${id}`, { ...(label ? { label } : {}), ...(items ? { items: body(items) } : {}) })).data, onSuccess: refresh })
-  const remove = useMutation({ mutationFn: async (id: number) => (await api.delete(`/api/dashboard/presets/${id}`)).data, onSuccess: refresh })
-  return { ...query, create, update, remove }
+    (await api.patch<HomeBoard>(`/api/dashboard/boards/${id}`, { ...(label ? { label } : {}), ...(items ? { items: body(items) } : {}) })).data, onSuccess: put })
+  const order = useMutation({ mutationFn: async (ids: number[]) => (await api.put<HomeBoard[]>("/api/dashboard/boards/order", { ids })).data,
+    onSuccess: data => qc.setQueryData(BOARDS_KEY, data) })
+  const remove = useMutation({ mutationFn: async (id: number) => (await api.delete(`/api/dashboard/boards/${id}`)).data, onSuccess: refresh })
+  return { ...query, create, update, order, remove }
 }

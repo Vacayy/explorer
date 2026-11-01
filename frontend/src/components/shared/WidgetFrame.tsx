@@ -1,3 +1,4 @@
+import { toApiError } from "@/api/errors"
 import type { KeyboardEvent, ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { GripVertical, Maximize2, MoreHorizontal, X } from "lucide-react"
@@ -42,15 +43,15 @@ export function WidgetFrame({ title, asOf, stale, detailPath, onRemove, onOpen, 
   return (
     <Card className="group/widget relative flex h-full min-h-0 flex-col gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none">
       {flat ? (
-        <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 rounded-sm border bg-background/95 px-0.5 opacity-0 shadow-sm transition-opacity group-hover/widget:opacity-100 focus-within:opacity-100">
+        <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 rounded-sm border bg-background/95 px-0.5 opacity-0 shadow-sm transition-opacity group-hover/widget:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
           {handle}{menu}
         </div>
       ) : (
-        <header className="flex h-10 shrink-0 items-center gap-1 border-b pr-1.5 pl-1">
+        <header className="@container flex h-10 shrink-0 items-center gap-1 border-b pr-1.5 pl-1">
           {handle}
           <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
-          {asOf && <span className={cn("ml-auto shrink-0 font-mono text-[11px] tabular-nums", stale ? "text-chart-warning" : "text-muted-foreground")}>{asOf}</span>}
-          <span className={cn(!asOf && "ml-auto")}>{menu}</span>
+          {asOf && <span className={cn("ml-auto shrink-0 max-lg:hidden max-lg:@[240px]:inline font-mono text-[11px] tabular-nums", stale ? "text-chart-warning" : "text-muted-foreground")}>{asOf}</span>}
+          <span className={cn(!asOf ? "ml-auto" : "max-lg:ml-auto max-lg:@[240px]:ml-0")}>{menu}</span>
         </header>
       )}
       <div className={cn("min-h-0 flex-1 overflow-hidden", flat ? "px-1 py-2" : "p-3", onOpen && "cursor-pointer transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none")}
@@ -62,11 +63,11 @@ export function WidgetFrame({ title, asOf, stale, detailPath, onRemove, onOpen, 
 
 /** 위젯 본문 공통 상태 — 로딩·오류·빈 상태 (5-state) */
 export function WidgetState({ loading, error, empty, onRetry, emptyText = "표시할 데이터가 아직 없어요" }: {
-  loading?: boolean; error?: boolean; empty?: boolean; onRetry?: () => void; emptyText?: string
+  loading?: boolean; error?: unknown; empty?: boolean; onRetry?: () => void; emptyText?: string
 }) {
-  if (loading) return <div className="space-y-2"><Skeleton className="h-7 w-1/2" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>
-  if (error) return <div className="space-y-2 text-sm text-muted-foreground"><p>불러오지 못했어요.</p>{onRetry && <Button variant="outline" size="sm" onClick={onRetry}>다시 시도</Button>}</div>
-  if (empty) return <p className="text-sm text-muted-foreground">{emptyText}</p>
+  if (loading) return <div role="status" aria-label="데이터 불러오는 중" aria-busy="true" className="space-y-2"><Skeleton className="h-7 w-1/2" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>
+  if (error) return <div role="alert" className="space-y-2 text-sm text-muted-foreground"><p>{error === true ? "불러오지 못했어요." : toApiError(error).message}</p>{onRetry && <Button variant="outline" size="sm" onClick={onRetry}>다시 시도</Button>}</div>
+  if (empty) return <p role="status" className="text-sm text-muted-foreground">{emptyText}</p>
   return null
 }
 

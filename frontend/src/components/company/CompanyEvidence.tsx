@@ -22,6 +22,7 @@ export const sourceLabels: Record<string, string> = {
   scrap: '스크랩',
   note: '노트',
   canon: '역사',
+  memo: '투자자 메모',
 }
 export interface EvidenceItem {
   id: string
@@ -37,7 +38,7 @@ export interface EvidenceItem {
   status: 'within' | 'after' | 'uncertain'
   relation: string
 }
-interface EvidenceResponse {
+export interface EvidenceResponse {
   items: EvidenceItem[]
   total: number
   page: number
@@ -107,7 +108,8 @@ export function CompanyEvidence({
     setSp(
       (prev) => {
         const n = new URLSearchParams(prev)
-        value ? n.set(key, value) : n.delete(key)
+        if (value) n.set(key, value)
+        else n.delete(key)
         if (key !== 'page') n.delete('page')
         return n
       },
@@ -139,7 +141,7 @@ export function CompanyEvidence({
               )
             }}
           >
-            <label className="text-caption">
+            <label className="w-full text-caption sm:w-auto">
               출처
               <select
                 aria-label="자료 출처"

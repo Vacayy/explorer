@@ -1,3 +1,4 @@
+import { QueryState } from "@/components/shared/QueryState"
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
@@ -6,7 +7,6 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader, PageLayout } from '@/components/shared/PageLayout'
-import { ErrorState } from '@/components/shared/ErrorState'
 import AreaSeriesChart from '@/components/charts/AreaSeriesChart'
 import { TransactionDialog } from '@/components/portfolio/TransactionDialog'
 import { TransactionSheet } from '@/components/portfolio/TransactionSheet'
@@ -53,11 +53,9 @@ export default function PortfolioPage({ tab = 'overview' }: { tab?: PortfolioTab
           <AlertHistoryCard />
         </>
         : tab === 'events' ? (empty ? <EmptyLedger /> : <EventsCard />)
-        : summary.isPending ? <><Skeleton className="h-28 w-full rounded-xl" /><Skeleton className="h-64 w-full rounded-xl" /></>
-        : summary.isError ? <ErrorState message={summary.error.message} onRetry={() => void summary.refetch()} />
-        : empty ? <EmptyLedger />
-        : tab === 'holdings' ? <HoldingsTab data={summary.data} />
-        : <Overview data={summary.data} />}
+        : <QueryState query={summary} loading={<><Skeleton className="h-28 w-full rounded-xl" /><Skeleton className="h-64 w-full rounded-xl" /></>} isEmpty={() => false}>{(data) => (empty ? <EmptyLedger />
+        : tab === 'holdings' ? <HoldingsTab data={data} />
+        : <Overview data={data} />)}</QueryState>}
     </div>
   </PageLayout>
 }
@@ -111,10 +109,8 @@ function ReturnHistory({ live }: { live: boolean }) {
   const history = usePortfolioHistory(live)
   const points = history.data ?? []
   return <Card><CardHeader><CardTitle>계좌 수익률 추이</CardTitle></CardHeader><CardContent>
-    {history.isPending ? <Skeleton className="h-56 w-full" />
-      : history.isError ? <ErrorState onRetry={() => void history.refetch()} />
-      : points.length < 2 ? <p className="py-8 text-center text-sm text-muted-foreground">
+    <QueryState query={history} loading={<Skeleton className="h-56 w-full" />} isEmpty={() => false}>{() => (points.length < 2 ? <p className="py-8 text-center text-sm text-muted-foreground">
           {points.length ? `${points[0].date} 시작 · ${formatPercent(points[0].cum_return_pct)}. 거래일이 쌓이면 매일 종가로 추이를 그립니다.` : '추이를 그릴 거래가 없습니다.'}</p>
-      : <AreaSeriesChart data={points.map(p => ({ time: p.date, value: p.cum_return_pct }))} height={220} formatValue={v => formatPercent(v)} />}
+      : <AreaSeriesChart data={points.map(p => ({ time: p.date, value: p.cum_return_pct }))} height={220} formatValue={v => formatPercent(v)} />)}</QueryState>
   </CardContent></Card>
 }

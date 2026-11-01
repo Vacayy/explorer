@@ -1,6 +1,6 @@
 """실적 발언 모멘텀 (D-217, docs/specs/transcript-momentum.md) — launchd dev.explorer.callmomentum / callmomentumweekly.
 
-  python scripts/call_momentum.py --daily     # 나스닥100 동기화(월 1회) → SEC 8-K → AV 컨콜 → 추출(최대 60건) → 판정 → 후보 AI 요약
+  python scripts/call_momentum.py --daily     # 나스닥100 동기화(월 1회) → SEC 8-K → AV 컨콜 → 추출(최대 60건) → 판정 → 후보 AI 요약 → 실적 시즌 체인(earnings_chain.daily)
   python scripts/call_momentum.py --fresh     # 낮 회차: 이번 시즌 발표 중 아침에 없던 녹취록만(Fool) → 정리 → 그 회사만 추출 → 판정 → 후보 AI 요약
   python scripts/call_momentum.py --weekly    # 지난 7일 새 모멘텀 텔레그램
   python scripts/call_momentum.py --weekly --dry-run
@@ -36,7 +36,7 @@ def ndx_due(conn) -> bool:
 
 
 def daily(extract_limit: int):
-    from pipeline import call_momentum as cm, sec_filings as sec, transcript as tr
+    from pipeline import call_momentum as cm, earnings_chain, sec_filings as sec, transcript as tr
     conn = get_connection()
     try:
         if ndx_due(conn):
@@ -47,6 +47,7 @@ def daily(extract_limit: int):
         step("cm_extract", lambda: cm.extract_pending(conn, limit=extract_limit))
         step("cm_judge", lambda: cm.judge(conn))
         step("cm_summary", lambda: cm.summarize(conn))
+        step("cm_chain", earnings_chain.daily)   # 실적 시즌 체인: 기대(D-7·D-1)·반응(중간·확정)·섹터 요약 — 핵심 종목만 LLM
     finally:
         conn.close()
 

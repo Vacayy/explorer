@@ -75,6 +75,13 @@ def main():
         failed = b.get("headline_failed") or []
         if failed:
             print(f"[briefing] 종목 헤드라인 수집 실패 {len(failed)}종목: {', '.join(failed)}")
+        # 시장 프라이싱 원장(docs/specs/pricing-ledger.md) — 아직 추출 안 한 날을 잇는다. 실패해도 브리핑은 나간다
+        try:
+            from pipeline.pricing_ledger import extract_pending
+            for r in extract_pending():
+                print(f"[briefing] 프라이싱 원장 {r['trade_date']} {r['status']} 관측 {r.get('observed')} 새 전제 {r.get('new')} {r.get('error') or ''}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[briefing] 프라이싱 원장 실패(무시): {type(e).__name__}: {str(e)[:120]}")
         status = "partial" if failed and b["status"] == "ok" else b["status"]
         return {"status": status, "movers": len(b["movers"]), "synthesis": bool(b["synthesis"]),
                 "headline_failed": len(failed)}
