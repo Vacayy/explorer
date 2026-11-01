@@ -97,7 +97,7 @@ for (const [group, exports] of groups) {
   // Convert Ajv CommonJS runtime expressions into static browser-bundle imports.
   const imports = new Map()
   code = code.replace(/require\("([^"\n]+)"\)/g, (_match, source) => {
-    if (!source.startsWith('ajv/')) throw new Error(`Unexpected generated dependency: ${source}`)
+    if (!source.startsWith('ajv/') && source !== 'ajv-formats/dist/formats') throw new Error(`Unexpected generated dependency: ${source}`)
     if (!imports.has(source)) imports.set(source, `helper${imports.size}`)
     return imports.get(source)
   })

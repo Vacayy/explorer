@@ -117,6 +117,9 @@ from routers import spine_world  # 월드모델 읽기 전용(지금 랜딩·체
 app.include_router(spine_world.router)
 import pipeline.runtime  # noqa: F401 — 서버 시작 시각 고정(재시작 필요 감지)
 from routers import spine_client_errors  # 화면 API 오류 기록(응답 계약 위반·5xx·timeout)
+from routers import peers
+app.include_router(peers.router)
+
 from routers import spine_observe  # 관측(사용 이벤트·관측 탭 요약, D-283)
 app.include_router(spine_client_errors.router)
 app.include_router(spine_observe.router)

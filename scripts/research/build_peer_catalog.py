@@ -8,6 +8,9 @@ import json
 from pathlib import Path
 
 EXTRA_GROUPS = {
+    'bank_financial_holding': ('은행 금융지주', 'product', '지주회사 단위 비교. 은행·보험·증권 이익 구성 차이로 은행 순수사업 직접 Peer는 아님.'),
+    'securities_brokerage': ('증권업 관찰군', 'product', '투자중개·자산관리·시장거래 공통분모. 해외·IB·자기자본 투자와 규모 차이를 보존.'),
+    'plant_epc': ('플랜트 EPC 부분 Peer', 'product', '플랜트 사업의 부분 중첩. 현대건설·대우건설은 토목·건축·주택을 겸하며 기업 전체의 순수 플랜트 비교가 아님.'),
     'battery_value_chain': ('배터리 밸류체인', 'value_chain', '배터리 셀과 양극재는 제조 단계가 다른 공급망. 전체 기업의 직접 경쟁 관계가 아님.'),
     'battery_cell': ('배터리 셀', 'product', '전기차·ESS용 셀 사업 중첩. 폼팩터·화학계·고객과 전자재료 등 다른 사업 노출 차이 보존.'),
     'battery_cathode': ('배터리 양극재', 'product', '양극재 제품 중첩. 화학계·고객·전구체 내재화와 음극재 등 사업 구성 차이 확인 필요.'),
@@ -38,6 +41,7 @@ def build(root: Path):
     for filename in ['power.json', 'ship_defense.json']:
         extras.extend(json.loads((root / 'phase4' / filename).read_text()))
     extras.extend(json.loads((root / 'phase5/coverage.json').read_text()))
+    extras.extend(json.loads((root / 'phase6/coverage.json').read_text()))
     extra_ids = {g for c in extras for g in c['groups']}
     for gid, (name, scope, interpretation) in EXTRA_GROUPS.items():
         if gid in extra_ids:
@@ -46,7 +50,7 @@ def build(root: Path):
     assert len({c['code'] for c in companies}) == len(companies), 'duplicate company'
     known = {g['id'] for g in groups}
     assert all(set(c['groupIds']) <= known for c in companies), 'unknown group'
-    return dict(version='2026-11-01.2', asOf='2026-11-01', groups=groups, companies=sorted(companies, key=lambda c:c['name']))
+    return dict(version='2026-11-01.3', asOf='2026-11-01', groups=groups, companies=sorted(companies, key=lambda c:c['name']))
 
 def normalize(c, ids):
     sources = []

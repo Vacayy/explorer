@@ -2,9 +2,7 @@ import { PeerRelativeCandidates } from '@/components/peers/PeerRelativeCandidate
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { usePeerPrices } from '@/hooks/usePeerPrices'
 import { computePeerPerformance, groupOverlap, normalizedPeerPath } from '@/lib/peerPerformance'
-import { QueryState } from '@/components/shared/QueryState'
 import PeriodToggle from '@/components/shared/PeriodToggle'
 import MultiLineChart from '@/components/charts/MultiLineChart'
 import { Button } from '@/components/ui/button'
@@ -16,7 +14,7 @@ import type { PeerCatalog, PeerPriceSnapshot } from '@/types/peer'
 
 const changeColor = (value: number | null) => value === null ? 'text-muted-foreground' : value > 0 ? 'text-up' : value < 0 ? 'text-down' : ''
 
-function Performance({ catalog, snapshot }: { catalog: PeerCatalog; snapshot: PeerPriceSnapshot }) {
+export function PeerPerformancePanel({ catalog, snapshot }: { catalog: PeerCatalog; snapshot: PeerPriceSnapshot }) {
   const [params, setParams] = useSearchParams()
   const { resolvedTheme } = useTheme()
   const requestedDays = params.get('days') ?? '20'
@@ -74,7 +72,7 @@ function Performance({ catalog, snapshot }: { catalog: PeerCatalog; snapshot: Pe
         </SelectContent></Select>
       </div>
     </div>
-    <p className="text-caption text-muted-foreground">가격 {dates[0]} → {snapshot.asOf} · 조사 {catalog.asOf} · {catalog.companies.length}기업·{catalog.groups.length}분류 · 고정 스냅샷, 자동 갱신 아님. 기간 시작 동일가중 · 기준 그룹은 시장 지수가 아닙니다.</p>
+    <p className="text-caption text-muted-foreground">가격 {dates[0]} → {snapshot.asOf} · 조사 {catalog.asOf} · {catalog.companies.length}기업·{catalog.groups.length}분류 · 게시된 정규장 스냅샷. 기간 시작 동일가중 · 기준 그룹은 시장 지수가 아닙니다.</p>
     {requestedDays !== String(days) && <p role="status" className="text-caption text-muted-foreground">지원하지 않는 기간으로 20거래일을 표시합니다.</p>}
     {!baseline && <p role="status" className="text-sm text-muted-foreground">기준 그룹을 찾을 수 없어 기준 대비 차이를 계산하지 않습니다. 비교 기준을 다시 선택해 주세요.</p>}
     {params.get('q') && <p className="text-caption text-muted-foreground">사업근거 검색어는 이 화면의 비교 구성원을 바꾸지 않습니다.</p>}
@@ -123,9 +121,4 @@ function Performance({ catalog, snapshot }: { catalog: PeerCatalog; snapshot: Pe
       <p className="break-all">원천 내용 지문: {snapshot.sourceHash}</p>
     </CollapsibleContent></Collapsible>
   </div>
-}
-
-export function PeerPerformancePanel({ catalog }: { catalog: PeerCatalog }) {
-  const prices = usePeerPrices()
-  return <QueryState query={prices}>{snapshot => <Performance catalog={catalog} snapshot={snapshot} />}</QueryState>
 }

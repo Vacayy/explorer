@@ -3,6 +3,7 @@ export const loaders = {
   'companies': () => import('./validators-companies.js'),
   'dashboard': () => import('./validators-dashboard.js'),
   'ir-notes': () => import('./validators-ir-notes.js'),
+  'peers': () => import('./validators-peers.js'),
   'portfolio': () => import('./validators-portfolio.js'),
   'actions': () => import('./validators-actions.js'),
   'admin': () => import('./validators-admin.js'),

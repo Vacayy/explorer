@@ -63,3 +63,17 @@ export interface PeerGroupPerformance {
   members: PeerMemberPerformance[]
   missingCodes: string[]
 }
+
+/** GET /api/peers/runtime — backend/models/peers.py */
+export interface PeerRuntime {
+  catalog: PeerCatalog
+  prices: PeerPriceSnapshot
+  origin: 'collector' | 'seed'
+  publishedAt: string | null
+  baselineOn: string | null
+  lastAttempt: { at: string; status: 'ok' | 'skipped' | 'error'; asOf: string | null; error: string | null } | null
+  priceAgeDays: number
+  snapshotAgeHours: number
+  signalStatus: 'held'
+  signalHoldReason: string
+}

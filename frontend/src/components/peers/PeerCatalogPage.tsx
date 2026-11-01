@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { usePeerCatalog } from '@/hooks/usePeerCatalog'
+import { usePeerRuntime } from '@/hooks/usePeerRuntime'
+import { formatNumber, formatKstDateTime } from '@/utils/format'
 import { selectPeerCompanies } from '@/lib/peerCatalog'
 import type { PeerCatalog } from '@/types/peer'
 
@@ -112,14 +113,23 @@ function Catalog({ catalog }: { catalog: PeerCatalog }) {
 }
 
 export default function PeerCatalogPage() {
-  const catalog = usePeerCatalog()
+  const runtime = usePeerRuntime()
   const [params, setParams] = useSearchParams()
   const view = params.get('view') ?? 'performance'
   return <PageContainer>
     <PageHeader title="Peer 그룹" description="그룹의 가격 흐름과 내부 종목의 상대성과를 비교하고, 사업 근거를 확인합니다." />
     <PeriodToggle value={view} onChange={value => setParams(previous => { const next = new URLSearchParams(previous); next.set('view', value); return next })} options={[{ value: 'performance', label: '성과 비교' }, { value: 'research', label: '사업 근거' }]} />
-    <QueryState query={catalog} isEmpty={data => data.companies.length === 0} emptyMessage="아직 등록된 조사 기업이 없습니다.">
-      {data => view === 'performance' ? <PeerPerformancePanel catalog={data} /> : view === 'research' ? <Catalog catalog={data} /> : <p role="status">존재하지 않는 보기입니다. 성과 비교 또는 사업 근거를 선택해 주세요.</p>}
+    <QueryState query={runtime} isEmpty={data => data.catalog.companies.length === 0} emptyMessage="아직 등록된 조사 기업이 없습니다.">
+      {data => <>
+        <div role="status" className="my-3 space-y-1 border border-border p-3 text-caption text-muted-foreground">
+          <p>{data.origin === 'collector' ? '정기 수집본 · 평일 20:30 수집 예정' : '초기 배포본 · 정기 수집본 없음'} · 가격 기준 {data.prices.asOf} · {formatNumber(data.priceAgeDays)}달력일 경과</p>
+          <p>가격 수집 {formatKstDateTime(data.prices.collectedAt)} KST {data.baselineOn && `· 관측 시작 ${data.baselineOn}`}</p>
+          {data.lastAttempt && <p>마지막 수집 시도 {formatKstDateTime(data.lastAttempt.at)} KST · {data.lastAttempt.status === 'error' ? '실패 — 마지막 정상본 표시' : data.lastAttempt.status === 'skipped' ? '변경 없음' : '성공'}</p>}
+          {data.snapshotAgeHours > 72 && <p>가격 스냅샷 생성 후 72시간이 지났습니다. 휴장 여부와 수집 상태를 확인해 주세요.</p>}
+          <p>자동 신호 보류 · {data.signalHoldReason}</p>
+        </div>
+        {view === 'performance' ? <PeerPerformancePanel catalog={data.catalog} snapshot={data.prices} /> : view === 'research' ? <Catalog catalog={data.catalog} /> : <p role="status">존재하지 않는 보기입니다. 성과 비교 또는 사업 근거를 선택해 주세요.</p>}
+      </>}
     </QueryState>
   </PageContainer>
 }
