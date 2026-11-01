@@ -39,7 +39,7 @@ export default function ThesisAuditPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-1.5">
+          <CardTitle className="text-sm flex flex-wrap items-center gap-1.5">
             <Gauge className="h-4 w-4 text-muted-foreground" /> 논지 감사
             <span className="text-[11px] font-normal text-muted-foreground">
               내 thesis를 인과그래프에 대질 — read-only(등재 아님)
@@ -263,7 +263,7 @@ function HistoryList({ onOpen, activeId }: { onOpen: (id: number) => void; activ
             {data.map((a) => (
               <li key={a.id}>
                 <button onClick={() => onOpen(a.id)}
-                  className={`w-full text-left flex items-center gap-2 py-1.5 hover:bg-muted/50 rounded px-1 ${activeId === a.id ? "bg-muted/60" : ""}`}>
+                  className={`w-full text-left flex items-center gap-2 py-2.5 md:py-1.5 hover:bg-muted/50 rounded px-1 ${activeId === a.id ? "bg-muted/60" : ""}`}>
                   <span className="text-sm truncate min-w-0 flex-1">{a.preview}</span>
                   <span className="text-[10px] text-muted-foreground shrink-0">주장 {a.n_claims}</span>
                   <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{a.created_at.slice(0, 10)}</span>

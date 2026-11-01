@@ -11,6 +11,7 @@ const SOURCE_LABEL: Record<string, string> = {
   note: "노트",
   scrap: "스크랩 · 미검증",
   transcript: "컨콜",
+  memo: "투자자 메모",
 }
 
 // 미검증 소스(개인 투자자 블로그 스크랩)는 가설 색으로 — 사실 소스와 눈으로 구분된다 (D-142)

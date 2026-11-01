@@ -66,7 +66,8 @@ def collect_snapshots(stock_codes: list[str] | None = None) -> dict:
     """워치리스트(기본) 종목의 일일 스냅샷 — 멱등 (종목·일·연도 UNIQUE)."""
     conn = get_connection()
     if stock_codes is None:
-        stock_codes = [r["stock_code"] for r in conn.execute("SELECT stock_code FROM watchlist")]
+        from pipeline.watch_rules import watched
+        stock_codes = list(watched(conn))
     today = date.today().isoformat()
     stats = {"stocks": len(stock_codes), "rows": 0, "failed": 0}
     for code in stock_codes:

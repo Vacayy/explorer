@@ -168,6 +168,50 @@ class LiveQuoteTests(unittest.TestCase):
             pf.refresh_now(self.conn)
         self.assertEqual(self.calls, 2)
 
+    def test_reads_never_fetch_or_write_quotes(self):
+        with mock.patch.object(pf, "market_hours", return_value=True), mock.patch("pipeline.quotes.fetch_quotes", self.fetch):
+            s = pf.summary(self.conn)
+            pf.history(self.conn)
+        self.assertEqual(self.calls, 0)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM portfolio_quotes").fetchone()[0], 0)
+        self.assertEqual((s["holdings"][0]["price_source"], s["quoted_at"]), ("close", None))
+
+    def test_refresh_without_force_respects_hours_and_ttl(self):
+        with mock.patch("pipeline.quotes.fetch_quotes", self.fetch):
+            with mock.patch.object(pf, "market_hours", return_value=False):
+                self.assertFalse(pf.refresh_now(self.conn, force=False)["refreshed"])
+            with mock.patch.object(pf, "market_hours", return_value=True):
+                first = pf.refresh_now(self.conn, force=False)
+                second = pf.refresh_now(self.conn, force=False)       # 30분 안
+        self.assertEqual((first["refreshed"], first["quoted_at"], second["refreshed"], self.calls),
+                         (True, "2026-01-06T10:00:00+09:00", False, 1))
+
+    def test_refresh_route_defaults_to_force(self):
+        import tempfile
+        from pathlib import Path
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from routers import portfolio as route
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "pf.sqlite"
+        with sqlite3.connect(path) as target:
+            self.conn.backup(target)
+
+        def connect():
+            c = sqlite3.connect(path)
+            c.row_factory = sqlite3.Row
+            return c
+        app = FastAPI()
+        app.include_router(route.router)
+        client = TestClient(app)
+        with mock.patch.object(pf, "connect", connect), mock.patch.object(pf, "market_hours", return_value=False), \
+             mock.patch("pipeline.quotes.fetch_quotes", self.fetch):
+            self.assertFalse(client.post("/api/portfolio/quotes/refresh", params={"force": "false"}).json()["refreshed"])
+            self.assertTrue(client.post("/api/portfolio/quotes/refresh").json()["refreshed"])
+            self.assertEqual(client.get("/api/portfolio").status_code, 200)
+        self.assertEqual(self.calls, 1)
+
     def test_outside_hours_does_not_fetch(self):
         with mock.patch.object(pf, "market_hours", return_value=False):
             pf.refresh_quotes(self.conn, {"AAAAAA"}, fetch=self.fetch)

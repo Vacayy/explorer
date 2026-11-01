@@ -8,8 +8,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from models.weekly import Claim, Figure, Report, ResumeRequest, RunRequest
 from pipeline.weekly.calculations import compare, metrics, outcomes, select_analogues
@@ -20,7 +18,6 @@ from pipeline.weekly.sources import safe_url
 from pipeline.weekly.store import Store, dumps
 from pipeline.weekly.tools import Fetch, Toolset
 from pipeline.weekly.worker import Cancelled, isolated
-from routers import experiment_weekly
 
 UTC = timezone.utc
 
@@ -255,18 +252,6 @@ class WeeklyTest(unittest.TestCase):
         run = Runner(self.store, self.fake_model).execute(rid)
         self.assertEqual(run["status"], "failed")
         self.assertIn("hash", run["error"])
-
-    def test_gets_do_not_initialize_or_generate_and_artifact_traversal(self):
-        app = FastAPI()
-        app.include_router(experiment_weekly.router)
-        with patch.object(experiment_weekly, "Store", return_value=self.store), TestClient(app) as client:
-            self.assertEqual(client.get("/api/experiments/weekly/runs").json(), [])
-            self.assertFalse(self.store.db_path.exists())
-            rid, _, _, _ = self.prepare()
-            response = client.get(f"/api/experiments/weekly/runs/{rid}")
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["status"], "queued")
-            self.assertEqual(client.get(f"/api/experiments/weekly/runs/{rid}/artifacts/corpus.sqlite").status_code, 404)
 
     def test_worker_cancellation(self):
         with self.assertRaises(Cancelled):

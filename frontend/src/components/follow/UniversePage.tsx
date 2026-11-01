@@ -13,7 +13,7 @@ import {
   useAddMember,
   useRemoveMember,
 } from "@/hooks/useIndustry"
-import { useWatchlist, useAddToWatchlist, useDeleteWatchlistItem } from "@/hooks/useWatchlist"
+import { useDefaultWatchGroup, useToggleWatch } from "@/hooks/useGroups"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -44,7 +44,7 @@ import type { IndustryMember, IndustryCandidate } from "@/types"
 const CATEGORY_OPTIONS = ["소재", "부품", "장비", "완제품", "서비스", "기타"]
 
 /**
- * /follow/universe — 담당 섹터 커버리지(밸류체인) 큐레이션.
+ * 산업·섹터 › 유니버스(/map?view=universe, 옛 /follow/universe) — 담당 섹터 커버리지(밸류체인) 큐레이션.
  * 기계가 후보 제안 → 사람이 체크·승인. 산업 그룹 → 밸류체인 단계(category)별 멤버.
  */
 export default function UniversePage() {
@@ -59,17 +59,14 @@ export default function UniversePage() {
   const { data: detail, isLoading: detailLoading } = useIndustryDetail(activeId)
   const removeMember = useRemoveMember(activeId ?? 0)
 
-  // 팔로우(watchlist) 연결 — 커버리지 중 '능동 추적'을 ★로 표시 (역할 분리, 겹침 해소)
-  const { data: watchlist = [] } = useWatchlist()
-  const addFollow = useAddToWatchlist()
-  const delFollow = useDeleteWatchlistItem()
-  const followById = useMemo(
-    () => new Map(watchlist.map((w) => [w.stock_code, w.id])), [watchlist])
-  const toggleFollow = (code: string) => {
-    const id = followById.get(code)
-    if (id != null) delFollow.mutate(id)
-    else addFollow.mutate({ stock_code: code })
-  }
+  // 팔로우(기본 관심 묶음) 연결 — 커버리지 중 '능동 추적'을 ★로 표시 (역할 분리, 겹침 해소)
+  const watchGroup = useDefaultWatchGroup()
+  const toggleWatch = useToggleWatch()
+  const followedCodes = useMemo(
+    () => new Set((watchGroup.data?.members ?? []).map((m) => m.stock_code)), [watchGroup.data])
+  const toggleFollow = (code: string) =>
+    toggleWatch.mutate({ stockCode: code, watched: !followedCodes.has(code) },
+      { onError: () => toast.error("관심 종목을 바꾸지 못했습니다") })
 
   // 멤버를 category별로 묶고 시총 합 내림차순 정렬
   const grouped = useMemo(() => {
@@ -151,6 +148,17 @@ export default function UniversePage() {
             {detail?.group.description && (
               <p className="text-sm text-muted-foreground">{detail.group.description}</p>
             )}
+            {/* 산업 맵(sector_map 대분류)으로 — 체계가 달라 멤버가 속한 대분류 상위를 보인다 */}
+            {!!detail?.map_groups?.length && (
+              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                <span>산업 맵에서 보기</span>
+                {detail.map_groups.map((g) => (
+                  <Badge key={g.name} variant="outline" className="font-normal" asChild>
+                    <Link to={`/map?group=${encodeURIComponent(g.name)}`}>{g.name} <span className="tabular-nums text-muted-foreground">{g.members}</span></Link>
+                  </Badge>
+                ))}
+              </div>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -184,7 +192,7 @@ export default function UniversePage() {
                   </span>
                 </div>
                 <MemberTable members={members} onRemove={(id) => removeMember.mutate(id)}
-                  followById={followById} onToggleFollow={toggleFollow} />
+                  followedCodes={followedCodes} onToggleFollow={toggleFollow} />
               </div>
             ))}
 
@@ -212,7 +220,7 @@ export default function UniversePage() {
 
 /* ── 이 섹터의 내러티브 (섹터 집약 뷰, D-074 Phase 1) — 파편화된 topic 내러티브가 섹터 단위로 모임 ── */
 
-interface SectorNarr {
+export interface SectorNarr {
   id: number; topic: string; title: string | null; co_docs: number; relevance: number
 }
 
@@ -236,8 +244,8 @@ function SectorNarratives({ groupId, groupName }: { groupId: number; groupName: 
   if (isLoading || data.length === 0) return null
   return (
     <div className="space-y-2 border-t pt-4">
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-sm font-semibold">이 섹터의 내러티브</h3>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h3 className="shrink-0 text-sm font-semibold">이 섹터의 내러티브</h3>
         <span className="text-[11px] text-muted-foreground">
           이 섹터 종목을 다루는 내러티브가 모임 · 한 내러티브는 여러 섹터에 등장(공동언급 기반, 관련도순)
         </span>
@@ -271,10 +279,10 @@ function SectorNarratives({ groupId, groupName }: { groupId: number; groupName: 
 
 /* ── 멤버 테이블 (밸류체인 단계별) — 팔로우 종목 테이블과 동형 ── */
 
-function MemberTable({ members, onRemove, followById, onToggleFollow }: {
+function MemberTable({ members, onRemove, followedCodes, onToggleFollow }: {
   members: IndustryMember[]
   onRemove: (id: number) => void
-  followById: Map<string, number>
+  followedCodes: Set<string>
   onToggleFollow: (code: string) => void
 }) {
   const num = (v: number | null, suffix: string, digits = 1) =>
@@ -288,15 +296,15 @@ function MemberTable({ members, onRemove, followById, onToggleFollow }: {
             <TableHead>종목</TableHead>
             <TableHead className="text-right">시총</TableHead>
             <TableHead className="text-right">PER</TableHead>
-            <TableHead className="text-right">PBR</TableHead>
-            <TableHead className="text-right">영업이익률</TableHead>
-            <TableHead className="text-right">ROE</TableHead>
+            <TableHead className="text-right max-sm:hidden">PBR</TableHead>
+            <TableHead className="text-right max-sm:hidden">영업이익률</TableHead>
+            <TableHead className="text-right max-sm:hidden">ROE</TableHead>
             <TableHead className="w-8" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {members.map((m) => {
-            const followed = followById.has(m.stock_code)
+            const followed = followedCodes.has(m.stock_code)
             return (
             <TableRow key={m.id} className="group">
               <TableCell>
@@ -317,9 +325,9 @@ function MemberTable({ members, onRemove, followById, onToggleFollow }: {
                 {m.latest_market_cap != null ? formatKrw(m.latest_market_cap) : "-"}
               </TableCell>
               <TableCell className="text-right tabular-nums text-xs">{num(m.per, "배")}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{num(m.pbr, "배", 2)}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{num(m.op_margin, "%")}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{num(m.roe, "%")}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs max-sm:hidden">{num(m.pbr, "배", 2)}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs max-sm:hidden">{num(m.op_margin, "%")}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs max-sm:hidden">{num(m.roe, "%")}</TableCell>
               <TableCell className="text-right">
                 <Button variant="ghost" size="icon" onClick={() => onRemove(m.id)} aria-label="멤버 삭제"
                   className="size-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive">

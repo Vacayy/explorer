@@ -16,7 +16,8 @@ import { citationComponents, citationHref, GAP_LABEL, KIND_LABEL, linkifyCitatio
 import { fmtSec, RoutePanel, routeTotalMs } from "./RoutePanel"
 import { PriceChartCard, priceTargets } from "./PriceChartCard"
 import { FollowUps } from "./FollowUps"
-import { useQuoteSelection, type Quote as QuoteRef } from "./useQuoteSelection"
+import { CITE_CHIP, quoteFromSelection, type Quote as QuoteRef } from "./useQuoteSelection"
+import { SelectionPalette } from "@/components/shared/SelectionPalette"
 import { useCopy } from "./UserMessage"
 
 const BODY = "text-[15px] leading-7 [&_p]:my-3 [&_li]:my-1.5 [&_h2]:mt-6 [&_h3]:mt-5 [&_table]:my-3 [&_table]:text-sm"
@@ -90,10 +91,12 @@ function Sources({ citations }: { citations: NonNullable<ChatMessage["citations"
 }
 
 /** 완료된 어시스턴트 메시지 — 메타 · 과정 · 본문(인라인 인용) · 갭 · 근거 · 액션 */
-export function AssistantMessage({ m, isLast, onQuote, onPick }: {
+export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
   m: ChatMessage
   /** 마지막 답변에만 후속 질문을 보인다 — 스레드에 낡은 제안이 쌓이지 않게 */
   isLast?: boolean
+  /** 앞 답에서 남은 후속 질문 (carriedFollowUps) — 마지막 답변에만 */
+  carried?: { kind: string; question: string }[]
   /** 드래그한 대목을 컴포저에 인용으로 붙이기 (문단·근거 동반) */
   onQuote?: (q: QuoteRef) => void
   /** 후속 질문을 컴포저에 채우기 */
@@ -104,8 +107,8 @@ export function AssistantMessage({ m, isLast, onQuote, onPick }: {
   const components = useMemo(() => citationComponents(m.citations), [m.citations])
   const prices = useMemo(() => priceTargets(m.citations), [m.citations])
   const bodyRef = useRef<HTMLDivElement>(null)
-  const { popover, popRef, clear } = useQuoteSelection(bodyRef, m.id, m.citations)
   const followUps = (isLast && m.route?.follow_ups) || []
+  const leftover = (isLast && carried) || []
   return (
     <article className="group/msg space-y-2">
       <MetaRow model={m.model} createdAt={m.created_at} />
@@ -114,16 +117,9 @@ export function AssistantMessage({ m, isLast, onQuote, onPick }: {
         <TooltipProvider delayDuration={150}>
           <Markdown className={BODY} components={components}>{body}</Markdown>
         </TooltipProvider>
-        {/* 드래그 인용 — 선택 위에 뜨는 버튼 (D-144) */}
-        {popover && onQuote && (
-          <div ref={popRef} className="absolute z-20 -translate-x-1/2"
-            style={{ top: popover.top, left: popover.left }}>
-            <Button size="sm" className="h-7 gap-1 rounded-lg px-2.5 text-xs shadow-md"
-              onClick={() => { onQuote(popover.quote); clear(); window.getSelection()?.removeAllRanges() }}>
-              <Quote className="size-3" /> 인용해서 질문
-            </Button>
-          </div>
-        )}
+        {/* 드래그 인용 — 공통 선택 팔레트 (D-144·D-146, canvas.md §2) */}
+        {onQuote && <SelectionPalette containerRef={bodyRef} ignore={CITE_CHIP}
+          actions={[{ key: "quote", label: "인용해서 질문", Icon: Quote, primary: true, onSelect: sel => onQuote(quoteFromSelection(sel, m.id, m.citations)) }]} />}
       </div>
 
       {/* 시세 근거를 인용한 답변 — 같은 스냅샷을 차트로 (종목 1=종가, 2+=등락률 비교) */}
@@ -151,7 +147,7 @@ export function AssistantMessage({ m, isLast, onQuote, onPick }: {
         </Button>
       </div>
 
-      {onPick && followUps.length > 0 && <FollowUps items={followUps} onPick={onPick} />}
+      {onPick && (followUps.length > 0 || leftover.length > 0) && <FollowUps items={followUps} carried={leftover} onPick={onPick} />}
     </article>
   )
 }

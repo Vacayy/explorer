@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { track } from "@/lib/usage"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowLeft, BookOpen, Building2, CornerDownLeft, FileSearch, FolderPlus, Globe, Home, LineChart, MessageCircleQuestion,
@@ -22,7 +23,7 @@ import {
  */
 
 interface SearchCompany { stock_code: string; name: string; market: string | null; sector: string | null; close: number | null; change_pct: number | null; market_cap: number | null; in_groups: string[]; alias?: string | null }
-interface SearchResponse {
+export interface SearchResponse {
   query: string
   companies: SearchCompany[]
   us: { ticker: string; name: string; group_label: string | null }[]
@@ -32,7 +33,7 @@ interface SearchResponse {
   mentions: { id: number; type: string; name: string; stock_code: string | null }[]
   choseong: boolean
 }
-interface TodaySignal { stock_code: string; name: string; label: string; group_id: number; group_name: string; as_of: string }
+export interface TodaySignal { stock_code: string; name: string; label: string; group_id: number; group_name: string; as_of: string }
 
 const PAGES = [
   { label: "종목 발견", hint: "자연어 검색·전략·기업 조사", to: "/discover", icon: ScanSearch, keywords: "discover screening 스크리닝 전략 시장 분석 검색", pinned: true },
@@ -47,8 +48,7 @@ const PAGES = [
   { label: "문서 검색", hint: "전체 수집 자료", to: "/feed?view=documents", icon: FileSearch, keywords: "feed documents 문서 텔레그램 블로그" },
   { label: "소스 관리", hint: "채널·블로그·유튜브", to: "/sources", icon: Globe, keywords: "source 소스 구독 관리 채널 블로그 유튜브" },
   { label: "미국 종목", hint: "도시에·컨콜", to: "/us", icon: Globe, keywords: "us 미국 컨콜 transcript" },
-  { label: "카탈리스트 캘린더", hint: "", to: "/research/catalysts", icon: LineChart, keywords: "calendar 일정 카탈리스트" },
-  { label: "보관함", hint: "예전 화면", to: "/archive", icon: Home, keywords: "archive 보관함 스크리너 비교 메모 산업군" },
+  { label: "보관함", hint: "예전 화면", to: "/archive", icon: Home, keywords: "archive 보관함 비교 산업군" },
 ] as const
 
 type Intent = "empty" | "code" | "ticker" | "choseong" | "name" | "sentence"
@@ -57,7 +57,7 @@ type Intent = "empty" | "code" | "ticker" | "choseong" | "name" | "sentence"
 function classify(q: string): Intent {
   if (!q) return "empty"
   if (/^\d{6}$/.test(q)) return "code"
-  if (/^[A-Z][A-Z0-9.\-]{0,5}$/.test(q)) return "ticker"
+  if (/^[A-Z][A-Z0-9.-]{0,5}$/.test(q)) return "ticker"
   if (/^[ㄱ-ㅎ]+$/.test(q)) return "choseong"
   if (/(찾아줘|추려줘|골라줘|보여줘|알려줘|뭐야|왜|어때|\?)$/.test(q) || q.split(/\s+/).length >= 3) return "sentence"
   return "name"
@@ -114,6 +114,7 @@ export default function Omnibar() {
       if (!ids.length) throw new Error("이 종목에 저장된 자료가 없어 프로젝트에 넣을 수 없습니다.")
       let id = projectId, title = projects.data?.find(item => item.id === projectId)?.title ?? ""
       if (!id) { const created = (await api.post<{ id: number }>("/api/spine/study-projects", { title: `${name} 스터디` })).data; id = created.id; title = `${name} 스터디` }
+      track('action', 'study.add', { entity: id })
       await api.post(`/api/spine/study-projects/${id}/documents`, { document_ids: ids })
       return { id, title, added: ids.length }
     },

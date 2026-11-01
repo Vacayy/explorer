@@ -99,8 +99,29 @@ def chart_overlays(scan: dict) -> dict:
     return {"markers": markers, "lines": lines}
 
 
+def price_context(rows: list[dict]) -> dict:
+    """가격 위치 통계 — 모두 결정적 계산. 모델은 이 키를 근거로 인용할 수 있다."""
+    closes = [r["close"] for r in rows if r.get("close")]
+    if not closes:
+        return {}
+    last = closes[-1]
+
+    def ret(n):
+        return round((last / closes[-n - 1] - 1) * 100, 2) if len(closes) > n and closes[-n - 1] else None
+
+    year = rows[-252:] if len(rows) >= 252 else rows
+    high52 = max(r["high"] for r in year if r.get("high"))
+    low52 = min(r["low"] for r in year if r.get("low"))
+    volumes = [r["volume"] for r in rows[-21:-1] if r.get("volume")]
+    avg_vol = sum(volumes) / len(volumes) if volumes else None
+    return {"as_of": rows[-1]["date"], "close": last, "ret_20d": ret(20), "ret_60d": ret(60), "ret_120d": ret(120),
+            "from_52w_high_pct": round((last / high52 - 1) * 100, 2) if high52 else None,
+            "from_52w_low_pct": round((last / low52 - 1) * 100, 2) if low52 else None,
+            "volume_vs_20d_avg": round(rows[-1]["volume"] / avg_vol, 2) if avg_vol and rows[-1].get("volume") else None,
+            "sessions": len(rows)}
+
+
 def scan_company(conn: sqlite3.Connection, code: str, market: str = "kr", within: int = 5) -> dict:
-    from pipeline.technical_commentary import price_context  # 지연 import: commentary가 이 모듈을 쓴다
     from pipeline.technical_reading import canvas, readings
     rows = load_rows(conn, code, market)
     result = scan_rows(rows, within=within)

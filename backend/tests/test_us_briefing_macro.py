@@ -62,6 +62,15 @@ class CitationTests(unittest.TestCase):
         self.assertEqual(ub._link_citations(["지표만."], {"issues": []}), (["지표만."], []))
 
 
+class KeyPointsTests(unittest.TestCase):
+    def test_strips_citations_drops_blanks_caps_at_five(self):
+        out = ub._normalize_synthesis({"key_points": ["금리 10bp 하락 [S1]", " ", 3, "a", "b", "c", "d", "e"]})
+        self.assertEqual(out["key_points"], ["금리 10bp 하락", "a", "b", "c", "d"])
+
+    def test_old_rows_have_empty_list(self):
+        self.assertEqual(ub._normalize_synthesis({"drivers": "x"})["key_points"], [])
+
+
 class RateBpTests(unittest.TestCase):
     def test_bp_not_percent(self):
         bp = ub._rate_bp({"series": [5.10, 5.12, 5.15, 5.16, 5.18, 5.18, 5.24]})
@@ -93,3 +102,23 @@ class WindowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionDateTests(unittest.TestCase):
+    """스냅샷 날짜 = 마지막으로 마감된 미국 정규장 (뉴욕 자정 이후·주말 재생성에도 같은 날짜)"""
+    def at(self, text):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from pipeline.us_movers import last_completed_session
+        return last_completed_session(datetime.strptime(text, "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("America/New_York")))
+
+    def test_after_close_is_today(self):
+        self.assertEqual(self.at("2026-10-16 17:30"), "2026-10-16")
+
+    def test_after_midnight_and_weekend_stay_on_friday(self):
+        self.assertEqual(self.at("2026-10-17 01:26"), "2026-10-16")
+        self.assertEqual(self.at("2026-10-18 12:00"), "2026-10-16")
+        self.assertEqual(self.at("2026-10-19 09:00"), "2026-10-16")
+
+    def test_before_close_is_previous_day(self):
+        self.assertEqual(self.at("2026-10-16 10:00"), "2026-10-15")

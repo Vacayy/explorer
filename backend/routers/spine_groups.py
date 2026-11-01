@@ -61,10 +61,9 @@ def _member(conn, group: dict, row, last_as_of: str | None, labels) -> dict:
             "rule_count": len(wr.effective_rules(conn, group["id"], code)),
             "signals": [{"rule_id": h["rule_id"], "strategy_id": h["strategy_id"], "label": labels.get(h["strategy_id"], h["strategy_id"]),
                          "value": h["value"], "reference": h["reference"], "signal_date": h["signal_date"]} for h in hits],
-            "unavailable": unavailable, "pnl": None, "return_pct": None}
-    if group["kind"] == "portfolio" and row["quantity"] and row["avg_price"] and close is not None:
-        item["pnl"] = (close - row["avg_price"]) * row["quantity"]
-        item["return_pct"] = (close - row["avg_price"]) / row["avg_price"] * 100
+            "unavailable": unavailable}
+    for private in ("quantity", "avg_price"):  # 원장 밖 금액·수량은 응답에 싣지 않는다(D-212)
+        item.pop(private, None)
     return item
 
 
@@ -93,10 +92,8 @@ def list_groups():
         group["today_signals"] = len([s for s in wr.signals(conn, group["id"], days=1) if s["as_of"] == last_as_of]) if last_as_of else 0
         out.append(group)
     latest = wr.latest_trade_date(conn)
-    legacy = conn.execute("SELECT COUNT(*) n FROM watchlist").fetchone()["n"]
-    migrated = conn.execute("SELECT 1 FROM stock_groups WHERE name=? AND kind='watch'", (wr.LEGACY_GROUP_NAME,)).fetchone() is not None
     conn.close()
-    return {"items": out, "latest_trade_date": latest, "legacy_watchlist": {"count": legacy, "migrated": migrated}}
+    return {"items": out, "latest_trade_date": latest}
 
 
 @router.post("", status_code=201)
@@ -105,6 +102,15 @@ def create_group(body: GroupCreate):
     group_id = conn.execute("INSERT INTO stock_groups (name, kind, note) VALUES (?,?,?)", (body.name, body.kind, body.note)).lastrowid
     conn.commit()
     detail = _detail(conn, group_id)
+    conn.close()
+    return detail
+
+
+@router.get("/default-watch")
+def get_default_watch():
+    """기본 관심 묶음 상세 — 기업 화면 ★·내 목록 종목·논지 쓰기의 대상. 없으면 만든다."""
+    conn = wr.connect()
+    detail = _detail(conn, wr.default_watch_group_id(conn))
     conn.close()
     return detail
 
@@ -148,9 +154,8 @@ def add_member(group_id: int, body: MemberCreate):
     if not conn.execute("SELECT 1 FROM companies WHERE stock_code=?", (body.stock_code,)).fetchone():
         conn.close()
         raise HTTPException(404, "등록되지 않은 종목 코드입니다.")
-    conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, quantity, avg_price, bought_at, conviction, target_price, thesis) "
-                 "VALUES (?,?,?,?,?,?,?,?)", (group_id, body.stock_code, body.quantity, body.avg_price, body.bought_at,
-                                              body.conviction, body.target_price, body.thesis))
+    conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, conviction, target_price, thesis) VALUES (?,?,?,?,?)",
+                 (group_id, body.stock_code, body.conviction, body.target_price, body.thesis))
     conn.execute("UPDATE stock_groups SET updated_at=datetime('now') WHERE id=?", (group_id,))
     conn.commit()
     detail = _detail(conn, group_id)
@@ -250,13 +255,25 @@ def group_evaluations(group_id: int, as_of: str | None = Query(None, pattern=r"^
                                        "params": json.loads(r["params_json"] or "{}")} for r in rows]}
 
 
-@router.post("/migrate-watchlist")
-def migrate_watchlist():
+@router.get("/{group_id}/digests")
+def group_digests(group_id: int, days: int = Query(7, ge=1, le=30)):
+    """묶음 종목별 최신 1D 요약(entity_digests) — 읽기만. 생성(LLM)은 저녁 잡이 한다. days보다 오래된 요약은 뺀다."""
+    from datetime import date, timedelta
+    from pipeline.portfolio_exposure import company_entity
+    from pipeline.portfolio_flow import latest_digest
     conn = wr.connect()
-    result = wr.migrate_watchlist(conn)
-    detail = _detail(conn, result["group_id"])
+    _group(conn, group_id)
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    items = []
+    for r in conn.execute("SELECT m.stock_code, c.corp_name FROM stock_group_members m LEFT JOIN companies c ON c.stock_code=m.stock_code "
+                          "WHERE m.group_id=? ORDER BY m.id", (group_id,)).fetchall():
+        ent = company_entity(conn, r["stock_code"])
+        d = latest_digest(conn, ent["id"]) if ent else None
+        if d and d["date"] >= cutoff:
+            items.append({"code": r["stock_code"], "name": r["corp_name"] or r["stock_code"], **d})
     conn.close()
-    return {**result, "group": detail}
+    items.sort(key=lambda x: (x["date"], x["docs"] or 0), reverse=True)
+    return {"as_of": items[0]["date"] if items else None, "items": items}
 
 
 # ── 관심 종목 이유 감시 (D-227, portfolio-intelligence §6) — 판정은 매일 07:40, 알림은 텔레그램만 ──────────
@@ -269,7 +286,9 @@ def get_reasons(group_id: int):
     try:
         _group(conn, group_id)
         codes = [r["stock_code"] for r in conn.execute("SELECT stock_code FROM stock_group_members WHERE group_id=?", (group_id,))]
-        return {code: {**t, "signals": wrs.signals(t)} for code, t in wrs.reasons(conn, codes).items()}
+        from pipeline.portfolio_thesis import judging as judging_on
+        judging = judging_on()
+        return {code: {**t, "signals": wrs.signals(t), "judging": judging} for code, t in wrs.reasons(conn, codes).items()}
     finally:
         conn.close()
 

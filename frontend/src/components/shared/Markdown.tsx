@@ -49,7 +49,7 @@ export function Markdown({ children, className, components }: { children: string
       // GFM 표 — 셸(overflow-x 래퍼)은 components.table, 셀 스타일은 여기
       "[&_table]:w-full [&_table]:border-collapse [&_table]:text-[13px] [&_table]:leading-snug",
       "[&_th]:border-b [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap",
-      "[&_td]:border-b [&_td]:border-border/60 [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:tabular-nums [&_td]:align-top [&_tr:last-child>td]:border-b-0",
+      "[&_td]:border-b [&_td]:border-border/60 [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:tabular-nums [&_td]:align-top [&_tr:last-child>td]:border-b-0 max-md:[&_td]:min-w-24",
       className,
     )}>
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={{ table: TableShell, td: Td, ...components }}>{children}</ReactMarkdown>

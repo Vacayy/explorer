@@ -26,17 +26,6 @@ export function useCreateIRNote(stockCode: string) {
   });
 }
 
-export function useUpdateIRNote(stockCode: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...body }: { id: number; title?: string; content?: string; note_date?: string }) => {
-      const { data } = await api.put(`/api/ir-notes/${id}`, body);
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ir-notes", stockCode] }),
-  });
-}
-
 export function useDeleteIRNote(stockCode: string) {
   const qc = useQueryClient();
   return useMutation({

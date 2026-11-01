@@ -32,6 +32,7 @@ class FollowRow(BaseModel):
     latest: LatestCall | None
     last_report_date: str | None = None   # yfinance 실적 발표일 캐시 (D-081)
     next_report_date: str | None = None
+    calendar_checked_at: str | None = None   # 발표일을 마지막으로 확인한 시각(UTC) — 비었을 때 '언제 확인했나'를 보이려고
     market_cap: float | None = None       # 정렬용(시가총액순)
     category: str | None = None           # 사업분류 — 손으로 붙인 그룹, NDX 추가 종목은 SEC SIC 분류
     latest_results_date: str | None = None   # 가장 최근 '본 실적'(컨콜 또는 실적 수치가 있는 보도자료) 날짜
@@ -85,7 +86,7 @@ def list_follow():
                           "GROUP BY er.ticker"):
         results[r["ticker"]] = r["d"]
     cal = {r["ticker"]: r for r in conn.execute(
-        "SELECT ticker, last_report_date, next_report_date FROM transcript_calendar").fetchall()}
+        "SELECT ticker, last_report_date, next_report_date, checked_at FROM transcript_calendar").fetchall()}
     out = []
     for r in rows:
         calls = conn.execute(
@@ -105,6 +106,7 @@ def list_follow():
                              group_label=r["group_label"], n_calls=len(calls), latest=latest,
                              last_report_date=cr["last_report_date"] if cr else None,
                              next_report_date=cr["next_report_date"] if cr else None,
+                             calendar_checked_at=cr["checked_at"] if cr else None,
                              market_cap=r["market_cap"],
                              category=(industry_label(r["sic"]) or "기타") if r["group_label"] == "NDX" else r["group_label"],
                              latest_results_date=latest_results,
@@ -122,8 +124,21 @@ def _run_collect(budget: int, only: list[str] | None) -> None:
     """백그라운드 수집 — run_job으로 감싸 플래그 게이트·job_runs 기록을 그대로 받는다."""
     from pipeline.ops import run_job
     from pipeline.transcript import collect_and_process
+    def work():
+        if only:   # 종목 지정 수집 — SEC 8-K는 매일 07:20 일괄이라, 그 사이 발표분을 대상 분기로 잡으려면 먼저 읽는다
+            from pipeline import sec_filings
+            conn = get_connection()
+            try:
+                follows = [dict(r) for r in conn.execute(
+                    f"SELECT ticker, company_name, entity_id FROM transcript_follow WHERE ticker IN ({','.join('?' * len(only))})", only)]
+                print(f"[transcript] SEC {sec_filings.collect(conn, follows)}")
+            except Exception as e:  # noqa: BLE001 — SEC 실패여도 기존 발표 기록으로 수집은 돈다
+                print(f"[transcript] SEC 조회 실패(계속): {type(e).__name__}: {str(e)[:120]}")
+            finally:
+                conn.close()
+        return collect_and_process(budget=budget, only=only)
     try:
-        run_job(JOB, lambda: collect_and_process(budget=budget, only=only))
+        run_job(JOB, work)
     except Exception as e:  # noqa: BLE001 — run_job이 이미 error를 기록했다. 여기선 플래그만 해제
         print(f"[transcript] 수집 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
     finally:
@@ -181,6 +196,93 @@ def collect_status():
     return {"running": _collecting["running"], "started_at": _collecting["started_at"],
             "budget": _collecting["budget"], "enabled": flag_enabled(JOB),
             "last_run": dict(row) if row else None}
+
+
+@router.post("/check/{ticker}")
+def check_latest(ticker: str):
+    """이 종목의 가장 최근 실적 발표 조사 — SEC 8-K·yfinance 발표일 다시 읽기 + 녹취록 저장·Fool 게시 여부. AV 예산 무관, ~수십초."""
+    from pipeline.transcript import check_latest as _check
+    try:
+        return _check(ticker.upper())
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.get("/detail/{transcript_id}/reaction")
+def reaction(transcript_id: int):
+    """저장된 시장 반응(없으면 null) — 빠른 조회. 생성은 POST."""
+    from pipeline.call_reaction import get
+    return get(transcript_id)
+
+
+@router.post("/detail/{transcript_id}/reaction")
+def compute_reaction(transcript_id: int, force: bool = False):
+    """시장 반응 정리 생성(sonnet, ~1~2분). 재료(문서·헤드라인·시세)가 그대로면 저장분 즉답."""
+    from pipeline.call_reaction import compute
+    try:
+        return compute(transcript_id, force=force)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+@router.get("/season")
+def season(season: str | None = None):
+    """실적 시즌 화면 — 요약 숫자·오늘 바뀐 것·섹터 목록·엇갈린 반응·곧 발표·기대 채점·핵심 종목(기준 포함). LLM 0."""
+    from pipeline.earnings_chain import season_overview
+    return season_overview(season)
+
+
+@router.get("/season/sector/{key}")
+def season_sector(key: str, season: str | None = None):
+    """섹터 상세 — 발표일 정렬 반응 경로·종목별·섹터 요약 이력·지난 시즌 비교. LLM 0."""
+    from pipeline.earnings_chain import sector_detail
+    return sector_detail(key, season)
+
+
+@router.get("/chain/{transcript_id}")
+def chain(transcript_id: int):
+    """콜 상세의 체인 — 발표 전 기대·반응 구조화·주가/거래량/언급량 시계열·분기별 기록. LLM 0."""
+    from pipeline.earnings_chain import chain_detail
+    try:
+        return chain_detail(transcript_id)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+
+
+class PinReq(BaseModel):
+    ticker: str
+    pinned: bool
+
+
+@router.post("/core/pin")
+def pin_core(body: PinReq):
+    """핵심 종목 직접 고정/해제 — 핵심이면 발표 전 기대·시장 반응 정리가 자동으로 돈다."""
+    conn = get_connection()
+    n = conn.execute("UPDATE transcript_follow SET core_pinned=? WHERE ticker=?", (1 if body.pinned else 0, body.ticker.upper())).rowcount
+    conn.commit()
+    conn.close()
+    if not n:
+        raise HTTPException(404, "팔로우하지 않는 종목입니다")
+    return {"ticker": body.ticker.upper(), "pinned": body.pinned}
+
+
+@router.post("/expectation/{ticker}")
+def make_expectation(ticker: str, snapshot: str = "d7"):
+    """다가오는 발표의 '발표 전 기대' 정리를 지금 만든다(sonnet ~1분). 핵심 종목이 아니어도 버튼으로는 된다."""
+    from pipeline.earnings_chain import snapshot_expectation
+    conn = get_connection()
+    ev = conn.execute("SELECT fiscal_year, fiscal_period FROM earnings_events WHERE ticker=? AND event_date >= date('now','-1 day') "
+                      "ORDER BY event_date LIMIT 1", (ticker.upper(),)).fetchone()
+    conn.close()
+    if not ev:
+        raise HTTPException(409, "다가오는 실적 발표가 없습니다")
+    if snapshot not in ("d7", "d1"):
+        raise HTTPException(400, "snapshot은 d7 또는 d1")
+    return snapshot_expectation(ticker.upper(), ev["fiscal_year"], ev["fiscal_period"], snapshot, qualitative=True, force=True)
 
 
 @router.post("/calendar/refresh")
@@ -363,7 +465,9 @@ def momentum():
     from pipeline import call_momentum as cm
     conn = get_connection()
     try:
-        return {**cm.by_season(conn), "coverage": cm.coverage(conn),
+        # as_of = 마지막 판정 시각(UTC) — 위젯 머리의 원천 시각. 매일 07:20 판정이 멈추면 여기서 드러난다
+        as_of = conn.execute("SELECT max(computed_at) FROM call_momentum").fetchone()[0]
+        return {**cm.by_season(conn), "coverage": cm.coverage(conn), "as_of": as_of,
                 "sec_configured": "@" in (os.getenv("SEC_USER_AGENT") or "")}
     finally:
         conn.close()

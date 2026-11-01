@@ -31,7 +31,7 @@ export function RetailHeatCard() {
             const m = q.data.metrics.find(x => x.key === k)
             if (!m) return null
             return <div key={k} className="flex items-center justify-between gap-3 text-sm">
-              <dt className="min-w-0 truncate text-muted-foreground">{m.label}</dt>
+              <dt className="min-w-0 truncate text-muted-foreground max-sm:whitespace-normal max-sm:break-keep">{m.label}</dt>
               <dd className="flex shrink-0 items-center gap-3"><span className="w-16 text-right tabular-nums">{metricValue(m)}</span><PctileBar value={m.pctile} /></dd>
             </div>
           })}</dl>

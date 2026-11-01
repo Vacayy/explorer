@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SpineSignalsResponse, StockBrief, UsDossier, UsList, UsMention, UsWorldModel } from "@/types";
+import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SignalsSummary, SpineSignalsResponse, UsDossier, UsList, UsWorldModel } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -18,10 +18,9 @@ export const spineKeys = {
   home: () => [...spineKeys.all, "home"] as const,
   feed: (params: SpineFeedParams) => [...spineKeys.all, "feed", params] as const,
   signals: (type?: string, days?: number) => [...spineKeys.all, "signals", type ?? "all", days ?? 7] as const,
+  signalsSummary: (days: number) => [...spineKeys.all, "signals", "summary", days] as const,
   sourceDossier: (kind: string, key: string) => [...spineKeys.all, "source-dossier", kind, key] as const,
   sourceSummary: (kind: string, key: string) => [...spineKeys.all, "source-summary", kind, key] as const,
-  stockBrief: (code: string) => [...spineKeys.all, "stock-brief", code] as const,
-  stockBriefCompute: (code: string) => [...spineKeys.all, "stock-brief-compute", code] as const,
   conversations: (stock?: string) => [...spineKeys.all, "conversations", stock ?? "all"] as const,
   conversation: (id: number) => [...spineKeys.all, "conversation", id] as const,
   saved: () => [...spineKeys.all, "saved"] as const,
@@ -29,34 +28,8 @@ export const spineKeys = {
   stockLensCompute: (code: string, type: string, market: string) => [...spineKeys.all, "stock-lens-compute", code, type, market] as const,
   usDossier: (ticker: string) => [...spineKeys.all, "us-dossier", ticker] as const,
   usList: () => [...spineKeys.all, "us-list"] as const,
-  usMentions: (ticker: string) => [...spineKeys.all, "us-mentions", ticker] as const,
   usWorldModel: (ticker: string) => [...spineKeys.all, "us-worldmodel", ticker] as const,
 };
-
-/** 종목 AI 브리프 — 캐시 + stale 플래그 (LLM 없음) */
-export const stockBriefQuery = (code: string) =>
-  apiQuery<StockBrief>({
-    key: spineKeys.stockBrief(code),
-    url: `/api/spine/stock/${code}/brief`,
-    staleTime: STALE.short,
-    enabled: !!code,
-  });
-
-export const stockBriefHistoryQuery = (code: string, enabled: boolean) =>
-  apiQuery<{ brief: string | null; thesis_check: string | null; created_at: string }[]>({
-    key: [...spineKeys.stockBrief(code), "history"],
-    url: `/api/spine/stock/${code}/brief/history`,
-    staleTime: STALE.medium,
-    enabled,
-  });
-
-/** 브리프 생성 — 입력(다이제스트·신호·일정·논지) 변경 시만 LLM. 종목별 키잉. */
-export const stockBriefComputeQuery = (code: string, enabled: boolean) =>
-  apiComputeQuery<StockBrief>({
-    key: spineKeys.stockBriefCompute(code),
-    url: `/api/spine/stock/${code}/brief/compute`,
-    enabled,
-  });
 
 /** 투자 렌즈 — 캐시 + stale 플래그 (LLM 없음). market=kr|us */
 export const stockLensQuery = (code: string, market = "kr") =>
@@ -87,15 +60,6 @@ export const usDossierQuery = (ticker: string) =>
 /** 미국 종목 디렉토리 — transcript_follow 그룹별 + 캐시된 렌즈 stance (LLM 없음) */
 export const usListQuery = () =>
   apiQuery<UsList>({ key: spineKeys.usList(), url: `/api/spine/us`, staleTime: STALE.medium });
-
-/** 미국 종목 언급(여론) — entity_links 경유 최근 문서 */
-export const usMentionsQuery = (ticker: string) =>
-  apiQuery<UsMention[]>({
-    key: spineKeys.usMentions(ticker),
-    url: `/api/spine/us/${ticker}/mentions`,
-    staleTime: STALE.medium,
-    enabled: !!ticker,
-  });
 
 /** 미국 종목 월드모델 위치 — 인과 엣지 + 걸린 내러티브 (LLM 없음) */
 export const usWorldModelQuery = (ticker: string) =>
@@ -149,8 +113,13 @@ export async function fetchHome(): Promise<HomeResponse> {
   return data;
 }
 
-export async function fetchSpineFeed(params: SpineFeedParams): Promise<SpineFeedResponse> {
-  const { data } = await api.get<SpineFeedResponse>("/api/spine/feed", { params });
+export async function fetchSpineFeed(params: SpineFeedParams, signal?: AbortSignal): Promise<SpineFeedResponse> {
+  const { data } = await api.get<SpineFeedResponse>("/api/spine/feed", { params, signal });
+  return data;
+}
+
+export async function fetchSignalsSummary(days = 7): Promise<SignalsSummary> {
+  const { data } = await api.get<SignalsSummary>("/api/spine/signals/summary", { params: { days } });
   return data;
 }
 
@@ -161,12 +130,22 @@ export async function fetchSpineSignals(type?: string, days?: number): Promise<S
   return data;
 }
 
+export interface PageContext {
+  kind: 'stock' | 'us_stock' | 'doc' | 'narrative' | 'question' | 'study_project' | 'page'
+  label: string
+  path: string
+  ref?: string
+}
+
 export async function askQuestion(params: {
   question: string;
   document_ids?: number[];
   conversation_id?: number;
   /** 드래그 인용 — 선택 문장 + 문단 맥락 + 그 대목의 근거 (D-146) */
-  quote?: { message_id: number; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
+  /** 문서에서 지목했으면 message_id 대신 doc_id·doc_title (docs/specs/canvas.md §2) */
+  quote?: { message_id?: number; doc_id?: number; doc_title?: string; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
+  /** AI 대화 패널이 보는 화면 — 지시어 해석용, 메시지 본문에는 저장되지 않는다 (docs/specs/app-shell.md §5) */
+  page_context?: PageContext;
 }): Promise<AskResponse> {
   const { data } = await api.post<AskResponse>("/api/spine/ask", params, { timeout: 300_000 });
   return data;

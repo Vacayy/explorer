@@ -105,6 +105,7 @@ class Turn:
     review: dict | None = None                          # ②' 추가 수집 판단 {enough, reason}
     follow_ups: list[dict] = field(default_factory=list)  # 후속 질문 제안 [{kind, question}] (D-145, 종합 META — 추가 LLM 콜 0)
     quote: dict | None = None                   # 드래그 인용 {message_id, selected, block, citations[]} (D-146)
+    page_context: dict | None = None            # AI 패널이 보낸 '보고 있는 화면' {kind, label, path, ref} (app-shell.md §5)
 
     @property
     def standalone(self) -> str:
@@ -144,6 +145,9 @@ def _router_system() -> str:
         "- 특정 블로거·채널·작성자('메르','슈카월드','삼성증권')가 '최근에 무슨 글/영상을 냈나' → list_recent(kind=docs, channel=그 이름, days=30) 필수. 사람 엔티티 검색(source=canon)이 아니다. "
         "**그 사람이 '무엇을 어떻게 말했나'(어느 종목을 강조·추천·경고했나)는 search_docs(query=주제, channel=그 이름)** — channel 없이 검색하면 전혀 다른 소스가 섞인다. "
         "후속질문에서 '이 사람·그 채널'이면 노트·최근 문답에서 이름을 찾아 channel에 반드시 채운다.\n"
+        "- **사용자가 만든 스터디 프로젝트**(이름을 말하거나 '스터디 자료·이 스터디·스터디에 있는', 화면이 /study/projects/N) → get_study(project=이름 그대로 또는 N)를 **첫 도구로**. "
+        "'스터디에 있는 자료로 정리'면 get_study만으로 충분하다 — 전체 검색(search_docs·list_recent scrap)을 섞으면 스터디 밖 글이 스터디 자료로 둔갑한다. "
+        "후속질문(그 스터디에 ○○ 글 있어?)도 get_study를 다시 부른다.\n"
         "- '스크랩된 글·요즘 뭘 스터디하나' 목록 요청 → list_recent(kind=scrap). 검색이 아니라 목록이다. "
         "스크랩 채널 이름('비나인')은 **channel에 넣는다 — entity가 아니다**(entity는 종목·테마).\n"
         "- 수출·수출입·무역 통계 → get_trade(item). 공시 → list_recent(kind=disclosures, entity). '내가 저장한/북마크한' → get_saved. "
@@ -174,8 +178,16 @@ def _quote_block(turn: Turn) -> str | None:
     q = turn.quote
     if not q or not (q.get("selected") or "").strip():
         return None
-    lines = ["[사용자가 직전 답변에서 드래그해 지목한 대목 — 이 질문은 이 부분에 대한 것이다]",
-             f"지목: 「{(q.get('selected') or '')[:500]}」"]
+    if (q.get("doc_id") or q.get("doc_title")) and not q.get("message_id"):
+        # 문서·스터디 읽기 화면의 'AI에게 묻기' — 출처가 이전 답변이 아니라 읽던 자료다 (canvas.md §2).
+        # 붙여넣은 스터디 자료는 수집 문서가 아니라 doc_id가 없다
+        title = str(q.get("doc_title") or "").strip()[:120]
+        head = (f"[사용자가 문서 「{title}」(doc_id {q['doc_id']})를 읽다가 드래그해 지목한 대목 — 이 질문은 이 부분에 대한 것이다. "
+                "문서 전체가 필요하면 open_doc(doc_id)]") if q.get("doc_id") else \
+            f"[사용자가 자료 「{title}」를 읽다가 드래그해 지목한 대목 — 이 질문은 이 부분에 대한 것이다]"
+    else:
+        head = "[사용자가 직전 답변에서 드래그해 지목한 대목 — 이 질문은 이 부분에 대한 것이다]"
+    lines = [head, f"지목: 「{(q.get('selected') or '')[:500]}」"]
     block = (q.get("block") or "").strip()
     sel = (q.get("selected") or "").strip()
     if block and block != sel:
@@ -186,6 +198,17 @@ def _quote_block(turn: Turn) -> str | None:
                      + "\n".join(f"- ({c.get('kind') or 'doc'}) {str(c['title'])[:80]}"
                                   + (f" → doc_id {c['doc_id']}" if c.get("doc_id") else "") for c in cites[:8]))
     return "\n".join(lines)
+
+
+def _page_block(turn: Turn) -> str | None:
+    """AI 패널의 화면 맥락 → 프롬프트 블록. '이 종목·이 문서' 같은 지시어를 이 화면 기준으로 풀게 한다."""
+    p = turn.page_context
+    if not p or not (p.get("label") or "").strip():
+        return None
+    line = f"[사용자가 지금 보고 있는 화면] {str(p['label'])[:120]} ({str(p.get('path') or '')[:200]})"
+    if p.get("ref"):
+        line += f" · 식별자 {p.get('kind') or 'page'}={str(p['ref'])[:60]}"
+    return line + "\n질문의 '이 종목·이 문서·이 서사·여기' 같은 지시어는 이 화면을 가리킨다. 질문이 화면과 무관하면 무시한다."
 
 
 def _quoted_message(turn: Turn) -> tuple[str | None, set[int]]:
@@ -214,6 +237,9 @@ def _router_user(turn: Turn) -> str:
     qb = _quote_block(turn)
     if qb:
         parts.append(qb)
+    pb = _page_block(turn)
+    if pb:
+        parts.append(pb)
     last = (turn.ctx.get("state") or {}).get("last_citations") or []
     if last:
         # 전부 나열 — 번호가 문서가 아닌 근거(시세·엣지)일 수 있어 "첫 번째 문서"를 고르려면 종류가 보여야 한다
@@ -384,6 +410,10 @@ def _synth_system(turn: Turn) -> str:
         "가설을 사실처럼 단언하지 않는다.\n"
         "- **'스크랩(미검증)' 라벨이 붙은 근거는 개인 투자자 블로그의 주장이다** — 사실로 단언하지 말고 "
         "'이렇게 보는 시각이 있다'는 형태로만 쓰고, 누구의 주장인지 밝힌다. 시세·공시와 어긋나면 후자를 따른다.\n"
+        "- **'스터디 자료'라고 부를 수 있는 건 '[스터디 자료]' 라벨 근거뿐이다.** 그 밖의 검색 결과를 스터디 자료라고 쓰지 않는다. "
+        "스터디 자료로 답하라는 질문이면 스터디 자료로만 답하고, 거기 없는 내용은 '스터디 자료에 없다'고 쓴다.\n"
+        "- 도구 메모의 '조회 기간'은 이번에 찾아본 범위이고 '수집 문서·가장 이른 글'이 그 소스의 수집 범위다. 없다고 말할 때는 조회 기간을 밝히고, "
+        "조회 기간을 수집 시작으로 말하지 않는다(예: '최근 30일 글에서는 못 찾았다(이 블로그는 6/29부터 245건 수집)').\n"
         "- 갭 분석: unsupported(근거 약함) · contradiction(근거끼리 상충) · stale(오래됨) · missing(답하기에 빠진 정보) · assumption(이름 해석 가정).\n"
         "- 근거 뒤에 '이름 해석 가정'이 있으면 답 첫 문장에서 그 가정을 밝힌다(예: \"'삼양라면'은 삼양식품으로 가정하고 답합니다\") — "
         "가정한 회사의 근거를 그 회사 것으로 정상 사용하되 사용자 표기와 다르다는 사실은 숨기지 않는다. "
@@ -431,6 +461,9 @@ def _synth_user(turn: Turn) -> str:
     qb = _quote_block(turn)
     if qb:
         parts.append(qb)
+    pb = _page_block(turn)
+    if pb:
+        parts.append(pb)
     q = f"질문: {turn.question}"
     if turn.standalone != turn.question.strip():
         q += f"\n(독립형으로 풀면: {turn.standalone})"
@@ -525,7 +558,7 @@ _INTENT_KO = {"lookup": "조회", "event": "사건 설명", "synthesis": "종합
 _TOOL_KO = {"search_docs": "수집 문서를 검색", "open_doc": "문서 전문을 열어", "list_recent": "최근 목록을 조회",
             "get_narrative": "주제 내러티브를 읽어", "get_worldmodel": "인과 그래프에서 위치를 확인", "get_knowledge": "승격 지식을 소환",
             "get_questions": "핵심질문 트래커를 조회", "get_lens": "투자 렌즈 판독을 읽어", "get_quote": "실시간 시세를 조회",
-            "get_price_history": "일별 시세를 조회", "get_regime": "시장 국면·매크로를 읽어", "get_us_briefing": "미국장 브리핑을 읽어",
+            "get_price_history": "일별 시세를 조회", "get_regime": "시장 국면·매크로를 읽어", "get_us_briefing": "미국장 브리핑을 읽어", "get_pricing_ledger": "시장 프라이싱 원장을 읽어",
             "get_transcripts": "실적 컨콜 정리를 읽어", "get_trade": "수출입 통계를 조회", "get_saved": "저장됨 목록을 조회",
             "get_proxies": "프록시 관측치를 조회"}
 
@@ -598,12 +631,14 @@ def _no_evidence_text(turn: "Turn") -> str:
 # ── 턴 실행 ──────────────────────────────────────────────────────────────────
 
 def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | None = None,
-             on_text=None, on_status=None, quote: dict | None = None, study_context: dict | None = None) -> Turn:
+             on_text=None, on_status=None, quote: dict | None = None, study_context: dict | None = None,
+             page_context: dict | None = None) -> Turn:
     """한 턴 실행(영속화 없음). ctx가 없으면 chat_memory.load_context로 로드.
     quote: 드래그 인용 {message_id, selected, block, citations[]} (D-146)."""
     from pipeline.chat_memory import load_context
     status = on_status or (lambda _: None)
     turn = Turn(question=question.strip(), conversation_id=conversation_id, quote=quote or None,
+                page_context=page_context or None,
                 ctx=ctx if ctx is not None else load_context(conversation_id, question))
     if study_context:
         turn.route = {'intent':'study', 'answer_style':'analysis', 'tools':[]}
@@ -630,7 +665,8 @@ def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | N
     return turn
 
 
-def generate_answer(conversation_id: int, question: str, quote: dict | None = None, *, study_context: dict | None = None) -> dict:
+def generate_answer(conversation_id: int, question: str, quote: dict | None = None, *, study_context: dict | None = None,
+                    page_context: dict | None = None) -> dict:
     """질문이 이미 적재된 스레드에 답변을 생성·append·기억 갱신. 어떤 경로로도 assistant로 닫는다.
 
     반환: {"answer", "citations", "gaps", "model", "error"?} — 봇 렌더용.
@@ -651,7 +687,8 @@ def generate_answer(conversation_id: int, question: str, quote: dict | None = No
             return {"answer": r.get("answer"), "citations": r.get("citations") or [], "gaps": r.get("gaps") or [],
                     "model": r.get("model")}
 
-        turn = run_turn(question, conversation_id=conversation_id, on_text=st.push, on_status=st.set_status, quote=quote, study_context=study_context)
+        turn = run_turn(question, conversation_id=conversation_id, on_text=st.push, on_status=st.set_status, quote=quote, study_context=study_context,
+                        page_context=page_context)
     except Exception as e:  # noqa: BLE001 — 실패도 스레드에 남긴다
         msg = f"답변 생성에 실패했습니다: {str(e)[:150]} — 다시 질문해주세요."
         append_assistant(conversation_id, msg)

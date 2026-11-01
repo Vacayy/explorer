@@ -31,12 +31,16 @@ CHECKS: list[tuple[str, str, str, str, object, str, bool]] = [
     ("market_history", "발견용 시세 이력", "trading", "HISTORY", "2130",
      "launchd history 평일 20:40", True),
     ("regime", "시장 국면 지표", "trading",
-     "SELECT max(snapshot_date) FROM market_indicators WHERE indicator IN ('vix','kospi','fear_greed')", "1730",
+     "SELECT max(snapshot_date) FROM market_indicators WHERE indicator IN ('risk_vix','kospi','risk_fear_greed')", "1730",
      "launchd market 평일 16:20", True),
     ("risk", "리스크 지표", "trading",
      "SELECT max(snapshot_date) FROM market_indicators WHERE indicator LIKE 'risk\\_%' ESCAPE '\\' "
      "AND indicator NOT LIKE 'risk\\_sync%' ESCAPE '\\'", "1730",
      "launchd market 평일 16:20 · 홈 Risk 갱신 버튼", False),
+    ("pricing", "시장 프라이싱 원장", "age", "SELECT max(created_at) FROM pricing_days", 100,
+     "launchd usbriefing 07:30(브리핑 직후)", False),
+    ("regimes", "국면 이력(S&P500·BRK 시세)", "age", "SELECT max(trade_date) FROM us_prices WHERE stock_code='^GSPC'", 100,
+     "launchd market 평일 16:20", False),
     ("watch", "종목 묶음 감시", "trading", "SELECT max(as_of) FROM watch_evaluations", "1730",
      "launchd watch 평일 16:40", False),
     ("krmovers", "거래대금 상위", "trading", "SELECT max(trade_date) FROM kr_movers", "1730",
@@ -60,6 +64,16 @@ CHECKS: list[tuple[str, str, str, str, object, str, bool]] = [
      "launchd credit 07:30 (로컬 어댑터)", False),
     ("backup", "DB 백업", "age", "SELECT max(ran_at) FROM job_runs WHERE job='backup' AND status='ok'", 36,
      "launchd backup 04:30", False),
+    # 국내 도시에 원천(kr_company_data) — 밸류는 그날 시세 기준, 공시는 접수일, 재무·마스터는 매일 실행 성공 여부.
+    ("kr_valuation", "국내 밸류 지표(PER·PBR)", "trading", "SELECT max(trade_date) FROM fundamentals", "2330",
+     "launchd krcompany 매일 21:30", False),
+    ("kr_disclosures", "DART 공시 목록", "age",
+     "SELECT substr(max(rcept_dt), 1, 4) || '-' || substr(max(rcept_dt), 5, 2) || '-' || substr(max(rcept_dt), 7, 2) "
+     "FROM disclosures", 100, "launchd krcompany 매일 21:30", False),
+    ("kr_financials", "국내 재무제표 수집", "age",
+     "SELECT max(ran_at) FROM job_runs WHERE job='kr_financials' AND status='ok'", 36, "launchd krcompany 매일 21:30", False),
+    ("kr_companies", "종목 마스터(DART)", "age",
+     "SELECT max(ran_at) FROM job_runs WHERE job='kr_companies' AND status='ok'", 36, "launchd krcompany 매일 21:30", False),
 ]
 
 
@@ -159,6 +173,7 @@ def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool 
                 if hours > float(limit):
                     item.update(status="stale", detail=f"{hours / 24:.1f}일 전" if hours >= 48 else f"{hours:.0f}시간 전")
         items.append(item)
+    items.append(client_error_item(conn))
     if not launchd:
         return items
     failed = launchd_failures()
@@ -166,6 +181,22 @@ def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool 
                   "critical": False, "latest": None, "expected": "모두 0",
                   "status": "stale" if failed else "ok", "detail": ", ".join(failed)})
     return items
+
+
+def client_error_item(conn: sqlite3.Connection) -> dict:
+    """화면 API 오류(프런트 응답 래퍼 보고) — 최근 24시간에 있으면 비정상. 원인 API·필드를 detail에."""
+    item = {"key": "client_errors", "label": "화면 API 오류(24시간)", "kind": "client", "owner": "GET /api/spine/client-errors",
+            "critical": False, "latest": None, "expected": "0건", "status": "ok", "detail": ""}
+    try:
+        rows = conn.execute("SELECT endpoint, field, kind, count, last_seen FROM client_errors WHERE last_seen >= datetime('now', '-1 day') "
+                            "ORDER BY last_seen DESC").fetchall()
+    except sqlite3.Error as exc:
+        item.update(status="error", detail=f"조회 실패: {exc}"[:200])
+        return item
+    if rows:
+        item.update(status="stale", latest=rows[0]["last_seen"],
+                    detail=" · ".join(f"{r['endpoint']}{' ' + r['field'] if r['field'] else ''} ({r['kind']} {r['count']}회)" for r in rows[:3])[:300])
+    return item
 
 
 def alerts(items: list[dict]) -> list[str]:

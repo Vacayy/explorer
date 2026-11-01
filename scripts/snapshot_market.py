@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from database import init_db
 from pipeline.market_regime import snapshot_market
 from pipeline.risk import snapshot_risk
+from pipeline.regimes import collect as collect_regimes
 
 
 def main():
@@ -31,6 +32,10 @@ def main():
     risk = snapshot_risk()
     failed = [r["key"] for r in risk["results"] if r["status"] == "error"]
     print(f"[{ts}] snapshot_risk — {sum(r['rows'] for r in risk['results'])}행 · 실패 {failed}")
+
+    regimes = collect_regimes()
+    failed = [r["key"] for r in regimes["results"] if r["status"] == "error"]
+    print(f"[{ts}] regimes — {sum(r['rows'] for r in regimes['results'])}행 · 실패 {failed}")
 
 
 if __name__ == "__main__":

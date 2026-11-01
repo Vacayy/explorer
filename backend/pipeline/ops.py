@@ -4,6 +4,7 @@
 게이트: 각 생성 스크립트 main을 run_job(name, fn)으로 감싸 ①플래그 off면 skip ②실행 기록.
 """
 import json
+import re
 import time
 
 from database import get_connection
@@ -21,9 +22,16 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("collect_trade", "수출입 수집", "관세청 — 팔로우 품목 월별 수출입 통계 + 관련 종목(파급 논리) 부트스트랩", "scripts/collect_trade.py"),
     ("backfill_enrich", "재태깅 백필", "sonnet — 키워드 폴백 문서 재태깅 (백로그 7,871건, 우선순위·예산 제어, D-117)", "scripts/backfill_enrich_batch.py"),
     ("extract_events", "이미지 비전 분석", "haiku — 첨부 이미지 판독·증시일정 이벤트 추출 (미분석 백로그 ~2,000장, D-116)", "scripts/extract_events.py"),
+    ("image_reading", "이미지 해석", "haiku — 수집 중 새 글(7일 이내)의 차트·표 이미지를 메시지로 해석해 본문 자리에 삽입, 30분당 30콜", "pipeline/image_reading.py (ingest 안)"),
+    ("image_backfill", "이미지 해석 백로그", "haiku — 7일 밖 문서의 이미지 해석 소급(텔레그램 옛 파일→블로그, 최신순) + 블로그 줄바꿈 소급. 30분 체인 회차당 8분·200콜, 태그는 새 해시로 이월(재태깅 없음)", "scripts/backfill_images.py"),
     ("extract_doc_causal", "문서 인과 추출", "sonnet — 문서에서 명시 인과만 추출 (백로그 1,177건, D-116)", "scripts/extract_doc_causal.py"),
     ("refresh_source", "소스 즉시 수집", "버튼 — 텔레그램·유튜브·블로그 소스 하나를 지금 수집 (haiku enrich는 새 문서만, D-199)", "pipeline/source_refresh.py"),
-    ("refresh_questions", "질문 트래커 갱신", "일 1회 — 자동도출(지배 내러티브) + 프록시 관측 갱신(numeric/sentiment) + 재판정", "scripts/refresh_questions.py"),
+    ("kr_companies", "종목 마스터 갱신", "DART 고유번호 목록 — 신규 상장·이름 변경 반영 (DART 1콜)", "scripts/collect_kr_company_data.py"),
+    ("kr_disclosures", "국내 공시 수집", "DART — 전 시장 최근 3일 공시 + 대상 기업 1년 이력(첫 회만)", "scripts/collect_kr_company_data.py"),
+    ("kr_financials", "국내 재무 수집", "DART — 보유·관심·시총 상위 300 분기 재무, 실행당 호출 예산 3,000", "scripts/collect_kr_company_data.py"),
+    ("kr_valuation", "국내 밸류 수집", "네이버 종목 API — 전 종목 PER·PBR·EPS·BPS·배당 (소외 신호·밸류 밴드 재료)", "scripts/collect_kr_company_data.py"),
+    ("refresh_questions", "질문 트래커 갱신", "일 1회 — 프록시 관측 갱신(numeric/sentiment) + 재판정 → 보유 논지·관심 이유 알림", "scripts/refresh_questions.py"),
+    ("question_autopropose", "질문 자동 제안", "refresh_questions 안 — 지배 내러티브·다이제스트에서 질문 제안 → 승인 큐 (기본 off)", "pipeline/questions.py → refresh_all"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}
 
@@ -66,7 +74,18 @@ def retry_locked(fn, tries: int = 6, wait: float = 10.0):
             time.sleep(wait * (k + 1))
 
 
+_SECRET_PARAM = re.compile(r"(?i)\b(crtfc_key|api_?key|servicekey|access_token|token|key)=[^&\s'\")]+")
+_BOT_TOKEN = re.compile(r"/bot\d+:[A-Za-z0-9_-]+")
+
+
+def mask_secrets(text: str) -> str:
+    """URL 쿼리의 API 키·텔레그램 봇 토큰을 가린다 — requests 예외 메시지가 요청 URL을 그대로 싣는다."""
+    return _BOT_TOKEN.sub("/bot***", _SECRET_PARAM.sub(lambda m: f"{m.group(1)}=***", text))
+
+
 def record_run(job: str, status: str, summary: str = "", duration_ms: int | None = None) -> None:
+    summary = mask_secrets(summary or "")
+
     def _write():
         conn = get_connection()
         try:
@@ -103,7 +122,9 @@ def run_job(name: str, fn):
     t0 = time.time()
     try:
         r = fn()
-        record_run(name, "ok", _summarize(r), int((time.time() - t0) * 1000))
+        # 예외 없이 끝나도 결과가 실패를 말하면 그대로 남긴다 — prices가 전 종목 실패를 ok로 남긴 적이 있다(2026-10-15)
+        status = r.get("status") if isinstance(r, dict) and r.get("status") in ("partial", "error") else "ok"
+        record_run(name, status, _summarize(r), int((time.time() - t0) * 1000))
         return r
     except Exception as e:  # noqa: BLE001 — 기록 후 재전파
         record_run(name, "error", f"{type(e).__name__}: {str(e)[:200]}", int((time.time() - t0) * 1000))

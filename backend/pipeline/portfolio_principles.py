@@ -40,7 +40,11 @@ RULES: dict[str, tuple[str, str, float, float, bool]] = {
     "max_exposure": ("공통 변수(테마) 노출 상한", "pct", 1, 100, False),
     "max_holding_days": ("보유 기간 점검", "days", 1, 3650, False),
     "account_drawdown": ("계좌 누적 손실 한도", "pct", 0.5, 90, False),
+    # 고점 −N% · 왼쪽 어깨 2일 이탈(여유 3%) · 50일선 이탈 — 각각 1/3 매도, 코스닥은 고점 −N%에 전량 (docs/research/trend-exit.md)
+    "peak_exit": ("고점 기준 분할 매도", "pct", 5, 50, False),
 }
+SHOULDER_WINDOW, SHOULDER_BUFFER, EXIT_MA = 10, 0.03, 50
+KOSDAQ = ("KOSDAQ", "KOSDAQ GLOBAL")
 
 PARSE_SYSTEM = """너는 개인 투자자의 포트폴리오 운용 원칙 문장을 기계가 매일 점검할 수 있는 수치 규칙으로 옮긴다.
 허용된 규칙 유형만 쓴다(설명은 request.json의 rule_types). 문장에 없는 숫자를 지어내지 마라.
@@ -50,6 +54,8 @@ PARSE_SYSTEM = """너는 개인 투자자의 포트폴리오 운용 원칙 문�
 - 한 문장이 여러 규칙이면 여러 개로 나눈다.
 - 허용 유형으로 옮길 수 없는 원칙(예: "실적이 꺾이면 판다", "뉴스에 흔들리지 않는다")은 rules에 넣지 말고 unparsed에 넣는다.
   긴 글이면 원칙·판단 기준이 되는 문장만 한 줄씩 짧게 정리하고(원문 표현을 살린다), 일화·인용·감상은 뺀다. 같은 내용은 한 번만.
+- "고점 대비 N% 하락·왼쪽 어깨 이탈·50일선 이탈 시 나눠 판다(코스닥은 고점 대비 N%에 전량)" 같은 고점 기준 매도 규칙은 peak_exit 하나로 옮긴다(pct=N).
+  왼쪽 어깨·50일선·코스닥 예외는 이 유형에 들어 있으니 따로 unparsed로 보내지 않는다.
 - 애매해서 숫자가 없으면 unparsed로 보낸다."""
 
 
@@ -87,6 +93,8 @@ def describe(rule: dict) -> str:
     kind, (param, value) = rule["type"], next(iter(rule["params"].items()))
     label = RULES[kind][0]
     unit = {"pct": "%", "count": "개", "days": "일"}[param]
+    if kind == "peak_exit":
+        return f"고점 −{value:g}% · 왼쪽 어깨 · {EXIT_MA}일선 이탈 시 각 1/3 매도 (코스닥은 고점 −{value:g}%에 전량)"
     sign = "−" if kind in ("stop_loss", "day_drop", "account_drawdown") else ""
     return f"{label} {sign}{value:g}{unit}"
 
@@ -159,8 +167,47 @@ def principles(conn: sqlite3.Connection) -> list[dict]:
             for r in conn.execute("SELECT * FROM portfolio_principles ORDER BY id")]
 
 
+def exit_signals(closes: list[float], start: int, pct: float) -> dict:
+    """보유 시작(start)부터의 종가로 고점 기준 매도 신호 셋을 판정한다. 순수 함수. 시험 규칙(docs/research/trend-exit.md)과 같다.
+
+    고점 = 보유 시작 이후 최고 종가. 왼쪽 어깨 = 고점 10거래일 이전·1년 안의 스윙 고점(앞뒤 10거래일 최고) 중 가장 가까운,
+    고점보다 낮은 것 — 고점 이후 마지막 두 종가가 그 −3% 아래면 이탈. 50일선 = 마지막 종가가 50일 단순평균 아래.
+    """
+    c, w = closes, SHOULDER_WINDOW
+    if not c or start >= len(c):
+        return {}
+    pi = max(range(start, len(c)), key=lambda i: (c[i], i))
+    out = {"peak": c[pi], "drawdown_pct": (c[-1] / c[pi] - 1) * 100, "dd": c[-1] <= c[pi] * (1 - pct / 100)}
+    shoulder = next((j for j in range(pi - w, max(w, pi - 252) - 1, -1)
+                     if c[j] < c[pi] and c[j] == max(c[j - w:j + w + 1])), None)
+    out["shoulder"] = c[shoulder] if shoulder is not None else None
+    out["sh"] = shoulder is not None and len(c) - 2 > pi and all(x < c[shoulder] * (1 - SHOULDER_BUFFER) for x in c[-2:])
+    out["ma"] = len(c) >= EXIT_MA and c[-1] < sum(c[-EXIT_MA:]) / EXIT_MA
+    return out
+
+
+def load_prices(conn: sqlite3.Connection, holdings: list[dict]) -> dict:
+    """보유 종목별 {market, closes, start} — 편입 1년 전부터의 종가(왼쪽 어깨용) + 저장 시세가 더 새로우면 덧붙인다."""
+    out = {}
+    for h in holdings:
+        rows = conn.execute("SELECT trade_date, close FROM stock_prices WHERE stock_code=? AND trade_date >= date(?, '-400 days') "
+                            "AND close > 0 ORDER BY trade_date", (h["code"], h["entry_date"])).fetchall()
+        dates, closes = [r[0] for r in rows], [float(r[1]) for r in rows]
+        if h.get("last_close") and h.get("last_date") and (not dates or h["last_date"] > dates[-1]):
+            dates.append(h["last_date"])
+            closes.append(float(h["last_close"]))
+        market = conn.execute("SELECT market FROM companies WHERE stock_code=?", (h["code"],)).fetchone()
+        out[h["code"]] = {"market": market[0] if market else None, "closes": closes,
+                          "start": next((i for i, d in enumerate(dates) if d >= h["entry_date"]), len(dates))}
+    return out
+
+
+def _needs_prices(items: list[dict]) -> bool:
+    return any(r["type"] == "peak_exit" for p in items for r in p["rules"])
+
+
 def violations(items: list[dict], summary: dict, exposure: dict | None = None, today: str | None = None,
-               live_only: bool = False) -> list[dict]:
+               live_only: bool = False, prices: dict | None = None) -> list[dict]:
     """원칙 × 계좌 상태 → 어긴 것들. 순수 함수. key = 원칙id:규칙번호:대상 — 같은 키는 풀릴 때까지 한 번만 알린다."""
     out = []
     holdings = summary.get("holdings", [])
@@ -212,11 +259,41 @@ def violations(items: list[dict], summary: dict, exposure: dict | None = None, t
                     days = (date.fromisoformat(today) - date.fromisoformat(h["entry_date"])).days
                     if days >= value:
                         hit(p, i, rule, f"{h['code']}:{h['entry_date']}", f"{h['name']} 보유 {days}일 (점검 {value:g}일)")
+            elif kind == "peak_exit":
+                for h in holdings:
+                    px = (prices or {}).get(h["code"])
+                    sig = exit_signals(px["closes"], px["start"], value) if px else {}
+                    if not sig:
+                        continue
+                    target, dd = f"{h['code']}:{h['entry_date']}", f"고점 대비 {sig['drawdown_pct']:+.1f}%"
+                    if px["market"] in KOSDAQ:
+                        if sig["dd"]:
+                            hit(p, i, rule, f"{target}:dd", f"{h['name']} {dd} — 코스닥, 전량 매도 (한도 −{value:g}%)")
+                        continue
+                    if sig["dd"]:
+                        hit(p, i, rule, f"{target}:dd", f"{h['name']} {dd} — 1/3 매도 (한도 −{value:g}%)")
+                    if sig["sh"]:
+                        hit(p, i, rule, f"{target}:sh", f"{h['name']} 왼쪽 어깨({sig['shoulder']:,.0f}) −3% 아래 2일 — 1/3 매도")
+                    if sig["ma"]:
+                        hit(p, i, rule, f"{target}:ma", f"{h['name']} {EXIT_MA}일선 아래 마감 — 1/3 매도")
             elif kind == "account_drawdown":
                 total = summary.get("total_return_pct")
                 if total is not None and total <= -value:
                     hit(p, i, rule, "account", f"계좌 수익률 {total:+.1f}% (한도 −{value:g}%)")
     return out
+
+
+def current(conn: sqlite3.Connection, summary: dict, exposure=None, today: str | None = None) -> dict:
+    """지금 어기고 있는 규칙(화면 표시용, 읽기만) — 알림 상태와 같은 키로 '이미 알렸는지·언제부터'를 붙인다. 원문은 싣지 않는다."""
+    ensure_schema(conn)
+    items = principles(conn)
+    if callable(exposure):
+        exposure = exposure() if any(r["type"] == "max_exposure" for p in items for r in p["rules"]) else None
+    prices = load_prices(conn, summary.get("holdings", [])) if _needs_prices(items) else None
+    since = {r["key"]: r["since"] for r in conn.execute("SELECT key, since FROM portfolio_principle_state")}
+    return {"rules": sum(len(p["rules"]) for p in items),
+            "items": [{"key": v["key"], "principle_id": v["principle_id"], "rule": v["rule"], "message": v["message"],
+                       "alerted_since": since.get(v["key"])} for v in violations(items, summary, exposure, today, prices=prices)]}
 
 
 def alert(conn: sqlite3.Connection, summary: dict, send, *, exposure=None, live_only: bool = False,
@@ -231,7 +308,8 @@ def alert(conn: sqlite3.Connection, summary: dict, send, *, exposure=None, live_
         return 0
     if callable(exposure):
         exposure = exposure() if not live_only and any(r["type"] == "max_exposure" for p in items for r in p["rules"]) else None
-    found = violations(items, summary, exposure, today, live_only)
+    prices = load_prices(conn, summary.get("holdings", [])) if not live_only and _needs_prices(items) else None
+    found = violations(items, summary, exposure, today, live_only, prices)
     keys = {v["key"] for v in found}
     checked = {f"{p['id']}:{i}:" for p in items for i, r in enumerate(p["rules"]) if not live_only or RULES[r["type"]][4]}
     state = {r["key"] for r in conn.execute("SELECT key FROM portfolio_principle_state")}

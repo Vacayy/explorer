@@ -1,32 +1,48 @@
-import { useState, type CSSProperties } from "react"
-import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, Outlet } from "react-router-dom"
+import { ActiveQueryStatus } from "@/components/shared/ActiveQueryStatus"
+import { toast } from "sonner"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { QueryState } from "@/components/shared/QueryState"
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import Dock from "@/components/layout/Dock"
+import { TopBar } from "@/components/layout/TopBar"
+import { MyListPanel } from "@/components/layout/MyListPanel"
+import { TabBar } from "@/components/layout/TabBar"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
+import { useMediaQuery, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
+import { ChatPanel } from "@/components/chat/ChatPanel"
+import { PREF, readPref, writePref } from "@/lib/shellPrefs"
+import { onAskAi } from "@/lib/aiPanel"
 import { SubNav } from "@/components/layout/SubNav"
-import { FEED_TABS, FOLLOW_TABS, WORLDMODEL_TABS, analyzeTabs, getActiveMode, getActiveSubTab, isDocumentFeed } from "@/components/layout/navConfig"
+import { NewBoardDialog } from "@/components/home/NewBoardDialog"
+import { Button } from "@/components/ui/button"
+import { Plus } from "lucide-react"
+import { useHomeBoards, type HomeBoard } from "@/hooks/useDashboard"
+import { FEED_TABS, SECTIONS, analyzeTabOf, analyzeTabs, feedSourceTab, isDocumentFeed, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
-import FollowRail from "@/components/layout/FollowRail"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
 import { useCompany } from "@/hooks/useCompanySearch"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 // Home
-import { getHomeMode } from "@/hooks/useHomeMode"
 import { DetailNavigationMemory } from "@/components/shared/DetailNavigation"
 import { DiscoveryNavigationMemory } from "@/components/shared/DiscoveryNavigationMemory"
 import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrail"
 import { DiscoveryTechnicalContext } from "@/components/company/DiscoveryTechnicalContext"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
-import HomePage from "@/components/home/HomePage"
+import HomePage, { HomeBriefingPage, HomeMacroPage, HomeRiskPage } from "@/components/home/HomePage"
+import ProxyBoardsPage from "@/components/proxy/ProxyBoardsPage"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
-import UniversePage from "@/components/follow/UniversePage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
+import ValueChainPage from "@/components/explore/ValueChainPage"
 import CreditPage from "@/components/follow/CreditPage"
+import RegimesPage from "@/components/regimes/RegimesPage"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
@@ -39,7 +55,6 @@ import ProjectPage from "@/components/study/ProjectPage"
 import StocksPage from "@/components/follow/StocksPage"
 import StudyPage from "@/components/study/StudyPage"
 import DocPage from "@/components/doc/DocPage"
-import SynthesisPage from "@/components/synthesis/SynthesisPage"
 import SourcePage from "@/components/source/SourcePage"
 import PersonPage from "@/components/person/PersonPage"
 import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
@@ -48,24 +63,17 @@ import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import QuestionsPage from "@/components/knowledge/QuestionsPage"
 import ThesisAuditPage from "@/components/thesis/ThesisAuditPage"
 import QuestionDetail from "@/components/knowledge/QuestionDetail"
-import SectorMapPage from "@/components/map/SectorMapPage"
+import SectorsPage from "@/components/sectors/SectorsPage"
 import NarrativePage from "@/components/explore/NarrativePage"
 import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import WorldviewPage from "@/components/explore/WorldviewPage"
 import ReportsPage from "@/components/explore/ReportsPage"
 import ArchivePage from "@/components/archive/ArchivePage"
+import { UsageTracker } from "@/components/shared/UsageTracker"
 import AdminPage from "@/components/admin/AdminPage"
-import MemoryReadingPage from "@/components/expectations/MemoryReadingPage"
-import ExpectationsPage from "@/components/expectations/ExpectationsPage"
-
-// Discovery
-import IndustryPage from "@/components/industry/IndustryPage"
-import OnchainPage from "@/components/onchain/OnchainPage"
-import ScreenerPage from "@/components/discovery/ScreenerPage"
 
 // Analysis
 import ComparePage from "@/components/analyze/ComparePage"
-import BacktestPage from "@/components/analysis/BacktestPage"
 import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
 import SummaryPage from "@/components/summary/SummaryPage"
 import CompanyFinancials from "@/components/company/CompanyFinancials"
@@ -81,89 +89,121 @@ import UsIndexPage from "@/components/us/UsIndexPage"
 import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
 
 // Research
-import MemosPage from "@/components/research/MemosPage"
-import CatalystsPage from "@/components/research/CatalystsPage"
 
-const queryClient = createQueryClient()
+const queryClient = createQueryClient((error, { background }) => {
+  toast.error(error.message, { id: `api-${error.message}`, description: background ? '최신 데이터 갱신에 실패했습니다.' : undefined })
+})
 
-/** 모드별 인페이지 L2 — 도크 팝오버와 같은 navConfig를 읽는다 (docs/specs/dock-navigation.md §2) */
-function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
+/** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭, 문서 검색은 소스 탭 */
+function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null, homeBoards: readonly HomeBoard[] = []) {
+  if (stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey: analyzeTabOf(pathname), context: companyName ?? stockCode }
   if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
-  const mode = getActiveMode(pathname)
-  const activeKey = getActiveSubTab(pathname, search)
-  if (mode === "follow" || mode === "us") return { tabs: FOLLOW_TABS, activeKey }
-  if (mode === "feed" && pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey }
-  if (mode === "worldmodel") return { tabs: WORLDMODEL_TABS, activeKey }
-  if (mode === "analyze" && stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey, context: companyName ?? stockCode }
-  return null
+  if (pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey: feedSourceTab(search) }
+  const here = locate(pathname, search)
+  const section = here && SECTIONS.find(s => s.key === here.section)
+  // 홈 L2 = 내 메뉴들(home_boards). /home은 첫 메뉴, 전체 보기 화면(/home/risk 등)은 활성 탭 없음 (home-widgets.md §5)
+  if (section?.key === "home") {
+    const id = pathname.match(/^\/home\/b\/(\d+)/)?.[1] ?? (pathname === "/home" ? homeBoards[0]?.id : undefined)
+    return { tabs: homeBoards.map(b => ({ key: `b${b.id}`, path: `/home/b/${b.id}`, label: b.label })), activeKey: id != null ? `b${id}` : null, home: true }
+  }
+  if (!section || section.tabs.length < 2) return null
+  return { tabs: section.tabs, activeKey: here.tab }
+}
+
+/** 폭 ≥1440이면 패널 기본 펼침. 사용자가 고른 값이 있으면 그 값. 폭 <1024에서는 오버레이라 늘 닫힌 채 시작 */
+function initialOpen(key: string): boolean {
+  if (typeof window !== "undefined" && !window.matchMedia(PANEL_INLINE_QUERY).matches) return false
+  const saved = readPref(key)
+  if (saved != null) return saved === "1"
+  return typeof window !== "undefined" && window.matchMedia("(min-width: 1440px)").matches
 }
 
 function Layout() {
-  useKeyboardShortcuts()
   const { pathname, search } = useLocation()
+  const [leftOpen, setLeftOpen] = useState(() => initialOpen(PREF.left))
+  const [aiOpen, setAiOpen] = useState(() => initialOpen(PREF.ai))
+  const aiInput = useRef<HTMLTextAreaElement | null>(null)
+  const panelInline = useMediaQuery(PANEL_INLINE_QUERY)
+  // 좁은 화면의 열고 닫기는 오버레이 조작이라 데스크톱 기본값(pref)에 남기지 않는다
+  const setLeft = (v: boolean) => { setLeftOpen(v); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.left, v ? "1" : "0") }
+  const toggleAi = useCallback(() => setAiOpen(v => {
+    if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, v ? "0" : "1")
+    if (!v) requestAnimationFrame(() => aiInput.current?.focus())
+    return !v
+  }), [])
+  useKeyboardShortcuts(toggleAi)
+  // 'AI에게 묻기' — 어느 화면에서 보내든 패널을 연다. 인용은 패널이 받는다 (lib/aiPanel)
+  useEffect(() => onAskAi(() => { setAiOpen(true); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, "1") }), [])
 
-  // Extract stockCode from /analyze/:stockCode/... paths (exclude special routes like /analyze/compare)
-  const stockCodeMatch = pathname.match(/^\/analyze\/([^/]+)/)
-  const rawCode = stockCodeMatch ? stockCodeMatch[1] : null
+  // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
+  const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
-  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
-
-  // 넓은 데스크톱에선 팔로우 레일 펼침, 그 이하에선 접힘(토글/오버레이) — 사용자 의도
-  const [railOpen, setRailOpen] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches,
-  )
-
-  const [feedRailOpen, setFeedRailOpen] = useState(false)
-  const [detailRailOpen, setDetailRailOpen] = useState(false)
-  const [companyRailOpen, setCompanyRailOpen] = useState(false)
-  const [discoveryRailOpen, setDiscoveryRailOpen] = useState(false)
-  const discoveryRoute = pathname === "/discover" || pathname.startsWith("/analysis/backtests")
-  const companyRoute = !!stockCode || /^\/us\/[^/]+/.test(pathname) || pathname === "/company"
-  const detailRoute = pathname.startsWith("/study/") || pathname.startsWith("/doc/") || (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic"))
-  const homeFeed = pathname === "/home" && getHomeMode(search) === "feed"
+  const { data: homeBoards } = useHomeBoards()
+  const [creatingBoard, setCreatingBoard] = useState(false)
+  const subNav = subNavFor(pathname, search, stockCode, company?.corp_name, homeBoards)
+  const showAi = aiOpen && !pathname.startsWith("/chat")
+  // 오버레이 대화는 다른 화면으로 가면 닫는다(근거 링크를 누르면 그 화면이 보이게)
+  useEffect(() => { if (!window.matchMedia(PANEL_INLINE_QUERY).matches) setAiOpen(false) }, [pathname])
 
   return (
-    <div className="min-h-screen bg-background">
-      <Omnibar />
-      <DetailNavigationMemory />
-      <DiscoveryNavigationMemory />
-      <SidebarProvider
-        open={discoveryRoute ? discoveryRailOpen : companyRoute ? companyRailOpen : detailRoute ? detailRailOpen : homeFeed ? feedRailOpen : railOpen}
-        onOpenChange={discoveryRoute ? setDiscoveryRailOpen : companyRoute ? setCompanyRailOpen : detailRoute ? setDetailRailOpen : homeFeed ? setFeedRailOpen : setRailOpen}
-        style={{ "--sidebar-width": "16rem" } as CSSProperties}
-      >
-        <SidebarInset className="min-w-0 bg-background">
-          {/* 상단 크롬 없음(D-136) — 콘텐츠가 뷰포트 최상단에서 시작. 하단은 도크 예약(--dock-reserve).
-              --shell-offset(풀하이트 페이지 차감량)은 SubNav 유무로 달라져 여기서 확정한다 */}
-          <div
-            className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-inset)] pb-[var(--dock-reserve)]"
-            style={{ "--shell-offset": subNav ? "calc(var(--page-inset) + var(--dock-reserve) + var(--subnav-height))" : "calc(var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
-          >
-            {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
-            {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
-            <Outlet />
+      <TooltipProvider delayDuration={300}>
+      <div className="min-h-screen bg-background">
+        <Omnibar />
+        <DetailNavigationMemory />
+        <DiscoveryNavigationMemory />
+        <UsageTracker />
+        <SidebarProvider open={leftOpen} onOpenChange={setLeft} className="flex-col"
+          style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
+          <TopBar aiOpen={showAi} onToggleAi={toggleAi} />
+          <div className="flex min-h-0 w-full flex-1">
+            <MyListPanel currentStockCode={stockCode} />
+            <SidebarInset className="min-w-0 bg-background">
+              {/* --shell-offset: 풀하이트 화면이 뺄 높이 = 상단 바 + 위아래 여백 + (L2가 있으면) L2 (app-shell.md §8) */}
+              <div
+                className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-inset)] pb-[var(--dock-reserve)]"
+                style={{ "--shell-offset": subNav
+                  ? "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve) + var(--subnav-height))"
+                  : "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
+              >
+                {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context}
+                  trailing={subNav.home && <Button variant="ghost" size="sm" className="h-7 shrink-0 text-[13px] text-muted-foreground" onClick={() => setCreatingBoard(true)}><Plus className="size-3.5" />새 메뉴</Button>} />}
+                <ActiveQueryStatus />
+                <NewBoardDialog open={creatingBoard} onOpenChange={setCreatingBoard} />
+                {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
+                <ErrorBoundary key={pathname + search} onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><Outlet /></ErrorBoundary>
+              </div>
+            </SidebarInset>
+            {showAi && panelInline && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
           </div>
-        </SidebarInset>
-        <Dock stockCode={stockCode} companyName={company?.corp_name} />
-
-        {/* 팔로우 레일 — 종목·채널·블로그 통합, shadcn Sidebar (docs/specs/follow-rail.md) */}
-        <FollowRail currentStockCode={stockCode} />
-      </SidebarProvider>
-      <AnswerWatcher />
-      <Toaster position="top-right" />
-    </div>
+          <TabBar />
+        </SidebarProvider>
+        {/* 폭 <1024: AI 대화는 오른쪽 오버레이(모바일은 전체 폭) */}
+        {!panelInline && (
+          <Sheet open={showAi} onOpenChange={v => { if (v !== showAi) toggleAi() }}>
+            <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">
+              <SheetTitle className="sr-only">AI 대화</SheetTitle>
+              <SheetDescription className="sr-only">지금 보는 화면을 맥락으로 함께 보냅니다.</SheetDescription>
+              <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} overlay />
+            </SheetContent>
+          </Sheet>
+        )}
+        <AnswerWatcher />
+        <Toaster position="top-right" />
+      </div>
+      </TooltipProvider>
   )
 }
 
 function AnalyzePage({ tab }: { tab: string }) {
   const { stockCode } = useParams<{ stockCode: string }>()
   const { search } = useLocation()
-  const { data: company, isLoading } = useCompany(stockCode ?? null)
+  const companyQuery = useCompany(stockCode ?? null)
+  const { data: company } = companyQuery
   const sourceRun = new URLSearchParams(search).get('source_run')
 
   if (!stockCode) return null
-  if (isLoading) return <div className="text-center py-20 text-muted-foreground">로딩 중...</div>
+  if (company === undefined) return <QueryState query={companyQuery}>{() => null}</QueryState>
   if (!company) return sourceRun
     ? <PageLayout header={<PageHeader title={stockCode} description="기업 기초정보 미확인 · 저장된 발견 근거" />}><DiscoveryTechnicalContext runId={sourceRun} code={stockCode} original currentUnavailable="기업 기초정보를 찾지 못해 현재 기업 분석을 열 수 없습니다. 발견 당시 저장된 차트와 판정은 아래에서 확인할 수 있습니다." /></PageLayout>
     : <div className="text-center py-20 text-muted-foreground">기업 정보를 찾을 수 없습니다.</div>
@@ -172,7 +212,7 @@ function AnalyzePage({ tab }: { tab: string }) {
 
   switch (tab) {
     case "summary":
-      return <SummaryPage stockCode={stockCode} corpCode={corpCode} />
+      return <SummaryPage stockCode={stockCode} />
     case "financials":
       return <CompanyFinancials key={stockCode} stockCode={stockCode} corpCode={corpCode} />
     case "business":
@@ -196,23 +236,10 @@ function AskRedirect() {
   return <Navigate to={`/chat${search}`} replace />
 }
 
-function IndustryRoute() {
-  const navigate = useNavigate()
-  return (
-    <IndustryPage
-      onSelectCompany={(c) => {
-        if (c.stock_code) {
-          navigate(`/analyze/${c.stock_code}/summary`)
-        }
-      }}
-    />
-  )
-}
-
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <ErrorBoundary onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
             {/* Default */}
@@ -220,25 +247,35 @@ export default function App() {
 
             {/* Home — 내 종목 follow-up */}
             <Route path="home" element={<HomePage />} />
+            <Route path="home/b/:boardId" element={<HomePage />} />
+            <Route path="home/briefing" element={<HomeBriefingPage />} />
+            <Route path="home/risk" element={<HomeRiskPage />} />
+            <Route path="home/macro" element={<HomeMacroPage />} />
+            <Route path="proxy-boards" element={<ProxyBoardsPage />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="follow/stocks" element={<StocksPage />} />
-            <Route path="follow/universe" element={<UniversePage />} />
+            <Route path="follow/universe" element={<Navigate to="/map?view=universe" replace />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
+            <Route path="value-chain" element={<ValueChainPage />} />
             <Route path="follow/credit" element={<CreditPage />} />
+            <Route path="regimes" element={<RegimesPage />} />
             <Route path="retail" element={<RetailHeatPage />} />
             <Route path="follow/saved" element={<SavedPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
+            <Route path="portfolio/holdings" element={<PortfolioPage tab="holdings" />} />
+            <Route path="portfolio/principles" element={<PortfolioPage tab="principles" />} />
+            <Route path="portfolio/events" element={<PortfolioPage tab="events" />} />
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />
-            <Route path="experiments/expectations" element={<MemoryReadingPage />} />
-            <Route path="experiments/expectations/review" element={<ExpectationsPage />} />
+            <Route path="experiments/expectations" element={<Navigate to="/chat" replace />} />
+            <Route path="experiments/expectations/review" element={<Navigate to="/chat" replace />} />
 
             {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
             <Route path="explore" element={<ExplorePage />} />
-            <Route path="map" element={<SectorMapPage />} />
+            <Route path="map" element={<SectorsPage />} />
             <Route path="narrative" element={<NarrativePage />} />
             <Route path="narrative/history" element={<NarrativeHistory />} />
             <Route path="knowledge/ontology" element={<WorldviewPage />} />
@@ -255,13 +292,13 @@ export default function App() {
 
             {/* Discovery */}
             <Route path="discover" element={<MarketAnalysisPage />} />
-            <Route path="discover/industry" element={<IndustryRoute />} />
-            <Route path="discover/screener" element={<ScreenerPage />} />
+            <Route path="discover/industry" element={<Navigate to="/map?view=chains" replace />} />
+            <Route path="discover/screener" element={<Navigate to="/discover" replace />} />
             <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
-            <Route path="discover/alt-data" element={<OnchainPage />} />
+            <Route path="discover/alt-data" element={<Navigate to="/discover" replace />} />
 
             {/* Analysis */}
-            <Route path="analysis/backtests" element={<BacktestPage />} />
+            <Route path="analysis/backtests" element={<Navigate to="/discover" replace />} />
             <Route path="analyze/compare" element={<ComparePage />} />
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
@@ -280,7 +317,7 @@ export default function App() {
             <Route path="study/projects/:id" element={<ProjectPage />} />
             <Route path="study/:id" element={<StudyPage />} />
             <Route path="doc/:docId" element={<DocPage />} />
-            <Route path="synthesis/:synthesisId" element={<SynthesisPage />} />
+            <Route path="synthesis/:synthesisId" element={<Navigate to="/study" replace />} />
             <Route path="source" element={<SourcePage />} />
             <Route path="person" element={<PersonPage />} />
             <Route path="company" element={<CompanyPage />} />
@@ -290,19 +327,19 @@ export default function App() {
             {/* Research */}
             <Route path="research" element={<Navigate to="/follow" replace />} />
             <Route path="research/watchlist" element={<Navigate to="/follow" replace />} />
-            <Route path="research/memos" element={<MemosPage />} />
-            <Route path="research/catalysts" element={<CatalystsPage />} />
+            <Route path="research/memos" element={<Navigate to="/follow/stocks" replace />} />
+            <Route path="research/catalysts" element={<Navigate to="/portfolio/events" replace />} />
 
             {/* Legacy redirects */}
             <Route path="industry" element={<Navigate to="/discover/industry" replace />} />
-            <Route path="onchain" element={<Navigate to="/discover/alt-data" replace />} />
+            <Route path="onchain" element={<Navigate to="/discover" replace />} />
             <Route path="company/:stockCode/:tab" element={<LegacyRedirect />} />
 
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </BrowserRouter></ErrorBoundary>
     </QueryClientProvider>
   )
 }

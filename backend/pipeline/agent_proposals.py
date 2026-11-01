@@ -88,12 +88,15 @@ def scan_falsifier_watch(conn) -> int:
 
 def scan_devils_advocate(conn) -> int:
     """내 논지에 대한 반대 관점 질문 (BACKLOG '불편한 질문 브리핑' 흡수, thesis_check의 능동형).
-    watchlist 중 thesis가 있는 종목 대상, haiku. 주 1회 배치에서만 호출(비용)."""
+    관심 묶음 종목 중 논지(thesis)가 있는 종목 대상, haiku. 주 1회 배치에서만 호출(비용)."""
     if llm_engine() != "claude-code":
         return 0
-    rows = conn.execute(
-        "SELECT stock_code, corp_name, thesis FROM watchlist "
-        "WHERE thesis IS NOT NULL AND length(thesis) > 10").fetchall()
+    from pipeline.watch_rules import watch_thesis, watched
+    rows = []
+    for code, name in watched(conn).items():
+        t = watch_thesis(conn, code)
+        if t and t["thesis"] and len(t["thesis"]) > 10:
+            rows.append({"stock_code": code, "corp_name": name, "thesis": t["thesis"]})
     made = 0
     for r in rows:
         # 종목당 미해소 devils_advocate가 이미 있으면 skip (질문 홍수 방지)
@@ -122,6 +125,7 @@ def scan_devils_advocate(conn) -> int:
             f"내 논지: {r['thesis'][:100]} — 확증편향 방지용 불편한 질문",
             {"stock_code": r["stock_code"], "question": q},
             f"devil:{r['stock_code']}:{hash(q) % 100000}")
+        conn.commit()   # 다음 종목의 LLM 호출 동안 쓰기 잠금을 쥐지 않게
     return made
 
 
@@ -221,8 +225,12 @@ def run_all(include_llm: bool = True) -> dict:
         "falsifier_watch": scan_falsifier_watch(conn),
         "report_suggest": scan_report_suggestions(conn),
     }
+    # LLM 단계와 job_runs 기록(별도 연결) 전에 커밋한다 — 미커밋 쓰기가 자기 기록을 'database is locked'로
+    # 막아 잡 전체가 죽고 앞 단계 제안까지 사라졌다(09-08~10-11)
+    conn.commit()
     if include_llm:
         stats["devils_advocate"] = scan_devils_advocate(conn)
+        conn.commit()
         # 노드 통합은 독립 작업 플래그·로그로 관리(관리자 페이지 가시성, D-055)
         import time as _time
 
@@ -231,9 +239,11 @@ def run_all(include_llm: bool = True) -> dict:
             t0 = _time.time()
             try:
                 n = scan_vocab_merges(conn)
+                conn.commit()
                 stats["vocab_merge"] = n
                 record_run("vocab_merge", "ok", f"병합 제안 {n}건", int((_time.time() - t0) * 1000))
             except Exception as e:  # noqa: BLE001 — 실패를 job_runs에 노출(삼키지 않음)
+                conn.rollback()
                 stats["vocab_merge"] = f"error: {type(e).__name__}"
                 record_run("vocab_merge", "error", f"{type(e).__name__}: {str(e)[:200]}",
                            int((_time.time() - t0) * 1000))

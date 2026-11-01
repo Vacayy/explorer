@@ -122,5 +122,31 @@ class RiskTests(unittest.TestCase):
         ds=dates(23);self.insert('us10y',[(d,4.5-.02*i) for i,d in enumerate(ds)]);self.insert('hy',[(d,3+.05*i) for i,d in enumerate(ds)])
         out=risk.get_risk(datetime.fromisoformat(ds[-1]+'T23:00:00+00:00'))
         self.assertEqual(out['signal']['status'],'joint');self.assertEqual(next(i for i in out['items'] if i['key']=='fear_greed')['quality'],'missing')
+    def test_range_trims_points_but_keeps_full_history_values(self):
+        self.insert('us2y',[('2000-01-03',6.38),('2026-06-01',4.9),('2026-09-24',4.87)])
+        self.insert('us10y',[('2000-01-03',6.58),('2026-06-01',5.2),('2026-09-24',5.18)])
+        self.insert('vix',[('2026-05-01',30),('2026-09-01',18),('2026-09-24',20)])
+        full={i['key']:i for i in risk.get_risk(NOW)['items']}
+        out=risk.window(risk.get_risk(NOW),'3m',None)
+        items={i['key']:i for i in out['items']}
+        self.assertEqual(items['vix']['points'],[('2026-09-01',18),('2026-09-24',20)])
+        self.assertEqual(items['curve']['points'],[('2026-09-24',31)])
+        for key in ('vix','curve','us10y'):
+            self.assertEqual({k:v for k,v in items[key].items() if k!='points'},{k:v for k,v in full[key].items() if k!='points'})
+        self.assertEqual(risk.window(risk.get_risk(NOW),'all',None)['items'],risk.get_risk(NOW)['items'])
+        only=risk.window(risk.get_risk(NOW),'1y',['vix','curve'])
+        self.assertEqual([i['key'] for i in only['items']],['vix','curve'])
+        self.assertEqual(only['signal'],risk.get_risk(NOW)['signal'])
+    def test_route_range_params_default_unchanged_and_validated(self):
+        self.insert('vix',[('2020-01-02',14),('2026-09-24',20)])
+        client=TestClient(FastAPI());client.app.include_router(router)
+        with patch.object(risk,'datetime',wraps=datetime) as clock:
+            clock.now.return_value=NOW
+            full=client.get('/api/spine/risk').json()
+            vix=client.get('/api/spine/risk',params={'range':'1y','keys':'vix'}).json()
+            self.assertEqual(client.get('/api/spine/risk',params={'range':'2w'}).status_code,422)
+            self.assertEqual(client.get('/api/spine/risk',params={'keys':'nope'}).status_code,422)
+        self.assertEqual(len(full['items']),10);self.assertEqual(next(i for i in full['items'] if i['key']=='vix')['points'][0],['2020-01-02',14])
+        self.assertEqual([i['key'] for i in vix['items']],['vix']);self.assertEqual(vix['items'][0]['points'],[['2026-09-24',20]])
 
 if __name__=='__main__':unittest.main()

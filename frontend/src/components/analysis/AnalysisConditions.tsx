@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge'
 import { useQuery } from '@tanstack/react-query'
-import { API_BASE } from '@/api/client'
+import { getJson } from '@/api/query'
 import { formatKrw } from '@/utils/format'
 import type { AnalysisSpec, StrategyDefinition, StrategyExpression } from './types'
 
@@ -15,7 +15,7 @@ function ExpressionCondition({ node, definitions }: { node: StrategyExpression; 
 }
 
 export function AnalysisConditions({ spec, priceAdjustment, definitions: supplied = [] }: { spec: AnalysisSpec; priceAdjustment?: string; definitions?: StrategyDefinition[] }) {
-  const catalog = useQuery({ queryKey: ['market-analysis', 'strategies'], queryFn: async ({ signal }): Promise<{ items: StrategyDefinition[] }> => { const response = await fetch(`${API_BASE}/api/analysis/strategies`, { signal }); if (!response.ok) throw new Error('전략 이름을 불러오지 못했습니다.'); return response.json() }, enabled: !supplied.length && (!!spec.expression || !!spec.strategy_conditions?.length), staleTime: 60_000 })
+  const catalog = useQuery({ queryKey: ['market-analysis', 'strategies'], queryFn: ({ signal }) => getJson<{ items: StrategyDefinition[] }>('/api/analysis/strategies', undefined, { signal }), enabled: !supplied.length && (!!spec.expression || !!spec.strategy_conditions?.length), staleTime: 60_000 })
   const definitions = supplied.length ? supplied : catalog.data?.items ?? []
   const conditions = [
     spec.market === 'all' ? '국내 전체 시장' : spec.market,

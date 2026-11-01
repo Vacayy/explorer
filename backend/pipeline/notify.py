@@ -101,6 +101,12 @@ def _us_section(lines: list[str]) -> None:
 
     lines.append("")
     lines.append(f"🇺🇸 <b>어젯밤 미국장</b> ({esc(b.get('trade_date') or '-')})")
+    # 지수 등락 한 줄을 맨 위에(2026-10-23 사용자 요청) — 산문을 읽기 전에 방향부터 보이게
+    idx = [i for i in ((b.get("indices") or {}).get("items") or []) if i.get("change_pct") is not None]
+    if idx:
+        lines.append("  " + " · ".join(
+            f"{esc(i['name'])} {'▲' if i['change_pct'] > 0 else '▼' if i['change_pct'] < 0 else '-'}{abs(i['change_pct']):.2f}%"
+            for i in idx))
 
     # '어젯밤'을 자처하는데 며칠 묵었으면 먼저 밝힌다 — 날짜만 찍고 넘어가면 프레임이 거짓이 된다
     stale = b.get("stale_days")
@@ -115,8 +121,7 @@ def _us_section(lines: list[str]) -> None:
             lines.append("")
             lines.append(_cite_links(esc(syn[key]), urls))
 
-    # 지수 수치는 ① 산문이 이미 담는다(D-113 형식) — 여기서 반복하지 않는다.
-    # 산문에 없는 수치 근거만 짧게 붙인다.
+    # 지수 등락은 위 한 줄로, 산문에 없는 수치 근거만 짧게 붙인다.
     lines.append("")
     for c in (b.get("clusters") or [])[:2]:
         lines.append(f"  · 쏠림: <b>{esc(c['label'])}</b> {c['share_pct']}% "

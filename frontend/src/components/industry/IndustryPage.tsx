@@ -93,12 +93,12 @@ export default function IndustryPage({ onSelectCompany }: Props) {
   return (
     <PageContainer gap="sm">
       {/* Controls */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Select
           value={selectedGroupId?.toString() ?? ""}
           onValueChange={(v) => setSelectedGroupId(parseInt(v))}
         >
-          <SelectTrigger className="w-[240px]">
+          <SelectTrigger className="w-full sm:w-[240px]">
             <SelectValue placeholder="산업그룹 선택" />
           </SelectTrigger>
           <SelectContent>
@@ -119,7 +119,7 @@ export default function IndustryPage({ onSelectCompany }: Props) {
 
         <div className="ml-auto flex items-center gap-2">
           {detail && (
-            <span className="text-xs text-muted-foreground mr-2">
+            <span className="text-xs text-muted-foreground mr-2 whitespace-nowrap">
               {detail.members.length}개 종목
             </span>
           )}
@@ -236,7 +236,7 @@ function HeatNum({ value, fmt }: { value: number | null; fmt: (v: number) => str
   }
 
   // Color intensity based on value
-  let bg = ""
+  let bg: string
   if (value > 30) bg = "bg-emerald-100 text-emerald-800"
   else if (value > 15) bg = "bg-emerald-50 text-emerald-700"
   else if (value > 0) bg = "bg-emerald-50/50 text-emerald-600"

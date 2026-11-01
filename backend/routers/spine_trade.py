@@ -34,6 +34,18 @@ class FollowRow(BaseModel):
     flag: str | None = None          # surge | plunge | new | none
     reason: str | None = None
     contribution: float | None = None
+    nested_in: str | None = None     # 이 품목을 포함하는 상위 팔로우 HS(합계·기여도 분모에서 제외)
+
+
+class StockItem(BaseModel):
+    """종목 → 품목 역링크 — 이 종목을 관련 종목으로 지목한 품목과 그 품목의 이번 달 판정."""
+    hs_code: str
+    item_name: str
+    rel: str | None
+    period: str | None
+    yoy_pct: float | None
+    flag: str | None
+    reason: str | None
 
 
 class Beneficiary(BaseModel):
@@ -91,7 +103,29 @@ def list_follow(mode: str = "zscore", metric: str = "yoy"):
         out.append(FollowRow(hs_code=r["hs_code"], item_name=r["item_name"], group_label=r["group_label"],
                              latest_period=period, latest_export=exp, yoy_pct=yoy,
                              mom=m.get("mom"), qoq=m.get("qoq"), yoy3m=m.get("yoy3m"), z=m.get("z"),
-                             flag=m.get("flag"), reason=m.get("reason"), contribution=m.get("contribution")))
+                             flag=m.get("flag"), reason=m.get("reason"), contribution=m.get("contribution"),
+                             nested_in=m.get("nested_in")))
+    conn.close()
+    return out
+
+
+@router.get("/by-stock/{stock_code}", response_model=list[StockItem])
+def by_stock(stock_code: str):
+    """종목 도시에의 '수출 지표' 칩 — trade_beneficiaries를 거꾸로 읽는다(읽기 전용, LLM 0)."""
+    from pipeline.trade_metrics import table
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT b.hs_code, f.item_name, b.rel FROM trade_beneficiaries b "
+        "JOIN trade_follow f ON f.hs_code=b.hs_code AND f.active=1 WHERE b.stock_code=? ORDER BY b.hs_code",
+        (stock_code,)).fetchall()
+    out = []
+    if rows:
+        by = {r["hs_code"]: r for r in table(flow="export")["rows"]}
+        for r in rows:
+            period, _, yoy = _yoy(conn, r["hs_code"])
+            m = by.get(r["hs_code"]) or {}
+            out.append(StockItem(hs_code=r["hs_code"], item_name=r["item_name"], rel=r["rel"], period=period,
+                                 yoy_pct=yoy, flag=m.get("flag"), reason=m.get("reason")))
     conn.close()
     return out
 

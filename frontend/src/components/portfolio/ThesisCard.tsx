@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { DetailLink } from '@/components/shared/DetailNavigation'
+import { JudgingPausedNotice } from '@/components/shared/JudgingPausedNotice'
 import { usePortfolioTheses, useStartThesis } from '@/hooks/usePortfolio'
 import type { QuestionVerdict } from '@/types'
 
@@ -36,6 +37,7 @@ export function ThesisCard({ code, name }: { code: string; name: string }) {
       {theses.isPending ? <Skeleton className="h-24 w-full" />
         : theses.isError ? <Button variant="outline" size="sm" onClick={() => void theses.refetch()}>다시 불러오기</Button>
         : t ? <>
+          {!t.judging && <JudgingPausedNotice judgedAt={t.judged_at} />}
           <p className="text-sm">{t.text}</p>
           <div className="flex flex-wrap items-center gap-2 text-caption">
             <span className="text-muted-foreground">선행 신호</span><Badge variant="outline" className={`text-caption ${V(t.lead).cls}`}>{V(t.lead).label}</Badge>

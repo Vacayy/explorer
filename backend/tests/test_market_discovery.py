@@ -131,6 +131,16 @@ class DiscoveryTests(unittest.TestCase):
         thresholds = {c["strategy_id"]: c["params"]["threshold_pct"] for c in pullback["spec"]["strategy_conditions"] if c["strategy_id"].startswith("disparity_")}
         self.assertEqual(thresholds, {"disparity_low": 101.5, "disparity_high": 98.5})
 
+    def test_presets_are_one_list_with_quick_start_scenarios(self):
+        # 빠른 시작·상황 렌즈·목적별 추천이 한 목록(PRESETS)에서 나온다 — id 중복 없음, 방향 없는 관찰은 상승 후보가 아니다
+        items = self.service.recommendations()
+        ids = [item["id"] for item in items]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(len(ids), 24)
+        self.assertTrue(all(item["scenario"] in {"rising", "recovery", "other"} and item["tag"] for item in items))
+        rising = {item["id"] for item in items if item["scenario"] == "rising"}
+        self.assertFalse(rising & {"lens-squeeze", "volume-growth", "low-52w"})
+
     def test_recommendations_never_start_analysis_on_read(self):
         count = len(self.analysis.store.list())
         items = self.service.recommendations(self.run["id"], "000001")

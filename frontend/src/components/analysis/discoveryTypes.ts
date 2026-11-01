@@ -12,6 +12,10 @@ export interface SavedStrategy {
 
 export interface DiscoveryRecommendation {
   group?: string
+  /** 빠른 시작 범위 — rising · recovery · other(방향 미정) */
+  scenario?: 'rising' | 'recovery' | 'other'
+  /** 빠른 시작 한 줄 꼬리표 */
+  tag?: string
   phrase?: string | null
   misses?: string | null
   id: string
@@ -74,7 +78,7 @@ export interface ResearchRun {
     created_at: string
     question: string
     company: unknown
-    lanes: { id: 'market' | 'industry' | 'earnings' | 'call' | 'trade'; label: string; status: string; items: ResearchEvidence[]; warnings: string[] }[]
+    lanes: { id: 'market' | 'industry' | 'earnings' | 'call' | 'trade' | 'web'; label: string; status: string; items: ResearchEvidence[]; warnings: string[] }[]
     warnings: string[]
   }
   result?: {

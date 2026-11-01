@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   CartesianGrid, Cell, LabelList, ReferenceLine, ResponsiveContainer,
@@ -13,19 +13,17 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { formatKrw } from "@/utils/format"
 import { cn } from "@/lib/utils"
+import { useSectorMap } from "@/hooks/useSectorMap"
+import type { SectorGroup } from "@/types"
 
 /**
  * /map — 산업/섹터 맵 (RS 4사분면).
  * x=장기 RS(11개월 수익률 백분위, 구조적 강도) · y=단기 RS(1개월, 현재 수급)
  * 크기=시총 · 색=5일 흐름 · hover=1~3주 전 궤적. 사분면: 주도/부상/소외/과열·경계.
  * 그룹 축: KSIC 165 → 투자 언어 대분류 18 (LLM 시드, sector_map).
+ * 산업·섹터 탭(SectorsPage)의 '산업 맵' 뷰. 선택 섹터 = ?group= (다른 화면이 이 섹터로 링크한다).
  */
 
-interface TrailPoint { weeks_ago: number; rs_long: number | null; rs_short: number | null }
-interface SectorGroup {
-  name: string; market_cap: number; stocks: number
-  rs_long: number | null; rs_short: number | null; chg_5d: number; trail: TrailPoint[]
-}
 interface MemberRow {
   stock_code: string; corp_name: string; market_cap: number | null
   rs_long: number | null; rs_short: number | null; ret_1m: number | null; ret_12m: number | null
@@ -39,12 +37,15 @@ const flowColor = (chg: number) => {
 export default function SectorMapPage() {
   const navigate = useNavigate()
   const [hovered, setHovered] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const { data, isLoading, isError, refetch } = useQuery(
-    apiQuery<{ as_of: string | null; groups: SectorGroup[] }>({
-      key: ["spine", "sector-map"], url: "/api/spine/sector-map", staleTime: STALE.medium,
-    }),
-  )
+  const [params, setParams] = useSearchParams()
+  const selected = params.get("group")
+  const setSelected = (g: string | null) => setParams((prev) => {
+    const next = new URLSearchParams(prev)
+    if (g) next.set("group", g)
+    else next.delete("group")
+    return next
+  }, { replace: true })
+  const { data, isLoading, isError, refetch } = useSectorMap()
 
   const totalMcap = useMemo(
     () => (data?.groups ?? []).reduce((s, g) => s + g.market_cap, 0), [data])
@@ -111,7 +112,7 @@ export default function SectorMapPage() {
                   onClick={(g) => setSelected((g as unknown as SectorGroup).name)}>
                   {data.groups.map((g) => (
                     <Cell key={g.name} fill={flowColor(g.chg_5d)} stroke="var(--card)" strokeWidth={1}
-                      opacity={hovered && hovered !== g.name ? 0.25 : 1} cursor="pointer" />
+                      opacity={(hovered ?? selected) && (hovered ?? selected) !== g.name ? 0.25 : 1} cursor="pointer" />
                   ))}
                   <LabelList dataKey="name" position="top" style={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
                 </Scatter>
@@ -121,17 +122,21 @@ export default function SectorMapPage() {
         </CardContent>
       </Card>
 
-      {/* 구성 테이블 */}
+      {/* 선택 섹터 — 다른 화면에서 ?group=으로 들어오면 바로 보이게 표 위에 */}
+      {selected && <ValueChain group={selected} onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
+      {selected && <GroupMembers group={selected} onGo={(code) => navigate(`/analyze/${code}/summary`)} />}
+
+      {/* 구성 테이블 — 모바일은 비중·종목 열을 숨기고 줄바꿈 대신 가로 스크롤 */}
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-sm">산업(섹터) 구성 — 클릭하면 소속 종목</CardTitle></CardHeader>
         <CardContent className="px-0 overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm max-lg:whitespace-nowrap max-lg:[&_td+td]:pl-3 max-lg:[&_th+th]:pl-3">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="px-4 py-1.5 text-left font-medium">대분류</th>
                 <th className="py-1.5 text-right font-medium">시총</th>
-                <th className="py-1.5 text-right font-medium">비중</th>
-                <th className="py-1.5 text-right font-medium">종목</th>
+                <th className="hidden sm:table-cell py-1.5 text-right font-medium">비중</th>
+                <th className="hidden sm:table-cell py-1.5 text-right font-medium">종목</th>
                 <th className="py-1.5 text-right font-medium">5일</th>
                 <th className="py-1.5 text-right font-medium">장기 RS</th>
                 <th className="px-4 py-1.5 text-right font-medium">단기 RS</th>
@@ -151,8 +156,8 @@ export default function SectorMapPage() {
                     {(g.rs_long ?? 50) <= 20 && <Badge variant="outline" className="ml-2 text-[9px] text-down border-down/40">약세</Badge>}
                   </td>
                   <td className="py-1.5 text-right tabular-nums text-xs">{formatKrw(g.market_cap)}</td>
-                  <td className="py-1.5 text-right tabular-nums text-xs">{totalMcap ? `${(g.market_cap / totalMcap * 100).toFixed(0)}%` : "-"}</td>
-                  <td className="py-1.5 text-right tabular-nums text-xs">{g.stocks}</td>
+                  <td className="hidden sm:table-cell py-1.5 text-right tabular-nums text-xs">{totalMcap ? `${(g.market_cap / totalMcap * 100).toFixed(0)}%` : "-"}</td>
+                  <td className="hidden sm:table-cell py-1.5 text-right tabular-nums text-xs">{g.stocks}</td>
                   <td className={cn("py-1.5 text-right tabular-nums text-xs", g.chg_5d >= 0 ? "text-up" : "text-down")}>
                     {g.chg_5d >= 0 ? "+" : ""}{g.chg_5d}%
                   </td>
@@ -167,8 +172,6 @@ export default function SectorMapPage() {
 
       {/* 글로벌 AI 컴퓨트 스택 — 국내 섹터가 아니라 산점도엔 없지만 밸류체인은 상시 노출 */}
       {!selected && <ValueChain group="AI 컴퓨트·인프라" onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
-      {selected && <ValueChain group={selected} onTheme={(t) => navigate(`/feed?q=${encodeURIComponent(t)}`)} />}
-      {selected && <GroupMembers group={selected} onGo={(code) => navigate(`/analyze/${code}/summary`)} />}
     </PageContainer>
   )
 }
@@ -247,8 +250,9 @@ function GroupMembers({ group, onGo }: { group: string; onGo: (code: string) => 
         <CardTitle className="text-sm">{group} — 소속 종목 <span className="font-normal text-muted-foreground">(RS는 전 종목 대비 백분위)</span></CardTitle>
       </CardHeader>
       <CardContent className="px-0 overflow-x-auto">
-        {isLoading ? <div className="px-4 py-3"><Skeleton className="h-5 w-full" /></div> : (
-          <table className="w-full text-sm">
+        {isLoading ? <div className="px-4 py-3"><Skeleton className="h-5 w-full" /></div>
+          : !data?.items.length ? <p className="px-4 py-3 text-sm text-muted-foreground">산업 맵 대분류에 '{group}' 소속 종목이 없습니다.</p> : (
+          <table className="w-full text-sm max-lg:whitespace-nowrap max-lg:[&_td+td]:pl-3 max-lg:[&_th+th]:pl-3">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="px-4 py-1.5 text-left font-medium">종목</th>

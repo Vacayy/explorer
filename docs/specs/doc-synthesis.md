@@ -1,3 +1,5 @@
+> **제거됨 (D-241)** — `/synthesis/:id` 화면, 저장됨의 '엮어 종합' 다중 선택, `/api/spine/synthesis`, `pipeline/doc_synthesis.py`를 삭제했다. `/synthesis/:id`는 `/study`로 리다이렉트한다. `doc_syntheses` 테이블은 백업 후 삭제 대상이다.
+
 # 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기
 
 > 2026-08-13 기획. 목표: 저장한 문서 중 여러 개를 골라 엮어 인사이트를 추출한다.

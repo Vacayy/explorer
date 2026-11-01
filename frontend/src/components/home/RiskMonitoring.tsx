@@ -95,7 +95,8 @@ function Metadata({ item }: { item: RiskIndicator }) {
   </div>
 }
 
-export function RiskMonitoring() {
+/** Risk 카드 공통 상태 — 기간·계열 선택은 URL이 단일 소스. 위젯 상세 창도 같은 상태를 쓴다 */
+export function useRiskView() {
   const query = useRisk()
   const [params, setParams] = useSearchParams()
   const requestedCredit = params.get('risk_credit') ?? 'hy'
@@ -126,12 +127,40 @@ export function RiskMonitoring() {
     return [k, item.points.filter(([d]) => d >= cutoff)]
   })), [items, cutoffs])
   const creditDates = useMemo(() => [...new Set([...(visible.us10y ?? []), ...(visible[creditKey] ?? [])].map(([d]) => d))].sort(), [visible, creditKey])
+  return { query, data, items, visible, creditKey, creditDates, cutoffs, curveRange, creditRange, vixRange, fearRange, setParam }
+}
+export type RiskView = ReturnType<typeof useRiskView>
+export type RiskCardKind = 'curve' | 'credit' | 'vix' | 'fear'
+
+/** 지표 카드 하나 — Risk 모니터링 화면과 홈 위젯 상세 창이 같이 쓴다 (data가 있을 때만) */
+export function RiskCard({ view, kind }: { view: RiskView; kind: RiskCardKind }) {
+  const { query, items, visible, creditKey, creditDates, cutoffs, curveRange, creditRange, vixRange, fearRange, setParam } = view
+  const curve = items.curve, credit = items[creditKey], vix = items.vix, fear = items.fear_greed
+  if (kind === 'curve') {
+    const coverageTolerance = new Date(`${cutoffs.curve}T00:00:00Z`)
+    coverageTolerance.setUTCDate(coverageTolerance.getUTCDate() + 7)
+    const curveHistoryShort = curveRange !== 'all' && curve.points.length > 0 && curve.points[0][0] > coverageTolerance.toISOString().slice(0, 10)
+    return <Card className="min-w-0" data-risk-card="curve"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>장단기 금리차</CardTitle><RangeSelect value={curveRange} onChange={value => setParam('risk_curve_range', value)} label="장단기 금리차 기간" /></div><div className="flex items-center justify-between gap-2"><span className="text-2xl font-semibold tabular-nums">{number(curve.value)} <small className="text-sm font-normal">bp</small></span></div><p className="text-caption text-muted-foreground">10Y − 2Y · 20 관측일 {change(curve.change_20, 'bp')}</p></CardHeader><CardContent className="space-y-3">
+        {curveHistoryShort && <div role="status" className="rounded-lg bg-muted/40 p-3 text-caption text-muted-foreground">{MACRO_RANGES[curveRange]}을 선택했지만 저장 이력은 {curve.points[0][0]}부터입니다. 확보한 구간만 표시합니다.<Button variant="link" size="sm" className="h-auto px-1 py-0" disabled={query.isFetching} onClick={() => void query.refetch()}>저장 이력 다시 조회</Button></div>}
+        <RiskTrendChart points={visible.curve} label="장단기 금리차" unit="bp" zero />
+        <p className="text-caption text-muted-foreground">2Y {number(items.us2y.value)}% ({items.us2y.as_of ?? '미수집'}) · 10Y {number(items.us10y.value)}% ({items.us10y.as_of ?? '미수집'})</p>
+        <EconomicMeaning kind="curve" /><Metadata item={curve} />
+      </CardContent></Card>
+  }
+  if (kind === 'credit') return <Card className="min-w-0" data-risk-card="credit"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>10년 금리와 신용 위험</CardTitle><RangeSelect value={creditRange} onChange={value => setParam('risk_credit_range', value)} label="신용 차트 기간" /></div><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-2xl font-semibold tabular-nums">{number(credit.value)} <small className="text-sm font-normal">bp</small></span><div className="flex items-center gap-1"><Select value={creditKey} onValueChange={value => setParam('risk_credit', value)}><SelectTrigger className="w-32" aria-label="신용 스프레드 계열"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(CREDIT).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select><CreditHelp selected={creditKey} /></div></div><p className="text-caption text-muted-foreground">{credit.label} · 20 관측일 {change(credit.change_20, 'bp')}</p></CardHeader><CardContent className="space-y-2">
+        <p className="text-caption text-down">10Y · % · {items.us10y.as_of ?? '미수집'}{items.us10y.quality !== 'fresh' ? ` · ${QUALITY[items.us10y.quality]}` : ''}</p><RiskTrendChart points={visible.us10y} dates={creditDates} label="미국 10년 국채 금리" unit="%" height={125} color="--down" />
+        <p className="text-caption text-up">{credit.label} · bp</p><RiskTrendChart points={visible[creditKey]} dates={creditDates} label={credit.label} unit="bp" height={125} color="--up" />
+        <EconomicMeaning kind="credit" /><Metadata item={credit} />
+      </CardContent></Card>
+  if (kind === 'vix') return <Card className="min-w-0" data-risk-card="vix"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>VIX</CardTitle><RangeSelect value={vixRange} onChange={value => setParam('risk_vix_range', value)} label="VIX 기간" ranges={SENTIMENT_RANGES} /></div><div><span className="text-2xl font-semibold tabular-nums">{number(vix.value)}</span></div><p className="text-caption text-muted-foreground">5 관측일 {change(vix.change_5, 'pt')} · S&amp;P 500 옵션 기반</p></CardHeader><CardContent className="space-y-3"><RiskTrendChart points={visible.vix} label="VIX" unit="pt" /><p className="text-sm text-muted-foreground">향후 30일의 예상 변동성입니다. 주가 방향이나 침체 여부를 확정하는 지표는 아닙니다.</p><Metadata item={vix} /></CardContent></Card>
+  return <Card className="min-w-0" data-risk-card="fear"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>공포·탐욕</CardTitle><RangeSelect value={fearRange} onChange={value => setParam('risk_fear_range', value)} label="공포·탐욕 기간" ranges={SENTIMENT_RANGES} /></div><div><span className="text-2xl font-semibold tabular-nums">{number(fear.value)} <small className="text-sm font-normal">/ 100</small></span></div><p className="text-caption text-muted-foreground">5 관측일 {change(fear.change_5, 'pt')} · CNN 미국 주식 심리</p></CardHeader><CardContent className="space-y-3"><RiskTrendChart points={visible.fear_greed} label="공포·탐욕" unit="pt" bounded /><p className="text-sm text-muted-foreground">낮을수록 공포, 높을수록 탐욕입니다. VIX·신용 관련 요소와 겹치므로 독립 위험 점수로 합산하지 않습니다.</p><Metadata item={fear} /></CardContent></Card>
+}
+
+export function RiskMonitoring() {
+  const view = useRiskView()
+  const { query, data, items } = view
   if (query.isLoading) return <section aria-label="Risk 모니터링 불러오는 중" aria-busy="true" className="space-y-3"><h2 className="text-section font-semibold">Risk 모니터링</h2><div className="grid grid-cols-1 gap-5 @3xl/market:grid-cols-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-80 rounded-xl" />)}</div></section>
   if (!data) return <ErrorState message="Risk 모니터링을 불러오지 못했습니다." onRetry={() => void query.refetch()} />
-  const curve = items.curve, credit = items[creditKey], vix = items.vix, fear = items.fear_greed
-  const coverageTolerance = new Date(`${cutoffs.curve}T00:00:00Z`)
-  coverageTolerance.setUTCDate(coverageTolerance.getUTCDate() + 7)
-  const curveHistoryShort = curveRange !== 'all' && curve.points.length > 0 && curve.points[0][0] > coverageTolerance.toISOString().slice(0, 10)
   const signal = data.signal
   const alert = ['joint', 'watch', 'credit'].includes(signal.status)
   const refreshFailures = query.snapshot?.results.filter(result => result.status === 'error') ?? []
@@ -149,19 +178,7 @@ export function RiskMonitoring() {
       <p className="mt-1 text-caption text-muted-foreground">공통 기준일 {signal.as_of ?? '없음'} · 20 공통 관측일: 10Y {change(signal.rate_change_bp, 'bp')} / HY OAS {change(signal.credit_change_bp, 'bp')} · 연속 {number(signal.consecutive)}회</p>
     </div>
     <div className="grid grid-cols-1 gap-5 @3xl/market:grid-cols-2">
-      <Card className="min-w-0" data-risk-card="curve"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>장단기 금리차</CardTitle><RangeSelect value={curveRange} onChange={value => setParam('risk_curve_range', value)} label="장단기 금리차 기간" /></div><div className="flex items-center justify-between gap-2"><span className="text-2xl font-semibold tabular-nums">{number(curve.value)} <small className="text-sm font-normal">bp</small></span></div><p className="text-caption text-muted-foreground">10Y − 2Y · 20 관측일 {change(curve.change_20, 'bp')}</p></CardHeader><CardContent className="space-y-3">
-        {curveHistoryShort && <div role="status" className="rounded-lg bg-muted/40 p-3 text-caption text-muted-foreground">{MACRO_RANGES[curveRange]}을 선택했지만 저장 이력은 {curve.points[0][0]}부터입니다. 확보한 구간만 표시합니다.<Button variant="link" size="sm" className="h-auto px-1 py-0" disabled={query.isFetching} onClick={() => void query.refetch()}>저장 이력 다시 조회</Button></div>}
-        <RiskTrendChart points={visible.curve} label="장단기 금리차" unit="bp" zero />
-        <p className="text-caption text-muted-foreground">2Y {number(items.us2y.value)}% ({items.us2y.as_of ?? '미수집'}) · 10Y {number(items.us10y.value)}% ({items.us10y.as_of ?? '미수집'})</p>
-        <EconomicMeaning kind="curve" /><Metadata item={curve} />
-      </CardContent></Card>
-      <Card className="min-w-0" data-risk-card="credit"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>10년 금리와 신용 위험</CardTitle><RangeSelect value={creditRange} onChange={value => setParam('risk_credit_range', value)} label="신용 차트 기간" /></div><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-2xl font-semibold tabular-nums">{number(credit.value)} <small className="text-sm font-normal">bp</small></span><div className="flex items-center gap-1"><Select value={creditKey} onValueChange={value => setParam('risk_credit', value)}><SelectTrigger className="w-32" aria-label="신용 스프레드 계열"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(CREDIT).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select><CreditHelp selected={creditKey} /></div></div><p className="text-caption text-muted-foreground">{credit.label} · 20 관측일 {change(credit.change_20, 'bp')}</p></CardHeader><CardContent className="space-y-2">
-        <p className="text-caption text-down">10Y · % · {items.us10y.as_of ?? '미수집'}{items.us10y.quality !== 'fresh' ? ` · ${QUALITY[items.us10y.quality]}` : ''}</p><RiskTrendChart points={visible.us10y} dates={creditDates} label="미국 10년 국채 금리" unit="%" height={125} color="--down" />
-        <p className="text-caption text-up">{credit.label} · bp</p><RiskTrendChart points={visible[creditKey]} dates={creditDates} label={credit.label} unit="bp" height={125} color="--up" />
-        <EconomicMeaning kind="credit" /><Metadata item={credit} />
-      </CardContent></Card>
-      <Card className="min-w-0" data-risk-card="vix"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>VIX</CardTitle><RangeSelect value={vixRange} onChange={value => setParam('risk_vix_range', value)} label="VIX 기간" ranges={SENTIMENT_RANGES} /></div><div><span className="text-2xl font-semibold tabular-nums">{number(vix.value)}</span></div><p className="text-caption text-muted-foreground">5 관측일 {change(vix.change_5, 'pt')} · S&amp;P 500 옵션 기반</p></CardHeader><CardContent className="space-y-3"><RiskTrendChart points={visible.vix} label="VIX" unit="pt" /><p className="text-sm text-muted-foreground">향후 30일의 예상 변동성입니다. 주가 방향이나 침체 여부를 확정하는 지표는 아닙니다.</p><Metadata item={vix} /></CardContent></Card>
-      <Card className="min-w-0" data-risk-card="fear"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>공포·탐욕</CardTitle><RangeSelect value={fearRange} onChange={value => setParam('risk_fear_range', value)} label="공포·탐욕 기간" ranges={SENTIMENT_RANGES} /></div><div><span className="text-2xl font-semibold tabular-nums">{number(fear.value)} <small className="text-sm font-normal">/ 100</small></span></div><p className="text-caption text-muted-foreground">5 관측일 {change(fear.change_5, 'pt')} · CNN 미국 주식 심리</p></CardHeader><CardContent className="space-y-3"><RiskTrendChart points={visible.fear_greed} label="공포·탐욕" unit="pt" bounded /><p className="text-sm text-muted-foreground">낮을수록 공포, 높을수록 탐욕입니다. VIX·신용 관련 요소와 겹치므로 독립 위험 점수로 합산하지 않습니다.</p><Metadata item={fear} /></CardContent></Card>
+      {(['curve', 'credit', 'vix', 'fear'] as const).map(kind => <RiskCard key={kind} view={view} kind={kind} />)}
     </div>
     <p className="text-caption text-muted-foreground" title={signal.rule_version}>실험 조건: 20 공통 관측일 10Y ≤ −30bp · HY OAS ≥ +75bp, 3회 지속. 침체 확정 신호가 아닙니다. 기대 관측일 {data.expected_date}, 2영업일 초과 지연 시 평가 보류. {data.calendar_note}. 차트는 실제 확보한 기간만 표시합니다.</p>
   </section>

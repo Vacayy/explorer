@@ -11,7 +11,7 @@ def db():
     c = sqlite3.connect(":memory:")
     c.row_factory = sqlite3.Row
     c.executescript("""CREATE TABLE questions (id INTEGER PRIMARY KEY, text TEXT, status TEXT, lead_verdict TEXT, confirm_verdict TEXT,
-        divergence TEXT, verdict_summary TEXT, created_by TEXT DEFAULT 'portfolio');
+        divergence TEXT, verdict_summary TEXT, created_by TEXT DEFAULT 'portfolio', updated_at TEXT DEFAULT '2026-08-18 23:00:00');
         CREATE TABLE sub_questions (id INTEGER PRIMARY KEY, question_id INT, text TEXT, falsifier TEXT, verdict TEXT);""" + pa.SCHEMA)
     pt.ensure_schema(c)
     pt.ensure_schema(c)                                         # 두 번 불러도 안전
@@ -22,6 +22,10 @@ def db():
 
 
 class ThesisTests(unittest.TestCase):
+    def test_theses_carry_when_they_were_last_judged(self):
+        # 판정 엔진(refresh_questions)이 꺼져도 화면이 옛 판정을 오늘 것처럼 쓰지 않게(08-19~ off였다)
+        self.assertEqual(pt.theses(db(), ["000001"])["000001"]["judged_at"], "2026-08-18 23:00:00")
+
     def test_question_text_and_hint(self):
         self.assertEqual(pt.question_text("가", " 수주 증가 ", ""), "가 보유 논지: 수주 증가")
         self.assertIn("이렇게 되면 틀린 것: 투자 지연", pt.question_text("가", "수주", "투자 지연"))

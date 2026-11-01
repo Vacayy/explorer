@@ -3,19 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config import MEDIA_PATH
 from database import init_db
-from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, onchain, kpi
-from routers import watchlist, screener, signals, catalysts, compare, consensus, index_data
+from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, kpi
+from routers import signals, compare, consensus
 from routers import telegram_feed
 from routers import blog_feed
-from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_digests, spine_keywords, spine_sources
+from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_keywords, spine_sources
 from routers import spine_groups
+from routers import spine_tracker
 from routers import portfolio
 from routers import company_profile
 from routers import spine_search
 from routers import technical_scan
 from routers import chart_structure
-from routers import spine_brief, spine_conversations, spine_person, spine_knowledge, spine_approvals
-from routers import spine_quotes, spine_sector_map, spine_feature_days, spine_company, spine_narrative, spine_research, spine_report, spine_admin
+from routers import spine_conversations, spine_person, spine_knowledge, spine_approvals
+from routers import spine_quotes, spine_sector_map, spine_trend, spine_tw, spine_company, spine_narrative, spine_research, spine_report, spine_admin
 from routers import spine_causal
 from routers import spine_transcript
 from routers import spine_trade
@@ -23,11 +24,8 @@ from routers import spine_questions
 from routers import spine_macro, spine_market, spine_indices, spine_risk
 from routers import spine_thesis
 from routers import spine_saved
-from routers import spine_synthesis
 from routers import spine_lens
 from routers import spine_kr, spine_us
-from routers import experiment_expectations
-from routers import experiment_weekly
 from routers import analysis
 
 app = FastAPI(title="Stock Explorer API")
@@ -47,22 +45,19 @@ app.include_router(ir_notes.router)
 app.include_router(stock_prices.router)
 app.include_router(business.router)
 app.include_router(industries.router)
-app.include_router(onchain.router)
 app.include_router(kpi.router)
-app.include_router(watchlist.router)
-app.include_router(screener.router)
 app.include_router(signals.router)
-app.include_router(catalysts.router)
 app.include_router(compare.router)
 app.include_router(consensus.router)
-app.include_router(index_data.router)
 app.include_router(telegram_feed.router)
 app.include_router(blog_feed.router)
 app.include_router(spine_quotes.router)
+app.include_router(spine_trend.router)
+app.include_router(spine_tw.router)
 app.include_router(spine_sector_map.router)
-app.include_router(spine_feature_days.router)
 app.include_router(spine_company.router)
 app.include_router(spine_groups.router)
+app.include_router(spine_tracker.router)
 app.include_router(portfolio.router)
 app.include_router(company_profile.router)
 app.include_router(spine_search.router)
@@ -82,10 +77,8 @@ app.include_router(spine_ask.router)
 app.include_router(spine_follows.router)
 app.include_router(spine_actions.router)
 app.include_router(spine_doc.router)
-app.include_router(spine_digests.router)
 app.include_router(spine_keywords.router)
 app.include_router(spine_sources.router)
-app.include_router(spine_brief.router)
 app.include_router(spine_conversations.router)
 app.include_router(spine_person.router)
 app.include_router(spine_knowledge.router)
@@ -100,12 +93,9 @@ app.include_router(spine_risk.router)
 app.include_router(spine_indices.router)
 app.include_router(spine_thesis.router)
 app.include_router(spine_saved.router)
-app.include_router(spine_synthesis.router)
 app.include_router(spine_lens.router)
 app.include_router(spine_kr.router)
 app.include_router(spine_us.router)
-app.include_router(experiment_expectations.router)
-app.include_router(experiment_weekly.router)
 app.include_router(analysis.router)
 from routers import spine_study
 app.include_router(spine_study.router)
@@ -113,12 +103,52 @@ from routers import spine_study_projects
 app.include_router(spine_study_projects.router)
 from routers import spine_credit  # 회사채 스프레드 (D-230)
 app.include_router(spine_credit.router)
+from routers import spine_regimes  # 국면 이력 (docs/specs/market-regimes.md)
+app.include_router(spine_regimes.router)
+from routers import spine_pricing  # 시장 프라이싱 원장 (docs/specs/pricing-ledger.md)
+app.include_router(spine_pricing.router)
 from routers import spine_retail  # 개인 투자 열기 (D-231)
 app.include_router(spine_retail.router)
+from routers import dashboard  # 홈 위젯 배치 저장
+app.include_router(dashboard.router)
+from routers import proxy_boards  # 프록시 보드 (D-240)
+app.include_router(proxy_boards.router)
+from routers import spine_world  # 월드모델 읽기 전용(지금 랜딩·체크포인트·위젯)
+app.include_router(spine_world.router)
+import pipeline.runtime  # noqa: F401 — 서버 시작 시각 고정(재시작 필요 감지)
+from routers import spine_client_errors  # 화면 API 오류 기록(응답 계약 위반·5xx·timeout)
+from routers import spine_observe  # 관측(사용 이벤트·관측 탭 요약, D-283)
+app.include_router(spine_client_errors.router)
+app.include_router(spine_observe.router)
+
+
+@app.middleware("http")
+async def _observe_requests(request, call_next):
+    """API 요청을 경로 패턴(실제 값 아님)·상태 계층·응답시간 구간으로 시간 단위 집계 (pipeline/observe.py)."""
+    import time
+    from pipeline.observe import record_request
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        route = request.scope.get("route")
+        # 정기 실제 응답 검사(contracts:live)는 사용 트래픽이 아니라 집계에서 뺀다
+        if request.headers.get("x-observe-skip") != "1":
+            record_request(request.method, getattr(route, "path", None) or "(unmatched)", status, (time.perf_counter() - started) * 1000)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(MEDIA_PATH)), name="media")
+
+
+@app.on_event("shutdown")
+def _flush_observe():
+    """요청 집계 버퍼를 종료 전에 저장 — 재시작 때 마지막 1분이 사라지지 않게."""
+    from pipeline.observe import flush
+    flush()
 
 
 @app.on_event("startup")

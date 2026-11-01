@@ -23,6 +23,12 @@ def main():
         print("[refresh_questions]", r)
         return r
     run_job("refresh_questions", _work)
+    from pipeline.ops import flag_enabled, record_run
+    if not flag_enabled("refresh_questions"):
+        # 판정이 멈춘 상태에서 알림을 돌리면 옛 판정으로 'sent 0 · ok'만 쌓여 점검한 것처럼 보였다(08-19~)
+        for job in ("pf_thesis", "watch_reason"):
+            record_run(job, "skipped", "판정 엔진 꺼짐(관리자 '질문 트래커 갱신' off) — 판정이 갱신되지 않아 알림을 보내지 않음")
+        return
     _portfolio_thesis_alert()
     _watch_reason_alert()
 

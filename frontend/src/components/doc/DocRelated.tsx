@@ -1,3 +1,4 @@
+import { ErrorState } from "@/components/shared/ErrorState"
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,10 +17,12 @@ export function DocRelated({ docId }: { docId: number }) {
   const shown = new Set(groups.flatMap((g) => g.related.map((r) => r.id)))
   const similar = (related.data ?? []).filter((r) => !shown.has(r.id)).slice(0, 3)
   const building = claims.isLoading || status === 'none' || status === 'running'
-  if (!building && status !== 'failed' && groups.length === 0 && similar.length === 0) return null
+  if (!claims.isError && !related.isError && !building && status !== 'failed' && groups.length === 0 && similar.length === 0) return null
   return (
     <Card>
       <CardContent className="space-y-5 py-4">
+        {claims.isError && <ErrorState error={claims.error} onRetry={() => void claims.refetch()} retrying={claims.isFetching} />}
+        {related.isError && <ErrorState error={related.error} onRetry={() => void related.refetch()} retrying={related.isFetching} />}
         {(building || status === 'failed' || groups.length > 0) && (
           <section aria-live="polite">
             <h2 className="mb-2 text-caption text-muted-foreground">이 자료의 논점별 관련 자료</h2>

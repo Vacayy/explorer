@@ -1,5 +1,4 @@
-"""Auto-tag blog posts by matching keywords in title + summary."""
-from database import get_connection
+"""업종·주제 키워드 사전 — 문서 태깅의 키워드 폴백(pipeline/enrich)이 쓴다. 구 blog_post_tags 태거는 D-241로 제거."""
 
 # Normalized tag dictionaries
 INDUSTRY_KEYWORDS = {
@@ -21,71 +20,3 @@ TOPIC_KEYWORDS = {
     "수급": ["외국인", "기관", "공매도", "수급", "프로그램"],
     "IPO/이벤트": ["IPO", "상장", "유상증자", "합병", "인수", "M&A"],
 }
-
-
-def auto_tag_post(post_id: int, title: str, summary: str = ""):
-    """Auto-tag a blog post based on title and summary text."""
-    text = f"{title} {summary}".upper()  # Case-insensitive matching
-
-    conn = get_connection()
-
-    # Industry tags
-    for tag, keywords in INDUSTRY_KEYWORDS.items():
-        if any(kw.upper() in text for kw in keywords):
-            conn.execute(
-                "INSERT OR IGNORE INTO blog_post_tags (post_id, tag_type, tag_value) VALUES (?, 'industry', ?)",
-                (post_id, tag)
-            )
-
-    # Topic tags
-    for tag, keywords in TOPIC_KEYWORDS.items():
-        if any(kw.upper() in text for kw in keywords):
-            conn.execute(
-                "INSERT OR IGNORE INTO blog_post_tags (post_id, tag_type, tag_value) VALUES (?, 'topic', ?)",
-                (post_id, tag)
-            )
-
-    # Stock tags — match against companies table
-    rows = conn.execute(
-        "SELECT stock_code, corp_name FROM companies WHERE stock_code IS NOT NULL"
-    ).fetchall()
-    for row in rows:
-        if row["corp_name"] in title or row["corp_name"] in (summary or ""):
-            conn.execute(
-                "INSERT OR IGNORE INTO blog_post_tags (post_id, tag_type, tag_value) VALUES (?, 'stock', ?)",
-                (post_id, row["stock_code"])
-            )
-
-    conn.commit()
-    conn.close()
-
-
-def get_tags_for_posts(post_ids: list[int]) -> dict[int, list[dict]]:
-    """Get tags for multiple posts at once."""
-    if not post_ids:
-        return {}
-    conn = get_connection()
-    placeholders = ",".join("?" for _ in post_ids)
-    rows = conn.execute(
-        f"SELECT post_id, tag_type, tag_value FROM blog_post_tags WHERE post_id IN ({placeholders})",
-        post_ids
-    ).fetchall()
-    conn.close()
-
-    result: dict[int, list[dict]] = {pid: [] for pid in post_ids}
-    for r in rows:
-        result[r["post_id"]].append({"type": r["tag_type"], "value": r["tag_value"]})
-    return result
-
-
-def get_all_tags() -> list[dict]:
-    """Get all unique tags with counts."""
-    conn = get_connection()
-    rows = conn.execute(
-        """SELECT tag_type, tag_value, COUNT(*) as count
-           FROM blog_post_tags
-           GROUP BY tag_type, tag_value
-           ORDER BY tag_type, count DESC"""
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]

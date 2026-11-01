@@ -74,7 +74,7 @@ const PRICE_LINES: LineConfig[] = [
   { key: "ma20", label: "MA20", color: "#38bdf8", lineWidth: 1 },   // sky
   { key: "ma60", label: "MA60", color: "#fb923c", lineWidth: 1 },   // orange
 ]
-interface PriceItem { trade_date: string; close: number }
+export interface PriceItem { trade_date: string; close: number }
 
 function PriceChart({ code, name }: { code: string; name: string }) {
   const { data, isLoading } = useQuery(

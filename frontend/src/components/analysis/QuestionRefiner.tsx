@@ -1,3 +1,4 @@
+import { toApiError } from '@/api/errors'
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { AlertTriangle, LoaderCircle, Sparkles, X } from 'lucide-react'
@@ -27,10 +28,9 @@ export function composeQuestion(refinement: Refinement, choices: Record<number, 
 function useRefineQuestion() {
   return useMutation({
     mutationFn: async (question: string) => {
-      try { return (await api.post<Refinement>('/api/analysis/refine', { question })).data }
+      try { return (await api.post<Refinement>('/api/analysis/refine', { question }, { timeout: 180_000 })).data }
       catch (error) {
-        const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
-        throw new Error(typeof detail === 'string' ? detail : '질문을 다듬지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        throw toApiError(error)
       }
     },
   })

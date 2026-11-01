@@ -63,9 +63,8 @@ def gather_inputs(conn, stock_code: str, entity_id: int) -> dict:
         SELECT rcp_no, action_type, rcept_dt, summary FROM corporate_actions
         WHERE stock_code=? AND rcept_dt >= strftime('%Y%m%d', date('now','-30 days'))
         ORDER BY rcept_dt DESC LIMIT 3""", (stock_code,)).fetchall()
-    thesis = conn.execute(
-        "SELECT thesis, conviction, target_price, updated_at FROM watchlist WHERE stock_code=?",
-        (stock_code,)).fetchone()
+    from pipeline.watch_rules import watch_thesis
+    thesis = watch_thesis(conn, stock_code)  # 관심 묶음 멤버의 논지·확신도·목표가
     notes = conn.execute("""
         SELECT id, memo_type, title, content, updated_at FROM ir_notes
         WHERE corp_code=(SELECT corp_code FROM companies WHERE stock_code=?)

@@ -13,6 +13,8 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+import time
 
 from services.tagging_service import INDUSTRY_KEYWORDS, TOPIC_KEYWORDS
 
@@ -224,12 +226,21 @@ def _call_claude_code(prompt: str, model: str = "haiku", timeout: int = 180,
     if effort:
         argv += ["--effort", effort]
     argv.append(prompt)
+    # llm_calls 원장 — 호출 모듈 이름을 job으로(pipeline.narrative → narrative). 이 경로가 원장 밖이라
+    # 내러티브 opus 같은 가장 큰 비용이 비용 화면에 안 보였다.
+    from pipeline import llm
+    job = sys._getframe(1).f_globals.get("__name__", "").removeprefix("pipeline.")
+    t0 = time.time()
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    ms = int((time.time() - t0) * 1000)
     if proc.returncode != 0:
         # claude는 오류(사용량 한도·미로그인 등)를 stdout에 쓴다 — stderr만 보면 원인이 비어 보임
-        raise RuntimeError(f"claude -p 실패 rc={proc.returncode} "
-                           f"out={proc.stdout.strip()[:200]!r} err={proc.stderr.strip()[:120]!r}")
+        err = (f"claude -p 실패 rc={proc.returncode} "
+               f"out={proc.stdout.strip()[:200]!r} err={proc.stderr.strip()[:120]!r}")
+        llm._record(job, model, "claude-code", effort, None, ms, err)
+        raise RuntimeError(err)
     envelope = json.loads(proc.stdout)
+    llm._record(job, model, "claude-code", effort, llm._from_result_event(envelope, model, ""), ms, None)
     return envelope.get("result", "")
 
 

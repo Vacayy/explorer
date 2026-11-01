@@ -1,3 +1,5 @@
+> **제거됨 (D-241)** — `/research/catalysts` 화면과 수동 CRUD API(`/api/catalysts`)는 삭제되고 `/portfolio/events`로 리다이렉트한다. `catalysts` 테이블은 포트폴리오 이벤트 파이프라인·홈 캘린더가 계속 쓴다.
+
 # 화면 기획서: 카탈리스트 캘린더
 
 > 경로: `/research/catalysts`

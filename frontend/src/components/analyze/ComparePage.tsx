@@ -1,6 +1,6 @@
 import { useSearchParams, Link } from "react-router-dom"
 import { useCompare } from "@/hooks/useCompare"
-import { useWatchlist } from "@/hooks/useWatchlist"
+import { useDefaultWatchGroup } from "@/hooks/useGroups"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -49,7 +49,7 @@ function CompanySelector({
   onAdd: (stock_code: string, corp_name: string) => void
   onRemove: (stock_code: string) => void
 }) {
-  const { data: watchlist } = useWatchlist()
+  const watchlist = useDefaultWatchGroup().data?.members
 
   function handleSelect(company: Company) {
     if (company.stock_code && !selected.find((s) => s.stock_code === company.stock_code)) {
@@ -91,10 +91,10 @@ function CompanySelector({
         />
       )}
 
-      {/* Watchlist quick-add */}
+      {/* 관심 종목 quick-add */}
       {watchlist && watchlist.length > 0 && (
         <div className="flex flex-wrap gap-1 items-center">
-          <span className="text-xs text-muted-foreground">워치리스트:</span>
+          <span className="text-xs text-muted-foreground">관심 종목:</span>
           {watchlist
             .filter((w) => !selected.find((s) => s.stock_code === w.stock_code))
             .slice(0, 8)
@@ -103,11 +103,11 @@ function CompanySelector({
                 key={w.stock_code}
                 variant="outline"
                 size="sm"
-                onClick={() => onAdd(w.stock_code, w.corp_name)}
+                onClick={() => onAdd(w.stock_code, w.name)}
                 disabled={selected.length >= 5}
                 className="h-auto font-normal text-xs px-2 py-0.5 rounded border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                + {w.corp_name}
+                + {w.name}
               </Button>
             ))}
         </div>

@@ -2,12 +2,12 @@ import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 /**
- * 지식 탭 내부 토글 — 지식(검증 핵심) ↔ 온톨로지(전체 인과 그래프). D-052.
- * 세계관 그래프를 지식 탭으로 통합(세계관 ⊃ 지식): 한 탭에서 전체 지도와 검증 핵심을 오간다.
+ * 월드모델 › 그래프 안의 보기 전환 (docs/specs/world-model.md §3) — 온톨로지(전체 인과 지도) ↔
+ * 변화·검증 지식(최근 그래프 변화 · 흔들리는 전제 · 승격된 지식). 그래프 탭의 기본은 온톨로지.
  */
 const TABS = [
-  { to: "/knowledge", label: "지식", active: (p: string) => p === "/knowledge" },
   { to: "/knowledge/ontology", label: "온톨로지", active: (p: string) => p.startsWith("/knowledge/ontology") },
+  { to: "/knowledge", label: "변화·검증 지식", active: (p: string) => p === "/knowledge" },
 ] as const
 
 export function KnowledgeSubNav() {

@@ -67,7 +67,6 @@ def add_telegram(body: AddTelegramRequest, background: BackgroundTasks):
     return {"channel": ch, "preview_messages": len(messages), "note": "백그라운드 수집 시작"}
 
 
-@router.post("/blog", status_code=201)
 def normalize_naver_blog(url: str) -> str:
     """네이버 글 주소 → 블로그 루트. 글 주소로 등록하면 피드가 그 한 글만 이 소스의 글로 보고 나머지(수집은 됨)를
     숨긴다(2026-10-13 KK Kontemporaries: 23건 중 1건만 보여 '수집 중단'처럼 보임)."""
@@ -83,8 +82,13 @@ def normalize_naver_blog(url: str) -> str:
     return url
 
 
+# 라우트는 add_blog에 — 데코레이터와 함수 사이에 도우미가 끼면 도우미(url 쿼리 인자)가 라우트가 돼
+# 본문 {url}이 늘 422였다(fc27fc4 ~ 2026-10-23)
+@router.post("/blog", status_code=201)
 def add_blog(body: AddBlogRequest, background: BackgroundTasks):
     url = body.url.strip().rstrip("/")
+    if "youtube.com" in url or "youtu.be" in url:
+        raise HTTPException(422, "유튜브 주소는 유튜브 카드에서 추가해 주세요 (채널 @handle·URL 또는 영상 URL).")
     if not url.startswith("http"):
         url = f"https://{url}"
     # 네이버 모바일 URL 정규화 — 포스트 URL(blog.naver.com)과 프리픽스 매칭돼야

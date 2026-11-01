@@ -38,8 +38,6 @@ def init_db():
     cur.executescript(DOC_CLAIMS_SCHEMA)
     from pipeline.company_profile import SCHEMA as PROFILE_SCHEMA  # 웹 조사 기업 개요 (D-188)
     cur.executescript(PROFILE_SCHEMA)
-    from pipeline.technical_commentary import SCHEMA as COMMENTARY_SCHEMA  # 기술적 분석 AI 해설 (D-191)
-    cur.executescript(COMMENTARY_SCHEMA)
     from pipeline.study_projects import migrate as migrate_study_projects
     migrate_study_projects(conn)
     from pipeline.study_actions import migrate as migrate_study_actions
@@ -189,18 +187,6 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_industry_members_group ON industry_members(group_id, category);
 
-    CREATE TABLE IF NOT EXISTS watchlist (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        stock_code   TEXT NOT NULL UNIQUE,
-        corp_code    TEXT NOT NULL,
-        corp_name    TEXT NOT NULL,
-        conviction   INTEGER DEFAULT 3 CHECK(conviction BETWEEN 1 AND 5),
-        target_price INTEGER,
-        thesis       TEXT,
-        created_at   TEXT DEFAULT (datetime('now')),
-        updated_at   TEXT DEFAULT (datetime('now'))
-    );
-
     CREATE TABLE IF NOT EXISTS catalysts (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         stock_code   TEXT,
@@ -253,16 +239,6 @@ def init_db():
         added_at     TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS telegram_messages (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        channel_name TEXT NOT NULL,
-        message_id   TEXT,
-        content      TEXT,
-        date         TEXT,
-        link         TEXT,
-        fetched_at   TEXT DEFAULT (datetime('now')),
-        UNIQUE(channel_name, message_id)
-    );
 
     CREATE TABLE IF NOT EXISTS blog_sources (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,27 +250,7 @@ def init_db():
         added_at     TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS blog_posts (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        source_id    INTEGER NOT NULL,
-        title        TEXT NOT NULL,
-        summary      TEXT,
-        content      TEXT,
-        author       TEXT,
-        url          TEXT,
-        published_at TEXT,
-        fetched_at   TEXT DEFAULT (datetime('now')),
-        UNIQUE(source_id, url)
-    );
 
-    CREATE TABLE IF NOT EXISTS blog_post_tags (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id      INTEGER NOT NULL,
-        tag_type     TEXT NOT NULL,
-        tag_value    TEXT NOT NULL,
-        UNIQUE(post_id, tag_type, tag_value)
-    );
-    CREATE INDEX IF NOT EXISTS idx_blog_post_tags ON blog_post_tags(tag_type, tag_value);
 
     -- ============================================================
     -- 그래프 척추 (Phase 1 ETL spine) — 신규 단일 진실원천.
@@ -620,22 +576,6 @@ def init_db():
         created_at     TEXT DEFAULT (datetime('now'))
     );
 
-    -- Peer 그룹 (LLM 큐레이션 1회 캐시) + 지표 캐시 (KR=자체, 해외=yfinance 24h)
-    CREATE TABLE IF NOT EXISTS stock_peers (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        stock_code TEXT NOT NULL,
-        name       TEXT NOT NULL,
-        ticker     TEXT NOT NULL,          -- 야후 티커 (005930.KS, MU 등)
-        market     TEXT NOT NULL,          -- KR | US | JP | ...
-        created_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(stock_code, ticker)
-    );
-    CREATE TABLE IF NOT EXISTS peer_metrics (
-        ticker       TEXT PRIMARY KEY,
-        metrics_json TEXT NOT NULL,
-        fetched_at   TEXT NOT NULL
-    );
-
     -- 지식 계층 (K0, knowledge-hierarchy-design.md) — 신피질: 승격된 통합 지식
     CREATE TABLE IF NOT EXISTS knowledge (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -710,16 +650,6 @@ def init_db():
         is_active   INTEGER DEFAULT 1,
         last_fetched_at TEXT,
         added_at    TEXT DEFAULT (datetime('now'))
-    );
-    -- 특징일 설명 캐시 — 급등락일 원인 (마커 클릭 시 1콜, 영구 캐시)
-    CREATE TABLE IF NOT EXISTS feature_day_notes (
-        stock_code TEXT NOT NULL,
-        date       TEXT NOT NULL,
-        note       TEXT,               -- NULL이면 status 참조 (no_docs 등)
-        status     TEXT NOT NULL,      -- ok | no_docs | failed
-        model      TEXT,
-        created_at TEXT,
-        PRIMARY KEY (stock_code, date)
     );
     -- 밸류체인 구조 (맵 v2) — 대분류별 단계·테마 (LLM 시드)
     CREATE TABLE IF NOT EXISTS value_chains (
@@ -878,25 +808,14 @@ def init_db():
     -- 내러티브·리포트는 버전 행 PK를 ref로 저장(보던 그 버전 고정). UNIQUE(kind, ref)로 토글 멱등.
     CREATE TABLE IF NOT EXISTS saved_items (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind         TEXT NOT NULL,          -- company | doc | narrative | report | synthesis
-        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id | synthesis id
+        kind         TEXT NOT NULL,          -- company | doc | narrative | report
+        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id
         url          TEXT NOT NULL,
         title        TEXT,
         subtitle     TEXT,
         note         TEXT,
         created_at   TEXT DEFAULT (datetime('now')),
         UNIQUE(kind, ref)
-    );
-
-    -- 문서 교차 종합 — 사람이 고른 문서 묶음을 엮어 읽은 산출물 (D-104, docs/specs/doc-synthesis.md)
-    -- 일회성: 묶음 객체 없음. 같은 조합 재생성은 새 행(append-only 히스토리).
-    CREATE TABLE IF NOT EXISTS doc_syntheses (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        doc_ids      TEXT NOT NULL,          -- json 배열(정렬된 raw_documents.id) — 무엇을 엮었나 스냅샷
-        title        TEXT,
-        body         TEXT NOT NULL,          -- 마크다운 산출물
-        model        TEXT,
-        created_at   TEXT DEFAULT (datetime('now'))
     );
 
     -- 이미지 비전 분석 캐시 (이미지당 1회 — 증시일정표 → 이벤트 추출)
@@ -909,6 +828,28 @@ def init_db():
         events_json  TEXT,
         model        TEXT,
         analyzed_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 이미지 해석 캐시 (docs/specs/image-reading.md) — 이미지 파일은 저장하지 않고 해석만 남긴다.
+    -- 키: 텔레그램 'telegram/{채널}_{메시지}_{순번}', 블로그 이미지 URL. 재수집 시 같은 텍스트 → 문서 해시 안정.
+    CREATE TABLE IF NOT EXISTS image_readings (
+        image_key    TEXT PRIMARY KEY,
+        status       TEXT NOT NULL,     -- ok | skip(정보 가치 없음) | filtered(사전 필터) | failed
+        kind         TEXT,              -- chart | table | text | diagram | calendar | photo | other
+        title        TEXT,
+        insight      TEXT,              -- 이미지가 전달하려는 메시지
+        evidence     TEXT,              -- 받치는 근거 1~3개
+        events_json  TEXT,              -- calendar면 catalysts로 적재한 이벤트
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        error        TEXT,
+        model        TEXT,
+        updated_at   TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 이미지 해석 백로그 처리 완료 문서 (pipeline/image_backfill.py) — 본문 교체(또는 변경 없음 확인)까지 끝난 문서
+    CREATE TABLE IF NOT EXISTS image_backfill_docs (
+        doc_id      INTEGER PRIMARY KEY,
+        done_at     TEXT DEFAULT (datetime('now'))
     );
 
     -- 전문 검색 (BM25) — raw_documents 외부 콘텐츠 방식 + 트리거 동기화.
@@ -1027,6 +968,45 @@ def init_db():
     -- 시장 국면 (market regime, D-076, docs/specs/market-regime.md) — 매크로 리스크 포스처.
     -- 일별 스냅샷(EOD): F&G·VIX·S&P·KOSPI·20EMA·VKOSPI/실현변동성. 스파크라인 히스토리 = 축적.
     -- 지표 = fact (hypothesis 아님). 포스처 결합은 API에서 결정적 계산(LLM 0), 여기엔 원지표만.
+    CREATE TABLE IF NOT EXISTS pricing_claims (   -- 시장 프라이싱 원장(docs/specs/pricing-ledger.md): 시장이 전제로 삼는 기대
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        statement TEXT NOT NULL,
+        theme TEXT NOT NULL,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS pricing_observations (
+        trade_date TEXT NOT NULL,
+        claim_id INTEGER NOT NULL REFERENCES pricing_claims(id),
+        stance TEXT NOT NULL CHECK (stance IN ('present','stronger','weaker','contested')),
+        evidence TEXT,
+        sources_json TEXT,
+        PRIMARY KEY (trade_date, claim_id)
+    );
+    CREATE TABLE IF NOT EXISTS pricing_days (     -- 브리핑 하루 추출 기록 — signature가 같으면 다시 뽑지 않는다
+        trade_date TEXT PRIMARY KEY,
+        signature TEXT NOT NULL,
+        model TEXT,
+        new_claims INTEGER,
+        observed INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS era_checks (       -- 지금 시장 읽기 층 3: Marks 체크리스트 정성 항목(사람 판단, docs/specs/market-regimes.md §8)
+        key TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK (state IN ('hot','normal','cold')),
+        note TEXT,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS era_commentary (   -- 지금 시장 읽기 LLM 해설 — 입력 해시가 같으면 다시 만들지 않는다
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        input_hash TEXT NOT NULL UNIQUE,
+        input_json TEXT NOT NULL,
+        body TEXT NOT NULL,
+        model TEXT,
+        cost_usd REAL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS market_indicators (
         snapshot_date TEXT NOT NULL,        -- KST YYYY-MM-DD
         indicator     TEXT NOT NULL,        -- fear_greed | vix | sp500 | kospi | kospi_ema20 | vkospi | kospi_vol
@@ -1101,6 +1081,138 @@ def init_db():
         checked_at       TEXT DEFAULT (datetime('now'))
     );
 
+    -- 컨콜 시장 반응 — 발표일~7일 내 내 자료·주가·Yahoo 헤드라인을 sonnet으로 정리 (pipeline/call_reaction.py)
+    -- 창이 열려 있으면 interim(버튼), 닫힌 뒤 final(매일 callmomentum 회차가 한 번 확정)
+    CREATE TABLE IF NOT EXISTS transcript_reactions (
+        transcript_id INTEGER PRIMARY KEY,  -- FK transcripts.id
+        window_start  TEXT NOT NULL,        -- call_date
+        window_end    TEXT NOT NULL,        -- call_date + 7일
+        status        TEXT NOT NULL,        -- interim | final
+        body          TEXT,                 -- 마크다운 정리 ([n] 인용)
+        prices_json   TEXT,                 -- 발표 전 종가 대비 일별 누적 수익률(종목·SPY)
+        sources_json  TEXT,                 -- [n] → 문서·헤드라인
+        n_docs        INTEGER,              -- 기간 안에서 찾은 내 자료 수(정리에 넣기 전)
+        input_hash    TEXT,
+        created_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 실적 시즌 체인 (docs/specs/earnings-season.md, D-277) — 발표 한 건 = (ticker, 회계연도, 회계분기).
+    -- 녹취록보다 먼저 생긴다(예정 발표일 → 발표 전 기대를 붙이려고). 발표일은 SEC 실적 공시가 오면 그 날짜로 교정
+    CREATE TABLE IF NOT EXISTS earnings_events (
+        ticker        TEXT NOT NULL,
+        fiscal_year   INTEGER NOT NULL,
+        fiscal_period TEXT NOT NULL,        -- Q1..Q4
+        event_date    TEXT NOT NULL,        -- 미국 날짜
+        season        TEXT NOT NULL,        -- 2026Q3 (발표 시점 기준, call_momentum.season)
+        confirmed     INTEGER DEFAULT 0,    -- 1 = SEC 실적 공시로 확인, 0 = yfinance 예정일
+        eps_est       REAL,                 -- yfinance 발표 직전 컨센서스(지난 분기도 받을 수 있음)
+        eps_actual    REAL,
+        eps_surprise  REAL,                 -- % (GAAP·조정 혼재 — 참고용)
+        updated_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, fiscal_year, fiscal_period)
+    );
+    -- 발표 전 기대 — D-7·D-1 스냅샷. 정량(yfinance)은 전 종목, 정성(sonnet)은 핵심 종목만
+    CREATE TABLE IF NOT EXISTS earnings_expectations (
+        ticker        TEXT NOT NULL,
+        fiscal_year   INTEGER NOT NULL,
+        fiscal_period TEXT NOT NULL,
+        snapshot      TEXT NOT NULL,        -- d7 | d1
+        event_date    TEXT,
+        quant_json    TEXT,                 -- 컨센서스·추정치 수정·발표 전 상승폭·목표가 변경·내재 변동폭
+        issues_json   TEXT,                 -- [{issue, why, good, bad, weight high|mid|low, cites}]
+        positioning   TEXT,
+        points_json   TEXT,                 -- 화면 '발표 전' 불릿
+        thin          TEXT,
+        n_docs        INTEGER,
+        prompt_version TEXT,
+        input_hash    TEXT,
+        created_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, fiscal_year, fiscal_period, snapshot)
+    );
+    -- 섹터 요약 이력 — 입력이 바뀔 때마다 새 행(덮어쓰지 않음). '해석이 바뀐 과정'·'오늘 바뀐 것'의 원천
+    CREATE TABLE IF NOT EXISTS season_themes (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        season        TEXT NOT NULL,
+        sector        TEXT NOT NULL,
+        verdict       TEXT,                 -- 반김 우세 | 실망 우세 | 엇갈림
+        body_json     TEXT,                 -- {one_line, welcomed, questioned, change_note, next, vs_last_season}
+        tickers       TEXT,                 -- 근거 종목 CSV
+        input_hash    TEXT,
+        created_at    TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_season_themes ON season_themes(season, sector, id);
+    -- 핵심 종목 — 시즌마다 계산. reasons: cap|mention|holding_chain|dc_chain|pinned
+    CREATE TABLE IF NOT EXISTS earnings_core (
+        season        TEXT NOT NULL,
+        ticker        TEXT NOT NULL,
+        reasons       TEXT NOT NULL,        -- JSON 배열
+        mention_docs  INTEGER,
+        mention_sources INTEGER,
+        computed_at   TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (season, ticker)
+    );
+    -- 애널리스트 등급·목표가 변경 (yfinance upgrades_downgrades 캐시)
+    CREATE TABLE IF NOT EXISTS us_pt_changes (
+        ticker        TEXT NOT NULL,
+        graded_at     TEXT NOT NULL,
+        firm          TEXT NOT NULL,
+        action        TEXT,
+        to_grade      TEXT,
+        pt_from       REAL,
+        pt_to         REAL,
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, graded_at, firm)
+    );
+
+    -- 관측 (docs/specs/observability.md, D-283) — API 요청 시간 단위 집계(경로 패턴·상태 계층·응답시간 구간)
+    CREATE TABLE IF NOT EXISTS api_requests_hourly (
+        hour          TEXT NOT NULL,        -- 'YYYY-MM-DD HH:00' UTC
+        method        TEXT NOT NULL,
+        route         TEXT NOT NULL,        -- '/api/spine/us/{ticker}' (실제 값 아님)
+        status_class  TEXT NOT NULL,        -- 2xx | 3xx | 4xx | 5xx
+        count         INTEGER DEFAULT 0,
+        total_ms      REAL DEFAULT 0,
+        max_ms        REAL DEFAULT 0,
+        b100 INTEGER DEFAULT 0, b300 INTEGER DEFAULT 0, b1000 INTEGER DEFAULT 0, b3000 INTEGER DEFAULT 0, bslow INTEGER DEFAULT 0,
+        PRIMARY KEY (hour, method, route, status_class)
+    );
+    -- 사용 이벤트 — 프런트가 묶어 보낸다. type: view | leave | action | open (종류는 스펙에 먼저 추가)
+    CREATE TABLE IF NOT EXISTS usage_events (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts            TEXT NOT NULL,        -- UTC ISO
+        session       TEXT,
+        type          TEXT NOT NULL,
+        name          TEXT NOT NULL,        -- 라우트 패턴 또는 동작 이름
+        ref           TEXT,                 -- 직전 화면 패턴(view)
+        entity        TEXT,                 -- 티커·종목코드·id
+        dwell_ms      INTEGER               -- leave: 보이는 동안 머문 시간
+    );
+    CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_usage_events_type ON usage_events(type, name);
+    -- 즉시 경고 상태 — 상태가 바뀔 때만 보내려고(같은 경고는 하루 1회)
+    CREATE TABLE IF NOT EXISTS alert_state (
+        key           TEXT PRIMARY KEY,     -- 'job_streak:pf_intraday' 등
+        active        INTEGER NOT NULL,
+        detail        TEXT,
+        changed_at    TEXT,
+        sent_at       TEXT
+    );
+
+    -- 화면 API 오류 기록 — 프런트 응답 래퍼가 보고(계약 위반·5xx·timeout·네트워크). 같은 API·필드·종류는 한 행
+    CREATE TABLE IF NOT EXISTS client_errors (
+        signature     TEXT PRIMARY KEY,
+        endpoint      TEXT NOT NULL,        -- 'GET /api/...'
+        kind          TEXT NOT NULL,        -- schema | http | timeout | network | unknown
+        status        INTEGER,
+        field         TEXT,                 -- 첫 검증 실패 경로
+        detail        TEXT,
+        issues_json   TEXT,
+        page          TEXT,                 -- 마지막으로 난 화면
+        count         INTEGER DEFAULT 1,
+        first_seen    TEXT,
+        last_seen     TEXT
+    );
+
     -- 프록시 레지스트리 (사람이 세팅 — "무엇을 볼지") — 리포트 핵심질문(D-049)의 관찰 프록시
     CREATE TABLE IF NOT EXISTS proxy_registry (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1128,6 +1240,13 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_transcripts_ticker ON transcripts(ticker, fiscal_year, fiscal_period);
     CREATE INDEX IF NOT EXISTS idx_proxy_obs ON proxy_observations(proxy_id, observed_at);
+    -- 컨콜 프록시 추출을 마친 (프록시, 컨콜) 쌍 — 못 찾은 쌍도 남겨 매일 다시 부르지 않는다(2026-10-16)
+    CREATE TABLE IF NOT EXISTS proxy_scans (
+        proxy_id      INTEGER NOT NULL,
+        transcript_id INTEGER NOT NULL,
+        scanned_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (proxy_id, transcript_id)
+    );
 
     -- 핵심질문 트래커 (D-067·D-068, docs/specs/question-proxy.md) — 분할정복:
     -- 질문 → 서브질문 → 프록시 → 관측 → 판정. 질문 = 지식의 미결 버전(판정되면 knowledge로 승격).
@@ -1196,12 +1315,189 @@ def init_db():
         UNIQUE(hs_code, name)
     );
     CREATE INDEX IF NOT EXISTS idx_trade_stats ON trade_stats(hs_code, period);
+
+    -- 홈 위젯 배치 (단일 사용자, 이름별 한 벌 — routers/dashboard.py)
+    -- 내 프리셋 — 홈 보드 배치를 이름 붙여 저장해 두고 칩으로 불러온다(docs/specs/home-widgets.md §5, 기본 프리셋 대체)
+    -- 홈 메뉴(보드) — 메뉴 하나 = 위젯 배치 하나(docs/specs/home-widgets.md §5). 홈 L2 탭이 이 행들이다
+    CREATE TABLE IF NOT EXISTS home_boards (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        label         TEXT NOT NULL,
+        sort          INTEGER NOT NULL DEFAULT 0,        -- 탭 순서(작을수록 왼쪽)
+        layout_json   TEXT NOT NULL,                     -- [{i, widget, x, y, w, h, params}] — dashboard_layouts와 같은 형식
+        created_at    TEXT DEFAULT (datetime('now')),
+        updated_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS dashboard_layouts (
+        id            INTEGER PRIMARY KEY,
+        name          TEXT NOT NULL UNIQUE,
+        layout_json   TEXT NOT NULL,        -- [{i, widget, x, y, w, h, params}]
+        updated_at    TEXT NOT NULL
+    );
+
+    -- 외부 월간 시계열 (docs/specs/value-chain.md §7) — WSTS 세계 반도체 매출·SEAJ 일본 장비·Census 데이터센터 건설·
+    -- 대만 수출수주 등. series는 'wsts:world' 같은 출처:키, period=YYYY-MM(월) 또는 분기 끝 월
+    CREATE TABLE IF NOT EXISTS ext_series (
+        series      TEXT NOT NULL,
+        period      TEXT NOT NULL,
+        value       REAL,
+        unit        TEXT,
+        source      TEXT,                   -- 원천 URL 또는 파일명
+        fetched_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (series, period)
+    );
+
+    -- 미국 수요 기업 분기 실적 (docs/specs/value-chain.md §6) — SEC XBRL companyfacts, 분기 단독 값(누적은 차감).
+    -- use_key = 밸류체인 최종 수요 키(ai·ai_accel·mobile), q = 달력 분기 끝 'YYYY-MM'
+    CREATE TABLE IF NOT EXISTS us_quarterly (
+        ticker      TEXT NOT NULL,
+        q           TEXT NOT NULL,
+        metric      TEXT NOT NULL,          -- capex | revenue
+        value       REAL,                   -- USD
+        tag         TEXT,                   -- 쓴 XBRL 계정
+        use_key     TEXT,
+        fetched_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, q, metric)
+    );
+
+    -- 시장 기대치 — 칸 구성 회사 애널리스트 컨센서스 일별 스냅샷 (docs/specs/value-chain.md §15, pipeline/vc_expectations)
+    -- period: 0q(이번 분기)·+1q·0y(올해)·+1y. 매출 추정 개정은 스냅샷끼리 비교해 우리가 계산한다(yfinance는 EPS 추이만 준다)
+    CREATE TABLE IF NOT EXISTS consensus_snapshots (
+        ticker      TEXT NOT NULL,          -- yfinance 심볼(NVDA·2330.TW·6223.TWO·000660.KS)
+        snap_date   TEXT NOT NULL,          -- YYYY-MM-DD
+        period      TEXT NOT NULL,
+        rev_avg     REAL,                   -- 매출 추정 평균(현지 통화)
+        rev_growth  REAL,                   -- 전년 같은 기간 대비 추정 성장률(소수, 0.44 = +44%)
+        analysts    INTEGER,
+        eps_avg     REAL,
+        eps_30d     REAL,                   -- 30일 전 EPS 추정
+        eps_90d     REAL,
+        currency    TEXT,
+        PRIMARY KEY (ticker, snap_date, period)
+    );
+
+    -- 시장 기대치 — 전망 원장(§15). 리서치 기관 공개 전망(TrendForce·WSTS)과 피드의 증권사 전망을 같은 형식으로.
+    -- 사실(관측)과 섞지 않는다: 화면은 관측 옆에 '기대'로 따로 보인다
+    CREATE TABLE IF NOT EXISTS expectation_claims (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        source        TEXT NOT NULL,        -- trendforce | wsts | feed
+        source_org    TEXT,                 -- TrendForce · WSTS · JP Morgan …
+        published_at  TEXT,
+        node_key      TEXT NOT NULL DEFAULT '',   -- 밸류체인 칸(value_chain NODES/DEMANDS), 못 정하면 ''
+        subject       TEXT NOT NULL DEFAULT '',   -- 원문 대상(예: 'DRAM contract price', 'Memory market')
+        metric        TEXT NOT NULL,        -- price_qoq | price_yoy | market_yoy | shipments_yoy | revenue_yoy …
+        target_period TEXT NOT NULL DEFAULT '',   -- 2026Q4 · 2027 · 2026H2
+        value_low     REAL,                 -- 범위 하단(%, 단위는 unit)
+        value_high    REAL,
+        unit          TEXT,                 -- '%' | 'USD bn' …
+        direction     TEXT,                 -- up | down | flat
+        quote         TEXT,                 -- 원문 근거 문장
+        url           TEXT,
+        doc_id        INTEGER,              -- raw_documents.id(피드 추출일 때)
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        -- 빈 값은 NULL이 아니라 '' — SQLite는 NULL끼리를 다른 값으로 봐 매일 재수집 때 중복이 쌓인다
+        UNIQUE (source, url, node_key, subject, metric, target_period)
+    );
+
+    -- 피드 증권사 전망 추출 처리 기록(§15 3단계, pipeline/exp_feed) — 한 문서는 한 번만 처리(비용 원칙)
+    CREATE TABLE IF NOT EXISTS exp_feed_docs (
+        doc_id       INTEGER PRIMARY KEY,   -- raw_documents.id
+        status       TEXT NOT NULL,         -- ok | none(전망 없음) | error
+        n_claims     INTEGER DEFAULT 0,
+        n_dropped    INTEGER DEFAULT 0,     -- 원문에 인용문이 없어 버린 수(환각 방지)
+        error        TEXT,
+        processed_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 밸류체인 트리 보고서 (docs/specs/value-chain.md §16, pipeline/chain_report) — append-only, 버튼으로 요청할 때만 생성
+    CREATE TABLE IF NOT EXISTS chain_reports (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        root        TEXT NOT NULL,          -- 루트 칸(value_chain 수요·칸 key)
+        status      TEXT NOT NULL,          -- running | done | partial | error
+        progress    TEXT,                   -- 진행 단계(화면 표시)
+        tree_json   TEXT,                   -- 고른 트리 [{key,name,parent,depth,flow_usd}]
+        body        TEXT,                   -- 보고서 마크다운
+        refs_json   TEXT,                   -- 인용 문서 [{ref,title,url,date,kind}]
+        missing_json TEXT,                  -- 메모 실패로 빠진 칸
+        inputs_hash TEXT,
+        model       TEXT,
+        error       TEXT,
+        created_at  TEXT DEFAULT (datetime('now')),
+        finished_at TEXT
+    );
+    -- 칸 메모 캐시 — 같은 자료 묶음(입력 해시)이면 다시 쓰지 않는다(비용 원칙)
+    CREATE TABLE IF NOT EXISTS chain_node_notes (
+        node_key    TEXT NOT NULL,
+        inputs_hash TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        model       TEXT,
+        created_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (node_key, inputs_hash)
+    );
+
+    -- 미국 기업 고객 집중도 (pipeline/us_customers) — 10-K/10-Q XBRL 인스턴스의 ConcentrationRiskPercentage1 × srt:MajorCustomersAxis.
+    -- customer = 멤버 로컬명(익명 'CustomerA' 등, 공시마다 같은 글자가 같은 회사라는 보장 없음), period_kind = Q|FY|YTD|I(시점)
+    CREATE TABLE IF NOT EXISTS us_customer_concentration (
+        ticker      TEXT NOT NULL,
+        period_end  TEXT NOT NULL,          -- YYYY-MM-DD
+        period_kind TEXT NOT NULL,
+        customer    TEXT NOT NULL,
+        benchmark   TEXT NOT NULL,          -- revenue | receivables
+        pct         REAL,                   -- 퍼센트(0.12 → 12.0)
+        extra_dims  TEXT,                   -- 고객·기준·유형 외 차원(예: 사업부 귀속) — 있으면 '축=멤버;...'
+        form        TEXT,
+        accession   TEXT,
+        fetched_at  TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, period_end, period_kind, customer, benchmark)
+    );
+
+    -- 대만 월매출 (docs/specs/tw-revenue.md) — 91개사(pipeline/tw_universe), 단위 천 TWD, ym=YYYY-MM.
+    -- 최신 월은 TWSE·TPEx Open API, 과거 월은 MOPS 월별 요약. 공시가 1~10일에 나눠 올라와 매일 덮어쓴다
+    CREATE TABLE IF NOT EXISTS tw_monthly_revenue (
+        code          TEXT NOT NULL,
+        ym            TEXT NOT NULL,
+        name_zh       TEXT,
+        market        TEXT,                 -- TWSE(상장) | TPEx(장외)
+        revenue       REAL,                 -- 당월
+        prev_month    REAL,
+        last_year     REAL,                 -- 전년 동월
+        mom_pct       REAL,
+        yoy_pct       REAL,
+        cum           REAL,                 -- 당해 누적
+        cum_last_year REAL,
+        cum_pct       REAL,
+        note          TEXT,                 -- 회사가 단 증감 사유
+        source        TEXT,                 -- openapi | mops
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (code, ym)
+    );
+
+    -- 프록시 보드 (D-240, docs/specs/question-proxy.md) — 주제별 지표 묶음. 지표는 proxy_registry 행이고
+    -- 결정적 어댑터(adapter·adapter_ref)는 원천 테이블을 직접 읽는다(proxy_observations에 복사하지 않음)
+    CREATE TABLE IF NOT EXISTS proxy_boards (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        name          TEXT NOT NULL UNIQUE,
+        description   TEXT,
+        question_id   INTEGER,              -- 선택 연결: 핵심질문
+        narrative_id  INTEGER,              -- 선택 연결: 서사
+        group_id      INTEGER,              -- 선택 연결: 종목 묶음
+        created_at    TEXT DEFAULT (datetime('now')),
+        updated_at    TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS proxy_board_items (
+        board_id      INTEGER NOT NULL,
+        proxy_id      INTEGER NOT NULL,
+        position      INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (board_id, proxy_id)
+    );
     """)
 
     conn.commit()
 
     for migration in [
         "ALTER TABLE raw_documents ADD COLUMN media_json TEXT",
+        "ALTER TABLE chain_reports ADD COLUMN analysis TEXT",   # 트리 보고서 분석 메모(글쓰기 단계의 뼈대, D-265)
+        "ALTER TABLE chain_reports ADD COLUMN outline TEXT",    # 트리 보고서 목차 순서 bottom_up | top_down (D-266)
         "ALTER TABLE conversations ADD COLUMN chat_id TEXT",  # 사용자 분리 (텔레그램 chat_id, 웹=NULL=오너)
         "ALTER TABLE conversations ADD COLUMN summary TEXT",     # 스레드 작업 노트 (컴팩션, D-131)
         "ALTER TABLE conversations ADD COLUMN state_json TEXT",  # 스레드 상태: 엔티티·마지막 intent·도구·근거 (D-131)
@@ -1213,7 +1509,6 @@ def init_db():
         "ALTER TABLE telegram_channels ADD COLUMN last_fetched_at TEXT",
         "ALTER TABLE blog_sources ADD COLUMN is_active INTEGER DEFAULT 1",
         "ALTER TABLE blog_sources ADD COLUMN last_fetched_at TEXT",
-        "ALTER TABLE blog_posts ADD COLUMN author TEXT",
         "ALTER TABLE blog_sources ADD COLUMN author TEXT",
         "ALTER TABLE entity_keywords ADD COLUMN status TEXT DEFAULT 'active'",
         "ALTER TABLE knowledge ADD COLUMN contested_at TEXT",  # K2: contested 전환 시각 (알림 쿨다운 기준)
@@ -1251,6 +1546,7 @@ def init_db():
         "ALTER TABLE narratives ADD COLUMN mer_body TEXT",
         "ALTER TABLE narratives ADD COLUMN mer_path_hash TEXT",  # 경로 변경 시에만 재생성 (가드)
         "ALTER TABLE narratives ADD COLUMN drift_summary TEXT",  # 직전 버전 대비 변화 한 줄 (Phase 2 §2-3)
+        "ALTER TABLE narratives ADD COLUMN change_summary TEXT",  # 서사가 어떻게 옮겨 갔나 1~2문장 — 본 생성 호출이 같이 냄 (홈 위젯)
         # 메가 내러티브 층 (D-031) — 공유노드 군집의 상위 세계관 서사. kind='mega'면
         # topic=군집 라벨(LLM 명명), members_json=구성 sub-story 토픽들, doc_ids_hash=멤버 해시
         "ALTER TABLE narratives ADD COLUMN kind TEXT DEFAULT 'topic'",   # topic | mega
@@ -1287,6 +1583,16 @@ def init_db():
         "ALTER TABLE youtube_channels ADD COLUMN collect_enabled INTEGER DEFAULT 1",
         # 링크 스크랩 채널 (D-142) — 본문 없이 URL만 올리는 채널. 켜면 링크를 따라가 원문을 별도 문서로 적재한다.
         "ALTER TABLE telegram_channels ADD COLUMN expand_links INTEGER DEFAULT 0",
+        # 프록시 보드 (D-240) — 결정적 어댑터 지표. adapter_ref 예: credit:ORCL · trade:854232:yoy · indicator:risk_hy
+        "ALTER TABLE call_momentum ADD COLUMN summary TEXT",           # 실적 모멘텀 카드 AI 핵심 요약(2026-10-22)
+        "ALTER TABLE call_momentum ADD COLUMN summary_hash TEXT",
+        "ALTER TABLE proxy_registry ADD COLUMN adapter TEXT",          # credit|trade|call_momentum|indicator|retail|sector|price (NULL=기존 컨콜·여론 프록시)
+        "ALTER TABLE proxy_registry ADD COLUMN adapter_ref TEXT",
+        "ALTER TABLE proxy_registry ADD COLUMN warn_direction TEXT",   # up|down|NULL — 어느 방향 움직임이 '주의'인가
+        "ALTER TABLE proxy_registry ADD COLUMN rationale TEXT",        # 왜 이 주제의 선행/확정 신호인가
+        # 실적 시즌 체인 (D-277) — 반응 정리의 구조화 필드(해석·반긴 것·문제 삼은 것·쟁점 판정·화면 불릿)
+        "ALTER TABLE transcript_reactions ADD COLUMN meta_json TEXT",
+        "ALTER TABLE transcript_follow ADD COLUMN core_pinned INTEGER DEFAULT 0",   # 사용자가 핵심 종목으로 고정
     ]:
         try:
             conn.execute(migration)
@@ -1344,6 +1650,17 @@ def init_db():
             DROP TABLE stock_briefs_old;
             CREATE INDEX IF NOT EXISTS idx_stock_briefs_entity ON stock_briefs(entity_id, id);
         """)
+        conn.commit()
+
+    # 내 프리셋 → 홈 메뉴(1회성): 옛 홈 배치('home-v2')를 첫 메뉴로, 저장해 둔 프리셋을 그 뒤 메뉴로 옮기고 프리셋 표를 지운다
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dashboard_presets'").fetchone():
+        if not conn.execute("SELECT 1 FROM home_boards").fetchone():
+            row = conn.execute("SELECT layout_json FROM dashboard_layouts WHERE name='home-v2'").fetchone()
+            if row:
+                conn.execute("INSERT INTO home_boards (label, sort, layout_json) VALUES ('대시보드', 0, ?)", (row[0],))
+            conn.execute("INSERT INTO home_boards (label, sort, layout_json) "
+                         "SELECT label, id, layout_json FROM dashboard_presets WHERE board='home-v2' ORDER BY id")
+        conn.execute("DROP TABLE dashboard_presets")
         conn.commit()
 
     # 보유 종목 논지(portfolio-intelligence §2) — questions 생성 뒤에 붙여야 새 DB에서도 칼럼이 생긴다

@@ -1,9 +1,10 @@
 """매크로·유동성 트래킹 (docs/specs/macro.md) — market_indicators 스냅샷 재사용.
 
-매크로(키 없음, yfinance): 미10Y(^TNX)·달러/원·엔/원·달러 DXY·유가(WTI)·금·신용 HYG·비트코인.
+매크로(키 없음, yfinance): 달러/원·엔/원·달러 DXY·유가(WTI)·금·신용 HYG·비트코인.
 유동성(FRED 무료키 FRED_API_KEY): Fed 대차대조표(WALCL)·TGA(WTREGEN)·역레포(RRPONTSYD)·M2(M2SL).
   → **순유동성 = WALCL − TGA − RRP** (= MacroMicro US Liquidity Index, 읽을 때 계산).
 FRED 키 없으면 유동성 축만 degraded(매크로는 정상).
+미 2Y·10Y는 정본(pipeline.indicator_canon, FRED DGS2·DGS10 `risk_*`)을 읽고, 스냅샷 때 Risk 수집기로 갱신을 위임한다.
 
 갱신은 버튼 주도(D-100 계승): GET=스냅샷 순수 읽기, POST /snapshot=재수집. 지표는 market_indicators에
 'macro_' 프리픽스로 적재(시장 국면과 네임스페이스 분리).
@@ -19,12 +20,13 @@ import urllib.request
 from datetime import date, datetime, timedelta
 
 from database import get_connection
+from pipeline import indicator_canon
 from pipeline.market_regime import _series, _yf_history
 
 # 키 없음 (yfinance) — 종가 시계열
-YF = {"us10y": "^TNX", "usdkrw": "KRW=X", "jpykrw": "JPYKRW=X", "dxy": "DX-Y.NYB", "oil": "CL=F", "gold": "GC=F", "hyg": "HYG", "btc": "BTC-USD"}
-# Public FRED Treasury series; no key required for the official CSV export.
-PUBLIC_FRED = {"us2y": "DGS2"}
+YF = {"usdkrw": "KRW=X", "jpykrw": "JPYKRW=X", "dxy": "DX-Y.NYB", "oil": "CL=F", "gold": "GC=F", "hyg": "HYG", "btc": "BTC-USD"}
+# 정본 계열에서 읽는 금리 (FRED 공식 CSV, Risk 수집기가 적재)
+CANON_RATES = ("us2y", "us10y")
 # FRED (무료키) — 유동성 구성요소
 FRED = {"fed_bs": "WALCL", "tga": "WTREGEN", "rrp": "RRPONTSYD", "m2": "M2SL"}
 # 단위 → 십억달러($B) 정규화: WALCL·WTREGEN=백만$, RRPONTSYD·M2=십억$
@@ -101,8 +103,6 @@ def snapshot_macro() -> dict:
 
     for name, ticker in YF.items():
         _try(name, lambda t=ticker: _yf_history(t))
-    for name, sid in PUBLIC_FRED.items():
-        _try(name, lambda s=sid: _public_fred_history(s))
     for name, sid in FRED.items():
         _try(name, lambda s=sid: _fred_history(s))
 
@@ -115,8 +115,11 @@ def snapshot_macro() -> dict:
             n += 1
     conn.commit()
     conn.close()
+    failed = indicator_canon.refresh(CANON_RATES)
+    degraded += failed
+    refreshed = [k for k in CANON_RATES if not any(f.startswith(f"{k}(") for f in failed)]
     _refresh_signal()   # 신호등 산문 생성(sonnet, signature 캐시) — 버튼/스냅샷 때만
-    return {"rows": n, "indicators": list(fetched), "degraded": degraded}
+    return {"rows": n, "indicators": list(fetched) + refreshed, "degraded": degraded}
 
 
 # ── 읽기 (일반 로드 — 순수, 네트워크 없음) ────────────────────────────────────
@@ -250,7 +253,8 @@ def _read_signal(as_of: str | None) -> dict | None:
 def get_macro(with_signal: bool = True) -> dict:
     """매크로·유동성 지표 그룹 + 스파크라인 + 신호등 산문. LLM 0(읽기). market_indicators 순수 읽기."""
     conn = get_connection()
-    raw = {name: _series(conn, f"macro_{name}") for name in [*YF, *FRED, *PUBLIC_FRED]}
+    raw = {name: _series(conn, f"macro_{name}") for name in [*YF, *FRED]}
+    raw.update({name: _series(conn, indicator_canon.CANONICAL[name]) for name in CANON_RATES})
     conn.close()
 
     series_of = dict(raw)

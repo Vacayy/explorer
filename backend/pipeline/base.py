@@ -18,6 +18,7 @@ class RawDoc:
     kind: str = "text"          # text | html | pdf  (normalize 힌트)
     images: list[str] = field(default_factory=list)  # 로컬 저장된 미디어 상대경로 (/media 기준)
     digest_status: str | None = None  # youtube opus 정리본 성공 여부 (ok|failed), 그 외 소스는 None
+    markdown: str | None = None  # 커넥터가 정규화 결과를 직접 만든 경우(텔레그램 이미지 해석 삽입) — raw_content는 원문 그대로
 
 
 @dataclass

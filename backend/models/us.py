@@ -102,6 +102,7 @@ class UsBriefingSource(BaseModel):
 
 class UsBriefingSynthesis(BaseModel):
     """2문단 종합 (D-206): 매크로 + 거래대금 기업 이슈. 구 스키마(`mood`)는 파이프라인이 issues로 승계한다."""
+    key_points: list[str] = []   # 핵심 요약 bullet 3~5 (2026-10-17 이후 종합만)
     index_summary: str = ""      # D-206 이전 행 호환(새 종합은 빈 값)
     drivers: str = ""            # 매크로 — 검증된 이슈 중심, `[n]` 출처 표식
     issues: str = ""             # 거래대금 기반 기업 이슈 (구 mood)
@@ -183,12 +184,21 @@ class UsMarketDoc(BaseModel):
     excerpt: str | None = None
 
 
+class UsBriefingRun(BaseModel):
+    status: str
+    summary: str | None = None
+    ran_at: str                           # UTC
+
+
 class UsBriefing(BaseModel):
     status: str                           # ok | stale | partial | error
     trade_date: str | None = None
     fetched_at: str | None = None
     error: str | None = None
     stale_days: int | None = None         # 스냅샷 경과일(KST) — '어젯밤'을 자처하는데 며칠 묵었나 (D-112)
+    expected_session: str | None = None   # 마지막으로 마감된 미국 정규장(ET 16:00, 주말 제외·공휴일 미반영) — trade_date와 다르면 어젯밤 미반영
+    synthesized_at: str | None = None     # 종합 저장 시각(UTC)
+    last_run: UsBriefingRun | None = None # 정기 생성(06:30 KST)의 마지막 실행
     clusters: list[UsCluster] = []
     idiosyncratic: list[UsMoverBrief] = []
     movers: list[UsMoverBrief] = []

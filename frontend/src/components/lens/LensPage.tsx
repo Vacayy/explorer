@@ -162,7 +162,7 @@ function LensCard({
         <div className="flex flex-wrap items-center gap-1 border-t pt-2">
           <span className="text-[10px] text-muted-foreground shrink-0">근거</span>
           {reading.signals.map((s) => (
-            <Badge key={s} variant="secondary" className="text-[10px] font-normal">
+            <Badge key={s} variant="secondary" className="h-auto max-w-full whitespace-normal text-left text-[10px] font-normal">
               {s}
             </Badge>
           ))}

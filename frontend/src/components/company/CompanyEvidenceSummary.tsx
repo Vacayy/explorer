@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { DetailLink } from '@/components/shared/DetailNavigation'
 import type { EvidenceItem, EvidenceRange } from './CompanyEvidence'
 
-interface Summary {
+export interface Summary {
   points: { text: string; sources: number[] }[]
   sources: EvidenceItem[]
   used_count: number

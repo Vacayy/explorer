@@ -6,7 +6,7 @@ import re
 import sqlite3
 
 from config import DB_PATH
-from models.expectations import AttributionCue, EvidenceDocument, EvidencePage
+from models.expectations import AttributionCue, EvidenceDocument
 
 PRODUCTS = {
     "hbm": re.compile(r"\bHBM\w*|고대역폭\s*메모리", re.I),
@@ -86,29 +86,3 @@ def get_document(doc_id):
             return None
         return inspect_document(row, include_text=True)
 
-
-def list_documents(*, before_id=None, source_type=None, product=None, limit=20):
-    clauses = ["source_type IN ('blog','telegram','youtube')"]
-    params = []
-    if before_id is not None:
-        clauses.append("id < ?")
-        params.append(before_id)
-    if source_type:
-        clauses.append("source_type = ?")
-        params.append(source_type)
-    # Bound work per request. Cursor advances over scanned records, including nonmatches.
-    with evidence_connection() as conn:
-        rows = conn.execute("SELECT * FROM raw_documents WHERE " + " AND ".join(clauses)
-                            + " ORDER BY id DESC LIMIT 501", params).fetchall()
-    items, scanned, last_id = [], 0, None
-    for row in rows[:500]:
-        scanned += 1
-        last_id = row["id"]
-        doc = inspect_document(row)
-        if doc.products and (not product or product in doc.products):
-            items.append(doc)
-        if len(items) >= limit:
-            break
-    more = len(rows) > scanned
-    return EvidencePage(items=items, scanned=scanned, has_more=more,
-                        next_before_id=last_id if more else None)

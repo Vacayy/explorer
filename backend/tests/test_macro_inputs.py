@@ -16,8 +16,8 @@ class MacroInputsTests(unittest.TestCase):
     def test_read_preserves_each_series_observation_date_and_units(self):
         conn=sqlite3.connect(':memory:'); conn.row_factory=sqlite3.Row
         conn.executescript('''CREATE TABLE market_indicators(snapshot_date TEXT, indicator TEXT, value REAL);
-          INSERT INTO market_indicators VALUES ('2026-09-08','macro_us2y',3.51),
-          ('2026-09-09','macro_usdkrw',1400.5),('2026-09-09','macro_us10y',4.2);''')
+          INSERT INTO market_indicators VALUES ('2026-09-08','risk_us2y',3.51),('2026-09-09','macro_us2y',9.9),
+          ('2026-09-09','macro_usdkrw',1400.5),('2026-09-09','risk_us10y',4.2);''')
         with patch.object(macro,'get_connection',return_value=conn):
             data=macro.get_macro(with_signal=False)
         items={row['key']:row for row in data['items']}
@@ -35,10 +35,11 @@ class MacroInputsTests(unittest.TestCase):
         with patch.object(macro,'get_connection',return_value=conn), patch.object(macro,'_refresh_signal'), \
              patch.object(macro,'_yf_history',return_value=[('2026-09-09',1400)]) as yf, \
              patch.object(macro,'_fred_history',return_value=[]), \
-             patch.object(macro,'_public_fred_history',side_effect=TimeoutError):
+             patch.object(macro.indicator_canon,'refresh',return_value=['us2y(TimeoutError)']):
             result=macro.snapshot_macro()
         self.assertIn('usdkrw',result['indicators'])
         self.assertIn('us2y(TimeoutError)',result['degraded'])
+        self.assertIn('us10y',result['indicators']);self.assertNotIn('us2y',result['indicators'])
         self.assertIn(unittest.mock.call('KRW=X'),yf.call_args_list)
 
 if __name__=='__main__': unittest.main()

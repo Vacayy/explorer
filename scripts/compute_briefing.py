@@ -54,13 +54,37 @@ def main():
         except Exception as e:  # noqa: BLE001
             print(f"[briefing] 지수 갱신 실패(무시): {type(e).__name__}: {str(e)[:120]}")
 
+        import sqlite3
+        import time
         from pipeline.us_briefing import build_briefing
-        b = build_briefing(force=True)
+        # 노트북이 늦게 깨면 밀린 잡(시세 이력 재수집 등)이 한꺼번에 돌아 DB 쓰기 잠금이 30초를 넘는다 —
+        # 2026-10-17 'database is locked'로 그날 브리핑이 통째로 빠졌다. 잠금이면 2분 간격으로 세 번까지 다시 한다.
+        for attempt in range(3):
+            try:
+                b = build_briefing(force=True)
+                break
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e) or attempt == 2:
+                    raise
+                print(f"[briefing] DB 잠금 — 120초 뒤 재시도({attempt + 1}/2)")
+                time.sleep(120)
         top = b["clusters"][0]["label"] if b["clusters"] else "-"
         syn = "종합O" if b["synthesis"] else "종합X(스켈레톤)"
         print(f"[briefing] status={b['status']} trade_date={b['trade_date']} "
               f"상위섹터={top} {syn} movers={len(b['movers'])} idio={len(b['idiosyncratic'])}")
-        return {"status": b["status"], "movers": len(b["movers"]), "synthesis": bool(b["synthesis"])}
+        failed = b.get("headline_failed") or []
+        if failed:
+            print(f"[briefing] 종목 헤드라인 수집 실패 {len(failed)}종목: {', '.join(failed)}")
+        # 시장 프라이싱 원장(docs/specs/pricing-ledger.md) — 아직 추출 안 한 날을 잇는다. 실패해도 브리핑은 나간다
+        try:
+            from pipeline.pricing_ledger import extract_pending
+            for r in extract_pending():
+                print(f"[briefing] 프라이싱 원장 {r['trade_date']} {r['status']} 관측 {r.get('observed')} 새 전제 {r.get('new')} {r.get('error') or ''}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[briefing] 프라이싱 원장 실패(무시): {type(e).__name__}: {str(e)[:120]}")
+        status = "partial" if failed and b["status"] == "ok" else b["status"]
+        return {"status": status, "movers": len(b["movers"]), "synthesis": bool(b["synthesis"]),
+                "headline_failed": len(failed)}
 
     run_job("compute_briefing", _work)   # 관리자 플래그 게이트 + 실행 로그 (D-055)
 

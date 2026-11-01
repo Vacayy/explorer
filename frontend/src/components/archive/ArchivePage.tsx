@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { Archive, GitCompare, NotebookPen, CalendarDays, Map, Filter, Bitcoin } from "lucide-react"
+import { Archive, GitCompare, Map } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,11 +12,7 @@ import { PageContainer } from "@/components/shared/PageContainer"
 
 const ARCHIVED = [
   { to: "/analyze/compare", icon: GitCompare, title: "VS 비교", desc: "종목 여러 개 지표 나란히 비교" },
-  { to: "/research/memos", icon: NotebookPen, title: "투자메모", desc: "종목별 IR 메모 (vault 노트로 이관 예정)" },
-  { to: "/research/catalysts", icon: CalendarDays, title: "카탈리스트 캘린더", desc: "이벤트 수동 관리 · 일정 표시는 기업활동(팔로우)이 담당" },
   { to: "/discover/industry", icon: Map, title: "산업군 지도", desc: "수동 밸류체인 맵" },
-  { to: "/discover/screener", icon: Filter, title: "스크리너", desc: "재무 지표 필터" },
-  { to: "/discover/alt-data", icon: Bitcoin, title: "대안데이터", desc: "온체인·폴리마켓" },
 ] as const
 
 export default function ArchivePage() {

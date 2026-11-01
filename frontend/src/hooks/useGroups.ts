@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
-import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupSignal, WatchReason } from '@/types'
+import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupDigest, GroupSignal, WatchReason } from '@/types'
 
 const ROOT = '/api/spine/groups'
 export const groupKeys = {
   list: ['spine', 'groups'] as const,
   detail: (id: number | null) => ['spine', 'group', id] as const,
   signals: (id: number | null, days: number) => ['spine', 'group-signals', id, days] as const,
+  defaultWatch: ['spine', 'group', 'default-watch'] as const,
 }
+const defaultWatchQuery = { queryKey: groupKeys.defaultWatch, queryFn: async () => (await api.get<StockGroupDetail>(`${ROOT}/default-watch`)).data }
 
 export function useGroups() {
   return useQuery({ queryKey: groupKeys.list, queryFn: async () => (await api.get<StockGroupList>(ROOT)).data })
@@ -17,6 +19,14 @@ export function useGroup(id: number | null) {
 }
 export function useGroupSignals(id: number | null, days = 30) {
   return useQuery({ queryKey: groupKeys.signals(id, days), queryFn: async () => (await api.get<{ items: GroupSignal[] }>(`${ROOT}/${id}/signals`, { params: { days } })).data.items, enabled: id != null })
+}
+/** 묶음 종목별 최신 1D 요약 — 읽기만(생성은 저녁 잡) */
+export function useGroupDigests(id: number | null) {
+  return useQuery({ queryKey: ['spine', 'group-digests', id], queryFn: async () => (await api.get<{ as_of: string | null; items: GroupDigest[] }>(`${ROOT}/${id}/digests`)).data, enabled: id != null, staleTime: 300_000 })
+}
+/** 기본 관심 묶음('관심 종목') — 기업 화면 ★·내 목록 종목·논지가 쓰는 관심 종목의 진실원천. 서버가 없으면 만든다. */
+export function useDefaultWatchGroup() {
+  return useQuery(defaultWatchQuery)
 }
 export function useStrategyCatalog() {
   return useQuery({ queryKey: ['market-analysis', 'strategies'], queryFn: async () => (await api.get<{ version: string; items: StrategyCatalogItem[] }>('/api/analysis/strategies')).data.items, staleTime: Infinity })
@@ -31,22 +41,22 @@ function useGroupWrite<TVariables>(mutationFn: (variables: TVariables) => Promis
       client.setQueryData(groupKeys.detail(detail.id), detail)
       client.invalidateQueries({ queryKey: groupKeys.list })
       client.invalidateQueries({ queryKey: ['spine', 'group-signals', detail.id] })
+      client.invalidateQueries({ queryKey: groupKeys.defaultWatch })
     },
   })
 }
 
 export function useCreateGroup() { return useGroupWrite(async (body: { name: string; kind: StockGroupKind; note?: string }) => (await api.post<StockGroupDetail>(ROOT, body)).data) }
-export function useUpdateGroup(id: number) { return useGroupWrite(async (body: { name?: string; kind?: StockGroupKind; note?: string }) => (await api.patch<StockGroupDetail>(`${ROOT}/${id}`, body)).data) }
 export function useDeleteGroup() {
   const client = useQueryClient()
   return useMutation({ mutationFn: async (id: number) => { await api.delete(`${ROOT}/${id}`) }, onSuccess: () => client.invalidateQueries({ queryKey: groupKeys.list }) })
 }
 export function useAddMember() {
-  return useGroupWrite(async ({ groupId, ...body }: { groupId: number; stock_code: string; quantity?: number; avg_price?: number; bought_at?: string; conviction?: number; target_price?: number; thesis?: string }) =>
+  return useGroupWrite(async ({ groupId, ...body }: { groupId: number; stock_code: string; conviction?: number; target_price?: number; thesis?: string }) =>
     (await api.post<StockGroupDetail>(`${ROOT}/${groupId}/members`, body)).data)
 }
 export function useUpdateMember(groupId: number) {
-  return useGroupWrite(async ({ stockCode, ...body }: { stockCode: string; quantity?: number | null; avg_price?: number | null; bought_at?: string | null; conviction?: number | null; target_price?: number | null; thesis?: string | null }) =>
+  return useGroupWrite(async ({ stockCode, ...body }: { stockCode: string; conviction?: number | null; target_price?: number | null; thesis?: string | null }) =>
     (await api.patch<StockGroupDetail>(`${ROOT}/${groupId}/members/${stockCode}`, body)).data)
 }
 export function useRemoveMember(groupId: number) { return useGroupWrite(async (stockCode: string) => (await api.delete<StockGroupDetail>(`${ROOT}/${groupId}/members/${stockCode}`)).data) }
@@ -56,8 +66,16 @@ export function usePutRules(groupId: number) {
 export function useEvaluateGroup(groupId: number) {
   return useGroupWrite(async (force = false) => (await api.post<{ summary: unknown; group: StockGroupDetail }>(`${ROOT}/${groupId}/evaluate`, null, { params: { force } })).data.group)
 }
-export function useMigrateWatchlist() { return useGroupWrite<void>(async () => (await api.post<{ group: StockGroupDetail }>(`${ROOT}/migrate-watchlist`)).data.group) }
-
+/** ★ — 기본 관심 묶음에 넣거나 뺀다. */
+export function useToggleWatch() {
+  const client = useQueryClient()
+  return useGroupWrite(async ({ stockCode, watched }: { stockCode: string; watched: boolean }) => {
+    const group = await client.ensureQueryData(defaultWatchQuery)
+    return watched
+      ? (await api.post<StockGroupDetail>(`${ROOT}/${group.id}/members`, { stock_code: stockCode })).data
+      : (await api.delete<StockGroupDetail>(`${ROOT}/${group.id}/members/${stockCode}`)).data
+  })
+}
 /** 발견 화면의 저장 전략 조건을 묶음 기본 규칙에 덧붙인다(같은 전략·매개변수는 한 번만). */
 export function useAppendDefaultRules() {
   return useGroupWrite(async ({ groupId, rules }: { groupId: number; rules: WatchRuleInput[] }) => {

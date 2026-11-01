@@ -4,8 +4,9 @@ response_model이 금액·수량 필드를 갖지 않으므로 실수로 섞여�
 """
 from fastapi import APIRouter, HTTPException, Query
 
-from models.portfolio import (Exposure, HistoryPoint, HoldingFlow, PortfolioEvent, PortfolioSummary, Principle, PrincipleCreate,
-                              PrincipleParse, PrincipleParseRequest, PrincipleText, ThesisCreate, TransactionCreate, TransactionItem)
+from models.portfolio import (AlertItem, Exposure, HistoryPoint, HoldingFlow, PortfolioEvent, PortfolioSummary, Principle, PrincipleCreate,
+                              PrincipleParse, PrincipleParseRequest, PrincipleState, PrincipleText, ThesisCreate, TransactionCreate,
+                              TransactionItem)
 from pipeline import portfolio as pf
 from pipeline import portfolio_events as pe
 from pipeline import portfolio_exposure as px
@@ -77,7 +78,8 @@ def get_theses():
     conn = pf.connect()
     try:
         codes = [h["code"] for h in pf.summary(conn)["holdings"]]
-        return {code: {**t, "warnings": pt.warnings(t)} for code, t in pt.theses(conn, codes).items()}
+        judging = pt.judging()
+        return {code: {**t, "warnings": pt.warnings(t), "judging": judging} for code, t in pt.theses(conn, codes).items()}
     finally:
         conn.close()
 
@@ -99,11 +101,11 @@ def create_thesis(body: ThesisCreate):
 
 
 @router.post("/quotes/refresh")
-def refresh_quotes():
-    """'시세 갱신' 버튼 — 30분 주기·장 시간과 무관하게 보유 종목 네이버 실시간 시세를 지금 받는다."""
+def refresh_quotes(force: bool = Query(True, description="false면 장 시간·30분 TTL을 지킨다(화면 진입·주기 갱신)")):
+    """보유 종목 네이버 실시간 시세 갱신. 기본은 '시세 갱신' 버튼(장 시간·TTL 무시). GET 조회는 저장된 시세만 읽는다."""
     conn = pf.connect()
     try:
-        return pf.refresh_now(conn)
+        return pf.refresh_now(conn, force=force)
     finally:
         conn.close()
 
@@ -148,6 +150,30 @@ def list_principles():
     conn = pf.connect()
     try:
         return pp.principles(conn)
+    finally:
+        conn.close()
+
+
+@router.get("/principles/state", response_model=PrincipleState)
+def principle_state():
+    """지금 어기고 있는 규칙 — 저장된 시세로 다시 판정만 한다(알림·상태 기록 없음)."""
+    conn = pf.connect()
+    try:
+        s = pf.summary(conn)
+        holdings = [{"code": h["code"], "name": h["name"], "weight_pct": h["weight_pct"]} for h in s["holdings"]]
+        state = pp.current(conn, s, exposure=lambda: px.cached_exposure(conn, holdings) if holdings else None)
+        return {"as_of": s.get("quoted_at") or s.get("as_of"), **state}
+    finally:
+        conn.close()
+
+
+@router.get("/alerts", response_model=list[AlertItem])
+def list_alerts(days: int = Query(14, ge=1, le=90)):
+    """보낸 텔레그램 알림 이력(앱 안) — 유형·종목·구간·시각만."""
+    from pipeline import portfolio_alerts as pa
+    conn = pf.connect()
+    try:
+        return pa.history(conn, days)
     finally:
         conn.close()
 

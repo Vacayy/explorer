@@ -8,10 +8,22 @@
 
 | 문서 | 역할 | 상태 | 다음 단계 |
 |---|---|---|---|
-| [홈과 통합 피드](home-feed.md) | 홈 두 열 배치·원문/시스템 카드·조회 계약·UX 조사 | 구현·검증 완료 | 실사용에서 정보 밀도 확인 |
+| [앱 셸](app-shell.md) | 상단 5탭·3칸(내 목록·본문·AI 대화)·L1/L2 판정 표·화면 맥락 첨부·데스크톱 전용 | P3a 구현(2026-10-16) | P3b URL 이전·리다이렉트, P4 홈 위젯 |
+| [월드모델](world-model.md) | 지금·그래프·내 판단 구성 · 서사 체크포인트 · 읽기 전용 /api/spine/world · 월드모델 위젯 4종 | P7 구현(2026-10-16) | URL 이전(/world/*), 프록시 보드, 세계관·메가 생성 통합 |
+| [밸류체인 지도](value-chain.md) | 최종 수요→대만 공급 단계→한국 종목 지도 · 엣지별 시차 측정(위약 보정) · /api/spine/tw/value-chain | 1~2단계 구현(2026-10-18) | 3단계 한국 확인 신호(수출입·공시), 4단계 번지는 중 화면 |
+| [대만 월매출](tw-revenue.md) | 대만 92개사 월매출 수집(TWSE·TPEx Open API·MOPS)·API·위젯 `explore.twRevenue` | 구현(2026-10-17) | 묶음·프록시 보드 연결, 대상 조정 |
+| [홈 위젯 대시보드](home-widgets.md) | 위젯 계약·격자·추가 창·내 메뉴(홈 L2 = 사용자 보드, 시스템 프리셋)·서버 저장·시장 위젯 10종 | P4 구현(2026-10-16) | 탐색·포트폴리오·캔버스·월드모델 위젯(P5~P7) |
+| [탐색 핵심](explore-core.md) | 종목 발견 추천 묶음 단일 목록·신호 탭·컨콜 하위 탭과 실적 캘린더·산업·섹터 3뷰 통합·탐색 위젯 4종 | P6a 구현(2026-10-16) | 섹터 원천 두 개 통합 여부 결정 |
+| [캔버스](canvas.md) | 피드 디렉터리(Explorer 묶음)·AI 생성물 한 곳·공통 선택 팔레트·AI에게 묻기 다리·캔버스 위젯 4종 | P5 구현(2026-10-16) | URL 이전(`/canvas/*`), 휴면 기능 정리 |
+| [홈과 통합 피드](home-feed.md) | 피드 리더·원문/시스템 카드·조회 계약(Home 시장 탭 구성은 home-widgets가 대체) | 구현·검증 완료 | 캔버스 이전(P5) |
+| [관측](observability.md) | 잘 도는가·얼마나 드는가·무엇을 쓰는가·도움이 되는가 — API 요청 집계·사용 이벤트·관리자 '관측' 탭·주간 텔레그램·즉시 경고 | P0 구현(2026-10-31) | 사용 기록이 쌓이면 P1 — 생성물 열람률·결과물당 비용·👍/👎 |
 | [데이터 신선도 점검](ops-health.md) | 결과 데이터 최신 시점 감시 레지스트리·관리자 표·홈/텔레그램 경고 계약 | 구현(2026-10-14, D-222) | 실사용에서 오탐·누락 조정, 방문 트리거 작업 항목 보강 |
 | [문서 상세 관련 자료](doc-related-claims.md) | 상세 하단 논점별 관련 자료(논점 LLM·연결 검색/리랭커·원문 인용) + 유사도 기반 목록 | 구현(2026-10-14, D-233) | 실사용에서 리랭커 오판 관찰, P1 관계 표시(보강/반대/사례) |
 | [개인 투자 열기](retail-heat.md) | 신용융자·예탁금·개인 거래·참여의 변화 속도와 5년 백분위, 네 국면 규칙, 과열 구간 스냅샷, 도움말 | P0 구현(2026-10-16, D-231) | 활동계좌 경로, 개인 거래(한국거래소 계정 설정 뒤) 검증 |
+| [탐색 › 수출입·회사채·인물·기업활동](explore-data.md) | 서버 판정을 첫 화면 정렬·배지로(수출입 기여도·회사채 1개월 확대·인물 7일 급상승·기업활동 원공시), 수출입 라벨·이중 집계 정리, 인물 디렉토리 단일 집계, 도시에 '최근 활동' 줄, 탐색 위젯 5종 | P6b 구현(2026-10-16) | 급등 품목 관련 종목 일괄 지목(이벤트 구동), 자사주·CB 분류, 인물 이름 중복 병합 |
+| [실적 시즌](earnings-season.md) | 미국 주요 기업 실적을 기대(D-7·D-1 정량·정성) → 컨콜 → 반응(구조화) → 경과(D+30)로 잇고, 시즌·업종별 '상·벌 받은 쟁점' 채점 기준과 기대 추출 적중 기록 · 컨콜 탭 '실적 시즌' 보기 | P0 구현 중(2026-10-30): 백엔드·API·일일 작업 완료 | 화면 완료·검증, 기대 채점 누적 후 프롬프트 개정 |
+| [시장 프라이싱 원장](pricing-ledger.md) | 매일 브리핑에서 '시장이 전제로 삼는 것'을 뽑아 날짜를 넘어 잇고(새로·강해짐·약해짐·사라짐), 가격 지표 1주·4주 변화와 나란히 · 대화 도구·국면 해설 입력 | P0 구현(2026-10-27) | 시나리오 플레이북(조건→행동), 전제별 시장 반응 계량 |
+| [국면 이력](market-regimes.md) | 지금 시장 읽기(하락 국면·금리의 뜻·Marks 온도·구루 전제 원장 + AI 해설) · S&P500 강세/약세 국면(Lunde–Timmermann 20/20, 확정일)·실시간 10개월선 추세·NBER 침체 음영·매크로 겹쳐 보기·버크셔 vs 지수 상대성과(국면별)·홈 위젯 `explore.brk` | P0 + §8 구현(2026-10-26) | 온도·전제 빈칸 데이터(forward P/E·집중도·BDC), 사임 규칙·4분면 |
 | [회사채 스프레드](credit-spreads.md) | AI 설비투자 기업 대표 채권 수익률·같은 만기 국채 대비 스프레드·변화·내재 부도확률, 데이터 원천은 공개 저장소 밖 로컬 어댑터 | P0 구현(2026-10-15, D-230) | 체결 크기 필터·거래량 가중, 알림 |
 | [Home Risk 모니터링](home-feed.md#risk-모니터링-구현-계약-2026-09-28) | 네 추이 차트·신용 비교·수집·실험 경계 조건 | P0 구현·실데이터 검증 완료 | 실험 규칙 예측력·장기 위기 구간 검증 |
 
@@ -19,6 +31,7 @@
 
 | 문서 | 역할 | 상태 | 다음 단계 |
 |---|---|---|---|
+| [종목 추적 위젯](stock-tracker.md) | 종목마다 위젯 하나 — 내 원칙 조건·차트·기술적 신호·수급·이슈, 조건 충족·급등락·공시·새 신호 텔레그램 알림. 위젯 틀 multi·pick·titleOf 확장 | 구현(2026-10-20) | 가격 손절선은 진입 때 사용자가 입력, 조건 이력 화면 |
 | [종목 묶음과 기술적 감시](portfolio-watch.md) | 포트폴리오·관심 종목을 묶음 하나로 통일, 종목별 조건의 일일 평가·신호 화면 계약 | P0 구현(2026-09-19, D-185): 묶음·규칙·일일 평가·신호 화면·레거시 이관 | P1: 수량·매수가 입력 UI, 매수가 기준 조건, 브리핑 한 줄 |
 | [포트폴리오 거래 원장](portfolio-ledger.md) | 매수·매도·입출금 원장, 비율 전용 수익률(TWR)·비중, `/portfolio` 화면 계약과 프라이버시 경계 | P0 구현(2026-10-08, D-212) | P1: 배당·수수료, 벤치마크 대비, AI 비율 요약 도구 |
 | [포트폴리오 인텔리전스](portfolio-intelligence.md) | 공통 변수(노출)·다가오는 이벤트·자료 흐름·논지 감시·운용 원칙 감시·관심 이유 감시 | P0 구현(2026-10-08, D-216 · 원칙/관심 이유 2026-10-14, D-227) | P1: 국내 숫자 지표 어댑터, 공통 변수 뉴스 알림, 그래프 노드 중복 정리 |
@@ -40,7 +53,7 @@
 | [차트 구조 그리기](chart-structure.md) | 종목 하나의 채널·추세선을 결정적으로 그리는 계약 — 계산·해석 규칙·API·화면 5-state | P0·P1 구현(2026-09-21, D-195·D-196): 종목 발견 mode=draw 카드 + 기업 페이지 패널, 레벨·여러 종목·조건 변환·모델 보조·프리셋 | 실사용에서 프리셋 문장·조건 근사의 체감 확인, 사용자가 손으로 선을 옮기는 편집은 범위 밖 |
 | [종목 발견 성능](market-discovery-performance.md) | 발견 실행의 단계별 병목 지도·측정 방법·개선 전후 기록 | 2026-09-21 측정: 자연어 46s(모델 65%)·선택 12~21s. finish 콜·스냅샷 재생성·순수 Python 계산이 병목 | 개선 1~5 적용하며 전후 수치 갱신, 해석 콜 haiku/Jev A/B |
 | [시장 전략 도구](market-strategies.md) | 시세동향 19·지표신호 25·순위 6개 정의와 계산 기준 | 카탈로그·자연어 조건식·독립 검증, 전략 버전·재실행·목적/관측 추천 구현 | 검색 정의/실행 버전 구분·저장/재실행, 이유 있는 추천, 미지원 자료 확보 |
-| [시장 전략 비교 백테스트](market-backtest.md) | 7개 기준·복합 전략의 사전 고정 조건, 다음 시가 체결, 비용·현금·평가 계약 | 격리 계산·독립 원장 검산·결과 UI·실제 개발/평가 비교 완료 | 과거 상장/상폐·시총 이력, 기업행동·거래일 검증, 더 긴 미관측 구간 |
+| [시장 전략 비교 백테스트](market-backtest.md) | 7개 기준·복합 전략의 사전 고정 조건, 다음 시가 체결, 비용·현금·평가 계약 | **제거됨 (D-241)** — 화면·API·엔진 삭제 | - |
 | [기업 리서치와 발견 연결](company-research.md) | 기업 개요·실적·자료 읽기와 기술적 발견 이후의 조사·팔로우업 | 기업 화면·발견 맥락·근거 조사·판단 버전·수동 팔로우업, D-182 재무·공시 자동 준비 및 결과 중심 UX 구현 | 발견 이유 보존, 시장·전방·콜·수출입 근거 연결과 날짜 검증, 기존 질문/스터디 재사용 |
 
 ## 문서를 늘리기 전 규칙
@@ -63,16 +76,17 @@
 - [chat-harness](chat-harness.md) — 대화(챗봇) 하네스 — 현황 분석 + 아키텍처 레퍼런스 (2026-09-08)
 - [chat-page](chat-page.md) — /chat 화면 리뉴얼 — 메신저에서 "판단 도구"로 (2026-09-08)
 - [chat-retrieval](chat-retrieval.md) — 대화 검색 품질 — 청크 인덱스 · 문맥 접두어 · 리랭커 (C 단계, 2026-09-08)
-- [discover-screener](discover-screener.md) — 화면 기획서: 스크리너
-- [discover-signals](discover-signals.md) — 화면 기획서: 시그널 피드
+- [discover-screener](discover-screener.md) — 화면 기획서: 스크리너 — **제거됨 (D-241)**
+- [discover-signals](discover-signals.md) — 화면 기획서: 시그널 피드 — **현행 신호 탭은 [explore-core](explore-core.md) §2**
 - [doc-causal-extraction](doc-causal-extraction.md) — 기획서 — 문서 레벨 인과 추출 (제2 인과 공급원)
-- [doc-synthesis](doc-synthesis.md) — 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기
-- [dock-navigation](dock-navigation.md) — 셸 대개편 — 헤더·네비 제거, macOS 도크형 내비게이션 (2026-09-08)
-- [follow-rail](follow-rail.md) — 팔로우 레일 — 사이드바 통합
+- [doc-synthesis](doc-synthesis.md) — 문서 교차 종합 (Doc Synthesis) — 고른 문서들을 엮어 읽기 — **제거됨 (D-241)**
+- [dock-navigation](dock-navigation.md) — 셸 대개편 — 헤더·네비 제거, macOS 도크형 내비게이션 (2026-09-08) — **대체됨 → [app-shell](app-shell.md)**
+- [follow-rail](follow-rail.md) — 팔로우 레일 — 사이드바 통합 — **대체됨 → [app-shell](app-shell.md) §4 내 목록**
 - [geo-scope](geo-scope.md) — geo_scope — 인과 주장에 장소 정박 (A방향: 보편 노드 + 스코프 있는 엣지)
 - [hypothesis-vault](hypothesis-vault.md) — 가설·메모 Vault — 소유권 분할 설계
 - [ia-map](ia-map.md) — IA 지도 — 페이지 진입로 & 화면 구성 (현행)
-- [knowledge-page](knowledge-page.md) — 화면 기획서 — 지식 체계 관측·주입 페이지 (`/knowledge` 개편)
+- [knowledge-page](knowledge-page.md) — 화면 기획서 — 지식 체계 관측·주입 페이지 (`/knowledge` 개편) — 화면 배치(승격 대기 큐 등)는 **[world-model](world-model.md) §3이 대체**
+- [image-reading](image-reading.md) — 이미지 해석 — 본문 속 차트·표를 '무엇을 말하려는가'로 바꿔 넣는다 + 블로그 줄바꿈 정규화 (구현 2026-10-23, 다음: 텔레그램·블로그 백로그 결정)
 - [link-scrap](link-scrap.md) — 링크 스크랩 — URL만 올리는 채널의 원문 확장 + 미검증 소스 격리 (2026-09-09)
 - [macro](macro.md) — 매크로·유동성 트래킹
 - [market-regime](market-regime.md) — 시장 국면 — 홈 리스크 포스처 섹션
@@ -80,10 +94,10 @@
 - [narrative-causal-phase2](narrative-causal-phase2.md) — 기획서 — 내러티브 인과 그래프 Phase 2 (순회·서사·머지·지식 루프)
 - [phase1-etl-spine](phase1-etl-spine.md) — Phase 1 — ETL 척추 (greenfield spine)
 - [phase2-rag](phase2-rag.md) — Phase 2 — RAG (검색 레이어 구현됨 / 생성은 LLM 키 대기)
-- [question-proxy](question-proxy.md) — 핵심질문 ↔ 프록시 — 분할정복 질문 트래커
-- [research-catalysts](research-catalysts.md) — 화면 기획서: 카탈리스트 캘린더
-- [research-memos](research-memos.md) — 화면 기획서: 투자메모
-- [research-watchlist](research-watchlist.md) — 화면 기획서: 워치리스트
+- [question-proxy](question-proxy.md) — 핵심질문 ↔ 프록시 — 분할정복 질문 트래커 + 프록시 보드(D-240, 결정적 어댑터·보드 API 구현 계약)
+- [research-catalysts](research-catalysts.md) — 화면 기획서: 카탈리스트 캘린더 — **제거됨 (D-241)**
+- [research-memos](research-memos.md) — 화면 기획서: 투자메모 — **제거됨 (D-241)**
+- [research-watchlist](research-watchlist.md) — 화면 기획서: 워치리스트 (대체됨 → portfolio-watch 기본 관심 묶음)
 - [saved-items](saved-items.md) — 저장됨 (Saved / Bookmarks) — 산출물 북마크
 - [sector-aggregation](sector-aggregation.md) — 섹터 집약 — 유니버스 그룹을 커버리지 단위로
 - [signals-spine](signals-spine.md) — 신호(Signals) 계층 — 척추 위의 파생 분석 (기획 기록)

@@ -104,10 +104,20 @@ def earnings_filings(cik: int, since: str, meta: dict | None = None) -> list[dic
     rec = sub["filings"]["recent"]
     out = []
     for i, form in enumerate(rec["form"]):
-        if form in ("8-K", "8-K/A") and "2.02" in (rec["items"][i] or "") and rec["filingDate"][i] >= since:
+        if rec["filingDate"][i] < since:
+            continue
+        # 해외 발행사(TSMC·ASML)는 8-K 대신 6-K — 항목 번호가 없어 첨부 본문으로 분기 실적인지 가린다(is_quarterly_results)
+        if (form in ("8-K", "8-K/A") and "2.02" in (rec["items"][i] or "")) or form in ("6-K", "6-K/A"):
             out.append({"accession": rec["accessionNumber"][i], "filing_date": rec["filingDate"][i],
-                        "report_date": rec["reportDate"][i] or None})
+                        "report_date": rec["reportDate"][i] or None, "foreign": form.startswith("6-K")})
     return out
+
+
+def is_quarterly_results(text: str) -> bool:
+    """6-K 첨부가 분기 실적 발표인가 — 매출과 주당이익이 함께 있고 '분기'를 말한다(월매출 보고·이사회 결의 등 제외)."""
+    t = text[:20000].lower()
+    return (("revenue" in t or "net sales" in t) and ("per share" in t or "diluted" in t or "eps" in t)
+            and ("quarter" in t or "q1" in t or "q2" in t or "q3" in t or "q4" in t))
 
 
 def exhibits(cik: int, accession: str) -> list[dict]:
@@ -172,22 +182,26 @@ def collect(conn: sqlite3.Connection, follows: list[dict], days_back: int = 400)
             known = {r[0] for r in conn.execute("SELECT DISTINCT accession FROM earnings_releases WHERE ticker=?", (f["ticker"],))}
             meta: dict = {}
             filings = earnings_filings(cik, since, meta)
-            if meta.get("fiscal_year_end"):
-                conn.execute("UPDATE transcript_follow SET fiscal_year_end=?, sic=COALESCE(?, sic) WHERE ticker=?",
-                             (meta["fiscal_year_end"], meta.get("sic"), f["ticker"]))
+            # SEC 호출을 모두 끝낸 뒤에 쓴다 — 쓰기 트랜잭션을 연 채 네트워크를 기다리면 체인 전체가 잠긴다(2026-10-15·16)
+            fetched = []
             for filing in filings:
                 if filing["accession"] in known:
                     continue
                 stats["filings"] += 1
                 for ex in exhibits(cik, filing["accession"]):
                     text = to_text(_get(ex["url"]))
-                    if len(text) < 500:
-                        continue
-                    if _store(conn, f, filing, ex, text, f.get("entity_id")):
-                        stats["stored"] += 1
-                conn.commit()
+                    if len(text) >= 500 and (not filing.get("foreign") or is_quarterly_results(text)):
+                        fetched.append((filing, ex, text))
+            if meta.get("fiscal_year_end"):
+                conn.execute("UPDATE transcript_follow SET fiscal_year_end=?, sic=COALESCE(?, sic) WHERE ticker=?",
+                             (meta["fiscal_year_end"], meta.get("sic"), f["ticker"]))
+            for filing, ex, text in fetched:
+                if _store(conn, f, filing, ex, text, f.get("entity_id")):
+                    stats["stored"] += 1
+            conn.commit()
         except SecNotConfigured:
             raise
         except Exception as e:  # noqa: BLE001 — 한 회사 실패가 전체를 막지 않게, 사유는 남긴다
+            conn.rollback()
             stats["errors"].append(f"{f['ticker']}: {type(e).__name__}: {str(e)[:80]}")
     return stats

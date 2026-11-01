@@ -1,10 +1,10 @@
+import { QueryState } from "@/components/shared/QueryState"
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { rememberRecentStock } from '@/lib/recentStocks'
 import { usDossierQuery, usWorldModelQuery } from '@/api/spine'
 import { PageContainer } from '@/components/shared/PageContainer'
-import { ErrorState } from '@/components/shared/ErrorState'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
 import api from '@/api/client'
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import type { StockPriceItem } from '@/types'
 import { LensView } from '@/components/lens/LensPage'
 import { UsPriceCollect } from '@/components/us/UsPriceCollect'
+import { UsEarningsCard } from '@/components/us/UsEarningsCard'
 
 const EMPTY_PRICES: StockPriceItem[] = []
 
@@ -51,161 +52,151 @@ export default function UsDossierPage() {
     staleTime: 300_000,
   })
 
-  if (q.isLoading)
+  return <QueryState query={q} loading={<Skeleton className="h-24 w-full rounded-xl" />} isEmpty={() => false}>{data => {
+    const d = data
+    const f = d.fundamentals
+    const pt = (f?.estimates?.price_targets ?? null) as { mean?: number } | null
+    const up = pt?.mean && f?.price ? ((pt.mean - f.price) / f.price) * 100 : null
+
     return (
-      <PageContainer>
-        <Skeleton className="h-24 w-full rounded-xl" />
-      </PageContainer>
-    )
-  if (q.isError || !q.data)
-    return (
-      <PageContainer>
-        <ErrorState onRetry={() => q.refetch()} />
-      </PageContainer>
-    )
-
-  const d = q.data
-  const f = d.fundamentals
-  const pt = (f?.estimates?.price_targets ?? null) as { mean?: number } | null
-  const up = pt?.mean && f?.price ? ((pt.mean - f.price) / f.price) * 100 : null
-
-  return (
-    <PageContainer gap="sm">
-      <Card>
-        <CardContent className="py-4">
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-semibold">{d.name}</span>
-            <span className="text-sm text-muted-foreground">{d.ticker}</span>
-          </div>
-          {f ? (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              <span>
-                현재가 <b>${num(f.price, 2)}</b>
-              </span>
-              <span className="text-muted-foreground">
-                시총 {usd(f.market_cap)}
-              </span>
-              <span className="text-muted-foreground">
-                Fwd PER {num(f.fwd_pe)}배
-              </span>
-              <span className="text-muted-foreground">
-                trailing {num(f.trailing_pe)}배
-              </span>
-              {up != null && (
-                <span className={up >= 0 ? 'text-up' : 'text-down'}>
-                  목표가 대비 {up >= 0 ? '+' : ''}
-                  {up.toFixed(0)}%
-                </span>
-              )}
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">
-              시세 데이터를 불러오지 못했습니다.
-            </p>
-          )}
-          <UsPriceCollect ticker={d.ticker} />
-          <div className="mt-2 flex gap-3 text-xs">
-            {d.latest_transcript && (
-              <Link
-                to="/follow/transcripts"
-                className="text-primary hover:underline"
-              >
-                최근 컨콜 {d.latest_transcript.fiscal_year}{' '}
-                {d.latest_transcript.fiscal_period} →
-              </Link>
-            )}
-            <Link to="/us" className="text-muted-foreground hover:underline">
-              ← 미국 종목 목록
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="space-y-2 py-4 text-sm">
-          <h2 className="font-semibold">기업 개요</h2>
-          <CompanyOverview stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다. SEC 10-K·IR·뉴스를 웹에서 조사해 개요를 만들 수 있습니다.</p>} />
-        </CardContent>
-      </Card>
-      <nav aria-label="기업 상세" className="flex gap-2">
-        {[
-          ['overview', '개요'],
-          ['financials', '실적·사업'],
-          ['evidence', '자료'],
-        ].map(([key, label]) => (
-          <Button
-            key={key}
-            variant={tab === key ? 'default' : 'outline'}
-            onClick={() => setSp({ tab: key })}
-          >
-            {label}
-          </Button>
-        ))}
-      </nav>
-      {tab === 'evidence' ? (
-        <CompanyEvidence key={ticker} company={ticker} market="us" />
-      ) : tab === 'financials' ? (
+      <PageContainer gap="sm">
         <Card>
-          <CardContent className="space-y-4 pt-5">
-            <h2 className="text-section font-semibold">확보된 재무 정보</h2>
-            <p className="text-sm text-muted-foreground">
-              현재 미국 재무 저장본에는 분기별 계열·회계기간·사업부 구성이
-              없습니다. 이 값들로 분기 추이를 만들지 않습니다.
-            </p>
-            <dl className="grid grid-cols-2 gap-4">
-              {[
-                ['매출액', f?.revenue],
-                ['순이익', f?.net_income],
-                ['영업현금흐름', f?.ocf],
-                ['잉여현금흐름', f?.fcf],
-              ].map(([label, value]) => (
-                <div key={String(label)}>
-                  <dt className="text-caption text-muted-foreground">
-                    {label} · 기간 확인 필요
-                  </dt>
-                  <dd className="text-lg font-semibold">
-                    {usd(value as number | null)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-            <Link
-              className="text-sm text-primary"
-              to={`/us/${ticker}?tab=evidence&source=transcript`}
-            >
-              컨콜 원문 확인 →
-            </Link>
+          <CardContent className="py-4">
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-semibold">{d.name}</span>
+              <span className="text-sm text-muted-foreground">{d.ticker}</span>
+            </div>
+            {f ? (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                <span>
+                  현재가 <b>${num(f.price, 2)}</b>
+                </span>
+                <span className="text-muted-foreground">
+                  시총 {usd(f.market_cap)}
+                </span>
+                <span className="text-muted-foreground">
+                  Fwd PER {num(f.fwd_pe)}배
+                </span>
+                <span className="text-muted-foreground">
+                  trailing {num(f.trailing_pe)}배
+                </span>
+                {up != null && (
+                  <span className={up >= 0 ? 'text-up' : 'text-down'}>
+                    목표가 대비 {up >= 0 ? '+' : ''}
+                    {up.toFixed(0)}%
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                시세 데이터를 불러오지 못했습니다.
+              </p>
+            )}
+            <UsPriceCollect ticker={d.ticker} />
+            <div className="mt-2 flex gap-3 text-xs">
+              {d.latest_transcript && (
+                <Link
+                  to={`/follow/transcripts?t=${d.latest_transcript.id}`}
+                  className="text-primary hover:underline"
+                >
+                  최근 컨콜 {d.latest_transcript.fiscal_year}{' '}
+                  {d.latest_transcript.fiscal_period} →
+                </Link>
+              )}
+              <Link to="/us" className="text-muted-foreground hover:underline">
+                ← 미국 종목 목록
+              </Link>
+            </div>
           </CardContent>
         </Card>
-      ) : tab === 'analysis' ? (
-        <>
-          <LensView code={d.ticker} market="us" />
-          <WorldModelSection ticker={d.ticker} name={d.name} />
-        </>
-      ) : (
-        <CompanyPriceResearch
-          key={ticker}
-          company={ticker}
-          market="us"
-          prices={prices.data?.items || EMPTY_PRICES}
-          loading={prices.isPending}
-          error={prices.isError}
-          retry={() => void prices.refetch()}
-          overview={
-            <>
-              <CompanyEvidence company={ticker} market="us" preview />
+
+        <Card>
+          <CardContent className="space-y-2 py-4 text-sm">
+            <h2 className="font-semibold">기업 개요</h2>
+            <CompanyOverview stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다. SEC 10-K·IR·뉴스를 웹에서 조사해 개요를 만들 수 있습니다.</p>} />
+          </CardContent>
+        </Card>
+        {typeof d.latest_transcript?.id === 'number' && <UsEarningsCard transcriptId={d.latest_transcript.id} />}
+        <nav aria-label="기업 상세" className="flex gap-2">
+          {[
+            ['overview', '개요'],
+            ['financials', '실적·사업'],
+            ['evidence', '자료'],
+          ].map(([key, label]) => (
+            <Button
+              key={key}
+              variant={tab === key ? 'default' : 'outline'}
+              onClick={() => setSp({ tab: key })}
+            >
+              {label}
+            </Button>
+          ))}
+        </nav>
+        {tab === 'evidence' ? (
+          <CompanyEvidence key={ticker} company={ticker} market="us" />
+        ) : tab === 'financials' ? (
+          <Card>
+            <CardContent className="space-y-4 pt-5">
+              <h2 className="text-section font-semibold">확보된 재무 정보</h2>
+              <p className="text-sm text-muted-foreground">
+                현재 미국 재무 저장본에는 분기별 계열·회계기간·사업부 구성이
+                없습니다. 이 값들로 분기 추이를 만들지 않습니다.
+              </p>
+              <dl className="grid grid-cols-2 gap-4">
+                {[
+                  ['매출액', f?.revenue],
+                  ['순이익', f?.net_income],
+                  ['영업현금흐름', f?.ocf],
+                  ['잉여현금흐름', f?.fcf],
+                ].map(([label, value]) => (
+                  <div key={String(label)}>
+                    <dt className="text-caption text-muted-foreground">
+                      {label} · 기간 확인 필요
+                    </dt>
+                    <dd className="text-lg font-semibold">
+                      {usd(value as number | null)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
               <Link
                 className="text-sm text-primary"
-                to={`/us/${ticker}?tab=analysis`}
+                to={`/us/${ticker}?tab=evidence&source=transcript`}
               >
-                기존 투자 렌즈·월드모델 보기 →
+                컨콜 원문 확인 →
               </Link>
-            </>
-          }
-        />
-      )}
-    </PageContainer>
-  )
+            </CardContent>
+          </Card>
+        ) : tab === 'analysis' ? (
+          <>
+            <LensView code={d.ticker} market="us" />
+            <WorldModelSection ticker={d.ticker} name={d.name} />
+          </>
+        ) : (
+          <CompanyPriceResearch
+            key={ticker}
+            company={ticker}
+            market="us"
+            prices={prices.data?.items || EMPTY_PRICES}
+            loading={prices.isPending}
+            error={prices.isError}
+            retry={() => void prices.refetch()}
+            overview={
+              <>
+                <CompanyEvidence company={ticker} market="us" preview />
+                <Link
+                  className="text-sm text-primary"
+                  to={`/us/${ticker}?tab=analysis`}
+                >
+                  기존 투자 렌즈·월드모델 보기 →
+                </Link>
+              </>
+            }
+          />
+        )}
+      </PageContainer>
+    )
+  }}</QueryState>
 }
 
 /** 월드모델 — 이 종목 노드의 인과 위치(엣지) + 걸린 내러티브 + 온톨로지 그래프 딥링크. */

@@ -1,3 +1,4 @@
+import { QueryState } from "@/components/shared/QueryState"
 import { useState } from 'react'
 import { ChevronDown, LoaderCircle, Pencil, Trash2, Wand2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,7 +9,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { ErrorState } from '@/components/shared/ErrorState'
 import { useDeletePrinciple, useParsePrinciple, usePortfolioPrinciples, useReplacePrinciple, useSavePrinciple, useUpdatePrincipleText } from '@/hooks/usePortfolio'
 import type { PortfolioPrinciple, PrincipleParse } from '@/types'
 
@@ -42,11 +42,9 @@ export function PrinciplesCard() {
     <CardHeader><CardTitle>운용 원칙</CardTitle>
       <CardDescription>지키고 싶은 원칙을 문장으로 적으면 시스템이 ‘기계가 점검할 규칙’과 ‘대화에서 참고할 원칙’으로 나눠 보여 줍니다. 확인한 그대로 저장되고, 규칙은 장중 30분·장 마감 뒤 점검해 어긴 순간 텔레그램으로 한 번 알립니다. 원문은 이 컴퓨터의 DB에만 저장됩니다.</CardDescription></CardHeader>
     <CardContent className="space-y-4">
-      {list.isPending ? <Skeleton className="h-20 w-full" />
-        : list.isError ? <ErrorState message="원칙을 불러오지 못했습니다." onRetry={() => void list.refetch()} />
-        : list.data.length === 0 ? <p className="text-sm text-muted-foreground">아직 저장한 원칙이 없습니다.</p>
-        : <ul className="divide-y" aria-label="저장한 운용 원칙">{list.data.map(p => <SavedPrinciple key={p.id} principle={p}
-            deleting={remove.isPending} onDelete={() => remove.mutate(p.id, { onError: e => toast.error(e.message) })} />)}</ul>}
+      <QueryState query={list} loading={<Skeleton className="h-20 w-full" />} isEmpty={() => false}>{(data) => (data.length === 0 ? <p className="text-sm text-muted-foreground">아직 저장한 원칙이 없습니다.</p>
+        : <ul className="divide-y" aria-label="저장한 운용 원칙">{data.map(p => <SavedPrinciple key={p.id} principle={p}
+            deleting={remove.isPending} onDelete={() => remove.mutate(p.id, { onError: e => toast.error(e.message) })} />)}</ul>)}</QueryState>
 
       <div className="space-y-2 border-t pt-4">
         <Label htmlFor="principle-text">새 원칙</Label>

@@ -10,8 +10,11 @@
  * 3. 에러는 ApiError로 정규화 (백엔드 detail 메시지 추출).
  * 4. useMutation은 '서버 데이터를 변경'하는 쓰기(등록/삭제/토글)에만 쓴다.
  */
-import { QueryClient, keepPreviousData, queryOptions } from "@tanstack/react-query"
-import api from "@/api/client"
+import { MutationCache, QueryCache, QueryClient, keepPreviousData, queryOptions } from "@tanstack/react-query"
+import api from "./client.ts"
+import { isCancelled, shouldRetry, toApiError } from "./errors.ts"
+import { parseResponse } from "./contracts.ts"
+export { ApiError, toApiError } from "./errors.ts"
 
 /** stale 표준값 — 화면별 임의 숫자 대신 데이터 성격으로 선택 */
 export const STALE = {
@@ -22,39 +25,26 @@ export const STALE = {
   永: Infinity,              // 계산 결과 — 키가 곧 입력이므로 불변
 } as const
 
-export class ApiError extends Error {
-  readonly status?: number
-  constructor(message: string, status?: number) {
-    super(message)
-    this.name = "ApiError"
-    this.status = status
-  }
-}
-
-/** axios 예외 → ApiError (FastAPI {detail} 우선) */
-export function toApiError(e: unknown): ApiError {
-  const err = e as { response?: { status?: number; data?: { detail?: string } }; message?: string }
-  return new ApiError(err?.response?.data?.detail ?? err?.message ?? "요청 실패", err?.response?.status)
-}
-
-export async function getJson<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+export async function getJson<T>(url: string, params?: Record<string, unknown>, config?: { signal?: AbortSignal; schema?: { parse: (data: unknown) => T } }): Promise<T> {
   try {
-    const { data } = await api.get<T>(url, { params })
-    return data
+    const { data } = await api.get<T>(url, { params, signal: config?.signal })
+    return config?.schema ? parseResponse(config.schema, data) : data
   } catch (e) {
-    throw toApiError(e)
+    throw isCancelled(e) ? e : toApiError(e)
   }
 }
 
 export async function postJson<T>(url: string, body?: unknown, config?: {
   params?: Record<string, unknown>
   timeout?: number
+  signal?: AbortSignal
+  schema?: { parse: (data: unknown) => T }
 }): Promise<T> {
   try {
     const { data } = await api.post<T>(url, body ?? null, config)
-    return data
+    return config?.schema ? parseResponse(config.schema, data) : data
   } catch (e) {
-    throw toApiError(e)
+    throw isCancelled(e) ? e : toApiError(e)
   }
 }
 
@@ -64,13 +54,14 @@ export function apiQuery<T>(opts: {
   url: string
   params?: Record<string, unknown>
   staleTime?: number
+  schema?: { parse: (data: unknown) => T }
   /** 페이지네이션 등 파라미터 전환 시 이전 데이터 유지 (깜빡임 방지) */
   keepPrevious?: boolean
   enabled?: boolean
 }) {
   return queryOptions<T>({
     queryKey: [...opts.key],
-    queryFn: () => getJson<T>(opts.url, opts.params),
+    queryFn: ({ signal }) => getJson<T>(opts.url, opts.params, { signal, schema: opts.schema }),
     staleTime: opts.staleTime ?? STALE.short,
     placeholderData: opts.keepPrevious ? (keepPreviousData as never) : undefined,
     enabled: opts.enabled,
@@ -88,10 +79,11 @@ export function apiComputeQuery<T>(opts: {
   params?: Record<string, unknown>
   enabled?: boolean
   timeout?: number
+  schema?: { parse: (data: unknown) => T }
 }) {
   return queryOptions<T>({
     queryKey: [...opts.key],
-    queryFn: () => postJson<T>(opts.url, null, { params: opts.params, timeout: opts.timeout ?? 180_000 }),
+    queryFn: ({ signal }) => postJson<T>(opts.url, null, { params: opts.params, timeout: opts.timeout ?? 180_000, signal, schema: opts.schema }),
     staleTime: STALE.永,
     gcTime: STALE.long,
     retry: false,
@@ -99,18 +91,18 @@ export function apiComputeQuery<T>(opts: {
   })
 }
 
-/** 앱 전역 QueryClient — 4xx는 재시도 무의미, 나머지 1회 */
-export function createQueryClient() {
+/** A single notification per failed query (not per observer); local mutation handlers take precedence. */
+export function createQueryClient(onError?: (error: Error, context: { background: boolean }) => void) {
   return new QueryClient({
+    queryCache: new QueryCache({ onError: (error, query) => {
+      if (!isCancelled(error)) onError?.(toApiError(error), { background: query.state.data !== undefined })
+    } }),
+    mutationCache: new MutationCache({ onError: (error, _variables, _context, mutation) => {
+      if (!mutation.options.onError && !isCancelled(error)) onError?.(toApiError(error), { background: false })
+    } }),
     defaultOptions: {
-      queries: {
-        retry: (failureCount, error) => {
-          const status = error instanceof ApiError ? error.status : undefined
-          if (status && status >= 400 && status < 500) return false
-          return failureCount < 1
-        },
-        refetchOnWindowFocus: false,
-      },
+      queries: { retry: shouldRetry, refetchOnWindowFocus: false },
+      mutations: { retry: false },
     },
   })
 }

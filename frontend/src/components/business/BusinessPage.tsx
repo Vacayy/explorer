@@ -100,7 +100,7 @@ export default function BusinessPage({ stockCode }: Props) {
 
       {items.length > 0 && (
         <>
-          <div className="grid grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             <ChartCard title={`${segType === "division" ? "사업부문별" : "사업지역별"} 매출 비중 (${latestYear})`}>
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
@@ -113,7 +113,7 @@ export default function BusinessPage({ stockCode }: Props) {
               </ResponsiveContainer>
             </ChartCard>
 
-            <ChartCard title="매출액 합계 추이" className="col-span-2">
+            <ChartCard title="매출액 합계 추이" className="lg:col-span-2">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={barData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

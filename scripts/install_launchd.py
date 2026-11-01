@@ -93,10 +93,66 @@ JOBS = [
     # 실적 발언 모멘텀(D-217) — 매일 SEC 8-K·AV 컨콜 수집·추출·판정(미국 장 마감 뒤 아침), 주간 알림은 월요일 브리핑 뒤.
     ("callmomentum", [PY, "scripts/call_momentum.py", "--daily"], {"Hour": 7, "Minute": 20}),
     ("callmomentumweekly", [PY, "scripts/call_momentum.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 10}),
+    # 미국 장 마감 뒤 실적 발표는 콜이 한국 아침 7시 전후에 끝나 07:20 회차엔 녹취록이 아직 없다 — 낮에 이번 시즌분만 다시 본다
+    ("callfresh", [PY, "scripts/call_momentum.py", "--fresh"], [{"Hour": 10, "Minute": 30}, {"Hour": 13, "Minute": 30}]),
+    # 국내 도시에 원천 — 종목 마스터·DART 공시·분기 재무(호출 예산 안에서 보유→관심→시총 상위 순)·밸류(PER·PBR).
+    # 일별 시세 20:20 뒤라 밸류가 그날 종가 기준이 된다. 매일 — 주말엔 밸류가 '이미 있음'으로 건너뛰고 재무 백필만 이어간다.
+    ("krcompany", [PY, "scripts/collect_kr_company_data.py"], {"Hour": 21, "Minute": 30}),
+    # 대만 월매출(docs/specs/tw-revenue.md) — 91개사. 공시가 매달 1~10일에 나눠 올라와 매일 한 번 최신 월을 덮어쓴다. LLM 0
+    ("twrevenue", [PY, "scripts/collect_tw_revenue.py"], {"Hour": 11, "Minute": 0}),
+    # 미국 수요 기업 분기 실적(docs/specs/value-chain.md §6) — 하이퍼스케일러 설비투자·엔비디아·AMD·애플, SEC XBRL. LLM 0
+    ("usfund", [PY, "scripts/collect_us_fundamentals.py"], {"Hour": 8, "Minute": 10}),
+    # 외부 월간 시계열(docs/specs/value-chain.md §7) — WSTS·Census 데이터센터·SEAJ·대만 수출수주. LLM 0
+    ("extseries", [PY, "scripts/collect_ext_series.py"], {"Hour": 10, "Minute": 30}),
+    # 피드 증권사 전망 추출(docs/specs/value-chain.md §15) — LLM(haiku), 최근 3일·상한 25건, 한 문서는 한 번만. 관리자 플래그 exp_feed
+    ("expfeed", [PY, "scripts/collect_exp_feed.py"], {"Hour": 12, "Minute": 0}),
+    # 따라잡기 순회(D-249) — 30분마다 아래 CATCHUP 작업 중 '지난 회차 성공 기록이 없는 것'만 다시 시도한다.
+    # 실제 응답 계약 검사 — 화면을 열기 전에 계약 위반·응답 모델 오류(500)를 잡는다(docs/specs/frontend-api-reliability.md)
+    ("contracts", [PY, "scripts/check_live_contracts.py"], {"Hour": 8, "Minute": 40}),
+    # 관측(docs/specs/observability.md) — 주간 리포트는 월요일 브리핑 뒤, 경고는 1시간마다(상태가 바뀔 때만 보냄)
+    ("observeweekly", [PY, "scripts/observe.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 5}),
+    ("observealerts", [PY, "scripts/observe.py", "--alerts"], 3600),
+    ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
+
+# 따라잡기 대상(D-249, backend/pipeline/catchup.py) — launchd는 이 작업들을 scripts/run_daily.py <label>로 감싸 부른다.
+# record: 스크립트가 스스로 남기는 job_runs 이름(종료코드 0이어도 그 기록이 error면 실패로 본다).
+# window_h: 늦으면 의미 없는 작업은 정기 시각 뒤 이 시간까지만 따라잡는다. 없으면 다음 회차까지.
+# 빠진 것: chain(30분 간격 자체), pfintraday(장중 30분 알림 — 지난 회차는 의미 없음), backfill(야간 기회 작업), catchup 자신.
+CATCHUP = {
+    "prices": {"record": "prices"},
+    "history": {"record": "market_history"},
+    "credit": {"record": "credit"},
+    "retail": {"record": "retail"},
+    "market": {"record": "snapshot_market"},
+    "krmovers": {"record": "snapshot_kr_movers"},
+    "usbriefing": {"record": "compute_briefing"},
+    "briefing": {"window_h": 5},               # 아침 텔레그램 — 점심 넘어 보내면 의미가 없다
+    "narratives": {"record": "compute_narratives"},
+    "backup": {"record": "backup"},
+    "promote": {"record": "promote_knowledge"},
+    "contradictions": {},
+    "proposals": {"record": "agent_proposals"},
+    "questions": {"record": "refresh_questions"},
+    "trade": {"record": "collect_trade"},
+    "watch": {},
+    "pfclose": {"window_h": 7},                # 종가 요약 — 그날 밤까지만
+    "callmomentum": {},
+    "contracts": {"record": "live_contracts"},
+    "observeweekly": {"record": "observe_weekly", "window_h": 24},
+    "callmomentumweekly": {"window_h": 24},
+    "callfresh": {"record": "cm_fresh", "window_h": 3},
+    "krcompany": {},
+    "twrevenue": {"record": "tw_revenue"},
+    "usfund": {"record": "us_fundamentals"},
+    "extseries": {"record": "ext_series"},
+    "expfeed": {"record": "exp_feed"},
+}
 
 
 def build(label: str, argv: list[str], schedule) -> dict:
+    if label in CATCHUP:      # 성공 기록 확인 → 실행 → sched:<label> 기록 (D-249)
+        argv = [PY, str(PROJECT / "scripts" / "run_daily.py"), label]
     d = {
         "Label": PREFIX + label,
         "ProgramArguments": argv,

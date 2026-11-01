@@ -50,7 +50,7 @@ export function GroupPicker({ label, description, icon, onPick, busy = false, va
     </DropdownMenu>
     <Dialog open={creating} onOpenChange={setCreating}>
       <DialogContent>
-        <DialogHeader><DialogTitle>새 묶음</DialogTitle><DialogDescription>관심 종목은 종목만, 포트폴리오는 수량·매수가도 기록합니다.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>새 묶음</DialogTitle><DialogDescription>관심 종목은 종목을 직접 넣고, 포트폴리오 보유는 거래 원장에서 채워집니다.</DialogDescription></DialogHeader>
         <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit() }}>
           <div className="space-y-2"><Label htmlFor="group-picker-name">이름</Label><Input id="group-picker-name" value={name} onChange={event => setName(event.target.value)} maxLength={80} autoFocus /></div>
           <div className="flex gap-2" role="radiogroup" aria-label="묶음 종류">{(['watch', 'portfolio'] as StockGroupKind[]).map(value => <Button key={value} type="button" role="radio" aria-checked={kind === value} variant={kind === value ? 'secondary' : 'outline'} size="sm" onClick={() => setKind(value)}>{KIND_LABEL[value]}</Button>)}</div>

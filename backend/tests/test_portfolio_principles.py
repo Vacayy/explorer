@@ -121,3 +121,38 @@ class ChatToolTests(unittest.TestCase):
         self.assertIn("지금 어긴 규칙: 가나 비중", text)
         for banned in ("777", "500", "277", "amount", "수량"):
             self.assertNotIn(banned, text)
+
+
+class PeakExitTests(unittest.TestCase):
+    """고점 기준 분할 매도 — 고점 −N% · 왼쪽 어깨 2일 이탈 · 50일선 이탈, 코스닥은 고점 −N%만 전량. 가격은 모두 가상."""
+
+    @staticmethod
+    def path():
+        up = [100 + i for i in range(60)]                      # 100→159
+        bump = [160 + i for i in range(11)] + [170 - i for i in range(1, 11)]   # 왼쪽 어깨 170 (앞뒤 10일 최고)
+        rally = [161 + 4 * i for i in range(20)]               # 고점 237
+        return up + bump + rally
+
+    def test_signals_turn_on_in_order(self):
+        c = self.path()
+        self.assertEqual({k: v for k, v in pp.exit_signals(c, 0, 15).items() if k in ("dd", "sh", "ma")}, {"dd": False, "sh": False, "ma": False})
+        s = pp.exit_signals(c + [200], 0, 15)                  # 고점 237 대비 −15.6%
+        self.assertTrue(s["dd"])
+        self.assertEqual(s["shoulder"], 170)
+        self.assertFalse(s["sh"])
+        s = pp.exit_signals(c + [200, 160, 160], 0, 15)        # 170×0.97=164.9 아래 이틀
+        self.assertTrue(s["sh"] and s["ma"])
+
+    def test_violations_split_kosdaq_and_others(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        pp.ensure_schema(conn)
+        pp.add(conn, "고점 기준 매도", [{"type": "peak_exit", "params": {"pct": 15}}])
+        closes = self.path() + [200, 160, 160]
+        prices = {"AAAAAA": {"market": "KOSPI", "closes": closes, "start": 0},
+                  "BBBBBB": {"market": "KOSDAQ", "closes": closes, "start": 0}}
+        found = pp.violations(pp.principles(conn), summary(), today="2026-01-10", prices=prices)
+        self.assertEqual(sorted(v["key"].split(":", 2)[2] for v in found),
+                         ["AAAAAA:2026-01-01:dd", "AAAAAA:2026-01-01:ma", "AAAAAA:2026-01-01:sh", "BBBBBB:2026-01-05:dd"])
+        self.assertIn("전량", next(v["message"] for v in found if v["key"].endswith("BBBBBB:2026-01-05:dd")))
+        self.assertEqual(pp.violations(pp.principles(conn), summary(), today="2026-01-10", live_only=True, prices=prices), [])

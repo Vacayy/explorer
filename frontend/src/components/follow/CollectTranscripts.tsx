@@ -1,3 +1,5 @@
+import type { z } from "zod"
+import { collectPlanSchema } from "@/api/contracts"
 // 컨콜 수집 직접 트리거 (D-121) — 버튼 + 진행 상태 + 마지막 실행 결과.
 // 1회 ~20분(AV 무료 한도 5/min)이라 서버가 백그라운드로 돌리고 여기선 상태를 폴링한다.
 import { useState } from "react"
@@ -11,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { formatRelativeTime } from "@/utils/format"
 
-interface CollectStatus {
+export interface CollectStatus {
   running: boolean
   started_at: string | null
   budget: number | null
@@ -19,13 +21,7 @@ interface CollectStatus {
   last_run: { status: string; summary: string; duration_ms: number | null; ran_at: string } | null
 }
 
-interface DryRun {
-  would_request: number
-  skipped_cache: number
-  planned: string[]
-  over_budget: number
-  budget: number
-}
+type DryRun = z.infer<typeof collectPlanSchema>
 
 const BUDGET = 22   // AV 무료 한도 25/day — 여유 3건은 캘린더·재시도용
 

@@ -3,12 +3,13 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { getPendingAnswers, removePendingAnswer } from "@/lib/pendingAnswers"
+import { getPanelThread } from "@/lib/shellPrefs"
 import type { ConversationDetail } from "@/types"
 
 /**
  * 전역 '답변 도착' 감시자 — 어느 화면에 있든 서버 이벤트를 사용자에게 알린다.
  * 생성 중인 스레드가 있을 때만 8초 폴링, 답변이 붙으면 토스트 + 보러가기.
- * (해당 스레드를 이미 보고 있으면 조용히 해제 — 화면 폴링이 처리)
+ * (해당 스레드를 /chat이나 AI 대화 패널에서 이미 보고 있으면 조용히 해제 — 화면 폴링이 처리)
  */
 export default function AnswerWatcher() {
   const navigate = useNavigate()
@@ -24,7 +25,7 @@ export default function AnswerWatcher() {
           const last = data.messages[data.messages.length - 1]
           if (!last || last.role !== "assistant") continue
           removePendingAnswer(id)
-          const viewing = pathname.startsWith("/chat") && new URLSearchParams(search).get("id") === String(id)
+          const viewing = (pathname.startsWith("/chat") && new URLSearchParams(search).get("id") === String(id)) || getPanelThread() === id
           if (!viewing) {
             toast.success(`답변 도착 — ${data.title ?? "질문"}`, {
               duration: 10000,

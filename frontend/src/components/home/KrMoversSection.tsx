@@ -17,7 +17,9 @@ import type { KrMoverItem } from "@/types"
  * 차이: LLM 종합(분위기 산문) 없음 — 표 + 섹터 쏠림 + 개별 이슈까지 전부 결정적 계산.
  * 5-state: Loading / Error(status=error·쿼리실패) / Partial(stale) / Empty / Ideal.
  */
-export function KrMoversSection() {
+/** 위젯 안에 넣을 때 — 바깥 카드 틀과 제목은 위젯 틀이 맡는다 */
+const EMBED = "gap-3 border-0 bg-transparent py-0 shadow-none [&>[data-slot=card-content]]:px-0 [&>[data-slot=card-header]]:px-0 [&_[data-slot=card-title]]:sr-only"
+export function KrMoversSection({ embedded = false }: { embedded?: boolean }) {
   const { data, isLoading, isError, refetch, refresh, refreshing } = useKrMovers()
   const [open, setOpen] = useState(false)
 
@@ -41,7 +43,7 @@ export function KrMoversSection() {
 
   if (data.items.length === 0)
     return (
-      <Card>
+      <Card className={embedded ? EMBED : undefined}>
         {header}
         <CardContent>
           <EmptyState message={refreshing ? "전일 거래대금을 불러오는 중…" : "‘지금 업데이트’를 눌러 전일 거래대금 상위를 수집하세요."} />
@@ -53,7 +55,7 @@ export function KrMoversSection() {
   const top = clusters[0]
 
   return (
-    <Card data-home-section="kr-movers">
+    <Card data-home-section="kr-movers" className={embedded ? EMBED : undefined}>
       {header}
       <CardContent className="space-y-3">
         {data.status === "stale" && (
@@ -79,13 +81,14 @@ export function KrMoversSection() {
           <div className="space-y-1">
             {clusters.map((c) => (
               <div key={c.label} className="flex items-center gap-2 text-xs">
-                <span className="w-28 shrink-0 truncate">{c.label}</span>
+                <Link to={`/map?group=${encodeURIComponent(c.label)}`} title="산업 맵에서 이 섹터 보기" className="w-28 shrink-0 truncate hover:underline">{c.label}</Link>
                 <div className="relative h-3 flex-1 rounded bg-muted overflow-hidden">
                   <div className="absolute inset-y-0 left-0 bg-primary/70 rounded" style={{ width: `${c.share_pct}%` }} />
                 </div>
                 <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
                 <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
-                {c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}
+                {/* 좁은 화면은 막대 폭이 줄마다 같도록 배지 자리를 늘 비워 둔다 */}
+                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}</span>
                 <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.names.join(" · ")}</span>
               </div>
             ))}
@@ -152,12 +155,12 @@ function chg(v: number | null): string {
 
 function MoverRow({ m }: { m: KrMoverItem }) {
   return (
-    <div className="flex items-center gap-2 py-1 text-sm min-w-0">
+    <div className="flex items-center gap-2 py-1 text-sm min-w-0 max-sm:flex-wrap">
       <Link to={`/analyze/${m.stock_code}/summary`} className="font-medium text-primary hover:underline shrink-0 truncate max-w-[40%]">{m.name}</Link>
       <span className={`text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>
         {m.change_pct != null ? formatPercent(m.change_pct) : ""}
       </span>
-      <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
+      <div className="flex items-center gap-1 min-w-0 flex-1 truncate max-sm:flex-none">
         {m.flags.map((f) => (
           <Badge key={f} variant="outline" className={`text-caption shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
         ))}

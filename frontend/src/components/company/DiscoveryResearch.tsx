@@ -24,7 +24,7 @@ import { formatNumber } from '@/utils/format'
 import { preparationStatus, researchPhase, researchDate } from '@/components/company/discoveryPresentation'
 import { checkValue, evidenceValue } from '@/components/analysis/strategyEvidence'
 
-const LANES = [ ['market', '시장 담론'], ['industry', '전방 산업'], ['earnings', '실적·공시'], ['call', '컨퍼런스콜'], ['trade', '수출입'] ] as const
+const LANES = [ ['market', '시장 담론'], ['industry', '전방 산업'], ['earnings', '실적·공시'], ['call', '컨퍼런스콜'], ['trade', '수출입'], ['web', '웹 조사'] ] as const
 
 function SourceExcerpt({ item }: { item: ResearchEvidence }) {
   if (item.hs_code && item.values?.length) return <div className="space-y-2"><p className="text-caption text-muted-foreground">HS {item.hs_code} · 저장 금액 USD / 중량 kg · 각 품목을 개별 표시</p><Table><TableHeader><TableRow>{['기간', '수출액 (USD)', '수입액 (USD)', '수출 중량 (kg)', '수입 중량 (kg)'].map(label => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader><TableBody>{item.values.map((row, index) => <TableRow key={index}>{['period', 'export_usd', 'import_usd', 'export_wt', 'import_wt'].map(field => <TableCell key={field} className="tabular-nums">{evidenceValue(row[field])}</TableCell>)}</TableRow>)}</TableBody></Table><p className="text-caption text-muted-foreground">저장된 0에는 원천 누락의 변환이 포함될 수 있습니다. 기업 매출로 간주하거나 서로 다른 HS 코드를 합산하지 않습니다.</p></div>

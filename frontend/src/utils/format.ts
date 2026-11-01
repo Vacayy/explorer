@@ -51,6 +51,15 @@ export function formatPercent(value: number | null | undefined): string {
 }
 
 /**
+ * Format a z-score as signed sigma multiple (e.g. +1.4σ) — 칸 상태의 '평소 변동 대비' 크기.
+ */
+export function formatSigma(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  const sign = value > 0 ? "+" : value < 0 ? "−" : ""
+  return `${sign}${Math.abs(value).toFixed(1)}σ`
+}
+
+/**
  * Format a percentage-point change with sign (e.g. +0.35%p) — 금리 등 이미 %인 값의 변동.
  */
 export function formatPp(value: number | null | undefined, digits = 2): string {
@@ -125,6 +134,18 @@ export function formatKstTime(utc: string | null | undefined): string {
   });
 }
 
+/** UTC 시각(SQLite·ISO) → KST "MM-DD HH:MM" 표기 */
+export function formatKstDateTime(utc: string | null | undefined): string {
+  if (!utc) return "-";
+  const iso = utc.includes("T") ? utc : utc.replace(" ", "T");
+  const d = new Date(iso.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
+  if (Number.isNaN(d.getTime())) return "-";
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(d).map(x => [x.type, x.value]));
+  return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
 /** ISO 시각 → 상대 시간 표기 ("3분 전", "2시간 전", "어제", "6/28") */
 export function formatRelativeTime(iso: string): string {
   if (!iso) return "-";
@@ -158,4 +179,35 @@ export function formatBp(value: number | null | undefined, signed = false): stri
   if (value === null || value === undefined) return "-"
   const rounded = Math.round(value)
   return `${signed && rounded > 0 ? "+" : ""}${rounded.toLocaleString("ko-KR")}`
+}
+
+/**
+ * Format an index level or point value with two decimals (e.g. 5,779.14 · 16.46).
+ */
+export function formatLevel(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return value.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** DB 시각(SQLite UTC 'YYYY-MM-DD HH:MM:SS' 또는 시간대 붙은 ISO) → 상대 표기. 비면 "-" */
+export function formatDbRelative(value: string | null | undefined): string {
+  if (!value) return "-"
+  const iso = value.includes("T") ? value : value.replace(" ", "T") + "Z"
+  return formatRelativeTime(iso)
+}
+
+/** DB 시각이 지금부터 며칠 전인가 (UTC 기준). 비면 Infinity */
+export function dbAgeDays(value: string | null | undefined): number {
+  if (!value) return Infinity
+  const t = new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z").getTime()
+  return Number.isNaN(t) ? Infinity : (Date.now() - t) / 86_400_000
+}
+
+/** 대만 월매출(원천 단위 천 TWD) → 억 TWD 표기. 1,000억 이상은 정수, 그 아래는 소수 1자리. 비면 "-" */
+export function formatTwdEok(thousand: number | null | undefined): string {
+  if (thousand === null || thousand === undefined) return "-"
+  const eok = thousand / 100_000
+  return Math.abs(eok) >= 1000
+    ? `${Math.round(eok).toLocaleString("ko-KR")}억`
+    : `${eok.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}억`
 }

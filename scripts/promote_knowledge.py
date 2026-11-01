@@ -18,5 +18,8 @@ if __name__ == "__main__":
         p = promote_batch()
         pc = promote_causal_edges()
         print("[promote]", p, "[promote-causal]", pc)
-        return {"promoted": p.get("promoted", 0) if isinstance(p, dict) else 0}
+        done = p.get("proposed", 0) + pc.get("promoted", 0) + pc.get("merged", 0)
+        failed = p.get("failed", 0) + pc.get("failed", 0)
+        return {"proposed": p.get("proposed", 0), "causal_promoted": pc.get("promoted", 0), "failed": failed,
+                "status": "error" if failed and not done else "partial" if failed else "ok"}
     run_job("promote_knowledge", _work)   # 관리자 플래그 게이트 + 로그 (D-055)

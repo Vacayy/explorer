@@ -5,8 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
 import { unfollowEntity, spineKeys } from "@/api/spine"
-import { apiQuery, STALE } from "@/api/query"
-import { useWatchlist, useUpdateWatchlistItem, useDeleteWatchlistItem } from "@/hooks/useWatchlist"
+import { apiQuery, STALE, toApiError } from "@/api/query"
+import { useDefaultWatchGroup, useRemoveMember, useUpdateMember } from "@/hooks/useGroups"
 import { useQuotes, type LiveQuote } from "@/hooks/useQuotes"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import { useTelegramChannels, useToggleTelegramChannel } from "@/hooks/useTelegram"
@@ -21,30 +21,28 @@ import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { formatKrw, formatNumber } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import { RefreshButton } from "@/components/shared/RefreshButton"
+import { ErrorState } from "@/components/shared/ErrorState"
 import { useRefreshSource } from "@/hooks/useRefreshSource"
-import type { WatchlistItem } from "@/types"
+import type { StockGroupMember } from "@/types"
 
 /**
- * /follow — 팔로우 허브 (L1). 내가 따라가는 모든 것: 종목·채널·블로그·태그.
- * 행 클릭 = 도시에 (종목→/analyze, 소스→/source, 태그→피드 필터).
+ * /follow — 팔로우 허브 (L1). 내가 따라가는 종목·인물.
+ * 행 클릭 = 도시에 (종목→/analyze, 인물→/person).
  * 새 소스 종류(유튜브·리포트 등)가 늘면 여기에 섹션이 추가된다.
  */
 export default function FollowPage() {
   const navigate = useNavigate()
-  return <PageLayout header={<PageHeader title="관심목록" description="추적하는 기업·인물·산업·테마" actions={<Button asChild variant="outline" size="sm"><Link to="/sources">소스 관리</Link></Button>} />}>
+  return <PageLayout header={<PageHeader title="관심목록" description="추적하는 기업·인물" actions={<Button asChild variant="outline" size="sm"><Link to="/sources">소스 관리</Link></Button>} />}>
     <div className="space-y-5">
       <StocksSection onGo={code => navigate(`/analyze/${code}/summary`)} />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <FollowedPeopleCard onGo={name => navigate(`/person?name=${encodeURIComponent(name)}`)} />
-        <FollowedTagsCard onGo={(type, name) => navigate(`/feed?${type === 'sector' ? 'industry' : 'topic'}=${encodeURIComponent(name)}`)} />
-      </div>
+      <FollowedPeopleCard onGo={name => navigate(`/person?name=${encodeURIComponent(name)}`)} />
     </div>
   </PageLayout>
 }
 
 export function SourcesPage() {
   const navigate = useNavigate()
-  return <PageLayout header={<PageHeader title="소스 관리" description="피드에서 읽을 채널·블로그·유튜브를 관리합니다" actions={<Button asChild variant="outline" size="sm"><Link to="/home?home_view=feed">피드로 돌아가기</Link></Button>} />}>
+  return <PageLayout header={<PageHeader title="소스 관리" description="피드에서 읽을 채널·블로그·유튜브를 관리합니다" />}>
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <ChannelsCard onGo={key => navigate(`/source?kind=telegram&key=${encodeURIComponent(key)}`)} />
       <BlogSourcesCard title="블로그" placeholder="네이버/티스토리 블로그 URL" match={s => s.platform !== 'rss'} onGo={key => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
@@ -54,19 +52,21 @@ export function SourcesPage() {
   </PageLayout>
 }
 
-/* ── 종목 (워치리스트 관리 통합: 정렬·편집·삭제 + 전체 검색) ── */
+/* ── 종목 (기본 관심 묶음 '관심 종목': 정렬·편집·삭제 + 전체 검색) ── */
 
-type SortKey = "corp_name" | "latest_close" | "latest_market_cap"
+type SortKey = "name" | "close" | "market_cap"
 
 function StocksSection({ onGo }: { onGo: (code: string) => void }) {
   const [query, setQuery] = useState("")
-  const [sortKey, setSortKey] = useState<SortKey>("latest_market_cap")
+  const [sortKey, setSortKey] = useState<SortKey>("market_cap")
   const [sortAsc, setSortAsc] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const { data: items = [], isLoading } = useWatchlist()
+  const [editingCode, setEditingCode] = useState<string | null>(null)
+  const group = useDefaultWatchGroup()
+  const items = group.data?.members ?? []
+  const isLoading = group.isPending
   const { data: results = [] } = useCompanySearch(query)
-  const update = useUpdateWatchlistItem()
-  const del = useDeleteWatchlistItem()
+  const update = useUpdateMember(group.data?.id ?? 0)
+  const del = useRemoveMember(group.data?.id ?? 0)
   const { data: quotes } = useQuotes(items.map((i) => i.stock_code))
   const quoteMap = new Map((quotes ?? []).map((q) => [q.stock_code, q]))
 
@@ -81,7 +81,7 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc)
-    else { setSortKey(key); setSortAsc(key === "corp_name") }
+    else { setSortKey(key); setSortAsc(key === "name") }
   }
   const arrow = (key: SortKey) => sortKey === key ? (sortAsc ? " ↑" : " ↓") : ""
 
@@ -89,7 +89,7 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
     <Card>
       <CardHeader className="pb-2 flex-row items-center gap-3">
         <CardTitle className="text-sm">종목 <span className="font-normal text-muted-foreground">{items.length}</span></CardTitle>
-        <div className="relative ml-auto w-64">
+        <div className="relative ml-auto w-full sm:w-64">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="전체 상장사 검색…" className="pl-8 h-8 text-sm" />
@@ -99,7 +99,7 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
                 {results.slice(0, 8).map((c) => (
                   <button key={c.corp_code}
                     onClick={() => c.stock_code && onGo(c.stock_code)}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/60 text-left">
+                    className="flex w-full items-center gap-2 px-3 py-2.5 md:py-1.5 text-sm hover:bg-muted/60 text-left">
                     <span className="font-medium">{c.corp_name}</span>
                     <span className="ml-auto text-xs text-muted-foreground tabular-nums">{c.stock_code}</span>
                   </button>
@@ -111,43 +111,47 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
       </CardHeader>
       <CardContent className="px-0 pb-1">
         {isLoading && <div className="px-4 py-3 space-y-2"><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-3/4" /></div>}
-        {!isLoading && items.length === 0 && (
+        {group.isError && <ErrorState message="관심 종목을 불러오지 못했습니다." onRetry={() => group.refetch()} />}
+        {group.data && items.length === 0 && (
           <p className="px-4 py-5 text-sm text-muted-foreground text-center">
-            워치리스트가 비어 있습니다 — 검색으로 종목에 들어가 ★를 눌러보세요.
+            관심 종목이 비어 있습니다 — 검색으로 종목에 들어가 ★를 눌러보세요.
           </p>
         )}
         {items.length > 0 && (
-          <table className="w-full text-sm">
+          // 좁은 화면 — 열을 짓누르지 않고 표 단위로 가로 스크롤
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
             <thead>
-              <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-1.5 text-left font-medium cursor-pointer select-none" onClick={() => toggleSort("corp_name")}>
-                  종목명{arrow("corp_name")}
+              <tr className="border-b text-xs text-muted-foreground whitespace-nowrap">
+                <th className="px-4 py-1.5 text-left font-medium cursor-pointer select-none" onClick={() => toggleSort("name")}>
+                  종목명{arrow("name")}
                 </th>
-                <th className="py-1.5 text-left font-medium">코드</th>
-                <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("latest_close")}>
-                  현재가{arrow("latest_close")}
+                <th className="hidden py-1.5 text-left font-medium md:table-cell">코드</th>
+                <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("close")}>
+                  현재가{arrow("close")}
                 </th>
-                <th className="py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("latest_market_cap")}>
-                  시가총액{arrow("latest_market_cap")}
+                <th className="pl-3 md:pl-0 py-1.5 text-right font-medium cursor-pointer select-none" onClick={() => toggleSort("market_cap")}>
+                  시가총액{arrow("market_cap")}
                 </th>
-                <th className="py-1.5 text-right font-medium">목표가</th>
-                <th className="py-1.5 text-left font-medium">논지</th>
+                <th className="pl-3 md:pl-0 py-1.5 text-right font-medium">목표가</th>
+                <th className="pl-3 md:pl-0 py-1.5 text-left font-medium">논지</th>
                 <th className="px-4 py-1.5 text-right font-medium w-24"></th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((item) => (
-                <StockRow key={item.id} item={item} quote={quoteMap.get(item.stock_code)}
-                  editing={editingId === item.id}
-                  onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
-                  onSaved={() => setEditingId(null)}
+                <StockRow key={item.stock_code} item={item} quote={quoteMap.get(item.stock_code)}
+                  editing={editingCode === item.stock_code}
+                  onEdit={() => setEditingCode(editingCode === item.stock_code ? null : item.stock_code)}
+                  onSaved={() => setEditingCode(null)}
                   onGo={() => onGo(item.stock_code)}
-                  onDelete={() => del.mutate(item.id, { onSuccess: () => toast.success(`'${item.corp_name}' 워치리스트에서 삭제`) })}
+                  onDelete={() => del.mutate(item.stock_code, { onSuccess: (d) => toast.success(`'${item.name}' ‘${d.name}’에서 삭제`) })}
                   update={update}
                 />
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -155,21 +159,21 @@ function StocksSection({ onGo }: { onGo: (code: string) => void }) {
 }
 
 function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, update }: {
-  item: WatchlistItem
+  item: StockGroupMember
   quote?: LiveQuote
   editing: boolean
   onEdit: () => void
   onSaved: () => void
   onGo: () => void
   onDelete: () => void
-  update: ReturnType<typeof useUpdateWatchlistItem>
+  update: ReturnType<typeof useUpdateMember>
 }) {
   return (
     <>
       <tr className="border-b border-border/50 hover:bg-muted/50 cursor-pointer" onClick={onGo}>
-        <td className="px-4 py-2 font-medium">{item.corp_name}</td>
-        <td className="py-2 text-xs text-muted-foreground tabular-nums">{item.stock_code}</td>
-        <td className="py-2 text-right tabular-nums text-xs">
+        <td className="px-4 py-2 font-medium whitespace-nowrap">{item.name}</td>
+        <td className="hidden py-2 text-xs text-muted-foreground tabular-nums md:table-cell">{item.stock_code}</td>
+        <td className="py-2 text-right tabular-nums text-xs whitespace-nowrap">
           {quote?.price != null ? (
             <>
               {formatNumber(quote.price)}
@@ -179,22 +183,22 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
                 </span>
               )}
             </>
-          ) : item.latest_close != null ? formatNumber(item.latest_close) : "-"}
+          ) : item.close != null ? formatNumber(item.close) : "-"}
         </td>
-        <td className="py-2 text-right tabular-nums text-xs">
-          {item.latest_market_cap != null ? formatKrw(item.latest_market_cap) : "-"}
+        <td className="pl-3 md:pl-0 py-2 text-right tabular-nums text-xs whitespace-nowrap">
+          {item.market_cap != null ? formatKrw(item.market_cap) : "-"}
         </td>
-        <td className="py-2 text-right tabular-nums text-xs">
+        <td className="pl-3 md:pl-0 py-2 text-right tabular-nums text-xs">
           {item.target_price != null ? formatNumber(item.target_price) : "-"}
         </td>
-        <td className="py-2 text-xs text-muted-foreground max-w-[240px]">
+        <td className="pl-3 md:pl-0 py-2 text-xs text-muted-foreground max-w-[240px]">
           <span className="block truncate" title={item.thesis ?? ""}>{item.thesis || "-"}</span>
         </td>
-        <td className="px-4 py-2 text-right">
+        <td className="px-4 py-2 text-right whitespace-nowrap">
           <button onClick={(e) => { e.stopPropagation(); onEdit() }}
-            className="text-[11px] text-muted-foreground hover:text-foreground mr-2">편집</button>
+            className="py-2.5 md:py-0 text-[11px] text-muted-foreground hover:text-foreground mr-2">편집</button>
           <button onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="text-[11px] text-muted-foreground hover:text-destructive">삭제</button>
+            className="py-2.5 md:py-0 text-[11px] text-muted-foreground hover:text-destructive">삭제</button>
         </td>
       </tr>
       {editing && (
@@ -207,7 +211,7 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
                 const fd = new FormData(e.currentTarget)
                 const tp = fd.get("tp")?.toString().trim()
                 update.mutate(
-                  { id: item.id, target_price: tp ? Number(tp.replace(/,/g, "")) : undefined,
+                  { stockCode: item.stock_code, target_price: tp ? Number(tp.replace(/,/g, "")) : undefined,
                     thesis: fd.get("thesis")?.toString() ?? undefined },
                   { onSuccess: () => { toast.success("저장됨 — 논지는 AI 브리프의 점검 대상이 됩니다"); onSaved() } },
                 )
@@ -219,7 +223,7 @@ function StockRow({ item, quote, editing, onEdit, onSaved, onGo, onDelete, updat
               <Input name="thesis" defaultValue={item.thesis ?? ""} className="h-7 flex-1 min-w-[200px] text-xs"
                 placeholder="핵심 논지 한 줄 — AI 브리프가 새 증거와 대조합니다" />
               <button type="submit" disabled={update.isPending}
-                className="h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">저장</button>
+                className="h-11 md:h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">저장</button>
             </form>
           </td>
         </tr>
@@ -320,9 +324,10 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
           )}
         </div>
       </div>
+      {/* 행 조작은 hover로 드러나지만 터치(pointer-coarse)에는 hover가 없어 항상 보인다 */}
       {/* 지금 수집 (D-199) — 30분 체인을 기다리지 않고 이 소스만. 진행 중엔 항상 보이고 스핀 */}
       {onRefresh && (
-        <span onClick={(e) => e.stopPropagation()} className={cn("shrink-0 transition-opacity", refreshing ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+        <span onClick={(e) => e.stopPropagation()} className={cn("shrink-0 transition-opacity", refreshing ? "opacity-100" : "opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100")}>
           <RefreshButton onClick={onRefresh} pending={!!refreshing} title="지금 수집 — 새 글만 가져와 태깅합니다" />
         </span>
       )}
@@ -331,7 +336,7 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
         <button
           onClick={(e) => { e.stopPropagation(); onToggleCollect() }}
           className={cn(
-            "shrink-0 rounded border px-1.5 py-0.5 text-[9px] transition-all opacity-0 group-hover:opacity-100",
+            "shrink-0 rounded border px-1.5 py-0.5 text-[9px] transition-all opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 pointer-coarse:py-1.5",
             collecting ? "border-border text-muted-foreground" : "border-hypothesis/40 text-hypothesis",
           )}
           title={collecting ? "수집 중단 — 문서·이력은 보존, 되돌릴 수 있음" : "수집 재개"}
@@ -343,8 +348,8 @@ function SourceRow({ name, sub, warning, active, health, onClick, onToggle, onTo
         onClick={(e) => { e.stopPropagation(); onToggle() }}
         className={cn(
           "shrink-0 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center transition-all",
-          "opacity-0 group-hover:opacity-100",
-          active ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
+          "opacity-0 group-hover:opacity-100 pointer-coarse:size-6",
+          active ? "border-primary bg-primary text-primary-foreground pointer-coarse:opacity-100" : "border-muted-foreground/30 opacity-40 group-hover:opacity-100"
         )}
         title={active ? "숨기기 — 내 피드·답변에서 제외" : "표시하기"}
       >
@@ -368,7 +373,7 @@ function AddForm({ placeholder, onSubmit, pending }: {
       }}>
       <Input name="v" placeholder={placeholder} disabled={pending} className="h-7 text-xs" />
       <button type="submit" disabled={pending}
-        className="shrink-0 h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">
+        className="shrink-0 h-11 md:h-7 px-3 md:px-2.5 rounded-md bg-primary text-primary-foreground text-xs disabled:opacity-50">
         {pending ? "…" : "추가"}
       </button>
     </form>
@@ -393,7 +398,7 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
       qc.invalidateQueries({ queryKey: ["telegram-channels"] })
     },
     onError: (e: unknown) => {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "채널 등록 실패")
+      toast.error(toApiError(e).message || "채널 등록 실패")
     },
   })
 
@@ -426,7 +431,7 @@ function ChannelsCard({ onGo }: { onGo: (key: string) => void }) {
 
 /* ── 유튜브 (채널 구독 + 영상 링크 단건) ── */
 
-interface YtChannel { channel_id: string; title: string | null; handle: string | null; is_active: boolean }
+export interface YtChannel { channel_id: string; title: string | null; handle: string | null; is_active: boolean }
 
 function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
   const qc = useQueryClient()
@@ -442,7 +447,7 @@ function YouTubeCard({ onGo }: { onGo: (channelId: string) => void }) {
       qc.invalidateQueries({ queryKey: ["youtube-channels"] })
     },
     onError: (e: unknown) =>
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "등록 실패"),
+      toast.error(toApiError(e).message || "등록 실패"),
   })
   const toggle = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
@@ -504,7 +509,7 @@ function BlogSourcesCard({ title, placeholder, match, onGo }: {
       qc.invalidateQueries({ queryKey: ["blog-sources"] })
     },
     onError: (e: unknown) => {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "소스 등록 실패")
+      toast.error(toApiError(e).message || "소스 등록 실패")
     },
   })
 
@@ -570,56 +575,6 @@ function FollowedPeopleCard({ onGo }: { onGo: (name: string) => void }) {
             {people.map((f) => (
               <Badge key={f.entity_id} variant="outline" className="text-xs gap-1 pr-1 cursor-pointer text-hypothesis border-hypothesis/40 hover:bg-hypothesis/10"
                 onClick={() => onGo(f.name)}>
-                {f.name}
-                <button
-                  onClick={(e) => { e.stopPropagation(); unfollow.mutate(f.entity_id) }}
-                  className="hover:text-destructive" aria-label="팔로우 해제">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-/* ── 팔로우 태그 (섹터·테마) ── */
-
-function FollowedTagsCard({ onGo }: { onGo: (type: string, name: string) => void }) {
-  const qc = useQueryClient()
-  const { data: allFollows = [] } = useQuery({
-    queryKey: ["spine", "follows"],
-    queryFn: async () => (await api.get("/api/spine/follows")).data as
-      { entity_id: number; type: string; name: string }[],
-    staleTime: 60_000,
-  })
-  const follows = allFollows.filter((f) => f.type !== "person")
-  const unfollow = useMutation({
-    mutationFn: unfollowEntity,
-    onSuccess: () => {
-      toast.success("팔로우 해제 — 홈 업데이트에서 제외됩니다")
-      qc.invalidateQueries({ queryKey: ["spine", "follows"] })
-      qc.invalidateQueries({ queryKey: spineKeys.home() })
-    },
-  })
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">태그 팔로우 <span className="font-normal text-muted-foreground">{follows.length}</span></CardTitle>
-      </CardHeader>
-      <CardContent>
-        {follows.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            팔로우한 산업·테마가 없습니다 — 피드에서 태그 필터 후 "이 태그 팔로우"를 눌러보세요.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {follows.map((f) => (
-              <Badge key={f.entity_id} variant="secondary" className="text-xs gap-1 pr-1 cursor-pointer"
-                onClick={() => onGo(f.type, f.name)}>
                 {f.name}
                 <button
                   onClick={(e) => { e.stopPropagation(); unfollow.mutate(f.entity_id) }}

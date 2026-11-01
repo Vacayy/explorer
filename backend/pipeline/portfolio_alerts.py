@@ -13,7 +13,7 @@ from __future__ import annotations
 import html
 import math
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pipeline import portfolio as pf
 
@@ -49,6 +49,48 @@ def _claim(conn: sqlite3.Connection, key: str) -> bool:
 
 def _release(conn: sqlite3.Connection, keys: list[str]) -> None:
     conn.executemany("DELETE FROM portfolio_alerts_sent WHERE key=?", [(k,) for k in keys])
+
+
+def _band(label: str, bucket: str, step: float) -> str:
+    b = int(bucket)
+    return f"{label} {'+' if b > 0 else '−'}{abs(b) * step:g}%p {'이상' if b > 0 else '이하'}"
+
+
+def history(conn: sqlite3.Connection, days: int = 14, limit: int = 60) -> list[dict]:
+    """앱 안 알림 이력 — 보낸 알림의 키만 읽어 유형·종목·구간·시각으로 푼다(본문은 저장하지 않으므로 가격도 없다). 읽기만."""
+    try:
+        rows = conn.execute("SELECT key, sent_at FROM portfolio_alerts_sent WHERE sent_at >= datetime('now', ?) "
+                            "ORDER BY sent_at DESC LIMIT ?", (f"-{days} days", limit)).fetchall()
+    except sqlite3.OperationalError:     # 알림을 한 번도 보내지 않은 DB
+        return []
+    from pipeline.watch_rules import strategy_labels
+    labels = None
+    out = []
+    for r in rows:
+        kind, _, rest = r["key"].partition(":")
+        parts = rest.split(":")
+        code = day = url = None
+        if kind == "day" and len(parts) == 3:
+            day, code, label = parts[0], parts[1], _band("전일 대비", parts[2], DAY_STEP)
+        elif kind == "avg" and len(parts) == 3:
+            code, label = parts[0], _band("평단 대비", parts[2], AVG_STEP)
+        elif kind == "tech" and len(parts) == 3:
+            labels = labels if labels is not None else strategy_labels()
+            code, day, label = parts[0], parts[1], labels.get(parts[2], parts[2])
+        elif kind == "disc":
+            label, url = "보유 종목 공시", f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rest}"
+        elif kind == "summary":
+            day, label = rest, "마감 요약"
+        else:
+            label = kind
+        name = None
+        if code:
+            row = conn.execute("SELECT corp_name FROM companies WHERE stock_code=?", (code,)).fetchone()
+            name = row["corp_name"] if row else code
+        sent = datetime.fromisoformat(r["sent_at"]) + timedelta(hours=9)     # sent_at은 UTC
+        out.append({"kind": kind, "label": label, "code": code, "name": name, "date": day,
+                    "sent_at": sent.strftime("%Y-%m-%d %H:%M"), "url": url})
+    return out
 
 
 def price_moves(summary: dict, today: str) -> list[tuple[str, str]]:
@@ -164,13 +206,19 @@ def run(mode: str, dry_run: bool = False, conn: sqlite3.Connection | None = None
     today = (now or datetime.now(pf.KST)).strftime("%Y-%m-%d")
     try:
         summary = pf.summary(conn)
+        tracker_sent, tracker_err = 0, None
+        try:   # 종목 추적 위젯(docs/specs/stock-tracker.md) — 보유가 없어도 돈다, 키를 공유해 보유와 겹쳐도 한 번만
+            from pipeline import stock_tracker
+            tracker_sent = stock_tracker.alert(conn, mode, send, today, now, dry_run)
+        except Exception as e:  # noqa: BLE001
+            tracker_err = f"tracker: {type(e).__name__}: {str(e)[:120]}"
         if not summary["holdings"]:
-            return {"mode": mode, "sent": 0, "reason": "보유 종목 없음"}
+            return {"mode": mode, "sent": tracker_sent, "reason": "보유 종목 없음", **({"errors": [tracker_err]} if tracker_err else {})}
         if mode == "intraday" and pf.market_hours(now):
             # 30분 주기 작업이 30분 TTL에 걸려 시세를 한 주기 더 묵히지 않게, 1분보다 오래된 시세는 새로 받는다
             pf.refresh_quotes(conn, {h["code"] for h in summary["holdings"]}, ttl=60)
             summary = pf.summary(conn)
-        sent, result, errors = 0, {}, []
+        sent, result, errors = tracker_sent, {}, ([tracker_err] if tracker_err else [])
         if mode == "intraday":
             if pf.market_hours(now):
                 sent += _send(conn, price_moves(summary, today), "", send, dry_run)

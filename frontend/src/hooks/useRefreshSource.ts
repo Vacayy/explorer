@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import api from "@/api/client"
+import { toApiError } from "@/api/query"
 import { spineKeys } from "@/api/spine"
 
 export type RefreshKind = "telegram" | "youtube" | "blog"
@@ -28,7 +29,7 @@ export function useRefreshSource() {
       if (state.already_running) toast.message(`${v.name} 수집이 이미 진행 중입니다`)
     },
     onError: (e: unknown, v) =>
-      toast.error(`${v.name} 수집을 시작하지 못했습니다`, { description: (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail }),
+      toast.error(`${v.name} 수집을 시작하지 못했습니다`, { description: toApiError(e).message }),
   })
   const poll = useQuery({
     queryKey: ["spine", "sources", "refresh", active?.kind, active?.key],

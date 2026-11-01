@@ -49,7 +49,7 @@ export default function QuestionDetail() {
   })
 
   if (isLoading) {
-    return <PageContainer width="reading" gap="sm"><Skeleton className="h-8 w-96" /><Skeleton className="h-64 w-full rounded-xl" /></PageContainer>
+    return <PageContainer width="reading" gap="sm"><Skeleton className="h-8 w-full max-w-96" /><Skeleton className="h-64 w-full rounded-xl" /></PageContainer>
   }
   if (isError || !data) return <ErrorState message="질문을 찾을 수 없습니다." onRetry={() => refetch()} />
 
@@ -92,7 +92,7 @@ export default function QuestionDetail() {
       {/* 질문 종합 — 현재 결산 리포트 (D-093). 아래 파급 시나리오와 체인(결산 → 전방 전망) */}
       <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_6%,var(--card))]">
         <CardContent className="py-3 space-y-2">
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <ClipboardList className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">질문 종합 — 현재 결산</span>
             <span className="text-[11px] text-muted-foreground">지금까지 추적한 근거로 답할 수 있는 것</span>
@@ -122,7 +122,7 @@ export default function QuestionDetail() {
       {/* 파급 시나리오 (허브: 같은 질문에 묶임) — 위 결산을 출발 조건으로 한 전방 전망 */}
       <Card>
         <CardContent className="py-3 space-y-2">
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Route className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">파급 시나리오</span>
             <span className="text-[11px] text-muted-foreground">결산을 출발 조건으로 한 1·2·3차 파급 전망</span>

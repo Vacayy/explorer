@@ -36,7 +36,8 @@ def start(code: str, name: str, why: str, falsifier: str) -> dict:
 
 
 def theses(conn: sqlite3.Connection, codes: list[str], created_by: str = "portfolio") -> dict[str, dict]:
-    """종목별 가장 최근 추적 중 논지 — 판정·하위 질문(반증 조건)만. created_by로 보유 논지와 관심 이유(watch)를 나눈다."""
+    """종목별 가장 최근 추적 중 논지 — 판정·하위 질문(반증 조건)만. created_by로 보유 논지와 관심 이유(watch)를 나눈다.
+    judged_at은 마지막 판정 시각 — 판정 엔진이 꺼진 동안(08-19~) 옛 판정을 오늘 것처럼 보이지 않게 함께 낸다."""
     out = {}
     for code in codes:
         q = conn.execute("SELECT * FROM questions WHERE stock_code=? AND status='tracking' AND created_by=? ORDER BY id DESC LIMIT 1",
@@ -46,8 +47,15 @@ def theses(conn: sqlite3.Connection, codes: list[str], created_by: str = "portfo
         subs = [{"text": r["text"], "falsifier": r["falsifier"], "verdict": r["verdict"]}
                 for r in conn.execute("SELECT text, falsifier, verdict FROM sub_questions WHERE question_id=? ORDER BY id", (q["id"],))]
         out[code] = {"id": q["id"], "text": q["text"], "lead": q["lead_verdict"], "confirm": q["confirm_verdict"],
-                     "divergence": q["divergence"], "summary": q["verdict_summary"], "sub_questions": subs}
+                     "divergence": q["divergence"], "summary": q["verdict_summary"], "sub_questions": subs,
+                     "judged_at": q["updated_at"]}
     return out
+
+
+def judging() -> bool:
+    """판정 엔진(관리자 '질문 트래커 갱신')이 켜져 있나. 꺼져 있으면 논지·관심 이유 판정과 알림이 멈춘다."""
+    from pipeline.ops import flag_enabled
+    return flag_enabled("refresh_questions")
 
 
 def warnings(t: dict) -> list[str]:

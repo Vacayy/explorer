@@ -2,7 +2,7 @@
  * 연속값 추이 미니 라인 — 지수·가격 추이(Spark의 바 차트는 카운트용, 이건 연속값용).
  * 색은 구간 전체 방향(첫 값 대비 마지막 값): 상승=빨강·하락=파랑 (한국 컨벤션).
  */
-export function SparkLine({ data, height = 26 }: { data: number[]; height?: number }) {
+export function SparkLine({ data, height = 26, className = "w-full" }: { data: number[]; height?: number; className?: string }) {
   if (data.length < 2) return null
   const min = Math.min(...data)
   const max = Math.max(...data)
@@ -21,7 +21,7 @@ export function SparkLine({ data, height = 26 }: { data: number[]; height?: numb
       viewBox={`0 0 ${w} ${height}`}
       height={height}
       preserveAspectRatio="none"
-      className="w-full"
+      className={className}
       aria-hidden
     >
       <polyline

@@ -34,10 +34,20 @@ export interface QTree {
   divergence: string | null; verdict_summary: string | null; sub_questions: QSub[]
   scenario?: QScenario | null; source_doc?: { id: number; title: string | null; source_type: string } | null
 }
-interface QListItem {
+export interface QListItem {
   id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null
   divergence: string | null; verdict_summary: string | null; sub_count: number; updated_at: string
-  conviction: number | null; created_by: string; source_doc_id: number | null
+  conviction: number | null; created_by: string; source_doc_id: number | null; stock_code: string | null
+}
+
+/** 질문의 출처 — 보유 논지·관심 이유·논지 감사·서사 도출이 모두 같은 질문 객체다 (world-model.md §4) */
+export const QUESTION_ORIGIN: Record<string, { label: string; cls: string }> = {
+  portfolio: { label: "보유 논지", cls: "text-primary border-primary/40" },
+  watch: { label: "관심 이유", cls: "text-primary border-primary/40" },
+  thesis: { label: "논지 감사", cls: "text-hypothesis border-hypothesis/40" },
+  system: { label: "서사 도출", cls: "text-hypothesis border-hypothesis/40" },
+  digest: { label: "언급", cls: "text-muted-foreground border-border" },
+  user: { label: "직접 입력", cls: "text-muted-foreground border-border" },
 }
 
 /* 원장 렌즈 (#3, D-082) — 괴리(선행/확정 어긋남) 우선, 그다음 확신 순. 최근순은 updated_at 유지. */
@@ -87,7 +97,7 @@ export function QuestionsSection() {
   }
 
   return (
-    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_5%,var(--card))]">
+    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_5%,var(--card))] max-sm:[--card-spacing:--spacing(3)]">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <HelpCircle className="h-4 w-4 text-hypothesis" /> 미결 질문
@@ -196,9 +206,9 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
   const refresh = () => { qc.invalidateQueries({ queryKey: proposedKey }); onDone() }
 
   const propose = useMutation({
-    mutationFn: () => api.post("/api/spine/questions/propose"),
+    mutationFn: () => api.post<{ proposed: number }>("/api/spine/questions/propose"),
     onSuccess: (r) => {
-      const n = (r.data as { proposed: number }).proposed
+      const n = r.data.proposed
       toast.success(n ? `지배 내러티브에서 질문 후보 ${n}개 도출` : "새 후보 없음 — 이미 다 제안됨")
       refresh()
     },
@@ -234,16 +244,16 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
       ) : (
         data.map((q) => (
           <div key={q.id} className="flex items-center gap-2 py-0.5">
-            <span className="text-[13px] truncate flex-1">
+            <span className="text-[13px] flex-1 max-md:line-clamp-2 md:truncate">
               {q.created_by === "digest" && <Badge variant="secondary" className="text-[8px] mr-1 align-middle">언급</Badge>}
               {q.text}
             </span>
             <span className="flex shrink-0 gap-1">
-              <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
+              <Button size="xs" variant="outline" className="h-8 px-2 text-emerald-600 md:h-6 hover:text-emerald-700"
                 disabled={approve.isPending} onClick={() => approve.mutate(q.id)}>
                 <Check className="h-3 w-3" /> 승인
               </Button>
-              <Button size="xs" variant="ghost" className="h-6 px-2 text-muted-foreground hover:text-destructive"
+              <Button size="xs" variant="ghost" className="h-8 px-2 text-muted-foreground hover:text-destructive md:h-6"
                 onClick={() => reject.mutate(q.id)}>
                 <X className="h-3 w-3" />
               </Button>
@@ -274,18 +284,18 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
   })
 
   return (
-    <Card>
+    <Card className="max-sm:[--card-spacing:--spacing(3)]">
       <CardContent className="py-3 space-y-2">
         <div className="flex items-start gap-2">
           <Link to={`/question/${item.id}`} className="text-sm leading-snug flex-1 hover:text-primary hover:underline">
             {item.text}
           </Link>
           <span className="flex shrink-0 items-center gap-1">
-            <button className="text-muted-foreground/60 hover:text-foreground" title="판정 재계산"
+            <button className="p-1.5 text-muted-foreground/60 hover:text-foreground md:p-0" title="판정 재계산"
               disabled={roll.isPending} onClick={() => roll.mutate()}>
               <RefreshCw className={cn("h-3.5 w-3.5", roll.isPending && "animate-spin")} />
             </button>
-            <button className="text-muted-foreground/60 hover:text-destructive" title="제거"
+            <button className="p-1.5 text-muted-foreground/60 hover:text-destructive md:p-0" title="제거"
               onClick={() => del.mutate()}>
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -295,11 +305,11 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
         <div className="flex flex-wrap items-center gap-1.5">
           <VerdictBadge v={item.confirm_verdict} prefix="확정 " />
           <VerdictBadge v={item.lead_verdict} prefix="선행 " />
-          {item.created_by === "thesis" && (
-            <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">논지</Badge>
+          {QUESTION_ORIGIN[item.created_by] && (
+            <Badge variant="outline" className={cn("text-[9px]", QUESTION_ORIGIN[item.created_by].cls)}>{QUESTION_ORIGIN[item.created_by].label}</Badge>
           )}
-          {item.created_by === "digest" && (
-            <Badge variant="outline" className="text-[9px] text-muted-foreground border-border">언급</Badge>
+          {item.stock_code && (
+            <Badge asChild variant="secondary" className="text-[9px]"><Link to={`/analyze/${item.stock_code}/summary`}>{item.stock_code}</Link></Badge>
           )}
           {div && <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{div}</Badge>}
           <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">서브질문 {item.sub_count}</span>
@@ -363,10 +373,11 @@ function ProxyRow({ p }: { p: QProxy }) {
       <DialogTrigger asChild>
         <button className="w-full flex items-center gap-1.5 text-[11px] text-left rounded px-1 -mx-1 hover:bg-muted/60 transition-colors">
           <Badge variant="secondary" className="text-[9px] shrink-0">{MODALITY[p.modality] ?? p.modality}</Badge>
-          <span className="shrink-0 text-muted-foreground">{p.label}</span>
+          <span className="shrink-0 text-muted-foreground max-md:min-w-0 max-md:shrink max-md:truncate">{p.label}</span>
           {o ? (
-            <span className="ml-auto flex items-center gap-1.5 text-right text-muted-foreground min-w-0">
-              <span className="truncate max-w-[20rem]" title={o.value_text ?? ""}>{o.value_text}</span>
+            <span className="ml-auto flex items-center gap-1.5 text-right text-muted-foreground min-w-0 max-md:shrink-0">
+              {/* 모바일: 관측값 원문은 접고(모달에서 열람) 프록시명·방향·날짜만 */}
+              <span className="truncate max-w-[20rem] max-md:hidden" title={o.value_text ?? ""}>{o.value_text}</span>
               {o.direction && <span className="shrink-0 tabular-nums">{DIR[o.direction] ?? o.direction}</span>}
               <span className="shrink-0 tabular-nums text-[10px]">{o.observed_at?.slice(0, 10)}</span>
             </span>
@@ -386,7 +397,7 @@ interface ProxyObs {
   observed_at: string | null; value_num: number | null; value_text: string | null
   direction: string | null; confidence: number | null; source: { doc_id: number | null; label: string } | null
 }
-interface ProxyDetail {
+export interface ProxyDetail {
   id: number; label: string; modality: string; yes_direction: string | null; unit: string | null
   tickers: string | null; extract_hint: string | null; sub_question_text: string | null
   question_id: number | null; question_text: string | null; observations: ProxyObs[]

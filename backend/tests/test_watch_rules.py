@@ -120,22 +120,71 @@ class WatchRulesTests(unittest.TestCase):
         self.assertEqual(listing["items"][0]["last_as_of"], latest)
         self.assertGreaterEqual(listing["items"][0]["today_signals"], 1)
 
-    def test_legacy_watchlist_migration_is_idempotent_and_keeps_fields(self):
-        first = self.client.post("/api/spine/groups/migrate-watchlist").json()
-        self.assertEqual((first["legacy"], first["added"]), (2, 2))
-        second = self.client.post("/api/spine/groups/migrate-watchlist").json()
-        self.assertEqual((second["group_id"], second["added"]), (first["group_id"], 0))
-        member = next(m for m in second["group"]["members"] if m["stock_code"] == "000001")
-        self.assertEqual((member["conviction"], member["target_price"], member["thesis"], member["name"]), (4, 150, "논지 A", "가나"))
-        self.assertTrue(self.client.get("/api/spine/groups").json()["legacy_watchlist"]["migrated"])
+    def test_legacy_watchlist_migration_dry_run_writes_nothing_then_apply_is_idempotent(self):
+        conn = self.connect()
+        plan = wr.migrate_watchlist(conn, dry_run=True)
+        self.assertTrue(plan["create_group"])
+        self.assertEqual([i["stock_code"] for i in plan["add"]], ["000001", "000002"])
+        self.assertIsNone(wr.default_watch_group_id(conn, create=False), "dry-run must not create the group")
+        self.assertEqual(conn.execute("SELECT COUNT(*) n FROM stock_group_members").fetchone()["n"], 0)
+        first = wr.migrate_watchlist(conn)
+        self.assertEqual(len(first["add"]), 2)
+        second = wr.migrate_watchlist(conn)
+        self.assertEqual((second["group_id"], second["add"], second["fill"]), (first["group_id"], [], []))
+        self.assertEqual(len(second["same"]), 2)
+        member = conn.execute("SELECT conviction, target_price, thesis FROM stock_group_members WHERE group_id=? AND stock_code='000001'",
+                              (first["group_id"],)).fetchone()
+        self.assertEqual(tuple(member), (4, 150, "논지 A"))
+        self.assertEqual(conn.execute("SELECT COUNT(*) n FROM watchlist").fetchone()["n"], 2, "legacy table is kept")
+        conn.close()
 
-    def test_portfolio_members_expose_pnl(self):
+    def test_migration_fills_only_empty_member_fields(self):
+        conn = self.connect()
+        gid = wr.default_watch_group_id(conn)
+        conn.execute("INSERT INTO stock_group_members (group_id, stock_code, conviction, thesis) VALUES (?, '000001', 5, NULL)", (gid,))
+        conn.execute("INSERT INTO stock_group_members (group_id, stock_code) VALUES (?, '000002')", (gid,))
+        conn.commit()
+        plan = wr.migrate_watchlist(conn)
+        self.assertEqual(plan["add"], [])
+        self.assertEqual([(i["stock_code"], i["fields"]) for i in plan["fill"]], [("000001", ["target_price", "thesis"]), ("000002", ["conviction"])])
+        row = conn.execute("SELECT conviction, target_price, thesis FROM stock_group_members WHERE stock_code='000001'").fetchone()
+        self.assertEqual(tuple(row), (5, 150, "논지 A"), "group value wins, empty cells take legacy values")
+        conn.close()
+
+    def test_watched_is_union_of_watch_groups_and_thesis_prefers_filled_member(self):
+        conn = self.connect()
+        default = wr.default_watch_group_id(conn)
+        self.assertEqual(wr.default_watch_group_id(conn), default, "get-or-create is idempotent")
+        other = conn.execute("INSERT INTO stock_groups (name, kind) VALUES ('반도체', 'watch')").lastrowid
+        held = conn.execute("INSERT INTO stock_groups (name, kind) VALUES ('보유', 'portfolio')").lastrowid
+        conn.executemany("INSERT INTO stock_group_members (group_id, stock_code, thesis) VALUES (?,?,?)",
+                         [(default, "000001", None), (other, "000001", "다른 묶음 논지"), (other, "000002", None), (held, "000003", "보유")])
+        conn.commit()
+        self.assertEqual(wr.watched(conn), {"000001": "가나", "000002": "다라"}, "portfolio members are not watched")
+        self.assertEqual(wr.watch_thesis(conn, "000001")["thesis"], "다른 묶음 논지")
+        conn.execute("UPDATE stock_group_members SET thesis='기본 논지' WHERE group_id=? AND stock_code='000001'", (default,))
+        self.assertEqual(wr.watch_thesis(conn, "000001")["thesis"], "기본 논지")
+        self.assertIsNone(wr.watch_thesis(conn, "000003"))
+        conn.close()
+
+    def test_default_watch_endpoint_creates_once_and_lists_members(self):
+        first = self.client.get("/api/spine/groups/default-watch").json()
+        self.assertEqual((first["name"], first["kind"], first["members"]), (wr.DEFAULT_WATCH_GROUP_NAME, "watch", []))
+        self.client.post(f"/api/spine/groups/{first['id']}/members", json={"stock_code": "000001"})
+        again = self.client.get("/api/spine/groups/default-watch").json()
+        self.assertEqual(again["id"], first["id"])
+        self.assertEqual([m["name"] for m in again["members"]], ["가나"])
+
+    def test_portfolio_members_take_no_amounts_and_expose_none(self):
+        """D-212: 수량·매수가는 거래 원장에만 — 묶음 API는 받지도 돌려주지도 않는다."""
         group = self.client.post("/api/spine/groups", json={"name": "보유", "kind": "portfolio"}).json()
-        detail = self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "000001", "quantity": 10, "avg_price": 70}).json()
+        rejected = self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "000001", "quantity": 10, "avg_price": 70})
+        self.assertEqual(rejected.status_code, 422)
+        self.assertEqual(self.client.patch(f"/api/spine/groups/{group['id']}/members/000001", json={"avg_price": 70}).status_code, 422)
+        detail = self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "000001"}).json()
         member = detail["members"][0]
         self.assertEqual(member["close"], 98)
-        self.assertEqual(member["pnl"], 280)
-        self.assertAlmostEqual(member["return_pct"], 40.0)
+        self.assertTrue({"pnl", "return_pct", "quantity", "avg_price"}.isdisjoint(member))
         removed = self.client.delete(f"/api/spine/groups/{group['id']}/members/000001").json()
         self.assertEqual(removed["members"], [])
         self.assertEqual(self.client.delete(f"/api/spine/groups/{group['id']}").status_code, 204)
