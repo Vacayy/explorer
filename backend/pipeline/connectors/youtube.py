@@ -83,13 +83,50 @@ def parse_video_id(url_or_id: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _channel_title(cid: str) -> str:
-    """RSS feed title이 정확한 채널명 — 페이지 파싱은 네비 '홈' 등을 오인함."""
+def _feed_channel_title(feed, cid: str) -> str:
+    """Accept only a channel-level title whose alternate URL matches this channel."""
+    expected = f"https://www.youtube.com/channel/{cid}"
+    matches = any(link.get("rel") == "alternate" and link.get("href", "").rstrip("/") == expected
+                  for link in feed.get("links", []))
+    title = (feed.get("title") or "").strip()
+    return title if matches and title and title != cid else ""
+
+
+def _repair_channel_title(cid: str, title: str) -> None:
+    if not title or title == cid:
+        return
+    conn = get_connection()
     try:
-        f = feedparser.parse(requests.get(_RSS.format(cid=cid), headers=_UA, timeout=15).content)
-        return f.feed.get("title", "") or cid
+        # Preserve real/manual names; only repair missing or ID placeholders.
+        conn.execute("UPDATE youtube_channels SET title=? WHERE channel_id=? "
+                     "AND (title IS NULL OR trim(title)='' OR trim(title)=channel_id)", (title, cid))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _channel_title(cid: str) -> str:
+    """RSS channel title, with a short metadata cache and repair of old placeholders."""
+    from services.cache_service import is_cached, set_cache
+    key = f"youtube:channel-title:{cid}"
+    if is_cached(key):
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT title FROM youtube_channels WHERE channel_id=?", (cid,)).fetchone()
+        finally:
+            conn.close()
+        if row and row["title"] and row["title"].strip() not in ("", cid):
+            return row["title"]
+    try:
+        response = requests.get(_RSS.format(cid=cid), headers=_UA, timeout=15)
+        response.raise_for_status()
+        title = _feed_channel_title(feedparser.parse(response.content).feed, cid)
     except Exception:
         return cid
+    if title:
+        _repair_channel_title(cid, title)
+        set_cache(key, 86400)
+    return title or cid
 
 
 def resolve_channel_id(url_or_handle: str) -> tuple[str, str] | None:
@@ -267,6 +304,9 @@ class YouTubeConnector:
                     _RSS.format(cid=ch["channel_id"]), headers=_UA, timeout=15).content)
             except Exception:
                 continue
+            channel_title = _feed_channel_title(f.feed, ch["channel_id"])
+            if channel_title:
+                _repair_channel_title(ch["channel_id"], channel_title)
             new = 0
             for e in f.entries:
                 vid = e.get("yt_videoid") or (e.get("id", "").split(":")[-1])
@@ -274,7 +314,7 @@ class YouTubeConnector:
                     continue
                 refs.append(SourceRef(key=vid, meta={
                     "title": e.get("title", ""), "published": e.get("published", ""),
-                    "channel_id": ch["channel_id"], "channel": ch["title"]}))
+                    "channel_id": ch["channel_id"], "channel": channel_title or ch["title"]}))
                 new += 1
                 if new >= MAX_NEW_PER_CHANNEL:
                     break
