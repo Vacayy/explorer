@@ -1,3 +1,4 @@
+import { selectPeerPreset } from '@/lib/peerPresets'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import PeriodToggle from '@/components/shared/PeriodToggle'
@@ -14,7 +15,7 @@ export function PeerRelativeCandidates({ groups }: { groups: PeerGroupPerformanc
     .filter(row => row.excessPp !== null && (direction === 'over' ? row.excessPp > 0 : row.excessPp < 0))
     .sort((a, b) => (direction === 'over' ? -1 : 1) * (a.excessPp! - b.excessPp!) || a.code.localeCompare(b.code))
   const open = (group: string, code: string) => setParams(previous => {
-    const next = new URLSearchParams(previous); next.set('group', group); next.set('stock', code); return next
+    const next = selectPeerPreset(previous, group); next.set('stock', code); return next
   })
   return <div className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-3">

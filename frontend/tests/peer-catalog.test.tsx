@@ -68,5 +68,5 @@ it('does not substitute all companies for an invalid group and resets explicitly
   expect(screen.queryByRole('link', { name: '일진전기' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '필터 초기화' }))
   expect(await screen.findByRole('link', { name: '일진전기' })).toBeTruthy()
-  expect(screen.getByLabelText('현재 URL').textContent).toBe('/discover/peers?view=research')
+  expect(screen.getByLabelText('현재 URL').textContent).toBe('/discover/peers?view=research&overview=groups')
 })

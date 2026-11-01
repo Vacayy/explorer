@@ -20,6 +20,9 @@ interface MultiLineChartProps {
   formatValue?: (value: number) => string
   /** 지정하면 차트를 눌렀을 때 그 날짜 기준 1일·1주·1개월 변화를 이 포맷으로 표시한다 */
   formatChange?: (delta: number) => string
+  /** Parent may render an accessible interactive legend outside the plot. */
+  showLegend?: boolean
+  showLastValues?: boolean
 }
 
 /** 같은 일자의 한 달 전(말일은 그 달 말일로 맞춤) */
@@ -47,6 +50,8 @@ export default function MultiLineChart({
   height = 350,
   formatValue,
   formatChange,
+  showLegend = true,
+  showLastValues = true,
 }: MultiLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -88,6 +93,8 @@ export default function MultiLineChart({
     for (const line of lines) {
       const series = chart.addLineSeries({
         color: line.color,
+        lastValueVisible: showLastValues,
+        priceLineVisible: showLastValues,
         lineWidth: (line.lineWidth ?? 2) as 1 | 2 | 3 | 4,
         lineStyle: line.lineStyle ?? LineStyle.Solid,
         priceFormat: formatValue
@@ -121,7 +128,7 @@ export default function MultiLineChart({
       seriesMapRef.current = new Map()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, linesKey])
+  }, [height, linesKey, showLastValues])
 
   // Update data
   useEffect(() => {
@@ -197,7 +204,7 @@ export default function MultiLineChart({
   return (
     <div style={{ position: "relative" }}>
       {/* Legend overlay */}
-      <div
+      {showLegend && <div
         style={{
           position: "absolute",
           top: 8,
@@ -224,7 +231,7 @@ export default function MultiLineChart({
             {line.label}
           </span>
         ))}
-      </div>
+      </div>}
       <div ref={containerRef} style={{ width: "100%", height }} />
       {formatChange && picked && pickedX != null && changes.length > 0 && <>
         <div aria-hidden="true" className="pointer-events-none absolute top-0 bottom-8 w-px border-l border-dashed border-foreground/40" style={{ left: pickedX }} />

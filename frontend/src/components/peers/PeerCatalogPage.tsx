@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { usePeerRuntime } from '@/hooks/usePeerRuntime'
 import { formatNumber, formatKstDateTime } from '@/utils/format'
+import { selectPeerPreset } from '@/lib/peerPresets'
 import { selectPeerCompanies } from '@/lib/peerCatalog'
 import type { PeerCatalog } from '@/types/peer'
 
@@ -24,6 +25,7 @@ function Catalog({ catalog }: { catalog: PeerCatalog }) {
   const companies = selectPeerCompanies(catalog, groupId, query)
   const setFilter = (key: string, value: string, replace = false) => {
     setParams(previous => {
+      if (key === 'group') return selectPeerPreset(previous, value)
       const next = new URLSearchParams(previous)
       if (value) next.set(key, value)
       else next.delete(key)
@@ -31,8 +33,8 @@ function Catalog({ catalog }: { catalog: PeerCatalog }) {
     }, { replace })
   }
   const clear = () => setParams(previous => {
-    const next = new URLSearchParams(previous)
-    next.delete('group'); next.delete('q')
+    const next = selectPeerPreset(previous, '')
+    next.delete('q')
     return next
   })
   return <>
