@@ -154,6 +154,7 @@ DB, 첨부 파일, 개인 노트는 Git에서 제외됩니다. 스터디 주석�
 
 코드가 어떻게 동작하는지 알고 싶으면 **구현 구조와 기술 선택**을 먼저 읽어보세요. 구현 문서는 수집·피드·스터디·AI 대화의 처리 흐름을 저장 테이블과 코드에 연결하고, 아직 구현하지 않은 범위도 구분합니다.
 
+- [업데이트 로그](CHANGELOG.md): 월별 주요 변경 사항
 - [시스템 현황](docs/SYSTEM.md): 현재 구조와 운영 방법
 - [기능별 스펙](docs/specs/README.md): 구현 범위와 진행 중인 설계
 - [기술적 분석·추세추종 조사](docs/research/technical-analysis-trend-following.html): 서적·논문·GitHub·공개 자료 39개와 Explorer 적용 방향
