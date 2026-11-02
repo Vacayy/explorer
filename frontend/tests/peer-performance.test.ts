@@ -64,12 +64,12 @@ it('rejects duplicate dates, bad lengths, zero prices and wrong session fields',
 
 it('reproduces independently audited real figures and complete catalog coverage', () => {
   const actual = parsePeerPrices(pricesRaw), definitions = parsePeerCatalog(catalogRaw)
-  expect(definitions.companies).toHaveLength(71)
+  expect(definitions.companies).toHaveLength(98)
   expect(definitions.companies.every(company => actual.prices[company.code]?.length === 61)).toBe(true)
   for (const days of [5, 20, 60]) {
     const results = computePeerPerformance(definitions, actual, days)
-    if (days < 60) expect(results.every(group => group.missingCodes.length === 0)).toBe(true)
-    else expect(results.filter(group => group.missingCodes.length > 0).map(group => group.id).sort()).toEqual(['battery_cathode', 'battery_value_chain'])
+    const blocked = days === 5 ? [] : days === 20 ? ['nuclear_maintenance', 'nuclear_value_chain'] : ['battery_cathode', 'battery_value_chain', 'nuclear_maintenance', 'nuclear_value_chain']
+    expect(results.filter(group => group.missingCodes.length > 0).map(group => group.id).sort()).toEqual(blocked)
     for (const group of results.filter(group => group.path)) expect(group.path!.at(-1)! - 100).toBeCloseTo(group.returnPct!, 8)
   }
   const socket = computePeerPerformance(definitions, actual, 20).find(group => group.id === 'test_socket')!

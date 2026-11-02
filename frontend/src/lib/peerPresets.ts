@@ -2,10 +2,11 @@ import type { PeerCatalog } from '@/types/peer'
 
 /** Reviewed hierarchy candidates, not return correlations or inferred competitors. */
 export const PEER_PRESETS = [
-  'power_infrastructure', 'semiconductor_value_chain', 'defense_value_chain', 'shipbuilding',
+  'power_infrastructure', 'semiconductor_value_chain', 'defense_value_chain', 'shipbuilding', 'nuclear_value_chain',
   'battery_value_chain', 'beauty_value_chain', 'bank_financial_holding', 'securities_brokerage', 'plant_epc',
 ]
-const parents = PEER_PRESETS.slice(0, 6)
+const parents = ['power_infrastructure', 'semiconductor_value_chain', 'defense_value_chain',
+  'shipbuilding', 'nuclear_value_chain', 'battery_value_chain', 'beauty_value_chain']
 
 export function peerParent(catalog: PeerCatalog, groupId: string): string | undefined {
   const group = catalog.groups.find(item => item.id === groupId)

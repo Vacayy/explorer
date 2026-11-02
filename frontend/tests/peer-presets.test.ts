@@ -21,3 +21,14 @@ it('changing preset clears old overrides while preserving period and research fi
   expect(before.get('stock')).toBe('425420')
   expect(selectPeerPreset(next, '').get('overview')).toBe('groups')
 })
+
+it('compares nuclear and shipbuilding product groups against their own value chains', () => {
+  expect(peerBaseline(data, 'nuclear_value_chain').id).toBe('nuclear_value_chain')
+  for (const parent of ['nuclear_value_chain', 'shipbuilding']) {
+    const children = peerChildren(data, parent)
+    expect(children.length).toBeGreaterThan(1)
+    for (const child of children) expect(peerBaseline(data, child.id).id).toBe(parent)
+  }
+  // Adding an industry preset must not displace beauty from automatic parent selection.
+  expect(peerBaseline(data, 'cosmetics_odm').id).toBe('beauty_value_chain')
+})

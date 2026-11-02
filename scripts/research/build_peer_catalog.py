@@ -28,6 +28,29 @@ EXTRA_GROUPS = {
     'defense_guided_weapons': ('유도무기', 'product', '유도무기 사업 존재 근거. 제품 체계·고객·독립기업 수 추가 검증 필요.'),
 }
 
+def extend_catalog(catalog, extension):
+    """Merge reviewed business evidence; preserve existing memberships and sources."""
+    groups = {g['id']: g for g in catalog['groups']}
+    for group in extension['groups']:
+        groups[group['id']] = group
+    companies = {c['code']: c for c in catalog['companies']}
+    for addition in extension['companies']:
+        prior = companies.get(addition['code'])
+        if prior:
+            merged = {**prior, **addition}
+            for field in ('aliases', 'products', 'groupIds', 'caveats', 'sources'):
+                merged[field] = list(prior[field])
+                for value in addition[field]:
+                    if value not in merged[field]:
+                        merged[field].append(value)
+            companies[addition['code']] = merged
+        else:
+            companies[addition['code']] = addition
+    assert all(set(c['groupIds']) <= groups.keys() for c in companies.values()), 'unknown group'
+    return dict(version=extension['version'], asOf=extension['asOf'],
+                groups=list(groups.values()), companies=sorted(companies.values(), key=lambda c: c['name']))
+
+
 def build(root: Path):
     source_companies = json.loads((root / 'phase2/companies41.json').read_text())
     source_groups = json.loads((root / 'phase2/group_definitions.json').read_text())
@@ -65,8 +88,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--research-dir', required=True, type=Path)
     parser.add_argument('--output', type=Path, default=Path('frontend/src/data/peer-catalog.json'))
+    parser.add_argument('--extension', type=Path, help='Reviewed public evidence additions and group definitions')
     args = parser.parse_args()
     catalog = build(args.research_dir)
+    if args.extension:
+        catalog = extend_catalog(catalog, json.loads(args.extension.read_text()))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(catalog, ensure_ascii=False, indent=2)+'\n')
     print(f"{len(catalog['companies'])} companies / {len(catalog['groups'])} groups -> {args.output}")
