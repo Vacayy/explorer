@@ -125,8 +125,14 @@ export default function PeerCatalogPage() {
       {data => <>
         <div role="status" className="my-3 space-y-1 border border-border p-3 text-caption text-muted-foreground">
           <p>{data.origin === 'collector' ? '정기 수집본 · 평일 20:30 수집 예정' : '초기 배포본 · 정기 수집본 없음'} · 가격 기준 {data.prices.asOf} · {formatNumber(data.priceAgeDays)}달력일 경과</p>
-          <p>가격 수집 {formatKstDateTime(data.prices.collectedAt)} KST {data.baselineOn && `· 관측 시작 ${data.baselineOn}`}</p>
-          {data.lastAttempt && <p>마지막 수집 시도 {formatKstDateTime(data.lastAttempt.at)} KST · {data.lastAttempt.status === 'error' ? '실패 — 마지막 정상본 표시' : data.lastAttempt.status === 'skipped' ? '변경 없음' : '성공'}</p>}
+          {data.lastAttempt?.status === 'error' && <p>마지막 수집 시도 실패 — 마지막 정상본 표시</p>}
+          <Collapsible>
+            <CollapsibleTrigger asChild><Button variant="ghost" size="sm">수집 상세</Button></CollapsibleTrigger>
+            <CollapsibleContent className="space-y-1 py-2">
+              <p>가격 수집 {formatKstDateTime(data.prices.collectedAt)} KST {data.baselineOn && `· 관측 시작 ${data.baselineOn}`}</p>
+              {data.lastAttempt && <p>마지막 수집 시도 {formatKstDateTime(data.lastAttempt.at)} KST · {data.lastAttempt.status === 'error' ? '실패' : data.lastAttempt.status === 'skipped' ? '변경 없음' : '성공'}</p>}
+            </CollapsibleContent>
+          </Collapsible>
           {data.snapshotAgeHours > 72 && <p>가격 스냅샷 생성 후 72시간이 지났습니다. 휴장 여부와 수집 상태를 확인해 주세요.</p>}
           <p>자동 신호 보류 · {data.signalHoldReason}</p>
         </div>

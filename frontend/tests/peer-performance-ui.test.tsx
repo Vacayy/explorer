@@ -96,3 +96,16 @@ it('explains an unavailable automatic benchmark even when the selected subgroup 
   expect(chart[0].group).toBe(100)
   expect(chart.every((point: Record<string, unknown>) => point.baseline === undefined)).toBe(true)
 })
+
+it('groups repeated quality warnings without losing date-specific sources', async () => {
+  mount('/discover/peers?group=nuclear_value_chain&days=20')
+  expect(await screen.findByText(/우진엔텍 · 2026-10-02 외 7일/)).toBeTruthy()
+  const trigger = screen.getByRole('button', { name: '날짜별 근거 8건' })
+  expect(trigger.getAttribute('aria-expanded')).toBe('false')
+  fireEvent.click(trigger)
+  expect(screen.getByRole('link', { name: '2026-10-02 근거 (새 창)' }).getAttribute('href')).toMatch(/^https:/)
+  expect(screen.getByRole('link', { name: '2026-10-15 근거 (새 창)' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '수집 상세' }))
+  expect(screen.getByText(/관측 시작 2026-11-01/)).toBeTruthy()
+  expect(screen.getByText(/실패 — 마지막 정상본 표시/)).toBeTruthy()
+})
