@@ -93,7 +93,7 @@ def _summary_of(body: str | None) -> str:
 
 def _build_prompt(members: list[dict], shared_block: str) -> str:
     from pipeline.lenses import LENS_WORLDVIEW
-    from pipeline.narrative import TITLE_RULE
+    from pipeline.narrative import PROSE_STYLE, TITLE_RULE
     parts = "\n\n".join(
         f"### {m['topic']} — {m['title']}\n{_summary_of(m['body'])}" for m in members)
     return (
@@ -110,6 +110,7 @@ def _build_prompt(members: list[dict], shared_block: str) -> str:
         "## 세계관의 긴장\n이 거대 서사 전체가 딛고 선 전제와, 그것이 흔들리는 조건 1~2개.\n"
         "## 관전 포인트\n부분이 아니라 전체의 방향을 판가름할 신호 2~3개 ('- ' 불릿).\n"
         "규율: 부분 서사에 없는 사실을 지어내지 마라. 전체 700자 내외. 내부 코드·약어 노출 금지.\n"
+        f"{PROSE_STYLE}\n"
         f"\n{LENS_WORLDVIEW}\n"
         f"\n[공유 구조]\n{shared_block}\n\n[부분 서사들]\n{parts}"
     )
