@@ -131,7 +131,7 @@ export default function ObsidianGraphView({
       )}
       {/* 타입 색 범례 */}
       {presentTypes.length > 0 && (
-        <div className="absolute bottom-2 left-2 flex flex-wrap gap-x-2.5 gap-y-1 rounded-lg border bg-card/85 px-2.5 py-1.5 text-[10px] text-muted-foreground backdrop-blur">
+        <div className="absolute bottom-2 left-2 flex flex-wrap gap-x-2.5 gap-y-1 rounded-card border bg-card px-2.5 py-1.5 text-[10px] text-muted-foreground">
           {presentTypes.map((t) => (
             <span key={t} className="inline-flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: NODE_COLOR[t] }} />

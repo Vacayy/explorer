@@ -33,7 +33,7 @@ import type { StockGroupMember } from "@/types"
 export default function FollowPage() {
   const navigate = useNavigate()
   return <PageLayout header={<PageHeader title="관심목록" description="추적하는 기업·인물" actions={<Button asChild variant="outline" size="sm"><Link to="/sources">소스 관리</Link></Button>} />}>
-    <div className="space-y-5">
+    <div className="surface-stack">
       <StocksSection onGo={code => navigate(`/analyze/${code}/summary`)} />
       <FollowedPeopleCard onGo={name => navigate(`/person?name=${encodeURIComponent(name)}`)} />
     </div>
@@ -43,7 +43,7 @@ export default function FollowPage() {
 export function SourcesPage() {
   const navigate = useNavigate()
   return <PageLayout header={<PageHeader title="소스 관리" description="피드에서 읽을 채널·블로그·유튜브를 관리합니다" />}>
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+    <div className="surface-grid grid grid-cols-1 lg:grid-cols-2">
       <ChannelsCard onGo={key => navigate(`/source?kind=telegram&key=${encodeURIComponent(key)}`)} />
       <BlogSourcesCard title="블로그" placeholder="네이버/티스토리 블로그 URL" match={s => s.platform !== 'rss'} onGo={key => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />
       <BlogSourcesCard title="뉴스 및 아티클" placeholder="RSS 피드 URL (뉴스·뉴스레터)" match={s => s.platform === 'rss'} onGo={key => navigate(`/source?kind=blog&key=${encodeURIComponent(key)}`)} />

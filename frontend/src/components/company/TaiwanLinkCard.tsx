@@ -14,7 +14,7 @@ import { formatPercent } from "@/utils/format"
 export function TaiwanLinkCard({ stockCode }: { stockCode: string }) {
   const q = useTwLinks(stockCode)
   const confirm = useKrConfirm(stockCode)
-  if (q.isLoading) return <Skeleton className="h-28 w-full rounded-xl" />
+  if (q.isLoading) return <Skeleton className="h-28 w-full rounded-card" />
   if (q.isError) return <ErrorState message="대만 연결 신호를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
   const items = q.data?.items ?? []
   if (!items.length) return null

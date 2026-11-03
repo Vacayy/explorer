@@ -200,7 +200,7 @@ function TrendEvidenceDialog({ item, criteria, onClose }: { item?: TrendLeader; 
           <DialogDescription>가파른 추세 조건을 모두 통과했습니다 · {criteria}</DialogDescription>
         </DialogHeader>
         {item.high52 && <p className="text-sm"><span className="font-medium">{STAGE[item.high52.kind].label}</span> · {item.high52.detail}</p>}
-        {chart.isPending ? <Skeleton className="h-[260px] w-full rounded-lg" />
+        {chart.isPending ? <Skeleton className="h-[260px] w-full rounded-card" />
           : chart.isError || !data.length ? <p className="py-10 text-center text-sm text-muted-foreground">차트를 불러오지 못했습니다.</p>
           : <>
             <MultiLineChart data={data} height={260} formatValue={won} lines={[

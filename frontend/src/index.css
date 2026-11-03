@@ -33,7 +33,7 @@
   --text-reading--line-height: 1.375rem;
   --text-caption: .75rem;
   --text-caption--line-height: 1.125rem;
-  --radius-card: 0.625rem;   /* 10px — 2026-10-17 덜 둥글게(위젯·카드) */
+  --radius-card: 0; /* White flat surfaces; controls keep their own radius. */
   --radius-control: .5rem;
   --radius-overlay: .75rem;
 
@@ -128,7 +128,7 @@
 
 /* ---------- Light — 쿨 스톤 & 멀버리 (docs/private/DECISIONS.md D-016) ---------- */
 :root {
-  --background: #f3f3f5;
+  --background: #ffffff;
   --foreground: #202630;
   --card: #ffffff;
   --card-foreground: #202630;
@@ -149,7 +149,7 @@
   --ring: #8e4162;
   --radius: 0.5rem;
 
-  --sidebar: #f2f3f5;
+  --sidebar: #ffffff;
   --sidebar-foreground: #202630;
   --sidebar-primary: #8e4162;
   --sidebar-primary-foreground: #ffffff;
@@ -260,10 +260,10 @@
     @apply font-sans;
   }
   .shadow-card {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    box-shadow: none;
   }
   .dark .shadow-card {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    box-shadow: none;
   }
   .tabular-nums,
   td,
@@ -287,9 +287,6 @@
 /* D-152: integrated market home foundations and page composition. */
 :root {
   --page-inset: 1.5rem;
-  --glass-background: rgb(255 255 255 / .78);
-  --glass-edge: rgb(255 255 255 / .9);
-  --glass-shadow: 0 8px 28px rgb(24 40 61 / .1), inset 0 1px 0 rgb(255 255 255 / .9);
   --briefing-background: #191e2b;
   --briefing-foreground: #f4f6fb;
   --briefing-muted: #c4cede;
@@ -300,9 +297,6 @@
   --briefing-hypothesis: #efc58e;
 }
 .dark {
-  --glass-background: rgb(46 54 68 / .84);
-  --glass-edge: rgb(138 154 179 / .3);
-  --glass-shadow: 0 8px 28px rgb(0 0 0 / .2), inset 0 1px 0 rgb(255 255 255 / .08);
   --briefing-background: #e5eaf1;
   --briefing-foreground: #1e2939;
   --briefing-muted: #49566a;
@@ -311,13 +305,6 @@
   --briefing-up: #ad3229;
   --briefing-down: #245c9c;
   --briefing-hypothesis: #80521c;
-}
-.glass-surface {
-  background: var(--glass-background);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(16px) saturate(1.05);
-  -webkit-backdrop-filter: blur(16px) saturate(1.05);
 }
 .briefing-surface {
   --card: var(--briefing-background);
@@ -338,7 +325,7 @@
 .page-layout-slot { flex: none; min-width: 0; }
 .page-layout-body { min-width: 0; min-height: 0; }
 .split-workspace { display: flex; flex-direction: column; gap: 1.5rem; min-height: 0; }
-.workspace-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; min-height: 0; }
+.workspace-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-height: 0; }
 .workspace-panel { min-width: 0; min-height: 0; }
 .workspace-panel[data-active=false] { display: none; }
 .workspace-panel[data-surface=card] { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-card); }
@@ -362,12 +349,6 @@
   [data-slot=button]:not([data-size=icon-xs]):not([data-size=xs]) { min-height: 44px; }
   [data-slot=input] { min-height: 44px; font-size: 16px; }
   .study-palette { scrollbar-width: none; }
-}
-@supports not (backdrop-filter: blur(1px)) {
-  .glass-surface { background: var(--card); }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .glass-surface { background: var(--card); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; scroll-behavior: auto !important; }
@@ -460,7 +441,7 @@
 .study-aside { border-left:1px solid var(--border); display:flex; flex-direction:column; min-width:0; min-height:0; }
 .study-panel-header { padding:12px 16px; border-bottom:1px solid var(--border); }
 .study-notes,.study-chat { padding:16px; overflow:auto; overscroll-behavior:contain; min-height:0; flex:1; }
-.study-note { border:1px solid var(--border); border-radius:8px; padding:12px; margin:12px 0; overflow-wrap:anywhere; }
+.study-note { border:1px solid var(--border); border-radius:var(--radius-card); padding:12px; margin:12px 0; overflow-wrap:anywhere; }
 .study-note textarea,.study-composer textarea { font-size:14px; max-height:180px; overflow:auto; }
 .study-message { font-size:14px; padding:12px 0; overflow-wrap:anywhere; }
 .study-message p { font-size:14px; }
@@ -580,3 +561,13 @@ body:has(.react-draggable-dragging, .react-grid-item.resizing) { user-select: no
 .react-grid-layout .react-grid-item > .react-resizable-handle.react-resizable-handle-e { transform: none; right: -2px; top: 50%; width: 10px; height: 40px; margin-top: -20px; cursor: ew-resize; }
 .react-grid-layout .react-grid-item > .react-resizable-handle.react-resizable-handle-e::after { top: 4px; bottom: 4px; right: 4px; width: 3px; height: auto; }
 @media (prefers-reduced-motion: reduce) { .react-grid-item, .react-grid-layout { transition: none !important; } }
+
+/* Card collections share an edge; spacing inside cards and controls is independent. */
+.surface-grid { gap: 0; }
+.surface-stack { gap: 0; }
+.surface-stack > * { margin-block: 0; }
+.group\/widget > header { background: var(--card); }
+
+/* Adjacent cards in legacy page containers follow the same joined layout as Home. */
+.page-container > [data-slot=card]:has(+ [data-slot=card]) { margin-bottom: 0; }
+.page-container > [data-slot=card] + [data-slot=card] { margin-top: 0; }

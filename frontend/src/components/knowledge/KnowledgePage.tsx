@@ -147,7 +147,7 @@ export default function KnowledgePage() {
               onClick={() => setMineOnly(!mineOnly)}>내 지식만</Badge>
             <span className="ml-auto text-[11px] text-muted-foreground">{filtered.length}건 · 활성도 순</span>
           </div>
-          <div className="space-y-2">
+          <div className="surface-stack">
             {filtered.map((k) => <KnowledgeCard key={k.id} item={k} onDelete={invalidate} />)}
           </div>
         </>
@@ -455,7 +455,7 @@ function KnowledgeCard({ item: k, onDelete }: { item: KnowledgeItem; onDelete: (
         )}
 
         {k.falsifiers.length > 0 && (
-          <div className="rounded-md border border-dashed px-2.5 py-1.5 space-y-0.5">
+          <div className="rounded-card border border-dashed px-2.5 py-1.5 space-y-0.5">
             <p className="text-[10px] font-medium text-muted-foreground">반증 조건 — 이 신호가 관측되면 이 지식은 흔들린다</p>
             {k.falsifiers.map((f, i) => (
               <div key={i} className="flex items-start gap-1.5 text-[11px]">
@@ -502,7 +502,7 @@ function EvidenceList({ knowledgeId }: { knowledgeId: number }) {
     )
   }
   return (
-    <ul className="mt-1.5 divide-y rounded-md border px-3">
+    <ul className="mt-1.5 divide-y rounded-card border px-3">
       {(data ?? []).map((ev, i) => (
         <li key={i} className="flex items-center gap-2 py-1.5">
           <Badge variant={ev.stance === "refute" ? "destructive" : "secondary"} className="text-[9px] shrink-0">
@@ -526,10 +526,10 @@ function KnowledgeSkeleton() {
   return (
     <PageContainer gap="sm">
       <Skeleton className="h-7 w-40" />
-      <Skeleton className="h-12 w-full rounded-xl" />
-      <Skeleton className="h-16 w-full rounded-xl" />
-      <Skeleton className="h-32 w-full rounded-xl" />
-      <Skeleton className="h-32 w-full rounded-xl" />
+      <Skeleton className="h-12 w-full rounded-card" />
+      <Skeleton className="h-16 w-full rounded-card" />
+      <Skeleton className="h-32 w-full rounded-card" />
+      <Skeleton className="h-32 w-full rounded-card" />
     </PageContainer>
   )
 }

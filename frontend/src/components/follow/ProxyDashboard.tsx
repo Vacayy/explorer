@@ -32,7 +32,7 @@ export function ProxyDashboard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "proxies"] }),
   })
 
-  if (isLoading) return <Skeleton className="h-40 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-40 w-full rounded-card" />
 
   const totalObs = proxies.reduce((s, p) => s + p.series.length, 0)
 

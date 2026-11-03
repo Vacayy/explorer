@@ -39,7 +39,7 @@ export function SectorView({ sectorKey }: { sectorKey: string }) {
   // 갱신 실패·오프라인이어도 이전 결과를 유지한다(QueryState 규약)
   return (
     <QueryState query={q} isEmpty={() => false}
-      loading={<div className="space-y-4">{crumb()}<Skeleton className="h-72 w-full rounded-xl" /><Skeleton className="h-48 w-full rounded-xl" /></div>}>
+      loading={<div className="space-y-4">{crumb()}<Skeleton className="h-72 w-full rounded-card" /><Skeleton className="h-48 w-full rounded-card" /></div>}>
       {(d) => <SectorBody d={d} crumb={crumb} pickSeason={pickSeason} />}
     </QueryState>
   )
@@ -91,7 +91,7 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
 
       {d.history.length > 0 && (
         <Section title="지난 시즌과 비교">
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
+          <div className="surface-grid grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))]">
             {d.history.map((h) => <SeasonBars key={h.season} h={h} />)}
           </div>
           <Meta>시즌별 발표 후 첫 거래일 {d.etf} 대비 %p(같은 눈금 ±20). 시즌 = 발표 시점 기준.</Meta>

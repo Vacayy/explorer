@@ -153,7 +153,7 @@ function PeopleSkeleton() {
   return (
     <PageContainer gap="sm">
       <Skeleton className="h-7 w-40" />
-      <Skeleton className="h-96 w-full rounded-xl" />
+      <Skeleton className="h-96 w-full rounded-card" />
     </PageContainer>
   )
 }

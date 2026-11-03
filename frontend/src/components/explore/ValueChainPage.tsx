@@ -67,7 +67,7 @@ const stateTone = (s?: string | null) => !s ? "text-muted-foreground" : s === "�
 function ChainNode({ data }: NodeProps) {
   const d = data as unknown as ChainNodeData
   // 관측이 있는 수요는 실선(굵게), 관측이 없는 수요(PC)만 점선
-  if (d.demand) return <div className={cn("flex w-[200px] gap-1.5 rounded-md border-2 bg-card px-2 py-1.5 text-xs", d.demand.obs_label ? "" : "border-dashed",
+  if (d.demand) return <div className={cn("flex w-[200px] gap-1.5 rounded-card border-2 bg-card px-2 py-1.5 text-xs", d.demand.obs_label ? "" : "border-dashed",
     d.demand.state ? STATE_CLS[d.demand.state] : "", d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
     <Handle type="target" position={Position.Left} className="!opacity-0" />
     <Handle type="source" position={Position.Right} className="!opacity-0" />
@@ -86,7 +86,7 @@ function ChainNode({ data }: NodeProps) {
   const quarterly = n.freq === "Q"
   const krTrade = n.source === "kr_trade"
   const krOnly = !n.source           // 정말 관측이 없는 칸만 점선
-  return <div className={cn("flex w-[200px] gap-1.5 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm", n.state ? STATE_CLS[n.state] : "", krOnly && "border-dashed",
+  return <div className={cn("flex w-[200px] gap-1.5 rounded-card border bg-card px-2 py-1.5 text-xs", n.state ? STATE_CLS[n.state] : "", krOnly && "border-dashed",
     d.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background")}>
     <Handle type="target" position={Position.Left} className="!opacity-0" />
     <Handle type="source" position={Position.Right} className="!opacity-0" />
@@ -114,7 +114,7 @@ const LANE_PAD = 34
 
 function LaneBand({ data }: NodeProps) {
   const d = data as { label: string; width: number; height: number; shade: boolean }
-  return <div style={{ width: d.width, height: d.height }} className={cn("pointer-events-none rounded-md border border-dashed", d.shade && "bg-muted/30")}>
+  return <div style={{ width: d.width, height: d.height }} className={cn("pointer-events-none rounded-card border border-dashed", d.shade && "bg-muted/30")}>
     <div className="px-2 pt-1.5 text-[11px] font-semibold text-muted-foreground" style={{ width: LANE_LABEL_W }}>{d.label}</div>
   </div>
 }
@@ -218,20 +218,20 @@ export default function ValueChainPage() {
   const demand = vc.data?.demands.find(d => d.key === selected)
 
   return <PageLayout mode="document" header={<PageHeader title="밸류체인" description={`대만 월매출로 보는 공급 단계별 흐름과 한국 종목 · ${vc.data?.as_of ?? "-"} 공시 기준`} />}>
-    <div className="space-y-5">
+    <div className="surface-stack">
       {/* 돈의 흐름 — 지금 어디로 가장 많이 흐르고, 다음 스포트라이트는 어디일 수 있나(가설) */}
-      {flow.isLoading ? <Skeleton className="h-48 w-full rounded-xl" />
+      {flow.isLoading ? <Skeleton className="h-48 w-full rounded-card" />
         : flow.isError ? <ErrorState message="흐름 분석을 불러오지 못했습니다." onRetry={() => void flow.refetch()} />
         : flow.data && <FlowCard data={flow.data} onSelect={select} />}
       {/* 사실 vs 기대 — 관측과 애널리스트 컨센서스의 차이(§15) */}
-      {exp.isLoading ? <Skeleton className="h-36 w-full rounded-xl" />
+      {exp.isLoading ? <Skeleton className="h-36 w-full rounded-card" />
         : exp.isError ? <ErrorState message="시장 기대치를 불러오지 못했습니다." onRetry={() => void exp.refetch()} />
         : exp.data?.as_of ? <ExpGapCard data={exp.data} onSelect={select} />
         : <EmptyState message="시장 기대치 스냅샷이 아직 없습니다 — 매일 08:10 수집 뒤 채워집니다." />}
       {/* 번지는 중 */}
-      {prop.isLoading ? <Skeleton className="h-40 w-full rounded-xl" />
+      {prop.isLoading ? <Skeleton className="h-40 w-full rounded-card" />
         : prop.isError ? <ErrorState message="전파 판정을 불러오지 못했습니다." onRetry={() => void prop.refetch()} />
-        : prop.data && <div className="grid gap-4 lg:grid-cols-3">
+        : prop.data && <div className="surface-grid grid lg:grid-cols-3">
           <PropCard title="한국 확인 전" hint="대만은 오르는데 한국 수출·공시에는 아직 안 보인다 — 공시 시차의 빈칸" rows={prop.data.waiting} />
           <PropCard title="엇갈림" hint="원천끼리 방향이 반대 — 무엇이 맞는지 확인할 곳" rows={prop.data.diverging} />
           <Card>
@@ -278,7 +278,7 @@ export default function ValueChainPage() {
                 ? flow.isLoading ? <Skeleton className="h-[640px] w-full" />
                   : flow.isError ? <ErrorState message="돈의 물줄기를 그릴 금액 규모를 불러오지 못했습니다." onRetry={() => void flow.refetch()} />
                   : <ValueChainSankey vc={vc.data} flows={mag.flows} level={mag.level} lane={lane} onLane={l => setParam("lane", l === "all" ? null : l)} onSelect={select} />
-                : <div className="h-[480px] rounded-lg border md:h-[680px]">
+                : <div className="h-[480px] rounded-card border md:h-[680px]">
                   {/* <768: 전체 맞춤은 글자를 읽을 수 없을 만큼 작아져, 최종 수요 열에서 읽을 수 있는 배율로 시작하고 끌어서 따라간다 */}
                   <ReactFlow key={isMobile ? "m" : "d"} nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
                     {...(isMobile ? { defaultViewport: { x: 8 - graph.demandX * 0.6, y: 28, zoom: 0.6 } } : { fitView: true, fitViewOptions: { padding: 0.02, minZoom: 0.65 } })}
@@ -339,7 +339,7 @@ function PropCard({ title, hint, rows }: { title: string; hint: string; rows: Pr
 }
 
 function NodePanel({ node, edges, nodes, demands, onSelect }: { node?: VcNode; edges: VcEdge[]; nodes: VcNode[]; demands: VcDemand[]; onSelect: (k: string) => void }) {
-  if (!node) return <div className="rounded-lg border p-3 text-sm text-muted-foreground">칸을 누르면 구성 회사·한국 종목·앞뒤 칸과의 측정 결과가 여기 보입니다.</div>
+  if (!node) return <div className="rounded-card border p-3 text-sm text-muted-foreground">칸을 누르면 구성 회사·한국 종목·앞뒤 칸과의 측정 결과가 여기 보입니다.</div>
   // 지도 아래 가로 배치 — 지도가 전체 폭을 쓰게
   const name = (k: string) => nodes.find(n => n.key === k)?.name ?? demands.find(d => d.key === k)?.name ?? k
   const ups = edges.filter(e => e.to === node.key), downs = edges.filter(e => e.from === node.key)
@@ -347,7 +347,7 @@ function NodePanel({ node, edges, nodes, demands, onSelect }: { node?: VcNode; e
     className="block h-auto w-full whitespace-normal px-1 py-0.5 text-left text-caption font-normal" title={e.reason}>
     {name(other)} <span className="text-muted-foreground">· {e.verdict}{(e.verdict === "확인" || e.verdict === "부분") && e.lag != null ? ` · ${lagText(e.lag)}${e.lag_consistent ? "" : "(시차 불일치)"}` : ""}</span>
   </Button>
-  return <div className="grid gap-4 rounded-lg border p-3 text-sm md:grid-cols-3">
+  return <div className="grid gap-4 rounded-card border p-3 text-sm md:grid-cols-3">
     <div>
       <div className="flex items-center gap-2"><span className="font-semibold">{node.name}</span>{node.state && <Badge variant="outline" className="text-[11px]">{node.state}</Badge>}
         {node.state_z != null && <span className="text-caption tabular-nums text-muted-foreground" title="성장률 변화가 이 칸의 평소 변동(표준편차)의 몇 배인지 — ±1σ 이상이면 가속·둔화">평소 변동 대비 {formatSigma(node.state_z)}</span>}
@@ -403,7 +403,7 @@ function CustomerLine({ c }: { c: CustomerConcentration }) {
 /** 최종 수요 상세 — 관측 원천·회사별 최신 분기·분기 YoY 추이·이 수요에 파는 칸 */
 function DemandPanel({ demand, edges, nodes, onSelect }: { demand: VcDemand; edges: VcEdge[]; nodes: VcNode[]; onSelect: (k: string) => void }) {
   const sellers = edges.filter(e => e.to === demand.key)
-  return <div className="grid gap-4 rounded-lg border p-3 text-sm md:grid-cols-3">
+  return <div className="grid gap-4 rounded-card border p-3 text-sm md:grid-cols-3">
     <div>
       <div className="flex items-center gap-2"><span className="font-semibold">{demand.name}</span>{demand.state && <Badge variant="outline" className="text-[11px]">{demand.state}</Badge>}</div>
       <p className="text-caption text-muted-foreground">{demand.description}</p>

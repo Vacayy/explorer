@@ -17,8 +17,8 @@ export function UsEarningsCard({ transcriptId }: { transcriptId: number }) {
   const q = useChain(transcriptId)
   return (
     <Card>
-      <CardContent className="space-y-3 py-4">
-        <QueryState query={q} isEmpty={() => false} loading={<Skeleton className="h-28 w-full rounded-lg" />}>
+      <CardContent className="space-y-3 py-3">
+        <QueryState query={q} isEmpty={() => false} loading={<Skeleton className="h-28 w-full rounded-card" />}>
           {(c) => <Body c={c} transcriptId={transcriptId} />}
         </QueryState>
       </CardContent>

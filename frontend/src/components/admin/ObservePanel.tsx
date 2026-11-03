@@ -25,7 +25,7 @@ const dwell = (ms: number | null) => ms == null ? "-" : ms >= 60_000 ? `${Math.f
 export function ObservePanel() {
   const q = useQuery(apiQuery<ObserveSummary>({ key: ["spine", "admin", "observe"], url: "/api/spine/admin/observe", staleTime: STALE.short }))
   return (
-    <QueryState query={q} isEmpty={() => false} loading={<div className="space-y-3"><Skeleton className="h-24 w-full rounded-xl" /><Skeleton className="h-72 w-full rounded-xl" /></div>}>
+    <QueryState query={q} isEmpty={() => false} loading={<div className="space-y-3"><Skeleton className="h-24 w-full rounded-card" /><Skeleton className="h-72 w-full rounded-card" /></div>}>
       {(d) => <Body d={d} />}
     </QueryState>
   )

@@ -125,7 +125,7 @@ export function AnalysisResults({ runId, result, onOpen, warnings = result.warni
 
     {candidate && params.get('candidate') && !result.items.some(item => item.code === params.get('candidate')) && <p role="status" className="text-sm text-muted-foreground">선택했던 종목이 이 결과에 없어 현재 정렬의 첫 후보를 표시합니다.</p>}
     {candidate && <CandidateComparison runId={runId} result={result} items={compared.flatMap(code => result.items.filter(item => item.code === code))} ascending={ascending} onClear={() => setCompared([])} />}
-    {candidate ? <div className={`grid min-w-0 grid-cols-1 items-start gap-4 ${stacked ? '' : 'lg:grid-cols-[minmax(260px,0.75fr)_minmax(0,1.65fr)]'}`}>
+    {candidate ? <div className={`surface-grid grid min-w-0 grid-cols-1 items-start ${stacked ? '' : 'lg:grid-cols-[minmax(260px,0.75fr)_minmax(0,1.65fr)]'}`}>
       <section aria-label="후보 목록" className={`min-w-0 rounded-xl bg-card p-2 ${stacked ? 'max-h-80 overflow-y-auto border' : 'lg:sticky lg:top-4'}`}>
         <p className="px-3 pb-2 pt-1 text-caption text-muted-foreground">종목을 선택해 차트와 근거를 확인하세요.</p>
         <CandidateTable items={sorted} selected={candidate.code} onSelect={select} signals={signals} compared={compared} onCompare={toggleCompare} ascending={ascending} onSort={toggleSort} />

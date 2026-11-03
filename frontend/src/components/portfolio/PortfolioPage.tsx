@@ -46,14 +46,14 @@ export default function PortfolioPage({ tab = 'overview' }: { tab?: PortfolioTab
         })}>
         <RefreshCw aria-hidden="true" className={refresh.isPending ? 'animate-spin' : ''} />시세 갱신</Button>
       <TransactionSheet /><TransactionDialog /></>} />}>
-    <div className="@container/portfolio space-y-5">
+    <div className="@container/portfolio surface-stack">
       {tab === 'principles' ? <>
           <PrincipleStateCard live={!!quoted} />
           <PrinciplesCard />
           <AlertHistoryCard />
         </>
         : tab === 'events' ? (empty ? <EmptyLedger /> : <EventsCard />)
-        : <QueryState query={summary} loading={<><Skeleton className="h-28 w-full rounded-xl" /><Skeleton className="h-64 w-full rounded-xl" /></>} isEmpty={() => false}>{(data) => (empty ? <EmptyLedger />
+        : <QueryState query={summary} loading={<><Skeleton className="h-28 w-full rounded-card" /><Skeleton className="h-64 w-full rounded-card" /></>} isEmpty={() => false}>{(data) => (empty ? <EmptyLedger />
         : tab === 'holdings' ? <HoldingsTab data={data} />
         : <Overview data={data} />)}</QueryState>}
     </div>
@@ -67,7 +67,7 @@ function EmptyLedger() {
 
 function Overview({ data }: { data: PortfolioSummary }) {
   return <>
-    <Card><CardContent className="grid grid-cols-2 gap-3 py-4 @2xl/portfolio:grid-cols-5">
+    <Card><CardContent className="grid grid-cols-2 gap-3 py-3 @2xl/portfolio:grid-cols-5">
       {([['계좌 수익률', formatPercent(data.total_return_pct), tone(data.total_return_pct)],
         ['오늘', formatPercent(data.day_return_pct), tone(data.day_return_pct)],
         ['실현 손익', formatPercent(data.realized_pct), tone(data.realized_pct)],
@@ -77,7 +77,7 @@ function Overview({ data }: { data: PortfolioSummary }) {
       <p className="col-span-2 text-caption text-muted-foreground @2xl/portfolio:col-span-5">계좌 수익률은 입출금 영향을 뺀 시간가중 수익률입니다. 실현·미실현 손익은 원금(입금 − 출금) 대비 비율입니다. 장중에는 보유 종목을 30분마다 실시간 시세로 다시 평가하고, 16:10 종가 수집 뒤에는 종가로 바뀝니다.</p>
     </CardContent></Card>
 
-    <div className="grid gap-4 @3xl/portfolio:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="surface-grid grid @3xl/portfolio:grid-cols-[280px_minmax(0,1fr)]">
       <Card><CardHeader><CardTitle>비중</CardTitle></CardHeader><CardContent><WeightPie data={data} /></CardContent></Card>
       <ReturnHistory live={!!data.quoted_at} />
     </div>

@@ -27,7 +27,7 @@ export default function RetailHeatPage() {
   const history = useRetailHistory(Number(range))
   const snapshots = useRetailSnapshots()
 
-  if (summary.isPending) return <PageContainer><Skeleton className="h-40 w-full rounded-xl" /><Skeleton className="h-96 w-full rounded-xl" /></PageContainer>
+  if (summary.isPending) return <PageContainer><Skeleton className="h-40 w-full rounded-card" /><Skeleton className="h-96 w-full rounded-card" /></PageContainer>
   if (summary.isError) return <PageContainer><ErrorState message="개인 투자 열기를 불러오지 못했습니다." onRetry={() => void summary.refetch()} /></PageContainer>
   const s = summary.data
 

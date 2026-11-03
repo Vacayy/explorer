@@ -65,7 +65,7 @@ export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading 
     }),
   )
   const asc = [...versions].sort((a, b) => a.version - b.version)
-  if (isLoading) return <Skeleton className="h-24 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-24 w-full rounded-card" />
   if (asc.length === 0) return <EmptyState message="저장된 버전이 없습니다." />   // 재생성 이력 없음 — 표시 안 함
 
   return (
@@ -239,13 +239,13 @@ function VersionBody({ id }: { id: number }) {
       staleTime: STALE.medium,
     }),
   )
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-48 w-full rounded-card" />
   if (!data || data.status !== "cached" || !data.narrative) {
     return <EmptyState message="이 버전의 본문을 불러올 수 없습니다." />
   }
   return (
     <Card className="border-0 ring-0 max-sm:[--card-spacing:--spacing(0)]">
-      <CardContent className="py-4">
+      <CardContent className="py-3">
         {/* 모바일: 제목이 좁아지지 않게 버전·날짜를 다음 줄로 */}
         <div className="flex items-baseline gap-2 mb-2 max-md:flex-wrap">
           <h2 className="text-base font-bold leading-snug">{data.title}</h2>

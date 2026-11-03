@@ -276,8 +276,8 @@ function PersonSkeleton() {
   return (
     <div className="space-y-4 max-w-3xl">
       <Skeleton className="h-7 w-56" />
-      <Skeleton className="h-40 w-full rounded-xl" />
-      <Skeleton className="h-20 w-full rounded-xl" />
+      <Skeleton className="h-40 w-full rounded-card" />
+      <Skeleton className="h-20 w-full rounded-card" />
     </div>
   )
 }

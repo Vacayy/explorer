@@ -75,7 +75,7 @@ export default function BusinessPage({ stockCode }: Props) {
 
       {showForm && (
         <Card>
-          <CardContent className="pt-5 flex flex-wrap items-end gap-3">
+          <CardContent className="pt-3 flex flex-wrap items-end gap-3">
             <Label className="text-xs text-muted-foreground flex-col items-start gap-1">
               연도 <Input type="number" value={formYear} onChange={(e) => setFormYear(parseInt(e.target.value))} className="w-[100px] mt-1" />
             </Label>
@@ -100,7 +100,7 @@ export default function BusinessPage({ stockCode }: Props) {
 
       {items.length > 0 && (
         <>
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className="surface-grid grid grid-cols-1 lg:grid-cols-3">
             <ChartCard title={`${segType === "division" ? "사업부문별" : "사업지역별"} 매출 비중 (${latestYear})`}>
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>

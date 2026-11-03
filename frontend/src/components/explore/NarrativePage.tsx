@@ -179,8 +179,10 @@ function NarrativeLanding() {
         <h2 className="text-xl font-bold">지금</h2>
         <span className="text-[11px] text-muted-foreground">지금 시장에서 도는 서사와 이번 주에 바뀐 것</span>
       </div>
-      <BigPictureCard />
-      <NarrativeChangesCard />
+      <div className="surface-stack">
+        <BigPictureCard />
+        <NarrativeChangesCard />
+      </div>
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">서사 목록</h3>
         <NarrativeList empty="state" controls />
@@ -295,7 +297,7 @@ function ScenarioSection({ topic }: { topic: string }) {
         {failed && <EmptyState message="파급 분석을 생성하지 못했습니다 — 잠시 후 다시 시도." />}
         {display?.answer && (
           <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))]">
-            <CardContent className="py-4 space-y-3">
+            <CardContent className="py-3 space-y-3">
               <Markdown>{display.answer}</Markdown>
               {display.beneficiaries?.length > 0 && (
                 <div className="border-t pt-3">
@@ -367,7 +369,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
       staleTime: STALE.short,
     }),
   )
-  if (isLoading) return <Skeleton className="h-24 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-24 w-full rounded-card" />
   if (isError) return null   // 본문은 이미 노출됨 — 구조 뷰만 조용히 생략
 
   const edges = [...(data?.edges ?? [])].sort(
@@ -462,7 +464,7 @@ function MerNarrativeCard({ topic }: { topic: string }) {
   const m = freshMer.data ?? cachedMer.data
   const generating = freshMer.isFetching
 
-  if (cachedMer.isLoading) return <Skeleton className="h-40 w-full rounded-xl" />
+  if (cachedMer.isLoading) return <Skeleton className="h-40 w-full rounded-card" />
   if (!m || !m.narrative) {
     return <EmptyState message="아직 순회 가능한 인과 경로가 없습니다 — 인과가 더 쌓이면 나타납니다." />
   }
@@ -476,7 +478,7 @@ function MerNarrativeCard({ topic }: { topic: string }) {
         </div>
       )}
       <Card className="bg-[color-mix(in_srgb,var(--primary)_6%,var(--card))]">
-        <CardContent className="py-4 space-y-3">
+        <CardContent className="py-3 space-y-3">
           <p className="text-sm leading-relaxed">{m.narrative}</p>
           {m.path && (
             <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t">
@@ -530,7 +532,7 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
       staleTime: STALE.short,
     }),
   )
-  if (isLoading) return <Skeleton className="h-20 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-20 w-full rounded-card" />
   // 엣지 부족(순회 불가)이거나 실패 — 섹션 자체를 조용히 숨김 (5-state: Empty/Error)
   if (isError || !data || data.status !== "ok" || data.paths.length === 0) return null
 
@@ -591,7 +593,7 @@ function Grounding({ narrativeId }: { narrativeId: number }) {
       staleTime: STALE.short,
     }),
   )
-  if (isLoading) return <Skeleton className="h-16 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-16 w-full rounded-card" />
   if (isError) return <p role="alert" className="text-sm text-destructive">지식 연결을 불러오지 못했습니다.</p>
   if (!data || data.status !== "ok" || data.grounding.length === 0) return <EmptyState message="저장된 지식 연결이 없습니다." />
 
@@ -635,7 +637,7 @@ function RelatedNarratives({ narrativeId }: { narrativeId: number }) {
       staleTime: STALE.short,
     }),
   )
-  if (isLoading) return <Skeleton className="h-16 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-16 w-full rounded-card" />
   if (isError || !data || data.status !== "ok" || data.related.length === 0) return null
 
   return (

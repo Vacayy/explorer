@@ -187,8 +187,8 @@ function SourceSkeleton() {
     <PageContainer width="reading" gap="sm">
       <Skeleton className="h-7 w-64" />
       <Skeleton className="h-4 w-80" />
-      <Skeleton className="h-48 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-48 w-full rounded-card" />
+      <Skeleton className="h-24 w-full rounded-card" />
     </PageContainer>
   )
 }

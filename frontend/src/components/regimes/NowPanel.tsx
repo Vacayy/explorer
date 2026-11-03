@@ -44,10 +44,10 @@ const Light = ({ on }: { on: boolean }) => <span className={cn("inline-block siz
  */
 export function NowPanel({ regimes }: { regimes?: RegimesResponse }) {
   const q = useEraState()
-  if (q.isPending) return <div className="space-y-4"><Skeleton className="h-28 w-full rounded-xl" /><Skeleton className="h-64 w-full rounded-xl" /></div>
+  if (q.isPending) return <div className="surface-stack"><Skeleton className="h-28 w-full rounded-card" /><Skeleton className="h-64 w-full rounded-card" /></div>
   if (q.isError) return <ErrorState message="지금 시장 판정을 불러오지 못했습니다." onRetry={() => void q.refetch()} />
   const d = q.data
-  return <div className="space-y-6">
+  return <div className="surface-stack">
     <Summary data={d} />
     <Commentary />
     {d.state.available && <StateSection data={d} />}
@@ -75,8 +75,8 @@ function Summary({ data }: { data: EraStateResponse }) {
   ]
   return <div className="space-y-2">
     <h3 className="text-base font-semibold">지금 시장은</h3>
-    <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-      {tiles.map(x => <a key={x.href} href={x.href} className="rounded-xl border bg-card px-4 py-3 transition-colors hover:bg-muted/50">
+    <div className="surface-grid grid grid-cols-2 lg:grid-cols-5">
+      {tiles.map(x => <a key={x.href} href={x.href} className="rounded-card border bg-card px-4 py-3 transition-colors hover:bg-muted/50">
         <div className="text-caption text-muted-foreground">{x.label}</div>
         <div className={cn("mt-0.5 text-lg font-semibold", x.warn && "text-up")}>{x.value}</div>
         <div className="text-caption text-muted-foreground">{x.sub}</div>
@@ -123,7 +123,7 @@ const STAGE = {
 
 function SignalCard({ step, sig, active, detail }: { step: string; sig: EraLayerState["warn"] | EraLayerState["confirm"]; active: boolean; detail: ReactNode }) {
   const st = sig.stats
-  return <div className={cn("space-y-2 rounded-xl border px-4 py-3", active && "border-up/40 bg-up/5")}>
+  return <div className={cn("space-y-2 rounded-card border px-4 py-3", active && "border-up/40 bg-up/5")}>
     <div className="flex items-center gap-2"><Light on={sig.on} /><span className="text-caption font-medium text-muted-foreground">{step}</span>
       <span className={cn("text-sm font-semibold", sig.on && "text-up")}>{sig.on ? "켜짐" : "꺼짐"}</span>
       {sig.since && <span className="text-caption text-muted-foreground">· {sig.since}부터</span>}</div>
@@ -144,7 +144,7 @@ function StateSection({ data }: { data: EraStateResponse }) {
   return <Section id="now-state" step={1} title="추세가 꺾였나 — 경계와 확정"
     how={<>하락 추세 이탈을 두 단계로 봅니다. <b>경계</b>는 월말 종가가 12개월 이동평균 아래로 내려간 것 — 빠르지만 10년에 두 번쯤 헛경보가 납니다. <b>확정</b>은 1년 신저가를 깨거나 200일선이 꺾여 내려가는 것 — 늦지만 헛경보가 드뭅니다. 매일 판정하는 이평선은 헛경보가 열 배쯤 많아서 쓰지 않습니다. 이 판정은 '바닥'이 아니라 '지금 어디쯤인가'를 말합니다. 과거엔 신호가 켜진 뒤에도 하락의 절반 이상이 남아 있었습니다.</>}>
     <p className="text-sm">지금: <span className={cn("text-base font-semibold", stage.cls)}>{stage.label}</span> <span className="text-muted-foreground">— {stage.sub}</span></p>
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="surface-grid grid md:grid-cols-2">
       <SignalCard step="1단계 경계" sig={s.warn} active={s.stage === "warn"} detail={<>
         {s.warn.month_end} 월말 종가는 12개월선보다 {formatPercent(s.warn.vs_sma_pct)} · 이번 달 지금 값으로는 {formatPercent(s.warn.provisional_vs_sma_pct)}
         {s.warn.provisional_on !== s.warn.on && <Badge variant="outline" className="ml-1.5 border-hypothesis/40 font-normal text-hypothesis">월말에 바뀔 수 있음</Badge>}
@@ -186,7 +186,7 @@ function MeaningSection({ data, regimes }: { data: EraStateResponse; regimes?: R
     </div>
     <RegimeChart series={series} bands={bands} height={220} zeroLine formatValue={v => v.toFixed(2)} />
     <p className="text-caption text-muted-foreground">10년대 평균: {Object.entries(m.decades).map(([k, v]) => `${k} ${v > 0 ? "+" : ""}${v.toFixed(2)}`).join(" · ")} — 2000·2010년대만 양(+)이었습니다. 음영은 S&P500 약세장.</p>
-    <div className="rounded-lg border px-3 py-2.5 text-sm">
+    <div className="rounded-card border px-3 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <Light on={m.conditional_flag} /><span className="font-medium">금리 경보 {m.conditional_flag ? "켜짐" : "꺼짐"}</span>
         <Badge variant="outline" className="border-hypothesis/40 font-normal text-hypothesis">가설</Badge>
@@ -230,10 +230,10 @@ function TemperatureSection({ data }: { data: EraStateResponse }) {
 function PremiseSection({ data }: { data: EraStateResponse }) {
   return <Section id="now-premises" step={4} title="구루 전제 원장 — 누구의 전제가 맞아 가는가"
     how={<>구루들의 시대 진단을 '반증할 수 있는 지표'와 한 쌍으로 적었습니다. '지지'는 지금 숫자가 그 전제와 맞는다는 뜻이지 전제가 증명됐다는 뜻이 아닙니다. 시점이 없는 전제(언젠가 위기가 온다)는 맞았는지 셀 수 없어 '반증 불가'로 둡니다.</>}>
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="surface-grid grid lg:grid-cols-2">
       {data.premises.map(p => {
         const st = PREMISE[p.status ?? "none"]
-        return <div key={p.key} className="space-y-2 rounded-xl border px-4 py-3">
+        return <div key={p.key} className="space-y-2 rounded-card border px-4 py-3">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-medium leading-snug">{p.claim}</p>
             <Badge variant="outline" className={cn("shrink-0 font-normal", st.cls)}>{st.label}</Badge>

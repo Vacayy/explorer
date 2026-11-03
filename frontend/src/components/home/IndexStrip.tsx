@@ -76,7 +76,7 @@ export function IndexStrip() {
 
   return (
     <Card className="gap-0 py-0">
-      <CardContent className="space-y-1 px-4 py-3">
+      <CardContent className="space-y-1 px-3 py-3">
         <HorizontalCarousel label="시장 지수" footer={
         <div className="flex flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
           <span>전일대비 · 추이 1Y · 시간 KST</span>

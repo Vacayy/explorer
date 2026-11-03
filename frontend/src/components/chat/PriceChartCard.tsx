@@ -84,7 +84,7 @@ export function PriceChartCard({ targets, days }: { targets: Target[]; days: num
       </figcaption>
       <div className="mt-1">
         {loading || colors.length === 0 ? (
-          <Skeleton className="h-[200px] w-full rounded-lg" />
+          <Skeleton className="h-[200px] w-full rounded-card" />
         ) : (
           <MultiLineChart data={data} lines={lines} height={200}
             formatValue={compare ? (v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` : (v) => formatNumber(v)} />

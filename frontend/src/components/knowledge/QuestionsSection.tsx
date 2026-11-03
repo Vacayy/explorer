@@ -224,7 +224,7 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
   })
 
   return (
-    <div className="rounded-md border border-dashed px-3 py-2 space-y-1.5">
+    <div className="rounded-card border border-dashed px-3 py-2 space-y-1.5">
       <div className="flex items-center gap-2">
         <Inbox className="h-3.5 w-3.5 text-hypothesis" />
         <span className="text-[11px] font-medium">질문 후보 (내러티브 · 언급 다이제스트 발)</span>
@@ -346,7 +346,7 @@ export function QuestionTree({ id }: { id: number }) {
   return (
     <div className="mt-2 space-y-2">
       {data.sub_questions.map((sq) => (
-        <div key={sq.id} className="rounded-md border px-3 py-2 space-y-1.5">
+        <div key={sq.id} className="rounded-card border px-3 py-2 space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-medium flex-1">{sq.text}</span>
             <VerdictBadge v={sq.verdict} prefix="" />
@@ -446,7 +446,7 @@ function ProxyDetailBody({ proxyId }: { proxyId: number }) {
 
 function ObsRow({ o, unit }: { o: ProxyObs; unit: string | null }) {
   return (
-    <li className="flex items-start gap-2 rounded-md border px-2.5 py-1.5">
+    <li className="flex items-start gap-2 rounded-card border px-2.5 py-1.5">
       <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground mt-0.5">{o.observed_at?.slice(0, 10)}</span>
       <span className="shrink-0 tabular-nums w-3 text-center">{o.direction ? (DIR[o.direction] ?? "") : ""}</span>
       <div className="min-w-0 flex-1">

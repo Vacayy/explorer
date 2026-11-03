@@ -271,7 +271,7 @@ function ResearchWorkspace({ item }: { item: DiscoveryCase }) {
 
 function DiscoveryContext({ item }: { item: DiscoveryCase }) {
   const evidence = item.discovery.evidence && typeof item.discovery.evidence === 'object' ? item.discovery.evidence as { status?: string } : {}
-  return <Card className="h-full"><CardContent className="space-y-3 pt-5">
+  return <Card className="h-full"><CardContent className="space-y-3 pt-3">
     <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">발견한 이유</Badge><span className="text-caption text-muted-foreground">{item.discovery.as_of} 기준</span></div>
     <p className="line-clamp-3 text-sm leading-relaxed">{item.discovery.question}</p>
     {evidence.status === 'provisional' && <p className="text-caption text-hypothesis">잠정 후보 · 검증되지 않은 가격 조건이 있습니다.</p>}

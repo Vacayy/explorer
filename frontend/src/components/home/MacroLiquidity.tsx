@@ -74,7 +74,7 @@ function Tile({ m }: { m: MacroIndicator }) {
 export function MacroLiquidity() {
   const { data, isLoading, isError, refetch, refresh, refreshing } = useMacro()
 
-  if (isLoading) return <Skeleton className="h-44 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-44 w-full rounded-card" />
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
 
   const byGroup = (g: string) => data.items.filter((m) => m.group === g)

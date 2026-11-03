@@ -40,7 +40,7 @@ export const isSourced = (status?: string | null) => status === "document" || st
 
 function DocCard({ doc, quote }: { doc: SourceDoc; quote?: string | null }) {
   return (
-    <div className="space-y-1.5 rounded-lg border p-2.5">
+    <div className="space-y-1.5 rounded-card border p-2.5">
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
         <Badge variant="secondary" className="text-[10px] font-normal">{KIND[doc.source_type] ?? doc.source_type}</Badge>
         {doc.channel && <span className="font-medium text-foreground">{doc.channel}</span>}

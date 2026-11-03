@@ -239,9 +239,9 @@ function CoreCard({ core }: { core: SeasonOverview["core"] }) {
 function SeasonSkeleton() {
   return (
     <div className="space-y-4" role="status" aria-busy="true" aria-label="실적 시즌 불러오는 중">
-      <Skeleton className="h-24 w-full rounded-xl" />
-      <Skeleton className="h-64 w-full rounded-xl" />
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Skeleton className="h-40 rounded-xl" /><Skeleton className="h-40 rounded-xl" /></div>
+      <Skeleton className="h-24 w-full rounded-card" />
+      <Skeleton className="h-64 w-full rounded-card" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Skeleton className="h-40 rounded-card" /><Skeleton className="h-40 rounded-card" /></div>
     </div>
   )
 }

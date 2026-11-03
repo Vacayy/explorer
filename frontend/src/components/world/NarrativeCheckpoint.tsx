@@ -32,7 +32,7 @@ export function NarrativeCheckpoint({ topic }: { topic: string }) {
   const q = useNarrativeCheckpoint(topic)
   const { topics } = useNarrativeTopics()
   const navigate = useNavigate()
-  if (q.isLoading) return <Skeleton className="mb-4 h-24 w-full rounded-xl" />
+  if (q.isLoading) return <Skeleton className="mb-4 h-24 w-full rounded-card" />
   // 오류여도 본문 읽기는 막지 않는다 — 카드만 조용히 생략(서사 본문이 1차 정보)
   if (q.isError || !q.data || q.data.status !== "ok") return null
   const cp = q.data

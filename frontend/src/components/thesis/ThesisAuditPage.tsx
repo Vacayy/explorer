@@ -247,7 +247,7 @@ function PBar({ label, value }: { label: string; value: number }) {
 
 function HistoryList({ onOpen, activeId }: { onOpen: (id: number) => void; activeId: number | null }) {
   const { data = [], isLoading } = useThesisAudits()
-  if (isLoading) return <Skeleton className="h-20 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-20 w-full rounded-card" />
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -280,7 +280,7 @@ function HistoryList({ onOpen, activeId }: { onOpen: (id: number) => void; activ
 function AuditSkeleton() {
   return (
     <div className="space-y-3">
-      {[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+      {[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 w-full rounded-card" />)}
     </div>
   )
 }

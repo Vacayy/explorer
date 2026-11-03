@@ -114,7 +114,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 - **디자인 토큰**
   - 색상은 `index.css`의 CSS 변수만 사용 (하드코딩 hex 금지)
   - 차트 색상: semantic 변수 사용 (`--color-chart-revenue`, `--color-chart-profit` 등)
-  - Apple HIG 기반 디자인 시스템: 순백 배경, `#0071e3` primary, `rounded-xl` 카드
+  - 디자인 시스템: 순백 배경·직각 카드(`--radius-card: 0`)·그림자 없는 표면·카드 묶음 간격 0. 본문/컨트롤 여백과 의미 색상은 유지한다 — docs/DESIGN_SYSTEM.md 현행 계약
 - **import 경로**: 항상 `@/` alias 사용 (상대경로 `../` 금지)
 - **타입 체크**: 모든 FE 변경 후 `npx tsc --noEmit` 통과 필수
 

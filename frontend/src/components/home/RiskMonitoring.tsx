@@ -159,7 +159,7 @@ export function RiskCard({ view, kind }: { view: RiskView; kind: RiskCardKind })
 export function RiskMonitoring() {
   const view = useRiskView()
   const { query, data, items } = view
-  if (query.isLoading) return <section aria-label="Risk 모니터링 불러오는 중" aria-busy="true" className="space-y-3"><h2 className="text-section font-semibold">Risk 모니터링</h2><div className="grid grid-cols-1 gap-5 @3xl/market:grid-cols-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-80 rounded-xl" />)}</div></section>
+  if (query.isLoading) return <section aria-label="Risk 모니터링 불러오는 중" aria-busy="true" className="space-y-3"><h2 className="text-section font-semibold">Risk 모니터링</h2><div className="surface-grid grid grid-cols-1 @3xl/market:grid-cols-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-80 rounded-card" />)}</div></section>
   if (!data) return <ErrorState message="Risk 모니터링을 불러오지 못했습니다." onRetry={() => void query.refetch()} />
   const signal = data.signal
   const alert = ['joint', 'watch', 'credit'].includes(signal.status)
@@ -177,7 +177,7 @@ export function RiskMonitoring() {
       <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{signal.label}</Badge><span className="text-sm">{signal.reason}</span><span className="text-caption text-muted-foreground">실험 규칙</span></div>
       <p className="mt-1 text-caption text-muted-foreground">공통 기준일 {signal.as_of ?? '없음'} · 20 공통 관측일: 10Y {change(signal.rate_change_bp, 'bp')} / HY OAS {change(signal.credit_change_bp, 'bp')} · 연속 {number(signal.consecutive)}회</p>
     </div>
-    <div className="grid grid-cols-1 gap-5 @3xl/market:grid-cols-2">
+    <div className="surface-grid grid grid-cols-1 @3xl/market:grid-cols-2">
       {(['curve', 'credit', 'vix', 'fear'] as const).map(kind => <RiskCard key={kind} view={view} kind={kind} />)}
     </div>
     <p className="text-caption text-muted-foreground" title={signal.rule_version}>실험 조건: 20 공통 관측일 10Y ≤ −30bp · HY OAS ≥ +75bp, 3회 지속. 침체 확정 신호가 아닙니다. 기대 관측일 {data.expected_date}, 2영업일 초과 지연 시 평가 보류. {data.calendar_note}. 차트는 실제 확보한 기간만 표시합니다.</p>

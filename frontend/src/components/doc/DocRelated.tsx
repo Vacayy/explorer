@@ -20,7 +20,7 @@ export function DocRelated({ docId }: { docId: number }) {
   if (!claims.isError && !related.isError && !building && status !== 'failed' && groups.length === 0 && similar.length === 0) return null
   return (
     <Card>
-      <CardContent className="space-y-5 py-4">
+      <CardContent className="space-y-5 py-3">
         {claims.isError && <ErrorState error={claims.error} onRetry={() => void claims.refetch()} retrying={claims.isFetching} />}
         {related.isError && <ErrorState error={related.error} onRetry={() => void related.refetch()} retrying={related.isFetching} />}
         {(building || status === 'failed' || groups.length > 0) && (

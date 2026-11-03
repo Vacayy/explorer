@@ -18,14 +18,14 @@ const mmdd = (d: string) => `${d.slice(4, 6)}-${d.slice(6, 8)}`
 export function StockActivityStrip({ stockCode }: { stockCode: string }) {
   const actions = useActions({ stockCode, days: 30 })
   const trade = useTradeByStock(stockCode)
-  if (actions.isLoading || trade.isLoading) return <Skeleton className="h-12 w-full rounded-xl" />
+  if (actions.isLoading || trade.isLoading) return <Skeleton className="h-12 w-full rounded-card" />
   const acts = actions.data?.items ?? []
   const items = trade.data ?? []
   if (!acts.length && !items.length && !actions.isError && !trade.isError) return null
   const corrections = acts.filter((a) => a.is_correction).length
   return (
     <Card className="py-0">
-      <CardContent className="space-y-1.5 px-4 py-3 text-sm">
+      <CardContent className="space-y-1.5 px-3 py-3 text-sm">
         <Row label="최근 30일 기업활동" more={<Link to="/actions" className="text-primary hover:underline">기업활동 →</Link>}>
           {actions.isError ? <span className="text-muted-foreground">불러오지 못했어요</span>
             : !acts.length ? <span className="text-muted-foreground">공시 없음</span>

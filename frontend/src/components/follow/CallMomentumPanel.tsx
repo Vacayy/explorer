@@ -17,7 +17,7 @@ const GUIDE: Record<string, string> = { raised: "상향", lowered: "하향", ini
  * 전면은 이번 실적 시즌 후보만, 지난 시즌은 접힌 기록으로(시즌 = 발표 시점 기준 분기). */
 export function CallMomentumPanel() {
   const q = useCallMomentum()
-  return <QueryState query={q} loading={<Skeleton className="h-64 w-full rounded-xl" />} isEmpty={() => false}>{data => {
+  return <QueryState query={q} loading={<Skeleton className="h-64 w-full rounded-card" />} isEmpty={() => false}>{data => {
     const { season, candidates, history, coverage: cov, sec_configured } = data
     return <div className="space-y-4">
       {!sec_configured && <div role="alert" className="flex gap-2 rounded-lg border border-chart-warning/40 bg-chart-warning/10 p-3 text-sm">
@@ -52,7 +52,7 @@ export function CallMomentumPanel() {
 /** 컨콜 브라우저 맨 위 한 줄 — 이번 시즌 후보 수·상위 3. 조회 상태와 실패를 함께 표시 */
 export function MomentumStrip() {
   const q = useCallMomentum()
-  return <QueryState query={q} loading={<Skeleton className="h-11 w-full rounded-xl" />} isEmpty={() => false}>{data => {
+  return <QueryState query={q} loading={<Skeleton className="h-11 w-full rounded-card" />} isEmpty={() => false}>{data => {
     const { season, candidates } = data
     const top = [...candidates].sort((a, b) => b.score - a.score).slice(0, 3)
     return <Card className="py-0 shadow-none">

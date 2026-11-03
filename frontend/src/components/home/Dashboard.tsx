@@ -26,10 +26,10 @@ import {
   type Entry, type Heights, type Rows, type Spans, type Target,
 } from "@/components/widgets/rows"
 
-/* 격자: 행 10px · 간격 12px — 높이를 촘촘하게 맞춘다. 1칸 높이(px) = 22h − 12 */
-const ROW_PX = 10
-const GAP = 12
-/** 레지스트리 크기(72px 행 기준)를 10px 행으로 */
+/* 저장된 격자 단위 22px 유지. 카드 사이 여백 없이 면적을 채운다. */
+const ROW_PX = 22
+const GAP = 0
+/** 레지스트리 크기(72px 행 기준)를 22px 격자 단위로 */
 const fineH = (coarse: number) => Math.max(3, Math.round((84 * coarse) / (ROW_PX + GAP)))
 /** 위젯 본문이 받는 높이 — 기존 본문은 72px 행 기준으로 '작으면 숫자만'을 판단한다 */
 const coarseH = (fine: number) => Math.max(1, Math.round(((ROW_PX + GAP) * fine) / 84))
@@ -176,15 +176,15 @@ export default function Dashboard({ menu }: { menu: HomeBoard }) {
         <Button size="sm" className="max-md:ml-auto" onClick={() => setGalleryOpen(true)}><Plus className="size-3.5" />위젯 추가</Button>
       </div>
 
-      <div ref={containerRef} className="-mx-3">
+      <div ref={containerRef}>
         {!mounted ? (
-          <div className="grid grid-cols-12 gap-3 px-3">{[12, 12, 6, 6, 3, 3, 3, 3].map((w, n) => <Skeleton key={n} className="h-36 rounded-[var(--radius-card)]" style={{ gridColumn: `span ${w}` }} />)}</div>
+          <div className="surface-grid grid grid-cols-12">{[12, 12, 6, 6, 3, 3, 3, 3].map((w, n) => <Skeleton key={n} className="h-36 rounded-[var(--radius-card)]" style={{ gridColumn: `span ${w}` }} />)}</div>
         ) : !ids.length ? (
-          <div className="mx-3 rounded-[var(--radius-card)] border border-dashed p-8 text-center text-sm text-muted-foreground">
+          <div className="rounded-[var(--radius-card)] border border-dashed p-8 text-center text-sm text-muted-foreground">
             이 메뉴에 위젯이 없어요. <Button variant="link" className="h-auto p-0" onClick={() => setGalleryOpen(true)}>위젯 추가</Button>로 채우세요.
           </div>
         ) : stacked ? (
-          <div className="flex flex-col gap-3 px-3 [&_.widget-handle]:hidden">
+          <div className="surface-stack flex flex-col [&_.widget-handle]:hidden">
             {ids.map(i => {
               const def = WIDGET_BY_ID[board.widgetOf[i]]
               if (!def) return null

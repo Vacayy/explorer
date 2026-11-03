@@ -49,7 +49,7 @@ export default function TradePage() {
   }, { replace: true })
 
   const ranked = useMemo(() => rankByContribution(follows), [follows])
-  if (isLoading) return <PageContainer><Skeleton className="h-96 w-full rounded-xl" /></PageContainer>
+  if (isLoading) return <PageContainer><Skeleton className="h-96 w-full rounded-card" /></PageContainer>
   if (isError) return <PageContainer><ErrorState onRetry={() => refetch()} /></PageContainer>
 
   const effective = selected ?? ranked[0]?.hs_code ?? null
@@ -67,7 +67,7 @@ export default function TradePage() {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 items-start">
+      <div className="surface-grid grid grid-cols-1 md:grid-cols-[260px_1fr] items-start">
         <Card className="md:sticky md:top-16 py-0">
           <CardContent className="p-2 space-y-2">
             {follows.length === 0 ? (
@@ -167,7 +167,7 @@ function TradeDetail({ hs }: { hs: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "trade", hs] }),
   })
 
-  if (isLoading) return <Card><CardContent className="py-6 space-y-3"><Skeleton className="h-5 w-40" /><Skeleton className="h-56 w-full" /></CardContent></Card>
+  if (isLoading) return <Card><CardContent className="py-3 space-y-3"><Skeleton className="h-5 w-40" /><Skeleton className="h-56 w-full" /></CardContent></Card>
   if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
 
   // 금액=bar($B), 수출 YoY%=line(별도 축). YoY = 전년 동월 대비.
@@ -186,7 +186,7 @@ function TradeDetail({ hs }: { hs: string }) {
 
   return (
     <Card>
-      <CardContent className="py-5 space-y-4">
+      <CardContent className="py-3 space-y-4">
         <div className="flex items-center gap-2">
           <span className="font-bold text-lg">{data.item_name}</span>
           <Badge variant="secondary" className="text-[11px]">HS {data.hs_code}</Badge>

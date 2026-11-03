@@ -55,15 +55,15 @@ function SignalIndexView() {
         {data?.as_of && <span className="ml-auto text-xs text-muted-foreground tabular-nums">{data.as_of} 기준</span>}
       </div>
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
+        <div className="surface-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-card" />)}
         </div>
       ) : isError || !data ? (
         <ErrorState onRetry={() => refetch()} />
       ) : data.types.length === 0 ? (
         <EmptyState message="아직 계산된 신호가 없습니다. 수집이 쌓이면 나타납니다." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="surface-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
           {SIGNAL_TYPES.map((type) => {
             const t = byType.get(type)
             // 유형마다 최신일이 다르다(가격 신호=전 거래일). 2일 넘게 뒤처지면 멈춘 것으로 보고 주의 색
@@ -134,7 +134,7 @@ function SignalListView({ type }: { type: string }) {
         <EmptyState message="해당 신호가 아직 없습니다. 수집이 쌓이면 나타납니다." />
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="surface-grid grid grid-cols-1 lg:grid-cols-2">
             {shown.map((s) => (
               <SignalCard key={s.id} signal={s}
                 onKeywordClick={(k) => navigate(`/feed?topic=${encodeURIComponent(k)}`)} />
@@ -158,9 +158,9 @@ function ExploreSkeleton() {
     <PageContainer gap="sm">
       <Skeleton className="h-6 w-24" />
       <Skeleton className="h-5 w-64" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="surface-grid grid grid-cols-1 lg:grid-cols-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="border rounded-xl p-4 space-y-2">
+          <div key={i} className="border rounded-card p-4 space-y-2">
             <Skeleton className="h-4 w-40" />
             <Skeleton className="h-5 w-28" />
             <Skeleton className="h-3 w-full" />

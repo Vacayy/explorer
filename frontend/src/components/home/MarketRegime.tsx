@@ -41,7 +41,7 @@ const HINT = {
 export function MarketRegime() {
   const { data, isLoading, isError, refetch, refresh, refreshing } = useMarketRegime()
 
-  if (isLoading) return <Skeleton className="h-52 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-52 w-full rounded-card" />
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
   if (!data.kr && !data.us) return null   // Empty — 델타 섹션에 자리 양보
 

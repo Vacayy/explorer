@@ -23,7 +23,7 @@ export function KrMoversSection({ embedded = false }: { embedded?: boolean }) {
   const { data, isLoading, isError, refetch, refresh, refreshing } = useKrMovers()
   const [open, setOpen] = useState(false)
 
-  if (isLoading) return <Skeleton className="h-64 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-64 w-full rounded-card" />
   if (isError || !data || data.status === "error")
     return <ErrorState message={data?.error ?? "국장 거래대금을 불러올 수 없습니다."} onRetry={() => refetch()} />
 

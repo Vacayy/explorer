@@ -60,7 +60,7 @@ export default function SectorMapPage() {
   }, [hoveredGroup])
 
   if (isLoading) return (
-    <PageContainer gap="sm"><Skeleton className="h-7 w-40" /><Skeleton className="h-[480px] w-full rounded-xl" /></PageContainer>
+    <PageContainer gap="sm"><Skeleton className="h-7 w-40" /><Skeleton className="h-[480px] w-full rounded-card" /></PageContainer>
   )
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
   if (data.groups.length === 0) return <EmptyState message="주가·섹터 데이터가 쌓이면 나타납니다." />
@@ -75,7 +75,7 @@ export default function SectorMapPage() {
       </div>
 
       <Card>
-        <CardContent className="pt-4">
+        <CardContent className="pt-3">
           <div className="relative">
             {/* 사분면 라벨 */}
             <span className="absolute right-8 top-6 text-lg font-bold text-muted-foreground/25 select-none">주도</span>

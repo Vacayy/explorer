@@ -53,7 +53,7 @@ export default function UsDossierPage() {
     staleTime: 300_000,
   })
 
-  return <QueryState query={q} loading={<Skeleton className="h-24 w-full rounded-xl" />} isEmpty={() => false}>{data => {
+  return <QueryState query={q} loading={<Skeleton className="h-24 w-full rounded-card" />} isEmpty={() => false}>{data => {
     const d = data
     const f = d.fundamentals
     const pt = (f?.estimates?.price_targets ?? null) as { mean?: number } | null
@@ -62,8 +62,8 @@ export default function UsDossierPage() {
     return (
       <PageContainer gap="sm">
         <Card>
-          <CardContent className="py-4">
-            <div className="flex items-baseline gap-2">
+          <CardContent className="py-3">
+            <div className="flex flex-wrap items-baseline gap-2">
               <span className="text-lg font-semibold">{d.name}</span>
               <span className="text-sm text-muted-foreground">{d.ticker}</span>
               <span className="ml-auto self-center"><WatchButton stockCode={d.ticker} /></span>
@@ -113,7 +113,7 @@ export default function UsDossierPage() {
         </Card>
 
         <Card>
-          <CardContent className="space-y-2 py-4 text-sm">
+          <CardContent className="space-y-2 py-3 text-sm">
             <h2 className="font-semibold">기업 개요</h2>
             <CompanyOverview stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다. SEC 10-K·IR·뉴스를 웹에서 조사해 개요를 만들 수 있습니다.</p>} />
           </CardContent>
@@ -138,7 +138,7 @@ export default function UsDossierPage() {
           <CompanyEvidence key={ticker} company={ticker} market="us" />
         ) : tab === 'financials' ? (
           <Card>
-            <CardContent className="space-y-4 pt-5">
+            <CardContent className="space-y-4 pt-3">
               <h2 className="text-section font-semibold">확보된 재무 정보</h2>
               <p className="text-sm text-muted-foreground">
                 현재 미국 재무 저장본에는 분기별 계열·회계기간·사업부 구성이
@@ -208,15 +208,15 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
   if (q.isLoading)
     return (
       <Card>
-        <CardContent className="py-4">
-          <Skeleton className="h-16 w-full rounded-lg" />
+        <CardContent className="py-3">
+          <Skeleton className="h-16 w-full rounded-card" />
         </CardContent>
       </Card>
     )
   if (!w || (w.edges.length === 0 && w.narratives.length === 0)) {
     return (
       <Card>
-        <CardContent className="py-4">
+        <CardContent className="py-3">
           <span className="text-sm font-semibold">월드모델 · 인과 위치</span>
           <p className="mt-2 text-xs text-muted-foreground">
             아직 이 종목 노드에 연결된 인과 관계·내러티브가 없습니다 —
@@ -228,7 +228,7 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
   }
   return (
     <Card>
-      <CardContent className="py-4 space-y-3">
+      <CardContent className="py-3 space-y-3">
         <div className="flex items-baseline justify-between">
           <span className="text-sm font-semibold">월드모델 · 인과 위치</span>
           {w.entity_id != null && (

@@ -169,9 +169,15 @@
 - `DetailNavigation`, `lib/sessionMemory`: 출발 URL/history index/state, 스크롤·복귀 링크를 보존. POP과 직접 복귀에 지연 렌더 완료 후 위치/포커스 복원. 저장 내용은 UI 상태뿐이며 탭 단위 최대 100개. 피드 로딩 중 스크롤은 기존 저장 위치를 덮지 않음.
 - 내러티브의 기존 7일 stale 자동 재생성·수동 갱신 정책은 유지한다. 정책 변경은 이번 레이아웃 이행에 포함하지 않음. 기획·이행 기준은 DESIGN_REVIEW/DESIGN_SYSTEM, 검증은 `logs/detail/`.
 
+## 화이트 플랫 디자인 (2026-10-31)
+
+- `index.css`의 라이트 배경·카드·사이드바는 순백, `--radius-card`는 0이다. 공통 Card는 그림자 대신 얇은 border를 쓴다. 다크 색상과 의미 색상·포커스·컨트롤 형태는 유지한다.
+- `surface-grid`·`surface-stack`은 카드 묶음의 외부 간격만 0으로 만든다. 홈은 22px 격자 단위·간격 0으로 렌더하고 저장된 배치를 그대로 읽는다. 테스트 URL 분기를 제거했다.
+- 홈·탐색 신호·포트폴리오·월드모델·스터디·밸류에이션 등의 카드 묶음과 공통 읽기 패널에 적용한다. 본문 12px·헤더 가로 12px/세로 8px로 홈 위젯과 밀도를 통일하며, Card 자체의 중복 패딩을 제거했다. 필터/폼 간격은 유지한다. 현행 계약은 [디자인 시스템](DESIGN_SYSTEM.md)이다.
+
 ## 통합 마켓 홈 디자인 기반 (D-152, 2026-09-10)
 
-- `index.css`: 자체 호스팅 IBM Plex Sans/KR(`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-sans-kr`), 역할별 타입, 단색 라이트·다크, 기존 멀버리 포인트. Card 20px·Button/Input 10px 라운딩. glass-surface는 도크·탐색 링크에 한정하고 미지원/투명도 감소는 단색 폴백.
+- `index.css`: 자체 호스팅 IBM Plex Sans/KR(`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-sans-kr`), 역할별 타입, 단색 라이트·다크, 기존 멀버리 포인트. 표면·라운딩은 위 화이트 플랫 기준으로 대체됐다.
 - `shared/PageLayout.tsx`: header/overview/toolbar/footer/children 슬롯, PageHeader, SplitWorkspace. 홈 시장은 document·full, 홈 피드는 reader·full(D-153·D-209), 문서 검색은 document. PageContainer는 레거시 호환 유지.
 - Home 피드는 가용 폭 ≥760px에서 300px 목록 + 리더, 그 미만은 URL 목록/본문 전환. 화면 높이 ≥740px은 피드 본문만 `100dvh - --shell-offset`로 고정해 목록/본문 독립 스크롤, 헤더·AI 카드는 페이지 스크롤(D-209). 짧은 화면은 문서 흐름. 시장 모듈은 가용 폭 ≥1000px에서 2열. 셸 --page-inset은 데스크톱24/모바일16px.
 - UsBriefingSection의 기존 데이터·날짜·상태는 일반 Card 표면에 표시한다(후속 요청으로 대비 배경 해제).

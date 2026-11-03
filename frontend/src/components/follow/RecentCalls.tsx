@@ -11,7 +11,7 @@ const SOURCE: Record<string, string> = { fool: "Motley Fool", alphavantage: "Alp
 /** 최근 받은 컨콜(D-218) — 'AI가 최근 만든 것'과 같은 목록. 누르면 아래 상세에서 그 녹취록을 연다. */
 export function RecentCalls({ onSelect, selectedId }: { onSelect: (id: number) => void; selectedId: string | null }) {
   const q = useRecentCalls(7)
-  return <QueryState query={q} loading={<Skeleton className="h-32 w-full rounded-xl" />} isEmpty={() => false}>{items => {
+  return <QueryState query={q} loading={<Skeleton className="h-32 w-full rounded-card" />} isEmpty={() => false}>{items => {
     return (
       <ProposalPanel icon={FileAudio} title="최근 받은 컨콜" subtitle="지난 7일 · 받은 순" count={items.length} maxHeight="16rem" maxWidth="100%" contentClassName="px-0 divide-y [contain:inline-size]">
         {items.length === 0

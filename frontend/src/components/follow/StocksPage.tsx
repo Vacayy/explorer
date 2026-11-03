@@ -54,10 +54,10 @@ function GroupList({ onOpen }: { onOpen: (id: number) => void }) {
     catch (error) { toast.error(error instanceof Error ? error.message : '묶음을 만들지 못했습니다.') }
   }
   return <PageLayout header={<PageHeader title="종목 묶음" description="포트폴리오와 관심 종목을 묶고, 종목별 기술적 조건을 매일 평가해 신호를 봅니다." actions={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" />새 묶음</Button>} />}>
-    {groups.isPending && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="묶음 불러오는 중" role="status">{[0, 1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}</div>}
+    {groups.isPending && <div className="surface-grid grid sm:grid-cols-2 lg:grid-cols-3" aria-label="묶음 불러오는 중" role="status">{[0, 1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}</div>}
     {groups.isError && <ErrorState message="묶음을 불러오지 못했습니다." onRetry={() => groups.refetch()} />}
     {groups.data && (groups.data.items.length === 0 ? <Card><CardContent className="space-y-3 py-10 text-center"><p className="font-medium">아직 묶음이 없습니다.</p><p className="text-sm text-muted-foreground">포트폴리오나 관심 종목 묶음을 만들고 조건을 걸면 매일 장 마감 후 신호를 평가합니다.</p><Button onClick={() => setCreating(true)}><Plus className="size-4" />첫 묶음 만들기</Button></CardContent></Card>
-      : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{groups.data.items.map(group => <Button key={group.id} variant="ghost" className="h-auto flex-col items-stretch gap-2 whitespace-normal rounded-xl border bg-card p-4 text-left" onClick={() => onOpen(group.id)}>
+      : <div className="surface-grid grid sm:grid-cols-2 lg:grid-cols-3">{groups.data.items.map(group => <Button key={group.id} variant="ghost" className="h-auto flex-col items-stretch gap-2 whitespace-normal rounded-card border bg-card p-3 text-left" onClick={() => onOpen(group.id)}>
         <span className="flex items-start justify-between gap-2"><span className="font-semibold">{group.name}</span><Badge variant="outline">{KIND_LABEL[group.kind]}</Badge></span>
         <span className="text-caption font-normal text-muted-foreground">{formatNumber(group.member_count)}종목 · 조건 {formatNumber(group.rule_count)}개</span>
         <span className="flex items-center justify-between gap-2 text-sm font-normal"><span className={group.today_signals > 0 ? 'font-medium text-up' : 'text-muted-foreground'}>{group.last_as_of ? `신호 ${formatNumber(group.today_signals)}개` : '아직 평가 전'}</span><span className="text-caption text-muted-foreground">{group.last_as_of ? `${group.last_as_of} 기준` : ''}</span></span>
@@ -149,7 +149,7 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
 
 /** 포트폴리오 보유는 거래 원장(D-212)이 정한다 — 수량·금액은 원장에만 두고 묶음 멤버에는 넣지 않는다. */
 function LedgerNotice() {
-  return <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+  return <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
     <p className="text-sm text-muted-foreground">보유 종목은 포트폴리오 거래 원장에서 매수·매도를 기록하면 채워집니다. 수량·금액은 원장에만 저장합니다.</p>
     <Button variant="outline" size="sm" asChild><Link to="/portfolio">포트폴리오 원장 열기</Link></Button>
   </CardContent></Card>

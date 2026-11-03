@@ -83,7 +83,7 @@ export default function CompanyPage() {
     return (
       <PageContainer width="reading">
         <Skeleton className="h-7 w-56" />
-        <Skeleton className="h-40 w-full rounded-xl" />
+        <Skeleton className="h-40 w-full rounded-card" />
       </PageContainer>
     )
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />

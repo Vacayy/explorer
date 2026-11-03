@@ -27,7 +27,7 @@ const TREND_CLS: Record<string, string> = { 초입: "text-up border-up/40", 진�
 export default function UsIndexPage() {
   const q = useQuery(usListQuery())
 
-  return <QueryState query={q} loading={<Skeleton className="h-64 w-full rounded-xl" />} isEmpty={() => false}>{data => {
+  return <QueryState query={q} loading={<Skeleton className="h-64 w-full rounded-card" />} isEmpty={() => false}>{data => {
     const groups = data.groups
     const total = groups.reduce((n, g) => n + g.items.length, 0)
 

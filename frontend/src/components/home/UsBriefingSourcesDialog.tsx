@@ -33,7 +33,7 @@ export function UsBriefingSourcesDialog() {
           </DialogDescription>
         </DialogHeader>
         {isLoading ? (
-          <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}</div>
+          <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-full rounded-card" />)}</div>
         ) : isError || !data ? (
           <ErrorState message="소스 목록을 불러올 수 없습니다." onRetry={() => refetch()} />
         ) : data.groups.length === 0 ? (

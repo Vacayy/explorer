@@ -67,7 +67,7 @@ export default function RegimesPage() {
     {collect.isPending ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />}이력 수집
   </Button>
 
-  if (q.isPending) return <PageContainer><Skeleton className="h-8 w-60" /><Skeleton className="h-[420px] w-full rounded-xl" /><Skeleton className="h-[560px] w-full rounded-xl" /></PageContainer>
+  if (q.isPending) return <PageContainer><Skeleton className="h-8 w-60" /><Skeleton className="h-[420px] w-full rounded-card" /><Skeleton className="h-[560px] w-full rounded-card" /></PageContainer>
   if (q.isError) return <PageContainer><ErrorState message="국면 이력을 불러오지 못했습니다." onRetry={() => void q.refetch()} /></PageContainer>
   const d = q.data
   if (!d.phases.length) return <PageContainer>

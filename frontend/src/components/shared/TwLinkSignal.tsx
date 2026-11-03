@@ -42,7 +42,7 @@ export function KrConfirmStrip({ c }: { c: KrConfirm }) {
   ]
   return <div className="space-y-1">
     <div className="grid gap-1.5 sm:grid-cols-3">
-      {cells.map(x => <div key={x.label} className="rounded-md border px-2 py-1.5 text-caption">
+      {cells.map(x => <div key={x.label} className="rounded-card border px-2 py-1.5 text-caption">
         <span className="font-medium">{x.label}</span>{" "}
         <span className={cn("font-semibold", x.dir ? DIR_TONE[x.dir] : "text-muted-foreground")}>{x.dir ? DIR_LABEL[x.dir] : "-"}</span>
         <span className="block truncate text-muted-foreground" title={x.detail}>{x.detail}</span>

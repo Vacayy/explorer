@@ -190,8 +190,8 @@ function LensSkeleton() {
   return (
     <div className="space-y-4">
       <Skeleton className="h-4 w-2/3" />
-      <Skeleton className="h-24 w-full rounded-xl" />
-      <Skeleton className="h-64 w-full rounded-xl" />
+      <Skeleton className="h-24 w-full rounded-card" />
+      <Skeleton className="h-64 w-full rounded-card" />
     </div>
   )
 }

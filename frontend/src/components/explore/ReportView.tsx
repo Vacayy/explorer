@@ -129,7 +129,7 @@ export function ReportView({ topic, initialVersionId = null }: { topic: string; 
         )}
         {display?.answer && (
           <Card className="bg-[color-mix(in_srgb,var(--primary)_5%,var(--card))] max-sm:[--card-spacing:--spacing(3)]">
-            <CardContent className="py-4 space-y-3">
+            <CardContent className="py-3 space-y-3">
               {display.stocks.length > 0 && (
                 <ReportCharts stocks={display.stocks} topPick={display.top_pick} />
               )}

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 /** 표 셸 — 넓은 표는 자기 안에서만 가로 스크롤(페이지 가로 스크롤 금지, DESIGN_SYSTEM §1) */
 function TableShell({ children }: React.ComponentProps<"table">) {
   return (
-    <div className="my-3 overflow-x-auto rounded-lg ring-1 ring-border">
+    <div className="my-3 overflow-x-auto rounded-card border border-border">
       <table>{children}</table>
     </div>
   )

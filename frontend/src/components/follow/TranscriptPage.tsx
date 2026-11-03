@@ -149,7 +149,7 @@ export default function TranscriptPage() {
 
       <UpcomingEarnings follows={follows} onSelect={selectId}
         onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
-      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4 items-start">
+      <div className="surface-grid grid grid-cols-1 md:grid-cols-[240px_1fr] items-start">
         {/* 좌 레일 — 팔로우 기업 그룹 (구독 관리 겸용) */}
         <Card className="md:sticky md:top-16">
           <CardContent className="p-2 max-h-[45vh] md:max-h-[70vh] overflow-y-auto">
@@ -341,7 +341,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
     ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),
   })
 
-  if (isLoading) return <Card><CardContent className="py-6 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="h-24 w-full" /></CardContent></Card>
+  if (isLoading) return <Card><CardContent className="py-3 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="h-24 w-full" /></CardContent></Card>
   if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
 
   const digest = computed.data?.digest ?? data.digest
@@ -349,7 +349,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
   const headline = chain.data?.reaction_meta?.headline
 
   return (
-    <div className="space-y-4">
+    <div className="surface-stack">
       <Card>
         <CardContent className="space-y-3">
           {/* 헤더 — 회사·섹터·핵심 + 분기 탭(오래된 분기 → 최신이 오른쪽) */}
@@ -369,7 +369,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
           <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect} />
           {headline && <p className="text-[15px] font-semibold">{headline}</p>}
           {/* 같은 날짜 축의 작은 차트 묶음 — 체인은 별도 쿼리라 실패해도 아래 정리는 보인다 */}
-          <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-[440px] w-full rounded-lg" />}>
+          <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-[440px] w-full rounded-card" />}>
             {(c) => <ChainCharts chain={c} />}
           </QueryState>
         </CardContent>
@@ -471,9 +471,9 @@ function TranscriptSkeleton() {
   return (
     <PageContainer>
       <Skeleton className="h-6 w-32" />
-      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4">
-        <Skeleton className="h-96 w-full rounded-xl" />
-        <Skeleton className="h-96 w-full rounded-xl" />
+      <div className="surface-grid grid grid-cols-1 md:grid-cols-[240px_1fr]">
+        <Skeleton className="h-96 w-full rounded-card" />
+        <Skeleton className="h-96 w-full rounded-card" />
       </div>
     </PageContainer>
   )

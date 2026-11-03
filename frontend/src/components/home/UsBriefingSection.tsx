@@ -29,7 +29,7 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
   const { data: dates = [] } = useUsBriefingDates()
   const [open, setOpen] = useState(false)
 
-  if (isLoading) return <Skeleton className="h-80 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-80 w-full rounded-card" />
   if (isError || !data || data.status === "error")
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
   if (data.movers.length === 0)

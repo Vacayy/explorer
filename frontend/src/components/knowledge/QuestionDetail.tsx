@@ -49,7 +49,7 @@ export default function QuestionDetail() {
   })
 
   if (isLoading) {
-    return <PageContainer width="reading" gap="sm"><Skeleton className="h-8 w-full max-w-96" /><Skeleton className="h-64 w-full rounded-xl" /></PageContainer>
+    return <PageContainer width="reading" gap="sm"><Skeleton className="h-8 w-full max-w-96" /><Skeleton className="h-64 w-full rounded-card" /></PageContainer>
   }
   if (isError || !data) return <ErrorState message="질문을 찾을 수 없습니다." onRetry={() => refetch()} />
 
@@ -107,7 +107,7 @@ export default function QuestionDetail() {
             <p className="text-[11px] text-muted-foreground">결산 리포트 → 그걸 출발 조건으로 파급 시나리오까지 이어서 생성합니다.</p>
           )}
           {synth.data?.body ? (
-            <div className="rounded-md border bg-card/60 px-3 py-2">
+            <div className="rounded-card border bg-card px-3 py-2">
               <Markdown>{synth.data.body}</Markdown>
               {synth.data.stale && !genSynth.isPending && (
                 <p className="text-[10px] text-hypothesis mt-1.5">관측이 갱신됐습니다 — '다시 종합'으로 최신화</p>
@@ -136,7 +136,7 @@ export default function QuestionDetail() {
             )}
           </div>
           {data.scenario ? (
-            <div className="rounded-md border bg-muted/30 px-3 py-2">
+            <div className="rounded-card border bg-muted/30 px-3 py-2">
               <Markdown>{data.scenario.answer}</Markdown>
               {data.scenario.beneficiaries.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t">

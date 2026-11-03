@@ -18,7 +18,7 @@ import type { EntityTag, FeedDocument, TimelineItem } from '@/types'
 type PostVariant = 'card' | 'row'
 function PostSurface({ variant, children }: { variant: PostVariant; children: ReactNode }) {
   if (variant === 'row') return <div className="space-y-3">{children}</div>
-  return <Card className="gap-0 py-0"><CardContent className="space-y-3 p-4 sm:p-5">{children}</CardContent></Card>
+  return <Card className="gap-0 py-0"><CardContent className="space-y-3 p-3 sm:p-3">{children}</CardContent></Card>
 }
 
 const focusLink = 'rounded-sm hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-4'

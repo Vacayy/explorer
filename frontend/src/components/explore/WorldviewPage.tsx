@@ -118,11 +118,11 @@ function GraphNode({ data }: NodeProps) {
   return (
     <div
       className={cn(
-        "rounded-md border bg-card px-2 py-1 text-xs shadow-sm",
-        layer === "regime" && "border-2 border-foreground/50 bg-[color-mix(in_srgb,var(--foreground)_6%,var(--card))] shadow-md",
-        layer === "structure" && "border-foreground/30 shadow",
+        "rounded-card border bg-card px-2 py-1 text-xs",
+        layer === "regime" && "border-2 border-foreground/50 bg-[color-mix(in_srgb,var(--foreground)_6%,var(--card))]",
+        layer === "structure" && "border-foreground/30",
         layer === "event" && "opacity-80",
-        focal && "ring-2 ring-primary ring-offset-1 ring-offset-background border-primary shadow-lg",
+        focal && "ring-2 ring-primary ring-offset-1 ring-offset-background border-primary",
       )}
       style={{ width: s.w }}
     >
@@ -295,7 +295,7 @@ export default function WorldviewPage() {
   useEffect(() => setRfNodes(builtNodes), [builtNodes, setRfNodes])
   useEffect(() => setRfEdges(builtEdges), [builtEdges, setRfEdges])
 
-  if (isLoading) return <PageContainer gap="sm"><Skeleton className="h-[620px] w-full rounded-xl" /></PageContainer>
+  if (isLoading) return <PageContainer gap="sm"><Skeleton className="h-[620px] w-full rounded-card" /></PageContainer>
   // 초점 노드가 선택한 렌즈의 그래프에 없으면(404) 페이지 전체가 아니라 그래프 자리에서 안내한다
   const focusMissing = isFlow && focusId != null && sub.isError
   if (isError && !focusMissing) return <ErrorState message="세계관 그래프를 불러오지 못했습니다" />
@@ -445,7 +445,7 @@ export default function WorldviewPage() {
           {/* 전체화면 토글 — 그래프 영역이 화면을 덮게 */}
           <button
             onClick={() => setFullscreen((f) => !f)}
-            className="absolute top-3 left-3 z-10 rounded-lg border bg-card/85 p-2.5 text-muted-foreground md:p-1.5 shadow hover:text-foreground backdrop-blur"
+            className="absolute top-3 left-3 z-10 rounded-control border bg-card p-2.5 text-muted-foreground md:p-1.5 hover:text-foreground"
             aria-label={fullscreen ? "전체화면 종료" : "전체화면"}
           >
             {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -531,7 +531,7 @@ function GraphPanel({ title, subtitle, onClose, children }: {
   title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode
 }) {
   return (
-    <div className="absolute top-3 right-3 left-3 z-10 flex max-h-[calc(100%-24px)] flex-col md:left-auto md:w-[340px] rounded-xl border bg-card shadow-xl">
+    <div className="absolute top-3 right-3 left-3 z-10 flex max-h-[calc(100%-24px)] flex-col md:left-auto md:w-[340px] rounded-card border bg-card">
       <div className="flex items-start gap-2 border-b px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{title}</div>

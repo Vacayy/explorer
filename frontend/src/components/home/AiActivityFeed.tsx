@@ -30,7 +30,7 @@ export function actLink(a: AiActivityItem): string {
 export function AiActivityFeed() {
   const q = useAiActivity()
   const items = q.data ?? []
-  if (q.isLoading) return <Skeleton className="h-28 w-full rounded-xl" />
+  if (q.isLoading) return <Skeleton className="h-28 w-full rounded-card" />
   return (
     <ProposalPanel
       icon={Sparkles} title="AI가 최근 만든 것" subtitle={`${aiCoverageLabel(items.map(a => a.created_at), AI_ACTIVITY.limit, AI_ACTIVITY.days, formatKstDateTime)} · 최신순`}

@@ -204,7 +204,7 @@ export function CompanyPriceResearch({
         >
           <div className={selected ? 'company-research-chart' : ''}>
             <Card>
-              <CardContent className={compact && !selected ? 'space-y-2 pt-4' : 'space-y-4 pt-5'}>
+              <CardContent className={compact && !selected ? 'space-y-2 pt-3' : 'space-y-4 pt-3'}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className={compact && !selected ? 'text-sm font-medium' : 'text-section font-semibold'}>

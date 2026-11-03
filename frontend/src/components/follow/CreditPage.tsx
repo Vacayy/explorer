@@ -40,7 +40,7 @@ export default function CreditPage() {
   const set = (key: string, value: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (value) n.set(key, value); else n.delete(key); return n }, { replace: true })
   const toggle = (ticker: string) => set('credit', (selected.includes(ticker) ? selected.filter(t => t !== ticker) : [...selected, ticker].slice(-MAX_SELECTED)).join(',') || '-')
 
-  if (table.isPending) return <PageContainer><Skeleton className="h-80 w-full rounded-xl" /><Skeleton className="h-96 w-full rounded-xl" /></PageContainer>
+  if (table.isPending) return <PageContainer><Skeleton className="h-80 w-full rounded-card" /><Skeleton className="h-96 w-full rounded-card" /></PageContainer>
   if (table.isError) return <PageContainer><ErrorState message="회사채 스프레드를 불러오지 못했습니다." onRetry={() => void table.refetch()} /></PageContainer>
   const data = table.data
   const rows = data.rows
@@ -87,7 +87,7 @@ function SpreadChart({ rows, selected, view, onView, onToggle }: {
   const points = useMemo(() => (history.data?.points ?? []).map(p => ({ ...p, time: p.date })), [history.data])
 
   return <Card>
-    <CardContent className="space-y-4 pt-5">
+    <CardContent className="space-y-4 pt-3">
       <div className="flex flex-wrap items-center gap-2">
         {selected.map((t, i) => <Badge key={t} variant="outline" className="gap-1.5 py-1 pl-2 pr-1 font-normal">
           <span className="size-2 rounded-full" style={{ background: palette[i] }} aria-hidden="true" />{byTicker[t]?.name ?? t}

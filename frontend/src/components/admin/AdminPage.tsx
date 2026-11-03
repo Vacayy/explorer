@@ -97,7 +97,7 @@ function OpsView({ tabs }: { tabs: React.ReactNode }) {
           )}
         </div>
         <p className="text-caption text-muted-foreground">작업이 정상 종료돼도 결과가 비거나 묵을 수 있어, 저장된 데이터의 최신 시점을 기대치와 비교합니다. ‘경고’ 항목은 홈 브리핑·텔레그램에도 표시됩니다.</p>
-        {health.isPending && <Skeleton className="h-48 w-full rounded-xl" />}
+        {health.isPending && <Skeleton className="h-48 w-full rounded-card" />}
         {health.isError && <ErrorState message="신선도 점검을 불러오지 못했습니다." onRetry={() => health.refetch()} />}
         {health.data && (
           <div className="rounded-lg border">
@@ -133,7 +133,7 @@ function OpsView({ tabs }: { tabs: React.ReactNode }) {
 
       {/* 작업 on/off */}
       <div className="space-y-2">
-        {isLoading && <Skeleton className="h-40 w-full rounded-xl" />}
+        {isLoading && <Skeleton className="h-40 w-full rounded-card" />}
         {jobs.map((j) => (
           <Card key={j.name}>
             <CardContent className="py-3 flex items-center gap-3">

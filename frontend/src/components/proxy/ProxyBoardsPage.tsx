@@ -59,7 +59,7 @@ export default function ProxyBoardsPage() {
     <PageLayout mode="document" header={<PageHeader title="프록시 보드" description="주제마다 지켜볼 지표를 묶어 매일 원천 데이터로 봅니다"
       actions={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-3.5" />새 보드</Button>} />}>
       <OutlookSubNav />
-      {boards.isPending ? <Skeleton className="h-40 w-full rounded-xl" />
+      {boards.isPending ? <Skeleton className="h-40 w-full rounded-card" />
         : boards.isError ? <ErrorState message="보드를 불러오지 못했습니다." onRetry={() => void boards.refetch()} />
         : !boards.data.length ? (
           <Card><CardContent className="space-y-3 py-10 text-center">
@@ -67,7 +67,7 @@ export default function ProxyBoardsPage() {
             <Button onClick={() => setCreating(true)}><Plus className="size-3.5" />첫 보드 만들기</Button>
           </CardContent></Card>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <div className="surface-grid grid lg:grid-cols-[240px_minmax(0,1fr)]">
             <nav aria-label="보드 목록" className="flex flex-col gap-1">
               {boards.data.map(b => (
                 <Button key={b.id} variant="ghost" onClick={() => pick(b.id)} aria-current={b.id === selected ? "true" : undefined}
@@ -93,7 +93,7 @@ function BoardDetail({ id }: { id: number }) {
   const remove = useRemoveProxyItem(id)
   const del = useDeleteProxyBoard()
   const [adding, setAdding] = useState(false)
-  if (q.isPending) return <Skeleton className="h-64 w-full rounded-xl" />
+  if (q.isPending) return <Skeleton className="h-64 w-full rounded-card" />
   if (q.isError) return <ErrorState message="보드를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
   const b = q.data
   return (

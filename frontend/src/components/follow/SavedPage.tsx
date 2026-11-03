@@ -30,7 +30,7 @@ export default function SavedPage() {
     <PageContainer>
       <PageHeader title="저장됨" description={`북마크와 메모${items.length > 0 ? ` · ${formatNumber(items.length)}건` : ""}`} />
 
-      <QueryState query={query} loading={<Card><CardContent className="py-4"><TableSkeleton rows={5} /></CardContent></Card>}
+      <QueryState query={query} loading={<Card><CardContent className="py-3"><TableSkeleton rows={5} /></CardContent></Card>}
         emptyMessage="아직 저장한 항목이 없어요. 기업·문서·내러티브·리포트 페이지의 북마크 아이콘으로 저장하세요.">{() => (
         <div className="space-y-3">
           <SegmentTabs tabs={FILTERS} value={kind} onChange={setKind} />

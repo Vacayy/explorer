@@ -25,7 +25,7 @@ export function EdgeContextRow({ e, dir }: { e: WEdge; dir: "in" | "out" }) {
   const other = dir === "in" ? e.from : e.to
   const otherType = dir === "in" ? e.from_type : e.to_type
   return (
-    <li className="rounded-lg border px-2.5 py-1.5 space-y-1">
+    <li className="rounded-card border px-2.5 py-1.5 space-y-1">
       <div className="flex items-center gap-1.5 flex-wrap text-sm">
         {dir === "in" && <><span className="font-medium">{other}</span><ArrowRight className="h-3 w-3 text-muted-foreground" /></>}
         <Badge variant="outline" className="text-[9px]">{e.rel === "BENEFITS_FROM" ? "수혜" : "인과"}</Badge>
@@ -122,7 +122,7 @@ function UpsideResult({ stock, event }: { stock: string; event: string }) {
 function BeneficiaryRow({ c, event }: { c: BeneficiaryCandidate; event: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <li className="rounded-lg border px-2.5 py-1.5">
+    <li className="rounded-card border px-2.5 py-1.5">
       <div className="flex items-center gap-1.5 flex-wrap">
         <a href={`/analyze/${c.stock_code}/summary`} className="font-medium text-sm hover:underline">{c.name}</a>
         {c.rs_short != null && (
@@ -208,7 +208,7 @@ function ScenarioBeneficiaryRow({ b, event }: { b: ScenarioBeneficiary; event: s
   const [open, setOpen] = useState(false)
   const harm = b.rel === "피해"
   return (
-    <li className="rounded-lg border px-2.5 py-1.5">
+    <li className="rounded-card border px-2.5 py-1.5">
       <div className="flex items-center gap-1.5 flex-wrap">
         <Badge variant="outline" className={cn("text-[9px]", harm ? "text-down border-down/40" : "text-up border-up/40")}>
           {b.rel ?? "수혜"}

@@ -119,7 +119,7 @@ export default function DisclosurePage({ stockCode }: Props) {
 
           {showForm && (
             <Card>
-              <CardContent className="pt-5 space-y-3">
+              <CardContent className="pt-3 space-y-3">
                 <div className="flex gap-3">
                   <Input type="date" value={noteDate} onChange={(e) => setNoteDate(e.target.value)} className="w-[160px]" />
                   <Input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="제목" className="flex-1" />
@@ -139,7 +139,7 @@ export default function DisclosurePage({ stockCode }: Props) {
           <div className="space-y-3">
             {notes.map((note) => (
               <Card key={note.id}>
-                <CardContent className="pt-4">
+                <CardContent className="pt-3">
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <span className="text-xs text-muted-foreground mr-3">{note.note_date}</span>
