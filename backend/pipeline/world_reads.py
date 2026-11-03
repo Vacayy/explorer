@@ -97,8 +97,9 @@ def _member_companies(conn) -> list[dict]:
     rows = conn.execute("""
         SELECT m.stock_code, g.kind, e.id entity_id, e.name
         FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id
-        LEFT JOIN entities e ON e.id = (SELECT id FROM entities WHERE type='company' AND aliases=m.stock_code
-                                        ORDER BY id LIMIT 1)""").fetchall()
+        LEFT JOIN entities e ON e.id = COALESCE(
+            (SELECT id FROM entities WHERE type='company' AND aliases=m.stock_code ORDER BY id LIMIT 1),
+            (SELECT entity_id FROM transcript_follow WHERE ticker=m.stock_code))""").fetchall()
     by_code: dict[str, dict] = {}
     for r in rows:
         s = by_code.setdefault(r["stock_code"], {"stock_code": r["stock_code"], "name": r["name"],

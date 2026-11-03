@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useCompanySearch } from '@/hooks/useCompanySearch'
 import { WatchReasonsCard } from '@/components/follow/WatchReasonsCard'
 import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, usePutRules, useRemoveMember, useStrategyCatalog } from '@/hooks/useGroups'
-import { formatKrw, formatNumber, formatPercent } from '@/utils/format'
+import { formatKrw, formatNumber, formatPercent, formatPrice } from '@/utils/format'
 import type { StockGroupDetail, StockGroupKind, StockGroupMember, StrategyCatalogItem, WatchRule, WatchRuleInput } from '@/types'
 
 const KIND_LABEL: Record<StockGroupKind, string> = { watch: '관심', portfolio: '포트폴리오' }
@@ -30,6 +30,8 @@ const ruleKey = (rule: WatchRuleInput) => `${rule.strategy_id}:${JSON.stringify(
 const toInput = (rule: WatchRule): WatchRuleInput => ({ strategy_id: rule.strategy_id, params: rule.params, within_days: rule.within_days, source_strategy_id: rule.source_strategy_id, source_version: rule.source_version })
 // 좁은 화면 — 종목명·가격이 글자 단위로 꺾이지 않게 줄바꿈을 막고 표를 가로 스크롤한다
 const NOWRAP_MOBILE = new Set(['name', 'close', 'market_cap'])
+/** 미국 종목(티커)은 미국 도시에로, 국내는 기업 개요로 */
+const dossierPath = (code: string, market?: string | null) => market === 'us' ? `/us/${code}` : `/analyze/${code}/summary`
 const NOWRAP_CELL = 'whitespace-nowrap md:whitespace-normal'
 const paramsText = (rule: { params: Record<string, unknown> }) => Object.entries(rule.params ?? {}).map(([key, value]) => `${key} ${String(value)}`).join(' · ')
 
@@ -120,15 +122,15 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
       return <Button variant="ghost" size="sm" className="-mr-2 h-7 gap-1 px-2" onClick={column.getToggleSortingHandler()}>{label}<Icon className="size-3.5" aria-hidden="true" /></Button>
     }
     const list: ColumnDef<StockGroupMember>[] = [
-      { id: 'name', accessorKey: 'name', header: '종목', enableSorting: false, cell: ({ row }) => <span className="block"><Link className="font-semibold hover:underline" to={`/analyze/${row.original.stock_code}/summary`}>{row.original.name}</Link><span className="block text-caption text-muted-foreground">{row.original.stock_code}{row.original.conviction ? ` · 확신도 ${row.original.conviction}` : ''}{row.original.target_price ? ` · 목표 ${formatNumber(row.original.target_price)}원` : ''}</span></span> },
-      { id: 'close', accessorFn: item => item.close ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('현재가'), cell: ({ row }) => <span className="block text-right tabular-nums">{row.original.close != null ? `${formatNumber(row.original.close)}원` : '-'}<span className={`block text-caption ${changeClass(row.original.change_pct)}`}>{signedPercent(row.original.change_pct)}</span></span> },
+      { id: 'name', accessorKey: 'name', header: '종목', enableSorting: false, cell: ({ row }) => <span className="block"><Link className="font-semibold hover:underline" to={dossierPath(row.original.stock_code, row.original.market)}>{row.original.name}</Link><span className="block text-caption text-muted-foreground">{row.original.stock_code}{row.original.conviction ? ` · 확신도 ${row.original.conviction}` : ''}{row.original.target_price ? ` · 목표 ${formatNumber(row.original.target_price)}원` : ''}</span></span> },
+      { id: 'close', accessorFn: item => item.close ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('현재가'), cell: ({ row }) => <span className="block text-right tabular-nums">{row.original.close == null ? '-' : row.original.market === 'us' ? formatPrice(row.original.close) : `${formatNumber(row.original.close)}원`}<span className={`block text-caption ${changeClass(row.original.change_pct)}`}>{signedPercent(row.original.change_pct)}</span></span> },
       { id: 'market_cap', accessorFn: item => item.market_cap ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('시가총액'), cell: ({ row }) => <span className="block text-right tabular-nums">{formatKrw(row.original.market_cap)}</span> },
     ]
     list.push(
       { id: 'signals', accessorFn: item => item.signals.length, sortDescFirst: true, header: sortable('오늘 신호'), cell: ({ row }) => row.original.signals.length ? <span className="flex flex-wrap gap-1">{row.original.signals.map(signal => <Badge key={signal.rule_id} className="font-normal">{signal.label}{signal.signal_date && signal.signal_date !== detail.last_as_of ? ` · ${signal.signal_date}` : ''}</Badge>)}</span> : <span className="text-caption text-muted-foreground">{row.original.rule_count === 0 ? '조건 없음' : row.original.unavailable > 0 ? `미평가 ${formatNumber(row.original.unavailable)}` : '-'}</span> },
       { id: 'rules', accessorKey: 'rule_count', header: '조건', enableSorting: false, cell: ({ row }) => <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onEditRules(row.original.stock_code)} aria-label={`${row.original.name} 조건 편집`}>{formatNumber(row.original.rule_count)}개<SlidersHorizontal className="size-3.5" /></Button> },
       { id: 'actions', header: '', enableSorting: false, cell: ({ row }) => <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`${row.original.name} 더보기`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-        <DropdownMenuItem asChild><Link to={`/analyze/${row.original.stock_code}/summary`}>기업 개요</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link to={dossierPath(row.original.stock_code, row.original.market)}>기업 개요</Link></DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onEditRules(row.original.stock_code)}>종목 조건 편집</DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onSelect={() => remove.mutateAsync(row.original.stock_code).catch(error => toast.error(error instanceof Error ? error.message : '제거하지 못했습니다.'))}>묶음에서 제거</DropdownMenuItem>
       </DropdownMenuContent></DropdownMenu> },
@@ -183,7 +185,7 @@ function SignalHistory({ groupId }: { groupId: number }) {
       {signals.isPending && <Skeleton className="h-16 w-full" />}
       {signals.isError && <ErrorState message="신호 이력을 불러오지 못했습니다." onRetry={() => signals.refetch()} />}
       {signals.data && signals.data.length === 0 && <EmptyState message="최근 30일 동안 새로 켜진 신호가 없습니다. 조건이 켜진 첫날만 기록합니다." />}
-      {byDate.map(([date, items]) => <div key={date} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{date}</p><ul className="space-y-1">{items.map(signal => <li key={`${signal.stock_code}-${signal.rule_id}`} className="flex flex-wrap items-baseline gap-x-2 text-sm"><Link className="font-medium hover:underline" to={`/analyze/${signal.stock_code}/summary`}>{signal.name ?? signal.stock_code}</Link><span>{signal.label}</span>{signal.value != null && <span className="text-caption tabular-nums text-muted-foreground">{formatNumber(signal.value)}{signal.reference != null ? ` / ${formatNumber(signal.reference)}` : ''}</span>}</li>)}</ul></div>)}
+      {byDate.map(([date, items]) => <div key={date} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{date}</p><ul className="space-y-1">{items.map(signal => <li key={`${signal.stock_code}-${signal.rule_id}`} className="flex flex-wrap items-baseline gap-x-2 text-sm"><Link className="font-medium hover:underline" to={dossierPath(signal.stock_code, signal.market)}>{signal.name ?? signal.stock_code}</Link><span>{signal.label}</span>{signal.value != null && <span className="text-caption tabular-nums text-muted-foreground">{formatNumber(signal.value)}{signal.reference != null ? ` / ${formatNumber(signal.reference)}` : ''}</span>}</li>)}</ul></div>)}
     </CollapsibleContent>
   </Collapsible>
 }

@@ -4,9 +4,8 @@ import { rememberRecentStock } from '@/lib/recentStocks'
 import api from '@/api/client'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCompany } from '@/hooks/useCompanySearch'
-import { useDefaultWatchGroup, useToggleWatch } from '@/hooks/useGroups'
+import { WatchButton } from '@/components/follow/WatchButton'
 import { useBusinessSegments } from '@/hooks/useBusiness'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageHeader, PageLayout } from '@/components/shared/PageLayout'
 import { CompanyPriceResearch } from '@/components/company/CompanyPriceResearch'
@@ -17,7 +16,6 @@ import { CompanyOverview } from '@/components/company/CompanyOverview'
 import { StockActivityStrip } from '@/components/summary/StockActivityStrip'
 import { TaiwanLinkCard } from '@/components/company/TaiwanLinkCard'
 import SaveButton from '@/components/shared/SaveButton'
-import { toast } from 'sonner'
 
 const EMPTY_PRICES: import('@/types').StockPriceItem[] = []
 export default function SummaryPage({ stockCode }: { stockCode: string }) {
@@ -130,32 +128,5 @@ export default function SummaryPage({ stockCode }: { stockCode: string }) {
         </>}
       </div>
     </PageLayout>
-  )
-}
-
-/** ★ — 기본 관심 묶음('관심 종목')에 넣고 뺀다. 관심 종목의 진실원천은 stock_groups 하나. */
-function WatchButton({ stockCode }: { stockCode: string }) {
-  const group = useDefaultWatchGroup()
-  const toggle = useToggleWatch()
-  if (!group.data) return null
-  const watched = group.data.members.some((m) => m.stock_code === stockCode)
-  return (
-    <Button
-      variant="outline"
-      size="xs"
-      aria-pressed={watched}
-      disabled={toggle.isPending}
-      onClick={() =>
-        toggle.mutate(
-          { stockCode, watched: !watched },
-          {
-            onSuccess: (detail) => toast.success(watched ? `‘${detail.name}’에서 뺐습니다` : `‘${detail.name}’에 추가했습니다`),
-            onError: () => toast.error('관심 종목을 바꾸지 못했습니다'),
-          },
-        )
-      }
-    >
-      <span className={watched ? 'text-amber-500' : undefined}>{watched ? '★' : '☆'}</span> 관심 종목
-    </Button>
   )
 }

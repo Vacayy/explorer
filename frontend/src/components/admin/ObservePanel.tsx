@@ -15,7 +15,7 @@ import type { ObserveSummary } from "@/types"
 const ACTION_KO: Record<string, string> = {
   "reaction.make": "반응 정리 만들기", "expectation.make": "기대 정리 만들기", "digest.make": "핵심 정리 만들기",
   "transcript.check": "최근 발표 조사", "transcript.collect": "종목 수집", "prices.collect": "시세 갱신",
-  "overview.make": "기업 개요 만들기", "core.pin": "핵심 고정", "core.unpin": "핵심 해제", "save": "저장",
+  "overview.make": "기업 개요 만들기", "core.pin": "핵심 고정", "core.unpin": "핵심 해제", "save": "저장", "watch.add": "관심 추가", "watch.remove": "관심 해제",
   "study.add": "스터디 추가", "chat.ask": "채팅 질문",
 }
 const usd = (v: number | null | undefined) => v == null ? "-" : `$${v.toFixed(v >= 100 ? 0 : 2)}`

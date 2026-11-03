@@ -33,7 +33,7 @@ export interface SearchResponse {
   mentions: { id: number; type: string; name: string; stock_code: string | null }[]
   choseong: boolean
 }
-export interface TodaySignal { stock_code: string; name: string; label: string; group_id: number; group_name: string; as_of: string }
+export interface TodaySignal { stock_code: string; name: string; label: string; group_id: number; group_name: string; as_of: string; market: "kr" | "us" }
 
 const PAGES = [
   { label: "종목 발견", hint: "자연어 검색·전략·기업 조사", to: "/discover", icon: ScanSearch, keywords: "discover screening 스크리닝 전략 시장 분석 검색", pinned: true },
@@ -173,7 +173,7 @@ export default function Omnibar() {
     if (value.startsWith("us-")) { const u = data?.us.find(item => item.ticker === value.slice(3)); return u ? { code: u.ticker, name: u.name, market: "us" } : null }
     if (value.startsWith("recent-")) { const [, market, code] = value.split("-"); const r = recent.find(item => item.code === code && item.market === market); return r ? { code: r.code, name: r.name, market: r.market } : null }
     if (value.startsWith("mention-")) { const m = data?.mentions.find(item => `mention-${item.id}` === value); return m?.stock_code ? { code: m.stock_code, name: m.name, market: "kr" } : null }
-    if (value.startsWith("today-")) { const t = today.data?.items.find(item => value === `today-${item.stock_code}-${item.label}`); return t ? { code: t.stock_code, name: t.name, market: "kr" } : null }
+    if (value.startsWith("today-")) { const t = today.data?.items.find(item => value === `today-${item.stock_code}-${item.label}`); return t ? { code: t.stock_code, name: t.name, market: t.market } : null }
     return null
   }
   const visibleCompanies = showAll ? companies : companies.slice(0, 5)
@@ -196,7 +196,7 @@ export default function Omnibar() {
               <div className="flex flex-wrap gap-1.5 px-2 pb-2">{recent.map(item => <CommandItem key={`${item.market}:${item.code}`} value={`recent-${item.market}-${item.code}`} data-stock={item.code} data-name={item.name} data-market={item.market} className="h-7 rounded-full border px-3 py-0 text-xs data-[selected=true]:border-primary" onSelect={() => openCompany(item)}>{item.name}</CommandItem>)}</div>
             </CommandGroup>}
             {!!today.data?.items.length && <CommandGroup heading={`오늘 켜진 감시 신호 · ${today.data.as_of ?? ""}`}>
-              {today.data.items.slice(0, 5).map(signal => <CommandItem key={`${signal.group_id}-${signal.stock_code}-${signal.label}`} value={`today-${signal.stock_code}-${signal.label}`} data-stock={signal.stock_code} data-name={signal.name} data-market="kr" onSelect={() => openCompany({ code: signal.stock_code, name: signal.name, market: "kr" })}>
+              {today.data.items.slice(0, 5).map(signal => <CommandItem key={`${signal.group_id}-${signal.stock_code}-${signal.label}`} value={`today-${signal.stock_code}-${signal.label}`} data-stock={signal.stock_code} data-name={signal.name} data-market={signal.market} onSelect={() => openCompany({ code: signal.stock_code, name: signal.name, market: signal.market })}>
                 <Row icon={<Layers className="size-4" />} title={signal.name} sub={`${signal.label} · ${signal.group_name}`} right={signal.stock_code} />
               </CommandItem>)}
               <CommandItem value="today-all" onSelect={() => go("/follow/stocks")}><Row icon={<Layers className="size-4" />} title="종목 묶음에서 전체 보기" /></CommandItem>
@@ -278,10 +278,10 @@ function StockActions({ focus, groups, projects, adding, onOpen, onBack, onAddTo
         <CommandItem value="act-research" onSelect={() => onOpen(`${base}/summary?mode=research`)}><Row icon={<ScanSearch className="size-4" />} title="가격·근거 조사 보기" sub="차트와 저장 자료" /></CommandItem>
       </>}
     </CommandGroup>
-    {focus.market === "kr" && <CommandGroup heading="묶음에 추가">
+    <CommandGroup heading={focus.market === "us" ? "관심 묶음에 추가" : "묶음에 추가"}>
       {groups.length === 0 && <CommandItem value="no-groups" onSelect={() => onOpen("/follow/stocks")}><Row icon={<FolderPlus className="size-4" />} title="아직 묶음이 없습니다 — 종목 묶음에서 만들기" /></CommandItem>}
-      {groups.map(g => <CommandItem key={g.id} value={`add-${g.id}`} disabled={adding} onSelect={() => onAddToGroup(g.id)}><Row icon={<Layers className="size-4" />} title={g.name} sub={`${g.kind === "portfolio" ? "포트폴리오" : "관심"} · ${formatNumber(g.member_count)}종목`} /></CommandItem>)}
-    </CommandGroup>}
+      {groups.filter(g => focus.market === "kr" || g.kind === "watch").map(g => <CommandItem key={g.id} value={`add-${g.id}`} disabled={adding} onSelect={() => onAddToGroup(g.id)}><Row icon={<Layers className="size-4" />} title={g.name} sub={`${g.kind === "portfolio" ? "포트폴리오" : "관심"} · ${formatNumber(g.member_count)}종목`} /></CommandItem>)}
+    </CommandGroup>
     {focus.market === "kr" && <CommandGroup heading="스터디 프로젝트에 자료 추가 · 최근 저장 자료 5건">
       <CommandItem value="project-new" disabled={adding} onSelect={() => onAddToProject(0)}><Row icon={<FolderPlus className="size-4" />} title={`새 프로젝트 “${focus.name} 스터디”`} sub="만들고 자료 넣기" /></CommandItem>
       {projects.slice(0, 6).map(p => <CommandItem key={p.id} value={`project-add-${p.id}`} disabled={adding} onSelect={() => onAddToProject(p.id)}><Row icon={<NotebookPen className="size-4" />} title={p.title} sub="기존 프로젝트" /></CommandItem>)}

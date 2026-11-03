@@ -45,8 +45,12 @@ def _last_as_of(conn, group_id: int) -> str | None:
 
 def _member(conn, group: dict, row, last_as_of: str | None, labels) -> dict:
     code = row["stock_code"]
-    company = conn.execute("SELECT corp_name, market, sector FROM companies WHERE stock_code=?", (code,)).fetchone()
-    prices = conn.execute("SELECT trade_date, close, market_cap FROM stock_prices WHERE stock_code=? ORDER BY trade_date DESC LIMIT 2", (code,)).fetchall()
+    if wr.market_of(conn, code) == "us":
+        company = {"corp_name": wr.member_names(conn, [code])[code], "market": "us"}
+        prices = conn.execute("SELECT trade_date, close, NULL AS market_cap FROM us_prices WHERE stock_code=? ORDER BY trade_date DESC LIMIT 2", (code,)).fetchall()
+    else:
+        company = conn.execute("SELECT corp_name, market, sector FROM companies WHERE stock_code=?", (code,)).fetchone()
+        prices = conn.execute("SELECT trade_date, close, market_cap FROM stock_prices WHERE stock_code=? ORDER BY trade_date DESC LIMIT 2", (code,)).fetchall()
     close = prices[0]["close"] if prices else None
     previous = prices[1]["close"] if len(prices) > 1 else None
     change_pct = (close - previous) / previous * 100 if close is not None and previous else None
@@ -71,11 +75,15 @@ def _detail(conn, group_id: int) -> dict:
     group = _group(conn, group_id)
     labels = wr.strategy_labels()
     last_as_of = _last_as_of(conn, group_id)
-    members = [_member(conn, group, row, last_as_of, labels) for row in
-               conn.execute("SELECT * FROM stock_group_members WHERE group_id=? ORDER BY id", (group_id,)).fetchall()]
+    per_member = wr.member_last_as_of(conn, group_id)   # 국내·미국은 거래일이 달라 종목별 기준일로 본다
+    rows = conn.execute("SELECT * FROM stock_group_members WHERE group_id=? ORDER BY id", (group_id,)).fetchall()
+    members = [_member(conn, group, row, per_member.get(row["stock_code"]), labels) for row in rows]
     latest = wr.latest_trade_date(conn)
+    latest_by = {m: wr.latest_trade_date(conn, m) for m in ("kr", "us")}
+    pending = any(m["rule_count"] and latest_by["us" if m["market"] == "us" else "kr"] not in (None, per_member.get(m["stock_code"]))
+                  for m in members)
     return {**group, "members": members, "rules": _rules(conn, group_id, labels), "last_as_of": last_as_of,
-            "latest_trade_date": latest, "evaluation_pending": bool(latest) and latest != last_as_of,
+            "latest_trade_date": latest, "evaluation_pending": pending,
             "today_signals": sum(len(m["signals"]) for m in members)}
 
 
@@ -89,7 +97,8 @@ def list_groups():
         group["member_count"] = conn.execute("SELECT COUNT(*) n FROM stock_group_members WHERE group_id=?", (group["id"],)).fetchone()["n"]
         group["rule_count"] = conn.execute("SELECT COUNT(*) n FROM watch_rules WHERE group_id=?", (group["id"],)).fetchone()["n"]
         group["last_as_of"] = last_as_of
-        group["today_signals"] = len([s for s in wr.signals(conn, group["id"], days=1) if s["as_of"] == last_as_of]) if last_as_of else 0
+        per_member = wr.member_last_as_of(conn, group["id"])
+        group["today_signals"] = len([s for s in wr.signals(conn, group["id"], days=2) if s["as_of"] == per_member.get(s["stock_code"])]) if last_as_of else 0
         out.append(group)
     latest = wr.latest_trade_date(conn)
     conn.close()
@@ -150,10 +159,14 @@ def delete_group(group_id: int):
 @router.post("/{group_id}/members", status_code=201)
 def add_member(group_id: int, body: MemberCreate):
     conn = wr.connect()
-    _group(conn, group_id)
-    if not conn.execute("SELECT 1 FROM companies WHERE stock_code=?", (body.stock_code,)).fetchone():
+    group = _group(conn, group_id)
+    market = wr.market_of(conn, body.stock_code)
+    if not market:
         conn.close()
-        raise HTTPException(404, "등록되지 않은 종목 코드입니다.")
+        raise HTTPException(404, "등록되지 않은 종목 코드입니다(국내 종목 또는 자료가 있는 미국 티커).")
+    if market == "us" and group["kind"] != "watch":
+        conn.close()
+        raise HTTPException(400, "미국 종목은 관심 묶음에만 넣을 수 있습니다(포트폴리오 원장은 국내 종목 기준).")
     conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, conviction, target_price, thesis) VALUES (?,?,?,?,?)",
                  (group_id, body.stock_code, body.conviction, body.target_price, body.thesis))
     conn.execute("UPDATE stock_groups SET updated_at=datetime('now') WHERE id=?", (group_id,))
@@ -236,10 +249,10 @@ def group_signals(group_id: int, days: int = Query(30, ge=1, le=365), stock_code
     conn = wr.connect()
     _group(conn, group_id)
     items = wr.signals(conn, group_id, days, stock_code)
-    names = {r["stock_code"]: r["corp_name"] for r in conn.execute(
-        "SELECT c.stock_code, c.corp_name FROM companies c JOIN stock_group_members m ON m.stock_code=c.stock_code WHERE m.group_id=?", (group_id,)).fetchall()}
+    names = wr.member_names(conn, [r["stock_code"] for r in conn.execute("SELECT stock_code FROM stock_group_members WHERE group_id=?", (group_id,))])
+    markets = {c: wr.market_of(conn, c) for c in names}
     conn.close()
-    return {"items": [{**s, "name": names.get(s["stock_code"], s["stock_code"])} for s in items]}
+    return {"items": [{**s, "name": names.get(s["stock_code"], s["stock_code"]), "market": markets.get(s["stock_code"]) or "kr"} for s in items]}
 
 
 @router.get("/{group_id}/evaluations")

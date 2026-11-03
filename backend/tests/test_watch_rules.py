@@ -18,6 +18,10 @@ CREATE TABLE stock_prices(id INTEGER PRIMARY KEY, stock_code TEXT, trade_date TE
  close INTEGER, volume INTEGER, market_cap INTEGER, shares INTEGER, UNIQUE(stock_code, trade_date));
 CREATE TABLE watchlist(id INTEGER PRIMARY KEY, stock_code TEXT UNIQUE, corp_code TEXT, corp_name TEXT, conviction INTEGER,
  target_price INTEGER, thesis TEXT);
+CREATE TABLE transcript_follow(ticker TEXT PRIMARY KEY, company_name TEXT, entity_id INTEGER);
+CREATE TABLE us_fundamentals(ticker TEXT PRIMARY KEY, data_json TEXT, fetched_at TEXT);
+CREATE TABLE us_prices(stock_code TEXT, trade_date TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL, fetched_at TEXT,
+ PRIMARY KEY(stock_code, trade_date));
 """
 
 
@@ -189,6 +193,34 @@ class WatchRulesTests(unittest.TestCase):
         self.assertEqual(removed["members"], [])
         self.assertEqual(self.client.delete(f"/api/spine/groups/{group['id']}").status_code, 204)
         self.assertEqual(self.client.get(f"/api/spine/groups/{group['id']}").status_code, 404)
+
+    def test_us_ticker_joins_watch_group_and_is_evaluated_on_us_sessions(self):
+        conn = self.connect()
+        conn.execute("INSERT INTO transcript_follow VALUES ('NVDA', 'NVIDIA', NULL)")
+        us_days = self.days[:-1]   # 미국 거래일이 하루 늦다
+        conn.executemany("INSERT INTO us_prices (stock_code, trade_date, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)",
+                         [("NVDA", d, 100, 300 if i == len(us_days) - 1 else 101, 99, 100.5, 1000 + i) for i, d in enumerate(us_days)])
+        conn.commit()
+        conn.close()
+        group = self.client.post("/api/spine/groups", json={"name": "관심", "kind": "watch"}).json()
+        portfolio = self.client.post("/api/spine/groups", json={"name": "보유", "kind": "portfolio"}).json()
+        self.assertEqual(self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": "ZZZZ"}).status_code, 404)
+        self.assertEqual(self.client.post(f"/api/spine/groups/{portfolio['id']}/members", json={"stock_code": "NVDA"}).status_code, 400)
+        for code in ("000001", "NVDA"):
+            self.assertEqual(self.client.post(f"/api/spine/groups/{group['id']}/members", json={"stock_code": code}).status_code, 201)
+        self.client.put(f"/api/spine/groups/{group['id']}/rules", json={"default": [{"strategy_id": "high_5d"}]})
+        # evaluate_all은 실행 기록을 실제 DB(job_runs)에 남기므로 막는다
+        with patch("pipeline.us_data.fetch_prices", return_value=0) as fetch, patch.object(wr, "record_run"):
+            total = wr.evaluate_all()
+        fetch.assert_called_once_with("NVDA")
+        self.assertEqual((total["as_of"], total["us_as_of"]), (self.days[-1], us_days[-1]))
+        detail = self.client.get(f"/api/spine/groups/{group['id']}").json()
+        nvda = next(m for m in detail["members"] if m["stock_code"] == "NVDA")
+        self.assertEqual((nvda["name"], nvda["market"], nvda["price_date"]), ("NVIDIA", "us", us_days[-1]))
+        self.assertEqual([s["strategy_id"] for s in nvda["signals"]], ["high_5d"], "evaluated on its own last US session")
+        self.assertFalse(detail["evaluation_pending"], "a US member one session behind KR is not pending")
+        signals = self.client.get(f"/api/spine/groups/{group['id']}/signals").json()["items"]
+        self.assertIn(("NVDA", "us", "NVIDIA"), [(s["stock_code"], s["market"], s["name"]) for s in signals])
 
 
 if __name__ == "__main__":

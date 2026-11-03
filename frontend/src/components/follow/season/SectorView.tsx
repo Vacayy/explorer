@@ -18,7 +18,6 @@ const LINE_COLORS = ["var(--color-chart-1)", "var(--color-chart-3)", "var(--colo
   "var(--color-chart-5)", "var(--color-chart-red)", "var(--color-chart-gray)", "var(--color-chart-yellow)"]
 const TOOLTIP_STYLE = { fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }
 const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" }
-const dLabel = (v: number) => (v === 0 ? "D" : v > 0 ? `D+${v}` : `D${v}`)
 
 export function SectorView({ sectorKey }: { sectorKey: string }) {
   const [params, setParams] = useSearchParams()
@@ -64,7 +63,7 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
         </div>
         <Meta>{d.members.map((m) => m.ticker).join(" · ")} · 비교: {d.etf}{d.theme && ` · ${mmdd(d.theme.created_at)} 요약`}</Meta>
         {body?.one_line && <p className="text-[15px] font-semibold">{body.one_line}</p>}
-        <PathChart paths={d.paths} etf={d.etf} />
+        <TimelineChart t={d.timeline} etf={d.etf} />
       </Section>
 
       <Cols>
@@ -103,35 +102,51 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
   )
 }
 
-/** 발표일 기준으로 정렬한 반응 경로 — 발표일이 달라도 반응 모양을 나란히 */
-function PathChart({ paths, etf }: { paths: SectorDetail["paths"]; etf: string }) {
-  const entries = Object.entries(paths).filter(([, p]) => p.length > 0)
-  if (!entries.length) return <Meta>이번 시즌 발표한 소속 종목의 시세가 아직 없습니다.</Meta>
-  const maxOff = Math.max(5, ...entries.flatMap(([, p]) => p.map(([o]) => o)))
-  const ticks = Array.from({ length: Math.floor((maxOff + 5) / 5) + 1 }, (_, i) => -5 + i * 5)
+const DAY = 86_400_000
+const toX = (d: string) => Date.parse(`${d}T00:00:00Z`)
+const xLabel = (v: number) => mmdd(new Date(v).toISOString().slice(0, 10))
+
+/** 시즌 한 달을 같은 달력 축에 — 업종 ETF 대비 누적 %p(창 첫 거래일 = 0), 종목별 발표일은 세로선 */
+function TimelineChart({ t, etf }: { t: SectorDetail["timeline"]; etf: string }) {
+  const entries = Object.entries(t.series)
+  if (!t.start || !entries.length) return <Meta>이번 시즌 소속 종목의 시세가 아직 없습니다.</Meta>
+  const color = (i: number) => LINE_COLORS[i % LINE_COLORS.length]
+  const index = new Map(entries.map(([ticker], i) => [ticker, i]))
+  // 같은 날 발표한 종목은 세로선 하나에 묶는다
+  const byDate = new Map<string, string[]>()
+  for (const [ticker, day] of Object.entries(t.events).sort((a, b) => a[1].localeCompare(b[1]))) byDate.set(day, [...(byDate.get(day) ?? []), ticker])
+  const lo = toX(t.start), hi = toX(t.view_end ?? t.end ?? t.start)
+  const ticks = Array.from({ length: Math.floor((hi - lo) / (7 * DAY)) + 1 }, (_, i) => lo + i * 7 * DAY)
   return (
     <div className="space-y-1">
-      <h3 className="text-sm font-semibold">발표일 기준 반응 경로</h3>
-      <ResponsiveContainer width="100%" height={240}>
-        <LineChart margin={{ top: 8, right: 44, bottom: 0, left: 0 }}>
+      <h3 className="text-sm font-semibold">시즌 주가 흐름 · 발표일 표시</h3>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart margin={{ top: 24, right: 44, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-          <XAxis type="number" dataKey="x" domain={[-5, maxOff]} ticks={ticks} tickFormatter={dLabel} tick={AXIS_TICK} allowDuplicatedCategory={false} />
+          <XAxis type="number" dataKey="x" domain={[lo, hi]} ticks={ticks} tickFormatter={xLabel} tick={AXIS_TICK} allowDuplicatedCategory={false} />
           <YAxis tick={AXIS_TICK} width={40} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}`} />
-          <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(v) => dLabel(Number(v))} formatter={(v) => formatPp(Number(v), 1)} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(v) => xLabel(Number(v))} formatter={(v) => formatPp(Number(v), 1)} />
           <ReferenceLine y={0} stroke="var(--muted-foreground)" />
-          <ReferenceLine x={0} stroke="var(--primary)" strokeDasharray="3 3" label={{ value: "발표일", position: "insideTopRight", fontSize: 11, fill: "var(--foreground)" }} />
+          {[...byDate].map(([day, tickers], k) => {
+            const upcoming = !!t.end && day > t.end
+            const one = tickers.length === 1 && index.has(tickers[0])
+            return <ReferenceLine key={day} x={toX(day)} strokeDasharray={upcoming ? "2 4" : "3 3"}
+              stroke={one ? color(index.get(tickers[0])!) : "var(--muted-foreground)"} strokeOpacity={upcoming ? 0.6 : 0.9}
+              label={{ value: tickers.join("·"), position: "top", fontSize: 10, dy: k % 2 ? -10 : 0,
+                fill: upcoming ? "var(--muted-foreground)" : "var(--foreground)" }} />
+          })}
           {entries.map(([ticker, p], i) => {
-            const color = LINE_COLORS[i % LINE_COLORS.length]
-            const data = p.map(([x, y]) => ({ x, y }))
-            return <Line key={ticker} name={ticker} data={data} dataKey="y" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false}
+            const data = p.map(([d, y]) => ({ x: toX(d), y }))
+            return <Line key={ticker} name={ticker} data={data} dataKey="y" stroke={color(i)} strokeWidth={2} dot={false} isAnimationActive={false}
+              strokeDasharray={i >= LINE_COLORS.length ? "5 3" : undefined}
               label={(lp: { index?: number; x?: number | string; y?: number | string }) => lp.index === data.length - 1
-                ? <text key={ticker} x={Number(lp.x) + 6} y={Number(lp.y) + 4} fontSize={11} fontWeight={600} fill={color}>{ticker}</text>
+                ? <text key={ticker} x={Number(lp.x) + 6} y={Number(lp.y) + 4} fontSize={11} fontWeight={600} fill={color(i)}>{ticker}</text>
                 : <g key={`${ticker}-${lp.index}`} />} />
           })}
           <Legend wrapperStyle={{ fontSize: 12 }} />
         </LineChart>
       </ResponsiveContainer>
-      <Meta>{etf} 대비 누적 %p, 발표 전 마지막 거래일 = 0. 가로축은 발표일 기준 거래일.</Meta>
+      <Meta>{etf} 대비 누적 %p, {mmdd(t.start)} 첫 거래일 = 0(모든 종목 같은 기준). 세로선은 종목별 발표일, 점선은 아직 발표 전.</Meta>
     </div>
   )
 }

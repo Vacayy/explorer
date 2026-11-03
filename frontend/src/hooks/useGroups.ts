@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
+import { track } from '@/lib/usage'
 import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupDigest, GroupSignal, WatchReason } from '@/types'
 
 const ROOT = '/api/spine/groups'
@@ -71,6 +72,7 @@ export function useToggleWatch() {
   const client = useQueryClient()
   return useGroupWrite(async ({ stockCode, watched }: { stockCode: string; watched: boolean }) => {
     const group = await client.ensureQueryData(defaultWatchQuery)
+    track('action', watched ? 'watch.add' : 'watch.remove', { entity: stockCode })
     return watched
       ? (await api.post<StockGroupDetail>(`${ROOT}/${group.id}/members`, { stock_code: stockCode })).data
       : (await api.delete<StockGroupDetail>(`${ROOT}/${group.id}/members/${stockCode}`)).data

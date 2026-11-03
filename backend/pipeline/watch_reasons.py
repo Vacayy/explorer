@@ -35,8 +35,9 @@ def reasons(conn: sqlite3.Connection, codes: list[str]) -> dict[str, dict]:
 def watch_members(conn: sqlite3.Connection) -> list[dict]:
     """모든 관심 묶음의 종목(중복 제거)."""
     return [{"code": r["stock_code"], "name": r["name"] or r["stock_code"]} for r in conn.execute(
-        """SELECT DISTINCT m.stock_code, c.corp_name AS name FROM stock_group_members m
+        """SELECT DISTINCT m.stock_code, COALESCE(c.corp_name, tf.company_name) AS name FROM stock_group_members m
            JOIN stock_groups g ON g.id = m.group_id LEFT JOIN companies c ON c.stock_code = m.stock_code
+           LEFT JOIN transcript_follow tf ON tf.ticker = m.stock_code
            WHERE g.kind = 'watch' ORDER BY m.stock_code""")]
 
 

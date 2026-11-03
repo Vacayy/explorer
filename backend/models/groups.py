@@ -22,7 +22,7 @@ class GroupUpdate(Strict):
 
 class MemberCreate(Strict):
     """수량·매수가는 받지 않는다 — 포트폴리오 보유는 거래 원장(portfolio_transactions, D-212)만 기록한다."""
-    stock_code: str = Field(pattern=r"^[0-9A-Z]{6}$")
+    stock_code: str = Field(pattern=r"^([0-9A-Z]{6}|[A-Z][A-Z0-9.\-]{0,9})$")   # 국내 6자리 또는 미국 티커
     conviction: int | None = Field(default=None, ge=1, le=5)
     target_price: int | None = Field(default=None, ge=0)
     thesis: str | None = Field(default=None, max_length=4000)
@@ -50,6 +50,6 @@ class RulesPut(Strict):
 class ReasonCreate(BaseModel):
     """관심 종목 이유 감시 시작(D-227) — 왜 보고 있나 / 무엇이 오면 움직이나."""
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    stock_code: str = Field(pattern=r"^[0-9A-Z]{6}$")
+    stock_code: str = Field(pattern=r"^([0-9A-Z]{6}|[A-Z][A-Z0-9.\-]{0,9})$")   # 국내 6자리 또는 미국 티커
     why: str = Field(min_length=5, max_length=4000)             # 멤버 메모(thesis) 한도와 같게
     trigger: str = Field(default="", max_length=1000)

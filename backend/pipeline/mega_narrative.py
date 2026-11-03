@@ -93,6 +93,7 @@ def _summary_of(body: str | None) -> str:
 
 def _build_prompt(members: list[dict], shared_block: str) -> str:
     from pipeline.lenses import LENS_WORLDVIEW
+    from pipeline.narrative import TITLE_RULE
     parts = "\n\n".join(
         f"### {m['topic']} — {m['title']}\n{_summary_of(m['body'])}" for m in members)
     return (
@@ -102,8 +103,7 @@ def _build_prompt(members: list[dict], shared_block: str) -> str:
         "하나의 구조(근본 동인 → 전개 갈래들 → 긴장과 관전 포인트)로.\n"
         'JSON만 출력: {"cluster_name": "군집 이름 (2~5단어, 예: AI 슈퍼사이클)", '
         '"title": "주장형 제목", "narrative": "마크다운 서사"}\n'
-        "title: 이 세계관이 말하는 결론을 한 문장으로 단언(질문형 금지 — 제목만 읽어도 전달돼야 "
-        "한다, D-120). 코퍼스가 뒷받침하는 것만, 수치 예측·과장 부사 금지.\n"
+        f"{TITLE_RULE.replace('이 서사가', '이 세계관이')}\n"
         "narrative 구조(섹션 고정):\n"
         "## 하나의 이야기\n부분 서사들이 왜 한 이야기인지 — 근본 동인과 전개 구조를 3~5문장으로.\n"
         "## 갈래들\n각 부분 서사가 이 세계관의 어느 단면인지 — '- **주제**: 한 줄' 불릿.\n"

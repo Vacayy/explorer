@@ -4,7 +4,8 @@ import { StudyButton } from "@/components/study/StudyButton"
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { BookOpen, ExternalLink, FolderPlus, MessageCircle, MessageSquareQuote, ScanSearch } from 'lucide-react'
+import { BookOpen, Check, Copy, ExternalLink, FolderPlus, MessageCircle, MessageSquareQuote, ScanSearch } from 'lucide-react'
+import { toast } from 'sonner'
 import api from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -21,6 +22,33 @@ import { DocRelated } from './DocRelated'
 import { useReadingDiscussion } from '@/hooks/useDocumentDiscussion'
 import { formatRelativeTime } from '@/utils/format'
 import type { EntityTag, FeedDocument } from '@/types'
+
+/** 제목 · 본문 · 원본 링크(웹 주소가 있을 때만)를 한 덩어리 텍스트로.
+ *  본문은 굵게 표시(**)를 빼고 제목 표시(##)는 둔다. 유튜브 정리본 끝의 '원본 자막 n자 → opus 정리본' 주석은 뺀다. */
+function copyText(doc: FeedDocument) {
+  const body = (doc.content ?? '')
+    .replace(/\n*-{3,}\s*\n\*원본 자막 [\d,]+자 → [^\n]*\*\s*$/, '')
+    .replace(/\*\*/g, '')
+    .trim()
+  return [doc.title || '제목 없는 자료', body, /^https?:\/\//i.test(doc.url) ? doc.url : '']
+    .filter(Boolean).join('\n\n')
+}
+
+function CopyDocButton({ doc }: { doc: FeedDocument }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText(doc))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error('클립보드에 복사하지 못했습니다')
+    }
+  }
+  return <Button variant="outline" size="sm" onClick={() => void copy()} aria-label="제목·본문·원본 링크 복사">
+    {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{copied ? '복사됨' : '복사'}
+  </Button>
+}
 
 export default function DocPage() {
   const { docId } = useParams<{ docId: string }>()
@@ -80,6 +108,7 @@ export default function DocPage() {
       </div>}
       {/* 본문에서 문장을 고르면 공통 선택 팔레트 (canvas.md §2) */}
       <div ref={bodyRef}><DocumentBody doc={doc} reading={reading} /></div>
+      <div className="mt-6 flex justify-end border-t pt-4"><CopyDocButton doc={doc} /></div>
       <SelectionPalette containerRef={bodyRef} actions={[
         { key: 'explain', label: '설명', Icon: BookOpen, onSelect: sel => askAboutText(sel, source, 'explain') },
         { key: 'critique', label: '검토', Icon: ScanSearch, onSelect: sel => askAboutText(sel, source, 'critique') },

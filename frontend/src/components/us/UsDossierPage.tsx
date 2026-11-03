@@ -14,6 +14,7 @@ import { CompanyOverview } from '@/components/company/CompanyOverview'
 import { Button } from '@/components/ui/button'
 import type { StockPriceItem } from '@/types'
 import { LensView } from '@/components/lens/LensPage'
+import { WatchButton } from '@/components/follow/WatchButton'
 import { UsPriceCollect } from '@/components/us/UsPriceCollect'
 import { UsEarningsCard } from '@/components/us/UsEarningsCard'
 
@@ -65,6 +66,7 @@ export default function UsDossierPage() {
             <div className="flex items-baseline gap-2">
               <span className="text-lg font-semibold">{d.name}</span>
               <span className="text-sm text-muted-foreground">{d.ticker}</span>
+              <span className="ml-auto self-center"><WatchButton stockCode={d.ticker} /></span>
             </div>
             {f ? (
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">

@@ -2,13 +2,14 @@ import { useMemo, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
 import { Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Megaphone, Network, Sparkles, ChevronRight } from "lucide-react"
+import { FileText, Megaphone, Network, Search, Sparkles, ChevronRight } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { Markdown } from "@/components/shared/Markdown"
 import CollectTranscripts from "@/components/follow/CollectTranscripts"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -46,6 +47,7 @@ interface FollowRow {
   ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null
   last_report_date?: string | null; next_report_date?: string | null; calendar_checked_at?: string | null
   market_cap?: number | null; category?: string | null; latest_results_date?: string | null; season_updated?: boolean
+  ko_names?: string[]
 }
 type RailSort = "cap" | "category" | "recent"
 const RAIL_SORTS: { value: RailSort; label: string }[] = [{ value: "cap", label: "시가총액" }, { value: "category", label: "사업분류" }, { value: "recent", label: "최근 발표" }]
@@ -159,12 +161,8 @@ export default function TranscriptPage() {
                 </Button>
               </div>
             ) : (
-              <>
-                <SegmentTabs tabs={RAIL_SORTS} value={railSort} onChange={(v) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("rail", v); return n }, { replace: true })} className="mb-2 w-full" />
-                {railSort === "category"
-                  ? <GroupedRail follows={follows} effectiveId={effectiveId} onSelect={selectId} />
-                  : <FlatRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={selectId} />}
-              </>
+              <FollowRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={selectId}
+                onSort={(v) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("rail", v); return n }, { replace: true })} />
             )}
           </CardContent>
         </Card>
@@ -238,6 +236,30 @@ function UpcomingEarnings({ follows, onSelect, onRefresh, refreshing }: {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/* ---------- 좌 레일: 정렬 탭 + 기업 검색(티커·영문명·한글 별칭) ---------- */
+function FollowRail({ follows, sort, onSort, effectiveId, onSelect }: {
+  follows: FollowRow[]; sort: RailSort; onSort: (v: RailSort) => void; effectiveId: string | null; onSelect: (id: number) => void
+}) {
+  const [query, setQuery] = useState("")
+  const q = query.trim().toLowerCase()
+  const shown = useMemo(() => !q ? follows : follows.filter((f) =>
+    [f.ticker, f.company_name, ...(f.ko_names ?? [])].some((name) => name.toLowerCase().includes(q))), [follows, q])
+  return (
+    <>
+      {/* 240px 레일에 세 탭이 들어가도록 칸을 균등 분할하고 글자·여백을 줄인다 */}
+      <SegmentTabs tabs={RAIL_SORTS} value={sort} onChange={(v) => onSort(v as RailSort)} className="mb-2 w-full *:h-8 *:min-w-0 *:flex-1 *:px-1 *:text-xs" />
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="기업 검색 (NVDA·엔비디아)" aria-label="팔로우 기업 검색" className="h-8 pl-7 text-xs" />
+      </div>
+      {shown.length === 0 ? <p className="px-2 py-3 text-xs text-muted-foreground">‘{query.trim()}’에 맞는 팔로우 기업이 없습니다.</p>
+        : sort === "category"
+          ? <GroupedRail follows={shown} effectiveId={effectiveId} onSelect={onSelect} />
+          : <FlatRail follows={shown} sort={sort} effectiveId={effectiveId} onSelect={onSelect} />}
+    </>
   )
 }
 

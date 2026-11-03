@@ -765,6 +765,7 @@ export interface WatchRuleInput { strategy_id: string; params?: Record<string, u
 export interface GroupSignal {
   stock_code: string; name?: string; rule_id: number; as_of: string; strategy_id: string; label: string;
   params: Record<string, unknown>; value: number | null; reference: number | null; signal_date: string | null;
+  market?: 'kr' | 'us';
 }
 export interface StockGroupMember {
   id: number; group_id: number; stock_code: string; name: string; market: string | null;
@@ -1038,7 +1039,8 @@ export interface SectorDetail {
   members: { ticker: string; name: string | null }[]
   theme: SectorTheme | null; theme_history: SectorTheme[]
   companies: (Partial<SeasonItem> & { ticker: string; name: string | null; status: "reported" | "upcoming" | "none"; core: CoreReason[] })[]
-  paths: Record<string, [number, number][]>      // ticker → [거래일 offset, 업종 ETF 대비 누적 %p]
+  /** 시즌 한 달 같은 달력 축 — 업종 ETF 대비 누적 %p(창 첫 거래일 = 0), events = 티커 → 발표일 */
+  timeline: { start: string | null; end: string | null; view_end: string | null; series: Record<string, [string, number][]>; events: Record<string, string> }
   history: { season: string; label: string; rows: { ticker: string; d1: number | null }[]; verdict: string | null; one_line: string | null }[]
 }
 export interface ChainDetail {

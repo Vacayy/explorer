@@ -70,7 +70,9 @@ def ensure_ko_aliases(tickers: list[str] | None = None, chunk: int = 40) -> int:
         for r in part:
             g = got.get(r["ticker"]) or {}
             pairs = [(k, "active") for k in g.get("link") or []] + [(k, "search_only") for k in g.get("search") or []]
-            pairs = [(str(k).strip(), s) for k, s in pairs if isinstance(k, str) and 2 <= len(k.strip()) <= 20]
+            # 모델이 별칭 뒤에 붙이는 설명 괄호('스털링(파운드 화폐와 겹침)')는 떼고 넣는다
+            pairs = [(re.sub(r"\s*[(（].*$", "", k).strip(), s) for k, s in pairs if isinstance(k, str)]
+            pairs = [(k, s) for k, s in pairs if 2 <= len(k) <= 20]
             if not pairs:
                 pairs = [(r["company_name"], "search_only")]
             for kw, status in pairs:

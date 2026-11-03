@@ -193,6 +193,34 @@ def path(conn, ticker: str, event_date: str, bench: str, before: int = 30, after
     return rows
 
 
+def season_timeline(conn, events: dict[str, str], bench: str, today: str) -> dict:
+    """섹터 시즌 차트 — 같은 달력 축 위의 업종 ETF 대비 누적 %p. 기준(0)은 창의 첫 거래일, 종목 모두 같다.
+    창: 첫 발표 7일 전부터 최소 5주, 마지막 발표 뒤 10일까지(오늘을 넘지 않음). events = 티커 → 발표일."""
+    if not events:
+        return {"start": None, "end": None, "view_end": None, "series": {}, "events": {}}
+    first, last = min(events.values()), max(events.values())
+    start = (date.fromisoformat(first) - timedelta(days=7)).isoformat()
+    end = min(today, max((date.fromisoformat(start) + timedelta(days=35)).isoformat(),
+                         (date.fromisoformat(last) + timedelta(days=10)).isoformat()))
+    bx = {r[0]: r[1] for r in conn.execute(
+        "SELECT trade_date, close FROM us_prices WHERE stock_code=? AND trade_date BETWEEN ? AND ? ORDER BY trade_date", (bench, start, end))}
+    days = sorted(bx)
+    series = {}
+    if days:
+        for t in events:
+            px = {r[0]: r[1] for r in conn.execute(
+                "SELECT trade_date, close FROM us_prices WHERE stock_code=? AND trade_date BETWEEN ? AND ?", (t, start, end))}
+            common = [d for d in days if px.get(d)]
+            if len(common) < 2:
+                continue
+            base, bbase = px[common[0]], bx[common[0]]
+            series[t] = [[d, round((px[d] / base - 1) * 100 - (bx[d] / bbase - 1) * 100, 2)] for d in common]
+    # 보이는 축은 시즌 한 달(창 시작 + 35일)과 아직 남은 발표일까지 — 데이터는 오늘에서 끝난다
+    view_end = max((date.fromisoformat(start) + timedelta(days=35)).isoformat(),
+                   (date.fromisoformat(last) + timedelta(days=3)).isoformat())
+    return {"start": start, "end": end, "view_end": view_end, "series": series, "events": events}
+
+
 def at(rows: list[dict], offset: int) -> float | None:
     hit = [r for r in rows if r["offset"] == offset]
     return hit[0]["excess"] if hit else None
@@ -721,7 +749,7 @@ def sector_detail(key: str, season: str | None = None) -> dict:
         f"SELECT DISTINCT season FROM earnings_events WHERE ticker IN ({','.join('?' * len(members))}) AND confirmed=1 ORDER BY season DESC LIMIT 4",
         tuple(members))][::-1] if members else []
     today = date.today().isoformat()
-    companies, paths = [], {}
+    companies = []
     evs = [e for e in _event_rows(conn, season) if e["ticker"] in members]
     for e in evs:
         meta = json.loads(e["meta_json"]) if e["meta_json"] else None
@@ -730,9 +758,8 @@ def sector_detail(key: str, season: str | None = None) -> dict:
                "headline": (meta or {}).get("headline"), "status": "reported" if e["event_date"] <= today and e["confirmed"] else "upcoming"}
         if row["status"] == "reported":
             row.update(_numbers(conn, e, key))
-            p = path(conn, e["ticker"], e["event_date"], etf, before=5, after=21)
-            paths[e["ticker"]] = [[r["offset"], r["excess"]] for r in p]
         companies.append(row)
+    timeline = season_timeline(conn, {e["ticker"]: e["event_date"] for e in evs}, etf, today)
     for t, f in members.items():
         if not any(c["ticker"] == t for c in companies):
             companies.append({"ticker": t, "name": f["company_name"], "status": "none", "core": core.get(t, [])})
@@ -754,7 +781,7 @@ def sector_detail(key: str, season: str | None = None) -> dict:
     latest = themes[-1] if themes else None
     return {"key": key, "name": sector_name(key), "etf": etf, "season": season, "seasons": seasons,
             "members": [{"ticker": t, "name": f["company_name"]} for t, f in members.items()],
-            "theme": latest, "theme_history": themes, "companies": companies, "paths": paths, "history": history}
+            "theme": latest, "theme_history": themes, "companies": companies, "timeline": timeline, "history": history}
 
 
 def chain_detail(transcript_id: int) -> dict:

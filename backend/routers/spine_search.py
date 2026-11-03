@@ -125,9 +125,14 @@ def _companies(conn, q: str, limit: int) -> list[dict]:
 def _us(conn, q: str, limit: int) -> list[dict]:
     upper, like = q.upper(), f"%{q}%"
     seen, items = set(), []
-    for r in _safe(conn, """SELECT ticker, company_name, group_label FROM transcript_follow
-                            WHERE ticker LIKE ? OR company_name LIKE ? ORDER BY CASE WHEN ticker = ? THEN 0 WHEN ticker LIKE ? THEN 1 ELSE 2 END, ticker""",
-                   (f"{upper}%", like, upper, f"{upper}%")):
+    # 한글 이름(블룸에너지)은 컨콜 반응 수집이 등록한 한글 별칭(entity_keywords, D-276)으로 찾는다
+    for r in _safe(conn, """SELECT ticker, company_name, group_label FROM transcript_follow t
+                            WHERE ticker LIKE ? OR company_name LIKE ?
+                               OR EXISTS (SELECT 1 FROM entity_keywords k WHERE k.entity_id = t.entity_id AND k.keyword LIKE ?)
+                            ORDER BY CASE WHEN ticker = ? THEN 0 WHEN ticker LIKE ? THEN 1
+                                          WHEN EXISTS (SELECT 1 FROM entity_keywords k WHERE k.entity_id = t.entity_id AND k.keyword = ?) THEN 2
+                                          ELSE 3 END, ticker""",
+                   (f"{upper}%", like, like, upper, f"{upper}%", q)):
         seen.add(r["ticker"])
         items.append({"ticker": r["ticker"], "name": r["company_name"] or r["ticker"], "group_label": r["group_label"]})
     for r in _safe(conn, "SELECT ticker FROM us_fundamentals WHERE ticker LIKE ? ORDER BY ticker", (f"{upper}%",)):
@@ -205,14 +210,14 @@ def today():
     try:
         out = []
         for g in _safe(conn, "SELECT id, name FROM stock_groups ORDER BY id"):
-            last = conn.execute("SELECT MAX(as_of) d FROM watch_evaluations WHERE group_id=?", (g["id"],)).fetchone()["d"]
+            last = wr.member_last_as_of(conn, g["id"])   # 국내·미국 거래일이 달라 종목별 마지막 기준일
             if not last:
                 continue
-            names = {r["stock_code"]: r["corp_name"] for r in conn.execute(
-                "SELECT c.stock_code, c.corp_name FROM companies c JOIN stock_group_members m ON m.stock_code = c.stock_code WHERE m.group_id=?", (g["id"],))}
-            for s in wr.signals(conn, g["id"], days=1):
-                if s["as_of"] == last:
-                    out.append({**s, "name": names.get(s["stock_code"], s["stock_code"]), "group_id": g["id"], "group_name": g["name"]})
+            names = wr.member_names(conn, list(last))
+            for s in wr.signals(conn, g["id"], days=2):
+                if s["as_of"] == last.get(s["stock_code"]):
+                    out.append({**s, "name": names.get(s["stock_code"], s["stock_code"]), "group_id": g["id"], "group_name": g["name"],
+                                "market": wr.market_of(conn, s["stock_code"]) or "kr"})
         return {"items": out[:12], "as_of": max((i["as_of"] for i in out), default=None)}
     finally:
         conn.close()

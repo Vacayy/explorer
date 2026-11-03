@@ -47,7 +47,7 @@ FastAPI 미들웨어가 요청마다 **경로 패턴**(`/api/spine/us/{ticker}`,
 |---|---|---|---|
 | `view` | 화면 진입(라우트 변경) | 라우트 패턴(`/us/:ticker`, `/follow/transcripts?view=season`) | ref(직전 라우트), entity(티커·종목코드·id) |
 | `leave` | 화면 이탈·탭 숨김 | 같은 패턴 | dwell_ms(보이는 동안만 셈) |
-| `action` | 핵심 동작 | `reaction.make`·`expectation.make`·`digest.make`·`prices.collect`·`transcript.collect`·`transcript.check`·`chat.ask`·`study.add`·`save`·`core.pin` 등 | entity |
+| `action` | 핵심 동작 | `reaction.make`·`expectation.make`·`digest.make`·`prices.collect`·`transcript.collect`·`transcript.check`·`chat.ask`·`study.add`·`save`·`watch.add`·`core.pin` 등 | entity |
 | `open` | 생성물을 펼쳐 읽음 | `digest`·`reaction`·`sector_theme`·`briefing`·`expectation` | entity(생성물 id) |
 
 - 세션: 탭이 열린 동안 하나(sessionStorage), 30분 무활동이면 새 세션.

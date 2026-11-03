@@ -37,6 +37,7 @@ class FollowRow(BaseModel):
     category: str | None = None           # 사업분류 — 손으로 붙인 그룹, NDX 추가 종목은 SEC SIC 분류
     latest_results_date: str | None = None   # 가장 최근 '본 실적'(컨콜 또는 실적 수치가 있는 보도자료) 날짜
     season_updated: bool = False          # 이번 실적 시즌에 실적이 나왔나(목록 태그)
+    ko_names: list[str] = []              # 한글 별칭(entity_keywords, D-276) — 레일 검색용
 
 
 class QuarterRow(BaseModel):
@@ -77,8 +78,12 @@ def list_follow():
     from pipeline.sec_filings import industry_label
     from datetime import date as _date
     season_start = season(_date.today().isoformat())["start"]
-    rows = conn.execute("SELECT ticker, company_name, group_label, market_cap, sic, fiscal_year_end FROM transcript_follow "
+    rows = conn.execute("SELECT ticker, company_name, group_label, market_cap, sic, fiscal_year_end, entity_id FROM transcript_follow "
                         "WHERE active=1 ORDER BY group_label, ticker").fetchall()
+    ko: dict[int, list[str]] = {}
+    for k in conn.execute("SELECT k.entity_id, k.keyword FROM entity_keywords k JOIN transcript_follow t ON t.entity_id=k.entity_id "
+                          "WHERE t.active=1 ORDER BY k.id"):
+        ko.setdefault(k["entity_id"], []).append(k["keyword"])
     # 본 실적 보도자료 = 매출과 주당 이익이 함께 있는 것(TSLA 인도량 공시도 'net income'을 한 번 언급해 그것만으론 못 가른다)
     results = {}
     for r in conn.execute("SELECT er.ticker, max(er.filing_date) d FROM earnings_releases er JOIN raw_documents rd ON rd.id=er.doc_id "
@@ -110,7 +115,8 @@ def list_follow():
                              market_cap=r["market_cap"],
                              category=(industry_label(r["sic"]) or "기타") if r["group_label"] == "NDX" else r["group_label"],
                              latest_results_date=latest_results,
-                             season_updated=bool(latest_results and latest_results >= season_start)))
+                             season_updated=bool(latest_results and latest_results >= season_start),
+                             ko_names=ko.get(r["entity_id"], [])))
     conn.close()
     return out
 

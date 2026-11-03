@@ -102,33 +102,69 @@ def effective_rules(conn: sqlite3.Connection, group_id: int, stock_code: str) ->
     return list(chosen.values())
 
 
-def latest_trade_date(conn: sqlite3.Connection) -> str | None:
-    row = conn.execute("SELECT MAX(trade_date) d FROM stock_prices").fetchone()
+def market_of(conn: sqlite3.Connection, code: str) -> str | None:
+    """국내 종목(companies)이면 'kr', 자료가 있는 미국 티커(컨콜 팔로우·펀더멘털·시세)면 'us', 둘 다 아니면 None."""
+    if conn.execute("SELECT 1 FROM companies WHERE stock_code=?", (code,)).fetchone():
+        return "kr"
+    if conn.execute("SELECT 1 FROM transcript_follow WHERE ticker=? UNION ALL SELECT 1 FROM us_fundamentals WHERE ticker=? "
+                    "UNION ALL SELECT 1 FROM us_prices WHERE stock_code=? LIMIT 1", (code, code, code)).fetchone():
+        return "us"
+    return None
+
+
+def member_names(conn: sqlite3.Connection, codes: list[str]) -> dict[str, str]:
+    """종목코드·티커 → 이름(국내 회사명, 미국은 컨콜 팔로우 회사명, 없으면 코드)."""
+    if not codes:
+        return {}
+    marks = ",".join("?" * len(codes))
+    names = {r["stock_code"]: r["corp_name"] for r in conn.execute(
+        f"SELECT stock_code, corp_name FROM companies WHERE stock_code IN ({marks})", codes)}
+    names.update({r["ticker"]: r["company_name"] for r in conn.execute(
+        f"SELECT ticker, company_name FROM transcript_follow WHERE ticker IN ({marks}) AND company_name IS NOT NULL", codes)
+        if r["ticker"] not in names})
+    return {c: names.get(c) or c for c in codes}
+
+
+def latest_trade_date(conn: sqlite3.Connection, market: str = "kr") -> str | None:
+    table = "us_prices" if market == "us" else "stock_prices"
+    row = conn.execute(f"SELECT MAX(trade_date) d FROM {table}").fetchone()
     return row["d"] if row and row["d"] else None
 
 
-def load_rows(conn: sqlite3.Connection, stock_code: str, as_of: str, sessions: int, start_date: str | None) -> list[dict]:
+def member_last_as_of(conn: sqlite3.Connection, group_id: int) -> dict[str, str]:
+    """종목별 마지막 평가 기준일 — 국내·미국은 거래일이 달라 묶음 하나의 기준일로 보지 않는다."""
+    return {r["stock_code"]: r["d"] for r in conn.execute(
+        "SELECT stock_code, MAX(as_of) d FROM watch_evaluations WHERE group_id=? GROUP BY stock_code", (group_id,))}
+
+
+def load_rows(conn: sqlite3.Connection, stock_code: str, as_of: str, sessions: int, start_date: str | None,
+              market: str = "kr") -> list[dict]:
+    # 미국 시세(us_prices)에는 상장주식수가 없다 — 회전율 같은 조건은 평가 불가로 나온다
+    source = ("SELECT trade_date, open, high, low, close, volume, NULL AS shares FROM us_prices " if market == "us"
+              else "SELECT trade_date, open, high, low, close, volume, shares FROM stock_prices ")
     if start_date:
-        rows = conn.execute("SELECT trade_date, open, high, low, close, volume, shares FROM stock_prices "
-                            "WHERE stock_code=? AND trade_date<=? AND trade_date>=? ORDER BY trade_date",
+        rows = conn.execute(source + "WHERE stock_code=? AND trade_date<=? AND trade_date>=? ORDER BY trade_date",
                             (stock_code, as_of, start_date)).fetchall()
     else:
-        rows = conn.execute("SELECT trade_date, open, high, low, close, volume, shares FROM stock_prices "
-                            "WHERE stock_code=? AND trade_date<=? ORDER BY trade_date DESC LIMIT ?",
+        rows = conn.execute(source + "WHERE stock_code=? AND trade_date<=? ORDER BY trade_date DESC LIMIT ?",
                             (stock_code, as_of, sessions + 5)).fetchall()[::-1]
     return [{"date": r["trade_date"], "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"],
              "volume": r["volume"], "shares": r["shares"]} for r in rows]
 
 
 def evaluate_group(conn: sqlite3.Connection, group_id: int, as_of: str | None = None, force: bool = False) -> dict:
-    as_of = as_of or latest_trade_date(conn)
-    summary = {"group_id": group_id, "as_of": as_of, "evaluated": 0, "passed": 0, "unavailable": 0, "skipped": 0}
-    if not as_of:
+    dates = {m: as_of or latest_trade_date(conn, m) for m in ("kr", "us")}
+    summary = {"group_id": group_id, "as_of": dates["kr"], "evaluated": 0, "passed": 0, "unavailable": 0, "skipped": 0}
+    if not dates["kr"] and not dates["us"]:
         summary["error"] = "저장된 시세가 없습니다."
         return summary
     members = conn.execute("SELECT stock_code FROM stock_group_members WHERE group_id=? ORDER BY id", (group_id,)).fetchall()
     for member in members:
         code = member["stock_code"]
+        market = market_of(conn, code) or "kr"
+        as_of = dates[market]   # 종목의 시장 거래일 기준
+        if not as_of:
+            continue
         for rule in effective_rules(conn, group_id, code):
             if not force and conn.execute("SELECT 1 FROM watch_evaluations WHERE rule_id=? AND stock_code=? AND as_of=?",
                                           (rule["id"], code, as_of)).fetchone():
@@ -137,7 +173,7 @@ def evaluate_group(conn: sqlite3.Connection, group_id: int, as_of: str | None = 
             condition = rule_condition(rule)
             try:
                 need = history_requirement(condition, as_of)
-                rows = load_rows(conn, code, as_of, need["sessions"], need["start_date"])
+                rows = load_rows(conn, code, as_of, need["sessions"], need["start_date"], market)
                 result = evaluate_strategy(rows, condition)
             except ValueError as exc:
                 result = {"status": "unavailable", "value": None, "reference": None, "date": None, "reason": f"invalid_condition:{exc}"}
@@ -154,17 +190,38 @@ def evaluate_group(conn: sqlite3.Connection, group_id: int, as_of: str | None = 
     return summary
 
 
+def refresh_us_prices(conn: sqlite3.Connection) -> list[str]:
+    """묶음에 든 미국 종목 시세를 평가 전에 채운다 — 미국 시세는 정기 수집이 없어 비면 신호가 거짓으로 꺼진다.
+    fetch_prices는 신선하면 건너뛴다. 실패한 티커를 돌려준다."""
+    from pipeline.us_data import fetch_prices
+    failed = []
+    for (code,) in conn.execute("SELECT DISTINCT stock_code FROM stock_group_members").fetchall():
+        if market_of(conn, code) != "us":
+            continue
+        try:
+            fetch_prices(code)
+        except Exception:
+            failed.append(code)
+    return failed
+
+
 def evaluate_all(as_of: str | None = None, force: bool = False) -> dict:
     started = time.monotonic()
     conn = connect()
     try:
+        failed = refresh_us_prices(conn)
         groups = [r["id"] for r in conn.execute("SELECT id FROM stock_groups ORDER BY id").fetchall()]
         summaries = [evaluate_group(conn, gid, as_of, force) for gid in groups]
+        us_as_of = as_of or latest_trade_date(conn, "us")
     finally:
         conn.close()
-    total = {"groups": len(summaries), "as_of": summaries[0]["as_of"] if summaries else as_of,
+    total = {"groups": len(summaries), "as_of": summaries[0]["as_of"] if summaries else as_of, "us_as_of": us_as_of,
              **{k: sum(s[k] for s in summaries) for k in ("evaluated", "passed", "unavailable", "skipped")}}
+    if failed:
+        total["us_price_failed"] = ",".join(failed)
     status = "ok" if summaries and not any(s.get("error") for s in summaries) else ("skipped" if not summaries else "error")
+    if status == "ok" and failed:
+        status = "partial"
     record_run("watch_rules", status, " · ".join(f"{k} {v}" for k, v in total.items()), int((time.monotonic() - started) * 1000))
     return total
 
@@ -213,8 +270,9 @@ WATCHED_CODES_SQL = "SELECT m.stock_code FROM stock_group_members m JOIN stock_g
 def watched(conn: sqlite3.Connection) -> dict[str, str]:
     """관심 종목 = 모든 관심(watch) 묶음 멤버의 합집합. 종목코드 → 회사명(먼저 넣은 순)."""
     rows = conn.execute(
-        "SELECT m.stock_code, MAX(c.corp_name) name FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id "
-        "LEFT JOIN companies c ON c.stock_code=m.stock_code WHERE g.kind='watch' GROUP BY m.stock_code ORDER BY MIN(m.id)").fetchall()
+        "SELECT m.stock_code, COALESCE(MAX(c.corp_name), MAX(tf.company_name)) name FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id "
+        "LEFT JOIN companies c ON c.stock_code=m.stock_code LEFT JOIN transcript_follow tf ON tf.ticker=m.stock_code "
+        "WHERE g.kind='watch' GROUP BY m.stock_code ORDER BY MIN(m.id)").fetchall()
     return {r["stock_code"]: r["name"] or r["stock_code"] for r in rows}
 
 
