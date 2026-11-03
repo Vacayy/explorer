@@ -3,7 +3,7 @@ import { X } from "lucide-react"
 import { createChart, ColorType, LineStyle } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
 import { Button } from "@/components/ui/button"
-import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
+import { DEFAULT_CHART_OPTIONS } from "@/components/charts/LightweightChart"
 
 interface LineConfig {
   key: string
@@ -23,6 +23,8 @@ interface MultiLineChartProps {
   /** Parent may render an accessible interactive legend outside the plot. */
   showLegend?: boolean
   showLastValues?: boolean
+  /** Show only the line under the pointer, rather than all series. */
+  showLineTooltip?: boolean
 }
 
 /** 같은 일자의 한 달 전(말일은 그 달 말일로 맞춤) */
@@ -52,7 +54,9 @@ export default function MultiLineChart({
   formatChange,
   showLegend = true,
   showLastValues = true,
+  showLineTooltip = false,
 }: MultiLineChartProps) {
+  const [hovered, setHovered] = useState<{ label: string; color: string; value: string; date: string; x: number; y: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map())
@@ -65,7 +69,7 @@ export default function MultiLineChart({
   const boxRef = useRef<HTMLDivElement>(null)
 
   // Stable key for lines config to detect structural changes
-  const linesKey = lines.map((l) => `${l.key}:${l.color}:${l.lineWidth ?? 2}:${l.lineStyle ?? 0}`).join("|")
+  const linesKey = lines.map((l) => `${l.key}:${l.label}:${l.color}:${l.lineWidth ?? 2}:${l.lineStyle ?? 0}`).join("|")
 
   // Create chart and series
   useEffect(() => {
@@ -86,6 +90,7 @@ export default function MultiLineChart({
       opts.localization = { priceFormatter: formatValue }
     }
 
+    setHovered(null)
     const chart = createChart(container, opts)
     chartRef.current = chart
 
@@ -104,6 +109,37 @@ export default function MultiLineChart({
       map.set(line.key, series)
     }
     seriesMapRef.current = map
+
+    if (showLineTooltip) chart.subscribeCrosshairMove((param) => {
+      const point = param.point
+      if (!point || param.time == null || point.x < 0 || point.y < 0 || point.x > chart.timeScale().width() || point.y > height - chart.timeScale().height()) {
+        setHovered(null)
+        return
+      }
+      // Compare against interpolated screen segments, not the snapped crosshair Y.
+      const scale = chart.timeScale()
+      const logical = scale.coordinateToLogical(point.x)
+      if (logical == null) { setHovered(null); return }
+      let nearest: { line: LineConfig; value: number; distance: number } | null = null
+      for (const line of lines) {
+        const series = map.get(line.key)!
+        const datum = param.seriesData.get(series)
+        const left = series.dataByIndex(Math.floor(logical))
+        const right = series.dataByIndex(Math.ceil(logical))
+        if (!datum || !('value' in datum) || !left || !right || !('value' in left) || !('value' in right)) continue
+        const x1 = scale.timeToCoordinate(left.time), x2 = scale.timeToCoordinate(right.time)
+        const y1 = series.priceToCoordinate(left.value), y2 = series.priceToCoordinate(right.value)
+        if (x1 == null || x2 == null || y1 == null || y2 == null) continue
+        const y = x1 === x2 ? y1 : y1 + (y2 - y1) * (point.x - x1) / (x2 - x1)
+        const distance = Math.abs(point.y - y)
+        if (distance <= 10 && (!nearest || distance < nearest.distance)) nearest = { line, value: datum.value, distance }
+      }
+      if (!nearest) { setHovered(null); return }
+      const { line, value } = nearest
+      const t = param.time
+      const date = typeof t === 'object' ? `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}` : typeof t === 'number' ? new Date(t * 1000).toISOString().slice(0, 10) : t
+      setHovered({ label: line.label, color: line.color, value: formatValue ? formatValue(value) : String(value), date, x: point.x, y: point.y })
+    })
 
     // 클릭한 날짜 → 변화 오버레이 (formatChange 지정 시만)
     chart.subscribeClick((param) => {
@@ -128,10 +164,11 @@ export default function MultiLineChart({
       seriesMapRef.current = new Map()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, linesKey, showLastValues])
+  }, [height, linesKey, showLastValues, showLineTooltip])
 
   // Update data
   useEffect(() => {
+    setHovered(null)
     if (!chartRef.current || data.length === 0) return
 
     for (const line of lines) {
@@ -202,7 +239,7 @@ export default function MultiLineChart({
   const flip = pickedX != null && containerRef.current != null && pickedX > containerRef.current.clientWidth / 2
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative" }} onMouseLeave={() => setHovered(null)}>
       {/* Legend overlay */}
       {showLegend && <div
         style={{
@@ -233,6 +270,14 @@ export default function MultiLineChart({
         ))}
       </div>}
       <div ref={containerRef} style={{ width: "100%", height }} />
+      {showLineTooltip && hovered && <div
+        role="tooltip"
+        className="pointer-events-none absolute z-30 max-w-[min(260px,90%)] border border-border bg-popover px-3 py-2 text-caption text-popover-foreground"
+        style={{ left: hovered.x, top: hovered.y, transform: `translate(${hovered.x > (containerRef.current?.clientWidth ?? 0) / 2 ? 'calc(-100% - 12px)' : '12px'}, ${hovered.y > height / 2 ? 'calc(-100% - 12px)' : '12px'})` }}
+      >
+        <div className="flex items-center gap-2 font-medium"><span className="h-0.5 w-4 shrink-0" style={{ backgroundColor: hovered.color }} aria-hidden="true" />{hovered.label}</div>
+        <div className="mt-1 text-muted-foreground">{hovered.date} · {hovered.value}</div>
+      </div>}
       {formatChange && picked && pickedX != null && changes.length > 0 && <>
         <div aria-hidden="true" className="pointer-events-none absolute top-0 bottom-8 w-px border-l border-dashed border-foreground/40" style={{ left: pickedX }} />
         <div

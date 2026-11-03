@@ -92,7 +92,7 @@ function GroupComparison({ catalog, snapshot, layer, industry, onDrill }: {
     {!groups.length ? <p role="status" className="border border-border p-6">{industryGroupExists(catalog, industry) ? '등록된 세부 사업군이 없습니다. 다른 업종이나 전체 사업군을 선택해 주세요.' : '업종을 찾을 수 없습니다. 비교할 업종을 다시 선택해 주세요.'}</p> : <>
       <div className="border border-border p-3">
         <h3 className="font-medium">{title} · 시작값 100</h3>
-        {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} showLastValues={false} height={340} formatValue={formatNumber} /> : <p role="status" className="p-6">선택 기간에 비교할 수 있는 그룹 가격이 없습니다.</p>}
+        {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} showLastValues={false} showLineTooltip height={340} formatValue={formatNumber} /> : <p role="status" className="p-6">선택 기간에 비교할 수 있는 그룹 가격이 없습니다.</p>}
         <div aria-label="그룹 차트 강조" className="flex max-h-48 flex-wrap gap-2 overflow-y-auto py-2">
           <Button size="sm" variant={!focus ? 'secondary' : 'outline'} aria-pressed={!focus} onClick={() => update('focus', '')}>전체 그룹 강조 해제</Button>
           {groups.map(group => <Button key={group.id} size="sm" variant={focus === group.id ? 'secondary' : 'outline'} aria-pressed={focus === group.id} onClick={() => update('focus', focus === group.id ? '' : group.id)}><span aria-hidden="true" className="w-4 border-t-2" style={{ borderColor: lines.find(line => line.key === group.id)?.color, borderTopStyle: lines.find(line => line.key === group.id)?.lineStyle ? 'dashed' : 'solid' }} />{group.name}{!group.path && ' · 미평가'}</Button>)}
