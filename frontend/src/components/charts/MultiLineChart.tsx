@@ -1,7 +1,7 @@
 import { useRef, useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
 import { createChart, ColorType, LineStyle } from "lightweight-charts"
-import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions, MouseEventParams } from "lightweight-charts"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_CHART_OPTIONS } from "@/components/charts/LightweightChart"
 
@@ -25,6 +25,7 @@ interface MultiLineChartProps {
   showLastValues?: boolean
   /** Show only the line under the pointer, rather than all series. */
   showLineTooltip?: boolean
+  onLineClick?: (key: string) => void
 }
 
 /** 같은 일자의 한 달 전(말일은 그 달 말일로 맞춤) */
@@ -55,8 +56,11 @@ export default function MultiLineChart({
   showLegend = true,
   showLastValues = true,
   showLineTooltip = false,
+  onLineClick,
 }: MultiLineChartProps) {
   const [hovered, setHovered] = useState<{ label: string; color: string; value: string; date: string; x: number; y: number } | null>(null)
+  const lineClickRef = useRef(onLineClick)
+  lineClickRef.current = onLineClick
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map())
@@ -110,16 +114,15 @@ export default function MultiLineChart({
     }
     seriesMapRef.current = map
 
-    if (showLineTooltip) chart.subscribeCrosshairMove((param) => {
+    const hitLine = (param: MouseEventParams) => {
       const point = param.point
       if (!point || param.time == null || point.x < 0 || point.y < 0 || point.x > chart.timeScale().width() || point.y > height - chart.timeScale().height()) {
-        setHovered(null)
-        return
+        return null
       }
       // Compare against interpolated screen segments, not the snapped crosshair Y.
       const scale = chart.timeScale()
       const logical = scale.coordinateToLogical(point.x)
-      if (logical == null) { setHovered(null); return }
+      if (logical == null) return null
       let nearest: { line: LineConfig; value: number; distance: number } | null = null
       for (const line of lines) {
         const series = map.get(line.key)!
@@ -134,7 +137,13 @@ export default function MultiLineChart({
         const distance = Math.abs(point.y - y)
         if (distance <= 10 && (!nearest || distance < nearest.distance)) nearest = { line, value: datum.value, distance }
       }
-      if (!nearest) { setHovered(null); return }
+      return nearest
+    }
+
+    if (showLineTooltip) chart.subscribeCrosshairMove((param) => {
+      const nearest = hitLine(param)
+      if (!nearest || !param.point || param.time == null) { setHovered(null); return }
+      const point = param.point
       const { line, value } = nearest
       const t = param.time
       const date = typeof t === 'object' ? `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}` : typeof t === 'number' ? new Date(t * 1000).toISOString().slice(0, 10) : t
@@ -143,6 +152,10 @@ export default function MultiLineChart({
 
     // 클릭한 날짜 → 변화 오버레이 (formatChange 지정 시만)
     chart.subscribeClick((param) => {
+      if (lineClickRef.current) {
+        const nearest = hitLine(param)
+        if (nearest) lineClickRef.current(nearest.line.key)
+      }
       if (!changeEnabledRef.current) return
       const t = param.time
       if (t == null) { setPicked(null); setBoxPos(null); return }

@@ -124,7 +124,7 @@ export function PeerPerformancePanel({ catalog, snapshot }: { catalog: PeerCatal
       <div className="border border-border p-3">
         <h3 className="font-medium">전체 구성 종목 · 시작값 100 비교</h3>
         {requestedStock && !member && <p role="status" className="text-caption text-muted-foreground">선택한 종목이 이 그룹에 없습니다. 비교 설정에서 강조할 종목을 다시 선택해 주세요.</p>}
-        {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} showLastValues={false} showLineTooltip height={340} formatValue={formatNumber} /> : <p className="p-6 text-sm text-muted-foreground">차트를 그릴 충분한 가격 관측이 없습니다.</p>}
+        {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} showLastValues={false} showLineTooltip onLineClick={key => { if (key.startsWith('stock_')) { const code = key.slice(6); update('stock', requestedStock === code ? '' : code) } }} height={340} formatValue={formatNumber} /> : <p className="p-6 text-sm text-muted-foreground">차트를 그릴 충분한 가격 관측이 없습니다.</p>}
         <div aria-label="차트 종목 강조" className="flex max-h-48 flex-wrap gap-2 overflow-y-auto py-2">
           <Button variant={!requestedStock ? 'secondary' : 'outline'} size="sm" aria-pressed={!requestedStock} onClick={() => update('stock', '')}>전체 종목</Button>
           {paths.map(item => <Button key={item.code} size="sm" variant={requestedStock === item.code ? 'secondary' : 'outline'} aria-pressed={requestedStock === item.code} onClick={() => update('stock', requestedStock === item.code ? '' : item.code)}>
