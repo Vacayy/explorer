@@ -5,6 +5,7 @@ import {
   ContextBody, IndicesBody, KrBody, RegimeBody, RetailBody, RiskBody, RiskDetail, UsBody,
   useContextMeta, useIndicesMeta, useKrMeta, useRegimeMeta, useRetailMeta, useRiskMeta, useUsMeta,
 } from "./market"
+import { MarketTodayBody, useMarketTodayMeta } from "./marketToday"
 import { EXPLORE_WIDGETS } from "./explore"
 import { PORTFOLIO_WIDGETS } from "./portfolio"
 import { CANVAS_WIDGETS } from "./canvas"
@@ -27,8 +28,10 @@ export const WIDGETS: readonly WidgetDef[] = [
     size: { w: 12, h: 1, minW: 6, minH: 1 }, flat: true, useMeta: useIndicesMeta, Body: IndicesBody },
   { id: "market.context", title: "시장 요약", description: "환율·미 2Y·10Y·유가·금·BTC", section: "home", group: "시장",
     size: { w: 12, h: 1, minW: 6, minH: 1 }, flat: true, detailPath: "/home/macro", useMeta: useContextMeta, Body: ContextBody },
-  { id: "market.us", title: "어젯밤 미국장", description: "거래대금 쏠림 · 매크로·기업 이슈 · 개별 급등락", section: "home", group: "시장 브리핑",
+  { id: "market.us", title: "Market Overnight", description: "어젯밤 미국장 · 거래대금 쏠림 · 매크로·기업 이슈 · 개별 급등락", section: "home", group: "시장 브리핑",
     size: { w: 6, h: 9, minW: 4, minH: 2 }, detailPath: "/home/briefing", useMeta: useUsMeta, Body: UsBody },
+  { id: "market.today", title: "Market Today", description: "오늘 장중 · 3시간마다 텔레그램·뉴스에서 주로 나온 얘기", section: "home", group: "시장 브리핑",
+    size: { w: 6, h: 9, minW: 3, minH: 2 }, useMeta: useMarketTodayMeta, Body: MarketTodayBody },
   { id: "market.kr", title: "전일 국장 거래대금", description: "거래대금 상위 · 섹터 쏠림 · 급등락", section: "home", group: "시장 브리핑",
     size: { w: 6, h: 9, minW: 4, minH: 2 }, detailPath: "/home/briefing", useMeta: useKrMeta, Body: KrBody },
   { id: "risk.regime", title: "시장 국면", description: "국장·미장 포스처 · 공포탐욕·VIX", section: "home", group: "국면·리스크",
@@ -56,7 +59,7 @@ export const WIDGET_SIZES: Record<string, SizeSpec> = Object.fromEntries(WIDGETS
 /** 시스템 프리셋 — 새 메뉴를 만들 때 고르는 출발점(home-widgets.md §5). 만든 뒤엔 그 메뉴의 배치일 뿐이다 */
 export const SYSTEM_PRESETS: readonly { key: string; label: string; description: string; widgets: string[] }[] = [
   { key: "base", label: "기본", description: "지수·시장 맥락·미국장·국장·리스크 지표", widgets: ["market.indices", "market.context", "market.us", "market.kr", "risk.curve", "risk.vix", "risk.fear", "risk.hy", "risk.regime", "retail.heat"] },
-  { key: "briefing", label: "시장 브리핑", description: "지수와 미국장·국장 움직임", widgets: ["market.indices", "market.context", "market.us", "market.kr"] },
+  { key: "briefing", label: "시장 브리핑", description: "지수와 미국장·국장 움직임", widgets: ["market.indices", "market.context", "market.us", "market.today", "market.kr"] },
   { key: "risk", label: "국면·리스크", description: "시장 국면·개인 과열·금리차·VIX·HY", widgets: ["risk.regime", "retail.heat", "risk.curve", "risk.vix", "risk.fear", "risk.hy"] },
   { key: "macro", label: "매크로", description: "시장 맥락·금리차·HY·회사채·수출입", widgets: ["market.context", "market.indices", "risk.curve", "risk.hy", "explore.credit", "explore.trade"] },
   { key: "portfolio", label: "보유 점검", description: "오늘 보유 종목·일정·수급·노출", widgets: ["portfolio.today", "portfolio.events", "portfolio.flow", "portfolio.exposure"] },

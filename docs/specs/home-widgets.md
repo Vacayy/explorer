@@ -56,7 +56,8 @@ interface WidgetDef {
 |---|---|---|---|---|
 | market.indices | 지수 띠 | `/indices` | 12×1 | 지수별 값·등락 · 1Y 스파크(남는 높이를 채움) 가로 띠 |
 | market.context | 시장 요약 | `/macro` | 12×1 | 환율·금리·유가·금·BTC 가로 띠 · 올리면 추이 차트(`MetricTrend`) |
-| market.us | 어젯밤 미국장 | `/us/briefing` | 6×9 | 넉넉하면 `UsBriefingSection embedded` 전체(핵심 요약 bullet 먼저, 지수 타일 생략)를 위젯 안에서 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 종합 첫 문장 · 개별 이슈 3 |
+| market.us | Market Overnight(어젯밤 미국장) | `/us/briefing` | 6×9 | 넉넉하면 `UsBriefingSection embedded` 전체(핵심 요약 bullet 먼저, 지수 타일 생략)를 위젯 안에서 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 종합| market.today | Market Today(오늘 장중) | — | 6×9 | 회차 칩(10:00·13:00·15:40)·텔레그램/뉴스 건수·다음 정리 시각 · 화두(제목·이어짐·언급 출처 수·1~2문장·출처 링크) — 높이 3 이하면 화두 2개·본문 2줄 · docs/specs/market-today.md |
+ 첫 문장 · 개별 이슈 3 |
 | market.kr | 전일 국장 거래대금 | `/kr/movers` | 6×9 | 넉넉하면 `KrMoversSection embedded` 전체를 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 섹터 중앙 등락 · 상위 5 막대 |
 | risk.regime | 시장 국면 | `/market-regime` | 6×3 | 국장·미장 포스처 · 근거 한 줄 · 공포탐욕·VIX 타일 |
 | risk.curve | 금리차 10Y−2Y | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 3×3 | 값 · 20일 변화 · 3개월 스파크 · 누르면 Risk 모니터링 카드(`RiskCard`) 상세 창 |

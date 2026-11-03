@@ -121,8 +121,10 @@ from routers import peers
 app.include_router(peers.router)
 
 from routers import spine_observe  # 관측(사용 이벤트·관측 탭 요약, D-283)
+from routers import spine_market_today  # 장중 화두 요약(docs/specs/market-today.md)
 app.include_router(spine_client_errors.router)
 app.include_router(spine_observe.router)
+app.include_router(spine_market_today.router)
 
 
 @app.middleware("http")

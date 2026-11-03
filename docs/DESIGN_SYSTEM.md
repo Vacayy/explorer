@@ -142,6 +142,7 @@ charts/  lightweight-charts 래퍼
 | 오버레이 드로어 | `ui/sheet` |
 | 강조 카드 (AI/hypothesis·primary) | **배경 틴트로 강조**: `bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]` (AI) / `var(--primary)` (홈 브리핑). 좌측 보더(`border-l-*`) 강조는 변칙 — 금지. 예외: 리스트 선택 마커·인용 들여쓰기·다이어그램 헤더는 보더 유지 (D-018). **/chat 어시스턴트 본문은 말풍선·틴트 없이 풀폭 텍스트 — LLM 산출 마커는 `text-hypothesis` 라벨 행으로**(D-135, docs/specs/chat-page.md §4) |
 | 빈/로딩/에러 | shared/Skeleton · shared/ErrorState (5-state 정책) |
+| 패널 안에서 더 보기(요약 → 전체) | **shared/DropletReveal** — `ui/collapsible` 위 조합. 패널을 덮으며 Droplet reveal 모션으로 펼치고 패널 높이를 바꾸지 않는다(아래 §모션) |
 
 ### 허용된 예외 (grandfathered — 신규 작성 금지, 점진 이관)
 
@@ -152,6 +153,14 @@ charts/  lightweight-charts 래퍼
 | `layout/SubNav.tsx` · `layout/Dock.tsx` 모드 Link | 라우터 연동 네비 — Radix Tabs 의미론(패널 전환)과 다름. Link(pill) 유지. 도크 아이템은 ui/button 기반 |
 
 이 표에 없는 raw HTML atom 사용은 전부 위반이다.
+
+## 모션
+
+이름 붙은 모션만 쓴다. 새 모션이 필요하면 여기와 `index.css` `@theme`에 이름을 먼저 등록하고 재사용한다. 운영체제 '동작 줄이기'가 켜지면 전역 규칙이 모든 애니메이션을 끈다(index.css).
+
+| 이름 | 토큰 · 클래스 | 동작 | 쓰는 곳 |
+|---|---|---|---|
+| **Droplet reveal**(물방울 등장) | `--animate-droplet` · `animate-droplet` (680ms) + 내용 `animate-droplet-rise` (520ms, 200ms 지연) | 패널 바닥 가운데부터 원이 퍼지며(clip-path circle) 흐림이 걷히고, 내용은 아래에서 살짝 떠오른다 | 요약 패널에서 전체 내용 펼치기 — `shared/DropletReveal`(홈 Market Overnight '브리핑 전체 보기' 등). 화면 전체를 덮는 오버레이는 `ui/sheet`·`ui/dialog`를 쓴다 |
 
 ## 4. 신규 화면 체크리스트
 

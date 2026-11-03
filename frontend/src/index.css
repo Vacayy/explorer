@@ -350,6 +350,23 @@
   [data-slot=input] { min-height: 44px; font-size: 16px; }
   .study-palette { scrollbar-width: none; }
 }
+/* Droplet reveal(물방울 등장) — 패널 안에서 바닥 가운데부터 원이 퍼지며 흐림이 걷히고, 내용은 조금 늦게 떠오른다.
+ * 쓰는 곳: shared/DropletReveal(펼침 내용), 직접 쓸 때는 animate-droplet / animate-droplet-rise.
+ * 동작 줄이기 설정이면 아래 전역 규칙이 애니메이션을 끈다. docs/DESIGN_SYSTEM.md '모션' */
+@theme {
+  --animate-droplet: droplet 680ms cubic-bezier(.22, .9, .24, 1) both;
+  --animate-droplet-rise: droplet-rise 520ms 200ms cubic-bezier(.22, .9, .24, 1) both;
+  @keyframes droplet {
+    0% { clip-path: circle(0% at 50% 100%); filter: blur(8px); opacity: .55; }
+    55% { filter: blur(0); opacity: 1; }
+    100% { clip-path: circle(150% at 50% 100%); opacity: 1; }
+  }
+  @keyframes droplet-rise {
+    from { transform: translateY(18px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; scroll-behavior: auto !important; }
 }

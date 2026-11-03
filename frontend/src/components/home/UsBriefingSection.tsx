@@ -126,8 +126,10 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
         {/* 종합 — 소제목 없이 한 편의 글로 (D-114). 매크로 문단의 [n]은 원문 링크 (D-206) */}
         {synthesis && (
           <div className="space-y-2">
+            {/* 매크로·기업 각각 두 문단 — 필드 안의 빈 줄로 나뉜다(옛 브리핑은 한 문단 그대로) */}
             {[synthesis.index_summary, synthesis.drivers, synthesis.issues]
               .filter(Boolean)
+              .flatMap((field) => (field as string).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean))
               .map((para, i) => (
                 <p key={i} className="text-reading text-foreground/90">
                   <CitedText text={para} sources={sources} />

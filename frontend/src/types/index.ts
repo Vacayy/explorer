@@ -1645,3 +1645,19 @@ export interface ObserveSummary {
     paths: { ref: string; name: string; n: number }[]; actions: { name: string; n: number }[]; dropped: string[] }
   value: { opens: { name: string; n: number; uniq: number }[]; expectation_grades: { hit: number; underweighted: number; noise: number; missed: number } }
 }
+
+/* ---------- Market Today (docs/specs/market-today.md) — GET /api/spine/market-today ---------- */
+export interface TodaySource { ref: string; kind: string; publisher: string | null; title: string | null; url: string | null; doc_id: number | null; published_at: string | null; echo: number }
+export interface TodayIndexAt { value: number; change_pct: number | null; at: string }
+export interface TodayTopic { title: string; body: string; tags: string[]; continuing: boolean; echo: number; refs: string[]; sources: TodaySource[] }
+export interface MarketToday {
+  trade_date: string | null
+  slots: { slot: string; label: string; created_at: string; topics: number }[]
+  current: {
+    slot: string; label: string; window_start: string; window_end: string; created_at: string; doc_count: number; telegram: number; news: number
+    /** 회차 시점 시장 상태 — 코스피·코스닥 값과 전일 대비, 코스피 5분 경로 */
+    market: { kospi?: TodayIndexAt | null; kosdaq?: TodayIndexAt | null; path: [string, number][] } | null
+    topics: TodayTopic[]
+  } | null
+  next_slot: string | null
+}

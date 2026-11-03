@@ -53,7 +53,8 @@ export function IndicesBody(_: WidgetBodyProps) {
 }
 
 /* ── 시장 요약 띠 ── */
-const CONTEXT_KEYS = ["usdkrw", "jpykrw", "us2y", "us10y", "oil", "gold", "btc"]
+// 홈 관찰 목록 — 비트코인은 2026-11-03 제외(매크로 화면에는 그대로)
+const CONTEXT_KEYS = ["usdkrw", "jpykrw", "us2y", "us10y", "oil", "gold"]
 export function useContextMeta(): WidgetMeta {
   const q = useMacro()
   return { asOf: q.data?.as_of ?? null, stale: !!q.data?.degraded.length }
