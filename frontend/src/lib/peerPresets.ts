@@ -29,7 +29,7 @@ export function peerChildren(catalog: PeerCatalog, groupId: string) {
 
 export function selectPeerPreset(previous: URLSearchParams, groupId: string) {
   const next = new URLSearchParams(previous)
-  for (const key of ['benchmark', 'stock', 'settings', 'overview']) next.delete(key)
+  for (const key of ['benchmark', 'stock', 'settings', 'overview', 'layer', 'industry', 'focus']) next.delete(key)
   if (groupId) next.set('group', groupId)
   else { next.delete('group'); next.set('overview', 'groups') }
   return next

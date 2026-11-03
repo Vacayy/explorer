@@ -1,4 +1,4 @@
-import { PeerPerformancePanel } from '@/components/peers/PeerPerformancePanel'
+import { PeerComparisonWorkspace } from '@/components/peers/PeerComparisonWorkspace'
 import PeriodToggle from '@/components/shared/PeriodToggle'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ExternalLink, ChevronDown } from 'lucide-react'
@@ -136,7 +136,7 @@ export default function PeerCatalogPage() {
           {data.snapshotAgeHours > 72 && <p>가격 스냅샷 생성 후 72시간이 지났습니다. 휴장 여부와 수집 상태를 확인해 주세요.</p>}
           <p>자동 신호 보류 · {data.signalHoldReason}</p>
         </div>
-        {view === 'performance' ? <PeerPerformancePanel catalog={data.catalog} snapshot={data.prices} /> : view === 'research' ? <Catalog catalog={data.catalog} /> : <p role="status">존재하지 않는 보기입니다. 성과 비교 또는 사업 근거를 선택해 주세요.</p>}
+        {view === 'performance' ? <PeerComparisonWorkspace catalog={data.catalog} snapshot={data.prices} /> : view === 'research' ? <Catalog catalog={data.catalog} /> : <p role="status">존재하지 않는 보기입니다. 성과 비교 또는 사업 근거를 선택해 주세요.</p>}
       </>}
     </QueryState>
   </PageContainer>

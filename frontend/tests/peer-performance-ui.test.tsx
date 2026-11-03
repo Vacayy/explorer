@@ -2,7 +2,7 @@ import prices from '@/data/peer-prices.json'
 import catalog from '@/data/peer-catalog.json'
 import api from '@/api/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import PeerCatalogPage from '@/components/peers/PeerCatalogPage'
@@ -63,7 +63,7 @@ it('shows collection failure while retaining the published comparison', async ()
 })
 
 it('opens a complete power preset without selections and drills into the automatic parent benchmark', async () => {
-  mount('/discover/peers')
+  mount('/discover/peers?group=power_infrastructure')
   expect(await screen.findByText('조사된 구성 종목 6개 · 전체 비교')).toBeTruthy()
   expect(screen.queryByLabelText('비교 기준 그룹')).toBeNull()
   const chart = JSON.parse(screen.getByLabelText('차트 데이터').textContent!)
@@ -108,4 +108,37 @@ it('groups repeated quality warnings without losing date-specific sources', asyn
   fireEvent.click(screen.getByRole('button', { name: '수집 상세' }))
   expect(screen.getByText(/관측 시작 2026-11-01/)).toBeTruthy()
   expect(screen.getByText(/실패 — 마지막 정상본 표시/)).toBeTruthy()
+})
+
+it('compares industries then business groups then constituent peers with the same period', async () => {
+  mount('/discover/peers?days=5')
+  const table = await screen.findByRole('table', { name: '업종 간 비교 성과표' })
+  expect(table.querySelectorAll('tbody tr')).toHaveLength(10)
+  expect(JSON.parse(screen.getByLabelText('차트 데이터').textContent!)).toHaveLength(6)
+  fireEvent.click(within(table).getByRole('button', { name: '전력 인프라', exact: true }))
+  const businesses = await screen.findByRole('table', { name: '세부 사업군 간 비교 성과표' })
+  expect(businesses.querySelectorAll('tbody tr')).toHaveLength(3)
+  expect(screen.getByText(/자동 비교 기준: 전력 인프라 평균/)).toBeTruthy()
+  fireEvent.click(within(businesses).getByRole('button', { name: '전력 변압기', exact: true }))
+  expect(await screen.findByRole('table', { name: '구성 종목 성과' })).toBeTruthy()
+  expect(screen.getByLabelText('URL').textContent).toContain('group=power_transformer')
+  expect(screen.getByLabelText('URL').textContent).toContain('days=5')
+  fireEvent.click(screen.getByRole('button', { name: '1. 업종 간 비교' }))
+  expect(await screen.findByRole('table', { name: '업종 간 비교 성과표' })).toBeTruthy()
+})
+
+it('keeps incomplete industries visible without ranking or drawing their paths', async () => {
+  mount('/discover/peers?days=20')
+  const table = await screen.findByRole('table', { name: '업종 간 비교 성과표' })
+  const row = within(table).getByRole('button', { name: '원전 밸류체인', exact: true }).closest('tr')!
+  expect(row.textContent).toContain('미평가')
+  expect(row.querySelectorAll('td')[1].textContent).toBe('-')
+  const chart = JSON.parse(screen.getByLabelText('차트 데이터').textContent!)
+  expect(chart.every((point: Record<string, unknown>) => point.nuclear_value_chain === undefined)).toBe(true)
+})
+
+it('explains invalid layers and missing businesses rather than showing unrelated peers', async () => {
+  mount('/discover/peers?layer=peers&industry=power_infrastructure')
+  expect(await screen.findByText('비교할 사업군을 선택해 주세요.')).toBeTruthy()
+  expect(screen.queryByLabelText('차트 데이터')).toBeNull()
 })

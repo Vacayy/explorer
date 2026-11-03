@@ -69,10 +69,10 @@ export function PeerPerformancePanel({ catalog, snapshot }: { catalog: PeerCatal
     }, {}))
   const setResearch = () => setParams(previous => { const next = new URLSearchParams(previous); next.set('view', 'research'); if (groupId) next.set('group', groupId); return next })
   return <div className="space-y-4">
-    <nav aria-label="그룹 프리셋" className="flex flex-wrap gap-2">
+    {params.get('layer') !== 'peers' && <nav aria-label="그룹 프리셋" className="flex flex-wrap gap-2">
       {PEER_PRESETS.map(id => catalog.groups.find(item => item.id === id)).filter(item => item !== undefined).map(item => <Button key={item.id} variant={groupId === item.id ? 'secondary' : 'outline'} aria-pressed={groupId === item.id} onClick={() => update('group', item.id)}>{item.name}<span className="text-muted-foreground">{catalog.companies.filter(company => company.groupIds.includes(item.id)).length}</span></Button>)}
       <Button variant={!groupId ? 'secondary' : 'ghost'} aria-pressed={!groupId} onClick={() => update('group', '')}>전체 그룹 탐색</Button>
-    </nav>
+    </nav>}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <PeriodToggle value={String(days)} onChange={value => update('days', value)} options={[5, 20, 60].map(value => ({ value: String(value), label: `${value}거래일` }))} />
       {group && <p className="text-caption text-muted-foreground">조사된 구성 종목 {group.memberCount}개 · 전체 비교</p>}
