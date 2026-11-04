@@ -34,6 +34,19 @@ class MemberUpdate(Strict):
     thesis: str | None = Field(default=None, max_length=4000)
 
 
+class TrackedPut(Strict):
+    """관심 종목 추적 켜기·끄기 — 추적 = 알림 대상(D-293, docs/specs/stock-tracker.md)."""
+    tracked: bool
+
+
+class TrackedState(BaseModel):
+    group_id: int
+    stock_code: str
+    tracked: bool
+    widget_tracked: bool    # 이행 기간: 홈 '종목 추적' 위젯에도 있으면 추적을 꺼도 알림이 계속된다
+    tracked_codes: list[str]  # 지금 알림 대상 전체(두 원천 합집합)
+
+
 class RuleInput(Strict):
     strategy_id: str = Field(min_length=1, max_length=80)
     params: dict[str, Any] = Field(default_factory=dict)

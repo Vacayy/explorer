@@ -1609,6 +1609,7 @@ def init_db():
         # 실적 시즌 체인 (D-277) — 반응 정리의 구조화 필드(해석·반긴 것·문제 삼은 것·쟁점 판정·화면 불릿)
         "ALTER TABLE transcript_reactions ADD COLUMN meta_json TEXT",
         "ALTER TABLE transcript_follow ADD COLUMN core_pinned INTEGER DEFAULT 0",   # 사용자가 핵심 종목으로 고정
+        "ALTER TABLE stock_group_members ADD COLUMN tracked INTEGER DEFAULT 0",    # 관심 종목 추적 표시 = 추적 알림 대상 (D-293, 위젯 원천 대체)
     ]:
         try:
             conn.execute(migration)

@@ -1,10 +1,14 @@
-# 종목 추적 위젯 (2026-10-20)
+# 종목 추적 (2026-10-20 위젯 · 2026-11-05 추적 표시로 이행 중)
 
 관심 묶음보다 한 단계 더 집중하는 추적이다. 홈 위젯을 **종목마다 하나씩** 놓는다. 위젯 하나는 그 종목의 차트·기술적 신호, 수급, 이슈, 내 원칙 조건을 한 카드로 보인다. 조건이 충족되면 텔레그램으로도 알린다.
 
-## 추적 대상의 단일 원천
-- 홈 메뉴들(`home_boards`, [home-widgets §5](home-widgets.md))에 놓인 `track.stock` 위젯의 `params.code`가 추적 종목이다. 어느 메뉴에서든 위젯을 모두 빼면 추적과 알림도 멈춘다.
-- 별도 목록을 두지 않는다. 위젯과 알림 대상이 어긋나지 않게 하기 위해서다.
+## 추적 대상 — 관심 종목의 추적 표시로 이행 중 (D-293, D-267 번복)
+- **새 원천**: 관심(watch) 묶음 멤버의 `stock_group_members.tracked=1`. 종목 묶음 화면(관심 묶음)의 '추적' 스위치, `PUT /api/spine/groups/{id}/members/{code}/tracked`로 켜고 끈다. 국내 종목만(추적 판정이 국내 시세 기준이라 미국 종목은 400).
+- **옛 원천**: 홈 메뉴들(`home_boards`, [home-widgets §5](home-widgets.md))에 놓인 `track.stock` 위젯의 `params.code`.
+- **이행 기간 읽기**: `tracked_codes` = 옛 원천(메뉴 순서) + 새 원천에만 있는 종목(묶음·멤버 순서). 중복 없음. 위젯을 빼도 추적 표시가 있으면 알림이 돈다. 반대로 추적을 꺼도 위젯이 남아 있으면 알림이 계속된다(토글 응답 `widget_tracked`, 화면 안내).
+- **일회 복사**: `scripts/migrate_tracking_to_groups.py`(`stock_tracker.migrate_widget_tracking`, 멱등) — 위젯 종목이 기본 관심 묶음 '관심 종목'에 없으면 추적 표시와 함께 넣고, 있으면 표시만 켠다. 위젯·`home_boards`는 건드리지 않는다.
+- **일치 확인**: 운영 점검 '추적 대상 두 원천 일치'(`tracker_sources`) — 위젯에만 있는 종목이 있으면 비정상.
+- **남은 순서**: 새 홈(내 종목) 반영 → 일치 확인이 며칠 유지되면 옛 원천 읽기(`widget_codes`) 제거 → 백업 후 `home_boards` 정리.
 - 추적 종목은 수급 수집 대상(`flows.collect_flows`)에 관심 묶음과 함께 들어간다.
 
 ## 카드 구성 (`GET /api/spine/tracker/{code}`, LLM 0)

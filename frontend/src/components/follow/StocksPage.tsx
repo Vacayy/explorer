@@ -16,10 +16,11 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCompanySearch } from '@/hooks/useCompanySearch'
 import { WatchReasonsCard } from '@/components/follow/WatchReasonsCard'
-import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, usePutRules, useRemoveMember, useStrategyCatalog } from '@/hooks/useGroups'
+import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, usePutRules, useRemoveMember, useSetTracked, useStrategyCatalog } from '@/hooks/useGroups'
 import { formatKrw, formatNumber, formatPercent, formatPrice } from '@/utils/format'
 import type { StockGroupDetail, StockGroupKind, StockGroupMember, StrategyCatalogItem, WatchRule, WatchRuleInput } from '@/types'
 
@@ -115,6 +116,7 @@ function GroupDetail({ groupId, onBack }: { groupId: number; onBack: () => void 
 
 function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEditRules: (code: string) => void }) {
   const remove = useRemoveMember(detail.id)
+  const setTracked = useSetTracked(detail.id)
   const [sorting, setSorting] = useState<SortingState>([])
   const columns = useMemo<ColumnDef<StockGroupMember>[]>(() => {
     const sortable = (label: string) => ({ column }: { column: { getIsSorted: () => false | 'asc' | 'desc'; getToggleSortingHandler: () => ((event: unknown) => void) | undefined } }) => {
@@ -126,6 +128,16 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
       { id: 'close', accessorFn: item => item.close ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('현재가'), cell: ({ row }) => <span className="block text-right tabular-nums">{row.original.close == null ? '-' : row.original.market === 'us' ? formatPrice(row.original.close) : `${formatNumber(row.original.close)}원`}<span className={`block text-caption ${changeClass(row.original.change_pct)}`}>{signedPercent(row.original.change_pct)}</span></span> },
       { id: 'market_cap', accessorFn: item => item.market_cap ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('시가총액'), cell: ({ row }) => <span className="block text-right tabular-nums">{formatKrw(row.original.market_cap)}</span> },
     ]
+    // 추적 = 알림 대상(D-293). 관심 묶음의 국내 종목만 — 추적 판정이 국내 시세 기준이라 미국 종목은 켜지 않는다
+    if (detail.kind === 'watch') list.push({ id: 'tracked', accessorKey: 'tracked', header: '추적', enableSorting: false, cell: ({ row }) => row.original.market === 'us'
+      ? <span className="text-caption text-muted-foreground">-</span>
+      : <Switch size="sm" checked={row.original.tracked === 1} disabled={setTracked.isPending} aria-label={`${row.original.name} 추적`}
+        onCheckedChange={checked => setTracked.mutateAsync({ stockCode: row.original.stock_code, tracked: checked })
+          .then(state => {
+            if (!state.tracked && state.widget_tracked) toast.message('홈 ‘종목 추적’ 위젯이 남아 있어 알림은 계속됩니다. 위젯도 빼야 멈춥니다.')
+            else toast.success(state.tracked ? `${row.original.name} 추적을 켰습니다. 조건 충족·급등락·공시를 알립니다.` : `${row.original.name} 추적을 껐습니다.`)
+          })
+          .catch(error => toast.error(error instanceof Error ? error.message : '추적을 바꾸지 못했습니다.'))} /> })
     list.push(
       { id: 'signals', accessorFn: item => item.signals.length, sortDescFirst: true, header: sortable('오늘 신호'), cell: ({ row }) => row.original.signals.length ? <span className="flex flex-wrap gap-1">{row.original.signals.map(signal => <Badge key={signal.rule_id} className="font-normal">{signal.label}{signal.signal_date && signal.signal_date !== detail.last_as_of ? ` · ${signal.signal_date}` : ''}</Badge>)}</span> : <span className="text-caption text-muted-foreground">{row.original.rule_count === 0 ? '조건 없음' : row.original.unavailable > 0 ? `미평가 ${formatNumber(row.original.unavailable)}` : '-'}</span> },
       { id: 'rules', accessorKey: 'rule_count', header: '조건', enableSorting: false, cell: ({ row }) => <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onEditRules(row.original.stock_code)} aria-label={`${row.original.name} 조건 편집`}>{formatNumber(row.original.rule_count)}개<SlidersHorizontal className="size-3.5" /></Button> },
@@ -136,7 +148,7 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
       </DropdownMenuContent></DropdownMenu> },
     )
     return list
-  }, [detail.id, detail.last_as_of, onEditRules, remove])
+  }, [detail.id, detail.kind, detail.last_as_of, onEditRules, remove, setTracked])
   const table = useReactTable({ data: detail.members, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getRowId: item => item.stock_code })
   if (detail.members.length === 0) return <Card><CardContent className="py-8 text-center"><p className="font-medium">종목이 없습니다.</p><p className="mt-1 text-sm text-muted-foreground">아래에서 종목을 검색해 넣거나, <Link className="underline" to="/discover">종목 발견</Link> 후보에서 ‘묶음에 추가’를 누르세요.</p></CardContent></Card>
   return <div className="overflow-x-auto rounded-xl bg-card">

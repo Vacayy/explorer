@@ -1,6 +1,8 @@
 """종목 추적 위젯 (docs/specs/stock-tracker.md) — 종목 하나의 차트·기술적 신호·수급·이슈·내 원칙 조건을 한 카드로, 조건 충족 시 알림. LLM 0.
 
-추적 대상의 단일 원천은 홈 배치의 `track.stock` 위젯이다(위젯을 빼면 추적·알림도 멈춘다).
+추적 대상(이행 중, D-293·ia-redesign §10.2): 관심 묶음 멤버의 추적 표시(`stock_group_members.tracked=1`, 새 원천)와
+홈 배치의 `track.stock` 위젯(옛 원천, D-267)의 합집합. 두 원천을 합쳐 읽는 동안에는 위젯을 빼도 추적 표시가 남아 있으면 알림이 돈다.
+옛 원천 읽기는 운영 점검 '추적 대상 두 원천'이 일치한 뒤 제거한다.
 알림은 portfolio_alerts.run에 편승하고 중복 방지 키(portfolio_alerts_sent)를 공유한다 — 보유와 추적이 겹쳐도 한 번만.
 """
 from __future__ import annotations
@@ -40,8 +42,8 @@ def ensure(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
 
 
-def tracked_codes(conn: sqlite3.Connection) -> list[str]:
-    """홈 메뉴들(home_boards)에 놓인 종목 추적 위젯의 종목들(메뉴 순서대로, 중복 제거)"""
+def widget_codes(conn: sqlite3.Connection) -> list[str]:
+    """옛 원천 — 홈 메뉴들(home_boards)에 놓인 종목 추적 위젯의 종목들(메뉴 순서대로, 중복 제거)"""
     try:
         rows = conn.execute("SELECT layout_json FROM home_boards ORDER BY sort, id").fetchall()
     except sqlite3.OperationalError:          # 메뉴 표가 없는 DB(테스트 등) = 추적 위젯 없음
@@ -53,6 +55,54 @@ def tracked_codes(conn: sqlite3.Connection) -> list[str]:
             if code and code not in out:
                 out.append(str(code))
     return out
+
+
+def member_codes(conn: sqlite3.Connection) -> list[str]:
+    """새 원천 — 관심(watch) 묶음 멤버 중 추적을 켠 종목(묶음 순서·넣은 순서, 중복 제거)"""
+    try:
+        rows = conn.execute("SELECT m.stock_code FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id "
+                            "WHERE g.kind='watch' AND m.tracked=1 ORDER BY g.id, m.id").fetchall()
+    except sqlite3.OperationalError:          # 묶음 표·추적 컬럼이 없는 DB(테스트 등) = 추적 표시 없음
+        return []
+    return list(dict.fromkeys(str(r[0]) for r in rows))
+
+
+def tracked_codes(conn: sqlite3.Connection) -> list[str]:
+    """추적 대상 = 옛 원천(위젯 순서) + 새 원천에만 있는 종목(묶음 순서). 이행 기간의 합집합, 중복 없음."""
+    return list(dict.fromkeys([*widget_codes(conn), *member_codes(conn)]))
+
+
+def source_diff(conn: sqlite3.Connection) -> dict:
+    """두 원천 비교 — 운영 점검용. widget_only가 남아 있으면 옛 원천을 지울 때 그 종목 알림이 멈춘다."""
+    widget, member = widget_codes(conn), member_codes(conn)
+    return {"widget": widget, "member": member,
+            "widget_only": [c for c in widget if c not in member], "member_only": [c for c in member if c not in widget]}
+
+
+def migrate_widget_tracking(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
+    """옛 원천(위젯) 종목을 기본 관심 묶음의 추적 표시로 복사한다. 멱등: 없으면 넣고(tracked=1), 있으면 표시만 켠다.
+
+    위젯·home_boards는 건드리지 않는다. 추적 표시를 끄는 일은 하지 않는다(새 원천에만 있는 종목은 그대로).
+    """
+    from pipeline.watch_rules import default_watch_group_id
+    group_id = default_watch_group_id(conn, create=False)
+    members = {r["stock_code"]: r["tracked"] for r in conn.execute(
+        "SELECT stock_code, tracked FROM stock_group_members WHERE group_id=?", (group_id,)).fetchall()} if group_id else {}
+    plan = {"group_id": group_id, "create_group": group_id is None, "add": [], "mark": [], "same": []}
+    for code in widget_codes(conn):
+        key = "add" if code not in members else "same" if members[code] else "mark"
+        plan[key].append({"stock_code": code, "name": _name(conn, code)})
+    if dry_run:
+        return plan
+    group_id = plan["group_id"] = default_watch_group_id(conn)
+    for item in plan["add"]:
+        conn.execute("INSERT OR IGNORE INTO stock_group_members (group_id, stock_code, tracked) VALUES (?,?,1)", (group_id, item["stock_code"]))
+    for item in plan["mark"]:
+        conn.execute("UPDATE stock_group_members SET tracked=1 WHERE group_id=? AND stock_code=?", (group_id, item["stock_code"]))
+    if plan["add"] or plan["mark"]:
+        conn.execute("UPDATE stock_groups SET updated_at=datetime('now') WHERE id=?", (group_id,))
+    conn.commit()
+    return plan
 
 
 def _name(conn, code: str) -> str:

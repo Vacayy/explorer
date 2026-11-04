@@ -771,10 +771,14 @@ export interface StockGroupMember {
   id: number; group_id: number; stock_code: string; name: string; market: string | null;
   bought_at: string | null;
   conviction: number | null; target_price: number | null; thesis: string | null; created_at: string;
+  /** 추적(알림 대상) 표시 0|1 — 관심 묶음만 (D-293) */
+  tracked: number;
   close: number | null; change_pct: number | null; market_cap: number | null; price_date: string | null;
   rule_count: number; signals: { rule_id: number; strategy_id: string; label: string; value: number | null; reference: number | null; signal_date: string | null }[];
   unavailable: number;
 }
+/** PUT /api/spine/groups/:id/members/:code/tracked — widget_tracked면 이행 기간 홈 위젯 때문에 꺼도 알림이 계속된다 */
+export interface StockGroupTrackedState { group_id: number; stock_code: string; tracked: boolean; widget_tracked: boolean; tracked_codes: string[] }
 export interface StockGroupSummary {
   id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
   member_count: number; rule_count: number; last_as_of: string | null; today_signals: number;

@@ -91,6 +91,31 @@ class WatchRulesTests(unittest.TestCase):
         self.assertEqual(wr.rule_condition(effective[0])["params"]["period"], 10)
         conn.close()
 
+    def test_tracked_toggle_marks_alert_target(self):
+        detail = self.group_with_rules()
+        gid = detail["id"]
+        self.assertEqual([m["tracked"] for m in detail["members"]], [0, 0])
+        url = f"/api/spine/groups/{gid}/members/000001/tracked"
+        on = self.client.put(url, json={"tracked": True})
+        self.assertEqual(on.status_code, 200, on.text)
+        self.assertEqual(on.json(), {"group_id": gid, "stock_code": "000001", "tracked": True, "widget_tracked": False, "tracked_codes": ["000001"]})
+        member = next(m for m in self.client.get(f"/api/spine/groups/{gid}").json()["members"] if m["stock_code"] == "000001")
+        self.assertEqual(member["tracked"], 1)
+        off = self.client.put(url, json={"tracked": False}).json()
+        self.assertEqual((off["tracked"], off["tracked_codes"]), (False, []))
+        self.assertEqual(self.client.put(f"/api/spine/groups/{gid}/members/009999/tracked", json={"tracked": True}).status_code, 404)
+        self.assertEqual(self.client.put(url, json={}).status_code, 422)
+        conn = self.connect()
+        conn.execute("INSERT INTO transcript_follow VALUES ('AAPL', 'Apple', NULL)")
+        conn.commit()
+        conn.close()
+        self.client.post(f"/api/spine/groups/{gid}/members", json={"stock_code": "AAPL"})
+        us = self.client.put(f"/api/spine/groups/{gid}/members/AAPL/tracked", json={"tracked": True})
+        self.assertEqual(us.status_code, 400)                    # 추적 판정은 국내 시세만 — 켜 놓고 조용히 안 도는 일을 막는다
+        portfolio = self.client.post("/api/spine/groups", json={"name": "보유", "kind": "portfolio"}).json()
+        self.client.post(f"/api/spine/groups/{portfolio['id']}/members", json={"stock_code": "000002"})
+        self.assertEqual(self.client.put(f"/api/spine/groups/{portfolio['id']}/members/000002/tracked", json={"tracked": True}).status_code, 409)
+
     def test_invalid_and_ranking_rules_are_rejected(self):
         group = self.client.post("/api/spine/groups", json={"name": "x"}).json()
         bad = self.client.put(f"/api/spine/groups/{group['id']}/rules", json={"default": [{"strategy_id": "nope"}]})

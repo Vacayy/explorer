@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, HTTPException, Query
 
-from models.groups import GroupCreate, GroupUpdate, MemberCreate, MemberUpdate, ReasonCreate, RulesPut
+from models.groups import GroupCreate, GroupUpdate, MemberCreate, MemberUpdate, ReasonCreate, RulesPut, TrackedPut, TrackedState
 from pipeline import watch_rules as wr
 
 router = APIRouter(prefix="/api/spine/groups", tags=["spine"])
@@ -188,6 +188,28 @@ def update_member(group_id: int, stock_code: str, body: MemberUpdate):
     detail = _detail(conn, group_id)
     conn.close()
     return detail
+
+
+@router.put("/{group_id}/members/{stock_code}/tracked", response_model=TrackedState)
+def set_member_tracked(group_id: int, stock_code: str, body: TrackedPut):
+    """관심 종목의 추적(알림 대상) 표시를 켜고 끈다 — 추적 알림은 국내 종목만 판정한다(stock_tracker)."""
+    from pipeline.stock_tracker import tracked_codes, widget_codes
+    conn = wr.connect()
+    try:
+        group = _group(conn, group_id)
+        if group["kind"] != "watch":
+            raise HTTPException(409, "추적은 관심 묶음 종목에서만 켭니다.")
+        if not conn.execute("SELECT 1 FROM stock_group_members WHERE group_id=? AND stock_code=?", (group_id, stock_code)).fetchone():
+            raise HTTPException(404, "이 묶음의 종목이 아닙니다.")
+        if body.tracked and wr.market_of(conn, stock_code) != "kr":
+            raise HTTPException(400, "추적 알림은 아직 국내 종목만 지원합니다.")
+        conn.execute("UPDATE stock_group_members SET tracked=? WHERE group_id=? AND stock_code=?", (int(body.tracked), group_id, stock_code))
+        conn.execute("UPDATE stock_groups SET updated_at=datetime('now') WHERE id=?", (group_id,))
+        conn.commit()
+        return TrackedState(group_id=group_id, stock_code=stock_code, tracked=body.tracked,
+                            widget_tracked=stock_code in widget_codes(conn), tracked_codes=tracked_codes(conn))
+    finally:
+        conn.close()
 
 
 @router.delete("/{group_id}/members/{stock_code}")

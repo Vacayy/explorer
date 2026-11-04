@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS stock_group_members (
     target_price INTEGER,
     thesis       TEXT,
     created_at   TEXT DEFAULT (datetime('now')),
+    tracked      INTEGER DEFAULT 0,             -- 추적(알림 대상) 표시 — 관심 묶음만 (D-293, stock-tracker.md)
     UNIQUE(group_id, stock_code)
 );
 CREATE TABLE IF NOT EXISTS watch_rules (
