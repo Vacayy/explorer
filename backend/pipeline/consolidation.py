@@ -125,7 +125,7 @@ def _find_similar_knowledge(conn, statement: str) -> int | None:
     """기존(proposed+active) 지식 중 같은 주장 찾기 — 있으면 병합 대상 id."""
     rows = conn.execute("""
         SELECT id, statement FROM knowledge
-        WHERE review_status IN ('proposed','active') AND valid_to IS NULL""").fetchall()
+        WHERE review_status IN ('proposed','held','active') AND valid_to IS NULL""").fetchall()
     if not rows:
         return None
     embs = _embed_statements([statement] + [r["statement"] for r in rows])

@@ -16,6 +16,7 @@ export const loaders = {
   'company': () => import('./validators-company.js'),
   'conversations': () => import('./validators-conversations.js'),
   'credit': () => import('./validators-credit.js'),
+  'curation': () => import('./validators-curation.js'),
   'doc': () => import('./validators-doc.js'),
   'feed': () => import('./validators-feed.js'),
   'follows': () => import('./validators-follows.js'),

@@ -250,6 +250,27 @@ def run_all(include_llm: bool = True) -> dict:
         else:
             record_run("vocab_merge", "skipped", "비활성(관리자 off)")
     conn.commit()
+    # 정리 작업 자동 처리(D-294) — 별칭·노드 병합·지식 승격을 규칙으로 판정(적용은 auto_curation_apply).
+    # 실패해도 앞 단계 제안은 이미 커밋돼 있고 스캔 전체를 멈추지 않는다.
+    import time as _t
+
+    from pipeline.ops import record_run as _rec
+    t1 = _t.time()
+    try:
+        from pipeline.auto_curation import run_curation
+        cur = run_curation(conn)
+        stats["auto_curation"] = cur
+        if cur.get("status") == "skipped":
+            _rec("auto_curation", "skipped", "비활성(관리자 off)")
+        else:
+            _rec("auto_curation", "ok",
+                 f"{'적용' if cur['apply'] else '판정만'} · 별칭 {cur['alias']} · 병합 {cur['vocab_merge']} · 지식 {cur['knowledge']}",
+                 int((_t.time() - t1) * 1000))
+    except Exception as e:  # noqa: BLE001 — 실패를 job_runs에 노출
+        conn.rollback()
+        stats["auto_curation"] = f"error: {type(e).__name__}"
+        _rec("auto_curation", "error", f"{type(e).__name__}: {str(e)[:200]}", int((_t.time() - t1) * 1000))
+    conn.commit()
     conn.close()
     return stats
 

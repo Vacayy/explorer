@@ -746,13 +746,27 @@ def init_db():
         rationale     TEXT,                 -- 왜 이걸 제안하는지 (승인 전 읽는 근거)
         payload_json  TEXT,                 -- kind별 구조화 데이터 (entity_id·edge_id·knowledge_id 등)
         dedup_key     TEXT,                 -- kind별 중복 방지 키 (같은 대상 재제안 억제)
-        status        TEXT DEFAULT 'proposed',  -- proposed|dismissed|actioned
+        status        TEXT DEFAULT 'proposed',  -- proposed|dismissed|actioned|held(자동 정리 보류, D-294)
         detected_at   TEXT DEFAULT (datetime('now')),
         actioned_at   TEXT,
         result_json   TEXT,                 -- 승인 후 실행 결과 요약
         UNIQUE(kind, dedup_key)
     );
     CREATE INDEX IF NOT EXISTS idx_agent_proposals_status ON agent_proposals(status, detected_at);
+
+    -- 정리 작업 자동 처리 기록 (D-294, pipeline/auto_curation.py) — 별칭·노드 병합·지식 승격의 규칙 판정.
+    -- 인박스 대신 관리자 화면에서 본다. applied=0이면 드라이런 판정만. 병합은 detail_json에 되돌리기 재료.
+    CREATE TABLE IF NOT EXISTS curation_log (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind         TEXT NOT NULL,        -- alias | vocab_merge | knowledge
+        target_id    INTEGER NOT NULL,     -- entity_keywords.id | agent_proposals.id | knowledge.id
+        verdict      TEXT NOT NULL,        -- approve | reject | hold | skip
+        rule         TEXT,
+        applied      INTEGER DEFAULT 0,
+        detail_json  TEXT,
+        decided_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(kind, target_id)
+    );
 
     -- 인과 엣지 근거 이력 (Phase 2 §2-4 교차검증) — entity_relations.narrative_id는 "가장 최근"
     -- 하나만 남기므로(재적재 시 덮어씀), 몇 개의 '독립' 내러티브가 이 엣지를 주장했는지 세려면

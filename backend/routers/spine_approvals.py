@@ -44,13 +44,16 @@ class ApprovalItem(BaseModel):
 
 @router.get("", response_model=list[ApprovalItem])
 def list_approvals():
+    from pipeline.ops import flag_enabled
+    # 정리 작업(별칭·노드 병합·지식 승격)을 자동으로 적용 중이면 인박스에 올리지 않는다(D-294) — 기록은 /curation
+    auto = flag_enabled("auto_curation_apply", default=False)
     conn = get_connection()
     items = []
-    for r in conn.execute("""
+    for r in ([] if auto else conn.execute("""
         SELECT ek.id, ek.keyword, e.name, e.aliases stock_code
         FROM entity_keywords ek JOIN entities e ON ek.entity_id = e.id
         WHERE ek.status = 'proposed' ORDER BY ek.created_at DESC
-    """):
+    """)):
         items.append(ApprovalItem(
             kind="alias", id=r["id"],
             title=f"{r['name']} ← '{r['keyword']}'",
@@ -59,8 +62,8 @@ def list_approvals():
     # 에이전트 제안함 (진화계획 3단계 v1) — kind 그대로 노출, 승인/기각은 /agent-proposals API
     for r in conn.execute("""
         SELECT id, kind, title, rationale, payload_json FROM agent_proposals
-        WHERE status='proposed' ORDER BY detected_at DESC
-    """):
+        WHERE status='proposed' AND NOT (? AND kind='vocab_merge') ORDER BY detected_at DESC
+    """, (1 if auto else 0,)):
         payload = json.loads(r["payload_json"] or "{}")
         items.append(ApprovalItem(
             kind=r["kind"], id=r["id"], title=r["title"], detail=r["rationale"],
@@ -91,8 +94,8 @@ def list_approvals():
                 WHERE ke.knowledge_id=k.id LIMIT 1) ename,
                (SELECT e.aliases FROM knowledge_entities ke JOIN entities e ON ke.entity_id=e.id
                 WHERE ke.knowledge_id=k.id LIMIT 1) scode
-        FROM knowledge k WHERE k.review_status='proposed' ORDER BY k.created_at DESC
-    """):
+        FROM knowledge k WHERE k.review_status='proposed' AND NOT ? ORDER BY k.created_at DESC
+    """, (1 if auto else 0,)):
         detail = f"{LAYER_KO.get(r['pace_layer'], r['pace_layer'])}층 · 독립 관측 {r['ind']}건"
         if r["ref"]:
             detail += f" · ⚠반박 {r['ref']}건"
@@ -102,3 +105,54 @@ def list_approvals():
             detail=detail, entity_name=r["ename"], stock_code=r["scode"]))
     conn.close()
     return items
+
+
+# ── 정리 작업 자동 처리 기록 (D-294) — 관리자 화면에서 본다 ──────────────────
+
+curation_router = APIRouter(prefix="/api/spine/curation", tags=["spine"])
+
+
+class CurationEntry(BaseModel):
+    kind: str             # alias | vocab_merge | knowledge
+    target_id: int
+    title: str            # 사람이 읽는 대상 ("삼성전자 ← 'Samsung'", "'A' → 'B' 통합?", 지식 문장 앞부분)
+    verdict: str          # approve | reject | hold | skip
+    rule: str | None
+    applied: bool
+    decided_at: str | None
+
+
+class CurationLog(BaseModel):
+    apply_enabled: bool
+    counts: dict[str, dict[str, int]]   # kind → verdict → 건수
+    items: list[CurationEntry]
+
+
+@curation_router.get("", response_model=CurationLog)
+def curation_log(kind: str | None = None, verdict: str | None = None, limit: int = 200):
+    from pipeline.ops import flag_enabled
+    conn = get_connection()
+    counts: dict[str, dict[str, int]] = {}
+    for r in conn.execute("SELECT kind, verdict, COUNT(*) n FROM curation_log GROUP BY kind, verdict"):
+        counts.setdefault(r["kind"], {})[r["verdict"]] = r["n"]
+    where, params = [], []
+    if kind:
+        where.append("c.kind=?"); params.append(kind)
+    if verdict:
+        where.append("c.verdict=?"); params.append(verdict)
+    rows = conn.execute(f"""
+        SELECT c.*,
+          CASE c.kind
+            WHEN 'alias' THEN (SELECT e.name || ' ← ''' || k.keyword || '''' FROM entity_keywords k
+                               JOIN entities e ON e.id=k.entity_id WHERE k.id=c.target_id)
+            WHEN 'vocab_merge' THEN (SELECT title FROM agent_proposals WHERE id=c.target_id)
+            WHEN 'knowledge' THEN (SELECT substr(statement, 1, 80) FROM knowledge WHERE id=c.target_id)
+          END title
+        FROM curation_log c {"WHERE " + " AND ".join(where) if where else ""}
+        ORDER BY c.decided_at DESC, c.id DESC LIMIT ?""", (*params, max(1, min(limit, 1000)))).fetchall()
+    conn.close()
+    return CurationLog(
+        apply_enabled=flag_enabled("auto_curation_apply", default=False), counts=counts,
+        items=[CurationEntry(kind=r["kind"], target_id=r["target_id"], title=r["title"] or f"#{r['target_id']}",
+                             verdict=r["verdict"], rule=r["rule"], applied=bool(r["applied"]),
+                             decided_at=r["decided_at"]) for r in rows])

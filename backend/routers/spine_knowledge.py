@@ -183,7 +183,7 @@ def approve_knowledge(knowledge_id: int):
     """승격 승인 — 승인 큐에서 active로 (독립 2+면 corroborated)."""
     from database import get_connection
     conn = get_connection()
-    row = conn.execute("SELECT id FROM knowledge WHERE id=? AND review_status='proposed'",
+    row = conn.execute("SELECT id FROM knowledge WHERE id=? AND review_status IN ('proposed','held')",
                        (knowledge_id,)).fetchone()
     if not row:
         conn.close()

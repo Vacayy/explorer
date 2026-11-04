@@ -31,6 +31,7 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("kr_financials", "국내 재무 수집", "DART — 보유·관심·시총 상위 300 분기 재무, 실행당 호출 예산 3,000", "scripts/collect_kr_company_data.py"),
     ("kr_valuation", "국내 밸류 수집", "네이버 종목 API — 전 종목 PER·PBR·EPS·BPS·배당 (소외 신호·밸류 밴드 재료)", "scripts/collect_kr_company_data.py"),
     ("refresh_questions", "질문 트래커 갱신", "일 1회 — 프록시 관측 갱신(numeric/sentiment) + 재판정 → 보유 논지·관심 이유 알림", "scripts/refresh_questions.py"),
+    ("auto_curation", "정리 작업 자동 처리", "주간 제안 스캔 끝 — 별칭·노드 병합·지식 승격을 규칙으로 판정(기본 판정만, auto_curation_apply 켜면 적용, D-294)", "pipeline/auto_curation.py → run_curation"),
     ("question_autopropose", "질문 자동 제안", "refresh_questions 안 — 지배 내러티브·다이제스트에서 질문 제안 → 승인 큐 (기본 off)", "pipeline/questions.py → refresh_all"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}
