@@ -33,7 +33,8 @@ app = FastAPI(title="Stock Explorer API")
 app.add_middleware(
     CORSMiddleware,
     # 프론트 dev 서버는 5174 (5173은 다른 프로젝트가 사용). 5173도 남겨 되돌릴 때 안 깨지게.
-    allow_origins=["http://localhost:5174", "http://localhost:5173"],
+    # 5175 = 개편 워크트리 dev 서버(feature/ia-redesign, 백엔드 8001)
+    allow_origins=["http://localhost:5174", "http://localhost:5173", "http://localhost:5175"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
