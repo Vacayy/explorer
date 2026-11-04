@@ -1,23 +1,25 @@
-import { Activity, Info } from "lucide-react"
+import { AlertTriangle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState } from "@/components/shared/ErrorState"
-import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
-import { RefreshButton } from "@/components/shared/RefreshButton"
-import { MetricHint } from "@/components/shared/MetricHint"
+import { BlockError, tone } from "@/components/home/blockState"
+import { InfoTip } from "@/components/regimes/Section"
 import { useMacro } from "@/hooks/useMacro"
+import { cn } from "@/lib/utils"
 import type { MacroIndicator } from "@/types"
 
 /**
- * 매크로·유동성 — 홈 배경 조건 트래킹 (docs/specs/macro.md).
+ * 매크로·유동성 신호등 — 홈 › 매크로 (docs/specs/macro.md, ia-redesign §4.16 #8).
  * 매크로(키 없음, yfinance)·유동성(FRED). 순유동성 = Fed BS − TGA − RRP (MacroMicro US Liquidity Index).
- * 시장 국면(포스처)과 역할 분리 — 이건 '배경 조건'. 버튼 주도 갱신(D-100).
+ * 시장 국면(포스처)·1번 추세 신호와 규칙이 다르다 — 엇갈려도 둘 다 보인다. 갱신은 아침 브리핑 작업이 맡는다(사용자 화면에 버튼 없음).
+ * compact = 모바일 핵심 6지표(Mobile-Macro).
  */
-const LIGHT: Record<string, { dot: string; text: string }> = {
-  green: { dot: "bg-chart-profit", text: "text-chart-profit" },
-  yellow: { dot: "bg-chart-warning", text: "text-chart-warning" },
-  red: { dot: "bg-destructive", text: "text-destructive" },
+const LIGHT: Record<string, { label: string; cls: string }> = {
+  green: { label: "초록 · 확대", cls: "border-chart-profit/40 bg-chart-profit/10 text-chart-profit-dark" },
+  yellow: { label: "노랑 · 선별", cls: "border-hypothesis/40 bg-hypothesis/10 text-hypothesis" },
+  red: { label: "빨강 · 방어", cls: "border-destructive/40 bg-destructive/10 text-destructive" },
 }
+const COMPACT_KEYS = ["usdkrw", "us10y", "dxy", "net_liq", "hyg", "oil"]
 
 const GROUP_ORDER: { key: string; label: string }[] = [
   { key: "rates", label: "금리·달러" },
@@ -26,7 +28,7 @@ const GROUP_ORDER: { key: string; label: string }[] = [
   { key: "commodity", label: "원자재" },
 ]
 
-const HINT = "전날 미국장의 배경 조건 — 금리·달러(위험선호 방향), 순유동성(Fed BS−TGA−RRP, 위험자산과 가장 잘 붙는 유동성), 신용스프레드·원자재. 시장 국면(오늘 얼마나 실을까)과 달리 '판이 어떻게 깔렸나'를 본다."
+const HINT = "전날 미국장의 배경 조건입니다 — 금리·달러(위험선호 방향), 순유동성(Fed BS−TGA−RRP, 위험자산과 가장 잘 붙는 유동성), 신용·원자재. 위 1번 추세 신호와 규칙이 달라 둘이 엇갈릴 수 있습니다. 변화는 약 20거래일 전 대비입니다."
 
 export function fmtValue(m: MacroIndicator): string {
   const v = m.value
@@ -41,94 +43,67 @@ function MiniSpark({ data }: { data: number[] }) {
   if (data.length < 2) return null
   const min = Math.min(...data), max = Math.max(...data)
   const span = max - min || 1
-  const w = 64, h = 18
-  const pts = data.map((v, i) =>
-    `${(i / (data.length - 1)) * w},${h - ((v - min) / span) * h}`).join(" ")
-  const up = data[data.length - 1] >= data[0]
+  const w = 140, h = 22
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / span) * h}`).join(" ")
   return (
-    <svg width={w} height={h} className="shrink-0 overflow-visible">
-      <polyline points={pts} fill="none" strokeWidth={1.25}
-        className={up ? "stroke-up" : "stroke-down"} strokeLinejoin="round" strokeLinecap="round" />
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-[22px] w-full min-w-0 overflow-visible" aria-hidden>
+      <polyline points={pts} fill="none" strokeWidth={1.25} vectorEffect="non-scaling-stroke" className="stroke-foreground/70" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   )
 }
 
-function Tile({ m }: { m: MacroIndicator }) {
+function Row({ m }: { m: MacroIndicator }) {
   const c = m.change_pct
   return (
-    <div className="flex items-center gap-2 py-1 min-w-0">
-      <span className="text-xs text-muted-foreground truncate w-24 shrink-0">{m.label}</span>
+    <div className="grid min-w-0 grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto_4.5rem] items-center gap-3 border-b py-2 last:border-0">
+      <span className="truncate text-sm">{m.label}</span>
       <MiniSpark data={m.series} />
-      <div className="ml-auto text-right shrink-0">
-        <div className="text-sm font-medium tabular-nums leading-tight">{fmtValue(m)}</div>
-        {c != null && (
-          <div className={`text-[10px] tabular-nums leading-tight ${c > 0 ? "text-up" : c < 0 ? "text-down" : "text-muted-foreground"}`}>
-            {c > 0 ? "+" : ""}{c}%
-          </div>
-        )}
-      </div>
+      <span className="text-right font-mono text-sm tabular-nums">{fmtValue(m)}</span>
+      <span className={cn("text-right font-mono text-sm tabular-nums", tone(c))}>{c == null ? "-" : `${c > 0 ? "+" : ""}${c.toFixed(2)}%`}</span>
     </div>
   )
 }
 
-export function MacroLiquidity() {
-  const { data, isLoading, isError, refetch, refresh, refreshing } = useMacro()
-
-  if (isLoading) return <Skeleton className="h-44 w-full rounded-card" />
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
+export function MacroLiquidity({ compact }: { compact?: boolean }) {
+  const { data, isLoading, isError, error, refetch } = useMacro()
+  const head = <CardHeader className="flex flex-row flex-wrap items-center gap-1.5 space-y-0">
+    <CardTitle>매크로·유동성 신호등</CardTitle>
+    <InfoTip label="매크로·유동성 설명">{HINT}</InfoTip>
+    {data?.as_of && <span className="text-caption tabular-nums text-muted-foreground">{data.as_of}</span>}
+  </CardHeader>
+  if (isLoading) return <Card id="macro" className="scroll-mt-24">{head}<CardContent><Skeleton className="h-56 w-full" /></CardContent></Card>
+  if (isError || !data) return <Card id="macro" className="scroll-mt-24">{head}<CardContent><BlockError message="매크로·유동성을 불러오지 못했습니다" error={error} onRetry={() => void refetch()} /></CardContent></Card>
 
   const byGroup = (g: string) => data.items.filter((m) => m.group === g)
-
+  const light = data.signal ? LIGHT[data.signal.signal] : null
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <Activity className="h-4 w-4 text-muted-foreground" /> 매크로·유동성
-          <MetricHint hint={HINT}><Info className="h-3.5 w-3.5 text-muted-foreground" /></MetricHint>
-          <span className="ml-auto flex items-center gap-1.5">
-            {data.as_of && <FreshnessStamp asOf={data.as_of} />}
-            <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (지표 재수집)" />
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {/* 신호등 해설 — sonnet 산문(우선), LLM 미가용이면 결정적 프레임 폴백 */}
-        {data.signal ? (
-          <div className="rounded-md bg-muted/40 px-2.5 py-2">
-            <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${LIGHT[data.signal.signal]?.dot ?? "bg-muted-foreground"}`} />
-              <span className={`text-xs font-semibold ${LIGHT[data.signal.signal]?.text ?? "text-foreground"}`}>{data.signal.headline}</span>
-              <span className="ml-auto shrink-0 whitespace-nowrap text-[9px] uppercase tracking-wide text-muted-foreground">해석</span>
-            </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{data.signal.comment}</p>
-          </div>
-        ) : data.interpretation ? (
-          <div className="flex items-start gap-1.5 rounded-md bg-muted/40 px-2 py-1.5 text-[11px]">
-            <span className={`shrink-0 font-medium ${
-              data.interpretation.stance === "우호" ? "text-up"
-              : data.interpretation.stance === "역풍" ? "text-down" : "text-muted-foreground"}`}>
-              배경 {data.interpretation.stance}
-            </span>
-            <span className="text-muted-foreground">· {data.interpretation.comment.replace(/ → 위험자산 배경 \S+$/, "")}</span>
-          </div>
-        ) : null}
-        <div className="grid grid-cols-1 @[620px]/market:grid-cols-2 gap-x-6 gap-y-1">
-        {GROUP_ORDER.map(({ key, label }) => {
-          const items = byGroup(key)
-          return (
-            <div key={key} className="min-w-0">
-              <div className="text-[11px] font-medium text-muted-foreground mb-0.5">{label}</div>
-              {items.length > 0 ? (
-                items.map((m) => <Tile key={m.key} m={m} />)
-              ) : key === "liquidity" && !data.fred_enabled ? (
-                <p className="text-[11px] text-muted-foreground py-1">FRED 무료 키(FRED_API_KEY) 설정 시 순유동성·M2 표시</p>
-              ) : (
-                <p className="text-[11px] text-muted-foreground py-1">데이터 없음</p>
-              )}
-            </div>
-          )
-        })}
-        </div>
+    <Card id="macro" className="scroll-mt-24" data-macro-block="macro">
+      {head}
+      <CardContent className="space-y-3">
+        {(light || data.interpretation) && <div className="flex flex-wrap items-center gap-2">
+          {light && <Badge variant="outline" className={cn("font-medium", light.cls)}>{light.label}</Badge>}
+          {data.interpretation && <Badge variant="outline" className={cn("font-normal", data.interpretation.stance === "우호" ? "border-up/40 text-up" : data.interpretation.stance === "역풍" ? "border-down/40 text-down" : "text-muted-foreground")}>배경 {data.interpretation.stance}</Badge>}
+          {data.signal && <span className="text-sm font-semibold">{data.signal.headline}</span>}
+        </div>}
+        {!compact && (data.signal ? <p className="max-w-4xl text-sm leading-relaxed">{data.signal.comment}</p>
+          : data.interpretation && <p className="text-sm text-muted-foreground">{data.interpretation.comment.replace(/ → 위험자산 배경 \S+$/, "")}</p>)}
+        {compact ? <div>{COMPACT_KEYS.map(k => data.items.find(m => m.key === k)).filter((m): m is MacroIndicator => !!m).map(m => <Row key={m.key} m={m} />)}</div>
+          : <div className="surface-grid grid md:grid-cols-2">
+            {GROUP_ORDER.map(({ key, label }) => {
+              const items = byGroup(key)
+              return (
+                <div key={key} className="min-w-0 border px-4 py-3">
+                  <div className="mb-1 text-caption font-medium text-muted-foreground">{label}</div>
+                  {items.length > 0 ? items.map((m) => <Row key={m.key} m={m} />)
+                    : key === "liquidity" && !data.fred_enabled ? <p className="py-1 text-caption text-muted-foreground">FRED 키가 없어 순유동성·M2를 받지 못했습니다.</p>
+                    : <p className="py-1 text-caption text-muted-foreground">-</p>}
+                </div>
+              )
+            })}
+          </div>}
+        {data.degraded.length > 0 && <p className="flex items-center gap-1.5 text-caption text-hypothesis">
+          <AlertTriangle className="size-3.5" aria-hidden="true" />{data.degraded.join(" · ")} 원천 지연 · 이 지표 없이 판정했습니다
+        </p>}
       </CardContent>
     </Card>
   )

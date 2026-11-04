@@ -3,6 +3,7 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { InfoTip } from "./Section"
 import { formatPercent } from "@/utils/format"
 import type { EraOutcome, EraSignal } from "@/types"
 
@@ -20,7 +21,7 @@ const tickLabel = (k: number) => (k === 0 ? "켜진 날" : k === 252 ? "1년" : 
  * 과거 에피소드의 이후 경로 — 신호가 켜진 날을 100으로 두고 1년(252거래일) 뒤까지.
  * 얇은 선 = 각 에피소드(결과별 색), 굵은 선 = 결과별 중앙 경로, 검은 선 = 지금 진행 중인 에피소드.
  */
-export function EpisodePaths({ signal, current }: { signal: EraSignal; current?: [number, number][] }) {
+export function EpisodePaths({ signal, current, compact }: { signal: EraSignal; current?: [number, number][]; compact?: boolean }) {
   const eps = signal.episodes
   const rows = useMemo(() => {
     const byK = new Map<number, Record<string, number>>()
@@ -35,12 +36,15 @@ export function EpisodePaths({ signal, current }: { signal: EraSignal; current?:
   const bearLow = median(eps.filter(e => e.outcome === "bear").map(e => e.min_after))
   const falseLow = median(eps.filter(e => e.outcome === "false").map(e => e.min_after))
 
-  return <div className="space-y-3">
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted-foreground">
-      {counts.map(({ o, n }) => <span key={o} className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4" style={{ background: OUTCOME[o].color }} />{OUTCOME[o].label} {n}번</span>)}
-      {current && current.length > 0 && <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-foreground" />지금</span>}
-    </div>
-    <div className="h-[300px] w-full">
+  const note = <>켜진 날을 100으로 두고 1년 뒤까지 그렸습니다. 얇은 선은 각 에피소드, 굵은 선은 결과별 중앙 경로{current && current.length > 0 ? ", 검은 선은 지금 진행 중인 경로" : ""}입니다.
+    {bearLow != null && <> 이후 1년 최저의 중앙값은 약세장이었던 경우 {formatPercent(bearLow)}, 헛경보였던 경우 {formatPercent(falseLow)}입니다(중앙 경로는 바닥 시점이 서로 달라 이보다 얕게 보입니다).</>}
+    {" "}켜진 날 그것이 약세장인지 헛경보인지는 알 수 없습니다 — 색은 나중에 알게 된 결과입니다.</>
+  const legend = <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
+    {counts.map(({ o, n }) => <span key={o} className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4" style={{ background: OUTCOME[o].color }} />{OUTCOME[o].label} {n}번</span>)}
+    {current && current.length > 0 ? <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-foreground" />지금</span> : <span>진행 중인 경로 없음</span>}
+    <InfoTip label="에피소드 경로 읽는 법">{note}</InfoTip>
+  </div>
+  const chart = <div className={cn("h-[300px] w-full", compact && "h-[220px] min-w-[520px]")}>
       <ResponsiveContainer>
         <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
           <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" vertical={false} />
@@ -63,23 +67,25 @@ export function EpisodePaths({ signal, current }: { signal: EraSignal; current?:
         </LineChart>
       </ResponsiveContainer>
     </div>
-    <p className="text-caption text-muted-foreground">
-      켜진 날을 100으로 두고 1년 뒤까지 그렸습니다. 굵은 선은 결과별 중앙 경로입니다.
-      {bearLow != null && <> 이후 1년 최저의 중앙값은 약세장이었던 경우 {formatPercent(bearLow)}, 헛경보였던 경우 {formatPercent(falseLow)}입니다(중앙 경로는 바닥 시점이 서로 달라 이보다 얕게 보입니다).</>}
-      {" "}켜진 날 그것이 약세장인지 헛경보인지는 알 수 없습니다 — 색은 나중에 알게 된 결과입니다.
-    </p>
-    <Table>
-      <TableHeader><TableRow>
-        <TableHead>켜진 날</TableHead><TableHead>결과(사후)</TableHead><TableHead className="text-right">켜질 때 고점 대비</TableHead>
-        <TableHead className="text-right">이후 1년 최저</TableHead><TableHead className="text-right">1년 뒤</TableHead>
-      </TableRow></TableHeader>
-      <TableBody>{[...eps].reverse().slice(0, 8).map(e => <TableRow key={e.date}>
-        <TableCell className="tabular-nums">{e.date}</TableCell>
-        <TableCell><Badge variant="outline" className={cn("font-normal", OUTCOME[e.outcome].cls)}>{OUTCOME[e.outcome].label}</Badge></TableCell>
-        <TableCell className="text-right tabular-nums">{formatPercent(e.drawdown_at)}</TableCell>
-        <TableCell className="text-right tabular-nums text-down">{formatPercent(e.min_after)}</TableCell>
-        <TableCell className="text-right tabular-nums">{e.ret_after == null ? "진행 중" : formatPercent(e.ret_after)}</TableCell>
-      </TableRow>)}</TableBody>
-    </Table>
+  if (compact) return <div className="space-y-2">{legend}<div className="-mx-1 overflow-x-auto px-1">{chart}</div></div>
+
+  return <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+    <div className="min-w-0 space-y-2">{legend}{chart}</div>
+    <div className="min-w-0 space-y-1.5">
+      <p className="text-sm font-medium">최근 에피소드 6개</p>
+      <Table>
+        <TableHeader><TableRow>
+          <TableHead>켜진 날</TableHead><TableHead>결과</TableHead><TableHead className="text-right">켜질 때 낙폭</TableHead>
+          <TableHead className="text-right">이후 최저</TableHead><TableHead className="text-right">1년 뒤</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>{[...eps].reverse().slice(0, 6).map(e => <TableRow key={e.date}>
+          <TableCell className="tabular-nums">{e.date}</TableCell>
+          <TableCell><Badge variant="outline" className={cn("font-normal", OUTCOME[e.outcome].cls)}>{OUTCOME[e.outcome].label}</Badge></TableCell>
+          <TableCell className="text-right tabular-nums">{formatPercent(e.drawdown_at)}</TableCell>
+          <TableCell className="text-right tabular-nums text-down">{formatPercent(e.min_after)}</TableCell>
+          <TableCell className="text-right tabular-nums">{e.ret_after == null ? "진행 중" : formatPercent(e.ret_after)}</TableCell>
+        </TableRow>)}</TableBody>
+      </Table>
+    </div>
   </div>
 }

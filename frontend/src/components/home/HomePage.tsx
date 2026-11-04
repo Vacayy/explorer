@@ -1,10 +1,7 @@
 import { Link } from "react-router-dom"
 import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
 import { AiActivityFeed } from "@/components/home/AiActivityFeed"
-import { RiskMonitoring } from '@/components/home/RiskMonitoring'
 import { RetailHeatCard } from '@/components/home/RetailHeatCard'
-import { MarketRegime } from "@/components/home/MarketRegime"
-import { MacroLiquidity } from "@/components/home/MacroLiquidity"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { UsSeasonBlock } from "@/components/home/UsSeasonBlock"
 import { KrTurnoverBlock } from "@/components/home/KrTurnoverBlock"
@@ -20,7 +17,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 
 /**
  * 홈 L2 = 시스템 고정 탭 다섯 개 (docs/specs/home-widgets.md §0): 대시보드 · 한국 시장 · 미국 시장 · 매크로 · 내 종목.
- * 한국·미국 시장은 시안대로(3b). 매크로·내 종목은 이행 중 화면 — 기존 위젯 본문·카드를 섹션으로 모아 둔 것이고 3c~3d 단계에서 시안대로 바꾼다.
+ * 한국·미국 시장은 시안대로(3b), 매크로는 home/HomeMacroPage(3c). 내 종목은 이행 중 화면 — 기존 위젯 본문·카드를 섹션으로 모아 둔 것이고 3d 단계에서 시안대로 바꾼다.
  * /home?home_view=feed는 피드(소스 디렉터리 + 리더)다. 보기는 URL home_view만 따른다.
  */
 export default function HomePage() {
@@ -70,13 +67,6 @@ export function HomeUsPage() {
         <HomeSection widget="explore.momentum" w={6} h={6} className="h-[420px]" />
       </div>
     </div>
-  </PageLayout>
-}
-
-/** 홈 › 매크로 (이행 중, 3c에서 시안 Home-Macro로) — 매크로·유동성 + 옛 국면·리스크 화면(시장 국면·Risk 추이) */
-export function HomeMacroPage() {
-  return <PageLayout mode="document" header={<PageHeader title="매크로" />}>
-    <div className="@container/market space-y-5"><MacroLiquidity /><MarketRegime /><RiskMonitoring /></div>
   </PageLayout>
 }
 

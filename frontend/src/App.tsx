@@ -28,7 +28,9 @@ import { DiscoveryNavigationMemory } from "@/components/shared/DiscoveryNavigati
 import { DiscoveryContextTrail } from "@/components/company/DiscoveryContextTrail"
 import { DiscoveryTechnicalContext } from "@/components/company/DiscoveryTechnicalContext"
 import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
-import HomePage, { HomeKrPage, HomeMacroPage, HomeStocksPage, HomeUsPage } from "@/components/home/HomePage"
+import HomePage, { HomeKrPage, HomeStocksPage, HomeUsPage } from "@/components/home/HomePage"
+import HomeMacroPage from "@/components/home/HomeMacroPage"
+import { withSearch } from "@/lib/macroPage"
 import ProxyBoardsPage from "@/components/proxy/ProxyBoardsPage"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
@@ -36,7 +38,6 @@ import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
 import ValueChainPage from "@/components/explore/ValueChainPage"
 import CreditPage from "@/components/follow/CreditPage"
-import RegimesPage from "@/components/regimes/RegimesPage"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
@@ -214,7 +215,7 @@ function AnalyzePage({ tab }: { tab: string }) {
 /** 옮긴 화면으로 보낸다 — 쿼리는 그대로 넘긴다(ia-redesign §10.6) */
 function KeepQueryRedirect({ to }: { to: string }) {
   const { search } = useLocation()
-  return <Navigate to={`${to}${search}`} replace />
+  return <Navigate to={withSearch(to, search)} replace />
 }
 
 function AskRedirect() {
@@ -241,6 +242,7 @@ export default function App() {
             <Route path="home/b/:boardId" element={<KeepQueryRedirect to="/home" />} />
             <Route path="home/briefing" element={<KeepQueryRedirect to="/home/us" />} />
             <Route path="home/risk" element={<KeepQueryRedirect to="/home/macro" />} />
+            <Route path="regimes" element={<KeepQueryRedirect to="/home/macro#history" />} />
             <Route path="proxy-boards" element={<ProxyBoardsPage />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<SourcesPage />} />
@@ -250,7 +252,6 @@ export default function App() {
             <Route path="follow/trade" element={<TradePage />} />
             <Route path="value-chain" element={<ValueChainPage />} />
             <Route path="follow/credit" element={<CreditPage />} />
-            <Route path="regimes" element={<RegimesPage />} />
             <Route path="retail" element={<RetailHeatPage />} />
             <Route path="follow/saved" element={<SavedPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />

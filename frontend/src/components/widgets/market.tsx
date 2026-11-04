@@ -174,10 +174,10 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 /* ── Risk 단일 지표 ── */
-function riskValue(unit: string, v: number | null) {
+export function riskValue(unit: string, v: number | null) {
   return unit === "%" ? formatYield(v) : unit === "bp" ? (v == null ? "-" : `${formatBp(v)}bp`) : formatLevel(v)
 }
-function riskChange(unit: string, v: number | null) {
+export function riskChange(unit: string, v: number | null) {
   if (v == null) return "-"
   return unit === "bp" ? `${formatBp(v, true)}bp` : unit === "%" ? `${formatBp(v * 100, true)}bp` : `${v > 0 ? "+" : ""}${formatLevel(v)}`
 }

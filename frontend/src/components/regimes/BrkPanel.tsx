@@ -12,6 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useBrk } from "@/hooks/useRegimes"
 import { cn } from "@/lib/utils"
 import { formatPercent, formatPp } from "@/utils/format"
+import { InfoTip } from "./Section"
 import type { BrkBenchKey, BrkRange, BrkResponse } from "@/types"
 
 export const BENCH_LABEL: Record<BrkBenchKey, string> = { sp500tr: "S&P500 총수익", sp500: "S&P500", nasdaq: "나스닥" }
@@ -82,8 +83,11 @@ export function BrkPanel() {
 
   return <Card>
     <CardHeader className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <CardTitle>버크셔 해서웨이 vs 지수</CardTitle>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          <CardTitle>버크셔 vs 지수 — 국면마다 누가 이겼나</CardTitle>
+          <InfoTip label="버크셔 비교 설명">국면 표와 요약은 기간 선택과 무관하게 전체 이력 기준입니다. 완결된 국면만 셉니다(잠정·데이터 시작 전에 시작한 국면 제외). BRK의 하락장 방어는 상당 부분 낮은 베타로 설명됩니다(Frazzini·Kabiller·Pedersen 2018, β≈0.7). 베타 조정은 국면 시작 시점의 직전 36개월 월간 베타로 BRK − β·지수를 계산합니다.</InfoTip>
+        </div>
         {d?.as_of && <span className="text-caption text-muted-foreground">{d.start} ~ {d.as_of}</span>}
       </div>
       <BrkControls {...p} />
@@ -91,7 +95,7 @@ export function BrkPanel() {
     <CardContent className="space-y-5">
       {q.isPending ? <Skeleton className="h-[560px] w-full" />
         : q.isError ? <ErrorState message="버크셔 비교를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
-        : !d || !d.points.length ? <p className="py-16 text-center text-sm text-muted-foreground">아직 시세 이력이 없습니다. 위 '이력 수집'을 눌러 주세요.</p>
+        : !d || !d.points.length ? <p className="py-16 text-center text-sm text-muted-foreground">아직 버크셔 시세 이력이 없습니다. 첫 수집이 끝나면 채워집니다.</p>
         : <>
           <Notes data={d} />
           {last && <p className="text-sm">
@@ -138,11 +142,6 @@ function PhaseTable({ data }: { data: BrkResponse }) {
           {" "}· 베타 조정 후 우세 {s[k]!.beta_adj_wins}/{s[k]!.beta_adj_n}번</p>
       </div>)}
     </div>
-    <p className="text-caption leading-relaxed text-muted-foreground">
-      국면 표와 요약은 위 기간 선택과 무관하게 전체 이력 기준입니다. 표본이 작습니다 — 완결된 국면만 셉니다(잠정·데이터 시작 전에 시작한 국면 제외). BRK의 하락장 방어는 상당 부분 낮은 베타로 설명됩니다
-      (Frazzini·Kabiller·Pedersen 2018, β≈0.7). 베타 조정은 국면 시작 시점의 직전 36개월 월간 베타로 BRK − β·지수를 계산합니다.
-      1998.6~2000.2처럼 지수가 오르는 동안 BRK가 크게 빠진 구간도 있습니다.
-    </p>
     <Table>
       <TableHeader><TableRow>
         <TableHead>국면</TableHead><TableHead>기간</TableHead><TableHead className="text-right">S&P500</TableHead>

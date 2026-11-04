@@ -6,9 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ErrorState } from '@/components/shared/ErrorState'
-import { RefreshButton } from '@/components/shared/RefreshButton'
 import { RiskTrendChart } from '@/components/charts/RiskTrendChart'
 import { useRisk } from '@/hooks/useRisk'
 import { formatNumber } from '@/utils/format'
@@ -154,32 +151,4 @@ export function RiskCard({ view, kind }: { view: RiskView; kind: RiskCardKind })
       </CardContent></Card>
   if (kind === 'vix') return <Card className="min-w-0" data-risk-card="vix"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>VIX</CardTitle><RangeSelect value={vixRange} onChange={value => setParam('risk_vix_range', value)} label="VIX 기간" ranges={SENTIMENT_RANGES} /></div><div><span className="text-2xl font-semibold tabular-nums">{number(vix.value)}</span></div><p className="text-caption text-muted-foreground">5 관측일 {change(vix.change_5, 'pt')} · S&amp;P 500 옵션 기반</p></CardHeader><CardContent className="space-y-3"><RiskTrendChart points={visible.vix} label="VIX" unit="pt" /><p className="text-sm text-muted-foreground">향후 30일의 예상 변동성입니다. 주가 방향이나 침체 여부를 확정하는 지표는 아닙니다.</p><Metadata item={vix} /></CardContent></Card>
   return <Card className="min-w-0" data-risk-card="fear"><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>공포·탐욕</CardTitle><RangeSelect value={fearRange} onChange={value => setParam('risk_fear_range', value)} label="공포·탐욕 기간" ranges={SENTIMENT_RANGES} /></div><div><span className="text-2xl font-semibold tabular-nums">{number(fear.value)} <small className="text-sm font-normal">/ 100</small></span></div><p className="text-caption text-muted-foreground">5 관측일 {change(fear.change_5, 'pt')} · CNN 미국 주식 심리</p></CardHeader><CardContent className="space-y-3"><RiskTrendChart points={visible.fear_greed} label="공포·탐욕" unit="pt" bounded /><p className="text-sm text-muted-foreground">낮을수록 공포, 높을수록 탐욕입니다. VIX·신용 관련 요소와 겹치므로 독립 위험 점수로 합산하지 않습니다.</p><Metadata item={fear} /></CardContent></Card>
-}
-
-export function RiskMonitoring() {
-  const view = useRiskView()
-  const { query, data, items } = view
-  if (query.isLoading) return <section aria-label="Risk 모니터링 불러오는 중" aria-busy="true" className="space-y-3"><h2 className="text-section font-semibold">Risk 모니터링</h2><div className="surface-grid grid grid-cols-1 @3xl/market:grid-cols-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-80 rounded-card" />)}</div></section>
-  if (!data) return <ErrorState message="Risk 모니터링을 불러오지 못했습니다." onRetry={() => void query.refetch()} />
-  const signal = data.signal
-  const alert = ['joint', 'watch', 'credit'].includes(signal.status)
-  const refreshFailures = query.snapshot?.results.filter(result => result.status === 'error') ?? []
-  return <section aria-labelledby="risk-title" className="space-y-4" data-testid="risk-monitoring">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 id="risk-title" className="text-section font-semibold">Risk 모니터링</h2><p className="text-caption text-muted-foreground">미국 금리·신용·변동성·투자심리 · 일별 저장 관측</p></div>
-      <RefreshButton onClick={query.refresh} pending={query.refreshing} title="Risk 데이터 수집 (6시간 캐시)" />
-    </div>
-    {query.isError && <div role="alert" className="flex items-center gap-2 text-sm text-destructive">조회에 실패해 이전 응답을 표시합니다.<Button variant="outline" size="sm" onClick={() => void query.refetch()}>조회 재시도</Button></div>}
-    {(query.refreshError || refreshFailures.length > 0) && <p role="alert" className="text-sm text-destructive">{query.refreshError ? '수집 요청에 실패했습니다. 저장된 관측을 유지합니다.' : `일부 수집 실패: ${refreshFailures.map(r => items[r.key]?.label ?? r.key).join(', ')}. 기존 관측을 유지합니다.`}</p>}
-    {query.snapshot?.busy && <p role="status" className="text-sm text-muted-foreground">다른 수집이 진행 중입니다. 잠시 후 조회를 다시 시도해 주세요.<Button variant="ghost" size="sm" onClick={() => void query.refetch()}>조회</Button></p>}
-    {data.empty && <p className="rounded-xl border p-4 text-sm text-muted-foreground">아직 Risk 데이터가 없습니다. 오른쪽 갱신 버튼으로 데이터를 수집할 수 있습니다.</p>}
-    <div role="status" className={`rounded-xl border px-4 py-3 ${alert ? 'border-hypothesis/30 bg-hypothesis/5' : 'bg-muted/30'}`}>
-      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{signal.label}</Badge><span className="text-sm">{signal.reason}</span><span className="text-caption text-muted-foreground">실험 규칙</span></div>
-      <p className="mt-1 text-caption text-muted-foreground">공통 기준일 {signal.as_of ?? '없음'} · 20 공통 관측일: 10Y {change(signal.rate_change_bp, 'bp')} / HY OAS {change(signal.credit_change_bp, 'bp')} · 연속 {number(signal.consecutive)}회</p>
-    </div>
-    <div className="surface-grid grid grid-cols-1 @3xl/market:grid-cols-2">
-      {(['curve', 'credit', 'vix', 'fear'] as const).map(kind => <RiskCard key={kind} view={view} kind={kind} />)}
-    </div>
-    <p className="text-caption text-muted-foreground" title={signal.rule_version}>실험 조건: 20 공통 관측일 10Y ≤ −30bp · HY OAS ≥ +75bp, 3회 지속. 침체 확정 신호가 아닙니다. 기대 관측일 {data.expected_date}, 2영업일 초과 지연 시 평가 보류. {data.calendar_note}. 차트는 실제 확보한 기간만 표시합니다.</p>
-  </section>
 }

@@ -25,9 +25,9 @@
   2. 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림 · 개별 움직임(`UsBriefingSection columns` — 날짜 선택을 두 칸이 같이 쓴다, `#us-briefing`).
   3. 컨콜·실적 발표 | 이번 시즌 실적 모멘텀 — 시안에는 없지만 이행 화면에 있던 것이라 남긴다(새 모멘텀 후보는 시즌 개요 개편 §4.6a로 옮겨 갈 때 정리).
 - **이행 중 화면**(기존 위젯·카드를 섹션으로 모아 둔 것 — 아무 기능도 잃지 않게. 이후 단계에서 시안대로 바꾼다):
-  - 매크로(3c): 매크로·유동성 → 시장 국면 → Risk 추이(옛 `/home/risk` 화면 내용).
+  - 매크로(3c, 2026-11-05 완료): `home/HomeMacroPage` — 시안 Home-Macro·ia-redesign §4.16. 지금 시장은 5칸·AI 해설·1~5 → 매크로·유동성 신호등 → 리스크 지표 묶음(`home/RiskTiles`) → 국면 이력. 계약은 market-regimes.md §6·§8.
   - 내 종목(3d): 관심 묶음에서 추적을 켠 종목마다 추적 카드(`track.stock` 본문) → 묶음 오늘 신호 · 관심 종목 오늘 요약 · 포트폴리오 오늘 · 다가오는 일정 · 보유 종목 자료 흐름.
-- **리다이렉트**(쿼리 유지, `KeepQueryRedirect`): `/home/b/:boardId` → `/home`, `/home/briefing` → `/home/us`, `/home/risk` → `/home/macro`. `/retail`은 화면을 그대로 두고 한국 시장 탭으로 판정한다.
+- **리다이렉트**(쿼리 유지, `KeepQueryRedirect`): `/home/b/:boardId` → `/home`, `/home/briefing` → `/home/us`, `/home/risk` → `/home/macro`, `/regimes` → `/home/macro#history`(해시는 쿼리 뒤). `/retail`은 화면을 그대로 두고 한국 시장 탭으로 판정한다.
 - **5-state**(ia-redesign §4.28): 블록 단위 로딩(위젯 본문의 스켈레톤, Overnight·Today는 같은 높이 칸 안)·오류(그 블록만 '다시 시도')·빈 상태(위젯 본문 문구). Market Today는 첫 회차 전에는 직전 회차를 날짜와 함께 보인다(서버가 최신 거래일을 읽음). 리스크 타일은 갱신이 늦거나 실패하면 마지막 값을 흐리게 두고 'n일 지연 · MM/DD 값' / '갱신 실패 · MM/DD 값'을 붙인다.
 - **남겨 둔 것(7단계 정리)**: `home_boards` 테이블과 `/api/dashboard/boards` API는 그대로다. 이행 기간에 추적(`stock_tracker.widget_codes`)이 아직 이 표의 `track.stock` 위젯을 읽는다. 화면에서 메뉴를 고칠 수 없으니 옛 원천은 고정된 채 남는다. `WidgetDef`의 크기·`Detail`·`multi`·`pick` 필드와 `react-grid-layout` 의존성도 7단계에서 걷는다.
 - 걷은 것: `home/Dashboard`(격자·편집), `home/NewBoardDialog`, `widgets/WidgetGallery`(위젯 추가 창), `widgets/rows`(줄 배치), `WidgetFrame` 틀, `SYSTEM_PRESETS`·`GALLERY_SECTIONS`, `useHomeBoards`, 홈 L2의 '+ 새 메뉴', 위젯 상세 창(`?widget=`).

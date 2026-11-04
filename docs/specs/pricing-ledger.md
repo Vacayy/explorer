@@ -54,7 +54,7 @@
 
 ## 8. 5-state
 
-Empty(브리핑 없음 → 안내, 추출 전 → '소급 추출' 버튼) · Loading Skeleton · Error ErrorState · Partial(가격 지표 일부 결측은 '-') · Ideal §7.
+Empty(브리핑 없음 → 안내. 추출 전 날은 아침 브리핑 작업이 잇고 화면엔 띠의 빈 칸으로만 — 2026-11-05 '소급 추출' 버튼 제거, ia-redesign §4.28) · Loading Skeleton · Error ErrorState · Partial(가격 지표 일부 결측은 '-') · Ideal §7.
 
 ## 9. 범위 밖
 

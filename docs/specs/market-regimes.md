@@ -1,6 +1,6 @@
 # 국면 이력 — 과거 시장 국면 지도와 버크셔 상대성과
 
-상태: P0 구현(2026-10-26) + §8 지금 시장 읽기(2026-10-26). 화면 `/regimes`(탐색 › 국면 이력), 홈 위젯 `explore.brk`. 근거 조사: [research/market-regimes.md](../research/market-regimes.md) · [regime-signals.md](../research/regime-signals.md) · [era-methodology.md](../research/era-methodology.md).
+상태: P0 구현(2026-10-26) + §8 지금 시장 읽기(2026-10-26) + 홈 › 매크로로 이전(2026-11-05, 화면 구조 개편 3c). 화면 `/home/macro`(옛 `/regimes`는 `/home/macro#history`로 리다이렉트), 홈 위젯 `explore.brk`. 근거 조사: [research/market-regimes.md](../research/market-regimes.md) · [regime-signals.md](../research/regime-signals.md) · [era-methodology.md](../research/era-methodology.md).
 
 홈 › 국면·리스크([market-regime](market-regime.md))는 **오늘의 비중 포스처**다. 이 문서는 **과거 국면 지도**다 — 지난 수십 년을 규칙으로 구간을 나누고, 그 위에 매크로 계열과 개별 자산의 상대성과를 겹쳐 본다.
 
@@ -47,29 +47,33 @@
 
 - `pipeline/regimes.collect()`: 티커별 `us_prices` 행이 1,000개 미만이면 `period=max`, 아니면 `1mo`. `USREC`은 `market_indicators.regime_usrec`(월 1행), 7일 캐시.
 - 평일 16:20 `scripts/snapshot_market.py` 체인 끝에서 호출. 신선도 점검 `health.CHECKS`의 `regimes`(S&P500 최신 거래일).
+- **자동 첫 수집(2026-11-05)**: 홈 › 매크로가 `GET /regimes`에서 국면이 0개면 `POST /regimes/collect`를 한 번 부른다(`hooks/useRegimes.useAutoCollectRegimes`, 페이지 수명당 1회, 판정 `lib/macroPage.shouldAutoCollect`). 사용자 화면에는 수집 버튼이 없다. 다시 받기는 관리자 › 작업·신선도 '수동 수집'의 '다시 받기'.
 
 ## 6. 화면
 
-### 탐색 › 국면 이력 `/regimes`
+### 홈 › 매크로 `/home/macro` 아래 '국면 이력' 묶음 (`components/regimes/History.tsx`, `#history`)
 
-1. 머리: 제목 · 지금 국면 한 줄(강세/약세·시작일·고점 대비 낙폭·실시간 추세) · 기준일.
-2. **국면 지도**: S&P500 로그 차트 + 약세장 음영(잠정은 빗금 대신 옅게) + 침체 음영(다른 색) + 실시간 추세 띠. 기간 `regime_range`(10y·20y·50y·all, 기본 all). 범례에 층별 사후/실시간 배지.
-3. **겹쳐 보기**: 오버레이 계열 선택(`regime_overlay`, 기본 curve) → 같은 기간·같은 음영으로 아래 차트.
-4. **버크셔 vs 지수**: 벤치(`brk_bench`)·보기(`brk_view`=compare|spread)·기간(`brk_range`, 기본 all) → 위 차트 + 롤링 12M 초과수익(막대) + 베타 조정선, 국면 음영.
-5. **국면 표**: 국면별 기간·S&P 변화·확정일(지연 일수)·BRK 초과수익·베타 조정 초과. 위에 강세/약세 요약과 표본·반대 사례 안내.
+화면 전체 구성(상태 줄 → 지금 시장은 → … → 국면 이력)은 §8과 ia-redesign §4.16이 정한다. 이 묶음은 아래 넷이다. 부연설명은 화면에 쓰지 않고 ⓘ 툴팁에 둔다.
 
-### 홈 위젯 `explore.brk`(탐색 › 국면 이력 묶음)
+1. **국면 지도**(`MapCard`): S&P500 로그 차트 + 약세장 음영(잠정은 옅게) + 임계 근접 조정 + 침체 음영 + 실시간 추세 띠. 기간 `regime_range`(10y·20y·50y·all, 기본 all). 범례에 층별 사후/실시간 배지, 규칙은 범례 ⓘ.
+2. **겹쳐 보기**(`OverlayCard`, `#overlay`): 계열 토글(`regime_overlay`, 기본 curve, 5종) → 지금 값·20일 변화 한 줄 + 같은 기간·같은 음영 차트.
+3. **버크셔 vs 지수**(`BrkPanel`, `#brk`): 벤치(`brk_bench`)·보기(`brk_view`=compare|spread)·기간(`brk_range`, 기본 all) → 위 차트 + 롤링 12M 초과수익(막대) + 베타 조정선 + 국면 요약·표.
+4. **약세장 표**(`BearTable`): 약세장 전부를 2열로(고점·저점·하락·기간·확정까지) + 임계 근접 조정 목록.
 
-벤치·보기를 URL `brk_bench`·`brk_view`로 공유. 5년 창, 약세장 음영, 머리 숫자 = 최근 12M 초과수익. 전체 보기 → `/regimes`.
+모바일(<768)은 `HistoryCompact` — 지도 최근 20년 + 최근 약세장 4건 + '약세장 n번 · 버크셔 vs 지수 ›'(`?macro_view=full#history`).
+
+### 홈 위젯 `explore.brk`(국면 이력 묶음)
+
+벤치·보기를 URL `brk_bench`·`brk_view`로 공유. 5년 창, 약세장 음영, 머리 숫자 = 최근 12M 초과수익. 전체 보기 → `/home/macro#brk`.
 
 ## 7. 5-state
 
 | 상태 | 표시 |
 |---|---|
-| Empty | 시세 미수집 → "아직 지수 이력이 없습니다" + 수집 버튼(POST collect) |
-| Loading | 차트 자리 Skeleton |
-| Partial | 벤치 이력이 BRK보다 짧으면 실제 시작일 안내 · USREC이 비면 침체 음영만 빠진다(수집 버튼이 소스별 실패를 알림) |
-| Error | ErrorState + 다시 시도 |
+| Empty | 시세 미수집 → 자동 첫 수집 + '처음 한 번 지수 이력을 받는 중입니다'(버튼 없음). 수집이 실패하면 블록 오류 + 실패 소스 + '관리자 화면에서 다시 받을 수 있습니다'. 겹쳐 보기 계열 관측 0 → 한 줄 안내(갱신 버튼 없음) |
+| Loading | 블록별 실제 모양 Skeleton |
+| Partial | 판정(`/state`)만 실패하면 요약 1~4칸 '-' + 이유 한 줄, 5번·프라이싱·국면 이력은 그대로 · 벤치 이력이 BRK보다 짧으면 실제 시작일 안내 · USREC이 비면 침체 음영만 빠진다 |
+| Error | 블록 단위 오류 + 다시 시도. 화면 전체 오류는 regimes·state·pricing 셋 다 실패했을 때만 |
 | Ideal | §6 |
 
 ## 8. 지금 시장 읽기 — 네 층 + AI 해설 (`pipeline/era.py`, `pipeline/era_commentary.py`)
@@ -84,10 +88,10 @@
 | 4 전제 원장 | 구루 전제 8개마다 반증 지표·판정 규칙 → 지지·반증 쪽·엇갈림·반증 불가(시점 없음)·데이터 없음. 근거 링크 = 수집된 Marks 메모(`/doc/:id`) 또는 외부 원문 | era-premises.md |
 
 - **수집**: `era.collect_era()` — FRED `DGS30`·`DFII10`·`T5YIFR`·`THREEFYTP10`·`T10Y3M`·`DTB3`·`DFF`·`CPIAUCSL`·`BAMLH0A0HYM2EY`, Yahoo `GC=F`·`DX-Y.NYB` → `market_indicators.era_*`(처음 전 이력, 이후 400일, 20시간 캐시). `regimes.collect()` 끝에서 호출(평일 16:20 체인).
-- **AI 해설**: 입력 = 네 층 판정(상관 시계열 제외) + 최신 Marks 메모 앞 2,500자. sonnet 1회, 고정 7섹션(한 줄 요약·하락 국면·금리의 뜻·온도·구루 전제·지켜볼 것·한계). JSON에 없는 숫자·예측·권유 금지. 입력·프롬프트·모델 해시가 같으면 저장본(`era_commentary`)을 돌려준다. 버튼으로만 만든다(자동 생성 없음). 화면에 생성 시각·모델·'숫자가 바뀌었어요'(stale) 표시.
+- **AI 해설**: 입력 = 네 층 판정(상관 시계열 제외) + 최신 Marks 메모 앞 2,500자. sonnet 1회, 고정 7섹션(한 줄 요약·하락 국면·금리의 뜻·온도·구루 전제·지켜볼 것·한계). JSON에 없는 숫자·예측·권유 금지. 입력·프롬프트·모델 해시가 같으면 저장본(`era_commentary`)을 돌려준다. 버튼으로만 만든다(자동 생성 없음). 화면은 '한 줄 요약'만 펼치고 나머지는 '전체 보기'(`lib/macroPage.splitCommentary`), 작성 시각과 낡으면 '새 데이터 있음 · 다시 쓰기 권장' + 수동 '다시 쓰기'.
 - **API**: `GET /api/spine/regimes/state` · `PUT /regimes/checks/{key}` `{state: hot|normal|cold|null, note}` · `GET·POST /regimes/commentary`.
-- **화면**: 요약 4칸(각 층으로 이동) → AI 해설 → 층 1~4 카드(카드마다 '읽는 법' 한 단락) → 국면 이력(§6). 상단 페이지 안 이동 칩. 층 1은 경계·확정 카드 + '과거에 켜졌을 때 이후 1년' 겹친 경로(`regimes/EpisodePaths`, Recharts, 신호 선택 URL `now_sig`) + 최근 에피소드 표.
-- **5-state**: Loading Skeleton · Error ErrorState · 해설 Empty('해설 만들기' 안내) · 해설 생성 중 스피너 · Partial = 데이터 없는 전제·미수집 온도 항목을 명시.
+- **화면(홈 › 매크로, 2026-11-05)**: 요약 5칸(1~4 층 + 5 시장 프라이싱, 각 섹션으로 이동) → AI 해설 → 1 추세 → 2 금리 → 3 온도 → 5 프라이싱 → 4 구루 전제 → (매크로·유동성 · 리스크 지표) → 국면 이력(§6). 상단 앵커 칩. '읽는 법'은 섹션 제목 옆 ⓘ 툴팁. 층 1은 경계·확정 카드(켜짐/꺼짐·그 상태 시작일·지금 값·통계 5칸) + '켜진 뒤 1년' 겹친 경로(`regimes/EpisodePaths`, Recharts, 신호 선택 URL `era_signal`) | 최근 에피소드 6개 표. 층 2는 상관 시계열(약세장·침체 음영)·연대별 상관 7칸 | 경보 게이지 2개(10년 6개월 ±0.75%p · 3개월 ±1%p, 디스인플레이션형은 하락 쪽)·가설 상자. 층 3은 숫자 8개 표 | 직접 판단 8개. 층 4는 표(판정·전제·지금 숫자·판정 규칙) + 최근 메모. 모바일은 compact(카드 통계·표·상관 차트·직접 판단 생략, 4·5는 한 카드에 전제 한 줄 + 프라이싱 4건).
+- **5-state**: Loading 블록별 Skeleton · Error 블록 오류(`home/blockState.BlockError`) + 다시 시도 · 해설 Empty('아직 해설이 없습니다' + '해설 쓰기') · 해설 생성 중 스피너 · Partial = 판정 API 실패 시 요약 1~4 '-' + 이유 한 줄, 데이터 없는 전제·미수집 온도 항목(ⓘ)을 명시.
 
 ## 9. 범위 밖(다음 단계)
 

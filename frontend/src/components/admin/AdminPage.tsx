@@ -15,6 +15,8 @@ import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ObservePanel } from "@/components/admin/ObservePanel"
+import { Spinner } from "@/components/ui/spinner"
+import { useCollectRegimes } from "@/hooks/useRegimes"
 
 /**
  * /admin — 운영 관리자 (D-055). cron 생성 작업 on/off + 최근 실행 로그.
@@ -137,6 +139,8 @@ function OpsView({ tabs }: { tabs: React.ReactNode }) {
         )}
       </section>
 
+      <RecollectRegimes />
+
       {/* 작업 on/off */}
       <div className="space-y-2">
         {isLoading && <Skeleton className="h-40 w-full rounded-card" />}
@@ -191,5 +195,35 @@ function OpsView({ tabs }: { tabs: React.ReactNode }) {
         )}
       </div>
     </PageContainer>
+  )
+}
+
+/**
+ * 국면 이력 다시 받기 — 홈 › 매크로는 이력이 비면 자동으로 첫 수집만 한다(ia-redesign §4.28 결정 ①).
+ * 사용자 화면에서 뺀 '이력 수집' 버튼이 여기로 왔다. 처음엔 전 이력, 이후엔 최근 1개월을 받는다.
+ */
+function RecollectRegimes() {
+  const collect = useCollectRegimes()
+  const run = () => collect.mutate(undefined, {
+    onSuccess: r => {
+      const failed = r.results.filter(x => x.status === "error")
+      if (failed.length) toast.error(`수집 실패: ${failed.map(f => `${f.key}(${f.error ?? ""})`).join(", ")}`)
+      else toast.success(`국면 이력 수집 완료 · ${r.results.reduce((a, x) => a + x.rows, 0).toLocaleString("ko-KR")}행`)
+    },
+    onError: () => toast.error("국면 이력 수집 요청이 실패했습니다."),
+  })
+  return (
+    <section aria-label="수동 수집" className="space-y-1.5">
+      <h3 className="text-sm font-medium">수동 수집</h3>
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm">국면 이력</div>
+          <div className="text-[11px] text-muted-foreground">S&P500·나스닥·버크셔 일별 시세, NBER 침체 월, 지금 시장 읽기 계열 — 홈 › 매크로</div>
+        </div>
+        <Button variant="outline" size="sm" onClick={run} disabled={collect.isPending}>
+          {collect.isPending ? <><Spinner className="size-3.5" />받는 중…</> : "다시 받기"}
+        </Button>
+      </div>
+    </section>
   )
 }

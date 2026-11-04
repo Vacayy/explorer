@@ -38,6 +38,6 @@ function BrkBody({ w, h }: WidgetBodyProps) {
 
 export const REGIME_WIDGETS: WidgetDef[] = [
   { id: "explore.brk", title: "버크셔 vs 지수", description: "BRK.B와 S&P500·나스닥 5년 비교·상대강도 · 약세장 음영",
-    section: "explore", group: "국면 이력", size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/regimes",
+    section: "explore", group: "국면 이력", size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/home/macro#brk",
     useMeta: useBrkMeta, Body: BrkBody },
 ]

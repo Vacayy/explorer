@@ -17,6 +17,7 @@ const CASES = [
   ['/home/b/3', '', 'home', 'dashboard'],
   ['/home/briefing', '', 'home', 'us'],
   ['/home/risk', '', 'home', 'macro'],
+  ['/regimes', '', 'home', 'macro'],
   ['/retail', '', 'home', 'kr'],
   // 피드
   ['/home', '?home_view=feed', 'feed', 'feed'],
@@ -39,7 +40,7 @@ const CASES = [
   ['/person', '?name=x', 'explore', 'people'],
   ['/explore', '?list=x', 'explore', 'signals'],
   ['/actions', '', 'explore', 'actions'],
-  // 산업 (국면 이력은 이행 중 탭)
+  // 산업
   ['/map', '', 'industry', 'sectors'],
   ['/map', '?view=universe', 'industry', 'sectors'],
   ['/follow/universe', '', 'industry', 'sectors'],
@@ -47,7 +48,6 @@ const CASES = [
   ['/follow/trade', '', 'industry', 'trade'],
   ['/value-chain', '?node=x', 'industry', 'valuechain'],
   ['/follow/credit', '', 'industry', 'credit'],
-  ['/regimes', '', 'industry', 'regimes'],
   // 포트폴리오
   ['/portfolio', '', 'portfolio', 'overview'],
   ['/portfolio/holdings', '?stock=000001', 'portfolio', 'holdings'],
@@ -127,7 +127,7 @@ test('L2 tabs follow the plan, transitional tabs last', () => {
   assert.deepEqual(tabs.home, ['대시보드', '한국 시장', '미국 시장', '매크로', '내 종목'])
   assert.deepEqual(tabs.feed, ['피드', '저장됨'])
   assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물', '신호', '기업활동'])
-  assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '밸류체인', '회사채', '국면 이력'])
+  assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '밸류체인', '회사채'])
   assert.deepEqual(tabs.world, ['지금', '그래프', '내 판단', '스터디'])
 })
 
@@ -143,6 +143,7 @@ const REDIRECTS = [
   ['home/b/:boardId', '/home'],
   ['home/briefing', '/home/us'],
   ['home/risk', '/home/macro'],
+  ['regimes', '/home/macro#history'],
 ]
 
 test('old home URLs redirect to the fixed home tabs', () => {

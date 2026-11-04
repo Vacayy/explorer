@@ -26,12 +26,12 @@ export interface SectionDef {
 }
 
 export const SECTIONS: readonly SectionDef[] = [
-  // 홈 L2 = 시스템 고정 탭(개편 3단계). 옛 주소 /home/b/:id·/home/briefing·/home/risk는 리다이렉트, /retail은 한국 시장으로 판정
+  // 홈 L2 = 시스템 고정 탭(개편 3단계). 옛 주소 /home/b/:id·/home/briefing·/home/risk·/regimes는 리다이렉트, /retail은 한국 시장으로 판정
   { key: "home", label: "홈", path: "/home", tabs: [
     { key: "dashboard", path: "/home", label: "대시보드", match: ["/home"] },
     { key: "kr", path: "/home/kr", label: "한국 시장", match: ["/home/kr", "/retail"] },
     { key: "us", path: "/home/us", label: "미국 시장", match: ["/home/us", "/home/briefing"] },
-    { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro", "/home/risk"] },
+    { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro", "/home/risk", "/regimes"] },
     { key: "stocks", path: "/home/stocks", label: "내 종목", match: ["/home/stocks"] },
   ] },
   { key: "feed", label: "피드", path: "/home?home_view=feed", tabs: [
@@ -53,8 +53,6 @@ export const SECTIONS: readonly SectionDef[] = [
     // 대만 공급망 탭은 아직 화면이 없다(대만 월매출·연결은 홈 위젯뿐) — 화면을 만드는 단계에서 추가
     { key: "valuechain", path: "/value-chain", label: "밸류체인", match: ["/value-chain"] },
     { key: "credit", path: "/follow/credit", label: "회사채", match: ["/follow/credit"] },
-    // 이행 중 — 홈 › 매크로가 국면 이력을 흡수하면 리다이렉트
-    { key: "regimes", path: "/regimes", label: "국면 이력", match: ["/regimes"] },
   ] },
   { key: "portfolio", label: "포트폴리오", path: "/portfolio", tabs: [
     { key: "overview", path: "/portfolio", label: "개요", match: ["/portfolio"] },

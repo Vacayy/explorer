@@ -29,14 +29,14 @@
 
 | L1 | L2 → 현재 URL | 이 L1로 판정하는 경로 |
 |---|---|---|
-| 홈 | 대시보드 `/home` · 한국 시장 `/home/kr` · 미국 시장 `/home/us` · 매크로 `/home/macro` · 내 종목 `/home/stocks` | `/home` (단 `home_view=feed` 제외)·`/home/b/:id`(→ `/home`) → 대시보드, `/home/kr`·`/retail` → 한국 시장, `/home/us`·`/home/briefing`(→ `/home/us`) → 미국 시장, `/home/macro`·`/home/risk`(→ `/home/macro`) → 매크로, `/home/stocks` → 내 종목 |
+| 홈 | 대시보드 `/home` · 한국 시장 `/home/kr` · 미국 시장 `/home/us` · 매크로 `/home/macro` · 내 종목 `/home/stocks` | `/home` (단 `home_view=feed` 제외)·`/home/b/:id`(→ `/home`) → 대시보드, `/home/kr`·`/retail` → 한국 시장, `/home/us`·`/home/briefing`(→ `/home/us`) → 미국 시장, `/home/macro`·`/home/risk`(→ `/home/macro`)·`/regimes`(→ `/home/macro#history`) → 매크로, `/home/stocks` → 내 종목 |
 | 피드 | 피드 `/home?home_view=feed` · 저장됨 `/follow/saved` | `home_view=feed`, `/feed`, `/doc/`, `/source`, `/follow/saved` |
 | 탐색 | 종목 발견 `/discover` · Peer 그룹 `/discover/peers` · 컨콜 `/follow/transcripts` · 인물 `/people` · *신호 `/explore`* · *기업활동 `/actions`* | `/discover`, `/discover/peers`, `/follow/transcripts`, `/us`(목록), `/people`, `/person`, `/explore`, `/actions` |
-| 산업 | 산업·섹터 `/map` · 수출입 `/follow/trade` · 밸류체인 `/value-chain` · 회사채 `/follow/credit` · *국면 이력 `/regimes`* | `/map`, `/follow/universe`, `/discover/industry`, `/follow/trade`, `/value-chain`, `/follow/credit`, `/regimes` |
+| 산업 | 산업·섹터 `/map` · 수출입 `/follow/trade` · 밸류체인 `/value-chain` · 회사채 `/follow/credit` | `/map`, `/follow/universe`, `/discover/industry`, `/follow/trade`, `/value-chain`, `/follow/credit` |
 | 포트폴리오 | 개요 `/portfolio` · 보유 · 원칙 · 일정 · 종목 묶음 `/follow/stocks` | `/portfolio`, `/follow/stocks`, `/follow` |
 | Thesis | 지금 `/narrative` · 그래프 `/knowledge/ontology` · 내 판단 `/questions` · 스터디 `/study` | `/narrative`, `/knowledge`, `/questions`, `/question/`, `/thesis`, `/report`, `/proxy-boards`, `/study` |
 
-- *기울임* 탭은 이행 중이다. 대체 화면(종목 발견 '오늘의 신호', 도시에 개요의 기업활동, 홈 › 매크로의 국면 이력)이 생기면 옛 경로를 리다이렉트로 바꾸고 탭을 뺀다. 옛 경로를 대체 화면보다 먼저 지우지 않는다.
+- *기울임* 탭은 이행 중이다. 대체 화면(종목 발견 '오늘의 신호', 도시에 개요의 기업활동)이 생기면 옛 경로를 리다이렉트로 바꾸고 탭을 뺀다. 옛 경로를 대체 화면보다 먼저 지우지 않는다. 산업 › 국면 이력은 2026-11-05(개편 3c)에 홈 › 매크로로 옮겨 탭을 뺐다 — `/regimes`는 `/home/macro#history`로 리다이렉트(쿼리 유지, 해시는 쿼리 뒤).
 - 대만 공급망 탭은 아직 없다. 대만 월매출·대만 → 한국 연결은 지금 홈 › 한국 시장 맨 아래(3b 이후에도 임시)에만 있어, 산업 › 대만 공급망 화면을 만드는 단계에서 탭을 더하고 홈에서 뺀다.
 - Thesis의 코드 key는 `world` 그대로다(이름만 바꿈).
 - `/sources`(소스 관리)는 메뉴에서 빠졌다(L1 밖). 설정 메뉴 '소스 관리'와 관리자 화면의 '소스 관리' 링크로 들어간다. 관리자 › 소스(`/admin/sources`)로 옮기는 것은 이후 단계.
