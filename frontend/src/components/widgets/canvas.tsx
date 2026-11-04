@@ -46,7 +46,7 @@ function FeedList({ h, source }: { h: number; source: string }) {
   const navigate = useNavigate()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   const docs = q.data.items.filter(i => i.document)
-  if (!docs.length) return <WidgetState empty emptyText={source === "all" ? "팔로우한 소스의 글이 아직 없어요. 캔버스 › 소스에서 등록합니다." : "이 출처의 최신 글이 없어요."} />
+  if (!docs.length) return <WidgetState empty emptyText={source === "all" ? "팔로우한 소스의 글이 아직 없어요. 설정 › 소스 관리에서 등록합니다." : "이 출처의 최신 글이 없어요."} />
   // 작게 줄이면 제목만, 넉넉하면 피드와 같은 게시물 행(요약 보기)을 위젯 안에서 스크롤
   if (h <= 3) return <ul className="divide-y overflow-hidden text-[13px]">
     {docs.slice(0, Math.max(1, h * 2 - 1)).map(i => (
@@ -75,7 +75,7 @@ function UnreadBody({ h }: WidgetBodyProps) {
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   const human = groupDirectory(q.data.items).human
   const unread = human.filter(i => i.unread > 0).sort((a, b) => b.unread - a.unread)
-  if (!human.length) return <WidgetState empty emptyText="팔로우한 소스가 아직 없어요. 캔버스 › 소스에서 등록합니다." />
+  if (!human.length) return <WidgetState empty emptyText="팔로우한 소스가 아직 없어요. 설정 › 소스 관리에서 등록합니다." />
   if (!unread.length) return <WidgetState empty emptyText="팔로우한 소스를 모두 읽었어요." />
   const total = unread.reduce((n, i) => n + i.unread, 0)
   return <div className="flex h-full flex-col gap-2">

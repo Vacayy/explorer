@@ -41,7 +41,7 @@ const PAGES = [
   { label: "스터디", hint: "자료를 모아 함께 공부하기", to: "/study", icon: NotebookPen, keywords: "study 스터디 공부 프로젝트", pinned: true },
   { label: "대화", hint: "AI 질문·스레드", to: "/chat", icon: MessageCircleQuestion, keywords: "ask rag chat 대화 질문", pinned: true },
   { label: "Home", hint: "시장 브리핑·피드", to: "/home", icon: Home, keywords: "home stream 홈 브리핑", pinned: true },
-  { label: "월드모델", hint: "내러티브·지식", to: "/narrative", icon: Globe, keywords: "narrative worldmodel 월드모델 내러티브 지식", pinned: true },
+  { label: "Thesis", hint: "내러티브·지식·내 판단", to: "/narrative", icon: Globe, keywords: "thesis narrative worldmodel 월드모델 내러티브 지식", pinned: true },
   { label: "관심목록", hint: "기업·인물·산업·테마", to: "/follow", icon: Building2, keywords: "follow watchlist 관심목록 팔로우" },
   { label: "신호", hint: "언급 급증·52주 신고가", to: "/explore", icon: LineChart, keywords: "signal 신호" },
   { label: "기업활동", hint: "유무증·합병·공개매수", to: "/actions", icon: Building2, keywords: "actions 유상증자 기업활동" },

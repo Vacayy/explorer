@@ -5,7 +5,7 @@ export function readPref(key: string): string | null {
 export function writePref(key: string, value: string | null) {
   try { if (value == null) localStorage.removeItem(key); else localStorage.setItem(key, value) } catch { /* private storage */ }
 }
-export const PREF = { left: "explorer.shell.left", ai: "explorer.shell.ai", thread: "explorer.shell.thread", group: "explorer.shell.group" } as const
+export const PREF = { ai: "explorer.shell.ai", thread: "explorer.shell.thread" } as const
 
 /** 대화 패널이 지금 보고 있는 스레드 — 답변 도착 토스트를 중복으로 띄우지 않기 위해 AnswerWatcher가 읽는다 */
 let panelThread: number | null = null

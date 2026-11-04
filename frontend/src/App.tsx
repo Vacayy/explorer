@@ -8,9 +8,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { TopBar } from "@/components/layout/TopBar"
-import { MyListPanel } from "@/components/layout/MyListPanel"
 import { TabBar } from "@/components/layout/TabBar"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { useMediaQuery, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
@@ -121,12 +119,9 @@ function initialOpen(key: string): boolean {
 
 function Layout() {
   const { pathname, search } = useLocation()
-  const [leftOpen, setLeftOpen] = useState(() => initialOpen(PREF.left))
   const [aiOpen, setAiOpen] = useState(() => initialOpen(PREF.ai))
   const aiInput = useRef<HTMLTextAreaElement | null>(null)
   const panelInline = useMediaQuery(PANEL_INLINE_QUERY)
-  // 좁은 화면의 열고 닫기는 오버레이 조작이라 데스크톱 기본값(pref)에 남기지 않는다
-  const setLeft = (v: boolean) => { setLeftOpen(v); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.left, v ? "1" : "0") }
   const toggleAi = useCallback(() => setAiOpen(v => {
     if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, v ? "0" : "1")
     if (!v) requestAnimationFrame(() => aiInput.current?.focus())
@@ -154,12 +149,10 @@ function Layout() {
         <DetailNavigationMemory />
         <DiscoveryNavigationMemory />
         <UsageTracker />
-        <SidebarProvider open={leftOpen} onOpenChange={setLeft} className="flex-col"
-          style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
+        <div className="flex min-h-svh w-full flex-col">
           <TopBar aiOpen={showAi} onToggleAi={toggleAi} />
           <div className="flex min-h-0 w-full flex-1">
-            <MyListPanel currentStockCode={stockCode} />
-            <SidebarInset className="min-w-0 bg-background">
+            <main className="relative flex w-full min-w-0 flex-1 flex-col bg-background">
               {/* --shell-offset: 풀하이트 화면이 뺄 높이 = 상단 바 + 위아래 여백 + (L2가 있으면) L2 (app-shell.md §8) */}
               <div
                 className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-inset)] pb-[var(--dock-reserve)]"
@@ -174,11 +167,11 @@ function Layout() {
                 {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
                 <ErrorBoundary key={pathname + search} onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><Outlet /></ErrorBoundary>
               </div>
-            </SidebarInset>
+            </main>
             {showAi && panelInline && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
           </div>
           <TabBar />
-        </SidebarProvider>
+        </div>
         {/* 폭 <1024: AI 대화는 오른쪽 오버레이(모바일은 전체 폭) */}
         {!panelInline && (
           <Sheet open={showAi} onOpenChange={v => { if (v !== showAi) toggleAi() }}>

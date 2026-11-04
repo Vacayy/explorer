@@ -51,25 +51,24 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
 
 ## 1. 레이아웃 컨트랙트
 
-### 셸 (App.tsx Layout — 상단 5탭 · 3칸, docs/specs/app-shell.md)
+### 셸 (App.tsx Layout — 상단 6탭 · 2칸, docs/specs/app-shell.md)
 
 ```
 <TooltipProvider>
     <Omnibar/>                            ⌘K 오버레이 (CommandDialog)
-    <SidebarProvider open={내 목록} --sidebar-width:15.5rem className=flex-col>
-      <TopBar/>                           sticky · h-(--topbar-height)=52px · L1 5탭·검색·운영 상태·인박스·설정·AI 토글
+    <div flex-col min-h-svh>
+      <TopBar/>                           sticky · h-(--topbar-height)=52px · L1 6탭(홈·피드·탐색·산업·포트폴리오·Thesis)·검색·운영 상태(Popover)·인박스·설정·AI 토글
       <div flex>
-        <MyListPanel/>                    shadcn <Sidebar side=left collapsible=offcanvas>, 상단 바 아래 고정
-        <SidebarInset>                    본문
+        <main>                            본문
           <div mx-auto max-w-[var(--layout-shell)] px-6 pt-6 pb-[var(--dock-reserve)]>
             <SubNav/>                     L2 (탭이 둘 이상일 때, h-8 + mb-5 = --subnav-height)
             ← 페이지 렌더 슬롯
           </div>
-        </SidebarInset>
+        </main>
         <ChatPanel/>                      aside sticky · w-(--ai-panel-width)=360px · /chat에서는 숨김 · <1024는 Sheet
       </div>
-      <TabBar/>                           <768 하단 L1 5탭 (fixed, --tabbar-height + 안전 영역)
-    </SidebarProvider>
+      <TabBar/>                           <768 하단 L1 6탭 (fixed, --tabbar-height + 안전 영역)
+    </div>
 </TooltipProvider>
 ```
 

@@ -1,5 +1,4 @@
 import type { ComponentType } from "react"
-import type { SectionKey } from "@/components/layout/navConfig"
 
 /** 기본 크기(12칸 폭 · 72px 행 기준 높이)와 최소값 — 대시보드가 10px 행으로 바꿔 쓴다 */
 export interface SizeSpec { w: number; h: number; minW: number; minH: number }
@@ -9,12 +8,15 @@ export interface WidgetBodyProps { w: number; h: number; params?: Record<string,
 /** 머리에 보일 원천 기준 시각과 고장 여부 */
 export interface WidgetMeta { asOf: string | null; stale?: boolean }
 
+/** 위젯 추가 창의 분류 — 옛 L1 5탭 기준. 위젯 홈은 개편 3단계에서 고정 탭으로 바뀌므로 메뉴(navConfig)와 묶지 않는다 */
+export type WidgetSection = "home" | "explore" | "portfolio" | "canvas" | "world"
+
 /** 위젯 정의 (docs/specs/home-widgets.md §2) */
 export interface WidgetDef {
   id: string
   title: string
   description: string
-  section: SectionKey
+  section: WidgetSection
   group: string
   size: SizeSpec
   /** 띠형(높이 1) — 평소엔 머리 없이 */

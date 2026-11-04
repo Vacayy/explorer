@@ -10,7 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { cn } from "@/lib/utils"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
+import { ChevronRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ObservePanel } from "@/components/admin/ObservePanel"
 
@@ -36,12 +38,16 @@ const STATUS_CLS: Record<string, string> = {
 export default function AdminPage() {
   const [params, setParams] = useSearchParams()
   const view = params.get("view") === "observe" ? "observe" : "ops"
+  // 소스는 피드 메뉴에서 빠졌다 — 관리자 › 소스 보기로 옮기기 전까지 여기서 /sources로 잇는다(화면 구조 개편 §4.26)
   const tabs = (
-    <ToggleGroup type="single" value={view} variant="outline" size="sm" className="w-fit"
-      onValueChange={(v) => v && setParams(v === "observe" ? { view: "observe" } : {}, { replace: true })}>
-      <ToggleGroupItem value="ops">작업·신선도</ToggleGroupItem>
-      <ToggleGroupItem value="observe">관측</ToggleGroupItem>
-    </ToggleGroup>
+    <div className="flex flex-wrap items-center gap-2">
+      <ToggleGroup type="single" value={view} variant="outline" size="sm" className="w-fit"
+        onValueChange={(v) => v && setParams(v === "observe" ? { view: "observe" } : {}, { replace: true })}>
+        <ToggleGroupItem value="ops">작업·신선도</ToggleGroupItem>
+        <ToggleGroupItem value="observe">관측</ToggleGroupItem>
+      </ToggleGroup>
+      <Button variant="ghost" size="sm" asChild><Link to="/sources">소스 관리<ChevronRight aria-hidden /></Link></Button>
+    </div>
   )
   if (view === "observe") return (
     <PageContainer gap="sm">

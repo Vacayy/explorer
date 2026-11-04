@@ -4,10 +4,9 @@ import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { SectionKey } from "@/components/layout/navConfig"
 import { useCompanySearch } from "@/hooks/useCompanySearch"
 import { GALLERY_SECTIONS, WIDGETS } from "./registry"
-import type { WidgetDef } from "./types"
+import type { WidgetDef, WidgetSection } from "./types"
 
 /**
  * 위젯 추가 — 검색 + L1 탭 + 묶음별 목록, 항목마다 추가/추가됨 (docs/specs/home-widgets.md §1).
@@ -21,7 +20,7 @@ export function WidgetGallery({ open, onOpenChange, active, onAdd, onRemove }: {
   onAdd: (id: string, params?: Record<string, unknown>) => void
   onRemove: (id: string) => void
 }) {
-  const [tab, setTab] = useState<SectionKey>("home")
+  const [tab, setTab] = useState<WidgetSection>("home")
   const [q, setQ] = useState("")
   const [picking, setPicking] = useState<WidgetDef | null>(null)
   const pool = q.trim() ? WIDGETS : WIDGETS.filter(w => w.section === tab)
@@ -39,7 +38,7 @@ export function WidgetGallery({ open, onOpenChange, active, onAdd, onRemove }: {
         <Command className="rounded-none" loop>
           <div className="px-5"><CommandInput value={q} onValueChange={setQ} placeholder="위젯 · 하위 메뉴 검색" className="h-10" /></div>
           {!q.trim() && (
-            <Tabs value={tab} onValueChange={v => setTab(v as SectionKey)} className="px-5 pt-3">
+            <Tabs value={tab} onValueChange={v => setTab(v as WidgetSection)} className="px-5 pt-3">
               <TabsList variant="line">
                 {GALLERY_SECTIONS.map(s => <TabsTrigger key={s.key} value={s.key}>{s.label}</TabsTrigger>)}
               </TabsList>

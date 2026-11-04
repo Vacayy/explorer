@@ -1,6 +1,5 @@
-import type { SectionKey } from "@/components/layout/navConfig"
 import type { RiskCardKind } from "@/components/home/RiskMonitoring"
-import type { SizeSpec, WidgetBodyProps, WidgetDef } from "./types"
+import type { SizeSpec, WidgetBodyProps, WidgetDef, WidgetSection } from "./types"
 import {
   ContextBody, IndicesBody, KrBody, RegimeBody, RetailBody, RiskBody, RiskDetail, UsBody,
   useContextMeta, useIndicesMeta, useKrMeta, useRegimeMeta, useRetailMeta, useRiskMeta, useUsMeta,
@@ -69,7 +68,7 @@ export const SYSTEM_PRESETS: readonly { key: string; label: string; description:
 ]
 
 /** 추가 창 탭 순서 — 위젯이 아직 없는 탭은 '다음 단계' 안내 */
-export const GALLERY_SECTIONS: readonly { key: SectionKey; label: string }[] = [
+export const GALLERY_SECTIONS: readonly { key: WidgetSection; label: string }[] = [
   { key: "home", label: "홈" }, { key: "explore", label: "탐색" }, { key: "portfolio", label: "포트폴리오" },
   { key: "canvas", label: "캔버스" }, { key: "world", label: "월드모델" },
 ]

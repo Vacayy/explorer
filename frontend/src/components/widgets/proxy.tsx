@@ -24,7 +24,7 @@ function ProxyBody({ h, params }: WidgetBodyProps) {
   const d = useProxyBoard(id)
   if (list.isPending || (id && d.isPending)) return <WidgetState loading />
   if (list.isError || d.isError) return <WidgetState error onRetry={() => { void list.refetch(); void d.refetch() }} />
-  if (!id || !d.data) return <WidgetState empty emptyText="프록시 보드가 없어요. 월드모델 › 내 판단에서 만드세요." />
+  if (!id || !d.data) return <WidgetState empty emptyText="프록시 보드가 없어요. Thesis › 내 판단에서 만드세요." />
   const b = d.data
   const rows = [...b.items].sort((a, c) => Number(c.in_warn) - Number(a.in_warn)).slice(0, Math.max(1, h * 2 - 2))
   return <div className="flex h-full flex-col gap-2">

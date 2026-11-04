@@ -1,10 +1,11 @@
 /**
- * 내비게이션 단일 소스 — 상단 L1 5탭과 인페이지 L2가 같은 정의를 읽는다 (docs/specs/app-shell.md §2).
+ * 내비게이션 단일 소스 — 상단 L1 6탭·모바일 하단 탭과 인페이지 L2가 같은 정의를 읽는다 (docs/specs/app-shell.md §2).
  *
- * L1 = 홈 · 탐색 · 포트폴리오 · 캔버스 · 월드모델. P3a에서 L2는 지금 URL을 가리킨다(URL 이전은 P3b).
+ * L1 = 홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis (화면 구조 개편 C안, 1단계: 메뉴만 — L2는 지금 URL을 가리킨다).
  * 종목 도시에(/analyze, /us/:ticker, /company)는 L1이 아니라 목적지 — L2 자리에 도시에 탭을 보인다.
+ * 이행 중 탭(신호·기업활동·국면 이력)은 대체 화면이 생길 때까지 맨 뒤에 남긴다(옛 경로를 먼저 지우지 않는다).
  */
-export type SectionKey = "home" | "explore" | "portfolio" | "canvas" | "world"
+export type SectionKey = "home" | "feed" | "explore" | "industry" | "portfolio" | "world"
 
 export interface SubTab {
   key: string
@@ -32,18 +33,27 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "risk", path: "/home/risk", label: "국면·리스크", match: ["/home/risk", "/retail"] },
     { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro"] },
   ] },
+  { key: "feed", label: "피드", path: "/home?home_view=feed", tabs: [
+    { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },
+    { key: "saved", path: "/follow/saved", label: "저장됨", match: ["/follow/saved"] },
+  ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
     { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover"] },
     { key: "peers", path: "/discover/peers", label: "Peer 그룹", match: ["/discover/peers"] },
-    { key: "signals", path: "/explore", label: "신호", match: ["/explore"] },
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
+    { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
+    // 이행 중 — 신호는 종목 발견 '오늘의 신호', 기업활동은 도시에 개요로 옮긴 뒤 리다이렉트
+    { key: "signals", path: "/explore", label: "신호", match: ["/explore"] },
+    { key: "actions", path: "/actions", label: "기업활동", match: ["/actions"] },
+  ] },
+  { key: "industry", label: "산업", path: "/map", tabs: [
     { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },
     { key: "trade", path: "/follow/trade", label: "수출입", match: ["/follow/trade"] },
+    // 대만 공급망 탭은 아직 화면이 없다(대만 월매출·연결은 홈 위젯뿐) — 화면을 만드는 단계에서 추가
     { key: "valuechain", path: "/value-chain", label: "밸류체인", match: ["/value-chain"] },
     { key: "credit", path: "/follow/credit", label: "회사채", match: ["/follow/credit"] },
+    // 이행 중 — 홈 › 매크로가 국면 이력을 흡수하면 리다이렉트
     { key: "regimes", path: "/regimes", label: "국면 이력", match: ["/regimes"] },
-    { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
-    { key: "actions", path: "/actions", label: "기업활동", match: ["/actions"] },
   ] },
   { key: "portfolio", label: "포트폴리오", path: "/portfolio", tabs: [
     { key: "overview", path: "/portfolio", label: "개요", match: ["/portfolio"] },
@@ -52,16 +62,12 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "events", path: "/portfolio/events", label: "일정", match: ["/portfolio/events"] },
     { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks", "/follow"] },
   ] },
-  { key: "canvas", label: "캔버스", path: "/home?home_view=feed", tabs: [
-    { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },
-    { key: "study", path: "/study", label: "스터디", match: ["/study"] },
-    { key: "saved", path: "/follow/saved", label: "저장됨", match: ["/follow/saved"] },
-    { key: "sources", path: "/sources", label: "소스", match: ["/sources"] },
-  ] },
-  { key: "world", label: "월드모델", path: "/narrative", tabs: [
+  // key 'world'는 그대로 두고 이름만 Thesis (C안). /sources는 메뉴에서 빠짐 — 관리자 › 소스로 옮길 예정
+  { key: "world", label: "Thesis", path: "/narrative", tabs: [
     { key: "now", path: "/narrative", label: "지금", match: ["/narrative"] },
     { key: "graph", path: "/knowledge/ontology", label: "그래프", match: ["/knowledge"] },
     { key: "judgment", path: "/questions", label: "내 판단", match: ["/questions", "/question/", "/thesis", "/report", "/proxy-boards"] },
+    { key: "study", path: "/study", label: "스터디", match: ["/study"] },
   ] },
 ]
 
