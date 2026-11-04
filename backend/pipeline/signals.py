@@ -356,7 +356,9 @@ def compute_theme_surge() -> list[dict]:
             continue
         cands.append((delta, r, share_r, share_b))
     cands.sort(key=lambda x: -x[0])
-    cands = cands[:THEME_LIMIT]
+    # 같은 이름이 sector·theme 두 엔티티로 갈라진 경우('지정학'·'매크로') 한 번만 — 점유율 상승이 큰 쪽
+    seen: set[str] = set()
+    cands = [c for c in cands if not (c[1]["name"] in seen or seen.add(c[1]["name"]))][:THEME_LIMIT]
 
     signals = []
     today = datetime.now(timezone.utc).date().isoformat()
