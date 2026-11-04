@@ -6,10 +6,10 @@
 
 | L2 | 지금 URL | 화면 |
 |---|---|---|
-| 피드 | `/home?home_view=feed` | `home/AiActivityFeed`(상단) + `feed/ChannelReader`(소스 디렉터리 + 리더) |
+| 피드 | `/feed` (4a, 옛 `/home?home_view=feed`) | `feed/FeedPage` — [home-feed](home-feed.md) '현행' |
 | 스터디 | `/study` | 프로젝트 목록·책상, 단일 문서 스터디 |
-| 저장됨 | `/follow/saved` | 북마크 + 메모 |
-| 소스 | `/sources` | 텔레그램·블로그·뉴스·유튜브 등록·활성 |
+| 저장됨 | `/feed/saved` (4a, 옛 `/follow/saved`) | 북마크 + 메모 |
+| 소스 | `/admin/sources` (4a, 옛 `/sources`) | 텔레그램·블로그·뉴스·유튜브 등록·활성 |
 
 ## 1. 피드
 
@@ -62,7 +62,7 @@
 | canvas.topics | 오늘의 주제 | `/signals?type=theme_surge` + `/signals/momentum` | 4×2 | 주목 주제·부상 종목 칩(→ `reader_topic`) | 신호 날짜 |
 | canvas.study | 이어서 공부하기 | `/study-projects` | 4×2 | 최근 갱신 프로젝트 · 자료 수 | 프로젝트 갱신 |
 
-'전체 보기'는 피드(`/home?home_view=feed`) 또는 `/study`. 모두 캐시된 GET만 읽는다.
+'전체 보기'는 피드(`/feed`) 또는 `/study`. 모두 캐시된 GET만 읽는다.
 
 ## 4. 저장됨·소스
 

@@ -18,7 +18,7 @@ import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
  * 기준 시각은 원천 시각(최신 게시물·생성물·신호 날짜·프로젝트 갱신)이다.
  */
 
-const FEED = "/home?home_view=feed"
+const FEED = "/feed"
 const PLATFORM: Record<string, string> = { telegram: "텔레그램", blog: "블로그", youtube: "유튜브" }
 const newest = (xs: (string | null | undefined)[]) => xs.filter(Boolean).sort().at(-1) ?? null
 
@@ -59,7 +59,7 @@ function FeedList({ h, source }: { h: number; source: string }) {
   return <div className="-mr-2 h-full overflow-y-auto pr-2">
     {docs.map(i => <DocumentCard key={i.id} doc={i.document!} variant="row" timeLabel={i.time_label} reading="summary"
       onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />)}
-    <Button asChild variant="ghost" size="sm" className="mt-2 w-full"><Link to={source === "all" ? FEED : `${FEED}&channel_type=${source}`}>피드에서 더 보기</Link></Button>
+    <Button asChild variant="ghost" size="sm" className="mt-2 w-full"><Link to={source === "all" ? FEED : `${FEED}?channel_type=${source}`}>피드에서 더 보기</Link></Button>
   </div>
 }
 
@@ -83,7 +83,7 @@ function UnreadBody({ h }: WidgetBodyProps) {
     {h > 2 && <ul className="min-h-0 divide-y overflow-hidden text-[13px]">
       {unread.slice(0, Math.max(1, h * 2 - 3)).map(i => (
         <li key={i.id}>
-          <Link to={`${FEED}&channel=${encodeURIComponent(i.id)}`} className="flex items-center gap-2 py-1.5 hover:underline">
+          <Link to={`${FEED}?channel=${encodeURIComponent(i.id)}`} className="flex items-center gap-2 py-1.5 hover:underline">
             <span className="min-w-0 flex-1 truncate">{i.name}</span>
             <span className="shrink-0 text-[11px] text-muted-foreground">{PLATFORM[i.platform]}</span>
             <Badge variant="secondary" className="shrink-0 tabular-nums">{formatNumber(i.unread)}</Badge>
@@ -138,7 +138,7 @@ function TopicsBody({ h }: WidgetBodyProps) {
         <span className="w-14 shrink-0 text-[11px] text-muted-foreground">{g.label}</span>
         {g.names.map(name => (
           <Button key={name} asChild variant="outline" size="sm" className="h-6 px-2 text-[12px] font-normal">
-            <Link to={`${FEED}&reader_topic=${encodeURIComponent(name)}`}>{name}</Link>
+            <Link to={`${FEED}?reader_topic=${encodeURIComponent(name)}`}>{name}</Link>
           </Button>
         ))}
       </div>

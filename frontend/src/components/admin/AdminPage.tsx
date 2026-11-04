@@ -10,16 +10,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { cn } from "@/lib/utils"
-import { Link, useSearchParams } from "react-router-dom"
-import { ChevronRight } from "lucide-react"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ObservePanel } from "@/components/admin/ObservePanel"
+import { SourcesPanel } from "@/components/admin/SourcesPanel"
 import { Spinner } from "@/components/ui/spinner"
 import { useCollectRegimes } from "@/hooks/useRegimes"
 
 /**
- * /admin — 운영 관리자 (D-055). cron 생성 작업 on/off + 최근 실행 로그.
+ * /admin — 운영 관리자 (D-055). cron 생성 작업 on/off + 최근 실행 로그. 보기 = 작업·신선도 · 관측(?view=observe) · 소스(/admin/sources, ia-redesign §4.26).
  * 자동화가 늘수록 비용·가시성 통제판. 기계는 제안·사람은 통제(D-020 연장).
  */
 interface JobStatus {
@@ -38,18 +38,24 @@ const STATUS_CLS: Record<string, string> = {
 }
 
 export default function AdminPage() {
-  const [params, setParams] = useSearchParams()
-  const view = params.get("view") === "observe" ? "observe" : "ops"
-  // 소스는 피드 메뉴에서 빠졌다 — 관리자 › 소스 보기로 옮기기 전까지 여기서 /sources로 잇는다(화면 구조 개편 §4.26)
+  const [params] = useSearchParams()
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const view = pathname === "/admin/sources" ? "sources" : params.get("view") === "observe" ? "observe" : "ops"
   const tabs = (
-    <div className="flex flex-wrap items-center gap-2">
-      <ToggleGroup type="single" value={view} variant="outline" size="sm" className="w-fit"
-        onValueChange={(v) => v && setParams(v === "observe" ? { view: "observe" } : {}, { replace: true })}>
-        <ToggleGroupItem value="ops">작업·신선도</ToggleGroupItem>
-        <ToggleGroupItem value="observe">관측</ToggleGroupItem>
-      </ToggleGroup>
-      <Button variant="ghost" size="sm" asChild><Link to="/sources">소스 관리<ChevronRight aria-hidden /></Link></Button>
-    </div>
+    <ToggleGroup type="single" value={view} variant="outline" size="sm" className="w-fit"
+      onValueChange={(v) => v && navigate(v === "sources" ? "/admin/sources" : v === "observe" ? "/admin?view=observe" : "/admin", { replace: true })}>
+      <ToggleGroupItem value="ops">작업·신선도</ToggleGroupItem>
+      <ToggleGroupItem value="observe">관측</ToggleGroupItem>
+      <ToggleGroupItem value="sources">소스</ToggleGroupItem>
+    </ToggleGroup>
+  )
+  if (view === "sources") return (
+    <PageContainer gap="sm">
+      <h2 className="text-xl font-bold">관리자</h2>
+      {tabs}
+      <SourcesPanel />
+    </PageContainer>
   )
   if (view === "observe") return (
     <PageContainer gap="sm">

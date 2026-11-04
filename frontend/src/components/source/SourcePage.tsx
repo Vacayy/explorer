@@ -39,8 +39,9 @@ export default function SourcePage() {
 
     return (
       <PageContainer width="reading" gap="sm">
-        {/* 헤더 */}
+        {/* 헤더 — 피드에서 들어오는 화면이라 돌아가는 길을 둔다(ia-redesign §4.33) */}
         <div className="space-y-1">
+          <Link to="/feed" className="text-caption text-muted-foreground hover:text-foreground">‹ 피드 · 팔로우한 소스</Link>
           <div className="flex items-center gap-2 flex-wrap">
             {data.kind === "telegram"
               ? <Send className="h-4 w-4 text-muted-foreground" />
@@ -59,8 +60,9 @@ export default function SourcePage() {
           </div>
           <p className="text-xs text-muted-foreground tabular-nums">
             수집 {data.total_docs}건 · 최근 7일 {data.docs_7d}건
-            {data.first_doc_at && data.last_doc_at &&
-              ` · ${data.first_doc_at.slice(0, 10)} ~ ${data.last_doc_at.slice(0, 10)}`}
+            {data.first_doc_at && data.last_doc_at
+              ? ` · ${data.first_doc_at.slice(0, 10)} ~ ${data.last_doc_at.slice(0, 10)}`
+              : data.last_doc_at && ` · 마지막 글 ${data.last_doc_at.slice(0, 10)}`}
           </p>
         </div>
 
@@ -117,6 +119,7 @@ export default function SourcePage() {
                     </span>
                   </Link>
                 ))}
+                <Link to={`/feed?channel=${encodeURIComponent(`${data.kind}:${key}`)}`} className="block pt-2 text-caption text-muted-foreground hover:text-foreground">이 소스만 피드에서 보기 ›</Link>
               </CardContent>
             </Card>
           </>

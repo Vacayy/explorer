@@ -1,5 +1,5 @@
+import { Navigate, useLocation } from "react-router-dom"
 import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
-import { AiActivityFeed } from "@/components/home/AiActivityFeed"
 import { RetailHeatCard } from '@/components/home/RetailHeatCard'
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { UsSeasonBlock } from "@/components/home/UsSeasonBlock"
@@ -7,22 +7,21 @@ import { KrTurnoverBlock } from "@/components/home/KrTurnoverBlock"
 import { TradeBlock } from "@/components/home/TradeBlock"
 import { HomeSection } from "@/components/home/HomeSection"
 import HomeDashboard from "@/components/home/HomeDashboard"
-import { ChannelReader } from "@/components/feed/ChannelReader"
-import { useHomeMode } from "@/hooks/useHomeMode"
+import { getHomeMode } from "@/hooks/useHomeMode"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 /**
  * 홈 L2 = 시스템 고정 탭 다섯 개 (docs/specs/home-widgets.md §0): 대시보드 · 한국 시장 · 미국 시장 · 매크로 · 내 종목.
  * 한국·미국 시장은 시안대로(3b), 매크로는 home/HomeMacroPage(3c), 내 종목은 home/HomeStocksPage(3d).
- * /home?home_view=feed는 피드(소스 디렉터리 + 리더)다. 보기는 URL home_view만 따른다.
+ * 옛 /home?home_view=feed는 피드 대메뉴(/feed)로 보낸다 — 나머지 쿼리(channel·channel_type·reader_topic …)는 그대로(ia-redesign §10.6).
  */
 export default function HomePage() {
-  const mode = useHomeMode()
-  if (mode === 'feed') return (
-    <PageLayout mode="reader" header={<PageHeader title="피드" />} overview={<AiActivityFeed />}>
-      <ChannelReader />
-    </PageLayout>
-  )
+  const { search } = useLocation()
+  if (getHomeMode(search) === 'feed') {
+    const rest = new URLSearchParams(search)
+    rest.delete('home_view')
+    return <Navigate to={`/feed${rest.size ? `?${rest}` : ''}`} replace />
+  }
   return <HomeDashboard />
 }
 

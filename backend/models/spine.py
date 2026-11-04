@@ -31,12 +31,26 @@ class FeedDocument(BaseModel):
     entities: list[EntityTag]
 
 
+class FeedFacetEntity(BaseModel):
+    name: str
+    link_type: str           # stock | industry | topic
+    aliases: str | None      # 종목이면 종목코드
+    count: int
+
+
+class FeedFacets(BaseModel):
+    """검색 결과 전체(페이지 아님)의 소스별 건수와 자주 같이 나온 종목·테마 — 검색어가 있을 때만."""
+    sources: dict[str, int]
+    entities: list[FeedFacetEntity]
+
+
 class FeedResponse(BaseModel):
     items: list[FeedDocument]
     total: int
     page: int
     size: int
     as_of: str
+    facets: FeedFacets | None = None
 
 
 class SignalItem(BaseModel):

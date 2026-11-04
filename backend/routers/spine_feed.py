@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from database import get_connection
 from pydantic import BaseModel, Field
 from datetime import date
-from models.spine import EntityTag, FeedDocument, FeedResponse
+from models.spine import EntityTag, FeedDocument, FeedFacetEntity, FeedFacets, FeedResponse
 from models.timeline import MarkReadRequest, TimelineResponse, TimelineChannelsResponse
 
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
@@ -144,6 +144,8 @@ def get_feed(
     topic: str | None = Query(None),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    days: int | None = Query(None, ge=1, le=3650, description="최근 n일 게시물만"),
+    sort: Literal["relevance", "latest"] = Query("relevance", description="검색어가 있을 때 정렬 — 관련도 | 최신"),
 ):
     conn = get_connection()
     # 뮤트 소스 제외 — 개인 노출 설정 (수집은 계속됨, pipeline/visibility.py)
@@ -193,6 +195,10 @@ def get_feed(
         where.append("rd.source_type = ?")
         params.append(source)
 
+    if days:
+        where.append("julianday(rd.published_at) >= julianday('now', ?)")
+        params.append(f"-{days} days")
+
     # 엔티티 필터: link 존재 조건 (stock=종목코드→aliases, industry/topic=이름)
     for link_type, ent_field, value in (
         ("stock", "aliases", stock),
@@ -219,10 +225,15 @@ def get_feed(
         # 검색 모드: 관련도(RRF) 순 정렬 — 파이썬에서 정렬·페이지네이션
         all_rows = conn.execute(select_sql, params).fetchall()
         pos = {doc_id: i for i, doc_id in enumerate(rank_order)}
-        all_rows.sort(key=lambda r: pos.get(r["id"], 10**9))
+        if sort == "latest":
+            all_rows.sort(key=lambda r: r["published_at"] or "", reverse=True)
+        else:
+            all_rows.sort(key=lambda r: pos.get(r["id"], 10**9))
         total = len(all_rows)
         rows = all_rows[(page - 1) * size:(page - 1) * size + size]
+        facets = _search_facets(conn, all_rows)
     else:
+        facets = None
         total = conn.execute(
             f"SELECT count(*) FROM raw_documents rd WHERE {where_sql}", params
         ).fetchone()[0]
@@ -261,4 +272,23 @@ def get_feed(
         ) for r in rows],
         total=total, page=page, size=size,
         as_of=datetime.now(timezone.utc).isoformat(),
+        facets=facets,
     )
+
+
+def _search_facets(conn, rows, limit: int = 8) -> FeedFacets:
+    """검색 결과 전체(최대 100건)의 소스별 건수와 자주 같이 나온 종목·산업·주제 상위 limit개."""
+    sources: dict[str, int] = {}
+    for r in rows:
+        sources[r["source_type"]] = sources.get(r["source_type"], 0) + 1
+    ids = [r["id"] for r in rows]
+    entities: list[FeedFacetEntity] = []
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        for e in conn.execute(f"""
+            SELECT e.name, el.link_type, e.aliases, COUNT(DISTINCT el.doc_id) n
+            FROM entity_links el JOIN entities e ON el.entity_id = e.id
+            WHERE el.doc_id IN ({ph}) AND el.link_type IN ('stock', 'industry', 'topic')
+            GROUP BY e.id, el.link_type ORDER BY n DESC, e.name LIMIT ?""", [*ids, limit]):
+            entities.append(FeedFacetEntity(name=e["name"], link_type=e["link_type"], aliases=e["aliases"], count=e["n"]))
+    return FeedFacets(sources=sources, entities=entities)

@@ -34,9 +34,10 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro", "/home/risk", "/regimes"] },
     { key: "stocks", path: "/home/stocks", label: "내 종목", match: ["/home/stocks"] },
   ] },
-  { key: "feed", label: "피드", path: "/home?home_view=feed", tabs: [
-    { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },
-    { key: "saved", path: "/follow/saved", label: "저장됨", match: ["/follow/saved"] },
+  // 피드 대메뉴(개편 4a단계). 옛 주소 /home?home_view=feed·/follow/saved는 리다이렉트 — 리다이렉트 전 한 프레임도 같은 탭으로 판정
+  { key: "feed", label: "피드", path: "/feed", tabs: [
+    { key: "feed", path: "/feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },
+    { key: "saved", path: "/feed/saved", label: "저장됨", match: ["/feed/saved", "/follow/saved"] },
   ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
     { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover"] },
@@ -61,7 +62,7 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "events", path: "/portfolio/events", label: "일정", match: ["/portfolio/events"] },
     { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks", "/follow"] },
   ] },
-  // key 'world'는 그대로 두고 이름만 Thesis (C안). /sources는 메뉴에서 빠짐 — 관리자 › 소스로 옮길 예정
+  // key 'world'는 그대로 두고 이름만 Thesis (C안). 소스는 관리자 › 소스(/admin/sources)
   { key: "world", label: "Thesis", path: "/narrative", tabs: [
     { key: "now", path: "/narrative", label: "지금", match: ["/narrative"] },
     { key: "graph", path: "/knowledge/ontology", label: "그래프", match: ["/knowledge"] },
@@ -97,21 +98,6 @@ export function locate(pathname: string, search = ""): { section: SectionKey; ta
   return best && { section: best.section, tab: best.tab }
 }
 
-export const FEED_TABS: readonly SubTab[] = [
-  { key: "all", path: "/home?home_view=feed", label: "Home 피드" },
-  { key: "documents", path: "/feed?view=documents", label: "문서 검색" },
-  { key: "telegram", path: "/feed?source=telegram", label: "텔레그램" },
-  { key: "blog", path: "/feed?source=blog", label: "블로그" },
-  { key: "youtube", path: "/feed?source=youtube", label: "유튜브" },
-  { key: "news", path: "/feed?source=news", label: "뉴스" },
-  { key: "article", path: "/feed?source=article", label: "아티클" },
-  { key: "transcript", path: "/feed?source=transcript", label: "컨콜" },
-  { key: "people", path: "/feed?source=people", label: "인물" },
-  { key: "canon", path: "/feed?source=canon", label: "역사" },
-  // 스크랩 = 미검증(개인 투자자 블로그) — 다른 탭과 성격이 달라 맨 뒤 (D-142)
-  { key: "scrap", path: "/feed?source=scrap", label: "스크랩" },
-]
-
 /** 종목 도시에 탭 — path는 종목코드가 필요해 analyzeTabs(code)로 생성 */
 const ANALYZE_TAB_DEFS = [
   { key: "summary", label: "개요" },
@@ -145,17 +131,6 @@ export const analyzeTabs = (stockCode: string, search = ''): SubTab[] => {
     key: t.key, label: hasDiscovery && t.key === 'summary' ? '기업 조사' : t.label,
     path: `/analyze/${stockCode}/${t.key}${context}`,
   }))
-}
-
-/** Existing document URLs remain valid alongside the home timeline. */
-export function isDocumentFeed(search: string): boolean {
-  const params = new URLSearchParams(search)
-  return params.get('view') === 'documents' || ['q', 'source', 'stock', 'industry', 'topic', 'page'].some(k => params.has(k))
-}
-
-/** 피드 문서 검색의 소스 탭 key — ?source= 쿼리가 상태 소스 */
-export function feedSourceTab(search: string): string {
-  return new URLSearchParams(search).get("source") ?? (isDocumentFeed(search) ? "documents" : "all")
 }
 
 /** 종목 도시에 탭 key — 옛 탭(사업·밸류·공시)은 가까운 탭으로 */

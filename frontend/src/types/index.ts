@@ -181,6 +181,12 @@ export interface SpineFeedResponse {
   page: number;
   size: number;
   as_of: string;
+  /** 검색어가 있을 때만 — 검색 결과 전체의 소스별 건수와 자주 같이 나온 종목·산업·주제 (ia-redesign §4.15) */
+  facets?: SpineFeedFacets | null;
+}
+export interface SpineFeedFacets {
+  sources: Record<string, number>;
+  entities: { name: string; link_type: string; aliases: string | null; count: number }[];
 }
 
 // 투자 렌즈 (docs/private/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)

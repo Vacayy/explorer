@@ -79,7 +79,7 @@ export default function DocPage() {
   const isVideo = doc?.source_type === 'youtube'
   const reading = params.get('reading') === 'summary' ? 'summary' :
     isVideo ? (params.get('reading') === 'transcript' ? 'transcript' : 'digest') : 'original'
-  const fallback = doc?.channel_kind && doc.channel_key ? `/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}` : '/home?home_view=feed'
+  const fallback = doc?.channel_kind && doc.channel_key ? `/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}` : '/feed'
   return <QueryState query={query} loading={<Skeleton className="h-64 w-full" />} isEmpty={() => false}>{doc => {
     const source = { docId: doc.id, title: doc.title }
     const onChipFilter = (tag: EntityTag) => {

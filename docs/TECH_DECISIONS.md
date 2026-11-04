@@ -57,7 +57,7 @@ flowchart LR
 게시·수집·요약 생성 시각을 구분하고, 시간과 안정 ID로 정렬합니다. 조회 상한 시각 `until`을 유지해 페이지를 넘기는 동안 새 게시물 때문에 순서가 밀리는 일을 줄입니다.
 이 조회 자체는 LLM 호출이나 수집을 수행하지 않습니다. 다만 원본 요약 캐시가 수정되면 과거 화면까지 불변으로 유지되는 구조는 아닙니다.
 
-화면은 [HomePage](../frontend/src/components/home/HomePage.tsx)의 시장/피드 모드와 [ChannelReader](../frontend/src/components/feed/ChannelReader.tsx)로 구성합니다.
+화면은 피드 대메뉴 [FeedPage](../frontend/src/components/feed/FeedPage.tsx)로 구성합니다(2026-11-05, 옛 홈 피드 모드 `ChannelReader`를 대체).
 카드·필터·시각의 상세 계약은 [홈·피드 스펙](specs/home-feed.md)에 있습니다.
 
 ### 2. 유튜브 자막과 AI 정리본

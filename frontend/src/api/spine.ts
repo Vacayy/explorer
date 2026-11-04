@@ -11,6 +11,8 @@ export interface SpineFeedParams {
   topic?: string;
   page?: number;
   size?: number;
+  days?: number;
+  sort?: "relevance" | "latest";
 }
 
 export const spineKeys = {

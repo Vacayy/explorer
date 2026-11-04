@@ -36,7 +36,7 @@ export function SavedInbox() {
               <>
                 <SavedList items={items} compact onNavigate={() => setOpen(false)} />
                 <Link
-                  to="/follow/saved"
+                  to="/feed/saved"
                   onClick={() => setOpen(false)}
                   className="mt-3 block text-center text-xs text-muted-foreground hover:underline"
                 >

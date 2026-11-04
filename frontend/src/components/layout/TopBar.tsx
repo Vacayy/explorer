@@ -124,7 +124,7 @@ function SettingsMenu() {
           {dark ? <Sun /> : <Moon />} {dark ? "라이트 모드" : "다크 모드"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild><Link to="/sources"><Rss /> 소스 관리</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link to="/admin/sources"><Rss /> 소스 관리</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link to="/admin"><SlidersHorizontal /> 관리자</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link to="/archive"><Archive /> 보관함</Link></DropdownMenuItem>
       </DropdownMenuContent>

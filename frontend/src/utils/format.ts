@@ -225,3 +225,10 @@ export function formatTwdEok(thousand: number | null | undefined): string {
     ? `${Math.round(eok).toLocaleString("ko-KR")}억`
     : `${eok.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}억`
 }
+
+/** 건수 줄임 — 1천 이상은 천 단위 소수 1자리('1.1천'·'25.3천', 피드 소스 칩). null은 '-' */
+export function formatCountShort(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "-"
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}천`
+  return String(value)
+}

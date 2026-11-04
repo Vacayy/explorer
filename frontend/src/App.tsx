@@ -16,7 +16,7 @@ import { ChatPanel } from "@/components/chat/ChatPanel"
 import { PREF, readPref, writePref } from "@/lib/shellPrefs"
 import { onAskAi } from "@/lib/aiPanel"
 import { SubNav } from "@/components/layout/SubNav"
-import { FEED_TABS, SECTIONS, analyzeTabOf, analyzeTabs, feedSourceTab, isDocumentFeed, locate } from "@/components/layout/navConfig"
+import { SECTIONS, analyzeTabOf, analyzeTabs, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
 import { useCompany } from "@/hooks/useCompanySearch"
@@ -34,7 +34,7 @@ import HomeMacroPage from "@/components/home/HomeMacroPage"
 import { withSearch } from "@/lib/macroPage"
 import ProxyBoardsPage from "@/components/proxy/ProxyBoardsPage"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
-import FollowPage, { SourcesPage } from "@/components/follow/FollowPage"
+import FollowPage from "@/components/follow/FollowPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
 import ValueChainPage from "@/components/explore/ValueChainPage"
@@ -83,7 +83,7 @@ import UsDossierPage from "@/components/us/UsDossierPage"
 import UsIndexPage from "@/components/us/UsIndexPage"
 
 // Feed
-import UnifiedFeedPage from "@/components/feed/UnifiedFeedPage"
+import FeedPage from "@/components/feed/FeedPage"
 
 // Research
 
@@ -91,11 +91,10 @@ const queryClient = createQueryClient((error, { background }) => {
   toast.error(error.message, { id: `api-${error.message}`, description: background ? '최신 데이터 갱신에 실패했습니다.' : undefined })
 })
 
-/** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭, 문서 검색은 소스 탭 */
+/** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭 */
 function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
   if (stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey: analyzeTabOf(pathname), context: companyName ?? stockCode }
   if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
-  if (pathname.startsWith("/feed") && isDocumentFeed(search)) return { tabs: FEED_TABS, activeKey: feedSourceTab(search) }
   const here = locate(pathname, search)
   const section = here && SECTIONS.find(s => s.key === here.section)
   if (!section || section.tabs.length < 2) return null
@@ -246,7 +245,7 @@ export default function App() {
             <Route path="regimes" element={<KeepQueryRedirect to="/home/macro#history" />} />
             <Route path="proxy-boards" element={<ProxyBoardsPage />} />
             <Route path="follow" element={<FollowPage />} />
-            <Route path="sources" element={<SourcesPage />} />
+            <Route path="sources" element={<KeepQueryRedirect to="/admin/sources" />} />
             <Route path="follow/stocks" element={<StocksPage />} />
             <Route path="follow/universe" element={<Navigate to="/map?view=universe" replace />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
@@ -254,7 +253,7 @@ export default function App() {
             <Route path="value-chain" element={<ValueChainPage />} />
             <Route path="follow/credit" element={<CreditPage />} />
             <Route path="retail" element={<RetailHeatPage />} />
-            <Route path="follow/saved" element={<SavedPage />} />
+            <Route path="follow/saved" element={<KeepQueryRedirect to="/feed/saved" />} />
             <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="portfolio/holdings" element={<PortfolioPage tab="holdings" />} />
             <Route path="portfolio/principles" element={<PortfolioPage tab="principles" />} />
@@ -262,6 +261,7 @@ export default function App() {
             <Route path="stocks" element={<Navigate to="/follow" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />
+            <Route path="admin/sources" element={<AdminPage />} />
             <Route path="experiments/expectations" element={<Navigate to="/chat" replace />} />
             <Route path="experiments/expectations/review" element={<Navigate to="/chat" replace />} />
 
@@ -305,7 +305,8 @@ export default function App() {
             <Route path="us/:ticker" element={<UsDossierPage />} />
 
             {/* Feed — 통합 피드 (spine). 레거시 URL은 소스 필터로 리다이렉트 */}
-            <Route path="feed" element={<UnifiedFeedPage />} />
+            <Route path="feed" element={<FeedPage />} />
+            <Route path="feed/saved" element={<SavedPage />} />
             <Route path="study" element={<ProjectsPage />} />
             <Route path="study/projects/:id" element={<ProjectPage />} />
             <Route path="study/:id" element={<StudyPage />} />

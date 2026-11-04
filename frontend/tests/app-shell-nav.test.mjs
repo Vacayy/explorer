@@ -27,6 +27,9 @@ const CASES = [
   ['/feed/blogs', '', 'feed', 'feed'],
   ['/doc/12', '', 'feed', 'feed'],
   ['/source', '?kind=telegram&key=x', 'feed', 'feed'],
+  ['/feed', '?channel_type=news', 'feed', 'feed'],
+  ['/feed/saved', '', 'feed', 'saved'],
+  ['/feed/saved', '?kind=doc', 'feed', 'saved'],
   ['/follow/saved', '', 'feed', 'saved'],
   // 탐색 (신호·기업활동은 이행 중 탭)
   ['/discover', '', 'explore', 'discover'],
@@ -72,6 +75,7 @@ const CASES = [
   // L1 밖
   ['/sources', '', null, null],
   ['/admin', '', null, null],
+  ['/admin/sources', '', null, null],
   ['/archive', '', null, null],
   ['/chat', '', null, null],
   ['/ask', '', null, null],
@@ -144,6 +148,9 @@ const REDIRECTS = [
   ['home/briefing', '/home/us'],
   ['home/risk', '/home/macro'],
   ['regimes', '/home/macro#history'],
+  // 4a단계 — 저장됨은 피드 하위, 소스는 관리자 하위
+  ['follow/saved', '/feed/saved'],
+  ['sources', '/admin/sources'],
 ]
 
 test('old home URLs redirect to the fixed home tabs', () => {
@@ -161,4 +168,13 @@ test('home has no user menus: no board routes, dialogs or grid layout left', () 
   assert.ok(!app.includes('useHomeBoards'))
   const home = readFileSync(new URL('../src/components/home/HomePage.tsx', import.meta.url), 'utf8')
   assert.ok(!home.includes('react-grid-layout') && !home.includes('home/Dashboard'))
+})
+
+test('old feed URL (/home?home_view=feed) is sent to /feed with the rest of its query', () => {
+  const home = readFileSync(new URL('../src/components/home/HomePage.tsx', import.meta.url), 'utf8')
+  assert.match(home, /getHomeMode\(search\) === 'feed'/)
+  assert.match(home, /rest\.delete\('home_view'\)/)
+  assert.match(home, /<Navigate to=\{`\/feed/)
+  const feed = SECTIONS.find(s => s.key === 'feed')
+  assert.deepEqual(feed.tabs.map(t => t.path), ['/feed', '/feed/saved'])
 })
