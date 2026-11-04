@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS call_momentum (
     ticker      TEXT NOT NULL,
     event_date  TEXT NOT NULL,
     score       REAL NOT NULL,
-    status      TEXT NOT NULL,           -- candidate | none | first
-    reasons     TEXT NOT NULL,           -- JSON: drivers·guidance·tone·sources
+    status      TEXT NOT NULL,           -- candidate(새 모멘텀) | continuing(이어지는 모멘텀) | none | first
+    reasons     TEXT NOT NULL,           -- JSON: drivers·guidance·tone·sources·accel(기대 초과 가속 판정)
     first_candidate_at TEXT,             -- 처음 후보가 된 시각(주간 알림 기준)
     computed_at TEXT DEFAULT (datetime('now')),
     summary     TEXT,                    -- AI 핵심 요약(이번 시즌 후보만, sonnet) — 근거가 바뀌면 다시 쓴다
@@ -39,7 +39,10 @@ CREATE TABLE IF NOT EXISTS call_momentum (
 );
 """
 STATUS_RANK = {"new": 3, "accelerating": 2, "steady": 1, "decelerating": 0}
-CANDIDATE_SCORE = 7          # 5점이면 비교 가능한 발표의 ~37%가 후보였다(2026-10-12 37건 실측) — 추리는 기준이 아니었다
+CANDIDATE_SCORE = 5          # 2026-11-04 재정의: 가속(기대 초과)·성장 가이던스 상향·수요 어조 중 하나가 반드시 있어야 하므로 문턱은 5
+ACCEL_GAP_PP = 3.0           # 매출 전년 대비 성장률이 직전 분기보다 이만큼(%p) 이상 빨라져야 '가속'
+ACCEL_BEAT_PCT = 1.0         # 매출이 컨센서스를 이만큼(%) 이상 넘어야 '기대 초과'(컨센서스가 있을 때)
+QUARTER_LAG_DAYS = 120       # 발표일 기준 이 기간 안에 끝난 분기를 그 발표의 분기로 본다
 _STOP = {"the", "and", "for", "with", "growth", "revenue", "demand", "segment", "business", "market", "new", "strong", "data"}
 # 점수에 넣는 가이던스는 성장 지표만 — 세율·비용 가이던스는 '하향'이 호재라 방향이 거꾸로다(NVDA FY27 세율 하향이 감점된 사례)
 GROWTH_METRIC = re.compile(r"revenue|sales|bookings|backlog|orders|shipments|arr\b|growth|demand|units|subscribers", re.I)
@@ -59,12 +62,15 @@ PROMPT = """너는 셀사이드 애널리스트다. 아래는 {company}({ticker}
   위 목록의 동인을 다른 말로 부른 것이면 같은 동인이다(new 아님).
 - guidance: 회사가 낸 전망. 방향은 raised / lowered / maintained / initiated.
 - demand_tone: 수요·수주잔고·가시성 표현의 강도 1(약함)~5(매우 강함).
+- beyond_expectation: 회사가 '이전 가이던스·전망·시장 기대보다 성장이 더 빨랐다/넘었다'고 말한 문장만(예: "exceeded the high end of our guidance",
+  "growth accelerated well above our prior outlook"). basis는 guidance(회사 가이던스 대비) / consensus(시장 기대 대비) / prior_outlook(회사의 이전 전망 대비). 없으면 빈 배열.
 - qa_focus: 애널리스트가 반복해 물은 주제(컨콜이 아니면 빈 배열).
 - quote는 반드시 원문에 그대로 있는 영어 문장 일부(20~200자)를 복사한다. 지어내지 마라.
 JSON만 출력:
 {{"drivers":[{{"name":"짧은 영문 명사구","type":"product|customer|segment|market|pricing|capacity","status":"new|accelerating|steady|decelerating","magnitude":"규모 표현(있으면)","quote":"..."}}],
  "guidance":[{{"metric":"...","direction":"raised|lowered|maintained|initiated","quote":"..."}}],
- "demand_tone":3,"qa_focus":["..."]}}
+ "demand_tone":3,"qa_focus":["..."],
+ "beyond_expectation":[{{"basis":"guidance|consensus|prior_outlook","quote":"..."}}]}}
 
 [원문]
 {text}"""
@@ -77,7 +83,7 @@ def _norm(s: str) -> str:
 def verify(payload: dict, text: str) -> dict:
     """인용문이 원문에 있는 항목만 verified=True. 원문 대조는 소문자·구두점 정규화 후 앞 80자."""
     body = _norm(text)
-    for key in ("drivers", "guidance"):
+    for key in ("drivers", "guidance", "beyond_expectation"):
         for item in payload.get(key) or []:
             q = _norm(item.get("quote", ""))[:80]
             item["verified"] = len(q) >= 15 and q in body
@@ -241,7 +247,7 @@ def _event_text(conn: sqlite3.Connection, ticker: str, event_date: str) -> str:
 
 def _combine(rows: list[sqlite3.Row]) -> dict:
     drivers: dict[str, dict] = {}
-    guidance, tones, sources, focus = [], [], set(), []
+    guidance, tones, sources, focus, beyond = [], [], set(), [], []
     for r in rows:
         p = json.loads(r["payload"])
         sources.add(r["source"])
@@ -252,30 +258,102 @@ def _combine(rows: list[sqlite3.Row]) -> dict:
             if k and (k not in drivers or STATUS_RANK.get(d.get("status"), 1) > STATUS_RANK.get(drivers[k]["status"], 1)):
                 drivers[k] = {**d, "source": r["source"]}
         guidance += [{**g, "source": r["source"]} for g in p.get("guidance") or [] if g.get("verified")]
+        beyond += [{**b, "source": r["source"]} for b in p.get("beyond_expectation") or [] if b.get("verified")]
         if isinstance(p.get("demand_tone"), (int, float)):
             tones.append(p["demand_tone"])
         focus += p.get("qa_focus") or []
     return {"drivers": list(drivers.values()), "guidance": guidance, "tone": max(tones) if tones else None,
-            "sources": sorted(sources), "qa_focus": focus[:6]}
+            "sources": sorted(sources), "qa_focus": focus[:6], "beyond_expectation": beyond[:3]}
 
 
-def score(cur: dict, prev: dict | None, history: list[tuple[float, str]] | None = None) -> tuple[float, str]:
-    """새 동인 +3(최대 3)·가속 +1(최대 3, LLM이 넉넉히 붙여 약하게)·가이던스 상향 +2(최대 2)·수요 어조 상승 +1·둔화 −2.
-    분기 가이던스는 매번 새로 내 'initiated'가 기본이라 점수에 넣지 않는다(2026-10-12 NVDA 5분기 실측: 매 분기 후보·점수 19~36).
-    후보 = 5점 이상 + 성장 동인이 있고, 최근 두 발표에 후보가 없었거나 마지막 후보보다 3점 이상 높을 때 — '새로' 맞은 모멘텀만.
-    (직전 한 번만 보면 계속 강한 회사가 격분기로 다시 올라온다 — NVDA 실측)"""
+def _qkey(y: int, m: int) -> str:
+    return f"{y:04d}-{m:02d}"
+
+
+def _yoy(rev: dict[str, float], y: int, m: int) -> float | None:
+    a, b = rev.get(_qkey(y, m)), rev.get(_qkey(y - 1, m))
+    return (a / b - 1) * 100 if a and b and b > 0 else None
+
+
+def revenue_accel(conn: sqlite3.Connection, ticker: str, event_date: str) -> dict | None:
+    """숫자 판정 재료 — 발표 분기 매출의 전년 대비 성장률(g_now)과 직전 분기의 것(g_prev), 컨센서스 대비(beat).
+    분기는 발표일 전 QUARTER_LAG_DAYS 안에 끝난 마지막 달력 분기(us_quarterly 'YYYY-MM'). 둘 중 하나라도 없으면 None(판정 불가)."""
+    if not _has_table(conn, "us_quarterly"):
+        return None
+    rev = {r[0]: r[1] for r in conn.execute("SELECT q, value FROM us_quarterly WHERE ticker=? AND metric='revenue'", (ticker,))}
+    if not rev:
+        return None
+    ev = date.fromisoformat(event_date[:10])
+    qs = [q for q in sorted(rev) if 0 <= (ev - date(int(q[:4]), int(q[5:7]), 28)).days <= QUARTER_LAG_DAYS]
+    if not qs:
+        return None
+    y, m = int(qs[-1][:4]), int(qs[-1][5:7])
+    py, pm = (y, m - 3) if m > 3 else (y - 1, m + 9)
+    g_now, g_prev = _yoy(rev, y, m), _yoy(rev, py, pm)
+    if g_now is None or g_prev is None:
+        return None
+    beat = None
+    for r in conn.execute("SELECT quant_json FROM earnings_expectations WHERE ticker=? AND event_date=? ORDER BY snapshot='d1' DESC",
+                          (ticker, event_date[:10])) if _has_table(conn, "earnings_expectations") else []:
+        try:
+            est = (json.loads(r[0] or "{}") or {}).get("rev_est")
+        except ValueError:
+            est = None
+        if est:
+            beat = round((rev[qs[-1]] / est - 1) * 100, 1)
+            break
+    return {"quarter": qs[-1], "g_now": round(g_now, 1), "g_prev": round(g_prev, 1), "gap": round(g_now - g_prev, 1), "beat": beat}
+
+
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone())
+
+
+def _growth_guides(cur: dict) -> list[dict]:
+    return [g for g in cur.get("guidance") or [] if GROWTH_METRIC.search(g.get("metric") or "")]
+
+
+def acceleration(cur: dict, numeric: dict | None) -> dict:
+    """기대를 넘어 가팔라진 성장(2026-11-04 사용자 정의: '시장이나 회사의 직전 기대보다 더 가팔라져야' — 기대만큼은 가속 아님).
+    숫자 우선: 매출 성장률이 직전 분기보다 ACCEL_GAP_PP 이상 빨라짐 + (컨센서스 ACCEL_BEAT_PCT 이상 상회 또는 성장 가이던스 상향).
+    숫자를 못 쓰면 원문 근거: 회사가 '이전 가이던스·전망·기대를 넘었다'고 말한 문장(인용 검증된 것)."""
+    raised = any(g.get("direction") == "raised" for g in _growth_guides(cur))
+    if numeric:
+        beat_ok = numeric.get("beat") is not None and numeric["beat"] >= ACCEL_BEAT_PCT
+        on = numeric["gap"] >= ACCEL_GAP_PP and (beat_ok or raised)
+        return {"on": on, "basis": "numeric", **numeric, "guidance_raised": raised}
+    quotes = cur.get("beyond_expectation") or []
+    if quotes:
+        return {"on": True, "basis": "quote", "quote": quotes[0].get("quote"), "vs": quotes[0].get("basis")}
+    return {"on": False, "basis": "none"}
+
+
+def score(cur: dict, prev: dict | None, history: list[tuple[float, str]] | None = None,
+          accel: dict | None = None) -> tuple[float, str]:
+    """2026-11-04 재정의(사용자: 새 동인보다 가속·가이던스 상향·수요 어조에 초점).
+    가속(기대 초과, acceleration()) +3 · 성장 지표 가이던스 상향 +3(최대 2)·하향 −3 · 수요 어조 직전 대비 +1 → +2(+2 이상 → +3)
+    · 숫자 규모가 적힌 LLM '가속' 동인 +1(최대 2, 보조) · 새 동인 +1(최대 1) · 둔화 동인 −2.
+    분기 가이던스 'initiated'는 점수에 넣지 않는다(2026-10-12 NVDA 실측).
+    판정: CANDIDATE_SCORE 이상 + 가속·가이던스 상향·어조 상승 중 하나 이상 + 성장 가이던스 하향 없음.
+    최근 두 발표에 이미 모멘텀(candidate·continuing)이었고 그때보다 3점 이상 높지 않으면 'continuing'(이어지는 모멘텀), 아니면 'candidate'(새 모멘텀)."""
     if prev is None:
         return 0.0, "first"
-    st = [d.get("status") for d in cur["drivers"]]
-    s = 3 * min(st.count("new"), 3) + min(st.count("accelerating"), 3) - 2 * st.count("decelerating")
-    growth_guides = [g for g in cur["guidance"] if GROWTH_METRIC.search(g.get("metric") or "")]
-    s += 2 * min(sum(g.get("direction") == "raised" for g in growth_guides), 2) - 2 * sum(g.get("direction") == "lowered" for g in growth_guides)
-    if cur["tone"] is not None and prev.get("tone") is not None and cur["tone"] - prev["tone"] >= 1:
-        s += 1
-    growth = "new" in st or "accelerating" in st
-    recent = [sc for sc, stt in (history or [])[-2:] if stt == "candidate"]
+    accel = accel or {"on": False}
+    drv = cur.get("drivers") or []
+    st = [d.get("status") for d in drv]
+    acc_num = sum(1 for d in drv if d.get("status") == "accelerating" and re.search(r"\d", d.get("magnitude") or ""))
+    gg = _growth_guides(cur)
+    up = sum(g.get("direction") == "raised" for g in gg)
+    down = sum(g.get("direction") == "lowered" for g in gg)
+    dt = (cur["tone"] - prev["tone"]) if cur.get("tone") is not None and prev.get("tone") is not None else 0
+    s = (3 if accel.get("on") else 0) + 3 * min(up, 2) - 3 * down + (3 if dt >= 2 else 2 if dt >= 1 else 0) \
+        + min(acc_num, 2) + min(st.count("new"), 1) - 2 * st.count("decelerating")
+    required = accel.get("on") or up > 0 or dt >= 1
+    if not (s >= CANDIDATE_SCORE and required and down == 0):
+        return float(s), "none"
+    recent = [sc for sc, stt in (history or [])[-2:] if stt in ("candidate", "continuing")]
     fresh = not recent or s >= recent[-1] + 3
-    return float(s), "candidate" if s >= CANDIDATE_SCORE and growth and fresh else "none"
+    return float(s), "candidate" if fresh else "continuing"
 
 
 def judge(conn: sqlite3.Connection, tickers: list[str] | None = None) -> dict:
@@ -292,7 +370,8 @@ def judge(conn: sqlite3.Connection, tickers: list[str] | None = None) -> dict:
             if prev:
                 cur["drivers"] = mentioned_before(cur["drivers"], _event_text(conn, ticker, prev_ev))
                 cur["drivers"] = downgrade_renamed(cur["drivers"], [d.get("name", "") for d in prev["drivers"]])
-            s, status = score(cur, prev, history)
+            cur["accel"] = acceleration(cur, revenue_accel(conn, ticker, ev)) if prev else {"on": False, "basis": "first"}
+            s, status = score(cur, prev, history, cur["accel"])
             old = conn.execute("SELECT status, first_candidate_at FROM call_momentum WHERE ticker=? AND event_date=?", (ticker, ev)).fetchone()
             first_at = old["first_candidate_at"] if old and old["first_candidate_at"] else None
             if status == "candidate" and not first_at:
@@ -330,8 +409,8 @@ _GUIDE_KO = {"raised": "상향", "lowered": "하향", "maintained": "유지", "i
 
 
 def summary_facts(reasons: dict) -> str:
-    """요약 입력 — 카드에 보이는 것과 같은 근거(성장 동인·바뀐 가이던스·수요 어조·질문 초점)."""
-    lines = [f"- [{_STATUS_KO.get(d.get('status'), d.get('status'))}] {d.get('name')}"
+    """요약 입력 — 카드에 보이는 것과 같은 근거(기대 초과 가속·성장 동인·바뀐 가이던스·수요 어조·질문 초점)."""
+    lines = accel_lines(reasons.get("accel")) + [f"- [{_STATUS_KO.get(d.get('status'), d.get('status'))}] {d.get('name')}"
              + (f" ({d['magnitude']})" if d.get("magnitude") else "") + f": \"{d.get('quote', '')}\""
              for d in reasons.get("drivers") or [] if d.get("status") in ("new", "accelerating", "decelerating")]
     lines += [f"- 가이던스 {_GUIDE_KO.get(g.get('direction'), g.get('direction'))} · {g.get('metric')}: \"{g.get('quote', '')}\""
@@ -341,6 +420,15 @@ def summary_facts(reasons: dict) -> str:
     if reasons.get("qa_focus"):
         lines.append(f"- 애널리스트 질문 초점: {', '.join(reasons['qa_focus'])}")
     return "\n".join(lines)
+
+
+def accel_lines(a: dict | None) -> list[str]:
+    if not a or not a.get("on"):
+        return []
+    if a.get("basis") == "numeric":
+        vs = f"컨센서스 대비 {a['beat']:+.1f}%" if a.get("beat") is not None else "성장 가이던스 상향"
+        return [f"- 기대 초과 가속: 매출 전년 대비 성장률 {a['g_prev']:+.1f}% → {a['g_now']:+.1f}% ({a['quarter']}), {vs}"]
+    return [f"- 기대 초과 가속(원문): \"{a.get('quote', '')}\""]
 
 
 def summarize(conn: sqlite3.Connection, call=None, limit: int = 30, today: date | None = None) -> dict:
@@ -379,6 +467,28 @@ def summarize(conn: sqlite3.Connection, call=None, limit: int = 30, today: date 
     return stats
 
 
+def revenue_targets(conn: sqlite3.Connection, days: int = 14) -> list[str]:
+    """최근 days일 안에 실적을 낸 회사 중 숫자 판정 재료(이번·직전 분기 전년 대비)가 없는 곳."""
+    since = (date.today() - timedelta(days=days)).isoformat()
+    out = []
+    for t, ev in conn.execute("SELECT ticker, max(event_date) FROM call_extracts WHERE event_date >= ? GROUP BY ticker", (since,)).fetchall():
+        if revenue_accel(conn, t, ev) is None:
+            out.append(t)
+    return out
+
+
+def fill_revenue(conn: sqlite3.Connection, days: int = 14) -> dict:
+    """판정 전에 매출 재료를 채운다(SEC XBRL, LLM 0). 플래그 cm_revenue로 끈다."""
+    from pipeline.ops import flag_enabled
+    if not flag_enabled("cm_revenue", default=True):
+        return {"status": "skipped"}
+    tickers = revenue_targets(conn, days)
+    if not tickers:
+        return {"tickers": 0}
+    from pipeline.us_fundamentals import collect_revenue
+    return {"tickers": len(tickers), **collect_revenue(tickers)}
+
+
 def season(day: str) -> dict:
     """발표일 → 실적 시즌. 분기가 끝난 다음 날부터 그 분기의 시즌(10~12월 발표 = 3분기 시즌).
     회계연도가 달력과 다른 회사(NVDA 8월 발표 등)도 발표 시점으로 같은 시즌에 묶는다 — 사용자가 시장을 보는 단위."""
@@ -401,15 +511,17 @@ def by_season(conn: sqlite3.Connection, today: date | None = None, history_days:
             s = season(c["event_date"])
             history.setdefault(s["key"], {**s, "candidates": []})["candidates"].append(c)
     reported = conn.execute("SELECT count(DISTINCT ticker) FROM call_momentum WHERE event_date >= ?", (cur["start"],)).fetchone()[0]
+    continuing = candidates(conn, (today - date.fromisoformat(cur["start"])).days + history_days, status="continuing")
     return {"season": {**cur, "reported": reported}, "candidates": current,
+            "continuing": [c for c in continuing if c["event_date"] >= cur["start"]],
             "history": sorted(history.values(), key=lambda h: h["key"], reverse=True)}
 
 
-def candidates(conn: sqlite3.Connection, days: int = 120) -> list[dict]:
+def candidates(conn: sqlite3.Connection, days: int = 120, status: str = "candidate") -> list[dict]:
     since = (date.today() - timedelta(days=days)).isoformat()
     out = []
     for r in conn.execute("SELECT cm.*, tf.company_name FROM call_momentum cm LEFT JOIN transcript_follow tf ON tf.ticker=cm.ticker "
-                          "WHERE cm.status='candidate' AND cm.event_date >= ? ORDER BY cm.event_date DESC, cm.score DESC", (since,)):
+                          "WHERE cm.status=? AND cm.event_date >= ? ORDER BY cm.event_date DESC, cm.score DESC", (status, since)):
         reasons = json.loads(r["reasons"])
         out.append({"ticker": r["ticker"], "name": r["company_name"], "event_date": r["event_date"], "score": r["score"],
                     "first_candidate_at": r["first_candidate_at"], "summary": r["summary"], **reasons})
@@ -438,7 +550,8 @@ def weekly_message(conn: sqlite3.Connection, top: int = 5) -> tuple[list[tuple[s
         drv = [d for d in rs["drivers"] if d.get("status") in ("new", "accelerating")][:2]
         g = [x for x in rs["guidance"] if x.get("direction") == "raised"][:1]
         e = html.escape   # LLM 추출·외부 회사명 — 텔레그램 HTML에 그대로 넣지 않는다
-        parts = [f"{'🆕' if d['status'] == 'new' else '⏫'} {e(d['name'])}" + (f" ({e(d['magnitude'])})" if d.get("magnitude") else "") for d in drv]
+        parts = [e(x[2:]) for x in accel_lines(rs.get("accel"))]
+        parts += [f"{'🆕' if d['status'] == 'new' else '⏫'} {e(d['name'])}" + (f" ({e(d['magnitude'])})" if d.get("magnitude") else "") for d in drv]
         parts += [f"가이던스 상향: {e(x['metric'])}" for x in g]
         items.append((f"callmom:{r['ticker']}:{r['event_date']}",
                       f"· <b>{e(r['company_name'] or r['ticker'])}</b>({e(r['ticker'])}) {r['event_date'][5:]} 점수 {r['score']:.0f} — " + " · ".join(parts)))

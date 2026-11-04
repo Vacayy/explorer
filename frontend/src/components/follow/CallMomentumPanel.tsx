@@ -6,19 +6,21 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { CallMomentumCandidate } from "@/types"
+import type { CallAccel, CallMomentumCandidate } from "@/types"
 import { useCallMomentum } from "@/hooks/useTranscripts"
+import { formatPercent } from "@/utils/format"
 
 const STATUS = { new: { label: "새 동인", cls: "text-up border-up/40" }, accelerating: { label: "가속", cls: "text-hypothesis border-hypothesis/40" } } as const
 const SOURCE: Record<string, string> = { release: "보도자료", commentary: "CFO 코멘터리", transcript: "컨콜" }
 const GUIDE: Record<string, string> = { raised: "상향", lowered: "하향", initiated: "신규", maintained: "유지" }
 
-/** 실적 발언 새 모멘텀(D-217) — 직전 실적 발표 대비 새로 생기거나 빨라진 성장 동인. 인용문은 원문 대조를 통과한 것만.
- * 전면은 이번 실적 시즌 후보만, 지난 시즌은 접힌 기록으로(시즌 = 발표 시점 기준 분기). */
+/** 실적 발언 새 모멘텀(D-217, 2026-11-04 재정의) — 기대를 넘어 가팔라진 성장(가속)·성장 가이던스 상향·수요 어조 상승 중심.
+ * 인용문은 원문 대조를 통과한 것만. 전면은 이번 시즌 새 모멘텀, 이어지는 모멘텀은 접어서, 지난 시즌은 기록으로. */
 export function CallMomentumPanel() {
   const q = useCallMomentum()
   return <QueryState query={q} loading={<Skeleton className="h-64 w-full rounded-card" />} isEmpty={() => false}>{data => {
     const { season, candidates, history, coverage: cov, sec_configured } = data
+    const continuing = data.continuing ?? []
     return <div className="space-y-4">
       {!sec_configured && <div role="alert" className="flex gap-2 rounded-lg border border-chart-warning/40 bg-chart-warning/10 p-3 text-sm">
         <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-chart-warning" />
@@ -36,6 +38,12 @@ export function CallMomentumPanel() {
               : "이번 시즌 실적 발표가 아직 분석되지 않았습니다. 발표가 나오는 대로 매일 07:20에 판정합니다."}
           </CardContent></Card>
         : candidates.map(c => <CandidateCard key={`${c.ticker}-${c.event_date}`} c={c} />)}
+      {continuing.length > 0 && <Collapsible>
+        <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="w-full justify-between">
+          <span>이어지는 모멘텀 <span className="font-normal text-muted-foreground">· {continuing.length}건</span></span>
+          <ChevronDown aria-hidden="true" className="size-4" /></Button></CollapsibleTrigger>
+        <CollapsibleContent className="space-y-3 pt-2">{continuing.map(c => <CandidateCard key={`${c.ticker}-${c.event_date}`} c={c} />)}</CollapsibleContent>
+      </Collapsible>}
       {history.length > 0 && <div className="space-y-2 border-t pt-4">
         <h3 className="text-sm font-semibold text-muted-foreground">지난 시즌 기록</h3>
         {history.map(h => <Collapsible key={h.key}>
@@ -86,6 +94,7 @@ function CandidateCard({ c }: { c: CallMomentumCandidate }) {
       </CardDescription>
     </CardHeader>
     <CardContent className="space-y-3">
+      {c.accel?.on && <p className="text-sm"><span className="font-medium text-up">기대 초과 가속</span> · {accelText(c.accel)}</p>}
       {c.summary && <div className="rounded-lg bg-muted/50 px-3 py-2.5">
         <p className="text-caption text-hypothesis">AI 요약 · 아래 근거로 작성</p>
         <p className="mt-1 text-sm leading-relaxed">{c.summary}</p>
@@ -104,4 +113,13 @@ function CandidateCard({ c }: { c: CallMomentumCandidate }) {
       {c.qa_focus.length > 0 && <p className="text-caption text-muted-foreground">애널리스트 질문 초점: {c.qa_focus.join(" · ")}</p>}
     </CardContent>
   </Card>
+}
+
+function accelText(a: CallAccel): string {
+  if (a.basis === "numeric") {
+    const extra = [a.beat != null ? `컨센서스 대비 ${formatPercent(a.beat)}` : "", a.guidance_raised ? "성장 가이던스 상향" : ""].filter(Boolean)
+    return `매출 성장률 ${formatPercent(a.g_prev)} → ${formatPercent(a.g_now)} (${a.quarter})${extra.length ? " · " + extra.join(" · ") : ""}`
+  }
+  if (a.basis === "quote") return a.quote ? `“${a.quote}”` : "원문 근거"
+  return ""
 }

@@ -45,6 +45,7 @@ def daily(extract_limit: int):
         step("cm_sec", lambda: sec.collect(conn, follows))
         step("cm_av", lambda: tr.collect_and_process(budget=22))
         step("cm_extract", lambda: cm.extract_pending(conn, limit=extract_limit))
+        step("cm_revenue", lambda: cm.fill_revenue(conn))   # 기대 초과 가속 숫자 판정 재료(SEC 분기 매출)
         step("cm_judge", lambda: cm.judge(conn))
         step("cm_summary", lambda: cm.summarize(conn))
         step("cm_chain", earnings_chain.daily)   # 실적 시즌 체인: 기대(D-7·D-1)·반응(중간·확정)·섹터 요약 — 핵심 종목만 LLM
@@ -59,6 +60,7 @@ def fresh():
         r = step("cm_fresh", tr.collect_fresh)
         if r and r["tickers"]:
             step("cm_extract", lambda: cm.extract_pending(conn, limit=20, only=r["tickers"]))
+            step("cm_revenue", lambda: cm.fill_revenue(conn))
             step("cm_judge", lambda: cm.judge(conn, r["tickers"]))
             step("cm_summary", lambda: cm.summarize(conn))
     finally:

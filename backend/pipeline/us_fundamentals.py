@@ -211,6 +211,46 @@ def collect() -> dict:
     return {"stored": stored, "failed": failed, "status": "error" if not stored else "partial" if failed else "ok"}
 
 
+def collect_revenue(tickers: list[str], use_key: str = "momentum") -> dict:
+    """실적 발언 모멘텀용 분기 매출(SEC XBRL) — 발표한 회사의 '기대 초과 가속' 숫자 판정 재료(2026-11-04).
+    TARGETS 회사는 그 용도(use_key) 그대로 갱신해 밸류체인 집계와 섞이지 않게 하고, 다른 원천(EXTERNAL)은 건드리지 않는다.
+    한 티커 실패는 남기고 계속."""
+    import config  # noqa: F401 — .env(SEC_USER_AGENT)
+    from database import get_connection
+    from pipeline.sec_filings import _get, cik_map
+    use_of = {t: u for t, m, u in TARGETS if m == "revenue"}
+    own = {t for t, m, _ in EXTERNAL if m == "revenue"}
+    ciks = cik_map()
+    stored, failed, skipped = 0, [], 0
+    conn = get_connection()
+    try:
+        for ticker in dict.fromkeys(tickers):
+            if ticker in own:
+                skipped += 1
+                continue
+            if ticker not in ciks:
+                failed.append(f"{ticker}: CIK 없음")
+                continue
+            try:
+                facts = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{ciks[ticker]:010d}.json", as_json=True)
+                picked = _pick_tag(facts["facts"]["us-gaap"], "revenue")
+                if not picked:
+                    failed.append(f"{ticker}: revenue 계정 없음")
+                    continue
+                tag, units = picked
+                for q, v in quarterly(units).items():
+                    conn.execute("INSERT INTO us_quarterly (ticker, q, metric, value, tag, use_key, fetched_at) VALUES (?,?,?,?,?,?, datetime('now')) "
+                                 "ON CONFLICT(ticker, q, metric) DO UPDATE SET value=excluded.value, tag=excluded.tag, fetched_at=excluded.fetched_at "
+                                 "WHERE us_quarterly.use_key=excluded.use_key", (ticker, q, "revenue", v, tag, use_of.get(ticker, use_key)))
+                    stored += 1
+                conn.commit()
+            except Exception as e:  # noqa: BLE001
+                failed.append(f"{ticker}: {type(e).__name__}")
+    finally:
+        conn.close()
+    return {"stored": stored, "skipped": skipped, "failed": failed}
+
+
 def collect_yf() -> tuple[int, list[str]]:
     """yfinance 분기 매출(최근 4~5분기) → us_quarterly. 고정 환율로 USD 환산, tag에 원통화 표시"""
     import yfinance as yf

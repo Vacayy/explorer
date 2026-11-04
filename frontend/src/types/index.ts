@@ -937,11 +937,18 @@ export interface CallMomentumCandidate {
   ticker: string; name: string | null; event_date: string; score: number; first_candidate_at: string | null
   summary?: string | null                      // AI 핵심 요약(이번 시즌 후보만, 근거 기반 sonnet) — 없으면 근거만
   drivers: CallDriver[]; guidance: CallGuidance[]; tone: number | null; prev_tone: number | null; sources: string[]; qa_focus: string[]
+  /** 기대 초과 가속(2026-11-04): 숫자(매출 성장률이 직전 분기보다 빨라짐 + 컨센서스 상회·가이던스 상향) 우선, 없으면 원문 근거 */
+  accel?: CallAccel | null
 }
+export type CallAccel =
+  | { on: boolean; basis: 'numeric'; quarter: string; g_now: number; g_prev: number; gap: number; beat: number | null; guidance_raised: boolean }
+  | { on: boolean; basis: 'quote'; quote?: string | null; vs?: string | null }
+  | { on: boolean; basis: 'none' | 'first' }
 export interface CallMomentumSeason { key: string; label: string; start: string }
 export interface CallMomentum {
   season: CallMomentumSeason & { reported: number }
-  candidates: CallMomentumCandidate[]          // 이번 실적 시즌만
+  candidates: CallMomentumCandidate[]          // 이번 실적 시즌만 — 새 모멘텀
+  continuing?: CallMomentumCandidate[]         // 이번 실적 시즌 이어지는 모멘텀(최근 두 발표에도 모멘텀)
   history: (CallMomentumSeason & { candidates: CallMomentumCandidate[] })[]
   coverage: { universe: number; with_releases: number; with_transcripts: number; extracted_docs: number; failed_docs: number; comparable: number }
   sec_configured: boolean

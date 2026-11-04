@@ -7,6 +7,8 @@ import threading
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from typing import Any
+
 from pydantic import BaseModel
 
 from database import get_connection
@@ -463,7 +465,19 @@ def run_extract():
     return extract_proxies()
 
 
-@router.get("/momentum")
+class MomentumResponse(BaseModel):
+    """실적 발언 모멘텀(D-217, 2026-11-04 재정의). 후보 항목은 call_momentum.reasons를 펼친 것 — 필드가 많고 추출 버전마다 늘어
+    항목은 dict로 둔다(프론트 타입 CallMomentumCandidate)."""
+    season: dict[str, Any]
+    candidates: list[dict[str, Any]]       # 이번 시즌 새 모멘텀
+    continuing: list[dict[str, Any]] = []  # 이번 시즌 이어지는 모멘텀(최근 두 발표에도 모멘텀)
+    history: list[dict[str, Any]]
+    coverage: dict[str, int]
+    as_of: str | None = None
+    sec_configured: bool
+
+
+@router.get("/momentum", response_model=MomentumResponse)
 def momentum():
     """실적 발언 새 모멘텀(D-217) — 이번 실적 시즌 후보는 전면, 지난 시즌은 history로. 판정은 매일 07:20 call_momentum --daily."""
     import os
