@@ -2,6 +2,7 @@
 
 - 상태: P3a 구현 계약 (2026-10-16). [dock-navigation](dock-navigation.md)과 [follow-rail](follow-rail.md)을 대체한다.
 - 2026-11-04 화면 구조 개편 1단계(C안): 대메뉴 6개(홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis), 캔버스 없앰, 왼쪽 '내 목록' 제거, 운영 상태는 누르면 창. 라우트는 그대로 두고 메뉴만 바꿨다(리다이렉트·새 주소는 이후 단계).
+- 2026-11-05 개편 3단계(3a): 홈 L2 = 시스템 고정 탭 다섯 개(대시보드 · 한국 시장 · 미국 시장 · 매크로 · 내 종목, [home-widgets §0](home-widgets.md)). 사용자 메뉴(`home_boards`) 탭과 '+ 새 메뉴'는 없앴고 옛 홈 주소는 리다이렉트한다.
 - 범위: 상단 바, L1·L2 내비게이션, 오른쪽 'AI 대화' 패널, 좁은 화면, 단축키.
 - 범위 밖(후속): URL 체계 이전(`/canvas/*`, `/explore/*` 등)과 리다이렉트(P3b), 홈 위젯 대시보드(P4), 하위 탭 안 화면 통합(P5~P7). P3a에서 새 탭은 지금 URL을 가리킨다.
 
@@ -28,7 +29,7 @@
 
 | L1 | L2 → 현재 URL | 이 L1로 판정하는 경로 |
 |---|---|---|
-| 홈 | 대시보드 `/home` (L2는 내 메뉴 `home_boards` — 홈 고정 탭은 이후 단계) | `/home` (단 `home_view=feed` 제외), `/home/b/:id`, `/home/briefing`, `/home/risk`, `/retail`, `/home/macro` |
+| 홈 | 대시보드 `/home` · 한국 시장 `/home/kr` · 미국 시장 `/home/us` · 매크로 `/home/macro` · 내 종목 `/home/stocks` | `/home` (단 `home_view=feed` 제외)·`/home/b/:id`(→ `/home`) → 대시보드, `/home/kr`·`/retail` → 한국 시장, `/home/us`·`/home/briefing`(→ `/home/us`) → 미국 시장, `/home/macro`·`/home/risk`(→ `/home/macro`) → 매크로, `/home/stocks` → 내 종목 |
 | 피드 | 피드 `/home?home_view=feed` · 저장됨 `/follow/saved` | `home_view=feed`, `/feed`, `/doc/`, `/source`, `/follow/saved` |
 | 탐색 | 종목 발견 `/discover` · Peer 그룹 `/discover/peers` · 컨콜 `/follow/transcripts` · 인물 `/people` · *신호 `/explore`* · *기업활동 `/actions`* | `/discover`, `/discover/peers`, `/follow/transcripts`, `/us`(목록), `/people`, `/person`, `/explore`, `/actions` |
 | 산업 | 산업·섹터 `/map` · 수출입 `/follow/trade` · 밸류체인 `/value-chain` · 회사채 `/follow/credit` · *국면 이력 `/regimes`* | `/map`, `/follow/universe`, `/discover/industry`, `/follow/trade`, `/value-chain`, `/follow/credit`, `/regimes` |
@@ -36,7 +37,7 @@
 | Thesis | 지금 `/narrative` · 그래프 `/knowledge/ontology` · 내 판단 `/questions` · 스터디 `/study` | `/narrative`, `/knowledge`, `/questions`, `/question/`, `/thesis`, `/report`, `/proxy-boards`, `/study` |
 
 - *기울임* 탭은 이행 중이다. 대체 화면(종목 발견 '오늘의 신호', 도시에 개요의 기업활동, 홈 › 매크로의 국면 이력)이 생기면 옛 경로를 리다이렉트로 바꾸고 탭을 뺀다. 옛 경로를 대체 화면보다 먼저 지우지 않는다.
-- 대만 공급망 탭은 아직 없다. 대만 월매출·대만 → 한국 연결은 지금 홈 위젯뿐이라, 산업 › 대만 공급망 화면을 만드는 단계에서 탭을 더한다.
+- 대만 공급망 탭은 아직 없다. 대만 월매출·대만 → 한국 연결은 지금 홈 › 한국 시장(이행 중 섹션)에만 있어, 산업 › 대만 공급망 화면을 만드는 단계에서 탭을 더한다.
 - Thesis의 코드 key는 `world` 그대로다(이름만 바꿈).
 - `/sources`(소스 관리)는 메뉴에서 빠졌다(L1 밖). 설정 메뉴 '소스 관리'와 관리자 화면의 '소스 관리' 링크로 들어간다. 관리자 › 소스(`/admin/sources`)로 옮기는 것은 이후 단계.
 - 하위 탭 판정: 위 표의 '판정 경로'를 L2 단위로도 같은 규칙으로 묶는다(예: `/us`·`/follow/transcripts` → 컨콜, `/follow/universe`·`/discover/industry` → 산업·섹터, `/thesis`·`/report`·`/question/` → 내 판단, `/knowledge` → 그래프).
@@ -83,7 +84,7 @@ interface PageContext {
 - 하단 탭바 높이 `--tabbar-height`(3.5rem) + 안전 영역. <768에서 `--dock-reserve`가 탭바를 포함하므로 `--shell-offset`을 쓰는 풀하이트 화면은 따로 계산하지 않는다.
 - 좁은 화면에서 패널을 여닫아도 데스크톱 기본값(`explorer.shell.*`)에 쓰지 않는다. <1024에서는 패널이 늘 닫힌 채 시작한다.
 - L2는 본문 첫 줄 SubNav가 가로 스크롤로 맡는다.
-- 홈 위젯은 <768에서 1열 읽기 전용(home-widgets.md §1).
+- 홈 고정 탭의 섹션은 <768에서 1열로 쌓인다(home-widgets.md §0).
 
 ## 7. 단축키
 

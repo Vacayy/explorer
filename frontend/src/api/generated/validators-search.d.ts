@@ -1,3 +1,3 @@
 import type { ValidateFunction } from 'ajv'
-export const response212: ValidateFunction
-export const response213: ValidateFunction
+export const response192: ValidateFunction
+export const response193: ValidateFunction

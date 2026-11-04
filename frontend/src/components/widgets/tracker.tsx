@@ -177,7 +177,7 @@ function Issues({ i }: { i: TrackerView["issues"] }) {
 function TrackerBody({ w, h, params }: WidgetBodyProps) {
   const code = codeOf(params)
   const q = useTracker(code)
-  if (!code) return <p className="p-3 text-sm text-muted-foreground">종목이 정해지지 않은 위젯이에요. 빼고 '위젯 추가 › 종목 추적'에서 종목을 골라 다시 놓아 주세요.</p>
+  if (!code) return <p className="p-3 text-sm text-muted-foreground">종목이 정해지지 않은 추적 카드예요.</p>
   if (q.isLoading) return <div className="space-y-2 p-3"><Skeleton className="h-6 w-1/2" /><Skeleton className="h-40 w-full" /></div>
   if (q.isError || !q.data) return <ErrorState message="추적 카드를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
   const d = q.data

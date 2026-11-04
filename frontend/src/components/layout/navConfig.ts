@@ -1,7 +1,7 @@
 /**
  * 내비게이션 단일 소스 — 상단 L1 6탭·모바일 하단 탭과 인페이지 L2가 같은 정의를 읽는다 (docs/specs/app-shell.md §2).
  *
- * L1 = 홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis (화면 구조 개편 C안, 1단계: 메뉴만 — L2는 지금 URL을 가리킨다).
+ * L1 = 홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis (화면 구조 개편 C안). 홈 L2는 시스템 고정 탭 다섯 개(3단계), 나머지 L2는 지금 URL을 가리킨다.
  * 종목 도시에(/analyze, /us/:ticker, /company)는 L1이 아니라 목적지 — L2 자리에 도시에 탭을 보인다.
  * 이행 중 탭(신호·기업활동·국면 이력)은 대체 화면이 생길 때까지 맨 뒤에 남긴다(옛 경로를 먼저 지우지 않는다).
  */
@@ -26,12 +26,13 @@ export interface SectionDef {
 }
 
 export const SECTIONS: readonly SectionDef[] = [
-  // 홈 L2 탭은 여기가 아니라 내 메뉴(home_boards)에서 그린다(App subNavFor). 아래 규칙은 위치 판정(전체 보기 화면 포함)용
+  // 홈 L2 = 시스템 고정 탭(개편 3단계). 옛 주소 /home/b/:id·/home/briefing·/home/risk는 리다이렉트, /retail은 한국 시장으로 판정
   { key: "home", label: "홈", path: "/home", tabs: [
     { key: "dashboard", path: "/home", label: "대시보드", match: ["/home"] },
-    { key: "briefing", path: "/home/briefing", label: "시장 브리핑", match: ["/home/briefing"] },
-    { key: "risk", path: "/home/risk", label: "국면·리스크", match: ["/home/risk", "/retail"] },
-    { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro"] },
+    { key: "kr", path: "/home/kr", label: "한국 시장", match: ["/home/kr", "/retail"] },
+    { key: "us", path: "/home/us", label: "미국 시장", match: ["/home/us", "/home/briefing"] },
+    { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro", "/home/risk"] },
+    { key: "stocks", path: "/home/stocks", label: "내 종목", match: ["/home/stocks"] },
   ] },
   { key: "feed", label: "피드", path: "/home?home_view=feed", tabs: [
     { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },

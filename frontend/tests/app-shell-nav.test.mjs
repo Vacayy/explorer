@@ -9,11 +9,15 @@ const CASES = [
   // 홈
   ['/home', '', 'home', 'dashboard'],
   ['/home', '?home_view=market', 'home', 'dashboard'],
-  ['/home/b/3', '', 'home', 'dashboard'],
-  ['/home/briefing', '', 'home', 'briefing'],
-  ['/home/risk', '', 'home', 'risk'],
-  ['/retail', '', 'home', 'risk'],
+  ['/home/kr', '', 'home', 'kr'],
+  ['/home/us', '', 'home', 'us'],
   ['/home/macro', '', 'home', 'macro'],
+  ['/home/stocks', '', 'home', 'stocks'],
+  // 옛 홈 주소 — 리다이렉트 전 한 프레임도 같은 탭으로 판정
+  ['/home/b/3', '', 'home', 'dashboard'],
+  ['/home/briefing', '', 'home', 'us'],
+  ['/home/risk', '', 'home', 'macro'],
+  ['/retail', '', 'home', 'kr'],
   // 피드
   ['/home', '?home_view=feed', 'feed', 'feed'],
   ['/feed', '', 'feed', 'feed'],
@@ -120,6 +124,7 @@ test('six sections in C-plan order, each landing on its first tab', () => {
 
 test('L2 tabs follow the plan, transitional tabs last', () => {
   const tabs = Object.fromEntries(SECTIONS.map(s => [s.key, s.tabs.map(t => t.label)]))
+  assert.deepEqual(tabs.home, ['대시보드', '한국 시장', '미국 시장', '매크로', '내 종목'])
   assert.deepEqual(tabs.feed, ['피드', '저장됨'])
   assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물', '신호', '기업활동'])
   assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '밸류체인', '회사채', '국면 이력'])
@@ -131,4 +136,28 @@ test('tab paths resolve back to their own tab', () => {
     const [p, q] = t.path.split('?')
     assert.deepEqual(locate(p, q ? `?${q}` : ''), { section: s.key, tab: t.key }, t.path)
   }
+})
+
+// ia-redesign §10.6 — 옛 홈 주소는 고정 탭으로 보낸다(쿼리 유지). 화면 컴포넌트가 아니라 리다이렉트여야 한다
+const REDIRECTS = [
+  ['home/b/:boardId', '/home'],
+  ['home/briefing', '/home/us'],
+  ['home/risk', '/home/macro'],
+]
+
+test('old home URLs redirect to the fixed home tabs', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  for (const [route, to] of REDIRECTS) {
+    const m = app.match(new RegExp(`<Route path="${route}" element=\\{<KeepQueryRedirect to="([^"]+)" />\\} />`))
+    assert.ok(m, `${route} must be a KeepQueryRedirect`)
+    assert.equal(m[1], to, route)
+  }
+})
+
+test('home has no user menus: no board routes, dialogs or grid layout left', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  assert.ok(!app.includes('NewBoardDialog'))
+  assert.ok(!app.includes('useHomeBoards'))
+  const home = readFileSync(new URL('../src/components/home/HomePage.tsx', import.meta.url), 'utf8')
+  assert.ok(!home.includes('react-grid-layout') && !home.includes('home/Dashboard'))
 })

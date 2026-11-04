@@ -8,7 +8,7 @@ interface Props {
   activeKey: string | null
   /** 좌측 컨텍스트 라벨 — 종목 도시에의 회사명 */
   context?: string | null
-  /** 탭 뒤 동작 — 홈의 '새 메뉴' */
+  /** 탭 뒤 동작(선택) */
   trailing?: ReactNode
 }
 

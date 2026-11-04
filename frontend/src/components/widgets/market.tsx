@@ -191,9 +191,12 @@ export function RiskBody({ metric, h }: WidgetBodyProps & { metric: string }) {
   const item = q.data?.items.find(i => i.key === metric)
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   if (!item || item.value == null) return <WidgetState empty emptyText={item?.error ? `수집 실패: ${item.error}` : "이 지표의 관측이 아직 없어요."} />
+  // 갱신 실패·지연이면 마지막 값을 흐리게 두고 기준 날짜를 붙인다 — 숫자를 지우지 않는다 (ia-redesign §4.28)
+  const fresh = item.quality === "fresh"
+  const day = item.as_of ? item.as_of.slice(5, 10).replace("-", "/") : null
   return <div className="flex h-full flex-col gap-1.5">
-    <WidgetHero value={riskValue(item.unit, item.value)} aside={<span className={cn("text-xs tabular-nums", tone(item.change_20))}>20일 {riskChange(item.unit, item.change_20)}</span>} />
-    {item.quality !== "fresh" && <p className="text-[11px] text-chart-warning">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : "수집 오류"}</p>}
+    <WidgetHero className={cn(!fresh && "opacity-60")} value={riskValue(item.unit, item.value)} aside={<span className={cn("text-xs tabular-nums", tone(item.change_20))}>20일 {riskChange(item.unit, item.change_20)}</span>} />
+    {!fresh && <p className="text-[11px] text-chart-warning">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : "갱신 실패"}{day ? ` · ${day} 값` : ""}</p>}
     {h > 2 && <div className="mt-auto"><SparkLine data={item.points.map(p => p[1])} height={Math.max(28, (h - 2) * 40)} /></div>}
   </div>
 }

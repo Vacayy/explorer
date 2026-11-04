@@ -146,6 +146,11 @@ export function formatKstDateTime(utc: string | null | undefined): string {
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
+/** 시각 → KST "11월 4일 수요일" (홈 대시보드 머리) */
+export function formatKstLongDate(d: Date = new Date()): string {
+  return d.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", weekday: "long" });
+}
+
 /** ISO 시각 → 상대 시간 표기 ("3분 전", "2시간 전", "어제", "6/28") */
 export function formatRelativeTime(iso: string): string {
   if (!iso) return "-";
