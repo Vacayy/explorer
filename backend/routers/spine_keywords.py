@@ -48,7 +48,10 @@ def approve_keyword(keyword_id: int):
 
 @router.delete("/{keyword_id}", status_code=204)
 def remove_keyword(keyword_id: int):
+    """승인 대기(proposed) 별칭의 거부는 행을 'rejected'로 남겨 같은 별칭이 다시 제안되지 않게 한다
+    (UNIQUE(entity_id, keyword) + INSERT OR IGNORE). 이미 쓰던 키워드의 삭제는 그대로 지운다."""
     conn = get_connection()
-    conn.execute("DELETE FROM entity_keywords WHERE id=?", (keyword_id,))
+    conn.execute("UPDATE entity_keywords SET status='rejected' WHERE id=? AND status='proposed'", (keyword_id,))
+    conn.execute("DELETE FROM entity_keywords WHERE id=? AND (status IS NULL OR status!='rejected')", (keyword_id,))
     conn.commit()
     conn.close()

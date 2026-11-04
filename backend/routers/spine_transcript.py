@@ -82,7 +82,7 @@ def list_follow():
                         "WHERE active=1 ORDER BY group_label, ticker").fetchall()
     ko: dict[int, list[str]] = {}
     for k in conn.execute("SELECT k.entity_id, k.keyword FROM entity_keywords k JOIN transcript_follow t ON t.entity_id=k.entity_id "
-                          "WHERE t.active=1 ORDER BY k.id"):
+                          "WHERE t.active=1 AND (k.status IS NULL OR k.status IN ('active', 'search_only')) ORDER BY k.id"):
         ko.setdefault(k["entity_id"], []).append(k["keyword"])
     # 본 실적 보도자료 = 매출과 주당 이익이 함께 있는 것(TSLA 인도량 공시도 'net income'을 한 번 언급해 그것만으론 못 가른다)
     results = {}

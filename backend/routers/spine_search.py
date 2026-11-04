@@ -56,7 +56,8 @@ def _alias_codes(conn, q: str) -> dict[str, str]:
     """별칭 → 종목코드. entity_keywords(SK그룹→SK 등)와 회사 엔티티의 aliases(=종목코드)를 쓴다."""
     out: dict[str, str] = {}
     for r in _safe(conn, """SELECT k.keyword, e.name, e.aliases FROM entity_keywords k JOIN entities e ON e.id = k.entity_id
-                            WHERE e.type = 'company' AND e.status = 'active' AND k.keyword LIKE ? LIMIT 20""", (f"%{q}%",)):
+                            WHERE e.type = 'company' AND e.status = 'active' AND k.keyword LIKE ?
+                              AND (k.status IS NULL OR k.status IN ('active', 'search_only')) LIMIT 20""", (f"%{q}%",)):
         code = None
         if r["aliases"] and re.fullmatch(r"[0-9A-Z]{6}", str(r["aliases"])):
             code = str(r["aliases"])
@@ -128,9 +129,9 @@ def _us(conn, q: str, limit: int) -> list[dict]:
     # 한글 이름(블룸에너지)은 컨콜 반응 수집이 등록한 한글 별칭(entity_keywords, D-276)으로 찾는다
     for r in _safe(conn, """SELECT ticker, company_name, group_label FROM transcript_follow t
                             WHERE ticker LIKE ? OR company_name LIKE ?
-                               OR EXISTS (SELECT 1 FROM entity_keywords k WHERE k.entity_id = t.entity_id AND k.keyword LIKE ?)
+                               OR EXISTS (SELECT 1 FROM entity_keywords k WHERE k.entity_id = t.entity_id AND k.keyword LIKE ? AND (k.status IS NULL OR k.status IN ('active', 'search_only')))
                             ORDER BY CASE WHEN ticker = ? THEN 0 WHEN ticker LIKE ? THEN 1
-                                          WHEN EXISTS (SELECT 1 FROM entity_keywords k WHERE k.entity_id = t.entity_id AND k.keyword = ?) THEN 2
+                                          WHEN EXISTS (SELECT 1 FROM entity_keywords k WHERE k.entity_id = t.entity_id AND k.keyword = ? AND (k.status IS NULL OR k.status IN ('active', 'search_only'))) THEN 2
                                           ELSE 3 END, ticker""",
                    (f"{upper}%", like, like, upper, f"{upper}%", q)):
         seen.add(r["ticker"])
