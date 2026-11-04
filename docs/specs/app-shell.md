@@ -37,7 +37,7 @@
 | Thesis | 지금 `/narrative` · 그래프 `/knowledge/ontology` · 내 판단 `/questions` · 스터디 `/study` | `/narrative`, `/knowledge`, `/questions`, `/question/`, `/thesis`, `/report`, `/proxy-boards`, `/study` |
 
 - *기울임* 탭은 이행 중이다. 대체 화면(종목 발견 '오늘의 신호', 도시에 개요의 기업활동, 홈 › 매크로의 국면 이력)이 생기면 옛 경로를 리다이렉트로 바꾸고 탭을 뺀다. 옛 경로를 대체 화면보다 먼저 지우지 않는다.
-- 대만 공급망 탭은 아직 없다. 대만 월매출·대만 → 한국 연결은 지금 홈 › 한국 시장(이행 중 섹션)에만 있어, 산업 › 대만 공급망 화면을 만드는 단계에서 탭을 더한다.
+- 대만 공급망 탭은 아직 없다. 대만 월매출·대만 → 한국 연결은 지금 홈 › 한국 시장 맨 아래(3b 이후에도 임시)에만 있어, 산업 › 대만 공급망 화면을 만드는 단계에서 탭을 더하고 홈에서 뺀다.
 - Thesis의 코드 key는 `world` 그대로다(이름만 바꿈).
 - `/sources`(소스 관리)는 메뉴에서 빠졌다(L1 밖). 설정 메뉴 '소스 관리'와 관리자 화면의 '소스 관리' 링크로 들어간다. 관리자 › 소스(`/admin/sources`)로 옮기는 것은 이후 단계.
 - 하위 탭 판정: 위 표의 '판정 경로'를 L2 단위로도 같은 규칙으로 묶는다(예: `/us`·`/follow/transcripts` → 컨콜, `/follow/universe`·`/discover/industry` → 산업·섹터, `/thesis`·`/report`·`/question/` → 내 판단, `/knowledge` → 그래프).

@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatKrw, formatNumber, formatPercent, formatRatio } from '@/utils/format'
 import type { RetailMetric, RetailRegimeKey } from '@/types'
 
@@ -24,4 +25,17 @@ const REGIME_TONE: Record<RetailRegimeKey, string> = {
 }
 export function RegimeBadge({ regime, className = '' }: { regime: { key: RetailRegimeKey; label: string }; className?: string }) {
   return <Badge variant="outline" className={`font-medium ${REGIME_TONE[regime.key]} ${className}`}>{regime.label}</Badge>
+}
+
+/** 지표 표 — 값 · 과거 5년 백분위 · 20일 전 대비 백분위 변화. 개인 투자 열기 화면과 홈 › 한국 시장이 같이 쓴다 */
+export function MetricTable({ metrics }: { metrics: RetailMetric[] }) {
+  return <div className="overflow-x-auto"><Table>
+    <TableHeader><TableRow><TableHead>지표</TableHead><TableHead className="text-right">값</TableHead><TableHead>과거 5년 백분위</TableHead><TableHead className="text-right">20일 전 대비</TableHead></TableRow></TableHeader>
+    <TableBody>{metrics.map(m => <TableRow key={m.key} className={m.value == null ? 'text-muted-foreground' : ''}>
+      <TableCell className="whitespace-nowrap max-sm:min-w-32 max-sm:whitespace-normal max-sm:break-keep">{m.label}</TableCell>
+      <TableCell className="text-right tabular-nums">{metricValue(m)}</TableCell>
+      <TableCell><PctileBar value={m.pctile} /></TableCell>
+      <TableCell className="text-right tabular-nums text-muted-foreground">{m.pctile_change == null ? '-' : `${m.pctile_change > 0 ? '+' : ''}${formatNumber(Math.round(m.pctile_change))}`}</TableCell>
+    </TableRow>)}</TableBody>
+  </Table></div>
 }

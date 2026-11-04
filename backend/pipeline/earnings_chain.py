@@ -650,6 +650,21 @@ def _numbers(conn, ev: dict, sector: str) -> dict:
             "follow": follow_label(d1, d30 if d30 is not None else (d7 if d7 is not None else latest))}
 
 
+def season_windows(conn, fs: dict | None = None) -> list[dict]:
+    """시즌별 발표 구간(팔로우 기업 첫 발표일~마지막 발표일, 미확정 예정일 포함) — 홈 미국 시장의 '시즌 사이' 판정용(ia-redesign §4.28)."""
+    fs = fs if fs is not None else follows(conn)
+    rows = {}
+    for r in conn.execute("SELECT season, ticker, event_date, confirmed FROM earnings_events ORDER BY event_date"):
+        if r["ticker"] not in fs or not r["season"]:
+            continue
+        w = rows.setdefault(r["season"], {"key": r["season"], "label": season_by_key(r["season"])["label"],
+                                          "first": r["event_date"], "last": r["event_date"], "events": 0, "confirmed": 0})
+        w["last"] = max(w["last"], r["event_date"])
+        w["events"] += 1
+        w["confirmed"] += 1 if r["confirmed"] else 0
+    return sorted(rows.values(), key=lambda w: w["first"])
+
+
 def season_overview(season: str | None = None) -> dict:
     conn = get_connection()
     today = date.today().isoformat()
@@ -670,7 +685,7 @@ def season_overview(season: str | None = None) -> dict:
                 "fiscal": f"FY{e['fiscal_year']} {e['fiscal_period']}", "transcript_id": e["transcript_id"],
                 "reaction": e["reaction_status"], "core": core.get(e["ticker"], []),
                 "eps_surprise": e["eps_surprise"], "headline": (meta or {}).get("headline"),
-                "interpretation": (meta or {}).get("interpretation")}
+                "interpretation": (meta or {}).get("interpretation"), "confirmed": bool(e["confirmed"])}
         if e["event_date"] <= today and e["confirmed"]:
             item.update(_numbers(conn, e, sec))
             reported.append(item)
@@ -723,6 +738,7 @@ def season_overview(season: str | None = None) -> dict:
         "transcripts": [r[0] for r in conn.execute("SELECT DISTINCT ticker FROM transcripts WHERE date(fetched_at, '+9 hours')=?", (kst,))],
     }
     last_run = conn.execute("SELECT max(ran_at) FROM job_runs WHERE job='cm_chain'").fetchone()[0]
+    windows = season_windows(conn, fs)
     core_rows = [{"ticker": t, "name": fs[t]["company_name"], "reasons": r} for t, r in sorted(core.items()) if t in fs]
     conn.close()
     beat_n = sum(1 for i in reported if (i["eps_surprise"] or 0) > 0)
@@ -732,7 +748,7 @@ def season_overview(season: str | None = None) -> dict:
                        "up": sum(1 for i in reported if (i["d1"] or 0) > 0), "miss": sum(1 for i in reported if (i["eps_surprise"] or 0) < 0),
                        "miss_up": len([i for i in reported if (i["eps_surprise"] or 0) < 0 and (i["d1"] or 0) > 0]), "reactions": sum(1 for i in reported if i["reaction"]),
                        "reactions_final": sum(1 for i in reported if i["reaction"] == "final")},
-            "changes": changes, "last_run": last_run,
+            "changes": changes, "last_run": last_run, "windows": windows,
             "sectors": sector_rows, "top_up": top_up, "miss_up": miss_up, "beat_down": beat_down, "reversed": reversed_[:8],
             "upcoming": sorted(upcoming, key=lambda i: i["event_date"])[:12],
             "evals": evals, "core": {"criteria": CORE_REASONS, "tickers": core_rows},

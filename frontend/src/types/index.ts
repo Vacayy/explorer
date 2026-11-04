@@ -1022,6 +1022,7 @@ export interface SeasonItem {
   ticker: string; name: string | null; sector: string; sector_name: string; event_date: string; fiscal: string
   transcript_id: number | null; reaction: "interim" | "final" | null; core: CoreReason[]
   eps_surprise: number | null; headline: string | null; interpretation: string | null
+  confirmed: boolean   // false = 회사가 아직 확정하지 않은 예정일(yfinance 추정)
   d1?: number | null; d7?: number | null; d30?: number | null; latest?: number | null; latest_date?: string | null
   follow?: "유지" | "확대" | "되돌림" | "반전" | null
   expectation?: { d7: boolean; d1: boolean; qualitative: boolean }   // 곧 발표만
@@ -1030,12 +1031,15 @@ export interface SeasonSectorRow {
   key: string; name: string; etf: string; verdict: string | null; one_line: string | null
   n_reported: number; n_reactions: number; tickers: { ticker: string; d1: number | null }[]; dc_chain: boolean
 }
+export interface SeasonWindow { key: string; label: string; first: string; last: string; events: number; confirmed: number }
 export interface SeasonOverview {
   season: { key: string; label: string; start: string; is_current: boolean }
   counts: { followed: number; reported: number; beat: number; beat_down: number; reversed: number; reactions: number; reactions_final: number
     up: number; miss: number; miss_up: number }   // up = 첫 거래일 업종 ETF보다 강했다, miss_up = EPS 하회인데 강했다
   changes: { reactions: string[]; themes: string[]; expectations: string[]; transcripts: string[] }
   last_run: string | null
+  /** 시즌별 발표 구간(팔로우 기업 첫~마지막 발표일, 미확정 포함) — 홈 미국 시장 '시즌 사이' 판정 (ia-redesign §4.28) */
+  windows: SeasonWindow[]
   sectors: SeasonSectorRow[]; top_up: SeasonItem[]; miss_up: SeasonItem[]; beat_down: SeasonItem[]; reversed: SeasonItem[]; upcoming: SeasonItem[]
   evals: { hit: number; underweighted: number; noise: number; missed: number; cases: { ticker: string; issue: string; verdict: EvalVerdict }[] }
   core: { criteria: Record<CoreReason, string>; tickers: { ticker: string; name: string | null; reasons: CoreReason[] }[] }
@@ -1120,11 +1124,11 @@ export interface TradeFollowRow {
 }
 export interface TradeHighlightRow {
   hs_code: string; item_name: string; group_label: string | null; value: number | null
-  yoy: number | null; z: number | null; flag: TradeFlag; reason: string | null
+  yoy: number | null; mom: number | null; z: number | null; flag: Exclude<TradeFlag, 'none'>; reason: string | null
   contribution: number | null; nested_in: string | null
 }
 export interface TradeHighlights {
-  period: string | null; total_usd: number
+  period: string | null; periods: string[]; total_usd: number
   surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]   // 상위 limit개만
   groups: { group_label: string; count: number; value: number; surge: number; plunge: number }[]   // 판정 수는 전 품목 기준
 }

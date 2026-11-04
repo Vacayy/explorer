@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from database import get_connection
 from pipeline.transcript import cy_label
+from models.earnings_season import SeasonOverview
 
 router = APIRouter(prefix="/api/spine/transcript", tags=["spine"])
 
@@ -237,7 +238,7 @@ def compute_reaction(transcript_id: int, force: bool = False):
         raise HTTPException(503, str(e))
 
 
-@router.get("/season")
+@router.get("/season", response_model=SeasonOverview)
 def season(season: str | None = None):
     """실적 시즌 화면 — 요약 숫자·오늘 바뀐 것·섹터 목록·엇갈린 반응·곧 발표·기대 채점·핵심 종목(기준 포함). LLM 0."""
     from pipeline.earnings_chain import season_overview

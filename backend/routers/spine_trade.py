@@ -5,6 +5,8 @@
 import json
 
 from fastapi import APIRouter, HTTPException
+from typing import Literal
+
 from pydantic import BaseModel
 
 from database import get_connection
@@ -46,6 +48,38 @@ class StockItem(BaseModel):
     yoy_pct: float | None
     flag: str | None
     reason: str | None
+
+
+class HighlightRow(BaseModel):
+    """급등·급감 품목 — yoy·mom은 비율(0.25 = +25%), contribution은 0~1(전체 증가분 중 몫)."""
+    hs_code: str
+    item_name: str
+    group_label: str | None
+    value: float | None
+    yoy: float | None = None
+    mom: float | None = None
+    z: float | None = None
+    flag: Literal["surge", "plunge", "new"]
+    reason: str | None
+    contribution: float | None = None
+    nested_in: str | None = None
+
+
+class HighlightGroup(BaseModel):
+    group_label: str
+    count: int
+    value: float
+    surge: int
+    plunge: int
+
+
+class Highlights(BaseModel):
+    period: str | None
+    periods: list[str] = []
+    total_usd: float
+    surge: list[HighlightRow]
+    plunge: list[HighlightRow]
+    groups: list[HighlightGroup]   # 수출 규모 순, 판정 수는 전 품목 기준
 
 
 class Beneficiary(BaseModel):
@@ -130,7 +164,7 @@ def by_stock(stock_code: str):
     return out
 
 
-@router.get("/highlights")
+@router.get("/highlights", response_model=Highlights)
 def highlights(period: str | None = None, flow: str = "export", limit: int = 8, rank: str = "contribution",
                mode: str = "zscore", metric: str = "yoy", z_threshold: float | None = None, min_usd: float | None = None):
     """급등·급감 랭킹(D-140) — 기본 기여도 순. `/{hs_code}`보다 먼저 선언(경로 충돌 방지)."""

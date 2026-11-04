@@ -23,7 +23,9 @@ import type { UsBriefing, UsBriefingSource, UsMoverBrief } from "@/types"
  */
 /** 위젯 안에 넣을 때 — 바깥 카드 틀과 제목은 위젯 틀이 맡는다 */
 const EMBED = "gap-3 border-0 bg-transparent py-0 shadow-none [&>[data-slot=card-content]]:px-0 [&>[data-slot=card-header]]:px-0 [&_[data-slot=card-title]]:sr-only"
-export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) {
+export function UsBriefingSection({ embedded = false, columns = false }: { embedded?: boolean
+  /** 홈 › 미국 시장(시안 Home-US) — 왼쪽 브리핑 전문 | 오른쪽 거래대금 쏠림·개별 움직임. 날짜 선택 상태를 두 칸이 같이 쓴다 */
+  columns?: boolean }) {
   const [pickedDate, setPickedDate] = useState<string | null>(null)
   const { data, isLoading, isError, refetch, refresh, refreshing } = useUsBriefing(pickedDate)
   const { data: dates = [] } = useUsBriefingDates()
@@ -80,9 +82,13 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
     </div>
   )
   return (
-    <Card data-home-briefing className={embedded ? EMBED : undefined}>
+    <Card id={columns ? "us-briefing" : undefined} data-home-briefing className={embedded ? EMBED : columns ? "scroll-mt-4 gap-0 rounded-[var(--radius-card)] py-0 shadow-none" : undefined}>
       {/* 위젯 안에서는 제목을 위젯 틀이 맡고 컨트롤은 기준 띠 오른쪽으로 — 한 줄을 아낀다 */}
-      {!embedded && <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
+      {columns ? <CardHeader className="flex min-h-10 flex-row flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1.5 !pb-1.5">
+        <CardTitle className="shrink-0 text-sm font-semibold">어젯밤 미국장 — 브리핑 전체</CardTitle>
+        {controls}
+      </CardHeader>
+      : !embedded && <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
         <CardTitle className="text-card-title flex items-center gap-1.5">
           <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
         </CardTitle>
@@ -90,7 +96,120 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
         {controls}
       </CardHeader>}
 
-      <CardContent className="space-y-3">
+      <CardContent className={columns ? "grid gap-6 p-4 @4xl/market:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" : "space-y-3"}>
+        {columns ? <>
+          <div className="min-w-0 space-y-3">
+        <SessionStrip data={data} past={!!pickedDate} controls={embedded ? controls : undefined} />
+        {/* 핵심 요약 — 줄글 앞에 bullet로 먼저 (2026-10-17 이후 종합에만 있다) */}
+        {!!synthesis?.key_points?.length && (
+          <section aria-label="핵심 요약" className="rounded-lg bg-muted/40 px-3 py-2.5">
+            <p className="mb-1.5 text-caption font-medium text-muted-foreground">핵심 요약</p>
+            <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed marker:text-muted-foreground">
+              {synthesis.key_points.map((point, i) => <li key={i}>{point}</li>)}
+            </ul>
+          </section>
+        )}
+        {/* 위젯 안에서는 지수 띠가 따로 있어 생략 */}
+        {!embedded && data.indices.items.length > 0 && <div className="grid grid-cols-3 gap-3 border-b pb-4">
+          {data.indices.items.slice(0, 3).map(index => <div key={index.name}>
+            <p className="text-caption text-muted-foreground">{index.name}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums @[420px]/market:text-2xl">{formatNumber(index.close)}</p>
+            <p className={`text-caption tabular-nums ${chg(index.change_pct)}`}>{formatPercent(index.change_pct)}</p>
+          </div>)}
+        </div>}
+        {data.status === "stale" && (
+          <Banner tone="warn">실시간 갱신 실패 — 마지막 성공 데이터를 표시합니다.{data.error ? ` (${data.error})` : ""}</Banner>
+        )}
+        {data.status === "partial" && (
+          <Banner tone="info">근거 스냅샷은 보존 기간이 지나 삭제됐습니다 — 저장된 종합만 표시합니다.</Banner>
+        )}
+        {!synthesis && data.status !== "partial" && (
+          <Banner tone="info">LLM 종합이 아직 없습니다 — 아래 구조화 브리핑(섹터 쏠림·개별 이슈)만 표시합니다.</Banner>
+        )}
+
+        {gaps.length > 0 && (
+          <Banner tone="info">빠진 재료: {gaps.join(" · ")}</Banner>
+        )}
+
+        {/* 종합 — 소제목 없이 한 편의 글로 (D-114). 매크로 문단의 [n]은 원문 링크 (D-206) */}
+        {synthesis && (
+          <div className="space-y-2">
+            {/* 매크로·기업 각각 두 문단 — 필드 안의 빈 줄로 나뉜다(옛 브리핑은 한 문단 그대로) */}
+            {[synthesis.index_summary, synthesis.drivers, synthesis.issues]
+              .filter(Boolean)
+              .flatMap((field) => (field as string).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean))
+              .map((para, i) => (
+                <p key={i} className="text-reading text-foreground/90">
+                  <CitedText text={para} sources={sources} />
+                </p>
+              ))}
+          </div>
+        )}
+
+        {/* 스터디 / 공유 후보 */}
+        {synthesis && (synthesis.study_candidates.length > 0 || synthesis.share_candidates.length > 0) && (
+          <div className="grid grid-cols-1 @[620px]/market:grid-cols-2 gap-3 pt-1">
+            <CandidateList icon={GraduationCap} title="스터디 후보" items={synthesis.study_candidates} accent="text-hypothesis" />
+            <CandidateList icon={Share2} title="공유 후보" items={synthesis.share_candidates} accent="text-primary" />
+          </div>
+        )}
+
+          </div>
+          <div className="min-w-0 space-y-3 @4xl/market:border-l @4xl/market:pl-6">
+            <h3 className="text-sm font-semibold">거래대금 쏠림 · 개별 움직임 <span className="text-xs font-normal text-muted-foreground">상위 {movers.length}</span></h3>
+        {/* 섹터 쏠림 */}
+        <div>
+          <div className="mb-1 text-caption font-medium text-muted-foreground">
+            섹터 쏠림 {topShare && <span className="text-foreground">· {topShare.label} {topShare.share_pct}%</span>}
+          </div>
+          <div className="space-y-1">
+            {clusters.map((c) => (
+              <div key={c.label} className="flex items-center gap-2 text-xs">
+                <span className="w-24 shrink-0 truncate">{c.label}</span>
+                <div className="relative h-3 flex-1 rounded bg-muted overflow-hidden">
+                  <div className="absolute inset-y-0 left-0 bg-primary/70 rounded" style={{ width: `${c.share_pct}%` }} />
+                </div>
+                <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
+                <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
+                {/* 좁은 화면은 막대 폭이 줄마다 같도록 배지 자리를 늘 비워 둔다 */}
+                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}</span>
+                <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.tickers.join(" · ")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 개별 이슈 */}
+        {idiosyncratic.length > 0 && (
+          <div>
+            <div className="mb-1 text-caption font-medium text-muted-foreground">개별 이슈 — 그룹으로 안 풀리는 움직임</div>
+            <div className="grid grid-cols-1 @[620px]/market:grid-cols-2 gap-x-6 gap-y-1">
+              {idiosyncratic.map((m) => <MoverRow key={m.ticker} m={m} />)}
+            </div>
+          </div>
+        )}
+
+        {/* 상위 20 전체 */}
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger className="flex items-center gap-1 text-caption text-muted-foreground hover:text-foreground">
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+            거래대금 상위 20 전체
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 grid grid-cols-1 @[620px]/market:grid-cols-2 gap-x-6 gap-y-0.5">
+            {movers.map((m) => (
+              <div key={m.ticker} className="flex items-center gap-2 py-0.5 text-sm min-w-0">
+                <span className="w-5 text-right text-xs text-muted-foreground tabular-nums shrink-0">{m.rank}</span>
+                <Link to={`/us/${m.ticker}`} className="font-semibold text-primary hover:underline shrink-0">{m.ticker}</Link>
+                <span className="text-muted-foreground truncate min-w-0 flex-1 text-xs">{m.name}</span>
+                {m.is_adr && <Badge variant="outline" className="text-caption shrink-0">ADR</Badge>}
+                <span className={`w-14 text-right text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : "-"}</span>
+                <span className="w-16 text-right shrink-0 font-medium tabular-nums text-xs">{m.dollar_volume != null ? formatUsd(m.dollar_volume) : "-"}</span>
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+          </div>
+        </> : <>
         <SessionStrip data={data} past={!!pickedDate} controls={embedded ? controls : undefined} />
         {/* 핵심 요약 — 줄글 앞에 bullet로 먼저 (2026-10-17 이후 종합에만 있다) */}
         {!!synthesis?.key_points?.length && (
@@ -197,6 +316,7 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
             ))}
           </CollapsibleContent>
         </Collapsible>
+        </>}
       </CardContent>
     </Card>
   )

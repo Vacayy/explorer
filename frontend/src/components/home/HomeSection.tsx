@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import { Info } from "lucide-react"
@@ -50,22 +51,53 @@ export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, 
 function SectionHead({ widget, params, title, link }: Pick<HomeSectionProps, "widget" | "params" | "title" | "link">) {
   const def = WIDGET_BY_ID[widget]
   const meta = def.useMeta(params)
-  const { pathname } = useLocation()
   const target = link === undefined ? (def.detailPathOf?.(params) ?? def.detailPath) : link?.to
-  const to = target && target.split("#")[0] !== pathname ? target : undefined   // 지금 화면으로 가는 링크는 숨긴다
-  const label = link?.label ?? "전체 보기"
-  const name = title ?? def.titleOf?.(params) ?? def.title
+  return <BlockHead title={title ?? def.titleOf?.(params) ?? def.title} info={def.description} asOf={meta.asOf} stale={meta.stale}
+    link={target ? { to: target, label: link?.label ?? "전체 보기" } : null} />
+}
+
+interface BlockHeadProps {
+  title: ReactNode
+  /** 제목 옆 ⓘ 툴팁 — 화면에 부연설명을 쓰지 않고 여기에만 둔다 */
+  info?: ReactNode
+  asOf?: string | null
+  stale?: boolean
+  link?: { to: string; label: string } | null
+  /** 머리 오른쪽 끝(링크 앞)에 두는 동작 — 갱신 버튼 등 */
+  actions?: ReactNode
+}
+
+/** 홈 블록 머리 — 제목 · ⓘ · 기준 시각 · 동작 · 링크. 지금 화면으로 가는 링크는 숨긴다 */
+export function BlockHead({ title, info, asOf, stale, link, actions }: BlockHeadProps) {
+  const { pathname } = useLocation()
+  const to = link && link.to.split("#")[0] !== pathname ? link.to : undefined
+  const name = typeof title === "string" ? title : undefined
   return (
     <header className="flex h-10 shrink-0 items-center gap-1.5 border-b px-3">
-      <h2 className="min-w-0 truncate text-sm font-semibold">{name}</h2>
-      <Tooltip>
+      <h2 className="min-w-0 truncate text-sm font-semibold">{title}</h2>
+      {info && <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon-xs" aria-label={`${name} 설명`} className="shrink-0 text-muted-foreground/70"><Info className="size-3.5" /></Button>
+          <Button variant="ghost" size="icon-xs" aria-label={`${name ?? "블록"} 설명`} className="shrink-0 text-muted-foreground/70"><Info className="size-3.5" /></Button>
         </TooltipTrigger>
-        <TooltipContent className="max-w-[280px] text-xs leading-relaxed">{def.description}</TooltipContent>
-      </Tooltip>
-      {meta.asOf && <span className={cn("ml-auto shrink-0 font-mono text-[11px] tabular-nums max-sm:hidden", meta.stale ? "text-chart-warning" : "text-muted-foreground")}>{meta.asOf}</span>}
-      {to && <Link to={to} className={cn("shrink-0 text-xs text-muted-foreground hover:text-foreground", !meta.asOf && "ml-auto", "max-sm:ml-auto")}>{label} ›</Link>}
+        <TooltipContent className="max-w-[280px] text-xs leading-relaxed">{info}</TooltipContent>
+      </Tooltip>}
+      <span className="ml-auto" />
+      {asOf && <span className={cn("shrink-0 font-mono text-[11px] tabular-nums max-sm:hidden", stale ? "text-chart-warning" : "text-muted-foreground")}>{asOf}</span>}
+      {actions}
+      {to && <Link to={to} className="shrink-0 text-xs text-muted-foreground hover:text-foreground">{link!.label} ›</Link>}
     </header>
+  )
+}
+
+/** 홈 고정 화면의 직접 만든 블록 — HomeSection과 같은 틀(머리 + 본문 오류 경계)을 위젯 레지스트리 없이 쓴다 */
+export function HomeBlock({ children, className, bodyClassName, label, ...head }: BlockHeadProps & { children: ReactNode; className?: string; bodyClassName?: string; label?: string }) {
+  const client = useQueryClient()
+  return (
+    <Card data-home-section={label} className={cn("flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none", className)}>
+      <BlockHead {...head} />
+      <div className={cn("min-h-0 flex-1 p-3", bodyClassName)}>
+        <ErrorBoundary onReset={() => { void client.refetchQueries({ type: "active", predicate: q => q.state.status === "error" }) }}>{children}</ErrorBoundary>
+      </div>
+    </Card>
   )
 }

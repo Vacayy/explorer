@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import MultiLineChart from "@/components/charts/MultiLineChart"
 import { WidgetState } from "@/components/shared/WidgetFrame"
 import { SparkLine } from "@/components/shared/Spark"
@@ -93,14 +94,15 @@ function TrendList({ items: all, universe, passed, criteria, wide, short, stage,
   items: TrendLeader[]; universe: number; passed: number; criteria: string; wide: boolean; short: boolean
   stage: TrendHigh52["kind"] | null; onStage: (v: string | null) => void; onPick: (code: string) => void
 }) {
-  if (!all.length) return <WidgetState empty emptyText={`조건을 모두 통과한 종목이 없어요. (${criteria})`} />
+  if (!all.length) return <p role="status" className="text-sm text-muted-foreground">오늘은 조건 다섯 개를 모두 통과한 종목이 없습니다. <HowTip criteria={criteria} /></p>
   const count = (k: TrendHigh52["kind"]) => all.filter(i => i.high52?.kind === k).length
   const items = stage ? all.filter(i => i.high52?.kind === stage) : all.slice(0, 20)   // 상위 20 + 신고가 단계 종목(순위 밖 포함)
   const fresh = all.filter(i => i.new).length
   return <div className="flex h-full flex-col gap-1.5">
-    <p className="text-[12px] text-muted-foreground" title={criteria}>
+    <p className="text-[12px] text-muted-foreground">
       시총 3,000억+ {formatNumber(universe)}종목 중 <span className="font-medium text-foreground">{formatNumber(passed)}</span>개
-      {fresh > 0 && <> · 5거래일 새 진입 {formatNumber(fresh)}</>} · 누르면 근거
+      {fresh > 0 && <> · 5거래일 새 진입 {formatNumber(fresh)}</>}
+      {' · '}<HowTip criteria={criteria} />
     </p>
     {(count("breakout") > 0 || count("retest") > 0) && (
       <ToggleGroup type="single" size="sm" variant="outline" value={stage ?? "all"} onValueChange={v => v && onStage(v === "all" ? null : v)}
@@ -112,8 +114,8 @@ function TrendList({ items: all, universe, passed, criteria, wide, short, stage,
     )}
     <div className={cn("grid items-center gap-x-3 border-b px-1 pb-1 text-[11px] text-muted-foreground", wide ? COLS_WIDE : COLS_NARROW)}>
       <span>종목</span><span>60일</span><span className="text-right">수익률</span>
-      {wide && <><span className="text-right" title="60거래일 log 가격 회귀의 R² — 1에 가까울수록 고르게 올랐다">고름</span>
-        <span className="text-right" title="ADX(14) — 추세 강도">ADX</span>
+      {wide && <><TermTip label="꾸준함" tip="60거래일 로그 가격 회귀의 R²입니다. 1에 가까울수록 고르게 올랐습니다." />
+        <TermTip label="ADX" tip="ADX(14) — 추세의 강도입니다. 25 이상이면 추세가 뚜렷합니다." />
         <span className="text-right" title="20일 이동평균 대비 — 클수록 단기 과열">이격</span></>}
     </div>
     <ul className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2 text-[13px]">
@@ -142,6 +144,20 @@ function TrendList({ items: all, universe, passed, criteria, wide, short, stage,
       ))}
     </ul>
   </div>
+}
+
+/** '어떻게 산정되나요?' — 조건 줄은 본문에 쓰지 않고 툴팁으로 (ia-redesign §4.2) */
+function HowTip({ criteria }: { criteria: string }) {
+  return <Tooltip>
+    <TooltipTrigger className="underline decoration-dotted underline-offset-2 hover:text-foreground">어떻게 산정되나요?</TooltipTrigger>
+    <TooltipContent className="max-w-[300px] text-xs leading-relaxed">{criteria} · 60거래일 수익률 순 · 종목을 누르면 조건별 실제 값과 차트를 봅니다.</TooltipContent>
+  </Tooltip>
+}
+function TermTip({ label, tip }: { label: string; tip: string }) {
+  return <Tooltip>
+    <TooltipTrigger className="text-right underline decoration-dotted underline-offset-2">{label}</TooltipTrigger>
+    <TooltipContent className="max-w-[260px] text-xs leading-relaxed">{tip}</TooltipContent>
+  </Tooltip>
 }
 
 function EventList({ events, short }: { events: TrendEvent[]; short: boolean }) {
