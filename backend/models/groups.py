@@ -35,7 +35,7 @@ class MemberUpdate(Strict):
 
 
 class TrackedPut(Strict):
-    """관심 종목 추적 켜기·끄기 — 추적 = 알림 대상(D-293, docs/specs/stock-tracker.md)."""
+    """관심 종목 추적 켜기·끄기 — 추적 = 알림 대상(D-293, docs/specs/stock-tracker.md). 국내 종목·미국 티커 모두."""
     tracked: bool
 
 
@@ -43,8 +43,7 @@ class TrackedState(BaseModel):
     group_id: int
     stock_code: str
     tracked: bool
-    widget_tracked: bool    # 이행 기간: 홈 '종목 추적' 위젯에도 있으면 추적을 꺼도 알림이 계속된다
-    tracked_codes: list[str]  # 지금 알림 대상 전체(두 원천 합집합)
+    tracked_codes: list[str]  # 지금 알림 대상 전체(관심 종목 추적 표시, 국내·미국)
 
 
 class RuleInput(Strict):

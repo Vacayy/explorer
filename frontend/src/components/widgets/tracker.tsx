@@ -13,18 +13,20 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { prepareTracker, useTracker, useTrackerConditionMutations } from "@/hooks/useTracker"
 import { cn } from "@/lib/utils"
-import { formatKrw, formatNumber, formatPercent, formatPp, formatRatio } from "@/utils/format"
+import { formatKrw, formatNumber, formatPercent, formatPp, formatRatio, formatStockPrice } from "@/utils/format"
 import type { TrackerCondition, TrackerKind, TrackerRole, TrackerView } from "@/types"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
 
 /**
- * 종목 추적 위젯(docs/specs/stock-tracker.md) — 종목마다 하나. 내 원칙 조건 → 차트·기술적 신호 → 수급 → 이슈 순.
+ * 종목 추적 카드(docs/specs/stock-tracker.md) — 종목마다 하나. 내 원칙 조건 → 차트·기술적 신호 → 수급 → 이슈 순.
  * 조건 충족·급등락·공시·새 기술적 신호는 서버가 텔레그램으로도 알린다(portfolio_alerts 편승).
+ * 미국 티커(market='us')는 달러 일봉 기준 — 수급·공시가 없고, 조건은 국내 장 마감 점검 때 마지막 미국 종가로 판정한다.
  */
 
 const codeOf = (p?: Record<string, unknown>) => (typeof p?.code === "string" ? p.code : null)
 const tone = (v?: number | null) => (v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted-foreground")
 const won = (eok: number) => formatKrw(eok * 1e8)
+export const dossierPath = (code: string, market?: string | null) => market === "us" ? `/us/${code}` : `/analyze/${code}/summary`
 const KIND_LABEL: Record<TrackerKind, string> = {
   price_below: "가격 아래(손절선)", price_above: "가격 위(돌파)", close_below_ma: "N일선 아래 마감", close_above_ma: "N일선 위 마감", manual: "확인 항목(직접 체크)",
 }
@@ -59,17 +61,18 @@ function Conditions({ data, compact }: { data: TrackerView; compact?: boolean })
           : <StatusBadge c={c} />}
         <span className="min-w-0 flex-1 truncate" title={c.note ?? c.label}>
           <span className="text-muted-foreground">{ROLE_LABEL[c.role]} · </span>{c.label}
-          {c.level ? <span className="tabular-nums text-muted-foreground"> {formatNumber(c.level)}원</span> : null}
-          {c.ref ? <span className="tabular-nums text-muted-foreground"> ({c.ma}일선 {formatNumber(c.ref)}원)</span> : null}
+          {c.level ? <span className="tabular-nums text-muted-foreground"> {formatStockPrice(c.level, data.market)}</span> : null}
+          {c.ref ? <span className="tabular-nums text-muted-foreground"> ({c.ma}일선 {formatStockPrice(c.ref, data.market)})</span> : null}
         </span>
         {c.distance_pct != null && <span className={cn("shrink-0 tabular-nums", tone(c.distance_pct))}>{formatPercent(c.distance_pct)}</span>}
         {!compact && <Button variant="ghost" size="icon-xs" aria-label={`${c.label} 삭제`} onClick={() => remove.mutate(c.id)}><X className="size-3" /></Button>}
       </li>)}</ul>}
-    <ConditionDialog code={data.code} open={open} onOpenChange={setOpen} price={data.price} />
+    <ConditionDialog code={data.code} open={open} onOpenChange={setOpen} price={data.price} market={data.market} />
   </section>
 }
 
-function ConditionDialog({ code, open, onOpenChange, price }: { code: string; open: boolean; onOpenChange: (v: boolean) => void; price: number | null }) {
+function ConditionDialog({ code, open, onOpenChange, price, market }: { code: string; open: boolean; onOpenChange: (v: boolean) => void; price: number | null; market?: string | null }) {
+  const us = market === "us"
   const { add } = useTrackerConditionMutations(code)
   const [role, setRole] = useState<TrackerRole>("exit")
   const [kind, setKind] = useState<TrackerKind>("price_below")
@@ -96,8 +99,8 @@ function ConditionDialog({ code, open, onOpenChange, price }: { code: string; op
               <SelectContent>{(Object.keys(KIND_LABEL) as TrackerKind[]).map(k => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent></Select></div>
         </div>
         {kind !== "manual" && <div className="grid gap-1">
-          <Label>{isPrice ? `기준가(원)${price ? ` — 현재 ${formatNumber(price)}원` : ""}` : "이평선 N일"}</Label>
-          <Input inputMode="numeric" value={num} onChange={e => setNum(e.target.value.replace(/[^0-9]/g, ""))} placeholder={isPrice ? "예: 10780" : "예: 120"} />
+          <Label>{isPrice ? `기준가(${us ? "달러" : "원"})${price ? ` — 현재 ${formatStockPrice(price, market)}` : ""}` : "이평선 N일"}</Label>
+          <Input inputMode={isPrice && us ? "decimal" : "numeric"} value={num} onChange={e => setNum(e.target.value.replace(isPrice && us ? /[^0-9.]/g : /[^0-9]/g, ""))} placeholder={isPrice ? (us ? "예: 455.5" : "예: 10780") : "예: 120"} />
           {isPrice && price && Number(num) > 0 && <p className="text-caption text-muted-foreground">현재가 대비 {formatPercent((Number(num) / price - 1) * 100)}</p>}
         </div>}
         <div className="grid gap-1"><Label>{kind === "manual" ? "확인할 것" : "이름(선택)"}</Label>
@@ -141,11 +144,13 @@ function Technicals({ t }: { t: TrackerView["technicals"] }) {
 
 function Flows({ data }: { data: TrackerView }) {
   const f = data.flows
+  const us = data.market === "us"
   const prepared = useRef(false)
-  useEffect(() => { if (!f && !prepared.current) { prepared.current = true; void prepareTracker(data.code) } }, [f, data.code])
+  useEffect(() => { if (!f && !us && !prepared.current) { prepared.current = true; void prepareTracker(data.code) } }, [f, us, data.code])
   return <section>
     <p className="mb-1 text-caption font-medium text-muted-foreground">수급{f ? ` · ${f.as_of.slice(5)}까지` : ""}</p>
-    {!f ? <p className="text-caption text-muted-foreground">수급을 받는 중이에요(최근 30일). 잠시 뒤 채워져요.</p>
+    {us ? <p className="text-caption text-muted-foreground">미국 종목은 투자자별 수급 자료가 없어요.</p>
+      : !f ? <p className="text-caption text-muted-foreground">수급을 받는 중이에요(최근 30일). 잠시 뒤 채워져요.</p>
       : <div className="grid grid-cols-[auto_1fr_1fr] gap-x-3 gap-y-0.5 text-caption tabular-nums">
         <span /><span className="text-right text-muted-foreground">5일</span><span className="text-right text-muted-foreground">20일</span>
         {([["외국인", f.foreign_5d, f.foreign_20d], ["기관", f.inst_5d, f.inst_20d], ["개인", f.indiv_5d, f.indiv_20d]] as const).map(([n, a, b]) => <Fragment key={n}>
@@ -174,7 +179,7 @@ function Issues({ i }: { i: TrackerView["issues"] }) {
   </section>
 }
 
-function TrackerBody({ w, h, params }: WidgetBodyProps) {
+export function TrackerBody({ w, h, params }: WidgetBodyProps) {
   const code = codeOf(params)
   const q = useTracker(code)
   if (!code) return <p className="p-3 text-sm text-muted-foreground">종목이 정해지지 않은 추적 카드예요.</p>
@@ -182,9 +187,9 @@ function TrackerBody({ w, h, params }: WidgetBodyProps) {
   if (q.isError || !q.data) return <ErrorState message="추적 카드를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
   const d = q.data
   const head = <div className="flex flex-wrap items-baseline gap-x-2">
-    <span className="text-xl font-semibold tabular-nums">{d.price != null ? `${formatNumber(d.price)}원` : "-"}</span>
+    <span className="text-xl font-semibold tabular-nums">{formatStockPrice(d.price, d.market)}</span>
     <span className={cn("tabular-nums", tone(d.change_pct))}>{formatPercent(d.change_pct)}</span>
-    <Link to={`/analyze/${d.code}/summary`} className="ml-auto text-caption text-muted-foreground hover:underline">기업 화면</Link>
+    <Link to={dossierPath(d.code, d.market)} className="ml-auto text-caption text-muted-foreground hover:underline">기업 화면</Link>
   </div>
   if (h <= 3) {
     const met = d.conditions.filter(c => c.status === "met")
@@ -211,6 +216,6 @@ export const TRACKER_WIDGETS: WidgetDef[] = [
   { id: "track.stock", title: "종목 추적", description: "종목 하나의 원칙 조건·차트·기술적 신호·수급·이슈 — 종목마다 하나씩, 조건 충족 시 텔레그램 알림",
     section: "home", group: "관심 종목 추적", size: { w: 6, h: 8, minW: 3, minH: 2 }, multi: true, pick: "stock",
     titleOf: p => (typeof p?.name === "string" ? `${p.name} 추적` : "종목 추적"),
-    detailPathOf: p => (codeOf(p) ? `/analyze/${codeOf(p)}/summary` : "/"),
+    detailPathOf: p => (codeOf(p) ? dossierPath(codeOf(p) as string, typeof p?.market === "string" ? p.market : null) : "/"),
     useMeta: useTrackerMeta, Body: TrackerBody },
 ]

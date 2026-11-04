@@ -3,6 +3,9 @@
 멱등이다. 위젯 종목이 관심 종목에 없으면 추적 표시와 함께 넣고, 있으면 추적 표시만 켠다.
 위젯·home_boards는 지우지 않고, 새 원천에만 있는 추적 표시도 끄지 않는다.
 
+배포 순서(필수): 추적이 새 원천만 읽는 커밋(개편 3d)을 배포하기 **전에** 이 스크립트를 실행한다.
+그 커밋부터 stock_tracker.tracked_codes는 위젯을 읽지 않아, 이관하지 않은 위젯 종목은 알림이 소리 없이 멈춘다.
+
 사용법:
   python scripts/migrate_tracking_to_groups.py --dry-run              # 계획만 출력, 쓰기 없음
   python scripts/migrate_tracking_to_groups.py                        # 적용
@@ -16,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from config import DB_PATH
-from pipeline.stock_tracker import migrate_widget_tracking, source_diff, tracked_codes
+from pipeline.stock_tracker import member_codes, migrate_widget_tracking, source_diff
 
 
 def main():
@@ -29,9 +32,9 @@ def main():
     try:
         if not any(r[1] == "tracked" for r in conn.execute("PRAGMA table_info(stock_group_members)")):
             sys.exit("stock_group_members.tracked 컬럼이 없습니다. 백엔드를 한 번 띄우거나 database.init_db()를 먼저 실행하세요.")
-        before = tracked_codes(conn)
+        before = member_codes(conn)
         plan = migrate_widget_tracking(conn, dry_run=args.dry_run)
-        after = tracked_codes(conn)
+        after = member_codes(conn)
         diff = source_diff(conn)
     finally:
         conn.close()
@@ -41,9 +44,9 @@ def main():
     for key, label in (("add", "관심 종목에 추가+추적"), ("mark", "추적 표시 켬"), ("same", "그대로")):
         for item in plan[key]:
             print(f"  {label} {item['stock_code']} {item['name']}")
-    print(f"  알림 대상 전 {before}")
-    print(f"  알림 대상 후 {after} — {'같음' if before == after else '다름'}")
-    print(f"  홈 위젯에만 {diff['widget_only'] or '-'} · 추적 표시에만 {diff['member_only'] or '-'}")
+    print(f"  추적 표시 전 {before}")
+    print(f"  추적 표시 후 {after}")
+    print(f"  홈 위젯에만(이관 누락 — 알림이 멈춤) {diff['widget_only'] or '-'} · 추적 표시에만 {diff['member_only'] or '-'}")
 
 
 if __name__ == "__main__":

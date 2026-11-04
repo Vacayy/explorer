@@ -1,16 +1,19 @@
-"""종목 추적 위젯 API (docs/specs/stock-tracker.md) — 카드 조합(LLM 0)·원칙 조건 CRUD·수급 즉시 수집."""
+"""종목 추적 API (docs/specs/stock-tracker.md) — 카드 조합(LLM 0)·원칙 조건 CRUD·수급 즉시 수집. 국내 종목·미국 티커."""
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Path
 
 from database import get_connection
 from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch, TrackerView
 
 router = APIRouter(prefix="/api/spine/tracker", tags=["spine"])
-Code = Path(pattern=r"^[0-9A-Z]{6}$")
+Code = Path(pattern=r"^([0-9A-Z]{6}|[A-Z][A-Z0-9.\-]{0,9})$")   # 국내 6자리 또는 미국 티커(묶음 멤버와 같은 규칙)
 
 
-def _check(conn, code: str) -> None:
-    if not conn.execute("SELECT 1 FROM companies WHERE stock_code=?", (code,)).fetchone():
+def _check(conn, code: str) -> str:
+    from pipeline.watch_rules import market_of
+    mkt = market_of(conn, code)
+    if not mkt:
         raise HTTPException(404, f"알 수 없는 종목: {code}")
+    return mkt
 
 
 @router.get("/{code}", response_model=TrackerView)
@@ -26,8 +29,14 @@ def tracker_view(code: str = Code):
 
 @router.post("/{code}/prepare")
 def tracker_prepare(background: BackgroundTasks, code: str = Code):
-    """위젯을 막 놓았을 때 — 수급 30일을 바로 받는다(다음 정기 수집을 기다리지 않게)"""
+    """추적을 막 켰을 때 — 수급 30일을 바로 받는다(다음 정기 수집을 기다리지 않게). 미국 종목은 수급 자료가 없다"""
     from pipeline.flows import collect_flows
+    conn = get_connection()
+    try:
+        if _check(conn, code) != "kr":
+            return {"queued": False}
+    finally:
+        conn.close()
     background.add_task(collect_flows, [code])
     return {"queued": True}
 

@@ -1,16 +1,23 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import type { TrackerCondition, TrackerKind, TrackerRole, TrackerView } from "@/types"
 
-/** 종목 추적 카드(docs/specs/stock-tracker.md) — 장중엔 5분마다 다시 읽는다(서버는 30분 점검 때 시세를 갱신) */
+const trackerQuery = (code: string | null) => ({
+  queryKey: ["spine", "tracker", code],
+  queryFn: async () => (await api.get<TrackerView>(`/api/spine/tracker/${code}`)).data,
+  enabled: !!code,
+  staleTime: 60_000,
+  refetchInterval: 5 * 60_000,
+})
+
+/** 종목 추적 카드(docs/specs/stock-tracker.md) — 장중엔 5분마다 다시 읽는다(서버는 30분 점검 때 시세를 갱신). 국내 종목·미국 티커 */
 export function useTracker(code: string | null) {
-  return useQuery({
-    queryKey: ["spine", "tracker", code],
-    queryFn: async () => (await api.get<TrackerView>(`/api/spine/tracker/${code}`)).data,
-    enabled: !!code,
-    staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
-  })
+  return useQuery(trackerQuery(code))
+}
+
+/** 여러 추적 종목의 카드 — 홈 › 내 종목의 머리 줄(충족 수)·조건 충족 알림 줄. 캐시 키는 useTracker와 같다 */
+export function useTrackers(codes: string[]) {
+  return useQueries({ queries: codes.map(trackerQuery) })
 }
 
 /** 위젯을 막 놓았을 때 수급을 바로 받는다 */

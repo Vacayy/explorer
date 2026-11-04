@@ -24,12 +24,12 @@
      - 개발 서버에서만 `?today=YYYY-MM-DD`로 오늘을 바꿔 시즌 사이 화면을 확인한다.
   2. 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림 · 개별 움직임(`UsBriefingSection columns` — 날짜 선택을 두 칸이 같이 쓴다, `#us-briefing`).
   3. 컨콜·실적 발표 | 이번 시즌 실적 모멘텀 — 시안에는 없지만 이행 화면에 있던 것이라 남긴다(새 모멘텀 후보는 시즌 개요 개편 §4.6a로 옮겨 갈 때 정리).
-- **이행 중 화면**(기존 위젯·카드를 섹션으로 모아 둔 것 — 아무 기능도 잃지 않게. 이후 단계에서 시안대로 바꾼다):
+- **이행 화면에서 시안으로 바꾼 탭**(기존 위젯·카드를 섹션으로 모아 둔 이행 화면 — 아무 기능도 잃지 않게 옮겼다):
   - 매크로(3c, 2026-11-05 완료): `home/HomeMacroPage` — 시안 Home-Macro·ia-redesign §4.16. 지금 시장은 5칸·AI 해설·1~5 → 매크로·유동성 신호등 → 리스크 지표 묶음(`home/RiskTiles`) → 국면 이력. 계약은 market-regimes.md §6·§8.
-  - 내 종목(3d): 관심 묶음에서 추적을 켠 종목마다 추적 카드(`track.stock` 본문) → 묶음 오늘 신호 · 관심 종목 오늘 요약 · 포트폴리오 오늘 · 다가오는 일정 · 보유 종목 자료 흐름.
+  - 내 종목(3d, 2026-11-05 완료): `home/HomeStocksPage` — 시안 Home-Stocks·Mobile-Stocks, ia-redesign §4.4·§4.20. 머리 줄(보기 전환·종목 추가) → 특징주 → 조건 충족 알림 줄 → 목록(추적 행 먼저, 펼치면 조건·신호·수급, 비추적 6 + 더 보기, 행마다 추적 스위치·빼기, 미국 행 실적 배지). 이행 화면의 추적 카드는 '조건 편집' 시트로, 묶음 오늘 신호는 특징주로, 관심 종목 오늘 요약은 전체 보기 아래, 포트폴리오 오늘·다가오는 일정·보유 종목 자료 흐름은 보유 보기로 옮겼다. 계약은 [stock-tracker '화면'](stock-tracker.md).
 - **리다이렉트**(쿼리 유지, `KeepQueryRedirect`): `/home/b/:boardId` → `/home`, `/home/briefing` → `/home/us`, `/home/risk` → `/home/macro`, `/regimes` → `/home/macro#history`(해시는 쿼리 뒤). `/retail`은 화면을 그대로 두고 한국 시장 탭으로 판정한다.
 - **5-state**(ia-redesign §4.28): 블록 단위 로딩(위젯 본문의 스켈레톤, Overnight·Today는 같은 높이 칸 안)·오류(그 블록만 '다시 시도')·빈 상태(위젯 본문 문구). Market Today는 첫 회차 전에는 직전 회차를 날짜와 함께 보인다(서버가 최신 거래일을 읽음). 리스크 타일은 갱신이 늦거나 실패하면 마지막 값을 흐리게 두고 'n일 지연 · MM/DD 값' / '갱신 실패 · MM/DD 값'을 붙인다.
-- **남겨 둔 것(7단계 정리)**: `home_boards` 테이블과 `/api/dashboard/boards` API는 그대로다. 이행 기간에 추적(`stock_tracker.widget_codes`)이 아직 이 표의 `track.stock` 위젯을 읽는다. 화면에서 메뉴를 고칠 수 없으니 옛 원천은 고정된 채 남는다. `WidgetDef`의 크기·`Detail`·`multi`·`pick` 필드와 `react-grid-layout` 의존성도 7단계에서 걷는다.
+- **남겨 둔 것(7단계 정리)**: `home_boards` 테이블과 `/api/dashboard/boards` API는 그대로다. 추적은 3d부터 이 표를 읽지 않는다(관심 종목의 추적 표시만, [stock-tracker](stock-tracker.md)). 일회 이관 스크립트 `scripts/migrate_tracking_to_groups.py`만 `track.stock` 위젯을 읽는다. `WidgetDef`의 크기·`Detail`·`multi`·`pick` 필드와 `react-grid-layout` 의존성도 7단계에서 걷는다.
 - 걷은 것: `home/Dashboard`(격자·편집), `home/NewBoardDialog`, `widgets/WidgetGallery`(위젯 추가 창), `widgets/rows`(줄 배치), `WidgetFrame` 틀, `SYSTEM_PRESETS`·`GALLERY_SECTIONS`, `useHomeBoards`, 홈 L2의 '+ 새 메뉴', 위젯 상세 창(`?widget=`).
 
 > 아래 §1·§4·§5는 2026-11-05 이전 위젯 홈의 기록이다.
@@ -150,7 +150,7 @@ interface WidgetDef {
 - 새 메뉴(`home/NewBoardDialog`): 이름 + 출발점 — 빈 메뉴, 또는 **시스템 프리셋**(`SYSTEM_PRESETS`: 기본·시장 브리핑·국면·리스크·매크로·보유 점검·디레버리징·수출 사이클·이벤트 장세). 프리셋은 출발점일 뿐, 만든 뒤엔 그 메뉴의 배치다. 이름을 안 쳤으면 고른 프리셋 이름을 쓴다. 만들면 그 메뉴로 간다.
 - 메뉴 설정(도구 줄 `⋯ 메뉴 설정`): 이름 바꾸기 · 복제해서 새 메뉴(위젯 params 포함) · 왼쪽으로/오른쪽으로 · 메뉴 삭제(되돌릴 수 없어 확인 창).
 - 배치는 놓을 때마다 그 메뉴에 저장한다. 저장 형식은 §4와 같아 종목 추적 위젯의 종목(params)도 그대로 남는다.
-- 종목 추적(`stock_tracker.tracked_codes`)은 모든 메뉴의 `track.stock` 위젯을 합친다.
+- (2026-11-05 이전) 종목 추적(`stock_tracker.tracked_codes`)은 모든 메뉴의 `track.stock` 위젯을 합쳤다. 지금은 관심 종목의 추적 표시만 읽는다.
 - AI 패널의 '보는 화면'은 `홈 · {메뉴 이름}`.
 - API: `GET /api/dashboard/boards` · `POST`(label·items, 맨 뒤에 붙음) · `PATCH /{id}`(label·items) · `PUT /order`(ids 순서) · `DELETE /{id}`. 테이블 `home_boards(label, sort, layout_json)`.
 - 이관(1회, `init_db`): 옛 `dashboard_layouts` 'home-v2'를 첫 메뉴 '대시보드'로, `dashboard_presets`(내 프리셋)를 그 뒤 메뉴로 옮기고 프리셋 표를 지운다.

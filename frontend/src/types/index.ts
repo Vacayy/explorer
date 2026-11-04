@@ -777,8 +777,8 @@ export interface StockGroupMember {
   rule_count: number; signals: { rule_id: number; strategy_id: string; label: string; value: number | null; reference: number | null; signal_date: string | null }[];
   unavailable: number;
 }
-/** PUT /api/spine/groups/:id/members/:code/tracked — widget_tracked면 이행 기간 홈 위젯 때문에 꺼도 알림이 계속된다 */
-export interface StockGroupTrackedState { group_id: number; stock_code: string; tracked: boolean; widget_tracked: boolean; tracked_codes: string[] }
+/** PUT /api/spine/groups/:id/members/:code/tracked — tracked_codes = 지금 알림 대상 전체(국내·미국) */
+export interface StockGroupTrackedState { group_id: number; stock_code: string; tracked: boolean; tracked_codes: string[] }
 export interface StockGroupSummary {
   id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
   member_count: number; rule_count: number; last_as_of: string | null; today_signals: number;
@@ -1448,16 +1448,19 @@ export interface ChainReport {
 /** 목차 순서 — 재료는 언제나 bottom-up으로 모으고 글의 순서만 고른다 */
 export type ChainOutline = "bottom_up" | "top_down"
 export interface ChainReportItem { id: number; root: string; status: string; outline?: ChainOutline; created_at?: string | null; finished_at?: string | null }
-/** 종목 추적 위젯(docs/specs/stock-tracker.md) — 차트·기술적 신호·수급·이슈·내 원칙 조건 */
+/** 종목 추적 카드(docs/specs/stock-tracker.md) — 차트·기술적 신호·수급·이슈·내 원칙 조건. 국내 종목·미국 티커 */
 export type TrackerKind = "price_below" | "price_above" | "close_below_ma" | "close_above_ma" | "manual"
 export type TrackerRole = "entry" | "exit" | "check"
 export interface TrackerCondition {
   id: number; stock_code: string; role: TrackerRole; kind: TrackerKind; level?: number | null; ma?: number | null; label: string; note?: string | null
   done: number; status: "met" | "not_met" | "pending" | "unknown"; distance_pct?: number | null; ref?: number | null
+  /** 오늘 새로 충족(확인 항목은 오늘 확인) — 홈 › 내 종목 알림 줄 */
+  newly_met?: boolean
 }
 export interface TrackerBar { t: string; o: number; h: number; l: number; c: number; v: number; ma20: number | null; ma60: number | null; ma120: number | null }
 export interface TrackerView {
-  code: string; name: string; price: number | null; change_pct: number | null; as_of: string | null; source: "live" | "close" | null; last_close_date: string | null
+  /** us = 미국 일봉(us_prices) 기준 — 수급·공시 없음 */
+  code: string; name: string; market?: "kr" | "us"; price: number | null; change_pct: number | null; as_of: string | null; source: "live" | "close" | null; last_close_date: string | null
   chart: { series: TrackerBar[] }
   technicals: {
     rsi14?: number | null; ma20_gap?: number | null; ma60_gap?: number | null; ma120_gap?: number | null; off_52w_high?: number | null; ret_1m?: number | null; ret_3m?: number | null

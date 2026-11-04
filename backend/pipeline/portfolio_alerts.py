@@ -134,12 +134,12 @@ def new_disclosures(holdings: list[dict], today: str, fetch=None) -> list[tuple[
 
 
 def technical_signals(conn: sqlite3.Connection, holdings: list[dict], scan=None) -> list[tuple[str, str]]:
-    """오늘(스캔 기준일) 새로 충족한 주요 신호."""
+    """오늘(스캔 기준일) 새로 충족한 주요 신호. holdings 항목의 market(기본 kr)으로 국내·미국 일봉을 고른다."""
     if scan is None:
         from pipeline.technical_scan import scan_company as scan
     out = []
     for h in holdings:
-        r = scan(conn, h["code"], "kr", 1)
+        r = scan(conn, h["code"], h.get("market", "kr"), 1)
         for s in r.get("signals", []):
             if s["status"] == "pass" and s["date"] == r.get("as_of") and (s["id"] in NOTABLE or s["category"] == "가격 구조"):
                 out.append((f"tech:{h['code']}:{s['date']}:{s['id']}", f"📐 <b>{html.escape(h['name'])}</b> {html.escape(s['label'])} ({s['date'][5:]})"))

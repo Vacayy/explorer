@@ -16,7 +16,8 @@ class TrackerCondition(BaseModel):
     done: int = 0
     status: Literal["met", "not_met", "pending", "unknown"] = "unknown"
     distance_pct: float | None = None   # 가격·이평선 대비 현재가 거리(%)
-    ref: int | None = None              # 이평선 조건의 현재 이평선 값
+    ref: float | None = None            # 이평선 조건의 현재 이평선 값(국내 원 단위 정수, 미국 달러 소수 2자리)
+    newly_met: bool = False             # 오늘 새로 충족(확인 항목은 오늘 확인) — 홈 › 내 종목 알림 줄
 
 
 class TrackerConditionIn(BaseModel):
@@ -38,13 +39,14 @@ class TrackerConditionPatch(BaseModel):
 class TrackerView(BaseModel):
     code: str
     name: str
+    market: Literal["kr", "us"] = "kr"  # us = 미국 일봉(us_prices) 기준, 수급·공시 없음
     price: float | None = None
     change_pct: float | None = None
     as_of: str | None = None
-    source: str | None = None           # live(장중 실시간) | close(종가)
+    source: str | None = None           # live(장중 실시간, 국내만) | close(종가)
     last_close_date: str | None = None
     chart: dict
     technicals: dict
-    flows: dict | None = None           # 수집 전이면 None
+    flows: dict | None = None           # 수집 전이거나 미국 종목이면 None
     issues: dict
     conditions: list[TrackerCondition]

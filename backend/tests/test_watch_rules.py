@@ -98,7 +98,7 @@ class WatchRulesTests(unittest.TestCase):
         url = f"/api/spine/groups/{gid}/members/000001/tracked"
         on = self.client.put(url, json={"tracked": True})
         self.assertEqual(on.status_code, 200, on.text)
-        self.assertEqual(on.json(), {"group_id": gid, "stock_code": "000001", "tracked": True, "widget_tracked": False, "tracked_codes": ["000001"]})
+        self.assertEqual(on.json(), {"group_id": gid, "stock_code": "000001", "tracked": True, "tracked_codes": ["000001"]})
         member = next(m for m in self.client.get(f"/api/spine/groups/{gid}").json()["members"] if m["stock_code"] == "000001")
         self.assertEqual(member["tracked"], 1)
         off = self.client.put(url, json={"tracked": False}).json()
@@ -111,7 +111,10 @@ class WatchRulesTests(unittest.TestCase):
         conn.close()
         self.client.post(f"/api/spine/groups/{gid}/members", json={"stock_code": "AAPL"})
         us = self.client.put(f"/api/spine/groups/{gid}/members/AAPL/tracked", json={"tracked": True})
-        self.assertEqual(us.status_code, 400)                    # 추적 판정은 국내 시세만 — 켜 놓고 조용히 안 도는 일을 막는다
+        self.assertEqual(us.status_code, 200, us.text)           # 미국 티커도 추적한다(us_prices 기준 판정, 2026-11-05)
+        self.assertEqual(us.json()["tracked_codes"], ["AAPL"])
+        us_off = self.client.put(f"/api/spine/groups/{gid}/members/AAPL/tracked", json={"tracked": False})
+        self.assertEqual(us_off.json()["tracked_codes"], [])
         portfolio = self.client.post("/api/spine/groups", json={"name": "보유", "kind": "portfolio"}).json()
         self.client.post(f"/api/spine/groups/{portfolio['id']}/members", json={"stock_code": "000002"})
         self.assertEqual(self.client.put(f"/api/spine/groups/{portfolio['id']}/members/000002/tracked", json={"tracked": True}).status_code, 409)

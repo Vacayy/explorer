@@ -113,6 +113,15 @@ export function formatPrice(value: number): string {
 }
 
 /**
+ * 종목 가격 — 국내 '72,900원', 미국 '$479.54'(소수 2자리). null이면 '-'.
+ */
+export function formatStockPrice(value: number | null | undefined, market?: string | null): string {
+  if (value === null || value === undefined) return "-"
+  if (market === "us") return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `${formatNumber(value)}원`
+}
+
+/**
  * Format funding rate as percentage.
  */
 export function formatFundingRate(rate: string | number): string {

@@ -1,8 +1,9 @@
-"""종목 추적 위젯 (docs/specs/stock-tracker.md) — 종목 하나의 차트·기술적 신호·수급·이슈·내 원칙 조건을 한 카드로, 조건 충족 시 알림. LLM 0.
+"""종목 추적 (docs/specs/stock-tracker.md) — 종목 하나의 차트·기술적 신호·수급·이슈·내 원칙 조건을 한 카드로, 조건 충족 시 알림. LLM 0.
 
-추적 대상(이행 중, D-293·ia-redesign §10.2): 관심 묶음 멤버의 추적 표시(`stock_group_members.tracked=1`, 새 원천)와
-홈 배치의 `track.stock` 위젯(옛 원천, D-267)의 합집합. 두 원천을 합쳐 읽는 동안에는 위젯을 빼도 추적 표시가 남아 있으면 알림이 돈다.
-옛 원천 읽기는 운영 점검 '추적 대상 두 원천'이 일치한 뒤 제거한다.
+추적 대상: 관심(watch) 묶음 멤버의 추적 표시(`stock_group_members.tracked=1`)만 읽는다(D-293, ia-redesign §10.2 ⑥).
+옛 원천(홈 배치의 `track.stock` 위젯, D-267)은 더 읽지 않는다 — 배포 전에 scripts/migrate_tracking_to_groups.py로 옮겨 둬야 한다.
+`widget_codes`·`source_diff`·`migrate_widget_tracking`은 그 일회 이관 스크립트만 쓴다.
+국내 종목은 국내 시세(stock_prices·장중 portfolio_quotes), 미국 종목은 미국 일봉(us_prices)으로 판정한다.
 알림은 portfolio_alerts.run에 편승하고 중복 방지 키(portfolio_alerts_sent)를 공유한다 — 보유와 추적이 겹쳐도 한 번만.
 """
 from __future__ import annotations
@@ -43,7 +44,7 @@ def ensure(conn: sqlite3.Connection) -> None:
 
 
 def widget_codes(conn: sqlite3.Connection) -> list[str]:
-    """옛 원천 — 홈 메뉴들(home_boards)에 놓인 종목 추적 위젯의 종목들(메뉴 순서대로, 중복 제거)"""
+    """옛 원천 — 홈 메뉴들(home_boards)에 놓인 종목 추적 위젯의 종목들(메뉴 순서대로, 중복 제거). 일회 이관 스크립트만 읽는다."""
     try:
         rows = conn.execute("SELECT layout_json FROM home_boards ORDER BY sort, id").fetchall()
     except sqlite3.OperationalError:          # 메뉴 표가 없는 DB(테스트 등) = 추적 위젯 없음
@@ -58,7 +59,7 @@ def widget_codes(conn: sqlite3.Connection) -> list[str]:
 
 
 def member_codes(conn: sqlite3.Connection) -> list[str]:
-    """새 원천 — 관심(watch) 묶음 멤버 중 추적을 켠 종목(묶음 순서·넣은 순서, 중복 제거)"""
+    """관심(watch) 묶음 멤버 중 추적을 켠 종목(묶음 순서·넣은 순서, 중복 제거) — 국내·미국 모두"""
     try:
         rows = conn.execute("SELECT m.stock_code FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id "
                             "WHERE g.kind='watch' AND m.tracked=1 ORDER BY g.id, m.id").fetchall()
@@ -68,12 +69,12 @@ def member_codes(conn: sqlite3.Connection) -> list[str]:
 
 
 def tracked_codes(conn: sqlite3.Connection) -> list[str]:
-    """추적 대상 = 옛 원천(위젯 순서) + 새 원천에만 있는 종목(묶음 순서). 이행 기간의 합집합, 중복 없음."""
-    return list(dict.fromkeys([*widget_codes(conn), *member_codes(conn)]))
+    """추적 대상 = 관심 종목의 추적 표시. 홈 위젯(옛 원천)은 읽지 않는다(2026-11-05 개편 3d)."""
+    return member_codes(conn)
 
 
 def source_diff(conn: sqlite3.Connection) -> dict:
-    """두 원천 비교 — 운영 점검용. widget_only가 남아 있으면 옛 원천을 지울 때 그 종목 알림이 멈춘다."""
+    """두 원천 비교 — 일회 이관 스크립트의 확인용. widget_only가 남아 있으면 그 종목은 이관이 안 돼 알림이 오지 않는다."""
     widget, member = widget_codes(conn), member_codes(conn)
     return {"widget": widget, "member": member,
             "widget_only": [c for c in widget if c not in member], "member_only": [c for c in member if c not in widget]}
@@ -105,14 +106,37 @@ def migrate_widget_tracking(conn: sqlite3.Connection, dry_run: bool = False) -> 
     return plan
 
 
+def market(conn, code: str) -> str:
+    """'kr'(companies) | 'us'(자료가 있는 미국 티커). 판정할 표가 없는 DB(테스트 등)는 국내로 본다."""
+    if conn.execute("SELECT 1 FROM companies WHERE stock_code=?", (code,)).fetchone():
+        return "kr"
+    try:
+        from pipeline.watch_rules import market_of
+        return market_of(conn, code) or "kr"
+    except sqlite3.OperationalError:
+        return "kr"
+
+
 def _name(conn, code: str) -> str:
     r = conn.execute("SELECT corp_name FROM companies WHERE stock_code=?", (code,)).fetchone()
-    return r["corp_name"] if r else code
+    if r:
+        return r["corp_name"]
+    try:   # 미국 티커 — 컨콜 팔로우 회사명
+        r = conn.execute("SELECT company_name FROM transcript_follow WHERE ticker=?", (code,)).fetchone()
+    except sqlite3.OperationalError:
+        r = None
+    return (r["company_name"] if r else None) or code
 
 
-def _rows(conn, code: str, n: int = 260) -> list[sqlite3.Row]:
-    return list(reversed(conn.execute("SELECT trade_date, open, high, low, close, volume FROM stock_prices WHERE stock_code=? AND close IS NOT NULL "
+def _rows(conn, code: str, n: int = 260, mkt: str = "kr") -> list[sqlite3.Row]:
+    table = "us_prices" if mkt == "us" else "stock_prices"
+    return list(reversed(conn.execute(f"SELECT trade_date, open, high, low, close, volume FROM {table} WHERE stock_code=? AND close IS NOT NULL "
                                       "ORDER BY trade_date DESC LIMIT ?", (code, n)).fetchall()))
+
+
+def money(v: float, mkt: str) -> str:
+    """알림 문구의 가격 — 국내는 원 단위 정수, 미국은 달러 소수 2자리"""
+    return f"${v:,.2f}" if mkt == "us" else f"{v:,.0f}"
 
 
 def _ma(closes: list[float], n: int, i: int | None = None) -> float | None:
@@ -120,10 +144,10 @@ def _ma(closes: list[float], n: int, i: int | None = None) -> float | None:
     return sum(closes[i - n + 1:i + 1]) / n if i + 1 >= n else None
 
 
-def _price(conn, code: str, rows) -> dict:
-    """장중 실시간 시세가 마지막 종가보다 새 날짜면 그것, 아니면 종가"""
+def _price(conn, code: str, rows, mkt: str = "kr") -> dict:
+    """장중 실시간 시세가 마지막 종가보다 새 날짜면 그것, 아니면 종가. 미국은 실시간 시세가 없어 마지막 종가만."""
     last = rows[-1] if rows else None
-    q = conn.execute("SELECT price, change_pct, traded_at FROM portfolio_quotes WHERE stock_code=?", (code,)).fetchone()
+    q = conn.execute("SELECT price, change_pct, traded_at FROM portfolio_quotes WHERE stock_code=?", (code,)).fetchone() if mkt == "kr" else None
     if q and q["price"] and last and (q["traded_at"] or "")[:10] > last["trade_date"]:
         return {"price": q["price"], "change_pct": q["change_pct"], "as_of": q["traded_at"], "source": "live"}
     if not last:
@@ -140,13 +164,13 @@ def _chart(rows) -> dict:
     return {"series": series}
 
 
-def _technicals(conn, code: str, rows) -> dict:
+def _technicals(conn, code: str, rows, mkt: str = "kr") -> dict:
     from pipeline.portfolio_alerts import NOTABLE
     from pipeline.technical_scan import scan_company
     out: dict = {}
     try:
         from pipeline.investor_lens import _gather_trend
-        g = _gather_trend(conn, code)
+        g = _gather_trend(conn, code, mkt)
         t, vp, rg = g.get("technicals") or {}, g.get("volume_profile") or {}, g.get("regime") or {}
         out |= {k: t.get(k) for k in ("rsi14", "ma20_gap", "ma60_gap", "ma120_gap", "off_52w_high", "ret_1m", "ret_3m")}
         out |= {"overhead_pct": vp.get("overhead_pct"), "support_pct": vp.get("support_pct"), "rs": g.get("rs"),
@@ -157,7 +181,7 @@ def _technicals(conn, code: str, rows) -> dict:
     if len(vols) == 21 and sum(vols[:-1]):
         out["volume_ratio"] = round(vols[-1] / (sum(vols[:-1]) / 20), 2)
     try:
-        sc = scan_company(conn, code, "kr", 5)
+        sc = scan_company(conn, code, mkt, 5)
         out["signals"] = [{"date": s["date"], "label": s["label"], "id": s["id"]} for s in sc.get("signals", [])
                           if s["status"] == "pass" and (s["id"] in NOTABLE or s["category"] == "가격 구조")]
         out["signals_as_of"] = sc.get("as_of")
@@ -182,7 +206,8 @@ def _flows(conn, code: str) -> dict | None:
     return out
 
 
-def _issues(conn, code: str, name: str) -> dict:
+def _issues(conn, code: str, name: str, mkt: str = "kr") -> dict:
+    """국내: 공시 14일·피드 7일·목표주가 언급. 미국: 공시(DART)·원화 목표주가가 없어 피드 7일만."""
     corp = conn.execute("SELECT corp_code FROM companies WHERE stock_code=?", (code,)).fetchone()
     since14 = (date.today() - timedelta(days=14)).strftime("%Y%m%d")
     disc = [{"date": r["rcept_dt"], "title": (r["report_nm"] or "").strip(), "url": r["dart_url"],
@@ -202,7 +227,7 @@ def _issues(conn, code: str, name: str) -> dict:
             d["title"] = _headline(d["head"] or "") or d["title"]
     latest = sorted(docs.values(), key=lambda d: d["published_at"] or "", reverse=True)
     tps = []
-    for r in conn.execute("SELECT id, published_at, title, markdown FROM raw_documents WHERE markdown LIKE ? AND published_at>=datetime('now','-30 days') "
+    for r in [] if mkt == "us" else conn.execute("SELECT id, published_at, title, markdown FROM raw_documents WHERE markdown LIKE ? AND published_at>=datetime('now','-30 days') "
                           "AND (markdown LIKE '%목표주가%' OR markdown LIKE '%적정주가%' OR markdown LIKE '%목표가%') ORDER BY published_at DESC LIMIT 20", (f"%{name}%",)):
         md = r["markdown"] or ""
         k = md.find(name)
@@ -229,8 +254,8 @@ def conditions(conn, code: str) -> list[dict]:
     return [dict(r) for r in conn.execute("SELECT * FROM tracker_conditions WHERE stock_code=? ORDER BY role, id", (code,))]
 
 
-def evaluate(cond: dict, price: float | None, rows) -> dict:
-    """조건 상태 — met(충족) | not_met | pending(확인 대기) | unknown. 가격 조건은 거리(%)도"""
+def evaluate(cond: dict, price: float | None, rows, mkt: str = "kr") -> dict:
+    """조건 상태 — met(충족) | not_met | pending(확인 대기) | unknown. 가격 조건은 거리(%)도. 이평선 값은 국내 원 단위, 미국 센트 단위"""
     closes = [r["close"] for r in rows]
     k, out = cond["kind"], {"status": "unknown", "distance_pct": None, "ref": None}
     if k == "manual":
@@ -241,66 +266,115 @@ def evaluate(cond: dict, price: float | None, rows) -> dict:
     elif k in ("close_below_ma", "close_above_ma") and cond["ma"] and closes:
         ma = _ma(closes, int(cond["ma"]))
         if ma:
-            out["ref"] = round(ma)
+            out["ref"] = round(ma, 2) if mkt == "us" else round(ma)
             out["distance_pct"] = round((closes[-1] / ma - 1) * 100, 1)
             out["status"] = "met" if (closes[-1] < ma if k == "close_below_ma" else closes[-1] > ma) else "not_met"
     return out
 
 
+def newly_met(cond: dict, ev: dict, price: dict, rows, mkt: str = "kr", today: str | None = None) -> bool:
+    """오늘 새로 충족됐나 — 홈 › 내 종목의 조건 충족 알림 줄(ia-redesign §4.4). 충족 상태가 이어지는 날에는 False.
+
+    확인 항목: 오늘(KST) 확인으로 바꿨으면. 가격·이평선: 지금은 충족인데 직전 기준(장중이면 마지막 종가, 아니면 전 거래일)엔 아니었으면.
+    """
+    if ev["status"] != "met":
+        return False
+    if cond["kind"] == "manual":
+        stamp = cond.get("updated_at") or ""
+        try:
+            kst = (datetime.fromisoformat(stamp.replace(" ", "T")) + timedelta(hours=9)).date().isoformat()
+        except ValueError:
+            return False
+        return kst == (today or (datetime.utcnow() + timedelta(hours=9)).date().isoformat())
+    before = rows if price.get("source") == "live" else rows[:-1]
+    if not before:
+        return False
+    return evaluate(cond, before[-1]["close"], before, mkt)["status"] == "not_met"
+
+
 def read(conn, code: str) -> dict:
     ensure(conn)
-    rows = _rows(conn, code)
+    mkt = market(conn, code)
+    rows = _rows(conn, code, mkt=mkt)
     name = _name(conn, code)
-    price = _price(conn, code, rows)
-    conds = [c | evaluate(c, price["price"], rows) for c in conditions(conn, code)]
-    return {"code": code, "name": name, **price, "last_close_date": rows[-1]["trade_date"] if rows else None,
-            "chart": _chart(rows) if rows else {"series": []}, "technicals": _technicals(conn, code, rows) if rows else {},
-            "flows": _flows(conn, code), "issues": _issues(conn, code, name), "conditions": conds}
+    price = _price(conn, code, rows, mkt)
+    conds = []
+    for c in conditions(conn, code):
+        ev = evaluate(c, price["price"], rows, mkt)
+        conds.append(c | ev | {"newly_met": newly_met(c, ev, price, rows, mkt)})
+    return {"code": code, "name": name, "market": mkt, **price, "last_close_date": rows[-1]["trade_date"] if rows else None,
+            "chart": _chart(rows) if rows else {"series": []}, "technicals": _technicals(conn, code, rows, mkt) if rows else {},
+            "flows": _flows(conn, code) if mkt == "kr" else None, "issues": _issues(conn, code, name, mkt), "conditions": conds}
 
 
 # ── 알림 ─────────────────────────────────────────────────────────────────────
 
 def _items(conn, mode: str, today: str, live: bool) -> list[tuple[str, str]]:
+    """국내: 장중 = 실시간 시세의 급등락·가격 조건, 마감 = 이평선 조건.
+    미국: 국내 장중에는 미국장이 닫혀 있어 장 마감 점검에서만 마지막 미국 종가로 가격·이평선 조건을 함께 판정한다(키 = 미국 거래일)."""
     from pipeline.portfolio_alerts import _bucket, _pct
     out = []
     for code in tracked_codes(conn):
-        rows = _rows(conn, code)
+        mkt = market(conn, code)
+        if mkt == "us" and mode != "close":
+            continue
+        rows = _rows(conn, code, mkt=mkt)
         if not rows:
             continue
-        name, price = _name(conn, code), _price(conn, code, rows)
-        tag = f"🔭 <b>{html.escape(name)}</b>"
-        if mode == "intraday" and live and price["source"] == "live":
+        name, price = _name(conn, code), _price(conn, code, rows, mkt)
+        tag = f"🔭 <b>{html.escape(name)}</b>" + (f" ({html.escape(code)}·미국)" if mkt == "us" else "")
+        if mkt == "kr" and mode == "intraday" and live and price["source"] == "live":
             b = _bucket(price["change_pct"], DAY_STEP)
             if b:
                 out.append((f"track-day:{today}:{code}:{b}", f"{tag} 추적 · 전일 대비 {_pct(price['change_pct'])} · 현재가 {price['price']:,.0f}"))
         for c in conditions(conn, code):
-            intraday_kind = c["kind"] in ("price_below", "price_above")
-            if c["kind"] == "manual" or (mode == "intraday") != intraday_kind:
-                continue                                    # 가격 조건은 장중, 이평선 조건은 장 마감에
-            if mode == "intraday" and price["source"] != "live":
+            if c["kind"] == "manual":
                 continue
-            ev = evaluate(c, price["price"], rows)
+            if mkt == "kr":
+                intraday_kind = c["kind"] in ("price_below", "price_above")
+                if (mode == "intraday") != intraday_kind:
+                    continue                                # 가격 조건은 장중, 이평선 조건은 장 마감에
+                if mode == "intraday" and price["source"] != "live":
+                    continue
+            ev = evaluate(c, price["price"], rows, mkt)
             if ev["status"] == "met":
                 icon = {"exit": "🛑", "entry": "✅"}.get(c["role"], "🔔")
-                ref = f" (기준 {c['level']:,.0f})" if c["level"] else f" ({c['ma']}일선 {ev['ref']:,})" if ev.get("ref") else ""
-                out.append((f"track-cond:{today}:{c['id']}", f"{icon} {tag} 조건 충족 · {html.escape(c['label'])}{ref} · 현재 {price['price']:,.0f}"))
+                ref = f" (기준 {money(c['level'], mkt)})" if c["level"] else f" ({c['ma']}일선 {money(ev['ref'], mkt)})" if ev.get("ref") else ""
+                day = price["as_of"] if mkt == "us" else today      # 미국은 같은 미국 거래일 봉으로 두 번 보내지 않는다
+                when = f" · {price['as_of'][5:]} 종가" if mkt == "us" else ""
+                out.append((f"track-cond:{day}:{c['id']}", f"{icon} {tag} 조건 충족 · {html.escape(c['label'])}{ref} · 현재 {money(price['price'], mkt)}{when}"))
     return out
 
 
-def alert(conn, mode: str, send, today: str, now: datetime | None = None, dry_run: bool = False) -> int:
-    """portfolio_alerts.run이 부른다 — 장중: 시세 갱신·급등락·가격 조건·공시 / 마감: 이평선 조건·기술적 신호·공시"""
+def _refresh_us(codes: list[str]) -> None:
+    """미국 일봉 캐시 갱신 — fetch_prices는 20시간 안에 받았으면 건너뛴다(cache 패턴). 실패해도 남은 시세로 판정한다."""
+    from pipeline.us_data import fetch_prices
+    for code in codes:
+        try:
+            fetch_prices(code)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def alert(conn, mode: str, send, today: str, now: datetime | None = None, dry_run: bool = False, refresh_us=None) -> int:
+    """portfolio_alerts.run이 부른다 — 장중: 시세 갱신·급등락·가격 조건·공시(국내만) / 마감: 이평선 조건·기술적 신호·공시, 미국 종목 조건 판정"""
     from pipeline import portfolio as pf
     from pipeline.portfolio_alerts import _send, new_disclosures, technical_signals
     ensure(conn)
     codes = tracked_codes(conn)
     if not codes:
         return 0
+    markets = {c: market(conn, c) for c in codes}
+    kr = [c for c in codes if markets[c] == "kr"]
+    us = [c for c in codes if markets[c] == "us"]
     live = mode == "intraday" and pf.market_hours(now)
-    if live:
-        pf.refresh_quotes(conn, set(codes), ttl=60)
-    holdings = [{"code": c, "name": _name(conn, c)} for c in codes]
+    if live and kr:
+        pf.refresh_quotes(conn, set(kr), ttl=60)
+    if mode == "close" and us:
+        (refresh_us or _refresh_us)(us)
     sent = _send(conn, _items(conn, mode, today, live), "", send, dry_run)
     if mode == "close":
+        holdings = [{"code": c, "name": _name(conn, c) + (f" ({c}·미국)" if markets[c] == "us" else ""), "market": markets[c]} for c in codes]
         sent += _send(conn, technical_signals(conn, holdings), "📐 <b>추적 종목 새 기술적 신호</b>", send, dry_run)
-    sent += _send(conn, new_disclosures(holdings, today), "", send, dry_run)
+    sent += _send(conn, new_disclosures([{"code": c, "name": _name(conn, c)} for c in kr], today), "", send, dry_run)
     return sent

@@ -174,7 +174,6 @@ def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool 
                     item.update(status="stale", detail=f"{hours / 24:.1f}일 전" if hours >= 48 else f"{hours:.0f}시간 전")
         items.append(item)
     items.append(client_error_item(conn))
-    items.append(tracker_sources_item(conn))
     if not launchd:
         return items
     failed = launchd_failures()
@@ -197,30 +196,6 @@ def client_error_item(conn: sqlite3.Connection) -> dict:
     if rows:
         item.update(status="stale", latest=rows[0]["last_seen"],
                     detail=" · ".join(f"{r['endpoint']}{' ' + r['field'] if r['field'] else ''} ({r['kind']} {r['count']}회)" for r in rows[:3])[:300])
-    return item
-
-
-def tracker_sources_item(conn: sqlite3.Connection) -> dict:
-    """추적 대상 두 원천(홈 위젯 · 관심 종목 추적 표시) 비교 — 이행 기간(ia-redesign §10.2 ④).
-
-    옛 원천에만 있는 종목이 있으면 비정상: 옛 원천 읽기를 지우는 순간 그 종목 알림이 소리 없이 멈춘다.
-    새 원천에만 있는 종목은 정상(새 화면에서 추적을 켠 것)이라 detail에만 적는다.
-    """
-    from pipeline.stock_tracker import source_diff
-    item = {"key": "tracker_sources", "label": "추적 대상 두 원천 일치", "kind": "consistency", "owner": "pipeline/stock_tracker.source_diff",
-            "critical": False, "latest": None, "expected": "홈 위젯 종목 ⊆ 추적 표시 종목", "status": "ok", "detail": ""}
-    try:
-        diff = source_diff(conn)
-    except sqlite3.Error as exc:
-        item.update(status="error", detail=f"조회 실패: {exc}"[:200])
-        return item
-    parts = [f"추적 표시 {len(diff['member'])} · 홈 위젯 {len(diff['widget'])}"]
-    if diff["widget_only"]:
-        item["status"] = "stale"
-        parts.append(f"홈 위젯에만: {', '.join(diff['widget_only'])}")
-    if diff["member_only"]:
-        parts.append(f"추적 표시에만: {', '.join(diff['member_only'])}")
-    item["detail"] = " · ".join(parts)[:300]
     return item
 
 
