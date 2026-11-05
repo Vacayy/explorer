@@ -7,7 +7,7 @@ import { BrkPanel } from "@/components/regimes/BrkPanel"
 import { BearTable, HistoryCompact, MapCard, OverlayCard, useHistoryParams } from "@/components/regimes/History"
 import { NowPanel } from "@/components/regimes/NowPanel"
 import { InfoTip } from "@/components/regimes/Section"
-import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
+import { PageLayout } from "@/components/shared/PageLayout"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useAutoCollectRegimes, useEraState, usePricing, useRegimes } from "@/hooks/useRegimes"
@@ -36,13 +36,16 @@ export default function HomeMacroPage() {
   const auto = useAutoCollectRegimes(regimes)
   useHashScroll(!regimes.isPending && !era.isPending)
 
-  const header = <PageHeader title="매크로" />
-  if (regimes.isError && era.isError && pricing.isError) return <PageLayout mode="document" header={header}>
+  // 시안 Home-Macro: 하위 메뉴 칩이 제목을 대신한다 — 제목은 화면 읽기용으로만
+  const header = <h1 className="sr-only">매크로</h1>
+  if (regimes.isError && era.isError && pricing.isError) return <PageLayout mode="document">
+    {header}
     <BlockError message="매크로 화면 데이터를 하나도 불러오지 못했습니다" error={regimes.error}
       onRetry={() => { void regimes.refetch(); void era.refetch(); void pricing.refetch() }} />
   </PageLayout>
 
-  return <PageLayout mode="document" header={header}>
+  return <PageLayout mode="document">
+    {header}
     <div className="@container/market flex flex-col gap-4">
       <div className="space-y-3">
         <StatusLine data={regimes.data} pending={regimes.isPending} compact={compact} />

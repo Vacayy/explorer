@@ -351,6 +351,8 @@
       color-mix(in srgb, var(--down) min(100%, calc(var(--field-down-a1) * (1 - var(--weather-up)))), transparent) 0%, transparent 74%),
     var(--field-base);
 }
+/* 기상도 분위기를 옅게 깐 머리(내 종목 등) — 리브 없이 베일 + 바탕 */
+.veil-field { background: linear-gradient(var(--veil), var(--veil)), var(--field); }
 /* 브리핑 칸처럼 기상도 아래쪽 분위기 — 베일을 덮어 한 톤 옅게 */
 .weather[data-veil] { background-image: linear-gradient(var(--veil), var(--veil)), var(--field); }
 .weather::before {

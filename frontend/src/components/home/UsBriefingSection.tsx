@@ -84,8 +84,8 @@ export function UsBriefingSection({ embedded = false, columns = false }: { embed
   return (
     <Card id={columns ? "us-briefing" : undefined} data-home-briefing className={embedded ? EMBED : columns ? "scroll-mt-4 gap-0 rounded-[var(--radius-card)] py-0 shadow-none" : undefined}>
       {/* 위젯 안에서는 제목을 위젯 틀이 맡고 컨트롤은 기준 띠 오른쪽으로 — 한 줄을 아낀다 */}
-      {columns ? <CardHeader className="flex min-h-10 flex-row flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1.5 !pb-1.5">
-        <CardTitle className="shrink-0 text-sm font-semibold">어젯밤 미국장 — 브리핑 전체</CardTitle>
+      {columns ? <CardHeader className="flex min-h-7 flex-row flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pt-4 !pb-0">
+        <CardTitle className="shrink-0 text-[15px] leading-[1.4] font-semibold">어젯밤 미국장 — 브리핑 전체</CardTitle>
         {controls}
       </CardHeader>
       : !embedded && <CardHeader className="pb-2 flex flex-wrap items-start gap-3">

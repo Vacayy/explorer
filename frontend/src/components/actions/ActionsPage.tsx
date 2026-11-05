@@ -52,7 +52,7 @@ export function ActionsList(_: { variant: "block" }) {
   }, { preventScrollReset: true })
 
   return (
-    <HomeBlock label="actions" title="기업활동" info={INFO} asOf={data?.as_of ? formatKstDateTime(data.as_of) : null}
+    <HomeBlock section label="actions" title="기업활동" info={INFO} asOf={data?.as_of ? formatKstDateTime(data.as_of) : null}
       stale={!!data && !data.as_of} bodyClassName="space-y-3">
       {isLoading ? <div role="status" aria-label="기업활동 불러오는 중" className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
         : isError || !data ? <ErrorState message="기업활동을 불러오지 못했습니다" onRetry={() => refetch()} />

@@ -66,15 +66,15 @@ export default function HomeStocksPage() {
   const addDialog = group.data && <AddDialog detail={group.data} open={adding} onOpenChange={setAdding} />
 
   if (group.isPending) return <PageLayout mode="document">
-    <Card className="gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none">
+    <Card className={STOCKS_CARD}>
       {header(<Skeleton className="h-4 w-64" />)}
-      <div className="p-4"><RowsSkeleton rows={6} /></div>
+      <div className="p-[22px] max-sm:p-4"><RowsSkeleton rows={6} /></div>
     </Card>
   </PageLayout>
   if (group.isError || !group.data) return <PageLayout mode="document">
-    <Card className="gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none">
+    <Card className={STOCKS_CARD}>
       {header(null)}
-      <div className="p-4"><BlockError message="관심 종목을 불러오지 못했습니다" error={group.error} onRetry={() => void group.refetch()} /></div>
+      <div className="p-[22px] max-sm:p-4"><BlockError message="관심 종목을 불러오지 못했습니다" error={group.error} onRetry={() => void group.refetch()} /></div>
     </Card>
   </PageLayout>
 
@@ -88,9 +88,9 @@ export default function HomeStocksPage() {
     <span className="hidden md:inline"> · 오늘 켜진 감시 신호 {formatNumber(detail.today_signals)}개</span></>
 
   if (!members.length) return <PageLayout mode="document">
-    <Card className="gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none" data-stocks-state="empty">
+    <Card className={STOCKS_CARD} data-stocks-state="empty">
       {header(null)}
-      <div className="space-y-3 p-4 text-sm">
+      <div className="space-y-3 p-[22px] text-sm max-sm:p-4">
         <p className="text-muted-foreground">관심 종목이 없습니다. 국내 종목 이름이나 미국 티커로 추가할 수 있어요.</p>
         <Button variant="outline" size="sm" onClick={() => setAdding(true)}><Plus className="size-3.5" />종목 추가</Button>
       </div>
@@ -104,9 +104,9 @@ export default function HomeStocksPage() {
 
   return <PageLayout mode="document">
     <div className="flex flex-col gap-4">
-      <Card className="gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none" data-stocks-state="ideal">
+      <Card className={STOCKS_CARD} data-stocks-state="ideal">
         {header(stats)}
-        <div className="space-y-4 p-4">
+        <div className="space-y-3.5 p-[22px] max-sm:p-4">
           {view === "all" && <Featured detail={detail} />}
           {view !== "held" && alerts.length > 0 && <AlertLine alerts={alerts} onOpen={code => setParam("open", code)} />}
           {view === "held" && portfolio.isPending ? <RowsSkeleton rows={3} head={false} />
@@ -126,11 +126,14 @@ export default function HomeStocksPage() {
   </PageLayout>
 }
 
+/** 내 종목 칸 — 둥근 20 · 머리는 기상도 분위기를 옅게(시안 Home-Stocks) */
+const STOCKS_CARD = "gap-0 overflow-hidden rounded-weather py-0 shadow-none max-md:-mx-4 max-md:rounded-none max-md:border-x-0"
+
 function Header({ view, onView, onAdd, stats }: { view: View; onView: (v: string) => void; onAdd: () => void; stats: ReactNode }) {
-  return <header className="flex flex-wrap items-end justify-between gap-3 border-b bg-down/5 px-4 py-4">
-    <div className="min-w-0">
-      <h1 className="text-page font-semibold">내 종목</h1>
-      {stats && <div className="mt-1 text-caption text-muted-foreground">{stats}</div>}
+  return <header className="veil-field flex flex-wrap items-end justify-between gap-3 border-b px-[22px] pt-[22px] pb-4 max-sm:px-4 max-sm:pt-4">
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <h1 className="font-display text-2xl leading-[1.55] font-normal tracking-[-0.02em]">내 종목</h1>
+      {stats && <div className="text-[12.5px] text-ink-2">{stats}</div>}
     </div>
     <div className="flex w-full items-center justify-between gap-2 md:w-auto">
       <SegmentTabs tabs={VIEWS} value={view} onChange={onView} />
@@ -148,19 +151,19 @@ function Featured({ detail }: { detail: StockGroupDetail }) {
   const cards = items.slice(0, mobile ? 8 : 4).map(m => <FeaturedCard key={m.stock_code} m={m} className={mobile ? "w-[15rem] shrink-0 snap-start" : undefined} />)
   return <section aria-labelledby="featured-title" className="space-y-2" data-stocks-featured="cards">
     <div className="flex items-baseline justify-between gap-2">
-      <h2 id="featured-title" className="text-sm font-semibold">특징주 <span className="ml-1 text-caption font-normal text-muted-foreground">{mobile ? "신호" : "오늘 신호 들어온 관심 종목"} {formatNumber(items.length)}</span></h2>
-      <Link to={all} className="text-caption text-muted-foreground hover:text-foreground">{mobile ? "모두" : `신호 ${formatNumber(detail.today_signals)}개 모두 보기`} ›</Link>
+      <h2 id="featured-title" className="text-[13px] font-semibold">특징주 <span className="ml-1 text-xs font-normal text-ink-3">{mobile ? "신호" : "오늘 신호 들어온 관심 종목"} {formatNumber(items.length)}</span></h2>
+      <Link to={all} className="text-xs text-ink-2 hover:text-ink">{mobile ? "모두" : `신호 ${formatNumber(detail.today_signals)}개 모두 보기`} ›</Link>
     </div>
-    {mobile ? <HorizontalCarousel label="특징주">{cards}</HorizontalCarousel> : <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{cards}</div>}
+    {mobile ? <HorizontalCarousel label="특징주">{cards}</HorizontalCarousel> : <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">{cards}</div>}
   </section>
 }
 
 function FeaturedCard({ m, className }: { m: StockGroupMember; className?: string }) {
   const s = leadSignal(m)
   const line = s ? signalDetail(s, m.market) : null
-  return <Link to={dossierPath(m.stock_code, m.market)} className={cn("block space-y-1.5 border bg-card p-3 transition-colors hover:bg-muted/40", className)}>
+  return <Link to={dossierPath(m.stock_code, m.market)} className={cn("block min-w-0 space-y-1.5 rounded-[12px] border bg-surface p-3.5 transition-colors hover:bg-chip", className)}>
     <p className="flex items-baseline gap-1.5">
-      <span className="truncate font-semibold">{m.name}</span>
+      <span className="truncate text-[14.5px] font-semibold">{m.name}</span>
       <span className="shrink-0 text-[11px] text-muted-foreground">{marketLabel(m.market)}</span>
       {s?.signal_date && <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">{mmdd(s.signal_date)}{m.market === "us" ? " 신호" : ""}</span>}
     </p>
@@ -173,7 +176,7 @@ function FeaturedCard({ m, className }: { m: StockGroupMember; className?: strin
 function AlertLine({ alerts, onOpen }: { alerts: { code: string; name: string; label: string }[]; onOpen: (code: string) => void }) {
   const first = alerts[0]
   return <button type="button" onClick={() => onOpen(first.code)} data-stocks-alert
-    className="flex w-full items-center gap-2 border px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/40">
+    className="flex w-full items-center gap-2 rounded-[12px] border px-3.5 py-2.5 text-left text-sm transition-colors hover:bg-chip">
     <Badge variant="outline" className="shrink-0 border-transparent bg-up/10 font-normal text-up-ink">조건 충족</Badge>
     <span className="min-w-0 flex-1 truncate"><b>{first.name}</b> — {first.label}{alerts.length > 1 ? ` 외 ${formatNumber(alerts.length - 1)}건` : ""}</span>
     <span className="shrink-0 text-caption text-muted-foreground"><span className="hidden md:inline">추적 상세 </span>›</span>

@@ -16,7 +16,8 @@ const GROUPS: { label: string; keys: TileKey[]; cols: string }[] = [
   { label: "신용", keys: ["hy", "bbb", "aaa", "baa10y", "aaa10y"], cols: "lg:grid-cols-5" },
   { label: "심리", keys: ["vix", "fear_greed"], cols: "lg:grid-cols-2" },
 ]
-const POSITION_CLS = { 높음: "border-hypothesis/40 bg-hypothesis/10 text-hypothesis", 보통: "text-muted-foreground", 낮음: "border-down/40 text-down-ink" }
+// 장기 위치 배지 — 시안 Home-Macro: 높음 분홍 틴트 · 보통 회색 · 낮음 파랑 틴트
+const POSITION_VARIANT = { 높음: "up", 보통: "neutral", 낮음: "down" } as const
 
 /**
  * 리스크 지표 묶음 — 홈 › 매크로 (ia-redesign 결정: 리스크 지표 묶음을 매크로에 둔다).
@@ -59,15 +60,15 @@ function Tile({ item, compact }: { item?: RiskIndicator; compact?: boolean }) {
   return <div className="min-w-0 border px-3 py-2.5" data-risk-tile={item.key}>
     <div className="flex items-center justify-between gap-2">
       <span className="truncate text-caption text-muted-foreground">{item.label}</span>
-      {pos && <Badge variant="outline" className={cn("shrink-0 px-1.5 py-0 text-[11px] font-normal", POSITION_CLS[pos.position])}>{pos.years}년 {pos.position}</Badge>}
-      {zone && <Badge variant="outline" className={cn("shrink-0 px-1.5 py-0 text-[11px] font-normal", (item.value ?? 50) < 45 ? POSITION_CLS.높음 : "text-muted-foreground")}>{zone}</Badge>}
+      {pos && <Badge variant={POSITION_VARIANT[pos.position]} className="shrink-0">{pos.years}년 {pos.position}</Badge>}
+      {zone && <Badge variant={(item.value ?? 50) < 45 ? "up" : "neutral"} className="shrink-0">{zone}</Badge>}
     </div>
     <div className={cn("mt-1 flex flex-wrap items-baseline gap-x-2", !fresh && "opacity-60")}>
       <span className={cn("font-mono font-medium tabular-nums", compact ? "text-base" : "text-lg")}>{riskValue(item.unit, item.value)}</span>
       <span className={cn("whitespace-nowrap font-mono text-caption tabular-nums", tone(item.change_20))}>20일 {riskChange(item.unit, item.change_20)}</span>
     </div>
     {!fresh && <p className="text-[11px] text-warn">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : item.quality === "missing" ? "미수집" : "갱신 실패"}{day ? ` · ${day} 값` : ""}</p>}
-    {!compact && spark.length > 1 && <div className={cn("mt-2", !fresh && "opacity-60")}><SparkLine data={spark} height={34} /></div>}
+    {!compact && spark.length > 1 && <div className={cn("mt-2", !fresh && "opacity-60")}><SparkLine data={spark} height={34} neutral /></div>}
   </div>
 }
 

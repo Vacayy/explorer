@@ -61,7 +61,9 @@ export const WEIGHT: Record<"high" | "mid" | "low", string> = { high: "중요", 
 
 /** 섹터 판정 태그 — 판정이 없으면 '숫자만' */
 export function VerdictBadge({ verdict }: { verdict: string | null | undefined }) {
-  return <Badge variant={verdict ? "secondary" : "outline"} className={cn("font-normal", !verdict && "text-muted-foreground")}>{verdict ?? "숫자만"}</Badge>
+  // 시안 Home-US: 반김 = 분홍 틴트 · 실망 = 파랑 틴트 · 엇갈림 = 회색 칩
+  const variant = !verdict ? "outline" : verdict.startsWith("반김") ? "up" : verdict.startsWith("실망") ? "down" : "neutral"
+  return <Badge variant={variant} className={cn(!verdict && "font-normal")}>{verdict ?? "숫자만"}</Badge>
 }
 
 /** 핵심 이유의 짧은 태그 — 전체 기준 문장은 season.core.criteria */

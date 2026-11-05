@@ -60,9 +60,9 @@ function OtherSeason({ seasonKey, today }: { seasonKey: string; today: string })
 
 function Frame({ title, badge, link = { to: SEASON, label: "실적 시즌 전체" }, children }: { title: ReactNode; badge?: ReactNode; link?: { to: string; label: string }; children: ReactNode }) {
   return (
-    <Card data-home-section="us.season" className="min-w-0 gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none">
-      <BlockHead title={<span className="flex items-center gap-2">{title}{badge}</span>} info={INFO} link={link} />
-      <div className="p-3 sm:p-4">{children}</div>
+    <Card data-home-section="us.season" className="min-w-0 gap-3.5 overflow-hidden rounded-[var(--radius-card)] px-5 py-[18px] shadow-none max-sm:p-4">
+      <BlockHead section title={<span className="flex items-center gap-2"><span className="font-display text-[22px] font-normal tracking-[-0.02em]">{title}</span>{badge}</span>} info={INFO} link={link} />
+      <div>{children}</div>
     </Card>
   )
 }
@@ -75,16 +75,16 @@ function SeasonSkeleton() {
 }
 
 function Stat({ label, value, of, cls, className }: { label: string; value: number; of?: number; cls?: string; className?: string }) {
-  return <div className={cn("min-w-0 bg-card px-3 py-2.5", className)}>
-    <p className="truncate text-[11px] text-muted-foreground">{label}</p>
-    <p className="mt-1 font-mono text-lg tabular-nums"><span className={cls}>{formatNumber(value)}</span>
-      {of != null && <span className="text-xs text-muted-foreground"> / {formatNumber(of)}</span>}</p>
+  return <div className={cn("flex min-w-0 flex-col gap-0.5 px-3.5 py-2.5", className)}>
+    <p className="truncate text-xs text-ink-3">{label}</p>
+    <p className="font-mono text-xl tabular-nums"><span className={cls}>{formatNumber(value)}</span>
+      {of != null && <span className="text-[13px] text-ink-3"> / {formatNumber(of)}</span>}</p>
   </div>
 }
 
 /** 판정 줄 — 발표 · 첫 거래일 업종보다 강함 · 하회에도 강세 · 상회에도 약세 · 첫 반응 뒤집힘 */
 function Verdicts({ c, compact = false }: { c: SeasonOverview["counts"]; compact?: boolean }) {
-  return <div className={cn("grid gap-px border bg-border", compact ? "grid-cols-2" : "grid-cols-2 md:grid-cols-5")}>
+  return <div className={cn("grid rounded-[12px] border", compact ? "grid-cols-2" : "grid-cols-2 md:grid-cols-5")}>
     <Stat label="발표" value={c.reported} of={c.followed} />
     <Stat label={compact ? "업종보다 강함" : "첫 거래일 업종보다 강함"} value={c.up} of={compact ? undefined : c.reported} cls="text-up-ink" />
     {!compact && <Stat label="컨센서스 하회에도 주가 강세" value={c.miss_up} of={c.miss} cls="text-up-ink" />}
@@ -97,7 +97,7 @@ function InSeason({ d, today }: { d: SeasonOverview; today: string }) {
   const pending = d.reported.filter(r => r.d1 == null).length
   const sectors = d.sectors.filter(s => s.one_line).slice(0, 4)
   const upcoming = d.upcoming.filter(u => u.event_date >= today)
-  return <Frame title={d.season.label} badge={pending > 0 && <Badge variant="outline" className="h-5 border-chart-warning/50 px-1.5 text-[11px] font-normal text-chart-warning max-sm:hidden">반응 집계 중 {formatNumber(pending)}</Badge>}>
+  return <Frame title={d.season.label} badge={pending > 0 && <Badge variant="warn" className="max-sm:hidden">반응 집계 중 {formatNumber(pending)}</Badge>}>
     <div className="space-y-4">
       <Verdicts c={d.counts} />
 

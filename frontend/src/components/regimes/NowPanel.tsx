@@ -276,7 +276,7 @@ function TemperatureSection({ data, compact }: { data: EraStateResponse; compact
           {t.missing.length > 0 && <InfoTip label="아직 수집하지 않는 항목">아직 수집하지 않는 항목: {t.missing.join(" · ")}. 이 온도는 막스 체크리스트의 일부만 봅니다.</InfoTip>}</p>}
         <Table>
           <TableBody>{t.items.map(i => <TableRow key={i.key}>
-            <TableCell className="w-[45%] whitespace-normal text-sm md:w-auto md:min-w-[11rem]" title={i.source}>{i.label}</TableCell>
+            <TableCell className="min-w-[8.5rem] whitespace-normal text-sm md:min-w-[11rem]" title={i.source}>{i.label}</TableCell>
             {!compact && <TableCell className="whitespace-normal text-caption text-muted-foreground max-md:hidden">{i.basis}</TableCell>}
             <TableCell className="text-right font-mono tabular-nums">{i.value ?? "-"}{typeof i.value === "number" ? ` ${i.unit}`.replace(" %", "%") : ""}</TableCell>
             <TableCell className="w-16 text-right"><Badge variant="outline" className={cn("font-normal", HEAT[i.state].cls)}>{HEAT[i.state].label}</Badge></TableCell>

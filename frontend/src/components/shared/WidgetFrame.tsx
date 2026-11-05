@@ -12,7 +12,8 @@ export function WidgetState({ loading, error, empty, onRetry, emptyText = "표�
   loading?: boolean; error?: unknown; empty?: boolean; onRetry?: () => void; emptyText?: string
 }) {
   if (loading) return <div role="status" aria-label="데이터 불러오는 중" aria-busy="true" className="space-y-2"><Skeleton className="h-7 w-1/2" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>
-  if (error) return <div role="alert" className="flex flex-col items-start gap-2.5 text-[12.5px] text-ink-2"><p className="flex items-center gap-1.5"><TriangleAlert className="size-3.5 shrink-0" aria-hidden />{error === true ? "불러오지 못했어요." : toApiError(error).message}</p>{onRetry && <Button variant="outline" size="sm" onClick={onRetry}><RotateCw className="size-3.5" aria-hidden />다시 시도</Button>}</div>
+  // 오류 상자 — 시안 States-*와 같은 모양(home/blockState BlockError)
+  if (error) return <div role="alert" className="flex flex-col items-start gap-2.5 border border-line-2 bg-surface-2 p-3.5 text-[13px] text-ink"><p className="flex items-center gap-1.5"><TriangleAlert className="size-3.5 shrink-0" aria-hidden />{error === true ? "불러오지 못했습니다." : toApiError(error).message}</p>{onRetry && <Button variant="outline" size="sm" className="h-[30px] gap-1.5 text-[12.5px]" onClick={onRetry}><RotateCw className="size-3.5" aria-hidden />다시 시도</Button>}</div>
   if (empty) return <p role="status" className="text-[12.5px] text-ink-2">{emptyText}</p>
   return null
 }

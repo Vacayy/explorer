@@ -21,7 +21,7 @@ export function KrTurnoverBlock({ className }: { className?: string }) {
   const q = useKrMovers()
   const d = q.data
   return (
-    <HomeBlock label="kr.turnover" title="국장 거래대금 상위" className={className}
+    <HomeBlock section label="kr.turnover" title="국장 거래대금 상위" className={className}
       info="전일 거래대금 상위 20종목입니다. 비중은 시장 전체가 아니라 상위 20종목 합계 기준이고, 날짜는 저장 스냅샷 기준입니다. 평일 16:20에 받습니다."
       asOf={d?.trade_date ? `${d.trade_date} 스냅샷` : null} stale={!!d && d.status !== "ok"}
       actions={<RefreshButton onClick={q.refresh} pending={q.refreshing} title="지금 업데이트 (전일 거래대금 재수집)" />}
@@ -47,36 +47,36 @@ function Body({ d }: { d: KrMovers }) {
         {fresh && <> {fresh.label}({formatPercent(fresh.median_change)})이 새로 들어왔습니다.</>}
       </p>}
 
-      <ul aria-label="섹터 쏠림" className="space-y-1.5 text-xs">
+      <ul aria-label="섹터 쏠림" className="space-y-2.5 text-[13px]">
         {d.clusters.slice(0, 5).map(c => (
-          <li key={c.label} className="grid grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_3rem_3.5rem] items-center gap-2">
+          <li key={c.label} className="grid grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2.5">
             <span className="flex min-w-0 items-center gap-1">
               <Link to={`/map?group=${encodeURIComponent(c.label)}`} className="truncate hover:underline" title={c.names.join(" · ")}>{c.label}</Link>
-              {c.has_new && <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px] font-normal">신규</Badge>}
+              {c.has_new && <Badge className="shrink-0">신규</Badge>}
             </span>
-            <span className="h-1.5 overflow-hidden bg-muted" aria-hidden="true"><span className="block h-full bg-foreground/80" style={{ width: `${Math.min(100, c.share_pct)}%` }} /></span>
-            <span className="text-right tabular-nums">{formatRatio(c.share_pct)}</span>
-            <span className={cn("text-right font-mono tabular-nums", tone(c.median_change))}>{formatPercent(c.median_change)}</span>
+            <span className="h-1.5 overflow-hidden rounded-full bg-chip" aria-hidden="true"><span className="block h-full rounded-full bg-ink" style={{ width: `${Math.min(100, c.share_pct)}%` }} /></span>
+            <span className="text-right font-mono text-xs tabular-nums">{formatRatio(c.share_pct)}</span>
+            <span className={cn("text-right font-mono text-xs tabular-nums", tone(c.median_change))}>{formatPercent(c.median_change)}</span>
           </li>
         ))}
       </ul>
 
-      <Table className="text-[13px]">
+      <Table className="text-sm">
         <TableHeader><TableRow>
-          <TableHead className="h-8 w-8 px-1 text-[11px]">#</TableHead><TableHead className="h-8 px-1 text-[11px]">종목</TableHead>
-          <TableHead className="h-8 px-1 text-right text-[11px]">등락</TableHead><TableHead className="h-8 px-1 text-right text-[11px]">거래대금</TableHead>
+          <TableHead className="h-9 w-10 px-2.5 text-xs">#</TableHead><TableHead className="h-9 px-2.5 text-xs">종목</TableHead>
+          <TableHead className="h-9 px-2.5 text-right text-xs">등락</TableHead><TableHead className="h-9 px-2.5 text-right text-xs">거래대금</TableHead>
         </TableRow></TableHeader>
         <TableBody>{d.items.slice(0, all ? undefined : 10).map(m => (
           <TableRow key={m.stock_code}>
-            <TableCell className="px-1 py-1.5 text-muted-foreground tabular-nums">{m.rank}</TableCell>
-            <TableCell className="px-1 py-1.5">
-              <span className="flex min-w-0 flex-wrap items-center gap-1">
-                <Link to={`/analyze/${m.stock_code}/summary`} className="truncate font-medium hover:underline">{m.name}</Link>
-                {m.flags.map(f => <Badge key={f} variant="secondary" className={cn("h-4 px-1 text-[10px] font-normal", f.startsWith("급등") && "text-up-ink", f.startsWith("급락") && "text-down-ink")}>{f}</Badge>)}
+            <TableCell className="px-2.5 py-2 font-mono text-xs text-ink-3 tabular-nums">{m.rank}</TableCell>
+            <TableCell className="px-2.5 py-2">
+              <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <Link to={`/analyze/${m.stock_code}/summary`} className="truncate hover:underline">{m.name}</Link>
+                {m.flags.map(f => <Badge key={f} variant={f.startsWith("급등") ? "up" : f.startsWith("급락") ? "down" : "neutral"}>{f}</Badge>)}
               </span>
             </TableCell>
-            <TableCell className={cn("px-1 py-1.5 text-right font-mono tabular-nums", tone(m.change_pct))}>{formatPercent(m.change_pct)}</TableCell>
-            <TableCell className="px-1 py-1.5 text-right tabular-nums">{formatKrw(m.value_traded)}</TableCell>
+            <TableCell className={cn("px-2.5 py-2 text-right font-mono tabular-nums", tone(m.change_pct))}>{formatPercent(m.change_pct)}</TableCell>
+            <TableCell className="px-2.5 py-2 text-right font-mono tabular-nums">{formatKrw(m.value_traded)}</TableCell>
           </TableRow>
         ))}</TableBody>
       </Table>

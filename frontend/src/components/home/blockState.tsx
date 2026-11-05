@@ -10,12 +10,13 @@ export const tone = (v: number | null | undefined) => v == null || v === 0 ? "te
 /** 블록 단위 오류 (상태 시트 §4.28) — 이 블록만 오류로 두고 나머지 화면은 그대로 */
 export function BlockError({ message, error, onRetry }: { message: string; error?: unknown; onRetry?: () => void }) {
   return (
-    <div role="alert" className="space-y-2 border bg-muted/40 p-3 text-sm">
-      <p className="flex items-center gap-1.5"><AlertTriangle className="size-3.5 shrink-0 text-muted-foreground" />{message}</p>
-      <div className="flex items-center gap-2">
-        {onRetry && <Button variant="outline" size="sm" className="h-7" onClick={onRetry}><RefreshCw className="size-3" />다시 시도</Button>}
+    // 시안 States-*: 회색 바탕 상자(선 line-2) · 경고 아이콘 + 문장 13 · '다시 시도'(테두리 알약 30) · '자세히'
+    <div role="alert" className="flex flex-col gap-2.5 border border-line-2 bg-surface-2 p-3.5 text-[13px] text-ink">
+      <p className="flex items-center gap-1.5"><AlertTriangle className="size-3.5 shrink-0" />{message}</p>
+      <div className="flex items-center gap-1.5">
+        {onRetry && <Button variant="outline" size="sm" className="h-[30px] gap-1.5 text-[12.5px]" onClick={onRetry}><RefreshCw className="size-3.5" />다시 시도</Button>}
         {error != null && <Tooltip>
-          <TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-7 text-muted-foreground">자세히</Button></TooltipTrigger>
+          <TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-[30px] text-[12.5px] text-ink-2">자세히</Button></TooltipTrigger>
           <TooltipContent className="max-w-[320px] text-xs">{toApiError(error).message}</TooltipContent>
         </Tooltip>}
       </div>

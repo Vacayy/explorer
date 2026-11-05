@@ -26,14 +26,14 @@ import type { WidgetBodyProps, WidgetMeta } from "./types"
  */
 
 export const EVENT_LABEL: Record<TrendEventKind, string> = { high52: "52주 신고가", vp_retest: "매물대 지지" }
-const STAGE: Record<TrendHigh52["kind"], { label: string; cls: string; hint: string }> = {
-  breakout: { label: "신고가 돌파", cls: "border-transparent bg-primary text-primary-foreground",
+const STAGE: Record<TrendHigh52["kind"], { label: string; variant: "up" | "neutral"; hint: string }> = {
+  breakout: { label: "신고가 돌파", variant: "up",
     hint: "최근 5거래일 안에 종가가 직전 250거래일 최고가를 넘었다" },
-  retest: { label: "돌파 후 지지", cls: "border-primary text-primary",
+  retest: { label: "돌파 후 지지", variant: "neutral",
     hint: "60거래일 안 전고점 돌파 → 돌파선 근처(저가 −5%~+3%)까지 되돌림, 종가는 −3% 아래로 안 빠짐 → 다시 올라 지금 돌파선 위" },
 }
 const StageBadge = ({ s, className }: { s: TrendHigh52; className?: string }) =>
-  <Badge variant="outline" title={`${STAGE[s.kind].label} — ${s.detail}`} className={cn("shrink-0 px-1 text-[10px]", STAGE[s.kind].cls, className)}>{STAGE[s.kind].label}</Badge>
+  <Badge variant={STAGE[s.kind].variant} title={`${STAGE[s.kind].label} — ${s.detail}`} className={cn("shrink-0", className)}>{STAGE[s.kind].label}</Badge>
 const olderThan = (iso: string | null | undefined, days: number) =>
   !!iso && Date.now() - new Date(iso.slice(0, 10) + "T00:00:00").getTime() > (days + 1) * 86_400_000
 const won = (v: number) => formatNumber(Math.round(v))
@@ -106,32 +106,32 @@ function TrendList({ items: all, universe, passed, criteria, wide, short, stage,
     </p>
     {(count("breakout") > 0 || count("retest") > 0) && (
       <ToggleGroup type="single" size="sm" variant="outline" value={stage ?? "all"} onValueChange={v => v && onStage(v === "all" ? null : v)}
-        aria-label="52주 신고가 단계로 고르기" className="h-6">
-        <ToggleGroupItem value="all" className="h-6 px-2 text-[11px]">전체</ToggleGroupItem>
-        <ToggleGroupItem value="breakout" title={STAGE.breakout.hint} className="h-6 px-2 text-[11px]">신고가 돌파 {count("breakout")}</ToggleGroupItem>
-        <ToggleGroupItem value="retest" title={STAGE.retest.hint} className="h-6 px-2 text-[11px]">돌파 후 지지·재반등 {count("retest")}</ToggleGroupItem>
+        aria-label="52주 신고가 단계로 고르기" className="h-7">
+        <ToggleGroupItem value="all" className="h-7 px-2.5 text-xs">전체</ToggleGroupItem>
+        <ToggleGroupItem value="breakout" title={STAGE.breakout.hint} className="h-7 px-2.5 text-xs">신고가 돌파 {count("breakout")}</ToggleGroupItem>
+        <ToggleGroupItem value="retest" title={STAGE.retest.hint} className="h-7 px-2.5 text-xs">돌파 후 지지·재반등 {count("retest")}</ToggleGroupItem>
       </ToggleGroup>
     )}
-    <div className={cn("grid items-center gap-x-3 border-b px-1 pb-1 text-[11px] text-muted-foreground", wide ? COLS_WIDE : COLS_NARROW)}>
+    <div className={cn("grid items-center gap-x-3 border-b px-1 pb-1.5 text-xs text-ink-3", wide ? COLS_WIDE : COLS_NARROW)}>
       <span>종목</span><span>60일</span><span className="text-right">수익률</span>
       {wide && <><TermTip label="꾸준함" tip="60거래일 로그 가격 회귀의 R²입니다. 1에 가까울수록 고르게 올랐습니다." />
         <TermTip label="ADX" tip="ADX(14) — 추세의 강도입니다. 25 이상이면 추세가 뚜렷합니다." />
         <span className="text-right" title="20일 이동평균 대비 — 클수록 단기 과열">이격</span></>}
     </div>
-    <ul className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2 text-[13px]">
+    <ul className="-mr-2 min-h-0 flex-1 divide-y overflow-y-auto pr-2 text-sm">
       {items.slice(0, short ? 4 : items.length).map(t => (
         <li key={t.stock_code}>
           <Button variant="ghost" onClick={() => onPick(t.stock_code)} aria-label={`${t.name} 추세 근거 보기`}
-            className={cn("grid h-auto w-full items-center gap-x-3 rounded-sm px-1 py-1 text-left text-[13px] font-normal", wide ? COLS_WIDE : COLS_NARROW)}>
+            className={cn("grid h-auto w-full items-center gap-x-3 rounded-sm px-1 py-1.5 text-left text-sm font-normal", wide ? COLS_WIDE : COLS_NARROW)}>
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="flex min-w-0 items-baseline gap-1.5">
-                <span className="max-w-full shrink-0 truncate font-medium" title={t.name}>{t.name}</span>
+                <span className="max-w-full shrink-0 truncate font-semibold" title={t.name}>{t.name}</span>
                 {wide && t.sector && <span className="min-w-0 shrink-[100] truncate text-[11px] text-muted-foreground">{t.sector}</span>}
               </span>
               {(t.new || t.high52 || t.events.some(k => k !== "high52")) && <span className="flex flex-wrap gap-1">
                 {t.high52 && <StageBadge s={t.high52} />}
-                {t.new && <Badge variant="outline" className="shrink-0 px-1 text-[10px] text-primary">신규</Badge>}
-                {t.events.filter(k => k !== "high52").map(k => <Badge key={k} variant="secondary" className="shrink-0 px-1 text-[10px]">{EVENT_LABEL[k]}</Badge>)}
+                {t.new && <Badge className="shrink-0">신규</Badge>}
+                {t.events.filter(k => k !== "high52").map(k => <Badge key={k} variant="up" className="shrink-0">{EVENT_LABEL[k]}</Badge>)}
               </span>}
             </span>
             <SparkLine data={t.spark} height={18} />
@@ -167,7 +167,7 @@ function EventList({ events, short }: { events: TrendEvent[]; short: boolean }) 
       <li key={`${e.kind}-${e.stock_code}`}>
         <Link to={`/analyze/${e.stock_code}/summary?scan=1`} title={`${e.name} 기술적 분석 열기`} className="block space-y-0.5 rounded-sm px-1 py-1.5 hover:bg-muted/50">
           <span className="flex items-center gap-1.5">
-            <Badge variant={e.kind === "high52" ? "default" : "secondary"} className="shrink-0 px-1 text-[10px]">{EVENT_LABEL[e.kind]}</Badge>
+            <Badge variant="up" className="shrink-0">{EVENT_LABEL[e.kind]}</Badge>
             <span className="truncate font-medium">{e.name}</span>
             {e.sector && <span className="truncate text-[11px] text-muted-foreground">{e.sector}</span>}
             <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">{e.date.slice(5)} 돌파</span>

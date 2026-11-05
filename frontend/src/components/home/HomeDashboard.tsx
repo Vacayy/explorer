@@ -36,7 +36,7 @@ export default function HomeDashboard() {
   )
 }
 
-const GLASS_PANEL = "glass rounded-[16px] [&>header]:border-line"
+const GLASS_PANEL = "glass rounded-[16px]! [&>header]:border-line"
 
 /**
  * 기상도 — 그라디언트 바탕 + 세로 리브 + 유리 패널(시안 Home). 분홍(상승)·파랑(하락) 비율(D-321):

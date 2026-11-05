@@ -12,7 +12,7 @@ export function RetailHeatCard() {
   const q = useRetailSummary()
   const d = q.data
   return (
-    <HomeBlock label="retail.heat" title="개인 투자 열기" link={{ to: '/retail', label: '추이 보기' }}
+    <HomeBlock section label="retail.heat" title="개인 투자 열기" link={{ to: '/retail', label: '추이 보기' }}
       info="빚투·대기자금·거래 열기의 변화 속도를 과거 5년과 비교합니다. 평일 18:30에 금융투자협회 통계를 받습니다."
       asOf={d?.as_of ?? null}>
       {!d ? (q.isError ? <BlockError message="개인 투자 열기 지표를 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <RowsSkeleton rows={6} />)

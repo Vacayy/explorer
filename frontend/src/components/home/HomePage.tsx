@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { ActionsList } from "@/components/actions/ActionsPage"
-import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
+import { PageLayout } from '@/components/shared/PageLayout'
 import { RetailHeatCard } from '@/components/home/RetailHeatCard'
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { UsSeasonBlock } from "@/components/home/UsSeasonBlock"
@@ -42,12 +42,14 @@ export function HomeKrPage() {
     const timers = [150, 900].map(ms => window.setTimeout(go, ms))
     return () => timers.forEach(t => window.clearTimeout(t))
   }, [hash])
-  return <PageLayout mode="document" header={<PageHeader title="한국 시장" />}>
-    <div className="@container/market">
+  // 시안 Home-KR: 하위 메뉴 칩이 제목을 대신한다 — 제목은 화면 읽기용으로만
+  return <PageLayout mode="document">
+    <h1 className="sr-only">한국 시장</h1>
+    <div className="@container/market flex flex-col gap-4">
       <div className="surface-grid grid lg:grid-cols-2">
         <KrTurnoverBlock />
         {/* 같은 높이 — 넓은 화면은 거래대금 칸 높이에 맞추고, 추세 표는 칸 안에서 스크롤 */}
-        <div className="relative lg:min-h-[560px]"><HomeSection widget="explore.trend" w={mobile ? 4 : 6} h={9} className="h-[560px] lg:absolute lg:inset-0 lg:h-auto" /></div>
+        <div className="relative lg:min-h-[560px]"><HomeSection section widget="explore.trend" w={mobile ? 4 : 6} h={9} className="h-[560px] lg:absolute lg:inset-0 lg:h-auto" /></div>
       </div>
       <div id="retail" className="scroll-mt-4"><RetailHeatCard /></div>
       <TradeBlock />
@@ -62,13 +64,14 @@ export function HomeKrPage() {
  * 곧 발표는 위 실적 시즌 블록 하나로(D-303). 모멘텀 줄은 선택한 후보(?view=season&pick=)로 간다(4d).
  */
 export function HomeUsPage() {
-  return <PageLayout mode="document" header={<PageHeader title="미국 시장" />}>
-    <div className="@container/market">
+  return <PageLayout mode="document">
+    <h1 className="sr-only">미국 시장</h1>
+    <div className="@container/market flex flex-col gap-4">
       <UsSeasonBlock />
       <UsBriefingSection columns />
       <div className="surface-grid grid lg:grid-cols-2">
-        <HomeSection widget="explore.calls" w={6} h={6} className="h-[420px]" />
-        <HomeSection widget="explore.momentum" w={6} h={6} className="h-[420px]" />
+        <HomeSection section widget="explore.calls" w={6} h={6} className="h-[420px]" />
+        <HomeSection section widget="explore.momentum" w={6} h={6} className="h-[420px]" />
       </div>
     </div>
   </PageLayout>
