@@ -6,7 +6,7 @@ import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
 import { PageLayout } from "@/components/shared/PageLayout"
 import {
-  ComposedChart, Bar, Cell, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -135,35 +135,38 @@ function TradeCell({ f, mine, onPick }: { f: TradeFollowRow; mine: boolean; onPi
   }, [q.data])
   const bene = (q.data?.beneficiaries ?? []).filter(b => b.rel === "수혜").slice(0, 2)
   return <Button variant="ghost" onClick={() => onPick(f.hs_code)} data-trade-cell aria-label={`${f.item_name} 상세`}
-    className="block h-auto w-full whitespace-normal rounded-none p-3 text-left font-normal">
-    <span className="flex items-center gap-1.5">
+    className="flex h-auto w-full flex-col items-stretch justify-start gap-1.5 whitespace-normal rounded-none px-3.5 py-3 text-left font-normal">
+    <span className="flex min-w-0 items-baseline gap-1.5">
       <span className="min-w-0 truncate text-[13px] font-semibold">{f.item_name}</span>
-      {surge && <Badge variant="outline" className="h-4 shrink-0 border-up/40 px-1 text-[10px] font-normal text-up-ink">급등</Badge>}
-      {mine && <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px] font-normal">내 종목</Badge>}
-      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{f.group_label ?? ""}</span>
+      {surge && <span className="inline-flex h-[18px] shrink-0 items-center rounded-[5px] bg-up-tint px-1.5 text-[11px] text-up-ink">급등</span>}
+      {mine && <span className="inline-flex h-[18px] shrink-0 items-center rounded-[5px] bg-chip px-1.5 text-[11px] text-ink-2">내 종목</span>}
+      <span className="ml-auto shrink-0 text-[11px] text-ink-3">{f.group_label ?? ""}</span>
     </span>
-    <span className="mt-1 flex items-baseline gap-2 font-mono tabular-nums">
-      <span className="text-base font-semibold">{f.latest_export == null ? "-" : formatUsd(f.latest_export)}</span>
-      <span className="font-sans text-xs text-muted-foreground">전년 대비</span>
-      <span className={cn("text-xs", tone(f.yoy_pct))}>{formatPercent(f.yoy_pct)}</span>
+    <span className="flex items-baseline gap-2 font-mono tabular-nums">
+      <span className="text-[17px]">{f.latest_export == null ? "-" : formatUsd(f.latest_export)}</span>
+      <span className={cn("text-[12.5px]", tone(f.yoy_pct))}>전년 대비 {formatPercent(f.yoy_pct)}</span>
     </span>
-    <span className="mt-1 block h-[92px]">
+    <span className="block aspect-[300/96]">
       {q.isPending ? <Skeleton className="h-full w-full" />
         : q.isError ? <span className="flex h-full items-center justify-center text-xs text-muted-foreground">추이를 불러오지 못했습니다</span>
-        : <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
-            <XAxis dataKey="period" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} interval={0}
-              tickFormatter={(p: string) => p.endsWith("-01") ? `${p.slice(2, 4)}.01` : ""} />
-            <YAxis hide domain={[0, "auto"]} />
-            <Bar dataKey="v" isAnimationActive={false}>
-              {data.map((p, i) => <Cell key={p.period} fill={i === data.length - 1 ? (surge ? "var(--color-up)" : "var(--foreground)") : "var(--color-chart-gray)"} fillOpacity={i === data.length - 1 ? 1 : 0.55} />)}
-            </Bar>
-            <Line dataKey="ma" stroke="var(--foreground)" strokeWidth={1.25} dot={false} isAnimationActive={false} connectNulls={false} />
-          </ComposedChart>
-        </ResponsiveContainer>}
+        : <MiniBars data={data} last={surge ? "var(--up)" : "var(--ink)"} label={`${f.item_name} 최근 ${data.length}개월 수출액`} />}
     </span>
-    {bene.length > 0 && <span className="mt-1 block truncate text-[11px] text-muted-foreground">수혜 {bene.map(b => b.name).join(" · ")}</span>}
+    <span className="block min-h-[15px] truncate text-[11.5px] text-ink-3">{bene.length > 0 && `수혜 ${bene.map(b => b.name).join(" · ")}`}</span>
   </Button>
+}
+
+/** 시안 Industry-Trade 칸 막대: 월별 수출(회색 55%, 마지막 달 = 급등이면 분홍·아니면 글자색) + 12개월 평균 선, 1월만 'YY.01' */
+function MiniBars({ data, last, label }: { data: { period: string; v: number | null; ma: number | null }[]; last: string; label: string }) {
+  const max = Math.max(0, ...data.map(p => Math.max(p.v ?? 0, p.ma ?? 0)))
+  const step = 291 / Math.max(data.length, 1), w = step * 0.85
+  const y = (v: number) => 80 - (max ? v / max : 0) * 70.5
+  const ma = data.map((p, i) => p.ma == null ? null : `${(4.6 + i * step + w / 2).toFixed(1)},${y(p.ma).toFixed(1)}`).filter(Boolean).join(" ")
+  return <svg viewBox="0 0 300 96" role="img" aria-label={label} className="block size-full">
+    {data.map((p, i) => p.v == null ? null : <rect key={p.period} x={4.6 + i * step} y={y(p.v)} width={w} height={80 - y(p.v)} rx={1}
+      fill={i === data.length - 1 ? last : "var(--ink-3)"} opacity={i === data.length - 1 ? 1 : 0.55}><title>{`${p.period} ${formatUsd(p.v)}`}</title></rect>)}
+    {ma && <polyline points={ma} fill="none" stroke="var(--action)" strokeWidth={1.4} strokeLinejoin="round" />}
+    {data.map((p, i) => p.period.endsWith("-01") && <text key={p.period} x={4.6 + i * step} y={93} fontSize={9.5} fill="var(--ink-3)">{`${p.period.slice(2, 4)}.01`}</text>)}
+  </svg>
 }
 
 function MonthNav({ d, onMonth }: { d: TradeHighlights; onMonth: (v: string | null) => void }) {
