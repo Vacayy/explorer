@@ -1,5 +1,6 @@
 // 종목 단위 컨콜 버튼 — ① 가장 최근 실적 발표 조사(SEC 8-K·yfinance, AV 한도 무관) ② 이 종목만 수집.
 // 수집은 전체 수집과 같은 사슬(POST /collect?tickers=)이라 진행 상태는 위 '컨콜 수집' 카드가 보여 준다.
+import type { ReactNode } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { track } from "@/lib/usage"
 import { Download, Search } from "lucide-react"
@@ -12,7 +13,8 @@ import type { TranscriptCheck } from "@/types"
 
 const AV_BUDGET = 3   // 한 종목이면 최근 분기 몇 개면 충분 — 하루 한도(25)를 전체 수집 몫으로 남긴다
 
-export function TranscriptTickerActions({ ticker, currentId, onSelect }: { ticker: string; currentId: number; onSelect: (id: number) => void }) {
+/** extra = 같은 줄 끝에 붙는 행동(콜 상세의 '도시에 ›') */
+export function TranscriptTickerActions({ ticker, currentId, onSelect, extra }: { ticker: string; currentId: number; onSelect: (id: number) => void; extra?: ReactNode }) {
   const qc = useQueryClient()
   const check = useCheckLatestCall()
   const collect = useMutation({
@@ -27,14 +29,15 @@ export function TranscriptTickerActions({ ticker, currentId, onSelect }: { ticke
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button variant="outline" size="xs" onClick={() => check.mutate(ticker, { onError: (e) => toast.error(e.message) })} disabled={check.isPending}
+        <Button variant="outline" size="sm" onClick={() => check.mutate(ticker, { onError: (e) => toast.error(e.message) })} disabled={check.isPending}
           title="SEC 실적 발표·yfinance 발표일을 지금 다시 읽습니다 (Alpha Vantage 한도 안 씀)">
-          {check.isPending ? <Spinner className="h-3 w-3" /> : <Search className="h-3 w-3" />} 최근 발표 조사
+          {check.isPending ? <Spinner className="size-3.5" /> : <Search className="size-3.5" />} 최근 발표 조사
         </Button>
-        <Button variant="outline" size="xs" onClick={() => collect.mutate()} disabled={collect.isPending}
+        <Button variant="outline" size="sm" onClick={() => collect.mutate()} disabled={collect.isPending}
           title={`이 종목만 수집 — Motley Fool 먼저, 없으면 Alpha Vantage ${AV_BUDGET}건까지`}>
-          <Download className="h-3 w-3" /> 이 종목 수집
+          <Download className="size-3.5" /> 이 종목 수집
         </Button>
+        {extra}
       </div>
       {check.data && <CheckResult r={check.data} currentId={currentId} onSelect={onSelect} />}
     </div>

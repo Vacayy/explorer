@@ -1,10 +1,13 @@
 // 콜 상세의 실적 체인 섹션 — 발표 전 → 컨콜 → 시장 반응 → 그 뒤 (docs/specs/earnings-season.md §콜 상세)
 // 데이터는 GET /chain/{id} 하나. 정성(기대·반응 구조화)이 없으면 칸마다 '없음'의 이유를 쓴다(Partial).
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
-import { Bar, BarChart, Cell, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { ChevronRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Card } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -12,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { usePinCore, useSeason } from "@/hooks/useTranscripts"
 import { formatPercent } from "@/utils/format"
 import { cn } from "@/lib/utils"
-import { Bullets, Cols, H3, Meta, Pp, SHORT_REASON, Section, VERDICT, VERDICT_CLS, WEIGHT, mmdd } from "@/components/follow/season/seasonUi"
+import { Bullets, Cols, Meta, Pp, SHORT_REASON, Section, VERDICT, VERDICT_CLS, WEIGHT, mmdd } from "@/components/follow/season/seasonUi"
 import type { ChainDetail, ExpectationIssue, ReactionGrade } from "@/types"
 
 const TOOLTIP_STYLE = { fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }
@@ -21,7 +24,6 @@ const CHART_MARGIN = { top: 18, right: 12, bottom: 0, left: 0 }
 /** 근거 번호([39][13])는 이 화면에 출처 목록이 없어 지운다 — 전문·출처는 아래 펼치기 */
 const clean = (s: string) => s.replace(/\s*\[\d+\]/g, "").trim()
 const FOLLOW: Record<string, string> = { 유지: "유지됐다", 확대: "더 커졌다", 되돌림: "되돌려졌다", 반전: "뒤집혔다" }
-const DROVE: Record<string, string> = { major: "주가를 크게 움직임", minor: "일부 영향", none: "영향 없음" }
 
 /* ---------- 헤더: 섹터 링크 + 핵심 표시·고정 ---------- */
 export function ChainHeaderLinks({ chain }: { chain: ChainDetail }) {
@@ -36,12 +38,12 @@ export function ChainHeaderLinks({ chain }: { chain: ChainDetail }) {
   })
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
-      <Link to={`/follow/transcripts?view=season&sector=${encodeURIComponent(chain.sector)}`} className="text-xs text-primary hover:underline whitespace-nowrap"
+      <Link to={`/follow/transcripts?view=season&sector=${encodeURIComponent(chain.sector)}`} className="text-[13px] text-ink-2 hover:text-ink hover:underline whitespace-nowrap"
         title="이 섹터의 이번 시즌 반응 보기">{chain.sector_name} ›</Link>
       {core && (
-        <Badge variant="outline" 
+        <Badge variant="neutral"
           title={criteria ? core.reasons.map((r) => criteria[r]).join(" · ") : undefined}>
-          핵심 · {core.reasons.map((r) => SHORT_REASON[r]).join("·")}
+          핵심 · {core.reasons.map((r) => SHORT_REASON[r]).join(" · ")}
         </Badge>
       )}
       {season.data && (
@@ -52,6 +54,78 @@ export function ChainHeaderLinks({ chain }: { chain: ChainDetail }) {
       )}
     </span>
   )
+}
+
+/* ---------- 발표 창 차트: D−6 ~ D+3 누적 수익률 (시안 Call-Detail · Mobile-Call) ----------
+ * series.offset 0 = 발표일, 기준(0%) = 발표 전 마지막 거래일. 종목 = 글자색 굵은 선, 비교 ETF = 회색 점선, 발표 = 세로 점선. */
+/* 시안은 640×200 SVG를 칸 폭으로 늘려 글자·선이 커진다 — 데스크톱은 그 크기(약 1.3배)로 */
+const MONO_TICK = { fontSize: 10.5, fill: "var(--ink-3)", fontFamily: "var(--font-mono)" }
+const MONO_TICK_LG = { ...MONO_TICK, fontSize: 13 }
+const dLabel = (n: number) => (n === 0 ? "D" : n > 0 ? `D+${n}` : `D${n}`)
+const signedPct = (v: number) => `${v > 0 ? "+" : ""}${v}%`
+
+export function CallWindowChart({ chain, compact = false }: { chain: ChainDetail; compact?: boolean }) {
+  const hi = compact ? 4 : 3
+  const rows = chain.series.filter((s) => s.offset >= -6 && s.offset <= hi)
+  if (rows.length < 2) return <Meta>발표 전후 시세가 아직 없습니다.</Meta>
+  const last = rows[rows.length - 1]
+  const lo = rows[0].offset, end = last.offset
+  const span = Math.max(...rows.flatMap((r) => [r.ret, r.bench])) - Math.min(...rows.flatMap((r) => [r.ret, r.bench])) || 1
+  const close = Math.abs(last.ret - last.bench) < span * 0.08
+  // 선 끝 라벨 — 데스크톱은 끝 점 오른쪽 이름만, 폰은 끝 점 위·아래 '이름 값'(낮은 선은 아래)
+  const endLabel = (key: "ret" | "bench") => (p: { x?: number | string; y?: number | string; index?: number }) => {
+    if (p.index !== rows.length - 1 || p.x == null || p.y == null) return <g />
+    const x = Number(p.x), y = Number(p.y)
+    const isRet = key === "ret"
+    const below = isRet ? last.ret <= last.bench : last.bench < last.ret
+    const name = isRet ? chain.ticker : chain.etf
+    const fill = isRet ? "var(--ink)" : "var(--ink-3)"
+    if (compact) {
+      return <text x={x} y={below ? y + 14 : y - 6} textAnchor="end" fontSize={10.5} fill={fill} fontFamily="var(--font-mono)">
+        {name} {formatPercent(isRet ? last.ret : last.bench)}</text>
+    }
+    const dy = close ? (below ? 8 : -8) : 0
+    return <text x={x + 8} y={y + 5 + dy} fontSize={13} fill={fill} fontWeight={isRet ? 600 : 400} fontFamily="var(--font-mono)">{name}</text>
+  }
+  const ev = chain.event_date
+  return (
+    <ResponsiveContainer width="100%" aspect={compact ? 358 / 150 : 640 / 200}>
+      <LineChart data={rows} margin={compact ? { top: 8, right: 12, bottom: 0, left: 0 } : { top: 22, right: 76, bottom: 0, left: 0 }}>
+        {!compact && <CartesianGrid stroke="var(--grid)" vertical={false} />}
+        <XAxis type="number" dataKey="offset" domain={[lo, end]} ticks={[lo, 0, end]} tickFormatter={dLabel} tick={compact ? MONO_TICK : MONO_TICK_LG}
+          axisLine={false} tickLine={false} interval={0} />
+        <YAxis tick={compact ? MONO_TICK : MONO_TICK_LG} width={compact ? 26 : 56}
+          domain={compact ? [(m: number) => m - span * 0.18, (m: number) => m + span * 0.05] : ["auto", "auto"]} tickCount={5} axisLine={false} tickLine={false}
+          ticks={compact ? [0] : undefined} tickFormatter={(v: number) => (compact ? "0" : signedPct(v))} />
+        <ReferenceLine y={0} stroke="var(--line-2)" strokeDasharray={compact ? "3 3" : undefined} />
+        <ReferenceLine x={0} stroke={compact ? "var(--action)" : "var(--ink)"} strokeOpacity={compact ? 1 : 0.5} strokeDasharray="3 3"
+          label={(p: { viewBox?: { x?: number; y?: number } }) => {
+            const x = p.viewBox?.x ?? 0, y = p.viewBox?.y ?? 0
+            return compact
+              ? <text x={x + 4} y={y + 10} fontSize={10} fill="var(--action)">발표{ev ? ` ${mmdd(ev)}` : ""}</text>
+              : <text x={x} y={y - 7} textAnchor="middle" fontSize={13} fill="var(--ink)" fontFamily="var(--font-mono)">발표</text>
+          }} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d) => dLabel(Number(d))} formatter={(v) => formatPercent(Number(v))} />
+        <Line dataKey="bench" name={chain.etf} stroke="var(--ink-3)" strokeWidth={compact ? 1.4 : 1.8} strokeDasharray={compact ? "4 3" : "5 4"} dot={false} isAnimationActive={false}
+          label={endLabel("bench")} />
+        <Line dataKey="ret" name={chain.ticker} stroke="var(--ink)" strokeWidth={compact ? 1.8 : 2.6} isAnimationActive={false}
+          dot={compact ? false : (p: { cx?: number; cy?: number; index?: number }) => p.index === rows.length - 1
+            ? <circle key="end" cx={p.cx} cy={p.cy} r={4.5} fill="var(--ink)" /> : <g key={p.index} />}
+          label={endLabel("ret")} />
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+/** 지금 보는 분기의 기록 줄 (분기별 기록 표에서 transcript_id로, 없으면 맨 위) */
+export const currentHistory = (chain: ChainDetail, transcriptId: number) =>
+  chain.history.find((r) => r.transcript_id === transcriptId) ?? chain.history[0]
+/** 'FY2026 Q3' → 'FY26 Q3' (시안 분기 라벨) */
+export const fyShort = (s: string) => s.replace(/^FY20(\d\d)/, "FY$1")
+/** 발표일부터 오늘까지 지난 날수 */
+const daysSince = (iso: string) => {
+  const d = new Date(iso + "T00:00:00"); const t = new Date(); t.setHours(0, 0, 0, 0)
+  return Math.round((t.getTime() - d.getTime()) / 86_400_000)
 }
 
 /* ---------- 같은 날짜 축의 작은 차트 묶음: 주가 · 거래량 · 내 자료 언급 ---------- */
@@ -138,14 +212,29 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
   )
 }
 
-/* ---------- 발표 전 / 컨콜 / 시장 반응 / 그 뒤 (데스크톱 2×2) ---------- */
+/* ---------- 발표 전 / 컨콜 / 시장 반응 / 그 뒤 — 칸 넷(시안 Call-Detail, 칸마다 세 줄 이내 + 아래 배지) ---------- */
+function Cell4({ title, children, badge }: { title: string; children: ReactNode; badge?: ReactNode }) {
+  return (
+    <div className="-mr-px -mb-px flex min-w-0 flex-col">
+      <Card className="flex-1 gap-3 p-4">
+        <h2 className="text-[15px] font-semibold leading-snug">{title}</h2>
+        <div className="flex flex-col gap-1 text-[13px] leading-[1.6]">{children}</div>
+        {badge && <div className="mt-auto">{badge}</div>}
+      </Card>
+    </div>
+  )
+}
+const Dots = ({ items }: { items: ReactNode[] }) => (
+  <ul className="flex list-disc flex-col pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{items.map((x, i) => <li key={i}><span className="line-clamp-2">{x}</span></li>)}</ul>
+)
+
 export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transcriptId: number }) {
   const ex = chain.expectation
   const rm = chain.reaction_meta
-  const h = chain.history.find((r) => r.transcript_id === transcriptId) ?? chain.history[0]
+  const h = currentHistory(chain, transcriptId)
 
-  const before = ex?.points?.length ? <Bullets lead items={ex.points.map(clean)} />
-    : ex?.positioning ? <Bullets items={[clean(ex.positioning)]} />
+  const before = ex?.points?.length ? <Dots items={ex.points.slice(0, 2).map(clean)} />
+    : ex?.positioning ? <span className="line-clamp-3">{clean(ex.positioning)}</span>
     : <>
       <Meta>발표 전 기대 정리가 없습니다.</Meta>
       {ex?.quant && <QuantFacts q={ex.quant} />}
@@ -153,36 +242,28 @@ export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transc
 
   const after: ReactNode[] = []
   if (h?.d1 != null) {
-    after.push(<>{h.follow ? `첫 반응이 ${FOLLOW[h.follow] ?? h.follow}` : "첫 반응"} — {chain.etf} 대비 첫 거래일 <Pp v={h.d1} />
-      {h.d7 != null && <> → 일주일 <Pp v={h.d7} /></>}{h.d30 != null && <> · 한 달 <Pp v={h.d30} /></>}</>)
+    after.push(<span key="d1">{h.follow ? `첫 반응이 ${FOLLOW[h.follow] ?? h.follow}` : "첫 반응"} — {chain.etf} 대비 첫 거래일 <Pp v={h.d1} />
+      {h.d7 != null && <> → 일주일 <Pp v={h.d7} /></>}{h.d30 != null && <> · 한 달 <Pp v={h.d30} /></>}</span>)
   }
   const pt = chain.pt_after
   if (pt && pt.n > 0) {
-    after.push(<>발표 후 7일 목표가 변경 {pt.n}건(올림 <span className="text-up-ink">{pt.up}</span>·내림 <span className="text-down-ink">{pt.down}</span>)
-      {pt.examples.length > 0 && <span className="text-muted-foreground"> · {pt.examples.slice(0, 3).join(", ")}</span>}</>)
+    after.push(<span key="pt">발표 후 7일 목표가 변경 {pt.n}건 · 올림 {pt.up} · 내림 {pt.down}
+      {pt.median_pct != null && <> · 중앙 <span className={cn("font-mono tabular-nums", pt.median_pct > 0 ? "text-up-ink" : pt.median_pct < 0 ? "text-down-ink" : "")}>{formatPercent(pt.median_pct)}</span></>}</span>)
+    if (pt.examples.length) after.push(<span key="ex" className="text-xs text-ink-3">{pt.examples.slice(0, 2).join(" · ")}</span>)
   }
+  const interim = chain.reaction_status === "interim"
 
   return (
-    <Section>
-      <div className="grid grid-cols-1 gap-x-7 gap-y-4 md:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <H3>발표 전{ex && <span className="text-caption font-normal text-muted-foreground">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</span>}</H3>
-          {before}
-        </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <H3>컨콜</H3>
-          {rm?.call_points?.length ? <Bullets lead items={rm.call_points.map(clean)} /> : <Meta>아래 '핵심 정리'를 펼쳐 보세요.</Meta>}
-        </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <H3>시장 반응{chain.reaction_status === "interim" && <span className="text-caption font-normal text-muted-foreground">진행 중</span>}</H3>
-          {rm?.react_points?.length ? <Bullets lead items={rm.react_points.map(clean)} /> : <Meta>아래 '시장 반응 정리'에서 정리를 만드세요.</Meta>}
-        </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <H3>그 뒤</H3>
-          {after.length ? <Bullets lead items={after} /> : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}
-        </div>
-      </div>
-    </Section>
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] items-stretch pr-px pb-px">
+      <Cell4 title="발표 전" badge={ex && <Badge variant="hyp">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</Badge>}>{before}</Cell4>
+      <Cell4 title="컨콜">
+        {rm?.call_points?.length ? <Dots items={rm.call_points.slice(0, 3).map(clean)} /> : <Meta>아래 '핵심 정리'를 펼쳐 보세요.</Meta>}
+      </Cell4>
+      <Cell4 title="시장 반응" badge={interim && <Badge variant="warn">진행 중{chain.event_date ? ` · 발표 ${daysSince(chain.event_date)}일째` : ""}</Badge>}>
+        {rm?.react_points?.length ? <Dots items={rm.react_points.slice(0, 2).map(clean)} /> : <Meta>아래 '시장 반응 정리'에서 정리를 만드세요.</Meta>}
+      </Cell4>
+      <Cell4 title="그 뒤">{after.length ? after : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}</Cell4>
+    </div>
   )
 }
 
@@ -195,7 +276,9 @@ function QuantFacts({ q }: { q: NonNullable<NonNullable<ChainDetail["expectation
   return facts.length ? <Bullets items={facts} /> : null
 }
 
-/* ---------- 발표 전 시장이 주목한 내용 (발표 전 쟁점 채점) ---------- */
+/* ---------- 발표 전 시장이 주목한 내용 — 한 줄씩(쟁점 | 중요도 | 결과 한 줄 | 영향), 기준·판정은 행을 눌러 펼침 ---------- */
+const IMPACT: Record<string, string> = { major: "영향 큼", minor: "영향 작음", none: "영향 없음" }
+
 export function IssuesCard({ chain }: { chain: ChainDetail }) {
   const ex = chain.expectation
   const grades = chain.reaction_meta?.grades ?? []
@@ -205,19 +288,14 @@ export function IssuesCard({ chain }: { chain: ChainDetail }) {
   let content: ReactNode
   if (!ex) content = <Meta>발표 전 기대가 정리되지 않은 발표입니다.</Meta>
   else if (grades.length || missed.length) {
-    content = <>
-      {grades.map((g) => <IssueBlock key={g.issue} grade={g} issue={byIssue.get(g.issue)} />)}
-      {missed.map((m) => (
-        <div key={m}>
-          <H3>{clean(m)} <Badge className={cn("font-normal", VERDICT_CLS.missed)}>{VERDICT.missed}</Badge></H3>
-          <Meta>발표 전 정리에 없던 쟁점입니다.</Meta>
-        </div>
-      ))}
-    </>
+    content = <ul className="flex flex-col">
+      {grades.map((g) => <IssueRow key={g.issue} grade={g} issue={byIssue.get(g.issue)} />)}
+      {missed.map((m) => <IssueRow key={m} missed={clean(m)} />)}
+    </ul>
   } else if (ex.issues?.length) {
     // 기대는 있는데 채점 전 — 쟁점과 기준만
     content = <>
-      {ex.issues.map((i) => <IssueBlock key={i.issue} issue={i} />)}
+      <ul className="flex flex-col">{ex.issues.map((i) => <IssueRow key={i.issue} issue={i} />)}</ul>
       <Meta>채점은 시장 반응 정리가 만들어지면 붙습니다.</Meta>
     </>
   } else content = <Meta>발표 전 정리에 쟁점이 없습니다.</Meta>
@@ -225,22 +303,35 @@ export function IssuesCard({ chain }: { chain: ChainDetail }) {
   return <Section title="발표 전 시장이 주목한 내용">{content}</Section>
 }
 
-function IssueBlock({ grade, issue }: { grade?: ReactionGrade; issue?: ExpectationIssue }) {
-  const name = grade?.issue ?? issue?.issue ?? ""
+function IssueRow({ grade, issue, missed }: { grade?: ReactionGrade; issue?: ExpectationIssue; missed?: string }) {
+  const [open, setOpen] = useState(false)
+  const name = missed ?? grade?.issue ?? issue?.issue ?? ""
   const weight = grade?.weight ?? issue?.weight
-  const items: ReactNode[] = []
-  if (issue?.good || issue?.bad) items.push(<>발표 전 기준: {issue.good && <>호재면 {issue.good}</>}{issue.good && issue.bad && " / "}{issue.bad && <>악재면 {issue.bad}</>}</>)
-  if (grade?.outcome) items.push(<>컨콜: {grade.outcome}</>)
-  if (grade?.drove) items.push(<>시장: <b>{DROVE[grade.drove] ?? grade.drove}</b></>)
+  const result = missed ? "발표 전 정리에 없던 쟁점입니다." : grade?.outcome ?? (issue?.good ? `호재면 ${issue.good}` : "")
+  const detail: ReactNode[] = []
+  if (issue?.good || issue?.bad) detail.push(<>발표 전 기준: {issue.good && <>호재면 {issue.good}</>}{issue.good && issue.bad && " / "}{issue.bad && <>악재면 {issue.bad}</>}</>)
+  if (grade?.verdict) detail.push(<>판정: <Badge className={cn("font-normal", VERDICT_CLS[grade.verdict])}>{VERDICT[grade.verdict]}</Badge></>)
+  if (missed) detail.push(<>판정: <Badge className={cn("font-normal", VERDICT_CLS.missed)}>{VERDICT.missed}</Badge></>)
+  const row = (
+    <>
+      <span className="flex min-w-0 items-baseline gap-1 text-[13px]">
+        {detail.length > 0 && <ChevronRight className={cn("size-3 shrink-0 self-center text-ink-3 transition-transform", open && "rotate-90")} />}{name}
+      </span>
+      <span>{weight && <Badge variant={weight === "high" ? "neutral" : "outline"}>{WEIGHT[weight]}</Badge>}</span>
+      <span className="min-w-0 text-[12.5px] text-ink-2 max-md:col-span-2">{result}</span>
+      <span>{grade?.drove && <Badge variant="outline">{IMPACT[grade.drove] ?? grade.drove}</Badge>}</span>
+    </>
+  )
+  const grid = "grid w-full grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-1 py-2.5 text-left md:grid-cols-[1fr_auto_2fr_auto]"
   return (
-    <div>
-      <H3>
-        {name}
-        {weight && <Badge variant="outline" className={cn("font-normal", weight === "high" && "border-primary/40 text-primary")}>발표 전 {WEIGHT[weight]}</Badge>}
-        {grade?.verdict && <Badge className={cn("font-normal", VERDICT_CLS[grade.verdict])}>{VERDICT[grade.verdict]}</Badge>}
-      </H3>
-      {items.length > 0 && <Bullets items={items} />}
-    </div>
+    <li className="min-w-0 border-t border-line first:border-t-0">
+      {detail.length ? (
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger className={cn(grid, "cursor-pointer hover:bg-chip/40")}>{row}</CollapsibleTrigger>
+          <CollapsibleContent className="pb-2.5 pl-4"><Bullets items={detail} /></CollapsibleContent>
+        </Collapsible>
+      ) : <div className={grid}>{row}</div>}
+    </li>
   )
 }
 

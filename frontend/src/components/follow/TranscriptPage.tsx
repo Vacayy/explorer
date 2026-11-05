@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Megaphone, Network, Search, Sparkles, ChevronDown, ChevronRight } from "lucide-react"
+import { Search, Sparkles, ChevronRight } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -29,7 +29,10 @@ import { SeasonView } from "@/components/follow/season/SeasonView"
 import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
 import { seasonMarket } from "@/components/follow/season/SeasonHeader"
 import { SectorView } from "@/components/follow/season/SectorView"
-import { ChainCharts, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard } from "@/components/follow/season/ChainSections"
+import { CallWindowChart, ChainCharts, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard, currentHistory, fyShort } from "@/components/follow/season/ChainSections"
+import { WEIGHT } from "@/components/follow/season/seasonUi"
+import { InfoTip } from "@/components/shared/InfoTip"
+import { formatPp } from "@/utils/format"
 import { useChain } from "@/hooks/useTranscripts"
 import { QueryState } from "@/components/shared/QueryState"
 import { cn } from "@/lib/utils"
@@ -120,7 +123,6 @@ export default function TranscriptPage() {
   })
 
   const mobile = useMediaQuery(MOBILE_QUERY)
-  const [sheetOpen, setSheetOpen] = useState(false)
   // 기업 목록에서 고르면 기록을 남긴다(뒤로 가기 = 목록), 상세 안에서 분기·기업을 바꾸면 교체
   const selectId = (id: number) => setParams({ t: String(id) }, { replace: !!selectedId })
 
@@ -162,7 +164,8 @@ export default function TranscriptPage() {
   const listing = !selectedId
   return (
     <PageContainer>
-      {header}
+      {/* 폰 콜 상세는 시안(Mobile-Call)대로 제목 없이 보기 칩부터 */}
+      {!(mobile && !listing) && header}
       {tabs}
       {listing && <>
         {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 시즌' 보기) */}
@@ -176,20 +179,7 @@ export default function TranscriptPage() {
         listing ? (
           <Card><CardContent className="p-2">{railFor(selectId)}</CardContent></Card>
         ) : (
-          <div className="surface-stack flex flex-col">
-            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" className="h-auto w-full justify-between rounded-none px-3 py-2.5 text-left font-normal">
-                  <span className="text-sm text-muted-foreground">기업 바꾸기</span><ChevronDown className="size-4" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-3">
-                <SheetHeader className="p-0"><SheetTitle>기업 고르기</SheetTitle></SheetHeader>
-                {railFor((id) => { setSheetOpen(false); selectId(id) })}
-              </SheetContent>
-            </Sheet>
-            <DetailPanel key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} />
-          </div>
+          <MobileCallDetail key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} rail={railFor} />
         )
       ) : (
       <div className="surface-grid grid grid-cols-1 md:grid-cols-[240px_1fr] items-start">
@@ -324,47 +314,36 @@ function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId
   )
 }
 
-/* ---------- 우 본문: 콜 상세 — 분기 탭 · 차트 묶음 · 체인 네 단계 · 쟁점 · 분기별 기록 · 펼치기 (earnings-season.md §콜 상세) ---------- */
+/* ---------- 우 본문: 콜 상세 (시안 Call-Detail) — 머리(회사·분기 세그먼트) · 발표 창 차트 · 칸 넷 · 쟁점 · 분기별 기록 · 펼치기 ---------- */
 function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelect: (id: number) => void }) {
-  const { data, isLoading, isError, refetch } = useQuery(
-    apiQuery<Detail>({ key: ["spine", "transcript", "detail", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}`, staleTime: STALE.medium }),
-  )
+  const { data, isLoading, isError, refetch } = useQuery(detailQuery(transcriptId))
   const chain = useChain(transcriptId)
-  const [wantDigest, setWantDigest] = useState(false)
-  const computed = useQuery({
-    ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),
-  })
 
   if (isLoading) return <Card><CardContent className="py-3 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="h-24 w-full" /></CardContent></Card>
   if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
 
-  const digest = computed.data?.digest ?? data.digest
-  const hasOnto = (data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0
   const headline = chain.data?.reaction_meta?.headline
 
   return (
     <div className="surface-stack">
       <Card>
-        <CardContent className="space-y-3">
-          {/* 헤더 — 회사·섹터·핵심 + 분기 탭(오래된 분기 → 최신이 오른쪽) */}
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="truncate font-display text-[22px] font-normal tracking-[-0.01em]">{data.company_name}</span>
-              <Badge variant="secondary" className="text-[11px]">{data.ticker}</Badge>
-              <Link to={`/us/${data.ticker}`} className="text-xs text-ink-2 hover:text-ink hover:underline whitespace-nowrap"
-                title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에 →</Link>
+        <CardContent className="flex flex-col gap-3.5 p-[18px]">
+          {/* 머리 — 회사·티커·섹터·핵심, 오른쪽 끝 분기 세그먼트(오래된 분기 → 최신이 오른쪽) */}
+          <div className="flex flex-wrap items-baseline justify-between gap-2.5">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-2.5">
+              <h2 className="truncate font-display text-[26px] font-normal leading-tight">{data.company_name}</h2>
+              <Badge variant="outline">{data.ticker}</Badge>
               {chain.data && <ChainHeaderLinks chain={chain.data} />}
             </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {quarterLabel(data.cy, data.fiscal_year, data.fiscal_period)}{data.cy ? ` (회사 회계 ${periodOf(data.fiscal_year, data.fiscal_period)})` : ""}{data.call_date ? ` · ${data.call_date}` : ""}
-            </div>
+            <QuarterTabs ticker={data.ticker} current={transcriptId} onSelect={onSelect} />
           </div>
-          <QuarterTabs ticker={data.ticker} current={transcriptId} onSelect={onSelect} />
-          <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect} />
-          {headline && <p className="text-[15px] font-semibold">{headline}</p>}
-          {/* 같은 날짜 축의 작은 차트 묶음 — 체인은 별도 쿼리라 실패해도 아래 정리는 보인다 */}
-          <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-[440px] w-full rounded-card" />}>
-            {(c) => <ChainCharts chain={c} />}
+          <span className="text-[12.5px] text-ink-3">{callMeta(data, chain.data?.etf)}</span>
+          {headline && <p className="text-base font-semibold leading-normal text-pretty">{headline}</p>}
+          <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect}
+            extra={<Button variant="ghost" size="sm" asChild><Link to={`/us/${data.ticker}`} title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에<ChevronRight /></Link></Button>} />
+          {/* 발표 창 D−6~D+3 — 일별 긴 차트·거래량·자료 언급은 아래 '더 보기' */}
+          <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="aspect-[16/5] w-full rounded-card" />}>
+            {(c) => <CallWindowChart chain={c} />}
           </QueryState>
         </CardContent>
       </Card>
@@ -375,89 +354,218 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
         <HistoryCard chain={chain.data} transcriptId={transcriptId} onSelect={onSelect} />
       </>}
 
-      {/* 전체 정리·원문·출처는 펼치기 */}
-      <Card>
-        <CardContent className="space-y-3">
-          <Fold icon={<Sparkles className="h-4 w-4 text-hypothesis" />} label="핵심 정리 (컨콜 전체)">
-            {digest ? (
-              <div className="bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
-            ) : computed.isFetching ? (
-              <div className="bg-muted/40 px-4 py-3 space-y-2">
-                <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
-                <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
-              </div>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => { track('action', 'digest.make', { entity: transcriptId }); setWantDigest(true) }}>
-                <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
-              </Button>
-            )}
-          </Fold>
-          {/* 시장 반응 — 발표일~7일 내 자료·주가·헤드라인 */}
-          <Fold icon={<Megaphone className="h-4 w-4 text-muted-foreground" />} label="시장 반응 정리 전문·출처">
-            <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
-          </Fold>
-          {/* 온톨로지 연결 (D-089) — 이 콜이 편입된 노드·인과, 클릭 시 그래프로 */}
-          {hasOnto && (
-            <Fold icon={<Network className="h-4 w-4 text-muted-foreground" />} label="온톨로지 연결">
-              <p className="mb-1.5 text-[11px] text-muted-foreground">이 콜이 편입된 노드·인과 — 클릭 시 그래프로</p>
-              {(data.nodes?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {data.nodes!.map((n) => <OntoChip key={n.id} id={n.id} name={n.name} type={n.type} />)}
-                </div>
-              )}
-              {(data.causal_edges?.length ?? 0) > 0 && (
-                <ul className="space-y-1">
-                  {data.causal_edges!.map((e, i) => (
-                    <li key={i} className="flex flex-wrap items-center gap-1">
-                      <OntoChip id={e.from_id} name={e.from} type={e.from_type} />
-                      <span className="text-[10px] text-muted-foreground">{e.rel_type === "BENEFITS_FROM" ? "← 수혜" : "→ 인과"}</span>
-                      <OntoChip id={e.to_id} name={e.to} type={e.to_type} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Fold>
-          )}
-          {/* 원문 전문 (펼침) */}
-          <Fold icon={<FileText className="h-4 w-4" />} label="원문 전문">
-            <div className="max-h-[60vh] overflow-y-auto border px-4 py-3 text-sm">
-              <Markdown>{data.body}</Markdown>
-            </div>
-          </Fold>
-        </CardContent>
-      </Card>
+      <Card><CardContent className="p-4"><DetailFolds data={data} transcriptId={transcriptId} /></CardContent></Card>
     </div>
   )
 }
 
-/** 펼치기 한 줄 — 기본 접힘 */
-function Fold({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+const detailQuery = (transcriptId: number) =>
+  apiQuery<Detail>({ key: ["spine", "transcript", "detail", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}`, staleTime: STALE.medium })
+/** 'CY2026 Q3 · 10/28 발표 · 비교 QQQ' */
+const callMeta = (d: Detail, etf?: string) =>
+  [quarterLabel(d.cy, d.fiscal_year, d.fiscal_period), d.call_date && `${mmdd(d.call_date)} 발표`, etf && `비교 ${etf}`].filter(Boolean).join(" · ")
+/** 분기 라벨 — 시안 'FY26 Q3' (회계연도를 모르면 달력분기) */
+const fyLabel = (q: { fiscal_year: number | null; fiscal_period: string | null; cy?: string | null }) =>
+  q.fiscal_year != null ? `FY${String(q.fiscal_year).slice(2)} ${q.fiscal_period ?? ""}`.trim() : quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)
+
+/** 펼치기 묶음 — 기간 전체 차트 · 핵심 정리 · 시장 반응 전문 · 온톨로지 · 원문 (기본 접힘) */
+function DetailFolds({ data, transcriptId }: { data: Detail; transcriptId: number }) {
+  const chain = useChain(transcriptId)
+  const [wantDigest, setWantDigest] = useState(false)
+  const computed = useQuery({
+    ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),
+  })
+  const digest = computed.data?.digest ?? data.digest
+  const hasOnto = (data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0
   return (
-    <Collapsible>
-      <CollapsibleTrigger className="group flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
-        <ChevronRight className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />{icon} {label}
+    <div className="flex flex-col">
+      {chain.data && chain.data.series.length > 0 && (
+        <Fold label="더 보기 · 기간 전체 주가·거래량·자료 언급"><ChainCharts chain={chain.data} /></Fold>
+      )}
+      <Fold label="핵심 정리 (컨콜 전체)">
+        {digest ? (
+          <div className="bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
+        ) : computed.isFetching ? (
+          <div className="bg-muted/40 px-4 py-3 space-y-2">
+            <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
+            <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => { track('action', 'digest.make', { entity: transcriptId }); setWantDigest(true) }}>
+            <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
+          </Button>
+        )}
+      </Fold>
+      {/* 시장 반응 — 발표일~7일 내 자료·주가·헤드라인 */}
+      <Fold label="시장 반응 정리 전문·출처">
+        <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
+      </Fold>
+      {/* 온톨로지 연결 (D-089) — 이 콜이 편입된 노드·인과, 클릭 시 그래프로 */}
+      {hasOnto && (
+        <Fold label="온톨로지 연결">
+          {(data.nodes?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {data.nodes!.map((n) => <OntoChip key={n.id} id={n.id} name={n.name} type={n.type} />)}
+            </div>
+          )}
+          {(data.causal_edges?.length ?? 0) > 0 && (
+            <ul className="space-y-1">
+              {data.causal_edges!.map((e, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-1">
+                  <OntoChip id={e.from_id} name={e.from} type={e.from_type} />
+                  <span className="text-[10px] text-muted-foreground">{e.rel_type === "BENEFITS_FROM" ? "← 수혜" : "→ 인과"}</span>
+                  <OntoChip id={e.to_id} name={e.to} type={e.to_type} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Fold>
+      )}
+      <Fold label="원문 전문">
+        <div className="max-h-[60vh] overflow-y-auto border px-4 py-3 text-sm">
+          <Markdown>{data.body}</Markdown>
+        </div>
+      </Fold>
+    </div>
+  )
+}
+
+/** 펼치기 한 줄 — 기본 접힘, 줄마다 윗선(시안 details) */
+function Fold({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Collapsible className="border-t border-line first:border-t-0">
+      <CollapsibleTrigger className="group flex w-full items-center gap-1.5 py-2.5 text-left text-[13.5px] font-medium hover:text-ink-2">
+        <ChevronRight className="size-3.5 text-ink-3 transition-transform group-data-[state=open]:rotate-90" />{label}
       </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2">{children}</CollapsibleContent>
+      <CollapsibleContent className="pb-3">{children}</CollapsibleContent>
     </Collapsible>
   )
 }
 
-/** 분기 탭 — API는 최신 먼저라 뒤집어 최신 분기가 오른쪽 */
-function QuarterTabs({ ticker, current, onSelect }: { ticker: string; current: number; onSelect: (id: number) => void }) {
-  const { data: quarters = [] } = useQuery(
-    apiQuery<Quarter[]>({ key: ["spine", "transcript", "company", ticker], url: `/api/spine/transcript/company/${ticker}`, staleTime: STALE.short }),
-  )
+/** 분기 세그먼트 — API는 최신 먼저라 뒤집어 최신 분기가 오른쪽, 최근 여섯 분기까지 */
+function useQuarters(ticker: string) {
+  return useQuery(apiQuery<Quarter[]>({ key: ["spine", "transcript", "company", ticker], url: `/api/spine/transcript/company/${ticker}`, staleTime: STALE.short }))
+}
+function QuarterTabs({ ticker, current, onSelect, compact = false }: { ticker: string; current: number; onSelect: (id: number) => void; compact?: boolean }) {
+  const { data: quarters = [] } = useQuarters(ticker)
+  // 폰 칩 줄은 가로 스크롤 — 고른 분기가 보이게 그 칩으로 민다
+  const scroller = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!compact) return
+    scroller.current?.querySelector<HTMLElement>("[data-state=on]")?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  }, [compact, current, quarters.length])
   if (quarters.length <= 1) return null
+  const shown = [...quarters].slice(0, compact ? quarters.length : 6).reverse()
   return (
-    <ToggleGroup type="single" size="sm" value={String(current)} onValueChange={(v) => { if (v) onSelect(Number(v)) }}
-      aria-label="분기" className="flex-wrap justify-start">
-      {[...quarters].reverse().map((q) => (
-        <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className="h-7 px-2.5 text-xs tabular-nums"
-          title={`${quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}${q.call_date ? ` · ${q.call_date}` : ""}`}>
-          {q.cy ? shortQuarter(q.cy, q.fiscal_period) : periodOf(q.fiscal_year, q.fiscal_period)}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+    <div ref={scroller} className={cn(compact && "-mx-4 overflow-x-auto px-4 [scrollbar-width:none]")}>
+      <ToggleGroup type="single" size="sm" value={String(current)} onValueChange={(v) => { if (v) onSelect(Number(v)) }}
+        aria-label="분기" className={cn(compact ? "flex-nowrap" : "flex-wrap justify-end")}>
+        {shown.map((q) => (
+          <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className={cn("tabular-nums", compact ? "h-7 shrink-0 px-2.5 text-[12.5px]" : "h-[30px] px-3 text-[13px]")}
+            title={`${quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}${q.call_date ? ` · ${q.call_date}` : ""}`}>
+            {fyLabel(q)}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
+  )
+}
+
+/* ---------- 폰 콜 상세 (시안 Mobile-Call) — 기업 바꾸기 · 분기 칩 · 한 줄 요지 · 발표 전후 주가 · 발표 전 쟁점 · 컨콜 핵심 · 분기별 첫 거래일 반응 ---------- */
+function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: number; onSelect: (id: number) => void; rail: (onPick: (id: number) => void) => ReactNode }) {
+  const { data, isLoading, isError, refetch } = useQuery(detailQuery(transcriptId))
+  const chain = useChain(transcriptId)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [more, setMore] = useState(false)
+
+  if (isLoading) return <div className="flex flex-col gap-3.5"><Skeleton className="h-16 w-full rounded-card" /><Skeleton className="h-48 w-full rounded-card" /></div>
+  if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
+
+  const c = chain.data
+  const h = c ? currentHistory(c, transcriptId) : undefined
+  const grades = c?.reaction_meta?.grades ?? []
+  const order = { high: 0, mid: 1, low: 2 } as const
+  const topIssues = [...grades].sort((a, b) => order[a.weight ?? "low"] - order[b.weight ?? "low"]).slice(0, 2)
+  const callPoints = [...(c?.reaction_meta?.call_points ?? []).slice(0, 2), ...(c?.reaction_meta?.react_points ?? []).slice(0, 1)]
+  const clean = (t: string) => t.replace(/\s*\[\d+\]/g, "").trim()
+  const box = "flex flex-col gap-2.5 p-3.5"
+  const boxTitle = "text-[15px] font-semibold"
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetTrigger asChild>
+          <Button variant="outline" className="h-auto w-full justify-start gap-2.5 rounded-card bg-card px-3.5 py-3 text-left font-normal">
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate text-base font-semibold">{data.company_name} <span className="font-mono text-[12.5px] font-normal text-ink-3">{data.ticker}</span></span>
+              <span className="truncate text-xs text-ink-3">{[c?.sector_name, quarterLabel(data.cy, data.fiscal_year, data.fiscal_period), data.call_date && `${mmdd(data.call_date)} 발표`].filter(Boolean).join(" · ")}</span>
+            </span>
+            <span className="ml-auto shrink-0 text-[12.5px] text-ink-2">기업 바꾸기 ▾</span>
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-3">
+          <SheetHeader className="p-0"><SheetTitle>기업 고르기</SheetTitle></SheetHeader>
+          {rail((id) => { setSheetOpen(false); onSelect(id) })}
+        </SheetContent>
+      </Sheet>
+      <QuarterTabs ticker={data.ticker} current={transcriptId} onSelect={onSelect} compact />
+      {c?.reaction_meta?.headline && <p className="text-[15px] font-semibold leading-[1.55]">{c.reaction_meta.headline}</p>}
+
+      <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-48 w-full rounded-card" />}>
+        {(cd) => <div className="flex flex-col gap-3.5">
+          <Card className={box}>
+            <h2 className={cn(boxTitle, "flex items-center gap-1.5")}>발표 전후 주가
+              <InfoTip label="발표 전후 주가 설명">{cd.etf} 비교 · 발표 전 마지막 거래일 = 0</InfoTip></h2>
+            <CallWindowChart chain={cd} compact />
+            {(h?.d1 != null || (cd.pt_after?.n ?? 0) > 0) && (
+              <span className="text-[12.5px]">
+                {h?.d1 != null && <>첫 거래일 {cd.etf} 대비 <span className={cn("font-mono tabular-nums", h.d1 > 0 ? "text-up-ink" : h.d1 < 0 ? "text-down-ink" : "")}>{formatPp(h.d1)}</span></>}
+                {h?.d1 != null && (cd.pt_after?.n ?? 0) > 0 && " · "}
+                {(cd.pt_after?.n ?? 0) > 0 && <>발표 후 7일 목표가 {cd.pt_after!.down >= cd.pt_after!.up ? `내림 ${cd.pt_after!.down}` : `올림 ${cd.pt_after!.up}`}건</>}
+              </span>
+            )}
+          </Card>
+          {topIssues.length > 0 && (
+            <Card className={box}>
+              <h2 className={boxTitle}>발표 전 쟁점</h2>
+              {topIssues.map((g) => (
+                <div key={g.issue} className="flex flex-col gap-1.5 text-[13px] leading-[1.55]">
+                  <span><b className="font-semibold">{g.issue}</b> {g.weight && <Badge variant={g.weight === "high" ? "warn" : "outline"}>{WEIGHT[g.weight]}</Badge>}</span>
+                  {g.outcome && <span className="text-ink-2">{g.outcome}</span>}
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>}
+      </QueryState>
+
+      <Card className={box}>
+        <h2 className={boxTitle}>컨콜 핵심</h2>
+        {callPoints.length > 0
+          ? <ul className="flex list-disc flex-col gap-1 pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{callPoints.map((t, i) => <li key={i}>{clean(t)}</li>)}</ul>
+          : <p className="text-caption text-muted-foreground">아래 핵심 정리를 펼쳐 보세요.</p>}
+        <Collapsible open={more} onOpenChange={setMore}>
+          <CollapsibleTrigger className="text-left text-[13px] font-medium text-ink">{more ? "접기" : "핵심 정리 전체 · 원문 ›"}</CollapsibleTrigger>
+          <CollapsibleContent className="pt-2"><DetailFolds data={data} transcriptId={transcriptId} /></CollapsibleContent>
+        </Collapsible>
+      </Card>
+
+      {c && c.history.length > 0 && (
+        <Card className="flex flex-col p-3.5">
+          <h2 className={cn(boxTitle, "pb-1.5")}>분기별 첫 거래일 반응</h2>
+          {c.history.map((r) => (
+            <div key={`${r.fiscal}-${r.event_date}`} className={cn("grid grid-cols-[70px_64px_1fr] gap-2 border-t border-line py-2 text-[12.5px]",
+              r.transcript_id === transcriptId && "font-semibold")}>
+              {r.transcript_id && r.transcript_id !== transcriptId
+                ? <button type="button" className="text-left hover:underline" onClick={() => onSelect(r.transcript_id!)}>{fyShort(r.fiscal)}</button>
+                : <span>{fyShort(r.fiscal)}</span>}
+              <span className={cn("font-mono tabular-nums", r.d1 == null ? "text-ink-3" : r.d1 > 0 ? "text-up-ink" : r.d1 < 0 ? "text-down-ink" : "")}>{formatPp(r.d1, 1)}</span>
+              <span className="text-ink-2">{r.follow ?? "-"}</span>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
   )
 }
 
