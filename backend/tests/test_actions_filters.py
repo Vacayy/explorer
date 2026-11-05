@@ -21,6 +21,8 @@ class ActionsFilterTests(unittest.TestCase):
             CREATE TABLE corporate_actions(id INTEGER PRIMARY KEY, rcp_no TEXT, corp_code TEXT, corp_name TEXT, stock_code TEXT,
                 market TEXT, action_type TEXT, report_nm TEXT, rcept_dt TEXT, market_cap INT, created_at TEXT, summary TEXT);
             CREATE TABLE job_runs(job TEXT, status TEXT, ran_at TEXT);
+            CREATE TABLE capital_raise_details(rcp_no TEXT, method TEXT, price_1st INT, price_2nd INT, price_final INT,
+                old_shares INT, new_shares INT);
             CREATE TABLE stock_groups(id INTEGER PRIMARY KEY, name TEXT, kind TEXT);
             CREATE TABLE stock_group_members(group_id INT, stock_code TEXT);
             INSERT INTO stock_groups VALUES (1, '관심 종목', 'watch'), (4, '내 포트폴리오', 'portfolio');
@@ -62,3 +64,11 @@ class ActionsFilterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionsDescriptionApiTests(ActionsFilterTests):
+    def test_description_from_raise_detail(self):
+        self.conn.execute("INSERT INTO capital_raise_details VALUES ('1', '주주배정', 1000, NULL, NULL, 100, 10)")
+        by = {a["rcp_no"]: a["description"] for a in self.get("/api/spine/actions")["items"]}
+        self.assertEqual(by["1"], "주주배정 · 1차 발행가 1,000원 · 신주 10주(기존 대비 10.0%)")
+        self.assertIsNone(by["4"])

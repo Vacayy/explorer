@@ -95,3 +95,31 @@ describe('미국 컨센서스(yfinance 추정치 스냅샷)', () => {
     expect(rangePos(5, 5, 5)).toBe(50)
   })
 })
+
+describe('미국 도시에 머리 첫 줄 · 자료 기간 (D-306)', () => {
+  it('업종·비교 ETF, 없으면 옛 표기', async () => {
+    const { usEyebrow } = await import('@/lib/dossier')
+    expect(usEyebrow({ ticker: 'NVDA', sector: '반도체', sector_etf: 'SMH' })).toBe('NVDA · 반도체 · 비교 SMH')
+    expect(usEyebrow({ ticker: 'NVDA', sector: '반도체', sector_etf: null })).toBe('NVDA · 반도체')
+    expect(usEyebrow({ ticker: 'ZZ', sector: null, sector_etf: null })).toBe('ZZ · 미국 상장')
+  })
+  it('기간: from/to, 뒤집힘 교정, 옛 ?day=, 기본 1주', async () => {
+    const { evidenceRange, rangePreset, addDays } = await import('@/lib/dossier')
+    const sp = (q: string) => new URLSearchParams(q)
+    const today = '2026-11-04'
+    expect(evidenceRange(sp('from=2026-10-20&to=2026-10-27'), today)).toEqual({ start: '2026-10-20', end: '2026-10-27' })
+    expect(evidenceRange(sp('from=2026-10-27&to=2026-10-20'), today)).toEqual({ start: '2026-10-20', end: '2026-10-27' })
+    expect(evidenceRange(sp('day=2026-10-30'), today)).toEqual({ start: '2026-10-30', end: '2026-10-30' })
+    expect(evidenceRange(sp('from=2026-10-30'), today)).toEqual({ start: '2026-10-30', end: '2026-10-30' })
+    expect(evidenceRange(sp('day=bad'), today)).toEqual({ start: '2026-10-28', end: today })
+    expect(rangePreset({ start: '2026-10-28', end: today }, today)).toBe('1w')
+    expect(rangePreset({ start: '2026-10-07', end: today }, today)).toBe('4w')
+    expect(rangePreset({ start: '2026-10-28', end: '2026-11-03' }, today)).toBeNull()
+    expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
+  })
+  it('공시명 공백 정리', async () => {
+    const { reportTitle } = await import('@/lib/dossier')
+    expect(reportTitle('회사분할결정(종속회사의주요경영사항)              ')).toBe('회사분할결정(종속회사의주요경영사항)')
+    expect(reportTitle(null)).toBe('-')
+  })
+})

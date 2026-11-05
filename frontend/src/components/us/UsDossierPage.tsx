@@ -22,7 +22,7 @@ import { WatchButton } from '@/components/follow/WatchButton'
 import { UsPriceCollect } from '@/components/us/UsPriceCollect'
 import { UsEarningsCard, UsEarningsHistory } from '@/components/us/UsEarningsCard'
 import { useCompanyPrices } from '@/hooks/useCompanyPrices'
-import { lastClose, rangePos, upside, usConsensus, usTabOf } from '@/lib/dossier'
+import { lastClose, rangePos, upside, usConsensus, usEyebrow, usTabOf } from '@/lib/dossier'
 import { cn } from '@/lib/utils'
 import { formatPercent, formatRatio, formatStockPrice, formatUsd } from '@/utils/format'
 
@@ -54,7 +54,7 @@ export default function UsDossierPage() {
     const room = upside(c.targets?.mean, price)
     return (
       <PageContainer>
-        <DossierHead market="us" eyebrow={`${d.ticker} · 미국 상장`} name={d.name} last={last} loading={prices.isPending}
+        <DossierHead market="us" eyebrow={usEyebrow(d)} name={d.name} last={last} loading={prices.isPending}
           actions={<>
             <WatchButton stockCode={d.ticker} />
             <SaveButton kind="company" refId={d.ticker} url={`/us/${d.ticker}`} title={d.name} subtitle={d.ticker} />

@@ -236,6 +236,8 @@ export interface UsDossier {
   entity_id: number | null;
   fundamentals: UsFundamentals | null;
   latest_transcript: { id: number; fiscal_year: number; fiscal_period: string; call_date: string } | null;
+  sector: string | null;       // 실적 시즌 섹터 이름 (팔로우 밖이면 null)
+  sector_etf: string | null;   // 실적 반응 비교 ETF
 }
 
 export interface UsEdge {
@@ -1179,6 +1181,7 @@ export interface CorporateAction {
   action_type: string; report_nm: string | null
   rcept_dt: string               // YYYYMMDD
   market_cap: number | null; summary: string | null; dart_url: string
+  description: string | null     // 제목 아래 한 줄 — 증자 상세·저장 요약 첫 문장(서버 결정적, D-306)
   is_correction: boolean         // [기재정정]·[첨부정정]
   my_group: MyGroup | null       // 내 묶음(stock_groups) 멤버
 }

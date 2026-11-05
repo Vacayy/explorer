@@ -7,7 +7,7 @@ import { useActions, useRights } from '@/hooks/useActions'
 import { useCompanyPrices } from '@/hooks/useCompanyPrices'
 import { useCompanyEvidence } from '@/hooks/useCompanyEvidence'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { disclosureTag, lastClose, shortDate } from '@/lib/dossier'
+import { disclosureTag, lastClose, reportTitle, shortDate } from '@/lib/dossier'
 import { cn } from '@/lib/utils'
 import { formatNumber, formatPercent, formatStockPrice } from '@/utils/format'
 import type { RightsRow } from '@/types'
@@ -53,9 +53,10 @@ export function StockActionsBlock({ stockCode }: { stockCode: string }) {
                         <Badge variant="secondary" className={cn('text-[10px]', a.action_type === '유상증자' && 'bg-down/10 text-down', a.action_type === '무상증자' && 'bg-up/10 text-up')}>{a.action_type}</Badge>
                         {a.is_correction && <Badge variant="outline" className="text-[10px] text-muted-foreground">정정</Badge>}
                       </span>
-                      <a href={a.dart_url} target="_blank" rel="noreferrer" className="col-start-2 min-w-0 hover:underline sm:col-start-auto">
-                        {a.summary || a.report_nm}
-                      </a>
+                      <span className="col-start-2 min-w-0 sm:col-start-auto">
+                        <a href={a.dart_url} target="_blank" rel="noreferrer" className="hover:underline">{reportTitle(a.report_nm)}</a>
+                        {a.description && <span className="mt-0.5 block line-clamp-1 text-caption text-muted-foreground sm:line-clamp-2" title={a.description} data-action-desc>{a.description}</span>}
+                      </span>
                     </li>
                   ))}
                 </ul>}
@@ -68,7 +69,10 @@ export function StockActionsBlock({ stockCode }: { stockCode: string }) {
                   {filings.map(({ d, tag }) => (
                     <li key={d.id} className="grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-x-3 py-2 text-sm">
                       <span className="font-mono text-caption tabular-nums text-muted-foreground">{d.local_date.slice(2).replaceAll('-', '.')}</span>
-                      {d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="min-w-0 hover:underline">{d.title}</a> : <span className="min-w-0">{d.title}</span>}
+                      <span className="min-w-0">
+                        {d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="hover:underline">{d.title}</a> : d.title}
+                        {tag === '지분' && d.publisher && <span className="mt-0.5 block truncate text-caption text-muted-foreground" data-action-desc>제출 {d.publisher}</span>}
+                      </span>
                       <Badge variant="outline" className="text-[10px] font-normal">{tag}</Badge>
                     </li>
                   ))}

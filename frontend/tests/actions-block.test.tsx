@@ -8,7 +8,7 @@ import type { CorporateAction } from '../src/types'
 /* 홈 › 한국 시장 기업활동 블록 — 데스크톱 10·모바일 6행 + 더 보기, 필터를 바꾸면 다시 접힌다(D-303) */
 const act = (i: number): CorporateAction => ({
   id: i, rcp_no: String(i), corp_name: `기업${i}`, stock_code: null, market: 'Y', action_type: '유상증자', report_nm: `공시${i}`,
-  rcept_dt: '20261104', market_cap: null, summary: null, dart_url: '#', is_correction: false, my_group: null,
+  rcept_dt: '20261104', market_cap: null, summary: null, description: i === 0 ? '주주배정 · 1차 발행가 1,000원' : null, dart_url: '#', is_correction: false, my_group: null,
 })
 const mobile = { value: false }
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mobile.value }))
@@ -37,4 +37,11 @@ it('shows 6 rows on mobile', () => {
   mobile.value = true
   renderAt()
   expect(rows()).toBe(6)
+})
+
+it('shows the one-line description under the report title', () => {
+  renderAt()
+  const desc = screen.getAllByText('주주배정 · 1차 발행가 1,000원')
+  expect(desc.length).toBeGreaterThan(0)
+  expect(desc[0].getAttribute('data-action-desc')).not.toBeNull()
 })

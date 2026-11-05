@@ -186,9 +186,20 @@ def us_dossier(ticker: str):
     tr = conn.execute("""
         SELECT id, fiscal_year, fiscal_period, call_date FROM transcripts
         WHERE ticker=? ORDER BY call_date DESC LIMIT 1""", (ticker.upper(),)).fetchone()
+    sector, etf = _sector(conn, ticker.upper())
     conn.close()
     fund = get_fundamentals(ticker)
     if not fund and eid is None:
         raise HTTPException(404, "US 종목 데이터를 찾을 수 없습니다")
     return UsDossier(ticker=ticker.upper(), name=name or ticker.upper(), entity_id=eid,
-                     fundamentals=fund, latest_transcript=dict(tr) if tr else None)
+                     fundamentals=fund, latest_transcript=dict(tr) if tr else None, sector=sector, sector_etf=etf)
+
+
+def _sector(conn, ticker: str) -> tuple[str | None, str | None]:
+    """머리 첫 줄 업종·비교 ETF — 실적 시즌 섹터 표(earnings_chain)와 같은 판정. 팔로우 밖 종목은 (None, None)."""
+    from pipeline.earnings_chain import sector_etf, sector_name, sector_of
+    row = conn.execute("SELECT ticker, group_label, sic FROM transcript_follow WHERE ticker=? AND active=1", (ticker,)).fetchone()
+    if not row:
+        return None, None
+    key = sector_of(row)
+    return sector_name(key), sector_etf(key)

@@ -10,6 +10,7 @@ import { pinMine, useActions } from "@/hooks/useActions"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { formatKrw, formatKstDateTime, formatNumber } from "@/utils/format"
 import { cn } from "@/lib/utils"
+import { reportTitle } from "@/lib/dossier"
 import RightsProTable from "@/components/actions/RightsProTable"
 import { HomeBlock } from "@/components/home/HomeSection"
 import type { ActionKind, ActionsResponse } from "@/types"
@@ -158,8 +159,8 @@ function ActionsBody({ data, type, view, kind, setParam, setView, bounded = fals
                   {/* lg 미만: 공시명 열 대신 기업 아래에 쌓는다 — 좁은 화면에서 가로 스크롤 없이 무슨 공시인지 보이게 */}
                   <div className="mt-1 whitespace-normal lg:hidden">
                     {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
-                    <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">{a.report_nm}</a>
-                    {a.summary && <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2" title={a.summary}>{a.summary}</p>}
+                    <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">{reportTitle(a.report_nm)}</a>
+                    {a.description && <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground sm:line-clamp-2" title={a.description} data-action-desc>{a.description}</p>}
                   </div>
                 </TableCell>
                 <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground md:table-cell">
@@ -168,11 +169,11 @@ function ActionsBody({ data, type, view, kind, setParam, setView, bounded = fals
                 <TableCell className="hidden lg:table-cell">
                   {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
                   <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">
-                    {a.report_nm}
+                    {reportTitle(a.report_nm)}
                   </a>
-                  {a.summary && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2" title={a.summary}>
-                      {a.summary}
+                  {a.description && (
+                    <p className="mt-0.5 line-clamp-2 whitespace-normal text-[11px] text-muted-foreground" title={a.description} data-action-desc>
+                      {a.description}
                     </p>
                   )}
                 </TableCell>

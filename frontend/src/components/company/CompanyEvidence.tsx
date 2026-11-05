@@ -93,7 +93,7 @@ export function CompanyEvidence({
       </header>
       <CardContent className="space-y-4 px-4 py-3">
         {!preview && summary && range.start && range.end && <CompanyEvidenceSummary company={company} market={market} range={range} source={source} q={q}
-          disabled={feed.isPending || feed.isError || feed.data?.total === 0} />}
+          disabled={feed.isPending || feed.isError || feed.data?.total === 0} total={feed.data?.total} />}
 
         {!preview && (
           <form

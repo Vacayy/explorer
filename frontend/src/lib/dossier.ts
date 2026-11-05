@@ -108,3 +108,50 @@ export function rangePos(v: number, low: number, high: number): number {
   if (high <= low) return 50
   return Math.min(100, Math.max(0, ((v - low) / (high - low)) * 100))
 }
+
+/** 미국 도시에 머리 첫 줄 — 'NVDA · 반도체 · 비교 SMH'(D-306). 섹터가 없으면 옛 표기 'NVDA · 미국 상장' */
+export function usEyebrow(d: { ticker: string; sector?: string | null; sector_etf?: string | null }): string {
+  if (!d.sector) return `${d.ticker} · 미국 상장`
+  return [d.ticker, d.sector, d.sector_etf && `비교 ${d.sector_etf}`].filter(Boolean).join(' · ')
+}
+
+/** 'YYYY-MM-DD'에 n일 더하기(달력 날짜, 시간대 무관) */
+export function addDays(day: string, n: number): string {
+  const t = new Date(`${day}T00:00:00Z`)
+  t.setUTCDate(t.getUTCDate() + n)
+  return t.toISOString().slice(0, 10)
+}
+
+export interface DayRange { start: string; end: string }
+/** 미국 자료 탭 기간 프리셋 — 끝 날짜에서 거꾸로 n일 */
+export const RANGE_PRESETS = [
+  { key: '1w', label: '1주', days: 7 },
+  { key: '2w', label: '2주', days: 14 },
+  { key: '4w', label: '4주', days: 28 },
+] as const
+
+/**
+ * 미국 자료 탭 기간(D-306 3) — URL ?from=&to= 가 상태. 옛 ?day=X 는 X~X로 읽는다.
+ * 없으면 끝 날짜(미 동부 오늘)에서 1주(시안 기본). 순서가 뒤집히면 바로 잡는다.
+ */
+export function evidenceRange(sp: URLSearchParams, today: string): DayRange {
+  const from = pickedDay(sp.get('from'))
+  const to = pickedDay(sp.get('to'))
+  if (from && to) return from <= to ? { start: from, end: to } : { start: to, end: from }
+  if (from || to) return { start: (from ?? to)!, end: (to ?? from)! }
+  const day = pickedDay(sp.get('day'))
+  if (day) return { start: day, end: day }
+  return { start: addDays(today, -7), end: today }
+}
+
+/** 기간이 프리셋(끝 = 오늘, n일 전부터)과 같으면 그 키 */
+export function rangePreset(r: DayRange, today: string): string | null {
+  if (r.end !== today) return null
+  return RANGE_PRESETS.find((p) => addDays(today, -p.days) === r.start)?.key ?? null
+}
+
+/** 미 동부 오늘(YYYY-MM-DD) — 서버 언급 흐름의 마지막 날과 같은 기준 */
+export const usToday = (now = new Date()) => now.toLocaleDateString('sv-SE', { timeZone: 'America/New_York' })
+
+/** DART 공시명의 긴 공백(원문 그대로 저장)을 한 칸으로 */
+export const reportTitle = (name: string | null | undefined) => (name ?? '').replace(/\s+/g, ' ').trim() || '-'
