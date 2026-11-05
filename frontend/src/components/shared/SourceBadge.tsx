@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
 
 const SOURCE_LABEL: Record<string, string> = {
   telegram: "텔레그램",
@@ -20,10 +19,7 @@ const UNVERIFIED = new Set(["scrap"])
 export function SourceBadge({ sourceType }: { sourceType: string }) {
   const unverified = UNVERIFIED.has(sourceType)
   return (
-    <Badge
-      variant={unverified ? "outline" : "secondary"}
-      className={cn("text-caption font-normal", unverified && "border-hypothesis/40 text-hypothesis")}
-    >
+    <Badge variant={unverified ? "hyp" : "neutral"}>
       {SOURCE_LABEL[sourceType] ?? sourceType}
     </Badge>
   )

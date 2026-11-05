@@ -25,17 +25,17 @@ export function FeedRow({ doc, unread, q, onChip }: { doc: FeedDocument; unread?
   const excerpt = preview(doc.summary || doc.content || '')
   const title = doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'
   return (
-    <article aria-label={title} className="space-y-2 border-b py-5 first:pt-3 last:border-0" data-feed-row={doc.id}>
-      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+    <article aria-label={title} className="flex flex-col gap-1.5 border-b py-4 first:pt-3 last:border-0" data-feed-row={doc.id}>
+      <div className="flex min-w-0 items-center gap-2 text-xs text-ink-3">
         <SourceBadge sourceType={doc.source_type} />
         {doc.channel_kind && doc.channel_key
-          ? <Link to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`} className={`min-w-0 truncate font-medium text-foreground ${focusLink}`}>{doc.channel}</Link>
-          : <span className="min-w-0 truncate font-medium text-foreground">{doc.channel || '수집 자료'}</span>}
+          ? <Link to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`} className={`min-w-0 max-w-60 truncate font-medium text-ink-2 ${focusLink}`}>{doc.channel}</Link>
+          : <span className="min-w-0 max-w-60 truncate font-medium text-ink-2">{doc.channel || '수집 자료'}</span>}
         <time className="shrink-0 font-mono tabular-nums" dateTime={doc.published_at} title={doc.published_at}>{formatKstDateTime(doc.published_at)}</time>
-        {unread && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-foreground" role="img" aria-label="안 읽음" />}
+        {unread && <span className="ml-auto size-[7px] shrink-0 rounded-full bg-action" role="img" aria-label="안 읽음" />}
       </div>
-      <h3 className="break-words text-card-title font-semibold text-pretty"><Link to={`/doc/${doc.id}`} className={focusLink}><Marked text={title} q={q} /></Link></h3>
-      {excerpt && <p className="line-clamp-3 break-words text-sm leading-relaxed text-muted-foreground max-md:line-clamp-2"><Marked text={excerpt} q={q} /></p>}
+      <h3 className="line-clamp-2 text-base leading-[1.45] font-semibold break-words text-pretty"><Link to={`/doc/${doc.id}`} className={focusLink}><Marked text={title} q={q} /></Link></h3>
+      {excerpt && <p className="line-clamp-3 text-sm leading-[1.6] break-words text-ink-2 max-md:line-clamp-2"><Marked text={excerpt} q={q} /></p>}
       {doc.entities.length > 0 && <div className="flex flex-wrap gap-1.5">
         {doc.entities.slice(0, 4).map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChip} />)}
       </div>}

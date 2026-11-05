@@ -68,8 +68,10 @@ shadcn 변수는 이 토큰에 잇는다: `--background=--bg`, `--card/--popover
 | Table | 머리 12px `--ink-3` + `--line-2` 아래선, 셀 13px, 숫자 열은 오른쪽 정렬 |
 | Dropdown · Popover · Command · Dialog · Select 목록 · HoverCard | 모서리 12 + 그림자 + `--line-2` 테두리. 항목 모서리 8 |
 | Tooltip | `--bg` 바탕 · `--line-2` 테두리 · 모서리 10 · 12.5px `--ink-2` |
-| 블록 머리(home/BlockHead) | 13.5px 600 · 기준 시각 11.5px + 점(신선 = `--fact`, 지연 = `--warn`) · 링크 12px `--ink-2` |
-| 5-state | Skeleton = chip 사각형(모서리 0) · ErrorState·WidgetState = 경고 아이콘 + 문구 + '다시 시도'(outline sm) |
+| 블록 머리(home/BlockHead) | 대시보드형: 13.5px 600 + 아래선 · 기준 시각 11.5px + 점(신선 = `--fact`, 지연 = `--warn`) · 링크 12px `--ink-2`. `section`(홈 시장 탭·시안 Home-KR/US): 선 없음 · 15px 600 · 칸 여백 16 · 링크 13px, 블록 사이 16. `display`(Market Overnight/Today): Geist 24 · 유리 알약 링크 · 칸 여백 22 · 둥근 16 |
+| 상세(shared/DetailLayout, 시안 Doc) | 위 행동 줄(outline 알약 · 원문 링크는 ghost) → 본문 칸(표면·선, 여백 22/26) \| 맥락 칸 260(표면·선, 제목 15/600 + ⓘ). 폰은 칸 없이 본문, 제목 22/600 |
+| 5-state | Skeleton = chip 사각형(모서리 0) · 오류(BlockError·ErrorState·WidgetState) = `--surface-2` 상자 + `--line-2` 선 · 경고 아이콘 + 13px 문구 + '다시 시도'(outline 30) · '자세히' |
+| 페이지 제목 | PageHeader Geist 400 30/36(폰 26). 홈 하위 탭(한국·미국·매크로)은 화면 제목 없이 하위 메뉴 칩이 대신한다(sr-only h1) |
 
 ## 2026-10-31 · 화이트 플랫 공통 기준 (D-320에서 토큰·서체·모서리·등락색 대체, 평평한 면은 유지)
 

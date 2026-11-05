@@ -16,12 +16,12 @@ export function DetailLayout({ title, context, actions, navigation, aside, relat
   const back = useDetailBack(fallback, backLabel)
   return <PageLayout><div className="detail-surface">
     <div className="detail-topbar">
-      <Button variant="ghost" size="sm" onClick={back.go}><ArrowLeft aria-hidden="true" />{mobileBackLabel ? <><span className="max-md:hidden">{back.label}</span><span className="md:hidden">{mobileBackLabel}</span></> : back.label}</Button>
+      <Button variant="ghost" size="sm" className="text-ink-2" onClick={back.go}><ArrowLeft aria-hidden="true" />{mobileBackLabel ? <><span className="max-md:hidden">{back.label}</span><span className="md:hidden">{mobileBackLabel}</span></> : back.label}</Button>
       <div className={mobileTop ? 'flex flex-wrap items-center gap-2 max-md:hidden' : 'flex flex-wrap items-center gap-2'}>{actions}</div>
       {mobileTop && <div className="flex items-center gap-2 md:hidden">{mobileTop}</div>}
     </div>
     <div className="detail-grid" data-aside={!!aside}>
-      <article className="min-w-0"><div className="mb-3 flex flex-wrap items-center gap-2 text-caption text-muted-foreground">{context}</div><PageHeader title={title} />
+      <article className="detail-article"><div className="mb-3.5 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">{context}</div><PageHeader title={title} />
         {navigation && <div className="detail-navigation">{navigation}</div>}
         <div className="detail-body">{children}</div>
         {related && <footer className="mt-6 space-y-4 border-t pt-5">{related}</footer>}

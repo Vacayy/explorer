@@ -160,8 +160,9 @@ function AddForm({ placeholder, onSubmit, pending }: { placeholder: string; onSu
         const v = new FormData(e.currentTarget).get("v")?.toString().trim()
         if (v) { onSubmit(v); e.currentTarget.reset() }
       }}>
-      <Input name="v" aria-label={placeholder} placeholder={placeholder} disabled={pending} className="h-9 text-sm" />
-      <Button type="submit" size="sm" disabled={pending} className="h-9 shrink-0">{pending ? "추가 중…" : "추가"}</Button>
+      {/* 시안 Feed-Sources: 칸 안 추가 입력은 테두리 사각(모서리 8) + 채운 '추가' */}
+      <Input name="v" aria-label={placeholder} placeholder={placeholder} disabled={pending} className="h-8 rounded-lg border border-line-2 bg-transparent px-2.5 text-[12.5px]" />
+      <Button type="submit" size="sm" disabled={pending} className="h-8 shrink-0 rounded-lg text-[12.5px]">{pending ? "추가 중…" : "추가"}</Button>
     </form>
   )
 }

@@ -13,12 +13,9 @@ export function EntityChip({ tag, onFilter }: {
   const lowConfidence = (tag.confidence ?? 1) < 0.6
   return (
     <Badge
-      variant={tag.link_type === "stock" ? "default" : "outline"}
-      className={cn(
-        "text-caption font-normal cursor-pointer select-none",
-        tag.link_type === "stock" && "bg-primary/10 text-primary border-transparent hover:bg-primary/20",
-        lowConfidence && "opacity-60",
-      )}
+      // 시안 Feed: 테마·주제 = 테두리 칩, 종목 = 채운 칩(회색)
+      variant={tag.link_type === "stock" ? "neutral" : "outline"}
+      className={cn("cursor-pointer select-none hover:text-ink", lowConfidence && "opacity-60")}
       onClick={() => onFilter?.(tag)}
       title={lowConfidence ? "자동 태깅 (낮은 확신도)" : undefined}
     >
