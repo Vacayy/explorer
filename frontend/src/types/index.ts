@@ -1284,6 +1284,12 @@ export interface WorldBigPicture {
   mega: WorldMega[]
   worldview: { briefing: string | null; created_at: string | null; stale: boolean } | null
   as_of: string | null
+  /** 최근 7일 근거 범위 (ia-redesign §4.25 머리) */
+  inputs: { narratives: number; mt_sessions: number; overnight_days: number }
+  inputs_as_of: string | null              // 근거 중 가장 늦은 시각(UTC, DB 표기)
+  premises: { settled: string[]; contested: string[] }   // 세계관 브리핑 절 문장 그대로
+  stale_days: number | null                // 세계관 브리핑 경과일
+  new_versions_since: number | null        // 브리핑 뒤 새 내러티브 버전 수
 }
 export interface WorldEdgeBrief { from: string; to: string; rel: string; effect_direction: string | null }
 export interface WorldNarrativeChange {

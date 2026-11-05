@@ -1847,17 +1847,9 @@
   },
   {
     "method": "get",
-    "path": "/api/spine/causal/edge/{edge_id}/source",
-    "status": 200,
-    "validator": "response253",
-    "source": "frontend",
-    "group": "causal"
-  },
-  {
-    "method": "get",
     "path": "/api/spine/questions",
     "status": 200,
-    "validator": "response254",
+    "validator": "response253",
     "source": "frontend",
     "group": "questions"
   },
@@ -1865,7 +1857,7 @@
     "method": "post",
     "path": "/api/spine/questions",
     "status": 201,
-    "validator": "response255",
+    "validator": "response254",
     "source": "frontend",
     "group": "questions"
   },
@@ -1873,7 +1865,7 @@
     "method": "post",
     "path": "/api/spine/questions/propose",
     "status": 200,
-    "validator": "response256",
+    "validator": "response255",
     "source": "frontend",
     "group": "questions"
   },
@@ -1881,7 +1873,7 @@
     "method": "get",
     "path": "/api/spine/questions/{question_id}",
     "status": 200,
-    "validator": "response257",
+    "validator": "response256",
     "source": "frontend",
     "group": "questions"
   },
@@ -1889,7 +1881,7 @@
     "method": "get",
     "path": "/api/spine/questions/proxy/{proxy_id}",
     "status": 200,
-    "validator": "response258",
+    "validator": "response257",
     "source": "frontend",
     "group": "questions"
   },
@@ -1897,7 +1889,7 @@
     "method": "post",
     "path": "/api/spine/thesis/audit",
     "status": 200,
-    "validator": "response259",
+    "validator": "response258",
     "source": "frontend",
     "group": "thesis"
   },
@@ -1905,7 +1897,7 @@
     "method": "get",
     "path": "/api/spine/thesis/audits",
     "status": 200,
-    "validator": "response260",
+    "validator": "response259",
     "source": "frontend",
     "group": "thesis"
   },
@@ -1913,7 +1905,7 @@
     "method": "get",
     "path": "/api/spine/thesis/{audit_id}",
     "status": 200,
-    "validator": "response261",
+    "validator": "response260",
     "source": "frontend",
     "group": "thesis"
   },
@@ -1921,7 +1913,7 @@
     "method": "get",
     "path": "/api/spine/questions/{question_id}/synthesis",
     "status": 200,
-    "validator": "response262",
+    "validator": "response261",
     "source": "frontend",
     "group": "questions"
   },
@@ -1929,7 +1921,7 @@
     "method": "get",
     "path": "/api/industries/",
     "status": 200,
-    "validator": "response263",
+    "validator": "response262",
     "source": "frontend",
     "group": "industries"
   },
@@ -1937,7 +1929,7 @@
     "method": "get",
     "path": "/api/industries/{group_id}",
     "status": 200,
-    "validator": "response264",
+    "validator": "response263",
     "source": "frontend",
     "group": "industries"
   },
@@ -1945,7 +1937,7 @@
     "method": "post",
     "path": "/api/industries/",
     "status": 200,
-    "validator": "response265",
+    "validator": "response264",
     "source": "frontend",
     "group": "industries"
   },
@@ -1953,7 +1945,7 @@
     "method": "get",
     "path": "/api/industries/{group_id}/propose",
     "status": 200,
-    "validator": "response266",
+    "validator": "response265",
     "source": "frontend",
     "group": "industries"
   },
@@ -1961,7 +1953,7 @@
     "method": "post",
     "path": "/api/industries/{group_id}/members",
     "status": 200,
-    "validator": "response267",
+    "validator": "response266",
     "source": "frontend",
     "group": "industries"
   },
@@ -1969,7 +1961,7 @@
     "method": "delete",
     "path": "/api/industries/members/{member_id}",
     "status": 200,
-    "validator": "response268",
+    "validator": "response267",
     "source": "frontend",
     "group": "industries"
   },
@@ -1977,9 +1969,17 @@
     "method": "get",
     "path": "/api/industries/{group_id}/narratives",
     "status": 200,
-    "validator": "response269",
+    "validator": "response268",
     "source": "frontend",
     "group": "industries"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/causal/edge/{edge_id}/source",
+    "status": 200,
+    "validator": "response269",
+    "source": "frontend",
+    "group": "causal"
   },
   {
     "method": "get",

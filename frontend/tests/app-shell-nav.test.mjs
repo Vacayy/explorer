@@ -180,6 +180,8 @@ const REDIRECTS = [
   ['analyze/compare', '/discover/peers'],
   // 4d단계 — 미국 기업 목록은 컨콜 기업 목록으로(종목 도시에 /us/:ticker는 그대로)
   ['us', '/follow/transcripts'],
+  // 4g단계 — 지식 목록 제거, 그래프는 유지(#17)
+  ['knowledge', '/knowledge/ontology'],
 ]
 
 test('old home URLs redirect to the fixed home tabs', () => {

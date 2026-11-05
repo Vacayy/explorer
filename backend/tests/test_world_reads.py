@@ -105,6 +105,25 @@ class WorldReadsTests(unittest.TestCase):
         self.assertEqual(d["worldview"]["briefing"], "## 자리 잡은 전제")
         self.assertTrue(d["worldview"]["stale"])   # 입력 해시가 달라도 생성하지 않고 표시만
 
+    def test_big_picture_inputs_and_staleness_are_deterministic(self):
+        d = self.get("/api/spine/world/big-picture")
+        # 최근 7일 새 버전 1편(메모리 v2) · Market Today 표 없음 → 0회차 · Overnight 0일
+        self.assertEqual(d["inputs"], {"narratives": 1, "mt_sessions": 0, "overnight_days": 0})
+        self.assertIsNotNone(d["inputs_as_of"])
+        self.assertGreaterEqual(d["stale_days"], 20)               # 2026-10-12 저장분
+        self.assertEqual(d["new_versions_since"], 2)               # 그 뒤 topic 버전 v1(-20일)·v2(-1일)
+        self.assertEqual(d["premises"], {"settled": [], "contested": []})   # 절 제목만 있고 문장 없음
+
+    def test_premises_split_briefing_sections_without_rewriting(self):
+        from pipeline.world_reads import premises_from_briefing
+        md = ("### 자리 잡은 전제\nHBM이 수요를 끈다는 그림은 통념에 가깝다. 주주환원이 하단을 받친다는 믿음도 굳어졌다.\n\n"
+              "### 도전받는 것\n- 공급 부족이 2027년까지 간다는 주장이 있다.\n\n### 이번 주 달라진 것\n메타의 FCF 적자 전환이 지표가 됐다.\n"
+              "**가장 만장일치에 가까운 믿음:** 무시된다.")
+        self.assertEqual(premises_from_briefing(md), {
+            "settled": ["HBM이 수요를 끈다는 그림은 통념에 가깝다.", "주주환원이 하단을 받친다는 믿음도 굳어졌다."],
+            "contested": ["공급 부족이 2027년까지 간다는 주장이 있다."]})
+        self.assertEqual(premises_from_briefing(None), {"settled": [], "contested": []})
+
     def test_changes_lists_recent_versions_with_deterministic_edge_diff(self):
         d = self.get("/api/spine/world/changes?days=7")
         self.assertEqual([i["topic"] for i in d["items"]], ["메모리"])   # 40일 된 반도체는 빠진다
@@ -163,6 +182,17 @@ class WorldReadsTests(unittest.TestCase):
         self.assertEqual(CALLS, ["narrative._call"])
         CALLS.clear()
         self.assertIsNone(self.get("/api/spine/world/changes")["items"][0]["drift_summary"])   # 우리 경로는 생성하지 않는다
+
+    def test_diff_without_summarize_never_calls_llm(self):
+        """내러티브 상세 오른쪽 '이번 버전에서 바뀐 것'은 summarize=false — 캐시가 없어도 haiku를 부르지 않는다."""
+        conn = spine_world.get_connection()
+        conn.execute("UPDATE narratives SET drift_summary=NULL WHERE id=11")
+        conn.commit()
+        d = narrative.narrative_diff(conn, 11, summarize=False)
+        conn.close()
+        self.assertEqual(d["status"], "ok")
+        self.assertIsNone(d["summary"])
+        self.assertTrue(d["added_edges"])
 
     def test_checkpoint_for_topic_without_narrative_is_empty(self):
         self.assertEqual(self.get("/api/spine/world/checkpoint?topic=없는주제")["status"], "empty")

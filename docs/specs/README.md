@@ -93,7 +93,7 @@
 - [geo-scope](geo-scope.md) — geo_scope — 인과 주장에 장소 정박 (A방향: 보편 노드 + 스코프 있는 엣지)
 - [hypothesis-vault](hypothesis-vault.md) — 가설·메모 Vault — 소유권 분할 설계
 - [ia-map](ia-map.md) — IA 지도 — 페이지 진입로 & 화면 구성 (현행)
-- [knowledge-page](knowledge-page.md) — 화면 기획서 — 지식 체계 관측·주입 페이지 (`/knowledge` 개편) — 화면 배치(승격 대기 큐 등)는 **[world-model](world-model.md) §3이 대체**
+- [knowledge-page](knowledge-page.md) — 화면 기획서 — 지식 체계 관측·주입 페이지 (`/knowledge` 개편) — **화면은 2026-11-05 제거(`/knowledge` → `/knowledge/ontology`)**, 지식 API 계약만 유효. 화면 배치는 [world-model](world-model.md)
 - [image-reading](image-reading.md) — 이미지 해석 — 본문 속 차트·표를 '무엇을 말하려는가'로 바꿔 넣는다 + 블로그 줄바꿈 정규화 (구현 2026-10-23, 다음: 텔레그램·블로그 백로그 결정)
 - [link-scrap](link-scrap.md) — 링크 스크랩 — URL만 올리는 채널의 원문 확장 + 미검증 소스 격리 (2026-09-09)
 - [macro](macro.md) — 매크로·유동성 트래킹

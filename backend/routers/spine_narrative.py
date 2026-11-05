@@ -299,12 +299,12 @@ def get_related(narrative_id: int):
 
 
 @router.get("/{narrative_id}/diff", response_model=VersionDiff)
-def get_diff(narrative_id: int):
+def get_diff(narrative_id: int, summarize: bool = True):
     """직전 버전 대비 인과 그래프 변화 — added/removed 노드·엣지(LLM 없음) + 게으른 haiku
-    한 줄 요약(캐시) (Phase 2 §2-3)."""
+    한 줄 요약(캐시) (Phase 2 §2-3). summarize=false면 저장된 요약만 쓰고 새로 만들지 않는다(내러티브 상세 오른쪽 칸)."""
     from pipeline.narrative import narrative_diff
     conn = get_connection()
-    r = narrative_diff(conn, narrative_id)
+    r = narrative_diff(conn, narrative_id, summarize=summarize)
     conn.close()
     return VersionDiff(**r)
 

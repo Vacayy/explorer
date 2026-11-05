@@ -1,15 +1,16 @@
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { useLocation, useSearchParams } from "react-router-dom"
-import { GitCommitHorizontal, History } from "lucide-react"
+import { GitCommitHorizontal } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { EmptyState } from "@/components/shared/ErrorState"
+import { EmptyState, ErrorState } from "@/components/shared/ErrorState"
+import { PageContainer } from "@/components/shared/PageContainer"
+import { useDetailBack } from "@/components/shared/DetailNavigation"
 import { Markdown } from "@/components/shared/Markdown"
-import { DetailLayout } from "@/components/shared/DetailLayout"
 import { cn } from "@/lib/utils"
 
 /**
@@ -45,18 +46,25 @@ interface VersionBodyData {
   version: number | null
 }
 
-const fmtDate = (s: string | null) => (s ? s.slice(5, 16).replace("T", " ") : "")
+const fmtDate = (s: string | null) => (s ? s.slice(5, 16).replace("T", " ").replace("-", "/") : "")
+/** '2026-08-18 …' → '8/18' */
+const shortDay = (s: string | null) => (s ? `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}` : "")
 
 /* ---------- 재사용 타임라인 (인라인 + 상세 페이지 공용) ---------- */
 
-export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading }: {
+/** 처음엔 최근 이만큼만 펼친다 — 앞쪽은 '‹ v1·v2' 칩으로 접는다(§4.33) */
+const VISIBLE = 9
+
+export function NarrativeTimeline({ topic, selectedId, onSelectVersion }: {
   topic: string
   selectedId?: number | null
   onSelectVersion: (id: number) => void
-  heading?: string
 }) {
-  const [expandedDiffId, setExpandedDiffId] = useState<number | null>(null)
-  const { data: versions = [], isLoading } = useQuery(
+  // undefined = 기본(최신 diff 펼침) · null = 사용자가 접음
+  const [expandedDiffId, setExpandedDiffId] = useState<number | null | undefined>(undefined)
+  const [showAll, setShowAll] = useState(false)
+  const scroller = useRef<HTMLDivElement>(null)
+  const { data: versions = [], isLoading, isError } = useQuery(
     apiQuery<NarrativeVersion[]>({
       key: ["spine", "narrative", "versions", topic],
       url: `/api/spine/narrative/versions?topic=${encodeURIComponent(topic)}`,
@@ -65,28 +73,42 @@ export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading 
     }),
   )
   const asc = [...versions].sort((a, b) => a.version - b.version)
-  if (isLoading) return <Skeleton className="h-24 w-full rounded-card" />
-  if (asc.length === 0) return <EmptyState message="저장된 버전이 없습니다." />   // 재생성 이력 없음 — 표시 안 함
+  const hidden = showAll ? [] : asc.slice(0, Math.max(0, asc.length - VISIBLE))
+  const shown = asc.slice(hidden.length)
+  const latest = asc.at(-1)
+  const expanded = expandedDiffId === undefined ? (asc.length > 1 ? latest?.id ?? null : null) : expandedDiffId
+  // 처음 열 때 최신 쪽(오른쪽 끝)으로 스크롤 — 버전이 많으면 최신이 화면 밖이었다(§4.33 제안)
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (el && asc.length) el.scrollLeft = el.scrollWidth
+  }, [asc.length])
+  if (isLoading) return <Skeleton className="h-40 w-full" />
+  if (isError) return <ErrorState message="버전 이력을 불러오지 못했습니다." />
+  if (asc.length === 0) return <EmptyState message="저장된 버전이 없습니다." />
 
   return (
-    <Card>
-      <CardContent className="py-3 space-y-2">
-        {heading && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <History className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{heading}</span>
-            <span className="text-[11px] text-muted-foreground">버전 {asc.length}개 · 도트 클릭 시 해당 버전 열람</span>
-          </div>
-        )}
-        <div className="overflow-x-auto">
-          <div className="flex items-start min-w-max">
-            {asc.map((v, i) => (
+    <Card className="gap-0 py-0" aria-label="버전 타임라인" data-timeline>
+      <header className="flex flex-wrap items-baseline gap-x-2 px-4 pt-4">
+        <h2 className="text-section font-semibold">버전 {asc.length}개</h2>
+        <span className="font-mono text-caption tabular-nums text-muted-foreground">{shortDay(asc[0].created_at)} ~ {shortDay(latest?.created_at ?? null)}</span>
+      </header>
+      <CardContent className="space-y-3 px-4 py-3">
+        <div ref={scroller} className="overflow-x-auto" data-timeline-scroll>
+          <div className="flex min-w-max items-start">
+            {hidden.length > 0 && (
+              <div className="flex h-[7.5rem] items-center pr-2">
+                <Button variant="outline" size="xs" onClick={() => setShowAll(true)} aria-label={`앞 버전 ${hidden.length}개 펼치기`}>
+                  ‹ {hidden.length <= 3 ? hidden.map((v) => `v${v.version}`).join('·') : `v${hidden[0].version}~v${hidden.at(-1)!.version}`}
+                </Button>
+              </div>
+            )}
+            {shown.map((v, i) => (
               <div key={v.id} className="flex items-start">
-                {i > 0 && (
+                {(i > 0 || hidden.length > 0) && (
                   <DiffConnector
                     narrativeId={v.id}
-                    active={expandedDiffId === v.id}
-                    onToggle={() => setExpandedDiffId((cur) => (cur === v.id ? null : v.id))}
+                    active={expanded === v.id}
+                    onToggle={() => setExpandedDiffId(expanded === v.id ? null : v.id)}
                   />
                 )}
                 <DotColumn v={v} selected={selectedId === v.id} onSelect={() => onSelectVersion(v.id)} />
@@ -94,7 +116,7 @@ export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading 
             ))}
           </div>
         </div>
-        {expandedDiffId != null && <DiffDetail narrativeId={expandedDiffId} versions={asc} />}
+        {expanded != null && <DiffDetail narrativeId={expanded} versions={asc} />}
       </CardContent>
     </Card>
   )
@@ -105,6 +127,7 @@ export function NarrativeTimeline({ topic, selectedId, onSelectVersion, heading 
 export default function NarrativeHistory() {
   const [sp, setSp] = useSearchParams()
   const location = useLocation()
+  const back = useDetailBack(sp.get("topic") ? `/narrative?topic=${encodeURIComponent(sp.get("topic")!)}` : '/narrative', '내러티브로 돌아가기')
   const topic = sp.get("topic") ?? ""
   const vParam = sp.get("v")
 
@@ -120,12 +143,14 @@ export default function NarrativeHistory() {
   const picked = Number(vParam) || null
   const activeId = picked ?? latestId
 
-  return <DetailLayout title={topic || '내러티브 이력'} context="Explorer · 저장된 AI 내러티브" fallback={topic ? `/narrative?topic=${encodeURIComponent(topic)}` : '/narrative'} backLabel="내러티브로 돌아가기">
-    {!topic ? <EmptyState message="주제가 지정되지 않았습니다." /> : <div className="space-y-5">
+  return <PageContainer gap="sm">
+    <Button variant="link" size="sm" className="h-auto self-start px-0 text-caption text-muted-foreground" onClick={back.go}>‹ {back.label}</Button>
+    <h1 className="text-page font-semibold">{topic || '내러티브 이력'}</h1>
+    {!topic ? <EmptyState message="주제가 지정되지 않았습니다." /> : <>
       <NarrativeTimeline topic={topic} selectedId={activeId} onSelectVersion={id => setSp(prev => {const next=new URLSearchParams(prev);next.set('v',String(id));return next}, {replace:true,state:location.state})} />
-      {activeId != null && <VersionBody id={activeId} />}
-    </div>}
-  </DetailLayout>
+      {activeId != null && <VersionBody id={activeId} latest={activeId === latestId} />}
+    </>}
+  </PageContainer>
 }
 
 /* ---------- 도트 (버전) ---------- */
@@ -231,7 +256,7 @@ function DiffDetail({ narrativeId, versions }: { narrativeId: number; versions: 
 
 /* ---------- 선택 버전 본문 ---------- */
 
-function VersionBody({ id }: { id: number }) {
+function VersionBody({ id, latest }: { id: number; latest: boolean }) {
   const { data, isLoading } = useQuery(
     apiQuery<VersionBodyData>({
       key: ["spine", "narrative", "version", id],
@@ -239,21 +264,19 @@ function VersionBody({ id }: { id: number }) {
       staleTime: STALE.medium,
     }),
   )
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-card" />
+  if (isLoading) return <Skeleton className="h-48 w-full" />
   if (!data || data.status !== "cached" || !data.narrative) {
     return <EmptyState message="이 버전의 본문을 불러올 수 없습니다." />
   }
   return (
-    <Card className="border-0 ring-0 max-sm:[--card-spacing:--spacing(0)]">
-      <CardContent className="py-3">
-        {/* 모바일: 제목이 좁아지지 않게 버전·날짜를 다음 줄로 */}
-        <div className="flex items-baseline gap-2 mb-2 max-md:flex-wrap">
-          <h2 className="text-base font-bold leading-snug">{data.title}</h2>
-          <Badge variant="outline" className="text-[10px] shrink-0">v{data.version}</Badge>
-          <span className="ml-auto whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">{fmtDate(data.created_at)}</span>
-        </div>
-        <Markdown>{data.narrative}</Markdown>
-      </CardContent>
-    </Card>
+    <article className="space-y-3" data-version-body>
+      <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
+        <Badge variant="secondary" className="font-mono text-[11px]">v{data.version}</Badge>
+        <span className="font-mono tabular-nums">{fmtDate(data.created_at)}</span>
+        {latest && <span>· 지금 보는 버전(최신)</span>}
+      </p>
+      <h2 className="text-lg font-semibold leading-snug [overflow-wrap:anywhere]">{data.title}</h2>
+      <Markdown className="[overflow-wrap:anywhere]">{data.narrative}</Markdown>
+    </article>
   )
 }

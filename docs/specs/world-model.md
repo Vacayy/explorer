@@ -8,21 +8,28 @@
 
 | L2 | 기본 URL | 보기 전환 | 이 탭으로 판정하는 경로 |
 |---|---|---|---|
-| 지금 | `/narrative` | — (상세는 `?topic=`) | `/narrative`, `/narrative/history` |
-| 그래프 | `/knowledge/ontology` | 온톨로지 · 변화·검증 지식(`/knowledge`) — `KnowledgeSubNav` | `/knowledge` |
+| 지금 | `/narrative` | — (상세는 `?topic=`, 이력은 `/narrative/history`) — 상세·이력도 하위 메뉴가 보인다(2026-11-05 개편 4g) | `/narrative`, `/narrative/history` |
+| 그래프 | `/knowledge/ontology` | 온톨로지만(2026-11-05 개편 4g — 옛 변화·검증 지식 `/knowledge`는 `/knowledge/ontology`로 리다이렉트, 쿼리 유지) | `/knowledge` |
 | 내 판단 | `/questions` | 질문 · 논지 감사(`/thesis`) · 리포트(`/report`) · 지표 보드(`/questions?view=proxies`) — `thesis/JudgmentFrame`(2026-11-05 개편 4f) | `/questions`, `/question/`, `/thesis`, `/report`, `/proxy-boards`(리다이렉트) |
 
 ## 2. 지금 (`/narrative`)
 
 위에서 아래로:
 
-1. **이번 주 큰 그림** (`world/BigPictureCard`) — 살아 있는 엮인 서사(메가)마다 제목 · 관통하는 주제 칩 · 펼치면 본문. 아래에 저장된 세계관 브리핑(접힘, 저장 시각). 저장 이후 입력이 바뀌었으면 주의 색 한 줄 + 그래프 › 변화·검증 지식 링크. **이 카드는 생성하지 않는다.**
-2. **이번 주 바뀐 서사** (`world/NarrativeChanges`) — 최근 7일 새 버전이 나온 주제(주제별 최신본). 제목 · 주제 · 버전 · 상대 시각 · 바뀐 것 한 줄(저장된 `drift_summary`) · 새로 생긴 고리(+)·사라진 고리(−) 칩과 개수. 첫 버전이면 "새로 생긴 서사". 처음엔 5편, 나머지는 펼친다. 홈 위젯(world.changes)은 이 행을 쓰지 않고 '바뀐 것'·고리 칩 대신 `change_summary` 1~2문장만 보인다.
-3. **서사 목록** (`explore/NarrativeList`) — 기존 렌즈·정렬. 30일 넘게 갱신되지 않은 서사는 기본으로 숨기고 `?old=1`(스위치)로 보인다. 보일 때는 흐리게.
+**2026-11-05 개편 4g (ia-redesign §4.25 중 LLM 없는 부분)**:
+
+1. **이번 주 큰 그림** (`world/BigPictureCard`) — 머리: 기준 시각(근거 중 가장 늦은 시각 `inputs_as_of`, KST) · 근거 범위(최근 7일 새 내러티브 버전 n편 · Market Today n회차 · Overnight n일, 0이어도 그대로) · '어떻게 만드나요?' ⓘ · 'AI 종합 · 검증 필요'. 본문: 줄기 카드 격자 — **줄기 생성 파이프라인(주 1회 LLM)이 아직 없어** 엮인 서사(메가)를 줄기 자리에 그린다(번호 · 제목 · 관련 서사 칩 `주제 v버전 · 날짜`, 새 서사엔 '새' · 14일 넘으면 흐리게 + '오래됨'). 7일 안 새 버전이 없으면 "이번 주엔 새로 바뀐 서사가 없어요". **이 카드는 생성하지 않는다.**
+2. **자리 잡은 전제 · 흔들린 전제** (`world/BigPictureCard` `PremisesCard`, `#premises`) — 저장된 세계관 브리핑의 '자리 잡은 전제'·'도전받는 것' 절을 서버가 문장 그대로 나눈 목록(`premises`, 새로 쓰지 않음). 브리핑이 7일 넘으면 경고 띠('n일 지났어요 · 그 사이 새 내러티브 버전 n편' + '다시 만들기' = 기존 `POST /knowledge/worldview/compute`, 누를 때만), 14일 넘으면 흐리게 + '오래됨'. 아래 접힘 칸: 브리핑 전문 · 검증 지식에서 충돌 중인 전제(`world/contested`, 옛 그래프 › 검증 지식의 '흔들리는 전제').
+3. **[내러티브] 이번주 업데이트** (`world/NarrativeChanges`) — 최근 7일 새 버전이 나온 주제(주제별 최신본). 제목 · 주제 · `v버전 · 날짜` | `고리 +n / −m` · '바뀐 것 · ' 한 줄(저장된 `change_summary`, 없으면 `drift_summary`) · 추가(+)·삭제(−) 고리 칩(모바일은 숨김 — 상세에서 본다). 첫 버전이면 "새로 생긴 서사입니다". 처음엔 5편, 나머지는 펼친다.
+4. **서사 목록** (`explore/NarrativeList`) — 렌즈 칩 · 정렬 칩(변화순·최신순·비중순·급등순) · 30일 넘게 갱신되지 않은 서사는 기본으로 숨기고 `?old=1`(스위치)로 보인다.
+
+'내러티브 후보'(§9 Market Today 연결)·줄기 상태(강해짐·엇갈림…)·'다음 갱신 앞당김' 배지·머리 '다시 만들기'는 큰 그림 생성 파이프라인(5단계)과 함께.
 
 ### 서사 상세 (`/narrative?topic=`) — 체크포인트
 
-'현재 해석' 탭 맨 위에 `world/NarrativeCheckpoint` 카드:
+**2026-11-05 개편 4g (§4.18) 배치**: 넓은 화면 2단. 왼쪽 = '‹ 지금 · 서사 목록' → 머리(주제 · AI 생성 · 버전 · 생성 시각 · 비중(Δ%p) · 급등 · 렌즈) · 제목 · 저장/이 내러티브로 대화/갱신 → 3줄 요약 상자(본문의 '3줄 요약' 절을 떼어 번호 목록, `lib/bigPicture.splitSummary`) → 특집 기사 본문 → 체크포인트 → 접힘 칸 '근거'(딛고 선 지식·인과 구조·인과 경로)·'추가 탐구'(메르 모드·파급 시나리오·언급 상위 종목), 펼침은 옛 탭 주소 `?detail_tab=evidence|explore`. 오른쪽 = 이번 버전에서 바뀐 것(`/{id}/diff?summarize=false` — 저장된 드리프트 요약 + 추가·삭제 노드, 새로 요약하지 않음) · 인과 고리(6개, 신뢰·메커니즘) · 버전 이력(최근 6, 누르면 이력 화면) · 관련 서사 · 관련 질문·관련 리포트(접힘). 장중 화두 타임라인(§9)은 5단계.
+
+체크포인트는 본문 아래 `world/NarrativeCheckpoint` 카드:
 
 | 줄 | 원천 | 링크 |
 |---|---|---|
@@ -38,9 +45,7 @@
 ## 3. 그래프
 
 - **온톨로지** (`/knowledge/ontology`, `explore/WorldviewPage`) — 기존. 노드 패널의 '등장하는 내러티브' 링크는 SPA 이동(`Link`).
-- **변화·검증 지식** (`/knowledge`, `knowledge/KnowledgePage`) — 구조 지도 · 현황 스트립 · **인과 그래프 업데이트**(최근 7일, `explore/GraphActivitySection`) · **흔들리는 전제**(`world/ContestedPremises`) · 주입 콘솔 · 세계관 브리핑(기존 카드, 갱신 경로는 그대로) · 검증 지식 목록.
-- 인과 그래프 업데이트의 노드 링크: 저장된 서사가 있는 주제면 그 서사, 아니면(매크로·정책·사건 노드, 서사 없는 테마) `/knowledge/ontology?focus=<id>`.
-- 승인 대기(지식 승격 후보)는 이 화면에 두지 않는다. 상단 승인 인박스가 같은 항목을 처리한다. 현황 스트립의 '승격 대기' 개수는 남긴다.
+- ~~변화·검증 지식~~ (`/knowledge`) — 2026-11-05 개편 4g에서 화면 제거(ia-redesign §8.6·§10.6). `/knowledge` → `/knowledge/ontology`(쿼리 유지). 세계관 브리핑과 충돌 중인 전제는 지금 › 전제 칸으로, 지식 주입은 ⌘K, 승인은 상단 인박스. 구조 지도·현황 스트립·인과 그래프 업데이트·검증 지식 목록 화면은 없앴다(지식 API `/api/spine/knowledge/*`는 그대로).
 
 ## 4. 내 판단 (`/questions`)
 
@@ -58,7 +63,7 @@
 
 | GET `/api/spine/world/…` | 응답 | 쓰는 곳 |
 |---|---|---|
-| `big-picture` | `{mega[], worldview{briefing, created_at, stale}\|null, as_of}` | 큰 그림 카드·위젯 |
+| `big-picture` | `{mega[], worldview{briefing, created_at, stale}\|null, as_of, inputs{narratives, mt_sessions, overnight_days}, inputs_as_of, premises{settled[], contested[]}, stale_days, new_versions_since}` | 큰 그림 카드·전제 칸·위젯 |
 | `changes?days=7&limit=20` | `{days, items[{topic, narrative_id, version, title, category, created_at, drift_summary, change_summary, versions_in_window, is_first, added_count, removed_count, added_edges[≤5], removed_edges[≤5]}], as_of}` — 고리 비교는 직전 버전과의 결정적 diff. `change_summary`(서사가 어떻게 옮겨 갔나 1~2문장)는 저장분, 없는 옛 버전은 `drift_summary` 첫 문장을 100자 안으로 결정적으로 줄인 값, 첫 버전은 null | 바뀐 서사 카드·위젯 |
 | `contested?limit=10` | `{items[{id, statement, pace_layer, contested_at, refute, support, latest_refute{doc_id, title, observed_at}}], as_of}` — 활성·충돌 중 지식만 | 흔들리는 전제 카드·위젯 |
 | `my-stocks?per_stock=3` | `{stocks[{stock_code, name, kinds[], narratives[{topic, narrative_id, title, version, created_at, drift_summary, edges, via}], latest_drift, latest_at}], members, covered, as_of}` | 내 종목 위젯 |

@@ -1,5 +1,7 @@
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
+import type { NarrativeItem } from "@/components/explore/NarrativeList"
 import type { WorldBigPicture, WorldCheckpoint, WorldContested, WorldMyStocks, WorldNarrativeChanges } from "@/types"
 
 /**
@@ -40,4 +42,10 @@ export function useNarrativeCheckpoint(topic: string) {
     key: ["spine", "world", "checkpoint", topic], url: "/api/spine/world/checkpoint", params: { topic },
     staleTime: STALE.short, enabled: !!topic,
   }))
+}
+
+/** 서사 목록(주제별 최신 버전) 색인 — 큰 그림 서사 칩의 버전·날짜, 상세 머리의 비중·급등 */
+export function useNarrativeIndex(): Map<string, NarrativeItem> {
+  const q = useQuery(apiQuery<{ items: NarrativeItem[] }>({ key: ["spine", "narrative", "list"], url: "/api/spine/narrative/list", staleTime: STALE.medium }))
+  return useMemo(() => new Map((q.data?.items ?? []).map((n) => [n.topic, n])), [q.data])
 }

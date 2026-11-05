@@ -125,5 +125,5 @@ export const WORLD_WIDGETS: WidgetDef[] = [
   { id: "world.mystocks", title: "내 종목을 움직이는 서사", description: "보유·관심 종목이 걸린 서사와 이번에 바뀐 것", section: "world", group: "지금",
     size: { w: 6, h: 4, minW: 4, minH: 2 }, detailPath: "/narrative", useMeta: useMyStocksMeta, Body: MyStocksBody },
   { id: "world.contested", title: "흔들리는 전제", description: "검증된 지식 중 반례가 들어와 충돌 중인 것", section: "world", group: "그래프",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/knowledge", useMeta: useContestedMeta, Body: ContestedBody },
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/narrative#premises", useMeta: useContestedMeta, Body: ContestedBody },
 ]

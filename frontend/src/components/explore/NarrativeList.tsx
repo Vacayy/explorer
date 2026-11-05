@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { Badge } from "@/components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { EmptyState } from "@/components/shared/ErrorState"
@@ -134,18 +133,10 @@ export function NarrativeList({
             <Switch id="narrative-old" checked={showOld} onCheckedChange={setShowOld} />
             <Label htmlFor="narrative-old" className="text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 {oldCount}개 보기</Label>
           </div>
-          <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-            <SelectTrigger className="h-7 w-28 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SORT.map((s) => (
-                <SelectItem key={s.value} value={s.value} className="text-xs">
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ToggleGroup type="single" variant="outline" size="sm" value={sort} aria-label="정렬"
+            onValueChange={(v) => v && setSort(v as SortKey)}>
+            {SORT.map((s) => <ToggleGroupItem key={s.value} value={s.value} className="h-7 px-2.5 text-xs">{s.label}</ToggleGroupItem>)}
+          </ToggleGroup>
         </div>
       )}
 

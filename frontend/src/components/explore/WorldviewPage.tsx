@@ -23,7 +23,6 @@ import { X, Maximize2, Minimize2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
 import { NodeSourceSummary, type SourceStatus } from "@/components/explore/graph/EdgeSource"
-import { KnowledgeSubNav } from "@/components/knowledge/KnowledgeSubNav"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
 const ObsidianGraphView = lazy(() => import("@/components/explore/graph/ObsidianGraphView"))
@@ -305,7 +304,6 @@ export default function WorldviewPage() {
       {/* 전체화면이면 뷰 전체(메뉴+그래프)가 화면을 덮는다 — 상단 컨트롤도 함께 노출 */}
       <div className={cn("flex flex-col gap-2", fullscreen && "fixed inset-0 z-50 bg-background p-4")}>
       <div className="flex items-baseline gap-2 flex-wrap">
-        {!fullscreen && <KnowledgeSubNav />}
         <h1 className="w-full text-lg font-bold md:w-auto">온톨로지 (인과 그래프)</h1>
         <span className="text-[11px] text-muted-foreground">전체 인과 지도(가설 포함) · 내러티브 갱신마다 상시 반영 — 검증된 핵심만 '지식'으로 승격</span>
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}

@@ -18,10 +18,26 @@ class StoredWorldview(BaseModel):
     stale: bool              # 입력(지식·주간 신호)이 저장 이후 바뀜 — 갱신은 지식 화면에서만
 
 
+class BigPictureInputs(BaseModel):
+    narratives: int        # 최근 7일 새 내러티브 버전
+    mt_sessions: int       # 최근 7일 Market Today 회차
+    overnight_days: int    # 최근 7일 Overnight(us_briefings) 일수
+
+
+class Premises(BaseModel):
+    settled: list[str]     # 세계관 브리핑 '자리 잡은 전제' 절의 문장(원문 그대로)
+    contested: list[str]   # '도전받는 것' 절의 문장
+
+
 class BigPicture(BaseModel):
     mega: list[MegaItem]
     worldview: StoredWorldview | None
     as_of: str | None
+    inputs: BigPictureInputs
+    inputs_as_of: str | None          # 근거 중 가장 늦은 시각(UTC) — 머리 '기준'
+    premises: Premises
+    stale_days: int | None            # 세계관 브리핑 경과일(없으면 null)
+    new_versions_since: int | None    # 브리핑 뒤 새 내러티브 버전 수
 
 
 class NarrativeChange(BaseModel):

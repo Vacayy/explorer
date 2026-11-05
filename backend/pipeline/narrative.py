@@ -954,8 +954,9 @@ def _build_drift_prompt(added_edges: list[dict], removed_edges: list[dict]) -> s
     )
 
 
-def narrative_diff(conn, narrative_id: int) -> dict:
-    """버전 드리프트 — 결정적 diff(LLM 없음) + 변화가 있으면 게으른 haiku 한 줄 요약(캐시)."""
+def narrative_diff(conn, narrative_id: int, summarize: bool = True) -> dict:
+    """버전 드리프트 — 결정적 diff(LLM 없음) + 변화가 있으면 게으른 haiku 한 줄 요약(캐시).
+    summarize=False면 저장된 요약만 돌려주고 LLM을 부르지 않는다."""
     d = _version_diff(conn, narrative_id)
     if d["status"] != "ok":
         return d
@@ -966,7 +967,7 @@ def narrative_diff(conn, narrative_id: int) -> dict:
     if row and row["drift_summary"]:
         d["summary"] = row["drift_summary"]
         return d
-    if llm_engine() != "claude-code":
+    if not summarize or llm_engine() != "claude-code":
         d["summary"] = None
         return d
     try:

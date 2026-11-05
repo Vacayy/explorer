@@ -1,92 +1,94 @@
 import { Link } from "react-router-dom"
-import { Archive, Map } from "lucide-react"
+import { Archive, Map, Settings } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { PageContainer } from "@/components/shared/PageContainer"
+import { cn } from "@/lib/utils"
+import { formatNumber, formatPercent, formatRatio } from "@/utils/format"
 
 /**
- * /archive — 보관함 (휴지통). 잘 안 쓰는 화면을 메인 네비에서 뺐지만 삭제하지 않는다.
- * 여기와 옴니바(⌘K)에서 여전히 접근 가능. 다시 자주 쓰게 되면 메인으로 승격.
+ * /archive — 보관함 (ia-redesign §4.33 · 상단 바 설정 메뉴 › 보관함). 메인 메뉴에서 뺐지만 지우지 않은 화면.
+ * 카드가 리다이렉트 목적지를 가리키게 되면 뺀다 — VS 비교는 Peer 성과 비교로 리다이렉트돼(D-300) 뺐고,
+ * 산업군 지도는 산업 › 산업·섹터의 '다른 보기'(`/map?view=chains`)로 바로 보낸다.
  */
-
 const ARCHIVED = [
-  { to: "/discover/industry", icon: Map, title: "산업군 지도", desc: "수동 밸류체인 맵" },
+  { to: "/map?view=chains", icon: Map, title: "산업군 지도", desc: "수동 밸류체인 맵" },
 ] as const
 
 export default function ArchivePage() {
   return (
     <PageContainer width="reading" gap="sm">
-      <div>
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Archive className="h-5 w-5 text-muted-foreground" /> 보관함
-        </h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          자주 쓰지 않아 메인 메뉴에서 뺀 화면들입니다. 삭제된 게 아니며, 여기 또는 ⌘K로 언제든 접근할 수 있습니다.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <p className="flex items-center gap-1 text-caption text-muted-foreground"><Settings aria-hidden="true" className="size-3.5" />설정 › 보관함</p>
+      <h1 className="flex items-center gap-2 text-page font-semibold">
+        <Archive aria-hidden="true" className="size-5 text-muted-foreground" />보관함
+        <InfoTip label="보관함 설명">자주 쓰지 않아 메인 메뉴에서 뺀 화면입니다. 지운 것이 아니며 여기나 ⌘K로 열 수 있습니다.</InfoTip>
+      </h1>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {ARCHIVED.map((a) => (
           <Link key={a.to} to={a.to}>
-            <Card className="hover:bg-muted/40 transition-colors h-full">
-              <CardContent className="py-3 flex items-start gap-3">
-                <a.icon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+            <Card className="h-full transition-colors hover:bg-muted/40">
+              <CardContent className="flex items-start gap-3 py-3">
+                <a.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <div>
                   <div className="text-sm font-medium">{a.title}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{a.desc}</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">{a.desc}</div>
                 </div>
               </CardContent>
             </Card>
           </Link>
         ))}
       </div>
-
       {/* 신호 성적표 — 탐색 해체로 이관 (D-057). 자주 안 보는 자기검증 도구 */}
       <BacktestSection />
     </PageContainer>
   )
 }
 
-/* ---------- 신호 성적표 — 언급 급증 후 5거래일 수익률 (신호 유효성 자기 검증) ---------- */
+interface Backtest {
+  items: { date: string; name: string; stock_code: string | null; ret_5d: number | null }[]
+  avg_ret: number | null
+  hit_rate: number | null
+  n: number
+}
 
+/** 신호 성적표 — 언급 급증 후 5거래일 수익률. 로딩은 이 블록만 스켈레톤, 실패·0건이면 블록을 숨긴다 */
 function BacktestSection() {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["spine", "backtest"],
-    queryFn: async () => (await api.get("/api/spine/signals/backtest")).data as {
-      items: { date: string; name: string; stock_code: string | null; ret_5d: number | null }[]
-      avg_ret: number | null
-      hit_rate: number | null
-      n: number
-    },
+    queryFn: async () => (await api.get("/api/spine/signals/backtest")).data as Backtest,
     staleTime: 30 * 60_000,
   })
+  if (isLoading) return <Skeleton className="h-28 w-full" />
   if (!data || data.n === 0) return null
+  const done = data.items.filter((i) => i.ret_5d != null).slice(0, 12)
   return (
-    <Card>
-      <CardHeader className="pb-2 flex-row items-baseline gap-3">
-        <CardTitle className="text-sm">신호 성적표 — 언급 급증 후 5거래일</CardTitle>
-        <span className="text-xs tabular-nums">
-          평균 <b className={data.avg_ret! > 0 ? "text-up" : "text-down"}>{data.avg_ret}%</b>
-          <span className="text-muted-foreground"> · 적중 {data.hit_rate}% · {data.n}건</span>
+    <Card className="gap-0 py-0" aria-label="신호 성적표" data-backtest>
+      <header className="flex flex-wrap items-baseline gap-x-3 px-4 pt-4">
+        <h2 className="text-section font-semibold">신호 성적표 — 언급 급증 후 5거래일</h2>
+        <span className="font-mono text-xs tabular-nums">
+          평균 <b className={cn(data.avg_ret != null && (data.avg_ret > 0 ? "text-up" : data.avg_ret < 0 ? "text-down" : ""))}>{formatPercent(data.avg_ret)}</b>
+          <span className="text-muted-foreground"> · 적중 {formatRatio(data.hit_rate)} · {formatNumber(data.n)}건</span>
         </span>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums">
-          {data.items.filter((i) => i.ret_5d != null).slice(0, 12).map((i, idx) => (
-            <span key={idx}>
-              <span className="text-muted-foreground">{i.date.slice(5)}</span>{" "}
-              {i.name}{" "}
-              <b className={i.ret_5d! > 0 ? "text-up" : "text-down"}>
-                {i.ret_5d! > 0 ? "+" : ""}{i.ret_5d}%
-              </b>
-            </span>
-          ))}
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-2">
-          과거 신호의 사후 수익률 — 신호의 유효성 자체를 검증하기 위한 것 (투자 추천 아님)
+      </header>
+      <div className="space-y-2 px-4 py-3">
+        {done.length === 0
+          ? <p className="bg-muted/60 px-3 py-2 text-sm" data-backtest-pending>최근 신호 {data.items.length}건은 아직 5거래일이 지나지 않았습니다.</p>
+          : <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums">
+            {done.map((i, idx) => (
+              <span key={idx}>
+                <span className="text-muted-foreground">{i.date.slice(5)}</span> {i.name}{" "}
+                <b className={i.ret_5d! > 0 ? "text-up" : i.ret_5d! < 0 ? "text-down" : ""}>{formatPercent(i.ret_5d)}</b>
+              </span>
+            ))}
+          </div>}
+        <p className="flex items-center gap-1 text-caption text-muted-foreground">
+          과거 신호의 사후 수익률
+          <InfoTip label="성적표 설명">신호의 유효성 자체를 검증하기 위한 것입니다. 투자 추천이 아닙니다.</InfoTip>
         </p>
-      </CardContent>
+      </div>
     </Card>
   )
 }

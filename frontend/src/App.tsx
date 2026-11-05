@@ -55,7 +55,6 @@ import SourcePage from "@/components/source/SourcePage"
 import PersonPage from "@/components/person/PersonPage"
 import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
 import CompanyPage from "@/components/company/CompanyPage"
-import KnowledgePage from "@/components/knowledge/KnowledgePage"
 import QuestionsPage from "@/components/knowledge/QuestionsPage"
 import ThesisAuditPage from "@/components/thesis/ThesisAuditPage"
 import QuestionDetail from "@/components/knowledge/QuestionDetail"
@@ -96,7 +95,6 @@ function subNavFor(pathname: string, search: string, stockCode: string | null, c
   if (stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey: analyzeTabOf(pathname), context: companyName ?? stockCode }
   const ticker = pathname.match(/^\/us\/([^/]+)\/?$/)?.[1]
   if (ticker) return { tabs: US_TABS.map(t => ({ key: t.key, label: t.label, path: usTabPath(ticker, t.key) })), activeKey: usTabOf(search), context: ticker.toUpperCase() }
-  if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
   const here = locate(pathname, search)
   const section = here && SECTIONS.find(s => s.key === here.section)
   if (!section || section.tabs.length < 2) return null
@@ -303,7 +301,8 @@ export default function App() {
             <Route path="narrative/worldview" element={<Navigate to="/knowledge/ontology" replace />} />
             <Route path="report" element={<ReportsPage />} />
             <Route path="people" element={<PeopleDirectoryPage />} />
-            <Route path="knowledge" element={<KnowledgePage />} />
+            {/* 지식 목록 제거 — 그래프(온톨로지)는 그대로(ia-redesign §10.6·#17). 세계관 브리핑은 Thesis › 지금 전제 칸으로 */}
+            <Route path="knowledge" element={<KeepQueryRedirect to="/knowledge/ontology" />} />
             <Route path="questions" element={<QuestionsPage />} />
             <Route path="question/:id" element={<QuestionDetail />} />
             <Route path="thesis" element={<ThesisAuditPage />} />

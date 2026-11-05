@@ -40,7 +40,7 @@
 - 대만 공급망 탭(`/follow/taiwan`)은 2026-11-05(개편 4b)에 더했다. 홈 › 한국 시장 맨 아래에 임시로 있던 대만 두 블록은 이 화면으로 옮겼다(위젯 `explore.twRevenue`·`explore.twLinks`의 전체 보기도 이 주소).
 - Thesis의 코드 key는 `world` 그대로다(이름만 바꿈).
 - 소스 관리는 관리자 › 소스(`/admin/sources`, 관리자 보기 = 작업·신선도 · 관측 · 소스)다(2026-11-05 개편 4a). 옛 `/sources`는 리다이렉트(쿼리 유지). 설정 메뉴 '소스 관리'·⌘K·피드 왼쪽 칸 '소스 관리'가 이리로 온다.
-- 하위 탭 판정: 위 표의 '판정 경로'를 L2 단위로도 같은 규칙으로 묶는다(예: `/us`·`/follow/transcripts` → 컨콜, `/follow/universe`·`/discover/industry` → 산업·섹터, `/thesis`·`/report`·`/question/` → 내 판단, `/knowledge` → 그래프).
+- 하위 탭 판정: 위 표의 '판정 경로'를 L2 단위로도 같은 규칙으로 묶는다(예: `/us`·`/follow/transcripts` → 컨콜, `/follow/universe`·`/discover/industry` → 산업·섹터, `/thesis`·`/report`·`/question/` → 내 판단, `/knowledge` → 그래프 — 2026-11-05부터 `/knowledge`는 `/knowledge/ontology`로 리다이렉트).
 - 종목 도시에(`/analyze/:code/*`, `/us/:ticker`, `/company`)는 L1이 아니다. L1은 비활성으로 두고, L2 자리에 도시에 탭(개요·실적·사업·자료)과 종목명을 보인다(기존 `analyzeTabs`).
 - `/chat`, `/admin`, `/admin/sources`, `/archive` 등은 L1 비활성, L2 없음.
 - `/feed?view=documents`(문서 검색)도 L2는 피드 · 저장됨이다. 문서 검색의 소스 칩은 화면 안에 있다(옛 `FEED_TABS` L2는 4a에서 없앰).

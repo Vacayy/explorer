@@ -1,16 +1,16 @@
 import { QueryState } from "@/components/shared/QueryState"
 import { Link, useSearchParams } from "react-router-dom"
 import { Markdown } from "@/components/shared/Markdown"
-import { Lightbulb, Loader2, MonitorPlay, Rss, Send } from "lucide-react"
+import { Lightbulb, Loader2, MonitorPlay, RefreshCw, Rss, Send } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { sourceDossierQuery, sourceSummaryQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from "@/components/shared/PageContainer"
 import type { DossierSummary, SourceDossier } from "@/types"
-import { RefreshButton } from "@/components/shared/RefreshButton"
 import { useRefreshSource, type RefreshKind } from "@/hooks/useRefreshSource"
 
 /**
@@ -48,14 +48,18 @@ export default function SourcePage() {
               : data.kind === "youtube"
               ? <MonitorPlay className="h-4 w-4 text-muted-foreground" />
               : <Rss className="h-4 w-4 text-muted-foreground" />}
-            <h2 className="text-xl font-bold">{data.name}</h2>
+            <h1 className="text-page font-semibold">{data.name}</h1>
             {data.author && <span className="text-sm text-muted-foreground">{data.author}</span>}
             <Badge variant="secondary" className="text-[10px]">
               {data.kind === "telegram" ? "텔레그램" : data.kind === "youtube" ? "유튜브" : "블로그"}
             </Badge>
             {!data.is_active && <Badge variant="outline" className="text-[10px]">숨김 — 내 피드·답변 제외</Badge>}
             {(data.kind === "telegram" || data.kind === "youtube" || data.kind === "blog") && (
-              <RefreshButton onClick={() => refresher.refresh(data.kind as RefreshKind, key, data.name)} pending={refresher.isRefreshing(data.kind as RefreshKind, key)} title="지금 수집 — 30분 체인을 기다리지 않고 이 소스의 새 글만 가져와 태깅합니다" />
+              <Button variant="outline" size="sm" disabled={refresher.isRefreshing(data.kind as RefreshKind, key)}
+                title="30분 주기를 기다리지 않고 이 소스의 새 글만 가져옵니다"
+                onClick={() => refresher.refresh(data.kind as RefreshKind, key, data.name)}>
+                <RefreshCw aria-hidden="true" className={refresher.isRefreshing(data.kind as RefreshKind, key) ? "animate-spin" : ""} />지금 수집
+              </Button>
             )}
           </div>
           <p className="text-xs text-muted-foreground tabular-nums">
@@ -115,7 +119,7 @@ export default function SourcePage() {
                   <Link key={d.id} to={`/doc/${d.id}`} className="flex items-baseline gap-2 py-1.5 group">
                     <span className="text-sm truncate group-hover:underline">{d.title}</span>
                     <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                      {(d.published_at ?? "").slice(0, 10)}
+                      {(d.published_at ?? "").slice(5, 10).replace("-", "/")}
                     </span>
                   </Link>
                 ))}
@@ -172,6 +176,7 @@ function ProfileCard({ data, fresh, pending, failed }: {
                 <p className="text-xs"><span className="font-semibold text-hypothesis">지난 프로필 이후</span> {s.insights}</p>
               </div>
             )}
+            {!pending && failed && <p className="text-caption text-muted-foreground">새 글을 반영하지 못해 이전 프로필을 보여 드립니다. 다시 열면 재시도합니다.</p>}
             <Markdown className={pending ? "opacity-60" : ""}>{s.digest}</Markdown>
             <div className="text-right">
               <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">

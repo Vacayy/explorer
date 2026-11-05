@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
-import { Anchor, MessageCircle, ArrowRight, GitMerge, HelpCircle, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
+import { Anchor, MessageCircle, ArrowRight, HelpCircle, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
@@ -8,21 +8,23 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import SegmentTabs from "@/components/shared/SegmentTabs"
-import { DetailLayout, DetailSection } from "@/components/shared/DetailLayout"
-import { DetailLink as Link, useDetailOrigin, rememberDetailOrigin } from "@/components/shared/DetailNavigation"
+import { DetailSection } from "@/components/shared/DetailLayout"
+import { DetailLink as Link, useDetailBack, useDetailOrigin, rememberDetailOrigin } from "@/components/shared/DetailNavigation"
 import { askQuestion } from "@/api/spine"
 import { EmptyState, ErrorState } from "@/components/shared/ErrorState"
 import { Markdown } from "@/components/shared/Markdown"
 import { PageContainer } from "@/components/shared/PageContainer"
 import SaveButton from "@/components/shared/SaveButton"
 import { NarrativeList } from "@/components/explore/NarrativeList"
-import { BigPictureCard } from "@/components/world/BigPictureCard"
+import { BigPictureCard, PremisesCard } from "@/components/world/BigPictureCard"
 import { NarrativeChangesCard } from "@/components/world/NarrativeChanges"
 import { NarrativeCheckpoint } from "@/components/world/NarrativeCheckpoint"
-import { NarrativeTimeline } from "@/components/explore/NarrativeHistory"
 import { BeneficiaryList, ScenarioBeneficiaries, type ScenarioBeneficiary } from "@/components/explore/graph/CausalDetail"
-import { FileText } from "lucide-react"
+import { ChevronDown, FileText } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useNarrativeIndex } from "@/hooks/useWorld"
+import { splitSummary } from "@/lib/bigPicture"
+import { formatPp, formatRatio } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import { EdgeSourceBadge, type SourceStatus } from "@/components/explore/graph/EdgeSource"
 
@@ -95,32 +97,141 @@ export default function NarrativePage() {
     }
   }, [fresh.data, fresh.isFetching, refreshNonce, topic, qc])
   const n = fresh.data ?? cached.data
+  const index = useNarrativeIndex()
 
-  // topic 없이 진입 = 월드모델>내러티브 탭 랜딩 → 내러티브 목록
+  // topic 없이 진입 = Thesis › 지금 랜딩
   if (!topic) return <NarrativeLanding />
-  if (cached.isLoading) return <DetailLayout title="내러티브 불러오는 중" fallback="/narrative" backLabel="내러티브 목록으로"><Skeleton className="h-64 w-full" /></DetailLayout>
   const generating = fresh.isFetching
   const version = n?.version
   const narrativeId = n?.narrative_id
-  const lenses = (n?.category || '').split(',').filter(Boolean)
-  return <DetailLayout title={n?.title || topic} fallback="/narrative" backLabel="내러티브 목록으로"
-    context={<><span className="text-hypothesis">Explorer · AI 내러티브 · 검증 필요</span>{lenses.map(l => <Badge key={l} variant="outline" className="text-caption">{LENS_LABEL[l] || l}</Badge>)}{version && <span>v{version}</span>}{n?.created_at && <time dateTime={n.created_at}>생성 {n.created_at.slice(0,16).replace('T',' ')}</time>}</>}
-    actions={<>{narrativeId != null && <SaveButton kind="narrative" refId={String(narrativeId)} url={`/narrative/history?topic=${encodeURIComponent(topic)}&v=${narrativeId}`} title={topic} subtitle={version ? `v${version}` : '내러티브'} showLabel />}
-      <Button variant="ghost" size="sm" disabled={!n?.narrative || discussion.isPending} onClick={() => discussion.mutate(`아래 저장된 AI 내러티브의 핵심 주장과 근거, 반론을 검토해줘. 원문 사실과 AI 해석을 구분해줘.\n\n주제: ${topic}\n버전: ${version ?? '미상'} (ID ${narrativeId ?? '미상'})\n생성: ${n?.created_at ?? '미상'}\n\n${n?.narrative || ''}`)}><MessageCircle aria-hidden="true" />{discussion.isPending ? '대화 준비 중' : '이 내러티브로 대화'}</Button>
-      <Button variant="outline" size="sm" disabled={generating} onClick={() => setRefreshNonce(k => k + 1)}><RefreshCw aria-hidden="true" className={generating ? 'animate-spin' : ''} />갱신</Button></>}
-    navigation={<SegmentTabs tabs={[{value:'current',label:'현재 해석'},{value:'evidence',label:'근거'},{value:'history',label:'변경 이력'},{value:'explore',label:'추가 탐구'}]} value={tab} onChange={value => setSp(prev => {const next = new URLSearchParams(prev);next.set('detail_tab',value);return next}, {replace:true,state:location.state})} />}
-    aside={<><h2 className="mb-3 text-section font-semibold">이 해석의 맥락</h2><p className="mb-4 text-sm">{topic}</p><p className="text-caption text-muted-foreground">여러 자료를 연결한 시스템의 해석입니다. 개별 출처의 발언과 구분해서 읽으세요.</p><DetailSection title="관련 질문">{narrativeId ? <NarrativeQuestions narrativeId={narrativeId} /> : <EmptyState message="연결된 버전이 없습니다." />}</DetailSection><DetailSection title="관련 리포트"><ReportLinkCard topic={topic} /></DetailSection></>}
-    related={narrativeId ? <RelatedNarratives narrativeId={narrativeId} /> : undefined}>
-    {cached.isError && <ErrorState message="저장된 내러티브를 불러오지 못했습니다." onRetry={() => void cached.refetch()} />}
-    {fresh.isError && <p role="alert" className="mb-4 text-sm text-destructive">갱신에 실패했습니다. 저장된 내용은 계속 읽을 수 있습니다.</p>}
-    {discussion.isError && <p role="alert" className="mb-4 text-sm text-destructive">대화를 시작하지 못했습니다. 다시 시도해 주세요.</p>}
-    {generating && <p role="status" className="mb-4 text-caption text-muted-foreground">새 자료로 내러티브를 갱신하고 있습니다.</p>}
-    {tab === 'current' && <NarrativeCheckpoint topic={topic} />}
-    {tab === 'current' && (n?.narrative ? <Markdown className="[overflow-wrap:anywhere] [&_pre]:overflow-x-auto">{n.narrative}</Markdown> : !cached.isError && <EmptyState message="저장된 내러티브가 없습니다. 갱신 버튼으로 생성을 요청할 수 있습니다." />)}
-    {tab === 'evidence' && <div className="space-y-4"><p className="text-caption text-muted-foreground">저장된 지식 연결과 인과 구조입니다. 문장별 원문 인용을 뜻하지 않습니다.</p>{narrativeId ? <><Grounding narrativeId={narrativeId} /><CausalChain narrativeId={narrativeId} /><ChainPaths narrativeId={narrativeId} /></> : <EmptyState message="연결된 근거가 없습니다." />}</div>}
-    {tab === 'history' && <NarrativeTimeline topic={topic} heading="저장된 버전과 변경 이력" onSelectVersion={id => {rememberDetailOrigin(origin);navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`, {state:{detailOrigin:origin}})}} />}
-    {tab === 'explore' && <div className="space-y-4"><DetailSection title="인과 흐름 (메르 모드)"><MerNarrativeCard topic={topic} /></DetailSection><DetailSection title="파급 시나리오"><ScenarioSection topic={topic} /></DetailSection><DetailSection title="언급 상위 종목"><p className="text-caption text-muted-foreground">이 테마와 자주 함께 언급되는 대상입니다.</p><BeneficiaryList sector={topic} /></DetailSection></div>}
-  </DetailLayout>
+  const meta = index.get(topic)
+  const { summary, body } = splitSummary(n?.narrative ?? '')
+  // 근거·추가 탐구 펼침 = URL ?detail_tab=evidence|explore (옛 탭 주소 그대로). 'history'는 오른쪽 버전 이력이 늘 보인다
+  const openPart = (part: 'evidence' | 'explore') => (o: boolean) => setSp(prev => { const next = new URLSearchParams(prev); if (o) next.set('detail_tab', part); else next.delete('detail_tab'); return next }, { replace: true, state: location.state, preventScrollReset: true })
+  return <PageContainer gap="sm">
+    <BackLink fallback="/narrative" label="지금 · 서사 목록" />
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]" data-narrative-detail>
+      <article className="min-w-0 space-y-4">
+        <header className="space-y-2">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-foreground">
+            <Badge variant="secondary" className="text-[11px]">{topic}</Badge>
+            <Badge variant="outline" className="border-hypothesis/40 text-[10px] font-normal text-hypothesis">AI 생성</Badge>
+            {version != null && <span className="font-mono tabular-nums">v{version}</span>}
+            {n?.created_at && <time dateTime={n.created_at} className="font-mono tabular-nums">{n.created_at.slice(0, 16).replace('T', ' ')}</time>}
+            {meta?.share_pct != null && <span>비중 {formatRatio(meta.share_pct)}{meta.share_delta_pp ? ` (${formatPp(meta.share_delta_pp, 1)})` : ''}</span>}
+            {meta?.is_surging && <span className="text-up">급등</span>}
+            {(n?.category || '').split(',').filter(Boolean).map(l => <span key={l}>{LENS_LABEL[l] || l}</span>)}
+          </p>
+          {cached.isLoading ? <Skeleton className="h-9 w-3/4" /> : <h1 className="text-page font-semibold leading-snug [overflow-wrap:anywhere]">{n?.title || topic}</h1>}
+          <div className="flex flex-wrap items-center gap-2">
+            {narrativeId != null && <SaveButton kind="narrative" refId={String(narrativeId)} url={`/narrative/history?topic=${encodeURIComponent(topic)}&v=${narrativeId}`} title={topic} subtitle={version ? `v${version}` : '내러티브'} showLabel />}
+            <Button variant="ghost" size="sm" disabled={!n?.narrative || discussion.isPending} onClick={() => discussion.mutate(`아래 저장된 AI 내러티브의 핵심 주장과 근거, 반론을 검토해줘. 원문 사실과 AI 해석을 구분해줘.\n\n주제: ${topic}\n버전: ${version ?? '미상'} (ID ${narrativeId ?? '미상'})\n생성: ${n?.created_at ?? '미상'}\n\n${n?.narrative || ''}`)}><MessageCircle aria-hidden="true" />{discussion.isPending ? '대화 준비 중' : '이 내러티브로 대화'}</Button>
+            <Button variant="outline" size="sm" disabled={generating} onClick={() => setRefreshNonce(k => k + 1)}><RefreshCw aria-hidden="true" className={generating ? 'animate-spin' : ''} />갱신</Button>
+          </div>
+        </header>
+        {cached.isError && <ErrorState message="저장된 내러티브를 불러오지 못했습니다." onRetry={() => void cached.refetch()} />}
+        {fresh.isError && <p role="alert" className="text-sm text-destructive">갱신에 실패했습니다. 저장된 내용은 계속 읽을 수 있습니다.</p>}
+        {discussion.isError && <p role="alert" className="text-sm text-destructive">대화를 시작하지 못했습니다. 다시 시도해 주세요.</p>}
+        {generating && <p role="status" className="text-caption text-muted-foreground">새 자료로 내러티브를 갱신하고 있습니다.</p>}
+        {cached.isLoading ? <Skeleton className="h-64 w-full" />
+          : n?.narrative ? <>
+            {summary.length > 0 && <section className="bg-muted/60 px-4 py-3" aria-label="3줄 요약" data-summary-box>
+              <h2 className="text-caption font-semibold">3줄 요약</h2>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-relaxed">{summary.map((t, i) => <li key={i}>{t}</li>)}</ol>
+            </section>}
+            <Markdown className="[overflow-wrap:anywhere] [&_pre]:overflow-x-auto">{body}</Markdown>
+          </>
+          : !cached.isError && <EmptyState message="저장된 내러티브가 없습니다. 갱신 버튼으로 생성을 요청할 수 있습니다." />}
+        <NarrativeCheckpoint topic={topic} />
+        <Fold title="근거" open={tab === 'evidence'} onOpenChange={openPart('evidence')}>
+          {narrativeId ? <><Grounding narrativeId={narrativeId} /><CausalChain narrativeId={narrativeId} /><ChainPaths narrativeId={narrativeId} /></> : <EmptyState message="연결된 근거가 없습니다." />}
+        </Fold>
+        <Fold title="추가 탐구" open={tab === 'explore'} onOpenChange={openPart('explore')}>
+          <DetailSection title="인과 흐름 (메르 모드)"><MerNarrativeCard topic={topic} /></DetailSection>
+          <DetailSection title="파급 시나리오"><ScenarioSection topic={topic} /></DetailSection>
+          <DetailSection title="언급 상위 종목"><BeneficiaryList sector={topic} /></DetailSection>
+        </Fold>
+      </article>
+      <aside className="min-w-0 space-y-5" aria-label="상세 맥락">
+        {narrativeId != null && <VersionChange narrativeId={narrativeId} />}
+        {narrativeId != null && <AsideCausal narrativeId={narrativeId} />}
+        <AsideVersions topic={topic} currentId={narrativeId ?? null} origin={origin} />
+        {narrativeId != null && <RelatedNarratives narrativeId={narrativeId} />}
+        <div>
+          <DetailSection title="관련 질문">{narrativeId ? <NarrativeQuestions narrativeId={narrativeId} /> : <EmptyState message="연결된 버전이 없습니다." />}</DetailSection>
+          <DetailSection title="관련 리포트"><ReportLinkCard topic={topic} /></DetailSection>
+        </div>
+      </aside>
+    </div>
+  </PageContainer>
+}
+
+/** '‹ 돌아갈 곳' 한 줄 — 들어온 화면을 기억하면 그리로(DetailNavigation) */
+function BackLink({ fallback, label }: { fallback: string; label: string }) {
+  const back = useDetailBack(fallback, label)
+  return <Button variant="link" size="sm" className="h-auto self-start px-0 text-caption text-muted-foreground" onClick={back.go}>‹ {back.label.replace(/로 돌아가기$/, '')}</Button>
+}
+
+/** 본문 아래 접힘 칸 — 근거·추가 탐구(옛 탭). 닫혀 있으면 내용(조회)을 그리지 않는다 */
+function Fold({ title, open, onOpenChange, children }: { title: string; open: boolean; onOpenChange: (o: boolean) => void; children: ReactNode }) {
+  return <Collapsible open={open} onOpenChange={onOpenChange} className="border-t pt-2">
+    <CollapsibleTrigger asChild><Button variant="ghost" className="group h-auto w-full justify-between px-0 text-left font-semibold">{title}<ChevronDown aria-hidden="true" className="transition-transform group-data-[state=open]:rotate-180" /></Button></CollapsibleTrigger>
+    <CollapsibleContent className="space-y-4 pt-3">{children}</CollapsibleContent>
+  </Collapsible>
+}
+
+interface VersionDiffData {
+  status: string; added_nodes: string[]; removed_nodes: string[]
+  added_edges: { from: string; to: string }[]; removed_edges: { from: string; to: string }[]; summary: string | null
+}
+
+/** 이번 버전에서 바뀐 것 — 저장된 드리프트 요약 + 추가·삭제 노드(결정적 diff, summarize=false라 새로 만들지 않는다) */
+function VersionChange({ narrativeId }: { narrativeId: number }) {
+  const { data } = useQuery(apiQuery<VersionDiffData>({
+    key: ["spine", "narrative", "diff", narrativeId, "stored"], url: `/api/spine/narrative/${narrativeId}/diff`, params: { summarize: false }, staleTime: STALE.short,
+  }))
+  if (!data || data.status !== 'ok') return null
+  const nodes = [...data.added_nodes.map(x => ['+', x]), ...data.removed_nodes.map(x => ['−', x])]
+  if (!data.summary && nodes.length === 0) return null
+  return <section className="space-y-2" data-version-change>
+    <h2 className="border-b pb-1 text-sm font-semibold">이번 버전에서 바뀐 것</h2>
+    {data.summary && <p className="text-sm leading-relaxed text-muted-foreground">{data.summary}</p>}
+    {nodes.length > 0 && <div className="flex flex-wrap gap-1">{nodes.slice(0, 12).map(([k, x]) => <span key={k + x} className={cn('px-1.5 py-0.5 text-[11px]', k === '+' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{k} {x}</span>)}</div>}
+  </section>
+}
+
+/** 인과 고리 — 이 버전의 엣지(원인 → 결과 · 신뢰 · 메커니즘), 6개까지. 전체는 아래 '근거' */
+function AsideCausal({ narrativeId }: { narrativeId: number }) {
+  const { data } = useQuery(apiQuery<CausalGraph>({ key: ["spine", "narrative", "causal", narrativeId], url: `/api/spine/narrative/${narrativeId}/causal`, staleTime: STALE.short }))
+  const edges = data?.edges ?? []
+  if (edges.length === 0) return null
+  return <section className="space-y-1" data-aside-causal>
+    <h2 className="border-b pb-1 text-sm font-semibold">인과 고리</h2>
+    <ul className="divide-y">{edges.slice(0, 6).map((e, i) => <li key={i} className="space-y-0.5 py-2">
+      <p className="text-sm font-medium">{e.from} → {e.to}{e.confidence != null && <span className="ml-1 font-mono text-[11px] font-normal text-muted-foreground">신뢰 {e.confidence.toFixed(2)}</span>}</p>
+      {e.mechanism && <p className="line-clamp-3 text-xs text-muted-foreground">{e.mechanism}</p>}
+    </li>)}</ul>
+  </section>
+}
+
+/** 버전 이력 — 최신 6개(제목·날짜), 누르면 그 버전을 이력 화면에서 */
+function AsideVersions({ topic, currentId, origin }: { topic: string; currentId: number | null; origin: ReturnType<typeof useDetailOrigin> }) {
+  const navigate = useNavigate()
+  const { data = [] } = useQuery(apiQuery<{ id: number; version: number; title: string | null; created_at: string | null }[]>({
+    key: ["spine", "narrative", "versions", topic], url: `/api/spine/narrative/versions?topic=${encodeURIComponent(topic)}`, staleTime: STALE.short, enabled: !!topic,
+  }))
+  if (data.length === 0) return null
+  const go = (id: number) => { rememberDetailOrigin(origin); navigate(`/narrative/history?topic=${encodeURIComponent(topic)}&v=${id}`, { state: { detailOrigin: origin } }) }
+  return <section className="space-y-1" data-aside-versions>
+    <h2 className="flex items-baseline border-b pb-1 text-sm font-semibold">버전 이력<Button variant="link" size="sm" className="ml-auto h-auto px-0 text-caption font-normal text-muted-foreground" onClick={() => go(currentId ?? data[0].id)}>전체 {data.length}개 ›</Button></h2>
+    <ul className="divide-y">{data.slice(0, 6).map(v => <li key={v.id}>
+      <button type="button" onClick={() => go(v.id)} className="grid w-full grid-cols-[2.5rem_1fr] gap-x-2 py-2 text-left hover:bg-muted/40">
+        <span className="font-mono text-xs text-muted-foreground">v{v.version}</span>
+        <span className="min-w-0"><span className={cn('line-clamp-2 text-sm', v.id === currentId && 'font-semibold')}>{v.title ?? '(제목 없음)'}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{(v.created_at ?? '').slice(0, 10)}</span></span>
+      </button>
+    </li>)}</ul>
+  </section>
 }
 
 /* ---------- 이 서사의 핵심질문 (D-067 2d 미러링) — 질문 트래커와 내러티브 연결 ---------- */
@@ -169,24 +280,24 @@ function NarrativeQuestions({ narrativeId }: { narrativeId: number }) {
   )
 }
 
-/* ---------- 랜딩 (월드모델>내러티브 탭 — topic 없이 진입) ---------- */
+/* ---------- 랜딩 (Thesis › 지금 — topic 없이 진입) ---------- */
 
-/** 월드모델 › 지금 (docs/specs/world-model.md §2) — 큰 그림 → 바뀐 것 → 전체 목록. 전부 저장분 조회 */
+/** Thesis › 지금 (ia-redesign §4.25) — 이번 주 큰 그림 → 전제 칸 → 이번주 업데이트 → 서사 목록. 전부 저장분 조회 */
 function NarrativeLanding() {
+  const count = useNarrativeIndex().size
   return (
     <PageContainer gap="sm">
-      <div className="flex items-baseline gap-2">
-        <h2 className="text-xl font-bold">지금</h2>
-        <span className="text-[11px] text-muted-foreground">지금 시장에서 도는 서사와 이번 주에 바뀐 것</span>
-      </div>
-      <div className="surface-stack">
-        <BigPictureCard />
-        <NarrativeChangesCard />
-      </div>
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold">서사 목록</h3>
-        <NarrativeList empty="state" controls />
-      </section>
+      <h1 className="text-page font-semibold">지금</h1>
+      <BigPictureCard />
+      <PremisesCard />
+      <NarrativeChangesCard />
+      <Card className="gap-0 py-0" aria-label="서사 목록">
+        <header className="flex items-baseline gap-2 border-b px-4 py-3">
+          <h2 className="text-section font-semibold">서사 목록</h2>
+          {count > 0 && <span className="font-mono text-caption tabular-nums text-muted-foreground">{count}편</span>}
+        </header>
+        <div className="p-4"><NarrativeList empty="state" controls /></div>
+      </Card>
     </PageContainer>
   )
 }
@@ -641,30 +752,16 @@ function RelatedNarratives({ narrativeId }: { narrativeId: number }) {
   if (isError || !data || data.status !== "ok" || data.related.length === 0) return null
 
   return (
-    <Card>
-      <CardContent className="py-3 space-y-2">
-        <div className="flex items-center gap-1.5">
-          <GitMerge className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">이 인과를 공유하는 다른 내러티브</span>
-          <span className="text-[11px] text-muted-foreground">{data.related.length}개</span>
-        </div>
-        <ul className="space-y-1.5">
-          {data.related.map((r) => (
-            <li key={r.narrative_id}>
-              <Link
-                to={`/narrative?topic=${encodeURIComponent(r.topic)}`}
-                className="flex flex-wrap items-center gap-1.5 text-left text-sm hover:underline"
-              >
-                <Badge variant="secondary" className="text-[10px]">{r.topic}</Badge>
-                <span className="text-muted-foreground text-xs truncate">{r.title}</span>
-              </Link>
-              <div className="pl-1 text-[11px] text-muted-foreground">
-                공유 노드: {r.shared_nodes.join(" · ")}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+    <section className="space-y-1" data-related>
+      <h2 className="border-b pb-1 text-sm font-semibold">관련 서사</h2>
+      <ul className="divide-y">
+        {data.related.map((r) => (
+          <li key={r.narrative_id} className="py-2">
+            <p className="text-caption text-muted-foreground">{r.topic} · 공유 {r.shared_nodes.length}</p>
+            <Link to={`/narrative?topic=${encodeURIComponent(r.topic)}`} className="line-clamp-2 text-sm hover:underline" title={`공유 노드: ${r.shared_nodes.join(" · ")}`}>{r.title ?? r.topic}</Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
