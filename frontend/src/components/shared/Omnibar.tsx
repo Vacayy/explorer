@@ -77,13 +77,14 @@ function Highlight({ text, q }: { text: string; q: string }) {
   if (!q) return <>{text}</>
   const index = text.toLowerCase().indexOf(q.toLowerCase())
   if (index < 0) return <>{text}</>
-  return <>{text.slice(0, index)}<mark className="rounded-sm bg-primary/15 text-inherit">{text.slice(index, index + q.length)}</mark>{text.slice(index + q.length)}</>
+  return <>{text.slice(0, index)}<mark className="bg-transparent font-semibold text-inherit">{text.slice(index, index + q.length)}</mark>{text.slice(index + q.length)}</>
 }
 
 function Row({ icon, title, sub, right, className = "" }: { icon: ReactNode; title: ReactNode; sub?: ReactNode; right?: ReactNode; className?: string }) {
   return <div className={`flex w-full min-w-0 items-center gap-3 ${className}`}>
-    <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
-    <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-medium">{title}</span>{sub && <span className="truncate text-caption text-muted-foreground">{sub}</span>}</span>
+    {/* 시안 Search: 행 아이콘 없이 이름 · 보조 줄 · 오른쪽 값 */}
+    <span className="sr-only">{icon}</span>
+    <span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-sm">{title}</span>{sub && <span className="truncate text-caption text-ink-3">{sub}</span>}</span>
     {right && <span className="shrink-0 text-right text-caption tabular-nums text-muted-foreground">{right}</span>}
   </div>
 }
@@ -197,11 +198,11 @@ export default function Omnibar() {
           </CommandGroup>
 
   return (
-    <CommandDialog open={open} onOpenChange={setOpen} title="옴니바" description="종목·화면 이동, 문서 검색, 질문" className="sm:max-w-2xl">
+    <CommandDialog open={open} onOpenChange={setOpen} title="옴니바" description="종목·화면 이동, 문서 검색, 질문" className="sm:max-w-[620px] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:p-0 [&_[data-slot=input-group]]:h-[52px] [&_[data-slot=input-group]]:rounded-none [&_[data-slot=input-group]]:bg-transparent [&_[data-slot=input-group]]:px-1.5 [&_[data-slot=command-input]]:text-base [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-ink-2">
       <Command shouldFilter={false} onKeyDown={onKeyDown} loop value={highlighted} onValueChange={setHighlighted}>
         <div className="relative">
           <CommandInput placeholder={focus ? `${focus.name}에 대해 할 일…` : "종목·티커·인물·화면 이름, 또는 질문 문장"} value={query} onValueChange={value => { setQuery(value); setShowAll(false) }} />
-          {(intent !== "empty" || focus) && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{focus ? `${focus.name} · 행동` : INTENT_LABEL[intent]}</span>}
+          {(intent !== "empty" || focus) && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-chip px-2 py-0.5 text-[11px] font-medium text-ink-2">{focus ? `${focus.name} · 행동` : INTENT_LABEL[intent]}</span>}
         </div>
         <CommandList className="max-h-[60vh]">
           {focus ? <StockActions focus={focus} step={step} onStep={setStep} groups={groups.data?.items ?? []} projects={projects.data ?? []} adding={addMember.isPending || toProject.isPending} onOpen={path => openCompany(focus, path)} onBack={() => setFocus(null)}
@@ -226,7 +227,7 @@ export default function Omnibar() {
               <CommandItem value="today-all" onSelect={() => go("/home/stocks")}><Row icon={<Layers className="size-4" />} title={`내 종목에서 전체 보기 · ${formatNumber(today.data.items.length)}건`} /></CommandItem>
             </CommandGroup>}
             <CommandGroup heading="바로 가기">
-              <div className="flex flex-wrap gap-1.5 px-2 pb-2">{pages.map(p => <CommandItem key={p.to} value={`page-${p.to}`} className="h-8 rounded-full border px-3 py-0 text-xs data-[selected=true]:border-primary" onSelect={() => go(p.to)}>{p.label}</CommandItem>)}</div>
+              <div className="flex flex-wrap gap-1.5 px-2 pb-2">{pages.map(p => <CommandItem key={p.to} value={`page-${p.to}`} className="h-8 rounded-full border border-line-2 px-3 py-0 text-[13px] in-data-[slot=dialog-content]:rounded-full data-[selected=true]:border-ink data-[selected=true]:bg-transparent" onSelect={() => go(p.to)}>{p.label}</CommandItem>)}</div>
             </CommandGroup>
           </>}
 
