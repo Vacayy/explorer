@@ -28,7 +28,8 @@
 
 ## 화면
 
-- **관리자 `/admin` 상단 '데이터 신선도'**: 모든 항목의 상태·최신·기대·채우는 곳 표. `GET /api/spine/admin/health`. 로딩 Skeleton, 실패 ErrorState, 항목은 항상 있으므로 빈 상태 없음.
+- **관리자 `/admin` 작업·신선도(ia-redesign §4.31, 4h)**: 지금 상태 3칸(신선도 n/전체 · 작업 켜짐 n/전체 · 최근 실행 40회 오류) → 데이터 신선도 표(상태·최신·기대·채우는 곳, 지연·오류 줄은 원인을 이름 아래) → 자동 정리 단계(`auto_curation`·`auto_curation_apply` 스위치, 적용 켜기는 확인 창) → 자동 작업(설명·진입점은 ⓘ) → 수동 수집 → 최근 실행 내역. `GET /api/spine/admin/health`·`/jobs`·`/runs`, 블록마다 따로 Skeleton·ErrorState. `job_runs.ran_at`은 UTC라 화면은 KST(`formatKstDateTime`)로 보인다.
+- **관리자 `/admin?view=curation` 자동 정리(D-294·D-295)**: 지금 단계(판정만 기록 중/적용 중 + 적용 스위치) → 판정 집계(종류 × 승인·거부·보류·건너뜀, 인물 이름 '예정') → 판정 기록(판정·종류 칩 URL `verdict`·`kind`, 20줄 + 더 보기, 적용된 병합은 '되돌리기 재료 있음'). `GET /api/spine/curation`. 기록 보기라 버튼은 적용 스위치 하나.
 - **홈 브리핑**: 경고 항목 중 지연이 있으면 LLM 경고 다음에 "데이터 갱신 지연 — …" 한 줄(`/admin` 링크). 방문마다 계산하므로 `launchctl`은 부르지 않는다.
 - **텔레그램 아침 브리핑**: 같은 한 줄을 LLM 경고 다음에 둔다(D-111의 '메타 경보만 최상단' 예외와 같은 성격).
 

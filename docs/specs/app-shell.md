@@ -39,7 +39,7 @@
 - *기울임* 탭은 이행 중이다. 대체 화면(종목 발견 '오늘의 신호', 도시에 개요의 기업활동)이 생기면 옛 경로를 리다이렉트로 바꾸고 탭을 뺀다. 옛 경로를 대체 화면보다 먼저 지우지 않는다. 탐색 › 신호는 2026-11-05(개편 4c)에 종목 발견 첫 화면 '오늘의 신호'로 옮겨 탭을 뺐다 — `/explore`는 `/discover#signals`로(`?list=<type>`은 `?signal=<type>` 목록 시트로), `/discover/signals`도 같은 곳으로. 기업활동 탭은 2026-11-05(후속 묶음, D-300)에 뺐다 — 시장 전체 목록은 홈 › 한국 시장 `#actions` 블록으로 옮겼고 `/actions`(코드 없음)는 `/home/kr#actions`로 리다이렉트(쿼리 유지), `/actions?code=X`는 2026-11-05(개편 4e) 그 종목 도시에 개요 `#actions`로 리다이렉트(쿼리 유지, 리다이렉트 전 판정은 홈 › 한국 시장). 산업 › 국면 이력은 2026-11-05(개편 3c)에 홈 › 매크로로 옮겨 탭을 뺐다 — `/regimes`는 `/home/macro#history`로 리다이렉트(쿼리 유지, 해시는 쿼리 뒤).
 - 대만 공급망 탭(`/follow/taiwan`)은 2026-11-05(개편 4b)에 더했다. 홈 › 한국 시장 맨 아래에 임시로 있던 대만 두 블록은 이 화면으로 옮겼다(위젯 `explore.twRevenue`·`explore.twLinks`의 전체 보기도 이 주소).
 - Thesis의 코드 key는 `world` 그대로다(이름만 바꿈).
-- 소스 관리는 관리자 › 소스(`/admin/sources`, 관리자 보기 = 작업·신선도 · 관측 · 소스)다(2026-11-05 개편 4a). 옛 `/sources`는 리다이렉트(쿼리 유지). 설정 메뉴 '소스 관리'·⌘K·피드 왼쪽 칸 '소스 관리'가 이리로 온다.
+- 소스 관리는 관리자 › 소스(`/admin/sources`, 관리자 보기 = 작업·신선도 · 관측 · 소스 · 자동 정리)다(2026-11-05 개편 4a, 자동 정리 `?view=curation`은 4h). 옛 `/admin?view=sources`는 `/admin/sources`로 보낸다. 옛 `/sources`는 리다이렉트(쿼리 유지). 설정 메뉴 '소스 관리'·⌘K·피드 왼쪽 칸 '소스 관리'가 이리로 온다.
 - 하위 탭 판정: 위 표의 '판정 경로'를 L2 단위로도 같은 규칙으로 묶는다(예: `/us`·`/follow/transcripts` → 컨콜, `/follow/universe`·`/discover/industry` → 산업·섹터, `/thesis`·`/report`·`/question/` → 내 판단, `/knowledge` → 그래프 — 2026-11-05부터 `/knowledge`는 `/knowledge/ontology`로 리다이렉트).
 - 종목 도시에(`/analyze/:code/*`, `/us/:ticker`, `/company`)는 L1이 아니다. L1은 비활성으로 두고, L2 자리에 도시에 탭(개요·실적·사업·자료)과 종목명을 보인다(기존 `analyzeTabs`).
 - `/chat`, `/admin`, `/admin/sources`, `/archive` 등은 L1 비활성, L2 없음.

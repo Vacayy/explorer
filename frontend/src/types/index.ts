@@ -1768,3 +1768,22 @@ export interface EvidenceRange {
   cutoff?: 'end' | 'close'
   after?: boolean
 }
+
+/* ---------- 관리자 › 작업·신선도 · 자동 정리 (ia-redesign §4.31) ---------- */
+/** GET /api/spine/admin/jobs — ran_at은 UTC(SQLite datetime('now')) */
+export interface AdminJobStatus {
+  name: string; label: string; description: string; entrypoint: string; enabled: boolean
+  last_run: { status: string; summary: string | null; duration_ms: number | null; ran_at: string } | null
+}
+/** GET /api/spine/admin/health — 데이터 신선도(D-222) */
+export interface AdminHealthItem {
+  key: string; label: string; kind: string; owner: string; critical: boolean
+  latest: string | null; expected: string | null; status: string; detail: string
+}
+/** GET /api/spine/admin/runs */
+export interface AdminJobRun { job: string; status: string; summary: string | null; duration_ms: number | null; ran_at: string }
+/** GET /api/spine/curation — 정리 작업 자동 판정 기록(D-294·D-295). decided_at은 UTC */
+export interface CurationEntry {
+  kind: string; target_id: number; title: string; verdict: string; rule: string | null; applied: boolean; decided_at: string | null
+}
+export interface CurationLog { apply_enabled: boolean; counts: Record<string, Record<string, number>>; items: CurationEntry[] }

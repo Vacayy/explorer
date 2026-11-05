@@ -241,3 +241,9 @@ export function formatCountShort(value: number | null | undefined): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1)}천`
   return String(value)
 }
+
+/** 소요 시간 ms → "3.1초" (관리자 작업·실행 내역) */
+export function formatSeconds(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return "-";
+  return `${(ms / 1000).toFixed(1)}초`;
+}

@@ -102,6 +102,7 @@ const CASES = [
   ['/sources', '', null, null],
   ['/admin', '', null, null],
   ['/admin/sources', '', null, null],
+  ['/admin', '?view=curation', null, null],
   ['/archive', '', null, null],
   ['/chat', '', null, null],
   ['/ask', '', null, null],
