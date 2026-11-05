@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { ChevronRight, Search, X } from 'lucide-react'
 import { PageLayout } from '@/components/shared/PageLayout'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -13,7 +14,7 @@ import { SystemPost } from '@/components/feed/FeedPost'
 import { FeedRow } from '@/components/feed/FeedRow'
 import { DocumentSearch } from '@/components/feed/DocumentSearch'
 import { useFeedChipCounts, useFeedDocuments, useFeedTimeline } from '@/hooks/useFeed'
-import { useMarkChannelRead, useTimelineChannels } from '@/hooks/useTimeline'
+import { useMarkAllRead, useMarkChannelRead, useTimelineChannels } from '@/hooks/useTimeline'
 import { useFeedTopics } from '@/hooks/useFeedTopics'
 import { FEED_CHIPS, feedChip, isQuiet, isSearchView, unreadIds, usesTimeline, type FeedChipKey } from '@/lib/feed'
 import { groupDirectory } from '@/lib/canvas'
@@ -113,7 +114,14 @@ function FeedView({ counts }: { counts: Partial<Record<FeedChipKey, number>> }) 
 
   const timelineItems = useMemo(() => timeline.data?.pages.flatMap(p => p.items) ?? [], [timeline.data])
   const unread = useMemo(() => unreadIds(timelineItems, channels), [timelineItems, channels])
-  const unreadTotal = channels.filter(c => c.platform !== 'system').reduce((s, c) => s + c.unread, 0)
+  const human = channels.filter(c => c.platform !== 'system')
+  const unreadTotal = human.reduce((s, c) => s + c.unread, 0)
+  // '전체' 칩 숫자 = 목록과 같은 기준(팔로우한 사람 소스의 글, 기준 시각까지) — D-301. 머리의 '전체 수집 자료'는 문서 수 그대로
+  const chipCounts = directory.data ? { ...counts, all: human.reduce((s, c) => s + c.count, 0) } : { ...counts, all: undefined }
+  // '모두 읽음' 범위 = 지금 칩(전체·텔레그램·유튜브·메모). 소스를 고르면 그 소스는 열 때 읽음 처리되므로 버튼을 두지 않는다
+  const markAll = useMarkAllRead()
+  const allScope = !channel && !topic && (chip === 'all' || chip === 'telegram' || chip === 'youtube' || chip === 'memo') ? chip : null
+  const scopeUnread = allScope === 'all' ? unreadTotal : allScope ? human.filter(c => c.platform === allScope).reduce((s, c) => s + c.unread, 0) : 0
   const empty = timelineMode ? timeline.data && timelineItems.length === 0 : documents.data && documents.data.pages[0].items.length === 0
 
   return <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)_240px] xl:grid-cols-[260px_minmax(0,1fr)_260px] xl:gap-8">
@@ -121,14 +129,16 @@ function FeedView({ counts }: { counts: Partial<Record<FeedChipKey, number>> }) 
       channel={channel} allActive={!channel && chip !== 'system'} unreadTotal={unreadTotal} onPick={pickChannel} onExplorer={() => pickChip('system')} />
 
     <section aria-label="글 목록" className="min-w-0 space-y-3 max-lg:order-3">
-      <ChipStrip chip={chip} channel={channel} counts={counts} onPick={pickChip} />
+      <ChipStrip chip={chip} channel={channel} counts={chipCounts} onPick={pickChip} />
       <MobileSources channels={channels} channel={channel} onPick={pickChannel} />
       <div className="lg:hidden"><Trending topic={topic} onPick={pickTopic} /></div>
       <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
         {selected && <span className="font-medium text-foreground">{selected.name}</span>}
         {chip === 'system' && !channel && <span className="font-medium text-foreground">Explorer 산출물</span>}
         {topic && <Button variant="secondary" size="xs" onClick={() => pickTopic(null)} aria-label={`주제 ${topic} 해제`}>{topic}<X aria-hidden="true" /></Button>}
-        {timelineMode && chip !== 'system' && <span className="tabular-nums max-lg:hidden">안 읽음 {formatNumber(selected ? selected.unread : unreadTotal)}</span>}
+        {timelineMode && chip !== 'system' && <span className="tabular-nums max-lg:hidden">안 읽음 {formatNumber(selected ? selected.unread : allScope && allScope !== 'all' ? scopeUnread : unreadTotal)}</span>}
+        {allScope && scopeUnread > 0 && <Button variant="link" size="xs" className="h-auto px-0 text-caption text-muted-foreground" disabled={markAll.isPending}
+          onClick={() => markAll.mutate({ platform: allScope, read_until: until }, { onError: e => toast.error(e instanceof Error ? e.message : '읽음으로 바꾸지 못했습니다.') })}>모두 읽음</Button>}
         {(selected || topic || chip !== 'all') && <Button variant="link" size="xs" className="h-auto px-0 text-caption" onClick={clear}>전체 보기</Button>}
       </div>
       <Separator />

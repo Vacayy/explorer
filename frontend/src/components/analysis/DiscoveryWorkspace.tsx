@@ -30,9 +30,11 @@ const workspaceSpec = (spec: AnalysisSpec | null | undefined): spec is AnalysisS
  * 검색 버튼을 누르면 spec 명시 경로로 찾는다(모델 0, D-225 — 블록 변경마다 자동 실행하지 않음). 실행은 URL `run`이 소유하고,
  * 스택은 이 탭의 초안(sessionStorage)이 소유한다. 다른 경로(이전 검색·문장 검색)로 연 실행은 스택에 불러온다.
  */
-export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, results, universeRequest, onUniverseApplied }: {
+export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, results, universeRequest, onUniverseApplied, inSheet = false }: {
   run: AnalysisRun | undefined; runLoading: boolean; startPending: boolean
   onStart: (body: StrategySubmission) => Promise<void>; results: ReactNode
+  /** 결과 화면의 '조건 고치기' 시트 안 — 결과 칸 없이 조건 목록 | 내 조건(넓은 화면은 두 칸) */
+  inSheet?: boolean
   /** '오늘의 신호'에서 넘긴 검색 범위 — 초안에 넣고 onUniverseApplied로 비운다 */
   universeRequest?: DraftUniverse | null; onUniverseApplied?: () => void
 }) {
@@ -87,13 +89,18 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
     result={runSpec ? run!.result ?? null : null} resultConditions={(runSpec?.strategy_conditions ?? []).map(c => c.strategy_id)} status={status}
     onChange={setDraft} onRunNow={runNow} runDisabled={!ready || computing || runLoading} /> : <Skeleton className="h-64 w-full" />
 
+  if (inSheet && desktop) return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
+    <section aria-label="조건 목록" className="max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-3">{palette}</section>
+    <section aria-label="내 조건" className="@container max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-3">{stack}</section>
+  </div>
+
   if (!desktop) return <div className="min-w-0 surface-stack">
     <Collapsible open={paletteOpen} onOpenChange={setPaletteOpen} className="rounded-card border bg-card">
       <CollapsibleTrigger asChild><Button variant="ghost" className="min-h-11 w-full justify-between">조건 목록·빠른 시작<ChevronDown className="size-4" /></Button></CollapsibleTrigger>
       <CollapsibleContent className="max-h-[60vh] overflow-y-auto border-t p-3">{palette}</CollapsibleContent>
     </Collapsible>
     <section aria-label="내 조건" className="@container rounded-card border bg-card p-3">{stack}</section>
-    <section aria-label="결과" className="min-w-0">{results}</section>
+    {results && <section aria-label="결과" className="min-w-0">{results}</section>}
   </div>
 
   return <ResizablePanelGroup orientation="horizontal" className="min-h-[36rem] flex-1 rounded-card border bg-card">

@@ -707,6 +707,9 @@ export interface TimelineChannelsResponse {
   total: number
   until: string
 }
+/** 피드 '모두 읽음'(POST /api/spine/feed/channels/read-all, D-301) — all = 사람 소스 전체(Explorer 산출물 제외) */
+export type MarkAllReadPlatform = 'all' | 'telegram' | 'blog' | 'youtube' | 'memo'
+export interface MarkAllReadResponse { platform: string; read_until: string; channels: number; marked: number }
 export type StudyIntent = 'explain' | 'critique' | 'related';
 export type StudyTool = 'read' | 'highlight' | 'comment' | StudyIntent;
 export interface StudyActionRequest {
@@ -1471,6 +1474,11 @@ export interface TrackerView {
   }
   conditions: TrackerCondition[]
 }
+
+/** 추적 종목 전체의 조건 충족 요약(GET /api/spine/tracker/status, D-301) — 머리 줄 '충족 n'·알림 줄. 저장된 시세·조건만 읽는다 */
+export interface TrackerStatusCondition { id: number; role: TrackerRole; label: string; status: TrackerCondition["status"]; newly_met: boolean }
+export interface TrackerStatusItem { code: string; name: string; market: "kr" | "us"; as_of: string | null; met: number; newly_met: number; conditions: TrackerStatusCondition[] }
+export interface TrackerStatus { items: TrackerStatusItem[]; met: number; newly_met: number }
 
 /* ---------- 국면 이력 (docs/specs/market-regimes.md) — 규칙 판정, LLM 0 ---------- */
 export type RegimeKind = 'bull' | 'bear'

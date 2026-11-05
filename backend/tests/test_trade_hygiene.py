@@ -84,6 +84,15 @@ class NestedTotalsTests(TradeDbCase):
         self.assertAlmostEqual(by["8542321010"]["contribution"], 0.6)
         self.assertAlmostEqual(h["total_usd"], 350e6)
 
+    def test_sub_items_left_out_of_surge_list_and_counts(self):
+        """세목(팔로우한 상위의 하위 HS)은 급등 목록·수에서 뺀다(D-301) — 품목 판정(table 행)에는 남는다"""
+        with patch.object(trade_metrics, "get_connection", return_value=self.conn):
+            t = trade_metrics.table()
+            h = trade_metrics.highlights()
+        self.assertEqual({r["hs_code"]: r["flag"] for r in t["rows"]}["8542321010"], "surge")
+        self.assertEqual([r["hs_code"] for r in h["surge"]], ["854232"])
+        self.assertEqual(next(g for g in h["groups"] if g["group_label"] == "반도체")["surge"], 1)
+
     def test_stock_reverse_link(self):
         with patch.object(trade_metrics, "get_connection", return_value=self.conn), \
                 patch.object(spine_trade, "get_connection", return_value=self.conn):

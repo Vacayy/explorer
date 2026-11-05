@@ -2,7 +2,7 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Path
 
 from database import get_connection
-from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch, TrackerView
+from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch, TrackerStatus, TrackerView
 
 router = APIRouter(prefix="/api/spine/tracker", tags=["spine"])
 Code = Path(pattern=r"^([0-9A-Z]{6}|[A-Z][A-Z0-9.\-]{0,9})$")   # 국내 6자리 또는 미국 티커(묶음 멤버와 같은 규칙)
@@ -14,6 +14,17 @@ def _check(conn, code: str) -> str:
     if not mkt:
         raise HTTPException(404, f"알 수 없는 종목: {code}")
     return mkt
+
+
+@router.get("/status", response_model=TrackerStatus)
+def tracker_status():
+    """추적 종목 전체의 조건 충족 요약(D-301) — 홈 › 내 종목의 '충족 n'·알림 줄. `/{code}`보다 먼저 선언(경로 충돌 방지)."""
+    from pipeline.stock_tracker import status
+    conn = get_connection()
+    try:
+        return status(conn)
+    finally:
+        conn.close()
 
 
 @router.get("/{code}", response_model=TrackerView)

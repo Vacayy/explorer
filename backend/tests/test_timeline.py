@@ -1,12 +1,12 @@
 """Feed contracts on an isolated corpus; never starts production lifespan or LLM."""
 import sqlite3
 import unittest
-from pipeline.timeline import timeline, channels, mark_read
+from pipeline.timeline import timeline, channels, mark_read, mark_all_read
 
 
 class TimelineTests(unittest.TestCase):
     def setUp(self):
-        self.c = sqlite3.connect(':memory:')
+        self.c = sqlite3.connect(':memory:', check_same_thread=False)
         self.c.row_factory = sqlite3.Row
         self.c.executescript('''
         CREATE TABLE raw_documents(id INTEGER PRIMARY KEY, source_type TEXT, source_id TEXT, title TEXT, url TEXT, published_at TEXT, fetched_at TEXT, markdown TEXT, media_json TEXT);
@@ -247,6 +247,37 @@ class TimelineTests(unittest.TestCase):
         ch = {c.id: c for c in channels(self.c, until='2026-09-10T00:00:00Z').items}
         self.assertEqual(ch['narrative:all'].name, 'Explorer · 내러티브')
         self.assertEqual(ch['report:all'].platform, 'system'); self.assertEqual(ch['scenario:all'].unread, 1)
+
+    def test_mark_all_read_by_platform_then_all(self):
+        # '모두 읽음'(D-301): 칩 범위만, 스냅샷(read_until) 이후 글과 Explorer 산출물은 그대로
+        self.explorer()
+        for i in range(1, 4): self.doc(i, time='2026-09-09 10:00:00')
+        self.doc(20, source='youtube', key='yt', time='2026-09-09 11:00:00')
+        self.doc(21, source='youtube', key='yt', time='2026-09-09 23:00:00')     # 스냅샷 뒤
+        unread = lambda: {i.id: i.unread for i in channels(self.c, until='2026-09-10T00:00:00Z').items}
+        r = mark_all_read(self.c, 'telegram', '2026-09-09T20:00:00Z')
+        self.assertEqual((r['channels'], r['marked']), (1, 3))
+        u = unread()
+        self.assertEqual((u['telegram:active'], u['youtube:yt']), (0, 2))
+        r = mark_all_read(self.c, 'all', '2026-09-09T20:00:00Z')
+        self.assertEqual((r['channels'], r['marked']), (1, 1))
+        u = unread()
+        self.assertEqual(u['youtube:yt'], 1)                       # 23:00 글은 안 읽음으로 남는다
+        self.assertEqual(u['scenario:all'], 1)                     # Explorer 산출물은 건드리지 않는다
+        self.assertEqual(mark_all_read(self.c, 'all', '2026-09-09T20:00:00Z')['channels'], 0)   # 다시 눌러도 변화 없음
+
+    def test_mark_all_read_endpoint(self):
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from main import app
+        from routers import spine_feed
+        from tests.test_job_status import KeepOpen
+        self.doc(1, time='2026-09-09 10:00:00')
+        with patch.object(spine_feed, 'get_connection', return_value=KeepOpen(self.c)):
+            client = TestClient(app)
+            d = client.post('/api/spine/feed/channels/read-all', json={'platform': 'all', 'read_until': '2026-09-09T20:00:00Z'}).json()
+            self.assertEqual((d['platform'], d['channels'], d['marked']), ('all', 1, 1))
+            self.assertEqual(client.post('/api/spine/feed/channels/read-all', json={'platform': 'news', 'read_until': '2026-09-09T20:00:00Z'}).status_code, 422)
 
     def test_topic_filter_matches_linked_docs_and_same_topic_outputs(self):
         self.explorer()

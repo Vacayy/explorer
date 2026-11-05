@@ -8,7 +8,7 @@ from database import get_connection
 from pydantic import BaseModel, Field
 from datetime import date
 from models.spine import EntityTag, FeedDocument, FeedFacetEntity, FeedFacets, FeedResponse
-from models.timeline import MarkReadRequest, TimelineResponse, TimelineChannelsResponse
+from models.timeline import MarkAllReadRequest, MarkAllReadResponse, MarkReadRequest, TimelineResponse, TimelineChannelsResponse
 
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
 
@@ -54,6 +54,19 @@ def mark_channel_read(body: MarkReadRequest):
     conn = get_connection()
     try:
         return mark_read(conn, body.channel, body.read_until)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    finally:
+        conn.close()
+
+
+@router.post("/channels/read-all", response_model=MarkAllReadResponse)
+def mark_all_channels_read(body: MarkAllReadRequest):
+    """피드 '모두 읽음'(D-301) — 지금 칩 범위(platform)의 소스를 read_until까지 한 번에 읽음으로. channel_reads만 갱신."""
+    from pipeline.timeline import mark_all_read
+    conn = get_connection()
+    try:
+        return mark_all_read(conn, body.platform, body.read_until)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     finally:

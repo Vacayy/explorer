@@ -224,7 +224,9 @@ def table(period: str | None = None, flow: str = "export", **opt) -> dict:
         # 같은 분류 안에 상위 품목이 있으면 금액은 상위 쪽에만 센다(분류가 다르면 그 분류의 품목으로 센다)
         if not (r["nested_in"] and group_of.get(r["nested_in"]) == r["group_label"]):
             g["value"] += r.get("value") or 0
-        if r["flag"] == "surge":
+        if r["nested_in"]:          # 세목은 급등·급감 수에서 뺀다 — 상위 품목에 이미 합산돼 있다(D-301)
+            continue
+        if r["flag"] in ("surge", "new"):
             g["surge"] += 1
         elif r["flag"] == "plunge":
             g["plunge"] += 1
@@ -233,9 +235,13 @@ def table(period: str | None = None, flow: str = "export", **opt) -> dict:
 
 
 def highlights(period: str | None = None, flow: str = "export", limit: int = 8, rank: str = "contribution", **opt) -> dict:
-    """급등·급감 랭킹 — 기본은 기여도 순(무엇이 전체를 움직였나), rank=intensity면 이례성 순."""
+    """급등·급감 랭킹 — 기본은 기여도 순(무엇이 전체를 움직였나), rank=intensity면 이례성 순.
+
+    세목(팔로우한 다른 HS의 하위 부호, nested_in)은 목록·수에서 뺀다(D-301) — 관세청이 상위 부호에 하위를 합산해 주므로
+    상위가 급등이면 세목도 함께 급등으로 잡혀 같은 움직임을 두세 번 센다. 상위가 팔로우되지 않은 10자리 품목은 그 자체가 최상위라 남긴다.
+    세목의 판정은 table()·/follow 행(품목 격자 배지)에 그대로 있다."""
     t = table(period, flow, **opt)
-    flagged = [r for r in t["rows"] if r.get("flag") in ("surge", "plunge", "new")]
+    flagged = [r for r in t["rows"] if r.get("flag") in ("surge", "plunge", "new") and not r.get("nested_in")]
     if rank == "intensity":
         flagged.sort(key=lambda r: -(r.get("intensity") or 0))
     else:

@@ -216,6 +216,13 @@ function KeepQueryRedirect({ to }: { to: string }) {
   return <Navigate to={withSearch(to, search)} replace />
 }
 
+/** /actions — 시장 전체 목록은 홈 › 한국 시장 #actions로(D-300, 쿼리 유지). ?code=X는 도시에 단계까지 지금 화면 그대로 */
+function ActionsRoute() {
+  const { search } = useLocation()
+  if (new URLSearchParams(search).get("code")) return <ActionsPage />
+  return <Navigate to={withSearch("/home/kr#actions", search)} replace />
+}
+
 /** /explore?list=<type> → /discover?signal=<type>#signals (다른 쿼리는 그대로) */
 function ExploreRedirect() {
   const { search } = useLocation()
@@ -289,7 +296,7 @@ export default function App() {
             <Route path="thesis" element={<ThesisAuditPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="ask" element={<AskRedirect />} />
-            <Route path="actions" element={<ActionsPage />} />
+            <Route path="actions" element={<ActionsRoute />} />
 
             {/* Discovery */}
             <Route path="discover" element={<MarketAnalysisPage />} />

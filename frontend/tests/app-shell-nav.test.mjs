@@ -55,7 +55,10 @@ const CASES = [
   ['/discover', '?panel=history', 'explore', 'discover'],
   ['/discover/peers', '?view=research&group=package_substrate&stock=007810', 'explore', 'peers'],
   ['/analyze/compare', '?stocks=005930,000660', 'explore', 'peers'],
-  ['/actions', '', 'explore', 'actions'],
+  // 후속 묶음 — 시장 전체 기업활동은 홈 › 한국 시장 #actions(D-300). /actions?code=X는 도시에 단계까지 그 화면 그대로
+  ['/actions', '', 'home', 'kr'],
+  ['/actions', '?code=005930', 'home', 'kr'],
+  ['/home/kr', '?view=pro', 'home', 'kr'],
   // 산업
   ['/map', '', 'industry', 'sectors'],
   ['/map', '?view=universe', 'industry', 'sectors'],
@@ -148,7 +151,7 @@ test('L2 tabs follow the plan, transitional tabs last', () => {
   const tabs = Object.fromEntries(SECTIONS.map(s => [s.key, s.tabs.map(t => t.label)]))
   assert.deepEqual(tabs.home, ['대시보드', '한국 시장', '미국 시장', '매크로', '내 종목'])
   assert.deepEqual(tabs.feed, ['피드', '저장됨'])
-  assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물', '기업활동'])
+  assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물'])
   assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '대만 공급망', '밸류체인', '회사채'])
   assert.deepEqual(tabs.world, ['지금', '그래프', '내 판단', '스터디'])
 })
@@ -208,6 +211,15 @@ test('old signals tab (/explore) lands on 종목 발견 #signals and maps ?list=
   assert.match(app, /#signals`\} replace/)
   assert.match(app, /<Route path="discover\/signals" element=\{<Navigate to="\/discover#signals" replace \/>\} \/>/)
   assert.ok(!app.includes('ExplorePage') && !app.includes('ComparePage'))
-  // 기업활동은 도시에 단계까지 그대로(/actions·/actions?code=)
-  assert.match(app, /<Route path="actions" element=\{<ActionsPage \/>\} \/>/)
+})
+
+test('/actions (no code) goes to 홈 › 한국 시장 #actions with its query; ?code= keeps the page until the dossier stage', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  assert.match(app, /<Route path="actions" element=\{<ActionsRoute \/>\} \/>/)
+  assert.match(app, /get\("code"\)\) return <ActionsPage \/>/)
+  assert.match(app, /withSearch\("\/home\/kr#actions", search\)/)
+  const home = readFileSync(new URL('../src/components/home/HomePage.tsx', import.meta.url), 'utf8')
+  assert.match(home, /<div id="actions" className="scroll-mt-4"><ActionsList variant="block" \/><\/div>/)
+  const omni = readFileSync(new URL('../src/components/shared/Omnibar.tsx', import.meta.url), 'utf8')
+  assert.ok(omni.includes('to: "/home/kr#actions"'))
 })

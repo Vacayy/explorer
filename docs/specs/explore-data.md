@@ -37,6 +37,8 @@
 
 ## 4. 기업활동 `/actions`
 
+> 2026-11-05(D-300): 시장 전체 목록은 홈 › 한국 시장 `#actions` 블록(`ActionsList variant=block`)으로 옮겼다. `/actions`(코드 없음)는 `/home/kr#actions`로 리다이렉트(쿼리 `view·type·kind` 유지), `/actions?code=X`는 도시에 단계까지 옛 화면.
+
 - `GET /api/spine/actions`에 다음을 더했다.
   - `kind=all|original|correction`(API 기본 all). `report_nm`에 '정정'이 있으면 정정이다.
   - `stock_code` 필터.

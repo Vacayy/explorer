@@ -1,6 +1,6 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
-import type { TrackerCondition, TrackerKind, TrackerRole, TrackerView } from "@/types"
+import type { TrackerCondition, TrackerKind, TrackerRole, TrackerStatus, TrackerView } from "@/types"
 
 const trackerQuery = (code: string | null) => ({
   queryKey: ["spine", "tracker", code],
@@ -15,9 +15,17 @@ export function useTracker(code: string | null) {
   return useQuery(trackerQuery(code))
 }
 
-/** 여러 추적 종목의 카드 — 홈 › 내 종목의 머리 줄(충족 수)·조건 충족 알림 줄. 캐시 키는 useTracker와 같다 */
-export function useTrackers(codes: string[]) {
-  return useQueries({ queries: codes.map(trackerQuery) })
+export const TRACKER_STATUS_KEY = ["spine", "tracker-status"] as const
+
+/** 추적 종목 전체의 조건 충족 요약(D-301) — 홈 › 내 종목의 머리 줄(충족 수)·조건 충족 알림 줄. 카드 여러 장을 기다리지 않는다 */
+export function useTrackerStatus(enabled = true) {
+  return useQuery({
+    queryKey: TRACKER_STATUS_KEY,
+    queryFn: async () => (await api.get<TrackerStatus>("/api/spine/tracker/status")).data,
+    enabled,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  })
 }
 
 /** 위젯을 막 놓았을 때 수급을 바로 받는다 */
@@ -27,7 +35,7 @@ export function prepareTracker(code: string) {
 
 export function useTrackerConditionMutations(code: string) {
   const qc = useQueryClient()
-  const refresh = () => qc.invalidateQueries({ queryKey: ["spine", "tracker", code] })
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["spine", "tracker", code] }), qc.invalidateQueries({ queryKey: TRACKER_STATUS_KEY })])
   const add = useMutation({
     mutationFn: async (body: { role: TrackerRole; kind: TrackerKind; level?: number | null; ma?: number | null; label: string; note?: string | null }) =>
       (await api.post<TrackerCondition>(`/api/spine/tracker/${code}/conditions`, body)).data,

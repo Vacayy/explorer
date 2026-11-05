@@ -37,7 +37,7 @@ class EvaluateTests(unittest.TestCase):
 
 class TrackedTests(unittest.TestCase):
     def setUp(self):
-        self.conn = sqlite3.connect(":memory:")
+        self.conn = sqlite3.connect(":memory:", check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         ensure(self.conn)
         from pipeline.watch_rules import SCHEMA
@@ -67,6 +67,25 @@ class TrackedTests(unittest.TestCase):
         keys = [k for k, _ in _items(self.conn, "intraday", "2026-03-06", live=True)]
         self.assertIn("track-cond:2026-03-06:1", keys)
         self.assertIn("track-day:2026-03-06:111111:-1", keys)
+
+    def test_status_summarizes_met_and_newly_met(self):
+        """가벼운 충족 요약(D-301) — 종가 90: 손절 95 이하는 오늘 새로 충족(전일 100), 60일선 이탈은 충족이지만 전일엔 이력 부족이라 '새로'가 아님"""
+        from pipeline.stock_tracker import status
+        s = status(self.conn)
+        self.assertEqual((s["met"], s["newly_met"]), (2, 1))
+        item = s["items"][0]
+        self.assertEqual((item["code"], item["name"], item["market"], item["met"], item["newly_met"]), ("111111", "테스트", "kr", 2, 1))
+        self.assertEqual([(c["label"], c["status"], c["newly_met"]) for c in item["conditions"]],
+                         [("손절", "met", True), ("60일선 이탈", "met", False)])
+
+    def test_status_endpoint(self):
+        from fastapi.testclient import TestClient
+        from main import app
+        from routers import spine_tracker
+        from tests.test_job_status import KeepOpen
+        with patch.object(spine_tracker, "get_connection", return_value=KeepOpen(self.conn)):
+            d = TestClient(app).get("/api/spine/tracker/status").json()
+        self.assertEqual((d["met"], d["newly_met"], [i["code"] for i in d["items"]]), (2, 1, ["111111"]))
 
 
 

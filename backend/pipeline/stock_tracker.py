@@ -307,6 +307,25 @@ def read(conn, code: str) -> dict:
             "flows": _flows(conn, code) if mkt == "kr" else None, "issues": _issues(conn, code, name, mkt), "conditions": conds}
 
 
+def status(conn) -> dict:
+    """추적 종목 전체의 조건 충족 요약(ia-redesign §4.4, D-301) — read()의 조건 판정만 떼어 낸 가벼운 판. 저장된 시세(국내 stock_prices·장중
+    portfolio_quotes, 미국 us_prices)와 조건만 읽는다. 기술적 신호·수급·이슈·차트는 계산하지 않는다(카드 6~7개 대기 10초+ 해소)."""
+    ensure(conn)
+    items = []
+    for code in tracked_codes(conn):
+        mkt = market(conn, code)
+        rows = _rows(conn, code, n=260, mkt=mkt)
+        price = _price(conn, code, rows, mkt)
+        conds = []
+        for c in conditions(conn, code):
+            ev = evaluate(c, price["price"], rows, mkt)
+            conds.append({"id": c["id"], "role": c["role"], "label": c["label"], "status": ev["status"],
+                          "newly_met": newly_met(c, ev, price, rows, mkt)})
+        items.append({"code": code, "name": _name(conn, code), "market": mkt, "as_of": price["as_of"], "conditions": conds,
+                      "met": sum(c["status"] == "met" for c in conds), "newly_met": sum(c["newly_met"] for c in conds)})
+    return {"items": items, "met": sum(i["met"] for i in items), "newly_met": sum(i["newly_met"] for i in items)}
+
+
 # ── 알림 ─────────────────────────────────────────────────────────────────────
 
 def _items(conn, mode: str, today: str, live: bool) -> list[tuple[str, str]]:

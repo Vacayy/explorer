@@ -7,10 +7,11 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from '@/components/shared/PageContainer'
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { pinMine, useActions } from "@/hooks/useActions"
-import { formatKrw } from "@/utils/format"
+import { formatKrw, formatKstDateTime } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import RightsProTable from "@/components/actions/RightsProTable"
-import type { ActionKind } from "@/types"
+import { HomeBlock } from "@/components/home/HomeSection"
+import type { ActionKind, ActionsResponse } from "@/types"
 
 const TYPE_FILTERS = ["전체", "유상증자", "무상증자", "합병", "주식분할", "공개매수", "회사분할", "감자"] as const
 const segItem = cn("h-auto min-w-0 rounded-none px-2.5 py-1 text-xs font-normal",
@@ -18,11 +19,17 @@ const segItem = cn("h-auto min-w-0 rounded-none px-2.5 py-1 text-xs font-normal"
   "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:font-medium data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground")
 
 /**
- * /actions — 기업활동 (시총 5,000억+ KOSPI/KOSDAQ)
+ * 시장 전체 기업활동 (시총 5,000억+ KOSPI/KOSDAQ) — 홈 › 한국 시장 `#actions` 블록(D-300)과 `/actions?code=X`(도시에 단계까지 유지)가 같이 쓴다.
  * DART 전 시장 공시에서 자동 분류. 30분 주기 갱신. 기본은 원공시만(정정은 ?kind=correction|all),
- * 내 묶음(보유·관심) 종목은 맨 위에 고정한다.
+ * 내 묶음(보유·관심) 종목은 맨 위에 고정한다. 쿼리 view(목록·유무증 Pro)·type·kind는 어느 화면에서나 같다.
  */
 export default function ActionsPage() {
+  return <ActionsList variant="page" />
+}
+
+const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 내 종목(보유·관심)은 위로 올립니다."
+
+export function ActionsList({ variant }: { variant: "page" | "block" }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const type = searchParams.get("type") ?? ""
   const view = searchParams.get("view") ?? "list"
@@ -33,12 +40,26 @@ export default function ActionsPage() {
     const n = new URLSearchParams(p)
     if (v) n.set(k, v); else n.delete(k)
     return n
-  })
+  }, { preventScrollReset: true })
+  /** 보기를 바꾸면 목록 필터(type·kind)는 지운다 — 다른 쿼리는 그대로 */
+  const setView = (v: string) => setSearchParams((p) => {
+    const n = new URLSearchParams(p)
+    for (const k of ["type", "kind"]) n.delete(k)
+    if (v === "list") n.delete("view"); else n.set("view", v)
+    return n
+  }, { preventScrollReset: true })
 
+  if (variant === "block") return (
+    <HomeBlock label="actions" title="기업활동" info={INFO} asOf={data?.as_of ? formatKstDateTime(data.as_of) : null}
+      stale={!!data && !data.as_of} bodyClassName="space-y-3">
+      {isLoading ? <div role="status" aria-label="기업활동 불러오는 중" className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
+        : isError || !data ? <ErrorState message="기업활동을 불러오지 못했습니다" onRetry={() => refetch()} />
+        : <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} />}
+    </HomeBlock>
+  )
   if (isLoading) return <ActionsSkeleton />
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />
-  const items = pinMine(data.items)
-  const mineCount = items.filter((a) => a.my_group).length
+  const mineCount = data.items.filter((a) => a.my_group).length
 
   return (
     <PageContainer gap="sm">
@@ -52,13 +73,24 @@ export default function ActionsPage() {
             : <span className="text-caption text-muted-foreground">DART 스캔 성공 기록 없음</span>}
         </span>
       </div>
+      <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} />
+    </PageContainer>
+  )
+}
 
+function ActionsBody({ data, type, view, kind, setParam, setView }: {
+  data: ActionsResponse; type: string; view: string; kind: ActionKind
+  setParam: (k: string, v: string | null) => void; setView: (v: string) => void
+}) {
+  const items = pinMine(data.items)
+  return (
+    <>
       {/* 뷰 토글: 목록 | 유무증 Pro */}
       <div className="flex gap-1.5 items-center flex-wrap">
         <ToggleGroup
           type="single"
           value={view}
-          onValueChange={(v) => v && setSearchParams(v === "list" ? {} : { view: v })}
+          onValueChange={(v) => v && setView(v)}
           className="flex gap-0 rounded-md border overflow-hidden mr-2"
         >
           {[["list", "목록"], ["pro", "유무증 Pro"]].map(([v, label]) => (
@@ -159,7 +191,7 @@ export default function ActionsPage() {
           </TableBody>
         </Table>
       )}
-    </PageContainer>
+    </>
   )
 }
 

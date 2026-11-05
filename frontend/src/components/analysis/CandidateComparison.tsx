@@ -13,15 +13,18 @@ export function candidateAnalysisUrl(runId: string, code: string, compared: stri
   return `/analyze/${code}/summary?${params}`
 }
 
-export function CandidateComparison({ runId, result, items, ascending, onClear }: {
+export function CandidateComparison({ runId, result, items, ascending, onClear, compact = false }: {
   runId: string; result: AnalysisResult; items: AnalysisCandidate[]; ascending: boolean; onClear: () => void
+  /** 결과 화면(전체 폭) 후보 표 머리에 한 줄로 — 안내 문구 없이 '비교 n/3'과 버튼만 */
+  compact?: boolean
 }) {
   const ids = [...new Set(items.flatMap(item => Object.keys(item.checks ?? {})))]
   const codes = items.map(item => item.code)
-  return <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3" aria-label="후보 비교 선택">
-    <div className="space-y-1"><p className="text-sm font-medium" role="status">비교 {items.length}/3개{items.length > 0 && ` · ${items.map(item => item.name).join(' · ')}`}</p><p className="text-caption text-muted-foreground">목록의 비교 선택란에서 2~3개를 고르세요. 저장된 같은 시점의 판정을 비교합니다.</p></div>
-    <div className="flex gap-2">{items.length > 0 && <Button variant="ghost" onClick={onClear}>선택 해제</Button>}
-      <Dialog><DialogTrigger asChild><Button variant="outline" disabled={items.length < 2}>선택 후보 비교</Button></DialogTrigger>
+  return <div className={compact ? 'flex flex-wrap items-center gap-1.5' : 'flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3'} aria-label="후보 비교 선택">
+    {compact ? <span className="text-caption tabular-nums text-muted-foreground" role="status">비교 {items.length}/3</span>
+      : <div className="space-y-1"><p className="text-sm font-medium" role="status">비교 {items.length}/3개{items.length > 0 && ` · ${items.map(item => item.name).join(' · ')}`}</p><p className="text-caption text-muted-foreground">목록의 비교 선택란에서 2~3개를 고르세요. 저장된 같은 시점의 판정을 비교합니다.</p></div>}
+    <div className="flex gap-2">{items.length > 0 && <Button variant="ghost" size={compact ? 'sm' : 'default'} onClick={onClear}>선택 해제</Button>}
+      <Dialog><DialogTrigger asChild><Button variant="outline" size={compact ? 'sm' : 'default'} disabled={items.length < 2}>선택 후보 비교</Button></DialogTrigger>
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-5xl"><DialogHeader><DialogTitle>후보 비교 · {result.as_of}</DialogTitle><DialogDescription>동일한 검색 실행에 저장된 조건별 판정입니다. 계산 값과 비교 기준의 단위는 조건마다 다릅니다.</DialogDescription></DialogHeader>
           <Table aria-label="같은 기준일의 후보 비교"><TableHeader><TableRow><TableHead className="min-w-28">비교 항목</TableHead>{items.map(item => <TableHead key={item.code} className="min-w-44 whitespace-normal"><span className="block font-semibold text-foreground">{item.name}</span><span className="block text-caption">{item.code}</span></TableHead>)}</TableRow></TableHeader>
             <TableBody>

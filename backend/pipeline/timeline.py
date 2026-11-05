@@ -269,3 +269,21 @@ def mark_read(conn, channel: str, read_until: str) -> dict:
     conn.commit()
     row = conn.execute('SELECT read_until FROM channel_reads WHERE channel=?', (channel,)).fetchone()
     return {'channel': channel, 'read_until': row['read_until']}
+
+
+def mark_all_read(conn, platform: str, read_until: str) -> dict:
+    """피드 '모두 읽음'(D-301) — platform 범위(all = 사람 소스 전체, Explorer 산출물 제외)에서 read_until까지 안 읽은 글이 있는 소스를
+    한 번에 읽음으로 표시한다. 소스별 표시(mark_read, D-200)와 같은 표(channel_reads)·같은 규칙(뒤로 가지 않음)을 쓴다."""
+    stamp = utc(read_until)
+    targets = [c for c in channels(conn, until=stamp).items
+               if c.platform != 'system' and (platform == 'all' or c.platform == platform) and c.unread > 0]
+    for c in targets:
+        conn.execute("""
+            INSERT INTO channel_reads (channel, read_until, updated_at) VALUES (?, ?, datetime('now'))
+            ON CONFLICT(channel) DO UPDATE SET
+              read_until = CASE WHEN julianday(excluded.read_until) > julianday(channel_reads.read_until)
+                                THEN excluded.read_until ELSE channel_reads.read_until END,
+              updated_at = datetime('now')
+        """, (c.id, stamp))
+    conn.commit()
+    return {'platform': platform, 'read_until': stamp, 'channels': len(targets), 'marked': sum(c.unread for c in targets)}

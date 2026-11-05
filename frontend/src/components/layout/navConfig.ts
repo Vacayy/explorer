@@ -3,7 +3,7 @@
  *
  * L1 = 홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis (화면 구조 개편 C안). 홈 L2는 시스템 고정 탭 다섯 개(3단계), 나머지 L2는 지금 URL을 가리킨다.
  * 종목 도시에(/analyze, /us/:ticker, /company)는 L1이 아니라 목적지 — L2 자리에 도시에 탭을 보인다.
- * 이행 중 탭(기업활동)은 대체 화면이 생길 때까지 맨 뒤에 남긴다(옛 경로를 먼저 지우지 않는다).
+ * 시장 전체 기업활동은 홈 › 한국 시장 #actions(D-300) — /actions(코드 없음)는 리다이렉트, /actions?code=X는 도시에 단계까지 그 화면 그대로(한국 시장으로 판정).
  */
 export type SectionKey = "home" | "feed" | "explore" | "industry" | "portfolio" | "world"
 
@@ -29,7 +29,7 @@ export const SECTIONS: readonly SectionDef[] = [
   // 홈 L2 = 시스템 고정 탭(개편 3단계). 옛 주소 /home/b/:id·/home/briefing·/home/risk·/regimes는 리다이렉트, /retail은 한국 시장으로 판정
   { key: "home", label: "홈", path: "/home", tabs: [
     { key: "dashboard", path: "/home", label: "대시보드", match: ["/home"] },
-    { key: "kr", path: "/home/kr", label: "한국 시장", match: ["/home/kr", "/retail"] },
+    { key: "kr", path: "/home/kr", label: "한국 시장", match: ["/home/kr", "/retail", "/actions"] },
     { key: "us", path: "/home/us", label: "미국 시장", match: ["/home/us", "/home/briefing"] },
     { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro", "/home/risk", "/regimes"] },
     { key: "stocks", path: "/home/stocks", label: "내 종목", match: ["/home/stocks"] },
@@ -44,8 +44,7 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "peers", path: "/discover/peers", label: "Peer 그룹", match: ["/discover/peers", "/analyze/compare"] },
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
     { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
-    // 이행 중 — 기업활동은 도시에 개요로 옮긴 뒤 리다이렉트. 신호(/explore)는 종목 발견 '오늘의 신호'로 옮겨 리다이렉트(4c)
-    { key: "actions", path: "/actions", label: "기업활동", match: ["/actions"] },
+    // 신호(/explore)는 종목 발견 '오늘의 신호'로 옮겨 리다이렉트(4c). 기업활동 탭은 홈 › 한국 시장으로 옮겨 없앴다(D-300)
   ] },
   { key: "industry", label: "산업", path: "/map", tabs: [
     { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },

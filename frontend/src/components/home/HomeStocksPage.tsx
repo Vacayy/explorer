@@ -21,14 +21,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAddMember, useDefaultWatchGroup, useRemoveMember, useSetTracked } from "@/hooks/useGroups"
 import { usePortfolio } from "@/hooks/usePortfolio"
 import { useStockSearch } from "@/hooks/useStockSearch"
-import { useTracker, useTrackers } from "@/hooks/useTracker"
+import { useTracker, useTrackerStatus } from "@/hooks/useTracker"
 import { useSeason } from "@/hooks/useTranscripts"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { localToday } from "@/lib/seasonPhase"
 import { earningsBadge, featured as featuredOf, leadSignal, marketLabel, signalDetail, splitRows, trackedNotice } from "@/lib/myStocks"
 import { cn } from "@/lib/utils"
 import { formatKrw, formatNumber, formatPercent, formatStockPrice } from "@/utils/format"
-import type { SeasonOverview, StockGroupDetail, StockGroupMember, TrackerCondition, TrackerView } from "@/types"
+import type { SeasonOverview, StockGroupDetail, StockGroupMember, TrackerCondition } from "@/types"
 
 /**
  * 홈 › 내 종목 (시안 Home-Stocks·Mobile-Stocks, ia-redesign §4.4·§4.20·§4.28) — 기본 관심 묶음 하나를 본다.
@@ -37,7 +37,8 @@ import type { SeasonOverview, StockGroupDetail, StockGroupMember, TrackerConditi
  */
 type View = "all" | "tracked" | "held"
 const VIEWS = [{ value: "all", label: "전체" }, { value: "tracked", label: "추적" }, { value: "held", label: "보유" }]
-const UNTRACKED_LIMIT = 6
+/** 더 보기 전 비추적 행 수 — 데스크톱 10 · 모바일 6 (시안 Home-Stocks·Mobile-Stocks, D-301) */
+const UNTRACKED_LIMIT = { desktop: 10, mobile: 6 }
 const ROLE: Record<TrackerCondition["role"], string> = { entry: "진입", exit: "손절·청산", check: "확인" }
 const dossierPath = (code: string, market?: string | null) => (market === "us" ? `/us/${code}` : `/analyze/${code}/summary`)
 const eok = (v: number) => `${v > 0 ? "+" : ""}${formatKrw(v * 1e8)}`
@@ -57,8 +58,7 @@ export default function HomeStocksPage() {
 
   const members = group.data?.members ?? []
   const trackedCodes = members.filter(m => m.tracked).map(m => m.stock_code)
-  const trackers = useTrackers(trackedCodes)
-  const cards = Object.fromEntries(trackers.flatMap((q, i) => (q.data ? [[trackedCodes[i], q.data]] : []))) as Record<string, TrackerView>
+  const status = useTrackerStatus(trackedCodes.length > 0)
   const season = useSeason()
   const portfolio = usePortfolio()
 
@@ -79,10 +79,12 @@ export default function HomeStocksPage() {
   </PageLayout>
 
   const detail = group.data
-  const metCount = Object.values(cards).reduce((n, c) => n + c.conditions.filter(x => x.status === "met").length, 0)
+  // 충족 수·알림 줄은 가벼운 요약(/tracker/status)에서 — 지금 관심 목록에서 추적 중인 종목만 센다
+  const statusItems = (status.data?.items ?? []).filter(i => trackedCodes.includes(i.code))
+  const metCount = statusItems.reduce((n, i) => n + i.met, 0)
   const up = members.filter(m => (m.change_pct ?? 0) > 0).length
   const down = members.filter(m => (m.change_pct ?? 0) < 0).length
-  const stats = <>관심 {formatNumber(members.length)}종목 · 추적 {formatNumber(trackedCodes.length)}(충족 {formatNumber(metCount)}) · 상승 {formatNumber(up)} · 하락 {formatNumber(down)}
+  const stats = <>관심 {formatNumber(members.length)}종목 · 추적 {formatNumber(trackedCodes.length)}{status.data && <>(충족 {formatNumber(metCount)})</>} · 상승 {formatNumber(up)} · 하락 {formatNumber(down)}
     <span className="hidden md:inline"> · 오늘 켜진 감시 신호 {formatNumber(detail.today_signals)}개</span></>
 
   if (!members.length) return <PageLayout mode="document">
@@ -98,7 +100,7 @@ export default function HomeStocksPage() {
 
   const held = new Set((portfolio.data?.holdings ?? []).map(h => h.code))
   const visible = view === "tracked" ? members.filter(m => m.tracked) : view === "held" ? members.filter(m => held.has(m.stock_code)) : members
-  const alerts = trackedCodes.flatMap(code => (cards[code]?.conditions ?? []).filter(c => c.newly_met).map(c => ({ code, name: cards[code].name, label: c.label })))
+  const alerts = statusItems.flatMap(i => i.conditions.filter(c => c.newly_met).map(c => ({ code: i.code, name: i.name, label: c.label })))
 
   return <PageLayout mode="document">
     <div className="flex flex-col gap-4">
@@ -197,7 +199,7 @@ function StockList({ detail, members, limitUntracked, open, onOpen, season }: Li
   const remove = useRemoveMember(detail.id)
   const add = useAddMember()
   const today = localToday()
-  const { tracked, untracked, hidden } = useMemo(() => splitRows(members, limitUntracked && !more ? UNTRACKED_LIMIT : Number.MAX_SAFE_INTEGER), [members, limitUntracked, more])
+  const { tracked, untracked, hidden } = useMemo(() => splitRows(members, limitUntracked && !more ? UNTRACKED_LIMIT[mobile ? "mobile" : "desktop"] : Number.MAX_SAFE_INTEGER), [members, limitUntracked, more, mobile])
 
   const toggle = (m: StockGroupMember, on: boolean) => setTracked.mutateAsync({ stockCode: m.stock_code, tracked: on })
     .then(state => toast.success(state.tracked ? `${m.name} 추적을 켰습니다. ${trackedNotice(m.market)}` : `${m.name} 추적을 껐습니다.`))

@@ -23,6 +23,7 @@ import type { StrategySubmission } from '@/components/analysis/ConditionStackBui
 import { DiscoveryLibrary, DiscoveryRecommendations, SaveDiscoveryStrategy } from '@/components/analysis/DiscoveryLibrary'
 import { DiscoveryFollowup, type FollowupSubmission } from '@/components/analysis/DiscoveryFollowup'
 import { DiscoveryStart } from '@/components/analysis/DiscoveryStart'
+import { ConditionFunnel, ConditionStrip } from '@/components/analysis/DiscoveryResultView'
 import { DiscoveryWorkspace } from '@/components/analysis/DiscoveryWorkspace'
 import { useSessionDraft } from '@/hooks/useSessionDraft'
 import { isSearchDraft } from '@/components/analysis/discoveryDraft'
@@ -168,14 +169,15 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
   const legacy = !!run && ((!!run.spec && (run.spec.mode !== 'catalog' || !!run.spec.expression)) || turns.length > 1 || !!run.lineage)
   const drawing = !!drawParams && !runId
   const firstScreen = !runId && !library && !legacy && !drawing
-  const mode = library || legacy || drawing || firstScreen ? 'document' : 'workspace'
+  // 조건 검색 결과 = 전체 폭 결과 화면(시안 Discover-Results, D-300). 조건 편집(목록·내 조건)은 '조건 고치기' 시트(panel=conditions)
+  const resultScreen = !!runId && !library && !legacy && !drawing
   const runCount = analysis.runs.data?.items.length
 
   // 자동 재검색이 계산되는 몇 초 동안 직전 결과를 흐리게 남겨 맥락을 잃지 않게 한다.
   const previous = useRef<AnalysisRun | null>(null)
   useEffect(() => { if (run?.result) previous.current = run }, [run])
 
-  const renderRun = (run: AnalysisRun, compact: boolean) => <>
+  const renderRun = (run: AnalysisRun, compact = false) => <>
         <section aria-label="현재 검색" className="space-y-3">
           <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{STATUS[run.status]}</Badge><span className="text-caption text-hypothesis">검색 조건</span><span className="ml-auto text-caption text-muted-foreground">검색 실행 {formatRelativeTime(run.created_at)}{run.result && ` · 시세 ${run.result.as_of} 기준`}</span>{run.result && ['completed', 'partial'].includes(run.status) && <SaveDiscoveryStrategy run={run} />}</div>
           <Collapsible><div className={compact ? 'flex justify-end' : 'flex items-start gap-2'}>{!compact && <h2 className="min-w-0 flex-1 line-clamp-2 text-card-title font-medium leading-relaxed">{run.question}</h2>}<CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="shrink-0">조건 상세<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger></div><CollapsibleContent className="space-y-3 rounded-xl bg-card p-4 mt-3"><p className="whitespace-pre-wrap text-sm">{run.question}</p>{run.spec && <AnalysisConditions spec={run.spec} priceAdjustment={run.snapshot?.price_adjustment?.status} definitions={run.result?.strategy_definitions} />}{run.saved_strategy && <p className="text-caption text-muted-foreground">저장 전략 {run.saved_strategy.name} · v{run.saved_strategy.version} · {run.saved_strategy.date_policy === 'fixed' ? '기준일 고정' : '최신 보유일'}</p>}{run.lineage && <p className="text-caption text-muted-foreground"><Link className="text-primary hover:underline" to={`/discover?run=${run.lineage.parent_run_id}`}>이전 검색 보기</Link> · {run.lineage.scope === 'candidates' ? '이전 후보 범위' : '이전 검색 대상 전체'} · {run.lineage.date_policy === 'same' ? '동일 데이터' : '최신 데이터'}</p>}</CollapsibleContent></Collapsible>
@@ -193,14 +195,35 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
         </CollapsibleContent></Collapsible>
 </>
 
-  const results = !runId ? <div className="flex h-full min-h-60 flex-col items-center justify-center gap-1 rounded-xl border border-dashed p-6 text-center"><p className="text-sm font-medium">결과가 여기에 나옵니다</p><p className="text-caption text-muted-foreground">가운데에 조건을 쌓고 검색을 누르세요.</p></div>
-    : analysis.detail.isPending ? <div aria-label="검색 불러오는 중" role="status" className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-80 w-full" /></div>
-    : analysis.detail.isError ? <ErrorState message="검색 기록을 불러오지 못했습니다." onRetry={() => analysis.detail.refetch()} />
-    : run ? <div className="min-w-0 space-y-4">{renderRun(run, true)}
-      {busy && !run.result && previous.current && previous.current.id !== run.id && previous.current.result && <div aria-label="직전 결과" className="pointer-events-none space-y-2 opacity-50">
-        <p className="text-caption text-muted-foreground">직전 결과 · 새 결과가 나오면 바뀝니다</p>
-        <AnalysisResults key={previous.current.id} runId={previous.current.id} result={previous.current.result} onOpen={onOpen} stacked />
-      </div>}</div> : null
+  const results = <div className="flex h-full min-h-60 flex-col items-center justify-center gap-1 rounded-xl border border-dashed p-6 text-center"><p className="text-sm font-medium">결과가 여기에 나옵니다</p><p className="text-caption text-muted-foreground">가운데에 조건을 쌓고 검색을 누르세요.</p></div>
+  const editConditions = () => setPanel('conditions')
+
+  /** 결과 화면 — 조건 칩 띠 → 진행·오류 → 조건별 통과 수 → 후보 표 | 근거 창 → 실행 기록 */
+  const renderResult = (run: AnalysisRun) => {
+    const spec = run.spec ?? run.result?.spec
+    const shown = run.result ? run : busy && previous.current && previous.current.id !== run.id && previous.current.result ? previous.current : null
+    return <div className="min-w-0 space-y-3">
+      {spec && <ConditionStrip spec={spec} result={run.result} labels={labels} status={run.status === 'completed' ? null : STATUS[run.status]} actions={<>
+        <Button variant="outline" size="sm" className="rounded-full" onClick={editConditions}>조건 고치기</Button>
+        {run.result && ['completed', 'partial'].includes(run.status) && <SaveDiscoveryStrategy run={run} label="전략으로 저장" />}
+      </>} />}
+      {busy && <div className="flex flex-wrap items-center justify-between gap-3 border bg-card p-3"><p role="status" aria-live="polite" className="flex items-center gap-2 text-sm">{run.status !== 'waiting_input' && <LoaderCircle className="size-4 animate-spin text-primary" />}{PHASE[run.phase] ?? STATUS[run.status]}{analysis.disconnected && <span className="text-muted-foreground"> · 진행 연결을 복구하고 있습니다</span>}</p><Button variant="outline" size="sm" disabled={analysis.cancel.isPending} onClick={() => analysis.cancel.mutate()}><Square className="size-3" />{analysis.cancel.isPending ? '취소 요청 중…' : '분석 취소'}</Button></div>}
+      {run.pending && ['waiting_input', 'interrupted'].includes(run.status) && !run.cost_uncertain && <AnalysisQuestion key={run.pending.id} pending={run.pending} busy={analysis.resume.isPending || analysis.cancel.isPending} onAnswer={payload => analysis.resume.mutateAsync({ interrupt_id: run.pending!.id, payload })} />}
+      {(run.error || ['blocked', 'failed', 'interrupted', 'cancelled'].includes(run.status)) && <Card><CardContent className="space-y-3 pt-3"><p role="alert" className={run.status === 'cancelled' ? 'text-sm text-muted-foreground' : 'text-sm text-destructive'}>{run.error || (run.status === 'cancelled' ? '사용자 요청으로 검색을 취소했습니다.' : run.status === 'interrupted' ? run.pending && !run.cost_uncertain ? '같은 데이터와 조건으로 재개할 수 있습니다.' : '서버가 중단되어 이 실행을 계속할 수 없습니다.' : '검색을 완료하지 못했습니다.')}</p>{run.cost_uncertain && <p className="text-sm text-muted-foreground">중단된 호출의 비용을 확인할 수 없어 기존 실행을 재개할 수 없습니다. 새 검색으로 시작해 주세요.</p>}<Button variant="outline" size="sm" disabled={analysis.start.isPending} onClick={() => run.spec?.mode === 'catalog' ? void submit({ question: run.question, spec: run.spec }) : onNew(run.question)}>{run.spec?.mode === 'catalog' ? '같은 조건으로 새 검색' : '같은 질문으로 새 검색'}</Button></CardContent></Card>}
+      {shown?.result ? <div className={shown !== run ? 'pointer-events-none opacity-50' : undefined} aria-label={shown !== run ? '직전 결과' : undefined}>
+        <div className="space-y-3"><ConditionFunnel result={shown.result} labels={labels} />
+          <AnalysisResults key={shown.id} runId={shown.id} result={shown.result} onOpen={onOpen} warnings={shown === run ? warnings : undefined} wide mobile={mobile} labels={labels} onEdit={editConditions} /></div>
+      </div>
+        : busy && run.status !== 'waiting_input' ? <div aria-label="검색 결과를 준비하고 있습니다" className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-80 w-full" /></div> : null}
+      {!run.result && warnings.length > 0 && !busy && <div className="rounded-xl bg-hypothesis/10 p-4"><p className="text-sm font-medium">자료 확인이 필요합니다</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
+      <Collapsible className="border bg-card px-4 py-2"><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="w-full justify-between">실행 기록·결과 파일<ChevronDown className="size-4" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-3 pb-3 pt-2">
+        <p className="text-caption text-muted-foreground">검색 실행 {formatRelativeTime(run.created_at)}{run.result && ` · 시세 ${run.result.as_of} 기준`}</p>
+        {!!run.artifacts.length && <div className="flex flex-wrap items-center gap-2" aria-label="검색 결과 파일">{run.artifacts.map(artifact => <Button key={artifact.id} asChild variant="outline" size="sm"><a href={analysisArtifactUrl(run.id, artifact.id)} download={artifact.name}><Download className="size-3.5" />{artifact.name}</a></Button>)}</div>}
+        <p className="text-caption text-muted-foreground">{formatNumber(run.steps)}단계 · 사용 비용 ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(run.cost_usd)} · 실행 시간 {formatNumber(Math.round(run.active_seconds))}초</p>{run.snapshot && <p className="text-caption text-muted-foreground">자료 기준일 {run.snapshot.as_of} · {formatNumber(run.snapshot.stocks)}종목 · {formatNumber(run.snapshot.rows)}개 시세</p>}{run.result?.verification?.cached_from && <p className="text-caption text-muted-foreground">같은 자료·조건으로 이미 검증한 결과를 재사용했습니다. 계산을 다시 하지 않았습니다.</p>}
+        {analysis.logs.length ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 font-mono text-caption">{analysis.logs.map(log => `[${log.sequence}] ${log.text}`).join('\n\n')}</pre> : <p className="text-caption text-muted-foreground">저장된 실행 이벤트를 불러오면 여기에 표시합니다.</p>}
+      </CollapsibleContent></Collapsible>
+    </div>
+  }
 
   const toolbar = <div className="flex flex-wrap items-center gap-2" aria-label="발견 작업 도구">
       <Button variant={library ? 'ghost' : 'secondary'} size="sm" onClick={() => setLibrary(false)}><Search className="size-4" />{runId ? '검색 결과' : '새 검색'}</Button>
@@ -239,7 +262,7 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
     </div>
 
   const workspace = (inSheet: boolean) => <DiscoveryWorkspace run={run} runLoading={!!runId && analysis.detail.isPending} startPending={analysis.start.isPending} onStart={submit} results={inSheet ? null : results}
-    universeRequest={universeRequest} onUniverseApplied={() => setUniverseRequest(null)} />
+    universeRequest={universeRequest} onUniverseApplied={() => setUniverseRequest(null)} inSheet={inSheet} />
   const last = lastSearch(analysis.runs.data?.items ?? [], labels)
   const mobileFirst = mobile && firstScreen
   const mobileStart = <div className="space-y-4">
@@ -262,20 +285,27 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
     </section>}
   </div>
 
-  return <PageLayout mode={mode} toolbar={mobileFirst ? <>{mobileStart}<div hidden>{toolbar}</div></> : toolbar} header={<PageHeader title="종목 발견" actions={runId ? <Button variant="outline" size="sm" onClick={() => onNew()}><Plus className="size-4" />새 검색</Button> : library ? <Button variant="ghost" size="sm" onClick={() => onNew()}><ArrowLeft className="size-4" />검색으로</Button> : undefined} />}>
+  return <PageLayout mode="document" toolbar={mobileFirst ? <>{mobileStart}<div hidden>{toolbar}</div></> : toolbar} header={<PageHeader title="종목 발견" actions={runId ? <Button variant="outline" size="sm" onClick={() => onNew()}><Plus className="size-4" />새 검색</Button> : library ? <Button variant="ghost" size="sm" onClick={() => onNew()}><ArrowLeft className="size-4" />검색으로</Button> : undefined} />}>
     {library && <DiscoveryLibrary onOpen={onOpen} />}
-    <div hidden={library} className={mode === 'workspace' ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-5'}>
+    <div hidden={library} className="space-y-5">
       {drawing && <div id="discovery-structure-workspace" className="scroll-mt-4"><ChartStructureCard params={drawParams} codes={drawCodes} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} /></div>}
       {drawNotice && <p role="alert" className="rounded-lg bg-muted/40 p-3 text-sm">{drawNotice} 종목 이름이나 코드를 문장에 넣어 다시 요청하거나, 그대로 조건 검색으로 진행하려면 "찾아줘"처럼 검색 동사를 써 주세요.</p>}
       {mutationError && <div role="alert"><ErrorState message={mutationError.message} /></div>}
       {legacy && run ? <>
-        <ol aria-label="검색 스레드" className="space-y-4">{(turns.some(turn => turn.id === run.id) ? turns : [run]).map(turn => turn.id !== run.id ? <li key={turn.id}><ThreadTurn turn={turn as Turn} onOpen={onOpen} /></li> : <li key={turn.id} ref={focused} className="scroll-mt-4 space-y-5">{renderRun(run, false)}</li>)}</ol>
+        <ol aria-label="검색 스레드" className="space-y-4">{(turns.some(turn => turn.id === run.id) ? turns : [run]).map(turn => turn.id !== run.id ? <li key={turn.id}><ThreadTurn turn={turn as Turn} onOpen={onOpen} /></li> : <li key={turn.id} ref={focused} className="scroll-mt-4 space-y-5">{renderRun(run)}</li>)}</ol>
         {run.result && ['completed', 'partial'].includes(run.status) && <DiscoveryFollowup key={run.id} runId={run.id} empty={!run.result.items.length} busy={analysis.start.isPending} onSubmit={submit} />}
+      </> : resultScreen ? <>
+        {analysis.detail.isPending ? <div aria-label="검색 불러오는 중" role="status" className="space-y-3"><Skeleton className="h-12 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-80 w-full" /></div>
+          : analysis.detail.isError ? <ErrorState message="검색 기록을 불러오지 못했습니다." onRetry={() => analysis.detail.refetch()} />
+          : run ? renderResult(run) : null}
+        <Sheet open={panel === 'conditions'} onOpenChange={open => setPanel(open ? 'conditions' : null)}>
+          <SheetContent side={mobile ? 'bottom' : 'right'} className={mobile ? 'max-h-[90dvh] overflow-y-auto' : 'w-full overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-4xl'}><SheetHeader><SheetTitle>조건 고치기</SheetTitle><SheetDescription className="sr-only">조건을 바꾸고 다시 검색합니다</SheetDescription></SheetHeader><div className="px-4 pb-6">{workspace(true)}</div></SheetContent>
+        </Sheet>
       </> : !drawing && <>
         {firstScreen && <TodaySignals onUniverse={takeUniverse} onOpenList={openSignal} />}
         {mobileFirst ? <Sheet open={panel === 'conditions'} onOpenChange={open => setPanel(open ? 'conditions' : null)}>
           <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto"><SheetHeader><SheetTitle>조건 고르기</SheetTitle><SheetDescription className="sr-only">조건을 쌓고 검색합니다</SheetDescription></SheetHeader><div className="px-4 pb-6">{workspace(true)}</div></SheetContent>
-        </Sheet> : <div id="discovery-workspace" className={firstScreen ? 'flex scroll-mt-4 flex-col lg:h-[calc(100dvh-var(--shell-offset))]' : 'flex min-h-0 flex-1 flex-col'}>{workspace(false)}</div>}
+        </Sheet> : <div id="discovery-workspace" className="flex scroll-mt-4 flex-col lg:h-[calc(100dvh-var(--shell-offset))]">{workspace(false)}</div>}
       </>}
     </div>
     <SignalListSheet type={signalType} onClose={closeSignal} onUniverse={takeUniverse} />

@@ -21,7 +21,7 @@ import { AnalysisConditions } from '@/components/analysis/AnalysisConditions'
 import type { AnalysisRun } from '@/components/analysis/types'
 import type { DiscoveryRecommendation, SavedStrategy } from '@/components/analysis/discoveryTypes'
 
-export function SaveDiscoveryStrategy({ run }: { run: AnalysisRun }) {
+export function SaveDiscoveryStrategy({ run, label = '검색 전략 저장' }: { run: AnalysisRun; label?: string }) {
   const [open, setOpen] = useState(false)
   const [target, setTarget] = useState('new')
   const [name, setName] = useState('')
@@ -40,7 +40,7 @@ export function SaveDiscoveryStrategy({ run }: { run: AnalysisRun }) {
     } catch { /* Keep the draft and request key for retry. */ }
   }
   return <Dialog open={open} onOpenChange={setOpen}>
-    <DialogTrigger asChild><Button variant="outline" size="sm"><BookmarkPlus className="size-4" />검색 전략 저장</Button></DialogTrigger>
+    <DialogTrigger asChild><Button variant="outline" size="sm"><BookmarkPlus className="size-4" />{label}</Button></DialogTrigger>
     <DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>검증한 검색을 다시 사용하기</DialogTitle><DialogDescription>질문·조건·출처 실행을 버전으로 보존합니다. 기존 전략에 추가해도 이전 조건은 남습니다.</DialogDescription></DialogHeader>
       <form className="space-y-4" onSubmit={event => { event.preventDefault(); void submit() }}>
         <div className="space-y-2"><Label htmlFor={`${id}-target`}>저장 위치</Label><Select value={target} onValueChange={value => { setTarget(value); const item = strategies.data?.items.find(item => item.id === value); if (item) { setName(item.name); setPurpose(item.purpose) } }}><SelectTrigger id={`${id}-target`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">새 전략</SelectItem>{strategies.data?.items.map(item => <SelectItem key={item.id} value={item.id}>{item.name} · v{item.current_version}</SelectItem>)}</SelectContent></Select></div>

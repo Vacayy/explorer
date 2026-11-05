@@ -1,4 +1,6 @@
+import { useEffect } from "react"
 import { Navigate, useLocation } from "react-router-dom"
+import { ActionsList } from "@/components/actions/ActionsPage"
 import { PageLayout, PageHeader } from '@/components/shared/PageLayout'
 import { RetailHeatCard } from '@/components/home/RetailHeatCard'
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
@@ -26,11 +28,20 @@ export default function HomePage() {
 }
 
 /**
- * 홈 › 한국 시장 (시안 Home-KR, ia-redesign §4.2·§4.17) — 국장 거래대금 상위 | 가파른 추세(같은 높이) → 개인 투자 열기 → 수출입.
+ * 홈 › 한국 시장 (시안 Home-KR, ia-redesign §4.2·§4.17) — 국장 거래대금 상위 | 가파른 추세(같은 높이) → 개인 투자 열기 → 수출입 → 기업활동.
  * 대만 월매출·대만→한국 연결은 산업 › 대만 공급망(/follow/taiwan)으로 옮겼다(4b단계).
+ * 기업활동(시장 전체 목록)은 옛 /actions 화면을 옮겨 왔다(D-300) — /actions는 여기 #actions로 보낸다.
  */
 export function HomeKrPage() {
   const mobile = useIsMobile()   // 좁은 화면은 추세 표를 좁은 열(종목·60일·수익률)로
+  const { hash } = useLocation()
+  // #retail·#actions로 들어오면 그 블록으로 — 위 블록들이 그려지며 높이가 바뀌므로 한 번 더 맞춘다
+  useEffect(() => {
+    if (!hash) return
+    const go = () => document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView({ block: "start" })
+    const timers = [150, 900].map(ms => window.setTimeout(go, ms))
+    return () => timers.forEach(t => window.clearTimeout(t))
+  }, [hash])
   return <PageLayout mode="document" header={<PageHeader title="한국 시장" />}>
     <div className="@container/market">
       <div className="surface-grid grid lg:grid-cols-2">
@@ -40,13 +51,15 @@ export function HomeKrPage() {
       </div>
       <div id="retail" className="scroll-mt-4"><RetailHeatCard /></div>
       <TradeBlock />
+      <div id="actions" className="scroll-mt-4"><ActionsList variant="block" /></div>
     </div>
   </PageLayout>
 }
 
 /**
  * 홈 › 미국 시장 (시안 Home-US, ia-redesign §4.3·§4.28) — 실적 시즌 블록(시즌 사이엔 다음 시즌까지 D-n) →
- * 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림·개별 움직임 → 컨콜·실적 발표 | 실적 모멘텀(이행 화면에서 옮겨 온 것).
+ * 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림·개별 움직임 → 컨콜·실적 발표 | 새 모멘텀 후보(미국 시장 탭에도 컨콜 기능을 둔다, D-301).
+ * 곧 발표 줄은 시즌 개요 발표 캘린더의 그날(?view=season&day=)로, 모멘텀 줄은 선택한 후보(?view=season&pick=)로 간다(4d).
  */
 export function HomeUsPage() {
   return <PageLayout mode="document" header={<PageHeader title="미국 시장" />}>

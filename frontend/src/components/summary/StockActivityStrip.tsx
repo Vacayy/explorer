@@ -26,7 +26,7 @@ export function StockActivityStrip({ stockCode }: { stockCode: string }) {
   return (
     <Card className="py-0">
       <CardContent className="space-y-1.5 px-3 py-3 text-sm">
-        <Row label="최근 30일 기업활동" more={<Link to="/actions" className="text-primary hover:underline">기업활동 →</Link>}>
+        <Row label="최근 30일 기업활동" more={<Link to="/home/kr#actions" className="text-primary hover:underline">기업활동 →</Link>}>
           {actions.isError ? <span className="text-muted-foreground">불러오지 못했어요</span>
             : !acts.length ? <span className="text-muted-foreground">공시 없음</span>
             : <>

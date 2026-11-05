@@ -6,7 +6,7 @@ import { BlockError, RowsSkeleton, tone } from "@/components/home/blockState"
 import { localToday } from "@/lib/seasonPhase"
 import { useTradeHighlights } from "@/hooks/useTrade"
 import { cn } from "@/lib/utils"
-import { formatPercent, formatRatio, formatUsd } from "@/utils/format"
+import { formatNumber, formatPercent, formatRatio, formatUsd } from "@/utils/format"
 import type { TradeHighlights } from "@/types"
 
 /** 통계월이 지난달보다 오래됐나 — 관세청 품목별 통계는 매월 중순에 나와서, 그 전에는 지지난달 값을 보인다(§4.28 부분) */
@@ -24,7 +24,7 @@ const pct = (v: number | null | undefined) => formatPercent(v == null ? null : v
  * 수출 총액 · 기여 1위 → 산업별 수출 규모 상위 8 | 평소보다 크게 늘어난 품목 8(수출액·전년 대비·전월 대비·증가분 기여).
  */
 export function TradeBlock() {
-  const q = useTradeHighlights(8)
+  const q = useTradeHighlights(100)   // 급등 수를 세려고 넉넉히(산업 › 수출입과 같은 캐시) — 표는 상위 8만
   const d = q.data
   return (
     <HomeBlock label="kr.trade" title="수출입" link={{ to: "/follow/trade", label: "산업 › 수출입" }}
@@ -77,7 +77,7 @@ function Body({ d }: { d: TradeHighlights }) {
         </section>
 
         <section aria-label="평소보다 크게 늘어난 품목" className="min-w-0">
-          <h3 className="mb-1 text-xs font-semibold">평소보다 크게 늘어난 품목 {d.surge.length}</h3>
+          <h3 className="mb-1 text-xs font-semibold">평소보다 크게 늘어난 품목 {formatNumber(d.surge.length)}</h3>
           {!d.surge.length ? <p className="text-sm text-muted-foreground">{month}에는 평소보다 크게 늘어난 품목이 없습니다.</p> :
           <div className="overflow-x-auto"><Table className="text-[13px]">
             <TableHeader><TableRow>
@@ -87,7 +87,7 @@ function Body({ d }: { d: TradeHighlights }) {
               <TableHead className="h-8 px-1 text-right text-[11px] max-sm:hidden">전월 대비</TableHead>
               <TableHead className="h-8 px-1 text-right text-[11px]">증가분 기여</TableHead>
             </TableRow></TableHeader>
-            <TableBody>{d.surge.map(r => (
+            <TableBody>{d.surge.slice(0, 8).map(r => (
               <TableRow key={r.hs_code}>
                 <TableCell className="max-w-48 px-1 py-1.5 whitespace-normal">
                   <Link to={`/follow/trade?hs=${encodeURIComponent(r.hs_code)}`} className="hover:underline">{r.item_name}</Link>

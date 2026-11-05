@@ -50,3 +50,28 @@ class TrackerView(BaseModel):
     flows: dict | None = None           # 수집 전이거나 미국 종목이면 None
     issues: dict
     conditions: list[TrackerCondition]
+
+
+class TrackerStatusCondition(BaseModel):
+    id: int
+    role: Literal["entry", "exit", "check"]
+    label: str
+    status: Literal["met", "not_met", "pending", "unknown"] = "unknown"
+    newly_met: bool = False
+
+
+class TrackerStatusItem(BaseModel):
+    code: str
+    name: str
+    market: Literal["kr", "us"] = "kr"
+    as_of: str | None = None
+    met: int = 0                        # 지금 충족한 조건 수
+    newly_met: int = 0                  # 오늘 새로 충족한 조건 수
+    conditions: list[TrackerStatusCondition]
+
+
+class TrackerStatus(BaseModel):
+    """추적 종목 전체의 조건 충족 요약 — 홈 › 내 종목 머리 줄 '충족 n'·알림 줄. 저장된 시세·조건만 읽는다(차트·신호·수급·이슈 없음)."""
+    items: list[TrackerStatusItem]
+    met: int = 0
+    newly_met: int = 0

@@ -43,6 +43,7 @@ function useGroupWrite<TVariables>(mutationFn: (variables: TVariables) => Promis
       client.invalidateQueries({ queryKey: groupKeys.list })
       client.invalidateQueries({ queryKey: ['spine', 'group-signals', detail.id] })
       client.invalidateQueries({ queryKey: groupKeys.defaultWatch })
+      client.invalidateQueries({ queryKey: ['spine', 'tracker-status'] })   // 추적 종목을 빼거나 되돌리면 충족 요약도 바뀐다
     },
   })
 }
@@ -69,6 +70,7 @@ export function useSetTracked(groupId: number) {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
       client.invalidateQueries({ queryKey: groupKeys.defaultWatch })
+      client.invalidateQueries({ queryKey: ['spine', 'tracker-status'] })
     },
   })
 }

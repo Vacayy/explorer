@@ -65,11 +65,21 @@ vi.mock('@/hooks/useGroups', () => ({
   useRemoveMember: () => ({ mutateAsync: mutate.remove, isPending: false }),
   useAddMember: () => ({ mutateAsync: mutate.add, isPending: false }),
 }))
+// 머리 줄 '충족 n'·알림 줄은 가벼운 요약(/tracker/status, D-301), 펼친 행만 카드(useTracker)
+const statusOf = () => {
+  const items = Object.values(CARDS).map(c => ({ code: c.code, name: c.name, market: c.market ?? 'kr', as_of: c.as_of,
+    met: c.conditions.filter(x => x.status === 'met').length, newly_met: c.conditions.filter(x => x.newly_met).length,
+    conditions: c.conditions.map(x => ({ id: x.id, role: x.role, label: x.label, status: x.status, newly_met: !!x.newly_met })) }))
+  return { items, met: items.reduce((n, i) => n + i.met, 0), newly_met: items.reduce((n, i) => n + i.newly_met, 0) }
+}
 vi.mock('@/hooks/useTracker', () => ({
-  useTrackers: (codes: string[]) => codes.map(c => ({ data: CARDS[c] })),
+  useTrackerStatus: () => ({ data: statusOf() }),
   useTracker: (code: string) => ({ isPending: false, isError: false, data: CARDS[code], refetch: () => {} }),
 }))
-vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
+let mobile = false
+// 모바일 특징주 가로 스크롤(HorizontalCarousel)이 ResizeObserver를 쓴다 — jsdom에는 없다
+globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver
+vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mobile }))
 vi.mock('@/hooks/useTranscripts', () => ({ useSeason: () => ({ data: undefined }) }))
 vi.mock('@/hooks/usePortfolio', () => ({ usePortfolio: () => ({ isPending: false, data: { holdings: [{ code: 'A' }] } }) }))
 vi.mock('@/hooks/useStockSearch', () => ({ useStockSearch: () => ({ isPending: false, data: { companies: [], us: [] } }) }))
@@ -83,19 +93,23 @@ beforeEach(() => {
   mutate.setTracked.mockReset().mockResolvedValue({ group_id: 1, stock_code: 'ROP', tracked: true, tracked_codes: ['B', 'D', 'ROP'] })
   mutate.remove.mockReset().mockResolvedValue(detail)
 })
-afterEach(() => cleanup())
+afterEach(() => { cleanup(); mobile = false })
 const renderAt = (path = '/home/stocks') => render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><MemoryRouter initialEntries={[path]}><HomeStocksPage /></MemoryRouter></TooltipProvider></QueryClientProvider>)
 const codes = () => [...document.querySelectorAll('[data-stocks-list] [data-code]')].map(r => r.getAttribute('data-code'))
 
-it('lists tracked rows first, then six untracked rows and a more button', () => {
+it('lists tracked rows first, then ten untracked rows on desktop (six on mobile) and a more button', () => {
   renderAt()
-  expect(codes()).toEqual(['D', 'B', 'C', 'SITM', 'ROP', 'E', 'A'])     // 비추적 5개 — 6개 이하라 더 보기 없음
+  expect(codes()).toEqual(['D', 'B', 'C', 'SITM', 'ROP', 'E', 'A'])     // 비추적 5개 — 기준 이하라 더 보기 없음
   expect(screen.queryByRole('button', { name: /더 보기/ })).toBeNull()
-  detail = { ...detail, members: [...MEMBERS, member('F'), member('G')] }
+  detail = { ...detail, members: [...MEMBERS, ...['F', 'G', 'H', 'I', 'J', 'K'].map(c => member(c))] }   // 비추적 11개
+  cleanup(); renderAt()
+  expect(codes().length).toBe(2 + 10)
+  fireEvent.click(screen.getByRole('button', { name: '1종목 더 보기 ›' }))
+  expect(codes().length).toBe(2 + 11)
+  mobile = true
   cleanup(); renderAt()
   expect(codes().length).toBe(2 + 6)
-  fireEvent.click(screen.getByRole('button', { name: '1종목 더 보기 ›' }))
-  expect(codes().length).toBe(2 + 7)
+  expect(screen.getByRole('button', { name: '5종목 더 보기 ›' })).toBeTruthy()
 })
 
 it('shows the header counts, featured cards and the newly-met alert line that opens the row', () => {

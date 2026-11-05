@@ -124,14 +124,14 @@ function CallsBody({ h }: WidgetBodyProps) {
   // 아래: 받은 순이 아니라 발표일 순 — 늦게 받은 옛 분기 콜이 '최근'으로 보이지 않게
   const rows = [...q.data].sort((a, b) => (b.call_date ?? "").localeCompare(a.call_date ?? "")).slice(0, h > 3 ? 5 : 2)
   return <div className="flex h-full flex-col gap-2 overflow-hidden">
-    <p className="text-[11px] font-medium text-muted-foreground">곧 발표 · 실적 캘린더</p>
+    <p className="flex items-baseline justify-between text-[11px] font-medium text-muted-foreground">곧 발표<Link to="/follow/transcripts?view=season" className="font-normal hover:text-foreground">발표 캘린더 ›</Link></p>
     {follow.isError ? <p className="text-[13px] text-muted-foreground">발표 일정을 불러오지 못했어요.</p>
       : !follow.data ? <p className="text-[13px] text-muted-foreground">불러오는 중…</p>
       : !upcoming.length ? <p className="text-[13px] text-muted-foreground">확인된 발표 예정이 없어요. 컨콜 탭에서 발표일을 갱신할 수 있어요.</p>
       : <ul className="divide-y text-[13px]">
         {upcoming.map(({ f, d }) => (
           <li key={f.ticker}>
-            <Link to={f.latest ? `/follow/transcripts?t=${f.latest.transcript_id}` : "/follow/transcripts"} title={`${f.company_name} · ${f.next_report_date}`}
+            <Link to={`/follow/transcripts?view=season&day=${f.next_report_date}`} title={`${f.company_name} · ${f.next_report_date} 발표 — 발표 캘린더의 그날`}
               className="flex items-center gap-2 py-1.5 hover:underline">
               <Badge variant={d <= 3 ? "default" : "secondary"} className="w-11 shrink-0 justify-center px-1 text-[11px] tabular-nums">{d === 0 ? "오늘" : `D-${d}`}</Badge>
               <span className="font-medium">{f.ticker}</span>
@@ -197,7 +197,7 @@ export const EXPLORE_WIDGETS: WidgetDef[] = [
   // P6a — 신호 · 컨콜 · 산업·섹터
   { id: "explore.signals", title: "오늘의 신호", description: "유형별 오늘 건수 · 상위 종목", section: "explore", group: "신호",
     size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/discover#signals", useMeta: useSignalsMeta, Body: SignalsBody },
-  { id: "explore.momentum", title: "이번 시즌 실적 모멘텀", description: "새로 생기거나 빨라진 성장 동인 · 미국 기업", section: "explore", group: "컨콜",
+  { id: "explore.momentum", title: "새 모멘텀 후보", description: "이번 시즌 콜에서 새로 생기거나 빨라진 성장 동인 · 미국 기업. 실적 시즌 개요의 '새 모멘텀 후보'와 같은 판정입니다", section: "explore", group: "컨콜",
     size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/follow/transcripts?view=season#momentum", useMeta: useMomentumMeta, Body: MomentumBody },
   { id: "explore.calls", title: "컨콜 · 실적 발표", description: "곧 발표할 팔로우 기업(D-day) · 지난 7일 받은 컨콜", section: "explore", group: "컨콜",
     size: { w: 4, h: 5, minW: 3, minH: 2 }, detailPath: "/follow/transcripts", useMeta: useCallsMeta, Body: CallsBody },
@@ -212,7 +212,7 @@ export const EXPLORE_WIDGETS: WidgetDef[] = [
   { id: "explore.people", title: "팔로우 인물 이번 주", description: "7일 언급 · 지난주 대비 · 최신 문서", section: "explore", group: "인물",
     size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/people", useMeta: usePeopleMeta, Body: PeopleBody },
   { id: "explore.actions", title: "오늘 기업활동", description: "원공시만 · 내 종목 먼저 · 최근 7일", section: "explore", group: "기업활동",
-    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/actions", useMeta: useActionsMeta, Body: ActionsBody },
+    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/home/kr#actions", useMeta: useActionsMeta, Body: ActionsBody },
   { id: "explore.rights", title: "유무증 D-day", description: "7일 안 권리락·청약·신주 상장", section: "explore", group: "기업활동",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/actions?view=pro", useMeta: useRightsMeta, Body: RightsBody },
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/home/kr?view=pro#actions", useMeta: useRightsMeta, Body: RightsBody },
 ]

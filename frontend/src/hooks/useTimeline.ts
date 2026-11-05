@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
 import { getJson, STALE } from '@/api/query'
-import type { TimelineResponse, TimelineChannelsResponse } from '@/types'
+import type { MarkAllReadPlatform, MarkAllReadResponse, TimelineResponse, TimelineChannelsResponse } from '@/types'
 
 export interface TimelineFilters {
   scope: string
@@ -37,6 +37,16 @@ export function useMarkChannelRead() {
   return useMutation({
     mutationFn: async (v: { channel: string; read_until: string }) =>
       (await api.post<{ channel: string; read_until: string }>('/api/spine/feed/channels/read', v)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['spine', 'timeline-channels'] }),
+  })
+}
+
+/** 피드 '모두 읽음'(D-301) — 지금 칩 범위의 소스를 read_until(보고 있는 목록의 기준 시각)까지 한 번에 읽음으로 */
+export function useMarkAllRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: { platform: MarkAllReadPlatform; read_until: string }) =>
+      (await api.post<MarkAllReadResponse>('/api/spine/feed/channels/read-all', v)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['spine', 'timeline-channels'] }),
   })
 }
