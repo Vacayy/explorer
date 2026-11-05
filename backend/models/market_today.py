@@ -69,10 +69,12 @@ class TodayCurrent(BaseModel):
 
 
 class MarketToday(BaseModel):
-    trade_date: str | None
+    trade_date: str | None       # 보는 날(KST). 기본은 오늘 — 자정에 넘어가 회차 전이면 slots 비어 있음
     slots: list[TodaySlot]
     current: TodayCurrent | None
     next_slot: str | None        # 오늘 남은 다음 회차(KST) — 주말·장 마감 뒤면 None
+    prev_date: str | None = None  # 이 날보다 앞에서 회차가 있는 가장 가까운 날 — '‹' 이동
+    next_date: str | None = None  # 뒤로 회차가 있는 날(없고 오늘보다 앞이면 오늘)
 
 
 # ---------- 화두 → 내러티브 연결 (ia-redesign §9) ----------

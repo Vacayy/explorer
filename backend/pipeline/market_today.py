@@ -340,15 +340,17 @@ def _link_after(conn, day: date) -> dict:
 # ---------- 읽기 ----------
 
 def read(day: str | None = None, slot: str | None = None) -> dict:
-    """그날(없으면 최근 거래일) 회차 목록 + 선택(없으면 최신) 회차 본문. LLM 0."""
+    """그날(없으면 오늘 KST — 자정에 넘어간다) 회차 목록 + 선택(없으면 최신) 회차 본문, 앞뒤로 회차가 있는 날. LLM 0."""
+    today = datetime.now(timezone.utc).astimezone(KST).date().isoformat()
+    day = day or today
     conn = get_connection()
     try:
         ensure_schema(conn)
-        if not day:
-            row = conn.execute("SELECT MAX(trade_date) d FROM market_today").fetchone()
-            day = row["d"] if row and row["d"] else None
-        if not day:
-            return {"trade_date": None, "slots": [], "current": None, "next_slot": _next_label()}
+        prev = conn.execute("SELECT MAX(trade_date) d FROM market_today WHERE trade_date < ?", (day,)).fetchone()["d"]
+        nxt = conn.execute("SELECT MIN(trade_date) d FROM market_today WHERE trade_date > ?", (day,)).fetchone()["d"]
+        if nxt is None and day < today:
+            nxt = today            # 오늘은 회차가 아직 없어도 갈 수 있다
+        nav = {"prev_date": prev, "next_date": nxt, "next_slot": _next_label() if day == today else None}
         rows = conn.execute("SELECT * FROM market_today WHERE trade_date=? ORDER BY slot", (day,)).fetchall()
         slots = [{"slot": r["slot"], "label": SLOT_LABEL[r["slot"]], "created_at": r["created_at"],
                   "topics": len(json.loads(r["items_json"]))} for r in rows]
@@ -368,7 +370,7 @@ def read(day: str | None = None, slot: str | None = None) -> dict:
                        "topics": [{**t, "sources": [sources[r] | {"ref": r} for r in t["refs"] if r in sources],
                                    "narratives": links.get(i, [])}
                                   for i, t in enumerate(json.loads(pick["items_json"]))]}
-        return {"trade_date": day, "slots": slots, "current": current, "next_slot": _next_label()}
+        return {"trade_date": day, "slots": slots, "current": current, **nav}
     finally:
         conn.close()
 

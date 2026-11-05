@@ -1,7 +1,7 @@
 /* ── Market Today — 오늘 장중 실시간 소스 화두 (docs/specs/market-today.md) ── */
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
-import { Sparkles } from "lucide-react"
+import { Link, useSearchParams } from "react-router-dom"
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { WidgetState } from "@/components/shared/WidgetFrame"
@@ -17,8 +17,24 @@ const tone = (v: number | null | undefined) => v == null || v === 0 ? "" : v > 0
 const kstToday = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
 const md = (d: string) => d.slice(5).replace("-", "/").replace(/^0/, "").replace("/0", "/")
 
+/** 보는 날 — URL `?mt=YYYY-MM-DD`(없으면 오늘). 머리(meta)와 본문이 같은 날을 본다 */
+function useMtDate() {
+  const [sp, setSp] = useSearchParams()
+  const date = sp.get("mt")
+  const go = (d: string | null) => setSp(prev => {
+    const n = new URLSearchParams(prev)
+    if (!d || d === kstToday()) n.delete("mt"); else n.set("mt", d)
+    return n
+  }, { replace: true })
+  return [date, go] as const
+}
+
+const WD = ["일", "월", "화", "수", "목", "금", "토"]
+const dayLabel = (d: string) => `${md(d)}(${WD[new Date(`${d}T12:00:00+09:00`).getUTCDay()]})`
+
 export function useMarketTodayMeta(): WidgetMeta {
-  const q = useMarketToday()
+  const [date] = useMtDate()
+  const q = useMarketToday(null, date)
   const d = q.data
   const c = d?.current
   if (!d || !c) return { asOf: null }
@@ -27,21 +43,44 @@ export function useMarketTodayMeta(): WidgetMeta {
 }
 
 export function MarketTodayBody({ w, h }: WidgetBodyProps) {
+  const [date, go] = useMtDate()
   const [slot, setSlot] = useState<string | null>(null)
-  const q = useMarketToday(slot)
-  const latest = useMarketToday()
+  useEffect(() => setSlot(null), [date])
+  const q = useMarketToday(slot, date)
+  const latest = useMarketToday(null, date)
   const d = q.data
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  if (!d.current) return <WidgetState empty emptyText={d.next_slot ? `오늘 첫 정리는 ${d.next_slot}에 나와요.` : "아직 장중 정리가 없어요. 평일 09:30·11:30·15:00, 장 마감 뒤 16:00에 만들어집니다."} />
+  const nav = <DayNav day={d} onGo={go} />
+  if (!d.current) {
+    const isToday = d.trade_date === kstToday()
+    const text = isToday && d.next_slot ? `오늘 첫 정리는 ${d.next_slot}에 나와요.`
+      : isToday ? "오늘은 장중 정리가 없어요." : "이날은 장중 정리가 없어요."
+    return <div className="flex h-full min-h-0 flex-col gap-3">{nav}<WidgetState empty emptyText={text} /></div>
+  }
   const c = d.current
   const n = h <= 3 ? 2 : w <= 4 ? 3 : 5
   return <div className="flex h-full min-h-0 flex-col gap-3">
+    {nav}
     {/* 하루 경로는 가장 늦은 회차의 것 — 고른 회차는 점으로만 표시 */}
     <IntradayTimeline day={latest.data ?? d} picked={c.slot} onPick={setSlot} />
     <p className="flex items-center gap-1.5 text-[11.5px] text-hyp"><Sparkles className="size-3" aria-hidden="true" />AI 요약 · 실시간 소스에서 주로 나온 얘기{d.next_slot ? ` · 다음 정리 ${d.next_slot}` : ""}</p>
     {c.topics.length === 0
       ? <p className="text-sm text-muted-foreground">이 회차에는 출처로 확인된 화두가 없어요.</p>
       : <ul className="-mr-2 min-h-0 divide-y overflow-y-auto pr-2">{c.topics.slice(0, n).map(t => <TopicRow key={t.title} t={t} compact={h <= 3} links={c.links_ready} />)}</ul>}
+  </div>
+}
+
+/** 날짜 넘기기 — ‹ 앞 날 · 보는 날 · 뒷 날 › (회차가 있는 날로만 이동, 오늘은 회차 전이어도 갈 수 있다) */
+function DayNav({ day, onGo }: { day: MarketToday; onGo: (d: string | null) => void }) {
+  if (!day.trade_date) return null
+  const today = day.trade_date === kstToday()
+  return <div className="flex items-center gap-1 text-[12.5px] text-ink-2">
+    <Button variant="ghost" size="icon-xs" aria-label={day.prev_date ? `${dayLabel(day.prev_date)} 보기` : "이전 날 없음"} disabled={!day.prev_date}
+      onClick={() => day.prev_date && onGo(day.prev_date)}><ChevronLeft aria-hidden /></Button>
+    <span className="min-w-[72px] text-center font-mono tabular-nums">{today ? `오늘 ${dayLabel(day.trade_date)}` : dayLabel(day.trade_date)}</span>
+    <Button variant="ghost" size="icon-xs" aria-label={day.next_date ? `${dayLabel(day.next_date)} 보기` : "다음 날 없음"} disabled={!day.next_date}
+      onClick={() => day.next_date && onGo(day.next_date)}><ChevronRight aria-hidden /></Button>
+    {!today && <Button variant="ghost" size="xs" className="ml-auto" onClick={() => onGo(null)}>오늘로</Button>}
   </div>
 }
 

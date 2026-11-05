@@ -125,6 +125,26 @@ class MarketTodayTests(unittest.TestCase):
         self.assertNotIn("아침 화두", seen[0], "장중 회차는 직전 회차만")
         self.assertEqual(mt.read("2026-11-03")["slots"][-1]["label"], "16:00 마감")
 
+    def test_read_defaults_to_today_kst_and_navigates_days(self):
+        conn = self.connect()
+        for d in ("2026-11-02", "2026-11-04"):
+            conn.execute("INSERT INTO market_today (trade_date, slot, window_start, window_end, items_json, sources_json, doc_count) "
+                         "VALUES (?, '1600', 'a', 'b', '[]', '{}', 5)", (d,))
+        conn.commit()
+        conn.close()
+        from unittest.mock import patch as _p
+        class _DT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 11, 5, 23, 40, tzinfo=timezone.utc)   # KST 11/6 08:40 — 자정 넘어 다음 날
+        with _p.object(mt, "datetime", _DT):
+            r = mt.read()
+        self.assertEqual((r["trade_date"], r["slots"], r["current"]), ("2026-11-06", [], None), "자정이 지나면 오늘(회차 전)로")
+        self.assertEqual((r["prev_date"], r["next_date"]), ("2026-11-04", None))
+        with _p.object(mt, "datetime", _DT):
+            r = mt.read("2026-11-04")
+        self.assertEqual((r["prev_date"], r["next_date"], r["next_slot"]), ("2026-11-02", "2026-11-06", None))
+
 
 if __name__ == "__main__":
     unittest.main()

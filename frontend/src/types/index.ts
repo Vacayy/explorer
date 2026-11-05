@@ -1771,6 +1771,9 @@ export interface MarketToday {
     topics: TodayTopic[]
   } | null
   next_slot: string | null
+  /** 앞뒤로 회차가 있는 날(‹ › 이동). next_date는 없고 오늘보다 앞이면 오늘 */
+  prev_date?: string | null
+  next_date?: string | null
 }
 
 /* ---------- 화두 → 내러티브 타임라인·후보 (ia-redesign §9) ---------- */
