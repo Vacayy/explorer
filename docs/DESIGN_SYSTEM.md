@@ -29,7 +29,7 @@ shadcn 변수는 이 토큰에 잇는다: `--background=--bg`, `--card/--popover
 
 ### 테마
 
-- `<html class="dark">` 하나로 전환한다. 설정 메뉴(상단 바 ⚙)의 세그먼트에서 시스템·라이트·다크를 고른다. 기본은 시스템(`prefers-color-scheme`), 선택은 localStorage `theme`(next-themes)에 남는다.
+- `<html class="dark">` 하나로 전환한다. 테마·설정 메뉴(상단 바 해·달 아이콘, D-323)의 세그먼트에서 시스템·라이트·다크를 고른다. 기본은 시스템(`prefers-color-scheme`), 선택은 localStorage `theme`(next-themes)에 남는다.
 - `index.html`의 인라인 스크립트가 첫 그림 전에 `.dark`를 붙여 깜빡임을 막는다.
 - 캔버스 차트(lightweight-charts)는 `components/charts/chartTheme.ts`의 `useChartTheme()`로 토큰을 읽고, 테마가 바뀌면 다시 칠한다. Recharts·SVG는 `var(--token)`을 그대로 쓴다.
 

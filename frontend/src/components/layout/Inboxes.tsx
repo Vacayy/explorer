@@ -8,48 +8,7 @@ import ApprovalsCard from "@/components/home/ApprovalsCard"
 import { BriefingList } from "@/components/home/BriefingList"
 import { useHome } from "@/hooks/useHome"
 import { useSaved } from "@/hooks/useSaved"
-import SavedList from "@/components/follow/SavedList"
-import { EmptyState } from "@/components/shared/ErrorState"
 import { ShellButton } from "./ShellButton"
-
-/**
- * 저장됨 인박스 — 저장 건수 배지 + 클릭 시 Sheet(SavedList compact). (D-077)
- * 목록 쿼리는 SavedPage·SaveButton과 같은 queryKey라 캐시 공유. 상단 바에 둔다(docs/specs/app-shell.md §3).
- */
-export function SavedInbox({ className }: { className?: string }) {
-  const [open, setOpen] = useState(false)
-  const { data: items = [] } = useSaved()
-  const count = items.length
-
-  return (
-    <>
-      <ShellButton icon={Bookmark} label="저장됨" badge={count} onClick={() => setOpen(true)} aria-label={`저장됨 ${count}건`} className={className} />
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>저장됨</SheetTitle>
-          </SheetHeader>
-          <div className="px-4 pb-6">
-            {count === 0 ? (
-              <EmptyState message="아직 저장한 항목이 없어요." />
-            ) : (
-              <>
-                <SavedList items={items} compact onNavigate={() => setOpen(false)} />
-                <Link
-                  to="/feed/saved"
-                  onClick={() => setOpen(false)}
-                  className="mt-3 block text-center text-xs text-muted-foreground hover:underline"
-                >
-                  전체 보기
-                </Link>
-              </>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
-    </>
-  )
-}
 
 /**
  * 승인 인박스 — 대기 건수 배지 + 클릭 시 Sheet(ApprovalsCard 재활용). "어느 화면에서든"(D-056)은 상단 바 상시 배지로 유지.
@@ -68,7 +27,7 @@ export function ApprovalsInbox({ className }: { className?: string }) {
 
   return (
     <>
-      <ShellButton icon={Inbox} label="인박스 · 승인 대기" badge={count} badgeTone="hypothesis" onClick={() => setOpen(true)} aria-label={`승인 대기 ${count}건`} className={className} />
+      <ShellButton icon={Inbox} label="인박스 · 승인 대기 · 저장됨" dot={count > 0} onClick={() => setOpen(true)} aria-label={count ? `인박스 — 승인 대기 ${count}건` : "인박스"} className={className} />
       <InboxSheet open={open} onOpenChange={setOpen} count={count} />
     </>
   )
@@ -79,13 +38,22 @@ export function InboxSheet({ open, onOpenChange, count }: { open: boolean; onOpe
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
+        <SheetHeader className="flex-row items-center justify-between gap-2 pr-12">
           <SheetTitle>인박스</SheetTitle>
+          <SavedLink onNavigate={() => onOpenChange(false)} />
         </SheetHeader>
         {open && <InboxBody count={count} />}
       </SheetContent>
     </Sheet>
   )
+}
+
+/** 저장됨 — 상단 바 아이콘 대신 인박스 머리의 링크(D-323) */
+function SavedLink({ onNavigate }: { onNavigate: () => void }) {
+  const count = useSaved().data?.length ?? 0
+  return <Link to="/feed/saved" onClick={onNavigate} className="flex items-center gap-1 text-[13px] text-ink-2 hover:text-ink">
+    <Bookmark className="size-3.5" aria-hidden />저장됨{count > 0 && <span className="font-mono tabular-nums text-ink-3">{count}</span>} ›
+  </Link>
 }
 
 /** 인박스 본문 — 공지(브리핑) + 승인 대기. Sheet 열릴 때만 마운트(홈 payload 지연 로드). */

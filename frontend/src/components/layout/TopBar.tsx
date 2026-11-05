@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useTheme } from "next-themes"
-import { Archive, Bookmark, ChevronDown, ChevronRight, Globe, Inbox, Monitor, Moon, Rss, Search, Settings, SlidersHorizontal, Sparkles, Sun } from "lucide-react"
+import { Archive, Bookmark, ChevronDown, ChevronRight, Globe, Inbox, Monitor, Moon, Rss, Search, SlidersHorizontal, Sparkles, Sun } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,14 +18,14 @@ import { cn } from "@/lib/utils"
 import { openOmnibar } from "@/lib/omnibar"
 import { formatKstSlashDate } from "@/utils/format"
 import { SECTIONS, locate } from "./navConfig"
-import { ApprovalsInbox, InboxSheet, SavedInbox, useApprovalsCount } from "./Inboxes"
+import { ApprovalsInbox, InboxSheet, useApprovalsCount } from "./Inboxes"
 import { ShellButton } from "./ShellButton"
 
 interface HealthItem { key: string; label: string; status: string; detail: string; critical?: boolean; latest?: string | null; owner?: string | null }
 const STATUS_LABEL: Record<string, string> = { stale: "지연", error: "오류" }
 
 /**
- * 상단 바 — 로고 · L1 6탭(활성·aria-current 모두 locate 판정 — NavLink는 쿼리를 보지 않아 쓰지 않는다) · 검색 · 운영 상태 · 인박스 · 설정 · AI 대화 토글 (docs/specs/app-shell.md §3).
+ * 상단 바 — 로고 · L1 6탭(활성·aria-current 모두 locate 판정 — NavLink는 쿼리를 보지 않아 쓰지 않는다) · 검색 · 운영 상태 점 · 인박스(저장됨은 인박스 안) · 테마·설정 · AI 대화 토글 (docs/specs/app-shell.md §3).
  * L1 활성은 navConfig.locate 단일 판정. 도시에·대화 등 L1 밖 화면에서는 어느 탭도 활성이 아니다.
  */
 export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: () => void }) {
@@ -66,9 +66,9 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
         </Button>
         <ShellButton icon={Search} label="검색 (⌘K)" onClick={openOmnibar} className="xl:hidden" />
         {/* 폰(<768)은 검색 · AI 두 아이콘만 (ia-redesign §4.29) */}
+        {/* 넓은 화면 오른쪽(D-323, 시안 Shell-Topbar·Home): 상태 점 · 인박스(점) · 테마·설정 · AI */}
         <HealthDot />
         <ApprovalsInbox className="max-md:hidden" />
-        <SavedInbox className="max-md:hidden" />
         <SettingsMenu />
         <Button variant="secondary" size="sm" aria-pressed={aiOpen} aria-label="AI 대화 (⌘J)" title="AI 대화 (⌘J)" onClick={onToggleAi}
           className="h-8 gap-1.5 rounded-full border-0 px-3 text-ink max-md:size-10 max-md:bg-transparent max-md:px-0 max-md:text-ink-2 max-md:aria-pressed:bg-chip max-md:aria-pressed:text-ink">
@@ -95,26 +95,19 @@ function HealthDot() {
   const title = isError ? "운영 상태를 불러오지 못했습니다" : !data ? "운영 상태 확인 중"
     : !items.length ? "아직 점검할 원천이 없습니다" : bad.length ? `지연·오류 ${bad.length}건` : "모두 최신"
   const warn = isError || bad.length > 0
+  const dotTone = isError || bad.some(h => h.status === "error") ? "bg-destructive" : warn ? "bg-warn" : data ? "bg-fact" : "bg-ink-3/40"
   return (
     <Popover>
       <PopoverTrigger asChild>
-        {/* 전부 최신이면 점 하나(32칸), 지연·오류가 있으면 테두리 알약 '운영 n/m' (시안 Home · Shell-Topbar) */}
-        {warn ? (
-          <Button variant="outline" size="sm" aria-label={`운영 상태 — ${title}`}
-            className="hidden h-[30px] gap-1.5 rounded-full px-2.5 text-xs font-normal text-ink-2 hover:text-ink lg:flex">
-            <span aria-hidden className="size-[7px] rounded-full bg-warn" />
-            운영{data && <span className="font-mono tabular-nums">{items.length - bad.length}/{items.length}</span>}
-          </Button>
-        ) : (
-          <Button variant="ghost" size="icon-sm" aria-label={`운영 상태 — ${title}`} className="hidden lg:flex">
-            <span aria-hidden className={cn("size-2 rounded-full", data ? "bg-fact" : "bg-ink-3/40")} />
-          </Button>
-        )}
+        {/* 점 하나(32칸) — 정상 초록, 지연 주의색, 오류·불러오기 실패 빨강 계열(D-323). 누르면 운영 창 */}
+        <Button variant="ghost" size="icon-sm" aria-label={`운영 상태 — ${title}`} title={title} className="hidden md:flex">
+          <span aria-hidden className={cn("size-2 rounded-full", dotTone)} />
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[420px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0">
         <div className="flex flex-col gap-1 px-4 pt-3.5 pb-2.5">
           <div className="flex items-center gap-2">
-            <span aria-hidden className={cn("size-[9px] rounded-full", warn ? "bg-warn" : data ? "bg-fact" : "bg-ink-3/40")} />
+            <span aria-hidden className={cn("size-[9px] rounded-full", dotTone)} />
             <span className="text-base font-semibold">{title}</span>
             {data && items.length > 0 && <span className="ml-auto font-mono text-xs text-ink-3 tabular-nums">원천 {items.length - bad.length}/{items.length} 최신</span>}
           </div>
@@ -211,18 +204,19 @@ function PhoneMenu() {
   )
 }
 
-/** 설정 — 드물게 쓰는 것: 테마(시스템·라이트·다크) · 소스 관리 · 관리자 · 보관함 (시안 Shell-Topbar ②) */
+/** 테마 선택지 — 데스크톱 테마·설정 메뉴와 폰 로고 시트가 같이 쓴다 */
 const THEMES = [
   { value: "system", label: "시스템", icon: Monitor },
   { value: "light", label: "라이트", icon: Sun },
   { value: "dark", label: "다크", icon: Moon },
 ] as const
+/** 테마·설정(D-323) — 아이콘은 지금 화면 테마(해 · 달), 누르면 시스템·라이트·다크 선택과 관리자 링크 */
 function SettingsMenu() {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, resolvedTheme } = useTheme()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ShellButton icon={Settings} label="설정" className="max-md:hidden" />
+        <ShellButton icon={resolvedTheme === "dark" ? Moon : Sun} label="화면 테마 · 설정" className="max-md:hidden" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[280px]">
         <DropdownMenuRadioGroup value={theme ?? "system"} onValueChange={setTheme} aria-label="화면 테마"
