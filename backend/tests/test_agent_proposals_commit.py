@@ -41,8 +41,9 @@ class RunAllCommitTests(unittest.TestCase):
              patch.object(ops, "record_run", side_effect=self.record):
             stats = ap.run_all(include_llm=True)
         self.assertEqual(stats["vocab_merge"], "error: RuntimeError")
-        # vocab_merge·auto_curation(D-294) 두 단계가 각각 기록한다 — 어느 기록 시점에도 쓰기 트랜잭션이 열려 있으면 안 된다
-        self.assertEqual(self.open_at_record, [False, False], "job_runs 기록 시점에 쓰기 트랜잭션이 열려 있었다")
+        # vocab_merge·auto_curation(D-294)·person_curation(ia-redesign §4.23) 세 단계가 각각 기록한다
+        # — 어느 기록 시점에도 쓰기 트랜잭션이 열려 있으면 안 된다
+        self.assertEqual(self.open_at_record, [False, False, False], "job_runs 기록 시점에 쓰기 트랜잭션이 열려 있었다")
         kinds = {r[0] for r in self.conn.execute("SELECT kind FROM proposals")}
         self.assertEqual(kinds, {"neglect", "contested", "falsifier", "report", "devil"})
 

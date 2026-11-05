@@ -238,7 +238,7 @@ export default function Omnibar() {
           </CommandGroup>}
           {q && !!data?.mentions.length && <CommandGroup heading="문장 안에서 알아본 것">
             <div className="flex flex-wrap gap-1.5 px-2 pb-2">{data.mentions.map(m => <CommandItem key={`m-${m.id}`} value={`mention-${m.id}`} data-stock={m.stock_code ?? undefined} data-name={m.name} data-market="kr" className="h-7 rounded-full border px-3 py-0 text-xs data-[selected=true]:border-primary"
-              onSelect={() => m.type === "company" && m.stock_code ? openCompany({ code: m.stock_code, name: m.name, market: "kr" }) : go(m.type === "person" ? `/person?name=${encodeURIComponent(m.name)}` : `/feed?industry=${encodeURIComponent(m.name)}`)}>
+              onSelect={() => m.type === "company" && m.stock_code ? openCompany({ code: m.stock_code, name: m.name, market: "kr" }) : go(m.type === "person" ? `/person/${m.id}` : `/feed?industry=${encodeURIComponent(m.name)}`)}>
               {m.type === "company" ? <Building2 className="size-3" /> : m.type === "person" ? <User className="size-3" /> : <Tag className="size-3" />}{m.name}</CommandItem>)}</div>
           </CommandGroup>}
 
@@ -260,7 +260,7 @@ export default function Omnibar() {
           </CommandGroup>}
 
           {q && !!data?.entities.length && <CommandGroup heading="인물·테마">
-            {data.entities.map(e => <CommandItem key={`e-${e.id}`} value={`entity-${e.id}`} onSelect={() => go(e.type === "person" ? `/person?name=${encodeURIComponent(e.name)}` : `/feed?industry=${encodeURIComponent(e.name)}`)}>
+            {data.entities.map(e => <CommandItem key={`e-${e.id}`} value={`entity-${e.id}`} onSelect={() => go(e.type === "person" ? `/person/${e.id}` : `/feed?industry=${encodeURIComponent(e.name)}`)}>
               <Row icon={e.type === "person" ? <User className="size-4" /> : <Tag className="size-4" />} title={<Highlight text={e.name} q={q} />} sub={e.type === "person" ? "인물" : e.type === "theme" ? "테마 · 피드" : "섹터 · 피드"} />
             </CommandItem>)}
           </CommandGroup>}

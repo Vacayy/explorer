@@ -48,6 +48,9 @@ const CASES = [
   ['/us', '', 'explore', 'transcripts'],
   ['/people', '', 'explore', 'people'],
   ['/person', '?name=x', 'explore', 'people'],
+  ['/person/4', '', 'explore', 'people'],
+  ['/people', '?view=all', 'explore', 'people'],
+  ['/people', '?role=guru', 'explore', 'people'],
   // 4c — 옛 신호 탭(/explore)은 종목 발견 '오늘의 신호'로, VS 비교(/analyze/compare)는 Peer 그룹으로 리다이렉트
   ['/explore', '', 'explore', 'discover'],
   ['/explore', '?list=high_52w', 'explore', 'discover'],
@@ -192,6 +195,16 @@ test('old home URLs redirect to the fixed home tabs', () => {
     assert.ok(m, `${route} must be a KeepQueryRedirect`)
     assert.equal(m[1], to, route)
   }
+})
+
+test('person pages are id-based; the old name URL resolves to /person/:id (§10.6)', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  assert.match(app, /<Route path="person" element=\{<PersonNameRedirect \/>\} \/>/)
+  assert.match(app, /<Route path="person\/:id" element=\{<PersonDetailPage \/>\} \/>/)
+  assert.match(app, /<Route path="people" element=\{<PeopleHomePage \/>\} \/>/)
+  const page = readFileSync(new URL('../src/components/person/PersonDetailPage.tsx', import.meta.url), 'utf8')
+  assert.match(page, /<Navigate to=\{personPath\(q\.data\.entity_id\)\} replace \/>/)
+  assert.ok(!page.includes('apiComputeQuery'), 'profile is made only by the button, never on open')
 })
 
 test('home has no user menus: no board routes, dialogs or grid layout left', () => {

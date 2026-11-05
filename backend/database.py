@@ -1067,11 +1067,23 @@ def init_db():
     CREATE TABLE IF NOT EXISTS entity_merges (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         old_name     TEXT NOT NULL,       -- 병합으로 사라진 노드 이름
-        type         TEXT NOT NULL,       -- theme | macro (v1 범위)
+        type         TEXT NOT NULL,       -- theme | macro (v1 범위) · person | person_company (인물 소프트 병합)
         survivor_id  INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
         rationale    TEXT,                -- LLM 판정 근거
         merged_at    TEXT DEFAULT (datetime('now')),
         UNIQUE(old_name, type)
+    );
+
+    -- 인물 역할 (ia-redesign §4.23 1단계) — 결정적 자동 분류(사람 사전·컨콜 화자 직함·전제·메모 저자). 사용자 지정 없음.
+    -- 대상은 대표 인물 엔티티(소프트 병합의 살아남은 쪽). 매 정리 실행마다 다시 계산한다(pipeline/people.classify_roles).
+    CREATE TABLE IF NOT EXISTS person_roles (
+        entity_id    INTEGER PRIMARY KEY REFERENCES entities(id) ON DELETE CASCADE,
+        role         TEXT NOT NULL,       -- policy 정책 | executive 경영자 | guru 구루
+        org          TEXT,                -- 소속 표기 (연준 · NVIDIA · 오크트리 캐피털)
+        org_code     TEXT,                -- 경영자 소속 종목(국내 6자리 · 미국 티커)
+        title        TEXT,                -- 직함 (CEO · CFO · 의장)
+        source       TEXT NOT NULL,       -- dictionary | transcript | premise | memo
+        updated_at   TEXT DEFAULT (datetime('now'))
     );
 
     -- Transcript 팔로우 (미국 기업 실적 컨콜, docs/specs/transcript-follow.md) — 기업 단위 구독
@@ -1632,6 +1644,11 @@ def init_db():
         "ALTER TABLE transcript_reactions ADD COLUMN meta_json TEXT",
         "ALTER TABLE transcript_follow ADD COLUMN core_pinned INTEGER DEFAULT 0",   # 사용자가 핵심 종목으로 고정
         "ALTER TABLE stock_group_members ADD COLUMN tracked INTEGER DEFAULT 0",    # 관심 종목 추적 표시 = 추적 알림 대상 (D-293, 위젯 원천 대체)
+        # 인물 소프트 병합(ia-redesign §4.23 C): 진 쪽 엔티티를 지우지 않고 status='merged' + 이 행으로 잇는다(되돌리기 가능)
+        "ALTER TABLE entity_merges ADD COLUMN old_entity_id INTEGER",  # 진 쪽 엔티티 id (type='person'·'person_company'만)
+        "ALTER TABLE entity_merges ADD COLUMN rule TEXT",              # type_fix · spacing · spelling · english · cleanup · alias · abbrev
+        "ALTER TABLE entity_merges ADD COLUMN prev_status TEXT",       # 병합 전 entities.status (되돌릴 때 복원)
+        "ALTER TABLE entity_merges ADD COLUMN reverted_at TEXT",       # 되돌린 시각 — 되돌린 이름은 다시 묶지 않는다
     ]:
         try:
             conn.execute(migration)
@@ -1712,6 +1729,8 @@ def init_db():
     seed_sector_peers(conn)
     from pipeline.sector_overrides import seed as seed_sector_overrides   # 업종 정정 초안, 없는 종목만 (D-313)
     seed_sector_overrides(conn)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_entity_merges_old ON entity_merges(old_entity_id)")
+    conn.commit()
 
     conn.close()
 

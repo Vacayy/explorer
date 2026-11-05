@@ -52,8 +52,8 @@ import StocksPage from "@/components/follow/StocksPage"
 import StudyPage from "@/components/study/StudyPage"
 import DocPage from "@/components/doc/DocPage"
 import SourcePage from "@/components/source/SourcePage"
-import PersonPage from "@/components/person/PersonPage"
-import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
+import PersonDetailPage, { PersonNameRedirect } from "@/components/person/PersonDetailPage"
+import PeopleHomePage from "@/components/person/PeopleHomePage"
 import CompanyPage from "@/components/company/CompanyPage"
 import QuestionsPage from "@/components/knowledge/QuestionsPage"
 import ThesisAuditPage from "@/components/thesis/ThesisAuditPage"
@@ -306,7 +306,7 @@ export default function App() {
             <Route path="knowledge/ontology" element={<WorldviewPage />} />
             <Route path="narrative/worldview" element={<Navigate to="/knowledge/ontology" replace />} />
             <Route path="report" element={<ReportsPage />} />
-            <Route path="people" element={<PeopleDirectoryPage />} />
+            <Route path="people" element={<PeopleHomePage />} />
             {/* 지식 목록 제거 — 그래프(온톨로지)는 그대로(ia-redesign §10.6·#17). 세계관 브리핑은 Thesis › 지금 전제 칸으로 */}
             <Route path="knowledge" element={<KeepQueryRedirect to="/knowledge/ontology" />} />
             <Route path="questions" element={<QuestionsPage />} />
@@ -348,7 +348,8 @@ export default function App() {
             <Route path="doc/:docId" element={<DocPage />} />
             <Route path="synthesis/:synthesisId" element={<Navigate to="/study" replace />} />
             <Route path="source" element={<SourcePage />} />
-            <Route path="person" element={<PersonPage />} />
+            <Route path="person" element={<PersonNameRedirect />} />
+            <Route path="person/:id" element={<PersonDetailPage />} />
             <Route path="company" element={<CompanyPage />} />
             <Route path="feed/telegram" element={<Navigate to="/feed?source=telegram" replace />} />
             <Route path="feed/blogs" element={<Navigate to="/feed?source=blog" replace />} />

@@ -54,7 +54,7 @@ export function DocumentSearch() {
     if (tag.link_type === 'stock' && tag.aliases) set({ stock: tag.aliases })
     else if (tag.link_type === 'industry') set({ industry: tag.name })
     else if (tag.link_type === 'topic') set({ topic: tag.name })
-    else if (tag.link_type === 'person') navigate(`/person?name=${encodeURIComponent(tag.name)}`)
+    else if (tag.link_type === 'person') navigate(`/person/${tag.entity_id}`)
   }
   const active = (['stock', 'industry', 'topic'] as const).filter(k => filters[k])
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.size)) : 1

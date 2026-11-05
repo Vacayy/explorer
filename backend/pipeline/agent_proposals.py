@@ -271,6 +271,22 @@ def run_all(include_llm: bool = True) -> dict:
         stats["auto_curation"] = f"error: {type(e).__name__}"
         _rec("auto_curation", "error", f"{type(e).__name__}: {str(e)[:200]}", int((_t.time() - t1) * 1000))
     conn.commit()
+    # 인물 이름 자동 정리(ia-redesign §4.23 C) — 소프트 병합·메모 저자·역할. 따로 감싸 실패해도 스캔을 멈추지 않는다.
+    t2 = _t.time()
+    try:
+        from pipeline.people import run_curation as run_person_curation
+        pc = run_person_curation(conn)
+        stats["person_curation"] = pc
+        if pc.get("status") == "skipped":
+            _rec("person_curation", "skipped", "비활성(관리자 off)")
+        else:
+            _rec("person_curation", "ok", f"묶음 {pc.get('merge')} · 그대로 {pc['plan']['held']} · 역할 {pc['roles']}",
+                 int((_t.time() - t2) * 1000))
+    except Exception as e:  # noqa: BLE001
+        conn.rollback()
+        stats["person_curation"] = f"error: {type(e).__name__}"
+        _rec("person_curation", "error", f"{type(e).__name__}: {str(e)[:200]}", int((_t.time() - t2) * 1000))
+    conn.commit()
     conn.close()
     return stats
 

@@ -102,50 +102,74 @@ _WEEK = "datetime('now', '-7 days')"
 _PREV_WEEK = "datetime('now', '-14 days')"
 
 
-def aggregate_people(conn, *, days: int = 0, followed_only: bool = False, stock_days: int = 0) -> list[dict]:
+def _person_links_cte(conn) -> str:
+    """인물 → 문서 연결(소프트 병합 반영) CTE — pm(진 쪽 → 대표), pl(대표 인물 id, 문서 id, 중복 없음).
+
+    묶인 이름(entity_merges type person·person_company, 되돌리지 않은 것)의 연결은 대표 인물로 모은다.
+    회사로 잘못 분류됐던 이름은 'stock' 연결이라 link_type과 무관하게 넣는다. 본인 글(author)은 언급이 아니다.
+    병합 칼럼이 없는 옛 DB면 병합 없이."""
+    try:
+        conn.execute("SELECT old_entity_id, reverted_at FROM entity_merges LIMIT 0")
+        return """WITH pm AS (SELECT old_entity_id oid, survivor_id sid FROM entity_merges
+                     WHERE type IN ('person','person_company') AND old_entity_id IS NOT NULL AND reverted_at IS NULL),
+            pl AS (SELECT DISTINCT COALESCE(pm.sid, el.entity_id) pid, el.doc_id FROM entity_links el
+                   LEFT JOIN pm ON pm.oid = el.entity_id
+                   WHERE el.link_type = 'person' OR (pm.oid IS NOT NULL AND el.link_type != 'author'))"""
+    except Exception:  # noqa: BLE001
+        return """WITH pm AS (SELECT NULL oid, NULL sid WHERE 0),
+            pl AS (SELECT DISTINCT el.entity_id pid, el.doc_id FROM entity_links el WHERE el.link_type = 'person')"""
+
+
+def aggregate_people(conn, *, days: int = 0, followed_only: bool = False, stock_days: int = 0,
+                     ids: list[int] | None = None) -> list[dict]:
     """인물별 언급 집계를 쿼리 3번으로 — 인물마다 상관 서브쿼리 2개(N+1, 약 6,800쿼리·20초)를 대체.
 
     ① 언급 수·최근 시각·7일/직전 7일 ② 최근 문서 1건(창 함수) ③ 함께 언급된 종목 상위 3(창 함수).
-    days>0이면 ①을 그 기간으로 자른다. stock_days>0이면 ③을 그 기간 문서로 자른다.
+    days>0이면 ①을 그 기간으로 자른다. stock_days>0이면 ③을 그 기간 문서로 자른다. ids가 오면 그 인물만.
+    소프트 병합된 이름은 대표 인물 한 줄로 센다(같은 문서는 한 번, ia-redesign §4.23 C).
     """
+    cte = _person_links_cte(conn)
     # 기간 창은 WHERE가 아니라 집계 안에서 — 7일 Δ가 창 밖(직전 7일)을 봐야 한다
     in_win = f"datetime(rd.published_at) >= datetime('now', '-{int(days)} days')" if days else "1"
-    only = "AND el.entity_id IN (SELECT entity_id FROM follows)" if followed_only else ""
-    base = conn.execute(f"""
-        SELECT el.entity_id id, e.name, SUM({in_win}) n, MAX(CASE WHEN {in_win} THEN rd.published_at END) last_at,
+    follow_of = "(pl.pid IN (SELECT entity_id FROM follows) OR pl.pid IN (SELECT sid FROM pm WHERE oid IN (SELECT entity_id FROM follows)))"
+    only = f"AND {follow_of}" if followed_only else ""
+    if ids is not None:
+        only += f" AND pl.pid IN ({','.join(str(int(i)) for i in ids) or 'NULL'})"
+    base = conn.execute(f"""{cte}
+        SELECT pl.pid id, e.name, SUM({in_win}) n, MAX(CASE WHEN {in_win} THEN rd.published_at END) last_at,
                SUM(datetime(rd.published_at) >= {_WEEK}) n7,
                SUM(datetime(rd.published_at) >= {_PREV_WEEK} AND datetime(rd.published_at) < {_WEEK}) p7,
-               EXISTS(SELECT 1 FROM follows f WHERE f.entity_id = el.entity_id) following
-        FROM entity_links el
-        JOIN entities e ON e.id = el.entity_id AND e.type = 'person'
-        JOIN raw_documents rd ON rd.id = el.doc_id
-        WHERE el.link_type = 'person' {only}
-        GROUP BY el.entity_id HAVING SUM({in_win}) > 0 OR {1 if followed_only else 0}""").fetchall()
-    last = {r["pid"]: r for r in conn.execute(f"""
+               {follow_of} following
+        FROM pl
+        JOIN entities e ON e.id = pl.pid AND e.type = 'person'
+        JOIN raw_documents rd ON rd.id = pl.doc_id
+        WHERE pl.pid NOT IN (SELECT oid FROM pm) {only}
+        GROUP BY pl.pid HAVING SUM({in_win}) > 0 OR {1 if followed_only or ids is not None else 0}""").fetchall()
+    last = {r["pid"]: r for r in conn.execute(f"""{cte}
         SELECT pid, doc_id, title FROM (
-            SELECT el.entity_id pid, rd.id doc_id, rd.title,
-                   ROW_NUMBER() OVER (PARTITION BY el.entity_id ORDER BY rd.published_at DESC) rn
-            FROM entity_links el JOIN raw_documents rd ON rd.id = el.doc_id
-            WHERE el.link_type = 'person' {only}) WHERE rn = 1""")}
+            SELECT pl.pid, rd.id doc_id, rd.title,
+                   ROW_NUMBER() OVER (PARTITION BY pl.pid ORDER BY rd.published_at DESC) rn
+            FROM pl JOIN raw_documents rd ON rd.id = pl.doc_id
+            WHERE 1 {only}) WHERE rn = 1""")}
     # 기간 필터는 인물 문서에 PK 조인으로 — raw_documents 전체를 훑는 IN 서브쿼리는 8초가 걸렸다
-    stock_join = "JOIN raw_documents rd1 ON rd1.id = el1.doc_id" if stock_days else ""
+    stock_join = "JOIN raw_documents rd1 ON rd1.id = pl.doc_id" if stock_days else ""
     stock_since = f"AND datetime(rd1.published_at) >= datetime('now', '-{int(stock_days)} days')" if stock_days else ""
     stocks: dict[int, list[str]] = {}
-    for r in conn.execute(f"""
+    for r in conn.execute(f"""{cte}
         SELECT pid, name FROM (
-            SELECT el1.entity_id pid, e2.name,
-                   ROW_NUMBER() OVER (PARTITION BY el1.entity_id ORDER BY COUNT(*) DESC, e2.id) rn
-            FROM entity_links el1 {stock_join}
-            JOIN entity_links el2 ON el2.doc_id = el1.doc_id AND el2.link_type = 'stock'
+            SELECT pl.pid, e2.name,
+                   ROW_NUMBER() OVER (PARTITION BY pl.pid ORDER BY COUNT(*) DESC, e2.id) rn
+            FROM pl {stock_join}
+            JOIN entity_links el2 ON el2.doc_id = pl.doc_id AND el2.link_type = 'stock'
             JOIN entities e2 ON e2.id = el2.entity_id AND e2.type = 'company'
-            WHERE el1.link_type = 'person' {only.replace('el.', 'el1.')} {stock_since}
-            GROUP BY el1.entity_id, e2.id) WHERE rn <= 3 ORDER BY pid, rn"""):
+            WHERE e2.id NOT IN (SELECT oid FROM pm) {only} {stock_since}
+            GROUP BY pl.pid, e2.id) WHERE rn <= 3 ORDER BY pid, rn"""):
         stocks.setdefault(r["pid"], []).append(r["name"])
     out = []
     for r in base:
         lr = last.get(r["id"])
         n7, p7 = r["n7"] or 0, r["p7"] or 0
-        out.append({"entity_id": r["id"], "name": r["name"], "doc_count": r["n"], "last_doc_at": r["last_at"],
+        out.append({"entity_id": r["id"], "name": r["name"], "doc_count": r["n"] or 0, "last_doc_at": r["last_at"],
                     "last_doc_title": lr["title"] if lr else None, "last_doc_id": lr["doc_id"] if lr else None,
                     "following": bool(r["following"]), "top_stocks": stocks.get(r["id"], []),
                     "mentions_7d": n7, "mentions_prev_7d": p7, "delta_7d": n7 - p7})
@@ -346,3 +370,50 @@ def compute_person_profile(name: str):
         conn.close()
         return PersonProfile(status="fresh", digest=row["digest"], insights=row["insights"],
                              created_at=row["created_at"])
+
+
+# ── 인물 1단계 (ia-redesign §4.23 A안) — 인물 홈 · id 기반 상세 · 이름 → id ─────────────
+
+from models.person import PeopleHome, PersonDetail, PersonResolve  # noqa: E402
+
+
+@router.get("/home", response_model=PeopleHome)
+def people_home():
+    """인물 홈 — 팔로우(이번 주 언급순) · 기록이 있는 인물(전제 원장을 사람 단위로) · 이번 주 언급이 는 인물. LLM 0.
+
+    묶인 이름(소프트 병합)은 대표 인물 한 사람으로 센다. 전제 원장 실패는 그 블록만 recorded_status='error'."""
+    from pipeline.person_reads import home
+    conn = get_connection()
+    try:
+        return home(conn)
+    finally:
+        conn.close()
+
+
+@router.get("/resolve", response_model=PersonResolve)
+def resolve_person(name: str = Query(..., min_length=1, max_length=120)):
+    """이름 → 대표 인물 id (옛 `/person?name=` 주소를 `/person/:id`로 보낼 때). 못 찾으면 entity_id=null."""
+    from pipeline.people import resolve_name
+    conn = get_connection()
+    try:
+        pid = resolve_name(conn, name)
+        row = conn.execute("SELECT name FROM entities WHERE id=?", (pid,)).fetchone() if pid else None
+        return PersonResolve(entity_id=pid, name=row["name"] if row else None)
+    finally:
+        conn.close()
+
+
+@router.get("/{entity_id:int}", response_model=PersonDetail)
+def person_detail(entity_id: int):
+    """인물 상세(id) — 기록 원장(전제) · 본인 글 · 인용 · 언급 흐름 · 함께 언급 · 인과 엣지 · 저장된 프로필(생성하지 않음).
+
+    묶인 이름의 id면 대표 인물 상세를 준다(entity_id ≠ requested_id)."""
+    from pipeline.person_reads import detail
+    conn = get_connection()
+    try:
+        d = detail(conn, entity_id)
+    finally:
+        conn.close()
+    if not d:
+        raise HTTPException(404, "인물 엔티티가 없습니다")
+    return d

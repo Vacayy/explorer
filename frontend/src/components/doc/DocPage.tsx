@@ -85,7 +85,7 @@ export default function DocPage() {
     const onChipFilter = (tag: EntityTag) => {
       if (tag.link_type === 'stock' && tag.aliases) navigate(/^\d{6}$/.test(tag.aliases) ? `/analyze/${tag.aliases}/summary` : `/us/${encodeURIComponent(tag.aliases)}`)
       else if (tag.link_type === 'stock') navigate(`/company?name=${encodeURIComponent(tag.name)}`)
-      else if (tag.link_type === 'person') navigate(`/person?name=${encodeURIComponent(tag.name)}`)
+      else if (tag.link_type === 'person') navigate(`/person/${tag.entity_id}`)
       else navigate(`/feed?${tag.link_type === 'industry' ? 'industry' : 'topic'}=${encodeURIComponent(tag.name)}`)
     }
     const site = /^https?:\/\//i.test(doc.url)

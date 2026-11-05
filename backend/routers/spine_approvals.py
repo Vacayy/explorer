@@ -147,6 +147,8 @@ def curation_log(kind: str | None = None, verdict: str | None = None, limit: int
                                JOIN entities e ON e.id=k.entity_id WHERE k.id=c.target_id)
             WHEN 'vocab_merge' THEN (SELECT title FROM agent_proposals WHERE id=c.target_id)
             WHEN 'knowledge' THEN (SELECT substr(statement, 1, 80) FROM knowledge WHERE id=c.target_id)
+            WHEN 'person' THEN json_extract(c.detail_json, '$.old_name')
+                               || COALESCE(' → ' || json_extract(c.detail_json, '$.survivor_name'), '')
           END title
         FROM curation_log c {"WHERE " + " AND ".join(where) if where else ""}
         ORDER BY c.decided_at DESC, c.id DESC LIMIT ?""", (*params, max(1, min(limit, 1000)))).fetchall()

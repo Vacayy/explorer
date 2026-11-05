@@ -13,13 +13,14 @@ import { EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { usePeopleDirectory } from "@/hooks/usePeople"
 import { formatNumber, formatRelativeTime } from "@/utils/format"
+import { personPath } from "@/lib/person"
 import { cn } from "@/lib/utils"
 import type { PeopleSort } from "@/types"
 
 /**
- * /people — 인물 디렉토리 (탐색의 발견 표면).
+ * /people?view=all — 인물 전체 목록 (인물 홈 §4.23 A의 '전체 목록' 보기, 옛 인물 디렉토리).
  * 기본은 '이번 주 떠오른 사람'(최근 7일 − 직전 7일 언급) 순. 언급 1건짜리 롱테일은 스위치로만 보인다(팔로우 인물은 늘 보인다).
- * URL: days(0·30·7) · sort(surge 기본·total·recent) · tail=1.
+ * 묶은 이름은 대표 인물 한 줄. URL: days(0·30·7) · sort(surge 기본·total·recent) · tail=1 · q(이름 검색 — 언급 1건도 찾는다).
  */
 
 const PERIOD_FILTERS = [
@@ -42,7 +43,8 @@ export default function PeopleDirectoryPage() {
   const days = Number(searchParams.get("days") ?? "0")
   const sortParam = searchParams.get("sort")
   const sort: PeopleSort = sortParam === "total" || sortParam === "recent" ? sortParam : "surge"
-  const tail = searchParams.get("tail") === "1"
+  const nameQ = (searchParams.get("q") ?? "").trim()
+  const tail = searchParams.get("tail") === "1" || !!nameQ
   const [shown, setShown] = useState(PAGE)
   const query = usePeopleDirectory({ days, sort, tail })
   const { isPlaceholderData } = query
@@ -56,12 +58,14 @@ export default function PeopleDirectoryPage() {
   }
 
   return <QueryState query={query} loading={<PeopleSkeleton />} isEmpty={() => false}>{data => {
+    const items = nameQ ? data.items.filter(p => p.name.toLowerCase().includes(nameQ.toLowerCase())) : data.items
     return (
       <PageContainer gap="sm">
+        <nav aria-label="경로" className="text-caption text-muted-foreground"><Link to="/people" className="hover:text-foreground hover:underline">인물</Link> › 전체 목록</nav>
         <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Users className="h-5 w-5 text-muted-foreground" /> 인물
-          </h2>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Users className="h-5 w-5 text-muted-foreground" /> {nameQ ? `'${nameQ}' 인물` : "인물 전체"}
+          </h1>
           <span className="text-xs text-muted-foreground tabular-nums">
             {formatNumber(data.total)}명 언급됨{data.hidden_tail > 0 && ` · 언급 1건 ${formatNumber(data.hidden_tail)}명 숨김`}
           </span>
@@ -91,16 +95,16 @@ export default function PeopleDirectoryPage() {
           {sort === "surge" && <span className="text-[11px] text-muted-foreground">최근 7일 언급 − 그 전 7일 언급</span>}
         </div>
 
-        {data.items.length === 0 ? (
-          <EmptyState message="해당 기간에 언급된 인물이 없습니다. 수집이 쌓이면 자동으로 나타납니다." />
+        {items.length === 0 ? (
+          <EmptyState message={nameQ ? `'${nameQ}'(이)라는 이름의 인물이 없습니다.` : "해당 기간에 언급된 인물이 없습니다. 수집이 쌓이면 자동으로 나타납니다."} />
         ) : (
           <Card className={cn(isPlaceholderData && "opacity-60")}>
             <CardContent className="divide-y">
-              {data.items.slice(0, shown).map((p) => (
+              {items.slice(0, shown).map((p) => (
                 <div key={p.entity_id} className="py-2.5 space-y-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <Link
-                      to={`/person?name=${encodeURIComponent(p.name)}`}
+                      to={personPath(p.entity_id)}
                       className="whitespace-nowrap font-semibold text-sm hover:underline hover:text-primary"
                     >
                       {p.name}
@@ -134,10 +138,10 @@ export default function PeopleDirectoryPage() {
                   )}
                 </div>
               ))}
-              {data.items.length > shown && (
+              {items.length > shown && (
                 <div className="pt-3 text-center">
                   <Button variant="outline" size="sm" onClick={() => setShown((n) => n + PAGE)}>
-                    더 보기 ({formatNumber(data.items.length - shown)}명 남음)
+                    더 보기 ({formatNumber(items.length - shown)}명 남음)
                   </Button>
                 </div>
               )}

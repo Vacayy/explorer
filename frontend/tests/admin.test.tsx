@@ -47,11 +47,11 @@ it('shows four views and sends the old ?view=sources to /admin/sources', () => {
   for (const v of ['작업·신선도', '관측', '소스', '자동 정리']) expect(screen.getByRole('radio', { name: v })).toBeTruthy()
 })
 
-it('curation: counts table with a planned person row, KST times, and applied merges marked as undoable', () => {
+it('curation: counts table with the person-name row, KST times, and applied merges marked as undoable', () => {
   state.curation = () => ok(LOG)
   renderAt('/admin?view=curation')
   expect(screen.getByText('판정만 기록 중')).toBeTruthy()
-  expect(screen.getByText('예정')).toBeTruthy()
+  expect(screen.getByRole('radio', { name: '인물 이름 0' })).toBeTruthy()   // 인물 이름 자동 정리(§4.23 C)도 같은 기록
   expect(screen.getByText('모두 38건')).toBeTruthy()
   // UTC 11:39 → KST 20:39
   expect(screen.getAllByText('11-04 20:39').length).toBe(2)

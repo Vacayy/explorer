@@ -1265,6 +1265,49 @@ export interface PersonDossier {
   relations: PersonRelation[]
 }
 
+/* ---------- 인물 1단계 (ia-redesign §4.23) — 인물 홈 · id 기반 상세 ---------- */
+export type PersonRoleName = 'policy' | 'executive' | 'guru'
+export type PremiseStatus = 'supports' | 'challenges' | 'mixed' | 'untestable' | 'nodata'
+export interface PersonRole { role: PersonRoleName; org: string | null; org_code: string | null; title: string | null; source: string }
+/** 전제 '누가' 한 칸 — 인물이면 대표 인물 id(엔티티가 없으면 null), 기관이면 텍스트만 */
+export interface WhoPerson { label: string; kind: 'person' | 'org'; entity_id: number | null; name: string | null }
+export interface PremiseVerdict { key: string; claim: string; status: PremiseStatus | null }
+export interface PeopleHomeRow {
+  entity_id: number; name: string; role: PersonRole | null; doc_count: number
+  mentions_7d: number; delta_7d: number
+  last_doc_title: string | null; last_doc_id: number | null; last_doc_at: string | null
+  top_stocks: string[]; following: boolean; records: number
+}
+export interface RecordedPerson { entity_id: number | null; name: string; role: PersonRole | null; doc_count: number; premises: PremiseVerdict[] }
+export interface PeopleHome {
+  summary: { followed: number; followed_mentions_7d: number; recorded_people: number; premises: number; mentioned: number; mentioned_2plus: number }
+  role_counts: Record<string, number>
+  followed: PeopleHomeRow[]
+  recorded: RecordedPerson[]
+  recorded_status: 'ok' | 'error'
+  rising: PeopleHomeRow[]
+  as_of: string | null
+}
+export interface PersonResolve { entity_id: number | null; name: string | null }
+export interface MergedName { entity_id: number; name: string; type: string; docs: number; rule: string | null }
+export interface PersonDocRow { id: number; title: string; published_at: string | null; source_type: string | null }
+export interface PersonPremise {
+  key: string; claim: string; status: PremiseStatus | null; kind: string
+  evidence: string[]; rule: string; sources: EraSource[]; said_at: string | null; co_holders: WhoPerson[]
+}
+export interface PersonDetail {
+  entity_id: number; requested_id: number; name: string; role: PersonRole | null
+  merged_names: MergedName[]; following: boolean
+  mentions: { count: number; first_at: string | null; last_at: string | null }
+  own_docs: PersonDocRow[]; own_total: number; own_source: string | null
+  cited: PersonDocRow[]; cited_total: number
+  flow: { year: string; own: number; cited: number }[]
+  premises: PersonPremise[]; premises_status: 'ok' | 'error'
+  co_entities: { entity_id: number; name: string; link_type: string; aliases: string | null; count: number }[]
+  relations: PersonRelation[]
+  profile: PersonProfile | null; profile_stale: boolean; new_since_profile: number | null
+}
+
 /* ---------- 개인 투자 열기 (D-231) ---------- */
 export type RetailRegimeKey = 'deleveraging' | 'leverage_led' | 'churn' | 'broad_inflow' | 'neutral'
 export interface RetailRegime { key: RetailRegimeKey; label: string; reasons: string[] }
@@ -1722,6 +1765,7 @@ export interface EraPremise {
   status: 'supports' | 'challenges' | 'mixed' | 'untestable' | 'nodata' | null
   rule: string
   sources: EraSource[]
+  who_people?: WhoPerson[]   // '누가'를 사람·기관으로 나눈 것(인물 대응 표, ia-redesign §4.23)
 }
 export interface EraStateResponse {
   state: EraLayerState

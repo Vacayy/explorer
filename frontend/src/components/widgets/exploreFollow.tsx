@@ -105,7 +105,7 @@ export function PeopleBody({ h }: WidgetBodyProps) {
     {h > 2 && <ul className="min-h-0 divide-y overflow-hidden text-[13px]">
       {d.items.slice(1, h > 3 ? 5 : 3).map(p => (
         <li key={p.entity_id} className="flex items-center gap-2 py-1.5">
-          <Link to={`/person?name=${encodeURIComponent(p.name)}`} className="shrink-0 font-medium hover:underline">{p.name}</Link>
+          <Link to={`/person/${p.entity_id}`} className="shrink-0 font-medium hover:underline">{p.name}</Link>
           <span className="min-w-0 truncate text-[11px] text-muted-foreground">{p.top_stocks.join(" · ")}</span>
           <span className="ml-auto shrink-0 tabular-nums">{formatNumber(p.mentions_7d)}</span>
           <span className={cn("w-10 shrink-0 text-right tabular-nums", tone(p.delta_7d))}>{p.delta_7d > 0 ? "+" : ""}{formatNumber(p.delta_7d)}</span>

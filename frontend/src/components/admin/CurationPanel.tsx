@@ -19,8 +19,8 @@ import type { CurationEntry } from "@/types"
  * 기록 보기다 — 사용자가 처리할 목록이 아니고, 누르는 것은 '적용' 스위치 하나뿐(되돌리기 버튼은 되돌리기 기능을 만들 때).
  * 필터는 URL(`kind`·`verdict`), 목록은 처음 20줄 + 더 보기.
  */
-const KINDS: [string, string][] = [["alias", "별칭"], ["vocab_merge", "노드 병합"], ["knowledge", "지식 승격"]]
-const KIND_LABEL: Record<string, string> = { ...Object.fromEntries(KINDS), person: "인물 이름" }
+const KINDS: [string, string][] = [["alias", "별칭"], ["vocab_merge", "노드 병합"], ["knowledge", "지식 승격"], ["person", "인물 이름"]]
+const KIND_LABEL: Record<string, string> = Object.fromEntries(KINDS)
 const VERDICTS: [string, string][] = [["approve", "승인"], ["reject", "거부"], ["hold", "보류"], ["skip", "건너뜀"]]
 const VERDICT_LABEL = Object.fromEntries(VERDICTS)
 const VERDICT_CLS: Record<string, string> = {
@@ -30,7 +30,7 @@ const PAGE = 20
 
 export function CurationPanel() {
   const [params, setParams] = useSearchParams()
-  const kind = KIND_LABEL[params.get("kind") ?? ""] && params.get("kind") !== "person" ? params.get("kind") : null
+  const kind = KIND_LABEL[params.get("kind") ?? ""] ? params.get("kind") : null
   const verdict = VERDICT_LABEL[params.get("verdict") ?? ""] ? params.get("verdict") : null
   const all = useCurationLog(null, null)
   const list = useCurationLog(kind, verdict)
@@ -76,11 +76,6 @@ export function CurationPanel() {
                 {VERDICTS.map(([v]) => <TableCell key={v} className="text-right font-mono tabular-nums">{formatNumber(d.counts[k]?.[v] ?? 0)}</TableCell>)}
               </TableRow>
             ))}
-            {/* 인물 이름 자동 정리(§4.23 C)는 인물 탭 코드 반영 때 같은 기록에 kind='person'으로 쌓인다 */}
-            <TableRow>
-              <TableCell className="text-sm text-muted-foreground">인물 이름{!d.counts.person && <Badge variant="outline" className="ml-1.5 text-[10px]">예정</Badge>}</TableCell>
-              {VERDICTS.map(([v]) => <TableCell key={v} className="text-right font-mono tabular-nums text-muted-foreground">{d.counts.person ? formatNumber(d.counts.person[v] ?? 0) : "-"}</TableCell>)}
-            </TableRow>
           </TableBody>
         </Table>
       </Section>

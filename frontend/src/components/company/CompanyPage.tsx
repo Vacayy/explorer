@@ -232,7 +232,7 @@ export default function CompanyPage() {
                   {people.map((e) => (
                     <Link
                       key={`p-${e.entity_id}`}
-                      to={`/person?name=${encodeURIComponent(e.name)}`}
+                      to={`/person/${e.entity_id}`}
                     >
                       <Badge
                         variant="outline"

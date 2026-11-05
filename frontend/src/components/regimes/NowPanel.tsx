@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useEraCommentary, useEraState, useGenerateCommentary, usePricing, useSetEraCheck } from "@/hooks/useRegimes"
 import { splitCommentary } from "@/lib/macroPage"
+import { PREMISE_STATUS, personPath } from "@/lib/person"
 import { cn } from "@/lib/utils"
 import { formatKstDateTime, formatPercent, formatPp } from "@/utils/format"
 import type { EraHeat, EraLayerState, EraPremise, EraStateResponse, RegimesResponse } from "@/types"
@@ -30,14 +31,7 @@ const HEAT: Record<EraHeat, { label: string; cls: string }> = {
   normal: { label: "보통", cls: "text-muted-foreground" },
   cold: { label: "차가움", cls: "border-down/40 text-down" },
 }
-const PREMISE: Record<NonNullable<EraPremise["status"]> | "none", { label: string; cls: string }> = {
-  supports: { label: "지지", cls: "border-chart-profit/50 text-chart-profit-dark" },
-  challenges: { label: "반증 쪽", cls: "border-up/40 text-up" },
-  mixed: { label: "엇갈림", cls: "border-chart-warning/50 text-hypothesis" },
-  untestable: { label: "반증 불가", cls: "text-muted-foreground" },
-  nodata: { label: "데이터 없음", cls: "text-muted-foreground" },
-  none: { label: "판정 불가", cls: "text-muted-foreground" },
-}
+const PREMISE = PREMISE_STATUS   // 인물 기록 원장과 같은 배지(lib/person)
 const VERDICT = { hot: "뜨거움 우세", cold: "차가움 우세", balanced: "균형" } as const
 
 const Light = ({ on }: { on: boolean }) => <span className={cn("inline-block size-2.5 shrink-0 rounded-full", on ? "bg-up" : "bg-muted-foreground/30")} aria-hidden="true" />
@@ -303,6 +297,13 @@ function TemperatureSection({ data, compact }: { data: EraStateResponse; compact
   </Section>
 }
 
+/** '누가' — 사람은 인물 상세 링크(대표 이름), 기관·인물 엔티티가 없는 이름은 텍스트(ia-redesign §4.23 연결 지점 3) */
+function Who({ p }: { p: EraPremise }) {
+  if (!p.who_people?.length) return <>{p.who}</>
+  return <>{p.who_people.map((w, i) => <span key={w.label}>{i > 0 && " · "}{w.kind === "person" && w.entity_id
+    ? <Link to={personPath(w.entity_id)} className="hover:text-foreground hover:underline">{w.name ?? w.label}</Link> : w.label}</span>)}</>
+}
+
 function PremiseSection({ data }: { data: EraStateResponse }) {
   return <Section id="now-premises" step={4} title="구루 전제 원장 — 누구의 전제가 맞아 가는가"
     how={<>구루들의 시대 진단을 '반증할 수 있는 지표'와 한 쌍으로 적었습니다. '지지'는 지금 숫자가 그 전제와 맞는다는 뜻이지 전제가 증명됐다는 뜻이 아닙니다. 시점이 없는 전제(언젠가 위기가 온다)는 맞았는지 셀 수 없어 '반증 불가'로 둡니다.</>}>
@@ -316,7 +317,7 @@ function PremiseSection({ data }: { data: EraStateResponse }) {
           <TableCell><Badge variant="outline" className={cn("font-normal", st.cls)}>{st.label}</Badge></TableCell>
           <TableCell className="whitespace-normal">
             <p className="text-sm font-medium leading-snug">{p.claim}</p>
-            <p className="mt-0.5 text-caption text-muted-foreground">{p.who} · {p.kind}
+            <p className="mt-0.5 text-caption text-muted-foreground"><Who p={p} /> · {p.kind}
               {p.sources.map(s => <span key={s.title}> · {s.doc_id ? <Link to={`/doc/${s.doc_id}`} className="hover:text-foreground hover:underline">{s.title}</Link>
                 : <a href={s.url ?? "#"} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 hover:text-foreground hover:underline">{s.title}<ExternalLink className="size-3" aria-hidden="true" /></a>}</span>)}
             </p>
