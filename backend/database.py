@@ -675,7 +675,7 @@ def init_db():
         sort          INTEGER NOT NULL DEFAULT 0, -- 섹터 안 표시 순서
         partial       INTEGER NOT NULL DEFAULT 0, -- 1 = 섹터의 일부 업종만 덮는 연결
         note          TEXT,                       -- 부분 연결의 범위 (예: 화장품만)
-        source        TEXT NOT NULL DEFAULT 'seed', -- seed = 초안 대응표(11-04)
+        source        TEXT NOT NULL DEFAULT 'seed', -- seed = 코드 대응표(pipeline/sector_peers.SEED, init마다 맞춤) · 그 밖 = 손으로 넣은 연결
         updated_at    TEXT DEFAULT (datetime('now')),
         UNIQUE (sector, peer_group_id)
     );
@@ -1725,7 +1725,7 @@ def init_db():
     from pipeline.sec_filings import ensure_schema as ensure_sec_schema   # transcript_follow.fiscal_year_end (D-217)
     ensure_sec_schema(conn)
     conn.commit()
-    from pipeline.sector_peers import seed as seed_sector_peers   # 섹터 → Peer 초안 대응표, 표가 비었을 때만 (D-301 6)
+    from pipeline.sector_peers import seed as seed_sector_peers   # 섹터 → Peer 대응표의 seed 행을 코드에 맞춤 (D-301 6, D-316)
     seed_sector_peers(conn)
     from pipeline.sector_overrides import seed as seed_sector_overrides   # 업종 정정 초안, 없는 종목만 (D-313)
     seed_sector_overrides(conn)

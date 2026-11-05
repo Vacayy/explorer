@@ -39,10 +39,14 @@ export function switchPeerView(previous: URLSearchParams, view: PeerView, stock?
   return next
 }
 
-/** 사업 근거 요약 — 원문 확인(검색 요약만 본 근거 제외) 수, 주의 수, 복합사업 여부 */
+/** 근거 확인 수준 — 원문 대조 · 검색 요약만 · 링크만(본문 대조 전, verification에 link_only) */
+export const sourceCheck = (verification: string): 'original' | 'snippet' | 'link' =>
+  /link_only/i.test(verification) ? 'link' : /snippet/i.test(verification) ? 'snippet' : 'original'
+
+/** 사업 근거 요약 — 원문 확인(검색 요약만·링크만 본 근거 제외) 수, 주의 수, 복합사업 여부 */
 export function companyEvidence(company: PeerCompany) {
   return {
-    verified: company.sources.filter(source => !/snippet/i.test(source.verification)).length,
+    verified: company.sources.filter(source => sourceCheck(source.verification) === 'original').length,
     caveats: company.caveats.length,
     composite: company.caveats.some(text => /복합\s?(사업|기업)/.test(text)),
   }

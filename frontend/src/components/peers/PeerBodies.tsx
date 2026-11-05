@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { normalizedPeerPath } from '@/lib/peerPerformance'
 import { peerChildren, peerParent } from '@/lib/peerPresets'
-import { PEER_DAYS, companyEvidence, groupAverage, groupAveragePath, groupCompanies, peerMemberRows, type PeerDays, type PeerMemberRow } from '@/lib/peerFrame'
+import { PEER_DAYS, companyEvidence, sourceCheck, groupAverage, groupAveragePath, groupCompanies, peerMemberRows, type PeerDays, type PeerMemberRow } from '@/lib/peerFrame'
 import { cn } from '@/lib/utils'
 import { formatNumber, formatPercent, formatPp } from '@/utils/format'
 import type { PeerCatalog, PeerGroup, PeerPriceSnapshot, PeerRuntime } from '@/types/peer'
@@ -146,7 +146,7 @@ export function PeerResearchBody({ catalog, group, rows, days, selected, onSelec
               <ul className="space-y-2 text-sm">{company.sources.map((source, i) => <li key={`${source.url}-${i}`}>
                 <p>{source.claim}</p>
                 <p className="flex flex-wrap items-center gap-2 text-caption">
-                  {/snippet/i.test(source.verification) ? <span className="text-muted-foreground">요약만 확인</span> : <span className="text-fact">원문 확인</span>}
+                  {sourceCheck(source.verification) === 'original' ? <span className="text-fact">원문 확인</span> : <span className="text-muted-foreground">{sourceCheck(source.verification) === 'link' ? '링크만' : '요약만 확인'}</span>}
                   <a href={source.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">{new URL(source.url).hostname}<ExternalLink className="size-3" aria-hidden="true" /><span className="sr-only"> 새 창</span></a>
                 </p>
               </li>)}</ul>

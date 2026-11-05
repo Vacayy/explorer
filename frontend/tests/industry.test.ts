@@ -31,7 +31,8 @@ it('server sector → peer links point at real catalog groups and expand parents
 it('peer group → sector prefers a direct link, then a parent chain; human links before auto suggestions', () => {
   const sectors = SECTOR_PEERS_FIXTURE.sectors
   expect(sectorOfPeerGroup(catalog, sectors, 'package_substrate')).toBe('반도체·전자부품')
-  expect(sectorOfPeerGroup(catalog, sectors, 'nuclear_equipment')).toBe('기계·장비')
+  expect(sectorOfPeerGroup(catalog, sectors, 'robotics_automation')).toBe('기계·장비')
+  expect(sectorOfPeerGroup(catalog, sectors, 'nuclear_equipment')).toBe('전력·에너지')
   expect(sectorOfPeerGroup(catalog, sectors, 'power_transformer')).toBe('전력·에너지')
   const auto = { sector: '가상', partial: false, note: null, links: [{ ...sectorEntry('금융')!.links[0], source: 'auto' as const }] }
   expect(sectorOfPeerGroup(catalog, [auto, ...sectors], 'bank_financial_holding')).toBe('금융')

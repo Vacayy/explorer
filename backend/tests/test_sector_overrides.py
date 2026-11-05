@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import database
 from pipeline import kr_movers, kr_season, sector_overrides as so, sector_peers, sector_rs
-from pipeline.sector_override_seed import SEED, SEED_D315, SOURCE, SOURCE_D315
+from pipeline.sector_override_seed import SEED, SEED_D315, SEED_D317, SOURCE, SOURCE_D315, SOURCE_D317
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -34,7 +34,7 @@ class Base(unittest.TestCase):
 class SeedTests(Base):
     def test_seed_rows_and_idempotent(self):
         n = self.conn.execute("SELECT count(*) FROM sector_overrides").fetchone()[0]
-        self.assertEqual(n, len({code for code, *_ in SEED + SEED_D315}))
+        self.assertEqual(n, len({code for code, *_ in SEED + SEED_D315 + SEED_D317}))
         self.assertEqual(so.seed(self.conn), 0)
         database.init_db()
         self.assertEqual(self.conn.execute("SELECT count(*) FROM sector_overrides").fetchone()[0], n)
@@ -81,7 +81,7 @@ class SeedTests(Base):
         self.assertEqual(got["000720"], "건설·부동산")          # 현대건설 — 원전 EPC가 일부인 종합 건설
 
     def test_seed_known_cases(self):
-        got = {c: s for c, _, s, _ in SEED + SEED_D315}
+        got = {c: s for c, _, s, _ in SEED + SEED_D315 + SEED_D317}
         self.assertEqual(got["003550"], "지주·기타")        # LG
         self.assertEqual(got["006260"], "지주·기타")        # LS
         self.assertEqual(got["229640"], "전력·에너지")      # LS에코에너지
@@ -93,8 +93,17 @@ class SeedTests(Base):
         allowed = {"2차전지·에너지소재", "IT서비스·SW", "건설·부동산", "금융", "기계·장비", "미디어·엔터·게임", "바이오·헬스케어",
                    "반도체·전자부품", "유통·소비재", "음식료·농수산", "자동차·모빌리티", "전력·에너지", "조선·해운·운송",
                    "지주·기타", "철강·금속", "통신", "항공·방산·우주", "화학·소재"}
-        self.assertTrue({s for _, _, s, _ in SEED + SEED_D315} <= allowed)
-        self.assertEqual(len(got), len(SEED) + len(SEED_D315))   # 종목 중복 없음
+        self.assertTrue({s for _, _, s, _ in SEED + SEED_D315 + SEED_D317} <= allowed)
+        self.assertEqual(len(got), len(SEED) + len(SEED_D315) + len(SEED_D317))   # 종목 중복 없음
+
+    def test_seed_d317_robotics_to_machinery(self):
+        # 로봇·자동화 관심 산업 그룹의 원천 '전동기…' 업종 두 종목을 기계·장비로(D-317). 기존 DB에도 다음 init에 들어간다
+        self.assertEqual({c: s for c, _, s, _ in SEED_D317}, {"058610": "기계·장비", "160190": "기계·장비"})
+        self.conn.execute("DELETE FROM sector_overrides WHERE source=?", (SOURCE_D317,))
+        self.conn.commit()
+        self.assertEqual(so.seed(self.conn), 2)
+        rows = self.conn.execute("SELECT stock_code, sector, source FROM sector_overrides WHERE stock_code IN ('058610','160190')").fetchall()
+        self.assertEqual(sorted(tuple(r) for r in rows), [("058610", "기계·장비", SOURCE_D317), ("160190", "기계·장비", SOURCE_D317)])
 
 
 class EffectiveTests(Base):

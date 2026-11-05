@@ -12,7 +12,7 @@ export const SECTOR_PEERS_FIXTURE: SectorPeers = {
     entry('2차전지·에너지소재', ['battery_value_chain']),
     entry('건설·부동산', ['plant_epc', 'nuclear_epc'], true, '플랜트·원전 건설만'),
     entry('금융', ['bank_financial_holding', 'securities_brokerage']),
-    entry('기계·장비', ['nuclear_equipment', 'instrumentation_fittings', 'industrial_pipe_fittings'], true, '원전 기자재·피팅만'),
+    entry('기계·장비', ['robotics_automation'], true, '로봇·자동화만'),
     entry('바이오·헬스케어', []),
     entry('반도체·전자부품', ['semiconductor_value_chain']),
     entry('유통·소비재', ['beauty_value_chain'], true, '화장품만'),
@@ -20,7 +20,7 @@ export const SECTOR_PEERS_FIXTURE: SectorPeers = {
     entry('조선·해운·운송', ['shipbuilding']),
     entry('철강·금속', []),
     entry('항공·방산·우주', ['defense_value_chain']),
-    entry('화학·소재', ['diversified_materials', 'process_chemicals'], true, '반도체 소재 중심'),
+    entry('화학·소재', ['diversified_materials'], true, '반도체 소재 중심'),
   ],
 }
 

@@ -10,6 +10,7 @@ import PeerCatalogPage from '@/components/peers/PeerCatalogPage'
 import raw from '@/data/peer-catalog.json'
 import { parsePeerCatalog } from '@/lib/peerCatalog'
 import { locate } from '@/components/layout/navConfig'
+import { companyEvidence, sourceCheck } from '@/lib/peerFrame'
 
 vi.spyOn(api, 'get').mockImplementation(async (url: string) => url.includes('/sector-map/peers') ? { data: SECTOR_PEERS_FIXTURE } : ({ data: {
   catalog, prices, origin: 'collector', publishedAt: prices.collectedAt, baselineOn: '2026-11-01',
@@ -29,6 +30,17 @@ it('validates the shipped evidence graph, rejects missing references and unsafe 
   expect(() => parsePeerCatalog(unsafe)).toThrow()
   const duplicate = structuredClone(raw); duplicate.companies.push(duplicate.companies[0])
   expect(() => parsePeerCatalog(duplicate)).toThrow('중복 종목')
+})
+
+it('robotics group (D-318) has six members whose link-only evidence is not counted as verified', () => {
+  const catalog = parsePeerCatalog(raw)
+  const members = catalog.companies.filter(c => c.groupIds.includes('robotics_automation'))
+  expect(members.map(c => c.code).sort()).toEqual(['058610', '160190', '277810', '348340', '389500', '454910'])
+  expect(members.every(c => companyEvidence(c).verified === 0)).toBe(true)
+  expect(sourceCheck('link_only_not_compared: 링크만')).toBe('link')
+  expect(sourceCheck('primary_search_snippet_only_open_502')).toBe('snippet')
+  expect(sourceCheck('primary_original_verified')).toBe('original')
+  expect(members.every(c => prices.prices[c.code as keyof typeof prices.prices]?.length === prices.dates.length)).toBe(true)
 })
 
 it('peer route sits under explore', () => {

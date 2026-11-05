@@ -1,6 +1,6 @@
 """산업·섹터 → Peer 그룹 대응표 (ia-redesign §4.12, D-301 6).
 
-- 초안은 표가 비었을 때 한 번만 심는다(다시 init해도 그대로, 지운 행을 되살리지 않는다).
+- source='seed' 행은 코드 SEED가 원본: init마다 새 연결은 넣고 SEED에서 뺀 연결은 지운다(D-316·D-318). 다른 source 행은 둔다.
 - share = 그룹 구성 종목 중 그 섹터 비율(섹터를 모르는 종목은 분모에서 뺀다).
 - 자동 제안: 연결 없는 섹터에만, share ≥ 0.6 · 그 섹터 종목 2개 이상 · 아직 어느 섹터에도 걸리지 않은 그룹.
 """
@@ -32,7 +32,7 @@ class SeedTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_seed_once_and_idempotent(self):
+    def test_seed_and_idempotent(self):
         first = self.rows()
         self.assertEqual(len(first), sum(len(e["groups"]) for e in sp.SEED))
         self.assertTrue(all(r["source"] == "seed" for r in first))
@@ -41,11 +41,42 @@ class SeedTests(unittest.TestCase):
         database.init_db()
         self.assertEqual([tuple(r) for r in self.rows()], [tuple(r) for r in first])
         conn = database.get_connection()
-        conn.execute("DELETE FROM sector_peer_map WHERE peer_group_id = 'nuclear_epc'")
-        conn.commit()
-        self.assertEqual(sp.seed(conn), 0, "a non-empty table is not re-seeded")
+        self.assertEqual(sp.seed(conn), 0)
         conn.close()
-        self.assertEqual(len(self.rows()), len(first) - 1)
+
+    def test_d316_d318_links(self):
+        got = {(r["sector"], r["peer_group_id"]) for r in self.rows()}
+        self.assertIn(("기계·장비", "robotics_automation"), got)
+        for gone in ("nuclear_equipment", "instrumentation_fittings", "industrial_pipe_fittings", "process_chemicals"):
+            self.assertFalse(any(g == gone for _, g in got), gone)
+        self.assertIn(("화학·소재", "diversified_materials"), got)
+
+    def test_reconcile_existing_table(self):
+        # 11-04 초안이 심긴 기존 DB: 0% 연결 4개가 있고 로봇·자동화가 없다. 손으로 넣은 행은 그대로 남아야 한다
+        conn = database.get_connection()
+        conn.execute("DELETE FROM sector_peer_map")
+        old = [("기계·장비", "nuclear_equipment", 0, 1, "원전 기자재·피팅만"), ("기계·장비", "instrumentation_fittings", 1, 1, "원전 기자재·피팅만"),
+               ("기계·장비", "industrial_pipe_fittings", 2, 1, "원전 기자재·피팅만"), ("화학·소재", "diversified_materials", 0, 1, "반도체 소재 중심"),
+               ("화학·소재", "process_chemicals", 1, 1, "반도체 소재 중심"), ("금융", "bank_financial_holding", 0, 0, None)]
+        conn.executemany("INSERT INTO sector_peer_map (sector, peer_group_id, sort, partial, note, source) VALUES (?, ?, ?, ?, ?, 'seed')", old)
+        conn.execute("INSERT INTO sector_peer_map (sector, peer_group_id, sort, partial, note, source) VALUES ('기계·장비', 'nuclear_equipment_x', 5, 1, NULL, 'manual')")
+        conn.commit()
+        self.assertGreater(sp.seed(conn), 0)
+        self.assertEqual(sp.seed(conn), 0, "second run changes nothing")
+        conn.close()
+        rows = {(r["sector"], r["peer_group_id"]): r for r in self.rows()}
+        self.assertEqual({k for k, r in rows.items() if r["source"] == "seed"}, {(r[0], r[1]) for r in sp.seed_rows()})
+        self.assertEqual(rows[("기계·장비", "robotics_automation")]["note"], "로봇·자동화만")
+        self.assertEqual(rows[("기계·장비", "nuclear_equipment_x")]["source"], "manual", "non-seed rows are left alone")
+
+    def test_manual_row_with_seed_key_is_kept(self):
+        conn = database.get_connection()
+        conn.execute("UPDATE sector_peer_map SET note='손으로', source='manual' WHERE peer_group_id='robotics_automation'")
+        conn.commit()
+        self.assertEqual(sp.seed(conn), 0)
+        conn.close()
+        row = next(r for r in self.rows() if r["peer_group_id"] == "robotics_automation")
+        self.assertEqual((row["note"], row["source"]), ("손으로", "manual"))
 
 
 class BuildTests(unittest.TestCase):

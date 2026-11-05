@@ -1,7 +1,8 @@
 """산업·섹터 → Peer 그룹 대응표 (ia-redesign §4.12, D-301 6) — 모델 호출 없음.
 
-- 사람이 정한 대응은 `sector_peer_map`(source='seed')에 둔다. 초안(11-04, 옛 프론트 상수 lib/sectorPeers)을
-  표가 비어 있을 때 한 번 심는다(`seed`). 지운 행을 다시 심지 않는다.
+- 사람이 정한 대응은 `sector_peer_map`(source='seed')에 둔다. 코드의 `SEED`가 source='seed' 행의 원본이다 —
+  `seed`가 init마다 맞춘다(없는 연결은 넣고, SEED에서 뺀 연결은 지우고, 순서·부분·범위는 고친다). 연결을 빼려면 SEED에서 지운다.
+  source가 'seed'가 아닌 행(손으로 넣은 연결)은 건드리지 않는다.
 - 검증: 연결된 그룹마다 구성 종목이 그 섹터에 몇 %인지(`share`) 센다. 섹터는 산업 맵(/map)과 같은
   `sector_rs._members`(회사 → MEMBER_OF → KSIC 업종 → sector_map 대분류)로 본다. 섹터를 모르는 종목은 분모에서 뺀다.
 - 자동 제안: 연결이 하나도 없는 섹터에, 구성 종목의 AUTO_SHARE 이상이 그 섹터이고(그 섹터 종목 AUTO_MIN_MEMBERS 이상)
@@ -12,7 +13,9 @@ from collections import Counter
 AUTO_SHARE = 0.6
 AUTO_MIN_MEMBERS = 2
 
-# 초안 대응표 (§4.12 표, 11-04). partial = 섹터의 일부 업종만 덮는 연결(사람 판단), note = 그 범위
+# 대응표 (§4.12 표 11-04 초안 → D-316·D-318 11-05). partial = 섹터의 일부 업종만 덮는 연결(사람 판단), note = 그 범위
+# D-316: 업종 정정으로 비중 0%가 된 기계·장비 → 원전 기자재·피팅 3개, 화학·소재 → 반도체 화학 소재를 뺐다.
+# D-318: 기계·장비 → 로봇·자동화.
 SEED: list[dict] = [
     {"sector": "반도체·전자부품", "groups": ["semiconductor_value_chain"]},
     {"sector": "금융", "groups": ["bank_financial_holding", "securities_brokerage"]},
@@ -22,22 +25,35 @@ SEED: list[dict] = [
     {"sector": "항공·방산·우주", "groups": ["defense_value_chain"]},
     {"sector": "유통·소비재", "groups": ["beauty_value_chain"], "partial": True, "note": "화장품만"},
     {"sector": "건설·부동산", "groups": ["plant_epc", "nuclear_epc"], "partial": True, "note": "플랜트·원전 건설만"},
-    {"sector": "기계·장비", "groups": ["nuclear_equipment", "instrumentation_fittings", "industrial_pipe_fittings"],
-     "partial": True, "note": "원전 기자재·피팅만"},
-    {"sector": "화학·소재", "groups": ["diversified_materials", "process_chemicals"], "partial": True, "note": "반도체 소재 중심"},
+    {"sector": "기계·장비", "groups": ["robotics_automation"], "partial": True, "note": "로봇·자동화만"},
+    {"sector": "화학·소재", "groups": ["diversified_materials"], "partial": True, "note": "반도체 소재 중심"},
 ]
 
 
-def seed(conn) -> int:
-    """표가 비어 있으면 초안을 심는다 → 심은 행 수. 이미 행이 있으면 아무것도 하지 않는다(멱등)."""
-    if conn.execute("SELECT 1 FROM sector_peer_map LIMIT 1").fetchone():
-        return 0
-    rows = [(e["sector"], gid, i, int(e.get("partial", False)), e.get("note"))
+def seed_rows() -> list[tuple]:
+    """(sector, peer_group_id, sort, partial, note) — SEED 전체."""
+    return [(e["sector"], gid, i, int(e.get("partial", False)), e.get("note"))
             for e in SEED for i, gid in enumerate(e["groups"])]
-    conn.executemany("""INSERT OR IGNORE INTO sector_peer_map (sector, peer_group_id, sort, partial, note, source)
-                        VALUES (?, ?, ?, ?, ?, 'seed')""", rows)
+
+
+def seed(conn) -> int:
+    """source='seed' 행을 SEED에 맞춘다 → 넣고·고치고·지운 행 수(멱등: 다시 부르면 0). 다른 source 행은 두고,
+    같은 (섹터, 그룹)에 손으로 넣은 행이 있으면 그 행을 그대로 둔다."""
+    rows = seed_rows()
+    before = conn.total_changes
+    conn.executemany("""INSERT INTO sector_peer_map (sector, peer_group_id, sort, partial, note, source)
+        VALUES (?, ?, ?, ?, ?, 'seed')
+        ON CONFLICT(sector, peer_group_id) DO UPDATE SET sort=excluded.sort, partial=excluded.partial, note=excluded.note,
+            updated_at=datetime('now')
+        WHERE sector_peer_map.source = 'seed'
+          AND (sector_peer_map.sort, sector_peer_map.partial, sector_peer_map.note)
+              IS NOT (excluded.sort, excluded.partial, excluded.note)""", rows)
+    keep = {(r[0], r[1]) for r in rows}
+    gone = [(r[0], r[1]) for r in conn.execute("SELECT sector, peer_group_id FROM sector_peer_map WHERE source = 'seed'")
+            if (r[0], r[1]) not in keep]
+    conn.executemany("DELETE FROM sector_peer_map WHERE sector = ? AND peer_group_id = ? AND source = 'seed'", gone)
     conn.commit()
-    return len(rows)
+    return conn.total_changes - before
 
 
 def group_shares(members: dict[str, list[str]], sector_of: dict[str, str]) -> dict[str, dict]:

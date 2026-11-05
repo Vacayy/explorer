@@ -32,7 +32,7 @@ it('rejects duplicate dates, bad lengths, zero prices and wrong session fields',
 
 it('ships complete catalog price coverage', () => {
   const actual = parsePeerPrices(pricesRaw), definitions = parsePeerCatalog(catalogRaw)
-  expect(definitions.companies).toHaveLength(98)
+  expect(definitions.companies).toHaveLength(104)
   expect(definitions.companies.every(company => actual.prices[company.code]?.length === 61)).toBe(true)
 })
 

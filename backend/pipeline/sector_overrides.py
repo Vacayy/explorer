@@ -3,20 +3,21 @@
 원천: `companies.sector`(DART KSIC 업종, 현재 종목코드) → `sector_map.group_name`. 엔티티 그래프의
 MEMBER_OF(회사 → KSIC 업종)는 종목코드가 바뀐 회사(우리금융지주·미래에셋증권·SK 등 25곳)를 옛 코드로 들고 있어,
 `companies`에 없는 코드에만 보조로 쓴다(두 경로의 KSIC는 겹치는 코드에서 모두 같다, 11-05 실측).
-정정: `sector_overrides`(추가형). 원천 데이터는 덮어쓰지 않는다. 초안은 `sector_override_seed.SEED`·`SEED_D315`를
+정정: `sector_overrides`(추가형). 원천 데이터는 덮어쓰지 않는다. 초안은 `sector_override_seed.SEED`·`SEED_D315`·`SEED_D317`을
 코드에서 심는다(`seed`). 없는 종목은 넣고, 시드가 넣은 행(source 'audit-…')만 시드 값으로 맞춘다 — 손으로 바꾼 행
 (source 'manual' 등)은 건드리지 않는다.
 
 대분류를 쓰는 곳은 모두 `effective_sectors`를 읽는다: 산업 맵 RS(sector_rs), 섹터 → Peer 비중(sector_peers),
 국장 거래대금 상위(kr_movers), 국내 실적 시즌 업종 대비(kr_season), 산업 그룹의 맵 분포(industries).
 """
-from pipeline.sector_override_seed import SEED, SEED_D315, SOURCE, SOURCE_D315
+from pipeline.sector_override_seed import SEED, SEED_D315, SEED_D317, SOURCE, SOURCE_D315, SOURCE_D317
 
 
 def seed_rows() -> list[tuple[str, str, str, str]]:
     """(종목코드, 대분류, 근거, source) — 시드 전체. 종목은 한 번만 나온다."""
     return ([(code, sector, reason, SOURCE) for code, _, sector, reason in SEED]
-            + [(code, sector, reason, SOURCE_D315) for code, _, sector, reason in SEED_D315])
+            + [(code, sector, reason, SOURCE_D315) for code, _, sector, reason in SEED_D315]
+            + [(code, sector, reason, SOURCE_D317) for code, _, sector, reason in SEED_D317])
 
 
 def seed(conn) -> int:
