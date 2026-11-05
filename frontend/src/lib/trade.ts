@@ -6,11 +6,11 @@ export const parseTradeGridSort = (v: string | null): TradeGridSort => v === 'su
 
 /**
  * 격자에 올릴 품목 — 상위 품목(다른 팔로우 품목의 세목이 아닌 것)만, 최신 수출액이 있는 것.
- * value = 수출액 순 · surge = 급등(surge·new) 먼저, 그 안은 수출액 순 · mine = 내 종목과 이어진 품목 먼저.
+ * value = 수출액 순 · surge = 급등 먼저(신규는 급등 아님, D-303), 그 안은 수출액 순 · mine = 내 종목과 이어진 품목 먼저.
  */
 export function rankTradeGrid(follows: readonly TradeFollowRow[], sort: TradeGridSort, mine: ReadonlySet<string> = new Set(), n = 12): TradeFollowRow[] {
   const pool = follows.filter(f => !f.nested_in && f.latest_export != null)
-  const surge = (f: TradeFollowRow) => f.flag === 'surge' || f.flag === 'new' ? 1 : 0
+  const surge = (f: TradeFollowRow) => f.flag === 'surge' ? 1 : 0
   const first = (f: TradeFollowRow) => sort === 'surge' ? surge(f) : sort === 'mine' ? (mine.has(f.hs_code) ? 1 : 0) : 0
   return [...pool].sort((a, b) => first(b) - first(a) || b.latest_export! - a.latest_export!).slice(0, n)
 }

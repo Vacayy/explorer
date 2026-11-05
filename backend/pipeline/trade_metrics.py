@@ -241,12 +241,12 @@ def highlights(period: str | None = None, flow: str = "export", limit: int = 8, 
     상위가 급등이면 세목도 함께 급등으로 잡혀 같은 움직임을 두세 번 센다. 상위가 팔로우되지 않은 10자리 품목은 그 자체가 최상위라 남긴다.
     세목의 판정은 table()·/follow 행(품목 격자 배지)에 그대로 있다."""
     t = table(period, flow, **opt)
-    flagged = [r for r in t["rows"] if r.get("flag") in ("surge", "plunge", "new") and not r.get("nested_in")]
+    flagged = [r for r in t["rows"] if r.get("flag") in ("surge", "plunge") and not r.get("nested_in")]
     if rank == "intensity":
         flagged.sort(key=lambda r: -(r.get("intensity") or 0))
     else:
         flagged.sort(key=lambda r: (-(r.get("contribution") or 0), -(r.get("intensity") or 0)))
     return {"period": t["period"], "periods": t.get("periods", []), "flow": flow, "options": {**t["options"], "rank": rank},
             "total_usd": sum(r.get("value") or 0 for r in t["rows"] if not r.get("nested_in")),
-            "surge": [r for r in flagged if r["flag"] in ("surge", "new")][:limit],
+            "surge": [r for r in flagged if r["flag"] == "surge"][:limit],   # 신규는 급등 목록에서도 뺀다(D-303)
             "plunge": [r for r in flagged if r["flag"] == "plunge"][:limit], "groups": t["groups"]}
