@@ -1,18 +1,24 @@
+import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useTheme } from "next-themes"
-import { Archive, ChevronRight, Globe, Monitor, Moon, Rss, Search, Settings, SlidersHorizontal, Sparkles, Sun } from "lucide-react"
+import { Archive, Bookmark, ChevronDown, ChevronRight, Globe, Inbox, Monitor, Moon, Rss, Search, Settings, SlidersHorizontal, Sparkles, Sun } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { MOBILE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery"
+import { useSaved } from "@/hooks/useSaved"
 import { cn } from "@/lib/utils"
 import { openOmnibar } from "@/lib/omnibar"
 import { formatKstSlashDate } from "@/utils/format"
 import { SECTIONS, locate } from "./navConfig"
-import { ApprovalsInbox, SavedInbox } from "./Inboxes"
+import { ApprovalsInbox, InboxSheet, SavedInbox, useApprovalsCount } from "./Inboxes"
 import { ShellButton } from "./ShellButton"
 
 interface HealthItem { key: string; label: string; status: string; detail: string; critical?: boolean; latest?: string | null; owner?: string | null }
@@ -25,15 +31,18 @@ const STATUS_LABEL: Record<string, string> = { stale: "지연", error: "오류" 
 export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: () => void }) {
   const { pathname, search } = useLocation()
   const here = locate(pathname, search)
+  const phone = useMediaQuery(MOBILE_QUERY)
 
   // <768: 가운데 6탭은 하단 TabBar로 내려가고 위에는 아이콘만 남는다 (app-shell.md §6)
   return (
     <header className="sticky top-0 z-30 flex h-(--topbar-height) items-center justify-between gap-3 border-b bg-background px-4 md:px-5">
       <div className="flex min-w-0 items-center gap-3">
-        <Link to="/home" className="flex shrink-0 items-center gap-2 font-display text-[17px] font-medium tracking-[-0.01em] max-md:text-base max-md:tracking-normal">
-          <Globe className="size-[18px] max-md:hidden" aria-hidden />
-          <span className="md:max-lg:sr-only">Explorer</span>
-        </Link>
+        {phone ? <PhoneMenu /> : (
+          <Link to="/home" className="flex shrink-0 items-center gap-2 font-display text-[17px] font-medium tracking-[-0.01em]">
+            <Globe className="size-[18px]" aria-hidden />
+            <span className="md:max-lg:sr-only">Explorer</span>
+          </Link>
+        )}
         <nav aria-label="메인" className="hidden items-center gap-0.5 md:flex">
           {SECTIONS.map((s, i) => {
             const active = here?.section === s.key
@@ -154,6 +163,52 @@ function healthLine(h: HealthItem) {
     h.latest ? `최신 ${formatKstSlashDate(h.latest, h.latest.length > 10)}` : "",
     h.status === "ok" && h.owner ? h.owner.replace(/^launchd /, "") : ""]
   return parts.filter(Boolean).join(" · ")
+}
+
+/**
+ * 폰 로고 메뉴(D-322) — 위 바는 검색·AI만 두고, 'Explorer'를 누르면 아래 시트에 인박스 · 저장됨 · 관리자 · 테마.
+ */
+function PhoneMenu() {
+  const [open, setOpen] = useState(false)
+  const [inbox, setInbox] = useState(false)
+  const count = useApprovalsCount()
+  const saved = useSaved().data?.length ?? 0
+  const { theme, setTheme } = useTheme()
+  const row = "flex h-12 items-center gap-3 border-b px-1 text-[15px] text-ink"
+  return (
+    <>
+      <Button variant="ghost" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}
+        className="h-10 shrink-0 gap-1.5 px-0 font-display text-base font-medium text-ink hover:bg-transparent">
+        Explorer<ChevronDown className="size-3.5 text-ink-3" aria-hidden />
+      </Button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="bottom" className="gap-0 pb-[calc(16px+env(safe-area-inset-bottom))]">
+          <SheetHeader className="pb-2"><SheetTitle>Explorer</SheetTitle></SheetHeader>
+          <nav aria-label="더 보기" className="border-t px-4">
+            <Button variant="ghost" className={cn(row, "w-full justify-start rounded-none font-normal hover:bg-transparent hover:text-ink [&_svg:not([class*='size-'])]:size-[18px]")} onClick={() => { setOpen(false); setInbox(true) }}>
+              <Inbox className="size-[18px] text-ink-2" aria-hidden />인박스
+              {count > 0 && <Badge variant="hyp" className="ml-auto font-mono tabular-nums">{count}</Badge>}
+            </Button>
+            <Link to="/feed/saved" className={row} onClick={() => setOpen(false)}>
+              <Bookmark className="size-[18px] text-ink-2" aria-hidden />저장됨
+              {saved > 0 && <span className="ml-auto font-mono text-[13px] text-ink-3 tabular-nums">{saved}</span>}
+            </Link>
+            <Link to="/admin" className={row} onClick={() => setOpen(false)}>
+              <SlidersHorizontal className="size-[18px] text-ink-2" aria-hidden />관리자
+            </Link>
+          </nav>
+          <div className="px-4 pt-4">
+            <ToggleGroup type="single" value={theme ?? "system"} onValueChange={v => v && setTheme(v)} aria-label="화면 테마" className="grid w-full grid-cols-3">
+              {THEMES.map(t => (
+                <ToggleGroupItem key={t.value} value={t.value} className="h-9 gap-1.5"><t.icon className="size-3.5" aria-hidden />{t.label}</ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+        </SheetContent>
+      </Sheet>
+      <InboxSheet open={inbox} onOpenChange={setInbox} count={count} />
+    </>
+  )
 }
 
 /** 설정 — 드물게 쓰는 것: 테마(시스템·라이트·다크) · 소스 관리 · 관리자 · 보관함 (시안 Shell-Topbar ②) */

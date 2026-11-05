@@ -55,25 +55,36 @@ export function SavedInbox({ className }: { className?: string }) {
  * 승인 인박스 — 대기 건수 배지 + 클릭 시 Sheet(ApprovalsCard 재활용). "어느 화면에서든"(D-056)은 상단 바 상시 배지로 유지.
  * count 쿼리는 ApprovalsCard와 같은 queryKey라 캐시를 공유한다.
  */
-export function ApprovalsInbox({ className }: { className?: string }) {
-  const [open, setOpen] = useState(false)
+export function useApprovalsCount() {
   const { data: items = [] } = useQuery(
     apiQuery<{ id: number }[]>({ key: ["spine", "approvals"], url: "/api/spine/approvals", staleTime: STALE.short }),
   )
-  const count = items.length
+  return items.length
+}
+
+export function ApprovalsInbox({ className }: { className?: string }) {
+  const [open, setOpen] = useState(false)
+  const count = useApprovalsCount()
 
   return (
     <>
       <ShellButton icon={Inbox} label="인박스 · 승인 대기" badge={count} badgeTone="hypothesis" onClick={() => setOpen(true)} aria-label={`승인 대기 ${count}건`} className={className} />
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>인박스</SheetTitle>
-          </SheetHeader>
-          {open && <InboxBody count={count} />}
-        </SheetContent>
-      </Sheet>
+      <InboxSheet open={open} onOpenChange={setOpen} count={count} />
     </>
+  )
+}
+
+/** 인박스 창 — 상단 바 아이콘(데스크톱)과 폰 로고 메뉴(D-322)가 같이 쓴다 */
+export function InboxSheet({ open, onOpenChange, count }: { open: boolean; onOpenChange: (open: boolean) => void; count: number }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>인박스</SheetTitle>
+        </SheetHeader>
+        {open && <InboxBody count={count} />}
+      </SheetContent>
+    </Sheet>
   )
 }
 

@@ -9,18 +9,18 @@ export function metricValue(m: Pick<RetailMetric, 'unit' | 'value'>): string {
   return m.unit === 'rate' ? formatPercent(m.value * 100) : m.unit === 'ratio' ? formatRatio(m.value * 100) : formatKrw(m.value)
 }
 
-/** 5년 백분위 막대 — 80 이상 파랑(과열 쪽) · 20 이하 초록(위축 쪽) · 그 사이 회색 (시안 Home-KR). */
+/** 5년 백분위 막대 — 80 이상 과열 = 상승색(--up, 따뜻한 쪽) · 20 이하 위축 = 하락색(--down, 차가운 쪽) · 그 사이 회색. 시안의 파랑·초록은 의미가 뒤집혀 쓰지 않는다(D-322). */
 export function PctileBar({ value }: { value: number | null }) {
   if (value == null) return <span className="text-caption text-muted-foreground">-</span>
-  const tone = value >= 80 ? 'bg-down' : value <= 20 ? 'bg-fact' : 'bg-ink-2'
+  const tone = value >= 80 ? 'bg-up' : value <= 20 ? 'bg-down' : 'bg-ink-2'
   return <span className="inline-flex items-center gap-1.5" title={`과거 5년 중 ${formatNumber(Math.round(value))}% 지점`}>
     <span className="h-1.5 w-[90px] overflow-hidden rounded-[3px] bg-chip max-sm:w-12" aria-hidden="true"><span className={`block h-full rounded-[3px] ${tone}`} style={{ width: `${value}%` }} /></span>
     <span className="w-7 text-right font-mono text-xs tabular-nums">{formatNumber(Math.round(value))}</span>
   </span>
 }
 
-const REGIME_TONE: Record<RetailRegimeKey, 'fact' | 'up' | 'hyp' | 'warn' | 'neutral'> = {
-  deleveraging: 'fact', leverage_led: 'up', churn: 'hyp', broad_inflow: 'warn', neutral: 'neutral',
+const REGIME_TONE: Record<RetailRegimeKey, 'down' | 'up' | 'hyp' | 'warn' | 'neutral'> = {
+  deleveraging: 'down', leverage_led: 'up', churn: 'hyp', broad_inflow: 'warn', neutral: 'neutral',
 }
 export function RegimeBadge({ regime, className = '' }: { regime: { key: RetailRegimeKey; label: string }; className?: string }) {
   return <Badge variant={REGIME_TONE[regime.key]} className={className}>{regime.label}</Badge>
