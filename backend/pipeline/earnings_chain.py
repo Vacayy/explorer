@@ -665,6 +665,23 @@ def season_windows(conn, fs: dict | None = None) -> list[dict]:
     return sorted(rows.values(), key=lambda w: w["first"])
 
 
+def season_calendar(evs: list[dict], fs: dict, core: dict) -> list[dict]:
+    """발표 캘린더(ia-redesign §4.6a) — 팔로우 기업의 이번 시즌 발표를 날짜별로 센다. 새 테이블 없이 earnings_events 집계.
+    total = 그날 발표 수, core = 그중 핵심 종목, confirmed = 회사가 확정한 수(나머지는 예정일), tickers = 그날 발표 종목(확정 먼저)."""
+    days: dict[str, dict] = {}
+    for e in evs:
+        if e["ticker"] not in fs:
+            continue
+        d = days.setdefault(e["event_date"], {"date": e["event_date"], "total": 0, "core": 0, "confirmed": 0, "tickers": []})
+        if e["ticker"] in d["tickers"]:
+            continue
+        d["total"] += 1
+        d["core"] += 1 if core.get(e["ticker"]) else 0
+        d["confirmed"] += 1 if e["confirmed"] else 0
+        d["tickers"].append(e["ticker"])
+    return [days[k] for k in sorted(days)]
+
+
 def season_overview(season: str | None = None) -> dict:
     conn = get_connection()
     today = date.today().isoformat()
@@ -739,6 +756,7 @@ def season_overview(season: str | None = None) -> dict:
     }
     last_run = conn.execute("SELECT max(ran_at) FROM job_runs WHERE job='cm_chain'").fetchone()[0]
     windows = season_windows(conn, fs)
+    calendar = season_calendar(evs, fs, core)
     core_rows = [{"ticker": t, "name": fs[t]["company_name"], "reasons": r} for t, r in sorted(core.items()) if t in fs]
     conn.close()
     beat_n = sum(1 for i in reported if (i["eps_surprise"] or 0) > 0)
@@ -748,7 +766,7 @@ def season_overview(season: str | None = None) -> dict:
                        "up": sum(1 for i in reported if (i["d1"] or 0) > 0), "miss": sum(1 for i in reported if (i["eps_surprise"] or 0) < 0),
                        "miss_up": len([i for i in reported if (i["eps_surprise"] or 0) < 0 and (i["d1"] or 0) > 0]), "reactions": sum(1 for i in reported if i["reaction"]),
                        "reactions_final": sum(1 for i in reported if i["reaction"] == "final")},
-            "changes": changes, "last_run": last_run, "windows": windows,
+            "changes": changes, "last_run": last_run, "windows": windows, "calendar": calendar,
             "sectors": sector_rows, "top_up": top_up, "miss_up": miss_up, "beat_down": beat_down, "reversed": reversed_[:8],
             "upcoming": sorted(upcoming, key=lambda i: i["event_date"])[:12],
             "evals": evals, "core": {"criteria": CORE_REASONS, "tickers": core_rows},

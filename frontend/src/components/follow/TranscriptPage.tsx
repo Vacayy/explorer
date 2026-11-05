@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
 import { Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Megaphone, Network, Search, Sparkles, ChevronRight } from "lucide-react"
+import { FileText, Megaphone, Network, Search, Sparkles, ChevronDown, ChevronRight } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { useMediaQuery, MOBILE_QUERY } from "@/hooks/useMediaQuery"
 import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { ProxyDashboard } from "@/components/follow/ProxyDashboard"
@@ -115,8 +117,16 @@ export default function TranscriptPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "follow"] }),
   })
 
-  const selectId = (id: number) => setParams({ t: String(id) }, { replace: true })
+  const mobile = useMediaQuery(MOBILE_QUERY)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  // 기업 목록에서 고르면 기록을 남긴다(뒤로 가기 = 목록), 상세 안에서 분기·기업을 바꾸면 교체
+  const selectId = (id: number) => setParams({ t: String(id) }, { replace: !!selectedId })
 
+  const tabs = <TranscriptTabs value={view} />
+  // 실적 시즌은 팔로우 목록을 기다리지 않는다 — 시즌 응답 하나로 그린다
+  if (view === "season") {
+    return <PageContainer>{sector ? <>{tabs}<SectorView key={sector} sectorKey={sector} /></> : <SeasonView tabs={tabs} />}</PageContainer>
+  }
   if (isLoading) return <TranscriptSkeleton />
   if (isError) return <PageContainer><ErrorState onRetry={() => refetch()} /></PageContainer>
 
@@ -124,47 +134,65 @@ export default function TranscriptPage() {
   // 기본 선택: URL에 없으면 콜 있는 첫 기업의 최신
   const effectiveId = selectedId ?? (withCalls[0]?.latest?.transcript_id ? String(withCalls[0].latest!.transcript_id) : null)
 
+  const header = (
+    <div className="flex flex-col gap-0.5">
+      <h1 className="text-2xl font-bold">컨콜</h1>
+      <span className="text-caption text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
+    </div>
+  )
+  if (view === "proxies") return <PageContainer>{header}{tabs}<ProxyDashboard /></PageContainer>
+
+  const railFor = (onPick: (id: number) => void) => follows.length === 0 ? (
+    <div className="p-3 space-y-3">
+      <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>
+      <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
+        {seed.isPending ? "불러오는 중…" : "기본 세트 팔로우"}
+      </Button>
+    </div>
+  ) : (
+    <FollowRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={onPick}
+      onSort={(v) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("rail", v); return n }, { replace: true })} />
+  )
+  // 기업 목록(?t= 없음): 맨 위 모멘텀 한 줄·수집·최근 받은 컨콜·곧 발표 + 기업 목록. 모바일은 목록만(상세는 기업을 고른 뒤).
+  // 콜 상세(?t=): 기업 목록 | 상세(시안 Call-Detail). 모바일은 기업 고르기를 시트로(시안 Mobile-Call).
+  const listing = !selectedId
   return (
     <PageContainer>
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-bold">컨콜</h2>
-        <span className="text-xs text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
-      </div>
-
-      <TranscriptTabs value={view} />
-
-      {view === "season" ? (
-        sector ? <SectorView key={sector} sectorKey={sector} /> : <SeasonView />
-      ) : view === "proxies" ? (
-        <ProxyDashboard />
-      ) : (
-      <>
-      {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 시즌' 보기) */}
-      <MomentumStrip />
-
-      {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
-      <CollectTranscripts />
-
-      <RecentCalls onSelect={selectId} selectedId={selectedId} />
-
-      <UpcomingEarnings follows={follows} onSelect={selectId}
-        onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
-      <div className="surface-grid grid grid-cols-1 md:grid-cols-[240px_1fr] items-start">
-        {/* 좌 레일 — 팔로우 기업 그룹 (구독 관리 겸용) */}
-        <Card className="md:sticky md:top-16">
-          <CardContent className="p-2 max-h-[45vh] md:max-h-[70vh] overflow-y-auto">
-            {follows.length === 0 ? (
-              <div className="p-3 space-y-3">
-                <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>
-                <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
-                  {seed.isPending ? "불러오는 중…" : "기본 세트 팔로우"}
+      {header}
+      {tabs}
+      {listing && <>
+        {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 시즌' 보기) */}
+        <MomentumStrip />
+        {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
+        <CollectTranscripts />
+        <RecentCalls onSelect={selectId} selectedId={selectedId} />
+        <UpcomingEarnings follows={follows} onSelect={selectId}
+          onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
+      </>}
+      {mobile ? (
+        listing ? (
+          <Card><CardContent className="p-2">{railFor(selectId)}</CardContent></Card>
+        ) : (
+          <div className="surface-stack flex flex-col">
+            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="h-auto w-full justify-between rounded-none px-3 py-2.5 text-left font-normal">
+                  <span className="text-sm text-muted-foreground">기업 바꾸기</span><ChevronDown className="size-4" />
                 </Button>
-              </div>
-            ) : (
-              <FollowRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={selectId}
-                onSort={(v) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("rail", v); return n }, { replace: true })} />
-            )}
-          </CardContent>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-3">
+                <SheetHeader className="p-0"><SheetTitle>기업 고르기</SheetTitle></SheetHeader>
+                {railFor((id) => { setSheetOpen(false); selectId(id) })}
+              </SheetContent>
+            </Sheet>
+            <DetailPanel key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} />
+          </div>
+        )
+      ) : (
+      <div className="surface-grid grid grid-cols-1 md:grid-cols-[240px_1fr] items-start">
+        {/* 좌 레일 — 팔로우 기업 목록 (구독 관리 겸용) */}
+        <Card className="md:sticky md:top-16">
+          <CardContent className="p-2 max-h-[45vh] md:max-h-[70vh] overflow-y-auto">{railFor(selectId)}</CardContent>
         </Card>
 
         {/* 우 본문 — 선택 콜 상세 */}
@@ -173,12 +201,11 @@ export default function TranscriptPage() {
             <DetailPanel key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} />
           ) : (
             <Card><CardContent className="py-16">
-              <EmptyState message="아직 수집된 컨콜이 없습니다 — 관리자에서 '컨콜 수집'을 실행하거나 기업을 팔로우하세요." />
+              <EmptyState message="아직 수집된 컨콜이 없습니다. 관리자에서 '컨콜 수집'을 실행하거나 기업을 팔로우해 주세요." />
             </CardContent></Card>
           )}
         </div>
       </div>
-      </>
       )}
     </PageContainer>
   )

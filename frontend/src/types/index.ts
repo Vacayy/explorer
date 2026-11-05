@@ -238,22 +238,6 @@ export interface UsDossier {
   latest_transcript: { id: number; fiscal_year: number; fiscal_period: string; call_date: string } | null;
 }
 
-export interface UsListItem {
-  ticker: string;
-  name: string;
-  group_label: string | null;
-  value_stance: string | null;
-  trend_stance: string | null;
-  quadrant_cell: string | null;
-  price: number | null;
-}
-export interface UsGroup {
-  label: string;
-  items: UsListItem[];
-}
-export interface UsList {
-  groups: UsGroup[];
-}
 export interface UsEdge {
   src: string;
   dst: string;
@@ -1038,6 +1022,8 @@ export interface SeasonSectorRow {
   n_reported: number; n_reactions: number; tickers: { ticker: string; d1: number | null }[]; dc_chain: boolean
 }
 export interface SeasonWindow { key: string; label: string; first: string; last: string; events: number; confirmed: number }
+/** 발표 캘린더 하루 — 팔로우 기업 발표 수, 그중 핵심·확정 수, 종목(ia-redesign §4.6a) */
+export interface SeasonCalendarDay { date: string; total: number; core: number; confirmed: number; tickers: string[] }
 export interface SeasonOverview {
   season: { key: string; label: string; start: string; is_current: boolean }
   counts: { followed: number; reported: number; beat: number; beat_down: number; reversed: number; reactions: number; reactions_final: number
@@ -1046,6 +1032,7 @@ export interface SeasonOverview {
   last_run: string | null
   /** 시즌별 발표 구간(팔로우 기업 첫~마지막 발표일, 미확정 포함) — 홈 미국 시장 '시즌 사이' 판정 (ia-redesign §4.28) */
   windows: SeasonWindow[]
+  calendar: SeasonCalendarDay[]
   sectors: SeasonSectorRow[]; top_up: SeasonItem[]; miss_up: SeasonItem[]; beat_down: SeasonItem[]; reversed: SeasonItem[]; upcoming: SeasonItem[]
   evals: { hit: number; underweighted: number; noise: number; missed: number; cases: { ticker: string; issue: string; verdict: EvalVerdict }[] }
   core: { criteria: Record<CoreReason, string>; tickers: { ticker: string; name: string | null; reasons: CoreReason[] }[] }

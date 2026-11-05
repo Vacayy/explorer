@@ -69,3 +69,17 @@ export const SHORT_REASON: Record<CoreReason, string> = { cap: "시총", mention
 
 export const CoreBadge = ({ core }: { core: CoreReason[] | undefined }) =>
   core?.length ? <Badge variant="outline" className="border-primary/40 font-normal text-primary">핵심</Badge> : null
+
+/** 발표 전 기대 준비 상태 — qualitative는 정성 정리(쟁점·기준)까지 있는지 */
+export function expectationStatus(e: { d7: boolean; d1: boolean; qualitative: boolean } | null | undefined) {
+  if (!e) return "기대 정리 전"
+  if (e.qualitative) return e.d1 ? "전날 기대 정리됨" : "일주일 전 기대 정리됨"
+  return e.d1 || e.d7 ? "숫자만" : "기대 정리 전"
+}
+
+/** 시즌 화면 URL 쿼리 하나를 바꾼다(나머지 유지, 기록 대신 교체) — URL이 유일한 상태 소스 */
+export function patchParams(p: URLSearchParams, patch: Record<string, string | null>) {
+  const n = new URLSearchParams(p)
+  for (const [k, v] of Object.entries(patch)) { if (v == null) n.delete(k); else n.set(k, v) }
+  return n
+}

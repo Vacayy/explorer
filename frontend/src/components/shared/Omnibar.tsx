@@ -47,7 +47,7 @@ const PAGES = [
   { label: "기업활동", hint: "유무증·합병·공개매수", to: "/actions", icon: Building2, keywords: "actions 유상증자 기업활동" },
   { label: "문서 검색", hint: "전체 수집 자료", to: "/feed?view=documents", icon: FileSearch, keywords: "feed documents 문서 텔레그램 블로그" },
   { label: "소스 관리", hint: "채널·블로그·유튜브", to: "/admin/sources", icon: Globe, keywords: "source 소스 구독 관리 채널 블로그 유튜브" },
-  { label: "미국 종목", hint: "도시에·컨콜", to: "/us", icon: Globe, keywords: "us 미국 컨콜 transcript" },
+  { label: "미국 종목", hint: "컨콜 기업 목록", to: "/follow/transcripts", icon: Globe, keywords: "us 미국 컨콜 transcript" },
   { label: "보관함", hint: "예전 화면", to: "/archive", icon: Home, keywords: "archive 보관함 비교 산업군" },
 ] as const
 

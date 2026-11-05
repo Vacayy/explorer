@@ -38,6 +38,13 @@ const CASES = [
   ['/discover/alt-data', '', 'explore', 'discover'],
   ['/discover/peers', '', 'explore', 'peers'],
   ['/follow/transcripts', '', 'explore', 'transcripts'],
+  // 4d — 컨콜: 시즌 개요 · 섹터 상세 · 콜 상세 · 기업 목록(옛 /us는 리다이렉트)
+  ['/follow/transcripts', '?view=season', 'explore', 'transcripts'],
+  ['/follow/transcripts', '?view=season&season=2026Q2', 'explore', 'transcripts'],
+  ['/follow/transcripts', '?view=season&sector=dcinfra', 'explore', 'transcripts'],
+  ['/follow/transcripts', '?view=season&pick=VRT', 'explore', 'transcripts'],
+  ['/follow/transcripts', '?t=447', 'explore', 'transcripts'],
+  ['/follow/transcripts', '?view=proxies', 'explore', 'transcripts'],
   ['/us', '', 'explore', 'transcripts'],
   ['/people', '', 'explore', 'people'],
   ['/person', '?name=x', 'explore', 'people'],
@@ -164,6 +171,8 @@ const REDIRECTS = [
   ['sources', '/admin/sources'],
   // 4c단계 — VS 비교는 Peer 성과 비교로(?stocks=는 Peer 화면이 그룹·종목으로 푼다)
   ['analyze/compare', '/discover/peers'],
+  // 4d단계 — 미국 기업 목록은 컨콜 기업 목록으로(종목 도시에 /us/:ticker는 그대로)
+  ['us', '/follow/transcripts'],
 ]
 
 test('old home URLs redirect to the fixed home tabs', () => {

@@ -78,7 +78,7 @@ export function UsBriefingSection({ embedded = false, columns = false }: { embed
       )}
       {!embedded && <UsBriefingSourcesDialog />}
       {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
-      {!embedded && <Link to="/us" className="text-caption text-muted-foreground hover:text-foreground">미국 종목 →</Link>}
+      {!embedded && <Link to="/follow/transcripts" className="text-caption text-muted-foreground hover:text-foreground">컨콜 기업 목록 →</Link>}
     </div>
   )
   return (

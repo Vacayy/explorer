@@ -105,8 +105,8 @@ export default function UsDossierPage() {
                   {d.latest_transcript.fiscal_period} →
                 </Link>
               )}
-              <Link to="/us" className="text-muted-foreground hover:underline">
-                ← 미국 종목 목록
+              <Link to="/follow/transcripts" className="text-muted-foreground hover:underline">
+                ← 컨콜 기업 목록
               </Link>
             </div>
           </CardContent>

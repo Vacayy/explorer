@@ -2,12 +2,13 @@
 import type { ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { QueryState } from "@/components/shared/QueryState"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { useComputeCallReaction, useSeasonSector } from "@/hooks/useTranscripts"
 import { formatPp } from "@/utils/format"
 import { Bullets, Cols, CoreBadge, Meta, Pp, Section, VerdictBadge, mmdd, seasonLabel } from "@/components/follow/season/seasonUi"
@@ -63,7 +64,7 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
         </div>
         <Meta>{d.members.map((m) => m.ticker).join(" · ")} · 비교: {d.etf}{d.theme && ` · ${mmdd(d.theme.created_at)} 요약`}</Meta>
         {body?.one_line && <p className="text-[15px] font-semibold">{body.one_line}</p>}
-        <TimelineChart t={d.timeline} etf={d.etf} />
+        <TimelineChart t={d.timeline} etf={d.etf} companies={d.companies} />
       </Section>
 
       <Cols>
@@ -71,7 +72,7 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
           {body && (body.welcomed?.length || body.questioned?.length) ? <>
             {!!body.welcomed?.length && <><h3 className="text-sm font-semibold">반긴 것</h3><Bullets items={body.welcomed} /></>}
             {!!body.questioned?.length && <><h3 className="mt-2 text-sm font-semibold">문제 삼은 것</h3><Bullets items={body.questioned} /></>}
-          </> : <Meta>섹터 요약이 아직 없습니다. 반응 정리가 2건 이상이면 매일 07:20에 만들어집니다.</Meta>}
+          </> : <Meta>섹터 요약 전입니다.</Meta>}
         </Section>
         <Companies companies={d.companies} />
       </Cols>
@@ -90,11 +91,10 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
       )}
 
       {d.history.length > 0 && (
-        <Section title="지난 시즌과 비교">
+        <Section title={<span className="inline-flex items-center gap-1">지난 시즌과 비교<InfoTip label="지난 시즌 비교 설명">시즌별 발표 후 첫 거래일 {d.etf} 대비 %p입니다. 모든 시즌을 같은 눈금(±20%p)으로 그리고, 시즌은 발표 시점 기준입니다.</InfoTip></span>}>
           <div className="surface-grid grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))]">
             {d.history.map((h) => <SeasonBars key={h.season} h={h} />)}
           </div>
-          <Meta>시즌별 발표 후 첫 거래일 {d.etf} 대비 %p(같은 눈금 ±20). 시즌 = 발표 시점 기준.</Meta>
           {!!body?.vs_last_season?.length && <Bullets items={body.vs_last_season} />}
         </Section>
       )}
@@ -107,11 +107,25 @@ const toX = (d: string) => Date.parse(`${d}T00:00:00Z`)
 const xLabel = (v: number) => mmdd(new Date(v).toISOString().slice(0, 10))
 
 /** 시즌 한 달을 같은 달력 축에 — 업종 ETF 대비 누적 %p(창 첫 거래일 = 0), 종목별 발표일은 세로선 */
-function TimelineChart({ t, etf }: { t: SectorDetail["timeline"]; etf: string }) {
+function TimelineChart({ t, etf, companies }: { t: SectorDetail["timeline"]; etf: string; companies: SectorDetail["companies"] }) {
   const entries = Object.entries(t.series)
   if (!t.start || !entries.length) return <Meta>이번 시즌 소속 종목의 시세가 아직 없습니다.</Meta>
-  const color = (i: number) => LINE_COLORS[i % LINE_COLORS.length]
-  const index = new Map(entries.map(([ticker], i) => [ticker, i]))
+  // 반응이 갈린 종목만 색 — 첫 거래일 반응이 가장 강한 둘·가장 약한 둘, 나머지는 회색(§4.6 섹터 상세 ②)
+  const ranked = companies.filter((c) => c.d1 != null).sort((a, b) => (b.d1 as number) - (a.d1 as number)).map((c) => c.ticker)
+  const accent = ranked.length <= 4 ? ranked : [...ranked.slice(0, 2), ...ranked.slice(-2)]
+  const colorOf = new Map(accent.map((tk, i) => [tk, LINE_COLORS[i % LINE_COLORS.length]]))
+  const GRAY = "var(--color-chart-gray)"
+  const color = (ticker: string) => colorOf.get(ticker) ?? GRAY
+  const ordered = [...entries].sort((a, b) => Number(colorOf.has(a[0])) - Number(colorOf.has(b[0])))   // 색 선을 위에
+  // 선 끝 라벨 겹침 피하기 — 이미 쓴 y와 11px 안이면 아래로 민다(그리는 순서대로, 첫 선에서 새로 센다 — 차트가 혼자 다시 그려도 쌓이지 않게)
+  const usedY: number[] = []
+  const labelY = (ticker: string, y: number) => {
+    if (ticker === ordered[0]?.[0]) usedY.length = 0
+    let v = y
+    while (usedY.some((u) => Math.abs(u - v) < 11)) v += 11
+    usedY.push(v)
+    return v
+  }
   // 같은 날 발표한 종목은 세로선 하나에 묶는다
   const byDate = new Map<string, string[]>()
   for (const [ticker, day] of Object.entries(t.events).sort((a, b) => a[1].localeCompare(b[1]))) byDate.set(day, [...(byDate.get(day) ?? []), ticker])
@@ -119,9 +133,12 @@ function TimelineChart({ t, etf }: { t: SectorDetail["timeline"]; etf: string })
   const ticks = Array.from({ length: Math.floor((hi - lo) / (7 * DAY)) + 1 }, (_, i) => lo + i * 7 * DAY)
   return (
     <div className="space-y-1">
-      <h3 className="text-sm font-semibold">시즌 주가 흐름 · 발표일 표시</h3>
+      <h3 className="flex items-center gap-1 text-sm font-semibold">
+        시즌 주가 흐름
+        <InfoTip label="시즌 주가 흐름 설명">{etf} 대비 누적 %p이고, {mmdd(t.start)} 첫 거래일을 0으로 둡니다. 세로선은 종목별 발표일, 점선은 아직 발표 전입니다. 첫 거래일 반응이 가장 강한 종목과 가장 약한 종목만 색으로 보입니다.</InfoTip>
+      </h3>
       <ResponsiveContainer width="100%" height={280}>
-        <LineChart margin={{ top: 24, right: 44, bottom: 0, left: 0 }}>
+        <LineChart margin={{ top: 24, right: 80, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis type="number" dataKey="x" domain={[lo, hi]} ticks={ticks} tickFormatter={xLabel} tick={AXIS_TICK} allowDuplicatedCategory={false} />
           <YAxis tick={AXIS_TICK} width={40} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}`} />
@@ -129,24 +146,23 @@ function TimelineChart({ t, etf }: { t: SectorDetail["timeline"]; etf: string })
           <ReferenceLine y={0} stroke="var(--muted-foreground)" />
           {[...byDate].map(([day, tickers], k) => {
             const upcoming = !!t.end && day > t.end
-            const one = tickers.length === 1 && index.has(tickers[0])
+            const one = tickers.length === 1 && colorOf.has(tickers[0])
             return <ReferenceLine key={day} x={toX(day)} strokeDasharray={upcoming ? "2 4" : "3 3"}
-              stroke={one ? color(index.get(tickers[0])!) : "var(--muted-foreground)"} strokeOpacity={upcoming ? 0.6 : 0.9}
+              stroke={one ? color(tickers[0]) : "var(--muted-foreground)"} strokeOpacity={upcoming ? 0.6 : 0.9}
               label={{ value: tickers.join("·"), position: "top", fontSize: 10, dy: k % 2 ? -10 : 0,
                 fill: upcoming ? "var(--muted-foreground)" : "var(--foreground)" }} />
           })}
-          {entries.map(([ticker, p], i) => {
+          {ordered.map(([ticker, p]) => {
             const data = p.map(([d, y]) => ({ x: toX(d), y }))
-            return <Line key={ticker} name={ticker} data={data} dataKey="y" stroke={color(i)} strokeWidth={2} dot={false} isAnimationActive={false}
-              strokeDasharray={i >= LINE_COLORS.length ? "5 3" : undefined}
+            const on = colorOf.has(ticker)
+            const last = data.length ? data[data.length - 1].y : null
+            return <Line key={ticker} name={ticker} data={data} dataKey="y" stroke={color(ticker)} strokeWidth={on ? 2 : 1.25} strokeOpacity={on ? 1 : 0.7} dot={false} isAnimationActive={false}
               label={(lp: { index?: number; x?: number | string; y?: number | string }) => lp.index === data.length - 1
-                ? <text key={ticker} x={Number(lp.x) + 6} y={Number(lp.y) + 4} fontSize={11} fontWeight={600} fill={color(i)}>{ticker}</text>
+                ? <text key={ticker} x={Number(lp.x) + 6} y={labelY(ticker, Number(lp.y) + 4)} fontSize={11} fontWeight={on ? 600 : 400} fill={on ? color(ticker) : "var(--muted-foreground)"}>{ticker} {last == null ? "" : `${last > 0 ? "+" : ""}${last.toFixed(1)}`}</text>
                 : <g key={`${ticker}-${lp.index}`} />} />
           })}
-          <Legend wrapperStyle={{ fontSize: 12 }} />
         </LineChart>
       </ResponsiveContainer>
-      <Meta>{etf} 대비 누적 %p, {mmdd(t.start)} 첫 거래일 = 0(모든 종목 같은 기준). 세로선은 종목별 발표일, 점선은 아직 발표 전.</Meta>
     </div>
   )
 }
@@ -176,7 +192,7 @@ function SeasonBars({ h }: { h: SectorDetail["history"][number] }) {
 
 function Companies({ companies }: { companies: SectorDetail["companies"] }) {
   return (
-    <Section title="종목별">
+    <Section title="종목별" note={`${companies.length}개`}>
       {companies.length === 0 ? <Meta>소속 종목이 없습니다.</Meta> : (
         <div className="flex flex-col">
           {companies.map((c) => (
@@ -197,7 +213,7 @@ function Companies({ companies }: { companies: SectorDetail["companies"] }) {
                 ? c.reaction
                   ? <Link to={`/follow/transcripts?t=${c.transcript_id}`} className="text-sm font-semibold text-primary hover:underline">콜 상세 →</Link>
                   : <MakeReaction transcriptId={c.transcript_id} ticker={c.ticker} />
-                : <span />}
+                : c.status === "reported" ? <span className="text-caption text-muted-foreground">녹취록 대기</span> : <span />}
             </div>
           ))}
         </div>

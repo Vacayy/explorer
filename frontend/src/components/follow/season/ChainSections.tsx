@@ -5,6 +5,7 @@ import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Bar, BarChart, Cell, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Badge } from "@/components/ui/badge"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -194,7 +195,7 @@ function QuantFacts({ q }: { q: NonNullable<NonNullable<ChainDetail["expectation
   return facts.length ? <Bullets items={facts} /> : null
 }
 
-/* ---------- 발표 전에 본 쟁점은 어떻게 됐나 ---------- */
+/* ---------- 발표 전 시장이 주목한 내용 (발표 전 쟁점 채점) ---------- */
 export function IssuesCard({ chain }: { chain: ChainDetail }) {
   const ex = chain.expectation
   const grades = chain.reaction_meta?.grades ?? []
@@ -221,7 +222,7 @@ export function IssuesCard({ chain }: { chain: ChainDetail }) {
     </>
   } else content = <Meta>발표 전 정리에 쟁점이 없습니다.</Meta>
 
-  return <Section title="발표 전에 본 쟁점은 어떻게 됐나">{content}</Section>
+  return <Section title="발표 전 시장이 주목한 내용">{content}</Section>
 }
 
 function IssueBlock({ grade, issue }: { grade?: ReactionGrade; issue?: ExpectationIssue }) {
@@ -261,7 +262,7 @@ export function IssuesRow({ chain }: { chain: ChainDetail }) {
 export function HistoryCard({ chain, transcriptId, onSelect }: { chain: ChainDetail; transcriptId: number; onSelect: (id: number) => void }) {
   if (!chain.history.length) return null
   return (
-    <Section title="분기별 기록">
+    <Section title={<span className="inline-flex items-center gap-1">분기별 기록<InfoTip label="분기별 기록 설명">%p는 {chain.etf} 대비 초과수익이고, 목표가는 발표 후 7일 안의 변경 건수입니다.</InfoTip></span>}>
       <div className="overflow-x-auto">
         <Table className="text-sm">
           <TableHeader>
@@ -296,7 +297,6 @@ export function HistoryCard({ chain, transcriptId, onSelect }: { chain: ChainDet
           </TableBody>
         </Table>
       </div>
-      <Meta>%p = {chain.etf} 대비 초과수익. 목표가는 발표 후 7일 안의 변경 건수.</Meta>
     </Section>
   )
 }

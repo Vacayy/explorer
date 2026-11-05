@@ -31,7 +31,7 @@
 |---|---|---|
 | 홈 | 대시보드 `/home` · 한국 시장 `/home/kr` · 미국 시장 `/home/us` · 매크로 `/home/macro` · 내 종목 `/home/stocks` | `/home` (단 `home_view=feed` 제외)·`/home/b/:id`(→ `/home`) → 대시보드, `/home/kr`·`/retail` → 한국 시장, `/home/us`·`/home/briefing`(→ `/home/us`) → 미국 시장, `/home/macro`·`/home/risk`(→ `/home/macro`)·`/regimes`(→ `/home/macro#history`) → 매크로, `/home/stocks` → 내 종목 |
 | 피드 | 피드 `/feed` · 저장됨 `/feed/saved` | `/feed`, `/doc/`, `/source`, `/feed/saved`, 옛 `/home?home_view=feed`(→ `/feed`)·`/follow/saved`(→ `/feed/saved`) |
-| 탐색 | 종목 발견 `/discover` · Peer 그룹 `/discover/peers` · 컨콜 `/follow/transcripts` · 인물 `/people` · *기업활동 `/actions`* | `/discover`, 옛 `/explore`(→ `/discover#signals`) → 종목 발견, `/discover/peers`, 옛 `/analyze/compare`(→ `/discover/peers`) → Peer 그룹, `/follow/transcripts`, `/us`(목록), `/people`, `/person`, `/actions` |
+| 탐색 | 종목 발견 `/discover` · Peer 그룹 `/discover/peers` · 컨콜 `/follow/transcripts` · 인물 `/people` · *기업활동 `/actions`* | `/discover`, 옛 `/explore`(→ `/discover#signals`) → 종목 발견, `/discover/peers`, 옛 `/analyze/compare`(→ `/discover/peers`) → Peer 그룹, `/follow/transcripts`, 옛 `/us`(→ `/follow/transcripts`) → 컨콜, `/people`, `/person`, `/actions` |
 | 산업 | 산업·섹터 `/map` · 수출입 `/follow/trade` · 대만 공급망 `/follow/taiwan` · 밸류체인 `/value-chain` · 회사채 `/follow/credit` | `/map`, `/follow/universe`, `/discover/industry`, `/follow/trade`, `/follow/taiwan`, `/value-chain`, `/follow/credit` |
 | 포트폴리오 | 개요 `/portfolio` · 보유 · 원칙 · 일정 · 종목 묶음 `/follow/stocks` | `/portfolio`, `/follow/stocks`, `/follow` |
 | Thesis | 지금 `/narrative` · 그래프 `/knowledge/ontology` · 내 판단 `/questions` · 스터디 `/study` | `/narrative`, `/knowledge`, `/questions`, `/question/`, `/thesis`, `/report`, `/proxy-boards`, `/study` |

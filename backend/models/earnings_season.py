@@ -26,6 +26,15 @@ class SeasonWindow(BaseModel):
     confirmed: int
 
 
+class SeasonCalendarDay(BaseModel):
+    """발표 캘린더 하루 — 팔로우 기업 발표 수(핵심 몫·확정 수)와 종목."""
+    date: str
+    total: int
+    core: int
+    confirmed: int
+    tickers: list[str]
+
+
 class SeasonCounts(BaseModel):
     followed: int
     reported: int
@@ -125,6 +134,7 @@ class SeasonOverview(BaseModel):
     changes: SeasonChanges
     last_run: str | None
     windows: list[SeasonWindow]
+    calendar: list[SeasonCalendarDay]
     sectors: list[SeasonSectorRow]
     top_up: list[SeasonItem]
     miss_up: list[SeasonItem]
