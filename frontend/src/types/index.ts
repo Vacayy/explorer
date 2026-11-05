@@ -423,6 +423,15 @@ export interface SectorGroup {
 }
 export interface SectorMap { as_of: string | null; groups: SectorGroup[] }
 
+/** GET /api/spine/sector-map/peers — 섹터 → Peer 그룹 대응(서버 sector_peer_map, D-301 6). share = 그룹 구성 종목 중 이 섹터 비율 */
+export interface SectorPeerLink {
+  group_id: string; group_name: string; scope: 'product' | 'value_chain'
+  source: 'seed' | 'auto'; partial: boolean
+  members: number; classified: number; in_sector: number; share: number | null
+}
+export interface SectorPeerEntry { sector: string; partial: boolean; note: string | null; links: SectorPeerLink[] }
+export interface SectorPeers { catalog_as_of: string; auto_share: number; sectors: SectorPeerEntry[] }
+
 /** GET /api/spine/signals/summary — 유형별 최신일 건수·상위 3. as_of = 신호 최신일 */
 export interface SignalsSummaryType {
   type: string;

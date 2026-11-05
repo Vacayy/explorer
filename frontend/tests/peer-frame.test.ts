@@ -5,6 +5,7 @@ import { parsePeerCatalog } from '@/lib/peerCatalog'
 import { parsePeerPrices } from '@/lib/peerPerformance'
 import { companyEvidence, groupAverage, groupForStocks, peerDays, peerFinder, peerGroupParam, peerGroupSummary, peerMemberRows, peerView, selectPeerGroup, switchPeerView } from '@/lib/peerFrame'
 import { sectorOfPeerGroup } from '@/lib/sectorPeers'
+import { SECTOR_PEERS_FIXTURE } from './fixtures/sectorPeers'
 
 const catalog = parsePeerCatalog(raw)
 const prices = parsePeerPrices(rawPrices)
@@ -73,6 +74,6 @@ it('finder opens the current industry (children by 20d) and filters by company o
 it('maps compared stocks to the group holding most of them and groups to sectors', () => {
   expect(groupForStocks(catalog, ['103590', '298040'])).toBe('power_transformer')
   expect(groupForStocks(catalog, ['999999'])).toBeNull()
-  expect(sectorOfPeerGroup(catalog, 'package_substrate')).toBe('반도체·전자부품')
-  expect(sectorOfPeerGroup(catalog, 'bank_financial_holding')).toBe('금융')
+  expect(sectorOfPeerGroup(catalog, SECTOR_PEERS_FIXTURE.sectors, 'package_substrate')).toBe('반도체·전자부품')
+  expect(sectorOfPeerGroup(catalog, SECTOR_PEERS_FIXTURE.sectors, 'bank_financial_holding')).toBe('금융')
 })

@@ -1,6 +1,7 @@
 import prices from '@/data/peer-prices.json'
 import catalog from '@/data/peer-catalog.json'
 import api from '@/api/client'
+import { SECTOR_PEERS_FIXTURE } from './fixtures/sectorPeers'
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
@@ -13,9 +14,10 @@ const runtime = (lastAttempt: unknown = { at: prices.collectedAt, status: 'error
   catalog, prices, origin: 'collector', publishedAt: prices.collectedAt, baselineOn: '2026-11-01',
   lastAttempt, priceAgeDays: 2, snapshotAgeHours: 1, signalStatus: 'held', signalHoldReason: '기업행사 조정 검증 미완료',
 } })
-const get = vi.spyOn(api, 'get').mockImplementation(async () => runtime())
+const byUrl = (url: string) => url.includes('/sector-map/peers') ? { data: SECTOR_PEERS_FIXTURE } : runtime()
+const get = vi.spyOn(api, 'get').mockImplementation(async (url: string) => byUrl(url) as never)
 const clients: QueryClient[] = []
-afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; get.mockImplementation(async () => runtime()) })
+afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; get.mockImplementation(async (url: string) => byUrl(url) as never) })
 function Location() { return <output aria-label="URL">{useLocation().search}</output> }
 function mount(url: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client)

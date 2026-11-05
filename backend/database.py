@@ -666,6 +666,17 @@ def init_db():
         sector_name TEXT PRIMARY KEY,   -- entities(type='sector').name (KSIC)
         group_name  TEXT NOT NULL       -- 대분류 (반도체·전자부품, 바이오·헬스케어 등)
     );
+    -- 섹터 → Peer 그룹 대응표 (ia-redesign §4.12, D-301 6). 사람이 정한 연결만 둔다 — 자동 제안은 읽을 때 계산(pipeline/sector_peers)
+    CREATE TABLE IF NOT EXISTS sector_peer_map (
+        sector        TEXT NOT NULL,              -- sector_map.group_name 대분류
+        peer_group_id TEXT NOT NULL,              -- Peer 카탈로그 그룹 id (게시본 파일, DB 아님)
+        sort          INTEGER NOT NULL DEFAULT 0, -- 섹터 안 표시 순서
+        partial       INTEGER NOT NULL DEFAULT 0, -- 1 = 섹터의 일부 업종만 덮는 연결
+        note          TEXT,                       -- 부분 연결의 범위 (예: 화장품만)
+        source        TEXT NOT NULL DEFAULT 'seed', -- seed = 초안 대응표(11-04)
+        updated_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE (sector, peer_group_id)
+    );
     -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
     CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1687,6 +1698,8 @@ def init_db():
     from pipeline.sec_filings import ensure_schema as ensure_sec_schema   # transcript_follow.fiscal_year_end (D-217)
     ensure_sec_schema(conn)
     conn.commit()
+    from pipeline.sector_peers import seed as seed_sector_peers   # 섹터 → Peer 초안 대응표, 표가 비었을 때만 (D-301 6)
+    seed_sector_peers(conn)
 
     conn.close()
 

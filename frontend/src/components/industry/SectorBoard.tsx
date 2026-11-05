@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { usePeerRuntime } from "@/hooks/usePeerRuntime"
-import { useSectorMap } from "@/hooks/useSectorMap"
+import { useSectorMap, useSectorPeers } from "@/hooks/useSectorMap"
 import {
   SECTOR_DATA_LINKS, groupCodes, groupMedianPath, groupMedianReturn, memberReturn, parseSectorSort,
   sectorDataLinks, sectorPeerGroups, shortRsTrail, sortSectors, type SectorSort,
@@ -20,7 +20,7 @@ import {
 import { peerChildren } from "@/lib/peerPresets"
 import { cn } from "@/lib/utils"
 import { formatKrw, formatNumber, formatPercent } from "@/utils/format"
-import type { SectorGroup } from "@/types"
+import type { SectorGroup, SectorPeerEntry } from "@/types"
 import type { PeerCatalog, PeerPriceSnapshot } from "@/types/peer"
 
 const RS_INFO = "산업 맵 18개 대분류의 상대강도입니다. 장기 RS = 11개월 수익률의 전 종목 대비 백분위(구조적 강도), 단기 RS = 1개월 수익률 백분위(지금 수급). 5일 = 시총 가중 5거래일 등락."
@@ -30,24 +30,27 @@ const CHART_LINES = 5
 const SORTS: { key: SectorSort; label: string }[] = [{ key: "long", label: "장기 RS" }, { key: "short", label: "단기 RS" }, { key: "chg5", label: "5일" }]
 
 type Runtime = ReturnType<typeof usePeerRuntime>
+type Links = ReturnType<typeof useSectorPeers>
 
 /**
  * 산업 › 산업·섹터 기본 보기 (/map, 시안 Industry-Sector · Mobile-Industry, ia-redesign §4.7·§4.29).
  * 왼쪽 섹터 상대강도 표 | 오른쪽 고른 섹터 머리 → Peer 그룹(그룹 중앙값 60거래일, 시작=100) → 이 산업의 데이터 → 섹터 → Peer 그룹.
  * 모바일 = 정렬 칩 + 섹터 줄, 줄을 누르면 아래에서 섹터 시트. URL: group(고른 섹터) · sort(long·short·chg5, 없으면 시총).
- * 섹터 → Peer 그룹 대응은 lib/sectorPeers의 임시 표(5단계에서 서버 대응표로).
+ * 섹터 → Peer 그룹 대응은 서버 대응표(GET /api/spine/sector-map/peers, sector_peer_map + 자동 제안).
  */
 export default function SectorBoard({ viewMenu }: { viewMenu?: React.ReactNode }) {
   const [params, setParams] = useSearchParams()
   const mobile = useIsMobile()
   const map = useSectorMap()
   const peers = usePeerRuntime()
+  const links = useSectorPeers()
   const sort = parseSectorSort(params.get("sort"))
   const rows = useMemo(() => sortSectors(map.data?.groups ?? [], sort), [map.data, sort])
   const picked = params.get("group")
   const selected = rows.find(g => g.name === picked) ?? (mobile ? undefined : rows[0])
   const set = (key: string, value: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (value) n.set(key, value); else n.delete(key); return n }, { replace: true, preventScrollReset: true })
   const catalog = peers.data?.catalog
+  const entryOf = (sector: string) => links.data?.sectors.find(e => e.sector === sector)
 
   const list = <HomeBlock label="sector.rs" title="산업·섹터 상대강도" info={RS_INFO} asOf={map.data?.as_of ?? null}
     actions={viewMenu} bodyClassName="p-0">
@@ -59,14 +62,14 @@ export default function SectorBoard({ viewMenu }: { viewMenu?: React.ReactNode }
       : map.isError ? <div className="p-3"><BlockError message="섹터 상대강도를 불러오지 못했습니다" error={map.error} onRetry={() => void map.refetch()} /></div>
       : !rows.length ? <p role="status" className="p-3 text-sm text-muted-foreground">주가·섹터 데이터가 쌓이면 나타납니다.</p>
       : <SectorTable rows={rows} sort={sort} onSort={v => set("sort", v)} selected={selected?.name ?? null} mobile={mobile}
-          peerCount={g => catalog ? sectorPeerGroups(catalog, g).all.length : null} onPick={g => set("group", g)} />}
+          peerCount={g => catalog && links.data ? sectorPeerGroups(catalog, entryOf(g)).all.length : null} onPick={g => set("group", g)} />}
   </HomeBlock>
 
   if (mobile) return <>
     {list}
     <Sheet open={!!picked && !!selected} onOpenChange={v => { if (!v) set("group", null) }}>
       <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto">
-        {selected && <SectorSheet g={selected} peers={peers} />}
+        {selected && <SectorSheet g={selected} peers={peers} links={links} />}
       </SheetContent>
     </Sheet>
   </>
@@ -75,9 +78,9 @@ export default function SectorBoard({ viewMenu }: { viewMenu?: React.ReactNode }
     {list}
     <div className="flex min-w-0 flex-col">
       {selected ? <SectorHead g={selected} /> : map.isPending ? <Skeleton className="h-24 w-full rounded-card" /> : null}
-      {selected && <PeerBlock sector={selected.name} peers={peers} />}
+      {selected && <PeerBlock sector={selected.name} peers={peers} links={links} />}
       {selected && <DataLinks sector={selected.name} />}
-      {map.data && <SectorPeerMap rows={map.data.groups} peers={peers} />}
+      {map.data && <SectorPeerMap rows={map.data.groups} peers={peers} links={links} />}
     </div>
   </div>
 }
@@ -150,10 +153,11 @@ function groupStats(catalog: PeerCatalog, snapshot: PeerPriceSnapshot, ids: read
   }).sort((a, b) => (b.ret20 ?? -Infinity) - (a.ret20 ?? -Infinity))
 }
 
-function PeerBlock({ sector, peers }: { sector: string; peers: Runtime }) {
+function PeerBlock({ sector, peers, links }: { sector: string; peers: Runtime; links: Links }) {
   const { resolvedTheme } = useTheme()
   const d = peers.data
-  const linked = d ? sectorPeerGroups(d.catalog, sector) : null
+  const entry = links.data?.sectors.find(e => e.sector === sector)
+  const linked = d && links.data ? sectorPeerGroups(d.catalog, entry) : null
   const chart = useMemo(() => {
     if (!d || !linked) return null
     const paths = linked.all
@@ -165,9 +169,9 @@ function PeerBlock({ sector, peers }: { sector: string; peers: Runtime }) {
     if (!paths.length) return null
     const dates = d.prices.dates.slice(-CHART_DAYS - 1)
     return { paths, data: dates.map((time, i) => ({ time, ...Object.fromEntries(paths.map(p => [p.id, p.path![i]])) })) }
-    // linked는 sector·카탈로그로 정해진다
+    // linked는 sector·카탈로그·대응표로 정해진다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d, sector])
+  }, [d, sector, links.data])
   const lines = useMemo<LineConfig[]>(() => {
     if (!chart) return []
     const styles = getComputedStyle(document.documentElement)
@@ -184,8 +188,9 @@ function PeerBlock({ sector, peers }: { sector: string; peers: Runtime }) {
     info={`이 섹터에 걸린 Peer 그룹입니다. 선은 그룹 구성 종목의 날짜별 중앙값(${CHART_DAYS}거래일 전 = 100), 상위 ${CHART_LINES}개 그룹만 그리고 1위를 굵게 표시합니다. 표는 ${TABLE_DAYS}거래일 중앙값 순입니다. 가격이 없는 종목은 계산에서 뺍니다.`}
     asOf={d?.prices.asOf ?? null}
     link={linked?.top.length ? { to: `/discover/peers?group=${linked.top[0]}`, label: "Peer 비교 열기" } : null}>
-    {peers.isPending ? <div className="space-y-2"><Skeleton className="h-[260px] w-full" /><RowsSkeleton rows={4} head={false} /></div>
+    {peers.isPending || links.isPending ? <div className="space-y-2"><Skeleton className="h-[260px] w-full" /><RowsSkeleton rows={4} head={false} /></div>
       : peers.isError || !d ? <BlockError message="Peer 그룹 가격을 불러오지 못했습니다" error={peers.error} onRetry={() => void peers.refetch()} />
+      : links.isError ? <BlockError message="섹터 → Peer 대응표를 불러오지 못했습니다" error={links.error} onRetry={() => void links.refetch()} />
       : !linked?.all.length ? <p role="status" className="text-sm text-muted-foreground">이 업종엔 아직 Peer 그룹이 없습니다.</p>
       : <div className="space-y-3">
         {chart ? <MultiLineChart data={chart.data} lines={lines} height={260} showLegend={false} showLineTooltip formatValue={v => v.toFixed(1)} />
@@ -217,20 +222,28 @@ function DataLinks({ sector }: { sector: string }) {
   </HomeBlock>
 }
 
-function SectorPeerMap({ rows, peers }: { rows: SectorGroup[]; peers: Runtime }) {
+function SectorPeerMap({ rows, peers, links }: { rows: SectorGroup[]; peers: Runtime; links: Links }) {
   const d = peers.data
-  const linkedCount = d ? rows.filter(r => sectorPeerGroups(d.catalog, r.name).top.length).length : 0
-  const partialCount = d ? rows.filter(r => { const s = sectorPeerGroups(d.catalog, r.name); return s.top.length && s.partial }).length : 0
-  return <HomeBlock label="sector.map" title={<>섹터 → Peer 그룹 {d && <span className="ml-1 text-xs font-normal text-muted-foreground">{rows.length}개 중 {linkedCount}개 연결 · 부분 {partialCount}</span>}</>}
-    info={`섹터마다 이어진 Peer 그룹과 구성 종목 수, ${TABLE_DAYS}거래일 중앙값입니다. '부분'은 섹터의 일부 업종만 덮는 연결입니다.`} bodyClassName="p-0">
-    {peers.isPending ? <div className="p-3"><RowsSkeleton rows={6} /></div>
+  const entries = links.data?.sectors
+  const entryOf = (sector: string): SectorPeerEntry | undefined => entries?.find(e => e.sector === sector)
+  const groupsOf = (sector: string) => d && entries ? sectorPeerGroups(d.catalog, entryOf(sector)) : null
+  const linkedCount = rows.filter(r => groupsOf(r.name)?.top.length).length
+  const partialCount = rows.filter(r => { const s = groupsOf(r.name); return s?.top.length && s.partial }).length
+  const ready = !!d && !!entries
+  return <HomeBlock label="sector.map" title={<>섹터 → Peer 그룹 {ready && <span className="ml-1 text-xs font-normal text-muted-foreground">{rows.length}개 중 {linkedCount}개 연결 · 부분 {partialCount}</span>}</>}
+    info={`섹터마다 이어진 Peer 그룹과 구성 종목 수, ${TABLE_DAYS}거래일 중앙값입니다. '부분'은 섹터의 일부 업종만 덮는 연결, '자동'은 연결이 없는 섹터에 구성 종목의 ${Math.round((links.data?.auto_share ?? 0.6) * 100)}% 이상이 그 섹터인 그룹을 붙인 것입니다.`} bodyClassName="p-0">
+    {peers.isPending || links.isPending ? <div className="p-3"><RowsSkeleton rows={6} /></div>
       : !d ? <div className="p-3"><BlockError message="Peer 그룹을 불러오지 못했습니다" error={peers.error} onRetry={() => void peers.refetch()} /></div>
+      : !entries ? <div className="p-3"><BlockError message="섹터 → Peer 대응표를 불러오지 못했습니다" error={links.error} onRetry={() => void links.refetch()} /></div>
       : <ul className="divide-y">{rows.map(r => {
-        const s = sectorPeerGroups(d.catalog, r.name)
+        const entry = entryOf(r.name)
+        const s = sectorPeerGroups(d.catalog, entry)
+        const auto = !!entry?.links.length && entry.links.every(l => l.source === "auto")
         const children = s.top.reduce((n, id) => n + peerChildren(d.catalog, id).length, 0)
-        return <li key={r.name} className="grid grid-cols-[9rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-[13px]">
+        return <li key={r.name} data-sector-peer={r.name} className="grid grid-cols-[9rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-[13px]">
           <span className={cn("flex items-center gap-1.5", s.top.length ? "font-semibold" : "text-muted-foreground")}>{r.name}
-            {s.partial && <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">부분</Badge>}</span>
+            {s.partial && <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">부분</Badge>}
+            {auto && <Badge variant="outline" className="h-4 px-1 text-[10px] font-normal">자동</Badge>}</span>
           <span className="flex flex-wrap gap-1.5">{s.top.length ? s.top.map(id => {
             const codes = groupCodes(d.catalog, id)
             const ret = groupMedianReturn(d.prices, codes, TABLE_DAYS)
@@ -245,9 +258,9 @@ function SectorPeerMap({ rows, peers }: { rows: SectorGroup[]; peers: Runtime })
 }
 
 /** 모바일 섹터 시트 — 장기 RS · 단기 RS 4주 흐름 · 5일, Peer 그룹 20일 중앙값 상위 3, 이동 칩 */
-function SectorSheet({ g, peers }: { g: SectorGroup; peers: Runtime }) {
+function SectorSheet({ g, peers, links }: { g: SectorGroup; peers: Runtime; links: Links }) {
   const d = peers.data
-  const linked = d ? sectorPeerGroups(d.catalog, g.name) : null
+  const linked = d && links.data ? sectorPeerGroups(d.catalog, links.data.sectors.find(e => e.sector === g.name)) : null
   const top3 = d && linked ? groupStats(d.catalog, d.prices, linked.all).slice(0, 3) : []
   const chips = [
     ...(linked?.top.length ? [{ to: `/discover/peers?group=${linked.top[0]}`, label: "Peer 비교 열기" }] : []),
@@ -264,8 +277,9 @@ function SectorSheet({ g, peers }: { g: SectorGroup; peers: Runtime }) {
         <div><p className="text-xs text-muted-foreground">단기 RS 4주</p><p className="font-mono tabular-nums">{shortRsTrail(g).map(t => t.value ?? "-").join(" → ")}</p></div>
         <div><p className="text-xs text-muted-foreground">5일</p><p className={cn("font-mono tabular-nums", tone(g.chg_5d))}>{formatPercent(g.chg_5d)}</p></div>
       </div>
-      {peers.isPending ? <RowsSkeleton rows={3} head={false} />
+      {peers.isPending || links.isPending ? <RowsSkeleton rows={3} head={false} />
         : peers.isError ? <BlockError message="Peer 그룹을 불러오지 못했습니다" error={peers.error} onRetry={() => void peers.refetch()} />
+        : links.isError ? <BlockError message="섹터 → Peer 대응표를 불러오지 못했습니다" error={links.error} onRetry={() => void links.refetch()} />
         : !top3.length ? <p role="status" className="text-sm text-muted-foreground">이 업종엔 아직 Peer 그룹이 없습니다.</p>
         : <div>
           <ul className="divide-y border-y text-sm">{top3.map(s => <li key={s.id} className="flex items-center justify-between py-2">

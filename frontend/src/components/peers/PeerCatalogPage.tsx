@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Skeleton } from '@/components/ui/skeleton'
 import { PeerPerformanceBody, PeerResearchBody, PeerIndustriesBody, PeerIndustriesResearch } from '@/components/peers/PeerBodies'
 import { usePeerRuntime } from '@/hooks/usePeerRuntime'
+import { useSectorPeers } from '@/hooks/useSectorMap'
 import { companyEvidence, groupForStocks, peerDays, peerFinder, peerGroupParam, peerGroupSummary, peerIndustryOf, peerMemberRows, peerView, selectPeerGroup, switchPeerView, type PeerListItem } from '@/lib/peerFrame'
 import { sectorOfPeerGroup } from '@/lib/sectorPeers'
 import { cn } from '@/lib/utils'
@@ -113,7 +114,8 @@ function PeerHead({ catalog, groupId, view = 'performance', onView, onPick, onOp
   const group = catalog?.groups.find(item => item.id === groupId)
   const industryId = catalog && group ? peerIndustryOf(catalog, group.id) : null
   const industry = industryId && industryId !== groupId ? catalog?.groups.find(item => item.id === industryId) : undefined
-  const sector = catalog && group ? sectorOfPeerGroup(catalog, group.id) : null
+  const sectorPeers = useSectorPeers()
+  const sector = catalog && group && sectorPeers.data ? sectorOfPeerGroup(catalog, sectorPeers.data.sectors, group.id) : null
   const crumbs: { id: string; name: string }[] = [{ id: '', name: '업종 전체' }, ...(industry ? [industry] : []), ...(group ? [group] : [])]
   return <header className="space-y-3">
     <div className="flex flex-wrap items-end justify-between gap-3">

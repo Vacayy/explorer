@@ -38,15 +38,17 @@
 
 | `?view=` | 화면 | 원천 |
 |---|---|---|
-| (없음, 기본) | 섹터 상대강도 + Peer 그룹(2026-11-05 개편 4b, 아래) | `sector_map` · `sector_rs` · `/api/peers/runtime` |
+| (없음, 기본) | 섹터 상대강도 + Peer 그룹(2026-11-05 개편 4b, 아래) | `sector_map` · `sector_rs` · `/api/peers/runtime` · `/api/spine/sector-map/peers`(`sector_peer_map`) |
 | `map` | 산업 맵 — 18 대분류 RS 사분면·구성표·밸류체인·소속 종목 | `sector_map` · `sector_rs` |
 | `universe` | 유니버스 — 커버리지 큐레이션·섹터 서사·리포트 | `industry_groups/members` |
 | `chains` | 산업군 지도 — 밸류체인 표·지도 | `industry_groups/members` |
 
 - 옛 경로: `/follow/universe` → `/map?view=universe`, `/discover/industry` → `/map?view=chains`. 세 보기는 기본 화면 머리의 '다른 보기' 메뉴로 연다.
 - **기본 화면(`industry/SectorBoard`, ia-redesign §4.7·§4.29)**: 왼쪽 섹터 상대강도 표(시총·장기 RS·단기 RS·5일·Peer 그룹 수, 머리 클릭 정렬 `sort`=long·short·chg5, 기본 시총) | 오른쪽 고른 섹터(`group`, 없으면 첫 줄) 머리(종목 수·시총·장기 RS·단기 RS 3주 흐름·5일) → Peer 그룹(섹터에 걸린 그룹의 구성 종목 중앙값 경로 60거래일 시작=100 상위 5선, 1위 굵게, 선 끝 라벨; 20일 중앙값 표 8줄; 'Peer 비교 열기 ›' = `/discover/peers?group=`) → 이 산업의 데이터(수출입·대만 공급망·밸류체인·미국 실적 시즌 중 그 섹터에 해당하는 것) → 섹터 → Peer 그룹 대응(18줄, 연결 없음은 한 줄, '부분' 칩). 모바일: 정렬 칩 + 섹터 줄(이름 아래 시총·종목 수·Peer 수), 줄을 누르면 아래 시트(장기 RS · 단기 RS 4주 흐름 · 5일, Peer 그룹 20일 중앙값 상위 3, 이동 칩). 차트·대응 카드는 모바일에서 숨긴다.
-- 섹터 → Peer 그룹 대응은 프론트 상수 `lib/sectorPeers.SECTOR_PEERS`(ia-redesign §4.12 초안 10개 연결·부분 4)다. 상위 그룹은 제품 그룹까지 편다. 5단계에서 서버 대응표로 옮긴다.
-- 5-state: 블록 단위(섹터 표 오류와 Peer 가격 오류가 따로), Peer 그룹 없는 섹터는 '이 업종엔 아직 Peer 그룹이 없습니다' 한 줄(그룹 만들기는 운영 작업이라 링크 없음), 가격 없는 종목은 중앙값에서 뺀다.
+- **섹터 → Peer 그룹 대응(서버, 2026-11-05 개편 5단계 ③)**: `GET /api/spine/sector-map/peers`(`pipeline/sector_peers`, 모델 호출 없음)가 섹터 18개마다 `{sector, partial, note, links[]}`를 준다. 사람이 정한 연결은 `sector_peer_map`(초안 10개 섹터·16행·부분 4, 표가 비었을 때 `init_db`가 한 번 심음, source='seed'). 링크마다 `members`(구성 종목)·`classified`(산업 맵 섹터를 아는 종목)·`in_sector`·`share = in_sector / classified` — 섹터는 /map과 같은 `sector_rs._members`(회사 → MEMBER_OF → KSIC 업종 → `sector_map` 대분류).
+- **자동 제안**: 연결이 하나도 없는 섹터에만, `share ≥ 0.6`이고 그 섹터 종목이 2개 이상이며 아직 어느 섹터에도 걸리지 않은(직접 걸렸거나 걸린 그룹 안에 구성 종목이 모두 든 사업군이 아닌) 그룹을 `source='auto'`로 붙인다. 읽을 때 계산하고 저장하지 않는다. 화면은 같은 칩에 섹터 이름 옆 '자동' 배지. 편집 화면은 없다.
+- 프론트는 대응표를 받아 상위 그룹을 제품 그룹까지 편다(`lib/sectorPeers.sectorPeerGroups`, `peerChildren`). Peer 그룹 → 섹터 역방향('이 그룹의 업황 보기')은 직접 연결 › 상위 그룹 연결, seed › auto 순(`sectorOfPeerGroup`).
+- 5-state: 블록 단위(섹터 표 오류와 Peer 가격 오류, 대응표 오류가 따로 — 대응표를 받기 전에는 Peer 그룹·대응 블록이 스켈레톤), Peer 그룹 없는 섹터는 '이 업종엔 아직 Peer 그룹이 없습니다' 한 줄(그룹 만들기는 운영 작업이라 링크 없음), 가격 없는 종목은 중앙값에서 뺀다.
 - 선택 섹터 = `?group=<대분류>`(기본 화면·산업 맵 공통). 선택되면 밸류체인·소속 종목을 구성표 **위**에 보이고 산점도의 다른 점을 흐린다. 소속 종목이 없으면 그 사실을 문구로.
 - 교차 링크: 국장 거래대금 섹터 쏠림 라벨 → `/map?group=`. 유니버스 그룹 → '산업 맵에서 보기' 칩 = 멤버가 속한 `sector_map` 대분류 상위 3(`GET /api/industries/{id}` 응답 `map_groups: [{name, members}]`).
 - 두 섹터 체계(`sector_map` 18 대분류 · `industry_groups` 11 큐레이션)는 **합치지 않는다**. 이름이 달라 멤버 분포로만 잇는다. 통합 여부는 별도 결정.

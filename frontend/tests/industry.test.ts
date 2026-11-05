@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest'
 import catalogRaw from '@/data/peer-catalog.json'
 import { parsePeerCatalog } from '@/lib/peerCatalog'
-import { SECTOR_PEERS, groupMedianPath, groupMedianReturn, parseSectorSort, sectorDataLinks, sectorPeerGroups, shortRsTrail, sortSectors } from '@/lib/sectorPeers'
+import { groupMedianPath, groupMedianReturn, parseSectorSort, sectorDataLinks, sectorOfPeerGroup, sectorPeerGroups, shortRsTrail, sortSectors } from '@/lib/sectorPeers'
+import { SECTOR_PEERS_FIXTURE, sectorEntry } from './fixtures/sectorPeers'
 import { creditGroupMedians, defaultCreditPicks, parseCreditRange, sliceByRange } from '@/lib/credit'
 import { monthLabel, movingAverage, parseTradeGridSort, rankTradeGrid } from '@/lib/trade'
 import type { PeerPriceSnapshot } from '@/types/peer'
@@ -9,19 +10,32 @@ import type { CreditRow, TradeFollowRow } from '@/types'
 
 const catalog = parsePeerCatalog(catalogRaw)
 
-it('sector → peer table points at real catalog groups and expands parents to their product groups', () => {
+it('server sector → peer links point at real catalog groups and expand parents to their product groups', () => {
   const ids = new Set(catalog.groups.map(g => g.id))
-  for (const [sector, entry] of Object.entries(SECTOR_PEERS)) for (const id of entry.groups) expect(ids.has(id), `${sector} → ${id}`).toBe(true)
-  const semis = sectorPeerGroups(catalog, '반도체·전자부품')
+  for (const e of SECTOR_PEERS_FIXTURE.sectors) for (const l of e.links) expect(ids.has(l.group_id), `${e.sector} → ${l.group_id}`).toBe(true)
+  const semis = sectorPeerGroups(catalog, sectorEntry('반도체·전자부품'))
   expect(semis.top).toEqual(['semiconductor_value_chain'])
   expect(semis.all.length).toBeGreaterThan(10)
   expect(semis.all[0]).toBe('semiconductor_value_chain')
   expect(new Set(semis.all).size).toBe(semis.all.length)
-  const power = sectorPeerGroups(catalog, '전력·에너지')
+  const power = sectorPeerGroups(catalog, sectorEntry('전력·에너지'))
   expect(power.all).toContain('power_transformer')
   expect(power.all).toContain('nuclear_equipment')
-  expect(sectorPeerGroups(catalog, '기계·장비').partial).toBe(true)
-  expect(sectorPeerGroups(catalog, '바이오·헬스케어')).toEqual({ top: [], all: [], partial: false, note: null })
+  expect(sectorPeerGroups(catalog, sectorEntry('기계·장비')).partial).toBe(true)
+  expect(sectorPeerGroups(catalog, sectorEntry('바이오·헬스케어'))).toEqual({ top: [], all: [], partial: false, note: null })
+  expect(sectorPeerGroups(catalog, undefined)).toEqual({ top: [], all: [], partial: false, note: null })
+  const unknown = { sector: 'x', partial: false, note: null, links: [{ ...sectorEntry('금융')!.links[0], group_id: 'absent' }] }
+  expect(sectorPeerGroups(catalog, unknown).top).toEqual([])
+})
+
+it('peer group → sector prefers a direct link, then a parent chain; human links before auto suggestions', () => {
+  const sectors = SECTOR_PEERS_FIXTURE.sectors
+  expect(sectorOfPeerGroup(catalog, sectors, 'package_substrate')).toBe('반도체·전자부품')
+  expect(sectorOfPeerGroup(catalog, sectors, 'nuclear_equipment')).toBe('기계·장비')
+  expect(sectorOfPeerGroup(catalog, sectors, 'power_transformer')).toBe('전력·에너지')
+  const auto = { sector: '가상', partial: false, note: null, links: [{ ...sectorEntry('금융')!.links[0], source: 'auto' as const }] }
+  expect(sectorOfPeerGroup(catalog, [auto, ...sectors], 'bank_financial_holding')).toBe('금융')
+  expect(sectorOfPeerGroup(catalog, [], 'bank_financial_holding')).toBeNull()
 })
 
 it('sector data links only where the data covers the sector', () => {

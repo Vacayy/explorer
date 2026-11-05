@@ -1,6 +1,7 @@
 import prices from '@/data/peer-prices.json'
 import catalog from '@/data/peer-catalog.json'
 import api from '@/api/client'
+import { SECTOR_PEERS_FIXTURE } from './fixtures/sectorPeers'
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -10,11 +11,11 @@ import raw from '@/data/peer-catalog.json'
 import { parsePeerCatalog, selectPeerCompanies } from '@/lib/peerCatalog'
 import { locate } from '@/components/layout/navConfig'
 
-vi.spyOn(api, 'get').mockImplementation(async () => ({ data: {
+vi.spyOn(api, 'get').mockImplementation(async (url: string) => url.includes('/sector-map/peers') ? { data: SECTOR_PEERS_FIXTURE } : ({ data: {
   catalog, prices, origin: 'collector', publishedAt: prices.collectedAt, baselineOn: '2026-11-01',
   lastAttempt: { at: prices.collectedAt, status: 'error', asOf: null, error: 'test collection failure' },
   priceAgeDays: 2, snapshotAgeHours: 1, signalStatus: 'held', signalHoldReason: '기업행사 조정 검증 미완료',
-} }))
+} }) as never)
 const clients: QueryClient[] = []
 afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0 })
 

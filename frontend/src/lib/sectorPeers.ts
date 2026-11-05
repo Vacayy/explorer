@@ -1,24 +1,7 @@
 import { peerChildren } from '@/lib/peerPresets'
 import { normalizedPeerPath } from '@/lib/peerPerformance'
+import type { SectorPeerEntry } from '@/types'
 import type { PeerCatalog, PeerPriceSnapshot } from '@/types/peer'
-
-/**
- * 섹터(산업 맵 18 대분류) → Peer 그룹 대응표 (ia-redesign §4.12 초안, 11-04).
- * Peer 카탈로그에 섹터 필드가 없어 사람이 정한 표를 쓴다. 5단계에서 서버 대응표(sector_peer_map, 가칭)로 옮기면 이 상수를 지운다.
- * 상위 그룹(value_chain)은 그 아래 제품 그룹까지 함께 센다(peerChildren). partial = 섹터 일부만 덮는 연결.
- */
-export const SECTOR_PEERS: Readonly<Record<string, { groups: readonly string[]; partial?: boolean; note?: string }>> = {
-  '반도체·전자부품': { groups: ['semiconductor_value_chain'] },
-  '금융': { groups: ['bank_financial_holding', 'securities_brokerage'] },
-  '2차전지·에너지소재': { groups: ['battery_value_chain'] },
-  '전력·에너지': { groups: ['power_infrastructure', 'nuclear_value_chain'] },
-  '조선·해운·운송': { groups: ['shipbuilding'] },
-  '항공·방산·우주': { groups: ['defense_value_chain'] },
-  '유통·소비재': { groups: ['beauty_value_chain'], partial: true, note: '화장품만' },
-  '건설·부동산': { groups: ['plant_epc', 'nuclear_epc'], partial: true, note: '플랜트·원전 건설만' },
-  '기계·장비': { groups: ['nuclear_equipment', 'instrumentation_fittings', 'industrial_pipe_fittings'], partial: true, note: '원전 기자재·피팅만' },
-  '화학·소재': { groups: ['diversified_materials', 'process_chemicals'], partial: true, note: '반도체 소재 중심' },
-}
 
 /** 섹터와 이어진 '이 산업의 데이터' 화면 — 데이터가 그 섹터를 실제로 다루는 것만 */
 export type SectorDataLink = 'trade' | 'taiwan' | 'valuechain' | 'usSeason'
@@ -40,20 +23,28 @@ export function sectorDataLinks(sector: string): SectorDataLink[] {
   return out
 }
 
-/** 섹터에 걸린 그룹 — 표에 적힌 그룹(top)과 그 아래 제품 그룹까지 편 전체(all). 카탈로그에 없는 id는 버린다 */
-export function sectorPeerGroups(catalog: PeerCatalog, sector: string): { top: string[]; all: string[]; partial: boolean; note: string | null } {
-  const entry = SECTOR_PEERS[sector]
+/**
+ * 섹터에 걸린 그룹 — 서버 대응표(GET /api/spine/sector-map/peers)의 그룹(top)과 그 아래 제품 그룹까지 편 전체(all).
+ * 상위 그룹(value_chain)은 그 아래 제품 그룹까지 함께 센다(peerChildren). 카탈로그에 없는 id는 버린다.
+ */
+export function sectorPeerGroups(catalog: PeerCatalog, entry: SectorPeerEntry | undefined): { top: string[]; all: string[]; partial: boolean; note: string | null } {
   if (!entry) return { top: [], all: [], partial: false, note: null }
   const known = new Set(catalog.groups.map(g => g.id))
-  const top = entry.groups.filter(id => known.has(id))
+  const top = entry.links.map(l => l.group_id).filter(id => known.has(id))
   const all: string[] = []
   for (const id of top) for (const g of [id, ...peerChildren(catalog, id).map(c => c.id)]) if (!all.includes(g)) all.push(g)
-  return { top, all, partial: !!entry.partial, note: entry.note ?? null }
+  return { top, all, partial: entry.partial, note: entry.note }
 }
 
-/** Peer 그룹 → 섹터(역방향) — '이 그룹의 업황 보기'. 그룹 자신이나 상위 그룹이 대응표에 있으면 그 섹터 */
-export function sectorOfPeerGroup(catalog: PeerCatalog, groupId: string): string | null {
-  return Object.keys(SECTOR_PEERS).find(sector => sectorPeerGroups(catalog, sector).all.includes(groupId)) ?? null
+/**
+ * Peer 그룹 → 섹터(역방향) — '이 그룹의 업황 보기'. 대응표에 그 그룹이 직접 있으면 그 섹터, 없으면 상위 그룹이 걸린 섹터.
+ * 같은 단계에선 사람이 정한 연결(seed)이 자동 제안(auto)보다 먼저다.
+ */
+export function sectorOfPeerGroup(catalog: PeerCatalog, sectors: readonly SectorPeerEntry[], groupId: string): string | null {
+  const auto = (e: SectorPeerEntry) => Number(e.links.some(l => l.source === 'auto'))
+  const ordered = [...sectors].sort((a, b) => auto(a) - auto(b))
+  return (ordered.find(e => e.links.some(l => l.group_id === groupId))
+    ?? ordered.find(e => sectorPeerGroups(catalog, e).all.includes(groupId)))?.sector ?? null
 }
 
 /** 그룹 구성 종목 코드 */
