@@ -1,19 +1,17 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import MultiLineChart from "@/components/charts/MultiLineChart"
-import type { LineConfig } from "@/components/charts/MultiLineChart"
-import AreaSeriesChart from "@/components/charts/AreaSeriesChart"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { formatPer, formatWonShort } from "@/utils/format"
 
 /**
  * 리포트 차트 (BACKLOG 리포트 차트/시각자료) — Top-pick 집중(D-047).
- * ① 상방/하방 비대칭 bar(전 종목) ② Top-pick 주가+이동평균 ③ Top-pick 12M Fwd PER 추이(D-046).
- * 테마 적응(다크/라이트). 선 색은 라이트·다크 양쪽에서 잘 보이는 밝은 조합(종가 진회색 금지 — 다크에서 안 보임).
+ * ① 상방/하방 비대칭 bar(전 종목) ② Top-pick 주가 ③ Top-pick 12M Fwd PER 추이(D-046).
+ * ②③은 시안 Report대로 작은 선 차트 두 개 나란히 — 글자색 선 하나 + 리포트 작성일 점선·점.
  */
 interface Stock { code: string; name: string; rating?: string; upside_pct?: number | null; downside_pct?: number | null }
 
-export function ReportCharts({ stocks, topPick }: { stocks: Stock[]; topPick?: string | null }) {
+export function ReportCharts({ stocks, topPick, reportDate }: { stocks: Stock[]; topPick?: string | null; reportDate?: string | null }) {
   const top = stocks.find((s) => s.code === topPick) ?? stocks[0]
   const hasBar = stocks.some((s) => s.upside_pct != null || s.downside_pct != null)
   if (!hasBar && !top) return null
@@ -22,9 +20,9 @@ export function ReportCharts({ stocks, topPick }: { stocks: Stock[]; topPick?: s
     <div className="border-b pb-4 space-y-4">
       {hasBar && <UpsideDownsideBars stocks={stocks} topPick={topPick} />}
       {top && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <PriceChart code={top.code} name={top.name} />
-          <FwdPerChart code={top.code} name={top.name} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <PriceChart code={top.code} name={top.name} reportDate={reportDate} />
+          <FwdPerChart code={top.code} name={top.name} reportDate={reportDate} />
         </div>
       )}
     </div>
@@ -68,12 +66,7 @@ function UpsideDownsideBars({ stocks, topPick }: { stocks: Stock[]; topPick?: st
   )
 }
 
-/* ② Top-pick 주가 + 이동평균(20·60) — 선택 시리즈(종가) = 글자색, 이동평균 = 회색 단계 (D-320) */
-const PRICE_LINES: LineConfig[] = [
-  { key: "close", label: "종가", color: "--ink", lineWidth: 2 },
-  { key: "ma20", label: "MA20", color: "--ink-3", lineWidth: 1 },
-  { key: "ma60", label: "MA60", color: "--series", lineWidth: 1 },
-]
+/* ② Top-pick 주가 */
 export interface PriceItem { trade_date: string; close: number }
 
 /** Top-pick 주가(올해) — 차트와 리포트 '작성 이후' 줄이 같은 조회를 쓴다 */
@@ -90,46 +83,69 @@ export function useReportFwdPer(code: string | null | undefined) {
   )
 }
 
-function PriceChart({ code, name }: { code: string; name: string }) {
+const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
+
+function PriceChart({ code, name, reportDate }: { code: string; name: string; reportDate?: string | null }) {
   const { data, isLoading } = useReportPrices(code)
-  const items = data?.items ?? []
-  const rows = items.map((p, i) => ({
-    time: p.trade_date, close: p.close,
-    ma20: i >= 19 ? avg(items.slice(i - 19, i + 1)) : null,
-    ma60: i >= 59 ? avg(items.slice(i - 59, i + 1)) : null,
-  }))
+  const points = (data?.items ?? []).map((p) => ({ date: p.trade_date.slice(0, 10), value: p.close }))
+  const title = `${name} 주가${points.length ? ` · ${md(points[0].date)}~${md(points[points.length - 1].date)}` : ""}`
   return (
-    <ChartBox title={`${name} 주가 · 이동평균`}>
-      {isLoading ? <Skeleton className="h-[240px] w-full" />
-        : rows.length === 0 ? <Empty msg="주가 데이터 없음" />
-        : <MultiLineChart data={rows} lines={PRICE_LINES} height={240} formatValue={(v) => v.toLocaleString()} />}
+    <ChartBox title={title}>
+      {isLoading ? <Skeleton className="aspect-[400/170] w-full" />
+        : points.length < 2 ? <Empty msg="주가 데이터 없음" />
+        : <MiniLine points={points} label={title} marker={reportDate} format={formatWonShort} />}
     </ChartBox>
   )
 }
-const avg = (xs: PriceItem[]) => xs.reduce((s, x) => s + x.close, 0) / xs.length
 
 /* ③ Top-pick 12M Fwd PER 추이 (이력 얕으면 안내) */
-function FwdPerChart({ code, name }: { code: string; name: string }) {
+function FwdPerChart({ code, name, reportDate }: { code: string; name: string; reportDate?: string | null }) {
   const { data, isLoading } = useReportFwdPer(code)
-  const items = (data?.items ?? []).filter((d) => d.fwd_per != null)
-  const series = items.map((d) => ({ time: d.date, value: d.fwd_per }))
+  const points = (data?.items ?? []).filter((d) => d.fwd_per != null).map((d) => ({ date: d.date.slice(0, 10), value: d.fwd_per }))
+  const title = `${name} 12개월 선행 PER${points.length ? ` · ${md(points[0].date)}~${md(points[points.length - 1].date)}` : ""}`
   return (
-    <ChartBox title={`${name} 12M Fwd PER 추이`}>
-      {isLoading ? <Skeleton className="h-[240px] w-full" />
-        : series.length < 3 ? <Empty msg="컨센서스 이력 축적 중 (매일 스냅샷)" />
-        : <AreaSeriesChart data={series} height={240} formatValue={(v) => `${v.toFixed(1)}배`} />}
+    <ChartBox title={title}>
+      {isLoading ? <Skeleton className="aspect-[400/170] w-full" />
+        : points.length < 3 ? <Empty msg="컨센서스 이력 축적 중 (매일 스냅샷)" />
+        : <MiniLine points={points} label={title} marker={reportDate} format={formatPer} />}
     </ChartBox>
+  )
+}
+
+/** 시안 Report 작은 선 차트(400×170): 왼쪽 눈금 4개·격자, 글자색 선 1.6, 리포트 날짜 점선 + 점 + 'M/D 리포트', x 처음·가운데·끝 */
+function MiniLine({ points, label, marker, format }: { points: { date: string; value: number }[]; label: string; marker?: string | null; format: (v: number) => string }) {
+  const L = 52, R = 392, T = 18, B = 140
+  const vs = points.map((p) => p.value)
+  const lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1
+  const x = (i: number) => L + (i / (points.length - 1)) * (R - L)
+  const y = (v: number) => B - ((v - lo) / span) * (B - T)
+  const ticks = [0, 1, 2, 3].map((k) => lo + (span * k) / 3)
+  const mi = marker ? points.findIndex((p) => p.date >= marker.slice(0, 10)) : -1
+  const mid = Math.floor((points.length - 1) / 2)
+  return (
+    <svg viewBox="0 0 400 170" role="img" aria-label={label} className="block h-auto w-full">
+      {ticks.map((v) => <g key={v}><line x1={L} x2={R} y1={y(v)} y2={y(v)} stroke="var(--grid)" /><text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize={10.5} fill="var(--ink-3)">{format(v)}</text></g>)}
+      <path d={points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ")} fill="none" stroke="var(--ink)" strokeWidth={1.6} />
+      {mi >= 0 && <>
+        <line x1={x(mi)} x2={x(mi)} y1={10} y2={148} stroke="var(--ink-3)" strokeDasharray="3 3" />
+        <circle cx={x(mi)} cy={y(points[mi].value)} r={3.5} fill="var(--surface)" stroke="var(--ink)" strokeWidth={1.5} />
+        <text x={x(mi) + (x(mi) > 320 ? -6 : 6)} y={20} textAnchor={x(mi) > 320 ? "end" : "start"} fontSize={10.5} fill="var(--ink-2)">리포트 {md(marker!)}</text>
+      </>}
+      <text x={L} y={164} fontSize={10.5} fill="var(--ink-3)">{md(points[0].date)}</text>
+      <text x={x(mid)} y={164} textAnchor="middle" fontSize={10.5} fill="var(--ink-3)">{md(points[mid].date)}</text>
+      <text x={R} y={164} textAnchor="end" fontSize={10.5} fill="var(--ink-3)">{md(points[points.length - 1].date)}</text>
+    </svg>
   )
 }
 
 function ChartBox({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border p-3">
-      <h4 className="text-xs font-semibold text-muted-foreground mb-2">{title}</h4>
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="text-xs text-ink-3">{title}</span>
       {children}
     </div>
   )
 }
 function Empty({ msg }: { msg: string }) {
-  return <div className="flex h-[240px] items-center justify-center text-xs text-muted-foreground">{msg}</div>
+  return <div className="flex aspect-[400/170] items-center justify-center bg-surface-2 text-xs text-muted-foreground">{msg}</div>
 }

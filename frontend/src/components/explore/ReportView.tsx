@@ -142,7 +142,7 @@ export function ReportView({ topic, initialVersionId = null }: { topic: string; 
         {display?.answer && body && (
           <div className="space-y-3">
               {display.stocks.length > 0 && (
-                <ReportCharts stocks={display.stocks} topPick={display.top_pick} />
+                <ReportCharts stocks={display.stocks} topPick={display.top_pick} reportDate={display.created_at} />
               )}
               {display.title && <h3 className="text-lg font-bold leading-snug">{display.title}</h3>}
               <Markdown>{body.head}</Markdown>

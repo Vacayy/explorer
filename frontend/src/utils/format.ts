@@ -244,6 +244,12 @@ export function formatCountShort(value: number | null | undefined): string {
   return String(value)
 }
 
+/** 원 단위 주가를 축 눈금용으로 짧게 — 1만 이상은 '82만', 그 아래는 천 단위 쉼표 */
+export function formatWonShort(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "-"
+  return value >= 10_000 ? `${formatNumber(Math.round(value / 10_000))}만` : formatNumber(Math.round(value))
+}
+
 /** 소요 시간 ms → "3.1초" (관리자 작업·실행 내역) */
 export function formatSeconds(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) return "-";
