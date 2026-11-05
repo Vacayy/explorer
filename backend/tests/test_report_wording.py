@@ -17,14 +17,15 @@ class RatingWordingTests(unittest.TestCase):
         p = seen["prompt"]
         for word in ("Strong Buy", "Buy|", "Sell", "수혜받는"):
             self.assertNotIn(word, p)
-        self.assertIn("상방 우위(비대칭 큼)|상방 우위|Hold|하방 우위", p)
+        self.assertIn("상방 우위(비대칭 큼)|상방 우위|중립|하방 우위", p)
+        self.assertNotIn("Hold", p)
         self.assertIn("비대칭이 크다", p)
 
     def test_old_english_ratings_map_to_new_words_and_order(self):
         self.assertEqual([report.RATING_ALIASES[k] for k in ("Strong Buy", "Buy", "Hold", "Sell")],
-                         ["상방 우위(비대칭 큼)", "상방 우위", "Hold", "하방 우위"])
+                         ["상방 우위(비대칭 큼)", "상방 우위", "중립", "하방 우위"])
         self.assertGreater(report.RATING_ORDER["상방 우위(비대칭 큼)"], report.RATING_ORDER["상방 우위"])
-        self.assertGreater(report.RATING_ORDER["Hold"], report.RATING_ORDER["하방 우위"])
+        self.assertGreater(report.RATING_ORDER["중립"], report.RATING_ORDER["하방 우위"])
 
 
 if __name__ == "__main__":

@@ -21,14 +21,14 @@ describe('내 판단 보기 전환', () => {
 })
 
 describe('리포트 레이팅 말 (11-04 매매 권유 낮춤)', () => {
-  it('옛 영문 레이팅을 새 말로, Hold·새 말은 그대로', () => {
+  it('옛 영문 레이팅을 새 말로(Hold → 중립), 새 말은 그대로', () => {
     expect(['Strong Buy', 'Buy', 'Hold', 'Sell', '상방 우위', null].map(ratingLabel))
-      .toEqual(['상방 우위(비대칭 큼)', '상방 우위', 'Hold', '하방 우위', '상방 우위', null])
-    expect(['Strong Buy', '상방 우위', 'Hold', 'Sell'].map(ratingTone)).toEqual(['up-strong', 'up', 'neutral', 'down'])
+      .toEqual(['상방 우위(비대칭 큼)', '상방 우위', '중립', '하방 우위', '상방 우위', null])
+    expect(['Strong Buy', '상방 우위', 'Hold', '중립', 'Sell'].map(ratingTone)).toEqual(['up-strong', 'up', 'neutral', 'neutral', 'down'])
   })
-  it('본문 속 영문 레이팅만 바꾸고 Buy-side·Sell-off는 둔다', () => {
-    expect(relabelRatings('**SK하이닉스(000660) — Strong Buy · 상방 +55%**, 삼성 Buy, 한미 Hold, 이수 Sell. Buy-side·Sell-off'))
-      .toBe('**SK하이닉스(000660) — 상방 우위(비대칭 큼) · 상방 +55%**, 삼성 상방 우위, 한미 Hold, 이수 하방 우위. Buy-side·Sell-off')
+  it('본문 속 영문 레이팅만 바꾸고 Buy-side·Sell-off·Holdings는 둔다', () => {
+    expect(relabelRatings('**SK하이닉스(000660) — Strong Buy · 상방 +55%**, 삼성 Buy, 한미 Hold, 이수 Sell. Buy-side·Sell-off·ASML Holdings'))
+      .toBe('**SK하이닉스(000660) — 상방 우위(비대칭 큼) · 상방 +55%**, 삼성 상방 우위, 한미 중립, 이수 하방 우위. Buy-side·Sell-off·ASML Holdings')
   })
 })
 
@@ -60,7 +60,7 @@ describe('접을 본문', () => {
     expect(folded.startsWith('### 아직 미판정')).toBe(true)
     expect(splitSynthesis('요지만').folded).toBe('')
   })
-  it('시나리오 수혜·피해 → 유리·불리', () => {
-    expect(['수혜', '피해', '유리', '불리', undefined].map(scenarioSide)).toEqual(['유리', '불리', '유리', '불리', null])
+  it('시나리오 칩은 데이터 값 그대로 수혜·피해', () => {
+    expect(['수혜', '피해', '유리', undefined].map(scenarioSide)).toEqual(['수혜', '피해', null, null])
   })
 })

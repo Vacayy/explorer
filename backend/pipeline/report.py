@@ -20,8 +20,8 @@ AUGMENT_CAP = 2
 BODY_EXCERPT = 500
 SCEN_EXCERPT = 600
 # 레이팅은 매매 권유가 아니라 하방 대비 상방의 비대칭 판단이다(ia-redesign §4.27, 11-04 — AI 대화의 '매매 처방 안 함'과 같은 말).
-# 옛 리포트에 저장된 영문 레이팅(Strong Buy·Buy·Sell)은 RATING_ALIASES로 같은 말에 맞춘다(화면은 frontend lib/reportRating).
-RATING_STRONG, RATING_UP, RATING_HOLD, RATING_DOWN = "상방 우위(비대칭 큼)", "상방 우위", "Hold", "하방 우위"
+# 옛 리포트에 저장된 영문 레이팅(Strong Buy·Buy·Hold·Sell)은 RATING_ALIASES로 같은 말에 맞춘다(화면은 frontend lib/judgment, D-307: Hold → 중립).
+RATING_STRONG, RATING_UP, RATING_HOLD, RATING_DOWN = "상방 우위(비대칭 큼)", "상방 우위", "중립", "하방 우위"
 RATING_ALIASES = {"Strong Buy": RATING_STRONG, "Buy": RATING_UP, "Hold": RATING_HOLD, "Sell": RATING_DOWN}
 RATING_ORDER = {RATING_STRONG: 3, RATING_UP: 2, RATING_HOLD: 1, RATING_DOWN: 0}
 RATING_RUBRIC = (f"레이팅 어휘: **상승여력(upside)**이 ≥50%이고 하방이 제한적이면 '{RATING_STRONG}', ≥15%면 '{RATING_UP}', "

@@ -34,10 +34,11 @@ export function proxiesUrl(search: string): string {
 const RATING_WORDS: Record<string, string> = {
   "Strong Buy": "상방 우위(비대칭 큼)",
   Buy: "상방 우위",
+  Hold: "중립",
   Sell: "하방 우위",
 }
 
-/** 옛 영문 레이팅(Strong Buy·Buy·Sell)을 새 말로. 새 말·Hold·모르는 값은 그대로 */
+/** 옛 영문 레이팅(Strong Buy·Buy·Hold·Sell)을 새 말로(D-307: Hold → 중립). 새 말·모르는 값은 그대로 */
 export function ratingLabel(rating: string | null | undefined): string | null {
   if (!rating) return null
   return RATING_WORDS[rating] ?? rating
@@ -57,6 +58,7 @@ export function relabelRatings(text: string): string {
   return text
     .replace(/\bStrong Buy\b/g, RATING_WORDS["Strong Buy"])
     .replace(/\bBuy\b(?![-\w])/g, RATING_WORDS.Buy)
+    .replace(/\bHold\b(?![-\w])/g, RATING_WORDS.Hold)
     .replace(/\bSell\b(?![-\w])/g, RATING_WORDS.Sell)
 }
 
@@ -98,9 +100,7 @@ export function splitSynthesis(md: string): { main: string; folded: string } {
   return { main: lines.slice(0, at).join("\n").trimEnd(), folded: lines.slice(at).join("\n").trim() }
 }
 
-/** 시나리오 '수혜·피해' → '유리·불리'(인과 추론, 판정 아님) */
-export function scenarioSide(rel: string | null | undefined): "유리" | "불리" | null {
-  if (rel === "수혜" || rel === "유리") return "유리"
-  if (rel === "피해" || rel === "불리") return "불리"
-  return null
+/** 시나리오 칩 말 = 데이터 값 그대로 '수혜·피해'(D-307, 4f의 '유리·불리' 되돌림). 그 밖의 값은 null */
+export function scenarioSide(rel: string | null | undefined): "수혜" | "피해" | null {
+  return rel === "수혜" || rel === "피해" ? rel : null
 }

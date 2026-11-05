@@ -31,7 +31,7 @@ interface QProxy {
   obs_count?: number
 }
 interface QSub { id: number; text: string; falsifier: string | null; verdict: string | null; proxies: QProxy[] }
-/** rel = '수혜'|'피해'(LLM 원문) — 화면은 '유리·불리'로 보인다(ia-redesign §4.27, lib/judgment scenarioSide) */
+/** rel = '수혜'|'피해'(LLM 원문) — 화면도 같은 말(D-307, lib/judgment scenarioSide) */
 export interface QScenario { event: string; answer: string; beneficiaries: { name?: string; reason?: string; rel?: string; stock_code?: string | null }[]; created_at: string }
 export interface QTree {
   id: number; text: string; lead_verdict: string | null; confirm_verdict: string | null

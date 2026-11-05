@@ -15,7 +15,7 @@ import { ratingLabel, ratingTone, relabelRatings, reportSectionNames, sinceChang
 import { cn } from "@/lib/utils"
 import { formatPer, formatPercent, formatStockPrice } from "@/utils/format"
 
-// 레이팅 색 — 한국 컨벤션(상승=빨강 up, 하락=파랑 down). 말은 '상방 우위(비대칭 큼)·상방 우위·Hold·하방 우위'(ia-redesign §4.27, 11-04)
+// 레이팅 색 — 한국 컨벤션(상승=빨강 up, 하락=파랑 down). 말은 '상방 우위(비대칭 큼)·상방 우위·중립·하방 우위'(ia-redesign §4.27, 11-04 · D-307 Hold → 중립)
 const RATING_CLS: Record<ReturnType<typeof ratingTone>, string> = {
   "up-strong": "text-up border-up/50 font-semibold",
   up: "text-up border-up/40",

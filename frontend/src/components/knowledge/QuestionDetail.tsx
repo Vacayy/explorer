@@ -27,7 +27,7 @@ const mmdd = (iso: string | null | undefined) => (iso ? `${Number(iso.slice(5, 7
 /**
  * /question/:id — 질문 허브 (D-070 교통정리, ia-redesign §4.27 A · 시안 Question-Detail). 한 소스/질문의 산출물을 한 화면에:
  * 머리(질문 · 2층 판정 · 출처) → 판정 요약 → 넓은 화면 2단: 분할정복 트리(서브질문 · 프록시 · 관측 건수) | 질문 종합(낡음 줄 맨 위,
- * '아직 미판정·흔들릴 조건' 접음) · 파급 시나리오(논리상 유리·불리 — 인과 추론, 판정 아님). 블록 단위 실패.
+ * '아직 미판정·흔들릴 조건' 접음) · 파급 시나리오(논리상 수혜·피해 — 인과 추론, 판정 아님). 블록 단위 실패.
  */
 export default function QuestionDetail() {
   const { id } = useParams<{ id: string }>()
@@ -190,8 +190,8 @@ function ScenarioBlock({ qid, data }: { qid: number; data: QTree }) {
             {sides.length > 0 && (
               <div className="space-y-1.5">
                 <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
-                  논리상 유리·불리한 쪽
-                  <InfoTip label="유리·불리 설명">파급 논리로 짚은 인과 추론입니다. 판정이나 매매 권유가 아닙니다.</InfoTip>
+                  논리상 수혜·피해 쪽
+                  <InfoTip label="수혜·피해 설명">파급 논리로 짚은 인과 추론입니다. 판정이나 매매 권유가 아닙니다.</InfoTip>
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {sides.map((b, i) => {
@@ -199,7 +199,7 @@ function ScenarioBlock({ qid, data }: { qid: number; data: QTree }) {
                     const chip = (
                       <span className="inline-flex items-center gap-1.5 border px-2 py-0.5 text-[12px]" title={b.reason ?? ""}>
                         {b.name}
-                        {side && <span className={side === "유리" ? "text-up" : "text-down"}>{side}</span>}
+                        {side && <span className={side === "수혜" ? "text-up" : "text-down"}>{side}</span>}
                       </span>
                     )
                     return b.stock_code ? <Link key={i} to={`/analyze/${b.stock_code}/summary`} className="hover:bg-muted">{chip}</Link> : <span key={i}>{chip}</span>
