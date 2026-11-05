@@ -5,11 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import MultiLineChart from "@/components/charts/MultiLineChart"
 import { WidgetState } from "@/components/shared/WidgetFrame"
-import { SparkLine } from "@/components/shared/Spark"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { useChartPalette } from "@/hooks/useChartPalette"
 import { useTrendChart, useTrendLeaders } from "@/hooks/useTrendLeaders"
@@ -37,12 +35,16 @@ const StageBadge = ({ s, className }: { s: TrendHigh52; className?: string }) =>
 const olderThan = (iso: string | null | undefined, days: number) =>
   !!iso && Date.now() - new Date(iso.slice(0, 10) + "T00:00:00").getTime() > (days + 1) * 86_400_000
 const won = (v: number) => formatNumber(Math.round(v))
-const COLS_WIDE = "grid-cols-[minmax(0,1fr)_64px_52px_40px_40px_48px]"
-const COLS_NARROW = "grid-cols-[minmax(0,1fr)_56px_52px]"
+// 시안 Home-KR 열: 종목 | 업종 | 60일 | 꾸준함 | ADX | 이격 (좁으면 종목 | 60일)
+const COLS_WIDE = "grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_64px_48px_40px_48px]"
+const COLS_NARROW = "grid-cols-[minmax(0,1fr)_64px]"
 
 export function useTrendMeta(): WidgetMeta {
   const q = useTrendLeaders()
-  return { asOf: q.data?.as_of ?? null, stale: olderThan(q.data?.as_of, 4) }
+  const d = q.data
+  // 시안 Home-KR: 제목 옆 'n종목 중 m'만 — 기준 시각은 묵었을 때만 주의 색으로
+  const stale = olderThan(d?.as_of, 4)
+  return { asOf: stale ? d?.as_of ?? null : null, stale, sub: d ? `${formatNumber(d.universe)}종목 중 ${formatNumber(d.passed)}` : null }
 }
 
 export function TrendBody({ w, h }: WidgetBodyProps) {
@@ -63,14 +65,18 @@ export function TrendBody({ w, h }: WidgetBodyProps) {
     시세 {formatKstDateTime(d.computed_from ? d.computed_from.replace(" ", "T") + "Z" : null)} 수집분
   </span>
   const stage = params.get("trend_stage")
+  const pickedStage = stage === "breakout" || stage === "retest" ? stage : null
+  const hasStage = d.items.some(i => i.high52)
   const trendList = <TrendList items={d.items} universe={d.universe} passed={d.passed} criteria={d.criteria} wide={split || w >= 6} short={h <= 3}
-    stage={stage === "breakout" || stage === "retest" ? stage : null} onStage={v => set("trend_stage", v)} onPick={code => set("trend", code)} />
+    stage={pickedStage} onPick={code => set("trend", code)} events={split ? [] : d.events} />
   const eventList = <EventList events={d.events} short={h <= 3} />
-  return <div className="flex h-full flex-col gap-2">
+  const stageSeg = hasStage && <SegmentTabs value={pickedStage ?? "all"} onChange={v => set("trend_stage", v === "all" ? null : v)}
+    tabs={[{ value: "all", label: "전체" }, { value: "breakout", label: STAGE.breakout.label }, { value: "retest", label: STAGE.retest.label }]} />
+  return <div className="flex h-full flex-col gap-3">
     {split ? <>
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
         <section aria-label="추세" className="flex min-h-0 min-w-0 flex-col gap-1.5">
-          <h4 className="text-[12px] font-medium">추세 {formatNumber(d.passed)}</h4>
+          <h4 className="flex flex-wrap items-center justify-between gap-2 text-[12px] font-medium">추세 {formatNumber(d.passed)}{stageSeg}</h4>
           <div className="min-h-0 flex-1">{trendList}</div>
         </section>
         <section aria-label="신고가·매물대" className="flex min-h-0 min-w-0 flex-col gap-1.5 border-l pl-4">
@@ -79,10 +85,11 @@ export function TrendBody({ w, h }: WidgetBodyProps) {
         </section>
       </div>
     </> : <>
-      <div className="flex flex-wrap items-center gap-2">
+      {/* 시안 Home-KR: 한 줄 — 왼쪽 탭 · 오른쪽 신고가 단계 */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <SegmentTabs value={tab} onChange={v => set("trend_tab", v === "trend" ? null : v)}
           tabs={[{ value: "trend", label: `추세 ${formatNumber(d.passed)}` }, { value: "events", label: `신고가·매물대 ${formatNumber(d.events.length)}` }]} />
-        {stamp}
+        {tab === "trend" && stageSeg}
       </div>
       <div className="min-h-0 flex-1">{tab === "trend" ? trendList : eventList}</div>
     </>}
@@ -90,59 +97,66 @@ export function TrendBody({ w, h }: WidgetBodyProps) {
   </div>
 }
 
-function TrendList({ items: all, universe, passed, criteria, wide, short, stage, onStage, onPick }: {
+function TrendList({ items: all, universe, passed, criteria, wide, short, stage, onPick, events }: {
   items: TrendLeader[]; universe: number; passed: number; criteria: string; wide: boolean; short: boolean
-  stage: TrendHigh52["kind"] | null; onStage: (v: string | null) => void; onPick: (code: string) => void
+  stage: TrendHigh52["kind"] | null; onPick: (code: string) => void
+  /** 표 아래 '최근 신고가·매물대 이벤트'(시안 Home-KR) — 나란히 보기에서는 오른쪽 칸이 맡아 비운다 */
+  events: TrendEvent[]
 }) {
   if (!all.length) return <p role="status" className="text-sm text-muted-foreground">오늘은 조건 다섯 개를 모두 통과한 종목이 없습니다. <HowTip criteria={criteria} /></p>
-  const count = (k: TrendHigh52["kind"]) => all.filter(i => i.high52?.kind === k).length
   const items = stage ? all.filter(i => i.high52?.kind === stage) : all.slice(0, 20)   // 상위 20 + 신고가 단계 종목(순위 밖 포함)
   const fresh = all.filter(i => i.new).length
-  return <div className="flex h-full flex-col gap-1.5">
-    <p className="text-[12px] text-muted-foreground">
-      시총 3,000억+ {formatNumber(universe)}종목 중 <span className="font-medium text-foreground">{formatNumber(passed)}</span>개
+  const num = "text-right font-mono text-[13px] tabular-nums"
+  return <div className="flex h-full flex-col gap-2.5">
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className={cn("grid items-center gap-x-3 border-b border-line-2 px-2.5 py-2 text-xs font-medium text-ink-3", wide ? COLS_WIDE : COLS_NARROW)}>
+        <span>종목</span>{wide && <span>업종</span>}<span className="text-right">60일</span>
+        {wide && <><TermTip label="꾸준함" tip="60거래일 종가(로그)에 직선을 그었을 때 그 직선이 가격을 얼마나 잘 설명하는지(R², 0~1). 1에 가까울수록 계단처럼 꾸준히 올랐습니다." />
+          <TermTip label="ADX" tip="ADX(14) — 방향과 상관없이 추세가 얼마나 강한지 재는 지표(0~100). 25를 넘으면 뚜렷한 추세로 봅니다." />
+          <span className="text-right" title="20일 이동평균 대비 — 클수록 단기 과열">이격</span></>}
+      </div>
+      <ul className="text-[13px]">
+        {items.slice(0, short ? 4 : items.length).map(t => (
+          <li key={t.stock_code} className="border-b">
+            <Button variant="ghost" onClick={() => onPick(t.stock_code)} aria-label={`${t.name} 추세 근거 보기`}
+              className={cn("grid h-auto w-full items-start gap-x-3 rounded-none px-2.5 py-[7px] text-left text-[13px] font-normal", wide ? COLS_WIDE : COLS_NARROW)}>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate font-medium" title={t.name}>{t.name}</span>
+                {(t.new || t.high52 || t.events.some(k => k !== "high52")) && <span className="flex flex-wrap gap-1">
+                  {t.high52 && <StageBadge s={t.high52} />}
+                  {t.new && <Badge className="shrink-0">신규</Badge>}
+                  {t.events.filter(k => k !== "high52").map(k => <Badge key={k} variant="up" className="shrink-0">{EVENT_LABEL[k]}</Badge>)}
+                </span>}
+              </span>
+              {wide && <span className="truncate text-ink-2" title={t.sector ?? undefined}>{t.sector ?? "-"}</span>}
+              <span className={cn(num, "text-up-ink")}>{formatPercent(t.ret_60)}</span>
+              {wide && <><span className={num}>{formatLevel(t.r2)}</span>
+                <span className={num}>{t.adx.toFixed(1)}</span>
+                <span className={cn(num, t.gap_ma20 >= 15 && "text-warn")}>{formatPercent(t.gap_ma20)}</span></>}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+    <p className="shrink-0 text-xs text-ink-3">
+      시총 3,000억+ {formatNumber(universe)}종목 중 {formatNumber(passed)}개
       {fresh > 0 && <> · 5거래일 새 진입 {formatNumber(fresh)}</>}
       {' · '}<HowTip criteria={criteria} />
     </p>
-    {(count("breakout") > 0 || count("retest") > 0) && (
-      <ToggleGroup type="single" size="sm" variant="outline" value={stage ?? "all"} onValueChange={v => v && onStage(v === "all" ? null : v)}
-        aria-label="52주 신고가 단계로 고르기" className="h-7">
-        <ToggleGroupItem value="all" className="h-7 px-2.5 text-xs">전체</ToggleGroupItem>
-        <ToggleGroupItem value="breakout" title={STAGE.breakout.hint} className="h-7 px-2.5 text-xs">신고가 돌파 {count("breakout")}</ToggleGroupItem>
-        <ToggleGroupItem value="retest" title={STAGE.retest.hint} className="h-7 px-2.5 text-xs">돌파 후 지지·재반등 {count("retest")}</ToggleGroupItem>
-      </ToggleGroup>
-    )}
-    <div className={cn("grid items-center gap-x-3 border-b px-1 pb-1.5 text-xs text-ink-3", wide ? COLS_WIDE : COLS_NARROW)}>
-      <span>종목</span><span>60일</span><span className="text-right">수익률</span>
-      {wide && <><TermTip label="꾸준함" tip="60거래일 로그 가격 회귀의 R²입니다. 1에 가까울수록 고르게 올랐습니다." />
-        <TermTip label="ADX" tip="ADX(14) — 추세의 강도입니다. 25 이상이면 추세가 뚜렷합니다." />
-        <span className="text-right" title="20일 이동평균 대비 — 클수록 단기 과열">이격</span></>}
-    </div>
-    <ul className="-mr-2 min-h-0 flex-1 divide-y overflow-y-auto pr-2 text-sm">
-      {items.slice(0, short ? 4 : items.length).map(t => (
-        <li key={t.stock_code}>
-          <Button variant="ghost" onClick={() => onPick(t.stock_code)} aria-label={`${t.name} 추세 근거 보기`}
-            className={cn("grid h-auto w-full items-center gap-x-3 rounded-sm px-1 py-1.5 text-left text-sm font-normal", wide ? COLS_WIDE : COLS_NARROW)}>
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="flex min-w-0 items-baseline gap-1.5">
-                <span className="max-w-full shrink-0 truncate font-semibold" title={t.name}>{t.name}</span>
-                {wide && t.sector && <span className="min-w-0 shrink-[100] truncate text-[11px] text-muted-foreground">{t.sector}</span>}
-              </span>
-              {(t.new || t.high52 || t.events.some(k => k !== "high52")) && <span className="flex flex-wrap gap-1">
-                {t.high52 && <StageBadge s={t.high52} />}
-                {t.new && <Badge className="shrink-0">신규</Badge>}
-                {t.events.filter(k => k !== "high52").map(k => <Badge key={k} variant="up" className="shrink-0">{EVENT_LABEL[k]}</Badge>)}
-              </span>}
-            </span>
-            <SparkLine data={t.spark} height={18} />
-            <span className="text-right tabular-nums text-up-ink">{formatPercent(t.ret_60)}</span>
-            {wide && <><span className="text-right tabular-nums text-muted-foreground">{formatLevel(t.r2)}</span>
-              <span className="text-right tabular-nums text-muted-foreground">{formatNumber(Math.round(t.adx))}</span>
-              <span className={cn("text-right tabular-nums", t.gap_ma20 >= 15 ? "text-chart-warning" : "text-muted-foreground")}>{formatPercent(t.gap_ma20)}</span></>}
-          </Button>
+    {!short && events.length > 0 && <div className="shrink-0" data-trend-events>
+      <span className="text-[11.5px] text-ink-2">최근 신고가·매물대 이벤트</span>
+      <ul>{events.slice(0, 4).map(e => (
+        <li key={`${e.kind}-${e.stock_code}`} className="border-t first:border-t-0">
+          <Link to={`/analyze/${e.stock_code}/summary?scan=1`} title={`${e.name} 기술적 분석 열기`}
+            className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-x-3 py-[7px] hover:bg-muted/50 max-sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+            <Badge variant="up">{EVENT_LABEL[e.kind]}</Badge>
+            <span className="truncate text-[13px]">{e.name}</span>
+            <span className="truncate text-xs text-ink-2 max-sm:hidden">{e.detail}{!e.held && <span className="text-warn"> · 지금은 돌파선 아래</span>}</span>
+            <span className="font-mono text-[11px] text-ink-3 tabular-nums">{e.date.slice(5).replace("-", "/")}</span>
+          </Link>
         </li>
-      ))}
-    </ul>
+      ))}</ul>
+    </div>}
   </div>
 }
 

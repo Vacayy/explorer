@@ -1,9 +1,5 @@
-import { useState } from "react"
-import { ChevronDown } from "lucide-react"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { RefreshButton } from "@/components/shared/RefreshButton"
 import { HomeBlock } from "@/components/home/HomeSection"
@@ -15,7 +11,7 @@ import type { KrMovers } from "@/types"
 
 /**
  * 홈 › 한국 시장 — 국장 거래대금 상위 (시안 Home-KR, ia-redesign §4.2). 원천 /api/spine/kr/movers(D-108, LLM 없음).
- * 한 줄 요약 → 섹터 쏠림 막대 → 상위 20 표(신규 진입·급등락 배지). 상위 5종목 관련 자료는 접어 둔다.
+ * 한 줄 요약 → 섹터 쏠림 막대 → 상위 10 표(신규 진입·급등락 배지). 시안대로 '상위 20 전체'·'상위 5종목 관련 자료' 접힘 줄은 두지 않는다.
  */
 export function KrTurnoverBlock({ className }: { className?: string }) {
   const q = useKrMovers()
@@ -23,8 +19,9 @@ export function KrTurnoverBlock({ className }: { className?: string }) {
   return (
     <HomeBlock section label="kr.turnover" title="국장 거래대금 상위" className={className}
       info="전일 거래대금 상위 20종목입니다. 비중은 시장 전체가 아니라 상위 20종목 합계 기준이고, 날짜는 저장 스냅샷 기준입니다. 평일 16:20에 받습니다."
-      asOf={d?.trade_date ? `${d.trade_date} 스냅샷` : null} stale={!!d && d.status !== "ok"}
-      actions={<RefreshButton onClick={q.refresh} pending={q.refreshing} title="지금 업데이트 (전일 거래대금 재수집)" />}
+      sub={d?.trade_date ? `${d.trade_date} 스냅샷 · 상위 ${d.items.length}` : null}
+      asOf={d && d.status !== "ok" ? "갱신 실패" : null} stale={!!d && d.status !== "ok"}
+      actions={<RefreshButton label="갱신" onClick={q.refresh} pending={q.refreshing} title="지금 업데이트 (전일 거래대금 재수집)" />}
 >
       {!d ? (q.isError ? <BlockError message="국장 거래대금을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <RowsSkeleton rows={8} />)
         : d.status === "error" ? <BlockError message={d.error ?? "국장 거래대금을 불러오지 못했습니다"} onRetry={() => void q.refetch()} />
@@ -35,8 +32,6 @@ export function KrTurnoverBlock({ className }: { className?: string }) {
 }
 
 function Body({ d }: { d: KrMovers }) {
-  const [open, setOpen] = useState(false)
-  const [all, setAll] = useState(false)
   const top = d.clusters[0]
   const fresh = d.clusters.find(c => c.has_new && c !== top)
   return (
@@ -66,7 +61,7 @@ function Body({ d }: { d: KrMovers }) {
           <TableHead className="h-9 w-10 px-2.5 text-xs">#</TableHead><TableHead className="h-9 px-2.5 text-xs">종목</TableHead>
           <TableHead className="h-9 px-2.5 text-right text-xs">등락</TableHead><TableHead className="h-9 px-2.5 text-right text-xs">거래대금</TableHead>
         </TableRow></TableHeader>
-        <TableBody>{d.items.slice(0, all ? undefined : 10).map(m => (
+        <TableBody>{d.items.slice(0, 10).map(m => (
           <TableRow key={m.stock_code}>
             <TableCell className="px-2.5 py-2 font-mono text-xs text-ink-3 tabular-nums">{m.rank}</TableCell>
             <TableCell className="px-2.5 py-2">
@@ -80,25 +75,6 @@ function Body({ d }: { d: KrMovers }) {
           </TableRow>
         ))}</TableBody>
       </Table>
-      {d.items.length > 10 && <Button variant="ghost" size="sm" className="h-7 px-1 text-xs text-muted-foreground" onClick={() => setAll(v => !v)} aria-expanded={all}>
-        <ChevronDown className={cn("size-3.5 transition-transform", all && "rotate-180")} />{all ? "상위 10만 보기" : `상위 ${d.items.length} 전체`}
-      </Button>}
-
-      {!!d.briefing?.length && <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />상위 5종목 관련 자료
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-2 divide-y">
-          {d.briefing.map(b => <div key={b.stock_code} className="py-2 first:pt-0">
-            <p className="text-sm font-medium"><span className="mr-1.5 text-xs text-muted-foreground">{b.rank}</span>{b.name}</p>
-            {b.documents.length ? b.documents.map((doc, i) => <div key={doc.doc_id} className="mt-1">
-              {i === 0 && doc.excerpt && <p className="mb-0.5 line-clamp-3 text-[13px] leading-relaxed">{doc.excerpt}</p>}
-              <Link to={`/doc/${doc.doc_id}`} className="text-xs text-primary hover:underline">{doc.title || "관련 자료 원문"}</Link>
-              <span className="ml-2 text-xs text-muted-foreground">{doc.source_type} · {doc.published_at?.slice(0, 10)}</span>
-            </div>) : <p className="mt-0.5 text-xs text-muted-foreground">연결된 자료가 없습니다.</p>}
-          </div>)}
-        </CollapsibleContent>
-      </Collapsible>}
     </div>
   )
 }

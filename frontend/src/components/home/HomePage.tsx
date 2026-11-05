@@ -49,7 +49,7 @@ export function HomeKrPage() {
       <div className="surface-grid grid lg:grid-cols-2">
         <KrTurnoverBlock />
         {/* 같은 높이 — 넓은 화면은 거래대금 칸 높이에 맞추고, 추세 표는 칸 안에서 스크롤 */}
-        <div className="relative lg:min-h-[560px]"><HomeSection section widget="explore.trend" w={mobile ? 4 : 6} h={9} className="h-[560px] lg:absolute lg:inset-0 lg:h-auto" /></div>
+        <div className="relative lg:min-h-[560px]"><HomeSection section widget="explore.trend" link={null} w={mobile ? 4 : 6} h={9} className="h-[560px] lg:absolute lg:inset-0 lg:h-auto" /></div>
       </div>
       <div id="retail" className="scroll-mt-4"><RetailHeatCard /></div>
       <TradeBlock />
