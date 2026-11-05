@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { QueryState } from "@/components/shared/QueryState"
-import { SeasonHeader, SeasonPicker } from "@/components/follow/season/SeasonHeader"
+import { SeasonHeader, SeasonPicker, SeasonTabsRow } from "@/components/follow/season/SeasonHeader"
 import { Meta, Pp, Section, mmdd, patchParams } from "@/components/follow/season/seasonUi"
 import { useKrSeason } from "@/hooks/useTranscripts"
 import { useDefaultWatchGroup } from "@/hooks/useGroups"
@@ -51,7 +51,7 @@ export function KrSeasonView({ tabs }: { tabs: ReactNode }) {
       ) : q.isPending ? (
         <div className="space-y-2"><Skeleton className="h-8 w-72" /><Skeleton className="h-4 w-40" /></div>
       ) : <SeasonHeader title="국내 실적 시즌" />}
-      {tabs}
+      <SeasonTabsRow tabs={tabs} />
       <QueryState query={q} loading={<KrSkeleton />} isEmpty={() => false}>{(data) => <KrBody d={data} />}</QueryState>
     </div>
   )

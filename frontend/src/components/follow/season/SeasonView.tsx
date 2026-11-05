@@ -17,7 +17,7 @@ import { ReactionBoard } from "@/components/follow/season/ReactionBoard"
 import { MomentumBoard, PickedCandidate } from "@/components/follow/season/MomentumBoard"
 import { CoreBoard } from "@/components/follow/season/CoreBoard"
 import { Meta, Section, mmdd } from "@/components/follow/season/seasonUi"
-import { SeasonHeader, SeasonPicker } from "@/components/follow/season/SeasonHeader"
+import { SeasonHeader, SeasonPicker, SeasonTabsRow } from "@/components/follow/season/SeasonHeader"
 import { useCallMomentum, useSeason } from "@/hooks/useTranscripts"
 import { currentSeasonKey, momentumFor } from "@/lib/seasonBoard"
 import { seasonPhase } from "@/lib/seasonPhase"
@@ -38,7 +38,7 @@ export function SeasonView({ tabs }: { tabs: ReactNode }) {
       {d ? <UsSeasonHeader d={d} today={today} />
         : q.isPending ? <div className="space-y-2"><Skeleton className="h-8 w-72" /><Skeleton className="h-4 w-40" /></div>
         : <SeasonHeader title="실적 시즌" />}
-      {tabs}
+      <SeasonTabsRow tabs={tabs} />
       {between ? <BetweenSeasons phase={between} today={today} /> : (
         // 갱신 실패·오프라인이어도 이전 결과를 유지한다(QueryState 규약, docs/specs/frontend-api-reliability.md)
         <QueryState query={q} loading={<SeasonSkeleton />} isEmpty={() => false}>{(data) => <SeasonBody d={data} today={today} />}</QueryState>

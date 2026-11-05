@@ -57,7 +57,12 @@ export function SeasonPicker({ options, value, currentKey }: { options: string[]
   )
 }
 
-/** 머리 한 줄 — 왼쪽 제목·부제, 오른쪽 시장 토글 + 시즌 선택(picker가 없으면 토글만) */
+/** 보기 줄 — `컨콜 | 실적 시즌` 세그먼트 옆에 시장 `미국 | 한국` (시안 Season·Season-KR) */
+export function SeasonTabsRow({ tabs }: { tabs: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2">{tabs}<MarketToggle /></div>
+}
+
+/** 머리 한 줄 — 왼쪽 제목·부제, 오른쪽 시즌 선택 */
 export function SeasonHeader({ title, sub, picker }: { title: ReactNode; sub?: ReactNode; picker?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
@@ -65,10 +70,7 @@ export function SeasonHeader({ title, sub, picker }: { title: ReactNode; sub?: R
         <h1 className="font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]">{title}</h1>
         {sub && <p className="text-caption text-muted-foreground">{sub}</p>}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <MarketToggle />
-        {picker}
-      </div>
+      {picker && <div className="flex flex-wrap items-center gap-2">{picker}</div>}
     </div>
   )
 }
