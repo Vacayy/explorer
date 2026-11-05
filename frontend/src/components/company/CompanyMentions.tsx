@@ -52,9 +52,41 @@ export function CompanyMentions({ company, market }: { company: string; market: 
       <FlowCard company={company} market={market} source={source} onSource={onSource}
         isOn={(d) => d === day} onDay={(d) => set({ day: d === day ? null : d })}
         head={day && <Button variant="ghost" size="sm" className="h-7" onClick={() => set({ day: null })}>{shortDate(day)} 선택 지우기</Button>} />
-      <CompanyEvidence key={`${company}:${day ?? ''}`} company={company} market={market}
-        range={day ? { start: day, end: day } : {}} summary={false} />
+      {/* 시안 Dossier-KR-Mentions: 목록(읽기 폭) | 오른쪽 상자. 국내 1일 AI 요약은 넣지 않으므로(11-04) 오른쪽은 언급 많은 날 */}
+      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <CompanyEvidence key={`${company}:${day ?? ''}`} company={company} market={market}
+          range={day ? { start: day, end: day } : {}} summary={false} />
+        <PeakDays company={company} day={day} onDay={(d) => set({ day: d === day ? null : d })} />
+      </div>
     </div>
+  )
+}
+
+/** 국내 자료 탭 오른쪽 — 최근 30일 언급 많은 날 5개(누르면 그날 자료). 흐름 막대와 같은 쿼리 */
+function PeakDays({ company, day, onDay }: { company: string; day: string | null; onDay: (d: string) => void }) {
+  const q = useCompanyEvidence({ company, market: 'kr', size: 1 })
+  const days = [...(q.data?.flow?.days ?? [])].filter((d) => d.count > 0).sort((a, b) => b.count - a.count || b.date.localeCompare(a.date)).slice(0, 5)
+  if (q.isPending || q.isError || !days.length) return null
+  const max = days[0].count
+  return (
+    <Card className="min-w-0 gap-0 py-0 max-lg:hidden" aria-label="언급 많은 날">
+      <header className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 border-b px-4 py-3">
+        <h2 className="text-section font-semibold">언급 많은 날</h2>
+        <span className="text-caption text-muted-foreground">최근 30일</span>
+      </header>
+      <ul className="px-4 py-1.5">
+        {days.map((d) => (
+          <li key={d.date} className="border-t first:border-t-0">
+            <button type="button" aria-pressed={day === d.date} onClick={() => onDay(d.date)}
+              className={cn('grid w-full grid-cols-[3.5rem_minmax(0,1fr)_3rem] items-center gap-3 py-2.5 text-left text-[13px] hover:text-ink', day === d.date ? 'font-medium text-ink' : 'text-ink-2')}>
+              <span className="font-mono tabular-nums">{shortDate(d.date)}</span>
+              <span className="h-1.5 rounded-full bg-chip"><span className={cn('block h-full rounded-full', day === d.date ? 'bg-foreground' : 'bg-muted-foreground/45')} style={{ width: `${(d.count / max) * 100}%` }} /></span>
+              <span className="text-right font-mono tabular-nums">{formatNumber(d.count)}건</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
   )
 }
 

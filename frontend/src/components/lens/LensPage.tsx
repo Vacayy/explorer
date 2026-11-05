@@ -63,7 +63,7 @@ export function LensView({ code, market = "kr" }: { code: string; market?: strin
       {hasValue ? (
         <LensCard kind="value" label="가치 렌즈 · 성장주도 펀더멘탈" reading={value} loading={vCompute.isFetching} />
       ) : (
-        <ProposalPanel title="가치 렌즈 · 성장주도 펀더멘탈" contentClassName="text-xs text-muted-foreground">
+        <ProposalPanel title="가치 렌즈 · 성장주도 펀더멘탈" contentClassName="text-[13px] leading-relaxed text-ink-2">
           재료가 부족합니다(재무·추정치 없음) — 판독을 유보합니다.
         </ProposalPanel>
       )}
@@ -71,7 +71,7 @@ export function LensView({ code, market = "kr" }: { code: string; market?: strin
       {hasTrend ? (
         <LensCard kind="trend" label="추세 렌즈 · 추세추종" reading={trend} loading={tCompute.isFetching} />
       ) : (
-        <ProposalPanel title="추세 렌즈 · 추세추종" contentClassName="text-xs text-muted-foreground">
+        <ProposalPanel title="추세 렌즈 · 추세추종" contentClassName="text-[13px] leading-relaxed text-ink-2">
           가격 데이터가 부족합니다 — 판독을 유보합니다.
         </ProposalPanel>
       )}

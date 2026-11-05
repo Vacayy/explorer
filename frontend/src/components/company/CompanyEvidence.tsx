@@ -32,6 +32,8 @@ export const sourceLabels: Record<string, string> = {
 export type { EvidenceItem, EvidenceResponse, EvidenceRange } from '@/types'
 
 const ALL = '__all'
+/** 목록 날짜 — 올해는 '11/04', 지난해 이전은 '25.11.04'(시안 Dossier-KR-Mentions) */
+const shortDay = (d: string) => d.slice(0, 4) === String(new Date().getFullYear()) ? `${d.slice(5, 7)}/${d.slice(8, 10)}` : `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`
 
 /**
  * 기업 관련 자료 목록 — 저장된 문서·공시만(공개일순). URL ?source·?q·?page가 상태.
@@ -65,7 +67,7 @@ export function CompanyEvidence({
     if (parent?.classList.contains('company-research-evidence'))
       parent.scrollTop = 0
   }, [company, range.start, range.end, range.cutoff, range.after, source, q, page])
-  const feed = useCompanyEvidence({ company, market, ...range, source, q, page, size: preview ? 3 : 20 })
+  const feed = useCompanyEvidence({ company, market, ...range, source, q, page, size: preview ? 3 : 10 })
   const change = (key: string, value: string) =>
     setSp(
       (prev) => {
@@ -159,14 +161,29 @@ export function CompanyEvidence({
                   )}
                 </div>
               )}
-              <ul className="divide-y">
+              {preview ? <ul>
+                {/* 시안 Dossier-KR '최근 수집 자료' — 한 줄 행: 출처 칩 | 제목 | 날짜 */}
+                {feed.data.items.map((item) => (
+                  <li key={item.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3 border-t py-2.5 first:border-t-0" data-evidence-row>
+                    <span className="inline-flex h-[22px] items-center whitespace-nowrap rounded-md bg-chip px-2 text-xs font-medium text-ink-2">{sourceLabels[item.source_type] || item.source_type}</span>
+                    {item.doc_id ? (
+                      <DetailLink to={`/doc/${item.doc_id}`} className="min-w-0 truncate text-[13.5px] hover:underline" title={item.title || undefined}>{item.title || '제목 없는 자료'}</DetailLink>
+                    ) : item.url && /^https?:\/\//i.test(item.url) ? (
+                      <a className="min-w-0 truncate text-[13.5px] hover:underline" href={item.url} target="_blank" rel="noopener noreferrer" title={item.title || undefined}>{item.title || '제목 없는 자료'}</a>
+                    ) : (
+                      <span className="min-w-0 truncate text-[13.5px]">{item.title || '제목 없는 자료'}</span>
+                    )}
+                    <time dateTime={item.published_at} className="font-mono text-xs tabular-nums text-muted-foreground">{Number(item.local_date.slice(5, 7))}/{Number(item.local_date.slice(8, 10))}</time>
+                  </li>
+                ))}
+              </ul> : <ul className="divide-y">
                 {feed.data.items.map((item) => (
                   <li key={item.id} className="space-y-1 py-3" data-evidence-row>
                     <div className="flex flex-wrap gap-x-2 gap-y-1 text-caption text-muted-foreground">
                       <span>{sourceLabels[item.source_type] || item.source_type}</span>
                       <span className="break-all">{item.publisher}</span>
                       <time dateTime={item.published_at} className="font-mono tabular-nums">
-                        {item.local_date}{item.time_precision === 'time' && ` ${new Date(item.published_at).toLocaleTimeString('ko-KR', { timeZone: market === 'kr' ? 'Asia/Seoul' : 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`}
+                        {shortDay(item.local_date)}{item.time_precision === 'time' && ` ${new Date(item.published_at).toLocaleTimeString('ko-KR', { timeZone: market === 'kr' ? 'Asia/Seoul' : 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`}
                       </time>
                       {item.time_precision === 'date' && <span>시각 미상</span>}
                       {item.status !== 'within' && (
@@ -186,14 +203,15 @@ export function CompanyEvidence({
                     ) : (
                       <p className="text-sm font-semibold leading-relaxed">{item.title || '제목 없는 자료'}</p>
                     )}
-                    {item.excerpt && item.excerpt !== item.title && (
-                      <p className={`${preview ? 'line-clamp-2' : 'line-clamp-3 whitespace-pre-line'} break-words text-sm leading-relaxed text-muted-foreground`}>
-                        {item.excerpt}
-                      </p>
-                    )}
+                    {/* 미리보기가 제목으로 시작하면 제목 뒤만(시안: 제목을 두 번 쓰지 않는다) */}
+                    {(() => {
+                      const t = item.title?.trim() ?? ''
+                      const body = (t && item.excerpt?.startsWith(t) ? item.excerpt.slice(t.length) : item.excerpt ?? '').trim()
+                      return body && body !== t ? <p className="line-clamp-3 break-words text-[13px] leading-relaxed text-ink-2">{body}</p> : null
+                    })()}
                   </li>
                 ))}
-              </ul>
+              </ul>}
               {!preview && (feed.data.has_more || page > 1) && (
                 <div className="flex items-center justify-between">
                   <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => change('page', String(page - 1))}>‹ 이전</Button>
