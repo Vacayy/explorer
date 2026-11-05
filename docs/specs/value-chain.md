@@ -108,7 +108,7 @@
 - 공시 집계
 - 원천별 방향, 상승 원천 수(`agree_up`)와 관측 원천 수(`observed`)
 
-**표면**: 종목 상세 `TaiwanLinkCard` 맨 위 '한국 확인 신호'(`shared/TwLinkSignal.KrConfirmStrip`).
+**표면**: 밸류체인 화면(`ValueChainPage`, `shared/TwLinkSignal.KrConfirmStrip`). 종목 상세는 시안 Dossier-KR의 '연결 신호' 행(수출·대만·기업활동)으로 같은 세 원천을 따로 보인다.
 
 ## 4-1. 화면 산업 › 밸류체인 (2026-11-05 화면 구조 개편 4b, ia-redesign §4.8b)
 

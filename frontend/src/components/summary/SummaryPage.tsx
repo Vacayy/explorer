@@ -10,9 +10,8 @@ import { CompanyEvidence } from '@/components/company/CompanyEvidence'
 import { FinancialPreview } from '@/components/company/CompanyFinancials'
 import { DiscoveryResearch } from '@/components/company/DiscoveryResearch'
 import { CompanyOverviewCard } from '@/components/company/CompanyOverview'
-import { StockActivityStrip } from '@/components/summary/StockActivityStrip'
 import { StockActionsBlock } from '@/components/summary/StockActionsBlock'
-import { TaiwanLinkCard } from '@/components/company/TaiwanLinkCard'
+import { DossierLinkSignals } from '@/components/company/DossierLinkSignals'
 
 const EMPTY_PRICES: import('@/types').StockPriceItem[] = []
 
@@ -78,8 +77,7 @@ export default function SummaryPage({ stockCode }: { stockCode: string }) {
           <div className="grid gap-3 lg:grid-cols-2">
             <FinancialPreview stockCode={stockCode} />
             <div className="min-w-0 space-y-3">
-              <StockActivityStrip stockCode={stockCode} />
-              <TaiwanLinkCard stockCode={stockCode} />
+              <DossierLinkSignals stockCode={stockCode} />
               <CompanyEvidence company={stockCode} preview moreTo={`/analyze/${stockCode}/mentions`} />
             </div>
           </div>

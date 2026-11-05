@@ -6,7 +6,7 @@ import type { SubTab } from "./navConfig"
 interface Props {
   tabs: readonly SubTab[]
   activeKey: string | null
-  /** 좌측 컨텍스트 라벨 — 종목 도시에의 회사명 */
+  /** 컨텍스트 라벨 — 종목 도시에의 회사명. 시안대로 첫 탭과 합쳐 'SK하이닉스 · 개요' 한 칩으로 그린다 */
   context?: string | null
   /** 탭 뒤 동작(선택) */
   trailing?: ReactNode
@@ -21,8 +21,7 @@ interface Props {
 export function SubNav({ tabs, activeKey, context, trailing }: Props) {
   return (
     <nav aria-label="하위 메뉴" className="-mx-1 mb-4 flex h-[30px] items-center gap-1 overflow-x-auto px-1 max-md:mb-3 max-md:h-10">
-      {context && <span className="mr-2 shrink-0 text-sm font-semibold">{context}</span>}
-      {tabs.map((t) => {
+      {tabs.map((t, i) => {
         const active = t.key === activeKey
         return (
           <Link key={t.key} to={t.path} aria-current={active ? "page" : undefined}
@@ -30,7 +29,7 @@ export function SubNav({ tabs, activeKey, context, trailing }: Props) {
             <span className={cn(
               "inline-flex h-[30px] items-center rounded-full px-3 text-[13px] leading-none whitespace-nowrap transition-colors",
               active ? "bg-action font-medium text-action-ink" : "text-ink-2 group-hover:bg-chip group-hover:text-ink",
-            )}>{t.label}</span>
+            )}>{context && i === 0 ? `${context} · ${t.label}` : t.label}</span>
           </Link>
         )
       })}

@@ -44,7 +44,8 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
       return { ...r, yoy: r.revenue != null && prev != null && prev > 0 ? ((r.revenue - prev) / prev) * 100 : null }
     })
     .filter((r) => r.revenue != null || r.profit != null)
-    .slice(-4)
+  const bars = rows.slice(-8)
+  const recent = rows.slice(-4)
   const latest = rows.at(-1)
   return (
     <Card className="min-w-0 gap-0 py-0" aria-label="최근 분기 실적">
@@ -52,7 +53,7 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
         <h2 className="text-section font-semibold">최근 분기 실적</h2>
         {latest && <span className="text-caption text-muted-foreground">{query.data?.fs_div === 'OFS' ? '별도' : '연결'} · {latest.period}</span>}
         <span className="ml-auto" />
-        <Link className="text-xs text-muted-foreground hover:text-foreground" to={`/analyze/${stockCode}/financials${companyResearchSearch(params.toString())}`}>실적·사업 ›</Link>
+        <Link className="text-xs text-muted-foreground hover:text-foreground" to={`/analyze/${stockCode}/financials${companyResearchSearch(params.toString())}`}>실적·사업 보기 ›</Link>
       </header>
       <div className="space-y-3 p-4">
         {query.isPending ? (
@@ -61,14 +62,11 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
           <ErrorState message="실적을 불러오지 못했습니다." onRetry={() => void query.refetch()} />
         ) : latest ? (
           <>
-            <dl className="grid grid-cols-2 gap-3">
-              {[['매출액', formatKrw(latest.revenue)], ['영업이익', formatKrw(latest.profit)]].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-caption text-muted-foreground">{label}</dt>
-                  <dd className="mt-1 font-mono text-lg tabular-nums">{value}</dd>
-                </div>
-              ))}
-            </dl>
+            {/* 시안: 매출·영업이익 단일 분기 미니 막대(회색, 최근 분기 글자색 + 값) */}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-4">
+              <MiniQuarterBars label="매출액 · 단일 분기" points={bars.map((r) => ({ period: r.period, value: r.revenue }))} />
+              <MiniQuarterBars label="영업이익 · 단일 분기" points={bars.map((r) => ({ period: r.period, value: r.profit }))} />
+            </div>
             <Table className="max-sm:hidden">
               <TableHeader>
                 <TableRow>
@@ -80,7 +78,7 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...rows].reverse().map((r) => (
+                {[...recent].reverse().map((r) => (
                   <TableRow key={r.period}>
                     <TableCell className="font-mono tabular-nums">{r.period}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.revenue)}</TableCell>
@@ -99,6 +97,36 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
     </Card>
   )
 }
+/** 분기 미니 막대 — 0 아래(적자)·빈 분기는 바닥선만. 금액 라벨은 최근 분기 하나 */
+function MiniQuarterBars({ label, points }: { label: string; points: { period: string; value: number | null }[] }) {
+  const n = points.length
+  if (!n) return null
+  const max = Math.max(1, ...points.map((p) => p.value ?? 0))
+  const slot = 504 / n
+  const w = Math.min(40, slot * 0.64)
+  return (
+    <div className="min-w-0">
+      <span className="text-caption text-muted-foreground">{label}</span>
+      <svg viewBox="0 0 520 150" role="img" aria-label={`${label} ${n}분기`} className="block h-auto w-full">
+        {points.map((p, i) => {
+          const x = 8 + i * slot + (slot - w) / 2
+          const h = p.value != null && p.value > 0 ? Math.max(2, (p.value / max) * 110) : 1
+          const last = i === n - 1
+          return (
+            <g key={p.period}>
+              <rect x={x} y={128 - h} width={w} height={h} rx={2} fill={last ? 'var(--ink)' : 'var(--series)'}>
+                <title>{`${p.period} ${formatKrw(p.value)}`}</title>
+              </rect>
+              <text x={x + w / 2} y={144} textAnchor="middle" fontSize={10} fill="var(--ink-3)" fontFamily="var(--font-mono)">{p.period}</text>
+              {last && <text x={x + w / 2} y={Math.max(11, 128 - h - 5)} textAnchor="middle" fontSize={10.5} fontWeight={600} fill="var(--ink)" fontFamily="var(--font-mono)">{formatKrw(p.value)}</text>}
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 function Segments({ stockCode }: { stockCode: string }) {
   const [params] = useSearchParams()
   const { data, isPending, isError, refetch } = useBusinessSegments(stockCode)

@@ -69,7 +69,7 @@
   - 유지: 그 밖
 - **API**: `GET /api/spine/tw/links[?kr=<종목코드>]`(LLM·네트워크 0). 연결별 대만 회사, 3개월 YoY(현재·3개월 전), 상태, 월별 YoY 24개월, 숫자 근거(최적 시차·상관·같은 방향·분기 수)를 준다. 대만 수집 시각이 같으면 메모리 캐시를 쓴다.
 - **표면**:
-  - 종목 상세 요약 탭 `company/TaiwanLinkCard`: 연결이 있는 종목만 보인다.
+  - 종목 상세 요약 탭 '연결 신호'(`company/DossierLinkSignals`)의 대만 행: 연결이 있는 종목만 보인다.
   - 홈 위젯 `explore.twLinks`: 전환·둔화·가속 순으로 정렬한다.
   - 프록시 보드 어댑터 `tw`: `tw:<코드>[:yoy|yoy3m]`, `tw:layer:<층>[:yoy|yoy3m]`.
   - 표시 규칙은 `shared/TwLinkSignal`이 공유한다.

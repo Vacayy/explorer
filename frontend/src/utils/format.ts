@@ -126,6 +126,14 @@ export function formatPrice(value: number): string {
 }
 
 /**
+ * 차트 가격 축(국내) — 100만 이상은 만 단위('142만'·'142.3만', 시안 Dossier 가격 축), 그 아래는 '72,900'.
+ */
+export function formatChartKrw(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `${Number((value / 10_000).toFixed(1)).toLocaleString("ko-KR")}만`
+  return value.toLocaleString("ko-KR")
+}
+
+/**
  * 종목 가격 — 국내 '72,900원', 미국 '$479.54'(소수 2자리). null이면 '-'.
  */
 export function formatStockPrice(value: number | null | undefined, market?: string | null): string {

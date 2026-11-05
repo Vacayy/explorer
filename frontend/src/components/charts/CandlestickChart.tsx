@@ -22,6 +22,10 @@ interface CandlestickChartProps {
   overlays?: { id: string; title: string; token: string; data: { time: string; value: number }[]; dashed?: boolean }[]
   /** Initial visible window (inclusive dates present in `data`). Omitted → fit all data. */
   initialRange?: { from: string; to: string } | null
+  /** 축 글자 크기(px) — 생략하면 라이브러리 기본(12) */
+  axisFontSize?: number
+  /** 거래량을 캔들 아래 띠로 분리(겹치지 않게)하고 거래량 값 라벨을 숨긴다 — 시안 Dossier 가격과 거래량 */
+  separateVolume?: boolean
 }
 
 // 등락색 = 브랜드색(D-320): 상승 --up(분홍/다크 오렌지), 하락 --down(파랑). 테마가 바뀌면 다시 칠한다
@@ -37,6 +41,8 @@ export default function CandlestickChart({
   formatValue,
   overlays,
   initialRange,
+  axisFontSize,
+  separateVolume = false,
 }: CandlestickChartProps) {
   const onMarkerClickRef = useRef(onMarkerClick)
   onMarkerClickRef.current = onMarkerClick
@@ -57,6 +63,7 @@ export default function CandlestickChart({
       layout: {
         ...DEFAULT_CHART_OPTIONS.layout,
         background: { type: ColorType.Solid, color: "transparent" },
+        ...(axisFontSize ? { fontSize: axisFontSize } : {}),
       },
       width: container.clientWidth,
       height,
@@ -91,10 +98,16 @@ export default function CandlestickChart({
     const volSeries = chart.addHistogramSeries({
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
+      ...(separateVolume ? { lastValueVisible: false, priceLineVisible: false } : {}),
     })
     chart.priceScale("volume").applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: separateVolume ? 0.82 : 0.8, bottom: 0 },
     })
+    // 시안: 현재가 라벨 = 글자색 채움(봉 색 아님)
+    if (separateVolume) {
+      chart.priceScale("right").applyOptions({ scaleMargins: { top: 0.06, bottom: 0.24 } })
+      candleSeries.applyOptions({ priceLineColor: t.ink, priceLineStyle: LineStyle.SparseDotted })
+    }
     volumeSeriesRef.current = volSeries
 
     // 특징일 마커 클릭 → 가장 가까운 마커 시각 콜백
@@ -125,8 +138,8 @@ export default function CandlestickChart({
   // 테마 전환 — 축·격자·봉 색을 다시 칠한다
   useEffect(() => {
     chartRef.current?.applyOptions(chartOptions(theme))
-    candleSeriesRef.current?.applyOptions({ upColor: theme.up, downColor: theme.down, borderUpColor: theme.up, borderDownColor: theme.down, wickUpColor: theme.up, wickDownColor: theme.down })
-  }, [theme])
+    candleSeriesRef.current?.applyOptions({ upColor: theme.up, downColor: theme.down, borderUpColor: theme.up, borderDownColor: theme.down, wickUpColor: theme.up, wickDownColor: theme.down, ...(separateVolume ? { priceLineColor: theme.ink } : {}) })
+  }, [theme, separateVolume])
 
   // Update candlestick data
   useEffect(() => {

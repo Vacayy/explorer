@@ -48,10 +48,11 @@
   - 항목별 `is_correction`·`my_group`('보유'=portfolio 묶음 우선, '관심'=watch 묶음, `stock_groups` 기준).
 - `/actions/rights` 행에도 `my_group`이 있다.
 - 화면: 원공시(기본)·정정·전체 토글(`?kind=`) · 내 종목은 맨 위에 고정하고 배지를 단다 · 정정 행에는 '정정' 배지.
-- 국내 도시에 개요의 '최근 활동' 줄(`summary/StockActivityStrip`)은 두 가지를 보인다.
-  - 최근 30일 기업활동: 원공시 칩과 정정 수. `stock_brief`와 같은 30일 창이며 `/actions?stock_code=`로 읽는다.
-  - 수출 지표: 이 종목을 지목한 품목 칩.
-  - 둘 다 없으면 줄을 그리지 않는다.
+- 국내 도시에 개요 오른쪽 '연결 신호'(`company/DossierLinkSignals`, 시안 Dossier-KR)는 한 줄 행(배지 | 내용 | 수치)으로 보인다.
+  - 수출: 이 종목을 지목한 품목(최대 2, 급증·급감 배지 + YoY).
+  - 대만: 연결 회사 월매출 3개월 YoY(최대 2, 가속·둔화 배지, `/tw/links`).
+  - 기업활동: 최근 30일 원공시 종류·건수. `stock_brief`와 같은 30일 창이며 `/actions?stock_code=`로 읽는다. 없으면 '최근 30일 공시 없음'.
+  - 셋 다 없으면 칸을 그리지 않는다.
 
 ## 5. 위젯 — 제거
 

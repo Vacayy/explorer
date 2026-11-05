@@ -11,6 +11,9 @@ import { shiftDay, validDay } from '@/utils/companyResearch'
 import type { StockPriceItem } from '@/types'
 import { DiscoveryTechnicalContext } from '@/components/company/DiscoveryTechnicalContext'
 import { InfoTip } from '@/components/shared/InfoTip'
+import PeriodToggle from '@/components/shared/PeriodToggle'
+import { useChartTheme } from '@/components/charts/chartTheme'
+import { formatChartKrw } from '@/utils/format'
 
 export function CompanyPriceResearch({
   company,
@@ -38,10 +41,11 @@ export function CompanyPriceResearch({
   const sourceRun = market === 'kr' ? sp.get('source_run') : null
   const original = !!sourceRun && sp.get('scan_at') !== 'latest'
   const scanAnchor = useRef<HTMLDivElement>(null)
+  const theme = useChartTheme()
   const [notice, setNotice] = useState('')
   const months = [3, 12, 60].includes(Number(sp.get('months')))
     ? Number(sp.get('months'))
-    : 12
+    : 3
   const candles = useMemo(
     () =>
       prices
@@ -107,11 +111,12 @@ export function CompanyPriceResearch({
               ? `${p.trade_date.slice(0, 4)}-${p.trade_date.slice(4, 6)}-${p.trade_date.slice(6)}`
               : p.trade_date,
           value: p.volume!,
-          color: p.close! >= p.open! ? '#ef444480' : '#3b82f680',
+          // 시안: 거래량 = 등락 토큰 35% (Dossier-KR·US)
+          color: `${p.close! >= p.open! ? theme.up : theme.down}59`,
         }))
         .filter((p) => p.time >= chartStart)
         .sort((a, b) => a.time.localeCompare(b.time)),
-    [prices, chartStart],
+    [prices, chartStart, theme],
   )
   const choose = (day: string) => {
     if (!validDay(day) || day < dates[0] || day > dates.at(-1)!) {
@@ -176,8 +181,10 @@ export function CompanyPriceResearch({
       <CandlestickChart
         data={chartData}
         volumeData={volumes}
-        height={compact && !selected && !scanEnabled ? 160 : 360}
-        formatValue={value => market === 'us' ? `$${value.toFixed(2)}` : value.toLocaleString('ko-KR')}
+        height={compact && !selected && !scanEnabled ? 160 : window.innerWidth < 768 ? 320 : 420}
+        axisFontSize={13}
+        separateVolume
+        formatValue={value => market === 'us' ? `$${value.toFixed(2)}` : formatChartKrw(value)}
         selectedTime={selected}
         selectionStart={start}
         onMarkerClick={choose}
@@ -204,25 +211,27 @@ export function CompanyPriceResearch({
               <CardContent className={compact && !selected ? 'space-y-2 pt-3' : 'space-y-4 pt-3'}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className={`flex items-center gap-1 ${compact && !selected ? 'text-sm font-medium' : 'text-section font-semibold'}`}>
-                      가격과 거래량
-                      <InfoTip label="가격과 거래량 설명">캔들을 누르면 그날 이전 자료를 탐색합니다. 휠·드래그로 차트를 확대·이동할 수 있습니다.</InfoTip>
-                    </h2>
-                    {current && (
+                    <div className="flex flex-wrap items-baseline gap-x-2.5">
+                      <h2 className={`flex items-center gap-1 ${compact && !selected ? 'text-sm font-medium' : 'text-section font-semibold'}`}>
+                        가격과 거래량
+                        <InfoTip label="가격과 거래량 설명">캔들을 누르면 그날 이전 자료를 탐색합니다. 휠·드래그로 차트를 확대·이동할 수 있습니다.</InfoTip>
+                      </h2>
+                      {!selected && latest && <span className="font-mono text-caption tabular-nums text-muted-foreground">{Number(latest.slice(5, 7))}/{Number(latest.slice(8, 10))} {market === 'us' ? '미국장 종가' : '종가'}</span>}
+                    </div>
+                    {selected && current ? (
                       <p className="mt-1 text-lg font-semibold tabular-nums">
                         {market === 'us' ? '$' : ''}
                         {current.close.toLocaleString()}
                         {market === 'kr' ? '원' : ''}
                         <span className="ml-2 text-caption font-normal text-muted-foreground">
-                          {selected ? '선택일' : '최근 보유일'} {current.time}{' '}
-                          종가
+                          선택일 {current.time} 종가
                         </span>
                       </p>
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button variant={scanOpen ? 'secondary' : 'outline'} size="sm" className="min-h-11" aria-pressed={scanOpen} onClick={() => setScanOpen(!scanOpen)}><Activity className="size-4" />기술적 분석</Button>
-                    {!historical && <Button variant={scanOpen && sp.get('scan_view') === 'structure' ? 'secondary' : 'outline'} size="sm" className="min-h-11" disabled={!latest || loading || error} onClick={() => setSp(previous => { const next = new URLSearchParams(previous); next.set('scan', '1'); next.set('scan_view', 'structure'); return next }, { replace: true, preventScrollReset: true })}><PenLine className="size-4" />구조 그리기</Button>}
+                    <Button variant={scanOpen ? 'secondary' : 'outline'} size="sm" className="max-md:min-h-11" aria-pressed={scanOpen} onClick={() => setScanOpen(!scanOpen)}><Activity className="size-4" />기술적 분석</Button>
+                    {!historical && <Button variant={scanOpen && sp.get('scan_view') === 'structure' ? 'secondary' : 'outline'} size="sm" className="max-md:min-h-11" disabled={!latest || loading || error} onClick={() => setSp(previous => { const next = new URLSearchParams(previous); next.set('scan', '1'); next.set('scan_view', 'structure'); return next }, { replace: true, preventScrollReset: true })}><PenLine className="size-4" />구조 그리기</Button>}
                   </div>
                   {selected && (
                     <Button
@@ -251,21 +260,16 @@ export function CompanyPriceResearch({
                   )}
                 </div>
                 <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div className="flex gap-1" aria-label="차트 표시 기간">
-                    {[3, 12, 60].map((m) => (
-                      <Button
-                        key={m}
-                        size="sm"
-                        variant={months === m ? 'default' : 'ghost'}
-                        aria-pressed={months === m}
-                        onClick={() => update('months', String(m))}
-                      >
-                        {m === 3 ? '3개월' : m === 12 ? '1년' : '5년'}
-                      </Button>
-                    ))}
+                  <div aria-label="차트 표시 기간">
+                    <PeriodToggle
+                      value={String(months)}
+                      onChange={(v) => update('months', v)}
+                      options={[{ value: '3', label: '3개월' }, { value: '12', label: '1년' }, { value: '60', label: '5년' }]}
+                    />
                   </div>
-                  <label className="text-caption">
-                    {selected ? '선택 거래일' : '궁금한 날짜 선택'}
+                  {/* 시안: 날짜는 캔들을 눌러 고른다 — 입력 칸은 고른 뒤(선택 거래일 이동)에만 */}
+                  {selected && <label className="text-caption">
+                    선택 거래일
                     <Input
                       aria-label="선택 거래일"
                       type="date"
@@ -278,7 +282,7 @@ export function CompanyPriceResearch({
                         if (e.target.value) choose(e.target.value)
                       }}
                     />
-                  </label>
+                  </label>}
                 </div>
                 {!scanEnabled && priceChart}
                 {scanOpen && <div ref={sourceRun ? undefined : scanAnchor} className="scroll-mt-4">
