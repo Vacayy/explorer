@@ -88,7 +88,7 @@ function PeerFrame({ data }: { data: PeerRuntime }) {
     {stale && <p role="status" className="text-caption text-chart-warning">{data.lastAttempt?.status === 'error' ? `마지막 수집에 실패해 ${prices.asOf} 가격으로 보여 드립니다.` : `가격이 ${prices.asOf} 이후 갱신되지 않았습니다.`}</p>}
     {group && summary && <SummaryStrip summary={summary} />}
     <div className="grid min-w-0 gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
-      <aside aria-label="그룹 찾기" className="hidden min-w-0 self-start border md:block md:sticky md:top-[calc(var(--topbar-height)+1rem)] md:max-h-[calc(100dvh-var(--topbar-height)-2rem)] md:overflow-y-auto">{finderList}</aside>
+      <aside aria-label="그룹 찾기" className="hidden min-w-0 self-start border bg-card md:block md:sticky md:top-[calc(var(--topbar-height)+1rem)] md:max-h-[calc(100dvh-var(--topbar-height)-2rem)] md:overflow-y-auto">{finderList}</aside>
       <div className="min-w-0 space-y-4">
         {unknown ? <div role="status" className="space-y-2 border p-6">
           <p className="text-sm">이 업종에는 아직 Peer 그룹이 없습니다.</p>
@@ -120,8 +120,8 @@ function PeerHead({ catalog, groupId, view = 'performance', onView, onPick, onOp
   return <header className="space-y-3">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0 max-md:hidden">
-        <h1 className="text-page font-semibold">Peer 그룹</h1>
-        <nav aria-label="그룹 경로" className="mt-1 flex flex-wrap items-center gap-1 text-caption text-muted-foreground">
+        <h1 className="font-display text-page font-normal tracking-[-0.02em]">Peer 그룹</h1>
+        <nav aria-label="그룹 경로" className="mt-1 flex flex-wrap items-center gap-1 text-[13px] text-ink-2">
           {crumbs.map((crumb, index) => <span key={crumb.id || 'all'} className="flex items-center gap-1">
             {index > 0 && <ChevronRight className="size-3" aria-hidden="true" />}
             {index === crumbs.length - 1 ? <span aria-current="page" className="font-semibold text-foreground">{crumb.name}</span>
@@ -131,7 +131,7 @@ function PeerHead({ catalog, groupId, view = 'performance', onView, onPick, onOp
       </div>
       {catalog && <div className="flex flex-wrap items-center gap-3">
         <div className="max-md:hidden"><ViewToggle view={view} onView={onView} /></div>
-        {sector && <Link to={`/map?group=${encodeURIComponent(sector)}`} className="text-sm font-semibold hover:underline max-md:hidden">이 그룹의 업황 보기 ›</Link>}
+        {sector && <Link to={`/map?group=${encodeURIComponent(sector)}`} className="text-[13px] font-semibold hover:underline max-md:hidden">이 그룹의 업황 보기 ›</Link>}
       </div>}
     </div>
     {catalog && <div className="flex items-center justify-between gap-3 border p-3 md:hidden">
@@ -149,7 +149,7 @@ function ViewToggle({ view, onView }: { view: string; onView?: (value: string) =
 }
 
 function Cell({ label, children, sub }: { label: string; children: ReactNode; sub?: ReactNode }) {
-  return <div className="min-w-0 p-3 md:p-4"><p className="text-caption text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold tabular-nums md:text-2xl">{children}</p>{sub && <p className="mt-1 text-caption text-muted-foreground">{sub}</p>}</div>
+  return <div className="min-w-0 space-y-0.5 bg-card px-4 py-3"><p className="text-caption text-ink-3">{label}</p><p className="font-display text-[22px] leading-tight tabular-nums max-md:text-lg">{children}</p>{sub && <p className="text-caption text-ink-2">{sub}</p>}</div>
 }
 
 function SummaryStrip({ summary }: { summary: NonNullable<ReturnType<typeof peerGroupSummary>> }) {
@@ -166,7 +166,7 @@ function SummaryStrip({ summary }: { summary: NonNullable<ReturnType<typeof peer
 function SelectedBand({ view, row, catalog, rows, days, onOther }: { view: string; row: ReturnType<typeof peerMemberRows>[number]; catalog: PeerCatalog; rows: ReturnType<typeof peerMemberRows>; days: number; onOther: () => void }) {
   const company = catalog.companies.find(item => item.code === row.code)
   const evidence = company ? companyEvidence(company) : null
-  return <section aria-label="선택한 종목" className="flex flex-wrap items-center gap-x-4 gap-y-2 border bg-muted/40 px-4 py-3 max-md:flex-col max-md:items-start">
+  return <section aria-label="선택한 종목" className="flex flex-wrap items-center gap-x-4 gap-y-2 border bg-surface-2 px-4 py-3 max-md:flex-col max-md:items-start">
     <span className="text-caption text-muted-foreground">선택한 종목</span>
     <span className="font-semibold">{row.name} <span className="font-mono text-caption font-normal text-muted-foreground">{row.code}</span></span>
     <span className="min-w-0 flex-1 text-sm max-md:w-full">
@@ -185,18 +185,18 @@ function SelectedBand({ view, row, catalog, rows, days, onOther }: { view: strin
 function PeerFinder({ finder, groupId, query, onQuery, onPick }: { finder: ReturnType<typeof peerFinder>; groupId: string; query: string; onQuery: (value: string) => void; onPick: (id: string) => void }) {
   const row = (item: PeerListItem, indent = false, strong = false) => <li key={item.id}>
     <button type="button" aria-current={item.id === groupId ? 'true' : undefined} onClick={() => onPick(item.id)}
-      className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted/50', indent && 'pl-5', strong && 'font-semibold', item.id === groupId && 'bg-muted font-semibold')}>
+      className={cn('flex w-full items-baseline gap-1.5 px-3 py-[5px] text-left text-[13px] text-ink-2 hover:bg-chip', indent && 'pl-5', strong && 'text-[13.5px] font-semibold text-ink', item.id === groupId && 'bg-chip font-semibold text-ink shadow-[inset_2px_0_0_var(--ink)]')}>
       <span className="min-w-0 flex-1 truncate">{item.name}</span>
-      <span className="shrink-0 text-caption tabular-nums text-muted-foreground">{item.memberCount}</span>
-      <span className={cn('w-14 shrink-0 text-right font-mono text-caption tabular-nums', tone(item.return20))}>{formatPercent(item.return20)}</span>
+      <span className="shrink-0 text-[11px] font-normal text-ink-3">{item.memberCount}</span>
+      <span className={cn('w-14 shrink-0 text-right font-mono text-xs font-normal tabular-nums', tone(item.return20))}>{formatPercent(item.return20)}</span>
     </button>
   </li>
-  return <div className="space-y-2 py-2">
+  return <div className="space-y-2.5 py-3.5">
     <div className="relative px-3"><Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input type="search" aria-label="제품·기업으로 그룹 찾기" value={query} onChange={event => onQuery(event.target.value)} placeholder="제품·기업으로 그룹 찾기" className="h-9 pl-9" />
+      <Input type="search" aria-label="제품·기업으로 그룹 찾기" value={query} onChange={event => onQuery(event.target.value)} placeholder="제품·기업으로 그룹 찾기" className="h-8 rounded-lg pl-9 text-[12.5px]" />
     </div>
     {finder.empty ? <div role="status" className="space-y-1 px-3 py-4 text-sm"><p>"{query}"이 들어간 그룹이 없습니다.</p><Button variant="link" className="h-auto p-0" onClick={() => onQuery('')}>검색어 지우기</Button></div> : <>
-      <p className="flex justify-between px-3 text-caption text-muted-foreground"><span>업종 › 사업군</span><span>20일</span></p>
+      <p className="flex justify-between px-3 text-[11.5px] text-ink-3"><span>업종 › 사업군</span><span>20일</span></p>
       {finder.open && <ul aria-label="지금 업종">
         {row(finder.open.industry, false, true)}
         {finder.open.children.map(item => row(item, true))}

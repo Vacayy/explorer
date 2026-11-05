@@ -14,6 +14,8 @@ interface LineConfig {
   lineStyle?: number // 0=Solid, 2=Dashed
   /** 오른쪽 끝 값 라벨에 붙는 이름 — 선 끝 직접 라벨(showLastValues일 때만 보임) */
   title?: string
+  /** endLabels 모드의 선 끝 라벨 — 이름은 글자색(strong이면 ink 600), 값만 등락색 (DESIGN_SYSTEM 차트 규칙) */
+  endLabel?: { name: string; value: string; tone?: "up" | "down" | "flat"; strong?: boolean }
 }
 
 interface MultiLineChartProps {
@@ -29,6 +31,8 @@ interface MultiLineChartProps {
   /** Show only the line under the pointer, rather than all series. */
   showLineTooltip?: boolean
   onLineClick?: (key: string) => void
+  /** 시안 다중 선 차트: 값 상자 대신 선 끝 HTML 라벨(endLabel), 축은 왼쪽. 값은 라벨 칸 너비(px) */
+  endLabels?: number
 }
 
 /** 같은 일자의 한 달 전(말일은 그 달 말일로 맞춤) */
@@ -70,7 +74,9 @@ export default function MultiLineChart({
   showLastValues = true,
   showLineTooltip = false,
   onLineClick,
+  endLabels,
 }: MultiLineChartProps) {
+  const [labelYs, setLabelYs] = useState<Record<string, number>>({})
   const [hovered, setHovered] = useState<{ label: string; color: string; value: string; date: string; x: number; y: number } | null>(null)
   const lineClickRef = useRef(onLineClick)
   lineClickRef.current = onLineClick
@@ -112,17 +118,18 @@ export default function MultiLineChart({
     setHovered(null)
     const chart = createChart(container, opts)
     chart.applyOptions(chartOptions(theme))
+    if (endLabels) chart.applyOptions({ leftPriceScale: { visible: true, borderVisible: false }, rightPriceScale: { visible: false } })
     chartRef.current = chart
 
     const map = new Map<string, ISeriesApi<"Line">>()
     for (const line of lines) {
       const series = chart.addLineSeries({
         color: resolveColor(line.color),
-        lastValueVisible: showLastValues,
-        priceLineVisible: showLastValues,
+        lastValueVisible: showLastValues && !endLabels,
+        priceLineVisible: showLastValues && !endLabels,
         lineWidth: (line.lineWidth ?? 2) as 1 | 2 | 3 | 4,
         lineStyle: line.lineStyle ?? LineStyle.Solid,
-        title: line.title ?? "",
+        title: endLabels ? "" : line.title ?? "",
         priceFormat: formatValue
           ? { type: "custom", formatter: formatValue }
           : { type: "price" },
@@ -194,7 +201,7 @@ export default function MultiLineChart({
       seriesMapRef.current = new Map()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, linesKey, showLastValues, showLineTooltip, theme])
+  }, [height, linesKey, showLastValues, showLineTooltip, theme, endLabels])
 
   // Update data
   useEffect(() => {
@@ -217,6 +224,30 @@ export default function MultiLineChart({
 
     chartRef.current.timeScale().fitContent()
   }, [data, lines, theme])
+
+  // 선 끝 라벨 y — 마지막 값의 화면 좌표, 겹치면 아래로 밀어 최소 15px 간격
+  useEffect(() => {
+    const chart = chartRef.current, container = containerRef.current
+    if (!endLabels || !chart || !container) return
+    const sync = () => {
+      const ys: { key: string; y: number }[] = []
+      for (const line of lines) {
+        if (!line.endLabel) continue
+        const series = seriesMapRef.current.get(line.key)
+        const last = data.findLast((d) => d[line.key] != null)
+        const y = series && last ? series.priceToCoordinate(last[line.key] as number) : null
+        if (y != null) ys.push({ key: line.key, y })
+      }
+      ys.sort((a, b) => a.y - b.y)
+      for (let i = 1; i < ys.length; i++) ys[i].y = Math.max(ys[i].y, ys[i - 1].y + 15)
+      setLabelYs(Object.fromEntries(ys.map((v) => [v.key, v.y])))
+    }
+    const raf = requestAnimationFrame(sync)
+    chart.timeScale().subscribeVisibleLogicalRangeChange(sync)
+    const ro = new ResizeObserver(sync)
+    ro.observe(container)
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); chart.timeScale().unsubscribeVisibleLogicalRangeChange(sync) }
+  }, [endLabels, data, lines, theme, height, linesKey])
 
   // 고른 날짜의 화면 x좌표 — 스크롤·확대·리사이즈에 따라 다시 잰다
   useEffect(() => {
@@ -299,7 +330,12 @@ export default function MultiLineChart({
           </span>
         ))}
       </div>}
-      <div ref={containerRef} style={{ width: "100%", height }} />
+      <div ref={containerRef} style={{ width: endLabels ? `calc(100% - ${endLabels}px)` : "100%", height }} />
+      {endLabels && lines.map((line) => line.endLabel && labelYs[line.key] != null && <div key={line.key}
+        className={`pointer-events-none absolute whitespace-nowrap text-xs leading-none ${line.endLabel.strong ? "font-semibold text-ink" : "text-ink-2"}`}
+        style={{ left: `calc(100% - ${endLabels - 6}px)`, top: labelYs[line.key], transform: "translateY(-50%)", maxWidth: endLabels - 6 }}>
+        <span className="truncate">{line.endLabel.name}</span> <span className={`font-mono tabular-nums ${line.endLabel.tone === "up" ? "text-up-ink" : line.endLabel.tone === "down" ? "text-down-ink" : "text-ink-3"}`}>{line.endLabel.value}</span>
+      </div>)}
       {showLineTooltip && hovered && <div
         role="tooltip"
         className="pointer-events-none absolute z-30 max-w-[min(260px,90%)] border border-border bg-popover px-3 py-2 text-caption text-popover-foreground"

@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { useTheme } from "next-themes"
+import { MOBILE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery"
 import MultiLineChart, { type LineConfig } from "@/components/charts/MultiLineChart"
 import { HomeBlock } from "@/components/home/HomeSection"
 import { BlockError, RowsSkeleton, tone } from "@/components/home/blockState"
@@ -133,7 +133,7 @@ function SectorHead({ g }: { g: SectorGroup }) {
   return <Card data-sector-head className="gap-1 rounded-[var(--radius-card)] px-4 py-4 shadow-none">
     <p className="text-xs text-muted-foreground">선택한 섹터</p>
     <h2 className="text-xl font-semibold">{g.name}</h2>
-    <p className="text-sm text-muted-foreground tabular-nums">
+    <p className="text-[12.5px] text-ink-2">
       {formatNumber(g.stocks)}종목 · 시총 {formatKrw(g.market_cap)} · 장기 RS {g.rs_long ?? "-"} · 단기 RS {trail.map(t => `${t.label === "지금" ? "지금 " : `${t.label} `}${t.value ?? "-"}`).join(" → ")} · 5일 <span className={tone(g.chg_5d)}>{formatPercent(g.chg_5d)}</span>
     </p>
   </Card>
@@ -154,7 +154,7 @@ function groupStats(catalog: PeerCatalog, snapshot: PeerPriceSnapshot, ids: read
 }
 
 function PeerBlock({ sector, peers, links }: { sector: string; peers: Runtime; links: Links }) {
-  const { resolvedTheme } = useTheme()
+  const phone = useMediaQuery(MOBILE_QUERY)
   const d = peers.data
   const entry = links.data?.sectors.find(e => e.sector === sector)
   const linked = d && links.data ? sectorPeerGroups(d.catalog, entry) : null
@@ -174,15 +174,13 @@ function PeerBlock({ sector, peers, links }: { sector: string; peers: Runtime; l
   }, [d, sector, links.data])
   const lines = useMemo<LineConfig[]>(() => {
     if (!chart) return []
-    const styles = getComputedStyle(document.documentElement)
-    const color = (name: string) => styles.getPropertyValue(name).trim()
+    // 회색 시리즈 · 1위만 글자색 굵은 선 · 선 끝 라벨의 값만 등락색 (DESIGN_SYSTEM 차트 규칙)
     return chart.paths.map((p, i) => {
       const end = p.path![p.path!.length - 1] - 100
-      return { key: p.id, label: p.name, title: `${p.name} ${formatPercent(end)}`, color: color(i === 0 ? "--chart-purple" : "--chart-gray"), lineWidth: i === 0 ? 3 : 1 }
-    })
-    // CSS 토큰은 테마가 바뀌면 다시 읽는다
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, resolvedTheme])
+      return { key: p.id, label: p.name, color: i === 0 ? "--ink" : "--series", lineWidth: i === 0 ? 3 : 1,
+        endLabel: { name: p.name, value: formatPercent(end), tone: end > 0 ? "up" as const : end < 0 ? "down" as const : "flat" as const, strong: i === 0 } }
+    }).reverse()
+  }, [chart])
   const stats = d && linked ? groupStats(d.catalog, d.prices, linked.all) : []
   return <HomeBlock label="sector.peers" title="Peer 그룹"
     info={`이 섹터에 걸린 Peer 그룹입니다. 선은 그룹 구성 종목의 날짜별 중앙값(${CHART_DAYS}거래일 전 = 100), 상위 ${CHART_LINES}개 그룹만 그리고 1위를 굵게 표시합니다. 표는 ${TABLE_DAYS}거래일 중앙값 순입니다. 가격이 없는 종목은 계산에서 뺍니다.`}
@@ -193,7 +191,7 @@ function PeerBlock({ sector, peers, links }: { sector: string; peers: Runtime; l
       : links.isError ? <BlockError message="섹터 → Peer 대응표를 불러오지 못했습니다" error={links.error} onRetry={() => void links.refetch()} />
       : !linked?.all.length ? <p role="status" className="text-sm text-muted-foreground">이 업종엔 아직 Peer 그룹이 없습니다.</p>
       : <div className="space-y-3">
-        {chart ? <MultiLineChart data={chart.data} lines={lines} height={260} showLegend={false} showLineTooltip formatValue={v => v.toFixed(1)} />
+        {chart ? <MultiLineChart data={chart.data} lines={lines} height={260} showLegend={false} showLastValues={false} endLabels={phone ? undefined : 170} showLineTooltip formatValue={v => v.toFixed(1)} />
           : <p role="status" className="py-8 text-center text-sm text-muted-foreground">차트를 그릴 가격 관측이 없습니다.</p>}
         <Table className="text-[13px]">
           <TableHeader><TableRow>

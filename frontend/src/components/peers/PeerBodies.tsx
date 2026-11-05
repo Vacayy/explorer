@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { useTheme } from 'next-themes'
 import { ExternalLink } from 'lucide-react'
 import MultiLineChart, { type LineConfig } from '@/components/charts/MultiLineChart'
 import PeriodToggle from '@/components/shared/PeriodToggle'
@@ -11,6 +10,7 @@ import { normalizedPeerPath } from '@/lib/peerPerformance'
 import { peerChildren, peerParent } from '@/lib/peerPresets'
 import { PEER_DAYS, companyEvidence, sourceCheck, groupAverage, groupAveragePath, groupCompanies, peerMemberRows, type PeerDays, type PeerMemberRow } from '@/lib/peerFrame'
 import { cn } from '@/lib/utils'
+import { MOBILE_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
 import { formatNumber, formatPercent, formatPp } from '@/utils/format'
 import type { PeerCatalog, PeerGroup, PeerPriceSnapshot, PeerRuntime } from '@/types/peer'
 
@@ -25,15 +25,6 @@ function EvidenceCount({ verified, caveats }: { verified: number; caveats: numbe
   return <>{verified ? <span className="text-fact">원문 {verified}</span> : <span className="text-muted-foreground">미확인</span>} · <span className={caveats ? 'text-chart-warning' : 'text-muted-foreground'}>주의 {caveats}</span></>
 }
 
-function useCssColors() {
-  const { resolvedTheme } = useTheme()
-  return useMemo(() => {
-    const styles = getComputedStyle(document.documentElement)
-    return (name: string) => styles.getPropertyValue(name).trim()
-    // Canvas colours must follow the current theme.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedTheme])
-}
 
 /** 성과 비교 — 시작일=100 차트(선택 종목 상승색 굵게, 그룹 평균 점선) + 순위 표(마지막 줄 그룹 평균) */
 export function PeerPerformanceBody({ data, group, rows, days, onDays, selected, onSelect, onResearch, onPick }: {
@@ -41,30 +32,33 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
   selected: string | null; onSelect: (code: string) => void; onResearch: (code: string) => void; onPick: (id: string) => void
 }) {
   const { catalog, prices } = data
-  const color = useCssColors()
+  const phone = useMediaQuery(MOBILE_QUERY)
   const dates = prices.dates.slice(-days - 1)
   const paths = useMemo(() => rows.map(row => ({ row, path: normalizedPeerPath(prices, row.code, days) })), [rows, prices, days])
   const avgPath = useMemo(() => groupAveragePath(prices, rows.map(row => row.code), days), [prices, rows, days])
   const avg = Object.fromEntries(PEER_DAYS.map(d => [d, groupAverage(rows, d)])) as Record<PeerDays, ReturnType<typeof groupAverage>>
   const chartData = dates.map((time, index) => ({ time, group: avgPath?.[index], ...Object.fromEntries(paths.map(({ row, path }) => [`stock_${row.code}`, path?.[index]])) }))
   const many = rows.length > 8
+  // 시안 규칙: 회색 시리즈 · 고른 종목만 글자색 굵은 선 · 평균 점선 · 선 끝 라벨의 값만 등락색
+  const tone = (v: number | null | undefined) => v == null || v === 0 ? 'flat' as const : v > 0 ? 'up' as const : 'down' as const
+  const end = (name: string, v: number | null | undefined, strong = false) => many && !strong ? undefined : { name, value: formatPercent(v ?? null), tone: tone(v), strong }
   const lines: LineConfig[] = [
-    ...paths.filter(({ path, row }) => path && row.code !== selected).map(({ row }) => ({ key: `stock_${row.code}`, label: row.name, title: many ? undefined : `${row.name} ${formatPercent(row.returns[days])}`, color: color('--chart-gray'), lineWidth: 1 })),
-    ...(avgPath ? [{ key: 'group', label: '그룹 평균', title: `그룹 평균 ${formatPercent(avg[days].value)}`, color: color('--foreground'), lineWidth: 2, lineStyle: 2 }] : []),
-    ...paths.filter(({ path, row }) => path && row.code === selected).map(({ row }) => ({ key: `stock_${row.code}`, label: row.name, title: `${row.name} ${formatPercent(row.returns[days])}`, color: color('--up'), lineWidth: 3 })),
+    ...paths.filter(({ path, row }) => path && row.code !== selected).map(({ row }) => ({ key: `stock_${row.code}`, label: row.name, endLabel: end(row.name, row.returns[days]), color: '--series', lineWidth: 1 })),
+    ...(avgPath ? [{ key: 'group', label: '그룹 평균', endLabel: end('그룹 평균', avg[days].value, true), color: '--ink-2', lineWidth: 2, lineStyle: 2 }] : []),
+    ...paths.filter(({ path, row }) => path && row.code === selected).map(({ row }) => ({ key: `stock_${row.code}`, label: row.name, endLabel: end(row.name, row.returns[days], true), color: '--ink', lineWidth: 3 })),
   ]
   const missing = rows.filter(row => row.returns[days] === null)
   const children = peerChildren(catalog, group.id)
   return <div className="space-y-4">
-    <section aria-label="구성 종목 성과" className="space-y-3 border p-3 md:p-4">
+    <section aria-label="구성 종목 성과" className="space-y-3 border bg-card p-3 md:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1 text-card-title font-semibold">구성 종목 성과 <span className="text-caption font-normal text-muted-foreground">{shortDate(dates[0])} = 100</span>
+        <h2 className="flex items-center gap-1 text-section font-semibold">구성 종목 성과 <span className="text-caption font-normal text-muted-foreground">{shortDate(dates[0])} = 100</span>
           <InfoTip label="가격 기준 설명">네이버 정규장 종가({prices.asOf}) 기준 탐색용 가격변동률입니다. 그룹 평균은 기간 시작 동일가중이며, 기업행사 조정은 검증하지 않았습니다. 자동 신호는 보류 중입니다({data.signalHoldReason}).</InfoTip>
         </h2>
         <PeriodToggle value={String(days)} onChange={onDays} options={DAY_OPTIONS} />
       </div>
       {missing.length > 0 && <p role="status" className="text-caption text-chart-warning">가격 없는 종목 {missing.length}개는 표에 '-'로 두고 차트와 그룹 평균에서 뺐습니다 · 평균 {avg[days].covered}/{rows.length}사</p>}
-      {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} showLastValues={!many} showLineTooltip onLineClick={key => { if (key.startsWith('stock_')) onSelect(key.slice(6)) }} height={300} formatValue={formatNumber} />
+      {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} endLabels={phone ? undefined : 150} showLastValues={false} showLineTooltip onLineClick={key => { if (key.startsWith('stock_')) onSelect(key.slice(6)) }} height={300} formatValue={formatNumber} />
         : <p role="status" className="py-10 text-center text-sm text-muted-foreground">이 기간에 그릴 가격이 없습니다.</p>}
       <Table aria-label="구성 종목 성과표" className="max-md:hidden">
         <TableHeader><TableRow>
@@ -170,23 +164,27 @@ const topLevel = (catalog: PeerCatalog) => catalog.groups.filter(group => !peerP
 
 /** 업종 전체 · 성과 비교 — 업종(상위 그룹) 평균 경로와 표 */
 export function PeerIndustriesBody({ catalog, snapshot, days, onDays, onPick }: { catalog: PeerCatalog; snapshot: PeerPriceSnapshot; days: PeerDays; onDays: (value: string) => void; onPick: (id: string) => void }) {
-  const color = useCssColors()
   const items = useMemo(() => topLevel(catalog).map(group => {
     const rows = peerMemberRows(catalog, snapshot, group.id, days)
     return { group, rows, avg: Object.fromEntries(PEER_DAYS.map(d => [d, groupAverage(rows, d)])) as Record<PeerDays, ReturnType<typeof groupAverage>>, path: groupAveragePath(snapshot, rows.map(row => row.code), days) }
   }).sort((a, b) => (b.avg[days].value ?? -Infinity) - (a.avg[days].value ?? -Infinity)), [catalog, snapshot, days])
   const dates = snapshot.dates.slice(-days - 1)
-  const palette = ['--chart-blue', '--chart-orange', '--chart-green', '--chart-purple', '--chart-red']
-  const lines: LineConfig[] = items.filter(item => item.path).map((item, index) => ({ key: item.group.id, label: item.group.name, color: color(palette[index % palette.length]), lineWidth: index < 3 ? 2 : 1, lineStyle: index >= palette.length ? 2 : 0 }))
+  // 회색 시리즈 · 1위 업종만 글자색 굵은 선 · 상위 3곳만 선 끝 라벨(값은 등락색)
+  const lines: LineConfig[] = items.filter(item => item.path).map((item, index) => {
+    const v = item.avg[days].value
+    return { key: item.group.id, label: item.group.name, color: index === 0 ? '--ink' : '--series', lineWidth: index === 0 ? 3 : 1,
+      endLabel: index < 3 ? { name: item.group.name, value: formatPercent(v), tone: v == null || v === 0 ? 'flat' as const : v > 0 ? 'up' as const : 'down' as const, strong: index === 0 } : undefined }
+  }).reverse()
+  const phone = useMediaQuery(MOBILE_QUERY)
   const chartData = dates.map((time, index) => ({ time, ...Object.fromEntries(items.map(item => [item.group.id, item.path?.[index]])) }))
-  return <section aria-label="업종 간 비교" className="space-y-3 border p-3 md:p-4">
+  return <section aria-label="업종 간 비교" className="space-y-3 border bg-card p-3 md:p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h2 className="flex items-center gap-1 text-card-title font-semibold">업종 간 비교 <span className="text-caption font-normal text-muted-foreground">{shortDate(dates[0])} = 100</span>
+      <h2 className="flex items-center gap-1 text-section font-semibold">업종 간 비교 <span className="text-caption font-normal text-muted-foreground">{shortDate(dates[0])} = 100</span>
         <InfoTip label="업종 평균 설명">업종마다 구성 종목을 기간 시작에 동일가중한 평균입니다. 공식 업종지수가 아니며 한 기업이 여러 업종에 들 수 있습니다.</InfoTip>
       </h2>
       <PeriodToggle value={String(days)} onChange={onDays} options={DAY_OPTIONS} />
     </div>
-    {lines.length > 0 && <MultiLineChart data={chartData} lines={lines} showLegend={false} showLastValues={false} showLineTooltip onLineClick={onPick} height={280} formatValue={formatNumber} />}
+    {lines.length > 0 && <MultiLineChart data={chartData} lines={lines} showLegend={false} endLabels={phone ? undefined : 150} showLastValues={false} showLineTooltip onLineClick={onPick} height={280} formatValue={formatNumber} />}
     <Table aria-label="업종 간 비교 성과표">
       <TableHeader><TableRow><TableHead>업종</TableHead><TableHead className="text-right">구성</TableHead>{PEER_DAYS.map(d => <TableHead key={d} className="text-right">{d}일{d === days && ' ↓'}</TableHead>)}</TableRow></TableHeader>
       <TableBody>{items.map(item => <TableRow key={item.group.id}>

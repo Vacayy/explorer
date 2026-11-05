@@ -55,7 +55,7 @@ shadcn 변수는 이 토큰에 잇는다: `--background=--bg`, `--card/--popover
 - 등락색 = 브랜드색. 상승 분홍(다크 오렌지), 하락 파랑, 0은 회색. **가격 방향에만** 쓴다. 숫자 글자는 `text-up-ink`·`text-down-ink`.
 - 버튼·선택 상태는 글자색(`--action`)으로 칠한다. 등락색을 버튼에 쓰지 않는다.
 - AI 해석은 보라 라벨 행 + 옅은 보라 틴트(`shared/AiBlock`). 좌측 보더 강조 금지. 사실 확인은 초록, 지연·미평가는 `--warn`.
-- 차트 시리즈는 회색(`--series`), 선택한 시리즈만 글자색 굵은 선. 값 라벨만 등락색.
+- 차트 시리즈는 회색(`--series`), 선택한 시리즈만 글자색 굵은 선. 값 라벨만 등락색. 다중 선 차트(Peer·산업 섹터·실적 시즌 섹터)는 값 상자 대신 선 끝 라벨 한 열(이름 `--ink-2`, 고른 것 ink 600, 값만 등락색, 13~15px 간격으로 겹침 풀기) — lightweight-charts는 `MultiLineChart endLabels`(축 왼쪽), Recharts는 `season/SectorView`의 `EndLabels`. 폰은 라벨 없이 선만.
 
 ### 컴포넌트 기본값 (shadcn 동작은 그대로, 스타일만)
 
