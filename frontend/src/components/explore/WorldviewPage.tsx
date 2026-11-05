@@ -23,6 +23,7 @@ import { X, Maximize2, Minimize2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
 import { NodeSourceSummary, type SourceStatus } from "@/components/explore/graph/EdgeSource"
+import { GraphActivitySection } from "@/components/explore/GraphActivitySection"
 
 // 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
 const ObsidianGraphView = lazy(() => import("@/components/explore/graph/ObsidianGraphView"))
@@ -459,6 +460,8 @@ export default function WorldviewPage() {
         </div>
       )}
       </div>
+      {/* 최근 7일 그래프 변화(D-308) — 그래프 아래. 전체화면이면 그래프가 덮는다 */}
+      <GraphActivitySection />
     </PageContainer>
   )
 }

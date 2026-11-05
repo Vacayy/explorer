@@ -1787,3 +1787,7 @@ export interface CurationEntry {
   kind: string; target_id: number; title: string; verdict: string; rule: string | null; applied: boolean; decided_at: string | null
 }
 export interface CurationLog { apply_enabled: boolean; counts: Record<string, Record<string, number>>; items: CurationEntry[] }
+
+/** GET /api/spine/causal/activity — 최근 n일 새로 생기거나 갱신된 인과 그래프 노드 + 수혜 후보(D-035) */
+export interface GraphActivityBeneficiary { stock_code: string; name: string; rs_short: number | null }
+export interface GraphActivityNode { id: number; name: string; type: string; is_new: boolean; new_edges: number; beneficiaries: GraphActivityBeneficiary[] }

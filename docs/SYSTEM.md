@@ -149,7 +149,7 @@
 ## 시장 홈 행 구성 보완 (2026-09-10)
 
 - 지수 스트립은 S&P500·나스닥·코스피·코스닥·항셍·니케이225·대만증시 순. `pipeline/indices`에 ^TWII/Asia-Taipei 세션 추가, 기존 index_* 저장소 재사용. 16px 값·20px 추이로 압축.
-- 시장 탭은 상태만: 시장 국면·미국장·국장 거래대금·Risk 모니터링(전체 폭). **D-208**: 읽을거리(주목 주제·언급 모멘텀·AI 생성물·내러티브·종목 요약·리포트)는 피드로 — Explorer 생성물 소스(내러티브·리포트·파급 분석)와 리더 상단 주제 칩(주목 주제·부상 종목, `reader_topic`). 인과 그래프 업데이트 화면(옛 `/knowledge` 변화·검증 지식)은 2026-11-05 개편 4g에서 제거(`/knowledge` → `/knowledge/ontology`, docs/specs/world-model.md).
+- 시장 탭은 상태만: 시장 국면·미국장·국장 거래대금·Risk 모니터링(전체 폭). **D-208**: 읽을거리(주목 주제·언급 모멘텀·AI 생성물·내러티브·종목 요약·리포트)는 피드로 — Explorer 생성물 소스(내러티브·리포트·파급 분석)와 리더 상단 주제 칩(주목 주제·부상 종목, `reader_topic`). 인과 그래프 업데이트(옛 `/knowledge` 변화·검증 지식)는 2026-11-05 개편 4g에서 `/knowledge`와 함께 뺐다가 D-308로 Thesis › 그래프(`/knowledge/ontology`) 그래프 아래 접힌 블록으로 되살렸다(`explore/GraphActivitySection`, 펼칠 때만 호출, docs/specs/world-model.md).
 - `GET /api/spine/home/ai-activity`는 완료된 유튜브 AI 정리본도 `youtube_digest`/`doc_id`로 반환한다. Home에 `유튜브 요약` 배지·영상 제목을 표시하고 정리본 상세로 연결한다. 성공 작업의 완료 시각(레거시는 본문 저장 시각)을 기준으로 기존 산출물과 함께 지난 7일 최신순으로 조회하며 새 생성은 하지 않는다.
 - `kr_movers._briefing_evidence`: 상위 5종목의 스냅샷 당일까지 3일 발행 자료를 entity_links로 연결, 각 최대 2건. 기업명이 포함된 저장 요약/원문 발췌와 문서 링크, 우선주 본주 포함·근거 없음 표시. GET은 저장분 조회이며 LLM 호출 없음. 기존 수집 날짜 정확도의 제약을 유지하고 스냅샷 기준으로 표시.
 - 현행 계약과 출처: `specs/home-feed.md`. 검증: `logs/home-order/`.
