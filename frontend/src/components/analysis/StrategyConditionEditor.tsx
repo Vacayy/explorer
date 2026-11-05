@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,14 +10,16 @@ import type { StrategyCondition, StrategyDefinition } from '@/components/analysi
 
 const OPTIONS: Record<string, string> = { up: '상향', down: '하향', both: '양방향', high: '고가', low: '저가', close: '종가', open: '시가' }
 
-export function StrategyConditionEditor({ condition, definition, busy, onChange, onRemove }: {
+/** 시안 Discover '내 조건' 카드: 번호·이름 + 오른쪽 수정·제거·스위치(toggle) / 설정 한 줄(12 ink-2) / 집계 칩(footer). */
+export function StrategyConditionEditor({ condition, definition, busy, onChange, onRemove, number, toggle, footer }: {
   condition: StrategyCondition; definition: StrategyDefinition; busy: boolean; onChange: (next: StrategyCondition) => void; onRemove: () => void
+  number?: number; toggle?: ReactNode; footer?: ReactNode
 }) {
   const id = useId()
-  return <fieldset disabled={busy} className="min-w-0 space-y-2 border px-3 py-2">
+  return <fieldset disabled={busy} className="flex min-w-0 flex-col gap-2 border p-3">
     <legend className="sr-only">{definition.label} 설정</legend>
-    <Collapsible className="space-y-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0 space-y-0.5"><h4 className="break-keep text-sm font-medium">{definition.label}</h4><p className="text-caption text-muted-foreground">{[...Object.entries(condition.params).map(([key, value]) => `${definition.parameters[key]?.label ?? key} ${OPTIONS[String(value)] ?? (typeof value === 'boolean' ? value ? '예' : '아니요' : value)}`), condition.within_days === 1 ? '기준일 충족' : `최근 ${condition.within_days || '—'}거래일 중 충족`].join(' · ')}</p></div>
-      <div className="flex shrink-0 items-center"><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="sm" className="min-h-9" aria-label={`${definition.label} 조건 수정`}>수정<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><Button type="button" variant="ghost" size="icon-sm" className="size-9" aria-label={`${definition.label} 제거`} onClick={onRemove}><X className="size-4" /></Button></div></div>
+    <Collapsible className="flex flex-col gap-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0 space-y-1"><h4 className="break-keep text-[13.5px] font-medium">{number != null && `${number}. `}{definition.label}</h4><p className="text-xs text-ink-2">{[...Object.entries(condition.params).map(([key, value]) => `${definition.parameters[key]?.label ?? key} ${OPTIONS[String(value)] ?? (typeof value === 'boolean' ? value ? '예' : '아니요' : value)}`), condition.within_days === 1 ? '기준일 충족' : `최근 ${condition.within_days || '—'}거래일 중 충족`].join(' · ')}</p></div>
+      <div className="-mr-1 -mt-1 flex shrink-0 items-center"><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="xs" className="text-ink-2 max-md:min-h-9" aria-label={`${definition.label} 조건 수정`}>수정<ChevronDown className="size-3" /></Button></CollapsibleTrigger><Button type="button" variant="ghost" size="icon-xs" className="text-ink-3 max-md:size-9" aria-label={`${definition.label} 제거`} onClick={onRemove}><X className="size-3.5" /></Button>{toggle && <span className="ml-1 flex h-7 items-center">{toggle}</span>}</div></div>
     <CollapsibleContent className="space-y-3 border-t pt-3">
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {Object.entries(definition.parameters).map(([key, parameter]) => <div key={key} className="min-w-0 space-y-1.5"><Label htmlFor={`${id}-${key}`}>{parameter.label}</Label>
@@ -29,6 +31,7 @@ export function StrategyConditionEditor({ condition, definition, busy, onChange,
     </div>
     <p className="text-caption text-muted-foreground">계산 기준 · {definition.description}</p>
     </CollapsibleContent></Collapsible>
+    {footer}
     {!definition.available && <p className="text-caption text-warn">필요한 자료가 없는 종목은 미평가로 표시합니다.</p>}
   </fieldset>
 }

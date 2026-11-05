@@ -87,6 +87,7 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
     : <ConditionPalette draft={draft} definitions={definitions} busy={startPending} onChange={setDraft} />
   const stack = catalog.data ? <ConditionStack draft={draft} definitions={definitions} busy={startPending} computing={computing}
     result={runSpec ? run!.result ?? null : null} resultConditions={(runSpec?.strategy_conditions ?? []).map(c => c.strategy_id)} status={status}
+    warning={invalid || (stored === false ? '이 브라우저에 초안을 보존하지 못했습니다.' : null)}
     onChange={setDraft} onRunNow={runNow} runDisabled={!ready || computing || runLoading} /> : <Skeleton className="h-64 w-full" />
 
   if (inSheet && desktop) return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
@@ -96,7 +97,7 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
 
   if (!desktop) return <div className="min-w-0 surface-stack">
     <Collapsible open={paletteOpen} onOpenChange={setPaletteOpen} className="rounded-card border bg-card">
-      <CollapsibleTrigger asChild><Button variant="ghost" className="min-h-11 w-full justify-between">조건 목록·빠른 시작<ChevronDown className="size-4" /></Button></CollapsibleTrigger>
+      <CollapsibleTrigger asChild><Button variant="ghost" className="min-h-11 w-full justify-between">조건 목록<ChevronDown className="size-4" /></Button></CollapsibleTrigger>
       <CollapsibleContent className="max-h-[60vh] overflow-y-auto border-t p-3">{palette}</CollapsibleContent>
     </Collapsible>
     <section aria-label="내 조건" className="@container rounded-card border bg-card p-4">{stack}</section>
