@@ -302,7 +302,7 @@ function NarrativeLanding() {
           <h2 className="text-section font-semibold">서사 목록</h2>
           {count > 0 && <span className="font-mono text-caption tabular-nums text-muted-foreground">{count}편</span>}
         </header>
-        <div className="p-4"><NarrativeList empty="state" controls /></div>
+        <div className="p-4"><NarrativeList empty="state" controls fold={10} /></div>
       </Card>
     </PageContainer>
   )

@@ -4,6 +4,7 @@ import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Switch } from "@/components/ui/switch"
@@ -64,10 +65,13 @@ const sortFns: Record<SortKey, (a: NarrativeItem, b: NarrativeItem) => number> =
 
 export function NarrativeList({
   limit,
+  fold,
   empty = "hide",
   controls = false,
 }: {
   limit?: number
+  /** 처음엔 이만큼만 보이고 '더 보기'로 전부 펼친다(URL ?list=all) */
+  fold?: number
   empty?: "hide" | "state"
   controls?: boolean
 }) {
@@ -85,6 +89,7 @@ export function NarrativeList({
   // 오래된 서사 보기 — URL이 상태 소스(?old=1)
   const [params, setParams] = useSearchParams()
   const showOld = params.get("old") === "1"
+  const expanded = params.get("list") === "all"
   const setShowOld = (on: boolean) => setParams(prev => { const next = new URLSearchParams(prev); if (on) next.set("old", "1"); else next.delete("old"); return next }, { replace: true, preventScrollReset: true })
   const isOld = (n: NarrativeItem) => dbAgeDays(n.created_at) > STALE_DAYS
 
@@ -104,38 +109,24 @@ export function NarrativeList({
       ? <EmptyState message="아직 생성된 내러티브가 없습니다 — 주목 주제가 쌓이면 나타납니다." />
       : null
   }
-  const shown = limit ? visible.slice(0, limit) : visible
+  const cap = limit ?? (fold && !expanded ? fold : undefined)
+  const shown = cap ? visible.slice(0, cap) : visible
+  const hidden = fold && !limit ? visible.length - shown.length : 0
 
   return (
     <div className="space-y-3">
       {controls && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <ToggleGroup
-            type="multiple"
-            value={lenses}
-            onValueChange={setLenses}
-            className="flex flex-wrap gap-1.5 w-auto"
-          >
-            {LENS.map((l) => (
-              <ToggleGroupItem
-                key={l.value}
-                value={l.value}
-                className={cn(
-                  "h-7 px-3 text-xs rounded-lg text-muted-foreground",
-                  "data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent data-[state=on]:hover:bg-accent",
-                )}
-              >
-                {l.label}
-              </ToggleGroupItem>
-            ))}
+          <ToggleGroup type="multiple" size="sm" value={lenses} onValueChange={setLenses} aria-label="분야" className="flex-wrap">
+            {LENS.map((l) => <ToggleGroupItem key={l.value} value={l.value} className="h-[30px] px-3 text-[13px]">{l.label}</ToggleGroupItem>)}
           </ToggleGroup>
           <div className="ml-auto flex items-center gap-1.5">
             <Switch id="narrative-old" checked={showOld} onCheckedChange={setShowOld} />
             <Label htmlFor="narrative-old" className="text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 {oldCount}개 보기</Label>
           </div>
-          <ToggleGroup type="single" variant="outline" size="sm" value={sort} aria-label="정렬"
+          <ToggleGroup type="single" size="sm" value={sort} aria-label="정렬"
             onValueChange={(v) => v && setSort(v as SortKey)}>
-            {SORT.map((s) => <ToggleGroupItem key={s.value} value={s.value} className="h-7 px-2.5 text-xs">{s.label}</ToggleGroupItem>)}
+            {SORT.map((s) => <ToggleGroupItem key={s.value} value={s.value} className="h-[30px] px-3 text-[13px]">{s.label}</ToggleGroupItem>)}
           </ToggleGroup>
         </div>
       )}
@@ -180,6 +171,11 @@ export function NarrativeList({
             </Link>
           ))}
         </div>
+      )}
+      {fold && !limit && (hidden > 0 || (expanded && visible.length > fold)) && (
+        <Button variant="ghost" size="sm" className="w-full text-ink-2" onClick={() => setParams(prev => { const next = new URLSearchParams(prev); if (hidden > 0) next.set("list", "all"); else next.delete("list"); return next }, { replace: true, preventScrollReset: true })}>
+          {hidden > 0 ? `더 보기 · 전체 ${visible.length}편` : "접기"}
+        </Button>
       )}
     </div>
   )
