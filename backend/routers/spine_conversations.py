@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from database import get_connection
+from models.chat_targets import ChatTarget, TargetRef
 
 router = APIRouter(prefix="/api/spine/conversations", tags=["spine"])
 
@@ -29,6 +30,7 @@ class ChatMessage(BaseModel):
     gaps: list | None
     model: str | None
     route: dict | None = None     # D-131 라우팅·도구 로그 — FE '답변 경로' 토글
+    attachments: list[TargetRef] | None = None   # user: 보낼 때 붙어 있던 대상 (ia-redesign §4.14a)
     created_at: str
 
 
@@ -38,6 +40,7 @@ class ConversationDetail(BaseModel):
     channel: str
     messages: list[ChatMessage]
     attached_documents: list[dict] = Field(default_factory=list)
+    attached_refs: list[ChatTarget] = Field(default_factory=list)   # 대화에 붙어 있는 대상 — 다음 질문에도 남는다
     study: dict | None = None
     study_project: dict | None = None
 
@@ -87,7 +90,7 @@ def get_conversation(conversation_id: int):
         conn.close()
         raise HTTPException(404, "대화를 찾을 수 없습니다")
     msgs = conn.execute("""
-        SELECT id, role, content, citations_json, gaps_json, model, route_json, created_at
+        SELECT id, role, content, citations_json, gaps_json, model, route_json, attachments_json, created_at
         FROM chat_messages WHERE conversation_id=? ORDER BY id""", (conversation_id,)).fetchall()
     state = json.loads(conv['state_json'] or '{}')
     attached = state.get('attached_doc_ids') or []
@@ -96,6 +99,12 @@ def get_conversation(conversation_id: int):
         row = conn.execute('SELECT id,title FROM raw_documents WHERE id=?', (doc_id,)).fetchone()
         if row:
             attached_documents.append(dict(row))
+    from pipeline.chat_targets import resolve
+    refs = [r for r in state.get('attached_refs') or [] if isinstance(r, dict)]
+    # 대상 붙이기 이전의 '자료 첨부'(attached_doc_ids)도 자료 칩으로 보인다
+    refs += [{'kind': 'doc', 'ref': str(d), 'label': ''} for d in attached
+             if not any(r.get('kind') == 'doc' and str(r.get('ref')) == str(d) for r in refs)]
+    attached_refs = [resolve(conn, r) for r in refs]
     project = conn.execute('SELECT id,title FROM study_projects WHERE conversation_id=?',(conversation_id,)).fetchone()
     study = conn.execute('SELECT id,title FROM study_sessions WHERE conversation_id=?',(conversation_id,)).fetchone()
     citations = {m["id"]: _with_published_at(conn, json.loads(m["citations_json"]))
@@ -104,12 +113,22 @@ def get_conversation(conversation_id: int):
     return ConversationDetail(
         study=dict(study) if study else None, study_project=dict(project) if project else None,
         id=conv["id"], title=conv["title"], channel=conv["channel"], attached_documents=attached_documents,
+        attached_refs=attached_refs,
         messages=[ChatMessage(
             id=m["id"], role=m["role"], content=m["content"],
             citations=citations.get(m["id"]),
             gaps=json.loads(m["gaps_json"]) if m["gaps_json"] else None,
             model=m["model"], route=json.loads(m["route_json"]) if m["route_json"] else None,
+            attachments=_attachments(m["attachments_json"]),
             created_at=m["created_at"]) for m in msgs])
+
+
+def _attachments(raw: str | None) -> list[dict] | None:
+    try:
+        items = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return [i for i in items if isinstance(i, dict) and i.get("kind")] if isinstance(items, list) else None
 
 
 def _with_published_at(conn, citations: list | None) -> list | None:

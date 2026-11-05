@@ -177,3 +177,37 @@ def set_attached_documents(conversation_id: int, doc_ids: list[int]) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def conversation_state(conversation_id: int | None) -> dict:
+    """state_json 그대로 (없거나 깨졌으면 {})."""
+    if not conversation_id:
+        return {}
+    conn = get_connection()
+    try:
+        row = conn.execute('SELECT state_json FROM conversations WHERE id=?', (conversation_id,)).fetchone()
+        return json.loads((row['state_json'] if row else None) or '{}')
+    except ValueError:
+        return {}
+    finally:
+        conn.close()
+
+
+def attached_refs(conversation_id: int | None) -> list[dict]:
+    """대화에 붙어 있는 대상 [{kind, ref, label}] (ia-redesign §4.14a)."""
+    return [r for r in conversation_state(conversation_id).get('attached_refs') or [] if isinstance(r, dict)]
+
+
+def set_attached_refs(conversation_id: int, refs: list[dict]) -> None:
+    """붙인 대상 목록 저장. 자료(doc) 대상은 기존 첨부 경로(attached_doc_ids)와 같은 목록이 되게 함께 맞춘다."""
+    conn = get_connection()
+    try:
+        row = conn.execute('SELECT state_json FROM conversations WHERE id=?', (conversation_id,)).fetchone()
+        state = json.loads((row['state_json'] if row else None) or '{}')
+        state['attached_refs'] = refs
+        state['attached_doc_ids'] = [int(r['ref']) for r in refs if r.get('kind') == 'doc' and str(r.get('ref')).isdigit()][:12]
+        conn.execute('UPDATE conversations SET state_json=? WHERE id=?',
+                     (json.dumps(state, ensure_ascii=False), conversation_id))
+        conn.commit()
+    finally:
+        conn.close()

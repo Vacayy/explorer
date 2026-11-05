@@ -12,6 +12,7 @@ export const loaders = {
   'ask': () => import('./validators-ask.js'),
   'beneficiary': () => import('./validators-beneficiary.js'),
   'causal': () => import('./validators-causal.js'),
+  'chat': () => import('./validators-chat.js'),
   'client-errors': () => import('./validators-client-errors.js'),
   'company': () => import('./validators-company.js'),
   'conversations': () => import('./validators-conversations.js'),

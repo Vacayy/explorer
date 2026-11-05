@@ -11,6 +11,7 @@ import api from "@/api/client"
 import { useAddMember, useGroups } from "@/hooks/useGroups"
 import { useProjects } from "@/components/study/useProjects"
 import { readRecentStocks, rememberRecentStock } from "@/lib/recentStocks"
+import { attachToAi } from "@/lib/aiPanel"
 import { formatKrw, formatKstSlashDate, formatNumber, formatPercent } from "@/utils/format"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -204,6 +205,12 @@ export default function Omnibar() {
         </div>
         <CommandList className="max-h-[60vh]">
           {focus ? <StockActions focus={focus} step={step} onStep={setStep} groups={groups.data?.items ?? []} projects={projects.data ?? []} adding={addMember.isPending || toProject.isPending} onOpen={path => openCompany(focus, path)} onBack={() => setFocus(null)}
+            onAskAi={() => {
+              // AI 대화를 열고 이 종목을 붙여 둔다 — 질문은 보내지 않는다 (ia-redesign §4.14a, D-311)
+              track("action", "chat.attach", { entity: focus.code })
+              setOpen(false)
+              attachToAi({ kind: focus.market === "us" ? "us_stock" : "stock", ref: focus.code, label: focus.name, code: focus.code, change_pct: focus.change_pct ?? null, available: true })
+            }}
             onAddToProject={async projectId => { try { const result = await toProject.mutateAsync({ projectId, code: focus.code, name: focus.name }); toast.success(`${focus.name} 자료 ${result.added}건을 ‘${result.title}’에 추가했습니다.`); go(`/study/projects/${result.id}`) } catch (error) { toast.error(error instanceof Error ? error.message : "프로젝트에 추가하지 못했습니다.") } }}
             onAddToGroup={async groupId => { try { const detail = await addMember.mutateAsync({ groupId, stock_code: focus.code }); toast.success(`${focus.name}을(를) ‘${detail.name}’에 추가했습니다.`); setOpen(false) } catch (error) { toast.error(error instanceof Error ? error.message : "묶음에 추가하지 못했습니다.") } }} /> : <>
           {!q && <>
@@ -286,10 +293,10 @@ function MarketBadge({ market }: { market: "kr" | "us" }) {
 }
 
 /**
- * 종목 행동 (시안 Search '종목 행동') — 머리 줄(이름·코드·시장·시세) + 행동 6개.
- * 묶음·프로젝트는 고르는 두 번째 단계로 연다. '이 종목으로 대화'는 대화 태그 기능(D-306)과 함께 정한다.
+ * 종목 행동 (시안 Search '종목 행동' · Chat-Tag D) — 머리 줄(이름·코드·시장·시세) + 행동.
+ * 묶음·프로젝트는 고르는 두 번째 단계로 연다. 'AI에게 묻기'는 AI 대화를 열고 이 종목을 붙여 둔다(D-311).
  */
-function StockActions({ focus, step, onStep, groups, projects, adding, onOpen, onBack, onAddToGroup, onAddToProject }: { focus: Focus; step: Step; onStep: (step: Step) => void; groups: { id: number; name: string; kind: string; member_count: number }[]; projects: { id: number; title: string }[]; adding: boolean; onOpen: (path?: string) => void; onBack: () => void; onAddToGroup: (groupId: number) => void; onAddToProject: (projectId: number) => void }) {
+function StockActions({ focus, step, onStep, groups, projects, adding, onOpen, onBack, onAddToGroup, onAddToProject, onAskAi }: { focus: Focus; step: Step; onStep: (step: Step) => void; groups: { id: number; name: string; kind: string; member_count: number }[]; projects: { id: number; title: string }[]; adding: boolean; onOpen: (path?: string) => void; onBack: () => void; onAddToGroup: (groupId: number) => void; onAddToProject: (projectId: number) => void; onAskAi: () => void }) {
   const base = focus.market === "us" ? `/us/${focus.code}` : `/analyze/${focus.code}`
   const pickable = groups.filter(g => focus.market === "kr" || g.kind === "watch")
   const head = <div className="flex items-center gap-2 border-b px-3 py-2.5 text-sm">
@@ -327,6 +334,7 @@ function StockActions({ focus, step, onStep, groups, projects, adding, onOpen, o
         <CommandItem value="act-financials" onSelect={() => onOpen(`${base}?tab=financials`)}><Row icon={<Table2 className="size-4" />} title="실적·사업" sub="확보 재무·컨센서스" /></CommandItem>
         <CommandItem value="act-mentions" onSelect={() => onOpen(`${base}?tab=evidence`)}><Row icon={<BookOpen className="size-4" />} title="자료" sub="컨콜·뉴스" /></CommandItem>
       </>}
+      <CommandItem value="act-ask-ai" onSelect={onAskAi}><Row icon={<Sparkles className="size-4 text-hypothesis" />} title="AI에게 묻기" sub="이 종목을 붙여 대화 열기" /></CommandItem>
       <CommandItem value="act-groups" onSelect={() => onStep("groups")}><Row icon={<Layers className="size-4" />} title={focus.market === "us" ? "관심 묶음에 추가" : "묶음에 추가"} sub={inGroups.length ? `이미 ${inGroups.join(", ")}에 있음` : "관심·포트폴리오 묶음"} /></CommandItem>
       {focus.market === "kr" && <CommandItem value="act-projects" onSelect={() => onStep("projects")}><Row icon={<NotebookPen className="size-4" />} title="스터디 프로젝트에 자료 추가" sub="최근 저장 자료 5건" /></CommandItem>}
       <CommandItem value="back" onSelect={onBack}><Row icon={<ArrowLeft className="size-4" />} title="목록으로" /></CommandItem>

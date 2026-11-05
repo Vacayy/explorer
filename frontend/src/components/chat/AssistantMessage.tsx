@@ -37,7 +37,7 @@ const modelName = (model?: string | null) => model?.split("/").pop() ?? null
  * 답변 머리 한 줄 (시안 Chat) — 'AI 답변' · 근거 수집 요약(누르면 답변 경로 펼침) · 모델 · 시각.
  * LLM 산출 표시는 말풍선 틴트 대신 이 배지로 한다(chat-page.md §4).
  */
-function MetaRow({ model, createdAt, route }: { model?: string | null; createdAt?: string; route?: ChatRoute | null }) {
+function MetaRow({ model, createdAt, route, attachedCount }: { model?: string | null; createdAt?: string; route?: ChatRoute | null; attachedCount?: number }) {
   const [open, setOpen] = useState(false)
   const name = modelName(model ?? route?.model)
   const tail = [name, createdAt ? formatKstSlashDate(createdAt) : null].filter(Boolean).join(" · ")
@@ -48,6 +48,7 @@ function MetaRow({ model, createdAt, route }: { model?: string | null; createdAt
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <Badge variant="secondary" className={AI_BADGE}>AI 답변</Badge>
         <span className="basis-full md:hidden max-md:order-2" aria-hidden />
+        {!!attachedCount && <span data-attached-count className="shrink-0 max-md:order-3">붙인 대상 {formatNumber(attachedCount)} ·</span>}
         {route && (
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" data-route-toggle className="-mx-1.5 h-auto min-h-7 max-w-full min-w-0 shrink gap-1 px-1.5 py-0.5 text-left text-xs font-normal whitespace-normal text-muted-foreground hover:text-foreground max-md:order-3 max-md:min-h-10">
@@ -186,7 +187,7 @@ function StudyMenuItems({ m, threadTitle }: { m: ChatMessage; threadTitle: strin
 }
 
 /** 완료된 어시스턴트 메시지 (시안 Chat) — 머리 · 본문(인라인 인용) · 행동 · 확인하지 못한 것 · 출처 · 이어 물을 질문 */
-export function AssistantMessage({ m, isLast, carried, onQuote, onPick, conversationId, threadTitle, onRegenerate }: {
+export function AssistantMessage({ m, isLast, carried, onQuote, onPick, conversationId, threadTitle, onRegenerate, attachedCount }: {
   m: ChatMessage
   /** 마지막 답변에만 후속 질문을 보인다 — 스레드에 낡은 제안이 쌓이지 않게 */
   isLast?: boolean
@@ -202,6 +203,8 @@ export function AssistantMessage({ m, isLast, carried, onQuote, onPick, conversa
   threadTitle?: string | null
   /** 같은 질문을 다시 보내 새 답을 받는다 — 마지막 답변·생성 중 아님일 때만 넘긴다 */
   onRegenerate?: () => void
+  /** 이 답의 질문에 붙어 있던 대상 수 — 머리에 '붙인 대상 n' (ia-redesign §4.14a) */
+  attachedCount?: number
 }) {
   const { copied, copy } = useCopy()
   const body = useMemo(() => linkifyCitations(m.content, m.citations), [m.content, m.citations])
@@ -215,7 +218,7 @@ export function AssistantMessage({ m, isLast, carried, onQuote, onPick, conversa
   const firstLine = m.content.replace(/[#*>`_[\]]/g, "").split("\n").map(x => x.trim()).find(Boolean)?.slice(0, 120) ?? null
   return (
     <article className="group/msg space-y-3" data-answer={m.id}>
-      <MetaRow model={m.model} createdAt={m.created_at} route={m.route} />
+      <MetaRow model={m.model} createdAt={m.created_at} route={m.route} attachedCount={attachedCount} />
       <div ref={bodyRef} className="relative">
         <TooltipProvider delayDuration={150}>
           {parts ? <>

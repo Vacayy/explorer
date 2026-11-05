@@ -13,6 +13,7 @@ from routers import spine_tracker
 from routers import portfolio
 from routers import company_profile
 from routers import spine_search
+from routers import spine_chat_targets
 from routers import technical_scan
 from routers import chart_structure
 from routers import spine_conversations, spine_person, spine_knowledge, spine_approvals
@@ -62,6 +63,7 @@ app.include_router(spine_tracker.router)
 app.include_router(portfolio.router)
 app.include_router(company_profile.router)
 app.include_router(spine_search.router)
+app.include_router(spine_chat_targets.router)
 app.include_router(technical_scan.router)
 app.include_router(chart_structure.router)
 app.include_router(spine_narrative.router)

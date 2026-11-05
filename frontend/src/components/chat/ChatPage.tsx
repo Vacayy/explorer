@@ -2,8 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
 import { ArrowDown, BookOpen, ChevronLeft, Link2, Send } from "lucide-react"
 import { toast } from "sonner"
-import { InfoTip } from "@/components/shared/InfoTip"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -13,6 +11,8 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { useChat } from "@/hooks/useChat"
 import { useChatStudy } from "@/hooks/useChatStudy"
 import { MOBILE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery"
+import { useThreadTargets } from "@/hooks/useThreadTargets"
+import { sendable, toPayload } from "@/lib/chatTargets"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
 import { carriedFollowUps } from "./FollowUps"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
@@ -49,14 +49,17 @@ function ConversationPage() {
   const navigate = useNavigate()
   const { makeStudy } = useChatStudy()
 
+  const chat = useChat(activeId, id => openThread(id))
+  const { detail, messages, awaiting, stalled, draft, ask } = chat
+  // 붙인 대상 — 대화 내내 남는다(ia-redesign §4.14a). 이 화면에 있을 때 ⌘K 'AI에게 묻기'도 여기 붙는다
+  const { targets, setTargets, reset: resetTargets } = useThreadTargets(activeId, detail.data)
+
   const openThread = useCallback((id: number) => {
+    if (id !== activeId) resetTargets()
     setSearchParams({ id: String(id) })
     setSheetOpen(false)
-  }, [setSearchParams])
-  const newThread = () => { setSearchParams({}); setQuestion(""); setQuote(null); setSheetOpen(false) }
-
-  const chat = useChat(activeId, openThread)
-  const { detail, messages, awaiting, stalled, draft, ask } = chat
+  }, [activeId, resetTargets, setSearchParams])
+  const newThread = () => { setSearchParams({}); setQuestion(""); setQuote(null); resetTargets(); setSheetOpen(false) }
   const carried = useMemo(() => carriedFollowUps(messages), [messages])
   const busy = ask.isPending || awaiting
 
@@ -66,8 +69,9 @@ function ConversationPage() {
     // 인용만 붙이고 전송해도 된다 — "이 대목 더 설명해줘"가 기본 의도
     if ((!q && !withQuote) || busy) return
     ask.mutate(
-      { question: q || "이 대목을 더 자세히 설명해줘", conversation_id: activeId ?? undefined, quote: withQuote ?? undefined },
-      { onSuccess: () => { if (text === undefined) { setQuestion(""); setQuote(null) } } },
+      { question: q || "이 대목을 더 자세히 설명해줘", conversation_id: activeId ?? undefined, quote: withQuote ?? undefined,
+        attachments: toPayload(targets) },
+      { onSuccess: () => { setTargets(sendable(targets)); if (text === undefined) { setQuestion(""); setQuote(null) } } },
     )
     stickRef.current = true
   }
@@ -139,7 +143,8 @@ function ConversationPage() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <ChatEmpty onPick={setQuestion}>
               <Composer value={question} onChange={setQuestion} onSubmit={() => submit()} busy={busy}
-                placeholder={composerPlaceholder} autoFocus quote={quote} onClearQuote={() => setQuote(null)} />
+                placeholder={composerPlaceholder} autoFocus quote={quote} onClearQuote={() => setQuote(null)}
+                targets={targets} onTargetsChange={setTargets} />
               {ask.isError && <p className="pt-2 text-center text-xs text-destructive">질문을 보내지 못했습니다. 다시 시도해주세요.</p>}
             </ChatEmpty>
           </div>
@@ -166,16 +171,6 @@ function ConversationPage() {
                         <Button variant="ghost" size="sm" className="rounded-full" onClick={copyLink}><Link2 className="size-3.5" aria-hidden />공유 링크</Button>
                       </span>
                     </div>
-                    {!!thread.attached_documents?.length && <Collapsible className="rounded-xl border px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <CollapsibleTrigger asChild><Button size="sm" variant="ghost">함께 읽는 수집 자료 {thread.attached_documents.length}개</Button></CollapsibleTrigger>
-                        <InfoTip label="함께 읽는 자료">이 대화의 후속 질문에서도 참고합니다. 다른 주제는 새 대화로 시작해 주세요.</InfoTip>
-                      </div>
-                      <CollapsibleContent className="space-y-2 pb-2">
-                        {thread.attached_documents.map(doc => <Link className="block text-sm text-primary hover:underline" key={doc.id} to={`/doc/${doc.id}`}>{doc.title || '수집 자료'}</Link>)}
-                        <Button size="sm" variant="outline" onClick={newThread}>첨부 없이 새 대화</Button>
-                      </CollapsibleContent>
-                    </Collapsible>}
                   </div>
                 )}
                 {detail.isLoading && (
@@ -192,13 +187,14 @@ function ConversationPage() {
                 )}
                 {messages.map((m, i) =>
                   m.role === "user"
-                    ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
+                    ? <UserMessage key={m.id} content={m.content} attachments={m.attachments} onReask={setQuestion} />
                     : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried}
+                        attachedCount={messages[i - 1]?.role === "user" ? messages[i - 1].attachments?.length : undefined}
                         onQuote={setQuote} onPick={setQuestion} conversationId={activeId} threadTitle={threadTitle}
                         onRegenerate={i === messages.length - 1 && !busy && lastQuestion ? () => submit(lastQuestion) : undefined} />
                 )}
                 {/* 제출 직후 찰나(서버 적재 전) — 낙관적 표시 */}
-                {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} pending />}
+                {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} attachments={ask.variables?.attachments} pending />}
                 {(awaiting || ask.isPending) && <StreamingMessage draft={draft} />}
                 {stalled && (
                   <p className="rounded-xl border border-destructive/30 px-4 py-3 text-[13px] text-destructive">
@@ -220,6 +216,7 @@ function ConversationPage() {
               {ask.isError && <p className="pb-1.5 text-xs text-destructive">질문을 보내지 못했습니다. 입력은 보존되어 있으니 다시 시도해주세요.</p>}
               <Composer value={question} onChange={setQuestion} onSubmit={() => submit()} busy={busy}
                 placeholder={composerPlaceholder} quote={quote} onClearQuote={() => setQuote(null)}
+                targets={targets} onTargetsChange={setTargets}
                 hint={awaiting ? "답변을 만드는 동안에는 이어서 질문할 수 없습니다" : undefined} />
             </div>
           </>

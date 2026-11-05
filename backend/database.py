@@ -1518,6 +1518,7 @@ def init_db():
         "ALTER TABLE conversations ADD COLUMN summary TEXT",     # 스레드 작업 노트 (컴팩션, D-131)
         "ALTER TABLE conversations ADD COLUMN state_json TEXT",  # 스레드 상태: 엔티티·마지막 intent·도구·근거 (D-131)
         "ALTER TABLE chat_messages ADD COLUMN route_json TEXT",  # assistant: 라우팅·도구 로그 (D-131)
+        "ALTER TABLE chat_messages ADD COLUMN attachments_json TEXT",  # user: 그때 붙인 대상 [{kind,ref,label}] (ia-redesign §4.14a)
         "ALTER TABLE fundamentals ADD COLUMN roe REAL",  # 전종목 밸류 수집 (네이버 시세)
         "ALTER TABLE corporate_actions ADD COLUMN summary TEXT",
         "ALTER TABLE ir_notes ADD COLUMN memo_type TEXT DEFAULT 'general'",

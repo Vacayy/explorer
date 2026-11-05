@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { useMediaQuery, MOBILE_QUERY, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { PREF, readPref, writePref } from "@/lib/shellPrefs"
-import { onAskAi, onOpenAi } from "@/lib/aiPanel"
+import { onAskAi, onAttachAi, onOpenAi } from "@/lib/aiPanel"
 import { SubNav } from "@/components/layout/SubNav"
 import { SECTIONS, analyzeTabOf, analyzeTabs, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
@@ -125,6 +125,8 @@ function Layout() {
   useEffect(() => onAskAi(() => { setAiOpen(true); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, "1") }), [])
   // 화면의 '이 자료로 대화' 같은 버튼 — 질문 없이 패널만 연다(보는 화면은 패널이 자동 첨부)
   useEffect(() => onOpenAi(() => { setAiOpen(true); requestAnimationFrame(() => aiInput.current?.focus()) }), [])
+  // ⌘K 'AI에게 묻기' — 패널을 연다(대화 화면이면 그 화면 입력에 붙는다). 대상은 패널이 마운트하며 가져간다
+  useEffect(() => onAttachAi(() => { setAiOpen(true); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, "1") }), [])
 
   // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
   const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null

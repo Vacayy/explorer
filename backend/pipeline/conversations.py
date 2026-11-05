@@ -65,18 +65,25 @@ def thread_history(conversation_id: int, limit: int = 6) -> list[dict]:
 def log_question(question: str, *, channel: str = "web",
                  conversation_id: int | None = None,
                  anchor_entity_id: int | None = None,
-                 chat_id: str | None = None) -> int:
+                 chat_id: str | None = None,
+                 attachments: list[dict] | None = None) -> int:
     """질문만 즉시 적재 (LLM 실행 전) — 진행 중 상태도 서버 상태가 되도록.
 
     마지막 메시지가 user면 '답변 생성 중'으로 해석된다 (FE 폴링 규약).
+    attachments: 이 질문을 보낼 때 붙어 있던 대상 [{kind, ref, label}] — 보낸 질문 위 칩으로 남는다(ia-redesign §4.14a).
     반환: conversation_id.
     """
     conn = get_connection()
     try:
         cid = _resolve_thread(conn, conversation_id, channel, question, anchor_entity_id, chat_id)
-        msg_id = conn.execute(
-            "INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', ?)",
-            (cid, question)).lastrowid
+        if attachments:
+            msg_id = conn.execute(
+                "INSERT INTO chat_messages (conversation_id, role, content, attachments_json) VALUES (?, 'user', ?, ?)",
+                (cid, question, json.dumps(attachments, ensure_ascii=False))).lastrowid
+        else:
+            msg_id = conn.execute(
+                "INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', ?)",
+                (cid, question)).lastrowid
         for eid in _match_stocks(conn, question):
             conn.execute(
                 "INSERT OR IGNORE INTO chat_entity_links (message_id, entity_id, link_type) "

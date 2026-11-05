@@ -288,6 +288,29 @@ export interface ChatRoute {
   follow_ups?: { kind: string; question: string }[] | null;
 }
 
+/** AI 대화 › 대상 붙이기 (ia-redesign §4.14a, D-311) — 서버 models/chat_targets.py와 같은 모양 */
+export type ChatTargetKind = 'stock' | 'us_stock' | 'narrative' | 'question' | 'doc' | 'person' | 'theme' | 'peer_group' | 'report';
+/** 요청 본문·보낸 질문의 칩 — 이름 대신 식별자 */
+export interface AttachmentRef {
+  kind: ChatTargetKind;
+  ref: string;
+  label: string;
+}
+/** 후보·붙어 있는 대상 — 칩 표시 정보 포함 */
+export interface ChatTarget extends AttachmentRef {
+  sub?: string | null;
+  date?: string | null;
+  code?: string | null;
+  change_pct?: number | null;
+  /** false = 사라짐(보관된 서사·지운 자료) — 흐린 칩, 보낼 때 뺀다 */
+  available?: boolean;
+}
+export interface ChatTargetSearch {
+  query: string;
+  kind: ChatTargetKind | null;
+  groups: { kind: ChatTargetKind; items: ChatTarget[] }[];
+}
+
 export interface ConversationDetail {
   study?: {id:number; title:string} | null;
   study_project?: {id:number; title:string} | null;
@@ -295,6 +318,8 @@ export interface ConversationDetail {
   title: string | null;
   channel: string;
   attached_documents?: { id: number; title: string | null }[]
+  /** 대화에 붙어 있는 대상 — 다음 질문에도 칩으로 남는다 */
+  attached_refs?: ChatTarget[]
   messages: {
     id: number;
     role: string;
@@ -303,6 +328,8 @@ export interface ConversationDetail {
     gaps: { type: string; note: string }[] | null;
     model: string | null;
     route?: ChatRoute | null;
+    /** user: 보낼 때 붙어 있던 대상 */
+    attachments?: AttachmentRef[] | null;
     created_at: string;
   }[];
 }

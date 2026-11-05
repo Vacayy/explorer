@@ -1,4 +1,5 @@
 import type { Quote } from "@/components/chat/useQuoteSelection"
+import type { ChatTarget } from "@/types"
 
 /**
  * 'AI에게 묻기' 다리 (docs/specs/canvas.md §2) — 어느 화면에서든 선택 문장을 오른쪽 AI 패널로 보낸다.
@@ -55,4 +56,25 @@ export function askAboutText(sel: { selected: string; block: string }, source: {
     question: preset ? ASK_PRESET[preset] : undefined,
     send: !!preset,
   })
+}
+
+/**
+ * ⌘K 'AI에게 묻기' (ia-redesign §4.14a, D-311) — AI 대화를 열고 대상을 붙여 둔다. 질문은 보내지 않는다.
+ * 셸은 패널을 열고(대화 화면이면 그 화면이 받는다), 패널·대화 화면이 마운트할 때 대기 중인 대상을 가져간다.
+ */
+export const ATTACH_AI_EVENT = "explorer:attach-ai"
+let pendingTarget: ChatTarget | null = null
+export function attachToAi(target: ChatTarget) {
+  pendingTarget = target
+  window.dispatchEvent(new CustomEvent<ChatTarget>(ATTACH_AI_EVENT, { detail: target }))
+}
+export function takePendingTarget(): ChatTarget | null {
+  const t = pendingTarget
+  pendingTarget = null
+  return t
+}
+export function onAttachAi(fn: (t: ChatTarget) => void): () => void {
+  const h = (e: Event) => fn((e as CustomEvent<ChatTarget>).detail)
+  window.addEventListener(ATTACH_AI_EVENT, h)
+  return () => window.removeEventListener(ATTACH_AI_EVENT, h)
 }

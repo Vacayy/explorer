@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SignalsSummary, SpineSignalsResponse, UsDossier, UsWorldModel } from "@/types";
+import type { AskResponse, AttachmentRef, ChatTargetKind, ChatTargetSearch, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SignalsSummary, SpineSignalsResponse, UsDossier, UsWorldModel } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -83,6 +83,17 @@ export const conversationDetailQuery = (id: number, enabled: boolean) =>
     enabled,
   });
 
+/** 대화에 붙일 대상 후보 — 종류별 묶음 ('전체'는 종류마다 4개). LLM 없음 */
+export const chatTargetsQuery = (q: string, kind: ChatTargetKind | null, enabled = true) =>
+  apiQuery<ChatTargetSearch>({
+    key: [...spineKeys.all, "chat-targets", q, kind ?? "all"],
+    url: "/api/spine/chat/targets",
+    params: kind ? { q, kind } : { q },
+    staleTime: STALE.short,
+    keepPrevious: true,
+    enabled,
+  });
+
 /** 소스 도시에 — LLM 없이 즉시 응답 (캐시된 프로필 + stale 플래그) */
 export const sourceDossierQuery = (kind: string, key: string) =>
   apiQuery<SourceDossier>({
@@ -143,6 +154,8 @@ export async function askQuestion(params: {
   quote?: { message_id?: number; doc_id?: number; doc_title?: string; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
   /** AI 대화 패널이 보는 화면 — 지시어 해석용, 메시지 본문에는 저장되지 않는다 (docs/specs/app-shell.md §5) */
   page_context?: PageContext;
+  /** 지금 붙어 있는 대상 전체 — ×로 뺀 것은 빠진 채로 보낸다 (ia-redesign §4.14a) */
+  attachments?: AttachmentRef[];
 }): Promise<AskResponse> {
   const { data } = await api.post<AskResponse>("/api/spine/ask", params, { timeout: 300_000 });
   return data;

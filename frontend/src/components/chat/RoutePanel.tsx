@@ -20,7 +20,7 @@ const TOOL_LABEL: Record<string, string> = {
   get_quote: "시세", get_price_history: "시세 추이", search_docs: "문서 검색", open_doc: "문서 원문", get_transcripts: "컨콜",
   get_trade: "수출입", get_saved: "저장 자료", get_study: "스터디", get_proxies: "지표", get_narrative: "내러티브",
   get_worldmodel: "월드모델", get_knowledge: "지식", get_questions: "질문", get_lens: "투자 렌즈", get_regime: "국면",
-  get_us_briefing: "미국장 브리핑", get_pricing_ledger: "시장 프라이싱", get_portfolio: "포트폴리오",
+  get_us_briefing: "미국장 브리핑", get_pricing_ledger: "시장 프라이싱", get_portfolio: "포트폴리오", attached_targets: "붙인 대상 자료",
 }
 const RECENT_LABEL: Record<string, string> = {
   docs: "최근 문서", scrap: "최근 스크랩", disclosures: "최근 공시", narratives: "최근 서사", digests: "최근 다이제스트",

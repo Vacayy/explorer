@@ -10,10 +10,13 @@ import { usePageContext } from "@/hooks/usePageContext"
 import { cn } from "@/lib/utils"
 import { PREF, readPref, setPanelThread, writePref } from "@/lib/shellPrefs"
 import { onAskAi, takePendingAsk, type AskAiRequest } from "@/lib/aiPanel"
+import { sendable, toPayload } from "@/lib/chatTargets"
+import { useThreadTargets } from "@/hooks/useThreadTargets"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
 import { carriedFollowUps } from "./FollowUps"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { Composer } from "./Composer"
+import { PageChip } from "./TargetChip"
 import { ThreadRail } from "./ThreadRail"
 import { UserMessage } from "./UserMessage"
 
@@ -41,15 +44,18 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
   const [listOpen, setListOpen] = useState(false)
   const page = usePageContext(companyName)
 
+  const chat = useChat(activeId, id => openThread(id))
+  const { detail, messages, awaiting, stalled, draft, ask } = chat
+  // 붙인 대상 — 대화 내내 남는다. ⌘K 'AI에게 묻기'로 온 종목도 여기 붙는다(질문은 보내지 않음)
+  const { targets, setTargets, reset: resetTargets } = useThreadTargets(activeId, detail.data, () => requestAnimationFrame(() => inputRef?.current?.focus()))
+
   const openThread = useCallback((id: number) => {
+    if (id !== activeId) resetTargets()
     setActiveId(id); writePref(PREF.thread, String(id)); setListOpen(false)
-  }, [])
-  const newThread = () => { setActiveId(null); writePref(PREF.thread, null); setQuestion(""); setQuote(null); setListOpen(false) }
+  }, [activeId, resetTargets])
+  const newThread = () => { setActiveId(null); writePref(PREF.thread, null); setQuestion(""); setQuote(null); resetTargets(); setListOpen(false) }
   useEffect(() => { setPanelThread(activeId); return () => setPanelThread(null) }, [activeId])
   useEffect(() => { setWithPage(true) }, [page?.path])    // 화면이 바뀌면 다시 붙인다
-
-  const chat = useChat(activeId, openThread)
-  const { detail, messages, awaiting, stalled, draft, ask } = chat
   const carried = useMemo(() => carriedFollowUps(messages), [messages])
   const busy = ask.isPending || awaiting
   const lastQuestion = useMemo(() => [...messages].reverse().find(m => m.role === "user")?.content ?? null, [messages])
@@ -59,8 +65,8 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
     if ((!q && !withQuote) || busy) return
     ask.mutate(
       { question: q || "이 대목을 더 자세히 설명해줘", conversation_id: activeId ?? undefined, quote: withQuote ?? undefined,
-        page_context: withPage && page ? page : undefined },
-      { onSuccess: () => { if (text === undefined) { setQuestion(""); setQuote(null) } } },
+        page_context: withPage && page ? page : undefined, attachments: toPayload(targets) },
+      { onSuccess: () => { setTargets(sendable(targets)); if (text === undefined) { setQuestion(""); setQuote(null) } } },
     )
     stickRef.current = true
   }
@@ -132,11 +138,12 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
             {detail.isLoading && <><Skeleton className="ml-auto h-9 w-2/3 rounded-2xl" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></>}
             {detail.isError && <ErrorState message="대화를 불러올 수 없습니다." onRetry={() => detail.refetch()} />}
             {messages.map((m, i) => m.role === "user"
-              ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
+              ? <UserMessage key={m.id} content={m.content} attachments={m.attachments} onReask={setQuestion} />
               : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried} onQuote={setQuote} onPick={setQuestion}
+                  attachedCount={messages[i - 1]?.role === "user" ? messages[i - 1].attachments?.length : undefined}
                   conversationId={activeId} threadTitle={thread?.title || "대화"}
                   onRegenerate={i === messages.length - 1 && !busy && lastQuestion ? () => submit(lastQuestion, null) : undefined} />)}
-            {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} pending />}
+            {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} attachments={ask.variables?.attachments} pending />}
             {(awaiting || ask.isPending) && <StreamingMessage draft={draft} />}
             {stalled && <p className="rounded-xl border border-destructive/30 px-3 py-2 text-[13px] text-destructive">답변 생성이 멈춘 것 같습니다 (5분 초과). 다시 질문해 주세요.</p>}
           </div>
@@ -148,12 +155,8 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
         <Composer value={question} onChange={setQuestion} onSubmit={() => submit()} busy={busy} textareaRef={inputRef}
           placeholder={activeId ? "이어서 물어보기" : "지금 화면에 대해 물어보세요"} quote={quote} onClearQuote={() => setQuote(null)}
           hint={awaiting ? "답변을 만드는 동안에는 이어서 질문할 수 없습니다" : undefined}
-          attachments={page && withPage ? (
-            <span data-page-context className="inline-flex h-7 max-w-full items-center gap-1 rounded-full bg-muted pr-0.5 pl-2.5 text-xs text-muted-foreground">
-              <span className="truncate">보고 있는 화면 · {page.label}</span>
-              <Button variant="ghost" size="icon-xs" className="size-6 shrink-0 rounded-full" aria-label="이번 질문에서 화면 맥락 빼기" onClick={() => setWithPage(false)}><X className="size-3" /></Button>
-            </span>
-          ) : undefined} />
+          targets={targets} onTargetsChange={setTargets}
+          attachments={page && withPage ? <PageChip label={page.label} onRemove={() => setWithPage(false)} /> : undefined} />
       </div>
     </aside>
   )
