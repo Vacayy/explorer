@@ -1,12 +1,12 @@
 """월드모델 읽기 전용 API — '지금' 랜딩·서사 체크포인트·홈 위젯 (docs/specs/world-model.md).
 
-이 라우터의 GET은 저장된 행만 읽는다. 생성(서사·세계관·drift 요약)을 일으키는 경로는 부르지 않는다
+이 라우터의 GET은 저장된 행만 읽는다(생성은 POST /big-picture/rebuild 하나뿐). 생성(서사·세계관·drift 요약)을 일으키는 경로는 부르지 않는다
 — 위젯과 랜딩이 열릴 때마다 LLM이 돌지 않게. tests/test_world_reads.py가 이를 지킨다.
 """
 from fastapi import APIRouter, Query
 
 from database import get_connection
-from models.world import BigPicture, Checkpoint, Contested, MyStockNarratives, NarrativeChanges
+from models.world import BigPicture, Checkpoint, Contested, MyStockNarratives, NarrativeChanges, RebuildResult
 from pipeline import world_reads
 
 router = APIRouter(prefix="/api/spine/world", tags=["spine"])
@@ -22,8 +22,15 @@ def _read(fn, *args):
 
 @router.get("/big-picture", response_model=BigPicture)
 def big_picture():
-    """이번 주 큰 그림 — 살아 있는 메가 서사 + 저장된 세계관 브리핑(없으면 null)."""
+    """이번 주 큰 그림 — 주간 생성분(줄기·전제), 첫 생성 전엔 메가 서사 + 세계관 브리핑 전제. 생성하지 않는다."""
     return _read(world_reads.big_picture)
+
+
+@router.post("/big-picture/rebuild", response_model=RebuildResult)
+def rebuild_big_picture():
+    """'다시 만들기' — 6시간 쿨다운 · 주간 생성 한도 · 입력 해시 가드를 통과할 때만 sonnet 1콜(pipeline/weekly_big_picture)."""
+    from pipeline.weekly_big_picture import run
+    return run("manual")
 
 
 @router.get("/changes", response_model=NarrativeChanges)

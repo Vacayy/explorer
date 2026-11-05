@@ -18,12 +18,12 @@
 
 **2026-11-05 개편 4g (ia-redesign §4.25 중 LLM 없는 부분)**:
 
-1. **이번 주 큰 그림** (`world/BigPictureCard`) — 머리: 기준 시각(근거 중 가장 늦은 시각 `inputs_as_of`, KST) · 근거 범위(최근 7일 새 내러티브 버전 n편 · Market Today n회차 · Overnight n일, 0이어도 그대로) · '어떻게 만드나요?' ⓘ · 'AI 종합 · 검증 필요'. 본문: 줄기 카드 격자 — **줄기 생성 파이프라인(주 1회 LLM)이 아직 없어** 엮인 서사(메가)를 줄기 자리에 그린다(번호 · 제목 · 관련 서사 칩 `주제 v버전 · 날짜`, 새 서사엔 '새' · 14일 넘으면 흐리게 + '오래됨'). 7일 안 새 버전이 없으면 "이번 주엔 새로 바뀐 서사가 없어요". **이 카드는 생성하지 않는다.**
+1. **이번 주 큰 그림** (`world/BigPictureCard`) — 머리: 기준 시각(근거 중 가장 늦은 시각 `inputs_as_of`, KST) · 근거 범위(내러티브 n편 · Market Today n회차 · Overnight n일, 0이어도 그대로) · '어떻게 만드나요?' ⓘ · 'AI 종합 · 검증 필요' · '다시 만들기'(쿨다운·한도면 비활성 + 이유 툴팁). 본문: 주간 생성 줄기 카드 격자(번호 · 합니다체 제목 · 상태 배지 강해짐·엇갈림·약해짐·새로 · 서사 칩 `주제 v버전 · 날짜`, 새 서사엔 '새' · 'Market Today 화두 n · n회차'와 '다음 갱신 앞당김' · 근거 줄 1~3개 = 출처·회차/날짜 + 원문 한 줄). 기준 시각 7일 넘으면 머리 아래 경고 띠('n일 지났어요 · 그 사이 새 버전 n편' + 다시 만들기), 14일 넘으면 흐리게 + '오래됨'. 첫 생성 전에는 엮인 서사(메가)를 줄기 자리에 그린다. 7일 안 새 버전이 없고 생성분도 없으면 "이번 주엔 새로 바뀐 서사가 없어요". **GET은 생성하지 않는다** — 생성은 `pipeline/weekly_big_picture`(주 1회 + 마감 정리 뒤 조건 + 다시 만들기).
 2. **자리 잡은 전제 · 흔들린 전제** (`world/BigPictureCard` `PremisesCard`, `#premises`) — 저장된 세계관 브리핑의 '자리 잡은 전제'·'도전받는 것' 절을 서버가 문장 그대로 나눈 목록(`premises`, 새로 쓰지 않음). 브리핑이 7일 넘으면 경고 띠('n일 지났어요 · 그 사이 새 내러티브 버전 n편' + '다시 만들기' = 기존 `POST /knowledge/worldview/compute`, 누를 때만), 14일 넘으면 흐리게 + '오래됨'. 아래 접힘 칸: 브리핑 전문 · 검증 지식에서 충돌 중인 전제(`world/contested`, 옛 그래프 › 검증 지식의 '흔들리는 전제').
 3. **[내러티브] 이번주 업데이트** (`world/NarrativeChanges`) — 최근 7일 새 버전이 나온 주제(주제별 최신본). 제목 · 주제 · `v버전 · 날짜` | `고리 +n / −m` · '바뀐 것 · ' 한 줄(저장된 `change_summary`, 없으면 `drift_summary`) · 추가(+)·삭제(−) 고리 칩(모바일은 숨김 — 상세에서 본다). 첫 버전이면 "새로 생긴 서사입니다". 처음엔 5편, 나머지는 펼친다.
 4. **서사 목록** (`explore/NarrativeList`) — 렌즈 칩 · 정렬 칩(변화순·최신순·비중순·급등순) · 30일 넘게 갱신되지 않은 서사는 기본으로 숨기고 `?old=1`(스위치)로 보인다.
 
-'내러티브 후보'(§9 Market Today 연결)·줄기 상태(강해짐·엇갈림…)·'다음 갱신 앞당김' 배지·머리 '다시 만들기'는 큰 그림 생성 파이프라인(5단계)과 함께.
+전제 칸: 생성분이 있으면 그 전제(흔들린 전제엔 '이번 주 흔들림' 배지 + 출처 서사 `주제 v버전(날짜) "인용"`), 첫 생성 전에는 세계관 브리핑 절 문장. '만들기'·'다시 만들기'는 모두 큰 그림 생성이다.
 
 ### 서사 상세 (`/narrative?topic=`) — 체크포인트
 
@@ -63,7 +63,7 @@
 
 | GET `/api/spine/world/…` | 응답 | 쓰는 곳 |
 |---|---|---|
-| `big-picture` | `{mega[], worldview{briefing, created_at, stale}\|null, as_of, inputs{narratives, mt_sessions, overnight_days}, inputs_as_of, premises{settled[], contested[]}, stale_days, new_versions_since}` | 큰 그림 카드·전제 칸·위젯 |
+| `big-picture` | `{source: generated\|mega, strands[{title, status, narratives[{narrative_id, topic, version, created_at, is_new}], mt_topics, mt_sessions, boost, evidence[{kind, ref, label, text, date}]}], premises{settled[], contested[]}[{text, shaken_by\|null}], generated_at, week, mega[], worldview\|null, as_of, inputs, inputs_as_of, stale_days, new_versions_since, rebuild{available, reason, retry_at, budget_left}}` · `POST big-picture/rebuild` → `{status: ok\|skipped\|cooldown\|budget\|unavailable\|failed\|empty\|off, …}` | 큰 그림 카드·전제 칸·위젯 |
 | `changes?days=7&limit=20` | `{days, items[{topic, narrative_id, version, title, category, created_at, drift_summary, change_summary, versions_in_window, is_first, added_count, removed_count, added_edges[≤5], removed_edges[≤5]}], as_of}` — 고리 비교는 직전 버전과의 결정적 diff. `change_summary`(서사가 어떻게 옮겨 갔나 1~2문장)는 저장분, 없는 옛 버전은 `drift_summary` 첫 문장을 100자 안으로 결정적으로 줄인 값, 첫 버전은 null | 바뀐 서사 카드·위젯 |
 | `contested?limit=10` | `{items[{id, statement, pace_layer, contested_at, refute, support, latest_refute{doc_id, title, observed_at}}], as_of}` — 활성·충돌 중 지식만 | 흔들리는 전제 카드·위젯 |
 | `my-stocks?per_stock=3` | `{stocks[{stock_code, name, kinds[], narratives[{topic, narrative_id, title, version, created_at, drift_summary, edges, via}], latest_drift, latest_at}], members, covered, as_of}` | 내 종목 위젯 |
@@ -76,7 +76,7 @@
 | id | 이름 | 묶음 | 기본 크기 | 원천 | 큰 숫자 · 목록 |
 |---|---|---|---|---|---|
 | world.changes | 이번 주 바뀐 서사 | 지금 | 6×4 | `changes` | 편수 · 서사 행(제목 2줄 · 주제 배지 · 버전/상대 시각 · `change_summary` 2줄). 고리 칩·'바뀐 것'·고리 개수는 위젯에 두지 않는다(랜딩 카드 전용) |
-| world.big | 이번 주 큰 그림 | 지금 | 6×3 | `big-picture` | 메가 제목 · 주제 칩 · (h≥4) 세계관 첫 문장 |
+| world.big | 이번 주 큰 그림 | 지금 | 6×3 | `big-picture` | 줄기 제목 · (h>2) 서사 칩. 첫 생성 전엔 메가 제목 · 주제 칩 · (h≥4) 세계관 첫 문장 |
 | world.mystocks | 내 종목을 움직이는 서사 | 지금 | 6×4 | `my-stocks` | 걸린 종목/묶음 종목 · 종목별 서사 칩 · (h≥4) 바뀐 것 |
 | world.contested | 흔들리는 전제 | 그래프 | 4×3 | `contested` | 건수 · 진술·층·반박/지지·반례 문서 |
 

@@ -1,8 +1,11 @@
 import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
+import { rebuildResultMessage } from "@/lib/bigPicture"
 import type { NarrativeItem } from "@/components/explore/NarrativeList"
-import type { WorldBigPicture, WorldCheckpoint, WorldContested, WorldMyStocks, WorldNarrativeChanges } from "@/types"
+import type { WorldBigPicture, WorldCheckpoint, WorldContested, WorldMyStocks, WorldNarrativeChanges, WorldRebuildResult } from "@/types"
 
 /**
  * 월드모델 읽기 전용 훅 (docs/specs/world-model.md). 모두 /api/spine/world/* — 저장분만 읽고 생성하지 않는다.
@@ -10,6 +13,21 @@ import type { WorldBigPicture, WorldCheckpoint, WorldContested, WorldMyStocks, W
  */
 export function useBigPicture() {
   return useQuery(apiQuery<WorldBigPicture>({ key: ["spine", "world", "big-picture"], url: "/api/spine/world/big-picture", staleTime: STALE.medium }))
+}
+
+/** 이번 주 큰 그림 '다시 만들기' — 누를 때만 POST(서버가 6시간 쿨다운·주간 한도·입력 해시 가드, sonnet 1콜). 끝나면 큰 그림을 다시 읽는다 */
+export function useBigPictureRebuild() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => (await api.post<WorldRebuildResult>("/api/spine/world/big-picture/rebuild", null, { timeout: 300_000 })).data,
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ["spine", "world", "big-picture"] })
+      const m = rebuildResultMessage(r)
+      if (m.ok) toast.success(m.text)
+      else toast.error(m.text)
+    },
+    onError: () => toast.error("큰 그림을 다시 만들지 못했습니다 · 이전 것을 그대로 둡니다"),
+  })
 }
 
 export function useNarrativeChanges(days = 7) {

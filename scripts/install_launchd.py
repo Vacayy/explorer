@@ -119,6 +119,9 @@ JOBS = [
     # (sonnet 1콜/회차). 휴장일은 스크립트가 건너뛴다
     ("markettoday", [PY, "scripts/market_today.py"],
      [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((9, 30), (11, 30), (15, 0), (16, 0))]),
+    # 이번 주 큰 그림(ia-redesign §4.25, D-313 4) — 매주 월 07:00, 지난 7일 내러티브·Market Today·Overnight로 줄기·전제(sonnet 1콜).
+    # 입력 해시가 같으면 건너뛴다. 16:00 마감 정리 뒤 조건 실행은 markettoday 작업 안에서(scripts/market_today.py)
+    ("bigpicture", [PY, "scripts/weekly_big_picture.py"], {"Weekday": 1, "Hour": 7, "Minute": 0}),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
 
@@ -156,6 +159,7 @@ CATCHUP = {
     "usfund": {"record": "us_fundamentals"},
     "extseries": {"record": "ext_series"},
     "expfeed": {"record": "exp_feed"},
+    "bigpicture": {"record": "weekly_big_picture"},   # 놓치면 다음 순회에서 보충(그 주 안)
 }
 
 

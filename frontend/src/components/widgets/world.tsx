@@ -5,7 +5,7 @@ import { ContestedRow } from "@/components/world/ContestedPremises"
 import { useBigPicture, useContestedPremises, useMyStockNarratives, useNarrativeChanges } from "@/hooks/useWorld"
 import { cn } from "@/lib/utils"
 import { dbAgeDays, formatDbRelative } from "@/utils/format"
-import type { WorldNarrativeChange } from "@/types"
+import type { WorldBigPicture, WorldNarrativeChange } from "@/types"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
 
 /**
@@ -50,12 +50,14 @@ function ChangesBody({ h }: WidgetBodyProps) {
 /* ── 이번 주 큰 그림 ── */
 function useBigMeta(): WidgetMeta {
   const q = useBigPicture()
-  return { asOf: asOf(q.data?.as_of), stale: !!q.data?.worldview?.stale }
+  const d = q.data
+  return { asOf: asOf(d?.as_of), stale: d?.source === "generated" ? (d.stale_days ?? 0) > 7 : !!d?.worldview?.stale }
 }
 function BigBody({ h }: WidgetBodyProps) {
   const q = useBigPicture()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   const { mega, worldview } = q.data
+  if (q.data.source === "generated") return <StrandsBody strands={q.data.strands} h={h} />
   if (!mega.length && !worldview?.briefing) return <WidgetState empty emptyText="아직 엮인 서사가 없어요. 주 1회 만들어집니다." />
   const first = (worldview?.briefing ?? "").replace(/^#+.*$/gm, "").replace(/[*_`>-]/g, "").trim().split(/(?<=[.다])\s/)[0]
   return <div className="flex h-full flex-col gap-2">
@@ -69,6 +71,18 @@ function BigBody({ h }: WidgetBodyProps) {
     </ul>
     {h >= 4 && first && <p className="line-clamp-2 border-t pt-2 text-[13px] text-muted-foreground"><span className="text-hypothesis">세계관 </span>{first}</p>}
   </div>
+}
+
+/** 주간 생성분(§4.25) — 줄기 제목 · (h>2) 서사 칩 */
+function StrandsBody({ strands, h }: { strands: WorldBigPicture["strands"]; h: number }) {
+  if (!strands.length) return <WidgetState empty emptyText="이번 주 큰 그림 줄기가 없어요." />
+  return <ul className="min-h-0 space-y-2 overflow-y-auto">
+    {strands.slice(0, h <= 2 ? 1 : h >= 4 ? 4 : 3).map((s, i) => <li key={i} className="space-y-1">
+      <p className={cn("text-sm font-semibold leading-snug", h <= 2 ? "line-clamp-1" : "line-clamp-2")}>{s.title}</p>
+      {h > 2 && <div className="flex flex-wrap gap-1">{s.narratives.map(c => <Badge key={c.narrative_id} asChild variant="secondary" className="text-[10px]">
+        <Link to={`/narrative?topic=${encodeURIComponent(c.topic)}`}>{c.topic}</Link></Badge>)}</div>}
+    </li>)}
+  </ul>
 }
 
 /* ── 흔들리는 전제 ── */

@@ -31,12 +31,12 @@ def _latest_topic_rows(conn) -> dict[str, dict]:
 
 
 def big_picture(conn) -> dict:
-    """이번 주 큰 그림 — 살아 있는 메가 서사 + 저장된 세계관 브리핑(생성하지 않는다).
+    """이번 주 큰 그림 — 주간 생성분(줄기·전제, pipeline/weekly_big_picture)을 저장분 그대로 읽는다(생성하지 않는다).
 
-    2026-11-05(ia-redesign §4.25 중 LLM 없는 부분): 근거 범위(최근 7일 새 내러티브 버전·Market Today 회차·
-    Overnight 일수)와 그 최신 시각, 세계관 브리핑의 전제 목록(저장 본문의 '자리 잡은 전제'·'도전받는 것' 절을
-    문장 단위로 결정적으로 나눔), 브리핑 경과일·그 뒤 새 버전 수. 줄기(strands) 생성 파이프라인은 아직 없다.
+    생성분이 없으면(첫 생성 전) 살아 있는 메가 서사 + 저장된 세계관 브리핑의 전제로 보여 준다(`source='mega'`).
+    메가·세계관 필드는 두 경우 모두 채운다(홈 위젯이 쓴다). 낡음(`stale_days`)은 기준 시각(근거 중 가장 늦은 시각) 경과일.
     """
+    from pipeline import weekly_big_picture as wbp
     mega = _with_mt_counts(conn, list_mega(conn))
     cached = worldview_cached(conn)
     worldview = None
@@ -44,17 +44,28 @@ def big_picture(conn) -> dict:
         m = worldview_gather(conn)
         worldview = {"briefing": cached["digest"], "created_at": cached["created_at"],
                      "stale": cached["doc_ids_hash"] != inputs_hash(m)}
+    gen = wbp.read_generated(conn)
+    rebuild = wbp.rebuild_state(conn)
+    if gen:
+        stamp = gen["inputs_as_of"] or gen["generated_at"]
+        return {"source": "generated", "strands": gen["strands"], "premises": gen["premises"],
+                "generated_at": gen["generated_at"], "week": gen["key"],
+                "as_of": stamp, "inputs": gen["inputs"], "inputs_as_of": gen["inputs_as_of"],
+                "stale_days": _days_since(conn, stamp), "new_versions_since": wbp.versions_since(conn, gen["generated_at"]),
+                "rebuild": rebuild, "mega": mega, "worldview": worldview}
     dates = [m["created_at"] for m in mega if m["created_at"]] + ([worldview["created_at"]] if worldview else [])
     inputs, inputs_as_of = _big_picture_inputs(conn)
     since = None
     if worldview and worldview["created_at"]:
         since = conn.execute("SELECT COUNT(*) FROM narratives WHERE COALESCE(kind,'topic')='topic' AND created_at > ?",
                              (worldview["created_at"],)).fetchone()[0]
-    return {"mega": mega, "worldview": worldview, "as_of": max(dates) if dates else None,
+    p = premises_from_briefing(worldview["briefing"] if worldview else None)
+    return {"source": "mega", "strands": [], "generated_at": None, "week": None,
+            "premises": {k: [{"text": t, "shaken_by": None} for t in v] for k, v in p.items()},
+            "mega": mega, "worldview": worldview, "as_of": max(dates) if dates else None,
             "inputs": inputs, "inputs_as_of": inputs_as_of,
-            "premises": premises_from_briefing(worldview["briefing"] if worldview else None),
             "stale_days": _days_since(conn, worldview["created_at"]) if worldview else None,
-            "new_versions_since": since}
+            "new_versions_since": since, "rebuild": rebuild}
 
 
 BIG_PICTURE_DAYS = 7

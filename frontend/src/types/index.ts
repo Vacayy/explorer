@@ -1318,16 +1318,48 @@ export interface WorldMega {
   /** 이번 주 Market Today 연결 화두·회차(멤버 서사끼리 중복 제거, 마감 정리 제외)와 '다음 갱신 앞당김' (ia-redesign §9·§4.25) */
   mt_topics: number; mt_sessions: number; boost: boolean
 }
+/** 큰 그림 줄기 상태 — 강해짐 · 엇갈림 · 약해짐 · 새로 (ia-redesign §4.25) */
+export type StrandStatus = 'strengthening' | 'mixed' | 'weakening' | 'new'
+export interface WorldNarrativeChip { narrative_id: number; topic: string; version: number; created_at: string | null; is_new: boolean }
+export interface WorldStrandEvidence {
+  kind: 'market_today' | 'overnight'
+  ref: string            // mt:<id>:<순번> | ov:<거래일>:<순번> — 서버는 id만 저장, 문장은 읽을 때 원천에서
+  label: string          // 'Market Today 11/4 15:40' · 'Overnight 11/3'
+  text: string
+  date: string
+}
+export interface WorldStrand {
+  title: string; status: StrandStatus; narratives: WorldNarrativeChip[]
+  mt_topics: number; mt_sessions: number; boost: boolean
+  evidence: WorldStrandEvidence[]
+}
+export interface WorldPremise { text: string; shaken_by: (WorldNarrativeChip & { quote: string }) | null }
+export interface WorldRebuildState {
+  available: boolean
+  reason: 'cooldown' | 'budget' | 'unavailable' | null
+  retry_at: string | null    // UTC(DB 표기)
+  budget_left: number
+}
 export interface WorldBigPicture {
+  /** generated = 주간 생성분(줄기·전제) · mega = 첫 생성 전(메가 서사 + 세계관 브리핑 전제) */
+  source: 'generated' | 'mega'
+  strands: WorldStrand[]
+  premises: { settled: WorldPremise[]; contested: WorldPremise[] }
+  generated_at: string | null
+  week: string | null
   mega: WorldMega[]
   worldview: { briefing: string | null; created_at: string | null; stale: boolean } | null
   as_of: string | null
-  /** 최근 7일 근거 범위 (ia-redesign §4.25 머리) */
+  /** 근거 범위 (ia-redesign §4.25 머리) */
   inputs: { narratives: number; mt_sessions: number; overnight_days: number }
   inputs_as_of: string | null              // 근거 중 가장 늦은 시각(UTC, DB 표기)
-  premises: { settled: string[]; contested: string[] }   // 세계관 브리핑 절 문장 그대로
-  stale_days: number | null                // 세계관 브리핑 경과일
-  new_versions_since: number | null        // 브리핑 뒤 새 내러티브 버전 수
+  stale_days: number | null                // 기준 시각 경과일(생성분) · 세계관 브리핑 경과일(첫 생성 전)
+  new_versions_since: number | null        // 생성(또는 브리핑) 뒤 새 내러티브 버전 수
+  rebuild: WorldRebuildState
+}
+export interface WorldRebuildResult {
+  status: 'ok' | 'skipped' | 'cooldown' | 'budget' | 'unavailable' | 'failed' | 'empty' | 'off'
+  reason?: string | null; retry_at?: string | null; key?: string | null; strands?: number | null
 }
 export interface WorldEdgeBrief { from: string; to: string; rel: string; effect_direction: string | null }
 export interface WorldNarrativeChange {
