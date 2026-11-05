@@ -24,7 +24,7 @@ const KIND_LABEL: Record<string, string> = Object.fromEntries(KINDS)
 const VERDICTS: [string, string][] = [["approve", "승인"], ["reject", "거부"], ["hold", "보류"], ["skip", "건너뜀"]]
 const VERDICT_LABEL = Object.fromEntries(VERDICTS)
 const VERDICT_CLS: Record<string, string> = {
-  approve: "text-fact border-fact/40", reject: "text-destructive border-destructive/50", hold: "text-muted-foreground", skip: "text-muted-foreground",
+  approve: "bg-fact-tint text-fact", reject: "bg-down-tint text-down-ink", hold: "bg-chip text-ink-2", skip: "bg-chip text-ink-3",
 }
 const PAGE = 20
 
@@ -84,6 +84,7 @@ export function CurationPanel() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <FilterChips value={verdict ?? "all"} onChange={v => setFilter("verdict", v)}
             options={[{ value: "all", label: `전체 ${formatNumber(total)}` }, ...VERDICTS.map(([v, l]) => ({ value: v, label: `${l} ${formatNumber(byVerdict(v))}` }))]} />
+          <span aria-hidden="true" className="h-[18px] w-px bg-line-2 max-sm:hidden" />
           <FilterChips value={kind ?? "all"} onChange={v => setFilter("kind", v)}
             options={[{ value: "all", label: "모든 종류" }, ...KINDS.map(([k, l]) => ({ value: k, label: `${l} ${formatNumber(byKind(k))}` }))]} />
         </div>
@@ -102,7 +103,7 @@ function CurationList({ q, empty }: { q: ReturnType<typeof useCurationLog>; empt
   const shown = open ? items : items.slice(0, PAGE)
   return (
     <>
-      <ul className={cn("divide-y border-t", q.isPlaceholderData && "opacity-60")}>
+      <ul className={cn("-mx-(--card-spacing) divide-y border-t", q.isPlaceholderData && "opacity-60")}>
         {shown.map(e => <CurationRow key={`${e.kind}-${e.target_id}`} e={e} />)}
       </ul>
       {items.length > PAGE && (
@@ -116,19 +117,19 @@ function CurationList({ q, empty }: { q: ReturnType<typeof useCurationLog>; empt
 
 function CurationRow({ e }: { e: CurationEntry }) {
   return (
-    <li className="flex flex-col gap-1 py-2.5 md:grid md:grid-cols-[6rem_1fr_auto] md:gap-x-3">
+    <li className="flex flex-col gap-1 px-(--card-spacing) py-2.5 md:grid md:grid-cols-[88px_minmax(0,1fr)_auto] md:items-start md:gap-x-3.5">
       {/* 모바일: 종류 | 판정만·시각 한 줄 → 대상. 데스크톱: 종류 | 대상 | 판정만·시각 */}
       <div className="flex items-baseline justify-between gap-2 md:contents">
-        <span className="text-caption text-muted-foreground md:order-1">{KIND_LABEL[e.kind] ?? e.kind}</span>
-        <div className="text-right text-caption md:order-3">
+        <span className="text-xs text-ink-3 md:order-1 md:pt-0.5">{KIND_LABEL[e.kind] ?? e.kind}</span>
+        <div className="whitespace-nowrap text-right text-xs md:order-3">
           <span className={e.applied ? "text-fact" : "text-muted-foreground"}>{e.applied ? "적용됨" : "판정만"}</span>
           <span className="ml-1.5 font-mono tabular-nums text-muted-foreground md:ml-0 md:block">{formatKstDateTime(e.decided_at)}</span>
         </div>
       </div>
       <div className="min-w-0 md:order-2">
-        <p className="line-clamp-2 text-sm md:truncate">{e.title}</p>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-caption text-muted-foreground">
-          <Badge variant="outline" className={cn("text-[10px]", VERDICT_CLS[e.verdict])}>{VERDICT_LABEL[e.verdict] ?? e.verdict}</Badge>
+        <p className="line-clamp-2 text-[13.5px] leading-normal md:truncate">{e.title}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
+          <span className={cn("inline-flex h-[22px] items-center rounded-md px-2 text-xs font-medium", VERDICT_CLS[e.verdict])}>{VERDICT_LABEL[e.verdict] ?? e.verdict}</span>
           {e.rule && <span className="min-w-0 break-all">{e.rule}</span>}
           {e.kind === "vocab_merge" && e.applied && <Badge variant="outline" className="text-[10px]">되돌리기 재료 있음</Badge>}
         </div>
