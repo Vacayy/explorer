@@ -31,7 +31,7 @@ export function DetailLayout({ title, context, actions, navigation, aside, relat
     {mobileBar && <>
       {/* 고정 바 높이만큼 본문 끝을 비운다 */}
       <div aria-hidden className="h-16 md:hidden" />
-      <div className="fixed inset-x-0 bottom-[calc(var(--tabbar-height)+env(safe-area-inset-bottom))] z-30 grid grid-flow-col auto-cols-fr gap-2 border-t bg-background px-4 py-2 md:hidden">{mobileBar}</div>
+      <div className="fixed inset-x-0 bottom-[calc(var(--tabbar-height)+1px+env(safe-area-inset-bottom))] z-30 grid grid-flow-col auto-cols-fr gap-2 border-t bg-background px-4 py-2 md:hidden">{mobileBar}</div>
     </>}
   </div></PageLayout>
 }
