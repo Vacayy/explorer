@@ -15,7 +15,7 @@ interface LineConfig {
   /** 오른쪽 끝 값 라벨에 붙는 이름 — 선 끝 직접 라벨(showLastValues일 때만 보임) */
   title?: string
   /** endLabels 모드의 선 끝 라벨 — 이름은 글자색(strong이면 ink 600), 값만 등락색 (DESIGN_SYSTEM 차트 규칙) */
-  endLabel?: { name: string; value: string; tone?: "up" | "down" | "flat"; strong?: boolean; accent?: boolean }
+  endLabel?: { name: string; value: string; tone?: "up" | "down" | "flat"; strong?: boolean; accent?: boolean; dot?: boolean }
 }
 
 interface MultiLineChartProps {
@@ -332,9 +332,10 @@ export default function MultiLineChart({
       </div>}
       <div ref={containerRef} style={{ width: endLabels ? `calc(100% - ${endLabels}px)` : "100%", height }} />
       {endLabels && lines.map((line) => line.endLabel && labelYs[line.key] != null && <div key={line.key}
-        className={`pointer-events-none absolute flex gap-1 whitespace-nowrap text-xs leading-none ${line.endLabel.accent ? "font-semibold text-up-ink" : line.endLabel.strong ? "font-semibold text-ink" : "text-ink-2"}`}
+        className={`pointer-events-none absolute flex gap-1 whitespace-nowrap text-xs leading-none ${line.endLabel.accent ? "font-semibold text-up-ink" : line.endLabel.dot ? "text-ink" : line.endLabel.strong ? "font-semibold text-ink" : "text-ink-2"}`}
         style={{ left: `calc(100% - ${endLabels - 6}px)`, top: labelYs[line.key], transform: "translateY(-50%)", maxWidth: endLabels - 6 }}>
-        <span className="min-w-0 truncate">{line.endLabel.name}</span><span className={`shrink-0 font-mono tabular-nums ${line.endLabel.accent ? "" : line.endLabel.tone === "up" ? "text-up-ink" : line.endLabel.tone === "down" ? "text-down-ink" : "text-ink-3"}`}>{line.endLabel.value}</span>
+        {line.endLabel.dot && <span aria-hidden="true" className="shrink-0" style={{ color: line.color.startsWith("--") ? `var(${line.color})` : line.color }}>●</span>}
+        <span className="min-w-0 truncate">{line.endLabel.name}</span><span className={`shrink-0 font-mono tabular-nums ${line.endLabel.accent || line.endLabel.dot ? "" : line.endLabel.tone === "up" ? "text-up-ink" : line.endLabel.tone === "down" ? "text-down-ink" : "text-ink-3"}`}>{line.endLabel.value}</span>
       </div>)}
       {showLineTooltip && hovered && <div
         role="tooltip"

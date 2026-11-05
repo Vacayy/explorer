@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useCreditHistory, useCreditTable } from '@/hooks/useCredit'
 import { useChartPalette } from '@/hooks/useChartPalette'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { bySpread, creditGroupMedians, defaultCreditPicks, parseCreditRange, sliceByRange } from '@/lib/credit'
 import { cn } from '@/lib/utils'
 import { formatBp, formatNumber, formatRatio, formatYield } from '@/utils/format'
@@ -82,15 +83,22 @@ function SpreadChart({ rows, selected, view, range, onParam, onToggle }: {
   onParam: (key: string, value: string | null) => void; onToggle: (t: string) => void
 }) {
   const history = useCreditHistory(selected)
-  const palette = useChartPalette(MAX_SELECTED + 1)
+  const phone = useIsMobile()
+  // 시안 Industry-Credit: 사용자가 고른 회사라 색 구분 — 보라·주의·사실·글자 2 순, 그 뒤는 차트 팔레트
+  const extra = useChartPalette(MAX_SELECTED + 1)
+  const palette = useMemo(() => ['--hyp', '--warn', '--fact', '--ink-2', ...extra.slice(4, MAX_SELECTED)], [extra])
   const [adding, setAdding] = useState(false)
   const byTicker = useMemo(() => Object.fromEntries(rows.map(r => [r.ticker, r])), [rows])
-  const muted = palette[MAX_SELECTED] ? getComputedStyle(document.documentElement).getPropertyValue('--muted-foreground').trim() || '#888' : '#888'
+  const muted = '--ink-3'
+  const latest = (key: string) => { const pts = history.data?.points ?? []; for (let i = pts.length - 1; i >= 0; i--) { const v = (pts[i] as Record<string, unknown>)[key]; if (typeof v === 'number') return v } return null }
+  const fmt = (v: number | null) => v == null ? '-' : view === 'yield' ? formatYield(v) : `${formatBp(v)}bp`
   // 선 끝 직접 라벨 — 이름(스프레드 보기는 최신 bp까지)
   const lines = useMemo(() => [
-    ...(view === 'yield' ? [{ key: 'treasury', label: '미 국채 (같은 만기 평균)', title: '미 국채', color: muted, lineWidth: 2 }] : []),
-    ...selected.map((t, i) => ({ key: view === 'yield' ? `${t}_ytm` : `${t}_spread`, label: byTicker[t]?.name ?? t, title: byTicker[t]?.name ?? t, color: palette[i] ?? '#888' })),
-  ], [view, selected, palette, muted, byTicker])
+    ...(view === 'yield' ? [{ key: 'treasury', label: '미 국채 (같은 만기 평균)', title: '미 국채', color: muted, lineWidth: 2, lineStyle: 2, endLabel: { name: '미 국채', value: fmt(latest('treasury')), dot: true } }] : []),
+    ...selected.map((t, i) => { const key = view === 'yield' ? `${t}_ytm` : `${t}_spread`
+      return { key, label: byTicker[t]?.name ?? t, title: byTicker[t]?.name ?? t, color: palette[i] ?? '--ink-3', endLabel: { name: byTicker[t]?.name ?? t, value: fmt(latest(key)), dot: true } } }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- latest·fmt는 history·view에서 나온다
+  ], [view, selected, palette, byTicker, history.data])
   const points = useMemo(() => sliceByRange((history.data?.points ?? []) as (Record<string, string | number | null> & { date: string })[], range).map(p => ({ ...p, time: p.date })), [history.data, range])
 
   return <HomeBlock label="credit.chart" title="스프레드 비교"
@@ -105,7 +113,7 @@ function SpreadChart({ rows, selected, view, range, onParam, onToggle }: {
     </div>} bodyClassName="space-y-3">
     <div className="flex flex-wrap items-center gap-2">
       {selected.map((t, i) => <Badge key={t} variant="outline" className="gap-1.5 py-1 pl-2 pr-1 font-normal">
-        <span className="size-2 rounded-full" style={{ background: palette[i] }} aria-hidden="true" />{byTicker[t]?.name ?? t}
+        <span className="size-2 rounded-full" style={{ background: `var(${palette[i]})` }} aria-hidden="true" />{byTicker[t]?.name ?? t}
         <span className="text-muted-foreground">{byTicker[t]?.rating ?? ''}</span>
         <Button variant="ghost" size="icon-xs" className="size-4 text-muted-foreground" aria-label={`${byTicker[t]?.name ?? t} 빼기`} onClick={() => onToggle(t)}><X className="size-3" /></Button>
       </Badge>)}
@@ -119,7 +127,7 @@ function SpreadChart({ rows, selected, view, range, onParam, onToggle }: {
     {!selected.length ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">아래 표에서 회사를 고르면 차트에 더해집니다.</p>
       : history.isPending ? <Skeleton className="h-[340px] w-full" />
       : history.isError ? <ErrorState message="이력을 불러오지 못했습니다." onRetry={() => void history.refetch()} />
-      : <MultiLineChart data={points} lines={lines} height={340} showLegend={false} formatValue={v => view === 'yield' ? formatYield(v) : `${formatBp(v)}bp`}
+      : <MultiLineChart data={points} lines={lines} height={340} showLegend={false} showLastValues={false} endLabels={phone ? undefined : 190} formatValue={v => view === 'yield' ? formatYield(v) : `${formatBp(v)}bp`}
           formatChange={d => `${formatBp(Math.round(view === 'yield' ? d * 100 : d) + 0, true)}bp`} />}
   </HomeBlock>
 }
