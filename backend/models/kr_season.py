@@ -32,7 +32,8 @@ class KrWeek(BaseModel):
 
 
 class KrSeasonKpi(BaseModel):
-    reported: int
+    reported: int                  # 잠정실적 공시 회사 수
+    quarterly_only: int            # 잠정실적 없이 분기보고서만 낸 회사 수(D-305)
     prev_reported: int
     week: KrWeek | None            # 지난 시즌이면 null
     outperform_n: int
@@ -50,7 +51,8 @@ class KrSeasonChanges(BaseModel):
 
 class KrCalendarDay(BaseModel):
     date: str
-    total: int
+    total: int                     # 잠정실적 공시 수
+    quarterly: int                 # 분기보고서만 낸 회사 수(D-305)
 
 
 class KrFigures(BaseModel):
@@ -65,7 +67,8 @@ class KrAnnouncement(BaseModel):
     stock_code: str | None
     rcept_dt: str
     rcp_no: str
-    basis: Literal["연결", "별도"]
+    kind: Literal["prelim", "quarterly"]       # 잠정실적 | 분기보고서만(반응일 = 보고서 접수일, D-305)
+    basis: Literal["연결", "별도"] | None       # 분기보고서만 낸 곳은 null
     group: str | None
     market_cap: float | None
     r1: float | None
@@ -79,7 +82,8 @@ class KrAnnouncement(BaseModel):
 
 class KrGroupRow(BaseModel):
     group: str
-    n: int
+    n: int                         # 분기보고서만 낸 곳 포함
+    quarterly_n: int
     median_r1: float | None
     median_x1: float | None
     up_n: int

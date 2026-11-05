@@ -1045,15 +1045,19 @@ export interface SeasonOverview {
 export type KrReactionState = "final" | "same_day"
 export interface KrAnnouncement {
   corp_code: string; corp_name: string; stock_code: string | null
-  /** 잠정실적 공시 접수일(발표 시각은 모른다) */
-  rcept_dt: string; rcp_no: string; basis: "연결" | "별도"; group: string | null; market_cap: number | null
+  /** 잠정실적(또는 분기보고서) 공시 접수일(발표 시각은 모른다) */
+  rcept_dt: string; rcp_no: string
+  /** prelim = 잠정실적, quarterly = 잠정실적 없이 분기보고서만 낸 회사(D-305, 반응 집계에는 포함) */
+  kind: "prelim" | "quarterly"
+  /** 분기보고서만 낸 회사는 null */
+  basis: "연결" | "별도" | null; group: string | null; market_cap: number | null
   /** 첫 반응 = 공시 전 종가 → 다음 거래일 종가(%), x = 같은 업종 중앙값 대비 %p(표본 5 미만이면 null) */
   r1: number | null; x1: number | null; r1_state: KrReactionState | null
   r5: number | null; x5: number | null; r5_state: "final" | "pending" | null
   /** 2단계(공시 본문 파싱) 전까지 null */
   figures: { revenue_yoy: number | null; op_income_yoy: number | null } | null
 }
-export interface KrSeasonGroup { group: string; n: number; median_r1: number | null; median_x1: number | null; up_n: number; base_n: number; up_ratio: number | null }
+export interface KrSeasonGroup { group: string; n: number; quarterly_n: number; median_r1: number | null; median_x1: number | null; up_n: number; base_n: number; up_ratio: number | null }
 export interface KrSeasonPending { corp_code: string; corp_name: string; stock_code: string; group: string | null; market_cap: number | null; prev_date: string }
 export interface KrSeasonOverview {
   season: { key: string; label: string; start: string; is_current: boolean }
@@ -1061,12 +1065,14 @@ export interface KrSeasonOverview {
   deadline: string; today: string; prices_as_of: string | null; disclosures_as_of: string | null
   coverage: { partial: boolean; full_from: string | null }
   kpi: {
-    reported: number; prev_reported: number
+    /** reported = 잠정실적 기준, quarterly_only = 분기보고서만 낸 곳(따로 셈) */
+    reported: number; quarterly_only: number; prev_reported: number
     week: { n: number; start: string; end: string; first: string | null; last: string | null } | null
     outperform_n: number; outperform_base: number; outperform_ratio: number | null; median_x1: number | null
   }
   changes: { added_date: string | null; added: string[]; settled_date: string | null; settled: string[] }
-  calendar: { date: string; total: number }[]
+  /** total = 잠정실적 공시 수, quarterly = 분기보고서만 낸 회사 수 */
+  calendar: { date: string; total: number; quarterly: number }[]
   announcements: KrAnnouncement[]
   groups: KrSeasonGroup[]
   pending: KrSeasonPending[]

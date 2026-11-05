@@ -1,27 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { filterAnnouncements, filterCounts, krCalendarBars, krPeak, reactionExtremes } from '@/lib/krSeason'
+import { filterAnnouncements, filterCounts, krCalendarBars, krPeak, periodicReportName, reactionExtremes } from '@/lib/krSeason'
 import { currentSeasonKey } from '@/lib/seasonBoard'
 import type { KrAnnouncement } from '@/types'
 
 const ann = (o: Partial<KrAnnouncement> & { corp_code: string }): KrAnnouncement => ({
-  corp_name: o.corp_code, stock_code: o.corp_code, rcept_dt: '2026-10-28', rcp_no: 'r', basis: '연결', group: '금융', market_cap: 2e12,
+  corp_name: o.corp_code, stock_code: o.corp_code, rcept_dt: '2026-10-28', rcp_no: 'r', kind: 'prelim', basis: '연결', group: '금융', market_cap: 2e12,
   r1: null, x1: null, r1_state: 'final', r5: null, x5: null, r5_state: 'pending', figures: null, ...o,
 })
 
 describe('국내 실적 시즌 캘린더', () => {
   it('시즌 시작~분기보고서 마감의 평일마다 막대, 주말 공시는 넣는다', () => {
     const bars = krCalendarBars({ season: { key: '2026Q3', label: '', start: '2026-10-30', is_current: true }, deadline: '2026-11-03',
-      calendar: [{ date: '2026-10-30', total: 4 }, { date: '2026-10-31', total: 1 }] })
+      calendar: [{ date: '2026-10-30', total: 4, quarterly: 0 }, { date: '2026-10-31', total: 1, quarterly: 0 }] })
     expect(bars.map(b => `${b.date}:${b.total}`)).toEqual(['2026-10-30:4', '2026-10-31:1', '2026-11-02:0', '2026-11-03:0'])
   })
   it('마감 뒤 공시가 있으면 그날까지 늘린다', () => {
     const bars = krCalendarBars({ season: { key: '2026Q3', label: '', start: '2026-11-13', is_current: true }, deadline: '2026-11-16',
-      calendar: [{ date: '2026-11-17', total: 2 }] })
+      calendar: [{ date: '2026-11-17', total: 2, quarterly: 0 }] })
     expect(bars.map(b => b.date)).toEqual(['2026-11-13', '2026-11-16', '2026-11-17'])
   })
   it('하루 최다 공시일', () => {
-    expect(krPeak([{ date: 'a', total: 3 }, { date: 'b', total: 9 }, { date: 'c', total: 9 }])?.date).toBe('b')
+    expect(krPeak([{ date: 'a', total: 3, quarterly: 0 }, { date: 'b', total: 9, quarterly: 0 }, { date: 'c', total: 9, quarterly: 0 }])?.date).toBe('b')
     expect(krPeak([])).toBeNull()
+  })
+  it('분기보고서만 낸 회사는 따로 세고, 그것만 있는 주말도 막대로 넣는다(D-305)', () => {
+    const bars = krCalendarBars({ season: { key: '2026Q3', label: '', start: '2026-10-30', is_current: true }, deadline: '2026-11-02',
+      calendar: [{ date: '2026-10-30', total: 4, quarterly: 2 }, { date: '2026-11-01', total: 0, quarterly: 1 }] })
+    expect(bars.map(b => `${b.date}:${b.total}+${b.quarterly}`)).toEqual(['2026-10-30:4+2', '2026-11-01:0+1', '2026-11-02:0+0'])
+    expect(krPeak([{ date: 'a', total: 3, quarterly: 9 }, { date: 'b', total: 4, quarterly: 0 }])?.date).toBe('b')   // 최다일은 잠정실적 기준
+  })
+  it('시즌 결산에 맞는 정기보고서 이름', () => {
+    expect(['2026Q1', '2026Q2', '2026Q3', '2026Q4'].map(periodicReportName)).toEqual(['분기보고서', '반기보고서', '분기보고서', '사업보고서'])
   })
 })
 
@@ -32,6 +41,10 @@ describe('반응이 좋았던·나빴던 발표', () => {
     const { good, bad } = reactionExtremes(anns)
     expect(good.map(a => a.corp_code)).toEqual(['B', 'A'])
     expect(bad.map(a => a.corp_code)).toEqual(['D', 'E'])
+  })
+  it('분기보고서만 낸 회사도 반응 목록에 들어간다(D-305)', () => {
+    const { good } = reactionExtremes([ann({ corp_code: 'Q', kind: 'quarterly', basis: null, x1: 7 }), ann({ corp_code: 'P', x1: 3 })])
+    expect(good.map(a => `${a.corp_code}:${a.kind}`)).toEqual(['Q:quarterly', 'P:prelim'])
   })
 })
 

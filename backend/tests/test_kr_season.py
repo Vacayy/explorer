@@ -125,7 +125,42 @@ class OverviewTests(unittest.TestCase):
         self.assertEqual([p["corp_code"] for p in o["pending"]], ["C3"])
         self.assertEqual(o["pending"][0]["prev_date"], "2026-08-06")
         self.assertEqual([s["key"] for s in o["seasons"]], ["2026Q2", "2026Q3"])
-        self.assertEqual(o["calendar"], [{"date": "2026-10-27", "total": 1}])
+        self.assertEqual(o["calendar"], [{"date": "2026-10-27", "total": 1, "quarterly": 0}])
+        self.assertEqual((a[0]["kind"], o["kpi"]["quarterly_only"]), ("prelim", 0))
+
+    def test_quarterly_report_only_filers_join_reactions_but_not_reported_count(self):
+        """D-305 — 잠정실적 없이 분기보고서만 낸 상장사: 발표 목록·반응 집계에 kind=quarterly로, '발표 n곳'·캘린더 total에는 안 셈"""
+        self.conn.execute("INSERT INTO companies VALUES ('S1', '가나스팩1호', '900001', '은행')")
+        self.conn.executemany("INSERT INTO disclosures VALUES (?,?,?,?,?)", [
+            ("q1", "C3", "다은행", "분기보고서 (2026.09)", "20261029"),
+            ("q1b", "C3", "다은행", "분기보고서 (2026.09)", "20261030"),            # 같은 결산 두 번째 → 첫 것만
+            ("q2", "C1", "가은행", "분기보고서 (2026.09)", "20261102"),            # 잠정실적을 낸 회사 → 잠정실적만
+            ("q3", "C2", "나은행", "[기재정정]분기보고서 (2026.06)", "20261029"),  # 정정 → 제외
+            ("q4", "X9", "비상장", "분기보고서 (2026.09)", "20261029"),            # 상장사 아님 → 제외
+            ("q5", "C2", "나은행", "분기보고서 (2026.08)", "20261029"),            # 비12월 결산 → 시즌을 정할 수 없어 제외
+            ("q6", "C2", "나은행", "반기보고서 (2026.06)", "20261028"),            # 2분기 결산을 3분기 시즌에 늦게 제출 → 제외
+            ("q7", "S1", "가나스팩1호", "분기보고서 (2026.09)", "20261029"),        # 스팩 → 제외
+        ])
+        o = k.overview(None, date(2026, 11, 5))
+        a = {x["corp_code"]: x for x in o["announcements"]}
+        self.assertEqual(set(a), {"C1", "C3"})
+        self.assertEqual((a["C1"]["kind"], a["C3"]["kind"]), ("prelim", "quarterly"))
+        self.assertEqual((a["C3"]["rcept_dt"], a["C3"]["rcp_no"], a["C3"]["basis"]), ("2026-10-29", "q1", None))
+        self.assertEqual(a["C3"]["r1_state"], "final")                  # 반응일 = 보고서 접수일
+        self.assertEqual((o["kpi"]["reported"], o["kpi"]["quarterly_only"]), (1, 1))
+        self.assertEqual(o["kpi"]["outperform_base"], 2)                 # 반응 집계에는 들어간다
+        self.assertEqual(o["calendar"], [{"date": "2026-10-27", "total": 1, "quarterly": 0},
+                                         {"date": "2026-10-29", "total": 0, "quarterly": 1}])
+        self.assertEqual((o["groups"][0]["n"], o["groups"][0]["quarterly_n"]), (2, 1))
+        self.assertEqual(o["pending"], [])                               # 분기보고서를 냈으면 '아직 발표 전'에서 빠진다
+        self.assertEqual(o["changes"]["added"], ["가은행"])              # 오늘 바뀐 것의 발표 추가는 잠정실적만
+
+    def test_periodic_key_maps_report_period_to_season(self):
+        self.assertEqual(k.periodic_key("분기보고서 (2026.09)"), "2026Q3")
+        self.assertEqual(k.periodic_key("반기보고서 (2026.06)"), "2026Q2")
+        self.assertEqual(k.periodic_key("사업보고서 (2025.12)"), "2025Q4")
+        self.assertIsNone(k.periodic_key("분기보고서 (2026.08)"))
+        self.assertIsNone(k.periodic_key("[기재정정]분기보고서 (2026.09)"))
 
     def test_past_season_has_no_week_or_changes(self):
         o = k.overview("2026Q2", date(2026, 11, 5))

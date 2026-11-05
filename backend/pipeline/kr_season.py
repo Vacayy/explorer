@@ -9,15 +9,22 @@
   다음 거래일 시세가 아직 없으면 공시일 종가까지를 '당일'(same_day)로 보인다. 5일 = 공시 전 종가 → 공시 후 5거래일 종가, 차지 않았으면 '집계 중'(pending).
 - 업종 대비 = 같은 `sector_map.group_name` 종목(자신 제외, 발표 여부 무관)의 같은 창 수익률 중앙값을 뺀 값. 표본 PEER_MIN 미만이면 비운다.
 - 컨센서스 상회·하회는 하지 않는다(국내 분기 컨센서스 없음). 매출·영업이익 수치는 2단계(본문 파싱) 전까지 null.
+- 분기보고서만 낸 회사(D-305) = 그 시즌 잠정실적 없이 정기보고서(분기·반기·사업보고서, 보고서 이름의 결산월로 시즌을 정함)만 낸 상장사.
+  접수일이 그 시즌 구간 안인 것만(늦은 제출 제외), 스팩 제외.
+  `kind='quarterly'`로 발표 목록·반응 집계(Outperform·중앙값·업종별·좋았던/나빴던)에 넣고, 반응일은 보고서 접수일이다.
+  '발표 n곳'·이번 주 발표·캘린더 total·오늘 추가된 발표는 잠정실적 기준을 유지하고 분기보고서만 낸 곳은 따로 센다.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta, timezone
 from statistics import median
 
 from database import get_connection
 
 PRELIM_WHERE = ("report_nm LIKE '%(잠정)실적%' AND report_nm NOT LIKE '%자회사%' AND report_nm NOT LIKE '[%'")
+PERIODIC_WHERE = ("(report_nm LIKE '분기보고서 (%' OR report_nm LIKE '반기보고서 (%' OR report_nm LIKE '사업보고서 (%')")
+PERIODIC_RE = re.compile(r"^(?:분기|반기|사업)보고서 \((\d{4})\.(\d{2})\)")
 MARKET_DAY_MIN = 500      # 이 수 이상 종목의 시세가 있는 날만 거래일로 본다(일부 종목만 받은 날 제외)
 PEER_MIN = 5              # 업종 대비를 낼 최소 표본
 SWEEP_MIN_CORPS = 100     # 하루 공시 회사 수가 이 이상이면 전 시장 목록 수집이 돈 날로 본다
@@ -60,6 +67,14 @@ def deadline(key: str) -> str:
 
 def basis_of(report_nm: str) -> str:
     return "연결" if "연결" in report_nm else "별도"
+
+
+def periodic_key(report_nm: str) -> str | None:
+    """'분기보고서 (2026.09)' → '2026Q3', '사업보고서 (2025.12)' → '2025Q4'. 결산월이 분기 말이 아니면(비12월 결산) None."""
+    m = PERIODIC_RE.match(report_nm or "")
+    if not m or int(m.group(2)) not in (3, 6, 9, 12):
+        return None
+    return f"{m.group(1)}Q{int(m.group(2)) // 3}"
 
 
 # ---------- 순수 계산 (tests/test_kr_season.py) ----------
@@ -126,21 +141,23 @@ def group_rows(anns: list[dict]) -> list[dict]:
         r1 = [a["r1"] for a in fin if a["r1"] is not None]
         x1 = [a["x1"] for a in fin if a["x1"] is not None]
         up = sum(1 for v in x1 if v > 0)
-        out.append({"group": g, "n": len(xs), "median_r1": median(r1) if r1 else None, "median_x1": median(x1) if x1 else None,
+        out.append({"group": g, "n": len(xs), "quarterly_n": sum(1 for a in xs if a.get("kind") == "quarterly"), "median_r1": median(r1) if r1 else None, "median_x1": median(x1) if x1 else None,
                     "up_n": up, "base_n": len(x1), "up_ratio": up / len(x1) * 100 if x1 else None})
     return sorted(out, key=lambda r: (-r["n"], r["group"]))
 
 
 def kpi(anns: list[dict], prev_n: int, today: date, is_current: bool) -> dict:
+    """발표 수·이번 주 발표는 잠정실적만, Outperform·중앙값은 분기보고서만 낸 곳까지(D-305)."""
+    prelim = [a for a in anns if a.get("kind", "prelim") == "prelim"]
     fin = [a["x1"] for a in anns if a["r1_state"] == "final" and a["x1"] is not None]
     up = sum(1 for v in fin if v > 0)
     week = None
     if is_current:
         mon = today - timedelta(days=today.weekday())
         lo, hi = mon.isoformat(), (mon + timedelta(days=6)).isoformat()
-        in_week = [a["rcept_dt"] for a in anns if lo <= a["rcept_dt"] <= hi]
+        in_week = [a["rcept_dt"] for a in prelim if lo <= a["rcept_dt"] <= hi]
         week = {"n": len(in_week), "start": lo, "end": hi, "first": min(in_week) if in_week else None, "last": max(in_week) if in_week else None}
-    return {"reported": len(anns), "prev_reported": prev_n, "week": week,
+    return {"reported": len(prelim), "quarterly_only": len(anns) - len(prelim), "prev_reported": prev_n, "week": week,
             "outperform_n": up, "outperform_base": len(fin), "outperform_ratio": up / len(fin) * 100 if fin else None,
             "median_x1": median(fin) if fin else None}
 
@@ -150,6 +167,31 @@ def kpi(anns: list[dict], prev_n: int, today: date, is_current: bool) -> dict:
 def prelim_rows(conn) -> list[dict]:
     return [dict(r) for r in conn.execute(
         f"SELECT rcp_no, corp_code, corp_name, report_nm, rcept_dt FROM disclosures WHERE {PRELIM_WHERE} ORDER BY rcept_dt, rcp_no")]
+
+
+def periodic_rows(conn) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        f"SELECT rcp_no, corp_code, corp_name, report_nm, rcept_dt FROM disclosures WHERE {PERIODIC_WHERE} ORDER BY rcept_dt, rcp_no")]
+
+
+def periodic_by_season(rows: list[dict]) -> dict[str, dict[str, dict]]:
+    """시즌 키(보고서 결산월 기준) → 회사 → 그 결산의 첫 정기보고서. 정정(이름이 '['로 시작)은 LIKE에서 빠지고,
+    접수일이 그 시즌 구간 밖(마감 뒤 늦은 제출)이거나 스팩이면 뺀다."""
+    out: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        key = periodic_key(r["report_nm"])
+        if key and r["rcept_dt"] and season_of(r["rcept_dt"])["key"] == key and "스팩" not in (r["corp_name"] or ""):
+            out.setdefault(key, {}).setdefault(r["corp_code"], r)
+    return out
+
+
+def season_rows(prelim: dict[str, dict], periodic: dict[str, dict], comp: dict) -> dict[str, dict]:
+    """시즌 발표 = 잠정실적(kind=prelim) + 잠정실적 없이 정기보고서만 낸 상장사(kind=quarterly)"""
+    out = {corp: {**r, "kind": "prelim"} for corp, r in prelim.items()}
+    for corp, r in periodic.items():
+        if corp not in out and corp in comp:
+            out[corp] = {**r, "kind": "quarterly"}
+    return out
 
 
 def by_season(rows: list[dict]) -> dict[str, dict[str, dict]]:
@@ -226,8 +268,10 @@ def announcements(conn, season_rows: dict[str, dict], comp: dict, members: dict,
         peers = [p for p in members.get(group, []) if p != code] if group else []
         rx = reaction(closes, code, wins[corp], peers) if code else \
             {"r1": None, "x1": None, "r1_state": None, "r5": None, "x5": None, "r5_state": None}
+        kind = r.get("kind", "prelim")
         out.append({"corp_code": corp, "corp_name": (c["name"] if c else None) or (r["corp_name"] or "").strip(),
-                    "stock_code": code, "rcept_dt": _iso(r["rcept_dt"]), "rcp_no": r["rcp_no"], "basis": basis_of(r["report_nm"] or ""),
+                    "stock_code": code, "rcept_dt": _iso(r["rcept_dt"]), "rcp_no": r["rcp_no"], "kind": kind,
+                    "basis": basis_of(r["report_nm"] or "") if kind == "prelim" else None,
                     "group": group, "market_cap": caps.get(code) if code else None, "d5_date": wins[corp]["d5"],
                     "figures": None, **rx})
     out.sort(key=lambda a: (a["rcept_dt"], a["market_cap"] or 0), reverse=True)
@@ -243,11 +287,12 @@ def overview(season: str | None = None, today: date | None = None) -> dict:
     conn = get_connection()
     try:
         seasons = by_season(prelim_rows(conn))
+        periodic = periodic_by_season(periodic_rows(conn))
         comp, members = _company_map(conn)
         lo = (date.fromisoformat(s["start"]) - timedelta(days=14)).isoformat()
         hi = (date.fromisoformat(s["end"]) + timedelta(days=14)).isoformat()
         days = market_days(conn, lo, min(hi, today.isoformat()))
-        anns, caps = announcements(conn, seasons.get(key, {}), comp, members, days)
+        anns, caps = announcements(conn, season_rows(seasons.get(key, {}), periodic.get(key, {}), comp), comp, members, days)
         sweep = sweep_from(conn)
         disc_as_of = conn.execute("SELECT max(rcept_dt) FROM disclosures").fetchone()[0]
     finally:
@@ -265,15 +310,17 @@ def overview(season: str | None = None, today: date | None = None) -> dict:
                         "market_cap": caps.get(c["stock_code"]), "prev_date": _iso(r["rcept_dt"])})
     pending.sort(key=lambda p: -(p["market_cap"] or 0))
 
-    calendar: dict[str, int] = {}
+    calendar: dict[str, dict] = {}
     for a in anns:
-        calendar[a["rcept_dt"]] = calendar.get(a["rcept_dt"], 0) + 1
+        c = calendar.setdefault(a["rcept_dt"], {"date": a["rcept_dt"], "total": 0, "quarterly": 0})
+        c["total" if a["kind"] == "prelim" else "quarterly"] += 1
 
     changes = {"added_date": None, "added": [], "settled_date": None, "settled": []}
-    if is_current and anns:
-        last = anns[0]["rcept_dt"]
+    prelim = [a for a in anns if a["kind"] == "prelim"]
+    if is_current and prelim:
+        last = prelim[0]["rcept_dt"]
         changes["added_date"] = last
-        changes["added"] = [a["corp_name"] for a in sorted((a for a in anns if a["rcept_dt"] == last), key=lambda a: -(a["market_cap"] or 0))]
+        changes["added"] = [a["corp_name"] for a in sorted((a for a in prelim if a["rcept_dt"] == last), key=lambda a: -(a["market_cap"] or 0))]
         if days:
             settled = sorted((a for a in anns if a["d5_date"] == days[-1]), key=lambda a: -(a["market_cap"] or 0))
             changes["settled"] = [a["corp_name"] for a in settled]
@@ -296,7 +343,7 @@ def overview(season: str | None = None, today: date | None = None) -> dict:
         "coverage": {"partial": partial_of(key), "full_from": sweep},
         "kpi": kpi(anns, len(prev), today, is_current),
         "changes": changes,
-        "calendar": [{"date": d, "total": n} for d, n in sorted(calendar.items())],
+        "calendar": [calendar[d] for d in sorted(calendar)],
         "announcements": [{k: v for k, v in a.items() if k != "d5_date"} for a in anns],
         "groups": group_rows(anns),
         "pending": pending,

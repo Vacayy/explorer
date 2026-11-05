@@ -12,28 +12,36 @@ const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
 const utc = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))
 const weekday = (d: string) => new Date(utc(d)).getUTCDay()
 
-export interface KrBar { date: string; total: number }
+/** 막대 하나 = 하루. total = 잠정실적 공시 수, quarterly = 잠정실적 없이 분기보고서만 낸 회사 수(D-305) */
+export interface KrBar { date: string; total: number; quarterly: number }
+
+/** 시즌 결산에 맞는 정기보고서 이름 — 1·3분기 분기보고서, 2분기 반기보고서, 4분기 사업보고서 */
+export function periodicReportName(seasonKey: string): string {
+  const q = seasonKey.slice(-1)
+  return q === "2" ? "반기보고서" : q === "4" ? "사업보고서" : "분기보고서"
+}
 
 /** 시즌 시작~(분기보고서 마감과 마지막 공시일 중 늦은 날)의 평일마다 막대 하나. 주말 공시가 있으면 그날도 넣는다 */
 export function krCalendarBars(d: Pick<KrSeasonOverview, "calendar" | "season" | "deadline">): KrBar[] {
-  const byDate = new Map(d.calendar.map((c) => [c.date, c.total]))
+  const byDate = new Map(d.calendar.map((c) => [c.date, c]))
   const last = d.calendar.length ? d.calendar[d.calendar.length - 1].date : d.season.start
   const first = d.calendar.length && d.calendar[0].date < d.season.start ? d.calendar[0].date : d.season.start
   const end = last > d.deadline ? last : d.deadline
   const out: KrBar[] = []
   for (let t = utc(first); t <= utc(end); t += 86_400_000) {
     const date = iso(t)
-    const total = byDate.get(date) ?? 0
+    const total = byDate.get(date)?.total ?? 0
+    const quarterly = byDate.get(date)?.quarterly ?? 0
     const wd = weekday(date)
-    if (!total && (wd === 0 || wd === 6)) continue
-    out.push({ date, total })
+    if (!total && !quarterly && (wd === 0 || wd === 6)) continue
+    out.push({ date, total, quarterly })
   }
   return out
 }
 
-/** 하루 최다 공시일 */
+/** 하루 최다 잠정실적 공시일 */
 export function krPeak(calendar: KrSeasonOverview["calendar"]) {
-  return calendar.reduce<KrBar | null>((m, c) => (!m || c.total > m.total ? c : m), null)
+  return calendar.reduce<KrSeasonOverview["calendar"][number] | null>((m, c) => (!m || c.total > m.total ? c : m), null)
 }
 
 /** 반응이 좋았던·나빴던 발표 — 시총 1조 이상, 업종 대비 첫 반응 순으로 각 n개(좋았다 = 업종보다 오름, 나빴다 = 업종보다 내림) */
