@@ -12,11 +12,11 @@ import { Markdown } from "@/components/shared/Markdown"
 import { ContestedRow } from "@/components/world/ContestedPremises"
 import type { NarrativeItem } from "@/components/explore/NarrativeList"
 import { useBigPicture, useBigPictureRebuild, useContestedPremises, useNarrativeIndex } from "@/hooks/useWorld"
-import { ageDays, inputsLabel, kstDay, kstShort, rebuildBlockedReason, STRAND_STATUS_LABEL, staleLevel } from "@/lib/bigPicture"
+import { ageDays, inputsLabel, kstDay, kstShort, rebuildBlockedReason, STRAND_STATUS_LABEL, staleLevel, WEEKLY_BUDGET } from "@/lib/bigPicture"
 import { cn } from "@/lib/utils"
 import type { StrandStatus, WorldBigPicture, WorldMega, WorldNarrativeChip, WorldPremise, WorldRebuildState, WorldStrand } from "@/types"
 
-const HOW = "최근 7일 새 내러티브 버전을 뼈대로, 그 기간 Market Today 화두와 Overnight 핵심 요약을 근거로 여러 서사를 관통하는 줄기를 AI가 묶습니다. 매주 월요일 07:00에 만들고, 16:00 마감 정리 뒤 지난 생성 이후 새 버전이 3편 이상이면 하루 한 번 더 만듭니다. 근거 줄은 원문을 그대로 옮깁니다. 기준 시각은 근거 중 가장 늦은 것입니다."
+const HOW = `최근 7일 새 내러티브 버전을 뼈대로, 그 기간 Market Today 화두와 Overnight 핵심 요약을 근거로 여러 서사를 관통하는 줄기를 AI가 최대 4개 묶습니다. 서사 2편 이상이나 근거 1개 이상이 받치는 줄기만 남깁니다. 매주 월요일 07:00에 만들고, 16:00 마감 정리 뒤 지난 생성 이후 새 버전이 3편 이상이면 다시 만듭니다. 다시 만들기까지 합쳐 주 ${WEEKLY_BUDGET}회까지입니다. 근거 줄은 원문을 그대로 옮깁니다. 기준 시각은 근거 중 가장 늦은 것입니다.`
 const HOW_FALLBACK = HOW + " 첫 생성 전에는 여러 서사를 엮은 큰 서사(군집)를 보여 줍니다."
 
 const STATUS_CLASS: Record<StrandStatus, string> = {

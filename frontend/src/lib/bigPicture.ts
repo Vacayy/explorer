@@ -60,11 +60,14 @@ export const STRAND_STATUS_LABEL: Record<StrandStatus, string> = {
   strengthening: '강해짐', mixed: '엇갈림', weakening: '약해짐', new: '새로',
 }
 
+/** 주간 생성 한도 — 정기·조건·다시 만들기 합계(D-315, 서버 WEEKLY_BUDGET과 같은 값) */
+export const WEEKLY_BUDGET = 7
+
 /** '다시 만들기'를 누를 수 없을 때 ⓘ 툴팁 문장 — 쿨다운 6시간 · 주간 한도 · 엔진 꺼짐 */
 export function rebuildBlockedReason(s: WorldRebuildState): string | null {
   if (s.available) return null
   if (s.reason === 'cooldown') return `${kstShort(s.retry_at)} 이후 다시 만들 수 있어요 (6시간 간격)`
-  if (s.reason === 'budget') return `이번 주 생성 한도를 다 썼어요 · ${kstDay(s.retry_at)}부터 다시`
+  if (s.reason === 'budget') return `이번 주 생성 ${WEEKLY_BUDGET}회를 다 썼어요 · ${kstDay(s.retry_at)}부터 다시`
   return 'AI 엔진이 꺼져 있어 지금은 만들 수 없어요'
 }
 
@@ -74,7 +77,7 @@ export function rebuildResultMessage(r: WorldRebuildResult): { ok: boolean; text
     case 'ok': return { ok: true, text: `이번 주 큰 그림을 다시 만들었습니다 · 줄기 ${r.strands ?? 0}개` }
     case 'skipped': return { ok: true, text: '지난 생성 뒤 근거가 그대로라 다시 만들지 않았습니다' }
     case 'cooldown': return { ok: false, text: `${kstShort(r.retry_at)} 이후 다시 만들 수 있습니다` }
-    case 'budget': return { ok: false, text: '이번 주 생성 한도를 다 썼습니다' }
+    case 'budget': return { ok: false, text: `이번 주 생성 ${WEEKLY_BUDGET}회를 다 썼습니다` }
     case 'empty': return { ok: false, text: '최근 7일 새 내러티브가 없어 만들지 않았습니다' }
     case 'unavailable': return { ok: false, text: 'AI 엔진이 꺼져 있어 만들지 못했습니다' }
     case 'off': return { ok: false, text: '관리자 설정에서 꺼져 있습니다' }

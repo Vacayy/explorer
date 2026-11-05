@@ -27,7 +27,7 @@ describe('Thesis › 지금 순수 로직 (§4.25·§4.18)', () => {
   })
 })
 
-const avail = { available: true, reason: null, retry_at: null, budget_left: 6 } as const
+const avail = { available: true, reason: null, retry_at: null, budget_left: 7 } as const
 const base: WorldBigPicture = {
   source: 'mega', strands: [], generated_at: null, week: null,
   mega: [], worldview: { briefing: '### 자리 잡은 전제\nA다.', created_at: '2026-10-25 07:02:53', stale: true }, as_of: null,
@@ -147,8 +147,9 @@ describe('주간 생성 줄기 (§4.25)', () => {
   it('다시 만들기 이유·결과 문장', () => {
     expect(rebuildBlockedReason(avail)).toBeNull()
     expect(rebuildBlockedReason({ available: false, reason: 'cooldown', retry_at: '2026-11-05 09:00:00', budget_left: 5 })).toBe('11/5 18:00 이후 다시 만들 수 있어요 (6시간 간격)')
-    expect(rebuildBlockedReason({ available: false, reason: 'budget', retry_at: '2026-11-08 15:00:00', budget_left: 0 })).toBe('이번 주 생성 한도를 다 썼어요 · 11/9부터 다시')
+    expect(rebuildBlockedReason({ available: false, reason: 'budget', retry_at: '2026-11-08 15:00:00', budget_left: 0 })).toBe('이번 주 생성 7회를 다 썼어요 · 11/9부터 다시')
     expect(rebuildResultMessage({ status: 'skipped' }).ok).toBe(true)
+    expect(rebuildResultMessage({ status: 'budget' }).text).toBe('이번 주 생성 7회를 다 썼습니다')
     expect(rebuildResultMessage({ status: 'cooldown', retry_at: '2026-11-05 09:00:00' })).toEqual({ ok: false, text: '11/5 18:00 이후 다시 만들 수 있습니다' })
     expect(rebuildResultMessage({ status: 'failed' }).text).toContain('이전 것을 그대로')
   })

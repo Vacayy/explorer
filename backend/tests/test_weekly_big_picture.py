@@ -2,7 +2,8 @@
 
 - 입력 해시가 같으면 LLM 없이 건너뛴다.
 - 검증: 입력에 없던 서사·근거 id, 허용 밖 상태, 원문에 없는 인용은 버린다. 근거는 id만 저장한다.
-- 이벤트: 지난 생성 뒤 새 버전 3편 이상 + 그날 생성 시도 없음. 수동: 6시간 쿨다운. 공통: 주 6회 한도.
+- 줄기(D-315 2): 서사 2편 이상 또는 근거 id 1개 이상인 줄기만, 최대 4개. 빠진 수는 dropped.thin·over. 읽을 때도 같은 규칙.
+- 이벤트: 지난 생성 뒤 새 버전 3편 이상(따로 상한 없음). 수동: 6시간 쿨다운. 공통: 주 7회 한도(정기·조건·수동 합계, D-315 3).
 - GET: 생성분이 없으면 메가 기반(source='mega'), 있으면 줄기·전제(근거 문장은 읽을 때 원천에서).
 """
 import importlib.util
@@ -46,7 +47,8 @@ def good_output(m=None):
     return {"strands": [
         {"title": "메모리 부족이 2위권으로 번지고 있습니다", "status": "strengthening", "narratives": [2, 999],
          "evidence": ["mt:1:0", "ov:" + (m["overnight_days"][0]["trade_date"] if m else "x") + ":0", "mt:77:0"]},
-        {"title": "정치 변수가 새로 들어왔습니다", "status": "새로", "narratives": [3], "evidence": []},
+        {"title": "정치 변수가 새로 들어왔습니다", "status": "새로", "narratives": [3, 4], "evidence": []},
+        {"title": "서사 한 편뿐인 줄기", "status": "mixed", "narratives": [3], "evidence": ["mt:77:0"]},
         {"title": "상태가 이상한 줄기", "status": "fine", "narratives": [4], "evidence": []},
         {"title": "서사 없는 줄기", "status": "mixed", "narratives": [12345], "evidence": []},
         {"title": "AI 수요는 전력이 정합니다", "status": "mixed", "narratives": [5], "evidence": ["mt:1:1"]},
@@ -131,11 +133,20 @@ class GatherValidateTests(Base):
         self.assertEqual(first["evidence"], ["mt:1:0", f"ov:{m['overnight_days'][0]['trade_date']}:0"])   # mt:77 버림
         self.assertEqual(v["strands"][1]["status"], "new")                  # 한국어 상태 → 코드
         self.assertEqual(v["dropped"]["strands"], 2)
+        self.assertEqual((v["dropped"]["thin"], v["dropped"]["over"]), (1, 0))   # 서사 1편 + 근거 0(가짜 id는 버림) → 뺌
         shaken = v["premises"]["contested"]
         self.assertEqual(shaken[0]["shaken_by"], {"narrative_id": 4, "quote": "역대급 이익에도 주가는 따라오지 못했습니다"})
         self.assertIsNone(shaken[1]["shaken_by"])                           # 원문에 없는 인용 → 배지만 뺌
         self.assertEqual(v["dropped"]["quotes"], 1)
         self.assertNotIn("text", json.dumps(v["strands"]))                  # 근거는 id만 — 원문 복사 없음
+
+    def test_keep_strands_needs_backing_and_caps_at_four(self):
+        one = lambda i, ev=(): {"title": f"s{i}", "narratives": [i], "evidence": list(ev)}
+        two = lambda i: {"title": f"s{i}", "narratives": [i, i + 100], "evidence": []}
+        kept, thin, over = wbp.keep_strands([one(1), two(2), one(3, ["mt:1:0"]), two(4), two(5), two(6), one(7)])
+        self.assertEqual([s["title"] for s in kept], ["s2", "s3", "s4", "s5"])
+        self.assertEqual((thin, over), (2, 1))
+        self.assertEqual(wbp.MAX_STRANDS, 4)
 
 
 class RunTests(Base):
@@ -172,7 +183,7 @@ class RunTests(Base):
         self.assertEqual(len(d["strands"]), 3)          # 이전 저장분 그대로
         self.assertEqual(self.runs()[-1], ("weekly_big_picture:manual", "error"))
 
-    def test_event_needs_three_new_versions_and_once_per_day(self):
+    def test_event_needs_three_new_versions_no_separate_cap(self):
         self.assertEqual(self.run_()["status"], "ok")
         c = self.conn()
         c.execute("UPDATE job_runs SET ran_at = datetime('now', '-2 days')")
@@ -195,8 +206,8 @@ class RunTests(Base):
         c.commit()
         c.close()
         r = self.run_("event")
-        self.assertEqual((r["status"], r["reason"]), ("skipped", "오늘 이미 생성 시도함"))
-        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(r["status"], "ok")                 # 같은 날이어도 이벤트만의 상한은 없다(주간 한도로만)
+        self.assertEqual(len(self.calls), 3)
         self.assertEqual([j for j, _ in self.runs()][-1], "weekly_big_picture:event")   # 정기 회차 기록과 이름이 다르다
 
     def test_weekly_budget(self):
@@ -222,6 +233,7 @@ class RunTests(Base):
         self.assertEqual((s["available"], s["reason"]), (False, "cooldown"))
         self.assertIsNotNone(s["retry_at"])
         self.assertEqual(s["budget_left"], wbp.WEEKLY_BUDGET - 1)
+        self.assertEqual(wbp.WEEKLY_BUDGET, 7)
 
     def test_flag_off(self):
         from pipeline.ops import set_flag
@@ -266,6 +278,19 @@ class ApiTests(Base):
         self.assertEqual(d["inputs"], {"narratives": 3, "mt_sessions": 2, "overnight_days": 1})
         self.assertEqual(d["stale_days"], 1)                       # 기준 시각 = 가장 늦은 근거(정치 v1, 1일 전)
         self.assertEqual((d["rebuild"]["available"], d["rebuild"]["reason"]), (False, "cooldown"))
+
+    def test_read_applies_strand_rule_to_old_rows(self):
+        # D-315 이전 저장분(줄기 5개 · 서사 1편·근거 0 묶음 포함)도 읽을 때 같은 규칙으로 거른다
+        self.run_()
+        c = self.conn()
+        d = json.loads(c.execute("SELECT digest FROM source_digests WHERE kind='big_picture'").fetchone()[0])
+        d["strands"] = [{"title": "약한 묶음", "status": "new", "narratives": [3], "evidence": []}] + d["strands"] * 2
+        c.execute("UPDATE source_digests SET digest=? WHERE kind='big_picture'", (json.dumps(d, ensure_ascii=False),))
+        c.commit()
+        c.close()
+        titles = [s["title"] for s in self.get()["strands"]]
+        self.assertEqual(len(titles), 4)
+        self.assertNotIn("약한 묶음", titles)
 
     def test_missing_source_row_drops_evidence_line(self):
         self.run_()

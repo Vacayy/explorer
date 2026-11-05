@@ -1,4 +1,4 @@
-"""이번 주 큰 그림 — 내러티브를 뼈대로, 장중(Market Today)·미국장(Overnight)을 근거로 줄기 3~5개 (ia-redesign §4.25, D-313 4).
+"""이번 주 큰 그림 — 내러티브를 뼈대로, 장중(Market Today)·미국장(Overnight)을 근거로 줄기 최대 4개 (ia-redesign §4.25, D-313 4, D-315).
 
 흐름: 입력 수집(LLM 0) → 입력 해시 가드(같으면 건너뜀) → sonnet 1콜 → 검증 → `source_digests(kind='big_picture',
 key='YYYY-Www')`에 JSON 저장. 같은 주 안에서 다시 만들면 그 주 행을 덮는다(지난 주 행은 남는다).
@@ -7,16 +7,18 @@ key='YYYY-Www')`에 JSON 저장. 같은 주 안에서 다시 만들면 그 주 �
   근거 id 1~3개. 근거는 **원문을 복사하지 않고 id로만** 저장한다 — `mt:<market_today.id>:<화두 순번>`,
   `ov:<us_briefings.trade_date>:<key_points 순번>`. 입력에 없던 id는 버린다(Market Today 인용 검증과 같은 규율).
   화면 문장은 읽을 때 원천에서 꺼낸다(world_reads).
+- 줄기 품질(D-315 2): 검증 뒤 서사 2편 이상 또는 근거 id(검증 통과) 1개 이상인 줄기만 남기고, 최대 MAX_STRANDS개.
+  빠진 줄기 수는 dropped.thin(근거 부족)·dropped.over(개수 초과)로 job_runs 요약과 저장본에 남는다. 읽을 때도 같은 규칙.
 - 전제: 자리 잡은 전제 · 흔들린 전제. 흔들린 전제에 이번 주 서사가 부딪혔으면 `shaken_by`{narrative_id, quote} —
   quote가 그 서사의 제목·3줄 요약에 글자 그대로 없으면 shaken_by만 뺀다. 세계관 브리핑(전제 칸)을 같은 실행에서 대신한다.
 - Market Today 연결 수·앞당김은 저장하지 않고 읽을 때 줄기의 서사 주제로 센다(market_today_links.strand_counts).
 
 실행 조건(D-313 4)
 - 정기: 매주 월 07:00(launchd `bigpicture`, 놓치면 CATCHUP이 다음 순회에서 보충) — `trigger='weekly'`.
-- 이벤트: 16:00 마감 정리 회차 저장 뒤(scripts/market_today.py) 지난 생성 이후 새 내러티브 버전 3편 이상이고
-  그날(KST) 아직 생성 시도가 없을 때만 — `trigger='event'`.
+- 이벤트: 16:00 마감 정리 회차 저장 뒤(scripts/market_today.py) 지난 생성 이후 새 내러티브 버전 3편 이상일 때만 —
+  `trigger='event'`. 이벤트만의 따로 상한은 없다(D-315 3 — 주간 한도 하나로 센다).
 - 수동: '다시 만들기'(POST /api/spine/world/big-picture/rebuild) — 직전 생성 시도 6시간 안이면 거절 — `trigger='manual'`.
-- 공통: 이번 주(KST 월요일부터) 생성 시도 WEEKLY_BUDGET회를 넘으면 거절. 입력 해시가 마지막 생성과 같으면 LLM 없이 건너뜀.
+- 공통: 이번 주(KST 월요일부터) 생성 시도(정기·조건·다시 만들기 합계) WEEKLY_BUDGET회를 넘으면 거절. 입력 해시가 마지막 생성과 같으면 LLM 없이 건너뜀.
   관리자 플래그 `weekly_big_picture`로 끈다. 모든 실행은 job_runs에 남는다 — 정기는 'weekly_big_picture'(launchd CATCHUP이
   보는 이름), 이벤트·수동은 'weekly_big_picture:event'·':manual'(이벤트의 '건너뜀'이 정기 회차 성공으로 세지지 않게).
   ok(생성)·error(생성 시도 실패) = LLM 시도 1회, skipped = LLM 없음. 쿨다운·한도는 세 이름을 합쳐 센다.
@@ -36,12 +38,14 @@ JOB = "weekly_big_picture"
 KIND = "big_picture"
 MODEL = "sonnet"
 WINDOW_DAYS = 7
-MAX_STRANDS = 5
+MAX_STRANDS = 4             # D-315 2
+MIN_STRAND_NARRATIVES = 2   # 줄기를 남기는 근거: 서사 2편 이상 또는
+MIN_STRAND_EVIDENCE = 1     # Market Today·Overnight 근거 id 1개 이상(검증 통과)
 MAX_EVIDENCE = 3
 MAX_PREMISES = 6
 EVENT_MIN_VERSIONS = 3      # 이벤트 실행 — 지난 생성 이후 새 내러티브 버전
 COOLDOWN_HOURS = 6          # 수동 다시 만들기
-WEEKLY_BUDGET = 6           # 주(KST 월~일)당 생성 시도(LLM 호출) 상한 — 정기 1 + 이벤트·수동
+WEEKLY_BUDGET = 7           # 주(KST 월~일)당 생성 시도(LLM 호출) 상한 — 정기·이벤트·수동 합계(D-315 3)
 MT_ITEM_CHARS = 160         # 프롬프트에 넣는 화두 본문 길이
 STATUS = ("strengthening", "mixed", "weakening", "new")
 STATUS_KO = {"강해짐": "strengthening", "엇갈림": "mixed", "약해짐": "weakening", "새로": "new"}
@@ -73,10 +77,6 @@ def _week_start_utc(now: datetime) -> str:
     d = now.astimezone(KST).date()
     monday = datetime.combine(d - timedelta(days=d.weekday()), datetime.min.time(), KST)
     return _db(monday)
-
-
-def _day_start_utc(now: datetime) -> str:
-    return _db(datetime.combine(now.astimezone(KST).date(), datetime.min.time(), KST))
 
 
 # ---------- 입력 수집 (LLM 0) ----------
@@ -232,14 +232,11 @@ def versions_since(conn, stamp: str | None) -> int:
 
 
 def event_due(conn, now: datetime | None = None) -> tuple[bool, str]:
-    """16:00 마감 정리 뒤 추가 실행 조건 — 지난 생성 이후 새 버전 3편 이상 + 오늘(KST) 생성 시도 없음."""
-    now = now or _now()
+    """16:00 마감 정리 뒤 추가 실행 조건 — 지난 생성 이후 새 버전 3편 이상. 따로 상한 없이 주간 한도로만 센다(D-315 3)."""
     last = latest(conn)
     n = versions_since(conn, last["created_at"] if last else None)
     if n < EVENT_MIN_VERSIONS:
         return False, f"지난 생성 뒤 새 버전 {n}편(<{EVENT_MIN_VERSIONS})"
-    if _attempts(conn, _day_start_utc(now)):
-        return False, "오늘 이미 생성 시도함"
     return True, f"지난 생성 뒤 새 버전 {n}편"
 
 
@@ -259,7 +256,8 @@ def build_prompt(m: dict) -> str:
         "당신은 1인 리서치센터의 센터장입니다. 아래 재료로 '이번 주 큰 그림'을 정리합니다. 재료는 최근 7일 새로 쓰인 내러티브(뼈대), "
         "장중 Market Today 화두와 미국장 Overnight 핵심 요약(근거)입니다.\n"
         "할 일\n"
-        "1. 여러 서사를 관통하는 '줄기'를 3~5개 묶습니다. 줄기마다:\n"
+        "1. 여러 서사를 관통하는 '줄기'를 최대 4개 묶습니다. 줄기마다 서사 2편 이상 또는 아래 근거 id 1개 이상이 받쳐야 합니다 — "
+        "서사 한 편뿐이고 근거도 없는 묶음은 만들지 않습니다. 줄기마다:\n"
         "   - title: 합니다체 한 줄(60자 안). 판단·매매 권유 금지, 무엇이 어디로 옮겨 가는지를 씁니다.\n"
         "   - status: strengthening(강해짐) | mixed(엇갈림) | weakening(약해짐) | new(새로) 중 하나. 직전 큰 그림 줄기와 비교해 정합니다. "
         "직전 줄기에 없던 흐름이면 new.\n"
@@ -291,7 +289,7 @@ def validate(raw, m: dict) -> dict:
     raw = raw if isinstance(raw, dict) else {}
     by_id = {n["id"]: n for n in m["narratives"]}
     evid = set(m["mt_items"]) | set(m["overnight"])
-    dropped = {"strands": 0, "narratives": 0, "evidence": 0, "quotes": 0}
+    dropped = {"strands": 0, "narratives": 0, "evidence": 0, "quotes": 0, "thin": 0, "over": 0}
     strands = []
     for s in raw.get("strands") or []:
         if not isinstance(s, dict) or not str(s.get("title") or "").strip():
@@ -341,7 +339,19 @@ def validate(raw, m: dict) -> dict:
                 else:
                     dropped["quotes"] += 1
             premises[side].append(item)
-    return {"strands": strands[:MAX_STRANDS], "premises": premises, "dropped": dropped}
+    kept, dropped["thin"], dropped["over"] = keep_strands(strands)
+    return {"strands": kept, "premises": premises, "dropped": dropped}
+
+
+def strand_backed(s: dict) -> bool:
+    """줄기를 남길 근거가 있나 — 서사 2편 이상 또는 근거 id 1개 이상(D-315 2)."""
+    return len(s.get("narratives") or []) >= MIN_STRAND_NARRATIVES or len(s.get("evidence") or []) >= MIN_STRAND_EVIDENCE
+
+
+def keep_strands(strands: list[dict]) -> tuple[list[dict], int, int]:
+    """근거가 받치는 줄기만 앞에서부터 MAX_STRANDS개 → (남긴 줄기, 근거 부족으로 뺀 수, 개수 초과로 뺀 수)."""
+    backed = [s for s in strands if strand_backed(s)]
+    return backed[:MAX_STRANDS], len(strands) - len(backed), max(0, len(backed) - MAX_STRANDS)
 
 
 # ---------- 실행 ----------
@@ -477,7 +487,7 @@ def read_generated(conn) -> dict | None:
     except Exception:  # noqa: BLE001 — Market Today 표 없음
         freq, boosted, strand_counts = {}, set(), None
     strands = []
-    for s in d.get("strands", []):
+    for s in keep_strands(d.get("strands", []))[0]:   # D-315 이전 저장분(줄기 5개·약한 묶음)도 같은 규칙으로
         chips = [meta[i] for i in s.get("narratives", []) if i in meta]
         topics = [c["topic"] for c in chips]
         counts = strand_counts(conn, topics, freq, boosted) if strand_counts else {"mt_topics": 0, "mt_sessions": 0, "boost": False}

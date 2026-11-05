@@ -1,7 +1,7 @@
 """이번 주 큰 그림 생성 (ia-redesign §4.25, D-313 4) — launchd `bigpicture` 매주 월 07:00(CATCHUP 보충).
 
   python scripts/weekly_big_picture.py            # 정기(trigger=weekly)
-  python scripts/weekly_big_picture.py --event    # 16:00 마감 정리 뒤 조건 실행(새 버전 3편+ · 하루 1회)
+  python scripts/weekly_big_picture.py --event    # 16:00 마감 정리 뒤 조건 실행(새 버전 3편+ · 주 7회 한도 안)
 입력 해시가 같으면 LLM 없이 건너뛴다. 결과는 job_runs('weekly_big_picture')에 남는다.
 """
 import sys

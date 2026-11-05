@@ -2,7 +2,8 @@
 
 - 원천 = companies.sector(현재 종목코드) → sector_map, 엔티티 MEMBER_OF는 companies에 없는 코드에만 보조.
 - 정정(sector_overrides)이 원천을 이긴다. sector_map에 없는 대분류로의 정정은 버린다.
-- 시드는 코드에서 INSERT OR IGNORE — 다시 init해도 늘지 않고, 손으로 바꾼 행을 덮지 않는다.
+- 시드는 코드에서 심는다 — 다시 init해도 늘지 않고, 손으로 바꾼 행을 덮지 않는다. 시드가 넣은 행은 시드를 따라 고친다(D-315).
+- D-315 밸류체인 기준: 장비·소재·기자재·방산·자동차 부품은 사업 업종, 단일 사업 중간지주는 사업 업종, 여러 사업 지주는 지주·기타.
 - 대분류를 쓰는 모든 곳(산업 맵·Peer 비중·거래대금 상위·실적 시즌·산업 그룹 분포)이 같은 결과를 본다.
 """
 import re
@@ -14,7 +15,7 @@ from unittest.mock import patch
 
 import database
 from pipeline import kr_movers, kr_season, sector_overrides as so, sector_peers, sector_rs
-from pipeline.sector_override_seed import SEED
+from pipeline.sector_override_seed import SEED, SEED_D315, SOURCE, SOURCE_D315
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -33,7 +34,7 @@ class Base(unittest.TestCase):
 class SeedTests(Base):
     def test_seed_rows_and_idempotent(self):
         n = self.conn.execute("SELECT count(*) FROM sector_overrides").fetchone()[0]
-        self.assertEqual(n, len({code for code, *_ in SEED}))
+        self.assertEqual(n, len({code for code, *_ in SEED + SEED_D315}))
         self.assertEqual(so.seed(self.conn), 0)
         database.init_db()
         self.assertEqual(self.conn.execute("SELECT count(*) FROM sector_overrides").fetchone()[0], n)
@@ -45,8 +46,42 @@ class SeedTests(Base):
         row = self.conn.execute("SELECT sector, source FROM sector_overrides WHERE stock_code='003550'").fetchone()
         self.assertEqual((row["sector"], row["source"]), ("금융", "manual"))
 
+    def test_seed_updates_old_seed_rows_only(self):
+        # 11-05 첫 시드가 넣은 '에코프로 → 지주·기타' 행은 D-315 값으로 고친다. 손으로 바꾼 행은 둔다.
+        self.conn.execute("UPDATE sector_overrides SET sector='지주·기타', reason='old', source=? WHERE stock_code='086520'", (SOURCE,))
+        self.conn.execute("UPDATE sector_overrides SET sector='지주·기타', source='manual' WHERE stock_code='008930'")
+        self.conn.commit()
+        self.assertEqual(so.seed(self.conn), 1)
+        row = self.conn.execute("SELECT sector, source FROM sector_overrides WHERE stock_code='086520'").fetchone()
+        self.assertEqual((row["sector"], row["source"]), ("2차전지·에너지소재", SOURCE_D315))
+        row = self.conn.execute("SELECT sector, source FROM sector_overrides WHERE stock_code='008930'").fetchone()
+        self.assertEqual((row["sector"], row["source"]), ("지주·기타", "manual"))
+        self.assertEqual(so.seed(self.conn), 0)
+
+    def test_seed_d315_value_chain(self):
+        got = {c: s for c, _, s, _ in SEED + SEED_D315}
+        self.assertEqual(got["009540"], "조선·해운·운송")       # HD한국조선해양 — 단일 사업 중간지주
+        self.assertEqual(got["086520"], "2차전지·에너지소재")   # 에코프로
+        self.assertEqual(got["008930"], "바이오·헬스케어")      # 한미사이언스
+        self.assertEqual(got["0126Z0"], "바이오·헬스케어")      # 삼성에피스홀딩스
+        self.assertEqual(got["006260"], "지주·기타")            # LS — 여러 사업 지주는 그대로
+        self.assertEqual(got["042700"], "반도체·전자부품")      # 한미반도체 — 반도체 장비
+        self.assertEqual(got["357780"], "반도체·전자부품")      # 솔브레인 — 반도체 소재
+        self.assertEqual(got["082740"], "조선·해운·운송")       # 한화엔진 — 조선 기자재
+        self.assertEqual(got["034020"], "전력·에너지")          # 두산에너빌리티 — 원전
+        self.assertEqual(got["348370"], "2차전지·에너지소재")   # 엔켐 — 2차전지 소재
+        for code in ("272210", "064350", "103140"):             # 한화시스템·현대로템·풍산 — 방산
+            self.assertEqual(got[code], "항공·방산·우주")
+        for code in ("161390", "018880"):                       # 한국타이어·한온시스템
+            self.assertEqual(got[code], "자동차·모빌리티")
+        for code in ("140410", "095700"):                       # 메지온·제넥신 — 연구개발 바이오
+            self.assertEqual(got[code], "바이오·헬스케어")
+        for code in ("092190", "329180", "042660", "047040"):   # 서울바이오시스·조선소·종합 건설은 현행
+            self.assertNotIn(code, got)
+        self.assertEqual(got["000720"], "건설·부동산")          # 현대건설 — 원전 EPC가 일부인 종합 건설
+
     def test_seed_known_cases(self):
-        got = {c: s for c, _, s, _ in SEED}
+        got = {c: s for c, _, s, _ in SEED + SEED_D315}
         self.assertEqual(got["003550"], "지주·기타")        # LG
         self.assertEqual(got["006260"], "지주·기타")        # LS
         self.assertEqual(got["229640"], "전력·에너지")      # LS에코에너지
@@ -58,8 +93,8 @@ class SeedTests(Base):
         allowed = {"2차전지·에너지소재", "IT서비스·SW", "건설·부동산", "금융", "기계·장비", "미디어·엔터·게임", "바이오·헬스케어",
                    "반도체·전자부품", "유통·소비재", "음식료·농수산", "자동차·모빌리티", "전력·에너지", "조선·해운·운송",
                    "지주·기타", "철강·금속", "통신", "항공·방산·우주", "화학·소재"}
-        self.assertTrue({s for _, _, s, _ in SEED} <= allowed)
-        self.assertEqual(len(got), len(SEED))   # 종목 중복 없음
+        self.assertTrue({s for _, _, s, _ in SEED + SEED_D315} <= allowed)
+        self.assertEqual(len(got), len(SEED) + len(SEED_D315))   # 종목 중복 없음
 
 
 class EffectiveTests(Base):
