@@ -17,7 +17,7 @@ export function SeasonCalendar({ d, today }: { d: SeasonOverview; today: string 
   const [params, setParams] = useSearchParams()
   const bars = calendarBars(d.calendar)
   if (!bars.length) {
-    return <Section title="발표 캘린더"><Meta>이번 시즌 발표 일정이 아직 없습니다.</Meta></Section>
+    return <Section id="calendar" title="발표 캘린더"><Meta>이번 시즌 발표 일정이 아직 없습니다.</Meta></Section>
   }
   const sum = calendarSummary(d.calendar, today)
   const requested = params.get("day")
@@ -31,7 +31,7 @@ export function SeasonCalendar({ d, today }: { d: SeasonOverview; today: string 
   const upcoming = new Map(d.upcoming.map((u) => [u.ticker, u]))
 
   return (
-    <Section>
+    <Section id="calendar">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <h2 className="flex items-center gap-1 text-[15px] font-semibold">
           발표 캘린더
@@ -61,7 +61,7 @@ export function SeasonCalendar({ d, today }: { d: SeasonOverview; today: string 
               <Button key={b.date} variant="ghost" disabled={!b.total} onClick={() => pick(b.date)} aria-pressed={sel}
                 aria-label={`${mmdd(b.date)} 발표 ${b.total}곳${b.core ? ` · 핵심 ${b.core}` : ""}${estimated ? ` · 예정 ${b.estimated}` : ""}`}
                 className={cn("relative h-full min-w-[5px] flex-1 flex-col items-stretch justify-end gap-0 rounded-none p-0 pb-4 hover:bg-muted disabled:opacity-100",
-                  inWeek && "bg-muted/60", isToday && "border-l border-foreground", isLast && "border-r border-dashed border-muted-foreground")}>
+                  inWeek && "bg-muted/60", isToday && "border-l border-l-foreground", isLast && "border-r border-dashed border-r-muted-foreground")}>
                 {isToday && <span className="absolute -top-5 left-0.5 text-[10px] font-medium text-foreground">오늘</span>}
                 {isLast && <span className="absolute -top-5 right-0.5 whitespace-nowrap text-[10px] text-muted-foreground max-sm:hidden">시즌 마지막 발표 {mmdd(b.date)}</span>}
                 {(b.total >= LABEL_MIN || (sel && b.total > 0)) && <span className="text-center text-[10px] tabular-nums text-muted-foreground">{b.total}</span>}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiQuery, postJson, STALE } from "@/api/query"
 import { track } from "@/lib/usage"
-import type { CallMomentum, CallReaction, ChainDetail, Expectation, RecentCall, SectorDetail, SeasonOverview, TranscriptCheck, TranscriptFollowSummary } from "@/types"
+import type { CallMomentum, CallReaction, ChainDetail, Expectation, KrSeasonOverview, RecentCall, SectorDetail, SeasonOverview, TranscriptCheck, TranscriptFollowSummary } from "@/types"
 
 /** 실적 발언 모멘텀 — 컨콜 탭·모멘텀 띠·위젯 공용 (읽기 전용 GET, 판정은 매일 07:20) */
 export function useCallMomentum() {
@@ -53,6 +53,11 @@ const invalidateSeasonChain = (qc: ReturnType<typeof useQueryClient>) => {
 /** 실적 시즌 화면 — season 생략 시 지금 시즌 (읽기 전용, 매일 07:20 갱신) */
 export function useSeason(season?: string | null) {
   return useQuery(apiQuery<SeasonOverview>({ key: ["spine", "transcript", "season", season ?? "current"], url: "/api/spine/transcript/season", params: season ? { season } : undefined, staleTime: STALE.short }))
+}
+
+/** 국내 실적 시즌 — 잠정실적 공시·DB 시세만(ia-redesign §4.22). 지난 시즌도 season으로 */
+export function useKrSeason(season?: string | null) {
+  return useQuery(apiQuery<KrSeasonOverview>({ key: ["spine", "transcript", "season", "kr", season ?? "current"], url: "/api/spine/transcript/season/kr", params: season ? { season } : undefined, staleTime: STALE.short }))
 }
 
 /** 섹터 상세 — 발표일 정렬 반응 경로·종목별·해석 이력·지난 시즌 비교 */

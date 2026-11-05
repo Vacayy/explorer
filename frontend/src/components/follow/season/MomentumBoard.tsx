@@ -214,7 +214,7 @@ export function PickedCandidate({ d, momentum }: { d: SeasonOverview; momentum: 
         {c.qa_focus.length > 0 && <p className="text-caption text-muted-foreground">애널리스트 질문 초점 · {c.qa_focus.join(" · ")}</p>}
         <div className="flex flex-wrap gap-2 pt-1">
           <WatchAdd ticker={c.ticker} />
-          <Button variant="outline" size="sm" asChild><Link to={`/us/${c.ticker}`}>도시에에서 차트 보기</Link></Button>
+          <Button variant="outline" size="sm" asChild><Link to={`/discover?code=${encodeURIComponent(c.ticker)}&market=us`}>종목 발견에서 차트·조건 보기</Link></Button>
           {r?.transcript_id && <Button variant="outline" size="sm" asChild><Link to={`/follow/transcripts?t=${r.transcript_id}`}>콜 상세 →</Link></Button>}
           <Button variant="ghost" size="sm" asChild>
             <Link to={`/chat?q=${encodeURIComponent(`${c.name ?? c.ticker}(${c.ticker})의 이번 실적에서 모멘텀 근거를 정리해 주세요`)}`}><MessageSquare /> 이 종목으로 대화</Link>

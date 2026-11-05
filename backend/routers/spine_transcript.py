@@ -6,7 +6,7 @@
 import threading
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from typing import Any
 
 from pydantic import BaseModel
@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from database import get_connection
 from pipeline.transcript import cy_label
 from models.earnings_season import SeasonOverview
+from models.kr_season import KrSeasonOverview
 
 router = APIRouter(prefix="/api/spine/transcript", tags=["spine"])
 
@@ -243,6 +244,13 @@ def season(season: str | None = None):
     """실적 시즌 화면 — 요약 숫자·오늘 바뀐 것·섹터 목록·엇갈린 반응·곧 발표·기대 채점·핵심 종목(기준 포함). LLM 0."""
     from pipeline.earnings_chain import season_overview
     return season_overview(season)
+
+
+@router.get("/season/kr", response_model=KrSeasonOverview)
+def season_kr(season: str | None = Query(None, pattern=r"^\d{4}Q[1-4]$")):
+    """국내 실적 시즌 — 잠정실적 공시·DB 시세만으로 발표·첫 반응·5일·업종 대비·업종별·아직 발표 전(ia-redesign §4.22). LLM 0·외부 호출 0."""
+    from pipeline.kr_season import overview
+    return overview(season)
 
 
 @router.get("/season/sector/{key}")

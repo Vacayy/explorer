@@ -199,6 +199,12 @@ export function coreCounts(tiles: CoreTile[]) {
 
 /* ---------- 시즌 선택기 ---------- */
 
+/** 오늘이 든 실적 시즌 키 — 분기가 끝난 다음 달부터 그 분기 시즌(10~12월 = 3분기, 1~3월 = 지난해 4분기). 백엔드 call_momentum.season과 같은 규칙 */
+export function currentSeasonKey(today: string): string {
+  const y = +today.slice(0, 4), q = Math.floor((+today.slice(5, 7) - 1) / 3)
+  return q === 0 ? `${y - 1}Q4` : `${y}Q${q}`
+}
+
 /** 시즌 목록에서 이전·다음 — windows는 첫 발표일 순 */
 export function seasonNeighbors(keys: string[], current: string): { prev: string | null; next: string | null } {
   const i = keys.indexOf(current)

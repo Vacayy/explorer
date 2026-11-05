@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils"
 import type { CoreReason, EvalVerdict } from "@/types"
 
 /** 섹션 = 카드 하나. title은 h2, note는 제목 옆 작은 설명 */
-export function Section({ title, note, children, className }: { title?: ReactNode; note?: ReactNode; children: ReactNode; className?: string }) {
+export function Section({ title, note, children, className, id }: { title?: ReactNode; note?: ReactNode; children: ReactNode; className?: string; id?: string }) {
   return (
-    <Card className={cn("min-w-0", className)}>
+    <Card id={id} className={cn("min-w-0 scroll-mt-16", className)}>
       <CardContent className="flex flex-col gap-2">
         {title && (
           <h2 className="flex flex-wrap items-baseline gap-2 text-[15px] font-semibold">

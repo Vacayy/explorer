@@ -26,6 +26,8 @@ import { RecentCalls } from "@/components/follow/RecentCalls"
 import { CallReaction } from "@/components/follow/CallReaction"
 import { TranscriptTickerActions } from "@/components/follow/TranscriptTickerActions"
 import { SeasonView } from "@/components/follow/season/SeasonView"
+import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
+import { seasonMarket } from "@/components/follow/season/SeasonHeader"
 import { SectorView } from "@/components/follow/season/SectorView"
 import { ChainCharts, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard } from "@/components/follow/season/ChainSections"
 import { useChain } from "@/hooks/useTranscripts"
@@ -83,6 +85,7 @@ const quarterLabel = (cy: string | null | undefined, y: number | null, p: string
 const shortQuarter = (cy: string | null | undefined, p: string | null) => cy ? `${cy.slice(4, 6)}${cy.slice(-2)}` : (p ?? "–")   // 26Q2
 
 /** 발표일까지 남은 일수 (오늘 0, 미래 양수, 지난 날 음수) */
+const ddayLabel = (n: number) => (n === 0 ? "오늘" : n > 0 ? `D-${n}` : `D+${-n}`)
 function daysUntil(iso?: string | null): number | null {
   if (!iso) return null
   const d = new Date(iso + "T00:00:00")
@@ -90,7 +93,6 @@ function daysUntil(iso?: string | null): number | null {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   return Math.round((d.getTime() - today.getTime()) / 86_400_000)
 }
-const ddayLabel = (n: number) => (n === 0 ? "오늘" : n > 0 ? `D-${n}` : `D+${-n}`)
 const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 
 export default function TranscriptPage() {
@@ -125,6 +127,7 @@ export default function TranscriptPage() {
   const tabs = <TranscriptTabs value={view} />
   // 실적 시즌은 팔로우 목록을 기다리지 않는다 — 시즌 응답 하나로 그린다
   if (view === "season") {
+    if (seasonMarket(params) === "kr") return <PageContainer><KrSeasonView tabs={tabs} /></PageContainer>
     return <PageContainer>{sector ? <>{tabs}<SectorView key={sector} sectorKey={sector} /></> : <SeasonView tabs={tabs} />}</PageContainer>
   }
   if (isLoading) return <TranscriptSkeleton />
@@ -166,8 +169,7 @@ export default function TranscriptPage() {
         {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
         <CollectTranscripts />
         <RecentCalls onSelect={selectId} selectedId={selectedId} />
-        <UpcomingEarnings follows={follows} onSelect={selectId}
-          onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
+        <UpcomingLink follows={follows} onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
       </>}
       {mobile ? (
         listing ? (
@@ -211,56 +213,20 @@ export default function TranscriptPage() {
   )
 }
 
-/* ---------- 곧 발표 (실적 발표일 캘린더, D-081) ---------- */
-function UpcomingEarnings({ follows, onSelect, onRefresh, refreshing }: {
-  follows: FollowRow[]; onSelect: (id: number) => void; onRefresh: () => void; refreshing: boolean
-}) {
-  const upcoming = useMemo(() => follows
-    .map((f) => ({ f, d: daysUntil(f.next_report_date) }))
-    .filter((x): x is { f: FollowRow; d: number } => x.d != null && x.d >= 0)
-    .sort((a, b) => a.d - b.d)
-    .slice(0, 12), [follows])
-  // 비었을 때 '정말 일정이 없나, 확인을 못 했나'를 가른다 — 조회 실패는 기존 값을 지우지 않는다(백엔드)
-  const known = follows.filter((f) => f.next_report_date || f.last_report_date).length
-  const lastChecked = follows.reduce<string | null>((m, f) => (f.calendar_checked_at && (!m || f.calendar_checked_at > m) ? f.calendar_checked_at : m), null)
-
+/* ---------- 곧 발표 → 실적 시즌 발표 캘린더로 (D-302: 목록 블록은 캘린더와 겹쳐 한 줄 연결만 남긴다) ---------- */
+function UpcomingLink({ follows, onRefresh, refreshing }: { follows: FollowRow[]; onRefresh: () => void; refreshing: boolean }) {
+  const soon = follows.filter((f) => { const d = daysUntil(f.next_report_date); return d != null && d >= 0 && d <= 7 }).length
   return (
     <Card>
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-muted-foreground">곧 발표 · 실적 캘린더</span>
-          <Button variant="ghost" size="xs" onClick={onRefresh} disabled={refreshing}>
-            {refreshing ? "갱신 중…(수십초)" : "발표일 갱신"}
-          </Button>
-        </div>
-        {upcoming.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-1">
-            예정된 발표일이 없습니다 · 발표일을 아는 기업 {known}/{follows.length}
-            {lastChecked && ` · 마지막 확인 ${mmdd(lastChecked)}`}. '발표일 갱신'으로 다시 불러오세요.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {upcoming.map(({ f, d }) => (
-              <button
-                key={f.ticker}
-                onClick={() => f.latest && onSelect(f.latest.transcript_id)}
-                disabled={!f.latest}
-                title={`${f.company_name} · ${f.next_report_date}${f.latest ? "" : " (수집된 콜 없음)"}`}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-                  d <= 3 ? "border-primary/40 bg-primary/5" : "border-border",
-                  f.latest ? "hover:bg-muted" : "opacity-60 cursor-default",
-                )}
-              >
-                <span className="font-semibold tabular-nums">{f.ticker}</span>
-                <span className={cn("tabular-nums", d <= 3 ? "text-primary font-medium" : "text-muted-foreground")}>
-                  {ddayLabel(d)}
-                </span>
-                <span className="text-muted-foreground tabular-nums">{mmdd(f.next_report_date!)}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm" data-upcoming-link>
+        <span className="text-xs font-medium text-muted-foreground">곧 발표</span>
+        <span>7일 안 <b className="tabular-nums">{soon}</b>곳</span>
+        <Link to="/follow/transcripts?view=season#calendar" className="inline-flex items-center gap-0.5 text-primary hover:underline">
+          발표 캘린더에서 보기<ChevronRight className="size-3.5" />
+        </Link>
+        <Button variant="ghost" size="xs" className="ml-auto" onClick={onRefresh} disabled={refreshing}>
+          {refreshing ? "갱신 중…(수십초)" : "발표일 갱신"}
+        </Button>
       </CardContent>
     </Card>
   )

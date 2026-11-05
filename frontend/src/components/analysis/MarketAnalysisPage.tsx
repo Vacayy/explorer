@@ -49,6 +49,9 @@ const STATUS: Record<RunStatus, string> = { queued: '대기', preparing: '데이
 const PHASE: Record<string, string> = { queued: '실행을 기다리고 있습니다', preparing: '보유 시장 데이터를 준비하고 있습니다', isolation: '안전한 분석 환경을 확인하고 있습니다', snapshot: '분석 기준일의 데이터를 준비하고 있습니다', interpretation: '분석 조건을 확인하고 있습니다', interpreting: '요청 조건을 해석하고 있습니다', planning: '분석 조건을 정리하고 있습니다', analysis: '요청한 조건을 분석하고 있습니다', calculation: '조건에 맞는 종목을 계산하고 있습니다', executing: '조건에 맞는 종목을 계산하고 있습니다', verification: '계산 결과와 종목별 근거를 검증하고 있습니다', validating: '계산 결과와 종목별 근거를 검증하고 있습니다', finalizing: '결과를 정리하고 있습니다', cancelling: '분석을 중단하고 있습니다', finished: '실행이 끝났습니다', done: '실행이 끝났습니다', waiting_input: '입력한 조건으로 분석을 이어갑니다' }
 
 const FIELD_LABELS: Record<string, string> = { min_market_cap: '최소 시가총액', strategy_conditions: '전략 조건', expression: '복합 조건식', universe_codes: '대상 종목', market: '시장', ma_period: '이동평균 기간', hold_days: '유지 기간', lookback_days: '탐색 기간', require_52w: '52주 신고가 조건', pattern: '패턴', mode: '검색 방식', as_of: '기준일', include_same_day: '같은 날 포함', window_scope: '탐색 구간', pivot_width: '피벗 폭', shoulder_tolerance: '어깨 허용 오차', price_adjustment: '수정주가' }
+/** 차트·조건 보기 시장 — market이 없으면 코드 모양으로: 영문으로 시작하면 미국 티커, 아니면 국내(6자리, 0001A0 같은 신형 코드 포함) */
+const inferMarket = (market: string | null, code: string): 'kr' | 'us' =>
+  market === 'us' || market === 'kr' ? market : /^[A-Za-z]/.test(code) ? 'us' : 'kr'
 function ThreadTurn({ turn, onOpen }: { turn: Turn; onOpen: (id: string) => void }) {
   const changes = turn.lineage?.changes ?? []
   const matched = turn.result?.counts.matched
@@ -121,11 +124,12 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
   }
 
   const [drawNotice, setDrawNotice] = useState<string | null>(null)
-  const drawingMode = params.get('mode') === 'draw'
+  // ?code=만 와도(실적 시즌 '종목 발견에서 보기' 등) 그 종목 차트·조건 보기로 연다. 시장이 없으면 코드 모양으로(국내 6자리 숫자 시작, 미국 영문 티커) — D-302
   const drawingCodes = params.get('code') ?? ''
+  const drawingMode = params.get('mode') === 'draw' || (!params.get('mode') && !!drawingCodes)
   const drawCodes = drawingCodes.split(',').filter(Boolean) // 여러 종목 비교는 code=000500,005930
   const drawParams: StructureParams | null = drawingMode && drawCodes.length > 0 ? {
-    code: drawCodes[0], market: (params.get('market') === 'us' ? 'us' : 'kr'), kind: (params.get('kind') as StructureKind) || 'channel',
+    code: drawCodes[0], market: inferMarket(params.get('market'), drawCodes[0]), kind: (params.get('kind') as StructureKind) || 'channel',
     window: params.get('window') || 'ytd', swing: Number(params.get('swing')) || 5, fit: (params.get('fit') as StructureFit) || 'two_point',
   } : null
   const setDraw = (next: StructureParams, q?: string, codes?: string[]) => setParams(previous => {

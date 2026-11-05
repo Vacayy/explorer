@@ -2,11 +2,10 @@
 // 위계: 머리(시즌 선택) → 진행 줄 → 발표 캘린더 → 이번 시즌 시장이 따진 것 → 반응 보드 | 새 모멘텀 후보 → 선택한 후보 → 핵심 종목 진행판
 import { useEffect, type ReactNode } from "react"
 import { Link, useLocation, useSearchParams } from "react-router-dom"
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { QueryState } from "@/components/shared/QueryState"
@@ -18,8 +17,9 @@ import { ReactionBoard } from "@/components/follow/season/ReactionBoard"
 import { MomentumBoard, PickedCandidate } from "@/components/follow/season/MomentumBoard"
 import { CoreBoard } from "@/components/follow/season/CoreBoard"
 import { Meta, Section, mmdd } from "@/components/follow/season/seasonUi"
+import { SeasonHeader, SeasonPicker } from "@/components/follow/season/SeasonHeader"
 import { useCallMomentum, useSeason } from "@/hooks/useTranscripts"
-import { momentumFor, seasonNeighbors } from "@/lib/seasonBoard"
+import { currentSeasonKey, momentumFor } from "@/lib/seasonBoard"
 import { seasonPhase } from "@/lib/seasonPhase"
 import { formatNumber } from "@/utils/format"
 import type { SeasonOverview } from "@/types"
@@ -35,7 +35,9 @@ export function SeasonView({ tabs }: { tabs: ReactNode }) {
   const between = !season && phase?.state === "between" ? phase : null
   return (
     <div className="space-y-4">
-      {d ? <SeasonHeader d={d} /> : <div className="space-y-2"><Skeleton className="h-8 w-72" /><Skeleton className="h-4 w-40" /></div>}
+      {d ? <UsSeasonHeader d={d} today={today} />
+        : q.isPending ? <div className="space-y-2"><Skeleton className="h-8 w-72" /><Skeleton className="h-4 w-40" /></div>
+        : <SeasonHeader title="실적 시즌" />}
       {tabs}
       {between ? <BetweenSeasons phase={between} today={today} /> : (
         // 갱신 실패·오프라인이어도 이전 결과를 유지한다(QueryState 규약, docs/specs/frontend-api-reliability.md)
@@ -74,44 +76,12 @@ function useHashScroll(ready: boolean) {
   }, [ready, hash])
 }
 
-/* ---------- 머리: 시즌 이름 · 시작일 · 시즌 선택(이전·목록·다음) ---------- */
-const shortSeason = (key: string) => `${key.slice(0, 4)} Q${key.slice(-1)}`
-
-function SeasonHeader({ d }: { d: SeasonOverview }) {
-  const [, setParams] = useSearchParams()
-  const keys = d.windows.map((w) => w.key)
-  const options = keys.includes(d.season.key) ? keys : [...keys, d.season.key].sort()
-  const { prev, next } = seasonNeighbors(options, d.season.key)
-  const pick = (key: string | null) => {
-    if (!key) return
-    setParams((p) => {
-      const n = new URLSearchParams(p)
-      n.set("season", key)
-      for (const k of ["sector", "day", "pick", "rtab", "core"]) n.delete(k)
-      return n
-    })
-  }
+/* ---------- 머리: 시즌 이름 · 시작일 · 시장 · 시즌 선택(이전·목록·다음) — 한국과 같은 머리(SeasonHeader) ---------- */
+function UsSeasonHeader({ d, today }: { d: SeasonOverview; today: string }) {
   const current = d.season.is_current
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="text-2xl font-bold">{d.season.label}</h1>
-        <p className="text-caption text-muted-foreground">{mmdd(d.season.start)}부터 · {current ? "진행 중" : "지난 시즌"}</p>
-      </div>
-      <div className="flex items-center gap-1">
-        <Button variant="outline" size="icon-sm" aria-label="이전 시즌" disabled={!prev} onClick={() => pick(prev)}><ChevronLeft /></Button>
-        <Select value={d.season.key} onValueChange={pick}>
-          <SelectTrigger className="w-44" aria-label="시즌 선택"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {[...options].reverse().map((k) => {
-              const cur = k === d.season.key && current
-              return <SelectItem key={k} value={k}>{shortSeason(k)}{cur ? " · 진행 중" : ""}</SelectItem>
-            })}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="icon-sm" aria-label="다음 시즌" disabled={!next} onClick={() => pick(next)}><ChevronRight /></Button>
-      </div>
-    </div>
+    <SeasonHeader title={d.season.label} sub={<>{mmdd(d.season.start)}부터 · {current ? "진행 중" : "지난 시즌"}</>}
+      picker={<SeasonPicker options={d.windows.map((w) => w.key)} value={d.season.key} currentKey={currentSeasonKey(today)} />} />
   )
 }
 
