@@ -4,8 +4,13 @@ import { PageLayout } from "@/components/shared/PageLayout"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { HomeBlock, HomeSection } from "@/components/home/HomeSection"
 import { ContextBody, IndicesBody, RegimeBody, RiskTrend, useRegimeMeta } from "@/components/widgets/market"
+import { Link } from "react-router-dom"
+import { Badge } from "@/components/ui/badge"
+import { InfoTip } from "@/components/shared/InfoTip"
+import { useCreditTable } from "@/hooks/useCredit"
 import { useIndices, useKrBreadth } from "@/hooks/useDashboard"
-import { formatKstLongDate } from "@/utils/format"
+import { cn } from "@/lib/utils"
+import { formatBp, formatKstLongDate } from "@/utils/format"
 
 /**
  * 홈 › 대시보드 — 시스템 고정 화면 (docs/specs/home-widgets.md §0, ia-redesign §4.1).
@@ -36,7 +41,7 @@ export default function HomeDashboard() {
   )
 }
 
-const GLASS_PANEL = "glass rounded-[16px]! [&>header]:border-line"
+const GLASS_PANEL = "glass relative rounded-[16px]! [&>header]:border-line"
 
 /**
  * 기상도 — 그라디언트 바탕 + 세로 리브 + 유리 패널(시안 Home). 분홍(상승)·파랑(하락) 비율(D-321):
@@ -82,7 +87,29 @@ function RiskBlock() {
           <RiskTrend metric="hy" label="HY OAS" className="max-md:hidden" />
           <RiskTrend metric="curve" label="10Y − 2Y" className="max-md:hidden" />
         </div>
+        <CreditTop />
       </HomeBlock>
     </section>
   )
+}
+
+/**
+ * 신용 긴장 Top 3(시안 Home) — 회사채 스프레드(D-230)에서 1개월 새 가장 벌어진 곳. 이름 · 등급 · 스프레드 · 1개월 변화.
+ * 저장분이 없거나 1개월 변화가 없으면 줄째 숨긴다(지표 타일은 그대로).
+ */
+function CreditTop() {
+  const q = useCreditTable()
+  const rows = (q.data?.rows ?? []).filter(r => r.chg_1m != null && r.spread_bp != null).sort((a, b) => b.chg_1m! - a.chg_1m!).slice(0, 3)
+  if (rows.length === 0) return null
+  return <div className="border-t pt-2" data-credit-top>
+    <InfoTip label="신용 긴장 Top 설명">신용 긴장 Top · 1개월 새 스프레드가 가장 벌어진 곳 · AI 설비투자 관련 미국 기업 {q.data!.rows.length}곳</InfoTip>
+    <ul>{rows.map(r => (
+      <li key={r.ticker} className="grid min-w-0 grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-3 border-t py-1.5 first:border-t-0">
+        <Link to="/follow/credit" className="truncate text-[12.5px] hover:underline">{r.name}</Link>
+        {r.rating ? <Badge variant="outline">{r.rating}</Badge> : <span />}
+        <span className="font-mono text-xs tabular-nums">{formatBp(r.spread_bp)}bp</span>
+        <span className={cn("font-mono text-xs tabular-nums", r.chg_1m! > 0 ? "text-up-ink" : r.chg_1m! < 0 ? "text-down-ink" : "")}>{formatBp(r.chg_1m, true)}bp</span>
+      </li>
+    ))}</ul>
+  </div>
 }

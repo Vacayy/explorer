@@ -30,18 +30,18 @@ export function DropletContent({ title, description, children, className }: {
 }) {
   return (
     <CollapsibleContent
-      className={cn("absolute inset-0 z-10 flex flex-col rounded-[inherit] bg-card/95 backdrop-blur-xl animate-droplet", className)}>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-5 animate-droplet-rise">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-section font-semibold">{title}</p>
-            {description && <p className="text-caption text-muted-foreground">{description}</p>}
+      className={cn("absolute inset-0 z-10 flex flex-col rounded-[inherit] bg-[color-mix(in_srgb,var(--surface)_94%,transparent)] backdrop-blur-xl animate-droplet", className)}>
+      <div className="flex min-h-0 flex-1 flex-col gap-3.5 px-[22px] py-5 animate-droplet-rise max-sm:px-4">
+        <div className="flex items-center justify-between gap-2.5">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="font-display text-xl">{title}</p>
+            {description && <p className="text-xs text-ink-2">{description}</p>}
           </div>
           <CollapsibleTrigger asChild>
-            <Button variant="outline" size="icon-sm" aria-label="닫기"><X aria-hidden="true" /></Button>
+            <Button variant="outline" size="icon" aria-label="닫기" className="size-9 shrink-0 rounded-full bg-surface"><X aria-hidden="true" /></Button>
           </CollapsibleTrigger>
         </div>
-        <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">{children}</div>
+        <div className="-mr-1 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">{children}</div>
       </div>
     </CollapsibleContent>
   )

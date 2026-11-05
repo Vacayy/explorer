@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { UsBriefingSourcesDialog } from "@/components/home/UsBriefingSourcesDialog"
 import { useNavigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -51,7 +52,9 @@ export function SourcesPanel() {
     <div className="flex flex-wrap items-center gap-1">
       <h2 className="text-section font-semibold">소스</h2>
       <InfoTip label="소스 설명">피드에서 읽을 채널·블로그·유튜브를 관리합니다. 스위치(표시)는 내 피드·답변에 보일지만 정하고, 수집 중단은 새 글 수집만 멈춥니다. 둘은 따로 동작하고 모아 둔 문서·이력은 지우지 않습니다.</InfoTip>
-      {health.data && <span className="ml-auto font-mono text-caption tabular-nums text-muted-foreground">{formatKstDateTime(health.data.as_of)} 기준</span>}
+      {/* 미국장 브리핑 출처 — 홈 › 미국 시장 머리에서 옮겨 왔다(시안 Home-US) */}
+      <span className="ml-auto" /><UsBriefingSourcesDialog />
+      {health.data && <span className="font-mono text-caption tabular-nums text-muted-foreground">{formatKstDateTime(health.data.as_of)} 기준</span>}
     </div>
     <SummaryStrip health={health} />
     <div className="surface-grid grid grid-cols-1 lg:grid-cols-2">

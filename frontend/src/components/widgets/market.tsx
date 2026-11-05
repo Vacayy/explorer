@@ -1,10 +1,9 @@
-import type { ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { MetricTrend } from "@/components/shared/MetricTrend"
 import { AreaSpark, SparkLine } from "@/components/shared/Spark"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { fmtValue } from "@/components/home/MacroLiquidity"
-import { UsBriefingSection } from "@/components/home/UsBriefingSection"
+import { kstHm, usMd, UsOvernightBody } from "@/components/home/UsOvernight"
 import { useIndices, useRiskWindow } from "@/hooks/useDashboard"
 import { useMacro } from "@/hooks/useMacro"
 import { useMarketRegime } from "@/hooks/useMarketRegime"
@@ -77,16 +76,16 @@ export function ContextBody(_: WidgetBodyProps) {
 export function useUsMeta(): WidgetMeta {
   const q = useUsBriefing(null)
   const d = q.data
-  // 머리 = 반영한 미국 장 날짜. 어젯밤 장이 아니거나 정기 생성이 실패했으면 주의 색
+  // 머리 = 반영한 미국 장 날짜 · 종합 생성 시각. 어젯밤 장이 아니거나 정기 생성이 실패했으면 주의 색
   const missed = !!d?.expected_session && d.trade_date !== d.expected_session
-  return { asOf: d?.trade_date ?? null, stale: !!d && (d.status !== "ok" || missed || (!!d.last_run && d.last_run.status !== "ok")) }
-}
-/** 넉넉한 위젯 — 원래 섹션 전체를 위젯 안에서 스크롤 (요약은 작게 줄였을 때만) */
-function Full({ children }: { children: ReactNode }) {
-  return <div className="@container/market -mr-2 h-full overflow-y-auto pr-2">{children}</div>
+  if (!d) return { asOf: null }
+  const made = kstHm(d.synthesized_at)
+  const got = kstHm(d.fetched_at)
+  return { asOf: made ? `${made} 생성` : got ? `${got} 수집` : d.trade_date, sub: `${missed ? "" : "어젯밤 "}미국장 · ${usMd(d.trade_date)} 장 마감`,
+    stale: d.status !== "ok" || missed || (!!d.last_run && d.last_run.status !== "ok") }
 }
 export function UsBody({ h }: WidgetBodyProps) {
-  return h > 3 ? <Full><UsBriefingSection embedded /></Full> : <UsSummary h={h} />
+  return h > 3 ? <UsOvernightBody /> : <UsSummary h={h} />
 }
 function UsSummary({ h }: { h: number }) {
   const q = useUsBriefing(null)

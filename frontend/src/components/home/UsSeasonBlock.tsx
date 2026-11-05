@@ -58,10 +58,11 @@ function OtherSeason({ seasonKey, today }: { seasonKey: string; today: string })
   return <InSeason d={q.data} today={today} />
 }
 
-function Frame({ title, badge, link = { to: SEASON, label: "실적 시즌 전체" }, children }: { title: ReactNode; badge?: ReactNode; link?: { to: string; label: string }; children: ReactNode }) {
+/** note = 상태 한 줄(반응 집계 중 등) — 배지 대신 머리 ⓘ 툴팁에 붙인다(시안 Home-US) */
+function Frame({ title, badge, note, link = { to: SEASON, label: "실적 시즌 전체" }, children }: { title: ReactNode; badge?: ReactNode; note?: string; link?: { to: string; label: string }; children: ReactNode }) {
   return (
     <Card data-home-section="us.season" className="min-w-0 gap-3.5 overflow-hidden rounded-[var(--radius-card)] px-5 py-[18px] shadow-none max-sm:p-4">
-      <BlockHead section title={<span className="flex items-center gap-2"><span className="font-display text-[22px] font-normal tracking-[-0.02em]">{title}</span>{badge}</span>} info={INFO} link={link} />
+      <BlockHead section title={<span className="flex items-center gap-2"><span className="font-display text-[22px] font-normal tracking-[-0.02em]">{title}</span>{badge}</span>} info={note ? <>{INFO}<br />{note}</> : INFO} link={link} />
       <div>{children}</div>
     </Card>
   )
@@ -97,7 +98,7 @@ function InSeason({ d, today }: { d: SeasonOverview; today: string }) {
   const pending = d.reported.filter(r => r.d1 == null).length
   const sectors = d.sectors.filter(s => s.one_line).slice(0, 4)
   const upcoming = d.upcoming.filter(u => u.event_date >= today)
-  return <Frame title={d.season.label} badge={pending > 0 && <Badge variant="warn" className="max-sm:hidden">반응 집계 중 {formatNumber(pending)}</Badge>}>
+  return <Frame title={d.season.label} note={pending > 0 ? `첫 거래일 반응을 아직 집계하고 있는 발표가 ${formatNumber(pending)}건 있어요.` : undefined}>
     <div className="space-y-4">
       <Verdicts c={d.counts} />
 

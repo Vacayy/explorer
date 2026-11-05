@@ -58,7 +58,7 @@ function SectionHead({ widget, params, title, link, display, section }: Pick<Hom
   const def = WIDGET_BY_ID[widget]
   const meta = def.useMeta(params)
   const target = link === undefined ? def.detailPath : link?.to
-  return <BlockHead title={title ?? def.title} info={def.description} asOf={meta.asOf} stale={meta.stale}
+  return <BlockHead title={title ?? def.title} info={def.description} asOf={meta.asOf} stale={meta.stale} sub={meta.sub}
     link={target ? { to: target, label: link?.label ?? "전체 보기" } : null} display={display} section={section} />
 }
 
@@ -66,6 +66,8 @@ interface BlockHeadProps {
   title: ReactNode
   /** 제목 옆 ⓘ 툴팁 — 화면에 부연설명을 쓰지 않고 여기에만 둔다 */
   info?: ReactNode
+  /** 제목 아래 회색 한 줄(큰 칸 머리) */
+  sub?: ReactNode
   asOf?: string | null
   stale?: boolean
   link?: { to: string; label: string } | null
@@ -78,19 +80,24 @@ interface BlockHeadProps {
 }
 
 /** 홈 블록 머리 — 제목 · ⓘ · 기준 시각 · 동작 · 링크. 지금 화면으로 가는 링크는 숨긴다 */
-export function BlockHead({ title, info, asOf, stale, link, actions, display, section }: BlockHeadProps) {
+export function BlockHead({ title, info, sub, asOf, stale, link, actions, display, section }: BlockHeadProps) {
   const { pathname } = useLocation()
   const to = link && link.to.split("#")[0] !== pathname ? link.to : undefined
   const name = typeof title === "string" ? title : undefined
+  const heading = <h2 className={cn("min-w-0 truncate", display ? (sub ? "font-display text-2xl leading-tight font-normal tracking-[-0.02em]" : "font-display text-2xl leading-[1.55] font-normal tracking-[-0.02em]") : section ? "text-[15px] leading-[1.4] font-semibold" : "text-[13.5px] font-semibold")}>{title}</h2>
+  const tip = info && <Tooltip>
+    <TooltipTrigger asChild>
+      <Button variant="ghost" size="icon-xs" aria-label={`${name ?? "블록"} 설명`} className="shrink-0 text-muted-foreground/70"><Info className="size-3.5" /></Button>
+    </TooltipTrigger>
+    <TooltipContent className="max-w-[280px] text-xs leading-relaxed">{info}</TooltipContent>
+  </Tooltip>
   return (
     <header className={cn("flex shrink-0 items-center gap-2", display ? "min-h-[38px] flex-wrap items-end gap-x-2.5 border-b pb-3" : section ? "min-h-7 flex-wrap gap-x-2.5" : "min-h-[38px] border-b px-3 py-1.5")}>
-      <h2 className={cn("min-w-0 truncate", display ? "font-display text-2xl leading-[1.55] font-normal tracking-[-0.02em]" : section ? "text-[15px] leading-[1.4] font-semibold" : "text-[13.5px] font-semibold")}>{title}</h2>
-      {info && <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon-xs" aria-label={`${name ?? "블록"} 설명`} className="shrink-0 text-muted-foreground/70"><Info className="size-3.5" /></Button>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-[280px] text-xs leading-relaxed">{info}</TooltipContent>
-      </Tooltip>}
+      {sub && !display ? <>{heading}<span className="shrink-0 pt-px text-xs text-ink-3">{sub}</span>{tip}</>
+      : sub ? <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 items-center gap-2">{heading}{tip}</div>
+        <span className="truncate text-[12.5px] text-ink-2">{sub}</span>
+      </div> : <>{heading}{tip}</>}
       <span className="ml-auto" />
       {asOf && <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap max-sm:hidden", display ? "gap-1.5 self-center text-xs" : "gap-[5px] text-[11.5px]", stale ? "text-warn" : "text-ink-3")}>
         <span aria-hidden className={cn("rounded-full", display ? "size-1.5" : "size-[5px]", stale ? "bg-warn" : "bg-fact")} />{asOf}
