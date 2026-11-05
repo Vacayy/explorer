@@ -11,10 +11,10 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { TopBar } from "@/components/layout/TopBar"
 import { TabBar } from "@/components/layout/TabBar"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
-import { useMediaQuery, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
+import { useMediaQuery, MOBILE_QUERY, PANEL_INLINE_QUERY } from "@/hooks/useMediaQuery"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { PREF, readPref, writePref } from "@/lib/shellPrefs"
-import { onAskAi } from "@/lib/aiPanel"
+import { onAskAi, onOpenAi } from "@/lib/aiPanel"
 import { SubNav } from "@/components/layout/SubNav"
 import { SECTIONS, analyzeTabOf, analyzeTabs, locate } from "@/components/layout/navConfig"
 import Omnibar from "@/components/shared/Omnibar"
@@ -114,6 +114,7 @@ function Layout() {
   const [aiOpen, setAiOpen] = useState(() => initialOpen(PREF.ai))
   const aiInput = useRef<HTMLTextAreaElement | null>(null)
   const panelInline = useMediaQuery(PANEL_INLINE_QUERY)
+  const phone = useMediaQuery(MOBILE_QUERY)
   const toggleAi = useCallback(() => setAiOpen(v => {
     if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, v ? "0" : "1")
     if (!v) requestAnimationFrame(() => aiInput.current?.focus())
@@ -122,6 +123,8 @@ function Layout() {
   useKeyboardShortcuts(toggleAi)
   // 'AI에게 묻기' — 어느 화면에서 보내든 패널을 연다. 인용은 패널이 받는다 (lib/aiPanel)
   useEffect(() => onAskAi(() => { setAiOpen(true); if (window.matchMedia(PANEL_INLINE_QUERY).matches) writePref(PREF.ai, "1") }), [])
+  // 화면의 '이 자료로 대화' 같은 버튼 — 질문 없이 패널만 연다(보는 화면은 패널이 자동 첨부)
+  useEffect(() => onOpenAi(() => { setAiOpen(true); requestAnimationFrame(() => aiInput.current?.focus()) }), [])
 
   // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
   const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null
@@ -160,10 +163,11 @@ function Layout() {
           </div>
           <TabBar />
         </div>
-        {/* 폭 <1024: AI 대화는 오른쪽 오버레이(모바일은 전체 폭) */}
+        {/* 폭 <1024: AI 대화는 오른쪽 오버레이, 폰(<768)은 아래에서 올라오는 시트(ia-redesign §4.32) */}
         {!panelInline && (
           <Sheet open={showAi} onOpenChange={v => { if (v !== showAi) toggleAi() }}>
-            <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">
+            <SheetContent side={phone ? "bottom" : "right"} showCloseButton={false}
+              className={phone ? "gap-0 rounded-t-xl p-0 data-[side=bottom]:h-[88dvh]" : "w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"}>
               <SheetTitle className="sr-only">AI 대화</SheetTitle>
               <SheetDescription className="sr-only">지금 보는 화면을 맥락으로 함께 보냅니다.</SheetDescription>
               <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} overlay />

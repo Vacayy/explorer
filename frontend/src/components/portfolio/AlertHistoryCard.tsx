@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePortfolioAlerts } from '@/hooks/usePortfolio'
 
-const KIND: Record<string, string> = { day: '급등락', avg: '평단 구간', tech: '기술적 신호', disc: '공시', summary: '마감 요약' }
+const KIND: Record<string, string> = { day: '급등락', avg: '평단 구간', tech: '기술적 신호', disc: '공시', summary: '마감 요약', 'track-day': '추적 급등락', 'track-cond': '추적 조건' }
 
 /** 알림 이력 — 텔레그램으로 보낸 포트폴리오 알림(14일). 본문은 저장하지 않아 유형·종목·구간·시각만 보인다. */
 export function AlertHistoryCard() {

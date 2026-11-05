@@ -190,7 +190,7 @@ class PrincipleState(BaseModel):
 
 class AlertItem(BaseModel):
     """보낸 텔레그램 알림 한 건 — 키에서 푼 유형·종목·구간·시각만(본문·가격 없음)."""
-    kind: str                          # day | avg | tech | disc | summary
+    kind: str                          # day | avg | tech | disc | summary | track-day | track-cond
     label: str
     code: str | None
     name: str | None

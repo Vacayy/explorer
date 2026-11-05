@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
-import { ArrowDown, BookOpen, ChartNoAxesCombined, PanelLeft, Send, SquarePen } from "lucide-react"
+import { ArrowDown, BookOpen, ChartNoAxesCombined, ChevronLeft, PanelLeft, Send, SquarePen } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -112,10 +112,13 @@ function ConversationPage() {
 
       {/* 중앙 */}
       <section className="flex min-w-0 flex-1 flex-col">
-        {/* 헤더 — 슬림 1줄 */}
+        {/* 헤더 — 슬림 1줄. 폰(<768)은 '‹ 대화 목록' · 제목 · '새 대화'만(ia-redesign §4.32) */}
         <header className="flex h-9 items-center gap-2">
-          <Button variant="outline" size="sm" asChild><Link to={`/discover${activeId ? `?id=${activeId}` : ''}`}><ChartNoAxesCombined className="size-4" /><span className="max-md:sr-only">종목 발견</span></Link></Button>
-          <Button variant="ghost" size="icon-sm" aria-label="대화 목록" className="lg:hidden" onClick={() => setSheetOpen(true)}>
+          <Button variant="outline" size="sm" asChild className="max-md:hidden"><Link to={`/discover${activeId ? `?id=${activeId}` : ''}`}><ChartNoAxesCombined className="size-4" /><span className="max-md:sr-only">종목 발견</span></Link></Button>
+          <Button variant="ghost" size="sm" className="-ml-2 h-10 shrink-0 gap-0.5 px-2 md:hidden" onClick={() => setSheetOpen(true)}>
+            <ChevronLeft className="size-4" aria-hidden />대화 목록
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="대화 목록" className="max-md:hidden lg:hidden" onClick={() => setSheetOpen(true)}>
             <PanelLeft className="size-4" />
           </Button>
           <Button variant="ghost" size="icon-sm" aria-label={railOpen ? "목록 접기" : "목록 펼치기"} className="hidden lg:inline-flex"
@@ -131,11 +134,12 @@ function ConversationPage() {
                 <Badge variant="outline" className="shrink-0 gap-1 text-[10px] font-normal"><Send className="size-2.5" /> 텔레그램</Badge>
               )}
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground max-md:hidden">{messages.length}개</span>
-              <Button variant="ghost" size="icon-sm" aria-label="새 대화" className="ml-auto lg:hidden" onClick={newThread}>
+              <Button variant="ghost" size="icon-sm" aria-label="새 대화" className="ml-auto max-md:hidden lg:hidden" onClick={newThread}>
                 <SquarePen className="size-4" />
               </Button>
             </>
           )}
+          {activeId && <Button variant="ghost" size="sm" className="ml-auto h-10 shrink-0 px-2 md:hidden" onClick={newThread}>새 대화</Button>}
         </header>
 
         {!!thread?.attached_documents?.length && <Collapsible className="my-2 rounded-xl border px-3 py-2">

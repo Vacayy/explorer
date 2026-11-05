@@ -33,6 +33,16 @@ export function onAskAi(fn: (req: AskAiRequest) => void): () => void {
   return () => window.removeEventListener(ASK_AI_EVENT, h)
 }
 
+/** 질문·인용 없이 AI 패널만 연다 — 모바일 문서 화면의 '이 자료로 대화'(ia-redesign §4.32). 보는 화면은 패널이 자동 첨부한다 */
+export const OPEN_AI_EVENT = "explorer:open-ai"
+export function openAi() {
+  window.dispatchEvent(new Event(OPEN_AI_EVENT))
+}
+export function onOpenAi(fn: () => void): () => void {
+  window.addEventListener(OPEN_AI_EVENT, fn)
+  return () => window.removeEventListener(OPEN_AI_EVENT, fn)
+}
+
 /** 읽던 자료에서 고른 문장 → AI 패널. 설명·검토는 질문이 정해져 있어 바로 보낸다 */
 export const ASK_PRESET = {
   explain: "이 대목을 쉽게 풀어 설명해줘. 깔린 전제와 용어도 짚어줘.",

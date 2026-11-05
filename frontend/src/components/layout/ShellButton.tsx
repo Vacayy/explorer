@@ -21,7 +21,7 @@ export const ShellButton = forwardRef<HTMLButtonElement, Props>(function ShellBu
     <Tooltip>
       <TooltipTrigger asChild>
         <Button ref={ref} variant="ghost" size="icon-sm" aria-label={rest["aria-label"] ?? label}
-          aria-pressed={pressed} className={cn("relative text-muted-foreground hover:text-foreground", pressed && "bg-muted text-foreground", className)} {...rest}>
+          aria-pressed={pressed} className={cn("relative text-muted-foreground hover:text-foreground max-md:size-10", pressed && "bg-muted text-foreground", className)} {...rest}>
           <Icon className="size-[18px]" aria-hidden />
           {badge != null && badge > 0 && (
             <span className={cn(

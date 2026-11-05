@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { AlertTriangle, Check, ChevronRight, Copy, Info, Quote } from "lucide-react"
 import { Markdown } from "@/components/shared/Markdown"
@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { ChatMessage, ChatRoute } from "@/types"
 import { formatRelativeTime } from "@/utils/format"
+import { MOBILE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn } from "@/lib/utils"
 import { utcMs, type Draft } from "@/hooks/useChat"
 import { citationComponents, citationHref, GAP_LABEL, KIND_LABEL, linkifyCitations } from "./citations"
@@ -54,6 +55,41 @@ function RouteRow({ route }: { route: ChatRoute }) {
   )
 }
 
+/**
+ * 폰(<768)에서 답변 본문의 `## ` 절을 제목만 보이게 접는다(ia-redesign §4.32). 첫 절 앞(결론)은 펼친 채로 둔다.
+ * 코드 블록 안의 `## `는 절로 보지 않는다. 절이 둘 미만이면 나누지 않는다.
+ */
+export function splitSections(md: string): { lead: string; sections: { title: string; body: string }[] } | null {
+  const lines = md.split("\n")
+  const sections: { title: string; body: string[] }[] = []
+  const lead: string[] = []
+  let fence = false
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence
+    const h = !fence && /^## (.+)$/.exec(line)
+    if (h) sections.push({ title: h[1].replace(/\*\*/g, "").trim(), body: [] })
+    else if (sections.length) sections[sections.length - 1].body.push(line)
+    else lead.push(line)
+  }
+  if (sections.length < 2) return null
+  return { lead: lead.join("\n").trim(), sections: sections.map(x => ({ title: x.title, body: x.body.join("\n").trim() })) }
+}
+
+function FoldRow({ title, children }: { title: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="border-b">
+      <CollapsibleTrigger asChild>
+        <Button variant="ghost" className="h-auto min-h-11 w-full justify-between whitespace-normal px-0 py-2 text-left text-[15px] font-normal">
+          <span className="min-w-0">{title}</span>
+          <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} aria-hidden />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pb-3">{children}</CollapsibleContent>
+    </Collapsible>
+  )
+}
+
 const SOURCES_PREVIEW = 6
 
 function Sources({ citations }: { citations: NonNullable<ChatMessage["citations"]> }) {
@@ -90,6 +126,23 @@ function Sources({ citations }: { citations: NonNullable<ChatMessage["citations"
   )
 }
 
+/** 답에서 확인하지 못한 것·가정 */
+function Gaps({ gaps }: { gaps: NonNullable<ChatMessage["gaps"]> }) {
+  return (
+    <div className="rounded-xl bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] px-4 py-3 space-y-1.5">
+      {gaps.map((g, i) => (
+        <div key={i} className="flex items-start gap-2 text-[13px] leading-relaxed">
+          {g.type === "assumption"
+            ? <Info className="mt-0.5 size-3.5 shrink-0 text-hypothesis" aria-label="가정" />
+            : <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-hypothesis" />}
+          <Badge variant="secondary" className="shrink-0 text-[10px]">{GAP_LABEL[g.type] ?? g.type}</Badge>
+          <span>{g.note}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** 완료된 어시스턴트 메시지 — 메타 · 과정 · 본문(인라인 인용) · 갭 · 근거 · 액션 */
 export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
   m: ChatMessage
@@ -109,13 +162,20 @@ export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
   const bodyRef = useRef<HTMLDivElement>(null)
   const followUps = (isLast && m.route?.follow_ups) || []
   const leftover = (isLast && carried) || []
+  const phone = useMediaQuery(MOBILE_QUERY)
+  const parts = useMemo(() => phone ? splitSections(body) : null, [phone, body])
   return (
     <article className="group/msg space-y-2">
       <MetaRow model={m.model} createdAt={m.created_at} />
       {m.route && <RouteRow route={m.route} />}
       <div ref={bodyRef} className="relative">
         <TooltipProvider delayDuration={150}>
-          <Markdown className={BODY} components={components}>{body}</Markdown>
+          {parts ? <>
+            {parts.lead && <Markdown className={BODY} components={components}>{parts.lead}</Markdown>}
+            <div className="mt-2 border-t">
+              {parts.sections.map((x, i) => <FoldRow key={i} title={x.title}><Markdown className={BODY} components={components}>{x.body}</Markdown></FoldRow>)}
+            </div>
+          </> : <Markdown className={BODY} components={components}>{body}</Markdown>}
         </TooltipProvider>
         {/* 드래그 인용 — 공통 선택 팔레트 (D-144·D-146, canvas.md §2) */}
         {onQuote && <SelectionPalette containerRef={bodyRef} ignore={CITE_CHIP}
@@ -125,21 +185,13 @@ export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
       {/* 시세 근거를 인용한 답변 — 같은 스냅샷을 차트로 (종목 1=종가, 2+=등락률 비교) */}
       {prices && <PriceChartCard targets={prices.targets} days={prices.days} />}
 
-      {m.gaps && m.gaps.length > 0 && (
-        <div className="rounded-xl bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] px-4 py-3 space-y-1.5">
-          {m.gaps.map((g, i) => (
-            <div key={i} className="flex items-start gap-2 text-[13px] leading-relaxed">
-              {g.type === "assumption"
-                ? <Info className="mt-0.5 size-3.5 shrink-0 text-hypothesis" aria-label="가정" />
-                : <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-hypothesis" />}
-              <Badge variant="secondary" className="shrink-0 text-[10px]">{GAP_LABEL[g.type] ?? g.type}</Badge>
-              <span>{g.note}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {m.gaps && m.gaps.length > 0 && (phone
+        ? <FoldRow title={`이 답에서 확인하지 못한 것 ${m.gaps.length}`}><Gaps gaps={m.gaps} /></FoldRow>
+        : <Gaps gaps={m.gaps} />)}
 
-      {m.citations && m.citations.length > 0 && <Sources citations={m.citations} />}
+      {m.citations && m.citations.length > 0 && (phone
+        ? <FoldRow title={`출처 ${m.citations.length}건`}><Sources citations={m.citations} /></FoldRow>
+        : <Sources citations={m.citations} />)}
 
       <div className="flex gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100 max-md:opacity-100">
         <Button variant="ghost" size="icon-xs" aria-label="답변 복사" onClick={() => copy(m.content)}>

@@ -81,6 +81,16 @@ def history(conn: sqlite3.Connection, days: int = 14, limit: int = 60) -> list[d
             label, url = "보유 종목 공시", f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rest}"
         elif kind == "summary":
             day, label = rest, "마감 요약"
+        elif kind == "track-day" and len(parts) == 3:      # 추적 종목 급등락(stock_tracker, 같은 표에 기록)
+            from pipeline.stock_tracker import DAY_STEP as TRACK_STEP
+            day, code, label = parts[0], parts[1], _band("추적 · 전일 대비", parts[2], TRACK_STEP)
+        elif kind == "track-cond" and len(parts) == 2:     # 추적 조건 충족 — 조건 이름은 지금 표에서(지웠으면 일반 이름)
+            day = parts[0]
+            try:
+                c = conn.execute("SELECT stock_code, label FROM tracker_conditions WHERE id=?", (parts[1],)).fetchone()
+            except sqlite3.OperationalError:
+                c = None
+            code, label = (c["stock_code"], f"추적 조건 충족 · {c['label']}") if c else (None, "추적 조건 충족")
         else:
             label = kind
         name = None

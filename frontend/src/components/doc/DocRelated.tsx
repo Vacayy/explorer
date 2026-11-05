@@ -62,7 +62,7 @@ export function DocRelated({ docId }: { docId: number }) {
 
 function Meta({ channel, published_at }: { channel: string | null; published_at: string | null }) {
   return (
-    <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+    <span className="ml-auto shrink-0 text-muted-foreground tabular-nums max-md:ml-0">
       {channel && <span className="mr-1.5">{channel}</span>}
       {(published_at || '').slice(0, 10)}
     </span>
@@ -72,9 +72,10 @@ function Meta({ channel, published_at }: { channel: string | null; published_at:
 function ClaimRow({ r }: { r: ClaimRelated }) {
   return (
     <li className="text-xs">
-      <div className="flex items-center gap-2">
+      {/* 폰: 제목을 한 줄 전체로 올리고 소스 배지·출처는 그 아래 */}
+      <div className="flex items-center gap-2 max-md:flex-wrap max-md:gap-y-1">
         <SourceBadge sourceType={r.source_type} />
-        <Link to={`/doc/${r.id}`} className="min-w-0 truncate hover:underline">{r.title || '(제목 없음)'}</Link>
+        <Link to={`/doc/${r.id}`} className="min-w-0 truncate hover:underline max-md:order-first max-md:basis-full max-md:whitespace-normal max-md:line-clamp-2">{r.title || '(제목 없음)'}</Link>
         <Meta channel={r.channel} published_at={r.published_at} />
       </div>
       {r.quote && <p className="mt-1 line-clamp-2 text-muted-foreground">“{r.quote}”</p>}
@@ -84,9 +85,9 @@ function ClaimRow({ r }: { r: ClaimRelated }) {
 
 function SimilarRow({ r }: { r: RelatedDoc }) {
   return (
-    <li className="flex items-center gap-2 text-xs">
+    <li className="flex items-center gap-2 text-xs max-md:flex-wrap max-md:gap-y-1">
       <SourceBadge sourceType={r.source_type} />
-      <Link to={`/doc/${r.id}`} className="min-w-0 truncate hover:underline">{r.title || '(제목 없음)'}</Link>
+      <Link to={`/doc/${r.id}`} className="min-w-0 truncate hover:underline max-md:order-first max-md:basis-full max-md:whitespace-normal max-md:line-clamp-2">{r.title || '(제목 없음)'}</Link>
       {r.reasons.length > 0 && (
         <span className="hidden shrink-0 gap-1 sm:flex" title="겹치는 종목·인물·산업">
           {r.reasons.map((n) => <Badge key={n} variant="outline" className="font-normal">{n}</Badge>)}
