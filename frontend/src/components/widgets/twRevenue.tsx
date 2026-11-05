@@ -3,6 +3,7 @@ import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import SegmentTabs from "@/components/shared/SegmentTabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { WidgetState } from "@/components/shared/WidgetFrame"
 import { useTwLinks, useTwRevenue } from "@/hooks/useTwRevenue"
@@ -36,7 +37,7 @@ function Bars({ series }: { series: TwRevenueItem["series"] }) {
   const s = series.slice(-24)
   const max = Math.max(...s.map(p => p.revenue ?? 0), 1)
   return <span className="flex h-5 items-end gap-px" aria-hidden>
-    {s.map(p => <span key={p.ym} className="w-[3px] rounded-[1px] bg-chart-blue/70" style={{ height: `${Math.max(4, ((p.revenue ?? 0) / max) * 100)}%` }} />)}
+    {s.map(p => <span key={p.ym} className="w-[3px] rounded-[1px] bg-series" style={{ height: `${Math.max(4, ((p.revenue ?? 0) / max) * 100)}%` }} />)}
   </span>
 }
 
@@ -58,12 +59,12 @@ function TwRevenueBody({ w, h }: WidgetBodyProps) {
   const cols = wide ? "grid-cols-[minmax(0,1fr)_92px_60px_52px_52px]" : "grid-cols-[minmax(0,1fr)_56px_52px]"
   return <div className="flex h-full flex-col gap-2">
     <div className="flex items-center gap-2">
-      <Select value={layer} onValueChange={v => set("tw_layer", v)}>
+      {wide ? <SegmentTabs value={layer} onChange={v => set("tw_layer", v)} tabs={d.layers.map(l => ({ value: l.key, label: l.label }))} /> : <Select value={layer} onValueChange={v => set("tw_layer", v)}>
         <SelectTrigger className="h-7 w-40 text-xs" aria-label="밸류체인 층"><SelectValue /></SelectTrigger>
         <SelectContent>{d.layers.map(l => <SelectItem key={l.key} value={l.key} className="text-xs">
           {l.label} · {d.items.filter(i => i.layer === l.key).length}
         </SelectItem>)}</SelectContent>
-      </Select>
+      </Select>}
       <span className="ml-auto text-[11px] text-muted-foreground" title="매달 1~10일에 회사마다 전월 매출을 공시한다">
         {d.as_of} 공시 {d.reported}/{d.total}사
       </span>

@@ -6,14 +6,13 @@ import type { KrConfirm, KrDirection, TwLink } from "@/types"
 /** 대만 → 한국 연결 표시 규칙 — 종목 상세 카드와 홈 위젯이 같이 쓴다 (docs/specs/tw-revenue.md §6) */
 export const TW_RELATION: Record<TwLink["relation"], string> = { peer: "동종", demand: "고객 수요", capex: "설비 투자" }
 
-const STATE_TONE: Record<string, string> = {
-  "가속": "border-up/40 text-up-ink", "전환↑": "border-up/40 text-up-ink",
-  "둔화": "border-down/40 text-down-ink", "전환↓": "border-down/40 text-down-ink", "유지": "text-muted-foreground",
+const STATE_TONE: Record<string, "up" | "down" | "neutral"> = {
+  "가속": "up", "전환↑": "up", "둔화": "down", "전환↓": "down", "유지": "neutral",
 }
 
 export function TwStateBadge({ link }: { link: TwLink }) {
   if (!link.state) return null
-  return <Badge variant="outline" className={cn("shrink-0 text-[11px]", STATE_TONE[link.state])}
+  return <Badge variant={STATE_TONE[link.state] ?? "neutral"} className="shrink-0"
     title={`3개월 YoY ${formatPercent(link.yoy_3m_prev)} → ${formatPercent(link.yoy_3m)} (3개월 전 대비 ±10%p면 가속·둔화)`}>
     {link.state}
   </Badge>

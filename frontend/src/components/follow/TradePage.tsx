@@ -109,10 +109,10 @@ function TradeGrid({ follows, loading, error, onRetry, sort, onSort, onPick }: {
   const items = rankTradeGrid(follows, sort, mine)
   return <HomeBlock label="trade.grid" title={<>주요 품목 한눈에 <span className="ml-1 text-xs font-normal text-muted-foreground">수출액 상위 {items.length || 12}</span></>}
     info="칸마다 최근 36개월 월별 수출 막대와 12개월 평균 선입니다. 품목마다 규모가 달라 세로축이 다릅니다 — 비교는 전년 대비 숫자로 보세요."
-    actions={<ToggleGroup type="single" value={sort} onValueChange={v => { if (v) onSort(v as TradeGridSort) }} variant="outline" size="sm" aria-label="정렬">
-      <ToggleGroupItem value="value" className="px-2.5 text-xs">수출액 순</ToggleGroupItem>
-      <ToggleGroupItem value="surge" className="px-2.5 text-xs">급등 먼저</ToggleGroupItem>
-      <ToggleGroupItem value="mine" className="px-2.5 text-xs">내 종목 관련</ToggleGroupItem>
+    actions={<ToggleGroup type="single" value={sort} onValueChange={v => { if (v) onSort(v as TradeGridSort) }} size="sm" aria-label="정렬" className="gap-1.5 bg-transparent p-0">
+      <ToggleGroupItem value="value" className="h-7 rounded-full border border-line-2 px-3 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">수출액 순</ToggleGroupItem>
+      <ToggleGroupItem value="surge" className="h-7 rounded-full border border-line-2 px-3 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">급등 먼저</ToggleGroupItem>
+      <ToggleGroupItem value="mine" className="h-7 rounded-full border border-line-2 px-3 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">내 종목 관련</ToggleGroupItem>
     </ToggleGroup>} bodyClassName="p-0">
     {loading ? <div className="p-3"><RowsSkeleton rows={8} /></div>
       : error ? <div className="p-3"><BlockError message="품목 목록을 불러오지 못했습니다" onRetry={onRetry} /></div>
