@@ -1,20 +1,25 @@
 import { useMemo, useRef, useState, type ReactNode } from "react"
-import { Link } from "react-router-dom"
-import { AlertTriangle, Check, ChevronRight, Copy, Info, Quote } from "lucide-react"
+import { Link, useNavigate } from "react-router-dom"
+import { BookOpen, Check, ChevronRight, Copy, Quote, RotateCcw } from "lucide-react"
+import { toast } from "sonner"
 import { Markdown } from "@/components/shared/Markdown"
+import SaveButton from "@/components/shared/SaveButton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { useProjects } from "@/components/study/useProjects"
 import type { ChatMessage, ChatRoute } from "@/types"
-import { formatRelativeTime } from "@/utils/format"
+import { formatKstSlashDate, formatNumber } from "@/utils/format"
 import { MOBILE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery"
+import { useChatStudy } from "@/hooks/useChatStudy"
 import { cn } from "@/lib/utils"
-import { utcMs, type Draft } from "@/hooks/useChat"
+import { type Draft } from "@/hooks/useChat"
 import { citationComponents, citationHref, GAP_LABEL, KIND_LABEL, linkifyCitations } from "./citations"
-import { fmtSec, RoutePanel, routeTotalMs } from "./RoutePanel"
+import { evidenceSummary, fmtSec, RoutePanel, routeTotalMs } from "./RoutePanel"
 import { PriceChartCard, priceTargets } from "./PriceChartCard"
 import { FollowUps } from "./FollowUps"
 import { CITE_CHIP, quoteFromSelection, type Quote as QuoteRef } from "./useQuoteSelection"
@@ -23,34 +28,37 @@ import { useCopy } from "./UserMessage"
 
 const BODY = "text-[15px] leading-7 [&_p]:my-3 [&_li]:my-1.5 [&_h2]:mt-6 [&_h3]:mt-5 [&_table]:my-3 [&_table]:text-sm"
 
-/** 메타 행 — hypothesis 색 점 + 라벨. LLM 산출 마커를 말풍선 틴트 대신 라벨로 (spec §4, D-135) */
-function MetaRow({ model, createdAt, live }: { model?: string | null; createdAt?: string; live?: boolean }) {
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span className={cn("size-2 rounded-full bg-hypothesis", live && "animate-pulse")} aria-hidden />
-      <span className="font-medium text-hypothesis">AI 종합</span>
-      {model && <span>· {model}</span>}
-      {createdAt && <span>· {formatRelativeTime(new Date(utcMs(createdAt)).toISOString())}</span>}
-    </div>
-  )
-}
+const AI_BADGE = "h-[22px] rounded-md border-0 bg-[color-mix(in_srgb,var(--hypothesis)_12%,transparent)] px-2 text-xs font-medium text-hypothesis"
 
-/** 과정 행 — 답 위에 접힌 한 줄("Thought for Ns" 패턴). 펼치면 RoutePanel */
-function RouteRow({ route }: { route: ChatRoute }) {
+/** 'claude-code/sonnet' → 'sonnet' */
+const modelName = (model?: string | null) => model?.split("/").pop() ?? null
+
+/**
+ * 답변 머리 한 줄 (시안 Chat) — 'AI 답변' · 근거 수집 요약(누르면 답변 경로 펼침) · 모델 · 시각.
+ * LLM 산출 표시는 말풍선 틴트 대신 이 배지로 한다(chat-page.md §4).
+ */
+function MetaRow({ model, createdAt, route }: { model?: string | null; createdAt?: string; route?: ChatRoute | null }) {
   const [open, setOpen] = useState(false)
-  const total = routeTotalMs(route)
+  const name = modelName(model ?? route?.model)
+  const tail = [name, createdAt ? formatKstSlashDate(createdAt) : null].filter(Boolean).join(" · ")
+  const summary = route ? evidenceSummary(route) : []
+  const total = route ? routeTotalMs(route) : undefined
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="-ml-2 h-7 gap-1 px-2 text-xs font-normal text-muted-foreground hover:text-foreground">
-          <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
-          답변 경로
-          <span className="tabular-nums">· 도구 {route.tools?.length ?? 0} · 근거 {route.evidence_n}{total != null && ` · ${fmtSec(total)}`}</span>
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-1 pb-2">
-        <RoutePanel route={route} />
-      </CollapsibleContent>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <Badge variant="secondary" className={AI_BADGE}>AI 답변</Badge>
+        <span className="basis-full md:hidden max-md:order-2" aria-hidden />
+        {route && (
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" data-route-toggle className="-mx-1.5 h-auto min-h-7 max-w-full min-w-0 shrink gap-1 px-1.5 py-0.5 text-left text-xs font-normal whitespace-normal text-muted-foreground hover:text-foreground max-md:order-3 max-md:min-h-10">
+              <span className="min-w-0">근거 수집{summary.length ? ` · ${summary.join(" · ")}` : ` · ${formatNumber(route.evidence_n)}건`}{total != null && ` · ${fmtSec(total)}`}</span>
+              <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} aria-hidden />
+            </Button>
+          </CollapsibleTrigger>
+        )}
+        {tail && <span className="tabular-nums max-md:order-1">{route && <span className="max-md:hidden">· </span>}{tail}</span>}
+      </div>
+      {route && <CollapsibleContent className="pt-2"><RoutePanel route={route} /></CollapsibleContent>}
     </Collapsible>
   )
 }
@@ -90,61 +98,95 @@ function FoldRow({ title, children }: { title: ReactNode; children: ReactNode })
   )
 }
 
-const SOURCES_PREVIEW = 6
-
-function Sources({ citations }: { citations: NonNullable<ChatMessage["citations"]> }) {
-  const [all, setAll] = useState(false)
-  const shown = all ? citations : citations.slice(0, SOURCES_PREVIEW)
-  const rest = citations.length - shown.length
+/** 출처 목록 (시안 Chat) — 번호 · 종류 · 제목(원문 링크) · 날짜. 시세는 답변 시각, 수집 자료는 게시일 */
+function SourceList({ citations, answeredAt }: { citations: NonNullable<ChatMessage["citations"]>; answeredAt?: string }) {
   return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-medium text-muted-foreground">근거 {citations.length}건</p>
-      <div className="flex flex-wrap gap-1.5">
-        {shown.map((c) => {
-          const to = citationHref(c)
-          const inner = (
-            <>
-              <span className="shrink-0 tabular-nums text-muted-foreground">{c.n}</span>
-              <span className="shrink-0 whitespace-nowrap text-muted-foreground">{KIND_LABEL[c.kind ?? ""] ?? c.kind ?? "근거"}</span>
-              <span className="min-w-0 truncate">{c.title}</span>
-            </>
-          )
-          const cls = "inline-flex max-w-[280px] items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1.5 text-xs transition-colors"
-          return to ? (
-            <Link key={c.n} to={to} className={cn(cls, "hover:bg-muted hover:text-foreground")}>{inner}</Link>
-          ) : (
-            <span key={c.n} className={cls}>{inner}</span>
-          )
-        })}
-        {rest > 0 && (
-          <Button variant="ghost" size="sm" className="h-auto rounded-lg px-2.5 py-1.5 text-xs font-normal text-muted-foreground" onClick={() => setAll(true)}>
-            +{rest}
-          </Button>
-        )}
-      </div>
-    </div>
+    <ol className="text-[12.5px] leading-5">
+      {citations.map((c) => {
+        const to = citationHref(c)
+        const when = c.published_at ?? (c.kind === "quote" ? answeredAt : null)
+        return (
+          <li key={c.n} data-source={c.n} className="grid grid-cols-[2.25rem_3.5rem_minmax(0,1fr)_auto] items-baseline gap-2 border-t py-1.5 first:border-t-0">
+            <span className="font-mono tabular-nums text-muted-foreground">[{c.n}]</span>
+            <span className="truncate text-muted-foreground">{KIND_LABEL[c.kind ?? ""] ?? c.kind ?? "근거"}</span>
+            {to
+              ? <Link to={to} className="truncate hover:underline" title={c.title}>{c.title}</Link>
+              : <span className="truncate" title={c.title}>{c.title}</span>}
+            <span className="font-mono tabular-nums text-muted-foreground">{when ? formatKstSlashDate(when, false) : ""}</span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
-/** 답에서 확인하지 못한 것·가정 */
-function Gaps({ gaps }: { gaps: NonNullable<ChatMessage["gaps"]> }) {
+const GAP_TONE: Record<string, string> = {
+  contradiction: "bg-[color-mix(in_srgb,var(--hypothesis)_14%,transparent)] text-hypothesis",
+  unsupported: "bg-accent text-accent-foreground",
+  assumption: "bg-accent text-accent-foreground",
+}
+
+/** 답에서 확인하지 못한 것 (시안 Chat) — 종류 배지 · 한 줄 */
+function GapList({ gaps }: { gaps: NonNullable<ChatMessage["gaps"]> }) {
   return (
-    <div className="rounded-xl bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))] px-4 py-3 space-y-1.5">
+    <ul className="text-[12.5px] leading-5">
       {gaps.map((g, i) => (
-        <div key={i} className="flex items-start gap-2 text-[13px] leading-relaxed">
-          {g.type === "assumption"
-            ? <Info className="mt-0.5 size-3.5 shrink-0 text-hypothesis" aria-label="가정" />
-            : <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-hypothesis" />}
-          <Badge variant="secondary" className="shrink-0 text-[10px]">{GAP_LABEL[g.type] ?? g.type}</Badge>
-          <span>{g.note}</span>
-        </div>
+        <li key={i} data-gap={g.type} className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-start gap-2.5 border-t py-1.5 first:border-t-0">
+          <Badge variant="secondary" className={cn("h-[22px] w-fit max-w-full justify-start rounded-md border-0 px-2 text-xs font-medium", GAP_TONE[g.type])}>{GAP_LABEL[g.type] ?? g.type}</Badge>
+          <span className="pt-0.5">{g.note}</span>
+        </li>
       ))}
-    </div>
+    </ul>
   )
 }
 
-/** 완료된 어시스턴트 메시지 — 메타 · 과정 · 본문(인라인 인용) · 갭 · 근거 · 액션 */
-export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
+/** 답변 아래 묶음 상자 — 폰에서는 접힌 줄(4i) */
+function AnswerBox({ title, phone, children }: { title: string; phone: boolean; children: ReactNode }) {
+  if (phone) return <FoldRow title={title}>{children}</FoldRow>
+  return (
+    <section className="rounded-xl border bg-card px-4 py-3">
+      <h3 className="pb-1 text-[13px] font-semibold">{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+/** '스터디로 보내기' — 답변을 고른 스터디 프로젝트에 자료로 넣는다. 프로젝트 목록은 메뉴를 열 때만 읽는다 */
+function SendToStudy({ m, threadTitle }: { m: ChatMessage; threadTitle: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="max-md:h-10"><BookOpen className="size-3.5" aria-hidden />스터디로 보내기</Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        {open && <StudyMenuItems m={m} threadTitle={threadTitle} />}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function StudyMenuItems({ m, threadTitle }: { m: ChatMessage; threadTitle: string }) {
+  const projects = useProjects()
+  const { sendAnswer } = useChatStudy()
+  const navigate = useNavigate()
+  const send = (projectId: number, projectTitle?: string) => sendAnswer.mutate({ projectId, projectTitle, threadTitle, message: m }, {
+    onSuccess: r => toast.success(`‘${r.title}’에 답변을 넣었습니다.`, { action: { label: "열기", onClick: () => navigate(`/study/projects/${r.id}`) } }),
+    onError: () => toast.error("스터디에 넣지 못했습니다. 다시 시도해 주세요."),
+  })
+  return <>
+    <DropdownMenuItem onSelect={() => send(0)}>새 프로젝트 ‘{threadTitle.length > 24 ? threadTitle.slice(0, 24) + "…" : threadTitle}’</DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">기존 프로젝트</DropdownMenuLabel>
+    {projects.isLoading && <div className="px-2 py-1.5"><Skeleton className="h-4 w-3/4" /></div>}
+    {projects.isError && <p className="px-2 py-1.5 text-xs text-destructive">목록을 불러오지 못했습니다.</p>}
+    {projects.data?.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">프로젝트가 없습니다.</p>}
+    {projects.data?.slice(0, 8).map(p => <DropdownMenuItem key={p.id} onSelect={() => send(p.id, p.title)}><span className="truncate">{p.title}</span></DropdownMenuItem>)}
+  </>
+}
+
+/** 완료된 어시스턴트 메시지 (시안 Chat) — 머리 · 본문(인라인 인용) · 행동 · 확인하지 못한 것 · 출처 · 이어 물을 질문 */
+export function AssistantMessage({ m, isLast, carried, onQuote, onPick, conversationId, threadTitle, onRegenerate }: {
   m: ChatMessage
   /** 마지막 답변에만 후속 질문을 보인다 — 스레드에 낡은 제안이 쌓이지 않게 */
   isLast?: boolean
@@ -154,6 +196,12 @@ export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
   onQuote?: (q: QuoteRef) => void
   /** 후속 질문을 컴포저에 채우기 */
   onPick?: (q: string) => void
+  /** 저장(북마크) 목적지 — 없으면 저장 버튼을 숨긴다 */
+  conversationId?: number | null
+  /** 스터디 자료 제목 — 없으면 '스터디로 보내기'를 숨긴다 */
+  threadTitle?: string | null
+  /** 같은 질문을 다시 보내 새 답을 받는다 — 마지막 답변·생성 중 아님일 때만 넘긴다 */
+  onRegenerate?: () => void
 }) {
   const { copied, copy } = useCopy()
   const body = useMemo(() => linkifyCitations(m.content, m.citations), [m.content, m.citations])
@@ -164,10 +212,10 @@ export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
   const leftover = (isLast && carried) || []
   const phone = useMediaQuery(MOBILE_QUERY)
   const parts = useMemo(() => phone ? splitSections(body) : null, [phone, body])
+  const firstLine = m.content.replace(/[#*>`_[\]]/g, "").split("\n").map(x => x.trim()).find(Boolean)?.slice(0, 120) ?? null
   return (
-    <article className="group/msg space-y-2">
-      <MetaRow model={m.model} createdAt={m.created_at} />
-      {m.route && <RouteRow route={m.route} />}
+    <article className="group/msg space-y-3" data-answer={m.id}>
+      <MetaRow model={m.model} createdAt={m.created_at} route={m.route} />
       <div ref={bodyRef} className="relative">
         <TooltipProvider delayDuration={150}>
           {parts ? <>
@@ -185,31 +233,31 @@ export function AssistantMessage({ m, isLast, carried, onQuote, onPick }: {
       {/* 시세 근거를 인용한 답변 — 같은 스냅샷을 차트로 (종목 1=종가, 2+=등락률 비교) */}
       {prices && <PriceChartCard targets={prices.targets} days={prices.days} />}
 
-      {m.gaps && m.gaps.length > 0 && (phone
-        ? <FoldRow title={`이 답에서 확인하지 못한 것 ${m.gaps.length}`}><Gaps gaps={m.gaps} /></FoldRow>
-        : <Gaps gaps={m.gaps} />)}
-
-      {m.citations && m.citations.length > 0 && (phone
-        ? <FoldRow title={`출처 ${m.citations.length}건`}><Sources citations={m.citations} /></FoldRow>
-        : <Sources citations={m.citations} />)}
-
-      <div className="flex gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100 max-md:opacity-100">
-        <Button variant="ghost" size="icon-xs" aria-label="답변 복사" onClick={() => copy(m.content)}>
-          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+      {/* 답변 아래 행동 — 복사 · 저장 · 스터디로 보내기 · 다시 답변 */}
+      <div className="-ml-2 flex flex-wrap items-center gap-0.5" data-answer-actions>
+        <Button variant="ghost" size="sm" className="max-md:h-10" onClick={() => copy(m.content)}>
+          {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}{copied ? "복사됨" : "복사"}
         </Button>
+        {conversationId && <SaveButton kind="chat" refId={String(m.id)} url={`/chat?id=${conversationId}`} title={threadTitle || "AI 답변"} subtitle={firstLine} showLabel className="max-md:h-10" />}
+        {threadTitle && <SendToStudy m={m} threadTitle={threadTitle} />}
+        {onRegenerate && <Button variant="ghost" size="sm" className="max-md:h-10" onClick={onRegenerate}><RotateCcw className="size-3.5" aria-hidden />다시 답변</Button>}
       </div>
+
+      {m.gaps && m.gaps.length > 0 && <AnswerBox phone={phone} title={phone ? `이 답에서 확인하지 못한 것 ${formatNumber(m.gaps.length)}` : "이 답에서 확인하지 못한 것"}><GapList gaps={m.gaps} /></AnswerBox>}
+
+      {m.citations && m.citations.length > 0 && <AnswerBox phone={phone} title={`출처 ${formatNumber(m.citations.length)}${phone ? "건" : ""}`}><SourceList citations={m.citations} answeredAt={m.created_at} /></AnswerBox>}
 
       {onPick && (followUps.length > 0 || leftover.length > 0) && <FollowUps items={followUps} carried={leftover} onPick={onPick} />}
     </article>
   )
 }
 
-/** 생성 중 — 같은 골격에서 과정 행 자리에 라이브 status, 본문은 초안+캐럿 또는 스켈레톤 (D-130) */
+/** 생성 중 — 같은 골격에서 근거 수집 자리에 라이브 status, 본문은 초안+캐럿 또는 스켈레톤 (D-130) */
 export function StreamingMessage({ draft }: { draft: Draft | null }) {
   return (
     <article className="space-y-2" aria-live="polite" aria-atomic="false">
-      <MetaRow live />
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="secondary" className={cn(AI_BADGE, "animate-pulse")}>AI 답변</Badge>
         <Spinner className="size-3.5" />
         <span>{draft?.status || "질문 분석 중…"}</span>
       </div>

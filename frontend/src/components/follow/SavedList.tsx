@@ -1,7 +1,7 @@
 // 저장됨 목록 — 헤더 Sheet(compact)와 피드 › 저장됨(/feed/saved) 공용 (D-078)
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { Bookmark, Building2, FileBarChart, FileText, Network, X } from "lucide-react"
+import { Bookmark, Building2, FileBarChart, FileText, MessageSquare, Network, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +13,7 @@ const KIND_META: Record<SavedKind, { icon: typeof Bookmark; label: string }> = {
   doc: { icon: FileText, label: "문서" },
   narrative: { icon: Network, label: "내러티브" },
   report: { icon: FileBarChart, label: "리포트" },
+  chat: { icon: MessageSquare, label: "대화" },
 }
 
 /** SQLite datetime('now')는 UTC 공백 포맷 — ISO UTC로 정규화 후 상대시각 */

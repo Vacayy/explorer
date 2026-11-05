@@ -7,16 +7,16 @@ export type Citation = NonNullable<ChatMessage["citations"]>[number]
 
 /** 근거 종류 → 한국어 라벨 (chat_tools 근거 항목 kind) */
 export const KIND_LABEL: Record<string, string> = {
-  study: "스터디 원문·주석", doc: "문서", narrative: "내러티브", edges: "인과", knowledge: "지식", question: "질문",
+  study: "스터디 원문·주석", doc: "자료", disclosure: "공시", narrative: "내러티브", edges: "인과", knowledge: "지식", question: "질문",
   lens: "렌즈", quote: "시세", prices: "시세 추이", regime: "국면", briefing: "브리핑",
   digest: "다이제스트", youtube: "유튜브", signal: "신호", action: "기업활동",
 }
 
 export const GAP_LABEL: Record<string, string> = {
-  unsupported: "근거 부족",
-  contradiction: "모순",
-  stale: "오래된 정보",
-  missing: "빠진 정보",
+  unsupported: "확인 안 된 주장",
+  contradiction: "자료끼리 엇갈림",
+  stale: "오래된 자료",
+  missing: "근거 없음",
   assumption: "가정",
 }
 

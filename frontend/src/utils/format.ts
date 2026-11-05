@@ -164,6 +164,17 @@ export function formatKstDateTime(utc: string | null | undefined): string {
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
+/** UTC 시각(SQLite·ISO) → KST "MM/DD HH:MM", time=false면 "MM/DD" (대화 목록·답변 머리) */
+export function formatKstSlashDate(utc: string | null | undefined, time = true): string {
+  const day = utc && /^\d{4}-(\d{2})-(\d{2})$/.exec(utc);
+  if (day) return `${day[1]}/${day[2]}`;
+  const s = formatKstDateTime(utc);
+  if (s === "-") return s;
+  const [md, hm] = s.split(" ");
+  const slash = md.replace("-", "/");
+  return time ? `${slash} ${hm}` : slash;
+}
+
 /** 시각 → KST "11월 4일 수요일" (홈 대시보드 머리) */
 export function formatKstLongDate(d: Date = new Date()): string {
   return d.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", weekday: "long" });

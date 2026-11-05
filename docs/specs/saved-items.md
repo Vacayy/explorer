@@ -21,8 +21,8 @@
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INTEGER PK | |
-| kind | TEXT | `company` \| `doc` \| `narrative` \| `report` |
-| ref | TEXT | 안정 식별자 — company=stockCode · doc=docId · narrative=narrative_id(**버전 행 PK**) · report=report id(**버전 PK**) |
+| kind | TEXT | `company` \| `doc` \| `narrative` \| `report` \| `chat`(대화 답변, 2026-11-05 개편 4j) |
+| ref | TEXT | 안정 식별자 — company=stockCode · doc=docId · narrative=narrative_id(**버전 행 PK**) · report=report id(**버전 PK**) · chat=`chat_messages.id`(url `/chat?id=대화`) |
 | url | TEXT | 네비게이션 타깃(내러티브·리포트는 해당 버전 URL) |
 | title | TEXT | 저장 시점 제목 스냅샷 |
 | subtitle | TEXT | 보조 스냅샷 — 예: `v3`, topic, 기업명 |

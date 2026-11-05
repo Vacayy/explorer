@@ -299,7 +299,7 @@ export interface ConversationDetail {
     id: number;
     role: string;
     content: string;
-    citations: { n: number; doc_id: number | null; title: string; href?: string | null; kind?: string }[] | null;
+    citations: { n: number; doc_id: number | null; title: string; href?: string | null; kind?: string; published_at?: string | null }[] | null;  // published_at: 수집 자료 게시일(상세 조회 때 붙임)
     gaps: { type: string; note: string }[] | null;
     model: string | null;
     route?: ChatRoute | null;

@@ -59,7 +59,7 @@ it('shortens chip counts the way the board does', () => {
 })
 
 it('counts saved items per type and summarises sources from the health payload only', () => {
-  expect(savedCounts([{ kind: 'doc' }, { kind: 'doc' }, { kind: 'narrative' }])).toEqual({ all: 3, company: 0, doc: 2, narrative: 1, report: 0 })
+  expect(savedCounts([{ kind: 'doc' }, { kind: 'doc' }, { kind: 'narrative' }])).toEqual({ all: 3, company: 0, doc: 2, narrative: 1, report: 0, chat: 0 })
   const s = sourcesSummary([
     { kind: 'telegram', docs_7d: 10, warning: false, collect_enabled: true },
     { kind: 'blog', docs_7d: 0, warning: true, collect_enabled: false },

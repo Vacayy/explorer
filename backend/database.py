@@ -824,8 +824,8 @@ def init_db():
     -- 내러티브·리포트는 버전 행 PK를 ref로 저장(보던 그 버전 고정). UNIQUE(kind, ref)로 토글 멱등.
     CREATE TABLE IF NOT EXISTS saved_items (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind         TEXT NOT NULL,          -- company | doc | narrative | report
-        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id
+        kind         TEXT NOT NULL,          -- company | doc | narrative | report | chat
+        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id | chat_messages.id
         url          TEXT NOT NULL,
         title        TEXT,
         subtitle     TEXT,

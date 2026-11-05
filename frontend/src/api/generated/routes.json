@@ -1263,129 +1263,9 @@
   },
   {
     "method": "get",
-    "path": "/api/stock-prices/{stock_code}/snapshot",
-    "status": 200,
-    "validator": "response180",
-    "source": "frontend",
-    "group": "stock-prices"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/groups/default-watch",
-    "status": 200,
-    "validator": "response181",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/groups",
-    "status": 200,
-    "validator": "response182",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/groups/{group_id}",
-    "status": 200,
-    "validator": "response183",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/groups/{group_id}/signals",
-    "status": 200,
-    "validator": "response184",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/groups/{group_id}/digests",
-    "status": 200,
-    "validator": "response185",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "get",
-    "path": "/api/analysis/strategies",
-    "status": 200,
-    "validator": "response186",
-    "source": "frontend",
-    "group": "analysis"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/groups",
-    "status": 201,
-    "validator": "response187",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/groups/{group_id}/members",
-    "status": 201,
-    "validator": "response188",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "patch",
-    "path": "/api/spine/groups/{group_id}/members/{stock_code}",
-    "status": 200,
-    "validator": "response189",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "delete",
-    "path": "/api/spine/groups/{group_id}/members/{stock_code}",
-    "status": 200,
-    "validator": "response190",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "put",
-    "path": "/api/spine/groups/{group_id}/rules",
-    "status": 200,
-    "validator": "response191",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/groups/{group_id}/evaluate",
-    "status": 200,
-    "validator": "response192",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/groups/{group_id}/reasons",
-    "status": 200,
-    "validator": "response193",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/groups/{group_id}/reasons",
-    "status": 201,
-    "validator": "response194",
-    "source": "frontend",
-    "group": "groups"
-  },
-  {
-    "method": "get",
     "path": "/api/spine/studies/{study_id}",
     "status": 200,
-    "validator": "response195",
+    "validator": "response180",
     "source": "frontend",
     "group": "studies"
   },
@@ -1393,7 +1273,7 @@
     "method": "get",
     "path": "/api/spine/study-projects",
     "status": 200,
-    "validator": "response196",
+    "validator": "response181",
     "source": "frontend",
     "group": "study-projects"
   },
@@ -1401,15 +1281,143 @@
     "method": "get",
     "path": "/api/spine/study-projects/{pid}",
     "status": 200,
-    "validator": "response197",
+    "validator": "response182",
+    "source": "frontend",
+    "group": "study-projects"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/study-projects",
+    "status": 200,
+    "validator": "response183",
     "source": "frontend",
     "group": "study-projects"
   },
   {
     "method": "get",
+    "path": "/api/stock-prices/{stock_code}/snapshot",
+    "status": 200,
+    "validator": "response184",
+    "source": "frontend",
+    "group": "stock-prices"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/groups/default-watch",
+    "status": 200,
+    "validator": "response185",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/groups",
+    "status": 200,
+    "validator": "response186",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/groups/{group_id}",
+    "status": 200,
+    "validator": "response187",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/groups/{group_id}/signals",
+    "status": 200,
+    "validator": "response188",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/groups/{group_id}/digests",
+    "status": 200,
+    "validator": "response189",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "get",
+    "path": "/api/analysis/strategies",
+    "status": 200,
+    "validator": "response190",
+    "source": "frontend",
+    "group": "analysis"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/groups",
+    "status": 201,
+    "validator": "response191",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/groups/{group_id}/members",
+    "status": 201,
+    "validator": "response192",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "patch",
+    "path": "/api/spine/groups/{group_id}/members/{stock_code}",
+    "status": 200,
+    "validator": "response193",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "delete",
+    "path": "/api/spine/groups/{group_id}/members/{stock_code}",
+    "status": 200,
+    "validator": "response194",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "put",
+    "path": "/api/spine/groups/{group_id}/rules",
+    "status": 200,
+    "validator": "response195",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/groups/{group_id}/evaluate",
+    "status": 200,
+    "validator": "response196",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/groups/{group_id}/reasons",
+    "status": 200,
+    "validator": "response197",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/groups/{group_id}/reasons",
+    "status": 201,
+    "validator": "response198",
+    "source": "frontend",
+    "group": "groups"
+  },
+  {
+    "method": "get",
     "path": "/api/spine/search",
     "status": 200,
-    "validator": "response198",
+    "validator": "response199",
     "source": "frontend",
     "group": "search"
   },
@@ -1417,17 +1425,9 @@
     "method": "get",
     "path": "/api/spine/search/today",
     "status": 200,
-    "validator": "response199",
-    "source": "frontend",
-    "group": "search"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/study-projects",
-    "status": 200,
     "validator": "response200",
     "source": "frontend",
-    "group": "study-projects"
+    "group": "search"
   },
   {
     "method": "get",

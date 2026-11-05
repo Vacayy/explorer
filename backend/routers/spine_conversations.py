@@ -98,16 +98,31 @@ def get_conversation(conversation_id: int):
             attached_documents.append(dict(row))
     project = conn.execute('SELECT id,title FROM study_projects WHERE conversation_id=?',(conversation_id,)).fetchone()
     study = conn.execute('SELECT id,title FROM study_sessions WHERE conversation_id=?',(conversation_id,)).fetchone()
+    citations = {m["id"]: _with_published_at(conn, json.loads(m["citations_json"]))
+                 for m in msgs if m["citations_json"]}
     conn.close()
     return ConversationDetail(
         study=dict(study) if study else None, study_project=dict(project) if project else None,
         id=conv["id"], title=conv["title"], channel=conv["channel"], attached_documents=attached_documents,
         messages=[ChatMessage(
             id=m["id"], role=m["role"], content=m["content"],
-            citations=json.loads(m["citations_json"]) if m["citations_json"] else None,
+            citations=citations.get(m["id"]),
             gaps=json.loads(m["gaps_json"]) if m["gaps_json"] else None,
             model=m["model"], route=json.loads(m["route_json"]) if m["route_json"] else None,
             created_at=m["created_at"]) for m in msgs])
+
+
+def _with_published_at(conn, citations: list | None) -> list | None:
+    """수집 자료 인용에 게시일(`published_at`)을 붙인다 — 출처 목록 날짜 열(ia-redesign §4.14). 저장된 인용은 바꾸지 않는다."""
+    if not isinstance(citations, list):
+        return citations
+    ids = sorted({c["doc_id"] for c in citations if isinstance(c, dict) and isinstance(c.get("doc_id"), int)})
+    dates = {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        dates = {r["id"]: r["published_at"] for r in conn.execute(
+            f"SELECT id, published_at FROM raw_documents WHERE id IN ({marks})", ids)}
+    return [{**c, "published_at": dates.get(c.get("doc_id"))} if isinstance(c, dict) else c for c in citations]
 
 
 def _sse(event: str, data: dict) -> str:
