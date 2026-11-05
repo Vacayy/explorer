@@ -31,7 +31,7 @@ export function AnalysisConditions({ spec, priceAdjustment, definitions: supplie
   ]
   return <section aria-label="적용한 분석 조건" className="space-y-2">
     <div className="flex flex-wrap gap-2">{conditions.map(condition => <Badge key={condition} variant="secondary" className="whitespace-normal font-normal">{condition}</Badge>)}</div>
-    {spec.expression && <div className="rounded-lg bg-muted/50 p-3 text-caption"><ExpressionCondition node={spec.expression} definitions={definitions} /></div>}
+    {spec.expression && <div className="bg-muted/50 p-3 text-caption"><ExpressionCondition node={spec.expression} definitions={definitions} /></div>}
     {spec.universe_codes != null && <p className="text-caption text-muted-foreground">이전 후보 {spec.universe_codes.length}종목으로 검색 범위 제한</p>}
     <p className="text-caption text-muted-foreground">
       {priceAdjustment === 'adjusted' ? '수정주가 이력 사용' : '수정주가 여부 미확인'}

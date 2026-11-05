@@ -188,7 +188,7 @@ function AddMember({ detail }: { detail: StockGroupDetail }) {
 function SignalHistory({ groupId }: { groupId: number }) {
   const signals = useGroupSignals(groupId, 30)
   const byDate = useMemo(() => { const map = new Map<string, NonNullable<typeof signals.data>>(); for (const signal of signals.data ?? []) map.set(signal.as_of, [...(map.get(signal.as_of) ?? []), signal]); return [...map.entries()] }, [signals.data])
-  return <Collapsible defaultOpen className="rounded-xl bg-card px-4 py-2">
+  return <Collapsible defaultOpen className="border bg-card px-4 py-2">
     <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto w-full justify-between whitespace-normal text-left">최근 30일 신호 {signals.data ? `· ${formatNumber(signals.data.length)}건` : ''}<ChevronDown className="size-4 shrink-0" /></Button></CollapsibleTrigger>
     <CollapsibleContent className="space-y-3 pb-3 pt-2">
       {signals.isPending && <Skeleton className="h-16 w-full" />}
@@ -241,10 +241,10 @@ function RuleEditor({ detail, code, onSaved }: { detail: StockGroupDetail; code:
   return <div className="space-y-5 pt-4">
     <section className="space-y-2" aria-label="현재 조건">
       {rules.length === 0 && <p className="text-sm text-muted-foreground">{code ? '이 종목에만 붙은 조건이 없습니다.' : '조건이 없습니다. 아래에서 전략을 골라 추가하세요.'}</p>}
-      {rules.map((rule, index) => <div key={ruleKey(rule)} className="flex items-start justify-between gap-2 rounded-lg border p-3"><div className="min-w-0"><p className="text-sm font-medium">{labelOf(rule.strategy_id)}</p><p className="text-caption text-muted-foreground">{paramsText({ params: rule.params ?? {} }) || '기본 매개변수'} · 최근 {rule.within_days ?? 1}거래일{rule.source_strategy_id ? ' · 저장 전략에서 복사' : ''}</p></div><Button variant="ghost" size="icon-sm" aria-label={`${labelOf(rule.strategy_id)} 조건 제거`} onClick={() => setRules(rules.filter((_, i) => i !== index))}><Trash2 className="size-4" /></Button></div>)}
-      {inherited.length > 0 && <div className="space-y-1 rounded-lg bg-muted/50 p-3"><p className="text-caption font-medium text-muted-foreground">기본 조건에서 이어받음</p>{inherited.map(rule => <p key={rule.id} className="text-caption text-muted-foreground">{rule.label} · {paramsText(rule) || '기본 매개변수'}</p>)}</div>}
+      {rules.map((rule, index) => <div key={ruleKey(rule)} className="flex items-start justify-between gap-2 border p-3"><div className="min-w-0"><p className="text-sm font-medium">{labelOf(rule.strategy_id)}</p><p className="text-caption text-muted-foreground">{paramsText({ params: rule.params ?? {} }) || '기본 매개변수'} · 최근 {rule.within_days ?? 1}거래일{rule.source_strategy_id ? ' · 저장 전략에서 복사' : ''}</p></div><Button variant="ghost" size="icon-sm" aria-label={`${labelOf(rule.strategy_id)} 조건 제거`} onClick={() => setRules(rules.filter((_, i) => i !== index))}><Trash2 className="size-4" /></Button></div>)}
+      {inherited.length > 0 && <div className="space-y-1 bg-muted/50 p-3"><p className="text-caption font-medium text-muted-foreground">기본 조건에서 이어받음</p>{inherited.map(rule => <p key={rule.id} className="text-caption text-muted-foreground">{rule.label} · {paramsText(rule) || '기본 매개변수'}</p>)}</div>}
     </section>
-    <section className="space-y-3 rounded-lg border p-3" aria-label="조건 추가">
+    <section className="space-y-3 border p-3" aria-label="조건 추가">
       <p className="text-sm font-medium">조건 추가</p>
       {catalog.isPending && <Skeleton className="h-9 w-full" />}
       {catalog.isError && <ErrorState message="전략 목록을 불러오지 못했습니다." onRetry={() => catalog.refetch()} />}

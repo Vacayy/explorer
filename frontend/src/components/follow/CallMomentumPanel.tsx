@@ -52,7 +52,7 @@ export function CandidateCard({ c }: { c: CallMomentumCandidate }) {
     </CardHeader>
     <CardContent className="space-y-3">
       {c.accel?.on && <p className="text-sm"><span className="font-medium text-up-ink">기대 초과 가속</span> · {accelText(c.accel)}</p>}
-      {c.summary && <div className="rounded-lg bg-muted/50 px-3 py-2.5">
+      {c.summary && <div className="bg-muted/50 px-3 py-2.5">
         <p className="text-caption text-hypothesis">AI 요약 · 아래 근거로 작성</p>
         <p className="mt-1 text-sm leading-relaxed">{c.summary}</p>
       </div>}

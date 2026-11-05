@@ -380,9 +380,9 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
         <CardContent className="space-y-3">
           <Fold icon={<Sparkles className="h-4 w-4 text-hypothesis" />} label="핵심 정리 (컨콜 전체)">
             {digest ? (
-              <div className="rounded-lg bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
+              <div className="bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
             ) : computed.isFetching ? (
-              <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
+              <div className="bg-muted/40 px-4 py-3 space-y-2">
                 <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
                 <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
               </div>
@@ -420,7 +420,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
           )}
           {/* 원문 전문 (펼침) */}
           <Fold icon={<FileText className="h-4 w-4" />} label="원문 전문">
-            <div className="max-h-[60vh] overflow-y-auto rounded-lg border px-4 py-3 text-sm">
+            <div className="max-h-[60vh] overflow-y-auto border px-4 py-3 text-sm">
               <Markdown>{data.body}</Markdown>
             </div>
           </Fold>

@@ -431,7 +431,7 @@
   color: var(--foreground);
 }
 .page-layout { width: 100%; min-width: 0; container: page / inline-size; }
-.page-layout-frame { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+.page-layout-frame { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
 .page-layout-slot { flex: none; min-width: 0; }
 .page-layout-body { min-width: 0; min-height: 0; }
 .split-workspace { display: flex; flex-direction: column; gap: 1.5rem; min-height: 0; }

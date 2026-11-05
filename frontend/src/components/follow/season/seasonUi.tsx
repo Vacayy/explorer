@@ -70,7 +70,7 @@ export function VerdictBadge({ verdict }: { verdict: string | null | undefined }
 export const SHORT_REASON: Record<CoreReason, string> = { cap: "시총", mention: "언급", holding_chain: "보유 체인", dc_chain: "DC 체인", pinned: "고정" }
 
 export const CoreBadge = ({ core }: { core: CoreReason[] | undefined }) =>
-  core?.length ? <Badge variant="outline" className="border-primary/40 font-normal text-primary">핵심</Badge> : null
+  core?.length ? <Badge variant="outline">핵심</Badge> : null
 
 /** 발표 전 기대 준비 상태 — qualitative는 정성 정리(쟁점·기준)까지 있는지 */
 export function expectationStatus(e: { d7: boolean; d1: boolean; qualitative: boolean } | null | undefined) {

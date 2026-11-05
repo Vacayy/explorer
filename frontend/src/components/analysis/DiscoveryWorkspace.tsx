@@ -90,8 +90,8 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
     onChange={setDraft} onRunNow={runNow} runDisabled={!ready || computing || runLoading} /> : <Skeleton className="h-64 w-full" />
 
   if (inSheet && desktop) return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
-    <section aria-label="조건 목록" className="max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-3">{palette}</section>
-    <section aria-label="내 조건" className="@container max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-3">{stack}</section>
+    <section aria-label="조건 목록" className="max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-4">{palette}</section>
+    <section aria-label="내 조건" className="@container max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-4">{stack}</section>
   </div>
 
   if (!desktop) return <div className="min-w-0 surface-stack">
@@ -99,15 +99,15 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
       <CollapsibleTrigger asChild><Button variant="ghost" className="min-h-11 w-full justify-between">조건 목록·빠른 시작<ChevronDown className="size-4" /></Button></CollapsibleTrigger>
       <CollapsibleContent className="max-h-[60vh] overflow-y-auto border-t p-3">{palette}</CollapsibleContent>
     </Collapsible>
-    <section aria-label="내 조건" className="@container rounded-card border bg-card p-3">{stack}</section>
+    <section aria-label="내 조건" className="@container rounded-card border bg-card p-4">{stack}</section>
     {results && <section aria-label="결과" className="min-w-0">{results}</section>}
   </div>
 
   return <ResizablePanelGroup orientation="horizontal" className="min-h-[36rem] flex-1 rounded-card border bg-card">
-    <ResizablePanel defaultSize="22%" minSize="16%"><div aria-label="조건 목록 패널" className="h-full overflow-y-auto overscroll-contain p-3">{palette}</div></ResizablePanel>
+    <ResizablePanel defaultSize="25%" minSize="16%"><div aria-label="조건 목록 패널" className="h-full overflow-y-auto overscroll-contain p-4">{palette}</div></ResizablePanel>
     <ResizableHandle withHandle />
-    <ResizablePanel defaultSize="30%" minSize="22%"><div aria-label="내 조건 패널" className="@container h-full overflow-y-auto overscroll-contain p-3">{stack}</div></ResizablePanel>
+    <ResizablePanel defaultSize="25%" minSize="20%"><div aria-label="내 조건 패널" className="@container h-full overflow-y-auto overscroll-contain p-4">{stack}</div></ResizablePanel>
     <ResizableHandle withHandle />
-    <ResizablePanel defaultSize="48%" minSize="30%"><div aria-label="결과 패널" className="h-full overflow-y-auto overscroll-contain p-3">{results}</div></ResizablePanel>
+    <ResizablePanel defaultSize="50%" minSize="30%"><div aria-label="결과 패널" className="h-full overflow-y-auto overscroll-contain p-4">{results}</div></ResizablePanel>
   </ResizablePanelGroup>
 }

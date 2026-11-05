@@ -65,7 +65,7 @@ export function QuestionRefiner({ question, disabled = false, onApply }: { quest
       <CardContent className="space-y-5">
         {result.conditions.length > 0 && <section className="space-y-2" aria-label="구체화한 조건">
           <p className="text-caption font-medium text-muted-foreground">계산 조건</p>
-          {result.conditions.map((condition, index) => <div key={`${condition.strategy_id ?? 'text'}-${index}`} className="space-y-1 rounded-lg border p-3">
+          {result.conditions.map((condition, index) => <div key={`${condition.strategy_id ?? 'text'}-${index}`} className="space-y-1 border p-3">
             {condition.alternatives.length > 0 ? <Select value={String(choices[index] ?? 0)} onValueChange={value => setChoices({ ...choices, [index]: Number(value) })}>
               <SelectTrigger aria-label={`${condition.source || condition.text} 해석 선택`} className="h-auto min-h-9 whitespace-normal text-left"><SelectValue /></SelectTrigger>
               <SelectContent>{[condition, ...condition.alternatives].map((option, optionIndex) => <SelectItem key={optionIndex} value={String(optionIndex)}>{option.text}</SelectItem>)}</SelectContent>
@@ -73,7 +73,7 @@ export function QuestionRefiner({ question, disabled = false, onApply }: { quest
             <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">{condition.source && <span>원문 “{condition.source}”</span>}{CONFIDENCE[condition.confidence] && <Badge variant="outline" className="font-normal text-hypothesis">{CONFIDENCE[condition.confidence]}</Badge>}</p>
           </div>)}
         </section>}
-        {result.unsupported.length > 0 && <section className="space-y-1 rounded-lg bg-warn/10 p-3" aria-label="평가할 수 없는 조건">
+        {result.unsupported.length > 0 && <section className="space-y-1 bg-warn-tint p-3" aria-label="평가할 수 없는 조건">
           <p className="flex items-center gap-1 text-sm font-medium"><AlertTriangle className="size-4" />지금 자료로는 평가할 수 없는 조건</p>
           <ul className="list-disc space-y-1 pl-5 text-sm">{result.unsupported.map((item, index) => <li key={index}>{item.text}<span className="text-muted-foreground"> — {item.reason}</span></li>)}</ul>
           <p className="text-caption text-muted-foreground">이 조건은 검색 문장에서 빠집니다. 후보가 나오면 기업 조사에서 따로 확인하세요.</p>
@@ -89,7 +89,7 @@ export function QuestionRefiner({ question, disabled = false, onApply }: { quest
         </section>}
         <section className="space-y-2" aria-label="다듬은 문장">
           <p className="text-caption font-medium text-muted-foreground">다듬은 문장</p>
-          <pre className="whitespace-pre-wrap break-words rounded-lg bg-muted p-3 font-sans text-sm">{composed}</pre>
+          <pre className="whitespace-pre-wrap break-words bg-muted p-3 font-sans text-sm">{composed}</pre>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-caption text-muted-foreground">반영 후에도 문장을 직접 고칠 수 있습니다. 검색 시 이 문장을 다시 해석합니다.</p>
             <Button type="button" size="sm" onClick={() => onApply(composed)}>입력창에 반영</Button>

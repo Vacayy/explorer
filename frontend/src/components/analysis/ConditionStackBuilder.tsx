@@ -96,30 +96,30 @@ export function ConditionPalette({ draft, definitions, busy, onChange }: {
   }
   return <div className="min-w-0 space-y-5">
     <section aria-label="빠른 시작" className="space-y-2">
-      <h3 className="text-sm font-medium">빠른 시작</h3>
-      <ToggleGroup type="single" value={group} onValueChange={value => { if (value) changeGroup(value as ScenarioGroup) }} variant="outline" size="sm" aria-label="빠른 시작 범위" className="max-w-full flex-wrap justify-start">{SCENARIO_GROUPS.map(option => <ToggleGroupItem key={option.id} value={option.id} disabled={busy} className="min-h-9 px-2.5 text-caption">{option.label}</ToggleGroupItem>)}</ToggleGroup>
+      <h3 className="text-section font-semibold">빠른 시작</h3>
+      <ToggleGroup type="single" value={group} onValueChange={value => { if (value) changeGroup(value as ScenarioGroup) }} size="sm" aria-label="빠른 시작 범위" className="max-w-full flex-wrap justify-start">{SCENARIO_GROUPS.map(option => <ToggleGroupItem key={option.id} value={option.id} disabled={busy} className="h-[30px] px-3 max-md:min-h-9">{option.label}</ToggleGroupItem>)}</ToggleGroup>
       {presets.isError && <ErrorState message="빠른 시작 조건을 불러오지 못했습니다." onRetry={() => presets.refetch()} />}
       {presets.isPending && <div className="space-y-1">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>}
       <ul className="space-y-1">{scenarios.map(scenario => {
         const conditions = presetConditions(scenario.id)
         const applied = conditions.length > 0 && conditions.every(c => stacked.has(c.strategy_id))
         return <li key={scenario.id}><Button type="button" variant="ghost" disabled={busy || !conditions.length} aria-pressed={applied} title={scenario.purpose}
-          className={`h-auto min-h-10 w-full justify-between gap-2 whitespace-normal px-2 py-1.5 text-left font-normal ${applied ? 'bg-primary/5 text-primary' : ''}`} onClick={() => togglePreset(scenario.id)}>
-          <span className="min-w-0"><span className="block break-keep text-sm">{scenario.name}</span><span className="block text-caption text-muted-foreground">{scenario.tag} · 조건 {conditions.length || '–'}개</span></span>
+          className={`h-auto min-h-10 w-full justify-between gap-2 whitespace-normal px-2 py-1.5 text-left font-normal ${applied ? 'bg-chip text-ink' : ''}`} onClick={() => togglePreset(scenario.id)}>
+          <span className="min-w-0"><span className="block break-keep text-[13px]">{scenario.name}</span><span className="block text-caption text-muted-foreground">{scenario.tag} · 조건 {conditions.length || '–'}개</span></span>
           {applied ? <Check className="size-4 shrink-0" aria-hidden="true" /> : <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
         </Button></li>
       })}</ul>
     </section>
     <section aria-label="조건 목록" className="space-y-2">
-      <h3 className="text-sm font-medium">조건 목록 <span className="font-normal text-muted-foreground">{definitions.length}</span></h3>
-      <div className="relative"><Label htmlFor="stack-search" className="sr-only">조건 찾기</Label><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="stack-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="이평, 신고가, RSI…" className="min-h-10 pl-9" /></div>
+      <h3 className="text-section font-semibold">조건 목록 <span className="tabular-nums">{definitions.length}</span></h3>
+      <div className="relative"><Label htmlFor="stack-search" className="sr-only">조건 찾기</Label><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="stack-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="이평, 신고가, RSI…" className="h-[34px] pl-9 max-md:min-h-10" /></div>
       {!visible.length ? <div className="space-y-2 py-6 text-center"><p className="text-sm text-muted-foreground">검색어에 맞는 조건이 없습니다.</p><Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>검색 지우기</Button></div>
         : <div className="space-y-4">{CATEGORIES.map(category => {
           const items = visible.filter(d => d.category === category)
-          return items.length > 0 && <div key={category} className="space-y-1"><h4 className="px-1 text-caption font-medium text-muted-foreground">{category} {items.length}</h4><ul>{items.map(definition => {
+          return items.length > 0 && <div key={category} className="space-y-1"><h4 className="px-1 pb-0.5 pt-1.5 text-caption text-muted-foreground">{category} {items.length}</h4><ul>{items.map(definition => {
             const on = stacked.has(definition.id)
             return <li key={definition.id} className="flex items-center gap-1">
-              <Button type="button" variant="ghost" disabled={busy || (!on && full)} aria-pressed={on} className={`h-auto min-h-9 min-w-0 flex-1 justify-between gap-2 whitespace-normal px-2 py-1.5 text-left text-sm font-normal ${on ? 'bg-primary/5 text-primary' : ''}`}
+              <Button type="button" variant="ghost" disabled={busy || (!on && full)} aria-pressed={on} className={`h-auto min-h-9 min-w-0 flex-1 justify-between gap-2 whitespace-normal px-2 py-1.5 text-left text-[13px] font-normal ${on ? 'bg-chip text-ink' : ''}`}
                 onClick={() => onChange(on ? removeFrom(draft, [definition.id]) : addTo(draft, [{ strategy_id: definition.id, params: { ...definition.defaults }, within_days: 1 }]))}>
                 <span className="min-w-0 break-keep">{definition.label}{!definition.available && <Badge variant="secondary" className="ml-1.5 font-normal">자료 필요</Badge>}</span>
                 {on ? <Check className="size-4 shrink-0" aria-hidden="true" /> : <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
@@ -146,14 +146,14 @@ export function ConditionStack({ draft, definitions, busy, computing, result, re
   const patch = (next: Partial<PurposeDraft>) => onChange({ ...draft, ...next })
   return <form aria-label="쌓은 검색 조건" onSubmit={event => { event.preventDefault(); onRunNow() }} className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="text-sm font-medium">내 조건 {active.length}/{draft.conditions.length} <span className="font-normal text-muted-foreground">· 모두 만족</span></h3>
+      <h3 className="text-section font-semibold">내 조건 {active.length}/{draft.conditions.length} · 모두 만족</h3>
       {draft.conditions.length > 0 && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => patch({ conditions: [], off: [] })}>모두 비우기</Button>}
     </div>
     {draft.universe && <div className="flex items-center justify-between gap-2 border bg-muted/40 px-3 py-2 text-sm">
       <span className="min-w-0 truncate">검색 범위 · {draft.universe.label} <span className="tabular-nums text-muted-foreground">{formatNumber(draft.universe.codes.length)}종목</span></span>
       <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => patch({ universe: null })} aria-label="검색 범위 지우기">지우기</Button>
     </div>}
-    {!draft.conditions.length ? <div className="rounded-xl border border-dashed p-6 text-center"><p className="text-sm font-medium">아직 쌓인 조건이 없습니다</p><p className="mt-1 text-caption text-muted-foreground">빠른 시작이나 조건 목록의 +로 블록을 추가하세요.</p></div>
+    {!draft.conditions.length ? <div className="border border-dashed border-line-2 p-6 text-center"><p className="text-sm font-medium">아직 쌓인 조건이 없습니다</p><p className="mt-1 text-caption text-muted-foreground">빠른 시작이나 조건 목록의 +로 블록을 추가하세요.</p></div>
       : <ol className="space-y-2" aria-label="쌓은 조건 블록">{draft.conditions.map((condition, index) => {
         const definition = definitions.find(d => d.id === condition.strategy_id)
         const on = !off.includes(condition.strategy_id)
@@ -165,10 +165,10 @@ export function ConditionStack({ draft, definitions, busy, computing, result, re
           <div className="min-w-0 flex-1 space-y-1">
             {definition ? <StrategyConditionEditor definition={definition} condition={condition} busy={busy}
               onChange={next => patch({ conditions: draft.conditions.map((c, i) => i === index ? next : c) })} onRemove={() => onChange(removeFrom(draft, [condition.strategy_id]))} />
-              : <div className="flex items-center justify-between gap-2 rounded-lg border p-3"><p role="alert" className="text-sm text-destructive">더 이상 지원하지 않는 조건입니다.</p><Button type="button" variant="ghost" size="sm" onClick={() => onChange(removeFrom(draft, [condition.strategy_id]))}>제거</Button></div>}
+              : <div className="flex items-center justify-between gap-2 border p-3"><p role="alert" className="text-sm text-destructive">더 이상 지원하지 않는 조건입니다.</p><Button type="button" variant="ghost" size="sm" onClick={() => onChange(removeFrom(draft, [condition.strategy_id]))}>제거</Button></div>}
             {on && stat && funnel && resultConditions.includes(condition.strategy_id) && <p className={`flex flex-wrap items-center gap-2 pl-1 text-caption text-muted-foreground ${computing ? 'opacity-50' : ''}`}>
               <span className="tabular-nums">통과 {formatNumber(stat.passed)} / {formatNumber(funnel.evaluated)}</span>
-              {!ranked && stat.sole_blocker > 0 && <Badge variant="outline" className={`font-normal tabular-nums ${matched === 0 ? 'border-primary/50 text-primary' : ''}`}>빼면 +{formatNumber(stat.sole_blocker)}종목</Badge>}
+              {!ranked && stat.sole_blocker > 0 && <Badge variant="outline" className={`font-normal tabular-nums ${matched === 0 ? 'text-warn' : ''}`}>빼면 +{formatNumber(stat.sole_blocker)}종목</Badge>}
             </p>}
           </div>
         </li>
@@ -180,7 +180,7 @@ export function ConditionStack({ draft, definitions, busy, computing, result, re
     </fieldset>
     {ranked && <p className="text-caption text-muted-foreground">순위 조건이 있으면 통과 집단에 따라 순위가 달라져 ‘빼면 몇 종목’은 표시하지 않습니다.</p>}
     {/* <768은 하단 탭바가 fixed로 덮으므로 그 위에 붙인다 */}
-    <div className="sticky bottom-0 max-md:bottom-[calc(var(--tabbar-height)+env(safe-area-inset-bottom))] -mx-3 flex flex-wrap items-center justify-between gap-2 border-t bg-card px-3 py-3">
+    <div className="sticky bottom-0 max-md:bottom-[calc(var(--tabbar-height)+env(safe-area-inset-bottom))] -mx-4 flex flex-wrap items-center justify-between gap-2 border-t bg-card px-4 py-3">
       <p role="status" aria-live="polite" className="min-w-0 flex-1 text-caption text-muted-foreground">{status}</p>
       <Button type="submit" className="min-h-10" disabled={runDisabled}>{computing ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}{computing ? '찾는 중…' : `${active.length}개 조건으로 검색`}</Button>
     </div>

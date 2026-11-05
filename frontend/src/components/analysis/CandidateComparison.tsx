@@ -20,7 +20,7 @@ export function CandidateComparison({ runId, result, items, ascending, onClear, 
 }) {
   const ids = [...new Set(items.flatMap(item => Object.keys(item.checks ?? {})))]
   const codes = items.map(item => item.code)
-  return <div className={compact ? 'flex flex-wrap items-center gap-1.5' : 'flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3'} aria-label="후보 비교 선택">
+  return <div className={compact ? 'flex flex-wrap items-center gap-1.5' : 'flex flex-wrap items-center justify-between gap-3 border bg-card p-3'} aria-label="후보 비교 선택">
     {compact ? <span className="text-caption tabular-nums text-muted-foreground" role="status">비교 {items.length}/3</span>
       : <div className="space-y-1"><p className="text-sm font-medium" role="status">비교 {items.length}/3개{items.length > 0 && ` · ${items.map(item => item.name).join(' · ')}`}</p><p className="text-caption text-muted-foreground">목록의 비교 선택란에서 2~3개를 고르세요. 저장된 같은 시점의 판정을 비교합니다.</p></div>}
     <div className="flex gap-2">{items.length > 0 && <Button variant="ghost" size={compact ? 'sm' : 'default'} onClick={onClear}>선택 해제</Button>}

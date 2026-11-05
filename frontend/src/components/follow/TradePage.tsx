@@ -276,7 +276,7 @@ function TradeDetail({ hs }: { hs: string }) {
           <Badge variant="secondary" className="text-[11px]">HS {data.hs_code}</Badge>
         </div>
 
-        <section className="rounded-lg border p-3">
+        <section className="border p-3">
           <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
             <TrendingUp className="h-4 w-4" /> 월별 수출입 (bar, $B) · 수출 YoY (line, %)
           </h4>

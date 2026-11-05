@@ -19,15 +19,16 @@ export default function FilterChips({ options, value, onChange }: Props) {
       type="single"
       value={value}
       onValueChange={(v) => v && onChange(v)}
-      className="flex flex-wrap gap-1.5 w-auto"
+      className="flex w-auto flex-wrap gap-1.5 bg-transparent p-0"
     >
       {options.map((opt) => (
         <ToggleGroupItem
           key={opt.value}
           value={opt.value}
           className={cn(
-            "h-7 px-3 text-xs rounded-lg text-muted-foreground",
-            "data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent data-[state=on]:hover:bg-accent"
+            // 시안 칩: 선 알약, 선택 = 글자색 채움
+            "h-7 rounded-control border border-line-2 px-3 text-xs text-ink-2 shadow-none",
+            "data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:font-medium data-[state=on]:text-action-ink data-[state=on]:shadow-none data-[state=on]:hover:bg-action/85"
           )}
         >
           {opt.label}

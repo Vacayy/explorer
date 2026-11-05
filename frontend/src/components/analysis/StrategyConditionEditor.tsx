@@ -14,7 +14,7 @@ export function StrategyConditionEditor({ condition, definition, busy, onChange,
   condition: StrategyCondition; definition: StrategyDefinition; busy: boolean; onChange: (next: StrategyCondition) => void; onRemove: () => void
 }) {
   const id = useId()
-  return <fieldset disabled={busy} className="min-w-0 space-y-2 rounded-lg border px-3 py-2">
+  return <fieldset disabled={busy} className="min-w-0 space-y-2 border px-3 py-2">
     <legend className="sr-only">{definition.label} 설정</legend>
     <Collapsible className="space-y-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0 space-y-0.5"><h4 className="break-keep text-sm font-medium">{definition.label}</h4><p className="text-caption text-muted-foreground">{[...Object.entries(condition.params).map(([key, value]) => `${definition.parameters[key]?.label ?? key} ${OPTIONS[String(value)] ?? (typeof value === 'boolean' ? value ? '예' : '아니요' : value)}`), condition.within_days === 1 ? '기준일 충족' : `최근 ${condition.within_days || '—'}거래일 중 충족`].join(' · ')}</p></div>
       <div className="flex shrink-0 items-center"><CollapsibleTrigger asChild><Button type="button" variant="ghost" size="sm" className="min-h-9" aria-label={`${definition.label} 조건 수정`}>수정<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><Button type="button" variant="ghost" size="icon-sm" className="size-9" aria-label={`${definition.label} 제거`} onClick={onRemove}><X className="size-4" /></Button></div></div>

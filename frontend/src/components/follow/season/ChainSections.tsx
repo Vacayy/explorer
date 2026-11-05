@@ -39,7 +39,7 @@ export function ChainHeaderLinks({ chain }: { chain: ChainDetail }) {
       <Link to={`/follow/transcripts?view=season&sector=${encodeURIComponent(chain.sector)}`} className="text-xs text-primary hover:underline whitespace-nowrap"
         title="이 섹터의 이번 시즌 반응 보기">{chain.sector_name} ›</Link>
       {core && (
-        <Badge variant="outline" className="border-primary/40 font-normal text-primary"
+        <Badge variant="outline" 
           title={criteria ? core.reasons.map((r) => criteria[r]).join(" · ") : undefined}>
           핵심 · {core.reasons.map((r) => SHORT_REASON[r]).join("·")}
         </Badge>
