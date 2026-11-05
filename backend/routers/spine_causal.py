@@ -48,16 +48,6 @@ class NodeNarrative(BaseModel):
     title: str | None
 
 
-@router.get("/worldview", response_model=Worldview)
-def get_worldview(category: str | None = None):
-    """전체 인과 그래프 — 노드·엣지 + 연결요소(cluster_id). LLM 없음."""
-    from pipeline.narrative_graph import full_causal_graph
-    conn = get_connection()
-    g = full_causal_graph(conn, category=category)
-    conn.close()
-    return Worldview(nodes=g["nodes"], edges=g["edges"])
-
-
 @router.get("/worldview/core", response_model=WorldviewSubgraph)
 def get_worldview_core(limit: int = Query(150, ge=1, le=400), category: str | None = None):
     """흐름 뷰 기본 화면 — 연결 수 상위 노드의 부분 그래프 (D-211). LLM 없음."""

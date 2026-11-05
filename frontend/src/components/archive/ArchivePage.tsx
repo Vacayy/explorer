@@ -1,8 +1,7 @@
-import { Link } from "react-router-dom"
-import { Archive, Map, Settings } from "lucide-react"
+import { Archive, Settings } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -11,13 +10,8 @@ import { formatNumber, formatPercent, formatRatio } from "@/utils/format"
 
 /**
  * /archive — 보관함 (ia-redesign §4.33 · 상단 바 설정 메뉴 › 보관함). 메인 메뉴에서 뺐지만 지우지 않은 화면.
- * 카드가 리다이렉트 목적지를 가리키게 되면 뺀다 — VS 비교는 Peer 성과 비교로 리다이렉트돼(D-300) 뺐고,
- * 산업군 지도는 산업 › 산업·섹터의 '다른 보기'(`/map?view=chains`)로 바로 보낸다.
+ * 카드가 리다이렉트 목적지를 가리키게 되면 뺀다 — VS 비교는 Peer 성과 비교로(D-300), 산업군 지도는 지웠다(D-319).
  */
-const ARCHIVED = [
-  { to: "/map?view=chains", icon: Map, title: "산업군 지도", desc: "수동 밸류체인 맵" },
-] as const
-
 export default function ArchivePage() {
   return (
     <PageContainer width="reading" gap="sm">
@@ -26,21 +20,6 @@ export default function ArchivePage() {
         <Archive aria-hidden="true" className="size-5 text-muted-foreground" />보관함
         <InfoTip label="보관함 설명">자주 쓰지 않아 메인 메뉴에서 뺀 화면입니다. 지운 것이 아니며 여기나 ⌘K로 열 수 있습니다.</InfoTip>
       </h1>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {ARCHIVED.map((a) => (
-          <Link key={a.to} to={a.to}>
-            <Card className="h-full transition-colors hover:bg-muted/40">
-              <CardContent className="flex items-start gap-3 py-3">
-                <a.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <div>
-                  <div className="text-sm font-medium">{a.title}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">{a.desc}</div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
       {/* 신호 성적표 — 탐색 해체로 이관 (D-057). 자주 안 보는 자기검증 도구 */}
       <BacktestSection />
     </PageContainer>

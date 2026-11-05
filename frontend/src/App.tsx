@@ -35,7 +35,6 @@ import HomeMacroPage from "@/components/home/HomeMacroPage"
 import { withSearch } from "@/lib/macroPage"
 import { proxiesUrl } from "@/lib/judgment"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
-import FollowPage from "@/components/follow/FollowPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
 import ValueChainPage from "@/components/explore/ValueChainPage"
@@ -276,10 +275,11 @@ export default function App() {
             <Route path="home/risk" element={<KeepQueryRedirect to="/home/macro" />} />
             <Route path="regimes" element={<KeepQueryRedirect to="/home/macro#history" />} />
             <Route path="proxy-boards" element={<ProxyBoardsRedirect />} />
-            <Route path="follow" element={<FollowPage />} />
+            {/* 옛 관심목록(/follow) → 홈 › 내 종목(D-319). /follow/* 하위 주소는 각자 그대로 */}
+            <Route path="follow" element={<Navigate to="/home/stocks" replace />} />
             <Route path="sources" element={<KeepQueryRedirect to="/admin/sources" />} />
             <Route path="follow/stocks" element={<StocksPage />} />
-            <Route path="follow/universe" element={<Navigate to="/map?view=universe" replace />} />
+            <Route path="follow/universe" element={<Navigate to="/map" replace />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
             <Route path="follow/taiwan" element={<TaiwanPage />} />
@@ -291,7 +291,7 @@ export default function App() {
             <Route path="portfolio/holdings" element={<PortfolioPage tab="holdings" />} />
             <Route path="portfolio/principles" element={<PortfolioPage tab="principles" />} />
             <Route path="portfolio/events" element={<PortfolioPage tab="events" />} />
-            <Route path="stocks" element={<Navigate to="/follow" replace />} />
+            <Route path="stocks" element={<Navigate to="/home/stocks" replace />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="admin" element={<AdminPage />} />
             <Route path="admin/sources" element={<AdminPage />} />
@@ -319,7 +319,7 @@ export default function App() {
             {/* Discovery */}
             <Route path="discover" element={<MarketAnalysisPage />} />
             <Route path="discover/peers" element={<PeerCatalogPage />} />
-            <Route path="discover/industry" element={<Navigate to="/map?view=chains" replace />} />
+            <Route path="discover/industry" element={<Navigate to="/map" replace />} />
             <Route path="discover/screener" element={<Navigate to="/discover" replace />} />
             <Route path="discover/signals" element={<Navigate to="/discover#signals" replace />} />
             <Route path="discover/alt-data" element={<Navigate to="/discover" replace />} />
@@ -355,13 +355,13 @@ export default function App() {
             <Route path="feed/blogs" element={<Navigate to="/feed?source=blog" replace />} />
 
             {/* Research */}
-            <Route path="research" element={<Navigate to="/follow" replace />} />
-            <Route path="research/watchlist" element={<Navigate to="/follow" replace />} />
+            <Route path="research" element={<Navigate to="/home/stocks" replace />} />
+            <Route path="research/watchlist" element={<Navigate to="/home/stocks" replace />} />
             <Route path="research/memos" element={<Navigate to="/follow/stocks" replace />} />
             <Route path="research/catalysts" element={<Navigate to="/portfolio/events" replace />} />
 
             {/* Legacy redirects */}
-            <Route path="industry" element={<Navigate to="/discover/industry" replace />} />
+            <Route path="industry" element={<Navigate to="/map" replace />} />
             <Route path="onchain" element={<Navigate to="/discover" replace />} />
             <Route path="company/:stockCode/:tab" element={<LegacyRedirect />} />
 

@@ -107,7 +107,7 @@
 - [research-memos](research-memos.md) — 화면 기획서: 투자메모 — **제거됨 (D-241)**
 - [research-watchlist](research-watchlist.md) — 화면 기획서: 워치리스트 (대체됨 → portfolio-watch 기본 관심 묶음)
 - [saved-items](saved-items.md) — 저장됨 (Saved / Bookmarks) — 산출물 북마크
-- [sector-aggregation](sector-aggregation.md) — 섹터 집약 — 유니버스 그룹을 커버리지 단위로
+- [sector-aggregation](sector-aggregation.md) — 섹터 집약 — 유니버스 그룹을 커버리지 단위로 (종료: D-319에서 화면·API 제거)
 - [signals-spine](signals-spine.md) — 신호(Signals) 계층 — 척추 위의 파생 분석 (기획 기록)
 - [source-dossier](source-dossier.md) — 소스 도시에 — 채널/블로그 디테일 페이지
 - [telegram-briefing](telegram-briefing.md) — 텔레그램 아침 브리핑 — 읽는 브리핑에서 **누르는 브리핑**으로

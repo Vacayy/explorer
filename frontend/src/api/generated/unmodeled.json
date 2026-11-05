@@ -36,7 +36,7 @@
   },
   {
     "method": "post",
-    "path": "/api/industries/{group_id}/fetch-prices",
+    "path": "/api/industries/{group_id}/members",
     "status": 200
   },
   {
@@ -112,6 +112,11 @@
   {
     "method": "get",
     "path": "/api/spine/groups/{group_id}/evaluations",
+    "status": 200
+  },
+  {
+    "method": "patch",
+    "path": "/api/spine/groups/{group_id}/members/{stock_code}",
     "status": 200
   },
   {

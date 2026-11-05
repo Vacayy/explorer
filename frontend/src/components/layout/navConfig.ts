@@ -32,7 +32,7 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "kr", path: "/home/kr", label: "한국 시장", match: ["/home/kr", "/retail", "/actions"] },
     { key: "us", path: "/home/us", label: "미국 시장", match: ["/home/us", "/home/briefing"] },
     { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro", "/home/risk", "/regimes"] },
-    { key: "stocks", path: "/home/stocks", label: "내 종목", match: ["/home/stocks"] },
+    { key: "stocks", path: "/home/stocks", label: "내 종목", match: ["/home/stocks", "/follow"] },
   ] },
   // 피드 대메뉴(개편 4a단계). 옛 주소 /home?home_view=feed·/follow/saved는 리다이렉트 — 리다이렉트 전 한 프레임도 같은 탭으로 판정
   { key: "feed", label: "피드", path: "/feed", tabs: [
@@ -58,7 +58,7 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "holdings", path: "/portfolio/holdings", label: "보유", match: ["/portfolio/holdings"] },
     { key: "principles", path: "/portfolio/principles", label: "원칙", match: ["/portfolio/principles"] },
     { key: "events", path: "/portfolio/events", label: "일정", match: ["/portfolio/events"] },
-    { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks", "/follow"] },
+    { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks"] },
   ] },
   // key 'world'는 그대로 두고 이름만 Thesis (C안). 소스는 관리자 › 소스(/admin/sources)
   { key: "world", label: "Thesis", path: "/narrative", tabs: [

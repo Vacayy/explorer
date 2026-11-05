@@ -1,6 +1,6 @@
 # 섹터 집약 — 유니버스 그룹을 커버리지 단위로
 
-> 유니버스는 탐색 › 산업·섹터의 `/map?view=universe`로 옮겼다(2026-10-16, [explore-core](explore-core.md) §4).
+> **종료(2026-11-05, D-319)**: 유니버스 화면·섹터 내러티브 API(`GET /api/industries/{id}/narratives`)·섹터 리포트 생성(`POST /api/spine/report/compute-group`)·`pipeline/sector`를 지웠다. 이 문서는 기록으로만 남긴다.
 
 > 2026-07-27 기획 (D-074). 배경: `topic → 1:1 내러티브 → 1:1 리포트`라 topic(잔 테마) 수만큼 파편화.
 > 실측: 반도체 하나가 AI·HBM·소부장·CAPEX 4개 내러티브로 흩어짐. 리포트는 실제로 섹터 뷰/기업 뷰.

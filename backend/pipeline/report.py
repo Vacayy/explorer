@@ -418,29 +418,6 @@ def build_report(conn, anchor_topic: str, force: bool = False) -> dict:
     return _compute_report(conn, anchor_topic, member_narrs, rel, [], force)
 
 
-def build_group_report(conn, group_id: int, force: bool = False) -> dict:
-    """섹터(유니버스 그룹) 앵커 통합 리포트 (D-074 Phase 2) — 그룹을 건드리는 내러티브 + 유니버스 종목 종합.
-    앵커=그룹명. gather는 sector_narratives(집약 뷰) + 커버리지 종목 시드. 나머지 엔진(애널리스트·debate·리드·
-    섹션)은 topic 경로와 공유."""
-    if llm_engine() != "claude-code":
-        return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)"}
-    g = conn.execute("SELECT name FROM industry_groups WHERE id=?", (group_id,)).fetchone()
-    if not g:
-        return {"error": "그룹 없음"}
-    anchor_topic = g["name"]
-    from pipeline.sector import sector_narratives
-    member_narrs = []
-    for s in sector_narratives(group_id)[:8]:   # co_docs 상위 상한 — 섹터는 topic보다 넓되 최약 꼬리 제외
-        m = _latest_narr(conn, s["topic"])
-        if m:
-            member_narrs.append(dict(m))
-    if not member_narrs:
-        return {"error": f"'{anchor_topic}' 섹터에 집약할 내러티브가 없습니다 — 관련 내러티브가 쌓인 뒤 생성하세요"}
-    seed_codes = [r["stock_code"] for r in conn.execute(
-        "SELECT stock_code FROM industry_members WHERE group_id=?", (group_id,)).fetchall()]
-    return _compute_report(conn, anchor_topic, member_narrs, [], seed_codes, force)
-
-
 def _compute_report(conn, anchor_topic: str, member_narrs: list, rel: list,
                     seed_codes: list, force: bool) -> dict:
     """리포트 compute 코어 (topic·group 앵커 공용) — 취합된 member_narrs로 종목 집계→분석→리드→섹션→적재."""

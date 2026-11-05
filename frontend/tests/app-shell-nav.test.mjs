@@ -64,7 +64,6 @@ const CASES = [
   ['/home/kr', '?view=pro', 'home', 'kr'],
   // 산업
   ['/map', '', 'industry', 'sectors'],
-  ['/map', '?view=universe', 'industry', 'sectors'],
   ['/follow/universe', '', 'industry', 'sectors'],
   ['/discover/industry', '', 'industry', 'sectors'],
   ['/map', '?view=map', 'industry', 'sectors'],
@@ -82,7 +81,7 @@ const CASES = [
   ['/portfolio/principles', '', 'portfolio', 'principles'],
   ['/portfolio/events', '', 'portfolio', 'events'],
   ['/follow/stocks', '?group=2', 'portfolio', 'groups'],
-  ['/follow', '', 'portfolio', 'groups'],
+  ['/follow', '', 'home', 'stocks'],   // 옛 관심목록 → 홈 › 내 종목(D-319)
   // Thesis
   ['/narrative', '?topic=AI', 'world', 'now'],
   ['/narrative/history', '', 'world', 'now'],
@@ -195,6 +194,26 @@ test('old home URLs redirect to the fixed home tabs', () => {
     assert.ok(m, `${route} must be a KeepQueryRedirect`)
     assert.equal(m[1], to, route)
   }
+})
+
+// D-319 — 지운 옛 보기는 현행 화면으로. 남긴 보기: /map?view=map, /value-chain?view=lines, /retail
+test('removed old views redirect to the current screens (D-319)', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  for (const [route, to] of [['follow', '/home/stocks'], ['follow/universe', '/map'], ['discover/industry', '/map'], ['industry', '/map'],
+    ['stocks', '/home/stocks'], ['research', '/home/stocks'], ['research/watchlist', '/home/stocks']]) {
+    assert.ok(app.includes(`<Route path="${route}" element={<Navigate to="${to}" replace />} />`), route)
+  }
+  assert.ok(!app.includes('FollowPage'))
+  const sectors = readFileSync(new URL('../src/components/sectors/SectorsPage.tsx', import.meta.url), 'utf8')
+  assert.match(sectors, /if \(raw && !view\) return <Navigate to="\/map" replace \/>/)
+  assert.ok(!/UniversePage|IndustryPage/.test(sectors))
+  const vc = readFileSync(new URL('../src/components/explore/ValueChainPage.tsx', import.meta.url), 'utf8')
+  assert.match(vc, /rawView && rawView !== "lines"/)
+  assert.ok(!vc.includes('sankey"'))
+  const graph = readFileSync(new URL('../src/components/explore/WorldviewPage.tsx', import.meta.url), 'utf8')
+  assert.match(graph, /searchParams\.has\("view"\)/)
+  assert.ok(!graph.includes('ObsidianGraphView'))
+  assert.ok(app.includes('<Route path="retail" element={<RetailHeatPage />} />'))
 })
 
 test('person pages are id-based; the old name URL resolves to /person/:id (§10.6)', () => {

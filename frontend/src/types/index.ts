@@ -88,42 +88,6 @@ export interface IndustryGroup {
   description: string | null;
 }
 
-export interface IndustryMember {
-  id: number;
-  stock_code: string;
-  category: string;
-  corp_name: string;
-  latest_close: number | null;
-  latest_market_cap: number | null;
-  per: number | null;
-  pbr: number | null;
-  op_margin: number | null;
-  roe: number | null;
-  revenue_growth: number | null;
-  op_profit_growth: number | null;
-}
-
-export interface IndustryDetail {
-  group: IndustryGroup;
-  members: IndustryMember[];
-  /** 멤버가 속한 산업 맵 대분류(sector_map) 상위 3 — 두 섹터 체계를 잇는 링크용 */
-  map_groups?: { name: string; members: number }[];
-}
-
-export interface IndustryCandidate {
-  stock_code: string;
-  entity_id: number;
-  name: string;
-  rs_short: number | null;
-  rs_prev: number | null;
-  per: number | null;
-  pbr: number | null;
-  market_cap: number | null;
-  pos_52w: number | null;
-  co_mentions: number | null;
-  relevance: number;
-}
-
 export interface BusinessSegment {
   id: number;
   corp_code: string;

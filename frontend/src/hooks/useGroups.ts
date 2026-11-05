@@ -57,10 +57,6 @@ export function useAddMember() {
   return useGroupWrite(async ({ groupId, ...body }: { groupId: number; stock_code: string; conviction?: number; target_price?: number; thesis?: string }) =>
     (await api.post<StockGroupDetail>(`${ROOT}/${groupId}/members`, body)).data)
 }
-export function useUpdateMember(groupId: number) {
-  return useGroupWrite(async ({ stockCode, ...body }: { stockCode: string; conviction?: number | null; target_price?: number | null; thesis?: string | null }) =>
-    (await api.patch<StockGroupDetail>(`${ROOT}/${groupId}/members/${stockCode}`, body)).data)
-}
 /** 관심 종목 추적(알림 대상) 켜기·끄기 — 응답은 상태만이라 묶음 상세를 다시 읽는다. */
 export function useSetTracked(groupId: number) {
   const client = useQueryClient()

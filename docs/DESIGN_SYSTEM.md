@@ -148,7 +148,7 @@ charts/  lightweight-charts 래퍼
 | 파일 | 사유 |
 |---|---|
 | `actions/RightsProTable.tsx` | sticky 첫 컬럼 + `w-max` 밀집 테이블 — raw table 유지, `overflow-x-auto` 래퍼 필수 |
-| `discovery/ScreenerPage.tsx` · `industry/IndustryPage.tsx` 내부 Th/Td | 정렬 헤더 로컬 헬퍼 — 토큰 준수 확인됨 |
+| `discovery/ScreenerPage.tsx` 내부 Th/Td | 정렬 헤더 로컬 헬퍼 — 토큰 준수 확인됨 |
 | `layout/SubNav.tsx` · `layout/Dock.tsx` 모드 Link | 라우터 연동 네비 — Radix Tabs 의미론(패널 전환)과 다름. Link(pill) 유지. 도크 아이템은 ui/button 기반 |
 
 이 표에 없는 raw HTML atom 사용은 전부 위반이다.

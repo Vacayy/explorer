@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { ReactFlow, Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, Position, MarkerType, getBezierPath, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
@@ -19,7 +19,7 @@ import { KrConfirmStrip } from "@/components/shared/TwLinkSignal"
 import { MetricHint } from "@/components/shared/MetricHint"
 import { Info, X } from "lucide-react"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { MAG_HINT, ValueChainSankey, gravity, streamWidth, type SankeyLane } from "@/components/explore/ValueChainSankey"
+import { MAG_HINT, gravity, streamWidth } from "@/lib/valueChainMagnitude"
 import { useKrConfirm, usePropagation, useValueChain, useValueChainExpectations, useValueChainFlow } from "@/hooks/useTwRevenue"
 import { ExpGapCard, ExpectationPanel } from "@/components/explore/ValueChainExpectations"
 import { ChainReportCard } from "@/components/explore/ChainReportCard"
@@ -167,8 +167,7 @@ export default function ValueChainPage() {
   const { resolvedTheme } = useTheme()
   const isMobile = useIsMobile()
   const selected = params.get("node")
-  const view = params.get("view") === "sankey" ? "sankey" : params.get("view") === "lines" ? "lines" : "grid"
-  const lane = (["ai", "pc", "mobile", "china"].includes(params.get("lane") ?? "") ? params.get("lane") : "all") as SankeyLane
+  const view = params.get("view") === "lines" ? "lines" : "grid"
   const setParam = (k: string, v: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (v) n.set(k, v); else n.delete(k); return n }, { replace: true, preventScrollReset: true })
   // 금액 규모(§14) — 칸 규모·선별 추정 증가액. 흐름 API가 실패해도 지도는 그대로 그린다
   const mag = useMemo(() => {
@@ -221,16 +220,21 @@ export default function ValueChainPage() {
 
   const node = vc.data?.nodes.find(n => n.key === selected)
   const demand = vc.data?.demands.find(d => d.key === selected)
+  // 지운 보기(물줄기 ?view=sankey, D-319)는 기본 지도로 — 그 보기 전용 ?lane=도 버린다
+  const rawView = params.get("view")
+  if (rawView && rawView !== "lines") {
+    const rest = new URLSearchParams(params); rest.delete("view"); rest.delete("lane")
+    return <Navigate to={`/value-chain${rest.size ? `?${rest}` : ""}`} replace />
+  }
 
   return <PageLayout mode="document">
     <div className="surface-stack flex flex-col">
       {vc.data ? <SummaryStrip label="valuechain" cells={vcSummary(vc.data)} /> : vc.isLoading ? <SummaryStripSkeleton /> : null}
-      {/* 밸류체인 지도 — 행 = 단계, 열 = 수요 갈래(§4.8b). 옛 연결선 지도·물줄기는 보기 전환으로 */}
+      {/* 밸류체인 지도 — 행 = 단계, 열 = 수요 갈래(§4.8b). 옛 연결선 지도는 보기 전환으로(물줄기는 지웠다, D-319) */}
       <HomeBlock label="vc.map" title="밸류체인 지도" info={MAP_INFO} asOf={vc.data?.as_of ? `${vc.data.as_of} 공시` : null}
         actions={<ToggleGroup type="single" size="sm" variant="outline" value={view} onValueChange={v => v && setParam("view", v === "grid" ? null : v)} aria-label="보기">
           <ToggleGroupItem value="grid" className="px-2.5 text-xs">지도</ToggleGroupItem>
           <ToggleGroupItem value="lines" className="px-2.5 text-xs">연결선</ToggleGroupItem>
-          <ToggleGroupItem value="sankey" className="px-2.5 text-xs">물줄기</ToggleGroupItem>
         </ToggleGroup>}>
         {vc.isLoading ? <Skeleton className="h-[520px] w-full" />
           : vc.isError ? <ErrorState message="지도를 불러오지 못했습니다." onRetry={() => void vc.refetch()} />
@@ -246,11 +250,7 @@ export default function ValueChainPage() {
             </> : <>
               {flow.isError ? <p className="text-caption text-destructive">금액 규모를 불러오지 못해 원·굵기 없이 그렸습니다.</p>
                 : flow.data && !mag.hasAny && <p className="text-caption text-muted-foreground">규모 데이터가 없어 원·굵기 없이 그렸습니다.</p>}
-              {view === "sankey"
-                ? flow.isLoading ? <Skeleton className="h-[640px] w-full" />
-                  : flow.isError ? <ErrorState message="돈의 물줄기를 그릴 금액 규모를 불러오지 못했습니다." onRetry={() => void flow.refetch()} />
-                  : <ValueChainSankey vc={vc.data} flows={mag.flows} level={mag.level} lane={lane} onLane={l => setParam("lane", l === "all" ? null : l)} onSelect={select} />
-                : <div className="h-[480px] rounded-card border md:h-[680px]">
+              <div className="h-[480px] rounded-card border md:h-[680px]">
                   {/* <768: 전체 맞춤은 글자를 읽을 수 없을 만큼 작아져, 최종 수요 열에서 읽을 수 있는 배율로 시작하고 끌어서 따라간다 */}
                   <ReactFlow key={isMobile ? "m" : "d"} nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
                     {...(isMobile ? { defaultViewport: { x: 8 - graph.demandX * 0.6, y: 28, zoom: 0.6 } } : { fitView: true, fitViewOptions: { padding: 0.02, minZoom: 0.65 } })}
@@ -259,7 +259,7 @@ export default function ValueChainPage() {
                     <Background gap={20} size={1} />
                     <Controls showInteractive={false} />
                   </ReactFlow>
-                </div>}
+                </div>
               {!isMobile && (selected ? <DetailPanel vc={vc.data} node={node} demand={demand} onSelect={select} exp={exp.data?.as_of ? exp.data.nodes[selected] : undefined} expAsOf={exp.data?.as_of ?? null} />
                 : <p role="status" className="text-sm text-muted-foreground">칸을 누르면 구성 회사·한국 종목·앞뒤 칸과의 측정 결과가 보입니다.</p>)}
             </>}

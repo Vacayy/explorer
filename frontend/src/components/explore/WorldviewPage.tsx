@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { useQuery } from "@tanstack/react-query"
 import dagre from "dagre"
@@ -25,15 +25,7 @@ import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/Caus
 import { NodeSourceSummary, type SourceStatus } from "@/components/explore/graph/EdgeSource"
 import { GraphActivitySection } from "@/components/explore/GraphActivitySection"
 
-// 옵시디언 뷰 — force-graph 번들을 메인에서 분리 (토글 시에만 로드)
-const ObsidianGraphView = lazy(() => import("@/components/explore/graph/ObsidianGraphView"))
-
-const VIEW_MODES = [
-  { value: "structure", label: "흐름" },     // 좌→우 인과 흐름 (dagre 시간축)
-  { value: "obsidian", label: "관계망" },    // force 관계망 (옵시디언式)
-] as const
-
-// 엣지 표현 렌즈 (흐름 뷰 전용) — 같은 그래프, 엣지가 답하는 질문만 바꾼다 ("사실은 그래프로, 프레임은 렌즈로")
+// 엣지 표현 렌즈 — 같은 그래프, 엣지가 답하는 질문만 바꾼다 ("사실은 그래프로, 프레임은 렌즈로")
 const EDGE_MODES = [
   { value: "epistemic", label: "인식 상태" },   // 반박·플라이휠·교차검증 (기본)
   { value: "effect", label: "효과 흐름" },       // 방향(색)·크기(굵기) — D-065·D-066
@@ -80,7 +72,6 @@ const LENS_LABEL: Record<string, string> = {
 const LENSES = Object.keys(LENS_LABEL)
 const NODE_W = 150
 const NODE_H = 44
-const MIN_CLUSTER = 3   // 이보다 작은 연결요소(고립된 2노드 조각)는 기본 숨김 — 노이즈 감소
 
 // 노드 중력 (D-030) — 느린 층일수록 크고 무겁게. 크기는 dagre 레이아웃에도 반영.
 const LAYER_SIZE: Record<string, { w: number; h: number }> = {
@@ -143,12 +134,6 @@ export default function WorldviewPage() {
   const isDark = resolvedTheme === "dark"
   const [fullscreen, setFullscreen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
-  const view = searchParams.get("view") === "obsidian" ? "obsidian" : "structure"   // URL=상태 소스 (stale 값은 structure로)
-  const setView = (v: string) => setSearchParams((p) => {
-    const n = new URLSearchParams(p)
-    if (v === "structure") n.delete("view"); else n.set("view", v)
-    return n
-  }, { replace: true })
   const edgeMode = searchParams.get("edges") === "effect" ? "effect" : "epistemic"  // 엣지 렌즈 (URL=상태 소스)
   const setEdgeMode = (v: string) => setSearchParams((p) => {
     const n = new URLSearchParams(p)
@@ -156,8 +141,6 @@ export default function WorldviewPage() {
     return n
   }, { replace: true })
   const [lenses, setLenses] = useState<string[]>([])
-  const [showSmall, setShowSmall] = useState(false)
-  const [backboneOnly, setBackboneOnly] = useState(true)   // 기본=줄기만 (잔가지 숨김)
   // ?focus=<id> 로 딥링크 진입 시 그 노드에 초점 (신호 탭 그래프 활동 → 세계관)
   const focusParam = searchParams.get("focus")
   const [focusId, setFocusId] = useState<number | null>(focusParam ? Number(focusParam) : null)
@@ -169,8 +152,7 @@ export default function WorldviewPage() {
   const category = lenses.length === 1 ? lenses[0] : undefined
 
   // 흐름 뷰는 부분 그래프만 받는다(D-211) — 전체 2천여 노드를 dagre로 배치하면 2분 가까이 멈췄다.
-  // 전체 그래프는 관계망 뷰(canvas force-graph) 전용.
-  const isFlow = view === "structure"
+  // 전체 그래프를 그리던 관계망 보기(obsidian)는 지웠다(D-319).
   const catParam = category ? `&category=${encodeURIComponent(category)}` : ""
   const sub = useQuery(
     apiQuery<WorldviewSubgraph>({
@@ -178,14 +160,7 @@ export default function WorldviewPage() {
       url: focusId != null
         ? `/api/spine/causal/worldview/neighborhood/${focusId}?depth=${depth}&limit=${FOCUS_LIMIT}${catParam}`
         : `/api/spine/causal/worldview/core?limit=${coreLimit}${catParam}`,
-      staleTime: STALE.short, enabled: isFlow,
-    }),
-  )
-  const full = useQuery(
-    apiQuery<Worldview>({
-      key: ["spine", "causal", "worldview", category ?? "all"],
-      url: `/api/spine/causal/worldview${category ? `?category=${encodeURIComponent(category)}` : ""}`,
-      staleTime: STALE.short, enabled: !isFlow,
+      staleTime: STALE.short,
     }),
   )
   const index = useQuery(
@@ -194,58 +169,11 @@ export default function WorldviewPage() {
       url: "/api/spine/causal/worldview/index", staleTime: STALE.short,
     }),
   )
-  const data = isFlow ? sub.data : full.data
-  const isLoading = isFlow ? sub.isLoading : full.isLoading
-  const isError = isFlow ? sub.isError : full.isError
+  const data = sub.data
 
-  // 관계망 뷰: 전체 그래프에서 작은 연결요소 숨김 → base, 그 위에 초점(로컬 N홉) 또는 백본(줄기) 필터.
-  // 흐름 뷰: 서버가 고른 부분 그래프(핵심 또는 초점 이웃)를 그대로 쓴다.
-  const { visNodes, visEdges, hiddenCount } = useMemo(() => {
-    if (isFlow) return { visNodes: sub.data?.nodes ?? [], visEdges: sub.data?.edges ?? [], hiddenCount: 0 }
-    const data = full.data
-    if (!data) return { visNodes: [] as WNode[], visEdges: [] as WEdge[], hiddenCount: 0 }
-    const clusterSize = new Map<number, number>()
-    data.nodes.forEach((n) => clusterSize.set(n.cluster_id, (clusterSize.get(n.cluster_id) ?? 0) + 1))
-    const baseN = data.nodes.filter((n) => showSmall || (clusterSize.get(n.cluster_id) ?? 0) >= MIN_CLUSTER)
-    const baseIds = new Set(baseN.map((n) => n.id))
-    const baseE = data.edges.filter((e) => baseIds.has(e.from_id) && baseIds.has(e.to_id))
-    const smallHidden = data.nodes.length - baseN.length
-
-    // 초점 모드: 중심 노드에서 depth홉 이웃(무향 BFS)만 — 잔가지 포함 전체 이웃 (로컬 그래프).
-    // 작은-클러스터 필터를 무시하고 전체 그래프에서 BFS — 검색으로 고른 노드가 숨은 조각에
-    // 있어도 초점이 잡히도록 (개요의 노이즈 감축과 달리, 초점은 명시적 선택이므로 전부 보여준다).
-    if (focusId != null && data.nodes.some((n) => n.id === focusId)) {
-      const adj = new Map<number, number[]>()
-      data.edges.forEach((e) => {
-        ;(adj.get(e.from_id) ?? adj.set(e.from_id, []).get(e.from_id)!).push(e.to_id)
-        ;(adj.get(e.to_id) ?? adj.set(e.to_id, []).get(e.to_id)!).push(e.from_id)
-      })
-      const keep = new Set<number>([focusId])
-      let frontier = [focusId]
-      for (let d = 0; d < depth; d++) {
-        const next: number[] = []
-        frontier.forEach((id) => (adj.get(id) ?? []).forEach((nb) => {
-          if (!keep.has(nb)) { keep.add(nb); next.push(nb) }
-        }))
-        frontier = next
-      }
-      const fN = data.nodes.filter((n) => keep.has(n.id))
-      const fE = data.edges.filter((e) => keep.has(e.from_id) && keep.has(e.to_id))
-      return { visNodes: fN, visEdges: fE, hiddenCount: smallHidden }
-    }
-
-    // 개요 모드: 백본(줄기)만 — 차수 2+ 또는 느린 층(체제·구조) 또는 플라이휠. 잔가지(차수 1) 제거.
-    if (backboneOnly) {
-      const bN = baseN.filter((n) =>
-        (n.in_degree + n.out_degree) >= 2 || n.pace_layer === "regime"
-        || n.pace_layer === "structure" || n.in_flywheel)
-      const bIds = new Set(bN.map((n) => n.id))
-      const bE = baseE.filter((e) => bIds.has(e.from_id) && bIds.has(e.to_id))
-      return { visNodes: bN, visEdges: bE, hiddenCount: smallHidden }
-    }
-
-    return { visNodes: baseN, visEdges: baseE, hiddenCount: smallHidden }
-  }, [isFlow, sub.data, full.data, showSmall, backboneOnly, focusId, depth])
+  // 서버가 고른 부분 그래프(핵심 또는 초점 이웃)를 그대로 쓴다.
+  const visNodes = useMemo(() => sub.data?.nodes ?? [], [sub.data])
+  const visEdges = useMemo(() => sub.data?.edges ?? [], [sub.data])
 
   const focalName = focusId == null ? null
     : visNodes.find((n) => n.id === focusId)?.name ?? index.data?.find((n) => n.id === focusId)?.name ?? null
@@ -295,10 +223,15 @@ export default function WorldviewPage() {
   useEffect(() => setRfNodes(builtNodes), [builtNodes, setRfNodes])
   useEffect(() => setRfEdges(builtEdges), [builtEdges, setRfEdges])
 
-  if (isLoading) return <PageContainer gap="sm"><Skeleton className="h-[620px] w-full rounded-card" /></PageContainer>
+  // 지운 관계망 보기(?view=obsidian, D-319)는 흐름 보기로 — 다른 쿼리(focus·edges)는 그대로
+  if (searchParams.has("view")) {
+    const rest = new URLSearchParams(searchParams); rest.delete("view")
+    return <Navigate to={`/knowledge/ontology${rest.size ? `?${rest}` : ""}`} replace />
+  }
+  if (sub.isLoading) return <PageContainer gap="sm"><Skeleton className="h-[620px] w-full rounded-card" /></PageContainer>
   // 초점 노드가 선택한 렌즈의 그래프에 없으면(404) 페이지 전체가 아니라 그래프 자리에서 안내한다
-  const focusMissing = isFlow && focusId != null && sub.isError
-  if (isError && !focusMissing) return <ErrorState message="세계관 그래프를 불러오지 못했습니다" />
+  const focusMissing = focusId != null && sub.isError
+  if (sub.isError && !focusMissing) return <ErrorState message="세계관 그래프를 불러오지 못했습니다" />
 
   return (
     <PageContainer gap="sm">
@@ -307,15 +240,6 @@ export default function WorldviewPage() {
       <div className="flex items-baseline gap-2 flex-wrap">
         <h1 className="w-full text-lg font-bold md:w-auto">온톨로지 (인과 그래프)</h1>
         <span className="text-[11px] text-muted-foreground">전체 인과 지도(가설 포함) · 내러티브 갱신마다 상시 반영 — 검증된 핵심만 '지식'으로 승격</span>
-        <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v)}
-          className="ml-auto gap-1">
-          {VIEW_MODES.map((m) => (
-            <ToggleGroupItem key={m.value} value={m.value}
-              className="h-7 px-3 text-xs rounded-lg text-muted-foreground data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent">
-              {m.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
       </div>
 
       {index.data && <NodeSearch nodes={index.data} onPick={(n) => focusNode(n.id)} />}
@@ -332,41 +256,26 @@ export default function WorldviewPage() {
             {LENS_LABEL[l]}
           </label>
         ))}
-        {/* 줄기·조각 필터는 전체 그래프를 보는 관계망 뷰 전용 — 흐름 뷰는 이미 부분 그래프다 (D-211) */}
-        {!isFlow && <>
-          <label className={cn("flex items-center gap-1.5 cursor-pointer ml-auto text-muted-foreground",
-            focusId != null && "opacity-40 pointer-events-none")}>
-            <Checkbox checked={backboneOnly} onCheckedChange={(v) => setBackboneOnly(!!v)} />
-            줄기만
-          </label>
-          <label className={cn("flex items-center gap-1.5 cursor-pointer text-muted-foreground",
-            focusId != null && "opacity-40 pointer-events-none")}>
-            <Checkbox checked={showSmall} onCheckedChange={(v) => setShowSmall(!!v)} />
-            작은 조각{hiddenCount > 0 && !showSmall ? ` (숨김 ${hiddenCount})` : ""}
-          </label>
-        </>}
       </div>
 
-      {view === "structure" && (
-        <div className="flex items-center gap-2 flex-wrap text-xs">
-          <span className="text-muted-foreground">엣지 렌즈</span>
-          <ToggleGroup type="single" value={edgeMode} onValueChange={(v) => v && setEdgeMode(v)} className="gap-1">
-            {EDGE_MODES.map((m) => (
-              <ToggleGroupItem key={m.value} value={m.value}
-                className="h-7 px-3 text-xs rounded-lg text-muted-foreground data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent">
-                {m.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <span className="text-[10px] text-muted-foreground ml-1">
-            {edgeMode === "effect"
-              ? <>색 = 방향(<span className="text-up">정+</span> 늘림 / <span className="text-down">부−</span> 줄임) · 굵기 = 효과 크기(약할수록 흐림)</>
-              : <>색 = <span className="text-destructive">상충</span> / <span className="text-hypothesis">플라이휠</span> · 굵기 = 교차검증</>}
-          </span>
-        </div>
-      )}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground">엣지 렌즈</span>
+        <ToggleGroup type="single" value={edgeMode} onValueChange={(v) => v && setEdgeMode(v)} className="gap-1">
+          {EDGE_MODES.map((m) => (
+            <ToggleGroupItem key={m.value} value={m.value}
+              className="h-7 px-3 text-xs rounded-lg text-muted-foreground data-[state=on]:border data-[state=on]:border-primary data-[state=on]:text-primary data-[state=on]:bg-accent">
+              {m.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <span className="text-[10px] text-muted-foreground ml-1">
+          {edgeMode === "effect"
+            ? <>색 = 방향(<span className="text-up">정+</span> 늘림 / <span className="text-down">부−</span> 줄임) · 굵기 = 효과 크기(약할수록 흐림)</>
+            : <>색 = <span className="text-destructive">상충</span> / <span className="text-hypothesis">플라이휠</span> · 굵기 = 교차검증</>}
+        </span>
+      </div>
 
-      {isFlow && sub.data && (
+      {sub.data && (
         <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
           <span>전체 {formatNumber(sub.data.total_nodes)}개 노드 중 {formatNumber(sub.data.nodes.length)}개 표시
             {focusId == null ? " · 연결 많은 순" : sub.data.truncated ? ` · 이웃이 많아 연결 많은 ${FOCUS_LIMIT}개만` : ""}</span>
@@ -375,7 +284,7 @@ export default function WorldviewPage() {
               {CORE_STEPS[1]}개까지 보기
             </Button>
           )}
-          <span>· 노드를 누르면 그 주변으로 다시 그립니다. 전체 지도는 '관계망' 뷰에서 볼 수 있습니다.</span>
+          <span>· 노드를 누르면 그 주변으로 다시 그립니다.</span>
         </div>
       )}
 
@@ -413,33 +322,26 @@ export default function WorldviewPage() {
             fullscreen ? "flex-1 min-h-0" : "h-[60svh] min-h-[380px] md:h-[calc(100vh-160px)] md:min-h-[620px]",
           )}
         >
-          {view === "structure" ? (
-            <ReactFlow
-              key={`${focusId ?? `core-${coreLimit}`}-${depth}-${fullscreen}`}   // 초점·범위·전체화면 변경 시 재마운트 → fitView
-              nodes={rfNodes}
-              edges={rfEdges}
-              nodeTypes={nodeTypes}
-              colorMode={isDark ? "dark" : "light"}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={(_, n) => focusNode(Number(n.id))}
-              onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNodeId(null) }}
-              fitView
-              fitViewOptions={{ maxZoom: 0.9 }}
-              onlyRenderVisibleElements   // 화면 밖 노드·엣지는 그리지 않는다 (D-211)
-              minZoom={0.08}
-              maxZoom={4}
-            >
-              <Background />
-              <Controls />
-              <MiniMap pannable zoomable className="max-md:hidden" />
-            </ReactFlow>
-          ) : (
-            <Suspense fallback={<Skeleton className="h-full w-full" />}>
-              <ObsidianGraphView nodes={visNodes} edges={visEdges} onNodeSelect={(n) => focusNode(n.id)}
-                isDark={isDark} focusId={focusId} />
-            </Suspense>
-          )}
+          <ReactFlow
+            key={`${focusId ?? `core-${coreLimit}`}-${depth}-${fullscreen}`}   // 초점·범위·전체화면 변경 시 재마운트 → fitView
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={nodeTypes}
+            colorMode={isDark ? "dark" : "light"}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={(_, n) => focusNode(Number(n.id))}
+            onEdgeClick={(_, e) => { setSelectedEdge(e.data as unknown as WEdge); setSelectedNodeId(null) }}
+            fitView
+            fitViewOptions={{ maxZoom: 0.9 }}
+            onlyRenderVisibleElements   // 화면 밖 노드·엣지는 그리지 않는다 (D-211)
+            minZoom={0.08}
+            maxZoom={4}
+          >
+            <Background />
+            <Controls />
+            <MiniMap pannable zoomable className="max-md:hidden" />
+          </ReactFlow>
 
           {/* 전체화면 토글 — 그래프 영역이 화면을 덮게 */}
           <button
