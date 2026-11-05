@@ -209,24 +209,26 @@ function RateGauges({ m }: { m: EraStateResponse["meaning"] }) {
         <span className="font-mono tabular-nums">{formatPp(r.v)} / 경보 {formatPp(sign * r.th)}</span>
       </div>
       <Progress value={r.v == null ? 0 : Math.max(0, Math.min(100, (sign * r.v / r.th) * 100))} aria-label={`${r.label} 경보까지`}
-        className={cn("h-2 rounded-none", m.conditional_flag ? "[&>[data-slot=progress-indicator]]:bg-up" : "[&>[data-slot=progress-indicator]]:bg-hypothesis")} />
+        className={cn("h-2 rounded-[4px] bg-chip [&>[data-slot=progress-indicator]]:rounded-[4px]", m.conditional_flag ? "[&>[data-slot=progress-indicator]]:bg-up" : "[&>[data-slot=progress-indicator]]:bg-warn")} />
     </div>)}
   </div>
 }
 
 function MeaningSection({ data, regimes, compact }: { data: EraStateResponse; regimes?: RegimesResponse; compact?: boolean }) {
   const m = data.meaning
-  const series = useMemo<RegimeSeries[]>(() => [{ key: "corr", label: "주식–금리 상관(36개월)", color: "--chart-4",
+  const series = useMemo<RegimeSeries[]>(() => [{ key: "corr", label: "주식–금리 상관(36개월)", color: "--ink", lineWidth: 1,
     data: m.corr_series.map(([time, value]) => ({ time, value })) }], [m.corr_series])
   const bands = useMemo<RegimeBandSpec[]>(() => [
-    ...(regimes?.recessions ?? []).map(r => ({ start: r.start, end: r.end, color: "--chart-gray", title: `NBER 침체 ${r.start} ~ ${r.end}` })),
+    // 시안 Home-Macro: 침체 = 회색(ink-3) · 약세장 = 파랑(down) · 임계 근접 조정 = 주황(warn), 모두 옅은 음영
+    ...(regimes?.recessions ?? []).map(r => ({ start: r.start, end: r.end, color: "--ink-3", title: `NBER 침체 ${r.start} ~ ${r.end}` })),
     ...(regimes?.phases ?? []).filter(p => p.kind === "bear").map(p => ({ start: p.start, end: p.end, color: "--down", faint: p.provisional, title: `약세장 ${p.start} ~ ${p.end}` })),
+    ...(regimes?.corrections ?? []).filter(c => c.near_threshold).map(c => ({ start: c.start, end: c.end ?? c.trough, color: "--warn", title: `임계 근접 조정 ${c.start} ~ ${c.end ?? c.trough}` })),
   ], [regimes])
   const inflation = m.regime === "inflation"
   return <Section id="now-meaning" step={2} title={compact ? "금리의 뜻" : "금리는 지금 무슨 뜻인가"}
     how={<>같은 '금리 상승'도 시대에 따라 뜻이 반대입니다. 주식과 금리가 반대로 움직이는 시기(상관 &lt; 0)엔 금리 급등이 악재였고, 같이 움직이는 시기(상관 &gt; 0)엔 금리 급락·인하가 위기 신호였습니다(2001·2008). 그래서 지금이 어느 쪽인지 보고, 그 쪽의 위험 방향만 경보로 씁니다.</>}>
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <Badge variant="outline" className={cn("font-medium", inflation ? "border-hypothesis/40 bg-hypothesis/10 text-hypothesis" : "border-down/40 text-down-ink")}>{inflation ? "인플레이션형" : "디스인플레이션형"}</Badge>
+      <Badge variant={inflation ? "warn" : "down"}>{inflation ? "인플레이션형" : "디스인플레이션형"}</Badge>
       <span>{compact ? "상관" : "주식–금리 상관"} 36개월 <b className="tabular-nums">{m.corr_36m?.toFixed(2) ?? "-"}</b>{!compact && <> · 250일 <b className="tabular-nums">{m.corr_250d?.toFixed(2) ?? "-"}</b></>}
         {m.cpi_yoy != null && <> · CPI {compact ? "" : "전년비 "}<span className="tabular-nums">{m.cpi_yoy.toFixed(2)}%</span>{!compact && ` (${m.cpi_month})`}</>}</span>
       {!compact && <Badge variant="outline" className={cn("font-normal", m.conditional_flag ? "border-up/40 text-up-ink" : "text-muted-foreground")}>경보 {m.conditional_flag ? "켜짐" : "꺼짐"}</Badge>}
@@ -251,8 +253,8 @@ function MeaningSection({ data, regimes, compact }: { data: EraStateResponse; re
       <div className="min-w-0 space-y-3">
         <p className="text-sm font-medium">{inflation ? "인플레이션형 경보 — 금리 급등이 위험 신호" : "디스인플레이션형 경보 — 금리 급락이 위험 신호"}</p>
         <RateGauges m={m} />
-        <div className="space-y-1 border border-hypothesis/30 bg-hypothesis/5 px-3 py-2.5 text-sm">
-          <p className="font-medium text-hypothesis">{m.research.note}</p>
+        <div className="space-y-1 bg-hyp-tint px-3 py-2.5 text-[12.5px] leading-[1.6]">
+          <p className="font-semibold text-hyp">{m.research.note}</p>
           <p className="tabular-nums">{m.research.a}</p>
           <p className="tabular-nums">{m.research.b}</p>
         </div>

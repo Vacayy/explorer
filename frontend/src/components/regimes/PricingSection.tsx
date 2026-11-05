@@ -1,8 +1,9 @@
 import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { ChevronRight, ExternalLink } from "lucide-react"
+import { ExternalLink } from "lucide-react"
 import { BlockError } from "@/components/home/blockState"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Toggle } from "@/components/ui/toggle"
@@ -14,20 +15,23 @@ import { InfoTip, Section } from "./Section"
 
 const THEME: Record<string, string> = { rates: "금리", inflation: "물가", growth: "성장", credit: "신용", geopolitics: "지정학", energy: "에너지",
   ai: "AI", sector: "섹터", fx: "환율", policy: "정책", other: "기타" }
-const STATUS: Record<PricingStatus, { label: string; cls: string }> = {
-  new: { label: "새로 등장", cls: "border-primary/40 text-primary" },
-  stronger: { label: "강해짐", cls: "border-up/40 text-up-ink" },
-  weaker: { label: "약해짐·반론", cls: "border-chart-warning/50 text-warn" },
-  faded: { label: "사라짐", cls: "text-muted-foreground" },
-  ongoing: { label: "지속", cls: "text-muted-foreground" },
-  dormant: { label: "지난 전제", cls: "text-muted-foreground" },
+/** 변화 배지(시안 Home-Macro) — 새로 보라 · 강해짐 빨강 · 약해짐 파랑 · 나머지 회색 */
+const STATUS: Record<PricingStatus, { label: string; variant: "hyp" | "up" | "down" | "neutral" }> = {
+  new: { label: "새로 등장", variant: "hyp" },
+  stronger: { label: "강해짐", variant: "up" },
+  weaker: { label: "약해짐·반론", variant: "down" },
+  faded: { label: "사라짐", variant: "neutral" },
+  ongoing: { label: "지속", variant: "neutral" },
+  dormant: { label: "지난 전제", variant: "neutral" },
 }
+/** 8주 언급 띠의 막대 색 — 회색 언급 · 빨강 강해짐 · 파랑 약해짐(반론 포함) · 안 나온 날은 칩 색 */
 const DOT: Record<PricingStance, string> = {
-  present: "bg-primary/60",
+  present: "bg-ink-3",
   stronger: "bg-up",
-  weaker: "bg-chart-warning",
-  contested: "bg-chart-warning ring-2 ring-chart-warning/30",
+  weaker: "bg-down",
+  contested: "bg-down",
 }
+const STANCE_LABEL: Record<PricingStance, string> = { present: "언급", stronger: "강해짐", weaker: "약해짐", contested: "반론" }
 
 function chg(p: PricingPrice, v: number | null) {
   if (v == null) return "-"
@@ -57,7 +61,7 @@ export function PricingSection() {
     {!d.claims.length ? <p className="py-8 text-center text-sm text-muted-foreground">{d.days.length ? "아직 뽑은 전제가 없습니다." : "저장된 미국장 브리핑이 없습니다."}</p> : <>
       <div className="grid gap-2 md:grid-cols-4">
         {(["new", "stronger", "weaker", "faded"] as const).map(k => <div key={k} className="rounded-lg border px-3 py-2">
-          <div className="flex items-center justify-between"><Badge variant="outline" className={cn("font-normal", STATUS[k].cls)}>{STATUS[k].label}</Badge><span className="text-caption tabular-nums text-muted-foreground">{d.summary[k].length}</span></div>
+          <div className="flex items-center justify-between"><Badge variant={STATUS[k].variant}>{STATUS[k].label}</Badge><span className="text-caption tabular-nums text-muted-foreground">{d.summary[k].length}</span></div>
           <ul className="mt-1.5 space-y-1 text-caption">{d.summary[k].slice(0, 3).map(s => <li key={s} className="line-clamp-2">{s}</li>)}
             {!d.summary[k].length && <li className="text-muted-foreground">없음</li>}</ul>
         </div>)}
@@ -80,14 +84,14 @@ export function PricingSection() {
           <p className="text-sm font-medium">전제 타임라인 <span className="font-normal text-muted-foreground">— 최근 {d.days.length}개 브리핑일</span></p>
           <div className="flex items-center gap-3">
             <div className="flex gap-2.5 text-[11px] text-muted-foreground">
-              {(["present", "stronger", "weaker", "contested"] as const).map(s => <span key={s} className="flex items-center gap-1"><span className={cn("size-2 rounded-full", DOT[s])} />{{ present: "유지", stronger: "강해짐", weaker: "약해짐", contested: "반론" }[s]}</span>)}
+              {(["present", "stronger", "weaker"] as const).map(s => <span key={s} className="flex items-center gap-1"><span className={cn("h-3 w-1.5 rounded-[1px]", DOT[s])} />{STANCE_LABEL[s]}</span>)}
             </div>
             <Toggle size="sm" variant="outline" pressed={showAll} className="text-caption"
               onPressedChange={v => setParams(prev => { const n = new URLSearchParams(prev); if (v) n.set("pricing_all", "1"); else n.delete("pricing_all"); return n }, { replace: true })}>지난 전제도</Toggle>
           </div>
         </div>
         <div className="overflow-x-auto">
-          <div className="min-w-[760px] divide-y rounded-lg border">
+          <div className="min-w-[760px] divide-y border-y">
             {claims.map(c => <ClaimRow key={c.id} c={c} days={d.days} open={open === c.id} onToggle={() => setOpen(open === c.id ? null : c.id)} prices={priceByKey} />)}
           </div>
         </div>
@@ -96,29 +100,28 @@ export function PricingSection() {
   </Section>
 }
 
+/** 한 줄 행(시안 Home-Macro) — 변화 배지 | 주장 + 회색 '주제 · 첫 언급부터 n일 언급' | 8주 언급 띠(막대). 누르면 근거가 펼쳐진다 */
 function ClaimRow({ c, days, open, onToggle, prices }: { c: PricingClaim; days: string[]; open: boolean; onToggle: () => void; prices: Record<string, PricingPrice> }) {
   const seen = new Map(c.dates)
   return <div>
-    <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/40">
-      <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-      <div className="w-[300px] shrink-0">
-        <div className="line-clamp-2 text-[13px] leading-snug">{c.statement}</div>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Badge variant="outline" className={cn("px-1.5 py-0 text-[10px] font-normal", STATUS[c.status].cls)}>{STATUS[c.status].label}</Badge>
-          {THEME[c.theme] ?? c.theme} · {c.first_seen.slice(5)}~ · {c.days_seen}일
-        </div>
-      </div>
-      <div className="flex flex-1 items-center gap-[3px]" aria-label={`관측 ${c.days_seen}일`}>
-        {days.map(day => { const s = seen.get(day); return <span key={day} title={s ? `${day} ${s}` : day}
-          className={cn("size-2 shrink-0 rounded-full", s ? DOT[s] : "bg-muted")} /> })}
-      </div>
-    </button>
-    {open && c.latest && <div className="space-y-1.5 bg-muted/30 px-10 py-2.5 text-caption">
-      <p><span className="text-muted-foreground">최근 근거({c.latest.date}) </span>{c.latest.evidence}</p>
+    <Button variant="ghost" onClick={onToggle} aria-expanded={open}
+      className="grid h-auto w-full grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-x-3.5 rounded-none px-0 py-2 text-left font-normal whitespace-normal hover:bg-muted/40">
+      <span><Badge variant={STATUS[c.status].variant}>{STATUS[c.status].label}</Badge></span>
+      <span className="min-w-0">
+        <span className="block text-[13px] leading-snug">{c.statement}</span>
+        <span className="block text-[11.5px] text-ink-3">{THEME[c.theme] ?? c.theme} · {c.first_seen}부터 {c.days_seen}일 언급</span>
+      </span>
+      <span className="inline-flex gap-0.5" aria-label={`관측 ${c.days_seen}일`}>
+        {days.map(day => { const s = seen.get(day); return <span key={day} title={s ? `${day} ${STANCE_LABEL[s]}` : day}
+          className={cn("h-3.5 w-1.5 shrink-0 rounded-[1px]", s ? DOT[s] : "bg-chip")} /> })}
+      </span>
+    </Button>
+    {open && c.latest && <div className="space-y-1.5 bg-chip px-3 py-2.5 text-caption">
+      <p><span className="font-semibold">가장 최근 근거 · {c.latest.date} </span><span className="text-ink-2">{c.latest.evidence}</span></p>
       {c.latest.sources.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {c.latest.sources.map((s, i) => s.doc_id ? <Link key={i} to={`/doc/${s.doc_id}`} className="text-primary hover:underline">{s.publisher} · {s.title}</Link>
-          : s.url ? <a key={i} href={s.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline">{s.publisher} · {s.title}<ExternalLink className="size-3" aria-hidden="true" /></a>
-          : <span key={i}>{s.publisher} · {s.title}</span>)}
+        {c.latest.sources.map((s, i) => s.doc_id ? <Link key={i} to={`/doc/${s.doc_id}`} className="text-ink-3 hover:underline">{s.publisher} · {s.title}</Link>
+          : s.url ? <a key={i} href={s.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-ink-3 hover:underline">{s.publisher} · {s.title}<ExternalLink className="size-3" aria-hidden="true" /></a>
+          : <span key={i} className="text-ink-3">{s.publisher} · {s.title}</span>)}
       </div>}
       {c.related.length > 0 && <p className="text-muted-foreground">관련 가격(4주): {c.related.map(k => prices[k]).filter(Boolean).map(p => `${p.label} ${chg(p, p.chg_4w)}`).join(" · ")}</p>}
     </div>}
@@ -134,7 +137,7 @@ export function PricingCompact() {
   return <div className="space-y-2">
     {!top.length ? <p className="text-sm text-muted-foreground">이번 주 새로 움직인 전제가 없습니다.</p>
       : <ul className="divide-y border-y">{top.map(c => <li key={c.id} className="flex items-start gap-2 py-2 text-[13px] leading-snug">
-        <Badge variant="outline" className={cn("shrink-0 font-normal", STATUS[c.status].cls)}>{STATUS[c.status].label}</Badge>{c.statement}
+        <Badge variant={STATUS[c.status].variant}>{STATUS[c.status].label}</Badge>{c.statement}
       </li>)}</ul>}
     <Link to="/home/macro?macro_view=full#now-pricing" className="inline-block text-caption underline underline-offset-2">프라이싱 원장 전체 ›</Link>
   </div>
