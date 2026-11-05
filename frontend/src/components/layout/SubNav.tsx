@@ -14,13 +14,13 @@ interface Props {
 
 /**
  * 인페이지 서브탭 — 모드 안의 형제 탭 전환 (docs/specs/dock-navigation.md §2).
- * 콘텍스트 첫 줄 한 행(h-8 + mb-5 = --subnav-height). URL이 상태의 단일 소스 — Link만.
+ * 콘텍스트 첫 줄 한 행(h-[30px] + mb-4 = --subnav-height, 시안 칩 30 · 간격 4 · 아래 16). URL이 상태의 단일 소스 — Link만.
  * 모드 간 점프는 도크 팝오버가, 모드 안 전환은 이 스트립이 맡는다.
- * 폰(<768): 줄 높이 h-10 + mb-3(합계는 같다) — 누르는 칸을 40px로, 알약 모양은 안쪽 span이 그린다(ia-redesign §4.32).
+ * 폰(<768): 줄 높이 h-10 + mb-3(= 폰 --subnav-height) — 누르는 칸을 40px로, 알약 모양은 안쪽 span이 그린다(ia-redesign §4.32).
  */
 export function SubNav({ tabs, activeKey, context, trailing }: Props) {
   return (
-    <nav aria-label="하위 메뉴" className="-mx-1 mb-5 flex h-8 items-center gap-0.5 overflow-x-auto px-1 max-md:mb-3 max-md:h-10">
+    <nav aria-label="하위 메뉴" className="-mx-1 mb-4 flex h-[30px] items-center gap-1 overflow-x-auto px-1 max-md:mb-3 max-md:h-10">
       {context && <span className="mr-2 shrink-0 text-sm font-semibold">{context}</span>}
       {tabs.map((t) => {
         const active = t.key === activeKey

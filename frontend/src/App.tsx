@@ -149,10 +149,10 @@ function Layout() {
             <main className="relative flex w-full min-w-0 flex-1 flex-col bg-background">
               {/* --shell-offset: 풀하이트 화면이 뺄 높이 = 상단 바 + 위아래 여백 + (L2가 있으면) L2 (app-shell.md §8) */}
               <div
-                className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-inset)] pb-[var(--dock-reserve)]"
+                className="mx-auto w-full max-w-[var(--layout-shell)] min-w-0 px-[var(--page-inset)] pt-[var(--page-top)] pb-[var(--dock-reserve)]"
                 style={{ "--shell-offset": subNav
-                  ? "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve) + var(--subnav-height))"
-                  : "calc(var(--topbar-height) + var(--page-inset) + var(--dock-reserve))" } as CSSProperties}
+                  ? "calc(var(--topbar-height) + var(--page-top) + var(--dock-reserve) + var(--subnav-height))"
+                  : "calc(var(--topbar-height) + var(--page-top) + var(--dock-reserve))" } as CSSProperties}
               >
                 {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
                 <ActiveQueryStatus />

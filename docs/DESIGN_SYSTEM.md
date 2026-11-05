@@ -125,7 +125,7 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
 <TooltipProvider>
     <Omnibar/>                            ⌘K 오버레이 (CommandDialog)
     <div flex-col min-h-svh>
-      <TopBar/>                           sticky · h-(--topbar-height)=52px · L1 6탭(홈·피드·탐색·산업·포트폴리오·Thesis)·검색·운영 상태(Popover)·인박스·설정·AI 토글
+      <TopBar/>                           sticky · h-(--topbar-height)=65px(폰 57px, 검색·AI만) · L1 6탭(홈·피드·탐색·산업·포트폴리오·Thesis)·검색·운영 상태(Popover)·인박스·설정·AI 토글
       <div flex>
         <main>                            본문
           <div mx-auto max-w-[var(--layout-shell)] px-6 pt-6 pb-[var(--dock-reserve)]>

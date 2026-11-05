@@ -21,6 +21,8 @@ interface HomeSectionProps {
   link?: { to: string; label: string } | null
   /** 띠형 — 머리 없이 본문만 */
   flat?: boolean
+  /** 기상도 아래 큰 칸(Market Overnight·Today) — Geist 24 제목 · 유리 알약 링크 · 안쪽 여백 22 (시안 Home) */
+  display?: boolean
   className?: string
   bodyClassName?: string
 }
@@ -29,7 +31,7 @@ interface HomeSectionProps {
  * 홈 고정 화면의 섹션 (docs/specs/home-widgets.md §0) — 위젯 본문을 위젯 틀(손잡이·빼기 메뉴) 없이 그대로 쓴다.
  * 본문만 오류 경계로 감싸 한 블록이 깨져도 머리와 다른 블록은 남는다(블록 단위 실패, 상태 시트 §4.28).
  */
-export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, className, bodyClassName }: HomeSectionProps) {
+export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, display, className, bodyClassName }: HomeSectionProps) {
   const def = WIDGET_BY_ID[widget]
   const client = useQueryClient()
   if (!def) return null
@@ -39,21 +41,21 @@ export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, 
     </ErrorBoundary>
   )
   return (
-    <Card data-home-section={widget} className={cn("flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none", className)}>
+    <Card data-home-section={widget} className={cn("flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none", display && "gap-3.5 p-[22px] max-sm:p-4", className)}>
       {flat ? <div className={cn("min-h-0 flex-1 px-1 py-2", bodyClassName)}>{body}</div> : <>
-        <SectionHead widget={widget} params={params} title={title} link={link} />
-        <div className={cn("min-h-0 flex-1 p-3", bodyClassName)}>{body}</div>
+        <SectionHead widget={widget} params={params} title={title} link={link} display={display} />
+        <div className={cn("min-h-0 flex-1", !display && "p-3", bodyClassName)}>{body}</div>
       </>}
     </Card>
   )
 }
 
-function SectionHead({ widget, params, title, link }: Pick<HomeSectionProps, "widget" | "params" | "title" | "link">) {
+function SectionHead({ widget, params, title, link, display }: Pick<HomeSectionProps, "widget" | "params" | "title" | "link" | "display">) {
   const def = WIDGET_BY_ID[widget]
   const meta = def.useMeta(params)
   const target = link === undefined ? def.detailPath : link?.to
   return <BlockHead title={title ?? def.title} info={def.description} asOf={meta.asOf} stale={meta.stale}
-    link={target ? { to: target, label: link?.label ?? "전체 보기" } : null} />
+    link={target ? { to: target, label: link?.label ?? "전체 보기" } : null} display={display} />
 }
 
 interface BlockHeadProps {
@@ -65,16 +67,18 @@ interface BlockHeadProps {
   link?: { to: string; label: string } | null
   /** 머리 오른쪽 끝(링크 앞)에 두는 동작 — 갱신 버튼 등 */
   actions?: ReactNode
+  /** 큰 칸 머리 — Geist 24 제목 · 유리 알약 링크 (HomeSection display) */
+  display?: boolean
 }
 
 /** 홈 블록 머리 — 제목 · ⓘ · 기준 시각 · 동작 · 링크. 지금 화면으로 가는 링크는 숨긴다 */
-export function BlockHead({ title, info, asOf, stale, link, actions }: BlockHeadProps) {
+export function BlockHead({ title, info, asOf, stale, link, actions, display }: BlockHeadProps) {
   const { pathname } = useLocation()
   const to = link && link.to.split("#")[0] !== pathname ? link.to : undefined
   const name = typeof title === "string" ? title : undefined
   return (
-    <header className="flex min-h-[38px] shrink-0 items-center gap-2 border-b px-3 py-1.5">
-      <h2 className="min-w-0 truncate text-[13.5px] font-semibold">{title}</h2>
+    <header className={cn("flex min-h-[38px] shrink-0 items-center gap-2 border-b", display ? "flex-wrap items-end gap-x-2.5 pb-3" : "px-3 py-1.5")}>
+      <h2 className={cn("min-w-0 truncate", display ? "font-display text-2xl leading-[1.55] font-normal tracking-[-0.02em]" : "text-[13.5px] font-semibold")}>{title}</h2>
       {info && <Tooltip>
         <TooltipTrigger asChild>
           <Button variant="ghost" size="icon-xs" aria-label={`${name ?? "블록"} 설명`} className="shrink-0 text-muted-foreground/70"><Info className="size-3.5" /></Button>
@@ -82,11 +86,13 @@ export function BlockHead({ title, info, asOf, stale, link, actions }: BlockHead
         <TooltipContent className="max-w-[280px] text-xs leading-relaxed">{info}</TooltipContent>
       </Tooltip>}
       <span className="ml-auto" />
-      {asOf && <span className={cn("inline-flex shrink-0 items-center gap-[5px] text-[11.5px] whitespace-nowrap max-sm:hidden", stale ? "text-warn" : "text-ink-3")}>
-        <span aria-hidden className={cn("size-[5px] rounded-full", stale ? "bg-warn" : "bg-fact")} />{asOf}
+      {asOf && <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap max-sm:hidden", display ? "gap-1.5 self-center text-xs" : "gap-[5px] text-[11.5px]", stale ? "text-warn" : "text-ink-3")}>
+        <span aria-hidden className={cn("rounded-full", display ? "size-1.5" : "size-[5px]", stale ? "bg-warn" : "bg-fact")} />{asOf}
       </span>}
       {actions}
-      {to && <Link to={to} className="shrink-0 text-xs whitespace-nowrap text-ink-2 hover:text-ink">{link!.label} ›</Link>}
+      {to && (display
+        ? <Link to={to} className="glass inline-flex h-7 shrink-0 items-center gap-1 self-center rounded-full px-3 text-[12.5px] font-medium whitespace-nowrap text-ink">{link!.label} ›</Link>
+        : <Link to={to} className="shrink-0 text-xs whitespace-nowrap text-ink-2 hover:text-ink">{link!.label} ›</Link>)}
     </header>
   )
 }

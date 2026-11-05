@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { MetricTrend } from "@/components/shared/MetricTrend"
-import { SparkLine } from "@/components/shared/Spark"
+import { AreaSpark, SparkLine } from "@/components/shared/Spark"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { fmtValue } from "@/components/home/MacroLiquidity"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
@@ -9,6 +9,7 @@ import { useIndices, useRiskWindow } from "@/hooks/useDashboard"
 import { useMacro } from "@/hooks/useMacro"
 import { useMarketRegime } from "@/hooks/useMarketRegime"
 import { useUsBriefing } from "@/hooks/useUsBriefing"
+import { fearGreedZone } from "@/lib/macroPage"
 import { cn } from "@/lib/utils"
 import { formatBp, formatLevel, formatPercent, formatRatio, formatYield } from "@/utils/format"
 import type { WidgetBodyProps, WidgetMeta } from "./types"
@@ -114,23 +115,24 @@ export function useRegimeMeta(): WidgetMeta {
   const q = useMarketRegime()
   return { asOf: q.data?.as_of ?? null, stale: !!q.data?.degraded.length }
 }
-const POSTURE_TONE: Record<string, string> = { caution: "border-chart-warning/50 text-chart-warning", risk: "border-down/50 text-down-ink", favorable: "border-up/50 text-up-ink", neutral: "text-muted-foreground" }
+/** 포스처 칩 색 — 시안 Home: 중립 회색 · 보류(주의) 파랑 틴트 · 위험 노랑 · 우호 분홍 */
+const POSTURE_VARIANT: Record<string, "neutral" | "down" | "warn" | "up"> = { neutral: "neutral", caution: "down", risk: "warn", favorable: "up" }
 export function RegimeBody({ h }: WidgetBodyProps) {
   const q = useMarketRegime()
   const d = q.data
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   if (!d.kr && !d.us) return <WidgetState empty emptyText="국면 판정 재료가 아직 없어요." />
   return <div className="flex h-full flex-col gap-2">
-    <div className="flex flex-wrap gap-1.5">
-      {d.kr && <Badge variant="outline" className={cn("text-xs", POSTURE_TONE[d.kr.posture_color])}>국장 {d.kr.posture}</Badge>}
-      {d.us && <Badge variant="outline" className={cn("text-xs", POSTURE_TONE[d.us.posture_color])}>미장 {d.us.posture}</Badge>}
+    <div className="flex flex-wrap items-center gap-2.5">
+      {d.kr && <Badge variant={POSTURE_VARIANT[d.kr.posture_color] ?? "neutral"}>국장 {d.kr.posture}</Badge>}
+      {d.us && <Badge variant={POSTURE_VARIANT[d.us.posture_color] ?? "neutral"}>미장 {d.us.posture}</Badge>}
+      <span className={cn("min-w-0 text-[13px]", h <= 2 ? "line-clamp-1" : "line-clamp-2")}>{d.headline}</span>
     </div>
-    <p className={cn("text-[13px] leading-5 text-muted-foreground", h <= 2 ? "line-clamp-1" : "line-clamp-2")}>{d.headline}</p>
     {h > 2 && <div className="grid grid-cols-2 gap-2">
       <Tile label="공포탐욕" value={d.us?.fear_greed ? formatLevel(d.us.fear_greed.score) : "-"} sub={d.us?.fear_greed?.zone} />
       <Tile label="VIX" value={d.us?.vix ? formatLevel(d.us.vix.value) : "-"} sub={d.us?.vix?.band} />
     </div>}
-    {d.degraded.length > 0 && <p className="text-[11px] text-chart-warning">빠진 재료: {d.degraded.join(", ")}</p>}
+    {d.degraded.length > 0 && <p className="text-[11px] text-warn">빠진 재료: {d.degraded.join(", ")}</p>}
   </div>
 }
 function Tile({ label, value, sub }: { label: string; value: string; sub?: string | null }) {
@@ -151,6 +153,38 @@ export function useRiskMeta(key: string): WidgetMeta {
   const item = q.data?.items.find(i => i.key === key)
   return { asOf: item?.as_of ?? null, stale: !!item && item.quality !== "fresh" }
 }
+/** 3개월 추이 기준선 — VIX 20 · 공포탐욕 50 (시안 Home) */
+const RISK_REF: Record<string, number> = { vix: 20, fear_greed: 50 }
+const md = (d: string | null | undefined) => (d ? d.slice(5, 10).replace("-", "/") : "")
+
+/**
+ * 국면·리스크 타일(시안 Home) — 이름 · 기준일 / 값(mono 19) / 20일 변화 / 3개월 회색 추이(기준선 점선·끝점) / 처음·끝 날짜.
+ * 갱신 실패·지연이면 마지막 값을 흐리게 두고 지연을 붙인다 — 숫자를 지우지 않는다 (ia-redesign §4.28).
+ */
+export function RiskTrend({ metric, label, className }: { metric: string; label: string; className?: string }) {
+  const q = useRiskWindow()
+  const item = q.data?.items.find(i => i.key === metric)
+  const head = (date?: string | null) => <div className="flex items-baseline gap-2"><span className="text-xs text-ink-3">{label}</span>{date && <span className="ml-auto text-[11px] text-ink-3">{md(date)}</span>}</div>
+  if (!q.data) return <div className={cn("flex min-w-0 flex-col gap-0.5 py-2.5 pr-3.5", className)}>{head()}<WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} /></div>
+  if (!item || item.value == null) return <div className={cn("flex min-w-0 flex-col gap-0.5 py-2.5 pr-3.5", className)}>{head()}<WidgetState empty emptyText={item?.error ? `수집 실패: ${item.error}` : "이 지표의 관측이 아직 없어요."} /></div>
+  const fresh = item.quality === "fresh"
+  const pts = item.points
+  return <div className={cn("flex min-w-0 flex-col gap-0.5 pt-2.5 pr-3.5 pb-1.5", className)} data-risk-tile={metric}>
+    {head(item.as_of)}
+    <div className={cn("flex flex-col gap-0.5", !fresh && "opacity-60")}>
+      <span className="font-mono text-[19px] tabular-nums">{riskValue(item.unit, item.value)}</span>
+      <span className="text-xs text-ink-2">{metric === "fear_greed" && fearGreedZone(item.value) ? `${fearGreedZone(item.value)} · ` : ""}20일 <span className={cn("font-mono tabular-nums", tone(item.change_20))}>{riskChange(item.unit, item.change_20)}</span></span>
+    </div>
+    {!fresh && <p className="text-[11px] text-warn">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : "갱신 실패"}</p>}
+    {pts.length > 1 && <>
+      <div className={cn("mt-1.5", !fresh && "opacity-60")}>
+        <AreaSpark data={pts.map(p => p[1])} refValue={RISK_REF[metric]} label={`${label} 3개월 추이, ${pts[0][0]}부터 ${pts[pts.length - 1][0]}까지`} />
+      </div>
+      <div className="flex justify-between font-mono text-[10.5px] text-ink-3 tabular-nums"><span>{md(pts[0][0])}</span><span>{md(pts[pts.length - 1][0])}</span></div>
+    </>}
+  </div>
+}
+
 export function RiskBody({ metric, h }: WidgetBodyProps & { metric: string }) {
   const q = useRiskWindow()
   const item = q.data?.items.find(i => i.key === metric)

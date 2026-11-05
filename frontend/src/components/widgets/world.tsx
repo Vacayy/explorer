@@ -22,15 +22,14 @@ function useChangesMeta(): WidgetMeta {
 function ChangeRow({ item }: { item: WorldNarrativeChange }) {
   const summary = item.is_first ? "새로 생긴 서사입니다." : item.change_summary
   // 라벨 · 제목 · 갱신 시각 한 줄, 아래에 서사 변화 요약 전문(자르지 않는다)
-  return <li className="space-y-1">
-    <div className="flex items-start gap-1.5">
-      <Badge variant="outline" className="mt-px max-w-[40%] shrink-0 truncate text-[10px]">{item.topic}</Badge>
-      <Link to={`/narrative?topic=${encodeURIComponent(item.topic)}`} className="min-w-0 flex-1 text-sm font-semibold leading-snug hover:underline">{item.title ?? item.topic}</Link>
-      <span className="mt-0.5 shrink-0 text-[11px] text-muted-foreground tabular-nums">{formatDbRelative(item.created_at)}</span>
-    </div>
-    {summary && <p className="text-xs leading-relaxed text-muted-foreground">{summary}</p>}
+  return <li className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 border-t py-3 first:border-t-0 max-sm:grid-cols-[minmax(0,1fr)_auto]">
+    <Badge className="max-w-full truncate max-sm:col-span-full">{item.topic}</Badge>
+    <Link to={`/narrative?topic=${encodeURIComponent(item.topic)}`} className="min-w-0 text-[14.5px] leading-[1.5] font-semibold text-pretty hover:underline">{item.title ?? item.topic}</Link>
+    <span className="text-xs whitespace-nowrap text-ink-3 tabular-nums">{formatDbRelative(item.created_at)}</span>
+    {summary && <p className="col-start-2 col-end-4 text-xs leading-relaxed text-ink-3 max-sm:col-span-full">{summary}</p>}
   </li>
 }
+
 function ChangesBody({ h }: WidgetBodyProps) {
   const q = useNarrativeChanges(7)
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
@@ -40,7 +39,7 @@ function ChangesBody({ h }: WidgetBodyProps) {
     <p className="text-[12px] text-muted-foreground"><span className="font-medium text-foreground">{items.length}편</span> · 최근 7일 새 버전</p>
     {h <= 2
       ? <p className="truncate text-[13px] text-muted-foreground">{items[0].title ?? items[0].topic}</p>
-      : <ul className="min-h-0 space-y-3 overflow-y-auto">{items.slice(0, h * 2).map(i => <ChangeRow key={i.narrative_id} item={i} />)}</ul>}
+      : <ul className="min-h-0 overflow-y-auto">{items.slice(0, h * 2).map(i => <ChangeRow key={i.narrative_id} item={i} />)}</ul>}
   </div>
 }
 

@@ -22,7 +22,7 @@ export const ShellButton = forwardRef<HTMLButtonElement, Props>(function ShellBu
       <TooltipTrigger asChild>
         <Button ref={ref} variant="ghost" size="icon-sm" aria-label={rest["aria-label"] ?? label}
           aria-pressed={pressed} className={cn("relative rounded-lg text-ink-2 hover:bg-chip hover:text-ink max-md:size-10", pressed && "bg-chip text-ink", className)} {...rest}>
-          <Icon className="size-[18px]" aria-hidden />
+          <Icon className="size-[17px] max-md:size-[18px]" strokeWidth={1.7} aria-hidden />
           {badge != null && badge > 0 && (
             <span className={cn(
               "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none tabular-nums",

@@ -1,9 +1,10 @@
 import { Link, useLocation } from "react-router-dom"
-import { Compass, Factory, House, Lightbulb, Newspaper, PieChart, type LucideIcon } from "lucide-react"
+import { Factory, Globe, Search, Sparkles, Star, Text, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SECTIONS, locate, type SectionKey } from "./navConfig"
 
-const ICONS: Record<SectionKey, LucideIcon> = { home: House, feed: Newspaper, explore: Compass, industry: Factory, portfolio: PieChart, world: Lightbulb }
+// 시안 Home-Mobile 하단 탭 아이콘(지구·줄·돋보기·공장·별·빛)
+const ICONS: Record<SectionKey, LucideIcon> = { home: Globe, feed: Text, explore: Search, industry: Factory, portfolio: Star, world: Sparkles }
 
 /**
  * 모바일 하단 탭바 — 폭 <768에서 상단 L1 6탭(홈·피드·탐색·산업·포트폴리오·Thesis)을 대신한다 (docs/specs/app-shell.md §6).
@@ -20,9 +21,9 @@ export function TabBar() {
         const active = here?.section === s.key
         return (
           <Link key={s.key} to={s.path} aria-current={active ? "page" : undefined}
-            className={cn("flex h-(--tabbar-height) flex-col items-center justify-center gap-0.5 text-[11px] transition-colors",
-              active ? "font-semibold text-primary" : "text-muted-foreground")}>
-            <Icon className="size-5" aria-hidden />
+            className={cn("flex h-(--tabbar-height) flex-col items-center justify-center gap-0.5 text-[10.5px] transition-colors",
+              active ? "text-ink" : "text-ink-3")}>
+            <Icon className="size-[19px]" strokeWidth={1.7} aria-hidden />
             {s.label}
           </Link>
         )

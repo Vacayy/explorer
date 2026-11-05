@@ -2,8 +2,8 @@ import type { CSSProperties } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { PageLayout } from "@/components/shared/PageLayout"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
-import { HomeSection } from "@/components/home/HomeSection"
-import { ContextBody, IndicesBody } from "@/components/widgets/market"
+import { HomeBlock, HomeSection } from "@/components/home/HomeSection"
+import { ContextBody, IndicesBody, RegimeBody, RiskTrend, useRegimeMeta } from "@/components/widgets/market"
 import { useIndices, useKrBreadth } from "@/hooks/useDashboard"
 import { formatKstLongDate } from "@/utils/format"
 
@@ -19,11 +19,11 @@ export default function HomeDashboard() {
       <div className="@container/market flex flex-col gap-4">
         <WeatherHeader />
 
-        {/* 같은 높이 두 칸(유리 패널) — 넘치는 본문은 칸 안에서 스크롤. 기상도 아래쪽 분위기(베일)를 이어 쓴다 */}
+        {/* 같은 높이 두 칸(유리 패널, 1024 이상) — 넘치는 본문은 칸 안에서 스크롤, 그 아래 폭은 내용 높이. 기상도 아래쪽 분위기(베일)를 이어 쓴다 */}
         <section aria-label="브리핑" data-veil className="weather p-4 max-sm:p-3">
           <div className="grid gap-3.5 lg:grid-cols-2">
-            <HomeSection widget="market.us" w={6} h={9} link={{ to: "/home/us", label: "미국 시장" }} className={`${GLASS_PANEL} h-[560px] lg:h-[640px]`} />
-            <HomeSection widget="market.today" w={6} h={9} link={{ to: "/home/kr", label: "한국 시장" }} className={`${GLASS_PANEL} h-[560px] lg:h-[640px]`} />
+            <HomeSection widget="market.us" w={6} h={9} display link={{ to: "/home/us", label: "미국 시장" }} className={`${GLASS_PANEL} lg:h-[796px]`} />
+            <HomeSection widget="market.today" w={6} h={9} display link={{ to: "/home/kr", label: "한국 시장" }} className={`${GLASS_PANEL} lg:h-[796px]`} />
           </div>
         </section>
 
@@ -65,17 +65,24 @@ function WeatherHeader() {
   )
 }
 
-/** 국면·리스크 — 상태 줄(국장·미장 포스처) + 지표 타일 넷(3개월 추이·20일 변화). 모바일은 VIX·공포탐욕만 */
+/**
+ * 국면·리스크 — 한 칸(시안 Home): 상태 줄(국장·미장 포스처 칩 + 한 줄) → 지표 넷(3개월 회색 추이·20일 변화). 모바일은 VIX·공포탐욕만.
+ * 포스처와 지표는 따로 불러오고 따로 실패한다.
+ */
 function RiskBlock() {
+  const meta = useRegimeMeta()
   return (
     <section aria-label="국면·리스크">
-      <HomeSection widget="risk.regime" w={12} h={2} title="국면·리스크" link={{ to: "/home/macro", label: "매크로" }} />
-      <div className="surface-grid grid grid-cols-2 lg:grid-cols-4">
-        <HomeSection widget="risk.vix" w={3} h={4} link={null} />
-        <HomeSection widget="risk.fear" w={3} h={4} link={null} />
-        <HomeSection widget="risk.hy" w={3} h={4} link={null} className="max-md:hidden" />
-        <HomeSection widget="risk.curve" w={3} h={4} link={null} className="max-md:hidden" />
-      </div>
+      <HomeBlock label="risk" title="국면·리스크" info="국장·미장 포스처 · VIX · 공포·탐욕 · HY OAS · 장단기 금리차(3개월 추이·20일 변화)"
+        asOf={meta.asOf} stale={meta.stale} link={{ to: "/home/macro", label: "매크로" }} bodyClassName="flex flex-col gap-2.5">
+        <RegimeBody w={12} h={2} />
+        <div className="grid grid-cols-2 gap-x-[18px] border-t lg:grid-cols-4">
+          <RiskTrend metric="vix" label="VIX" />
+          <RiskTrend metric="fear_greed" label="공포·탐욕" />
+          <RiskTrend metric="hy" label="HY OAS" className="max-md:hidden" />
+          <RiskTrend metric="curve" label="10Y − 2Y" className="max-md:hidden" />
+        </div>
+      </HomeBlock>
     </section>
   )
 }
