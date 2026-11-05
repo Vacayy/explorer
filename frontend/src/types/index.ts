@@ -801,6 +801,16 @@ export interface RiskIndicator {
   change_5: number | null
   change_20: number | null
 }
+/** 국내 시장 폭(D-321) — GET /api/spine/indices/breadth. 자료가 없으면 응답이 null */
+export interface KrBreadth {
+  trade_date: string
+  prev_date: string
+  up: number
+  down: number
+  flat: number
+  up_ratio: number
+}
+
 export interface RiskResponse {
   items: RiskIndicator[]
   signal: {

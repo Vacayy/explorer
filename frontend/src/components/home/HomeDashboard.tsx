@@ -4,7 +4,7 @@ import { PageLayout } from "@/components/shared/PageLayout"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { HomeSection } from "@/components/home/HomeSection"
 import { ContextBody, IndicesBody } from "@/components/widgets/market"
-import { useIndices } from "@/hooks/useDashboard"
+import { useIndices, useKrBreadth } from "@/hooks/useDashboard"
 import { formatKstLongDate } from "@/utils/format"
 
 /**
@@ -39,14 +39,15 @@ export default function HomeDashboard() {
 const GLASS_PANEL = "glass rounded-[16px] [&>header]:border-line"
 
 /**
- * 기상도 — 그라디언트 바탕 + 세로 리브 + 유리 패널(시안 Home). 분홍(상승)·파랑(하락) 비율 = 지수 띠의 상승 지수 비율.
- * 종목 단위 상승·하락 종목 수(시장 폭) 데이터가 아직 없어 지수 등락으로 대신한다. 자료가 없으면 기본 0.33(시안 값).
+ * 기상도 — 그라디언트 바탕 + 세로 리브 + 유리 패널(시안 Home). 분홍(상승)·파랑(하락) 비율(D-321):
+ * 국내 시장 폭(최근 거래일 상승 종목 / 상승+하락) → 없으면 지수 띠의 상승 지수 비율 → 그것도 없으면 기본 0.33(시안 값).
  */
 function WeatherHeader() {
   const client = useQueryClient()
   const { data } = useIndices()
+  const { data: breadth } = useKrBreadth()
   const moved = (data?.items ?? []).filter(r => r.change_pct != null && r.change_pct !== 0)
-  const ratio = moved.length ? moved.filter(r => r.change_pct! > 0).length / moved.length : null
+  const ratio = breadth?.up_ratio ?? (moved.length ? moved.filter(r => r.change_pct! > 0).length / moved.length : null)
   const style = ratio == null ? undefined : { "--weather-up": ratio.toFixed(2) } as CSSProperties
   const reset = () => { void client.refetchQueries({ type: "active", predicate: q => q.state.status === "error" }) }
   return (

@@ -1,6 +1,7 @@
 """주요 지수 API (D-110).
 
 GET  /api/spine/indices          — 지수 종가·등락률·1Y 추이·개장 상태 (저장분 읽기, LLM 0)
+GET  /api/spine/indices/breadth  — 국내 시장 폭(상승·하락 종목 수, stock_prices 저장분, D-321)
 POST /api/spine/indices/snapshot — 강제 재수집(수동 갱신, 동기)
 
 **GET은 절대 외부 fetch를 기다리지 않는다** — TTL이 만료되면 갱신을 백그라운드로 넘기고 저장분을
@@ -10,7 +11,11 @@ POST /api/spine/indices/snapshot — 강제 재수집(수동 갱신, 동기)
 """
 from fastapi import APIRouter, BackgroundTasks
 
-from pipeline.indices import any_market_open, get_indices, snapshot_indices
+import time
+
+from database import get_connection
+from models.spine import KrBreadth
+from pipeline.indices import any_market_open, get_indices, kr_breadth, snapshot_indices
 from services.cache_service import invalidate_cache, is_cached, set_cache
 
 router = APIRouter(prefix="/api/spine/indices", tags=["spine"])
@@ -37,6 +42,24 @@ def api_indices(background: BackgroundTasks):
         set_cache(CACHE_KEY, _ttl())      # 먼저 선점 — 동시 요청이 갱신을 중복 예약하지 않게
         background.add_task(_refresh_bg)  # 응답을 먼저 보내고 그 다음 수집
     return get_indices()
+
+
+_breadth_memo: tuple[float, dict | None] | None = None
+BREADTH_TTL = 10 * 60  # 전 종목 스캔(~0.4s)을 홈 방문마다 하지 않게 — 일별 시세는 하루 몇 번만 바뀐다
+
+
+@router.get("/breadth", response_model=KrBreadth | None)
+def api_breadth():
+    global _breadth_memo
+    if _breadth_memo and time.monotonic() - _breadth_memo[0] < BREADTH_TTL:
+        return _breadth_memo[1]
+    conn = get_connection()
+    try:
+        value = kr_breadth(conn)
+    finally:
+        conn.close()
+    _breadth_memo = (time.monotonic(), value)
+    return value
 
 
 @router.post("/snapshot")

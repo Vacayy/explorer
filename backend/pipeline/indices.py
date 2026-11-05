@@ -186,3 +186,32 @@ def get_indices() -> dict:
             "degraded": degraded,
             "any_open": any(s["is_open"] for s in status.values()),
             "holiday_aware": False}   # 공휴일 캘린더 없음 — UI에 그대로 노출
+
+
+def kr_breadth(conn) -> dict | None:
+    """국내 시장 폭 — 최근 거래일 종가가 직전 거래일 종가보다 오른·내린·같은 종목 수 (D-321, LLM 0·외부 0).
+
+    `stock_prices` 저장분만 읽는다. 그날 수집이 덜 된 날(최근 날짜 중 최다 종목 수의 절반 미만)은
+    건너뛰어, 몇 종목만 들어온 날로 비율이 흔들리지 않게 한다. 비교할 두 날이 없거나
+    오르고 내린 종목이 하나도 없으면 None.
+    """
+    rows = conn.execute(
+        "SELECT trade_date, COUNT(*) n FROM stock_prices "
+        "WHERE trade_date >= date((SELECT MAX(trade_date) FROM stock_prices), '-20 day') "
+        "GROUP BY trade_date ORDER BY trade_date DESC").fetchall()
+    if not rows:
+        return None
+    full = max(r[1] for r in rows)
+    days = [r[0] for r in rows if r[1] * 2 >= full]
+    if len(days) < 2:
+        return None
+    day, prev = days[0], days[1]
+    up, down, flat = conn.execute(
+        "SELECT COALESCE(SUM(a.close > b.close), 0), COALESCE(SUM(a.close < b.close), 0), "
+        "COALESCE(SUM(a.close = b.close), 0) "
+        "FROM stock_prices a JOIN stock_prices b ON b.stock_code = a.stock_code AND b.trade_date = ? "
+        "WHERE a.trade_date = ? AND a.close > 0 AND b.close > 0", (prev, day)).fetchone()
+    if up + down == 0:
+        return None
+    return {"trade_date": day, "prev_date": prev, "up": up, "down": down, "flat": flat,
+            "up_ratio": round(up / (up + down), 4)}

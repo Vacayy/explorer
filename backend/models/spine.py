@@ -115,3 +115,13 @@ class HomeResponse(BaseModel):
     market_highlights: list[SignalItem]
     watchlist_empty: bool
     as_of: str
+
+
+class KrBreadth(BaseModel):
+    """국내 시장 폭(D-321) — 홈 기상도의 상승·하락 색 비율. 자료가 없으면 응답 전체가 null."""
+    trade_date: str
+    prev_date: str
+    up: int
+    down: int
+    flat: int
+    up_ratio: float   # up / (up + down)

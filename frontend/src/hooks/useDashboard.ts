@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import type { RiskResponse } from "@/types"
+import type { KrBreadth, RiskResponse } from "@/types"
 
 /** 지수 — 홈 지수 띠(market.indices) */
 export interface IndexRow { key: string; label: string; region: string; is_open: boolean; price: number | null; change_pct: number | null; spark: number[]; as_of: string | null }
@@ -10,6 +10,11 @@ export function useIndices() {
     refetchInterval: (q) => (q.state.data?.any_open ? 10 * 60_000 : 30 * 60_000),
     refetchIntervalInBackground: false,
   })
+}
+
+/** 국내 시장 폭(D-321) — 최근 거래일 상승·하락 종목 수. 홈 기상도 색 비율 */
+export function useKrBreadth() {
+  return useQuery(apiQuery<KrBreadth | null>({ key: ["spine", "indices", "breadth"], url: "/api/spine/indices/breadth", staleTime: STALE.long }))
 }
 
 /** Risk 위젯 묶음 — 정본 계열(D-236)에서 3개월 창만 한 번에 (전 이력 1.4MB 대신 수 KB) */
