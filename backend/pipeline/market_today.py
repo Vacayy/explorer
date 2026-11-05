@@ -1,7 +1,8 @@
 """Market Today — 오늘 장중 실시간 소스 화두 요약 (docs/specs/market-today.md).
 
-장중 세 회차(10:00·13:00·15:40 KST)마다 직전 창의 텔레그램 글과 지정 매체 헤드라인(macro_news)을 모아
-**지금 주로 나오는 얘기** 3~5개를 sonnet 1콜로 묶는다. 화두마다 출처 원문에서 글자 그대로 복사한 인용을
+평일 네 회차(09:30·11:30·15:00 장중 + 16:00 마감 정리, KST, 2026-11-05 변경)마다 직전 창의 텔레그램 글과 지정 매체
+헤드라인(macro_news)을 모아 **지금 주로 나오는 얘기** 3~5개를 sonnet 1콜로 묶는다. 마감 정리는 직전 창이 아니라
+그날 장 전체(09:00~16:00)를 보고 오늘 하루를 정리한다. 화두마다 출처 원문에서 글자 그대로 복사한 인용을
 받아 원문에서 확인된 것만 채택한다(미국장 브리핑 매크로 이슈와 같은 규율, us_briefing._verify_issues).
 화두 순서는 LLM이 아니라 **언급한 출처 수**로 정한다 — 회차마다 기준이 흔들리지 않게.
 """
@@ -18,8 +19,12 @@ from pipeline.us_briefing import _QUOTE_MIN, _norm_quote
 from pipeline.visibility import UNVERIFIED_SOURCES
 
 KST = ZoneInfo("Asia/Seoul")
-SLOTS = [("1000", dtime(10, 0)), ("1300", dtime(13, 0)), ("1540", dtime(15, 40))]
-SLOT_LABEL = {"1000": "10:00", "1300": "13:00", "1540": "15:40"}
+SLOTS = [("0930", dtime(9, 30)), ("1130", dtime(11, 30)), ("1500", dtime(15, 0)), ("1600", dtime(16, 0))]
+WRAP_SLOT = "1600"                 # 마감 정리 — 오늘 하루 전체 창
+DAY_OPEN = dtime(9, 0)
+# 옛 회차(11-05 전 10:00·13:00·15:40)도 읽을 수 있게 라벨은 남긴다
+SLOT_LABEL = {"0930": "09:30", "1130": "11:30", "1500": "15:00", "1600": "16:00 마감",
+              "1000": "10:00", "1300": "13:00", "1540": "15:40"}
 MAX_DOCS = 80          # 프롬프트 입력 상한(묶음 기준)
 MAX_TELEGRAM = 50      # 그중 텔레그램 몫 — 나머지는 지정 매체 헤드라인
 DOC_CHARS = 600        # 텔레그램 글 발췌 길이 — 인용 검증 대상도 이 범위
@@ -31,7 +36,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS market_today (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     trade_date    TEXT NOT NULL,          -- KST 거래일
-    slot          TEXT NOT NULL,          -- 1000 | 1300 | 1540
+    slot          TEXT NOT NULL,          -- 0930 | 1130 | 1500 | 1600(마감 정리) · 옛 1000 | 1300 | 1540
     window_start  TEXT NOT NULL,          -- UTC ISO
     window_end    TEXT NOT NULL,
     items_json    TEXT NOT NULL,          -- [{title, body, tags, refs, continuing}]
@@ -60,12 +65,12 @@ INDEX_TICKERS = {"kospi": "^KS11", "kosdaq": "^KQ11"}
 def market_snapshot(day: date, slot: str) -> dict | None:
     """회차 시점의 코스피·코스닥 값과 전일 대비, 그 시각까지의 코스피 5분 경로 — 화두가 돌 때 시장이 어땠는지 나중에 맞대 보려고 쌓는다.
 
-    yfinance 장중 5분봉은 마지막 30분가량이 늦게 들어오므로 장 마감 회차(15:40)는 당일 종가가 있으면 그것을 쓴다.
+    yfinance 장중 5분봉은 마지막 30분가량이 늦게 들어오므로 장 마감 회차(16:00)는 당일 종가가 있으면 그것을 쓴다.
     실패하면 None — 화두 생성은 막지 않는다.
     """
     try:
         import yfinance as yf
-        slot_t = dict(SLOTS)[slot]
+        slot_t = dict(SLOTS).get(slot) or dtime(int(slot[:2]), int(slot[2:]))
         out, path = {}, []
         for key, tk in INDEX_TICKERS.items():
             t = yf.Ticker(tk)
@@ -74,7 +79,7 @@ def market_snapshot(day: date, slot: str) -> dict | None:
             close_today = next((v for idx, v in daily.items() if idx.date() == day), None)
             bars = [(idx.astimezone(KST), v) for idx, v in t.history(period="5d", interval="5m")["Close"].items()
                     if idx.astimezone(KST).date() == day and idx.astimezone(KST).time() <= slot_t]
-            if slot == SLOTS[-1][0] and close_today is not None:
+            if slot_t >= dtime(15, 30) and close_today is not None:
                 value, at = float(close_today), "15:30"
             elif bars:
                 value, at = float(bars[-1][1]), bars[-1][0].strftime("%H:%M")
@@ -135,11 +140,17 @@ def _prev_trading_day(conn, day: date) -> date:
 
 
 def window(conn, day: date, slot: str) -> tuple[str, str]:
-    """[start, end) UTC. 첫 회차는 전 거래일 15:40부터(밤사이 미국장·해외 뉴스 포함), 나머지는 직전 회차부터."""
+    """[start, end) UTC. 첫 회차는 전 거래일 마감 정리(16:00)부터(밤사이 미국장·해외 뉴스 포함), 장중 회차는 직전 회차부터,
+    마감 정리는 그날 09:00부터(오늘 하루 전체)."""
     keys = [s for s, _ in SLOTS]
     i = keys.index(slot)
     end = _kst(day, SLOTS[i][1])
-    start = _kst(_prev_trading_day(conn, day), SLOTS[-1][1]) if i == 0 else _kst(day, SLOTS[i - 1][1])
+    if slot == WRAP_SLOT:
+        start = _kst(day, DAY_OPEN)
+    elif i == 0:
+        start = _kst(_prev_trading_day(conn, day), SLOTS[-1][1])
+    else:
+        start = _kst(day, SLOTS[i - 1][1])
     return _utc(start), _utc(end)
 
 
@@ -199,9 +210,17 @@ def _prompt(day: date, slot: str, sources: list[dict], prev_titles: list[str]) -
         when = (s["published_at"] or "")[:16]
         return f"<{s['ref']} | {s['kind']} | {s['publisher']}{echo} | {when}Z>\n{s['text'].strip()}\n</{s['ref']}>"
     prev = "\n".join(f"- {t}" for t in prev_titles) or "(없음 — 오늘 첫 회차)"
+    if slot == WRAP_SLOT:
+        head = (f"당신은 국내 증시 데스크 기자다. {day.isoformat()} 장이 끝났다. 오늘 장중(09:00~16:00) 텔레그램 채널과 "
+                "주요 매체에서 **오늘 하루 주로 나온 얘기** 3~5개로 오늘 장을 정리한다. 장중 회차 화두를 되풀이하기보다 "
+                "하루를 통틀어 가장 많이 다뤄졌고 시장에 영향이 컸던 얘기를 고른다. 리서치를 대신하지 않는다.\n\n")
+        prev_head = "[오늘 장중 회차 화두]"
+    else:
+        head = (f"당신은 국내 증시 데스크 기자다. {day.isoformat()} {SLOT_LABEL[slot]} 기준으로, 직전 창에 텔레그램 채널과 "
+                "주요 매체에서 **주로 나온 얘기** 3~5개를 묶는다. 리서치를 대신하지 않고, 지금 무엇이 화두인지 알려 주는 것이 목적이다.\n\n")
+        prev_head = "[직전 회차 화두]"
     return (
-        f"당신은 국내 증시 데스크 기자다. {day.isoformat()} {SLOT_LABEL[slot]} 기준으로, 직전 창에 텔레그램 채널과 "
-        "주요 매체에서 **주로 나온 얘기** 3~5개를 묶는다. 리서치를 대신하지 않고, 지금 무엇이 화두인지 알려 주는 것이 목적이다.\n\n"
+        head +
         "규칙:\n"
         "- 화두는 여러 출처가 다룬 것, 시장(지수·업종·금리·환율·원자재)에 영향을 줄 만한 것을 우선한다. "
         "같은 얘기 N곳 표시는 여러 채널이 다룬 정도다. 한 채널의 의견을 시장의 합의로 부풀리지 않는다.\n"
@@ -210,11 +229,11 @@ def _prompt(day: date, slot: str, sources: list[dict], prev_titles: list[str]) -
         "- body: 1~2문장, 존댓말(합니다체를 뼈대로 하되 해요체를 한 번 섞어도 된다). 누가 무엇을 말했는지와 "
         "시장이 어떻게 읽는지를 출처에 있는 그대로. 출처에 없는 수치·인과를 보태지 않는다. 매매 처방 금지.\n"
         "- tags: 2~3개 짧은 주제어.\n"
-        "- continuing: 직전 회차 화두와 같은 얘기가 이어지면 true.\n"
+        "- continuing: 위 화두 목록의 얘기와 같은 얘기가 이어지면 true.\n"
         "- sources: 근거 출처 1~3개. quote는 해당 출처 원문에서 **글자 그대로 복사한** 연속 구간(10~120자). "
         "번역·요약·말줄임 금지. 한 글자라도 다르면 그 출처는 버려지고, 출처가 하나도 안 남은 화두는 버려진다.\n"
         "- 화두가 없으면 빈 배열. 지어내지 마라.\n\n"
-        f"[직전 회차 화두]\n{prev}\n\n"
+        f"{prev_head}\n{prev}\n\n"
         f"[자료]\n" + "\n\n".join(fmt(s) for s in sources) + "\n\n"
         "JSON만 출력: {\"topics\": [{\"title\": \"…\", \"body\": \"…\", \"tags\": [\"…\"], \"continuing\": false, "
         "\"sources\": [{\"ref\": \"S3\", \"quote\": \"원문 그대로\"}]}]}"
@@ -252,7 +271,7 @@ def run(day: date | None = None, slot: str | None = None, force: bool = False, c
     if day is None or slot is None:
         due = due_slot()
         if not due:
-            return {"status": "skipped", "reason": "주말이거나 첫 회차(10:00) 전"}
+            return {"status": "skipped", "reason": "주말이거나 첫 회차(09:30) 전"}
         day, slot = due
     if slot not in SLOT_LABEL:
         return {"status": "error", "reason": f"알 수 없는 회차 {slot}"}
@@ -272,9 +291,11 @@ def run(day: date | None = None, slot: str | None = None, force: bool = False, c
             return {"status": "skipped", "reason": f"창 안 자료 {sum(counts.values())}건", **counts}
         if call is None and llm_engine() != "claude-code":
             return {"status": "error", "reason": "LLM 미가용"}
-        prev = conn.execute("SELECT items_json FROM market_today WHERE trade_date=? AND slot<? ORDER BY slot DESC LIMIT 1",
-                            (day.isoformat(), slot)).fetchone()
-        prev_titles = [t["title"] for t in json.loads(prev["items_json"])] if prev else []
+        prev_rows = conn.execute("SELECT items_json FROM market_today WHERE trade_date=? AND slot<? ORDER BY slot DESC",
+                                 (day.isoformat(), slot)).fetchall()
+        if slot != WRAP_SLOT:          # 장중 회차는 직전 회차만, 마감 정리는 그날 장중 회차 전부
+            prev_rows = prev_rows[:1]
+        prev_titles = list(dict.fromkeys(t["title"] for r in prev_rows for t in json.loads(r["items_json"])))
         prompt = _prompt(day, slot, sources, prev_titles)
         try:
             raw = (call or (lambda p: _call_claude_code(p, model=MODEL, timeout=300)))(prompt)
