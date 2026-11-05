@@ -57,6 +57,8 @@ def ensure_schema(conn) -> None:
         conn.execute("ALTER TABLE market_today ADD COLUMN market_json TEXT")
     except Exception:  # noqa: BLE001 — 이미 있으면 그대로
         pass
+    from pipeline.market_today_links import ensure_schema as links_schema   # 화두 → 내러티브 연결(ia-redesign §9)
+    links_schema(conn)
 
 
 INDEX_TICKERS = {"kospi": "^KS11", "kosdaq": "^KQ11"}
@@ -313,10 +315,26 @@ def run(day: date | None = None, slot: str | None = None, force: bool = False, c
             (day.isoformat(), slot, start, end, json.dumps(topics, ensure_ascii=False), json.dumps(meta, ensure_ascii=False),
              sum(counts.values()), json.dumps(counts), json.dumps(market) if market else None, MODEL))
         conn.commit()
+        linked = _link_after(conn, day)
         return {"status": "ok", "trade_date": day.isoformat(), "slot": slot, "topics": len(topics),
-                "dropped": len(((data or {}).get("topics") or [])) - len(topics) if isinstance(data, dict) else 0, **counts}
+                "dropped": len(((data or {}).get("topics") or [])) - len(topics) if isinstance(data, dict) else 0, **counts,
+                **linked}
     finally:
         conn.close()
+
+
+def _link_after(conn, day: date) -> dict:
+    """회차 저장 직후 내러티브 연결·후보 갱신(결정적, LLM 0). 플래그 `market_today_links`로 끄고, 실패해도 회차는 그대로."""
+    try:
+        from pipeline.ops import flag_enabled
+        if not flag_enabled("market_today_links", default=True):
+            return {"links": "off"}
+        from pipeline.market_today_links import after_session
+        r = after_session(conn, day)
+        return {"links": r["links"], "candidates": r["candidates"]["pending"]}
+    except Exception as e:  # noqa: BLE001 — 부가 계산이라 회차 생성을 실패로 만들지 않는다
+        conn.rollback()
+        return {"links": f"error:{type(e).__name__}"}
 
 
 # ---------- 읽기 ----------
@@ -337,14 +355,19 @@ def read(day: str | None = None, slot: str | None = None) -> dict:
         pick = next((r for r in rows if r["slot"] == slot), rows[-1] if rows else None)
         current = None
         if pick:
+            from pipeline.market_today_links import links_for_session
+            ready = pick["links_at"] is not None
+            links = links_for_session(conn, pick["id"]) if ready else {}
             sources = json.loads(pick["sources_json"])
             counts = json.loads(pick["counts_json"] or "{}")
             current = {"slot": pick["slot"], "label": SLOT_LABEL[pick["slot"]], "window_start": pick["window_start"],
                        "window_end": pick["window_end"], "created_at": pick["created_at"], "doc_count": pick["doc_count"],
                        "telegram": counts.get("telegram", 0), "news": counts.get("news", 0),
                        "market": json.loads(pick["market_json"]) if pick["market_json"] else None,
-                       "topics": [{**t, "sources": [sources[r] | {"ref": r} for r in t["refs"] if r in sources]}
-                                  for t in json.loads(pick["items_json"])]}
+                       "links_ready": ready,
+                       "topics": [{**t, "sources": [sources[r] | {"ref": r} for r in t["refs"] if r in sources],
+                                   "narratives": links.get(i, [])}
+                                  for i, t in enumerate(json.loads(pick["items_json"]))]}
         return {"trade_date": day, "slots": slots, "current": current, "next_slot": _next_label()}
     finally:
         conn.close()

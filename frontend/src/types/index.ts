@@ -1315,6 +1315,8 @@ export interface ProxySuggestion { topic: string; candidates: ProxyCandidate[]; 
 export interface WorldMega {
   id: number; name: string; title: string | null; narrative: string | null
   members: string[]; version: number; created_at: string | null
+  /** 이번 주 Market Today 연결 화두·회차(멤버 서사끼리 중복 제거, 마감 정리 제외)와 '다음 갱신 앞당김' (ia-redesign §9·§4.25) */
+  mt_topics: number; mt_sessions: number; boost: boolean
 }
 export interface WorldBigPicture {
   mega: WorldMega[]
@@ -1750,7 +1752,9 @@ export interface ObserveSummary {
 /* ---------- Market Today (docs/specs/market-today.md) — GET /api/spine/market-today ---------- */
 export interface TodaySource { ref: string; kind: string; publisher: string | null; title: string | null; url: string | null; doc_id: number | null; published_at: string | null; echo: number }
 export interface TodayIndexAt { value: number; change_pct: number | null; at: string }
-export interface TodayTopic { title: string; body: string; tags: string[]; continuing: boolean; echo: number; refs: string[]; sources: TodaySource[] }
+/** 화두에 걸린 내러티브 (ia-redesign §9.1) — rule 1 태그 일치 · 2 자료 겹침 + 태그 부분 일치 · 3 자료 겹침 */
+export interface TopicNarrative { topic: string; narrative_id: number; version: number; created_at: string | null; rule: number; doc_overlap: number }
+export interface TodayTopic { title: string; body: string; tags: string[]; continuing: boolean; echo: number; refs: string[]; sources: TodaySource[]; narratives: TopicNarrative[] }
 export interface MarketToday {
   trade_date: string | null
   slots: { slot: string; label: string; created_at: string; topics: number }[]
@@ -1758,10 +1762,34 @@ export interface MarketToday {
     slot: string; label: string; window_start: string; window_end: string; created_at: string; doc_count: number; telegram: number; news: number
     /** 회차 시점 시장 상태 — 코스피·코스닥 값과 전일 대비, 코스피 5분 경로 */
     market: { kospi?: TodayIndexAt | null; kosdaq?: TodayIndexAt | null; path: [string, number][] } | null
+    /** 내러티브 연결을 계산했는가 — 아니면 칩 줄을 그리지 않는다 */
+    links_ready: boolean
     topics: TodayTopic[]
   } | null
   next_slot: string | null
 }
+
+/* ---------- 화두 → 내러티브 타임라인·후보 (ia-redesign §9) ---------- */
+export type TimelineCellState = "linked" | "unlinked" | "scheduled" | "absent"
+export interface NarrativeMarketToday {
+  topic: string; narrative_id: number
+  collected_since: string | null
+  days: { trade_date: string; cells: { slot: string; label: string; state: string; wrap: boolean }[] }[]
+  items: { mt_id: number; trade_date: string; slot: string; label: string; title: string; rule: number; doc_overlap: number; wrap: boolean }[]
+  week_topics: number; week_sessions: number; boost: boolean
+}
+export interface NarrativeCandidate {
+  tag: string; name: string
+  /** pending 후보 · approved 승인(첫 버전 대기) · watching 관찰 중 */
+  status: string
+  first_seen: string; last_seen: string; days: number; sessions: number; sources: number; tags: string[]
+  session_list: { mt_id: number; trade_date: string; slot: string; label: string }[]
+  titles: string[]; linked: string[]
+  merge_into: { topic: string; overlap: number; narrative_id: number; version: number; created_at: string | null } | null
+  narrative_topic: string | null; attempt: string | null
+}
+export interface NarrativeCandidates { items: NarrativeCandidate[] }
+export interface CandidateAction { tag: string; status: string; mode: string | null; narrative_topic: string | null; dismissed_until: string | null }
 
 /* ---------- 기업 관련 자료 (GET /api/spine/feed/company-evidence) ---------- */
 export interface EvidenceItem {

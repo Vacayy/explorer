@@ -45,11 +45,27 @@
 
 ## 저장 · API
 
-- 테이블 `market_today`: `(trade_date, slot)` UNIQUE, `window_start`, `window_end`, `items_json`, `sources_json`, `doc_count`, `counts_json`, `model`, `created_at`. 회차마다 한 행, 덮어쓰지 않는다(재실행은 `force`일 때만).
+- 테이블 `market_today`: `(trade_date, slot)` UNIQUE, `window_start`, `window_end`, `items_json`, `sources_json`, `doc_count`, `counts_json`, `model`, `created_at`, `links_at`(내러티브 연결 계산 시각). 회차마다 한 행, 덮어쓰지 않는다(재실행은 `force`일 때만).
 - `GET /api/spine/market-today?date=&slot=` → 그날 회차 목록과 선택(없으면 최신) 회차 본문, 오늘 남은 다음 회차 시각(`models/market_today.py`).
 - 수동 실행: `python scripts/market_today.py [--date YYYY-MM-DD --slot 0930|1130|1500|1600] [--force]`.
 - 실행 기록 `job_runs('market_today')` — ok / skipped(휴장·문서 부족) / error.
 - **회차 시점 시장 상태**(`market_json`, 2026-11-03 추가): 코스피·코스닥 값·전일 대비·찍힌 시각과 그 시각까지의 코스피 5분 경로. yfinance 장중 5분봉은 마지막 30분가량이 늦게 들어오므로 장 마감 회차(16:00)는 당일 종가를 쓴다. 조회 실패면 비워 두고 화두 생성은 막지 않는다. 컬럼 추가 전 회차는 `backfill_market(day)`. 쓰임: 화두가 돌 때 시장이 어땠는지 나중에 맞대 보기(화두 × 지수 변화), 장중 타임라인의 지수 선.
+
+## 화두 → 내러티브 연결 (2026-11-05)
+
+LLM 없이 규칙으로 화두마다 살아 있는 내러티브(topic)를 짝짓는다. 코드 `pipeline/market_today_links.py`, 표 `market_today_links`·`narrative_candidates`, 회차 컬럼 `links_at`.
+
+- **짝 찾기**: 내러티브 주제 = sector·theme 엔티티 이름. 출처 문서의 주제 연결은 `entity_links`(industry·topic)로 본다.
+  1. 태그 일치 — 화두 태그가 주제와 같고(공백·대소문자 무시) 출처 1건 이상이 그 주제 문서
+  2. 자료 겹침 + 태그 부분 일치 — 출처 2건 이상이 그 주제 문서이고 태그 안에 주제명이 들어 있음
+  3. 자료 겹침 — 출처 2건 이상이 그 주제 문서
+  - 같은 순위면 겹친 문서 수 순. 문서 수는 주제 **이름** 기준(같은 이름 엔티티가 둘이어도 1건). 의미 유사(임베딩) 규칙은 아직 없다.
+- **언제**: 회차를 저장한 직후 그날과 직전 며칠 회차를 다시 연결한다(출처의 주제 연결이 회차보다 늦게 붙는 경우를 메운다). 플래그 `market_today_links`로 끌 수 있고, 실패해도 회차는 그대로 남는다. 옛 회차는 `python scripts/link_market_today.py`.
+- **세는 법**: 회차 수·빈도에 16:00 마감 정리는 넣지 않는다(그날 장중 회차를 다시 정리한 것). 화면 격자·목록에는 보인다.
+- **후보**: 최근 7일 장중 회차 화두를 공유 태그로 잇는다(살아 있는 서사 이름·일반어 태그는 고리 제외). 2거래일·3회차 이상이면 후보, 하루 안 3회차면 관찰 중. 같은 기간(첫 등장 7일 전 이후) 새로 생긴 서사와 출처 2건 이상 겹치면 그 서사에 합치기를 제안한다. 승인하면 새 주제는 다음 내러티브 갱신(30분 체인)에서 첫 버전을 시도하고, 합치기는 그 태그를 그 서사와 태그 일치로 본다. 무시하면 14일 동안 올리지 않는다.
+- **갱신 순서**: 이번 주(월요일부터) 연결 회차 3회 이상 + 마지막 갱신 3일 경과 서사를 내러티브 갱신 순서 앞으로 당긴다. 순서만 바꾸고 횟수는 그대로.
+- **API**: `market-today`의 화두마다 `narratives: [{topic, narrative_id, version, created_at, rule, doc_overlap}]`(없으면 `[]`)와 회차 `links_ready`. `GET /api/spine/narratives/{id}/market-today`(타임라인), `GET /api/spine/narrative-candidates`, `POST /api/spine/narrative-candidates/{tag}/approve`·`/dismiss`.
+- **화면**: 홈 화두 아래 칩 줄(2개 + `+N`, 툴팁 = 규칙·겹친 출처·서사 버전·갱신일, 연결 없거나 계산 전이면 줄 없음), 내러티브 상세 오른쪽 맨 위 '장중 화두 타임라인'(최근 2일 × 그날 회차), Thesis › 지금 '내러티브 후보' 카드와 큰 그림 줄기의 'Market Today 화두 n · n회차'·'다음 갱신 앞당김'.
 
 ## 화면 — 홈 위젯 'Market Today'
 
@@ -71,7 +87,7 @@ sonnet 3콜/거래일(입력 80건 제목·발췌 중심 약 15K 토큰). 미국
 ## 범위
 
 - **P0**: 3회차 생성·저장·API·홈 위젯, Market Overnight 이름 변경.
-- **P1**: 텔레그램 아침 브리핑에 직전 16:00 마감 정리 한 줄, 화두 → 내러티브 연결(같은 주제의 내러티브가 있으면 링크).
+- **P1**: 텔레그램 아침 브리핑에 직전 16:00 마감 정리 한 줄. ~~화두 → 내러티브 연결~~ — 2026-11-05 구현(위 '화두 → 내러티브 연결').
 - **P2**: 사용자가 회차 시각을 고르기, 장중 급변(지수 ±2%) 때 임시 회차.
 
 ## 기각한 대안

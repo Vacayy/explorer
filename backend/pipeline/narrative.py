@@ -592,9 +592,10 @@ def compute_top_narratives(limit: int = 5) -> dict:
     """, (limit,)).fetchall()
     topics = [r["name"] for r in rows]
     coverage = _coverage_topics(conn, exclude=set(topics))
+    boosted = _mt_boosted(conn)
     conn.close()
     results = {}
-    for t in topics + coverage:
+    for t in _order_by_boost(topics + coverage, boosted):
         try:
             results[t] = compute_narrative(t).get("status")
         except Exception as e:  # noqa: BLE001 — 배치라 한 주제 실패가 전체를 막지 않게
@@ -629,6 +630,8 @@ def compute_urgent_narratives() -> dict:
         FROM signals s JOIN entities e ON e.id=s.entity_id
         WHERE s.signal_type='theme_surge' AND s.date=?
         ORDER BY delta DESC""", (latest,)).fetchall()
+    rows = _order_by_boost(rows, _mt_boosted(conn), key=lambda r: r["name"])
+    approved = _approved_new_topics(conn)
 
     picked, skipped = [], {}
     for r in rows:
@@ -660,7 +663,53 @@ def compute_urgent_narratives() -> dict:
             results[p["topic"]] = compute_narrative(p["topic"]).get("status")
         except Exception as e:  # noqa: BLE001 — 체인이라 한 주제 실패가 전체를 막지 않게
             results[p["topic"]] = f"error:{str(e)[:80]}"
+    # 사람이 승인한 내러티브 후보(ia-redesign §9.3) — 다음 갱신 때 첫 버전. 급증 상한과 별개(승인은 드물다)
+    for t in approved:
+        if t in results:
+            continue
+        try:
+            results[t] = compute_narrative(t).get("status")
+        except Exception as e:  # noqa: BLE001
+            results[t] = f"error:{str(e)[:80]}"
+        _record_candidate_attempt(t, results[t])
+        picked.append({"topic": t, "why": "후보 승인"})
     return {"picked": picked, "results": results, "skipped": skipped, "signal_date": latest}
+
+
+def _order_by_boost(items: list, boosted: set[str], key=lambda x: x) -> list:
+    """Market Today에 이번 주 자주 걸린 서사(§9.3 '다음 갱신 앞당김')를 앞으로 — 순서만, 대상·횟수는 그대로."""
+    return sorted(items, key=lambda x: key(x) not in boosted)
+
+
+def _mt_boosted(conn) -> set[str]:
+    try:
+        from pipeline.market_today_links import boosted_topics
+        return boosted_topics(conn)
+    except Exception:  # noqa: BLE001 — 순서 힌트일 뿐이라 실패하면 원래 순서
+        return set()
+
+
+def _approved_new_topics(conn) -> list[str]:
+    """승인한 후보 중 아직 첫 버전이 없는 새 주제. 생성을 실패(LLM 오류)한 주제는 다시 부르지 않는다."""
+    try:
+        from pipeline.market_today_links import pending_new_topics
+        rows = {r[0]: json.loads(r[1] or "{}").get("attempt") for r in conn.execute(
+            "SELECT narrative_topic, detail_json FROM narrative_candidates WHERE status='approved'")}
+        return [t for t in pending_new_topics(conn) if rows.get(t) != "failed"]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _record_candidate_attempt(topic: str, status: str) -> None:
+    try:
+        from pipeline.market_today_links import record_attempt
+        conn = get_connection()
+        try:
+            record_attempt(conn, topic, status)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def source_status_of(row) -> str:

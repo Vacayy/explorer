@@ -37,7 +37,7 @@ def big_picture(conn) -> dict:
     Overnight 일수)와 그 최신 시각, 세계관 브리핑의 전제 목록(저장 본문의 '자리 잡은 전제'·'도전받는 것' 절을
     문장 단위로 결정적으로 나눔), 브리핑 경과일·그 뒤 새 버전 수. 줄기(strands) 생성 파이프라인은 아직 없다.
     """
-    mega = list_mega(conn)
+    mega = _with_mt_counts(conn, list_mega(conn))
     cached = worldview_cached(conn)
     worldview = None
     if cached:
@@ -58,6 +58,17 @@ def big_picture(conn) -> dict:
 
 
 BIG_PICTURE_DAYS = 7
+
+
+def _with_mt_counts(conn, mega: list[dict]) -> list[dict]:
+    """줄기(지금은 메가 서사) 자리에 이번 주 Market Today 연결 수·앞당김을 붙인다(§4.25 — 별도 '자주 나온 서사' 카드 대신)."""
+    from pipeline.market_today_links import boosted_topics, ensure_schema, frequency, strand_counts
+    try:
+        ensure_schema(conn)
+        freq, boosted = frequency(conn), boosted_topics(conn)
+    except sqlite3.OperationalError:   # Market Today 표가 아직 없는 DB
+        freq, boosted = {}, set()
+    return [{**m, **strand_counts(conn, m["members"], freq, boosted)} for m in mega]
 
 
 def _big_picture_inputs(conn) -> tuple[dict, str | None]:

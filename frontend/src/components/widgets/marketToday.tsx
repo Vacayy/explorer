@@ -5,6 +5,7 @@ import { Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { WidgetState } from "@/components/shared/WidgetFrame"
+import { NarrativeChipLine } from "@/components/world/NarrativeChipLine"
 import { useMarketToday } from "@/hooks/useMarketToday"
 import { cn } from "@/lib/utils"
 import { formatPercent } from "@/utils/format"
@@ -41,11 +42,12 @@ export function MarketTodayBody({ w, h }: WidgetBodyProps) {
     <p className="flex items-center gap-1 text-[11px] text-hypothesis"><Sparkles className="size-3" aria-hidden="true" />AI 요약 · 실시간 소스에서 주로 나온 얘기</p>
     {c.topics.length === 0
       ? <p className="text-sm text-muted-foreground">이 회차에는 출처로 확인된 화두가 없어요.</p>
-      : <ul className="-mr-2 min-h-0 divide-y overflow-y-auto pr-2">{c.topics.slice(0, n).map(t => <TopicRow key={t.title} t={t} compact={h <= 3} />)}</ul>}
+      : <ul className="-mr-2 min-h-0 divide-y overflow-y-auto pr-2">{c.topics.slice(0, n).map(t => <TopicRow key={t.title} t={t} compact={h <= 3} links={c.links_ready} />)}</ul>}
   </div>
 }
 
-function TopicRow({ t, compact }: { t: TodayTopic; compact: boolean }) {
+/** links = 이 회차 내러티브 연결을 계산했는가 — 아니면(Partial) 칩 줄을 그리지 않는다(§9.4) */
+function TopicRow({ t, compact, links }: { t: TodayTopic; compact: boolean; links: boolean }) {
   return <li className="space-y-1 py-2 first:pt-0">
     <div className="flex items-baseline gap-2">
       <span className="text-[13px] font-semibold leading-snug">{t.title}</span>
@@ -59,5 +61,6 @@ function TopicRow({ t, compact }: { t: TodayTopic; compact: boolean }) {
         : s.url ? <a key={s.ref} href={s.url} target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline">{s.publisher}</a>
         : <span key={s.ref}>{s.publisher}</span>)}
     </div>}
+    {!compact && links && <NarrativeChipLine items={t.narratives ?? []} />}
   </li>
 }

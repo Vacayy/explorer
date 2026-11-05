@@ -20,7 +20,8 @@ import type { WorldBigPicture, WorldMega } from "@/types"
 
 const HOW = "최근 7일 새 내러티브 버전·Market Today 회차·Overnight를 근거로 여러 서사를 관통하는 줄기를 묶습니다. 줄기를 주 1회 새로 만드는 단계는 아직 준비 중이라, 지금은 여러 서사를 엮은 큰 서사(군집)를 보여 줍니다. 기준 시각은 근거 중 가장 늦은 것입니다."
 
-/** 줄기 카드 하나 — 번호 · 합니다체 제목 · 관련 서사 칩(이름 v · 날짜, 새로 생긴 서사엔 '새'). 14일 넘으면 흐리게 + '오래됨' */
+/** 줄기 카드 하나 — 번호 · 합니다체 제목 · 관련 서사 칩(이름 v · 날짜, 새로 생긴 서사엔 '새') · 이번 주 Market Today 연결 수와
+ *  '다음 갱신 앞당김'(§9.3, §4.25 — 별도 '자주 나온 서사' 카드 대신 줄기 안). 14일 넘으면 흐리게 + '오래됨' */
 function StrandCard({ n, m, index }: { n: number; m: WorldMega; index: Map<string, NarrativeItem> }) {
   const old = staleLevel(ageDays(m.created_at)) === "old"
   return (
@@ -44,6 +45,10 @@ function StrandCard({ n, m, index }: { n: number; m: WorldMega; index: Map<strin
           )
         })}
       </div>
+      {m.mt_topics > 0 && <p className="flex flex-wrap items-center gap-2 pl-5 text-caption text-muted-foreground" data-strand-mt>
+        <span className="tabular-nums">Market Today 화두 {m.mt_topics} · {m.mt_sessions}회차</span>
+        {m.boost && <Badge className="h-5 rounded-none px-1.5 text-[10px] font-normal">다음 갱신 앞당김</Badge>}
+      </p>}
     </li>
   )
 }

@@ -10,6 +10,9 @@ class MegaItem(BaseModel):
     members: list[str]
     version: int
     created_at: str | None
+    mt_topics: int        # 이번 주 Market Today 연결 화두 수(멤버 서사끼리 중복 제거, 마감 정리 제외) — ia-redesign §9·§4.25
+    mt_sessions: int      # 이번 주 연결 회차 수
+    boost: bool           # 멤버 중 '다음 갱신 앞당김' 서사가 있다
 
 
 class StoredWorldview(BaseModel):
