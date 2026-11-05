@@ -51,6 +51,11 @@ export function sectorPeerGroups(catalog: PeerCatalog, sector: string): { top: s
   return { top, all, partial: !!entry.partial, note: entry.note ?? null }
 }
 
+/** Peer 그룹 → 섹터(역방향) — '이 그룹의 업황 보기'. 그룹 자신이나 상위 그룹이 대응표에 있으면 그 섹터 */
+export function sectorOfPeerGroup(catalog: PeerCatalog, groupId: string): string | null {
+  return Object.keys(SECTOR_PEERS).find(sector => sectorPeerGroups(catalog, sector).all.includes(groupId)) ?? null
+}
+
 /** 그룹 구성 종목 코드 */
 export const groupCodes = (catalog: PeerCatalog, groupId: string) =>
   catalog.companies.filter(c => c.groupIds.includes(groupId)).map(c => c.code)

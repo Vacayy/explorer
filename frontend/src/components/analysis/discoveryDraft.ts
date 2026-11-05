@@ -1,8 +1,10 @@
 import type { StrategyCondition, StrategyDefinition, AnalysisSpec } from '@/components/analysis/types'
 
 export interface SearchDraft { question: string; asOf: string; within: number }
-/** off = 쌓아 두었지만 꺼 둔 블록의 strategy_id (워크스페이스에서 넣다 빼기, D-224) */
-export interface PurposeDraft { conditions: StrategyCondition[]; market: AnalysisSpec['market']; minimumCap: string; asOf: string; off?: string[] }
+/** 검색 범위를 정한 종목 묶음 — '오늘의 신호' 카드에서 넘긴 종목(ia-redesign §4.19). label은 화면 표시용 */
+export interface DraftUniverse { label: string; codes: string[] }
+/** off = 쌓아 두었지만 꺼 둔 블록의 strategy_id (워크스페이스에서 넣다 빼기, D-224). universe = 검색 범위 종목(없으면 시장 전체) */
+export interface PurposeDraft { conditions: StrategyCondition[]; market: AnalysisSpec['market']; minimumCap: string; asOf: string; off?: string[]; universe?: DraftUniverse | null }
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const day = (value: unknown) => typeof value === 'string' && (value === '' || /^\d{4}-\d{2}-\d{2}$/.test(value))
 export function isSearchDraft(value: unknown): value is SearchDraft {
@@ -12,9 +14,18 @@ export function isPurposeDraft(value: unknown): value is PurposeDraft {
   return object(value) && ['all', 'KOSPI', 'KOSDAQ'].includes(String(value.market)) && day(value.asOf)
     && typeof value.minimumCap === 'string' && value.minimumCap.length <= 20
     && (value.off === undefined || (Array.isArray(value.off) && value.off.length <= 12 && value.off.every(id => typeof id === 'string')))
+    && (value.universe == null || (object(value.universe) && typeof value.universe.label === 'string' && value.universe.label.length <= 80
+      && Array.isArray(value.universe.codes) && value.universe.codes.length >= 1 && value.universe.codes.length <= 10000 && value.universe.codes.every(code => typeof code === 'string' && /^[0-9A-Z]{6}$/.test(code))))
     && Array.isArray(value.conditions) && value.conditions.length <= 12
     && value.conditions.every(c => object(c) && typeof c.strategy_id === 'string' && object(c.params) && Number.isInteger(c.within_days) && Number(c.within_days) >= 0 && Number(c.within_days) <= 250
       && Object.values(c.params).every(v => typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))))
+}
+
+/** 신호 → 검색 범위 — 그 신호의 최신일 국내 종목(6자리 코드)만, 중복 없이. 국내 종목이 없으면 null(주제·미국 신호) */
+export function signalUniverse(label: string, items: readonly { stock_code: string | null; date: string }[]): DraftUniverse | null {
+  const latest = items.reduce<string>((max, item) => item.date > max ? item.date : max, '')
+  const codes = [...new Set(items.filter(item => item.date === latest && item.stock_code && /^\d{6}$/.test(item.stock_code)).map(item => item.stock_code!))].sort()
+  return codes.length ? { label: `${label} ${latest.slice(5).replace('-', '/')}`, codes } : null
 }
 
 export const MAX_STACKED_CONDITIONS = 12

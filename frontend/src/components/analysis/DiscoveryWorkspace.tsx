@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Skeleton } from '@/components/ui/skeleton'
 import { activeConditions, ConditionPalette, ConditionStack, EMPTY_STACK, stackSubmission, type StrategySubmission } from '@/components/analysis/ConditionStackBuilder'
-import { conditionInputError, conditionSignature, isPurposeDraft, type PurposeDraft } from '@/components/analysis/discoveryDraft'
+import { conditionInputError, conditionSignature, isPurposeDraft, type DraftUniverse, type PurposeDraft } from '@/components/analysis/discoveryDraft'
 import { isTerminal } from '@/components/analysis/events'
 import type { AnalysisRun, AnalysisSpec } from '@/components/analysis/types'
 
@@ -21,8 +21,8 @@ function useDesktop() {
 }
 
 /** 검색 대상까지 포함한 조합 서명 — 같으면 다시 검색하지 않는다. */
-const draftSignature = (draft: PurposeDraft) => `${conditionSignature(activeConditions(draft))}|${draft.market}|${Number(draft.minimumCap)}|${draft.asOf}`
-const specSignature = (spec: AnalysisSpec) => `${conditionSignature(spec.strategy_conditions ?? [])}|${spec.market}|${spec.min_market_cap / 100_000_000}|${spec.as_of ?? ''}`
+const draftSignature = (draft: PurposeDraft) => `${conditionSignature(activeConditions(draft))}|${draft.market}|${Number(draft.minimumCap)}|${draft.asOf}|${draft.universe?.codes.join(',') ?? ''}`
+const specSignature = (spec: AnalysisSpec) => `${conditionSignature(spec.strategy_conditions ?? [])}|${spec.market}|${spec.min_market_cap / 100_000_000}|${spec.as_of ?? ''}|${spec.universe_codes?.join(',') ?? ''}`
 const workspaceSpec = (spec: AnalysisSpec | null | undefined): spec is AnalysisSpec => !!spec && spec.mode === 'catalog' && !spec.expression && !!spec.strategy_conditions?.length
 
 /**
@@ -30,9 +30,11 @@ const workspaceSpec = (spec: AnalysisSpec | null | undefined): spec is AnalysisS
  * 검색 버튼을 누르면 spec 명시 경로로 찾는다(모델 0, D-225 — 블록 변경마다 자동 실행하지 않음). 실행은 URL `run`이 소유하고,
  * 스택은 이 탭의 초안(sessionStorage)이 소유한다. 다른 경로(이전 검색·문장 검색)로 연 실행은 스택에 불러온다.
  */
-export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, results }: {
+export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, results, universeRequest, onUniverseApplied }: {
   run: AnalysisRun | undefined; runLoading: boolean; startPending: boolean
   onStart: (body: StrategySubmission) => Promise<void>; results: ReactNode
+  /** '오늘의 신호'에서 넘긴 검색 범위 — 초안에 넣고 onUniverseApplied로 비운다 */
+  universeRequest?: DraftUniverse | null; onUniverseApplied?: () => void
 }) {
   const desktop = useDesktop()
   const catalog = useAnalysisStrategies()
@@ -55,9 +57,17 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
     if (!runSpec || !current) return
     if (current === submitted.current) { submitted.current = null; return }
     if (current === signature) return
-    setDraft({ conditions: runSpec.strategy_conditions ?? [], market: runSpec.market, minimumCap: String(runSpec.min_market_cap / 100_000_000), asOf: runSpec.as_of ?? '', off: [] })
+    setDraft({ conditions: runSpec.strategy_conditions ?? [], market: runSpec.market, minimumCap: String(runSpec.min_market_cap / 100_000_000), asOf: runSpec.as_of ?? '', off: [],
+      universe: runSpec.universe_codes?.length ? { label: draft.universe && draft.universe.codes.join(',') === runSpec.universe_codes.join(',') ? draft.universe.label : '지정 종목', codes: runSpec.universe_codes } : null })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 실행이 바뀔 때만 동기화
   }, [run?.id, current])
+
+  useEffect(() => {
+    if (!universeRequest) return
+    setDraft(previous => ({ ...previous, universe: universeRequest }))
+    onUniverseApplied?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 요청이 바뀔 때만 한 번 반영
+  }, [universeRequest])
 
   function runNow() {
     if (!ready || computing || runLoading) return

@@ -3,7 +3,7 @@
  *
  * L1 = 홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis (화면 구조 개편 C안). 홈 L2는 시스템 고정 탭 다섯 개(3단계), 나머지 L2는 지금 URL을 가리킨다.
  * 종목 도시에(/analyze, /us/:ticker, /company)는 L1이 아니라 목적지 — L2 자리에 도시에 탭을 보인다.
- * 이행 중 탭(신호·기업활동·국면 이력)은 대체 화면이 생길 때까지 맨 뒤에 남긴다(옛 경로를 먼저 지우지 않는다).
+ * 이행 중 탭(기업활동)은 대체 화면이 생길 때까지 맨 뒤에 남긴다(옛 경로를 먼저 지우지 않는다).
  */
 export type SectionKey = "home" | "feed" | "explore" | "industry" | "portfolio" | "world"
 
@@ -40,12 +40,11 @@ export const SECTIONS: readonly SectionDef[] = [
     { key: "saved", path: "/feed/saved", label: "저장됨", match: ["/feed/saved", "/follow/saved"] },
   ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
-    { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover"] },
-    { key: "peers", path: "/discover/peers", label: "Peer 그룹", match: ["/discover/peers"] },
+    { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover", "/explore"] },
+    { key: "peers", path: "/discover/peers", label: "Peer 그룹", match: ["/discover/peers", "/analyze/compare"] },
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
     { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
-    // 이행 중 — 신호는 종목 발견 '오늘의 신호', 기업활동은 도시에 개요로 옮긴 뒤 리다이렉트
-    { key: "signals", path: "/explore", label: "신호", match: ["/explore"] },
+    // 이행 중 — 기업활동은 도시에 개요로 옮긴 뒤 리다이렉트. 신호(/explore)는 종목 발견 '오늘의 신호'로 옮겨 리다이렉트(4c)
     { key: "actions", path: "/actions", label: "기업활동", match: ["/actions"] },
   ] },
   { key: "industry", label: "산업", path: "/map", tabs: [

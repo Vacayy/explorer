@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { Archive, GitCompare, Map } from "lucide-react"
+import { Archive, Map } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,7 +11,6 @@ import { PageContainer } from "@/components/shared/PageContainer"
  */
 
 const ARCHIVED = [
-  { to: "/analyze/compare", icon: GitCompare, title: "VS 비교", desc: "종목 여러 개 지표 나란히 비교" },
   { to: "/discover/industry", icon: Map, title: "산업군 지도", desc: "수동 밸류체인 맵" },
 ] as const
 

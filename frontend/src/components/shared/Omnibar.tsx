@@ -43,7 +43,7 @@ const PAGES = [
   { label: "Home", hint: "시장 브리핑·피드", to: "/home", icon: Home, keywords: "home stream 홈 브리핑", pinned: true },
   { label: "Thesis", hint: "내러티브·지식·내 판단", to: "/narrative", icon: Globe, keywords: "thesis narrative worldmodel 월드모델 내러티브 지식", pinned: true },
   { label: "관심목록", hint: "기업·인물·산업·테마", to: "/follow", icon: Building2, keywords: "follow watchlist 관심목록 팔로우" },
-  { label: "신호", hint: "언급 급증·52주 신고가", to: "/explore", icon: LineChart, keywords: "signal 신호" },
+  { label: "오늘의 신호", hint: "언급 급증·52주 신고가", to: "/discover#signals", icon: LineChart, keywords: "signal 신호" },
   { label: "기업활동", hint: "유무증·합병·공개매수", to: "/actions", icon: Building2, keywords: "actions 유상증자 기업활동" },
   { label: "문서 검색", hint: "전체 수집 자료", to: "/feed?view=documents", icon: FileSearch, keywords: "feed documents 문서 텔레그램 블로그" },
   { label: "소스 관리", hint: "채널·블로그·유튜브", to: "/admin/sources", icon: Globe, keywords: "source 소스 구독 관리 채널 블로그 유튜브" },

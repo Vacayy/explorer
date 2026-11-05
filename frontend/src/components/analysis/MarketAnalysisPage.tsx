@@ -30,6 +30,13 @@ import { isTerminal } from '@/components/analysis/events'
 import type { AnalysisRun, RunStatus } from '@/components/analysis/types'
 import api from '@/api/client'
 import { ChartStructureCard, type StructureFit, type StructureKind, type StructureParams } from '@/components/structure/ChartStructureCard'
+import { RunHistory } from '@/components/analysis/RunHistory'
+import { SignalListSheet, TodaySignals } from '@/components/analysis/TodaySignals'
+import type { DraftUniverse } from '@/components/analysis/discoveryDraft'
+import { useAnalysisStrategies } from '@/hooks/useAnalysisStrategies'
+import { MOBILE_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
+import { lastSearch } from '@/lib/discoverHistory'
+import { toast } from 'sonner'
 
 const EXAMPLES = [
   { label: '강한 추세', question: '시가총액 5000억원 이상 종목 중 52주 신고가를 돌파하고 최근 14거래일 동안 20일 이동평균 위를 유지한 종목을 찾아줘' },
@@ -49,12 +56,6 @@ function ThreadTurn({ turn, onOpen }: { turn: Turn; onOpen: (id: string) => void
     <span className="line-clamp-2 text-sm font-medium">{turn.question}</span>
     {changes.length > 0 && <span className="text-caption font-normal text-muted-foreground">바뀐 조건 · {changes.map(change => FIELD_LABELS[change.field] ?? change.field).join(' · ')}</span>}
   </Button>
-}
-
-function RunHistory({ runs, selected, onOpen }: { runs: AnalysisRun[]; selected: string | null; onOpen: (id: string) => void }) {
-  return <div className="space-y-1">{runs.map(run => <Button key={run.id} variant={run.id === selected ? 'secondary' : 'ghost'} className="h-auto w-full flex-col items-start gap-1 whitespace-normal px-3 py-3 text-left" onClick={() => onOpen(run.id)} aria-current={run.id === selected ? 'page' : undefined}>
-    <span className="line-clamp-2 text-sm font-normal">{run.question}</span><span className="text-caption font-normal text-muted-foreground">{STATUS[run.status]} · {formatRelativeTime(run.created_at)}</span>
-  </Button>)}</div>
 }
 
 function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: string | null; initialQuestion: string; onOpen: (id: string) => void; onNew: (question?: string) => void }) {
@@ -93,6 +94,20 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
   const warnings = [...new Set([...(run?.snapshot?.warnings ?? []), ...(run?.result?.warnings ?? []), ...(run?.result?.unsupported_conditions ?? []).map(condition => `지원하지 않는 요청 조건: ${condition}`)])]
   const mutationError = analysis.start.error ?? analysis.resume.error ?? analysis.cancel.error
   const setPanel = (value: string | null) => setParams(previous => { const next = new URLSearchParams(previous); if (value) next.set('panel', value); else next.delete('panel'); return next }, { replace: true })
+  const strategies = useAnalysisStrategies()
+  const labels = Object.fromEntries((strategies.data?.items ?? []).map(d => [d.id, d.label]))
+  const mobile = useMediaQuery(MOBILE_QUERY)
+  // '오늘의 신호' → 검색 범위. 워크스페이스가 받아 초안에 넣고 지운다(모바일은 조건 시트를 연다)
+  const [universeRequest, setUniverseRequest] = useState<DraftUniverse | null>(null)
+  const signalType = params.get('signal')
+  const closeSignal = () => setParams(previous => { const next = new URLSearchParams(previous); next.delete('signal'); return next }, { replace: true })
+  const takeUniverse = (universe: DraftUniverse) => {
+    setUniverseRequest(universe)
+    toast(`${universe.label} ${formatNumber(universe.codes.length)}종목을 검색 범위로 넣었습니다. 조건을 더 쌓아 검색해 주세요.`)
+    setParams(previous => { const next = new URLSearchParams(previous); next.delete('signal'); if (window.matchMedia(MOBILE_QUERY).matches) next.set('panel', 'conditions'); return next }, { replace: true })
+    if (!window.matchMedia(MOBILE_QUERY).matches) requestAnimationFrame(() => document.getElementById('discovery-workspace')?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
+  }
+  const openSignal = (type: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('signal', type); return next })
   const setLibrary = (value: boolean) => setParams(previous => { const next = new URLSearchParams(previous); if (value) next.set('view', 'library'); else next.delete('view'); return next })
 
   function appendCondition(phrase: string) {
@@ -152,7 +167,9 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
 
   const legacy = !!run && ((!!run.spec && (run.spec.mode !== 'catalog' || !!run.spec.expression)) || turns.length > 1 || !!run.lineage)
   const drawing = !!drawParams && !runId
-  const mode = library || legacy || drawing ? 'document' : 'workspace'
+  const firstScreen = !runId && !library && !legacy && !drawing
+  const mode = library || legacy || drawing || firstScreen ? 'document' : 'workspace'
+  const runCount = analysis.runs.data?.items.length
 
   // 자동 재검색이 계산되는 몇 초 동안 직전 결과를 흐리게 남겨 맥락을 잃지 않게 한다.
   const previous = useRef<AnalysisRun | null>(null)
@@ -213,15 +230,39 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
           </SheetContent>
         </Sheet>
         <Sheet open={panel === 'history'} onOpenChange={open => setPanel(open ? 'history' : null)}>
-          <SheetTrigger asChild><Button variant="ghost" size="sm"><History className="size-4" />이전 검색</Button></SheetTrigger>
+          <SheetTrigger asChild><Button variant="ghost" size="sm"><History className="size-4" />이전 검색{runCount != null && <span className="font-mono tabular-nums text-muted-foreground">{runCount}</span>}</Button></SheetTrigger>
           <SheetContent className="overflow-y-auto"><SheetHeader><SheetTitle>이전 검색</SheetTitle><SheetDescription>저장된 결과를 다시 열어 탐색을 이어갑니다.</SheetDescription></SheetHeader>
-            <div className="px-4 pb-6">{analysis.runs.isPending && <Skeleton className="h-36 w-full" />}{analysis.runs.isError && <ErrorState message="이전 검색을 불러오지 못했습니다." onRetry={() => analysis.runs.refetch()} />}{analysis.runs.data && (analysis.runs.data.items.length ? <RunHistory runs={analysis.runs.data.items} selected={runId} onOpen={onOpen} /> : <p className="py-6 text-sm text-muted-foreground">아직 실행한 검색이 없습니다.</p>)}</div>
+            <div className="px-4 pb-6">{analysis.runs.isPending && <Skeleton className="h-36 w-full" />}{analysis.runs.isError && <ErrorState message="이전 검색을 불러오지 못했습니다." onRetry={() => analysis.runs.refetch()} />}{analysis.runs.data && (analysis.runs.data.items.length ? <RunHistory runs={analysis.runs.data.items} selected={runId} labels={labels} status={STATUS} onOpen={onOpen} /> : <p className="py-6 text-sm text-muted-foreground">아직 실행한 검색이 없습니다.</p>)}</div>
           </SheetContent>
         </Sheet>
       </div>
     </div>
 
-  return <PageLayout mode={mode} toolbar={toolbar} header={<PageHeader title="종목 발견" description="조건을 쌓으면 바로 찾고, 근거를 조사하고, 내 판단으로 이어갑니다." actions={runId ? <Button variant="outline" size="sm" onClick={() => onNew()}><Plus className="size-4" />새 검색</Button> : library ? <Button variant="ghost" size="sm" onClick={() => onNew()}><ArrowLeft className="size-4" />검색으로</Button> : undefined} />}>
+  const workspace = (inSheet: boolean) => <DiscoveryWorkspace run={run} runLoading={!!runId && analysis.detail.isPending} startPending={analysis.start.isPending} onStart={submit} results={inSheet ? null : results}
+    universeRequest={universeRequest} onUniverseApplied={() => setUniverseRequest(null)} />
+  const last = lastSearch(analysis.runs.data?.items ?? [], labels)
+  const mobileFirst = mobile && firstScreen
+  const mobileStart = <div className="space-y-4">
+    <form onSubmit={event => { event.preventDefault(); const text = new FormData(event.currentTarget).get('q'); if (typeof text === 'string' && text.trim()) { setQuestion(text.trim()); setNaturalOpen(true) } }}>
+      <div className="relative"><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input name="q" type="search" enterKeyHint="search" aria-label="문장으로 찾기" placeholder="문장으로 찾기 — 예: 박스권 뚫은 반도체 장비주" className="h-11 pl-9" /></div>
+    </form>
+    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+      {[
+        { label: `조건 고르기${strategies.data ? ` ${strategies.data.items.length}` : ''}`, onClick: () => setPanel('conditions') },
+        { label: '아는 종목 분석', onClick: () => setPanel('known') },
+        { label: `이전 검색${runCount != null ? ` ${runCount}` : ''}`, onClick: () => setPanel('history') },
+        { label: '저장 전략', onClick: () => setLibrary(true) },
+      ].map(chip => <Button key={chip.label} type="button" variant="outline" size="sm" className="h-9 shrink-0 rounded-full" onClick={chip.onClick}>{chip.label}</Button>)}
+    </div>
+    {last && <section aria-label="마지막 검색" className="space-y-1 border p-3">
+      <div className="flex items-center justify-between text-caption text-muted-foreground"><span>마지막 검색 · {last.asOf.slice(5).replace('-', '/')}</span><button type="button" className="font-semibold text-foreground" onClick={() => onOpen(last.id)}>결과 보기 ›</button></div>
+      <p className="line-clamp-2 font-semibold">{last.title}</p>
+      <p className="text-caption text-muted-foreground">후보 {formatNumber(last.matched)}종목 · 평가 {formatNumber(last.evaluated)}{last.bottleneck && ` · 병목은 ${last.bottleneck.label}(통과 ${formatNumber(last.bottleneck.passed)})`}</p>
+    </section>}
+  </div>
+
+  return <PageLayout mode={mode} toolbar={mobileFirst ? <>{mobileStart}<div hidden>{toolbar}</div></> : toolbar} header={<PageHeader title="종목 발견" actions={runId ? <Button variant="outline" size="sm" onClick={() => onNew()}><Plus className="size-4" />새 검색</Button> : library ? <Button variant="ghost" size="sm" onClick={() => onNew()}><ArrowLeft className="size-4" />검색으로</Button> : undefined} />}>
     {library && <DiscoveryLibrary onOpen={onOpen} />}
     <div hidden={library} className={mode === 'workspace' ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-5'}>
       {drawing && <div id="discovery-structure-workspace" className="scroll-mt-4"><ChartStructureCard params={drawParams} codes={drawCodes} onChange={next => setDraw(next)} question={params.get('q') ?? undefined} /></div>}
@@ -230,15 +271,21 @@ function AnalysisWorkspace({ runId, initialQuestion, onOpen, onNew }: { runId: s
       {legacy && run ? <>
         <ol aria-label="검색 스레드" className="space-y-4">{(turns.some(turn => turn.id === run.id) ? turns : [run]).map(turn => turn.id !== run.id ? <li key={turn.id}><ThreadTurn turn={turn as Turn} onOpen={onOpen} /></li> : <li key={turn.id} ref={focused} className="scroll-mt-4 space-y-5">{renderRun(run, false)}</li>)}</ol>
         {run.result && ['completed', 'partial'].includes(run.status) && <DiscoveryFollowup key={run.id} runId={run.id} empty={!run.result.items.length} busy={analysis.start.isPending} onSubmit={submit} />}
-      </> : !drawing && <DiscoveryWorkspace run={run} runLoading={!!runId && analysis.detail.isPending} startPending={analysis.start.isPending} onStart={submit} results={results} />}
+      </> : !drawing && <>
+        {firstScreen && <TodaySignals onUniverse={takeUniverse} onOpenList={openSignal} />}
+        {mobileFirst ? <Sheet open={panel === 'conditions'} onOpenChange={open => setPanel(open ? 'conditions' : null)}>
+          <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto"><SheetHeader><SheetTitle>조건 고르기</SheetTitle><SheetDescription className="sr-only">조건을 쌓고 검색합니다</SheetDescription></SheetHeader><div className="px-4 pb-6">{workspace(true)}</div></SheetContent>
+        </Sheet> : <div id="discovery-workspace" className={firstScreen ? 'flex scroll-mt-4 flex-col lg:h-[calc(100dvh-var(--shell-offset))]' : 'flex min-h-0 flex-1 flex-col'}>{workspace(false)}</div>}
+      </>}
     </div>
+    <SignalListSheet type={signalType} onClose={closeSignal} onUniverse={takeUniverse} />
   </PageLayout>
 }
 
 export default function MarketAnalysisPage() {
   const [params, setParams] = useSearchParams()
   const runId = params.get('run')
-  const openRun = useCallback((id: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('run', id); for (const key of ['mode', 'q', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); return next }), [setParams])
-  const newRun = (question = '') => setParams(previous => { const next = new URLSearchParams(previous); for (const key of ['mode', 'run', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); if (question) next.set('q', question); else next.delete('q'); return next })
+  const openRun = useCallback((id: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('run', id); for (const key of ['mode', 'q', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'signal', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); return next }), [setParams])
+  const newRun = (question = '') => setParams(previous => { const next = new URLSearchParams(previous); for (const key of ['mode', 'run', 'candidate', 'compare', 'sort', 'intent', 'scenario', 'draw_preset', 'view', 'panel', 'signal', 'code', 'market', 'kind', 'window', 'swing', 'fit']) next.delete(key); if (question) next.set('q', question); else next.delete('q'); return next })
   return <AnalysisWorkspace key={params.get('q') ?? ''} runId={runId} initialQuestion={params.get('q') ?? ''} onOpen={openRun} onNew={newRun} />
 }

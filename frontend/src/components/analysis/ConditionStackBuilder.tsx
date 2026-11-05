@@ -47,8 +47,9 @@ export function stackSubmission(draft: PurposeDraft, definitions: StrategyDefini
     return `- ${definition?.label ?? c.strategy_id}${settings.length ? ` (${settings.join(', ')})` : ''}`
   })
   const cap = Number(draft.minimumCap)
-  return { question: `${draft.market === 'all' ? '국내 전체 시장' : draft.market}${cap ? `, 시가총액 ${draft.minimumCap}억원 이상` : ''}에서 다음 조건을 모두 만족하는 종목을 찾아줘.\n${lines.join('\n')}`,
-    spec: { mode: 'catalog', market: draft.market, min_market_cap: cap * 100_000_000, as_of: draft.asOf || null, pattern: 'none', require_52w: false, require_ma: false, strategy_conditions: conditions },
+  const universe = draft.universe ? `${draft.universe.label} ${draft.universe.codes.length}종목 중 ` : ''
+  return { question: `${universe}${draft.market === 'all' ? '국내 전체 시장' : draft.market}${cap ? `, 시가총액 ${draft.minimumCap}억원 이상` : ''}에서 다음 조건을 모두 만족하는 종목을 찾아줘.\n${lines.join('\n')}`,
+    spec: { mode: 'catalog', market: draft.market, min_market_cap: cap * 100_000_000, as_of: draft.asOf || null, pattern: 'none', require_52w: false, require_ma: false, strategy_conditions: conditions, ...(draft.universe ? { universe_codes: draft.universe.codes } : {}) },
     ...(draft.asOf ? { as_of: draft.asOf } : {}) }
 }
 
@@ -148,6 +149,10 @@ export function ConditionStack({ draft, definitions, busy, computing, result, re
       <h3 className="text-sm font-medium">내 조건 {active.length}/{draft.conditions.length} <span className="font-normal text-muted-foreground">· 모두 만족</span></h3>
       {draft.conditions.length > 0 && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => patch({ conditions: [], off: [] })}>모두 비우기</Button>}
     </div>
+    {draft.universe && <div className="flex items-center justify-between gap-2 border bg-muted/40 px-3 py-2 text-sm">
+      <span className="min-w-0 truncate">검색 범위 · {draft.universe.label} <span className="tabular-nums text-muted-foreground">{formatNumber(draft.universe.codes.length)}종목</span></span>
+      <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => patch({ universe: null })} aria-label="검색 범위 지우기">지우기</Button>
+    </div>}
     {!draft.conditions.length ? <div className="rounded-xl border border-dashed p-6 text-center"><p className="text-sm font-medium">아직 쌓인 조건이 없습니다</p><p className="mt-1 text-caption text-muted-foreground">빠른 시작이나 조건 목록의 +로 블록을 추가하세요.</p></div>
       : <ol className="space-y-2" aria-label="쌓은 조건 블록">{draft.conditions.map((condition, index) => {
         const definition = definitions.find(d => d.id === condition.strategy_id)

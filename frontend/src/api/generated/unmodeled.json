@@ -26,6 +26,11 @@
   },
   {
     "method": "get",
+    "path": "/api/compare",
+    "status": 200
+  },
+  {
+    "method": "get",
     "path": "/api/consensus/{stock_code}",
     "status": 200
   },

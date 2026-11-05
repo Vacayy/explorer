@@ -17,13 +17,15 @@
 
 예전의 FE 상수(`DISCOVERY_SCENARIOS` 12) · `LENSES` 8 · 인라인 templates 16은 삭제했다.
 
-## 2. 신호 `/explore`
+## 2. 오늘의 신호 `/discover#signals` (옛 신호 탭 `/explore`, 2026-11-05 개편 4c)
 
-- 인덱스: 유형 8개 카드(언급 급증·주목 주제·소외·52주 신고가·거래량 급증·가격-관측 괴리·컨센서스 극단·**실적 발언 모멘텀**). 카드 = 그 유형 최신일 건수(큰 숫자) · 7일 건수 · 상위 3 칩 · 목록 링크. 유형 최신일이 전체 기준일보다 2일 넘게 뒤처지면 날짜를 주의 색으로.
+- 종목 발견 첫 화면(실행이 없을 때) 맨 위 블록(`analysis/TodaySignals`). 유형 8개 카드(언급 급증·주목 주제·소외·52주 신고가·거래량 급증·가격-관측 괴리·컨센서스 극단·**실적 발언 모멘텀**). 카드 = 이름 · 최신일 건수 · 정의 · 기준일 · 상위 3 칩(이름 중복 제거) · '이 신호로 찾기'. 유형 최신일이 전체 기준일보다 2일 넘게 뒤처지면 날짜를 주의 색으로. 모바일은 2열(이름 · 건수 · 상위 이름 두 줄 · 기준일).
 - 원천: `GET /api/spine/signals/summary?days=7` — 유형별 `latest_date`·`count_latest`·`count_window`·`top[3]`(유형별 세기 순: 언급 수·점유율 변화·시총·돌파율·거래량 배수·|3개월 수익|·쏠림 비율·점수). `as_of` = 신호 최신일. 읽기 전용.
-- `?list=<type>`: 기존 카드 목록. 기간 30일, 주목 주제 14일, 실적 발언 모멘텀 90일(시즌 신호).
+- **이 신호로 찾기**: `GET /api/spine/signals?type=&days=`에서 최신일의 국내 6자리 종목만 모아(`discoveryDraft.signalUniverse`) 조건 스택 초안의 검색 범위(`universe`)로 넣는다 → 검색 요청 `spec.universe_codes`. 스택 위 '검색 범위 · 52주 신고가 11/04 · 9종목 · 지우기'. 국내 종목이 없는 신호(주제·미국)는 목록 시트를 연다.
+- 목록 시트 `?signal=<type>`(옛 `?list=`): 카드 목록, 기간 30일·주목 주제 14일·실적 발언 모멘텀 90일, 12개씩 더 보기, 국내 종목이면 '최신일 n종목으로 찾기'.
+- 리다이렉트: `/explore` → `/discover#signals`, `/explore?list=X` → `/discover?signal=X#signals`, `/discover/signals` → `/discover#signals`. 위젯 `explore.signals` 전체 보기도 이 주소.
 - 칩 목적지: 국내 종목 → `/analyze/:code/summary`, 미국(`payload.ticker`) → `/us/:ticker`, 그 외 → `/feed?q=`.
-- 5-state: Skeleton 8칸 · ErrorState · 신호 0건 EmptyState · 유형 하나 없음 → 카드에 '아직 신호가 없습니다' · 묵은 유형 → 주의 색 날짜.
+- 5-state: Skeleton 8칸 · 블록 ErrorState(아래 워크스페이스는 살림) · 신호 0건 한 줄 · 유형 하나 없음 → 카드에 '신호 없음' · 묵은 유형 → 주의 색 날짜.
 
 ## 3. 컨콜 `/follow/transcripts` (+ `/us`)
 

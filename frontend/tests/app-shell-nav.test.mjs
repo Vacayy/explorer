@@ -31,7 +31,7 @@ const CASES = [
   ['/feed/saved', '', 'feed', 'saved'],
   ['/feed/saved', '?kind=doc', 'feed', 'saved'],
   ['/follow/saved', '', 'feed', 'saved'],
-  // 탐색 (신호·기업활동은 이행 중 탭)
+  // 탐색 (기업활동은 이행 중 탭)
   ['/discover', '', 'explore', 'discover'],
   ['/discover/screener', '', 'explore', 'discover'],
   ['/discover/signals', '', 'explore', 'discover'],
@@ -41,7 +41,13 @@ const CASES = [
   ['/us', '', 'explore', 'transcripts'],
   ['/people', '', 'explore', 'people'],
   ['/person', '?name=x', 'explore', 'people'],
-  ['/explore', '?list=x', 'explore', 'signals'],
+  // 4c — 옛 신호 탭(/explore)은 종목 발견 '오늘의 신호'로, VS 비교(/analyze/compare)는 Peer 그룹으로 리다이렉트
+  ['/explore', '', 'explore', 'discover'],
+  ['/explore', '?list=high_52w', 'explore', 'discover'],
+  ['/discover', '?signal=high_52w', 'explore', 'discover'],
+  ['/discover', '?panel=history', 'explore', 'discover'],
+  ['/discover/peers', '?view=research&group=package_substrate&stock=007810', 'explore', 'peers'],
+  ['/analyze/compare', '?stocks=005930,000660', 'explore', 'peers'],
   ['/actions', '', 'explore', 'actions'],
   // 산업
   ['/map', '', 'industry', 'sectors'],
@@ -88,7 +94,6 @@ const CASES = [
   ['/stocks', '', null, null],
   ['/company', '', null, null],
   ['/company/005930/summary', '', null, null],
-  ['/analyze/compare', '', null, null],
   ['/analyze/005930', '', null, null],
   ['/analyze/005930/summary', '', null, null],
   ['/analyze/005930/financials', '', null, null],
@@ -136,7 +141,7 @@ test('L2 tabs follow the plan, transitional tabs last', () => {
   const tabs = Object.fromEntries(SECTIONS.map(s => [s.key, s.tabs.map(t => t.label)]))
   assert.deepEqual(tabs.home, ['대시보드', '한국 시장', '미국 시장', '매크로', '내 종목'])
   assert.deepEqual(tabs.feed, ['피드', '저장됨'])
-  assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물', '신호', '기업활동'])
+  assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물', '기업활동'])
   assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '대만 공급망', '밸류체인', '회사채'])
   assert.deepEqual(tabs.world, ['지금', '그래프', '내 판단', '스터디'])
 })
@@ -157,6 +162,8 @@ const REDIRECTS = [
   // 4a단계 — 저장됨은 피드 하위, 소스는 관리자 하위
   ['follow/saved', '/feed/saved'],
   ['sources', '/admin/sources'],
+  // 4c단계 — VS 비교는 Peer 성과 비교로(?stocks=는 Peer 화면이 그룹·종목으로 푼다)
+  ['analyze/compare', '/discover/peers'],
 ]
 
 test('old home URLs redirect to the fixed home tabs', () => {
@@ -183,4 +190,15 @@ test('old feed URL (/home?home_view=feed) is sent to /feed with the rest of its 
   assert.match(home, /<Navigate to=\{`\/feed/)
   const feed = SECTIONS.find(s => s.key === 'feed')
   assert.deepEqual(feed.tabs.map(t => t.path), ['/feed', '/feed/saved'])
+})
+
+test('old signals tab (/explore) lands on 종목 발견 #signals and maps ?list= to the signal sheet', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  assert.match(app, /<Route path="explore" element=\{<ExploreRedirect \/>\} \/>/)
+  assert.match(app, /params\.set\("signal", list\)/)
+  assert.match(app, /#signals`\} replace/)
+  assert.match(app, /<Route path="discover\/signals" element=\{<Navigate to="\/discover#signals" replace \/>\} \/>/)
+  assert.ok(!app.includes('ExplorePage') && !app.includes('ComparePage'))
+  // 기업활동은 도시에 단계까지 그대로(/actions·/actions?code=)
+  assert.match(app, /<Route path="actions" element=\{<ActionsPage \/>\} \/>/)
 })

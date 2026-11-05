@@ -51,7 +51,7 @@ function SignalsBody({ h }: WidgetBodyProps) {
     <ul className="min-h-0 space-y-1.5 overflow-hidden text-[13px]">
       {rows.map(t => (
         <li key={t.type} className="flex min-w-0 items-center gap-2">
-          <Link to={`/explore?list=${t.type}`} className="w-24 shrink-0 truncate hover:underline">{SIGNAL_LABEL[t.type] ?? t.type}</Link>
+          <Link to={`/discover?signal=${t.type}`} className="w-24 shrink-0 truncate hover:underline">{SIGNAL_LABEL[t.type] ?? t.type}</Link>
           <span className={cn("w-10 shrink-0 text-right tabular-nums", t.latest_date !== d.as_of && "text-muted-foreground")}
             title={t.latest_date !== d.as_of ? `${t.latest_date} 기준` : undefined}>{formatNumber(t.count_latest)}</span>
           <span className="flex min-w-0 flex-1 gap-1 overflow-hidden">
@@ -196,7 +196,7 @@ export const EXPLORE_WIDGETS: WidgetDef[] = [
     size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/discover", useMeta: useTrendMeta, Body: TrendBody },
   // P6a — 신호 · 컨콜 · 산업·섹터
   { id: "explore.signals", title: "오늘의 신호", description: "유형별 오늘 건수 · 상위 종목", section: "explore", group: "신호",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/explore", useMeta: useSignalsMeta, Body: SignalsBody },
+    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/discover#signals", useMeta: useSignalsMeta, Body: SignalsBody },
   { id: "explore.momentum", title: "이번 시즌 실적 모멘텀", description: "새로 생기거나 빨라진 성장 동인 · 미국 기업", section: "explore", group: "컨콜",
     size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/follow/transcripts?view=season", useMeta: useMomentumMeta, Body: MomentumBody },
   { id: "explore.calls", title: "컨콜 · 실적 발표", description: "곧 발표할 팔로우 기업(D-day) · 지난 7일 받은 컨콜", section: "explore", group: "컨콜",

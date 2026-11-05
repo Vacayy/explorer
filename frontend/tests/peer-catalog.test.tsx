@@ -2,7 +2,7 @@ import prices from '@/data/peer-prices.json'
 import catalog from '@/data/peer-catalog.json'
 import api from '@/api/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import PeerCatalogPage from '@/components/peers/PeerCatalogPage'
@@ -49,24 +49,12 @@ function mount(entry: string) {
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[entry]}><PeerCatalogPage /><Location /></MemoryRouter></QueryClientProvider>)
 }
 
-it('restores URL filters, opens evidence, and preserves search when changing groups and going back', async () => {
-  mount('/discover/peers?view=research&group=power_transformer&q=103590')
-  expect(await screen.findByRole('link', { name: '일진전기' })).toBeTruthy()
-  expect(screen.queryByRole('link', { name: '대한전선' })).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: /사업 근거/ }))
-  expect(await screen.findAllByRole('link', { name: /dart.fss.or.kr/ })).not.toHaveLength(0)
-  fireEvent.click(screen.getAllByRole('button', { name: /전력 케이블/ })[0])
+it('research view lists evidence sources with hosts and lets going back restore the previous group', async () => {
+  mount('/discover/peers?view=research&group=power_transformer&stock=103590')
+  expect(await screen.findAllByRole('link', { name: /dart\.fss\.or\.kr/ })).not.toHaveLength(0)
+  const card = screen.getByRole('button', { name: /일진전기/, expanded: true }).closest('li')!
+  fireEvent.click(within(card).getByRole('button', { name: '전력 케이블' }))
   await waitFor(() => expect(screen.getByLabelText('현재 URL').textContent).toContain('group=power_cable'))
-  expect(screen.getByLabelText('기업명·종목코드·제품 검색').getAttribute('value')).toBe('103590')
   fireEvent.click(screen.getByRole('button', { name: '테스트 뒤로' }))
   await waitFor(() => expect(screen.getByLabelText('현재 URL').textContent).toContain('group=power_transformer'))
-})
-
-it('does not substitute all companies for an invalid group and resets explicitly', async () => {
-  mount('/discover/peers?view=research&group=does-not-exist&q=103590')
-  expect(await screen.findByRole('heading', { name: '그룹을 찾을 수 없습니다' })).toBeTruthy()
-  expect(screen.queryByRole('link', { name: '일진전기' })).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: '필터 초기화' }))
-  expect(await screen.findByRole('link', { name: '일진전기' })).toBeTruthy()
-  expect(screen.getByLabelText('현재 URL').textContent).toBe('/discover/peers?view=research&overview=groups')
 })

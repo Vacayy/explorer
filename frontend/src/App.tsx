@@ -43,8 +43,7 @@ import TaiwanPage from "@/components/industry/TaiwanPage"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
-// Explore (탐색 — 신호)
-import ExplorePage from "@/components/explore/ExplorePage"
+// Explore (탐색)
 import ChatPage from "@/components/chat/ChatPage"
 import ActionsPage from "@/components/actions/ActionsPage"
 import ProjectsPage from "@/components/study/ProjectsPage"
@@ -70,7 +69,6 @@ import { UsageTracker } from "@/components/shared/UsageTracker"
 import AdminPage from "@/components/admin/AdminPage"
 
 // Analysis
-import ComparePage from "@/components/analyze/ComparePage"
 import PeerCatalogPage from "@/components/peers/PeerCatalogPage"
 import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
 import SummaryPage from "@/components/summary/SummaryPage"
@@ -219,6 +217,16 @@ function KeepQueryRedirect({ to }: { to: string }) {
   return <Navigate to={withSearch(to, search)} replace />
 }
 
+/** /explore?list=<type> → /discover?signal=<type>#signals (다른 쿼리는 그대로) */
+function ExploreRedirect() {
+  const { search } = useLocation()
+  const params = new URLSearchParams(search)
+  const list = params.get("list")
+  if (list) { params.delete("list"); params.set("signal", list) }
+  const query = params.toString()
+  return <Navigate to={`/discover${query ? `?${query}` : ""}#signals`} replace />
+}
+
 function AskRedirect() {
   // /ask → /chat (옴니바·구 링크 호환, ?q= 프리필 보존)
   const { search } = useLocation()
@@ -267,8 +275,8 @@ export default function App() {
             <Route path="experiments/expectations" element={<Navigate to="/chat" replace />} />
             <Route path="experiments/expectations/review" element={<Navigate to="/chat" replace />} />
 
-            {/* Explore — 신호 (spine). 옛 시그널 페이지는 대체됨 */}
-            <Route path="explore" element={<ExplorePage />} />
+            {/* 옛 탐색 › 신호 → 종목 발견 '오늘의 신호'(ia-redesign §10.6). ?list=<type>은 신호 목록 시트(?signal=)로 */}
+            <Route path="explore" element={<ExploreRedirect />} />
             <Route path="map" element={<SectorsPage />} />
             <Route path="narrative" element={<NarrativePage />} />
             <Route path="narrative/history" element={<NarrativeHistory />} />
@@ -289,12 +297,13 @@ export default function App() {
             <Route path="discover/peers" element={<PeerCatalogPage />} />
             <Route path="discover/industry" element={<Navigate to="/map?view=chains" replace />} />
             <Route path="discover/screener" element={<Navigate to="/discover" replace />} />
-            <Route path="discover/signals" element={<Navigate to="/explore" replace />} />
+            <Route path="discover/signals" element={<Navigate to="/discover#signals" replace />} />
             <Route path="discover/alt-data" element={<Navigate to="/discover" replace />} />
 
             {/* Analysis */}
             <Route path="analysis/backtests" element={<Navigate to="/discover" replace />} />
-            <Route path="analyze/compare" element={<ComparePage />} />
+            {/* VS 비교 → Peer 성과 비교(ia-redesign §10.6). ?stocks=는 Peer 화면이 그룹·종목으로 풀어 쓴다 */}
+            <Route path="analyze/compare" element={<KeepQueryRedirect to="/discover/peers" />} />
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
             <Route path="analyze/:stockCode/financials" element={<AnalyzePage tab="financials" />} />
