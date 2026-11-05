@@ -8,6 +8,7 @@ import { ProposalPanel } from "@/components/shared/ProposalPanel"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { InfoTip } from "@/components/shared/InfoTip"
 import type { LensReading, Quadrant } from "@/types"
 
 // 가치 = 미래 이익·현금흐름 극대화 확신의 강도 / 추세 = 시장이 이미 반영한 위치
@@ -55,13 +56,9 @@ export function LensView({ code, market = "kr" }: { code: string; market?: strin
   const hasTrend = bundle.data?.trend != null
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        투자 원칙 원장에 비춰 이 종목을 읽습니다 — 판정이 아니라 관점입니다. 두 렌즈가 갈리는 지점이 곧 신호이며,
-        원칙 원장(<code>vault/principles</code>)을 수정하면 다음 열람 때 자동으로 다시 읽습니다.
-      </p>
-
+    <div className="space-y-3">
       {quadrant && <QuadrantMini q={quadrant} />}
+      <div className="grid items-start gap-3 lg:grid-cols-2">
 
       {hasValue ? (
         <LensCard kind="value" label="가치 렌즈 · 성장주도 펀더멘탈" reading={value} loading={vCompute.isFetching} />
@@ -78,6 +75,7 @@ export function LensView({ code, market = "kr" }: { code: string; market?: strin
           가격 데이터가 부족합니다 — 판독을 유보합니다.
         </ProposalPanel>
       )}
+      </div>
     </div>
   )
 }
@@ -89,27 +87,27 @@ function QuadrantMini({ q }: { q: Quadrant }) {
     ["회피", "과열 경고"],
   ]
   return (
-    <div className="rounded-xl border p-3 space-y-2">
-      <div className="flex items-baseline justify-between">
-        <span className="text-sm font-semibold">{q.cell}</span>
-        <span className="text-[11px] text-muted-foreground">
-          가치 {q.value_axis} · 추세 {q.trend_axis}
-        </span>
+    <section className="space-y-2 border bg-card p-3" aria-label="지금 위치" data-lens-quadrant>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <h2 className="text-sm font-semibold">지금 위치 · {q.cell}</h2>
+        <InfoTip label="투자 렌즈 설명">투자 원칙 원장에 비춰 이 종목을 읽습니다. 판정이 아니라 관점이고, 두 렌즈가 갈리는 지점이 신호입니다. 원칙 원장(vault/principles)이 바뀌거나 재료가 바뀌면 다음 열람 때 다시 읽습니다.</InfoTip>
+        <span className="text-caption text-muted-foreground">가치 {q.value_axis} · 추세 {q.trend_axis}</span>
       </div>
-      <div className="grid grid-cols-[auto_1fr_1fr] gap-1 text-[10px]">
+      <div className="grid grid-cols-[auto_1fr_1fr] gap-1 text-xs">
         <div />
-        <div className="text-center text-muted-foreground pb-1">추세 초입·진행</div>
-        <div className="text-center text-muted-foreground pb-1">추세 성숙·훼손</div>
+        <div className="pb-1 text-center text-muted-foreground">추세 초입·진행</div>
+        <div className="pb-1 text-center text-muted-foreground">추세 성숙·훼손</div>
         {rows.map((row, ri) => (
           <Fragment key={ri}>
             <div className="flex items-center pr-2 text-muted-foreground">{ri === 0 ? "확신 강·중" : "확신 약"}</div>
             {row.map((c) => (
               <div
                 key={c}
-                className={`rounded-md px-2 py-2 text-center border ${
+                aria-current={c === q.cell ? "true" : undefined}
+                className={`border px-2 py-2 text-center ${
                   c === q.cell
                     ? "border-hypothesis bg-hypothesis/10 font-semibold text-hypothesis"
-                    : "border-border/40 text-muted-foreground"
+                    : "border-border/60 text-muted-foreground"
                 }`}
               >
                 {c}
@@ -118,8 +116,8 @@ function QuadrantMini({ q }: { q: Quadrant }) {
           </Fragment>
         ))}
       </div>
-      <p className="text-[11px] text-muted-foreground">{q.note}</p>
-    </div>
+      {q.note && <p className="text-caption text-muted-foreground">{q.note}</p>}
+    </section>
   )
 }
 
@@ -148,7 +146,7 @@ function LensCard({
       {loading && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          원칙에 비춰 이 종목을 읽는 중… (수십 초 걸릴 수 있습니다)
+          재료가 바뀌어 다시 읽는 중입니다 — 아래는 지난 판독입니다
         </div>
       )}
       {stance && (

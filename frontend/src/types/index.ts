@@ -1711,3 +1711,45 @@ export interface MarketToday {
   } | null
   next_slot: string | null
 }
+
+/* ---------- 기업 관련 자료 (GET /api/spine/feed/company-evidence) ---------- */
+export interface EvidenceItem {
+  id: string
+  doc_id: number | null
+  title: string
+  url: string
+  excerpt: string
+  source_type: string
+  publisher: string
+  published_at: string
+  local_date: string
+  time_precision: 'date' | 'time'
+  status: 'within' | 'after' | 'uncertain'
+  relation: string
+}
+export interface EvidenceResponse {
+  items: EvidenceItem[]
+  total: number
+  page: number
+  size: number
+  has_more: boolean
+  as_of: string
+  coverage: { source: string; first: string; last: string; count: number }[]
+  undated_count: number
+  uncertain_count: number
+  timezone: string
+  /** 최근 30일 언급 흐름 — 출처·검색어와 무관하게 이 기업 자료 전체(시장 시간대 날짜) */
+  flow: EvidenceFlow
+}
+export interface EvidenceFlow {
+  start: string
+  end: string
+  days: { date: string; count: number }[]
+  sources: { source: string; count: number }[]
+}
+export interface EvidenceRange {
+  start?: string
+  end?: string
+  cutoff?: 'end' | 'close'
+  after?: boolean
+}

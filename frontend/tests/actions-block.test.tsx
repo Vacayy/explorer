@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '../src/components/ui/tooltip'
 import type { CorporateAction } from '../src/types'
 
-/* 홈 › 한국 시장 기업활동 블록 — 데스크톱 10·모바일 6행 + 더 보기, 필터를 바꾸면 다시 접힌다(D-303). 페이지는 전부 */
+/* 홈 › 한국 시장 기업활동 블록 — 데스크톱 10·모바일 6행 + 더 보기, 필터를 바꾸면 다시 접힌다(D-303) */
 const act = (i: number): CorporateAction => ({
   id: i, rcp_no: String(i), corp_name: `기업${i}`, stock_code: null, market: 'Y', action_type: '유상증자', report_nm: `공시${i}`,
   rcept_dt: '20261104', market_cap: null, summary: null, dart_url: '#', is_correction: false, my_group: null,
@@ -20,11 +20,11 @@ vi.mock('@/components/actions/RightsProTable', () => ({ default: () => null }))
 const { ActionsList } = await import('../src/components/actions/ActionsPage')
 
 afterEach(() => { cleanup(); mobile.value = false })
-const renderAt = (variant: 'page' | 'block') => render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><MemoryRouter><ActionsList variant={variant} /></MemoryRouter></TooltipProvider></QueryClientProvider>)
+const renderAt = () => render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><MemoryRouter><ActionsList variant="block" /></MemoryRouter></TooltipProvider></QueryClientProvider>)
 const rows = () => screen.queryAllByText(/^기업\d+$/).length
 
 it('bounds the home block to 10 rows on desktop and expands on 더 보기', () => {
-  renderAt('block')
+  renderAt()
   expect(rows()).toBe(10)
   fireEvent.click(screen.getByRole('button', { name: /5건 더 보기/ }))
   expect(rows()).toBe(15)
@@ -33,11 +33,8 @@ it('bounds the home block to 10 rows on desktop and expands on 더 보기', () =
   expect(rows()).toBe(10)
 })
 
-it('shows 6 rows on mobile, and the page shows everything', () => {
+it('shows 6 rows on mobile', () => {
   mobile.value = true
-  renderAt('block')
+  renderAt()
   expect(rows()).toBe(6)
-  cleanup(); mobile.value = false
-  renderAt('page')
-  expect(rows()).toBe(15)
 })

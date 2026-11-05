@@ -66,8 +66,8 @@ export const loaders = {
   'blog': () => import('./validators-blog.js'),
   'business': () => import('./validators-business.js'),
   'financials': () => import('./validators-financials.js'),
-  'kpi': () => import('./validators-kpi.js'),
   'company-profile': () => import('./validators-company-profile.js'),
+  'kpi': () => import('./validators-kpi.js'),
   'disclosures': () => import('./validators-disclosures.js'),
   'valuation': () => import('./validators-valuation.js'),
 }

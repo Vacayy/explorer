@@ -2,7 +2,7 @@ import { ActiveQueryStatus } from "@/components/shared/ActiveQueryStatus"
 import { toast } from "sonner"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { QueryState } from "@/components/shared/QueryState"
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
@@ -21,6 +21,7 @@ import Omnibar from "@/components/shared/Omnibar"
 import AnswerWatcher from "@/components/layout/AnswerWatcher"
 import { useCompany } from "@/hooks/useCompanySearch"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
+import { US_TABS, usTabOf, usTabPath } from "@/lib/dossier"
 
 // Home
 import { DetailNavigationMemory } from "@/components/shared/DetailNavigation"
@@ -45,7 +46,6 @@ import SavedPage from "@/components/follow/SavedPage"
 
 // Explore (탐색)
 import ChatPage from "@/components/chat/ChatPage"
-import ActionsPage from "@/components/actions/ActionsPage"
 import ProjectsPage from "@/components/study/ProjectsPage"
 import ProjectPage from "@/components/study/ProjectPage"
 import StocksPage from "@/components/follow/StocksPage"
@@ -73,7 +73,9 @@ import PeerCatalogPage from "@/components/peers/PeerCatalogPage"
 import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
 import SummaryPage from "@/components/summary/SummaryPage"
 import CompanyFinancials from "@/components/company/CompanyFinancials"
-import { CompanyEvidence } from "@/components/company/CompanyEvidence"
+import { CompanyMentions } from "@/components/company/CompanyMentions"
+import { KrDossierHead } from "@/components/company/KrDossierHead"
+import { PageContainer } from "@/components/shared/PageContainer"
 import BusinessPage from "@/components/business/BusinessPage"
 import DisclosurePage from "@/components/disclosures/DisclosurePage"
 import ValuationPage from "@/components/valuation/ValuationPage"
@@ -92,6 +94,8 @@ const queryClient = createQueryClient((error, { background }) => {
 /** 인페이지 L2 — 상단 L1과 같은 navConfig를 읽는다 (docs/specs/app-shell.md §2). 도시에는 도시에 탭 */
 function subNavFor(pathname: string, search: string, stockCode: string | null, companyName?: string | null) {
   if (stockCode) return { tabs: analyzeTabs(stockCode, search), activeKey: analyzeTabOf(pathname), context: companyName ?? stockCode }
+  const ticker = pathname.match(/^\/us\/([^/]+)\/?$/)?.[1]
+  if (ticker) return { tabs: US_TABS.map(t => ({ key: t.key, label: t.label, path: usTabPath(ticker, t.key) })), activeKey: usTabOf(search), context: ticker.toUpperCase() }
   if (pathname.startsWith("/narrative") && new URLSearchParams(search).has("topic")) return null
   const here = locate(pathname, search)
   const section = here && SECTIONS.find(s => s.key === here.section)
@@ -190,11 +194,13 @@ function AnalyzePage({ tab }: { tab: string }) {
 
   const corpCode = company.corp_code
 
+  // 개요·실적·사업·자료·투자 렌즈는 같은 도시에 머리를 쓴다(ia-redesign §4.9·§4.13). 핵심 지표 띠는 개요에서만
+  const withHead = (body: ReactNode) => <div className="space-y-3"><KrDossierHead stockCode={stockCode} metrics={tab === "summary"} />{body}</div>
   switch (tab) {
     case "summary":
-      return <SummaryPage stockCode={stockCode} />
+      return withHead(<SummaryPage stockCode={stockCode} />)
     case "financials":
-      return <CompanyFinancials key={stockCode} stockCode={stockCode} corpCode={corpCode} />
+      return withHead(<CompanyFinancials key={stockCode} stockCode={stockCode} corpCode={corpCode} />)
     case "business":
       return <BusinessPage stockCode={stockCode} corpCode={corpCode} />
     case "disclosures":
@@ -202,9 +208,9 @@ function AnalyzePage({ tab }: { tab: string }) {
     case "valuation":
       return <ValuationPage stockCode={stockCode} />
     case "lens":
-      return <LensPage code={stockCode} market="kr" />
+      return withHead(<LensPage code={stockCode} market="kr" />)
     case "mentions":
-      return <CompanyEvidence key={stockCode} company={stockCode} />
+      return withHead(<PageContainer><CompanyMentions key={stockCode} company={stockCode} market="kr" /></PageContainer>)
     default:
       return <Navigate to={`/analyze/${stockCode}/summary`} replace />
   }
@@ -216,10 +222,11 @@ function KeepQueryRedirect({ to }: { to: string }) {
   return <Navigate to={withSearch(to, search)} replace />
 }
 
-/** /actions — 시장 전체 목록은 홈 › 한국 시장 #actions로(D-300, 쿼리 유지). ?code=X는 도시에 단계까지 지금 화면 그대로 */
+/** /actions — 시장 전체 목록은 홈 › 한국 시장 #actions(D-300), ?code=X는 그 종목 도시에 개요 맨 아래 #actions(§10.6). 쿼리는 그대로 */
 function ActionsRoute() {
   const { search } = useLocation()
-  if (new URLSearchParams(search).get("code")) return <ActionsPage />
+  const code = new URLSearchParams(search).get("code")?.trim()
+  if (code && /^[0-9A-Z]{6}$/i.test(code)) return <Navigate to={withSearch(`/analyze/${code.toUpperCase()}/summary#actions`, search)} replace />
   return <Navigate to={withSearch("/home/kr#actions", search)} replace />
 }
 

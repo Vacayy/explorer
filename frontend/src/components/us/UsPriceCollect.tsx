@@ -14,7 +14,8 @@ export function useUsPriceStatus(ticker: string) {
   return useQuery({ queryKey: ['spine', 'us-price-status', ticker], queryFn: async () => (await api.get<UsPriceStatus>(`/api/spine/us/${ticker}/prices/status`)).data, staleTime: 60_000 })
 }
 
-export function UsPriceCollect({ ticker }: { ticker: string }) {
+/** compact: 도시에 머리 동작 자리 — 버튼만(보유 현황은 버튼 title·aria로) */
+export function UsPriceCollect({ ticker, compact = false }: { ticker: string; compact?: boolean }) {
   const client = useQueryClient()
   const status = useUsPriceStatus(ticker)
   const collect = useMutation({
@@ -30,6 +31,10 @@ export function UsPriceCollect({ ticker }: { ticker: string }) {
   })
   const s = status.data
   const label = !s ? '시세 확인 중…' : s.state === 'missing' ? '저장된 시세가 없습니다' : `시세 ${formatNumber(s.rows)}일 · 최신 ${s.last_date}${s.state === 'stale' ? ` (다른 종목 최신일보다 ${formatNumber(s.stale_days ?? 0)}일 뒤)` : ''}${s.fetched_at ? ` · ${formatRelativeTime(s.fetched_at)} 수집` : ''}`
+  const button = <Button size="sm" variant={compact ? 'outline' : s?.state === 'fresh' ? 'ghost' : 'outline'} className={compact ? undefined : 'h-7 px-2.5 text-caption'} disabled={collect.isPending || status.isPending} onClick={() => collect.mutate()} aria-label={compact ? `시세 수집 — ${label}` : '시세 수집'} title={compact ? label : undefined}>
+    {collect.isPending ? <LoaderCircle className="size-3.5 animate-spin" /> : <DownloadCloud className="size-3.5" />}{collect.isPending ? '받는 중…' : s?.state === 'missing' ? '시세 수집' : '시세 갱신'}
+  </Button>
+  if (compact) return button
   return <div className="mt-2 flex flex-wrap items-center gap-2 text-caption text-muted-foreground" aria-label="미국 시세 수집">
     <span className={s?.state === 'missing' ? 'text-hypothesis' : undefined}>{label}</span>
     <Button size="sm" variant={s?.state === 'fresh' ? 'ghost' : 'outline'} className="h-7 px-2.5 text-caption" disabled={collect.isPending || status.isPending} onClick={() => collect.mutate()} aria-label="시세 수집">

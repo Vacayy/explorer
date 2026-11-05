@@ -1,11 +1,15 @@
 import { useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import api from '@/api/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { DetailLink } from '@/components/shared/DetailNavigation'
+import { InfoTip } from '@/components/shared/InfoTip'
+import { useCompanyEvidence } from '@/hooks/useCompanyEvidence'
+import { formatNumber } from '@/utils/format'
+import type { EvidenceRange } from '@/types'
 import { CompanyEvidenceSummary } from './CompanyEvidenceSummary'
 
 const titleLink =
@@ -23,47 +27,33 @@ export const sourceLabels: Record<string, string> = {
   note: '노트',
   canon: '역사',
   memo: '투자자 메모',
+  earnings_release: '실적 발표',
 }
-export interface EvidenceItem {
-  id: string
-  doc_id: number | null
-  title: string
-  url: string
-  excerpt: string
-  source_type: string
-  publisher: string
-  published_at: string
-  local_date: string
-  time_precision: 'date' | 'time'
-  status: 'within' | 'after' | 'uncertain'
-  relation: string
-}
-export interface EvidenceResponse {
-  items: EvidenceItem[]
-  total: number
-  page: number
-  has_more: boolean
-  coverage: { source: string; first: string; last: string; count: number }[]
-  undated_count: number
-  uncertain_count: number
-  timezone: string
-}
-export interface EvidenceRange {
-  start?: string
-  end?: string
-  cutoff?: 'end' | 'close'
-  after?: boolean
-}
+export type { EvidenceItem, EvidenceResponse, EvidenceRange } from '@/types'
+
+const ALL = '__all'
+
+/**
+ * 기업 관련 자료 목록 — 저장된 문서·공시만(공개일순). URL ?source·?q·?page가 상태.
+ * preview: 개요 칸(3건, 필터 없음) · summary: 기간이 정해졌을 때 기간 AI 요약 버튼(미국 자료 탭만, 국내는 §4.13 결정으로 넣지 않는다)
+ */
 export function CompanyEvidence({
   company,
   range = {},
   market = 'kr',
   preview = false,
+  summary = true,
+  moreTo,
+  title,
 }: {
   company: string
   range?: EvidenceRange
   market?: 'kr' | 'us'
   preview?: boolean
+  summary?: boolean
+  /** 미리보기 머리 오른쪽 '자료 전체 ›' 링크 */
+  moreTo?: string
+  title?: string
 }) {
   const [sp, setSp] = useSearchParams()
   const source = preview ? '' : sp.get('source') || ''
@@ -74,36 +64,8 @@ export function CompanyEvidence({
     const parent = panel.current?.parentElement
     if (parent?.classList.contains('company-research-evidence'))
       parent.scrollTop = 0
-  }, [
-    company,
-    range.start,
-    range.end,
-    range.cutoff,
-    range.after,
-    source,
-    q,
-    page,
-  ])
-  const params = {
-    company,
-    market,
-    ...range,
-    source,
-    q,
-    page,
-    size: preview ? 3 : 20,
-  }
-  const feed = useQuery({
-    queryKey: ['company-evidence', params],
-    queryFn: async ({ signal }) =>
-      (
-        await api.get<EvidenceResponse>('/api/spine/feed/company-evidence', {
-          params,
-          signal,
-        })
-      ).data,
-    staleTime: 60_000,
-  })
+  }, [company, range.start, range.end, range.cutoff, range.after, source, q, page])
+  const feed = useCompanyEvidence({ company, market, ...range, source, q, page, size: preview ? 3 : 20 })
   const change = (key: string, value: string) =>
     setSp(
       (prev) => {
@@ -113,21 +75,24 @@ export function CompanyEvidence({
         if (key !== 'page') n.delete('page')
         return n
       },
-      { replace: true },
+      { replace: true, preventScrollReset: true },
     )
-  const label = range.end ? `${range.start} ~ ${range.end}` : '최근 수집 자료'
+  const label = title ?? (range.end ? (range.start === range.end ? range.end : `${range.start} ~ ${range.end}`) : '최근 수집 자료')
+  const tz = market === 'kr' ? '한국' : '뉴욕'
   return (
-    <Card ref={panel} className="min-w-0" aria-label="기업 관련 자료">
-      <CardHeader>
-        <CardTitle>{label}</CardTitle>
-        <p className="text-caption text-muted-foreground">
-          {range.end
-            ? `${market === 'kr' ? '한국' : '뉴욕'} 시간 · ${range.cutoff === 'close' ? '정규장 마감 기준' : '선택일 종료 기준'}`
-            : '공개일순 · 저장된 자료와 공시'}
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!preview && range.start && range.end && <CompanyEvidenceSummary company={company} market={market} range={range} source={source} q={q}
+    <Card ref={panel} className="min-w-0 gap-0 py-0" aria-label="기업 관련 자료">
+      <header className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-3">
+        <h2 className="text-section font-semibold">{label}</h2>
+        <span className="text-caption text-muted-foreground">
+          {range.end ? `${tz} 시간 · ${range.cutoff === 'close' ? '정규장 마감 기준' : '그날 끝까지'}` : '공개일순'}
+          {!preview && feed.data && ` · ${formatNumber(feed.data.total)}건`}
+        </span>
+        <InfoTip label="자료 설명">저장된 문서와 공시만 보여 줍니다. 같은 기간의 자료가 주가 변동의 원인이라는 뜻은 아닙니다. 공개일을 모르는 자료는 뺍니다.</InfoTip>
+        <span className="ml-auto" />
+        {preview && moreTo && <Link to={moreTo} className="shrink-0 text-xs text-muted-foreground hover:text-foreground">자료 전체 ›</Link>}
+      </header>
+      <CardContent className="space-y-4 px-4 py-3">
+        {!preview && summary && range.start && range.end && <CompanyEvidenceSummary company={company} market={market} range={range} source={source} q={q}
           disabled={feed.isPending || feed.isError || feed.data?.total === 0} />}
 
         {!preview && (
@@ -135,63 +100,43 @@ export function CompanyEvidence({
             className="flex flex-wrap gap-2"
             onSubmit={(e) => {
               e.preventDefault()
-              change(
-                'q',
-                String(new FormData(e.currentTarget).get('q') || '').trim(),
-              )
+              change('q', String(new FormData(e.currentTarget).get('q') || '').trim())
             }}
           >
-            <label className="w-full text-caption sm:w-auto">
-              출처
-              <select
-                aria-label="자료 출처"
-                className="ml-2 rounded-md border bg-background p-2"
-                value={source}
-                onChange={(e) => change('source', e.target.value)}
-              >
-                <option value="">전체</option>
-                {Object.entries(sourceLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select value={source || ALL} onValueChange={(v) => change('source', v === ALL ? '' : v)}>
+              <SelectTrigger aria-label="자료 출처" className="w-auto min-w-28">
+                <span className="text-muted-foreground">출처</span><SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>전체</SelectItem>
+                {Object.entries(sourceLabels).map(([key, l]) => <SelectItem key={key} value={key}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <Input
-              aria-label="기간 내 자료 검색"
+              aria-label="자료 검색"
               placeholder="자료 제목·본문 검색"
               key={q}
               name="q"
               defaultValue={q}
               className="min-w-0 flex-1 basis-40"
             />
-            <Button type="submit" variant="outline">
-              검색
-            </Button>
+            <Button type="submit" variant="outline">검색</Button>
           </form>
         )}
         <div aria-live="polite" aria-busy={feed.isFetching}>
           {feed.isPending ? (
-            <p className="py-8 text-sm text-muted-foreground">
-              자료를 불러오는 중입니다.
-            </p>
+            <div role="status" aria-label="자료 불러오는 중" className="space-y-3 py-2">
+              {Array.from({ length: preview ? 3 : 6 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
           ) : feed.isError ? (
-            <div role="alert">
-              <p>자료 조회에 실패했습니다.</p>
-              <Button variant="outline" onClick={() => void feed.refetch()}>
-                다시 시도
-              </Button>
+            <div role="alert" className="space-y-2 py-4 text-sm">
+              <p>자료를 불러오지 못했습니다.</p>
+              <Button variant="outline" size="sm" onClick={() => void feed.refetch()}>다시 시도</Button>
             </div>
           ) : (
             <>
-              {!preview && (
-                <p className="text-caption text-muted-foreground">
-                  {feed.data.total.toLocaleString()}건 · 제목·본문에서 검색 ·
-                  공개일순
-                </p>
-              )}
               {feed.data.items.length === 0 && (
-                <div className="py-8 text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2 py-6 text-sm text-muted-foreground">
                   <p>
                     {q || source
                       ? '이 조건과 일치하는 자료가 없습니다.'
@@ -200,78 +145,60 @@ export function CompanyEvidence({
                   {(q || source) && (
                     <Button
                       variant="ghost"
+                      size="sm"
                       onClick={() => {
-                        setSp(
-                          (prev) => {
-                            const n = new URLSearchParams(prev)
-                            ;['source', 'q', 'page'].forEach((k) => n.delete(k))
-                            return n
-                          },
-                          { replace: true },
-                        )
+                        setSp((prev) => {
+                          const n = new URLSearchParams(prev)
+                          ;['source', 'q', 'page'].forEach((k) => n.delete(k))
+                          return n
+                        }, { replace: true })
                       }}
                     >
-                      검색·출처 초기화
+                      검색·출처 지우기
                     </Button>
                   )}
                 </div>
               )}
               <ul className="divide-y">
                 {feed.data.items.map((item) => (
-                  <li key={item.id} className="space-y-2 py-4">
+                  <li key={item.id} className="space-y-1 py-3" data-evidence-row>
                     <div className="flex flex-wrap gap-x-2 gap-y-1 text-caption text-muted-foreground">
-                      <span>
-                        {sourceLabels[item.source_type] || item.source_type}
-                      </span>
+                      <span>{sourceLabels[item.source_type] || item.source_type}</span>
                       <span className="break-all">{item.publisher}</span>
-                      <time dateTime={item.published_at}>
+                      <time dateTime={item.published_at} className="font-mono tabular-nums">
                         {item.local_date}{item.time_precision === 'time' && ` ${new Date(item.published_at).toLocaleTimeString('ko-KR', { timeZone: market === 'kr' ? 'Asia/Seoul' : 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`}
                       </time>
                       {item.time_precision === 'date' && <span>시각 미상</span>}
+                      {item.status !== 'within' && (
+                        <span className="font-medium text-primary">
+                          {item.status === 'after' ? '선택 시점 이후 공개' : '장 마감 당시 공개 여부 미확인'}
+                        </span>
+                      )}
                     </div>
-                    {item.status !== 'within' && (
-                      <p className="text-caption font-medium text-primary">
-                        {item.status === 'after'
-                          ? '선택 시점 이후 공개'
-                          : '장 마감 당시 공개 여부 미확인'}
-                      </p>
-                    )}
                     {item.doc_id ? (
                       <DetailLink to={`/doc/${item.doc_id}`} className={titleLink}>
                         {item.title || '제목 없는 자료'}
                       </DetailLink>
-                    ) : /^https?:\/\//i.test(item.url) ? (
+                    ) : item.url && /^https?:\/\//i.test(item.url) ? (
                       <a className={titleLink} href={item.url} target="_blank" rel="noopener noreferrer">
                         {item.title || '제목 없는 자료'} ↗
                       </a>
                     ) : (
                       <p className="text-sm font-semibold leading-relaxed">{item.title || '제목 없는 자료'}</p>
                     )}
-                    {item.excerpt && (
-                      <p className="line-clamp-3 whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground">
+                    {item.excerpt && item.excerpt !== item.title && (
+                      <p className={`${preview ? 'line-clamp-2' : 'line-clamp-3 whitespace-pre-line'} break-words text-sm leading-relaxed text-muted-foreground`}>
                         {item.excerpt}
                       </p>
                     )}
                   </li>
                 ))}
               </ul>
-              {!preview && (
+              {!preview && (feed.data.has_more || page > 1) && (
                 <div className="flex items-center justify-between">
-                  <Button
-                    variant="outline"
-                    disabled={page <= 1}
-                    onClick={() => change('page', String(page - 1))}
-                  >
-                    이전
-                  </Button>
-                  <span className="text-caption">{page} 페이지</span>
-                  <Button
-                    variant="outline"
-                    disabled={!feed.data.has_more}
-                    onClick={() => change('page', String(page + 1))}
-                  >
-                    다음
-                  </Button>
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => change('page', String(page - 1))}>‹ 이전</Button>
+                  <span className="font-mono text-caption tabular-nums">{page} 페이지</span>
+                  <Button variant="outline" size="sm" disabled={!feed.data.has_more} onClick={() => change('page', String(page + 1))}>다음 ›</Button>
                 </div>
               )}
             </>
@@ -283,27 +210,18 @@ export function CompanyEvidence({
             <ul className="mt-3 space-y-2">
               {feed.data.coverage.map((c) => (
                 <li key={c.source}>
-                  {sourceLabels[c.source] || c.source}: {c.first} ~ {c.last} ·{' '}
-                  {c.count.toLocaleString()}건
+                  {sourceLabels[c.source] || c.source}: {c.first} ~ {c.last} · {formatNumber(c.count)}건
                 </li>
               ))}
             </ul>
             <p className="mt-3">
-              보유 기간은 수집 완전성을 뜻하지 않습니다. 공개일 미확인{' '}
-              {feed.data.undated_count}건은 제외했습니다. 수출입 통계는
-              기업·공개시점 연결을 확보한 뒤 제공합니다.
+              보유 기간은 수집 완전성을 뜻하지 않습니다. 공개일 미확인 {feed.data.undated_count}건은 제외했습니다.
             </p>
             {feed.data.uncertain_count > 0 && (
-              <p>
-                선택일 공개시각 미상 {feed.data.uncertain_count}건 · ‘이후
-                해설도 보기’에서 별도로 확인할 수 있습니다.
-              </p>
+              <p>선택일 공개시각 미상 {feed.data.uncertain_count}건 · ‘이후 해설도 보기’에서 별도로 확인할 수 있습니다.</p>
             )}
           </details>
         )}
-        <p className="text-caption text-muted-foreground">
-          같은 기간의 자료가 주가 변동의 원인이라는 뜻은 아닙니다.
-        </p>
       </CardContent>
     </Card>
   )

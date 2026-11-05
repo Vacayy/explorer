@@ -3,7 +3,7 @@
  *
  * L1 = 홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis (화면 구조 개편 C안). 홈 L2는 시스템 고정 탭 다섯 개(3단계), 나머지 L2는 지금 URL을 가리킨다.
  * 종목 도시에(/analyze, /us/:ticker, /company)는 L1이 아니라 목적지 — L2 자리에 도시에 탭을 보인다.
- * 시장 전체 기업활동은 홈 › 한국 시장 #actions(D-300) — /actions(코드 없음)는 리다이렉트, /actions?code=X는 도시에 단계까지 그 화면 그대로(한국 시장으로 판정).
+ * 시장 전체 기업활동은 홈 › 한국 시장 #actions(D-300) — /actions는 리다이렉트(?code=X는 그 종목 도시에 개요 #actions, §10.6). 리다이렉트 전 한 번은 한국 시장으로 판정.
  */
 export type SectionKey = "home" | "feed" | "explore" | "industry" | "portfolio" | "world"
 
@@ -101,6 +101,7 @@ const ANALYZE_TAB_DEFS = [
   { key: "summary", label: "개요" },
   { key: "financials", label: "실적·사업" },
   { key: "mentions", label: "자료" },
+  { key: "lens", label: "투자 렌즈" },
 ] as const
 
 /** Carry only company research context, never unrelated filters or arbitrary return URLs. */

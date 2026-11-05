@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { locate, SECTIONS } from '../src/components/layout/navConfig.ts'
+import { analyzeTabOf, analyzeTabs, locate, SECTIONS } from '../src/components/layout/navConfig.ts'
 
 // docs/specs/app-shell.md §2 판정 표 — App.tsx의 모든 라우트(파라미터는 예시 값)와 대표 쿼리.
 // null = L1 밖(도시에·대화·관리자·리다이렉트 전용 경로)
@@ -57,7 +57,7 @@ const CASES = [
   ['/analyze/compare', '?stocks=005930,000660', 'explore', 'peers'],
   // 후속 묶음 — 시장 전체 기업활동은 홈 › 한국 시장 #actions(D-300). /actions?code=X는 도시에 단계까지 그 화면 그대로
   ['/actions', '', 'home', 'kr'],
-  ['/actions', '?code=005930', 'home', 'kr'],
+  ['/actions', '?code=005930', 'home', 'kr'],   // 곧바로 /analyze/005930/summary#actions로 리다이렉트
   ['/home/kr', '?view=pro', 'home', 'kr'],
   // 산업
   ['/map', '', 'industry', 'sectors'],
@@ -213,13 +213,26 @@ test('old signals tab (/explore) lands on 종목 발견 #signals and maps ?list=
   assert.ok(!app.includes('ExplorePage') && !app.includes('ComparePage'))
 })
 
-test('/actions (no code) goes to 홈 › 한국 시장 #actions with its query; ?code= keeps the page until the dossier stage', () => {
+test('/actions (no code) goes to 홈 › 한국 시장 #actions; ?code=X goes to that dossier overview #actions, query kept', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
   assert.match(app, /<Route path="actions" element=\{<ActionsRoute \/>\} \/>/)
-  assert.match(app, /get\("code"\)\) return <ActionsPage \/>/)
+  assert.match(app, /withSearch\(`\/analyze\/\$\{code\.toUpperCase\(\)\}\/summary#actions`, search\)/)
   assert.match(app, /withSearch\("\/home\/kr#actions", search\)/)
+  assert.ok(!app.includes('ActionsPage'), 'the old /actions page is gone')
   const home = readFileSync(new URL('../src/components/home/HomePage.tsx', import.meta.url), 'utf8')
   assert.match(home, /<div id="actions" className="scroll-mt-4"><ActionsList variant="block" \/><\/div>/)
+  const summary = readFileSync(new URL('../src/components/summary/SummaryPage.tsx', import.meta.url), 'utf8')
+  assert.match(summary, /<div id="actions" className="scroll-mt-4"><StockActionsBlock stockCode=\{stockCode\} \/><\/div>\n {4}<\/PageContainer>/, '기업활동 is the last block of the KR overview')
   const omni = readFileSync(new URL('../src/components/shared/Omnibar.tsx', import.meta.url), 'utf8')
   assert.ok(omni.includes('to: "/home/kr#actions"'))
+})
+
+test('KR dossier tabs: 개요 · 실적·사업 · 자료 · 투자 렌즈 (§4.13 — lens tab restored)', () => {
+  assert.deepEqual(analyzeTabs('005930').map(t => [t.label, t.path]), [
+    ['개요', '/analyze/005930/summary'], ['실적·사업', '/analyze/005930/financials'],
+    ['자료', '/analyze/005930/mentions'], ['투자 렌즈', '/analyze/005930/lens'],
+  ])
+  assert.equal(analyzeTabOf('/analyze/005930/lens'), 'lens')
+  assert.equal(analyzeTabOf('/analyze/005930/business'), 'financials')
+  assert.equal(analyzeTabOf('/analyze/005930/disclosures'), 'mentions')
 })

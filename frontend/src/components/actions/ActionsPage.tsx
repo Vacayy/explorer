@@ -6,8 +6,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { PageContainer } from '@/components/shared/PageContainer'
-import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { pinMine, useActions } from "@/hooks/useActions"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { formatKrw, formatKstDateTime, formatNumber } from "@/utils/format"
@@ -21,21 +19,18 @@ const segItem = cn("h-auto min-w-0 rounded-none px-2.5 py-1 text-xs font-normal"
   "text-muted-foreground hover:bg-transparent hover:text-foreground",
   "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:font-medium data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground")
 
-/**
- * 시장 전체 기업활동 (시총 5,000억+ KOSPI/KOSDAQ) — 홈 › 한국 시장 `#actions` 블록(D-300)과 `/actions?code=X`(도시에 단계까지 유지)가 같이 쓴다.
- * DART 전 시장 공시에서 자동 분류. 30분 주기 갱신. 기본은 원공시만(정정은 ?kind=correction|all),
- * 내 묶음(보유·관심) 종목은 맨 위에 고정한다. 쿼리 view(목록·유무증 Pro)·type·kind는 어느 화면에서나 같다.
- */
-export default function ActionsPage() {
-  return <ActionsList variant="page" />
-}
-
-/** 홈 블록에서 더 보기 전 행 수 — 데스크톱 10 · 모바일 6 (홈 › 내 종목과 같은 규칙, D-303). 페이지(/actions?code=X)는 전부 */
+/** 홈 블록에서 더 보기 전 행 수 — 데스크톱 10 · 모바일 6 (홈 › 내 종목과 같은 규칙, D-303) */
 const BLOCK_LIMIT = { desktop: 10, mobile: 6 }
 
 const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 내 종목(보유·관심)은 위로 올립니다."
 
-export function ActionsList({ variant }: { variant: "page" | "block" }) {
+/**
+ * 시장 전체 기업활동 (시총 5,000억+ KOSPI/KOSDAQ) — 홈 › 한국 시장 `#actions` 블록(D-300). 옛 /actions는 여기로,
+ * /actions?code=X는 그 종목 도시에 개요 맨 아래 기업활동(summary/StockActionsBlock)으로 보낸다(§10.6).
+ * DART 전 시장 공시에서 자동 분류. 30분 주기 갱신. 기본은 원공시만(정정은 ?kind=correction|all),
+ * 내 묶음(보유·관심) 종목은 맨 위에 고정한다. 쿼리 view(목록·유무증 Pro)·type·kind로 보기를 고른다.
+ */
+export function ActionsList(_: { variant: "block" }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const type = searchParams.get("type") ?? ""
   const view = searchParams.get("view") ?? "list"
@@ -55,32 +50,13 @@ export function ActionsList({ variant }: { variant: "page" | "block" }) {
     return n
   }, { preventScrollReset: true })
 
-  if (variant === "block") return (
+  return (
     <HomeBlock label="actions" title="기업활동" info={INFO} asOf={data?.as_of ? formatKstDateTime(data.as_of) : null}
       stale={!!data && !data.as_of} bodyClassName="space-y-3">
       {isLoading ? <div role="status" aria-label="기업활동 불러오는 중" className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
         : isError || !data ? <ErrorState message="기업활동을 불러오지 못했습니다" onRetry={() => refetch()} />
         : <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} bounded />}
     </HomeBlock>
-  )
-  if (isLoading) return <ActionsSkeleton />
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
-  const mineCount = data.items.filter((a) => a.my_group).length
-
-  return (
-    <PageContainer gap="sm">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold">기업활동</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류{mineCount > 0 && ` · 내 종목 ${mineCount}건 위로`}</p>
-        </div>
-        <span className="shrink-0 whitespace-nowrap">
-          {data.as_of ? <FreshnessStamp asOf={data.as_of} />
-            : <span className="text-caption text-muted-foreground">DART 스캔 성공 기록 없음</span>}
-        </span>
-      </div>
-      <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} />
-    </PageContainer>
   )
 }
 
@@ -208,15 +184,5 @@ function ActionsBody({ data, type, view, kind, setParam, setView, bounded = fals
       {view !== "pro" && hidden > 0 && <Button variant="ghost" size="sm" className={cn("text-muted-foreground", mobile && "w-full")}
         onClick={() => setOpenFor(filterKey)}>{formatNumber(hidden)}건 더 보기 ›</Button>}
     </>
-  )
-}
-
-function ActionsSkeleton() {
-  return (
-    <PageContainer gap="sm">
-      <Skeleton className="h-6 w-32" />
-      <Skeleton className="h-5 w-72" />
-      {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-    </PageContainer>
   )
 }

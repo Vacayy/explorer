@@ -37,7 +37,7 @@
 
 ## 4. 기업활동 `/actions`
 
-> 2026-11-05(D-300): 시장 전체 목록은 홈 › 한국 시장 `#actions` 블록(`ActionsList variant=block`)으로 옮겼다. 블록 목록은 데스크톱 10·모바일 6행 + 'n건 더 보기'(지금 필터만 펼침, 필터를 바꾸면 다시 접힘 — D-303; 페이지 맨 아래 블록이라 내부 스크롤은 겹친 스크롤이 되고, 원공시 40건 안팎이라 페이지 나눔까지는 필요 없다). `/actions`(코드 없음)는 `/home/kr#actions`로 리다이렉트(쿼리 `view·type·kind` 유지), `/actions?code=X`는 도시에 단계까지 옛 화면.
+> 2026-11-05(D-300): 시장 전체 목록은 홈 › 한국 시장 `#actions` 블록(`ActionsList variant=block`)으로 옮겼다. 블록 목록은 데스크톱 10·모바일 6행 + 'n건 더 보기'(지금 필터만 펼침, 필터를 바꾸면 다시 접힘 — D-303; 페이지 맨 아래 블록이라 내부 스크롤은 겹친 스크롤이 되고, 원공시 40건 안팎이라 페이지 나눔까지는 필요 없다). `/actions`(코드 없음)는 `/home/kr#actions`로 리다이렉트(쿼리 `view·type·kind` 유지), `/actions?code=X`는 2026-11-05(개편 4e)부터 그 종목 도시에 개요 맨 아래 기업활동(`/analyze/X/summary#actions`, 쿼리 유지)으로 보낸다. 옛 `/actions` 화면(`ActionsPage` 기본 내보내기·페이지 보기)은 없앴고 `ActionsList`는 홈 블록만 쓴다.
 
 - `GET /api/spine/actions`에 다음을 더했다.
   - `kind=all|original|correction`(API 기본 all). `report_nm`에 '정정'이 있으면 정정이다.

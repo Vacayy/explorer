@@ -10,6 +10,7 @@ import { CompanyEvidence } from './CompanyEvidence'
 import { shiftDay, validDay } from '@/utils/companyResearch'
 import type { StockPriceItem } from '@/types'
 import { DiscoveryTechnicalContext } from '@/components/company/DiscoveryTechnicalContext'
+import { InfoTip } from '@/components/shared/InfoTip'
 
 export function CompanyPriceResearch({
   company,
@@ -188,10 +189,6 @@ export function CompanyPriceResearch({
         보유한 주가 데이터가 없습니다.
       </p>
     )}
-    <p className="text-caption text-muted-foreground">
-      캔들을 클릭하면 해당 날짜 이전 자료를 탐색합니다. 휠·드래그로
-      차트를 확대·이동할 수 있습니다.
-    </p>
   </>
   return (
     <>
@@ -207,8 +204,9 @@ export function CompanyPriceResearch({
               <CardContent className={compact && !selected ? 'space-y-2 pt-3' : 'space-y-4 pt-3'}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className={compact && !selected ? 'text-sm font-medium' : 'text-section font-semibold'}>
+                    <h2 className={`flex items-center gap-1 ${compact && !selected ? 'text-sm font-medium' : 'text-section font-semibold'}`}>
                       가격과 거래량
+                      <InfoTip label="가격과 거래량 설명">캔들을 누르면 그날 이전 자료를 탐색합니다. 휠·드래그로 차트를 확대·이동할 수 있습니다.</InfoTip>
                     </h2>
                     {current && (
                       <p className="mt-1 text-lg font-semibold tabular-nums">

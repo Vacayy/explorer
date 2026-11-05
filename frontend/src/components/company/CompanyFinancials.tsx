@@ -17,22 +17,25 @@ import {
 } from 'recharts'
 import { useFinancials } from '@/hooks/useFinancials'
 import { useBusinessSegments } from '@/hooks/useBusiness'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ErrorState } from '@/components/shared/ErrorState'
+import { InfoTip } from '@/components/shared/InfoTip'
+import SegmentTabs from '@/components/shared/SegmentTabs'
+import { quarterCount } from '@/lib/dossier'
 import { PageContainer } from '@/components/shared/PageContainer'
 import FinancialsPage from '@/components/financials/FinancialsPage'
 import { formatKrw, formatPercent, formatRatio } from '@/utils/format'
-import { useKpi } from '@/hooks/useKpi'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { quarterRows } from '@/utils/companyResearch'
 import { companyResearchSearch } from '@/components/layout/navConfig'
 
+/** 국내 개요 '최근 분기 실적' — 최근 분기 매출·영업이익과 4분기 표(모바일은 값 두 개만) */
 export function FinancialPreview({ stockCode }: { stockCode: string }) {
   const [params] = useSearchParams()
   const query = useFinancials(stockCode, 'IS', 'quarterly', 3, 'CFS', {
     storedOnly: true,
   })
-  const kpi = useKpi(stockCode)
   // 아직 공시되지 않은 분기(값 전부 빈칸)는 건너뛰고, 직전 4분기 대비 매출 YoY를 붙인다
   const all = quarterRows(query.data)
   const rows = all
@@ -41,48 +44,32 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
       return { ...r, yoy: r.revenue != null && prev != null && prev > 0 ? ((r.revenue - prev) / prev) * 100 : null }
     })
     .filter((r) => r.revenue != null || r.profit != null)
-    .slice(-5)
+    .slice(-4)
   const latest = rows.at(-1)
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>최근 분기 실적</CardTitle>
-        <Link
-          className="text-sm text-primary hover:underline"
-          to={`/analyze/${stockCode}/financials${companyResearchSearch(params.toString())}`}
-        >
-          실적·사업 보기 →
-        </Link>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ['시가총액', kpi.isPending ? '…' : formatKrw(kpi.data?.market_cap)],
-            ['매출액', formatKrw(latest?.revenue)],
-            ['영업이익', formatKrw(latest?.profit)],
-            ['영업이익률', formatRatio(latest?.margin)],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <dt className="text-caption text-muted-foreground">{label}</dt>
-              <dd className="mt-1 text-lg font-semibold tabular-nums">{value}</dd>
-            </div>
-          ))}
-        </dl>
+    <Card className="min-w-0 gap-0 py-0" aria-label="최근 분기 실적">
+      <header className="flex flex-wrap items-center gap-x-2 border-b px-4 py-3">
+        <h2 className="text-section font-semibold">최근 분기 실적</h2>
+        {latest && <span className="text-caption text-muted-foreground">{query.data?.fs_div === 'OFS' ? '별도' : '연결'} · {latest.period}</span>}
+        <span className="ml-auto" />
+        <Link className="text-xs text-muted-foreground hover:text-foreground" to={`/analyze/${stockCode}/financials${companyResearchSearch(params.toString())}`}>실적·사업 ›</Link>
+      </header>
+      <div className="space-y-3 p-4">
         {query.isPending ? (
-          <p className="text-sm text-muted-foreground">
-            실적을 불러오는 중입니다.
-          </p>
+          <Skeleton className="h-32 w-full" />
         ) : query.isError ? (
-          <Button variant="outline" onClick={() => void query.refetch()}>
-            실적 다시 불러오기
-          </Button>
+          <ErrorState message="실적을 불러오지 못했습니다." onRetry={() => void query.refetch()} />
         ) : latest ? (
           <>
-            <p className="text-caption text-muted-foreground">
-              {latest.period} · {query.data?.fs_div === 'CFS' ? '연결' : '별도'}{' '}
-              · 단일 분기 · DART 최신 확보본
-            </p>
-            <Table>
+            <dl className="grid grid-cols-2 gap-3">
+              {[['매출액', formatKrw(latest.revenue)], ['영업이익', formatKrw(latest.profit)]].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-caption text-muted-foreground">{label}</dt>
+                  <dd className="mt-1 font-mono text-lg tabular-nums">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <Table className="max-sm:hidden">
               <TableHeader>
                 <TableRow>
                   <TableHead>분기</TableHead>
@@ -93,24 +80,22 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r) => (
+                {[...rows].reverse().map((r) => (
                   <TableRow key={r.period}>
-                    <TableCell className="tabular-nums">{r.period}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatKrw(r.revenue)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatKrw(r.profit)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatRatio(r.margin)}</TableCell>
-                    <TableCell className={`text-right tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up' : r.yoy < 0 ? 'text-down' : ''}`}>{formatPercent(r.yoy)}</TableCell>
+                    <TableCell className="font-mono tabular-nums">{r.period}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.revenue)}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.profit)}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{formatRatio(r.margin)}</TableCell>
+                    <TableCell className={`text-right font-mono tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up' : r.yoy < 0 ? 'text-down' : ''}`}>{formatPercent(r.yoy)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            확보된 분기 실적이 없습니다.
-          </p>
+          <p className="text-sm text-muted-foreground">확보된 분기 실적이 없습니다.</p>
         )}
-      </CardContent>
+      </div>
     </Card>
   )
 }
@@ -129,98 +114,93 @@ function Segments({ stockCode }: { stockCode: string }) {
     rows.every((r) => r.ratio != null && r.ratio >= 0) &&
     Math.abs(sum - 100) < 0.1
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>사업부별 매출 구성</CardTitle>
-        {years.length > 0 && (
-          <label className="text-caption">
-            연간 기준{' '}
-            <select
-              className="rounded-md border bg-background p-2"
-              value={year}
-              onChange={(e) => setChosen(e.target.value)}
-            >
-              {years.map((y) => (
-                <option key={y}>{y}</option>
-              ))}
-            </select>
-          </label>
-        )}
-      </CardHeader>
-      <CardContent>
+    <Card className="min-w-0 gap-0 py-0" aria-label="사업부별 매출 구성">
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-3">
+        <h2 className="text-section font-semibold">사업부별 매출 구성</h2>
+        <InfoTip label="사업부 구성 설명">저장된 연간 사업부 데이터입니다. 공시가 없으면 임의 비중을 표시하지 않습니다. 연결조정·원문 출처는 따로 확인이 필요합니다.</InfoTip>
+        <span className="ml-auto" />
+        {years.length > 1 && <SegmentTabs tabs={years.map((y) => ({ value: String(y), label: String(y) }))} value={String(year)} onChange={setChosen} />}
+        <Link className="text-xs text-muted-foreground hover:text-foreground" to={`/analyze/${stockCode}/summary${companyResearchSearch(params.toString())}`}>기업 개요 ›</Link>
+      </header>
+      <div className="p-4">
         {isPending ? (
-          <p>사업부 자료를 불러오는 중입니다.</p>
+          <Skeleton className="h-28 w-full" />
         ) : isError ? (
-          <Button onClick={() => void refetch()}>다시 불러오기</Button>
+          <ErrorState message="사업부 자료를 불러오지 못했습니다." onRetry={() => void refetch()} />
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            사업부별 매출 자료를 아직 확보하지 못했습니다. 임의의 구성비를
-            표시하지 않습니다.
-          </p>
+          <p className="bg-muted/60 p-3 text-sm text-muted-foreground">사업부별 매출 자료가 아직 없습니다</p>
         ) : (
-          <>
-            <div className="grid gap-4 sm:grid-cols-[240px_1fr]">
-              {valid && (
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie
-                      data={rows}
-                      dataKey="ratio"
-                      nameKey="segment_name"
-                      innerRadius={55}
-                      outerRadius={85}
-                    >
-                      {rows.map((r, i) => (
-                        <Cell key={r.id} fill={`var(--chart-${(i % 5) + 1})`} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v) => `${Number(v).toFixed(1)}%`} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr>
-                      <th className="p-2 text-left">사업부</th>
-                      <th className="p-2 text-right">매출액</th>
-                      <th className="p-2 text-right">공개 비중</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.id} className="border-t">
-                        <td className="p-2">{r.segment_name}</td>
-                        <td className="p-2 text-right">
-                          {r.revenue == null ? '미확보' : formatKrw(r.revenue)}
-                        </td>
-                        <td className="p-2 text-right">
-                          {r.ratio == null ? '미확보' : `${r.ratio}%`}
-                        </td>
-                      </tr>
+          <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
+            {valid && (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={rows} dataKey="ratio" nameKey="segment_name" innerRadius={50} outerRadius={80}>
+                    {rows.map((r, i) => (
+                      <Cell key={r.id} fill={`var(--chart-${(i % 5) + 1})`} />
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <p className="mt-3 text-caption text-muted-foreground">
-              저장된 연간 사업부 데이터 · 연결조정·원문 출처는 별도 확인이
-              필요합니다.
-              {!valid &&
-                ' 전체 비중을 확인할 수 없어 도넛 차트를 표시하지 않습니다.'}
-            </p>
-          </>
+                  </Pie>
+                  <Tooltip formatter={(v) => formatRatio(Number(v))} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+            <Table className={valid ? '' : 'sm:col-span-2'}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>사업부</TableHead>
+                  <TableHead className="text-right">매출액</TableHead>
+                  <TableHead className="text-right">공개 비중</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>{r.segment_name}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{r.revenue == null ? '-' : formatKrw(r.revenue)}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{r.ratio == null ? '-' : formatRatio(r.ratio)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
         <Link
-          className="mt-4 inline-block text-caption text-primary hover:underline"
+          className="mt-3 inline-block text-caption text-muted-foreground hover:text-foreground"
           to={`/analyze/${stockCode}/business${companyResearchSearch(params.toString())}`}
         >
-          사업부 데이터 관리 →
+          사업부 데이터 관리 ›
         </Link>
-      </CardContent>
+      </div>
     </Card>
   )
 }
+
+const QUARTER_TABS = [4, 8, 12].map((n) => ({ value: String(n), label: `최근 ${n}개 분기` }))
+
+/** 막대 하나(최근 분기만 진하게) — 매출·영업이익 */
+function QuarterBars({ title, data, k }: { title: string; data: ReturnType<typeof quarterRows>; k: 'revenue' | 'profit' }) {
+  const last = data.length - 1
+  return (
+    <figure className="min-w-0" aria-label={title}>
+      <figcaption className="mb-1 text-caption text-muted-foreground">{title}</figcaption>
+      <ResponsiveContainer width="100%" height={150}>
+        <BarChart data={data.map((r) => ({ period: r.period, v: r[k] == null ? null : r[k]! / 1e8 }))} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis hide />
+          <Tooltip formatter={(v) => formatKrw(Number(v) * 1e8)} />
+          <ReferenceLine y={0} stroke="var(--muted-foreground)" />
+          <Bar dataKey="v" name={title} isAnimationActive={false}>
+            {data.map((r, i) => <Cell key={r.period} fill={i === last ? 'var(--foreground)' : 'var(--color-chart-gray)'} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </figure>
+  )
+}
+
+/**
+ * 국내 도시에 '실적·사업' 탭 (ia-redesign §4.13 · 시안 Dossier-KR-Financials) — 분기 매출·영업이익 막대 + 영업이익률 선(?n=4|8|12),
+ * 분기 고르면 한 문장 확인(?period=), 분기 실적 표 | 사업부 구성. '재무제표 상세'는 ?view=statements.
+ */
 export default function CompanyFinancials({
   stockCode,
   corpCode,
@@ -228,245 +208,132 @@ export default function CompanyFinancials({
   stockCode: string
   corpCode: string
 }) {
-  const [sp, setSp] = useSearchParams(),
-    [count, setCount] = useState(8),
-    [selected, setSelected] = useState('')
+  const [sp, setSp] = useSearchParams()
   const table = sp.get('view') === 'statements'
+  const count = quarterCount(sp.get('n'))
   const query = useFinancials(stockCode, 'IS', 'quarterly', 4, 'CFS', {
     enabled: !table,
     storedOnly: true,
   })
-  const rows = quarterRows(query.data),
-    shown = rows.slice(-count)
-  const current = shown.find((r) => r.period === selected) || shown.at(-1)
-  const previous = current
-    ? rows.find(
-        (r) =>
-          r.period ===
-          `${String(Number(current.period.slice(0, 2)) - 1).padStart(2, '0')}${current.period.slice(2)}`,
-      )
-    : null
-  const growth =
-    current?.revenue != null &&
-    previous?.revenue != null &&
-    previous.revenue > 0
-      ? ((current.revenue - previous.revenue) / previous.revenue) * 100
-      : null
+  const setParam = (k: string, v: string | null) => setSp((previous) => {
+    const next = new URLSearchParams(previous)
+    if (v) next.set(k, v); else next.delete(k)
+    return next
+  }, { replace: true, preventScrollReset: true })
+  const all = quarterRows(query.data)
+  const rows = all.map((r) => {
+    const prev = all.find((p) => p.period === `${String(Number(r.period.slice(0, 2)) - 1).padStart(2, '0')}${r.period.slice(2)}`)?.revenue
+    return { ...r, yoy: r.revenue != null && prev != null && prev > 0 ? ((r.revenue - prev) / prev) * 100 : null }
+  })
+  const shown = rows.slice(-count)
+  const current = shown.find((r) => r.period === sp.get('period')) || shown.at(-1)
+  const growth = current?.yoy ?? null
+  const fs = query.data?.fs_div === 'OFS' ? '별도' : '연결'
   return (
     <PageContainer>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant={!table ? 'default' : 'outline'}
-          onClick={() => setSp(previous => { const next = new URLSearchParams(previous); next.delete('view'); return next })}
-        >
-          실적·사업
-        </Button>
-        <Button
-          variant={table ? 'default' : 'outline'}
-          onClick={() => setSp(previous => { const next = new URLSearchParams(previous); next.set('view', 'statements'); return next })}
-        >
-          재무제표 상세
-        </Button>
-        <Link
-          className="self-center px-2 text-sm text-primary"
-          to={`/analyze/${stockCode}/valuation${companyResearchSearch(sp.toString())}`}
-        >
-          밸류에이션 →
-        </Link>
+      <div className="flex flex-wrap items-center gap-2">
+        <SegmentTabs
+          tabs={[{ value: 'summary', label: '실적·사업' }, { value: 'statements', label: '재무제표 상세' }]}
+          value={table ? 'statements' : 'summary'}
+          onChange={(v) => setParam('view', v === 'statements' ? 'statements' : null)}
+        />
+        <Link className="px-2 text-sm font-medium hover:underline" to={`/analyze/${stockCode}/valuation${companyResearchSearch(sp.toString())}`}>밸류에이션 ›</Link>
       </div>
       {table ? (
         <FinancialsPage stockCode={stockCode} corpCode={corpCode} />
       ) : (
         <>
-          <Card>
-            <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle>분기 실적 추이</CardTitle>
-                <p className="mt-2 text-caption text-muted-foreground">
-                  {query.data?.fs_div === 'OFS' ? '별도' : '연결'} · 단일 분기 ·
-                  억원 / % · DART 최신 확보본
-                </p>
-              </div>
-              <label className="text-caption">
-                표시 구간{' '}
-                <select
-                  className="rounded-md border bg-background p-2"
-                  value={count}
-                  onChange={(e) => setCount(Number(e.target.value))}
-                >
-                  {[4, 8, 12].map((n) => (
-                    <option key={n} value={n}>
-                      최근 {n}개 분기
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </CardHeader>
-            <CardContent className="space-y-6">
+          <Card className="gap-0 py-0" aria-label="분기 실적 추이">
+            <header className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b px-4 py-3">
+              <h2 className="text-section font-semibold">분기 실적 추이</h2>
+              <span className="text-caption text-muted-foreground">{fs} · 단일 분기</span>
+              <span className="ml-auto" />
+              <SegmentTabs tabs={QUARTER_TABS} value={String(count)} onChange={(v) => setParam('n', v === '8' ? null : v)} />
+            </header>
+            <div className="space-y-4 p-4">
               {query.isPending ? (
-                <p>분기 실적을 불러오는 중입니다.</p>
+                <div role="status" aria-label="분기 실적 불러오는 중" className="grid gap-4 lg:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 w-full" />)}</div>
               ) : query.isError ? (
-                <Button onClick={() => void query.refetch()}>
-                  실적 다시 불러오기
-                </Button>
+                <ErrorState message="분기 실적을 불러오지 못했습니다." onRetry={() => void query.refetch()} />
               ) : shown.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  확보된 분기 손익계산서가 없습니다.
-                </p>
+                <p className="text-sm text-muted-foreground">확보된 분기 손익계산서가 없습니다.</p>
               ) : (
                 <>
-                  {(['revenue', 'profit', 'margin'] as const).map((key, i) => (
-                    <section key={key}>
-                      <h3 className="mb-2 text-sm font-semibold">
-                        {
-                          [
-                            '매출액 · 억원',
-                            '영업이익 · 억원',
-                            '영업이익률 · %',
-                          ][i]
-                        }
-                      </h3>
-                      <ResponsiveContainer width="100%" height={190}>
-                        {key === 'margin' ? (
-                          <LineChart data={shown}>
-                            <CartesianGrid
-                              vertical={false}
-                              stroke="var(--border)"
-                            />
-                            <XAxis dataKey="period" tick={{ fontSize: 12 }} />
-                            <YAxis tick={{ fontSize: 12 }} width={65} />
-                            <Tooltip
-                              formatter={(v) => `${Number(v).toFixed(1)}%`}
-                            />
-                            <ReferenceLine
-                              y={0}
-                              stroke="var(--muted-foreground)"
-                            />
-                            <Line
-                              dataKey="margin"
-                              name="영업이익률"
-                              stroke="var(--chart-3)"
-                              strokeWidth={2}
-                              connectNulls={false}
-                              isAnimationActive={false}
-                            />
-                          </LineChart>
-                        ) : (
-                          <BarChart
-                            data={shown.map((r) => ({
-                              ...r,
-                              [key]: r[key] == null ? null : r[key]! / 1e8,
-                            }))}
-                          >
-                            <CartesianGrid
-                              vertical={false}
-                              stroke="var(--border)"
-                            />
-                            <XAxis dataKey="period" tick={{ fontSize: 12 }} />
-                            <YAxis tick={{ fontSize: 12 }} width={65} />
-                            <Tooltip
-                              formatter={(v) =>
-                                `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })}억원`
-                              }
-                            />
-                            <ReferenceLine
-                              y={0}
-                              stroke="var(--muted-foreground)"
-                            />
-                            <Bar
-                              dataKey={key}
-                              name={key === 'revenue' ? '매출액' : '영업이익'}
-                              fill={`var(--chart-${i + 1})`}
-                              isAnimationActive={false}
-                            />
-                          </BarChart>
-                        )}
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <QuarterBars title="매출액" data={shown} k="revenue" />
+                    <QuarterBars title="영업이익" data={shown} k="profit" />
+                    <figure className="min-w-0" aria-label="영업이익률">
+                      <figcaption className="mb-1 text-caption text-muted-foreground">영업이익률 · %</figcaption>
+                      <ResponsiveContainer width="100%" height={150}>
+                        <LineChart data={shown} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                          <CartesianGrid vertical={false} stroke="var(--border)" />
+                          <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                          <YAxis tick={{ fontSize: 10 }} width={36} />
+                          <Tooltip formatter={(v) => formatRatio(Number(v))} />
+                          <ReferenceLine y={0} stroke="var(--muted-foreground)" />
+                          <Line dataKey="margin" name="영업이익률" stroke="var(--foreground)" strokeWidth={1.5} connectNulls={false} isAnimationActive={false} />
+                        </LineChart>
                       </ResponsiveContainer>
-                    </section>
-                  ))}
-                  <section className="space-y-3 border-t pt-4">
-                    <label className="text-sm font-medium">
-                      실적 확인{' '}
-                      <select
-                        className="ml-2 rounded-md border bg-background p-2"
-                        value={current?.period || ''}
-                        onChange={(e) => setSelected(e.target.value)}
-                      >
-                        {shown.map((r) => (
-                          <option key={r.period}>{r.period}</option>
-                        ))}
-                      </select>
-                    </label>
+                    </figure>
+                  </div>
+                  <section aria-label="실적 확인" className="space-y-2 border-t pt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="flex items-center gap-1 text-sm font-semibold">실적 확인
+                        <InfoTip label="실적 확인 설명">수치로 확인한 변화입니다. 회사 설명과 외부 해석은 원문에서 확인하세요. 회계분기와 자료 공개일은 다릅니다.</InfoTip>
+                      </h3>
+                      <SegmentTabs tabs={shown.slice(-4).map((r) => ({ value: r.period, label: r.period }))} value={current?.period ?? ''}
+                        onChange={(v) => setParam('period', v === shown.at(-1)?.period ? null : v)} />
+                    </div>
                     <p className="text-sm leading-relaxed">
-                      {current?.period} 매출액{' '}
-                      {current?.revenue == null
-                        ? '미확보'
-                        : formatKrw(current.revenue)}
-                      , 영업이익{' '}
-                      {current?.profit == null
-                        ? '미확보'
-                        : formatKrw(current.profit)}
-                      , 영업이익률{' '}
-                      {current?.margin == null
-                        ? '산출 불가'
-                        : `${current.margin.toFixed(1)}%`}
-                      .
-                      {growth != null &&
-                        ` 매출은 전년 동기 대비 ${Math.abs(growth).toFixed(1)}% ${growth >= 0 ? '증가' : '감소'}했습니다.`}
-                    </p>
-                    <p className="text-caption text-muted-foreground">
-                      수치로 확인한 변화입니다. 회사 설명과 외부 해석은 원문에서
-                      확인하세요. 회계분기와 자료 공개일은 다릅니다.
+                      {current?.period} 매출액 {formatKrw(current?.revenue)}, 영업이익 {formatKrw(current?.profit)}, 영업이익률 {formatRatio(current?.margin)}.
+                      {growth != null && ` 매출은 전년 동기 대비 ${Math.abs(growth).toFixed(1)}% ${growth >= 0 ? '증가' : '감소'}했습니다.`}
                     </p>
                     <Link
-                      className="text-sm text-primary hover:underline"
+                      className="inline-block text-sm font-medium hover:underline"
                       to={`/analyze/${stockCode}/mentions?${new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(companyResearchSearch(sp.toString()))), source: 'disclosure' })}`}
                     >
-                      공시 근거 확인 →
+                      공시 근거 확인 ›
                     </Link>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <caption className="py-2 text-left text-caption text-muted-foreground">
-                          차트 수치 · 결측은 미확보로 표시
-                        </caption>
-                        <thead>
-                          <tr>
-                            <th className="p-2 text-left">분기</th>
-                            <th>매출액</th>
-                            <th>영업이익</th>
-                            <th>영업이익률</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {shown.map((r) => (
-                            <tr key={r.period} className="border-t">
-                              <td className="p-2">{r.period}</td>
-                              <td className="text-center">
-                                {r.revenue == null
-                                  ? '미확보'
-                                  : formatKrw(r.revenue)}
-                              </td>
-                              <td className="text-center">
-                                {r.profit == null
-                                  ? '미확보'
-                                  : formatKrw(r.profit)}
-                              </td>
-                              <td className="text-center">
-                                {r.margin == null
-                                  ? '산출 불가'
-                                  : `${r.margin.toFixed(1)}%`}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
                   </section>
                 </>
               )}
-            </CardContent>
+            </div>
           </Card>
-          <Segments stockCode={stockCode} />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Card className="min-w-0 gap-0 py-0" aria-label="분기 실적 표">
+              <header className="flex flex-wrap items-center gap-x-2 border-b px-4 py-3">
+                <h2 className="text-section font-semibold">분기 실적 표</h2>
+                <span className="text-caption text-muted-foreground">최근 {shown.length}개 분기</span>
+              </header>
+              <div className="px-4 py-2">
+                {query.isPending ? <Skeleton className="h-40 w-full" /> : shown.length === 0 ? <p className="py-4 text-sm text-muted-foreground">확보된 분기 실적이 없습니다.</p> : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>분기</TableHead>
+                        <TableHead className="text-right">매출액</TableHead>
+                        <TableHead className="text-right">영업이익</TableHead>
+                        <TableHead className="text-right">영업이익률</TableHead>
+                        <TableHead className="text-right">매출 전년 대비</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...shown].reverse().map((r) => (
+                        <TableRow key={r.period}>
+                          <TableCell className="font-mono tabular-nums">{r.period}</TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.revenue)}</TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.profit)}</TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">{formatRatio(r.margin)}</TableCell>
+                          <TableCell className={`text-right font-mono tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up' : r.yoy < 0 ? 'text-down' : ''}`}>{formatPercent(r.yoy)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </Card>
+            <Segments stockCode={stockCode} />
+          </div>
         </>
       )}
     </PageContainer>

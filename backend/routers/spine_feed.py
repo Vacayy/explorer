@@ -8,6 +8,7 @@ from database import get_connection
 from pydantic import BaseModel, Field
 from datetime import date
 from models.spine import EntityTag, FeedDocument, FeedFacetEntity, FeedFacets, FeedResponse
+from models.company_evidence import CompanyEvidenceResponse
 from models.timeline import MarkAllReadRequest, MarkAllReadResponse, MarkReadRequest, TimelineResponse, TimelineChannelsResponse
 
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
@@ -121,7 +122,7 @@ def summarize_evidence(body: CompanySummaryRequest):
         raise HTTPException(503, "요약을 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.") from exc
 
 
-@router.get("/company-evidence")
+@router.get("/company-evidence", response_model=CompanyEvidenceResponse)
 def get_company_evidence(
     company: str = Query(..., min_length=1, max_length=200),
     start: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
