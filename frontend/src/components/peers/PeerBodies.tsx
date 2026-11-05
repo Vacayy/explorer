@@ -58,14 +58,14 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
         <PeriodToggle value={String(days)} onChange={onDays} options={DAY_OPTIONS} />
       </div>
       {missing.length > 0 && <p role="status" className="text-caption text-chart-warning">가격 없는 종목 {missing.length}개는 표에 '-'로 두고 차트와 그룹 평균에서 뺐습니다 · 평균 {avg[days].covered}/{rows.length}사</p>}
-      {rows.length > 1 && <div role="group" aria-label="강조할 종목" className="flex flex-wrap gap-1.5">
+      {rows.length > 1 && !phone && <div role="group" aria-label="강조할 종목" className="flex flex-wrap gap-1.5">
         {rows.map(row => { const on = row.code === selected
           return <button key={row.code} type="button" aria-pressed={on} onClick={() => onSelect(row.code)}
             className={cn('inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] font-medium', on ? 'border-up bg-up-tint text-up-ink' : 'border-[var(--line-2)] text-ink-2 hover:text-ink')}>
             <span aria-hidden className={cn('size-2 rounded-full', on ? 'bg-up' : 'bg-ink-3')} />{row.name}
           </button> })}
       </div>}
-      {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} endLabels={phone ? undefined : 150} showLastValues={false} showLineTooltip onLineClick={key => { if (key.startsWith('stock_')) onSelect(key.slice(6)) }} height={300} formatValue={formatNumber} />
+      {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} endLabels={phone ? undefined : 150} showLastValues={false} showLineTooltip onLineClick={key => { if (key.startsWith('stock_')) onSelect(key.slice(6)) }} height={phone ? 180 : 300} formatValue={formatNumber} />
         : <p role="status" className="py-10 text-center text-sm text-muted-foreground">이 기간에 그릴 가격이 없습니다.</p>}
       <Table aria-label="구성 종목 성과표" className="max-md:hidden">
         <TableHeader><TableRow>
