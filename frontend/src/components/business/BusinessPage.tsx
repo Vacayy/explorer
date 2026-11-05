@@ -20,7 +20,7 @@ interface Props {
   corpCode: string
 }
 
-const RAW_COLORS = ["#4472C4", "#ED7D31", "#70AD47", "#dc2626", "#8b5cf6", "#ec4899", "#14b8a6", "#FFC000"]
+const RAW_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--ink-3)", "var(--down-ink)", "var(--series)"]
 
 const SEG_TABS = [
   { value: "division", label: "사업부문" },
@@ -116,7 +116,7 @@ export default function BusinessPage({ stockCode }: Props) {
             <ChartCard title="매출액 합계 추이" className="lg:col-span-2">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={barData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" />
                   <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatKrw(v)} />
                   <Tooltip formatter={(v) => formatKrw(Number(v))} />

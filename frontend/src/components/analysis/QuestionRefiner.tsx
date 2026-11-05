@@ -73,7 +73,7 @@ export function QuestionRefiner({ question, disabled = false, onApply }: { quest
             <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">{condition.source && <span>원문 “{condition.source}”</span>}{CONFIDENCE[condition.confidence] && <Badge variant="outline" className="font-normal text-hypothesis">{CONFIDENCE[condition.confidence]}</Badge>}</p>
           </div>)}
         </section>}
-        {result.unsupported.length > 0 && <section className="space-y-1 rounded-lg bg-hypothesis/10 p-3" aria-label="평가할 수 없는 조건">
+        {result.unsupported.length > 0 && <section className="space-y-1 rounded-lg bg-warn/10 p-3" aria-label="평가할 수 없는 조건">
           <p className="flex items-center gap-1 text-sm font-medium"><AlertTriangle className="size-4" />지금 자료로는 평가할 수 없는 조건</p>
           <ul className="list-disc space-y-1 pl-5 text-sm">{result.unsupported.map((item, index) => <li key={index}>{item.text}<span className="text-muted-foreground"> — {item.reason}</span></li>)}</ul>
           <p className="text-caption text-muted-foreground">이 조건은 검색 문장에서 빠집니다. 후보가 나오면 기업 조사에서 따로 확인하세요.</p>

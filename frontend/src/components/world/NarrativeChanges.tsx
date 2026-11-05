@@ -17,7 +17,7 @@ function EdgeChip({ e, kind }: { e: WorldEdgeBrief; kind: "added" | "removed" })
     kind === "removed" && "text-muted-foreground line-through decoration-muted-foreground/50")}>
     <span aria-hidden="true" className={kind === "added" ? "text-primary" : "text-muted-foreground"}>{kind === "added" ? "+" : "−"}</span>
     <span className="truncate">{e.from}</span>
-    <ArrowRight aria-hidden="true" className={cn("size-3 shrink-0", e.effect_direction === "positive" ? "text-up" : e.effect_direction === "negative" ? "text-down" : "text-muted-foreground")} />
+    <ArrowRight aria-hidden="true" className={cn("size-3 shrink-0", e.effect_direction === "positive" ? "text-up-ink" : e.effect_direction === "negative" ? "text-down-ink" : "text-muted-foreground")} />
     <span className="truncate">{e.to}</span>
   </span>
 }

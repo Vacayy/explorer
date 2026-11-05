@@ -54,7 +54,7 @@ function NarrativeChips({ chips }: { chips: WorldNarrativeChip[] }) {
           <Link to={`/narrative?topic=${encodeURIComponent(c.topic)}`}>
             {c.topic}
             <span className="font-mono text-[11px] text-muted-foreground">v{c.version} · {kstDay(c.created_at)}</span>
-            {c.is_new && <span className="text-[11px] text-up">새</span>}
+            {c.is_new && <span className="text-[11px] text-up-ink">새</span>}
           </Link>
         </Badge>
       ))}
@@ -118,7 +118,7 @@ function MegaCard({ n, m, index }: { n: number; m: WorldMega; index: Map<string,
               <Link to={`/narrative?topic=${encodeURIComponent(t)}`}>
                 {t}
                 {it?.version != null && <span className="font-mono text-[11px] text-muted-foreground">v{it.version} · {kstDay(it.created_at)}</span>}
-                {it?.is_new && <span className="text-[11px] text-up">새</span>}
+                {it?.is_new && <span className="text-[11px] text-up-ink">새</span>}
               </Link>
             </Badge>
           )

@@ -20,8 +20,8 @@ interface Obs { observed_at: string | null; value_num: number | null; value_text
 interface ProxyRow { id: number; key: string; label: string; unit: string | null; tickers: string | null; latest: Obs | null; series: Obs[] }
 
 function DirIcon({ d }: { d: string | null }) {
-  if (d === "up") return <TrendingUp className="h-3.5 w-3.5 text-up" />
-  if (d === "down") return <TrendingDown className="h-3.5 w-3.5 text-down" />
+  if (d === "up") return <TrendingUp className="h-3.5 w-3.5 text-up-ink" />
+  if (d === "down") return <TrendingDown className="h-3.5 w-3.5 text-down-ink" />
   return <Minus className="h-3.5 w-3.5 text-muted-foreground" />
 }
 

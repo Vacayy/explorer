@@ -4,8 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { toApiError } from "@/api/errors"
 
-/** 등락 색 — 한국 컨벤션(상승=빨강 text-up, 하락=파랑 text-down) */
-export const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
+/** 등락 색 — 한국 컨벤션(상승=빨강 text-up-ink, 하락=파랑 text-down-ink) */
+export const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
 
 /** 블록 단위 오류 (상태 시트 §4.28) — 이 블록만 오류로 두고 나머지 화면은 그대로 */
 export function BlockError({ message, error, onRetry }: { message: string; error?: unknown; onRetry?: () => void }) {

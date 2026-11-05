@@ -24,7 +24,7 @@ export function WatchButton({ stockCode }: { stockCode: string }) {
         )
       }
     >
-      <span className={watched ? 'text-amber-500' : undefined}>{watched ? '★' : '☆'}</span> 관심 종목
+      <span className={watched ? 'text-warn' : undefined}>{watched ? '★' : '☆'}</span> 관심 종목
     </Button>
   )
 }

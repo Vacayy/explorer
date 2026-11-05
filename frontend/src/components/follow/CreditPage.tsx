@@ -22,7 +22,7 @@ import type { CreditRow } from '@/types'
 
 const MAX_SELECTED = 6
 const TOP = 14
-const tone = (v: number | null) => v == null || v === 0 ? 'text-muted-foreground' : v > 0 ? 'text-up' : 'text-down'   // 스프레드 확대 = 빨강
+const tone = (v: number | null) => v == null || v === 0 ? 'text-muted-foreground' : v > 0 ? 'text-up-ink' : 'text-down-ink'   // 스프레드 확대 = 빨강
 
 /**
  * 산업 › 회사채 (/follow/credit, 시안 Industry-Credit, ia-redesign §4.8c · D-230, docs/specs/credit-spreads.md).
@@ -158,7 +158,7 @@ function SpreadTable({ rows, asOf, groups, all, onAll, selected, onToggle }: {
           <TableCell className="py-2 text-right max-md:hidden">
             <Badge variant="outline" className={cn('px-1.5 font-mono text-[11px]', r.hy ? 'border-chart-warning/50 bg-chart-warning/10 text-chart-warning' : 'text-muted-foreground')}>{r.rating ?? '-'}</Badge>
           </TableCell>
-          <TableCell className="py-2 text-right font-mono tabular-nums max-sm:hidden">{formatYield(r.ytm)}{stale(r.last_date) && <span className="block text-[10px] text-hypothesis">{r.last_date?.slice(5)} 체결</span>}</TableCell>
+          <TableCell className="py-2 text-right font-mono tabular-nums max-sm:hidden">{formatYield(r.ytm)}{stale(r.last_date) && <span className="block text-[10px] text-warn">{r.last_date?.slice(5)} 체결</span>}</TableCell>
           <TableCell className="py-2 text-right font-mono tabular-nums">{r.spread_bp == null ? '-' : `${formatBp(r.spread_bp)}bp`}</TableCell>
           <TableCell className={cn('py-2 text-right font-mono tabular-nums', tone(r.chg_1m))}>{r.chg_1m == null ? '-' : `${formatBp(r.chg_1m, true)}bp`}</TableCell>
           <TableCell className="py-2 pr-3 text-right font-mono tabular-nums max-md:hidden">{formatRatio(r.pd_pct)}</TableCell>

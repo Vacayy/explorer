@@ -33,7 +33,7 @@ function usePicked(momentum: MomentumSet) {
 function SignalBadges({ c }: { c: CallMomentumCandidate }) {
   const up = raisedGuidance(c)
   return <>
-    {c.accel?.on && <Badge variant="outline" className="border-up/40 font-normal text-up">기대 초과 가속</Badge>}
+    {c.accel?.on && <Badge variant="outline" className="border-up/40 font-normal text-up-ink">기대 초과 가속</Badge>}
     {up > 0 && <Badge variant="outline" className="font-normal">가이던스↑ {up}</Badge>}
     {toneUp(c) && <Badge variant="outline" className="border-hypothesis/40 font-normal text-hypothesis">어조 {c.prev_tone}→{c.tone}</Badge>}
   </>
@@ -177,7 +177,7 @@ export function PickedCandidate({ d, momentum }: { d: SeasonOverview; momentum: 
           <span className="ml-auto text-caption text-muted-foreground">선택한 후보</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className={cn("font-normal", kind === "new" ? "border-up/40 text-up" : "")}>{kind === "new" ? "새로 붙은 모멘텀" : "이어지는 모멘텀"}</Badge>
+          <Badge variant="outline" className={cn("font-normal", kind === "new" ? "border-up/40 text-up-ink" : "")}>{kind === "new" ? "새로 붙은 모멘텀" : "이어지는 모멘텀"}</Badge>
           <SignalBadges c={c} />
           {r?.d1 != null && <span className="text-sm">첫 거래일 <Pp v={r.d1} className="font-semibold" /></span>}
           {r?.latest != null && <span className="text-sm">최근 <Pp v={r.latest} className="font-semibold" /></span>}
@@ -208,7 +208,7 @@ export function PickedCandidate({ d, momentum }: { d: SeasonOverview; momentum: 
         {guide.length > 0 && <p className="text-sm">
           <span className="text-muted-foreground">가이던스 · </span>
           {guide.slice(0, 6).map((g, i) => <span key={g.metric + i}>{i > 0 && " · "}
-            <span className={g.direction === "raised" ? "text-up" : g.direction === "lowered" ? "text-down" : ""}>{GUIDE[g.direction]}</span> {g.metric}</span>)}
+            <span className={g.direction === "raised" ? "text-up-ink" : g.direction === "lowered" ? "text-down-ink" : ""}>{GUIDE[g.direction]}</span> {g.metric}</span>)}
           {guide.length > 6 && <span className="text-muted-foreground"> 외 {guide.length - 6}</span>}
         </p>}
         {c.qa_focus.length > 0 && <p className="text-caption text-muted-foreground">애널리스트 질문 초점 · {c.qa_focus.join(" · ")}</p>}

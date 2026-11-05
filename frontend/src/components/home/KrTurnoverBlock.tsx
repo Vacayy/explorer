@@ -72,7 +72,7 @@ function Body({ d }: { d: KrMovers }) {
             <TableCell className="px-1 py-1.5">
               <span className="flex min-w-0 flex-wrap items-center gap-1">
                 <Link to={`/analyze/${m.stock_code}/summary`} className="truncate font-medium hover:underline">{m.name}</Link>
-                {m.flags.map(f => <Badge key={f} variant="secondary" className={cn("h-4 px-1 text-[10px] font-normal", f.startsWith("급등") && "text-up", f.startsWith("급락") && "text-down")}>{f}</Badge>)}
+                {m.flags.map(f => <Badge key={f} variant="secondary" className={cn("h-4 px-1 text-[10px] font-normal", f.startsWith("급등") && "text-up-ink", f.startsWith("급락") && "text-down-ink")}>{f}</Badge>)}
               </span>
             </TableCell>
             <TableCell className={cn("px-1 py-1.5 text-right font-mono tabular-nums", tone(m.change_pct))}>{formatPercent(m.change_pct)}</TableCell>

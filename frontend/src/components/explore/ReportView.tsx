@@ -17,10 +17,10 @@ import { formatPer, formatPercent, formatStockPrice } from "@/utils/format"
 
 // 레이팅 색 — 한국 컨벤션(상승=빨강 up, 하락=파랑 down). 말은 '상방 우위(비대칭 큼)·상방 우위·중립·하방 우위'(ia-redesign §4.27, 11-04 · D-307 Hold → 중립)
 const RATING_CLS: Record<ReturnType<typeof ratingTone>, string> = {
-  "up-strong": "text-up border-up/50 font-semibold",
-  up: "text-up border-up/40",
+  "up-strong": "text-up-ink border-up/50 font-semibold",
+  up: "text-up-ink border-up/40",
   neutral: "text-muted-foreground",
-  down: "text-down border-down/50 font-semibold",
+  down: "text-down-ink border-down/50 font-semibold",
 }
 
 const md = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
@@ -196,8 +196,8 @@ export function ReportView({ topic, initialVersionId = null }: { topic: string; 
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <div className="space-y-2 pt-2 text-[11px] leading-snug">
-                      {display.debate.bull && <div className="rounded-md border border-up/30 bg-up/5 px-2.5 py-1.5"><span className="font-semibold text-up">강세 (Bull)</span><div className="text-muted-foreground whitespace-pre-wrap mt-0.5">{relabelRatings(display.debate.bull)}</div></div>}
-                      {display.debate.bear && <div className="rounded-md border border-down/30 bg-down/5 px-2.5 py-1.5"><span className="font-semibold text-down">약세 (Bear)</span><div className="text-muted-foreground whitespace-pre-wrap mt-0.5">{relabelRatings(display.debate.bear)}</div></div>}
+                      {display.debate.bull && <div className="rounded-md border border-up/30 bg-up/5 px-2.5 py-1.5"><span className="font-semibold text-up-ink">강세 (Bull)</span><div className="text-muted-foreground whitespace-pre-wrap mt-0.5">{relabelRatings(display.debate.bull)}</div></div>}
+                      {display.debate.bear && <div className="rounded-md border border-down/30 bg-down/5 px-2.5 py-1.5"><span className="font-semibold text-down-ink">약세 (Bear)</span><div className="text-muted-foreground whitespace-pre-wrap mt-0.5">{relabelRatings(display.debate.bear)}</div></div>}
                       {display.debate.fundamental && <p className="text-muted-foreground"><span className="font-medium text-foreground">펀더:</span> {relabelRatings(display.debate.fundamental)}</p>}
                       {display.debate.technical && <p className="text-muted-foreground"><span className="font-medium text-foreground">기술:</span> {relabelRatings(display.debate.technical)}</p>}
                       {display.debate.sentiment && <p className="text-muted-foreground"><span className="font-medium text-foreground">수급:</span> {relabelRatings(display.debate.sentiment)}</p>}
@@ -248,7 +248,7 @@ function SinceLine({ stocks, topPick, createdAt }: { stocks: ReportResult["stock
   return (
     <p className="bg-muted/40 px-3 py-2 text-[13px]" data-report-since>
       작성 이후 {top.name}
-      {p && <> <span className={cn("tabular-nums", p.pct > 0 ? "text-up" : p.pct < 0 ? "text-down" : "")}>{formatPercent(p.pct)}</span>
+      {p && <> <span className={cn("tabular-nums", p.pct > 0 ? "text-up-ink" : p.pct < 0 ? "text-down-ink" : "")}>{formatPercent(p.pct)}</span>
         <span className="tabular-nums text-muted-foreground">({formatStockPrice(p.from)} → {formatStockPrice(p.to)})</span></>}
       {e && <> · 선행 PER <span className="tabular-nums">{formatPer(e.from)} → {formatPer(e.to)}</span></>}
     </p>

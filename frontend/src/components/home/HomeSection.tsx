@@ -73,8 +73,8 @@ export function BlockHead({ title, info, asOf, stale, link, actions }: BlockHead
   const to = link && link.to.split("#")[0] !== pathname ? link.to : undefined
   const name = typeof title === "string" ? title : undefined
   return (
-    <header className="flex h-10 shrink-0 items-center gap-1.5 border-b px-3">
-      <h2 className="min-w-0 truncate text-sm font-semibold">{title}</h2>
+    <header className="flex min-h-[38px] shrink-0 items-center gap-2 border-b px-3 py-1.5">
+      <h2 className="min-w-0 truncate text-[13.5px] font-semibold">{title}</h2>
       {info && <Tooltip>
         <TooltipTrigger asChild>
           <Button variant="ghost" size="icon-xs" aria-label={`${name ?? "블록"} 설명`} className="shrink-0 text-muted-foreground/70"><Info className="size-3.5" /></Button>
@@ -82,9 +82,11 @@ export function BlockHead({ title, info, asOf, stale, link, actions }: BlockHead
         <TooltipContent className="max-w-[280px] text-xs leading-relaxed">{info}</TooltipContent>
       </Tooltip>}
       <span className="ml-auto" />
-      {asOf && <span className={cn("shrink-0 font-mono text-[11px] tabular-nums max-sm:hidden", stale ? "text-chart-warning" : "text-muted-foreground")}>{asOf}</span>}
+      {asOf && <span className={cn("inline-flex shrink-0 items-center gap-[5px] text-[11.5px] whitespace-nowrap max-sm:hidden", stale ? "text-warn" : "text-ink-3")}>
+        <span aria-hidden className={cn("size-[5px] rounded-full", stale ? "bg-warn" : "bg-fact")} />{asOf}
+      </span>}
       {actions}
-      {to && <Link to={to} className="shrink-0 text-xs text-muted-foreground hover:text-foreground">{link!.label} ›</Link>}
+      {to && <Link to={to} className="shrink-0 text-xs whitespace-nowrap text-ink-2 hover:text-ink">{link!.label} ›</Link>}
     </header>
   )
 }

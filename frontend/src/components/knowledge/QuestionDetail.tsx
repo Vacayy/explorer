@@ -199,7 +199,7 @@ function ScenarioBlock({ qid, data }: { qid: number; data: QTree }) {
                     const chip = (
                       <span className="inline-flex items-center gap-1.5 border px-2 py-0.5 text-[12px]" title={b.reason ?? ""}>
                         {b.name}
-                        {side && <span className={side === "수혜" ? "text-up" : "text-down"}>{side}</span>}
+                        {side && <span className={side === "수혜" ? "text-up-ink" : "text-down-ink"}>{side}</span>}
                       </span>
                     )
                     return b.stock_code ? <Link key={i} to={`/analyze/${b.stock_code}/summary`} className="hover:bg-muted">{chip}</Link> : <span key={i}>{chip}</span>

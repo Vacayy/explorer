@@ -40,7 +40,7 @@ export function CandidateComparison({ runId, result, items, ascending, onClear, 
             </TableBody>
           </Table>
           <p className="text-caption text-muted-foreground">‘—’는 이 실행에 해당 값이 저장되지 않았다는 뜻입니다. 현재 시세 변화나 거래대금은 이 표에서 추정하지 않습니다.</p>
-          {!!result.unsupported_conditions?.length && <p className="text-sm text-hypothesis">평가하지 못한 요청 조건: {result.unsupported_conditions.join(' · ')}</p>}
+          {!!result.unsupported_conditions?.length && <p className="text-sm text-warn">평가하지 못한 요청 조건: {result.unsupported_conditions.join(' · ')}</p>}
         </DialogContent>
       </Dialog>
     </div>

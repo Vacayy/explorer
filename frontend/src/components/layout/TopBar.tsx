@@ -1,10 +1,10 @@
 import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useTheme } from "next-themes"
-import { Archive, ChevronRight, Moon, PanelRight, Rss, Search, Settings, SlidersHorizontal, Sun } from "lucide-react"
+import { Archive, ChevronRight, Globe, Monitor, Moon, Rss, Search, Settings, SlidersHorizontal, Sparkles, Sun } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -27,40 +27,42 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
 
   // <768: 가운데 6탭은 하단 TabBar로 내려가고 위에는 아이콘만 남는다 (app-shell.md §6)
   return (
-    <header className="sticky top-0 z-30 flex h-(--topbar-height) items-center justify-between border-b bg-background px-2 md:grid md:grid-cols-[1fr_auto_1fr] md:px-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <Link to="/home" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-          <span aria-hidden className="grid size-[22px] place-items-center rounded-md bg-foreground text-[11px] font-bold text-background">E</span>
+    <header className="sticky top-0 z-30 flex h-(--topbar-height) items-center justify-between gap-3 border-b bg-background px-2 md:px-5">
+      <div className="flex min-w-0 items-center gap-3">
+        <Link to="/home" className="flex shrink-0 items-center gap-2 font-display text-[17px] font-medium tracking-[-0.01em]">
+          <Globe className="size-[18px]" aria-hidden />
           <span className="md:max-lg:sr-only">Explorer</span>
         </Link>
+        <nav aria-label="메인" className="hidden items-center gap-0.5 md:flex">
+          {SECTIONS.map((s, i) => {
+            const active = here?.section === s.key
+            return (
+              <Link key={s.key} to={s.path} aria-current={active ? "page" : undefined} title={`⌥${i + 1}`}
+                className={cn(
+                  "rounded-full px-2.5 py-1.5 text-sm leading-[1.55] whitespace-nowrap transition-colors lg:px-3",
+                  active ? "bg-chip font-medium text-ink" : "text-ink-2 hover:text-ink",
+                )}>
+                {s.label}
+              </Link>
+            )
+          })}
+        </nav>
       </div>
 
-      <nav aria-label="메인" className="hidden h-full items-stretch md:flex">
-        {SECTIONS.map((s, i) => {
-          const active = here?.section === s.key
-          return (
-            <Link key={s.key} to={s.path} aria-current={active ? "page" : undefined} title={`⌥${i + 1}`}
-              className={cn(
-                "flex items-center border-b-2 px-2.5 text-sm transition-colors lg:px-3.5",
-                active ? "border-foreground font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-              )}>
-              {s.label}
-            </Link>
-          )
-        })}
-      </nav>
-
-      <div className="flex min-w-0 items-center justify-end gap-0.5 md:gap-1">
-        <Button variant="outline" size="sm" onClick={openOmnibar} data-search-input
-          className="mr-1 hidden h-8 w-52 justify-start gap-2 bg-muted/40 font-normal text-muted-foreground xl:flex">
-          <Search className="size-3.5" aria-hidden />종목·문서·서사 검색<Kbd className="ml-auto">⌘K</Kbd>
+      <div className="flex min-w-0 items-center justify-end gap-0.5 md:gap-1.5">
+        <Button variant="secondary" onClick={openOmnibar} data-search-input
+          className="hidden h-[34px] w-[210px] justify-start gap-2 px-3 text-[13px] font-normal text-ink-3 hover:text-ink-2 xl:flex">
+          <Search className="size-3.5" aria-hidden />종목·문서·주제 검색<Kbd className="ml-auto bg-transparent font-mono text-[11px] text-ink-3">⌘K</Kbd>
         </Button>
         <ShellButton icon={Search} label="검색 (⌘K)" onClick={openOmnibar} className="xl:hidden" />
         <HealthDot />
         <ApprovalsInbox />
         <SavedInbox />
         <SettingsMenu />
-        <ShellButton icon={PanelRight} label="AI 대화 (⌘J)" pressed={aiOpen} onClick={onToggleAi} />
+        <Button variant={aiOpen ? "default" : "secondary"} size="sm" aria-pressed={aiOpen} aria-label="AI 대화 (⌘J)" title="AI 대화 (⌘J)" onClick={onToggleAi}
+          className="ml-0.5 gap-1.5 px-3 max-md:size-10 max-md:bg-transparent max-md:px-0 max-md:text-ink-2 max-md:aria-pressed:bg-chip max-md:aria-pressed:text-ink">
+          <Sparkles className="size-3.5 max-md:size-[18px]" aria-hidden /><span className="max-md:sr-only">AI</span>
+        </Button>
       </div>
     </header>
   )
@@ -110,22 +112,32 @@ function HealthDot() {
   )
 }
 
-/** 설정 — 드물게 쓰는 것: 테마 · 소스 관리 · 관리자 · 보관함 */
+/** 설정 — 드물게 쓰는 것: 테마(시스템·라이트·다크) · 소스 관리 · 관리자 · 보관함 (시안 Shell-Topbar ②) */
+const THEMES = [
+  { value: "system", label: "시스템", icon: Monitor },
+  { value: "light", label: "라이트", icon: Sun },
+  { value: "dark", label: "다크", icon: Moon },
+] as const
 function SettingsMenu() {
-  const { resolvedTheme, setTheme } = useTheme()
-  const dark = resolvedTheme === "dark"
+  const { theme, setTheme } = useTheme()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <ShellButton icon={Settings} label="설정" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem onSelect={() => setTheme(dark ? "light" : "dark")}>
-          {dark ? <Sun /> : <Moon />} {dark ? "라이트 모드" : "다크 모드"}
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="w-[280px]">
+        <DropdownMenuRadioGroup value={theme ?? "system"} onValueChange={setTheme} aria-label="화면 테마"
+          className="mx-1.5 my-1 grid grid-cols-3 gap-0.5 rounded-[10px] bg-chip p-[3px]">
+          {THEMES.map(t => (
+            <DropdownMenuRadioItem key={t.value} value={t.value} onSelect={e => e.preventDefault()}
+              className="h-[30px] justify-center gap-1.5 rounded-lg px-2 py-0 text-[13px] font-normal text-ink-2 focus:bg-transparent focus:text-ink data-[state=checked]:bg-surface data-[state=checked]:font-medium data-[state=checked]:text-ink data-[state=checked]:shadow-[0_0_0_1px_var(--line)] [&>span:first-child]:hidden">
+              <t.icon className="size-3.5" aria-hidden />{t.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild><Link to="/admin/sources"><Rss /> 소스 관리</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link to="/admin"><SlidersHorizontal /> 관리자</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link to="/admin/sources"><Rss /> 소스 관리</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link to="/archive"><Archive /> 보관함</Link></DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

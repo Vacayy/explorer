@@ -1,9 +1,77 @@
 # Explorer 디자인 시스템
 
-> 최종 갱신: 2026-09-10 · 참고 모델: Meta astryx (CSS 변수 테마 · 강한 컨벤션 · 조합 가능한 컴포넌트 · "guidance over enforcement")
+> 최종 갱신: 2026-11-05 · 참고 모델: Meta astryx (CSS 변수 테마 · 강한 컨벤션 · 조합 가능한 컴포넌트 · "guidance over enforcement")
 > 관련: CLAUDE.md 프론트엔드 Hard Rules · docs/policies/number-formatting.md · docs/policies/ui-states.md
 
-## 2026-10-31 · 화이트 플랫 공통 기준
+## 2026-11-05 · 현행 계약 — Daylight·Midnight 디자인 시스템 (D-320)
+
+이 절이 아래의 모든 과거 규칙(화이트 플랫·멀버리·IBM Plex 단독·빨강 상승)보다 우선한다. 값의 원본은 `frontend/src/index.css`다.
+
+### 토큰 (시안 이름 그대로)
+
+| 토큰 | 라이트 Daylight | 다크 Midnight | 쓰임 |
+|---|---|---|---|
+| `--bg` · `--surface` · `--surface-2` | #FCFFFF · #FFFFFF · #F2F7F9 | #02070A · #081014 · #0D181E | 페이지 · 카드·표 · 입력·hover |
+| `--ink` · `--ink-2` · `--ink-3` | #0E1A22 · #46555F · #5F6F7A | #EAF2F7 · #A6B6C1 · #8396A2 | 본문·주 버튼 · 보조 · 캡션 |
+| `--line` · `--line-2` | ink 10% · 18% | ink 10% · 18% | 면 경계 · 컨트롤 테두리·표 머리 |
+| `--up` · `--up-ink` · `--up-tint` | #D83995 · #B4237A · 10% | #FC734D · #FC8A68 · 12% | 상승(막대·점 · 숫자 · 배지) |
+| `--down` · `--down-ink` · `--down-tint` | #0593C6 · #04709A · 10% | #0297DE · #3DB2EE · 14% | 하락 |
+| `--hyp` · `--hyp-tint` | #6E46CF · 8% | #B79BFF · 10% | AI 해석(LLM 산출) |
+| `--fact` · `--fact-tint` | #0B7A5E · 8% | #4FD1A5 · 10% | 사실 확인·신선 |
+| `--warn` · `--warn-tint` | #A35F00 · 10% | #F2C14E · 12% | 지연·경고·미평가 |
+| `--action` · `--action-ink` | ink · bg | ink · bg | 주 버튼·선택 상태 |
+| `--chip` | ink 6% | 흰색 7% | 보조 버튼·입력·세그먼트 바탕 |
+| `--series` · `--grid` | ink 26% · 7% | ink 28% · 7% | 차트 시리즈(회색) · 격자 |
+| `--closed` | #C8372D | #F25F5C | 장 마감 점 · 파괴적 행동(`--destructive`) |
+| `--field` · `--ribs` · `--glass` · `--glass-line` · `--veil` | | | 기상도 전용(아래) |
+
+shadcn 변수는 이 토큰에 잇는다: `--background=--bg`, `--card/--popover=--surface`, `--foreground=--ink`, `--muted=--surface-2`, `--muted-foreground=--ink-3`, `--primary=--action`, `--secondary/--accent=--chip`, `--border=--line`, `--input=--line-2`, `--ring=--ink`, `--hypothesis=--hyp`, `--chart-warning=--warn`. 기존 이름(`--color-up`·`--chart-*` 등)은 별칭으로 남아 있다.
+
+### 테마
+
+- `<html class="dark">` 하나로 전환한다. 설정 메뉴(상단 바 ⚙)의 세그먼트에서 시스템·라이트·다크를 고른다. 기본은 시스템(`prefers-color-scheme`), 선택은 localStorage `theme`(next-themes)에 남는다.
+- `index.html`의 인라인 스크립트가 첫 그림 전에 `.dark`를 붙여 깜빡임을 막는다.
+- 캔버스 차트(lightweight-charts)는 `components/charts/chartTheme.ts`의 `useChartTheme()`로 토큰을 읽고, 테마가 바뀌면 다시 칠한다. Recharts·SVG는 `var(--token)`을 그대로 쓴다.
+
+### 서체 (Google Fonts, 실패하면 시스템 서체)
+
+| 역할 | 서체 | 크기 |
+|---|---|---|
+| 페이지 제목 | Geist 400 (`font-display text-page`) | 30/36, 자간 −0.02em |
+| 기상도 헤드라인 | Geist 300 + 강조는 Instrument Serif 이탤릭(`font-serif italic`) | 64/66 (`text-weather`). 홈 날짜는 34 |
+| 섹션 제목 | IBM Plex Sans KR 600 (`text-section`) | 15/21. 블록 머리 13.5 |
+| 본문 | IBM Plex Sans KR 400 (`text-reading`) | 14/22 |
+| 캡션 | IBM Plex Sans KR 400 (`text-caption`) | 12/18 |
+| 숫자 | Geist Mono, tabular (`tabular-nums`이면 자동으로 모노) | 부호는 −(U+2212) |
+
+### 면과 모서리
+
+- 데이터 면은 평평하다: 1px `--line`, 모서리 0, 카드 사이 간격 0(선 공유, `surface-grid`·`surface-stack`), 그림자 없음.
+- 모서리: 컨트롤 필 999px(`rounded-control`) · 배지 6(`rounded-badge`, 높이 22) · 패널 0(`rounded-card`) · 기상도 20(`rounded-weather`) · 오버레이 12(`rounded-overlay`). 그림자는 오버레이에만(`shadow-overlay`).
+- 분위기(그라디언트 필드 + 세로 리브 + 유리 패널, blur 18)는 **홈 상단 기상도에만** 쓴다(`.weather`·`.glass`). 분홍·파랑 타원의 크기·농도는 `--weather-up`(상승 비율 0~1)을 따른다. 투명도 줄이기(`prefers-reduced-transparency`)·blur 미지원이면 불투명 면(`--glass-opaque`)으로 바뀐다.
+
+### 색의 의미
+
+- 등락색 = 브랜드색. 상승 분홍(다크 오렌지), 하락 파랑, 0은 회색. **가격 방향에만** 쓴다. 숫자 글자는 `text-up-ink`·`text-down-ink`.
+- 버튼·선택 상태는 글자색(`--action`)으로 칠한다. 등락색을 버튼에 쓰지 않는다.
+- AI 해석은 보라 라벨 행 + 옅은 보라 틴트(`shared/AiBlock`). 좌측 보더 강조 금지. 사실 확인은 초록, 지연·미평가는 `--warn`.
+- 차트 시리즈는 회색(`--series`), 선택한 시리즈만 글자색 굵은 선. 값 라벨만 등락색.
+
+### 컴포넌트 기본값 (shadcn 동작은 그대로, 스타일만)
+
+| 컴포넌트 | 기본 |
+|---|---|
+| Button | 필. 기본 36 · sm 32 · lg 44 · xs 28. `default`=글자색 채움, `outline`=선 `--line-2`, `secondary`=chip, `ghost`=글자 ink-2, `ai`=보라 틴트(AI 생성 행동만) |
+| Badge | 높이 22 · 모서리 6 · 12px. `neutral`(=default·secondary) · `outline` · `up` · `down` · `hyp` · `fact` · `warn` |
+| Input · Select · Textarea | chip 바탕, 테두리 없음, 포커스 링 글자색 2px. Input·Select는 필 |
+| Tabs · ToggleGroup(SegmentTabs·PeriodToggle) | chip 바탕(모서리 10, 안쪽 3) 안에 항목 모서리 8 · 선택 = 표면색 + 1px 선 |
+| Table | 머리 12px `--ink-3` + `--line-2` 아래선, 셀 13px, 숫자 열은 오른쪽 정렬 |
+| Dropdown · Popover · Command · Dialog · Select 목록 · HoverCard | 모서리 12 + 그림자 + `--line-2` 테두리. 항목 모서리 8 |
+| Tooltip | `--bg` 바탕 · `--line-2` 테두리 · 모서리 10 · 12.5px `--ink-2` |
+| 블록 머리(home/BlockHead) | 13.5px 600 · 기준 시각 11.5px + 점(신선 = `--fact`, 지연 = `--warn`) · 링크 12px `--ink-2` |
+| 5-state | Skeleton = chip 사각형(모서리 0) · ErrorState·WidgetState = 경고 아이콘 + 문구 + '다시 시도'(outline sm) |
+
+## 2026-10-31 · 화이트 플랫 공통 기준 (D-320에서 토큰·서체·모서리·등락색 대체, 평평한 면은 유지)
 
 이 절은 아래의 과거 표면·라운딩·카드 간격 규칙보다 우선한다.
 
@@ -107,13 +175,13 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
 | 그룹 | 토큰 | 규칙 |
 |---|---|---|
 | shadcn semantic | `--color-background/foreground/card/primary/muted/accent/border…` | 모든 UI 색상의 기본 어휘 |
-| 도메인: 주가 | `--color-up`(빨강) `--color-down`(파랑) | 한국 컨벤션. 등락 표시는 이 둘만 |
-| 도메인: 인식론 | `--color-fact`(초록) `--color-hypothesis`(주황) | LLM 산출=hypothesis 스타일 필수 |
+| 도메인: 주가 | `--up`·`--up-ink`·`--up-tint`(분홍/다크 오렌지) `--down`…(파랑) | D-320. 등락 표시는 이 둘만, 가격 방향에만 |
+| 도메인: 인식론 | `--fact`(초록) `--hyp`(보라, 별칭 `--hypothesis`) `--warn`(주의) | LLM 산출 = hyp(AiBlock), 지연·미평가 = warn |
 | 차트 | `--color-chart-revenue/profit/ratio/negative/warning`, `--color-chart-1~5` | 신규 차트는 semantic 우선, 팔레트(1~5)는 시리즈 나열용 |
 | 레이아웃 | `--layout-shell` `--dock-height` `--dock-reserve` `--subnav-height` `--shell-offset` | §1 참조 |
-| 라운딩 | `--radius`(0.5rem) 파생 sm~4xl(xl·2xl 10px, 3xl·4xl 12px) | 카드=`rounded-card`(10px) |
+| 라운딩 | `--radius-control`(999) `--radius-badge`(6) `--radius-card`(0) `--radius-weather`(20) `--radius-overlay`(12). `--radius`(8) 파생 sm·md·lg = 4·6·8, xl~4xl = 12 | 위 현행 계약 참조 |
 
-폰트: 자체 호스팅 IBM Plex Sans / Sans KR, 숫자는 전역 `tabular-nums` (td/th 자동).
+폰트: Google Fonts — Geist·Geist Mono·IBM Plex Sans KR·Instrument Serif. 숫자는 `tabular-nums`(Geist Mono로 바뀜), td/th는 tabular 자동.
 
 ## 3. 컴포넌트 계층과 컨벤션
 
@@ -141,6 +209,8 @@ charts/  lightweight-charts 래퍼
 | 오버레이 드로어 | `ui/sheet` |
 | 강조 카드 (AI/hypothesis·primary) | **배경 틴트로 강조**: `bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]` (AI) / `var(--primary)` (홈 브리핑). 좌측 보더(`border-l-*`) 강조는 변칙 — 금지. 예외: 리스트 선택 마커·인용 들여쓰기·다이어그램 헤더는 보더 유지 (D-018). **/chat 어시스턴트 본문은 말풍선·틴트 없이 풀폭 텍스트 — LLM 산출 마커는 `text-hypothesis` 라벨 행으로**(D-135, docs/specs/chat-page.md §4) |
 | 빈/로딩/에러 | shared/Skeleton · shared/ErrorState (5-state 정책) |
+| AI 해석 문장(LLM 산출) | **shared/AiBlock** — 보라 라벨 행 + 틴트, 좌측 보더 금지 |
+| 홈 상단 분위기 | `.weather`(그라디언트·리브, `--weather-up`) + `.glass`(유리 패널) — home/HomeDashboard 기상도에만 |
 | 패널 안에서 더 보기(요약 → 전체) | **shared/DropletReveal** — `ui/collapsible` 위 조합. 패널을 덮으며 Droplet reveal 모션으로 펼치고 패널 높이를 바꾸지 않는다(아래 §모션) |
 
 ### 허용된 예외 (grandfathered — 신규 작성 금지, 점진 이관)

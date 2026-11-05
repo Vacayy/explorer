@@ -1,33 +1,66 @@
-import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
+import type { CSSProperties } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { PageLayout } from "@/components/shared/PageLayout"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { HomeSection } from "@/components/home/HomeSection"
+import { ContextBody, IndicesBody } from "@/components/widgets/market"
+import { useIndices } from "@/hooks/useDashboard"
 import { formatKstLongDate } from "@/utils/format"
 
 /**
  * 홈 › 대시보드 — 시스템 고정 화면 (docs/specs/home-widgets.md §0, ia-redesign §4.1).
- * 순서 고정: 시장 띠(지수·시장 요약) → Market Overnight | Market Today(같은 높이) → 이번 주 바뀐 서사 → 국면·리스크.
+ * 순서 고정: 기상도(날짜 · 지수 띠 · 시장 요약 띠) → Market Overnight | Market Today(같은 높이) → 이번 주 바뀐 서사 → 국면·리스크.
  * 사용자가 고르는 배치·편집·위젯 추가는 없다. 블록마다 따로 불러오고 따로 실패한다.
+ * 분위기(그라디언트·세로 리브·유리 패널)는 이 상단 기상도에만 쓴다 (D-320).
  */
 export default function HomeDashboard() {
   return (
-    <PageLayout mode="document" header={<PageHeader title={formatKstLongDate()} />}>
-      <div className="@container/market">
-        {/* 시장 띠 — 지수(장중 여부 점·1년 추이) 위, 환율·금리·원자재 아래 */}
-        <div className="surface-stack flex flex-col">
-          <HomeSection widget="market.indices" flat className="h-[92px]" />
-          <HomeSection widget="market.context" flat className="h-[76px]" />
+    <PageLayout mode="document">
+      <div className="@container/market flex flex-col gap-4">
+        <WeatherHeader />
+
+        {/* 같은 높이 두 칸(유리 패널) — 넘치는 본문은 칸 안에서 스크롤. 기상도 아래쪽 분위기(베일)를 이어 쓴다 */}
+        <section aria-label="브리핑" data-veil className="weather p-4 max-sm:p-3">
+          <div className="grid gap-3.5 lg:grid-cols-2">
+            <HomeSection widget="market.us" w={6} h={9} link={{ to: "/home/us", label: "미국 시장" }} className={`${GLASS_PANEL} h-[560px] lg:h-[640px]`} />
+            <HomeSection widget="market.today" w={6} h={9} link={{ to: "/home/kr", label: "한국 시장" }} className={`${GLASS_PANEL} h-[560px] lg:h-[640px]`} />
+          </div>
+        </section>
+
+        <div>
+          <HomeSection widget="world.changes" w={12} h={3} />
+          <RiskBlock />
         </div>
-
-        {/* 같은 높이 두 칸 — 넘치는 본문은 칸 안에서 스크롤 */}
-        <div className="surface-grid grid lg:grid-cols-2">
-          <HomeSection widget="market.us" w={6} h={9} link={{ to: "/home/us", label: "미국 시장" }} className="h-[560px] lg:h-[640px]" />
-          <HomeSection widget="market.today" w={6} h={9} link={{ to: "/home/kr", label: "한국 시장" }} className="h-[560px] lg:h-[640px]" />
-        </div>
-
-        <HomeSection widget="world.changes" w={12} h={3} />
-
-        <RiskBlock />
       </div>
     </PageLayout>
+  )
+}
+
+const GLASS_PANEL = "glass rounded-[16px] [&>header]:border-line"
+
+/**
+ * 기상도 — 그라디언트 바탕 + 세로 리브 + 유리 패널(시안 Home). 분홍(상승)·파랑(하락) 비율 = 지수 띠의 상승 지수 비율.
+ * 종목 단위 상승·하락 종목 수(시장 폭) 데이터가 아직 없어 지수 등락으로 대신한다. 자료가 없으면 기본 0.33(시안 값).
+ */
+function WeatherHeader() {
+  const client = useQueryClient()
+  const { data } = useIndices()
+  const moved = (data?.items ?? []).filter(r => r.change_pct != null && r.change_pct !== 0)
+  const ratio = moved.length ? moved.filter(r => r.change_pct! > 0).length / moved.length : null
+  const style = ratio == null ? undefined : { "--weather-up": ratio.toFixed(2) } as CSSProperties
+  const reset = () => { void client.refetchQueries({ type: "active", predicate: q => q.state.status === "error" }) }
+  return (
+    <section aria-label="시장" data-weather-up={ratio ?? undefined} className="weather flex flex-col gap-3.5 pb-[18px]" style={style}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2.5 px-[22px] pt-[22px] max-sm:px-4 max-sm:pt-4">
+        <h1 className="font-display text-[34px] leading-[1.15] font-light tracking-[-0.02em] max-sm:text-[28px]">{formatKstLongDate()}</h1>
+      </div>
+      <div data-home-section="market.indices" className="glass mx-[18px] min-h-[92px] overflow-hidden rounded-[14px] max-sm:mx-3">
+        <ErrorBoundary onReset={reset}><IndicesBody w={12} h={2} /></ErrorBoundary>
+      </div>
+      <div data-home-section="market.context" className="glass mx-[18px] overflow-hidden rounded-[12px] max-sm:mx-3">
+        <ErrorBoundary onReset={reset}><ContextBody w={12} h={2} /></ErrorBoundary>
+      </div>
+    </section>
   )
 }
 

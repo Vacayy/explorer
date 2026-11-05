@@ -28,8 +28,8 @@ export function SubNav({ tabs, activeKey, context, trailing }: Props) {
           <Link key={t.key} to={t.path} aria-current={active ? "page" : undefined}
             className="group flex shrink-0 items-center max-md:h-10">
             <span className={cn(
-              "rounded-lg px-3 py-1.5 text-[13px] leading-none transition-colors",
-              active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground group-hover:bg-muted group-hover:text-foreground",
+              "inline-flex h-[30px] items-center rounded-full px-3 text-[13px] leading-none whitespace-nowrap transition-colors",
+              active ? "bg-action font-medium text-action-ink" : "text-ink-2 group-hover:bg-chip group-hover:text-ink",
             )}>{t.label}</span>
           </Link>
         )

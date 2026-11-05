@@ -29,6 +29,6 @@ export function StrategyConditionEditor({ condition, definition, busy, onChange,
     </div>
     <p className="text-caption text-muted-foreground">계산 기준 · {definition.description}</p>
     </CollapsibleContent></Collapsible>
-    {!definition.available && <p className="text-caption text-hypothesis">필요한 자료가 없는 종목은 미평가로 표시합니다.</p>}
+    {!definition.available && <p className="text-caption text-warn">필요한 자료가 없는 종목은 미평가로 표시합니다.</p>}
   </fieldset>
 }

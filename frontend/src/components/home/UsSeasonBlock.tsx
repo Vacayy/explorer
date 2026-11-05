@@ -86,9 +86,9 @@ function Stat({ label, value, of, cls, className }: { label: string; value: numb
 function Verdicts({ c, compact = false }: { c: SeasonOverview["counts"]; compact?: boolean }) {
   return <div className={cn("grid gap-px border bg-border", compact ? "grid-cols-2" : "grid-cols-2 md:grid-cols-5")}>
     <Stat label="발표" value={c.reported} of={c.followed} />
-    <Stat label={compact ? "업종보다 강함" : "첫 거래일 업종보다 강함"} value={c.up} of={compact ? undefined : c.reported} cls="text-up" />
-    {!compact && <Stat label="컨센서스 하회에도 주가 강세" value={c.miss_up} of={c.miss} cls="text-up" />}
-    <Stat label={compact ? "상회에도 약세" : "컨센서스 상회에도 주가 약세"} value={c.beat_down} of={compact ? undefined : c.beat} cls="text-down" />
+    <Stat label={compact ? "업종보다 강함" : "첫 거래일 업종보다 강함"} value={c.up} of={compact ? undefined : c.reported} cls="text-up-ink" />
+    {!compact && <Stat label="컨센서스 하회에도 주가 강세" value={c.miss_up} of={c.miss} cls="text-up-ink" />}
+    <Stat label={compact ? "상회에도 약세" : "컨센서스 상회에도 주가 약세"} value={c.beat_down} of={compact ? undefined : c.beat} cls="text-down-ink" />
     <Stat label="첫 반응이 뒤집힘" value={c.reversed} className={compact ? undefined : "max-md:col-span-2"} />
   </div>
 }
@@ -131,7 +131,7 @@ function UpcomingChip({ u, today }: { u: SeasonItem; today: string }) {
   const n = daysBetween(today, u.event_date)
   return <Badge asChild variant="outline" className="h-6 gap-1.5 rounded-full px-2 font-mono text-[11px] font-normal">
     <Link to={u.transcript_id ? `/follow/transcripts?t=${u.transcript_id}` : `/us/${u.ticker}`} title={`${u.name ?? u.ticker} · ${u.event_date}${u.confirmed ? "" : " (예상일)"}`}>
-      <span className={n <= 1 ? "text-up" : "text-muted-foreground"}>{n === 0 ? "오늘" : `D-${n}`}</span>
+      <span className={n <= 1 ? "text-up-ink" : "text-muted-foreground"}>{n === 0 ? "오늘" : `D-${n}`}</span>
       <span className="font-semibold text-foreground">{u.ticker}</span>
       <span className="text-muted-foreground">{mmdd(u.event_date)}</span>
     </Link>

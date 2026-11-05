@@ -42,7 +42,7 @@ export function KindChips({ value, onChange, className }: { value: ChatTargetKin
 function TargetRow({ t, trailing }: { t: ChatTarget; trailing?: ReactNode }) {
   const Icon = KIND_ICON[t.kind]
   const right = t.kind === "stock" || t.kind === "peer_group"
-    ? (t.change_pct != null ? <span className={cn(t.change_pct > 0 ? "text-up" : t.change_pct < 0 ? "text-down" : "")}>{formatPercent(t.change_pct)}</span> : null)
+    ? (t.change_pct != null ? <span className={cn(t.change_pct > 0 ? "text-up-ink" : t.change_pct < 0 ? "text-down-ink" : "")}>{formatPercent(t.change_pct)}</span> : null)
     : t.kind === "question" ? (t.code ?? `#${t.ref}`)
       : t.date ? formatKstSlashDate(t.date, false) : null
   return (

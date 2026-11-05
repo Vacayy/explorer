@@ -2,6 +2,7 @@ import { useRef, useEffect } from "react"
 import { createChart, ColorType } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
 import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
+import { chartOptions, useChartTheme } from "./chartTheme"
 
 interface AreaSeriesChartProps {
   data: { time: string; value: number }[]
@@ -15,7 +16,7 @@ interface AreaSeriesChartProps {
 export default function AreaSeriesChart({
   data,
   height = 350,
-  color = "#3b82f6",
+  color,
   formatValue,
   showVolume = false,
   volumeData,
@@ -24,6 +25,9 @@ export default function AreaSeriesChart({
   const chartRef = useRef<IChartApi | null>(null)
   const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null)
+  // 기본 선 = 글자색(선택 시리즈, D-320). 테마가 바뀌면 차트를 다시 만든다
+  const theme = useChartTheme()
+  const line = color ?? theme.ink
 
   // Create chart once
   useEffect(() => {
@@ -45,12 +49,13 @@ export default function AreaSeriesChart({
     }
 
     const chart = createChart(container, opts)
+    chart.applyOptions(chartOptions(theme))
     chartRef.current = chart
 
     const areaSeries = chart.addAreaSeries({
-      lineColor: color,
-      topColor: color + "4d",
-      bottomColor: color + "00",
+      lineColor: line,
+      topColor: line + "33",
+      bottomColor: line + "00",
       lineWidth: 2,
       priceFormat: formatValue
         ? { type: "custom", formatter: formatValue }
@@ -86,20 +91,20 @@ export default function AreaSeriesChart({
     }
     // Recreate chart only when structural props change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, color, showVolume])
+  }, [height, line, showVolume, theme])
 
   // Update area data
   useEffect(() => {
     if (!areaSeriesRef.current || data.length === 0) return
     areaSeriesRef.current.setData(data)
     chartRef.current?.timeScale().fitContent()
-  }, [data])
+  }, [data, theme])
 
   // Update volume data
   useEffect(() => {
     if (!volumeSeriesRef.current || !volumeData || volumeData.length === 0) return
     volumeSeriesRef.current.setData(volumeData)
-  }, [volumeData])
+  }, [volumeData, theme])
 
   return <div ref={containerRef} style={{ width: "100%", height }} />
 }

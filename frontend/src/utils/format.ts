@@ -8,7 +8,7 @@ export function formatKrw(value: number | string | null | undefined): string {
   if (isNaN(num)) return "-"
 
   const absNum = Math.abs(num)
-  const sign = num < 0 ? "-" : ""
+  const sign = num < 0 ? MINUS : ""
 
   const eok = absNum / 1e8
   if (eok >= 10000) {
@@ -41,13 +41,19 @@ export function formatDartAmount(value: string | null | undefined): string {
   return formatKrw(num)
 }
 
+/** 부호 문자 — 양수 '+', 음수 '−'(U+2212, D-320), 표시 자릿수로 0이 되면 부호 없음 */
+export const MINUS = "\u2212"
+function signOf(value: number, digits: number): string {
+  const shown = Number(value.toFixed(digits))
+  return shown > 0 ? "+" : shown < 0 ? MINUS : ""
+}
+
 /**
- * Format as percentage with sign indicator.
+ * Format as percentage with sign indicator (+1.5% · −0.5%).
  */
 export function formatPercent(value: number | null | undefined): string {
   if (value === null || value === undefined) return "-"
-  const sign = value > 0 ? "+" : ""
-  return `${sign}${value.toFixed(1)}%`
+  return `${signOf(value, 1)}${Math.abs(value).toFixed(1)}%`
 }
 
 /**
@@ -55,8 +61,7 @@ export function formatPercent(value: number | null | undefined): string {
  */
 export function formatSigma(value: number | null | undefined): string {
   if (value === null || value === undefined) return "-"
-  const sign = value > 0 ? "+" : value < 0 ? "−" : ""
-  return `${sign}${Math.abs(value).toFixed(1)}σ`
+  return `${signOf(value, 1)}${Math.abs(value).toFixed(1)}σ`
 }
 
 /**
@@ -64,8 +69,7 @@ export function formatSigma(value: number | null | undefined): string {
  */
 export function formatPp(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined) return "-"
-  const sign = value > 0 ? "+" : ""
-  return `${sign}${value.toFixed(digits)}%p`
+  return `${signOf(value, digits)}${Math.abs(value).toFixed(digits)}%p`
 }
 
 /**
@@ -198,7 +202,8 @@ export function formatYield(value: number | null | undefined): string {
 export function formatBp(value: number | null | undefined, signed = false): string {
   if (value === null || value === undefined) return "-"
   const rounded = Math.round(value)
-  return `${signed && rounded > 0 ? "+" : ""}${rounded.toLocaleString("ko-KR")}`
+  const sign = rounded < 0 ? MINUS : signed && rounded > 0 ? "+" : ""
+  return `${sign}${Math.abs(rounded).toLocaleString("ko-KR")}`
 }
 
 /**

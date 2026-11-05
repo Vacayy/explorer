@@ -152,13 +152,13 @@ export default function SectorMapPage() {
                   <td className="px-4 py-1.5 font-medium">
                     <span className="inline-block h-2 w-2 rounded-full mr-2" style={{ background: flowColor(g.chg_5d) }} />
                     {g.name}
-                    {(g.rs_long ?? 0) >= 80 && <Badge variant="outline" className="ml-2 text-[9px] text-up border-up/40">강세</Badge>}
-                    {(g.rs_long ?? 50) <= 20 && <Badge variant="outline" className="ml-2 text-[9px] text-down border-down/40">약세</Badge>}
+                    {(g.rs_long ?? 0) >= 80 && <Badge variant="outline" className="ml-2 text-[9px] text-up-ink border-up/40">강세</Badge>}
+                    {(g.rs_long ?? 50) <= 20 && <Badge variant="outline" className="ml-2 text-[9px] text-down-ink border-down/40">약세</Badge>}
                   </td>
                   <td className="py-1.5 text-right tabular-nums text-xs">{formatKrw(g.market_cap)}</td>
                   <td className="hidden sm:table-cell py-1.5 text-right tabular-nums text-xs">{totalMcap ? `${(g.market_cap / totalMcap * 100).toFixed(0)}%` : "-"}</td>
                   <td className="hidden sm:table-cell py-1.5 text-right tabular-nums text-xs">{g.stocks}</td>
-                  <td className={cn("py-1.5 text-right tabular-nums text-xs", g.chg_5d >= 0 ? "text-up" : "text-down")}>
+                  <td className={cn("py-1.5 text-right tabular-nums text-xs", g.chg_5d >= 0 ? "text-up-ink" : "text-down-ink")}>
                     {g.chg_5d >= 0 ? "+" : ""}{g.chg_5d}%
                   </td>
                   <td className="py-1.5 text-right tabular-nums text-xs">{g.rs_long ?? "-"}</td>
@@ -230,7 +230,7 @@ function MapTooltip({ active, payload }: { active?: boolean; payload?: { payload
       <p className="text-muted-foreground">{quad}</p>
       <p className="tabular-nums">장기 RS {g.rs_long} · 단기 RS {g.rs_short}</p>
       <p className="tabular-nums">시총 {formatKrw(g.market_cap)} · {g.stocks}종목 ·{" "}
-        <span className={g.chg_5d >= 0 ? "text-up" : "text-down"}>5일 {g.chg_5d >= 0 ? "+" : ""}{g.chg_5d}%</span>
+        <span className={g.chg_5d >= 0 ? "text-up-ink" : "text-down-ink"}>5일 {g.chg_5d >= 0 ? "+" : ""}{g.chg_5d}%</span>
       </p>
     </div>
   )
@@ -269,9 +269,9 @@ function GroupMembers({ group, onGo }: { group: string; onGo: (code: string) => 
                   onClick={() => onGo(m.stock_code)}>
                   <td className="px-4 py-1.5 font-medium">{m.corp_name} <span className="text-[10px] text-muted-foreground tabular-nums">{m.stock_code}</span></td>
                   <td className="py-1.5 text-right tabular-nums text-xs">{m.market_cap ? formatKrw(m.market_cap) : "-"}</td>
-                  <td className={cn("py-1.5 text-right tabular-nums text-xs", (m.ret_1m ?? 0) >= 0 ? "text-up" : "text-down")}>
+                  <td className={cn("py-1.5 text-right tabular-nums text-xs", (m.ret_1m ?? 0) >= 0 ? "text-up-ink" : "text-down-ink")}>
                     {m.ret_1m != null ? `${m.ret_1m >= 0 ? "+" : ""}${m.ret_1m}%` : "-"}</td>
-                  <td className={cn("py-1.5 text-right tabular-nums text-xs", (m.ret_12m ?? 0) >= 0 ? "text-up" : "text-down")}>
+                  <td className={cn("py-1.5 text-right tabular-nums text-xs", (m.ret_12m ?? 0) >= 0 ? "text-up-ink" : "text-down-ink")}>
                     {m.ret_12m != null ? `${m.ret_12m >= 0 ? "+" : ""}${m.ret_12m}%` : "-"}</td>
                   <td className="py-1.5 text-right tabular-nums text-xs">{m.rs_long ?? "-"}</td>
                   <td className="px-4 py-1.5 text-right tabular-nums text-xs">{m.rs_short ?? "-"}</td>

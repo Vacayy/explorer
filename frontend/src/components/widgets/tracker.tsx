@@ -24,7 +24,7 @@ import type { WidgetBodyProps } from "./types"
  */
 
 const codeOf = (p?: Record<string, unknown>) => (typeof p?.code === "string" ? p.code : null)
-const tone = (v?: number | null) => (v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted-foreground")
+const tone = (v?: number | null) => (v == null ? "text-muted-foreground" : v > 0 ? "text-up-ink" : v < 0 ? "text-down-ink" : "text-muted-foreground")
 const won = (eok: number) => formatKrw(eok * 1e8)
 const dossierPath = (code: string, market?: string | null) => market === "us" ? `/us/${code}` : `/analyze/${code}/summary`
 const KIND_LABEL: Record<TrackerKind, string> = {
@@ -125,7 +125,7 @@ function Technicals({ t }: { t: TrackerView["technicals"] }) {
     <div className="flex flex-wrap gap-1 text-caption">
       {chip("52주 고점", formatPercent(t.off_52w_high), tone(t.off_52w_high))}
       {chip("20·60·120선", `${formatPercent(t.ma20_gap)} · ${formatPercent(t.ma60_gap)} · ${formatPercent(t.ma120_gap)}`)}
-      {t.volume_ratio != null && chip("거래량", `${t.volume_ratio}배`, t.volume_ratio >= 2 ? "text-up" : "")}
+      {t.volume_ratio != null && chip("거래량", `${t.volume_ratio}배`, t.volume_ratio >= 2 ? "text-up-ink" : "")}
       {t.rs != null && chip("상대강도", `${t.rs}`)}
       {t.overhead_pct != null && chip("머리 위 매물", formatRatio(t.overhead_pct))}
       {t.regime?.posture && <span title={t.regime.reason ?? ""} className="rounded bg-muted px-1.5 py-0.5"><span className="text-muted-foreground">시장 국면 </span>{t.regime.posture}</span>}

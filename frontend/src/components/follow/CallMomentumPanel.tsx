@@ -9,7 +9,7 @@ import type { CallAccel, CallMomentumCandidate } from "@/types"
 import { useCallMomentum } from "@/hooks/useTranscripts"
 import { formatPercent } from "@/utils/format"
 
-export const STATUS = { new: { label: "새 동인", cls: "text-up border-up/40" }, accelerating: { label: "가속", cls: "text-hypothesis border-hypothesis/40" } } as const
+export const STATUS = { new: { label: "새 동인", cls: "text-up-ink border-up/40" }, accelerating: { label: "가속", cls: "text-hypothesis border-hypothesis/40" } } as const
 export const SOURCE: Record<string, string> = { release: "보도자료", commentary: "CFO 코멘터리", transcript: "컨콜" }
 export const GUIDE: Record<string, string> = { raised: "상향", lowered: "하향", initiated: "신규", maintained: "유지" }
 
@@ -51,7 +51,7 @@ export function CandidateCard({ c }: { c: CallMomentumCandidate }) {
       </CardDescription>
     </CardHeader>
     <CardContent className="space-y-3">
-      {c.accel?.on && <p className="text-sm"><span className="font-medium text-up">기대 초과 가속</span> · {accelText(c.accel)}</p>}
+      {c.accel?.on && <p className="text-sm"><span className="font-medium text-up-ink">기대 초과 가속</span> · {accelText(c.accel)}</p>}
       {c.summary && <div className="rounded-lg bg-muted/50 px-3 py-2.5">
         <p className="text-caption text-hypothesis">AI 요약 · 아래 근거로 작성</p>
         <p className="mt-1 text-sm leading-relaxed">{c.summary}</p>
@@ -64,7 +64,7 @@ export function CandidateCard({ c }: { c: CallMomentumCandidate }) {
         <blockquote className="border-l-2 pl-3 text-caption text-muted-foreground">“{d.quote}” — {SOURCE[d.source] ?? d.source}</blockquote>
       </li>)}</ul>
       {guide.length > 0 && <ul className="space-y-1 border-t pt-2">{guide.map(g => <li key={g.metric + g.quote} className="text-sm">
-        <span className={g.direction === "raised" ? "text-up" : g.direction === "lowered" ? "text-down" : ""}>가이던스 {GUIDE[g.direction]}</span> · {g.metric}
+        <span className={g.direction === "raised" ? "text-up-ink" : g.direction === "lowered" ? "text-down-ink" : ""}>가이던스 {GUIDE[g.direction]}</span> · {g.metric}
         <p className="text-caption text-muted-foreground">“{g.quote}”</p>
       </li>)}</ul>}
       {c.qa_focus.length > 0 && <p className="text-caption text-muted-foreground">애널리스트 질문 초점: {c.qa_focus.join(" · ")}</p>}

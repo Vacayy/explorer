@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 import { formatPercent, formatPp } from '@/utils/format'
 import type { PeerCatalog, PeerRuntime } from '@/types/peer'
 
-const tone = (value: number | null | undefined) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up' : value < 0 ? 'text-down' : ''
+const tone = (value: number | null | undefined) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up-ink' : value < 0 ? 'text-down-ink' : ''
 const shortDate = (iso: string | null) => iso ? iso.slice(5).replace('-', '/') : '-'
 
 /**

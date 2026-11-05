@@ -110,10 +110,10 @@ export default function RightsProTable() {
                 <td className="px-2 py-1.5 text-right">{num(r.price_2nd)}</td>
                 <td className="px-2 py-1.5 text-right font-medium">{num(r.price_final)}</td>
                 <td className="px-2 py-1.5 text-right text-muted-foreground">-</td>
-                <td className={cn("px-2 py-1.5 text-right", (r.diff_w ?? 0) > 0 ? "text-up" : (r.diff_w ?? 0) < 0 ? "text-down" : "")}>
+                <td className={cn("px-2 py-1.5 text-right", (r.diff_w ?? 0) > 0 ? "text-up-ink" : (r.diff_w ?? 0) < 0 ? "text-down-ink" : "")}>
                   {num(r.diff_w)}
                 </td>
-                <td className={cn("px-2 py-1.5 text-right", (r.diff_pct ?? 0) > 0 ? "text-up" : (r.diff_pct ?? 0) < 0 ? "text-down" : "")}>
+                <td className={cn("px-2 py-1.5 text-right", (r.diff_pct ?? 0) > 0 ? "text-up-ink" : (r.diff_pct ?? 0) < 0 ? "text-down-ink" : "")}>
                   {r.diff_pct == null ? "-" : `${r.diff_pct}%`}
                 </td>
                 <td className="px-2 py-1.5 text-right">{num(r.old_shares)}</td>
@@ -141,7 +141,7 @@ export default function RightsProTable() {
       </table>
       <p className="text-[10px] text-muted-foreground px-2 py-1.5 border-t">
         * 권리락 = 기준일−1거래일 파생(공휴일 근사) · 차액 = 최근 종가 − 유효발행가(확정&gt;2차&gt;1차) ·
-        WR·유증매수가는 신주인수권증서 시세 연동 예정 · <span className="bg-hypothesis/20 px-1 rounded">노랑</span> = 다음 도래 일정
+        WR·유증매수가는 신주인수권증서 시세 연동 예정 · <span className="bg-warn/20 px-1 rounded">노랑</span> = 다음 도래 일정
       </p>
     </div>
     </div>

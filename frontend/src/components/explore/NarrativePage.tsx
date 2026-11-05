@@ -121,7 +121,7 @@ export default function NarrativePage() {
             {version != null && <span className="font-mono tabular-nums">v{version}</span>}
             {n?.created_at && <time dateTime={n.created_at} className="font-mono tabular-nums">{n.created_at.slice(0, 16).replace('T', ' ')}</time>}
             {meta?.share_pct != null && <span>비중 {formatRatio(meta.share_pct)}{meta.share_delta_pp ? ` (${formatPp(meta.share_delta_pp, 1)})` : ''}</span>}
-            {meta?.is_surging && <span className="text-up">급등</span>}
+            {meta?.is_surging && <span className="text-up-ink">급등</span>}
             {(n?.category || '').split(',').filter(Boolean).map(l => <span key={l}>{LENS_LABEL[l] || l}</span>)}
           </p>
           {cached.isLoading ? <Skeleton className="h-9 w-3/4" /> : <h1 className="text-page font-semibold leading-snug [overflow-wrap:anywhere]">{n?.title || topic}</h1>}
@@ -499,7 +499,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
         <div className="flex flex-wrap items-center gap-1.5">
           <Workflow className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">인과 구조</span>
-          <span className="text-[11px] text-muted-foreground">시간순 · 원인 → 결과 · 화살표 색=방향(<span className="text-up">정+</span>/<span className="text-down">부−</span>), 굵기=효과 크기</span>
+          <span className="text-[11px] text-muted-foreground">시간순 · 원인 → 결과 · 화살표 색=방향(<span className="text-up-ink">정+</span>/<span className="text-down-ink">부−</span>), 굵기=효과 크기</span>
         </div>
         {edges.length === 0 ? (
           <EmptyState message="인과 구조가 아직 추출되지 않았습니다 — 재생성 시 그래프에 쌓입니다." />
@@ -530,7 +530,7 @@ function CausalChain({ narrativeId }: { narrativeId: number }) {
                     <Badge variant="secondary" className="text-[9px] font-normal">승격된 지식</Badge>
                   )}
                   {e.obs_confirmed && (
-                    <Badge variant="outline" className="text-[9px] font-normal text-up border-up/40" title="추적 질문의 실적 관측이 이 인과를 확증">
+                    <Badge variant="outline" className="text-[9px] font-normal text-up-ink border-up/40" title="추적 질문의 실적 관측이 이 인과를 확증">
                       관측 확증
                     </Badge>
                   )}
@@ -630,7 +630,7 @@ interface ChainResponse { status: string; paths: ChainPath[] }
 function EdgeArrow({ edge }: { edge?: CausalEdge }) {
   const dir = edge?.effect_direction
   const str = edge?.effect_strength
-  const color = dir === "positive" ? "text-up" : dir === "negative" ? "text-down" : "text-muted-foreground"
+  const color = dir === "positive" ? "text-up-ink" : dir === "negative" ? "text-down-ink" : "text-muted-foreground"
   const size = str === "strong" ? "h-4 w-4" : str === "weak" ? "h-2.5 w-2.5" : "h-3 w-3"
   const dirLabel = dir === "positive" ? "정(+) 늘림" : dir === "negative" ? "부(−) 줄임" : "방향 미상"
   const title = str && str !== "unknown" ? `${dirLabel} · 효과 ${str}` : dirLabel
@@ -662,7 +662,7 @@ function ChainPaths({ narrativeId }: { narrativeId: number }) {
           <span className="text-[11px] text-muted-foreground">전역 인과 그래프 순회</span>
         </div>
         <div className="text-[10px] text-muted-foreground">
-          화살표 색 = 효과 방향(<span className="text-up">정+</span> 늘림 / <span className="text-down">부−</span> 줄임), 굵기 = 효과 크기
+          화살표 색 = 효과 방향(<span className="text-up-ink">정+</span> 늘림 / <span className="text-down-ink">부−</span> 줄임), 굵기 = 효과 크기
         </div>
         <ul className="space-y-2.5">
           {data.paths.map((p, i) => (

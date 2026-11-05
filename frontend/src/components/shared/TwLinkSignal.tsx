@@ -7,8 +7,8 @@ import type { KrConfirm, KrDirection, TwLink } from "@/types"
 export const TW_RELATION: Record<TwLink["relation"], string> = { peer: "동종", demand: "고객 수요", capex: "설비 투자" }
 
 const STATE_TONE: Record<string, string> = {
-  "가속": "border-up/40 text-up", "전환↑": "border-up/40 text-up",
-  "둔화": "border-down/40 text-down", "전환↓": "border-down/40 text-down", "유지": "text-muted-foreground",
+  "가속": "border-up/40 text-up-ink", "전환↑": "border-up/40 text-up-ink",
+  "둔화": "border-down/40 text-down-ink", "전환↓": "border-down/40 text-down-ink", "유지": "text-muted-foreground",
 }
 
 export function TwStateBadge({ link }: { link: TwLink }) {
@@ -27,7 +27,7 @@ export function twEvidenceText(e: TwLink["evidence"]): string {
 }
 
 const DIR_LABEL: Record<string, string> = { up: "↑", down: "↓", flat: "→" }
-const DIR_TONE: Record<string, string> = { up: "text-up", down: "text-down", flat: "text-muted-foreground" }
+const DIR_TONE: Record<string, string> = { up: "text-up-ink", down: "text-down-ink", flat: "text-muted-foreground" }
 
 /** 세 원천 방향 한 줄 — 대만 · 수출 · 공시. 관측 못 한 원천은 '-' */
 export function KrConfirmStrip({ c }: { c: KrConfirm }) {

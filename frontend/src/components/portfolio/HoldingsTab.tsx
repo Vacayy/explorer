@@ -10,7 +10,7 @@ import type { PortfolioSummary } from '@/types'
 // 좁은 화면 — 금액성 열(평단·매도가)은 숨기고 셀 여백을 줄여 표가 카드 안에 들어오게
 const WIDE = 'hidden md:table-cell'
 const COMPACT = '[&_td]:px-2 [&_th]:px-2 md:[&_td]:px-3 md:[&_th]:px-3'
-const tone = (v: number | null | undefined) => v == null || v === 0 ? '' : v > 0 ? 'text-up' : 'text-down'
+const tone = (v: number | null | undefined) => v == null || v === 0 ? '' : v > 0 ? 'text-up-ink' : 'text-down-ink'
 
 /** 보유 탭 — 보유 표 · 청산 내역 · 종목 상세(?stock=, 가격·기술적 분석·논지·자료 흐름·공시·뉴스). */
 export function HoldingsTab({ data }: { data: PortfolioSummary }) {

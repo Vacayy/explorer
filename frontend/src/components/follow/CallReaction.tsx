@@ -19,7 +19,7 @@ const WINDOW_DAYS = 7
 const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 const addDays = (iso: string, n: number) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
 const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86_400_000)
-const tone = (v: number | null) => v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : ""
+const tone = (v: number | null) => v == null ? "text-muted-foreground" : v > 0 ? "text-up-ink" : v < 0 ? "text-down-ink" : ""
 
 export function CallReaction({ transcriptId, callDate }: { transcriptId: number; callDate: string | null }) {
   const query = useCallReaction(transcriptId)

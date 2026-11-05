@@ -114,7 +114,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 - **디자인 토큰**
   - 색상은 `index.css`의 CSS 변수만 사용 (하드코딩 hex 금지)
   - 차트 색상: semantic 변수 사용 (`--color-chart-revenue`, `--color-chart-profit` 등)
-  - 디자인 시스템: 순백 배경·직각 카드(`--radius-card: 0`)·그림자 없는 표면·카드 묶음 간격 0. 본문/컨트롤 여백과 의미 색상은 유지한다 — docs/DESIGN_SYSTEM.md 현행 계약
+  - 디자인 시스템: 라이트 Daylight·다크 Midnight 토큰(`--bg`·`--surface`·`--ink`·`--up`…, D-320), 평평한 데이터 면(1px 선·모서리 0·카드 간격 0·그림자 없음), 컨트롤 필·배지 6·오버레이 12, 분위기(그라디언트·유리)는 홈 상단 기상도에만 — docs/DESIGN_SYSTEM.md 현행 계약
 - **import 경로**: 항상 `@/` alias 사용 (상대경로 `../` 금지)
 - **타입 체크**: 모든 FE 변경 후 `npx tsc --noEmit` 통과 필수
 
@@ -143,7 +143,7 @@ Goal → Clarify(2-3질문) → Decompose → [Delegate → Checkpoint]* → Ver
 
 ### 숫자 포맷 (docs/policies/number-formatting.md)
 - 금액: 억/조 단위 자동 전환 (`formatKrw()`)
-- 주가 변동: 상승=빨강(red), 하락=파랑(blue) — 한국 주식 컨벤션
+- 주가 변동: 상승=브랜드 분홍(다크 오렌지, `--up`), 하락=파랑(`--down`) — 가격 방향에만 쓴다(D-320). 음수 부호는 −(U+2212)
 - PER: 소수 1자리 + "배", PBR: 소수 2자리 + "배"
 - 비율: 소수 1자리 + "%", 변동: "+1.5%p"
 - null/빈값: 항상 `-` 표시

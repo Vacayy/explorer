@@ -3,39 +3,72 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-sans/700.css";
-@import "@fontsource/ibm-plex-sans-kr/400.css";
-@import "@fontsource/ibm-plex-sans-kr/500.css";
-@import "@fontsource/ibm-plex-sans-kr/600.css";
-@import "@fontsource/ibm-plex-sans-kr/700.css";
-
 @custom-variant dark (&:is(.dark *));
 
+
 /*
- * 디자인 토큰 (docs/private/specs/frontend-plan.md Phase A1)
- * - 컴포넌트는 semantic 토큰만 사용한다 (하드코딩 hex 금지)
- * - 실제 색상 값은 :root(light) / .dark 에서만 정의한다
- * - 상승=빨강, 하락=파랑 (한국 주식 컨벤션, number-formatting.md)
+ * 디자인 토큰 — 시안 디자인 시스템(DS-Foundations, D-320). docs/DESIGN_SYSTEM.md
+ * - 시안 토큰 이름(--bg·--surface·--ink·--up …)을 그대로 두고, shadcn 변수는 여기에 잇는다
+ * - 실제 색상 값은 :root(라이트 = Daylight) / .dark(다크 = Midnight) 에서만 정의한다
+ * - 상승 = 브랜드 분홍(다크 오렌지), 하락 = 파랑. 등락색은 가격 방향에만 쓴다 (number-formatting.md)
  */
 @theme inline {
-  --font-sans: "IBM Plex Sans", "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: "IBM Plex Sans KR", "Geist", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", system-ui, sans-serif;
+  --font-display: "Geist", "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-heading: var(--font-sans);
-  --text-page: 1.5rem;
-  --text-page--line-height: 2rem;
-  --text-section: 1.125rem;
-  --text-section--line-height: 1.625rem;
-  --text-card-title: 1rem;
-  --text-card-title--line-height: 1.5rem;
+  --font-mono: "Geist Mono", "IBM Plex Sans KR", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  /* 글자 크기 — 페이지 제목 Geist 400 30/36 · 섹션 제목 15/21 · 본문 14/22 · 캡션 12/18 · 기상도 헤드라인 64/66 */
+  --text-page: 1.875rem;
+  --text-page--line-height: 2.25rem;
+  --text-section: .9375rem;
+  --text-section--line-height: 1.3125rem;
+  --text-card-title: .9375rem;
+  --text-card-title--line-height: 1.3125rem;
   --text-reading: .875rem;
   --text-reading--line-height: 1.375rem;
   --text-caption: .75rem;
   --text-caption--line-height: 1.125rem;
-  --radius-card: 0; /* White flat surfaces; controls keep their own radius. */
-  --radius-control: .5rem;
-  --radius-overlay: .75rem;
+  --text-weather: 4rem;
+  --text-weather--line-height: 4.125rem;
+  /* 모서리 — 컨트롤 필 999 · 배지 6 · 패널 0 · 기상도 20 · 오버레이 12 */
+  --radius-card: 0;
+  --radius-control: 999px;
+  --radius-badge: 6px;
+  --radius-weather: 20px;
+  --radius-overlay: 12px;
+  /* 그림자는 오버레이에만 */
+  --shadow-overlay: 0 12px 40px rgba(0, 0, 0, .18);
+
+  /* 시안 토큰 */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-up: var(--up);
+  --color-up-ink: var(--up-ink);
+  --color-up-tint: var(--up-tint);
+  --color-down: var(--down);
+  --color-down-ink: var(--down-ink);
+  --color-down-tint: var(--down-tint);
+  --color-hyp: var(--hyp);
+  --color-hyp-tint: var(--hyp-tint);
+  --color-fact: var(--fact);
+  --color-fact-tint: var(--fact-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-action: var(--action);
+  --color-action-ink: var(--action-ink);
+  --color-chip: var(--chip);
+  --color-glass: var(--glass);
+  --color-glass-line: var(--glass-line);
+  --color-series: var(--series);
+  --color-grid: var(--grid);
+  --color-closed: var(--closed);
 
   /* shadcn semantic */
   --color-background: var(--background);
@@ -68,15 +101,10 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* 도메인: 주가 방향 (상승 빨강 / 하락 파랑) */
-  --color-up: var(--up);
-  --color-down: var(--down);
-
-  /* 도메인: epistemic 구분 (사실 vs 가설/해석) */
-  --color-fact: var(--fact);
+  /* 도메인: epistemic 구분 — 가설·해석(AI) = 보라 --hyp, 사실 = 초록 --fact */
   --color-hypothesis: var(--hypothesis);
 
-  /* 차트 semantic */
+  /* 차트 semantic — 시리즈 회색 · 선택 글자색 · 등락 토큰 */
   --color-chart-revenue: var(--chart-revenue);
   --color-chart-profit: var(--chart-profit);
   --color-chart-profit-dark: var(--chart-profit-dark);
@@ -101,14 +129,14 @@
   --color-chart-purple: var(--chart-purple);
   --color-chart-teal: var(--chart-teal);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* rounded-sm·md·lg = 4·6·8(목록 항목·세그먼트 안쪽), xl 이상 = 오버레이 12 */
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
-  /* 덜 둥글게(2026-10-17): shadcn atom이 쓰는 2xl~4xl을 10~12px로 묶는다(기본 --radius 8px) */
-  --radius-xl: calc(var(--radius) * 1.25);
-  --radius-2xl: calc(var(--radius) * 1.25);
-  --radius-3xl: calc(var(--radius) * 1.5);
-  --radius-4xl: calc(var(--radius) * 1.5);
+  --radius-xl: var(--radius-overlay);
+  --radius-2xl: var(--radius-overlay);
+  --radius-3xl: var(--radius-overlay);
+  --radius-4xl: var(--radius-overlay);
 }
 
 /* ---------- Layout tokens (docs/DESIGN_SYSTEM.md) ---------- */
@@ -126,121 +154,149 @@
   --shell-offset: calc(var(--topbar-height) + 1.5rem + var(--dock-reserve));
 }
 
-/* ---------- Light — 쿨 스톤 & 멀버리 (docs/private/DECISIONS.md D-016) ---------- */
+/* ---------- Light — Daylight (Sky Blue · White · Hot Pink), D-320 ---------- */
 :root {
-  --background: #ffffff;
-  --foreground: #202630;
-  --card: #ffffff;
-  --card-foreground: #202630;
-  --popover: #ffffff;
-  --popover-foreground: #202630;
-  --primary: #8e4162;
-  --primary-foreground: #ffffff;
-  --secondary: #e9ecf1;
-  --secondary-foreground: #202630;
-  --muted: #e9ecf1;
-  --muted-foreground: #626c79;
-  --accent: #f6eef2;
-  --accent-foreground: #8e4162;
-  --destructive: #d92d20;
-  --destructive-foreground: #ffffff;
-  --border: #dce1e8;
-  --input: #dce1e8;
-  --ring: #8e4162;
+  color-scheme: light;
+  --bg: #FCFFFF;
+  --surface: #FFFFFF;
+  --surface-2: #F2F7F9;
+  --ink: #0E1A22;
+  --ink-2: #46555F;
+  --ink-3: #5F6F7A;
+  --line: rgba(14, 26, 34, 0.10);
+  --line-2: rgba(14, 26, 34, 0.18);
+  --up: #D83995;
+  --up-ink: #B4237A;
+  --up-tint: rgba(216, 57, 149, 0.10);
+  --down: #0593C6;
+  --down-ink: #04709A;
+  --down-tint: rgba(5, 147, 198, 0.10);
+  --hyp: #6E46CF;
+  --hyp-tint: rgba(110, 70, 207, 0.08);
+  --fact: #0B7A5E;
+  --fact-tint: rgba(11, 122, 94, 0.08);
+  --warn: #A35F00;
+  --warn-tint: rgba(163, 95, 0, 0.10);
+  --action: #0E1A22;
+  --action-ink: #FCFFFF;
+  --chip: rgba(14, 26, 34, 0.06);
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-line: rgba(255, 255, 255, 0.8);
+  --series: rgba(14, 26, 34, 0.26);
+  --grid: rgba(14, 26, 34, 0.07);
+  --field: radial-gradient(ellipse 26% 80% at 26% 70%, rgba(216, 57, 149, 0.30) 0%, rgba(216, 57, 149, 0) 70%), radial-gradient(ellipse 70% 110% at 70% 34%, rgba(5, 147, 198, 0.62) 0%, rgba(5, 147, 198, 0) 74%), linear-gradient(180deg, #DCEFF7 0%, #F1F8FB 100%);
+  --veil: rgba(252, 255, 255, 0.55);
+  --closed: #C8372D;
+  --ribs: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0px, rgba(255, 255, 255, 0.22) 1px, rgba(255, 255, 255, 0) 1px, rgba(255, 255, 255, 0) 18px);
+  /* 기상도 그라디언트 기하(분홍·파랑 타원) — 비율 --weather-up(0~1)으로 크기·농도가 바뀐다. 0.33이면 --field와 같다 */
+  --field-base: linear-gradient(180deg, #DCEFF7 0%, #F1F8FB 100%);
+  --field-up-at: 26% 70%;
+  --field-down-at: 70% 34%;
+  --field-up-h: 80%;
+  --field-down-h: 110%;
+  --field-up-w0: 10%;  --field-up-w1: 50%;   --field-up-a1: 90%;
+  --field-down-w0: 30%; --field-down-w1: 60%; --field-down-a1: 93%;
+  --glass-opaque: #EEF6F9;
+
+  /* shadcn ← 시안 토큰 */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--action);
+  --primary-foreground: var(--action-ink);
+  --secondary: var(--chip);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--chip);
+  --accent-foreground: var(--ink);
+  --destructive: var(--closed);
+  --destructive-foreground: #FFFFFF;
+  --border: var(--line);
+  --input: var(--line-2);
+  --ring: var(--ink);
   --radius: 0.5rem;
 
-  --sidebar: #ffffff;
-  --sidebar-foreground: #202630;
-  --sidebar-primary: #8e4162;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e4e8ee;
-  --sidebar-accent-foreground: #202630;
-  --sidebar-border: #dce1e8;
-  --sidebar-ring: #8e4162;
+  --sidebar: var(--bg);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--action);
+  --sidebar-primary-foreground: var(--action-ink);
+  --sidebar-accent: var(--chip);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--ink);
 
-  --up: #d92d20;
-  --down: #1268c3;
-  --fact: #1f7a37;
-  --hypothesis: #a85400;
+  --hypothesis: var(--hyp);
 
-  --chart-revenue: #1268c3;
-  --chart-profit: #34c759;
-  --chart-profit-dark: #248a3d;
-  --chart-ratio: #626c79;
-  --chart-negative: #d92d20;
-  --chart-warning: #ff9f0a;
-  --chart-1: #1268c3;
-  --chart-2: #34c759;
-  --chart-3: #ff9f0a;
-  --chart-4: #af52de;
-  --chart-5: #5ac8fa;
+  --chart-revenue: var(--series);
+  --chart-profit: var(--ink);
+  --chart-profit-dark: var(--ink);
+  --chart-ratio: var(--ink-3);
+  --chart-negative: var(--closed);
+  --chart-warning: var(--warn);
+  --chart-1: var(--ink);
+  --chart-2: var(--down);
+  --chart-3: var(--warn);
+  --chart-4: var(--hyp);
+  --chart-5: var(--fact);
 
-  --chart-blue: #1268c3;
-  --chart-orange: #ff9f0a;
-  --chart-green: #34c759;
-  --chart-red: #d92d20;
-  --chart-gray: #626c79;
-  --chart-yellow: #ffcc00;
-  --chart-purple: #af52de;
-  --chart-teal: #5ac8fa;
+  --chart-blue: var(--down);
+  --chart-orange: var(--warn);
+  --chart-green: var(--fact);
+  --chart-red: var(--closed);
+  --chart-gray: var(--ink-3);
+  --chart-yellow: var(--warn);
+  --chart-purple: var(--hyp);
+  --chart-teal: var(--down-ink);
 }
 
-/* ---------- Dark — 더스크 플럼 (웜 오베르진 밝은 버전, docs/private/DECISIONS.md D-016) ---------- */
+/* ---------- Dark — Midnight (Black · Electric Blue · Cantaloupe), D-320 ---------- */
 .dark {
-  --background: #181c23;
-  --foreground: #eef1f6;
-  --card: #242b35;
-  --card-foreground: #eef1f6;
-  --popover: #242b35;
-  --popover-foreground: #eef1f6;
-  --primary: #e199ba;
-  --primary-foreground: #23121b;
-  --secondary: #343d4b;
-  --secondary-foreground: #eef1f6;
-  --muted: #343d4b;
-  --muted-foreground: #b8c1ce;
-  --accent: #392e3b;
-  --accent-foreground: #e199ba;
-  --destructive: #ff6157;
-  --destructive-foreground: #ffffff;
-  --border: #46515f;
-  --input: #46515f;
-  --ring: #e199ba;
+  color-scheme: dark;
+  --bg: #02070A;
+  --surface: #081014;
+  --surface-2: #0D181E;
+  --ink: #EAF2F7;
+  --ink-2: #A6B6C1;
+  --ink-3: #8396A2;
+  --line: rgba(234, 242, 247, 0.10);
+  --line-2: rgba(234, 242, 247, 0.18);
+  --up: #FC734D;
+  --up-ink: #FC8A68;
+  --up-tint: rgba(252, 115, 77, 0.12);
+  --down: #0297DE;
+  --down-ink: #3DB2EE;
+  --down-tint: rgba(2, 151, 222, 0.14);
+  --hyp: #B79BFF;
+  --hyp-tint: rgba(183, 155, 255, 0.10);
+  --fact: #4FD1A5;
+  --fact-tint: rgba(79, 209, 165, 0.10);
+  --warn: #F2C14E;
+  --warn-tint: rgba(242, 193, 78, 0.12);
+  --action: #EAF2F7;
+  --action-ink: #02070A;
+  --chip: rgba(255, 255, 255, 0.07);
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-line: rgba(255, 255, 255, 0.12);
+  --series: rgba(234, 242, 247, 0.28);
+  --grid: rgba(234, 242, 247, 0.07);
+  --field: radial-gradient(ellipse 24% 60% at 50% 112%, rgba(252, 115, 77, 0.42) 0%, rgba(252, 115, 77, 0) 70%), radial-gradient(ellipse 62% 115% at 50% 100%, rgba(2, 151, 222, 0.72) 0%, rgba(2, 151, 222, 0) 75%), linear-gradient(180deg, #02070A 0%, #04111A 100%);
+  --veil: rgba(2, 7, 10, 0.40);
+  --closed: #F25F5C;
+  --ribs: repeating-linear-gradient(90deg, rgba(120, 190, 255, 0.09) 0px, rgba(120, 190, 255, 0.09) 1px, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, 0) 9px);
+  --field-base: linear-gradient(180deg, #02070A 0%, #04111A 100%);
+  --field-up-at: 50% 112%;
+  --field-down-at: 50% 100%;
+  --field-up-h: 60%;
+  --field-down-h: 115%;
+  --field-up-w0: 8%;  --field-up-w1: 48%;   --field-up-a1: 127%;
+  --field-down-w0: 22%; --field-down-w1: 60%; --field-down-a1: 107%;
+  --glass-opaque: #0B161C;
 
-  --sidebar: #20262f;
-  --sidebar-foreground: #eef1f6;
-  --sidebar-primary: #e199ba;
-  --sidebar-primary-foreground: #23121b;
-  --sidebar-accent: #343d4b;
-  --sidebar-accent-foreground: #eef1f6;
-  --sidebar-border: #46515f;
-  --sidebar-ring: #e199ba;
-
-  --up: #ff6157;
-  --down: #5aa6f5;
-  --fact: #4ccb6d;
-  --hypothesis: #f0a53f;
-
-  --chart-revenue: #5aa6f5;
-  --chart-profit: #30d158;
-  --chart-profit-dark: #30d158;
-  --chart-ratio: #b8c1ce;
-  --chart-negative: #ff6157;
-  --chart-warning: #ff9f0a;
-  --chart-1: #5aa6f5;
-  --chart-2: #30d158;
-  --chart-3: #ff9f0a;
-  --chart-4: #bf5af2;
-  --chart-5: #64d2ff;
-
-  --chart-blue: #5aa6f5;
-  --chart-orange: #ff9f0a;
-  --chart-green: #30d158;
-  --chart-red: #ff6157;
-  --chart-gray: #b8c1ce;
-  --chart-yellow: #ffd60a;
-  --chart-purple: #bf5af2;
-  --chart-teal: #64d2ff;
+  --destructive-foreground: #02070A;
 }
 
 @layer base {
@@ -255,6 +311,7 @@
     @apply antialiased bg-background text-foreground text-sm;
     font-family: var(--font-sans);
     font-feature-settings: "tnum";
+    line-height: 1.55;
   }
   html {
     @apply font-sans;
@@ -270,11 +327,59 @@
   th {
     font-variant-numeric: tabular-nums;
   }
+  /* 숫자는 Geist Mono tabular (D-320) — tabular-nums를 붙인 숫자는 모노 서체로 */
+  .tabular-nums {
+    font-family: var(--font-mono);
+  }
+}
+
+/* ---------- 분위기 — 홈 상단 기상도에만 (D-320). 그 밖의 면은 평평하다 ---------- */
+/* --weather-up: 상승 비율(0~1). 분홍(상승)·파랑(하락) 타원의 크기·농도가 이 비율을 따른다. 0.33이면 --field와 같다 */
+.weather {
+  --weather-up: .33;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--radius-weather);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse calc(var(--field-up-w0) + var(--field-up-w1) * var(--weather-up)) var(--field-up-h) at var(--field-up-at),
+      color-mix(in srgb, var(--up) min(100%, calc(var(--field-up-a1) * var(--weather-up))), transparent) 0%, transparent 70%),
+    radial-gradient(ellipse calc(var(--field-down-w0) + var(--field-down-w1) * (1 - var(--weather-up))) var(--field-down-h) at var(--field-down-at),
+      color-mix(in srgb, var(--down) min(100%, calc(var(--field-down-a1) * (1 - var(--weather-up)))), transparent) 0%, transparent 74%),
+    var(--field-base);
+}
+/* 브리핑 칸처럼 기상도 아래쪽 분위기 — 베일을 덮어 한 톤 옅게 */
+.weather[data-veil] { background-image: linear-gradient(var(--veil), var(--veil)), var(--field); }
+.weather::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--ribs);
+  pointer-events: none;
+}
+.weather[data-veil]::before { opacity: .6; }
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: var(--glass-opaque); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass { background: var(--glass-opaque); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .weather { background: var(--field-base); }
+  .weather::before { display: none; }
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;   /* 가로 스크롤 띠(지수 띠·칩 줄)도 얇게 */
 }
 ::-webkit-scrollbar-track {
   background: transparent;

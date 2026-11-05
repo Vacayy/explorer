@@ -20,18 +20,13 @@ export default function SegmentTabs({ tabs, value, onChange, className }: Props)
       type="single"
       value={value}
       onValueChange={(v) => v && onChange(v)}
-      spacing={1}
-      className={cn("inline-flex max-w-full rounded-xl bg-muted/70 p-1", className)}
+      className={cn("inline-flex max-w-full flex-wrap", className)}
     >
       {tabs.map((tab) => (
         <ToggleGroupItem
           key={tab.value}
           value={tab.value}
-          className={cn(
-            "h-9 px-3 text-sm rounded-control border-0",
-            "text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground",
-            "data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-card"
-          )}
+          className="border-0"
         >
           {tab.label}
         </ToggleGroupItem>

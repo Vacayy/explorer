@@ -1,5 +1,4 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { cn } from "@/lib/utils"
 
 interface Option {
   value: string
@@ -25,16 +24,14 @@ export default function PeriodToggle({ value, onChange, options = DEFAULT_OPTION
       type="single"
       value={value}
       onValueChange={(v) => v && onChange(v)}
-      className="inline-flex rounded-lg bg-secondary p-0.5 gap-0.5"
+      size="sm"
+      className="inline-flex"
     >
       {options.map((opt) => (
         <ToggleGroupItem
           key={opt.value}
           value={opt.value}
-          className={cn(
-            "h-7 px-3 text-xs rounded-md text-muted-foreground hover:bg-transparent hover:text-muted-foreground",
-            "data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-card"
-          )}
+          className="px-3"
         >
           {opt.label}
         </ToggleGroupItem>

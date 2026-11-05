@@ -8,8 +8,8 @@ import { formatPercent } from "@/utils/format"
 import type { EraOutcome, EraSignal } from "@/types"
 
 export const OUTCOME: Record<EraOutcome, { label: string; color: string; cls: string }> = {
-  bear: { label: "약세장", color: "var(--down)", cls: "border-down/40 text-down" },
-  correction: { label: "−15% 이상 조정", color: "var(--chart-warning)", cls: "border-chart-warning/50 text-hypothesis" },
+  bear: { label: "약세장", color: "var(--down)", cls: "border-down/40 text-down-ink" },
+  correction: { label: "−15% 이상 조정", color: "var(--chart-warning)", cls: "border-chart-warning/50 text-warn" },
   rebound: { label: "약세 직후 반등", color: "var(--chart-4)", cls: "text-muted-foreground" },
   false: { label: "헛경보", color: "var(--chart-gray)", cls: "text-muted-foreground" },
 }
@@ -82,7 +82,7 @@ export function EpisodePaths({ signal, current, compact }: { signal: EraSignal; 
           <TableCell className="tabular-nums">{e.date}</TableCell>
           <TableCell><Badge variant="outline" className={cn("font-normal", OUTCOME[e.outcome].cls)}>{OUTCOME[e.outcome].label}</Badge></TableCell>
           <TableCell className="text-right tabular-nums">{formatPercent(e.drawdown_at)}</TableCell>
-          <TableCell className="text-right tabular-nums text-down">{formatPercent(e.min_after)}</TableCell>
+          <TableCell className="text-right tabular-nums text-down-ink">{formatPercent(e.min_after)}</TableCell>
           <TableCell className="text-right tabular-nums">{e.ret_after == null ? "진행 중" : formatPercent(e.ret_after)}</TableCell>
         </TableRow>)}</TableBody>
       </Table>

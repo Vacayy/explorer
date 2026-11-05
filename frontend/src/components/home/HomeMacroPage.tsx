@@ -79,7 +79,7 @@ function StatusLine({ data, pending, compact }: { data?: RegimesResponse; pendin
   if (!cur) return null
   return <div className="flex items-start gap-2">
     <p id="now-status" className="min-w-0 flex-1 text-sm">
-      S&P500은 <b className={cn(cur.kind === "bear" && "text-down")}>{cur.kind === "bear" ? "약세장" : "강세장"}</b>(잠정, {cur.start}~)
+      S&P500은 <b className={cn(cur.kind === "bear" && "text-down-ink")}>{cur.kind === "bear" ? "약세장" : "강세장"}</b>(잠정, {cur.start}~)
       {" "}· 고점 대비 <span className={cn("font-mono tabular-nums", tone(cur.from_peak_pct))}>{formatPercent(cur.from_peak_pct)}</span>
       {!compact && <> · 저점 대비 <span className={cn("font-mono tabular-nums", tone(cur.from_trough_pct))}>{formatPercent(cur.from_trough_pct)}</span></>}
       {cur.trend && <> · 10개월선 {cur.trend === "up" ? "위" : "아래"}</>}

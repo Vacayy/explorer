@@ -4,6 +4,7 @@ import { createChart, ColorType, LineStyle } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions, MouseEventParams } from "lightweight-charts"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_CHART_OPTIONS } from "@/components/charts/LightweightChart"
+import { chartOptions, useChartTheme } from "@/components/charts/chartTheme"
 
 interface LineConfig {
   key: string
@@ -49,6 +50,16 @@ const CHANGE_COLUMNS = [
   { key: "m", label: "1개월" },
 ] as const
 
+/** 선 색 — CSS 변수 이름(--series·--ink 등)이나 var(--x)를 캔버스가 읽을 수 있는 값으로 */
+function resolveColor(color: string): string {
+  const name = color.startsWith("--") ? color : /^var\((--[\w-]+)\)$/.exec(color)?.[1]
+  if (!name) return color
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || color
+}
+
+/** DOM 범례용 — CSS 변수 이름이면 var()로 감싼다 */
+const cssColor = (color: string) => color.startsWith("--") ? `var(${color})` : color
+
 export default function MultiLineChart({
   data,
   lines,
@@ -73,6 +84,8 @@ export default function MultiLineChart({
   // 사용자가 끌어 옮긴 변화 박스 위치(컨테이너 기준). 닫을 때까지 유지
   const [boxPos, setBoxPos] = useState<{ left: number; top: number } | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
+  // 테마가 바뀌면 축·격자 색과 토큰 색(--series 등)을 다시 읽어 차트를 다시 만든다
+  const theme = useChartTheme()
 
   // Stable key for lines config to detect structural changes
   const linesKey = lines.map((l) => `${l.key}:${l.label}:${l.color}:${l.lineWidth ?? 2}:${l.lineStyle ?? 0}:${l.title ?? ""}`).join("|")
@@ -98,12 +111,13 @@ export default function MultiLineChart({
 
     setHovered(null)
     const chart = createChart(container, opts)
+    chart.applyOptions(chartOptions(theme))
     chartRef.current = chart
 
     const map = new Map<string, ISeriesApi<"Line">>()
     for (const line of lines) {
       const series = chart.addLineSeries({
-        color: line.color,
+        color: resolveColor(line.color),
         lastValueVisible: showLastValues,
         priceLineVisible: showLastValues,
         lineWidth: (line.lineWidth ?? 2) as 1 | 2 | 3 | 4,
@@ -180,7 +194,7 @@ export default function MultiLineChart({
       seriesMapRef.current = new Map()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, linesKey, showLastValues, showLineTooltip])
+  }, [height, linesKey, showLastValues, showLineTooltip, theme])
 
   // Update data
   useEffect(() => {
@@ -202,7 +216,7 @@ export default function MultiLineChart({
     }
 
     chartRef.current.timeScale().fitContent()
-  }, [data, lines])
+  }, [data, lines, theme])
 
   // 고른 날짜의 화면 x좌표 — 스크롤·확대·리사이즈에 따라 다시 잰다
   useEffect(() => {
@@ -231,7 +245,7 @@ export default function MultiLineChart({
     })
   }, [picked, data, lines, formatChange])
 
-  const tone = (v: number | null) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
+  const tone = (v: number | null) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
   const close = () => { setPicked(null); setBoxPos(null) }
 
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -267,7 +281,7 @@ export default function MultiLineChart({
           gap: 12,
           flexWrap: "wrap",
           fontSize: 11,
-          color: "#6b7280",
+          color: "var(--ink-3)",
         }}
       >
         {lines.map((line) => (
@@ -277,7 +291,7 @@ export default function MultiLineChart({
                 display: "inline-block",
                 width: 16,
                 height: 2,
-                backgroundColor: line.color,
+                backgroundColor: cssColor(line.color),
                 borderStyle: line.lineStyle === 2 ? "dashed" : "solid",
               }}
             />
@@ -291,7 +305,7 @@ export default function MultiLineChart({
         className="pointer-events-none absolute z-30 max-w-[min(260px,90%)] border border-border bg-popover px-3 py-2 text-caption text-popover-foreground"
         style={{ left: hovered.x, top: hovered.y, transform: `translate(${hovered.x > (containerRef.current?.clientWidth ?? 0) / 2 ? 'calc(-100% - 12px)' : '12px'}, ${hovered.y > height / 2 ? 'calc(-100% - 12px)' : '12px'})` }}
       >
-        <div className="flex items-center gap-2 font-medium"><span className="h-0.5 w-4 shrink-0" style={{ backgroundColor: hovered.color }} aria-hidden="true" />{hovered.label}</div>
+        <div className="flex items-center gap-2 font-medium"><span className="h-0.5 w-4 shrink-0" style={{ backgroundColor: cssColor(hovered.color) }} aria-hidden="true" />{hovered.label}</div>
         <div className="mt-1 text-muted-foreground">{hovered.date} · {hovered.value}</div>
       </div>}
       {formatChange && picked && pickedX != null && changes.length > 0 && <>
@@ -312,7 +326,7 @@ export default function MultiLineChart({
             {CHANGE_COLUMNS.map((c) => <span key={c.key} className="text-right text-muted-foreground">{c.label}</span>)}
             {changes.map(({ line, delta }) => [
               <span key={line.key} className="flex items-center gap-1.5 whitespace-nowrap">
-                <span className="size-2 rounded-full" style={{ background: line.color }} aria-hidden="true" />{line.label}
+                <span className="size-2 rounded-full" style={{ background: cssColor(line.color) }} aria-hidden="true" />{line.label}
               </span>,
               ...CHANGE_COLUMNS.map((c) => <span key={`${line.key}-${c.key}`} className={`text-right tabular-nums ${tone(delta[c.key])}`}>{delta[c.key] == null ? "-" : formatChange(delta[c.key]!)}</span>),
             ])}

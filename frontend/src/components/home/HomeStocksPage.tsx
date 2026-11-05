@@ -165,7 +165,7 @@ function FeaturedCard({ m, className }: { m: StockGroupMember; className?: strin
       {s?.signal_date && <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">{mmdd(s.signal_date)}{m.market === "us" ? " 신호" : ""}</span>}
     </p>
     <p className="tabular-nums"><span>{formatStockPrice(m.close, m.market)}</span> <span className={tone(m.change_pct)}>{formatPercent(m.change_pct)}</span></p>
-    {s && <Badge variant="outline" className="border-transparent bg-up/10 font-normal text-up">{s.label}</Badge>}
+    {s && <Badge variant="outline" className="border-transparent bg-up/10 font-normal text-up-ink">{s.label}</Badge>}
     {line && <p className="truncate text-caption text-muted-foreground">{line}</p>}
   </Link>
 }
@@ -174,7 +174,7 @@ function AlertLine({ alerts, onOpen }: { alerts: { code: string; name: string; l
   const first = alerts[0]
   return <button type="button" onClick={() => onOpen(first.code)} data-stocks-alert
     className="flex w-full items-center gap-2 border px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/40">
-    <Badge variant="outline" className="shrink-0 border-transparent bg-up/10 font-normal text-up">조건 충족</Badge>
+    <Badge variant="outline" className="shrink-0 border-transparent bg-up/10 font-normal text-up-ink">조건 충족</Badge>
     <span className="min-w-0 flex-1 truncate"><b>{first.name}</b> — {first.label}{alerts.length > 1 ? ` 외 ${formatNumber(alerts.length - 1)}건` : ""}</span>
     <span className="shrink-0 text-caption text-muted-foreground"><span className="hidden md:inline">추적 상세 </span>›</span>
   </button>
@@ -294,7 +294,7 @@ function DesktopRow({ m, badge, open, onOpen, onToggle, onRemove, busy, panel }:
       <TableCell className="max-w-[28rem]"><NameCell m={m} badge={badge} open={open} onOpen={onOpen} /></TableCell>
       <TableCell className="text-right tabular-nums">{formatStockPrice(m.close, m.market)}</TableCell>
       <TableCell className={cn("text-right tabular-nums", tone(m.change_pct))}>{formatPercent(m.change_pct)}</TableCell>
-      <TableCell>{s ? <Badge variant="outline" className="border-transparent bg-up/10 font-normal text-up">{s.label}</Badge> : <span className="text-muted-foreground">-</span>}</TableCell>
+      <TableCell>{s ? <Badge variant="outline" className="border-transparent bg-up/10 font-normal text-up-ink">{s.label}</Badge> : <span className="text-muted-foreground">-</span>}</TableCell>
       <TableCell className="text-center"><Switch checked={m.tracked === 1} disabled={busy} aria-label={`${m.name} 추적`} onCheckedChange={v => onToggle(m, v)} /></TableCell>
       <TableCell><Button variant="ghost" size="icon-xs" aria-label={`${m.name} 빼기`} onClick={() => onRemove(m)}><X className="size-3.5" /></Button></TableCell>
     </TableRow>
@@ -308,7 +308,7 @@ function MobileRow({ m, badge, open, onOpen, onToggle, busy, panel }: RowProps) 
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
         <NameCell m={m} badge={badge} open={open} onOpen={onOpen} />
-        {s && <p className="mt-0.5 truncate text-caption text-up">{s.label}</p>}
+        {s && <p className="mt-0.5 truncate text-caption text-up-ink">{s.label}</p>}
       </div>
       <div className="shrink-0 text-right tabular-nums">
         <p>{formatStockPrice(m.close, m.market)}</p>
@@ -350,7 +350,7 @@ function DetailPanel({ code, market, onEdit }: { code: string; market: string | 
 }
 
 function StatusBadge({ c }: { c: TrackerCondition }) {
-  const [label, cls] = c.status === "met" ? ["충족", "bg-up/10 text-up"] : c.status === "pending" ? ["확인 대기", "bg-muted text-foreground"] : c.status === "not_met" ? ["미충족", "bg-muted text-muted-foreground"] : ["판정 불가", "bg-muted text-muted-foreground"]
+  const [label, cls] = c.status === "met" ? ["충족", "bg-up/10 text-up-ink"] : c.status === "pending" ? ["확인 대기", "bg-muted text-foreground"] : c.status === "not_met" ? ["미충족", "bg-muted text-muted-foreground"] : ["판정 불가", "bg-muted text-muted-foreground"]
   return <Badge variant="outline" className={cn("shrink-0 border-transparent font-normal", cls)}>{label}</Badge>
 }
 

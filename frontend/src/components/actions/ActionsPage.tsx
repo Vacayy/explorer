@@ -136,8 +136,8 @@ function ActionsBody({ data, type, view, kind, setParam, setView, bounded = fals
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary" className={cn("text-[10px]",
-                    a.action_type === "유상증자" && "bg-down/10 text-down",
-                    a.action_type === "무상증자" && "bg-up/10 text-up",
+                    a.action_type === "유상증자" && "bg-down/10 text-down-ink",
+                    a.action_type === "무상증자" && "bg-up/10 text-up-ink",
                   )}>
                     {a.action_type}
                   </Badge>
@@ -155,7 +155,7 @@ function ActionsBody({ data, type, view, kind, setParam, setView, bounded = fals
                     <span className="text-sm">{a.corp_name}</span>
                   )}
                   <span className="ml-1 text-[10px] text-muted-foreground">{a.market === "Y" ? "KOSPI" : "KOSDAQ"}</span>
-                  {a.my_group && <Badge variant="outline" className="ml-1.5 h-4 px-1 text-[10px] border-up/40 text-up">{a.my_group}</Badge>}
+                  {a.my_group && <Badge variant="outline" className="ml-1.5 h-4 px-1 text-[10px] border-up/40 text-up-ink">{a.my_group}</Badge>}
                   {/* lg 미만: 공시명 열 대신 기업 아래에 쌓는다 — 좁은 화면에서 가로 스크롤 없이 무슨 공시인지 보이게 */}
                   <div className="mt-1 whitespace-normal lg:hidden">
                     {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}

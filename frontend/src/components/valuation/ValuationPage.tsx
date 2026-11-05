@@ -23,17 +23,18 @@ const RANGE_OPTIONS = [
 ]
 
 const PBR_LINES: LineConfig[] = [
-  { key: "close", label: "수정주가", color: "#374151", lineWidth: 2 },
-  { key: "pbr_p90", label: "90%", color: "#ef4444", lineStyle: 2 },
-  { key: "pbr_p75", label: "75%", color: "#eab308", lineStyle: 2 },
-  { key: "pbr_p50", label: "50%", color: "#22c55e", lineStyle: 2 },
-  { key: "pbr_p25", label: "25%", color: "#3b82f6", lineStyle: 2 },
-  { key: "pbr_p10", label: "10%", color: "#a855f7", lineStyle: 2 },
+  // 선택 시리즈(주가) = 글자색, 밴드 = 회색 단계(D-320 — 등락색은 가격 방향에만)
+  { key: "close", label: "수정주가", color: "--ink", lineWidth: 2 },
+  { key: "pbr_p90", label: "90%", color: "--series", lineStyle: 2 },
+  { key: "pbr_p75", label: "75%", color: "--ink-3", lineStyle: 2 },
+  { key: "pbr_p50", label: "50%", color: "--ink-2", lineStyle: 2 },
+  { key: "pbr_p25", label: "25%", color: "--ink-3", lineStyle: 2 },
+  { key: "pbr_p10", label: "10%", color: "--series", lineStyle: 2 },
 ]
 
 const PER_LINES: LineConfig[] = [
-  { key: "per", label: "PER", color: "#eab308", lineWidth: 2 },
-  { key: "close", label: "수정주가", color: "#9ca3af", lineStyle: 2 },
+  { key: "per", label: "PER", color: "--ink", lineWidth: 2 },
+  { key: "close", label: "수정주가", color: "--series", lineStyle: 2 },
 ]
 
 const formatWon = (v: number) => v.toLocaleString("ko-KR")
@@ -118,7 +119,7 @@ export default function ValuationPage({ stockCode }: Props) {
         <ChartCard title="주당 순이익 (EPS)">
           <ResponsiveContainer width="100%" height={300}>
             <ComposedChart data={epsData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" />
               <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d: string) => d.slice(2, 7)} />
               <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={(v: number) => v.toLocaleString()} />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v: number) => v.toLocaleString()} />

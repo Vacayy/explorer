@@ -178,9 +178,17 @@
 - `surface-grid`·`surface-stack`은 카드 묶음의 외부 간격만 0으로 만든다. 홈은 22px 격자 단위·간격 0으로 렌더하고 저장된 배치를 그대로 읽는다. 테스트 URL 분기를 제거했다.
 - 홈·탐색 신호·포트폴리오·월드모델·스터디·밸류에이션 등의 카드 묶음과 공통 읽기 패널에 적용한다. 본문 12px·헤더 가로 12px/세로 8px로 홈 위젯과 밀도를 통일하며, Card 자체의 중복 패딩을 제거했다. 필터/폼 간격은 유지한다. 현행 계약은 [디자인 시스템](DESIGN_SYSTEM.md)이다.
 
+## 디자인 시스템 Daylight·Midnight (D-320, 2026-11-05)
+
+- `index.css`: 시안 토큰(`--bg`·`--surface`·`--ink`·`--up`·`--down`·`--hyp`·`--fact`·`--warn`·`--chip`·`--field`·`--ribs`·`--glass` …)을 `:root`(라이트 Daylight)·`.dark`(다크 Midnight)에 두고 shadcn 변수를 여기에 잇는다. 모서리 토큰(`--radius-control/badge/card/weather/overlay`)·그림자 `--shadow-overlay`. 홈 상단 분위기는 `.weather`(`--weather-up`)·`.glass`만.
+- 서체: Google Fonts(`frontend/index.html` `<link>`) — Geist·Geist Mono·IBM Plex Sans KR·Instrument Serif. 외부 의존성이며 못 받으면 시스템 서체. `@fontsource/*` 가져오기는 index.css에서 뺐다(패키지는 package.json에 남아 있다).
+- 테마: next-themes(`attribute="class"`, 기본 시스템, localStorage `theme`). `index.html` 인라인 스크립트가 첫 그림 전에 `.dark`를 붙인다. 전환 UI = 상단 바 설정 메뉴(시스템·라이트·다크). 캔버스 차트는 `components/charts/chartTheme.ts`(`useChartTheme`)로 토큰을 읽어 다시 칠한다.
+- 홈 대시보드 상단 = 기상도(`home/HomeDashboard` `WeatherHeader`): 날짜 + 지수 띠 + 시장 요약 띠를 유리 패널로. 분홍·파랑 비율 = 지수 띠의 상승 지수 비율(종목 단위 시장 폭 데이터 없음).
+- 현행 계약 상세는 [디자인 시스템](DESIGN_SYSTEM.md) 첫 절.
+
 ## 통합 마켓 홈 디자인 기반 (D-152, 2026-09-10)
 
-- `index.css`: 자체 호스팅 IBM Plex Sans/KR(`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-sans-kr`), 역할별 타입, 단색 라이트·다크, 기존 멀버리 포인트. 표면·라운딩은 위 화이트 플랫 기준으로 대체됐다.
+- `index.css`: (D-320으로 대체) 자체 호스팅 IBM Plex Sans/KR, 역할별 타입, 단색 라이트·다크, 기존 멀버리 포인트.
 - `shared/PageLayout.tsx`: header/overview/toolbar/footer/children 슬롯, PageHeader, SplitWorkspace. 홈 시장은 document·full, 홈 피드는 reader·full(D-153·D-209), 문서 검색은 document. PageContainer는 레거시 호환 유지.
 - Home 피드는 가용 폭 ≥760px에서 300px 목록 + 리더, 그 미만은 URL 목록/본문 전환. 화면 높이 ≥740px은 피드 본문만 `100dvh - --shell-offset`로 고정해 목록/본문 독립 스크롤, 헤더·AI 카드는 페이지 스크롤(D-209). 짧은 화면은 문서 흐름. 시장 모듈은 가용 폭 ≥1000px에서 2열. 셸 --page-inset은 데스크톱24/모바일16px.
 - UsBriefingSection의 기존 데이터·날짜·상태는 일반 Card 표면에 표시한다(후속 요청으로 대비 배경 해제).

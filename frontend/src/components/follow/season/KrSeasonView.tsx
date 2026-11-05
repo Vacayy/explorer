@@ -361,7 +361,7 @@ function Groups({ d }: { d: KrSeasonOverview }) {
               className="grid grid-cols-[minmax(0,1fr)_48px_64px_minmax(0,1fr)_12px] items-baseline gap-x-2 border-t py-2 first:border-t-0 hover:bg-muted/50">
               <span className="truncate font-medium">{g.group}</span>
               <span className="text-right tabular-nums text-muted-foreground" title={g.quarterly_n ? `정기보고서만 ${g.quarterly_n}곳 포함` : undefined}>{formatNumber(g.n)}곳</span>
-              <span className={cn("text-right tabular-nums", g.median_r1 == null ? "text-muted-foreground" : g.median_r1 > 0 ? "text-up" : g.median_r1 < 0 ? "text-down" : "")}>{formatPercent(g.median_r1)}</span>
+              <span className={cn("text-right tabular-nums", g.median_r1 == null ? "text-muted-foreground" : g.median_r1 > 0 ? "text-up-ink" : g.median_r1 < 0 ? "text-down-ink" : "")}>{formatPercent(g.median_r1)}</span>
               <span className="truncate text-right text-caption text-muted-foreground">업종보다 오른 곳 <span className="tabular-nums">{formatRatio(g.up_ratio)}</span></span>
               <ChevronRight className="size-3 self-center text-muted-foreground" />
             </Link>

@@ -65,7 +65,7 @@ export default function UsDossierPage() {
           { label: 'Fwd PER', value: times(f?.fwd_pe) },
           { label: 'Trailing PER', value: times(f?.trailing_pe) },
           { label: '목표가 평균', value: c.targets ? formatStockPrice(c.targets.mean, 'us') : '-',
-            sub: room != null ? <span className={room >= 0 ? 'text-up' : 'text-down'}>{formatPercent(room)} 여력</span> : undefined },
+            sub: room != null ? <span className={room >= 0 ? 'text-up-ink' : 'text-down-ink'}>{formatPercent(room)} 여력</span> : undefined },
           { label: '목표가 범위', value: c.targets ? `${formatStockPrice(c.targets.low, 'us')} – ${formatStockPrice(c.targets.high, 'us')}` : '-' },
         ]} />
         {tab === 'evidence' ? <CompanyMentions key={ticker} company={d.ticker} market="us" />
@@ -137,7 +137,7 @@ function UsFinancials({ d, price }: { d: UsDossier; price: number | null }) {
       <div className="space-y-4 p-4">
         <MetricStrip items={[
           { label: '내년 EPS 컨센서스', value: c.epsNext == null ? '-' : formatStockPrice(c.epsNext, 'us'),
-            sub: c.eps90dAgo != null && epsChange != null ? <>90일 전 {formatStockPrice(c.eps90dAgo, 'us')} → <span className={epsChange >= 0 ? 'text-up' : 'text-down'}>{formatPercent(epsChange)}</span></> : undefined },
+            sub: c.eps90dAgo != null && epsChange != null ? <>90일 전 {formatStockPrice(c.eps90dAgo, 'us')} → <span className={epsChange >= 0 ? 'text-up-ink' : 'text-down-ink'}>{formatPercent(epsChange)}</span></> : undefined },
           { label: '이익 성장 컨센서스', value: formatPercent(c.growth) },
           { label: '30일 추정 변경 · 올해', value: c.revThis ? `상향 ${c.revThis.up} · 하향 ${c.revThis.down}` : '-' },
           { label: '30일 추정 변경 · 내년', value: c.revNext ? `상향 ${c.revNext.up} · 하향 ${c.revNext.down}` : '-' },
@@ -154,7 +154,7 @@ function UsFinancials({ d, price }: { d: UsDossier; price: number | null }) {
             <span>최저 {formatStockPrice(c.targets.low, 'us')}</span>
             <span>최고 {formatStockPrice(c.targets.high, 'us')}</span>
           </div>
-          <p className="text-sm">현재 {price != null ? formatStockPrice(price, 'us') : '-'}{room != null && <> · 평균 목표가까지 <span className={cn('font-mono', room >= 0 ? 'text-up' : 'text-down')}>{formatPercent(room)}</span></>}</p>
+          <p className="text-sm">현재 {price != null ? formatStockPrice(price, 'us') : '-'}{room != null && <> · 평균 목표가까지 <span className={cn('font-mono', room >= 0 ? 'text-up-ink' : 'text-down-ink')}>{formatPercent(room)}</span></>}</p>
         </section> : <p className="text-sm text-muted-foreground">목표가 컨센서스가 없습니다.</p>}
       </div>
     </Card>
@@ -209,9 +209,9 @@ function WorldModelSection({ ticker, name }: { ticker: string; name: string }) {
             {w.edges.map((e, i) => {
               const dirCls =
                 e.direction === 'positive'
-                  ? 'text-up'
+                  ? 'text-up-ink'
                   : e.direction === 'negative'
-                    ? 'text-down'
+                    ? 'text-down-ink'
                     : 'text-muted-foreground'
               return (
                 <li key={i} className="text-xs flex items-baseline gap-1.5">

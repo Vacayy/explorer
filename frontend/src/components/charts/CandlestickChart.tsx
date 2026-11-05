@@ -2,6 +2,7 @@ import { useRef, useEffect } from "react"
 import { createChart, ColorType, LineStyle } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
 import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
+import { chartOptions, readChartTheme, useChartTheme } from "./chartTheme"
 
 export interface ChartMarker {
   time: string
@@ -23,9 +24,7 @@ interface CandlestickChartProps {
   initialRange?: { from: string; to: string } | null
 }
 
-// Korean stock convention: red = up, blue = down
-const UP_COLOR = "#ef4444"
-const DOWN_COLOR = "#3b82f6"
+// 등락색 = 브랜드색(D-320): 상승 --up(분홍/다크 오렌지), 하락 --down(파랑). 테마가 바뀌면 다시 칠한다
 
 export default function CandlestickChart({
   data,
@@ -46,6 +45,7 @@ export default function CandlestickChart({
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null)
+  const theme = useChartTheme()
 
   // Create chart once
   useEffect(() => {
@@ -69,16 +69,18 @@ export default function CandlestickChart({
     }
 
     const chart = createChart(container, opts)
+    const t = readChartTheme()
+    chart.applyOptions(chartOptions(t))
     chartRef.current = chart
 
     // Candlestick series
     const candleSeries = chart.addCandlestickSeries({
-      upColor: UP_COLOR,
-      downColor: DOWN_COLOR,
-      borderUpColor: UP_COLOR,
-      borderDownColor: DOWN_COLOR,
-      wickUpColor: UP_COLOR,
-      wickDownColor: DOWN_COLOR,
+      upColor: t.up,
+      downColor: t.down,
+      borderUpColor: t.up,
+      borderDownColor: t.down,
+      wickUpColor: t.up,
+      wickDownColor: t.down,
       priceFormat: formatValue
         ? { type: "custom", formatter: formatValue }
         : { type: "price", precision: 0, minMove: 1 },
@@ -120,6 +122,12 @@ export default function CandlestickChart({
     }
   }, [height]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 테마 전환 — 축·격자·봉 색을 다시 칠한다
+  useEffect(() => {
+    chartRef.current?.applyOptions(chartOptions(theme))
+    candleSeriesRef.current?.applyOptions({ upColor: theme.up, downColor: theme.down, borderUpColor: theme.up, borderDownColor: theme.down, wickUpColor: theme.up, wickDownColor: theme.down })
+  }, [theme])
+
   // Update candlestick data
   useEffect(() => {
     if (!candleSeriesRef.current) return
@@ -133,19 +141,19 @@ export default function CandlestickChart({
     else scale.fitContent()
   }, [data, initialRange?.from, initialRange?.to])
 
-  // 특징일 마커 — 상승=아래 빨강 화살표, 하락=위 파랑 화살표
+  // 특징일 마커 — 상승=아래 --up 화살표, 하락=위 --down 화살표, 선택일 = 글자색 점
   useEffect(() => {
     if (!candleSeriesRef.current) return
     const ms = (markers ?? []).map((m) => ({
       time: m.time,
       position: m.direction === "up" ? "belowBar" as const : "aboveBar" as const,
-      color: m.direction === "up" ? UP_COLOR : DOWN_COLOR,
+      color: m.direction === "up" ? theme.up : theme.down,
       shape: m.direction === "up" ? "arrowUp" as const : "arrowDown" as const,
       text: m.text,
     }))
-    const selection = selectedTime && data.some(d => d.time === selectedTime) ? [{ time: selectedTime, position: 'aboveBar' as const, color: '#80506f', shape: 'circle' as const, text: `선택 ${selectedTime}` }] : []
+    const selection = selectedTime && data.some(d => d.time === selectedTime) ? [{ time: selectedTime, position: 'aboveBar' as const, color: theme.ink, shape: 'circle' as const, text: `선택 ${selectedTime}` }] : []
     candleSeriesRef.current.setMarkers([...ms, ...selection].sort((a, b) => a.time.localeCompare(b.time)))
-  }, [markers, selectedTime, data])
+  }, [markers, selectedTime, data, theme])
 
   // Update volume data
   useEffect(() => {
@@ -176,7 +184,7 @@ export default function CandlestickChart({
       return line
     })
     return () => { if (chartRef.current === chart) series.forEach(line => chart.removeSeries(line)) }
-  }, [overlays, height])
+  }, [overlays, height, theme])
 
   useEffect(() => {
     const chart = chartRef.current, shade = shadeRef.current, container = containerRef.current

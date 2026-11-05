@@ -24,7 +24,7 @@ import { formatNumber, formatPercent, formatRatio } from '@/utils/format'
 import type { PortfolioSummary } from '@/types'
 
 const COLORS = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5']
-const tone = (v: number | null | undefined) => v == null || v === 0 ? '' : v > 0 ? 'text-up' : 'text-down'
+const tone = (v: number | null | undefined) => v == null || v === 0 ? '' : v > 0 ? 'text-up-ink' : 'text-down-ink'
 
 /** L2 탭 = URL (docs/specs/portfolio-ledger.md §화면). 종목 묶음은 /follow/stocks */
 export type PortfolioTab = 'overview' | 'holdings' | 'principles' | 'events'
@@ -103,7 +103,7 @@ function PrincipleLine({ live }: { live: boolean }) {
   if (!d) return null
   const bad = d.items.length > 0
   return <Link to="/portfolio/principles" className={cn('flex min-h-11 items-center gap-2 border px-3 py-2 text-sm md:hidden', bad ? 'border-down/40' : 'bg-muted/40')}>
-    <Badge variant="outline" className={cn('shrink-0 text-[10px]', bad ? 'text-down' : 'text-fact border-fact/40')}>{bad ? '위반' : '지킴'}</Badge>
+    <Badge variant="outline" className={cn('shrink-0 text-[10px]', bad ? 'text-down-ink' : 'text-fact border-fact/40')}>{bad ? '위반' : '지킴'}</Badge>
     <span className="min-w-0 flex-1 truncate">{bad ? d.items.map(v => v.message).join(' · ') : d.rules ? `어기고 있는 원칙 없음 · 수치 규칙 ${formatNumber(d.rules)}개` : '점검할 수치 규칙이 아직 없습니다'}</span>
     <span className="flex shrink-0 items-center text-muted-foreground">원칙<ChevronRight className="size-3.5" aria-hidden="true" /></span>
   </Link>

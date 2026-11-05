@@ -35,7 +35,7 @@ const SORTS: { key: PeopleSort; label: string }[] = [
 ]
 const PAGE = 100
 
-const deltaTone = (d: number) => d > 0 ? "text-up" : d < 0 ? "text-down" : "text-muted-foreground"
+const deltaTone = (d: number) => d > 0 ? "text-up-ink" : d < 0 ? "text-down-ink" : "text-muted-foreground"
 const signed = (d: number) => `${d > 0 ? "+" : ""}${formatNumber(d)}`
 
 export default function PeopleDirectoryPage() {

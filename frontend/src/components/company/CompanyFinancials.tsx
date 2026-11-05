@@ -86,7 +86,7 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
                     <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.revenue)}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.profit)}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{formatRatio(r.margin)}</TableCell>
-                    <TableCell className={`text-right font-mono tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up' : r.yoy < 0 ? 'text-down' : ''}`}>{formatPercent(r.yoy)}</TableCell>
+                    <TableCell className={`text-right font-mono tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up-ink' : r.yoy < 0 ? 'text-down-ink' : ''}`}>{formatPercent(r.yoy)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -324,7 +324,7 @@ export default function CompanyFinancials({
                           <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.revenue)}</TableCell>
                           <TableCell className="text-right font-mono tabular-nums">{formatKrw(r.profit)}</TableCell>
                           <TableCell className="text-right font-mono tabular-nums">{formatRatio(r.margin)}</TableCell>
-                          <TableCell className={`text-right font-mono tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up' : r.yoy < 0 ? 'text-down' : ''}`}>{formatPercent(r.yoy)}</TableCell>
+                          <TableCell className={`text-right font-mono tabular-nums ${r.yoy == null ? '' : r.yoy > 0 ? 'text-up-ink' : r.yoy < 0 ? 'text-down-ink' : ''}`}>{formatPercent(r.yoy)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

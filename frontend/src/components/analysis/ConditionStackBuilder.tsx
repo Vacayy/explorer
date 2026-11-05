@@ -70,7 +70,7 @@ export function DefinitionInfo({ definition }: { definition: StrategyDefinition 
       <p>{definition.description}</p>
       <p><span className="font-medium text-foreground">계산 기준: </span>{definition.formula}</p>
       <p>필요 자료: {definition.required_data.map(item => DATA_LABELS[item] ?? item).join(' · ')}</p>
-      {!definition.available && <p className="text-hypothesis">현재 필요한 자료가 없어 판정할 수 없습니다. 실행 결과에 미평가 사유를 표시합니다.</p>}
+      {!definition.available && <p className="text-warn">현재 필요한 자료가 없어 판정할 수 없습니다. 실행 결과에 미평가 사유를 표시합니다.</p>}
     </PopoverContent></Popover>
 }
 

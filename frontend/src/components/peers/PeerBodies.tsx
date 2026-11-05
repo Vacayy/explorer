@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { formatNumber, formatPercent, formatPp } from '@/utils/format'
 import type { PeerCatalog, PeerGroup, PeerPriceSnapshot, PeerRuntime } from '@/types/peer'
 
-const tone = (value: number | null | undefined) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up' : value < 0 ? 'text-down' : ''
+const tone = (value: number | null | undefined) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up-ink' : value < 0 ? 'text-down-ink' : ''
 const DAY_OPTIONS = PEER_DAYS.map(d => ({ value: String(d), label: `${d}일` }))
 const shortDate = (iso: string | undefined) => iso ? iso.slice(5).replace('-', '/') : '-'
 

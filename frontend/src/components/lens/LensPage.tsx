@@ -13,15 +13,15 @@ import type { LensReading, Quadrant } from "@/types"
 
 // 가치 = 미래 이익·현금흐름 극대화 확신의 강도 / 추세 = 시장이 이미 반영한 위치
 const VALUE_STANCE: Record<string, { label: string; cls: string }> = {
-  강: { label: "확신 강", cls: "text-up border-up/40" },
+  강: { label: "확신 강", cls: "text-up-ink border-up/40" },
   중: { label: "확신 중", cls: "text-hypothesis border-hypothesis/40" },
-  약: { label: "확신 약", cls: "text-down border-down/40" },
+  약: { label: "확신 약", cls: "text-down-ink border-down/40" },
 }
 const TREND_STANCE: Record<string, { label: string; cls: string }> = {
-  초입: { label: "초입·소외", cls: "text-up border-up/40" },
-  진행: { label: "추세 진행", cls: "text-up border-up/40" },
-  성숙: { label: "성숙·과열", cls: "text-down border-down/40" },
-  훼손: { label: "추세 훼손", cls: "text-down border-down/40" },
+  초입: { label: "초입·소외", cls: "text-up-ink border-up/40" },
+  진행: { label: "추세 진행", cls: "text-up-ink border-up/40" },
+  성숙: { label: "성숙·과열", cls: "text-down-ink border-down/40" },
+  훼손: { label: "추세 훼손", cls: "text-down-ink border-down/40" },
   불명확: { label: "위치 불명확", cls: "text-muted-foreground border-border" },
 }
 

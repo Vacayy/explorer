@@ -136,9 +136,9 @@ export function AnalysisResults({ runId, result, onOpen, warnings = result.warni
 
   if (wide) return <section aria-label="분석 결과" className="space-y-3">
     {(!!result.unsupported_conditions?.length || inconclusive || result.items.some(item => item.status === 'provisional')) && <div className="space-y-1 text-sm">
-      {!!result.unsupported_conditions?.length && <p className="text-hypothesis">요청 중 아직 평가하지 못한 조건: {result.unsupported_conditions.join(' · ')}</p>}
+      {!!result.unsupported_conditions?.length && <p className="text-warn">요청 중 아직 평가하지 못한 조건: {result.unsupported_conditions.join(' · ')}</p>}
       {result.items.some(item => item.status === 'provisional') && <p className="text-hypothesis">잠정 후보의 미검증 항목을 확인해 주세요.</p>}
-      {inconclusive && <p className="rounded-lg bg-hypothesis/10 p-3">평가한 종목에서는 통과를 확인하지 못했습니다. 미평가 종목이 있어 전체 대상에 해당 종목이 없다고 판단할 수 없습니다.</p>}
+      {inconclusive && <p className="rounded-lg bg-warn/10 p-3">평가한 종목에서는 통과를 확인하지 못했습니다. 미평가 종목이 있어 전체 대상에 해당 종목이 없다고 판단할 수 없습니다.</p>}
     </div>}
     {candidate ? <div className={`surface-grid grid min-w-0 grid-cols-1 items-start ${mobile ? '' : 'lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]'}`}>
       <section aria-label="후보 목록" className="min-w-0 space-y-2 border bg-card p-3">
@@ -156,9 +156,9 @@ export function AnalysisResults({ runId, result, onOpen, warnings = result.warni
   return <section aria-label="분석 결과" className="space-y-4">
     <div className="space-y-2">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><h2 className="text-section font-semibold">{inconclusive ? '통과 확인 0개 · 일부 종목 미평가' : `${formatNumber(counts.matched)}개 후보 종목`}</h2><p className="text-caption text-muted-foreground">{result.as_of} 기준 · 대상 {formatNumber(counts.universe)}개 · 조건 탈락 {formatNumber(Math.max(0, counts.evaluated - counts.matched))}개</p></div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption">{counts.excluded > 0 && <span className="font-medium text-hypothesis">미평가 {formatNumber(counts.excluded)}개 · 자료 부족 또는 계산 오류</span>}{result.items.some(item => item.status === 'provisional') && <span className="text-hypothesis">잠정 후보의 미검증 항목을 확인해 주세요.</span>}{warnings.length > 0 && <span className="text-muted-foreground">자료·조건 확인 {formatNumber(warnings.length)}건</span>}</div>
-      {!!result.unsupported_conditions?.length && <p className="text-sm text-hypothesis">요청 중 아직 평가하지 못한 조건: {result.unsupported_conditions.join(' · ')}</p>}
-      {inconclusive && <p className="rounded-lg bg-hypothesis/10 p-3 text-sm">평가한 종목에서는 통과를 확인하지 못했습니다. 미평가 종목이 있어 전체 대상에 해당 종목이 없다고 판단할 수 없습니다.</p>}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption">{counts.excluded > 0 && <span className="font-medium text-warn">미평가 {formatNumber(counts.excluded)}개 · 자료 부족 또는 계산 오류</span>}{result.items.some(item => item.status === 'provisional') && <span className="text-warn">잠정 후보의 미검증 항목을 확인해 주세요.</span>}{warnings.length > 0 && <span className="text-muted-foreground">자료·조건 확인 {formatNumber(warnings.length)}건</span>}</div>
+      {!!result.unsupported_conditions?.length && <p className="text-sm text-warn">요청 중 아직 평가하지 못한 조건: {result.unsupported_conditions.join(' · ')}</p>}
+      {inconclusive && <p className="rounded-lg bg-warn/10 p-3 text-sm">평가한 종목에서는 통과를 확인하지 못했습니다. 미평가 종목이 있어 전체 대상에 해당 종목이 없다고 판단할 수 없습니다.</p>}
     </div>
 
     {candidate && params.get('candidate') && !result.items.some(item => item.code === params.get('candidate')) && <p role="status" className="text-sm text-muted-foreground">선택했던 종목이 이 결과에 없어 현재 정렬의 첫 후보를 표시합니다.</p>}

@@ -13,7 +13,7 @@ import type { ExpClaim, ExpGapRow, ExpNode, ExpectationsResponse } from "@/types
  */
 
 const pct = (g?: number | null) => g == null ? "-" : formatPercent(g * 100)   // 소수 성장률 → %
-const tone = (v?: number | null) => v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted-foreground"
+const tone = (v?: number | null) => v == null ? "text-muted-foreground" : v > 0 ? "text-up-ink" : v < 0 ? "text-down-ink" : "text-muted-foreground"
 const GAP_HINT = "관측은 최근 3개월(미국 칸은 최신 분기) 전년 대비, 기대는 구성 회사 애널리스트가 본 이번 분기 매출의 전년 대비 성장률입니다. 회사마다 회계 분기가 달라 근사 비교이고, 회사 전체 컨센서스라 칸 밖 사업이 섞일 수 있습니다."
 
 const KIND: Record<string, string> = { price: "가격", shipments: "출하", revenue: "매출", market: "시장", growth: "성장", capex: "설비투자",
@@ -63,7 +63,7 @@ export function ExpectationPanel({ exp, asOf }: { exp?: ExpNode; asOf?: string |
       <ul className="divide-y text-caption">{exp.claims.map((c, i) => <li key={i} className="flex flex-wrap items-baseline gap-x-2 py-1">
         <Badge variant={c.source === "feed" ? "secondary" : "outline"} className="text-[10px]" title={c.source === "feed" ? "피드 문서에서 추출한 증권사·기관 전망(원문 인용 확인)" : "리서치 기관 공개 전망"}>
           {c.source_org ?? c.source}{c.source === "feed" ? " · 피드" : ""}</Badge>
-        <MetricHint hint={c.quote ?? ""}><span className={cn("underline decoration-dotted underline-offset-2", c.direction === "up" ? "text-up" : c.direction === "down" ? "text-down" : "")}>{claimText(c)}</span></MetricHint>
+        <MetricHint hint={c.quote ?? ""}><span className={cn("underline decoration-dotted underline-offset-2", c.direction === "up" ? "text-up-ink" : c.direction === "down" ? "text-down-ink" : "")}>{claimText(c)}</span></MetricHint>
         <span className="text-muted-foreground">{c.published_at?.slice(0, 10)}</span>
         {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-muted-foreground underline underline-offset-2">원문</a>}
       </li>)}</ul>

@@ -20,7 +20,7 @@ export function PctileBar({ value }: { value: number | null }) {
 }
 
 const REGIME_TONE: Record<RetailRegimeKey, string> = {
-  deleveraging: 'border-down/50 text-down', leverage_led: 'border-up/50 text-up', churn: 'border-hypothesis/50 text-hypothesis',
+  deleveraging: 'border-down/50 text-down-ink', leverage_led: 'border-up/50 text-up-ink', churn: 'border-hypothesis/50 text-hypothesis',
   broad_inflow: 'border-primary/50 text-primary', neutral: 'text-muted-foreground',
 }
 export function RegimeBadge({ regime, className = '' }: { regime: { key: RetailRegimeKey; label: string }; className?: string }) {

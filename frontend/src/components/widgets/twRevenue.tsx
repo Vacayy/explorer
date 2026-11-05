@@ -18,7 +18,7 @@ import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
  * 행: 이름·역할 · 최근 24개월 막대 · 최신 월매출(억 TWD) · YoY · 3개월 YoY. 3개월 YoY 높은 순.
  */
 
-const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
+const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
 
 function useTwMeta(): WidgetMeta {
   const q = useTwRevenue()

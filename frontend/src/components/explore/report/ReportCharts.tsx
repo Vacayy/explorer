@@ -56,9 +56,9 @@ function UpsideDownsideBars({ stocks, topPick }: { stocks: Stock[]; topPick?: st
                 </div>
               </div>
               <span className="w-24 shrink-0 tabular-nums text-muted-foreground">
-                <span className="text-down">{down ? `-${Math.round(down)}%` : "-"}</span>
+                <span className="text-down-ink">{down ? `-${Math.round(down)}%` : "-"}</span>
                 {" / "}
-                <span className="text-up">{up ? `+${Math.round(up)}%` : "-"}</span>
+                <span className="text-up-ink">{up ? `+${Math.round(up)}%` : "-"}</span>
               </span>
             </div>
           )
@@ -68,11 +68,11 @@ function UpsideDownsideBars({ stocks, topPick }: { stocks: Stock[]; topPick?: st
   )
 }
 
-/* ② Top-pick 주가 + 이동평균(20·60) — 밝은 고대비 조합(다크/라이트 공통 가시성) */
+/* ② Top-pick 주가 + 이동평균(20·60) — 선택 시리즈(종가) = 글자색, 이동평균 = 회색 단계 (D-320) */
 const PRICE_LINES: LineConfig[] = [
-  { key: "close", label: "종가", color: "#a78bfa", lineWidth: 2 },  // violet — 진회색 대신 밝게
-  { key: "ma20", label: "MA20", color: "#38bdf8", lineWidth: 1 },   // sky
-  { key: "ma60", label: "MA60", color: "#fb923c", lineWidth: 1 },   // orange
+  { key: "close", label: "종가", color: "--ink", lineWidth: 2 },
+  { key: "ma20", label: "MA20", color: "--ink-3", lineWidth: 1 },
+  { key: "ma60", label: "MA60", color: "--series", lineWidth: 1 },
 ]
 export interface PriceItem { trade_date: string; close: number }
 
@@ -117,7 +117,7 @@ function FwdPerChart({ code, name }: { code: string; name: string }) {
     <ChartBox title={`${name} 12M Fwd PER 추이`}>
       {isLoading ? <Skeleton className="h-[240px] w-full" />
         : series.length < 3 ? <Empty msg="컨센서스 이력 축적 중 (매일 스냅샷)" />
-        : <AreaSeriesChart data={series} height={240} color="#38bdf8" formatValue={(v) => `${v.toFixed(1)}배`} />}
+        : <AreaSeriesChart data={series} height={240} formatValue={(v) => `${v.toFixed(1)}배`} />}
     </ChartBox>
   )
 }

@@ -16,7 +16,7 @@ const GROUPS: { label: string; keys: TileKey[]; cols: string }[] = [
   { label: "신용", keys: ["hy", "bbb", "aaa", "baa10y", "aaa10y"], cols: "lg:grid-cols-5" },
   { label: "심리", keys: ["vix", "fear_greed"], cols: "lg:grid-cols-2" },
 ]
-const POSITION_CLS = { 높음: "border-hypothesis/40 bg-hypothesis/10 text-hypothesis", 보통: "text-muted-foreground", 낮음: "border-down/40 text-down" }
+const POSITION_CLS = { 높음: "border-hypothesis/40 bg-hypothesis/10 text-hypothesis", 보통: "text-muted-foreground", 낮음: "border-down/40 text-down-ink" }
 
 /**
  * 리스크 지표 묶음 — 홈 › 매크로 (ia-redesign 결정: 리스크 지표 묶음을 매크로에 둔다).
@@ -66,7 +66,7 @@ function Tile({ item, compact }: { item?: RiskIndicator; compact?: boolean }) {
       <span className={cn("font-mono font-medium tabular-nums", compact ? "text-base" : "text-lg")}>{riskValue(item.unit, item.value)}</span>
       <span className={cn("whitespace-nowrap font-mono text-caption tabular-nums", tone(item.change_20))}>20일 {riskChange(item.unit, item.change_20)}</span>
     </div>
-    {!fresh && <p className="text-[11px] text-hypothesis">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : item.quality === "missing" ? "미수집" : "갱신 실패"}{day ? ` · ${day} 값` : ""}</p>}
+    {!fresh && <p className="text-[11px] text-warn">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : item.quality === "missing" ? "미수집" : "갱신 실패"}{day ? ` · ${day} 값` : ""}</p>}
     {!compact && spark.length > 1 && <div className={cn("mt-2", !fresh && "opacity-60")}><SparkLine data={spark} height={34} /></div>}
   </div>
 }

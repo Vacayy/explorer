@@ -46,7 +46,7 @@ function ProfileBody({ profile, brief }: { profile: CompanyWebProfile; brief: bo
   const sources = profile.sources
   if (brief) return <div className="space-y-3 text-sm">
     <p className="line-clamp-4 leading-relaxed">{profile.overview}</p>
-    {profile.drivers.length > 0 && <section aria-label="성장 동인" className="space-y-1"><h3 className="text-caption font-medium text-up">성장 동인</h3>
+    {profile.drivers.length > 0 && <section aria-label="성장 동인" className="space-y-1"><h3 className="text-caption font-medium text-up-ink">성장 동인</h3>
       <ul className="list-disc space-y-1 pl-5">{profile.drivers.slice(0, 2).map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
   </div>
   return <div className="grid gap-x-8 gap-y-5 text-sm lg:grid-cols-2">
@@ -63,8 +63,8 @@ function ProfileBody({ profile, brief }: { profile: CompanyWebProfile; brief: bo
       {profile.competitors.length > 0 && <section aria-label="경쟁사" className="space-y-1"><h3 className="text-caption font-medium text-muted-foreground">경쟁사</h3><div className="flex flex-wrap gap-1">{profile.competitors.map(name => <Badge key={name} variant="outline" className="font-normal">{name}</Badge>)}</div></section>}
     </div>
     <div className="min-w-0 space-y-4">
-      {profile.drivers.length > 0 && <section aria-label="성장 동인" className="space-y-1"><h3 className="text-caption font-medium text-up">성장 동인</h3><ul className="list-disc space-y-1 pl-5">{profile.drivers.map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
-      {profile.risks.length > 0 && <section aria-label="리스크" className="space-y-1"><h3 className="text-caption font-medium text-down">리스크</h3><ul className="list-disc space-y-1 pl-5">{profile.risks.map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
+      {profile.drivers.length > 0 && <section aria-label="성장 동인" className="space-y-1"><h3 className="text-caption font-medium text-up-ink">성장 동인</h3><ul className="list-disc space-y-1 pl-5">{profile.drivers.map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
+      {profile.risks.length > 0 && <section aria-label="리스크" className="space-y-1"><h3 className="text-caption font-medium text-down-ink">리스크</h3><ul className="list-disc space-y-1 pl-5">{profile.risks.map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
       {profile.recent_events.length > 0 && <section aria-label="최근 사건" className="space-y-1"><h3 className="text-caption font-medium text-muted-foreground">최근 사건</h3><ul className="divide-y">{profile.recent_events.map((event, index) => <li key={index} className="grid grid-cols-[5.5rem_1fr] gap-x-2 py-1.5"><span className="font-mono text-caption tabular-nums text-muted-foreground">{event.date ?? '-'}</span><Cited text={event.title} ids={event.source_ids} sources={sources} /></li>)}</ul></section>}
       {profile.gaps.length > 0 && <section aria-label="확인하지 못한 것" className="space-y-1 bg-muted/60 p-3 text-caption"><h3 className="font-medium">확인하지 못한 것</h3><ul className="list-disc space-y-0.5 pl-5">{profile.gaps.map((g, i) => <li key={i}>{g}</li>)}</ul></section>}
     </div>

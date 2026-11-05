@@ -158,9 +158,9 @@ export function NarrativeList({
                   </span>
                   <Badge variant="outline" className="text-[10px]">{n.topic}</Badge>
                   {n.is_new ? (
-                    <span className="text-[10px] text-up">신규</span>
+                    <span className="text-[10px] text-up-ink">신규</span>
                   ) : n.share_delta_pp ? (
-                    <span className="text-[10px] text-up tabular-nums">+{n.share_delta_pp}%p</span>
+                    <span className="text-[10px] text-up-ink tabular-nums">+{n.share_delta_pp}%p</span>
                   ) : null}
                   {n.created_at && (
                     <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">

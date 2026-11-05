@@ -103,7 +103,7 @@ function ProgressLine({ d }: { d: SeasonOverview }) {
             <Progress value={pct} className="h-1.5 w-24" aria-label="발표 진행" />
             <span className="tabular-nums"><b>{formatNumber(c.reported)}</b> / {formatNumber(c.followed)}</span>
           </span>
-          <span>Outperform&nbsp;<b className="tabular-nums text-up">{formatNumber(c.up)}</b><span className="text-muted-foreground"> / {formatNumber(c.reported)}</span></span>
+          <span>Outperform&nbsp;<b className="tabular-nums text-up-ink">{formatNumber(c.up)}</b><span className="text-muted-foreground"> / {formatNumber(c.reported)}</span></span>
           <span>실적-주가 디커플링&nbsp;&nbsp;<b className="tabular-nums">{formatNumber(c.miss_up + c.beat_down)}</b></span>
           <span>반응 정리 <b className="tabular-nums">{formatNumber(c.reactions)}</b><span className="text-muted-foreground"> · 확정 {formatNumber(c.reactions_final)}</span></span>
           <InfoTip label="진행 줄 설명">

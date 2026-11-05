@@ -16,8 +16,8 @@ const THEME: Record<string, string> = { rates: "금리", inflation: "물가", gr
   ai: "AI", sector: "섹터", fx: "환율", policy: "정책", other: "기타" }
 const STATUS: Record<PricingStatus, { label: string; cls: string }> = {
   new: { label: "새로 등장", cls: "border-primary/40 text-primary" },
-  stronger: { label: "강해짐", cls: "border-up/40 text-up" },
-  weaker: { label: "약해짐·반론", cls: "border-chart-warning/50 text-hypothesis" },
+  stronger: { label: "강해짐", cls: "border-up/40 text-up-ink" },
+  weaker: { label: "약해짐·반론", cls: "border-chart-warning/50 text-warn" },
   faded: { label: "사라짐", cls: "text-muted-foreground" },
   ongoing: { label: "지속", cls: "text-muted-foreground" },
   dormant: { label: "지난 전제", cls: "text-muted-foreground" },
@@ -33,7 +33,7 @@ function chg(p: PricingPrice, v: number | null) {
   if (v == null) return "-"
   return p.mode === "bp" ? `${formatBp(v, true)}bp` : p.mode === "pct" ? formatPercent(v) : `${v > 0 ? "+" : ""}${v.toFixed(1)}`
 }
-const tone = (v: number | null) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
+const tone = (v: number | null) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
 
 /**
  * 시장이 가격에 반영하는 것(docs/specs/pricing-ledger.md §7) — 매일 브리핑에서 이어 본 전제 타임라인 + 가격 층.

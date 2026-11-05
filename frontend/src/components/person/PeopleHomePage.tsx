@@ -35,7 +35,7 @@ export default function PeopleHomePage() {
 }
 
 const signed = (d: number) => `${d > 0 ? "+" : ""}${formatNumber(d)}`
-const deltaTone = (d: number) => d > 0 ? "text-up" : d < 0 ? "text-down" : "text-muted-foreground"
+const deltaTone = (d: number) => d > 0 ? "text-up-ink" : d < 0 ? "text-down-ink" : "text-muted-foreground"
 const mmdd = (s: string | null) => s ? `${s.slice(5, 7)}/${s.slice(8, 10)}` : ""
 
 function PeopleHomeView() {

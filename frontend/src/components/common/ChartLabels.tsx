@@ -20,7 +20,7 @@ export function PercentLabel({ x = 0, y = 0, value }: LabelProps & { totalPoints
   const num = typeof value === "string" ? parseFloat(value) : value
   if (isNaN(num)) return null
   return (
-    <text x={x} y={y - 10} textAnchor="middle" fontSize={10} fontWeight={600} fill="#6b7280">
+    <text x={x} y={y - 10} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--ink-3)">
       {num.toFixed(1)}%
     </text>
   )
@@ -37,7 +37,7 @@ export function SparsePercentLabel({ x = 0, y = 0, index = 0, value }: LabelProp
   const num = typeof value === "string" ? parseFloat(value) : value
   if (isNaN(num)) return null
   return (
-    <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fontWeight={600} fill="#6b7280">
+    <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fontWeight={600} fill="var(--ink-3)">
       {num.toFixed(1)}%
     </text>
   )
@@ -49,7 +49,7 @@ export function EokLabel({ x = 0, y = 0, width = 0, value }: LabelProps) {
   const num = typeof value === "number" ? value : parseFloat(String(value))
   if (isNaN(num) || num === 0) return null
   return (
-    <text x={x + width / 2} y={y - 5} textAnchor="middle" fontSize={9} fontWeight={500} fill="#374151">
+    <text x={x + width / 2} y={y - 5} textAnchor="middle" fontSize={9} fontWeight={500} fill="var(--ink-2)">
       {num.toLocaleString("ko-KR")}
     </text>
   )
@@ -61,7 +61,7 @@ export function SparseEokLabel({ x = 0, y = 0, width = 0, index = 0, value }: La
   const num = typeof value === "number" ? value : parseFloat(String(value))
   if (isNaN(num) || num === 0) return null
   return (
-    <text x={x + width / 2} y={y - 5} textAnchor="middle" fontSize={8} fontWeight={500} fill="#374151">
+    <text x={x + width / 2} y={y - 5} textAnchor="middle" fontSize={8} fontWeight={500} fill="var(--ink-2)">
       {num.toLocaleString("ko-KR")}
     </text>
   )

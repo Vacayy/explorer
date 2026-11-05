@@ -15,7 +15,7 @@ import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
  * /api/portfolio는 저장된 시세만 읽고(갱신은 포트폴리오 화면의 POST), 묶음 요약도 생성 없이 읽기만 한다.
  */
 
-const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
+const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
 const noLedger = (d: PortfolioSummary) => !d.holdings.length && d.cash_weight_pct == null
 /** 기준 시각 = 장중 시세 시각 또는 종가일 */
 const quoteAsOf = (d?: PortfolioSummary) => d?.quoted_at ? `장중 ${d.quoted_at.slice(5, 10)} ${d.quoted_at.slice(11, 16)}` : d?.as_of ?? null
@@ -79,7 +79,7 @@ function FlowBody({ h }: WidgetBodyProps) {
         <li key={f.code} className="flex items-center gap-2 py-1.5">
           <Link to={`/analyze/${f.code}/mentions`} className="min-w-0 flex-1 truncate hover:underline">{f.name}</Link>
           {f.surge && <Badge variant="outline" className="shrink-0 border-hypothesis/40 text-[11px] text-hypothesis">급증</Badge>}
-          {f.tone_shift && <Badge variant="outline" className="shrink-0 border-down/40 text-[11px] text-down">부정 {f.neg_prev_pct}%→{f.neg_today_pct}%</Badge>}
+          {f.tone_shift && <Badge variant="outline" className="shrink-0 border-down/40 text-[11px] text-down-ink">부정 {f.neg_prev_pct}%→{f.neg_today_pct}%</Badge>}
           <span className="w-14 shrink-0 text-right tabular-nums text-muted-foreground">오늘 {f.today}</span>
         </li>
       ))}

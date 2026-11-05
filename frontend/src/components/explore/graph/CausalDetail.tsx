@@ -90,7 +90,7 @@ function UpsideResult({ stock, event }: { stock: string; event: string }) {
           <div className="flex items-center gap-1.5">
             <span className="font-medium">{s.name}{s.prob != null ? ` (${Math.round(s.prob * 100)}%)` : ""}</span>
             {s.upside_pct != null && (
-              <span className={cn("tabular-nums font-medium", s.upside_pct >= 0 ? "text-up" : "text-down")}>
+              <span className={cn("tabular-nums font-medium", s.upside_pct >= 0 ? "text-up-ink" : "text-down-ink")}>
                 {s.upside_pct >= 0 ? "+" : ""}{Math.round(s.upside_pct)}%
               </span>
             )}
@@ -210,7 +210,7 @@ function ScenarioBeneficiaryRow({ b, event }: { b: ScenarioBeneficiary; event: s
   return (
     <li className="rounded-card border px-2.5 py-1.5">
       <div className="flex items-center gap-1.5 flex-wrap">
-        <Badge variant="outline" className={cn("text-[9px]", harm ? "text-down border-down/40" : "text-up border-up/40")}>
+        <Badge variant="outline" className={cn("text-[9px]", harm ? "text-down-ink border-down/40" : "text-up-ink border-up/40")}>
           {b.rel ?? "수혜"}
         </Badge>
         {b.stock_code

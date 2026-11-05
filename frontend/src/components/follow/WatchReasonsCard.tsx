@@ -14,8 +14,8 @@ import { useGroupReasons, useStartReason } from '@/hooks/useGroups'
 import type { QuestionVerdict, StockGroupDetail } from '@/types'
 
 const VERDICT: Record<string, { label: string; cls: string }> = {
-  leaning_yes: { label: '지지', cls: 'text-up border-up/40' },
-  leaning_no: { label: '약화', cls: 'text-down border-down/40' },
+  leaning_yes: { label: '지지', cls: 'text-up-ink border-up/40' },
+  leaning_no: { label: '약화', cls: 'text-down-ink border-down/40' },
   mixed: { label: '엇갈림', cls: 'text-muted-foreground' },
   unknown: { label: '관측 전', cls: 'text-muted-foreground' },
 }

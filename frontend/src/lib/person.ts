@@ -19,7 +19,7 @@ export function roleOrg(r: PersonRole | null): string | null {
 /** 전제 판정 배지(매크로 › 구루 전제 원장과 같은 값) */
 export const PREMISE_STATUS: Record<PremiseStatus | 'none', { label: string; cls: string }> = {
   supports: { label: '지지', cls: 'border-chart-profit/50 text-chart-profit-dark' },
-  challenges: { label: '반증 쪽', cls: 'border-up/40 text-up' },
+  challenges: { label: '반증 쪽', cls: 'border-up/40 text-up-ink' },
   mixed: { label: '엇갈림', cls: 'border-chart-warning/50 text-hypothesis' },
   untestable: { label: '반증 불가', cls: 'text-muted-foreground' },
   nodata: { label: '데이터 없음', cls: 'text-muted-foreground' },

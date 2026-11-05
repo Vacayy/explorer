@@ -106,7 +106,7 @@ export default function FinancialsPage({ stockCode }: Props) {
         <ChartCard title={SJ_TABS.find((t) => t.value === sjDiv)?.label || ""}>
           <ResponsiveContainer width="100%" height={400}>
             <ComposedChart data={chartData} margin={{ top: 25, right: 20, bottom: 5, left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" />
               <XAxis dataKey="period" tick={{ fontSize: 12 }} />
               <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v.toLocaleString()}`} axisLine={false} tickLine={false} />
               {sjDiv === "IS" && (

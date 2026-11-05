@@ -16,7 +16,7 @@ import type { MacroIndicator } from "@/types"
  */
 const LIGHT: Record<string, { label: string; cls: string }> = {
   green: { label: "초록 · 확대", cls: "border-chart-profit/40 bg-chart-profit/10 text-chart-profit-dark" },
-  yellow: { label: "노랑 · 선별", cls: "border-hypothesis/40 bg-hypothesis/10 text-hypothesis" },
+  yellow: { label: "노랑 · 선별", cls: "border-warn/40 bg-warn/10 text-warn" },
   red: { label: "빨강 · 방어", cls: "border-destructive/40 bg-destructive/10 text-destructive" },
 }
 const COMPACT_KEYS = ["usdkrw", "us10y", "dxy", "net_liq", "hyg", "oil"]
@@ -82,7 +82,7 @@ export function MacroLiquidity({ compact }: { compact?: boolean }) {
       <CardContent className="space-y-3">
         {(light || data.interpretation) && <div className="flex flex-wrap items-center gap-2">
           {light && <Badge variant="outline" className={cn("font-medium", light.cls)}>{light.label}</Badge>}
-          {data.interpretation && <Badge variant="outline" className={cn("font-normal", data.interpretation.stance === "우호" ? "border-up/40 text-up" : data.interpretation.stance === "역풍" ? "border-down/40 text-down" : "text-muted-foreground")}>배경 {data.interpretation.stance}</Badge>}
+          {data.interpretation && <Badge variant="outline" className={cn("font-normal", data.interpretation.stance === "우호" ? "border-up/40 text-up-ink" : data.interpretation.stance === "역풍" ? "border-down/40 text-down-ink" : "text-muted-foreground")}>배경 {data.interpretation.stance}</Badge>}
           {data.signal && <span className="text-sm font-semibold">{data.signal.headline}</span>}
         </div>}
         {!compact && (data.signal ? <p className="max-w-4xl text-sm leading-relaxed">{data.signal.comment}</p>

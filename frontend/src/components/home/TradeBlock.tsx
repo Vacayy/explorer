@@ -70,7 +70,7 @@ function Body({ d }: { d: TradeHighlights }) {
               <span className="h-1.5 overflow-hidden bg-muted" aria-hidden="true"><span className="block h-full bg-foreground/70" style={{ width: `${g.value / maxGroup * 100}%` }} /></span>
               <span className="text-right font-mono tabular-nums">{formatUsd(g.value)}</span>
               <span className="whitespace-nowrap text-right">{!g.surge && !g.plunge ? <span className="text-muted-foreground">-</span> : <>
-                {!!g.surge && <span className="text-up">급등 {g.surge}</span>}{!!g.surge && !!g.plunge && " "}{!!g.plunge && <span className="text-down">급감 {g.plunge}</span>}
+                {!!g.surge && <span className="text-up-ink">급등 {g.surge}</span>}{!!g.surge && !!g.plunge && " "}{!!g.plunge && <span className="text-down-ink">급감 {g.plunge}</span>}
               </>}</span>
             </li>
           ))}</ul>

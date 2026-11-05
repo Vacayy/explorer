@@ -158,7 +158,7 @@ export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transc
   }
   const pt = chain.pt_after
   if (pt && pt.n > 0) {
-    after.push(<>발표 후 7일 목표가 변경 {pt.n}건(올림 <span className="text-up">{pt.up}</span>·내림 <span className="text-down">{pt.down}</span>)
+    after.push(<>발표 후 7일 목표가 변경 {pt.n}건(올림 <span className="text-up-ink">{pt.up}</span>·내림 <span className="text-down-ink">{pt.down}</span>)
       {pt.examples.length > 0 && <span className="text-muted-foreground"> · {pt.examples.slice(0, 3).join(", ")}</span>}</>)
   }
 
@@ -283,7 +283,7 @@ export function HistoryCard({ chain, transcriptId, onSelect }: { chain: ChainDet
                   <TableCell className="text-right"><Pp v={r.d7} /></TableCell>
                   <TableCell className="text-right tabular-nums whitespace-nowrap">
                     {r.pt_up == null && r.pt_down == null ? <span className="text-muted-foreground">-</span>
-                      : <><span className="text-up">{r.pt_up ?? 0}</span> · <span className="text-down">{r.pt_down ?? 0}</span></>}
+                      : <><span className="text-up-ink">{r.pt_up ?? 0}</span> · <span className="text-down-ink">{r.pt_down ?? 0}</span></>}
                   </TableCell>
                   <TableCell className="min-w-56 whitespace-normal">
                     {r.headline ?? <span className="inline-flex flex-wrap items-center gap-1.5 text-muted-foreground">

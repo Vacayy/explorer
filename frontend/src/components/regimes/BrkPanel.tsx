@@ -32,7 +32,7 @@ export function useBrkParams(defaultRange: BrkRange) {
   return { bench, view, range, set }
 }
 
-export const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
+export const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
 
 /** 약세장·침체 음영 — 국면은 항상 S&P500 기준 */
 export function brkBands(data: BrkResponse): RegimeBandSpec[] {

@@ -48,7 +48,7 @@ function BacktestSection() {
       <header className="flex flex-wrap items-baseline gap-x-3 px-4 pt-4">
         <h2 className="text-section font-semibold">신호 성적표 — 언급 급증 후 5거래일</h2>
         <span className="font-mono text-xs tabular-nums">
-          평균 <b className={cn(data.avg_ret != null && (data.avg_ret > 0 ? "text-up" : data.avg_ret < 0 ? "text-down" : ""))}>{formatPercent(data.avg_ret)}</b>
+          평균 <b className={cn(data.avg_ret != null && (data.avg_ret > 0 ? "text-up-ink" : data.avg_ret < 0 ? "text-down-ink" : ""))}>{formatPercent(data.avg_ret)}</b>
           <span className="text-muted-foreground"> · 적중 {formatRatio(data.hit_rate)} · {formatNumber(data.n)}건</span>
         </span>
       </header>
@@ -59,7 +59,7 @@ function BacktestSection() {
             {done.map((i, idx) => (
               <span key={idx}>
                 <span className="text-muted-foreground">{i.date.slice(5)}</span> {i.name}{" "}
-                <b className={i.ret_5d! > 0 ? "text-up" : i.ret_5d! < 0 ? "text-down" : ""}>{formatPercent(i.ret_5d)}</b>
+                <b className={i.ret_5d! > 0 ? "text-up-ink" : i.ret_5d! < 0 ? "text-down-ink" : ""}>{formatPercent(i.ret_5d)}</b>
               </span>
             ))}
           </div>}

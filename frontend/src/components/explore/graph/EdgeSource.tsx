@@ -49,7 +49,7 @@ function DocCard({ doc, quote }: { doc: SourceDoc; quote?: string | null }) {
       </div>
       <p className="text-sm font-medium leading-snug">{doc.title || "(제목 없음)"}</p>
       {quote && <blockquote className="border-l-2 border-primary/50 pl-2 text-xs leading-snug">“{quote}”</blockquote>}
-      {doc.thin && <p className="text-[11px] text-hypothesis">한두 줄짜리 전언입니다. 수치·데이터의 원출처가 본문에 없을 수 있습니다.</p>}
+      {doc.thin && <p className="text-[11px] text-warn">한두 줄짜리 전언입니다. 수치·데이터의 원출처가 본문에 없을 수 있습니다.</p>}
       <div className="flex flex-wrap gap-1">
         <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs"><Link to={`/doc/${doc.id}`}><FileText className="size-3.5" />문서 보기</Link></Button>
         {doc.url && <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs"><a href={doc.url} target="_blank" rel="noreferrer"><ExternalLink className="size-3.5" />원문</a></Button>}

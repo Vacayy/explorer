@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { createChart, ColorType, LineStyle, PriceScaleMode } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions, Time } from "lightweight-charts"
 import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
+import { chartOptions, useChartTheme } from "./chartTheme"
 
 /** 선·막대 계열. color·posColor·negColor는 CSS 변수 이름(--chart-1 등) — 캔버스용으로 마운트 때 해석한다 */
 export interface RegimeSeries {
@@ -46,6 +47,7 @@ export default function RegimeChart({ series, bands = [], height = 320, logScale
   const layerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<"Line" | "Histogram">[]>([])
+  const theme = useChartTheme()   // 테마가 바뀌면 토큰 색을 다시 읽어 차트를 다시 만든다
   const shapeKey = series.map(s => `${s.key}:${s.type ?? "line"}:${s.color}:${s.dashed ? 1 : 0}`).join("|")
 
   useEffect(() => {
@@ -61,6 +63,7 @@ export default function RegimeChart({ series, bands = [], height = 320, logScale
     }
     if (formatValue) opts.localization = { priceFormatter: formatValue }
     const chart = createChart(container, opts)
+    chart.applyOptions(chartOptions(theme))
     chartRef.current = chart
     const css = getComputedStyle(container)
     const color = (token: string) => css.getPropertyValue(token).trim() || "#888"
@@ -76,7 +79,7 @@ export default function RegimeChart({ series, bands = [], height = 320, logScale
     ro.observe(container)
     return () => { ro.disconnect(); chart.remove(); chartRef.current = null; seriesRef.current = [] }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, shapeKey, logScale, zeroLine])
+  }, [height, shapeKey, logScale, zeroLine, theme])
 
   useEffect(() => {
     const chart = chartRef.current, container = containerRef.current
@@ -91,7 +94,7 @@ export default function RegimeChart({ series, bands = [], height = 320, logScale
         : s.data.map(p => ({ time: p.time as Time, value: p.value })))
     })
     chart.timeScale().fitContent()
-  }, [series])
+  }, [series, theme])
 
   // 음영 — 구간 끝을 데이터에 있는 날짜로 맞춰 좌표를 잰다. 스크롤·확대·리사이즈 때 다시 잰다
   useEffect(() => {
@@ -124,7 +127,7 @@ export default function RegimeChart({ series, bands = [], height = 320, logScale
     const ro = new ResizeObserver(sync)
     ro.observe(container)
     return () => { ro.disconnect(); chart.timeScale().unsubscribeVisibleLogicalRangeChange(sync) }
-  }, [bands, series, height, shapeKey, logScale])
+  }, [bands, series, height, shapeKey, logScale, theme])
 
   return <div className="relative">
     <div className="pointer-events-none absolute top-2 left-3 z-10 flex flex-wrap gap-3 text-[11px] text-muted-foreground">

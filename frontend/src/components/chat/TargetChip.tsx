@@ -46,7 +46,7 @@ export function TargetChip({ target, onRemove, size = "md" }: { target: ChatTarg
         </Tooltip>
       </TooltipProvider>
       {meta && <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">{meta}</span>}
-      {change != null && size === "md" && <span className={cn("shrink-0 font-mono text-[11px] tabular-nums", change > 0 ? "text-up" : change < 0 ? "text-down" : "text-muted-foreground")}>{formatPercent(change)}</span>}
+      {change != null && size === "md" && <span className={cn("shrink-0 font-mono text-[11px] tabular-nums", change > 0 ? "text-up-ink" : change < 0 ? "text-down-ink" : "text-muted-foreground")}>{formatPercent(change)}</span>}
       {onRemove && (
         <Button variant="ghost" size="icon-xs" className="size-6 shrink-0 rounded-full" aria-label={`${label} 빼기`} onClick={onRemove}>
           <X className="size-3" />

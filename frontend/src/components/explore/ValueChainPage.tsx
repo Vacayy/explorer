@@ -67,7 +67,7 @@ function StreamEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, ta
   </>
 }
 const edgeTypes = { stream: StreamEdge }
-const stateTone = (s?: string | null) => !s ? "text-muted-foreground" : s === "가속" || s === "전환↑" ? "text-up" : s === "유지" ? "text-muted-foreground" : "text-down"
+const stateTone = (s?: string | null) => !s ? "text-muted-foreground" : s === "가속" || s === "전환↑" ? "text-up-ink" : s === "유지" ? "text-muted-foreground" : "text-down-ink"
 
 function ChainNode({ data }: NodeProps) {
   const d = data as unknown as ChainNodeData
@@ -339,7 +339,7 @@ function PropCard({ title, hint, rows }: { title: string; hint: string; rows: Pr
         <Link key={r.stock_code} to={`/analyze/${r.stock_code}/summary`} className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/50">
           <span className="font-medium">{r.name}</span>
           <span className="ml-auto flex gap-2 text-caption tabular-nums">
-            {(["taiwan", "trade", "disclosure"] as const).map(k => <span key={k} className={cn(r.directions[k] === "up" ? "text-up" : r.directions[k] === "down" ? "text-down" : "text-muted-foreground")}>
+            {(["taiwan", "trade", "disclosure"] as const).map(k => <span key={k} className={cn(r.directions[k] === "up" ? "text-up-ink" : r.directions[k] === "down" ? "text-down-ink" : "text-muted-foreground")}>
               {{ taiwan: "대만", trade: "수출", disclosure: "공시" }[k]} {r.directions[k] ? DIR[r.directions[k]!] : "-"}
             </span>)}
           </span>
@@ -396,7 +396,7 @@ function UsMembers({ members }: { members: UsMember[] }) {
       <span className="ml-auto tabular-nums">{formatUsd(m.value)}</span>
       {m.qoq_delta != null && <span className="w-20 text-right tabular-nums text-muted-foreground" title="전 분기 대비 순증가">
         {m.qoq_delta >= 0 ? "+" : "−"}{formatUsd(Math.abs(m.qoq_delta))} QoQ</span>}
-      <span className={cn("w-16 text-right tabular-nums", (m.yoy ?? 0) >= 0 ? "text-up" : "text-down")}>{formatPercent(m.yoy)}</span>
+      <span className={cn("w-16 text-right tabular-nums", (m.yoy ?? 0) >= 0 ? "text-up-ink" : "text-down-ink")}>{formatPercent(m.yoy)}</span>
       {m.customers && <CustomerLine c={m.customers} />}
     </li>)}
   </ul>
@@ -455,7 +455,7 @@ function AuxList({ aux }: { aux: VcAux[] }) {
 
 /** 신용·금리 여건 — 스프레드·금리가 오르면 조달이 어려워진다(긴축) */
 function MarketList({ market }: { market: VcMarket[] }) {
-  const tone = (s?: string | null) => s === "긴축" ? "text-down" : s === "완화" ? "text-up" : "text-muted-foreground"
+  const tone = (s?: string | null) => s === "긴축" ? "text-down-ink" : s === "완화" ? "text-up-ink" : "text-muted-foreground"
   return <div className="mt-3">
     <p className="text-caption font-medium text-muted-foreground">신용·금리 여건</p>
     <ul className="divide-y text-caption">
@@ -527,11 +527,11 @@ function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string
       </div>
       <div className="space-y-3">
         <div><p className="text-caption font-medium text-muted-foreground">다음 스포트라이트 가설 — 흐름은 가속, 시장은 아직 조용</p>
-          {data.spotlight.length ? data.spotlight.map(r => <Row key={r.key} r={r} tone="text-up" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
+          {data.spotlight.length ? data.spotlight.map(r => <Row key={r.key} r={r} tone="text-up-ink" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
         <div><p className="text-caption font-medium text-muted-foreground">흐름은 가속인데 시장이 의심하는 칸 — 이유 확인 대상</p>
           {data.doubted.length ? data.doubted.map(r => <Row key={r.key} r={{ ...r, falsifier: null }} tone="" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
         <div><p className="text-caption font-medium text-muted-foreground">식는 칸 — 흐름은 둔화, 관심·주가는 아직 높음</p>
-          {data.fading.length ? data.fading.map(r => <Row key={r.key} r={r} tone="text-down" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
+          {data.fading.length ? data.fading.map(r => <Row key={r.key} r={r} tone="text-down-ink" />) : <p className="px-2 text-caption text-muted-foreground">해당 칸이 없습니다.</p>}</div>
         {!!data.needs_check?.length && <div><p className="text-caption font-medium text-muted-foreground">확인 필요 — 업계 수출은 가속이지만 대리 관측이고 종목 공시가 받쳐 주지 않음</p>
           {data.needs_check.map(r => <Row key={r.key} r={r} tone="" />)}</div>}
       </div>
@@ -543,7 +543,7 @@ function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string
 const MAP_INFO = "행 = 단계(자본 조달 → 최종 수요 → 완제품 → 부품 → 칩 → 생산 → 장비 → 소재), 열 = 수요 갈래. 칸 = 이름 · 이번 달 상태 · 3개월 전년 대비. 상태는 성장률 변화가 그 칸 평소 변동의 ±1σ 이상이면 가속·둔화(이력이 짧은 칸은 ±10%p). 관측 원천: 대만 월매출 · 미국 분기 실적 · 한국 수출 HS(한국 장비·소재 칸은 업계 전체 수출로 보는 대리 관측) · 중국 세관·일본 무역통계. 회사 전체 매출이라 비 AI 사업이 섞입니다. 칸을 누르면 연결된 앞뒤 칸이 표시되고 상세가 열립니다."
 const STATES = ["가속", "유지", "둔화", "전환↑", "전환↓"] as const
 const CHIP_TONE: Record<string, string> = {
-  "가속": "bg-up/10 text-up", "유지": "bg-muted text-muted-foreground", "둔화": "bg-down/10 text-down",
+  "가속": "bg-up/10 text-up-ink", "유지": "bg-muted text-muted-foreground", "둔화": "bg-down/10 text-down-ink",
   "전환↑": "bg-chart-green/15 text-chart-green", "전환↓": "bg-chart-orange/15 text-chart-orange",
 }
 
@@ -553,9 +553,9 @@ function vcSummary(vc: ValueChainResponse): SummaryCell[] {
   const turnUp = n("전환↑")
   return [
     { label: "관측 노드", value: formatNumber(vc.nodes.filter(x => x.source).length), sub: vc.as_of ?? "-" },
-    { label: "가속", value: formatNumber(n("가속")), className: "text-up", sub: turnUp ? `전환↑ ${turnUp}` : undefined },
+    { label: "가속", value: formatNumber(n("가속")), className: "text-up-ink", sub: turnUp ? `전환↑ ${turnUp}` : undefined },
     { label: "유지", value: formatNumber(n("유지")) },
-    { label: "둔화·전환↓", value: formatNumber(n("둔화") + n("전환↓")), className: "text-down" },
+    { label: "둔화·전환↓", value: formatNumber(n("둔화") + n("전환↓")), className: "text-down-ink" },
   ]
 }
 
@@ -626,7 +626,7 @@ function DemandTable({ demands, onSelect }: { demands: VcDemand[]; onSelect: (k:
     <TableBody>{demands.map(d => <TableRow key={d.key} className="cursor-pointer" onClick={() => onSelect(d.key)}>
       <TableCell className="py-2 pl-3 font-medium">{d.name}<span className="block text-[11px] font-normal text-muted-foreground md:hidden">{d.obs_label ?? "-"}</span></TableCell>
       <TableCell className="max-w-md whitespace-normal py-2 text-muted-foreground max-md:hidden">{d.obs_label ?? "-"}</TableCell>
-      <TableCell className={cn("py-2 text-right font-mono tabular-nums", d.yoy_3m == null ? "text-muted-foreground" : d.yoy_3m > 0 ? "text-up" : "text-down")}>{formatPercent(d.yoy_3m)}</TableCell>
+      <TableCell className={cn("py-2 text-right font-mono tabular-nums", d.yoy_3m == null ? "text-muted-foreground" : d.yoy_3m > 0 ? "text-up-ink" : "text-down-ink")}>{formatPercent(d.yoy_3m)}</TableCell>
       <TableCell className="py-2 pr-3 text-right">{d.state ? <span className={cn("px-1.5 py-0.5 text-xs", CHIP_TONE[d.state])}>{d.state}</span> : <span className="text-muted-foreground">-</span>}</TableCell>
     </TableRow>)}</TableBody>
   </Table>

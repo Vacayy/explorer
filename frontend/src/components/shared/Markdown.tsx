@@ -28,7 +28,7 @@ function textOf(node: React.ReactNode): string {
 }
 function Td({ children, className, ...props }: React.ComponentProps<"td">) {
   const m = SIGNED_PCT.exec(textOf(children))
-  const tone = m ? (m[1] === "+" ? "text-up" : "text-down") : undefined
+  const tone = m ? (m[1] === "+" ? "text-up-ink" : "text-down-ink") : undefined
   return <td className={cn(tone, className)} {...props}>{children}</td>
 }
 

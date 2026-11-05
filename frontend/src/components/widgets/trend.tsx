@@ -135,7 +135,7 @@ function TrendList({ items: all, universe, passed, criteria, wide, short, stage,
               </span>}
             </span>
             <SparkLine data={t.spark} height={18} />
-            <span className="text-right tabular-nums text-up">{formatPercent(t.ret_60)}</span>
+            <span className="text-right tabular-nums text-up-ink">{formatPercent(t.ret_60)}</span>
             {wide && <><span className="text-right tabular-nums text-muted-foreground">{formatLevel(t.r2)}</span>
               <span className="text-right tabular-nums text-muted-foreground">{formatNumber(Math.round(t.adx))}</span>
               <span className={cn("text-right tabular-nums", t.gap_ma20 >= 15 ? "text-chart-warning" : "text-muted-foreground")}>{formatPercent(t.gap_ma20)}</span></>}

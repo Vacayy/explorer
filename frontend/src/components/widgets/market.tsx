@@ -18,10 +18,7 @@ import type { WidgetBodyProps, WidgetMeta } from "./types"
  * 각 위젯은 { meta(기준 시각·고장), body }를 돌려주는 훅 + 본문 컴포넌트 한 쌍이다.
  */
 
-const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
-const stripCell = "flex min-w-0 flex-1 flex-col justify-center border-l px-3 first:border-l-0 max-lg:min-w-28"
-// 1024 미만은 칸을 줄이지 않고 띠 안에서 가로로 민다 — 숫자가 잘리거나 겹치지 않게
-const stripRow = "flex h-full items-stretch overflow-hidden max-lg:overflow-x-auto max-lg:overscroll-x-contain"
+const tone = (v: number | null | undefined) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
 
 /* ── 지수 띠 ── */
 export function useIndicesMeta(): WidgetMeta {
@@ -31,16 +28,20 @@ export function useIndicesMeta(): WidgetMeta {
 export function IndicesBody(_: WidgetBodyProps) {
   const q = useIndices()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  return <div className={stripRow}>
+  // 시안 Home 지수 띠 — 칸 최소 132px, 넘치면 띠 안에서 가로로 민다. 점: 장중 = 사실(초록) · 마감 = --closed
+  return <div className="grid h-full auto-cols-[minmax(132px,1fr)] grid-flow-col overflow-x-auto overscroll-x-contain">
     {q.data.items.map(r => (
-      <div key={r.key} className={stripCell}>
-        <span className="flex items-baseline justify-between gap-1 text-[11px]">
-          <span className="truncate text-muted-foreground"><span className={cn("mr-1 inline-block size-1.5 rounded-full align-middle", r.is_open ? "bg-chart-green" : "bg-muted-foreground/40")} />{r.label}</span>
-          <span className={cn("shrink-0 tabular-nums", tone(r.change_pct))}>{formatPercent(r.change_pct)}</span>
+      <div key={r.key} className="flex min-w-0 flex-col gap-1 border-r border-glass-line px-3.5 py-3 last:border-r-0">
+        <span className="flex items-center justify-between gap-1.5 text-xs">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <span title={r.is_open ? "장중" : "마감"} aria-label={r.is_open ? "장중" : "마감"} className={cn("size-[7px] flex-none rounded-full", r.is_open ? "bg-fact shadow-[0_0_0_3px_var(--fact-tint)]" : "bg-closed")} />
+            <span className="truncate">{r.label}</span>
+          </span>
+          <span className={cn("shrink-0 font-mono tabular-nums", tone(r.change_pct))}>{formatPercent(r.change_pct)}</span>
         </span>
-        <span className="truncate text-sm font-semibold tabular-nums">{formatLevel(r.price)}</span>
-        {/* 1Y 추이 — 남는 높이를 채운다(위젯을 키우면 같이 커진다) */}
-        <div className="mt-1 min-h-3 flex-1"><SparkLine data={r.spark} height={20} className="h-full w-full" /></div>
+        <span className="truncate font-mono text-[17px] tabular-nums">{formatLevel(r.price)}</span>
+        {/* 1Y 추이 */}
+        <div className="h-5"><SparkLine data={r.spark} height={20} className="h-full w-full" /></div>
       </div>
     ))}
   </div>
@@ -57,14 +58,15 @@ export function ContextBody(_: WidgetBodyProps) {
   const q = useMacro()
   if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   const items = CONTEXT_KEYS.map(k => q.data!.items.find(i => i.key === k)).filter(Boolean) as NonNullable<typeof q.data>["items"]
-  return <div className={stripRow}>
+  // 시안 Home 시장 요약 띠 — 한 줄(라벨 · 값 · 변동), 넘치면 띠 안에서 가로로 민다
+  return <div className="flex overflow-x-auto overscroll-x-contain">
     {items.map(m => (
       // 올리면(클릭·키보드도) 추이 차트 — 시장 브리핑 지표 띠와 같은 MetricTrend
       <MetricTrend key={m.key} label={m.label} points={m.dated_series} format={v => fmtValue({ ...m, value: v })}
-        className={cn(stripCell, "h-full items-start gap-0 rounded-none py-0 text-left font-normal")}>
-        <span className="truncate text-[11px] text-muted-foreground">{m.label}</span>
-        <span className="truncate text-sm font-semibold tabular-nums">{fmtValue(m)}</span>
-        <span className={cn("text-[11px] tabular-nums", tone(m.change_pct))}>{formatPercent(m.change_pct)}</span>
+        className="h-auto shrink-0 items-baseline gap-2 rounded-none border-r border-glass-line px-3.5 py-2 text-left font-normal whitespace-nowrap last:border-r-0 hover:bg-transparent hover:opacity-75">
+        <span className="text-xs opacity-85">{m.label}</span>
+        <span className="font-mono text-[13.5px] tabular-nums">{fmtValue(m)}</span>
+        <span className={cn("font-mono text-xs tabular-nums", tone(m.change_pct))}>{formatPercent(m.change_pct)}</span>
       </MetricTrend>
     ))}
   </div>
@@ -112,7 +114,7 @@ export function useRegimeMeta(): WidgetMeta {
   const q = useMarketRegime()
   return { asOf: q.data?.as_of ?? null, stale: !!q.data?.degraded.length }
 }
-const POSTURE_TONE: Record<string, string> = { caution: "border-chart-warning/50 text-chart-warning", risk: "border-down/50 text-down", favorable: "border-up/50 text-up", neutral: "text-muted-foreground" }
+const POSTURE_TONE: Record<string, string> = { caution: "border-chart-warning/50 text-chart-warning", risk: "border-down/50 text-down-ink", favorable: "border-up/50 text-up-ink", neutral: "text-muted-foreground" }
 export function RegimeBody({ h }: WidgetBodyProps) {
   const q = useMarketRegime()
   const d = q.data

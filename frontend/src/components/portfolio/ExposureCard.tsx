@@ -17,8 +17,8 @@ const SOURCE_HELP = {
   chain: '같은 밸류체인에 속함',
 } as const
 const DIRECTION: Record<string, { label: string; cls: string }> = {
-  '+': { label: '수혜 요인', cls: 'text-up' },
-  '−': { label: '부담 요인', cls: 'text-down' },
+  '+': { label: '수혜 요인', cls: 'text-up-ink' },
+  '−': { label: '부담 요인', cls: 'text-down-ink' },
   '+−': { label: '영향 엇갈림', cls: 'text-muted-foreground' },
 }
 

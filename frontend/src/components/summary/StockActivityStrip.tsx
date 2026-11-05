@@ -33,7 +33,7 @@ export function StockActivityStrip({ stockCode }: { stockCode: string }) {
               {acts.filter((a) => !a.is_correction).slice(0, 3).map((a) => (
                 <a key={a.id} href={a.dart_url} target="_blank" rel="noreferrer" title={a.summary ?? a.report_nm ?? undefined}
                   className="inline-flex items-center gap-1 hover:underline">
-                  <Badge variant="secondary" className={cn("h-4 px-1 text-[10px]", a.action_type === "유상증자" && "bg-down/10 text-down", a.action_type === "무상증자" && "bg-up/10 text-up")}>{a.action_type}</Badge>
+                  <Badge variant="secondary" className={cn("h-4 px-1 text-[10px]", a.action_type === "유상증자" && "bg-down/10 text-down-ink", a.action_type === "무상증자" && "bg-up/10 text-up-ink")}>{a.action_type}</Badge>
                   <span className="tabular-nums text-muted-foreground">{mmdd(a.rcept_dt)}</span>
                 </a>
               ))}
@@ -46,7 +46,7 @@ export function StockActivityStrip({ stockCode }: { stockCode: string }) {
               : items.slice(0, 4).map((t) => (
                 <Link key={t.hs_code} to={`/follow/trade?hs=${encodeURIComponent(t.hs_code)}`} className="inline-flex items-center gap-1 hover:underline">
                   <span>{t.item_name}</span>
-                  <span className={cn("tabular-nums text-xs", (t.yoy_pct ?? 0) >= 0 ? "text-up" : "text-down")}>{formatPercent(t.yoy_pct)}</span>
+                  <span className={cn("tabular-nums text-xs", (t.yoy_pct ?? 0) >= 0 ? "text-up-ink" : "text-down-ink")}>{formatPercent(t.yoy_pct)}</span>
                   <TradeFlagBadge flag={t.flag} reason={t.reason} />
                   {t.rel && <span className="text-[10px] text-muted-foreground">{t.rel}</span>}
                 </Link>

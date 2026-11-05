@@ -21,12 +21,12 @@ export const ShellButton = forwardRef<HTMLButtonElement, Props>(function ShellBu
     <Tooltip>
       <TooltipTrigger asChild>
         <Button ref={ref} variant="ghost" size="icon-sm" aria-label={rest["aria-label"] ?? label}
-          aria-pressed={pressed} className={cn("relative text-muted-foreground hover:text-foreground max-md:size-10", pressed && "bg-muted text-foreground", className)} {...rest}>
+          aria-pressed={pressed} className={cn("relative rounded-lg text-ink-2 hover:bg-chip hover:text-ink max-md:size-10", pressed && "bg-chip text-ink", className)} {...rest}>
           <Icon className="size-[18px]" aria-hidden />
           {badge != null && badge > 0 && (
             <span className={cn(
-              "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none tabular-nums text-white",
-              badgeTone === "hypothesis" ? "bg-hypothesis" : "bg-primary",
+              "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none tabular-nums",
+              badgeTone === "hypothesis" ? "bg-hyp text-action-ink" : "bg-primary text-primary-foreground",
             )}>
               {badge > 99 ? "99+" : badge}
             </span>

@@ -247,7 +247,7 @@ export default function Omnibar() {
             {visibleCompanies.map(c => <CommandItem key={c.stock_code} value={`kr-${c.stock_code}`} data-stock={c.stock_code} data-name={c.name} data-market="kr" onSelect={() => openCompany({ code: c.stock_code, name: c.name, market: "kr" })}>
               <Row icon={<Building2 className="size-4" />} title={<>{intent === "choseong" ? c.name : <Highlight text={c.name} q={q} />} <span className="font-mono text-caption font-normal text-muted-foreground">{c.stock_code}</span></>}
                 sub={[c.alias ? `별칭 “${c.alias}”` : null, c.market, c.sector, c.market_cap != null ? `시총 ${formatKrw(c.market_cap)}` : null].filter(Boolean).join(" · ")}
-                right={<span className="flex items-center gap-2">{c.close != null ? <span className="font-mono text-foreground">{formatNumber(c.close)}원 <span className={c.change_pct == null ? "" : c.change_pct > 0 ? "text-up" : c.change_pct < 0 ? "text-down" : ""}>{c.change_pct != null ? formatPercent(c.change_pct) : ""}</span></span> : <span>시세 없음</span>}{c.in_groups.length > 0 && <Badge variant="outline" className="font-normal max-md:hidden">{c.in_groups[0]}</Badge>}</span>} />
+                right={<span className="flex items-center gap-2">{c.close != null ? <span className="font-mono text-foreground">{formatNumber(c.close)}원 <span className={c.change_pct == null ? "" : c.change_pct > 0 ? "text-up-ink" : c.change_pct < 0 ? "text-down-ink" : ""}>{c.change_pct != null ? formatPercent(c.change_pct) : ""}</span></span> : <span>시세 없음</span>}{c.in_groups.length > 0 && <Badge variant="outline" className="font-normal max-md:hidden">{c.in_groups[0]}</Badge>}</span>} />
             </CommandItem>)}
             {companies.length > 5 && !showAll && <CommandItem value="more-companies" onSelect={() => setShowAll(true)}><Row icon={<span className="text-xs">+{companies.length - 5}</span>} title="더 보기" sub="시가총액순 나머지" /></CommandItem>}
           </CommandGroup>}
@@ -302,7 +302,7 @@ function StockActions({ focus, step, onStep, groups, projects, adding, onOpen, o
   const head = <div className="flex items-center gap-2 border-b px-3 py-2.5 text-sm">
     <span className="font-semibold">{focus.name}</span>
     <span className="font-mono text-caption text-muted-foreground">{focus.code}{focus.board ? ` · ${focus.board}` : ""}</span>
-    {focus.close != null && <span className="ml-auto font-mono tabular-nums">{formatNumber(focus.close)}원 <span className={focus.change_pct == null ? "" : focus.change_pct > 0 ? "text-up" : focus.change_pct < 0 ? "text-down" : ""}>{focus.change_pct != null ? formatPercent(focus.change_pct) : ""}</span></span>}
+    {focus.close != null && <span className="ml-auto font-mono tabular-nums">{formatNumber(focus.close)}원 <span className={focus.change_pct == null ? "" : focus.change_pct > 0 ? "text-up-ink" : focus.change_pct < 0 ? "text-down-ink" : ""}>{focus.change_pct != null ? formatPercent(focus.change_pct) : ""}</span></span>}
   </div>
   if (step === "groups") return <>
     {head}

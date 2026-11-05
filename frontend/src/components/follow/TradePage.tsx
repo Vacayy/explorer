@@ -138,7 +138,7 @@ function TradeCell({ f, mine, onPick }: { f: TradeFollowRow; mine: boolean; onPi
     className="block h-auto w-full whitespace-normal rounded-none p-3 text-left font-normal">
     <span className="flex items-center gap-1.5">
       <span className="min-w-0 truncate text-[13px] font-semibold">{f.item_name}</span>
-      {surge && <Badge variant="outline" className="h-4 shrink-0 border-up/40 px-1 text-[10px] font-normal text-up">급등</Badge>}
+      {surge && <Badge variant="outline" className="h-4 shrink-0 border-up/40 px-1 text-[10px] font-normal text-up-ink">급등</Badge>}
       {mine && <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px] font-normal">내 종목</Badge>}
       <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{f.group_label ?? ""}</span>
     </span>
@@ -223,8 +223,8 @@ function IndustryTable({ q }: { q: HlQuery }) {
           <TableCell className="py-2 text-right font-mono tabular-nums">{formatUsd(g.value)}</TableCell>
           <TableCell className="py-2 text-right font-mono tabular-nums">{formatRatio(d.total_usd ? g.value / d.total_usd * 100 : null)}</TableCell>
           <TableCell className="py-2 text-right font-mono tabular-nums max-sm:hidden">{g.count}</TableCell>
-          <TableCell className={cn("py-2 text-right font-mono tabular-nums", g.surge ? "text-up" : "text-muted-foreground")}>{g.surge || "-"}</TableCell>
-          <TableCell className={cn("py-2 pr-3 text-right font-mono tabular-nums", g.plunge ? "text-down" : "text-muted-foreground")}>{g.plunge || "-"}</TableCell>
+          <TableCell className={cn("py-2 text-right font-mono tabular-nums", g.surge ? "text-up-ink" : "text-muted-foreground")}>{g.surge || "-"}</TableCell>
+          <TableCell className={cn("py-2 pr-3 text-right font-mono tabular-nums", g.plunge ? "text-down-ink" : "text-muted-foreground")}>{g.plunge || "-"}</TableCell>
         </TableRow>)}</TableBody>
       </Table>}
   </HomeBlock>
@@ -314,7 +314,7 @@ function TradeDetail({ hs }: { hs: string }) {
             <ul className="space-y-1.5">
               {data.beneficiaries.map((b, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs">
-                  <Badge variant="outline" className={cn("text-[9px] shrink-0", b.rel === "수혜" ? "text-up border-up/40" : "text-down border-down/40")}>{b.rel}</Badge>
+                  <Badge variant="outline" className={cn("text-[9px] shrink-0", b.rel === "수혜" ? "text-up-ink border-up/40" : "text-down-ink border-down/40")}>{b.rel}</Badge>
                   <div className="min-w-0 flex-1">
                     <span className="font-medium">
                       {b.stock_code ? <Link to={`/analyze/${b.stock_code}/summary`} className="text-primary hover:underline">{b.name}</Link> : b.name}

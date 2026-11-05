@@ -26,7 +26,7 @@ import { formatKrw, formatNumber, formatPercent, formatPrice } from '@/utils/for
 import type { StockGroupDetail, StockGroupKind, StockGroupMember, StrategyCatalogItem, WatchRule, WatchRuleInput } from '@/types'
 
 const KIND_LABEL: Record<StockGroupKind, string> = { watch: '관심', portfolio: '포트폴리오' }
-const changeClass = (value: number | null) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up' : value < 0 ? 'text-down' : ''
+const changeClass = (value: number | null) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up-ink' : value < 0 ? 'text-down-ink' : ''
 const signedPercent = (value: number | null) => value == null ? '-' : formatPercent(value)
 const ruleKey = (rule: WatchRuleInput) => `${rule.strategy_id}:${JSON.stringify(rule.params ?? {})}:${rule.within_days ?? 1}`
 const toInput = (rule: WatchRule): WatchRuleInput => ({ strategy_id: rule.strategy_id, params: rule.params, within_days: rule.within_days, source_strategy_id: rule.source_strategy_id, source_version: rule.source_version })
@@ -62,7 +62,7 @@ function GroupList({ onOpen }: { onOpen: (id: number) => void }) {
       : <div className="surface-grid grid sm:grid-cols-2 lg:grid-cols-3">{groups.data.items.map(group => <Button key={group.id} variant="ghost" className="h-auto flex-col items-stretch gap-2 whitespace-normal rounded-card border bg-card p-3 text-left" onClick={() => onOpen(group.id)}>
         <span className="flex items-start justify-between gap-2"><span className="font-semibold">{group.name}</span><Badge variant="outline">{KIND_LABEL[group.kind]}</Badge></span>
         <span className="text-caption font-normal text-muted-foreground">{formatNumber(group.member_count)}종목 · 조건 {formatNumber(group.rule_count)}개</span>
-        <span className="flex items-center justify-between gap-2 text-sm font-normal"><span className={group.today_signals > 0 ? 'font-medium text-up' : 'text-muted-foreground'}>{group.last_as_of ? `신호 ${formatNumber(group.today_signals)}개` : '아직 평가 전'}</span><span className="text-caption text-muted-foreground">{group.last_as_of ? `${group.last_as_of} 기준` : ''}</span></span>
+        <span className="flex items-center justify-between gap-2 text-sm font-normal"><span className={group.today_signals > 0 ? 'font-medium text-up-ink' : 'text-muted-foreground'}>{group.last_as_of ? `신호 ${formatNumber(group.today_signals)}개` : '아직 평가 전'}</span><span className="text-caption text-muted-foreground">{group.last_as_of ? `${group.last_as_of} 기준` : ''}</span></span>
       </Button>)}</div>)}
     {groups.data?.latest_trade_date && <p className="text-caption text-muted-foreground">평가는 평일 16:40에 자동으로 돌고, 저장된 최신 시세일은 {groups.data.latest_trade_date}입니다. 모델 호출 없이 계산만 하므로 비용이 들지 않습니다.</p>}
     <Dialog open={creating} onOpenChange={setCreating}>
@@ -102,9 +102,9 @@ function GroupDetail({ groupId, onBack }: { groupId: number; onBack: () => void 
     {group.isError && <ErrorState message="묶음을 불러오지 못했습니다." onRetry={() => group.refetch()} />}
     {detail && <>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
-        {detail.last_as_of ? <span>{detail.last_as_of} 기준 평가 · 오늘 신호 <span className={detail.today_signals > 0 ? 'font-medium text-up' : ''}>{formatNumber(detail.today_signals)}개</span></span> : <span>아직 평가한 적이 없습니다.</span>}
-        {detail.evaluation_pending && detail.latest_trade_date && <span className="text-hypothesis">최신 시세일 {detail.latest_trade_date}은 아직 평가 전입니다. ‘지금 평가’를 누르거나 16:40 자동 실행을 기다리세요.</span>}
-        {detail.rules.default.length === 0 && Object.keys(detail.rules.members).length === 0 && <span className="text-hypothesis">조건이 없습니다. ‘기본 조건’에서 전략을 추가하세요.</span>}
+        {detail.last_as_of ? <span>{detail.last_as_of} 기준 평가 · 오늘 신호 <span className={detail.today_signals > 0 ? 'font-medium text-up-ink' : ''}>{formatNumber(detail.today_signals)}개</span></span> : <span>아직 평가한 적이 없습니다.</span>}
+        {detail.evaluation_pending && detail.latest_trade_date && <span className="text-warn">최신 시세일 {detail.latest_trade_date}은 아직 평가 전입니다. ‘지금 평가’를 누르거나 16:40 자동 실행을 기다리세요.</span>}
+        {detail.rules.default.length === 0 && Object.keys(detail.rules.members).length === 0 && <span className="text-warn">조건이 없습니다. ‘기본 조건’에서 전략을 추가하세요.</span>}
       </div>
       <MemberTable detail={detail} onEditRules={code => setEditing(code)} />
       {detail.kind === 'watch' && <WatchReasonsCard detail={detail} />}

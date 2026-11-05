@@ -60,7 +60,7 @@ export function GraphActivitySection() {
                   <span className="text-sm font-medium group-hover:underline">{n.name}</span>
                   <Badge variant="outline" className="text-[10px]">{NODE_LABEL[n.type] ?? n.type}</Badge>
                   {n.is_new
-                    ? <span className="text-caption text-up">신규</span>
+                    ? <span className="text-caption text-up-ink">신규</span>
                     : <span className="text-caption tabular-nums text-muted-foreground">갱신 +{formatNumber(n.new_edges)}</span>}
                 </div>
                 {n.beneficiaries.length > 0 && (

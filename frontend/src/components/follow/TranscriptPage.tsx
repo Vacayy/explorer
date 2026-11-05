@@ -311,7 +311,7 @@ function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId
         active && "bg-accent text-accent-foreground font-semibold", !f.latest && "opacity-40")}>
       <span className="font-medium tabular-nums">{f.ticker}</span>
       <span className="truncate text-xs text-muted-foreground flex-1">{f.company_name}</span>
-      {f.season_updated && <span className="shrink-0 rounded bg-up/10 px-1 text-[9px] font-medium text-up">{seasonQ()}Q 실적</span>}
+      {f.season_updated && <span className="shrink-0 rounded bg-up/10 px-1 text-[9px] font-medium text-up-ink">{seasonQ()}Q 실적</span>}
       {imminent && !f.season_updated && (
         <span className="text-[9px] font-medium tabular-nums shrink-0 rounded bg-primary/10 px-1 text-primary" title={`다음 실적 ${f.next_report_date}`}>
           {ddayLabel(dd!)}

@@ -45,7 +45,7 @@ function KrMetrics({ stockCode, price }: { stockCode: string; price: number | nu
       { label: '영업이익률', value: formatRatio(k?.op_margin) },
       { label: 'ROE', value: formatRatio(k?.roe) },
       { label: '목표가 컨센서스', value: k?.target_price_consensus ? formatStockPrice(k.target_price_consensus, 'kr') : '-',
-        sub: room != null ? <span className={room >= 0 ? 'text-up' : 'text-down'}>{formatPercent(room)} 여력</span> : undefined },
+        sub: room != null ? <span className={room >= 0 ? 'text-up-ink' : 'text-down-ink'}>{formatPercent(room)} 여력</span> : undefined },
     ]} />
   )
 }

@@ -270,7 +270,7 @@ export default function WorldviewPage() {
         </ToggleGroup>
         <span className="text-[10px] text-muted-foreground ml-1">
           {edgeMode === "effect"
-            ? <>색 = 방향(<span className="text-up">정+</span> 늘림 / <span className="text-down">부−</span> 줄임) · 굵기 = 효과 크기(약할수록 흐림)</>
+            ? <>색 = 방향(<span className="text-up-ink">정+</span> 늘림 / <span className="text-down-ink">부−</span> 줄임) · 굵기 = 효과 크기(약할수록 흐림)</>
             : <>색 = <span className="text-destructive">상충</span> / <span className="text-hypothesis">플라이휠</span> · 굵기 = 교차검증</>}
         </span>
       </div>
@@ -560,7 +560,7 @@ function EdgeGraphPanel({ edge, onClose }: { edge: WEdge; onClose: () => void })
           )}
         </div>
         {edge.feedback_note && (
-          <p className="text-[11px] text-muted-foreground border-l-2 border-hypothesis/40 pl-2">
+          <p className="bg-hyp-tint px-2 py-1.5 text-[11px] text-muted-foreground">
             피드백 나선 판정: {edge.feedback_note}
           </p>
         )}

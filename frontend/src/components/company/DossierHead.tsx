@@ -26,7 +26,7 @@ export function DossierHead({ eyebrow, name, last, market, loading, actions }: {
           : last ? (
             <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
               <span className="font-mono text-2xl tabular-nums">{formatStockPrice(last.close, market)}</span>
-              <span className={cn('font-mono text-sm tabular-nums', last.changePct == null ? 'text-muted-foreground' : last.changePct > 0 ? 'text-up' : last.changePct < 0 ? 'text-down' : '')}>
+              <span className={cn('font-mono text-sm tabular-nums', last.changePct == null ? 'text-muted-foreground' : last.changePct > 0 ? 'text-up-ink' : last.changePct < 0 ? 'text-down-ink' : '')}>
                 {formatPercent(last.changePct)}
               </span>
               <span className="text-caption text-muted-foreground">{shortDate(last.date)} 종가</span>

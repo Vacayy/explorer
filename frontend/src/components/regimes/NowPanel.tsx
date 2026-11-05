@@ -27,9 +27,9 @@ import { PricingCompact, PricingSection } from "./PricingSection"
 import { InfoTip, Section } from "./Section"
 
 const HEAT: Record<EraHeat, { label: string; cls: string }> = {
-  hot: { label: "뜨거움", cls: "border-up/40 text-up" },
+  hot: { label: "뜨거움", cls: "border-up/40 text-up-ink" },
   normal: { label: "보통", cls: "text-muted-foreground" },
-  cold: { label: "차가움", cls: "border-down/40 text-down" },
+  cold: { label: "차가움", cls: "border-down/40 text-down-ink" },
 }
 const PREMISE = PREMISE_STATUS   // 인물 기록 원장과 같은 배지(lib/person)
 const VERDICT = { hot: "뜨거움 우세", cold: "차가움 우세", balanced: "균형" } as const
@@ -86,7 +86,7 @@ function Summary({ data, pending, failed, onRetry }: { data?: EraStateResponse; 
     <div className="surface-grid grid grid-cols-2 lg:grid-cols-5">
       {tiles.map((x, i) => <a key={x.href} href={x.href} className={cn("rounded-card border bg-card px-4 py-3 transition-colors hover:bg-muted/50", i === 4 && "max-lg:col-span-2")}>
         <div className="text-caption text-muted-foreground">{x.label}</div>
-        {pending && i < 4 ? <Skeleton className="mt-1.5 h-5 w-20" /> : <div className={cn("mt-0.5 text-lg font-semibold", x.warn && "text-up")}>{x.value}</div>}
+        {pending && i < 4 ? <Skeleton className="mt-1.5 h-5 w-20" /> : <div className={cn("mt-0.5 text-lg font-semibold", x.warn && "text-up-ink")}>{x.value}</div>}
         <div className="text-caption text-muted-foreground">{x.sub}</div>
       </a>)}
     </div>
@@ -150,7 +150,7 @@ function SignalCard({ name, sig, active, detail, compact }: { name: string; sig:
   return <div className={cn("min-w-0 space-y-2 rounded-card border px-4 py-3", active && "border-up/40 bg-up/5")}>
     <div className="flex flex-wrap items-center gap-2">
       <Light on={sig.on} /><span className="text-sm font-semibold">{name}</span>
-      <Badge variant="outline" className={cn("font-normal", sig.on ? "border-up/40 text-up" : "text-muted-foreground")}>{sig.on ? "켜짐" : "꺼짐"}</Badge>
+      <Badge variant="outline" className={cn("font-normal", sig.on ? "border-up/40 text-up-ink" : "text-muted-foreground")}>{sig.on ? "켜짐" : "꺼짐"}</Badge>
       <InfoTip label={`${name} 규칙`}>{sig.label}</InfoTip>
       <span className="ml-auto text-caption text-muted-foreground">
         {compact ? `약세장 ${st.bears_caught}/${st.bears_total} · 헛경보 10년에 ${st.false_per_decade}` : sig.since ? `${sig.since}부터 이 상태` : ""}
@@ -172,7 +172,7 @@ function StateSection({ data, compact }: { data: EraStateResponse; compact?: boo
     <div className={cn("surface-grid grid", !compact && "md:grid-cols-2")}>
       <SignalCard name="경계" sig={s.warn} active={s.stage === "warn"} compact={compact} detail={<>
         {s.warn.month_end} 월말 종가가 12개월선보다 <span className="tabular-nums">{formatPercent(s.warn.vs_sma_pct)}</span> · 이번 달 잠정 <span className="tabular-nums">{formatPercent(s.warn.provisional_vs_sma_pct)}</span>
-        {s.warn.provisional_on !== s.warn.on && <Badge variant="outline" className="ml-1.5 border-hypothesis/40 font-normal text-hypothesis">월말에 바뀔 수 있음</Badge>}
+        {s.warn.provisional_on !== s.warn.on && <Badge variant="outline" className="ml-1.5 border-warn/40 font-normal text-warn">월말에 바뀔 수 있음</Badge>}
       </>} />
       <SignalCard name="확정" sig={s.confirm} active={s.stage === "confirm"} compact={compact} detail={<>
         1년 신저가 이탈 {s.confirm.new_low ? "있음" : "없음"}{s.confirm.last_new_low && ` (마지막 ${s.confirm.last_new_low})`}
@@ -226,10 +226,10 @@ function MeaningSection({ data, regimes, compact }: { data: EraStateResponse; re
   return <Section id="now-meaning" step={2} title={compact ? "금리의 뜻" : "금리는 지금 무슨 뜻인가"}
     how={<>같은 '금리 상승'도 시대에 따라 뜻이 반대입니다. 주식과 금리가 반대로 움직이는 시기(상관 &lt; 0)엔 금리 급등이 악재였고, 같이 움직이는 시기(상관 &gt; 0)엔 금리 급락·인하가 위기 신호였습니다(2001·2008). 그래서 지금이 어느 쪽인지 보고, 그 쪽의 위험 방향만 경보로 씁니다.</>}>
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <Badge variant="outline" className={cn("font-medium", inflation ? "border-hypothesis/40 bg-hypothesis/10 text-hypothesis" : "border-down/40 text-down")}>{inflation ? "인플레이션형" : "디스인플레이션형"}</Badge>
+      <Badge variant="outline" className={cn("font-medium", inflation ? "border-hypothesis/40 bg-hypothesis/10 text-hypothesis" : "border-down/40 text-down-ink")}>{inflation ? "인플레이션형" : "디스인플레이션형"}</Badge>
       <span>{compact ? "상관" : "주식–금리 상관"} 36개월 <b className="tabular-nums">{m.corr_36m?.toFixed(2) ?? "-"}</b>{!compact && <> · 250일 <b className="tabular-nums">{m.corr_250d?.toFixed(2) ?? "-"}</b></>}
         {m.cpi_yoy != null && <> · CPI {compact ? "" : "전년비 "}<span className="tabular-nums">{m.cpi_yoy.toFixed(2)}%</span>{!compact && ` (${m.cpi_month})`}</>}</span>
-      {!compact && <Badge variant="outline" className={cn("font-normal", m.conditional_flag ? "border-up/40 text-up" : "text-muted-foreground")}>경보 {m.conditional_flag ? "켜짐" : "꺼짐"}</Badge>}
+      {!compact && <Badge variant="outline" className={cn("font-normal", m.conditional_flag ? "border-up/40 text-up-ink" : "text-muted-foreground")}>경보 {m.conditional_flag ? "켜짐" : "꺼짐"}</Badge>}
     </div>
     {compact ? <RateGauges m={m} /> : <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="min-w-0 space-y-3">

@@ -41,7 +41,7 @@ function Body({ d }: { d: ObserveSummary }) {
       <Section title="이번 주 한눈에" note={`최근 ${d.days}일 · 지난 기간 대비`}>
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
           <Glance q="잘 도는가" a={`정기 작업 ${rate.toFixed(1)}% 성공`} sub={`${formatNumber(t.runs)}회 중 오류 ${t.err} · 부분 ${t.partial} · 지금 문제 ${problems}건`} />
-          <Glance q="얼마나 드는가" a={<>LLM {usd(d.costs.usd)} {d.costs.change_pct != null && <span className={d.costs.change_pct > 0 ? "text-up" : "text-down"}>{pct(d.costs.change_pct)}</span>}</>}
+          <Glance q="얼마나 드는가" a={<>LLM {usd(d.costs.usd)} {d.costs.change_pct != null && <span className={d.costs.change_pct > 0 ? "text-up-ink" : "text-down-ink"}>{pct(d.costs.change_pct)}</span>}</>}
             sub={d.costs.by_job[0] ? `지난 기간 ${usd(d.costs.prev_usd)} · ${d.costs.by_job[0].name}이 ${d.costs.by_job[0].share}%` : "기록 없음"} />
           <Glance q="무엇을 쓰는가" a={d.usage.visits ? `화면 방문 ${d.usage.visits}회` : "수집 중"}
             sub={d.usage.visits ? d.usage.screens.slice(0, 3).map((s) => s.name).join(" · ") : "사용 기록이 쌓이면 표시합니다"} />
@@ -68,16 +68,16 @@ function Glance({ q, a, sub }: { q: string; a: React.ReactNode; sub: string }) {
 function Reliability({ d }: { d: ObserveSummary }) {
   const j = d.jobs
   const items = [
-    ...j.streaks.map((s) => <><b>{s.name}</b> 연속 <b>{s.streak}</b>회 실패 <Badge variant="outline" className="text-down">고칠 것</Badge><span className="block text-caption text-muted-foreground">{s.last}</span></>),
+    ...j.streaks.map((s) => <><b>{s.name}</b> 연속 <b>{s.streak}</b>회 실패 <Badge variant="outline" className="text-down-ink">고칠 것</Badge><span className="block text-caption text-muted-foreground">{s.last}</span></>),
     ...j.failing.map((f) => <><b>{f.name}</b> {f.n}회 중 <b>{f.err}</b>회 실패{f.last && <span className="block text-caption text-muted-foreground">{f.last}</span>}</>),
-    ...j.chronic.map((c) => <><b>{c.name}</b> 최근 5회 모두 부분 성공 <Badge variant="outline" className="text-hypothesis">만성</Badge></>),
+    ...j.chronic.map((c) => <><b>{c.name}</b> 최근 5회 모두 부분 성공 <Badge variant="outline" className="text-warn">만성</Badge></>),
     ...d.api.worst_errors.map((a) => <><span className="font-mono text-caption">{a.endpoint}</span> 5xx {a.errors_5xx}/{a.count}건 ({a.err_rate}%)</>),
     ...d.client_errors.map((c) => <>화면 API 오류 <span className="font-mono text-caption">{c.endpoint}</span>{c.field && ` · ${c.field}`} ({c.kind} {c.count}회)</>),
     ...d.freshness.map((f) => <>데이터 신선도: {f.label} — {f.detail}</>),
   ]
   return (
     <Section title="잘 도는가">
-      <H3>지금 문제 {items.length > 0 && <Badge variant="outline" className="ml-1 text-down">{items.length}건</Badge>}</H3>
+      <H3>지금 문제 {items.length > 0 && <Badge variant="outline" className="ml-1 text-down-ink">{items.length}건</Badge>}</H3>
       {items.length ? <Bullets items={items} /> : <Meta>지금 문제가 없습니다.</Meta>}
       <H3>API</H3>
       {d.api.requests ? (

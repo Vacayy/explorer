@@ -66,7 +66,7 @@ export default function DataTable({ periods, rows, unit = "(단위: 원)", expor
                   {row.yoy[i] != null && (
                     <div className={cn(
                       "text-[11px]",
-                      row.yoy[i]! > 0 ? "text-red-600" : row.yoy[i]! < 0 ? "text-blue-600" : "text-muted-foreground"
+                      row.yoy[i]! > 0 ? "text-up-ink" : row.yoy[i]! < 0 ? "text-down-ink" : "text-muted-foreground"
                     )}>
                       {row.yoy[i]! > 0 ? "▲" : row.yoy[i]! < 0 ? "▼" : ""}
                       {formatPercent(row.yoy[i])}

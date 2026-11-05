@@ -259,7 +259,7 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
               {q.text}
             </span>
             <span className="flex shrink-0 gap-1">
-              <Button size="xs" variant="outline" className="h-8 px-2 text-emerald-600 md:h-6 hover:text-emerald-700"
+              <Button size="xs" variant="outline" className="h-8 px-2 text-fact md:h-6 hover:text-fact/80"
                 disabled={approve.isPending} onClick={() => approve.mutate(q.id)}>
                 <Check className="h-3 w-3" /> 승인
               </Button>

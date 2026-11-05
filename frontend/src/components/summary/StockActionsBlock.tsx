@@ -50,7 +50,7 @@ export function StockActionsBlock({ stockCode }: { stockCode: string }) {
                     <li key={a.id} className="grid grid-cols-[4.5rem_1fr] gap-x-3 py-2 text-sm sm:grid-cols-[4.5rem_auto_1fr]">
                       <span className="font-mono text-caption tabular-nums text-muted-foreground">{ymd(a.rcept_dt)}</span>
                       <span className="flex items-start gap-1">
-                        <Badge variant="secondary" className={cn('text-[10px]', a.action_type === '유상증자' && 'bg-down/10 text-down', a.action_type === '무상증자' && 'bg-up/10 text-up')}>{a.action_type}</Badge>
+                        <Badge variant="secondary" className={cn('text-[10px]', a.action_type === '유상증자' && 'bg-down/10 text-down-ink', a.action_type === '무상증자' && 'bg-up/10 text-up-ink')}>{a.action_type}</Badge>
                         {a.is_correction && <Badge variant="outline" className="text-[10px] text-muted-foreground">정정</Badge>}
                       </span>
                       <span className="col-start-2 min-w-0 sm:col-start-auto">
@@ -94,7 +94,7 @@ function RightsLine({ row, close, date }: { row: RightsRow; close: number; date:
     <p className="flex flex-wrap items-baseline gap-x-2 bg-muted/60 px-3 py-2 text-sm" data-rights-line>
       <span className="font-medium">{row.action_type ?? '증자'} 발행가 <span className="font-mono tabular-nums">{formatNumber(price)}원</span></span>
       <span className="text-caption text-muted-foreground">{stage}{row.date_price_fix ? ` ${row.date_price_fix}` : ''}{row.method ? ` · ${row.method}` : ''}</span>
-      <span>{shortDate(date)} 종가 <span className="font-mono tabular-nums">{formatStockPrice(close, 'kr')}</span> — 발행가 대비 <span className={cn('font-mono tabular-nums', diff > 0 ? 'text-up' : diff < 0 ? 'text-down' : '')}>{formatPercent(diff)}</span></span>
+      <span>{shortDate(date)} 종가 <span className="font-mono tabular-nums">{formatStockPrice(close, 'kr')}</span> — 발행가 대비 <span className={cn('font-mono tabular-nums', diff > 0 ? 'text-up-ink' : diff < 0 ? 'text-down-ink' : '')}>{formatPercent(diff)}</span></span>
     </p>
   )
 }

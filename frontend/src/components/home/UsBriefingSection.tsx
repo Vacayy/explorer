@@ -172,7 +172,7 @@ export function UsBriefingSection({ embedded = false, columns = false }: { embed
                 <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
                 <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
                 {/* 좁은 화면은 막대 폭이 줄마다 같도록 배지 자리를 늘 비워 둔다 */}
-                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}</span>
+                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up-ink border-up/40">신규</Badge>}</span>
                 <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.tickers.join(" · ")}</span>
               </div>
             ))}
@@ -272,7 +272,7 @@ export function UsBriefingSection({ embedded = false, columns = false }: { embed
                 <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
                 <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
                 {/* 좁은 화면은 막대 폭이 줄마다 같도록 배지 자리를 늘 비워 둔다 */}
-                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}</span>
+                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up-ink border-up/40">신규</Badge>}</span>
                 <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.tickers.join(" · ")}</span>
               </div>
             ))}
@@ -322,10 +322,10 @@ export function UsBriefingSection({ embedded = false, columns = false }: { embed
   )
 }
 
-/** 등락률 색 — 한국 컨벤션(상승=빨강 text-up, 하락=파랑 text-down). */
+/** 등락률 색 — 한국 컨벤션(상승=빨강 text-up-ink, 하락=파랑 text-down-ink). */
 function chg(v: number | null): string {
   if (v == null || v === 0) return "text-muted-foreground"
-  return v > 0 ? "text-up" : "text-down"
+  return v > 0 ? "text-up-ink" : "text-down-ink"
 }
 
 function MoverRow({ m }: { m: UsMoverBrief }) {
@@ -337,7 +337,7 @@ function MoverRow({ m }: { m: UsMoverBrief }) {
         <span className={`text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : ""}</span>
         <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
           {m.flags.map((f) => (
-            <Badge key={f} variant="outline" className={`text-caption shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
+            <Badge key={f} variant="outline" className={`text-caption shrink-0 ${f === "신규 진입" ? "text-up-ink border-up/40" : ""}`}>{f}</Badge>
           ))}
         </div>
         {m.narrative && (

@@ -13,7 +13,7 @@ import type { TodayTopic } from "@/types"
 import type { WidgetBodyProps, WidgetMeta } from "./types"
 
 /** 한국 관례: 상승 빨강·하락 파랑 */
-const tone = (v: number | null | undefined) => v == null || v === 0 ? "" : v > 0 ? "text-up" : "text-down"
+const tone = (v: number | null | undefined) => v == null || v === 0 ? "" : v > 0 ? "text-up-ink" : "text-down-ink"
 
 export function useMarketTodayMeta(): WidgetMeta {
   const q = useMarketToday()

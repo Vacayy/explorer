@@ -45,7 +45,7 @@ export const Meta = ({ children, className }: { children: ReactNode; className?:
 
 /** 업종 ETF 대비 %p — 상승 빨강·하락 파랑(한국 컨벤션) */
 export function Pp({ v, className }: { v: number | null | undefined; className?: string }) {
-  return <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "", className)}>{formatPp(v, 1)}</span>
+  return <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : v > 0 ? "text-up-ink" : v < 0 ? "text-down-ink" : "", className)}>{formatPp(v, 1)}</span>
 }
 
 export const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
