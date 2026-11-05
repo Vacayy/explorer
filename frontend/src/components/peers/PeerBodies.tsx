@@ -115,17 +115,17 @@ export function PeerResearchBody({ catalog, group, rows, days, selected, onSelec
   onSelect: (code: string) => void; onPick: (id: string) => void; onPerformance: (code: string) => void
 }) {
   return <div className="space-y-4">
-    <section aria-label="이 그룹을 묶은 기준" className="space-y-1 border p-3 md:p-4">
-      <h2 className="text-card-title font-semibold">이 그룹을 묶은 기준 <span className="text-caption font-normal text-muted-foreground">{group.scope === 'product' ? '제품·공정' : '밸류체인'} · {rows.length}사</span></h2>
+    <section aria-label="이 그룹을 묶은 기준" className="space-y-1 border bg-card p-3 md:p-4">
+      <h2 className="text-section font-semibold">이 그룹을 묶은 기준 <span className="text-caption font-normal text-muted-foreground">{group.scope === 'product' ? '제품·공정' : '밸류체인'} · {rows.length}사</span></h2>
       <p className="text-sm">{group.interpretation}</p>
     </section>
     <section aria-label="구성 종목" className="space-y-2">
       <h2 className="text-caption text-muted-foreground">구성 종목</h2>
-      <ol className="divide-y border">{rows.map((row, index) => {
+      <ol className="divide-y border bg-card">{rows.map((row, index) => {
         const company = catalog.companies.find(item => item.code === row.code)!
         const open = row.code === selected
         const others = company.groupIds.filter(id => id !== group.id && id !== peerParent(catalog, group.id))
-        return <li key={row.code} className={cn(open && 'bg-muted/40')}>
+        return <li key={row.code} className={cn(open && 'bg-surface-2')}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-3 md:px-4">
             <span className="w-5 text-caption tabular-nums text-muted-foreground">{row.rank ?? index + 1}</span>
             <button type="button" aria-expanded={open} onClick={() => onSelect(row.code)} className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-left">
@@ -151,7 +151,7 @@ export function PeerResearchBody({ catalog, group, rows, days, selected, onSelec
             </div>
             <div className="min-w-0 space-y-2">
               <p className="text-caption text-muted-foreground">같이 들어간 다른 사업군</p>
-              {others.length ? <div className="flex flex-wrap gap-1">{others.map(id => <Button key={id} variant="outline" size="sm" className="h-auto min-h-8 whitespace-normal text-caption" onClick={() => onPick(id)}>{catalog.groups.find(item => item.id === id)?.name ?? id}</Button>)}</div> : <p className="text-sm text-muted-foreground">-</p>}
+              {others.length ? <div className="flex flex-wrap gap-1">{others.map(id => <Button key={id} variant="outline" size="sm" className="h-auto min-h-8 max-w-full shrink whitespace-normal text-caption" onClick={() => onPick(id)}>{catalog.groups.find(item => item.id === id)?.name ?? id}</Button>)}</div> : <p className="text-sm text-muted-foreground">-</p>}
             </div>
           </div> : <p className="truncate px-3 pb-3 pl-11 text-caption md:px-4 md:pl-12"><EvidenceCount verified={row.verified} caveats={row.caveats} />{company.caveats[0] && <span className="text-muted-foreground"> · {company.caveats[0]}</span>}</p>}
         </li>

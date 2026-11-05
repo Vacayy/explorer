@@ -2,13 +2,17 @@ import prices from '@/data/peer-prices.json'
 import catalog from '@/data/peer-catalog.json'
 import api from '@/api/client'
 import { SECTOR_PEERS_FIXTURE } from './fixtures/sectorPeers'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import PeerCatalogPage from '@/components/peers/PeerCatalogPage'
 
 // 탐색 › Peer 그룹 — 성과 비교와 사업 근거가 같은 틀(경로·요약 띠·그룹 찾기·선택한 종목)을 쓴다 (ia-redesign §4.12·§4.28)
+// 차트 끝 라벨을 폰에서 숨기려고 matchMedia를 읽는다 — jsdom에는 없다
+beforeAll(() => {
+  window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false })) as typeof window.matchMedia
+})
 vi.mock('@/components/charts/MultiLineChart', () => ({ default: ({ data, lines }: { data: unknown[]; lines: { key: string; lineWidth?: number }[] }) => <output aria-label="차트 데이터" data-lines={JSON.stringify(lines.map(l => [l.key, l.lineWidth]))}>{JSON.stringify(data)}</output> }))
 const runtime = (lastAttempt: unknown = { at: prices.collectedAt, status: 'error', asOf: null, error: 'test collection failure' }) => ({ data: {
   catalog, prices, origin: 'collector', publishedAt: prices.collectedAt, baselineOn: '2026-11-01',

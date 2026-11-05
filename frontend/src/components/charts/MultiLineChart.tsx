@@ -332,9 +332,9 @@ export default function MultiLineChart({
       </div>}
       <div ref={containerRef} style={{ width: endLabels ? `calc(100% - ${endLabels}px)` : "100%", height }} />
       {endLabels && lines.map((line) => line.endLabel && labelYs[line.key] != null && <div key={line.key}
-        className={`pointer-events-none absolute whitespace-nowrap text-xs leading-none ${line.endLabel.strong ? "font-semibold text-ink" : "text-ink-2"}`}
+        className={`pointer-events-none absolute flex gap-1 whitespace-nowrap text-xs leading-none ${line.endLabel.strong ? "font-semibold text-ink" : "text-ink-2"}`}
         style={{ left: `calc(100% - ${endLabels - 6}px)`, top: labelYs[line.key], transform: "translateY(-50%)", maxWidth: endLabels - 6 }}>
-        <span className="truncate">{line.endLabel.name}</span> <span className={`font-mono tabular-nums ${line.endLabel.tone === "up" ? "text-up-ink" : line.endLabel.tone === "down" ? "text-down-ink" : "text-ink-3"}`}>{line.endLabel.value}</span>
+        <span className="min-w-0 truncate">{line.endLabel.name}</span><span className={`shrink-0 font-mono tabular-nums ${line.endLabel.tone === "up" ? "text-up-ink" : line.endLabel.tone === "down" ? "text-down-ink" : "text-ink-3"}`}>{line.endLabel.value}</span>
       </div>)}
       {showLineTooltip && hovered && <div
         role="tooltip"

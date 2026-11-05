@@ -585,12 +585,12 @@ function VcGrid({ vc, selected, onSelect }: { vc: ValueChainResponse; selected: 
           {cell(t.key, l.key).map(i => {
             const on = i.key === selected, linked = near.has(i.key)
             return <Button key={i.key} variant="ghost" onClick={() => onSelect(i.key)} aria-pressed={on} data-vc-node={i.key}
-              className={cn("block h-auto w-full whitespace-normal rounded-none border px-2 py-1.5 text-left text-xs font-normal",
+              className={cn("block h-auto w-full whitespace-normal rounded-md border px-2 py-1.5 text-left text-xs font-normal",
                 i.state ? CHIP_TONE[i.state] : "bg-muted/40 text-muted-foreground", !i.observed && "border-dashed",
                 on ? "border-2 border-foreground" : linked ? "border-foreground/50" : "border-transparent",
                 selected && !on && !linked && "opacity-35")}>
               <span className="block truncate font-medium text-foreground">{i.name}</span>
-              <span className="block tabular-nums">{i.observed ? `${i.state ?? "-"} · ${formatPercent(i.yoy)}` : "관측 없음"}</span>
+              <span className="block text-[10.5px]">{i.observed ? `${i.state ?? "-"} · ${formatPercent(i.yoy)}` : "관측 없음"}</span>
             </Button>
           })}
         </div>)}
