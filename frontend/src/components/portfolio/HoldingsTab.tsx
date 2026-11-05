@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import SegmentTabs from '@/components/shared/SegmentTabs'
 import { HoldingDetail } from '@/components/portfolio/HoldingDetail'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { formatNumber, formatPercent, formatRatio } from '@/utils/format'
 import type { PortfolioSummary } from '@/types'
 
@@ -16,18 +17,19 @@ const tone = (v: number | null | undefined) => v == null || v === 0 ? '' : v > 0
 export function HoldingsTab({ data }: { data: PortfolioSummary }) {
   const [sp, setSp] = useSearchParams()
   const detailRef = useRef<HTMLElement>(null)
+  const wide = useMediaQuery('(min-width: 1280px)')
   const selected = data.holdings.find(h => h.code === sp.get('stock')) ?? data.holdings[0]
   const select = (code: string, scroll = false) => {
     setSp(prev => { const n = new URLSearchParams(prev); n.set('stock', code); return n }, { replace: true, preventScrollReset: true })
     if (scroll) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
-  return <>
-    <Card><CardHeader><CardTitle>보유 종목</CardTitle></CardHeader><CardContent>
+  // 시안 Portfolio-Holdings: 넓은 화면은 보유 표 | 보유 종목 상세 두 칸(표의 행을 누르면 오른쪽이 바뀜), 그 아래 청산 내역
+  const holdings = <Card><CardHeader><CardTitle>보유 종목</CardTitle></CardHeader><CardContent>
       <Table className={COMPACT}><TableHeader><TableRow>
         <TableHead>종목</TableHead><TableHead className="text-right">비중</TableHead><TableHead className={`text-right ${WIDE}`}>평단</TableHead>
         <TableHead className="text-right">현재가</TableHead><TableHead className="text-right">수익률</TableHead><TableHead className="text-right">전일비</TableHead>
       </TableRow></TableHeader><TableBody>
-        {data.holdings.map(h => <TableRow key={h.code} className="cursor-pointer" data-state={h.code === selected?.code ? 'selected' : undefined} onClick={() => select(h.code, true)}>
+        {data.holdings.map(h => <TableRow key={h.code} className="cursor-pointer data-[state=selected]:bg-chip" data-state={h.code === selected?.code ? 'selected' : undefined} onClick={() => select(h.code, !wide)}>
           <TableCell className="font-medium">{h.name}</TableCell>
           <TableCell className="text-right tabular-nums">{formatRatio(h.weight_pct)}</TableCell>
           <TableCell className={`text-right tabular-nums ${WIDE}`}>{formatNumber(Math.round(h.avg_price))}</TableCell>
@@ -39,6 +41,18 @@ export function HoldingsTab({ data }: { data: PortfolioSummary }) {
         <TableRow><TableCell className="text-muted-foreground">현금</TableCell><TableCell className="text-right tabular-nums">{formatRatio(data.cash_weight_pct)}</TableCell><TableCell colSpan={4} /></TableRow>
       </TableBody></Table>
     </CardContent></Card>
+
+  return <>
+    {selected ? <div className="surface-grid grid items-start xl:grid-cols-2">
+      {holdings}
+      <section ref={detailRef} className="min-w-0 scroll-mt-4 space-y-3" aria-label="보유 종목 상세">
+        {!wide && <SegmentTabs tabs={data.holdings.map(h => ({ value: h.code, label: h.name }))} value={selected.code} onChange={code => select(code)} />}
+        <HoldingDetail key={selected.code} holding={selected} />
+      </section>
+    </div> : <>
+      {holdings}
+      <p role="status" className="border border-line-2 bg-surface-2 p-3.5 text-[13px] text-ink-2">지금 보유 중인 종목이 없습니다. 현금과 청산 내역만 표시합니다.</p>
+    </>}
 
     {data.closed.length > 0 && <Card><CardHeader><CardTitle>청산 내역</CardTitle></CardHeader><CardContent>
       <Table className={COMPACT}><TableHeader><TableRow>
@@ -55,11 +69,5 @@ export function HoldingsTab({ data }: { data: PortfolioSummary }) {
         </TableRow>)}
       </TableBody></Table>
     </CardContent></Card>}
-
-    {selected ? <section ref={detailRef} className="scroll-mt-4 space-y-3" aria-label="보유 종목 상세">
-      <SegmentTabs tabs={data.holdings.map(h => ({ value: h.code, label: h.name }))} value={selected.code} onChange={code => select(code)} />
-      <HoldingDetail key={selected.code} holding={selected} />
-    </section>
-      : <p className="text-sm text-muted-foreground">지금 보유 중인 종목이 없습니다. 현금과 청산 내역만 표시합니다.</p>}
   </>
 }
