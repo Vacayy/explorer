@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import PeerCatalogPage from '@/components/peers/PeerCatalogPage'
 import raw from '@/data/peer-catalog.json'
-import { parsePeerCatalog, selectPeerCompanies } from '@/lib/peerCatalog'
+import { parsePeerCatalog } from '@/lib/peerCatalog'
 import { locate } from '@/components/layout/navConfig'
 
 vi.spyOn(api, 'get').mockImplementation(async (url: string) => url.includes('/sector-map/peers') ? { data: SECTOR_PEERS_FIXTURE } : ({ data: {
@@ -31,13 +31,7 @@ it('validates the shipped evidence graph, rejects missing references and unsafe 
   expect(() => parsePeerCatalog(duplicate)).toThrow('중복 종목')
 })
 
-it('intersects product search with group membership without double counting', () => {
-  const catalog = parsePeerCatalog(raw)
-  expect(selectPeerCompanies(catalog, 'power_transformer', '103590').map(c => c.name)).toEqual(['일진전기'])
-  expect(selectPeerCompanies(catalog, 'power_cable', '103590')).toHaveLength(1)
-  expect(selectPeerCompanies(catalog, '', '103590')).toHaveLength(1)
-  expect(selectPeerCompanies(catalog, 'test_socket', '103590')).toHaveLength(0)
-  expect(selectPeerCompanies(catalog, '', 'LIG넥스원').map(c => c.code)).toEqual(['079550'])
+it('peer route sits under explore', () => {
   expect(locate('/discover/peers')).toEqual({ section: 'explore', tab: 'peers' })
 })
 

@@ -21,7 +21,6 @@ export interface Directory {
 
 const sum = (xs: TimelineChannel[]) => xs.reduce((n, x) => n + x.unread, 0)
 export const systemKind = (id: string) => id.split(":")[0]
-export const isSystemChannel = (id: string) => Object.hasOwn(SYSTEM_KIND_LABEL, systemKind(id))
 
 /** 소스 디렉터리 → 사람 소스 먼저, 시스템 항목은 'Explorer' 묶음 안 종류별로. 각 목록의 원래 순서(최신순)는 유지 */
 export function groupDirectory(items: TimelineChannel[]): Directory {
@@ -33,16 +32,4 @@ export function groupDirectory(items: TimelineChannel[]): Directory {
   }).filter(g => g.items.length > 0)
   const singles = system.filter(i => !NESTED.includes(systemKind(i.id)))
   return { human, explorer: { singles, groups, count: system.length, unread: sum(system) } }
-}
-
-/**
- * 'AI가 최근 만든 것' 기간 표기 — 응답이 상한(limit)에 닿으면 '지난 N일'이 거짓이 된다(30건이 약 2.5일).
- * 상한에 닿았으면 실제로 보이는 가장 오래된 시각을, 아니면 기간 전체를 말한다.
- */
-export function aiCoverageLabel(createdAts: string[], limit: number, days: number,
-  fmt: (t: string) => string = t => t.slice(5, 16).replace("T", " ")): string {
-  if (createdAts.length === 0) return `지난 ${days}일`
-  if (createdAts.length < limit) return `지난 ${days}일 · ${createdAts.length}건`
-  const oldest = [...createdAts].sort()[0]
-  return `최근 ${limit}건 · ${fmt(oldest)} 이후`
 }

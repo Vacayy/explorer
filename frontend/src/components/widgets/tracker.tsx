@@ -15,7 +15,7 @@ import { prepareTracker, useTracker, useTrackerConditionMutations } from "@/hook
 import { cn } from "@/lib/utils"
 import { formatKrw, formatNumber, formatPercent, formatPp, formatRatio, formatStockPrice } from "@/utils/format"
 import type { TrackerCondition, TrackerKind, TrackerRole, TrackerView } from "@/types"
-import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
+import type { WidgetBodyProps } from "./types"
 
 /**
  * 종목 추적 카드(docs/specs/stock-tracker.md) — 종목마다 하나. 내 원칙 조건 → 차트·기술적 신호 → 수급 → 이슈 순.
@@ -26,18 +26,11 @@ import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
 const codeOf = (p?: Record<string, unknown>) => (typeof p?.code === "string" ? p.code : null)
 const tone = (v?: number | null) => (v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted-foreground")
 const won = (eok: number) => formatKrw(eok * 1e8)
-export const dossierPath = (code: string, market?: string | null) => market === "us" ? `/us/${code}` : `/analyze/${code}/summary`
+const dossierPath = (code: string, market?: string | null) => market === "us" ? `/us/${code}` : `/analyze/${code}/summary`
 const KIND_LABEL: Record<TrackerKind, string> = {
   price_below: "가격 아래(손절선)", price_above: "가격 위(돌파)", close_below_ma: "N일선 아래 마감", close_above_ma: "N일선 위 마감", manual: "확인 항목(직접 체크)",
 }
 const ROLE_LABEL: Record<TrackerRole, string> = { entry: "진입", exit: "손절·청산", check: "확인" }
-
-function useTrackerMeta(params?: Record<string, unknown>): WidgetMeta {
-  const q = useTracker(codeOf(params))
-  const t = q.data?.as_of ?? ""       // 장중 = ISO 시각('2026-10-21T09:30:06+09:00'), 종가 = 'YYYY-MM-DD'
-  const label = !q.data ? null : q.data.source === "live" ? `${t.slice(5, 10)} ${t.slice(11, 16)} 장중` : `${t.slice(5, 10) || "-"} 종가`
-  return { asOf: label, stale: q.isError }
-}
 
 function StatusBadge({ c }: { c: TrackerCondition }) {
   if (c.status === "pending") return <Badge variant="outline" className="text-[10px]">확인 대기</Badge>
@@ -212,10 +205,3 @@ export function TrackerBody({ w, h, params }: WidgetBodyProps) {
   </div>
 }
 
-export const TRACKER_WIDGETS: WidgetDef[] = [
-  { id: "track.stock", title: "종목 추적", description: "종목 하나의 원칙 조건·차트·기술적 신호·수급·이슈 — 종목마다 하나씩, 조건 충족 시 텔레그램 알림",
-    section: "home", group: "관심 종목 추적", size: { w: 6, h: 8, minW: 3, minH: 2 }, multi: true, pick: "stock",
-    titleOf: p => (typeof p?.name === "string" ? `${p.name} 추적` : "종목 추적"),
-    detailPathOf: p => (codeOf(p) ? dossierPath(codeOf(p) as string, typeof p?.market === "string" ? p.market : null) : "/"),
-    useMeta: useTrackerMeta, Body: TrackerBody },
-]

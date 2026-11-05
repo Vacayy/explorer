@@ -167,6 +167,6 @@ charts/  lightweight-charts 래퍼
 - [ ] 그리드는 `grid-cols-1`에서 시작하는 반응형
 - [ ] 넓은 표는 ui/table 또는 `overflow-x-auto` 래퍼
 - [ ] 색상은 semantic 토큰만 · 등락=up/down · LLM 산출=hypothesis
-- [ ] 5-state (Empty/Loading/Partial/Error/Ideal) + FreshnessStamp
+- [ ] 5-state (Empty/Loading/Partial/Error/Ideal) + 기준 시각(블록 머리 `BlockHead`의 `asOf`)
 - [ ] 숫자 포맷은 utils/format.ts
 - [ ] 새 atom 필요 시 `npx shadcn@latest add <c>` CLI 설치 (수제 금지)

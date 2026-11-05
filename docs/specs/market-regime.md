@@ -97,7 +97,7 @@
 (오실레이터 실선 + 그 20EMA 파선 겹침 — EMA 기울기가 추세 게이트)
 ```
 - 미니 차트: Recharts 스파크라인. 각 시장 primary = **오실레이터 실선 vs 그 20EMA 파선** 오버레이(기울기=게이트 시각화). hover 시 그 시점 값·날짜로 전환.
-- 컴포넌트 계층: `components/home/MarketRegime.tsx` + `hooks/useMarketRegime.ts` + type in `types/index.ts`.
+- 컴포넌트 계층: 홈 대시보드 섹션 `risk.regime`(`widgets/market`의 `RegimeBody`) + `hooks/useMarketRegime.ts` + type in `types/index.ts`. 옛 카드 `components/home/MarketRegime.tsx`는 2026-11-05 개편 7단계에서 지웠다.
 - 숫자 포맷: `utils/format.ts`. 색: `--color-up/down` 등 CSS 변수(하드코딩 금지). 포스처 색은 semantic 토큰.
 
 ## 5-state (docs/policies/ui-states.md)
@@ -110,7 +110,7 @@
 | Error | 전체 fetch 실패 → ErrorState + retry |
 | Ideal | 양 시장 포스처 + 미니 추이 + BLUF |
 
-+ FreshnessStamp(스냅샷 시각).
++ 머리 기준 시각(스냅샷 `as_of`).
 
 ## 경계 (안 하는 것)
 

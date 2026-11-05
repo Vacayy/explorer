@@ -166,8 +166,8 @@ function TwLinksBody({ w, h }: WidgetBodyProps) {
 }
 
 export const TW_WIDGETS: WidgetDef[] = [
-  { id: "explore.twLinks", title: "대만 → 한국 연결", description: "대만 월매출이 가속·둔화한 밸류체인과 이어진 한국 종목 · 사업 근거·숫자 근거. 3개월 YoY가 3개월 전보다 ±10%p 넘게 바뀌면 가속·둔화입니다.", section: "explore", group: "대만",
-    size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/follow/taiwan", useMeta: useTwLinksMeta, Body: TwLinksBody },
-  { id: "explore.twRevenue", title: "대만 월매출", description: "대만 반도체·IT 하드웨어·해운 92개사 월매출 · YoY · 3개월 YoY (밸류체인 층별)", section: "explore", group: "대만",
-    size: { w: 6, h: 5, minW: 3, minH: 2 }, detailPath: "/follow/taiwan", useMeta: useTwMeta, Body: TwRevenueBody },
+  { id: "explore.twLinks", title: "대만 → 한국 연결", description: "대만 월매출이 가속·둔화한 밸류체인과 이어진 한국 종목 · 사업 근거·숫자 근거. 3개월 YoY가 3개월 전보다 ±10%p 넘게 바뀌면 가속·둔화입니다.",
+    detailPath: "/follow/taiwan", useMeta: useTwLinksMeta, Body: TwLinksBody },
+  { id: "explore.twRevenue", title: "대만 월매출", description: "대만 반도체·IT 하드웨어·해운 92개사 월매출 · YoY · 3개월 YoY (밸류체인 층별)",
+    detailPath: "/follow/taiwan", useMeta: useTwMeta, Body: TwRevenueBody },
 ]

@@ -19,10 +19,6 @@
 | --- | --- |
 | GET /api/companies/search | 기업 배열 및 필드 |
 | GET /api/companies/:code | 기업 필드 및 nullable 값 |
-| GET /api/dashboard/boards | 보드 배열, 중첩 위젯 배치 |
-| POST /api/dashboard/boards | 생성한 보드 |
-| PATCH /api/dashboard/boards/:id | 저장한 보드 |
-| PUT /api/dashboard/boards/order | 재정렬한 보드 배열 |
 | GET /api/spine/feed | 페이지 크기/번호/총수, 문서/엔티티/이미지 배열 및 필드 |
 | GET /api/spine/indices | 지수, 수치, spark 배열 및 갱신 정보 |
 | GET /api/spine/transcript/recent | 실적발표 목록 및 필드 |

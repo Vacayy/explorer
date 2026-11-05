@@ -134,16 +134,6 @@ export interface BusinessSegment {
   ratio: number | null;
 }
 
-export interface SignalItem {
-  type: "disclosure" | "insider" | "contract";
-  stock_code: string;
-  corp_name: string | null;
-  title: string | null;
-  date: string;
-  url: string | null;
-  in_watchlist: boolean;
-}
-
 // ---------- Spine (그래프 척추) API ----------
 
 export interface EntityTag {
@@ -587,18 +577,6 @@ export interface ThesisAuditListItem {
   id: number; created_at: string; preview: string; n_claims: number;
 }
 
-// 전일 미국시장 거래대금 상위 (홈, TradingView 무키 스크리너 — docs/specs/us-movers.md)
-export interface UsMover {
-  rank: number; ticker: string; name: string;
-  close: number | null; volume: number | null; dollar_volume: number | null;
-  exchange: string | null; is_adr: boolean;
-}
-export interface UsMoversResponse {
-  status: "ok" | "stale" | "error";
-  source: string; fetched_at: string | null; error: string | null;
-  items: UsMover[];
-}
-
 // 어젯밤 미국장 브리핑 (홈 상단, docs/specs/us-briefing.md)
 export interface UsHeadline {
   title: string; publisher: string | null; published_at: string | null;
@@ -727,7 +705,6 @@ export interface TimelineResponse {
   until: string
   as_of: string
 }
-
 
 export interface TimelineChannel {
   id: string
@@ -1246,7 +1223,6 @@ export interface PersonRow {
   mentions_7d: number; mentions_prev_7d: number; delta_7d: number   // 최근 7일 − 직전 7일
 }
 export interface PeopleDirectory { items: PersonRow[]; total: number; hidden_tail: number; as_of: string | null }
-export interface FollowedPeopleWeek { items: PersonRow[]; as_of: string | null }
 export type PeopleSort = 'surge' | 'total' | 'recent'
 export interface PersonRelation {
   id: number; direction: 'out' | 'in'; rel_type: string
@@ -1255,15 +1231,6 @@ export interface PersonRelation {
   narrative_topic: string | null; narrative_title: string | null; narrative_superseded: boolean
 }
 export interface PersonProfile { status: string; digest: string | null; insights: string | null; created_at: string | null }
-export interface PersonDossier {
-  entity_id: number; name: string; total_docs: number
-  first_doc_at: string | null; last_doc_at: string | null; following: boolean
-  profile: PersonProfile | null; profile_stale: boolean
-  new_since_profile: number | null   // 프로필 생성 이후 수집된 언급 수
-  co_entities: { entity_id: number; name: string; link_type: string; aliases: string | null; count: number }[]
-  recent_docs: { id: number; title: string; published_at: string | null }[]
-  relations: PersonRelation[]
-}
 
 /* ---------- 인물 1단계 (ia-redesign §4.23) — 인물 홈 · id 기반 상세 ---------- */
 export type PersonRoleName = 'policy' | 'executive' | 'guru'
@@ -1417,13 +1384,6 @@ export interface WorldContestedItem {
   latest_refute: { doc_id: number | null; title: string | null; observed_at: string | null } | null
 }
 export interface WorldContested { items: WorldContestedItem[]; as_of: string | null }
-export interface WorldStockNarratives {
-  stock_code: string; name: string | null; kinds: StockGroupKind[]
-  narratives: { topic: string; narrative_id: number; title: string | null; version: number; created_at: string | null
-    drift_summary: string | null; edges: number; via: 'edge' | 'neighbor' }[]
-  latest_drift: string | null; latest_at: string | null
-}
-export interface WorldMyStocks { stocks: WorldStockNarratives[]; members: number; covered: number; as_of: string | null }
 export interface WorldCheckpoint {
   status: 'ok' | 'empty'; topic: string; narrative_id?: number | null; title?: string | null
   core_question?: string | null
@@ -1461,12 +1421,6 @@ export interface TrendLeader {
 export interface TrendLeadersResponse {
   as_of: string | null; computed_from: string | null; criteria: string; universe: number; passed: number
   items: TrendLeader[]; events: TrendEvent[]
-}
-
-/** GET /api/spine/transcript/follow 중 위젯이 읽는 필드 (전체 행은 follow/TranscriptPage) */
-export interface TranscriptFollowSummary {
-  ticker: string; company_name: string; next_report_date?: string | null; calendar_checked_at?: string | null
-  latest: { transcript_id: number } | null
 }
 
 /** 대만 월매출 — GET /api/spine/tw/revenue (금액 단위 천 TWD) */

@@ -1,6 +1,6 @@
 # 캔버스 — 피드 · 스터디 · 저장됨 · 소스
 
-- 상태: P5 구현 계약 (2026-10-16). 셸은 [app-shell](app-shell.md), 위젯 계약은 [home-widgets](home-widgets.md) §2, 피드 조회 계약은 [home-feed](home-feed.md), 스터디는 [study-mode](study-mode.md).
+- 상태: P5 구현 계약 (2026-10-16). 셸은 [app-shell](app-shell.md), 피드 조회 계약은 [home-feed](home-feed.md), 스터디는 [study-mode](study-mode.md).
 - 목적: 좋은 자료를 읽고, 공부하고, 남기는 작업대.
 - 범위 밖(후속): URL 이전(`/canvas/*`)과 리다이렉트, 통합 타임라인(`/feed?feed_*`)·문서 교차 종합 같은 휴면 기능 정리(D-241에서 제거 완료).
 
@@ -20,14 +20,12 @@
   - 묶음 안: 'Explorer 업데이트 전체 보기'(플랫폼 Explorer로 전환), 한 개짜리 종류(내러티브·리포트·파급·수출입)는 한 줄씩, 많은 종류(기업 요약·컨콜·인물 요약)는 하위 묶음(소스 수 + 안 읽음 배지, 기본 접힘).
   - 접힘 상태는 화면 편의라 URL에 두지 않는다.
 - 검색어가 있으면 묶음 없이 평평한 목록(모든 소스에서 찾는다).
-- '전체' 리더(`팔로우한 소스 전체`)는 사람 소스만 보인다(`scope=sources`). Explorer 게시물은 Explorer 묶음과 'AI가 최근 만든 것'에서 본다 — AI 생성물이 타임라인에 섞여 두 번 보이지 않게.
+- '전체' 리더(`팔로우한 소스 전체`)는 사람 소스만 보인다(`scope=sources`). Explorer 게시물은 Explorer 묶음에서 본다 — AI 생성물이 타임라인에 섞이지 않게.
 - 리더 머리에 **문서 검색**(`/feed?view=documents`) 진입.
 
-### AI가 최근 만든 것
+### AI가 최근 만든 것 — 제거
 
-- 원천 `GET /api/spine/home/ai-activity?days=7&limit=30`(훅 `useAiActivity`, 피드와 위젯이 같은 쿼리).
-- 기간 표기는 실제 노출 범위를 말한다(`aiCoverageLabel`): 응답이 상한 30건에 닿으면 `최근 30건 · {가장 오래된 시각} 이후`, 아니면 `지난 7일 · N건`. 시각은 KST.
-- 5-state: Loading Skeleton, Error '다시 시도', Empty '지난 7일간 자동생성된 콘텐츠가 없습니다'.
+- 4a에서 피드 화면이 바뀌며 빠졌고, 7단계(2026-11-05)에서 `home/AiActivityFeed`·`useAiActivity`·`GET /api/spine/home/ai-activity`까지 지웠다. Explorer 생성물은 Explorer 묶음에서 본다.
 
 ## 2. 공통 선택 팔레트
 
@@ -53,16 +51,9 @@
 
 백엔드 `_quote_block`은 `message_id` 없이 `doc_id`/`doc_title`이 오면 머리를 '직전 답변' 대신 `문서 「제목」(doc_id N)를 읽다가 지목한 대목 … 전체가 필요하면 open_doc(doc_id)`로 쓴다. 붙여넣은 스터디 자료(doc_id 없음)는 `자료 「제목」`. 화면 맥락(`page_context`)은 함께 간다.
 
-## 3. 캔버스 위젯 (`widgets/canvas.tsx`)
+## 3. 캔버스 위젯 — 제거
 
-| id | 이름 | 원천 | 기본 크기 | 큰 숫자 · 한 줄 · 목록 | 기준 시각 |
-|---|---|---|---|---|---|
-| canvas.unread | 안 읽은 소스 | `/feed/channels` | 4×3 | 사람 소스 안 읽음 합계 · 소스 수 · 안 읽음 많은 순(→ 그 소스 리더) | 최신 게시물 |
-| canvas.ai | AI가 최근 만든 것 | `/home/ai-activity` | 4×4 | 노출 범위 한 줄 · 종류 배지 + 제목 | 최신 생성물 |
-| canvas.topics | 오늘의 주제 | `/signals?type=theme_surge` + `/signals/momentum` | 4×2 | 주목 주제·부상 종목 칩(→ `reader_topic`) | 신호 날짜 |
-| canvas.study | 이어서 공부하기 | `/study-projects` | 4×2 | 최근 갱신 프로젝트 · 자료 수 | 프로젝트 갱신 |
-
-'전체 보기'는 피드(`/feed`) 또는 `/study`. 모두 캐시된 GET만 읽는다.
+옛 홈 위젯 4종(`widgets/canvas.tsx`: 안 읽은 소스·AI가 최근 만든 것·오늘의 주제·이어서 공부하기)은 홈 고정 탭 어디에도 쓰이지 않아 7단계(2026-11-05)에서 지웠다.
 
 ## 4. 저장됨·소스
 
@@ -70,6 +61,6 @@
 
 ## 5. 검증
 
-- `npx tsc --noEmit -p tsconfig.app.json`, `node --test tests/*.test.mjs`(`canvas.test.mjs`: 디렉터리 묶음·시스템 판정·기간 표기)
+- `npx tsc --noEmit -p tsconfig.app.json`, `node --test tests/*.test.mjs`(`canvas.test.mjs`: 디렉터리 묶음)
 - 백엔드 `tests/test_chat_doc_quote.py`(문서 인용 머리·붙여넣은 자료·답변 인용 유지·API 통과)
-- 실제 화면: 피드 디렉터리 묶음 펼침, 문서·스터디·대화 답변에서 선택 → 팔레트 → AI에게 묻기(닫힌 패널이 열리고 인용 칩·포커스), 위젯 추가 창 캔버스 탭에서 4종 추가
+- 실제 화면: 피드 디렉터리 묶음 펼침, 문서·스터디·대화 답변에서 선택 → 팔레트 → AI에게 묻기(닫힌 패널이 열리고 인용 칩·포커스)

@@ -51,8 +51,8 @@ export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, 
 function SectionHead({ widget, params, title, link }: Pick<HomeSectionProps, "widget" | "params" | "title" | "link">) {
   const def = WIDGET_BY_ID[widget]
   const meta = def.useMeta(params)
-  const target = link === undefined ? (def.detailPathOf?.(params) ?? def.detailPath) : link?.to
-  return <BlockHead title={title ?? def.titleOf?.(params) ?? def.title} info={def.description} asOf={meta.asOf} stale={meta.stale}
+  const target = link === undefined ? def.detailPath : link?.to
+  return <BlockHead title={title ?? def.title} info={def.description} asOf={meta.asOf} stale={meta.stale}
     link={target ? { to: target, label: link?.label ?? "전체 보기" } : null} />
 }
 

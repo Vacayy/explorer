@@ -38,11 +38,3 @@ const schema = z.object({
 export function parsePeerCatalog(input: unknown): PeerCatalog {
   return schema.parse(input)
 }
-
-export function selectPeerCompanies(catalog: PeerCatalog, groupId: string, query: string) {
-  const needle = query.trim().toLocaleLowerCase('ko-KR')
-  return catalog.companies.filter(company =>
-    (!groupId || company.groupIds.includes(groupId)) &&
-    (!needle || [company.name, company.code, ...company.aliases, ...company.products].join(' ').toLocaleLowerCase('ko-KR').includes(needle)),
-  )
-}

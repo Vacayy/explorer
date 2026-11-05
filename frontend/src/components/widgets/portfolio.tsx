@@ -1,11 +1,10 @@
 import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { SparkLine } from "@/components/shared/Spark"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { EVENT_KIND, dday } from "@/components/portfolio/EventsCard"
-import { useDefaultWatchGroup, useGroupDigests, useGroupSignals } from "@/hooks/useGroups"
-import { usePortfolio, usePortfolioEvents, usePortfolioExposure, usePortfolioFlow, usePortfolioHistory } from "@/hooks/usePortfolio"
+import { useDefaultWatchGroup, useGroupDigests } from "@/hooks/useGroups"
+import { usePortfolio, usePortfolioEvents, usePortfolioFlow, usePortfolioHistory } from "@/hooks/usePortfolio"
 import { cn } from "@/lib/utils"
 import { formatPercent, formatRatio } from "@/utils/format"
 import type { PortfolioSummary } from "@/types"
@@ -61,27 +60,6 @@ function EventsBody({ h }: WidgetBodyProps) {
   </div>
 }
 
-/* ── 공통 변수 노출 ── */
-const DIRECTION: Record<string, string> = { "+": "수혜 요인", "−": "부담 요인", "+−": "영향 엇갈림" }
-function ExposureBody({ h }: WidgetBodyProps) {
-  const q = usePortfolioExposure()
-  if (!q.data) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  const [top] = q.data.drivers
-  if (!top) return <WidgetState empty emptyText="보유 종목이 함께 기대는 변수의 근거가 아직 없어요." />
-  return <div className="flex h-full flex-col gap-2">
-    <WidgetHero value={formatRatio(top.exposure_pct)} aside={<span className="min-w-0 truncate text-sm text-muted-foreground">{top.name}{top.direction ? ` · ${DIRECTION[top.direction] ?? ""}` : ""}</span>} />
-    {h > 2 && <ul className="min-h-0 space-y-1.5 overflow-hidden text-[13px]">
-      {q.data.drivers.slice(0, 3).map(d => (
-        <li key={d.key} className="grid grid-cols-[minmax(0,1fr)_88px_44px] items-center gap-2">
-          <span className="truncate">{d.name}</span>
-          <Progress value={d.exposure_pct} aria-label={`${d.name} 노출 ${formatRatio(d.exposure_pct)}`} className="h-1.5" />
-          <span className="text-right tabular-nums">{formatRatio(d.exposure_pct)}</span>
-        </li>
-      ))}
-    </ul>}
-  </div>
-}
-
 /* ── 보유 종목 자료 흐름 ── */
 function useFlowMeta(): WidgetMeta {
   const q = usePortfolioFlow()
@@ -106,34 +84,6 @@ function FlowBody({ h }: WidgetBodyProps) {
         </li>
       ))}
     </ul>}
-  </div>
-}
-
-/* ── 묶음 오늘 신호 (기본 관심 묶음) ── */
-function useSignalsMeta(): WidgetMeta {
-  const g = useDefaultWatchGroup()
-  return { asOf: g.data?.last_as_of ?? null, stale: !!g.data?.evaluation_pending }
-}
-function SignalsBody({ h }: WidgetBodyProps) {
-  const g = useDefaultWatchGroup()
-  const s = useGroupSignals(g.data?.id ?? null, 1)
-  if (!g.data || !s.data) return <WidgetState loading={g.isLoading || s.isLoading} error={g.isError || s.isError}
-    onRetry={() => { void g.refetch(); void s.refetch() }} />
-  const ruleCount = g.data.rules.default.length + Object.values(g.data.rules.members).reduce((n, r) => n + r.length, 0)
-  if (!ruleCount) return <WidgetState empty emptyText={`'${g.data.name}' 묶음에 감시 조건이 없어요. 종목 묶음에서 조건을 정하면 매일 평가합니다.`} />
-  const items = s.data
-  return <div className="flex h-full flex-col gap-2">
-    {g.data.evaluation_pending && <p className="text-[11px] text-chart-warning">최신 거래일({g.data.latest_trade_date ?? "-"}) 평가 전이에요.</p>}
-    <WidgetHero value={`${items.length}개`} aside={<span className="truncate text-sm text-muted-foreground">새 신호 · {g.data.name}</span>} />
-    {!items.length ? <p className="text-[13px] text-muted-foreground">조건을 새로 통과한 종목이 없어요.</p>
-      : h > 2 && <ul className="min-h-0 divide-y overflow-hidden text-[13px]">
-        {items.slice(0, h > 3 ? 5 : 3).map(x => (
-          <li key={`${x.stock_code}-${x.rule_id}`} className="flex items-center justify-between gap-2 py-1.5">
-            <Link to={`/analyze/${x.stock_code}/summary`} className="min-w-0 truncate font-medium hover:underline">{x.name ?? x.stock_code}</Link>
-            <span className="shrink-0 truncate text-muted-foreground">{x.label}</span>
-          </li>
-        ))}
-      </ul>}
   </div>
 }
 
@@ -167,16 +117,12 @@ function DigestsBody({ h }: WidgetBodyProps) {
 
 /** registry.tsx가 이 배열을 그대로 펼친다 */
 export const PORTFOLIO_WIDGETS: WidgetDef[] = [
-  { id: "portfolio.today", title: "포트폴리오 오늘", description: "오늘 수익률 · 누적 시간가중 수익률 · 현금 비중 · 누적 추이", section: "portfolio", group: "포트폴리오",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/portfolio", useMeta: useTodayMeta, Body: TodayBody },
-  { id: "portfolio.events", title: "다가오는 일정", description: "보유 종목 다음 일정 D-day · 45일 목록(확정·예상)", section: "portfolio", group: "포트폴리오",
-    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/portfolio/events", useMeta: () => ({ asOf: null }), Body: EventsBody },
-  { id: "portfolio.exposure", title: "공통 변수 노출", description: "보유 종목이 함께 기대는 변수 · 걸린 비중 상위 3", section: "portfolio", group: "포트폴리오",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/portfolio", useMeta: useTodayMeta, Body: ExposureBody },
-  { id: "portfolio.flow", title: "보유 종목 자료 흐름", description: "언급 급증 · 부정 전환 종목과 오늘 언급 수", section: "portfolio", group: "포트폴리오",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/portfolio/holdings", useMeta: useFlowMeta, Body: FlowBody },
-  { id: "watch.signals", title: "묶음 오늘 신호", description: "기본 관심 묶음에서 감시 조건을 새로 통과한 종목", section: "portfolio", group: "관심",
-    size: { w: 4, h: 3, minW: 3, minH: 2 }, detailPath: "/follow/stocks", useMeta: useSignalsMeta, Body: SignalsBody },
-  { id: "watch.digests", title: "관심 종목 오늘 요약", description: "기본 관심 묶음 종목의 최신 1일 자료 요약", section: "portfolio", group: "관심",
-    size: { w: 4, h: 4, minW: 3, minH: 2 }, detailPath: "/follow/stocks", useMeta: useDigestsMeta, Body: DigestsBody },
+  { id: "portfolio.today", title: "포트폴리오 오늘", description: "오늘 수익률 · 누적 시간가중 수익률 · 현금 비중 · 누적 추이",
+    detailPath: "/portfolio", useMeta: useTodayMeta, Body: TodayBody },
+  { id: "portfolio.events", title: "다가오는 일정", description: "보유 종목 다음 일정 D-day · 45일 목록(확정·예상)",
+    detailPath: "/portfolio/events", useMeta: () => ({ asOf: null }), Body: EventsBody },
+  { id: "portfolio.flow", title: "보유 종목 자료 흐름", description: "언급 급증 · 부정 전환 종목과 오늘 언급 수",
+    detailPath: "/portfolio/holdings", useMeta: useFlowMeta, Body: FlowBody },
+  { id: "watch.digests", title: "관심 종목 오늘 요약", description: "기본 관심 묶음 종목의 최신 1일 자료 요약",
+    detailPath: "/follow/stocks", useMeta: useDigestsMeta, Body: DigestsBody },
 ]

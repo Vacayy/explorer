@@ -42,28 +42,6 @@ export interface PeerPriceSnapshot {
   qualityIssues: { code: string; date: string; reason: string; sourceUrl: string }[]
   caveats: string[]
 }
-export interface PeerMemberPerformance {
-  code: string
-  name: string
-  returnPct: number | null
-  peerReturnPct: number | null
-  excessPp: number | null
-  rank: number | null
-}
-export interface PeerGroupPerformance {
-  id: string
-  name: string
-  scope: PeerGroup['scope']
-  memberCount: number
-  coveredCount: number
-  returnPct: number | null
-  medianPct: number | null
-  risingCount: number | null
-  path: number[] | null
-  members: PeerMemberPerformance[]
-  missingCodes: string[]
-}
-
 /** GET /api/peers/runtime — backend/models/peers.py */
 export interface PeerRuntime {
   catalog: PeerCatalog

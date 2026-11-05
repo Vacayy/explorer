@@ -138,20 +138,6 @@ export function formatFundingRate(rate: string | number): string {
   return `${(num * 100).toFixed(4)}%`
 }
 
-/**
- * UTC 시각 → KST "HH:MM" 표기.
- * SQLite datetime('now')는 타임존 표기 없는 UTC("2026-08-18 04:30:00")라 Z를 붙여 파싱한다.
- */
-export function formatKstTime(utc: string | null | undefined): string {
-  if (!utc) return "-";
-  const iso = utc.includes("T") ? utc : utc.replace(" ", "T") + "Z";
-  const d = new Date(iso.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleTimeString("ko-KR", {
-    timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false,
-  });
-}
-
 /** UTC 시각(SQLite·ISO) → KST "MM-DD HH:MM" 표기 */
 export function formatKstDateTime(utc: string | null | undefined): string {
   if (!utc) return "-";

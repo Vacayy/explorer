@@ -1,6 +1,6 @@
 # 탐색 › 수출입·회사채·인물·기업활동 — 변화를 앞에 보이기
 
-- 상태: P6b 구현 계약 (2026-10-16). 셸은 [app-shell](app-shell.md), 위젯 계약은 [home-widgets](home-widgets.md) §2.
+- 상태: P6b 구현 계약 (2026-10-16). 셸은 [app-shell](app-shell.md).
 - 수출입 원천·판정은 [trade-follow](trade-follow.md), 회사채 계산은 [credit-spreads](credit-spreads.md), 인물 프로필 생성 규율은 [source-dossier](source-dossier.md)를 따른다.
 - 원칙: 서버가 이미 계산한 변화(판정·Δ·정정 여부)를 첫 화면 정렬과 배지로 쓴다. 새 LLM 호출·cron은 없다.
 
@@ -53,22 +53,13 @@
   - 수출 지표: 이 종목을 지목한 품목 칩.
   - 둘 다 없으면 줄을 그리지 않는다.
 
-## 5. 위젯 5종 (탐색 섹션, `widgets/exploreFollow.tsx`)
+## 5. 위젯 — 제거
 
-| id | 이름 | 원천 | 기본 크기 | 머리 시각(원천 리듬) · 고장 | 큰 숫자 · 한 줄 · 목록 |
-|---|---|---|---|---|---|
-| explore.trade | Trade Pulse | `/trade/highlights?limit=5` | 4×4 | 통계월 · 2개월 넘게 묵음 | 기여 1위 YoY · 급등·급감 수(전 품목) · 기여도 순 |
-| explore.credit | 신용 긴장 Top | `/credit` | 4×3 | 시세 기준일 · 원천 미설정·4일 넘게 묵음 | 1개월 확대 1위 Δbp · 기업 수 · Δ 순 |
-| explore.people | 팔로우 인물 이번 주 | `/person/followed` | 4×3 | 최근 언급 게시 시각(KST) · 36시간 | 7일 언급 1위 · 최신 문서 · 7일·Δ·함께 뜬 종목 |
-| explore.actions | 오늘 기업활동 | `/actions?days=7&kind=original` | 4×4 | 마지막 DART 스캔 성공(KST) · 3시간 | 오늘 건수 · 7일·내 종목 수 · 내 종목 먼저 |
-| explore.rights | 유무증 D-day | `/actions/rights` | 4×3 | 〃 | 가장 가까운 D-day · 7일 안 일정 수 · 날짜 순 |
-
-- 프리셋: 수출 사이클에 Trade Pulse·신용 긴장 Top을, 이벤트 장세에 기업활동·유무증·팔로우 인물을 더한다.
-- `GET /api/spine/person/followed` → `{items: PersonRow[], as_of}`. 팔로우 인물만, 7일 급상승 순이고, `top_stocks`는 최근 7일 문서에서 함께 뜬 종목이다.
+옛 홈 위젯 5종(`widgets/exploreFollow.tsx`: Trade Pulse·신용 긴장 Top·팔로우 인물 이번 주·오늘 기업활동·유무증 D-day)은 홈 고정 탭이 같은 원천을 직접 만든 블록(`home/TradeBlock`·기업활동 목록)으로 보이게 되어 7단계(2026-11-05)에서 지웠다. `GET /api/spine/person/followed`는 서버에 남아 있다(화면 호출 없음).
 
 ## 6. 5-state
 
-| | 수출입 | 회사채 | 인물 | 기업활동 | 위젯 |
+| | 수출입 | 회사채 | 인물 | 기업활동 | — |
 |---|---|---|---|---|---|
 | Empty | 팔로우 없음 → 기본 세트 버튼 | 어댑터 없음 안내 | 기간 내 인물 없음 | 원공시 없음(정정 N건 안내) | 정상적으로 비어 있음 문구 |
 | Loading | Skeleton | Skeleton | Skeleton(이전 데이터 흐리게 유지) | Skeleton | Skeleton |

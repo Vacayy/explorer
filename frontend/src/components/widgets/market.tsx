@@ -1,19 +1,13 @@
 import type { ReactNode } from "react"
-import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { MetricTrend } from "@/components/shared/MetricTrend"
 import { SparkLine } from "@/components/shared/Spark"
 import { WidgetHero, WidgetState } from "@/components/shared/WidgetFrame"
 import { fmtValue } from "@/components/home/MacroLiquidity"
-import { RiskCard, useRiskView, type RiskCardKind } from "@/components/home/RiskMonitoring"
 import { UsBriefingSection } from "@/components/home/UsBriefingSection"
-import { KrMoversSection } from "@/components/home/KrMoversSection"
-import { Card } from "@/components/ui/card"
 import { useIndices, useRiskWindow } from "@/hooks/useDashboard"
-import { useKrMovers } from "@/hooks/useKrMovers"
 import { useMacro } from "@/hooks/useMacro"
 import { useMarketRegime } from "@/hooks/useMarketRegime"
-import { useRetailSummary } from "@/hooks/useRetail"
 import { useUsBriefing } from "@/hooks/useUsBriefing"
 import { cn } from "@/lib/utils"
 import { formatBp, formatLevel, formatPercent, formatRatio, formatYield } from "@/utils/format"
@@ -113,37 +107,6 @@ function UsSummary({ h }: { h: number }) {
   </div>
 }
 
-/* ── 전일 국장 거래대금 ── */
-export function useKrMeta(): WidgetMeta {
-  const q = useKrMovers()
-  return { asOf: q.data?.trade_date ?? null, stale: !!q.data && q.data.status !== "ok" }
-}
-export function KrBody({ h }: WidgetBodyProps) {
-  return h > 3 ? <Full><KrMoversSection embedded /></Full> : <KrSummary h={h} />
-}
-function KrSummary({ h }: { h: number }) {
-  const q = useKrMovers()
-  const d = q.data
-  if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  if (!d.items.length) return <WidgetState empty emptyText="전일 거래대금 스냅샷이 없어요. 평일 16:20에 받습니다." />
-  const top = d.clusters[0]
-  const rows = d.items.slice(0, h > 3 ? 5 : 3)
-  const max = Math.max(...rows.map(r => Math.abs(r.change_pct ?? 0)), 1)
-  return <div className="flex h-full flex-col gap-2">
-    {top && <WidgetHero value={`${top.label} ${formatRatio(top.share_pct)}`}
-      aside={<span className={cn("text-sm tabular-nums", tone(top.median_change))}>중앙 {formatPercent(top.median_change)}</span>} />}
-    <ul className="min-h-0 space-y-1 overflow-hidden text-[13px]">
-      {rows.map(r => (
-        <li key={r.stock_code} className="grid grid-cols-[minmax(0,1fr)_96px_56px] items-center gap-2">
-          <Link to={`/analyze/${r.stock_code}/summary`} className="truncate hover:underline">{r.name}</Link>
-          <span className="h-1.5 overflow-hidden rounded-full bg-muted"><span className={cn("block h-full rounded-full", (r.change_pct ?? 0) >= 0 ? "bg-up" : "bg-down")} style={{ width: `${Math.abs(r.change_pct ?? 0) / max * 100}%` }} /></span>
-          <span className={cn("text-right tabular-nums", tone(r.change_pct))}>{formatPercent(r.change_pct)}</span>
-        </li>
-      ))}
-    </ul>
-  </div>
-}
-
 /* ── 시장 국면 ── */
 export function useRegimeMeta(): WidgetMeta {
   const q = useMarketRegime()
@@ -198,33 +161,5 @@ export function RiskBody({ metric, h }: WidgetBodyProps & { metric: string }) {
     <WidgetHero className={cn(!fresh && "opacity-60")} value={riskValue(item.unit, item.value)} aside={<span className={cn("text-xs tabular-nums", tone(item.change_20))}>20일 {riskChange(item.unit, item.change_20)}</span>} />
     {!fresh && <p className="text-[11px] text-chart-warning">{item.quality === "stale" ? `${item.lag_days ?? "?"}일 지연` : "갱신 실패"}{day ? ` · ${day} 값` : ""}</p>}
     {h > 2 && <div className="mt-auto"><SparkLine data={item.points.map(p => p[1])} height={Math.max(28, (h - 2) * 40)} /></div>}
-  </div>
-}
-
-/** 리스크 위젯 상세 — Risk 모니터링 화면의 카드 그대로(기간·계열 선택 포함) */
-export function RiskDetail({ kind }: { kind: RiskCardKind }) {
-  const view = useRiskView()
-  if (!view.data) return <Card className="p-6"><WidgetState loading={view.query.isLoading} error={view.query.isError} onRetry={() => void view.query.refetch()} /></Card>
-  return <RiskCard view={view} kind={kind} />
-}
-
-/* ── 개인 투자 열기 Δ ── */
-export function useRetailMeta(): WidgetMeta {
-  const q = useRetailSummary()
-  return { asOf: q.data?.as_of ?? null }
-}
-export function RetailBody({ h }: WidgetBodyProps) {
-  const q = useRetailSummary()
-  const d = q.data
-  if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  const moved = [...d.metrics].filter(m => m.pctile_change != null).sort((a, b) => Math.abs(b.pctile_change!) - Math.abs(a.pctile_change!))
-  const top = moved[0]
-  if (!top) return <WidgetState empty emptyText="개인 투자 지표가 아직 없어요." />
-  return <div className="flex h-full flex-col gap-2">
-    <WidgetHero value={`${formatBp(top.pctile_change, true)}p`} aside={<span className="text-sm text-muted-foreground">{top.label}</span>} />
-    <p className="text-[13px] text-muted-foreground">20일 새 백분위가 가장 크게 움직였어요 · 국면 <span className="font-medium text-foreground">{d.regime?.label ?? "-"}</span></p>
-    {h > 3 && <ul className="min-h-0 divide-y overflow-hidden text-[13px]">
-      {moved.slice(1, 4).map(m => <li key={m.key} className="flex justify-between gap-2 py-1"><span className="truncate">{m.label}</span><span className="tabular-nums text-muted-foreground">{formatBp(m.pctile, false)}p ({formatBp(m.pctile_change, true)})</span></li>)}
-    </ul>}
   </div>
 }

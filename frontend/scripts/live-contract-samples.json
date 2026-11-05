@@ -7,7 +7,6 @@
     "pid": "8", "group_id": "1", "hs_code": "1902301010", "study_id": "48"
   },
   "paths": {
-    "/api/dashboard/layouts/{name}": "/api/dashboard/layouts/home",
     "/api/spine/company/{name}/dossier": "/api/spine/company/삼성전자/dossier",
     "/api/spine/person/{name}/dossier": "/api/spine/person/젠슨 황/dossier",
     "/api/spine/person/{entity_id}": "/api/spine/person/5215"
@@ -15,7 +14,6 @@
   "query": {
     "/api/companies/search": "q=삼성",
     "/api/spine/person/resolve": "name=하워드 막스",
-    "/api/compare": "stocks=005930,000660",
     "/api/spine/beneficiary/screen": "sector=2차전지",
     "/api/spine/credit/history": "tickers=ORCL",
     "/api/spine/feed/company-evidence": "company=005930&market=kr",

@@ -49,7 +49,7 @@ Dock은 Home·관심목록·월드모델·대화 4개이며 피드 읽기는 Hom
 - 종목 요약(기업 요약)은 이미 'Explorer · 기업 요약' 소스였다 — 시장 탭의 중복 카드만 제거한다. 유튜브 정리본은 유튜브 소스 게시물의 '요약' 보기로 읽는다.
 - **주제 칩**: 리더 상단에 '주목 주제'(theme_surge 비중순 상위 5)와 '부상 종목'(언급 모멘텀 상위 5) 칩을 둔다. 칩을 누르면 URL `reader_topic`으로 타임라인을 거른다 — 소스 글은 해당 엔티티가 링크된 문서, Explorer 생성물은 같은 토픽. 선택된 칩은 '주제: X ×'로 해제한다. 소스·종류 전환 시 유지하지 않는다.
 - **인과 그래프 업데이트**: 월드모델 랜딩(`/narrative`) 목록 보기 상단으로 옮긴다(기존 `GraphActivitySection` 그대로).
-- 홈에서만 쓰던 카드(`NarrativeDeltaCard`·`RecentReportsCard`·`DigestBriefs`)는 제거한다. `AiActivityFeed`는 시장 탭에서 빼고 피드 탭 최상단(IndexStrip 자리)으로 옮긴다(D-209). 백엔드 `/api/spine/home/ai-activity`·`/home/digests`는 다른 소비처 검토 후 유지(텔레그램·대화 도구 연계 여지).
+- 홈에서만 쓰던 카드(`NarrativeDeltaCard`·`RecentReportsCard`·`DigestBriefs`)는 제거한다. `AiActivityFeed`는 시장 탭에서 빼고 피드 탭 최상단(IndexStrip 자리)으로 옮겼다(D-209) — 이후 4a 피드 개편에서 빠졌고 2026-11-05 개편 7단계에서 `/api/spine/home/ai-activity`까지 지웠다(`/home/digests`는 D-241에서 제거).
 - 5-state: 주제 칩 Loading=칩 자리 없음(레이아웃 점프 없이 생략) · Empty=칩 줄 숨김 · Error=칩 줄 숨김(피드 본문과 독립) · 거른 결과 0건=EmptyState '이 주제의 게시물이 없습니다'와 해제 버튼 · Ideal=칩 두 묶음.
 
 ## 소스 디렉터리 계약

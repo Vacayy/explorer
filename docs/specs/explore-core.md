@@ -1,6 +1,6 @@
 # 탐색 핵심 — 종목 발견 · 신호 · 컨콜 · 산업·섹터 (P6a)
 
-- 상태: 구현 계약 (2026-10-16). 셸: [app-shell](app-shell.md) 탐색 L2. 위젯: [home-widgets](home-widgets.md) §2 계약.
+- 상태: 구현 계약 (2026-10-16). 셸: [app-shell](app-shell.md) 탐색 L2. 홈 섹션: [home-widgets](home-widgets.md) §1 계약.
 - 세부 기능 계약은 각 담당 spec에 있다: 발견 워크스페이스 [technical-reading](technical-reading.md)·[market-strategies](market-strategies.md), 컨콜 [transcript-follow](transcript-follow.md)·[transcript-momentum](transcript-momentum.md), 섹터 서사 [sector-aggregation](sector-aggregation.md). 이 문서는 탐색 탭 4개의 화면 묶음과 위젯만 정한다.
 - URL은 바꾸지 않았다. 옛 경로는 리다이렉트한다.
 
@@ -23,7 +23,7 @@
 - 원천: `GET /api/spine/signals/summary?days=7` — 유형별 `latest_date`·`count_latest`·`count_window`·`top[3]`(유형별 세기 순: 언급 수·점유율 변화·시총·돌파율·거래량 배수·|3개월 수익|·쏠림 비율·점수). `as_of` = 신호 최신일. 읽기 전용.
 - **이 신호로 찾기**: `GET /api/spine/signals?type=&days=`에서 최신일의 국내 6자리 종목만 모아(`discoveryDraft.signalUniverse`) 조건 스택 초안의 검색 범위(`universe`)로 넣는다 → 검색 요청 `spec.universe_codes`. 스택 위 '검색 범위 · 52주 신고가 11/04 · 9종목 · 지우기'. 국내 종목이 없는 신호(주제·미국)는 목록 시트를 연다.
 - 목록 시트 `?signal=<type>`(옛 `?list=`): 카드 목록, 기간 30일·주목 주제 14일·실적 발언 모멘텀 90일, 12개씩 더 보기, 국내 종목이면 '최신일 n종목으로 찾기'.
-- 리다이렉트: `/explore` → `/discover#signals`, `/explore?list=X` → `/discover?signal=X#signals`, `/discover/signals` → `/discover#signals`. 위젯 `explore.signals` 전체 보기도 이 주소.
+- 리다이렉트: `/explore` → `/discover#signals`, `/explore?list=X` → `/discover?signal=X#signals`, `/discover/signals` → `/discover#signals`. 
 - 칩 목적지: 국내 종목 → `/analyze/:code/summary`, 미국(`payload.ticker`) → `/us/:ticker`, 그 외 → `/feed?q=`.
 - 5-state: Skeleton 8칸 · 블록 ErrorState(아래 워크스페이스는 살림) · 신호 0건 한 줄 · 유형 하나 없음 → 카드에 '신호 없음' · 묵은 유형 → 주의 색 날짜.
 
@@ -55,16 +55,14 @@
 - 교차 링크: 국장 거래대금 섹터 쏠림 라벨 → `/map?group=`. 유니버스 그룹 → '산업 맵에서 보기' 칩 = 멤버가 속한 `sector_map` 대분류 상위 3(`GET /api/industries/{id}` 응답 `map_groups: [{name, members}]`).
 - 두 섹터 체계(`sector_map` 18 대분류 · `industry_groups` 11 큐레이션)는 **합치지 않는다**. 이름이 달라 멤버 분포로만 잇는다. 통합 여부는 별도 결정.
 
-## 5. 위젯 (탐색 탭, `widgets/explore.tsx`)
+## 5. 홈 섹션 (`widgets/explore.tsx`)
 
-| id | 이름 | 원천 | 기본 크기 | 큰 숫자 · 한 줄 · 목록 | 고장 표시 |
-|---|---|---|---|---|---|
-| explore.signals | 오늘의 신호 | `/signals/summary` | 4×3 | 기준일 건수 · 유형 수 · 유형별 건수+상위 칩 | 신호 최신일 1일 초과 |
-| explore.momentum | 이번 시즌 실적 모멘텀 | `/transcript/momentum` | 4×4 | 새 모멘텀 수 · 시즌·발표 분석 수 · 상위 3(티커·점수·대표 동인) | 판정 2일 초과 · SEC 미설정 |
-| explore.calls | 최근 받은 컨콜 | `/transcript/recent?days=7` | 4×5 | 7일 수집 수 · 발표일 순 목록(받은 순 아님). 곧 발표는 홈 › 미국 시장 실적 시즌 블록 하나로(D-303) | — (머리 = 마지막 수집 KST) |
-| explore.sectorShift | 섹터 사분면 이동 | `/sector-map` | 4×4 | 사분면이 바뀐 대분류 수 · 1주 전 → 지금 · 단기 RS 변화 큰 순 | 시세 기준일 3일 초과 |
+홈 › 미국 시장이 쓰는 두 섹션만 남는다(계약 [home-widgets](home-widgets.md) §1). 오늘의 신호·섹터 사분면 이동 위젯은 화면에서 쓰지 않아 7단계(2026-11-05)에서 지웠다.
 
-사분면: 장기 RS ≥50·단기 ≥50 주도 / 장기 <50·단기 ≥50 부상 / <50·<50 소외 / ≥50·<50 과열·경계 (`hooks/useSectorMap.quadrantOf`).
+| id | 이름 | 원천 | 큰 숫자 · 한 줄 · 목록 | 고장 표시 |
+|---|---|---|---|---|
+| explore.momentum | 새 모멘텀 후보 | `/transcript/momentum` | 새 모멘텀 수 · 시즌·발표 분석 수 · 상위 3(티커·점수·대표 동인) | 판정 2일 초과 · SEC 미설정 |
+| explore.calls | 최근 받은 컨콜 | `/transcript/recent?days=7` | 7일 수집 수 · 발표일 순 목록(받은 순 아님). 곧 발표는 홈 › 미국 시장 실적 시즌 블록 하나로(D-303) | — (머리 = 마지막 수집 KST) |
 
 ## 6. 검증
 

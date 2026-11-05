@@ -1,6 +1,6 @@
 # 국면 이력 — 과거 시장 국면 지도와 버크셔 상대성과
 
-상태: P0 구현(2026-10-26) + §8 지금 시장 읽기(2026-10-26) + 홈 › 매크로로 이전(2026-11-05, 화면 구조 개편 3c). 화면 `/home/macro`(옛 `/regimes`는 `/home/macro#history`로 리다이렉트), 홈 위젯 `explore.brk`. 근거 조사: [research/market-regimes.md](../research/market-regimes.md) · [regime-signals.md](../research/regime-signals.md) · [era-methodology.md](../research/era-methodology.md).
+상태: P0 구현(2026-10-26) + §8 지금 시장 읽기(2026-10-26) + 홈 › 매크로로 이전(2026-11-05, 화면 구조 개편 3c). 화면 `/home/macro`(옛 `/regimes`는 `/home/macro#history`로 리다이렉트). 옛 홈 위젯 `explore.brk`는 2026-11-05 개편 7단계에서 지웠다. 근거 조사: [research/market-regimes.md](../research/market-regimes.md) · [regime-signals.md](../research/regime-signals.md) · [era-methodology.md](../research/era-methodology.md).
 
 홈 › 국면·리스크([market-regime](market-regime.md))는 **오늘의 비중 포스처**다. 이 문서는 **과거 국면 지도**다 — 지난 수십 년을 규칙으로 구간을 나누고, 그 위에 매크로 계열과 개별 자산의 상대성과를 겹쳐 본다.
 
@@ -61,10 +61,6 @@
 4. **약세장 표**(`BearTable`): 약세장 전부를 2열로(고점·저점·하락·기간·확정까지) + 임계 근접 조정 목록.
 
 모바일(<768)은 `HistoryCompact` — 지도 최근 20년 + 최근 약세장 4건 + '약세장 n번 · 버크셔 vs 지수 ›'(`?macro_view=full#history`).
-
-### 홈 위젯 `explore.brk`(국면 이력 묶음)
-
-벤치·보기를 URL `brk_bench`·`brk_view`로 공유. 5년 창, 약세장 음영, 머리 숫자 = 최근 12M 초과수익. 전체 보기 → `/home/macro#brk`.
 
 ## 7. 5-state
 

@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from config import MEDIA_PATH
 from database import init_db
 from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, kpi
-from routers import signals, compare, consensus
+from routers import signals, consensus
 from routers import telegram_feed
 from routers import blog_feed
 from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_keywords, spine_sources
@@ -49,7 +49,6 @@ app.include_router(business.router)
 app.include_router(industries.router)
 app.include_router(kpi.router)
 app.include_router(signals.router)
-app.include_router(compare.router)
 app.include_router(consensus.router)
 app.include_router(telegram_feed.router)
 app.include_router(blog_feed.router)
@@ -113,8 +112,6 @@ from routers import spine_pricing  # 시장 프라이싱 원장 (docs/specs/pric
 app.include_router(spine_pricing.router)
 from routers import spine_retail  # 개인 투자 열기 (D-231)
 app.include_router(spine_retail.router)
-from routers import dashboard  # 홈 위젯 배치 저장
-app.include_router(dashboard.router)
 from routers import proxy_boards  # 프록시 보드 (D-240)
 app.include_router(proxy_boards.router)
 from routers import spine_world  # 월드모델 읽기 전용(지금 랜딩·체크포인트·위젯)

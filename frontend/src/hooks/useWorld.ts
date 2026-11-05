@@ -5,7 +5,7 @@ import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
 import { rebuildResultMessage } from "@/lib/bigPicture"
 import type { NarrativeItem } from "@/components/explore/NarrativeList"
-import type { WorldBigPicture, WorldCheckpoint, WorldContested, WorldMyStocks, WorldNarrativeChanges, WorldRebuildResult } from "@/types"
+import type { WorldBigPicture, WorldCheckpoint, WorldContested, WorldNarrativeChanges, WorldRebuildResult } from "@/types"
 
 /**
  * 월드모델 읽기 전용 훅 (docs/specs/world-model.md). 모두 /api/spine/world/* — 저장분만 읽고 생성하지 않는다.
@@ -38,10 +38,6 @@ export function useNarrativeChanges(days = 7) {
 
 export function useContestedPremises() {
   return useQuery(apiQuery<WorldContested>({ key: ["spine", "world", "contested"], url: "/api/spine/world/contested", staleTime: STALE.medium }))
-}
-
-export function useMyStockNarratives() {
-  return useQuery(apiQuery<WorldMyStocks>({ key: ["spine", "world", "my-stocks"], url: "/api/spine/world/my-stocks", staleTime: STALE.medium }))
 }
 
 /**

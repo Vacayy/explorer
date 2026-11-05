@@ -19,7 +19,7 @@ it('has no unresolved frontend response types and validates the main read domain
 it('explicitly accounts for the remaining unused JSON reads and non-JSON streams/artifacts', () => {
   expect(unmodeled.filter(route => route.method === 'get').map(route => route.path).sort()).toEqual([
     '/api/analysis/runs/{run_id}/artifacts/{artifact_id}', '/api/analysis/runs/{run_id}/events',
-    '/api/compare', '/api/consensus/{stock_code}', '/api/health', '/api/signals', '/api/spine/conversations/{conversation_id}/stream',
+    '/api/consensus/{stock_code}', '/api/health', '/api/signals', '/api/spine/conversations/{conversation_id}/stream',
     '/api/spine/groups/{group_id}/evaluations', '/api/spine/trade/{hs_code}/metrics',
   ].sort())
 })

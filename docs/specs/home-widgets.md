@@ -1,7 +1,7 @@
-# 홈 위젯 대시보드 → 홈 고정 탭
+# 홈 고정 탭 · 섹션 본문
 
-- 상태: **2026-11-05 화면 구조 개편 3단계(3a)로 홈은 시스템 고정 탭 다섯 개가 됐다(§0).** 사용자 메뉴(§5)·배치 편집·위젯 추가 창은 화면에서 빠졌다. §1·§4·§5는 옛 위젯 홈의 기록으로 남기고, 위젯 본문 계약(§2·§3)은 고정 탭 섹션이 그대로 쓴다.
-- 이전: P4 구현 계약 (2026-10-16). [home-feed](home-feed.md)의 Home 시장 탭 구성을 대체했다. 피드 리더는 피드 › 피드로 남는다.
+- 상태: **구현 계약(2026-11-05 화면 구조 개편 3a~3d, 7단계 정리).** 홈은 시스템 고정 탭 다섯 개다(§0). 옛 위젯 홈(격자·배치 편집·위젯 추가 창·사용자 메뉴·`/api/dashboard`)은 3a에서 화면, 7단계에서 코드·API까지 지웠다 — 옛 기록은 git 이력과 CHANGELOG에 있다.
+- 이전: P4 위젯 대시보드(2026-10-16). [home-feed](home-feed.md)의 Home 시장 탭 구성을 대체했다. 피드 리더는 피드 › 피드로 남는다.
 - 셸: [app-shell](app-shell.md).
 
 ## 0. 홈 고정 탭 (2026-11-05, 개편 3a)
@@ -15,7 +15,7 @@
   1. 국장 거래대금 상위(`home/KrTurnoverBlock`, `/api/spine/kr/movers`) | 가파른 추세(`explore.trend` 본문, 거래대금 칸 높이에 맞추고 표는 칸 안 스크롤. 모바일은 좁은 열). 거래대금 = 한 줄 요약 → 섹터 쏠림 상위 5 → 상위 10 표(신규 진입·급등락 배지, '상위 20 전체' 펼침) → '상위 5종목 관련 자료' 접기. 갱신 버튼은 머리. 가파른 추세 조건은 '어떻게 산정되나요?' 툴팁, 표 머리 '꾸준함'(R²)·'ADX' 용어 툴팁. 0종목이면 '오늘은 조건 다섯 개를 모두 통과한 종목이 없습니다'.
   2. 개인 투자 열기(`home/RetailHeatCard`, `#retail`, `/api/spine/retail`): 국면 배지 · 신용융자·예탁금·코스피 · 판정 근거 · 지표 11개 표(값·5년 백분위 막대·20일 변화) · '추이 보기 ›'(/retail). 오류는 이 블록만.
   3. 수출입(`home/TradeBlock`, `/api/spine/trade/highlights?limit=8`): 수출 총액 · 기여 1위(전년 대비·증가분 몫) · 산업별 수출 규모 상위 8(급등 수) | 평소보다 크게 늘어난 품목 8(수출액·전년 대비·전월 대비·증가분 기여). 통계월이 지난달보다 오래되면(관세청 매월 중순 발표) 'n월 기준' 칩.
-  4. 대만 월매출 | 대만 → 한국 연결 — 시안에는 없다(§4.2: 산업으로). 산업 › 대만 공급망 화면이 생길 때까지 맨 아래에 둔다.
+  4. 기업활동(`#actions`, 시장 전체 목록 — D-300). 대만 월매출·대만 → 한국 연결은 산업 › 대만 공급망(`/follow/taiwan`)으로 옮겼다(4b).
 - **미국 시장**(3b, 시안 Home-US, ia-redesign §4.3·§4.28):
   1. 실적 시즌 블록(`home/UsSeasonBlock`, `/api/spine/transcript/season`). 시즌 판정은 `lib/seasonPhase` — 오늘이 어느 시즌의 `windows[].first~last`(팔로우 기업 첫~마지막 발표일, 미확정 포함) 안이면 시즌 중, 아니면 시즌 사이. '막바지' 변형 없음.
      - 시즌 중: 시즌 이름 · '반응 집계 중 n'(첫 거래일이 아직 안 지난 발표) · 판정 줄(발표 n/팔로우 · 첫 거래일 업종보다 강함 · 하회에도 강세 · 상회에도 약세 · 첫 반응 뒤집힘) · 이번 시즌 시장이 따진 것(요약 있는 섹터 4줄, 줄 전체가 섹터 상세 링크) · '섹터 n개 모두 보기 ›' · 곧 발표 칩(D-n) · '실적 시즌 전체 ›'.
@@ -29,79 +29,46 @@
   - 내 종목(3d, 2026-11-05 완료): `home/HomeStocksPage` — 시안 Home-Stocks·Mobile-Stocks, ia-redesign §4.4·§4.20. 머리 줄(보기 전환·종목 추가) → 특징주 → 조건 충족 알림 줄 → 목록(추적 행 먼저, 펼치면 조건·신호·수급, 비추적 6 + 더 보기, 행마다 추적 스위치·빼기, 미국 행 실적 배지). 이행 화면의 추적 카드는 '조건 편집' 시트로, 묶음 오늘 신호는 특징주로, 관심 종목 오늘 요약은 전체 보기 아래, 포트폴리오 오늘·다가오는 일정·보유 종목 자료 흐름은 보유 보기로 옮겼다. 계약은 [stock-tracker '화면'](stock-tracker.md).
 - **리다이렉트**(쿼리 유지, `KeepQueryRedirect`): `/home/b/:boardId` → `/home`, `/home/briefing` → `/home/us`, `/home/risk` → `/home/macro`, `/regimes` → `/home/macro#history`(해시는 쿼리 뒤). `/retail`은 화면을 그대로 두고 한국 시장 탭으로 판정한다.
 - **5-state**(ia-redesign §4.28): 블록 단위 로딩(위젯 본문의 스켈레톤, Overnight·Today는 같은 높이 칸 안)·오류(그 블록만 '다시 시도')·빈 상태(위젯 본문 문구). Market Today는 첫 회차 전에는 직전 회차를 날짜와 함께 보인다(서버가 최신 거래일을 읽음). 리스크 타일은 갱신이 늦거나 실패하면 마지막 값을 흐리게 두고 'n일 지연 · MM/DD 값' / '갱신 실패 · MM/DD 값'을 붙인다.
-- **남겨 둔 것(7단계 정리)**: `home_boards` 테이블과 `/api/dashboard/boards` API는 그대로다. 추적은 3d부터 이 표를 읽지 않는다(관심 종목의 추적 표시만, [stock-tracker](stock-tracker.md)). 일회 이관 스크립트 `scripts/migrate_tracking_to_groups.py`만 `track.stock` 위젯을 읽는다. `WidgetDef`의 크기·`Detail`·`multi`·`pick` 필드와 `react-grid-layout` 의존성도 7단계에서 걷는다.
-- 걷은 것: `home/Dashboard`(격자·편집), `home/NewBoardDialog`, `widgets/WidgetGallery`(위젯 추가 창), `widgets/rows`(줄 배치), `WidgetFrame` 틀, `SYSTEM_PRESETS`·`GALLERY_SECTIONS`, `useHomeBoards`, 홈 L2의 '+ 새 메뉴', 위젯 상세 창(`?widget=`).
+- **7단계에서 걷은 것(2026-11-05)**: 섹션 목록(`widgets/registry.tsx`)에서 화면이 쓰지 않는 위젯 정의와 본문(캔버스·프록시·버크셔·신호·섹터 이동·수출입/회사채/인물/기업활동/유무증·공통 변수 노출·묶음 오늘 신호·큰 그림·내 종목 서사·흔들리는 전제·국장 거래대금·개인 투자 열기 Δ·종목 추적 위젯 정의), `WidgetDef`의 크기·분류·`Detail`·`multi`·`pick`·`titleOf`·`detailPathOf`, `react-grid-layout` 의존성, 백엔드 `/api/dashboard`(layouts·boards)와 프론트 보드 응답 계약. `home_boards`·`dashboard_layouts` 표는 데이터 보존을 위해 남긴다(읽는 곳: 일회 이관 스크립트 `scripts/migrate_tracking_to_groups.py`뿐, 백업 후 삭제 대상). 추적은 관심 종목의 추적 표시만 읽는다([stock-tracker](stock-tracker.md)).
+- 3a에서 걷은 것: `home/Dashboard`(격자·편집), `home/NewBoardDialog`, `widgets/WidgetGallery`(위젯 추가 창), `widgets/rows`(줄 배치), `WidgetFrame` 틀, `SYSTEM_PRESETS`·`GALLERY_SECTIONS`, `useHomeBoards`, 홈 L2의 '+ 새 메뉴', 위젯 상세 창(`?widget=`).
 
-> 아래 §1·§4·§5는 2026-11-05 이전 위젯 홈의 기록이다.
-
-## 1. 화면
-
-### 화이트 플랫 기본 디자인 (2026-10-31)
-
-시안 검토를 마치고 [공통 디자인 기준](../DESIGN_SYSTEM.md)을 기본으로 적용했다. 라이트 모드의 셸·위젯·헤더는 순백색, 카드 간격은 0, 모서리는 직각이다. 카드 내부 여백·데이터·5-state는 유지한다. 별도 미리보기 버튼과 `home_style` 분기는 제거했다. 옛 시안 URL로 열어도 같은 기본 화면이다.
-
-```
-홈
-[대시보드] 메인  보유/관심  + 새 메뉴
-[⋯ 메뉴 설정]                         [+ 위젯 추가]
-┌ 지수 띠 ─────────────────────────────────────────────┐
-┌ 시장 요약 ───────────────────────────────────────────┐
-┌ 어젯밤 미국장 ────────┐┌ 전일 국장 거래대금 ─────────┐
-┌ 시장 국면 ──┐┌ Risk·금리차 ┐┌ Risk·VIX ┐┌ Risk·공포탐욕 ┐
-```
-
-- 격자: `react-grid-layout` v2, 12열, **행 22px**·간격 0px(기존 저장 높이 단위를 유지하며, 높이 = 22h px). 폭 768px 이상은 12열. **<768은 저장된 배치 순서(줄 위→아래, 줄 안 왼→오)대로 1열**로 쌓고 끌기·크기 조절·손잡이를 끈다. 높이는 저장된 높이, 본문 밀도 `w`는 실제 폭 ÷ 100px. 저장된 배치는 바꾸지 않는다(2026-10-25).
-- **줄 배치**(`widgets/rows.ts`, 2026-10-17): 보드는 위에서 아래로 쌓인 줄, 한 줄에 위젯 1~3개가 폭을 꽉 채운다(빈틈 없음).
-  - 끌기: 머리의 ⋮⋮ 손잡이로만. 줄 안에 놓으면 그 자리에 끼어들고(꽉 찬 줄이면 맨 끝이 아랫줄로), 줄의 위·아래 가장자리에 놓으면 새 줄. 끄는 동안 이웃이 미리 비켜 준다.
-  - 높이: 아래 가장자리. 위젯마다 정한 높이를 기억하고 줄 높이는 그 줄의 가장 큰 값(바닥선이 맞는다).
-  - 폭: 위젯 사이 경계(왼쪽 위젯의 오른쪽 가장자리)를 끌면 오른쪽 이웃과 폭을 주고받는다. 이웃이 최소 폭(3칸)보다 눌리면 맨 끝부터 아랫줄로.
-  - 편집 모드 없이 늘 바꿀 수 있다. 크기 손잡이는 위젯에 올렸을 때만 보인다. 빼기는 위젯 메뉴(⋯ › 보드에서 빼기), 빼기는 토스트의 '되돌리기'로 되돌린다.
-- 위젯 추가: shadcn Dialog + Command(검색) + Tabs(홈·탐색·포트폴리오·캔버스·월드모델). 항목 = 이름·한 줄 설명·추가/추가됨. 아직 위젯이 없는 탭은 "다음 단계에서 추가됩니다"를 보인다.
-- 카드 전체 보기(`/home/briefing`, `/home/risk`, `/home/macro`)는 탭에서 빠졌고 경로만 남는다. 위젯 ⋮의 '전체 보기'가 이리로 간다(이때 홈 탭은 활성 없음).
-
-## 2. 위젯 계약
+## 1. 섹션 계약
 
 ```ts
 interface WidgetDef {
   id: string                         // 'market.us'
-  title: string
-  description: string                // 추가 창 한 줄
-  section: SectionKey                // 추가 창 탭
-  group: string                      // 추가 창 묶음
-  size: { w: number; h: number; minW: number; minH: number }
-  detailPath?: string                // '전체 보기'
-  Body: React.FC<{ w: number; h: number }>   // 크기에 반응
+  title: string                      // 머리 제목
+  description: string                // 머리 ⓘ 툴팁
+  detailPath?: string                // 머리 링크 '전체 보기'
+  useMeta: () => { asOf: string | null; stale?: boolean }   // 기준 시각·주의 색
+  Body: React.FC<{ w: number; h: number; params?: Record<string, unknown> }>   // 밀도(w·h)에 반응
 }
 ```
 
-1. **캐시된 GET만**: 위젯 본문은 기존 GET 훅(`useMacro`·`useMarketRegime`·`useKrMovers`·`useUsBriefing`·`useRiskWindow`·`useRetailSummary`·지수)만 쓴다. 갱신 버튼(POST)은 전체 보기 탭에만 둔다.
+1. **캐시된 GET만**: 섹션 본문은 기존 GET 훅만 쓴다. 갱신 버튼(POST)은 전체 보기 화면에만 둔다.
 2. **기준 시각 = 원천 시각**: 머리 오른쪽에 응답의 `as_of`·`trade_date`·`fetched_at`. 서버 현재 시각을 쓰지 않는다.
 3. **5-state + 원천 고장**: Loading=Skeleton, Error=다시 시도, Empty=정상적으로 비어 있음 문구, 원천 고장(`degraded`·`status!=ok`·`stale_days>1`)은 머리 시각을 주의 색으로 + 본문 첫 줄에 이유.
-4. **요약층**: 큰 숫자 1개 + 한 줄 해석 + 목록·스파크라인. 크기가 작으면(h≤2) 큰 숫자와 한 줄만.
+4. **요약층**: 큰 숫자 1개 + 한 줄 해석 + 목록·스파크라인. 밀도가 작으면(h≤2) 큰 숫자와 한 줄만.
 5. **원천 하나**: 금리·VIX·공포탐욕은 정본(`risk_*`, D-236)만 읽는다.
 
-## 3. 시장 위젯 10종 (P4)
+## 2. 섹션 목록 (화면이 쓰는 id만)
 
-| id | 이름 | 원천 | 기본 크기 | 큰 숫자 · 한 줄 · 목록 |
+| id | 이름 | 원천 | 쓰는 곳 | 내용 |
 |---|---|---|---|---|
-| market.indices | 지수 띠 | `/indices` | 12×1 | 지수별 값·등락 · 1Y 스파크(남는 높이를 채움) 가로 띠 |
-| market.context | 시장 요약 | `/macro` | 12×1 | 환율·금리·유가·금·BTC 가로 띠 · 올리면 추이 차트(`MetricTrend`) |
-| market.us | Market Overnight(어젯밤 미국장) | `/us/briefing` | 6×9 | 넉넉하면 `UsBriefingSection embedded` 전체(핵심 요약 bullet 먼저, 지수 타일 생략)를 위젯 안에서 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 종합| market.today | Market Today(오늘 장중) | — | 6×9 | 회차 칩(10:00·13:00·15:40)·텔레그램/뉴스 건수·다음 정리 시각 · 화두(제목·이어짐·언급 출처 수·1~2문장·출처 링크) — 높이 3 이하면 화두 2개·본문 2줄 · docs/specs/market-today.md |
- 첫 문장 · 개별 이슈 3 |
-| market.kr | 전일 국장 거래대금 | `/kr/movers` | 6×9 | 넉넉하면 `KrMoversSection embedded` 전체를 스크롤 · 높이 3 이하면 최대 쏠림 섹터 비중 · 섹터 중앙 등락 · 상위 5 막대 |
-| risk.regime | 시장 국면 | `/market-regime` | 6×3 | 국장·미장 포스처 · 근거 한 줄 · 공포탐욕·VIX 타일 |
-| risk.curve | 금리차 10Y−2Y | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 3×3 | 값 · 20일 변화 · 3개월 스파크 · 누르면 Risk 모니터링 카드(`RiskCard`) 상세 창 |
-| risk.vix | VIX | 〃 | 3×3 | 〃 |
-| risk.fear | 공포·탐욕 | 〃 | 3×3 | 〃 |
-| risk.hy | HY 스프레드 | 〃 | 3×3 | 〃 |
-| retail.heat | 개인 투자 열기 Δ | `/retail` | 6×3 | 20일 백분위 변화가 가장 큰 지표 · 국면 · 나머지 지표 |
+| market.indices | 지수 띠 | `/indices` | 대시보드 | 지수별 값·등락 · 1Y 스파크 가로 띠 |
+| market.context | 시장 요약 | `/macro` | 대시보드 | 환율·금리·유가·금·BTC 가로 띠 · 올리면 추이 차트(`MetricTrend`) |
+| market.us | Market Overnight | `/us/briefing` | 대시보드 | `UsBriefingSection embedded` 전체(핵심 요약 bullet 먼저)를 칸 안에서 스크롤 |
+| market.today | Market Today | `/spine/market-today` | 대시보드 | 회차 칩·텔레그램/뉴스 건수·다음 정리 시각 · 화두 — docs/specs/market-today.md |
+| risk.regime | 시장 국면 | `/market-regime` | 대시보드 | 국장·미장 포스처 · 근거 한 줄 |
+| risk.curve · risk.vix · risk.fear · risk.hy | 금리차 · VIX · 공포·탐욕 · HY | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 대시보드 | 값 · 20일 변화 · 3개월 스파크, 늦거나 실패하면 마지막 값 흐리게 + 기준 날짜 |
+| explore.trend | 가파른 추세 | `/spine/trend-leaders` | 한국 시장 | 아래 조건 |
+| explore.calls · explore.momentum | 최근 받은 컨콜 · 새 모멘텀 후보 | `/spine/transcript/recent` · `/spine/transcript/momentum` | 미국 시장 | 발표일 순 10 · 점수 상위 3(→ `?view=season&pick=`) |
+| explore.twRevenue · explore.twLinks | 대만 월매출 · 대만 → 한국 연결 | `/spine/tw/revenue` · `/spine/tw/links` | 산업 › 대만 공급망 | docs/specs/tw-revenue.md |
+| world.changes | 이번 주 바뀐 서사 | `/spine/world/changes?days=7` | 대시보드 | 최근 7일 새 버전 · 옮겨 간 내용 1~2문장 |
+| portfolio.today · portfolio.events · portfolio.flow | 포트폴리오 오늘 · 다가오는 일정 · 보유 종목 자료 흐름 | `/portfolio`·`/portfolio/history` · `/portfolio/events` · `/portfolio/flow` | 내 종목(보유 보기) | 비율·날짜만(D-212) |
+| watch.digests | 관심 종목 오늘 요약 | `/spine/groups/{id}/digests` | 내 종목(전체 보기) | 최신 요약일 · 종목별 '새로운 점' 또는 첫 줄 |
 
-### 추가 위젯 (2026-10-17)
-
-| id | 이름 | 원천 | 크기 | 내용 |
-|---|---|---|---|---|
-| explore.trend | 가파른 추세 | `/spine/trend-leaders` | 6×5 | 탭 추세 / 신고가·매물대(URL `trend_tab`) · 계산에 쓴 시세 수집 시각 · 종목별 60일 스파크·수익률·고름(R²)·ADX·MA20 이격·신규·이벤트 배지 · **52주 신고가 단계 배지와 고르기**(신고가 돌파 / 돌파 후 지지·재반등, URL `trend_stage`). 종목을 누르면 근거 창(URL `trend`): 조건별 기준·실제 값 표 + **약 2년**(500거래일, 창을 열 때 `/spine/trend-leaders/{code}/chart`로 따로 받음) 종가·MA20·MA60·52주 고점선·60일 회귀선 차트 → 기술적 분석(`?scan=1`) |
-| canvas.feed | 피드 | `/spine/feed/timeline`(sources, 1쪽) | 6×9 | 최신 게시 시각 · 출처 탭(전체·텔레그램·블로그·유튜브, URL `feed_src`) · 피드와 같은 게시물 행(요약 보기)을 스크롤, 높이 3 이하면 제목 목록. 읽음 표시는 하지 않는다 |
+종목 추적 카드 본문(`widgets/tracker`의 `TrackerBody`)은 섹션 목록에 없고 내 종목 화면의 '조건 편집' 시트가 직접 쓴다.
 
 **가파른 추세 조건**(`pipeline/trend_leaders.py`, 모두 AND): 시총 3,000억+ · 60거래일 +30%+ · 60거래일 log(종가) 회귀 R² 0.75+ · 종가>MA20>MA60, MA60이 20거래일 전보다 높음 · ADX(14) 25+ & +DI>−DI. 순위 = 연율 로그 기울기 × R². LLM 0·네트워크 0.
 
@@ -114,49 +81,8 @@ interface WidgetDef {
 
 **갱신 주기**: 따로 도는 잡이 없다. GET 때 stock_prices로 계산하고 (최신 거래일, 그날 행의 최신 fetched_at)이 같으면 메모리 캐시를 쓴다. 시세 수집(평일 16:35, 20:20 재수집)이 끝나면 다음 조회에서 다시 계산된다.
 
-### 상세 창
-
-`WidgetDef.Detail`이 있는 위젯은 본문을 누르면(Enter·Space 포함) 원래 화면과 같은 카드를 Dialog로 띄운다. 열림 상태는 URL `?widget=<위젯 id>`. 지금은 리스크 4종(`RiskMonitoring`의 `useRiskView`+`RiskCard` 재사용, 기간·계열 선택도 같은 URL 키).
-
-### 종목 추적 위젯 (2026-10-20, `widgets/tracker.tsx`, [stock-tracker.md](stock-tracker.md))
-
-- `track.stock`: 종목마다 하나 놓는다(`multi`). 추가할 때 종목을 고른다(`pick: "stock"` → 추가 창의 종목 검색 단계). 고른 값은 배치 항목 `params {code, name}`이다.
-- 위젯 틀 확장: `WidgetDef.multi`·`pick`·`titleOf(params)`·`detailPathOf(params)`·`useMeta(params)`. 머리 제목은 '종목명 추적', 기준 시각은 시세 시각(장중/종가)이다.
-- 기본 6×8. 높이 3 이하면 현재가·조건 충족 요약·최근 신호 한 줄만 보인다.
-
-### 포트폴리오·관심 위젯 6종 (P6c, `widgets/portfolio.tsx`)
-
-비율·날짜만(D-212). `/api/portfolio`는 저장된 시세만 읽는다(갱신 POST는 포트폴리오 화면에만). 묶음 위젯은 기본 관심 묶음(`/spine/groups/default-watch`)을 쓴다. 위젯별 묶음 선택(`params`)은 위젯 틀이 아직 `params`를 본문에 넘기지 않아 다음 단계로 미룬다.
-
-| id | 이름 | 원천 | 크기 | 기준 시각 · 큰 숫자 · 한 줄 · 목록 |
-|---|---|---|---|---|
-| portfolio.today | 포트폴리오 오늘 | `/portfolio`, `/portfolio/history` | 4×3 | 장중 시세 시각/종가일 · 오늘 % · 누적 TWR·현금 비중 · 누적 수익률 스파크 |
-| portfolio.events | 다가오는 일정 | `/portfolio/events` | 4×4 | (없음) · 다음 일정 D-n · 제목(예상 표시) · 다음 일정 목록 |
-| portfolio.exposure | 공통 변수 노출 | `/portfolio/exposure` | 4×3 | 비중 기준일 · 최대 노출 % · 변수명·방향 · 상위 3 막대 |
-| portfolio.flow | 보유 종목 자료 흐름 | `/portfolio/flow` | 4×3 | 집계일 · 급증+부정 전환 건수 · 각 건수 · 종목별 배지·오늘 언급 |
-| watch.signals | 묶음 오늘 신호 | `/spine/groups/{id}/signals?days=1` | 4×3 | 마지막 평가일(최신 거래일 평가 전이면 주의 색) · 새 신호 수 · 종목·조건 |
-| watch.digests | 관심 종목 오늘 요약 | `/spine/groups/{id}/digests` | 4×4 | 최신 요약일 · 그날 요약 종목 수 · 종목별 '새로운 점' 또는 첫 줄 |
-
-## 4. 저장
-
-메뉴마다 `PATCH /api/dashboard/boards/{id}` `{items: [{i, widget, x, y, w, h, params}]}`. 줄 모델은 y가 같은 항목을 한 줄로, x 순서로 읽고(`fromEntries`), w = 줄 안 비율(12칸 기준), h = 위젯이 '정한 높이'(10px 행 단위, 줄 높이로 늘어난 값이 아니다). 놓거나 크기를 바꿀 때마다 저장하고, 실패하면 토스트. 알 수 없는 widget id는 렌더하지 않고 다음 저장에서 빠진다. 옛 `dashboard_layouts`의 `home`(72px 행)·`home-v2` 저장본은 더 읽지 않는다(`home-v2`는 첫 메뉴로 옮겼다).
-
-## 5. 내 메뉴 (2026-10-21, 홈 L2·내 프리셋 대체 — 2026-11-05 화면에서 제거, §0)
-
-홈의 하위 메뉴를 사용자가 만든다. **메뉴 하나 = 위젯 배치 하나**다. 메뉴를 옮겨 다니는 건 화면 이동이라 묻지 않는다(배치를 '바꾸는' 게 아니다). 고정 탭(대시보드·시장 브리핑·국면·리스크·매크로)과 '내 프리셋' 칩(저장·불러오기)을 이것으로 대체했다.
-
-- URL: `/home/b/:id` = 그 메뉴, `/home` = 첫 메뉴. 없는 id면 `/home`으로.
-- 홈 L2: 메뉴 이름 탭들(정렬 순서) · `+ 새 메뉴`. 메뉴가 하나도 없으면 본문에 안내와 `새 메뉴`.
-- 새 메뉴(`home/NewBoardDialog`): 이름 + 출발점 — 빈 메뉴, 또는 **시스템 프리셋**(`SYSTEM_PRESETS`: 기본·시장 브리핑·국면·리스크·매크로·보유 점검·디레버리징·수출 사이클·이벤트 장세). 프리셋은 출발점일 뿐, 만든 뒤엔 그 메뉴의 배치다. 이름을 안 쳤으면 고른 프리셋 이름을 쓴다. 만들면 그 메뉴로 간다.
-- 메뉴 설정(도구 줄 `⋯ 메뉴 설정`): 이름 바꾸기 · 복제해서 새 메뉴(위젯 params 포함) · 왼쪽으로/오른쪽으로 · 메뉴 삭제(되돌릴 수 없어 확인 창).
-- 배치는 놓을 때마다 그 메뉴에 저장한다. 저장 형식은 §4와 같아 종목 추적 위젯의 종목(params)도 그대로 남는다.
-- (2026-11-05 이전) 종목 추적(`stock_tracker.tracked_codes`)은 모든 메뉴의 `track.stock` 위젯을 합쳤다. 지금은 관심 종목의 추적 표시만 읽는다.
-- AI 패널의 '보는 화면'은 `홈 · {메뉴 이름}`.
-- API: `GET /api/dashboard/boards` · `POST`(label·items, 맨 뒤에 붙음) · `PATCH /{id}`(label·items) · `PUT /order`(ids 순서) · `DELETE /{id}`. 테이블 `home_boards(label, sort, layout_json)`.
-- 이관(1회, `init_db`): 옛 `dashboard_layouts` 'home-v2'를 첫 메뉴 '대시보드'로, `dashboard_presets`(내 프리셋)를 그 뒤 메뉴로 옮기고 프리셋 표를 지운다.
-
-## 6. 검증
+## 3. 검증
 
 - 3b(2026-11-05): `tests/home-us-season.test.tsx`(시즌 중·사이 판정 경계, D-n 날짜 계산, 곧 발표 날짜 묶음·예상일, 수출입 통계월 지연 판정, 시즌 블록 시즌 중·시즌 사이 렌더), 1440·390 화면 확인(`/home/kr`·`/home/us`·`/home/us?today=2026-12-24`·`?today=2027-01-03`·`/follow/transcripts?view=season`·`/retail`·`/home`, 콘솔 오류 0).
 - 3a(2026-11-05): `tests/app-shell-nav.test.mjs`(홈 탭 다섯·옛 주소 판정·리다이렉트·메뉴 UI 없음), `tests/home-section.test.tsx`(블록 단위 오류·링크 숨김), 1440·390 화면 확인(`/home`·`/home/kr`·`/home/us`·`/home/macro`·`/home/stocks`·리다이렉트 3개, 콘솔 오류 0), 추적 대상 6종목 그대로.
-- 옛 위젯 홈: `tsc`, FE 테스트(레이아웃 정규화: 알 수 없는 위젯 제거·크기 하한·중복 id), 백엔드 레이아웃·메뉴 API 테스트(만들기·순서·이관), 실제 화면: 기본 배치 렌더·편집 끌기/크기/삭제·추가 창·저장 후 새로고침 유지·메뉴 전환(확인 창 없음)·시스템 프리셋으로 새 메뉴·복제·순서·삭제·전체 보기 경로 3개.
+- 7단계(2026-11-05): 쓰지 않는 위젯·API 제거 뒤 `tsc`·eslint·build·vitest·node 테스트·`contracts:live`, 1440·390 전 경로 화면 확인.

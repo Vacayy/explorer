@@ -3,9 +3,8 @@
  */
 import type { PersonRole, PersonRoleName, PremiseStatus } from '@/types'
 
-/** 인물 상세 주소 — id 기반(§10.6). 이름만 있으면 옛 주소로 보내 서버가 id로 찾게 한다 */
+/** 인물 상세 주소 — id 기반(§10.6) */
 export const personPath = (id: number) => `/person/${id}`
-export const personNamePath = (name: string) => `/person?name=${encodeURIComponent(name)}`
 
 export const ROLE_LABEL: Record<PersonRoleName, string> = { policy: '정책', executive: '경영자', guru: '구루' }
 export const ROLE_ORDER: PersonRoleName[] = ['policy', 'executive', 'guru']

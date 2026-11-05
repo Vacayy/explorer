@@ -14,8 +14,3 @@ export function useSectorPeers() {
 
 export type Quadrant = "주도" | "부상" | "소외" | "과열·경계"
 
-/** 사분면 — x=장기 RS, y=단기 RS, 50 기준 (SectorMapPage 라벨과 같은 규칙) */
-export function quadrantOf(rsLong: number | null, rsShort: number | null): Quadrant | null {
-  if (rsLong == null || rsShort == null) return null
-  return rsLong >= 50 ? (rsShort >= 50 ? "주도" : "과열·경계") : (rsShort >= 50 ? "부상" : "소외")
-}
