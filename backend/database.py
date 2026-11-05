@@ -679,6 +679,14 @@ def init_db():
         updated_at    TEXT DEFAULT (datetime('now')),
         UNIQUE (sector, peer_group_id)
     );
+    -- 업종 정정 표 (D-313 1~2): 회사 → 산업 맵 대분류를 원천(companies.sector → sector_map) 위에 얹는다. 원천은 덮어쓰지 않는다
+    CREATE TABLE IF NOT EXISTS sector_overrides (
+        stock_code  TEXT PRIMARY KEY,
+        sector      TEXT NOT NULL,                -- sector_map.group_name 대분류
+        reason      TEXT,                         -- 근거 ([K] 매핑 오류 · [N] 이름 · [C] 사람이 정한 묶음 · [D] 문서 공동 언급)
+        source      TEXT NOT NULL DEFAULT 'manual', -- audit-YYYY-MM-DD = 코드 시드(pipeline/sector_override_seed) · manual
+        updated_at  TEXT DEFAULT (datetime('now'))
+    );
     -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
     CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1702,6 +1710,8 @@ def init_db():
     conn.commit()
     from pipeline.sector_peers import seed as seed_sector_peers   # 섹터 → Peer 초안 대응표, 표가 비었을 때만 (D-301 6)
     seed_sector_peers(conn)
+    from pipeline.sector_overrides import seed as seed_sector_overrides   # 업종 정정 초안, 없는 종목만 (D-313)
+    seed_sector_overrides(conn)
 
     conn.close()
 

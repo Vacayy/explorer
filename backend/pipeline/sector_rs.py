@@ -4,7 +4,7 @@
 y=단기 RS(현재 수급), 크기=시총, 색=5일 흐름. 사분면 = 주도/부상/소외/과열경계.
 RS = 대분류별 시총가중 수익률의 백분위(0~100). hover 궤적 = 1·2·3주 전 위치.
 
-집계 축: sector_map(KSIC→투자 언어 대분류 18개, LLM 시드).
+집계 축: sector_map(KSIC→투자 언어 대분류 18개, LLM 시드) + 업종 정정 표(sector_overrides, D-313).
 계산은 요청 시 (15분 인메모리 캐시) — stock_prices 스냅샷 쿼리 기반.
 """
 import time
@@ -34,15 +34,9 @@ def _snapshot(conn, on_or_before: str) -> dict[str, tuple[float, float]]:
 
 
 def _members(conn) -> dict[str, str]:
-    """종목코드 → 대분류."""
-    rows = conn.execute("""
-        SELECT c.aliases code, sm.group_name g
-        FROM entity_relations er
-        JOIN entities c ON c.id = er.src_id AND c.type='company' AND c.aliases IS NOT NULL
-        JOIN entities s ON s.id = er.dst_id AND s.type='sector'
-        JOIN sector_map sm ON sm.sector_name = s.name
-        WHERE er.rel_type='MEMBER_OF'""").fetchall()
-    return {r["code"]: r["g"] for r in rows}
+    """종목코드 → 대분류 (원천 + 업종 정정, pipeline/sector_overrides)."""
+    from pipeline.sector_overrides import effective_sectors
+    return effective_sectors(conn)
 
 
 def _group_returns(cur: dict, base: dict, members: dict, weights: dict[str, float]) -> dict[str, float]:

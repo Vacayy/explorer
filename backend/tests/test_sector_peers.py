@@ -93,6 +93,7 @@ class EndpointTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         database.init_db()
         conn = database.get_connection()
+        conn.execute("DELETE FROM sector_overrides")   # 시드 정정은 test_sector_overrides가 따로 본다
         conn.executemany("INSERT INTO sector_map (sector_name, group_name) VALUES (?, ?)",
                          [("반도체 제조업", "반도체·전자부품"), ("화장품 제조업", "화학·소재"), ("통신업", "통신")])
         conn.execute("INSERT INTO entities (id, type, name, status) VALUES (1, 'sector', '반도체 제조업', 'active')")

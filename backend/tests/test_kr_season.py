@@ -80,6 +80,9 @@ class OverviewTests(unittest.TestCase):
             CREATE TABLE disclosures(rcp_no TEXT PRIMARY KEY, corp_code TEXT, corp_name TEXT, report_nm TEXT, rcept_dt TEXT);
             CREATE TABLE companies(corp_code TEXT, corp_name TEXT, stock_code TEXT, sector TEXT);
             CREATE TABLE sector_map(sector_name TEXT, group_name TEXT);
+            CREATE TABLE sector_overrides(stock_code TEXT PRIMARY KEY, sector TEXT, reason TEXT, source TEXT, updated_at TEXT);
+            CREATE TABLE entities(id INTEGER PRIMARY KEY, type TEXT, name TEXT, aliases TEXT);
+            CREATE TABLE entity_relations(src_id INTEGER, dst_id INTEGER, rel_type TEXT);
             CREATE TABLE stock_prices(stock_code TEXT, trade_date TEXT, close REAL, market_cap REAL);
         """)
         self.conn.execute("INSERT INTO sector_map VALUES ('은행', '금융')")

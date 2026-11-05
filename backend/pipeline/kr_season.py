@@ -7,7 +7,7 @@
 - 가격 = `stock_prices`만(KRX 대량 조회 금지). 거래일 = 그날 시세가 MARKET_DAY_MIN 종목 이상 있는 날.
 - 첫 반응 = 공시 전 거래일 종가 → 공시 다음 거래일 종가(2일 창, 발표 시각을 몰라 장중·장 마감 후를 가르지 않는다).
   다음 거래일 시세가 아직 없으면 공시일 종가까지를 '당일'(same_day)로 보인다. 5일 = 공시 전 종가 → 공시 후 5거래일 종가, 차지 않았으면 '집계 중'(pending).
-- 업종 대비 = 같은 `sector_map.group_name` 종목(자신 제외, 발표 여부 무관)의 같은 창 수익률 중앙값을 뺀 값. 표본 PEER_MIN 미만이면 비운다.
+- 업종 대비 = 같은 대분류(`sector_map.group_name` + 업종 정정 `sector_overrides`) 종목(자신 제외, 발표 여부 무관)의 같은 창 수익률 중앙값을 뺀 값. 표본 PEER_MIN 미만이면 비운다.
 - 컨센서스 상회·하회는 하지 않는다(국내 분기 컨센서스 없음). 매출·영업이익 수치는 2단계(본문 파싱) 전까지 null.
 - 분기보고서만 낸 회사(D-305) = 그 시즌 잠정실적 없이 정기보고서(분기·반기·사업보고서, 보고서 이름의 결산월로 시즌을 정함)만 낸 상장사.
   접수일이 그 시즌 구간 안인 것만(늦은 제출 제외), 스팩 제외.
@@ -229,12 +229,14 @@ def market_days(conn, lo: str, hi: str) -> list[str]:
 
 def _company_map(conn) -> tuple[dict, dict]:
     """corp_code → {stock_code, name, group}, group → [stock_code]"""
+    from pipeline.sector_overrides import effective_sectors
+    sector_of = effective_sectors(conn)   # 원천 + 업종 정정 (D-313)
     comp, members = {}, {}
-    for r in conn.execute("SELECT c.corp_code, c.corp_name, c.stock_code, m.group_name FROM companies c "
-                          "LEFT JOIN sector_map m ON m.sector_name = c.sector WHERE c.stock_code IS NOT NULL AND c.stock_code != ''"):
-        comp[r[0]] = {"name": r[1], "stock_code": r[2], "group": r[3]}
-        if r[3]:
-            members.setdefault(r[3], []).append(r[2])
+    for r in conn.execute("SELECT corp_code, corp_name, stock_code FROM companies WHERE stock_code IS NOT NULL AND stock_code != ''"):
+        g = sector_of.get(r[2])
+        comp[r[0]] = {"name": r[1], "stock_code": r[2], "group": g}
+        if g:
+            members.setdefault(g, []).append(r[2])
     return comp, members
 
 
