@@ -13,10 +13,10 @@ export interface SummaryCell {
 /** 산업 화면 머리의 요약 줄 (시안 Industry-Trade·ValueChain·Credit) — 칸 네 개(인물 홈은 세 개), 좁은 화면은 두 칸씩 */
 export function SummaryStrip({ cells, label, cols = 4 }: { cells: SummaryCell[]; label: string; cols?: 3 | 4 }) {
   return <div data-summary={label} className={cn("grid grid-cols-2 border bg-card", cols === 3 ? "md:grid-cols-3" : "md:grid-cols-4")}>
-    {cells.map(c => <div key={c.label} className="min-w-0 border-b p-4 max-md:[&:nth-child(odd)]:border-r md:border-b-0 md:border-r md:last:border-r-0">
-      <div className="truncate text-xs text-muted-foreground">{c.label}</div>
-      <div className={cn("mt-1 truncate font-mono text-2xl tabular-nums", c.className)}>{c.value}</div>
-      {c.sub != null && <div className="mt-1 truncate text-caption text-muted-foreground">{c.sub}</div>}
+    {cells.map(c => <div key={c.label} className="min-w-0 space-y-0.5 border-b px-4 py-3 max-md:[&:nth-child(odd)]:border-r md:border-b-0 md:border-r md:last:border-r-0">
+      <div className="truncate text-xs text-ink-3">{c.label}</div>
+      <div className={cn("truncate font-mono text-[22px] leading-tight tabular-nums max-md:text-lg", c.className)}>{c.value}</div>
+      {c.sub != null && <div className="truncate text-caption text-ink-2">{c.sub}</div>}
     </div>)}
   </div>
 }

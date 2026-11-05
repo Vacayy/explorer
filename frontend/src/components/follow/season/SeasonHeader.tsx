@@ -62,7 +62,7 @@ export function SeasonHeader({ title, sub, picker }: { title: ReactNode; sub?: R
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold">{title}</h1>
+        <h1 className="font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]">{title}</h1>
         {sub && <p className="text-caption text-muted-foreground">{sub}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">

@@ -27,7 +27,7 @@ export default function FilterChips({ options, value, onChange }: Props) {
           value={opt.value}
           className={cn(
             // 시안 칩: 선 알약, 선택 = 글자색 채움
-            "h-7 rounded-control border border-line-2 px-3 text-xs text-ink-2 shadow-none",
+            "h-7 rounded-full border border-line-2 px-3 text-xs text-ink-2 shadow-none",
             "data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:font-medium data-[state=on]:text-action-ink data-[state=on]:shadow-none data-[state=on]:hover:bg-action/85"
           )}
         >

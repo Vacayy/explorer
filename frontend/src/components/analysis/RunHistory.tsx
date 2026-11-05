@@ -21,7 +21,7 @@ export function RunHistory({ runs, selected, labels, status, onOpen }: {
       <Input type="search" aria-label="조건 이름으로 찾기" value={query} onChange={event => setQuery(event.target.value)} placeholder="조건 이름으로 찾기" className="pl-9" />
     </div>
     <ToggleGroup type="single" value={filter} onValueChange={value => { if (value) setFilter(value as RunFilter) }} size="sm" aria-label="결과로 거르기" className="flex-wrap justify-start gap-1.5 bg-transparent p-0">
-      {RUN_FILTERS.map(option => <ToggleGroupItem key={option.id} value={option.id} className="h-7 rounded-control border border-line-2 px-2.5 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">{option.label} <span className="font-mono tabular-nums">{counts[option.id]}</span></ToggleGroupItem>)}
+      {RUN_FILTERS.map(option => <ToggleGroupItem key={option.id} value={option.id} className="h-7 rounded-full border border-line-2 px-2.5 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">{option.label} <span className="font-mono tabular-nums">{counts[option.id]}</span></ToggleGroupItem>)}
     </ToggleGroup>
     {!visible.length ? <p role="status" className="py-6 text-center text-sm text-muted-foreground">조건에 맞는 검색이 없습니다.</p>
       : groupRunsByDay(visible).map(group => <section key={group.day} aria-label={group.day} className="space-y-1">

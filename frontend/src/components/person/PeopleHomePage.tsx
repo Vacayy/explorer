@@ -17,7 +17,6 @@ import PeopleDirectoryPage from "@/components/person/PeopleDirectoryPage"
 import { usePeopleHome } from "@/hooks/usePeople"
 import { RoleChip } from "@/components/person/RoleChip"
 import { PREMISE_STATUS, ROLE_LABEL, ROLE_ORDER, personPath, roleFilter } from "@/lib/person"
-import { cn } from "@/lib/utils"
 import { formatNumber } from "@/utils/format"
 import type { PeopleHome, PeopleHomeRow, PersonRole, PersonRoleName, RecordedPerson } from "@/types"
 
@@ -64,7 +63,7 @@ function PeopleHead() {
   }
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <h1 className="text-page font-semibold">인물</h1>
+      <h1 className="font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]">인물</h1>
       <form onSubmit={submit} className="ml-auto w-full sm:w-72" role="search">
         <Input value={text} onChange={e => setText(e.target.value)} placeholder="인물 이름 검색" aria-label="인물 이름 검색" className="h-9" />
       </form>
@@ -98,7 +97,7 @@ function PeopleHomeBody({ d, role, onRole }: { d: PeopleHome; role: PersonRoleNa
 }
 
 function CardHead({ title, note, info, action }: { title: string; note?: ReactNode; info?: ReactNode; action?: ReactNode }) {
-  return <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-4 py-3">
+  return <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-4 pt-3.5">
     <h2 className="text-section font-semibold">{title}</h2>
     {note && <span className="text-caption text-muted-foreground">{note}</span>}
     {info && <span className="self-center"><InfoTip label={`${title} 설명`}>{info}</InfoTip></span>}
@@ -143,7 +142,7 @@ function RecordedCard({ rows, status }: { rows: RecordedPerson[]; status: "ok" |
           const st = PREMISE_STATUS[p.status ?? "none"]
           return <li key={p.key} className="flex items-start gap-2 text-sm">
             <span className="min-w-0 flex-1">{p.claim}</span>
-            <Badge variant="outline" className={cn("shrink-0 rounded-none font-normal", st.cls)}>{st.label}</Badge>
+            <Badge variant={st.variant} className="shrink-0">{st.label}</Badge>
           </li>
         })}</ul>
       </li>)}</ul>}

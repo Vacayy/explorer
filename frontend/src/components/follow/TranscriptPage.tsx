@@ -141,7 +141,7 @@ export default function TranscriptPage() {
 
   const header = (
     <div className="flex flex-col gap-0.5">
-      <h1 className="text-2xl font-bold">컨콜</h1>
+      <h1 className="font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]">컨콜</h1>
       <span className="text-caption text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
     </div>
   )
@@ -349,9 +349,9 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
           {/* 헤더 — 회사·섹터·핵심 + 분기 탭(오래된 분기 → 최신이 오른쪽) */}
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-lg truncate">{data.company_name}</span>
+              <span className="truncate font-display text-[22px] font-normal tracking-[-0.01em]">{data.company_name}</span>
               <Badge variant="secondary" className="text-[11px]">{data.ticker}</Badge>
-              <Link to={`/us/${data.ticker}`} className="text-xs text-primary hover:underline whitespace-nowrap"
+              <Link to={`/us/${data.ticker}`} className="text-xs text-ink-2 hover:text-ink hover:underline whitespace-nowrap"
                 title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에 →</Link>
               {chain.data && <ChainHeaderLinks chain={chain.data} />}
             </div>
@@ -449,10 +449,10 @@ function QuarterTabs({ ticker, current, onSelect }: { ticker: string; current: n
   )
   if (quarters.length <= 1) return null
   return (
-    <ToggleGroup type="single" variant="outline" size="sm" value={String(current)} onValueChange={(v) => { if (v) onSelect(Number(v)) }}
+    <ToggleGroup type="single" size="sm" value={String(current)} onValueChange={(v) => { if (v) onSelect(Number(v)) }}
       aria-label="분기" className="flex-wrap justify-start">
       {[...quarters].reverse().map((q) => (
-        <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className="px-2.5 text-caption tabular-nums"
+        <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className="h-7 px-2.5 text-xs tabular-nums"
           title={`${quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}${q.call_date ? ` · ${q.call_date}` : ""}`}>
           {q.cy ? shortQuarter(q.cy, q.fiscal_period) : periodOf(q.fiscal_year, q.fiscal_period)}
         </ToggleGroupItem>

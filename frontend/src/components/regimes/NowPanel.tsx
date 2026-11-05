@@ -314,7 +314,7 @@ function PremiseSection({ data }: { data: EraStateResponse }) {
       <TableBody>{data.premises.map(p => {
         const st = PREMISE[p.status ?? "none"]
         return <TableRow key={p.key} className="align-top">
-          <TableCell><Badge variant="outline" className={cn("font-normal", st.cls)}>{st.label}</Badge></TableCell>
+          <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
           <TableCell className="whitespace-normal">
             <p className="text-sm font-medium leading-snug">{p.claim}</p>
             <p className="mt-0.5 text-caption text-muted-foreground"><Who p={p} /> · {p.kind}

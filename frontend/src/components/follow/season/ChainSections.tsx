@@ -96,7 +96,7 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
           <YAxis tick={AXIS_TICK} width={40} domain={["auto", "auto"]} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}`} />
           <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeOpacity={0.5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d) => mmdd(String(d))} formatter={(v) => formatPercent(Number(v))} />
-          <Line dataKey="bench" name={chain.etf} stroke="var(--chart-orange)" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls isAnimationActive={false} />
+          <Line dataKey="bench" name={chain.etf} stroke="var(--series)" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls isAnimationActive={false} />
           <Line dataKey="ret" name={chain.ticker} stroke="var(--foreground)" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
@@ -130,7 +130,7 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-caption text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0.5 w-4 bg-foreground" />{chain.ticker}</span>
-        <span className="inline-flex items-center gap-1.5"><i className="inline-block w-4 border-t-2 border-dashed border-chart-orange" />{chain.etf} (비교)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="inline-block w-4 border-t-2 border-dashed border-series" />{chain.etf} (비교)</span>
         <span className="inline-flex items-center gap-1.5"><i className="inline-block size-2.5 rounded-sm bg-muted-foreground/35" />발표 전</span>
         <span className="inline-flex items-center gap-1.5"><i className="inline-block size-2.5 rounded-sm bg-primary/85" />발표 후</span>
       </div>

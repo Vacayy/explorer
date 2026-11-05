@@ -20,7 +20,6 @@ import { RoleChip } from "@/components/person/RoleChip"
 import { usePersonDetail, usePersonResolve } from "@/hooks/usePeople"
 import { attachToAi } from "@/lib/aiPanel"
 import { PREMISE_STATUS, personPath, verdictSummary } from "@/lib/person"
-import { cn } from "@/lib/utils"
 import { formatNumber } from "@/utils/format"
 import type { PersonDetail, PersonDocRow, PersonPremise, PersonProfile } from "@/types"
 
@@ -89,9 +88,9 @@ function PersonBody({ d }: { d: PersonDetail }) {
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
       <div className="min-w-0 space-y-4">
         {(d.own_total > 0 || d.role?.role === "guru") && <OwnDocsCard d={d} />}
-        <CitedCard d={d} />
       </div>
       <div className="min-w-0 space-y-4">
+        <CitedCard d={d} />
         {d.flow.length > 0 && <FlowCard d={d} />}
         <CoCard d={d} />
         <NarrativesCard d={d} />
@@ -115,7 +114,7 @@ function PersonHead({ d }: { d: PersonDetail }) {
   return <header className="flex flex-wrap items-start gap-x-4 gap-y-2" data-smoke="person-head">
     <div className="min-w-0 flex-1 space-y-1">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h1 className="text-page font-semibold">{d.name}</h1>
+        <h1 className="font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]">{d.name}</h1>
         <RoleChip role={d.role} org />
       </div>
       {d.merged_names.length > 0 && <p className="text-caption text-muted-foreground" data-merged-names>
@@ -132,13 +131,13 @@ function PersonHead({ d }: { d: PersonDetail }) {
 
 function Block({ title, note, info, action, children, label }: { title: string; note?: ReactNode; info?: ReactNode; action?: ReactNode; children: ReactNode; label?: string }) {
   return <Card className="gap-0 py-0" aria-label={label ?? title}>
-    <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-4 py-3">
+    <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-4 pt-3.5">
       <h2 className="text-section font-semibold">{title}</h2>
       {note && <span className="text-caption text-muted-foreground">{note}</span>}
       {info && <span className="self-center"><InfoTip label={`${title} 설명`}>{info}</InfoTip></span>}
       {action && <span className="ml-auto text-sm">{action}</span>}
     </header>
-    <div className="p-4">{children}</div>
+    <div className="px-4 pb-4 pt-3">{children}</div>
   </Card>
 }
 
@@ -157,16 +156,16 @@ function LedgerCard({ d }: { d: PersonDetail }) {
 
 function StatusBadge({ p }: { p: PersonPremise }) {
   const st = PREMISE_STATUS[p.status ?? "none"]
-  return <Badge variant="outline" className={cn("shrink-0 rounded-none font-normal", st.cls)}>{st.label}</Badge>
+  return <Badge variant={st.variant} className="shrink-0">{st.label}</Badge>
 }
 
 function PremiseFacts({ p }: { p: PersonPremise }) {
   const co = p.co_holders
-  return <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-sm">
+  return <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-[12.5px]">
     {co.length > 0 && <><dt className="text-caption text-muted-foreground">같은 전제</dt><dd className="text-caption">
       {co.map((w, i) => <span key={w.label}>{i > 0 && " · "}{w.entity_id ? <Link to={personPath(w.entity_id)} className="hover:underline">{w.name ?? w.label}</Link> : w.label}</span>)}
     </dd></>}
-    {p.evidence.length > 0 && <><dt className="text-caption text-muted-foreground">지금 수치</dt><dd className="tabular-nums">{p.evidence.join(" · ")}</dd></>}
+    {p.evidence.length > 0 && <><dt className="text-caption text-muted-foreground">지금 수치</dt><dd>{p.evidence.join(" · ")}</dd></>}
     <dt className="text-caption text-muted-foreground">판정 규칙</dt><dd>{p.rule}</dd>
     {p.sources.length > 0 && <><dt className="text-caption text-muted-foreground">원문</dt><dd className="space-y-0.5">
       {p.sources.map(s => <div key={s.title}>{s.doc_id ? <Link to={`/doc/${s.doc_id}`} className="hover:underline">{s.title}</Link>
@@ -177,7 +176,7 @@ function PremiseFacts({ p }: { p: PersonPremise }) {
 }
 
 function PremiseCard({ p }: { p: PersonPremise }) {
-  return <article className="space-y-2 border bg-muted/30 p-3" data-premise={p.key}>
+  return <article className="space-y-2 border bg-surface-2 p-3.5" data-premise={p.key}>
     <div className="flex flex-wrap items-center gap-1.5 text-caption text-muted-foreground">
       <Badge variant="outline" className="h-5 rounded-none px-1.5 text-[11px] font-normal">전제</Badge>
       <Badge variant="outline" className="h-5 rounded-none px-1.5 text-[11px] font-normal">지표 규칙</Badge>

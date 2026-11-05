@@ -17,13 +17,13 @@ export function roleOrg(r: PersonRole | null): string | null {
 }
 
 /** 전제 판정 배지(매크로 › 구루 전제 원장과 같은 값) */
-export const PREMISE_STATUS: Record<PremiseStatus | 'none', { label: string; cls: string }> = {
-  supports: { label: '지지', cls: 'border-chart-profit/50 text-chart-profit-dark' },
-  challenges: { label: '반증 쪽', cls: 'border-up/40 text-up-ink' },
-  mixed: { label: '엇갈림', cls: 'border-chart-warning/50 text-hypothesis' },
-  untestable: { label: '반증 불가', cls: 'text-muted-foreground' },
-  nodata: { label: '데이터 없음', cls: 'text-muted-foreground' },
-  none: { label: '판정 불가', cls: 'text-muted-foreground' },
+export const PREMISE_STATUS: Record<PremiseStatus | 'none', { label: string; variant: 'fact' | 'up' | 'warn' | 'neutral' }> = {
+  supports: { label: '지지', variant: 'fact' },
+  challenges: { label: '반증 쪽', variant: 'up' },
+  mixed: { label: '엇갈림', variant: 'warn' },
+  untestable: { label: '반증 불가', variant: 'neutral' },
+  nodata: { label: '데이터 없음', variant: 'neutral' },
+  none: { label: '판정 불가', variant: 'neutral' },
 }
 
 /** 판정 분포 한 줄 — '지지 1 · 반증 불가 1 · 데이터 없음 2' (0은 뺀다) */

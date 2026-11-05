@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import FilterChips from "@/components/shared/FilterChips"
+import SegmentTabs from "@/components/shared/SegmentTabs"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { QueryState } from "@/components/shared/QueryState"
 import { SeasonHeader, SeasonPicker } from "@/components/follow/season/SeasonHeader"
@@ -172,7 +172,7 @@ function KrCalendar({ d }: { d: KrSeasonOverview }) {
         </h2>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
           {hasQuarterly && <span className="inline-flex items-center gap-x-3" aria-label="막대 범례">
-            <span className="inline-flex items-center gap-1"><span className="inline-block size-2.5 bg-muted-foreground/40" />잠정실적</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block size-2.5 bg-ink-2" />잠정실적</span>
             <span className="inline-flex items-center gap-1"><span className="inline-block size-2.5 border border-dashed border-muted-foreground" />{periodic}만</span>
           </span>}
           {peak && <span>{mmdd(peak.date)} 하루 <span className="tabular-nums">{peak.total}</span>곳으로 가장 많음</span>}
@@ -198,7 +198,7 @@ function KrCalendar({ d }: { d: KrSeasonOverview }) {
                 {b.quarterly > 0 && <span data-kr-bar="quarterly" style={{ height: `${(b.quarterly / max) * 100}%` }}
                   className={cn("mx-auto block w-full max-w-[18px] border border-dashed border-muted-foreground", sel && "border-foreground")} />}
                 {b.total > 0 && <span style={{ height: `${(b.total / max) * 100}%` }}
-                  className={cn("mx-auto block w-full max-w-[18px] bg-muted-foreground/40", sel && "bg-foreground/80 outline-2 outline-offset-1 outline-foreground")} />}
+                  className={cn("mx-auto block w-full max-w-[18px] bg-ink-2", sel && "bg-ink outline-2 outline-offset-1 outline-ink")} />}
                 {tick && <span className="absolute bottom-0 left-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground">{mmdd(b.date)}</span>}
               </Button>
             )
@@ -292,8 +292,8 @@ function RecentTable({ d }: { d: KrSeasonOverview }) {
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           {day && <Button variant="secondary" size="sm" className="h-7 gap-1 text-xs" onClick={() => set({ day: null })} aria-label="날짜 선택 해제">{mmdd(day)} 공시<X className="size-3" /></Button>}
-          <FilterChips value={filter} onChange={(v) => set({ kf: v === "all" ? null : v })}
-            options={FILTERS.map((f) => ({ value: f, label: `${label[f]} ${formatNumber(counts[f])}` }))} />
+          <SegmentTabs value={filter} onChange={(v) => set({ kf: v === "all" ? null : v })}
+            tabs={FILTERS.map((f) => ({ value: f, label: `${label[f]} ${formatNumber(counts[f])}` }))} />
         </div>
       </div>
       {rows.length === 0 ? <Meta className="py-2">{filter === "mine" ? "내 종목 중 이 조건의 발표가 아직 없습니다." : "이 조건의 발표가 없습니다."}</Meta> : (
