@@ -177,8 +177,8 @@ function PeerBlock({ sector, peers, links }: { sector: string; peers: Runtime; l
     // 회색 시리즈 · 1위만 글자색 굵은 선 · 선 끝 라벨의 값만 등락색 (DESIGN_SYSTEM 차트 규칙)
     return chart.paths.map((p, i) => {
       const end = p.path![p.path!.length - 1] - 100
-      return { key: p.id, label: p.name, color: i === 0 ? "--ink" : "--series", lineWidth: i === 0 ? 3 : 1,
-        endLabel: { name: p.name, value: formatPercent(end), tone: end > 0 ? "up" as const : end < 0 ? "down" as const : "flat" as const, strong: i === 0 } }
+      return { key: p.id, label: p.name, color: i === 0 ? "--up" : "--series", lineWidth: i === 0 ? 2 : 1,
+        endLabel: { name: p.name, value: formatPercent(end), tone: end > 0 ? "up" as const : end < 0 ? "down" as const : "flat" as const, strong: i === 0, accent: i === 0 } }
     }).reverse()
   }, [chart])
   const stats = d && linked ? groupStats(d.catalog, d.prices, linked.all) : []

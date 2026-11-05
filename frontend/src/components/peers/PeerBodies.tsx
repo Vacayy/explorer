@@ -39,13 +39,13 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
   const avg = Object.fromEntries(PEER_DAYS.map(d => [d, groupAverage(rows, d)])) as Record<PeerDays, ReturnType<typeof groupAverage>>
   const chartData = dates.map((time, index) => ({ time, group: avgPath?.[index], ...Object.fromEntries(paths.map(({ row, path }) => [`stock_${row.code}`, path?.[index]])) }))
   const many = rows.length > 8
-  // 시안 규칙: 회색 시리즈 · 고른 종목만 글자색 굵은 선 · 평균 점선 · 선 끝 라벨의 값만 등락색
+  // 시안(Explore-Peers) 규칙: 회색 시리즈 · 그룹 평균 글자색 점선 · 고른 종목만 분홍(상승색) 굵은 선과 분홍 라벨
   const tone = (v: number | null | undefined) => v == null || v === 0 ? 'flat' as const : v > 0 ? 'up' as const : 'down' as const
-  const end = (name: string, v: number | null | undefined, strong = false) => many && !strong ? undefined : { name, value: formatPercent(v ?? null), tone: tone(v), strong }
+  const end = (name: string, v: number | null | undefined, strong = false, accent = false) => many && !strong ? undefined : { name, value: formatPercent(v ?? null), tone: tone(v), strong, accent }
   const lines: LineConfig[] = [
     ...paths.filter(({ path, row }) => path && row.code !== selected).map(({ row }) => ({ key: `stock_${row.code}`, label: row.name, endLabel: end(row.name, row.returns[days]), color: '--series', lineWidth: 1 })),
-    ...(avgPath ? [{ key: 'group', label: '그룹 평균', endLabel: end('그룹 평균', avg[days].value, true), color: '--ink-2', lineWidth: 2, lineStyle: 2 }] : []),
-    ...paths.filter(({ path, row }) => path && row.code === selected).map(({ row }) => ({ key: `stock_${row.code}`, label: row.name, endLabel: end(row.name, row.returns[days], true), color: '--ink', lineWidth: 3 })),
+    ...(avgPath ? [{ key: 'group', label: '그룹 평균', endLabel: end('그룹 평균', avg[days].value, true), color: '--ink', lineWidth: 1, lineStyle: 2 }] : []),
+    ...paths.filter(({ path, row }) => path && row.code === selected).map(({ row }) => ({ key: `stock_${row.code}`, label: row.name, endLabel: end(row.name, row.returns[days], true, true), color: '--up', lineWidth: 2 })),
   ]
   const missing = rows.filter(row => row.returns[days] === null)
   const children = peerChildren(catalog, group.id)
@@ -58,6 +58,13 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
         <PeriodToggle value={String(days)} onChange={onDays} options={DAY_OPTIONS} />
       </div>
       {missing.length > 0 && <p role="status" className="text-caption text-chart-warning">가격 없는 종목 {missing.length}개는 표에 '-'로 두고 차트와 그룹 평균에서 뺐습니다 · 평균 {avg[days].covered}/{rows.length}사</p>}
+      {rows.length > 1 && <div role="group" aria-label="강조할 종목" className="flex flex-wrap gap-1.5">
+        {rows.map(row => { const on = row.code === selected
+          return <button key={row.code} type="button" aria-pressed={on} onClick={() => onSelect(row.code)}
+            className={cn('inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] font-medium', on ? 'border-up bg-up-tint text-up-ink' : 'border-[var(--line-2)] text-ink-2 hover:text-ink')}>
+            <span aria-hidden className={cn('size-2 rounded-full', on ? 'bg-up' : 'bg-ink-3')} />{row.name}
+          </button> })}
+      </div>}
       {lines.length ? <MultiLineChart data={chartData} lines={lines} showLegend={false} endLabels={phone ? undefined : 150} showLastValues={false} showLineTooltip onLineClick={key => { if (key.startsWith('stock_')) onSelect(key.slice(6)) }} height={300} formatValue={formatNumber} />
         : <p role="status" className="py-10 text-center text-sm text-muted-foreground">이 기간에 그릴 가격이 없습니다.</p>}
       <Table aria-label="구성 종목 성과표" className="max-md:hidden">
@@ -67,7 +74,7 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
           <TableHead className="text-right">Peer 대비 · 20일</TableHead><TableHead className="text-right">사업 근거</TableHead>
         </TableRow></TableHeader>
         <TableBody>
-          {rows.map(row => <TableRow key={row.code} data-state={row.code === selected ? 'selected' : undefined} className={cn(row.code === selected && 'bg-up/5 data-[state=selected]:bg-up/5')}>
+          {rows.map(row => <TableRow key={row.code} data-state={row.code === selected ? 'selected' : undefined} className={cn(row.code === selected && 'bg-up-tint data-[state=selected]:bg-up-tint hover:bg-up-tint')}>
             <TableCell className="tabular-nums">{row.rank ?? '-'}</TableCell>
             <TableCell className="whitespace-normal"><button type="button" className="text-left hover:underline" aria-pressed={row.code === selected} onClick={() => onSelect(row.code)}><span className="font-semibold">{row.name}</span></button>
               {row.composite && <span className="ml-1.5"><Composite /></span>}<span className="ml-1.5 text-caption text-muted-foreground">{row.products.join('·')}</span></TableCell>
@@ -84,7 +91,7 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
       </Table>
       <ol aria-label="구성 종목 목록" className="divide-y border-t md:hidden">
         {rows.map(row => <li key={row.code}>
-          <button type="button" onClick={() => onSelect(row.code)} aria-pressed={row.code === selected} className={cn('flex w-full items-center gap-3 px-1 py-2.5 text-left', row.code === selected && 'bg-up/5')}>
+          <button type="button" onClick={() => onSelect(row.code)} aria-pressed={row.code === selected} className={cn('flex w-full items-center gap-3 px-1 py-2.5 text-left', row.code === selected && 'bg-up-tint')}>
             <span className="w-5 shrink-0 text-caption tabular-nums text-muted-foreground">{row.rank ?? '-'}</span>
             <span className="min-w-0 flex-1"><span className="block font-semibold">{row.name}{row.composite && <span className="ml-1"><Composite /></span>}</span><span className="block truncate text-caption text-muted-foreground">{row.products.join('·')}</span></span>
             <span className="shrink-0 text-right"><span className={cn('block font-mono text-sm tabular-nums', tone(row.returns[days]))}>{formatPercent(row.returns[days])}</span>{days !== 20 && <span className="block text-caption text-muted-foreground">20일 <span className={tone(row.returns[20])}>{formatPercent(row.returns[20])}</span></span>}</span>
@@ -172,8 +179,8 @@ export function PeerIndustriesBody({ catalog, snapshot, days, onDays, onPick }: 
   // 회색 시리즈 · 1위 업종만 글자색 굵은 선 · 상위 3곳만 선 끝 라벨(값은 등락색)
   const lines: LineConfig[] = items.filter(item => item.path).map((item, index) => {
     const v = item.avg[days].value
-    return { key: item.group.id, label: item.group.name, color: index === 0 ? '--ink' : '--series', lineWidth: index === 0 ? 3 : 1,
-      endLabel: index < 3 ? { name: item.group.name, value: formatPercent(v), tone: v == null || v === 0 ? 'flat' as const : v > 0 ? 'up' as const : 'down' as const, strong: index === 0 } : undefined }
+    return { key: item.group.id, label: item.group.name, color: index === 0 ? '--up' : '--series', lineWidth: index === 0 ? 2 : 1,
+      endLabel: index < 3 ? { name: item.group.name, value: formatPercent(v), tone: v == null || v === 0 ? 'flat' as const : v > 0 ? 'up' as const : 'down' as const, strong: index === 0, accent: index === 0 } : undefined }
   }).reverse()
   const phone = useMediaQuery(MOBILE_QUERY)
   const chartData = dates.map((time, index) => ({ time, ...Object.fromEntries(items.map(item => [item.group.id, item.path?.[index]])) }))
