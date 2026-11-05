@@ -1,6 +1,6 @@
 // 실적 시즌 · 한국 (?view=season&market=kr, ia-redesign §4.22, 시안 Season-KR, docs/specs/earnings-season.md §국내 시즌)
 // 위계: 머리(시장·시즌 선택, 미국과 같은 머리) → KPI → 오늘 바뀐 것 → 발표 캘린더(?day=) → 반응이 좋았던·나빴던 발표
-//       → 최근 발표 표(?kf=, 캘린더에서 고른 날) → 업종별 집계 | 아직 발표 전 → 국내 시즌이 미국과 다른 점.
+//       → 최근 발표 표(?kf=, 캘린더에서 고른 날) → 업종별 집계 | 아직 발표 전. 미국과 다른 점은 머리 ⓘ(D-303).
 // 국내에는 분기 컨센서스가 없어 상회·하회 판정과 실적×반응 교차 블록을 두지 않는다. 매출·영업이익은 2단계(본문 파싱) 전까지 비운다.
 import { Link, useSearchParams } from "react-router-dom"
 import type { ReactNode } from "react"
@@ -37,6 +37,7 @@ export function KrSeasonView({ tabs }: { tabs: ReactNode }) {
         <SeasonHeader title={d.season.label}
           sub={<span className="inline-flex flex-wrap items-center gap-1.5">
             {shortSeason(d.season.key)} · {d.season.is_current ? "진행 중" : "지난 시즌"}
+            <DifferencesTip />
             {d.coverage.partial && <>
               <Badge variant="outline" className="font-normal text-hypothesis">일부 기업만</Badge>
               <InfoTip label="수집 범위 설명">
@@ -81,7 +82,6 @@ function KrBody({ d }: { d: KrSeasonOverview }) {
         <Groups d={d} />
         <Pending d={d} />
       </div>
-      <Differences />
     </div>
   )
 }
@@ -383,26 +383,13 @@ function Pending({ d }: { d: KrSeasonOverview }) {
   )
 }
 
-/* ---------- 국내 시즌이 미국과 다른 점 ---------- */
-const STAGES: { tag: string; muted?: boolean; lines: string[] }[] = [
-  { tag: "1단계 · 지금 데이터", lines: ["발표일과 주가 반응", "DART 잠정실적 공시로 누가 언제 발표했는지", "발표 전후 주가 · 같은 업종 대비"] },
-  { tag: "2단계 · 새 수집", lines: ["실적 수치", "공시 본문 표에서 매출·영업이익·순이익을 읽음", "전년·전분기 대비 증감"] },
-  { tag: "하지 않는 것", muted: true, lines: ["컨센서스 상회·하회 판정", "국내 분기 컨센서스 데이터가 없습니다", "'예상 상회' 같은 표현은 쓰지 않습니다"] },
-]
-
-function Differences() {
+/* ---------- 국내 시즌이 미국과 다른 점 — 본문 블록 대신 머리 ⓘ(D-303, 화면 부연설명 금지) ---------- */
+function DifferencesTip() {
   return (
-    <Section title="국내 시즌이 미국과 다른 점">
-      <div className="flex flex-wrap gap-6">
-        {STAGES.map((s) => (
-          <div key={s.tag} className="flex min-w-0 flex-[1_1_240px] flex-col gap-1.5">
-            <Badge variant={s.muted ? "outline" : "secondary"} className="self-start font-normal">{s.tag}</Badge>
-            <p className="text-sm font-medium">{s.lines[0]}</p>
-            {s.lines.slice(1).map((l) => <p key={l} className="text-caption text-muted-foreground">{l}</p>)}
-          </div>
-        ))}
-      </div>
-    </Section>
+    <InfoTip label="국내 시즌이 미국과 다른 점">
+      DART 잠정실적 공시로 누가 언제 발표했는지와 발표 전후 주가(같은 업종 대비)를 봅니다. 매출·영업이익 증감은 공시 본문을 읽는 2단계부터 채웁니다.
+      국내 분기 컨센서스가 없어 상회·하회는 판정하지 않습니다.
+    </InfoTip>
   )
 }
 

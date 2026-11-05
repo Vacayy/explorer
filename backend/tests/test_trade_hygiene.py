@@ -93,6 +93,19 @@ class NestedTotalsTests(TradeDbCase):
         self.assertEqual([r["hs_code"] for r in h["surge"]], ["854232"])
         self.assertEqual(next(g for g in h["groups"] if g["group_label"] == "반도체")["surge"], 1)
 
+    def test_new_item_not_counted_as_surge(self):
+        """신규(기준값 없음) 품목은 분류별 급등 수에 세지 않는다(D-303) — 목록에는 신규 배지로 남는다"""
+        self.conn.execute("INSERT INTO trade_follow(hs_code, item_name, group_label) VALUES ('854239','기타 IC','반도체')")
+        # 전년 동월(12번째 달)이 0이라 YoY 기준값이 없다 → flag new
+        self.conn.executemany("INSERT INTO trade_stats(hs_code, period, export_usd) VALUES (?,?,?)",
+                              [("854239", p, 0 if i == 11 else 40e6) for i, p in enumerate(_months(24))])
+        with patch.object(trade_metrics, "get_connection", return_value=self.conn):
+            t = trade_metrics.table()
+            h = trade_metrics.highlights()
+        self.assertEqual({r["hs_code"]: r["flag"] for r in t["rows"]}["854239"], "new")
+        self.assertIn("854239", [r["hs_code"] for r in h["surge"]])
+        self.assertEqual(next(g for g in h["groups"] if g["group_label"] == "반도체")["surge"], 1)   # 메모리만
+
     def test_stock_reverse_link(self):
         with patch.object(trade_metrics, "get_connection", return_value=self.conn), \
                 patch.object(spine_trade, "get_connection", return_value=self.conn):

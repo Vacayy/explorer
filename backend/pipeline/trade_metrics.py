@@ -226,7 +226,7 @@ def table(period: str | None = None, flow: str = "export", **opt) -> dict:
             g["value"] += r.get("value") or 0
         if r["nested_in"]:          # 세목은 급등·급감 수에서 뺀다 — 상위 품목에 이미 합산돼 있다(D-301)
             continue
-        if r["flag"] in ("surge", "new"):
+        if r["flag"] == "surge":    # 신규(new)는 급등으로 세지 않는다(D-303)
             g["surge"] += 1
         elif r["flag"] == "plunge":
             g["plunge"] += 1

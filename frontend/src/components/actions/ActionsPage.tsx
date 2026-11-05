@@ -1,5 +1,7 @@
+import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -7,7 +9,8 @@ import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from '@/components/shared/PageContainer'
 import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
 import { pinMine, useActions } from "@/hooks/useActions"
-import { formatKrw, formatKstDateTime } from "@/utils/format"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { formatKrw, formatKstDateTime, formatNumber } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import RightsProTable from "@/components/actions/RightsProTable"
 import { HomeBlock } from "@/components/home/HomeSection"
@@ -26,6 +29,9 @@ const segItem = cn("h-auto min-w-0 rounded-none px-2.5 py-1 text-xs font-normal"
 export default function ActionsPage() {
   return <ActionsList variant="page" />
 }
+
+/** 홈 블록에서 더 보기 전 행 수 — 데스크톱 10 · 모바일 6 (홈 › 내 종목과 같은 규칙, D-303). 페이지(/actions?code=X)는 전부 */
+const BLOCK_LIMIT = { desktop: 10, mobile: 6 }
 
 const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 내 종목(보유·관심)은 위로 올립니다."
 
@@ -54,7 +60,7 @@ export function ActionsList({ variant }: { variant: "page" | "block" }) {
       stale={!!data && !data.as_of} bodyClassName="space-y-3">
       {isLoading ? <div role="status" aria-label="기업활동 불러오는 중" className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
         : isError || !data ? <ErrorState message="기업활동을 불러오지 못했습니다" onRetry={() => refetch()} />
-        : <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} />}
+        : <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} bounded />}
     </HomeBlock>
   )
   if (isLoading) return <ActionsSkeleton />
@@ -78,11 +84,19 @@ export function ActionsList({ variant }: { variant: "page" | "block" }) {
   )
 }
 
-function ActionsBody({ data, type, view, kind, setParam, setView }: {
+function ActionsBody({ data, type, view, kind, setParam, setView, bounded = false }: {
   data: ActionsResponse; type: string; view: string; kind: ActionKind
   setParam: (k: string, v: string | null) => void; setView: (v: string) => void
+  bounded?: boolean
 }) {
-  const items = pinMine(data.items)
+  const mobile = useIsMobile()
+  // 펼침은 지금 필터(유형·원공시/정정)에만 — 필터를 바꾸면 다시 접힌다
+  const filterKey = `${type}|${kind}`
+  const [openFor, setOpenFor] = useState<string | null>(null)
+  const all = pinMine(data.items)
+  const limit = bounded && openFor !== filterKey ? BLOCK_LIMIT[mobile ? "mobile" : "desktop"] : all.length
+  const items = all.slice(0, limit)
+  const hidden = all.length - items.length
   return (
     <>
       {/* 뷰 토글: 목록 | 유무증 Pro */}
@@ -191,6 +205,8 @@ function ActionsBody({ data, type, view, kind, setParam, setView }: {
           </TableBody>
         </Table>
       )}
+      {view !== "pro" && hidden > 0 && <Button variant="ghost" size="sm" className={cn("text-muted-foreground", mobile && "w-full")}
+        onClick={() => setOpenFor(filterKey)}>{formatNumber(hidden)}건 더 보기 ›</Button>}
     </>
   )
 }

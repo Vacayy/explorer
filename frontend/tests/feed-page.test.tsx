@@ -35,6 +35,10 @@ it("counts the '전체' chip from followed human sources, not every document", (
   renderAt('/feed?reader_until=2026-11-04T09:00:00.000Z')
   expect(chip('전체').textContent).toBe('전체155')                // 120 + 30 + 5 — Explorer 산출물(900)·문서 전체(54,021) 제외
   expect(screen.getByPlaceholderText(/전체 수집 자료 54\.0천 건/)).toBeTruthy()   // 머리 검색칸은 문서 수 그대로
+  expect(chip('텔레그램').textContent).toBe('텔레그램120')        // 타임라인 칩도 같은 기준(D-303) — 문서 수 20,000 아님
+  expect(chip('유튜브').textContent).toBe('유튜브30')
+  expect(chip('메모').textContent).toBe('메모5')
+  expect(chip('블로그').textContent).toBe('블로그900')            // 문서 코퍼스 칩은 문서 수 그대로
 })
 
 it("marks every human source read in one call, then only the chip's platform", () => {

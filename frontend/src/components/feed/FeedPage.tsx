@@ -116,8 +116,10 @@ function FeedView({ counts }: { counts: Partial<Record<FeedChipKey, number>> }) 
   const unread = useMemo(() => unreadIds(timelineItems, channels), [timelineItems, channels])
   const human = channels.filter(c => c.platform !== 'system')
   const unreadTotal = human.reduce((s, c) => s + c.unread, 0)
-  // '전체' 칩 숫자 = 목록과 같은 기준(팔로우한 사람 소스의 글, 기준 시각까지) — D-301. 머리의 '전체 수집 자료'는 문서 수 그대로
-  const chipCounts = directory.data ? { ...counts, all: human.reduce((s, c) => s + c.count, 0) } : { ...counts, all: undefined }
+  // 타임라인 칩(전체·텔레그램·유튜브·메모) 숫자 = 목록과 같은 기준(팔로우한 사람 소스의 글, 기준 시각까지, 끈 소스 제외) — D-301·D-303.
+  // 머리의 '전체 수집 자료'는 문서 수 그대로
+  const humanCount = (platform?: string) => directory.data ? human.filter(c => !platform || c.platform === platform).reduce((s, c) => s + c.count, 0) : undefined
+  const chipCounts = { ...counts, all: humanCount(), telegram: humanCount('telegram'), youtube: humanCount('youtube'), memo: humanCount('memo') }
   // '모두 읽음' 범위 = 지금 칩(전체·텔레그램·유튜브·메모). 소스를 고르면 그 소스는 열 때 읽음 처리되므로 버튼을 두지 않는다
   const markAll = useMarkAllRead()
   const allScope = !channel && !topic && (chip === 'all' || chip === 'telegram' || chip === 'youtube' || chip === 'memo') ? chip : null

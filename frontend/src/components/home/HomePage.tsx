@@ -58,8 +58,8 @@ export function HomeKrPage() {
 
 /**
  * 홈 › 미국 시장 (시안 Home-US, ia-redesign §4.3·§4.28) — 실적 시즌 블록(시즌 사이엔 다음 시즌까지 D-n) →
- * 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림·개별 움직임 → 컨콜·실적 발표 | 새 모멘텀 후보(미국 시장 탭에도 컨콜 기능을 둔다, D-301).
- * 곧 발표 줄은 시즌 개요 발표 캘린더의 그날(?view=season&day=)로, 모멘텀 줄은 선택한 후보(?view=season&pick=)로 간다(4d).
+ * 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림·개별 움직임 → 최근 받은 컨콜 | 새 모멘텀 후보(미국 시장 탭에도 컨콜 기능을 둔다, D-301).
+ * 곧 발표는 위 실적 시즌 블록 하나로(D-303). 모멘텀 줄은 선택한 후보(?view=season&pick=)로 간다(4d).
  */
 export function HomeUsPage() {
   return <PageLayout mode="document" header={<PageHeader title="미국 시장" />}>
