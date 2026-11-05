@@ -25,12 +25,12 @@ class MarketTodayTests(unittest.TestCase):
         conn.executescript(BASE + mt.SCHEMA)
         conn.executemany("INSERT INTO telegram_channels VALUES (?,?)", [("a", "채널A"), ("b", "채널B"), ("c", "채널C")])
         conn.execute("INSERT INTO stock_prices VALUES ('005930', '2026-10-30')")   # 전 거래일 = 금요일
-        docs = [  # 11/3(화) 13:00~15:40 KST = 04:00~06:40 UTC
+        docs = [  # 11/3(화) 11:30~15:00 KST = 02:30~06:00 UTC
             (1, "a/1", "WSJ - 미국, 이란 케슘섬 공습…트럼프는 전쟁 재개 가능성 축소", "2026-11-03T04:10:00+00:00", "WSJ - 미국, 이란 케슘섬 공습…트럼프는 전쟁 재개 가능성 축소. 유가 반응은 제한적"),
             (2, "b/7", "WSJ - 미국, 이란 케슘섬 공습…트럼프는 전쟁 재개 가능성 축소", "2026-11-03T04:12:00+00:00", "WSJ - 미국, 이란 케슘섬 공습…트럼프는 전쟁 재개 가능성 축소"),
             (3, "c/2", "대만 팀그룹: 메모리 공급 부족 2028년 하반기까지 지속 전망", "2026-11-03T05:00:00+00:00", "대만 팀그룹: 메모리 공급 부족 2028년 하반기까지 지속 전망. 4분기 30~40% 가격 상승"),
             (4, "a/2", "2026.11.03 15:51:58", "2026-11-03T05:30:00+00:00", "채널 공지입니다. 오늘 장 마감 후 라이브 방송을 합니다 많관부"),
-            (5, "a/3", "어제 글", "2026-11-03T03:59:00+00:00", "13:00 이전 글 — 이 회차 창 밖이라 빠져야 한다"),
+            (5, "a/3", "어제 글", "2026-11-03T02:29:00+00:00", "11:30 이전 글 — 이 회차 창 밖이라 빠져야 한다"),
         ]
         conn.executemany("INSERT INTO raw_documents (id, source_type, source_id, title, url, published_at, markdown) VALUES (?,'telegram',?,?,NULL,?,?)",
                          [(i, sid, t, p, m) for i, sid, t, p, m in docs])
@@ -49,20 +49,23 @@ class MarketTodayTests(unittest.TestCase):
 
     def test_windows_start_at_previous_slot_and_first_slot_at_previous_trading_close(self):
         conn = self.connect()
-        self.assertEqual(mt.window(conn, date(2026, 11, 3), "1540"), ("2026-11-03T04:00:00+00:00", "2026-11-03T06:40:00+00:00"))
-        # 월요일 10:00 회차는 금요일 15:40부터 — 주말 사이 소식이 빠지지 않게
-        self.assertEqual(mt.window(conn, date(2026, 11, 2), "1000")[0], "2026-10-30T06:40:00+00:00")
+        self.assertEqual(mt.window(conn, date(2026, 11, 3), "1500"), ("2026-11-03T02:30:00+00:00", "2026-11-03T06:00:00+00:00"))
+        # 월요일 09:30 회차는 금요일 16:00 마감 정리부터 — 주말 사이 소식이 빠지지 않게
+        self.assertEqual(mt.window(conn, date(2026, 11, 2), "0930")[0], "2026-10-30T07:00:00+00:00")
+        # 16:00 마감 정리는 그날 09:00부터 하루 전체
+        self.assertEqual(mt.window(conn, date(2026, 11, 3), "1600"), ("2026-11-03T00:00:00+00:00", "2026-11-03T07:00:00+00:00"))
         conn.close()
 
     def test_due_slot_is_latest_passed_and_none_on_weekend_or_before_open(self):
         utc = lambda kst_h, kst_m, d=3: datetime(2026, 11, d, kst_h - 9, kst_m, tzinfo=timezone.utc)
-        self.assertEqual(mt.due_slot(utc(14, 5)), (date(2026, 11, 3), "1300"))
-        self.assertIsNone(mt.due_slot(utc(9, 30)))
+        self.assertEqual(mt.due_slot(utc(14, 5)), (date(2026, 11, 3), "1130"))
+        self.assertEqual(mt.due_slot(utc(16, 1)), (date(2026, 11, 3), "1600"))
+        self.assertIsNone(mt.due_slot(utc(9, 29)))
         self.assertIsNone(mt.due_slot(datetime(2026, 11, 1, 3, 0, tzinfo=timezone.utc)))   # 일요일
 
     def test_gather_groups_reposts_and_counts_distinct_publishers(self):
         conn = self.connect()
-        sources, counts = mt.gather(conn, *mt.window(conn, date(2026, 11, 3), "1540"))
+        sources, counts = mt.gather(conn, *mt.window(conn, date(2026, 11, 3), "1500"))
         conn.close()
         self.assertEqual(counts, {"telegram": 4, "news": 1}, "창 밖(13:00 이전) 글은 빠진다")
         iran = next(s for s in sources if "케슘섬" in s["title"])
@@ -72,7 +75,7 @@ class MarketTodayTests(unittest.TestCase):
 
     def test_verify_keeps_only_quotes_found_verbatim_and_orders_by_echo(self):
         conn = self.connect()
-        sources, _ = mt.gather(conn, *mt.window(conn, date(2026, 11, 3), "1540"))
+        sources, _ = mt.gather(conn, *mt.window(conn, date(2026, 11, 3), "1500"))
         conn.close()
         ref = {("이란" if "케슘섬" in s["title"] else "메모리" if "팀그룹" in s["title"] else s["title"]): s["ref"] for s in sources}
         raw = [
@@ -87,20 +90,40 @@ class MarketTodayTests(unittest.TestCase):
 
     def test_run_stores_once_skips_without_force_and_skips_thin_windows(self):
         conn = self.connect()
-        sources, _ = mt.gather(conn, *mt.window(conn, date(2026, 11, 3), "1540"))
+        sources, _ = mt.gather(conn, *mt.window(conn, date(2026, 11, 3), "1500"))
         conn.close()
         iran = next(s for s in sources if "케슘섬" in s["title"])["ref"]
         fake = lambda prompt: {"topics": [{"title": "미국, 이란 케슘섬 공습", "body": "WSJ 보도입니다.", "tags": ["이란"],
                                             "sources": [{"ref": iran, "quote": "미국, 이란 케슘섬 공습"}]}]}
         snap = lambda d, s: {"kospi": {"value": 5648.79, "change_pct": -3.59, "at": "15:30"}, "path": [["09:00", 5702.5]]}
-        r = mt.run(date(2026, 11, 3), "1540", call=fake, check_holiday=False, snapshot=snap)
+        r = mt.run(date(2026, 11, 3), "1500", call=fake, check_holiday=False, snapshot=snap)
         self.assertEqual((r["status"], r["topics"]), ("ok", 1))
-        self.assertEqual(mt.run(date(2026, 11, 3), "1540", call=fake, check_holiday=False, snapshot=snap)["status"], "exists")
+        self.assertEqual(mt.run(date(2026, 11, 3), "1500", call=fake, check_holiday=False, snapshot=snap)["status"], "exists")
         d = mt.read("2026-11-03")
         self.assertEqual(d["current"]["topics"][0]["sources"][0]["publisher"], "채널A")
-        self.assertEqual([s["label"] for s in d["slots"]], ["15:40"])
+        self.assertEqual([s["label"] for s in d["slots"]], ["15:00"])
         self.assertEqual(d["current"]["market"]["kospi"]["change_pct"], -3.59, "회차 시점 시장 상태를 함께 쌓는다")
-        self.assertEqual(mt.run(date(2026, 11, 3), "1000", call=fake, check_holiday=False, snapshot=snap)["status"], "skipped", "자료가 적은 창은 만들지 않는다")
+        self.assertEqual(mt.run(date(2026, 11, 3), "0930", call=fake, check_holiday=False, snapshot=snap)["status"], "skipped", "자료가 적은 창은 만들지 않는다")
+
+    def test_wrap_slot_sees_whole_day_and_all_intraday_topics(self):
+        snap = lambda d, s: None
+        fake = lambda prompt: {"topics": []}
+        conn = self.connect()
+        conn.execute("INSERT INTO market_today (trade_date, slot, window_start, window_end, items_json, sources_json, doc_count) "
+                     "VALUES ('2026-11-03','0930','a','b',?, '{}', 9), ('2026-11-03','1130','a','b',?, '{}', 9)",
+                     ('[{"title": "아침 화두"}]', '[{"title": "점심 화두"}]'))
+        conn.commit()
+        conn.close()
+        seen = []
+        mt.run(date(2026, 11, 3), "1600", call=lambda p: seen.append(p) or {"topics": []}, check_holiday=False, snapshot=snap)
+        self.assertIn("오늘 하루", seen[0])
+        self.assertIn("아침 화두", seen[0], "마감 정리는 그날 장중 회차 화두를 전부 본다")
+        self.assertIn("점심 화두", seen[0])
+        self.assertIn("11:30 이전 글", seen[0], "창 = 09:00부터 하루 전체")
+        seen.clear()
+        mt.run(date(2026, 11, 3), "1500", call=lambda p: seen.append(p) or {"topics": []}, check_holiday=False, snapshot=snap)
+        self.assertNotIn("아침 화두", seen[0], "장중 회차는 직전 회차만")
+        self.assertEqual(mt.read("2026-11-03")["slots"][-1]["label"], "16:00 마감")
 
 
 if __name__ == "__main__":

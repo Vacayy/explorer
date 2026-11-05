@@ -115,9 +115,10 @@ JOBS = [
     # 관측(docs/specs/observability.md) — 주간 리포트는 월요일 브리핑 뒤, 경고는 1시간마다(상태가 바뀔 때만 보냄)
     ("observeweekly", [PY, "scripts/observe.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 5}),
     ("observealerts", [PY, "scripts/observe.py", "--alerts"], 3600),
-    # Market Today(docs/specs/market-today.md) — 장중 세 회차, 텔레그램·매체 화두 요약(sonnet 1콜/회차). 휴장일은 스크립트가 건너뛴다
+    # Market Today(docs/specs/market-today.md) — 평일 네 회차(장중 09:30·11:30·15:00 + 16:00 마감 정리), 텔레그램·매체 화두 요약
+    # (sonnet 1콜/회차). 휴장일은 스크립트가 건너뛴다
     ("markettoday", [PY, "scripts/market_today.py"],
-     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((10, 0), (13, 0), (15, 40))]),
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((9, 30), (11, 30), (15, 0), (16, 0))]),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
 

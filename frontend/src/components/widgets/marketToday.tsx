@@ -25,7 +25,7 @@ export function MarketTodayBody({ w, h }: WidgetBodyProps) {
   const q = useMarketToday(slot)
   const d = q.data
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  if (!d.current) return <WidgetState empty emptyText={d.next_slot ? `오늘 첫 정리는 ${d.next_slot}에 나와요.` : "아직 장중 정리가 없어요. 평일 10:00·13:00·15:40에 만들어집니다."} />
+  if (!d.current) return <WidgetState empty emptyText={d.next_slot ? `오늘 첫 정리는 ${d.next_slot}에 나와요.` : "아직 장중 정리가 없어요. 평일 09:30·11:30·15:00, 장 마감 뒤 16:00에 만들어집니다."} />
   const c = d.current
   const n = h <= 3 ? 2 : w <= 4 ? 3 : 5
   return <div className="flex h-full min-h-0 flex-col gap-2">

@@ -8,7 +8,7 @@ router = APIRouter(tags=["spine"])
 
 @router.get("/api/spine/market-today", response_model=MarketToday)
 def market_today(date: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
-                 slot: str | None = Query(None, pattern=r"^(1000|1300|1540)$")):
+                 slot: str | None = Query(None, pattern=r"^(0930|1130|1500|1600|1000|1300|1540)$")):
     """그날(없으면 최근) 회차 목록과 선택(없으면 최신) 회차의 화두·출처. LLM 0."""
     from pipeline.market_today import read
     return read(date, slot)
