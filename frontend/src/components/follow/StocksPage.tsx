@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { type ColumnDef, type SortingState, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, ChevronDown, LoaderCircle, MoreHorizontal, Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, LoaderCircle, MoreHorizontal, Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader, PageLayout } from '@/components/shared/PageLayout'
 import { EmptyState, ErrorState } from '@/components/shared/ErrorState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -107,9 +106,12 @@ function GroupDetail({ groupId, onBack }: { groupId: number; onBack: () => void 
         {detail.rules.default.length === 0 && Object.keys(detail.rules.members).length === 0 && <span className="text-warn">조건이 없습니다. ‘기본 조건’에서 전략을 추가하세요.</span>}
       </div>
       <MemberTable detail={detail} onEditRules={code => setEditing(code)} />
-      {detail.kind === 'watch' && <WatchReasonsCard detail={detail} />}
-      {detail.kind === 'portfolio' ? <LedgerNotice /> : <AddMember detail={detail} />}
-      <SignalHistory groupId={groupId} />
+      {/* 시안 Groups: 표 아래 두 칸 — 최근 30일 신호 | 관심 이유(관심 묶음) */}
+      <div className="surface-grid grid items-stretch lg:grid-cols-2">
+        <SignalHistory groupId={groupId} />
+        {detail.kind === 'watch' ? <WatchReasonsCard detail={detail} /> : detail.kind === 'portfolio' ? <LedgerNotice /> : <AddMember detail={detail} />}
+      </div>
+      {detail.kind === 'watch' && <AddMember detail={detail} />}
       <RulesSheet detail={detail} target={editing} onClose={() => setEditing(false)} />
     </>}
   </PageLayout>
@@ -136,7 +138,7 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
           .then(state => toast.success(state.tracked ? `${row.original.name} 추적을 켰습니다. ${trackedNotice(row.original.market)}` : `${row.original.name} 추적을 껐습니다.`))
           .catch(error => toast.error(error instanceof Error ? error.message : '추적을 바꾸지 못했습니다.'))} /> })
     list.push(
-      { id: 'signals', accessorFn: item => item.signals.length, sortDescFirst: true, header: sortable('오늘 신호'), cell: ({ row }) => row.original.signals.length ? <span className="flex flex-wrap gap-1">{row.original.signals.map(signal => <Badge key={signal.rule_id} className="font-normal">{signal.label}{signal.signal_date && signal.signal_date !== detail.last_as_of ? ` · ${signal.signal_date}` : ''}</Badge>)}</span> : <span className="text-caption text-muted-foreground">{row.original.rule_count === 0 ? '조건 없음' : row.original.unavailable > 0 ? `미평가 ${formatNumber(row.original.unavailable)}` : '-'}</span> },
+      { id: 'signals', accessorFn: item => item.signals.length, sortDescFirst: true, header: sortable('오늘 신호'), cell: ({ row }) => row.original.signals.length ? <span className="flex flex-wrap gap-1">{row.original.signals.map(signal => <Badge key={signal.rule_id} className="h-[22px] rounded-md border-0 bg-up-tint px-2 text-xs font-medium text-up-ink">{signal.label}{signal.signal_date && signal.signal_date !== detail.last_as_of ? ` · ${signal.signal_date}` : ''}</Badge>)}</span> : <span className="text-caption text-muted-foreground">{row.original.rule_count === 0 ? '조건 없음' : row.original.unavailable > 0 ? `미평가 ${formatNumber(row.original.unavailable)}` : '-'}</span> },
       { id: 'rules', accessorKey: 'rule_count', header: '조건', enableSorting: false, cell: ({ row }) => <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onEditRules(row.original.stock_code)} aria-label={`${row.original.name} 조건 편집`}>{formatNumber(row.original.rule_count)}개<SlidersHorizontal className="size-3.5" /></Button> },
       { id: 'actions', header: '', enableSorting: false, cell: ({ row }) => <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`${row.original.name} 더보기`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
         <DropdownMenuItem asChild><Link to={dossierPath(row.original.stock_code, row.original.market)}>기업 개요</Link></DropdownMenuItem>
@@ -175,7 +177,7 @@ function AddMember({ detail }: { detail: StockGroupDetail }) {
       setQuery('')
     } catch (error) { toast.error(error instanceof Error ? error.message : '종목을 추가하지 못했습니다.') }
   }
-  return <Card><CardHeader className="pb-2"><h2 className="text-sm font-medium">종목 추가</h2></CardHeader><CardContent className="space-y-3">
+  return <Card><CardContent className="space-y-3 py-4"><h2 className="text-[15px] font-semibold">종목 추가</h2>
     <div className="space-y-1"><Label htmlFor="member-search" className="sr-only">종목명 또는 코드</Label><Input id="member-search" value={query} onChange={event => setQuery(event.target.value)} placeholder="종목명 또는 코드" autoComplete="off" /></div>
     {query.trim() && <ul className="max-h-56 space-y-1 overflow-y-auto" aria-label="검색 결과">
       {search.isPending && <li className="text-caption text-muted-foreground">검색 중…</li>}
@@ -187,16 +189,19 @@ function AddMember({ detail }: { detail: StockGroupDetail }) {
 
 function SignalHistory({ groupId }: { groupId: number }) {
   const signals = useGroupSignals(groupId, 30)
+  const [all, setAll] = useState(false)   // 시안: 가장 최근 날만, 나머지는 펼쳐 보기
   const byDate = useMemo(() => { const map = new Map<string, NonNullable<typeof signals.data>>(); for (const signal of signals.data ?? []) map.set(signal.as_of, [...(map.get(signal.as_of) ?? []), signal]); return [...map.entries()] }, [signals.data])
-  return <Collapsible defaultOpen className="border bg-card px-4 py-2">
-    <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto w-full justify-between whitespace-normal text-left">최근 30일 신호 {signals.data ? `· ${formatNumber(signals.data.length)}건` : ''}<ChevronDown className="size-4 shrink-0" /></Button></CollapsibleTrigger>
-    <CollapsibleContent className="space-y-3 pb-3 pt-2">
-      {signals.isPending && <Skeleton className="h-16 w-full" />}
-      {signals.isError && <ErrorState message="신호 이력을 불러오지 못했습니다." onRetry={() => signals.refetch()} />}
-      {signals.data && signals.data.length === 0 && <EmptyState message="최근 30일 동안 새로 켜진 신호가 없습니다. 조건이 켜진 첫날만 기록합니다." />}
-      {byDate.map(([date, items]) => <div key={date} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{date}</p><ul className="space-y-1">{items.map(signal => <li key={`${signal.stock_code}-${signal.rule_id}`} className="flex flex-wrap items-baseline gap-x-2 text-sm"><Link className="font-medium hover:underline" to={dossierPath(signal.stock_code, signal.market)}>{signal.name ?? signal.stock_code}</Link><span>{signal.label}</span>{signal.value != null && <span className="text-caption tabular-nums text-muted-foreground">{formatNumber(signal.value)}{signal.reference != null ? ` / ${formatNumber(signal.reference)}` : ''}</span>}</li>)}</ul></div>)}
-    </CollapsibleContent>
-  </Collapsible>
+  return <Card aria-label="최근 30일 신호"><CardContent className="flex flex-col gap-3 py-4">
+    <h2 className="flex items-baseline gap-2.5 text-[15px] font-semibold">최근 30일 신호<span className="text-xs font-normal text-ink-3">날짜별{signals.data ? ` · ${formatNumber(signals.data.length)}건` : ''}</span></h2>
+    {signals.isPending && <Skeleton className="h-16 w-full" />}
+    {signals.isError && <ErrorState message="신호 이력을 불러오지 못했습니다." onRetry={() => signals.refetch()} />}
+    {signals.data && signals.data.length === 0 && <EmptyState message="최근 30일 동안 새로 켜진 신호가 없습니다." />}
+    {(all ? byDate : byDate.slice(0, 1)).map(([date, items]) => <div key={date}><p className="pb-1.5 text-xs text-ink-3">{date}</p><ul>{items.map(signal => <li key={`${signal.stock_code}-${signal.rule_id}`} className="flex justify-between gap-2.5 border-t py-2 text-[13px]">
+      <Link className="min-w-0 truncate hover:underline" to={dossierPath(signal.stock_code, signal.market)}>{signal.name ?? signal.stock_code}</Link>
+      <span className="shrink-0 text-ink-2">{signal.label}{signal.value != null && <span className="ml-1 font-mono text-xs tabular-nums">{formatNumber(signal.value)}{signal.reference != null ? ` / ${formatNumber(signal.reference)}` : ''}</span>}</span>
+    </li>)}</ul></div>)}
+    {byDate.length > 1 && <Button variant="ghost" size="sm" className="self-center text-ink-2" onClick={() => setAll(v => !v)}>{all ? '접기' : `이전 ${formatNumber(byDate.length - 1)}일 더 보기`}</Button>}
+  </CardContent></Card>
 }
 
 function RulesSheet({ detail, target, onClose }: { detail: StockGroupDetail; target: string | null | false; onClose: () => void }) {

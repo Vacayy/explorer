@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+import { InfoTip } from '@/components/shared/InfoTip'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,11 +14,12 @@ import { useGroupReasons, useStartReason } from '@/hooks/useGroups'
 import type { QuestionVerdict, StockGroupDetail } from '@/types'
 
 const VERDICT: Record<string, { label: string; cls: string }> = {
-  leaning_yes: { label: '지지', cls: 'text-up-ink border-up/40' },
-  leaning_no: { label: '약화', cls: 'text-down-ink border-down/40' },
-  mixed: { label: '엇갈림', cls: 'text-muted-foreground' },
-  unknown: { label: '관측 전', cls: 'text-muted-foreground' },
+  leaning_yes: { label: '지지', cls: 'bg-up-tint text-up-ink' },
+  leaning_no: { label: '약화', cls: 'bg-down-tint text-down-ink' },
+  mixed: { label: '엇갈림', cls: 'bg-chip text-ink-2' },
+  unknown: { label: '관측 전', cls: 'bg-chip text-ink-2' },
 }
+const TAG = 'inline-flex h-[22px] items-center whitespace-nowrap rounded-md px-2 text-xs font-medium'
 const V = (v: QuestionVerdict) => VERDICT[v ?? 'unknown'] ?? VERDICT.unknown
 
 /**
@@ -40,10 +41,9 @@ export function WatchReasonsCard({ detail }: { detail: StockGroupDetail }) {
     })
   }
 
-  return <Card>
-    <CardHeader><CardTitle>관심 이유</CardTitle>
-      <CardDescription>종목마다 왜 보고 있는지와 무엇이 오면 움직일지를 적으세요. 매일 아침 판정해, 이유가 맞아가거나 약해지면 텔레그램으로 알립니다.</CardDescription></CardHeader>
-    <CardContent>
+  return <Card aria-label="관심 이유">
+    <CardContent className="flex flex-col gap-3 py-4">
+      <h2 className="flex items-baseline gap-2.5 text-[15px] font-semibold"><span className="inline-flex items-center">관심 이유<InfoTip label="관심 이유 설명">왜 보고 있는지, 무엇이 오면 움직일지 적어 두면 매일 아침 판정해 이유가 맞아가거나 약해지면 텔레그램으로 알립니다.</InfoTip></span><span className="text-xs font-normal text-ink-3">선행·확정</span></h2>
       {reasons.isPending ? <Skeleton className="h-32 w-full" />
         : reasons.isError ? <ErrorState message="관심 이유를 불러오지 못했습니다." onRetry={() => void reasons.refetch()} />
         : !detail.members.length ? <p className="text-sm text-muted-foreground">묶음에 종목을 먼저 추가하세요.</p>
@@ -51,17 +51,17 @@ export function WatchReasonsCard({ detail }: { detail: StockGroupDetail }) {
             judgedAt={Object.values(reasons.data).map(r => r.judged_at).filter(Boolean).sort().at(-1) ?? null} />}
         <ul className="divide-y" aria-label="종목별 관심 이유">{detail.members.map(m => {
           const r = reasons.data[m.stock_code]
-          return <li key={m.stock_code} className="space-y-2 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <span className="font-medium">{m.name}</span>
-              {r ? <span className="flex flex-wrap items-center gap-1.5 text-caption">
-                  <span className="text-muted-foreground">선행</span><Badge variant="outline" className={V(r.lead).cls}>{V(r.lead).label}</Badge>
-                  <span className="text-muted-foreground">확정</span><Badge variant="outline" className={V(r.confirm).cls}>{V(r.confirm).label}</Badge>
-                  <DetailLink to={`/question/${r.id}`} className="ml-1 text-primary hover:underline">상세 →</DetailLink></span>
+          return <li key={m.stock_code} className="space-y-2 py-2.5 first:pt-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[13.5px]">{m.name}</span>
+              {r ? <span className="flex flex-wrap items-center gap-1.5">
+                  <span className={`${TAG} ${V(r.lead).cls}`}>선행 {V(r.lead).label}</span>
+                  <span className={`${TAG} ${V(r.confirm).cls}`}>확정 {V(r.confirm).label}</span>
+                  <DetailLink to={`/question/${r.id}`} className="ml-1 text-xs text-ink-2 hover:underline">상세 ›</DetailLink></span>
                 : open !== m.stock_code && <Button variant="outline" size="sm" onClick={() => { setOpen(m.stock_code); setWhy(m.thesis ?? ''); setTrigger('') }}>이유 적기</Button>}
             </div>
             {r && <>
-              <p className="text-sm text-muted-foreground">{r.text}</p>
+              <p className="line-clamp-2 text-[13px] text-ink-2">{r.text}</p>
               {r.signals.length > 0 && <p className="text-caption">{r.signals.join(' · ')}</p>}
               {r.summary && <p className="text-caption text-muted-foreground">{r.summary}</p>}
             </>}
