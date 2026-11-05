@@ -69,6 +69,14 @@ export function formatPp(value: number | null | undefined, digits = 2): string {
 }
 
 /**
+ * PER·선행 PER — 소수 1자리 + '배'(docs/policies/number-formatting.md). null이면 '-'.
+ */
+export function formatPer(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${value.toFixed(1)}배`
+}
+
+/**
  * Format a share/ratio as percentage without a sign (e.g. 15.3%). Use formatPercent for changes.
  */
 export function formatRatio(value: number | null | undefined): string {

@@ -2,7 +2,7 @@
 
 - 상태: P7 구현 계약 (2026-10-16). 셸 [app-shell](app-shell.md) §2의 월드모델 L2를 채운다. 위젯은 [home-widgets](home-widgets.md) §2 계약을 따른다.
 - 대체: 옛 월드모델 L2(내러티브·전망·지식 시간축 분할)의 화면 배치. [knowledge-page](knowledge-page.md)의 승격 대기 큐 배치(§4)와 [narrative-causal-phase2](narrative-causal-phase2.md)의 랜딩 블록 순서는 이 문서가 대체한다. 서사 생성·인과 그래프·지식 승격의 동작 자체는 바꾸지 않는다.
-- 범위 밖: URL 이전(`/world/*`)과 리다이렉트, 프록시 보드, 휴면 기능(메르 서사·파급 시나리오 등) 제거, 세계관 브리핑과 메가 서사의 생성 통합.
+- 범위 밖: URL 이전(`/world/*`)과 리다이렉트, 휴면 기능(메르 서사·파급 시나리오 등) 제거, 세계관 브리핑과 메가 서사의 생성 통합.
 
 ## 1. 구조
 
@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 지금 | `/narrative` | — (상세는 `?topic=`) | `/narrative`, `/narrative/history` |
 | 그래프 | `/knowledge/ontology` | 온톨로지 · 변화·검증 지식(`/knowledge`) — `KnowledgeSubNav` | `/knowledge` |
-| 내 판단 | `/questions` | 질문 · 논지 감사(`/thesis`) · 리포트(`/report`) — `OutlookSubNav` | `/questions`, `/question/`, `/thesis`, `/report` |
+| 내 판단 | `/questions` | 질문 · 논지 감사(`/thesis`) · 리포트(`/report`) · 지표 보드(`/questions?view=proxies`) — `thesis/JudgmentFrame`(2026-11-05 개편 4f) | `/questions`, `/question/`, `/thesis`, `/report`, `/proxy-boards`(리다이렉트) |
 
 ## 2. 지금 (`/narrative`)
 
@@ -45,7 +45,11 @@
 ## 4. 내 판단 (`/questions`)
 
 - 질문이 1급 객체다. 보유 논지(`created_by=portfolio`)·관심 이유(`watch`)·논지 감사 승격(`thesis`)·서사 도출(`system`)·언급(`digest`)·직접 입력(`user`)이 모두 같은 질문 행이고 출처를 배지로 구분한다(`QUESTION_ORIGIN`). 종목에 걸린 질문은 종목 코드 칩 → 도시에.
-- 논지 감사·리포트는 같은 탭의 보기 전환으로 남긴다. 판정 엔진 상태 표시와 프록시 보드는 이 단계 범위 밖.
+- 논지 감사·리포트·지표 보드는 같은 탭의 보기 전환이다. 공통 틀 `thesis/JudgmentFrame` = 제목 '내 판단' + Tabs `질문 · 논지 감사 · 리포트 · 지표 보드`(주소가 보기를 정한다, `lib/judgment`). 판정 엔진 상태 표시는 범위 밖.
+- **지표 보드**(`/questions?view=proxies&board=`, 2026-11-05 개편 4f): 프록시 보드(D-240, `proxy/ProxyBoardsView`) 아래에 컨콜에서 뽑은 지표(옛 탐색 › 컨콜 '프록시' 보기, `proxy/TranscriptProxies`, 접어 둠). 옛 `/proxy-boards?board=`와 `/follow/transcripts?view=proxies`는 여기로 리다이렉트(쿼리 유지).
+- **질문 상세**(`/question/:id`): 머리(질문 · 확정/선행 · 출처 배지 · 괴리 · 추적 시작/판정 갱신 날짜) → 판정 요약 → 넓은 화면 2단: 분할정복 트리(서브질문 · 프록시 · 관측 n건 · 관측 대기 n, 프록시 줄에 전체 관측 수 `obs_count`, 줄을 누르면 상세 대화상자) | 질문 종합(낡았으면 'm/d에 만든 결산입니다. 그 뒤 관측이 갱신됐습니다 · 다시 종합'을 맨 위, '아직 미판정·흔들릴 조건'은 접음) · 파급 시나리오(논리상 유리·불리한 쪽 칩 — 인과 추론이지 판정 아님, 전문은 접음). 블록 단위 실패, 낡아도 자동으로 다시 만들지 않는다.
+- **논지 감사**(`/thesis?audit=`): 왼쪽 새 논지 감사(작은 입력) · 감사 기록(지금 보는 감사 표시) | 오른쪽 감사 결과(감사한 논지 원문 접음 → 판정 분포 → 진자 분포 — 값이 없으면 '이 감사엔 값 없음' → 주장 카드 · 추적 시작 · 이 논지 다시 감사). `?audit=` 없으면 가장 최근 기록.
+- **리포트**(`/report?topic=`): 목록 | 상세 2단(좁은 화면은 하나씩). 상세 = '통합 리포트 · 주제 · 작성일 · 버전' → '작성 이후' 한 줄(Top-pick 주가·12M 선행 PER, 관측이지 판정 아님) → 차트 → 제목·결론·핵심 질문·투자 포인트 요약 → 산업 분석 이하 접음 → 분석 종목(레이팅 말 '상방 우위(비대칭 큼)·상방 우위·Hold·하방 우위', 옛 영문 레이팅은 보일 때 바꿈) → 구성 내러티브 → 논쟁 → 이전 버전. 생성 프롬프트도 같은 말(`pipeline/report.RATING_*`, 제목은 '~의 비대칭이 크다' 식).
 - 프록시 대시보드의 '핵심 질문' 링크는 `/questions`.
 
 ## 5. 읽기 전용 API (`routers/spine_world.py`, `pipeline/world_reads.py`)

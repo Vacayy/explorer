@@ -1,70 +1,86 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { useMutation } from "@tanstack/react-query"
+import { useNavigate, useSearchParams } from "react-router-dom"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Gauge, History, Loader2, Sparkles, Telescope, TrendingUp } from "lucide-react"
+import { ChevronDown, Gauge, Loader2, Sparkles, Telescope, TrendingUp } from "lucide-react"
 import api from "@/api/client"
 import { PageContainer } from "@/components/shared/PageContainer"
-import { OutlookSubNav } from "@/components/explore/OutlookSubNav"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { JudgmentFrame } from "@/components/thesis/JudgmentFrame"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
-import { EmptyState, ErrorState } from "@/components/shared/ErrorState"
+import { ErrorState } from "@/components/shared/ErrorState"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { useRunThesisAudit, useThesisAudits, useThesisAudit } from "@/hooks/useThesisAudit"
-import type { ThesisAudit, ThesisClaim, ThesisEdge, ThesisPendulum, ThesisQuadrant, ThesisVerdict } from "@/types"
+import { cn } from "@/lib/utils"
+import type { ThesisAudit, ThesisAuditListItem, ThesisClaim, ThesisEdge, ThesisPendulum, ThesisQuadrant, ThesisVerdict } from "@/types"
+
+const mmdd = (iso: string) => `${iso.slice(5, 7)}/${iso.slice(8, 10)}`
 
 /**
- * /thesis — 논지 감사 (thesis audit, docs/private/specs/thesis-audit.md). 전망(미래·확률) 서브탭.
+ * /thesis — 논지 감사 (thesis audit, docs/private/specs/thesis-audit.md · ia-redesign §4.27 B · 시안 Thesis-Audit).
  * 내 thesis를 축적된 인과그래프에 **대질**(read-only 감사, 등재 아님) — 일치/충돌/반박/신규 델타.
  * moat는 추론이 아니라 정박: 모든 판정이 코퍼스 근거(엣지·독립 소스·시점)를 가리킨다.
+ * 넓은 화면 2단: 왼쪽 새 논지 감사(작은 입력) · 감사 기록 | 오른쪽 감사 결과(감사한 원문 접음 → 판정·진자 분포 → 주장 카드).
+ * 보는 감사는 주소 ?audit=<id>(없으면 가장 최근 기록).
  */
 export default function ThesisAuditPage() {
+  const [params, setParams] = useSearchParams()
+  const qc = useQueryClient()
   const [text, setText] = useState("")
-  const [viewId, setViewId] = useState<number | null>(null)
   const run = useRunThesisAudit()
-  const loaded = useThesisAudit(viewId)
+  const history = useThesisAudits()
+  const picked = Number(params.get("audit")) || null
+  const viewId = picked ?? history.data?.[0]?.id ?? null
+  const loaded = useThesisAudit(run.isPending ? null : viewId)
 
-  const audit: ThesisAudit | undefined = viewId != null ? loaded.data : run.data
-
-  function submit() {
-    setViewId(null)
-    run.mutate(text.trim())
+  function submit(body: string) {
+    run.mutate(body.trim(), {
+      onSuccess: (a) => {
+        qc.invalidateQueries({ queryKey: ["spine", "thesis", "audits"] })
+        qc.setQueryData(["spine", "thesis", a.id], a)
+        setParams((p) => { const n = new URLSearchParams(p); n.set("audit", String(a.id)); return n })
+        setText("")
+      },
+      onError: () => toast.error("감사를 마치지 못했습니다. 다시 시도해 주세요."),
+    })
   }
+  const open = (id: number) => setParams((p) => { const n = new URLSearchParams(p); n.set("audit", String(id)); return n })
 
   return (
     <PageContainer gap="sm">
-      <OutlookSubNav />
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex flex-wrap items-center gap-1.5">
-            <Gauge className="h-4 w-4 text-muted-foreground" /> 논지 감사
-            <span className="text-[11px] font-normal text-muted-foreground">
-              내 thesis를 인과그래프에 대질 — read-only(등재 아님)
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Textarea rows={6} value={text} onChange={(e) => setText(e.target.value)}
-            placeholder="투자 논지를 붙여넣으세요. 여러 주장으로 나눠 각각을 그래프의 인과 엣지·독립 소스·시간 급증에 대질합니다." />
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={submit} disabled={run.isPending || text.trim().length < 10}>
-              {run.isPending ? "감사 중… (분해→정박→판정, ~수 분)" : "감사 실행"}
-            </Button>
-            {run.isError && <span className="text-xs text-[var(--color-chart-negative)]">실패 — 다시 시도</span>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {run.isPending && <AuditSkeleton />}
-      {viewId != null && loaded.isLoading && <AuditSkeleton />}
-      {viewId != null && loaded.isError && <ErrorState onRetry={() => loaded.refetch()} />}
-
-      {audit && <AuditResult audit={audit} />}
-
-      <HistoryList onOpen={setViewId} activeId={viewId} />
+      <JudgmentFrame />
+      <div className="surface-grid grid grid-cols-1 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div className="surface-stack flex flex-col">
+          <Card className="py-0">
+            <CardContent className="space-y-2 py-4">
+              <h2 className="flex items-center gap-1 text-[15px] font-semibold">
+                새 논지 감사
+                <InfoTip label="논지 감사 설명">내 투자 논지를 여러 주장으로 나눠 각각을 그래프의 인과 엣지·독립 소스·시간 급증에 대질합니다. 읽기 전용이라 그래프에 등재하지 않습니다.</InfoTip>
+              </h2>
+              <Textarea rows={5} value={text} onChange={(e) => setText(e.target.value)}
+                placeholder="투자 논지를 붙여넣으세요. 여러 주장으로 나눠 각각을 그래프의 인과 엣지·독립 소스·시간 급증에 대질합니다." />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Button size="sm" onClick={() => submit(text)} disabled={run.isPending || text.trim().length < 10}>
+                  {run.isPending ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 감사 중…</> : "감사 실행"}
+                </Button>
+                <span className="text-[11px] text-muted-foreground">분해 → 정박 → 판정 · 수 분</span>
+              </div>
+            </CardContent>
+          </Card>
+          <HistoryList query={history} onOpen={open} activeId={run.isPending ? null : viewId} />
+        </div>
+        <div className="min-w-0">
+          {run.isPending ? <AuditSkeleton label="감사 중입니다 — 분해 → 정박 → 판정, 수 분 걸립니다." />
+            : viewId == null ? (history.isPending ? <AuditSkeleton /> : null)
+            : loaded.isPending ? <AuditSkeleton />
+            : loaded.isError ? <ErrorState message="감사 결과를 불러오지 못했습니다." onRetry={() => void loaded.refetch()} />
+            : loaded.data ? <AuditResult audit={loaded.data} onRerun={() => submit(loaded.data!.thesis_text)} rerunning={run.isPending} /> : null}
+        </div>
+      </div>
     </PageContainer>
   )
 }
@@ -92,32 +108,53 @@ const QUADRANT: Record<ThesisQuadrant, { label: string; hint: string; color: str
   noise: { label: "노이즈", hint: "주목↓·확신↓ — 근거·관심 모두 약함", color: "var(--color-muted-foreground)" },
 }
 
-function AuditResult({ audit }: { audit: ThesisAudit }) {
+function AuditResult({ audit, onRerun, rerunning }: { audit: ThesisAudit; onRerun: () => void; rerunning: boolean }) {
   const counts = audit.claims.reduce<Record<string, number>>((a, c) => {
     a[c.verdict] = (a[c.verdict] ?? 0) + 1; return a
   }, {})
   const qCounts = audit.claims.reduce<Record<string, number>>((a, c) => {
     if (c.pendulum) a[c.pendulum.quadrant] = (a[c.pendulum.quadrant] ?? 0) + 1; return a
   }, {})
+  const hasPendulum = audit.claims.some((c) => c.pendulum)
+  const verdicts = (["aligned", "contested", "challenged", "novel"] as ThesisVerdict[]).filter((v) => counts[v])
+  const firstLine = audit.thesis_text.trim().split("\n")[0].slice(0, 60)
   return (
-    <div className="space-y-3">
-      {/* 요약 — 델타 분포 (그래프 일치) + 진자 분포 (선반영/기회) */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted-foreground">주장 {audit.n_claims} —</span>
-        {(["aligned", "contested", "challenged", "novel"] as ThesisVerdict[]).filter((v) => counts[v]).map((v) => (
-          <span key={v} className="inline-flex items-center gap-1" style={{ color: VERDICT[v].color }}>
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: VERDICT[v].color }} />
-            {VERDICT[v].label} {counts[v]}
-          </span>
-        ))}
-        {(["hidden_edge", "priced_in"] as ThesisQuadrant[]).filter((q) => qCounts[q]).map((q) => (
-          <span key={q} className="inline-flex items-center gap-1 border-l pl-2" style={{ color: QUADRANT[q].color }}>
-            <Gauge className="h-3 w-3" />{QUADRANT[q].label} {qCounts[q]}
-          </span>
-        ))}
-      </div>
-      {audit.claims.map((c, i) => <ClaimCard key={i} claim={c} />)}
-    </div>
+    <Card className="py-0">
+      <CardContent className="space-y-3 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex flex-wrap items-baseline gap-x-2 text-[15px] font-semibold">
+            감사 결과
+            <span className="text-[11px] font-normal tabular-nums text-muted-foreground">
+              {mmdd(audit.created_at)} 감사 · 주장 {audit.n_claims} — {verdicts.map((v) => `${VERDICT[v].label} ${counts[v]}`).join(" · ")}
+            </span>
+          </h2>
+          <Button size="sm" variant="outline" disabled={rerunning} onClick={onRerun}>이 논지 다시 감사</Button>
+        </div>
+
+        {/* 감사한 원문 — 기록을 열어도 무엇을 감사했는지 보이게(§4.27 B 제안) */}
+        <Collapsible className="bg-muted/40 px-3 py-2">
+          <CollapsibleTrigger className="group flex w-full min-w-0 items-center gap-1 text-left text-[13px]">
+            <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=closed]:-rotate-90" />
+            <span className="shrink-0">감사한 논지 원문</span>
+            <span className="min-w-0 truncate text-muted-foreground">· {firstLine}</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="whitespace-pre-wrap pt-2 text-[13px] leading-relaxed">{audit.thesis_text}</CollapsibleContent>
+        </Collapsible>
+
+        {/* 진자 분포 (선반영/소외 기회) — 값이 없는 감사는 그렇다고 드러낸다 */}
+        <div className="flex flex-wrap items-center gap-2 text-xs" data-pendulum={hasPendulum ? "some" : "none"}>
+          <span className="text-muted-foreground">선반영 · 소외 기회(진자)</span>
+          {hasPendulum ? (["hidden_edge", "priced_in", "overhyped", "noise"] as ThesisQuadrant[]).filter((q) => qCounts[q]).map((q) => (
+            <span key={q} className="inline-flex items-center gap-1" style={{ color: QUADRANT[q].color }}>
+              <Gauge className="h-3 w-3" />{QUADRANT[q].label} {qCounts[q]}
+            </span>
+          )) : <span className="text-muted-foreground">· 이 감사엔 값 없음</span>}
+        </div>
+        <div className="divide-y border-t">
+          {audit.claims.map((c, i) => <ClaimCard key={i} claim={c} />)}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -126,8 +163,7 @@ function ClaimCard({ claim }: { claim: ThesisClaim }) {
   const rel = claim.edges.filter((e) => e.stance !== "context").slice(0, 4)
   const ctx = claim.edges.filter((e) => e.stance === "context").slice(0, 2)
   return (
-    <Card>
-      <CardContent className="py-3 space-y-2">
+    <div className="space-y-2 py-3">
         <div className="flex items-start gap-2">
           <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0 mt-1.5" style={{ background: v.color }} />
           <div className="min-w-0 flex-1">
@@ -175,8 +211,7 @@ function ClaimCard({ claim }: { claim: ThesisClaim }) {
         {claim.edges.length === 0 && claim.narratives.length === 0 && (
           <p className="pl-4 text-[11px] text-muted-foreground">그래프에 근거 없음 — 앞서거나 코퍼스가 얇음</p>
         )}
-      </CardContent>
-    </Card>
+    </div>
   )
 }
 
@@ -223,12 +258,11 @@ function PendulumRow({ p }: { p: ThesisPendulum }) {
   const q = QUADRANT[p.quadrant as ThesisQuadrant] ?? QUADRANT.noise
   return (
     <div className="pl-4 flex items-center gap-2 text-[11px] flex-wrap">
-      <Badge variant="outline" className="text-[9px] gap-1" style={{ color: q.color, borderColor: `${q.color}66` }}>
+      <Badge variant="outline" className="text-[9px] gap-1" style={{ color: q.color, borderColor: `${q.color}66` }} title={q.hint}>
         <Gauge className="h-2.5 w-2.5" /> {q.label}
       </Badge>
       <PBar label="주목" value={p.salience} />
       <PBar label="확신" value={p.conviction} />
-      <span className="text-muted-foreground min-w-0 truncate">{q.hint}</span>
     </div>
   )
 }
@@ -245,41 +279,46 @@ function PBar({ label, value }: { label: string; value: number }) {
   )
 }
 
-function HistoryList({ onOpen, activeId }: { onOpen: (id: number) => void; activeId: number | null }) {
-  const { data = [], isLoading } = useThesisAudits()
-  if (isLoading) return <Skeleton className="h-20 w-full rounded-card" />
+function HistoryList({ query, onOpen, activeId }: {
+  query: ReturnType<typeof useThesisAudits>; onOpen: (id: number) => void; activeId: number | null
+}) {
+  const data: ThesisAuditListItem[] = query.data ?? []
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <History className="h-4 w-4 text-muted-foreground" /> 감사 히스토리
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {data.length === 0 ? (
-          <EmptyState message="아직 감사 기록이 없습니다 — 위에 논지를 붙여넣고 실행하세요." />
-        ) : (
-          <ul className="divide-y">
-            {data.map((a) => (
-              <li key={a.id}>
-                <button onClick={() => onOpen(a.id)}
-                  className={`w-full text-left flex items-center gap-2 py-2.5 md:py-1.5 hover:bg-muted/50 rounded px-1 ${activeId === a.id ? "bg-muted/60" : ""}`}>
-                  <span className="text-sm truncate min-w-0 flex-1">{a.preview}</span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">주장 {a.n_claims}</span>
-                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{a.created_at.slice(0, 10)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+    <Card className="py-0">
+      <CardContent className="space-y-2 py-4">
+        <h2 className="flex items-center gap-1 text-[15px] font-semibold">
+          감사 기록
+          <InfoTip label="감사 기록 설명">지금까지 실행한 감사입니다(지워지지 않고 쌓입니다). 누르면 오른쪽에 그 감사 결과를 엽니다.</InfoTip>
+          {query.data && <span className="text-[11px] font-normal tabular-nums text-muted-foreground">{data.length}건</span>}
+        </h2>
+        {query.isPending ? <Skeleton className="h-20 w-full rounded-card" />
+          : query.isError ? <ErrorState message="감사 기록을 불러오지 못했습니다." onRetry={() => void query.refetch()} />
+          : data.length === 0 ? <p className="py-2 text-sm text-muted-foreground">아직 감사 기록이 없습니다.</p>
+          : (
+            <ul className="flex flex-col gap-1" aria-label="감사 기록">
+              {data.map((a) => (
+                <li key={a.id}>
+                  <Button variant="ghost" onClick={() => onOpen(a.id)} aria-current={activeId === a.id ? "true" : undefined}
+                    className={cn("h-auto w-full flex-col items-start gap-1 whitespace-normal px-3 py-2 text-left font-normal",
+                      activeId === a.id && "border bg-muted/60")}>
+                    <span className="line-clamp-2 text-sm">{a.preview}</span>
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                      {mmdd(a.created_at)} · 주장 {a.n_claims}{activeId === a.id ? " · 지금 보는 감사" : ""}
+                    </span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
       </CardContent>
     </Card>
   )
 }
 
-function AuditSkeleton() {
+function AuditSkeleton({ label }: { label?: string }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" role="status" aria-busy="true">
+      {label && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />{label}</p>}
       {[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 w-full rounded-card" />)}
     </div>
   )

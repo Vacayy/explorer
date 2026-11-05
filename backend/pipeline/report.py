@@ -19,10 +19,17 @@ TOP_STOCKS = 4      # 종목 재분석 대상 (v2는 콜이 많아 축소)
 AUGMENT_CAP = 2
 BODY_EXCERPT = 500
 SCEN_EXCERPT = 600
-RATING_RUBRIC = ("레이팅 어휘: **상승여력(upside)** ≥50%면 Strong Buy, ≥15%면 Buy, 그 이하 Hold. "
-                 "추세 훼손·과열·논지 붕괴 등 위험이면 Sell. 단 이는 어휘 가이드일 뿐 기계적 임계가 아니다 — "
+# 레이팅은 매매 권유가 아니라 하방 대비 상방의 비대칭 판단이다(ia-redesign §4.27, 11-04 — AI 대화의 '매매 처방 안 함'과 같은 말).
+# 옛 리포트에 저장된 영문 레이팅(Strong Buy·Buy·Sell)은 RATING_ALIASES로 같은 말에 맞춘다(화면은 frontend lib/reportRating).
+RATING_STRONG, RATING_UP, RATING_HOLD, RATING_DOWN = "상방 우위(비대칭 큼)", "상방 우위", "Hold", "하방 우위"
+RATING_ALIASES = {"Strong Buy": RATING_STRONG, "Buy": RATING_UP, "Hold": RATING_HOLD, "Sell": RATING_DOWN}
+RATING_ORDER = {RATING_STRONG: 3, RATING_UP: 2, RATING_HOLD: 1, RATING_DOWN: 0}
+RATING_RUBRIC = (f"레이팅 어휘: **상승여력(upside)**이 ≥50%이고 하방이 제한적이면 '{RATING_STRONG}', ≥15%면 '{RATING_UP}', "
+                 f"그 이하 '{RATING_HOLD}'. 추세 훼손·과열·논지 붕괴 등 하방이 더 크면 '{RATING_DOWN}'. "
+                 "레이팅은 매매 권유가 아니라 하방 대비 상방의 비대칭 판단이다 — '사라·팔아라·매수·매도' 같은 매매 권유 표현을 "
+                 "쓰지 마라. 단 이는 어휘 가이드일 뿐 기계적 임계가 아니다 — "
                  "펀더·기술 국면·수급을 확률론적으로 종합해 판단하라. 펀더가 견고한데 쏠림 해소로 조정받아 "
-                 "RS만 급락한 경우는 Sell이 아니라 하방 대비 상방이 열린 국면일 수 있다.\n"
+                 f"RS만 급락한 경우는 '{RATING_DOWN}'가 아니라 하방 대비 상방이 열린 국면일 수 있다.\n"
                  "★레이팅의 % 숫자는 **상승여력(현재가 대비 적정가치까지의 상방 여지)이지 포트폴리오 비중이 "
                  "절대 아니다** — '비중 25%'처럼 쓰지 말고 '상승여력 +25%'로 명시하라. 그리고 투자 판단은 "
                  "반드시 **하방(펀더멘털 지지선 대비 -X%) 대비 상방(+Y%)의 비대칭**으로 전개하라 — "
@@ -319,7 +326,7 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
         "너는 리드 애널리스트다. 아래 애널리스트 평가와 Bull/Bear 논쟁을 보고 **최종 판정**을 내려라. "
         "한쪽으로 치우치지 말고 확률론적으로 종합하되 분명한 콜을 내라.\n"
         "먼저 리포트 유형을 정하라: 산업 동인이 성장을 주도하면 top_down(예: 반도체), 개별 기업·브랜드가 "
-        "주도하면 bottom_up(예: 소비재·화장품). 그리고 **가장 수혜받는 Top-pick 종목 1개**를 골라라(리포트는 "
+        "주도하면 bottom_up(예: 소비재·화장품). 그리고 **하방 대비 상방의 비대칭이 가장 큰 Top-pick 종목 1개**를 골라라(리포트는 "
         "이 종목을 중심으로 심화된다).\n"
         "★그리고 **가장 먼저**: 아래 [내러티브 영향력]에서 **가장 강력한(공유·연결·확산이 큰) 지배 내러티브**를 "
         "판별하고, 그 지배 서사가 던지는 **가장 중요한 질문(key_question)** 하나를 뽑아라 — 핵심 질문은 여기서 "
@@ -329,12 +336,12 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
         + RATING_RUBRIC + "\n" + _timeline_rule() + "\n"
         "JSON만 출력(코드블록·머리말 없이): {"
         '"report_type":"top_down|bottom_up",'
-        '"top_pick":"가장 수혜받는 Top-pick 종목코드 1개",'
+        '"top_pick":"비대칭이 가장 큰 Top-pick 종목코드 1개",'
         '"key_question":"지금 가장 중요한 질문 한 문장",'
         '"proxies":["관찰 프록시(선행지표) 3~5개"],'
-        '"title":"리포트 제목(핵심 주장 한 줄)",'
+        '"title":"리포트 제목(핵심 주장 한 줄 — \'~를 사라\'·\'매수\'가 아니라 \'~의 비대칭이 크다\'처럼 판단으로)",'
         '"overall":"종합 판단 2~3문장(핵심 투자 포인트)",'
-        '"ratings":[{"code":"종목코드","name":"종목명","rating":"Strong Buy|Buy|Hold|Sell","upside_pct":상방%정수 or null,"downside_pct":하방%정수(음수) or null,"rationale":"하방 대비 상방 비대칭으로 1~2문장"}]}\n'
+        '"ratings":[{"code":"종목코드","name":"종목명","rating":"' + "|".join(RATING_ORDER) + '","upside_pct":상방%정수 or null,"downside_pct":하방%정수(음수) or null,"rationale":"하방 대비 상방 비대칭으로 1~2문장"}]}\n'
         "upside_pct는 상승여력(상방), downside_pct는 하방(펀더 지지선 대비, 음수). ratings는 모든 종목에.\n\n"
         f"[앵커 주제] {anchor_topic}\n[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n"
         f"[애널리스트]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}\n\n"
@@ -505,7 +512,7 @@ def _compute_report(conn, anchor_topic: str, member_narrs: list, rel: list,
     # D. 리드 판정 (opus ×1) — 리포트 유형 선택 + 레이팅 (목차는 고정 템플릿, 리드 실패해도 진행)
     power_block = _narrative_power(conn, anchor_topic, member_narrs, rel)
     lead = _lead(anchor_topic, narr_ctx, stock_ctx, analysts, bull, bear, power_block)
-    ratings = lead.get("ratings") or []
+    ratings = [{**r, "rating": RATING_ALIASES.get(r.get("rating"), r.get("rating"))} for r in (lead.get("ratings") or []) if isinstance(r, dict)]
     report_type = lead.get("report_type") if lead.get("report_type") in SECTION_SPECS else "top_down"
     title = lead.get("title") or f"{anchor_topic} 통합 리포트"
     def _rl(r):
@@ -521,9 +528,8 @@ def _compute_report(conn, anchor_topic: str, member_narrs: list, rel: list,
     codes = {s["code"] for s in stocks}
     top_pick = lead.get("top_pick") if lead.get("top_pick") in codes else None
     if not top_pick and ratings:
-        order = {"Strong Buy": 3, "Buy": 2, "Hold": 1, "Sell": 0}
         best = max((r for r in ratings if r.get("code") in codes),
-                   key=lambda r: (order.get(r.get("rating"), 0), r.get("upside_pct") or 0), default=None)
+                   key=lambda r: (RATING_ORDER.get(r.get("rating"), 0), r.get("upside_pct") or 0), default=None)
         top_pick = best.get("code") if best else None
     top_pick = top_pick or (stocks[0]["code"] if stocks else None)
     top_name = next((s["name"] for s in stocks if s["code"] == top_pick), top_pick)

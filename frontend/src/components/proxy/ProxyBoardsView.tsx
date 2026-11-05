@@ -18,9 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ErrorState } from "@/components/shared/ErrorState"
-import { PageHeader, PageLayout } from "@/components/shared/PageLayout"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { SparkLine } from "@/components/shared/Spark"
-import { OutlookSubNav } from "@/components/explore/OutlookSubNav"
 import {
   useAddProxyItem, useCreateProxyBoard, useDeleteProxyBoard, useProxyAdapters, useProxyBoard, useProxyBoards,
   useProxyCatalog, useRemoveProxyItem, useSuggestProxies, type NewItem,
@@ -45,10 +44,11 @@ export function proxyChange(item: Pick<ProxyBoardItem, "latest" | "unit">) {
 const DIR_LABEL: Record<ProxyDirection, string> = { up: "오르면 주의", down: "내리면 주의" }
 
 /**
- * 프록시 보드 — 주제별로 직접 만드는 지표 묶음 (D-240, docs/specs/question-proxy.md §프록시 보드).
+ * 지표 보드(옛 프록시 보드) — 주제별로 직접 만드는 지표 묶음 (D-240, docs/specs/question-proxy.md §프록시 보드).
+ * Thesis › 내 판단 '지표 보드' 보기(/questions?view=proxies&board=, ia-redesign §4.10)의 본문. 옛 /proxy-boards는 리다이렉트.
  * 읽기는 결정적(LLM 0). 새 보드를 만들 때만 '지표 제안'이 LLM을 1회 쓴다.
  */
-export default function ProxyBoardsPage() {
+export function ProxyBoardsView() {
   const [params, setParams] = useSearchParams()
   const boards = useProxyBoards()
   const selected = Number(params.get("board")) || boards.data?.[0]?.id || null
@@ -56,9 +56,15 @@ export default function ProxyBoardsPage() {
   const pick = (id: number) => setParams(p => { const n = new URLSearchParams(p); n.set("board", String(id)); return n })
 
   return (
-    <PageLayout mode="document" header={<PageHeader title="프록시 보드" description="주제마다 지켜볼 지표를 묶어 매일 원천 데이터로 봅니다"
-      actions={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-3.5" />새 보드</Button>} />}>
-      <OutlookSubNav />
+    <section className="space-y-3" aria-label="지표 보드">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-1 text-[15px] font-semibold">
+          지표 보드
+          {boards.data && <span className="font-normal tabular-nums text-muted-foreground">{boards.data.length}개</span>}
+          <InfoTip label="지표 보드 설명">주제마다 지켜볼 지표를 묶어 매일 원천 데이터로 봅니다. 질문 트래커의 판정 근거 지표(컨콜 수치·발언, 회사채 스프레드 등)를 주제별로 묶습니다.</InfoTip>
+        </h2>
+        <Button size="sm" onClick={() => setCreating(true)}><Plus className="size-3.5" />새 보드</Button>
+      </div>
       {boards.isPending ? <Skeleton className="h-40 w-full rounded-card" />
         : boards.isError ? <ErrorState message="보드를 불러오지 못했습니다." onRetry={() => void boards.refetch()} />
         : !boards.data.length ? (
@@ -84,7 +90,7 @@ export default function ProxyBoardsPage() {
           </div>
         )}
       <CreateBoardDialog open={creating} onOpenChange={setCreating} onCreated={id => { setCreating(false); pick(id) }} />
-    </PageLayout>
+    </section>
   )
 }
 

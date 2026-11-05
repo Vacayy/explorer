@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { FileText, Megaphone, Network, Search, Sparkles, ChevronDown, ChevronRight } from "lucide-react"
 import api from "@/api/client"
@@ -18,8 +18,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useMediaQuery, MOBILE_QUERY } from "@/hooks/useMediaQuery"
 import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
+import { proxiesUrl } from "@/lib/judgment"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { ProxyDashboard } from "@/components/follow/ProxyDashboard"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { MomentumStrip } from "@/components/follow/CallMomentumPanel"
 import { RecentCalls } from "@/components/follow/RecentCalls"
@@ -100,7 +100,7 @@ export default function TranscriptPage() {
   const selectedId = params.get("t")
   // 옛 '실적 모멘텀' 링크(?view=momentum)는 실적 시즌으로 — 모멘텀은 시즌 보기 안의 한 섹션
   const rawView = params.get("view") === "momentum" ? "season" : params.get("view")
-  const view = (["proxies", "season"] as const).find((v) => v === rawView) ?? "calls"
+  const view = (["season"] as const).find((v) => v === rawView) ?? "calls"
   const sector = params.get("sector")
   const railSort: RailSort = (["cap", "category", "recent"] as const).find((v) => v === params.get("rail")) ?? "cap"
   const qc = useQueryClient()
@@ -124,6 +124,8 @@ export default function TranscriptPage() {
   // 기업 목록에서 고르면 기록을 남긴다(뒤로 가기 = 목록), 상세 안에서 분기·기업을 바꾸면 교체
   const selectId = (id: number) => setParams({ t: String(id) }, { replace: !!selectedId })
 
+  // 옛 프록시 보기 → Thesis › 내 판단 '지표 보드'(ia-redesign §10.6)
+  if (rawView === "proxies") return <Navigate to={proxiesUrl(`?${params.toString()}`)} replace />
   const tabs = <TranscriptTabs value={view} />
   // 실적 시즌은 팔로우 목록을 기다리지 않는다 — 시즌 응답 하나로 그린다
   if (view === "season") {
@@ -143,7 +145,6 @@ export default function TranscriptPage() {
       <span className="text-caption text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
     </div>
   )
-  if (view === "proxies") return <PageContainer>{header}{tabs}<ProxyDashboard /></PageContainer>
 
   const railFor = (onPick: (id: number) => void) => follows.length === 0 ? (
     <div className="p-3 space-y-3">

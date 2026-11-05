@@ -1,6 +1,6 @@
 import { AlertTriangle } from "lucide-react"
 import { WidgetState } from "@/components/shared/WidgetFrame"
-import { proxyChange, proxyValue } from "@/components/proxy/ProxyBoardsPage"
+import { proxyChange, proxyValue } from "@/components/proxy/ProxyBoardsView"
 import { useProxyBoard, useProxyBoards } from "@/hooks/useProxyBoards"
 import { cn } from "@/lib/utils"
 import type { WidgetBodyProps, WidgetDef, WidgetMeta } from "./types"
@@ -44,5 +44,5 @@ function ProxyBody({ h, params }: WidgetBodyProps) {
 
 export const PROXY_WIDGETS: WidgetDef[] = [
   { id: "world.proxyBoard", title: "프록시 보드", description: "직접 만든 지표 묶음 — 회사채·수출입·컨콜·섹터·매크로", section: "world", group: "내 판단",
-    size: { w: 6, h: 4, minW: 4, minH: 2 }, detailPath: "/proxy-boards", useMeta: useProxyMeta, Body: ProxyBody },
+    size: { w: 6, h: 4, minW: 4, minH: 2 }, detailPath: "/questions?view=proxies", useMeta: useProxyMeta, Body: ProxyBody },
 ]

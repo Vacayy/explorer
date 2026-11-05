@@ -539,7 +539,8 @@ def get_tree(question_id: int) -> dict:
             obs = [dict(o) for o in conn.execute(
                 "SELECT observed_at, value_num, value_text, direction FROM proxy_observations "
                 "WHERE proxy_id=? ORDER BY observed_at DESC, id DESC LIMIT 6", (p["id"],)).fetchall()]
-            proxies.append({**dict(p), "observations": obs})
+            n_obs = conn.execute("SELECT count(*) FROM proxy_observations WHERE proxy_id=?", (p["id"],)).fetchone()[0]
+            proxies.append({**dict(p), "observations": obs, "obs_count": n_obs})   # observations는 최근 6건, obs_count는 전체 수
         subs.append({**dict(sq), "proxies": proxies})
     tree["sub_questions"] = subs
     # 허브(D-070): 이 질문에 묶인 파급 시나리오 + 소스 문서

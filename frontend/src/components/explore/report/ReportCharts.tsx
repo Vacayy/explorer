@@ -76,10 +76,22 @@ const PRICE_LINES: LineConfig[] = [
 ]
 export interface PriceItem { trade_date: string; close: number }
 
-function PriceChart({ code, name }: { code: string; name: string }) {
-  const { data, isLoading } = useQuery(
-    apiQuery<{ items: PriceItem[] }>({ key: ["prices", code, "report"], url: `/api/stock-prices/${code}`, params: { from_date: "20260101" }, staleTime: STALE.medium }),
+/** Top-pick 주가(올해) — 차트와 리포트 '작성 이후' 줄이 같은 조회를 쓴다 */
+export function useReportPrices(code: string | null | undefined) {
+  return useQuery(
+    apiQuery<{ items: PriceItem[] }>({ key: ["prices", code, "report"], url: `/api/stock-prices/${code}`, params: { from_date: "20260101" }, staleTime: STALE.medium, enabled: !!code }),
   )
+}
+
+/** Top-pick 12M Fwd PER 이력 — 차트와 '작성 이후' 줄 공용 */
+export function useReportFwdPer(code: string | null | undefined) {
+  return useQuery(
+    apiQuery<{ items: { date: string; fwd_per: number }[] }>({ key: ["consensus", code, "history"], url: `/api/consensus/${code}/history`, staleTime: STALE.medium, enabled: !!code }),
+  )
+}
+
+function PriceChart({ code, name }: { code: string; name: string }) {
+  const { data, isLoading } = useReportPrices(code)
   const items = data?.items ?? []
   const rows = items.map((p, i) => ({
     time: p.trade_date, close: p.close,
@@ -98,9 +110,7 @@ const avg = (xs: PriceItem[]) => xs.reduce((s, x) => s + x.close, 0) / xs.length
 
 /* ③ Top-pick 12M Fwd PER 추이 (이력 얕으면 안내) */
 function FwdPerChart({ code, name }: { code: string; name: string }) {
-  const { data, isLoading } = useQuery(
-    apiQuery<{ items: { date: string; fwd_per: number }[] }>({ key: ["consensus", code, "history"], url: `/api/consensus/${code}/history`, staleTime: STALE.medium }),
-  )
+  const { data, isLoading } = useReportFwdPer(code)
   const items = (data?.items ?? []).filter((d) => d.fwd_per != null)
   const series = items.map((d) => ({ time: d.date, value: d.fwd_per }))
   return (

@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { EmptyState } from "@/components/shared/ErrorState"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { MetricHint } from "@/components/shared/MetricHint"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { cn } from "@/lib/utils"
 
 /**
@@ -26,11 +27,15 @@ interface QObs { observed_at: string; value_num: number | null; value_text: stri
 interface QProxy {
   id: number; label: string; modality: string; unit: string | null
   yes_direction: string | null; tickers: string | null; observations: QObs[]
+  /** 전체 관측 수(observations는 최근 6건만) */
+  obs_count?: number
 }
 interface QSub { id: number; text: string; falsifier: string | null; verdict: string | null; proxies: QProxy[] }
-export interface QScenario { event: string; answer: string; beneficiaries: { name?: string; reason?: string }[]; created_at: string }
+/** rel = '수혜'|'피해'(LLM 원문) — 화면은 '유리·불리'로 보인다(ia-redesign §4.27, lib/judgment scenarioSide) */
+export interface QScenario { event: string; answer: string; beneficiaries: { name?: string; reason?: string; rel?: string; stock_code?: string | null }[]; created_at: string }
 export interface QTree {
   id: number; text: string; lead_verdict: string | null; confirm_verdict: string | null
+  created_at?: string; updated_at?: string; created_by?: string
   divergence: string | null; verdict_summary: string | null; sub_questions: QSub[]
   scenario?: QScenario | null; source_doc?: { id: number; title: string | null; source_type: string } | null
 }
@@ -98,13 +103,18 @@ export function QuestionsSection() {
 
   return (
     <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_5%,var(--card))] max-sm:[--card-spacing:--spacing(3)]">
-      <CardHeader className="pb-2 flex-row items-baseline gap-2">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <HelpCircle className="h-4 w-4 text-hypothesis" /> 미결 질문
-        </CardTitle>
-        <span className="text-[11px] text-muted-foreground">
-          분할정복으로 추적하는 열린 질문 — 서브질문·프록시로 쪼개 선행(여론)/확정(실적) 2층으로 판정. 판정되면 지식으로
-        </span>
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="text-sm flex items-center gap-1.5">
+            <HelpCircle className="h-4 w-4 text-hypothesis" /> 미결 질문
+          </CardTitle>
+          {!isLoading && (
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              {all.length}개 · 추적 {filtered.length} · 후보 {all.length - filtered.length}
+            </span>
+          )}
+          <InfoTip label="미결 질문 설명">분할정복으로 추적하는 열린 질문입니다. 서브질문·프록시로 쪼개 선행(여론)과 확정(실적) 두 층으로 판정하고, 판정되면 지식으로 올립니다.</InfoTip>
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         <QuestionConsole onDone={invalidate} />
@@ -227,7 +237,7 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
     <div className="rounded-card border border-dashed px-3 py-2 space-y-1.5">
       <div className="flex items-center gap-2">
         <Inbox className="h-3.5 w-3.5 text-hypothesis" />
-        <span className="text-[11px] font-medium">질문 후보 (내러티브 · 언급 다이제스트 발)</span>
+        <span className="text-[11px] font-medium">질문 후보 · 내러티브·언급 다이제스트 발</span>
         {data.length > 0 && <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">{data.length}</Badge>}
         <Button size="xs" variant="ghost" className="ml-auto h-6 px-2 text-muted-foreground"
           disabled={propose.isPending} onClick={() => propose.mutate()}>
@@ -240,7 +250,7 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
         </div>
       )}
       {data.length === 0 ? (
-        <p className="text-[10px] text-muted-foreground/60">승인 전 무행동 — "후보 찾기"로 지배 서사의 질문을 제안받으세요</p>
+        <p className="text-[10px] text-muted-foreground/60">후보가 없습니다.</p>
       ) : (
         data.map((q) => (
           <div key={q.id} className="flex items-center gap-2 py-0.5">
@@ -380,6 +390,7 @@ function ProxyRow({ p }: { p: QProxy }) {
               <span className="truncate max-w-[20rem] max-md:hidden" title={o.value_text ?? ""}>{o.value_text}</span>
               {o.direction && <span className="shrink-0 tabular-nums">{DIR[o.direction] ?? o.direction}</span>}
               <span className="shrink-0 tabular-nums text-[10px]">{o.observed_at?.slice(0, 10)}</span>
+              {p.obs_count != null && <span className="shrink-0 tabular-nums text-[10px] max-md:hidden">{p.obs_count}건</span>}
             </span>
           ) : (
             <span className="ml-auto text-[10px] text-muted-foreground/60">관측 대기{p.tickers ? ` · ${p.tickers}` : ""}</span>

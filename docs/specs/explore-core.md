@@ -29,7 +29,7 @@
 
 ## 3. 컨콜 `/follow/transcripts`
 
-- 하위 탭(`TranscriptTabs`): 컨콜 · 실적 시즌(`?view=season`, 섹터 상세 `&sector=`; 옛 `?view=momentum`은 시즌으로, 2026-10-30 [실적 시즌](earnings-season.md)) · 프록시(`?view=proxies`, Thesis › 내 판단 '지표 보드'가 생기면 옮김). 옛 미국 기업 목록 `/us`는 2026-11-05(개편 4d) 컨콜로 리다이렉트 — 기업 목록은 컨콜 보기 왼쪽 목록과 ⌘K.
+- 하위 탭(`TranscriptTabs`): 컨콜 · 실적 시즌(`?view=season`, 섹터 상세 `&sector=`; 옛 `?view=momentum`은 시즌으로, 2026-10-30 [실적 시즌](earnings-season.md)) . 옛 프록시(`?view=proxies`)는 2026-11-05(개편 4f) Thesis › 내 판단 '지표 보드'(`/questions?view=proxies`)로 옮기고 리다이렉트. 옛 미국 기업 목록 `/us`는 2026-11-05(개편 4d) 컨콜로 리다이렉트 — 기업 목록은 컨콜 보기 왼쪽 목록과 ⌘K.
 - 컨콜 보기(`?t=` 없음 = 기업 목록) 맨 위에 **모멘텀 띠**: 이번 시즌 이름 · 발표 분석 수 · 새 모멘텀 수 · 상위 3 티커(점수) · 자세히.
 - **실적 캘린더 '곧 발표'**: `transcript_calendar`(yfinance). 조회 실패한 종목은 쓰지 않는다(기존 발표일·`checked_at` 유지 → 다음 실행이 다시 묻는다). 연속 5회 실패면 네트워크 장애로 보고 중단. 비었을 때 '발표일을 아는 기업 k/N · 마지막 확인 M/D'를 보인다(`/follow` 행의 `calendar_checked_at`).
 - `GET /transcript/momentum` 응답에 `as_of`(마지막 판정 시각, `call_momentum.computed_at` 최대, UTC).

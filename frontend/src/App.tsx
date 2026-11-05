@@ -33,7 +33,7 @@ import HomePage, { HomeKrPage, HomeUsPage } from "@/components/home/HomePage"
 import HomeStocksPage from "@/components/home/HomeStocksPage"
 import HomeMacroPage from "@/components/home/HomeMacroPage"
 import { withSearch } from "@/lib/macroPage"
-import ProxyBoardsPage from "@/components/proxy/ProxyBoardsPage"
+import { proxiesUrl } from "@/lib/judgment"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import FollowPage from "@/components/follow/FollowPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
@@ -240,6 +240,12 @@ function ExploreRedirect() {
   return <Navigate to={`/discover${query ? `?${query}` : ""}#signals`} replace />
 }
 
+/** 옛 프록시 보드(/proxy-boards?board=) → Thesis › 내 판단 '지표 보드'(/questions?view=proxies, ia-redesign §10.6). 쿼리는 그대로 */
+function ProxyBoardsRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={proxiesUrl(search)} replace />
+}
+
 function AskRedirect() {
   // /ask → /chat (옴니바·구 링크 호환, ?q= 프리필 보존)
   const { search } = useLocation()
@@ -265,7 +271,7 @@ export default function App() {
             <Route path="home/briefing" element={<KeepQueryRedirect to="/home/us" />} />
             <Route path="home/risk" element={<KeepQueryRedirect to="/home/macro" />} />
             <Route path="regimes" element={<KeepQueryRedirect to="/home/macro#history" />} />
-            <Route path="proxy-boards" element={<ProxyBoardsPage />} />
+            <Route path="proxy-boards" element={<ProxyBoardsRedirect />} />
             <Route path="follow" element={<FollowPage />} />
             <Route path="sources" element={<KeepQueryRedirect to="/admin/sources" />} />
             <Route path="follow/stocks" element={<StocksPage />} />
