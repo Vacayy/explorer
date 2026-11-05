@@ -23,7 +23,7 @@ function head(t: AttachmentRef & { code?: string | null }) {
 
 /**
  * 붙인 대상 칩 (시안 Chat-Tag B) — 종류 아이콘 · 이름 · (종목 코드·등락 / 서사·자료 날짜 / 질문 번호) · ×.
- * 긴 이름은 말줄임, 전체 이름은 툴팁. 사라진 대상은 흐리게 두고 보낼 때 뺀다.
+ * 긴 이름은 말줄임, 전체 이름은 툴팁. 사라진 대상은 흐린 점선 칩(설명은 툴팁)으로 두고 보낼 때 뺀다.
  */
 export function TargetChip({ target, onRemove, size = "md" }: { target: ChatTarget; onRemove?: () => void; size?: "md" | "sm" }) {
   const Icon = KIND_ICON[target.kind]
@@ -42,12 +42,11 @@ export function TargetChip({ target, onRemove, size = "md" }: { target: ChatTarg
           <TooltipTrigger asChild>
             <span className={cn("min-w-0 truncate", size === "sm" ? "max-w-[140px]" : "max-w-[180px]", gone && "line-through")}>{label}</span>
           </TooltipTrigger>
-          <TooltipContent className="max-w-[320px] text-xs">{label}{gone && " (사라진 대상 — 보낼 때 뺍니다)"}</TooltipContent>
+          <TooltipContent className="max-w-[320px] text-xs">{gone ? <>{label}<br />보관되거나 지워진 대상이라 보낼 때 빠집니다</> : label}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
       {meta && <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">{meta}</span>}
       {change != null && size === "md" && <span className={cn("shrink-0 font-mono text-[11px] tabular-nums", change > 0 ? "text-up" : change < 0 ? "text-down" : "text-muted-foreground")}>{formatPercent(change)}</span>}
-      {gone && <span className="shrink-0 text-muted-foreground">(사라짐)</span>}
       {onRemove && (
         <Button variant="ghost" size="icon-xs" className="size-6 shrink-0 rounded-full" aria-label={`${label} 빼기`} onClick={onRemove}>
           <X className="size-3" />

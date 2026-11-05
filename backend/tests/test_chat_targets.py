@@ -74,6 +74,22 @@ class ChatTargetsTests(unittest.TestCase):
         self.assertEqual(len(docs), 4, "all view shows four per kind")
         self.assertEqual(docs[0]["date"], "2026-11-05", "documents are recent first")
 
+    def test_stock_rank_puts_name_starts_first_then_contains_by_market_cap(self):
+        """D-312: 이름이 검색어로 시작(영문 머리 뒤 포함) → 이름에 포함, 단계 안은 시가총액 내림차순. 코드 접두는 그 사이."""
+        conn = database.get_connection()
+        conn.executemany("INSERT INTO companies (corp_code, corp_name, stock_code, market, sector) VALUES (?,?,?,?,?)", [
+            ("c3", "하이브", "352820", "KOSPI", "엔터"), ("c4", "하이스틸", "071090", "KOSPI", "철강"),
+            ("c5", "롯데하이마트", "071840", "KOSPI", "유통"), ("c6", "성일하이텍", "365340", "KOSDAQ", "소재")])
+        for code, cap in (("352820", 6e12), ("071090", 6e10), ("071840", 2e11), ("365340", 5e11), ("000665", 1e12)):
+            conn.execute("INSERT INTO stock_prices (stock_code, trade_date, close, market_cap) VALUES (?, '2026-11-04', 1000, ?)", (code, cap))
+        conn.commit()
+        conn.close()
+        stock = self.client.get("/api/spine/chat/targets", params={"q": "하이", "kind": "stock"}).json()["groups"][0]["items"]
+        self.assertEqual([s["label"] for s in stock], ["SK하이닉스", "하이브", "SK하이닉스우", "하이스틸", "성일하이텍", "롯데하이마트"])
+        self.assertEqual([ct.stock_rank(n, c, q) for n, c, q in [
+            ("SK하이닉스", "000660", "SK하이닉스"), ("하이브", "352820", "하이"), ("DB하이텍", "000990", "하이"),
+            ("SK하이닉스", "000660", "0006"), ("롯데하이마트", "071840", "하이"), ("LG에너지솔루션", "373220", "에너지")]], [0, 1, 1, 2, 3, 1])
+
     def test_kind_filter_returns_more_and_each_kind_is_searchable(self):
         docs = self.client.get("/api/spine/chat/targets", params={"q": "하이", "kind": "doc"}).json()
         self.assertEqual(len(docs["groups"][0]["items"]), 7)

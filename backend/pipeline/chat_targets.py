@@ -5,6 +5,7 @@
 식별자(ref)로 기존 도구 함수를 바로 불러 근거를 모은다. 모델 호출은 없다.
 """
 import json
+import re
 import sqlite3
 
 KINDS = ("stock", "us_stock", "narrative", "question", "doc", "person", "theme", "peer_group", "report")
@@ -69,15 +70,65 @@ def _peer_target(runtime, group) -> dict:
 
 # ── 후보 검색 ─────────────────────────────────────────────────────────────────
 
+_WORD_START = re.compile(r"(?<=[A-Za-z0-9&])(?=[가-힣])|(?<=[\s·().,-])")
+
+
+def stock_rank(name: str, code: str, q: str) -> int:
+    """대화 대상 후보의 종목 순위 단계(D-312) — 0 이름·코드 정확 일치 · 1 이름이 검색어로 시작 · 2 코드 접두 · 3 이름에 포함.
+
+    'SK하이닉스'·'DB하이텍'처럼 영문 머리 뒤 한글 첫 글자도 이름의 시작으로 본다(`@하이` → SK하이닉스).
+    ⌘K(spine_search)는 이 규칙을 쓰지 않는다."""
+    name, ql = name or "", q.lower()
+    low = name.lower()
+    if low == ql or code == q:
+        return 0
+    if low.startswith(ql) or any(low.startswith(ql, m.end()) for m in _WORD_START.finditer(name)):
+        return 1
+    if code.startswith(q):
+        return 2
+    return 3
+
+
+def _stock_candidates(conn, q: str, limit: int) -> list[dict]:
+    """이름·코드에 검색어가 들어간 종목 전부를 단계 → 시가총액 내림차순으로 줄 세운다(SQL에서 먼저 자르지 않는다)."""
+    like = f"%{q}%"
+    rows = conn.execute("""SELECT stock_code, corp_name, market, sector FROM companies
+        WHERE stock_code IS NOT NULL AND (corp_name LIKE ? OR stock_code LIKE ?)""", (like, like)).fetchall()
+    if not rows:
+        return []
+    codes = [r["stock_code"] for r in rows]
+    latest: dict[str, dict] = {}
+    for p in _safe(conn, f"""SELECT stock_code, trade_date, close, market_cap,
+                                    ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY trade_date DESC) rn
+                             FROM stock_prices WHERE stock_code IN ({",".join("?" * len(codes))})
+                               AND trade_date >= date((SELECT MAX(trade_date) FROM stock_prices), '-14 days')""", codes):
+        entry = latest.setdefault(p["stock_code"], {})
+        if p["rn"] == 1:
+            entry.update(close=p["close"], market_cap=p["market_cap"], price_date=p["trade_date"])
+        elif p["rn"] == 2:
+            entry["previous"] = p["close"]
+    items = []
+    for r in rows:
+        px = latest.get(r["stock_code"], {})
+        close, prev = px.get("close"), px.get("previous")
+        items.append({"stock_code": r["stock_code"], "name": r["corp_name"], "market": r["market"], "sector": r["sector"],
+                      "market_cap": px.get("market_cap"), "price_date": px.get("price_date"),
+                      "change_pct": (close - prev) / prev * 100 if close is not None and prev else None,
+                      "rank": stock_rank(r["corp_name"], r["stock_code"], q)})
+    items.sort(key=lambda i: (i["rank"], -(i["market_cap"] or 0), i["name"] or ""))
+    return items[:limit]
+
+
 def _search_kind(conn, kind: str, q: str, limit: int) -> list[dict]:
     from routers import spine_search as ss
     like = f"%{q}%"
     if kind == "stock":
         if not q:
             return []
+        rows = ss._companies(conn, q, limit) if ss.is_choseong_query(q) else _stock_candidates(conn, q, limit)
         return [_target("stock", c["stock_code"], c["name"], code=c["stock_code"], change_pct=c["change_pct"], date=c["price_date"],
                         sub=" · ".join(x for x in (c["stock_code"], c["sector"], c["market"]) if x))
-                for c in ss._companies(conn, q, limit)]
+                for c in rows]
     if kind == "us_stock":
         if not q:
             return []

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import api from '../src/api/client'
 import { askQuestion } from '../src/api/spine'
 import { Composer } from '../src/components/chat/Composer'
+import { TargetChip } from '../src/components/chat/TargetChip'
 import { addTarget, findAtQuery, MAX_TARGETS, removeAtQuery, toPayload } from '../src/lib/chatTargets'
 import type { ChatTarget } from '../src/types'
 
@@ -45,6 +46,17 @@ it('adds a target once and stops at five sendable targets; vanished ones are dro
   const gone = { ...HBM, available: false }
   expect(toPayload([HYNIX, gone, Q7])).toEqual([
     { kind: 'stock', ref: '000660', label: 'SK하이닉스' }, { kind: 'question', ref: '7', label: '오픈소스 모델 확장' }])
+})
+
+it('vanished chip: faded dashed chip without a caption; the reason lives in the tooltip (D-312)', async () => {
+  const { container } = render(<TargetChip target={{ ...HBM, available: false }} onRemove={() => {}} />)
+  const chip = container.querySelector('[data-target-chip="narrative:HBM"]')!
+  expect(chip.getAttribute('data-gone')).toBe('true')
+  expect(chip.className).toContain('border-dashed')
+  expect(chip.className).toContain('opacity-60')
+  expect(chip.textContent).not.toContain('사라짐')
+  await act(async () => { fireEvent.focus(screen.getByText('HBM')) })
+  expect((await screen.findAllByText(/보관되거나 지워진 대상이라 보낼 때 빠집니다/)).length).toBeGreaterThan(0)
 })
 
 function Harness({ initial = [] as ChatTarget[], onTargets = (_: ChatTarget[]) => {} }) {
