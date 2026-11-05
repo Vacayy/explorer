@@ -51,7 +51,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { key: "industry", label: "산업", path: "/map", tabs: [
     { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },
     { key: "trade", path: "/follow/trade", label: "수출입", match: ["/follow/trade"] },
-    // 대만 공급망 탭은 아직 화면이 없다(대만 월매출·연결은 홈 위젯뿐) — 화면을 만드는 단계에서 추가
+    { key: "taiwan", path: "/follow/taiwan", label: "대만 공급망", match: ["/follow/taiwan"] },
     { key: "valuechain", path: "/value-chain", label: "밸류체인", match: ["/value-chain"] },
     { key: "credit", path: "/follow/credit", label: "회사채", match: ["/follow/credit"] },
   ] },

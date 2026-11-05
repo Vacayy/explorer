@@ -27,7 +27,7 @@ export default function HomePage() {
 
 /**
  * 홈 › 한국 시장 (시안 Home-KR, ia-redesign §4.2·§4.17) — 국장 거래대금 상위 | 가파른 추세(같은 높이) → 개인 투자 열기 → 수출입.
- * 대만 월매출·대만→한국 연결은 산업 › 대만 공급망 화면이 생길 때까지 맨 아래에 둔다(§10.4a 1단계 보류).
+ * 대만 월매출·대만→한국 연결은 산업 › 대만 공급망(/follow/taiwan)으로 옮겼다(4b단계).
  */
 export function HomeKrPage() {
   const mobile = useIsMobile()   // 좁은 화면은 추세 표를 좁은 열(종목·60일·수익률)로
@@ -40,10 +40,6 @@ export function HomeKrPage() {
       </div>
       <div id="retail" className="scroll-mt-4"><RetailHeatCard /></div>
       <TradeBlock />
-      <div className="surface-grid grid lg:grid-cols-2">
-        <HomeSection widget="explore.twRevenue" w={6} h={6} className="h-[440px]" />
-        <HomeSection widget="explore.twLinks" w={6} h={6} className="h-[440px]" />
-      </div>
     </div>
   </PageLayout>
 }

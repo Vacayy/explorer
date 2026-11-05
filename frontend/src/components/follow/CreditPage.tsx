@@ -1,182 +1,169 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Check, Plus, X } from 'lucide-react'
-import { PageContainer } from '@/components/shared/PageContainer'
-import { ErrorState } from '@/components/shared/ErrorState'
+import { Plus, X } from 'lucide-react'
+import { PageLayout } from '@/components/shared/PageLayout'
+import { ErrorState, EmptyState } from '@/components/shared/ErrorState'
 import MultiLineChart from '@/components/charts/MultiLineChart'
+import { HomeBlock } from '@/components/home/HomeSection'
+import { SummaryStrip, SummaryStripSkeleton } from '@/components/industry/SummaryStrip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { byWidening, useCreditHistory, useCreditTable } from '@/hooks/useCredit'
+import { useCreditHistory, useCreditTable } from '@/hooks/useCredit'
 import { useChartPalette } from '@/hooks/useChartPalette'
-import { formatBp, formatRatio, formatYield } from '@/utils/format'
+import { bySpread, creditGroupMedians, defaultCreditPicks, parseCreditRange, sliceByRange } from '@/lib/credit'
+import { cn } from '@/lib/utils'
+import { formatBp, formatNumber, formatRatio, formatYield } from '@/utils/format'
 import type { CreditRow } from '@/types'
 
 const MAX_SELECTED = 6
-type SortKey = 'chg_1m' | 'spread' | 'group'
+const TOP = 14
 const tone = (v: number | null) => v == null || v === 0 ? 'text-muted-foreground' : v > 0 ? 'text-up' : 'text-down'   // 스프레드 확대 = 빨강
-/** "Oracle Corporation 4.8% 26-SEP-2032" → "4.8% 2032" */
-const shortBond = (bond: string | null) => bond?.match(/(\d+(?:\.\d+)?%)\s+\d{2}-[A-Z]{3}-(\d{4})/)?.slice(1).join(' ') ?? bond ?? '-'
 
 /**
- * 회사채 스프레드(D-230, docs/specs/credit-spreads.md) — 회사마다 대표 채권 하나의 수익률과 같은 만기 국채의 차이.
- * 선택 회사는 URL `credit`(없으면 1개월 확대 상위 2곳), 차트 모드는 `credit_view`, 묶음 필터는 `credit_group`,
- * 표 정렬은 `credit_sort`(기본 1개월 변화 순 · spread · group).
+ * 산업 › 회사채 (/follow/credit, 시안 Industry-Credit, ia-redesign §4.8c · D-230, docs/specs/credit-spreads.md).
+ * 요약 줄 → 스프레드 비교 차트(최대 6곳, 수익률/스프레드, 3개월·1년·전체) → 종목별 스프레드(넓은 순 14, 전체 보기) | 그룹별 중앙값.
+ * URL: credit(고른 회사, 없으면 1개월 확대 상위 2 — 1개월 변화가 비면 스프레드 넓은 순), credit_view, credit_range, credit_all.
  */
 export default function CreditPage() {
   const [params, setParams] = useSearchParams()
   const table = useCreditTable()
-  const widest = useMemo(() => [...(table.data?.rows ?? [])].filter(r => r.chg_1m != null).sort(byWidening), [table.data])
-  const selected = (params.get('credit')?.split(',').filter(Boolean) ?? widest.slice(0, 2).map(r => r.ticker)).slice(0, MAX_SELECTED)
-  const view = params.get('credit_view') === 'spread' ? 'spread' : 'yield'
-  const group = params.get('credit_group') ?? 'all'
-  const sortParam = params.get('credit_sort')
-  const sort: SortKey = sortParam === 'spread' || sortParam === 'group' ? sortParam : 'chg_1m'
-  const set = (key: string, value: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (value) n.set(key, value); else n.delete(key); return n }, { replace: true })
+  const rows = useMemo(() => table.data?.rows ?? [], [table.data])
+  const selected = (params.get('credit')?.split(',').filter(t => t && t !== '-') ?? defaultCreditPicks(rows)).slice(0, MAX_SELECTED)
+  const set = (key: string, value: string | null) => setParams(prev => { const n = new URLSearchParams(prev); if (value) n.set(key, value); else n.delete(key); return n }, { replace: true, preventScrollReset: true })
   const toggle = (ticker: string) => set('credit', (selected.includes(ticker) ? selected.filter(t => t !== ticker) : [...selected, ticker].slice(-MAX_SELECTED)).join(',') || '-')
 
-  if (table.isPending) return <PageContainer><Skeleton className="h-80 w-full rounded-card" /><Skeleton className="h-96 w-full rounded-card" /></PageContainer>
-  if (table.isError) return <PageContainer><ErrorState message="회사채 스프레드를 불러오지 못했습니다." onRetry={() => void table.refetch()} /></PageContainer>
+  if (table.isPending) return <PageLayout mode="document"><div className="flex flex-col"><SummaryStripSkeleton /><Skeleton className="h-[420px] w-full rounded-card" /><Skeleton className="h-96 w-full rounded-card" /></div></PageLayout>
+  if (table.isError) return <PageLayout mode="document"><ErrorState message="회사채 스프레드를 불러오지 못했습니다." onRetry={() => void table.refetch()} /></PageLayout>
   const data = table.data
-  const rows = data.rows
-  const collected = rows.some(r => r.spread_bp != null)
+  const priced = rows.filter(r => r.spread_bp != null)
+  if (!priced.length) return <PageLayout mode="document"><EmptyState message="아직 수집된 회사채가 없습니다. 매일 07:30에 수집합니다." /></PageLayout>
+  const widest = [...priced].sort(bySpread)[0]
 
-  return <PageContainer>
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h2 className="text-xl font-bold">회사채 스프레드</h2>
-      <span className="text-caption text-muted-foreground">회사당 대표 채권 1개 · 일별 종가 수익률 − 같은 만기 미 국채{data.as_of ? ` · ${data.as_of} 기준` : ''}</span>
+  return <PageLayout mode="document">
+    <div className="flex flex-col">
+      <SummaryStrip label="credit" cells={[
+        { label: '관측 회사채', value: formatNumber(priced.length), sub: data.as_of ?? '-' },
+        { label: '하이일드 등급', value: formatNumber(rows.filter(r => r.hy).length) },
+        { label: '가장 넓은 스프레드', value: `${formatBp(widest.spread_bp)}bp`, sub: widest.name },
+        { label: '그룹', value: formatNumber(data.groups.length), sub: 'AI 투자 자금 흐름 순' },
+      ]} />
+      <SpreadChart rows={rows} selected={selected} view={params.get('credit_view') === 'yield' ? 'yield' : 'spread'}
+        range={parseCreditRange(params.get('credit_range'))} onParam={set} onToggle={toggle} />
+      <div className="@container"><div className="surface-grid grid @min-[68rem]:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+        <SpreadTable rows={rows} asOf={data.as_of} groups={data.groups} all={params.get('credit_all') === '1'}
+          onAll={v => set('credit_all', v ? '1' : null)} selected={selected} onToggle={toggle} />
+        <HomeBlock label="credit.groups" title={<>그룹별 <span className="ml-1 text-xs font-normal text-muted-foreground">자금줄 → 데이터센터 → 전력</span></>}
+          info="그룹 안 채권 스프레드의 중앙값입니다. 하이일드는 BB+ 이하 등급입니다.">
+          <Table className="text-[13px]">
+            <TableHeader><TableRow>
+              <TableHead className="h-8 px-1 text-[11px]">그룹</TableHead><TableHead className="h-8 px-1 text-right text-[11px]">중앙값</TableHead>
+              <TableHead className="h-8 px-1 text-right text-[11px]">채권</TableHead><TableHead className="h-8 px-1 text-right text-[11px]">하이일드</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>{creditGroupMedians(rows, data.groups).map(g => <TableRow key={g.key}>
+              <TableCell className="whitespace-normal px-1 py-2">{g.label}</TableCell>
+              <TableCell className="px-1 py-2 text-right font-mono tabular-nums">{g.median == null ? '-' : `${formatBp(g.median)}bp`}</TableCell>
+              <TableCell className="px-1 py-2 text-right font-mono tabular-nums">{g.count}</TableCell>
+              <TableCell className="px-1 py-2 text-right font-mono tabular-nums">{g.hy}</TableCell>
+            </TableRow>)}</TableBody>
+          </Table>
+        </HomeBlock>
+      </div></div>
     </div>
-    {data.configured && collected && widest[0] && (widest[0].chg_1m ?? 0) > 0 && <p className="text-sm text-muted-foreground">
-      1개월 새 가장 벌어진 곳 <span className="font-medium text-foreground">{widest[0].name}</span> <span className="tabular-nums text-up">{formatBp(widest[0].chg_1m, true)}bp</span>
-      {widest.slice(1, 3).filter(r => (r.chg_1m ?? 0) > 0).map(r => <span key={r.ticker}> · {r.name} <span className="tabular-nums text-up">{formatBp(r.chg_1m, true)}bp</span></span>)}
-      {rows.some(r => r.hy) && <> · HY {rows.filter(r => r.hy).length}곳</>}
-    </p>}
-    {!data.configured ? <Card><CardContent className="space-y-2 py-10 text-center">
-        <p className="font-medium">채권 데이터 원천이 설정되지 않았습니다</p>
-        <p className="text-sm text-muted-foreground">이 기능은 로컬 데이터 원천 어댑터(backend/local_sources/credit_source.py, 공개 저장소 밖)가 있어야 수집합니다. 국채 곡선과 계산은 준비돼 있습니다.</p>
-      </CardContent></Card>
-      : !collected ? <Card><CardContent className="space-y-2 py-10 text-center">
-        <p className="font-medium">아직 수집된 채권이 없습니다</p>
-        <p className="text-sm text-muted-foreground">매일 07:30에 수집합니다. 지금 받으려면 scripts/collect_credit.py를 실행하세요.</p>
-      </CardContent></Card>
-      : <>
-        <SpreadChart rows={rows} selected={selected} view={view} onView={v => set('credit_view', v === 'spread' ? 'spread' : null)} onToggle={toggle} />
-        <SpreadTable rows={rows} asOf={data.as_of} groups={data.groups} group={group} onGroup={g => set('credit_group', g === 'all' ? null : g)}
-          sort={sort} onSort={v => set('credit_sort', v === 'chg_1m' ? null : v)} selected={selected} onToggle={toggle} />
-      </>}
-  </PageContainer>
+  </PageLayout>
 }
 
-function SpreadChart({ rows, selected, view, onView, onToggle }: {
-  rows: CreditRow[]; selected: string[]; view: 'yield' | 'spread'; onView: (v: string) => void; onToggle: (t: string) => void
+function SpreadChart({ rows, selected, view, range, onParam, onToggle }: {
+  rows: CreditRow[]; selected: string[]; view: 'yield' | 'spread'; range: '3m' | '1y' | 'all'
+  onParam: (key: string, value: string | null) => void; onToggle: (t: string) => void
 }) {
   const history = useCreditHistory(selected)
   const palette = useChartPalette(MAX_SELECTED + 1)
   const [adding, setAdding] = useState(false)
-  const byTicker = Object.fromEntries(rows.map(r => [r.ticker, r]))
+  const byTicker = useMemo(() => Object.fromEntries(rows.map(r => [r.ticker, r])), [rows])
   const muted = palette[MAX_SELECTED] ? getComputedStyle(document.documentElement).getPropertyValue('--muted-foreground').trim() || '#888' : '#888'
+  // 선 끝 직접 라벨 — 이름(스프레드 보기는 최신 bp까지)
   const lines = useMemo(() => [
-    ...(view === 'yield' ? [{ key: 'treasury', label: '미 국채 (같은 만기 평균)', color: muted, lineWidth: 2 }] : []),
-    ...selected.map((t, i) => ({ key: view === 'yield' ? `${t}_ytm` : `${t}_spread`, label: byTicker[t]?.name ?? t, color: palette[i] ?? '#888' })),
+    ...(view === 'yield' ? [{ key: 'treasury', label: '미 국채 (같은 만기 평균)', title: '미 국채', color: muted, lineWidth: 2 }] : []),
+    ...selected.map((t, i) => ({ key: view === 'yield' ? `${t}_ytm` : `${t}_spread`, label: byTicker[t]?.name ?? t, title: byTicker[t]?.name ?? t, color: palette[i] ?? '#888' })),
   ], [view, selected, palette, muted, byTicker])
-  const points = useMemo(() => (history.data?.points ?? []).map(p => ({ ...p, time: p.date })), [history.data])
+  const points = useMemo(() => sliceByRange((history.data?.points ?? []) as (Record<string, string | number | null> & { date: string })[], range).map(p => ({ ...p, time: p.date })), [history.data, range])
 
-  return <Card>
-    <CardContent className="space-y-4 pt-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {selected.map((t, i) => <Badge key={t} variant="outline" className="gap-1.5 py-1 pl-2 pr-1 font-normal">
-          <span className="size-2 rounded-full" style={{ background: palette[i] }} aria-hidden="true" />{byTicker[t]?.name ?? t}
-          <span className="tabular-nums text-muted-foreground">{formatBp(byTicker[t]?.spread_bp)}bp</span>
-          <button type="button" className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground" aria-label={`${byTicker[t]?.name ?? t} 빼기`} onClick={() => onToggle(t)}><X className="size-3" /></button>
-        </Badge>)}
-        <Popover open={adding} onOpenChange={setAdding}><PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 border-dashed" disabled={selected.length >= MAX_SELECTED}><Plus className="size-3.5" />회사 추가</Button>
-        </PopoverTrigger><PopoverContent align="start" className="w-72 p-0"><Command><CommandInput placeholder="회사 이름·티커" /><CommandList><CommandEmpty>없습니다.</CommandEmpty>
-          <CommandGroup>{rows.filter(r => r.spread_bp != null && !selected.includes(r.ticker)).map(r => <CommandItem key={r.ticker} value={`${r.name} ${r.ticker}`} onSelect={() => { onToggle(r.ticker); setAdding(false) }}>
-            {r.name}<span className="ml-1 text-caption text-muted-foreground">{r.ticker}</span><span className="ml-auto tabular-nums text-caption text-muted-foreground">{formatBp(r.spread_bp)}bp</span></CommandItem>)}</CommandGroup>
-        </CommandList></Command></PopoverContent></Popover>
-      </div>
-      <ToggleGroup type="single" value={view} onValueChange={v => { if (v) onView(v) }} variant="outline" size="sm" className="justify-start" aria-label="차트 보기">
-        <ToggleGroupItem value="yield" className="px-3">수익률 + 국채</ToggleGroupItem><ToggleGroupItem value="spread" className="px-3">스프레드</ToggleGroupItem>
+  return <HomeBlock label="credit.chart" title="스프레드 비교"
+    info="회사마다 대표 채권 하나의 만기 수익률과 같은 날 같은 잔존 만기로 보간한 미 국채 금리의 차이(bp)입니다. 차트를 누르면 그날 기준 1일·1주·1개월 변화를 보여 줍니다. 아래 표의 줄을 눌러도 회사를 더하고 뺍니다."
+    actions={<div className="flex items-center gap-1.5">
+      <ToggleGroup type="single" value={view} onValueChange={v => { if (v) onParam('credit_view', v === 'yield' ? 'yield' : null) }} variant="outline" size="sm" aria-label="차트 보기">
+        <ToggleGroupItem value="yield" className="px-2.5 text-xs">수익률</ToggleGroupItem><ToggleGroupItem value="spread" className="px-2.5 text-xs">스프레드</ToggleGroupItem>
       </ToggleGroup>
-      {!selected.length ? <p className="py-16 text-center text-sm text-muted-foreground">아래 표에서 회사를 골라 차트에 더하세요.</p>
-        : history.isPending ? <Skeleton className="h-[360px] w-full" />
-        : history.isError ? <ErrorState message="이력을 불러오지 못했습니다." onRetry={() => void history.refetch()} />
-        : <>
-          <MultiLineChart data={points} lines={lines} height={360} formatValue={v => view === 'yield' ? formatYield(v) : `${formatBp(v)}bp`}
-            formatChange={d => `${formatBp(Math.round(view === 'yield' ? d * 100 : d) + 0, true)}bp`} />
-          <p className="text-caption text-muted-foreground">차트를 누르면 그날 기준 1일·1주·1개월 변화를 보여줍니다.</p>
-        </>}
-    </CardContent>
-  </Card>
+      <ToggleGroup type="single" value={range} onValueChange={v => { if (v) onParam('credit_range', v === '1y' ? null : v) }} variant="outline" size="sm" aria-label="기간" className="max-sm:hidden">
+        <ToggleGroupItem value="3m" className="px-2.5 text-xs">3개월</ToggleGroupItem><ToggleGroupItem value="1y" className="px-2.5 text-xs">1년</ToggleGroupItem><ToggleGroupItem value="all" className="px-2.5 text-xs">전체</ToggleGroupItem>
+      </ToggleGroup>
+    </div>} bodyClassName="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      {selected.map((t, i) => <Badge key={t} variant="outline" className="gap-1.5 py-1 pl-2 pr-1 font-normal">
+        <span className="size-2 rounded-full" style={{ background: palette[i] }} aria-hidden="true" />{byTicker[t]?.name ?? t}
+        <span className="text-muted-foreground">{byTicker[t]?.rating ?? ''}</span>
+        <Button variant="ghost" size="icon-xs" className="size-4 text-muted-foreground" aria-label={`${byTicker[t]?.name ?? t} 빼기`} onClick={() => onToggle(t)}><X className="size-3" /></Button>
+      </Badge>)}
+      <Popover open={adding} onOpenChange={setAdding}><PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 border-dashed text-xs" disabled={selected.length >= MAX_SELECTED}><Plus className="size-3.5" />회사 추가 (최대 {MAX_SELECTED})</Button>
+      </PopoverTrigger><PopoverContent align="start" className="w-72 p-0"><Command><CommandInput placeholder="회사 이름·티커" /><CommandList><CommandEmpty>없습니다.</CommandEmpty>
+        <CommandGroup>{rows.filter(r => r.spread_bp != null && !selected.includes(r.ticker)).map(r => <CommandItem key={r.ticker} value={`${r.name} ${r.ticker}`} onSelect={() => { onToggle(r.ticker); setAdding(false) }}>
+          {r.name}<span className="ml-1 text-caption text-muted-foreground">{r.ticker}</span><span className="ml-auto tabular-nums text-caption text-muted-foreground">{formatBp(r.spread_bp)}bp</span></CommandItem>)}</CommandGroup>
+      </CommandList></Command></PopoverContent></Popover>
+    </div>
+    {!selected.length ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">아래 표에서 회사를 고르면 차트에 더해집니다.</p>
+      : history.isPending ? <Skeleton className="h-[340px] w-full" />
+      : history.isError ? <ErrorState message="이력을 불러오지 못했습니다." onRetry={() => void history.refetch()} />
+      : <MultiLineChart data={points} lines={lines} height={340} showLegend={false} formatValue={v => view === 'yield' ? formatYield(v) : `${formatBp(v)}bp`}
+          formatChange={d => `${formatBp(Math.round(view === 'yield' ? d * 100 : d) + 0, true)}bp`} />}
+  </HomeBlock>
 }
 
-function SpreadTable({ rows, asOf, groups, group, onGroup, sort, onSort, selected, onToggle }: {
-  rows: CreditRow[]; asOf: string | null; groups: { key: string; label: string }[]; group: string; onGroup: (g: string) => void
-  sort: SortKey; onSort: (v: string) => void; selected: string[]; onToggle: (t: string) => void
+function SpreadTable({ rows, asOf, groups, all, onAll, selected, onToggle }: {
+  rows: CreditRow[]; asOf: string | null; groups: { key: string; label: string }[]; all: boolean; onAll: (v: boolean) => void
+  selected: string[]; onToggle: (t: string) => void
 }) {
   // 체결이 드문 채권은 마지막 값이 며칠 묵는다 — 기준일보다 3일 넘게 오래되면 날짜를 보인다
   const stale = (d: string | null) => !!d && !!asOf && (new Date(asOf).getTime() - new Date(d).getTime()) / 86_400_000 > 3
-  const max = Math.max(1, ...rows.map(r => r.spread_bp ?? 0))
-  const shown = groups.filter(g => group === 'all' || g.key === group)
   const groupLabel = Object.fromEntries(groups.map(g => [g.key, g.label]))
-  const bySpread = (a: CreditRow, b: CreditRow) => (b.spread_bp ?? -1) - (a.spread_bp ?? -1)
-  // 묶음별 보기는 묶음 머리 + 스프레드 순, 나머지는 한 줄 순위(묶음 이름은 회사 옆에)
-  const sections: { key: string; label: string | null; items: CreditRow[] }[] = sort === 'group'
-    ? shown.map(g => ({ key: g.key, label: g.label, items: rows.filter(r => r.group === g.key).sort(bySpread) }))
-    : [{ key: 'all', label: null, items: rows.filter(r => group === 'all' || r.group === group).sort(sort === 'spread' ? bySpread : byWidening) }]
-  return <Card>
-    <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-      <CardTitle>회사별 스프레드</CardTitle>
-      <ToggleGroup type="single" value={sort} onValueChange={v => { if (v) onSort(v) }} variant="outline" size="sm" className="justify-start" aria-label="정렬">
-        <ToggleGroupItem value="chg_1m" className="px-3">1개월 변화 순</ToggleGroupItem>
-        <ToggleGroupItem value="spread" className="px-3">스프레드 순</ToggleGroupItem>
-        <ToggleGroupItem value="group" className="px-3">묶음별</ToggleGroupItem>
-      </ToggleGroup>
-      <ToggleGroup type="single" value={group} onValueChange={v => { if (v) onGroup(v) }} variant="outline" size="sm" className="flex-wrap justify-start" aria-label="묶음">
-        <ToggleGroupItem value="all" className="px-3">전체</ToggleGroupItem>
-        {groups.map(g => <ToggleGroupItem key={g.key} value={g.key} className="px-3">{g.label}</ToggleGroupItem>)}
-      </ToggleGroup>
-    </CardHeader>
-    <CardContent className="overflow-x-auto">
-      <Table>
-        <TableHeader><TableRow>
-          <TableHead className="w-10" /><TableHead>회사</TableHead><TableHead className="hidden md:table-cell">대표 채권</TableHead><TableHead className="hidden text-right md:table-cell">등급</TableHead>
-          <TableHead className="text-right">수익률</TableHead><TableHead className="hidden text-right lg:table-cell">국채</TableHead><TableHead className="text-right">스프레드</TableHead>
-          <TableHead className="text-right">1개월</TableHead><TableHead className="text-right">3개월</TableHead><TableHead className="text-right">1년</TableHead><TableHead className="text-right">부도확률</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>{sections.map(g => {
-          const items = g.items
-          return [...(g.label ? [<TableRow key={`h-${g.key}`} className="hover:bg-transparent"><TableCell colSpan={11} className="pb-1 pt-4 text-caption text-muted-foreground">{g.label}</TableCell></TableRow>] : []),
-            ...items.map(r => {
-              const on = selected.includes(r.ticker)
-              return <TableRow key={r.ticker} className={on ? 'bg-primary/5' : ''}>
-                <TableCell><Button variant={on ? 'default' : 'outline'} size="icon-sm" className="size-7 rounded-full" disabled={r.spread_bp == null}
-                  aria-label={on ? `${r.name} 차트에서 빼기` : `${r.name} 차트에 더하기`} onClick={() => onToggle(r.ticker)}>{on ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}</Button></TableCell>
-                <TableCell className="min-w-28 whitespace-normal md:whitespace-nowrap"><span className="font-medium">{r.name}</span> <span className="text-caption text-muted-foreground">{r.ticker}</span>
-                  {!g.label && <span className="ml-1.5 hidden text-[10px] text-muted-foreground lg:inline">{groupLabel[r.group] ?? r.group}</span>}
-                  {r.hy && <Badge variant="outline" className="ml-1.5 border-up/40 px-1 text-[10px] text-up">HY</Badge>}
-                  {r.source === '유럽 거래소' && <span className="ml-1.5 text-[10px] text-muted-foreground" title="미국 체결이 아니라 유럽 거래소 호가에서 나온 수익률">유럽 호가</span>}</TableCell>
-                <TableCell className="hidden whitespace-nowrap tabular-nums text-muted-foreground md:table-cell" title={r.bond ?? undefined}>{shortBond(r.bond)}</TableCell>
-                <TableCell className="hidden text-right md:table-cell">{r.rating ?? '-'}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatYield(r.ytm)}{stale(r.last_date) && <span className="block text-[10px] text-hypothesis" title="마지막 체결일">{r.last_date?.slice(5)} 체결</span>}</TableCell>
-                <TableCell className="hidden text-right tabular-nums text-muted-foreground lg:table-cell">{formatYield(r.treasury)}</TableCell>
-                <TableCell className="text-right"><span className="inline-flex items-center justify-end gap-2">
-                  <span className="font-semibold tabular-nums">{formatBp(r.spread_bp)}</span>
-                  <span className="hidden h-1.5 w-16 overflow-hidden md:block rounded-full bg-muted" aria-hidden="true"><span className="block h-full rounded-full bg-up/70" style={{ width: `${Math.max(0, (r.spread_bp ?? 0) / max * 100)}%` }} /></span>
-                </span></TableCell>
-                {[r.chg_1m, r.chg_3m, r.chg_1y].map((v, i) => <TableCell key={i} className={`text-right tabular-nums ${tone(v)}`}>{v == null ? '—' : formatBp(v, true)}</TableCell>)}
-                <TableCell className="text-right tabular-nums">{formatRatio(r.pd_pct)}</TableCell>
-              </TableRow>
-            })]
-        })}</TableBody>
-      </Table>
-      <p className="mt-3 text-caption text-muted-foreground">스프레드 = 대표 채권 만기 수익률 − 같은 날 같은 잔존 만기로 보간한 미 국채 금리(bp). 부도확률은 스프레드에 내재된 5년 누적 확률의 근사(회수율 40% 가정)로, 신용평가가 아닙니다. ‘유럽 호가’는 미국 체결이 없는 사모채(144A)를 유럽 거래소 호가 수익률로 대신한 것입니다.</p>
-    </CardContent>
-  </Card>
+  const sorted = [...rows].sort(bySpread)
+  const shown = all ? sorted : sorted.slice(0, TOP)
+  return <HomeBlock label="credit.table" title={<>종목별 스프레드 <span className="ml-1 text-xs font-normal text-muted-foreground">넓은 순{all ? '' : ` 상위 ${TOP}`}</span></>}
+    info="스프레드 = 대표 채권 만기 수익률 − 같은 날 같은 잔존 만기로 보간한 미 국채 금리(bp). 암시 부도확률은 스프레드에 내재된 5년 누적 확률의 근사(회수율 40% 가정)로, 신용평가가 아닙니다. '유럽 호가'는 미국 체결이 없는 사모채(144A)를 유럽 거래소 호가 수익률로 대신한 것입니다. 1개월 변화는 이력이 쌓이기 전에는 '-'입니다."
+    actions={rows.length > TOP ? <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => onAll(!all)}>{all ? `상위 ${TOP}개만` : `${rows.length}개 모두 ›`}</Button> : null}
+    bodyClassName="p-0">
+    <Table className="text-[13px]">
+      <TableHeader><TableRow>
+        <TableHead className="h-8 pl-3 text-[11px]">기업 · 채권</TableHead><TableHead className="h-8 text-[11px] max-md:hidden">그룹</TableHead>
+        <TableHead className="h-8 text-right text-[11px] max-md:hidden">등급</TableHead><TableHead className="h-8 text-right text-[11px] max-sm:hidden">YTM</TableHead>
+        <TableHead className="h-8 text-right text-[11px]">스프레드</TableHead><TableHead className="h-8 text-right text-[11px]">1개월</TableHead>
+        <TableHead className="h-8 pr-3 text-right text-[11px] max-md:hidden">암시 부도확률</TableHead>
+      </TableRow></TableHeader>
+      <TableBody>{shown.map(r => {
+        const on = selected.includes(r.ticker)
+        return <TableRow key={r.ticker} data-credit-row aria-selected={on} className={cn('cursor-pointer', on && 'bg-muted/60')}
+          onClick={() => { if (r.spread_bp != null) onToggle(r.ticker) }}>
+          <TableCell className="max-w-72 whitespace-normal py-2 pl-3">
+            <span className="font-medium">{r.name}</span> <span className="text-caption text-muted-foreground">{r.ticker}</span>
+            {r.source === '유럽 거래소' && <span className="ml-1.5 text-[10px] text-muted-foreground">유럽 호가</span>}
+            <span className="block truncate text-caption text-muted-foreground" title={r.bond ?? undefined}>{r.bond ?? '-'}</span>
+            <span className="text-caption text-muted-foreground md:hidden">{groupLabel[r.group] ?? r.group} · {r.rating ?? '-'}</span>
+          </TableCell>
+          <TableCell className="min-w-32 max-w-44 whitespace-normal py-2 max-md:hidden">{groupLabel[r.group] ?? r.group}</TableCell>
+          <TableCell className="py-2 text-right max-md:hidden">
+            <Badge variant="outline" className={cn('px-1.5 font-mono text-[11px]', r.hy ? 'border-chart-warning/50 bg-chart-warning/10 text-chart-warning' : 'text-muted-foreground')}>{r.rating ?? '-'}</Badge>
+          </TableCell>
+          <TableCell className="py-2 text-right font-mono tabular-nums max-sm:hidden">{formatYield(r.ytm)}{stale(r.last_date) && <span className="block text-[10px] text-hypothesis">{r.last_date?.slice(5)} 체결</span>}</TableCell>
+          <TableCell className="py-2 text-right font-mono tabular-nums">{r.spread_bp == null ? '-' : `${formatBp(r.spread_bp)}bp`}</TableCell>
+          <TableCell className={cn('py-2 text-right font-mono tabular-nums', tone(r.chg_1m))}>{r.chg_1m == null ? '-' : `${formatBp(r.chg_1m, true)}bp`}</TableCell>
+          <TableCell className="py-2 pr-3 text-right font-mono tabular-nums max-md:hidden">{formatRatio(r.pd_pct)}</TableCell>
+        </TableRow>
+      })}</TableBody>
+    </Table>
+  </HomeBlock>
 }

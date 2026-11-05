@@ -48,9 +48,15 @@ const CASES = [
   ['/map', '?view=universe', 'industry', 'sectors'],
   ['/follow/universe', '', 'industry', 'sectors'],
   ['/discover/industry', '', 'industry', 'sectors'],
+  ['/map', '?view=map', 'industry', 'sectors'],
+  ['/map', '?group=금융&sort=long', 'industry', 'sectors'],
   ['/follow/trade', '', 'industry', 'trade'],
+  ['/follow/trade', '?hs=854232&trade_sort=surge', 'industry', 'trade'],
+  ['/follow/taiwan', '', 'industry', 'taiwan'],
+  ['/follow/taiwan', '?tw_layer=foundry&tw=2330', 'industry', 'taiwan'],
   ['/value-chain', '?node=x', 'industry', 'valuechain'],
   ['/follow/credit', '', 'industry', 'credit'],
+  ['/follow/credit', '?credit=ORCL,CRWV&credit_range=3m', 'industry', 'credit'],
   // 포트폴리오
   ['/portfolio', '', 'portfolio', 'overview'],
   ['/portfolio/holdings', '?stock=000001', 'portfolio', 'holdings'],
@@ -131,7 +137,7 @@ test('L2 tabs follow the plan, transitional tabs last', () => {
   assert.deepEqual(tabs.home, ['대시보드', '한국 시장', '미국 시장', '매크로', '내 종목'])
   assert.deepEqual(tabs.feed, ['피드', '저장됨'])
   assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물', '신호', '기업활동'])
-  assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '밸류체인', '회사채'])
+  assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '대만 공급망', '밸류체인', '회사채'])
   assert.deepEqual(tabs.world, ['지금', '그래프', '내 판단', '스터디'])
 })
 

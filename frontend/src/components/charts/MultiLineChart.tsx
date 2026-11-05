@@ -11,6 +11,8 @@ interface LineConfig {
   color: string
   lineWidth?: number
   lineStyle?: number // 0=Solid, 2=Dashed
+  /** 오른쪽 끝 값 라벨에 붙는 이름 — 선 끝 직접 라벨(showLastValues일 때만 보임) */
+  title?: string
 }
 
 interface MultiLineChartProps {
@@ -73,7 +75,7 @@ export default function MultiLineChart({
   const boxRef = useRef<HTMLDivElement>(null)
 
   // Stable key for lines config to detect structural changes
-  const linesKey = lines.map((l) => `${l.key}:${l.label}:${l.color}:${l.lineWidth ?? 2}:${l.lineStyle ?? 0}`).join("|")
+  const linesKey = lines.map((l) => `${l.key}:${l.label}:${l.color}:${l.lineWidth ?? 2}:${l.lineStyle ?? 0}:${l.title ?? ""}`).join("|")
 
   // Create chart and series
   useEffect(() => {
@@ -106,6 +108,7 @@ export default function MultiLineChart({
         priceLineVisible: showLastValues,
         lineWidth: (line.lineWidth ?? 2) as 1 | 2 | 3 | 4,
         lineStyle: line.lineStyle ?? LineStyle.Solid,
+        title: line.title ?? "",
         priceFormat: formatValue
           ? { type: "custom", formatter: formatValue }
           : { type: "price" },

@@ -1132,6 +1132,7 @@ export interface TradeHighlightRow {
   hs_code: string; item_name: string; group_label: string | null; value: number | null
   yoy: number | null; mom: number | null; z: number | null; flag: Exclude<TradeFlag, 'none'>; reason: string | null
   contribution: number | null; nested_in: string | null
+  yoy3m: number | null   // 3개월 합의 전년 동기 대비(비율)
 }
 export interface TradeHighlights {
   period: string | null; periods: string[]; total_usd: number

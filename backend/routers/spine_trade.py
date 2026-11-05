@@ -58,6 +58,7 @@ class HighlightRow(BaseModel):
     value: float | None
     yoy: float | None = None
     mom: float | None = None
+    yoy3m: float | None = None       # 3개월 합의 전년 동기 대비(비율) — 산업 › 수출입 표
     z: float | None = None
     flag: Literal["surge", "plunge", "new"]
     reason: str | None

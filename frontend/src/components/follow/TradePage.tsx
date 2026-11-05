@@ -1,160 +1,244 @@
 import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { TrendingUp, ChevronRight, Sparkles } from "lucide-react"
+import { useQueries, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { ChevronLeft, ChevronRight, TrendingUp, Sparkles } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
-import { PageContainer } from "@/components/shared/PageContainer"
+import { PageLayout } from "@/components/shared/PageLayout"
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ComposedChart, Bar, Cell, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { TradeFlagBadge } from "@/components/follow/tradeFormat"
-import { useTradeFollows } from "@/hooks/useTrade"
+import { HomeBlock } from "@/components/home/HomeSection"
+import { BlockError, RowsSkeleton, tone } from "@/components/home/blockState"
+import { tradeIsLagging } from "@/components/home/TradeBlock"
+import { SummaryStrip, SummaryStripSkeleton } from "@/components/industry/SummaryStrip"
+import { useDefaultWatchGroup } from "@/hooks/useGroups"
+import { useTradeFollows, useTradeHighlights } from "@/hooks/useTrade"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { monthLabel, movingAverage, parseTradeGridSort, rankTradeGrid, type TradeGridSort } from "@/lib/trade"
 import { cn } from "@/lib/utils"
-import { formatPercent, formatUsd } from "@/utils/format"
-import type { TradeFollowRow } from "@/types"
+import { formatNumber, formatPercent, formatRatio, formatUsd } from "@/utils/format"
+import type { TradeFollowRow, TradeHighlights, TradeStockItem } from "@/types"
 
 /**
- * /follow/trade — 수출입(무역) 전용 페이지 (docs/specs/trade-follow.md, 2분할).
- * 좌: 팔로우 품목 — 서버 판정(급등·급감 배지, 사유 툴팁), 기본 '이번 달 기여도 순' · 우: 수출입 추이 차트 + 관련 종목(LLM 논리 지목, D-036).
+ * 산업 › 수출입 (/follow/trade, 시안 Industry-Trade, ia-redesign §4.8a · docs/specs/trade-follow.md).
+ * 요약 줄(수출 총액 · 크게 늘어난/줄어든 품목 수 · 기여 1위) → 주요 품목 한눈에(수출액 상위 12, 36개월 막대 + 12개월 평균) →
+ * 평소보다 크게 늘어난 품목(월 선택) | 산업별 수출. 품목을 누르면 옛 상세(수출입 추이 + 관련 종목, URL hs)를 시트로 연다.
+ * URL: month(통계월, 없으면 최신) · trade_sort(value·surge·mine) · hs(상세).
  */
 interface Stat { period: string; export_usd: number | null; import_usd: number | null; balance_usd: number | null }
 interface Beneficiary { name: string; stock_code: string | null; rel: string | null; reason: string | null; rs: number | null; per: number | null; in_universe: boolean; universe_groups: string[] }
 interface Detail { hs_code: string; item_name: string; series: Stat[]; beneficiaries: Beneficiary[] }
 
-const usdB = (v: number | null) => v == null ? "-" : formatUsd(v)
-type RailSort = "contribution" | "group"
+const detailQuery = (hs: string) => apiQuery<Detail>({ key: ["spine", "trade", hs], url: `/api/spine/trade/${hs}`, staleTime: STALE.medium })
+const pct = (v: number | null | undefined) => formatPercent(v == null ? null : v * 100)
+const SURGE_LIMIT = 100   // 급등 품목 수를 세려고 넉넉히 받는다(표는 상위만 보인다)
 
 export default function TradePage() {
   const [params, setParams] = useSearchParams()
-  const selected = params.get("hs")
-  const sort: RailSort = params.get("trade_sort") === "group" ? "group" : "contribution"
-  const { data: follows = [], isLoading, isError, refetch } = useTradeFollows()
+  const month = params.get("month")
+  const follows = useTradeFollows()
+  const hl = useTradeHighlights(SURGE_LIMIT, month)
   const qc = useQueryClient()
   const seed = useMutation({
     mutationFn: () => api.post("/api/spine/trade/seed").then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "trade", "follow"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "trade"] }),
   })
   const setParam = (k: string, v: string | null) => setParams((p) => {
     const n = new URLSearchParams(p)
     if (v) n.set(k, v); else n.delete(k)
     return n
-  }, { replace: true })
+  }, { replace: true, preventScrollReset: true })
+  const hs = params.get("hs")
 
-  const ranked = useMemo(() => rankByContribution(follows), [follows])
-  if (isLoading) return <PageContainer><Skeleton className="h-96 w-full rounded-card" /></PageContainer>
-  if (isError) return <PageContainer><ErrorState onRetry={() => refetch()} /></PageContainer>
+  if (follows.isPending && hl.isPending) return <PageLayout mode="document"><div className="flex flex-col"><SummaryStripSkeleton /><Skeleton className="h-[640px] w-full rounded-card" /></div></PageLayout>
+  if (follows.isError && hl.isError) return <PageLayout mode="document"><ErrorState message="수출입 통계를 불러오지 못했습니다." onRetry={() => { void follows.refetch(); void hl.refetch() }} /></PageLayout>
+  if (follows.data && !follows.data.length) return <PageLayout mode="document"><Card><CardContent className="space-y-3 py-10 text-center">
+    <EmptyState message="아직 팔로우하는 수출 품목이 없습니다." />
+    <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>{seed.isPending ? "불러오는 중…" : "기본 품목 팔로우"}</Button>
+  </CardContent></Card></PageLayout>
 
-  const effective = selected ?? ranked[0]?.hs_code ?? null
-  const period = follows.find((f) => f.latest_period)?.latest_period
-  const surge = follows.filter((f) => f.flag === "surge").length
-  const plunge = follows.filter((f) => f.flag === "plunge").length
-
-  return (
-    <PageContainer>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="text-xl font-bold">수출입</h2>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          관세청 품목별 무역통계{period && ` · ${period} 기준`} · 팔로우 {follows.length}
-          {follows.length > 0 && <> · <span className="text-up">급등 {surge}</span> · <span className="text-down">급감 {plunge}</span></>}
-        </span>
+  return <PageLayout mode="document">
+    <div className="flex flex-col">
+      {hl.data ? <TradeSummary d={hl.data} /> : hl.isError ? <BlockError message="수출 요약을 불러오지 못했습니다" error={hl.error} onRetry={() => void hl.refetch()} /> : <SummaryStripSkeleton />}
+      <TradeGrid follows={follows.data ?? []} loading={follows.isPending} error={follows.isError} onRetry={() => void follows.refetch()}
+        sort={parseTradeGridSort(params.get("trade_sort"))} onSort={v => setParam("trade_sort", v === "value" ? null : v)} onPick={v => setParam("hs", v)} />
+      <div className="surface-grid grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+        <SurgeTable q={hl} onMonth={v => setParam("month", v)} onPick={v => setParam("hs", v)} />
+        <IndustryTable q={hl} />
       </div>
-
-      <div className="surface-grid grid grid-cols-1 md:grid-cols-[260px_1fr] items-start">
-        <Card className="md:sticky md:top-16 py-0">
-          <CardContent className="p-2 space-y-2">
-            {follows.length === 0 ? (
-              <div className="p-3 space-y-3">
-                <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 품목 세트를 불러오세요.</p>
-                <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
-                  {seed.isPending ? "불러오는 중…" : "기본 품목 팔로우"}
-                </Button>
-              </div>
-            ) : <>
-              <ToggleGroup type="single" size="sm" variant="outline" value={sort} className="w-full"
-                onValueChange={(v) => v && setParam("trade_sort", v === "contribution" ? null : v)}>
-                <ToggleGroupItem value="contribution" className="flex-1 text-xs">이번 달 기여도</ToggleGroupItem>
-                <ToggleGroupItem value="group" className="flex-1 text-xs">분류별</ToggleGroupItem>
-              </ToggleGroup>
-              <div className="max-h-[45vh] md:max-h-[70vh] overflow-y-auto">
-                {sort === "contribution"
-                  ? <div className="space-y-0.5">{ranked.map((f) => <RailItem key={f.hs_code} f={f} follows={follows} active={f.hs_code === effective} onPick={(hs) => setParam("hs", hs)} />)}</div>
-                  : <GroupRail follows={follows} effective={effective} onPick={(hs) => setParam("hs", hs)} />}
-              </div>
-            </>}
-          </CardContent>
-        </Card>
-
-        <div className="min-w-0">
-          {effective
-            ? <TradeDetail key={effective} hs={effective} />
-            : <Card><CardContent className="py-16"><EmptyState message="품목을 선택하세요." /></CardContent></Card>}
-        </div>
-      </div>
-    </PageContainer>
-  )
-}
-
-/** 이번 달 기여도 내림차순 — 판정 있는 품목이 같은 기여도면 앞, 기여도 없음은 뒤 */
-function rankByContribution(follows: TradeFollowRow[]): TradeFollowRow[] {
-  const flagged = (f: TradeFollowRow) => (f.flag && f.flag !== "none" ? 1 : 0)
-  return [...follows].sort((a, b) => (b.contribution ?? -1) - (a.contribution ?? -1) || flagged(b) - flagged(a))
-}
-
-function RailItem({ f, follows, active, onPick }: { f: TradeFollowRow; follows: TradeFollowRow[]; active: boolean; onPick: (hs: string) => void }) {
-  const parent = f.nested_in ? follows.find((x) => x.hs_code === f.nested_in)?.item_name ?? f.nested_in : null
-  return (
-    <Button variant="ghost" onClick={() => onPick(f.hs_code)}
-      className={cn("h-auto w-full justify-start gap-2 px-2 py-1.5 text-left font-normal", active && "bg-accent text-accent-foreground")}>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm">{f.item_name}</span>
-          <TradeFlagBadge flag={f.flag} reason={f.reason} contribution={f.contribution} nestedIn={parent} />
-        </div>
-        <div className="text-[10px] text-muted-foreground tabular-nums">
-          {usdB(f.latest_export)}
-          {f.yoy_pct != null && <span className={f.yoy_pct >= 0 ? "text-up" : "text-down"}> {formatPercent(f.yoy_pct)}</span>}
-          {parent && <span> · {parent}의 세목</span>}
-        </div>
-      </div>
-    </Button>
-  )
-}
-
-/** 분류별 보기 — 분류는 최상위 품목 금액 합이 큰 순(하위 세목은 합에서 제외) */
-function GroupRail({ follows, effective, onPick }: { follows: TradeFollowRow[]; effective: string | null; onPick: (hs: string) => void }) {
-  const groups = useMemo(() => {
-    const m = new Map<string, { rows: TradeFollowRow[]; value: number }>()
-    for (const f of follows) {
-      const g = f.group_label ?? "기타"
-      const e = m.get(g) ?? m.set(g, { rows: [], value: 0 }).get(g)!
-      e.rows.push(f)
-      if (!f.nested_in) e.value += f.latest_export ?? 0
-    }
-    return [...m.entries()].sort((a, b) => b[1].value - a[1].value)
-  }, [follows])
-  return (
-    <div className="space-y-1">
-      {groups.map(([g, e]) => (
-        <Collapsible key={g} defaultOpen>
-          <CollapsibleTrigger className="flex w-full items-center gap-1 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground">
-            <ChevronRight className="h-3 w-3 transition-transform data-[state=open]:rotate-90" /> {g}
-            <span className="ml-auto tabular-nums">{usdB(e.value)}</span>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pl-1">
-            {e.rows.map((f) => <RailItem key={f.hs_code} f={f} follows={follows} active={f.hs_code === effective} onPick={onPick} />)}
-          </CollapsibleContent>
-        </Collapsible>
-      ))}
     </div>
-  )
+    <DetailSheet hs={hs} name={follows.data?.find(f => f.hs_code === hs)?.item_name ?? null} onClose={() => setParam("hs", null)} />
+  </PageLayout>
+}
+
+function TradeSummary({ d }: { d: TradeHighlights }) {
+  const top = d.surge[0]
+  const lag = tradeIsLagging(d.period)
+  return <SummaryStrip label="trade" cells={[
+    { label: "수출 총액", value: formatUsd(d.total_usd), sub: <>{monthLabel(d.period)}{lag && <Badge variant="outline" className="ml-1.5 h-4 border-chart-warning/50 px-1 text-[10px] font-normal text-chart-warning">{+(d.period ?? "0000-00").slice(5, 7)}월 기준</Badge>}</> },
+    { label: "평소보다 크게 늘어난 품목", value: formatNumber(d.surge.length), sub: "전년 대비 z ≥ 2" },
+    { label: "크게 줄어든 품목", value: formatNumber(d.plunge.length) },
+    { label: "기여 1위", value: <span className="font-sans text-xl">{top?.item_name ?? "-"}</span>, sub: top?.contribution != null ? `증가분의 ${formatRatio(top.contribution * 100)}` : undefined },
+  ]} />
+}
+
+/** 내 종목(관심 묶음 국내 종목)과 이어진 품목 — 종목 → 품목 역링크를 종목마다 읽는다. 정렬이 '내 종목 관련'일 때만 */
+function useMineHs(enabled: boolean): Set<string> {
+  const watch = useDefaultWatchGroup()
+  const codes = enabled ? (watch.data?.members ?? []).map(m => m.stock_code).filter(c => /^\d{6}$/.test(c)) : []
+  const qs = useQueries({ queries: codes.map(c => apiQuery<TradeStockItem[]>({ key: ["spine", "trade", "by-stock", c], url: `/api/spine/trade/by-stock/${c}`, staleTime: STALE.long })) })
+  const key = qs.map(q => q.data?.map(i => i.hs_code).join(",") ?? "").join("|")
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- key가 결과 내용을 대표한다
+  return useMemo(() => new Set(qs.flatMap(q => q.data?.map(i => i.hs_code) ?? [])), [key])
+}
+
+function TradeGrid({ follows, loading, error, onRetry, sort, onSort, onPick }: {
+  follows: TradeFollowRow[]; loading: boolean; error: boolean; onRetry: () => void
+  sort: TradeGridSort; onSort: (v: TradeGridSort) => void; onPick: (hs: string) => void
+}) {
+  const mine = useMineHs(sort === "mine")
+  const items = rankTradeGrid(follows, sort, mine)
+  return <HomeBlock label="trade.grid" title={<>주요 품목 한눈에 <span className="ml-1 text-xs font-normal text-muted-foreground">수출액 상위 {items.length || 12}</span></>}
+    info="칸마다 최근 36개월 월별 수출 막대와 12개월 평균 선입니다. 품목마다 규모가 달라 세로축이 다릅니다 — 비교는 전년 대비 숫자로 보세요."
+    actions={<ToggleGroup type="single" value={sort} onValueChange={v => { if (v) onSort(v as TradeGridSort) }} variant="outline" size="sm" aria-label="정렬">
+      <ToggleGroupItem value="value" className="px-2.5 text-xs">수출액 순</ToggleGroupItem>
+      <ToggleGroupItem value="surge" className="px-2.5 text-xs">급등 먼저</ToggleGroupItem>
+      <ToggleGroupItem value="mine" className="px-2.5 text-xs">내 종목 관련</ToggleGroupItem>
+    </ToggleGroup>} bodyClassName="p-0">
+    {loading ? <div className="p-3"><RowsSkeleton rows={8} /></div>
+      : error ? <div className="p-3"><BlockError message="품목 목록을 불러오지 못했습니다" onRetry={onRetry} /></div>
+      : <>
+        {sort === "mine" && !items.some(i => mine.has(i.hs_code)) && <p role="status" className="border-b px-3 py-2 text-sm text-muted-foreground">내 종목과 이어진 품목이 아직 없습니다. 수출액 순으로 보입니다.</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 [&>*]:border-b sm:[&>*]:border-r">
+          {items.map(f => <TradeCell key={f.hs_code} f={f} mine={mine.has(f.hs_code)} onPick={onPick} />)}
+        </div>
+      </>}
+  </HomeBlock>
+}
+
+function TradeCell({ f, mine, onPick }: { f: TradeFollowRow; mine: boolean; onPick: (hs: string) => void }) {
+  const q = useQuery(detailQuery(f.hs_code))
+  const surge = f.flag === "surge" || f.flag === "new"
+  const data = useMemo(() => {
+    const s = (q.data?.series ?? []).slice(-47)
+    const ma = movingAverage(s.map(p => p.export_usd))
+    return s.map((p, i) => ({ period: p.period, v: p.export_usd, ma: ma[i] })).slice(-36)
+  }, [q.data])
+  const bene = (q.data?.beneficiaries ?? []).filter(b => b.rel === "수혜").slice(0, 2)
+  return <Button variant="ghost" onClick={() => onPick(f.hs_code)} data-trade-cell aria-label={`${f.item_name} 상세`}
+    className="block h-auto w-full whitespace-normal rounded-none p-3 text-left font-normal">
+    <span className="flex items-center gap-1.5">
+      <span className="min-w-0 truncate text-[13px] font-semibold">{f.item_name}</span>
+      {surge && <Badge variant="outline" className="h-4 shrink-0 border-up/40 px-1 text-[10px] font-normal text-up">급등</Badge>}
+      {mine && <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px] font-normal">내 종목</Badge>}
+      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{f.group_label ?? ""}</span>
+    </span>
+    <span className="mt-1 flex items-baseline gap-2 font-mono tabular-nums">
+      <span className="text-base font-semibold">{f.latest_export == null ? "-" : formatUsd(f.latest_export)}</span>
+      <span className="font-sans text-xs text-muted-foreground">전년 대비</span>
+      <span className={cn("text-xs", tone(f.yoy_pct))}>{formatPercent(f.yoy_pct)}</span>
+    </span>
+    <span className="mt-1 block h-[92px]">
+      {q.isPending ? <Skeleton className="h-full w-full" />
+        : q.isError ? <span className="flex h-full items-center justify-center text-xs text-muted-foreground">추이를 불러오지 못했습니다</span>
+        : <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+            <XAxis dataKey="period" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} interval={0}
+              tickFormatter={(p: string) => p.endsWith("-01") ? `${p.slice(2, 4)}.01` : ""} />
+            <YAxis hide domain={[0, "auto"]} />
+            <Bar dataKey="v" isAnimationActive={false}>
+              {data.map((p, i) => <Cell key={p.period} fill={i === data.length - 1 ? (surge ? "var(--color-up)" : "var(--foreground)") : "var(--color-chart-gray)"} fillOpacity={i === data.length - 1 ? 1 : 0.55} />)}
+            </Bar>
+            <Line dataKey="ma" stroke="var(--foreground)" strokeWidth={1.25} dot={false} isAnimationActive={false} connectNulls={false} />
+          </ComposedChart>
+        </ResponsiveContainer>}
+    </span>
+    {bene.length > 0 && <span className="mt-1 block truncate text-[11px] text-muted-foreground">수혜 {bene.map(b => b.name).join(" · ")}</span>}
+  </Button>
+}
+
+function MonthNav({ d, onMonth }: { d: TradeHighlights; onMonth: (v: string | null) => void }) {
+  const i = d.period ? d.periods.indexOf(d.period) : -1   // periods는 최신이 앞
+  const go = (j: number) => onMonth(j <= 0 ? null : d.periods[j])
+  return <span className="flex items-center gap-1">
+    <Button variant="outline" size="icon-xs" aria-label="이전 달" disabled={i < 0 || i >= d.periods.length - 1} onClick={() => go(i + 1)}><ChevronLeft className="size-3.5" /></Button>
+    <span className="min-w-20 text-center text-xs font-medium tabular-nums">{monthLabel(d.period)}</span>
+    <Button variant="outline" size="icon-xs" aria-label="다음 달" disabled={i <= 0} onClick={() => go(i - 1)}><ChevronRight className="size-3.5" /></Button>
+  </span>
+}
+
+type HlQuery = ReturnType<typeof useTradeHighlights>
+
+function SurgeTable({ q, onMonth, onPick }: { q: HlQuery; onMonth: (v: string | null) => void; onPick: (hs: string) => void }) {
+  const d = q.data
+  const mobile = useIsMobile()
+  return <HomeBlock label="trade.surge" title="평소보다 크게 늘어난 품목"
+    info="품목별 과거 변동 폭에 비해 전년 대비 증가가 이례적인(z ≥ 2, 1천만 달러 이상) 품목을 증가분 기여 순으로 고릅니다."
+    actions={d ? <MonthNav d={d} onMonth={onMonth} /> : null} bodyClassName="p-0">
+    {!d ? (q.isError ? <div className="p-3"><BlockError message="품목 판정을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /></div> : <div className="p-3"><RowsSkeleton rows={8} /></div>)
+      : !d.surge.length ? <p role="status" className="p-3 text-sm text-muted-foreground">{monthLabel(d.period)}에는 평소보다 크게 늘어난 품목이 없습니다.</p>
+      : <Table className="text-[13px]">
+        <TableHeader><TableRow>
+          <TableHead className="h-8 pl-3 text-[11px]">품목</TableHead>
+          <TableHead className="h-8 text-right text-[11px]">수출액</TableHead>
+          <TableHead className="h-8 text-right text-[11px]">전년 대비</TableHead>
+          {!mobile && <TableHead className="h-8 text-right text-[11px]">전월 대비</TableHead>}
+          {!mobile && <TableHead className="h-8 text-right text-[11px]">3개월 전년 대비</TableHead>}
+          <TableHead className="h-8 pr-3 text-right text-[11px]">증가분 기여</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>{d.surge.slice(0, 12).map(r => <TableRow key={r.hs_code} className="cursor-pointer" onClick={() => onPick(r.hs_code)}>
+          <TableCell className="max-w-56 whitespace-normal py-2 pl-3">{r.item_name}
+            <span className="block text-[11px] text-muted-foreground">{r.group_label ?? "미분류"} · HS {r.hs_code}</span></TableCell>
+          <TableCell className="py-2 text-right font-mono tabular-nums">{r.value == null ? "-" : formatUsd(r.value)}</TableCell>
+          <TableCell className={cn("py-2 text-right font-mono tabular-nums", tone(r.yoy))}>{pct(r.yoy)}</TableCell>
+          {!mobile && <TableCell className={cn("py-2 text-right font-mono tabular-nums", tone(r.mom))}>{pct(r.mom)}</TableCell>}
+          {!mobile && <TableCell className={cn("py-2 text-right font-mono tabular-nums", tone(r.yoy3m))}>{pct(r.yoy3m)}</TableCell>}
+          <TableCell className="py-2 pr-3 text-right font-mono tabular-nums">{formatRatio(r.contribution == null ? null : r.contribution * 100)}</TableCell>
+        </TableRow>)}</TableBody>
+      </Table>}
+  </HomeBlock>
+}
+
+function IndustryTable({ q }: { q: HlQuery }) {
+  const d = q.data
+  return <HomeBlock label="trade.groups" title={<>산업별 수출 {d && <span className="ml-1 text-xs font-normal text-muted-foreground">{d.groups.length}개 산업</span>}</>} bodyClassName="p-0">
+    {!d ? (q.isError ? <div className="p-3"><BlockError message="산업별 수출을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /></div> : <div className="p-3"><RowsSkeleton rows={8} /></div>)
+      : <Table className="text-[13px]">
+        <TableHeader><TableRow>
+          <TableHead className="h-8 pl-3 text-[11px]">산업</TableHead><TableHead className="h-8 text-right text-[11px]">수출액</TableHead>
+          <TableHead className="h-8 text-right text-[11px]">비중</TableHead><TableHead className="h-8 text-right text-[11px] max-sm:hidden">품목</TableHead>
+          <TableHead className="h-8 text-right text-[11px]">급등</TableHead><TableHead className="h-8 pr-3 text-right text-[11px]">급감</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>{d.groups.map(g => <TableRow key={g.group_label}>
+          <TableCell className="py-2 pl-3">{g.group_label}</TableCell>
+          <TableCell className="py-2 text-right font-mono tabular-nums">{formatUsd(g.value)}</TableCell>
+          <TableCell className="py-2 text-right font-mono tabular-nums">{formatRatio(d.total_usd ? g.value / d.total_usd * 100 : null)}</TableCell>
+          <TableCell className="py-2 text-right font-mono tabular-nums max-sm:hidden">{g.count}</TableCell>
+          <TableCell className={cn("py-2 text-right font-mono tabular-nums", g.surge ? "text-up" : "text-muted-foreground")}>{g.surge || "-"}</TableCell>
+          <TableCell className={cn("py-2 pr-3 text-right font-mono tabular-nums", g.plunge ? "text-down" : "text-muted-foreground")}>{g.plunge || "-"}</TableCell>
+        </TableRow>)}</TableBody>
+      </Table>}
+  </HomeBlock>
+}
+
+/** 품목 상세 — 옛 화면의 오른쪽(수출입 추이 + 관련 종목)을 시트로. 모바일은 아래에서 올라온다(§4.29) */
+function DetailSheet({ hs, name, onClose }: { hs: string | null; name: string | null; onClose: () => void }) {
+  const mobile = useIsMobile()
+  return <Sheet open={!!hs} onOpenChange={v => { if (!v) onClose() }}>
+    <SheetContent side={mobile ? "bottom" : "right"} className={cn("overflow-y-auto", mobile ? "max-h-[85dvh]" : "w-full sm:max-w-2xl")}>
+      <SheetHeader className="pb-0"><SheetTitle>{name ?? "품목 상세"}</SheetTitle><SheetDescription className="sr-only">월별 수출입 추이와 관련 종목</SheetDescription></SheetHeader>
+      <div className="px-4 pb-4">{hs && <TradeDetail key={hs} hs={hs} />}</div>
+    </SheetContent>
+  </Sheet>
 }
 
 function TradeDetail({ hs }: { hs: string }) {

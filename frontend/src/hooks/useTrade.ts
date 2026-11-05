@@ -6,8 +6,9 @@ import type { TradeFollowRow, TradeHighlights, TradeStockItem } from "@/types"
 export function useTradeFollows() {
   return useQuery(apiQuery<TradeFollowRow[]>({ key: ["spine", "trade", "follow"], url: "/api/spine/trade/follow", staleTime: STALE.medium }))
 }
-export function useTradeHighlights(limit = 5) {
-  return useQuery(apiQuery<TradeHighlights>({ key: ["spine", "trade", "highlights", limit], url: `/api/spine/trade/highlights?limit=${limit}`, staleTime: STALE.long }))
+export function useTradeHighlights(limit = 5, period?: string | null) {
+  return useQuery(apiQuery<TradeHighlights>({ key: ["spine", "trade", "highlights", limit, period ?? "latest"],
+    url: `/api/spine/trade/highlights?limit=${limit}${period ? `&period=${encodeURIComponent(period)}` : ""}`, staleTime: STALE.long }))
 }
 /** 종목 → 품목 역링크 (trade_beneficiaries를 거꾸로) */
 export function useTradeByStock(stockCode: string) {
