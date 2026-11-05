@@ -118,7 +118,8 @@ export default function DocPage() {
         {digest.isError && <p role="alert" className="mt-2 text-destructive">생성 요청을 보내지 못했습니다. 다시 시도해 주세요.</p>}
       </div>}
       {/* 본문에서 문장을 고르면 공통 선택 팔레트 (canvas.md §2) */}
-      <div ref={bodyRef}><DocumentBody doc={doc} reading={reading} /></div>
+      {/* 읽기 폭 720(시안 Doc) — 카드는 넓어도 본문 줄 길이는 이 폭에서 멈춘다 */}
+      <div ref={bodyRef} className="max-w-[720px]"><DocumentBody doc={doc} reading={reading} /></div>
       <div className="mt-6 flex justify-end border-t pt-4 max-md:hidden"><CopyDocButton doc={doc} /></div>
       <SelectionPalette containerRef={bodyRef} actions={[
         { key: 'explain', label: '설명', Icon: BookOpen, onSelect: sel => askAboutText(sel, source, 'explain') },

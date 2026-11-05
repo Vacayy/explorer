@@ -19,13 +19,13 @@ export function DocRelated({ docId }: { docId: number }) {
   const building = claims.isLoading || status === 'none' || status === 'running'
   if (!claims.isError && !related.isError && !building && status !== 'failed' && groups.length === 0 && similar.length === 0) return null
   return (
-    <Card>
-      <CardContent className="space-y-5 py-3">
+    <Card className="gap-3 rounded-[var(--radius-card)] p-4 shadow-none">
+      <CardContent className="space-y-5 px-0">
         {claims.isError && <ErrorState error={claims.error} onRetry={() => void claims.refetch()} retrying={claims.isFetching} />}
         {related.isError && <ErrorState error={related.error} onRetry={() => void related.refetch()} retrying={related.isFetching} />}
         {(building || status === 'failed' || groups.length > 0) && (
           <section aria-live="polite">
-            <h2 className="mb-2 text-caption text-muted-foreground">이 자료의 논점별 관련 자료</h2>
+            <h2 className="mb-1 text-[15px] leading-[1.4] font-semibold">이 자료의 논점별 관련 자료</h2>
             {building && (
               <div className="space-y-2">
                 <p className="text-caption text-muted-foreground">논점을 정리하고 관련 자료를 찾는 중입니다. 아래 유사도 기반 자료는 먼저 볼 수 있습니다.</p>
@@ -39,14 +39,8 @@ export function DocRelated({ docId }: { docId: number }) {
               </div>
             )}
             {status === 'ok' && groups.length === 0 && <p className="text-caption text-muted-foreground">이 자료의 논점과 충분히 맞닿은 다른 자료를 아직 찾지 못했습니다.</p>}
-            <div className="space-y-4">
-              {groups.map((g) => (
-                <div key={g.claim}>
-                  <p className="mb-1.5 text-sm font-medium">‘{g.claim}’는 논점</p>
-                  <ul className="space-y-2 border-l pl-3">{g.related.map((r) => <ClaimRow key={r.id} r={r} />)}</ul>
-                </div>
-              ))}
-            </div>
+            {/* 시안 Doc: 한 줄 = 논점(회색) · 자료 제목 · 인용 | 소스 배지 */}
+            <ul>{groups.flatMap((g) => g.related.map((r) => <ClaimRow key={`${g.claim}-${r.id}`} claim={g.claim} r={r} />))}</ul>
           </section>
         )}
         {similar.length > 0 && (
@@ -69,16 +63,15 @@ function Meta({ channel, published_at }: { channel: string | null; published_at:
   )
 }
 
-function ClaimRow({ r }: { r: ClaimRelated }) {
+function ClaimRow({ claim, r }: { claim: string; r: ClaimRelated }) {
   return (
-    <li className="text-xs">
-      {/* 폰: 제목을 한 줄 전체로 올리고 소스 배지·출처는 그 아래 */}
-      <div className="flex items-center gap-2 max-md:flex-wrap max-md:gap-y-1">
-        <SourceBadge sourceType={r.source_type} />
-        <Link to={`/doc/${r.id}`} className="min-w-0 truncate hover:underline max-md:order-first max-md:basis-full max-md:whitespace-normal max-md:line-clamp-2">{r.title || '(제목 없음)'}</Link>
-        <Meta channel={r.channel} published_at={r.published_at} />
+    <li className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 border-t py-2.5 first:border-t-0">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-xs text-ink-3">‘{claim}’ 논점</span>
+        <Link to={`/doc/${r.id}`} className="text-[13.5px] hover:underline">{r.title || '(제목 없음)'}</Link>
+        {r.quote && <span className="line-clamp-2 text-[12.5px] text-ink-2">“{r.quote}”</span>}
       </div>
-      {r.quote && <p className="mt-1 line-clamp-2 text-muted-foreground">“{r.quote}”</p>}
+      <span className="flex flex-col items-end gap-1"><SourceBadge sourceType={r.source_type} /><span className="text-[11px] text-ink-3 tabular-nums">{(r.published_at || '').slice(0, 10)}</span></span>
     </li>
   )
 }
