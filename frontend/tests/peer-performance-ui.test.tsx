@@ -53,7 +53,7 @@ it('keeps chart and table on the same window when the period changes, defaulting
   expect(url()).toContain('days=5')
   // 선택한 종목만 굵게
   const lines = JSON.parse(screen.getByLabelText('차트 데이터').getAttribute('data-lines')!) as [string, number][]
-  expect(lines.find(([key]) => key === 'stock_425420')?.[1]).toBe(3)
+  expect(lines.find(([key]) => key === 'stock_425420')?.[1]).toBe(2)
   expect(lines.filter(([key]) => key.startsWith('stock_') && key !== 'stock_425420').every(([, width]) => width === 1)).toBe(true)
 })
 
