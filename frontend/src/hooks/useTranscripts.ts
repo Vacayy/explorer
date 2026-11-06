@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiQuery, postJson, STALE } from "@/api/query"
+import { ApiError, apiQuery, getJson, postJson, STALE } from "@/api/query"
 import { track } from "@/lib/usage"
-import type { CallMomentum, CallReaction, ChainDetail, Expectation, KrSeasonOverview, RecentCall, SectorDetail, SeasonOverview, TranscriptCheck } from "@/types"
+import type { CallMomentum, CallReaction, ChainDetail, Expectation, KrSeasonOverview, RecentCall, SectorDetail, SeasonOverview, TranscriptCheck, UpcomingChain } from "@/types"
 
 /** 실적 발언 모멘텀 — 컨콜 탭·모멘텀 띠·위젯 공용 (읽기 전용 GET, 판정은 매일 07:20) */
 export function useCallMomentum() {
@@ -63,6 +63,23 @@ export function useSeasonSector(key: string, season?: string | null) {
 /** 콜 상세의 체인 — 발표 전 기대·반응 구조화·시계열·분기별 기록 */
 export function useChain(transcriptId: number) {
   return useQuery(apiQuery<ChainDetail>({ key: ["spine", "transcript", "chain", transcriptId], url: `/api/spine/transcript/chain/${transcriptId}`, staleTime: STALE.short }))
+}
+
+/** 다가오는 분기(녹취록 전) — 없으면(404) null. 404는 '없음'이라 오류 알림을 띄우지 않는다 */
+export function useUpcoming(ticker: string | null | undefined) {
+  return useQuery({
+    queryKey: ["spine", "transcript", "upcoming", ticker],
+    queryFn: async ({ signal }) => {
+      try {
+        return await getJson<UpcomingChain>(`/api/spine/transcript/chain/upcoming/${ticker}`, undefined, { signal })
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null
+        throw e
+      }
+    },
+    staleTime: STALE.short,
+    enabled: !!ticker,
+  })
 }
 
 /** 핵심 종목 직접 고정/해제 — 핵심이면 발표 전 기대·반응 정리가 자동으로 돈다 */

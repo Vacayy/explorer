@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from database import get_connection
 from pipeline.transcript import cy_label
-from models.earnings_chain import ChainDetail
+from models.earnings_chain import ChainDetail, UpcomingChain
 from models.earnings_season import SeasonOverview
 from models.kr_season import KrSeasonOverview
 
@@ -43,6 +43,7 @@ class FollowRow(BaseModel):
     latest_results_date: str | None = None   # 가장 최근 '본 실적'(컨콜 또는 실적 수치가 있는 보도자료) 날짜
     season_updated: bool = False          # 이번 실적 시즌에 실적이 나왔나(목록 태그)
     ko_names: list[str] = []              # 한글 별칭(entity_keywords, D-276) — 레일 검색용
+    upcoming_expectation: bool = False    # 다가오는 발표(녹취록 전)에 발표 전 기대 정리가 있나 — 레일에서 그 분기를 먼저 연다
 
 
 class QuarterRow(BaseModel):
@@ -97,6 +98,16 @@ def list_follow():
         results[r["ticker"]] = r["d"]
     cal = {r["ticker"]: r for r in conn.execute(
         "SELECT ticker, last_report_date, next_report_date, checked_at FROM transcript_calendar").fetchall()}
+    from pipeline.earnings_chain import next_event
+    today = _date.today().isoformat()
+    with_exp = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM earnings_expectations x JOIN earnings_events e USING (ticker, fiscal_year, fiscal_period) "
+                                            "WHERE e.event_date >= ?", (today,))}
+    upcoming_exp = set()
+    for tk in with_exp:   # 그 기대가 '가장 가까운 아직 안 한 발표'의 것인지
+        ev = next_event(conn, tk, today)
+        if ev and conn.execute("SELECT 1 FROM earnings_expectations WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
+                               (tk, ev["fiscal_year"], ev["fiscal_period"])).fetchone():
+            upcoming_exp.add(tk)
     out = []
     for r in rows:
         calls = conn.execute(
@@ -121,7 +132,8 @@ def list_follow():
                              category=(industry_label(r["sic"]) or "기타") if r["group_label"] == "NDX" else r["group_label"],
                              latest_results_date=latest_results,
                              season_updated=bool(latest_results and latest_results >= season_start),
-                             ko_names=ko.get(r["entity_id"], [])))
+                             ko_names=ko.get(r["entity_id"], []),
+                             upcoming_expectation=r["ticker"] in upcoming_exp))
     conn.close()
     return out
 
@@ -259,6 +271,16 @@ def season_sector(key: str, season: str | None = None):
     """섹터 상세 — 발표일 정렬 반응 경로·종목별·섹터 요약 이력·지난 시즌 비교. LLM 0."""
     from pipeline.earnings_chain import sector_detail
     return sector_detail(key, season)
+
+
+@router.get("/chain/upcoming/{ticker}", response_model=UpcomingChain)
+def chain_upcoming(ticker: str):
+    """콜 상세의 다가오는 분기 — 발표 전 기대·오늘까지의 주가·최근 30일 목표가 변경·분기별 기록. 저장된 행만 읽는다(LLM 0). 없으면 404."""
+    from pipeline.earnings_chain import upcoming_detail
+    try:
+        return upcoming_detail(ticker.upper())
+    except LookupError as e:
+        raise HTTPException(404, str(e))
 
 
 @router.get("/chain/{transcript_id}", response_model=ChainDetail)

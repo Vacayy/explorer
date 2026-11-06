@@ -17,7 +17,7 @@ import { usePinCore, useSeason } from "@/hooks/useTranscripts"
 import { formatPercent } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import { Bullets, Cols, DqHead, DqValue, Meta, Pp, SHORT_REASON, Section, VERDICT, VERDICT_CLS, WEIGHT, mmdd } from "@/components/follow/season/seasonUi"
-import type { ChainDetail, ExpectationIssue, ReactionGrade } from "@/types"
+import type { ChainDetail, ExpectationIssue, ReactionGrade, UpcomingChain } from "@/types"
 
 const TOOLTIP_STYLE = { fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }
 const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" }
@@ -65,12 +65,15 @@ const MONO_TICK_LG = { ...MONO_TICK, fontSize: 13 }
 const dLabel = (n: number) => (n === 0 ? "D" : n > 0 ? `D+${n}` : `D${n}`)
 const signedPct = (v: number) => `${v > 0 ? "+" : ""}${v}%`
 
-export function CallWindowChart({ chain, compact = false }: { chain: ChainDetail; compact?: boolean }) {
+/** upcoming = 다가오는 발표 — 시세는 오늘(최근 종가)까지, 축은 발표일(0)까지 늘려 발표 표시가 앞쪽에 선다 */
+export function CallWindowChart({ chain, compact = false, upcoming = false }: { chain: ChainDetail; compact?: boolean; upcoming?: boolean }) {
   const hi = compact ? 4 : 3
-  const rows = chain.series.filter((s) => s.offset >= -6 && s.offset <= hi)
-  if (rows.length < 2) return <Meta>발표 전후 시세가 아직 없습니다.</Meta>
+  const lastOff = chain.series.at(-1)?.offset ?? 0
+  const rows = upcoming ? chain.series.filter((s) => s.offset >= Math.min(-6, lastOff - 9))
+    : chain.series.filter((s) => s.offset >= -6 && s.offset <= hi)
+  if (rows.length < 2) return <Meta>{upcoming ? "발표 전 시세가 아직 없습니다." : "발표 전후 시세가 아직 없습니다."}</Meta>
   const last = rows[rows.length - 1]
-  const lo = rows[0].offset, end = last.offset
+  const lo = rows[0].offset, end = upcoming ? 0 : last.offset
   const span = Math.max(...rows.flatMap((r) => [r.ret, r.bench])) - Math.min(...rows.flatMap((r) => [r.ret, r.bench])) || 1
   const close = Math.abs(last.ret - last.bench) < span * 0.08
   // 선 끝 라벨 — 데스크톱은 끝 점 오른쪽 이름만, 폰은 끝 점 위·아래 '이름 값'(낮은 선은 아래)
@@ -83,7 +86,7 @@ export function CallWindowChart({ chain, compact = false }: { chain: ChainDetail
     const fill = isRet ? "var(--ink)" : "var(--ink-3)"
     if (compact) {
       return <text x={x} y={below ? y + 14 : y - 6} textAnchor="end" fontSize={10.5} fill={fill} fontFamily="var(--font-mono)">
-        {name} {formatPercent(isRet ? last.ret : last.bench)}</text>
+        {name}{upcoming ? "" : ` ${formatPercent(isRet ? last.ret : last.bench)}`}</text>
     }
     const dy = close ? (below ? 8 : -8) : 0
     return <text x={x + 8} y={y + 5 + dy} fontSize={13} fill={fill} fontWeight={isRet ? 600 : 400} fontFamily="var(--font-mono)">{name}</text>
@@ -93,7 +96,7 @@ export function CallWindowChart({ chain, compact = false }: { chain: ChainDetail
     <ResponsiveContainer width="100%" aspect={compact ? 358 / 150 : 640 / 200}>
       <LineChart data={rows} margin={compact ? { top: 8, right: 12, bottom: 0, left: 0 } : { top: 22, right: 76, bottom: 0, left: 0 }}>
         {!compact && <CartesianGrid stroke="var(--grid)" vertical={false} />}
-        <XAxis type="number" dataKey="offset" domain={[lo, end]} ticks={[lo, 0, end]} tickFormatter={dLabel} tick={compact ? MONO_TICK : MONO_TICK_LG}
+        <XAxis type="number" dataKey="offset" domain={[lo, end]} ticks={upcoming ? [lo, 0] : [lo, 0, end]} tickFormatter={dLabel} tick={compact ? MONO_TICK : MONO_TICK_LG}
           axisLine={false} tickLine={false} interval={0} />
         <YAxis tick={compact ? MONO_TICK : MONO_TICK_LG} width={compact ? 26 : 56}
           domain={compact ? [(m: number) => m - span * 0.18, (m: number) => m + span * 0.05] : ["auto", "auto"]} tickCount={5} axisLine={false} tickLine={false}
@@ -103,8 +106,8 @@ export function CallWindowChart({ chain, compact = false }: { chain: ChainDetail
           label={(p: { viewBox?: { x?: number; y?: number } }) => {
             const x = p.viewBox?.x ?? 0, y = p.viewBox?.y ?? 0
             return compact
-              ? <text x={x + 4} y={y + 10} fontSize={10} fill="var(--action)">발표{ev ? ` ${mmdd(ev)}` : ""}</text>
-              : <text x={x} y={y - 7} textAnchor="middle" fontSize={13} fill="var(--ink)" fontFamily="var(--font-mono)">발표</text>
+              ? <text x={upcoming ? x - 4 : x + 4} y={y + 10} textAnchor={upcoming ? "end" : "start"} fontSize={10} fill="var(--action)">발표{ev ? ` ${mmdd(ev)}` : ""}</text>
+              : <text x={x} y={y - 7} textAnchor={upcoming ? "end" : "middle"} fontSize={13} fill="var(--ink)" fontFamily="var(--font-mono)">발표{upcoming && ev ? ` ${mmdd(ev)}` : ""}</text>
           }} />
         <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d) => dLabel(Number(d))} formatter={(v) => formatPercent(Number(v))} />
         <Line dataKey="bench" name={chain.etf} stroke="var(--ink-3)" strokeWidth={compact ? 1.4 : 1.8} strokeDasharray={compact ? "4 3" : "5 4"} dot={false} isAnimationActive={false}
@@ -242,12 +245,7 @@ export function StagesCard({ chain, transcriptId, onMore }: { chain: ChainDetail
   const rm = chain.reaction_meta
   const h = currentHistory(chain, transcriptId)
 
-  const before = ex?.points?.length ? <Dots items={ex.points.slice(0, 2).map(clean)} />
-    : ex?.positioning ? <span>{clean(ex.positioning)}</span>
-    : <>
-      <Meta>발표 전 기대 정리가 없습니다.</Meta>
-      {ex?.quant && <QuantFacts q={ex.quant} />}
-    </>
+  const before = <BeforeBody ex={ex} />
 
   const after: ReactNode[] = []
   if (h?.d1 != null) {
@@ -274,6 +272,52 @@ export function StagesCard({ chain, transcriptId, onMore }: { chain: ChainDetail
         {rm?.react_points?.length ? <Dots items={rm.react_points.slice(0, 2).map(clean)} /> : <Meta>아래 '시장 반응 정리'에서 정리를 만드세요.</Meta>}
       </Cell4>
       <Cell4 step={4} title="그 뒤" onMore={onMore && (() => onMore("after", "그 뒤 · 수익률과 목표가 변경"))}>{after.length ? after : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}</Cell4>
+    </div>
+  )
+}
+
+/** 칸 '발표 전' — 쟁점 요지 두 줄, 없으면 시장 위치, 둘 다 없으면 숫자 */
+function BeforeBody({ ex }: { ex: ChainDetail["expectation"] }) {
+  return ex?.points?.length ? <Dots items={ex.points.slice(0, 2).map(clean)} />
+    : ex?.positioning ? <span>{clean(ex.positioning)}</span>
+    : <>
+      <Meta>발표 전 기대 정리가 없습니다.</Meta>
+      {ex?.quant && <QuantFacts q={ex.quant} />}
+    </>
+}
+
+/* ---------- 다가오는 분기 — 칸 넷 중 '발표 전'만 채우고 나머지는 발표 뒤 ---------- */
+/** 실제 일정: 매일 07:20 회차가 발표 8~5일 전(d7)과 발표 당일 아침(d1)에 만든다(pipeline/earnings_chain.py daily) */
+const SCHEDULE_TIP = "핵심 종목은 시장이 주목하는 쟁점까지, 나머지는 컨센서스·주가·목표가 숫자만 정리합니다. 발표 당일 아침에 한 번 더 갱신합니다."
+export function UpcomingStagesCard({ chain, onMore }: { chain: UpcomingChain; onMore?: StageMore }) {
+  const ex = chain.expectation
+  const later = <Meta>발표 후 채워집니다.</Meta>
+  return (
+    <div className="grid grid-cols-1 items-stretch pr-px pb-px md:grid-cols-2">
+      <Cell4 step={1} title="발표 전" badge={ex && <Badge variant="hyp">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</Badge>}
+        onMore={ex && onMore ? () => onMore("before", "발표 전 시장이 주목한 내용") : undefined}>
+        {ex ? <BeforeBody ex={ex} /> : <span className="inline-flex items-center gap-1 text-ink-2">발표 전 정리는 D-8~D-5 아침에 만들어집니다.
+          <InfoTip label="발표 전 정리 일정">{SCHEDULE_TIP}</InfoTip></span>}
+      </Cell4>
+      <Cell4 step={2} title="컨콜">{later}</Cell4>
+      <Cell4 step={3} title="시장 반응">{later}</Cell4>
+      <Cell4 step={4} title="그 뒤">{later}</Cell4>
+    </div>
+  )
+}
+
+/** 다가오는 분기 '발표 전 · 자세히 보기' — 쟁점과 호재·악재 기준, 숫자로 본 기대, 최근 30일 목표가 변경 */
+export function UpcomingBeforeDetail({ chain }: { chain: UpcomingChain }) {
+  const q = chain.expectation?.quant
+  const pt = chain.pt_before
+  return (
+    <div className="flex flex-col gap-5">
+      <IssuesRow chain={chain} expanded />
+      {q && <div className="flex flex-col gap-2"><h3 className="text-sm font-semibold">숫자로 본 기대</h3><QuantFacts q={q} /></div>}
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">최근 30일 목표가 변경 {pt?.n ?? 0}건{pt && pt.n > 0 ? ` · 올림 ${pt.up} · 내림 ${pt.down}` : ""}</h3>
+        {pt?.changes?.length ? <PtList changes={pt.changes} /> : <Meta>최근 30일 안에 받은 목표가 변경이 없습니다.</Meta>}
+      </div>
     </div>
   )
 }
@@ -431,19 +475,23 @@ export function AfterDetail({ chain, transcriptId }: { chain: ChainDetail; trans
       </div>
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">발표 후 7일 목표가 변경 {pt?.n ?? 0}건{pt && pt.n > 0 ? ` · 올림 ${pt.up} · 내림 ${pt.down}` : ""}</h3>
-        {pt?.changes?.length ? (
-          <ul className="flex flex-col">
-            {pt.changes.map((c, i) => (
-              <li key={i} className="grid grid-cols-[56px_minmax(0,1fr)_auto_64px] items-baseline gap-3 border-b border-line py-2 text-[13px]">
-                <span className="font-mono text-xs text-ink-3">{c.date.slice(5).replace("-", "/")}</span>
-                <span className="truncate">{c.firm}</span>
-                <span className="font-mono tabular-nums text-ink-2">${c.pt_from.toFixed(0)} → ${c.pt_to.toFixed(0)}</span>
-                <span className={cn("text-right font-mono tabular-nums", c.pct > 0 ? "text-up-ink" : c.pct < 0 ? "text-down-ink" : "")}>{formatPercent(c.pct)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <Meta>발표 후 7일 안에 받은 목표가 변경이 없습니다.</Meta>}
+        {pt?.changes?.length ? <PtList changes={pt.changes} /> : <Meta>발표 후 7일 안에 받은 목표가 변경이 없습니다.</Meta>}
       </div>
     </div>
+  )
+}
+
+function PtList({ changes }: { changes: NonNullable<NonNullable<ChainDetail["pt_after"]>["changes"]> }) {
+  return (
+    <ul className="flex flex-col">
+      {changes.map((c, i) => (
+        <li key={i} className="grid grid-cols-[56px_minmax(0,1fr)_auto_64px] items-baseline gap-3 border-b border-line py-2 text-[13px]">
+          <span className="font-mono text-xs text-ink-3">{c.date.slice(5).replace("-", "/")}</span>
+          <span className="truncate">{c.firm}</span>
+          <span className="font-mono tabular-nums text-ink-2">${c.pt_from.toFixed(0)} → ${c.pt_to.toFixed(0)}</span>
+          <span className={cn("text-right font-mono tabular-nums", c.pct > 0 ? "text-up-ink" : c.pct < 0 ? "text-down-ink" : "")}>{formatPercent(c.pct)}</span>
+        </li>
+      ))}
+    </ul>
   )
 }

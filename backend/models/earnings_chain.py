@@ -149,3 +149,13 @@ class ChainDetail(BaseModel):
     mentions: list[MentionDay]
     pt_after: PtWindow | None
     history: list[ChainHistoryRow]
+
+
+class UpcomingChain(ChainDetail):
+    """GET /api/spine/transcript/chain/upcoming/{ticker} — 다가오는 발표(pipeline.earnings_chain.upcoming_detail).
+    반응·언급·발표 후 목표가는 아직 없어 비어 있다. series.offset은 발표일 = 0 기준(모두 음수)."""
+    fiscal_year: int
+    fiscal_period: str
+    confirmed: bool             # True = SEC 실적 공시로 확인한 날짜, False = 예상일(yfinance)
+    days_to_event: int          # 오늘 0
+    pt_before: PtWindow | None  # 최근 30일 목표가 변경
