@@ -23,9 +23,10 @@
 - '전체' 리더(`팔로우한 소스 전체`)는 사람 소스만 보인다(`scope=sources`). Explorer 게시물은 Explorer 묶음에서 본다 — AI 생성물이 타임라인에 섞이지 않게.
 - 리더 머리에 **문서 검색**(`/feed?view=documents`) 진입.
 
-### AI가 최근 만든 것 — 제거
+### AI가 최근 만든 것 — 상단 바로 (D-325)
 
-- 4a에서 피드 화면이 바뀌며 빠졌고, 7단계(2026-11-05)에서 `home/AiActivityFeed`·`useAiActivity`·`GET /api/spine/home/ai-activity`까지 지웠다. Explorer 생성물은 Explorer 묶음에서 본다.
+- 4a에서 피드 화면이 바뀌며 빠졌고, 7단계(2026-11-05)에서 `home/AiActivityFeed`·`useAiActivity`·`GET /api/spine/home/ai-activity`까지 지웠다.
+- 2026-11-06 D-325로 상단 바 아이콘(`layout/AiOutputs`, [app-shell](app-shell.md) §3)으로 되살렸다. 원천은 지운 API를 되살리지 않고 Explorer 묶음과 같은 타임라인(`scope=system`)을 쓴다 — 옛 카드에 있던 유튜브 AI 정리본은 이 원천에 없어 빠진다.
 
 ## 2. 공통 선택 팔레트
 

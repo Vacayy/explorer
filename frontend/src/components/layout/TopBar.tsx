@@ -19,13 +19,14 @@ import { openOmnibar } from "@/lib/omnibar"
 import { formatKstSlashDate } from "@/utils/format"
 import { SECTIONS, locate } from "./navConfig"
 import { ApprovalsInbox, InboxSheet, useApprovalsCount } from "./Inboxes"
+import { AiOutputsButton, AiOutputsRow, AiOutputsSheet, useAiOutputs } from "./AiOutputs"
 import { ShellButton } from "./ShellButton"
 
 interface HealthItem { key: string; label: string; status: string; detail: string; critical?: boolean; latest?: string | null; owner?: string | null }
 const STATUS_LABEL: Record<string, string> = { stale: "지연", error: "오류" }
 
 /**
- * 상단 바 — 로고 · L1 6탭(활성·aria-current 모두 locate 판정 — NavLink는 쿼리를 보지 않아 쓰지 않는다) · 검색 · 운영 상태 점 · 인박스(저장됨은 인박스 안) · 테마·설정 · AI 대화 토글 (docs/specs/app-shell.md §3).
+ * 상단 바 — 로고 · L1 6탭(활성·aria-current 모두 locate 판정 — NavLink는 쿼리를 보지 않아 쓰지 않는다) · 검색 · 운영 상태 점 · 인박스(저장됨은 인박스 안) · AI가 최근 만든 것 · 테마·설정 · AI 대화 토글 (docs/specs/app-shell.md §3).
  * L1 활성은 navConfig.locate 단일 판정. 도시에·대화 등 L1 밖 화면에서는 어느 탭도 활성이 아니다.
  */
 export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: () => void }) {
@@ -66,9 +67,10 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
         </Button>
         <ShellButton icon={Search} label="검색 (⌘K)" onClick={openOmnibar} className="xl:hidden" />
         {/* 폰(<768)은 검색 · AI 두 아이콘만 (ia-redesign §4.29) */}
-        {/* 넓은 화면 오른쪽(D-323, 시안 Shell-Topbar·Home): 상태 점 · 인박스(점) · 테마·설정 · AI */}
+        {/* 넓은 화면 오른쪽(D-323, 시안 Shell-Topbar·Home): 상태 점 · 인박스(점) · AI가 최근 만든 것(점, D-325) · 테마·설정 · AI */}
         <HealthDot />
         <ApprovalsInbox className="max-md:hidden" />
+        <AiOutputsButton className="max-md:hidden" />
         <SettingsMenu />
         <Button variant="secondary" size="sm" aria-pressed={aiOpen} aria-label="AI 대화 (⌘J)" title="AI 대화 (⌘J)" onClick={onToggleAi}
           className="h-8 gap-1.5 rounded-full border-0 px-3 text-ink max-md:size-10 max-md:bg-transparent max-md:px-0 max-md:text-ink-2 max-md:aria-pressed:bg-chip max-md:aria-pressed:text-ink">
@@ -159,11 +161,13 @@ function healthLine(h: HealthItem) {
 }
 
 /**
- * 폰 로고 메뉴(D-322) — 위 바는 검색·AI만 두고, 'Explorer'를 누르면 아래 시트에 인박스 · 저장됨 · 관리자 · 테마.
+ * 폰 로고 메뉴(D-322) — 위 바는 검색·AI만 두고, 'Explorer'를 누르면 아래 시트에 인박스 · AI가 최근 만든 것(D-325) · 저장됨 · 관리자 · 테마.
  */
 function PhoneMenu() {
   const [open, setOpen] = useState(false)
   const [inbox, setInbox] = useState(false)
+  const [outputs, setOutputs] = useState(false)
+  const ai = useAiOutputs()
   const count = useApprovalsCount()
   const saved = useSaved().data?.length ?? 0
   const { theme, setTheme } = useTheme()
@@ -182,6 +186,7 @@ function PhoneMenu() {
               <Inbox className="size-[18px] text-ink-2" aria-hidden />인박스
               {count > 0 && <Badge variant="hyp" className="ml-auto font-mono tabular-nums">{count}</Badge>}
             </Button>
+            <AiOutputsRow ai={ai} className={cn(row, "w-full justify-start rounded-none font-normal hover:bg-transparent hover:text-ink [&_svg:not([class*='size-'])]:size-[18px]")} onClick={() => { setOpen(false); setOutputs(true) }} />
             <Link to="/feed/saved" className={row} onClick={() => setOpen(false)}>
               <Bookmark className="size-[18px] text-ink-2" aria-hidden />저장됨
               {saved > 0 && <span className="ml-auto font-mono text-[13px] text-ink-3 tabular-nums">{saved}</span>}
@@ -200,6 +205,7 @@ function PhoneMenu() {
         </SheetContent>
       </Sheet>
       <InboxSheet open={inbox} onOpenChange={setInbox} count={count} />
+      <AiOutputsSheet ai={ai} open={outputs} onOpenChange={setOutputs} />
     </>
   )
 }

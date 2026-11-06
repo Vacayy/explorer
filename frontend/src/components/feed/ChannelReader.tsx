@@ -206,7 +206,7 @@ function TopicStrip({ active, onPick }: { active: string; onPick: (topic: string
   const { themes, stocks } = useFeedTopics()
   const groups = [{ label: '주목 주제', names: themes }, { label: '부상 종목', names: stocks }].filter(g => g.names.length > 0)
   return <div className="flex flex-none flex-wrap items-start gap-x-4 gap-y-1.5 border-b px-4 py-2.5">
-    <div className="min-w-0 flex-1 space-y-1.5">
+    <div className="min-w-0 flex-1 space-y-1.5 max-md:basis-full">
       {active ? <div className="flex items-center gap-2">
         <span className="w-14 shrink-0 text-caption text-ink-3">주제</span>
         <Button variant="secondary" size="xs" onClick={() => onPick(null)} aria-label={`주제 ${active} 해제`}>{active}<X aria-hidden="true" /></Button>
