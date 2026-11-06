@@ -14,8 +14,9 @@ def risk(span: Literal['1m', '3m', '1y', '3y', '5y', '10y', '20y', 'all'] | None
     selected = [k for k in keys.split(',') if k] if keys else None
     if selected and (unknown := set(selected) - set(KEYS)):
         raise HTTPException(422, f"알 수 없는 계열: {', '.join(sorted(unknown))}")
-    data = get_risk()
-    return window(data, span, selected) if span or selected else data
+    if not (span or selected):
+        return get_risk()
+    return window(get_risk(span=span, keys=selected), span, selected)   # 창에 필요한 행만 읽는다
 
 
 @router.post('/snapshot', response_model=RiskSnapshotResponse)
