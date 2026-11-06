@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, Sparkles, ChevronRight } from "lucide-react"
+import { Search, Sparkles, ChevronRight, X } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
@@ -328,6 +328,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
   const headline = chain.data?.reaction_meta?.headline
 
   return (
+    <FoldRevealHost>
     <div className="surface-stack">
       <Card>
         <CardContent className="flex flex-col gap-3.5 p-[18px]">
@@ -359,6 +360,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
 
       <Card><CardContent className="p-4"><DetailFolds data={data} transcriptId={transcriptId} /></CardContent></Card>
     </div>
+    </FoldRevealHost>
   )
 }
 
@@ -438,10 +440,11 @@ const FoldInline = createContext(false)
 
 /**
  * 펼치기 한 줄 — 줄마다 윗선(시안 details). 긴 세부(차트·핵심 정리·전문·원문)는 카드 안에서 펼치지 않고
- * 옆 시트로 연다(높이 상한과 넘침 — 깊은 세부는 Sheet). 시트 안(FoldInline)에서는 제자리 펼침.
+ * 콜 상세 위에 물방울로 연다(D-329, 상세 높이 그대로). 시트 안(FoldInline, 모바일)에서는 제자리 펼침.
  */
 function Fold({ label, children }: { label: string; children: ReactNode }) {
   const inline = useContext(FoldInline)
+  const reveal = useContext(FoldReveal)
   const trigger = "group flex w-full items-center gap-1.5 py-2.5 text-left text-[13.5px] font-medium hover:text-ink-2"
   if (inline) return (
     <Collapsible className="border-t border-line first:border-t-0">
@@ -452,15 +455,54 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
     </Collapsible>
   )
   return (
-    <Sheet>
-      <div className="border-t border-line first:border-t-0">
-        <SheetTrigger className={trigger}><ChevronRight className="size-3.5 text-ink-3" />{label}</SheetTrigger>
+    <div className="border-t border-line first:border-t-0">
+      <button type="button" className={trigger} aria-haspopup="dialog" aria-expanded={reveal?.open === label}
+        onClick={() => reveal?.show(label, children)}><ChevronRight className="size-3.5 text-ink-3" />{label}</button>
+    </div>
+  )
+}
+
+/** 콜 상세 위 물방울 펼침(D-329) — 옆 시트 대신 상세 영역을 덮으며 퍼진다. 상세 높이는 그대로, 본문은 안에서 스크롤 */
+const FoldReveal = createContext<{ open: string | null; show: (label: string, body: ReactNode) => void } | null>(null)
+
+function FoldRevealHost({ children }: { children: ReactNode }) {
+  const [cur, setCur] = useState<{ label: string; body: ReactNode } | null>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const lastTrigger = useRef<HTMLElement | null>(null)
+  const show = useCallback((label: string, body: ReactNode) => {
+    lastTrigger.current = document.activeElement as HTMLElement | null
+    setCur({ label, body })
+  }, [])
+  const close = useCallback(() => { setCur(null); window.setTimeout(() => lastTrigger.current?.focus(), 0) }, [])
+  useEffect(() => {
+    if (!cur) return
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [cur, close])
+  const value = useMemo(() => ({ open: cur?.label ?? null, show }), [cur?.label, show])
+  return (
+    <FoldReveal.Provider value={value}>
+      <div className="relative">
+        {children}
+        {cur && (
+          <div className="absolute inset-0 z-20">
+            {/* 상세가 길어도 화면 안에 보이도록 위에 붙인다 */}
+            <div role="dialog" aria-modal="false" aria-label={cur.label}
+              className="sticky top-16 flex h-[min(100%,calc(100dvh-5rem))] flex-col overflow-hidden rounded-card border border-line-2 bg-[color-mix(in_srgb,var(--surface)_96%,transparent)] backdrop-blur-xl animate-droplet">
+              <div className="flex min-h-0 flex-1 flex-col gap-3 px-[22px] py-5 animate-droplet-rise max-sm:px-4">
+                <div className="flex items-center justify-between gap-2.5">
+                  <p className="font-display text-xl">{cur.label}</p>
+                  <Button ref={closeRef} variant="outline" size="icon" aria-label="닫기" className="size-9 shrink-0 rounded-full bg-surface" onClick={close}><X aria-hidden="true" /></Button>
+                </div>
+                <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block"><div className="pb-2 pr-2">{cur.body}</div></ScrollArea>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      <SheetContent side="right" className="w-full gap-0 sm:max-w-3xl">
-        <SheetHeader className="border-b"><SheetTitle>{label}</SheetTitle><SheetDescription className="sr-only">컨콜 세부</SheetDescription></SheetHeader>
-        <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block"><div className="p-4">{children}</div></ScrollArea>
-      </SheetContent>
-    </Sheet>
+    </FoldReveal.Provider>
   )
 }
 
