@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, FileSearch, RefreshCw, Search, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -168,7 +168,6 @@ export function ChannelReader() {
           </p>
         </div>
         <div className="flex items-center gap-2 max-sm:w-full max-sm:justify-between">
-          <Button asChild variant="ghost" size="sm"><Link to="/feed?view=documents"><FileSearch aria-hidden="true" />문서 검색</Link></Button>
           {!systemView && <SegmentTabs tabs={[{ value: 'original', label: '원문' }, { value: 'summary', label: '요약' }]} value={reading} onChange={value => patch({ reading: value })} />}
           <Button variant="ghost" size="icon" aria-label="피드 새로고침" disabled={timeline.isFetching || directory.isFetching}
             onClick={() => { scrollPositions.set(`${platform}:${channel}:${topic}:1:${reading}`, 0); patch({ reader_until: new Date().toISOString(), reader_page: null }) }}>
