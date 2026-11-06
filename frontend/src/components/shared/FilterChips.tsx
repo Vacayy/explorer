@@ -10,16 +10,18 @@ interface Props {
   options: Option[]
   value: string
   onChange: (value: string) => void
+  className?: string
 }
 
 /** Filter chip group (단일선택) — Radix ToggleGroup(single) 래핑 (docs/DESIGN_SYSTEM.md §3) */
-export default function FilterChips({ options, value, onChange }: Props) {
+export default function FilterChips({ options, value, onChange, className }: Props) {
   return (
     <ToggleGroup
       type="single"
       value={value}
       onValueChange={(v) => v && onChange(v)}
-      className="flex w-auto flex-wrap gap-1.5 bg-transparent p-0"
+      // 칩 사이 간격이 있는 묶음(spacing≠0)의 회색 바탕·안쪽 여백을 끈다 — 칩은 각자 선 알약
+      className={cn("flex w-auto flex-wrap gap-1.5 not-data-[spacing=0]:bg-transparent not-data-[spacing=0]:p-0", className)}
     >
       {options.map((opt) => (
         <ToggleGroupItem

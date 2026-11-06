@@ -37,9 +37,11 @@ import { proxiesUrl } from "@/lib/judgment"
 import PortfolioPage from "@/components/portfolio/PortfolioPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import TradePage from "@/components/follow/TradePage"
+import TradeItemPage from "@/components/follow/TradeItem"
 import ValueChainPage from "@/components/explore/ValueChainPage"
 import CreditPage from "@/components/follow/CreditPage"
 import TaiwanPage from "@/components/industry/TaiwanPage"
+import TaiwanCompanyPage from "@/components/industry/TaiwanCompany"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import SavedPage from "@/components/follow/SavedPage"
 
@@ -282,7 +284,9 @@ export default function App() {
             <Route path="follow/universe" element={<Navigate to="/map" replace />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
+            <Route path="follow/trade/:hs" element={<TradeItemPage />} />
             <Route path="follow/taiwan" element={<TaiwanPage />} />
+            <Route path="follow/taiwan/:code" element={<TaiwanCompanyPage />} />
             <Route path="value-chain" element={<ValueChainPage />} />
             <Route path="follow/credit" element={<CreditPage />} />
             <Route path="retail" element={<RetailHeatPage />} />

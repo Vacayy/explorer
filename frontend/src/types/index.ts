@@ -1216,6 +1216,16 @@ export interface TradeHighlights {
   surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]   // 상위 limit개만
   groups: { group_label: string; count: number; value: number; surge: number; plunge: number }[]   // 판정 수는 전 품목 기준
 }
+/** GET /api/spine/trade/grid — 품목 벽(산업 › 수출입 품목 모니터). 세목 제외 전 품목의 월별 수출 시계열 한 번에 */
+export interface TradeGridItem {
+  hs_code: string; item_name: string; group_label: string | null
+  latest_period: string | null; latest_export: number | null; yoy_pct: number | null
+  mom: number | null; yoy3m: number | null; contribution: number | null; z: number | null   // 비율 · 0~1
+  flag: TradeFlag
+  stock_codes: string[]
+  series: { period: string; export_usd: number | null; ma12: number | null }[]
+}
+export interface TradeGrid { period: string | null; months: number; items: TradeGridItem[] }
 export interface TradeStockItem {
   hs_code: string; item_name: string; rel: string | null; period: string | null
   yoy_pct: number | null; flag: TradeFlag | null; reason: string | null

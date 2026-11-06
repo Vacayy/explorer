@@ -72,6 +72,8 @@ const CASES = [
   ['/follow/trade', '?hs=854232&trade_sort=surge', 'industry', 'trade'],
   ['/follow/taiwan', '', 'industry', 'taiwan'],
   ['/follow/taiwan', '?tw_layer=foundry&tw=2330', 'industry', 'taiwan'],
+  ['/follow/trade/854232', '', 'industry', 'trade'],          // 품목 상세 페이지(D-325)
+  ['/follow/taiwan/2330', '', 'industry', 'taiwan'],          // 대만 회사 상세 페이지(D-325)
   ['/value-chain', '?node=x', 'industry', 'valuechain'],
   ['/follow/credit', '', 'industry', 'credit'],
   ['/follow/credit', '?credit=ORCL,CRWV&credit_range=3m', 'industry', 'credit'],
@@ -142,7 +144,7 @@ test('the table covers every route declared in App.tsx', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
   const declared = [...app.matchAll(/<Route path="([^"]+)"/g)].map(m => m[1]).filter(p => p !== '*')
   const covered = new Set(CASES.map(([p]) => p.replace(/^\//, '')))
-  const examples = { ':boardId': '3', ':stockCode': '005930', ':tab': 'summary', ':ticker': 'NVDA', ':id': '4', ':docId': '12', ':synthesisId': '1' }
+  const examples = { ':boardId': '3', ':stockCode': '005930', ':tab': 'summary', ':ticker': 'NVDA', ':id': '4', ':docId': '12', ':synthesisId': '1', ':hs': '854232', ':code': '2330' }
   for (const route of declared) {
     const concrete = route.replace(/:\w+/g, k => examples[k])
     assert.ok(covered.has(concrete), `App.tsx route '${route}' has no case in the nav table`)
