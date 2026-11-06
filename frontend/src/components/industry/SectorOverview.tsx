@@ -7,7 +7,8 @@ import { FillArea } from "@/components/shared/Bounded"
 import { AiBlock } from "@/components/shared/AiBlock"
 import { Chip, RS_INFO, benchmarkName, benchmarkTip } from "@/components/industry/sectorParts"
 import { useUrlParam } from "@/hooks/useUrlParam"
-import { polyline, yOf } from "@/lib/svgLines"
+import SectorPeersTab from "@/components/industry/SectorPeersTab"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { formatPercent, formatUsd } from "@/utils/format"
 import type { SectorDataLinkCard, IndustrySectorDetail, SectorDoc } from "@/types"
@@ -35,13 +36,15 @@ function slice(series: IndustrySectorDetail["series"], range: string) {
  * 섹터 화면 › 개요 (ia-redesign §4.35, 시안 Sector-Overview). 띠 셋, 칸마다 높이 고정(400 · 560 · 380)·넘침은 칸 안 스크롤.
  * ① 대표지수 vs 코스피(1개월·3개월·1년·3년, URL range) | 상대강도 4주 + 섹터 시총 비중 상위
  * ② 산업 개괄(AI, 내러티브 기반) + 이 산업의 내러티브 | 주요 자료(전체·리서치·블로그·유튜브, URL doc)
- * ③ Peer 그룹 미리보기(60거래일 중앙값 상위 6, 라벨 상위 3) | 이 산업의 데이터(연결 카드 4)
+ * ③ Peer 그룹 — Peer 그룹 탭과 같은 컴포넌트(하위 그룹 목록 | 그룹 본문, 720 고정, 고른 그룹 URL ?group= 공유)
+ * ④ 이 산업의 데이터 — 전체 폭 연결 카드 줄
  */
 export default function SectorOverview({ q }: { q: Q }) {
   return <div className="flex flex-col gap-4">
     <Band label="대표지수와 상대강도" cells={[[8, <IndexCard key="i" q={q} />], [4, <RsCard key="r" q={q} />]]} />
     <Band label="산업 개괄과 주요 자료" cells={[[7, <OverviewCard key="o" q={q} />], [5, <DocsCard key="d" q={q} />]]} />
-    <Band label="Peer 그룹과 이 산업의 데이터" cells={[[7, <PeerPreviewCard key="p" q={q} />], [5, <DataCard key="x" q={q} />]]} />
+    {q.data?.name ? <SectorPeersTab sector={q.data.name} band="sectorPeerBlock" /> : <Band label="Peer 그룹" cells={[[12, <MarketCard key="p" band="sectorPeerBlock"><FillSkeleton rows={14} /></MarketCard>]]} />}
+    <DataCard q={q} />
   </div>
 }
 
@@ -147,35 +150,6 @@ function DocsCard({ q }: { q: Q }) {
   </MarketCard>
 }
 
-function PeerPreviewCard({ q }: { q: Q }) {
-  const d = q.data
-  const rows = d?.peer_preview ?? []
-  return <MarketCard band="sectorPeer" label="sector.peers">
-    <BlockHead section title="Peer 그룹" info="이 섹터에 걸린 Peer 그룹(제품·공정 하위 그룹 포함)의 60거래일 중앙값입니다. 선은 그룹 종목 경로의 날짜별 중앙값(시작 = 100)입니다."
-      sub={d ? `하위 그룹 ${d.peer_groups ?? "-"} · 60거래일 중앙값 상위 ${rows.length} · 라벨은 상위 3` : " "}
-      link={d && rows.length ? { to: "?tab=peers", label: "Peer 그룹 탐색" } : null} />
-    <State q={q} rows={8} message="Peer 그룹을 불러오지 못했습니다">{d => d.peer_groups == null
-      ? <FillNote>Peer 저장 자료를 읽지 못했습니다.</FillNote>
-      : !rows.length ? <FillNote>이 업종엔 아직 Peer 그룹이 없습니다.</FillNote>
-      : <PreviewLines rows={rows} />}</State>
-  </MarketCard>
-}
-
-/** 그룹 중앙값 선 — 회색 시리즈 · 1위만 상승색 굵게 · 상위 3만 오른쪽 라벨 */
-function PreviewLines({ rows }: { rows: IndustrySectorDetail["peer_preview"] }) {
-  const lines = rows.filter(r => r.series.length > 1)
-  const all = lines.flatMap(r => r.series)
-  const lo = Math.min(...all), hi = Math.max(...all)
-  return <div className="relative min-h-0 flex-1 pr-[190px] max-sm:pr-0">
-    <svg viewBox="0 0 600 240" preserveAspectRatio="none" role="img" aria-label="Peer 그룹 60거래일 중앙값, 시작 = 100" className="h-full w-full">
-      {[...lines].reverse().map((r, i) => { const top = r === lines[0]
-        return <polyline key={`${r.id}-${i}`} points={polyline(r.series, 600, 240, lo, hi, 10)} fill="none" className={top ? "stroke-up" : "stroke-series"} strokeWidth={top ? 1.8 : 1.2} vectorEffect="non-scaling-stroke" /> })}
-    </svg>
-    {lines.slice(0, 3).map((r, i) => <span key={r.id} className={cn("absolute right-0 -translate-y-1/2 bg-surface pl-1 text-[11px] whitespace-nowrap max-sm:hidden", i === 0 ? "text-up-ink" : "text-ink-3")}
-      style={{ top: `${(yOf(r.series[r.series.length - 1], 240, lo, hi, 10) / 240 * 100).toFixed(1)}%` }}>{r.name} {formatPercent(r.med_60d, 0)}</span>)}
-  </div>
-}
-
 export function dataValue(c: SectorDataLinkCard): string | null {
   if (c.value == null) return c.verdict
   return c.value_kind === "usd" ? formatUsd(c.value) : formatPercent(c.value)
@@ -184,7 +158,7 @@ export function dataValue(c: SectorDataLinkCard): string | null {
 /** 연결 카드 하나 — 종류 › · 제목 · 값(Geist) + 변화 · 한 줄 */
 export function DataLinkCard({ c, big }: { c: SectorDataLinkCard; big?: boolean }) {
   const v = dataValue(c)
-  return <Link to={c.href} className={cn("flex min-w-0 flex-col gap-[3px] border bg-card p-3 hover:bg-surface-2", big && "min-h-[150px] gap-1.5 p-4")}>
+  return <Link to={c.href} className={cn("flex min-h-[118px] min-w-0 flex-col gap-[3px] border bg-card p-3 hover:bg-surface-2", big && "min-h-[150px] gap-1.5 p-4")}>
     <span className="text-[11.5px] text-ink-3">{c.label} ›</span>
     <span className="truncate text-[13px] font-semibold">{c.title}</span>
     {v && <span className={cn("font-display tabular-nums", big ? "text-2xl" : "text-xl")}>{v}{c.change != null && <span className={cn("ml-1.5 font-mono text-[12.5px]", tone(c.change))}>{formatPercent(c.change)}</span>}</span>}
@@ -195,11 +169,12 @@ export function DataLinkCard({ c, big }: { c: SectorDataLinkCard; big?: boolean 
 function DataCard({ q }: { q: Q }) {
   const d = q.data
   const cards = d?.data_links ?? []
-  return <MarketCard band="sectorPeer" label="sector.data">
+  return <section aria-label="이 산업의 데이터" className="flex flex-col gap-3 rounded-[var(--radius-card)] border bg-card px-[18px] py-4">
     <BlockHead section title="이 산업의 데이터" info="이 섹터와 연결된 산업 데이터 화면입니다. 누르면 그 화면을 이 섹터 쪽으로 열어 줍니다."
-      sub={d ? `연결 ${cards.length}` : " "} link={cards.length ? { to: "?tab=data", label: "데이터 탭" } : null} />
-    <State q={q} rows={6} message="연결 데이터를 불러오지 못했습니다">{() => !cards.length
-      ? <FillNote>연결된 데이터 화면이 없습니다.</FillNote>
-      : <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 pr-px pb-px [&>*]:-mr-px [&>*]:-mb-px">{cards.slice(0, 4).map(c => <DataLinkCard key={c.kind} c={c} />)}</div>}</State>
-  </MarketCard>
+      sub={d ? `연결 ${cards.length}` : "\u00a0"} link={cards.length ? { to: "?tab=data", label: "데이터 탭" } : null} />
+    {q.isError ? <BlockError message="연결 데이터를 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} />
+      : !d ? <div className="grid grid-cols-2 pr-px pb-px lg:grid-cols-5 [&>*]:-mr-px [&>*]:-mb-px">{[0, 1, 2, 3, 4].map(i => <Skeleton key={i} className="h-[118px] rounded-none border" />)}</div>
+      : !cards.length ? <p role="status" className="text-sm text-ink-3">연결된 데이터 화면이 없습니다.</p>
+      : <div className="grid grid-cols-1 pr-px pb-px sm:grid-cols-2 lg:grid-cols-5 [&>*]:-mr-px [&>*]:-mb-px">{cards.map(c => <DataLinkCard key={c.kind} c={c} />)}</div>}
+  </section>
 }

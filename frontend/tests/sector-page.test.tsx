@@ -26,7 +26,7 @@ const DETAIL: IndustrySectorDetail = {
   top_weights: stocks.slice(0, 8), constituents: stocks,
   narratives: [{ id: 1, topic: '메모리', title: '메모리 부족이 길어집니다', core_question: null, docs: 25, updated_at: '2026-11-03' }],
   overview: null, docs: [{ id: 9, type: 'blog', title: '반도체, 과거 사이클', published_at: '2026-11-05T00:00:00+00:00' }],
-  peer_groups: 27, peer_preview: [{ id: 'a', name: '번인', members: 2, med_60d: 80, series: [100, 120, 180] }],
+  peer_groups: 27,
   data_links: [{ kind: 'trade', label: '수출입', title: '메모리반도체', value: 37.6e9, value_kind: 'usd', change: 302.2, sub: '9월 · 전년 대비', count: 71, href: '/follow/trade?grp=반도체', filtered: false, verdict: null }],
   feed_industry: '반도체', entity_id: 3949,
 }
@@ -34,7 +34,7 @@ const MAP: IndustryMap = { as_of: '2026-11-05', kospi: [100, 101, 102], peers_av
   { name: '반도체·전자부품', benchmark: ETF, last: 93110, last_date: '2026-11-05', chg_1d: -1, ret_1m: -38.4, ret_3m: -17, rs_long: 100, rs_short: 12, chg_5d: -14.6, trail, market_cap: 2.3e15, stocks: 375, peer_groups: 27, series: [10, 11, 9] },
   { name: '통신', benchmark: COMPUTED, last: 120.5, last_date: '2026-11-05', chg_1d: 0.4, ret_1m: -4.6, ret_3m: -1, rs_long: 71, rs_short: 82, chg_5d: 7.9, trail: [], market_cap: 3.8e13, stocks: 14, peer_groups: 0, series: [10, 10.5, 11] },
 ] }
-const get = vi.spyOn(api, 'get').mockImplementation(async (url: string) => (url.includes('/industry/map') ? { data: MAP } : url.includes('/follows') ? { data: [] } : { data: DETAIL }) as never)
+const get = vi.spyOn(api, 'get').mockImplementation(async (url: string) => (url.includes('/industry/map') ? { data: MAP } : url.includes('/follows') ? { data: [] } : url.endsWith('/peers') ? { data: { sector: 'x', catalog_as_of: '', prices_as_of: '', groups: [] } } : url.includes('/api/peers/runtime') ? Promise.reject(new Error('no runtime')) : { data: DETAIL }) as never)
 const clients: QueryClient[] = []
 afterEach(() => { cleanup(); clients.forEach(c => c.clear()); clients.length = 0 })
 function Location() { const l = useLocation(); return <output aria-label="URL">{l.pathname + l.search}</output> }
@@ -69,6 +69,9 @@ it('sector head shows the ETF name and code, RS badges, zone move and tab counts
   expect(screen.getByText('개괄은 내러티브가 바뀌면 만들어집니다.')).toBeTruthy()
   expect(screen.getByText('메모리 부족이 길어집니다')).toBeTruthy()
   expect(screen.getByRole('link', { name: /반도체, 과거 사이클/ }).getAttribute('href')).toBe('/doc/9')
+  // 개요의 Peer 그룹 칸 = Peer 탭과 같은 컴포넌트, 그 아래 전체 폭 데이터 줄
+  expect(await screen.findAllByText('이 업종엔 아직 Peer 그룹이 없습니다.')).not.toHaveLength(0)
+  expect(screen.getByRole('region', { name: '이 산업의 데이터' })).toBeTruthy()
 })
 
 it('stocks tab pages constituents 20 at a time through the URL', async () => {

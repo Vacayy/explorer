@@ -27,7 +27,6 @@ DOC_DAYS = 10
 DOC_TYPES = ("blog", "scrap", "web", "youtube")
 DOC_LIMIT = 30
 TOP_STOCKS_FOR_DOCS = 15
-PREVIEW_GROUPS = 6
 _TTL = 900
 _cache: dict[str, tuple[float, dict]] = {}
 
@@ -165,8 +164,7 @@ def group_rows(runtime, ids: list[dict], groups: dict, members: dict) -> list[di
                      "parent": s["parent"], "partial": s["partial"], "auto": s["source"] == "auto",
                      "members": len(codes),
                      "med_20d": round(p20[-1] - 100, 2) if p20 else None,
-                     "med_60d": round(p60[-1] - 100, 2) if p60 else None,
-                     "series_60d": [round(v, 2) for v in p60] if p60 else []})
+                     "med_60d": round(p60[-1] - 100, 2) if p60 else None})
     return rows
 
 
@@ -425,7 +423,6 @@ def sector_detail(conn, sector: str, runtime=None) -> dict | None:
         if runtime is not None:
             peer_ids, groups, gm = sector_group_ids(conn, runtime)
             groups_out = group_rows(runtime, peer_ids.get(sector, []), groups, gm)
-        preview = sorted([x for x in groups_out if x["med_60d"] is not None], key=lambda x: -x["med_60d"])[:PREVIEW_GROUPS]
         return {
             "as_of": latest, "name": sector, "benchmark": bench_out(bench), **quote(series),
             "rs_long": g["rs_long"], "rs_short": g["rs_short"], "chg_5d": g["chg_5d"], "trail": g["trail"],
@@ -437,8 +434,6 @@ def sector_detail(conn, sector: str, runtime=None) -> dict | None:
             "overview": overview_row(conn, sector),
             "docs": sector_docs(conn, sector, [m["stock_code"] for m in members], latest),
             "peer_groups": len(groups_out) if runtime is not None else None,
-            "peer_preview": [{"id": x["id"], "name": x["name"], "members": x["members"], "med_60d": x["med_60d"],
-                              "series": x["series_60d"]} for x in preview],
             "data_links": data_links(conn, sector, {m["stock_code"]: m["market_cap"] or 0 for m in members}),
             **_sector_entity(conn, sector),
         }
@@ -451,6 +446,4 @@ def sector_peer_list(conn, sector: str, runtime) -> dict | None:
         return None
     peer_ids, groups, members = sector_group_ids(conn, runtime)
     rows = group_rows(runtime, peer_ids.get(sector, []), groups, members)
-    for r in rows:
-        r.pop("series_60d")
     return {"sector": sector, "catalog_as_of": str(runtime.catalog.asOf), "prices_as_of": str(runtime.prices.asOf), "groups": rows}

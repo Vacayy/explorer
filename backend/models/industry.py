@@ -91,14 +91,6 @@ class SectorDoc(BaseModel):
     published_at: str | None
 
 
-class PeerPreview(BaseModel):
-    id: str
-    name: str
-    members: int
-    med_60d: float | None
-    series: list[float]                    # 그룹 중앙값 60거래일, 시작 = 100
-
-
 class DataLink(BaseModel):
     kind: Literal["trade", "taiwan", "valuechain", "usSeason", "credit"]
     label: str
@@ -135,7 +127,6 @@ class SectorDetailResponse(BaseModel):
     overview: SectorOverview | None        # AI 산업 개괄 (아직 없으면 null)
     docs: list[SectorDoc]                  # 최근 10일 주요 자료
     peer_groups: int | None
-    peer_preview: list[PeerPreview]
     data_links: list[DataLink]
     feed_industry: str | None              # 피드 문서 검색 industry 값(섹터를 대표하는 업종 엔티티 이름)
     entity_id: int | None                  # 그 업종 엔티티 id — 팔로우 · AI 대화 대상(theme)

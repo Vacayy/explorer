@@ -249,6 +249,11 @@ charts/  lightweight-charts 래퍼
 | `stocks` | 500px | 420px | ③ 종목 |
 | `events` | 460px | 400px | ④ 실적·이벤트 |
 | `local` | 400px | 400px | ⑤ 시장 고유 |
+| `sectorMap` | 460px | 420px | 산업 › 섹터 지도 ① 상대강도 지도·순위 (§4.35) |
+| `sectorChart` | 400px | 360px | 섹터 화면 개요 ① 대표지수·상대강도 |
+| `sectorText` | 560px | 480px | 섹터 화면 개요 ② 산업 개괄·주요 자료 |
+| `sectorPeerBlock` | 720px | 560px | 섹터 화면 개요 ③ Peer 그룹(Peer 탭과 같은 컴포넌트) |
+| `sectorPeers` | 760px | 560px | 섹터 화면 Peer 그룹 탭 · 종목 탭 |
 
 **넘침**
 - 넘치면 영역 안에서 스크롤한다. `BoundedArea`(공식 `ui/scroll-area` 위 조합)를 쓰고, 상한은 스크롤 상자(viewport)에 건다. 홈 블록은 `HomeSection`·`HomeBlock`의 `bounded="sm|md|lg"`로 본문만 묶는다(머리는 고정).

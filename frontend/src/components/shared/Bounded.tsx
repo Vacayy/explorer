@@ -33,12 +33,13 @@ export const BAND = {
   stocks: "h-[420px] md:h-[500px]",
   events: "h-[400px] md:h-[460px]",
   local: "h-[400px]",
-  /** 산업 › 섹터 지도·섹터 화면(ia-redesign §4.35, 시안 Industry-Map·Sector-*) — 460 지도·순위 / 400 대표지수 / 560 개괄·자료 / 380 Peer·데이터 / 760 Peer 탭 */
+  /** 산업 › 섹터 지도·섹터 화면(ia-redesign §4.35, 시안 Industry-Map·Sector-*) — 460 지도·순위 / 400 대표지수 / 560 개괄·자료 / 720 개요 Peer 그룹 / 760 Peer 탭 */
   sectorMap: "h-[420px] md:h-[460px]",
   sectorChart: "h-[360px] md:h-[400px]",
   sectorText: "h-[480px] md:h-[560px]",
-  sectorPeer: "h-[340px] md:h-[380px]",
   sectorPeers: "h-[560px] md:h-[760px]",
+  /** 섹터 개요의 Peer 그룹 칸 — Peer 탭과 같은 컴포넌트를 조금 낮게 */
+  sectorPeerBlock: "h-[560px] md:h-[720px]",
 } as const
 export type BandSize = keyof typeof BAND
 

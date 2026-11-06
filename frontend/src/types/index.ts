@@ -413,7 +413,6 @@ export interface IndustrySectorDetail extends SectorQuote, SectorRs {
   overview: { question: string; bullets: string[]; model: string | null; generated_at: string; narrative_ids: number[] } | null
   docs: SectorDoc[]
   peer_groups: number | null
-  peer_preview: { id: string; name: string; members: number; med_60d: number | null; series: number[] }[]
   data_links: SectorDataLinkCard[]
   feed_industry: string | null; entity_id: number | null
 }
