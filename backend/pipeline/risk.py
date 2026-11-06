@@ -17,6 +17,7 @@ from database import get_connection
 from pipeline.macro import _public_fred_history
 from pipeline.market_regime import _fear_greed_history, _yf_history
 from services import cache_service
+from services.shared_result import shared
 
 FRED = {
     'us2y': ('DGS2', '미국 2년 국채', '%'),
@@ -316,3 +317,11 @@ def _assemble(items: dict, expected: date, now: datetime) -> dict:
             'expected_date': expected.isoformat(), 'generated_at': now.isoformat(),
             'calendar_note': '미국 연방 공휴일 + Good Friday 근사 달력 · 비정기 휴장 미반영',
             'empty': not any(item['points'] for item in items.values())}
+
+
+def get_window(span: str | None, keys: list[str] | None) -> dict:
+    """위젯·매크로 창 응답. 같은 창을 동시에·연달아 부르면 계산 하나를 함께 쓴다(services/shared_result).
+    키에 미국 날짜를 넣는다 — 기대일과 관측 상한이 그 날짜를 따른다."""
+    now = datetime.now(timezone.utc)
+    day = now.astimezone(ZoneInfo('America/New_York')).date()
+    return shared(('risk', span, tuple(keys or ()), day), lambda: window(get_risk(now, span, keys), span, keys))

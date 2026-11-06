@@ -2,7 +2,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from models.risk import RiskResponse, RiskSnapshotResponse
-from pipeline.risk import KEYS, get_risk, snapshot_risk, window
+from pipeline.risk import KEYS, get_risk, get_window, snapshot_risk
 
 router = APIRouter(prefix='/api/spine/risk', tags=['spine'])
 
@@ -16,7 +16,7 @@ def risk(span: Literal['1m', '3m', '1y', '3y', '5y', '10y', '20y', 'all'] | None
         raise HTTPException(422, f"알 수 없는 계열: {', '.join(sorted(unknown))}")
     if not (span or selected):
         return get_risk()
-    return window(get_risk(span=span, keys=selected), span, selected)   # 창에 필요한 행만 읽는다
+    return get_window(span, selected)
 
 
 @router.post('/snapshot', response_model=RiskSnapshotResponse)
