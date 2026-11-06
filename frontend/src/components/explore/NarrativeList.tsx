@@ -204,12 +204,12 @@ export function NarrativeList({
 
       {/* 랜딩 목록(fold)은 높이 고정 — 분야·정렬·더 보기를 바꿔도 카드가 그대로, 넘치면 안에서 스크롤 */}
       {fold && !limit ? <BoundedArea size="lg" fixed className="-mr-2" viewportClassName="pr-2">{list}</BoundedArea> : list}
-      {/* 버튼 줄 자리는 늘 둔다 — 분야를 바꿔 더 볼 것이 없어져도 카드 높이 그대로 */}
+      {/* 버튼 줄 자리는 늘 둔다 — 분야를 바꿔 더 볼 것이 없어져도 카드 높이 그대로(좁은 화면 버튼 최소 44px과 같게) */}
       {fold && !limit && (hidden > 0 || (expanded && visible.length > fold) ? (
         <Button variant="ghost" size="sm" className="w-full text-ink-2" onClick={() => setParams(prev => { const next = new URLSearchParams(prev); if (hidden > 0) next.set("list", "all"); else next.delete("list"); return next }, { replace: true, preventScrollReset: true })}>
           {hidden > 0 ? `더 보기 · 전체 ${visible.length}편` : "접기"}
         </Button>
-      ) : <div aria-hidden className="h-8" />)}
+      ) : <div aria-hidden className="h-8 max-md:h-11" />)}
     </div>
   )
 }
