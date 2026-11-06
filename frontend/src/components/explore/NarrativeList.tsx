@@ -1,23 +1,24 @@
 import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
-import { Sparkles } from "lucide-react"
+import { ChevronDown, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Switch } from "@/components/ui/switch"
+import { Toggle } from "@/components/ui/toggle"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Label } from "@/components/ui/label"
 import { EmptyState } from "@/components/shared/ErrorState"
-import { dbAgeDays, formatRelativeTime } from "@/utils/format"
+import { dbAgeDays } from "@/utils/format"
 import { cn } from "@/lib/utils"
+import { kstDay } from "@/lib/bigPicture"
 import { BoundedArea } from "@/components/shared/Bounded"
-
-/** SQLite UTC 시각("YYYY-MM-DD HH:MM:SS")을 상대 표기로 — Z 부착해 로컬 오파싱 방지(D-059). */
-function relUpdated(iso: string | null): string {
-  return iso ? formatRelativeTime(iso.replace(" ", "T") + "Z") : ""
-}
+import { EdgeChip } from "@/components/world/NarrativeChanges"
+import { useNarrativeChanges } from "@/hooks/useWorld"
+import type { WorldNarrativeChange } from "@/types"
 
 /** 내러티브 카드 목록 — 신호 티저(limit)와 월드모델>내러티브 랜딩이 공유. */
 export interface NarrativeItem {
@@ -84,6 +85,10 @@ export function NarrativeList({
     }),
   )
   const items = data?.items ?? []
+  // 최근 7일 새 버전(홈 '이번주 업데이트'와 같은 출처) — 행의 고리 증감·펼침 칩과 '이번 주 바뀐 것' 필터
+  const weekly = useNarrativeChanges(7).data
+  const changes = useMemo(() => new Map<string, WorldNarrativeChange>((weekly?.items ?? []).map((c) => [c.topic, c])), [weekly])
+  const [openTopic, setOpenTopic] = useState<string | null>(null)   // 고리 칩 펼침 — 한 번에 한 행
 
   const [lenses, setLenses] = useState<string[]>([])
   const [sort, setSort] = useState<SortKey>("changed")   // 델타 우선 (D-123)
@@ -91,17 +96,19 @@ export function NarrativeList({
   const [params, setParams] = useSearchParams()
   const showOld = params.get("old") === "1"
   const expanded = params.get("list") === "all"
+  const weekOnly = params.get("week") === "1"
+  const setWeekOnly = (on: boolean) => setParams(prev => { const next = new URLSearchParams(prev); if (on) next.set("week", "1"); else next.delete("week"); return next }, { replace: true, preventScrollReset: true })
   const setShowOld = (on: boolean) => setParams(prev => { const next = new URLSearchParams(prev); if (on) next.set("old", "1"); else next.delete("old"); return next }, { replace: true, preventScrollReset: true })
   const isOld = (n: NarrativeItem) => dbAgeDays(n.created_at) > STALE_DAYS
 
   const filtered = useMemo(() => {
     if (!controls) return items   // 티저 등 — 백엔드 순서(급증 우선) 유지
     const picked = new Set(lenses)
-    const matched = picked.size
-      ? items.filter((n) => (n.category ?? "").split(",").some((c) => picked.has(c)))
-      : items
+    const matched = items.filter((n) =>
+      (!picked.size || (n.category ?? "").split(",").some((c) => picked.has(c)))
+      && (!weekOnly || changes.has(n.topic)))
     return [...matched].sort(sortFns[sort])
-  }, [items, lenses, sort, controls])
+  }, [items, lenses, sort, controls, weekOnly, changes])
   const oldCount = controls ? filtered.filter(isOld).length : 0
   const visible = controls && !showOld ? filtered.filter(n => !isOld(n)) : filtered
 
@@ -114,31 +121,40 @@ export function NarrativeList({
   const shown = cap ? visible.slice(0, cap) : visible
   const hidden = fold && !limit ? visible.length - shown.length : 0
   const list = shown.length === 0 ? (
-        <EmptyState message={oldCount && !showOld ? `최근 ${STALE_DAYS}일 안에 갱신된 서사가 없습니다. 오래된 서사 ${oldCount}개를 켜서 볼 수 있습니다.` : "선택한 카테고리에 해당하는 내러티브가 없습니다."} />
+        <EmptyState message={weekOnly ? "이번 주에 바뀐 서사 중 선택한 분야에 해당하는 것이 없습니다." : oldCount && !showOld ? `최근 ${STALE_DAYS}일 안에 갱신된 서사가 없습니다. 오래된 서사 ${oldCount}개를 켜서 볼 수 있습니다.` : "선택한 카테고리에 해당하는 내러티브가 없습니다."} />
       ) : (
         <div className="space-y-2.5">
-          {shown.map((n) => (
-            <Link
-              key={n.topic}
-              to={`/narrative?topic=${encodeURIComponent(n.topic)}`}
-              className={cn("flex items-start gap-2 group", controls && isOld(n) && "opacity-60")}
-            >
+          {shown.map((n) => {
+            const c = changes.get(n.topic)
+            const version = c?.version ?? n.version
+            const hasEdges = !!c && !c.is_first && (c.added_count > 0 || c.removed_count > 0)
+            return (
+            <Collapsible key={n.topic} open={openTopic === n.topic} onOpenChange={(o) => setOpenTopic(o ? n.topic : null)}
+              className={cn("flex items-start gap-2", controls && isOld(n) && "opacity-60")}>
               <Sparkles className="h-4 w-4 text-hypothesis shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm leading-snug group-hover:underline">
+                  <Link to={`/narrative?topic=${encodeURIComponent(n.topic)}`} className="font-medium text-sm leading-snug hover:underline">
                     {n.title ?? n.topic}
-                  </span>
+                  </Link>
                   <Badge variant="outline" className="text-[10px]">{n.topic}</Badge>
                   {n.is_new ? (
                     <span className="text-[10px] text-up-ink">신규</span>
                   ) : n.share_delta_pp ? (
                     <span className="text-[10px] text-up-ink tabular-nums">+{n.share_delta_pp}%p</span>
                   ) : null}
-                  {n.created_at && (
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                      {relUpdated(n.created_at)}
-                    </span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground tabular-nums">
+                  {version != null && <span>v{version}{n.created_at && ` · ${kstDay(n.created_at)}`}</span>}
+                  {c?.is_first && <span>새 서사</span>}
+                  {hasEdges && (
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="xs" className="group/edges -my-0.5 h-5 gap-0.5 px-1.5 text-[11px] text-muted-foreground tabular-nums"
+                        aria-label={`고리 변화 +${c.added_count} / −${c.removed_count} ${openTopic === n.topic ? "접기" : "펼치기"}`}>
+                        고리 +{c.added_count} / −{c.removed_count}
+                        <ChevronDown className="size-3 transition-transform group-data-[state=open]/edges:rotate-180" />
+                      </Button>
+                    </CollapsibleTrigger>
                   )}
                 </div>
                 {n.drift_summary ? (
@@ -149,9 +165,17 @@ export function NarrativeList({
                 ) : n.summary ? (
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.summary}</p>
                 ) : null}
+                {hasEdges && (
+                  <CollapsibleContent className="pt-1.5">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {c.added_edges.map((e, i) => <EdgeChip key={`a${i}`} e={e} kind="added" />)}
+                      {c.removed_edges.map((e, i) => <EdgeChip key={`r${i}`} e={e} kind="removed" />)}
+                    </div>
+                  </CollapsibleContent>
+                )}
               </div>
-            </Link>
-          ))}
+            </Collapsible>
+          )})}
         </div>
       )
 
@@ -166,10 +190,15 @@ export function NarrativeList({
             <Switch id="narrative-old" checked={showOld} onCheckedChange={setShowOld} />
             <Label htmlFor="narrative-old" className="whitespace-nowrap text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 <span className="inline-block min-w-[2ch] text-right tabular-nums">{oldCount}</span>개 보기</Label>
           </div>
-          <ToggleGroup type="single" size="sm" value={sort} aria-label="정렬"
-            onValueChange={(v) => v && setSort(v as SortKey)}>
-            {SORT.map((s) => <ToggleGroupItem key={s.value} value={s.value} className="h-[30px] px-3 text-[13px]">{s.label}</ToggleGroupItem>)}
-          </ToggleGroup>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Toggle size="sm" variant="outline" pressed={weekOnly} onPressedChange={setWeekOnly} disabled={!weekly} className="h-[30px] px-3 text-[13px]">
+              이번 주 바뀐 것 <span className="tabular-nums">{weekly?.items.length ?? "-"}</span>
+            </Toggle>
+            <ToggleGroup type="single" size="sm" value={sort} aria-label="정렬"
+              onValueChange={(v) => v && setSort(v as SortKey)}>
+              {SORT.map((s) => <ToggleGroupItem key={s.value} value={s.value} className="h-[30px] px-3 text-[13px]">{s.label}</ToggleGroupItem>)}
+            </ToggleGroup>
+          </div>
         </div>
       )}
 

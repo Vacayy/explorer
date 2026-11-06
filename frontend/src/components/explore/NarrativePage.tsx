@@ -17,7 +17,6 @@ import { PageContainer } from "@/components/shared/PageContainer"
 import SaveButton from "@/components/shared/SaveButton"
 import { NarrativeList } from "@/components/explore/NarrativeList"
 import { BigPictureCard, PremisesCard } from "@/components/world/BigPictureCard"
-import { NarrativeChangesCard } from "@/components/world/NarrativeChanges"
 import { NarrativeCheckpoint } from "@/components/world/NarrativeCheckpoint"
 import { MarketTodayTimeline } from "@/components/world/MarketTodayTimeline"
 import { NarrativeCandidatesCard } from "@/components/world/NarrativeCandidatesCard"
@@ -285,7 +284,7 @@ function NarrativeQuestions({ narrativeId }: { narrativeId: number }) {
 
 /* ---------- 랜딩 (Thesis › 지금 — topic 없이 진입) ---------- */
 
-/** Thesis › 지금 (ia-redesign §4.25) — 이번 주 큰 그림 → 전제 칸 | 내러티브 후보(§9.3) → 이번주 업데이트 → 서사 목록. 전부 저장분 조회 */
+/** Thesis › 지금 (ia-redesign §4.25) — 이번 주 큰 그림 → 전제 칸 | 내러티브 후보(§9.3) → 서사 목록(이번 주 바뀐 것 필터·고리 펼침). 전부 저장분 조회 */
 function NarrativeLanding() {
   const count = useNarrativeIndex().size
   return (
@@ -296,7 +295,6 @@ function NarrativeLanding() {
         <PremisesCard />
         <NarrativeCandidatesCard />
       </div>
-      <NarrativeChangesCard />
       <Card className="gap-0 py-0" aria-label="서사 목록">
         <header className="flex items-baseline gap-2 border-b px-4 py-3">
           <h2 className="text-section font-semibold">서사 목록</h2>

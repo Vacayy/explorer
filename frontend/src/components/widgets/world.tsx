@@ -18,7 +18,7 @@ function useChangesMeta(): WidgetMeta {
   // 시안 Home: 머리 오른쪽 '● n편 · 최근 7일'
   return { asOf: q.data ? `${q.data.items.length}편 · 최근 7일` : null, stale: !!q.data && dbAgeDays(q.data.as_of) > 7 }
 }
-/** 위젯용 한 줄(시안 Home) — 주제 칩 · 굵은 한 문장 · 고리 변화 · 버전. 변화 요약은 링크 툴팁으로, 고리 칩은 '지금' 랜딩(NarrativeChangeRow)에만 둔다 */
+/** 위젯용 한 줄(시안 Home) — 주제 칩 · 굵은 한 문장 · 고리 변화 · 버전. 변화 요약은 링크 툴팁으로, 고리 칩은 '지금' 서사 목록 행 펼침(NarrativeList)에만 둔다 */
 function ChangeRow({ item }: { item: WorldNarrativeChange }) {
   const summary = item.is_first ? "새로 생긴 서사입니다." : item.change_summary
   return <li className="grid grid-cols-[72px_minmax(0,1fr)_auto_auto] items-baseline gap-x-3 gap-y-1 border-t py-3 first:border-t-0 max-sm:grid-cols-[minmax(0,1fr)_auto]">
