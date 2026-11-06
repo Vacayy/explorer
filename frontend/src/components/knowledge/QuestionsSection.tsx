@@ -2,14 +2,17 @@ import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Check, ChevronDown, FileText, HelpCircle, Loader2, RefreshCw, Trash2, X } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, FileText, HelpCircle, Loader2, RefreshCw, Trash2, X } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { BoundedArea } from "@/components/shared/Bounded"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/shared/ErrorState"
 import SegmentTabs from "@/components/shared/SegmentTabs"
@@ -128,7 +131,8 @@ export function QuestionsSection() {
         ) : (
           <div>
             <LedgerBar data={data} sort={sort} onSort={setSort} />
-            <div className="mt-3">{data.map((q) => <QuestionCard key={q.id} item={q} onChange={invalidate} />)}</div>
+            {/* 질문 목록은 상한(lg) 안에서 스크롤 — 정렬을 바꿔도 카드 높이 그대로 */}
+            <BoundedArea size="lg" className="mt-3"><div>{data.map((q) => <QuestionCard key={q.id} item={q} onChange={invalidate} />)}</div></BoundedArea>
           </div>
         )}
       </CardContent>
@@ -235,13 +239,14 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
   })
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="border border-dashed border-line-2">
+    // 펼친 후보 목록은 칩 아래에 겹쳐 연다(Popover) — 아래 질문 목록이 밀리지 않게, 길면 안에서 스크롤
+    <Popover open={open} onOpenChange={setOpen}><div className="border border-dashed border-line-2">
       <div className="flex items-center justify-between gap-2 px-3 py-1.5">
-        <CollapsibleTrigger className="group/pq flex min-h-8 min-w-0 items-center gap-1.5 text-left text-[13px]" disabled={!data.length}>
+        <PopoverTrigger className="group/pq flex min-h-8 min-w-0 items-center gap-1.5 text-left text-[13px]" disabled={!data.length}>
           <span className="min-w-0 truncate">질문 후보 · 내러티브·언급 다이제스트 발</span>
           <span className="inline-flex h-[22px] items-center rounded-md px-2 text-xs font-medium whitespace-nowrap bg-chip text-ink-2 tabular-nums">{data.length}</span>
           {data.length > 0 && <ChevronDown aria-hidden className="size-3.5 shrink-0 text-ink-3 transition-transform group-data-[state=open]/pq:rotate-180" />}
-        </CollapsibleTrigger>
+        </PopoverTrigger>
         <Button size="sm" variant="ghost" className="shrink-0 text-ink-2" disabled={propose.isPending} onClick={() => propose.mutate()}>
           {propose.isPending && <Loader2 className="h-3 w-3 animate-spin" />}후보 찾기
         </Button>
@@ -251,7 +256,8 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
           <Loader2 className="h-3 w-3 animate-spin" /> 승인된 질문을 분해·추적하는 중… (수 분)
         </div>
       )}
-      <CollapsibleContent className="border-t border-dashed border-line-2 px-3 py-1.5">
+      <PopoverContent align="start" className="w-[min(640px,calc(100vw-32px))] p-0">
+        <BoundedArea size="sm" viewportClassName="px-3 py-1.5">
         {data.map((q) => (
           <div key={q.id} className="flex items-center gap-2 py-0.5">
             <span className="text-[13px] flex-1 max-md:line-clamp-2 md:truncate">
@@ -270,8 +276,9 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
             </span>
           </div>
         ))}
-      </CollapsibleContent>
-    </Collapsible>
+        </BoundedArea>
+      </PopoverContent>
+    </div></Popover>
   )
 }
 
@@ -326,13 +333,17 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
         <p className="bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-ink-2 line-clamp-3">{item.verdict_summary}</p>
       )}
 
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="group/tr flex min-h-8 items-center gap-1 text-xs text-ink-3 hover:text-ink">
-          <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]/tr:rotate-180" />
+      {/* 깊은 세부 — 목록 안에서 펼치지 않고 옆 시트로(높이 상한과 넘침) */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger className="flex min-h-8 items-center gap-1 self-start text-xs text-ink-3 hover:text-ink">
+          <ChevronRight className="h-3 w-3" />
           분해 구조 · 관측
-        </CollapsibleTrigger>
-        <CollapsibleContent>{open && <QuestionTree id={item.id} />}</CollapsibleContent>
-      </Collapsible>
+        </SheetTrigger>
+        <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
+          <SheetHeader className="border-b"><SheetTitle className="pr-8 leading-snug">{item.text}</SheetTitle><SheetDescription>분해 구조 · 관측</SheetDescription></SheetHeader>
+          <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block"><div className="px-4 pb-6">{open && <QuestionTree id={item.id} />}</div></ScrollArea>
+        </SheetContent>
+      </Sheet>
     </article>
   )
 }

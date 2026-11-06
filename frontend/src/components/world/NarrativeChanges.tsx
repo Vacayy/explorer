@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { ArrowRight, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { InPlaceMore } from "@/components/shared/Bounded"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -47,6 +49,7 @@ const FIRST = 5   // 처음엔 최근 5편만 — 나머지는 펼쳐서
 /** [내러티브] 이번주 업데이트 — 최근 7일 새 버전 (저장된 요약 + 결정적 diff, 생성 없음) */
 export function NarrativeChangesCard() {
   const q = useNarrativeChanges(7)
+  const [more, setMore] = useState(false)
   return <Card className="gap-0 py-0" aria-label="이번주 업데이트">
     <header className="flex flex-wrap items-baseline gap-x-2 border-b px-4 py-3">
       <h2 className="text-section font-semibold">[내러티브] 이번주 업데이트</h2>
@@ -54,21 +57,22 @@ export function NarrativeChangesCard() {
       {q.data && <span className="ml-auto font-mono text-caption tabular-nums">{q.data.items.length}편</span>}
     </header>
     <div className="px-4 pb-2">
-      {q.isLoading ? <div className="space-y-3 py-3"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
+      {q.isLoading ? <div className="space-y-3 py-3">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-[84px] w-full" />)}</div>
         : q.isError ? <ErrorState message="바뀐 서사를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
         : !q.data?.items.length ? <EmptyState message="최근 7일 동안 새 버전이 나온 서사가 없습니다." />
-        : <Collapsible>
-            <ul className="divide-y">{q.data.items.slice(0, FIRST).map(i => <NarrativeChangeRow key={i.narrative_id} item={i} />)}</ul>
-            {q.data.items.length > FIRST && <>
+        : <Collapsible open={more} onOpenChange={setMore}>
+            {/* 펼쳐도 카드 높이는 그대로 — 나머지는 같은 높이 안에서 스크롤(shared/Bounded InPlaceMore) */}
+            <InPlaceMore open={more}>
+              <ul className="divide-y">{q.data.items.slice(0, FIRST).map(i => <NarrativeChangeRow key={i.narrative_id} item={i} />)}</ul>
               <CollapsibleContent><ul className="divide-y border-t">{q.data.items.slice(FIRST).map(i => <NarrativeChangeRow key={i.narrative_id} item={i} />)}</ul></CollapsibleContent>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="group text-muted-foreground">
-                  <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
-                  <span className="group-data-[state=open]:hidden">{q.data.items.length - FIRST}편 더 보기</span>
-                  <span className="hidden group-data-[state=open]:inline">접기</span>
-                </Button>
-              </CollapsibleTrigger>
-            </>}
+            </InPlaceMore>
+            {q.data.items.length > FIRST && <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="group text-muted-foreground">
+                <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+                <span className="group-data-[state=open]:hidden">{q.data.items.length - FIRST}편 더 보기</span>
+                <span className="hidden group-data-[state=open]:inline">접기</span>
+              </Button>
+            </CollapsibleTrigger>}
           </Collapsible>}
     </div>
   </Card>

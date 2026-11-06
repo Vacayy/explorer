@@ -3,7 +3,10 @@ import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { DropletContent, DropletReveal, DropletTrigger } from "@/components/shared/DropletReveal"
+import { BOUND_FIXED, BoundedArea } from "@/components/shared/Bounded"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ErrorState } from "@/components/shared/ErrorState"
@@ -148,10 +151,11 @@ export function BigPictureCard() {
       <header className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 pt-4 pb-3">
         <div className="min-w-0">
           <h2 className="text-section font-semibold">이번 주 큰 그림</h2>
-          {d && <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
+          {/* 불러오는 중에도 기준 줄 자리를 둔다(머리 높이 고정) */}
+          {d ? <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
             <span>기준 {kstShort(d.inputs_as_of)}</span>
             <span data-inputs>근거 {inputsLabel(d.inputs)}</span>
-          </p>}
+          </p> : <p aria-hidden className="invisible mt-0.5 text-caption">기준</p>}
         </div>
         <span className="ml-auto flex items-center gap-1.5">
           <InfoTip label="어떻게 만드나요?">{generated ? HOW : HOW_FALLBACK}</InfoTip>
@@ -166,7 +170,7 @@ export function BigPictureCard() {
         </div>
       )}
       <div className="px-4 pb-4">
-        {q.isLoading ? <ul className="grid gap-3 md:grid-cols-2" role="status" aria-label="큰 그림 불러오는 중">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}</ul>
+        {q.isLoading ? <ul className="grid gap-3 md:grid-cols-2" role="status" aria-label="큰 그림 불러오는 중">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[132px] w-full" />)}</ul>
           : q.isError || !d ? <ErrorState message="큰 그림을 불러오지 못했습니다." onRetry={() => void q.refetch()} />
           : generated ? <ul className="grid gap-3 md:grid-cols-2">{d.strands.map((s, i) => <StrandCard key={i} n={i + 1} s={s} old={level === "old"} />)}</ul>
           : d.inputs.narratives === 0 ? <p className="py-4 text-sm text-muted-foreground">이번 주엔 새로 바뀐 서사가 없어요.</p>
@@ -189,18 +193,19 @@ export function PremisesCard() {
   const generated = d?.source === "generated"
   const stamp = generated ? d?.generated_at : d?.worldview?.created_at
   return (
-    <Card className="gap-0 py-0" aria-label="자리 잡은 전제 · 흔들린 전제" id="premises" data-premises>
+    // 브리핑 전문은 카드 안에서 물방울로 올라온다(shared/DropletReveal) — 카드 높이 그대로
+    <DropletReveal asChild><Card className="gap-0 py-0" aria-label="자리 잡은 전제 · 흔들린 전제" id="premises" data-premises>
       <header className="flex flex-wrap items-baseline gap-x-2 border-b px-4 py-3">
         <h2 className="text-section font-semibold">자리 잡은 전제 · 흔들린 전제</h2>
         {d && <span className="text-caption text-muted-foreground">{generated ? "이번 주 큰 그림" : "세계관 브리핑"}{stamp ? ` · ${kstDay(stamp)}` : ""}</span>}
       </header>
       <div className="space-y-4 p-4">
-        {q.isLoading ? <Skeleton className="h-32 w-full" />
+        {q.isLoading ? <Skeleton className={cn("w-full", BOUND_FIXED.md)} />
           : q.isError || !d ? <ErrorState message="전제를 불러오지 못했습니다." onRetry={() => void q.refetch()} />
           : <PremisesBody d={d} />}
         <ContestedKnowledge />
       </div>
-    </Card>
+    </Card></DropletReveal>
   )
 }
 
@@ -224,18 +229,19 @@ function PremisesBody({ d }: { d: WorldBigPicture }) {
       </div>
     )}
     {generated && empty ? <p className="py-2 text-sm text-muted-foreground">이번 큰 그림엔 전제가 없습니다.</p>
-      : <div className={cn("grid gap-4 md:grid-cols-2", level === "old" && "opacity-60")}>
+      // 전제 목록은 상한(md) 안에서 스크롤
+      : <BoundedArea size="md"><div className={cn("grid gap-4 md:grid-cols-2", level === "old" && "opacity-60")}>
         <PremiseList title="자리 잡은 전제" items={d.premises.settled} old={level === "old"} />
         <PremiseList title="흔들린 전제" items={d.premises.contested} old={level === "old"} />
-      </div>}
-    {!generated && wv?.briefing && <Collapsible>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="group -ml-2 text-muted-foreground">
-          <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />브리핑 전문
+      </div></BoundedArea>}
+    {!generated && wv?.briefing && <>
+      <DropletTrigger asChild>
+        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+          <ChevronDown />브리핑 전문
         </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2"><Markdown>{wv.briefing}</Markdown></CollapsibleContent>
-    </Collapsible>}
+      </DropletTrigger>
+      <DropletContent title="브리핑 전문" description={`세계관 브리핑 · ${kstDay(wv.created_at)}`}><Markdown>{wv.briefing}</Markdown></DropletContent>
+    </>}
   </>
 }
 
@@ -265,13 +271,17 @@ function ContestedKnowledge() {
   const n = q.data?.items.length ?? 0
   if (q.isLoading || q.isError || n === 0) return null
   return (
-    <Collapsible className="border-t pt-2">
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="group -ml-2 text-muted-foreground">
-          <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />검증 지식에서 충돌 중 {n}
+    // 깊은 세부 — 카드 안에서 펼치지 않고 창으로(높이 상한과 넘침)
+    <div className="border-t pt-2"><Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+          <ChevronDown />검증 지식에서 충돌 중 {n}
         </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2"><ul className="space-y-3">{q.data!.items.map((k) => <ContestedRow key={k.id} k={k} />)}</ul></CollapsibleContent>
-    </Collapsible>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader><DialogTitle>검증 지식에서 충돌 중 {n}</DialogTitle><DialogDescription className="sr-only">반례가 쌓여 충돌 중인 검증 지식</DialogDescription></DialogHeader>
+        <ScrollArea viewportClassName="max-h-[min(600px,70vh)] [&>div]:!block"><ul className="space-y-3 pr-3">{q.data!.items.map((k) => <ContestedRow key={k.id} k={k} />)}</ul></ScrollArea>
+      </DialogContent>
+    </Dialog></div>
   )
 }

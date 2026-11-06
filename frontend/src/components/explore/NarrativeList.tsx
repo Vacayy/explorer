@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { EmptyState } from "@/components/shared/ErrorState"
 import { dbAgeDays, formatRelativeTime } from "@/utils/format"
 import { cn } from "@/lib/utils"
+import { BoundedArea } from "@/components/shared/Bounded"
 
 /** SQLite UTC 시각("YYYY-MM-DD HH:MM:SS")을 상대 표기로 — Z 부착해 로컬 오파싱 방지(D-059). */
 function relUpdated(iso: string | null): string {
@@ -112,26 +113,7 @@ export function NarrativeList({
   const cap = limit ?? (fold && !expanded ? fold : undefined)
   const shown = cap ? visible.slice(0, cap) : visible
   const hidden = fold && !limit ? visible.length - shown.length : 0
-
-  return (
-    <div className="space-y-3">
-      {controls && (
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <ToggleGroup type="multiple" size="sm" value={lenses} onValueChange={setLenses} aria-label="분야" className="flex-wrap">
-            {LENS.map((l) => <ToggleGroupItem key={l.value} value={l.value} className="h-[30px] px-3 text-[13px]">{l.label}</ToggleGroupItem>)}
-          </ToggleGroup>
-          <div className="ml-auto flex items-center gap-1.5">
-            <Switch id="narrative-old" checked={showOld} onCheckedChange={setShowOld} />
-            <Label htmlFor="narrative-old" className="text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 {oldCount}개 보기</Label>
-          </div>
-          <ToggleGroup type="single" size="sm" value={sort} aria-label="정렬"
-            onValueChange={(v) => v && setSort(v as SortKey)}>
-            {SORT.map((s) => <ToggleGroupItem key={s.value} value={s.value} className="h-[30px] px-3 text-[13px]">{s.label}</ToggleGroupItem>)}
-          </ToggleGroup>
-        </div>
-      )}
-
-      {shown.length === 0 ? (
+  const list = shown.length === 0 ? (
         <EmptyState message={oldCount && !showOld ? `최근 ${STALE_DAYS}일 안에 갱신된 서사가 없습니다. 오래된 서사 ${oldCount}개를 켜서 볼 수 있습니다.` : "선택한 카테고리에 해당하는 내러티브가 없습니다."} />
       ) : (
         <div className="space-y-2.5">
@@ -171,12 +153,34 @@ export function NarrativeList({
             </Link>
           ))}
         </div>
+      )
+
+  return (
+    <div className="space-y-3">
+      {controls && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <ToggleGroup type="multiple" size="sm" value={lenses} onValueChange={setLenses} aria-label="분야" className="flex-wrap">
+            {LENS.map((l) => <ToggleGroupItem key={l.value} value={l.value} className="h-[30px] px-3 text-[13px]">{l.label}</ToggleGroupItem>)}
+          </ToggleGroup>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Switch id="narrative-old" checked={showOld} onCheckedChange={setShowOld} />
+            <Label htmlFor="narrative-old" className="text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 {oldCount}개 보기</Label>
+          </div>
+          <ToggleGroup type="single" size="sm" value={sort} aria-label="정렬"
+            onValueChange={(v) => v && setSort(v as SortKey)}>
+            {SORT.map((s) => <ToggleGroupItem key={s.value} value={s.value} className="h-[30px] px-3 text-[13px]">{s.label}</ToggleGroupItem>)}
+          </ToggleGroup>
+        </div>
       )}
-      {fold && !limit && (hidden > 0 || (expanded && visible.length > fold)) && (
+
+      {/* 랜딩 목록(fold)은 높이 고정 — 분야·정렬·더 보기를 바꿔도 카드가 그대로, 넘치면 안에서 스크롤 */}
+      {fold && !limit ? <BoundedArea size="lg" fixed className="-mr-2" viewportClassName="pr-2">{list}</BoundedArea> : list}
+      {/* 버튼 줄 자리는 늘 둔다 — 분야를 바꿔 더 볼 것이 없어져도 카드 높이 그대로 */}
+      {fold && !limit && (hidden > 0 || (expanded && visible.length > fold) ? (
         <Button variant="ghost" size="sm" className="w-full text-ink-2" onClick={() => setParams(prev => { const next = new URLSearchParams(prev); if (hidden > 0) next.set("list", "all"); else next.delete("list"); return next }, { replace: true, preventScrollReset: true })}>
           {hidden > 0 ? `더 보기 · 전체 ${visible.length}편` : "접기"}
         </Button>
-      )}
+      ) : <div aria-hidden className="h-8" />)}
     </div>
   )
 }
