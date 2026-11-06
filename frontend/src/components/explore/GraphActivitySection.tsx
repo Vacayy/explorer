@@ -5,8 +5,9 @@ import { ChevronRight } from "lucide-react"
 import api from "@/api/client"
 import { STALE } from "@/api/query"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Card, CardHeader } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/shared/ErrorState"
@@ -36,19 +37,22 @@ export function GraphActivitySection() {
     ? `/narrative?topic=${encodeURIComponent(n.name)}`
     : `/knowledge/ontology?focus=${n.id}`
   return (
+    // 목록은 카드 안에서 펼치지 않고 옆 시트로(높이 상한과 넘침) — 열 때만 불러오는 것은 그대로
     <Card aria-label="인과 그래프 업데이트">
-      <Collapsible open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={setOpen}>
       <CardHeader className="flex flex-row flex-wrap items-center gap-1 space-y-0">
-        <CollapsibleTrigger asChild>
+        <SheetTrigger asChild>
           <Button variant="ghost" className="-ml-2 h-10 gap-1 px-2 text-sm font-semibold">
-            <ChevronRight className={open ? "size-4 rotate-90 transition-transform" : "size-4 transition-transform"} aria-hidden />
+            <ChevronRight className="size-4" aria-hidden />
             <h2>인과 그래프 업데이트</h2>
           </Button>
-        </CollapsibleTrigger>
+        </SheetTrigger>
         <InfoTip label="인과 그래프 업데이트 설명">최근 7일 새로 생기거나 연결이 늘어난 노드와 그 수혜 후보 종목입니다. 서사가 있는 주제는 서사로, 없으면 그래프에서 그 노드를 가운데 둡니다. 수혜 후보 계산이 무거워 펼칠 때 불러옵니다.</InfoTip>
       </CardHeader>
-      <CollapsibleContent>
-      <CardContent className="space-y-1">
+      <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
+      <SheetHeader className="border-b"><SheetTitle>인과 그래프 업데이트</SheetTitle><SheetDescription>최근 7일 새로 생기거나 연결이 늘어난 노드</SheetDescription></SheetHeader>
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block">
+      <div className="space-y-1 p-4">
         {q.isFetching && !q.data && <Skeleton className="h-16 w-full" />}
         {q.isError && <ErrorState message="그래프 변화를 불러오지 못했습니다." onRetry={() => void q.refetch()} retrying={q.isFetching} />}
         {q.isSuccess && items.length === 0 && <p className="text-sm text-muted-foreground">최근 7일 인과 그래프 업데이트가 없습니다.</p>}
@@ -72,9 +76,10 @@ export function GraphActivitySection() {
             </li>
           ))}
         </ul>}
-      </CardContent>
-      </CollapsibleContent>
-      </Collapsible>
+      </div>
+      </ScrollArea>
+      </SheetContent>
+      </Sheet>
     </Card>
   )
 }

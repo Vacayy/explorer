@@ -164,7 +164,7 @@ export function NarrativeList({
           </ToggleGroup>
           <div className="ml-auto flex items-center gap-1.5">
             <Switch id="narrative-old" checked={showOld} onCheckedChange={setShowOld} />
-            <Label htmlFor="narrative-old" className="text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 {oldCount}개 보기</Label>
+            <Label htmlFor="narrative-old" className="whitespace-nowrap text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 <span className="inline-block min-w-[2ch] text-right tabular-nums">{oldCount}</span>개 보기</Label>
           </div>
           <ToggleGroup type="single" size="sm" value={sort} aria-label="정렬"
             onValueChange={(v) => v && setSort(v as SortKey)}>

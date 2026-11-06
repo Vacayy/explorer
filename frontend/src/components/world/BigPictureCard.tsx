@@ -160,7 +160,8 @@ export function BigPictureCard() {
         <span className="ml-auto flex items-center gap-1.5">
           <InfoTip label="어떻게 만드나요?">{generated ? HOW : HOW_FALLBACK}</InfoTip>
           <Badge variant="outline" className="border-hypothesis/40 text-[10px] font-normal text-hypothesis">AI 종합 · 검증 필요</Badge>
-          {d && level === "fresh" && <RebuildButton state={d.rebuild} label={generated ? "다시 만들기" : "만들기"} size="xs" />}
+          {d ? level === "fresh" && <RebuildButton state={d.rebuild} label={generated ? "다시 만들기" : "만들기"} size="xs" />
+            : <Button size="xs" variant="outline" disabled aria-hidden tabIndex={-1} className="invisible">다시 만들기</Button>}
         </span>
       </header>
       {d && level !== "fresh" && (

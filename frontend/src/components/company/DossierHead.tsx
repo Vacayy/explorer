@@ -33,7 +33,8 @@ export function DossierHead({ eyebrow, name, last, market, loading, actions }: {
             </p>
           ) : <p className="mt-1 text-sm text-muted-foreground">-</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {/* 좁은 화면은 동작 줄을 처음부터 다음 줄에 — 종가가 늦게 와서 줄이 바뀌며 아래가 밀리지 않게 */}
+      {actions && <div className="flex flex-wrap items-center gap-2 max-sm:w-full">{actions}</div>}
     </header>
   )
 }
@@ -48,7 +49,8 @@ export function MetricStrip({ items, loading }: { items: Metric[]; loading?: boo
         <div key={m.label} className="min-w-0 border-b border-r px-3 py-3 last:border-r-0 max-lg:[&:nth-child(3n)]:border-r-0 lg:border-b-0">
           <p className="truncate text-caption text-muted-foreground">{m.label}</p>
           <div className="mt-1 break-words font-mono text-base tabular-nums sm:text-lg">{loading ? <Skeleton className="h-6 w-20" /> : m.value}</div>
-          {m.sub && !loading && <p className="mt-0.5 text-caption text-muted-foreground">{m.sub}</p>}
+          {/* 보조 줄 자리는 늘 둔다 — 불러온 뒤 한 칸에만 생기며 띠 높이가 바뀌지 않게 */}
+          <p className="mt-0.5 text-caption text-muted-foreground">{!loading && m.sub ? m.sub : '\u00a0'}</p>
         </div>
       ))}
     </Card>

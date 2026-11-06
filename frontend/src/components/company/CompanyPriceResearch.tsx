@@ -167,9 +167,11 @@ export function CompanyPriceResearch({
   }, { replace: true })
   const current = candles.find((p) => p.time === selected) || candles.at(-1)
   const fieldClass = 'rounded-md border bg-background px-3 py-2 text-sm'
+  // 불러오는 자리도 차트와 같은 높이 — 데이터가 오면서 카드가 줄지 않게(높이 상한과 넘침)
+  const chartHeight = compact && !selected && !scanEnabled ? 160 : window.innerWidth < 768 ? 320 : 420
   const priceChart = <>
     {loading ? (
-      <p className="flex h-80 items-center justify-center text-muted-foreground">
+      <p className="flex items-center justify-center text-muted-foreground" style={{ height: chartHeight }}>
         주가를 불러오는 중입니다.
       </p>
     ) : error ? (
@@ -181,7 +183,7 @@ export function CompanyPriceResearch({
       <CandlestickChart
         data={chartData}
         volumeData={volumes}
-        height={compact && !selected && !scanEnabled ? 160 : window.innerWidth < 768 ? 320 : 420}
+        height={chartHeight}
         axisFontSize={13}
         separateVolume
         formatValue={value => market === 'us' ? `$${value.toFixed(2)}` : formatChartKrw(value)}
