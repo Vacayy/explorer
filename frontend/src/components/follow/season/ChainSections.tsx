@@ -290,35 +290,37 @@ function QuantFacts({ q }: { q: NonNullable<NonNullable<ChainDetail["expectation
 /* ---------- 발표 전 시장이 주목한 내용 — 한 줄씩(쟁점 | 중요도 | 결과 한 줄 | 영향), 기준·판정은 행을 눌러 펼침 ---------- */
 const IMPACT: Record<string, string> = { major: "영향 큼", minor: "영향 작음", none: "영향 없음" }
 
-export function IssuesCard({ chain }: { chain: ChainDetail }) {
+/** expanded = 콜 상세 '발표 전 · 자세히 보기' 패널 안 — 제목은 패널 머리가 갖고, 모든 행을 펼친 채로 보인다 */
+export function IssuesCard({ chain, expanded }: { chain: ChainDetail; expanded?: boolean }) {
   const ex = chain.expectation
   const grades = chain.reaction_meta?.grades ?? []
   const missed = chain.reaction_meta?.missed ?? []
   const byIssue = new Map((ex?.issues ?? []).map((i) => [i.issue, i]))
   // 행 펼침(기준·판정)은 한 번에 한 행, 목록 안에서 — 펼치기 직전 높이 그대로 안에서 스크롤(아래 블록이 밀리지 않게)
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const rowProps = (key: string) => ({ open: openKey === key, onOpenChange: (v: boolean) => setOpenKey(v ? key : null) })
+  const rowProps = (key: string) => ({ open: expanded || openKey === key, always: expanded, onOpenChange: (v: boolean) => setOpenKey(v ? key : null) })
+  const wrap = (list: ReactNode) => expanded ? list : <InPlaceMore open={openKey != null} size="md">{list}</InPlaceMore>
 
   let content: ReactNode
   if (!ex) content = <Meta>발표 전 기대가 정리되지 않은 발표입니다.</Meta>
   else if (grades.length || missed.length) {
-    content = <InPlaceMore open={openKey != null} size="md"><ul className="flex flex-col">
+    content = wrap(<ul className="flex flex-col">
       {grades.map((g) => <IssueRow key={g.issue} grade={g} issue={byIssue.get(g.issue)} {...rowProps(g.issue)} />)}
       {missed.map((m) => <IssueRow key={m} missed={clean(m)} {...rowProps(`missed:${m}`)} />)}
-    </ul></InPlaceMore>
+    </ul>)
   } else if (ex.issues?.length) {
     // 기대는 있는데 채점 전 — 쟁점과 기준만
     content = <>
-      <InPlaceMore open={openKey != null} size="md"><ul className="flex flex-col">{ex.issues.map((i) => <IssueRow key={i.issue} issue={i} {...rowProps(i.issue)} />)}</ul></InPlaceMore>
+      {wrap(<ul className="flex flex-col">{ex.issues.map((i) => <IssueRow key={i.issue} issue={i} {...rowProps(i.issue)} />)}</ul>)}
       <Meta>채점은 시장 반응 정리가 만들어지면 붙습니다.</Meta>
     </>
   } else content = <Meta>발표 전 정리에 쟁점이 없습니다.</Meta>
 
-  return <Section title="발표 전 시장이 주목한 내용">{content}</Section>
+  return expanded ? <div className="flex flex-col gap-2">{content}</div> : <Section title="발표 전 시장이 주목한 내용">{content}</Section>
 }
 
-function IssueRow({ grade, issue, missed, open, onOpenChange: setOpen }: { grade?: ReactionGrade; issue?: ExpectationIssue; missed?: string
-  open: boolean; onOpenChange: (v: boolean) => void }) {
+function IssueRow({ grade, issue, missed, open, always, onOpenChange: setOpen }: { grade?: ReactionGrade; issue?: ExpectationIssue; missed?: string
+  open: boolean; always?: boolean; onOpenChange: (v: boolean) => void }) {
   const name = missed ?? grade?.issue ?? issue?.issue ?? ""
   const weight = grade?.weight ?? issue?.weight
   const result = missed ? "발표 전 정리에 없던 쟁점입니다." : grade?.outcome ?? (issue?.good ? `호재면 ${issue.good}` : "")
@@ -329,7 +331,7 @@ function IssueRow({ grade, issue, missed, open, onOpenChange: setOpen }: { grade
   const row = (
     <>
       <span className="flex min-w-0 items-baseline gap-1 text-[13px]">
-        {detail.length > 0 && <ChevronRight className={cn("size-3 shrink-0 self-center text-ink-3 transition-transform", open && "rotate-90")} />}{name}
+        {detail.length > 0 && !always && <ChevronRight className={cn("size-3 shrink-0 self-center text-ink-3 transition-transform", open && "rotate-90")} />}{name}
       </span>
       <span>{weight && <Badge variant={weight === "high" ? "neutral" : "outline"}>{WEIGHT[weight]}</Badge>}</span>
       <span className="min-w-0 text-[12.5px] text-ink-2 max-md:col-span-2">{result}</span>
@@ -339,7 +341,9 @@ function IssueRow({ grade, issue, missed, open, onOpenChange: setOpen }: { grade
   const grid = "grid w-full grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-1 py-2.5 text-left md:grid-cols-[1fr_auto_2fr_auto]"
   return (
     <li className="min-w-0 border-t border-line first:border-t-0">
-      {detail.length ? (
+      {detail.length && always ? (
+        <><div className={grid}>{row}</div><div className="pb-2.5"><Bullets items={detail} /></div></>
+      ) : detail.length ? (
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleTrigger className={cn(grid, "cursor-pointer hover:bg-chip/40")}>{row}</CollapsibleTrigger>
           <CollapsibleContent className="pb-2.5 pl-4"><Bullets items={detail} /></CollapsibleContent>
@@ -357,7 +361,8 @@ export function VsPrevCard({ chain }: { chain: ChainDetail }) {
 }
 
 /** 쟁점 카드 + 지난 분기 비교 — 비교가 있으면 2단 */
-export function IssuesRow({ chain }: { chain: ChainDetail }) {
+export function IssuesRow({ chain, expanded }: { chain: ChainDetail; expanded?: boolean }) {
+  if (expanded) return <div className="flex flex-col gap-5"><IssuesCard chain={chain} expanded />{chain.reaction_meta?.vs_prev?.length ? <VsPrevCard chain={chain} /> : null}</div>
   return chain.reaction_meta?.vs_prev?.length
     ? <Cols><IssuesCard chain={chain} /><VsPrevCard chain={chain} /></Cols>
     : <IssuesCard chain={chain} />

@@ -395,7 +395,7 @@ function DetailFolds({ data, transcriptId, rest }: { data: Detail; transcriptId:
 /** 네 단계 + 각 단계 '자세히 보기' → 단계 영역 위 물방울 (발표 전 = 시장이 주목한 내용 · 컨콜 = 핵심 정리 · 시장 반응 = 정리 전문 · 그 뒤 = 수익률·목표가 변경) */
 function StagesWithMore({ chain, data, transcriptId }: { chain: ChainDetail; data: Detail; transcriptId: number }) {
   const reveal = useContext(FoldReveal)
-  const body = (k: StageKey) => k === "before" ? <IssuesRow chain={chain} />
+  const body = (k: StageKey) => k === "before" ? <IssuesRow chain={chain} expanded />
     : k === "call" ? <CallDigest data={data} transcriptId={transcriptId} />
     : k === "reaction" ? <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
     : <AfterDetail chain={chain} transcriptId={transcriptId} />
