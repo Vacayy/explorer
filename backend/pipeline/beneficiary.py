@@ -8,7 +8,7 @@ theme_surge(투자언어 테마)는 taxonomy가 달라 직접 매칭 불가 → 
 from datetime import date, timedelta
 
 from pipeline.research_candidates import MAX_DOC_STOCKS, _rs_short
-from pipeline.sector_rs import _snapshot
+from pipeline.sector_rs import _snapshot, snapshot_memo
 
 WINDOW_52W = 250      # 52주 위치 창(거래일)
 MIN_CO_BENEFIT = 2    # 최소 공동언급 문서 수 (Phase 1.5 — 1회성 우연 제외)
@@ -216,12 +216,13 @@ def graph_activity(conn, days: int = 7, limit: int = 12) -> list[dict]:
         ORDER BY new_edges DESC, is_new DESC
         LIMIT ?""", (limit,)).fetchall()
     out = []
-    for r in rows:
-        item = {"id": r["id"], "name": r["name"], "type": r["type"],
-                "is_new": bool(r["is_new"]), "new_edges": r["new_edges"], "beneficiaries": []}
-        if r["type"] in ("sector", "theme"):
-            item["beneficiaries"] = [
-                {"stock_code": b["stock_code"], "name": b["name"], "rs_short": b["rs_short"]}
-                for b in screen_beneficiaries(conn, r["name"], limit=3)]
-        out.append(item)
+    with snapshot_memo():   # 노드마다 수혜 종목 스크린이 같은 날짜 스냅샷을 다시 읽지 않게(요청 하나 범위)
+        for r in rows:
+            item = {"id": r["id"], "name": r["name"], "type": r["type"],
+                    "is_new": bool(r["is_new"]), "new_edges": r["new_edges"], "beneficiaries": []}
+            if r["type"] in ("sector", "theme"):
+                item["beneficiaries"] = [
+                    {"stock_code": b["stock_code"], "name": b["name"], "rs_short": b["rs_short"]}
+                    for b in screen_beneficiaries(conn, r["name"], limit=3)]
+            out.append(item)
     return out
