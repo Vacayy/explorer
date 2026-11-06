@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils"
 import { EdgeContextRow, BeneficiaryList } from "@/components/explore/graph/CausalDetail"
 import { NodeSourceSummary, type SourceStatus } from "@/components/explore/graph/EdgeSource"
 import { GraphActivitySection } from "@/components/explore/GraphActivitySection"
+import { track } from "@/lib/usage"
 
 // 엣지 표현 렌즈 — 같은 그래프, 엣지가 답하는 질문만 바꾼다 ("사실은 그래프로, 프레임은 렌즈로")
 const EDGE_MODES = [
@@ -283,7 +284,7 @@ export default function WorldviewPage() {
           <span>전체 {formatNumber(sub.data.total_nodes)}개 노드 중 {formatNumber(sub.data.nodes.length)}개 표시
             {focusId == null ? " · 연결 많은 순" : sub.data.truncated ? ` · 이웃이 많아 연결 많은 ${FOCUS_LIMIT}개만` : ""}</span>
           {focusId == null && sub.data.truncated && coreLimit < CORE_STEPS[CORE_STEPS.length - 1] && (
-            <Button variant="link" size="sm" className="h-auto p-0 text-[11px]" onClick={() => setCoreLimit(nextCore(coreLimit))}>
+            <Button variant="link" size="sm" className="h-auto p-0 text-[11px]" onClick={() => { track("action", "ontology.expand", { entity: nextCore(coreLimit) }); setCoreLimit(nextCore(coreLimit)) }}>
               {nextCore(coreLimit)}개까지 보기
             </Button>
           )}

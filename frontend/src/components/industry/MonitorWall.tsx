@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { tone } from "@/components/home/blockState"
 import { cn } from "@/lib/utils"
 import { formatPercent } from "@/utils/format"
+import { track } from "@/lib/usage"
 
 /**
  * 산업 › 수출입 · 대만 공급망 모니터링형 카드 벽(D-325, 시안 Industry-Trade · Industry-TW).
@@ -175,13 +176,13 @@ export function MonitorDialog({ open, onClose, sub, name, value, yoy, detailTo, 
           </DialogDescription>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <Button asChild variant="outline" size="sm" className="h-8 rounded-full px-3 text-[13px] max-sm:hidden"><Link to={detailTo}>상세 페이지 ›</Link></Button>
+          <Button asChild variant="outline" size="sm" className="h-8 rounded-full px-3 text-[13px] max-sm:hidden"><Link to={detailTo} onClick={() => track("action", "monitor.detail", { entity: detailTo.split("/").pop() })}>상세 페이지 ›</Link></Button>
           <DialogClose asChild><Button variant="secondary" size="icon-sm" aria-label="닫기"><X /></Button></DialogClose>
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-5 pt-4 pb-5 max-sm:px-4">
         {children}
-        <Button asChild variant="outline" size="sm" className="h-9 rounded-full sm:hidden"><Link to={detailTo}>상세 페이지 ›</Link></Button>
+        <Button asChild variant="outline" size="sm" className="h-9 rounded-full sm:hidden"><Link to={detailTo} onClick={() => track("action", "monitor.detail", { entity: detailTo.split("/").pop() })}>상세 페이지 ›</Link></Button>
       </div>
     </DialogContent>
   </Dialog>

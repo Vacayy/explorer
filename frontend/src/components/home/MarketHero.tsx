@@ -12,6 +12,7 @@ import { fearGreedZone } from "@/lib/macroPage"
 import { cn } from "@/lib/utils"
 import { formatKrw, formatLevel, formatLevelChange, formatNumber, formatPercent, formatYield } from "@/utils/format"
 import type { IndexOverview, IndexRangeKey, MarketKey, OverviewTile } from "@/types"
+import { track } from "@/lib/usage"
 
 const RANGES: { key: IndexRangeKey; label: string }[] = [{ key: "1d", label: "1일" }, { key: "1m", label: "1개월" }, { key: "3m", label: "3개월" }, { key: "1y", label: "1년" }]
 const WD = ["일", "월", "화", "수", "목", "금", "토"]
@@ -71,9 +72,9 @@ export function MarketHero({ market }: { market: MarketKey }) {
 
   const hero = <MarketCard band="index" label={`${market}.index`} className="max-md:h-auto">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-      <Seg label="지수" value={idx?.key ?? first} onChange={v => set("idx", v, first)}
+      <Seg label="지수" value={idx?.key ?? first} onChange={v => { track("action", "index.switch", { entity: `${v}:${range}` }); set("idx", v, first) }}
         items={(d?.indices ?? []).map(i => ({ key: i.key, label: i.name }))} />
-      <Seg label="기간" value={range} onChange={v => set("range", v, "1d")} items={RANGES} />
+      <Seg label="기간" value={range} onChange={v => { track("action", "index.switch", { entity: `${idx?.key ?? first}:${v}` }); set("range", v, "1d") }} items={RANGES} />
     </div>
     {!d ? (q.isError ? <BlockError message="지수를 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} />
         : <div role="status" aria-label="지수 불러오는 중" className="flex min-h-0 flex-1 flex-col gap-3"><Skeleton className="h-11 w-72" /><Skeleton className="min-h-[220px] w-full flex-1" /></div>)

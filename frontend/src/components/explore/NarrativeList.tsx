@@ -19,6 +19,7 @@ import { BoundedArea } from "@/components/shared/Bounded"
 import { EdgeChip } from "@/components/world/NarrativeChanges"
 import { useNarrativeChanges } from "@/hooks/useWorld"
 import type { WorldNarrativeChange } from "@/types"
+import { track } from "@/lib/usage"
 
 /** 내러티브 카드 목록 — 신호 티저(limit)와 월드모델>내러티브 랜딩이 공유. */
 export interface NarrativeItem {
@@ -129,7 +130,7 @@ export function NarrativeList({
             const version = c?.version ?? n.version
             const hasEdges = !!c && !c.is_first && (c.added_count > 0 || c.removed_count > 0)
             return (
-            <Collapsible key={n.topic} open={openTopic === n.topic} onOpenChange={(o) => setOpenTopic(o ? n.topic : null)}
+            <Collapsible key={n.topic} open={openTopic === n.topic} onOpenChange={(o) => { if (o) track("action", "narrative.expand", { entity: n.topic }); setOpenTopic(o ? n.topic : null) }}
               className={cn("flex items-start gap-2", controls && isOld(n) && "opacity-60")}>
               <Sparkles className="h-4 w-4 text-hypothesis shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
@@ -191,7 +192,7 @@ export function NarrativeList({
             <Label htmlFor="narrative-old" className="whitespace-nowrap text-xs font-normal text-muted-foreground">{STALE_DAYS}일 넘은 서사 <span className="inline-block min-w-[2ch] text-right tabular-nums">{oldCount}</span>개 보기</Label>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Toggle size="sm" variant="outline" pressed={weekOnly} onPressedChange={setWeekOnly} disabled={!weekly} className="h-[30px] px-3 text-[13px]">
+            <Toggle size="sm" variant="outline" pressed={weekOnly} onPressedChange={v => { if (v) track("action", "narrative.week"); setWeekOnly(v) }} disabled={!weekly} className="h-[30px] px-3 text-[13px]">
               이번 주 바뀐 것 <span className="tabular-nums">{weekly?.items.length ?? "-"}</span>
             </Toggle>
             <ToggleGroup type="single" size="sm" value={sort} aria-label="정렬"

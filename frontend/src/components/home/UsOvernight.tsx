@@ -9,6 +9,7 @@ import { useUsBriefing } from "@/hooks/useUsBriefing"
 import { cn } from "@/lib/utils"
 import { formatPercent } from "@/utils/format"
 import type { UsBriefing, UsCluster, UsMoverBrief } from "@/types"
+import { track } from "@/lib/usage"
 
 /** 한국 관례: 상승 빨강·하락 파랑 */
 const tone = (v: number | null | undefined) => v == null || v === 0 ? "" : v > 0 ? "text-up-ink" : "text-down-ink"
@@ -111,7 +112,7 @@ export function UsOvernightBody() {
     <LoneMoverChips movers={d.idiosyncratic.slice(0, 4)} />
     </div></ScrollArea>
     <DropletTrigger asChild>
-      <Button variant="outline" className="glass mt-auto h-11 w-full shrink-0 rounded-full text-sm font-medium">브리핑 전체 보기 <ChevronDown aria-hidden /></Button>
+      <Button variant="outline" className="glass mt-auto h-11 w-full shrink-0 rounded-full text-sm font-medium" onClick={() => track("open", "overnight.full", { entity: d.trade_date })}>브리핑 전체 보기 <ChevronDown aria-hidden /></Button>
     </DropletTrigger>
     <DropletContent className="rounded-[16px]" title="브리핑 전체" description={`어젯밤 미국장 · ${usMd(d.trade_date)} 장 마감${s ? ` · 출처 ${s.sources?.length ?? 0}건` : ""}`}>
       {s ? <BriefingProse data={d} /> : <div className="@container/market"><UsBriefingSection embedded /></div>}

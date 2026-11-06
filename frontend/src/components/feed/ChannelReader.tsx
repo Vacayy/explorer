@@ -17,6 +17,7 @@ import { sessionMemory } from '@/lib/sessionMemory'
 import { cn } from '@/lib/utils'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { TimelineChannel } from '@/types'
+import { track } from '@/lib/usage'
 
 /** 왼쪽 종류 칩 — Explorer(system)는 칩 없이 목록 맨 아래 묶음으로 */
 const TYPE_CHIPS = [['all', '전체'], ...Object.entries(FEED_PLATFORMS).filter(([k]) => k !== 'system')] as [FeedPlatform, string][]
@@ -94,6 +95,7 @@ export function ChannelReader() {
 
   function select(id: string) {
     focusTarget.current = 'heading'
+    if (id) track('action', 'feed.source', { entity: id })
     patch({ channel: id || null, reading: null, reader_topic: null, reader_open: '1', reader_page: null, reader_until: until })
   }
   function paginate(next: number) {
@@ -161,7 +163,7 @@ export function ChannelReader() {
             {markScope && directory.data && allUnread > 0 && <>
               <span aria-hidden>·</span>
               <Button variant="link" size="xs" className="h-auto px-0 text-caption text-ink-2" disabled={markAll.isPending}
-                onClick={() => markAll.mutate({ platform: markScope, read_until: until }, { onError: e => toast.error(e instanceof Error ? e.message : '읽음으로 바꾸지 못했습니다.') })}>모두 읽음</Button>
+                onClick={() => { track('action', 'feed.mark_all_read', { entity: markScope }); markAll.mutate({ platform: markScope, read_until: until }, { onError: e => toast.error(e instanceof Error ? e.message : '읽음으로 바꾸지 못했습니다.') }) }}>모두 읽음</Button>
             </>}
           </p>
         </div>

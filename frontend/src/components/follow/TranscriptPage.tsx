@@ -399,7 +399,7 @@ function StagesWithMore({ chain, data, transcriptId }: { chain: ChainDetail; dat
     : k === "call" ? <CallDigest data={data} transcriptId={transcriptId} />
     : k === "reaction" ? <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
     : <AfterDetail chain={chain} transcriptId={transcriptId} />
-  return <StagesCard chain={chain} transcriptId={transcriptId} onMore={reveal ? (k, title) => reveal.show(title, body(k)) : undefined} />
+  return <StagesCard chain={chain} transcriptId={transcriptId} onMore={reveal ? (k, title) => { track("open", "transcript.stage", { entity: k, ref: String(transcriptId) }); reveal.show(title, body(k)) } : undefined} />
 }
 
 /** 핵심 정리(컨콜 전체) — 없으면 생성 버튼(LLM) */
@@ -472,7 +472,7 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
   const reveal = useContext(FoldReveal)
   const trigger = "group flex w-full items-center gap-1.5 py-2.5 text-left text-[13.5px] font-medium hover:text-ink-2"
   if (inline) return (
-    <Collapsible className="border-t border-line first:border-t-0">
+    <Collapsible className="border-t border-line first:border-t-0" onOpenChange={o => { if (o) track("open", "transcript.fold", { entity: label }) }}>
       <CollapsibleTrigger className={trigger}>
         <ChevronRight className="size-3.5 text-ink-3 transition-transform group-data-[state=open]:rotate-90" />{label}
       </CollapsibleTrigger>
@@ -482,7 +482,7 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="border-t border-line first:border-t-0">
       <button type="button" className={trigger} aria-haspopup="dialog" aria-expanded={reveal?.open === label}
-        onClick={() => reveal?.show(label, children)}><ChevronRight className="size-3.5 text-ink-3" />{label}</button>
+        onClick={() => { track("open", "transcript.fold", { entity: label }); reveal?.show(label, children) }}><ChevronRight className="size-3.5 text-ink-3" />{label}</button>
     </div>
   )
 }

@@ -14,6 +14,7 @@ import { SourceBadge } from '@/components/shared/SourceBadge'
 import { EntityChip } from '@/components/shared/EntityChip'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { EntityTag, FeedDocument, TimelineItem } from '@/types'
+import { track } from '@/lib/usage'
 
 type PostVariant = 'card' | 'row'
 function PostSurface({ variant, children }: { variant: PostVariant; children: ReactNode }) {
@@ -56,7 +57,7 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
         </h3>
         <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" />
         {hasSummary && hasOriginal && <>
-          <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal} onClick={() => setShowOriginal(v => !v)}>
+          <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal} onClick={() => { if (!showOriginal) track('open', 'feed.original', { entity: doc.id }); setShowOriginal(v => !v) }}>
             {showOriginal ? '원문 접기' : '원문 보기'}<ChevronDown aria-hidden="true" className={`size-3 transition-transform ${showOriginal ? 'rotate-180' : ''}`} />
           </Button>
           {showOriginal && <BoundedArea size="md" className="rounded-lg border border-line bg-surface-2/50" viewportClassName="p-3">

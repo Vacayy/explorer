@@ -12,6 +12,7 @@ import { useUsBriefing } from "@/hooks/useUsBriefing"
 import { useCallMomentum, useRecentCalls, useSeason } from "@/hooks/useTranscripts"
 import { formatNumber, formatUsd } from "@/utils/format"
 import type { CallMomentumCandidate } from "@/types"
+import { track } from "@/lib/usage"
 
 /* 홈 › 미국 시장 칸(ia-redesign §4.3, 시안 Home-US) — ② 어젯밤 미국장 · ③ 새 모멘텀 후보 · ④ 최근 컨콜 */
 
@@ -38,7 +39,7 @@ export function OvernightCard() {
   const lead = (s?.drivers || s?.index_summary || s?.issues || "").replace(/\[\d+\]/g, "").split(/(?<=[.다요])\s/)[0]
   return <MarketCard band="summary" label="us.overnight" id="us-briefing">
     <BlockHead section title="어젯밤 미국장" sub={sub} info={<>미국장 마감 뒤 수집 문서와 시세로 정리합니다. 매일 06:30에 만들어집니다.{why.map(w => <span key={w} className="mt-1 block">{w}</span>)}</>}
-      actions={<Seg label="브리핑 보기" value={view === "full" ? "full" : "key"} onChange={setView} items={[{ key: "key", label: "핵심" }, { key: "full", label: "전문" }]} />} />
+      actions={<Seg label="브리핑 보기" value={view === "full" ? "full" : "key"} onChange={v => { if (v === "full") track("open", "overnight.full", { entity: d?.trade_date }); setView(v) }} items={[{ key: "key", label: "핵심" }, { key: "full", label: "전문" }]} />} />
     <AiLine>AI 요약 · 미국 시장 마감 정리</AiLine>
     <FillState data={d} isError={q.isError || d?.status === "error"} error={q.error} onRetry={() => void q.refetch()} message="어젯밤 미국장 브리핑을 불러오지 못했습니다">{() => !d!.movers.length
       ? <FillNote>오늘 브리핑이 아직 없어요. 매일 06:30에 만들어집니다.</FillNote>

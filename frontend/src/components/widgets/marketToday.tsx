@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { formatLevel, formatPercent } from "@/utils/format"
 import type { MarketToday, TodayTopic } from "@/types"
 import type { WidgetBodyProps, WidgetMeta } from "./types"
+import { track } from "@/lib/usage"
 
 /** 한국 관례: 상승 빨강·하락 파랑 */
 const tone = (v: number | null | undefined) => v == null || v === 0 ? "" : v > 0 ? "text-up-ink" : "text-down-ink"
@@ -76,11 +77,11 @@ function DayNav({ day, onGo }: { day: MarketToday; onGo: (d: string | null) => v
   const today = day.trade_date === kstToday()
   return <div className="flex items-center gap-1 text-[12.5px] text-ink-2">
     <Button variant="ghost" size="icon-xs" aria-label={day.prev_date ? `${dayLabel(day.prev_date)} 보기` : "이전 날 없음"} disabled={!day.prev_date}
-      onClick={() => day.prev_date && onGo(day.prev_date)}><ChevronLeft aria-hidden /></Button>
+      onClick={() => { if (day.prev_date) { track("action", "market_today.nav", { entity: "prev" }); onGo(day.prev_date) } }}><ChevronLeft aria-hidden /></Button>
     <span className="min-w-[72px] text-center font-mono tabular-nums">{today ? `오늘 ${dayLabel(day.trade_date)}` : dayLabel(day.trade_date)}</span>
     <Button variant="ghost" size="icon-xs" aria-label={day.next_date ? `${dayLabel(day.next_date)} 보기` : "다음 날 없음"} disabled={!day.next_date}
-      onClick={() => day.next_date && onGo(day.next_date)}><ChevronRight aria-hidden /></Button>
-    {!today && <Button variant="ghost" size="xs" className="ml-auto" onClick={() => onGo(null)}>오늘로</Button>}
+      onClick={() => { if (day.next_date) { track("action", "market_today.nav", { entity: "next" }); onGo(day.next_date) } }}><ChevronRight aria-hidden /></Button>
+    {!today && <Button variant="ghost" size="xs" className="ml-auto" onClick={() => { track("action", "market_today.nav", { entity: "today" }); onGo(null) }}>오늘로</Button>}
   </div>
 }
 
@@ -135,7 +136,7 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
         <span className="absolute bottom-0 font-mono text-[10px] text-ink-3 max-sm:hidden" style={{ left: `${X0}%` }}>09:00</span>}
       {day.slots.map(s => {
         const on = s.slot === picked
-        return <Button key={s.slot} variant="ghost" aria-pressed={on} aria-label={`${s.label} 회차 보기`} onClick={() => onPick(s.slot)}
+        return <Button key={s.slot} variant="ghost" aria-pressed={on} aria-label={`${s.label} 회차 보기`} onClick={() => { track("action", "market_today.nav", { entity: `slot:${s.label}` }); onPick(s.slot) }}
           className="absolute top-[34px] h-auto -translate-x-1/2 flex-col gap-[3px] rounded-md px-1 py-0.5 hover:bg-transparent"
           style={{ left: `${xAt(mins(s.label))}%` }}>
           <span aria-hidden className={cn("rounded-full border-[1.6px] border-ink", on ? "size-3 bg-ink" : "size-[9px] bg-surface")} />
