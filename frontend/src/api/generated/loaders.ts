@@ -23,6 +23,7 @@ export const loaders = {
   'groups': () => import('./validators-groups.js'),
   'home': () => import('./validators-home.js'),
   'indices': () => import('./validators-indices.js'),
+  'industry': () => import('./validators-industry.js'),
   'knowledge': () => import('./validators-knowledge.js'),
   'kr': () => import('./validators-kr.js'),
   'market-today': () => import('./validators-market-today.js'),

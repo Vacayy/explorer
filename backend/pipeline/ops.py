@@ -34,6 +34,7 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("auto_curation", "정리 작업 자동 처리", "주간 제안 스캔 끝 — 별칭·노드 병합·지식 승격을 규칙으로 판정(기본 판정만, auto_curation_apply 켜면 적용, D-294)", "pipeline/auto_curation.py → run_curation"),
     ("person_curation", "인물 이름 자동 정리", "주간 제안 스캔 끝 — 같은 사람 이름을 규칙으로 소프트 병합(되돌리기 가능)·메모 저자 연결·역할 분류, LLM 0(플래그 person_curation)", "pipeline/people.py → run_curation"),
     ("weekly_big_picture", "이번 주 큰 그림", "sonnet 1콜 — 매주 월 07:00 + 16:00 마감 정리 뒤 새 버전 3편+ + 다시 만들기(6시간), 주 7회 상한(합계)·입력 해시 가드, 줄기 최대 4", "scripts/weekly_big_picture.py"),
+    ("sector_overview", "산업 개괄", "sonnet 1콜/섹터 — 섹터에 걸린 내러티브가 바뀐 섹터만, 섹터당 주 1회 상한 (기본 off, D-327-3)", "scripts/compute_sector_overview.py"),
     ("question_autopropose", "질문 자동 제안", "refresh_questions 안 — 지배 내러티브·다이제스트에서 질문 제안 → 승인 큐 (기본 off)", "pipeline/questions.py → refresh_all"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}

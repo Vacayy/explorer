@@ -4,7 +4,7 @@
     "stock_code": "005930", "code": "005930", "ticker": "META", "transcript_id": "408", "key": "hyperscale",
     "doc_id": "26133", "entity_id": "4411", "narrative_id": "434", "audit_id": "4", "conversation_id": "73",
     "edge_id": "20966", "knowledge_id": "239", "question_id": "42", "proxy_id": "2", "kind": "credit",
-    "pid": "8", "group_id": "1", "hs_code": "1902301010", "study_id": "48"
+    "pid": "8", "group_id": "1", "hs_code": "1902301010", "study_id": "48", "sector": "반도체·전자부품"
   },
   "paths": {
     "/api/spine/company/{name}/dossier": "/api/spine/company/삼성전자/dossier",

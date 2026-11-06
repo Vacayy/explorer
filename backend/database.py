@@ -689,6 +689,38 @@ def init_db():
         source      TEXT NOT NULL DEFAULT 'manual', -- audit-YYYY-MM-DD = 코드 시드(pipeline/sector_override_seed) · manual
         updated_at  TEXT DEFAULT (datetime('now'))
     );
+    -- 섹터 대표지수 대응표 (ia-redesign §4.35, D-327-4). 원본 = pipeline/sector_benchmarks.SEED(init마다 맞춤). ticker NULL = 대응 ETF 없음(계산 지수)
+    CREATE TABLE IF NOT EXISTS sector_benchmarks (
+        sector  TEXT PRIMARY KEY,                 -- sector_map.group_name 대분류
+        ticker  TEXT,                             -- 국내 ETF 6자리 코드
+        name    TEXT,                             -- ETF 이름 (예: KODEX 반도체)
+        tracks  TEXT,                             -- 기초지수 (예: KRX 반도체)
+        note    TEXT                              -- 섹터 구성과 다른 점·ETF가 없는 이유
+    );
+    -- 대표 ETF·코스피(^KS11) 일별 종가 (yfinance 수정 종가, pipeline/sector_benchmarks.collect)
+    CREATE TABLE IF NOT EXISTS sector_benchmark_prices (
+        ticker      TEXT NOT NULL,
+        trade_date  TEXT NOT NULL,
+        close       REAL NOT NULL,
+        PRIMARY KEY (ticker, trade_date)
+    );
+    -- 섹터 계산 지수 — 시총 가중·최신 주식 수 고정, 체인 (pipeline/sector_benchmarks.compute_index)
+    CREATE TABLE IF NOT EXISTS sector_index (
+        sector      TEXT NOT NULL,
+        trade_date  TEXT NOT NULL,
+        value       REAL NOT NULL,
+        PRIMARY KEY (sector, trade_date)
+    );
+    -- 산업 개괄 (AI, D-327-3) — 섹터에 걸린 내러티브가 바뀔 때만 + 주 1회 상한 (pipeline/sector_overview)
+    CREATE TABLE IF NOT EXISTS sector_overviews (
+        sector        TEXT PRIMARY KEY,
+        question      TEXT NOT NULL,              -- 지금 이 산업의 질문 (한 줄)
+        bullets_json  TEXT NOT NULL,              -- ["…", "…", "…"]
+        narrative_ids TEXT,                       -- 입력 내러티브 id CSV
+        input_hash    TEXT NOT NULL,
+        model         TEXT,
+        generated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
     CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1731,6 +1763,8 @@ def init_db():
     seed_sector_peers(conn)
     from pipeline.sector_overrides import seed as seed_sector_overrides   # 업종 정정 초안, 없는 종목만 (D-313)
     seed_sector_overrides(conn)
+    from pipeline.sector_benchmarks import seed as seed_sector_benchmarks   # 섹터 대표 ETF 대응표 (D-327-4)
+    seed_sector_benchmarks(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_entity_merges_old ON entity_merges(old_entity_id)")
     conn.commit()
 

@@ -124,6 +124,11 @@ JOBS = [
     ("bigpicture", [PY, "scripts/weekly_big_picture.py"], {"Weekday": 1, "Hour": 7, "Minute": 0}),
     # 지수 장중 5분 경로(ia-redesign §4.2·4.3 ①, D-325) — 10분마다, 국장·미장 정규장(+20분)에만 yfinance 5분봉 5콜 이하.
     # 장 밖·주말은 스크립트가 외부 호출 없이 바로 끝난다. 지난 회차는 다음 회차가 같은 날 봉을 다시 받으므로 따라잡기 대상 아님
+    # 섹터 대표지수(ia-redesign §4.35, D-327-4) — 대표 ETF·코스피 종가(yfinance 18콜 이하) + 섹터 계산 지수. 일별 시세(16:35·20:20) 뒤
+    ("sectorbench", [PY, "scripts/collect_sector_benchmarks.py"],
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((16, 55), (20, 35))]),
+    # 산업 개괄(D-327-3) — 매일 06:20(주간 내러티브 06:00 뒤). 관리자 플래그 sector_overview 기본 off: 꺼져 있으면 모델 호출 없이 끝난다
+    ("sectoroverview", [PY, "scripts/compute_sector_overview.py"], {"Hour": 6, "Minute": 20}),
     ("indexintraday", [PY, "scripts/index_intraday.py"], 600),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
@@ -163,6 +168,7 @@ CATCHUP = {
     "extseries": {"record": "ext_series"},
     "expfeed": {"record": "exp_feed"},
     "bigpicture": {"record": "weekly_big_picture"},   # 놓치면 다음 순회에서 보충(그 주 안)
+    "sectorbench": {"record": "sector_benchmarks"},
 }
 
 

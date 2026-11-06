@@ -17,7 +17,7 @@ from routers import spine_chat_targets
 from routers import technical_scan
 from routers import chart_structure
 from routers import spine_conversations, spine_person, spine_knowledge, spine_approvals
-from routers import spine_quotes, spine_sector_map, spine_trend, spine_tw, spine_company, spine_narrative, spine_research, spine_report, spine_admin
+from routers import spine_quotes, spine_sector_map, spine_industry, spine_trend, spine_tw, spine_company, spine_narrative, spine_research, spine_report, spine_admin
 from routers import spine_causal
 from routers import spine_transcript
 from routers import spine_trade
@@ -56,6 +56,7 @@ app.include_router(spine_quotes.router)
 app.include_router(spine_trend.router)
 app.include_router(spine_tw.router)
 app.include_router(spine_sector_map.router)
+app.include_router(spine_industry.router)
 app.include_router(spine_company.router)
 app.include_router(spine_groups.router)
 app.include_router(spine_tracker.router)
