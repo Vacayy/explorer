@@ -289,7 +289,10 @@ def pt_window(conn, ticker: str, start: str, end: str) -> dict:
     srt = sorted(ch)
     return {"n": len(ch), "up": sum(1 for c in ch if c > 0), "down": sum(1 for c in ch if c < 0),
             "median_pct": round(srt[len(srt) // 2], 1) if srt else None,
-            "examples": [f"{r['firm']} ${r['pt_from']:.0f}→${r['pt_to']:.0f}" for r in sorted(rows, key=lambda r: -abs(r['pt_to'] / r['pt_from'] - 1))[:3]]}
+            "examples": [f"{r['firm']} ${r['pt_from']:.0f}→${r['pt_to']:.0f}" for r in sorted(rows, key=lambda r: -abs(r['pt_to'] / r['pt_from'] - 1))[:3]],
+            # 전체 목록(날짜순) — 콜 상세 '그 뒤 · 자세히 보기'
+            "changes": [{"date": r["graded_at"][:10], "firm": r["firm"], "pt_from": r["pt_from"], "pt_to": r["pt_to"],
+                         "pct": round((r["pt_to"] / r["pt_from"] - 1) * 100, 1)} for r in rows]}
 
 
 # ---------- 핵심 종목 ----------

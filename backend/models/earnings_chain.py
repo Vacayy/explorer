@@ -9,12 +9,21 @@ from pydantic import BaseModel
 EvalVerdict = Literal["hit", "underweighted", "noise", "missed", "minor"]
 
 
+class PtChange(BaseModel):
+    date: str
+    firm: str
+    pt_from: float
+    pt_to: float
+    pct: float
+
+
 class PtWindow(BaseModel):
     n: int
     up: int
     down: int
     median_pct: float | None
     examples: list[str]
+    changes: list[PtChange] = []
 
 
 class ExpectationQuant(BaseModel):

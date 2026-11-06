@@ -31,11 +31,12 @@ import { SeasonView } from "@/components/follow/season/SeasonView"
 import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
 import { seasonMarket } from "@/components/follow/season/SeasonHeader"
 import { SectorView } from "@/components/follow/season/SectorView"
-import { CallWindowChart, ChainCharts, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard, currentHistory, fyShort } from "@/components/follow/season/ChainSections"
+import { AfterDetail, CallWindowChart, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard, currentHistory, fyShort, type StageKey } from "@/components/follow/season/ChainSections"
 import { WEIGHT } from "@/components/follow/season/seasonUi"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { formatPp } from "@/utils/format"
 import { useChain } from "@/hooks/useTranscripts"
+import type { ChainDetail } from "@/types"
 import { QueryState } from "@/components/shared/QueryState"
 import { cn } from "@/lib/utils"
 
@@ -330,6 +331,9 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
   return (
     <FoldRevealHost>
     <div className="surface-stack">
+      {/* 머리·차트·네 단계 = 한 영역 — 단계 '자세히 보기'는 이 영역 위로 물방울(D-331) */}
+      <FoldRevealHost>
+      <div className="surface-stack">
       <Card>
         <CardContent className="flex flex-col gap-3.5 p-[18px]">
           {/* 머리 — 회사·티커·섹터·핵심, 오른쪽 끝 분기 세그먼트(오래된 분기 → 최신이 오른쪽) */}
@@ -352,13 +356,13 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
         </CardContent>
       </Card>
 
-      {chain.data && <>
-        <StagesCard chain={chain.data} transcriptId={transcriptId} />
-        <IssuesRow chain={chain.data} />
-        <HistoryCard chain={chain.data} transcriptId={transcriptId} onSelect={onSelect} />
-      </>}
+      {chain.data && <StagesWithMore chain={chain.data} data={data} transcriptId={transcriptId} />}
+      </div>
+      </FoldRevealHost>
 
-      <Card><CardContent className="p-4"><DetailFolds data={data} transcriptId={transcriptId} /></CardContent></Card>
+      {chain.data && <HistoryCard chain={chain.data} transcriptId={transcriptId} onSelect={onSelect} />}
+
+      <Card><CardContent className="p-4"><DetailFolds data={data} transcriptId={transcriptId} rest /></CardContent></Card>
     </div>
     </FoldRevealHost>
   )
@@ -374,20 +378,39 @@ const fyLabel = (q: { fiscal_year: number | null; fiscal_period: string | null; 
   q.fiscal_year != null ? `FY${String(q.fiscal_year).slice(2)} ${q.fiscal_period ?? ""}`.trim() : quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)
 
 /** 펼치기 묶음 — 기간 전체 차트 · 핵심 정리 · 시장 반응 전문 · 온톨로지 · 원문 (기본 접힘) */
-function DetailFolds({ data, transcriptId }: { data: Detail; transcriptId: number }) {
-  const chain = useChain(transcriptId)
+function DetailFolds({ data, transcriptId, rest }: { data: Detail; transcriptId: number; rest?: boolean }) {
+  const hasOnto = (data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0
+  return (
+    <div className="flex flex-col">
+      {/* 데스크톱(rest)은 핵심 정리·시장 반응을 네 단계의 '자세히 보기'로 연다 — 여기엔 온톨로지·원문만 */}
+      {!rest && <>
+        <Fold label="핵심 정리 (컨콜 전체)"><CallDigest data={data} transcriptId={transcriptId} /></Fold>
+        <Fold label="시장 반응 정리 전문·출처"><CallReaction transcriptId={transcriptId} callDate={data.call_date} /></Fold>
+      </>}
+      <OntoAndBody data={data} hasOnto={hasOnto} />
+    </div>
+  )
+}
+
+/** 네 단계 + 각 단계 '자세히 보기' → 단계 영역 위 물방울 (발표 전 = 시장이 주목한 내용 · 컨콜 = 핵심 정리 · 시장 반응 = 정리 전문 · 그 뒤 = 수익률·목표가 변경) */
+function StagesWithMore({ chain, data, transcriptId }: { chain: ChainDetail; data: Detail; transcriptId: number }) {
+  const reveal = useContext(FoldReveal)
+  const body = (k: StageKey) => k === "before" ? <IssuesRow chain={chain} />
+    : k === "call" ? <CallDigest data={data} transcriptId={transcriptId} />
+    : k === "reaction" ? <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
+    : <AfterDetail chain={chain} transcriptId={transcriptId} />
+  return <StagesCard chain={chain} transcriptId={transcriptId} onMore={reveal ? (k, title) => reveal.show(title, body(k)) : undefined} />
+}
+
+/** 핵심 정리(컨콜 전체) — 없으면 생성 버튼(LLM) */
+function CallDigest({ data, transcriptId }: { data: Detail; transcriptId: number }) {
   const [wantDigest, setWantDigest] = useState(false)
   const computed = useQuery({
     ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),
   })
   const digest = computed.data?.digest ?? data.digest
-  const hasOnto = (data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0
   return (
-    <div className="flex flex-col">
-      {chain.data && chain.data.series.length > 0 && (
-        <Fold label="더 보기 · 기간 전체 주가·거래량·자료 언급"><ChainCharts chain={chain.data} /></Fold>
-      )}
-      <Fold label="핵심 정리 (컨콜 전체)">
+    <>
         {digest ? (
           <div className="bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
         ) : computed.isFetching ? (
@@ -400,12 +423,14 @@ function DetailFolds({ data, transcriptId }: { data: Detail; transcriptId: numbe
             <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
           </Button>
         )}
-      </Fold>
-      {/* 시장 반응 — 발표일~7일 내 자료·주가·헤드라인 */}
-      <Fold label="시장 반응 정리 전문·출처">
-        <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
-      </Fold>
-      {/* 온톨로지 연결 (D-089) — 이 콜이 편입된 노드·인과, 클릭 시 그래프로 */}
+    </>
+  )
+}
+
+/** 온톨로지 연결(D-089) · 원문 전문 — 펼치기 줄 */
+function OntoAndBody({ data, hasOnto }: { data: Detail; hasOnto: boolean }) {
+  return (
+    <>
       {hasOnto && (
         <Fold label="온톨로지 연결">
           {(data.nodes?.length ?? 0) > 0 && (
@@ -431,7 +456,7 @@ function DetailFolds({ data, transcriptId }: { data: Detail; transcriptId: numbe
           <Markdown>{data.body}</Markdown>
         </div>
       </Fold>
-    </div>
+    </>
   )
 }
 

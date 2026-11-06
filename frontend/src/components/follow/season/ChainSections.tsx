@@ -214,23 +214,30 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
 }
 
 /* ---------- 발표 전 / 컨콜 / 시장 반응 / 그 뒤 — 칸 넷(시안 Call-Detail, 칸마다 세 줄 이내 + 아래 배지) ---------- */
-function Cell4({ step, title, children, badge }: { step: number; title: string; children: ReactNode; badge?: ReactNode }) {
+function Cell4({ step, title, children, badge, onMore }: { step: number; title: string; children: ReactNode; badge?: ReactNode; onMore?: () => void }) {
   return (
     <div className="-mr-px -mb-px flex min-w-0 flex-col">
       <Card className="flex-1 gap-3 p-4">
         <h2 className="flex items-baseline gap-2 text-[15px] font-semibold leading-snug">
           <span className="font-mono text-[11.5px] font-normal text-ink-3 tabular-nums">{step}</span>{title}</h2>
         <div className="flex flex-col gap-1 text-[13px] leading-[1.6]">{children}</div>
-        {badge && <div className="mt-auto">{badge}</div>}
+        {(badge || onMore) && <div className="mt-auto flex items-center justify-between gap-2">
+          <span>{badge}</span>
+          {onMore && <Button variant="ghost" size="sm" className="-mr-2 text-ink-2" aria-haspopup="dialog" onClick={onMore}>자세히 보기<ChevronRight aria-hidden="true" /></Button>}
+        </div>}
       </Card>
     </div>
   )
 }
+
+/** 네 단계의 '자세히 보기' 내용 — 콜 상세가 단계 영역 위 물방울로 연다(D-331) */
+export type StageKey = "before" | "call" | "reaction" | "after"
+export type StageMore = (key: StageKey, title: string) => void
 const Dots = ({ items }: { items: ReactNode[] }) => (
   <ul className="flex list-disc flex-col pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{items.map((x, i) => <li key={i}>{x}</li>)}</ul>
 )
 
-export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transcriptId: number }) {
+export function StagesCard({ chain, transcriptId, onMore }: { chain: ChainDetail; transcriptId: number; onMore?: StageMore }) {
   const ex = chain.expectation
   const rm = chain.reaction_meta
   const h = currentHistory(chain, transcriptId)
@@ -257,14 +264,16 @@ export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transc
 
   return (
     <div className="grid grid-cols-1 items-stretch pr-px pb-px md:grid-cols-2">
-      <Cell4 step={1} title="발표 전" badge={ex && <Badge variant="hyp">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</Badge>}>{before}</Cell4>
-      <Cell4 step={2} title="컨콜">
+      <Cell4 step={1} title="발표 전" badge={ex && <Badge variant="hyp">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</Badge>}
+        onMore={onMore && (() => onMore("before", "발표 전 시장이 주목한 내용"))}>{before}</Cell4>
+      <Cell4 step={2} title="컨콜" onMore={onMore && (() => onMore("call", "핵심 정리 · 컨콜 전체"))}>
         {rm?.call_points?.length ? <Dots items={rm.call_points.slice(0, 3).map(clean)} /> : <Meta>아래 '핵심 정리'를 펼쳐 보세요.</Meta>}
       </Cell4>
-      <Cell4 step={3} title="시장 반응" badge={interim && <Badge variant="warn">진행 중{chain.event_date ? ` · 발표 ${daysSince(chain.event_date)}일째` : ""}</Badge>}>
+      <Cell4 step={3} title="시장 반응" badge={interim && <Badge variant="warn">진행 중{chain.event_date ? ` · 발표 ${daysSince(chain.event_date)}일째` : ""}</Badge>}
+        onMore={onMore && (() => onMore("reaction", "시장 반응 정리 · 출처"))}>
         {rm?.react_points?.length ? <Dots items={rm.react_points.slice(0, 2).map(clean)} /> : <Meta>아래 '시장 반응 정리'에서 정리를 만드세요.</Meta>}
       </Cell4>
-      <Cell4 step={4} title="그 뒤">{after.length ? after : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}</Cell4>
+      <Cell4 step={4} title="그 뒤" onMore={onMore && (() => onMore("after", "그 뒤 · 수익률과 목표가 변경"))}>{after.length ? after : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}</Cell4>
     </div>
   )
 }
@@ -395,5 +404,41 @@ export function HistoryCard({ chain, transcriptId, onSelect }: { chain: ChainDet
         </Table>
       </div>
     </Section>
+  )
+}
+
+/** '그 뒤 · 자세히 보기' — 첫 거래일 · 일주일 · 한 달 · 분기 수익률(업종 ETF 대비) + 발표 후 7일 목표가 변경 전체 */
+export function AfterDetail({ chain, transcriptId }: { chain: ChainDetail; transcriptId: number }) {
+  const h = currentHistory(chain, transcriptId)
+  const pt = chain.pt_after
+  const cells: [string, number | null | undefined, string?][] = [
+    ["첫 거래일", h?.d1], ["일주일", h?.d7], ["한 달", h?.d30], ["분기 수익률", h?.dq, h?.dq_partial ? "진행 중" : undefined]]
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 pr-px pb-px sm:grid-cols-4">
+        {cells.map(([k, v, note]) => (
+          <div key={k} className="-mr-px -mb-px flex flex-col gap-1 border border-line p-3">
+            <span className="text-xs text-ink-3">{k} · {chain.etf} 대비</span>
+            <span className="font-mono text-lg tabular-nums">{v == null ? "-" : <Pp v={v} />}</span>
+            {note && <span className="text-xs text-ink-3">{note}</span>}
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">발표 후 7일 목표가 변경 {pt?.n ?? 0}건{pt && pt.n > 0 ? ` · 올림 ${pt.up} · 내림 ${pt.down}` : ""}</h3>
+        {pt?.changes?.length ? (
+          <ul className="flex flex-col">
+            {pt.changes.map((c, i) => (
+              <li key={i} className="grid grid-cols-[56px_minmax(0,1fr)_auto_64px] items-baseline gap-3 border-b border-line py-2 text-[13px]">
+                <span className="font-mono text-xs text-ink-3">{c.date.slice(5).replace("-", "/")}</span>
+                <span className="truncate">{c.firm}</span>
+                <span className="font-mono tabular-nums text-ink-2">${c.pt_from.toFixed(0)} → ${c.pt_to.toFixed(0)}</span>
+                <span className={cn("text-right font-mono tabular-nums", c.pct > 0 ? "text-up-ink" : c.pct < 0 ? "text-down-ink" : "")}>{formatPercent(c.pct)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : <Meta>발표 후 7일 안에 받은 목표가 변경이 없습니다.</Meta>}
+      </div>
+    </div>
   )
 }

@@ -1183,7 +1183,7 @@ export interface ChainDetail {
   expectation: Expectation | null; reaction_meta: ReactionMeta | null; reaction_status: "interim" | "final" | null
   series: { date: string; offset: number; ret: number; bench: number; excess: number; volume: number | null }[]   // 발표 전 마지막 거래일 = 0
   mentions: { day: string; n: number }[]          // 'MM-DD' 한국 시각
-  pt_after: { n: number; up: number; down: number; median_pct: number | null; examples: string[] } | null
+  pt_after: { n: number; up: number; down: number; median_pct: number | null; examples: string[]; changes?: { date: string; firm: string; pt_from: number; pt_to: number; pct: number }[] } | null
   history: { fiscal: string; event_date: string; season: string; transcript_id: number | null; d1: number | null; d7: number | null; d30: number | null
     /** 분기 수익률 = 발표 전 종가 → 다음 발표 전 거래일 종가(업종 ETF 대비 %p). dq_partial = 다음 발표 전이라 최근 종가까지 */
     dq: number | null; dq_partial: boolean | null; dq_end: string | null
