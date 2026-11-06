@@ -5,6 +5,8 @@ import { PageContainer } from "@/components/shared/PageContainer"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
+import { BOUND_FIXED, BoundedArea } from "@/components/shared/Bounded"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ErrorState } from "@/components/shared/ErrorState"
 import { Button } from "@/components/ui/button"
@@ -101,7 +103,7 @@ function Cell({ label, value, sub, q }: { label: string; value: ReactNode; sub: 
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-caption text-muted-foreground">{label}</span>
-      {q.isPending ? <Skeleton className="h-7 w-24" />
+      {q.isPending ? <><Skeleton className="h-8 w-24" /><Skeleton className="h-4 w-40" /></>
         : q.isError ? <span className="text-sm text-muted-foreground">불러오지 못했습니다</span>
         : <><span className="font-mono text-2xl font-semibold tabular-nums">{value}</span><span className="text-caption text-muted-foreground">{sub}</span></>}
     </div>
@@ -116,10 +118,11 @@ function FreshnessSection() {
   return (
     <Section title={<>데이터 신선도<InfoTip label="데이터 신선도 설명">작업이 정상 종료돼도 결과가 비거나 묵을 수 있어, 저장된 데이터의 최신 시점을 기대치와 비교합니다. ‘경고’ 항목은 홈 브리핑·텔레그램에도 표시됩니다.</InfoTip></>}
       note={health.data ? `모두 ${health.data.length}개` : undefined}>
-      {health.isPending && <Skeleton className="h-48 w-full rounded-card" />}
+      {/* 긴 목록은 상한(md) 안에서 스크롤, 불러오는 중에도 같은 높이 */}
+      {health.isPending && <Skeleton className={cn("w-full rounded-card", BOUND_FIXED.md)} />}
       {health.isError && <ErrorState message="신선도 점검을 불러오지 못했습니다." onRetry={() => health.refetch()} retrying={health.isFetching} />}
       {health.data && (health.data.length === 0 ? <p className="text-sm text-muted-foreground">아직 점검할 원천이 없습니다</p> : (
-        <Table className="table-fixed md:table-auto">
+        <BoundedArea size="md"><Table className="table-fixed md:table-auto">
           <TableHeader><TableRow>
             <TableHead>데이터</TableHead><TableHead className="w-14 md:w-auto">상태</TableHead><TableHead className="hidden md:table-cell">최신</TableHead>
             <TableHead className="hidden md:table-cell">기대</TableHead><TableHead className="hidden md:table-cell">채우는 곳</TableHead>
@@ -140,7 +143,7 @@ function FreshnessSection() {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+        </Table></BoundedArea>
       ))}
     </Section>
   )
@@ -184,10 +187,10 @@ function JobsSection() {
   return (
     <Section title={<>자동 작업<InfoTip label="자동 작업 설명">예약 작업마다 켜고 끕니다. 끄면 다음 예약 실행부터 ‘건너뜀’으로 기록됩니다. ⓘ에 하는 일과 실제로 도는 코드가 있습니다.</InfoTip></>}
       note={jobs.data ? `${jobs.data.length}개` : undefined}>
-      {jobs.isPending && <Skeleton className="h-40 w-full rounded-card" />}
+      {jobs.isPending && <Skeleton className={cn("w-full rounded-card", BOUND_FIXED.md)} />}
       {jobs.isError && <ErrorState message="작업 목록을 불러오지 못했습니다." onRetry={() => jobs.refetch()} retrying={jobs.isFetching} />}
       {jobs.data && (
-        <ul className="divide-y border-t">
+        <BoundedArea size="md" className="border-t"><ul className="divide-y">
           {jobs.data.map((j) => (
             <li key={j.name} className="flex items-center gap-3 py-2.5">
               <div className="min-w-0 flex-1">
@@ -208,7 +211,7 @@ function JobsSection() {
                 onCheckedChange={(v) => flag.mutate({ name: j.name, enabled: v })} />
             </li>
           ))}
-        </ul>
+        </ul></BoundedArea>
       )}
     </Section>
   )
@@ -218,11 +221,11 @@ function RunsSection() {
   const runs = useAdminRuns(40)
   return (
     <Section title="최근 실행 내역" note={runs.data?.length ? `최근 ${runs.data.length}회` : undefined}>
-      {runs.isPending && <Skeleton className="h-40 w-full rounded-card" />}
+      {runs.isPending && <Skeleton className={cn("w-full rounded-card", BOUND_FIXED.md)} />}
       {runs.isError && <ErrorState message="실행 내역을 불러오지 못했습니다." onRetry={() => runs.refetch()} retrying={runs.isFetching} />}
       {runs.data && (runs.data.length === 0
         ? <p className="text-sm text-muted-foreground">아직 기록된 실행이 없습니다 — 예약 작업이 돌면 쌓입니다.</p>
-        : <ul className="divide-y border-t">{runs.data.map((r, i) => <RunRow key={i} r={r} />)}</ul>)}
+        : <BoundedArea size="md" className="border-t"><ul className="divide-y">{runs.data.map((r, i) => <RunRow key={i} r={r} />)}</ul></BoundedArea>)}
     </Section>
   )
 }
