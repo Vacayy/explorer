@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '../src/components/ui/tooltip'
 import { daysBetween, groupByDate, seasonPhase } from '../src/lib/seasonPhase'
-import { tradeIsLagging } from '../src/components/home/TradeBlock'
+import { tradeIsLagging } from '../src/lib/trade'
 import type { SeasonItem, SeasonOverview, SeasonWindow } from '../src/types'
 
 const W: SeasonWindow[] = [
@@ -79,7 +79,7 @@ const renderAt = (path: string) => render(<QueryClientProvider client={new Query
 it('shows the verdict row, sector rows and upcoming chips in season', () => {
   renderAt('/home/us?today=2026-11-04')
   expect(screen.getByRole('heading', { name: /2026년 3분기 실적 시즌/ })).toBeTruthy()
-  expect(screen.getByText('첫 거래일 업종보다 강함')).toBeTruthy()
+  expect(screen.getByText('업종보다 강했다')).toBeTruthy()
   expect(screen.getByRole('link', { name: /데이터센터 설비/ }).getAttribute('href')).toBe('/follow/transcripts?view=season&sector=dc')
   expect(screen.getByRole('link', { name: /오늘\s*APP/ })).toBeTruthy()
   expect(document.querySelector('[data-season-state=between]')).toBeNull()

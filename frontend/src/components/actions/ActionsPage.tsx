@@ -1,194 +1,68 @@
 import { useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { pinMine, useActions } from "@/hooks/useActions"
-import { useIsMobile } from "@/hooks/use-mobile"
-import { formatKrw, formatKstDateTime, formatNumber } from "@/utils/format"
-import { cn } from "@/lib/utils"
-import { reportTitle } from "@/lib/dossier"
+import { FillArea } from "@/components/shared/Bounded"
+import { PagerBar, paged } from "@/components/shared/PagerBar"
+import { BlockHead } from "@/components/home/HomeSection"
+import { BlockError } from "@/components/home/blockState"
+import { FillNote, FillSkeleton, MarketCard, Seg } from "@/components/home/MarketFrame"
 import RightsProTable from "@/components/actions/RightsProTable"
-import { HomeBlock } from "@/components/home/HomeSection"
-import { BOUND_FIXED, BoundedArea } from "@/components/shared/Bounded"
-import type { ActionKind, ActionsResponse } from "@/types"
+import { pinMine, useActions } from "@/hooks/useActions"
+import { useUrlParam } from "@/hooks/useUrlParam"
+import { reportTitle } from "@/lib/dossier"
+import { formatNumber } from "@/utils/format"
+import type { CorporateAction } from "@/types"
 
-const TYPE_FILTERS = ["전체", "유상증자", "무상증자", "합병", "주식분할", "공개매수", "회사분할", "감자"] as const
-const segItem = cn("h-auto min-w-0 rounded-none px-2.5 py-1 text-xs font-normal",
-  "text-muted-foreground hover:bg-transparent hover:text-foreground",
-  "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:font-medium data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground")
-
-/** 홈 블록에서 더 보기 전 행 수 — 데스크톱 10 · 모바일 6 (홈 › 내 종목과 같은 규칙, D-303) */
-const BLOCK_LIMIT = { desktop: 10, mobile: 6 }
-
-const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 내 종목(보유·관심)은 위로 올립니다."
+const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 증자·공개매수·자사주·합병 등 원공시만 보이고 정정 공시는 뺍니다. 내 종목(보유·관심)은 위로 올립니다."
+/** 한 페이지 줄 수(시안 Home-KR ④) */
+const PER = 6
 
 /**
- * 시장 전체 기업활동 (시총 5,000억+ KOSPI/KOSDAQ) — 홈 › 한국 시장 `#actions` 블록(D-300). 옛 /actions는 여기로,
- * /actions?code=X는 그 종목 도시에 개요 맨 아래 기업활동(summary/StockActionsBlock)으로 보낸다(§10.6).
- * DART 전 시장 공시에서 자동 분류. 30분 주기 갱신. 기본은 원공시만(정정은 ?kind=correction|all),
- * 내 묶음(보유·관심) 종목은 맨 위에 고정한다. 쿼리 view(목록·유무증 Pro)·type·kind로 보기를 고른다.
+ * 시장 전체 기업활동 (시총 5,000억+ KOSPI/KOSDAQ) — 홈 › 한국 시장 ④ 오른쪽 `#actions` 칸(D-300, 시안 Home-KR).
+ * 옛 /actions는 여기로, /actions?code=X는 그 종목 도시에 개요 맨 아래 기업활동으로 보낸다(§10.6).
+ * 원공시만 · 날짜 | 기업 + 유형 · 한 줄 설명(D-306) · 6개씩 페이지. 보기(URL ?acts=)는 전체 | 내 그룹(보유·관심) | 유무증 Pro.
+ * 칸 높이는 고정(띠 ④) — 보기·페이지를 바꿔도 칸이 그대로다.
  */
 export function ActionsList(_: { variant: "block" }) {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const type = searchParams.get("type") ?? ""
-  const view = searchParams.get("view") ?? "list"
-  const kindParam = searchParams.get("kind")
-  const kind: ActionKind = kindParam === "correction" || kindParam === "all" ? kindParam : "original"
-  const { data, isLoading, isError, refetch } = useActions({ type: type || undefined, kind })
-  const setParam = (k: string, v: string | null) => setSearchParams((p) => {
-    const n = new URLSearchParams(p)
-    if (v) n.set(k, v); else n.delete(k)
-    return n
-  }, { preventScrollReset: true })
-  /** 보기를 바꾸면 목록 필터(type·kind)는 지운다 — 다른 쿼리는 그대로 */
-  const setView = (v: string) => setSearchParams((p) => {
-    const n = new URLSearchParams(p)
-    for (const k of ["type", "kind"]) n.delete(k)
-    if (v === "list") n.delete("view"); else n.set("view", v)
-    return n
-  }, { preventScrollReset: true })
-
+  const { data, isLoading, isError, refetch } = useActions({ kind: "original" })
+  const [view, setView] = useUrlParam("acts", "all")
+  const [page, setPage] = useState(0)
+  const all = data ? pinMine(data.items) : []
+  const items = view === "mine" ? all.filter(a => a.my_group) : all
+  const pg = paged(items, page, PER)
+  const pick = (v: string) => { setPage(0); setView(v) }
   return (
-    <HomeBlock section label="actions" title="기업활동" info={INFO} asOf={data?.as_of ? formatKstDateTime(data.as_of) : null}
-      stale={!!data && !data.as_of} bodyClassName="space-y-3">
-      {/* 불러오는 중에도 도구 줄 + 고정 높이 표 자리 + 더 보기 줄 — 데이터가 와도 블록 높이 그대로 */}
-      {isLoading ? <div role="status" aria-label="기업활동 불러오는 중" className="space-y-3"><Skeleton className="h-[30px] w-2/3" />
-          <div className={cn(BOUND_FIXED.md, "space-y-2 overflow-hidden")}>{Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div><div className="h-8" /></div>
-        : isError || !data ? <ErrorState message="기업활동을 불러오지 못했습니다" onRetry={() => refetch()} />
-        : <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} bounded />}
-    </HomeBlock>
+    <MarketCard band="events" label="actions" id="actions">
+      <BlockHead section title="기업활동" info={INFO} sub={data ? `원공시 · 최근 30일 ${formatNumber(all.length)}건` : <span aria-hidden className="invisible">원공시 · 최근 30일 00건</span>}
+        asOf={data && !data.as_of ? "갱신 기록 없음" : null} stale={!!data && !data.as_of}
+        actions={<Seg label="기업활동 보기" value={view} onChange={pick}
+          items={[{ key: "all", label: "전체" }, { key: "mine", label: "내 그룹" }, { key: "pro", label: "유무증 Pro" }]} />} />
+      {isLoading ? <FillSkeleton rows={PER} label="기업활동 불러오는 중" />
+        : isError || !data ? <BlockError message="기업활동을 불러오지 못했습니다" onRetry={() => void refetch()} />
+        : view === "pro" ? <FillArea aria-label="유무증 Pro"><RightsProTable /></FillArea>
+        : !items.length ? <FillNote>{view === "mine" ? "보유·관심 종목의 기업활동 공시가 없습니다." : data.counts?.correction ? `원공시는 없고 정정 공시 ${data.counts.correction}건이 있습니다.` : "최근 30일 기업활동 공시가 없습니다."}</FillNote>
+        : <>
+          <FillArea aria-label="기업활동 목록"><ul>{pg.rows.map(a => <ActionRow key={a.id} a={a} />)}</ul></FillArea>
+          <PagerBar {...pg} onPage={setPage} label="기업활동 페이지" />
+        </>}
+    </MarketCard>
   )
 }
 
-function ActionsBody({ data, type, view, kind, setParam, setView, bounded = false }: {
-  data: ActionsResponse; type: string; view: string; kind: ActionKind
-  setParam: (k: string, v: string | null) => void; setView: (v: string) => void
-  bounded?: boolean
-}) {
-  const mobile = useIsMobile()
-  // 펼침은 지금 필터(유형·원공시/정정)에만 — 필터를 바꾸면 다시 접힌다
-  const filterKey = `${type}|${kind}`
-  const [openFor, setOpenFor] = useState<string | null>(null)
-  const all = pinMine(data.items)
-  const limit = bounded && openFor !== filterKey ? BLOCK_LIMIT[mobile ? "mobile" : "desktop"] : all.length
-  const items = all.slice(0, limit)
-  const hidden = all.length - items.length
-  const table = view === "pro" ? (
-        <RightsProTable />
-      ) : items.length === 0 ? (
-        <EmptyState message={kind === "original" && data.counts?.correction ? `원공시는 없고 정정 공시 ${data.counts.correction}건이 있습니다.` : "해당 조건의 기업활동 공시가 없습니다."} />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="hidden w-[90px] md:table-cell">접수일</TableHead>
-              <TableHead className="w-[90px]">유형</TableHead>
-              <TableHead>기업</TableHead>
-              <TableHead className="hidden text-right w-[90px] md:table-cell">시총</TableHead>
-              <TableHead className="hidden lg:table-cell">공시명</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((a) => (
-              <TableRow key={a.id} className={cn(a.my_group && "bg-accent/40")}>
-                <TableCell className="hidden tabular-nums text-xs text-muted-foreground md:table-cell">
-                  {a.rcept_dt.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary" className={cn("text-[10px]",
-                    a.action_type === "유상증자" && "bg-down/10 text-down-ink",
-                    a.action_type === "무상증자" && "bg-up/10 text-up-ink",
-                  )}>
-                    {a.action_type}
-                  </Badge>
-                  {/* 모바일: 접수일 열을 숨기고 유형 아래에 */}
-                  <div className="mt-1 text-[10px] tabular-nums text-muted-foreground md:hidden">
-                    {a.rcept_dt.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {a.stock_code ? (
-                    <Link to={`/analyze/${a.stock_code}/summary`} className="text-sm font-medium text-primary hover:underline">
-                      {a.corp_name}
-                    </Link>
-                  ) : (
-                    <span className="text-sm">{a.corp_name}</span>
-                  )}
-                  <span className="ml-1 text-[10px] text-muted-foreground">{a.market === "Y" ? "KOSPI" : "KOSDAQ"}</span>
-                  {a.my_group && <Badge variant="outline" className="ml-1.5 h-4 px-1 text-[10px] border-up/40 text-up-ink">{a.my_group}</Badge>}
-                  {/* lg 미만: 공시명 열 대신 기업 아래에 쌓는다 — 좁은 화면에서 가로 스크롤 없이 무슨 공시인지 보이게 */}
-                  <div className="mt-1 whitespace-normal lg:hidden">
-                    {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
-                    <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">{reportTitle(a.report_nm)}</a>
-                    {a.description && <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground sm:line-clamp-2" title={a.description} data-action-desc>{a.description}</p>}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground md:table-cell">
-                  {a.market_cap ? formatKrw(a.market_cap) : "-"}
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                  {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
-                  <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">
-                    {reportTitle(a.report_nm)}
-                  </a>
-                  {a.description && (
-                    <p className="mt-0.5 line-clamp-2 whitespace-normal text-[11px] text-muted-foreground" title={a.description} data-action-desc>
-                      {a.description}
-                    </p>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )
-  return (
-    <>
-      {/* 뷰 토글: 목록 | 유무증 Pro */}
-      <div className="flex gap-1.5 items-center flex-wrap">
-        <ToggleGroup
-          type="single"
-          value={view}
-          onValueChange={(v) => v && setView(v)}
-          className="flex gap-0 rounded-md border overflow-hidden mr-2"
-        >
-          {[["list", "목록"], ["pro", "유무증 Pro"]].map(([v, label]) => (
-            <ToggleGroupItem key={v} value={v} className={segItem}>{label}</ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        {view === "list" && <>
-          {/* 원공시 | 정정 | 전체 — 정정이 목록의 약 4할이라 기본은 원공시만 */}
-          <ToggleGroup type="single" value={kind} aria-label="원공시·정정"
-            onValueChange={(v) => v && setParam("kind", v === "original" ? null : v)}
-            className="flex gap-0 rounded-md border overflow-hidden mr-2">
-            <ToggleGroupItem value="original" className={segItem}>원공시 {data.counts?.original ?? ""}</ToggleGroupItem>
-            <ToggleGroupItem value="correction" className={segItem}>정정 {data.counts?.correction ?? ""}</ToggleGroupItem>
-            <ToggleGroupItem value="all" className={segItem}>전체</ToggleGroupItem>
-          </ToggleGroup>
-          {TYPE_FILTERS.map((t) => {
-            const key = t === "전체" ? "" : t
-            return (
-              <Badge
-                key={t}
-                variant={type === key ? "default" : "outline"}
-                className="cursor-pointer select-none text-xs"
-                onClick={() => setParam("type", key || null)}
-              >
-                {t}
-              </Badge>
-            )
-          })}
-        </>}
+function ActionRow({ a }: { a: CorporateAction }) {
+  const date = `${+a.rcept_dt.slice(4, 6)}/${+a.rcept_dt.slice(6, 8)}`
+  const desc = a.description ?? reportTitle(a.report_nm)
+  return <li className="grid grid-cols-[40px_minmax(0,1fr)] gap-2.5 border-b py-[9px]">
+    <span className="pt-0.5 font-mono text-[11.5px] text-ink-3 tabular-nums">{date}</span>
+    <div className="flex min-w-0 flex-col gap-[3px]">
+      <div className="flex min-w-0 items-center gap-2">
+        {a.stock_code ? <Link to={`/analyze/${a.stock_code}/summary`} className="truncate text-[13.5px] font-medium hover:underline">{a.corp_name}</Link>
+          : <span className="truncate text-[13.5px] font-medium">{a.corp_name}</span>}
+        <Badge>{a.action_type}</Badge>
+        {a.my_group && <Badge variant="outline">{a.my_group}</Badge>}
       </div>
-
-      {/* 홈 블록은 표 자리 높이를 고정 — 필터·보기·더 보기를 바꿔도 블록이 그대로, 넘치면 안에서 스크롤(D-303) */}
-      {bounded ? <BoundedArea size="md" fixed>{table}</BoundedArea> : table}
-      {view !== "pro" && bounded && all.length > BLOCK_LIMIT[mobile ? "mobile" : "desktop"] && <Button variant="ghost" size="sm" className={cn("text-muted-foreground", mobile && "w-full")}
-        onClick={() => setOpenFor(hidden > 0 ? filterKey : null)}>{hidden > 0 ? `${formatNumber(hidden)}건 더 보기 ›` : "접기"}</Button>}
-    </>
-  )
+      <a href={a.dart_url} target="_blank" rel="noreferrer" title={reportTitle(a.report_nm)} data-action-desc
+        className="truncate text-[12.5px] text-ink-2 hover:underline">{desc}</a>
+    </div>
+  </li>
 }

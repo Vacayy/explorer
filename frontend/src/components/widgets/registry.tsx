@@ -4,7 +4,6 @@ import {
   useContextMeta, useIndicesMeta, useRegimeMeta, useRiskMeta, useUsMeta,
 } from "./market"
 import { MarketTodayBody, useMarketTodayMeta } from "./marketToday"
-import { EXPLORE_WIDGETS } from "./explore"
 import { PORTFOLIO_WIDGETS } from "./portfolio"
 import { WORLD_WIDGETS } from "./world"
 import { TW_WIDGETS } from "./twRevenue"
@@ -27,7 +26,6 @@ const WIDGETS: readonly WidgetDef[] = [
   risk("risk.fear", "fear_greed", "공포·탐욕", "CNN 0–100 · 20일 변화 · 3개월 추이"),
   risk("risk.hy", "hy", "HY 스프레드", "하이일드 OAS · 20일 변화 · 3개월 추이"),
   // 영역별 섹션 — 각 파일에서만 더한다
-  ...EXPLORE_WIDGETS,
   ...TW_WIDGETS,
   ...PORTFOLIO_WIDGETS,
   ...WORLD_WIDGETS,

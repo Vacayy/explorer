@@ -15,7 +15,7 @@ import type { WidgetBodyProps, WidgetMeta } from "./types"
 
 /** 한국 관례: 상승 빨강·하락 파랑 */
 const tone = (v: number | null | undefined) => v == null || v === 0 ? "" : v > 0 ? "text-up-ink" : "text-down-ink"
-const kstToday = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
+export const kstToday = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
 const md = (d: string) => d.slice(5).replace("-", "/").replace(/^0/, "").replace("/0", "/")
 
 /** 보는 날 — URL `?mt=YYYY-MM-DD`(없으면 오늘). 머리(meta)와 본문이 같은 날을 본다 */
@@ -91,7 +91,7 @@ const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice
 const xAt = (m: number) => Math.min(XMAX, X0 + Math.max(0, m - OPEN) / (CLOSE - OPEN) * (X1 - X0))
 const kstMinutes = () => { const t = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false }); return mins(t) }
 /** 오늘 정리 시각(D-309) — 아직 안 나온 회차는 빈 점으로 자리만 보인다 */
-const SCHEDULE = ["09:30", "11:30", "15:00", "16:00"]
+export const SCHEDULE = ["09:30", "11:30", "15:00", "16:00"]
 
 function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: string | null; onPick: (slot: string) => void }) {
   const market = day.current?.market
@@ -149,14 +149,16 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
 }
 
 /** links = 이 회차 내러티브 연결을 계산했는가 — 아니면(Partial) 칩 줄을 그리지 않는다(§9.4) */
-function TopicRow({ t, compact, links }: { t: TodayTopic; compact: boolean; links: boolean }) {
+export function TopicRow({ t, compact, links, full = false }: { t: TodayTopic; compact: boolean; links: boolean
+  /** 본문을 줄이지 않는다(홈 › 한국 시장 ② — 칸 안 스크롤로 푼다) */
+  full?: boolean }) {
   return <li className="flex flex-col gap-[5px] py-[11px] first:pt-0">
     <div className="flex items-center gap-2">
       <span className="text-[14.5px] font-semibold leading-snug">{t.title}</span>
       {t.continuing && <Badge variant="outline">이어짐</Badge>}
       <EchoDots n={t.echo} title={t.sources.map(s => s.publisher).join(" · ")} />
     </div>
-    <p className={cn("text-[13px] leading-[1.6] text-ink-2", "line-clamp-2")}>{t.body}</p>
+    <p className={cn("text-[13px] leading-[1.6] text-ink-2", !full && "line-clamp-2")}>{t.body}</p>
     {!compact && <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11.5px] text-ink-3">
       {t.sources.map(s => s.doc_id
         ? <Link key={s.ref} to={`/doc/${s.doc_id}`} className="underline underline-offset-2 hover:text-ink">{s.publisher}</Link>

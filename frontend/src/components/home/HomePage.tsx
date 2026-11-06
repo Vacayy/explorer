@@ -2,15 +2,13 @@ import { useEffect } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { ActionsList } from "@/components/actions/ActionsPage"
 import { PageLayout } from '@/components/shared/PageLayout'
-import { RetailHeatCard } from '@/components/home/RetailHeatCard'
-import { UsBriefingSection } from "@/components/home/UsBriefingSection"
 import { UsSeasonBlock } from "@/components/home/UsSeasonBlock"
-import { KrTurnoverBlock } from "@/components/home/KrTurnoverBlock"
-import { TradeBlock } from "@/components/home/TradeBlock"
-import { HomeSection } from "@/components/home/HomeSection"
+import { Band } from "@/components/home/MarketFrame"
+import { MarketHero } from "@/components/home/MarketHero"
+import { KrFlowCard, KrSeasonCard, KrTurnoverCard, MarketTodayCard, RetailCard, TradeCard, TrendCard } from "@/components/home/MarketKr"
+import { CallsCard, MomentumCard, OvernightCard, UsFlowCard, UsTurnoverCard } from "@/components/home/MarketUs"
 import HomeDashboard from "@/components/home/HomeDashboard"
 import { getHomeMode } from "@/hooks/useHomeMode"
-import { useIsMobile } from "@/hooks/use-mobile"
 
 /**
  * 홈 L2 = 시스템 고정 탭 다섯 개 (docs/specs/home-widgets.md §0): 대시보드 · 한국 시장 · 미국 시장 · 매크로 · 내 종목.
@@ -28,51 +26,50 @@ export default function HomePage() {
 }
 
 /**
- * 홈 › 한국 시장 (시안 Home-KR, ia-redesign §4.2·§4.17) — 국장 거래대금 상위 | 가파른 추세(같은 높이) → 개인 투자 열기 → 수출입 → 기업활동.
- * 대만 월매출·대만→한국 연결은 산업 › 대만 공급망(/follow/taiwan)으로 옮겼다(4b단계).
- * 기업활동(시장 전체 목록)은 옛 /actions 화면을 옮겨 왔다(D-300) — /actions는 여기 #actions로 보낸다.
+ * 홈 › 한국 시장 (시안 Home-KR, ia-redesign §4.2 공통 틀, D-325). 띠마다 높이 고정, 넘치면 칸 안 스크롤·페이지.
+ * ① 지수 차트 | 요약 지표 → ② 오늘 시장 이야기 | 거래대금 쏠림 → ③ 거래대금 상위 종목 | 가파른 추세 →
+ * ④ 국내 실적 시즌 | 기업활동(`#actions`, D-300) → ⑤ 개인 투자 열기(`#retail`) | 수출입.
  */
 export function HomeKrPage() {
-  const mobile = useIsMobile()   // 좁은 화면은 추세 표를 좁은 열(종목·60일·수익률)로
+  useHashScroll()
+  // 시안 Home-KR: 하위 메뉴 칩이 제목을 대신한다 — 제목은 화면 읽기용으로만
+  return <PageLayout mode="document">
+    <h1 className="sr-only">한국 시장</h1>
+    <div className="flex flex-col gap-4">
+      <MarketHero market="kr" />
+      <Band label="시장 정리" cells={[[7, <MarketTodayCard />], [5, <KrFlowCard />]]} />
+      <Band label="종목" cells={[[7, <KrTurnoverCard />], [5, <TrendCard />]]} />
+      <Band label="실적·이벤트" cells={[[7, <KrSeasonCard />], [5, <ActionsList variant="block" />]]} />
+      <Band label="개인 투자·수출입" cells={[[6, <RetailCard />], [6, <TradeCard />]]} />
+    </div>
+  </PageLayout>
+}
+
+/**
+ * 홈 › 미국 시장 (시안 Home-US, ia-redesign §4.3 공통 틀, D-325). 한국 시장과 같은 띠 순서·높이.
+ * ① 지수 차트 | 요약 지표 → ② 어젯밤 미국장(핵심 | 전문) | 거래대금 쏠림 → ③ 거래대금 상위 종목(실적 열) | 새 모멘텀 후보 →
+ * ④ 실적 시즌(맨 위에서 내려옴, 시즌 사이엔 다음 시즌까지 D-n) | 최근 컨콜.
+ */
+export function HomeUsPage() {
+  useHashScroll()
+  return <PageLayout mode="document">
+    <h1 className="sr-only">미국 시장</h1>
+    <div className="flex flex-col gap-4">
+      <MarketHero market="us" />
+      <Band label="시장 정리" cells={[[7, <OvernightCard />], [5, <UsFlowCard />]]} />
+      <Band label="종목" cells={[[7, <UsTurnoverCard />], [5, <MomentumCard />]]} />
+      <Band label="실적·이벤트" cells={[[7, <UsSeasonBlock />], [5, <CallsCard />]]} />
+    </div>
+  </PageLayout>
+}
+
+/** #retail·#actions·#us-briefing으로 들어오면 그 칸으로 — 띠 높이가 고정이라 데이터가 와도 위치가 그대로지만 첫 그리기 뒤에 한 번 더 맞춘다 */
+function useHashScroll() {
   const { hash } = useLocation()
-  // #retail·#actions로 들어오면 그 블록으로 — 위 블록들이 그려지며 높이가 바뀌므로 한 번 더 맞춘다
   useEffect(() => {
     if (!hash) return
     const go = () => document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView({ block: "start" })
     const timers = [150, 900].map(ms => window.setTimeout(go, ms))
     return () => timers.forEach(t => window.clearTimeout(t))
   }, [hash])
-  // 시안 Home-KR: 하위 메뉴 칩이 제목을 대신한다 — 제목은 화면 읽기용으로만
-  return <PageLayout mode="document">
-    <h1 className="sr-only">한국 시장</h1>
-    <div className="@container/market flex flex-col gap-4">
-      <div className="surface-grid grid lg:grid-cols-2">
-        <KrTurnoverBlock />
-        {/* 같은 높이 — 넓은 화면은 거래대금 칸 높이에 맞추고, 추세 표는 칸 안에서 스크롤 */}
-        <div className="relative lg:min-h-[560px]"><HomeSection section widget="explore.trend" link={null} w={mobile ? 4 : 6} h={9} className="h-[560px] lg:absolute lg:inset-0 lg:h-auto" /></div>
-      </div>
-      <div id="retail" className="scroll-mt-4"><RetailHeatCard /></div>
-      <TradeBlock />
-      <div id="actions" className="scroll-mt-4"><ActionsList variant="block" /></div>
-    </div>
-  </PageLayout>
-}
-
-/**
- * 홈 › 미국 시장 (시안 Home-US, ia-redesign §4.3·§4.28) — 실적 시즌 블록(시즌 사이엔 다음 시즌까지 D-n) →
- * 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림·개별 움직임 → 최근 받은 컨콜 | 새 모멘텀 후보(미국 시장 탭에도 컨콜 기능을 둔다, D-301).
- * 곧 발표는 위 실적 시즌 블록 하나로(D-303). 모멘텀 줄은 선택한 후보(?view=season&pick=)로 간다(4d).
- */
-export function HomeUsPage() {
-  return <PageLayout mode="document">
-    <h1 className="sr-only">미국 시장</h1>
-    <div className="@container/market flex flex-col gap-4">
-      <UsSeasonBlock />
-      <UsBriefingSection columns />
-      <div className="surface-grid grid lg:grid-cols-2">
-        <HomeSection section widget="explore.calls" w={6} h={6} className="h-[420px]" />
-        <HomeSection section widget="explore.momentum" w={6} h={6} className="h-[420px]" />
-      </div>
-    </div>
-  </PageLayout>
 }

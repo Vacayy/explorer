@@ -51,9 +51,9 @@ function signOf(value: number, digits: number): string {
 /**
  * Format as percentage with sign indicator (+1.5% · −0.5%).
  */
-export function formatPercent(value: number | null | undefined): string {
+export function formatPercent(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined) return "-"
-  return `${signOf(value, 1)}${Math.abs(value).toFixed(1)}%`
+  return `${signOf(value, digits)}${Math.abs(value).toFixed(digits)}%`
 }
 
 /**
@@ -220,6 +220,12 @@ export function formatBp(value: number | null | undefined, signed = false): stri
 export function formatLevel(value: number | null | undefined): string {
   if (value === null || value === undefined) return "-"
   return value.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** 지수 포인트 변화 — 부호 + 소수 2자리(+12.34 · −300.00, 시안 Home-KR·US 지수 머리) */
+export function formatLevelChange(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${signOf(value, 2)}${formatLevel(Math.abs(value))}`
 }
 
 /** DB 시각(SQLite UTC 'YYYY-MM-DD HH:MM:SS' 또는 시간대 붙은 ISO) → 상대 표기. 비면 "-" */

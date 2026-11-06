@@ -13,11 +13,6 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
 import { UsBriefingSourcesDialog } from "@/components/home/UsBriefingSourcesDialog"
-import { BriefingProse, FlowBars, kstHm, usMd } from "@/components/home/UsOvernight"
-import { InfoTip } from "@/components/shared/InfoTip"
-import { BOUND_FIXED } from "@/components/shared/Bounded"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
 import type { UsBriefing, UsBriefingSource, UsMoverBrief } from "@/types"
 
 /**
@@ -28,18 +23,13 @@ import type { UsBriefing, UsBriefingSource, UsMoverBrief } from "@/types"
  */
 /** 위젯 안에 넣을 때 — 바깥 카드 틀과 제목은 위젯 틀이 맡는다 */
 const EMBED = "gap-3 border-0 bg-transparent py-0 shadow-none [&>[data-slot=card-content]]:px-0 [&>[data-slot=card-header]]:px-0 [&_[data-slot=card-title]]:sr-only"
-export function UsBriefingSection({ embedded = false, columns = false }: { embedded?: boolean
-  /** 홈 › 미국 시장(시안 Home-US) — 왼쪽 브리핑 전문 | 오른쪽 거래대금 쏠림·개별 움직임. 날짜 선택 상태를 두 칸이 같이 쓴다 */
-  columns?: boolean }) {
+export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) {
   const [pickedDate, setPickedDate] = useState<string | null>(null)
   const { data, isLoading, isError, refetch, refresh, refreshing } = useUsBriefing(pickedDate)
   const { data: dates = [] } = useUsBriefingDates()
   const [open, setOpen] = useState(false)
 
-  // 홈 › 미국 시장 두 칸은 불러오는 중에도 같은 고정 높이(눈금 lg)
-  if (isLoading) return columns
-    ? <div className="surface-grid grid @4xl/market:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" role="status" aria-label="브리핑 불러오는 중">{[0, 1].map(i => <Skeleton key={i} className={cn("w-full rounded-card", BOUND_FIXED.lg)} />)}</div>
-    : <Skeleton className="h-80 w-full rounded-card" />
+  if (isLoading) return <Skeleton className="h-80 w-full rounded-card" />
   if (isError || !data || data.status === "error")
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
   if (data.movers.length === 0)
@@ -65,8 +55,6 @@ export function UsBriefingSection({ embedded = false, columns = false }: { embed
   const sources = synthesis?.sources ?? []
   const gaps = synthesis?.source_gaps ?? []
   const topShare = clusters[0]
-
-  if (columns) return <UsBriefingColumns data={data} dates={dates.map(d => d.trade_date)} picked={pickedDate} onPick={setPickedDate} />
 
   const controls = (
     <div className="ml-auto flex items-center gap-1">
@@ -333,78 +321,5 @@ function SessionStrip({ data, past, controls }: { data: UsBriefing; past: boolea
         정기 생성(06:30) {kst(run.ran_at)} {runFailed ? `실패 — ${run.summary ?? run.status}` : "성공"}
       </span>}
     </div>
-  </div>
-}
-
-/**
- * 홈 › 미국 시장(시안 Home-US) — 왼쪽 '어젯밤 미국장 — 브리핑 전체'(머리 한 줄 + 전문) | 오른쪽 '거래대금 쏠림 · 개별 움직임'(1.6 : 1).
- * 머리의 회색 줄이 기준 띠를 대신한다: 장 마감일 · 종합 생성 시각 · 출처 수. 어젯밤 장이 아니거나 정기 생성이 실패했으면 주의 색 + ⓘ.
- * 지수 큰 숫자는 두지 않는다(기상도·지수 띠에 있다). 출처 관리는 관리자 › 소스로 옮겼다.
- */
-function UsBriefingColumns({ data, dates, picked, onPick }: { data: UsBriefing; dates: string[]; picked: string | null; onPick: (d: string | null) => void }) {
-  const [open, setOpen] = useState(false)
-  const s = data.synthesis
-  const fresh = !!data.trade_date && data.trade_date === data.expected_session
-  const runFailed = !!data.last_run && data.last_run.status !== "ok"
-  const warn = !picked && (!fresh || runFailed || data.status === "stale")
-  const made = kstHm(data.synthesized_at)
-  const line = [`${usMd(data.trade_date)} 장 마감`, made ? `${made} 생성` : "종합 없음", s ? `출처 ${s.sources?.length ?? 0}건` : null].filter(Boolean).join(" · ")
-  const why = [!fresh && data.expected_session ? `어젯밤(${usMd(data.expected_session)}) 장이 아직 반영되지 않았어요.` : null,
-    runFailed ? `정기 생성(06:30) 실패 — ${data.last_run!.summary ?? data.last_run!.status}` : null,
-    data.status === "stale" ? `실시간 갱신 실패 — 마지막 성공 데이터입니다.${data.error ? ` (${data.error})` : ""}` : null,
-    `거래대금 수집 ${kst(data.fetched_at)}`].filter(Boolean)
-  const gaps = s?.source_gaps ?? []
-  return <div id="us-briefing" data-home-briefing className="surface-grid grid scroll-mt-4 @4xl/market:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-    {/* 두 칸은 같은 고정 높이(눈금 lg) — 전문·목록은 머리 아래에서 스크롤, '상위 n 전체'를 펼쳐도 칸이 늘지 않는다 */}
-    <Card className={cn("min-w-0 gap-3 rounded-[var(--radius-card)] p-4 shadow-none", BOUND_FIXED.lg)}>
-      <header className="flex shrink-0 flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <h2 className="text-[15px] leading-[1.4] font-semibold">어젯밤 미국장 — 브리핑 전체</h2>
-        <span className={`text-xs ${warn ? "text-warn" : "text-ink-3"}`}>{line}</span>
-        <InfoTip label="브리핑 기준">{why.join(" ")}</InfoTip>
-        {dates.length > 1 && <Select value={picked ?? "latest"} onValueChange={v => onPick(v === "latest" ? null : v)}>
-          <SelectTrigger className="ml-auto h-7 w-auto gap-1 border-0 px-2 text-xs text-ink-3 shadow-none" aria-label="브리핑 날짜"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="latest" className="text-xs">최신</SelectItem>
-            {dates.map(d => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
-          </SelectContent>
-        </Select>}
-      </header>
-      <ScrollArea className="min-h-0 flex-1 -mr-2" viewportClassName="pr-2 [&>div]:!block"><div className="flex flex-col gap-3">
-      {data.status === "partial" && <Banner tone="info">근거 스냅샷은 보존 기간이 지나 삭제됐습니다 — 저장된 종합만 표시합니다.</Banner>}
-      {!s && data.status !== "partial" && <Banner tone="info">LLM 종합이 아직 없습니다 — 오른쪽 구조화 브리핑(섹터 쏠림·개별 이슈)만 표시합니다.</Banner>}
-      {gaps.length > 0 && <Banner tone="info">빠진 재료: {gaps.join(" · ")}</Banner>}
-      <BriefingProse data={data} />
-      </div></ScrollArea>
-    </Card>
-    <Card className={cn("min-w-0 gap-3 rounded-[var(--radius-card)] p-4 shadow-none", BOUND_FIXED.lg)}>
-      <header className="flex shrink-0 flex-wrap items-baseline gap-x-2.5">
-        <h2 className="text-[15px] leading-[1.4] font-semibold">거래대금 쏠림 · 개별 움직임</h2>
-        <span className="text-xs text-ink-3">상위 {data.movers.length}</span>
-      </header>
-      <ScrollArea className="min-h-0 flex-1 -mr-2" viewportClassName="pr-2 [&>div]:!block"><div className="flex flex-col gap-3">
-      <FlowBars clusters={data.clusters} n={data.clusters.length} />
-      {data.idiosyncratic.length > 0 && <div className="flex flex-col gap-1">
-        <span className="text-[11.5px] text-ink-2">그룹으로 안 풀리는 움직임</span>
-        <div className="divide-y">{data.idiosyncratic.map(m => <MoverRow key={m.ticker} m={m} />)}</div>
-      </div>}
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1 text-caption text-muted-foreground hover:text-foreground">
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-          거래대금 상위 {data.movers.length} 전체
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-2 space-y-0.5">
-          {data.movers.map(m => (
-            <div key={m.ticker} className="flex min-w-0 items-center gap-2 py-0.5 text-sm">
-              <span className="w-5 shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">{m.rank}</span>
-              <Link to={`/us/${m.ticker}`} className="shrink-0 font-mono font-medium hover:underline">{m.ticker}</Link>
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{m.name}</span>
-              <span className={`w-14 shrink-0 text-right font-mono text-xs tabular-nums ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : "-"}</span>
-              <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{m.dollar_volume != null ? formatUsd(m.dollar_volume) : "-"}</span>
-            </div>
-          ))}
-        </CollapsibleContent>
-      </Collapsible>
-      </div></ScrollArea>
-    </Card>
   </div>
 }

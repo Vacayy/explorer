@@ -1597,65 +1597,9 @@
   },
   {
     "method": "get",
-    "path": "/api/spine/transcript/detail/{transcript_id}/reaction",
-    "status": 200,
-    "validator": "response222",
-    "source": "frontend",
-    "group": "transcript"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/transcript/detail/{transcript_id}/reaction",
-    "status": 200,
-    "validator": "response223",
-    "source": "frontend",
-    "group": "transcript"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/transcript/check/{ticker}",
-    "status": 200,
-    "validator": "response224",
-    "source": "frontend",
-    "group": "transcript"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/transcript/season/sector/{key}",
-    "status": 200,
-    "validator": "response225",
-    "source": "frontend",
-    "group": "transcript"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/transcript/chain/{transcript_id}",
-    "status": 200,
-    "validator": "response226",
-    "source": "frontend",
-    "group": "transcript"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/transcript/core/pin",
-    "status": 200,
-    "validator": "response227",
-    "source": "frontend",
-    "group": "transcript"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/transcript/expectation/{ticker}",
-    "status": 200,
-    "validator": "response228",
-    "source": "frontend",
-    "group": "transcript"
-  },
-  {
-    "method": "get",
     "path": "/api/portfolio/thesis",
     "status": 200,
-    "validator": "response229",
+    "validator": "response222",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1663,7 +1607,7 @@
     "method": "post",
     "path": "/api/portfolio/thesis",
     "status": 201,
-    "validator": "response230",
+    "validator": "response223",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1671,7 +1615,7 @@
     "method": "post",
     "path": "/api/portfolio/transactions",
     "status": 200,
-    "validator": "response231",
+    "validator": "response224",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1679,7 +1623,7 @@
     "method": "post",
     "path": "/api/portfolio/quotes/refresh",
     "status": 200,
-    "validator": "response232",
+    "validator": "response225",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1687,9 +1631,65 @@
     "method": "post",
     "path": "/api/portfolio/principles",
     "status": 201,
-    "validator": "response233",
+    "validator": "response226",
     "source": "frontend",
     "group": "portfolio"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/transcript/detail/{transcript_id}/reaction",
+    "status": 200,
+    "validator": "response227",
+    "source": "frontend",
+    "group": "transcript"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/detail/{transcript_id}/reaction",
+    "status": 200,
+    "validator": "response228",
+    "source": "frontend",
+    "group": "transcript"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/check/{ticker}",
+    "status": 200,
+    "validator": "response229",
+    "source": "frontend",
+    "group": "transcript"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/transcript/season/sector/{key}",
+    "status": 200,
+    "validator": "response230",
+    "source": "frontend",
+    "group": "transcript"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/transcript/chain/{transcript_id}",
+    "status": 200,
+    "validator": "response231",
+    "source": "frontend",
+    "group": "transcript"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/core/pin",
+    "status": 200,
+    "validator": "response232",
+    "source": "frontend",
+    "group": "transcript"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/transcript/expectation/{ticker}",
+    "status": 200,
+    "validator": "response233",
+    "source": "frontend",
+    "group": "transcript"
   },
   {
     "method": "get",

@@ -1,6 +1,6 @@
 # 홈 고정 탭 · 섹션 본문
 
-- 상태: **구현 계약(2026-11-05 화면 구조 개편 3a~3d, 7단계 정리).** 홈은 시스템 고정 탭 다섯 개다(§0). 옛 위젯 홈(격자·배치 편집·위젯 추가 창·사용자 메뉴·`/api/dashboard`)은 3a에서 화면, 7단계에서 코드·API까지 지웠다 — 옛 기록은 git 이력과 CHANGELOG에 있다.
+- 상태: **구현 계약(2026-11-05 화면 구조 개편 3a~3d, 7단계 정리 · 2026-11-06 한국·미국 시장 공통 틀, D-325).** 홈은 시스템 고정 탭 다섯 개다(§0). 옛 위젯 홈(격자·배치 편집·위젯 추가 창·사용자 메뉴·`/api/dashboard`)은 3a에서 화면, 7단계에서 코드·API까지 지웠다 — 옛 기록은 git 이력과 CHANGELOG에 있다.
 - 이전: P4 위젯 대시보드(2026-10-16). [home-feed](home-feed.md)의 Home 시장 탭 구성을 대체했다. 피드 리더는 피드 › 피드로 남는다.
 - 셸: [app-shell](app-shell.md).
 
@@ -11,19 +11,29 @@
 - **섹션 = 위젯 본문 재사용.** `home/HomeSection`이 레지스트리 id로 위젯의 `Body`·`useMeta`(기준 시각·주의 색)·전체 보기 경로를 빌려 쓴다. 위젯 틀(손잡이·빼기 메뉴·크기 조절)은 없다. 머리 = 제목 · ⓘ 툴팁(위젯 한 줄 설명) · 기준 시각 · 링크(지금 화면으로 가는 링크는 숨김). 본문만 오류 경계로 감싸 한 블록이 깨져도 머리와 다른 블록은 남는다.
 - **대시보드**(`home/HomeDashboard`, 순서 고정): 날짜 머리 → 지수 띠 · 시장 요약 띠 → Market Overnight | Market Today(같은 높이 560/640px, 넘치면 칸 안 스크롤. 머리 링크 '미국 시장 ›'·'한국 시장 ›') → 이번 주 바뀐 서사 → 국면·리스크(상태 줄 + VIX·공포탐욕·HY·금리차 타일, 3개월 추이·20일 변화. 모바일은 VIX·공포탐욕만, 머리 링크 '매크로 ›').
 - **직접 만든 블록**: 위젯이 없거나 시안과 모양이 다른 블록은 `HomeBlock`(머리 `BlockHead` + 본문 오류 경계)으로 같은 틀을 쓴다. 블록 상태는 `home/blockState`(`BlockError` 다시 시도·자세히, `RowsSkeleton` 표 모양)와 마지막 값 유지(데이터가 있으면 갱신 오류로 지우지 않음)를 따른다.
-- **한국 시장**(3b, 시안 Home-KR, ia-redesign §4.2·§4.17):
-  1. 국장 거래대금 상위(`home/KrTurnoverBlock`, `/api/spine/kr/movers`) | 가파른 추세(`explore.trend` 본문, 거래대금 칸 높이에 맞추고 표는 칸 안 스크롤. 모바일은 좁은 열). 거래대금 = 한 줄 요약 → 섹터 쏠림 상위 5 → 상위 10 표(신규 진입·급등락 배지, '상위 20 전체' 펼침) → '상위 5종목 관련 자료' 접기. 갱신 버튼은 머리. 가파른 추세 조건은 '어떻게 산정되나요?' 툴팁, 표 머리 '꾸준함'(R²)·'ADX' 용어 툴팁. 0종목이면 '오늘은 조건 다섯 개를 모두 통과한 종목이 없습니다'.
-  2. 개인 투자 열기(`home/RetailHeatCard`, `#retail`, `/api/spine/retail`): 국면 배지 · 신용융자·예탁금·코스피 · 판정 근거 · 지표 11개 표(값·5년 백분위 막대·20일 변화) · '추이 보기 ›'(/retail). 오류는 이 블록만.
-  3. 수출입(`home/TradeBlock`, `/api/spine/trade/highlights?limit=8`): 수출 총액 · 기여 1위(전년 대비·증가분 몫) · 산업별 수출 규모 상위 8(급등 수) | 평소보다 크게 늘어난 품목 8(수출액·전년 대비·전월 대비·증가분 기여). 통계월이 지난달보다 오래되면(관세청 매월 중순 발표) 'n월 기준' 칩.
-  4. 기업활동(`#actions`, 시장 전체 목록 — D-300). 대만 월매출·대만 → 한국 연결은 산업 › 대만 공급망(`/follow/taiwan`)으로 옮겼다(4b).
-- **미국 시장**(3b, 시안 Home-US, ia-redesign §4.3·§4.28):
-  1. 실적 시즌 블록(`home/UsSeasonBlock`, `/api/spine/transcript/season`). 시즌 판정은 `lib/seasonPhase` — 오늘이 어느 시즌의 `windows[].first~last`(팔로우 기업 첫~마지막 발표일, 미확정 포함) 안이면 시즌 중, 아니면 시즌 사이. '막바지' 변형 없음.
-     - 시즌 중: 시즌 이름 · '반응 집계 중 n'(첫 거래일이 아직 안 지난 발표) · 판정 줄(발표 n/팔로우 · 첫 거래일 업종보다 강함 · 하회에도 강세 · 상회에도 약세 · 첫 반응 뒤집힘) · 이번 시즌 시장이 따진 것(요약 있는 섹터 4줄, 줄 전체가 섹터 상세 링크) · '섹터 n개 모두 보기 ›' · 곧 발표 칩(D-n) · '실적 시즌 전체 ›'.
-     - 시즌 사이: 머리 '다음 실적 시즌까지 D-n' + 다음 시즌 · 첫 발표일, 세 칸 = 지난 시즌 정리(마감 값 넷 + '시장이 따진 것 n개 섹터 다시 보기 ›') · 곧 발표 · 팔로우 기업(날짜별, 미확정은 '예상일') · 그 사이 볼 것(아래 브리핑 · 홈 › 매크로 · 지난 시즌 콜). 지난·다음 시즌이 서버의 '이번 시즌'과 다르면 그 시즌을 따로 부른다.
-     - 팔로우 0이면 '기본 세트 팔로우'(컨콜 화면으로). 오류는 이 블록만.
-     - 개발 서버에서만 `?today=YYYY-MM-DD`로 오늘을 바꿔 시즌 사이 화면을 확인한다.
-  2. 어젯밤 미국장 브리핑 전문 | 거래대금 쏠림 · 개별 움직임(`UsBriefingSection columns` — 날짜 선택을 두 칸이 같이 쓴다, `#us-briefing`).
-  3. 최근 받은 컨콜(곧 발표는 1의 실적 시즌 블록 하나로 — D-303) | 이번 시즌 실적 모멘텀 — 시안에는 없지만 이행 화면에 있던 것이라 남긴다(새 모멘텀 후보는 시즌 개요 개편 §4.6a로 옮겨 갈 때 정리).
+- **한국 시장 · 미국 시장 공통 틀**(2026-11-06, D-325, 시안 Home-KR·Home-US, ia-redesign §4.2·4.3·§4.17·§4.28). 두 탭은 같은 띠 순서·높이를 쓴다. 띠 = 12칸 격자(`home/MarketFrame` `Band`, 칸끼리 테두리 겹침, 768 미만은 한 줄), 칸 = `MarketCard`(안쪽 16/18 · 세로 12 · 높이 고정 `shared/Bounded` `BAND`).
+
+  | 띠 | 높이(넓은 · 좁은) | 한국 | 미국 |
+  |---|---|---|---|
+  | ① 지수 | 380 · 내용(차트 220 + 지표 2×2) | 지수 차트 8 \| 요약 지표 2×2 4 (`home/MarketHero`) | 같음 |
+  | ② 시장 정리 | 440 · 420 | 오늘 시장 이야기 7(`MarketTodayCard`) \| 거래대금 쏠림 5 | 어젯밤 미국장 7(`OvernightCard`, `#us-briefing`) \| 거래대금 쏠림 5 |
+  | ③ 종목 | 500 · 420 | 거래대금 상위 7(10개씩) \| 가파른 추세 5 | 거래대금 상위 7(실적 열) \| 새 모멘텀 후보 5 |
+  | ④ 실적·이벤트 | 460 · 400 | 국내 실적 시즌 7 \| 기업활동 5(`#actions`) | 실적 시즌 7(`home/UsSeasonBlock`) \| 최근 컨콜 5 |
+  | ⑤ 시장 고유 | 400 · 400 | 개인 투자 열기 6(`#retail`) \| 수출입 6 | 없음 |
+
+  - **넘침**: 칸 안 목록은 `FillArea`(공식 ScrollArea, 남은 높이를 채움)로 스크롤, 순서가 있는 긴 목록은 `shared/PagerBar`(공식 ui/pagination — 'n–m / 전체' · ‹ 번호 ›) — 거래대금 표 10개, 기업활동·최근 컨콜 6개. 보기 전환·페이지·근거 창을 눌러도 칸과 아래 띠는 움직이지 않는다(4px 이하, 클릭 점검 스크립트로 확인).
+  - **URL 상태**: `idx`(지수 키)·`range`(1d·1m·3m·1y), `mtslot`(Market Today 회차), `trend_tab`·`trend`(가파른 추세 보기·근거 창), `acts`(기업활동 all·mine·pro), `brief`(key·full), `mom`(new·cont). 기본값이면 쿼리에서 지운다(`hooks/useUrlParam`).
+  - **① 지수 차트**: 원천 `GET /api/spine/market/{kr|us}/overview`(저장분만, 아래 계약). 큰 값 · 기준 대비(1일 = 전일 종가, 기간 = 기간 시작 전 값) · 기준 이름 · 상태 줄('11/5(목) 15:30 마감', 장중 'HH:MM 기준', 미국은 '현지 16:00 마감 · 한국 11/6 06:00', 개장 전은 '개장 전 · '). 차트 `charts/IndexLineChart`(SVG 1000×200, 점선 기준선 + '기준 값' 표, 선·면 색 = 등락 방향, 1일 x = 개장~마감 시각 비율 → 장중엔 지금 시각에서 멈춘다, 개장 전 1일은 직전 거래일 경로를 흐리게). 요약 지표 칸 = 이름(ⓘ) · 값(Geist 24) · 보조 줄(칸마다 기준일) · 20일 추이(시장 폭은 상승·보합·하락 막대, 개인 순매수는 0선 위아래 막대, 공포·탐욕은 0~100 막대 + 추이).
+  - **② 한국**: 회차 칩(09:30 · 11:30 · 15:00 · 16:00 마감, 아직 안 나온 회차는 비활성) → AI 줄 → 화두(본문 전부 · 출처 · 내러티브 칩). 첫 회차 전에는 머리·칩을 그대로 두고 목록 자리에 '오늘 첫 정리는 HH:MM에 나와요.' 한 줄. **미국**: 요약 한 줄(15/600) → 핵심 다섯 줄 | 전문(`BriefingProse`, 같은 높이 안 전환). 어젯밤 장이 아니거나 정기 생성 실패·stale이면 회색 줄을 주의 색으로, 이유·빠진 재료는 ⓘ. 날짜 고르기는 두지 않는다(대시보드 물방울 전문·`/feed`의 Explorer 산출물로).
+  - **② 거래대금 쏠림**: 상위 20종목을 업종으로 묶은 비중·대표(중앙값) 등락 — 요약 한 줄 → 막대 줄(신규 배지). 한국 = `/api/spine/kr/movers`(업종 → `/map?group=`), 미국 = 브리핑 스냅샷.
+  - **③ 거래대금 상위**: 열 # · 종목(한국 = 급등락·신규 진입 배지 / 미국 = 티커 + 이름) · 업종(한국) 또는 실적(미국 — 이번 시즌 발표 종목이면 'M/D 실적 ›' → 콜 상세) · 등락(소수 2자리) · 거래대금. 좁은 화면은 종목 · 등락 · 거래대금 세 열.
+  - **③ 가파른 추세**: 줄 = 이름(신고가 단계·신규 배지) / 업종 · 꾸준함 · ADX | 60일 추이 | 60일 수익률, 누르면 근거 창(`widgets/trend` `TrendEvidenceDialog`). '신고가·매물대' 보기는 `EventList`. 0종목이면 한 줄. **새 모멘텀 후보**: 새로 붙은 | 이어지는(`continuing`), 줄 = 티커 · 이름 · 발표일 / AI 요약 두 줄 → `?view=season&pick=`. 바닥 '실적 시즌 › 모멘텀 ›'.
+  - **④ 국내 실적 시즌**(`/api/spine/transcript/season/kr`): 발표 · 업종보다 강했다 · 이번 주 발표 · 마감 D-n → 업종별 반응(발표 수 · 업종보다 강한 비율 막대 · 초과 중앙 %p) → 곧 발표 칩. 이번 시즌 공시가 없으면 한 줄 + '지난 시즌 마감 결과 보기 ›'. **미국 실적 시즌**: 판정 4칸(발표 · 업종보다 강했다 · 상회에도 약세 · 첫 반응 뒤집힘) → 이번 시즌 시장이 따진 것(요약 있는 섹터 전부, 줄 = 섹터 상세 링크) → 곧 발표 칩(오늘 · D-n). 시즌 판정은 `lib/seasonPhase`(`windows[].first~last`), 시즌 사이엔 '다음 실적 시즌까지 D-n' + 지난 시즌 정리 · 곧 발표 · 팔로우 기업 · 그 사이 볼 것을 칸 안 스크롤로. 팔로우 0이면 '기본 세트 팔로우'. 개발 서버에서만 `?today=`.
+  - **④ 기업활동**: 원공시만(정정 제외), 줄 = 날짜 | 기업(보유·관심 배지) + 유형 / 한 줄 설명(D-306, 없으면 공시명 → DART). 보기 전체 | 내 그룹 | 유무증 Pro(공시 유형·정정 필터 칩은 두지 않는다). **최근 컨콜**: 지난 7일 받은 콜을 발표일 순, 줄 = 날짜 · 티커 · 회사 · 'Q3 FY26'.
+  - **⑤ 개인 투자 열기**: 국면 배지 + 근거 두 개 → 값이 있는 지표(값 · 5년 백분위 막대 · 백분위), '추이 보기 ›'(/retail). **수출입**: 수출 총액(통계월이 늦으면 'n월 기준' 칩, `lib/trade` `tradeIsLagging`) · 기여 1위 → 산업별 수출 규모 상위 12(급등·급감 수).
+  - 블록 상태: 데이터 전에는 칸 높이 그대로 뼈대(`FillSkeleton`), 오류는 그 칸만 `BlockError`, 빈 상태는 목록 자리 한 줄(`FillNote`). 머리 회색 줄은 데이터 전에도 같은 폭의 보이지 않는 자리.
+  - **지수·요약 지표 API 계약**(`models/market_overview.py`): `MarketOverview { market; indices: IndexOverview[]; tiles: OverviewTile[] }`. `IndexOverview { key; name; value; change; change_pct; prev_close; session { state: pre|open|closed; trade_date; last_time(현지); last_kst; open; close }; ranges: { key: 1d|1m|3m|1y; base; points: {t, v}[] }[] }` — 1d 점은 `index_intraday` 현지 'HH:MM', 마감 뒤엔 저장 종가를 마감 시각 점으로 붙인다. 기간 점은 `market_indicators` `index_*` 일봉 21·63·250개(끝 점 = 1일 값), `base`는 그 앞 값(없으면 null). 전일 종가는 저장 일봉. `OverviewTile { key; label; value; change_pct; as_of; series(20); up/down/flat; buy/sell; growth_20; pctile; second }` — 없는 값은 null로 모양을 같게. 외부 호출 0, 시장 폭만 10분 메모(따뜻할 때 수 ms, 테스트 100ms 미만).
+  - **장중 경로 수집**: `pipeline/index_intraday` + `scripts/index_intraday.py`, launchd `indexintraday` 10분 — 국장 09:00–15:30 KST · 미장 09:30–16:00 ET(+20분)에만 yfinance 5분봉 5콜, 장 밖·주말은 외부 호출 없이 끝. 공휴일 달력은 없다(그날 봉이 없으면 아무것도 저장하지 않음).
 - **이행 화면에서 시안으로 바꾼 탭**(기존 위젯·카드를 섹션으로 모아 둔 이행 화면 — 아무 기능도 잃지 않게 옮겼다):
   - 매크로(3c, 2026-11-05 완료): `home/HomeMacroPage` — 시안 Home-Macro·ia-redesign §4.16. 지금 시장은 5칸·AI 해설·1~5 → 매크로·유동성 신호등 → 리스크 지표 묶음(`home/RiskTiles`) → 국면 이력. 계약은 market-regimes.md §6·§8.
   - 내 종목(3d, 2026-11-05 완료): `home/HomeStocksPage` — 시안 Home-Stocks·Mobile-Stocks, ia-redesign §4.4·§4.20. 머리 줄(보기 전환·종목 추가) → 특징주 → 조건 충족 알림 줄 → 목록(추적 행 먼저, 펼치면 조건·신호·수급, 비추적 6 + 더 보기, 행마다 추적 스위치·빼기, 미국 행 실적 배지). 이행 화면의 추적 카드는 '조건 편집' 시트로, 묶음 오늘 신호는 특징주로, 관심 종목 오늘 요약은 전체 보기 아래, 포트폴리오 오늘·다가오는 일정·보유 종목 자료 흐름은 보유 보기로 옮겼다. 계약은 [stock-tracker '화면'](stock-tracker.md).
@@ -61,14 +71,14 @@ interface WidgetDef {
 | market.today | Market Today | `/spine/market-today` | 대시보드 | 회차 칩·텔레그램/뉴스 건수·다음 정리 시각 · 화두 — docs/specs/market-today.md |
 | risk.regime | 시장 국면 | `/market-regime` | 대시보드 | 국장·미장 포스처 · 근거 한 줄 |
 | risk.curve · risk.vix · risk.fear · risk.hy | 금리차 · VIX · 공포·탐욕 · HY | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 대시보드 | 값 · 20일 변화 · 3개월 스파크, 늦거나 실패하면 마지막 값 흐리게 + 기준 날짜 |
-| explore.trend | 가파른 추세 | `/spine/trend-leaders` | 한국 시장 | 아래 조건 |
-| explore.calls · explore.momentum | 최근 받은 컨콜 · 새 모멘텀 후보 | `/spine/transcript/recent` · `/spine/transcript/momentum` | 미국 시장 | 발표일 순 10 · 점수 상위 3(→ `?view=season&pick=`) |
 | explore.twRevenue · explore.twLinks | 대만 월매출 · 대만 → 한국 연결 | `/spine/tw/revenue` · `/spine/tw/links` | 산업 › 대만 공급망 | docs/specs/tw-revenue.md |
 | world.changes | 이번 주 바뀐 서사 | `/spine/world/changes?days=7` | 대시보드 | 최근 7일 새 버전 · 옮겨 간 내용 1~2문장 |
 | portfolio.today · portfolio.events · portfolio.flow | 포트폴리오 오늘 · 다가오는 일정 · 보유 종목 자료 흐름 | `/portfolio`·`/portfolio/history` · `/portfolio/events` · `/portfolio/flow` | 내 종목(보유 보기) | 비율·날짜만(D-212) |
 | watch.digests | 관심 종목 오늘 요약 | `/spine/groups/{id}/digests` | 내 종목(전체 보기) | 최신 요약일 · 종목별 '새로운 점' 또는 첫 줄 |
 
 종목 추적 카드 본문(`widgets/tracker`의 `TrackerBody`)은 섹션 목록에 없고 내 종목 화면의 '조건 편집' 시트가 직접 쓴다.
+
+한국·미국 시장 탭은 섹션 목록을 쓰지 않고 칸을 직접 그린다(위 §0 공통 틀, 2026-11-06에 `explore.trend`·`explore.calls`·`explore.momentum` 정의를 걷었다).
 
 **가파른 추세 조건**(`pipeline/trend_leaders.py`, 모두 AND): 시총 3,000억+ · 60거래일 +30%+ · 60거래일 log(종가) 회귀 R² 0.75+ · 종가>MA20>MA60, MA60이 20거래일 전보다 높음 · ADX(14) 25+ & +DI>−DI. 순위 = 연율 로그 기울기 × R². LLM 0·네트워크 0.
 

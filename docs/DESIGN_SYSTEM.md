@@ -240,6 +240,16 @@ charts/  lightweight-charts 래퍼
 
 홈 대시보드 Overnight·Today 큰 칸만 예외로 고정 높이를 직접 쓴다(넓은 화면 796px, 좁은 화면 min(680px, 85dvh)).
 
+**띠 높이** (`BAND`, 홈 › 한국·미국 시장 공통 틀 — ia-redesign §4.2·4.3). 같은 줄의 칸은 같은 고정 높이다. 칸(`home/MarketFrame` `MarketCard`) 안에서 머리·바닥 줄을 뺀 자리는 `FillArea`(공식 ScrollArea, 남은 높이를 채움)가 스크롤하고, 순서가 있는 목록은 `shared/PagerBar`(공식 `ui/pagination`, 'n–m / 전체' · ‹ 번호 ›)로 나눈다.
+
+| 눈금 | 넓은 화면(768+) | 좁은 화면 | 띠 |
+|---|---|---|---|
+| `index` | 380px | 내용(차트 220 + 지표 2×2) | ① 지수 |
+| `summary` | 440px | 420px | ② 시장 정리 |
+| `stocks` | 500px | 420px | ③ 종목 |
+| `events` | 460px | 400px | ④ 실적·이벤트 |
+| `local` | 400px | 400px | ⑤ 시장 고유 |
+
 **넘침**
 - 넘치면 영역 안에서 스크롤한다. `BoundedArea`(공식 `ui/scroll-area` 위 조합)를 쓰고, 상한은 스크롤 상자(viewport)에 건다. 홈 블록은 `HomeSection`·`HomeBlock`의 `bounded="sm|md|lg"`로 본문만 묶는다(머리는 고정).
 - 필터·정렬·탭으로 행 수가 바뀌는 목록은 상한 대신 `BoundedArea fixed`로 높이 자체를 고정한다.

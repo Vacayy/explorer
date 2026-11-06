@@ -1,4 +1,5 @@
 import type { TradeFollowRow } from '@/types'
+import { localToday } from "@/lib/seasonPhase"
 
 /** 주요 품목 한눈에 — 정렬 (URL trade_sort). 옛 값(contribution·group)은 기본으로 */
 export type TradeGridSort = 'value' | 'surge' | 'mine'
@@ -26,3 +27,11 @@ export function movingAverage(values: readonly (number | null)[], window = 12): 
 
 /** 'YYYY-MM' → '2026년 9월' */
 export const monthLabel = (period: string | null) => period ? `${period.slice(0, 4)}년 ${+period.slice(5, 7)}월` : '-'
+
+/** 통계월이 지난달보다 오래됐나 — 관세청 품목별 통계는 매월 중순에 나와서, 그 전에는 지지난달 값을 보인다(§4.28 부분) */
+export function tradeIsLagging(period: string | null, today: string = localToday()): boolean {
+  if (!period) return false
+  const y = +today.slice(0, 4), m = +today.slice(5, 7)
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`
+  return period < prev
+}

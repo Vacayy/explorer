@@ -99,7 +99,7 @@ export function BlockHead({ title, info, sub, asOf, stale, link, actions, displa
   </Tooltip>
   return (
     <header className={cn("flex shrink-0 items-center gap-2", display ? "min-h-[38px] flex-wrap items-end gap-x-2.5 border-b pb-3" : section ? "min-h-7 flex-wrap gap-x-2.5" : "min-h-[38px] border-b px-3 py-1.5")}>
-      {sub && !display ? <>{heading}<span className="shrink-0 pt-px text-xs text-ink-3">{sub}</span>{tip}</>
+      {sub && !display ? <>{heading}{tip}<span className="shrink-0 pt-px text-xs text-ink-3">{sub}</span></>
       // 큰 칸 머리는 회색 줄 자리를 늘 둔다 — 불러오는 중·빈 상태에도 머리 높이가 같게(높이 상한과 넘침)
       : display ? <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">{heading}{tip}</div>

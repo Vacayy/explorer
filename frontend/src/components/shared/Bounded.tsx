@@ -24,6 +24,29 @@ export const BOUND_FIXED = {
 } as const satisfies Record<BoundSize, string>
 
 /**
+ * 홈 › 한국·미국 시장 띠 높이(ia-redesign §4.2·4.3, 시안 Home-KR·US) — 같은 줄의 칸은 같은 높이로 고정하고 넘치는 목록은 칸 안에서 푼다.
+ * 넓은 화면(md+)은 시안 값, 좁은 화면은 줄인 값(②·③ 420 · ④·⑤ 400). ①은 좁은 화면에서 차트 220 + 지표 2×2라 내용 높이.
+ */
+export const BAND = {
+  index: "md:h-[380px]",
+  summary: "h-[420px] md:h-[440px]",
+  stocks: "h-[420px] md:h-[500px]",
+  events: "h-[400px] md:h-[460px]",
+  local: "h-[400px]",
+} as const
+export type BandSize = keyof typeof BAND
+
+/**
+ * 고정 높이 칸의 남은 높이를 채우는 스크롤 영역 — 칸(flex 세로) 안에서 머리·바닥 줄을 뺀 자리. 공식 ScrollArea 위 조합.
+ * 스크롤 막대 자리만큼 오른쪽으로 내어 쓴다(시안 .sc: margin-right −10 · padding-right 10).
+ */
+export function FillArea({ className, viewportClassName, children, ...props }: ComponentProps<typeof ScrollArea>) {
+  return <ScrollArea data-bounded="fill" className={cn("-mr-2.5 min-h-0 flex-1", className)} viewportClassName={cn("pr-2.5 [&>div]:!block", viewportClassName)} {...props}>
+    {children}
+  </ScrollArea>
+}
+
+/**
  * 상한 안에서만 스크롤하는 본문 영역 — 공식 shadcn ScrollArea(Radix) 위 조합.
  * 상한은 실제 스크롤 상자(viewport)에 건다(Root에만 걸면 스크롤이 안 잡힌다, ui/scroll-area 주석).
  * Radix 안쪽 상자의 display:table을 block으로 — 말줄임(truncate)이 폭을 넘기지 않게(shared/ProposalPanel과 같은 처리).
