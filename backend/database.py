@@ -1683,6 +1683,8 @@ def init_db():
         "ALTER TABLE entity_merges ADD COLUMN rule TEXT",              # type_fix · spacing · spelling · english · cleanup · alias · abbrev
         "ALTER TABLE entity_merges ADD COLUMN prev_status TEXT",       # 병합 전 entities.status (되돌릴 때 복원)
         "ALTER TABLE entity_merges ADD COLUMN reverted_at TEXT",       # 되돌린 시각 — 되돌린 이름은 다시 묶지 않는다
+        "ALTER TABLE usage_events ADD COLUMN section TEXT",            # IA 대메뉴(navConfig.locate·dossier·chat·admin). NULL = 개편 전 기록
+        "ALTER TABLE usage_events ADD COLUMN tab TEXT",                # IA 탭
     ]:
         try:
             conn.execute(migration)

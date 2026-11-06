@@ -103,13 +103,14 @@ EVENT_TYPES = {"view", "leave", "action", "open"}
 
 def save_events(events: list[dict]) -> int:
     rows = [(e["ts"], e.get("session"), e["type"], e["name"][:200], (e.get("ref") or None) and e["ref"][:200],
-             (e.get("entity") or None) and str(e["entity"])[:100], e.get("dwell_ms"))
+             (e.get("entity") or None) and str(e["entity"])[:100], e.get("dwell_ms"),
+             (e.get("section") or None) and e["section"][:40], (e.get("tab") or None) and e["tab"][:40])
             for e in events if e.get("type") in EVENT_TYPES and e.get("name")]
     if not rows:
         return 0
     conn = get_connection()
     try:
-        conn.executemany("INSERT INTO usage_events (ts, session, type, name, ref, entity, dwell_ms) VALUES (?,?,?,?,?,?,?)", rows)
+        conn.executemany("INSERT INTO usage_events (ts, session, type, name, ref, entity, dwell_ms, section, tab) VALUES (?,?,?,?,?,?,?,?,?)", rows)
         conn.commit()
     finally:
         conn.close()
@@ -224,6 +225,56 @@ def costs(conn, days: int = 7) -> dict:
             "change_pct": round(((cur[0] or 0) / prev - 1) * 100) if prev else None, "by_job": by_job, "daily": daily}
 
 
+# 옛 주소 — 리다이렉트만 남은 화면(App.tsx 리다이렉트 · ia-redesign §10.6). '이번 주 안 연 화면'에서 빼고 따로 센다.
+# 이름은 프런트 screenOf가 만든 패턴(쿼리 앞까지)으로 맞춘다. /retail·/follow/stocks처럼 화면이 남은 주소는 넣지 않는다
+OLD_ROUTES = frozenset({
+    "/home/b/:boardId", "/home/briefing", "/home/risk", "/regimes", "/proxy-boards", "/follow", "/sources",
+    "/follow/universe", "/follow/saved", "/stocks", "/experiments/expectations", "/experiments/expectations/review",
+    "/explore", "/map", "/narrative/worldview", "/knowledge", "/ask", "/actions",
+    "/discover/peers", "/discover/industry", "/discover/screener", "/discover/signals", "/discover/alt-data",
+    "/analysis/backtests", "/analyze/compare", "/analyze/:stockCode", "/analyze/:stockCode/valuation",
+    "/us", "/synthesis/:synthesisId", "/person", "/feed/telegram", "/feed/blogs",
+    "/research", "/research/watchlist", "/research/memos", "/research/catalysts", "/onchain",
+})
+OLD_PREFIXES = ("/company/",)
+# 화면은 남고 쿼리만 옮겨 간 옛 보기 — (경로, 쿼리 조각)
+OLD_QUERIES = (("/home", "home_view=feed"), ("/follow/transcripts", "view=proxies"))
+
+
+SECTION_KO = {"home": "홈", "feed": "피드", "explore": "탐색", "industry": "산업", "portfolio": "포트폴리오", "world": "Thesis",
+              "dossier": "종목", "chat": "대화", "admin": "관리자"}
+
+
+def is_old_route(name: str) -> bool:
+    base, _, query = name.partition("?")
+    if base in OLD_ROUTES or base.startswith(OLD_PREFIXES):
+        return True
+    return any(base == b and q in query.split("&") for b, q in OLD_QUERIES)
+
+
+def _sections(conn, since: str) -> list[dict]:
+    """대메뉴 → 탭 방문·머문 시간(leave 합 ÷ 방문)·동작 수. section 없는 행은 개편 전 기록"""
+    rows = {}
+    for r in conn.execute(
+            "SELECT section, tab, sum(type='view') visits, sum(CASE WHEN type='leave' THEN dwell_ms ELSE 0 END) dwell, "
+            "sum(type IN ('action','open')) acts FROM usage_events WHERE ts >= ? GROUP BY section, tab", (since,)):
+        sec = rows.setdefault(r["section"], {"section": r["section"], "visits": 0, "dwell": 0, "actions": 0, "tabs": []})
+        sec["visits"] += r["visits"]
+        sec["dwell"] += r["dwell"] or 0
+        sec["actions"] += r["acts"]
+        if r["visits"]:
+            sec["tabs"].append({"tab": r["tab"], "visits": r["visits"], "avg_dwell_ms": (r["dwell"] or 0) / r["visits"]})
+    out = []
+    for sec in rows.values():
+        if not sec["visits"] and not sec["actions"]:
+            continue
+        sec["avg_dwell_ms"] = sec.pop("dwell") / sec["visits"] if sec["visits"] else None
+        sec["tabs"].sort(key=lambda t: -t["visits"])
+        out.append(sec)
+    # 개편 전 기록(section 없음)은 맨 아래
+    return sorted(out, key=lambda s: (s["section"] is None, -s["visits"]))
+
+
 def usage(conn, days: int = 7) -> dict:
     first = conn.execute("SELECT min(ts) FROM usage_events").fetchone()[0]
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -235,21 +286,63 @@ def usage(conn, days: int = 7) -> dict:
         "SELECT ref, name, count(*) n FROM usage_events WHERE type='view' AND ts >= ? AND ref IS NOT NULL AND ref != name "
         "GROUP BY ref, name ORDER BY n DESC LIMIT 8", (since,))]
     actions = [dict(r) for r in conn.execute(
-        "SELECT name, count(*) n FROM usage_events WHERE type='action' AND ts >= ? GROUP BY name ORDER BY n DESC", (since,))]
+        "SELECT name, count(*) n FROM usage_events WHERE type IN ('action','open') AND ts >= ? GROUP BY name ORDER BY n DESC", (since,))]
     month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    # 옛 주소는 '안 연 화면'이 아니라 없앤 화면 — 따로 센다
     dropped = [r[0] for r in conn.execute(
         "SELECT DISTINCT name FROM usage_events WHERE type='view' AND ts >= ? AND ts < ? AND name NOT IN "
-        "(SELECT name FROM usage_events WHERE type='view' AND ts >= ?)", (month_ago, since, since))]
+        "(SELECT name FROM usage_events WHERE type='view' AND ts >= ?)", (month_ago, since, since)) if not is_old_route(r[0])]
+    old: dict[str, dict] = {}
+    for r in conn.execute("SELECT name, ref, count(*) n FROM usage_events WHERE type='view' AND ts >= ? GROUP BY name, ref ORDER BY n DESC", (since,)):
+        if is_old_route(r["name"]):
+            o = old.setdefault(r["name"], {"name": r["name"], "n": 0, "refs": []})
+            o["n"] += r["n"]
+            if r["ref"] and r["ref"] != r["name"] and len(o["refs"]) < 3:   # 옛 화면 안에서 옮겨 다닌 것은 출처가 아니다
+                o["refs"].append(r["ref"])
+    # 옛 홈 보드 API — 0이 이어지면 home_boards·dashboard_layouts 표를 지워도 된다(ia-redesign §10.6 확인 항목)
+    boards = conn.execute("SELECT coalesce(sum(count), 0) FROM api_requests_hourly WHERE route LIKE '/api/dashboard/boards%' AND hour >= ?",
+                          ((datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d %H:00"),)).fetchone()[0]
     sessions = conn.execute("SELECT count(DISTINCT session) FROM usage_events WHERE ts >= ?", (since,)).fetchone()[0]
-    return {"since": first, "visits": sum(s["visits"] for s in screens), "sessions": sessions, "screens": screens, "paths": paths,
-            "actions": actions, "dropped": dropped[:10]}
+    return {"since": first, "visits": sum(s["visits"] for s in screens), "sessions": sessions, "sections": _sections(conn, since),
+            "screens": screens, "paths": paths, "actions": actions, "dropped": dropped[:10],
+            "old_routes": sorted(old.values(), key=lambda o: -o["n"]), "boards_api_calls": boards}
+
+
+def _count(conn, sql: str, *args) -> int:
+    try:
+        return conn.execute(sql, args).fetchone()[0] or 0
+    except Exception:  # noqa: BLE001 — 생성 표가 없는 DB(테스트·새 설치)는 0
+        return 0
+
+
+def _open_rates(conn, since: str) -> list[dict]:
+    """생성 대비 열람 — 자동으로 만든 것 중 연 것. 생성 수는 원천 표에서, 열람은 open 이벤트의 서로 다른 대상 수"""
+    since_sql = since[:19].replace("T", " ")   # 원천 표는 'YYYY-MM-DD HH:MM:SS' UTC
+    opened = lambda sql: _count(conn, sql, since)  # noqa: E731
+    ai_gen = (_count(conn, "SELECT count(*) FROM narratives WHERE created_at >= ?", since_sql)
+              + _count(conn, "SELECT count(*) FROM reports WHERE created_at >= ?", since_sql)
+              + _count(conn, "SELECT count(*) FROM scenarios WHERE created_at >= ?", since_sql)
+              + _count(conn, "SELECT count(*) FROM entity_digests WHERE created_at >= ?", since_sql)
+              + _count(conn, "SELECT count(*) FROM youtube_digest_jobs WHERE status='ok' AND datetime(updated_at, 'unixepoch') >= ?", since_sql))
+    call_gen = _count(conn, "SELECT count(*) FROM (SELECT id FROM transcripts WHERE digest IS NOT NULL AND fetched_at >= ? "
+                            "UNION SELECT transcript_id FROM transcript_reactions WHERE created_at >= ?)", since_sql, since_sql)
+    return [
+        {"key": "ai_outputs", "label": "AI가 최근 만든 것", "generated": ai_gen,
+         "opened": opened("SELECT count(DISTINCT entity) FROM usage_events WHERE type='open' AND name='ai_outputs.click' AND ts >= ?")},
+        # 단계 '자세히 보기'는 entity=단계, ref=콜 id
+        {"key": "call", "label": "컨콜 핵심 정리·시장 반응", "generated": call_gen,
+         "opened": opened("SELECT count(DISTINCT ref) FROM usage_events WHERE type='open' AND name='transcript.stage' "
+                          "AND entity IN ('call','reaction') AND ts >= ?")},
+        {"key": "overnight", "label": "어젯밤 미국장 브리핑", "generated": _count(conn, "SELECT count(*) FROM us_briefings WHERE created_at >= ?", since_sql),
+         "opened": opened("SELECT count(DISTINCT coalesce(entity, ts)) FROM usage_events WHERE type='open' AND name='overnight.full' AND ts >= ?")},
+    ]
 
 
 def value(conn, days: int = 7) -> dict:
-    """효용 — P0는 시스템 판단 채점(발표 전 기대)과 생성물 열람(open 이벤트가 쌓이면). 열람률·👍/👎는 P1."""
+    """효용 — 시스템 판단 채점(발표 전 기대)과 생성 대비 열람(open 이벤트). 👍/👎는 P1."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     opens = [dict(r) for r in conn.execute(
-        "SELECT name, count(*) n, count(DISTINCT entity) uniq FROM usage_events WHERE type='open' AND ts >= ? GROUP BY name",
-        ((datetime.now(timezone.utc) - timedelta(days=days)).isoformat(),))]
+        "SELECT name, count(*) n, count(DISTINCT entity) uniq FROM usage_events WHERE type='open' AND ts >= ? GROUP BY name", (since,))]
     grades = {"hit": 0, "underweighted": 0, "noise": 0, "missed": 0}
     for (m,) in conn.execute("SELECT meta_json FROM transcript_reactions WHERE meta_json IS NOT NULL"):
         meta = json.loads(m)
@@ -257,7 +350,7 @@ def value(conn, days: int = 7) -> dict:
             if g.get("verdict") in grades:
                 grades[g["verdict"]] += 1
         grades["missed"] += len(meta.get("missed") or [])
-    return {"opens": opens, "expectation_grades": grades}
+    return {"opens": opens, "rates": _open_rates(conn, since), "expectation_grades": grades}
 
 
 def summary(days: int = 7) -> dict:
@@ -368,16 +461,24 @@ def weekly_message(days: int = 7) -> str:
     L.append("")
     if u["visits"]:
         L.append(f"<b>무엇을 쓰는가</b> 화면 방문 {u['visits']}회 · " + " · ".join(f"{x['name']} {x['visits']}회" for x in u["screens"][:3]))
+        if u["sections"]:
+            L.append("· 메뉴별: " + " · ".join(f"{SECTION_KO.get(x['section'], x['section'] or '이전 기록')} {x['visits']}회"
+                                                for x in u["sections"][:5]))
         if u["actions"]:
             L.append("· 동작: " + " · ".join(f"{a['name']} {a['n']}" for a in u["actions"][:4]))
         if u["dropped"]:
             L.append("· 지난달엔 열었는데 이번 주 안 연 화면: " + " · ".join(u["dropped"][:4]))
+        if u["old_routes"] or u["boards_api_calls"]:
+            L.append(f"· 옛 주소 접근 {sum(o['n'] for o in u['old_routes'])}회 · 옛 홈 보드 API {u['boards_api_calls']}회")
     else:
         L.append("<b>무엇을 쓰는가</b> 사용 기록 수집 시작 — 다음 주부터 집계")
     L.append("")
     g = v["expectation_grades"]
     if sum(g.values()):
         L.append(f"<b>도움이 되는가</b> 발표 전 기대 채점: 맞힘 {g['hit']} · 덜 봄 {g['underweighted']} · 과하게 봄 {g['noise']} · 못 봄 {g['missed']}")
+    rates = [r for r in v["rates"] if r["generated"]]
+    if rates:
+        L.append("· 생성 대비 열람: " + " · ".join(f"{r['label']} {r['opened']}/{r['generated']}" for r in rates))
     # 할 일은 종류별로 하나씩 먼저(연속 실패 → 실패 → 만성 부분 성공 → 비용), 남는 칸은 나머지로
     picked = [v[0] for v in todo.values() if v]
     picked += [x for v in todo.values() for x in v[1:]]

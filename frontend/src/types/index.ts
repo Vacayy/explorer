@@ -1854,9 +1854,15 @@ export interface ObserveSummary {
   costs: { usd: number; calls: number; prev_usd: number; change_pct: number | null
     by_job: { job: string; name: string; usd: number | null; calls: number; failed: number | null; cache_pct: number | null; share: number }[]
     daily: { day: string; usd: number | null }[] }
-  usage: { since: string | null; visits: number; sessions: number; screens: { name: string; visits: number; avg_dwell_ms: number | null }[]
-    paths: { ref: string; name: string; n: number }[]; actions: { name: string; n: number }[]; dropped: string[] }
-  value: { opens: { name: string; n: number; uniq: number }[]; expectation_grades: { hit: number; underweighted: number; noise: number; missed: number } }
+  usage: { since: string | null; visits: number; sessions: number
+    /** IA 대메뉴 → 탭. section null = 개편 전 기록 */
+    sections: { section: string | null; visits: number; avg_dwell_ms: number | null; actions: number; tabs: { tab: string | null; visits: number; avg_dwell_ms: number | null }[] }[]
+    screens: { name: string; visits: number; avg_dwell_ms: number | null }[]
+    paths: { ref: string; name: string; n: number }[]; actions: { name: string; n: number }[]; dropped: string[]
+    old_routes: { name: string; n: number; refs: string[] }[]; boards_api_calls: number }
+  value: { opens: { name: string; n: number; uniq: number }[]
+    rates: { key: "ai_outputs" | "call" | "overnight"; label: string; generated: number; opened: number }[]
+    expectation_grades: { hit: number; underweighted: number; noise: number; missed: number } }
 }
 
 /* ---------- Market Today (docs/specs/market-today.md) — GET /api/spine/market-today ---------- */

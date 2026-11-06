@@ -12,6 +12,8 @@ class UsageEvent(BaseModel):
     ref: str | None = Field(default=None, max_length=200)
     entity: str | None = Field(default=None, max_length=100)
     dwell_ms: int | None = None
+    section: str | None = Field(default=None, max_length=40)
+    tab: str | None = Field(default=None, max_length=40)
 
 
 class UsageBatch(BaseModel):
@@ -130,14 +132,39 @@ class ActionRow(BaseModel):
     n: int
 
 
+class TabRow(BaseModel):
+    tab: str | None
+    visits: int
+    avg_dwell_ms: float | None
+
+
+class SectionRow(BaseModel):
+    """IA 대메뉴 단위 방문·머문 시간. section=None은 개편 전 기록(IA 위치 없음)"""
+    section: str | None
+    visits: int
+    avg_dwell_ms: float | None
+    actions: int
+    tabs: list[TabRow]
+
+
+class OldRouteRow(BaseModel):
+    """옛 주소(리다이렉트 표) 접근 — refs = 어디서 왔는지(직전 화면) 상위"""
+    name: str
+    n: int
+    refs: list[str]
+
+
 class Usage(BaseModel):
     since: str | None
     visits: int
     sessions: int
+    sections: list[SectionRow]
     screens: list[Screen]
     paths: list[PathRow]
     actions: list[ActionRow]
     dropped: list[str]
+    old_routes: list[OldRouteRow]
+    boards_api_calls: int
 
 
 class OpenRow(BaseModel):
@@ -153,8 +180,17 @@ class Grades(BaseModel):
     missed: int
 
 
+class OpenRate(BaseModel):
+    """생성 대비 열람 — generated = 기간 안에 만든 수, opened = 그중 연 것(서로 다른 대상 수)"""
+    key: Literal["ai_outputs", "call", "overnight"]
+    label: str
+    generated: int
+    opened: int
+
+
 class Value(BaseModel):
     opens: list[OpenRow]
+    rates: list[OpenRate]
     expectation_grades: Grades
 
 

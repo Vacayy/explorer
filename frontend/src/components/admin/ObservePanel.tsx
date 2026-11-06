@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Bullets, Cols, H3, Meta, Section } from "@/components/follow/season/seasonUi"
 import { formatNumber } from "@/utils/format"
+import { SECTIONS } from "@/components/layout/navConfig"
 import type { ObserveSummary } from "@/types"
 
 const ACTION_KO: Record<string, string> = {
@@ -17,7 +18,21 @@ const ACTION_KO: Record<string, string> = {
   "transcript.check": "최근 발표 조사", "transcript.collect": "종목 수집", "prices.collect": "시세 갱신",
   "overview.make": "기업 개요 만들기", "core.pin": "핵심 고정", "core.unpin": "핵심 해제", "save": "저장", "watch.add": "관심 추가", "watch.remove": "관심 해제",
   "study.add": "스터디 추가", "chat.ask": "채팅 질문",
+  // 개편 IA (observability.md 사용 이벤트 표)
+  "ai_outputs.open": "AI 산출물 목록 열기", "ai_outputs.click": "AI 산출물 열기", "monitor.open": "모니터 상세 창", "monitor.detail": "모니터 상세 페이지",
+  "transcript.open": "컨콜 열기", "transcript.stage": "컨콜 단계 자세히 보기", "transcript.fold": "컨콜 펼치기", "overnight.full": "미국장 브리핑 전문",
+  "feed.source": "피드 소스 고르기", "feed.original": "피드 원문 보기", "feed.mark_all_read": "피드 모두 읽음",
+  "narrative.open": "서사 열기", "narrative.week": "이번 주 바뀐 것", "narrative.expand": "고리 변화 펼치기", "ontology.expand": "그래프 노드 늘리기",
+  "index.switch": "지수·기간 바꾸기", "market_today.nav": "장중 정리 날짜·회차", "peer.group": "Peer 그룹 바꾸기", "peer.stock": "Peer 종목 고르기",
+  "season.sector": "시즌 섹터 바꾸기",
 }
+/** IA 위치 이름 — navConfig 대메뉴·탭 + L1 밖(도시에·대화·관리자). null = 개편 전 기록 */
+const SECTION_KO: Record<string, string> = { ...Object.fromEntries(SECTIONS.map((s) => [s.key, s.label])), dossier: "종목", chat: "대화", admin: "관리자" }
+const TAB_KO: Record<string, string> = { ...Object.fromEntries(SECTIONS.flatMap((s) => s.tabs.map((t) => [`${s.key}.${t.key}`, t.label]))),
+  "dossier.summary": "개요", "dossier.financials": "실적·사업", "dossier.mentions": "자료", "dossier.lens": "투자 렌즈", "dossier.us": "미국 종목",
+  "admin.ops": "작업·신선도", "admin.observe": "관측", "admin.sources": "소스", "admin.curation": "자동 정리" }
+const sectionKo = (s: string | null) => s == null ? "이전 기록" : SECTION_KO[s] ?? s
+const tabKo = (s: string | null, t: string | null) => t == null ? "-" : TAB_KO[`${s}.${t}`] ?? t
 const usd = (v: number | null | undefined) => v == null ? "-" : `$${v.toFixed(v >= 100 ? 0 : 2)}`
 const pct = (v: number | null | undefined) => v == null ? "" : `${v > 0 ? "+" : ""}${v}%`
 const dwell = (ms: number | null) => ms == null ? "-" : ms >= 60_000 ? `${Math.floor(ms / 60_000)}분 ${Math.round((ms % 60_000) / 1000)}초` : `${Math.round(ms / 1000)}초`
@@ -127,7 +142,7 @@ function Costs({ d }: { d: ObserveSummary }) {
             <TableCell className="text-right tabular-nums">{r.cache_pct ?? "-"}%</TableCell><TableCell className="text-right tabular-nums">{r.failed || ""}</TableCell></TableRow>
         ))}</TableBody>
       </Table>
-      <Meta>결과물당 비용·생성 대비 열람률은 P1 — 비중이 큰 작업은 결과를 얼마나 여는지와 같이 봐야 줄일지 판단할 수 있습니다.</Meta>
+      <Meta>결과물당 비용은 P1 — 비중이 큰 작업은 '도움이 되는가'의 생성 대비 열람과 같이 봅니다.</Meta>
     </Section>
   )
 }
@@ -137,11 +152,19 @@ function Usage({ d }: { d: ObserveSummary }) {
   if (!u.visits) return <Section title="무엇을 쓰는가"><Meta>사용 기록 수집을 시작했습니다. 화면을 쓰면 여기에 쌓입니다{u.since ? ` (${u.since.slice(5, 10)}부터)` : ""}.</Meta></Section>
   return (
     <Section title="무엇을 쓰는가" note={`방문 ${u.visits}회 · 세션 ${u.sessions}`}>
+      <H3>메뉴별</H3>
+      <Bullets items={u.sections.slice(0, 8).map((s) => <><b>{sectionKo(s.section)}</b> {s.visits}회 · 평균 {dwell(s.avg_dwell_ms)}{s.actions > 0 && ` · 동작 ${s.actions}`}
+        {s.section != null && s.tabs.length > 0 && <span className="block text-caption text-muted-foreground">{s.tabs.map((t) => `${tabKo(s.section, t.tab)} ${t.visits}회 · ${dwell(t.avg_dwell_ms)}`).join(" · ")}</span>}</>)} />
       <H3>자주 연 화면</H3>
       <Bullets items={u.screens.slice(0, 8).map((s) => <><span className="font-mono text-caption">{s.name}</span> {s.visits}회 · 평균 {dwell(s.avg_dwell_ms)}</>)} />
       {u.paths.length > 0 && <><H3>자주 가는 경로</H3><Bullets items={u.paths.slice(0, 6).map((p) => <><span className="font-mono text-caption">{p.ref}</span> → <span className="font-mono text-caption">{p.name}</span> {p.n}회</>)} /></>}
       {u.actions.length > 0 && <><H3>핵심 동작</H3><Bullets items={[u.actions.map((a) => `${ACTION_KO[a.name] ?? a.name} ${a.n}`).join(" · ")]} /></>}
       {u.dropped.length > 0 && <><H3>지난달엔 열었는데 이번 주 안 연 화면</H3><Bullets items={[u.dropped.join(" · ")]} /></>}
+      {(u.old_routes.length > 0 || u.boards_api_calls > 0) && <><H3>옛 주소 접근 {u.old_routes.reduce((n, o) => n + o.n, 0)}회</H3>
+        <Bullets items={[
+          ...u.old_routes.slice(0, 6).map((o) => <><span className="font-mono text-caption">{o.name}</span> {o.n}회{o.refs.length > 0 && <span className="text-muted-foreground"> · {o.refs.join(", ")}에서</span>}</>),
+          <>옛 홈 보드 API <span className="font-mono text-caption">/api/dashboard/boards</span> {formatNumber(u.boards_api_calls)}회</>,
+        ]} /></>}
     </Section>
   )
 }
@@ -152,10 +175,11 @@ function Value({ d }: { d: ObserveSummary }) {
     <Section title="도움이 되는가">
       <H3>시스템 판단 채점</H3>
       <Bullets items={[<>발표 전 기대: 맞힘 <b>{g.hit}</b> · 덜 봄 {g.underweighted} · 과하게 봄 {g.noise} · 못 봄 {g.missed}</>]} />
-      <H3>생성물 열람</H3>
-      {d.value.opens.length
-        ? <Bullets items={d.value.opens.map((o) => <>{o.name} {o.n}회 열람 · {o.uniq}건</>)} />
-        : <Meta>생성 대비 열람률(자동으로 만든 것 중 실제로 연 비율)과 👍/👎는 P1에서 붙입니다.</Meta>}
+      <H3>생성 대비 열람</H3>
+      <Bullets items={d.value.rates.map((r) => <>{r.label}: 만든 {formatNumber(r.generated)}건 중 <b>{formatNumber(r.opened)}</b>건 열람
+        {r.generated > 0 && <span className="text-muted-foreground"> ({Math.round(Math.min(r.opened / r.generated, 1) * 100)}%)</span>}</>)} />
+      {d.value.opens.length > 0 && <><H3>열람</H3>
+        <Bullets items={[d.value.opens.map((o) => `${ACTION_KO[o.name] ?? o.name} ${o.n}회${o.uniq ? ` · ${o.uniq}건` : ""}`).join(" · ")]} /></>}
     </Section>
   )
 }
