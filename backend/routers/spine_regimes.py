@@ -5,6 +5,7 @@ from models.regimes import (BrkResponse, EraCheckBody, EraCommentaryResponse, Er
                             RegimesResponse)
 from pipeline import era, era_commentary
 from pipeline.regimes import collect, get_brk, get_regimes
+from services.shared_result import shared
 
 router = APIRouter(prefix='/api/spine/regimes', tags=['spine'])
 
@@ -30,7 +31,7 @@ def collect_now():
 @router.get('/state', response_model=EraStateResponse)
 def state():
     """지금 시장 읽기 네 층(상태·의미 국면·온도·전제 원장). 규칙 판정, 저장 읽기만."""
-    return era.get_state()
+    return shared(('era.state',), era.get_state)   # /commentary도 같은 계산을 쓴다(동시 호출이면 하나만)
 
 
 @router.put('/checks/{key}')

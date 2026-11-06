@@ -16,6 +16,7 @@ from database import get_connection
 BUCKETS = ((100, "b100"), (300, "b300"), (1000, "b1000"), (3000, "b3000"))
 SKIP_PREFIXES = ("/api/spine/client-errors", "/api/spine/usage", "/docs", "/openapi.json", "/redoc")
 FLUSH_SECONDS = 60
+FLUSH_BUSY_TIMEOUT_MS = 2000  # 요청 중 저장이 launchd 쓰기 잠금을 기다리는 최대 시간
 
 _lock = threading.Lock()
 _buf: dict[tuple, dict] = {}
@@ -34,12 +35,22 @@ def record_request(method: str, route: str, status: int, ms: float) -> None:
         b["total_ms"] += ms
         b["max_ms"] = max(b["max_ms"], ms)
         b[next((col for lim, col in BUCKETS if ms <= lim), "bslow")] += 1
-    if time.monotonic() - _last_flush > FLUSH_SECONDS:
-        flush()
 
 
-def flush() -> int:
-    """메모리 집계를 DB에 더한다. DB가 잠겨 있으면 다음 번에 다시(버퍼를 되돌린다)."""
+def claim_flush() -> bool:
+    """저장 주기가 됐으면 True를 한 번만 준다 — 동시에 끝난 요청들이 저장을 겹쳐 예약하지 않게.
+    저장은 부르는 쪽(main.py 미들웨어)이 이벤트 루프 밖 스레드에서 한다."""
+    global _last_flush
+    with _lock:
+        if time.monotonic() - _last_flush <= FLUSH_SECONDS:
+            return False
+        _last_flush = time.monotonic()
+        return True
+
+
+def flush(busy_timeout_ms: int | None = None) -> int:
+    """메모리 집계를 DB에 더한다. DB가 잠겨 있으면 다음 번에 다시(버퍼를 되돌린다).
+    busy_timeout_ms: 쓰기 잠금을 기다릴 최대 시간 — 요청 중 저장은 짧게(FLUSH_BUSY_TIMEOUT_MS) 기다리고 넘긴다."""
     global _buf, _last_flush
     with _lock:
         buf, _buf = _buf, {}
@@ -49,6 +60,8 @@ def flush() -> int:
     try:
         conn = get_connection()
         try:
+            if busy_timeout_ms is not None:
+                conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
             for (hour, method, route, sc), b in buf.items():
                 conn.execute(
                     "INSERT INTO api_requests_hourly (hour, method, route, status_class, count, total_ms, max_ms, b100, b300, b1000, b3000, bslow) "

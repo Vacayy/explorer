@@ -10,6 +10,7 @@ import os
 from database import get_connection
 from pipeline import llm
 from pipeline.era import get_state
+from services.shared_result import shared
 
 MODEL = os.getenv("ERA_COMMENTARY_MODEL", "sonnet")
 MEMO_EXCERPT = 2500
@@ -38,7 +39,7 @@ SYSTEM = """너는 개인 투자자에게 '지금 시장이 어떤 상태인지'
 
 
 def _inputs() -> dict:
-    s = get_state()
+    s = shared(('era.state',), get_state)   # /regimes/state와 같은 계산을 함께 쓴다(services/shared_result)
     m = dict(s["meaning"])
     m.pop("corr_series", None)
     conn = get_connection()

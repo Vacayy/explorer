@@ -8,6 +8,8 @@ RS = 대분류별 시총가중 수익률의 백분위(0~100). hover 궤적 = 1·
 계산은 요청 시 (15분 인메모리 캐시) — stock_prices 스냅샷 쿼리 기반.
 """
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, timedelta
 
 from database import get_connection
@@ -21,15 +23,44 @@ _TTL = 900
 _cache: dict[str, tuple[float, dict]] = {}
 
 
+# 종목별 시크: 종목코드를 인덱스로 건너뛰며 모으고(재귀 CTE), 종목마다 (stock_code, trade_date) 인덱스로
+# '그날 이전 마지막 종가 행' 하나만 찾는다. 예전 GROUP BY + 조인(120만 행 전체 스캔, 0.26~1.1초)과 같은 결과를
+# 0.01초 안팎에 낸다(API 성능 A단계 ③-b, tests/test_sector_snapshot.py가 옛 쿼리와 대조).
+_SNAPSHOT_SQL = """
+    WITH RECURSIVE codes(stock_code) AS (
+        SELECT min(stock_code) FROM stock_prices
+        UNION ALL
+        SELECT (SELECT min(stock_code) FROM stock_prices WHERE stock_code > codes.stock_code)
+        FROM codes WHERE codes.stock_code IS NOT NULL)
+    SELECT codes.stock_code, sp.close, sp.market_cap
+    FROM codes
+    JOIN stock_prices sp ON sp.id = (
+        SELECT x.id FROM stock_prices x
+        WHERE x.stock_code = codes.stock_code AND x.trade_date <= ? AND x.close IS NOT NULL
+        ORDER BY x.trade_date DESC LIMIT 1)"""
+
+_memo: ContextVar[dict | None] = ContextVar("sector_rs_snapshot_memo", default=None)
+
+
+@contextmanager
+def snapshot_memo():
+    """이 블록 안에서는 같은 날짜 _snapshot을 한 번만 읽는다(요청 하나 범위)."""
+    token = _memo.set({})
+    try:
+        yield
+    finally:
+        _memo.reset(token)
+
+
 def _snapshot(conn, on_or_before: str) -> dict[str, tuple[float, float]]:
     """종목별 (close, market_cap) — 해당 일자 이전 최근 거래일 기준."""
-    rows = conn.execute("""
-        SELECT sp.stock_code, sp.close, sp.market_cap
-        FROM stock_prices sp
-        JOIN (SELECT stock_code, max(trade_date) d FROM stock_prices
-              WHERE trade_date <= ? AND close IS NOT NULL GROUP BY stock_code) t
-          ON t.stock_code = sp.stock_code AND t.d = sp.trade_date""", (on_or_before,)).fetchall()
-    return {r["stock_code"]: (r["close"], r["market_cap"] or 0) for r in rows}
+    memo = _memo.get()
+    if memo is not None and on_or_before in memo:
+        return memo[on_or_before]
+    out = {r[0]: (r[1], r[2] or 0) for r in conn.execute(_SNAPSHOT_SQL, (on_or_before,))}
+    if memo is not None:
+        memo[on_or_before] = out
+    return out
 
 
 def _members(conn) -> dict[str, str]:

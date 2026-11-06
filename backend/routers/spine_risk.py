@@ -2,7 +2,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from models.risk import RiskResponse, RiskSnapshotResponse
-from pipeline.risk import KEYS, get_risk, snapshot_risk, window
+from pipeline.risk import KEYS, get_risk, get_window, snapshot_risk
 
 router = APIRouter(prefix='/api/spine/risk', tags=['spine'])
 
@@ -14,8 +14,9 @@ def risk(span: Literal['1m', '3m', '1y', '3y', '5y', '10y', '20y', 'all'] | None
     selected = [k for k in keys.split(',') if k] if keys else None
     if selected and (unknown := set(selected) - set(KEYS)):
         raise HTTPException(422, f"알 수 없는 계열: {', '.join(sorted(unknown))}")
-    data = get_risk()
-    return window(data, span, selected) if span or selected else data
+    if not (span or selected):
+        return get_risk()
+    return get_window(span, selected)
 
 
 @router.post('/snapshot', response_model=RiskSnapshotResponse)
