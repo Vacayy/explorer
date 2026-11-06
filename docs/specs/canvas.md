@@ -6,7 +6,7 @@
 
 | L2 | 지금 URL | 화면 |
 |---|---|---|
-| 피드 | `/feed` (4a, 옛 `/home?home_view=feed`) | `feed/FeedPage` — [home-feed](home-feed.md) '현행' |
+| 피드 | `/feed` (4a, 옛 `/home?home_view=feed`) | `feed/FeedPage`·`feed/ChannelReader`(D-325 옛 리더 구성) — [home-feed](home-feed.md) '현행' |
 | 스터디 | `/study` | 프로젝트 목록·책상, 단일 문서 스터디 |
 | 저장됨 | `/feed/saved` (4a, 옛 `/follow/saved`) | 북마크 + 메모 |
 | 소스 | `/admin/sources` (4a, 옛 `/sources`) | 텔레그램·블로그·뉴스·유튜브 등록·활성 |

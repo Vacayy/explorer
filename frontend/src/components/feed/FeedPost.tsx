@@ -1,3 +1,6 @@
+import { AddToStudy } from '@/components/study/AddToStudy'
+import { StudyButton } from '@/components/study/StudyButton'
+import { DocumentBody } from '@/components/doc/DocumentBody'
 import { useState, type ReactNode } from 'react'
 import { DetailLink as Link } from '@/components/shared/DetailNavigation'
 import { ArrowUpRight, ChevronDown, FileText, Sparkles } from 'lucide-react'
@@ -6,8 +9,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Markdown } from '@/components/shared/Markdown'
+import { SourceBadge } from '@/components/shared/SourceBadge'
+import { EntityChip } from '@/components/shared/EntityChip'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
-import type { TimelineItem } from '@/types'
+import type { EntityTag, FeedDocument, TimelineItem } from '@/types'
 
 type PostVariant = 'card' | 'row'
 function PostSurface({ variant, children }: { variant: PostVariant; children: ReactNode }) {
@@ -21,6 +26,39 @@ const labels = { source: '소스', company: '기업 요약', person: '인물 요
 // Preview only: preserve full stored Markdown inside the expanded body / original page.
 function preview(text: string) {
   return text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^[#>\-\s]+/gm, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/** 피드 리더의 글 카드(D-325, 옛 ChannelReader) — 분류 · 소스 · 시각 / 제목 / 원문 또는 저장된 짧은 요약 / 태그 · 스터디로 읽기 · 스터디에 추가 · 자료 상세 · 원문 사이트 */
+export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', reading }: {
+  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; reading: 'original' | 'summary'
+}) {
+  const excerpt = preview(doc.summary || doc.content || '')
+  return (
+    <article aria-label={doc.title || '소스 게시물'} className="feed-post-row">
+      <div className="space-y-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+          <SourceBadge sourceType={doc.source_type} />
+          {doc.channel_kind && doc.channel_key ? (
+            <Link to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
+              className={`min-w-0 max-w-[60%] truncate font-medium text-ink-2 ${focusLink}`}>{doc.channel}</Link>
+          ) : <span className="min-w-0 truncate font-medium text-ink-2">{doc.channel || '수집 자료'}</span>}
+          <time className="ml-auto shrink-0 text-caption" dateTime={doc.published_at} title={doc.published_at}>
+            {formatRelativeTime(doc.published_at)} {timeLabel}
+          </time>
+        </div>
+        <h3 className="text-card-title font-semibold text-pretty break-words">
+          <Link to={`/doc/${doc.id}`} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
+        </h3>
+        <DocumentBody doc={doc} reading={reading} mediaSize="preview" />
+        <div className="flex flex-wrap items-center gap-2">
+          {doc.entities.slice(0, 4).map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
+          <StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} />
+          <Button asChild variant="ghost" size="sm" className="ml-auto"><Link to={`/doc/${doc.id}`}>자료 상세<ArrowUpRight aria-hidden="true" /></Link></Button>
+          {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer"><span>원문<span className="max-md:hidden"> 사이트</span></span><ArrowUpRight aria-hidden="true" /></a></Button>}
+        </div>
+      </div>
+    </article>
+  )
 }
 
 export function SystemPost({ item, variant = 'card', presentation = 'preview' }: { item: TimelineItem; variant?: PostVariant; presentation?: 'preview' | 'reading' }) {

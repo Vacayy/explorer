@@ -18,10 +18,10 @@ function Marked({ text, q }: { text: string; q?: string }) {
 }
 
 /**
- * 피드·문서 검색의 글 한 줄 (시안 Feed·Feed-Search) — 소스 칩 · 소스 이름 · 시각 · 안 읽음 점 / 제목 / 요약 / 종목·테마 칩.
+ * 문서 검색의 글 한 줄 (시안 Feed-Search) — 소스 칩 · 소스 이름 · 시각 / 제목 / 요약 / 종목·테마 칩.
  * 제목을 누르면 문서 보기, 소스 이름을 누르면 소스별 글.
  */
-export function FeedRow({ doc, unread, q, onChip }: { doc: FeedDocument; unread?: boolean; q?: string; onChip: (tag: EntityTag) => void }) {
+export function FeedRow({ doc, q, onChip }: { doc: FeedDocument; q?: string; onChip: (tag: EntityTag) => void }) {
   const excerpt = preview(doc.summary || doc.content || '')
   const title = doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'
   return (
@@ -32,7 +32,6 @@ export function FeedRow({ doc, unread, q, onChip }: { doc: FeedDocument; unread?
           ? <Link to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`} className={`min-w-0 max-w-60 truncate font-medium text-ink-2 ${focusLink}`}>{doc.channel}</Link>
           : <span className="min-w-0 max-w-60 truncate font-medium text-ink-2">{doc.channel || '수집 자료'}</span>}
         <time className="shrink-0 font-mono tabular-nums" dateTime={doc.published_at} title={doc.published_at}>{formatKstDateTime(doc.published_at)}</time>
-        {unread && <span className="ml-auto size-[7px] shrink-0 rounded-full bg-action" role="img" aria-label="안 읽음" />}
       </div>
       <h3 className="line-clamp-2 text-base leading-[1.45] font-semibold break-words text-pretty"><Link to={`/doc/${doc.id}`} className={focusLink}><Marked text={title} q={q} /></Link></h3>
       {excerpt && <p className="line-clamp-3 text-sm leading-[1.6] break-words text-ink-2 max-md:line-clamp-2"><Marked text={excerpt} q={q} /></p>}

@@ -1,25 +1,11 @@
 /**
  * 피드 대메뉴(/feed) 규칙 — 화면과 떼어 시험한다 (ia-redesign §4.5·§4.15·§4.26·§4.28).
- * URL이 상태의 단일 소스: view(피드|문서 검색), channel_type(소스 칩), channel(왼쪽 소스), reader_topic(부상 종목).
+ * URL이 상태의 단일 소스: view(피드|문서 검색), channel_type(종류 칩), channel(왼쪽 소스), reader_topic(주제 칩), reader_page, reading(원문|요약).
  */
-import type { TimelineChannel, TimelineItem } from '@/types'
 
-/** 소스 칩 — timeline이면 안 읽음을 아는 타임라인(/feed/timeline), 아니면 문서 코퍼스(/api/spine/feed?source=)에서 최신순.
- *  블로그는 타임라인에서 뉴스 RSS와 섞이므로 문서 분류를 따른다. 스크랩은 미검증이라 '전체'에 섞지 않고 구분선 뒤에 둔다. */
-export const FEED_CHIPS = [
-  { key: 'all', label: '전체', timeline: true },
-  { key: 'telegram', label: '텔레그램', timeline: true },
-  { key: 'blog', label: '블로그', timeline: false },
-  { key: 'youtube', label: '유튜브', timeline: true },
-  { key: 'news', label: '뉴스', timeline: false },
-  { key: 'article', label: '아티클', timeline: false },
-  { key: 'transcript', label: '컨콜', timeline: false },
-  { key: 'people', label: '인물', timeline: false },
-  { key: 'canon', label: '역사', timeline: false },
-  { key: 'memo', label: '메모', timeline: true },
-  { key: 'scrap', label: '스크랩 · 미검증', timeline: false },
-] as const
-export type FeedChipKey = (typeof FEED_CHIPS)[number]['key'] | 'system'
+/** 피드 리더 왼쪽 '내 피드'의 종류 칩(D-325, 옛 ChannelReader). Explorer 산출물(system)은 칩 없이 목록 맨 아래 묶음으로 들어온다 */
+export const FEED_PLATFORMS = { telegram: '텔레그램', blog: '블로그', youtube: '유튜브', memo: '투자자 메모', system: 'Explorer' } as const
+export type FeedPlatform = keyof typeof FEED_PLATFORMS | 'all'
 
 /** 문서 검색의 소스 칩(시안 Feed-Search) */
 export const SEARCH_SOURCES = [
@@ -33,37 +19,20 @@ export function isSearchView(search: string): boolean {
   return p.get('view') === 'documents' || ['q', 'source', 'stock', 'industry', 'topic', 'page'].some(k => p.has(k))
 }
 
-/** 현재 소스 칩. 왼쪽에서 소스를 고르면 칩은 그 소스 종류를 따른다. Explorer 산출물(system)은 칩 없이 맨 아래 한 줄로 들어온다 */
-export function feedChip(search: string): FeedChipKey {
+/** 지금 종류 칩(channel_type). 모르는 값은 전체 */
+export function feedPlatform(search: string): FeedPlatform {
+  const raw = new URLSearchParams(search).get('channel_type') ?? 'all'
+  return Object.hasOwn(FEED_PLATFORMS, raw) ? raw as FeedPlatform : 'all'
+}
+
+/** 원문 | 요약 — URL의 reading이 우선. 없으면 블로그·유튜브·메모는 글이 길어 요약, 나머지는 원문. 소스 id 접두사로 판단해 목록 로딩 전에도 같다 */
+export function readingMode(search: string): 'original' | 'summary' {
   const p = new URLSearchParams(search)
-  const raw = p.get('channel_type') ?? 'all'
-  if (raw === 'system') return 'system'
-  return FEED_CHIPS.some(c => c.key === raw) ? raw as FeedChipKey : 'all'
-}
-
-export function usesTimeline(chip: FeedChipKey, channel: string): boolean {
-  return !!channel || chip === 'system' || FEED_CHIPS.some(c => c.key === chip && c.timeline)
-}
-
-/** 게시물 → 소스 id(`telegram:채널`·`blog:url`·`youtube:채널`) — /feed/channels의 id와 같은 꼴 */
-export function itemChannelId(item: TimelineItem): string | null {
-  const d = item.document
-  return d?.channel_kind && d.channel_key ? `${d.channel_kind}:${d.channel_key}` : null
-}
-
-/**
- * 안 읽음 점 — 소스별 안 읽음 수(n)만 알므로, 최신순 목록에서 소스마다 앞의 n개를 안 읽음으로 본다.
- * '더 불러오기'로 이어 붙인 목록 전체를 한 번에 넘긴다.
- */
-export function unreadIds(items: TimelineItem[], channels: TimelineChannel[]): Set<string> {
-  const left = new Map(channels.map(c => [c.id, c.unread]))
-  const out = new Set<string>()
-  for (const item of items) {
-    const id = itemChannelId(item)
-    const n = id ? left.get(id) ?? 0 : 0
-    if (id && n > 0) { out.add(item.id); left.set(id, n - 1) }
-  }
-  return out
+  const requested = p.get('reading')
+  if (requested === 'summary' || requested === 'original') return requested
+  const channel = p.get('channel')
+  const context = channel ? channel.split(':')[0] : feedPlatform(search)
+  return context === 'blog' || context === 'youtube' || context === 'memo' ? 'summary' : 'original'
 }
 
 /** 새 글이 끊긴 소스(7일 이상) — 흐리게만 표시하고 정리는 관리자 › 소스에서 한다(§4.28 부분) */

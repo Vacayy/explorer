@@ -190,7 +190,7 @@
 
 - `index.css`: (D-320으로 대체) 자체 호스팅 IBM Plex Sans/KR, 역할별 타입, 단색 라이트·다크, 기존 멀버리 포인트.
 - `shared/PageLayout.tsx`: header/overview/toolbar/footer/children 슬롯, PageHeader, SplitWorkspace. 홈 시장은 document·full, 홈 피드는 reader·full(D-153·D-209), 문서 검색은 document. PageContainer는 레거시 호환 유지.
-- Home 피드는 가용 폭 ≥760px에서 300px 목록 + 리더, 그 미만은 URL 목록/본문 전환. 화면 높이 ≥740px은 피드 본문만 `100dvh - --shell-offset`로 고정해 목록/본문 독립 스크롤, 헤더·AI 카드는 페이지 스크롤(D-209). 짧은 화면은 문서 흐름. 시장 모듈은 가용 폭 ≥1000px에서 2열. 셸 --page-inset은 데스크톱24/모바일16px.
+- (D-325 이후 피드는 `/feed`의 `feed/ChannelReader` — ≥768 두 칸·폰 목록/글 전환, specs/home-feed.md '현행') Home 피드는 가용 폭 ≥760px에서 300px 목록 + 리더, 그 미만은 URL 목록/본문 전환. 화면 높이 ≥740px은 피드 본문만 `100dvh - --shell-offset`로 고정해 목록/본문 독립 스크롤, 헤더·AI 카드는 페이지 스크롤(D-209). 짧은 화면은 문서 흐름. 시장 모듈은 가용 폭 ≥1000px에서 2열. 셸 --page-inset은 데스크톱24/모바일16px.
 - UsBriefingSection의 기존 데이터·날짜·상태는 일반 Card 표면에 표시한다(후속 요청으로 대비 배경 해제).
 - 적용 범위·후속은 DESIGN_REVIEW, UI 계약은 DESIGN_SYSTEM. 검증 자료는 `logs/market-redesign/`, `logs/home-feed/`.
 
@@ -198,7 +198,7 @@
 
 - (2026-11-05 개편 4a: 피드는 `/feed` 대메뉴로 옮김, `/home?home_view=feed`는 리다이렉트 — specs/home-feed.md '현행') `/home`: 상단 `시장 / 피드` 모드 전환. 시장은 전체 폭 브리핑 + 기존 모듈 그리드, 피드는 `ChannelReader` 소스 목록 + 원문/저장 요약. `useHomeMode`는 URL 우선/마지막 모드 복원. App은 피드 레일 기본 접힘/일반 레일 상태를 각각 유지한다. 지수는 공통 한 줄 캐러셀. 각 모듈은 독립 상태.
 - `GET /api/spine/feed/channels`: 활성 구독 및 시스템 대상 전체 투영에 window 집계, 대상별 최신 발췌·시각·저장 건수·**안 읽음 수**(`unread`, D-200: `channel_reads.read_until` 또는 `'*'` 기준선 이후 게시물)와 빈 활성 구독 반환. `POST /channels/read {channel, read_until}`은 소스를 열었을 때 읽음 표시(뒤로 가지 않음, 코퍼스 미변경). `POST /channels/read-all {platform: all|telegram|blog|youtube|memo, read_until}`은 피드 '모두 읽음'(D-301) — 그 범위에서 read_until까지 안 읽은 글이 있는 사람 소스를 한 번에 같은 표·같은 규칙으로 표시(all = Explorer 산출물 제외, `response_model=MarkAllReadResponse` channels·marked). `timeline?channel=...`은 페이지 전 필터. 소스 플랫폼+키, 기업 entity ID, 인물 key, 컨콜 ticker, 수출입 그룹이 안정 식별자. 조회 시 쓰기·생성 없음.
-- `/feed`: (4a 이후) 피드 대메뉴 — `feed/FeedPage` 피드 | 문서 검색. (이전) 기본 진입은 Home 피드로 이동(`feed_*` 통합 타임라인은 D-241에서 제거). `view=documents` 또는 기존 `q/source/stock/industry/topic/page` 쿼리는 기존 문서 검색으로 연결, 검색 카드도 `FeedPost.DocumentCard` 공유.
+- `/feed`: (4a 이후) 피드 대메뉴 — `feed/FeedPage` 피드 | 문서 검색. 피드 보기는 D-325(2026-11-06)로 4a 3칸을 번복하고 옛 리더 `feed/ChannelReader`(왼쪽 '내 피드' 검색·종류 칩·소스 줄·접힌 Explorer 묶음 | 오른쪽 선택 소스의 글: 머리·주목 주제/부상 종목 칩 + 'Market Today 정리 ›' 띠·`FeedPost.DocumentCard` 글 카드·페이지)로 되돌림. ≥768은 화면 높이 틀 안에서 두 칸이 각자 스크롤, 폰은 목록 ↔ 글 전환(`reader_open`). `view=documents` 또는 기존 `q/source/stock/industry/topic/page` 쿼리는 문서 검색(`feed/DocumentSearch`·`FeedRow`). (이전) `feed_*` 통합 타임라인은 D-241에서 제거.
 - `GET /api/spine/feed/timeline` → `pipeline/timeline.py`, `models/timeline.py`. **읽기 전용 SQL 투영**, 기존 DB·생성 파이프라인 유지, 조회 시 LLM/수집/백필 없음. 활성 Telegram/블로그/YouTube + 저장 기업 요약·인물 프로필 + 활성 구독 컨콜 + 관심 품목 최신월 수출입 묶음. 게시/생성/수집 시각을 UTC 정규화, 시간순+안정 ID 정렬, 페이지당 20(최대 50), 최대 100페이지, 조회 상한 시각 고정. 수정 가능한 캐시의 불변 이력까지 보장하지 않음. **D-208**: Explorer 생성물 `narrative`·`report`·`scenario`(채널 `*:all`, 요약 구간만 600자 — 내러티브 `## 3줄 요약`·리포트 `## 결론`·파급 답변 앞부분)과 `topic` 필터(소스 글=엔티티 링크, 생성물·기업 요약=같은 토픽명). 주제로 거른 화면은 읽음 표시를 하지 않는다.
 - 수출입 과거 백필은 신규 업데이트로 나열하지 않고 각 활성 품목의 최신 통계월만 월별 묶음. 인물은 저장된 `source_digests(kind=person)`만, 신규 자동 생성 스케줄 추가 없음. AI 해석/자료 수/기준 기간을 표시하며, 원문과 시스템 요약의 작성 주체를 구분.
 - 소스 URL 소속 판정은 경로 경계 확인(`/alice2`를 `/alice`로 오귀속하지 않음), 카드 출처도 같은 `url_belongs` 규칙 사용.
