@@ -112,11 +112,11 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
             </Dialog>}
             {r.refs.length > 0 && <div className="border-t pt-3">
               <p className="mb-1 text-caption font-medium text-muted-foreground">인용 가능한 자료 {r.refs.length}건</p>
-              <ul className="grid gap-x-4 gap-y-0.5 text-caption sm:grid-cols-2">{r.refs.map(x => <li key={x.ref} className="truncate">
+              <BoundedArea size="sm"><ul className="grid gap-x-4 gap-y-0.5 text-caption sm:grid-cols-2">{r.refs.map(x => <li key={x.ref} className="truncate">
                 <span className="tabular-nums text-muted-foreground">[{x.ref}]</span>{" "}
                 {x.url ? <a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.title}</a> : x.title}
                 <span className="text-muted-foreground"> · {x.date}</span>
-              </li>)}</ul>
+              </li>)}</ul></BoundedArea>
             </div>}
           </div>}
       </div>

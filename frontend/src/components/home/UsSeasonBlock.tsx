@@ -108,7 +108,7 @@ function InSeason({ d, today }: { d: SeasonOverview; today: string }) {
       <section aria-label="이번 시즌 시장이 따진 것">
         <h3 className="mb-1 text-xs font-semibold">이번 시즌 시장이 따진 것</h3>
         {!sectors.length ? <p className="py-2 text-sm text-muted-foreground">섹터 요약이 아직 없습니다. 반응 정리 {formatNumber(d.counts.reactions)}/{formatNumber(d.counts.reported)}</p>
-          : <ul className="divide-y border-y">{sectors.map(s => (
+          : <BoundedArea size="md" className="border-y"><ul className="divide-y">{sectors.map(s => (
             <li key={s.key}>
               <Link to={sectorPath(s.key)} className="grid gap-x-4 gap-y-1 px-1 py-3 transition-colors hover:bg-muted/50 sm:grid-cols-[9rem_minmax(0,1fr)_auto]">
                 <span className="flex flex-wrap items-center gap-1.5 text-sm font-semibold sm:flex-col sm:items-start">{s.name}<VerdictBadge verdict={s.verdict} /></span>
@@ -119,7 +119,7 @@ function InSeason({ d, today }: { d: SeasonOverview; today: string }) {
                 <span className="text-xs text-muted-foreground max-sm:hidden">섹터 상세 ›</span>
               </Link>
             </li>
-          ))}</ul>}
+          ))}</ul></BoundedArea>}
         <Link to={SEASON} className="mt-2 inline-block text-xs text-muted-foreground hover:text-foreground">섹터 {formatNumber(d.sectors.length)}개 모두 보기 ›</Link>
       </section>
 

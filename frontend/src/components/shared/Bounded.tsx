@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ComponentProps, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
@@ -47,6 +47,14 @@ export function InPlaceMore({ open, size, children, className }: { open: boolean
   const ref = useRef<HTMLDivElement>(null)
   const closed = useRef(0)
   useLayoutEffect(() => { if (!open && ref.current) closed.current = ref.current.offsetHeight })
+  // 접는 애니메이션(Radix Presence)이 끝나 내용이 빠진 뒤의 높이도 따라간다 — 렌더 시점 측정만으로는 펼친 높이가 남는다
+  useEffect(() => {
+    const el = ref.current
+    if (open || !el) return
+    const ro = new ResizeObserver(() => { closed.current = el.offsetHeight })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [open])
   const lock = open && closed.current > 0
   return <ScrollArea ref={ref} data-bounded={size ?? "in-place"} className={cn("min-h-0", className)}
     viewportClassName={cn(size && !lock && BOUND[size], "[&>div]:!block")} viewportStyle={lock ? { height: closed.current } : undefined}>

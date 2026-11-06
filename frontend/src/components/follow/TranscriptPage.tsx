@@ -17,6 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { BoundedArea } from "@/components/shared/Bounded"
 import { useMediaQuery, MOBILE_QUERY } from "@/hooks/useMediaQuery"
 import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
 import { proxiesUrl } from "@/lib/judgment"
@@ -178,7 +179,8 @@ export default function TranscriptPage() {
       </>}
       {mobile ? (
         listing ? (
-          <Card><CardContent className="p-2">{railFor(selectId)}</CardContent></Card>
+          // 폰 기업 목록도 상한(lg) 안에서 스크롤 — 넓은 화면 레일(max-h 70vh)과 같은 원칙
+          <Card><CardContent className="p-2"><BoundedArea size="lg">{railFor(selectId)}</BoundedArea></CardContent></Card>
         ) : (
           <MobileCallDetail key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} rail={railFor} />
         )

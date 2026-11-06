@@ -513,7 +513,7 @@ function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string
         칸 사이 선행 시차는 대부분 통계적으로 확인되지 않았습니다. 시장 반응 = 칸 한국 종목 3개월 수익률(중앙값 {formatPercent(data.median_kr_return_3m)}), 관심 = 최근 30일 문서 수.
       </p>
     </CardHeader>
-    <CardContent className="grid gap-5 lg:grid-cols-2">
+    <CardContent><BoundedArea size="lg"><div className="grid gap-5 lg:grid-cols-2">
       <div>
         <p className="mb-1.5 text-caption font-medium text-muted-foreground">흐름이 빨라지는 칸 — 증가 금액이 직전 창보다 늘어난 만큼</p>
         <ul className="space-y-1">
@@ -537,7 +537,7 @@ function FlowCard({ data, onSelect }: { data: FlowResponse; onSelect: (k: string
         {!!data.needs_check?.length && <div><p className="text-caption font-medium text-muted-foreground">확인 필요 — 업계 수출은 가속이지만 대리 관측이고 종목 공시가 받쳐 주지 않음</p>
           {data.needs_check.map(r => <Row key={r.key} r={r} tone="" />)}</div>}
       </div>
-    </CardContent>
+    </div></BoundedArea></CardContent>
   </Card>
 }
 
