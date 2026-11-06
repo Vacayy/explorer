@@ -3,7 +3,7 @@ import { apiQuery, STALE } from "@/api/query"
 import type { KrBreadth, RiskResponse } from "@/types"
 
 /** 지수 — 홈 지수 띠(market.indices) */
-export interface IndexRow { key: string; label: string; region: string; is_open: boolean; price: number | null; change_pct: number | null; spark: number[]; as_of: string | null }
+export interface IndexRow { key: string; label: string; region: string; is_open: boolean; price: number | null; change_pct: number | null; spark: number[]; as_of: string | null; fetched_at: string | null }
 export function useIndices() {
   return useQuery({
     ...apiQuery<{ as_of: string | null; items: IndexRow[]; degraded: string[]; any_open: boolean }>({ key: ["spine", "indices"], url: "/api/spine/indices", staleTime: STALE.medium }),

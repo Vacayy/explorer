@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { WidgetState } from "@/components/shared/WidgetFrame"
 import { NarrativeChipLine } from "@/components/world/NarrativeChipLine"
-import { useIndices } from "@/hooks/useDashboard"
+import { useMarketOverview } from "@/hooks/useMarketOverview"
 import { useMarketToday } from "@/hooks/useMarketToday"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatPercent } from "@/utils/format"
@@ -94,12 +94,14 @@ const kstMinutes = () => { const t = new Date().toLocaleTimeString("en-GB", { ti
 export const SCHEDULE = ["09:30", "11:30", "15:00", "16:00"]
 
 function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: string | null; onPick: (slot: string) => void }) {
-  const market = day.current?.market
-  const path = market?.path ?? []
   const live = day.trade_date === kstToday()
-  // 회차가 아직 없으면 경로가 없다 — 코스피 값은 지수 띠 저장분으로
-  const indices = useIndices()
-  const kIdx = indices.data?.items.find(i => i.key === "kospi")
+  // 오늘은 홈 › 한국 시장과 같은 장중 경로(index_intraday)·현재값을 쓴다 — 회차 저장값은 그 회차 시점이라 지금 값과 다르다.
+  // 지난 날은 회차에 저장된 경로를 쓴다.
+  const ov = useMarketOverview("kr")
+  const k1 = live ? ov.data?.indices.find(i => i.key === "kospi") : undefined
+  const livePath = k1?.session.trade_date === day.trade_date ? (k1.ranges.find(r => r.key === "1d")?.points ?? []) : []
+  const market = day.current?.market
+  const path: [string, number][] = livePath.length > 1 ? livePath.map(p => [p.t, p.v] as [string, number]) : market?.path ?? []
   const [now, setNow] = useState(kstMinutes)
   useEffect(() => {
     if (!live) return
@@ -111,13 +113,14 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
   const vals = path.map(p => p[1])
   const lo = Math.min(...vals), hi = Math.max(...vals)
   const pts = path.map(([t, v]) => `${xAt(mins(t))},${hi === lo ? 25 : 38 - (v - lo) / (hi - lo) * 30}`).join(" ")
-  const k = market?.kospi ?? (live && kIdx?.price != null ? { value: kIdx.price, change_pct: kIdx.change_pct } : null)
+  const k = livePath.length > 1 && k1?.value != null ? { value: k1.value, change_pct: k1.change_pct, at: k1.session.last_time }
+    : market?.kospi ? { value: market.kospi.value, change_pct: market.kospi.change_pct, at: market.kospi.at } : null
   const done = new Set(day.slots.map(s => s.label.replace(" 마감", "")))
   const pending = live ? SCHEDULE.filter(t => !done.has(t)) : []
   return <div className="glass flex flex-col gap-1 rounded-2xl px-3 pt-2.5 pb-1.5" data-mt-intraday>
     <div className="flex justify-between text-[11.5px] text-ink-2">
       <span>코스피 장중</span>
-      {k && <span>코스피 <span className="font-mono tabular-nums">{formatLevel(k.value)}</span> <span className={cn("font-mono tabular-nums", tone(k.change_pct))}>{formatPercent(k.change_pct)}</span></span>}
+      {k && <span>코스피 <span className="font-mono tabular-nums">{formatLevel(k.value)}</span> <span className={cn("font-mono tabular-nums", tone(k.change_pct))}>{formatPercent(k.change_pct)}</span>{k.at && <span className="ml-1.5 font-mono text-[10.5px] text-ink-3">{k.at}</span>}</span>}
     </div>
     <div className="relative h-16">
       <svg viewBox="0 0 100 48" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-12 w-full" role="img" aria-label="장중 타임라인: 코스피 경로와 정리 회차">

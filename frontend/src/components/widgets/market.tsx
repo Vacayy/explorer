@@ -39,7 +39,13 @@ export function IndicesBody(_: WidgetBodyProps) {
           </span>
           <span className={cn("shrink-0 font-mono tabular-nums", tone(r.change_pct))}>{formatPercent(r.change_pct)}</span>
         </span>
-        <span className="truncate font-mono text-[17px] tabular-nums">{formatLevel(r.price)}</span>
+        <span className="flex items-baseline justify-between gap-1.5">
+          <span className="truncate font-mono text-[17px] tabular-nums">{formatLevel(r.price)}</span>
+          {/* 언제 값인지 — 장중은 수집 시각(KST), 마감은 그 장 날짜 */}
+          <span className="shrink-0 font-mono text-[10.5px] text-ink-3 tabular-nums" title={r.is_open ? "이 시각에 받은 값" : "마지막 장 마감 값"}>
+            {r.is_open ? kstHm(r.fetched_at) ?? "" : r.as_of ? `${Number(r.as_of.slice(5, 7))}/${Number(r.as_of.slice(8, 10))}` : ""}
+          </span>
+        </span>
         {/* 1Y 추이 */}
         <div className="h-5"><SparkLine data={r.spark} height={20} className="h-full w-full" /></div>
       </div>
