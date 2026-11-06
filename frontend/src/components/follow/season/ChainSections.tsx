@@ -214,11 +214,12 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
 }
 
 /* ---------- 발표 전 / 컨콜 / 시장 반응 / 그 뒤 — 칸 넷(시안 Call-Detail, 칸마다 세 줄 이내 + 아래 배지) ---------- */
-function Cell4({ title, children, badge }: { title: string; children: ReactNode; badge?: ReactNode }) {
+function Cell4({ step, title, children, badge }: { step: number; title: string; children: ReactNode; badge?: ReactNode }) {
   return (
     <div className="-mr-px -mb-px flex min-w-0 flex-col">
       <Card className="flex-1 gap-3 p-4">
-        <h2 className="text-[15px] font-semibold leading-snug">{title}</h2>
+        <h2 className="flex items-baseline gap-2 text-[15px] font-semibold leading-snug">
+          <span className="font-mono text-[11.5px] font-normal text-ink-3 tabular-nums">{step}</span>{title}</h2>
         <div className="flex flex-col gap-1 text-[13px] leading-[1.6]">{children}</div>
         {badge && <div className="mt-auto">{badge}</div>}
       </Card>
@@ -226,7 +227,7 @@ function Cell4({ title, children, badge }: { title: string; children: ReactNode;
   )
 }
 const Dots = ({ items }: { items: ReactNode[] }) => (
-  <ul className="flex list-disc flex-col pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{items.map((x, i) => <li key={i}><span className="line-clamp-2">{x}</span></li>)}</ul>
+  <ul className="flex list-disc flex-col pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{items.map((x, i) => <li key={i}>{x}</li>)}</ul>
 )
 
 export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transcriptId: number }) {
@@ -235,7 +236,7 @@ export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transc
   const h = currentHistory(chain, transcriptId)
 
   const before = ex?.points?.length ? <Dots items={ex.points.slice(0, 2).map(clean)} />
-    : ex?.positioning ? <span className="line-clamp-3">{clean(ex.positioning)}</span>
+    : ex?.positioning ? <span>{clean(ex.positioning)}</span>
     : <>
       <Meta>발표 전 기대 정리가 없습니다.</Meta>
       {ex?.quant && <QuantFacts q={ex.quant} />}
@@ -255,15 +256,15 @@ export function StagesCard({ chain, transcriptId }: { chain: ChainDetail; transc
   const interim = chain.reaction_status === "interim"
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] items-stretch pr-px pb-px">
-      <Cell4 title="발표 전" badge={ex && <Badge variant="hyp">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</Badge>}>{before}</Cell4>
-      <Cell4 title="컨콜">
+    <div className="grid grid-cols-1 items-stretch pr-px pb-px md:grid-cols-2">
+      <Cell4 step={1} title="발표 전" badge={ex && <Badge variant="hyp">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</Badge>}>{before}</Cell4>
+      <Cell4 step={2} title="컨콜">
         {rm?.call_points?.length ? <Dots items={rm.call_points.slice(0, 3).map(clean)} /> : <Meta>아래 '핵심 정리'를 펼쳐 보세요.</Meta>}
       </Cell4>
-      <Cell4 title="시장 반응" badge={interim && <Badge variant="warn">진행 중{chain.event_date ? ` · 발표 ${daysSince(chain.event_date)}일째` : ""}</Badge>}>
+      <Cell4 step={3} title="시장 반응" badge={interim && <Badge variant="warn">진행 중{chain.event_date ? ` · 발표 ${daysSince(chain.event_date)}일째` : ""}</Badge>}>
         {rm?.react_points?.length ? <Dots items={rm.react_points.slice(0, 2).map(clean)} /> : <Meta>아래 '시장 반응 정리'에서 정리를 만드세요.</Meta>}
       </Cell4>
-      <Cell4 title="그 뒤">{after.length ? after : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}</Cell4>
+      <Cell4 step={4} title="그 뒤">{after.length ? after : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}</Cell4>
     </div>
   )
 }
