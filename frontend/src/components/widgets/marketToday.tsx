@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { WidgetState } from "@/components/shared/WidgetFrame"
 import { NarrativeChipLine } from "@/components/world/NarrativeChipLine"
+import { useIndices } from "@/hooks/useDashboard"
 import { useMarketToday } from "@/hooks/useMarketToday"
 import { cn } from "@/lib/utils"
 import { formatLevel, formatPercent } from "@/utils/format"
@@ -37,8 +38,10 @@ export function useMarketTodayMeta(): WidgetMeta {
   const q = useMarketToday(null, date)
   const d = q.data
   const c = d?.current
-  if (!d || !c) return { asOf: null }
-  const day = d.trade_date === kstToday() ? "오늘" : md(d.trade_date ?? "")
+  if (!d?.trade_date) return { asOf: null }
+  const day = d.trade_date === kstToday() ? "오늘" : md(d.trade_date)
+  // 첫 정리 전에도 머리 두 줄을 유지 — 정리가 나오면서 머리 높이가 바뀌지 않게
+  if (!c) return { asOf: d.next_slot ? `다음 정리 ${d.next_slot}` : null, sub: `${day} 장중 · 첫 정리 전` }
   return { asOf: `${c.label} 정리`, sub: `${day} 장중 · 텔레그램 ${c.telegram} · 뉴스 ${c.news}` }
 }
 
@@ -50,21 +53,18 @@ export function MarketTodayBody({ w, h }: WidgetBodyProps) {
   const latest = useMarketToday(null, date)
   const d = q.data
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
-  const nav = <DayNav day={d} onGo={go} />
-  if (!d.current) {
-    const isToday = d.trade_date === kstToday()
-    const text = isToday && d.next_slot ? `오늘 첫 정리는 ${d.next_slot}에 나와요.`
-      : isToday ? "오늘은 장중 정리가 없어요." : "이날은 장중 정리가 없어요."
-    return <div className="flex h-full min-h-0 flex-col gap-3">{nav}<WidgetState empty emptyText={text} /></div>
-  }
   const c = d.current
+  const isToday = d.trade_date === kstToday()
   const n = h <= 3 ? 2 : w <= 4 ? 3 : 5
+  // 첫 정리 전에도 날짜 줄·타임라인·요약 줄은 그대로 두고 아래 목록 자리만 비운다(레이아웃 이동 없음)
   return <div className="flex h-full min-h-0 flex-col gap-3">
-    {nav}
+    <DayNav day={d} onGo={go} />
     {/* 하루 경로는 가장 늦은 회차의 것 — 고른 회차는 점으로만 표시 */}
-    <IntradayTimeline day={latest.data ?? d} picked={c.slot} onPick={setSlot} />
+    <IntradayTimeline day={latest.data ?? d} picked={c?.slot ?? null} onPick={setSlot} />
     <p className="flex items-center gap-1.5 text-[11.5px] text-hyp"><Sparkles className="size-3" aria-hidden="true" />AI 요약 · 실시간 소스에서 주로 나온 얘기{d.next_slot ? ` · 다음 정리 ${d.next_slot}` : ""}</p>
-    {c.topics.length === 0
+    {!c
+      ? <p className="text-sm text-muted-foreground">{isToday && d.next_slot ? `오늘 첫 정리는 ${d.next_slot}에 나와요.` : isToday ? "오늘은 장중 정리가 없어요." : "이날은 장중 정리가 없어요."}</p>
+      : c.topics.length === 0
       ? <p className="text-sm text-muted-foreground">이 회차에는 출처로 확인된 화두가 없어요.</p>
       : <ul className="-mr-2 min-h-0 divide-y overflow-y-auto pr-2">{c.topics.slice(0, n).map(t => <TopicRow key={t.title} t={t} compact={h <= 3} links={c.links_ready} />)}</ul>}
   </div>
@@ -90,11 +90,16 @@ const X0 = 1, X1 = 96.5, XMAX = 99   // % — 장 마감(15:30)은 96.5%, 마감
 const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
 const xAt = (m: number) => Math.min(XMAX, X0 + Math.max(0, m - OPEN) / (CLOSE - OPEN) * (X1 - X0))
 const kstMinutes = () => { const t = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false }); return mins(t) }
+/** 오늘 정리 시각(D-309) — 아직 안 나온 회차는 빈 점으로 자리만 보인다 */
+const SCHEDULE = ["09:30", "11:30", "15:00", "16:00"]
 
-function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: string; onPick: (slot: string) => void }) {
+function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: string | null; onPick: (slot: string) => void }) {
   const market = day.current?.market
   const path = market?.path ?? []
   const live = day.trade_date === kstToday()
+  // 회차가 아직 없으면 경로가 없다 — 코스피 값은 지수 띠 저장분으로
+  const indices = useIndices()
+  const kIdx = indices.data?.items.find(i => i.key === "kospi")
   const [now, setNow] = useState(kstMinutes)
   useEffect(() => {
     if (!live) return
@@ -106,7 +111,9 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
   const vals = path.map(p => p[1])
   const lo = Math.min(...vals), hi = Math.max(...vals)
   const pts = path.map(([t, v]) => `${xAt(mins(t))},${hi === lo ? 25 : 38 - (v - lo) / (hi - lo) * 30}`).join(" ")
-  const k = market?.kospi
+  const k = market?.kospi ?? (live && kIdx?.price != null ? { value: kIdx.price, change_pct: kIdx.change_pct } : null)
+  const done = new Set(day.slots.map(s => s.label.replace(" 마감", "")))
+  const pending = live ? SCHEDULE.filter(t => !done.has(t)) : []
   return <div className="glass flex flex-col gap-1 rounded-2xl px-3 pt-2.5 pb-1.5" data-mt-intraday>
     <div className="flex justify-between text-[11.5px] text-ink-2">
       <span>코스피 장중</span>
@@ -120,7 +127,9 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
         <line x1={nowX} x2={nowX} y1="1" y2="44" vectorEffect="non-scaling-stroke" strokeWidth="1.2" className="stroke-ink" />
       </svg>
       <span className="absolute top-0.5 -translate-x-full pr-1 font-mono text-[10px] whitespace-nowrap text-ink" style={{ left: `${nowX}%` }}>{closed ? "마감" : `${String(Math.floor(now / 60)).padStart(2, "0")}:${String(now % 60).padStart(2, "0")}`}</span>
-      <span className="absolute bottom-0 font-mono text-[10px] text-ink-3 max-sm:hidden" style={{ left: `${X0}%` }}>09:00</span>
+      {/* 09:30 회차 점이 있으면 그 라벨과 겹치므로 시작 시각은 생략 */}
+      {!day.slots.some(s => s.label === "09:30") && !pending.includes("09:30") &&
+        <span className="absolute bottom-0 font-mono text-[10px] text-ink-3 max-sm:hidden" style={{ left: `${X0}%` }}>09:00</span>}
       {day.slots.map(s => {
         const on = s.slot === picked
         return <Button key={s.slot} variant="ghost" aria-pressed={on} aria-label={`${s.label} 회차 보기`} onClick={() => onPick(s.slot)}
@@ -130,6 +139,11 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
           <span className={cn("font-mono text-[10.5px] leading-none", on ? "font-semibold text-ink" : "font-normal text-ink-3")}>{s.label.replace(" 마감", "")}</span>
         </Button>
       })}
+      {pending.map(t => <span key={t} aria-label={`${t} 정리 예정`}
+        className="absolute top-[34px] flex -translate-x-1/2 flex-col items-center gap-[3px] px-1 py-0.5" style={{ left: `${xAt(mins(t))}%` }}>
+        <span aria-hidden className="size-[9px] rounded-full border-[1.6px] border-ink-3/60 bg-transparent" />
+        <span className="font-mono text-[10.5px] leading-none text-ink-3/70">{t}</span>
+      </span>)}
     </div>
   </div>
 }
