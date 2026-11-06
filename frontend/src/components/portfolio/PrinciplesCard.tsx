@@ -1,11 +1,13 @@
 import { QueryState } from "@/components/shared/QueryState"
 import { useState } from 'react'
-import { ChevronDown, LoaderCircle, Pencil, Trash2, Wand2, X } from 'lucide-react'
+import { LoaderCircle, Pencil, Trash2, Wand2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { BoundedArea } from '@/components/shared/Bounded'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -43,8 +45,8 @@ export function PrinciplesCard() {
       <CardDescription>지키고 싶은 원칙을 문장으로 적으면 시스템이 ‘기계가 점검할 규칙’과 ‘대화에서 참고할 원칙’으로 나눠 보여 줍니다. 확인한 그대로 저장되고, 규칙은 장중 30분·장 마감 뒤 점검해 어긴 순간 텔레그램으로 한 번 알립니다. 원문은 이 컴퓨터의 DB에만 저장됩니다.</CardDescription></CardHeader>
     <CardContent className="space-y-4">
       <QueryState query={list} loading={<Skeleton className="h-20 w-full" />} isEmpty={() => false}>{(data) => (data.length === 0 ? <p className="text-sm text-muted-foreground">아직 저장한 원칙이 없습니다.</p>
-        : <ul className="divide-y" aria-label="저장한 운용 원칙">{data.map(p => <SavedPrinciple key={p.id} principle={p}
-            deleting={remove.isPending} onDelete={() => remove.mutate(p.id, { onError: e => toast.error(e.message) })} />)}</ul>)}</QueryState>
+        : <BoundedArea size="lg"><ul className="divide-y" aria-label="저장한 운용 원칙">{data.map(p => <SavedPrinciple key={p.id} principle={p}
+            deleting={remove.isPending} onDelete={() => remove.mutate(p.id, { onError: e => toast.error(e.message) })} />)}</ul></BoundedArea>)}</QueryState>
 
       <div className="space-y-2 border-t pt-4">
         <Label htmlFor="principle-text">새 원칙</Label>
@@ -99,19 +101,15 @@ function Understood({ rules, notes, onRemoveRule, onRemoveNote }: {
   </div>
 }
 
-const CLAMP_LINES = 8
-
 /** 저장한 원칙 한 건 — 이해한 내용이 먼저, 원문은 접어 둔다. 원문 수정·다시 풀기·삭제. */
 function SavedPrinciple({ principle, deleting, onDelete }: { principle: PortfolioPrinciple; deleting: boolean; onDelete: () => void }) {
   const update = useUpdatePrincipleText()
   const parse = useParsePrinciple()
   const replace = useReplacePrinciple()
-  const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(principle.text)
   const [preview, setPreview] = useState<{ text: string; parsed: PrincipleParse } | null>(null)
   const busy = update.isPending || parse.isPending || replace.isPending
-  const long = principle.text.split('\n').length > CLAMP_LINES || principle.text.length > 600
 
   function saveText() {
     if (draft.trim().length < 3 || busy) return
@@ -157,10 +155,13 @@ function SavedPrinciple({ principle, deleting, onDelete }: { principle: Portfoli
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setEditing(false); setDraft(principle.text); setPreview(null) }}>취소</Button>
         </div>
       </div>
-      : <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="-ml-2 h-8 text-muted-foreground">원문 보기<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
-        <CollapsibleContent className="pt-1">
-          <p className={`whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground ${long && !expanded ? 'line-clamp-8' : ''}`}>{principle.text}</p>
-          {long && <Button variant="ghost" size="sm" className="-ml-2 mt-1 h-8 text-muted-foreground" onClick={() => setExpanded(v => !v)}>{expanded ? '접기' : '전체 보기'}</Button>}
-        </CollapsibleContent></Collapsible>}
+      // 원문은 깊은 세부 — 목록 안에서 펼치지 않고 창으로 연다(높이 상한과 넘침)
+      : <Dialog><DialogTrigger asChild><Button variant="ghost" size="sm" className="-ml-2 h-8 text-muted-foreground">원문 보기</Button></DialogTrigger>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader><DialogTitle>원칙 {principle.id} 원문</DialogTitle><DialogDescription className="sr-only">저장한 원칙의 원문</DialogDescription></DialogHeader>
+          <ScrollArea viewportClassName="max-h-[min(560px,65vh)] [&>div]:!block">
+            <p className="whitespace-pre-line break-words pr-3 text-sm leading-relaxed text-muted-foreground">{principle.text}</p>
+          </ScrollArea>
+        </DialogContent></Dialog>}
   </li>
 }

@@ -1,5 +1,6 @@
 import { QueryState } from "@/components/shared/QueryState"
 import { ArrowUpRight } from 'lucide-react'
+import { BoundedArea } from '@/components/shared/Bounded'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -18,7 +19,7 @@ export function AlertHistoryCard() {
     </CardHeader>
     <CardContent>
       <QueryState query={alerts} loading={<Skeleton className="h-32 w-full" />} isEmpty={() => false}>{() => (!items.length ? <p className="text-sm text-muted-foreground">최근 14일 보낸 알림이 없습니다.</p>
-        : <ul className="divide-y" aria-label="보낸 알림">{items.map((a, i) => <li key={`${a.sent_at}-${a.kind}-${a.code ?? ''}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 md:flex-nowrap">
+        : <BoundedArea size="md"><ul className="divide-y" aria-label="보낸 알림">{items.map((a, i) => <li key={`${a.sent_at}-${a.kind}-${a.code ?? ''}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 md:flex-nowrap">
             <span className="w-24 shrink-0 font-mono text-caption tabular-nums text-muted-foreground">{a.sent_at.slice(5)}</span>
             <Badge variant="secondary" className="shrink-0 text-caption font-normal">{KIND[a.kind] ?? a.kind}</Badge>
             {/* 좁은 화면은 본문을 다음 줄로 내려 자르지 않는다 */}
@@ -27,7 +28,7 @@ export function AlertHistoryCard() {
               {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{a.label}<ArrowUpRight aria-hidden="true" className="ml-0.5 inline size-3" /></a>
                 : <span className="text-muted-foreground">{a.label}</span>}
             </span>
-          </li>)}</ul>)}</QueryState>
+          </li>)}</ul></BoundedArea>)}</QueryState>
     </CardContent>
   </Card>
 }
