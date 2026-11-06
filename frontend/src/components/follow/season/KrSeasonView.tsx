@@ -357,7 +357,7 @@ function Groups({ d }: { d: KrSeasonOverview }) {
       {d.groups.length === 0 ? <Meta className="py-2">업종을 아는 발표가 아직 없습니다.</Meta> : (
         <div className="flex flex-col text-sm">
           {d.groups.map((g) => (
-            <Link key={g.group} to={`/map?group=${encodeURIComponent(g.group)}`}
+            <Link key={g.group} to={`/industry/${encodeURIComponent(g.group)}`}
               className="grid grid-cols-[minmax(0,1fr)_48px_64px_minmax(0,1fr)_12px] items-baseline gap-x-2 border-t py-2 first:border-t-0 hover:bg-muted/50">
               <span className="truncate font-medium">{g.group}</span>
               <span className="text-right tabular-nums text-muted-foreground" title={g.quarterly_n ? `정기보고서만 ${g.quarterly_n}곳 포함` : undefined}>{formatNumber(g.n)}곳</span>
