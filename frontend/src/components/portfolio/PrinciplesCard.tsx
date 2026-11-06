@@ -2,7 +2,8 @@ import { QueryState } from "@/components/shared/QueryState"
 import { useState } from 'react'
 import { LoaderCircle, Pencil, Trash2, Wand2, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { BoundedArea } from '@/components/shared/Bounded'
+import { BOUND_FIXED, BoundedArea } from '@/components/shared/Bounded'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -44,7 +45,7 @@ export function PrinciplesCard() {
     <CardHeader><CardTitle>운용 원칙</CardTitle>
       <CardDescription>지키고 싶은 원칙을 문장으로 적으면 시스템이 ‘기계가 점검할 규칙’과 ‘대화에서 참고할 원칙’으로 나눠 보여 줍니다. 확인한 그대로 저장되고, 규칙은 장중 30분·장 마감 뒤 점검해 어긴 순간 텔레그램으로 한 번 알립니다. 원문은 이 컴퓨터의 DB에만 저장됩니다.</CardDescription></CardHeader>
     <CardContent className="space-y-4">
-      <QueryState query={list} loading={<Skeleton className="h-20 w-full" />} isEmpty={() => false}>{(data) => (data.length === 0 ? <p className="text-sm text-muted-foreground">아직 저장한 원칙이 없습니다.</p>
+      <QueryState query={list} loading={<Skeleton className={cn('w-full', BOUND_FIXED.lg)} />} isEmpty={() => false}>{(data) => (data.length === 0 ? <p className="text-sm text-muted-foreground">아직 저장한 원칙이 없습니다.</p>
         : <BoundedArea size="lg"><ul className="divide-y" aria-label="저장한 운용 원칙">{data.map(p => <SavedPrinciple key={p.id} principle={p}
             deleting={remove.isPending} onDelete={() => remove.mutate(p.id, { onError: e => toast.error(e.message) })} />)}</ul></BoundedArea>)}</QueryState>
 
