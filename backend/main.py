@@ -134,8 +134,9 @@ app.include_router(spine_market_overview.router)
 @app.middleware("http")
 async def _observe_requests(request, call_next):
     """API 요청을 경로 패턴(실제 값 아님)·상태 계층·응답시간 구간으로 시간 단위 집계 (pipeline/observe.py)."""
+    import asyncio
     import time
-    from pipeline.observe import record_request
+    from pipeline.observe import FLUSH_BUSY_TIMEOUT_MS, claim_flush, flush, record_request
     started = time.perf_counter()
     status = 500
     try:
@@ -147,6 +148,9 @@ async def _observe_requests(request, call_next):
         # 정기 실제 응답 검사(contracts:live)는 사용 트래픽이 아니라 집계에서 뺀다
         if request.headers.get("x-observe-skip") != "1":
             record_request(request.method, getattr(route, "path", None) or "(unmatched)", status, (time.perf_counter() - started) * 1000)
+        # 저장(SQLite 쓰기)은 이벤트 루프 밖 스레드에서, 짧은 잠금 대기로 — 루프 위에서 하면 launchd 쓰기 잠금 동안 서버 전체가 멈춘다
+        if claim_flush():
+            asyncio.get_running_loop().run_in_executor(None, flush, FLUSH_BUSY_TIMEOUT_MS)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)
