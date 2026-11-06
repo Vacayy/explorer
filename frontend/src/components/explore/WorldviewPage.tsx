@@ -58,7 +58,10 @@ interface Worldview { nodes: WNode[]; edges: WEdge[] }
 // 흐름 뷰 부분 그래프 (D-211) — 전체 규모·잘림 여부 동봉
 interface WorldviewSubgraph extends Worldview { total_nodes: number; total_edges: number; truncated: boolean }
 interface WIndexItem { id: number; name: string; type: string; pace_layer: string | null; degree: number }
-const CORE_STEPS = [150, 300]   // 흐름 뷰 핵심 노드 수 — dagre 배치는 노드 수에 급격히 느려진다(150 0.4초·300 3초)
+// 흐름 뷰 핵심 노드 수 — 처음엔 라벨이 읽히는 40개, 단계적으로 늘린다(11-06: 150개를 한 화면에 맞추면 라벨을 읽을 수 없음).
+// dagre 배치는 노드 수에 급격히 느려진다(150 0.4초·300 3초)
+const CORE_STEPS = [40, 150, 300]
+const nextCore = (n: number) => CORE_STEPS.find(s => s > n) ?? CORE_STEPS[CORE_STEPS.length - 1]
 const FOCUS_LIMIT = 200          // 초점 이웃 상한
 interface NodeNarrative { id: number; topic: string; title: string | null }
 
@@ -280,8 +283,8 @@ export default function WorldviewPage() {
           <span>전체 {formatNumber(sub.data.total_nodes)}개 노드 중 {formatNumber(sub.data.nodes.length)}개 표시
             {focusId == null ? " · 연결 많은 순" : sub.data.truncated ? ` · 이웃이 많아 연결 많은 ${FOCUS_LIMIT}개만` : ""}</span>
           {focusId == null && sub.data.truncated && coreLimit < CORE_STEPS[CORE_STEPS.length - 1] && (
-            <Button variant="link" size="sm" className="h-auto p-0 text-[11px]" onClick={() => setCoreLimit(CORE_STEPS[1])}>
-              {CORE_STEPS[1]}개까지 보기
+            <Button variant="link" size="sm" className="h-auto p-0 text-[11px]" onClick={() => setCoreLimit(nextCore(coreLimit))}>
+              {nextCore(coreLimit)}개까지 보기
             </Button>
           )}
           <span>· 노드를 누르면 그 주변으로 다시 그립니다.</span>
