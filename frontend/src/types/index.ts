@@ -661,6 +661,17 @@ export interface TimelineItem {
   links: { label: string; to: string }[]
 }
 
+/** GET /api/spine/home/ai-activity — 지난 N일 AI 산출물(유튜브 AI 정리본 포함). 상단 바 'AI가 최근 만든 것'이 타임라인과 합쳐 쓴다 */
+export interface AiActivityItem {
+  type: 'narrative' | 'mega' | 'report' | 'scenario' | 'digest' | 'youtube_digest'
+  title: string
+  topic: string
+  code: string | null
+  question_id: number | null
+  doc_id: number | null
+  created_at: string
+}
+
 export interface TimelineResponse {
   items: TimelineItem[]
   page: number

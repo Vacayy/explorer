@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
 import { getJson, STALE } from '@/api/query'
-import type { MarkAllReadPlatform, MarkAllReadResponse, TimelineResponse, TimelineChannelsResponse } from '@/types'
+import type { AiActivityItem, MarkAllReadPlatform, MarkAllReadResponse, TimelineResponse, TimelineChannelsResponse } from '@/types'
 
 export interface TimelineFilters {
   scope: string
@@ -27,6 +27,15 @@ export function useExplorerOutputs() {
   return useQuery({
     queryKey: ['spine', 'timeline', 'explorer-outputs'],
     queryFn: () => getJson<TimelineResponse>('/api/spine/feed/timeline', { scope: 'system', kind: 'all', source: 'all', page: 1, size: 20 }),
+    staleTime: STALE.medium,
+  })
+}
+
+/** 'AI가 최근 만든 것'의 다른 원천 — 지난 7일 AI 산출물(유튜브 AI 정리본 포함, 타임라인에 없는 종류). GET /api/spine/home/ai-activity */
+export function useAiActivity() {
+  return useQuery({
+    queryKey: ['spine', 'home', 'ai-activity'],
+    queryFn: () => getJson<AiActivityItem[]>('/api/spine/home/ai-activity', { days: 7, limit: 30 }),
     staleTime: STALE.medium,
   })
 }
