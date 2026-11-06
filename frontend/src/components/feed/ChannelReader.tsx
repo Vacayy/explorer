@@ -7,12 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState, EmptyState } from '@/components/shared/ErrorState'
-import SegmentTabs from '@/components/shared/SegmentTabs'
 import { DocumentCard, SystemPost } from '@/components/feed/FeedPost'
 import { useMarkAllRead, useMarkChannelRead, useTimeline, useTimelineChannels } from '@/hooks/useTimeline'
 import { useFeedTopics } from '@/hooks/useFeedTopics'
 import { useMarketToday } from '@/hooks/useMarketToday'
-import { FEED_PLATFORMS, feedPlatform, isQuiet, readingMode, type FeedPlatform } from '@/lib/feed'
+import { FEED_PLATFORMS, feedPlatform, isQuiet, type FeedPlatform } from '@/lib/feed'
 import { SYSTEM_KIND_LABEL, groupDirectory, systemKind, type DirectoryGroup } from '@/lib/canvas'
 import { sessionMemory } from '@/lib/sessionMemory'
 import { cn } from '@/lib/utils'
@@ -33,7 +32,7 @@ const scrollPositions = sessionMemory<number>('explorer.reader.positions')
  * 피드 리더(D-325 — 4a 3칸 피드를 번복하고 옛 ChannelReader 구성으로 되돌림, ia-redesign §4.5 '11-06 번복').
  * 왼쪽 '내 피드'(검색 · 종류 칩 · 소스 줄, Explorer 산출물은 맨 아래 접힌 묶음) | 오른쪽 선택한 소스의 글(머리 · 주제 칩 띠 · 글 카드 · 페이지).
  * 넓은 화면은 두 칸이 화면 높이 안에서 각자 스크롤한다(§4.34). 폰은 소스 목록 ↔ 글 화면을 오간다(reader_open).
- * URL이 상태: channel_type · channel · channel_q · reader_topic · reader_page · reader_until · reading · reader_open.
+ * URL이 상태: channel_type · channel · channel_q · reader_topic · reader_page · reader_until · reader_open.
  */
 export function ChannelReader() {
   const [params, setParams] = useSearchParams()
@@ -45,7 +44,6 @@ export function ChannelReader() {
   const query = params.get('channel_q') || ''
   const topic = params.get('reader_topic') || ''   // 주제 칩 (D-208)
   const platform = feedPlatform(params.toString())
-  const reading = readingMode(params.toString())
   const readerOpen = params.get('reader_open') === '1' || (!params.has('reader_open') && !!channel)
   const systemView = platform === 'system' || isSystemChannel(channel)
   const directory = useTimelineChannels(until)
@@ -61,7 +59,7 @@ export function ChannelReader() {
   const list = useRef<HTMLDivElement>(null)
   const reader = useRef<HTMLDivElement>(null)
   const focusTarget = useRef<'heading' | 'list' | null>(null)
-  const positionKey = `${platform}:${channel}:${topic}:${page}:${reading}`
+  const positionKey = `${platform}:${channel}:${topic}:${page}`
   const listKey = `directory:${platform}:${query}`
   const patch = (values: Record<string, string | null>, replace = false) => setParams(prev => {
     const next = new URLSearchParams(prev)
@@ -100,7 +98,7 @@ export function ChannelReader() {
   }
   function paginate(next: number) {
     focusTarget.current = 'heading'
-    scrollPositions.set(`${platform}:${channel}:${topic}:${next}:${reading}`, 0)
+    scrollPositions.set(`${platform}:${channel}:${topic}:${next}`, 0)
     patch({ reader_page: String(next), reader_until: timeline.data?.until || until, reader_open: '1' })
   }
   function selectPlatform(value: FeedPlatform) {
@@ -168,9 +166,8 @@ export function ChannelReader() {
           </p>
         </div>
         <div className="flex items-center gap-2 max-sm:w-full max-sm:justify-between">
-          {!systemView && <SegmentTabs tabs={[{ value: 'original', label: '원문' }, { value: 'summary', label: '요약' }]} value={reading} onChange={value => patch({ reading: value })} />}
           <Button variant="ghost" size="icon" aria-label="피드 새로고침" disabled={timeline.isFetching || directory.isFetching}
-            onClick={() => { scrollPositions.set(`${platform}:${channel}:${topic}:1:${reading}`, 0); patch({ reader_until: new Date().toISOString(), reader_page: null }) }}>
+            onClick={() => { scrollPositions.set(`${platform}:${channel}:${topic}:1`, 0); patch({ reader_until: new Date().toISOString(), reader_page: null }) }}>
             <RefreshCw aria-hidden="true" className={timeline.isFetching ? 'animate-spin' : ''} />
           </Button>
         </div>
@@ -182,7 +179,7 @@ export function ChannelReader() {
           {timeline.isLoading && <div role="status" aria-label="게시물 불러오는 중" className="space-y-4 pt-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-48 w-full" />)}</div>}
           {timeline.isError && <ErrorState message={timeline.data ? '갱신에 실패했습니다. 이전 자료를 표시합니다.' : '게시물을 불러오지 못했습니다.'} onRetry={() => void timeline.refetch()} />}
           {timeline.data?.items.map(item => item.document
-            ? <DocumentCard key={item.id} doc={item.document} timeLabel={item.time_label} reading={reading} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />
+            ? <DocumentCard key={item.id} doc={item.document} timeLabel={item.time_label} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />
             : <SystemPost key={item.id} item={item} variant="row" presentation="reading" />)}
           {timeline.data?.items.length === 0 && <EmptyState message={topic ? `‘${topic}’ 주제의 게시물이 없습니다.` : channel ? '이 소스에 저장된 게시물이 없습니다.' : '아직 저장된 업데이트가 없습니다.'} />}
           {timeline.data && <nav className="flex flex-wrap items-center justify-between gap-3 border-t pt-5" aria-label="게시물 페이지">

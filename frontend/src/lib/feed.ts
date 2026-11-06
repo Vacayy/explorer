@@ -25,16 +25,6 @@ export function feedPlatform(search: string): FeedPlatform {
   return Object.hasOwn(FEED_PLATFORMS, raw) ? raw as FeedPlatform : 'all'
 }
 
-/** 원문 | 요약 — URL의 reading이 우선. 없으면 블로그·유튜브·메모는 글이 길어 요약, 나머지는 원문. 소스 id 접두사로 판단해 목록 로딩 전에도 같다 */
-export function readingMode(search: string): 'original' | 'summary' {
-  const p = new URLSearchParams(search)
-  const requested = p.get('reading')
-  if (requested === 'summary' || requested === 'original') return requested
-  const channel = p.get('channel')
-  const context = channel ? channel.split(':')[0] : feedPlatform(search)
-  return context === 'blog' || context === 'youtube' || context === 'memo' ? 'summary' : 'original'
-}
-
 /** 새 글이 끊긴 소스(7일 이상) — 흐리게만 표시하고 정리는 관리자 › 소스에서 한다(§4.28 부분) */
 export function isQuiet(latestAt: string | null, now: Date = new Date(), days = 7): boolean {
   if (!latestAt) return true

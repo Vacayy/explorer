@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Markdown } from '@/components/shared/Markdown'
+import { BoundedArea } from '@/components/shared/Bounded'
 import { SourceBadge } from '@/components/shared/SourceBadge'
 import { EntityChip } from '@/components/shared/EntityChip'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
@@ -28,11 +29,15 @@ function preview(text: string) {
   return text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^[#>\-\s]+/gm, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()
 }
 
-/** 피드 리더의 글 카드(D-325, 옛 ChannelReader) — 분류 · 소스 · 시각 / 제목 / 원문 또는 저장된 짧은 요약 / 태그 · 스터디로 읽기 · 스터디에 추가 · 자료 상세 · 원문 사이트 */
-export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', reading }: {
-  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; reading: 'original' | 'summary'
+/** 피드 리더의 글 카드(D-325, 옛 ChannelReader) — 분류 · 소스 · 시각 / 제목 / 요약(기본) · '원문 보기'로 원문 펼침 / 태그 · 스터디로 읽기 · 스터디에 추가 · 자료 상세 · 원문 사이트.
+ *  요약이 없으면 원문을 바로 보인다. 펼친 원문은 높이 상한 안에서 스크롤한다(§4.34). */
+export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
+  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string
 }) {
   const excerpt = preview(doc.summary || doc.content || '')
+  const hasSummary = !!doc.summary?.trim()
+  const hasOriginal = !!doc.content?.trim() || doc.images.length > 0
+  const [showOriginal, setShowOriginal] = useState(false)
   return (
     <article aria-label={doc.title || '소스 게시물'} className="feed-post-row">
       <div className="space-y-3">
@@ -49,7 +54,15 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', reading 
         <h3 className="text-card-title font-semibold text-pretty break-words">
           <Link to={`/doc/${doc.id}`} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
         </h3>
-        <DocumentBody doc={doc} reading={reading} mediaSize="preview" />
+        <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" />
+        {hasSummary && hasOriginal && <>
+          <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal} onClick={() => setShowOriginal(v => !v)}>
+            {showOriginal ? '원문 접기' : '원문 보기'}<ChevronDown aria-hidden="true" className={`size-3 transition-transform ${showOriginal ? 'rotate-180' : ''}`} />
+          </Button>
+          {showOriginal && <BoundedArea size="md" className="rounded-lg border border-line bg-surface-2/50" viewportClassName="p-3">
+            <DocumentBody doc={doc} reading="original" mediaSize="preview" />
+          </BoundedArea>}
+        </>}
         <div className="flex flex-wrap items-center gap-2">
           {doc.entities.slice(0, 4).map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
           <StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} />

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '../src/components/ui/tooltip'
-import { feedPlatform, highlightParts, isQuiet, isSearchView, readingMode } from '../src/lib/feed'
+import { feedPlatform, highlightParts, isQuiet, isSearchView } from '../src/lib/feed'
 import { savedCounts } from '../src/lib/saved'
 import { sourcesSummary } from '../src/lib/sources'
 import { formatCountShort } from '../src/utils/format'
@@ -15,9 +15,6 @@ it('reads the view, type chip and reading mode from the URL, keeping old feed qu
   expect(isSearchView('?channel_type=blog&channel=telegram:a&reader_page=2&channel_q=x')).toBe(false)
   expect([feedPlatform('?channel_type=blog'), feedPlatform('?channel_type=system'), feedPlatform('?channel_type=bogus'), feedPlatform('')])
     .toEqual(['blog', 'system', 'all', 'all'])
-  // 블로그·유튜브·메모는 요약, 텔레그램·전체는 원문. 소스 id 접두사가 칩보다 앞서고 URL의 reading이 가장 앞선다
-  expect([readingMode(''), readingMode('?channel_type=youtube'), readingMode('?channel=blog:x'), readingMode('?channel_type=blog&channel=telegram:a'), readingMode('?channel=blog:x&reading=original')])
-    .toEqual(['original', 'summary', 'summary', 'original', 'original'])
 })
 
 it('treats a source without new posts for 7 days as quiet', () => {
