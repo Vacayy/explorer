@@ -2143,17 +2143,9 @@
   },
   {
     "method": "get",
-    "path": "/api/valuation/{stock_code}",
-    "status": 200,
-    "validator": "response291",
-    "source": "frontend",
-    "group": "valuation"
-  },
-  {
-    "method": "get",
     "path": "/api/spine/us/{ticker}/prices/status",
     "status": 200,
-    "validator": "response292",
+    "validator": "response291",
     "source": "frontend",
     "group": "us"
   },
@@ -2161,7 +2153,7 @@
     "method": "post",
     "path": "/api/spine/us/{ticker}/prices/collect",
     "status": 200,
-    "validator": "response293",
+    "validator": "response292",
     "source": "frontend",
     "group": "us"
   }

@@ -79,7 +79,6 @@ import { KrDossierHead } from "@/components/company/KrDossierHead"
 import { PageContainer } from "@/components/shared/PageContainer"
 import BusinessPage from "@/components/business/BusinessPage"
 import DisclosurePage from "@/components/disclosures/DisclosurePage"
-import ValuationPage from "@/components/valuation/ValuationPage"
 import LensPage from "@/components/lens/LensPage"
 import UsDossierPage from "@/components/us/UsDossierPage"
 
@@ -211,8 +210,6 @@ function AnalyzePage({ tab }: { tab: string }) {
       return <BusinessPage stockCode={stockCode} corpCode={corpCode} />
     case "disclosures":
       return <DisclosurePage stockCode={stockCode} corpCode={corpCode} />
-    case "valuation":
-      return <ValuationPage stockCode={stockCode} />
     case "lens":
       return withHead(<LensPage code={stockCode} market="kr" />)
     case "mentions":
@@ -340,7 +337,7 @@ export default function App() {
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
             <Route path="analyze/:stockCode/financials" element={<AnalyzePage tab="financials" />} />
-            <Route path="analyze/:stockCode/valuation" element={<AnalyzePage tab="valuation" />} />
+            <Route path="analyze/:stockCode/valuation" element={<ValuationRedirect />} />
             <Route path="analyze/:stockCode/business" element={<AnalyzePage tab="business" />} />
             <Route path="analyze/:stockCode/disclosures" element={<AnalyzePage tab="disclosures" />} />
             <Route path="analyze/:stockCode/mentions" element={<AnalyzePage tab="mentions" />} />
@@ -382,13 +379,20 @@ export default function App() {
   )
 }
 
+/** 옛 밸류 화면(/analyze/:code/valuation)은 내렸다 — PER·PBR 이력이 yfinance 일별 스냅샷뿐이라 부정확(11-06 사용자 결정 B안) → 실적·사업 */
+function ValuationRedirect() {
+  const { stockCode } = useParams<{ stockCode: string }>()
+  const { search } = useLocation()
+  return <Navigate to={`/analyze/${stockCode}/financials${search}`} replace />
+}
+
 /** Redirect old /company/:stockCode/:tab URLs to /analyze/:stockCode/:tab */
 function LegacyRedirect() {
   const { stockCode, tab } = useParams<{ stockCode: string; tab: string }>()
   const tabMap: Record<string, string> = {
     summary: "summary", financials: "financials", business: "business",
-    disclosures: "disclosures", valuation: "valuation",
-    metrics: "summary", marketcap: "valuation",
+    disclosures: "disclosures", valuation: "financials",
+    metrics: "summary", marketcap: "financials",
   }
   const newTab = tabMap[tab ?? "summary"] ?? "summary"
   return <Navigate to={`/analyze/${stockCode}/${newTab}`} replace />

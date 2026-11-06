@@ -21,6 +21,7 @@ it('explicitly accounts for the remaining unused JSON reads and non-JSON streams
     '/api/analysis/runs/{run_id}/artifacts/{artifact_id}', '/api/analysis/runs/{run_id}/events',
     '/api/consensus/{stock_code}', '/api/health', '/api/signals', '/api/spine/conversations/{conversation_id}/stream',
     '/api/spine/groups/{group_id}/evaluations', '/api/spine/trade/{hs_code}/metrics',
+    '/api/valuation/{stock_code}',   // 옛 밸류 화면을 내림(11-06 B안) — API는 남겨 둔다
   ].sort())
 })
 

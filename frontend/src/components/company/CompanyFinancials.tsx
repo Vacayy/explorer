@@ -265,7 +265,6 @@ export default function CompanyFinancials({
           value={table ? 'statements' : 'summary'}
           onChange={(v) => setParam('view', v === 'statements' ? 'statements' : null)}
         />
-        <Link className="px-2 text-sm font-medium hover:underline" to={`/analyze/${stockCode}/valuation${companyResearchSearch(sp.toString())}`}>밸류에이션 ›</Link>
       </div>
       {table ? (
         <FinancialsPage stockCode={stockCode} corpCode={corpCode} />

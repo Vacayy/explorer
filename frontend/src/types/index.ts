@@ -77,11 +77,6 @@ export interface ValuationItem {
   div_yield: number | null;
 }
 
-export interface ValuationResponse {
-  items: ValuationItem[];
-  pbr_bands: Record<string, (number | null)[]> | null;
-}
-
 export interface IndustryGroup {
   id: number;
   name: string;

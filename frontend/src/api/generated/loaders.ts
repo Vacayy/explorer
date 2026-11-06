@@ -73,5 +73,4 @@ export const loaders = {
   'company-profile': () => import('./validators-company-profile.js'),
   'kpi': () => import('./validators-kpi.js'),
   'disclosures': () => import('./validators-disclosures.js'),
-  'valuation': () => import('./validators-valuation.js'),
 }

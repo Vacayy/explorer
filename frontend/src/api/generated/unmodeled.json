@@ -308,5 +308,10 @@
     "method": "post",
     "path": "/api/spine/usage",
     "status": 204
+  },
+  {
+    "method": "get",
+    "path": "/api/valuation/{stock_code}",
+    "status": 200
   }
 ]
