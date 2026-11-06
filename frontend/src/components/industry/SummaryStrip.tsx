@@ -22,7 +22,12 @@ export function SummaryStrip({ cells, label, cols = 4 }: { cells: SummaryCell[];
 }
 
 export function SummaryStripSkeleton() {
-  return <div role="status" aria-label="요약 불러오는 중" className="grid grid-cols-2 gap-px border bg-card md:grid-cols-4">
-    {Array.from({ length: 4 }, (_, i) => <div key={i} className="space-y-2 p-4"><Skeleton className="h-3 w-20" /><Skeleton className="h-7 w-24" /><Skeleton className="h-3 w-16" /></div>)}
+  // 실제 칸과 같은 틀·글자 줄(줄 높이는 같은 글자 크기에서 나온다) — 데이터가 와도 아래 블록이 움직이지 않게
+  return <div role="status" aria-label="요약 불러오는 중" className="grid grid-cols-2 border bg-card md:grid-cols-4">
+    {Array.from({ length: 4 }, (_, i) => <div key={i} className="min-w-0 space-y-0.5 border-b px-4 py-3 max-md:[&:nth-child(odd)]:border-r md:border-b-0 md:border-r md:last:border-r-0">
+      <div className="truncate text-xs"><Skeleton className="inline-block h-3 w-20 align-middle" /></div>
+      <div className="truncate font-mono text-[22px] leading-tight max-md:text-lg"><Skeleton className="inline-block h-5 w-24 align-middle" /></div>
+      <div className="truncate text-caption"><Skeleton className="inline-block h-3 w-16 align-middle" /></div>
+    </div>)}
   </div>
 }

@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from database import get_connection
 from pipeline.watch_rules import WATCHED_CODES_SQL, watched
-from models.spine import BriefItem, CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
+from models.spine import AiActivityItem, BriefItem, CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
 
@@ -22,6 +22,49 @@ SIGNAL_LABEL = {
     "volume_spike": "거래량 급증", "quadrant_gap": "가격-관측 괴리",
     "theme_surge": "주목 주제",
 }
+
+
+@router.get("/ai-activity", response_model=list[AiActivityItem])
+def ai_activity(days: int = Query(7, ge=1, le=30), limit: int = Query(30, ge=1, le=100)):
+    """지난 N일간 AI가 생성한 산출물 — 유튜브 정리본 포함, 최신순 통합 피드."""
+    conn = get_connection()
+    since = f"-{days} days"
+    items: list[dict] = []
+    for r in conn.execute(
+        "SELECT topic, title, created_at, COALESCE(kind,'topic') kind FROM narratives "
+        "WHERE created_at >= datetime('now', ?)", (since,)):
+        items.append({"type": "mega" if r["kind"] == "mega" else "narrative",
+                      "title": r["title"] or r["topic"], "topic": r["topic"], "created_at": r["created_at"]})
+    for r in conn.execute(
+        "SELECT anchor_topic, title, created_at FROM reports WHERE created_at >= datetime('now', ?)", (since,)):
+        items.append({"type": "report", "title": r["title"] or f"{r['anchor_topic']} 리포트",
+                      "topic": r["anchor_topic"], "created_at": r["created_at"]})
+    for r in conn.execute(
+        "SELECT topic, question_id, created_at FROM scenarios WHERE created_at >= datetime('now', ?)", (since,)):
+        items.append({"type": "scenario", "title": f"{r['topic']} 파급 분석",
+                      "topic": r["topic"], "question_id": r["question_id"], "created_at": r["created_at"]})
+    for r in conn.execute(
+        "SELECT e.name, e.aliases code, d.period, d.created_at FROM entity_digests d "
+        "JOIN entities e ON e.id=d.entity_id "
+        "WHERE d.created_at >= datetime('now', ?) AND e.aliases IS NOT NULL", (since,)):
+        items.append({"type": "digest", "title": f"{r['name']} {r['period'].upper()} 요약",
+                      "topic": r["name"], "code": r["code"], "created_at": r["created_at"]})
+    # Legacy digests have no job row; storing the completed digest updated fetched_at.
+    # A video's publication date is not the time its AI digest was generated.
+    for r in conn.execute("""
+        SELECT rd.id, rd.title,
+               COALESCE(datetime(j.updated_at, 'unixepoch'), datetime(rd.fetched_at)) AS created_at
+        FROM raw_documents rd
+        LEFT JOIN youtube_digest_jobs j ON j.doc_id=rd.id AND j.status='ok'
+        WHERE rd.source_type='youtube' AND rd.digest_status='ok'
+          AND trim(COALESCE(NULLIF(rd.markdown, ''), rd.raw_content, '')) <> ''
+          AND COALESCE(datetime(j.updated_at, 'unixepoch'), datetime(rd.fetched_at)) >= datetime('now', ?)
+        """, (since,)):
+        items.append({"type": "youtube_digest", "title": r["title"] or "유튜브 영상 요약",
+                      "topic": r["title"] or "", "doc_id": r["id"], "created_at": r["created_at"]})
+    conn.close()
+    items.sort(key=lambda x: x["created_at"] or "", reverse=True)
+    return [AiActivityItem(**x) for x in items[:limit]]
 
 
 @router.get("", response_model=HomeResponse)

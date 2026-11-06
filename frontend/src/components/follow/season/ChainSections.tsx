@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { usePinCore, useSeason } from "@/hooks/useTranscripts"
 import { formatPercent } from "@/utils/format"
 import { cn } from "@/lib/utils"
-import { Bullets, Cols, Meta, Pp, SHORT_REASON, Section, VERDICT, VERDICT_CLS, WEIGHT, mmdd } from "@/components/follow/season/seasonUi"
+import { Bullets, Cols, DqHead, DqValue, Meta, Pp, SHORT_REASON, Section, VERDICT, VERDICT_CLS, WEIGHT, mmdd } from "@/components/follow/season/seasonUi"
 import type { ChainDetail, ExpectationIssue, ReactionGrade } from "@/types"
 
 const TOOLTIP_STYLE = { fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }
@@ -364,7 +364,7 @@ export function HistoryCard({ chain, transcriptId, onSelect }: { chain: ChainDet
             <TableRow>
               <TableHead>분기</TableHead><TableHead>발표일</TableHead>
               <TableHead className="text-right">첫 거래일</TableHead><TableHead className="text-right">일주일</TableHead>
-              <TableHead className="text-right">목표가 올림·내림</TableHead><TableHead>반응 한 줄</TableHead>
+              <TableHead className="text-right"><DqHead etf={chain.etf} /></TableHead><TableHead className="text-right">목표가 올림·내림</TableHead><TableHead>반응 한 줄</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -376,6 +376,7 @@ export function HistoryCard({ chain, transcriptId, onSelect }: { chain: ChainDet
                   <TableCell className="tabular-nums whitespace-nowrap">{mmdd(r.event_date)}</TableCell>
                   <TableCell className="text-right"><Pp v={r.d1} /></TableCell>
                   <TableCell className="text-right"><Pp v={r.d7} /></TableCell>
+                  <TableCell className="text-right"><DqValue v={r.dq} partial={r.dq_partial} /></TableCell>
                   <TableCell className="text-right tabular-nums whitespace-nowrap">
                     {r.pt_up == null && r.pt_down == null ? <span className="text-muted-foreground">-</span>
                       : <><span className="text-up-ink">{r.pt_up ?? 0}</span> · <span className="text-down-ink">{r.pt_down ?? 0}</span></>}

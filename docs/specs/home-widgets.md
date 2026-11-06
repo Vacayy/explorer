@@ -63,6 +63,8 @@ interface WidgetDef {
 
 ## 2. 섹션 목록 (화면이 쓰는 id만)
 
+(2026-11-06 D-325: 대만 공급망이 카드 벽으로 바뀌어 `explore.twRevenue`·`explore.twLinks`를 목록에서 뺐다 — [tw-revenue](tw-revenue.md) 4-1.)
+
 | id | 이름 | 원천 | 쓰는 곳 | 내용 |
 |---|---|---|---|---|
 | market.indices | 지수 띠 | `/indices` | 대시보드 | 지수별 값·등락 · 1Y 스파크 가로 띠 |
@@ -71,7 +73,6 @@ interface WidgetDef {
 | market.today | Market Today | `/spine/market-today` | 대시보드 | 회차 칩·텔레그램/뉴스 건수·다음 정리 시각 · 화두 — docs/specs/market-today.md |
 | risk.regime | 시장 국면 | `/market-regime` | 대시보드 | 국장·미장 포스처 · 근거 한 줄 |
 | risk.curve · risk.vix · risk.fear · risk.hy | 금리차 · VIX · 공포·탐욕 · HY | `/risk?range=3m&keys=curve,vix,fear_greed,hy` | 대시보드 | 값 · 20일 변화 · 3개월 스파크, 늦거나 실패하면 마지막 값 흐리게 + 기준 날짜 |
-| explore.twRevenue · explore.twLinks | 대만 월매출 · 대만 → 한국 연결 | `/spine/tw/revenue` · `/spine/tw/links` | 산업 › 대만 공급망 | docs/specs/tw-revenue.md |
 | world.changes | 이번 주 바뀐 서사 | `/spine/world/changes?days=7` | 대시보드 | 최근 7일 새 버전 · 옮겨 간 내용 1~2문장 |
 | portfolio.today · portfolio.events · portfolio.flow | 포트폴리오 오늘 · 다가오는 일정 · 보유 종목 자료 흐름 | `/portfolio`·`/portfolio/history` · `/portfolio/events` · `/portfolio/flow` | 내 종목(보유 보기) | 비율·날짜만(D-212) |
 | watch.digests | 관심 종목 오늘 요약 | `/spine/groups/{id}/digests` | 내 종목(전체 보기) | 최신 요약일 · 종목별 '새로운 점' 또는 첫 줄 |

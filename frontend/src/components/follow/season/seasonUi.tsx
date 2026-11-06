@@ -2,6 +2,7 @@
 import type { ReactNode } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { formatPp } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import type { CoreReason, EvalVerdict } from "@/types"
@@ -46,6 +47,16 @@ export const Meta = ({ children, className }: { children: ReactNode; className?:
 /** 업종 ETF 대비 %p — 상승 빨강·하락 파랑(한국 컨벤션) */
 export function Pp({ v, className }: { v: number | null | undefined; className?: string }) {
   return <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : v > 0 ? "text-up-ink" : v < 0 ? "text-down-ink" : "", className)}>{formatPp(v, 1)}</span>
+}
+
+/** 분기별 표 '분기 수익률' 머리 — 정의는 ⓘ에만 */
+export function DqHead({ etf }: { etf: string }) {
+  return <span className="inline-flex items-center justify-end gap-0.5">분기 수익률<InfoTip label="분기 수익률 설명">{etf} 대비 초과수익(%p)입니다. 발표 전 종가부터 다음 실적 발표 전 거래일 종가까지 잽니다. 다음 발표가 아직 없으면 최근 종가까지이며 '진행 중'으로 표시합니다.</InfoTip></span>
+}
+
+/** 분기 수익률 칸 — 다음 발표 전이면 흐린 '진행 중' */
+export function DqValue({ v, partial, className }: { v: number | null; partial: boolean | null; className?: string }) {
+  return <span className="whitespace-nowrap"><Pp v={v} className={className} />{v != null && partial && <span className="ml-1 font-sans text-caption text-muted-foreground">진행 중</span>}</span>
 }
 
 export const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`

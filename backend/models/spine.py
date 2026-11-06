@@ -1,4 +1,6 @@
 """spine 읽기 API 응답 스키마 (docs/private/specs/frontend-plan.md Phase B)."""
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -105,6 +107,17 @@ class BriefItem(BaseModel):
     kind: str            # insight(가설 스타일) | action | signal
     text: str
     to: str              # 프론트 라우트 (근거로 1클릭)
+
+
+class AiActivityItem(BaseModel):
+    """'AI가 최근 만든 것' 한 줄 — 상단 바 `layout/AiOutputs`가 피드 Explorer 타임라인과 합쳐 쓴다(D-325)."""
+    type: Literal["narrative", "mega", "report", "scenario", "digest", "youtube_digest"]
+    title: str
+    topic: str
+    code: str | None = None          # digest면 종목코드(analyze 링크용)
+    question_id: int | None = None   # scenario가 질문에 묶였으면(D-070) — /question/:id 링크용
+    doc_id: int | None = None        # 유튜브 AI 정리본의 /doc/:id 링크용
+    created_at: str                  # UTC 'YYYY-MM-DD HH:MM:SS'
 
 
 class HomeResponse(BaseModel):

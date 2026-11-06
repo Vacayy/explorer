@@ -698,6 +698,17 @@ export interface TimelineItem {
   links: { label: string; to: string }[]
 }
 
+/** GET /api/spine/home/ai-activity — 지난 N일 AI 산출물(유튜브 AI 정리본 포함). 상단 바 'AI가 최근 만든 것'이 타임라인과 합쳐 쓴다 */
+export interface AiActivityItem {
+  type: 'narrative' | 'mega' | 'report' | 'scenario' | 'digest' | 'youtube_digest'
+  title: string
+  topic: string
+  code: string | null
+  question_id: number | null
+  doc_id: number | null
+  created_at: string
+}
+
 export interface TimelineResponse {
   items: TimelineItem[]
   page: number
@@ -1174,6 +1185,8 @@ export interface ChainDetail {
   mentions: { day: string; n: number }[]          // 'MM-DD' 한국 시각
   pt_after: { n: number; up: number; down: number; median_pct: number | null; examples: string[] } | null
   history: { fiscal: string; event_date: string; season: string; transcript_id: number | null; d1: number | null; d7: number | null; d30: number | null
+    /** 분기 수익률 = 발표 전 종가 → 다음 발표 전 거래일 종가(업종 ETF 대비 %p). dq_partial = 다음 발표 전이라 최근 종가까지 */
+    dq: number | null; dq_partial: boolean | null; dq_end: string | null
     follow: string | null; pt_up: number | null; pt_down: number | null; headline: string | null; reaction: string | null }[]
 }
 
@@ -1242,6 +1255,16 @@ export interface TradeHighlights {
   surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]   // 상위 limit개만
   groups: { group_label: string; count: number; value: number; surge: number; plunge: number }[]   // 판정 수는 전 품목 기준
 }
+/** GET /api/spine/trade/grid — 품목 벽(산업 › 수출입 품목 모니터). 세목 제외 전 품목의 월별 수출 시계열 한 번에 */
+export interface TradeGridItem {
+  hs_code: string; item_name: string; group_label: string | null
+  latest_period: string | null; latest_export: number | null; yoy_pct: number | null
+  mom: number | null; yoy3m: number | null; contribution: number | null; z: number | null   // 비율 · 0~1
+  flag: TradeFlag
+  stock_codes: string[]
+  series: { period: string; export_usd: number | null; ma12: number | null }[]
+}
+export interface TradeGrid { period: string | null; months: number; items: TradeGridItem[] }
 export interface TradeStockItem {
   hs_code: string; item_name: string; rel: string | null; period: string | null
   yoy_pct: number | null; flag: TradeFlag | null; reason: string | null
