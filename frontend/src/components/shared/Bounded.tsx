@@ -50,7 +50,7 @@ export function InPlaceMore({ open, size, children, className }: { open: boolean
   // 접는 애니메이션(Radix Presence)이 끝나 내용이 빠진 뒤의 높이도 따라간다 — 렌더 시점 측정만으로는 펼친 높이가 남는다
   useEffect(() => {
     const el = ref.current
-    if (open || !el) return
+    if (open || !el || typeof ResizeObserver === "undefined") return
     const ro = new ResizeObserver(() => { closed.current = el.offsetHeight })
     ro.observe(el)
     return () => ro.disconnect()
