@@ -61,7 +61,7 @@ function OutputList({ q, items, onNavigate, className }: { q: Outputs; items: Ai
   return <ul data-ai-outputs className={className}>
     {items.map(item => <li key={item.id} className="border-t first:border-t-0">
       <Link to={item.to} onClick={onNavigate} className="flex items-center gap-2.5 px-4 py-2 hover:bg-chip focus-visible:bg-chip focus-visible:outline-none">
-        <Badge variant="neutral" className="w-[68px] shrink-0 justify-center">{KIND_LABEL[item.kind] ?? item.kind}</Badge>
+        <Badge variant="neutral" className="w-[76px] shrink-0 justify-center">{KIND_LABEL[item.kind] ?? item.kind}</Badge>
         <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{item.title}</span>
         <time dateTime={item.occurred_at} title={item.occurred_at} className="shrink-0 font-mono text-xs text-ink-3 tabular-nums">{formatRelativeTime(item.occurred_at)}</time>
       </Link>
