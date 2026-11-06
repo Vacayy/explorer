@@ -9,6 +9,7 @@
     짧거나 겹치는 표기는 search_only(이 모듈만 씀).
 창이 열려 있으면 interim, 닫힌 뒤 final. 자동 생성은 핵심 종목만(earnings_chain.daily), 나머지는 버튼.
 """
+import sqlite3
 import hashlib
 import json
 import re
@@ -44,6 +45,24 @@ def _has_aliases(conn, entity_id: int) -> bool:
         (entity_id, *KEYWORD_STATUSES)).fetchone() is not None
 
 
+def repair_follow_entities(conn) -> int:
+    """팔로우가 가리키는 엔티티가 지워졌으면(병합 뒤) 티커·회사명 키워드로 살아 있는 회사 엔티티를 다시 찾아 잇는다.
+    못 찾으면 비운다(NULL) — 지워진 id를 남겨 두면 키워드 쓰기가 FK 오류로 실적 시즌 체인 전체를 멈춘다."""
+    bad = conn.execute("SELECT f.ticker, f.company_name FROM transcript_follow f WHERE f.entity_id IS NOT NULL "
+                       "AND NOT EXISTS (SELECT 1 FROM entities e WHERE e.id = f.entity_id)").fetchall()
+    fixed = 0
+    for r in bad:
+        hit = conn.execute(
+            "SELECT k.entity_id FROM entity_keywords k JOIN entities e ON e.id = k.entity_id "
+            "WHERE e.type = 'company' AND k.keyword IN (?, ?) AND (k.status = 'active' OR k.status IS NULL) "
+            "ORDER BY k.keyword = ? DESC LIMIT 1", (r["ticker"], r["company_name"], r["company_name"])).fetchone()
+        conn.execute("UPDATE transcript_follow SET entity_id = ? WHERE ticker = ?", (hit[0] if hit else None, r["ticker"]))
+        fixed += 1
+    if fixed:
+        conn.commit()
+    return fixed
+
+
 def ensure_ko_aliases(tickers: list[str] | None = None, chunk: int = 40) -> int:
     """별칭이 없는 팔로우 기업에 한글 별칭을 만든다(haiku, 40개씩 1회). 반환=새로 넣은 별칭 수.
     LLM이 아무것도 못 내도 영문명을 search_only로 남겨 다음 실행이 같은 회사를 다시 묻지 않게 한다."""
@@ -52,8 +71,10 @@ def ensure_ko_aliases(tickers: list[str] | None = None, chunk: int = 40) -> int:
     if not llm_available():
         return 0
     conn = get_connection()
+    repair_follow_entities(conn)
     rows = [dict(r) for r in conn.execute(
-        "SELECT f.ticker, f.company_name, f.entity_id FROM transcript_follow f WHERE f.active=1 AND f.entity_id IS NOT NULL")]
+        "SELECT f.ticker, f.company_name, f.entity_id FROM transcript_follow f JOIN entities e ON e.id = f.entity_id "
+        "WHERE f.active=1")]
     rows = [r for r in rows if (not tickers or r["ticker"] in tickers) and not _has_aliases(conn, r["entity_id"])]
     conn.close()
     added = 0
@@ -81,9 +102,12 @@ def ensure_ko_aliases(tickers: list[str] | None = None, chunk: int = 40) -> int:
                         "SELECT 1 FROM entity_keywords WHERE keyword=? AND entity_id!=? AND (status='active' OR status IS NULL)",
                         (kw, r["entity_id"])).fetchone():
                     status = "search_only"
-                cur = conn.execute("INSERT OR IGNORE INTO entity_keywords (entity_id, keyword, status) VALUES (?, ?, ?)",
-                                   (r["entity_id"], kw, status))
-                added += cur.rowcount
+                try:
+                    cur = conn.execute("INSERT OR IGNORE INTO entity_keywords (entity_id, keyword, status) VALUES (?, ?, ?)",
+                                       (r["entity_id"], kw, status))
+                    added += cur.rowcount
+                except sqlite3.IntegrityError:   # 그 사이 엔티티가 병합·삭제됐으면 건너뛴다
+                    continue
         conn.commit()
         conn.close()
     return added
