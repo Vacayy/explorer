@@ -115,10 +115,20 @@ export default function CollectTranscripts() {
           <p className="text-[11px] text-muted-foreground">
             마지막 실행 {when(last.ran_at)}
             {last.status !== "ok" && <span className="text-hypothesis"> ({last.status})</span>}
-            {last.summary && ` · ${last.summary}`}
+            {/* 요약이 수집기의 원본 dict 문자열이면 숫자만 사람 말로 */}
+            {last.summary && ` · ${readableSummary(last.summary)}`}
           </p>
         )}
       </CardContent>
     </Card>
   )
+}
+
+/** "{'requests': 0, 'stored': 3, ...}" 같은 수집기 요약을 '요청 0 · 저장 3'으로. 일반 문장은 그대로 */
+const SUMMARY_LABEL: Record<string, string> = { requests: "요청", stored: "저장", empty: "빈 응답", budget: "남은 한도", skipped_cache: "캐시로 건너뜀", digested: "핵심 정리", proxies: "프록시" }
+function readableSummary(s: string): string {
+  if (!s.trim().startsWith("{")) return s
+  const seen = new Map<string, string>()   // 안쪽 묶음(fool 등)의 같은 키는 처음 것만
+  for (const m of s.matchAll(/'([a-z_]+)':\s*(-?\d+)/g)) if (SUMMARY_LABEL[m[1]] && !seen.has(m[1])) seen.set(m[1], m[2])
+  return seen.size ? [...seen].map(([k, v]) => `${SUMMARY_LABEL[k]} ${v}`).join(" · ") : "완료"
 }

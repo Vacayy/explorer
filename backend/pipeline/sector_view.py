@@ -373,7 +373,8 @@ def data_links(conn, sector: str, member_caps: dict[str, float]) -> list[dict]:
 def _members(conn, sector: str, latest: str) -> list[dict]:
     """구성 종목 — 시총·비중·1일·1개월·RS(전 종목 대비 백분위). sector_rs.group_members_rs 위에 1일만 더한다."""
     from pipeline.sector_rs import _snapshot, group_members_rs
-    items = group_members_rs(sector, limit=100000)["items"]
+    # 섹터 종목 수(sector_rs)와 같은 기준 — 시가총액이 있는 종목만(시총 없는 1종목 때문에 375 vs 376으로 어긋났다)
+    items = [i for i in group_members_rs(sector, limit=100000)["items"] if i.get("market_cap")]
     prev_day = conn.execute("SELECT max(trade_date) FROM stock_prices WHERE trade_date < ?", (latest,)).fetchone()[0]
     cur, prev = _snapshot(conn, latest), _snapshot(conn, prev_day) if prev_day else {}
     total = sum(i["market_cap"] or 0 for i in items) or 1
