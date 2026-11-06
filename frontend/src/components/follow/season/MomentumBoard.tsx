@@ -9,8 +9,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryState } from "@/components/shared/QueryState"
 import { InfoTip } from "@/components/shared/InfoTip"
+import { FillArea } from "@/components/shared/Bounded"
 import { CandidateCard, GUIDE, SOURCE, STATUS } from "@/components/follow/CallMomentumPanel"
-import { CoreBadge, H3, Meta, Pp, Section, mmdd, patchParams } from "@/components/follow/season/seasonUi"
+import { BOARD_H, CoreBadge, H3, Meta, Pp, Section, mmdd, patchParams } from "@/components/follow/season/seasonUi"
 import { useDefaultWatchGroup, useToggleWatch } from "@/hooks/useGroups"
 import { accelLine, raisedGuidance, toneUp, type MomentumSet } from "@/lib/seasonBoard"
 import { cn } from "@/lib/utils"
@@ -51,13 +52,13 @@ export function MomentumBoard({ query, d, momentum }: { query: MomentumQuery; d:
   const core = new Map(d.core.tickers.map((t) => [t.ticker, t.reasons]))
   const pick = (t: string) => setParams((p) => patchParams(p, { pick: t }), { replace: true, preventScrollReset: true })
   return (
-    <Section className="min-w-0">
+    <Section className={cn("min-w-0", BOARD_H)} bodyClassName="min-h-0 flex-1">
       <div id="momentum" className="scroll-mt-20" />
-      <QueryState query={query} loading={<Skeleton className="h-80 w-full rounded-card" />} isEmpty={() => false}>{(m) => {
+      <QueryState query={query} className="flex min-h-0 flex-1 flex-col" loading={<Skeleton className="h-80 w-full rounded-card" />} isEmpty={() => false}>{(m) => {
         const total = momentum.fresh.length + momentum.continuing.length
         const history = m.history.filter((h) => h.key !== d.season.key)
         const cov = m.coverage
-        return <div className="flex flex-col gap-3">
+        return <div className="flex min-h-0 flex-1 flex-col gap-3">
           <h2 className="flex items-center gap-1 text-[15px] font-semibold">
             새 모멘텀 후보
             <InfoTip label="새 모멘텀 후보 설명">
@@ -70,6 +71,8 @@ export function MomentumBoard({ query, d, momentum }: { query: MomentumQuery; d:
             <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-chart-warning" />
             <span>SEC 실적 보도자료 수집이 멈춰 있습니다. <code>.env</code>에 <code>SEC_USER_AGENT="이름 이메일"</code>을 넣어 주세요.</span>
           </div>}
+          {/* 아래 목록·펼치기는 고정 높이 칸 안에서 스크롤 — 펼쳐도 칸·아래 블록이 움직이지 않는다 */}
+          <FillArea><div className="flex flex-col gap-3">
 
           <H3>새로 붙은 모멘텀 <span className="tabular-nums font-normal text-muted-foreground">{momentum.fresh.length}</span></H3>
           {momentum.fresh.length === 0 ? <Meta>
@@ -150,6 +153,7 @@ export function MomentumBoard({ query, d, momentum }: { query: MomentumQuery; d:
               </CollapsibleContent>
             </Collapsible>
           )}
+          </div></FillArea>
         </div>
       }}</QueryState>
     </Section>

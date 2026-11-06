@@ -1185,6 +1185,14 @@ export interface ChainDetail {
     follow: string | null; pt_up: number | null; pt_down: number | null; headline: string | null; reaction: string | null }[]
 }
 
+/** 콜 상세 '다가오는 분기' — GET /api/spine/transcript/chain/upcoming/{ticker}. series.offset은 발표일 = 0(모두 음수), 기준(0%)은 최근 종가 */
+export interface UpcomingChain extends ChainDetail {
+  fiscal_year: number; fiscal_period: string
+  confirmed: boolean      // false = 예상일
+  days_to_event: number   // 오늘 0
+  pt_before: ChainDetail["pt_after"]   // 최근 30일 목표가 변경
+}
+
 /** 문서 디테일 '관련 문서' — GET /api/spine/doc/{id}/related (D-221) */
 export interface RelatedDoc {
   id: number

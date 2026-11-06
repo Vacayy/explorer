@@ -31,19 +31,19 @@ import { SeasonView } from "@/components/follow/season/SeasonView"
 import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
 import { seasonMarket } from "@/components/follow/season/SeasonHeader"
 import { SectorView } from "@/components/follow/season/SectorView"
-import { AfterDetail, CallWindowChart, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard, currentHistory, fyShort, type StageKey } from "@/components/follow/season/ChainSections"
+import { AfterDetail, CallWindowChart, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard, UpcomingBeforeDetail, UpcomingStagesCard, currentHistory, fyShort, type StageKey } from "@/components/follow/season/ChainSections"
 import { WEIGHT } from "@/components/follow/season/seasonUi"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { formatPp } from "@/utils/format"
-import { useChain } from "@/hooks/useTranscripts"
-import type { ChainDetail } from "@/types"
+import { useChain, useUpcoming } from "@/hooks/useTranscripts"
+import type { ChainDetail, UpcomingChain } from "@/types"
 import { QueryState } from "@/components/shared/QueryState"
 import { cn } from "@/lib/utils"
 
 /**
  * /follow/transcripts — 미국 기업 실적 컨콜 전용 페이지 (D-061, 2분할 브라우저).
  * 좌: 팔로우 기업 그룹 리스트(= 구독 관리) · 우: 선택 콜의 LLM 핵심 정리 → 원문 전문.
- * URL(?t=transcript_id)이 상태 소스. 정리는 POST compute(멱등·수 분)로 분리 생성.
+ * URL(?t=transcript_id)이 상태 소스 — 다가오는 분기(녹취록 전)는 ?t=next:TICKER. 정리는 POST compute(멱등·수 분)로 분리 생성.
  */
 const GROUP_LABEL: Record<string, string> = {
   M7: "M7", hyperscaler: "하이퍼스케일러", nasdaq: "반도체·나스닥",
@@ -57,7 +57,7 @@ interface FollowRow {
   ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null
   last_report_date?: string | null; next_report_date?: string | null; calendar_checked_at?: string | null
   market_cap?: number | null; category?: string | null; latest_results_date?: string | null; season_updated?: boolean
-  ko_names?: string[]
+  ko_names?: string[]; upcoming_expectation?: boolean
 }
 type RailSort = "cap" | "category" | "recent"
 const RAIL_SORTS: { value: RailSort; label: string }[] = [{ value: "cap", label: "시가총액" }, { value: "category", label: "사업분류" }, { value: "recent", label: "최근 발표" }]
@@ -100,6 +100,9 @@ function daysUntil(iso?: string | null): number | null {
   return Math.round((d.getTime() - today.getTime()) / 86_400_000)
 }
 const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
+/** ?t= 값 — 다가오는 분기는 'next:TICKER' */
+const NEXT = "next:"
+const nextKey = (ticker: string) => `${NEXT}${ticker}`
 
 export default function TranscriptPage() {
   const [params, setParams] = useSearchParams()
@@ -127,7 +130,8 @@ export default function TranscriptPage() {
 
   const mobile = useMediaQuery(MOBILE_QUERY)
   // 기업 목록에서 고르면 기록을 남긴다(뒤로 가기 = 목록), 상세 안에서 분기·기업을 바꾸면 교체
-  const selectId = (id: number) => setParams({ t: String(id) }, { replace: !!selectedId })
+  const selectId = (id: number | string) => setParams({ t: String(id) }, { replace: !!selectedId })
+  const upcomingTicker = selectedId?.startsWith(NEXT) ? selectedId.slice(NEXT.length).toUpperCase() : null
 
   // 옛 프록시 보기 → Thesis › 내 판단 '지표 보드'(ia-redesign §10.6)
   if (rawView === "proxies") return <Navigate to={proxiesUrl(`?${params.toString()}`)} replace />
@@ -151,7 +155,7 @@ export default function TranscriptPage() {
     </div>
   )
 
-  const railFor = (onPick: (id: number) => void) => follows.length === 0 ? (
+  const railFor = (onPick: (id: number | string) => void) => follows.length === 0 ? (
     <div className="p-3 space-y-3">
       <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>
       <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
@@ -182,6 +186,8 @@ export default function TranscriptPage() {
         listing ? (
           // 폰 기업 목록도 상한(lg) 안에서 스크롤 — 넓은 화면 레일(max-h 70vh)과 같은 원칙
           <Card><CardContent className="p-2"><BoundedArea size="lg">{railFor(selectId)}</BoundedArea></CardContent></Card>
+        ) : upcomingTicker ? (
+          <UpcomingPanel key={upcomingTicker} ticker={upcomingTicker} onSelect={selectId} rail={railFor} mobile />
         ) : (
           <MobileCallDetail key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} rail={railFor} />
         )
@@ -194,7 +200,9 @@ export default function TranscriptPage() {
 
         {/* 우 본문 — 선택 콜 상세 */}
         <div className="min-w-0">
-          {effectiveId ? (
+          {upcomingTicker ? (
+            <UpcomingPanel key={upcomingTicker} ticker={upcomingTicker} onSelect={selectId} />
+          ) : effectiveId ? (
             <DetailPanel key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} />
           ) : (
             <Card><CardContent className="py-16">
@@ -229,7 +237,7 @@ function UpcomingLink({ follows, onRefresh, refreshing }: { follows: FollowRow[]
 
 /* ---------- 좌 레일: 정렬 탭 + 기업 검색(티커·영문명·한글 별칭) ---------- */
 function FollowRail({ follows, sort, onSort, effectiveId, onSelect }: {
-  follows: FollowRow[]; sort: RailSort; onSort: (v: RailSort) => void; effectiveId: string | null; onSelect: (id: number) => void
+  follows: FollowRow[]; sort: RailSort; onSort: (v: RailSort) => void; effectiveId: string | null; onSelect: (id: number | string) => void
 }) {
   const [query, setQuery] = useState("")
   const q = query.trim().toLowerCase()
@@ -253,7 +261,7 @@ function FollowRail({ follows, sort, onSort, effectiveId, onSelect }: {
 
 /* ---------- 좌 레일: 그룹별 기업 리스트 ---------- */
 function GroupedRail({ follows, effectiveId, onSelect }: {
-  follows: FollowRow[]; effectiveId: string | null; onSelect: (id: number) => void
+  follows: FollowRow[]; effectiveId: string | null; onSelect: (id: number | string) => void
 }) {
   const byGroup = useMemo(() => {
     const m = new Map<string, FollowRow[]>()
@@ -285,7 +293,7 @@ function GroupedRail({ follows, effectiveId, onSelect }: {
 
 /* ---------- 좌 레일: 시가총액순 / 최근 발표순 (평평한 목록) ---------- */
 function FlatRail({ follows, sort, effectiveId, onSelect }: {
-  follows: FollowRow[]; sort: "cap" | "recent"; effectiveId: string | null; onSelect: (id: number) => void
+  follows: FollowRow[]; sort: "cap" | "recent"; effectiveId: string | null; onSelect: (id: number | string) => void
 }) {
   const rows = useMemo(() => [...follows].sort((a, b) => sort === "cap"
     ? (b.market_cap ?? 0) - (a.market_cap ?? 0)
@@ -294,15 +302,17 @@ function FlatRail({ follows, sort, effectiveId, onSelect }: {
     meta={sort === "cap" ? usd(f.market_cap) : f.latest_results_date ? mmdd(f.latest_results_date) : "–"} />)}</div>
 }
 
-function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId: string | null; onSelect: (id: number) => void; meta?: string }) {
-  const active = f.latest && String(f.latest.transcript_id) === effectiveId
+function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId: string | null; onSelect: (id: number | string) => void; meta?: string }) {
+  const active = (f.latest && String(f.latest.transcript_id) === effectiveId) || effectiveId === nextKey(f.ticker)
   const dd = daysUntil(f.next_report_date)
   const imminent = dd != null && dd >= 0 && dd <= 14
+  // 다가오는 발표에 발표 전 정리가 있으면 그 분기부터 연다
+  const target = f.upcoming_expectation ? nextKey(f.ticker) : f.latest?.transcript_id
   return (
-    <Button variant="ghost" onClick={() => f.latest && onSelect(f.latest.transcript_id)} disabled={!f.latest}
+    <Button variant="ghost" onClick={() => target != null && onSelect(target)} disabled={target == null}
       title={f.season_updated ? `이번 시즌 실적 발표 ${f.latest_results_date}` : undefined}
       className={cn("h-auto w-full justify-start gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal",
-        active && "bg-accent text-accent-foreground font-semibold", !f.latest && "opacity-40")}>
+        active && "bg-accent text-accent-foreground font-semibold", target == null && "opacity-40")}>
       <span className="font-medium tabular-nums">{f.ticker}</span>
       <span className="truncate text-xs text-muted-foreground flex-1">{f.company_name}</span>
       {f.season_updated && <span className="shrink-0 rounded bg-up/10 px-1 text-[9px] font-medium text-up-ink">{seasonQ()}Q 실적</span>}
@@ -319,7 +329,7 @@ function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId
 }
 
 /* ---------- 우 본문: 콜 상세 (시안 Call-Detail) — 머리(회사·분기 세그먼트) · 발표 창 차트 · 칸 넷 · 쟁점 · 분기별 기록 · 펼치기 ---------- */
-function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelect: (id: number) => void }) {
+function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelect: (id: number | string) => void }) {
   const { data, isLoading, isError, refetch } = useQuery(detailQuery(transcriptId))
   const chain = useChain(transcriptId)
 
@@ -343,7 +353,7 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
               <Badge variant="outline">{data.ticker}</Badge>
               {chain.data && <ChainHeaderLinks chain={chain.data} />}
             </div>
-            <QuarterTabs ticker={data.ticker} current={transcriptId} onSelect={onSelect} />
+            <QuarterTabs ticker={data.ticker} current={String(transcriptId)} onSelect={onSelect} />
           </div>
           <span className="text-[12.5px] text-ink-3">{callMeta(data, chain.data?.etf)}</span>
           {headline && <p className="text-base font-semibold leading-normal text-pretty">{headline}</p>}
@@ -535,19 +545,23 @@ function FoldRevealHost({ children }: { children: ReactNode }) {
 function useQuarters(ticker: string) {
   return useQuery(apiQuery<Quarter[]>({ key: ["spine", "transcript", "company", ticker], url: `/api/spine/transcript/company/${ticker}`, staleTime: STALE.short }))
 }
-function QuarterTabs({ ticker, current, onSelect, compact = false }: { ticker: string; current: number; onSelect: (id: number) => void; compact?: boolean }) {
+/** 맨 오른쪽 = 다가오는 분기(녹취록 전) 'FY27 Q1 · D-6' — 값은 next:TICKER */
+function QuarterTabs({ ticker, current, onSelect, compact = false }: { ticker: string; current: string; onSelect: (id: string) => void; compact?: boolean }) {
   const { data: quarters = [] } = useQuarters(ticker)
+  const { data: upcoming } = useUpcoming(ticker)
+  // 카운트다운(목록의 D-n과 같은 14일 안)에 들어갔거나 발표 전 정리가 이미 있을 때만 탭을 붙인다
+  const next = upcoming && (upcoming.days_to_event <= 14 || upcoming.expectation) ? upcoming : null
   // 폰 칩 줄은 가로 스크롤 — 고른 분기가 보이게 그 칩으로 민다
   const scroller = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!compact) return
     scroller.current?.querySelector<HTMLElement>("[data-state=on]")?.scrollIntoView({ block: "nearest", inline: "nearest" })
   }, [compact, current, quarters.length])
-  if (quarters.length <= 1) return null
-  const shown = [...quarters].slice(0, compact ? quarters.length : 6).reverse()
+  if (quarters.length + (next ? 1 : 0) <= 1) return null
+  const shown = [...quarters].slice(0, compact ? quarters.length : next ? 5 : 6).reverse()
   return (
     <div ref={scroller} className={cn(compact && "-mx-4 overflow-x-auto px-4 [scrollbar-width:none]")}>
-      <ToggleGroup type="single" size="sm" value={String(current)} onValueChange={(v) => { if (v) onSelect(Number(v)) }}
+      <ToggleGroup type="single" size="sm" value={current} onValueChange={(v) => { if (v) onSelect(v) }}
         aria-label="분기" className={cn(compact ? "flex-nowrap" : "flex-wrap justify-end")}>
         {shown.map((q) => (
           <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className={cn("tabular-nums", compact ? "h-7 shrink-0 px-2.5 text-[12.5px]" : "h-[30px] px-3 text-[13px]")}
@@ -555,16 +569,21 @@ function QuarterTabs({ ticker, current, onSelect, compact = false }: { ticker: s
             {fyLabel(q)}
           </ToggleGroupItem>
         ))}
+        {next && (
+          <ToggleGroupItem value={nextKey(ticker)} className={cn("tabular-nums", compact ? "h-7 shrink-0 px-2.5 text-[12.5px]" : "h-[30px] px-3 text-[13px]")}
+            title={`${next.event_date} 발표${next.confirmed ? "" : " (예상일)"}`}>
+            {fyLabel(next)} · {ddayLabel(next.days_to_event)}
+          </ToggleGroupItem>
+        )}
       </ToggleGroup>
     </div>
   )
 }
 
 /* ---------- 폰 콜 상세 (시안 Mobile-Call) — 기업 바꾸기 · 분기 칩 · 한 줄 요지 · 발표 전후 주가 · 발표 전 쟁점 · 컨콜 핵심 · 분기별 첫 거래일 반응 ---------- */
-function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: number; onSelect: (id: number) => void; rail: (onPick: (id: number) => void) => ReactNode }) {
+function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: number; onSelect: (id: number | string) => void; rail: (onPick: (id: number | string) => void) => ReactNode }) {
   const { data, isLoading, isError, refetch } = useQuery(detailQuery(transcriptId))
   const chain = useChain(transcriptId)
-  const [sheetOpen, setSheetOpen] = useState(false)
   const [more, setMore] = useState(false)
 
   if (isLoading) return <div className="flex flex-col gap-3.5"><Skeleton className="h-16 w-full rounded-card" /><Skeleton className="h-48 w-full rounded-card" /></div>
@@ -582,22 +601,9 @@ function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: numb
 
   return (
     <div className="flex flex-col gap-3.5">
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetTrigger asChild>
-          <Button variant="outline" className="h-auto w-full justify-start gap-2.5 rounded-card bg-card px-3.5 py-3 text-left font-normal">
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="truncate text-base font-semibold">{data.company_name} <span className="font-mono text-[12.5px] font-normal text-ink-3">{data.ticker}</span></span>
-              <span className="truncate text-xs text-ink-3">{[c?.sector_name, quarterLabel(data.cy, data.fiscal_year, data.fiscal_period), data.call_date && `${mmdd(data.call_date)} 발표`].filter(Boolean).join(" · ")}</span>
-            </span>
-            <span className="ml-auto shrink-0 text-[12.5px] text-ink-2">기업 바꾸기 ▾</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-3">
-          <SheetHeader className="p-0"><SheetTitle>기업 고르기</SheetTitle></SheetHeader>
-          {rail((id) => { setSheetOpen(false); onSelect(id) })}
-        </SheetContent>
-      </Sheet>
-      <QuarterTabs ticker={data.ticker} current={transcriptId} onSelect={onSelect} compact />
+      <CompanySheet name={data.company_name} ticker={data.ticker} rail={rail} onSelect={onSelect}
+        sub={[c?.sector_name, quarterLabel(data.cy, data.fiscal_year, data.fiscal_period), data.call_date && `${mmdd(data.call_date)} 발표`].filter(Boolean).join(" · ")} />
+      <QuarterTabs ticker={data.ticker} current={String(transcriptId)} onSelect={onSelect} compact />
       {c?.reaction_meta?.headline && <p className="text-[15px] font-semibold leading-[1.55]">{c.reaction_meta.headline}</p>}
 
       <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-48 w-full rounded-card" />}>
@@ -645,23 +651,115 @@ function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: numb
         </Sheet>
       </Card>
 
-      {c && c.history.length > 0 && (
-        <Card className="flex flex-col p-3.5">
-          <h2 className={cn(boxTitle, "pb-1.5")}>분기별 첫 거래일 반응</h2>
-          {c.history.map((r) => (
-            <div key={`${r.fiscal}-${r.event_date}`} className={cn("grid grid-cols-[70px_64px_1fr] gap-2 border-t border-line py-2 text-[12.5px]",
-              r.transcript_id === transcriptId && "font-semibold")}>
-              {r.transcript_id && r.transcript_id !== transcriptId
-                ? <button type="button" className="text-left hover:underline" onClick={() => onSelect(r.transcript_id!)}>{fyShort(r.fiscal)}</button>
-                : <span>{fyShort(r.fiscal)}</span>}
-              <span className={cn("font-mono tabular-nums", r.d1 == null ? "text-ink-3" : r.d1 > 0 ? "text-up-ink" : r.d1 < 0 ? "text-down-ink" : "")}>{formatPp(r.d1, 1)}</span>
-              <span className="text-ink-2">{r.follow ?? "-"}</span>
-            </div>
-          ))}
-        </Card>
-      )}
+      {c && <MobileHistory chain={c} current={transcriptId} onSelect={onSelect} />}
     </div>
   )
+}
+
+/** 폰 머리 — 회사 한 줄 + '기업 바꾸기' 시트(팔로우 목록) */
+function CompanySheet({ name, ticker, sub, rail, onSelect }: { name: string; ticker: string; sub: string; rail: (onPick: (id: number | string) => void) => ReactNode; onSelect: (id: number | string) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="h-auto w-full justify-start gap-2.5 rounded-card bg-card px-3.5 py-3 text-left font-normal">
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate text-base font-semibold">{name} <span className="font-mono text-[12.5px] font-normal text-ink-3">{ticker}</span></span>
+            <span className="truncate text-xs text-ink-3">{sub}</span>
+          </span>
+          <span className="ml-auto shrink-0 text-[12.5px] text-ink-2">기업 바꾸기 ▾</span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-3">
+        <SheetHeader className="p-0"><SheetTitle>기업 고르기</SheetTitle></SheetHeader>
+        {rail((id) => { setOpen(false); onSelect(id) })}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+/** 폰 '분기별 첫 거래일 반응' — current = 지금 보는 콜(다가오는 분기면 없음) */
+function MobileHistory({ chain, current, onSelect }: { chain: ChainDetail; current?: number; onSelect: (id: number) => void }) {
+  if (!chain.history.length) return null
+  return (
+    <Card className="flex flex-col p-3.5">
+      <h2 className="pb-1.5 text-[15px] font-semibold">분기별 첫 거래일 반응</h2>
+      {chain.history.map((r) => (
+        <div key={`${r.fiscal}-${r.event_date}`} className={cn("grid grid-cols-[70px_64px_1fr] gap-2 border-t border-line py-2 text-[12.5px]",
+          r.transcript_id === current && "font-semibold")}>
+          {r.transcript_id && r.transcript_id !== current
+            ? <button type="button" className="text-left hover:underline" onClick={() => onSelect(r.transcript_id!)}>{fyShort(r.fiscal)}</button>
+            : <span>{fyShort(r.fiscal)}</span>}
+          <span className={cn("font-mono tabular-nums", r.d1 == null ? "text-ink-3" : r.d1 > 0 ? "text-up-ink" : r.d1 < 0 ? "text-down-ink" : "")}>{formatPp(r.d1, 1)}</span>
+          <span className="text-ink-2">{r.follow ?? "-"}</span>
+        </div>
+      ))}
+    </Card>
+  )
+}
+
+/* ---------- 다가오는 분기 (?t=next:TICKER) — 머리·카운트다운 · 오늘까지의 발표 전 주가 · 칸 넷(발표 전만) · 분기별 기록 ---------- */
+/** 'FY27 Q1 · 11/12 발표 예정(예상일) · 비교 SMH' */
+const upcomingMeta = (c: UpcomingChain) =>
+  [fyLabel(c), c.event_date && `${mmdd(c.event_date)} 발표 예정${c.confirmed ? "" : "(예상일)"}`, `비교 ${c.etf}`].filter(Boolean).join(" · ")
+
+function UpcomingPanel({ ticker, onSelect, mobile = false, rail }: {
+  ticker: string; onSelect: (id: number | string) => void; mobile?: boolean; rail?: (onPick: (id: number | string) => void) => ReactNode
+}) {
+  const q = useUpcoming(ticker)
+  if (q.isLoading) return <Card><CardContent className="py-3 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="aspect-[16/5] w-full rounded-card" /></CardContent></Card>
+  if (q.isError) return <Card><CardContent className="py-10"><ErrorState onRetry={() => q.refetch()} /></CardContent></Card>
+  const c = q.data
+  if (!c) return <Card><CardContent className="py-16"><EmptyState message={`${ticker}의 다가오는 실적 발표가 없습니다.`} /></CardContent></Card>
+  const countdown = <Badge variant="warn" className="tabular-nums">{ddayLabel(c.days_to_event)}</Badge>
+  const stages = <UpcomingStages chain={c} />
+  if (mobile) return (
+    <FoldRevealHost>
+      <div className="flex flex-col gap-3.5">
+        {rail && <CompanySheet name={c.name ?? c.ticker} ticker={c.ticker} rail={rail} onSelect={onSelect}
+          sub={[c.sector_name, fyLabel(c), `${mmdd(c.event_date!)} 발표 예정`].join(" · ")} />}
+        <QuarterTabs ticker={c.ticker} current={nextKey(c.ticker)} onSelect={onSelect} compact />
+        <Card className="flex flex-col gap-2.5 p-3.5">
+          <h2 className="flex items-center gap-1.5 text-[15px] font-semibold">발표 전 주가 {countdown}
+            <InfoTip label="발표 전 주가 설명">{c.etf} 비교 · 최근 종가 = 0</InfoTip></h2>
+          <CallWindowChart chain={c} compact upcoming />
+        </Card>
+        {stages}
+        <MobileHistory chain={c} onSelect={onSelect} />
+      </div>
+    </FoldRevealHost>
+  )
+  return (
+    <div className="surface-stack">
+      <FoldRevealHost>
+      <div className="surface-stack">
+      <Card>
+        <CardContent className="flex flex-col gap-3.5 p-[18px]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2.5">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-2.5">
+              <h2 className="truncate font-display text-[26px] font-normal leading-tight">{c.name ?? c.ticker}</h2>
+              <Badge variant="outline">{c.ticker}</Badge>
+              <ChainHeaderLinks chain={c} />
+            </div>
+            <QuarterTabs ticker={c.ticker} current={nextKey(c.ticker)} onSelect={onSelect} />
+          </div>
+          <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">{countdown}{upcomingMeta(c)}</span>
+          <div><Button variant="ghost" size="sm" asChild><Link to={`/us/${c.ticker}`} title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에<ChevronRight /></Link></Button></div>
+          <CallWindowChart chain={c} upcoming />
+        </CardContent>
+      </Card>
+      {stages}
+      </div>
+      </FoldRevealHost>
+      <HistoryCard chain={c} transcriptId={-1} onSelect={onSelect} />
+    </div>
+  )
+}
+
+/** 칸 넷 — '발표 전 · 자세히 보기'는 쟁점·기준·숫자·최근 목표가 변경을 물방울로 */
+function UpcomingStages({ chain }: { chain: UpcomingChain }) {
+  const reveal = useContext(FoldReveal)
+  return <UpcomingStagesCard chain={chain} onMore={reveal ? (_k, title) => reveal.show(title, <UpcomingBeforeDetail chain={chain} />) : undefined} />
 }
 
 function TranscriptSkeleton() {

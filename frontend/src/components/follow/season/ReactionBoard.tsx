@@ -1,14 +1,16 @@
 // 반응 보드 (ia-redesign §4.6a ⑤ 왼쪽) — 반응이 좋았던 발표(기본 탭) · 숫자와 반대로 · 뒤집혔다. 탭은 ?rtab=.
 // 줄: 종목 · 첫 거래일 → 최근 · 후속 · EPS · 섹터 · 모멘텀/핵심 배지 · 한 줄 요약(→ 콜 상세)
+import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { InfoTip } from "@/components/shared/InfoTip"
-import { CoreBadge, Meta, Pp, Section, patchParams } from "@/components/follow/season/seasonUi"
+import { FillArea } from "@/components/shared/Bounded"
+import { BOARD_H, CoreBadge, Meta, Pp, Section, patchParams } from "@/components/follow/season/seasonUi"
 import { reactionLists, type MomentumSet, type ReactionTab } from "@/lib/seasonBoard"
 import { formatPercent } from "@/utils/format"
+import { cn } from "@/lib/utils"
 import type { SeasonItem, SeasonOverview } from "@/types"
 
 const TABS: { value: ReactionTab; label: string; empty: string }[] = [
@@ -22,36 +24,35 @@ export function ReactionBoard({ d, momentum }: { d: SeasonOverview; momentum: Mo
   const [params, setParams] = useSearchParams()
   const tab: ReactionTab = TABS.find((t) => t.value === params.get("rtab"))?.value ?? "good"
   const lists = reactionLists(d.reported)
+  // '더 보기'는 고정 높이 칸 안에서 행만 늘린다(칸 높이 그대로). 탭을 바꾸면 다시 9곳부터
+  const [moreTab, setMoreTab] = useState<ReactionTab | null>(null)
   return (
-    <Section className="min-w-0">
+    <Section className={cn("min-w-0", BOARD_H)} bodyClassName="min-h-0 flex-1">
       <h2 className="flex items-center gap-1 text-[15px] font-semibold">
         반응이 좋았던 발표
         <InfoTip label="반응 보드 설명">
           %p는 발표 후 첫 거래일 업종 ETF 대비 초과수익이고, 화살표 뒤는 최근 거래일까지 누적입니다. '숫자와 반대로'는 EPS가 컨센서스를 밑돌았는데 강했거나 웃돌았는데 약했던 발표입니다. EPS는 GAAP·조정 기준이 섞여 참고용입니다.
         </InfoTip>
       </h2>
-      <Tabs value={tab} onValueChange={(v) => setParams((p) => patchParams(p, { rtab: v === "good" ? null : v }), { replace: true, preventScrollReset: true })}>
+      <Tabs className="min-h-0 flex-1" value={tab} onValueChange={(v) => setParams((p) => patchParams(p, { rtab: v === "good" ? null : v }), { replace: true, preventScrollReset: true })}>
         <TabsList>
           {TABS.map((t) => <TabsTrigger key={t.value} value={t.value}>{t.label} <span className="tabular-nums text-muted-foreground">{lists[t.value].length}</span></TabsTrigger>)}
         </TabsList>
         {TABS.map((t) => (
-          <TabsContent key={t.value} value={t.value} className="pt-1">
-            {lists[t.value].length === 0 ? <Meta className="py-2">{t.empty}</Meta> : <>
-              <div className="flex flex-col">{lists[t.value].slice(0, SHOWN).map((it) => <ReactionRow key={it.ticker} it={it} momentum={momentum} />)}</div>
-              {lists[t.value].length > SHOWN && (
-                <Collapsible>
-                  <CollapsibleContent className="flex flex-col border-t">
-                    {lists[t.value].slice(SHOWN).map((it) => <ReactionRow key={it.ticker} it={it} momentum={momentum} />)}
-                  </CollapsibleContent>
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="sm" className="group mx-auto mt-1 flex text-muted-foreground">
-                      <span className="group-data-[state=open]:hidden">{lists[t.value].length - SHOWN}곳 더 보기</span>
-                      <span className="hidden group-data-[state=open]:inline">접기</span>
-                    </Button>
-                  </CollapsibleTrigger>
-                </Collapsible>
-              )}
-            </>}
+          <TabsContent key={t.value} value={t.value} className="flex min-h-0 flex-col pt-1">
+            {lists[t.value].length === 0 ? <Meta className="py-2">{t.empty}</Meta> : (
+              <FillArea>
+                <div className="flex flex-col">
+                  {lists[t.value].slice(0, moreTab === t.value ? undefined : SHOWN).map((it) => <ReactionRow key={it.ticker} it={it} momentum={momentum} />)}
+                </div>
+                {lists[t.value].length > SHOWN && (
+                  <Button variant="ghost" size="sm" className="mx-auto mt-1 flex text-muted-foreground" aria-expanded={moreTab === t.value}
+                    onClick={() => setMoreTab(moreTab === t.value ? null : t.value)}>
+                    {moreTab === t.value ? "접기" : `${lists[t.value].length - SHOWN}곳 더 보기`}
+                  </Button>
+                )}
+              </FillArea>
+            )}
           </TabsContent>
         ))}
       </Tabs>

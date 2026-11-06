@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Bullets, DqHead, DqValue, H3, Pp } from "@/components/follow/season/seasonUi"
 import { formatPp } from "@/utils/format"
-import { useChain, useComputeCallReaction } from "@/hooks/useTranscripts"
+import { useChain, useComputeCallReaction, useUpcoming } from "@/hooks/useTranscripts"
 import type { ChainDetail } from "@/types"
 
 const stripCites = (s: string) => s.replace(/\s*\[\d+\](\[\d+\])*/g, "")
@@ -111,6 +111,7 @@ export function UsEarningsHistory({ transcriptId }: { transcriptId: number }) {
             <h2 className="text-section font-semibold">실적 발표 이력</h2>
             <span className="text-caption text-muted-foreground">{c.etf} 대비 반응</span>
             <span className="ml-auto" />
+            <UpcomingLink ticker={c.ticker} />
             <Link to={`/follow/transcripts?view=season&sector=${encodeURIComponent(c.sector)}`} className="text-xs text-muted-foreground hover:text-foreground">{c.sector_name} 섹터 ›</Link>
           </header>
           <div className="px-4 py-2">
@@ -138,6 +139,14 @@ export function UsEarningsHistory({ transcriptId }: { transcriptId: number }) {
       </QueryState>
     </Card>
   )
+}
+
+/** 다가오는 발표에 발표 전 정리가 있으면 콜 상세의 그 분기로 */
+function UpcomingLink({ ticker }: { ticker: string }) {
+  const { data } = useUpcoming(ticker)
+  if (!data?.expectation) return null
+  return <Link to={`/follow/transcripts?t=next:${ticker}`} className="text-xs font-medium text-ink hover:underline"
+    title={`${data.event_date} 발표${data.confirmed ? "" : " (예상일)"}`}>발표 전 기대 보기 ›</Link>
 }
 
 function NoReaction({ transcriptId }: { transcriptId: number }) {

@@ -1,5 +1,6 @@
 // 핵심 종목 진행판 (ia-redesign §4.6a ⑦) — 기준별 필터(?core=) · 상태 요약 · 종목 타일(곧 발표 → 발표 완료 → 일정 미정)
 // | 오른쪽에 곧 발표(기대 정리 상태·만들기)와 발표 전 기대를 얼마나 맞혔나.
+import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -7,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { InfoTip } from "@/components/shared/InfoTip"
+import { InPlaceMore } from "@/components/shared/Bounded"
 import { CoreBadge, H3, Meta, Pp, SHORT_REASON, Section, VERDICT, expectationStatus, mmdd, patchParams } from "@/components/follow/season/seasonUi"
 import { useMakeExpectation } from "@/hooks/useTranscripts"
 import { coreCounts, coreTiles, type CoreTile, type MomentumSet } from "@/lib/seasonBoard"
@@ -23,6 +25,8 @@ export function CoreBoard({ d, today, momentum }: { d: SeasonOverview; today: st
   const tiles = filter === "all" ? all : all.filter((t) => t.reasons.includes(filter))
   const n = coreCounts(tiles)
   const reasons = REASON_ORDER.map((r) => ({ r, n: all.filter((t) => t.reasons.includes(r)).length })).filter((x) => x.n > 0)
+  const [more, setMore] = useState(false)
+  const [cases, setCases] = useState(false)
   return (
     <div className="surface-grid grid grid-cols-1 lg:grid-cols-[1fr_380px]">
       <Section className="min-w-0">
@@ -43,29 +47,27 @@ export function CoreBoard({ d, today, momentum }: { d: SeasonOverview; today: st
             발표 <b className="tabular-nums text-foreground">{n.reported}</b> · 곧 발표 <b className="tabular-nums text-foreground">{n.upcoming}</b> · 일정 미정 <b className="tabular-nums text-foreground">{n.none}</b>
             <span className="ml-2 inline-flex items-center gap-1"><i className="inline-block size-1.5 rounded-full bg-hypothesis" />모멘텀 후보</span>
           </p>
-          <div className="grid grid-cols-3 gap-px border bg-border sm:grid-cols-5 xl:grid-cols-7">
-            {tiles.slice(0, SHOWN).map((t) => <Tile key={t.ticker} t={t} />)}
-          </div>
+          {/* 더 보기는 제자리 — 펼치기 직전 높이 그대로, 나머지 타일은 그 안에서 스크롤 */}
+          <InPlaceMore open={more}>
+            <div className="grid grid-cols-3 gap-px border bg-border sm:grid-cols-5 xl:grid-cols-7">
+              {tiles.slice(0, more ? undefined : SHOWN).map((t) => <Tile key={t.ticker} t={t} />)}
+            </div>
+          </InPlaceMore>
           {tiles.length > SHOWN && (
-            <Collapsible>
-              <CollapsibleContent>
-                <div className="grid grid-cols-3 gap-px border border-t-0 bg-border sm:grid-cols-5 xl:grid-cols-7">
-                  {tiles.slice(SHOWN).map((t) => <Tile key={t.ticker} t={t} />)}
-                </div>
-              </CollapsibleContent>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="group mx-auto mt-1 flex text-muted-foreground">
-                  <span className="group-data-[state=open]:hidden">{tiles.length - SHOWN}개 더 보기</span>
-                  <span className="hidden group-data-[state=open]:inline">접기</span>
-                </Button>
-              </CollapsibleTrigger>
-            </Collapsible>
+            <Button variant="ghost" size="sm" className="mx-auto mt-1 flex text-muted-foreground" aria-expanded={more} onClick={() => setMore(!more)}>
+              {more ? "접기" : `${tiles.length - SHOWN}개 더 보기`}
+            </Button>
           )}
         </>}
       </Section>
       <Section className="min-w-0">
-        <Upcoming items={d.upcoming} />
-        <Evals evals={d.evals} />
+        {/* '사례 전체'도 제자리 — 오른쪽 칸 높이 그대로 안에서 스크롤 */}
+        <InPlaceMore open={cases} className="flex-1">
+          <div className="flex flex-col gap-2">
+            <Upcoming items={d.upcoming} />
+            <Evals evals={d.evals} open={cases} onOpenChange={setCases} />
+          </div>
+        </InPlaceMore>
       </Section>
     </div>
   )
@@ -124,7 +126,7 @@ function Upcoming({ items }: { items: SeasonItem[] }) {
 const EVAL_KEYS: Exclude<EvalVerdict, "minor">[] = ["hit", "underweighted", "noise", "missed"]
 const EVAL_CLS: Record<Exclude<EvalVerdict, "minor">, string> = { hit: "bg-chart-green", underweighted: "bg-hypothesis/60", noise: "bg-muted-foreground/40", missed: "bg-hypothesis" }
 
-function Evals({ evals }: { evals: SeasonOverview["evals"] }) {
+function Evals({ evals, open, onOpenChange }: { evals: SeasonOverview["evals"]; open: boolean; onOpenChange: (v: boolean) => void }) {
   const total = EVAL_KEYS.reduce((n, k) => n + evals[k], 0)
   const missed = evals.cases.filter((c) => c.verdict === "missed")
   return (
@@ -138,7 +140,7 @@ function Evals({ evals }: { evals: SeasonOverview["evals"] }) {
           {EVAL_KEYS.map((k) => <span key={k} className="inline-flex items-center gap-1"><i className={cn("inline-block size-2", EVAL_CLS[k])} />{VERDICT[k]} <b className="tabular-nums">{evals[k]}</b></span>)}
         </p>
         {missed.length > 0 && <p className="text-caption text-muted-foreground">못 봄 · {missed.slice(0, 2).map((c) => `${c.ticker} ${c.issue}`).join(" / ")}</p>}
-        <Collapsible>
+        <Collapsible open={open} onOpenChange={onOpenChange}>
           <CollapsibleTrigger asChild><Button variant="ghost" size="xs" className="group text-muted-foreground">
             <span className="group-data-[state=open]:hidden">사례 전체 ›</span><span className="hidden group-data-[state=open]:inline">접기</span>
           </Button></CollapsibleTrigger>
