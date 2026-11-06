@@ -109,6 +109,11 @@ def sync_events(conn, only: list[str] | None = None) -> dict:
                 (tk, q["year"], f"Q{q['quarter']}", q["date"], season_of(q["date"])["key"]))
             n += 1
     today = date.today().isoformat()
+    # 컨콜 녹취록을 받았으면 발표는 이미 있었다 — SEC 공시 확인이 늦어도 확정으로 본다
+    n += conn.execute(
+        "UPDATE earnings_events SET confirmed=1, updated_at=datetime('now') WHERE confirmed=0 AND event_date <= ? AND EXISTS "
+        "(SELECT 1 FROM transcripts t WHERE t.ticker=earnings_events.ticker AND t.fiscal_year=earnings_events.fiscal_year "
+        "AND t.fiscal_period=earnings_events.fiscal_period)", (today,)).rowcount
     for r in conn.execute(f"SELECT ticker, next_report_date FROM transcript_calendar WHERE next_report_date >= ? "
                           f"AND ticker IN ({','.join('?' * len(tickers))})", (today, *tickers)).fetchall():
         fye = fs[r["ticker"]].get("fiscal_year_end")
@@ -842,7 +847,10 @@ def daily(max_llm: int = 20) -> dict:
     LLM 호출은 회차당 max_llm으로 막는다(못 한 것은 다음 회차)."""
     from pipeline import call_reaction as cr
     from pipeline.transcript import refresh_calendar
-    out: dict = {"aliases": cr.ensure_ko_aliases()}   # 새 팔로우의 한글 별칭(없는 것만, haiku)
+    try:
+        out: dict = {"aliases": cr.ensure_ko_aliases()}   # 새 팔로우의 한글 별칭(없는 것만, haiku)
+    except Exception as e:  # noqa: BLE001 — 별칭은 보조 단계. 실패해도 이벤트 동기화·반응은 돌아야 한다(11/4~ 멈춤 사고)
+        out = {"aliases": f"error {type(e).__name__}: {str(e)[:120]}"}
     conn = get_connection()
     today = date.today()
     season = season_of(today.isoformat())["key"]

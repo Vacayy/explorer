@@ -62,6 +62,23 @@ def ensure_schema(conn) -> None:
 INDEX_TICKERS = {"kospi": "^KS11", "kosdaq": "^KQ11"}
 
 
+def _stored_prev_close(key: str, day: date) -> float | None:
+    """지수 띠가 쌓는 종가(market_indicators `index_{key}`)에서 day 직전 거래일 종가.
+
+    yfinance 일봉은 하루가 통째로 빠질 때가 있어(2026-11-06: 11/5 누락 → 전일을 11/4로 잡아 −13.4%)
+    전일 기준값은 우리 저장분을 먼저 쓴다.
+    """
+    conn = get_connection()
+    try:
+        r = conn.execute("SELECT value FROM market_indicators WHERE indicator=? AND snapshot_date<? "
+                         "ORDER BY snapshot_date DESC LIMIT 1", (f"index_{key}", day.isoformat())).fetchone()
+        return float(r["value"]) if r and r["value"] else None
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        conn.close()
+
+
 def market_snapshot(day: date, slot: str) -> dict | None:
     """회차 시점의 코스피·코스닥 값과 전일 대비, 그 시각까지의 코스피 5분 경로 — 화두가 돌 때 시장이 어땠는지 나중에 맞대 보려고 쌓는다.
 
@@ -85,7 +102,7 @@ def market_snapshot(day: date, slot: str) -> dict | None:
                 value, at = float(bars[-1][1]), bars[-1][0].strftime("%H:%M")
             else:
                 continue
-            base = float(prev[-1]) if prev else None
+            base = _stored_prev_close(key, day) or (float(prev[-1]) if prev else None)
             out[key] = {"value": round(value, 2), "change_pct": round((value / base - 1) * 100, 2) if base else None, "at": at}
             if key == "kospi":
                 path = [[ts.strftime("%H:%M"), round(float(v), 2)] for ts, v in bars]

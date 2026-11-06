@@ -128,3 +128,47 @@ class MarketTodayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarketSnapshotPrevCloseTests(unittest.TestCase):
+    """yfinance 일봉이 전일을 빠뜨려도(2026-11-06 실측: 11/5 누락) 저장된 종가로 전일 대비를 낸다."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "t.sqlite"
+        conn = self.connect()
+        conn.execute("CREATE TABLE market_indicators(snapshot_date TEXT, indicator TEXT, value REAL, fetched_at TEXT)")
+        conn.executemany("INSERT INTO market_indicators VALUES (?,?,?,'')",
+                         [("2026-11-04", "index_kospi", 5683.8), ("2026-11-05", "index_kospi", 5383.8)])
+        conn.commit()
+        conn.close()
+        p = patch.object(mt, "get_connection", self.connect)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def connect(self):
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _fake_yf(self):
+        import sys
+        import types
+        import pandas as pd
+        kst = "Asia/Seoul"
+        daily = pd.Series([5683.8, 4966.28], index=pd.to_datetime(["2026-11-04", "2026-11-06"]).tz_localize(kst))
+        bars = pd.Series([4923.47], index=pd.DatetimeIndex([pd.Timestamp("2026-11-06 09:10", tz=kst)]))
+
+        class T:
+            def __init__(self, tk): self.tk = tk
+            def history(self, period, interval=None):
+                return pd.DataFrame({"Close": bars if interval else daily})
+        return patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=T)})
+
+    def test_prev_close_comes_from_stored_indicators_when_yfinance_daily_skips_a_day(self):
+        with self._fake_yf():
+            snap = mt.market_snapshot(date(2026, 11, 6), "0930")
+        self.assertEqual(snap["kospi"]["value"], 4923.47)
+        self.assertEqual(snap["kospi"]["change_pct"], -8.55)       # 11/5 5383.8 대비 (11/4 대비면 −13.38)
+        self.assertEqual(snap["kosdaq"]["change_pct"], -13.38)    # 저장분이 없으면 yfinance 일봉으로 (가짜 시세는 같은 값)

@@ -263,6 +263,9 @@ def _move_evidence_and_drop(conn, from_edge_id: int, to_edge_id: int | None) -> 
     conn.execute("DELETE FROM entity_relations WHERE id=?", (from_edge_id,))
 
 
+SOFT_ENTITY_REFS: list[tuple[str, str]] = [("transcript_follow", "entity_id")]
+
+
 def _entity_fk_columns(conn) -> list[tuple[str, str]]:
     """entities(id)를 참조하는 (테이블, 컬럼) 전수 — sqlite_master + PRAGMA foreign_key_list로 동적 발견.
     entity_relations는 별도 특수 처리하므로 제외."""
@@ -275,6 +278,10 @@ def _entity_fk_columns(conn) -> list[tuple[str, str]]:
         for fk in conn.execute(f"PRAGMA foreign_key_list({t})"):
             if fk["table"] == "entities" and (fk["to"] in ("id", None)):
                 cols.append((t, fk["from"]))
+    # FK 선언 없이 entities.id를 담는 컬럼 — 병합 때 같이 옮기지 않으면 지워진 id를 가리킨다
+    # (2026-11-06: transcript_follow.entity_id가 병합된 Apple 4201을 가리켜 실적 시즌 체인이 11/4부터 멈춤)
+    names = set(tables)
+    cols += [tc for tc in SOFT_ENTITY_REFS if tc[0] in names and tc not in cols]
     return cols
 
 
