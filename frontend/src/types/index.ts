@@ -811,6 +811,57 @@ export interface KrBreadth {
   up_ratio: number
 }
 
+/** 홈 › 한국·미국 시장 ① 지수 차트 + 요약 지표 (ia-redesign §4.2·4.3, D-325) — GET /api/spine/market/{kr|us}/overview */
+export type MarketKey = "kr" | "us"
+export type IndexRangeKey = "1d" | "1m" | "3m" | "1y"
+export interface IndexRange {
+  key: IndexRangeKey
+  /** 기준선 — 1일은 전일 종가, 기간은 기간 시작 전 값 */
+  base: number | null
+  /** 1일 = 현지 'HH:MM', 기간 = 'YYYY-MM-DD' */
+  points: { t: string; v: number }[]
+}
+export interface IndexSession {
+  /** pre = 개장 전(1일은 직전 거래일 경로) · open = 장중 · closed = 마감·휴장 */
+  state: "pre" | "open" | "closed"
+  trade_date: string | null
+  last_time: string | null
+  last_kst: string | null
+  open: string
+  close: string
+}
+export interface IndexOverview {
+  key: string
+  name: string
+  value: number | null
+  change: number | null
+  change_pct: number | null
+  prev_close: number | null
+  session: IndexSession
+  ranges: IndexRange[]
+}
+export interface OverviewTile {
+  key: "breadth" | "indiv_net" | "usdkrw" | "credit" | "fear_greed" | "us10y" | "dxy" | "wti"
+  label: string
+  value: number | null
+  change_pct: number | null
+  as_of: string | null
+  series: number[]
+  up?: number | null
+  down?: number | null
+  flat?: number | null
+  buy?: number | null
+  sell?: number | null
+  growth_20?: number | null
+  pctile?: number | null
+  second?: number | null
+}
+export interface MarketOverview {
+  market: MarketKey
+  indices: IndexOverview[]
+  tiles: OverviewTile[]
+}
+
 export interface RiskResponse {
   items: RiskIndicator[]
   signal: {

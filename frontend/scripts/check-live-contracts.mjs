@@ -18,26 +18,28 @@ const report = !process.argv.includes('--no-report')
 const routes = JSON.parse(readFileSync(root + 'src/api/generated/routes.json', 'utf8'))
 const samples = JSON.parse(readFileSync(root + 'scripts/live-contract-samples.json', 'utf8'))
 
-const fill = path => samples.paths[path] ?? path.replace(/\{(\w+)\}/g, (_, k) => samples.params[k] ?? `{${k}}`)
+// paths 값이 배열이면 그 경로를 모두 호출한다(예: 시장별 /market/{market}/overview — kr·us)
+const fill = path => [].concat(samples.paths[path] ?? path.replace(/\{(\w+)\}/g, (_, k) => samples.params[k] ?? `{${k}}`))
 const result = { ok: [], fail: [], unchecked: [], node: [] }
 
 for (const r of routes) {
   if (r.method !== 'get' || r.status !== 200 || samples.skip.includes(r.path)) continue
-  const path = fill(r.path)
-  if (path.includes('{')) { result.unchecked.push(`${r.path} (경로 예시 값 없음)`); continue }
-  const query = samples.query[r.path]
-  const url = `${base}${encodeURI(path)}${query ? '?' + encodeURI(query) : ''}`
-  let resp
-  try { resp = await fetch(url, { signal: AbortSignal.timeout(30_000), headers: { 'x-observe-skip': '1' } }) } catch (e) { result.unchecked.push(`${r.path} (${e.name === 'TimeoutError' ? '30초 초과' : '연결 실패'})`); continue }
-  if (resp.status !== 200) { result.unchecked.push(`${r.path} (HTTP ${resp.status}${query ? '' : ' — 쿼리 예시 값 필요?'})`); continue }
-  let data
-  try { data = await resp.json() } catch { result.fail.push({ route: r.path, field: '', detail: 'JSON 아님' }); continue }
-  let ok
-  try { ok = (await import(`${root}src/api/generated/validators-${r.group}.js`))[r.validator](data) } catch { result.node.push(r.path); continue }
-  if (ok) { result.ok.push(r.path); continue }
-  const v = (await import(`${root}src/api/generated/validators-${r.group}.js`))[r.validator]
-  const e = v.errors?.[0] ?? {}
-  result.fail.push({ route: r.path, field: (e.instancePath ?? '').split('/').slice(1).join('.'), detail: `${e.message ?? ''} ${JSON.stringify(e.params ?? {})}`.trim() })
+  for (const path of fill(r.path)) {
+    if (path.includes('{')) { result.unchecked.push(`${r.path} (경로 예시 값 없음)`); continue }
+    const query = samples.query[r.path]
+    const url = `${base}${encodeURI(path)}${query ? '?' + encodeURI(query) : ''}`
+    let resp
+    try { resp = await fetch(url, { signal: AbortSignal.timeout(30_000), headers: { 'x-observe-skip': '1' } }) } catch (e) { result.unchecked.push(`${r.path} (${e.name === 'TimeoutError' ? '30초 초과' : '연결 실패'})`); continue }
+    if (resp.status !== 200) { result.unchecked.push(`${r.path} (HTTP ${resp.status}${query ? '' : ' — 쿼리 예시 값 필요?'})`); continue }
+    let data
+    try { data = await resp.json() } catch { result.fail.push({ route: r.path, field: '', detail: 'JSON 아님' }); continue }
+    let ok
+    try { ok = (await import(`${root}src/api/generated/validators-${r.group}.js`))[r.validator](data) } catch { result.node.push(r.path); continue }
+    if (ok) { result.ok.push(r.path); continue }
+    const v = (await import(`${root}src/api/generated/validators-${r.group}.js`))[r.validator]
+    const e = v.errors?.[0] ?? {}
+    result.fail.push({ route: r.path, field: (e.instancePath ?? '').split('/').slice(1).join('.'), detail: `${e.message ?? ''} ${JSON.stringify(e.params ?? {})}`.trim() })
+  }
 }
 
 for (const f of result.fail) {

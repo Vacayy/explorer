@@ -9,7 +9,8 @@
   "paths": {
     "/api/spine/company/{name}/dossier": "/api/spine/company/삼성전자/dossier",
     "/api/spine/person/{name}/dossier": "/api/spine/person/젠슨 황/dossier",
-    "/api/spine/person/{entity_id}": "/api/spine/person/5215"
+    "/api/spine/person/{entity_id}": "/api/spine/person/5215",
+    "/api/spine/market/{market}/overview": ["/api/spine/market/kr/overview", "/api/spine/market/us/overview"]
   },
   "query": {
     "/api/companies/search": "q=삼성",

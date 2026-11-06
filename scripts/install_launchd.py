@@ -122,6 +122,9 @@ JOBS = [
     # 이번 주 큰 그림(ia-redesign §4.25, D-313 4) — 매주 월 07:00, 지난 7일 내러티브·Market Today·Overnight로 줄기·전제(sonnet 1콜).
     # 입력 해시가 같으면 건너뛴다. 16:00 마감 정리 뒤 조건 실행은 markettoday 작업 안에서(scripts/market_today.py)
     ("bigpicture", [PY, "scripts/weekly_big_picture.py"], {"Weekday": 1, "Hour": 7, "Minute": 0}),
+    # 지수 장중 5분 경로(ia-redesign §4.2·4.3 ①, D-325) — 10분마다, 국장·미장 정규장(+20분)에만 yfinance 5분봉 5콜 이하.
+    # 장 밖·주말은 스크립트가 외부 호출 없이 바로 끝난다. 지난 회차는 다음 회차가 같은 날 봉을 다시 받으므로 따라잡기 대상 아님
+    ("indexintraday", [PY, "scripts/index_intraday.py"], 600),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
 

@@ -26,6 +26,7 @@ export const loaders = {
   'knowledge': () => import('./validators-knowledge.js'),
   'kr': () => import('./validators-kr.js'),
   'market-today': () => import('./validators-market-today.js'),
+  'market': () => import('./validators-market.js'),
   'narrative': () => import('./validators-narrative.js'),
   'narrative-candidates': () => import('./validators-narrative-candidates.js'),
   'narratives': () => import('./validators-narratives.js'),

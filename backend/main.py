@@ -123,9 +123,11 @@ app.include_router(peers.router)
 
 from routers import spine_observe  # 관측(사용 이벤트·관측 탭 요약, D-283)
 from routers import spine_market_today  # 장중 화두 요약(docs/specs/market-today.md)
+from routers import spine_market_overview  # 홈 시장 탭 ① 지수 차트·요약 지표(ia-redesign §4.2·4.3, D-325)
 app.include_router(spine_client_errors.router)
 app.include_router(spine_observe.router)
 app.include_router(spine_market_today.router)
+app.include_router(spine_market_overview.router)
 
 
 @app.middleware("http")

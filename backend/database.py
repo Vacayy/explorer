@@ -30,6 +30,8 @@ def init_db():
     cur.executescript(MARKET_TODAY_SCHEMA)
     from pipeline.market_today_links import ensure_schema as ensure_mt_links  # 화두 → 내러티브 연결·후보 (ia-redesign §9)
     ensure_mt_links(conn)
+    from pipeline.index_intraday import SCHEMA as INDEX_INTRADAY_SCHEMA  # 지수 장중 5분 경로 (ia-redesign §4.2·4.3, D-325)
+    cur.executescript(INDEX_INTRADAY_SCHEMA)
     from pipeline.credit_spreads import SCHEMA as CREDIT_SCHEMA  # 회사채 스프레드 (D-230)
     cur.executescript(CREDIT_SCHEMA)
     from pipeline.retail_heat import SCHEMA as RETAIL_SCHEMA  # 개인 투자 열기 (D-231)
