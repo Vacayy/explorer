@@ -3,39 +3,21 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '../src/components/ui/tooltip'
-import { feedChip, highlightParts, isQuiet, isSearchView, unreadIds, usesTimeline } from '../src/lib/feed'
+import { feedPlatform, highlightParts, isQuiet, isSearchView, readingMode } from '../src/lib/feed'
 import { savedCounts } from '../src/lib/saved'
 import { sourcesSummary } from '../src/lib/sources'
 import { formatCountShort } from '../src/utils/format'
-import type { FeedDocument, TimelineChannel, TimelineItem } from '../src/types'
 
 /* ── 순수 규칙 ── */
-const doc = (id: number, kind: string, key: string, over: Partial<FeedDocument> = {}): FeedDocument => ({
-  id, source_type: kind, title: `글 ${id}`, url: '', published_at: '2026-11-04T02:00:00+00:00', summary: '요약', channel: key,
-  channel_kind: kind, channel_key: key, content: null, images: [], enrich_model: null, entities: [], ...over,
-})
-const item = (id: number, kind: string, key: string): TimelineItem => ({
-  id: `source:${id}`, kind: 'source', title: '', body: '', occurred_at: '', time_label: '', subject: '', period: null,
-  evidence_count: null, ai_generated: false, to: '', document: doc(id, kind, key), links: [],
-})
-const channel = (id: string, unread: number, latest_at: string | null = '2026-11-04T00:00:00Z'): TimelineChannel =>
-  ({ id, name: id, platform: id.split(':')[0] as TimelineChannel['platform'], count: 10, unread, latest_at, preview: '' })
-
-it('reads the view and source chip from the URL, keeping old feed query names', () => {
+it('reads the view, type chip and reading mode from the URL, keeping old feed query names', () => {
   expect(isSearchView('?view=documents')).toBe(true)
   expect(isSearchView('?source=telegram')).toBe(true)          // 옛 /feed?source= 링크는 문서 검색
-  expect(isSearchView('?channel_type=news&channel=telegram:a')).toBe(false)
-  expect(feedChip('?channel_type=news')).toBe('news')
-  expect(feedChip('?channel_type=bogus')).toBe('all')
-  expect(feedChip('?channel_type=system')).toBe('system')
-  expect([usesTimeline('all', ''), usesTimeline('telegram', ''), usesTimeline('news', ''), usesTimeline('blog', ''), usesTimeline('news', 'telegram:a')])
-    .toEqual([true, true, false, false, true])
-})
-
-it('marks the newest n posts of each source unread, n = that source’s unread count', () => {
-  const items = [item(1, 'telegram', 'a'), item(2, 'telegram', 'b'), item(3, 'telegram', 'a'), item(4, 'telegram', 'a'), item(5, 'blog', 'x')]
-  const ids = unreadIds(items, [channel('telegram:a', 2), channel('telegram:b', 0), channel('blog:x', 5)])
-  expect([...ids]).toEqual(['source:1', 'source:3', 'source:5'])
+  expect(isSearchView('?channel_type=blog&channel=telegram:a&reader_page=2&channel_q=x')).toBe(false)
+  expect([feedPlatform('?channel_type=blog'), feedPlatform('?channel_type=system'), feedPlatform('?channel_type=bogus'), feedPlatform('')])
+    .toEqual(['blog', 'system', 'all', 'all'])
+  // 블로그·유튜브·메모는 요약, 텔레그램·전체는 원문. 소스 id 접두사가 칩보다 앞서고 URL의 reading이 가장 앞선다
+  expect([readingMode(''), readingMode('?channel_type=youtube'), readingMode('?channel=blog:x'), readingMode('?channel_type=blog&channel=telegram:a'), readingMode('?channel=blog:x&reading=original')])
+    .toEqual(['original', 'summary', 'summary', 'original', 'original'])
 })
 
 it('treats a source without new posts for 7 days as quiet', () => {

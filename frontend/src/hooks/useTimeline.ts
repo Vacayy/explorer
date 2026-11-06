@@ -22,6 +22,14 @@ export function useTimeline(filters: TimelineFilters) {
   })
 }
 
+/** 상단 바 'AI가 최근 만든 것'(D-325) — Explorer 산출물(기업 요약·컨콜·내러티브·리포트·파급 분석·수출입) 최신 20건. 피드의 Explorer 묶음과 같은 원천 */
+export function useExplorerOutputs() {
+  return useQuery({
+    queryKey: ['spine', 'timeline', 'explorer-outputs'],
+    queryFn: () => getJson<TimelineResponse>('/api/spine/feed/timeline', { scope: 'system', kind: 'all', source: 'all', page: 1, size: 20 }),
+    staleTime: STALE.medium,
+  })
+}
 
 export function useTimelineChannels(until?: string) {
   return useQuery({

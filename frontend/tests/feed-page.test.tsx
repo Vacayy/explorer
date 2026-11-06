@@ -5,40 +5,49 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '../src/components/ui/tooltip'
 import type { TimelineChannel } from '../src/types'
 
-/* 피드 화면 — '전체' 칩 숫자 = 사람 소스 글 수(목록 기준), '모두 읽음' = 지금 칩 범위로 한 번에(D-301) */
+/* 피드 리더(D-325, 옛 ChannelReader) — '전체' 안 읽음 = 사람 소스만(D-301), '모두 읽음' = 지금 종류 칩 범위로 한 번에 */
 const ch = (id: string, count: number, unread: number): TimelineChannel =>
-  ({ id, name: id, platform: id.split(':')[0] as TimelineChannel['platform'], count, unread, latest_at: '2026-11-04T00:00:00Z', preview: '' })
+  ({ id, name: id, platform: id.split(':')[0] as TimelineChannel['platform'], count, unread, latest_at: '2026-11-04T00:00:00Z', preview: '최근 글' })
 const CHANNELS = [ch('telegram:a', 120, 3), ch('youtube:b', 30, 2), ch('memo:c', 5, 0), { ...ch('narrative:all', 900, 4), platform: 'system' as const }]
 const markAll = vi.fn()
-const empty = { isLoading: false, isError: false, isFetching: false, isFetchingNextPage: false, hasNextPage: false, data: { pages: [{ items: [] }] }, refetch: () => {}, fetchNextPage: () => {} }
+const timeline = vi.fn()
 
-vi.mock('@/hooks/useFeed', () => ({
-  useFeedChipCounts: () => ({ all: 54_021, telegram: 20_000, blog: 900 }),   // 훅이 스크랩을 뺀 문서 수
-  useFeedTimeline: () => empty,
-  useFeedDocuments: () => empty,
-}))
+vi.mock('@/hooks/useFeed', () => ({ useFeedTotal: () => 54_021 }))
 vi.mock('@/hooks/useTimeline', () => ({
-  useTimelineChannels: () => ({ isLoading: false, isError: false, data: { items: CHANNELS, total: 1055, total_unread: 9, until: '' }, refetch: () => {} }),
+  useTimeline: (f: unknown) => { timeline(f); return { isLoading: false, isError: false, isFetching: false, data: { items: [], page: 1, size: 20, has_more: false, until: '' }, refetch: () => {} } },
+  useTimelineChannels: () => ({ isLoading: false, isError: false, isFetching: false, data: { items: CHANNELS, total: 1055, total_unread: 9, until: '' }, refetch: () => {} }),
   useMarkChannelRead: () => ({ mutate: vi.fn(), isPending: false }),
   useMarkAllRead: () => ({ mutate: markAll, isPending: false }),
 }))
-vi.mock('@/hooks/useFeedTopics', () => ({ useFeedTopics: () => ({ stocks: [] }) }))
+vi.mock('@/hooks/useFeedTopics', () => ({ useFeedTopics: () => ({ themes: ['AI'], stocks: ['삼성전자'] }) }))
+vi.mock('@/hooks/useMarketToday', () => ({ useMarketToday: () => ({ data: { current: { label: '16:00 마감' } } }) }))
 vi.mock('@/components/feed/DocumentSearch', () => ({ DocumentSearch: () => null }))
 const { default: FeedPage } = await import('../src/components/feed/FeedPage')
 
-beforeEach(() => markAll.mockReset())
+beforeEach(() => { markAll.mockReset(); timeline.mockReset() })
 afterEach(cleanup)
 const renderAt = (path: string) => render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><MemoryRouter initialEntries={[path]}><FeedPage /></MemoryRouter></TooltipProvider></QueryClientProvider>)
-const chip = (label: string) => within(screen.getByRole('group', { name: '소스 종류' })).getByRole('button', { name: new RegExp(`^${label}`) })
+const sources = () => screen.getByRole('complementary', { name: '피드 소스 목록' })
 
-it("counts the '전체' chip from followed human sources, not every document", () => {
+it('restores the old reader: my feed list with type chips, source rows and the Explorer group at the bottom', () => {
   renderAt('/feed?reader_until=2026-11-04T09:00:00.000Z')
-  expect(chip('전체').textContent).toBe('전체155')                // 120 + 30 + 5 — Explorer 산출물(900)·문서 전체(54,021) 제외
-  expect(screen.getByPlaceholderText(/전체 수집 자료 54\.0천 건/)).toBeTruthy()   // 머리 검색칸은 문서 수 그대로
-  expect(chip('텔레그램').textContent).toBe('텔레그램120')        // 타임라인 칩도 같은 기준(D-303) — 문서 수 20,000 아님
-  expect(chip('유튜브').textContent).toBe('유튜브30')
-  expect(chip('메모').textContent).toBe('메모5')
-  expect(chip('블로그').textContent).toBe('블로그900')            // 문서 코퍼스 칩은 문서 수 그대로
+  const list = sources()
+  for (const label of ['전체', '텔레그램', '블로그', '유튜브', '투자자 메모']) expect(within(within(list).getByRole('group', { name: '소스 종류' })).getByRole('button', { name: label })).toBeTruthy()
+  // '전체' 줄의 안 읽음 = 사람 소스(3 + 2 + 0), Explorer 산출물(4)은 빼고 접힌 묶음으로
+  expect(within(list).getByRole('button', { name: /팔로우한 소스 전체/ }).textContent).toMatch(/5$/)
+  expect(within(list).getByRole('button', { name: /^Explorer/ })).toBeTruthy()
+  expect(screen.getByPlaceholderText(/전체 수집 자료 54\.0천 건/)).toBeTruthy()
+  // 오른쪽 위 띠 — 주제 칩과 Market Today 한 줄(세 번째 칸 없음)
+  expect(screen.getByRole('button', { name: '삼성전자' })).toBeTruthy()
+  const mt = screen.getByRole('link', { name: /Market Today/ }); expect([mt.textContent, mt.getAttribute('href')]).toEqual(['Market Today 16:00 정리', '/home'])
+  expect(screen.queryByRole('complementary', { name: '부상 종목' })).toBeNull()
+})
+
+it('reads a picked Explorer source from the system lane even under the 전체 chip', () => {
+  renderAt('/feed?channel=narrative:all&reader_until=2026-11-04T09:00:00.000Z')
+  expect(timeline).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'system', source: 'all', channel: 'narrative:all' }))
+  cleanup(); renderAt('/feed?channel_type=youtube&reader_until=2026-11-04T09:00:00.000Z')
+  expect(timeline).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'sources', source: 'youtube' }))
 })
 
 it("marks every human source read in one call, then only the chip's platform", () => {
