@@ -9,6 +9,7 @@
   sector_map 업종 이름)로 먼저, 못 잇으면 밸류체인 테마로 잇는다. 같으면 그 섹터, 아니면 topic이 품은 키워드 중 가장 앞의 것.
   일반어(market_today_links.GENERIC_TAGS)는 쓰지 않는다. 연결이 없으면 화면은 '연결된 내러티브 없음'.
 - 주요 자료: 최근 10일 블로그·스크랩·웹·유튜브 중 섹터 업종·주제 엔티티(2점)가 붙었거나 섹터 시총 상위 종목(1점)이 셋 이상 붙은 것.
+  제목에 섹터 키워드가 든 자료를 먼저, 그 안에서 최신순.
 """
 from __future__ import annotations
 
@@ -45,7 +46,8 @@ TW_LAYERS = {
     "반도체·전자부품": ["foundry", "design", "osat", "equipment", "substrate", "server", "components", "network", "pc", "mobile"],
     "조선·해운·운송": ["shipping"],
 }
-US_SEASON = {"반도체·전자부품": ["semis", "semicap"], "전력·에너지": ["power", "dcinfra"], "IT서비스·SW": ["neocloud"]}
+US_SEASON = {"반도체·전자부품": ["semis", "semicap"], "전력·에너지": ["power", "dcinfra"], "IT서비스·SW": ["software", "neocloud"],
+             "자동차·모빌리티": ["auto"], "항공·방산·우주": ["space"]}
 CREDIT_GROUPS = {"반도체·전자부품": "semis", "전력·에너지": "power"}
 
 
@@ -285,14 +287,17 @@ def sector_docs(conn, sector: str, codes_by_cap: list[str], latest: str) -> list
             topic_hit[r[0]] = True
         meta[r[0]] = {"id": r[0], "type": r[2], "title": (r[3] or "").strip() or "(제목 없음)", "published_at": r[4]}
     # 업종·주제 태그가 하나 이상(2점) 붙었거나 시총 상위 종목이 셋 이상 붙은 자료만 — 종목 한두 개만 스친 글은 뺀다
-    picked = sorted((meta[d] for d, s in score.items() if s >= 2 and (topic_hit.get(d) or s >= 3)),
-                    key=lambda m: m["published_at"] or "", reverse=True)
+    picked = [meta[d] for d, s in score.items() if s >= 2 and (topic_hit.get(d) or s >= 3)]
+    # 제목에 섹터 키워드가 든 자료를 먼저, 그 안에서 최신순
+    titled = {m["id"] for m in picked if any(k in m["title"] for k in kws)}
+    picked.sort(key=lambda m: m["published_at"] or "", reverse=True)
+    picked.sort(key=lambda m: m["id"] not in titled)
     return picked[:DOC_LIMIT]
 
 
 # ---------- 이 산업의 데이터 ----------
 
-def data_links(conn, sector: str, member_codes: set[str]) -> list[dict]:
+def data_links(conn, sector: str, member_caps: dict[str, float]) -> list[dict]:
     out = []
     groups = TRADE_GROUPS.get(sector)
     if groups:
@@ -313,7 +318,7 @@ def data_links(conn, sector: str, member_codes: set[str]) -> list[dict]:
             out.append({"kind": "trade", "label": "수출입", "title": best["name"] if best else f"품목 {len(items)}",
                         "value": best["value"] if best else None, "value_kind": "usd", "change": best["yoy"] if best else None,
                         "sub": f"{int(period[5:7])}월 · 전년 대비 · 품목 {len(items)}" if best and period else f"품목 {len(items)}",
-                        "count": len(items), "href": f"/follow/trade?grp={groups[0]}", "filtered": False})
+                        "count": len(items), "href": f"/follow/trade?grp={groups[0]}", "filtered": False})   # grp는 수출입 산업 칩(D-325 개편)이 받는다
     layers = TW_LAYERS.get(sector)
     if layers:
         from pipeline.tw_universe import COMPANIES, LAYERS
@@ -327,22 +332,30 @@ def data_links(conn, sector: str, member_codes: set[str]) -> list[dict]:
         out.append({"kind": "taiwan", "label": "대만 공급망", "title": f"{title} {len(codes)}사",
                     "value": round(statistics.median(yoys), 1) if yoys else None, "value_kind": "pct", "change": None,
                     "sub": f"{int(ym[5:7])}월 월매출 전년 대비 중앙값" if ym and yoys else "월매출 대기", "count": len(codes),
-                    "href": "/follow/taiwan", "filtered": False})
+                    "href": f"/follow/taiwan?tw_layer={layers[0]}" if len(layers) == 1 else "/follow/taiwan",
+                    "filtered": len(layers) == 1})
     from pipeline.value_chain import NODES
-    nodes = [(k, n) for k, n, _tw, kr, _d in NODES if set(kr) & member_codes]
+    # 이 섹터 종목이 걸린 칸 — 걸린 종목 시총 합이 큰 칸부터(대표 칸 = 링크 대상)
+    nodes = sorted(((k, n) for k, n, _tw, kr, _d in NODES if set(kr) & set(member_caps)),
+                   key=lambda kn: -sum(member_caps.get(c, 0) for c in next(x[3] for x in NODES if x[0] == kn[0])))
     if nodes:
         out.append({"kind": "valuechain", "label": "밸류체인", "title": nodes[0][1] if len(nodes) == 1 else f"{nodes[0][1]} 외 {len(nodes) - 1}",
                     "value": None, "value_kind": None, "change": None, "sub": f"이 섹터 종목이 걸린 칸 {len(nodes)}",
                     "count": len(nodes), "href": f"/value-chain?node={nodes[0][0]}", "filtered": True})
     keys = US_SEASON.get(sector)
     if keys:
+        from pipeline.earnings_chain import SECTORS
         ph = ",".join("?" * len(keys))
-        row = conn.execute(f"""SELECT season, sector, verdict FROM season_themes WHERE sector IN ({ph})
-            ORDER BY season DESC, id DESC LIMIT 1""", keys).fetchone()
-        if row:
-            out.append({"kind": "usSeason", "label": "미국 실적 시즌", "title": f"{row['season']} · {row['sector']}",
-                        "value": None, "value_kind": None, "change": None, "sub": row["verdict"] or "판정 대기",
-                        "count": len(keys), "href": f"/follow/transcripts?view=season&sector={row['sector']}", "filtered": True,
+        season = conn.execute(f"SELECT max(season) FROM season_themes WHERE sector IN ({ph})", keys).fetchone()[0]
+        rows = {r["sector"]: r for r in conn.execute(
+            f"SELECT sector, verdict, body_json FROM season_themes WHERE season = ? AND sector IN ({ph}) ORDER BY id", [season, *keys])} if season else {}
+        key = next((k for k in keys if k in rows), None)
+        if key:
+            row = rows[key]
+            one = (json.loads(row["body_json"] or "{}") or {}).get("one_line") or ""
+            out.append({"kind": "usSeason", "label": "미국 실적 시즌", "title": f"{SECTORS.get(key, (key,))[0]} 섹터 · {season}",
+                        "value": None, "value_kind": None, "change": None, "sub": one or "판정 대기",
+                        "count": len(rows), "href": f"/follow/transcripts?view=season&sector={key}", "filtered": True,
                         "verdict": row["verdict"]})
     cg = CREDIT_GROUPS.get(sector)
     if cg:
@@ -374,6 +387,16 @@ def _members(conn, sector: str, latest: str) -> list[dict]:
                     "chg_1d": round((c[0] / p[0] - 1) * 100, 2) if c and p and p[0] else None,
                     "ret_1m": i["ret_1m"], "rs_long": i["rs_long"], "rs_short": i["rs_short"]})
     return out
+
+
+def _sector_entity(conn, sector: str) -> dict:
+    """섹터를 대표하는 업종 엔티티 — 이름 조각 중 type='sector' 엔티티가 있는 첫 것(예: 반도체·전자부품 → 반도체).
+    피드 문서 검색 industry 값 · 팔로우 · AI 대화 대상(theme)으로 쓴다."""
+    for k in sector.split("·"):
+        r = conn.execute("SELECT id, name FROM entities WHERE type = 'sector' AND name = ? AND status = 'active'", (k,)).fetchone()
+        if r:
+            return {"feed_industry": r["name"], "entity_id": r["id"]}
+    return {"feed_industry": None, "entity_id": None}
 
 
 def overview_row(conn, sector: str) -> dict | None:
@@ -416,9 +439,8 @@ def sector_detail(conn, sector: str, runtime=None) -> dict | None:
             "peer_groups": len(groups_out) if runtime is not None else None,
             "peer_preview": [{"id": x["id"], "name": x["name"], "members": x["members"], "med_60d": x["med_60d"],
                               "series": x["series_60d"]} for x in preview],
-            "data_links": data_links(conn, sector, {m["stock_code"] for m in members}),
-            "feed_industry": next((k for k in sector.split("·") if conn.execute(
-                "SELECT 1 FROM entities WHERE type = 'sector' AND name = ?", (k,)).fetchone()), None),
+            "data_links": data_links(conn, sector, {m["stock_code"]: m["market_cap"] or 0 for m in members}),
+            **_sector_entity(conn, sector),
         }
     return _cached(f"detail:{sector}:{runtime is not None}", latest, build)
 

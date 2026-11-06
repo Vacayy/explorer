@@ -41,13 +41,14 @@ export const SECTIONS: readonly SectionDef[] = [
   ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
     { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover", "/explore"] },
-    { key: "peers", path: "/discover/peers", label: "Peer 그룹", match: ["/discover/peers", "/analyze/compare"] },
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
     { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
     // 신호(/explore)는 종목 발견 '오늘의 신호'로 옮겨 리다이렉트(4c). 기업활동 탭은 홈 › 한국 시장으로 옮겨 없앴다(D-300)
   ] },
-  { key: "industry", label: "산업", path: "/map", tabs: [
-    { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },
+  // 산업 첫 탭 = 섹터 지도(/industry) → 섹터 화면(/industry/:sector). Peer 그룹은 섹터 화면 탭으로 옮겨 옛 /discover/peers·/analyze/compare는
+  // 리다이렉트 전 한 프레임도 여기로 판정(D-327)
+  { key: "industry", label: "산업", path: "/industry", tabs: [
+    { key: "sectors", path: "/industry", label: "섹터", match: ["/industry", "/map", "/follow/universe", "/discover/industry", "/discover/peers", "/analyze/compare"] },
     { key: "trade", path: "/follow/trade", label: "수출입", match: ["/follow/trade"] },
     { key: "taiwan", path: "/follow/taiwan", label: "대만 공급망", match: ["/follow/taiwan"] },
     { key: "valuechain", path: "/value-chain", label: "밸류체인", match: ["/value-chain"] },

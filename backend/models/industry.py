@@ -137,7 +137,8 @@ class SectorDetailResponse(BaseModel):
     peer_groups: int | None
     peer_preview: list[PeerPreview]
     data_links: list[DataLink]
-    feed_industry: str | None              # 피드 문서 검색 industry 값
+    feed_industry: str | None              # 피드 문서 검색 industry 값(섹터를 대표하는 업종 엔티티 이름)
+    entity_id: int | None                  # 그 업종 엔티티 id — 팔로우 · AI 대화 대상(theme)
 
 
 class SectorPeerGroup(BaseModel):

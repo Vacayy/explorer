@@ -1,4 +1,4 @@
-import { peerChildren, peerParent } from '@/lib/peerPresets'
+import { peerParent } from '@/lib/peerPresets'
 import { normalizedPeerPath } from '@/lib/peerPerformance'
 import type { PeerCatalog, PeerCompany, PeerPriceSnapshot } from '@/types/peer'
 
@@ -137,42 +137,6 @@ export function peerGroupSummary(catalog: PeerCatalog, snapshot: PeerPriceSnapsh
     caveats: rows.reduce((sum, row) => sum + row.caveats, 0),
     lastChecked: companies.reduce<string | null>((latest, company) => !latest || company.asOf > latest ? company.asOf : latest, null),
   }
-}
-
-export interface PeerListItem { id: string; name: string; memberCount: number; return20: number | null }
-const listItem = (catalog: PeerCatalog, snapshot: PeerPriceSnapshot, id: string): PeerListItem => {
-  const rows = peerMemberRows(catalog, snapshot, id, 20)
-  return { id, name: catalog.groups.find(group => group.id === id)?.name ?? id, memberCount: rows.length, return20: groupAverage(rows, 20).value }
-}
-const by20 = (a: PeerListItem, b: PeerListItem) => (b.return20 ?? -Infinity) - (a.return20 ?? -Infinity) || a.name.localeCompare(b.name, 'ko')
-
-/** 업종 = 상위 그룹이 없는 그룹(밸류체인·단독 관찰군) */
-export function peerIndustryOf(catalog: PeerCatalog, groupId: string): string | null {
-  if (!catalog.groups.some(group => group.id === groupId)) return null
-  return peerParent(catalog, groupId) ?? groupId
-}
-
-/**
- * 왼쪽 그룹 찾기 — 지금 업종(펼침, 사업군은 20일 순)과 '다른 업종'(20일 순).
- * 검색어는 그룹 이름 또는 구성 기업(이름·코드·별칭·제품)에 걸린 그룹만 남긴다. 성과 비교 구성원은 바꾸지 않는다.
- */
-export function peerFinder(catalog: PeerCatalog, snapshot: PeerPriceSnapshot, groupId: string, query: string) {
-  const needle = query.trim().toLocaleLowerCase('ko-KR')
-  const hit = (id: string) => {
-    if (!needle) return true
-    const group = catalog.groups.find(item => item.id === id)
-    if (group?.name.toLocaleLowerCase('ko-KR').includes(needle)) return true
-    return groupCompanies(catalog, id).some(company => [company.name, company.code, ...company.aliases, ...company.products].join(' ').toLocaleLowerCase('ko-KR').includes(needle))
-  }
-  const tops = catalog.groups.filter(group => !peerParent(catalog, group.id)).map(group => group.id)
-  const current = peerIndustryOf(catalog, groupId)
-  const children = (id: string) => peerChildren(catalog, id).map(child => child.id).filter(hit).map(child => listItem(catalog, snapshot, child)).sort(by20)
-  const open = current ? { industry: listItem(catalog, snapshot, current), children: children(current) } : null
-  const others = tops.filter(id => id !== current)
-    .filter(id => hit(id) || (needle && peerChildren(catalog, id).some(child => hit(child.id))))
-    .map(id => ({ ...listItem(catalog, snapshot, id), children: needle ? children(id) : [] })).sort(by20)
-  const empty = !!needle && !(open && (hit(open.industry.id) || open.children.length)) && !others.length
-  return { open, others, empty }
 }
 
 /** /analyze/compare?stocks=A,B 에서 넘어온 종목들 → 가장 많이 함께 든(같으면 작은) 그룹 */

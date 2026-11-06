@@ -369,13 +369,8 @@ export interface SpineSignalsResponse {
   as_of: string;
 }
 
-/** GET /api/spine/sector-map — 18 대분류 RS 사분면. trail = 1·2·3주 전 위치 */
+/** 산업 맵 RS 궤적 — 1·2·3주 전 위치 (sector_rs) */
 export interface SectorTrailPoint { weeks_ago: number; rs_long: number | null; rs_short: number | null }
-export interface SectorGroup {
-  name: string; market_cap: number; stocks: number
-  rs_long: number | null; rs_short: number | null; chg_5d: number; trail: SectorTrailPoint[]
-}
-export interface SectorMap { as_of: string | null; groups: SectorGroup[] }
 
 /** GET /api/spine/sector-map/peers — 섹터 → Peer 그룹 대응(서버 sector_peer_map, D-301 6). share = 그룹 구성 종목 중 이 섹터 비율 */
 export interface SectorPeerLink {
@@ -385,6 +380,49 @@ export interface SectorPeerLink {
 }
 export interface SectorPeerEntry { sector: string; partial: boolean; note: string | null; links: SectorPeerLink[] }
 export interface SectorPeers { catalog_as_of: string; auto_share: number; sectors: SectorPeerEntry[] }
+
+/** 섹터 대표지수 (D-327-4) — etf = 대표 ETF 종가, computed = Explorer 계산 지수(시총 가중) */
+export interface SectorBenchmark { kind: 'etf' | 'computed'; ticker: string | null; name: string | null; tracks: string | null; note: string | null }
+interface SectorQuote { last: number | null; last_date: string | null; chg_1d: number | null; ret_1m: number | null; ret_3m: number | null }
+interface SectorRs { rs_long: number | null; rs_short: number | null; chg_5d: number; trail: SectorTrailPoint[]; market_cap: number; stocks: number }
+/** GET /api/spine/industry/map — 섹터 지도 (backend/models/industry.py) */
+export interface IndustryMapSector extends SectorQuote, SectorRs {
+  name: string; benchmark: SectorBenchmark; peer_groups: number | null; series: number[]
+}
+export interface IndustryMap {
+  as_of: string | null; kospi: number[]; sectors: IndustryMapSector[]
+  outside_groups: { id: string; name: string; members: number }[]; peers_available: boolean
+}
+export interface SectorConstituent {
+  stock_code: string; corp_name: string; market_cap: number | null; weight: number
+  chg_1d: number | null; ret_1m: number | null; rs_long: number | null; rs_short: number | null
+}
+export interface SectorNarrative { id: number; topic: string; title: string; core_question: string | null; docs: number | null; updated_at: string | null }
+export interface SectorDoc { id: number; type: 'blog' | 'scrap' | 'web' | 'youtube'; title: string; published_at: string | null }
+export type SectorDataKind = 'trade' | 'taiwan' | 'valuechain' | 'usSeason' | 'credit'
+export interface SectorDataLinkCard {
+  kind: SectorDataKind; label: string; title: string; value: number | null; value_kind: 'usd' | 'pct' | null
+  change: number | null; sub: string; count: number; href: string; filtered: boolean; verdict: string | null
+}
+/** GET /api/spine/industry/{sector} — 섹터 화면 머리·개요·종목 */
+export interface IndustrySectorDetail extends SectorQuote, SectorRs {
+  as_of: string | null; name: string; benchmark: SectorBenchmark
+  series: { d: string; v: number; k: number | null }[]
+  top_weights: SectorConstituent[]; constituents: SectorConstituent[]
+  narratives: SectorNarrative[]
+  overview: { question: string; bullets: string[]; model: string | null; generated_at: string; narrative_ids: number[] } | null
+  docs: SectorDoc[]
+  peer_groups: number | null
+  peer_preview: { id: string; name: string; members: number; med_60d: number | null; series: number[] }[]
+  data_links: SectorDataLinkCard[]
+  feed_industry: string | null; entity_id: number | null
+}
+/** GET /api/spine/industry/{sector}/peers — 하위 Peer 그룹 */
+export interface SectorPeerGroupRow {
+  id: string; name: string; scope: 'product' | 'value_chain'; parent: string | null; partial: boolean; auto: boolean
+  members: number; med_20d: number | null; med_60d: number | null
+}
+export interface SectorPeerList { sector: string; catalog_as_of: string; prices_as_of: string; groups: SectorPeerGroupRow[] }
 
 /** GET /api/spine/signals/summary — 유형별 최신일 건수·상위 3. as_of = 신호 최신일 */
 export interface SignalsSummaryType {

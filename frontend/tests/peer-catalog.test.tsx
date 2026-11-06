@@ -1,24 +1,9 @@
 import prices from '@/data/peer-prices.json'
-import catalog from '@/data/peer-catalog.json'
-import api from '@/api/client'
-import { SECTOR_PEERS_FIXTURE } from './fixtures/sectorPeers'
-import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
-import PeerCatalogPage from '@/components/peers/PeerCatalogPage'
+import { expect, it } from 'vitest'
 import raw from '@/data/peer-catalog.json'
 import { parsePeerCatalog } from '@/lib/peerCatalog'
 import { locate } from '@/components/layout/navConfig'
 import { companyEvidence, sourceCheck } from '@/lib/peerFrame'
-
-vi.spyOn(api, 'get').mockImplementation(async (url: string) => url.includes('/sector-map/peers') ? { data: SECTOR_PEERS_FIXTURE } : ({ data: {
-  catalog, prices, origin: 'collector', publishedAt: prices.collectedAt, baselineOn: '2026-11-01',
-  lastAttempt: { at: prices.collectedAt, status: 'error', asOf: null, error: 'test collection failure' },
-  priceAgeDays: 2, snapshotAgeHours: 1, signalStatus: 'held', signalHoldReason: '기업행사 조정 검증 미완료',
-} }) as never)
-const clients: QueryClient[] = []
-afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0 })
 
 it('validates the shipped evidence graph, rejects missing references and unsafe URLs', () => {
   const catalog = parsePeerCatalog(raw)
@@ -43,25 +28,8 @@ it('robotics group (D-318) has six members whose link-only evidence is not count
   expect(members.every(c => prices.prices[c.code as keyof typeof prices.prices]?.length === prices.dates.length)).toBe(true)
 })
 
-it('peer route sits under explore', () => {
-  expect(locate('/discover/peers')).toEqual({ section: 'explore', tab: 'peers' })
-})
-
-function Location() {
-  const location = useLocation(); const navigate = useNavigate()
-  return <><output aria-label="현재 URL">{location.pathname + location.search}</output><button onClick={() => navigate(-1)}>테스트 뒤로</button></>
-}
-function mount(entry: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client)
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[entry]}><PeerCatalogPage /><Location /></MemoryRouter></QueryClientProvider>)
-}
-
-it('research view lists evidence sources with hosts and lets going back restore the previous group', async () => {
-  mount('/discover/peers?view=research&group=power_transformer&stock=103590')
-  expect(await screen.findAllByRole('link', { name: /dart\.fss\.or\.kr/ })).not.toHaveLength(0)
-  const card = screen.getByRole('button', { name: /일진전기/, expanded: true }).closest('li')!
-  fireEvent.click(within(card).getByRole('button', { name: '전력 케이블' }))
-  await waitFor(() => expect(screen.getByLabelText('현재 URL').textContent).toContain('group=power_cable'))
-  fireEvent.click(screen.getByRole('button', { name: '테스트 뒤로' }))
-  await waitFor(() => expect(screen.getByLabelText('현재 URL').textContent).toContain('group=power_transformer'))
+it('old peer routes sit under industry › 섹터 (Peer 그룹은 섹터 화면 탭, D-327)', () => {
+  expect(locate('/discover/peers')).toEqual({ section: 'industry', tab: 'sectors' })
+  expect(locate('/analyze/compare')).toEqual({ section: 'industry', tab: 'sectors' })
+  expect(locate('/industry/반도체·전자부품')).toEqual({ section: 'industry', tab: 'sectors' })
 })

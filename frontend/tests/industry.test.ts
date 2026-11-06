@@ -1,11 +1,10 @@
 import { expect, it } from 'vitest'
 import catalogRaw from '@/data/peer-catalog.json'
 import { parsePeerCatalog } from '@/lib/peerCatalog'
-import { groupMedianPath, groupMedianReturn, parseSectorSort, sectorDataLinks, sectorOfPeerGroup, sectorPeerGroups, shortRsTrail, sortSectors } from '@/lib/sectorPeers'
+import { sectorOfPeerGroup, sectorPeerGroups } from '@/lib/sectorPeers'
 import { SECTOR_PEERS_FIXTURE, sectorEntry } from './fixtures/sectorPeers'
 import { creditGroupMedians, defaultCreditPicks, parseCreditRange, sliceByRange } from '@/lib/credit'
 import { monthLabel, movingAverage, parseTradeGridSort, rankTradeGrid } from '@/lib/trade'
-import type { PeerPriceSnapshot } from '@/types/peer'
 import type { CreditRow, TradeFollowRow } from '@/types'
 
 const catalog = parsePeerCatalog(catalogRaw)
@@ -37,40 +36,6 @@ it('peer group → sector prefers a direct link, then a parent chain; human link
   const auto = { sector: '가상', partial: false, note: null, links: [{ ...sectorEntry('금융')!.links[0], source: 'auto' as const }] }
   expect(sectorOfPeerGroup(catalog, [auto, ...sectors], 'bank_financial_holding')).toBe('금융')
   expect(sectorOfPeerGroup(catalog, [], 'bank_financial_holding')).toBeNull()
-})
-
-it('sector data links only where the data covers the sector', () => {
-  expect(sectorDataLinks('반도체·전자부품')).toEqual(['trade', 'taiwan', 'valuechain', 'usSeason'])
-  expect(sectorDataLinks('금융')).toEqual([])
-  expect(sectorDataLinks('조선·해운·운송')).toEqual(['trade'])
-})
-
-const snapshot = {
-  dates: ['d0', 'd1', 'd2', 'd3', 'd4', 'd5'], asOf: 'd5', qualityIssues: [],
-  prices: { '000001': [100, 1, 1, 1, 110, 120], '000002': [100, 1, 1, 1, 90, 80], '000003': [100, 1, 1, 1, 100, 110], '000004': [null, 1, 1, 1, 50, 60] },
-} as unknown as PeerPriceSnapshot
-
-it('group median path starts at 100, drops codes without prices and reports coverage', () => {
-  const { path, covered } = groupMedianPath(snapshot, ['000001', '000002', '000003', '000004'], 5)
-  expect(covered).toBe(3)
-  expect(path?.[4]).toBeCloseTo(100)
-  expect(path?.[5]).toBeCloseTo(110)
-  expect(path?.[0]).toBe(100)
-  expect(groupMedianReturn(snapshot, ['000001', '000002'], 5)).toBeCloseTo(0)
-  expect(groupMedianPath(snapshot, ['000004'], 5)).toEqual({ path: null, covered: 0 })
-})
-
-it('sector sort defaults to market cap and keeps nulls last; RS trail runs oldest → now', () => {
-  const rows = [
-    { name: 'a', market_cap: 1, rs_long: null, rs_short: 50, chg_5d: 1 },
-    { name: 'b', market_cap: 3, rs_long: 10, rs_short: 20, chg_5d: -2 },
-    { name: 'c', market_cap: 2, rs_long: 90, rs_short: 80, chg_5d: 3 },
-  ]
-  expect(parseSectorSort('x')).toBe('cap')
-  expect(sortSectors(rows, 'cap').map(r => r.name)).toEqual(['b', 'c', 'a'])
-  expect(sortSectors(rows, 'long').map(r => r.name)).toEqual(['c', 'b', 'a'])
-  expect(sortSectors(rows, 'chg5').map(r => r.name)).toEqual(['c', 'a', 'b'])
-  expect(shortRsTrail({ rs_short: 18, trail: [{ weeks_ago: 1, rs_short: 6 }, { weeks_ago: 3, rs_short: 12 }, { weeks_ago: 2, rs_short: 0 }] }).map(t => t.value)).toEqual([12, 0, 6, 18])
 })
 
 const bond = (ticker: string, group: string, spread: number | null, chg: number | null, hy = false) =>

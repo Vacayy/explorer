@@ -36,7 +36,7 @@ const CASES = [
   ['/discover/screener', '', 'explore', 'discover'],
   ['/discover/signals', '', 'explore', 'discover'],
   ['/discover/alt-data', '', 'explore', 'discover'],
-  ['/discover/peers', '', 'explore', 'peers'],
+  ['/discover/peers', '', 'industry', 'sectors'],
   ['/follow/transcripts', '', 'explore', 'transcripts'],
   // 4d — 컨콜: 시즌 개요 · 섹터 상세 · 콜 상세 · 기업 목록(옛 /us는 리다이렉트)
   ['/follow/transcripts', '?view=season', 'explore', 'transcripts'],
@@ -56,13 +56,15 @@ const CASES = [
   ['/explore', '?list=high_52w', 'explore', 'discover'],
   ['/discover', '?signal=high_52w', 'explore', 'discover'],
   ['/discover', '?panel=history', 'explore', 'discover'],
-  ['/discover/peers', '?view=research&group=package_substrate&stock=007810', 'explore', 'peers'],
-  ['/analyze/compare', '?stocks=005930,000660', 'explore', 'peers'],
+  ['/discover/peers', '?view=research&group=package_substrate&stock=007810', 'industry', 'sectors'],
+  ['/analyze/compare', '?stocks=005930,000660', 'industry', 'sectors'],
   // 후속 묶음 — 시장 전체 기업활동은 홈 › 한국 시장 #actions(D-300). /actions?code=X는 도시에 단계까지 그 화면 그대로
   ['/actions', '', 'home', 'kr'],
   ['/actions', '?code=005930', 'home', 'kr'],   // 곧바로 /analyze/005930/summary#actions로 리다이렉트
   ['/home/kr', '?view=pro', 'home', 'kr'],
   // 산업
+  ['/industry', '', 'industry', 'sectors'],
+  ['/industry/반도체·전자부품', '?tab=peers&group=package_substrate', 'industry', 'sectors'],
   ['/map', '', 'industry', 'sectors'],
   ['/follow/universe', '', 'industry', 'sectors'],
   ['/discover/industry', '', 'industry', 'sectors'],
@@ -128,7 +130,6 @@ const CASES = [
   ['/research/watchlist', '', null, null],
   ['/research/memos', '', null, null],
   ['/research/catalysts', '', null, null],
-  ['/industry', '', null, null],
   ['/onchain', '', null, null],
 ]
 
@@ -142,7 +143,7 @@ test('the table covers every route declared in App.tsx', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
   const declared = [...app.matchAll(/<Route path="([^"]+)"/g)].map(m => m[1]).filter(p => p !== '*')
   const covered = new Set(CASES.map(([p]) => p.replace(/^\//, '')))
-  const examples = { ':boardId': '3', ':stockCode': '005930', ':tab': 'summary', ':ticker': 'NVDA', ':id': '4', ':docId': '12', ':synthesisId': '1' }
+  const examples = { ':sector': '반도체·전자부품', ':boardId': '3', ':stockCode': '005930', ':tab': 'summary', ':ticker': 'NVDA', ':id': '4', ':docId': '12', ':synthesisId': '1' }
   for (const route of declared) {
     const concrete = route.replace(/:\w+/g, k => examples[k])
     assert.ok(covered.has(concrete), `App.tsx route '${route}' has no case in the nav table`)
@@ -158,8 +159,8 @@ test('L2 tabs follow the plan, transitional tabs last', () => {
   const tabs = Object.fromEntries(SECTIONS.map(s => [s.key, s.tabs.map(t => t.label)]))
   assert.deepEqual(tabs.home, ['대시보드', '한국 시장', '미국 시장', '매크로', '내 종목'])
   assert.deepEqual(tabs.feed, ['피드', '저장됨'])
-  assert.deepEqual(tabs.explore, ['종목 발견', 'Peer 그룹', '컨콜', '인물'])
-  assert.deepEqual(tabs.industry, ['산업·섹터', '수출입', '대만 공급망', '밸류체인', '회사채'])
+  assert.deepEqual(tabs.explore, ['종목 발견', '컨콜', '인물'])
+  assert.deepEqual(tabs.industry, ['섹터', '수출입', '대만 공급망', '밸류체인', '회사채'])
   assert.deepEqual(tabs.world, ['지금', '그래프', '내 판단', '스터디'])
 })
 
@@ -179,8 +180,6 @@ const REDIRECTS = [
   // 4a단계 — 저장됨은 피드 하위, 소스는 관리자 하위
   ['follow/saved', '/feed/saved'],
   ['sources', '/admin/sources'],
-  // 4c단계 — VS 비교는 Peer 성과 비교로(?stocks=는 Peer 화면이 그룹·종목으로 푼다)
-  ['analyze/compare', '/discover/peers'],
   // 4d단계 — 미국 기업 목록은 컨콜 기업 목록으로(종목 도시에 /us/:ticker는 그대로)
   ['us', '/follow/transcripts'],
   // 4g단계 — 지식 목록 제거, 그래프는 유지(#17)
@@ -196,17 +195,21 @@ test('old home URLs redirect to the fixed home tabs', () => {
   }
 })
 
-// D-319 — 지운 옛 보기는 현행 화면으로. 남긴 보기: /map?view=map, /value-chain?view=lines, /retail
-test('removed old views redirect to the current screens (D-319)', () => {
+// D-319 — 지운 옛 보기는 현행 화면으로. 남긴 보기: /value-chain?view=lines, /retail
+// D-327 — 산업 첫 탭은 섹터 지도(/industry). 옛 /map(?view=map·?group=)은 MapRedirect, 옛 Peer 주소는 PeerRedirect
+test('removed old views redirect to the current screens (D-319, D-327)', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-  for (const [route, to] of [['follow', '/home/stocks'], ['follow/universe', '/map'], ['discover/industry', '/map'], ['industry', '/map'],
+  for (const [route, to] of [['follow', '/home/stocks'], ['follow/universe', '/industry'], ['discover/industry', '/industry'],
     ['stocks', '/home/stocks'], ['research', '/home/stocks'], ['research/watchlist', '/home/stocks']]) {
     assert.ok(app.includes(`<Route path="${route}" element={<Navigate to="${to}" replace />} />`), route)
   }
   assert.ok(!app.includes('FollowPage'))
-  const sectors = readFileSync(new URL('../src/components/sectors/SectorsPage.tsx', import.meta.url), 'utf8')
-  assert.match(sectors, /if \(raw && !view\) return <Navigate to="\/map" replace \/>/)
-  assert.ok(!/UniversePage|IndustryPage/.test(sectors))
+  assert.ok(app.includes('<Route path="industry" element={<IndustryMapPage />} />'))
+  assert.ok(app.includes('<Route path="industry/:sector" element={<SectorPage />} />'))
+  assert.ok(app.includes('<Route path="map" element={<MapRedirect />} />'))
+  for (const route of ['discover/peers', 'analyze/compare']) assert.ok(app.includes(`<Route path="${route}" element={<PeerRedirect />} />`), route)
+  const redirects = readFileSync(new URL('../src/components/industry/IndustryRedirects.tsx', import.meta.url), 'utf8')
+  assert.match(redirects, /params\.get\("view"\) === "map" \? "\/industry\?v=map"/)
   const vc = readFileSync(new URL('../src/components/explore/ValueChainPage.tsx', import.meta.url), 'utf8')
   assert.match(vc, /rawView && rawView !== "lines"/)
   assert.ok(!vc.includes('sankey"'))

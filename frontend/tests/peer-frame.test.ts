@@ -3,7 +3,7 @@ import raw from '@/data/peer-catalog.json'
 import rawPrices from '@/data/peer-prices.json'
 import { parsePeerCatalog } from '@/lib/peerCatalog'
 import { parsePeerPrices } from '@/lib/peerPerformance'
-import { companyEvidence, groupAverage, groupForStocks, peerDays, peerFinder, peerGroupParam, peerGroupSummary, peerMemberRows, peerView, selectPeerGroup, switchPeerView } from '@/lib/peerFrame'
+import { companyEvidence, groupAverage, groupForStocks, peerDays, peerGroupParam, peerGroupSummary, peerMemberRows, peerView, selectPeerGroup, switchPeerView } from '@/lib/peerFrame'
 import { sectorOfPeerGroup } from '@/lib/sectorPeers'
 import { SECTOR_PEERS_FIXTURE } from './fixtures/sectorPeers'
 
@@ -56,19 +56,6 @@ it('summary compares the group against its parent industry over 20 days', () => 
   expect(summary.vsParent20).toBeCloseTo(summary.avg[20]! - summary.parent!.avg20!)
   expect(peerGroupSummary(catalog, prices, 'bank_financial_holding')!.parent).toBeNull()
   expect(peerGroupSummary(catalog, prices, 'nope')).toBeNull()
-})
-
-it('finder opens the current industry (children by 20d) and filters by company or product search', () => {
-  const finder = peerFinder(catalog, prices, 'power_transformer', '')
-  expect(finder.open?.industry.id).toBe('power_infrastructure')
-  expect(finder.open?.children.map(c => c.id).sort()).toEqual(['power_cable', 'power_transformer', 'switchgear'])
-  const r = finder.open!.children.map(c => c.return20 ?? -Infinity)
-  expect([...r].sort((a, b) => b - a)).toEqual(r)
-  expect(finder.others.some(item => item.id === 'power_infrastructure')).toBe(false)
-  const search = peerFinder(catalog, prices, '', '일진전기')
-  expect(search.open).toBeNull()
-  expect(search.others.map(item => item.id)).toContain('power_infrastructure')
-  expect(peerFinder(catalog, prices, '', '없는제품').empty).toBe(true)
 })
 
 it('maps compared stocks to the group holding most of them and groups to sectors', () => {

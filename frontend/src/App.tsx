@@ -57,7 +57,9 @@ import CompanyPage from "@/components/company/CompanyPage"
 import QuestionsPage from "@/components/knowledge/QuestionsPage"
 import ThesisAuditPage from "@/components/thesis/ThesisAuditPage"
 import QuestionDetail from "@/components/knowledge/QuestionDetail"
-import SectorsPage from "@/components/sectors/SectorsPage"
+import IndustryMapPage from "@/components/industry/IndustryMapPage"
+import SectorPage from "@/components/industry/SectorPage"
+import { MapRedirect, PeerRedirect } from "@/components/industry/IndustryRedirects"
 import NarrativePage from "@/components/explore/NarrativePage"
 import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import WorldviewPage from "@/components/explore/WorldviewPage"
@@ -67,7 +69,6 @@ import { UsageTracker } from "@/components/shared/UsageTracker"
 import AdminPage from "@/components/admin/AdminPage"
 
 // Analysis
-import PeerCatalogPage from "@/components/peers/PeerCatalogPage"
 import MarketAnalysisPage from "@/components/analysis/MarketAnalysisPage"
 import SummaryPage from "@/components/summary/SummaryPage"
 import CompanyFinancials from "@/components/company/CompanyFinancials"
@@ -279,7 +280,7 @@ export default function App() {
             <Route path="follow" element={<Navigate to="/home/stocks" replace />} />
             <Route path="sources" element={<KeepQueryRedirect to="/admin/sources" />} />
             <Route path="follow/stocks" element={<StocksPage />} />
-            <Route path="follow/universe" element={<Navigate to="/map" replace />} />
+            <Route path="follow/universe" element={<Navigate to="/industry" replace />} />
             <Route path="follow/transcripts" element={<TranscriptPage />} />
             <Route path="follow/trade" element={<TradePage />} />
             <Route path="follow/taiwan" element={<TaiwanPage />} />
@@ -300,7 +301,10 @@ export default function App() {
 
             {/* 옛 탐색 › 신호 → 종목 발견 '오늘의 신호'(ia-redesign §10.6). ?list=<type>은 신호 목록 시트(?signal=)로 */}
             <Route path="explore" element={<ExploreRedirect />} />
-            <Route path="map" element={<SectorsPage />} />
+            {/* 산업 › 섹터 지도 · 섹터 화면(D-327). 옛 /map(산업·섹터)은 섹터 지도로, ?group=<섹터>는 그 섹터 화면으로 */}
+            <Route path="industry" element={<IndustryMapPage />} />
+            <Route path="industry/:sector" element={<SectorPage />} />
+            <Route path="map" element={<MapRedirect />} />
             <Route path="narrative" element={<NarrativePage />} />
             <Route path="narrative/history" element={<NarrativeHistory />} />
             <Route path="knowledge/ontology" element={<WorldviewPage />} />
@@ -318,16 +322,17 @@ export default function App() {
 
             {/* Discovery */}
             <Route path="discover" element={<MarketAnalysisPage />} />
-            <Route path="discover/peers" element={<PeerCatalogPage />} />
-            <Route path="discover/industry" element={<Navigate to="/map" replace />} />
+            {/* 탐색 › Peer 그룹은 섹터 화면 Peer 탭으로 옮김(D-327 안 A) — 그룹이 속한 섹터 화면, 섹터 밖 그룹은 섹터 지도 찾기 */}
+            <Route path="discover/peers" element={<PeerRedirect />} />
+            <Route path="discover/industry" element={<Navigate to="/industry" replace />} />
             <Route path="discover/screener" element={<Navigate to="/discover" replace />} />
             <Route path="discover/signals" element={<Navigate to="/discover#signals" replace />} />
             <Route path="discover/alt-data" element={<Navigate to="/discover" replace />} />
 
             {/* Analysis */}
             <Route path="analysis/backtests" element={<Navigate to="/discover" replace />} />
-            {/* VS 비교 → Peer 성과 비교(ia-redesign §10.6). ?stocks=는 Peer 화면이 그룹·종목으로 풀어 쓴다 */}
-            <Route path="analyze/compare" element={<KeepQueryRedirect to="/discover/peers" />} />
+            {/* VS 비교 → Peer 성과 비교(ia-redesign §10.6). ?stocks=는 그 종목이 가장 많이 든 그룹의 섹터 화면 Peer 탭으로(D-327) */}
+            <Route path="analyze/compare" element={<PeerRedirect />} />
             <Route path="analyze/:stockCode" element={<Navigate to="summary" replace />} />
             <Route path="analyze/:stockCode/summary" element={<AnalyzePage tab="summary" />} />
             <Route path="analyze/:stockCode/financials" element={<AnalyzePage tab="financials" />} />
@@ -361,7 +366,6 @@ export default function App() {
             <Route path="research/catalysts" element={<Navigate to="/portfolio/events" replace />} />
 
             {/* Legacy redirects */}
-            <Route path="industry" element={<Navigate to="/map" replace />} />
             <Route path="onchain" element={<Navigate to="/discover" replace />} />
             <Route path="company/:stockCode/:tab" element={<LegacyRedirect />} />
 

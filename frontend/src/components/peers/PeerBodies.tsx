@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { normalizedPeerPath } from '@/lib/peerPerformance'
 import { peerChildren, peerParent } from '@/lib/peerPresets'
-import { PEER_DAYS, companyEvidence, sourceCheck, groupAverage, groupAveragePath, groupCompanies, peerMemberRows, type PeerDays, type PeerMemberRow } from '@/lib/peerFrame'
+import { PEER_DAYS, sourceCheck, groupAverage, groupAveragePath, peerMemberRows, type PeerDays, type PeerMemberRow } from '@/lib/peerFrame'
 import { cn } from '@/lib/utils'
 import { MOBILE_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
 import { formatNumber, formatPercent, formatPp } from '@/utils/format'
-import type { PeerCatalog, PeerGroup, PeerPriceSnapshot, PeerRuntime } from '@/types/peer'
+import type { PeerCatalog, PeerGroup, PeerRuntime } from '@/types/peer'
 
 const tone = (value: number | null | undefined) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up-ink' : value < 0 ? 'text-down-ink' : ''
 const DAY_OPTIONS = PEER_DAYS.map(d => ({ value: String(d), label: `${d}일` }))
@@ -27,9 +27,11 @@ function EvidenceCount({ verified, caveats }: { verified: number; caveats: numbe
 
 
 /** 성과 비교 — 시작일=100 차트(선택 종목 상승색 굵게, 그룹 평균 점선) + 순위 표(마지막 줄 그룹 평균) */
-export function PeerPerformanceBody({ data, group, rows, days, onDays, selected, onSelect, onResearch, onPick }: {
+export function PeerPerformanceBody({ data, group, rows, days, onDays, selected, onSelect, onResearch, onPick, bare }: {
   data: PeerRuntime; group: PeerGroup; rows: PeerMemberRow[]; days: PeerDays; onDays: (value: string) => void
   selected: string | null; onSelect: (code: string) => void; onResearch: (code: string) => void; onPick: (id: string) => void
+  /** 칸 안에 넣을 때(섹터 화면 Peer 탭) — 테두리와 제목·기간 줄을 빼고 칸 머리가 그 역할을 한다 */
+  bare?: boolean
 }) {
   const { catalog, prices } = data
   const phone = useMediaQuery(MOBILE_QUERY)
@@ -50,13 +52,13 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
   const missing = rows.filter(row => row.returns[days] === null)
   const children = peerChildren(catalog, group.id)
   return <div className="space-y-4">
-    <section aria-label="구성 종목 성과" className="space-y-3 border bg-card p-3 md:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section aria-label="구성 종목 성과" className={cn('space-y-3', !bare && 'border bg-card p-3 md:p-4')}>
+      {!bare && <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-1 text-section font-semibold">구성 종목 성과 <span className="text-caption font-normal text-muted-foreground">{shortDate(dates[0])} = 100</span>
           <InfoTip label="가격 기준 설명">네이버 정규장 종가({prices.asOf}) 기준 탐색용 가격변동률입니다. 그룹 평균은 기간 시작 동일가중이며, 기업행사 조정은 검증하지 않았습니다. 자동 신호는 보류 중입니다({data.signalHoldReason}).</InfoTip>
         </h2>
         <PeriodToggle value={String(days)} onChange={onDays} options={DAY_OPTIONS} />
-      </div>
+      </div>}
       {missing.length > 0 && <p role="status" className="text-caption text-chart-warning">가격 없는 종목 {missing.length}개는 표에 '-'로 두고 차트와 그룹 평균에서 뺐습니다 · 평균 {avg[days].covered}/{rows.length}사</p>}
       {rows.length > 1 && !phone && <div role="group" aria-label="강조할 종목" className="flex flex-wrap gap-1.5">
         {rows.map(row => { const on = row.code === selected
@@ -100,7 +102,7 @@ export function PeerPerformanceBody({ data, group, rows, days, onDays, selected,
         <li className="flex justify-between px-1 py-2.5 text-sm"><span>그룹 평균</span><span className={cn('font-mono tabular-nums', tone(avg[days].value))}>{formatPercent(avg[days].value)}</span></li>
       </ol>
     </section>
-    {children.length > 0 && <section aria-label="세부 사업군" className="space-y-2 border p-3 md:p-4">
+    {children.length > 0 && <section aria-label="세부 사업군" className={cn('space-y-2', !bare && 'border p-3 md:p-4', bare && 'border-t pt-3')}>
       <h2 className="text-card-title font-semibold">세부 사업군</h2>
       <Table><TableHeader><TableRow><TableHead>사업군</TableHead><TableHead className="text-right">구성</TableHead>{PEER_DAYS.map(d => <TableHead key={d} className="text-right">{d}일</TableHead>)}</TableRow></TableHeader>
         <TableBody>{children.map(child => {
@@ -165,54 +167,4 @@ export function PeerResearchBody({ catalog, group, rows, days, selected, onSelec
       })}</ol>
     </section>
   </div>
-}
-
-const topLevel = (catalog: PeerCatalog) => catalog.groups.filter(group => !peerParent(catalog, group.id))
-
-/** 업종 전체 · 성과 비교 — 업종(상위 그룹) 평균 경로와 표 */
-export function PeerIndustriesBody({ catalog, snapshot, days, onDays, onPick }: { catalog: PeerCatalog; snapshot: PeerPriceSnapshot; days: PeerDays; onDays: (value: string) => void; onPick: (id: string) => void }) {
-  const items = useMemo(() => topLevel(catalog).map(group => {
-    const rows = peerMemberRows(catalog, snapshot, group.id, days)
-    return { group, rows, avg: Object.fromEntries(PEER_DAYS.map(d => [d, groupAverage(rows, d)])) as Record<PeerDays, ReturnType<typeof groupAverage>>, path: groupAveragePath(snapshot, rows.map(row => row.code), days) }
-  }).sort((a, b) => (b.avg[days].value ?? -Infinity) - (a.avg[days].value ?? -Infinity)), [catalog, snapshot, days])
-  const dates = snapshot.dates.slice(-days - 1)
-  // 회색 시리즈 · 1위 업종만 글자색 굵은 선 · 상위 3곳만 선 끝 라벨(값은 등락색)
-  const lines: LineConfig[] = items.filter(item => item.path).map((item, index) => {
-    const v = item.avg[days].value
-    return { key: item.group.id, label: item.group.name, color: index === 0 ? '--up' : '--series', lineWidth: index === 0 ? 2 : 1,
-      endLabel: index < 3 ? { name: item.group.name, value: formatPercent(v), tone: v == null || v === 0 ? 'flat' as const : v > 0 ? 'up' as const : 'down' as const, strong: index === 0, accent: index === 0 } : undefined }
-  }).reverse()
-  const phone = useMediaQuery(MOBILE_QUERY)
-  const chartData = dates.map((time, index) => ({ time, ...Object.fromEntries(items.map(item => [item.group.id, item.path?.[index]])) }))
-  return <section aria-label="업종 간 비교" className="space-y-3 border bg-card p-3 md:p-4">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h2 className="flex items-center gap-1 text-section font-semibold">업종 간 비교 <span className="text-caption font-normal text-muted-foreground">{shortDate(dates[0])} = 100</span>
-        <InfoTip label="업종 평균 설명">업종마다 구성 종목을 기간 시작에 동일가중한 평균입니다. 공식 업종지수가 아니며 한 기업이 여러 업종에 들 수 있습니다.</InfoTip>
-      </h2>
-      <PeriodToggle value={String(days)} onChange={onDays} options={DAY_OPTIONS} />
-    </div>
-    {lines.length > 0 && <MultiLineChart data={chartData} lines={lines} showLegend={false} endLabels={phone ? undefined : 150} showLastValues={false} showLineTooltip onLineClick={onPick} height={280} formatValue={formatNumber} />}
-    <Table aria-label="업종 간 비교 성과표">
-      <TableHeader><TableRow><TableHead>업종</TableHead><TableHead className="text-right">구성</TableHead>{PEER_DAYS.map(d => <TableHead key={d} className="text-right">{d}일{d === days && ' ↓'}</TableHead>)}</TableRow></TableHeader>
-      <TableBody>{items.map(item => <TableRow key={item.group.id}>
-        <TableCell><button type="button" className="text-left font-medium hover:underline" onClick={() => onPick(item.group.id)}>{item.group.name}</button>{peerChildren(catalog, item.group.id).length > 0 && <span className="ml-1.5 text-caption text-muted-foreground">사업군 {peerChildren(catalog, item.group.id).length}</span>}</TableCell>
-        <TableCell className="text-right tabular-nums">{item.rows.length}사{item.avg[days].covered < item.rows.length && <span className="ml-1 text-caption text-muted-foreground">({item.avg[days].covered})</span>}</TableCell>
-        {PEER_DAYS.map(d => <TableCell key={d} className={cn('text-right font-mono tabular-nums', tone(item.avg[d].value))}>{formatPercent(item.avg[d].value)}</TableCell>)}
-      </TableRow>)}</TableBody>
-    </Table>
-  </section>
-}
-
-/** 업종 전체 · 사업 근거 — 업종별 묶은 기준과 원문 확인 현황 */
-export function PeerIndustriesResearch({ catalog, onPick }: { catalog: PeerCatalog; onPick: (id: string) => void }) {
-  return <section aria-label="업종별 사업 근거" className="border">
-    <ul className="divide-y">{topLevel(catalog).map(group => {
-      const companies = groupCompanies(catalog, group.id)
-      const evidence = companies.map(companyEvidence)
-      return <li key={group.id}><button type="button" onClick={() => onPick(group.id)} className="block w-full space-y-1 px-3 py-3 text-left hover:bg-muted/40 md:px-4">
-        <span className="flex flex-wrap items-baseline gap-x-2"><span className="font-semibold">{group.name}</span><span className="text-caption text-muted-foreground">{companies.length}사 · 원문 확인 {evidence.filter(e => e.verified > 0).length}/{companies.length} · 주의 {evidence.reduce((sum, e) => sum + e.caveats, 0)}</span></span>
-        <span className="line-clamp-2 block text-sm text-muted-foreground">{group.interpretation}</span>
-      </button></li>
-    })}</ul>
-  </section>
 }
