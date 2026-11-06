@@ -69,7 +69,8 @@ const signedPct = (v: number) => `${v > 0 ? "+" : ""}${v}%`
 export function CallWindowChart({ chain, compact = false, upcoming = false }: { chain: ChainDetail; compact?: boolean; upcoming?: boolean }) {
   const hi = compact ? 4 : 3
   const lastOff = chain.series.at(-1)?.offset ?? 0
-  const rows = upcoming ? chain.series.filter((s) => s.offset >= Math.min(-6, lastOff - 9))
+  // 다가오는 발표: 남은 날만큼은 지난 시세도 보여 선이 축의 절반 이상을 차지하게
+  const rows = upcoming ? chain.series.filter((s) => s.offset >= Math.min(-6, lastOff - Math.max(9, -lastOff)))
     : chain.series.filter((s) => s.offset >= -6 && s.offset <= hi)
   if (rows.length < 2) return <Meta>{upcoming ? "발표 전 시세가 아직 없습니다." : "발표 전후 시세가 아직 없습니다."}</Meta>
   const last = rows[rows.length - 1]

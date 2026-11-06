@@ -548,7 +548,9 @@ function useQuarters(ticker: string) {
 /** 맨 오른쪽 = 다가오는 분기(녹취록 전) 'FY27 Q1 · D-6' — 값은 next:TICKER */
 function QuarterTabs({ ticker, current, onSelect, compact = false }: { ticker: string; current: string; onSelect: (id: string) => void; compact?: boolean }) {
   const { data: quarters = [] } = useQuarters(ticker)
-  const { data: next } = useUpcoming(ticker)
+  const { data: upcoming } = useUpcoming(ticker)
+  // 카운트다운(목록의 D-n과 같은 14일 안)에 들어갔거나 발표 전 정리가 이미 있을 때만 탭을 붙인다
+  const next = upcoming && (upcoming.days_to_event <= 14 || upcoming.expectation) ? upcoming : null
   // 폰 칩 줄은 가로 스크롤 — 고른 분기가 보이게 그 칩으로 민다
   const scroller = useRef<HTMLDivElement>(null)
   useEffect(() => {

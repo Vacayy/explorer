@@ -887,8 +887,9 @@ def upcoming_detail(ticker: str, today: date | None = None) -> dict:
         f = follows(conn).get(ticker) or {"ticker": ticker, "company_name": ticker, "sector": "x:기타"}
         etf = sector_etf(f["sector"])
         exp = latest_expectation(conn, ticker, ev["fiscal_year"], ev["fiscal_period"])
-        rows = path(conn, ticker, ev["event_date"], etf, before=21, after=0)
-        rows = [r for r in rows if r["offset"] < 0 and r["date"] <= today_s]
+        # 창은 오늘까지 — 발표가 멀어도 최근 시세를 그린다(오늘 다음 날을 가상의 발표일로 읽고 offset만 옮긴다)
+        tomorrow = (date.fromisoformat(today_s) + timedelta(days=1)).isoformat()
+        rows = [r for r in path(conn, ticker, tomorrow, etf, before=21, after=0) if r["offset"] < 0]
         if rows:
             shift = _weekdays_between(rows[-1]["date"], ev["event_date"])
             rows = [{**r, "offset": r["offset"] - shift} for r in rows]
