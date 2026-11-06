@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { BoundedArea } from "@/components/shared/Bounded"
 import { QueryState } from "@/components/shared/QueryState"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { useHomeToday } from "@/components/home/UsSeasonBlock"
@@ -96,8 +97,7 @@ function ProgressLine({ d }: { d: SeasonOverview }) {
   const pct = c.followed ? (c.reported / c.followed) * 100 : 0
   return (
     <Card className="py-0">
-      <Collapsible>
-        <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3 text-sm">
+      <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3 text-sm">
           <span className="flex items-center gap-2">
             <span className="text-muted-foreground">발표</span>
             <Progress value={pct} className="h-1.5 w-24" aria-label="발표 진행" />
@@ -109,21 +109,25 @@ function ProgressLine({ d }: { d: SeasonOverview }) {
           <InfoTip label="진행 줄 설명">
             Outperform은 발표 후 첫 거래일에 업종 ETF보다 강했던 발표 수입니다. 실적-주가 디커플링은 EPS가 컨센서스를 밑돌았는데 주가가 강했거나({c.miss_up}), 웃돌았는데 약했던({c.beat_down}) 발표 수입니다. 매일 07:20에 갱신합니다.
           </InfoTip>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="group ml-auto" disabled={!changed}>
-              오늘 바뀐 것 <span className="tabular-nums text-muted-foreground">{changed}</span>
-              <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
-            </Button>
-          </CollapsibleTrigger>
-        </CardContent>
-        <CollapsibleContent>
-          <CardContent className="flex flex-col gap-1 border-t py-3 text-sm">
-            {groups.filter(([, xs]) => xs.length).map(([label, xs]) => (
-              <p key={label}><span className="text-muted-foreground">{label}</span> · {xs.join(" · ")}</p>
-            ))}
-          </CardContent>
-        </CollapsibleContent>
-      </Collapsible>
+          {/* 줄 아래로 펼치면 아래 블록이 밀린다 — 버튼 아래 팝오버로 연다(높이 상한 규칙) */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="group ml-auto" disabled={!changed}>
+                오늘 바뀐 것 <span className="tabular-nums text-muted-foreground">{changed}</span>
+                <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[min(420px,calc(100vw-2rem))]">
+              <BoundedArea size="sm">
+                <div className="flex flex-col gap-1 text-sm">
+                  {groups.filter(([, xs]) => xs.length).map(([label, xs]) => (
+                    <p key={label}><span className="text-muted-foreground">{label}</span> · {xs.join(" · ")}</p>
+                  ))}
+                </div>
+              </BoundedArea>
+            </PopoverContent>
+          </Popover>
+      </CardContent>
     </Card>
   )
 }

@@ -3,15 +3,16 @@ import type { ReactNode } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { InfoTip } from "@/components/shared/InfoTip"
+import { BOUND_FIXED } from "@/components/shared/Bounded"
 import { formatPp } from "@/utils/format"
 import { cn } from "@/lib/utils"
 import type { CoreReason, EvalVerdict } from "@/types"
 
 /** 섹션 = 카드 하나. title은 h2, note는 제목 옆 작은 설명 */
-export function Section({ title, note, children, className, id }: { title?: ReactNode; note?: ReactNode; children: ReactNode; className?: string; id?: string }) {
+export function Section({ title, note, children, className, bodyClassName, id }: { title?: ReactNode; note?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string; id?: string }) {
   return (
     <Card id={id} className={cn("min-w-0 scroll-mt-16", className)}>
-      <CardContent className="flex flex-col gap-2">
+      <CardContent className={cn("flex flex-col gap-2", bodyClassName)}>
         {title && (
           <h2 className="flex flex-wrap items-baseline gap-2 text-[15px] font-semibold">
             {title}{note && <span className="text-caption font-normal text-muted-foreground">{note}</span>}
@@ -22,6 +23,9 @@ export function Section({ title, note, children, className, id }: { title?: Reac
     </Card>
   )
 }
+
+/** 나란한 두 보드(반응 보드 | 새 모멘텀 후보)의 같은 고정 높이 — 탭·펼침·더 보기는 칸 안에서 스크롤(DESIGN_SYSTEM §높이 상한과 넘침) */
+export const BOARD_H = BOUND_FIXED.lg
 
 /** 짧은 섹션 둘을 데스크톱에서 나란히 */
 export function Cols({ children }: { children: ReactNode }) {

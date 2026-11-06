@@ -1,12 +1,13 @@
 // 이번 시즌 시장이 따진 것 (ia-redesign §4.6a ④) — 섹터 줄 = 섹터명·판정·모멘텀 n | 요약 한 줄 | 반응 분포 점 띠 | 발표 수 | ›.
 // 줄 전체가 섹터 상세 링크. 정렬은 ?ssort=, 요약 없는 섹터는 '그 밖의 섹터 ›'로 접는다.
+import { useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ChevronRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { InfoTip } from "@/components/shared/InfoTip"
+import { InPlaceMore } from "@/components/shared/Bounded"
 import { Meta, Section, VerdictBadge, patchParams } from "@/components/follow/season/seasonUi"
 import { DOT_RANGE, SECTOR_SORTS, sectorRows, type MomentumSet, type SectorSort } from "@/lib/seasonBoard"
 import { cn } from "@/lib/utils"
@@ -19,6 +20,7 @@ export function SeasonSectors({ d, momentum }: { d: SeasonOverview; momentum: Mo
   const [params, setParams] = useSearchParams()
   const sort: SectorSort = SECTOR_SORTS.find((s) => s.value === params.get("ssort"))?.value ?? "verdict"
   const { main, rest } = sectorRows(d.sectors, d.reported, momentum, sort)
+  const [showRest, setShowRest] = useState(false)
   const season = params.get("season")
   const href = (key: string) => {
     const p = new URLSearchParams({ view: "season", sector: key })
@@ -62,17 +64,15 @@ export function SeasonSectors({ d, momentum }: { d: SeasonOverview; momentum: Mo
             <span className="flex justify-between"><span>−{DOT_RANGE}%p</span><span>첫 거래일 업종 대비</span><span>+{DOT_RANGE}%p</span></span>
             <span className="text-right">발표</span><span />
           </div>
-          {main.map(row)}
+          {/* 그 밖의 섹터는 제자리 펼침 — 펼치기 직전 높이 그대로, 늘어난 줄은 그 안에서 스크롤 */}
+          <InPlaceMore open={showRest}>
+            <div className="flex flex-col">{main.map(row)}</div>
+            {showRest && <div className="flex flex-col border-t">{rest.map(row)}</div>}
+          </InPlaceMore>
           {rest.length > 0 && (
-            <Collapsible>
-              <CollapsibleContent className="flex flex-col border-t">{rest.map(row)}</CollapsibleContent>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="group mx-auto mt-1 flex text-muted-foreground">
-                  <span className="group-data-[state=open]:hidden">그 밖의 섹터 {rest.length}개 ›</span>
-                  <span className="hidden group-data-[state=open]:inline">접기</span>
-                </Button>
-              </CollapsibleTrigger>
-            </Collapsible>
+            <Button variant="ghost" size="sm" className="mx-auto mt-1 flex text-muted-foreground" aria-expanded={showRest} onClick={() => setShowRest(!showRest)}>
+              {showRest ? "접기" : `그 밖의 섹터 ${rest.length}개 ›`}
+            </Button>
           )}
         </div>
       )}
