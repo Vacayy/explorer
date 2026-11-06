@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -25,9 +26,11 @@ export function BlockError({ message, error, onRetry }: { message: string; error
 }
 
 /** 표 모양 스켈레톤 — 실제 줄 수만큼 */
-export function RowsSkeleton({ rows = 6, head = true }: { rows?: number; head?: boolean }) {
+export function RowsSkeleton({ rows = 6, head = true, className }: { rows?: number; head?: boolean
+  /** 최종 본문 높이(상한 눈금 등)에 맞출 때 */
+  className?: string }) {
   return (
-    <div role="status" aria-label="데이터 불러오는 중" aria-busy="true" className="space-y-2">
+    <div role="status" aria-label="데이터 불러오는 중" aria-busy="true" className={cn("space-y-2 overflow-hidden", className)}>
       {head && <Skeleton className="h-4 w-2/3" />}
       {Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-6 w-full" />)}
     </div>

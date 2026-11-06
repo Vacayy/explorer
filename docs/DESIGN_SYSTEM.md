@@ -214,6 +214,7 @@ charts/  lightweight-charts 래퍼
 | AI 해석 문장(LLM 산출) | **shared/AiBlock** — 보라 라벨 행 + 틴트, 좌측 보더 금지 |
 | 홈 상단 분위기 | `.weather`(그라디언트·리브, `--weather-up`) + `.glass`(유리 패널) — home/HomeDashboard 기상도에만 |
 | 패널 안에서 더 보기(요약 → 전체) | **shared/DropletReveal** — `ui/collapsible` 위 조합. 패널을 덮으며 Droplet reveal 모션으로 펼치고 패널 높이를 바꾸지 않는다(아래 §모션) |
+| 본문 높이 상한·안쪽 스크롤·제자리 더 보기 | **shared/Bounded** — `BoundedArea`·`InPlaceMore`·`BOUND` 눈금(아래 §높이 상한과 넘침) |
 
 ### 허용된 예외 (grandfathered — 신규 작성 금지, 점진 이관)
 
@@ -224,6 +225,37 @@ charts/  lightweight-charts 래퍼
 | `layout/SubNav.tsx` · `layout/Dock.tsx` 모드 Link | 라우터 연동 네비 — Radix Tabs 의미론(패널 전환)과 다름. Link(pill) 유지. 도크 아이템은 ui/button 기반 |
 
 이 표에 없는 raw HTML atom 사용은 전부 위반이다.
+
+## 높이 상한과 넘침
+
+컴포넌트 영역은 내용 길이만큼 늘어나지 않는다. 펼치기·탭 전환·데이터 도착이 카드 높이를 바꾸면 아래 블록이 밀린다(레이아웃 이동). 구현은 `shared/Bounded`에 모여 있다.
+
+**상한 눈금** (`BOUND` = 최대 높이, `BOUND_FIXED` = 같은 값의 고정 높이). 넓은 화면 px와 창 높이 비율 중 작은 쪽을 쓰고, 640px 미만은 줄인 값을 쓴다.
+
+| 눈금 | 넓은 화면 | 좁은 화면(<640) | 쓰는 곳 |
+|---|---|---|---|
+| `sm` | min(320px, 45vh) | min(280px, 45vh) | 반 폭 블록 안의 짧은 목록, 칩 묶음 |
+| `md` | min(480px, 60vh) | min(400px, 55vh) | 블록 본문 기본(목록·표·AI 글) |
+| `lg` | min(640px, 70vh) | min(480px, 60vh) | 전체 폭 긴 표·보고서 전문·나란한 두 칸 |
+
+홈 대시보드 Overnight·Today 큰 칸만 예외로 고정 높이를 직접 쓴다(넓은 화면 796px, 좁은 화면 min(680px, 85dvh)).
+
+**넘침**
+- 넘치면 영역 안에서 스크롤한다. `BoundedArea`(공식 `ui/scroll-area` 위 조합)를 쓰고, 상한은 스크롤 상자(viewport)에 건다. 홈 블록은 `HomeSection`·`HomeBlock`의 `bounded="sm|md|lg"`로 본문만 묶는다(머리는 고정).
+- 필터·정렬·탭으로 행 수가 바뀌는 목록은 상한 대신 `BoundedArea fixed`로 높이 자체를 고정한다.
+- 페이지 전체를 감싸는 내부 스크롤(창 높이에 가까운 스크롤 상자)은 만들지 않는다. 페이지의 주 목록이 끝없이 늘어나는 경우(피드 타임라인)는 페이지 스크롤을 쓴다.
+- 위치가 중요한 20행 넘는 목록은 `ui/pagination` 또는 '더 보기' + 상한 영역으로 나눈다.
+
+**펼침**
+- 읽을거리('전체 보기'·'더 보기'·'N개 더 보기')는 `InPlaceMore`로 연다. 펼치기 직전 높이를 고정하고 늘어난 내용은 그 안에서 스크롤한다. 요약 패널의 전문은 `DropletReveal`(패널을 덮고 높이를 바꾸지 않는다).
+- 깊은 세부(원문·분해 구조·시장 반응 전문·분석 메모)는 카드 안에서 펼치지 않고 `ui/sheet`(옆, 모바일은 아래) 또는 `ui/dialog`로 연다. 아래 시트는 `max-h-[85dvh]`에 안쪽 스크롤.
+- 기획서가 행 펼침을 정한 목록(내 종목 추적 행 상세, 매크로 프라이싱 근거, 컨콜 쟁점 기준·판정, 저장됨 메모)은 제자리에서 펼치되 목록을 `InPlaceMore`로 묶어 아래 블록이 움직이지 않게 한다. 한 번에 한 행.
+
+**상태가 바뀌어도 같은 틀**
+- 불러오는 중·빈 상태·오류·정상에서 머리(제목·회색 줄)와 틀은 그대로이고 본문만 바뀐다. 머리 회색 줄은 데이터 전에도 자리를 둔다(큰 칸 머리는 항상, 블록은 같은 폭의 보이지 않는 자리).
+- 뼈대(skeleton)는 최종 높이에 맞춘다. 상한 영역을 채우는 목록은 `BOUND_FIXED` 높이의 뼈대를 쓴다.
+- 늦게 나타나는 동작 버튼(관심 종목 등)은 불러오는 동안 같은 크기의 비활성 자리를 둔다.
+- 화면에 설명 문구를 더하지 않는다. 도움말은 ⓘ 툴팁만.
 
 ## 모션
 
@@ -240,5 +272,6 @@ charts/  lightweight-charts 래퍼
 - [ ] 넓은 표는 ui/table 또는 `overflow-x-auto` 래퍼
 - [ ] 색상은 semantic 토큰만 · 등락=up/down · LLM 산출=hypothesis
 - [ ] 5-state (Empty/Loading/Partial/Error/Ideal) + 기준 시각(블록 머리 `BlockHead`의 `asOf`)
+- [ ] 본문 높이 상한(`shared/Bounded` 눈금) · 펼침은 제자리 스크롤 또는 시트 · 상태가 바뀌어도 머리·틀·높이 그대로(§높이 상한과 넘침)
 - [ ] 숫자 포맷은 utils/format.ts
 - [ ] 새 atom 필요 시 `npx shadcn@latest add <c>` CLI 설치 (수제 금지)

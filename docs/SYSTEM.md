@@ -202,6 +202,7 @@
 - `GET /api/spine/feed/timeline` → `pipeline/timeline.py`, `models/timeline.py`. **읽기 전용 SQL 투영**, 기존 DB·생성 파이프라인 유지, 조회 시 LLM/수집/백필 없음. 활성 Telegram/블로그/YouTube + 저장 기업 요약·인물 프로필 + 활성 구독 컨콜 + 관심 품목 최신월 수출입 묶음. 게시/생성/수집 시각을 UTC 정규화, 시간순+안정 ID 정렬, 페이지당 20(최대 50), 최대 100페이지, 조회 상한 시각 고정. 수정 가능한 캐시의 불변 이력까지 보장하지 않음. **D-208**: Explorer 생성물 `narrative`·`report`·`scenario`(채널 `*:all`, 요약 구간만 600자 — 내러티브 `## 3줄 요약`·리포트 `## 결론`·파급 답변 앞부분)과 `topic` 필터(소스 글=엔티티 링크, 생성물·기업 요약=같은 토픽명). 주제로 거른 화면은 읽음 표시를 하지 않는다.
 - 수출입 과거 백필은 신규 업데이트로 나열하지 않고 각 활성 품목의 최신 통계월만 월별 묶음. 인물은 저장된 `source_digests(kind=person)`만, 신규 자동 생성 스케줄 추가 없음. AI 해석/자료 수/기준 기간을 표시하며, 원문과 시스템 요약의 작성 주체를 구분.
 - 소스 URL 소속 판정은 경로 경계 확인(`/alice2`를 `/alice`로 오귀속하지 않음), 카드 출처도 같은 `url_belongs` 규칙 사용.
+- `shared/Bounded`: 본문 높이 상한 눈금(`BOUND`·`BOUND_FIXED` sm·md·lg)과 `BoundedArea`(ui/scroll-area 위 상한 영역)·`InPlaceMore`(펼치기 직전 높이 고정 + 안쪽 스크롤). 홈 `HomeSection`·`HomeBlock`의 `bounded` prop이 이것을 쓴다. 규칙: docs/DESIGN_SYSTEM.md '높이 상한과 넘침'.
 - `shared/HorizontalCarousel`은 네이티브 가로 스크롤과 shadcn Button을 조합하며, resize·스크롤 끝 버튼 상태·reduced-motion을 처리한다.
 - 기획·조사·행동 계약: [home-feed](specs/home-feed.md). 검증 산출물: `logs/home-feed/`.
 - 홈 피드 본문은 창 높이 안에서 목록/본문 독립 스크롤, 그 위 헤더·AI 카드는 페이지와 함께 스크롤(D-209). 모바일은 선택한 한 영역을 스크롤한다. 조회 상한·선택·페이지·읽기 방식은 URL, 목록/리더 위치는 UI 메모리에 보존한다. 검증: `logs/home-reader/`.

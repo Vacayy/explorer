@@ -5,6 +5,7 @@ import { Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { BoundedArea, type BoundSize } from "@/components/shared/Bounded"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { WIDGET_BY_ID } from "@/components/widgets/registry"
 import { cn } from "@/lib/utils"
@@ -25,15 +26,20 @@ interface HomeSectionProps {
   display?: boolean
   /** 시장 탭 블록(시안 Home-KR·US) — 머리 구분선 없이 15/600 제목 · 안쪽 여백 16 */
   section?: boolean
+  /** 본문 높이 상한(눈금, shared/Bounded) — 넘치면 본문 안에서 스크롤. 머리는 고정 */
+  bounded?: BoundSize
   className?: string
   bodyClassName?: string
 }
+
+/** 본문을 상한 안 스크롤 영역으로 — bounded가 없으면 그대로 */
+const boundBody = (body: ReactNode, bounded?: BoundSize) => bounded ? <BoundedArea size={bounded}>{body}</BoundedArea> : body
 
 /**
  * 홈 고정 화면의 섹션 (docs/specs/home-widgets.md §0) — 위젯 본문을 위젯 틀(손잡이·빼기 메뉴) 없이 그대로 쓴다.
  * 본문만 오류 경계로 감싸 한 블록이 깨져도 머리와 다른 블록은 남는다(블록 단위 실패, 상태 시트 §4.28).
  */
-export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, display, section, className, bodyClassName }: HomeSectionProps) {
+export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, display, section, bounded, className, bodyClassName }: HomeSectionProps) {
   const def = WIDGET_BY_ID[widget]
   const client = useQueryClient()
   if (!def) return null
@@ -46,7 +52,7 @@ export function HomeSection({ widget, params, w = 12, h = 6, title, link, flat, 
     <Card data-home-section={widget} className={cn("flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none", display && "gap-3.5 p-[22px] max-sm:p-4", section && SECTION_CARD, className)}>
       {flat ? <div className={cn("min-h-0 flex-1 px-1 py-2", bodyClassName)}>{body}</div> : <>
         <SectionHead widget={widget} params={params} title={title} link={link} display={display} section={section} />
-        <div className={cn("min-h-0 flex-1", !display && !section && "p-3", bodyClassName)}>{body}</div>
+        <div className={cn("min-h-0 flex-1", !display && !section && "p-3", bodyClassName)}>{boundBody(body, bounded)}</div>
       </>}
     </Card>
   )
@@ -84,7 +90,7 @@ export function BlockHead({ title, info, sub, asOf, stale, link, actions, displa
   const { pathname } = useLocation()
   const to = link && link.to.split("#")[0] !== pathname ? link.to : undefined
   const name = typeof title === "string" ? title : undefined
-  const heading = <h2 className={cn("min-w-0 truncate", display ? (sub ? "font-display text-2xl leading-tight font-normal tracking-[-0.02em]" : "font-display text-2xl leading-[1.55] font-normal tracking-[-0.02em]") : section ? "text-[15px] leading-[1.4] font-semibold" : "text-[13.5px] font-semibold")}>{title}</h2>
+  const heading = <h2 className={cn("min-w-0 truncate", display ? "font-display text-2xl leading-tight font-normal tracking-[-0.02em]" : section ? "text-[15px] leading-[1.4] font-semibold" : "text-[13.5px] font-semibold")}>{title}</h2>
   const tip = info && <Tooltip>
     <TooltipTrigger asChild>
       <Button variant="ghost" size="icon-xs" aria-label={`${name ?? "블록"} 설명`} className="shrink-0 text-muted-foreground/70"><Info className="size-3.5" /></Button>
@@ -94,9 +100,10 @@ export function BlockHead({ title, info, sub, asOf, stale, link, actions, displa
   return (
     <header className={cn("flex shrink-0 items-center gap-2", display ? "min-h-[38px] flex-wrap items-end gap-x-2.5 border-b pb-3" : section ? "min-h-7 flex-wrap gap-x-2.5" : "min-h-[38px] border-b px-3 py-1.5")}>
       {sub && !display ? <>{heading}<span className="shrink-0 pt-px text-xs text-ink-3">{sub}</span>{tip}</>
-      : sub ? <div className="flex min-w-0 flex-col gap-0.5">
+      // 큰 칸 머리는 회색 줄 자리를 늘 둔다 — 불러오는 중·빈 상태에도 머리 높이가 같게(높이 상한과 넘침)
+      : display ? <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">{heading}{tip}</div>
-        <span className="truncate text-[12.5px] text-ink-2">{sub}</span>
+        <span className="truncate text-[12.5px] text-ink-2">{sub ?? "\u00a0"}</span>
       </div> : <>{heading}{tip}</>}
       <span className="ml-auto" />
       {asOf && <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap max-sm:hidden", display ? "gap-1.5 self-center text-xs" : "gap-[5px] text-[11.5px]", stale ? "text-warn" : "text-ink-3")}>
@@ -111,13 +118,13 @@ export function BlockHead({ title, info, sub, asOf, stale, link, actions, displa
 }
 
 /** 홈 고정 화면의 직접 만든 블록 — HomeSection과 같은 틀(머리 + 본문 오류 경계)을 위젯 레지스트리 없이 쓴다 */
-export function HomeBlock({ children, className, bodyClassName, label, ...head }: BlockHeadProps & { children: ReactNode; className?: string; bodyClassName?: string; label?: string }) {
+export function HomeBlock({ children, className, bodyClassName, label, bounded, ...head }: BlockHeadProps & { children: ReactNode; className?: string; bodyClassName?: string; label?: string; bounded?: BoundSize }) {
   const client = useQueryClient()
   return (
     <Card data-home-section={label} className={cn("flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden rounded-[var(--radius-card)] py-0 shadow-none", head.section && SECTION_CARD, className)}>
       <BlockHead {...head} />
       <div className={cn("min-h-0 flex-1", !head.section && "p-3", bodyClassName)}>
-        <ErrorBoundary onReset={() => { void client.refetchQueries({ type: "active", predicate: q => q.state.status === "error" }) }}>{children}</ErrorBoundary>
+        {boundBody(<ErrorBoundary onReset={() => { void client.refetchQueries({ type: "active", predicate: q => q.state.status === "error" }) }}>{children}</ErrorBoundary>, bounded)}
       </div>
     </Card>
   )
