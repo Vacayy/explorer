@@ -8,7 +8,7 @@ export const response151: ValidateFunction
 export const response152: ValidateFunction
 export const response153: ValidateFunction
 export const response154: ValidateFunction
-export const response224: ValidateFunction
+export const response155: ValidateFunction
 export const response225: ValidateFunction
 export const response226: ValidateFunction
 export const response227: ValidateFunction

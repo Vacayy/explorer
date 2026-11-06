@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from database import get_connection
 from pipeline.transcript import cy_label
+from models.earnings_chain import ChainDetail
 from models.earnings_season import SeasonOverview
 from models.kr_season import KrSeasonOverview
 
@@ -260,7 +261,7 @@ def season_sector(key: str, season: str | None = None):
     return sector_detail(key, season)
 
 
-@router.get("/chain/{transcript_id}")
+@router.get("/chain/{transcript_id}", response_model=ChainDetail)
 def chain(transcript_id: int):
     """콜 상세의 체인 — 발표 전 기대·반응 구조화·주가/거래량/언급량 시계열·분기별 기록. LLM 0."""
     from pipeline.earnings_chain import chain_detail

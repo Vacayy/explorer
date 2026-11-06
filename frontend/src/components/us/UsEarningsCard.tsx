@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Bullets, H3, Pp } from "@/components/follow/season/seasonUi"
+import { Bullets, DqHead, DqValue, H3, Pp } from "@/components/follow/season/seasonUi"
 import { formatPp } from "@/utils/format"
 import { useChain, useComputeCallReaction } from "@/hooks/useTranscripts"
 import type { ChainDetail } from "@/types"
@@ -118,6 +118,7 @@ export function UsEarningsHistory({ transcriptId }: { transcriptId: number }) {
               <TableHeader><TableRow>
                 <TableHead>분기</TableHead><TableHead>발표일</TableHead>
                 <TableHead className="text-right">첫 거래일</TableHead><TableHead className="text-right">일주일</TableHead>
+                <TableHead className="text-right"><DqHead etf={c.etf} /></TableHead>
                 <TableHead className="hidden sm:table-cell">첫 반응</TableHead><TableHead className="text-right"><span className="sr-only">콜 상세</span></TableHead>
               </TableRow></TableHeader>
               <TableBody>
@@ -126,6 +127,7 @@ export function UsEarningsHistory({ transcriptId }: { transcriptId: number }) {
                   <TableCell className="font-mono tabular-nums">{h.event_date}</TableCell>
                   <TableCell className="text-right font-mono"><Pp v={h.d1} /></TableCell>
                   <TableCell className="text-right font-mono"><Pp v={h.d7} /></TableCell>
+                  <TableCell className="text-right font-mono"><DqValue v={h.dq} partial={h.dq_partial} /></TableCell>
                   <TableCell className="hidden sm:table-cell">{h.follow ?? "-"}</TableCell>
                   <TableCell className="text-right">{h.transcript_id ? <Link to={`/follow/transcripts?t=${h.transcript_id}`} className="text-xs text-muted-foreground hover:text-foreground">콜 상세 ›</Link> : "-"}</TableCell>
                 </TableRow>)}

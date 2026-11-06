@@ -226,6 +226,17 @@ def at(rows: list[dict], offset: int) -> float | None:
     return hit[0]["excess"] if hit else None
 
 
+def quarter_excess(conn, ticker: str, event_date: str, bench: str, next_date: str | None, today: str) -> dict:
+    """분기 수익률 — 발표 전 종가(d1·d7과 같은 기준)부터 다음 발표 전 거래일 종가까지 업종 ETF 대비 초과 %p.
+    다음 발표가 아직 없으면 저장된 마지막 종가까지 재고 partial=True. 창은 이 계산에서만 다음 발표(또는 오늘)까지 넓힌다."""
+    end = next_date or today
+    rows = path(conn, ticker, event_date, bench, before=1, after=max(1, (date.fromisoformat(end) - date.fromisoformat(event_date)).days))
+    rows = [r for r in rows if r["offset"] >= 1 and (next_date is None or r["date"] < next_date)]
+    if not rows:
+        return {"dq": None, "dq_partial": None, "dq_end": None}
+    return {"dq": rows[-1]["excess"], "dq_partial": next_date is None, "dq_end": rows[-1]["date"]}
+
+
 def follow_label(d1: float | None, later: float | None) -> str | None:
     if d1 is None or later is None:
         return None
@@ -848,15 +859,18 @@ def chain_detail(transcript_id: int) -> dict:
             mentions[k] = mentions.get(k, 0) + 1
     # 분기별 기록
     hist = []
+    next_date = None   # 최신순이라 바로 앞 행이 다음 발표
     for e in conn.execute("SELECT e.*, t2.id tid, r.meta_json, r.status FROM earnings_events e LEFT JOIN transcripts t2 ON t2.ticker=e.ticker "
                           "AND t2.fiscal_year=e.fiscal_year AND t2.fiscal_period=e.fiscal_period LEFT JOIN transcript_reactions r ON r.transcript_id=t2.id "
                           "WHERE e.ticker=? AND e.confirmed=1 AND e.event_date <= ? ORDER BY e.event_date DESC LIMIT 6",
                           (t["ticker"], date.today().isoformat())):
         n = _numbers(conn, e, f["sector"])
+        dq = quarter_excess(conn, t["ticker"], e["event_date"], etf, next_date, date.today().isoformat())
+        next_date = e["event_date"]
         m = json.loads(e["meta_json"]) if e["meta_json"] else None
         pt = pt_window(conn, t["ticker"], e["event_date"], (date.fromisoformat(e["event_date"]) + timedelta(days=8)).isoformat())
         hist.append({"fiscal": f"FY{e['fiscal_year']} {e['fiscal_period']}", "event_date": e["event_date"], "season": e["season"],
-                     "transcript_id": e["tid"], "d1": n["d1"], "d7": n["d7"], "d30": n["d30"], "follow": n["follow"],
+                     "transcript_id": e["tid"], "d1": n["d1"], "d7": n["d7"], "d30": n["d30"], "follow": n["follow"], **dq,
                      "pt_up": pt["up"] if pt["n"] else None, "pt_down": pt["down"] if pt["n"] else None,
                      "headline": (m or {}).get("headline"), "reaction": e["status"]})
     pt_after = pt_window(conn, t["ticker"], event_date, (date.fromisoformat(event_date) + timedelta(days=8)).isoformat()) if event_date else None
