@@ -69,7 +69,8 @@ function Scatter({ rows, focus, onHover }: { rows: IndustryMapSector[]; focus: s
   const X = (v: number) => 70 + v / 100 * (W - 100)
   const Y = (v: number) => H - 30 - v / 100 * (H - 70)
   const mx = Math.max(...rows.map(r => r.market_cap), 1)
-  const quad: [string, number, number][] = [["주도", X(75), Y(92)], ["숨 고르기", X(8), Y(92)], ["반등 시도", X(75), Y(4)], ["소외", X(8), Y(4)]]
+  // 구역 이름은 점이 올 수 없는 위·아래 여백 가운데에 — 섹터 라벨과 겹치지 않게
+  const quad: [string, number, number][] = [["주도", X(75), 22], ["숨 고르기", X(25), 22], ["반등 시도", X(75), H - 6], ["소외", X(25), H - 6]]
   const placed = rows.filter(r => r.rs_long != null && r.rs_short != null)
   const sel = placed.find(r => r.name === focus)
   const trail = sel ? [...sel.trail].sort((a, b) => b.weeks_ago - a.weeks_ago).filter(t => t.rs_long != null && t.rs_short != null).map(t => [t.rs_short!, t.rs_long!]).concat([[sel.rs_short!, sel.rs_long!]]) : []
@@ -77,7 +78,7 @@ function Scatter({ rows, focus, onHover }: { rows: IndustryMapSector[]; focus: s
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="섹터 상대강도 지도" className="h-full w-full font-sans">
       <line x1={X(50)} x2={X(50)} y1={Y(100)} y2={Y(0)} className="stroke-line-2" strokeDasharray="3 4" />
       <line x1={X(0)} x2={X(100)} y1={Y(50)} y2={Y(50)} className="stroke-line-2" strokeDasharray="3 4" />
-      {quad.map(([t, x, y]) => <text key={t} x={x} y={y} fontSize="12" className="fill-ink-3">{t}</text>)}
+      {quad.map(([t, x, y]) => <text key={t} x={x} y={y} fontSize="12" textAnchor="middle" className="fill-ink-3">{t}</text>)}
       {trail.length > 1 && <polyline points={trail.map(([a, b]) => `${X(a).toFixed(1)},${Y(b).toFixed(1)}`).join(" ")} fill="none" className="stroke-up" strokeWidth="1.6" strokeDasharray="4 3" />}
       {placed.map(r => {
         const on = r.name === focus

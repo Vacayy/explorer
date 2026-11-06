@@ -9,7 +9,7 @@ import type { SectorBenchmark } from "@/types"
  * 대표지수 표시 규칙(D-327-4): ETF면 'ETF 이름 · 코드' + ⓘ(무엇을 따라가는지), 대응 ETF가 없으면 'Explorer 계산 지수' + ⓘ(계산 방식).
  */
 
-export const RS_INFO = "섹터 종목을 시가총액으로 가중한 수익률을 18개 섹터끼리 백분위(0~100)로 비교합니다. 장기 RS는 약 11개월, 단기 RS는 1개월 수익률입니다. 대표지수(ETF)가 아니라 섹터 종목으로 계산합니다."
+export const RS_INFO = "섹터 종목을 시가총액으로 가중한 수익률을 18개 섹터끼리 백분위(0~100)로 비교합니다. 장기 RS는 3개월, 단기 RS는 1주 수익률입니다. 대표지수(ETF)가 아니라 섹터 종목으로 계산합니다."
 
 export function benchmarkTip(b: SectorBenchmark): string {
   if (b.kind === "etf") return `${b.name}(${b.ticker}) — ${b.tracks} 지수를 따라가는 ETF입니다. 이 섹터의 대표지수로 씁니다.${b.note ? ` ${b.note}` : ""} 대응 ETF가 없는 섹터는 Explorer 계산 지수를 씁니다.`

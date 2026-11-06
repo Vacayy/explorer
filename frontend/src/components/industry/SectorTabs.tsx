@@ -34,7 +34,7 @@ export function SectorStocksTab({ q }: { q: Q }) {
   const rows = q.data?.constituents ?? []
   const p = paged(rows, Math.max(0, (Number(rawPage) || 1) - 1), PER)
   return <MarketCard band="sectorPeers" label="sector.stocks">
-    <BlockHead section title="구성 종목" info="이 섹터로 분류된 종목입니다(업종 정정 반영). 비중은 섹터 시가총액 대비, RS는 전 종목 대비 백분위(장기 약 11개월 · 단기 1개월)입니다."
+    <BlockHead section title="구성 종목" info="이 섹터로 분류된 종목입니다(업종 정정 반영). 비중은 섹터 시가총액 대비, RS는 전 종목 대비 백분위(장기 3개월 · 단기 1주)입니다."
       sub={q.data ? `시총 순 · ${q.data.as_of ? `${+q.data.as_of.slice(5, 7)}/${+q.data.as_of.slice(8, 10)}` : ""}` : " "} />
     {q.isError ? <BlockError message="구성 종목을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} />
       : !q.data ? <FillSkeleton rows={14} />
