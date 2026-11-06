@@ -27,8 +27,8 @@ export default function HomeDashboard() {
         {/* 같은 높이 두 칸(유리 패널, 1024 이상) — 넘치는 본문은 칸 안에서 스크롤, 그 아래 폭은 내용 높이. 기상도 아래쪽 분위기(베일)를 이어 쓴다 */}
         <section aria-label="브리핑" data-veil className="weather p-4 max-sm:p-3">
           <div className="grid gap-3.5 lg:grid-cols-2">
-            <HomeSection widget="market.us" w={6} h={9} display link={{ to: "/home/us", label: "미국 시장" }} className={`${GLASS_PANEL} lg:h-[796px]`} />
-            <HomeSection widget="market.today" w={6} h={9} display link={{ to: "/home/kr", label: "한국 시장" }} className={`${GLASS_PANEL} lg:h-[796px]`} />
+            <HomeSection widget="market.us" w={6} h={9} display link={{ to: "/home/us", label: "미국 시장" }} className={`${GLASS_PANEL} ${DISPLAY_H}`} />
+            <HomeSection widget="market.today" w={6} h={9} display link={{ to: "/home/kr", label: "한국 시장" }} className={`${GLASS_PANEL} ${DISPLAY_H}`} />
           </div>
         </section>
 
@@ -42,6 +42,8 @@ export default function HomeDashboard() {
 }
 
 const GLASS_PANEL = "glass relative rounded-[16px]! [&>header]:border-line"
+/** Overnight·Today 큰 칸 높이 — 넓은 화면 시안 796, 좁은 화면도 고정(높이 상한과 넘침). 본문은 칸 안에서 스크롤 */
+const DISPLAY_H = "h-[min(680px,85dvh)] lg:h-[796px]"
 
 /**
  * 기상도 — 그라디언트 바탕 + 세로 리브 + 유리 패널(시안 Home). 분홍(상승)·파랑(하락) 비율(D-321):

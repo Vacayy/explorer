@@ -15,6 +15,9 @@ import { useUsBriefing, useUsBriefingDates } from "@/hooks/useUsBriefing"
 import { UsBriefingSourcesDialog } from "@/components/home/UsBriefingSourcesDialog"
 import { BriefingProse, FlowBars, kstHm, usMd } from "@/components/home/UsOvernight"
 import { InfoTip } from "@/components/shared/InfoTip"
+import { BOUND_FIXED } from "@/components/shared/Bounded"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
 import type { UsBriefing, UsBriefingSource, UsMoverBrief } from "@/types"
 
 /**
@@ -33,7 +36,10 @@ export function UsBriefingSection({ embedded = false, columns = false }: { embed
   const { data: dates = [] } = useUsBriefingDates()
   const [open, setOpen] = useState(false)
 
-  if (isLoading) return <Skeleton className="h-80 w-full rounded-card" />
+  // 홈 › 미국 시장 두 칸은 불러오는 중에도 같은 고정 높이(눈금 lg)
+  if (isLoading) return columns
+    ? <div className="surface-grid grid @4xl/market:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" role="status" aria-label="브리핑 불러오는 중">{[0, 1].map(i => <Skeleton key={i} className={cn("w-full rounded-card", BOUND_FIXED.lg)} />)}</div>
+    : <Skeleton className="h-80 w-full rounded-card" />
   if (isError || !data || data.status === "error")
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
   if (data.movers.length === 0)
@@ -349,8 +355,9 @@ function UsBriefingColumns({ data, dates, picked, onPick }: { data: UsBriefing; 
     `거래대금 수집 ${kst(data.fetched_at)}`].filter(Boolean)
   const gaps = s?.source_gaps ?? []
   return <div id="us-briefing" data-home-briefing className="surface-grid grid scroll-mt-4 @4xl/market:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-    <Card className="min-w-0 gap-3 rounded-[var(--radius-card)] p-4 shadow-none">
-      <header className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+    {/* 두 칸은 같은 고정 높이(눈금 lg) — 전문·목록은 머리 아래에서 스크롤, '상위 n 전체'를 펼쳐도 칸이 늘지 않는다 */}
+    <Card className={cn("min-w-0 gap-3 rounded-[var(--radius-card)] p-4 shadow-none", BOUND_FIXED.lg)}>
+      <header className="flex shrink-0 flex-wrap items-baseline gap-x-2.5 gap-y-1">
         <h2 className="text-[15px] leading-[1.4] font-semibold">어젯밤 미국장 — 브리핑 전체</h2>
         <span className={`text-xs ${warn ? "text-warn" : "text-ink-3"}`}>{line}</span>
         <InfoTip label="브리핑 기준">{why.join(" ")}</InfoTip>
@@ -362,16 +369,19 @@ function UsBriefingColumns({ data, dates, picked, onPick }: { data: UsBriefing; 
           </SelectContent>
         </Select>}
       </header>
+      <ScrollArea className="min-h-0 flex-1 -mr-2" viewportClassName="pr-2 [&>div]:!block"><div className="flex flex-col gap-3">
       {data.status === "partial" && <Banner tone="info">근거 스냅샷은 보존 기간이 지나 삭제됐습니다 — 저장된 종합만 표시합니다.</Banner>}
       {!s && data.status !== "partial" && <Banner tone="info">LLM 종합이 아직 없습니다 — 오른쪽 구조화 브리핑(섹터 쏠림·개별 이슈)만 표시합니다.</Banner>}
       {gaps.length > 0 && <Banner tone="info">빠진 재료: {gaps.join(" · ")}</Banner>}
       <BriefingProse data={data} />
+      </div></ScrollArea>
     </Card>
-    <Card className="min-w-0 gap-3 rounded-[var(--radius-card)] p-4 shadow-none">
-      <header className="flex flex-wrap items-baseline gap-x-2.5">
+    <Card className={cn("min-w-0 gap-3 rounded-[var(--radius-card)] p-4 shadow-none", BOUND_FIXED.lg)}>
+      <header className="flex shrink-0 flex-wrap items-baseline gap-x-2.5">
         <h2 className="text-[15px] leading-[1.4] font-semibold">거래대금 쏠림 · 개별 움직임</h2>
         <span className="text-xs text-ink-3">상위 {data.movers.length}</span>
       </header>
+      <ScrollArea className="min-h-0 flex-1 -mr-2" viewportClassName="pr-2 [&>div]:!block"><div className="flex flex-col gap-3">
       <FlowBars clusters={data.clusters} n={data.clusters.length} />
       {data.idiosyncratic.length > 0 && <div className="flex flex-col gap-1">
         <span className="text-[11.5px] text-ink-2">그룹으로 안 풀리는 움직임</span>
@@ -394,6 +404,7 @@ function UsBriefingColumns({ data, dates, picked, onPick }: { data: UsBriefing; 
           ))}
         </CollapsibleContent>
       </Collapsible>
+      </div></ScrollArea>
     </Card>
   </div>
 }

@@ -10,6 +10,7 @@ import { Pp, VerdictBadge, mmdd } from "@/components/follow/season/seasonUi"
 import { useSeason } from "@/hooks/useTranscripts"
 import { daysBetween, groupByDate, localToday, seasonPhase, type SeasonPhase } from "@/lib/seasonPhase"
 import { cn } from "@/lib/utils"
+import { BoundedArea } from "@/components/shared/Bounded"
 import { formatNumber } from "@/utils/format"
 import type { SeasonItem, SeasonOverview, SeasonWindow } from "@/types"
 
@@ -68,10 +69,12 @@ function Frame({ title, badge, note, link = { to: SEASON, label: "실적 시즌 
   )
 }
 
+/** 시즌 중 본문과 같은 뼈대(판정 줄 · 섹터 4줄 · 모두 보기 · 곧 발표) — 데이터가 와도 블록 높이가 크게 바뀌지 않게 */
 function SeasonSkeleton() {
-  return <div role="status" aria-label="데이터 불러오는 중" aria-busy="true" className="space-y-3">
-    <div className="grid grid-cols-2 gap-px border md:grid-cols-5">{[0, 1, 2, 3, 4].map(i => <div key={i} className="space-y-2 p-3"><Skeleton className="h-3 w-16" /><Skeleton className="h-6 w-12" /></div>)}</div>
-    <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-11/12" /><Skeleton className="h-12 w-full" />
+  return <div role="status" aria-label="데이터 불러오는 중" aria-busy="true" className="space-y-4">
+    <div className="grid grid-cols-2 gap-px rounded-[12px] border md:grid-cols-5">{[0, 1, 2, 3, 4].map(i => <div key={i} className="space-y-2 px-3.5 py-2.5 max-md:last:col-span-2"><Skeleton className="h-3 w-16" /><Skeleton className="h-7 w-12" /></div>)}</div>
+    <div className="space-y-2"><Skeleton className="h-4 w-36" />{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[76px] w-full max-sm:h-[104px]" />)}<Skeleton className="h-4 w-28" /></div>
+    <div className="space-y-2"><Skeleton className="h-4 w-16" /><Skeleton className="h-[60px] w-full" /></div>
   </div>
 }
 
@@ -122,7 +125,8 @@ function InSeason({ d, today }: { d: SeasonOverview; today: string }) {
 
       {!!upcoming.length && <section aria-label="곧 발표">
         <h3 className="mb-2 text-xs font-semibold">곧 발표</h3>
-        <div className="flex flex-wrap gap-1.5">{upcoming.map(u => <UpcomingChip key={`${u.ticker}-${u.event_date}`} u={u} today={today} />)}</div>
+        {/* 칩이 많으면 상한(sm) 안에서 스크롤 */}
+        <BoundedArea size="sm"><div className="flex flex-wrap gap-1.5">{upcoming.map(u => <UpcomingChip key={`${u.ticker}-${u.event_date}`} u={u} today={today} />)}</div></BoundedArea>
       </section>}
     </div>
   </Frame>

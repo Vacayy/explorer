@@ -2,6 +2,7 @@ import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HomeBlock } from "@/components/home/HomeSection"
+import { BOUND_FIXED } from "@/components/shared/Bounded"
 import { BlockError, RowsSkeleton, tone } from "@/components/home/blockState"
 import { localToday } from "@/lib/seasonPhase"
 import { useTradeHighlights } from "@/hooks/useTrade"
@@ -29,8 +30,8 @@ export function TradeBlock() {
   return (
     <HomeBlock section label="kr.trade" title="수출입" link={{ to: "/follow/trade", label: "산업 › 수출입" }}
       info="관세청 품목별 수출 통계입니다. '평소보다 크게 늘어난 품목'은 품목별 과거 변동 폭에 비해 전년 대비 증가가 이례적인 것을 증가분 기여 순으로 고릅니다."
-      asOf={d?.period ?? null}>
-      {!d ? (q.isError ? <BlockError message="수출입 통계를 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <RowsSkeleton rows={6} />)
+      asOf={d?.period ?? null} bounded="lg">
+      {!d ? (q.isError ? <BlockError message="수출입 통계를 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <RowsSkeleton rows={20} className={BOUND_FIXED.lg} />)
         : !d.period ? <p role="status" className="text-sm text-muted-foreground">수출입 통계가 아직 없습니다. 매일 09:20에 새 통계월을 확인합니다.</p>
         : <Body d={d} />}
     </HomeBlock>

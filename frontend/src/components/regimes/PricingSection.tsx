@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Toggle } from "@/components/ui/toggle"
 import { usePricing } from "@/hooks/useRegimes"
 import { cn } from "@/lib/utils"
+import { InPlaceMore } from "@/components/shared/Bounded"
 import { formatBp, formatPercent } from "@/utils/format"
 import type { PricingClaim, PricingPrice, PricingStance, PricingStatus } from "@/types"
 import { InfoTip, Section } from "./Section"
@@ -90,11 +91,14 @@ export function PricingSection() {
               onPressedChange={v => setParams(prev => { const n = new URLSearchParams(prev); if (v) n.set("pricing_all", "1"); else n.delete("pricing_all"); return n }, { replace: true })}>지난 전제도</Toggle>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <div className="min-w-[760px] divide-y border-y">
-            {claims.map(c => <ClaimRow key={c.id} c={c} days={d.days} open={open === c.id} onToggle={() => setOpen(open === c.id ? null : c.id)} prices={priceByKey} />)}
+        {/* 행 펼침(근거)은 목록 안에서 — 목록 높이는 상한(md)에 묶고, 펼치면 그 높이 그대로 안에서 스크롤 */}
+        <InPlaceMore open={open != null} size="md" className="border-y">
+          <div className="overflow-x-auto">
+            <div className="min-w-[760px] divide-y">
+              {claims.map(c => <ClaimRow key={c.id} c={c} days={d.days} open={open === c.id} onToggle={() => setOpen(open === c.id ? null : c.id)} prices={priceByKey} />)}
+            </div>
           </div>
-        </div>
+        </InPlaceMore>
       </div>
     </>}
   </Section>

@@ -27,6 +27,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { localToday } from "@/lib/seasonPhase"
 import { earningsBadge, featured as featuredOf, leadSignal, marketLabel, signalDetail, splitRows, trackedNotice } from "@/lib/myStocks"
 import { cn } from "@/lib/utils"
+import { InPlaceMore } from "@/components/shared/Bounded"
 import { formatKrw, formatNumber, formatPercent, formatStockPrice } from "@/utils/format"
 import type { SeasonOverview, StockGroupDetail, StockGroupMember, TrackerCondition } from "@/types"
 
@@ -228,6 +229,8 @@ function StockList({ detail, members, limitUntracked, open, onOpen, season }: Li
   const rows = [...tracked, ...untracked].map(row)
 
   return <>
+    {/* 목록은 상한(lg) 안에서 — '더 보기'·추적 행 상세(§4.4, 한 번에 한 행)는 펼치기 직전 높이 그대로 안에서 스크롤 */}
+    <InPlaceMore open={more || open != null} size="lg">
     {mobile
       ? <div data-stocks-list>
         <div className="flex justify-between border-b pb-1.5 text-caption text-muted-foreground"><span>관심 종목</span><span>추적</span></div>
@@ -240,7 +243,8 @@ function StockList({ detail, members, limitUntracked, open, onOpen, season }: Li
         </TableRow></TableHeader>
         <TableBody>{rows}</TableBody>
       </Table>}
-    {hidden > 0 && <Button variant="ghost" size="sm" className={cn("text-muted-foreground", mobile && "w-full")} onClick={() => setMore(true)}>{formatNumber(hidden)}종목 더 보기 ›</Button>}
+    </InPlaceMore>
+    {(hidden > 0 || more) && <Button variant="ghost" size="sm" className={cn("text-muted-foreground", mobile && "w-full")} onClick={() => setMore(!more)}>{more ? "접기" : `${formatNumber(hidden)}종목 더 보기 ›`}</Button>}
 
     <AlertDialog open={!!confirm} onOpenChange={v => { if (!v) setConfirm(null) }}>
       <AlertDialogContent>

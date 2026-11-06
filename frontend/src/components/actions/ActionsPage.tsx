@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { reportTitle } from "@/lib/dossier"
 import RightsProTable from "@/components/actions/RightsProTable"
 import { HomeBlock } from "@/components/home/HomeSection"
+import { BOUND_FIXED, BoundedArea } from "@/components/shared/Bounded"
 import type { ActionKind, ActionsResponse } from "@/types"
 
 const TYPE_FILTERS = ["전체", "유상증자", "무상증자", "합병", "주식분할", "공개매수", "회사분할", "감자"] as const
@@ -54,7 +55,9 @@ export function ActionsList(_: { variant: "block" }) {
   return (
     <HomeBlock section label="actions" title="기업활동" info={INFO} asOf={data?.as_of ? formatKstDateTime(data.as_of) : null}
       stale={!!data && !data.as_of} bodyClassName="space-y-3">
-      {isLoading ? <div role="status" aria-label="기업활동 불러오는 중" className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
+      {/* 불러오는 중에도 도구 줄 + 고정 높이 표 자리 + 더 보기 줄 — 데이터가 와도 블록 높이 그대로 */}
+      {isLoading ? <div role="status" aria-label="기업활동 불러오는 중" className="space-y-3"><Skeleton className="h-[30px] w-2/3" />
+          <div className={cn(BOUND_FIXED.md, "space-y-2 overflow-hidden")}>{Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div><div className="h-8" /></div>
         : isError || !data ? <ErrorState message="기업활동을 불러오지 못했습니다" onRetry={() => refetch()} />
         : <ActionsBody data={data} type={type} view={view} kind={kind} setParam={setParam} setView={setView} bounded />}
     </HomeBlock>
@@ -74,46 +77,7 @@ function ActionsBody({ data, type, view, kind, setParam, setView, bounded = fals
   const limit = bounded && openFor !== filterKey ? BLOCK_LIMIT[mobile ? "mobile" : "desktop"] : all.length
   const items = all.slice(0, limit)
   const hidden = all.length - items.length
-  return (
-    <>
-      {/* 뷰 토글: 목록 | 유무증 Pro */}
-      <div className="flex gap-1.5 items-center flex-wrap">
-        <ToggleGroup
-          type="single"
-          value={view}
-          onValueChange={(v) => v && setView(v)}
-          className="flex gap-0 rounded-md border overflow-hidden mr-2"
-        >
-          {[["list", "목록"], ["pro", "유무증 Pro"]].map(([v, label]) => (
-            <ToggleGroupItem key={v} value={v} className={segItem}>{label}</ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        {view === "list" && <>
-          {/* 원공시 | 정정 | 전체 — 정정이 목록의 약 4할이라 기본은 원공시만 */}
-          <ToggleGroup type="single" value={kind} aria-label="원공시·정정"
-            onValueChange={(v) => v && setParam("kind", v === "original" ? null : v)}
-            className="flex gap-0 rounded-md border overflow-hidden mr-2">
-            <ToggleGroupItem value="original" className={segItem}>원공시 {data.counts?.original ?? ""}</ToggleGroupItem>
-            <ToggleGroupItem value="correction" className={segItem}>정정 {data.counts?.correction ?? ""}</ToggleGroupItem>
-            <ToggleGroupItem value="all" className={segItem}>전체</ToggleGroupItem>
-          </ToggleGroup>
-          {TYPE_FILTERS.map((t) => {
-            const key = t === "전체" ? "" : t
-            return (
-              <Badge
-                key={t}
-                variant={type === key ? "default" : "outline"}
-                className="cursor-pointer select-none text-xs"
-                onClick={() => setParam("type", key || null)}
-              >
-                {t}
-              </Badge>
-            )
-          })}
-        </>}
-      </div>
-
-      {view === "pro" ? (
+  const table = view === "pro" ? (
         <RightsProTable />
       ) : items.length === 0 ? (
         <EmptyState message={kind === "original" && data.counts?.correction ? `원공시는 없고 정정 공시 ${data.counts.correction}건이 있습니다.` : "해당 조건의 기업활동 공시가 없습니다."} />
@@ -181,9 +145,50 @@ function ActionsBody({ data, type, view, kind, setParam, setView, bounded = fals
             ))}
           </TableBody>
         </Table>
-      )}
-      {view !== "pro" && hidden > 0 && <Button variant="ghost" size="sm" className={cn("text-muted-foreground", mobile && "w-full")}
-        onClick={() => setOpenFor(filterKey)}>{formatNumber(hidden)}건 더 보기 ›</Button>}
+      )
+  return (
+    <>
+      {/* 뷰 토글: 목록 | 유무증 Pro */}
+      <div className="flex gap-1.5 items-center flex-wrap">
+        <ToggleGroup
+          type="single"
+          value={view}
+          onValueChange={(v) => v && setView(v)}
+          className="flex gap-0 rounded-md border overflow-hidden mr-2"
+        >
+          {[["list", "목록"], ["pro", "유무증 Pro"]].map(([v, label]) => (
+            <ToggleGroupItem key={v} value={v} className={segItem}>{label}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        {view === "list" && <>
+          {/* 원공시 | 정정 | 전체 — 정정이 목록의 약 4할이라 기본은 원공시만 */}
+          <ToggleGroup type="single" value={kind} aria-label="원공시·정정"
+            onValueChange={(v) => v && setParam("kind", v === "original" ? null : v)}
+            className="flex gap-0 rounded-md border overflow-hidden mr-2">
+            <ToggleGroupItem value="original" className={segItem}>원공시 {data.counts?.original ?? ""}</ToggleGroupItem>
+            <ToggleGroupItem value="correction" className={segItem}>정정 {data.counts?.correction ?? ""}</ToggleGroupItem>
+            <ToggleGroupItem value="all" className={segItem}>전체</ToggleGroupItem>
+          </ToggleGroup>
+          {TYPE_FILTERS.map((t) => {
+            const key = t === "전체" ? "" : t
+            return (
+              <Badge
+                key={t}
+                variant={type === key ? "default" : "outline"}
+                className="cursor-pointer select-none text-xs"
+                onClick={() => setParam("type", key || null)}
+              >
+                {t}
+              </Badge>
+            )
+          })}
+        </>}
+      </div>
+
+      {/* 홈 블록은 표 자리 높이를 고정 — 필터·보기·더 보기를 바꿔도 블록이 그대로, 넘치면 안에서 스크롤(D-303) */}
+      {bounded ? <BoundedArea size="md" fixed>{table}</BoundedArea> : table}
+      {view !== "pro" && bounded && all.length > BLOCK_LIMIT[mobile ? "mobile" : "desktop"] && <Button variant="ghost" size="sm" className={cn("text-muted-foreground", mobile && "w-full")}
+        onClick={() => setOpenFor(hidden > 0 ? filterKey : null)}>{hidden > 0 ? `${formatNumber(hidden)}건 더 보기 ›` : "접기"}</Button>}
     </>
   )
 }

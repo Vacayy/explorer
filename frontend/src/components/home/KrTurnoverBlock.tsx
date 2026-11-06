@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { RefreshButton } from "@/components/shared/RefreshButton"
 import { HomeBlock } from "@/components/home/HomeSection"
+import { BOUND_FIXED } from "@/components/shared/Bounded"
 import { BlockError, RowsSkeleton, tone } from "@/components/home/blockState"
 import { useKrMovers } from "@/hooks/useKrMovers"
 import { cn } from "@/lib/utils"
@@ -19,11 +20,12 @@ export function KrTurnoverBlock({ className }: { className?: string }) {
   return (
     <HomeBlock section label="kr.turnover" title="국장 거래대금 상위" className={className}
       info="전일 거래대금 상위 20종목입니다. 비중은 시장 전체가 아니라 상위 20종목 합계 기준이고, 날짜는 저장 스냅샷 기준입니다. 평일 16:20에 받습니다."
-      sub={d?.trade_date ? `${d.trade_date} 스냅샷 · 상위 ${d.items.length}` : null}
+      // 불러오는 중에도 회색 줄 자리를 같은 폭으로 둔다 — 좁은 화면에서 줄바꿈이 늦게 생겨 머리가 커지지 않게
+      sub={d?.trade_date ? `${d.trade_date} 스냅샷 · 상위 ${d.items.length}` : !d ? <span aria-hidden className="invisible">0000-00-00 스냅샷 · 상위 20</span> : null}
       asOf={d && d.status !== "ok" ? "갱신 실패" : null} stale={!!d && d.status !== "ok"}
       actions={<RefreshButton label="갱신" onClick={q.refresh} pending={q.refreshing} title="지금 업데이트 (전일 거래대금 재수집)" />}
->
-      {!d ? (q.isError ? <BlockError message="국장 거래대금을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <RowsSkeleton rows={8} />)
+      bounded="lg">
+      {!d ? (q.isError ? <BlockError message="국장 거래대금을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <RowsSkeleton rows={20} className={BOUND_FIXED.lg} />)
         : d.status === "error" ? <BlockError message={d.error ?? "국장 거래대금을 불러오지 못했습니다"} onRetry={() => void q.refetch()} />
         : !d.items.length ? <p role="status" className="text-sm text-muted-foreground">{q.refreshing ? "전일 거래대금을 불러오는 중입니다." : "전일 거래대금 스냅샷이 아직 없습니다. 평일 16:20에 받습니다."}</p>
         : <Body d={d} />}

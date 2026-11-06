@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom"
 import { ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { WidgetState } from "@/components/shared/WidgetFrame"
 import { DropletContent, DropletReveal, DropletTrigger } from "@/components/shared/DropletReveal"
 import { CitedText, UsBriefingSection } from "@/components/home/UsBriefingSection"
@@ -98,6 +99,8 @@ export function UsOvernightBody() {
   const lead = (s?.drivers || s?.index_summary || s?.issues || "").replace(/\[\d+\]/g, "").split(/(?<=[.다요])\s/)[0]
   // 물방울은 칸 전체(머리 포함)를 덮는다 — 기준 상자는 바깥 칸(relative), 여기는 static
   return <DropletReveal className="static flex h-full flex-col gap-3.5 overflow-visible">
+    {/* 칸 높이는 고정 — 요지·핵심·쏠림·칩은 그 안에서 스크롤, 전체 보기 버튼은 바닥에 고정 */}
+    <ScrollArea className="min-h-0 flex-1 -mr-2" viewportClassName="pr-2 [&>div]:!block"><div className="flex flex-col gap-3.5">
     {lead && <p className="text-[17px] leading-[1.55] font-medium text-pretty">{lead}</p>}
     {!!s?.key_points?.length && <ol>
       {s.key_points.slice(0, 5).map((p, i) => <li key={i} className="grid grid-cols-[22px_1fr] gap-1.5 border-t py-[7px] text-[13.5px] leading-[1.55] first:border-t-0">
@@ -106,6 +109,7 @@ export function UsOvernightBody() {
     </ol>}
     <FlowBars clusters={d.clusters} />
     <LoneMoverChips movers={d.idiosyncratic.slice(0, 4)} />
+    </div></ScrollArea>
     <DropletTrigger asChild>
       <Button variant="outline" className="glass mt-auto h-11 w-full shrink-0 rounded-full text-sm font-medium">브리핑 전체 보기 <ChevronDown aria-hidden /></Button>
     </DropletTrigger>
