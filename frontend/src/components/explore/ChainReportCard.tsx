@@ -1,7 +1,9 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { BoundedArea } from "@/components/shared/Bounded"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ErrorState } from "@/components/shared/ErrorState"
@@ -99,11 +101,15 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
               <span className="tabular-nums">{formatKstDateTime(r.finished_at ?? r.created_at)}</span><span>· 목차 {OUTLINE[r.outline ?? "bottom_up"].label} · {r.model}</span>
               {r.missing.length > 0 && <span className="text-destructive">메모 실패로 빠진 칸: {r.missing.map(m => m.name).join(", ")}</span>}
             </div>
-            <Markdown>{linkify(r.body ?? "", r.refs)}</Markdown>
-            {r.analysis && <Collapsible className="rounded-lg border border-dashed p-3">
-              <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto px-1 text-caption">분석 메모 보기 — 글쓰기 전 핵심 주장·목차·근거 설계</Button></CollapsibleTrigger>
-              <CollapsibleContent className="pt-2"><Markdown className="text-[13px]">{linkify(r.analysis, r.refs)}</Markdown></CollapsibleContent>
-            </Collapsible>}
+            {/* 보고서 전문은 상한(lg) 안에서 스크롤, 분석 메모는 깊은 세부라 창으로(높이 상한과 넘침) */}
+            <BoundedArea size="lg"><Markdown>{linkify(r.body ?? "", r.refs)}</Markdown></BoundedArea>
+            {r.analysis && <Dialog>
+              <DialogTrigger asChild><Button variant="ghost" size="sm" className="h-auto px-1 text-caption">분석 메모 보기 — 글쓰기 전 핵심 주장·목차·근거 설계</Button></DialogTrigger>
+              <DialogContent className="sm:max-w-3xl">
+                <DialogHeader><DialogTitle>분석 메모</DialogTitle><DialogDescription>글쓰기 전 핵심 주장·목차·근거 설계</DialogDescription></DialogHeader>
+                <ScrollArea viewportClassName="max-h-[min(640px,70vh)] [&>div]:!block"><Markdown className="pr-3 text-[13px]">{linkify(r.analysis, r.refs)}</Markdown></ScrollArea>
+              </DialogContent>
+            </Dialog>}
             {r.refs.length > 0 && <div className="border-t pt-3">
               <p className="mb-1 text-caption font-medium text-muted-foreground">인용 가능한 자료 {r.refs.length}건</p>
               <ul className="grid gap-x-4 gap-y-0.5 text-caption sm:grid-cols-2">{r.refs.map(x => <li key={x.ref} className="truncate">

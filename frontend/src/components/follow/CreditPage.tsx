@@ -144,7 +144,7 @@ function SpreadTable({ rows, asOf, groups, all, onAll, selected, onToggle }: {
   return <HomeBlock label="credit.table" title={<>종목별 스프레드 <span className="ml-1 text-xs font-normal text-muted-foreground">넓은 순{all ? '' : ` 상위 ${TOP}`}</span></>}
     info="스프레드 = 대표 채권 만기 수익률 − 같은 날 같은 잔존 만기로 보간한 미 국채 금리(bp). 암시 부도확률은 스프레드에 내재된 5년 누적 확률의 근사(회수율 40% 가정)로, 신용평가가 아닙니다. '유럽 호가'는 미국 체결이 없는 사모채(144A)를 유럽 거래소 호가 수익률로 대신한 것입니다. 1개월 변화는 이력이 쌓이기 전에는 '-'입니다."
     actions={rows.length > TOP ? <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => onAll(!all)}>{all ? `상위 ${TOP}개만` : `${rows.length}개 모두 ›`}</Button> : null}
-    bodyClassName="p-0">
+    bodyClassName="p-0" bounded="lg">
     <Table className="text-[13px]">
       <TableHeader><TableRow>
         <TableHead className="h-8 pl-3 text-[11px]">기업 · 채권</TableHead><TableHead className="h-8 text-[11px] max-md:hidden">그룹</TableHead>

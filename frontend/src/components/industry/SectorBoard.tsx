@@ -53,7 +53,7 @@ export default function SectorBoard({ viewMenu }: { viewMenu?: React.ReactNode }
   const entryOf = (sector: string) => links.data?.sectors.find(e => e.sector === sector)
 
   const list = <HomeBlock label="sector.rs" title="산업·섹터 상대강도" info={RS_INFO} asOf={map.data?.as_of ?? null}
-    actions={viewMenu} bodyClassName="p-0">
+    actions={viewMenu} bodyClassName="p-0" bounded="lg">
     {mobile && <div className="flex gap-1.5 border-b px-3 py-2" role="group" aria-label="정렬">
       {SORTS.map(s => <Button key={s.key} size="sm" variant={sort === s.key ? "secondary" : "outline"} aria-pressed={sort === s.key} className="h-7 text-xs"
         onClick={() => set("sort", sort === s.key ? null : s.key)}>{s.label}순</Button>)}

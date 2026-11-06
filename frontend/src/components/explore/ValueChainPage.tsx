@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageLayout } from "@/components/shared/PageLayout"
 import { HomeBlock } from "@/components/home/HomeSection"
+import { BOUND_FIXED, BoundedArea } from "@/components/shared/Bounded"
 import { SummaryStrip, SummaryStripSkeleton, type SummaryCell } from "@/components/industry/SummaryStrip"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -236,7 +237,7 @@ export default function ValueChainPage() {
           <ToggleGroupItem value="grid" className="px-2.5 text-xs">지도</ToggleGroupItem>
           <ToggleGroupItem value="lines" className="px-2.5 text-xs">연결선</ToggleGroupItem>
         </ToggleGroup>}>
-        {vc.isLoading ? <Skeleton className="h-[520px] w-full" />
+        {vc.isLoading ? <Skeleton className={cn("w-full", BOUND_FIXED.lg)} />
           : vc.isError ? <ErrorState message="지도를 불러오지 못했습니다." onRetry={() => void vc.refetch()} />
           : !vc.data?.nodes.length ? <EmptyState message="지도 데이터가 없습니다." />
           : <div className="space-y-4">
@@ -244,8 +245,9 @@ export default function ValueChainPage() {
               <StateLegend />
               {/* 상세 패널은 지도 칸이 넉넉할 때(컨테이너 66rem 이상)만 오른쪽, 아니면 지도 아래 */}
               <div className="@container"><div className={cn("grid items-start gap-3", selected && !isMobile && "@min-[66rem]:grid-cols-[minmax(0,1fr)_340px]")}>
-                <VcGrid vc={vc.data} selected={selected} onSelect={k => select(k === selected ? null : k)} />
-                {selected && !isMobile && <div className="@min-[66rem]:sticky @min-[66rem]:top-4"><DetailPanel vc={vc.data} node={node} demand={demand} onSelect={select} exp={exp.data?.as_of ? exp.data.nodes[selected] : undefined} expAsOf={exp.data?.as_of ?? null} compact /></div>}
+                {/* 지도·상세는 상한(lg) 안에서 스크롤 — 칸을 골라도 블록 높이가 크게 바뀌지 않게 */}
+                <BoundedArea size="lg"><VcGrid vc={vc.data} selected={selected} onSelect={k => select(k === selected ? null : k)} /></BoundedArea>
+                {selected && !isMobile && <BoundedArea size="lg"><DetailPanel vc={vc.data} node={node} demand={demand} onSelect={select} exp={exp.data?.as_of ? exp.data.nodes[selected] : undefined} expAsOf={exp.data?.as_of ?? null} compact /></BoundedArea>}
               </div></div>
             </> : <>
               {flow.isError ? <p className="text-caption text-destructive">금액 규모를 불러오지 못해 원·굵기 없이 그렸습니다.</p>
@@ -308,7 +310,7 @@ export default function ValueChainPage() {
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-card-title">한국 확인 신호</CardTitle>
           <p className="text-caption text-muted-foreground">대만 연결 · 한국 수출(HS, 확신도 상·중만 집계) · 공시 세 원천의 방향</p></CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent><BoundedArea size="md" viewportClassName="[&>div]:space-y-3">
           {confirms.isLoading ? <Skeleton className="h-32 w-full" />
             : confirms.isError ? <ErrorState message="확인 신호를 불러오지 못했습니다." onRetry={() => void confirms.refetch()} />
             : (confirms.data ?? []).map(c => <div key={c.stock_code} className="grid gap-2 border-b pb-3 last:border-b-0 md:grid-cols-[160px_minmax(0,1fr)]">
@@ -317,7 +319,7 @@ export default function ValueChainPage() {
               </Link>
               <KrConfirmStrip c={c} />
             </div>)}
-        </CardContent>
+        </BoundedArea></CardContent>
       </Card>
     </div>
     {/* 모바일 — 노드 상세는 아래에서 올라오는 시트(§4.29) */}

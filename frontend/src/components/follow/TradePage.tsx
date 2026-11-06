@@ -113,7 +113,7 @@ function TradeGrid({ follows, loading, error, onRetry, sort, onSort, onPick }: {
       <ToggleGroupItem value="value" className="h-7 rounded-full border border-line-2 px-3 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">수출액 순</ToggleGroupItem>
       <ToggleGroupItem value="surge" className="h-7 rounded-full border border-line-2 px-3 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">급등 먼저</ToggleGroupItem>
       <ToggleGroupItem value="mine" className="h-7 rounded-full border border-line-2 px-3 text-xs shadow-none data-[state=on]:border-action data-[state=on]:bg-action data-[state=on]:text-action-ink data-[state=on]:shadow-none">내 종목 관련</ToggleGroupItem>
-    </ToggleGroup>} bodyClassName="p-0">
+    </ToggleGroup>} bodyClassName="p-0" bounded="lg">
     {loading ? <div className="p-3"><RowsSkeleton rows={8} /></div>
       : error ? <div className="p-3"><BlockError message="품목 목록을 불러오지 못했습니다" onRetry={onRetry} /></div>
       : <>
@@ -186,7 +186,7 @@ function SurgeTable({ q, onMonth, onPick }: { q: HlQuery; onMonth: (v: string | 
   const mobile = useIsMobile()
   return <HomeBlock label="trade.surge" title="평소보다 크게 늘어난 품목"
     info="품목별 과거 변동 폭에 비해 전년 대비 증가가 이례적인(z ≥ 2, 1천만 달러 이상) 품목을 증가분 기여 순으로 고릅니다."
-    actions={d ? <MonthNav d={d} onMonth={onMonth} /> : null} bodyClassName="p-0">
+    actions={d ? <MonthNav d={d} onMonth={onMonth} /> : null} bodyClassName="p-0" bounded="md">
     {!d ? (q.isError ? <div className="p-3"><BlockError message="품목 판정을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /></div> : <div className="p-3"><RowsSkeleton rows={8} /></div>)
       : !d.surge.length ? <p role="status" className="p-3 text-sm text-muted-foreground">{monthLabel(d.period)}에는 평소보다 크게 늘어난 품목이 없습니다.</p>
       : <Table className="text-[13px]">
