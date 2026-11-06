@@ -6,7 +6,8 @@ import { useDefaultWatchGroup, useToggleWatch } from '@/hooks/useGroups'
 export function WatchButton({ stockCode }: { stockCode: string }) {
   const group = useDefaultWatchGroup()
   const toggle = useToggleWatch()
-  if (!group.data) return null
+  // 불러오는 동안도 같은 크기로 자리를 둔다 — 버튼이 늦게 나타나며 도시에 머리 줄이 바뀌지 않게
+  if (!group.data) return group.isPending ? <Button variant="outline" size="xs" disabled aria-hidden tabIndex={-1}><span>☆</span> 관심 종목</Button> : null
   const watched = group.data.members.some((m) => m.stock_code === stockCode)
   return (
     <Button

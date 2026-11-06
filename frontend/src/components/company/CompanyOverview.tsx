@@ -8,7 +8,9 @@ import api from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { BoundedArea } from '@/components/shared/Bounded'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { InfoTip } from '@/components/shared/InfoTip'
@@ -116,12 +118,16 @@ export function CompanyOverviewCard({ stockCode, fallback, market = 'kr' }: { st
       {query.isPending ? <div className="space-y-2" role="status" aria-label="기업 개요 불러오는 중"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-4 w-2/3" /></div>
         : query.isError ? <ErrorState message="기업 개요를 불러오지 못했습니다." onRetry={() => query.refetch()} />
         : !profile ? <div className="space-y-3 text-sm">{fallback}{build.error && <p role="alert" className="text-sm text-destructive">{build.error.message}</p>}</div>
-        : mobile ? <Collapsible open={open} onOpenChange={setOpen}>
-            {!open && <ProfileBody profile={profile} brief />}
-            <CollapsibleContent><ProfileBody profile={profile} brief={false} /><div className="mt-3">{action}</div></CollapsibleContent>
-            <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="mt-2 h-8 px-0 font-semibold">{open ? '접기' : '개요 전체 · 리스크 · 출처 ›'}</Button></CollapsibleTrigger>
-          </Collapsible>
-        : <ProfileBody profile={profile} brief={false} />}
+        // 모바일 전체 개요는 카드 안에서 펼치지 않고 아래 시트로(상한 안 스크롤), 넓은 화면은 본문 상한(lg) 안에서 스크롤
+        : mobile ? <Sheet open={open} onOpenChange={setOpen}>
+            <ProfileBody profile={profile} brief />
+            <SheetTrigger asChild><Button variant="ghost" size="sm" className="mt-2 h-8 px-0 font-semibold">개요 전체 · 리스크 · 출처 ›</Button></SheetTrigger>
+            <SheetContent side="bottom" className="max-h-[85dvh] gap-0">
+              <SheetHeader className="border-b"><SheetTitle>기업 개요</SheetTitle><SheetDescription className="sr-only">개요 전체 · 리스크 · 출처</SheetDescription></SheetHeader>
+              <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block"><div className="p-4"><ProfileBody profile={profile} brief={false} /><div className="mt-3">{action}</div></div></ScrollArea>
+            </SheetContent>
+          </Sheet>
+        : <BoundedArea size="lg"><ProfileBody profile={profile} brief={false} /></BoundedArea>}
     </div>
   </Card>
 }

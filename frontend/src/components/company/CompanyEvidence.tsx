@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { BoundedArea } from '@/components/shared/Bounded'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -161,7 +162,8 @@ export function CompanyEvidence({
                   )}
                 </div>
               )}
-              {preview ? <ul>
+              {/* 목록은 상한 안에서 스크롤(미리보기 md · 전체 lg) — 쪽 넘김은 아래 그대로 */}
+              <BoundedArea size={preview ? 'md' : 'lg'}>{preview ? <ul>
                 {/* 시안 Dossier-KR '최근 수집 자료' — 한 줄 행: 출처 칩 | 제목 | 날짜 */}
                 {feed.data.items.map((item) => (
                   <li key={item.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3 border-t py-2.5 first:border-t-0" data-evidence-row>
@@ -211,7 +213,7 @@ export function CompanyEvidence({
                     })()}
                   </li>
                 ))}
-              </ul>}
+              </ul>}</BoundedArea>
               {!preview && (feed.data.has_more || page > 1) && (
                 <div className="flex items-center justify-between">
                   <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => change('page', String(page - 1))}>‹ 이전</Button>
