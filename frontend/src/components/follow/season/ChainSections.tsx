@@ -8,6 +8,7 @@ import { ChevronRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { InPlaceMore } from "@/components/shared/Bounded"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -284,18 +285,21 @@ export function IssuesCard({ chain }: { chain: ChainDetail }) {
   const grades = chain.reaction_meta?.grades ?? []
   const missed = chain.reaction_meta?.missed ?? []
   const byIssue = new Map((ex?.issues ?? []).map((i) => [i.issue, i]))
+  // 행 펼침(기준·판정)은 한 번에 한 행, 목록 안에서 — 펼치기 직전 높이 그대로 안에서 스크롤(아래 블록이 밀리지 않게)
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const rowProps = (key: string) => ({ open: openKey === key, onOpenChange: (v: boolean) => setOpenKey(v ? key : null) })
 
   let content: ReactNode
   if (!ex) content = <Meta>발표 전 기대가 정리되지 않은 발표입니다.</Meta>
   else if (grades.length || missed.length) {
-    content = <ul className="flex flex-col">
-      {grades.map((g) => <IssueRow key={g.issue} grade={g} issue={byIssue.get(g.issue)} />)}
-      {missed.map((m) => <IssueRow key={m} missed={clean(m)} />)}
-    </ul>
+    content = <InPlaceMore open={openKey != null} size="md"><ul className="flex flex-col">
+      {grades.map((g) => <IssueRow key={g.issue} grade={g} issue={byIssue.get(g.issue)} {...rowProps(g.issue)} />)}
+      {missed.map((m) => <IssueRow key={m} missed={clean(m)} {...rowProps(`missed:${m}`)} />)}
+    </ul></InPlaceMore>
   } else if (ex.issues?.length) {
     // 기대는 있는데 채점 전 — 쟁점과 기준만
     content = <>
-      <ul className="flex flex-col">{ex.issues.map((i) => <IssueRow key={i.issue} issue={i} />)}</ul>
+      <InPlaceMore open={openKey != null} size="md"><ul className="flex flex-col">{ex.issues.map((i) => <IssueRow key={i.issue} issue={i} {...rowProps(i.issue)} />)}</ul></InPlaceMore>
       <Meta>채점은 시장 반응 정리가 만들어지면 붙습니다.</Meta>
     </>
   } else content = <Meta>발표 전 정리에 쟁점이 없습니다.</Meta>
@@ -303,8 +307,8 @@ export function IssuesCard({ chain }: { chain: ChainDetail }) {
   return <Section title="발표 전 시장이 주목한 내용">{content}</Section>
 }
 
-function IssueRow({ grade, issue, missed }: { grade?: ReactionGrade; issue?: ExpectationIssue; missed?: string }) {
-  const [open, setOpen] = useState(false)
+function IssueRow({ grade, issue, missed, open, onOpenChange: setOpen }: { grade?: ReactionGrade; issue?: ExpectationIssue; missed?: string
+  open: boolean; onOpenChange: (v: boolean) => void }) {
   const name = missed ?? grade?.issue ?? issue?.issue ?? ""
   const weight = grade?.weight ?? issue?.weight
   const result = missed ? "발표 전 정리에 없던 쟁점입니다." : grade?.outcome ?? (issue?.good ? `호재면 ${issue.good}` : "")

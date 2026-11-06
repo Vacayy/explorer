@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { followEntity, spineKeys } from "@/api/spine"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { BoundedArea } from "@/components/shared/Bounded"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -110,7 +111,7 @@ function FollowedCard({ rows, total }: { rows: PeopleHomeRow[]; total: number })
     <CardHead title="팔로우" note={`${formatNumber(total)}명 · 이번 주 언급순`}
       action={total > 0 ? <Link to="/feed?channel_type=people" className="hover:underline">피드에서 팔로우 인물 글만 보기 ›</Link> : undefined} />
     {rows.length === 0 ? <p className="px-4 py-6 text-sm text-muted-foreground">{total === 0 ? "아직 팔로우한 인물이 없습니다. 아래 이번 주 언급이 는 인물에서 팔로우할 수 있습니다." : "이 역할의 팔로우 인물이 없습니다."}</p>
-      : <ul className="divide-y px-4">{rows.map(r => <li key={r.entity_id} className="space-y-1 py-2.5" data-person-row>
+      : <BoundedArea size="md"><ul className="divide-y px-4">{rows.map(r => <li key={r.entity_id} className="space-y-1 py-2.5" data-person-row>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Link to={personPath(r.entity_id)} className="font-semibold hover:underline">{r.name}</Link>
           <RoleChip role={r.role} />
@@ -121,7 +122,7 @@ function FollowedCard({ rows, total }: { rows: PeopleHomeRow[]; total: number })
           최근 언급 — {r.last_doc_id ? <Link to={`/doc/${r.last_doc_id}`} className="hover:text-foreground hover:underline">{r.last_doc_title}</Link> : r.last_doc_title}
           <span className="ml-1 font-mono tabular-nums">{mmdd(r.last_doc_at)}</span>
         </p>}
-      </li>)}</ul>}
+      </li>)}</ul></BoundedArea>}
   </Card>
 }
 

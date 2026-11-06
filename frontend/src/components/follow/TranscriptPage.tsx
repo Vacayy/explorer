@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -15,7 +15,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { useMediaQuery, MOBILE_QUERY } from "@/hooks/useMediaQuery"
 import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
 import { proxiesUrl } from "@/lib/judgment"
@@ -422,7 +423,7 @@ function DetailFolds({ data, transcriptId }: { data: Detail; transcriptId: numbe
         </Fold>
       )}
       <Fold label="원문 전문">
-        <div className="max-h-[60vh] overflow-y-auto border px-4 py-3 text-sm">
+        <div className="border px-4 py-3 text-sm">
           <Markdown>{data.body}</Markdown>
         </div>
       </Fold>
@@ -430,15 +431,34 @@ function DetailFolds({ data, transcriptId }: { data: Detail; transcriptId: numbe
   )
 }
 
-/** 펼치기 한 줄 — 기본 접힘, 줄마다 윗선(시안 details) */
+/** 시트 안에서는 펼치기 줄을 제자리에서 연다(시트가 스크롤) — 모바일 '핵심 정리 전체 · 원문' 시트 */
+const FoldInline = createContext(false)
+
+/**
+ * 펼치기 한 줄 — 줄마다 윗선(시안 details). 긴 세부(차트·핵심 정리·전문·원문)는 카드 안에서 펼치지 않고
+ * 옆 시트로 연다(높이 상한과 넘침 — 깊은 세부는 Sheet). 시트 안(FoldInline)에서는 제자리 펼침.
+ */
 function Fold({ label, children }: { label: string; children: ReactNode }) {
-  return (
+  const inline = useContext(FoldInline)
+  const trigger = "group flex w-full items-center gap-1.5 py-2.5 text-left text-[13.5px] font-medium hover:text-ink-2"
+  if (inline) return (
     <Collapsible className="border-t border-line first:border-t-0">
-      <CollapsibleTrigger className="group flex w-full items-center gap-1.5 py-2.5 text-left text-[13.5px] font-medium hover:text-ink-2">
+      <CollapsibleTrigger className={trigger}>
         <ChevronRight className="size-3.5 text-ink-3 transition-transform group-data-[state=open]:rotate-90" />{label}
       </CollapsibleTrigger>
       <CollapsibleContent className="pb-3">{children}</CollapsibleContent>
     </Collapsible>
+  )
+  return (
+    <Sheet>
+      <div className="border-t border-line first:border-t-0">
+        <SheetTrigger className={trigger}><ChevronRight className="size-3.5 text-ink-3" />{label}</SheetTrigger>
+      </div>
+      <SheetContent side="right" className="w-full gap-0 sm:max-w-3xl">
+        <SheetHeader className="border-b"><SheetTitle>{label}</SheetTitle><SheetDescription className="sr-only">컨콜 세부</SheetDescription></SheetHeader>
+        <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block"><div className="p-4">{children}</div></ScrollArea>
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -544,10 +564,16 @@ function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: numb
         {callPoints.length > 0
           ? <ul className="flex list-disc flex-col gap-1 pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{callPoints.map((t, i) => <li key={i}>{clean(t)}</li>)}</ul>
           : <p className="text-caption text-muted-foreground">아래 핵심 정리를 펼쳐 보세요.</p>}
-        <Collapsible open={more} onOpenChange={setMore}>
-          <CollapsibleTrigger className="text-left text-[13px] font-medium text-ink">{more ? "접기" : "핵심 정리 전체 · 원문 ›"}</CollapsibleTrigger>
-          <CollapsibleContent className="pt-2"><DetailFolds data={data} transcriptId={transcriptId} /></CollapsibleContent>
-        </Collapsible>
+        {/* 전체 정리·원문은 카드 안에서 펼치지 않고 아래 시트로(상한 안 스크롤) — 시트 안 펼치기 줄은 제자리 */}
+        <Sheet open={more} onOpenChange={setMore}>
+          <SheetTrigger className="self-start text-left text-[13px] font-medium text-ink">핵심 정리 전체 · 원문 ›</SheetTrigger>
+          <SheetContent side="bottom" className="max-h-[85dvh] gap-0">
+            <SheetHeader className="border-b"><SheetTitle>핵심 정리 전체 · 원문</SheetTitle><SheetDescription className="sr-only">컨콜 세부</SheetDescription></SheetHeader>
+            <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block"><div className="p-4">
+              <FoldInline.Provider value><DetailFolds data={data} transcriptId={transcriptId} /></FoldInline.Provider>
+            </div></ScrollArea>
+          </SheetContent>
+        </Sheet>
       </Card>
 
       {c && c.history.length > 0 && (

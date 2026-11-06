@@ -5,6 +5,7 @@ import { Bookmark, Building2, FileBarChart, FileText, MessageSquare, Network, X 
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { InPlaceMore } from "@/components/shared/Bounded"
 import { formatRelativeTime } from "@/utils/format"
 import { useRemoveSaved, useUpdateSavedNote, type SavedItem, type SavedKind } from "@/hooks/useSaved"
 
@@ -34,7 +35,7 @@ export default function SavedList({
   const remove = useRemoveSaved()
   // 페이지에서는 메모가 있는 줄만 메모를 보이고, 메모 쓰기는 누른 줄에만 펼친다(ia-redesign §4.26)
   const [editing, setEditing] = useState<number | null>(null)
-  return (
+  const list = (
     <ul className="divide-y">
       {items.map((it) => {
         const Meta = KIND_META[it.kind]
@@ -84,6 +85,8 @@ export default function SavedList({
       })}
     </ul>
   )
+  // 페이지 목록은 상한(lg) 안에서 — 메모 쓰기를 펼쳐도 펼치기 직전 높이 그대로 안에서 스크롤(헤더 Sheet는 시트가 스크롤)
+  return compact ? list : <InPlaceMore open={editing != null} size="lg">{list}</InPlaceMore>
 }
 
 function NoteEditor({ item, onDone }: { item: SavedItem; onDone: () => void }) {
