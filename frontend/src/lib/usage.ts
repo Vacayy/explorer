@@ -75,10 +75,10 @@ export function flushUsage() {
 const PATTERNS = [
   '/analyze/compare', '/analyze/:stockCode/:tab', '/analyze/:stockCode', '/us/:ticker', '/doc/:docId', '/synthesis/:synthesisId',
   '/question/:id', '/study/projects/:id', '/study/:id', '/home/b/:boardId', '/company/:stockCode/:tab',
-  '/industry/:sector', '/follow/trade/:hs', '/follow/taiwan/:code', '/person/:id',
+  '/industry/us/:ticker', '/industry/:sector', '/follow/trade/:hs', '/follow/taiwan/:code', '/person/:id',
 ]
 /** 화면을 가르는 쿼리 — 값까지 이름에 넣는다 */
-const NAMED_QUERY = ['view', 'tab', 'home_view']
+const NAMED_QUERY = ['view', 'tab', 'home_view', 'market']
 /** 상세를 여는 쿼리 — 있는지 없는지는 화면 이름에(`?t`), 값은 entity. 같은 화면에서 값만 바뀌면 열람(open) */
 const DETAIL_QUERY: Record<string, string> = { t: 'transcript.open', topic: 'narrative.open' }
 /** 화면 안 상태 쿼리 — 이름에 넣지 않고 entity로. 값이 바뀌면 새 방문이 아니라 동작·열람 하나 */

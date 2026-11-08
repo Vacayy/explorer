@@ -65,3 +65,7 @@ export function MiniLines({ series, kospi, accent }: { series: number[]; kospi: 
 }
 
 export const sectorPath = (name: string, query = "") => `/industry/${encodeURIComponent(name)}${query}`
+
+/** 미국 섹터 (§4.36) — 섹터 = GICS 11 + 세부 업종 13 ETF, 비교 SPY */
+export const US_RS_INFO = "장기 RS = 3개월, 단기 RS = 1주 수익률을 24개 섹터·업종 ETF끼리 백분위(0~100)로 비교합니다."
+export const usSectorPath = (ticker: string, query = "") => `/industry/us/${encodeURIComponent(ticker)}${query}`

@@ -40,6 +40,8 @@ export const BAND = {
   sectorPeers: "h-[560px] md:h-[760px]",
   /** 섹터 개요의 Peer 그룹 칸 — Peer 탭과 같은 컴포넌트를 조금 낮게 */
   sectorPeerBlock: "h-[560px] md:h-[720px]",
+  /** 미국 섹터 지도 상대강도 지도·순위(§4.36, 시안 Industry-Map-US) — 범례 줄이 하나 더 있어 480 */
+  usSectorMap: "h-[440px] md:h-[480px]",
 } as const
 export type BandSize = keyof typeof BAND
 

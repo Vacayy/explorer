@@ -61,6 +61,7 @@ import ThesisAuditPage from "@/components/thesis/ThesisAuditPage"
 import QuestionDetail from "@/components/knowledge/QuestionDetail"
 import IndustryMapPage from "@/components/industry/IndustryMapPage"
 import SectorPage from "@/components/industry/SectorPage"
+import UsSectorPage from "@/components/industry/UsSectorPage"
 import { MapRedirect, PeerRedirect } from "@/components/industry/IndustryRedirects"
 import NarrativePage from "@/components/explore/NarrativePage"
 import NarrativeHistory from "@/components/explore/NarrativeHistory"
@@ -304,6 +305,7 @@ export default function App() {
             <Route path="explore" element={<ExploreRedirect />} />
             {/* 산업 › 섹터 지도 · 섹터 화면(D-327). 옛 /map(산업·섹터)은 섹터 지도로, ?group=<섹터>는 그 섹터 화면으로 */}
             <Route path="industry" element={<IndustryMapPage />} />
+            <Route path="industry/us/:ticker" element={<UsSectorPage />} />
             <Route path="industry/:sector" element={<SectorPage />} />
             <Route path="map" element={<MapRedirect />} />
             <Route path="narrative" element={<NarrativePage />} />

@@ -5,10 +5,12 @@ import { BlockHead } from "@/components/home/HomeSection"
 import { BlockError, tone } from "@/components/home/blockState"
 import { Band, FillNote, FillSkeleton, MarketCard, Seg } from "@/components/home/MarketFrame"
 import { FillArea } from "@/components/shared/Bounded"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { PageLayout } from "@/components/shared/PageLayout"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Chip, MiniLines, RS_INFO, benchmarkName, sectorPath } from "@/components/industry/sectorParts"
+import UsIndustryMap from "@/components/industry/UsIndustryMap"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { usePeerRuntime } from "@/hooks/usePeerRuntime"
 import { useSectorPeers } from "@/hooks/useSectorMap"
@@ -27,22 +29,44 @@ const WALL_INFO = "섹터마다 대표 ETF(예: 반도체 = KODEX 반도체 0911
 
 /**
  * 산업 › 섹터 지도 (/industry, ia-redesign §4.35, 시안 Industry-Map, D-327).
+ * 맨 위 '한국 | 미국' 전환(URL market, 기본 한국 · §4.36) — 미국은 UsIndustryMap(섹터 ETF 지도).
  * ① 상대강도 지도 | 섹터 순위(460) — 지도는 '지도 | 표' 전환(URL v, 폰 기본 표), 순위 정렬 URL rank(장기 RS·1개월·시총).
  * ② 섹터 카드 벽(6열, 폰 2열) — 60거래일 대표지수(실선)·코스피(점선), 누르면 섹터 화면. 위 찾기(URL q)는 섹터·Peer 그룹·종목.
  * 원천 GET /api/spine/industry/map(저장분만). Peer 그룹 찾기는 Peer 게시본(/api/peers/runtime)과 섹터 대응표.
  */
 export default function IndustryMapPage() {
+  const [market, setMarket] = useUrlParam("market", "kr")
+  return <PageLayout mode="document">
+    {market === "us" ? <UsIndustryMap bar={asOf => <MarketBar market="us" onChange={setMarket} asOf={asOf} />} />
+      : <KrIndustryMap bar={asOf => <MarketBar market="kr" onChange={setMarket} asOf={asOf} />} />}
+  </PageLayout>
+}
+
+const MARKET_INFO = {
+  kr: "비교 지수는 코스피입니다. 섹터는 업종 분류 18개이고, 종목 시세 2,700여 개로 계산합니다.",
+  us: "비교 지수는 S&P500(SPY)입니다. 섹터는 GICS 11개 섹터 ETF와 세부 업종 13개 ETF이고, 섹터 안 종목은 내 커버리지(팔로우 종목)입니다.",
+}
+
+/** '한국 | 미국' 전환 + ⓘ(비교 지수·섹터 구성) + 기준일 */
+function MarketBar({ market, onChange, asOf }: { market: "kr" | "us"; onChange: (v: string) => void; asOf: string | null | undefined }) {
+  return <div className="flex items-center gap-2 pt-0.5 pb-1">
+    <Seg label="시장" value={market} items={[{ key: "kr", label: "한국" }, { key: "us", label: "미국" }]} onChange={onChange} />
+    <InfoTip label="시장 전환 설명">{MARKET_INFO[market]}</InfoTip>
+    <span className="ml-auto font-mono text-xs text-ink-3">{asOf ? `${mmdd(asOf)} 종가` : ""}</span>
+  </div>
+}
+
+function KrIndustryMap({ bar }: { bar: (asOf: string | null | undefined) => React.ReactNode }) {
   const map = useIndustryMap()
   const mobile = useIsMobile()
   const [hover, setHover] = useState<string | null>(null)
   const lead = useMemo(() => [...(map.data?.sectors ?? [])].sort((a, b) => (b.rs_long ?? -1) - (a.rs_long ?? -1))[0]?.name ?? null, [map.data])
   const focus = hover ?? lead
-  return <PageLayout mode="document">
-    <div className="flex flex-col gap-4">
-      <Band label="상대강도" cells={[[7, <RsMapCard key="map" q={map} mobile={mobile} focus={focus} onHover={setHover} />], ...(mobile ? [] : [[5, <RankCard key="rank" q={map} focus={focus} onHover={setHover} />] as [number, React.ReactNode]])]} />
-      <SectorWall q={map} focus={focus} onHover={setHover} />
-    </div>
-  </PageLayout>
+  return <div className="flex flex-col gap-4">
+    {bar(map.data?.as_of)}
+    <Band label="상대강도" cells={[[7, <RsMapCard key="map" q={map} mobile={mobile} focus={focus} onHover={setHover} />], ...(mobile ? [] : [[5, <RankCard key="rank" q={map} focus={focus} onHover={setHover} />] as [number, React.ReactNode]])]} />
+    <SectorWall q={map} focus={focus} onHover={setHover} />
+  </div>
 }
 
 type MapQuery = ReturnType<typeof useIndustryMap>

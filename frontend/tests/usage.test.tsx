@@ -22,6 +22,8 @@ describe('screenOf — 화면 이름은 패턴, 값은 entity', () => {
     ['/follow/trade', '?hs=854232&trade_sort=surge', '/follow/trade', '854232'],
     ['/follow/taiwan', '?tw=2330', '/follow/taiwan', '2330'],
     ['/industry/반도체', '?tab=peer&group=HBM', '/industry/:sector?tab=peer', '반도체/HBM'],
+    ['/industry', '?market=us', '/industry?market=us', undefined],
+    ['/industry/us/SMH', '?tab=stocks', '/industry/us/:ticker?tab=stocks', 'SMH'],
   ])('%s%s → %s', (path, search, name, entity) => {
     const s = screenOf(path, search)
     expect(s.name).toBe(name)

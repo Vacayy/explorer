@@ -22,7 +22,7 @@ export const DOC_KIND: Record<SectorDoc["type"], string> = { blog: "블로그", 
 const DOC_FILTERS = [{ key: "all", label: "전체" }, { key: "research", label: "리서치" }, { key: "blog", label: "블로그" }, { key: "youtube", label: "유튜브" }] as const
 
 /** 기간 자르기 — 1개월 21 · 3개월 63거래일, 1년·3년은 마지막 날에서 달력 기준 */
-function slice(series: IndustrySectorDetail["series"], range: string) {
+export function slice(series: IndustrySectorDetail["series"], range: string) {
   if (range === "1m") return series.slice(-22)
   if (range === "3m") return series.slice(-64)
   if (!series.length) return series
@@ -150,13 +150,13 @@ function DocsCard({ q }: { q: Q }) {
   </MarketCard>
 }
 
-export function dataValue(c: SectorDataLinkCard): string | null {
+export function dataValue(c: Omit<SectorDataLinkCard, "kind">): string | null {
   if (c.value == null) return c.verdict
   return c.value_kind === "usd" ? formatUsd(c.value) : formatPercent(c.value)
 }
 
 /** 연결 카드 하나 — 종류 › · 제목 · 값(Geist) + 변화 · 한 줄 */
-export function DataLinkCard({ c, big }: { c: SectorDataLinkCard; big?: boolean }) {
+export function DataLinkCard({ c, big }: { c: Omit<SectorDataLinkCard, "kind">; big?: boolean }) {
   const v = dataValue(c)
   return <Link to={c.href} className={cn("flex min-h-[118px] min-w-0 flex-col gap-[3px] border bg-card p-3 hover:bg-surface-2", big && "min-h-[150px] gap-1.5 p-4")}>
     <span className="text-[11.5px] text-ink-3">{c.label} ›</span>
