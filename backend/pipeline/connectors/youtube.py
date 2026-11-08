@@ -263,9 +263,17 @@ def resolve_channel_id(url_or_handle: str) -> tuple[str, str] | None:
     return None
 
 
+class _TimeoutSession(requests.Session):
+    """요청마다 기본 timeout — youtube-transcript-api는 timeout 없이 부른다.
+    2026-11-06 응답 없는 연결 하나에 45시간 매달려 30분 수집 체인 전체(텔레그램·블로그 포함)가 멈췄다."""
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", 30)
+        return super().request(*args, **kwargs)
+
+
 def fetch_transcript(video_id: str) -> str | None:
     from youtube_transcript_api import YouTubeTranscriptApi
-    api = YouTubeTranscriptApi()
+    api = YouTubeTranscriptApi(http_client=_TimeoutSession())
     try:
         tl = api.list(video_id)
     except Exception:

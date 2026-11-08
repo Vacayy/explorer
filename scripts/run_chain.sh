@@ -18,8 +18,20 @@ ts() { date '+%Y-%m-%d %H:%M:%S'; }
 if ! mkdir "$LOCK" 2>/dev/null; then
   OLDPID=$(cat "$LOCK/pid" 2>/dev/null || echo "")
   if [ -n "$OLDPID" ] && kill -0 "$OLDPID" 2>/dev/null; then
-    echo "$(ts) [chain] 이전 실행(pid $OLDPID) 진행 중 — 이번 회차 skip" >> "$LOG"
-    exit 0
+    # 멈춘 회차 회수 — 평소 한 회차는 10분 안팎. 2시간을 넘기면 응답 없는 네트워크 호출에 매달린 것으로 보고
+    # 그 회차의 자식 프로세스와 래퍼를 끝낸다(2026-11-06 유튜브 자막 연결 하나에 45시간 멈춰 수집 전체가 정지).
+    AGE=$(( $(date +%s) - $(stat -f %m "$LOCK/pid" 2>/dev/null || date +%s) ))
+    if [ "$AGE" -lt "${CHAIN_STUCK_SECONDS:-7200}" ]; then
+      echo "$(ts) [chain] 이전 실행(pid $OLDPID) 진행 중 — 이번 회차 skip" >> "$LOG"
+      exit 0
+    fi
+    KIDS=$(pgrep -P "$OLDPID" | tr '\n' ' ')
+    echo "$(ts) [chain] 멈춘 회차 강제 종료 — pid $OLDPID · 자식 ${KIDS:-없음} · $((AGE / 60))분 경과" >> "$LOG"
+    [ -n "$KIDS" ] && kill $KIDS 2>/dev/null
+    kill "$OLDPID" 2>/dev/null
+    sleep 2
+    "$PY" -c 'import sys; sys.path.insert(0, "backend"); from pipeline.ops import record_run; record_run("chain", "error", sys.argv[1])' \
+      "멈춘 회차 강제 종료 — $((AGE / 60))분 경과(pid $OLDPID)" >> "$LOG" 2>&1
   fi
   echo "$(ts) [chain] stale 락 회수(pid ${OLDPID:-none})" >> "$LOG"
   rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || exit 0
