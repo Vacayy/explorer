@@ -18,20 +18,8 @@ ts() { date '+%Y-%m-%d %H:%M:%S'; }
 if ! mkdir "$LOCK" 2>/dev/null; then
   OLDPID=$(cat "$LOCK/pid" 2>/dev/null || echo "")
   if [ -n "$OLDPID" ] && kill -0 "$OLDPID" 2>/dev/null; then
-    # 멈춘 회차 회수 — 평소 한 회차는 10분 안팎. 2시간을 넘기면 응답 없는 네트워크 호출에 매달린 것으로 보고
-    # 그 회차의 자식 프로세스와 래퍼를 끝낸다(2026-11-06 유튜브 자막 연결 하나에 45시간 멈춰 수집 전체가 정지).
-    AGE=$(( $(date +%s) - $(stat -f %m "$LOCK/pid" 2>/dev/null || date +%s) ))
-    if [ "$AGE" -lt "${CHAIN_STUCK_SECONDS:-7200}" ]; then
-      echo "$(ts) [chain] 이전 실행(pid $OLDPID) 진행 중 — 이번 회차 skip" >> "$LOG"
-      exit 0
-    fi
-    KIDS=$(pgrep -P "$OLDPID" | tr '\n' ' ')
-    echo "$(ts) [chain] 멈춘 회차 강제 종료 — pid $OLDPID · 자식 ${KIDS:-없음} · $((AGE / 60))분 경과" >> "$LOG"
-    [ -n "$KIDS" ] && kill $KIDS 2>/dev/null
-    kill "$OLDPID" 2>/dev/null
-    sleep 2
-    "$PY" -c 'import sys; sys.path.insert(0, "backend"); from pipeline.ops import record_run; record_run("chain", "error", sys.argv[1])' \
-      "멈춘 회차 강제 종료 — $((AGE / 60))분 경과(pid $OLDPID)" >> "$LOG" 2>&1
+    echo "$(ts) [chain] 이전 실행(pid $OLDPID) 진행 중 — 이번 회차 skip" >> "$LOG"
+    exit 0
   fi
   echo "$(ts) [chain] stale 락 회수(pid ${OLDPID:-none})" >> "$LOG"
   rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || exit 0
@@ -58,8 +46,12 @@ STEPS=0
 step() {
   local name="$1"; shift
   STEPS=$((STEPS + 1))
-  "$PY" "$@" >> "$LOG" 2>&1
+  # 단계 시간 상한 — alarm은 exec 뒤에도 남아 상한을 넘기면 SIGALRM(rc=142)으로 끝난다.
+  # 2026-11-06 ingest가 응답 없는 유튜브 연결에 45시간 매달렸고, launchd는 실행 중인 잡을 다시 띄우지 않아
+  # 수집 전체가 이틀 멈췄다. 한 단계가 멈춰도 그 회차는 끝나고 다음 회차가 돈다.
+  perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "${CHAIN_STEP_SECONDS:-3600}" "$PY" "$@" >> "$LOG" 2>&1
   local rc=$?
+  [ $rc -eq 142 ] && echo "$(ts) [chain] $name 시간 상한(${CHAIN_STEP_SECONDS:-3600}초) 초과로 종료" >> "$LOG"
   if [ $rc -ne 0 ]; then
     FAILED+=("$name(rc=$rc)")
     echo "$(ts) [chain] $name 실패 rc=$rc" >> "$LOG"
