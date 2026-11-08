@@ -170,6 +170,7 @@ export interface UsFundamentals {
   fwd_pe: number | null;
   trailing_pe: number | null;
   fwd_eps: number | null;
+  trailing_eps?: number | null;
   revenue: number | null;
   net_income: number | null;
   ocf: number | null;
@@ -184,6 +185,7 @@ export interface UsDossier {
   name: string;
   entity_id: number | null;
   fundamentals: UsFundamentals | null;
+  fundamentals_fetched_at: string | null;   // 스냅샷 수집 시각(UTC)
   latest_transcript: { id: number; fiscal_year: number; fiscal_period: string; call_date: string } | null;
   sector: string | null;       // 실적 시즌 섹터 이름 (팔로우 밖이면 null)
   sector_etf: string | null;   // 실적 반응 비교 ETF

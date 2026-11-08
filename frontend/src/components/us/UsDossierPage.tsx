@@ -13,18 +13,18 @@ import { CompanyPriceResearch } from '@/components/company/CompanyPriceResearch'
 import { CompanyEvidence } from '@/components/company/CompanyEvidence'
 import { CompanyMentions } from '@/components/company/CompanyMentions'
 import { CompanyOverviewCard } from '@/components/company/CompanyOverview'
-import { DossierHead, MetricStrip } from '@/components/company/DossierHead'
+import { DossierHead, MetricStrip, type MetricSource } from '@/components/company/DossierHead'
 import { InfoTip } from '@/components/shared/InfoTip'
 import SaveButton from '@/components/shared/SaveButton'
-import type { StockPriceItem, UsDossier } from '@/types'
+import type { StockPriceItem, UsDossier, UsFundamentals } from '@/types'
 import { LensView } from '@/components/lens/LensPage'
 import { WatchButton } from '@/components/follow/WatchButton'
 import { UsPriceCollect } from '@/components/us/UsPriceCollect'
 import { UsEarningsCard, UsEarningsHistory } from '@/components/us/UsEarningsCard'
 import { useCompanyPrices } from '@/hooks/useCompanyPrices'
-import { lastClose, rangePos, upside, usConsensus, usEyebrow, usTabOf } from '@/lib/dossier'
+import { lastClose, rangePos, shortDate, upside, usConsensus, usEyebrow, usTabOf, type LastClose, type UsConsensus } from '@/lib/dossier'
 import { cn } from '@/lib/utils'
-import { formatPercent, formatRatio, formatStockPrice, formatUsd } from '@/utils/format'
+import { formatKstSlashDate, formatPercent, formatRatio, formatStockPrice, formatUsd } from '@/utils/format'
 
 const EMPTY_PRICES: StockPriceItem[] = []
 
@@ -33,6 +33,25 @@ function usd(v?: number | null) {
   return v < 0 ? `-${formatUsd(-v)}` : formatUsd(v)
 }
 const times = (v?: number | null) => (v == null ? '-' : `${v.toFixed(1)}배`)
+
+/** 머리 지표 띠의 ⓘ — 모두 Yahoo Finance(yfinance) 스냅샷(pipeline/us_data.py, 24시간 캐시)에서 온다 */
+export function usMetricSources(f: UsFundamentals | null, c: UsConsensus, fetchedAt: string | null, last: LastClose | null): Record<string, MetricSource> {
+  const yahoo = 'Yahoo Finance (yfinance)'
+  const asOf = fetchedAt ? `${formatKstSlashDate(fetchedAt)} 수집` : undefined
+  const px = f?.price != null ? formatStockPrice(f.price, 'us') : '주가'
+  const eps = (v?: number | null) => (v != null ? `$${v.toFixed(2)}` : '-')
+  return {
+    market_cap: { formula: '주가 × 발행주식수', source: `${yahoo} marketCap`, asOf, note: '수집 시점 주가 기준이라 머리의 종가와 다를 수 있습니다' },
+    fwd_pe: { formula: `${px} ÷ 다음 회계연도 추정 EPS ${eps(f?.fwd_eps)}`, source: `${yahoo} forwardPE`, asOf },
+    trailing_pe: { formula: `${px} ÷ 최근 12개월 EPS ${eps(f?.trailing_eps)}`, source: `${yahoo} trailingPE`, asOf },
+    target_mean: {
+      formula: c.targets?.median != null ? `애널리스트 목표가 평균 (중앙값 ${formatStockPrice(c.targets.median, 'us')})` : '애널리스트 목표가 평균',
+      source: yahoo, asOf,
+      note: last ? `여력 = (평균 목표가 − 종가) ÷ 종가, ${shortDate(last.date)} 종가 기준` : undefined,
+    },
+    target_range: { formula: '애널리스트 목표가 최저 – 최고', source: yahoo, asOf },
+  }
+}
 
 /**
  * 미국 종목 도시에 (docs/specs/us-dossier.md · ia-redesign §4.9·§4.13) — 탭은 셸 하위 메뉴(?tab=overview|financials|evidence|lens).
@@ -52,6 +71,7 @@ export default function UsDossierPage() {
     const price = last?.close ?? f?.price ?? null
     const c = usConsensus(f?.estimates)
     const room = upside(c.targets?.mean, price)
+    const src = usMetricSources(f, c, d.fundamentals_fetched_at, last)
     return (
       <PageContainer>
         <DossierHead market="us" eyebrow={usEyebrow(d)} name={d.name} last={last} loading={prices.isPending}
@@ -61,12 +81,12 @@ export default function UsDossierPage() {
             <UsPriceCollect ticker={d.ticker} compact />
           </>} />
         <MetricStrip items={[
-          { label: '시가총액', value: usd(f?.market_cap) },
-          { label: 'Fwd PER', value: times(f?.fwd_pe) },
-          { label: 'Trailing PER', value: times(f?.trailing_pe) },
-          { label: '목표가 평균', value: c.targets ? formatStockPrice(c.targets.mean, 'us') : '-',
+          { label: '시가총액', value: usd(f?.market_cap), info: src.market_cap },
+          { label: 'Fwd PER', value: times(f?.fwd_pe), info: src.fwd_pe },
+          { label: 'Trailing PER', value: times(f?.trailing_pe), info: src.trailing_pe },
+          { label: '목표가 평균', value: c.targets ? formatStockPrice(c.targets.mean, 'us') : '-', info: src.target_mean,
             sub: room != null ? <span className={room >= 0 ? 'text-up-ink' : 'text-down-ink'}>{formatPercent(room)} 여력</span> : undefined },
-          { label: '목표가 범위', value: c.targets ? `${formatStockPrice(c.targets.low, 'us')} – ${formatStockPrice(c.targets.high, 'us')}` : '-' },
+          { label: '목표가 범위', value: c.targets ? `${formatStockPrice(c.targets.low, 'us')} – ${formatStockPrice(c.targets.high, 'us')}` : '-', info: src.target_range },
         ]} />
         {tab === 'evidence' ? <CompanyMentions key={ticker} company={d.ticker} market="us" />
           : tab === 'financials' ? <UsFinancials d={d} price={price} />

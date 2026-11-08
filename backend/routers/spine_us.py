@@ -191,8 +191,11 @@ def us_dossier(ticker: str):
     fund = get_fundamentals(ticker)
     if not fund and eid is None:
         raise HTTPException(404, "US 종목 데이터를 찾을 수 없습니다")
+    conn = get_connection()
+    fr = conn.execute("SELECT fetched_at FROM us_fundamentals WHERE ticker=?", (ticker.upper(),)).fetchone()
+    conn.close()
     return UsDossier(ticker=ticker.upper(), name=name or ticker.upper(), entity_id=eid,
-                     fundamentals=fund, latest_transcript=dict(tr) if tr else None, sector=sector, sector_etf=etf)
+                     fundamentals=fund, fundamentals_fetched_at=fr["fetched_at"] if fr else None, latest_transcript=dict(tr) if tr else None, sector=sector, sector_etf=etf)
 
 
 def _sector(conn, ticker: str) -> tuple[str | None, str | None]:

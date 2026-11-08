@@ -2,6 +2,7 @@
 export const loaders = {
   'companies': () => import('./validators-companies.js'),
   'ir-notes': () => import('./validators-ir-notes.js'),
+  'kpi': () => import('./validators-kpi.js'),
   'peers': () => import('./validators-peers.js'),
   'portfolio': () => import('./validators-portfolio.js'),
   'actions': () => import('./validators-actions.js'),
@@ -71,6 +72,5 @@ export const loaders = {
   'business': () => import('./validators-business.js'),
   'financials': () => import('./validators-financials.js'),
   'company-profile': () => import('./validators-company-profile.js'),
-  'kpi': () => import('./validators-kpi.js'),
   'disclosures': () => import('./validators-disclosures.js'),
 }
