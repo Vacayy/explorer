@@ -1,7 +1,7 @@
 """국내 종목 도시에 원천 수집 — launchd dev.explorer.krcompany (매일 21:30, pipeline/kr_company_data.py).
 
   python scripts/collect_kr_company_data.py                    # 종목 마스터 → 공시 → 재무(예산 안에서) → 밸류
-  python scripts/collect_kr_company_data.py --only financials  # 한 단계만 (companies|disclosures|financials|valuation)
+  python scripts/collect_kr_company_data.py --only financials  # 한 단계만 (companies|disclosures|financials|valuation|consensus)
   python scripts/collect_kr_company_data.py --budget 1000 --sweep-days 35   # 예산·공시 재확인 창 조정 (밀린 공시 메우기)
 
 단계마다 job_runs(kr_companies·kr_disclosures·kr_financials·kr_valuation)에 ok/partial/error를 남기고,
@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import get_connection, init_db
 
-STEPS = ("companies", "disclosures", "financials", "valuation")
+STEPS = ("companies", "disclosures", "financials", "valuation", "consensus")
 
 
 def main() -> int:
@@ -25,6 +25,7 @@ def main() -> int:
     from pipeline import kr_company_data as kr
     from pipeline.ops import run_job
     from services.market_valuation import fetch_market_valuation
+    from services.consensus_service import refresh_consensus
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=STEPS)
@@ -59,6 +60,9 @@ def main() -> int:
         step("disclosures", "kr_disclosures", lambda: kr.collect_disclosures(conn, client, tgts, today, args.sweep_days))
         step("financials", "kr_financials", lambda: kr.collect_financials(conn, client, tgts, today))
         step("valuation", "kr_valuation", lambda: fetch_market_valuation(conn))
+        # 목표가 컨센서스 — 보유·관심 묶음 종목만(시총 상위는 화면 머리에 쓰이지 않는다). 네이버라 DART 예산과 무관
+        mine = list(dict.fromkeys(t["stock_code"] for t in tgts if t["tier"] in ("portfolio", "watch")))
+        step("consensus", "kr_consensus", lambda: refresh_consensus(mine))
     finally:
         conn.close()
     print(f"[krcompany] DART 호출 {client.calls}/{args.budget}")
