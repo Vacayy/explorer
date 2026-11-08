@@ -371,12 +371,20 @@ def summary(days: int = 7) -> dict:
 
 # ---------- 즉시 경고 · 주간 리포트 ----------
 
+STALE_ALERT_KEYS = {"chain", "youtube"}   # critical이 아니어도 멈추면 알리는 신선도 항목
+
+
 def _conditions(conn) -> dict[str, str]:
     """지금 켜져 있어야 할 경고 — key → 문구."""
     out = {}
     for s in job_problems(conn, 3)["streaks"]:
         if s["streak"] >= 3:
             out[f"job_streak:{s['job']}"] = f"{s['name']} 연속 {s['streak']}회 실패 — {s['last'][:120]}"
+    # 데이터 신선도 — 운영 점검에만 보이던 멈춤을 알린다(2026-11-06 수집 체인 45시간 정지가 경고 없이 지나갔다)
+    from pipeline.health import report
+    for i in report(conn, launchd=False):
+        if i["status"] != "ok" and (i["critical"] or i["key"] in STALE_ALERT_KEYS):
+            out[f"stale:{i['key']}"] = f"{i['label']} 멈춤 — {i['detail'] or i['status']}"
     days = [r[0] or 0 for r in conn.execute(
         "SELECT sum(cost_usd) FROM llm_calls WHERE created_at >= datetime('now','-15 days') AND date(created_at,'+9 hours') < date('now','+9 hours') "
         "GROUP BY date(created_at,'+9 hours')")]
