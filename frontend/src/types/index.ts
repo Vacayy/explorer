@@ -420,6 +420,30 @@ export interface SectorPeerGroupRow {
 }
 export interface SectorPeerList { sector: string; catalog_as_of: string; prices_as_of: string; groups: SectorPeerGroupRow[] }
 
+/** 미국 섹터 (ia-redesign §4.36, backend/models/industry.py Us*) — 섹터 = GICS 11 + 세부 업종 13 ETF, 비교 SPY */
+export interface UsEtfRow {
+  ticker: string; name: string; full_name: string; parent: string | null
+  last: number | null; last_date: string | null; chg_1d: number | null; ret_1m: number | null; ret_3m: number | null; chg_1w: number | null
+  rs_long: number | null; rs_short: number | null; trail: SectorTrailPoint[]; coverage: number
+}
+export interface UsMapSector extends UsEtfRow { series: number[] }
+/** GET /api/spine/industry/us/map */
+export interface UsIndustryMap { as_of: string | null; spy: number[]; sectors: UsMapSector[] }
+export interface UsSectorMember {
+  ticker: string; name: string; market_cap: number | null; industry: string | null
+  ret_1w: number | null; ret_1m: number | null; ret_3m: number | null; closes: number[]
+}
+export type UsSectorDocType = 'blog' | 'scrap' | 'web' | 'youtube' | 'transcript' | 'earnings_release'
+export interface UsSectorDoc { id: number; type: UsSectorDocType; title: string; published_at: string | null; hits: number }
+export interface UsSectorDataLink extends Omit<SectorDataLinkCard, 'kind'> { kind: 'usSeason' | 'valuechain' | 'taiwan' | 'krSector' }
+/** GET /api/spine/industry/us/{ticker} — 미국 섹터 화면 */
+export interface UsSectorDetail extends UsEtfRow {
+  as_of: string | null; zone: '주도' | '숨 고르기' | '반등 시도' | '소외' | null; parent_name: string | null
+  series: { d: string; v: number; k: number | null }[]
+  siblings: { ticker: string; name: string; parent: string | null; ret_1m: number | null; ret_3m: number | null; rs_long: number | null; rs_short: number | null }[]
+  members: UsSectorMember[]; docs: UsSectorDoc[]; data_links: UsSectorDataLink[]
+}
+
 /** GET /api/spine/signals/summary — 유형별 최신일 건수·상위 3. as_of = 신호 최신일 */
 export interface SignalsSummaryType {
   type: string;

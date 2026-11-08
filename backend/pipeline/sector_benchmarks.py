@@ -9,6 +9,7 @@
   하루 수익률을 '전날 시총(최신 주식 수 × 전날 종가)' 가중으로 이어 붙인다(체인). 가격이 빈 종목은 그날만 빠진다.
   최신 시총 기준 섹터의 COVERAGE 이상이 가격을 가진 첫날부터 100으로 시작한다(이력이 얇은 과거를 버린다).
 - 실행: `scripts/collect_sector_benchmarks.py`(launchd `sectorbench`, 평일 일별 시세 뒤). GET은 저장분만 읽는다.
+  같은 실행에서 미국 섹터 ETF 24 + SPY 종가·팔로우 종목 업종·시세 꼬리도 받는다(`pipeline/us_sectors.collect`, §4.36).
 """
 from __future__ import annotations
 
@@ -176,15 +177,22 @@ def compute_index(conn) -> dict:
 
 
 def run() -> dict:
-    """일별 실행 — 대표 ETF·코스피 종가 수집 + 계산 지수. 수집이 일부 실패하면 status='partial'."""
+    """일별 실행 — 대표 ETF·코스피 종가 수집 + 계산 지수 + 미국 섹터 ETF·팔로우 업종·시세(us_sectors, §4.36).
+    수집이 일부 실패하면 status='partial'."""
     from database import get_connection
+    from pipeline import us_sectors
     conn = get_connection()
     try:
         got = collect(conn)
         idx = compute_index(conn)
+        try:
+            us = us_sectors.collect(conn)
+        except Exception as e:  # noqa: BLE001 — 미국 쪽이 통째로 실패해도 국내 결과는 남긴다(이름으로 보고)
+            us = {"degraded": [f"us({type(e).__name__}: {str(e)[:80]})"]}
     finally:
         conn.close()
-    out = {**got, "index": idx}
+    got["degraded"] = got["degraded"] + [f"us:{x}" for x in us["degraded"]]
+    out = {**got, "index": idx, "us": us}
     if got["degraded"]:
         out["status"] = "partial"
     return out

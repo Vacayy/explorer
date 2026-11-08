@@ -697,12 +697,20 @@ def init_db():
         tracks  TEXT,                             -- 기초지수 (예: KRX 반도체)
         note    TEXT                              -- 섹터 구성과 다른 점·ETF가 없는 이유
     );
-    -- 대표 ETF·코스피(^KS11) 일별 종가 (yfinance 수정 종가, pipeline/sector_benchmarks.collect)
+    -- 대표 ETF·코스피(^KS11) 일별 종가 (yfinance 수정 종가, pipeline/sector_benchmarks.collect). 미국 섹터 ETF 24 + SPY도 여기(us_sectors.collect_etfs)
     CREATE TABLE IF NOT EXISTS sector_benchmark_prices (
         ticker      TEXT NOT NULL,
         trade_date  TEXT NOT NULL,
         close       REAL NOT NULL,
         PRIMARY KEY (ticker, trade_date)
+    );
+    -- 미국 팔로우 종목 Yahoo 업종 (ia-redesign §4.36, pipeline/us_sectors.collect_sectors) — 30일 주기 갱신.
+    -- GICS ETF·세부 업종 ETF 대응은 코드(us_sectors.SECTOR_ETF·INDUSTRY_ETF). 미국 섹터 ETF·SPY 종가는 sector_benchmark_prices에 함께 둔다
+    CREATE TABLE IF NOT EXISTS us_ticker_sectors (
+        ticker      TEXT PRIMARY KEY,
+        sector      TEXT,                         -- Yahoo sector (예: Technology)
+        industry    TEXT,                         -- Yahoo industry (예: Semiconductors)
+        fetched_at  TEXT NOT NULL
     );
     -- 섹터 계산 지수 — 시총 가중·최신 주식 수 고정, 체인 (pipeline/sector_benchmarks.compute_index)
     CREATE TABLE IF NOT EXISTS sector_index (

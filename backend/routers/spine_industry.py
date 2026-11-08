@@ -1,9 +1,10 @@
-"""산업 › 섹터 지도 · 섹터 화면 API (ia-redesign §4.35, D-327) — 저장분만 읽는다(외부·모델 호출 없음)."""
+"""산업 › 섹터 지도 · 섹터 화면 API (ia-redesign §4.35, D-327 · 미국 §4.36) — 저장분만 읽는다(외부·모델 호출 없음)."""
 import logging
 
 from fastapi import APIRouter, HTTPException
 
-from models.industry import IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse
+from models.industry import (IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse, UsIndustryMapResponse,
+                             UsSectorDetailResponse)
 
 router = APIRouter(prefix="/api/spine/industry", tags=["spine"])
 logger = logging.getLogger(__name__)
@@ -19,6 +20,34 @@ def _runtime(required: bool):
         if required:
             raise HTTPException(status_code=503, detail="Peer 저장 자료를 읽거나 검증하지 못했습니다.") from exc
         return None
+
+
+# 미국 라우트를 먼저 — '/{sector}'·'/{sector}/peers'보다 앞에 둔다(§4.36)
+@router.get("/us/map", response_model=UsIndustryMapResponse)
+def us_industry_map():
+    """미국 섹터 지도 — GICS 11 + 세부 업종 13 ETF의 RS(24개 간 백분위)·1개월·3개월·1주·4주 경로·61거래일 선 + SPY 선, 내 커버리지 수."""
+    from database import get_connection
+    from pipeline.us_sectors import us_map
+    conn = get_connection()
+    try:
+        return us_map(conn)
+    finally:
+        conn.close()
+
+
+@router.get("/us/{ticker}", response_model=UsSectorDetailResponse)
+def us_sector_detail(ticker: str):
+    """미국 섹터 화면 — ETF 머리·ETF vs SPY·같은 상위 섹터 안 비교·내 커버리지 종목·주요 자료·이 산업의 데이터."""
+    from database import get_connection
+    from pipeline.us_sectors import us_sector_detail as build
+    conn = get_connection()
+    try:
+        out = build(conn, ticker)
+    finally:
+        conn.close()
+    if out is None:
+        raise HTTPException(status_code=404, detail="없는 미국 섹터 ETF입니다.")
+    return out
 
 
 @router.get("/map", response_model=IndustryMapResponse)
