@@ -1,12 +1,16 @@
 """유튜브 커넥터 — 영상 자막(transcript) 수집.
 
 두 진입점:
-- 채널 구독: youtube_channels의 RSS(feeds/videos.xml)에서 신규 영상 → 자막
+- 채널 구독: youtube_channels의 RSS(feeds/videos.xml)에서 신규 영상 → 자막.
+  RSS가 실패하거나 비면 채널 '동영상' 페이지(ytInitialData)에서 최신 목록을 읽는다
+  (2026-11 RSS가 전 채널 404/500 — 조용히 '새 영상 없음'이 되어 11/3 이후 수집이 멈췄다)
 - 링크 단건: fetch 대상에 video_id 직접 지정 (소스 등록 API가 처리)
 
 자막은 ko 우선 → en → 아무 언어. 자동생성 자막도 허용(없는 것보단 낫다).
 추출된 자막은 store→enrich 파이프라인을 그대로 타서 종목·산업 태깅된다.
 """
+import json
+import logging
 import re
 
 import feedparser
@@ -17,6 +21,8 @@ from database import get_connection
 
 _UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 _RSS = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+_VIDEOS_PAGE = "https://www.youtube.com/channel/{cid}/videos"
+log = logging.getLogger(__name__)
 _LANG_PREF = ["ko", "en"]
 MAX_NEW_PER_CHANNEL = 5   # 채널당 회차 신규 영상 상한 (첫 구독 시 폭주 방지)
 MAX_TRANSCRIPT_CHARS = 45000  # opus 입력 상한 (긴 라이브 방어)
@@ -127,6 +133,69 @@ def _feed_channel_title(feed, cid: str) -> str:
     return title if matches and title and title != cid else ""
 
 
+def _rss_entries(cid: str):
+    """RSS 피드 → (feed, entries). HTTP 오류·빈 피드면 entries가 빈 목록."""
+    r = requests.get(_RSS.format(cid=cid), headers=_UA, timeout=15)
+    f = feedparser.parse(r.content)
+    if isinstance(getattr(r, "status_code", 200), int) and r.status_code >= 400:
+        return f, []
+    return f, list(f.entries)
+
+
+def _page_videos(html: str) -> list[dict]:
+    """채널 '동영상' 페이지 HTML의 ytInitialData → 최신순 [{video_id, title}](title은 번역됐을 수 있음).
+    옛 videoRenderer와 새 lockupViewModel 모두 읽는다. 게시 시각은 페이지에 상대 표기뿐이라 비워 두고
+    fetch가 시청 페이지에서 정확한 시각을 읽는다(_video_published)."""
+    m = re.search(r"var ytInitialData\s*=\s*(\{.*?\});\s*</script>", html, re.S)
+    if not m:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(vid, title):
+        if vid and re.fullmatch(r"[A-Za-z0-9_-]{11}", vid) and vid not in seen:
+            seen.add(vid)
+            out.append({"video_id": vid, "title": title or ""})
+
+    def walk(o):
+        if isinstance(o, dict):
+            if "videoRenderer" in o:
+                v = o["videoRenderer"]
+                add(v.get("videoId"), "".join(r.get("text", "") for r in v.get("title", {}).get("runs", [])))
+            elif "lockupViewModel" in o:
+                v = o["lockupViewModel"]
+                if v.get("contentType", "LOCKUP_CONTENT_TYPE_VIDEO") == "LOCKUP_CONTENT_TYPE_VIDEO":
+                    add(v.get("contentId"), v.get("metadata", {}).get("lockupMetadataViewModel", {}).get("title", {}).get("content"))
+            else:
+                for x in o.values():
+                    walk(x)
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+
+    walk(json.loads(m.group(1)))
+    return out
+
+
+def _channel_page_videos(cid: str) -> list[dict]:
+    html = requests.get(_VIDEOS_PAGE.format(cid=cid), headers=_UA, timeout=15).text
+    return _page_videos(html)
+
+
+def _page_channel_title(cid: str) -> str:
+    """RSS가 안 될 때 채널 페이지의 og:title — 그 페이지가 이 채널(externalId)일 때만."""
+    import html as _html
+    try:
+        page = requests.get(_VIDEOS_PAGE.format(cid=cid), headers=_UA, timeout=15).text
+    except Exception:
+        return ""
+    if f'"externalId":"{cid}"' not in page:
+        return ""
+    m = re.search(r'<meta property="og:title" content="([^"]+)"', page)
+    title = _html.unescape(m.group(1)).strip() if m else ""
+    return title if title and title != cid else ""
+
+
 def _repair_channel_title(cid: str, title: str) -> None:
     if not title or title == cid:
         return
@@ -157,7 +226,9 @@ def _channel_title(cid: str) -> str:
         response.raise_for_status()
         title = _feed_channel_title(feedparser.parse(response.content).feed, cid)
     except Exception:
-        return cid
+        title = ""
+    if not title:
+        title = _page_channel_title(cid)
     if title:
         _repair_channel_title(cid, title)
         set_cache(key, 86400)
@@ -334,22 +405,35 @@ class YouTubeConnector:
         conn.close()
         refs: list[SourceRef] = []
         for ch in channels:
+            cid = ch["channel_id"]
+            channel_title = ""
+            items: list[dict] = []
             try:
-                f = feedparser.parse(requests.get(
-                    _RSS.format(cid=ch["channel_id"]), headers=_UA, timeout=15).content)
+                f, entries = _rss_entries(cid)
+                channel_title = _feed_channel_title(f.feed, cid)
+                if channel_title:
+                    _repair_channel_title(cid, channel_title)
+                items = [{"video_id": e.get("yt_videoid") or (e.get("id", "").split(":")[-1]),
+                          "title": e.get("title", ""), "published": e.get("published", "")} for e in entries]
             except Exception:
-                continue
-            channel_title = _feed_channel_title(f.feed, ch["channel_id"])
-            if channel_title:
-                _repair_channel_title(ch["channel_id"], channel_title)
+                pass
+            if not items:
+                try:
+                    items = _channel_page_videos(cid)
+                except Exception:
+                    items = []
+                # 페이지 제목은 요청 언어로 자동 번역될 수 있어 버린다 — fetch가 oEmbed로 원제목을 읽는다
+                items = [{"video_id": it["video_id"]} for it in items]
+                if not items:
+                    log.warning("youtube discover: %s(%s) RSS·채널 페이지 모두 목록 없음", ch["title"], cid)
             new = 0
-            for e in f.entries:
-                vid = e.get("yt_videoid") or (e.get("id", "").split(":")[-1])
+            for it in items:
+                vid = it["video_id"]
                 if not vid or vid in seen:
                     continue
                 refs.append(SourceRef(key=vid, meta={
-                    "title": e.get("title", ""), "published": e.get("published", ""),
-                    "channel_id": ch["channel_id"], "channel": channel_title or ch["title"]}))
+                    "title": it.get("title", ""), "published": it.get("published", ""),
+                    "channel_id": cid, "channel": channel_title or ch["title"]}))
                 new += 1
                 if new >= MAX_NEW_PER_CHANNEL:
                     break
