@@ -1,5 +1,4 @@
 """New overview inputs: source parsing, units, dates, and collection registration."""
-import io
 import sqlite3
 import unittest
 from unittest.mock import MagicMock, patch
@@ -9,9 +8,10 @@ from pipeline import macro
 class MacroInputsTests(unittest.TestCase):
     def test_fred_csv_keeps_percent_units_and_skips_missing(self):
         body = b'observation_date,DGS2\n2026-09-01,3.51\n2026-09-02,.\n2026-09-03,\n2026-09-04,3.62\n2026-09-05,NaN\n'
-        with patch.object(macro.urllib.request, 'urlopen', return_value=io.BytesIO(body)) as fetch:
+        with patch('requests.get', return_value=MagicMock(content=body)) as fetch:
             self.assertEqual(macro._public_fred_history('DGS2', days=50000), [('2026-09-01',3.51),('2026-09-04',3.62)])
-            self.assertTrue(fetch.call_args.args[0].full_url.startswith('https://fred.stlouisfed.org/graph/fredgraph.csv?'))
+            self.assertEqual(fetch.call_args.args[0], 'https://fred.stlouisfed.org/graph/fredgraph.csv')
+            self.assertEqual(fetch.call_args.kwargs['params']['id'], 'DGS2')
 
     def test_read_preserves_each_series_observation_date_and_units(self):
         conn=sqlite3.connect(':memory:'); conn.row_factory=sqlite3.Row

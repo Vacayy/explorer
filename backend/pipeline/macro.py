@@ -67,20 +67,22 @@ def _fred_history(series_id: str, days: int = 400) -> list[tuple[str, float]]:
 def _public_fred_history(series_id: str, days: int = 400) -> list[tuple[str, float]]:
     """Official FRED CSV: percentage yields as published, missing observations excluded."""
     start = (date.today() - timedelta(days=days)).isoformat()
-    query = urllib.parse.urlencode({"id": series_id, "cosd": start})
-    req = urllib.request.Request(f"https://fred.stlouisfed.org/graph/fredgraph.csv?{query}",
-                                 headers={"User-Agent": "stock-explorer"})
-    with urllib.request.urlopen(req, timeout=20) as response:
-        rows = csv.DictReader(io.StringIO(response.read().decode('utf-8-sig')))
-        values = []
-        for row in rows:
-            stamp = row.get('observation_date') or row.get('DATE')
-            raw_value = row.get(series_id)
-            if not stamp or stamp < start or raw_value in (None, '', '.'):
-                continue
-            value = float(raw_value)
-            if math.isfinite(value):
-                values.append((stamp, value))
+    # requests 기본 헤더로 부른다 — 2026-11-07부터 FRED가 urllib 요청(UA 'stock-explorer'·브라우저 UA 모두)에
+    # 응답을 보내지 않아 회사채 스프레드(credit)가 연속 timeout. requests·curl은 즉시 200.
+    import requests
+    response = requests.get("https://fred.stlouisfed.org/graph/fredgraph.csv",
+                            params={"id": series_id, "cosd": start}, timeout=20)
+    response.raise_for_status()
+    rows = csv.DictReader(io.StringIO(response.content.decode('utf-8-sig')))
+    values = []
+    for row in rows:
+        stamp = row.get('observation_date') or row.get('DATE')
+        raw_value = row.get(series_id)
+        if not stamp or stamp < start or raw_value in (None, '', '.'):
+            continue
+        value = float(raw_value)
+        if math.isfinite(value):
+            values.append((stamp, value))
     return sorted(values)
 
 
