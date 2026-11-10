@@ -43,7 +43,7 @@ export function Markdown({ children, className, components }: { children: string
       "[&_p]:my-2.5 [&_p]:leading-relaxed",
       "[&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:my-2 [&_ol]:pl-5 [&_ol]:list-decimal",
       "[&_li]:my-1 [&_li]:leading-relaxed [&_li]:marker:text-muted-foreground",
-      "[&_strong]:font-semibold [&_a]:text-primary [&_a]:underline",
+      "[&_strong]:font-semibold [&_a]:text-primary [&_a]:underline [&_a:hover]:opacity-75",
       "[&_hr]:my-4 [&_hr]:border-border [&_em]:text-muted-foreground",
       "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
       // GFM 표 — 셸(overflow-x 래퍼)은 components.table, 셀 스타일은 여기

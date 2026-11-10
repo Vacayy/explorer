@@ -373,6 +373,11 @@
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass { background: var(--glass-opaque); }
 }
+/* 유리 위 링크·버튼 hover — .glass는 레이어 밖이라 hover:bg-* 유틸을 이긴다. 유리 바탕 위에 chip을 겹친다(크기 변화 없음) */
+@media (hover: hover) {
+  :is(a, button).glass:hover { background-image: linear-gradient(var(--chip), var(--chip)); }
+}
+:is(a, button).glass:focus-visible { background-image: linear-gradient(var(--chip), var(--chip)); }
 @media (prefers-reduced-transparency: reduce) {
   .glass { background: var(--glass-opaque); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .weather { background: var(--field-base); }
