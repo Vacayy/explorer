@@ -174,7 +174,7 @@ function FlowCard({ company, market, source, onSource, isOn, onDay, onRange, hea
                   <button key={d.date} type="button" data-day={d.date} onClick={() => click(d.date)} aria-pressed={on}
                     aria-label={`${shortDate(d.date)} ${d.count}건`} title={`${shortDate(d.date)} · ${d.count}건`}
                     className="group flex h-full min-w-0 flex-1 items-end focus-visible:outline-2 focus-visible:outline-ring">
-                    <span className={cn('block w-full', d.count === 0 ? (on ? 'h-0.5 bg-foreground' : 'h-px bg-border') : on || (!anyOn && !drag && d === peak) ? 'bg-foreground' : 'bg-muted-foreground/35 group-hover:bg-muted-foreground/60')}
+                    <span className={cn('block w-full', d.count === 0 ? (on ? 'h-0.5 bg-foreground' : 'h-px bg-border group-hover:bg-muted-foreground/60') : on || (!anyOn && !drag && d === peak) ? 'bg-foreground' : 'bg-muted-foreground/35 group-hover:bg-muted-foreground/60')}
                       style={d.count ? { height: `${Math.max(4, (d.count / max) * 100)}%` } : undefined} />
                   </button>
                 )

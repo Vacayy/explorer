@@ -250,7 +250,7 @@ export default function WorldviewPage() {
 
       <div className="flex items-center gap-3 flex-wrap text-xs">
         {LENSES.map((l) => (
-          <label key={l} className="flex items-center gap-1.5 cursor-pointer">
+          <label key={l} className="flex items-center gap-1.5 cursor-pointer [&:hover>[data-slot=checkbox][data-state=unchecked]]:border-ink-3">
             <Checkbox
               checked={lenses.includes(l)}
               onCheckedChange={(v) =>

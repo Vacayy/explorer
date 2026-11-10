@@ -121,7 +121,7 @@ export function OverlayCard({ data, range, overlay, onOverlay }: { data: Regimes
         : <>
           <p className="text-sm">{OVERLAY_LABEL[overlay]} 지금 <b className="tabular-nums">{fmt(item.value)}</b> · 20일 변화 <span className={cn("tabular-nums", tone(item.change_20))}>{chg(item.change_20)}</span></p>
           <RegimeChart series={series} bands={bands} height={240} zeroLine={overlay === "curve"} />
-          <p className="text-caption text-muted-foreground">{item.points[0][0]}부터 관측 · <a href={item.source_url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{item.source}</a></p>
+          <p className="text-caption text-muted-foreground">{item.points[0][0]}부터 관측 · <a href={item.source_url} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-ink">{item.source}</a></p>
         </>}
     </CardContent>
   </Card>

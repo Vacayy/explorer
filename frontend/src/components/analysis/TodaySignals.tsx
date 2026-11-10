@@ -88,7 +88,7 @@ export function TodaySignals({ onUniverse, onOpenList }: { onUniverse: (universe
               <p className="line-clamp-2 text-caption text-ink-2 md:hidden">{[...new Set(t.top.map(x => x.name))].join(' · ')}</p>
               <p className={cn('text-[11px] text-muted-foreground md:hidden', stale && 'text-chart-warning')}>{shortDate(t.latest_date)}</p>
             </> : <p className="text-caption text-muted-foreground">신호 없음</p>}
-            <Button variant="ghost" size="xs" className="mt-auto h-auto self-start px-0 py-0 text-caption font-normal hover:bg-transparent hover:text-ink max-md:h-9" disabled={!t || finding === type} onClick={() => void find(type)}>
+            <Button variant="ghost" size="xs" className="mt-auto h-auto self-start px-0 py-0 text-xs/[1.125rem] font-normal hover:bg-transparent hover:text-ink max-md:h-9" disabled={!t || finding === type} onClick={() => void find(type)}>
               {finding === type ? <LoaderCircle className="size-3 animate-spin" /> : null}이 신호로 찾기 ›
             </Button>
           </li>

@@ -226,7 +226,7 @@ export function CompanyEvidence({
         </div>
         {!preview && feed.data && (
           <details className="border-t pt-3 text-caption text-muted-foreground">
-            <summary className="cursor-pointer">자료 보유 범위 확인</summary>
+            <summary className="cursor-pointer hover:text-ink">자료 보유 범위 확인</summary>
             <ul className="mt-3 space-y-2">
               {feed.data.coverage.map((c) => (
                 <li key={c.source}>

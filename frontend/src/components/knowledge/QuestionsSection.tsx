@@ -242,7 +242,7 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
     // 펼친 후보 목록은 칩 아래에 겹쳐 연다(Popover) — 아래 질문 목록이 밀리지 않게, 길면 안에서 스크롤
     <Popover open={open} onOpenChange={setOpen}><div className="border border-dashed border-line-2">
       <div className="flex items-center justify-between gap-2 px-3 py-1.5">
-        <PopoverTrigger className="group/pq flex min-h-8 min-w-0 items-center gap-1.5 text-left text-[13px]" disabled={!data.length}>
+        <PopoverTrigger className="group/pq flex min-h-8 min-w-0 items-center gap-1.5 text-left text-[13px] hover:underline" disabled={!data.length}>
           <span className="min-w-0 truncate">질문 후보 · 내러티브·언급 다이제스트 발</span>
           <span className="inline-flex h-[22px] items-center rounded-md px-2 text-xs font-medium whitespace-nowrap bg-chip text-ink-2 tabular-nums">{data.length}</span>
           {data.length > 0 && <ChevronDown aria-hidden className="size-3.5 shrink-0 text-ink-3 transition-transform group-data-[state=open]/pq:rotate-180" />}

@@ -39,7 +39,7 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
     <header className="sticky top-0 z-30 flex h-(--topbar-height) items-center justify-between gap-3 border-b bg-background px-4 md:px-5">
       <div className="flex min-w-0 items-center gap-3">
         {phone ? <PhoneMenu /> : (
-          <Link to="/home" className="flex shrink-0 items-center gap-2 font-display text-[17px] font-medium tracking-[-0.01em]">
+          <Link to="/home" className="flex shrink-0 items-center gap-2 font-display text-[17px] font-medium tracking-[-0.01em] hover:opacity-75">
             <Globe className="size-[18px]" aria-hidden />
             <span className="md:max-lg:sr-only">Explorer</span>
           </Link>
