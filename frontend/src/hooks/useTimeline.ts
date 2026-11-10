@@ -35,7 +35,7 @@ export function useExplorerOutputs() {
 export function useAiActivity() {
   return useQuery({
     queryKey: ['spine', 'home', 'ai-activity'],
-    queryFn: () => getJson<AiActivityItem[]>('/api/spine/home/ai-activity', { days: 7, limit: 30 }),
+    queryFn: () => getJson<AiActivityItem[]>('/api/spine/home/ai-activity', { days: 7, limit: 60 }),
     staleTime: STALE.medium,
   })
 }

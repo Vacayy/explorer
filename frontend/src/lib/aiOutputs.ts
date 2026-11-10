@@ -13,6 +13,7 @@ function epochSec(at: string): number {
 }
 
 function activityLink(a: AiActivityItem): string {
+  if (a.to) return a.to
   if (a.type === 'youtube_digest' && a.doc_id) return `/doc/${a.doc_id}?reading=digest`
   if (a.type === 'report') return `/report?topic=${encodeURIComponent(a.topic)}`
   if (a.type === 'digest' && a.code) return `/analyze/${a.code}/summary`

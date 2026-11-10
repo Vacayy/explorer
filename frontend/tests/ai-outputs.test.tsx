@@ -14,6 +14,8 @@ const ITEMS = [
 const ACTIVITY = [
   { type: 'youtube_digest', title: '빅테크 쇼크', topic: '빅테크 쇼크', code: null, question_id: null, doc_id: 77, created_at: '2026-11-05 01:20:00' },
   { type: 'narrative', title: '변압기 공급망', topic: 'x', code: null, question_id: null, doc_id: null, created_at: '2026-11-05 01:34:10' },
+  // 시장 정리 — 서버가 준 주소로 간다
+  { type: 'market_today', title: 'Market Today 11/4 11:30', topic: '2026-11-04', code: null, question_id: null, doc_id: null, created_at: '2026-11-04 02:30:00', to: '/home/kr?mtslot=1130' },
 ]
 ITEMS[0].subject = 'x'
 vi.mock('@/hooks/useTimeline', () => ({
@@ -35,6 +37,7 @@ it('shows a dot until opened, then lists kind, title and link', () => {
   const links = screen.getAllByRole('link').map(a => a.getAttribute('href'))
   expect(links.slice(0, 3)).toEqual(['/narrative?topic=x', '/doc/77?reading=digest', '/follow/transcripts?t=2'])  // 최신순
   expect(screen.getByRole('link', { name: /유튜브 요약\s*빅테크 쇼크/ })).toBeTruthy()
+  expect(screen.getByRole('link', { name: /시장 정리\s*Market Today 11\/4 11:30/ }).getAttribute('href')).toBe('/home/kr?mtslot=1130')
   expect(screen.getByRole('link', { name: /Explorer 산출물 전체/ }).getAttribute('href')).toBe('/feed?channel_type=system')
   cleanup(); renderButton()                                  // 연 뒤에는 점이 없다
   expect(screen.getByRole('button', { name: 'AI가 최근 만든 것' })).toBeTruthy()

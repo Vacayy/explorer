@@ -29,13 +29,14 @@ const mdw = (d: string) => `${mmdd(d)}(${WD[new Date(`${d}T12:00:00Z`).getUTCDay
 const daysTo = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 
 /**
- * ② 왼쪽 — 오늘 시장 이야기(Market Today). 회차 칩(09:30 · 11:30 · 15:00 · 16:00 마감, URL ?mtslot=) → AI 줄 → 화두 목록(칸 안 스크롤).
+ * ② 왼쪽 — 오늘 시장 이야기(Market Today). 회차 칩(09:30 · 11:30 · 15:00 · 16:00 마감, URL ?mtslot= · 지난 날은 ?mtdate=) → AI 줄 → 화두 목록(칸 안 스크롤).
  * 첫 회차 전에는 머리·칩을 그대로 두고 목록 자리에만 한 줄(§4.2 빈 상태).
  */
 export function MarketTodayCard() {
   const [slotParam, setSlot] = useUrlParam("mtslot", "")
-  const latest = useMarketToday(null, null)
-  const q = useMarketToday(slotParam || null, null)
+  const [dateParam] = useUrlParam("mtdate", "")   // 지난 회차 열기('AI가 최근 만든 것'에서) — 없으면 오늘
+  const latest = useMarketToday(null, dateParam || null)
+  const q = useMarketToday(slotParam || null, dateParam || null)
   const d = q.data ?? latest.data
   const c = d?.current
   const isToday = d?.trade_date === kstToday()
