@@ -1,6 +1,8 @@
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { filterRuns, groupRunsByDay, lastSearch, runFilterCounts, runOutcome, runScope, runTitle, runWhen } from '@/lib/discoverHistory'
 import type { AnalysisRun } from '@/components/analysis/types'
+
+afterEach(() => { vi.useRealTimers() })
 
 const labels = { trading_range: '박스권(고점·저점 수평)', resistance_break: '전고점 돌파', close_above_sma: '200일 이평 위' }
 const run = (over: Partial<AnalysisRun>): AnalysisRun => ({
@@ -30,6 +32,7 @@ it('describes scope, groups by KST day and uses relative time only within 6 days
   const groups = groupRunsByDay([run({ created_at: '2026-10-30T23:46:21Z' }), run({ created_at: '2026-10-14T05:51:33Z' }), run({ created_at: '2026-10-14T05:50:00Z' })])
   expect(groups.map(g => [g.day, g.items.length])).toEqual([['10월 31일', 1], ['10월 14일', 2]])
   const now = new Date('2026-11-04T12:00:00Z').getTime()
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now)   // 상대 시간 표기는 실제 시계를 읽는다
   expect(runWhen('2026-10-14T05:51:33Z', now)).toBe('10/14 14:51')
   expect(runWhen('2026-11-03T12:00:00Z', now)).not.toMatch(/\//)
 })
