@@ -7,7 +7,8 @@ export interface IndexRow { key: string; label: string; region: string; is_open:
 export function useIndices() {
   return useQuery({
     ...apiQuery<{ as_of: string | null; items: IndexRow[]; degraded: string[]; any_open: boolean }>({ key: ["spine", "indices"], url: "/api/spine/indices", staleTime: STALE.medium }),
-    refetchInterval: (q) => (q.state.data?.any_open ? 10 * 60_000 : 30 * 60_000),
+    // 서버는 장중 정기 수집 봉(10분)을 얹고 휴장 TTL을 다음 개장 전에 끊는다 — 화면도 장중 5분·휴장 10분으로 따라간다(장전 값에 30분 넘게 머물던 문제)
+    refetchInterval: (q) => (q.state.data?.any_open ? 5 * 60_000 : 10 * 60_000),
     refetchIntervalInBackground: false,
   })
 }

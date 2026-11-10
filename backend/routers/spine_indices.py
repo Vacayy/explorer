@@ -15,7 +15,7 @@ import time
 
 from database import get_connection
 from models.spine import KrBreadth
-from pipeline.indices import any_market_open, get_indices, kr_breadth, snapshot_indices
+from pipeline.indices import any_market_open, get_indices, kr_breadth, minutes_to_next_open, snapshot_indices
 from services.cache_service import invalidate_cache, is_cached, set_cache
 
 router = APIRouter(prefix="/api/spine/indices", tags=["spine"])
@@ -26,7 +26,11 @@ TTL_CLOSED = 60 * 60
 
 
 def _ttl() -> int:
-    return TTL_OPEN if any_market_open() else TTL_CLOSED
+    """휴장 TTL이 다음 개장을 넘기지 않게 — 장전 08:30에 잡힌 60분 TTL이 09:30까지 갱신을 막았다(2026-11-10)."""
+    if any_market_open():
+        return TTL_OPEN
+    m = minutes_to_next_open(horizon=TTL_CLOSED // 60)
+    return min(TTL_CLOSED, m * 60) if m else TTL_CLOSED
 
 
 def _refresh_bg():

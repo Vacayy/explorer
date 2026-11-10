@@ -137,10 +137,11 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
       {day.slots.map(s => {
         const on = s.slot === picked
         return <Button key={s.slot} variant="ghost" aria-pressed={on} aria-label={`${s.label} 회차 보기`} onClick={() => { track("action", "market_today.nav", { entity: `slot:${s.label}` }); onPick(s.slot) }}
-          className="absolute top-[34px] h-auto -translate-x-1/2 flex-col gap-[3px] rounded-md px-1 py-0.5 hover:bg-transparent"
+          className="group absolute top-[34px] h-auto -translate-x-1/2 flex-col gap-[3px] rounded-md px-1 py-0.5 hover:bg-chip focus-visible:bg-chip"
           style={{ left: `${xAt(mins(s.label))}%` }}>
-          <span aria-hidden className={cn("rounded-full border-[1.6px] border-ink", on ? "size-3 bg-ink" : "size-[9px] bg-surface")} />
-          <span className={cn("font-mono text-[10.5px] leading-none", on ? "font-semibold text-ink" : "font-normal text-ink-3")}>{s.label.replace(" 마감", "")}</span>
+          {/* 누를 수 있다는 신호 — 올리면 점이 차오르고 시각이 진해진다 */}
+          <span aria-hidden className={cn("rounded-full border-[1.6px] border-ink transition-[width,height,background-color]", on ? "size-3 bg-ink" : "size-[9px] bg-surface group-hover:size-[11px] group-hover:bg-ink/40 group-focus-visible:bg-ink/40")} />
+          <span className={cn("font-mono text-[10.5px] leading-none", on ? "font-semibold text-ink" : "font-normal text-ink-3 group-hover:text-ink group-focus-visible:text-ink")}>{s.label.replace(" 마감", "")}</span>
         </Button>
       })}
       {pending.map(t => <span key={t} aria-label={`${t} 정리 예정`}
