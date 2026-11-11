@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from pipeline import llm
 import html
 import json
 import re
@@ -167,12 +168,12 @@ def _commit(conn: sqlite3.Connection, tries: int = 6) -> None:
 def extract_pending(conn: sqlite3.Connection, limit: int = 40, call=None, only: list[str] | None = None) -> dict:
     """아직 추출 안 한 문서를 이번 시즌 회사 먼저, 회사 안에서는 오래된 발표부터(직전 동인 목록이 먼저 있어야 new 판단이 된다)."""
     if call is None:
-        from pipeline.enrich import _call_claude_code, llm_available
+        from pipeline.enrich import llm_available
         if not llm_available():
             return {"extracted": 0, "reason": "llm 미가용"}
 
         def call(prompt):
-            return _call_claude_code(prompt, model="haiku", timeout=180)
+            return llm.run(prompt, task='transcript.momentum_extract').text
     done = {r[0] for r in conn.execute("SELECT doc_id FROM call_extracts")}
     tickers = [r[0] for r in conn.execute("SELECT ticker FROM transcript_follow WHERE active=1 ORDER BY ticker")]
     if only:
@@ -435,12 +436,12 @@ def summarize(conn: sqlite3.Connection, call=None, limit: int = 30, today: date 
     """이번 시즌 후보 카드의 AI 핵심 요약 — 근거 해시가 바뀐 것만(하루 판정마다 다시 쓰지 않는다). 실패는 다음 실행에서 다시."""
     import hashlib
     if call is None:
-        from pipeline.enrich import _call_claude_code, llm_available
+        from pipeline.enrich import llm_available
         if not llm_available():
             return {"summarized": 0, "reason": "llm 미가용"}
 
         def call(prompt):
-            return _call_claude_code(prompt, model="sonnet", timeout=180)
+            return llm.run(prompt, task='transcript.momentum_summary').text
     start = season((today or date.today()).isoformat())["start"]
     rows = conn.execute("SELECT cm.ticker, cm.event_date, cm.reasons, cm.summary_hash, tf.company_name FROM call_momentum cm "
                         "LEFT JOIN transcript_follow tf ON tf.ticker=cm.ticker WHERE cm.status='candidate' AND cm.event_date >= ? "

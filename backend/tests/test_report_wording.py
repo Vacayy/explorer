@@ -1,5 +1,6 @@
 """통합 리포트 레이팅 어휘 — 매매 권유 표현을 비대칭 판단으로 낮춘다 (ia-redesign §4.27, 11-04). LLM은 부르지 않는다(가로챔)."""
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from pipeline import report
@@ -11,8 +12,8 @@ class RatingWordingTests(unittest.TestCase):
 
         def fake(prompt, **kw):
             seen["prompt"] = prompt
-            return "{}"
-        with patch.object(report, "_call_claude_code", side_effect=fake):
+            return SimpleNamespace(text="{}")
+        with patch.object(report.llm, "run", side_effect=fake):
             report._lead("반도체", "산업", "종목", {"fundamental": "", "technical": "", "sentiment": ""}, "bull", "bear")
         p = seen["prompt"]
         for word in ("Strong Buy", "Buy|", "Sell", "수혜받는"):

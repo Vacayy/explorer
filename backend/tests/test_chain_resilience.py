@@ -2,6 +2,7 @@
 import sqlite3
 import tempfile
 import unittest
+from types import SimpleNamespace
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -50,7 +51,7 @@ class ChainResilienceTests(unittest.TestCase):
 
     def test_aliases_skip_follows_whose_entity_is_gone(self):
         with patch.object(cr, "get_connection", self.connect), \
-             patch("pipeline.enrich._call_claude_code", side_effect=AssertionError("no LLM when nothing to alias")), patch("pipeline.enrich.llm_available", return_value=True):
+             patch("pipeline.llm.run", side_effect=AssertionError("no LLM when nothing to alias")), patch("pipeline.enrich.llm_available", return_value=True):
             # AAPL은 복구 뒤 이미 별칭(Apple)이 있고, ZZZ는 엔티티가 없어 대상에서 빠진다 → 모델 호출 없음
             self.assertEqual(cr.ensure_ko_aliases(), 0)
 

@@ -8,15 +8,15 @@
 결과의 감시 조건은 '기억해:'로 주입하면 반증 센티넬이 이어받는다.
 모델: 종합이므로 sonnet (티어 분리 원칙).
 """
+from pipeline.llm_policies import requested_model
 import json
 import os
-import subprocess
 
 from database import get_connection
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 from pipeline.narrative import GEO_VOCAB
 
-SCENARIO_MODEL = os.getenv("SCENARIO_MODEL", "opus")  # 심층 종합 티어 — 다단 인과 추론
+SCENARIO_MODEL = requested_model('scenario.generate')  # existing cache/display field: requested model
 SCENARIO_PREFIXES = ("시나리오:", "시나리오 :", "만약:", "what if:")
 TOP_DOCS = 10
 EXCERPT = 800
@@ -115,14 +115,9 @@ def build_scenario(event: str, report_context: str | None = None) -> dict:
     prompt = _build_prompt(event, docs, knowledge, vocab)
     data, last_err = None, ""
     for _ in range(2):
-        proc = subprocess.run(
-            [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", SCENARIO_MODEL, "--output-format", "json", prompt],
-            capture_output=True, text=True, timeout=300)
-        if proc.returncode != 0:
-            last_err = f"rc={proc.returncode} {proc.stderr[:120]}"
-            continue
+        from pipeline import llm
+        raw = llm.run(prompt, task='scenario.generate').text
         try:
-            raw = json.loads(proc.stdout).get("result", "")
             raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             s, e = raw.find("{"), raw.rfind("}")
             if s < 0 or e <= s:

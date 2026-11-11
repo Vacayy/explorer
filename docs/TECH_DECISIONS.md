@@ -9,6 +9,7 @@
 - [주요 기능의 실행 흐름](#implementation)
 - [사실·해석·시간을 기록하는 방법](#from-epistemology)
 - [LLM 호출과 비용](#from-cost)
+  - [작업 단위 모델 정책: As-is → 판단 → To-be](#task-model-policy)
 - [저장소·검색·운영](#from-local-constraints)
 - [조회 성능과 화면 상태](#from-performance)
 - [남아 있는 과제](#open-problems)
@@ -187,9 +188,9 @@ sequenceDiagram
 ## LLM 호출과 비용
 
 <a id="subscription-auth"></a>
-[enrich.llm_engine](../backend/pipeline/enrich.py)은 `ENRICH_ENGINE=claude-code`이고 CLI 경로가 있으면 CLI를 우선합니다. 그 조건이 아니고 `ANTHROPIC_API_KEY`가 있으면 API를 사용합니다.
+[enrich.llm_engine](../backend/pipeline/enrich.py)은 `ENRICH_ENGINE=claude-code`이면 Claude CLI 모드를 우선합니다. 실행 파일이 없어도 설정 모드를 유지해 공용 러너의 Codex 대체 경로에 도달합니다(2026-11-11 코드 기준). 그 조건이 아니고 `ANTHROPIC_API_KEY`가 있으면 API를 사용합니다.
 따라서 API 키를 추가했다고 항상 API로 전환되지는 않습니다.
-[llm.py](../backend/pipeline/llm.py)는 공통 호출·스트리밍·사용량 기록을 제공하지만, 기존 모듈의 별도 CLI 호출도 남아 있습니다.
+[llm.py](../backend/pipeline/llm.py)는 일반 생성의 공통 호출·스트리밍·사용량 기록과 Claude→Codex failover를 제공합니다. 시장 분석과 주간 수동 Codex 재개에는 전용 경로가 남아 있습니다. 작업별 모델 설정은 아직 기능별로 분산돼 있습니다.
 
 기본 CLI 호출은 프로젝트·사용자 설정을 로드하지 않고 도구를 끕니다. 스터디 웹 탐색에만 WebSearch/WebFetch를 명시적으로 열고 턴 수를 제한합니다.
 수집 문서나 코멘트 안의 지시를 실행 권한으로 취급하지 않습니다.
@@ -221,6 +222,85 @@ LLM도 분류와 판단을 수행하므로 “서술만 LLM이 한다”는 설�
 <a id="approval-gate"></a>
 승인 경계는 동작별로 다릅니다. 수집·태깅·예약 요약은 설정된 자동화로, 스터디 저장·질문은 사용자 요청으로 실행합니다.
 어휘 병합·리포트 제안 등 승인 큐를 사용하는 경로는 해당 계약에 따라 채택 후 실행합니다. 시스템 전체가 승인 전 무행동인 것은 아닙니다.
+
+<a id="task-model-policy"></a>
+### 작업 단위 모델 정책 — As-is → 판단 → To-be (2026-11-11)
+
+**상태: 1차 작업 레지스트리 이관 구현(2026-11-11).** 아래 As-is는 이관 직전 조사 기록이며, To-be의 전체 deadline·논리 호출 추적은 후속 단계다. 사용자 재시작 확인 후 live 계약 검사 198개 통과·실패 0·미검사 8을 확인했다. 조사 기준은 이관 전 작업 트리다. 앞선 Claude→Codex failover 코드와 Sol 설정을 포함한다. live 계약 검사는 HTTP 응답 형식 검증이며 실제 모델 품질 평가와는 구분한다. 구현 계약은 [chat-harness](specs/chat-harness.md#작업-단위-정책-이관-계약)에 둔다.
+
+#### As-is — 실행은 모였지만 정책은 흩어져 있다
+
+현재 흐름은 `기능 → llm.run(model/effort/timeout/tools/job) → Claude → 조건부 Codex`다. [llm.py](../backend/pipeline/llm.py)는 실행·전환·사용량 기록을 공통 처리한다. 대체 모델은 `CODEX_FALLBACK_MODEL` 한 곳에서 바꾸므로 Codex 모델 변경을 위해 모든 호출부를 수정할 필요는 없다.
+
+반면 **어떤 작업에 어떤 정책을 적용하는지**는 호출부에 남아 있다.
+
+| 코드 근거 | 현 상태 | 문제점 |
+|---|---|---|
+| [chat.py](../backend/pipeline/chat.py), [chat_memory.py](../backend/pipeline/chat_memory.py) | route/review=haiku·low·120초, answer=sonnet·300초, note=haiku·low·120초. 환경변수와 상수가 섞임 | 작업별 모델·지연 정책을 비교하거나 바꾸려면 기능 코드를 읽어야 함 |
+| [enrich.py](../backend/pipeline/enrich.py) | 단건 haiku, 배치 sonnet; `_call_claude_code`가 호출 모듈 이름을 job으로 추정 | `enrich` 같은 모듈 단위 이름으로는 태깅·시간 분류·배치를 구별하기 어려움 |
+| [narrative.py](../backend/pipeline/narrative.py) | 주 생성 opus, 근거 재확인·변화 요약 haiku | 기능 하나를 모델 하나로 묶으면 다른 난이도의 작업이 잘못 합쳐짐 |
+| [llm.run](../backend/pipeline/llm.py) | 설정·입력 검증·provider 분기·failover·원장 기록이 한 함수에 있음 | 별도 `llm.py` 파일이 있다는 것만으로 정책까지 모듈화됐다고 볼 수 없음 |
+| [enrich._enrich_llm](../backend/pipeline/enrich.py) | 실제 Codex 응답이어도 저장 label은 요청 시 `claude-code/haiku`; 시도 원장에는 실제 engine/model 기록 | 산출물 모델 표기와 실행 원장이 다를 수 있음. 요청 티어와 실제 모델을 구분해야 함 |
+| [youtube.digest_transcript](../backend/pipeline/connectors/youtube.py), [scenario.py](../backend/pipeline/scenario.py), [upside_model.py](../backend/pipeline/upside_model.py) | 호출자 반복과 공용 failover가 공존. 각 provider에 원 timeout을 다시 줌 | 반복 횟수·총 대기시간이 여러 층에서 정해짐. worker의 외부 제한이 먼저 종료시킬 수도 있음 |
+| [market_analysis/model.py](../backend/pipeline/market_analysis/model.py), [weekly/worker.py](../backend/pipeline/weekly/worker.py) | 시장 분석은 취소·실측 달러 예산·별도 격리, 주간 리포트는 worker 및 수동 Codex 경로 보유 | 이 경로를 문자열 응답 하나로 평탄화하면 기존 보장이 사라짐 |
+| [llm_calls 스키마](../backend/database.py) | job·model·engine·usage·cost·ok·error는 있으나 논리 호출 ID·시도 번호·정책 버전은 없음 | 같은 작업의 Claude 실패와 Codex 성공을 정확히 한 호출로 묶어 비교하기 어려움 |
+
+AST 확인에서 `llm.run` 직접 호출 25곳, `_call_claude_code` 호출 37곳이 44개 파일에 있었다. 이는 이 두 이름만 센 작업 트리 스냅샷이며 import 별칭·전용 어댑터까지 포함한 전체 호출 수가 아니다. 이전에 이관한 직접 CLI 호출도 포함하므로 과거 코드 수량으로 재사용하지 않는다.
+
+#### 판단 — 작업 이름과 provider 선택을 분리한다
+
+외부 자료의 원칙과 이 저장소에 내리는 판단을 구분했다.
+
+| 조사 자료 | 확인한 원칙 | Explorer 적용 판단 |
+|---|---|---|
+| [Anthropic: Building effective agents](https://www.anthropic.com/research/building-effective-agents) | 단순하고 조합 가능한 구조를 우선하고, 구분 가능한 작업은 경로를 나눌 수 있음 | 호출부가 이미 작업을 알고 있으므로 **명시적인 task ID로 결정적 조회**. 라우팅용 LLM 호출을 추가할 이유가 없음. 이 자료는 2024년 패턴 설명이므로 최신 SDK 사양의 근거로 쓰지 않음 |
+| [LiteLLM: Router concepts](https://docs.litellm.ai/docs/router/learn/concepts) | 호출자가 요청하는 논리적 이름과 실제 배포 대상을 분리함 | 작업→정책→provider를 분리하되, 작업은 모델 alias보다 출력·권한 계약까지 포함하는 단위로 둠 |
+| [LiteLLM: Reliability](https://docs.litellm.ai/docs/router/learn/reliability) | 오류 종류별 처리, retry/fallback 구분, 재시도 담당 계층을 명시함 | `ValueError` 전체를 공급자 장애로 간주하지 않고 입력·응답 envelope·결과 스키마 오류를 구분. host의 재시도 예산은 공용 runner가 관리 |
+| [AWS: Timeouts, retries, and backoff with jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/) | timeout을 두고, 재시도의 부하·부작용과 계층별 증폭을 고려해야 함 | 논리 호출의 전체 deadline과 각 시도의 상한을 분리. 이미 공개한 텍스트와 도구 실행 후 실패는 무조건 재생하지 않음 |
+
+**채택: Python 타입이 있는 작업 레지스트리 + 기존 공용 runner + provider별 어댑터.** 작업 정책은 frozen dataclass 등으로 표현하고 시작 시 검증한다. 단일 로컬 서비스에서 코드 리뷰·타입 검사·테스트가 가능한 이 방식이 현재 변경 규모에 맞다. 아래 대안 선택은 위 자료와 현재 코드에 근거한 설계 판단이며 성능 벤치마크 결과가 아니다.
+
+| 대안 | 이점 | 이번 판단 |
+|---|---|---|
+| 공용 runner만 유지하고 기능별 model 인자를 계속 전달 | 수정량 작음 | 작업 정책 분산과 호출자 우회가 그대로 남아 기각 |
+| **타입 있는 Python 작업 레지스트리** | 기존 도구로 검증, 프롬프트와 정책 분리, 별도 서비스 불필요 | 채택 |
+| YAML/TOML 정책 파일 | 운영자가 코드 없이 편집하기 쉬움 | 현재는 검증·기본값·환경변수 우선순위 계층만 늘어남. 운영 UI/비개발자 편집 요구가 생기면 재검토 |
+| LiteLLM gateway 도입 | 그룹·라우팅·실패 처리·로그 기능 제공 | 지금은 기존 CLI 어댑터와 별도 프로세스의 운영 전환까지 포함해 범위가 커짐. **구독 인증을 지원하지 않아서 기각하는 것은 아님**: [현재 구독 연동 문서](https://docs.litellm.ai/docs/subscriptions)는 Claude/Codex와 proxy 전제를 명시함. 로컬 예산·취소·도구 증거 계약의 동등성은 별도 검증 필요 |
+| LLM이 매 요청의 모델을 선택 | 입력별 난이도 조절 가능 | 작업이 이미 정해져 있고 추가 지연·평가 부담이 생기므로 기각 |
+
+#### To-be — 호출부는 작업과 입력만 전달한다
+
+```python
+# 구현된 작업 인터페이스
+result = llm.run(task="chat.answer", prompt=prompt, system=system, on_text=on_text)
+result = llm.run(task="document.tag", prompt=prompt)
+```
+
+```mermaid
+flowchart LR
+    A[기능: task + 입력 + 결과 검증] --> B[작업 정책 조회·검증]
+    B --> C[공용 실행: deadline·전환·시도 기록]
+    C --> D[Claude CLI 어댑터]
+    C --> E[Codex CLI 어댑터]
+    C --> F[Anthropic API 어댑터]
+    D --> G[공통 결과: 실제 engine·model·usage]
+    E --> G
+    F --> G
+```
+
+- **작업의 경계**: `document.tag`, `document.time_classify`, `document.tag_batch`, `chat.route`, `chat.review`, `chat.answer`, `chat.note`, `narrative.generate`, `narrative.diff`, `image.read`, `study.web`. 같은 파일에 있어도 품질·출력·권한·시간 요구가 다르면 분리한다. `haiku_task`나 파일명처럼 구현을 이름에 넣지 않는다.
+- **정책 소유권**: primary/fallback의 engine·model·effort, 시도 상한·전체 제한, 도구 허용 범위, 출력 모드·필요 capability, 재시도 가능한 오류를 중앙에서 관리한다. `job`은 task에서 정하고 호출부에서 별도로 다르게 지정하지 않는다. 이미지 경로·schema·stream callback은 실행 입력이며 task가 허용한 범위 안에서만 받는다.
+- **프롬프트·결과 소유권**: 프롬프트 작성, 자료 수집, 결과의 업무적 검증·정규화·DB 저장은 기능에 남긴다. 정책 파일에 프롬프트나 업무 SQL을 모으지 않는다. 기존 정규화/허용값 계약도 유지한다.
+- **정책 해석**: 코드 기본값→중앙에 명시한 환경변수 override→불변 resolved policy. 로드 시 잘못된 작업·모델·effort·순환 fallback·미지원 capability를 검사한다. 요청 파라미터로 모델·권한을 우회할 수 없게 한다. 기존 환경변수 이름은 중앙 resolver에서 보존하거나 이관표와 함께 제거하며 조용히 무시하지 않는다.
+- **provider 차이 보존**: `effort` 문자열을 무조건 복사하지 않고 provider가 지원하는 값인지 검증한다. schema 전달·스트리밍·이미지·웹 근거·정확한 비용 보고는 각각 별도 능력이다. `study.web`은 현재 Claude 도구 증거 계약 때문에 fallback 없음. 시장 분석의 정확한 달러 비용·취소 계약은 전용 경로로 명시하며 일반 runner 도입만으로 완료 처리하지 않는다.
+- **실패 정책**: 정상 응답을 모델이 달라졌다는 이유로 재호출하지 않는다. 일시 장애·인증/한도·응답 envelope 오류를 구분하고, 입력 오류·callback 오류·취소는 전환하지 않는다. 업무 JSON/의미 검증 실패는 provider 장애와 별도이며 수정 재생성을 허용할지는 작업별로 정한다. 콘텐츠 정책 거절을 우회하기 위한 전환은 두지 않는다.
+- **시간·재시도**: `attempt_timeout`과 논리 호출의 `total_timeout`을 구분하고 monotonic deadline의 남은 시간만 다음 시도에 준다. host 재시도는 runner 한 곳에서 담당하고, CLI 내부 재시도는 통제 가능한 범위와 실제 관측 시도를 구분한다. 이미 발행한 스트림은 이어 붙이지 않는다. 파싱 실패 수정 호출도 전체 예산에 포함한다.
+- **관측·표기**: 요청 task·정책 버전과 실제 engine/model을 분리한다. 원장에는 논리 호출 ID·시도 번호·전환 사유·시간/usage를 연결한다. Codex 비용 미제공은 NULL 유지. 산출물에는 실제 결과 메타데이터를 사용하고, 기존 캐시의 모델 티어 의미를 조사한 뒤 정책 변경의 무효화 범위를 정한다. 과거 산출물의 provider를 추정해 다시 쓰지 않는다.
+
+**적용 순서**는 계약 고정 → 작업 레지스트리/설정 중앙화 → 기능 묶음별 이관·옛 우회 제거 → 관측/총 deadline 개선이다. 첫 단계는 기존 모델·effort·각 시도 timeout·도구·결과를 보존한다. 전체 deadline 도입과 정책 튜닝은 별도 동작 변경으로 검증한다. 시장 분석·실험용 수동 provider 선택은 동일한 능력/예산 계약을 검증하기 전까지 명시적인 예외로 남긴다.
+
+**전체 단계 완료 기준**: 일반 기능에서 모델 문자열·CLI 호출·provider 선택·LLM 설정용 `os.getenv`가 사라지고, 등록되지 않은 task는 실행 전에 실패한다. 작업별 설정을 바꾸면 해당 작업만 바뀌어야 한다. 기존 schema·이미지·웹 근거·스트리밍·캐시 동작이 유지되고, 실패 시도와 최종 산출물의 실제 모델을 연결할 수 있어야 한다. 검증은 provider를 호출하지 않는 정책 해석/이관 동등성 테스트를 먼저 수행하고, 소수의 실제 Claude/Codex 호출로 어댑터를 확인한다. 백엔드 재시작 후 live 계약 검증까지 통과해야 운영 적용으로 기록한다.
+
 
 <a id="from-local-constraints"></a>
 ## 저장소·검색·운영

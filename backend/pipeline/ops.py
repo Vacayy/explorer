@@ -149,8 +149,8 @@ def probe_llm() -> dict:
     비용 가드: 오늘 이미 ok면 재프로브하지 않는다(하루 1콜). 단 마지막이 error면
     매 회차 재시도해 복구를 즉시 감지한다 — 고장 중에만 자주 두드리는 비대칭.
     """
-    import subprocess
-    from pipeline.enrich import _claude_bin, llm_engine
+    from pipeline import llm
+    from pipeline.enrich import llm_engine
 
     conn = get_connection()
     last = conn.execute(
@@ -172,16 +172,10 @@ def probe_llm() -> dict:
 
     t0 = time.time()
     try:
-        proc = subprocess.run([_claude_bin(), "-p", "--model", "haiku", "ping"],
-                              capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL)
+        result = llm.run("Reply with pong.", task='ops.probe')
         ms = int((time.time() - t0) * 1000)
-        if proc.returncode == 0 and proc.stdout.strip():
-            record_run(LLM_PROBE, "ok", f"engine=claude-code {ms}ms", ms)
-            return {"status": "ok", "engine": "claude-code", "ms": ms}
-        # claude는 오류(미로그인·한도)를 stdout에 쓴다 — stderr만 보면 원인이 안 보인다
-        reason = (proc.stdout.strip() or proc.stderr.strip())[:200]
-        record_run(LLM_PROBE, "error", f"rc={proc.returncode} {reason}", ms)
-        return {"status": "error", "reason": reason}
+        record_run(LLM_PROBE, "ok", f"engine={result.engine} {ms}ms", ms)
+        return {"status": "ok", "engine": result.engine, "ms": ms}
     except Exception as e:  # noqa: BLE001
         ms = int((time.time() - t0) * 1000)
         record_run(LLM_PROBE, "error", f"{type(e).__name__}: {str(e)[:150]}", ms)

@@ -9,6 +9,7 @@
 Provider 추상 — 한 제공처에 락인되지 않게 어댑터로. TRANSCRIPT_PROVIDER env로 스위치.
 1차 구현은 FMP(무료 티어 250 req/day + dates-by-symbol 폴링). 필요 시 earningscall/alphavantage 추가.
 """
+from pipeline import llm
 import re
 import time
 from datetime import date, datetime, timezone
@@ -199,7 +200,7 @@ _DIGEST_PROMPT = """다음은 미국 상장사의 실적 발표·컨퍼런스콜
 
 def digest_one(transcript_id: int) -> str | None:
     """transcript 한 건의 핵심 정리 생성(sonnet) → transcripts.digest 저장. 원문은 그대로 둔다."""
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     if not llm_available():
         return None
     conn = get_connection()
@@ -212,9 +213,7 @@ def digest_one(transcript_id: int) -> str | None:
         return None
     body = row["markdown"][:60000]  # 과대 입력 방지 (컨콜 앞부분에 실적·가이던스 집중)
     try:
-        digest = _call_claude_code(
-            _DIGEST_PROMPT.format(title=row["title"] or "", body=body),
-            model="sonnet", timeout=300).strip()
+        digest = llm.run(_DIGEST_PROMPT.format(title=row["title"] or "", body=body), task='transcript.digest').text.strip()
     except Exception as e:  # noqa: BLE001
         print(f"[transcript] digest {transcript_id} 실패: {e}")
         conn.close()
@@ -279,7 +278,7 @@ def extract_proxies(limit: int = 40) -> dict:
     """활성 프록시 × 관련 티커의 미추출 transcript에서 지표 값 추출 → proxy_observations.
     멱등: (proxy_id, transcript_id)를 관측했거나 이미 판정했으면(proxy_scans) 스킵. haiku(값싸게)."""
     import json
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     if not llm_available():
         return {"extracted": 0, "skipped": 0, "reason": "llm 미가용"}
     conn = get_connection()
@@ -303,9 +302,7 @@ def extract_proxies(limit: int = 40) -> dict:
                 continue
             scanned += 1
             try:
-                raw = _call_claude_code(
-                    _PROXY_PROMPT.format(label=p["label"], hint=p["extract_hint"] or "", body=(r["markdown"] or "")[:40000]),
-                    model="haiku", timeout=180)
+                raw = llm.run(_PROXY_PROMPT.format(label=p["label"], hint=p["extract_hint"] or "", body=(r["markdown"] or "")[:40000]), task='proxy.extract').text
                 d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
             except Exception as e:  # noqa: BLE001
                 print(f"[proxy] {p['label']} {r['ticker']} 실패: {e}")

@@ -9,12 +9,13 @@
 - 새로운 시각(insights): 이전 같은 주기 요약들을 베이스라인으로, 그 내러티브에 없던
   이슈/시각 전환/상충만 별도 추출. 이전 요약이 없으면 null (초기 과잉감지 방지)
 """
+from pipeline import llm
 import hashlib
 import json
 from datetime import date, datetime, timedelta, timezone
 
 from database import get_connection
-from pipeline.enrich import _call_claude_code, llm_engine
+from pipeline.enrich import llm_engine
 
 KST = timezone(timedelta(hours=9))
 DAILY_CAP = 5           # 한 구간 다이제스트 생성 종목 상한 (all-stock 경로).
@@ -77,8 +78,7 @@ def _hash(parts: list[str]) -> str:
 
 def _call_json(prompt: str) -> dict:
     # 기계적 요약 — 확장 사고 불필요 (D-117)
-    from pipeline.enrich import EFFORT_MECHANICAL
-    raw = _call_claude_code(prompt, effort=EFFORT_MECHANICAL)
+    raw = llm.run(prompt, task='digest.generate').text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 

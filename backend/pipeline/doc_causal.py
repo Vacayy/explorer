@@ -9,15 +9,13 @@ upsert가 confidence를 강화 — 교차검증이 실제로 작동하기 시작
 """
 import json
 import os
-import subprocess
 
 from database import get_connection
 from pipeline.visibility import unverified_sql
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 from pipeline.image_reading import strip_ai_notes
 from pipeline.narrative import GEO_VOCAB, _node_vocab, _persist_causal
 
-DOC_CAUSAL_MODEL = os.getenv("DOC_CAUSAL_MODEL", "sonnet")
 MIN_DOC_CHARS = 1200      # 짧은 시황 코멘트 배제 — 인과 서술이 있을 만한 밀도
 EXCERPT = 3000
 CONF_CAP = 0.5            # 문서 1건의 주장은 낮게 시작 — 반복 확인돼야 커진다
@@ -52,14 +50,8 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
 
 
 def _call(prompt: str) -> dict:
-    proc = subprocess.run(
-        # 명시 인과만 추출하는 기계적 작업 — 확장 사고가 output의 대부분을 먹는다 (D-117 실측)
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", DOC_CAUSAL_MODEL, "--output-format", "json",
-         "--effort", "low", prompt],
-        capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {(proc.stdout or proc.stderr)[:200]}")
-    raw = json.loads(proc.stdout).get("result", "")
+    from pipeline import llm
+    raw = llm.run(prompt, task='document.causal').text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 

@@ -5,12 +5,13 @@
 레이팅은 리드가 맥락 종합으로 부여(기계적 임계 오버라이드 폐기). 상상은 debate로 균형.
 검증 산출물(analyst·bull·bear·ratings)은 reports.debate_json에 보존 → 서비스 열람.
 """
+from pipeline import llm
 import hashlib
 import json
 import statistics
 from datetime import date
 
-from pipeline.enrich import _call_claude_code, llm_engine
+from pipeline.enrich import llm_engine
 from pipeline.upside_model import _anchor
 from pipeline.research_candidates import _rs_short
 
@@ -223,9 +224,9 @@ def _tech_line(s: dict, sig: dict) -> str:
 
 
 # ── LLM 헬퍼 ──
-def _call_text(prompt: str, model: str = "sonnet", timeout: int = 240) -> str:
+def _call_text(prompt: str, *, task: str) -> str:
     try:
-        return _call_claude_code(prompt, model=model, timeout=timeout).strip()
+        return llm.run(prompt, task=task).text.strip()
     except Exception:
         return ""
 
@@ -283,7 +284,7 @@ def _analyst(kind: str, narr_ctx: str, stock_ctx: str) -> str:
         f"너는 {title}다. 아래 산업 자료와 종목 데이터를 보고 {task}\n{lens}\n"
         "종목별로 충분히(각 3~5문장) 근거를 들어 평가하고, 산업 전반 코멘트도 상세히. 밸류·멀티플은 "
         "12M Fwd PER과 그 추이(리레이팅/디레이팅)·추정 EPS 개정으로만 밸류를 논하라(후행 PER 금지). 근거 없는 수치 창작 금지. 평서체(분량 넉넉히).\n\n"
-        f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}")
+        f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}", task="report.analyze")
 
 
 def _researcher(side: str, narr_ctx: str, stock_ctx: str, analysts: dict, counter: str = "") -> str:
@@ -299,7 +300,7 @@ def _researcher(side: str, narr_ctx: str, stock_ctx: str, analysts: dict, counte
         "정박해 근거를 충분히 풀어라(논지당 2~3문장). 밸류는 12M Fwd PER·그 추이로만(후행 PER 금지).\n\n"
         f"[산업 자료]\n{narr_ctx}\n\n[종목 데이터]\n{stock_ctx}\n\n"
         f"[애널리스트 평가]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}"
-        + (f"\n\n[반박 대상 — 강세 논지]\n{counter}" if counter else ""))
+        + (f"\n\n[반박 대상 — 강세 논지]\n{counter}" if counter else ""), task="report.research")
 
 
 def _narrative_power(conn, anchor_topic: str, member_narrs: list, rel: list) -> str:
@@ -347,7 +348,7 @@ def _lead(anchor_topic: str, narr_ctx: str, stock_ctx: str, analysts: dict, bull
         f"[애널리스트]\n펀더: {analysts['fundamental']}\n기술: {analysts['technical']}\n수급: {analysts['sentiment']}\n\n"
         f"[Bull]\n{bull}\n\n[Bear]\n{bear}")
     try:
-        return _parse_json(_call_claude_code(prompt, model="opus", timeout=360))
+        return _parse_json(llm.run(prompt, task='report.lead').text)
     except Exception:
         return {}
 
@@ -364,7 +365,7 @@ def _write_section(title: str, brief: str, anchor_topic: str, ctx: str, ratings_
         "확신을 주는 필력으로 써라(건조한 나열 금지).\n"
         "★출력 규칙: **섹션 본문만** 출력한다. 최상위 제목(## / #)·구분선(---)·글자 수 언급('약 660자' 등)·"
         "'아래는 …이다' 같은 메타 문장을 붙이지 마라(섹션 제목은 시스템이 붙임). 단, 본문 내부의 `### 소제목`은 허용.\n"
-        f"[종목 레이팅] {ratings_line}\n\n[참고 자료]\n{ctx}", timeout=420)
+        f"[종목 레이팅] {ratings_line}\n\n[참고 자료]\n{ctx}", task="report.write")
     body = _clean_section(body)
     return f"## {title}\n\n{body}" if body else ""
 

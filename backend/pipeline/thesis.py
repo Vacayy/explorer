@@ -8,8 +8,9 @@ Phase 1(본 모듈): **정박 코어(stage 2, 결정적·LLM 0)** — 주장의 
 Phase 3: **진자(stage 3, LLM 0)** — salience × conviction(knowledge_state 재사용)으로 선반영/소외
 기회 판정. verdict(그래프 일치)와 직교 축. 종합(stage 5)·반증/프록시(stage 4)는 후속.
 """
+from pipeline import llm
 from database import get_connection
-from pipeline.enrich import _call_claude_code, _parse_json
+from pipeline.enrich import _parse_json
 
 _CAUSAL = ("CAUSES", "BENEFITS_FROM")
 _ANCHOR_TYPES = ("sector", "theme", "company", "macro", "industry", "event", "policy")
@@ -126,7 +127,7 @@ def _graph_vocab(limit: int = 70) -> list[str]:
     return [r["name"] for r in rows]
 
 
-def decompose_thesis(text: str, model: str = "sonnet") -> list[dict]:
+def decompose_thesis(text: str) -> list[dict]:
     """자유서술 thesis → 원자 주장 + 역할 + 정밀 앵커 (stage 1).
 
     앵커는 **그래프 기존 노드에서 우선 선택**(enrich 패턴) — 안 그러면 LLM이 그럴듯하나 안 맞는
@@ -146,7 +147,7 @@ def decompose_thesis(text: str, model: str = "sonnet") -> list[dict]:
         f"- 그래프 노드: {', '.join(vocab)}\n"
         f"논지:\n{text}"
     )
-    data = _parse_json(_call_claude_code(prompt, model=model, timeout=180))
+    data = _parse_json(llm.run(prompt, task='thesis.decompose').text)
     out = []
     for c in data.get("claims", []):
         if c.get("claim"):
@@ -156,7 +157,7 @@ def decompose_thesis(text: str, model: str = "sonnet") -> list[dict]:
     return out
 
 
-def filter_edges(claim: str, edges: list[dict], model: str = "haiku") -> dict[int, str]:
+def filter_edges(claim: str, edges: list[dict]) -> dict[int, str]:
     """후보 엣지 중 이 주장과 관련된 것 + 입장(support/contradict/context). {edge_id: stance}."""
     if not edges:
         return {}
@@ -170,7 +171,7 @@ def filter_edges(claim: str, edges: list[dict], model: str = "haiku") -> dict[in
         "규칙: 주장을 뒷받침=support, 반박=contradict, 배경설명=context, 무관하면 목록에서 제외.\n"
         f"엣지:\n{cand}"
     )
-    data = _parse_json(_call_claude_code(prompt, model=model, timeout=120))
+    data = _parse_json(llm.run(prompt, task='thesis.filter').text)
     return {e["id"]: e.get("stance", "context") for e in data.get("edges", [])
             if isinstance(e.get("id"), int) and e.get("stance") in ("support", "contradict", "context")}
 

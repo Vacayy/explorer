@@ -5,6 +5,7 @@ SEC 실적 공시가 오면 발표일을 그 날짜로 교정한다. 섹터는 �
 (M7처럼 섞인 그룹은 종목 단위로 나눈다). 숫자(주가·거래량·목표가·컨센서스)는 LLM 없이,
 글(발표 전 기대·섹터 요약)은 핵심 종목·섹터에만 sonnet으로 만든다.
 """
+from pipeline import llm
 import hashlib
 import json
 import re
@@ -500,12 +501,12 @@ def snapshot_expectation(ticker: str, fy: int, fp: str, snap: str, qualitative: 
         src = "\n\n".join(f"[{i + 1}] {d['source']} · {cr._kst(d['published_at'])} · {d['title'] or ''}\n{d['excerpt']}" for i, d in enumerate(docs)) \
             or "(발표 전 7일 동안 찾은 자료 없음)"
         h = hashlib.sha1(json.dumps([[d["id"] for d in docs], PROMPT_VERSION]).encode()).hexdigest()
-        from pipeline.enrich import _call_claude_code, llm_available
+        from pipeline.enrich import llm_available
         from pipeline.llm import extract_json
         if llm_available():
-            raw = _call_claude_code(_EXPECT_PROMPT.format(
+            raw = llm.run(_EXPECT_PROMPT.format(
                 company=f["company_name"] or ticker, ticker=ticker, event_date=ev["event_date"], quant=_quant_lines(quant),
-                prev=json.dumps(prev, ensure_ascii=False) if prev else "(없음)", sources=src), model="sonnet", timeout=300)
+                prev=json.dumps(prev, ensure_ascii=False) if prev else "(없음)", sources=src), task='earnings.expectation').text
             j = extract_json(raw) or {}
             issues, points = j.get("issues"), j.get("points")
             positioning, thin = j.get("positioning"), j.get("thin")
@@ -609,7 +610,7 @@ def refresh_themes(conn, season: str) -> dict:
         if f:
             by.setdefault(f["sector"], []).append(r)
     made, skipped = 0, 0
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     from pipeline.llm import extract_json
     for sec, items in by.items():
         if len(items) < 2:
@@ -637,7 +638,7 @@ def refresh_themes(conn, season: str) -> dict:
                                       pending=", ".join(pending) or "(없음)")
         conn.commit()
         try:
-            j = extract_json(_call_claude_code(prompt, model="sonnet", timeout=300)) or {}
+            j = extract_json(llm.run(prompt, task='earnings.themes').text) or {}
         except Exception as e:  # noqa: BLE001
             print(f"[earnings_chain] 섹터 요약 실패 {sec}: {e}")
             continue

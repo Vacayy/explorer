@@ -12,6 +12,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -302,7 +303,7 @@ class ApiTests(Base):
         self.assertEqual([e["kind"] for e in d["strands"][0]["evidence"]], ["overnight"])
 
     def test_rebuild_route(self):
-        patch("pipeline.enrich._call_claude_code", lambda p, **k: json.dumps(good_output(wbp.gather(self.conn())), ensure_ascii=False)).start()
+        patch("pipeline.llm.run", lambda p, **k: SimpleNamespace(text=json.dumps(good_output(wbp.gather(self.conn())), ensure_ascii=False))).start()
         r = self.client.post("/api/spine/world/big-picture/rebuild")
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["status"], "ok")

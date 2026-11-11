@@ -6,6 +6,7 @@
 - 참고: 권리락은 DART 공시가 아니라 KRX 시장조치 — 유·무상증자 공시의
   신주배정기준일에서 파생되므로 v1 범위 밖 (공시 원문에서 확인 가능).
 """
+from pipeline import llm
 import requests
 
 from config import DART_API_KEY
@@ -108,7 +109,7 @@ def _fetch_document_text(rcp_no: str) -> str | None:
 
 def summarize_pending(limit: int = 20) -> dict:
     """summary 없는 기업활동 공시를 haiku로 요약 (규모·비율·일정·목적 중심)."""
-    from pipeline.enrich import _call_claude_code, llm_engine
+    from pipeline.enrich import llm_engine
 
     if llm_engine() != "claude-code":
         return {"skipped": "claude-code 엔진 아님"}
@@ -133,7 +134,7 @@ def summarize_pending(limit: int = 20) -> dict:
             "수치를 우선하고 군더더기 금지. 텍스트만 출력.\n\n" + text
         )
         try:
-            summary = _call_claude_code(prompt).strip()[:600]
+            summary = llm.run(prompt, task='actions.summarize').text.strip()[:600]
             conn.execute("UPDATE corporate_actions SET summary=? WHERE id=?", (summary, r["id"]))
             conn.commit()
             done += 1

@@ -6,6 +6,8 @@
 (리드 → 원인·전달 경로·결과 → 반론 → 앞으로의 갈림길, 중간 제목은 기사마다 — D-290).
 게으른 생성 + hash 가드(source_digests kind='narrative'). 심층 종합이라 opus.
 """
+from pipeline.llm_policies import requested_model
+from pipeline import llm
 import hashlib
 import json
 import os
@@ -15,7 +17,7 @@ from database import get_connection
 from pipeline.visibility import unverified_sql
 from pipeline.enrich import llm_engine
 
-NARRATIVE_MODEL = os.getenv("NARRATIVE_MODEL", "opus")
+NARRATIVE_MODEL = requested_model('narrative.generate')  # existing cache/display field: requested model
 DOCS = 25
 EXCERPT = 500
 
@@ -444,9 +446,8 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
     )
 
 
-def _call(prompt: str, model: str = NARRATIVE_MODEL) -> dict:
-    from pipeline.enrich import _call_claude_code   # llm_calls 원장에 남는 공용 경로
-    raw = _call_claude_code(prompt, model=model, timeout=400)
+def _call(prompt: str, *, task: str = "narrative.generate") -> dict:
+    raw = llm.run(prompt, task=task).text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 
@@ -752,7 +753,7 @@ def reverify_legacy_edges(conn, narrative_id: int, *, call=None) -> dict:
         from pipeline.llm import run
 
         def call(text):
-            res = run(text, system=REVERIFY_SYSTEM, model="haiku", timeout=180, job="reverify_edge_sources", json_schema=REVERIFY_SCHEMA)
+            res = run(text, task='narrative.reverify', system=REVERIFY_SYSTEM, json_schema=REVERIFY_SCHEMA)
             raw = res.text
             return json.loads(raw[raw.find("{"):raw.rfind("}") + 1]), res.cost_usd
     answer = call(prompt)
@@ -932,7 +933,7 @@ def compute_mer_narrative(topic: str) -> dict:
         conn.close()
         return {"status": "unavailable", "narrative": prev["mer_body"], "path": path}
     try:
-        data = _call(_build_mer_prompt(topic, path))
+        data = _call(_build_mer_prompt(topic, path), task="narrative.mer")
     except Exception:
         conn.close()
         return {"status": "failed", "narrative": None, "path": path}
@@ -1020,7 +1021,7 @@ def narrative_diff(conn, narrative_id: int, summarize: bool = True) -> dict:
         d["summary"] = None
         return d
     try:
-        data = _call(_build_drift_prompt(d["added_edges"], d["removed_edges"]), model="haiku")
+        data = _call(_build_drift_prompt(d["added_edges"], d["removed_edges"]), task="narrative.diff")
     except Exception:
         d["summary"] = None
         return d

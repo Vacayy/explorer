@@ -147,8 +147,7 @@ def maybe_compact(conversation_id: int) -> bool:
         "규칙: 대화에 있는 내용만, 지어내지 말 것. 내부 코드·영문 상태값 금지. 노트 본문만 출력."
     )
     try:
-        res = llm.run(prompt, system=system, model=os.getenv("CHAT_NOTE_MODEL", "haiku"), effort="low",
-                      tools=(), timeout=120, job="chat.note")
+        res = llm.run(prompt, task='chat.note', system=system)
     except Exception:
         return False
     note = (res.text or "").strip()[:NOTE_MAX_CHARS + 200]

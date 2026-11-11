@@ -7,13 +7,14 @@ LLM 종합(하루 1콜·캐시): 구조화 팩트 + 담론 입력 → 분위기 
 
 리서치를 대신하지 않고 '뭘 스터디하고 뭘 공유할지' 조준하게 하는 게 목적(펀드매니저 피드백, D-095·D-096).
 """
+from pipeline import llm
 import hashlib
 import json
 import re
 import statistics
 
 from database import get_connection
-from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+from pipeline.enrich import _parse_json, llm_engine
 from pipeline.us_data import resolve_us
 from pipeline.us_movers import get_leaders, last_completed_session, read_leaders, read_snapshot
 
@@ -578,7 +579,7 @@ def _macro_issues(conn, trade_date: str) -> dict:
     if llm_engine() != "claude-code":
         return {**empty, "gaps": ["LLM 미가용 — 매크로 이슈 추출 생략"]}
     try:
-        data = _parse_json(_call_claude_code(prompt, model="sonnet", timeout=300))
+        data = _parse_json(llm.run(prompt, task='briefing.macro').text)
     except Exception as e:  # noqa: BLE001
         print(f"[us_briefing] 매크로 이슈 추출 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return {**empty, "gaps": ["매크로 이슈 추출 실패"]}
@@ -826,7 +827,7 @@ def _synthesize(conn, trade_date: str, clusters, idio, movers,
     if llm_engine() != "claude-code":
         return None
     try:
-        data = _parse_json(_call_claude_code(prompt, model="sonnet", timeout=300))
+        data = _parse_json(llm.run(prompt, task='briefing.synthesize').text)
     except Exception as e:  # noqa: BLE001 — 원인을 로그로 남긴다(구 silent-None 대비)
         print(f"[us_briefing] 종합 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return None

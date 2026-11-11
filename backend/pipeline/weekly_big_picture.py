@@ -25,6 +25,8 @@ key='YYYY-Www')`에 JSON 저장. 같은 주 안에서 다시 만들면 그 주 �
 """
 from __future__ import annotations
 
+from pipeline.llm_policies import requested_model
+from pipeline import llm
 import hashlib
 import json
 import re
@@ -36,7 +38,7 @@ from zoneinfo import ZoneInfo
 KST = ZoneInfo("Asia/Seoul")
 JOB = "weekly_big_picture"
 KIND = "big_picture"
-MODEL = "sonnet"
+MODEL = requested_model('narrative.weekly')  # existing cache/display field: requested model
 WINDOW_DAYS = 7
 MAX_STRANDS = 4             # D-315 2
 MIN_STRAND_NARRATIVES = 2   # 줄기를 남기는 근거: 서사 2편 이상 또는
@@ -368,7 +370,7 @@ def _record(trigger: str, status: str, summary: str, t0: float) -> None:
 def run(trigger: str = "weekly", call=None, now: datetime | None = None) -> dict:
     """한 번 실행 → {status: ok|skipped|cooldown|budget|unavailable|failed|empty|off, ...}. call = 테스트용 LLM 대역(prompt → dict|str)."""
     from database import get_connection
-    from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+    from pipeline.enrich import _parse_json, llm_engine
     from pipeline.ops import flag_enabled
     t0, now = time.time(), now or _now()
     if not flag_enabled(JOB):
@@ -402,7 +404,7 @@ def run(trigger: str = "weekly", call=None, now: datetime | None = None) -> dict
             _record(trigger, "skipped", f"{trigger} · LLM 미가용", t0)
             return {"status": "unavailable"}
         try:
-            out = (call or (lambda p: _call_claude_code(p, model=MODEL, timeout=300)))(build_prompt(m))
+            out = (call or (lambda p: llm.run(p, task='narrative.weekly').text))(build_prompt(m))
             data = _parse_json(out) if isinstance(out, str) else out
         except Exception as e:  # noqa: BLE001 — 이전 저장분은 그대로 둔다
             _record(trigger, "error", f"{trigger} · 생성 실패 {type(e).__name__}: {str(e)[:150]}", t0)

@@ -9,34 +9,14 @@
 - stocks는 LLM이 별칭·약칭('하이닉스'→'SK하이닉스')을 정식 종목명으로 정규화한 결과.
   존재하면 store._link가 substring 매칭 대신 이것을 confidence 0.9로 사용한다.
 """
+from pipeline import llm
+from pipeline.llm_config import _claude_bin, llm_engine
+from pipeline.llm_policies import requested_model
 import json
-import os
-import shutil
-import subprocess
-import sys
-import time
 
 from services.tagging_service import INDUSTRY_KEYWORDS, TOPIC_KEYWORDS
 
-HAIKU_API_MODEL = "claude-haiku-4-5-20251001"
 MAX_DOC_CHARS = 4000  # 토큰 통제 — 태깅에는 앞부분이면 충분
-
-
-def _claude_bin() -> str | None:
-    """노드 버전이 박힌 nvm 경로(.../v24.15.0/bin/claude)라 노드를 올리면 전 시스템의 LLM 호출이 죽는다.
-    지정 경로가 실제로 없으면 PATH에서 찾아 자가 치유한다 (D-143, chatId=37 첫 질문 실패)."""
-    env = os.getenv("CLAUDE_BIN")
-    if env and os.path.exists(env):
-        return env
-    return shutil.which("claude") or env
-
-
-def llm_engine() -> str | None:
-    if os.getenv("ENRICH_ENGINE", "").strip().lower() == "claude-code" and _claude_bin():
-        return "claude-code"
-    if os.getenv("ANTHROPIC_API_KEY"):
-        return "api"
-    return None
 
 
 def llm_available() -> bool:
@@ -59,9 +39,7 @@ def classify_temporal(title: str, summary: str) -> dict:
         f"제목: {title}\n요약: {(summary or '')[:600]}"
     )
     try:
-        engine = llm_engine()
-        raw = (_call_claude_code(prompt, effort=EFFORT_MECHANICAL)
-           if engine == "claude-code" else _call_api(prompt))
+        raw = llm.run(prompt, task="document.time_classify").text
         data = _parse_json(raw)
     except Exception:
         return {"time_orientation": None, "reference_period": None}
@@ -217,41 +195,6 @@ def _parse_json(text: str) -> dict:
 # thinking이 8,188(69%)였다. `--effort low`로 그 몫을 걷어낸다. 판단이 필요한 생성(내러티브·
 # 종합)은 호출부가 effort를 올리거나 생략해 기본값을 쓴다.
 # (`--bare`는 시스템 프롬프트·기동 비용까지 줄이지만 ANTHROPIC_API_KEY를 요구해 이 환경에선 못 쓴다.)
-EFFORT_MECHANICAL = "low"
-
-
-def _call_claude_code(prompt: str, model: str = "haiku", timeout: int = 180,
-                      effort: str | None = None) -> str:
-    argv = [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", model, "--output-format", "json"]
-    if effort:
-        argv += ["--effort", effort]
-    argv.append(prompt)
-    # llm_calls 원장 — 호출 모듈 이름을 job으로(pipeline.narrative → narrative). 이 경로가 원장 밖이라
-    # 내러티브 opus 같은 가장 큰 비용이 비용 화면에 안 보였다.
-    from pipeline import llm
-    job = sys._getframe(1).f_globals.get("__name__", "").removeprefix("pipeline.")
-    t0 = time.time()
-    proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-    ms = int((time.time() - t0) * 1000)
-    if proc.returncode != 0:
-        # claude는 오류(사용량 한도·미로그인 등)를 stdout에 쓴다 — stderr만 보면 원인이 비어 보임
-        err = (f"claude -p 실패 rc={proc.returncode} "
-               f"out={proc.stdout.strip()[:200]!r} err={proc.stderr.strip()[:120]!r}")
-        llm._record(job, model, "claude-code", effort, None, ms, err)
-        raise RuntimeError(err)
-    envelope = json.loads(proc.stdout)
-    llm._record(job, model, "claude-code", effort, llm._from_result_event(envelope, model, ""), ms, None)
-    return envelope.get("result", "")
-
-
-def _call_api(prompt: str) -> str:
-    import anthropic
-    client = anthropic.Anthropic()
-    msg = client.messages.create(
-        model=HAIKU_API_MODEL, max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(b.text for b in msg.content if b.type == "text")
 
 
 def _normalize_llm_result(data: dict, model: str) -> dict:
@@ -283,14 +226,13 @@ def _normalize_llm_result(data: dict, model: str) -> dict:
 
 
 def _enrich_llm(title: str, markdown: str) -> dict:
-    engine = llm_engine()
     prompt = _build_prompt(title, markdown)
-    raw = (_call_claude_code(prompt, effort=EFFORT_MECHANICAL)
-           if engine == "claude-code" else _call_api(prompt))
-    return _normalize_llm_result(_parse_json(raw), f"{engine}/haiku")
+    result = llm.run(prompt, task="document.tag")
+    raw = result.text
+    return _normalize_llm_result(_parse_json(raw), result.label)
 
 
-BATCH_MODEL = "sonnet"       # 배치 백필 전용 — 멀티 문서 구조화 출력은 지시 추종 요구가 높음 (D-028)
+BATCH_MODEL = requested_model('document.tag_batch')  # existing cache/display field: requested model
 BATCH_DOC_CHARS = 1500       # 배치는 문서당 발췌를 줄여 프롬프트 총량 통제
 
 
@@ -333,8 +275,7 @@ def enrich_batch(docs: list[dict]) -> dict[int, dict]:
     반환: {doc_id: 표준 enrich dict}. 배치 전체 실패 시 예외 (호출자가 재시도 관리)."""
     if llm_engine() != "claude-code":
         raise RuntimeError("배치 재태깅은 claude-code 엔진 필요")
-    raw = _call_claude_code(_build_batch_prompt(docs), model=BATCH_MODEL, timeout=420,
-                            effort=EFFORT_MECHANICAL)
+    raw = llm.run(_build_batch_prompt(docs), task='document.tag_batch').text
     data = _parse_json(raw)
     out: dict[int, dict] = {}
     for r in (data.get("results") or []):

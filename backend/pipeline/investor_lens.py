@@ -9,18 +9,18 @@
 - append-only 히스토리 (판단 변화 추적, D-047 철학)
 - 1차 구현: **가치 렌즈(value)**. 추세 렌즈(trend)·4상한은 후속(스펙 구현순서 3~4)
 """
+from pipeline.llm_policies import requested_model
 import hashlib
 import json
 import os
-import subprocess
 import threading
 
 from config import VAULT_PATH
 from database import get_connection
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
 # 종합=sonnet — 브리프·기술 재료가 이미 정제돼 있어 opus 불요 (스펙 결정)
-LENS_MODEL = os.getenv("LENS_MODEL", "sonnet")
+LENS_MODEL = requested_model('company.lens')  # existing cache/display field: requested model
 PRINCIPLES_DIR = VAULT_PATH / "principles"
 LENS_TYPES = ("value", "trend")
 
@@ -35,12 +35,8 @@ def load_principles(lens_type: str) -> tuple[str | None, str]:
 
 
 def _call_json_lens(prompt: str) -> dict:
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", LENS_MODEL, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    raw = json.loads(proc.stdout).get("result", "")
+    from pipeline import llm
+    raw = llm.run(prompt, task='company.lens').text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 

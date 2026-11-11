@@ -4,6 +4,7 @@
 원장에 잡히지 않았다 — 비용 화면에 가장 큰 항목이 보이지 않았다.
 """
 import json
+import os
 import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
@@ -14,13 +15,14 @@ ENVELOPE = {"result": '{"ok": 1}', "total_cost_usd": 0.42, "duration_ms": 1234,
             "usage": {"input_tokens": 100, "output_tokens": 20, "cache_read_input_tokens": 5}}
 
 
+@patch.dict(os.environ, {"ENRICH_ENGINE": "claude-code", "LLM_FALLBACK_ENGINE": "none"})
 class LedgerTests(unittest.TestCase):
     def call(self, proc):
-        with patch.object(enrich.subprocess, "run", return_value=proc), \
-             patch.object(enrich, "_claude_bin", return_value="claude"), \
+        with patch.object(llm.subprocess, "run", return_value=proc), \
+             patch.object(llm, "_claude_bin", return_value="claude"), \
              patch.object(llm, "_record") as rec:
             try:
-                out = enrich._call_claude_code("p", model="opus", timeout=5)
+                out = llm.run("p", task="narrative.generate").text
             except RuntimeError:
                 out = None
         return out, rec.call_args
@@ -29,7 +31,7 @@ class LedgerTests(unittest.TestCase):
         out, call = self.call(MagicMock(returncode=0, stdout=json.dumps(ENVELOPE), stderr=""))
         self.assertEqual(out, '{"ok": 1}')
         job, model, engine, effort, res, _ms, err = call.args
-        self.assertTrue(job.endswith("test_llm_ledger"))   # 호출 모듈 이름(실행 방식에 따라 tests. 접두어 유무)
+        self.assertEqual(job, "narrative.generate")   # 호출 모듈 이름(실행 방식에 따라 tests. 접두어 유무)
         self.assertEqual((model, engine, err), ("opus", "claude-code", None))
         self.assertEqual(res.cost_usd, 0.42)
         self.assertEqual(res.usage["input"], 100)
@@ -42,11 +44,11 @@ class LedgerTests(unittest.TestCase):
 
     def test_narrative_call_goes_through_the_ledger(self):
         from pipeline import narrative
-        with patch.object(enrich.subprocess, "run", return_value=MagicMock(returncode=0, stdout=json.dumps(ENVELOPE), stderr="")), \
-             patch.object(enrich, "_claude_bin", return_value="claude"), \
+        with patch.object(llm.subprocess, "run", return_value=MagicMock(returncode=0, stdout=json.dumps(ENVELOPE), stderr="")), \
+             patch.object(llm, "_claude_bin", return_value="claude"), \
              patch.object(llm, "_record") as rec:
             self.assertEqual(narrative._call("p"), {"ok": 1})
-        self.assertEqual(rec.call_args.args[0], "narrative")
+        self.assertEqual(rec.call_args.args[0], "narrative.generate")
 
 
 if __name__ == "__main__":

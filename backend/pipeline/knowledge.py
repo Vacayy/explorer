@@ -10,6 +10,7 @@
   본문 관례(> 가설: …)로 명시, 소비 지점(RAG·피드)은 note를 구분 취급.
 - 태깅·링크는 기존 파이프라인(store_document → enrich → _link) 그대로.
 """
+from pipeline import llm
 import re
 from datetime import datetime, timezone
 
@@ -87,7 +88,7 @@ def inject_knowledge(content: str, epistemic: str = "hypothesis",
 
 def _classify_layer(statement: str) -> str:
     """pace layer 한 단어 판정 (haiku) — 실패 시 cycle."""
-    from pipeline.enrich import llm_engine, _call_claude_code
+    from pipeline.enrich import llm_engine
     if llm_engine() != "claude-code":
         return "cycle"
     prompt = (
@@ -100,7 +101,7 @@ def _classify_layer(statement: str) -> str:
         "마지막 줄에 정확히 한 단어만.\n\n" + statement[:400]
     )
     try:
-        hits = re.findall(r"\b(EVENT|FLOW|CYCLE|STRUCTURE|REGIME)\b", _call_claude_code(prompt))
+        hits = re.findall(r"\b(EVENT|FLOW|CYCLE|STRUCTURE|REGIME)\b", llm.run(prompt, task='knowledge.classify').text)
         return hits[-1].lower() if hits else "cycle"
     except Exception:
         return "cycle"

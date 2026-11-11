@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+from pipeline.llm_policies import requested_model
 import json
 import re
 import time
@@ -33,7 +34,7 @@ MAX_CLAIMS = 3
 PER_CLAIM = 2
 MIN_RERANK = -1.0        # 2026-10-14 문서 5개×2회 실측: -1.0~-1.2 구간은 엉뚱한 자료가 더 많았다(-1.2에서 올림)
 STALE_SECONDS = 600
-MODEL = "haiku"
+MODEL = requested_model('document.claims')  # existing cache/display field: requested model
 
 PROMPT = """아래 자료에서 독자가 이어서 더 읽어 보고 싶어질 핵심 논점을 1~3개 뽑아라(짧은 자료면 1개).
 - claim: 이 자료가 내세우는 주장·해석을 한국어 평서문 한 문장으로("~다", 40자 이하).
@@ -135,7 +136,7 @@ def compute(doc_id: int) -> dict:
         conn.close()
     from pipeline.image_reading import strip_ai_notes
     body = strip_ai_notes(r["markdown"] or r["raw_content"] or "")[:INPUT_CHARS]   # 자료의 논점 — AI 이미지 해석은 저자의 말이 아니다
-    res = llm.run(PROMPT.format(title=r["title"] or "", body=body), model=MODEL, job="doc_claims", timeout=180)
+    res = llm.run(PROMPT.format(title=r["title"] or "", body=body), task='document.claims')
     claims = _parse(res.text)
     if not claims:
         raise ValueError("논점을 뽑지 못했습니다")

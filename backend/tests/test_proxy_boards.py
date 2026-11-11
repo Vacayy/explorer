@@ -3,6 +3,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from types import SimpleNamespace
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -114,7 +115,7 @@ class ProxyBoardTests(unittest.TestCase):
         bid = self.create()
         self.add(bid, label="오라클 스프레드", adapter="credit", adapter_ref="credit:ORCL", warn_direction="up")
         self.add(bid, label="HY OAS", adapter="indicator", adapter_ref="indicator:risk_hy", warn_direction="up")
-        with patch.object(enrich, "_call_claude_code", side_effect=AssertionError("GET에서 LLM 호출")):
+        with patch.object(enrich.llm, "run", side_effect=AssertionError("GET에서 LLM 호출")):
             detail = self.client.get(f"{BASE}/{bid}")
             boards = self.client.get(BASE)
         self.assertEqual(detail.status_code, 200, detail.text)
@@ -142,10 +143,12 @@ class ProxyBoardTests(unittest.TestCase):
         ], ensure_ascii=False)
         seen = []
 
-        def fake_call(prompt, model="haiku", timeout=180, effort=None):
+        def fake_call(prompt, *, task):
+            from pipeline.llm_policies import resolve
+            model = resolve(task).primary.model
             seen.append((prompt, model))
-            return "설명\n" + reply
-        with patch.object(enrich, "llm_available", return_value=True), patch.object(enrich, "_call_claude_code", side_effect=fake_call):
+            return SimpleNamespace(text="설명\n" + reply)
+        with patch.object(enrich, "llm_available", return_value=True), patch.object(enrich.llm, "run", side_effect=fake_call):
             r = self.client.post(f"{BASE}/suggest", json={"topic": "AI 밸류체인 신용"})
         self.assertEqual(r.status_code, 200, r.text)
         body = r.json()
@@ -162,13 +165,13 @@ class ProxyBoardTests(unittest.TestCase):
 
     def test_suggest_llm_unavailable_is_503(self):
         with patch.object(enrich, "llm_available", return_value=False), \
-                patch.object(enrich, "_call_claude_code", side_effect=AssertionError("호출 금지")):
+                patch.object(enrich.llm, "run", side_effect=AssertionError("호출 금지")):
             r = self.client.post(f"{BASE}/suggest", json={"topic": "AI"})
         self.assertEqual(r.status_code, 503)
         self.assertIn("LLM", r.json()["detail"])
 
     def test_suggest_unparseable_reply_is_502(self):
-        with patch.object(enrich, "llm_available", return_value=True), patch.object(enrich, "_call_claude_code", return_value="죄송합니다"):
+        with patch.object(enrich, "llm_available", return_value=True), patch.object(enrich.llm, "run", return_value=SimpleNamespace(text="죄송합니다")):
             self.assertEqual(self.client.post(f"{BASE}/suggest", json={"topic": "AI"}).status_code, 502)
 
     def test_keywords(self):

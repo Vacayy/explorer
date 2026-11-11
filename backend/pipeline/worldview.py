@@ -9,16 +9,16 @@
 규율: 소스 도시에와 동일 — 게으른 생성 + inputs hash 가드, LLM은 열람 시에만.
 모델: 종합이므로 sonnet (티어 분리 원칙 — 태깅=haiku, 종합=sonnet).
 """
+from pipeline.llm_policies import requested_model
 import hashlib
 import json
 import os
-import subprocess
 import threading
 
 from database import get_connection
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
-WORLDVIEW_MODEL = os.getenv("WORLDVIEW_MODEL", "opus")  # 심층 종합 티어
+WORLDVIEW_MODEL = requested_model('worldview.generate')  # existing cache/display field: requested model
 _lock = threading.Lock()
 
 
@@ -111,12 +111,8 @@ def _build_prompt(m: dict) -> str:
 
 
 def _call_json_sonnet(prompt: str) -> dict:
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", WORLDVIEW_MODEL, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    raw = json.loads(proc.stdout).get("result", "")
+    from pipeline import llm
+    raw = llm.run(prompt, task='worldview.generate').text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 

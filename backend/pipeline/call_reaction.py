@@ -9,6 +9,7 @@
     짧거나 겹치는 표기는 search_only(이 모듈만 씀).
 창이 열려 있으면 interim, 닫힌 뒤 final. 자동 생성은 핵심 종목만(earnings_chain.daily), 나머지는 버튼.
 """
+from pipeline import llm
 import sqlite3
 import hashlib
 import json
@@ -66,7 +67,7 @@ def repair_follow_entities(conn) -> int:
 def ensure_ko_aliases(tickers: list[str] | None = None, chunk: int = 40) -> int:
     """별칭이 없는 팔로우 기업에 한글 별칭을 만든다(haiku, 40개씩 1회). 반환=새로 넣은 별칭 수.
     LLM이 아무것도 못 내도 영문명을 search_only로 남겨 다음 실행이 같은 회사를 다시 묻지 않게 한다."""
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     from pipeline.llm import extract_json
     if not llm_available():
         return 0
@@ -81,8 +82,7 @@ def ensure_ko_aliases(tickers: list[str] | None = None, chunk: int = 40) -> int:
     for i in range(0, len(rows), chunk):
         part = rows[i:i + chunk]
         try:
-            raw = _call_claude_code(_ALIAS_PROMPT.format(lines="\n".join(f"{r['ticker']} | {r['company_name']}" for r in part)),
-                                    model="haiku", timeout=180)
+            raw = llm.run(_ALIAS_PROMPT.format(lines="\n".join(f"{r['ticker']} | {r['company_name']}" for r in part)), task='company.aliases').text
             got = extract_json(raw) or {}
         except Exception as e:  # noqa: BLE001 — 별칭이 없어도 반응 검색은 영문명·티커로 돈다
             print(f"[call_reaction] 별칭 생성 실패: {type(e).__name__}: {str(e)[:120]}")
@@ -404,7 +404,7 @@ def compute(transcript_id: int, force: bool = False) -> dict:
     if not sources and not prices:
         body = None   # 재료가 없으면 LLM을 부르지 않는다 — 화면이 '자료 없음'으로 말한다
     else:
-        from pipeline.enrich import _call_claude_code, llm_available
+        from pipeline.enrich import llm_available
         if not llm_available():
             raise RuntimeError("LLM 엔진을 쓸 수 없습니다")
         from pipeline.transcript import cy_label
@@ -415,12 +415,12 @@ def compute(transcript_id: int, force: bool = False) -> dict:
         days_passed = (date.today() - date.fromisoformat(start)).days
         ex_text = "\n".join(f"- {i.get('issue')} (발표 전 비중 {i.get('weight')}): 호재 조건 {i.get('good')} / 악재 조건 {i.get('bad')}"
                             for i in (expect or {}).get("issues") or []) or "(발표 전 기대 정리 없음)"
-        raw = _call_claude_code(_PROMPT.format(
+        raw = llm.run(_PROMPT.format(
             company=t["company_name"], ticker=t["ticker"], call_date=start, quarter=quarter, days=WINDOW_DAYS,
             interim=(f"- 아직 발표 {days_passed}일째라 반응이 다 모이지 않았다. 지금까지의 반응으로 정리한다.\n" if status == "interim" else ""),
             digest=(t["digest"] or "(정리 없음)")[:3500], expect=ex_text,
             prev=json.dumps(prev, ensure_ascii=False) if prev else "(없음)", base_date=prices["base_date"] if prices else "-",
-            prices=_price_lines(prices), sources=src_text), model="sonnet", timeout=300).strip()
+            prices=_price_lines(prices), sources=src_text), task='transcript.reaction').text.strip()
         from pipeline.llm import split_meta
         body, meta = split_meta(raw)
         if meta is not None:

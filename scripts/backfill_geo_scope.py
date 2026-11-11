@@ -20,7 +20,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import get_connection, init_db
-from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+from pipeline import llm
+from pipeline.enrich import _parse_json, llm_engine
 from pipeline.narrative import GEO_VOCAB, _norm_geo
 
 DEFAULT_PLAN = Path(__file__).resolve().parent.parent / "logs" / "geo_backfill_plan.json"
@@ -57,7 +58,7 @@ def _build_batch_prompt(batch: list[dict]) -> str:
 
 def _judge_batch(batch: list[dict]) -> dict[int, str]:
     """배치 → {entity_relation_id: geo}. null·어휘 밖은 제외(빠지면 null 유지)."""
-    raw = _call_claude_code(_build_batch_prompt(batch), model=MODEL, timeout=180)
+    raw = llm.run(_build_batch_prompt(batch), task="backfill.geo_scope").text
     data = _parse_json(raw)
     out: dict[int, str] = {}
     for a in (data.get("assignments") or []):

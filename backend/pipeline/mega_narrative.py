@@ -9,6 +9,7 @@
 - 저장: narratives 테이블 재사용 (kind='mega', topic=군집 라벨(LLM 명명),
   members_json=구성 토픽들, doc_ids_hash=멤버 해시) — 버전·supersede 규약 그대로
 """
+from pipeline.llm_policies import requested_model
 import hashlib
 import json
 import os
@@ -16,7 +17,7 @@ import os
 from database import get_connection
 from pipeline.narrative import (_call, _latest_narrative, causal_subgraph, list_narratives)
 
-MEGA_MODEL = os.getenv("NARRATIVE_MODEL", "opus")   # 최상위 종합 — 내러티브와 같은 티어
+MEGA_MODEL = requested_model('narrative.mega')  # existing cache/display field: requested model
 MIN_CLUSTER = 3        # 이 수 이상의 내러티브가 엮여야 '세계관'
 # 공유 인과 노드 하한 (D-123). 1이면 허브 1개만 겹쳐도 합쳐져 **군집이 곧 전체**가 됐다 —
 # 실측: 살아있는 topic 54개 중 49개가 한 군집. 임계별 분할: 1→[49,3] · 2→[21,3] · 3→[4,3] · 4→[3].
@@ -148,7 +149,7 @@ def compute_mega_narratives() -> dict:
             continue
         try:
             data = _call(_build_prompt(members, _shared_edges_block(conn, members)),
-                         model=MEGA_MODEL)
+                         task="narrative.mega")
         except Exception as e:  # noqa: BLE001 — 배치라 한 군집 실패가 전체를 막지 않게
             results[label] = f"error:{str(e)[:80]}"
             continue

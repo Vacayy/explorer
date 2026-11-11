@@ -276,12 +276,16 @@ ingest(수집→enrich→그래프) → redigest_youtube(자막 raw 치유) → 
 [Obsidian(선택)]  vault/ 폴더 — entities 도시에(자동) + notes 가설(사람)
 ```
 
-## 3. LLM 계층 — Claude Code headless (`claude -p`)
+## 3. LLM 계층 — Claude Code 기본 + Codex failover
 
 API 키 없이 **구독 인증**으로 구동 (`.env: ENRICH_ENGINE=claude-code, CLAUDE_BIN=절대경로`).
-`ANTHROPIC_API_KEY` 설정 시 자동으로 API 모드 전환 (코드 준비됨).
+Claude Code가 선택되지 않은 경우 `ANTHROPIC_API_KEY`가 있으면 API 모드를 선택한다.
 
-> **공용 러너 `pipeline/llm.py`(D-130)** — 대화 경로부터 적용(다른 모듈은 점진 이관). **D-145: 나머지 13개 모듈의 직접 `claude -p` 호출에도 `--setting-sources "" --tools ""`를 박았다** — 격리 없는 호출에서 모델이 프롬프트를 지시로 읽고 Bash로 코드를 실행한 사고(2026-09-09). vision(Read 필요)·ops ping 제외. ① **격리 cwd(`.claude-runtime/`, gitignore) + `--setting-sources "" --tools ""`**: repo cwd에서 돌리면 CLAUDE.md·훅·도구 정의가 매 콜 실려 간다 — 실측 21,889 → 6,576 토큰(−70%). 도구가 필요한 호출만 `tools=("Read",)`처럼 명시. ② **구조화 출력은 `--json-schema` 대신 `본문 ---META--- {json}` 1턴**: json-schema는 모델이 답을 두 번 써서 output 4배·지연 3배(실측 526→2,061 토큰, 6→19초). ③ 안정 prefix(역할·규칙·렌즈)는 `--append-system-prompt`, 변하는 것(근거·시세·날짜)은 user. ④ `on_text`로 **스트리밍**(stream-json 텍스트 델타). ⑤ 모든 호출을 **`llm_calls`**에 기록(usage·cost·소요·job) — 비용은 유추 말고 실측(D-117). `--bare`는 API 키 요구로 불가(D-106).
+**2026-11-11 failover**: 공용 `pipeline/llm.py`와 기존 일반 생성 호출을 연결했다. Claude 실행 실패·시간 초과·오류/빈 응답 시 `codex exec` 1회 재시도(`LLM_FALLBACK_ENGINE=codex-exec`, `none`으로 끔). `CODEX_BIN`·`CODEX_FALLBACK_MODEL`(기본 gpt-6.1-sol), 같은 OS 사용자의 Codex 로그인 사용. 각 시도에 기존 timeout 적용. Claude 실패와 Codex 결과는 원장에 별도 기록하며 Codex 비용은 미제공(NULL). 이미지 첨부 지원. 이미 전달한 스트림·웹 도구 근거·달러 예산 강제 시장 분석 전용 어댑터는 자동 전환 제외. 운영 프로브는 대체 엔진 성공도 정상으로 기록. [상세 계약](specs/chat-harness.md#현재-실행-계약-claude--codex-failover-2026-11-11).
+
+**2026-11-11 작업 정책**: `pipeline/llm_policies.py`의 불변 레지스트리가 모델·effort·시도 timeout·도구·stream/schema·fallback 설정을 소유한다. 일반 기능은 `llm.run(prompt, task="...")`만 호출한다. `pipeline/llm_config.py`는 실행 파일/기본 엔진 탐지를 담당한다. `main.py`에서 시작 시 설정을 검증한다. `LLM_TASK_<TASK>_MODEL/EFFORT/TIMEOUT/FALLBACK_MODEL/FALLBACK_ENGINE`으로 해당 작업만 변경하며, 기존 모델 환경변수 대응은 resolver에 유지한다. 문서 태깅은 실제 결과 label을 저장하고 기존 캐시 모델 키의 의미는 유지한다. 시장 분석 예산/취소 경로와 명시적 모델 실험(`run_experiment`)은 별도 계약이다. 총 deadline·논리 호출 ID 확장은 후속 단계. [구현·설정 계약](specs/chat-harness.md#작업-단위-정책-이관-계약).
+
+> **공용 러너 `pipeline/llm.py`(D-130)** — 일반 생성 경로 공용(전용 시장 분석 어댑터 제외). **D-145: 나머지 13개 모듈의 직접 `claude -p` 호출에도 `--setting-sources "" --tools ""`를 박았다** — 격리 없는 호출에서 모델이 프롬프트를 지시로 읽고 Bash로 코드를 실행한 사고(2026-09-09). vision(Read 필요)·ops ping 제외. ① **격리 cwd(`.claude-runtime/`, gitignore) + `--setting-sources "" --tools ""`**: repo cwd에서 돌리면 CLAUDE.md·훅·도구 정의가 매 콜 실려 간다 — 실측 21,889 → 6,576 토큰(−70%). 도구가 필요한 호출만 `tools=("Read",)`처럼 명시. ② **구조화 출력은 `--json-schema` 대신 `본문 ---META--- {json}` 1턴**: json-schema는 모델이 답을 두 번 써서 output 4배·지연 3배(실측 526→2,061 토큰, 6→19초). ③ 안정 prefix(역할·규칙·렌즈)는 `--append-system-prompt`, 변하는 것(근거·시세·날짜)은 user. ④ `on_text`로 **스트리밍**(stream-json 텍스트 델타). ⑤ 모든 호출을 **`llm_calls`**에 기록(usage·cost·소요·job) — 비용은 유추 말고 실측(D-117). `--bare`는 API 키 요구로 불가(D-106).
 
 > **프롬프트 위생 (사용자 출력 규칙)**: 'K1/K2/K3'·'corroborated/contested/observed'·'(독립 N)'·pace layer 같은 **내부 코드·약어는 LLM 출력에 노출 금지**. 지식 주입 블록(knowledge_block)·worldview는 이를 자연어로만 표현하고 no-leak 지시를 포함한다. 출처를 어색하게 괄호로 붙이느니 아예 표기하지 않는다.
 

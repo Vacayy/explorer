@@ -81,7 +81,7 @@
 - [analyze-summary](analyze-summary.md) — 화면 기획서: 요약 페이지 (Resizable 패널 레이아웃)
 - [causal-worldview](causal-worldview.md) — 기획서 — 세계관 뷰 (인과 그래프 노드-링크 시각화)
 - [chat-agent](chat-agent.md) — 대화 에이전트 아키텍처 — 라우터·도구·멀티턴 메모리 (B 단계, 2026-09-08)
-- [chat-harness](chat-harness.md) — 대화(챗봇) 하네스 — 현황 분석 + 아키텍처 레퍼런스 (2026-09-08)
+- [chat-harness](chat-harness.md) — 공용 LLM 실행·failover 계약. 작업 단위 모델 정책 1차 이관 구현(2026-11-11), 재시작 후 live 검사 198개 통과·실패 0·미검사 8. 후속 단계는 논리 호출 추적·전체 deadline·중복 재시도 정리. 판단 근거: [TECH_DECISIONS](../TECH_DECISIONS.md#task-model-policy)
 - [chat-page](chat-page.md) — /chat 화면 리뉴얼 — 메신저에서 "판단 도구"로 (2026-09-08)
 - [chat-retrieval](chat-retrieval.md) — 대화 검색 품질 — 청크 인덱스 · 문맥 접두어 · 리랭커 (C 단계, 2026-09-08)
 - [discover-screener](discover-screener.md) — 화면 기획서: 스크리너 — **제거됨 (D-241)**

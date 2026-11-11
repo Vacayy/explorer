@@ -5,6 +5,7 @@ found=false를 남기지 않아 (프록시, 컨콜) 앞쪽 쌍을 매일 haiku�
 """
 import sqlite3
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from pipeline import enrich, transcript
@@ -32,7 +33,7 @@ class ProxyScanTests(unittest.TestCase):
         with patch.object(transcript, "get_connection", return_value=self.conn), \
              patch.object(transcript, "project_numeric_observations"), \
              patch.object(enrich, "llm_available", return_value=True), \
-             patch.object(enrich, "_call_claude_code", return_value=answer) as call:
+             patch.object(enrich.llm, "run", return_value=SimpleNamespace(text=answer)) as call:
             r = transcript.extract_proxies(limit=limit)
         return r, call.call_count
 

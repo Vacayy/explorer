@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from pipeline import llm
 import json
 import re
 
@@ -163,10 +164,9 @@ def validate(conn, proposals: list[dict]) -> tuple[list[dict], list[dict]]:
 
 
 def suggest(conn, topic: str, question_id: int | None = None, narrative_id: int | None = None, call=None) -> dict:
-    """LLM 1회. call은 테스트 주입용 — 기본은 llm_calls 원장에 남는 _call_claude_code(sonnet)."""
+    """LLM 1회. call은 테스트 주입용 — 기본은 llm_calls 원장에 남는 proxy.suggest 작업."""
     if call is None:
-        from pipeline.enrich import _call_claude_code
-        call = lambda prompt: _call_claude_code(prompt, model="sonnet", timeout=240)  # noqa: E731
+        call = lambda prompt: llm.run(prompt, task='proxy.suggest').text  # noqa: E731
     context, texts = _context(conn, question_id, narrative_id)
     variants = "; ".join(f"{a.ref_format}" for a in pa.ADAPTERS.values())
     prompt = PROMPT.format(topic=topic, context=context, variants=variants, catalog=catalog_summary(conn, keywords(topic, *texts)))

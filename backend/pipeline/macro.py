@@ -9,6 +9,7 @@ FRED 키 없으면 유동성 축만 degraded(매크로는 정상).
 갱신은 버튼 주도(D-100 계승): GET=스냅샷 순수 읽기, POST /snapshot=재수집. 지표는 market_indicators에
 'macro_' 프리픽스로 적재(시장 국면과 네임스페이스 분리).
 """
+from pipeline import llm
 import csv
 import io
 import math
@@ -217,7 +218,7 @@ def _signal_prompt(items: list[dict], interp: dict) -> str:
 
 def _refresh_signal() -> None:
     """스냅샷 직후 신호등 산문 생성(sonnet). signature 불변이면 재사용, 엔진 미가용이면 건너뜀."""
-    from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+    from pipeline.enrich import _parse_json, llm_engine
     data = get_macro(with_signal=False)
     items = data["items"]
     if not items or not data["as_of"]:
@@ -229,7 +230,7 @@ def _refresh_signal() -> None:
         conn.close()
         return
     try:
-        r = _parse_json(_call_claude_code(_signal_prompt(items, _interpret(items)), model="sonnet", timeout=180))
+        r = _parse_json(llm.run(_signal_prompt(items, _interpret(items)), task='macro.interpret').text)
     except Exception:
         conn.close()
         return

@@ -5,12 +5,13 @@
 - 파생: 권리락 = 신주배정기준일 - 1거래일 (주말 보정; 공휴일은 근사)
 - 정정 공시: 같은 종목의 최신 결정 공시가 이전 것을 대체 (rcp_no별 저장, 뷰에서 최신만)
 """
+from pipeline import llm
 import json
 from datetime import date, timedelta
 
 from database import get_connection
 from pipeline.actions import _fetch_document_text
-from pipeline.enrich import _call_claude_code, llm_engine
+from pipeline.enrich import llm_engine
 
 FIELDS = """{
  "method": "주주배정|제3자배정|일반공모|무상 중 하나",
@@ -53,7 +54,7 @@ def _extract_one(rcp_no: str, corp_name: str, report_nm: str) -> dict | None:
         "발행가는 반드시 '신주 발행가액(1주당)' — 액면가·전환가·기준주가를 쓰지 마라. "
         "'~부터 ~까지' 기간은 start/end로 분리. 무상증자면 method='무상'.\n\n" + text
     )
-    raw = _call_claude_code(prompt)
+    raw = llm.run(prompt, task='corporate_action.extract').text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 

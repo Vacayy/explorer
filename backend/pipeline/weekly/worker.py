@@ -69,7 +69,7 @@ def main():
                 print("\nWEEKLY_RESULT=" + json.dumps({"result": result}, ensure_ascii=False, allow_nan=False))
                 return
             from dataclasses import asdict
-            from pipeline.llm import run
+            from pipeline.llm import run_experiment as run
             from pipeline.enrich import llm_engine
             enforced = llm_engine() == "claude-code" and payload.get("json_schema") is not None
             if not enforced:

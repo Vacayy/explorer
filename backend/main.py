@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config import MEDIA_PATH
+from pipeline.llm_policies import validate_configuration
+
+validate_configuration()
 from database import init_db
 from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, kpi
 from routers import signals, consensus

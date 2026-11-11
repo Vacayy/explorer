@@ -27,19 +27,12 @@ SEARCH_TOP_K = 3
 MIN_DOC_CHARS = 150     # 본문이 이보다 짧으면 판정 불가 (제목·링크만으로 오탐 — 실측)
 
 
-FALSIFIER_MODEL = "opus"
 
 
 def _call_falsifier_opus(prompt: str) -> str:
     """반증 조건 생성 전용 opus 호출 — 심층 종합이라 opus (판정·감시는 결정적 로직)."""
-    import subprocess
-    from pipeline.enrich import _claude_bin
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", FALSIFIER_MODEL, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=400)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    return json.loads(proc.stdout).get("result", "")
+    from pipeline import llm
+    return llm.run(prompt, task='knowledge.falsifiers').text
 
 
 def generate_falsifiers(conn, knowledge_id: int, statement: str) -> list[str]:
@@ -97,7 +90,7 @@ def generate_falsifiers(conn, knowledge_id: int, statement: str) -> list[str]:
 def _judge_triggered(condition: str, statement: str, doc_title: str, doc_text: str) -> bool:
     """haiku 판정: 문서가 반증 조건의 실제 발생을 보고하는가."""
     from pipeline.enrich import llm_engine
-    from pipeline.consolidation import _call_claude_knowledge
+    from pipeline.consolidation import _call_knowledge
     if llm_engine() != "claude-code":
         return False
     prompt = (
@@ -110,7 +103,7 @@ def _judge_triggered(condition: str, statement: str, doc_title: str, doc_text: s
         f"[문서] {doc_title}\n{(doc_text or '')[:900]}"
     )
     try:
-        hits = re.findall(r"\b(TRIGGERED|NOT)\b", _call_claude_knowledge(prompt))
+        hits = re.findall(r"\b(TRIGGERED|NOT)\b", _call_knowledge(prompt, task="knowledge.check_falsifier"))
         return bool(hits) and hits[-1] == "TRIGGERED"
     except Exception:
         return False

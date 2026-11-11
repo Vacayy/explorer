@@ -9,12 +9,13 @@
 """
 from __future__ import annotations
 
+from pipeline.llm_policies import requested_model
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
 JOB = "sector_overview"
-MODEL = "sonnet"
+MODEL = requested_model('sector.overview')  # existing cache/display field: requested model
 WEEK_DAYS = 7
 MAX_NARRATIVES = 8
 MAX_DOCS = 10
@@ -93,7 +94,7 @@ def run(sectors: list[str] | None = None, now: datetime | None = None, call=None
                     out = call(text)
                 else:
                     from pipeline.llm import extract_json, run as llm
-                    res = llm(text, system=SYSTEM, model=MODEL, job=JOB, json_schema=SCHEMA, timeout=180)
+                    res = llm(text, task='sector.overview', system=SYSTEM, json_schema=SCHEMA)
                     out = extract_json(res.text)   # json_schema면 본문이 그 JSON이다
             except Exception as e:  # noqa: BLE001 — 한 섹터 실패가 나머지를 막지 않는다
                 failed.append(f"{sector}({type(e).__name__})")

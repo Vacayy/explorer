@@ -3,6 +3,7 @@
 판정은 era.get_state()가 규칙으로 끝낸다. LLM은 그 결과를 투자자가 읽을 문장으로 옮길 뿐이다 — 새 숫자·예측·매매 권유 금지.
 입력(판정 결과 + 최신 Marks 메모 발췌)의 해시가 같으면 다시 만들지 않는다(era_commentary.input_hash). 버튼 주도, 자동 생성 없음.
 """
+from pipeline.llm_policies import requested_model
 import hashlib
 import json
 import os
@@ -12,7 +13,7 @@ from pipeline import llm
 from pipeline.era import get_state
 from services.shared_result import shared
 
-MODEL = os.getenv("ERA_COMMENTARY_MODEL", "sonnet")
+MODEL = requested_model('era.commentary')  # existing cache/display field: requested model
 MEMO_EXCERPT = 2500
 
 SYSTEM = """너는 개인 투자자에게 '지금 시장이 어떤 상태인지'를 설명하는 해설가다. 아래 JSON은 규칙으로 이미 판정한 결과다.
@@ -99,7 +100,7 @@ def generate() -> dict:
             return latest()
     finally:
         conn.close()
-    res = llm.run(json.dumps(inputs, ensure_ascii=False, default=str), system=SYSTEM, model=MODEL, timeout=300, job="era.commentary")
+    res = llm.run(json.dumps(inputs, ensure_ascii=False, default=str), task='era.commentary', system=SYSTEM)
     body = llm.visible_text(res.text).strip()
     if not body:
         raise RuntimeError("LLM이 빈 해설을 돌려줬습니다")

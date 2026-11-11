@@ -34,8 +34,8 @@ def digest_transcript(title: str, transcript: str) -> str | None:
     자막 raw는 그 자체로 검색·지식에 노이즈다 — 정리본을 본문으로 삼아
     지식 체계에 흡수한다 (stakeholder 방향, 2026-07-13). 실패 시 None(호출부 fallback).
     """
-    import subprocess
-    from pipeline.enrich import _claude_bin, llm_engine
+    from pipeline import llm
+    from pipeline.enrich import llm_engine
     if llm_engine() != "claude-code":
         return None
     scope_note = (
@@ -92,14 +92,10 @@ def digest_transcript(title: str, transcript: str) -> str | None:
     last = ""
     for attempt in range(3):
         try:
-            proc = subprocess.run(
-                [_claude_bin(), "-p", "--model", "opus", prompt],
-                capture_output=True, text=True, timeout=400)
-            if proc.returncode == 0 and len(proc.stdout.strip()) > 100:
-                return scope_note + proc.stdout.strip()
-            # claude는 오류(사용량 한도·미로그인 등)를 stdout에 쓴다 — stderr만 보면 원인이 안 보임
-            last = (f"rc={proc.returncode} out={proc.stdout.strip()[:160]!r} "
-                    f"err={proc.stderr.strip()[:100]!r}")
+            result = llm.run(prompt, task='youtube.digest')
+            if len(result.text.strip()) > 100:
+                return scope_note + result.text.strip()
+            last = "LLM 정리본이 너무 짧습니다"
         except Exception as e:  # noqa: BLE001 — timeout 등도 원인 기록
             last = f"exc={type(e).__name__}:{e}"
         if any(marker in last.lower() for marker in ('oauth', 'authenticate', 'authentication', 'not logged in', 'login required')):
@@ -113,7 +109,7 @@ def digest_transcript(title: str, transcript: str) -> str | None:
 def _digest_body(digest: str, transcript: str) -> str:
     """정리본 + 원본 자막 길이 주석 (fetch·백필 공용)."""
     return (f"{digest}\n\n---\n"
-            f"*원본 자막 {len(transcript):,}자 → opus 정리본. 원문: 유튜브 링크*")
+            f"*원본 자막 {len(transcript):,}자 → AI 정리본. 원문: 유튜브 링크*")
 
 
 def parse_video_id(url_or_id: str) -> str | None:

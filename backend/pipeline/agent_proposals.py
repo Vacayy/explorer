@@ -6,12 +6,10 @@ kind 5종: neglect · contested_edge · devils_advocate · falsifier_watch · vo
 """
 import json
 import os
-import subprocess
 
 from database import get_connection
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
-DEVILS_MODEL = os.getenv("DEVILS_MODEL", "haiku")
 
 
 def _insert(conn, kind: str, title: str, rationale: str, payload: dict, dedup_key: str) -> bool:
@@ -110,10 +108,8 @@ def scan_devils_advocate(conn) -> int:
             f"종목: {r['corp_name']}\n논지: {r['thesis']}\n"
             'JSON만 출력: {"question": "..."}')
         try:
-            proc = subprocess.run(
-                [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", DEVILS_MODEL, "--output-format", "json", prompt],
-                capture_output=True, text=True, timeout=120)
-            raw = json.loads(proc.stdout).get("result", "")
+            from pipeline import llm
+            raw = llm.run(prompt, task='thesis.challenge').text
             q = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]).get("question", "").strip()
         except Exception:
             continue

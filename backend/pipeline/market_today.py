@@ -8,13 +8,15 @@
 """
 from __future__ import annotations
 
+from pipeline.llm_policies import requested_model
+from pipeline import llm
 import json
 import re
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from database import get_connection
-from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+from pipeline.enrich import _parse_json, llm_engine
 from pipeline.us_briefing import _QUOTE_MIN, _norm_quote
 from pipeline.visibility import UNVERIFIED_SOURCES
 
@@ -30,7 +32,7 @@ MAX_TELEGRAM = 50      # 그중 텔레그램 몫 — 나머지는 지정 매체 
 DOC_CHARS = 600        # 텔레그램 글 발췌 길이 — 인용 검증 대상도 이 범위
 MAX_TOPICS = 5
 MIN_DOCS = 5           # 창 안 자료가 이보다 적으면 만들지 않는다(skipped)
-MODEL = "sonnet"
+MODEL = requested_model('market.today')  # existing cache/display field: requested model
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS market_today (
@@ -317,7 +319,7 @@ def run(day: date | None = None, slot: str | None = None, force: bool = False, c
         prev_titles = list(dict.fromkeys(t["title"] for r in prev_rows for t in json.loads(r["items_json"])))
         prompt = _prompt(day, slot, sources, prev_titles)
         try:
-            raw = (call or (lambda p: _call_claude_code(p, model=MODEL, timeout=300)))(prompt)
+            raw = (call or (lambda p: llm.run(p, task='market.today').text))(prompt)
             data = _parse_json(raw) if isinstance(raw, str) else raw
         except Exception as e:  # noqa: BLE001
             return {"status": "error", "reason": f"생성 실패: {type(e).__name__}: {str(e)[:160]}"}

@@ -7,11 +7,10 @@
   적재된 이벤트는 홈 캘린더 스트립·research/catalysts에 즉시 표시된다.
 """
 import json
-import subprocess
 
 from config import MEDIA_PATH
 from database import get_connection
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
 
 def _analyze_image(path: str, published_at: str) -> dict:
@@ -24,16 +23,17 @@ def _analyze_image(path: str, published_at: str) -> dict:
         "- 일정표의 개별 항목을 각각 이벤트로. 날짜에 연도가 없으면 게시 시점 기준으로 추정\n"
         f"- 이 이미지는 {published_at[:10]} 게시글 첨부임"
     )
-    proc = subprocess.run(
-        # 이미지 판독 → 구조화 출력. 기계적 작업이라 effort low (D-117)
-        [_claude_bin(), "-p", "--model", "haiku", "--allowedTools", "Read", "--effort", "low",
-         "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=180,
-        cwd=str(MEDIA_PATH),  # headless Read는 cwd 하위만 허용 — 호출 위치와 무관하게 고정
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    result = json.loads(proc.stdout).get("result", "")
+    import shutil
+    import tempfile
+    from pathlib import Path
+    from pipeline import llm
+    source = (MEDIA_PATH / path).resolve()
+    # Claude Read is confined to the runner cwd; copy the explicit input there.
+    llm.RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="vision-", dir=llm.RUNTIME_DIR) as directory:
+        image = Path(directory) / source.name
+        shutil.copyfile(source, image)
+        result = llm.run(prompt.replace(path, str(image.relative_to(llm.RUNTIME_DIR))), task='image.calendar', images=(str(image),)).text
     s, e = result.find("{"), result.rfind("}")
     if s < 0 or e <= s:
         raise ValueError(f"JSON 없음: {result[:80]}")

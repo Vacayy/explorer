@@ -183,8 +183,8 @@ class ChatTargetsTests(unittest.TestCase):
         calls = []
 
         def fake_llm(prompt, **kw):
-            calls.append(kw.get("job"))
-            if kw.get("job") == "chat.route":
+            calls.append(kw.get("task"))
+            if kw.get("task") == "chat.route":
                 return SimpleNamespace(text='{"intent":"lookup","tools":[],"entities":[],"answer_style":"brief"}', label="m", usage={})
             return SimpleNamespace(text="답 [1]", label="m", usage={})
 

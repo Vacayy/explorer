@@ -21,9 +21,6 @@ from pipeline.chat_tools import TOOLS, catalog_text, run_tool, validate_calls
 from pipeline.conversations import append_assistant
 from pipeline.llm import visible_text
 
-ROUTER_MODEL = os.getenv("CHAT_ROUTER_MODEL", "haiku")
-SYNTH_MODEL = os.getenv("RAG_MODEL", "sonnet")
-SYNTH_EFFORT = os.getenv("CHAT_SYNTH_EFFORT") or None   # 기본=모델 기본값(판단 품질 우선, D-117). 실측: 분석형 1콜 thinking 8.5K·130초
 MAX_EVIDENCE = 20
 MAX_EVIDENCE_REVIEW = 30   # 근거 점검이 추가 수집할 때의 상한 — 1라운드가 20을 채워도 추가분이 들어갈 자리
 NO_EVIDENCE_ANSWER = "관련 근거(수집 문서·시스템 산출물)가 없어 답할 수 없습니다."
@@ -274,8 +271,7 @@ def _route(turn: Turn, status) -> None:
     t0 = time.time()
     route = None
     try:
-        res = llm.run(_router_user(turn), system=_router_system(), model=ROUTER_MODEL, effort="low",
-                      tools=(), timeout=120, job="chat.route")
+        res = llm.run(_router_user(turn), task='chat.route', system=_router_system())
         route = llm.extract_json(res.text)
     except Exception as e:  # noqa: BLE001 — 라우터 실패는 기본 경로로
         turn.tool_log.append({"name": "router", "error": f"{type(e).__name__}: {str(e)[:80]}"})
@@ -366,7 +362,7 @@ def _review(turn: Turn, status) -> None:
     )
     user = f"질문: {turn.question}\n(독립형: {turn.standalone})\n\n지금까지 부른 도구:\n{called}\n\n모인 근거 {len(turn.evidence)}건:\n{digest}"
     try:
-        res = llm.run(user, system=system, model=ROUTER_MODEL, effort="low", tools=(), timeout=120, job="chat.review")
+        res = llm.run(user, task='chat.review', system=system)
         data = llm.extract_json(res.text) or {}
     except Exception as e:  # noqa: BLE001 — 점검 실패는 그냥 종합으로
         turn.review = {"enough": True, "reason": f"점검 실패: {type(e).__name__}", "skipped": True}
@@ -521,8 +517,7 @@ def _synthesize(turn: Turn, status, on_text) -> None:
         return
     status(f"근거 {len(turn.evidence)}건 · 종합 중")
     t0 = time.time()
-    res = llm.run(_synth_user(turn), system=_synth_system(turn), model=SYNTH_MODEL, effort=SYNTH_EFFORT,
-                  tools=(), timeout=300, job="chat.answer", on_text=on_text)
+    res = llm.run(_synth_user(turn), task='chat.answer', system=_synth_system(turn), on_text=on_text)
     turn.timings["synth"] = int((time.time() - t0) * 1000)
     turn.model = res.label
     turn.usage = res.usage

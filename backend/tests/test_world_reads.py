@@ -8,6 +8,7 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -81,7 +82,7 @@ class WorldReadsTests(unittest.TestCase):
             conn.row_factory = sqlite3.Row
             return conn
         for target in (patch.object(spine_world, "get_connection", connection),
-                       patch.object(enrich, "_call_claude_code", _boom("enrich._call_claude_code")),
+                       patch.object(enrich.llm, "run", _boom("enrich.llm.run")),
                        patch.object(narrative, "_call", _boom("narrative._call")),
                        patch.object(narrative, "llm_engine", lambda: "claude-code"),   # 엔진이 켜져 있어도
                        patch.object(subprocess, "run", _boom("subprocess.run")),
