@@ -192,7 +192,10 @@ def get_indices() -> dict:
         # 장중엔 정기 수집(index_intraday, launchd 10분)의 최신 봉을 얹는다 — 이 띠만 yfinance 갱신(요청 때 TTL)에 묶여
         # 장 시작 뒤에도 장전 값에 머물던 문제(2026-11-10). Market Today와 같은 원천·같은 템포.
         live = _intraday_latest(conn, key, market) if st["is_open"] else None
-        if live and live["trade_date"] >= as_of and (not fetched_at or live["at"] > fetched_at):
+        # 봉 날짜가 저장 종가보다 새로우면 수집 시각과 무관하게 얹는다 — 개장 직후 스냅샷이 오늘 일별 행 없이
+        # 어제 행의 fetched_at만 늦춰 09:05 봉을 가린 일(2026-11-11)
+        if live and (live["trade_date"] > as_of
+                     or (live["trade_date"] == as_of and (not fetched_at or live["at"] > fetched_at))):
             if live["trade_date"] > as_of:          # 오늘 일별 행이 아직 없다 → 마지막 저장 종가가 전일 종가
                 prev, closes = price, closes + [live["value"]]
             else:

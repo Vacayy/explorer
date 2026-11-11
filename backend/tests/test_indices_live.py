@@ -45,6 +45,14 @@ class StripLiveTests(unittest.TestCase):
         self.assertEqual(it["fetched_at"], "2026-11-10 01:30:00")
         self.assertFalse(it["lagging"])
 
+    def test_newer_bar_wins_even_if_snapshot_touched_yesterdays_row_later(self):
+        self.conn.execute("UPDATE market_indicators SET fetched_at='2026-11-10 01:50:00' WHERE snapshot_date='2026-11-09'")
+        self.conn.commit()
+        self.bar(5202)                                                         # 10:30 KST 봉 = 01:30 UTC
+        it = self.strip(datetime(2026, 11, 10, 1, 55, tzinfo=timezone.utc))
+        self.assertEqual(it["price"], 5202)
+        self.assertEqual(it["as_of"], "2026-11-10")
+
     def test_closed_market_keeps_stored_close(self):
         self.bar(5202)
         it = self.strip(datetime(2026, 11, 10, 8, 0, tzinfo=timezone.utc))    # 17:00 KST, 장 마감
