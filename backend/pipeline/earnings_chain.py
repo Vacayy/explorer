@@ -576,12 +576,15 @@ VERDICT_KO = {"hit": "맞힘", "underweighted": "덜 봄", "noise": "과하게 �
 # ---------- 섹터 요약 ----------
 
 # v2(2026-11-11): 한 줄이 수치 나열이 되던 것 → 해석 한 줄 + 산업 내러티브. 버전이 바뀌면 입력 해시가 달라져 다음 실행에서 다시 쓴다
-THEME_PROMPT_VERSION = "v2"
+# v3(2026-11-11): 섹터마다 같은 서두('수요는 의심하지 않았고')로 시작하던 것 → 다른 섹터 요약을 주고 이 섹터만의 점을 앞에, 티커 대신 기업명
+THEME_PROMPT_VERSION = "v3"
 
 _THEME_PROMPT = """미국 실적 시즌 {season} '{sector}' 섹터의 발표별 시장 반응 정리다. 이 섹터에서 이번 시즌 시장이 무엇을 반기고 무엇을 문제 삼았는지 종합하라.
 재료에 있는 것만 쓴다. 종목 이름과 숫자를 근거로 붙인다. 투자 판단을 하지 않는다.
+기업은 티커가 아니라 이름으로 쓴다 — 한국에서 통용되는 한글 표기가 있으면 그것(예: GE 버노바, 블룸에너지, 카메코), 없으면 영문명. 모든 필드에 적용한다.
 문장은 존댓말로 쓴다 — 합니다체('~했습니다', '~입니다')를 뼈대로, 필요하면 해요체를 한두 번 섞는다(내러티브와 같은 문체, D-291). 반말·해라체('~했다') 금지.
 one_line과 narrative는 숫자·종목 나열이 아니라 해석이다 — 발표들을 관통하는 공통점을 찾아 이 산업이 지금 어떤 국면이고 시장이 무엇에 값을 매기는지(예: 수요는 의심하지 않지만 조달·희석·현금흐름을 따진다) 말한다.
+one_line은 [다른 섹터 요약]과 겹치는 공통 서두(예: 'AI 수요 자체는 의심하지 않았고')로 시작하지 않는다. 이 섹터에서만 보인 점 — 다른 섹터와 갈린 반응, 이 산업 고유의 쟁점 — 을 문장 앞에 둔다. 공통 흐름은 필요하면 narrative에서 짧게 잇는다.
 숫자는 해석을 받치는 근거로 한두 개만 쓰고, %p 범위나 종목별 수치를 늘어놓지 않는다. 숫자 나열은 welcomed·questioned에 둔다.
 JSON 하나만 출력:
 {{"verdict": "반김 우세|실망 우세|엇갈림", "one_line": "이번 시즌 이 섹터에서 시장이 무엇에 값을 매겼는지 한 문장(통찰, 숫자 나열 금지)",
@@ -594,6 +597,9 @@ JSON 하나만 출력:
 [발표별 반응]
 {rows}
 
+[다른 섹터 요약(이번 시즌)]
+{others}
+
 [직전 요약]
 {prev}
 
@@ -602,6 +608,12 @@ JSON 하나만 출력:
 
 [아직 발표 안 한 종목]
 {pending}"""
+
+
+def _other_sector_lines(conn, season: str, sec: str) -> str:
+    rows = conn.execute("SELECT sector, body_json FROM season_themes WHERE season=? AND sector<>? AND id IN "
+                        "(SELECT max(id) FROM season_themes WHERE season=? GROUP BY sector)", (season, sec, season)).fetchall()
+    return "\n".join(f"- {sector_name(r[0])}: {json.loads(r[1]).get('one_line')}" for r in rows) or "(없음)"
 
 
 def refresh_themes(conn, season: str) -> dict:
@@ -632,17 +644,17 @@ def refresh_themes(conn, season: str) -> dict:
         lines = []
         for r in items:
             m = json.loads(r["meta_json"])
-            lines.append(f"- {r['ticker']} {r['event_date']}: 해석 {m.get('interpretation')} · 첫 거래일 {m.get('d1')}%p · 일주일 {m.get('d7')}%p · "
+            lines.append(f"- {r['ticker']}({fs[r['ticker']].get('company_name') or r['ticker']}) {r['event_date']}: 해석 {m.get('interpretation')} · 첫 거래일 {m.get('d1')}%p · 일주일 {m.get('d7')}%p · "
                          f"{m.get('headline') or ''} · 반긴 것 {m.get('welcomed')} · 문제 삼은 것 {m.get('questioned')}")
         last_season = conn.execute("SELECT body_json FROM season_themes WHERE season<? AND sector=? ORDER BY season DESC, id DESC LIMIT 1",
                                    (season, sec)).fetchone()
         reported = {r["ticker"] for r in items}
-        pending = [f"{t} {e}" for t, e in conn.execute(
+        pending = [f"{t}({fs[t].get('company_name') or t}) {e}" for t, e in conn.execute(
             "SELECT ticker, event_date FROM earnings_events WHERE season=? AND event_date >= ?", (season, date.today().isoformat()))
             if fs.get(t, {}).get("sector") == sec and t not in reported]
         prompt = _THEME_PROMPT.format(season=season, sector=sector_name(sec), rows="\n".join(lines),
                                       prev=prev["body_json"] if prev else "(없음)", last=last_season[0] if last_season else "(없음)",
-                                      pending=", ".join(pending) or "(없음)")
+                                      pending=", ".join(pending) or "(없음)", others=_other_sector_lines(conn, season, sec))
         conn.commit()
         try:
             j = extract_json(llm.run(prompt, task='earnings.themes').text) or {}
