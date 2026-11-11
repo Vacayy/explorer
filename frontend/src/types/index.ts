@@ -1191,7 +1191,7 @@ export interface KrSeasonOverview {
 }
 export interface SectorTheme {
   id: number; verdict: string | null; tickers: string; created_at: string
-  body: { one_line?: string; welcomed?: string[]; questioned?: string[]; change_note?: string | null; next?: string[]; vs_last_season?: string[] }
+  body: { one_line?: string; narrative?: string; welcomed?: string[]; questioned?: string[]; change_note?: string | null; next?: string[]; vs_last_season?: string[] }
 }
 export interface SectorDetail {
   key: string; name: string; etf: string; season: string; seasons: string[]

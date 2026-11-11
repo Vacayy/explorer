@@ -575,11 +575,18 @@ VERDICT_KO = {"hit": "맞힘", "underweighted": "덜 봄", "noise": "과하게 �
 
 # ---------- 섹터 요약 ----------
 
+# v2(2026-11-11): 한 줄이 수치 나열이 되던 것 → 해석 한 줄 + 산업 내러티브. 버전이 바뀌면 입력 해시가 달라져 다음 실행에서 다시 쓴다
+THEME_PROMPT_VERSION = "v2"
+
 _THEME_PROMPT = """미국 실적 시즌 {season} '{sector}' 섹터의 발표별 시장 반응 정리다. 이 섹터에서 이번 시즌 시장이 무엇을 반기고 무엇을 문제 삼았는지 종합하라.
 재료에 있는 것만 쓴다. 종목 이름과 숫자를 근거로 붙인다. 투자 판단을 하지 않는다.
 문장은 존댓말로 쓴다 — 합니다체('~했습니다', '~입니다')를 뼈대로, 필요하면 해요체를 한두 번 섞는다(내러티브와 같은 문체, D-291). 반말·해라체('~했다') 금지.
+one_line과 narrative는 숫자·종목 나열이 아니라 해석이다 — 발표들을 관통하는 공통점을 찾아 이 산업이 지금 어떤 국면이고 시장이 무엇에 값을 매기는지(예: 수요는 의심하지 않지만 조달·희석·현금흐름을 따진다) 말한다.
+숫자는 해석을 받치는 근거로 한두 개만 쓰고, %p 범위나 종목별 수치를 늘어놓지 않는다. 숫자 나열은 welcomed·questioned에 둔다.
 JSON 하나만 출력:
-{{"verdict": "반김 우세|실망 우세|엇갈림", "one_line": "한 문장 요약", "welcomed": ["시장이 반긴 것(종목)"], "questioned": ["시장이 문제 삼은 것(종목)"],
+{{"verdict": "반김 우세|실망 우세|엇갈림", "one_line": "이번 시즌 이 섹터에서 시장이 무엇에 값을 매겼는지 한 문장(통찰, 숫자 나열 금지)",
+  "narrative": "산업 내러티브 3~4문장 — 반긴 재료와 벌한 재료의 공통점, 그것이 이 산업의 수요·투자·자금 사이클에 대해 말해 주는 것, 남은 발표에서 갈릴 지점",
+  "welcomed": ["시장이 반긴 것(종목)"], "questioned": ["시장이 문제 삼은 것(종목)"],
   "change_note": "직전 요약과 비교해 무엇이 바뀌었나(직전 요약이 없으면 null)",
   "next": ["아직 발표 안 한 이 섹터 종목을 볼 때 쓸 기준(종목 이름 포함)"],
   "vs_last_season": ["지난 시즌 같은 섹터 요약과 비교(없으면 빈 배열)"]}}
@@ -615,7 +622,7 @@ def refresh_themes(conn, season: str) -> dict:
     for sec, items in by.items():
         if len(items) < 2:
             continue
-        h = hashlib.sha1(json.dumps(sorted((r["ticker"], r["meta_json"]) for r in items)).encode()).hexdigest()
+        h = hashlib.sha1(json.dumps([sorted((r["ticker"], r["meta_json"]) for r in items), THEME_PROMPT_VERSION]).encode()).hexdigest()
         prev = conn.execute("SELECT * FROM season_themes WHERE season=? AND sector=? ORDER BY id DESC LIMIT 1", (season, sec)).fetchone()
         if prev and prev["input_hash"] == h:
             skipped += 1

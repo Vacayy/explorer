@@ -61,6 +61,7 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
         </div>
         <Meta>{d.members.map((m) => m.ticker).join(" · ")} · 비교: {d.etf}{d.theme && ` · ${mmdd(d.theme.created_at)} 요약`}</Meta>
         {body?.one_line && <p className="text-[15px] font-semibold">{body.one_line}</p>}
+        {body?.narrative && <p className="max-w-[72ch] text-reading leading-[1.7] text-ink-2">{body.narrative}</p>}
         <TimelineChart t={d.timeline} etf={d.etf} companies={d.companies} />
       </Section>
 
