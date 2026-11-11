@@ -5,6 +5,7 @@
 - market_highlights: 전체 최근 신호 (내 종목 업데이트가 적은 날 프론트에서 승격)
 """
 import json
+from urllib.parse import quote
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
@@ -62,9 +63,42 @@ def ai_activity(days: int = Query(7, ge=1, le=30), limit: int = Query(30, ge=1, 
         """, (since,)):
         items.append({"type": "youtube_digest", "title": r["title"] or "유튜브 영상 요약",
                       "topic": r["title"] or "", "doc_id": r["id"], "created_at": r["created_at"]})
+    items += _market_outputs(conn, since)
     conn.close()
     items.sort(key=lambda x: x["created_at"] or "", reverse=True)
     return [AiActivityItem(**x) for x in items[:limit]]
+
+
+def _md(d: str) -> str:
+    """'2026-11-10' → '11/10'"""
+    return f"{int(d[5:7])}/{int(d[8:10])}"
+
+
+def _market_outputs(conn, since: str) -> list[dict]:
+    """시장 정리(Market Today 회차·Market Overnight)·소스 관점 정리·이번 주 큰 그림·지금 시장 읽기 해설 — 정기 작업이나 화면에서 AI가 만든 것."""
+    from pipeline.source_dossier import resolve_source
+    out: list[dict] = []
+    for r in conn.execute("SELECT trade_date, slot, created_at FROM market_today WHERE created_at >= datetime('now', ?)", (since,)):
+        when = "마감 정리" if r["slot"] == "1600" else f"{r['slot'][:2]}:{r['slot'][2:]}"
+        out.append({"type": "market_today", "title": f"Market Today {_md(r['trade_date'])} {when}", "topic": r["trade_date"],
+                    "created_at": r["created_at"], "to": f"/home/kr?mtdate={r['trade_date']}&mtslot={r['slot']}"})
+    for r in conn.execute("SELECT trade_date, created_at FROM us_briefings WHERE created_at >= datetime('now', ?)", (since,)):
+        out.append({"type": "us_overnight", "title": f"Market Overnight {_md(r['trade_date'])}", "topic": r["trade_date"],
+                    "created_at": r["created_at"], "to": "/home"})
+    for r in conn.execute("""SELECT kind, key, created_at FROM source_digests
+                             WHERE created_at >= datetime('now', ?) AND kind IN ('telegram','blog','youtube','big_picture')""", (since,)):
+        if r["kind"] == "big_picture":
+            out.append({"type": "big_picture", "title": f"이번 주 큰 그림 {r['key']}", "topic": r["key"],
+                        "created_at": r["created_at"], "to": "/narrative"})
+            continue
+        src = resolve_source(conn, r["kind"], r["key"])
+        name = src["name"] if src else r["key"]
+        out.append({"type": "source_digest", "title": f"{name} 관점 정리", "topic": name, "created_at": r["created_at"],
+                    "to": f"/source?kind={r['kind']}&key={quote(r['key'], safe='')}"})
+    for r in conn.execute("SELECT created_at FROM era_commentary WHERE created_at >= datetime('now', ?)", (since,)):
+        out.append({"type": "era_commentary", "title": "지금 시장 읽기 AI 해설", "topic": "era",
+                    "created_at": r["created_at"], "to": "/home/macro"})
+    return out
 
 
 @router.get("", response_model=HomeResponse)

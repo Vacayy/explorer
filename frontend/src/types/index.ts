@@ -722,12 +722,15 @@ export interface TimelineItem {
 /** GET /api/spine/home/ai-activity — 지난 N일 AI 산출물(유튜브 AI 정리본 포함). 상단 바 'AI가 최근 만든 것'이 타임라인과 합쳐 쓴다 */
 export interface AiActivityItem {
   type: 'narrative' | 'mega' | 'report' | 'scenario' | 'digest' | 'youtube_digest'
+    | 'market_today' | 'us_overnight' | 'source_digest' | 'big_picture' | 'era_commentary'
   title: string
   topic: string
   code: string | null
   question_id: number | null
   doc_id: number | null
   created_at: string
+  /** 서버가 정한 이동 주소(시장 정리·소스 정리·큰 그림·시장 해설) */
+  to?: string | null
 }
 
 export interface TimelineResponse {

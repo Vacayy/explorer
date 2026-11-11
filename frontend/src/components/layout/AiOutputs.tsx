@@ -23,7 +23,10 @@ function writeSeen(iso: string) {
 }
 
 /** 옛 ai-activity 원천에만 있는 종류의 라벨 */
-const KIND_LABEL: Record<string, string> = { ...SYSTEM_KIND_LABEL, mega: "내러티브", digest: "기업 요약", youtube_digest: "유튜브 요약" }
+const KIND_LABEL: Record<string, string> = {
+  ...SYSTEM_KIND_LABEL, mega: "내러티브", digest: "기업 요약", youtube_digest: "유튜브 요약",
+  market_today: "시장 정리", us_overnight: "시장 정리", era_commentary: "시장 해설", source_digest: "소스 정리", big_picture: "큰 그림",
+}
 
 /** 두 원천(피드 Explorer 타임라인 + 유튜브 AI 정리본까지 담는 ai-activity)을 합친 목록. 한쪽만 실패하면 다른 쪽으로 보여 준다 */
 function useOutputs() {
@@ -90,7 +93,7 @@ export function AiOutputsButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
   const { q, items, fresh, markSeen } = useAiOutputs()
   return (
-    <Popover open={open} onOpenChange={v => { setOpen(v); if (v) { markSeen(); track("open", "ai_outputs.open") } }}>
+    <Popover open={open} onOpenChange={v => { setOpen(v); if (v) { markSeen(); q.refetch(); track("open", "ai_outputs.open") } }}>
       <PopoverTrigger asChild>
         <ShellButton icon={FileText} label={TITLE} dot={fresh} className={className} aria-label={fresh ? `${TITLE} — 새 산출물 있음` : TITLE} />
       </PopoverTrigger>
@@ -110,7 +113,7 @@ export function AiOutputsButton({ className }: { className?: string }) {
  * 쓰는 쪽: const ai = useAiOutputs() → <AiOutputsRow ai={ai} …/> · <AiOutputsSheet ai={ai} …/>
  */
 export function AiOutputsRow({ ai, className, onClick }: { ai: ReturnType<typeof useAiOutputs>; className: string; onClick: () => void }) {
-  return <Button variant="ghost" className={className} onClick={() => { ai.markSeen(); track("open", "ai_outputs.open"); onClick() }}>
+  return <Button variant="ghost" className={className} onClick={() => { ai.markSeen(); ai.q.refetch(); track("open", "ai_outputs.open"); onClick() }}>
     <FileText className="size-[18px] text-ink-2" aria-hidden />{TITLE}
     {ai.fresh && <span aria-label="새 산출물 있음" role="img" className="ml-auto size-[7px] rounded-full bg-hyp" />}
   </Button>
