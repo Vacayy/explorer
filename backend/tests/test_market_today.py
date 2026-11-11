@@ -56,11 +56,29 @@ class MarketTodayTests(unittest.TestCase):
         self.assertEqual(mt.window(conn, date(2026, 11, 3), "1600"), ("2026-11-03T00:00:00+00:00", "2026-11-03T07:00:00+00:00"))
         conn.close()
 
+    def test_pre_market_slot_takes_overnight_and_0930_follows_it_only_when_it_exists(self):
+        conn = self.connect()
+        mt.ensure_schema(conn)
+        # 월요일 08:10 장전 = 금요일 16:00 ~ 08:10
+        self.assertEqual(mt.window(conn, date(2026, 11, 2), "0810"), ("2026-10-30T07:00:00+00:00", "2026-11-01T23:10:00+00:00"))
+        # 장전 회차가 없던 날의 09:30은 밤사이를 잃지 않게 전 거래일 16:00부터
+        self.assertEqual(mt.window(conn, date(2026, 11, 2), "0930")[0], "2026-10-30T07:00:00+00:00")
+        conn.execute("INSERT INTO market_today (trade_date, slot, window_start, window_end, items_json, sources_json, doc_count) "
+                     "VALUES ('2026-11-02','0810','a','b','[]','{}',9)")
+        self.assertEqual(mt.window(conn, date(2026, 11, 2), "0930")[0], "2026-11-01T23:10:00+00:00")
+        conn.close()
+
+    def test_pre_market_prompt_and_label(self):
+        self.assertEqual(mt.SLOT_LABEL["0810"], "08:10 장전")
+        p = mt._prompt(date(2026, 11, 3), "0810", [], [])
+        self.assertIn("장전 브리핑", p)
+
     def test_due_slot_is_latest_passed_and_none_on_weekend_or_before_open(self):
         utc = lambda kst_h, kst_m, d=3: datetime(2026, 11, d, kst_h - 9, kst_m, tzinfo=timezone.utc)
         self.assertEqual(mt.due_slot(utc(14, 5)), (date(2026, 11, 3), "1130"))
         self.assertEqual(mt.due_slot(utc(16, 1)), (date(2026, 11, 3), "1600"))
-        self.assertIsNone(mt.due_slot(utc(9, 29)))
+        self.assertEqual(mt.due_slot(utc(9, 29)), (date(2026, 11, 3), "0810"))       # 08:10 장전 회차
+        self.assertIsNone(mt.due_slot(datetime(2026, 11, 2, 23, 9, tzinfo=timezone.utc)))   # 11/3 08:09 KST
         self.assertIsNone(mt.due_slot(datetime(2026, 11, 1, 3, 0, tzinfo=timezone.utc)))   # 일요일
 
     def test_gather_groups_reposts_and_counts_distinct_publishers(self):

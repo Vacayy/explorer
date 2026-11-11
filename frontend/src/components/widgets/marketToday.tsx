@@ -87,12 +87,15 @@ function DayNav({ day, onGo }: { day: MarketToday; onGo: (d: string | null) => v
 
 /* ── 장중 타임라인(시안 Home) — 코스피 5분 경로 · 지금(또는 마감) 선 · 회차 점(누르면 그 회차) ── */
 const OPEN = 9 * 60, CLOSE = 15 * 60 + 30
-const X0 = 1, X1 = 96.5, XMAX = 99   // % — 장 마감(15:30)은 96.5%, 마감 뒤 회차는 끝에 붙인다
+// % — 장 마감(15:30)은 96.5%, 마감 뒤 회차는 끝에 붙인다. 개장 전(08:10 장전) 회차는 막대 왼쪽 바깥 PRE_X
+const PRE_X = 3, X0 = 8, X1 = 96.5, XMAX = 99
 const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
-const xAt = (m: number) => Math.min(XMAX, X0 + Math.max(0, m - OPEN) / (CLOSE - OPEN) * (X1 - X0))
+const xAt = (m: number) => m < OPEN ? PRE_X : Math.min(XMAX, X0 + (m - OPEN) / (CLOSE - OPEN) * (X1 - X0))
 const kstMinutes = () => { const t = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false }); return mins(t) }
-/** 오늘 정리 시각(D-309) — 아직 안 나온 회차는 빈 점으로 자리만 보인다 */
-export const SCHEDULE = ["09:30", "11:30", "15:00", "16:00"]
+/** 오늘 정리 회차 라벨(D-309, 서버 SLOT_LABEL과 같은 글자) — 아직 안 나온 회차는 빈 점으로 자리만 보인다 */
+export const SCHEDULE = ["08:10 장전", "09:30", "11:30", "15:00", "16:00 마감"]
+/** 회차 라벨의 시각 부분('08:10 장전' → '08:10') */
+export const slotTime = (label: string) => label.slice(0, 5)
 
 function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: string | null; onPick: (slot: string) => void }) {
   const live = day.trade_date === kstToday()
@@ -116,8 +119,8 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
   const pts = path.map(([t, v]) => `${xAt(mins(t))},${hi === lo ? 25 : 38 - (v - lo) / (hi - lo) * 30}`).join(" ")
   const k = livePath.length > 1 && k1?.value != null ? { value: k1.value, change_pct: k1.change_pct, at: k1.session.last_time }
     : market?.kospi ? { value: market.kospi.value, change_pct: market.kospi.change_pct, at: market.kospi.at } : null
-  const done = new Set(day.slots.map(s => s.label.replace(" 마감", "")))
-  const pending = live ? SCHEDULE.filter(t => !done.has(t)) : []
+  const done = new Set(day.slots.map(s => slotTime(s.label)))
+  const pending = live ? SCHEDULE.map(slotTime).filter(t => !done.has(t)) : []
   return <div className="glass flex flex-col gap-1 rounded-2xl px-3 pt-2.5 pb-1.5" data-mt-intraday>
     <div className="flex justify-between text-[11.5px] text-ink-2">
       <span>코스피 장중</span>
@@ -130,7 +133,7 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
           className={(k?.change_pct ?? 0) < 0 ? "stroke-down" : "stroke-up"} />}
         <line x1={nowX} x2={nowX} y1="1" y2="44" vectorEffect="non-scaling-stroke" strokeWidth="1.2" className="stroke-ink" />
       </svg>
-      <span className="absolute top-0.5 -translate-x-full pr-1 font-mono text-[10px] whitespace-nowrap text-ink" style={{ left: `${nowX}%` }}>{closed ? "마감" : `${String(Math.floor(now / 60)).padStart(2, "0")}:${String(now % 60).padStart(2, "0")}`}</span>
+      <span className={cn("absolute top-0.5 font-mono text-[10px] whitespace-nowrap text-ink", !closed && now < OPEN ? "pl-1" : "-translate-x-full pr-1")} style={{ left: `${nowX}%` }}>{closed ? "마감" : `${String(Math.floor(now / 60)).padStart(2, "0")}:${String(now % 60).padStart(2, "0")}`}</span>
       {/* 09:30 회차 점이 있으면 그 라벨과 겹치므로 시작 시각은 생략 */}
       {!day.slots.some(s => s.label === "09:30") && !pending.includes("09:30") &&
         <span className="absolute bottom-0 font-mono text-[10px] text-ink-3 max-sm:hidden" style={{ left: `${X0}%` }}>09:00</span>}
@@ -138,10 +141,10 @@ function IntradayTimeline({ day, picked, onPick }: { day: MarketToday; picked: s
         const on = s.slot === picked
         return <Button key={s.slot} variant="ghost" aria-pressed={on} aria-label={`${s.label} 회차 보기`} onClick={() => { track("action", "market_today.nav", { entity: `slot:${s.label}` }); onPick(s.slot) }}
           className="group absolute top-[34px] h-auto -translate-x-1/2 flex-col gap-[3px] rounded-md px-1 py-0.5 hover:bg-chip focus-visible:bg-chip"
-          style={{ left: `${xAt(mins(s.label))}%` }}>
+          style={{ left: `${xAt(mins(slotTime(s.label)))}%` }}>
           {/* 누를 수 있다는 신호 — 올리면 점이 차오르고 시각이 진해진다 */}
           <span aria-hidden className={cn("rounded-full border-[1.6px] border-ink transition-[width,height,background-color]", on ? "size-3 bg-ink" : "size-[9px] bg-surface group-hover:size-[11px] group-hover:bg-ink/40 group-focus-visible:bg-ink/40")} />
-          <span className={cn("font-mono text-[10.5px] leading-none", on ? "font-semibold text-ink" : "font-normal text-ink-3 group-hover:text-ink group-focus-visible:text-ink")}>{s.label.replace(" 마감", "")}</span>
+          <span className={cn("font-mono text-[10.5px] leading-none", on ? "font-semibold text-ink" : "font-normal text-ink-3 group-hover:text-ink group-focus-visible:text-ink")}>{slotTime(s.label)}</span>
         </Button>
       })}
       {pending.map(t => <span key={t} aria-label={`${t} 정리 예정`}

@@ -9,7 +9,7 @@ import { FillState, FlowCard, NameLink, TurnoverCard } from "@/components/home/M
 import { tradeIsLagging } from "@/lib/trade"
 import { RegimeBadge, metricValue } from "@/components/retail/retailFormat"
 import { EventList, StageBadge, TrendEvidenceDialog } from "@/components/widgets/trend"
-import { SCHEDULE, TopicRow, kstToday } from "@/components/widgets/marketToday"
+import { SCHEDULE, TopicRow, kstToday, slotTime } from "@/components/widgets/marketToday"
 import { mmdd } from "@/components/follow/season/seasonUi"
 import { useUrlParam } from "@/hooks/useUrlParam"
 import { useKrMovers } from "@/hooks/useKrMovers"
@@ -29,7 +29,7 @@ const mdw = (d: string) => `${mmdd(d)}(${WD[new Date(`${d}T12:00:00Z`).getUTCDay
 const daysTo = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 
 /**
- * ② 왼쪽 — 오늘 시장 이야기(Market Today). 회차 칩(09:30 · 11:30 · 15:00 · 16:00 마감, URL ?mtslot= · 지난 날은 ?mtdate=) → AI 줄 → 화두 목록(칸 안 스크롤).
+ * ② 왼쪽 — 오늘 시장 이야기(Market Today). 회차 칩(08:10 장전 · 09:30 · 11:30 · 15:00 · 16:00 마감, URL ?mtslot= · 지난 날은 ?mtdate=) → AI 줄 → 화두 목록(칸 안 스크롤).
  * 첫 회차 전에는 머리·칩을 그대로 두고 목록 자리에만 한 줄(§4.2 빈 상태).
  */
 export function MarketTodayCard() {
@@ -40,9 +40,9 @@ export function MarketTodayCard() {
   const d = q.data ?? latest.data
   const c = d?.current
   const isToday = d?.trade_date === kstToday()
-  const done = new Map((latest.data?.slots ?? []).map(s => [s.label.replace(" 마감", ""), s.slot]))
+  const done = new Map((latest.data?.slots ?? []).map(s => [slotTime(s.label), s.slot]))
   const items = isToday || !latest.data?.slots.length
-    ? SCHEDULE.map(t => ({ key: done.get(t) ?? `pending-${t}`, label: t === "16:00" ? "16:00 마감" : t, disabled: !done.has(t) }))
+    ? SCHEDULE.map(t => ({ key: done.get(slotTime(t)) ?? `pending-${t}`, label: t, disabled: !done.has(slotTime(t)) }))
     : latest.data.slots.map(s => ({ key: s.slot, label: s.label }))
   const sub = c ? `Market Today · 텔레그램 ${formatNumber(c.telegram)} · 뉴스 ${formatNumber(c.news)}` : "Market Today"
   return <MarketCard band="summary" label="kr.today">

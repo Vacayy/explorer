@@ -79,7 +79,7 @@ def _market_outputs(conn, since: str) -> list[dict]:
     from pipeline.source_dossier import resolve_source
     out: list[dict] = []
     for r in conn.execute("SELECT trade_date, slot, created_at FROM market_today WHERE created_at >= datetime('now', ?)", (since,)):
-        when = "마감 정리" if r["slot"] == "1600" else f"{r['slot'][:2]}:{r['slot'][2:]}"
+        when = {"1600": "마감 정리", "0810": "장전 브리핑"}.get(r["slot"]) or f"{r['slot'][:2]}:{r['slot'][2:]}"
         out.append({"type": "market_today", "title": f"Market Today {_md(r['trade_date'])} {when}", "topic": r["trade_date"],
                     "created_at": r["created_at"], "to": f"/home/kr?mtdate={r['trade_date']}&mtslot={r['slot']}"})
     for r in conn.execute("SELECT trade_date, created_at FROM us_briefings WHERE created_at >= datetime('now', ?)", (since,)):

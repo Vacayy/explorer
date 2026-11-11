@@ -21,11 +21,12 @@ from pipeline.us_briefing import _QUOTE_MIN, _norm_quote
 from pipeline.visibility import UNVERIFIED_SOURCES
 
 KST = ZoneInfo("Asia/Seoul")
-SLOTS = [("0930", dtime(9, 30)), ("1130", dtime(11, 30)), ("1500", dtime(15, 0)), ("1600", dtime(16, 0))]
+SLOTS = [("0810", dtime(8, 10)), ("0930", dtime(9, 30)), ("1130", dtime(11, 30)), ("1500", dtime(15, 0)), ("1600", dtime(16, 0))]
 WRAP_SLOT = "1600"                 # 마감 정리 — 오늘 하루 전체 창
+PRE_SLOT = "0810"                  # 장전 브리핑(2026-11-12) — 전 거래일 마감 뒤 밤사이·아침 자료, 오늘 장에서 볼 것
 DAY_OPEN = dtime(9, 0)
 # 옛 회차(11-05 전 10:00·13:00·15:40)도 읽을 수 있게 라벨은 남긴다
-SLOT_LABEL = {"0930": "09:30", "1130": "11:30", "1500": "15:00", "1600": "16:00 마감",
+SLOT_LABEL = {"0810": "08:10 장전", "0930": "09:30", "1130": "11:30", "1500": "15:00", "1600": "16:00 마감",
               "1000": "10:00", "1300": "13:00", "1540": "15:40"}
 MAX_DOCS = 80          # 프롬프트 입력 상한(묶음 기준)
 MAX_TELEGRAM = 50      # 그중 텔레그램 몫 — 나머지는 지정 매체 헤드라인
@@ -161,14 +162,17 @@ def _prev_trading_day(conn, day: date) -> date:
 
 
 def window(conn, day: date, slot: str) -> tuple[str, str]:
-    """[start, end) UTC. 첫 회차는 전 거래일 마감 정리(16:00)부터(밤사이 미국장·해외 뉴스 포함), 장중 회차는 직전 회차부터,
+    """[start, end) UTC. 첫 회차(08:10 장전)는 전 거래일 마감 정리(16:00)부터(밤사이 미국장·해외 뉴스 포함), 이후 회차는 직전 회차부터
+    (장전 회차가 없던 날의 09:30은 전 거래일 16:00부터),
     마감 정리는 그날 09:00부터(오늘 하루 전체)."""
     keys = [s for s, _ in SLOTS]
     i = keys.index(slot)
     end = _kst(day, SLOTS[i][1])
     if slot == WRAP_SLOT:
         start = _kst(day, DAY_OPEN)
-    elif i == 0:
+    elif i == 0 or (keys[i - 1] == PRE_SLOT and not conn.execute(
+            "SELECT 1 FROM market_today WHERE trade_date=? AND slot=?", (day.isoformat(), PRE_SLOT)).fetchone()):
+        # 첫 회차, 또는 장전 회차가 없던 날의 09:30 — 밤사이 자료를 잃지 않게 전 거래일 마감부터
         start = _kst(_prev_trading_day(conn, day), SLOTS[-1][1])
     else:
         start = _kst(day, SLOTS[i - 1][1])
@@ -236,6 +240,12 @@ def _prompt(day: date, slot: str, sources: list[dict], prev_titles: list[str]) -
                 "주요 매체에서 **오늘 하루 주로 나온 얘기** 3~5개로 오늘 장을 정리한다. 장중 회차 화두를 되풀이하기보다 "
                 "하루를 통틀어 가장 많이 다뤄졌고 시장에 영향이 컸던 얘기를 고른다. 리서치를 대신하지 않는다.\n\n")
         prev_head = "[오늘 장중 회차 화두]"
+    elif slot == PRE_SLOT:
+        head = (f"당신은 국내 증시 데스크 기자다. {day.isoformat()} 장 시작 전(08:10) 장전 브리핑을 쓴다. 전 거래일 장 마감 뒤 "
+                "밤사이 미국장·해외 뉴스와 오늘 아침까지 텔레그램 채널·주요 매체에서 **주로 나온 얘기** 3~5개를 고른다. "
+                "오늘 국내 장에 영향을 줄 만한 것(미국장 마감·금리·환율·원자재·간밤 실적·오늘 일정)을 우선하고, "
+                "body에는 무슨 일이 있었는지와 출처가 오늘 장에서 무엇을 보라고 하는지를 출처에 있는 그대로 쓴다. 리서치를 대신하지 않는다.\n\n")
+        prev_head = "[직전 회차 화두]"
     else:
         head = (f"당신은 국내 증시 데스크 기자다. {day.isoformat()} {SLOT_LABEL[slot]} 기준으로, 직전 창에 텔레그램 채널과 "
                 "주요 매체에서 **주로 나온 얘기** 3~5개를 묶는다. 리서치를 대신하지 않고, 지금 무엇이 화두인지 알려 주는 것이 목적이다.\n\n")
@@ -292,11 +302,12 @@ def run(day: date | None = None, slot: str | None = None, force: bool = False, c
     if day is None or slot is None:
         due = due_slot()
         if not due:
-            return {"status": "skipped", "reason": "주말이거나 첫 회차(09:30) 전"}
+            return {"status": "skipped", "reason": "주말이거나 첫 회차(08:10) 전"}
         day, slot = due
     if slot not in SLOT_LABEL:
         return {"status": "error", "reason": f"알 수 없는 회차 {slot}"}
-    if check_holiday:
+    # 장전 회차는 오늘 봉이 아직 없어 휴장 판정을 할 수 없다 — 평일 규칙만(공휴일 달력 없음, 공휴일엔 한 회차가 더 생길 수 있다)
+    if check_holiday and slot != PRE_SLOT:
         open_, why = is_trading_day(day)
         if not open_:
             return {"status": "skipped", "reason": why}

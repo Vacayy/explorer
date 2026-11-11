@@ -35,7 +35,7 @@ class TodayTopic(BaseModel):
 
 
 class TodaySlot(BaseModel):
-    slot: str                    # 0930 | 1130 | 1500 | 1600(마감 정리) · 옛 1000 | 1300 | 1540
+    slot: str                    # 0810(장전) | 0930 | 1130 | 1500 | 1600(마감 정리) · 옛 1000 | 1300 | 1540
     label: str                   # 10:00 …
     created_at: str
     topics: int

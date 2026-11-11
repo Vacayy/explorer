@@ -1,4 +1,4 @@
-"""Market Today 회차 생성 (docs/specs/market-today.md) — launchd `markettoday` 평일 09:30·11:30·15:00·16:00(마감 정리).
+"""Market Today 회차 생성 (docs/specs/market-today.md) — launchd `markettoday` 평일 08:10(장전)·09:30·11:30·15:00·16:00(마감 정리).
 
   python scripts/market_today.py                       # 지금 시점의 회차(가장 최근에 지난 시각)
   python scripts/market_today.py --date 2026-11-03 --slot 1130 [--force]
@@ -20,7 +20,7 @@ from pipeline.ops import record_run  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=None)
-    ap.add_argument("--slot", default=None, choices=["0930", "1130", "1500", "1600"])
+    ap.add_argument("--slot", default=None, choices=["0810", "0930", "1130", "1500", "1600"])
     ap.add_argument("--force", action="store_true", help="이미 만든 회차도 다시")
     a = ap.parse_args()
     init_db()

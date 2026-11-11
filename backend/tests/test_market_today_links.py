@@ -247,7 +247,7 @@ class LinkTests(unittest.TestCase):
         now = datetime(2026, 11, 5, 2, 0, tzinfo=timezone.utc)        # 11/5 11:00 KST — 오늘 회차 일부 남음
         t = L.timeline(conn, nid, now=now)
         self.assertEqual([d["trade_date"] for d in t["days"]], ["2026-11-05", "2026-11-04"])
-        self.assertEqual([c["state"] for c in t["days"][0]["cells"]], ["absent", "scheduled", "scheduled", "scheduled"])
+        self.assertEqual([c["state"] for c in t["days"][0]["cells"]], ["absent", "absent", "scheduled", "scheduled", "scheduled"])   # 08:10 장전·09:30 지남
         self.assertEqual([c["slot"] for c in t["days"][1]["cells"]], ["1000", "1300", "1540"])   # 옛 회차 날은 옛 칸
         self.assertEqual([c["state"] for c in t["days"][1]["cells"]], ["linked", "unlinked", "scheduled"])
         self.assertEqual([i["title"] for i in t["items"]], ["메모리 비용"])
