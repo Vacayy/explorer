@@ -4,8 +4,10 @@ import { PageLayout } from "@/components/shared/PageLayout"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { HomeBlock, HomeSection } from "@/components/home/HomeSection"
 import { ContextBody, IndicesBody, RegimeBody, RiskTrend, useRegimeMeta } from "@/components/widgets/market"
+import { RISK_DETAIL_LABEL, RiskDetailDialog, useRiskDetail } from "@/components/home/RiskDetailDialog"
 import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { InfoTip } from "@/components/shared/InfoTip"
 import { useCreditTable } from "@/hooks/useCredit"
 import { useIndices, useKrBreadth } from "@/hooks/useDashboard"
@@ -78,17 +80,23 @@ function WeatherHeader() {
  */
 function RiskBlock() {
   const meta = useRegimeMeta()
+  const { show: open } = useRiskDetail()
   return (
     <section aria-label="국면·리스크">
-      <HomeBlock label="risk" title="국면·리스크" info="국장·미장 포스처 · VIX · 공포·탐욕 · HY OAS · 장단기 금리차(3개월 추이·20일 변화)"
+      <HomeBlock label="risk" title="국면·리스크" info="국장·미장 포스처 · VIX · 공포·탐욕 · HY OAS · 장단기 금리차(3개월 추이·20일 변화). 누르면 자세히"
         asOf={meta.asOf} stale={meta.stale} link={{ to: "/home/macro", label: "매크로" }} bodyClassName="flex flex-col gap-2.5">
-        <RegimeBody w={12} h={2} />
+        <Button variant="ghost" onClick={() => open("regime")} aria-label="국면 판정 자세히"
+          className="-mx-2 block h-auto w-[calc(100%+1rem)] rounded-md px-2 py-1 text-left font-normal whitespace-normal hover:bg-chip/60 focus-visible:bg-chip/60">
+          <RegimeBody w={12} h={2} />
+        </Button>
         <div className="grid grid-cols-2 gap-x-[18px] border-t lg:grid-cols-4">
-          <RiskTrend metric="vix" label="VIX" />
-          <RiskTrend metric="fear_greed" label="공포·탐욕" />
-          <RiskTrend metric="hy" label="HY OAS" className="max-md:hidden" />
-          <RiskTrend metric="curve" label="10Y − 2Y" className="max-md:hidden" />
+          {(["vix", "fear_greed", "hy", "curve"] as const).map((k, i) =>
+            <Button key={k} variant="ghost" onClick={() => open(k)} aria-label={`${RISK_DETAIL_LABEL[k]} 자세히`}
+              className={cn("block h-auto min-w-0 rounded-none p-0 text-left font-normal whitespace-normal hover:bg-chip/60 focus-visible:bg-chip/60", i >= 2 && "max-md:hidden")}>
+              <RiskTrend metric={k} label={RISK_DETAIL_LABEL[k]} className="pl-1" />
+            </Button>)}
         </div>
+        <RiskDetailDialog />
         <CreditTop />
       </HomeBlock>
     </section>
