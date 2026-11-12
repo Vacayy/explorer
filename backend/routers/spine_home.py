@@ -8,10 +8,10 @@ import json
 from urllib.parse import quote
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from database import get_connection
 from pipeline.watch_rules import WATCHED_CODES_SQL, watched
-from models.kalshi import KalshiPredictions
+from models.kalshi import KalshiDetail, KalshiPinBody, KalshiPinResult, KalshiPredictions
 from models.spine import AiActivityItem, BriefItem, CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
@@ -31,6 +31,26 @@ def predictions():
     """Kalshi 예측시장 인기 이벤트(금융·경제·테크·정치) — 마지막 수집분. 수집은 정기 작업(scripts/kalshi.py)."""
     from pipeline.kalshi import latest
     return latest()
+
+
+@router.get("/predictions/{event_ticker}", response_model=KalshiDetail)
+def prediction_detail(event_ticker: str = Path(..., pattern=r"^[A-Za-z0-9._-]{1,80}$"),
+                      range: str = Query("3m", pattern=r"^(1m|3m|1y)$")):
+    """예측시장 상세 창 — Kalshi 공식 v2 이벤트(결과 전부·규칙)와 결과별 일봉. 외부 호출은 TTL(이벤트 10분·봉 30분) 안에서 한 번."""
+    from pipeline.kalshi import detail
+    try:
+        return detail(event_ticker, range)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Kalshi 조회 실패: {type(e).__name__}")
+
+
+@router.post("/predictions/{event_ticker}/pin", response_model=KalshiPinResult)
+def prediction_pin(body: KalshiPinBody, event_ticker: str = Path(..., pattern=r"^[A-Za-z0-9._-]{1,80}$")):
+    """추적 켜기·끄기 — 켜면 인기순에서 빠져도 수집마다 따로 받아 캐러셀 맨 앞에 둔다."""
+    from pipeline.kalshi import set_pin
+    return {"event_ticker": event_ticker, "pinned": set_pin(event_ticker, body.series_ticker, body.pinned)}
 
 
 @router.get("/ai-activity", response_model=list[AiActivityItem])

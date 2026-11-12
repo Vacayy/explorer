@@ -2013,10 +2013,17 @@ export interface GraphActivityBeneficiary { stock_code: string; name: string; rs
 export interface GraphActivityNode { id: number; name: string; type: string; is_new: boolean; new_edges: number; beneficiaries: GraphActivityBeneficiary[] }
 
 /* ── Kalshi 예측시장 캐러셀 (홈 › 대시보드, GET /api/spine/home/predictions, models/kalshi.py) ── */
-export interface KalshiOutcome { label: string; price: number; prev?: number | null; volume?: number | null; change?: number | null }
+export interface KalshiOutcome { label: string; ticker?: string | null; price: number; prev?: number | null; volume?: number | null; change?: number | null }
 export interface KalshiEvent {
   event_ticker: string; series_ticker: string; category: string; category_label: string
   title: string; subtitle?: string | null; recent_volume?: number | null; close_ts?: string | null; url: string
+  pinned?: boolean; spark?: [string, number][]
   outcomes: KalshiOutcome[]
+}
+export interface KalshiDetailOutcome { label: string; ticker?: string | null; price: number; volume_24h: number; volume: number; status: string; result?: string | null; close_ts?: string | null }
+export interface KalshiDetail {
+  event_ticker: string; series_ticker: string; category: string; category_label: string; title: string; subtitle?: string | null
+  mutually_exclusive: boolean; close_ts?: string | null; rules?: string | null; url: string; pinned: boolean; fetched_at?: string | null
+  range: string; outcomes: KalshiDetailOutcome[]; series: { ticker?: string | null; label: string; points: [string, number][] }[]
 }
 export interface KalshiPredictions { fetched_at: string | null; base_at?: string | null; items: KalshiEvent[] }
