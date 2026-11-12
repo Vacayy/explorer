@@ -4,6 +4,7 @@ import { PageLayout } from "@/components/shared/PageLayout"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { HomeBlock, HomeSection } from "@/components/home/HomeSection"
 import { ContextBody, IndicesBody, RegimeBody, RiskTrend, useRegimeMeta } from "@/components/widgets/market"
+import { PredictionCarousel } from "@/components/home/PredictionCarousel"
 import { RISK_DETAIL_LABEL, RiskDetailDialog, useRiskDetail } from "@/components/home/RiskDetailDialog"
 import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
@@ -16,7 +17,7 @@ import { formatBp, formatKstLongDate } from "@/utils/format"
 
 /**
  * 홈 › 대시보드 — 시스템 고정 화면 (docs/specs/home-widgets.md §0, ia-redesign §4.1).
- * 순서 고정: 기상도(날짜 · 지수 띠 · 시장 요약 띠) → Market Overnight | Market Today(같은 높이) → 이번 주 바뀐 서사 → 국면·리스크.
+ * 순서 고정: 기상도(날짜 · 지수 띠 · 시장 요약 띠) → Market Overnight | Market Today(같은 높이) → 예측시장(Kalshi 캐러셀) → 이번 주 바뀐 서사 → 국면·리스크.
  * 사용자가 고르는 배치·편집·위젯 추가는 없다. 블록마다 따로 불러오고 따로 실패한다.
  * 분위기(그라디언트·세로 리브·유리 패널)는 이 상단 기상도에만 쓴다 (D-320).
  */
@@ -33,6 +34,8 @@ export default function HomeDashboard() {
             <HomeSection widget="market.today" w={6} h={9} display link={{ to: "/home/kr", label: "한국 시장" }} className={`${GLASS_PANEL} ${DISPLAY_H}`} />
           </div>
         </section>
+
+        <PredictionCarousel />
 
         <div>
           <HomeSection widget="world.changes" w={12} h={3} />
@@ -91,10 +94,12 @@ function RiskBlock() {
         </Button>
         <div className="grid grid-cols-2 gap-x-[18px] border-t lg:grid-cols-4">
           {(["vix", "fear_greed", "hy", "curve"] as const).map((k, i) =>
-            <Button key={k} variant="ghost" onClick={() => open(k)} aria-label={`${RISK_DETAIL_LABEL[k]} 자세히`}
-              className={cn("block h-auto min-w-0 rounded-none p-0 text-left font-normal whitespace-normal hover:bg-chip/60 focus-visible:bg-chip/60", i >= 2 && "max-md:hidden")}>
+            // 추이선(svg)을 버튼 안에 넣으면 버튼의 아이콘 크기 규칙에 줄어든다 — 타일 위에 투명 버튼을 덮는다
+            <div key={k} className={cn("relative min-w-0", i >= 2 && "max-md:hidden")}>
               <RiskTrend metric={k} label={RISK_DETAIL_LABEL[k]} className="pl-1" />
-            </Button>)}
+              <Button variant="ghost" onClick={() => open(k)} aria-label={`${RISK_DETAIL_LABEL[k]} 자세히`}
+                className="absolute inset-0 h-auto rounded-none p-0 hover:bg-chip/40 focus-visible:bg-chip/40" />
+            </div>)}
         </div>
         <RiskDetailDialog />
         <CreditTop />

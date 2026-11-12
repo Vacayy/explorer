@@ -2011,3 +2011,12 @@ export interface CurationLog { apply_enabled: boolean; counts: Record<string, Re
 /** GET /api/spine/causal/activity — 최근 n일 새로 생기거나 갱신된 인과 그래프 노드 + 수혜 후보(D-035) */
 export interface GraphActivityBeneficiary { stock_code: string; name: string; rs_short: number | null }
 export interface GraphActivityNode { id: number; name: string; type: string; is_new: boolean; new_edges: number; beneficiaries: GraphActivityBeneficiary[] }
+
+/* ── Kalshi 예측시장 캐러셀 (홈 › 대시보드, GET /api/spine/home/predictions, models/kalshi.py) ── */
+export interface KalshiOutcome { label: string; price: number; prev?: number | null; volume?: number | null; change?: number | null }
+export interface KalshiEvent {
+  event_ticker: string; series_ticker: string; category: string; category_label: string
+  title: string; subtitle?: string | null; recent_volume?: number | null; close_ts?: string | null; url: string
+  outcomes: KalshiOutcome[]
+}
+export interface KalshiPredictions { fetched_at: string | null; base_at?: string | null; items: KalshiEvent[] }

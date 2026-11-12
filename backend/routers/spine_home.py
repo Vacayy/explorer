@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from database import get_connection
 from pipeline.watch_rules import WATCHED_CODES_SQL, watched
+from models.kalshi import KalshiPredictions
 from models.spine import AiActivityItem, BriefItem, CalendarEvent, HomeFollow, HomeResponse, SignalItem, WatchlistUpdate
 
 router = APIRouter(prefix="/api/spine/home", tags=["spine"])
@@ -23,6 +24,13 @@ SIGNAL_LABEL = {
     "volume_spike": "거래량 급증", "quadrant_gap": "가격-관측 괴리",
     "theme_surge": "주목 주제",
 }
+
+
+@router.get("/predictions", response_model=KalshiPredictions)
+def predictions():
+    """Kalshi 예측시장 인기 이벤트(금융·경제·테크·정치) — 마지막 수집분. 수집은 정기 작업(scripts/kalshi.py)."""
+    from pipeline.kalshi import latest
+    return latest()
 
 
 @router.get("/ai-activity", response_model=list[AiActivityItem])

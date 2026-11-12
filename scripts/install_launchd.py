@@ -129,6 +129,8 @@ JOBS = [
      [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((16, 55), (20, 35))]),
     # 산업 개괄(D-327-3) — 매일 06:20(주간 내러티브 06:00 뒤). 관리자 플래그 sector_overview 기본 off: 꺼져 있으면 모델 호출 없이 끝난다
     ("sectoroverview", [PY, "scripts/compute_sector_overview.py"], {"Hour": 6, "Minute": 20}),
+    # Kalshi 예측시장(홈 대시보드 캐러셀, 2026-11-12) — 매일 08:00·16:00·23:00, 카테고리 4개 검색 4요청(공식 문서 밖 검색 주소), LLM 0
+    ("kalshi", [PY, "scripts/kalshi.py"], [{"Hour": h, "Minute": 0} for h in (8, 16, 23)]),
     ("indexintraday", [PY, "scripts/index_intraday.py"], 600),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
@@ -169,6 +171,7 @@ CATCHUP = {
     "expfeed": {"record": "exp_feed"},
     "bigpicture": {"record": "weekly_big_picture"},   # 놓치면 다음 순회에서 보충(그 주 안)
     "sectorbench": {"record": "sector_benchmarks"},
+    "kalshi": {"record": "kalshi", "window_h": 8},     # 다음 정기 실행 전까지만 보충
 }
 
 

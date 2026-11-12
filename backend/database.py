@@ -32,6 +32,8 @@ def init_db():
     ensure_mt_links(conn)
     from pipeline.index_intraday import SCHEMA as INDEX_INTRADAY_SCHEMA  # 지수 장중 5분 경로 (ia-redesign §4.2·4.3, D-325)
     cur.executescript(INDEX_INTRADAY_SCHEMA)
+    from pipeline.kalshi import SCHEMA as KALSHI_SCHEMA  # Kalshi 예측시장 캐러셀 (2026-11-12)
+    cur.executescript(KALSHI_SCHEMA)
     from pipeline.credit_spreads import SCHEMA as CREDIT_SCHEMA  # 회사채 스프레드 (D-230)
     cur.executescript(CREDIT_SCHEMA)
     from pipeline.retail_heat import SCHEMA as RETAIL_SCHEMA  # 개인 투자 열기 (D-231)

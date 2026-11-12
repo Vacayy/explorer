@@ -269,3 +269,9 @@ export function formatSeconds(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) return "-";
   return `${(ms / 1000).toFixed(1)}초`;
 }
+
+/** 예측시장 확률(0~100) — 정수 % (Kalshi 표기와 같게, 예: 85%) */
+export function formatProbability(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${Math.round(value)}%`
+}
