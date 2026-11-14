@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { Link, useNavigate } from "react-router-dom"
 import { Search } from "lucide-react"
 import { BlockHead } from "@/components/home/HomeSection"
@@ -106,12 +107,13 @@ const RANK_COLS = "grid-cols-[minmax(0,1fr)_44px_54px_40px_40px_54px]"
 
 function RankCard({ q, focus, onHover }: { q: Q; focus: string | null; onHover: (s: string | null) => void }) {
   const [sort, setSort] = useUrlParam("rank", "long")
-  const s = (RANK_SORTS.find(x => x.key === sort)?.key ?? "long") as RankSort
+  const sorts = RANK_SORTS.filter(x => !PUBLIC_ACCESS || x.key !== "cov")
+  const s = (sorts.find(x => x.key === sort)?.key ?? "long") as RankSort
   const key = sortKey(s)
   const rows = [...(q.data?.sectors ?? [])].sort((a, b) => (key(b) ?? -Infinity) - (key(a) ?? -Infinity))
   return <MarketCard band="usSectorMap" label="industry.us.rank">
     <BlockHead section title="섹터 순위" sub={`${RANK_SORTS.find(x => x.key === s)!.label} 순 · ↳ 세부 업종`}
-      actions={<Seg label="정렬" value={s} items={RANK_SORTS.map(x => ({ key: x.key, label: x.label }))} onChange={setSort} />} />
+      actions={<Seg label="정렬" value={s} items={sorts.map(x => ({ key: x.key, label: x.label }))} onChange={setSort} />} />
     <div className={cn("grid shrink-0 gap-2 text-[11.5px] text-ink-3", RANK_COLS)}>
       <span>섹터·업종</span><span>ETF</span><span className="text-right">1개월</span><span className="text-right">장기</span><span className="text-right">단기</span><span className="text-right">1주</span>
     </div>
@@ -140,7 +142,7 @@ function Wall({ q, focus, onHover, mobile }: { q: Q; focus: string | null; onHov
   const names = useMemo(() => Object.fromEntries((d?.sectors ?? []).map(r => [r.ticker, r.name])), [d])
   const cards = (d?.sectors ?? []).filter(r => !term || r.name.toLowerCase().includes(term) || r.ticker.toLowerCase().includes(term) || r.full_name.toLowerCase().includes(term))
   return <section aria-label="섹터" className="flex flex-col gap-3 rounded-[var(--radius-card)] border bg-card px-[18px] py-4">
-    <BlockHead section title="섹터" info={WALL_INFO} sub={mobile ? "GICS 순 · 점선 = SPY" : "GICS 순, 세부 업종은 상위 섹터 뒤 · 선 = 60거래일 ETF, 점선 = S&P500(SPY)"}
+    <BlockHead section title="섹터" info={PUBLIC_ACCESS ? "섹터·업종 ETF의 가격과 상대강도를 비교합니다. 실선은 ETF, 점선은 S&P500(SPY)입니다." : WALL_INFO} sub={mobile ? "GICS 순 · 점선 = SPY" : "GICS 순, 세부 업종은 상위 섹터 뒤 · 선 = 60거래일 ETF, 점선 = S&P500(SPY)"}
       actions={<label className="relative flex h-8 w-[240px] items-center max-sm:w-full">
         <Search aria-hidden="true" className="pointer-events-none absolute left-3 size-3.5 text-ink-3" />
         <Input type="search" aria-label="섹터·업종·티커 찾기" value={query} onChange={e => setQuery(e.target.value)} placeholder="섹터·업종·티커 찾기"
@@ -167,6 +169,6 @@ function Card({ r, spy, parentName, on, onHover }: { r: UsMapSector; spy: number
       <span className="truncate text-[11.5px] text-ink-3">1개월 · 3개월 {formatPercent(r.ret_3m, 0)}</span>
     </div>
     <MiniLines series={r.series} kospi={spy.slice(-r.series.length)} accent={on} />
-    <span className="truncate text-[11.5px] text-ink-3" title={r.full_name}><span className="font-mono">{r.ticker}</span> · 내 커버리지 {r.coverage}종목</span>
+    <span className="truncate text-[11.5px] text-ink-3" title={r.full_name}><span className="font-mono">{r.ticker}</span>{!PUBLIC_ACCESS && r.coverage != null && <> · 내 커버리지 {r.coverage}종목</>}</span>
   </Link>
 }

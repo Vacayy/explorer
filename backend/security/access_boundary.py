@@ -21,6 +21,7 @@ NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy'
 # route needs public projection or ownership validation before joining this map.
 PUBLIC_ROUTE_POLICIES = {
     ('GET', '/api/health'): 'public',
+    ('GET', '/api/spine/industry/us/map'): 'public',
     ('GET', '/api/spine/market/{market}/overview'): 'public',
     ('GET', '/api/auth/session'): 'auth',
     ('GET', '/api/auth/google/start'): 'auth',

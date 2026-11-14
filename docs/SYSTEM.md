@@ -725,10 +725,12 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `security.login_transactions`는 별도0600 SQLite에5분 로그인 state/binding hash와 nonce/PKCE를 관리한다. `security.login_flow`와 `routers/auth`는 browser-bound 일회용 callback과 세션교체/Origin+CSRF logout을 제공한다. 인증 설정키와 응답 계약은 member-access.md 참조. 콜백 access-log query 제거, no-store/no-referrer 응답을 적용하며 프록시의 동일 보호가 필요하다. 프론트 auth API/types와 생성 계약을 동기화했고 로그인 UI 및 기존 업무 API 권한은 미연결이다.
 
-`security.access_boundary`는 `EXPLORER_ACCESS_MODE=public`에서 ASGI 진입 경계를 설치한다(default private은 기존 비공개 실행). 유효 route+method 허용 목록, 미분류 API/정적 파일/WS 차단, 기존 세션 기반 member/operator principal, 쓰기 Origin/CSRF, no-store·고정 오류를 제공한다. 현재 허용은 health/auth 네 경로와 한국·미국 시장 개요이며 개인 업무 API는 아직 소유권 검증 전이라 열지 않는다. 포함 router prefix와 실제 앱 등록 목록을 합성 ASGI에서 검증했다. 이 설정 자체는 공개 배포·전체 화면/회원 기능 완료가 아니며 실제 공개 구성의 모드 사전검사가 별도로 필요하다. 세부 계약은 [회원 접근 계약](specs/member-access.md#공개-요청-진입-경계).
+`security.access_boundary`는 `EXPLORER_ACCESS_MODE=public`에서 ASGI 진입 경계를 설치한다(default private은 기존 비공개 실행). 유효 route+method 허용 목록, 미분류 API/정적 파일/WS 차단, 기존 세션 기반 member/operator principal, 쓰기 Origin/CSRF, no-store·고정 오류를 제공한다. 현재 허용은 health/auth 네 경로와 한국·미국 시장 개요·미국 산업 지도이며 개인 업무 API는 아직 소유권 검증 전이라 열지 않는다. 포함 router prefix와 실제 앱 등록 목록을 합성 ASGI에서 검증했다. 이 설정 자체는 공개 배포·전체 화면/회원 기능 완료가 아니며 실제 공개 구성의 모드 사전검사가 별도로 필요하다. 세부 계약은 [회원 접근 계약](specs/member-access.md#공개-요청-진입-경계).
 
 `security.public_market`은 공개 시장 개요 요청에만 readonly SQLite 연결과 네 시장 테이블의 열/집계 함수 허용 목록을 제공한다. 개인 테이블·extra_json·쓰기·ATTACH/확장 로딩을 차단하며 기존 `MarketOverview` 응답/MarketHero 경로를 유지한다. 익명 kr/us 실제 합성 ASGI 응답과 개인 canary 비포함·DB 불변을 검증했고 운영 DB/이미지는 변경하지 않았다.
 
 프론트 `VITE_ACCESS_MODE=public`은 `MemberAccessProvider`/`AccountControl`로 세션 상태·Google 로그인·로그아웃을 연결한다. 확인된 계정/역할 변경과 로그아웃 성공 시 요청·개인 캐시/browser state를 제거하고 전체 이동한다. 첫 공용 연결은 기존 셸의 kr/us MarketHero이며, `PublicContent`와 공개 모드 조건부 마운트가 미연결 개인 페이지/전역 자동 조회·채팅·telemetry 호출을 막는다. 기존 private UI는 유지한다. 281프론트검사/TypeScript 및 합성 응답을 사용한 실제 Chrome 화면·개인 API 자동호출0·로그아웃 정리를 확인했다. 이는 임시 첫 경로이며 기존 대부분 화면/검색/모바일/원문첨부/회원·채팅 전체 범위는 후속 연결 대상이다.
 
 Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API base를 기록하고 public에서 cross-origin/기본 localhost API base를 거부한다. API 공개 경계의 `X-Explorer-Access-Mode: public` 표식은 차단 응답에도 적용해 배포 검사가 구형 private 앱의 우연한404를 성공으로 오인하지 않게 한다. 이 표식과 빌드 검증은 실제 공개 기능·Google 로그인 수용을 대신하지 않는다.
+
+공용 미국 산업 지도(`/industry?market=us`)는 기존 ETF 지도·순위·검색·필터를 재사용한다. `security.public_industry`가 sector_benchmark_prices의 ticker/trade_date/close만 readonly로 읽고, `us_map(include_coverage=False)`는 팔로우 조회를 생략한다. map 응답의 coverage만 nullable(null=개인 집계 제외), private 지도/상세는 기존 정수 계약을 유지한다. 공개 UI는 개인 커버리지 표시·정렬을 제외하고 직접 rank=cov URL도 허용 정렬로 처리한다. 국내 지도/섹터 상세는 후속 연결이며 아직 공개 허용 목록에 넣지 않았다. API 계약을 재생성했다.

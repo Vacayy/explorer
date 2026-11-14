@@ -348,7 +348,7 @@ def _rs_bundle(series: dict[str, list[tuple[str, float]]], as_of: str) -> tuple[
     return now, trails
 
 
-def _etf_row(t: str, series: dict, now: dict, trails: dict, as_of: str, cov: dict[str, int]) -> dict:
+def _etf_row(t: str, series: dict, now: dict, trails: dict, as_of: str, cov: dict[str, int] | None) -> dict:
     from pipeline.sector_rs import SHORT_CAL_DAYS
     s = series[t]
     vals = [v for _, v in s]
@@ -360,16 +360,16 @@ def _etf_row(t: str, series: dict, now: dict, trails: dict, as_of: str, cov: dic
             "rs_long": now.get(t, {}).get("rs_long"), "rs_short": now.get(t, {}).get("rs_short"),
             "trail": [{"weeks_ago": w, "rs_long": trails[w].get(t, {}).get("rs_long"),
                        "rs_short": trails[w].get(t, {}).get("rs_short")} for w in TRAIL_WEEKS],
-            "coverage": cov.get(t, 0)}
+            "coverage": cov.get(t, 0) if cov is not None else None}
 
 
-def us_map(conn) -> dict:
+def us_map(conn, *, include_coverage: bool = True) -> dict:
     series = _series(conn)
     as_of = series[SPY][-1][0] if series[SPY] else None
     if not as_of:
         return {"as_of": None, "spy": [], "sectors": []}
     now, trails = _rs_bundle(series, as_of)
-    cov = coverage_counts(follows(conn))
+    cov = coverage_counts(follows(conn)) if include_coverage else None
     rows = []
     for t in wall_order():
         if not series[t]:

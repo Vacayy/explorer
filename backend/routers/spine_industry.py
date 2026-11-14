@@ -1,7 +1,7 @@
 """산업 › 섹터 지도 · 섹터 화면 API (ia-redesign §4.35, D-327 · 미국 §4.36) — 저장분만 읽는다(외부·모델 호출 없음)."""
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from models.industry import (IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse, UsIndustryMapResponse,
                              UsSectorDetailResponse)
@@ -24,13 +24,15 @@ def _runtime(required: bool):
 
 # 미국 라우트를 먼저 — '/{sector}'·'/{sector}/peers'보다 앞에 둔다(§4.36)
 @router.get("/us/map", response_model=UsIndustryMapResponse)
-def us_industry_map():
+def us_industry_map(request: Request):
     """미국 섹터 지도 — GICS 11 + 세부 업종 13 ETF의 RS(24개 간 백분위)·1개월·3개월·1주·4주 경로·61거래일 선 + SPY 선, 내 커버리지 수."""
     from database import get_connection
     from pipeline.us_sectors import us_map
-    conn = get_connection()
+    from security.public_industry import industry_connection
+    public = getattr(request.state, 'public_access', False)
+    conn = industry_connection() if public else get_connection()
     try:
-        return us_map(conn)
+        return us_map(conn, include_coverage=not public)
     finally:
         conn.close()
 

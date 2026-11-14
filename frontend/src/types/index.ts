@@ -426,7 +426,7 @@ export interface UsEtfRow {
   last: number | null; last_date: string | null; chg_1d: number | null; ret_1m: number | null; ret_3m: number | null; chg_1w: number | null
   rs_long: number | null; rs_short: number | null; trail: SectorTrailPoint[]; coverage: number
 }
-export interface UsMapSector extends UsEtfRow { series: number[] }
+export interface UsMapSector extends Omit<UsEtfRow, 'coverage'> { series: number[]; coverage: number | null }
 /** GET /api/spine/industry/us/map */
 export interface UsIndustryMap { as_of: string | null; spy: number[]; sectors: UsMapSector[] }
 export interface UsSectorMember {

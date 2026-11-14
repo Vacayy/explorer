@@ -171,6 +171,7 @@ class UsEtfRow(BaseModel):
 
 
 class UsMapSector(UsEtfRow):
+    coverage: int | None                  # null: public projection excludes personal follows
     series: list[float]                    # ETF 최근 61거래일 종가
 
 
