@@ -708,3 +708,7 @@ tail -f logs/ingest.log               # 수집 관찰
 | observations·models 미가동 | 무역 커넥터·살아있는 모델 단계에서 |
 | AWS 배포 (24/7 — 맥 꺼지면 수집 중단) | 설계 논의됨 (EC2+SQLite 리프트&시프트) |
 | Phase 3 자율 리서치 에이전트 | 가설만 (설계 보류 중) |
+
+## Linux 예약 작업 상태 관측 (2026-11-14)
+
+`pipeline.health.scheduler_item`은 Linux에서 공유 `logs/scheduler-health.json`의90초 이내 UTC heartbeat·running·39jobs를 읽고 macOS에서는 launchctl 종료 코드를 읽는다. 조회 불가/미등록은 정상으로 표시하지 않는다. API는 다른 컨테이너 PID를 검사하지 않으며 worker 자체 healthcheck와 결과 데이터 신선도 점검을 병행한다. API 응답 필드 변경 없음. [운영 건강 계약](specs/ops-health.md).

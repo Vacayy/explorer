@@ -36,3 +36,7 @@
 ## 검증
 
 `backend/tests/test_health.py` — 휴장일 제외·마감 전후 기대일·105종목 부분 저장·경과 시간·경고 대상 한정. 실DB: 시장 국면 19거래일 지연, 리스크 10거래일 지연을 잡음(나머지 최신) → `snapshot_market`을 launchd `market`(평일 16:20)으로 등록하고 실행해 둘 다 최신으로 복구. 홈 응답과 텔레그램 본문 조립에서 경고 한 줄 확인(발송 안 함).
+
+## Linux 스케줄러 점검
+
+Linux에서는 공유 logs/scheduler-health.json의 UTC 시각(0~90초), running 상태 및39개 등록 작업을 검사한다. 없거나 손상된 파일은 error, 중단·시간 범위 초과·작업 수 불일치는 stale. API와 worker는 PID namespace가 다르므로 API는 worker PID 생존을 검사하지 않는다. worker 자체 healthcheck가 PID/monotonic을 확인한다. heartbeat 정상은 개별 작업 성공이 아니며 기존 데이터 신선도와 job_runs를 함께 확인한다. macOS도 launchctl 실패/등록 작업 없음은 error로 표시한다. 응답 필드와 status 값의 계약은 그대로 유지한다.

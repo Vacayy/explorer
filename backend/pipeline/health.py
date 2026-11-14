@@ -16,11 +16,13 @@ from __future__ import annotations
 import json
 import sqlite3
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 KST = timezone(timedelta(hours=9))
 HISTORY_DB = Path(__file__).resolve().parent.parent / "db" / "market_history.sqlite"
+SCHEDULER_HEALTH = Path(__file__).resolve().parents[2] / "logs" / "scheduler-health.json"
 
 # (key, 라벨, 종류, 최신 시점 SQL, 기준, 채우는 곳, critical)
 #   trading → 기준 = 마감 처리 완료 시각 "HHMM" (KST) · age → 기준 = 최대 경과 시간(h)
@@ -132,17 +134,51 @@ def price_coverage(conn: sqlite3.Connection, day: str) -> tuple[int, int, int]:
 
 
 def launchd_failures() -> list[str]:
-    """마지막 종료 코드가 0이 아닌 dev.explorer.* (launchctl 없으면 빈 목록)."""
-    try:
-        out = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=5).stdout
-    except Exception:  # noqa: BLE001 — 점검 보조 신호, 없으면 생략
-        return []
+    """마지막 종료 코드가 0이 아닌 dev.explorer.*. 조회 불가를 정상으로 취급하지 않는다."""
+    out = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=5, check=True).stdout
     failed = []
+    registered = 0
     for line in out.splitlines():
         parts = line.split("\t")
-        if len(parts) == 3 and parts[2].startswith("dev.explorer.") and parts[1] not in ("0", "-"):
-            failed.append(f"{parts[2].removeprefix('dev.explorer.')}(종료 {parts[1]})")
+        if len(parts) == 3 and parts[2].startswith("dev.explorer."):
+            registered += 1
+            if parts[1] not in ("0", "-"):
+                failed.append(f"{parts[2].removeprefix('dev.explorer.')}(종료 {parts[1]})")
+    if not registered:
+        raise ValueError("No explorer launchd jobs registered")
     return failed
+
+
+def scheduler_item(now: datetime | None = None) -> dict:
+    """관리자 보조 신호. API/worker의 PID namespace가 다르므로 공유 heartbeat만 읽는다."""
+    item = {"key": "launchd", "label": "예약 작업 종료 코드", "kind": "launchd",
+            "owner": "launchctl list", "critical": False, "latest": None,
+            "expected": "모두 0", "status": "ok", "detail": ""}
+    if sys.platform == "darwin":
+        try:
+            failed = launchd_failures()
+            item.update(status="stale" if failed else "ok", detail=", ".join(failed))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            item.update(status="error", detail="예약 작업 조회 불가 또는 등록된 작업 없음")
+        return item
+    item.update(key="scheduler", label="예약 작업 스케줄러", kind="scheduler",
+                owner="logs/scheduler-health.json", expected="90초 이내 heartbeat · 39개 작업")
+    try:
+        data = json.loads(SCHEDULER_HEALTH.read_text())
+        if not isinstance(data, dict):
+            raise ValueError("Invalid heartbeat")
+        timestamp = datetime.fromisoformat(data["utc"])
+        if timestamp.tzinfo is None:
+            raise ValueError("Heartbeat requires timezone")
+        age = ((now or datetime.now(timezone.utc)) - timestamp).total_seconds()
+        item["latest"] = timestamp.isoformat()
+        if data["state"] != "running" or data["jobs"] != 39 or not 0 <= age <= 90:
+            item.update(status="stale", detail="스케줄러 중단·작업 수 불일치 또는 heartbeat 시간 범위 초과")
+        else:
+            item["detail"] = "스케줄러 heartbeat 정상 · 개별 작업 성공은 실행 내역과 데이터 신선도로 확인"
+    except (OSError, ValueError, KeyError, TypeError):
+        item.update(status="error", detail="스케줄러 heartbeat 없음 또는 형식 오류")
+    return item
 
 
 def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool = True) -> list[dict]:
@@ -183,10 +219,7 @@ def report(conn: sqlite3.Connection, now: datetime | None = None, launchd: bool 
     items.append(client_error_item(conn))
     if not launchd:
         return items
-    failed = launchd_failures()
-    items.append({"key": "launchd", "label": "예약 작업 종료 코드", "kind": "launchd", "owner": "launchctl list",
-                  "critical": False, "latest": None, "expected": "모두 0",
-                  "status": "stale" if failed else "ok", "detail": ", ".join(failed)})
+    items.append(scheduler_item(now))
     return items
 
 
