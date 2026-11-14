@@ -56,7 +56,7 @@ CLI 기반 익명 체험은 별도 실행 경계에서 운영 DB/프로젝트/�
 
 Uvicorn access의 정확한 callback 경로는 query를 제거한다. 프록시에서도 query와 Referer를 기록하지 않고 OAuth경로 upstream error에 전체URL이 찍히지 않도록 설정해야 한다. 실제Uvicorn과Nginx의 가짜code/state 요청에서 로그 비노출을 검증했다. Google실계정/외부TLS/쿠키 경로의 실제브라우저 검증은 아직 수행하지 않았다.
 
-frontend/api/auth.ts는 생성된 응답 계약을 사용하는 session/logout 호출과 Google로그인 URL을 제공한다. 로그인 버튼·계정별 UI gating은 아직 연결하지 않는다. 기존API의 인증·소유권 경계가 적용된 것은 아니므로 이 로그인만으로 외부 공개하지 않는다.
+frontend/api/auth.ts는 생성된 응답 계약을 사용하는 session/logout 호출과 Google로그인 URL을 제공한다. 아래 공개 빌드에서는 계정 UI에 연결하며, 기존 개인 API 소유권 전체가 적용된 것은 아니므로 로그인 UI만으로 외부 공개하지 않는다.
 
 ## 공개 요청 진입 경계
 
@@ -76,4 +76,16 @@ member/operator 정책은 기존 IdentityStore를 매 요청 조회해 만료·�
 
 읽을 수 있는 데이터는 market_indicators(snapshot_date/indicator/value), index_intraday(key/trade_date/hhmm/value), retail_flows(date/credit_total/indiv_buy/indiv_sell), stock_prices(stock_code/trade_date/close)로 제한한다. 고정 overview 조회에 필요한 집계 함수만 허용하며 개인 테이블, 추가 열(extra_json 포함), DB 쓰기, ATTACH, PRAGMA 변경, 확장 로딩을 거부한다. 메모된 시장 폭과 응답 모델 역시 공용 수치만 사용한다. 이 열 제한은 임의 SQL API를 제공한다는 뜻이 아니다.
 
-합성 개인 canary가 있는 DB에서 실제 익명 kr/us HTTP 응답의 비어 있지 않은 지수 값·기존 모델 일치·canary 비포함·원본 DB 바이트 불변을 검증했다. 직접 private table/column 조회와 쓰기 거부, 없는 DB 자동 생성 거부도 확인했다. 기존 시장 개요 계산 검사를 유지한다. 이는 시장 탭의 첫 지수/요약 블록이며 홈 전체의 개인 관심정보/원문/첨부 공개 또는 로그인 UI 연결이 완료된 것은 아니다.
+합성 개인 canary가 있는 DB에서 실제 익명 kr/us HTTP 응답의 비어 있지 않은 지수 값·기존 모델 일치·canary 비포함·원본 DB 바이트 불변을 검증했다. 직접 private table/column 조회와 쓰기 거부, 없는 DB 자동 생성 거부도 확인했다. 기존 시장 개요 계산 검사를 유지한다. 이는 시장 탭의 첫 지수/요약 블록이며 홈 전체의 개인 관심정보/원문/첨부 공개가 완료된 것은 아니다. 계정 UI 연결 범위는 다음 절에 기록한다.
+
+## 공개 빌드의 계정 UI와 첫 화면 연결
+
+`VITE_ACCESS_MODE=public`에서 `MemberAccessProvider`가 세션을 조회한다. 기본 private은 기존 개인용 UI를 유지하며 세션 조회를 시작하지 않는다. 잘못된 모드 값은 오류다. 이는 UI 선택값이며 서버의 EXPLORER_ACCESS_MODE를 대신하지 않는다. 공개 배포 사전검사에서 양쪽 설정과 실제 응답을 대조해야 한다.
+
+`AccountControl`은 확인 중/익명 Google 로그인/회원·운영자 로그아웃/확인 실패 재시도를 표시한다. 세션 확인·실패가 공용 시장 화면을 가리지 않는다. 로그인 복귀 경로는 현재 내부 URL을 넘기고 서버의 기존 검증을 유지한다. 성공한 로그아웃과 확인된 계정·역할 변경에서는 요청 취소→query cache·앱 개인 browser storage 정리→전체 페이지 이동으로 이전 컴포넌트/모듈/첨부 메모리를 폐기한다. 세션/CSRF를 브라우저 저장소에 기록하지 않는다. 로그아웃 실패는 실패로 표시하고 미저장 초안을 삭제하거나 성공으로 가장하지 않는다. 테마와 다른 앱 저장소는 유지한다.
+
+현재 공개 화면 연결은 기존 셸의 `/home`, `/home/kr`, `/home/us` 시장 개요까지다. `PublicContent`는 연결되지 않은 기존 개인 페이지를 숨겨서 마운트하는 대신 마운트하지 않는다. 공개 빌드의 전역 Omnibar/AnswerWatcher/ChatPanel, 관리자·개인 조회 버튼/모바일 개인 메뉴도 미마운트하며 검토 전 사용량/오류 telemetry 전송을 하지 않는다. 기존 private 빌드 동작은 유지한다.
+
+이 분기는 첫 경로를 검증하는 **임시 구현 단계**다. 대부분 기존 화면·모바일 탐색·허용 검색·공개 원문/첨부·회원 포트폴리오·비저장 체험 채팅을 최종 수용에서 제외하지 않는다. 해당 API/데이터/도구 권한을 연결할 때 각 임시 제한을 해소해야 하며, 현재 축소된 연결 범위로 공개 완료를 선언하지 않는다.
+
+검증: 전체 프론트281검사 및 TypeScript 통과. 별도 localhost Vite와 깨끗한 Chrome 프로필에서 실제 공용 시장 렌더링·390px 모바일 overflow 없음·비공개 페이지 미마운트·로그아웃 후 개인 draft/대기 대화 제거를 확인했다. API 요청16건은 session/kr·us overview/logout뿐이며 미승인 API0·uncaught 오류0. 시장 JSON은 합성 DB의 실제 ASGI 응답, 세션/로그아웃은 브라우저 fixture 응답이다. 실제 Google/OAuth/TLS 쿠키 수용이 아니다. 전용 프로세스·프로필·스크린샷·fixture는 검증 후 정리했다.

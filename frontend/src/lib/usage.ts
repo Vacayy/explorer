@@ -1,5 +1,6 @@
 import { matchPath } from 'react-router-dom'
 import { API_BASE } from '@/api/client'
+import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { analyzeTabOf, locate } from '@/components/layout/navConfig'
 
 /** 사용 이벤트 (docs/specs/observability.md §사용 이벤트, D-283).
@@ -26,7 +27,7 @@ export function isAutomated(nav: Pick<Navigator, 'webdriver' | 'userAgent'> | un
   return !!nav && (nav.webdriver === true || /HeadlessChrome/i.test(nav.userAgent ?? ''))
 }
 
-const enabled = () => typeof window !== 'undefined' && import.meta.env?.MODE !== 'test' && !isAutomated()
+const enabled = () => !PUBLIC_ACCESS && typeof window !== 'undefined' && import.meta.env?.MODE !== 'test' && !isAutomated()
 
 function session(): string {
   try {

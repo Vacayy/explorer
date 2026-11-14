@@ -1,4 +1,5 @@
 import type { ApiError } from './errors.ts'
+import { PUBLIC_ACCESS } from '@/lib/accessMode'
 
 /** 응답 래퍼 오류 기록 (docs/specs/frontend-api-reliability.md §오류 기록).
  * 계약 위반·5xx·timeout·네트워크를 콘솔과 서버(/api/spine/client-errors)에 남긴다. 4xx는 입력·없는 자원이라 제외.
@@ -8,6 +9,7 @@ const WINDOW_MS = 600_000
 /** 테스트(vitest MODE=test)에서는 서버로 보내지 않는다 — 테스트가 일부러 낸 오류가 운영 기록에 섞였다(2026-10-31).
  * 보고 자체를 검사하는 테스트만 globalThis.__API_TELEMETRY_TEST__ = true로 켠다. */
 function sendEnabled() {
+  if (PUBLIC_ACCESS) return false // Public telemetry needs a separate reviewed policy.
   return import.meta.env?.MODE !== 'test' || (globalThis as { __API_TELEMETRY_TEST__?: boolean }).__API_TELEMETRY_TEST__ === true
 }
 const seen = new Map<string, number>()

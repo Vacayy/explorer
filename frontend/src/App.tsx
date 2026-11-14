@@ -6,6 +6,9 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, Outlet } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createQueryClient } from "@/api/query"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
+import { MemberAccessProvider } from "@/components/auth/MemberAccess"
+import { PublicContent } from "@/components/auth/PublicContent"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { TopBar } from "@/components/layout/TopBar"
@@ -132,20 +135,17 @@ function Layout() {
 
   // /analyze/:stockCode/... 의 종목코드 (/analyze/compare 같은 특수 경로 제외)
   const rawCode = pathname.match(/^\/analyze\/([^/]+)/)?.[1] ?? null
-  const stockCode = rawCode === "compare" ? null : rawCode
+  const stockCode = PUBLIC_ACCESS || rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
   const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
-  const showAi = aiOpen && !pathname.startsWith("/chat")
+  const showAi = !PUBLIC_ACCESS && aiOpen && !pathname.startsWith("/chat")
   // 오버레이 대화는 다른 화면으로 가면 닫는다(근거 링크를 누르면 그 화면이 보이게)
   useEffect(() => { if (!window.matchMedia(PANEL_INLINE_QUERY).matches) setAiOpen(false) }, [pathname])
 
   return (
       <TooltipProvider delayDuration={300}>
       <div className="min-h-screen bg-background">
-        <Omnibar />
-        <DetailNavigationMemory />
-        <DiscoveryNavigationMemory />
-        <UsageTracker />
+        {!PUBLIC_ACCESS && <><Omnibar /><DetailNavigationMemory /><DiscoveryNavigationMemory /><UsageTracker /></>}
         <div className="flex min-h-svh w-full flex-col">
           <TopBar aiOpen={showAi} onToggleAi={toggleAi} />
           <div className="flex min-h-0 w-full flex-1">
@@ -160,7 +160,7 @@ function Layout() {
                 {subNav && <SubNav tabs={subNav.tabs} activeKey={subNav.activeKey} context={subNav.context} />}
                 <ActiveQueryStatus />
                 {stockCode && !pathname.endsWith('/summary') && <DiscoveryContextTrail stockCode={stockCode} />}
-                <ErrorBoundary key={pathname + search} onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><Outlet /></ErrorBoundary>
+                <ErrorBoundary key={pathname + search} onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}>{PUBLIC_ACCESS ? <PublicContent /> : <Outlet />}</ErrorBoundary>
               </div>
             </main>
             {showAi && panelInline && <ChatPanel companyName={company?.corp_name} onClose={toggleAi} inputRef={aiInput} />}
@@ -168,7 +168,7 @@ function Layout() {
           <TabBar />
         </div>
         {/* 폭 <1024: AI 대화는 오른쪽 오버레이, 폰(<768)은 아래에서 올라오는 시트(ia-redesign §4.32) */}
-        {!panelInline && (
+        {!PUBLIC_ACCESS && !panelInline && (
           <Sheet open={showAi} onOpenChange={v => { if (v !== showAi) toggleAi() }}>
             <SheetContent side={phone ? "bottom" : "right"} showCloseButton={false}
               className={phone ? "gap-0 rounded-t-xl p-0 data-[side=bottom]:h-[88dvh]" : "w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"}>
@@ -178,7 +178,7 @@ function Layout() {
             </SheetContent>
           </Sheet>
         )}
-        <AnswerWatcher />
+        {!PUBLIC_ACCESS && <AnswerWatcher />}
         <Toaster position="top-right" />
       </div>
       </TooltipProvider>
@@ -259,6 +259,7 @@ function AskRedirect() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <MemberAccessProvider>
       <ErrorBoundary onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -377,6 +378,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter></ErrorBoundary>
+      </MemberAccessProvider>
     </QueryClientProvider>
   )
 }

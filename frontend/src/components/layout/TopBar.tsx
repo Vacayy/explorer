@@ -21,6 +21,8 @@ import { SECTIONS, locate } from "./navConfig"
 import { ApprovalsInbox, InboxSheet, useApprovalsCount } from "./Inboxes"
 import { AiOutputsButton, AiOutputsRow, AiOutputsSheet, useAiOutputs } from "./AiOutputs"
 import { ShellButton } from "./ShellButton"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
+import { AccountControl } from "@/components/auth/MemberAccess"
 
 interface HealthItem { key: string; label: string; status: string; detail: string; critical?: boolean; latest?: string | null; owner?: string | null }
 const STATUS_LABEL: Record<string, string> = { stale: "지연", error: "오류" }
@@ -38,7 +40,7 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
   return (
     <header className="sticky top-0 z-30 flex h-(--topbar-height) items-center justify-between gap-3 border-b bg-background px-4 md:px-5">
       <div className="flex min-w-0 items-center gap-3">
-        {phone ? <PhoneMenu /> : (
+        {phone && !PUBLIC_ACCESS ? <PhoneMenu /> : (
           <Link to="/home" className="flex shrink-0 items-center gap-2 font-display text-[17px] font-medium tracking-[-0.01em] hover:opacity-75">
             <Globe className="size-[18px]" aria-hidden />
             <span className="md:max-lg:sr-only">Explorer</span>
@@ -61,6 +63,7 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
       </div>
 
       <div className="flex min-w-0 items-center justify-end gap-0.5 md:gap-1.5">
+        {!PUBLIC_ACCESS && <>
         <Button variant="secondary" onClick={openOmnibar} data-search-input
           className="hidden h-[34px] w-[221px] justify-start gap-2 rounded-full border-0 px-3 text-[13px] font-normal text-ink-3 hover:text-ink-2 xl:flex">
           <Search className="size-3.5" aria-hidden />종목·문서·주제 검색<Kbd className="ml-auto bg-transparent font-mono text-[11px] text-ink-3">⌘K</Kbd>
@@ -76,6 +79,8 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
           className="h-8 gap-1.5 rounded-full border-0 px-3 text-ink max-md:size-10 max-md:bg-transparent max-md:px-0 max-md:text-ink-2 max-md:aria-pressed:bg-chip max-md:aria-pressed:text-ink">
           <Sparkles className="size-3.5 max-md:size-[18px]" strokeWidth={1.7} aria-hidden /><span className="max-md:sr-only">AI</span>
         </Button>
+        </>}
+        {PUBLIC_ACCESS && <AccountControl />}
       </div>
     </header>
   )
