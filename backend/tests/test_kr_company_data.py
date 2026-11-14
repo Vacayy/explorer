@@ -293,12 +293,15 @@ class ScriptTests(DbCase):
                 patch.object(kr, "refresh_companies", side_effect=lambda *a: ran.append("c") or {"status": "error", "reason": "x"}), \
                 patch.object(kr, "collect_disclosures", side_effect=lambda *a: ran.append("d") or {}), \
                 patch.object(kr, "collect_financials", side_effect=lambda *a: (_ for _ in ()).throw(RuntimeError("boom"))), \
-                patch.object(mv, "fetch_market_valuation", side_effect=lambda *a: ran.append("v") or {}):
+                patch.object(mv, "fetch_market_valuation", side_effect=lambda *a: ran.append("v") or {}), \
+                patch("services.consensus_service.refresh_consensus", side_effect=lambda *a: ran.append("co") or {}), \
+                patch("pipeline.kr_preliminary.collect", side_effect=lambda **kw: ran.append("p") or {}):
             code = mod.main()
         self.assertEqual(code, 1)
-        self.assertEqual(ran, ["c", "d", "v"])
+        self.assertEqual(ran, ["c", "d", "v", "co", "p"])
         status = dict(self.conn.execute("SELECT job, status FROM job_runs").fetchall())
-        self.assertEqual(status, {"kr_companies": "error", "kr_disclosures": "ok", "kr_financials": "error", "kr_valuation": "ok"})
+        self.assertEqual(status, {"kr_companies": "error", "kr_disclosures": "ok", "kr_financials": "error", "kr_valuation": "ok",
+                                  "kr_consensus": "ok", "kr_preliminary": "ok"})
 
 
 if __name__ == "__main__":

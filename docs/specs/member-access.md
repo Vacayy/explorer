@@ -150,4 +150,8 @@ EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 Publica
 
 기존 GroupDigestTests의 us_prices 없는 fixture 실패는 변경 전 portfolio 코드에서도 재현되었다. 실제 그룹 상세의 한미 날짜 조회에 필요한 빈 us_prices fixture를 추가했으며 동작 검증을 생략하거나 production 쿼리를 완화하지 않았다.
 
-**운영 활성화 선행조건:** `kr_company_data.targets()`의 보유 우선 수집, `world_reads._member_companies()`의 개인 보유/관심 분석, `watch_rules.evaluate_all()`의 그룹 일괄 처리 등은 아직 전체 그룹을 읽는다. 이 경로들과 연결된 호출자를 기존 NULL-owner 주체 또는 명시 owner 범위로 분리한 뒤에만 기존 worker와 회원 쓰기를 함께 켠다. 수용은 신규 A/B 종목이 운영자 개인 집합·알림·분석에 섞이지 않음과 기존 운영자 job 결과 보존을 함께 대조한다. 현재 prepared code를 즉시 운영 활성화하는 승인은 아니다. 실제 소유 매핑, 원칙/논지/알림/파생 경로 및 운영 backup/restore 인벤토리와 공개 사전검사 연결도 남아 있다.
+**기존 작업의 회원 기록 제외:** `pipeline.group_ownership.legacy_groups_condition`은 고정 SQL alias g에 대해 ownership 준비 전 전체 legacy, 준비 후 owner_id IS NULL을 반환한다. schema 검사는 캐시하지 않는다. `kr_company_data.targets()`의 보유/관심 우선순위와 이를 사용하는 수집 script의 개인 컨센서스 대상, `world_reads._member_companies()`를 사용하는 개인 서사 연결/체크포인트, `watch_rules.evaluate_all()`의 그룹 선택 및 선행 `refresh_us_prices()`에 적용한다. 공용 시가총액/코드상 산업 연결 수집은 유지하며, 회원이 같은 종목을 보유한다는 이유로 공용 시장 수집에서 제외하지 않는다.
+
+합성 legacy 결과를 ownership 준비 전 저장하고 A/B의 별개·겹치는 종목/그룹 추가 후 대조했다. 개인 수집 우선순위·월드 보유집합, 실제 watch 평가 결과와 job 요약/미국 가격 수집 호출은 동일하며 회원 그룹 평가0이다. 외부 provider는 stub, Docker network none에서 관련47검사와 main import 통과. 기존 수집 script 회귀 fixture에서 새 consensus/preliminary 두 단계의 stub/기대값이 빠져 있었고 보완 후 전체 단계 계속 실행·실패 exit1 검사를 유지했다.
+
+이 검증은 위 연결 경로의 합성 격리 수용이다. `watch_reasons`/`stock_tracker` 등의 watch 전용 조회는 현재 회원 API가 portfolio만 만들므로 이번 경로에 연결되지 않으며, 회원 관심묶음을 도입하기 전에 별도 소유권 적용이 필요하다. 기존 그룹 API/원칙/논지/알림·파생 전체/실제 소유 매핑과 운영 backup/restore·공개 사전검사는 미완이다. prepared code를 즉시 운영 활성화하거나39개 실제 작업 전체를 수용했다는 의미가 아니다.

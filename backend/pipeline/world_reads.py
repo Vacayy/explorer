@@ -188,12 +188,14 @@ def contested(conn, limit: int = 10) -> dict:
 
 def _member_companies(conn) -> list[dict]:
     """종목 묶음(보유·관심) 종목 → 회사 엔티티. 묶음 종류를 함께 들고 간다."""
-    rows = conn.execute("""
+    from pipeline.group_ownership import legacy_groups_condition
+    rows = conn.execute(f"""
         SELECT m.stock_code, g.kind, e.id entity_id, e.name
         FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id
         LEFT JOIN entities e ON e.id = COALESCE(
             (SELECT id FROM entities WHERE type='company' AND aliases=m.stock_code ORDER BY id LIMIT 1),
-            (SELECT entity_id FROM transcript_follow WHERE ticker=m.stock_code))""").fetchall()
+            (SELECT entity_id FROM transcript_follow WHERE ticker=m.stock_code))
+        WHERE {legacy_groups_condition(conn)}""").fetchall()
     by_code: dict[str, dict] = {}
     for r in rows:
         s = by_code.setdefault(r["stock_code"], {"stock_code": r["stock_code"], "name": r["name"],
