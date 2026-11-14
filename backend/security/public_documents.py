@@ -35,6 +35,19 @@ class ReadBudget:
         self.remaining -= size
 
 
+def casefold_match_offset(text, query):
+    """Map a Unicode casefold match back to the original string's index."""
+    position = text.casefold().find(query.casefold())
+    if position <= 0:
+        return 0
+    offset = 0
+    for index, character in enumerate(text):
+        offset += len(character.casefold())
+        if offset > position:
+            return index
+    return 0
+
+
 @dataclass
 class Snapshot:
     document: PublishedDocument
@@ -180,15 +193,17 @@ class PublicDocuments:
             raise DocumentUnavailable()
         return snapshot
 
-    def listing(self, query='', cursor=None, limit=10):
+    def listing(self, query='', cursor=None, limit=10, *, budget=None, snapshots=None):
         # Only approved candidates enter the read path. No private full-text
         # index, related-document lookup, or count is exposed.
         self.store.cursor_cipher()  # Explicit v2 preparation required even for an empty first page.
+        if snapshots is not None:
+            snapshots.clear()
         needle = query.strip().casefold()
         before = self.store.decode_cursor(cursor, needle) if cursor else None
         candidates = self.store.candidates(before, 101)
         items, fingerprints = [], {}
-        budget = ReadBudget()
+        budget = ReadBudget() if budget is None else budget
         more = False
         progress = None
         for index, doc_id in enumerate(candidates):
@@ -210,11 +225,13 @@ class PublicDocuments:
             # Normalize whitespace only; never generate AI summaries or render
             # source Markdown/HTML in the listing.
             text = ' '.join(document.content.split())
-            position = text.casefold().find(needle) if needle else 0
+            position = casefold_match_offset(text, needle) if needle else 0
             start = max(0, position - 80)
             items.append(dict(id=doc_id, title=document.title, source_type=document.source_type,
                               published_at=document.published_at, snippet=text[start:start+240]))
             fingerprints[doc_id] = snapshot.fingerprint
+            if snapshots is not None:
+                snapshots[doc_id] = snapshot
             if len(items) == limit:
                 # Continuation does not assert more public matches exist.
                 more = True
@@ -223,6 +240,11 @@ class PublicDocuments:
         # changes to earlier entries before emitting their title/snippet.
         items = [item for item in items if (record := self.store.get(item['id']))
                  and record['status'] == 'approved' and record['fingerprint'] == fingerprints[item['id']]]
+        if snapshots is not None:
+            retained = {item['id'] for item in items}
+            for doc_id in list(snapshots):
+                if doc_id not in retained:
+                    del snapshots[doc_id]
         if more and progress is None:
             raise ListingBudgetExceeded()
         return {'items': items, 'next_cursor': self.store.encode_cursor(progress, needle) if more else None}

@@ -93,6 +93,17 @@ class PublicationStore:
                 WHERE status='approved' AND (? IS NULL OR doc_id<?)
                 ORDER BY doc_id DESC LIMIT ?''', (before, before, limit))]
 
+    def all_approved(self, fingerprints):
+        """One SQLite read snapshot for the final bounded evidence set."""
+        if not 1 <= len(fingerprints) <= 4:
+            return False
+        placeholders = ','.join('?' for _ in fingerprints)
+        with self.connection(readonly=True) as conn:
+            rows = conn.execute(f'SELECT doc_id,status,fingerprint FROM publications WHERE doc_id IN ({placeholders})',
+                                tuple(fingerprints)).fetchall()
+        return len(rows) == len(fingerprints) and all(
+            row['status'] == 'approved' and row['fingerprint'] == fingerprints[row['doc_id']] for row in rows)
+
     def approve(self, doc_id, fingerprint, expected_version, actor, basis):
         if not actor or not basis.strip():
             raise ValueError('Approval evidence required')
