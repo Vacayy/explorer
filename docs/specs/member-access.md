@@ -44,6 +44,12 @@ CLI 기반 익명 체험은 별도 실행 경계에서 운영 DB/프로젝트/�
 
 문맥에는 서버가 부여한 D1…D4와 승인 snapshot의 id/fingerprint를 메모리에서 묶는다. 답변은 전체 버퍼링하며 반환 직전 **모델이 인용하지 않은 문서까지** 모든 문맥 문서의 본문/첨부를 별도128MiB 예산으로 다시 검증하고, 최종 승인 집합을 한 SQLite 조회로 확인한다. 변경·철회 또는 재검증 예산 초과이면 답변 전체를 폐기한다. 모델은 citation ID만 제안할 수 있고, 반환 링크/제목은 검증된 서버 문서에서 만든다. 답변 문자열은 plain text로 취급하며 모델의 임의 URL을 인용 링크로 승격하지 않는다. 이 내부 모듈만으로 실제 모델 호출·HTTP quota·브라우저 비저장이 완료되는 것은 아니다.
 
+## 익명 체험 식별과 실행 연결 (준비 모듈)
+
+`security.trial_identity`는 32-byte 별도 비밀키로 버전·발급시각·256-bit 난수를 서명한 30일 쿠키를 검증한다. actor/CSRF/network HMAC 용도를 분리하며 만료·미래 발급·변조를 거부한다. 원문 IP와 쿠키를 사용량 저장소로 넘기지 않는다. 프록시 CIDR이 명시된 peer만 단일 전달 IP를 신뢰하고, 나머지 peer의 전달 헤더는 무시한다. IPv4는 /32, IPv6는 /64로 집계하며 mapped IPv4를 정규화한다. HTTP에서는 Secure/HttpOnly/host-only/SameSite 쿠키와 검증된 프록시의 헤더 덮어쓰기를 추가해야 한다. 현재 이 모듈은 쿠키를 실제 발급하는 HTTP endpoint가 아니다.
+
+`security.trial_chat`는 예약 → 공개 근거 준비 → 신뢰된 completion dispatcher → finished 상태 확인 → 근거 재검증 순서로 연결한다. 근거 준비/직렬화 실패는 실행 전 환불한다. 요청 취소 시에도 실제 읽기 thread가 종료될 때까지 예약 슬롯을 유지한 뒤 환불하여 반복 취소로 읽기 작업이 누적되지 않게 한다. dispatcher 호출을 시작한 뒤의 예외/취소는 실행 여부를 추측해 환불하거나 슬롯을 반환하지 않는다. dispatcher가 실제 child 종료를 확인하고 상태를 정리해야 한다. 사용량의 remaining은 표시용 snapshot이며 실행 권한은 reserve transaction만 부여한다. HTTP 입력/본문 제한·Unix socket dispatcher·실제 프로세스 장애 복구·브라우저 메모리 전용 대화는 후속 연결이며, 이 내부 합성 테스트로 실제 서비스 완료를 주장하지 않는다.
+
 ## 익명 체험 사용량 예약 계약
 
 `security.trial_quota`는 별도 명시적 SQLite 저장소에서 체험 횟수를 예약한다. 대화·원문 IP·쿠키·예외·모델 답변은 입력으로 받지 않는다. 서버가 만든 actor/network HMAC digest만 전달한다. 익명 쿠키의 발급·검증, IP 프록시 신뢰 경계 및 HMAC 키 관리는 HTTP 연결 단계의 책임이다.

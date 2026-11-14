@@ -123,6 +123,25 @@ class TrialQuota:
                          (reservation_id, actor_hash, network_hash, day))
             return reservation_id
 
+    def remaining(self, actor_hash: str) -> int:
+        """Display-only snapshot; only reserve() authorizes an execution."""
+        self._validate_hash(actor_hash)
+        with self._connection() as conn:
+            used = conn.execute(
+                "SELECT count(*) FROM trial_reservations WHERE actor_hash=? AND state!='released'",
+                (actor_hash,)).fetchone()[0]
+        return max(0, self.policy.per_actor_limit - used)
+
+    def state(self, reservation_id: str) -> str:
+        """Internal dispatcher verification, never a public lookup endpoint."""
+        self._validate_hash(reservation_id)
+        with self._connection() as conn:
+            row = conn.execute('SELECT state FROM trial_reservations WHERE id=?',
+                               (reservation_id,)).fetchone()
+        if row is None:
+            raise LookupError('Unknown reservation')
+        return row[0]
+
     def _transition(self, reservation_id: str, source: str, target: str) -> bool:
         self._validate_hash(reservation_id)
         with self._connection() as conn, conn:
