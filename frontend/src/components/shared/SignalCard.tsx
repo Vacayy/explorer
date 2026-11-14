@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { SpineSignal } from "@/types"
+import { AiBlock } from "@/components/shared/AiBlock"
 
 /** 신호 유형 이름 — 신호 탭·위젯·카드가 같이 쓴다 */
 export const SIGNAL_LABEL: Record<string, string> = {
@@ -57,7 +58,7 @@ export function SignalCard({ signal: s, onKeywordClick }: {
         {/* 본문 — signal_type별 렌더러 */}
         {s.signal_type === "mention_surge" && (
           <div className="text-sm">
-            최근 7일 <span className="font-bold text-up text-base">{p.count_7d ?? "-"}회</span> 언급
+            최근 7일 <span className="font-bold text-up-ink text-base">{p.count_7d ?? "-"}회</span> 언급
             <span className="text-muted-foreground text-xs"> · 직전 7일 {p.baseline_7d ?? 0}회</span>
           </div>
         )}
@@ -73,8 +74,8 @@ export function SignalCard({ signal: s, onKeywordClick }: {
           <div className="text-sm">
             최근 7일 <span className="font-bold text-base">{p.recent}건</span> 언급 ·
             전체 문서의 <span className="font-semibold">{p.share_pct}%</span>
-            <span className="text-up text-xs"> (+{p.share_delta_pp}%p)</span>
-            {p.is_new && <Badge variant="outline" className="ml-1.5 text-[9px] text-up border-up/40">신규 부상</Badge>}
+            <span className="text-up-ink text-xs"> (+{p.share_delta_pp}%p)</span>
+            {p.is_new && <Badge variant="outline" className="ml-1.5 text-[9px] text-up-ink border-up/40">신규 부상</Badge>}
             <span className="block text-xs text-muted-foreground mt-0.5">
               여러 소스가 유독 지금 이 주제로 몰리고 있다
             </span>
@@ -82,7 +83,7 @@ export function SignalCard({ signal: s, onKeywordClick }: {
         )}
         {s.signal_type === "quadrant_gap" && (
           <p className="text-xs text-muted-foreground">
-            3개월 주가 <span className={`font-semibold ${(p.return_3m ?? 0) > 0 ? "text-up" : "text-down"}`}>
+            3개월 주가 <span className={`font-semibold ${(p.return_3m ?? 0) > 0 ? "text-up-ink" : "text-down-ink"}`}>
               {(p.return_3m ?? 0) > 0 ? "+" : ""}{p.return_3m}%
             </span>
             {" "}· 30일 언급 감성 <span className="tabular-nums">{p.pos}+/{p.neg}-</span>
@@ -95,7 +96,7 @@ export function SignalCard({ signal: s, onKeywordClick }: {
         {s.signal_type === "volume_spike" && (
           <div className="text-sm">
             60일 평균 <span className="font-bold text-base">{p.ratio}배</span> 거래량
-            <span className={`ml-2 font-semibold ${(p.change_pct ?? 0) > 0 ? "text-up" : "text-down"}`}>
+            <span className={`ml-2 font-semibold ${(p.change_pct ?? 0) > 0 ? "text-up-ink" : "text-down-ink"}`}>
               {(p.change_pct ?? 0) > 0 ? "+" : ""}{p.change_pct}%
             </span>
             <span className="block text-xs text-muted-foreground mt-0.5">
@@ -106,7 +107,7 @@ export function SignalCard({ signal: s, onKeywordClick }: {
         {s.signal_type === "consensus_extreme" && (
           <p className="text-xs text-muted-foreground">
             최근 {p.window_days ?? 14}일 감성{" "}
-            <span className={`font-semibold ${p.direction === "optimism" ? "text-up" : "text-down"}`}>
+            <span className={`font-semibold ${p.direction === "optimism" ? "text-up-ink" : "text-down-ink"}`}>
               {p.direction === "optimism" ? "낙관" : "비관"} {p.ratio != null ? `${Math.round(p.ratio * 100)}%` : "-"}
             </span>
             <span className="tabular-nums"> (긍정 {p.pos} / 부정 {p.neg})</span>
@@ -115,7 +116,7 @@ export function SignalCard({ signal: s, onKeywordClick }: {
         )}
         {s.signal_type === "high_52w" && (
           <div className="text-sm space-x-2">
-            <span>고가 <span className="font-bold text-up text-base tabular-nums">{p.high?.toLocaleString()}</span></span>
+            <span>고가 <span className="font-bold text-up-ink text-base tabular-nums">{p.high?.toLocaleString()}</span></span>
             <span className="text-muted-foreground text-xs tabular-nums">
               전고점 {p.prior_high_52w?.toLocaleString()} 경신 (+{p.breakout_pct}%) · 종가 {p.close?.toLocaleString()}
             </span>
@@ -155,12 +156,9 @@ export function SignalCard({ signal: s, onKeywordClick }: {
 
         {/* LLM 해석 — 가설 스타일 (epistemic 규율) */}
         {s.interpretation && (
-          <p className="text-xs border-l-2 border-hypothesis pl-2 text-muted-foreground">
-            <span className="text-hypothesis font-medium">해석</span> {s.interpretation}
-            {s.interpretation_model && (
-              <span className="ml-1 opacity-70">({s.interpretation_model})</span>
-            )}
-          </p>
+          <AiBlock label="해석" meta={s.interpretation_model ?? undefined} className="px-3 py-2.5 [&>div:last-child]:text-xs">
+            {s.interpretation}
+          </AiBlock>
         )}
 
         {/* 근거 문서 */}

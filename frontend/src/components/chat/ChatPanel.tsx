@@ -10,10 +10,13 @@ import { usePageContext } from "@/hooks/usePageContext"
 import { cn } from "@/lib/utils"
 import { PREF, readPref, setPanelThread, writePref } from "@/lib/shellPrefs"
 import { onAskAi, takePendingAsk, type AskAiRequest } from "@/lib/aiPanel"
+import { sendable, toPayload } from "@/lib/chatTargets"
+import { useThreadTargets } from "@/hooks/useThreadTargets"
 import { AssistantMessage, StreamingMessage } from "./AssistantMessage"
 import { carriedFollowUps } from "./FollowUps"
 import type { Quote as QuoteRef } from "./useQuoteSelection"
 import { Composer } from "./Composer"
+import { PageChip } from "./TargetChip"
 import { ThreadRail } from "./ThreadRail"
 import { UserMessage } from "./UserMessage"
 
@@ -22,7 +25,7 @@ const SUGGESTIONS = ["오늘 시장 세 줄로 요약해줘", "이번 주 바뀐
 
 /**
  * AI 대화 패널 — 오른쪽 360px, /chat 부품 재사용 (docs/specs/app-shell.md §5).
- * 보고 있는 화면을 page_context로 함께 보낸다(칩 ×로 이번 질문에서 뺄 수 있음). 활성 스레드는 localStorage.
+ * 보고 있는 화면을 page_context로 함께 보낸다 — 입력 카드 첨부 칩 줄의 칩(×로 이번 질문에서 뺌). 활성 스레드는 localStorage.
  */
 export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
   companyName?: string | null
@@ -41,25 +44,29 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
   const [listOpen, setListOpen] = useState(false)
   const page = usePageContext(companyName)
 
+  const chat = useChat(activeId, id => openThread(id))
+  const { detail, messages, awaiting, stalled, draft, ask } = chat
+  // 붙인 대상 — 대화 내내 남는다. ⌘K 'AI에게 묻기'로 온 종목도 여기 붙는다(질문은 보내지 않음)
+  const { targets, setTargets, reset: resetTargets } = useThreadTargets(activeId, detail.data, () => requestAnimationFrame(() => inputRef?.current?.focus()))
+
   const openThread = useCallback((id: number) => {
+    if (id !== activeId) resetTargets()
     setActiveId(id); writePref(PREF.thread, String(id)); setListOpen(false)
-  }, [])
-  const newThread = () => { setActiveId(null); writePref(PREF.thread, null); setQuestion(""); setQuote(null); setListOpen(false) }
+  }, [activeId, resetTargets])
+  const newThread = () => { setActiveId(null); writePref(PREF.thread, null); setQuestion(""); setQuote(null); resetTargets(); setListOpen(false) }
   useEffect(() => { setPanelThread(activeId); return () => setPanelThread(null) }, [activeId])
   useEffect(() => { setWithPage(true) }, [page?.path])    // 화면이 바뀌면 다시 붙인다
-
-  const chat = useChat(activeId, openThread)
-  const { detail, messages, awaiting, stalled, draft, ask } = chat
   const carried = useMemo(() => carriedFollowUps(messages), [messages])
   const busy = ask.isPending || awaiting
+  const lastQuestion = useMemo(() => [...messages].reverse().find(m => m.role === "user")?.content ?? null, [messages])
 
   const submit = (text?: string, withQuote: QuoteRef | null = quote) => {
     const q = (text ?? question).trim()
     if ((!q && !withQuote) || busy) return
     ask.mutate(
       { question: q || "이 대목을 더 자세히 설명해줘", conversation_id: activeId ?? undefined, quote: withQuote ?? undefined,
-        page_context: withPage && page ? page : undefined },
-      { onSuccess: () => { setQuestion(""); setQuote(null) } },
+        page_context: withPage && page ? page : undefined, attachments: toPayload(targets) },
+      { onSuccess: () => { setTargets(sendable(targets)); if (text === undefined) { setQuestion(""); setQuote(null) } } },
     )
     stickRef.current = true
   }
@@ -120,7 +127,6 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-[14px] [&_.prose]:text-[14px]">
         {!activeId && !ask.isPending ? (
           <div className="space-y-3 pt-2">
-            <p className="text-sm text-muted-foreground">지금 보는 화면을 맥락으로 함께 보냅니다. 수집 문서·그래프·시세를 근거로 답합니다.</p>
             <div className="flex flex-col items-start gap-1.5">
               {SUGGESTIONS.map(s => (
                 <Button key={s} variant="outline" size="sm" className="h-auto whitespace-normal py-1.5 text-left font-normal" onClick={() => submit(s)}>{s}</Button>
@@ -132,9 +138,12 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
             {detail.isLoading && <><Skeleton className="ml-auto h-9 w-2/3 rounded-2xl" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></>}
             {detail.isError && <ErrorState message="대화를 불러올 수 없습니다." onRetry={() => detail.refetch()} />}
             {messages.map((m, i) => m.role === "user"
-              ? <UserMessage key={m.id} content={m.content} onReask={setQuestion} />
-              : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried} onQuote={setQuote} onPick={setQuestion} />)}
-            {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} pending />}
+              ? <UserMessage key={m.id} content={m.content} attachments={m.attachments} onReask={setQuestion} />
+              : <AssistantMessage key={m.id} m={m} isLast={i === messages.length - 1} carried={carried} onQuote={setQuote} onPick={setQuestion}
+                  attachedCount={messages[i - 1]?.role === "user" ? messages[i - 1].attachments?.length : undefined}
+                  conversationId={activeId} threadTitle={thread?.title || "대화"}
+                  onRegenerate={i === messages.length - 1 && !busy && lastQuestion ? () => submit(lastQuestion, null) : undefined} />)}
+            {ask.isPending && <UserMessage content={ask.variables?.question ?? ""} attachments={ask.variables?.attachments} pending />}
             {(awaiting || ask.isPending) && <StreamingMessage draft={draft} />}
             {stalled && <p className="rounded-xl border border-destructive/30 px-3 py-2 text-[13px] text-destructive">답변 생성이 멈춘 것 같습니다 (5분 초과). 다시 질문해 주세요.</p>}
           </div>
@@ -142,17 +151,12 @@ export function ChatPanel({ companyName, onClose, inputRef, overlay }: {
       </div>
 
       <div className="shrink-0 space-y-1.5 border-t p-3">
-        {page && withPage && (
-          <span className="inline-flex max-w-full items-center gap-1 rounded-full border bg-background px-2 py-0.5 text-xs text-muted-foreground">
-            <span className="truncate">보는 화면: {page.label}</span>
-            <button type="button" aria-label="이번 질문에서 화면 맥락 빼기" onClick={() => setWithPage(false)}
-              className="shrink-0 rounded-full p-0.5 hover:bg-muted"><X className="size-3" /></button>
-          </span>
-        )}
         {ask.isError && <p className="text-xs text-destructive">질문을 보내지 못했습니다. 입력은 그대로 있으니 다시 시도해 주세요.</p>}
         <Composer value={question} onChange={setQuestion} onSubmit={() => submit()} busy={busy} textareaRef={inputRef}
-          placeholder={activeId ? "이어서 질문…" : "지금 화면에 대해 물어보세요"} quote={quote} onClearQuote={() => setQuote(null)}
-          hint={awaiting ? "답변을 생성하는 동안에는 이어서 질문할 수 없습니다" : undefined} />
+          placeholder={activeId ? "이어서 물어보기" : "지금 화면에 대해 물어보세요"} quote={quote} onClearQuote={() => setQuote(null)}
+          hint={awaiting ? "답변을 만드는 동안에는 이어서 질문할 수 없습니다" : undefined}
+          targets={targets} onTargetsChange={setTargets}
+          attachments={page && withPage ? <PageChip label={page.label} onRemove={() => setWithPage(false)} /> : undefined} />
       </div>
     </aside>
   )

@@ -6,6 +6,7 @@
 - payload: 카운트, 함께 태깅된 키워드(산업/토픽), 근거 문서(제목/URL)
 - interpretation은 비워둠 (LLM 확보 후 hypothesis로 채움)
 """
+from pipeline import llm
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -356,7 +357,9 @@ def compute_theme_surge() -> list[dict]:
             continue
         cands.append((delta, r, share_r, share_b))
     cands.sort(key=lambda x: -x[0])
-    cands = cands[:THEME_LIMIT]
+    # 같은 이름이 sector·theme 두 엔티티로 갈라진 경우('지정학'·'매크로') 한 번만 — 점유율 상승이 큰 쪽
+    seen: set[str] = set()
+    cands = [c for c in cands if not (c[1]["name"] in seen or seen.add(c[1]["name"]))][:THEME_LIMIT]
 
     signals = []
     today = datetime.now(timezone.utc).date().isoformat()
@@ -516,7 +519,7 @@ def interpret_pending(limit: int = 10) -> dict:
     - mention_surge: payload의 근거 문서 제목들로 맥락 해석
     - high_52w: 해당 종목의 최근 언급 문서가 있으면 그걸로, 없으면 skip (근거 없는 해석 금지)
     """
-    from pipeline.enrich import _call_claude_code, llm_engine
+    from pipeline.enrich import llm_engine
     if llm_engine() != "claude-code":
         return {"skipped": "claude-code 엔진 아님"}
 
@@ -546,7 +549,7 @@ def interpret_pending(limit: int = 10) -> dict:
                 "지금 이 주제에서 무슨 이야기가 오가고 왜 화두가 됐는지 1~2문장으로 요약해라. "
                 "한국어 평서체, 추측 금지, 문서에 없는 내용 금지. 문장만 출력.\n" + ctx)
             try:
-                text = _call_claude_code(prompt).strip()[:250]
+                text = llm.run(prompt, task='signal.interpret_surge').text.strip()[:250]
                 conn.execute("UPDATE signals SET interpretation=?, interpretation_model='claude-code/haiku' WHERE id=?",
                              (text, r["id"]))
                 conn.commit(); done += 1
@@ -583,7 +586,7 @@ def interpret_pending(limit: int = 10) -> dict:
             "문서에 없는 내용 금지. 문장만 출력.\n" + context
         )
         try:
-            text = _call_claude_code(prompt).strip()[:200]
+            text = llm.run(prompt, task='signal.interpret_price').text.strip()[:200]
             conn.execute(
                 "UPDATE signals SET interpretation=?, interpretation_model='claude-code/haiku' WHERE id=?",
                 (text, r["id"]))

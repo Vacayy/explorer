@@ -6,12 +6,10 @@ kind 5종: neglect · contested_edge · devils_advocate · falsifier_watch · vo
 """
 import json
 import os
-import subprocess
 
 from database import get_connection
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
-DEVILS_MODEL = os.getenv("DEVILS_MODEL", "haiku")
 
 
 def _insert(conn, kind: str, title: str, rationale: str, payload: dict, dedup_key: str) -> bool:
@@ -110,10 +108,8 @@ def scan_devils_advocate(conn) -> int:
             f"종목: {r['corp_name']}\n논지: {r['thesis']}\n"
             'JSON만 출력: {"question": "..."}')
         try:
-            proc = subprocess.run(
-                [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", DEVILS_MODEL, "--output-format", "json", prompt],
-                capture_output=True, text=True, timeout=120)
-            raw = json.loads(proc.stdout).get("result", "")
+            from pipeline import llm
+            raw = llm.run(prompt, task='thesis.challenge').text
             q = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]).get("question", "").strip()
         except Exception:
             continue
@@ -249,6 +245,43 @@ def run_all(include_llm: bool = True) -> dict:
                            int((_time.time() - t0) * 1000))
         else:
             record_run("vocab_merge", "skipped", "비활성(관리자 off)")
+    conn.commit()
+    # 정리 작업 자동 처리(D-294) — 별칭·노드 병합·지식 승격을 규칙으로 판정(적용은 auto_curation_apply).
+    # 실패해도 앞 단계 제안은 이미 커밋돼 있고 스캔 전체를 멈추지 않는다.
+    import time as _t
+
+    from pipeline.ops import record_run as _rec
+    t1 = _t.time()
+    try:
+        from pipeline.auto_curation import run_curation
+        cur = run_curation(conn)
+        stats["auto_curation"] = cur
+        if cur.get("status") == "skipped":
+            _rec("auto_curation", "skipped", "비활성(관리자 off)")
+        else:
+            _rec("auto_curation", "ok",
+                 f"{'적용' if cur['apply'] else '판정만'} · 별칭 {cur['alias']} · 병합 {cur['vocab_merge']} · 지식 {cur['knowledge']}",
+                 int((_t.time() - t1) * 1000))
+    except Exception as e:  # noqa: BLE001 — 실패를 job_runs에 노출
+        conn.rollback()
+        stats["auto_curation"] = f"error: {type(e).__name__}"
+        _rec("auto_curation", "error", f"{type(e).__name__}: {str(e)[:200]}", int((_t.time() - t1) * 1000))
+    conn.commit()
+    # 인물 이름 자동 정리(ia-redesign §4.23 C) — 소프트 병합·메모 저자·역할. 따로 감싸 실패해도 스캔을 멈추지 않는다.
+    t2 = _t.time()
+    try:
+        from pipeline.people import run_curation as run_person_curation
+        pc = run_person_curation(conn)
+        stats["person_curation"] = pc
+        if pc.get("status") == "skipped":
+            _rec("person_curation", "skipped", "비활성(관리자 off)")
+        else:
+            _rec("person_curation", "ok", f"묶음 {pc.get('merge')} · 그대로 {pc['plan']['held']} · 역할 {pc['roles']}",
+                 int((_t.time() - t2) * 1000))
+    except Exception as e:  # noqa: BLE001
+        conn.rollback()
+        stats["person_curation"] = f"error: {type(e).__name__}"
+        _rec("person_curation", "error", f"{type(e).__name__}: {str(e)[:200]}", int((_t.time() - t2) * 1000))
     conn.commit()
     conn.close()
     return stats

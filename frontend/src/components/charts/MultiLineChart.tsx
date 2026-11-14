@@ -1,9 +1,10 @@
 import { useRef, useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
 import { createChart, ColorType, LineStyle } from "lightweight-charts"
-import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions, MouseEventParams } from "lightweight-charts"
 import { Button } from "@/components/ui/button"
-import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
+import { DEFAULT_CHART_OPTIONS } from "@/components/charts/LightweightChart"
+import { chartOptions, useChartTheme } from "@/components/charts/chartTheme"
 
 interface LineConfig {
   key: string
@@ -11,6 +12,10 @@ interface LineConfig {
   color: string
   lineWidth?: number
   lineStyle?: number // 0=Solid, 2=Dashed
+  /** 오른쪽 끝 값 라벨에 붙는 이름 — 선 끝 직접 라벨(showLastValues일 때만 보임) */
+  title?: string
+  /** endLabels 모드의 선 끝 라벨 — 이름은 글자색(strong이면 ink 600), 값만 등락색 (DESIGN_SYSTEM 차트 규칙) */
+  endLabel?: { name: string; value: string; tone?: "up" | "down" | "flat"; strong?: boolean; accent?: boolean; dot?: boolean }
 }
 
 interface MultiLineChartProps {
@@ -20,6 +25,14 @@ interface MultiLineChartProps {
   formatValue?: (value: number) => string
   /** 지정하면 차트를 눌렀을 때 그 날짜 기준 1일·1주·1개월 변화를 이 포맷으로 표시한다 */
   formatChange?: (delta: number) => string
+  /** Parent may render an accessible interactive legend outside the plot. */
+  showLegend?: boolean
+  showLastValues?: boolean
+  /** Show only the line under the pointer, rather than all series. */
+  showLineTooltip?: boolean
+  onLineClick?: (key: string) => void
+  /** 시안 다중 선 차트: 값 상자 대신 선 끝 HTML 라벨(endLabel), 축은 왼쪽. 값은 라벨 칸 너비(px) */
+  endLabels?: number
 }
 
 /** 같은 일자의 한 달 전(말일은 그 달 말일로 맞춤) */
@@ -41,13 +54,32 @@ const CHANGE_COLUMNS = [
   { key: "m", label: "1개월" },
 ] as const
 
+/** 선 색 — CSS 변수 이름(--series·--ink 등)이나 var(--x)를 캔버스가 읽을 수 있는 값으로 */
+function resolveColor(color: string): string {
+  const name = color.startsWith("--") ? color : /^var\((--[\w-]+)\)$/.exec(color)?.[1]
+  if (!name) return color
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || color
+}
+
+/** DOM 범례용 — CSS 변수 이름이면 var()로 감싼다 */
+const cssColor = (color: string) => color.startsWith("--") ? `var(${color})` : color
+
 export default function MultiLineChart({
   data,
   lines,
   height = 350,
   formatValue,
   formatChange,
+  showLegend = true,
+  showLastValues = true,
+  showLineTooltip = false,
+  onLineClick,
+  endLabels,
 }: MultiLineChartProps) {
+  const [labelYs, setLabelYs] = useState<Record<string, number>>({})
+  const [hovered, setHovered] = useState<{ label: string; color: string; value: string; date: string; x: number; y: number } | null>(null)
+  const lineClickRef = useRef(onLineClick)
+  lineClickRef.current = onLineClick
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map())
@@ -58,9 +90,11 @@ export default function MultiLineChart({
   // 사용자가 끌어 옮긴 변화 박스 위치(컨테이너 기준). 닫을 때까지 유지
   const [boxPos, setBoxPos] = useState<{ left: number; top: number } | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
+  // 테마가 바뀌면 축·격자 색과 토큰 색(--series 등)을 다시 읽어 차트를 다시 만든다
+  const theme = useChartTheme()
 
   // Stable key for lines config to detect structural changes
-  const linesKey = lines.map((l) => `${l.key}:${l.color}:${l.lineWidth ?? 2}:${l.lineStyle ?? 0}`).join("|")
+  const linesKey = lines.map((l) => `${l.key}:${l.label}:${l.color}:${l.lineWidth ?? 2}:${l.lineStyle ?? 0}:${l.title ?? ""}`).join("|")
 
   // Create chart and series
   useEffect(() => {
@@ -81,15 +115,21 @@ export default function MultiLineChart({
       opts.localization = { priceFormatter: formatValue }
     }
 
+    setHovered(null)
     const chart = createChart(container, opts)
+    chart.applyOptions(chartOptions(theme))
+    if (endLabels) chart.applyOptions({ leftPriceScale: { visible: true, borderVisible: false }, rightPriceScale: { visible: false } })
     chartRef.current = chart
 
     const map = new Map<string, ISeriesApi<"Line">>()
     for (const line of lines) {
       const series = chart.addLineSeries({
-        color: line.color,
+        color: resolveColor(line.color),
+        lastValueVisible: showLastValues && !endLabels,
+        priceLineVisible: showLastValues && !endLabels,
         lineWidth: (line.lineWidth ?? 2) as 1 | 2 | 3 | 4,
         lineStyle: line.lineStyle ?? LineStyle.Solid,
+        title: endLabels ? "" : line.title ?? "",
         priceFormat: formatValue
           ? { type: "custom", formatter: formatValue }
           : { type: "price" },
@@ -98,8 +138,48 @@ export default function MultiLineChart({
     }
     seriesMapRef.current = map
 
+    const hitLine = (param: MouseEventParams) => {
+      const point = param.point
+      if (!point || param.time == null || point.x < 0 || point.y < 0 || point.x > chart.timeScale().width() || point.y > height - chart.timeScale().height()) {
+        return null
+      }
+      // Compare against interpolated screen segments, not the snapped crosshair Y.
+      const scale = chart.timeScale()
+      const logical = scale.coordinateToLogical(point.x)
+      if (logical == null) return null
+      let nearest: { line: LineConfig; value: number; distance: number } | null = null
+      for (const line of lines) {
+        const series = map.get(line.key)!
+        const datum = param.seriesData.get(series)
+        const left = series.dataByIndex(Math.floor(logical))
+        const right = series.dataByIndex(Math.ceil(logical))
+        if (!datum || !('value' in datum) || !left || !right || !('value' in left) || !('value' in right)) continue
+        const x1 = scale.timeToCoordinate(left.time), x2 = scale.timeToCoordinate(right.time)
+        const y1 = series.priceToCoordinate(left.value), y2 = series.priceToCoordinate(right.value)
+        if (x1 == null || x2 == null || y1 == null || y2 == null) continue
+        const y = x1 === x2 ? y1 : y1 + (y2 - y1) * (point.x - x1) / (x2 - x1)
+        const distance = Math.abs(point.y - y)
+        if (distance <= 10 && (!nearest || distance < nearest.distance)) nearest = { line, value: datum.value, distance }
+      }
+      return nearest
+    }
+
+    if (showLineTooltip) chart.subscribeCrosshairMove((param) => {
+      const nearest = hitLine(param)
+      if (!nearest || !param.point || param.time == null) { setHovered(null); return }
+      const point = param.point
+      const { line, value } = nearest
+      const t = param.time
+      const date = typeof t === 'object' ? `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}` : typeof t === 'number' ? new Date(t * 1000).toISOString().slice(0, 10) : t
+      setHovered({ label: line.label, color: line.color, value: formatValue ? formatValue(value) : String(value), date, x: point.x, y: point.y })
+    })
+
     // 클릭한 날짜 → 변화 오버레이 (formatChange 지정 시만)
     chart.subscribeClick((param) => {
+      if (lineClickRef.current) {
+        const nearest = hitLine(param)
+        if (nearest) lineClickRef.current(nearest.line.key)
+      }
       if (!changeEnabledRef.current) return
       const t = param.time
       if (t == null) { setPicked(null); setBoxPos(null); return }
@@ -121,10 +201,11 @@ export default function MultiLineChart({
       seriesMapRef.current = new Map()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, linesKey])
+  }, [height, linesKey, showLastValues, showLineTooltip, theme, endLabels])
 
   // Update data
   useEffect(() => {
+    setHovered(null)
     if (!chartRef.current || data.length === 0) return
 
     for (const line of lines) {
@@ -142,7 +223,31 @@ export default function MultiLineChart({
     }
 
     chartRef.current.timeScale().fitContent()
-  }, [data, lines])
+  }, [data, lines, theme])
+
+  // 선 끝 라벨 y — 마지막 값의 화면 좌표, 겹치면 아래로 밀어 최소 15px 간격
+  useEffect(() => {
+    const chart = chartRef.current, container = containerRef.current
+    if (!endLabels || !chart || !container) return
+    const sync = () => {
+      const ys: { key: string; y: number }[] = []
+      for (const line of lines) {
+        if (!line.endLabel) continue
+        const series = seriesMapRef.current.get(line.key)
+        const last = data.findLast((d) => d[line.key] != null)
+        const y = series && last ? series.priceToCoordinate(last[line.key] as number) : null
+        if (y != null) ys.push({ key: line.key, y })
+      }
+      ys.sort((a, b) => a.y - b.y)
+      for (let i = 1; i < ys.length; i++) ys[i].y = Math.max(ys[i].y, ys[i - 1].y + 15)
+      setLabelYs(Object.fromEntries(ys.map((v) => [v.key, v.y])))
+    }
+    const raf = requestAnimationFrame(sync)
+    chart.timeScale().subscribeVisibleLogicalRangeChange(sync)
+    const ro = new ResizeObserver(sync)
+    ro.observe(container)
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); chart.timeScale().unsubscribeVisibleLogicalRangeChange(sync) }
+  }, [endLabels, data, lines, theme, height, linesKey])
 
   // 고른 날짜의 화면 x좌표 — 스크롤·확대·리사이즈에 따라 다시 잰다
   useEffect(() => {
@@ -171,7 +276,7 @@ export default function MultiLineChart({
     })
   }, [picked, data, lines, formatChange])
 
-  const tone = (v: number | null) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up" : "text-down"
+  const tone = (v: number | null) => v == null || v === 0 ? "text-muted-foreground" : v > 0 ? "text-up-ink" : "text-down-ink"
   const close = () => { setPicked(null); setBoxPos(null) }
 
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -195,9 +300,9 @@ export default function MultiLineChart({
   const flip = pickedX != null && containerRef.current != null && pickedX > containerRef.current.clientWidth / 2
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative" }} onMouseLeave={() => setHovered(null)}>
       {/* Legend overlay */}
-      <div
+      {showLegend && <div
         style={{
           position: "absolute",
           top: 8,
@@ -207,7 +312,7 @@ export default function MultiLineChart({
           gap: 12,
           flexWrap: "wrap",
           fontSize: 11,
-          color: "#6b7280",
+          color: "var(--ink-3)",
         }}
       >
         {lines.map((line) => (
@@ -217,15 +322,29 @@ export default function MultiLineChart({
                 display: "inline-block",
                 width: 16,
                 height: 2,
-                backgroundColor: line.color,
+                backgroundColor: cssColor(line.color),
                 borderStyle: line.lineStyle === 2 ? "dashed" : "solid",
               }}
             />
             {line.label}
           </span>
         ))}
-      </div>
-      <div ref={containerRef} style={{ width: "100%", height }} />
+      </div>}
+      <div ref={containerRef} style={{ width: endLabels ? `calc(100% - ${endLabels}px)` : "100%", height }} />
+      {endLabels && lines.map((line) => line.endLabel && labelYs[line.key] != null && <div key={line.key}
+        className={`pointer-events-none absolute flex gap-1 whitespace-nowrap text-xs leading-none ${line.endLabel.accent ? "font-semibold text-up-ink" : line.endLabel.dot ? "text-ink" : line.endLabel.strong ? "font-semibold text-ink" : "text-ink-2"}`}
+        style={{ left: `calc(100% - ${endLabels - 6}px)`, top: labelYs[line.key], transform: "translateY(-50%)", maxWidth: endLabels - 6 }}>
+        {line.endLabel.dot && <span aria-hidden="true" className="shrink-0" style={{ color: line.color.startsWith("--") ? `var(${line.color})` : line.color }}>●</span>}
+        <span className="min-w-0 truncate">{line.endLabel.name}</span><span className={`shrink-0 font-mono tabular-nums ${line.endLabel.accent || line.endLabel.dot ? "" : line.endLabel.tone === "up" ? "text-up-ink" : line.endLabel.tone === "down" ? "text-down-ink" : "text-ink-3"}`}>{line.endLabel.value}</span>
+      </div>)}
+      {showLineTooltip && hovered && <div
+        role="tooltip"
+        className="pointer-events-none absolute z-30 max-w-[min(260px,90%)] border border-border bg-popover px-3 py-2 text-caption text-popover-foreground"
+        style={{ left: hovered.x, top: hovered.y, transform: `translate(${hovered.x > (containerRef.current?.clientWidth ?? 0) / 2 ? 'calc(-100% - 12px)' : '12px'}, ${hovered.y > height / 2 ? 'calc(-100% - 12px)' : '12px'})` }}
+      >
+        <div className="flex items-center gap-2 font-medium"><span className="h-0.5 w-4 shrink-0" style={{ backgroundColor: cssColor(hovered.color) }} aria-hidden="true" />{hovered.label}</div>
+        <div className="mt-1 text-muted-foreground">{hovered.date} · {hovered.value}</div>
+      </div>}
       {formatChange && picked && pickedX != null && changes.length > 0 && <>
         <div aria-hidden="true" className="pointer-events-none absolute top-0 bottom-8 w-px border-l border-dashed border-foreground/40" style={{ left: pickedX }} />
         <div
@@ -244,7 +363,7 @@ export default function MultiLineChart({
             {CHANGE_COLUMNS.map((c) => <span key={c.key} className="text-right text-muted-foreground">{c.label}</span>)}
             {changes.map(({ line, delta }) => [
               <span key={line.key} className="flex items-center gap-1.5 whitespace-nowrap">
-                <span className="size-2 rounded-full" style={{ background: line.color }} aria-hidden="true" />{line.label}
+                <span className="size-2 rounded-full" style={{ background: cssColor(line.color) }} aria-hidden="true" />{line.label}
               </span>,
               ...CHANGE_COLUMNS.map((c) => <span key={`${line.key}-${c.key}`} className={`text-right tabular-nums ${tone(delta[c.key])}`}>{delta[c.key] == null ? "-" : formatChange(delta[c.key]!)}</span>),
             ])}

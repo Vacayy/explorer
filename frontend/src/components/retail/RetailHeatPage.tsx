@@ -10,11 +10,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { ChevronDown } from 'lucide-react'
-import { PctileBar, RegimeBadge, metricValue } from '@/components/retail/retailFormat'
+import { MetricTable, RegimeBadge, metricValue } from '@/components/retail/retailFormat'
 import { useChartPalette } from '@/hooks/useChartPalette'
 import { useRetailHistory, useRetailSnapshots, useRetailSummary } from '@/hooks/useRetail'
 import { formatKrw, formatNumber } from '@/utils/format'
-import type { RetailMetric, RetailPoint, RetailSnapshot } from '@/types'
+import type { RetailPoint, RetailSnapshot } from '@/types'
 
 const RANGES = [{ v: '365', l: '1년' }, { v: '1095', l: '3년' }, { v: '1825', l: '5년' }, { v: '10000', l: '전체' }]
 const SNAP_KEYS = ['credit_growth', 'deposit_growth', 'value_growth', 'leverage', 'turnover', 'indiv_share']
@@ -27,7 +27,7 @@ export default function RetailHeatPage() {
   const history = useRetailHistory(Number(range))
   const snapshots = useRetailSnapshots()
 
-  if (summary.isPending) return <PageContainer><Skeleton className="h-40 w-full rounded-xl" /><Skeleton className="h-96 w-full rounded-xl" /></PageContainer>
+  if (summary.isPending) return <PageContainer><Skeleton className="h-40 w-full rounded-card" /><Skeleton className="h-96 w-full rounded-card" /></PageContainer>
   if (summary.isError) return <PageContainer><ErrorState message="개인 투자 열기를 불러오지 못했습니다." onRetry={() => void summary.refetch()} /></PageContainer>
   const s = summary.data
 
@@ -73,18 +73,6 @@ export default function RetailHeatPage() {
       </>}
     <Help />
   </PageContainer>
-}
-
-function MetricTable({ metrics }: { metrics: RetailMetric[] }) {
-  return <div className="overflow-x-auto"><Table>
-    <TableHeader><TableRow><TableHead>지표</TableHead><TableHead className="text-right">값</TableHead><TableHead>과거 5년 백분위</TableHead><TableHead className="text-right">20일 전 대비</TableHead></TableRow></TableHeader>
-    <TableBody>{metrics.map(m => <TableRow key={m.key} className={m.value == null ? 'text-muted-foreground' : ''}>
-      <TableCell className="whitespace-nowrap max-sm:min-w-32 max-sm:whitespace-normal max-sm:break-keep">{m.label}</TableCell>
-      <TableCell className="text-right tabular-nums">{metricValue(m)}</TableCell>
-      <TableCell><PctileBar value={m.pctile} /></TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">{m.pctile_change == null ? '-' : `${m.pctile_change > 0 ? '+' : ''}${formatNumber(Math.round(m.pctile_change))}`}</TableCell>
-    </TableRow>)}</TableBody>
-  </Table></div>
 }
 
 function TrendCharts({ points }: { points: RetailPoint[] }) {

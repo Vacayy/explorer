@@ -11,28 +11,22 @@ import json
 import math
 import os
 import struct
-import subprocess
 from datetime import datetime, timezone
 
 from database import get_connection
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
 # 지식 승격·심사는 다층 판단이라 opus (stakeholder 지정, 2026-07-13)
-KNOWLEDGE_MODEL = os.getenv("KNOWLEDGE_MODEL", "opus")
 
 
-def _call_claude_knowledge(prompt: str) -> str:
-    """지식 라인 공용 opus 텍스트 호출 (승격·모순·반증 판정 공통 티어)."""
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", KNOWLEDGE_MODEL, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=400)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    return json.loads(proc.stdout).get("result", "")
+def _call_knowledge(prompt: str, *, task: str) -> str:
+    """지식 작업 텍스트 호출. 모델 정책은 task 레지스트리가 소유한다."""
+    from pipeline import llm
+    return llm.run(prompt, task=task).text
 
 
-def _call_json(prompt: str) -> dict:
-    raw = _call_claude_knowledge(prompt)
+def _call_json(prompt: str, *, task: str) -> dict:
+    raw = _call_knowledge(prompt, task=task)
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 
@@ -125,7 +119,7 @@ def _find_similar_knowledge(conn, statement: str) -> int | None:
     """기존(proposed+active) 지식 중 같은 주장 찾기 — 있으면 병합 대상 id."""
     rows = conn.execute("""
         SELECT id, statement FROM knowledge
-        WHERE review_status IN ('proposed','active') AND valid_to IS NULL""").fetchall()
+        WHERE review_status IN ('proposed','held','active') AND valid_to IS NULL""").fetchall()
     if not rows:
         return None
     embs = _embed_statements([statement] + [r["statement"] for r in rows])
@@ -213,7 +207,7 @@ def promote_batch() -> dict:
             f"{existing_block}\n\n[문서]\n{ctx}"
         )
         try:
-            data = _call_json(prompt)
+            data = _call_json(prompt, task='knowledge.promote')
         except Exception:
             stats["failed"] += 1
             continue
@@ -296,7 +290,7 @@ def _find_refutes(conn, statement: str, exclude: set[int]) -> list[tuple[int, st
         ctx = "\n".join(f"[{d['id']}] {d['title']}: {d['ex'] or ''}" for d in docs)
         data = _call_json(
             f"주장: \"{statement}\"\n아래 문서 중 이 주장과 명백히 모순되거나 반박하는 것의 id만 골라라. "
-            '없으면 빈 배열. JSON만: {"refute_ids": []}\n' + ctx)
+            '없으면 빈 배열. JSON만: {"refute_ids": []}\n' + ctx, task='knowledge.refutes')
         ids = {i for i in (data.get("refute_ids") or []) if isinstance(i, int)}
         return [(d["id"], d["published_at"] or "") for d in docs if d["id"] in ids]
     except Exception:
@@ -339,7 +333,7 @@ def promote_causal_edges() -> dict:
             'JSON만 출력: {"statement": "..."}'
         )
         try:
-            data = _call_json(prompt)
+            data = _call_json(prompt, task='knowledge.causal_review')
         except Exception:
             stats["failed"] += 1
             continue

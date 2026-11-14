@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
 import { getJson, STALE } from '@/api/query'
-import type { TimelineResponse, TimelineChannelsResponse } from '@/types'
+import type { AiActivityItem, MarkAllReadPlatform, MarkAllReadResponse, TimelineResponse, TimelineChannelsResponse } from '@/types'
 
 export interface TimelineFilters {
   scope: string
@@ -22,6 +22,23 @@ export function useTimeline(filters: TimelineFilters) {
   })
 }
 
+/** 상단 바 'AI가 최근 만든 것'(D-325) — Explorer 산출물(기업 요약·컨콜·내러티브·리포트·파급 분석·수출입) 최신 20건. 피드의 Explorer 묶음과 같은 원천 */
+export function useExplorerOutputs() {
+  return useQuery({
+    queryKey: ['spine', 'timeline', 'explorer-outputs'],
+    queryFn: () => getJson<TimelineResponse>('/api/spine/feed/timeline', { scope: 'system', kind: 'all', source: 'all', page: 1, size: 20 }),
+    staleTime: STALE.medium,
+  })
+}
+
+/** 'AI가 최근 만든 것'의 다른 원천 — 지난 7일 AI 산출물(유튜브 AI 정리본 포함, 타임라인에 없는 종류). GET /api/spine/home/ai-activity */
+export function useAiActivity() {
+  return useQuery({
+    queryKey: ['spine', 'home', 'ai-activity'],
+    queryFn: () => getJson<AiActivityItem[]>('/api/spine/home/ai-activity', { days: 7, limit: 60 }),
+    staleTime: STALE.medium,
+  })
+}
 
 export function useTimelineChannels(until?: string) {
   return useQuery({
@@ -37,6 +54,16 @@ export function useMarkChannelRead() {
   return useMutation({
     mutationFn: async (v: { channel: string; read_until: string }) =>
       (await api.post<{ channel: string; read_until: string }>('/api/spine/feed/channels/read', v)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['spine', 'timeline-channels'] }),
+  })
+}
+
+/** 피드 '모두 읽음'(D-301) — 지금 칩 범위의 소스를 read_until(보고 있는 목록의 기준 시각)까지 한 번에 읽음으로 */
+export function useMarkAllRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: { platform: MarkAllReadPlatform; read_until: string }) =>
+      (await api.post<MarkAllReadResponse>('/api/spine/feed/channels/read-all', v)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['spine', 'timeline-channels'] }),
   })
 }

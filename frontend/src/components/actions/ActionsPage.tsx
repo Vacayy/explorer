@@ -1,174 +1,68 @@
-import { Link, useSearchParams } from "react-router-dom"
+import { useState } from "react"
+import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { PageContainer } from '@/components/shared/PageContainer'
-import { FreshnessStamp } from "@/components/shared/FreshnessStamp"
-import { pinMine, useActions } from "@/hooks/useActions"
-import { formatKrw } from "@/utils/format"
-import { cn } from "@/lib/utils"
+import { FillArea } from "@/components/shared/Bounded"
+import { PagerBar, paged } from "@/components/shared/PagerBar"
+import { BlockHead } from "@/components/home/HomeSection"
+import { BlockError } from "@/components/home/blockState"
+import { FillNote, FillSkeleton, MarketCard, Seg } from "@/components/home/MarketFrame"
 import RightsProTable from "@/components/actions/RightsProTable"
-import type { ActionKind } from "@/types"
+import { pinMine, useActions } from "@/hooks/useActions"
+import { useUrlParam } from "@/hooks/useUrlParam"
+import { reportTitle } from "@/lib/dossier"
+import { formatNumber } from "@/utils/format"
+import type { CorporateAction } from "@/types"
 
-const TYPE_FILTERS = ["전체", "유상증자", "무상증자", "합병", "주식분할", "공개매수", "회사분할", "감자"] as const
-const segItem = cn("h-auto min-w-0 rounded-none px-2.5 py-1 text-xs font-normal",
-  "text-muted-foreground hover:bg-transparent hover:text-foreground",
-  "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:font-medium data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground")
+const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 증자·공개매수·자사주·합병 등 원공시만 보이고 정정 공시는 뺍니다. 내 종목(보유·관심)은 위로 올립니다."
+/** 한 페이지 줄 수(시안 Home-KR ④) */
+const PER = 6
 
 /**
- * /actions — 기업활동 (시총 5,000억+ KOSPI/KOSDAQ)
- * DART 전 시장 공시에서 자동 분류. 30분 주기 갱신. 기본은 원공시만(정정은 ?kind=correction|all),
- * 내 묶음(보유·관심) 종목은 맨 위에 고정한다.
+ * 시장 전체 기업활동 (시총 5,000억+ KOSPI/KOSDAQ) — 홈 › 한국 시장 ④ 오른쪽 `#actions` 칸(D-300, 시안 Home-KR).
+ * 옛 /actions는 여기로, /actions?code=X는 그 종목 도시에 개요 맨 아래 기업활동으로 보낸다(§10.6).
+ * 원공시만 · 날짜 | 기업 + 유형 · 한 줄 설명(D-306) · 6개씩 페이지. 보기(URL ?acts=)는 전체 | 내 그룹(보유·관심) | 유무증 Pro.
+ * 칸 높이는 고정(띠 ④) — 보기·페이지를 바꿔도 칸이 그대로다.
  */
-export default function ActionsPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const type = searchParams.get("type") ?? ""
-  const view = searchParams.get("view") ?? "list"
-  const kindParam = searchParams.get("kind")
-  const kind: ActionKind = kindParam === "correction" || kindParam === "all" ? kindParam : "original"
-  const { data, isLoading, isError, refetch } = useActions({ type: type || undefined, kind })
-  const setParam = (k: string, v: string | null) => setSearchParams((p) => {
-    const n = new URLSearchParams(p)
-    if (v) n.set(k, v); else n.delete(k)
-    return n
-  })
-
-  if (isLoading) return <ActionsSkeleton />
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />
-  const items = pinMine(data.items)
-  const mineCount = items.filter((a) => a.my_group).length
-
+export function ActionsList(_: { variant: "block" }) {
+  const { data, isLoading, isError, refetch } = useActions({ kind: "original" })
+  const [view, setView] = useUrlParam("acts", "all")
+  const [page, setPage] = useState(0)
+  const all = data ? pinMine(data.items) : []
+  const items = view === "mine" ? all.filter(a => a.my_group) : all
+  const pg = paged(items, page, PER)
+  const pick = (v: string) => { setPage(0); setView(v) }
   return (
-    <PageContainer gap="sm">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold">기업활동</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류{mineCount > 0 && ` · 내 종목 ${mineCount}건 위로`}</p>
-        </div>
-        <span className="shrink-0 whitespace-nowrap">
-          {data.as_of ? <FreshnessStamp asOf={data.as_of} />
-            : <span className="text-caption text-muted-foreground">DART 스캔 성공 기록 없음</span>}
-        </span>
-      </div>
-
-      {/* 뷰 토글: 목록 | 유무증 Pro */}
-      <div className="flex gap-1.5 items-center flex-wrap">
-        <ToggleGroup
-          type="single"
-          value={view}
-          onValueChange={(v) => v && setSearchParams(v === "list" ? {} : { view: v })}
-          className="flex gap-0 rounded-md border overflow-hidden mr-2"
-        >
-          {[["list", "목록"], ["pro", "유무증 Pro"]].map(([v, label]) => (
-            <ToggleGroupItem key={v} value={v} className={segItem}>{label}</ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        {view === "list" && <>
-          {/* 원공시 | 정정 | 전체 — 정정이 목록의 약 4할이라 기본은 원공시만 */}
-          <ToggleGroup type="single" value={kind} aria-label="원공시·정정"
-            onValueChange={(v) => v && setParam("kind", v === "original" ? null : v)}
-            className="flex gap-0 rounded-md border overflow-hidden mr-2">
-            <ToggleGroupItem value="original" className={segItem}>원공시 {data.counts?.original ?? ""}</ToggleGroupItem>
-            <ToggleGroupItem value="correction" className={segItem}>정정 {data.counts?.correction ?? ""}</ToggleGroupItem>
-            <ToggleGroupItem value="all" className={segItem}>전체</ToggleGroupItem>
-          </ToggleGroup>
-          {TYPE_FILTERS.map((t) => {
-            const key = t === "전체" ? "" : t
-            return (
-              <Badge
-                key={t}
-                variant={type === key ? "default" : "outline"}
-                className="cursor-pointer select-none text-xs"
-                onClick={() => setParam("type", key || null)}
-              >
-                {t}
-              </Badge>
-            )
-          })}
+    <MarketCard band="events" label="actions" id="actions">
+      <BlockHead section title="기업활동" info={INFO} sub={data ? `원공시 · 최근 30일 ${formatNumber(all.length)}건` : <span aria-hidden className="invisible">원공시 · 최근 30일 00건</span>}
+        asOf={data && !data.as_of ? "갱신 기록 없음" : null} stale={!!data && !data.as_of}
+        actions={<Seg label="기업활동 보기" value={view} onChange={pick}
+          items={[{ key: "all", label: "전체" }, { key: "mine", label: "내 그룹" }, { key: "pro", label: "유무증 Pro" }]} />} />
+      {isLoading ? <FillSkeleton rows={PER} label="기업활동 불러오는 중" />
+        : isError || !data ? <BlockError message="기업활동을 불러오지 못했습니다" onRetry={() => void refetch()} />
+        : view === "pro" ? <FillArea aria-label="유무증 Pro"><RightsProTable /></FillArea>
+        : !items.length ? <FillNote>{view === "mine" ? "보유·관심 종목의 기업활동 공시가 없습니다." : data.counts?.correction ? `원공시는 없고 정정 공시 ${data.counts.correction}건이 있습니다.` : "최근 30일 기업활동 공시가 없습니다."}</FillNote>
+        : <>
+          <FillArea aria-label="기업활동 목록"><ul>{pg.rows.map(a => <ActionRow key={a.id} a={a} />)}</ul></FillArea>
+          <PagerBar {...pg} onPage={setPage} label="기업활동 페이지" />
         </>}
-      </div>
-
-      {view === "pro" ? (
-        <RightsProTable />
-      ) : items.length === 0 ? (
-        <EmptyState message={kind === "original" && data.counts?.correction ? `원공시는 없고 정정 공시 ${data.counts.correction}건이 있습니다.` : "해당 조건의 기업활동 공시가 없습니다."} />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="hidden w-[90px] md:table-cell">접수일</TableHead>
-              <TableHead className="w-[90px]">유형</TableHead>
-              <TableHead>기업</TableHead>
-              <TableHead className="hidden text-right w-[90px] md:table-cell">시총</TableHead>
-              <TableHead className="hidden lg:table-cell">공시명</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((a) => (
-              <TableRow key={a.id} className={cn(a.my_group && "bg-accent/40")}>
-                <TableCell className="hidden tabular-nums text-xs text-muted-foreground md:table-cell">
-                  {a.rcept_dt.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary" className={cn("text-[10px]",
-                    a.action_type === "유상증자" && "bg-down/10 text-down",
-                    a.action_type === "무상증자" && "bg-up/10 text-up",
-                  )}>
-                    {a.action_type}
-                  </Badge>
-                  {/* 모바일: 접수일 열을 숨기고 유형 아래에 */}
-                  <div className="mt-1 text-[10px] tabular-nums text-muted-foreground md:hidden">
-                    {a.rcept_dt.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {a.stock_code ? (
-                    <Link to={`/analyze/${a.stock_code}/summary`} className="text-sm font-medium text-primary hover:underline">
-                      {a.corp_name}
-                    </Link>
-                  ) : (
-                    <span className="text-sm">{a.corp_name}</span>
-                  )}
-                  <span className="ml-1 text-[10px] text-muted-foreground">{a.market === "Y" ? "KOSPI" : "KOSDAQ"}</span>
-                  {a.my_group && <Badge variant="outline" className="ml-1.5 h-4 px-1 text-[10px] border-up/40 text-up">{a.my_group}</Badge>}
-                  {/* lg 미만: 공시명 열 대신 기업 아래에 쌓는다 — 좁은 화면에서 가로 스크롤 없이 무슨 공시인지 보이게 */}
-                  <div className="mt-1 whitespace-normal lg:hidden">
-                    {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
-                    <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">{a.report_nm}</a>
-                    {a.summary && <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2" title={a.summary}>{a.summary}</p>}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground md:table-cell">
-                  {a.market_cap ? formatKrw(a.market_cap) : "-"}
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                  {a.is_correction && <Badge variant="outline" className="mr-1 h-4 px-1 text-[10px] text-muted-foreground">정정</Badge>}
-                  <a href={a.dart_url} target="_blank" rel="noreferrer" className="text-xs hover:underline">
-                    {a.report_nm}
-                  </a>
-                  {a.summary && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2" title={a.summary}>
-                      {a.summary}
-                    </p>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </PageContainer>
+    </MarketCard>
   )
 }
 
-function ActionsSkeleton() {
-  return (
-    <PageContainer gap="sm">
-      <Skeleton className="h-6 w-32" />
-      <Skeleton className="h-5 w-72" />
-      {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-    </PageContainer>
-  )
+function ActionRow({ a }: { a: CorporateAction }) {
+  const date = `${+a.rcept_dt.slice(4, 6)}/${+a.rcept_dt.slice(6, 8)}`
+  const desc = a.description ?? reportTitle(a.report_nm)
+  return <li className="grid grid-cols-[40px_minmax(0,1fr)] gap-2.5 border-b py-[9px]">
+    <span className="pt-0.5 font-mono text-[11.5px] text-ink-3 tabular-nums">{date}</span>
+    <div className="flex min-w-0 flex-col gap-[3px]">
+      <div className="flex min-w-0 items-center gap-2">
+        {a.stock_code ? <Link to={`/analyze/${a.stock_code}/summary`} className="truncate text-[13.5px] font-medium hover:underline">{a.corp_name}</Link>
+          : <span className="truncate text-[13.5px] font-medium">{a.corp_name}</span>}
+        <Badge>{a.action_type}</Badge>
+        {a.my_group && <Badge variant="outline">{a.my_group}</Badge>}
+      </div>
+      <a href={a.dart_url} target="_blank" rel="noreferrer" title={reportTitle(a.report_nm)} data-action-desc
+        className="truncate text-[12.5px] text-ink-2 hover:underline">{desc}</a>
+    </div>
+  </li>
 }

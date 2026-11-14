@@ -119,7 +119,7 @@ export default function ApprovalsCard({ hideHeader }: { hideHeader?: boolean } =
         )}
       </span>
       <span className="flex gap-1 shrink-0">
-        <Button size="xs" variant="outline" className="h-6 px-2 text-emerald-600 hover:text-emerald-700"
+        <Button size="xs" variant="outline" className="h-6 px-2 text-fact hover:text-fact/80"
           disabled={approve.isPending} onClick={() => approve.mutate(it)}>
           <Check className="h-3 w-3" /> {ACK_ONLY.has(it.kind) ? "확인" : "승인"}
         </Button>

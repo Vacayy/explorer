@@ -64,15 +64,10 @@ class MomentumTests(unittest.TestCase):
         self.assertEqual(cm.extract_pending(c, call=fake)["extracted"], 2)
         self.assertIn("(없음)", prompts[0])                  # 첫 발표는 직전 동인 없음
         self.assertIn("- Cloud", prompts[1])                 # 두 번째는 직전 동인을 받는다
-        self.assertEqual(cm.judge(c)["new_candidates"], 0)
-        cm.CANDIDATE_SCORE, old = 6, cm.CANDIDATE_SCORE              # 기준만 바꿔 나머지 흐름(신호·주간 알림) 확인
-        c.execute("DELETE FROM call_momentum")
-        self.addCleanup(setattr, cm, "CANDIDATE_SCORE", old)
         self.assertEqual(cm.judge(c)["new_candidates"], 1)
         rows = {r["event_date"]: (r["status"], r["score"]) for r in c.execute("SELECT * FROM call_momentum")}
         self.assertEqual(rows["2026-02-20"][0], "first")
-        rows = {r["event_date"]: (r["status"], r["score"]) for r in c.execute("SELECT * FROM call_momentum")}
-        self.assertEqual(rows["2026-05-20"], ("candidate", 6.0))   # new 3 + 상향 2 + 어조 +1 = 6 (기준 6일 때)
+        self.assertEqual(rows["2026-05-20"], ("candidate", 6.0))   # 가이던스 상향 3 + 어조 +1단계 2 + 새 동인 1 = 6 (매출 재료 없음 → 가속 판정 없음)
         self.assertEqual(c.execute("SELECT count(*) FROM signals WHERE signal_type='call_momentum'").fetchone()[0], 1)
         self.assertEqual(cm.judge(c)["new_candidates"], 0)         # 다시 돌려도 새 후보로 세지 않음
         # AI 핵심 요약 — 이번 시즌 후보만, 근거가 같으면 다시 쓰지 않고, 매일 판정해도 지워지지 않는다
@@ -91,18 +86,60 @@ class MomentumTests(unittest.TestCase):
         items, _ = cm.weekly_message(c)
         self.assertIn("AI inference platform", items[0][1])
 
-    def test_score_ignores_initiated_and_requires_freshness(self):
+    def test_score_focuses_on_accel_guidance_tone(self):
         prev = {"tone": 4}
-        strong = {"drivers": [{"status": "new"}, {"status": "accelerating"}], "guidance": [{"direction": "raised", "metric": "FY revenue"},
-                                                                                          {"direction": "lowered", "metric": "tax rate"}], "tone": 4}
-        routine = {"drivers": [{"status": "accelerating"}] * 5, "guidance": [{"direction": "initiated"}] * 3, "tone": 4}
-        self.assertEqual(cm.score(routine, prev, []), (3.0, "none"))            # 가속 최대 3, initiated 0
-        self.assertEqual(cm.score(strong, prev, []), (6.0, "none"))             # 3+1+2, 세율 하향은 무시 — 7점 미만
-        strong = {**strong, "drivers": strong["drivers"] + [{"status": "new"}]}  # 새 동인 하나 더 → 9
-        self.assertEqual(cm.score(strong, prev, [])[1], "candidate")
-        self.assertEqual(cm.score(strong, prev, [(8.0, "candidate")])[1], "none")    # 최근 후보와 비슷 → 새롭지 않음
-        self.assertEqual(cm.score(strong, prev, [(8.0, "candidate"), (0.0, "none"), (0.0, "none")])[1], "candidate")
-        self.assertEqual(cm.score(strong, None, []), (0.0, "first"))
+        # 새 동인·LLM '가속'만 많은 발표는 후보가 아니다 — 가속(기대 초과)·가이던스 상향·어조 상승 중 하나가 있어야 한다
+        drivers_only = {"drivers": [{"status": "new"}] * 3 + [{"status": "accelerating", "magnitude": "up 40%"}] * 4,
+                        "guidance": [{"direction": "initiated", "metric": "Q4 revenue"}], "tone": 4}
+        self.assertEqual(cm.score(drivers_only, prev, []), (3.0, "none"))                  # 새 1 + 수치 가속 2
+        raise_only = {"drivers": [], "guidance": [{"direction": "raised", "metric": "FY revenue"},
+                                                  {"direction": "lowered", "metric": "tax rate"}], "tone": 4}
+        self.assertEqual(cm.score(raise_only, prev, []), (3.0, "none"))                    # 상향 3, 세율 하향은 성장 지표 아님
+        both = {**raise_only, "tone": 5}
+        self.assertEqual(cm.score(both, prev, []), (5.0, "candidate"))                     # 상향 3 + 어조 2
+        accel = {"on": True}
+        self.assertEqual(cm.score({"drivers": [], "guidance": [], "tone": 5}, prev, [], accel), (5.0, "candidate"))  # 가속 3 + 어조 2
+        cut = {**both, "guidance": both["guidance"] + [{"direction": "lowered", "metric": "FY revenue"}]}
+        self.assertEqual(cm.score(cut, prev, [])[1], "none")                               # 성장 가이던스 하향이 있으면 아님
+        self.assertEqual(cm.score(both, prev, [(5.0, "candidate")]), (5.0, "continuing"))  # 최근에도 모멘텀 → 이어지는 모멘텀
+        self.assertEqual(cm.score(both, prev, [(5.0, "continuing")])[1], "continuing")
+        self.assertEqual(cm.score(both, prev, [(5.0, "candidate"), (0.0, "none"), (0.0, "none")])[1], "candidate")
+        self.assertEqual(cm.score(both, prev, [(2.0, "candidate")])[1], "candidate")         # 3점 이상 높으면 새 모멘텀
+        self.assertEqual(cm.score(both, None, []), (0.0, "first"))
+
+    def test_acceleration_numeric_needs_beat_or_raise(self):
+        cur = {"guidance": [], "beyond_expectation": [{"basis": "guidance", "quote": "exceeded the high end"}]}
+        num = {"quarter": "2026-09", "g_now": 61.2, "g_prev": 24.1, "gap": 37.1, "beat": None}
+        self.assertFalse(cm.acceleration(cur, num)["on"])                              # 빨라졌지만 기대 비교 근거 없음
+        self.assertTrue(cm.acceleration(cur, {**num, "beat": 2.5})["on"])              # 컨센서스 2.5% 상회
+        self.assertFalse(cm.acceleration(cur, {**num, "beat": 0.4})["on"])             # 기대만큼 → 가속 아님
+        raised = {**cur, "guidance": [{"direction": "raised", "metric": "FY revenue"}]}
+        self.assertTrue(cm.acceleration(raised, num)["on"])                            # 가이던스 상향 = 회사 기대 초과
+        self.assertFalse(cm.acceleration(raised, {**num, "gap": 1.0})["on"])           # 성장률이 거의 그대로면 아님
+        q = cm.acceleration(cur, None)                                                 # 숫자 없으면 원문 근거
+        self.assertEqual((q["on"], q["basis"]), (True, "quote"))
+        self.assertEqual(cm.acceleration({"guidance": []}, None), {"on": False, "basis": "none"})
+
+    def test_revenue_accel_from_quarters_and_consensus(self):
+        c = db()
+        c.executescript("""CREATE TABLE us_quarterly (ticker TEXT, q TEXT, metric TEXT, value REAL, tag TEXT, use_key TEXT, fetched_at TEXT,
+                                                    UNIQUE(ticker, q, metric));
+                           CREATE TABLE earnings_expectations (ticker TEXT, event_date TEXT, snapshot TEXT, quant_json TEXT);""")
+        for q, v in [("2026-09", 4312.8), ("2026-06", 3274.3), ("2025-09", 2675.8), ("2025-06", 2638.1)]:
+            c.execute("INSERT INTO us_quarterly (ticker, q, metric, value) VALUES ('VRT', ?, 'revenue', ?)", (q, v))
+        c.execute("INSERT INTO earnings_expectations VALUES ('VRT','2026-10-28','d1', ?)", (json.dumps({"rev_est": 4100.0}),))
+        r = cm.revenue_accel(c, "VRT", "2026-10-28")
+        self.assertEqual((r["quarter"], r["g_now"], r["g_prev"], r["beat"]), ("2026-09", 61.2, 24.1, 5.2))
+        self.assertIsNone(cm.revenue_accel(c, "VRT", "2027-06-01"))                    # 분기가 너무 오래됨 → 판정 불가
+        self.assertIsNone(cm.revenue_accel(c, "ACME", "2026-10-28"))
+
+    def test_beyond_expectation_quote_is_verified(self):
+        p = cm.verify({"beyond_expectation": [{"basis": "guidance", "quote": "Revenue exceeded the high end of our guidance range"},
+                                              {"basis": "consensus", "quote": "We crushed every estimate on the street"}]},
+                      "Q3 recap: revenue exceeded the high end of our guidance range, driven by data center.")
+        self.assertEqual([b["verified"] for b in p["beyond_expectation"]], [True, False])
+        combined = cm._combine([{"source": "release", "payload": json.dumps(p)}])
+        self.assertEqual(len(combined["beyond_expectation"]), 1)
 
     def test_new_driver_already_in_prior_text_is_not_new(self):
         d = cm.mentioned_before([{"name": "Greater China market", "status": "new"}, {"name": "Zoox robotaxi", "status": "new"}],
@@ -130,6 +167,11 @@ class MomentumTests(unittest.TestCase):
         self.assertEqual([x["event_date"] for x in r["candidates"]], ["2026-10-08"])
         self.assertEqual([(h["key"], len(h["candidates"])) for h in r["history"]], [("2026Q2", 1)])
         self.assertEqual(r["season"]["reported"], 1)
+        c.execute("INSERT INTO call_momentum (ticker, event_date, score, status, reasons) VALUES ('ACME','2026-10-09',6,'continuing',?)",
+                  (json.dumps({"drivers": [], "guidance": [], "tone": None, "sources": [], "qa_focus": []}),))
+        r = cm.by_season(c, date(2026, 10, 13))
+        self.assertEqual(([x["event_date"] for x in r["candidates"]], [x["event_date"] for x in r["continuing"]]),
+                         (["2026-10-08"], ["2026-10-09"]))
 
     def test_failed_extraction_recorded_not_retried(self):
         c = db()

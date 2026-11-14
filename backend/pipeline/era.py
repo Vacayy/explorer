@@ -401,6 +401,12 @@ def get_state() -> dict:
         meaning = layer_meaning(conn)
         temp = layer_temperature(conn)
         premises = layer_premises(conn, meaning)
+        try:   # '누가' → 인물 id 대응 표(ia-redesign §4.23 단계 0 ④). 실패해도 전제 원장은 그대로
+            from pipeline.people import who_people
+            for p in premises:
+                p["who_people"] = who_people(conn, p["who"])
+        except Exception:  # noqa: BLE001
+            pass
         memos = [{"doc_id": r["id"], "title": r["title"], "date": (r["published_at"] or "")[:10]} for r in conn.execute(
             "SELECT id, title, published_at FROM raw_documents WHERE source_type='memo' ORDER BY published_at DESC LIMIT 3")]
     finally:

@@ -80,7 +80,9 @@ class StoreTests(unittest.TestCase):
         self.assertFalse(reused)
         self.assertEqual((profile["version"], profile["source_count"], profile["cost_usd"]), (1, 2, .31))
         self.assertIn("HPSP", self.prompts[0][0]); self.assertIn("HBM 관심", self.prompts[0][0])
-        self.assertEqual(self.prompts[0][1]["tools"], ("WebSearch", "WebFetch"))
+        self.assertEqual(self.prompts[0][1]["task"], "company.profile")
+        from pipeline.llm_policies import resolve
+        self.assertEqual(resolve("company.profile").tools, ("WebSearch", "WebFetch"))
         conn = self.connect()
         docs = conn.execute("SELECT source_id, title, published_at, markdown FROM raw_documents WHERE source_type='web' ORDER BY id").fetchall()
         self.assertEqual(len(docs), 2)

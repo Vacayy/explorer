@@ -6,11 +6,16 @@
 import threading
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from typing import Any
+
 from pydantic import BaseModel
 
 from database import get_connection
 from pipeline.transcript import cy_label
+from models.earnings_chain import ChainDetail, UpcomingChain
+from models.earnings_season import SeasonOverview
+from models.kr_season import KrSeasonOverview
 
 router = APIRouter(prefix="/api/spine/transcript", tags=["spine"])
 
@@ -37,6 +42,8 @@ class FollowRow(BaseModel):
     category: str | None = None           # 사업분류 — 손으로 붙인 그룹, NDX 추가 종목은 SEC SIC 분류
     latest_results_date: str | None = None   # 가장 최근 '본 실적'(컨콜 또는 실적 수치가 있는 보도자료) 날짜
     season_updated: bool = False          # 이번 실적 시즌에 실적이 나왔나(목록 태그)
+    ko_names: list[str] = []              # 한글 별칭(entity_keywords, D-276) — 레일 검색용
+    upcoming_expectation: bool = False    # 다가오는 발표(녹취록 전)에 발표 전 기대 정리가 있나 — 레일에서 그 분기를 먼저 연다
 
 
 class QuarterRow(BaseModel):
@@ -77,8 +84,12 @@ def list_follow():
     from pipeline.sec_filings import industry_label
     from datetime import date as _date
     season_start = season(_date.today().isoformat())["start"]
-    rows = conn.execute("SELECT ticker, company_name, group_label, market_cap, sic, fiscal_year_end FROM transcript_follow "
+    rows = conn.execute("SELECT ticker, company_name, group_label, market_cap, sic, fiscal_year_end, entity_id FROM transcript_follow "
                         "WHERE active=1 ORDER BY group_label, ticker").fetchall()
+    ko: dict[int, list[str]] = {}
+    for k in conn.execute("SELECT k.entity_id, k.keyword FROM entity_keywords k JOIN transcript_follow t ON t.entity_id=k.entity_id "
+                          "WHERE t.active=1 AND (k.status IS NULL OR k.status IN ('active', 'search_only')) ORDER BY k.id"):
+        ko.setdefault(k["entity_id"], []).append(k["keyword"])
     # 본 실적 보도자료 = 매출과 주당 이익이 함께 있는 것(TSLA 인도량 공시도 'net income'을 한 번 언급해 그것만으론 못 가른다)
     results = {}
     for r in conn.execute("SELECT er.ticker, max(er.filing_date) d FROM earnings_releases er JOIN raw_documents rd ON rd.id=er.doc_id "
@@ -87,6 +98,16 @@ def list_follow():
         results[r["ticker"]] = r["d"]
     cal = {r["ticker"]: r for r in conn.execute(
         "SELECT ticker, last_report_date, next_report_date, checked_at FROM transcript_calendar").fetchall()}
+    from pipeline.earnings_chain import next_event
+    today = _date.today().isoformat()
+    with_exp = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM earnings_expectations x JOIN earnings_events e USING (ticker, fiscal_year, fiscal_period) "
+                                            "WHERE e.event_date >= ?", (today,))}
+    upcoming_exp = set()
+    for tk in with_exp:   # 그 기대가 '가장 가까운 아직 안 한 발표'의 것인지
+        ev = next_event(conn, tk, today)
+        if ev and conn.execute("SELECT 1 FROM earnings_expectations WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
+                               (tk, ev["fiscal_year"], ev["fiscal_period"])).fetchone():
+            upcoming_exp.add(tk)
     out = []
     for r in rows:
         calls = conn.execute(
@@ -110,7 +131,9 @@ def list_follow():
                              market_cap=r["market_cap"],
                              category=(industry_label(r["sic"]) or "기타") if r["group_label"] == "NDX" else r["group_label"],
                              latest_results_date=latest_results,
-                             season_updated=bool(latest_results and latest_results >= season_start)))
+                             season_updated=bool(latest_results and latest_results >= season_start),
+                             ko_names=ko.get(r["entity_id"], []),
+                             upcoming_expectation=r["ticker"] in upcoming_exp))
     conn.close()
     return out
 
@@ -229,11 +252,18 @@ def compute_reaction(transcript_id: int, force: bool = False):
         raise HTTPException(503, str(e))
 
 
-@router.get("/season")
+@router.get("/season", response_model=SeasonOverview)
 def season(season: str | None = None):
     """실적 시즌 화면 — 요약 숫자·오늘 바뀐 것·섹터 목록·엇갈린 반응·곧 발표·기대 채점·핵심 종목(기준 포함). LLM 0."""
     from pipeline.earnings_chain import season_overview
     return season_overview(season)
+
+
+@router.get("/season/kr", response_model=KrSeasonOverview)
+def season_kr(season: str | None = Query(None, pattern=r"^\d{4}Q[1-4]$")):
+    """국내 실적 시즌 — 잠정실적 공시·DB 시세만으로 발표·첫 반응·5일·업종 대비·업종별·아직 발표 전(ia-redesign §4.22). LLM 0·외부 호출 0."""
+    from pipeline.kr_season import overview
+    return overview(season)
 
 
 @router.get("/season/sector/{key}")
@@ -243,7 +273,17 @@ def season_sector(key: str, season: str | None = None):
     return sector_detail(key, season)
 
 
-@router.get("/chain/{transcript_id}")
+@router.get("/chain/upcoming/{ticker}", response_model=UpcomingChain)
+def chain_upcoming(ticker: str):
+    """콜 상세의 다가오는 분기 — 발표 전 기대·오늘까지의 주가·최근 30일 목표가 변경·분기별 기록. 저장된 행만 읽는다(LLM 0). 없으면 404."""
+    from pipeline.earnings_chain import upcoming_detail
+    try:
+        return upcoming_detail(ticker.upper())
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.get("/chain/{transcript_id}", response_model=ChainDetail)
 def chain(transcript_id: int):
     """콜 상세의 체인 — 발표 전 기대·반응 구조화·주가/거래량/언급량 시계열·분기별 기록. LLM 0."""
     from pipeline.earnings_chain import chain_detail
@@ -457,7 +497,19 @@ def run_extract():
     return extract_proxies()
 
 
-@router.get("/momentum")
+class MomentumResponse(BaseModel):
+    """실적 발언 모멘텀(D-217, 2026-11-04 재정의). 후보 항목은 call_momentum.reasons를 펼친 것 — 필드가 많고 추출 버전마다 늘어
+    항목은 dict로 둔다(프론트 타입 CallMomentumCandidate)."""
+    season: dict[str, Any]
+    candidates: list[dict[str, Any]]       # 이번 시즌 새 모멘텀
+    continuing: list[dict[str, Any]] = []  # 이번 시즌 이어지는 모멘텀(최근 두 발표에도 모멘텀)
+    history: list[dict[str, Any]]
+    coverage: dict[str, int]
+    as_of: str | None = None
+    sec_configured: bool
+
+
+@router.get("/momentum", response_model=MomentumResponse)
 def momentum():
     """실적 발언 새 모멘텀(D-217) — 이번 실적 시즌 후보는 전면, 지난 시즌은 history로. 판정은 매일 07:20 call_momentum --daily."""
     import os

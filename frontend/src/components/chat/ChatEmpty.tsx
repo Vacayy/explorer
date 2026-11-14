@@ -1,6 +1,7 @@
 import { Newspaper, Scale, TrendingUp, Waypoints } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { InfoTip } from "@/components/shared/InfoTip"
 
 /** 제안 카드 — 이 시스템의 도구 카탈로그(chat_tools 12종)가 잘 답하는 질문 유형 하나씩 */
 const SUGGESTIONS: { icon: LucideIcon; title: string; q: string }[] = [
@@ -17,12 +18,9 @@ const SUGGESTIONS: { icon: LucideIcon; title: string; q: string }[] = [
 export function ChatEmpty({ onPick, children }: { onPick: (q: string) => void; children: React.ReactNode }) {
   return (
     <div className="mx-auto flex h-full w-full max-w-[768px] flex-col items-center justify-center gap-8 px-1 pb-10">
-      <div className="text-center space-y-2">
+      <div className="flex items-center justify-center gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">무엇을 확인할까요?</h1>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          모아둔 텔레그램·블로그·유튜브와 시세를 찾아, 원문 근거와 함께 답합니다.<br className="hidden sm:block" />
-          최근 이야기, 같은 채널의 과거 발언, 서로 다른 시각을 이어서 물어보세요.
-        </p>
+        <InfoTip label="대화 안내">모아 둔 텔레그램·블로그·유튜브와 시세를 찾아 원문 근거와 함께 답합니다. 최근 이야기, 같은 채널의 과거 발언, 서로 다른 시각을 이어서 물어보세요.</InfoTip>
       </div>
 
       <div className="w-full">{children}</div>

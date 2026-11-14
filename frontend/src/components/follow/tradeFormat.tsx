@@ -6,8 +6,8 @@ import type { TradeFlag } from "@/types"
 
 /** 수출입 판정 배지 — 서버 판정(trade_metrics.classify)을 그대로 보인다. none이면 아무것도 그리지 않는다 */
 const FLAG: Record<Exclude<TradeFlag, "none">, { label: string; tone: string }> = {
-  surge: { label: "급등", tone: "border-up/40 text-up" },
-  plunge: { label: "급감", tone: "border-down/40 text-down" },
+  surge: { label: "급등", tone: "border-up/40 text-up-ink" },
+  plunge: { label: "급감", tone: "border-down/40 text-down-ink" },
   new: { label: "신규", tone: "text-muted-foreground" },
 }
 

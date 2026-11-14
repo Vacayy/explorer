@@ -31,6 +31,10 @@ JOBS: list[tuple[str, str, str, str]] = [
     ("kr_financials", "국내 재무 수집", "DART — 보유·관심·시총 상위 300 분기 재무, 실행당 호출 예산 3,000", "scripts/collect_kr_company_data.py"),
     ("kr_valuation", "국내 밸류 수집", "네이버 종목 API — 전 종목 PER·PBR·EPS·BPS·배당 (소외 신호·밸류 밴드 재료)", "scripts/collect_kr_company_data.py"),
     ("refresh_questions", "질문 트래커 갱신", "일 1회 — 프록시 관측 갱신(numeric/sentiment) + 재판정 → 보유 논지·관심 이유 알림", "scripts/refresh_questions.py"),
+    ("auto_curation", "정리 작업 자동 처리", "주간 제안 스캔 끝 — 별칭·노드 병합·지식 승격을 규칙으로 판정(기본 판정만, auto_curation_apply 켜면 적용, D-294)", "pipeline/auto_curation.py → run_curation"),
+    ("person_curation", "인물 이름 자동 정리", "주간 제안 스캔 끝 — 같은 사람 이름을 규칙으로 소프트 병합(되돌리기 가능)·메모 저자 연결·역할 분류, LLM 0(플래그 person_curation)", "pipeline/people.py → run_curation"),
+    ("weekly_big_picture", "이번 주 큰 그림", "sonnet 1콜 — 매주 월 07:00 + 16:00 마감 정리 뒤 새 버전 3편+ + 다시 만들기(6시간), 주 7회 상한(합계)·입력 해시 가드, 줄기 최대 4", "scripts/weekly_big_picture.py"),
+    ("sector_overview", "산업 개괄", "sonnet 1콜/섹터 — 섹터에 걸린 내러티브가 바뀐 섹터만, 섹터당 주 1회 상한 (기본 off, D-327-3)", "scripts/compute_sector_overview.py"),
     ("question_autopropose", "질문 자동 제안", "refresh_questions 안 — 지배 내러티브·다이제스트에서 질문 제안 → 승인 큐 (기본 off)", "pipeline/questions.py → refresh_all"),
 ]
 JOB_LABEL = {n: (label, desc) for n, label, desc, _ep in JOBS}
@@ -145,8 +149,8 @@ def probe_llm() -> dict:
     비용 가드: 오늘 이미 ok면 재프로브하지 않는다(하루 1콜). 단 마지막이 error면
     매 회차 재시도해 복구를 즉시 감지한다 — 고장 중에만 자주 두드리는 비대칭.
     """
-    import subprocess
-    from pipeline.enrich import _claude_bin, llm_engine
+    from pipeline import llm
+    from pipeline.enrich import llm_engine
 
     conn = get_connection()
     last = conn.execute(
@@ -168,16 +172,10 @@ def probe_llm() -> dict:
 
     t0 = time.time()
     try:
-        proc = subprocess.run([_claude_bin(), "-p", "--model", "haiku", "ping"],
-                              capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL)
+        result = llm.run("Reply with pong.", task='ops.probe')
         ms = int((time.time() - t0) * 1000)
-        if proc.returncode == 0 and proc.stdout.strip():
-            record_run(LLM_PROBE, "ok", f"engine=claude-code {ms}ms", ms)
-            return {"status": "ok", "engine": "claude-code", "ms": ms}
-        # claude는 오류(미로그인·한도)를 stdout에 쓴다 — stderr만 보면 원인이 안 보인다
-        reason = (proc.stdout.strip() or proc.stderr.strip())[:200]
-        record_run(LLM_PROBE, "error", f"rc={proc.returncode} {reason}", ms)
-        return {"status": "error", "reason": reason}
+        record_run(LLM_PROBE, "ok", f"engine={result.engine} {ms}ms", ms)
+        return {"status": "ok", "engine": result.engine, "ms": ms}
     except Exception as e:  # noqa: BLE001
         ms = int((time.time() - t0) * 1000)
         record_run(LLM_PROBE, "error", f"{type(e).__name__}: {str(e)[:150]}", ms)

@@ -6,6 +6,7 @@
 - 참고: 권리락은 DART 공시가 아니라 KRX 시장조치 — 유·무상증자 공시의
   신주배정기준일에서 파생되므로 v1 범위 밖 (공시 원문에서 확인 가능).
 """
+from pipeline import llm
 import requests
 
 from config import DART_API_KEY
@@ -108,7 +109,7 @@ def _fetch_document_text(rcp_no: str) -> str | None:
 
 def summarize_pending(limit: int = 20) -> dict:
     """summary 없는 기업활동 공시를 haiku로 요약 (규모·비율·일정·목적 중심)."""
-    from pipeline.enrich import _call_claude_code, llm_engine
+    from pipeline.enrich import llm_engine
 
     if llm_engine() != "claude-code":
         return {"skipped": "claude-code 엔진 아님"}
@@ -133,7 +134,7 @@ def summarize_pending(limit: int = 20) -> dict:
             "수치를 우선하고 군더더기 금지. 텍스트만 출력.\n\n" + text
         )
         try:
-            summary = _call_claude_code(prompt).strip()[:600]
+            summary = llm.run(prompt, task='actions.summarize').text.strip()[:600]
             conn.execute("UPDATE corporate_actions SET summary=? WHERE id=?", (summary, r["id"]))
             conn.commit()
             done += 1
@@ -142,3 +143,57 @@ def summarize_pending(limit: int = 20) -> dict:
 
     conn.close()
     return {"summarized": done, "failed": failed, "remaining_checked": len(todo)}
+
+
+# ---------- 목록 한 줄 설명 (LLM 0 — 저장된 값만) ----------
+
+DESCRIPTION_MAX = 120
+
+
+def _first_sentence(text: str) -> str:
+    import re
+    flat = re.sub(r"\s+", " ", text).strip()
+    m = re.search(r"(?<=[가-힣a-zA-Z)\]%])\.(?=\s|$)", flat)
+    return flat[: m.end()] if m else flat
+
+
+def _clip(text: str, limit: int = DESCRIPTION_MAX) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1]
+    space = cut.rfind(" ")
+    return (cut[:space] if space > limit // 2 else cut).rstrip(" ,·") + "…"
+
+
+def _raise_line(d) -> str | None:
+    """유·무상증자 추출 상세(capital_raise_details) → '제3자배정 · 확정 발행가 204,500원 · 신주 6,558,435주(기존 대비 4.3%)'."""
+    parts = []
+    if d["method"]:
+        parts.append(d["method"])
+    for key, label in (("price_final", "확정"), ("price_2nd", "2차"), ("price_1st", "1차")):
+        if d[key]:
+            parts.append(f"{label} 발행가 {d[key]:,}원")
+            break
+    if d["new_shares"]:
+        ratio = f"(기존 대비 {d['new_shares'] / d['old_shares'] * 100:.1f}%)" if d["old_shares"] else ""
+        parts.append(f"신주 {d['new_shares']:,}주{ratio}")
+    return " · ".join(parts) if len(parts) > 1 else None
+
+
+def action_description(report_nm: str | None, summary: str | None, detail=None) -> str | None:
+    """기업활동 목록 제목 아래 한 줄 — 하나씩 열어 보지 않아도 무엇인지 알게(D-306 5).
+
+    우선순위: 증자 추출 상세(구조화 값) → 저장된 요약의 첫 문장 → 자회사 공시 표시 → 없음.
+    요약은 스캔 때 이미 만든 것만 쓴다(여기서 새로 만들지 않는다). '(원문 조회 실패)'는 설명으로 쓰지 않는다.
+    """
+    if detail is not None:
+        line = _raise_line(detail)
+        if line:
+            return line
+    s = (summary or "").strip()
+    if s and not s.startswith("("):
+        return _clip(_first_sentence(s))
+    name = report_nm or ""
+    if "종속회사" in name or "자회사" in name:
+        return "자회사 관련 공시입니다."
+    return None

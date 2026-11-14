@@ -1,16 +1,16 @@
 import { QueryState } from "@/components/shared/QueryState"
 import { Link, useSearchParams } from "react-router-dom"
 import { Markdown } from "@/components/shared/Markdown"
-import { Lightbulb, Loader2, MonitorPlay, Rss, Send } from "lucide-react"
+import { Lightbulb, Loader2, MonitorPlay, RefreshCw, Rss, Send } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { sourceDossierQuery, sourceSummaryQuery } from "@/api/spine"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
 import { PageContainer } from "@/components/shared/PageContainer"
 import type { DossierSummary, SourceDossier } from "@/types"
-import { RefreshButton } from "@/components/shared/RefreshButton"
 import { useRefreshSource, type RefreshKind } from "@/hooks/useRefreshSource"
 
 /**
@@ -39,28 +39,34 @@ export default function SourcePage() {
 
     return (
       <PageContainer width="reading" gap="sm">
-        {/* 헤더 */}
+        {/* 헤더 — 피드에서 들어오는 화면이라 돌아가는 길을 둔다(ia-redesign §4.33) */}
         <div className="space-y-1">
+          <Link to="/feed" className="text-[12.5px] text-ink-3 hover:text-ink">‹ 피드 · 팔로우한 소스</Link>
           <div className="flex items-center gap-2 flex-wrap">
             {data.kind === "telegram"
               ? <Send className="h-4 w-4 text-muted-foreground" />
               : data.kind === "youtube"
               ? <MonitorPlay className="h-4 w-4 text-muted-foreground" />
               : <Rss className="h-4 w-4 text-muted-foreground" />}
-            <h2 className="text-xl font-bold">{data.name}</h2>
+            <h1 className="font-display text-page font-normal tracking-[-0.02em]">{data.name}</h1>
             {data.author && <span className="text-sm text-muted-foreground">{data.author}</span>}
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge>
               {data.kind === "telegram" ? "텔레그램" : data.kind === "youtube" ? "유튜브" : "블로그"}
             </Badge>
-            {!data.is_active && <Badge variant="outline" className="text-[10px]">숨김 — 내 피드·답변 제외</Badge>}
+            {!data.is_active && <Badge variant="outline">숨김 — 내 피드·답변 제외</Badge>}
             {(data.kind === "telegram" || data.kind === "youtube" || data.kind === "blog") && (
-              <RefreshButton onClick={() => refresher.refresh(data.kind as RefreshKind, key, data.name)} pending={refresher.isRefreshing(data.kind as RefreshKind, key)} title="지금 수집 — 30분 체인을 기다리지 않고 이 소스의 새 글만 가져와 태깅합니다" />
+              <Button variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-[12.5px] text-ink-2" disabled={refresher.isRefreshing(data.kind as RefreshKind, key)}
+                title="30분 주기를 기다리지 않고 이 소스의 새 글만 가져옵니다"
+                onClick={() => refresher.refresh(data.kind as RefreshKind, key, data.name)}>
+                <RefreshCw aria-hidden="true" className={refresher.isRefreshing(data.kind as RefreshKind, key) ? "animate-spin" : ""} />지금 수집
+              </Button>
             )}
           </div>
-          <p className="text-xs text-muted-foreground tabular-nums">
+          <p className="font-mono text-[12.5px] text-ink-3 tabular-nums">
             수집 {data.total_docs}건 · 최근 7일 {data.docs_7d}건
-            {data.first_doc_at && data.last_doc_at &&
-              ` · ${data.first_doc_at.slice(0, 10)} ~ ${data.last_doc_at.slice(0, 10)}`}
+            {data.first_doc_at && data.last_doc_at
+              ? ` · ${data.first_doc_at.slice(0, 10)} ~ ${data.last_doc_at.slice(0, 10)}`
+              : data.last_doc_at && ` · 마지막 글 ${data.last_doc_at.slice(0, 10)}`}
           </p>
         </div>
 
@@ -79,12 +85,12 @@ export default function SourcePage() {
             {data.top_entities.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">주로 다루는 것 <span className="text-[11px] font-normal text-muted-foreground">최근 90일</span></CardTitle>
+                  <CardTitle className="text-[15px] font-semibold">주로 다루는 것 <span className="text-xs font-normal text-ink-3">최근 90일</span></CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-1.5">
                   {stocks.map((e) => (
                     <Link key={`s-${e.entity_id}`} to={e.aliases ? `/analyze/${e.aliases}/summary` : "#"}>
-                      <Badge variant="outline" className="text-xs gap-1 hover:border-primary hover:text-primary">
+                      <Badge variant="outline" className="gap-1 hover:text-ink">
                         {e.name} <span className="text-muted-foreground tabular-nums">{e.count}</span>
                       </Badge>
                     </Link>
@@ -94,7 +100,7 @@ export default function SourcePage() {
                       key={`t-${e.entity_id}-${e.link_type}`}
                       to={`/feed?${e.link_type === "industry" ? "industry" : "topic"}=${encodeURIComponent(e.name)}`}
                     >
-                      <Badge variant="secondary" className="text-xs gap-1 hover:text-primary">
+                      <Badge className="gap-1 hover:text-ink">
                         {e.name} <span className="text-muted-foreground tabular-nums">{e.count}</span>
                       </Badge>
                     </Link>
@@ -106,17 +112,18 @@ export default function SourcePage() {
             {/* 최근 글 */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">최근 글</CardTitle>
+                <CardTitle className="text-[15px] font-semibold">최근 글</CardTitle>
               </CardHeader>
               <CardContent className="divide-y">
                 {data.recent_docs.map((d) => (
                   <Link key={d.id} to={`/doc/${d.id}`} className="flex items-baseline gap-2 py-1.5 group">
                     <span className="text-sm truncate group-hover:underline">{d.title}</span>
-                    <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                      {(d.published_at ?? "").slice(0, 10)}
+                    <span className="ml-auto shrink-0 font-mono text-[11px] text-ink-3 tabular-nums">
+                      {(d.published_at ?? "").slice(5, 10).replace("-", "/")}
                     </span>
                   </Link>
                 ))}
+                <Link to={`/feed?channel=${encodeURIComponent(`${data.kind}:${key}`)}`} className="block pt-2 text-caption text-muted-foreground hover:text-foreground">이 소스만 피드에서 보기 ›</Link>
               </CardContent>
             </Card>
           </>
@@ -135,11 +142,11 @@ function ProfileCard({ data, fresh, pending, failed }: {
   // 생성 쿼리 결과 우선, 없으면 도시에에 실린 캐시 프로필
   const s = fresh ?? data.summary
   return (
-    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]">
+    <Card className="border-line-2 bg-surface-2">
       <CardHeader className="pb-2 flex-row items-baseline gap-2">
-        <CardTitle className="text-sm">관점 프로필</CardTitle>
+        <CardTitle className="text-[15px] font-semibold">관점 프로필</CardTitle>
         {s?.created_at && (
-          <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
+          <span className="ml-auto font-mono text-xs text-ink-3 tabular-nums">
             {s.created_at.slice(0, 10)} 기준 · 최근 {s.doc_count}건
           </span>
         )}
@@ -164,14 +171,15 @@ function ProfileCard({ data, fresh, pending, failed }: {
         {s?.digest && (
           <>
             {s.insights && (
-              <div className="flex gap-2 rounded-md bg-hypothesis/10 border border-hypothesis/30 px-3 py-2">
-                <Lightbulb className="h-3.5 w-3.5 text-hypothesis shrink-0 mt-0.5" />
-                <p className="text-xs"><span className="font-semibold text-hypothesis">지난 프로필 이후</span> {s.insights}</p>
+              <div className="flex gap-2 rounded-[10px] bg-hyp-tint px-3 py-2.5">
+                <Lightbulb className="h-3.5 w-3.5 text-hyp shrink-0 mt-1" />
+                <p className="text-[13px] leading-[1.6]"><span className="font-semibold whitespace-nowrap text-hyp">지난 프로필 이후</span> {s.insights}</p>
               </div>
             )}
+            {!pending && failed && <p className="text-caption text-muted-foreground">새 글을 반영하지 못해 이전 프로필을 보여 드립니다. 다시 열면 재시도합니다.</p>}
             <Markdown className={pending ? "opacity-60" : ""}>{s.digest}</Markdown>
             <div className="text-right">
-              <Badge variant="outline" className="text-[9px] font-normal text-hypothesis border-hypothesis/40">
+              <Badge variant="hyp">
                 AI 프로필 · 열람 시점 갱신
               </Badge>
             </div>
@@ -187,8 +195,8 @@ function SourceSkeleton() {
     <PageContainer width="reading" gap="sm">
       <Skeleton className="h-7 w-64" />
       <Skeleton className="h-4 w-80" />
-      <Skeleton className="h-48 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-48 w-full rounded-card" />
+      <Skeleton className="h-24 w-full rounded-card" />
     </PageContainer>
   )
 }

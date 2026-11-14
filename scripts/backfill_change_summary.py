@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import get_connection  # noqa: E402
-from pipeline.enrich import _call_claude_code  # noqa: E402
+from pipeline import llm
 from pipeline.narrative import _summary, normalize_change_summary  # noqa: E402
 
 
@@ -48,7 +48,7 @@ def main() -> int:
             print(f"[dry] {cur['topic']} v{prev['version']}→v{cur['version']}")
             continue
         try:
-            text = normalize_change_summary(_call_claude_code(prompt(prev, cur), model="haiku", timeout=120))
+            text = normalize_change_summary(llm.run(prompt(prev, cur), task="backfill.change_summary").text)
         except Exception as e:  # noqa: BLE001 — 한 건 실패로 멈추지 않고 사유를 남긴다
             failed += 1
             print(f"[fail] {cur['topic']} v{cur['version']}: {type(e).__name__}: {str(e)[:120]}")

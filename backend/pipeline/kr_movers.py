@@ -6,7 +6,7 @@
 
 소스: `fdr.StockListing("KRX")` 1콜에 거래대금(Amount)·등락률(ChagesRatio)·시장·시총이 다 온다.
 pykrx 시장 단위 엔드포인트는 KRX 로그인이 필요해져 쓰지 않는다(ingest_prices.py와 같은 이유).
-섹터는 `companies.sector`(KSIC) → `sector_map.group_name`(대분류) 단일 분류체계로 통일 —
+섹터는 `companies.sector`(KSIC) → `sector_map.group_name`(대분류) + 업종 정정(`sector_overrides`) 단일 분류체계로 통일 —
 industry_groups(큐레이션 119종)와 섞으면 라벨 어휘가 어긋난다.
 
 ETF·리츠·스팩은 제외(사업체가 아니라 담론 대상이 아님). 우선주는 별개 종목으로 세되
@@ -86,13 +86,9 @@ def _base_code(code: str) -> str:
 
 
 def _attach_sector(conn, rows: list[dict]) -> None:
-    """KSIC → 대분류(sector_map.group_name). 우선주는 본주로 폴백, 그래도 없으면 미분류."""
-    codes = {r["stock_code"] for r in rows} | {_base_code(r["stock_code"]) for r in rows}
-    ph = ",".join("?" for _ in codes)
-    m = {x["stock_code"]: x["grp"] for x in conn.execute(
-        f"""SELECT c.stock_code, sm.group_name grp
-            FROM companies c JOIN sector_map sm ON sm.sector_name = c.sector
-            WHERE c.stock_code IN ({ph})""", sorted(codes))}
+    """종목 → 대분류(원천 + 업종 정정, pipeline/sector_overrides). 우선주는 본주로 폴백, 그래도 없으면 미분류."""
+    from pipeline.sector_overrides import effective_sectors
+    m = effective_sectors(conn)
     for r in rows:
         code = r["stock_code"]
         r["sector"] = m.get(code) or m.get(_base_code(code)) or UNCLASSIFIED

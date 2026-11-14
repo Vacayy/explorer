@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import re
 
-MODEL = "haiku"
 CAP = {False: 25, True: 100}
 DAYS = {False: 3, True: 60}
 DOC_CHARS = 6000
@@ -119,7 +118,7 @@ def extract(doc: dict) -> tuple[list[dict], int]:
     text = (doc["markdown"] or "")[:DOC_CHARS]
     prompt = (f"## 밸류체인 칸 목록(key: 이름)\n{nodes}\n\n## 문서\n제목: {doc['title']}\n날짜: {doc['published_at']}\n출처 유형: {doc['source_type']}\n\n{text}\n\n"
               "위 문서에서 전망만 뽑아라.")
-    res = run(prompt, system=SYSTEM, model=MODEL, timeout=180, job="exp_feed", json_schema=schema())
+    res = run(prompt, task='expectations.extract', system=SYSTEM, json_schema=schema())
     data = json.loads(res.text) if isinstance(res.text, str) else res.text
     claims = data.get("claims", []) if isinstance(data, dict) else []
     kept = [c for c in claims if quote_in_doc(c.get("quote", ""), f"{doc['title']}\n{doc['markdown']}") and c.get("source_org")]

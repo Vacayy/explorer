@@ -3,7 +3,7 @@ import { AxiosError, AxiosHeaders, CanceledError } from 'axios'
 import { z } from 'zod'
 import api, { REQUEST_TIMEOUT } from '../src/api/client'
 import { ApiError, shouldRetry, toApiError } from '../src/api/errors'
-import { boardSchema, feedSchema, parseResponse, validateResponse } from '../src/api/contracts'
+import { feedSchema, parseResponse, validateResponse } from '../src/api/contracts'
 import { apiQuery, createQueryClient, getJson, postJson } from '../src/api/query'
 
 const adapter = api.defaults.adapter
@@ -54,9 +54,9 @@ describe('transport and normalization', () => {
 
 describe('runtime contracts', () => {
   it('distinguishes empty data from malformed data and validates nested types', () => {
-    expect(validateResponse('get', '/api/dashboard/boards', [])).toEqual([])
-    expect(() => validateResponse('get', '/api/dashboard/boards', {})).toThrow(ApiError)
-    expect(() => parseResponse(boardSchema, { id: 1, label: 'home', sort: 0, updated_at: '', items: [{ i: '1', widget: 'a', x: 0, y: 0, w: '12', h: 1 }] })).toThrow(ApiError)
+    expect(validateResponse('get', '/api/spine/transcript/recent', [])).toEqual([])
+    expect(() => validateResponse('get', '/api/spine/transcript/recent', {})).toThrow(ApiError)
+    expect(() => validateResponse('get', '/api/spine/transcript/recent', [{ transcript_id: 1, ticker: 'A', company_name: null, fiscal_year: '2026', fiscal_period: 'Q3', cy: null, call_date: null, provider: null, fetched_at: null, has_digest: false }])).toThrow(ApiError)
     expect(() => parseResponse(feedSchema, { items: [], total: 0, page: 1, size: 0, as_of: '' })).toThrow(ApiError)
     expect(() => validateResponse('get', '/api/companies/005930', null)).toThrow(ApiError)
   })
@@ -76,12 +76,12 @@ describe('runtime contracts', () => {
   it('rejects invalid data before cache insertion and retains good data after failed refresh', async () => {
     const onError = vi.fn()
     const client = createQueryClient(onError)
-    const query = apiQuery({ key: ['boards'], url: '/api/dashboard/boards', staleTime: 0 })
+    const query = apiQuery({ key: ['recent-calls'], url: '/api/spine/transcript/recent', staleTime: 0 })
     respond([])
     await client.fetchQuery(query)
     respond({ items: [] })
     await expect(client.fetchQuery(query)).rejects.toMatchObject({ kind: 'schema' })
-    expect(client.getQueryData(['boards'])).toEqual([])
+    expect(client.getQueryData(['recent-calls'])).toEqual([])
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError.mock.calls[0][1]).toEqual({ background: true })
     client.clear()

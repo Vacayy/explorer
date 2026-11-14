@@ -17,6 +17,7 @@ D-140에서 별도 프로젝트 data-watcher의 커넥터·수집 규율을 이�
 
 관련 종목은 LLM 논리 지목(compute_beneficiaries) — beneficiary.resolve_and_enrich 재사용(D-036).
 """
+from pipeline import llm
 import csv
 import os
 import random
@@ -389,7 +390,7 @@ def _trend_str(stats: list) -> str:
 def compute_beneficiaries(hs_code: str) -> list[dict]:
     """품목 관련 종목을 LLM 논리로 지목 → resolve_and_enrich → trade_beneficiaries 캐시(멱등 교체)."""
     import json
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     conn = get_connection()
     item = conn.execute("SELECT item_name FROM trade_follow WHERE hs_code=?", (hs_code,)).fetchone()
     stats = conn.execute("SELECT period, export_usd, balance_usd FROM trade_stats WHERE hs_code=? ORDER BY period DESC LIMIT 13",
@@ -398,8 +399,7 @@ def compute_beneficiaries(hs_code: str) -> list[dict]:
         conn.close()
         return []
     try:
-        raw = _call_claude_code(_BENE_PROMPT.format(item=item["item_name"], hs=hs_code, trend=_trend_str(stats)),
-                                model="sonnet", timeout=180)
+        raw = llm.run(_BENE_PROMPT.format(item=item["item_name"], hs=hs_code, trend=_trend_str(stats)), task='trade.beneficiaries').text
         picks = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]).get("beneficiaries") or []
     except Exception as e:  # noqa: BLE001
         print(f"[trade] {hs_code} beneficiaries 실패: {e}")

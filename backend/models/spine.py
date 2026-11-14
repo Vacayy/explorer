@@ -1,4 +1,6 @@
 """spine 읽기 API 응답 스키마 (docs/private/specs/frontend-plan.md Phase B)."""
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -31,12 +33,26 @@ class FeedDocument(BaseModel):
     entities: list[EntityTag]
 
 
+class FeedFacetEntity(BaseModel):
+    name: str
+    link_type: str           # stock | industry | topic
+    aliases: str | None      # 종목이면 종목코드
+    count: int
+
+
+class FeedFacets(BaseModel):
+    """검색 결과 전체(페이지 아님)의 소스별 건수와 자주 같이 나온 종목·테마 — 검색어가 있을 때만."""
+    sources: dict[str, int]
+    entities: list[FeedFacetEntity]
+
+
 class FeedResponse(BaseModel):
     items: list[FeedDocument]
     total: int
     page: int
     size: int
     as_of: str
+    facets: FeedFacets | None = None
 
 
 class SignalItem(BaseModel):
@@ -93,6 +109,19 @@ class BriefItem(BaseModel):
     to: str              # 프론트 라우트 (근거로 1클릭)
 
 
+class AiActivityItem(BaseModel):
+    """'AI가 최근 만든 것' 한 줄 — 상단 바 `layout/AiOutputs`가 피드 Explorer 타임라인과 합쳐 쓴다(D-325)."""
+    type: Literal["narrative", "mega", "report", "scenario", "digest", "youtube_digest",
+                  "market_today", "us_overnight", "source_digest", "big_picture", "era_commentary"]
+    title: str
+    topic: str
+    code: str | None = None          # digest면 종목코드(analyze 링크용)
+    question_id: int | None = None   # scenario가 질문에 묶였으면(D-070) — /question/:id 링크용
+    doc_id: int | None = None        # 유튜브 AI 정리본의 /doc/:id 링크용
+    created_at: str                  # UTC 'YYYY-MM-DD HH:MM:SS'
+    to: str | None = None            # 서버가 정한 이동 주소(시장 정리·소스 정리·큰 그림·시장 해설). 없으면 프론트가 종류로 만든다
+
+
 class HomeResponse(BaseModel):
     briefing: list[BriefItem]
     calendar: list[CalendarEvent]
@@ -101,3 +130,13 @@ class HomeResponse(BaseModel):
     market_highlights: list[SignalItem]
     watchlist_empty: bool
     as_of: str
+
+
+class KrBreadth(BaseModel):
+    """국내 시장 폭(D-321) — 홈 기상도의 상승·하락 색 비율. 자료가 없으면 응답 전체가 null."""
+    trade_date: str
+    prev_date: str
+    up: int
+    down: int
+    flat: int
+    up_ratio: float   # up / (up + down)

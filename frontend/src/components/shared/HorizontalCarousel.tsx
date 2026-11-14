@@ -29,9 +29,10 @@ export function HorizontalCarousel({ label, children, footer }: { label: string;
         className="flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-2 focus-visible:outline-2 focus-visible:outline-ring">
         {children}
       </div>
-      {(footer || edges.previous || edges.next) && <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* 터치 화면은 손가락으로 넘기므로 이전·다음 버튼을 숨긴다(시안 모바일) — 마우스·키보드는 버튼 */}
+      {(footer || edges.previous || edges.next) && <div className={`flex flex-wrap items-center justify-between gap-2 ${footer ? '' : 'pointer-coarse:hidden'}`}>
         {footer && <div className="min-w-0 flex-1">{footer}</div>}
-        {(edges.previous || edges.next) && <div className="ml-auto flex shrink-0 gap-2">
+        {(edges.previous || edges.next) && <div className="ml-auto flex shrink-0 gap-2 pointer-coarse:hidden">
         <Button variant="outline" size="icon-sm" aria-label={`이전 ${label}`} aria-controls={id} disabled={!edges.previous} onClick={() => move(-1)}><ChevronLeft aria-hidden="true" className="size-4" /></Button>
         <Button variant="outline" size="icon-sm" aria-label={`다음 ${label}`} aria-controls={id} disabled={!edges.next} onClick={() => move(1)}><ChevronRight aria-hidden="true" className="size-4" /></Button>
         </div>}

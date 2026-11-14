@@ -77,51 +77,10 @@ export interface ValuationItem {
   div_yield: number | null;
 }
 
-export interface ValuationResponse {
-  items: ValuationItem[];
-  pbr_bands: Record<string, (number | null)[]> | null;
-}
-
 export interface IndustryGroup {
   id: number;
   name: string;
   description: string | null;
-}
-
-export interface IndustryMember {
-  id: number;
-  stock_code: string;
-  category: string;
-  corp_name: string;
-  latest_close: number | null;
-  latest_market_cap: number | null;
-  per: number | null;
-  pbr: number | null;
-  op_margin: number | null;
-  roe: number | null;
-  revenue_growth: number | null;
-  op_profit_growth: number | null;
-}
-
-export interface IndustryDetail {
-  group: IndustryGroup;
-  members: IndustryMember[];
-  /** 멤버가 속한 산업 맵 대분류(sector_map) 상위 3 — 두 섹터 체계를 잇는 링크용 */
-  map_groups?: { name: string; members: number }[];
-}
-
-export interface IndustryCandidate {
-  stock_code: string;
-  entity_id: number;
-  name: string;
-  rs_short: number | null;
-  rs_prev: number | null;
-  per: number | null;
-  pbr: number | null;
-  market_cap: number | null;
-  pos_52w: number | null;
-  co_mentions: number | null;
-  relevance: number;
 }
 
 export interface BusinessSegment {
@@ -132,16 +91,6 @@ export interface BusinessSegment {
   segment_name: string;
   revenue: number | null;
   ratio: number | null;
-}
-
-export interface SignalItem {
-  type: "disclosure" | "insider" | "contract";
-  stock_code: string;
-  corp_name: string | null;
-  title: string | null;
-  date: string;
-  url: string | null;
-  in_watchlist: boolean;
 }
 
 // ---------- Spine (그래프 척추) API ----------
@@ -181,6 +130,12 @@ export interface SpineFeedResponse {
   page: number;
   size: number;
   as_of: string;
+  /** 검색어가 있을 때만 — 검색 결과 전체의 소스별 건수와 자주 같이 나온 종목·산업·주제 (ia-redesign §4.15) */
+  facets?: SpineFeedFacets | null;
+}
+export interface SpineFeedFacets {
+  sources: Record<string, number>;
+  entities: { name: string; link_type: string; aliases: string | null; count: number }[];
 }
 
 // 투자 렌즈 (docs/private/specs/investor-lens.md) — 원칙 원장에 비춘 종목 판단(프레임, 판정 아님)
@@ -215,6 +170,7 @@ export interface UsFundamentals {
   fwd_pe: number | null;
   trailing_pe: number | null;
   fwd_eps: number | null;
+  trailing_eps?: number | null;
   revenue: number | null;
   net_income: number | null;
   ocf: number | null;
@@ -229,25 +185,12 @@ export interface UsDossier {
   name: string;
   entity_id: number | null;
   fundamentals: UsFundamentals | null;
+  fundamentals_fetched_at: string | null;   // 스냅샷 수집 시각(UTC)
   latest_transcript: { id: number; fiscal_year: number; fiscal_period: string; call_date: string } | null;
+  sector: string | null;       // 실적 시즌 섹터 이름 (팔로우 밖이면 null)
+  sector_etf: string | null;   // 실적 반응 비교 ETF
 }
 
-export interface UsListItem {
-  ticker: string;
-  name: string;
-  group_label: string | null;
-  value_stance: string | null;
-  trend_stance: string | null;
-  quadrant_cell: string | null;
-  price: number | null;
-}
-export interface UsGroup {
-  label: string;
-  items: UsListItem[];
-}
-export interface UsList {
-  groups: UsGroup[];
-}
 export interface UsEdge {
   src: string;
   dst: string;
@@ -296,6 +239,29 @@ export interface ChatRoute {
   follow_ups?: { kind: string; question: string }[] | null;
 }
 
+/** AI 대화 › 대상 붙이기 (ia-redesign §4.14a, D-311) — 서버 models/chat_targets.py와 같은 모양 */
+export type ChatTargetKind = 'stock' | 'us_stock' | 'narrative' | 'question' | 'doc' | 'person' | 'theme' | 'peer_group' | 'report';
+/** 요청 본문·보낸 질문의 칩 — 이름 대신 식별자 */
+export interface AttachmentRef {
+  kind: ChatTargetKind;
+  ref: string;
+  label: string;
+}
+/** 후보·붙어 있는 대상 — 칩 표시 정보 포함 */
+export interface ChatTarget extends AttachmentRef {
+  sub?: string | null;
+  date?: string | null;
+  code?: string | null;
+  change_pct?: number | null;
+  /** false = 사라짐(보관된 서사·지운 자료) — 흐린 칩, 보낼 때 뺀다 */
+  available?: boolean;
+}
+export interface ChatTargetSearch {
+  query: string;
+  kind: ChatTargetKind | null;
+  groups: { kind: ChatTargetKind; items: ChatTarget[] }[];
+}
+
 export interface ConversationDetail {
   study?: {id:number; title:string} | null;
   study_project?: {id:number; title:string} | null;
@@ -303,14 +269,18 @@ export interface ConversationDetail {
   title: string | null;
   channel: string;
   attached_documents?: { id: number; title: string | null }[]
+  /** 대화에 붙어 있는 대상 — 다음 질문에도 칩으로 남는다 */
+  attached_refs?: ChatTarget[]
   messages: {
     id: number;
     role: string;
     content: string;
-    citations: { n: number; doc_id: number | null; title: string; href?: string | null; kind?: string }[] | null;
+    citations: { n: number; doc_id: number | null; title: string; href?: string | null; kind?: string; published_at?: string | null }[] | null;  // published_at: 수집 자료 게시일(상세 조회 때 붙임)
     gaps: { type: string; note: string }[] | null;
     model: string | null;
     route?: ChatRoute | null;
+    /** user: 보낼 때 붙어 있던 대상 */
+    attachments?: AttachmentRef[] | null;
     created_at: string;
   }[];
 }
@@ -396,13 +366,83 @@ export interface SpineSignalsResponse {
   as_of: string;
 }
 
-/** GET /api/spine/sector-map — 18 대분류 RS 사분면. trail = 1·2·3주 전 위치 */
+/** 산업 맵 RS 궤적 — 1·2·3주 전 위치 (sector_rs) */
 export interface SectorTrailPoint { weeks_ago: number; rs_long: number | null; rs_short: number | null }
-export interface SectorGroup {
-  name: string; market_cap: number; stocks: number
-  rs_long: number | null; rs_short: number | null; chg_5d: number; trail: SectorTrailPoint[]
+
+/** GET /api/spine/sector-map/peers — 섹터 → Peer 그룹 대응(서버 sector_peer_map, D-301 6). share = 그룹 구성 종목 중 이 섹터 비율 */
+export interface SectorPeerLink {
+  group_id: string; group_name: string; scope: 'product' | 'value_chain'
+  source: 'seed' | 'auto'; partial: boolean
+  members: number; classified: number; in_sector: number; share: number | null
 }
-export interface SectorMap { as_of: string | null; groups: SectorGroup[] }
+export interface SectorPeerEntry { sector: string; partial: boolean; note: string | null; links: SectorPeerLink[] }
+export interface SectorPeers { catalog_as_of: string; auto_share: number; sectors: SectorPeerEntry[] }
+
+/** 섹터 대표지수 (D-327-4) — etf = 대표 ETF 종가, computed = Explorer 계산 지수(시총 가중) */
+export interface SectorBenchmark { kind: 'etf' | 'computed'; ticker: string | null; name: string | null; tracks: string | null; note: string | null }
+interface SectorQuote { last: number | null; last_date: string | null; chg_1d: number | null; ret_1m: number | null; ret_3m: number | null }
+interface SectorRs { rs_long: number | null; rs_short: number | null; chg_5d: number; trail: SectorTrailPoint[]; market_cap: number; stocks: number }
+/** GET /api/spine/industry/map — 섹터 지도 (backend/models/industry.py) */
+export interface IndustryMapSector extends SectorQuote, SectorRs {
+  name: string; benchmark: SectorBenchmark; peer_groups: number | null; series: number[]
+}
+export interface IndustryMap {
+  as_of: string | null; kospi: number[]; sectors: IndustryMapSector[]
+  outside_groups: { id: string; name: string; members: number }[]; peers_available: boolean
+}
+export interface SectorConstituent {
+  stock_code: string; corp_name: string; market_cap: number | null; weight: number
+  chg_1d: number | null; ret_1m: number | null; rs_long: number | null; rs_short: number | null
+}
+export interface SectorNarrative { id: number; topic: string; title: string; core_question: string | null; docs: number | null; updated_at: string | null }
+export interface SectorDoc { id: number; type: 'blog' | 'scrap' | 'web' | 'youtube'; title: string; published_at: string | null }
+export type SectorDataKind = 'trade' | 'taiwan' | 'valuechain' | 'usSeason' | 'credit'
+export interface SectorDataLinkCard {
+  kind: SectorDataKind; label: string; title: string; value: number | null; value_kind: 'usd' | 'pct' | null
+  change: number | null; sub: string; count: number; href: string; filtered: boolean; verdict: string | null
+}
+/** GET /api/spine/industry/{sector} — 섹터 화면 머리·개요·종목 */
+export interface IndustrySectorDetail extends SectorQuote, SectorRs {
+  as_of: string | null; name: string; benchmark: SectorBenchmark
+  series: { d: string; v: number; k: number | null }[]
+  top_weights: SectorConstituent[]; constituents: SectorConstituent[]
+  narratives: SectorNarrative[]
+  overview: { question: string; bullets: string[]; model: string | null; generated_at: string; narrative_ids: number[] } | null
+  docs: SectorDoc[]
+  peer_groups: number | null
+  data_links: SectorDataLinkCard[]
+  feed_industry: string | null; entity_id: number | null
+}
+/** GET /api/spine/industry/{sector}/peers — 하위 Peer 그룹 */
+export interface SectorPeerGroupRow {
+  id: string; name: string; scope: 'product' | 'value_chain'; parent: string | null; partial: boolean; auto: boolean
+  members: number; med_20d: number | null; med_60d: number | null
+}
+export interface SectorPeerList { sector: string; catalog_as_of: string; prices_as_of: string; groups: SectorPeerGroupRow[] }
+
+/** 미국 섹터 (ia-redesign §4.36, backend/models/industry.py Us*) — 섹터 = GICS 11 + 세부 업종 13 ETF, 비교 SPY */
+export interface UsEtfRow {
+  ticker: string; name: string; full_name: string; parent: string | null
+  last: number | null; last_date: string | null; chg_1d: number | null; ret_1m: number | null; ret_3m: number | null; chg_1w: number | null
+  rs_long: number | null; rs_short: number | null; trail: SectorTrailPoint[]; coverage: number
+}
+export interface UsMapSector extends UsEtfRow { series: number[] }
+/** GET /api/spine/industry/us/map */
+export interface UsIndustryMap { as_of: string | null; spy: number[]; sectors: UsMapSector[] }
+export interface UsSectorMember {
+  ticker: string; name: string; market_cap: number | null; industry: string | null
+  ret_1w: number | null; ret_1m: number | null; ret_3m: number | null; closes: number[]
+}
+export type UsSectorDocType = 'blog' | 'scrap' | 'web' | 'youtube' | 'transcript' | 'earnings_release'
+export interface UsSectorDoc { id: number; type: UsSectorDocType; title: string; published_at: string | null; hits: number }
+export interface UsSectorDataLink extends Omit<SectorDataLinkCard, 'kind'> { kind: 'usSeason' | 'valuechain' | 'taiwan' | 'krSector' }
+/** GET /api/spine/industry/us/{ticker} — 미국 섹터 화면 */
+export interface UsSectorDetail extends UsEtfRow {
+  as_of: string | null; zone: '주도' | '숨 고르기' | '반등 시도' | '소외' | null; parent_name: string | null
+  series: { d: string; v: number; k: number | null }[]
+  siblings: { ticker: string; name: string; parent: string | null; ret_1m: number | null; ret_3m: number | null; rs_long: number | null; rs_short: number | null }[]
+  members: UsSectorMember[]; docs: UsSectorDoc[]; data_links: UsSectorDataLink[]
+}
 
 /** GET /api/spine/signals/summary — 유형별 최신일 건수·상위 3. as_of = 신호 최신일 */
 export interface SignalsSummaryType {
@@ -559,18 +599,6 @@ export interface ThesisAuditListItem {
   id: number; created_at: string; preview: string; n_claims: number;
 }
 
-// 전일 미국시장 거래대금 상위 (홈, TradingView 무키 스크리너 — docs/specs/us-movers.md)
-export interface UsMover {
-  rank: number; ticker: string; name: string;
-  close: number | null; volume: number | null; dollar_volume: number | null;
-  exchange: string | null; is_adr: boolean;
-}
-export interface UsMoversResponse {
-  status: "ok" | "stale" | "error";
-  source: string; fetched_at: string | null; error: string | null;
-  items: UsMover[];
-}
-
 // 어젯밤 미국장 브리핑 (홈 상단, docs/specs/us-briefing.md)
 export interface UsHeadline {
   title: string; publisher: string | null; published_at: string | null;
@@ -691,6 +719,20 @@ export interface TimelineItem {
   links: { label: string; to: string }[]
 }
 
+/** GET /api/spine/home/ai-activity — 지난 N일 AI 산출물(유튜브 AI 정리본 포함). 상단 바 'AI가 최근 만든 것'이 타임라인과 합쳐 쓴다 */
+export interface AiActivityItem {
+  type: 'narrative' | 'mega' | 'report' | 'scenario' | 'digest' | 'youtube_digest'
+    | 'market_today' | 'us_overnight' | 'source_digest' | 'big_picture' | 'era_commentary'
+  title: string
+  topic: string
+  code: string | null
+  question_id: number | null
+  doc_id: number | null
+  created_at: string
+  /** 서버가 정한 이동 주소(시장 정리·소스 정리·큰 그림·시장 해설) */
+  to?: string | null
+}
+
 export interface TimelineResponse {
   items: TimelineItem[]
   page: number
@@ -699,7 +741,6 @@ export interface TimelineResponse {
   until: string
   as_of: string
 }
-
 
 export interface TimelineChannel {
   id: string
@@ -717,6 +758,9 @@ export interface TimelineChannelsResponse {
   total: number
   until: string
 }
+/** 피드 '모두 읽음'(POST /api/spine/feed/channels/read-all, D-301) — all = 사람 소스 전체(Explorer 산출물 제외) */
+export type MarkAllReadPlatform = 'all' | 'telegram' | 'blog' | 'youtube' | 'memo'
+export interface MarkAllReadResponse { platform: string; read_until: string; channels: number; marked: number }
 export type StudyIntent = 'explain' | 'critique' | 'related';
 export type StudyTool = 'read' | 'highlight' | 'comment' | StudyIntent;
 export interface StudyActionRequest {
@@ -765,15 +809,20 @@ export interface WatchRuleInput { strategy_id: string; params?: Record<string, u
 export interface GroupSignal {
   stock_code: string; name?: string; rule_id: number; as_of: string; strategy_id: string; label: string;
   params: Record<string, unknown>; value: number | null; reference: number | null; signal_date: string | null;
+  market?: 'kr' | 'us';
 }
 export interface StockGroupMember {
   id: number; group_id: number; stock_code: string; name: string; market: string | null;
   bought_at: string | null;
   conviction: number | null; target_price: number | null; thesis: string | null; created_at: string;
+  /** 추적(알림 대상) 표시 0|1 — 관심 묶음만 (D-293) */
+  tracked: number;
   close: number | null; change_pct: number | null; market_cap: number | null; price_date: string | null;
   rule_count: number; signals: { rule_id: number; strategy_id: string; label: string; value: number | null; reference: number | null; signal_date: string | null }[];
   unavailable: number;
 }
+/** PUT /api/spine/groups/:id/members/:code/tracked — tracked_codes = 지금 알림 대상 전체(국내·미국) */
+export interface StockGroupTrackedState { group_id: number; stock_code: string; tracked: boolean; tracked_codes: string[] }
 export interface StockGroupSummary {
   id: number; name: string; kind: StockGroupKind; note: string; created_at: string; updated_at: string;
   member_count: number; rule_count: number; last_as_of: string | null; today_signals: number;
@@ -824,6 +873,67 @@ export interface RiskIndicator {
   change_5: number | null
   change_20: number | null
 }
+/** 국내 시장 폭(D-321) — GET /api/spine/indices/breadth. 자료가 없으면 응답이 null */
+export interface KrBreadth {
+  trade_date: string
+  prev_date: string
+  up: number
+  down: number
+  flat: number
+  up_ratio: number
+}
+
+/** 홈 › 한국·미국 시장 ① 지수 차트 + 요약 지표 (ia-redesign §4.2·4.3, D-325) — GET /api/spine/market/{kr|us}/overview */
+export type MarketKey = "kr" | "us"
+export type IndexRangeKey = "1d" | "1m" | "3m" | "1y"
+export interface IndexRange {
+  key: IndexRangeKey
+  /** 기준선 — 1일은 전일 종가, 기간은 기간 시작 전 값 */
+  base: number | null
+  /** 1일 = 현지 'HH:MM', 기간 = 'YYYY-MM-DD' */
+  points: { t: string; v: number }[]
+}
+export interface IndexSession {
+  /** pre = 개장 전(1일은 직전 거래일 경로) · open = 장중 · closed = 마감·휴장 */
+  state: "pre" | "open" | "closed"
+  trade_date: string | null
+  last_time: string | null
+  last_kst: string | null
+  open: string
+  close: string
+}
+export interface IndexOverview {
+  key: string
+  name: string
+  value: number | null
+  change: number | null
+  change_pct: number | null
+  prev_close: number | null
+  session: IndexSession
+  ranges: IndexRange[]
+}
+export interface OverviewTile {
+  key: "breadth" | "indiv_net" | "usdkrw" | "credit" | "fear_greed" | "us10y" | "dxy" | "wti"
+  label: string
+  value: number | null
+  change_pct: number | null
+  as_of: string | null
+  series: number[]
+  up?: number | null
+  down?: number | null
+  flat?: number | null
+  buy?: number | null
+  sell?: number | null
+  growth_20?: number | null
+  pctile?: number | null
+  second?: number | null
+}
+export interface MarketOverview {
+  market: MarketKey
+  indices: IndexOverview[]
+  tiles: OverviewTile[]
+}
+
 export interface RiskResponse {
   items: RiskIndicator[]
   signal: {
@@ -936,11 +1046,18 @@ export interface CallMomentumCandidate {
   ticker: string; name: string | null; event_date: string; score: number; first_candidate_at: string | null
   summary?: string | null                      // AI 핵심 요약(이번 시즌 후보만, 근거 기반 sonnet) — 없으면 근거만
   drivers: CallDriver[]; guidance: CallGuidance[]; tone: number | null; prev_tone: number | null; sources: string[]; qa_focus: string[]
+  /** 기대 초과 가속(2026-11-04): 숫자(매출 성장률이 직전 분기보다 빨라짐 + 컨센서스 상회·가이던스 상향) 우선, 없으면 원문 근거 */
+  accel?: CallAccel | null
 }
+export type CallAccel =
+  | { on: boolean; basis: 'numeric'; quarter: string; g_now: number; g_prev: number; gap: number; beat: number | null; guidance_raised: boolean }
+  | { on: boolean; basis: 'quote'; quote?: string | null; vs?: string | null }
+  | { on: boolean; basis: 'none' | 'first' }
 export interface CallMomentumSeason { key: string; label: string; start: string }
 export interface CallMomentum {
   season: CallMomentumSeason & { reported: number }
-  candidates: CallMomentumCandidate[]          // 이번 실적 시즌만
+  candidates: CallMomentumCandidate[]          // 이번 실적 시즌만 — 새 모멘텀
+  continuing?: CallMomentumCandidate[]         // 이번 실적 시즌 이어지는 모멘텀(최근 두 발표에도 모멘텀)
   history: (CallMomentumSeason & { candidates: CallMomentumCandidate[] })[]
   coverage: { universe: number; with_releases: number; with_transcripts: number; extracted_docs: number; failed_docs: number; comparable: number }
   sec_configured: boolean
@@ -1010,6 +1127,7 @@ export interface SeasonItem {
   ticker: string; name: string | null; sector: string; sector_name: string; event_date: string; fiscal: string
   transcript_id: number | null; reaction: "interim" | "final" | null; core: CoreReason[]
   eps_surprise: number | null; headline: string | null; interpretation: string | null
+  confirmed: boolean   // false = 회사가 아직 확정하지 않은 예정일(yfinance 추정)
   d1?: number | null; d7?: number | null; d30?: number | null; latest?: number | null; latest_date?: string | null
   follow?: "유지" | "확대" | "되돌림" | "반전" | null
   expectation?: { d7: boolean; d1: boolean; qualitative: boolean }   // 곧 발표만
@@ -1018,27 +1136,70 @@ export interface SeasonSectorRow {
   key: string; name: string; etf: string; verdict: string | null; one_line: string | null
   n_reported: number; n_reactions: number; tickers: { ticker: string; d1: number | null }[]; dc_chain: boolean
 }
+export interface SeasonWindow { key: string; label: string; first: string; last: string; events: number; confirmed: number }
+/** 발표 캘린더 하루 — 팔로우 기업 발표 수, 그중 핵심·확정 수, 종목(ia-redesign §4.6a) */
+export interface SeasonCalendarDay { date: string; total: number; core: number; confirmed: number; tickers: string[] }
 export interface SeasonOverview {
   season: { key: string; label: string; start: string; is_current: boolean }
   counts: { followed: number; reported: number; beat: number; beat_down: number; reversed: number; reactions: number; reactions_final: number
     up: number; miss: number; miss_up: number }   // up = 첫 거래일 업종 ETF보다 강했다, miss_up = EPS 하회인데 강했다
   changes: { reactions: string[]; themes: string[]; expectations: string[]; transcripts: string[] }
   last_run: string | null
+  /** 시즌별 발표 구간(팔로우 기업 첫~마지막 발표일, 미확정 포함) — 홈 미국 시장 '시즌 사이' 판정 (ia-redesign §4.28) */
+  windows: SeasonWindow[]
+  calendar: SeasonCalendarDay[]
   sectors: SeasonSectorRow[]; top_up: SeasonItem[]; miss_up: SeasonItem[]; beat_down: SeasonItem[]; reversed: SeasonItem[]; upcoming: SeasonItem[]
   evals: { hit: number; underweighted: number; noise: number; missed: number; cases: { ticker: string; issue: string; verdict: EvalVerdict }[] }
   core: { criteria: Record<CoreReason, string>; tickers: { ticker: string; name: string | null; reasons: CoreReason[] }[] }
   reported: SeasonItem[]
 }
+/** 국내 실적 시즌(ia-redesign §4.22) — GET /api/spine/transcript/season/kr. 백엔드 models/kr_season.py와 같은 모양 */
+export type KrReactionState = "final" | "same_day"
+export interface KrAnnouncement {
+  corp_code: string; corp_name: string; stock_code: string | null
+  /** 잠정실적(또는 분기보고서) 공시 접수일(발표 시각은 모른다) */
+  rcept_dt: string; rcp_no: string
+  /** prelim = 잠정실적, quarterly = 잠정실적 없이 분기보고서만 낸 회사(D-305, 반응 집계에는 포함) */
+  kind: "prelim" | "quarterly"
+  /** 분기보고서만 낸 회사는 null */
+  basis: "연결" | "별도" | null; group: string | null; market_cap: number | null
+  /** 첫 반응 = 공시 전 종가 → 다음 거래일 종가(%), x = 같은 업종 중앙값 대비 %p(표본 5 미만이면 null) */
+  r1: number | null; x1: number | null; r1_state: KrReactionState | null
+  r5: number | null; x5: number | null; r5_state: "final" | "pending" | null
+  /** 2단계(공시 본문 파싱) 전까지 null */
+  figures: { revenue_yoy: number | null; op_income_yoy: number | null } | null
+}
+export interface KrSeasonGroup { group: string; n: number; quarterly_n: number; median_r1: number | null; median_x1: number | null; up_n: number; base_n: number; up_ratio: number | null }
+export interface KrSeasonPending { corp_code: string; corp_name: string; stock_code: string; group: string | null; market_cap: number | null; prev_date: string }
+export interface KrSeasonOverview {
+  season: { key: string; label: string; start: string; is_current: boolean }
+  seasons: { key: string; label: string; count: number; is_current: boolean; partial: boolean }[]
+  deadline: string; today: string; prices_as_of: string | null; disclosures_as_of: string | null
+  coverage: { partial: boolean; full_from: string | null }
+  kpi: {
+    /** reported = 잠정실적 기준, quarterly_only = 분기보고서만 낸 곳(따로 셈) */
+    reported: number; quarterly_only: number; prev_reported: number
+    week: { n: number; start: string; end: string; first: string | null; last: string | null } | null
+    outperform_n: number; outperform_base: number; outperform_ratio: number | null; median_x1: number | null
+  }
+  changes: { added_date: string | null; added: string[]; settled_date: string | null; settled: string[] }
+  /** total = 잠정실적 공시 수, quarterly = 분기보고서만 낸 회사 수 */
+  calendar: { date: string; total: number; quarterly: number }[]
+  announcements: KrAnnouncement[]
+  groups: KrSeasonGroup[]
+  pending: KrSeasonPending[]
+}
 export interface SectorTheme {
   id: number; verdict: string | null; tickers: string; created_at: string
-  body: { one_line?: string; welcomed?: string[]; questioned?: string[]; change_note?: string | null; next?: string[]; vs_last_season?: string[] }
+  body: { one_line?: string; narrative?: string; welcomed?: string[]; questioned?: string[]; change_note?: string | null; next?: string[]; vs_last_season?: string[] }
 }
 export interface SectorDetail {
   key: string; name: string; etf: string; season: string; seasons: string[]
   members: { ticker: string; name: string | null }[]
   theme: SectorTheme | null; theme_history: SectorTheme[]
   companies: (Partial<SeasonItem> & { ticker: string; name: string | null; status: "reported" | "upcoming" | "none"; core: CoreReason[] })[]
-  paths: Record<string, [number, number][]>      // ticker → [거래일 offset, 업종 ETF 대비 누적 %p]
+  /** 시즌 한 달 같은 달력 축 — 업종 ETF 대비 누적 %p(창 첫 거래일 = 0), events = 티커 → 발표일 */
+  timeline: { start: string | null; end: string | null; view_end: string | null; series: Record<string, [string, number][]>; events: Record<string, string> }
   history: { season: string; label: string; rows: { ticker: string; d1: number | null }[]; verdict: string | null; one_line: string | null }[]
 }
 export interface ChainDetail {
@@ -1046,9 +1207,19 @@ export interface ChainDetail {
   expectation: Expectation | null; reaction_meta: ReactionMeta | null; reaction_status: "interim" | "final" | null
   series: { date: string; offset: number; ret: number; bench: number; excess: number; volume: number | null }[]   // 발표 전 마지막 거래일 = 0
   mentions: { day: string; n: number }[]          // 'MM-DD' 한국 시각
-  pt_after: { n: number; up: number; down: number; median_pct: number | null; examples: string[] } | null
+  pt_after: { n: number; up: number; down: number; median_pct: number | null; examples: string[]; changes?: { date: string; firm: string; pt_from: number; pt_to: number; pct: number }[] } | null
   history: { fiscal: string; event_date: string; season: string; transcript_id: number | null; d1: number | null; d7: number | null; d30: number | null
+    /** 분기 수익률 = 발표 전 종가 → 다음 발표 전 거래일 종가(업종 ETF 대비 %p). dq_partial = 다음 발표 전이라 최근 종가까지 */
+    dq: number | null; dq_partial: boolean | null; dq_end: string | null
     follow: string | null; pt_up: number | null; pt_down: number | null; headline: string | null; reaction: string | null }[]
+}
+
+/** 콜 상세 '다가오는 분기' — GET /api/spine/transcript/chain/upcoming/{ticker}. series.offset은 발표일 = 0(모두 음수), 기준(0%)은 최근 종가 */
+export interface UpcomingChain extends ChainDetail {
+  fiscal_year: number; fiscal_period: string
+  confirmed: boolean      // false = 예상일
+  days_to_event: number   // 오늘 0
+  pt_before: ChainDetail["pt_after"]   // 최근 30일 목표가 변경
 }
 
 /** 문서 디테일 '관련 문서' — GET /api/spine/doc/{id}/related (D-221) */
@@ -1107,14 +1278,25 @@ export interface TradeFollowRow {
 }
 export interface TradeHighlightRow {
   hs_code: string; item_name: string; group_label: string | null; value: number | null
-  yoy: number | null; z: number | null; flag: TradeFlag; reason: string | null
+  yoy: number | null; mom: number | null; z: number | null; flag: Exclude<TradeFlag, 'none'>; reason: string | null
   contribution: number | null; nested_in: string | null
+  yoy3m: number | null   // 3개월 합의 전년 동기 대비(비율)
 }
 export interface TradeHighlights {
-  period: string | null; total_usd: number
+  period: string | null; periods: string[]; total_usd: number
   surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]   // 상위 limit개만
   groups: { group_label: string; count: number; value: number; surge: number; plunge: number }[]   // 판정 수는 전 품목 기준
 }
+/** GET /api/spine/trade/grid — 품목 벽(산업 › 수출입 품목 모니터). 세목 제외 전 품목의 월별 수출 시계열 한 번에 */
+export interface TradeGridItem {
+  hs_code: string; item_name: string; group_label: string | null
+  latest_period: string | null; latest_export: number | null; yoy_pct: number | null
+  mom: number | null; yoy3m: number | null; contribution: number | null; z: number | null   // 비율 · 0~1
+  flag: TradeFlag
+  stock_codes: string[]
+  series: { period: string; export_usd: number | null; ma12: number | null }[]
+}
+export interface TradeGrid { period: string | null; months: number; items: TradeGridItem[] }
 export interface TradeStockItem {
   hs_code: string; item_name: string; rel: string | null; period: string | null
   yoy_pct: number | null; flag: TradeFlag | null; reason: string | null
@@ -1129,6 +1311,7 @@ export interface CorporateAction {
   action_type: string; report_nm: string | null
   rcept_dt: string               // YYYYMMDD
   market_cap: number | null; summary: string | null; dart_url: string
+  description: string | null     // 제목 아래 한 줄 — 증자 상세·저장 요약 첫 문장(서버 결정적, D-306)
   is_correction: boolean         // [기재정정]·[첨부정정]
   my_group: MyGroup | null       // 내 묶음(stock_groups) 멤버
 }
@@ -1157,7 +1340,6 @@ export interface PersonRow {
   mentions_7d: number; mentions_prev_7d: number; delta_7d: number   // 최근 7일 − 직전 7일
 }
 export interface PeopleDirectory { items: PersonRow[]; total: number; hidden_tail: number; as_of: string | null }
-export interface FollowedPeopleWeek { items: PersonRow[]; as_of: string | null }
 export type PeopleSort = 'surge' | 'total' | 'recent'
 export interface PersonRelation {
   id: number; direction: 'out' | 'in'; rel_type: string
@@ -1166,14 +1348,48 @@ export interface PersonRelation {
   narrative_topic: string | null; narrative_title: string | null; narrative_superseded: boolean
 }
 export interface PersonProfile { status: string; digest: string | null; insights: string | null; created_at: string | null }
-export interface PersonDossier {
-  entity_id: number; name: string; total_docs: number
-  first_doc_at: string | null; last_doc_at: string | null; following: boolean
-  profile: PersonProfile | null; profile_stale: boolean
-  new_since_profile: number | null   // 프로필 생성 이후 수집된 언급 수
+
+/* ---------- 인물 1단계 (ia-redesign §4.23) — 인물 홈 · id 기반 상세 ---------- */
+export type PersonRoleName = 'policy' | 'executive' | 'guru'
+export type PremiseStatus = 'supports' | 'challenges' | 'mixed' | 'untestable' | 'nodata'
+export interface PersonRole { role: PersonRoleName; org: string | null; org_code: string | null; title: string | null; source: string }
+/** 전제 '누가' 한 칸 — 인물이면 대표 인물 id(엔티티가 없으면 null), 기관이면 텍스트만 */
+export interface WhoPerson { label: string; kind: 'person' | 'org'; entity_id: number | null; name: string | null }
+export interface PremiseVerdict { key: string; claim: string; status: PremiseStatus | null }
+export interface PeopleHomeRow {
+  entity_id: number; name: string; role: PersonRole | null; doc_count: number
+  mentions_7d: number; delta_7d: number
+  last_doc_title: string | null; last_doc_id: number | null; last_doc_at: string | null
+  top_stocks: string[]; following: boolean; records: number
+}
+export interface RecordedPerson { entity_id: number | null; name: string; role: PersonRole | null; doc_count: number; premises: PremiseVerdict[] }
+export interface PeopleHome {
+  summary: { followed: number; followed_mentions_7d: number; recorded_people: number; premises: number; mentioned: number; mentioned_2plus: number }
+  role_counts: Record<string, number>
+  followed: PeopleHomeRow[]
+  recorded: RecordedPerson[]
+  recorded_status: 'ok' | 'error'
+  rising: PeopleHomeRow[]
+  as_of: string | null
+}
+export interface PersonResolve { entity_id: number | null; name: string | null }
+export interface MergedName { entity_id: number; name: string; type: string; docs: number; rule: string | null }
+export interface PersonDocRow { id: number; title: string; published_at: string | null; source_type: string | null }
+export interface PersonPremise {
+  key: string; claim: string; status: PremiseStatus | null; kind: string
+  evidence: string[]; rule: string; sources: EraSource[]; said_at: string | null; co_holders: WhoPerson[]
+}
+export interface PersonDetail {
+  entity_id: number; requested_id: number; name: string; role: PersonRole | null
+  merged_names: MergedName[]; following: boolean
+  mentions: { count: number; first_at: string | null; last_at: string | null }
+  own_docs: PersonDocRow[]; own_total: number; own_source: string | null
+  cited: PersonDocRow[]; cited_total: number
+  flow: { year: string; own: number; cited: number }[]
+  premises: PersonPremise[]; premises_status: 'ok' | 'error'
   co_entities: { entity_id: number; name: string; link_type: string; aliases: string | null; count: number }[]
-  recent_docs: { id: number; title: string; published_at: string | null }[]
   relations: PersonRelation[]
+  profile: PersonProfile | null; profile_stale: boolean; new_since_profile: number | null
 }
 
 /* ---------- 개인 투자 열기 (D-231) ---------- */
@@ -1226,11 +1442,51 @@ export interface ProxySuggestion { topic: string; candidates: ProxyCandidate[]; 
 export interface WorldMega {
   id: number; name: string; title: string | null; narrative: string | null
   members: string[]; version: number; created_at: string | null
+  /** 이번 주 Market Today 연결 화두·회차(멤버 서사끼리 중복 제거, 마감 정리 제외)와 '다음 갱신 앞당김' (ia-redesign §9·§4.25) */
+  mt_topics: number; mt_sessions: number; boost: boolean
+}
+/** 큰 그림 줄기 상태 — 강해짐 · 엇갈림 · 약해짐 · 새로 (ia-redesign §4.25) */
+export type StrandStatus = 'strengthening' | 'mixed' | 'weakening' | 'new'
+export interface WorldNarrativeChip { narrative_id: number; topic: string; version: number; created_at: string | null; is_new: boolean }
+export interface WorldStrandEvidence {
+  kind: 'market_today' | 'overnight'
+  ref: string            // mt:<id>:<순번> | ov:<거래일>:<순번> — 서버는 id만 저장, 문장은 읽을 때 원천에서
+  label: string          // 'Market Today 11/4 15:40' · 'Overnight 11/3'
+  text: string
+  date: string
+}
+export interface WorldStrand {
+  title: string; status: StrandStatus; narratives: WorldNarrativeChip[]
+  mt_topics: number; mt_sessions: number; boost: boolean
+  evidence: WorldStrandEvidence[]
+}
+export interface WorldPremise { text: string; shaken_by: (WorldNarrativeChip & { quote: string }) | null }
+export interface WorldRebuildState {
+  available: boolean
+  reason: 'cooldown' | 'budget' | 'unavailable' | null
+  retry_at: string | null    // UTC(DB 표기)
+  budget_left: number
 }
 export interface WorldBigPicture {
+  /** generated = 주간 생성분(줄기·전제) · mega = 첫 생성 전(메가 서사 + 세계관 브리핑 전제) */
+  source: 'generated' | 'mega'
+  strands: WorldStrand[]
+  premises: { settled: WorldPremise[]; contested: WorldPremise[] }
+  generated_at: string | null
+  week: string | null
   mega: WorldMega[]
   worldview: { briefing: string | null; created_at: string | null; stale: boolean } | null
   as_of: string | null
+  /** 근거 범위 (ia-redesign §4.25 머리) */
+  inputs: { narratives: number; mt_sessions: number; overnight_days: number }
+  inputs_as_of: string | null              // 근거 중 가장 늦은 시각(UTC, DB 표기)
+  stale_days: number | null                // 기준 시각 경과일(생성분) · 세계관 브리핑 경과일(첫 생성 전)
+  new_versions_since: number | null        // 생성(또는 브리핑) 뒤 새 내러티브 버전 수
+  rebuild: WorldRebuildState
+}
+export interface WorldRebuildResult {
+  status: 'ok' | 'skipped' | 'cooldown' | 'budget' | 'unavailable' | 'failed' | 'empty' | 'off'
+  reason?: string | null; retry_at?: string | null; key?: string | null; strands?: number | null
 }
 export interface WorldEdgeBrief { from: string; to: string; rel: string; effect_direction: string | null }
 export interface WorldNarrativeChange {
@@ -1245,13 +1501,6 @@ export interface WorldContestedItem {
   latest_refute: { doc_id: number | null; title: string | null; observed_at: string | null } | null
 }
 export interface WorldContested { items: WorldContestedItem[]; as_of: string | null }
-export interface WorldStockNarratives {
-  stock_code: string; name: string | null; kinds: StockGroupKind[]
-  narratives: { topic: string; narrative_id: number; title: string | null; version: number; created_at: string | null
-    drift_summary: string | null; edges: number; via: 'edge' | 'neighbor' }[]
-  latest_drift: string | null; latest_at: string | null
-}
-export interface WorldMyStocks { stocks: WorldStockNarratives[]; members: number; covered: number; as_of: string | null }
 export interface WorldCheckpoint {
   status: 'ok' | 'empty'; topic: string; narrative_id?: number | null; title?: string | null
   core_question?: string | null
@@ -1289,12 +1538,6 @@ export interface TrendLeader {
 export interface TrendLeadersResponse {
   as_of: string | null; computed_from: string | null; criteria: string; universe: number; passed: number
   items: TrendLeader[]; events: TrendEvent[]
-}
-
-/** GET /api/spine/transcript/follow 중 위젯이 읽는 필드 (전체 행은 follow/TranscriptPage) */
-export interface TranscriptFollowSummary {
-  ticker: string; company_name: string; next_report_date?: string | null; calendar_checked_at?: string | null
-  latest: { transcript_id: number } | null
 }
 
 /** 대만 월매출 — GET /api/spine/tw/revenue (금액 단위 천 TWD) */
@@ -1431,16 +1674,19 @@ export interface ChainReport {
 /** 목차 순서 — 재료는 언제나 bottom-up으로 모으고 글의 순서만 고른다 */
 export type ChainOutline = "bottom_up" | "top_down"
 export interface ChainReportItem { id: number; root: string; status: string; outline?: ChainOutline; created_at?: string | null; finished_at?: string | null }
-/** 종목 추적 위젯(docs/specs/stock-tracker.md) — 차트·기술적 신호·수급·이슈·내 원칙 조건 */
+/** 종목 추적 카드(docs/specs/stock-tracker.md) — 차트·기술적 신호·수급·이슈·내 원칙 조건. 국내 종목·미국 티커 */
 export type TrackerKind = "price_below" | "price_above" | "close_below_ma" | "close_above_ma" | "manual"
 export type TrackerRole = "entry" | "exit" | "check"
 export interface TrackerCondition {
   id: number; stock_code: string; role: TrackerRole; kind: TrackerKind; level?: number | null; ma?: number | null; label: string; note?: string | null
   done: number; status: "met" | "not_met" | "pending" | "unknown"; distance_pct?: number | null; ref?: number | null
+  /** 오늘 새로 충족(확인 항목은 오늘 확인) — 홈 › 내 종목 알림 줄 */
+  newly_met?: boolean
 }
 export interface TrackerBar { t: string; o: number; h: number; l: number; c: number; v: number; ma20: number | null; ma60: number | null; ma120: number | null }
 export interface TrackerView {
-  code: string; name: string; price: number | null; change_pct: number | null; as_of: string | null; source: "live" | "close" | null; last_close_date: string | null
+  /** us = 미국 일봉(us_prices) 기준 — 수급·공시 없음 */
+  code: string; name: string; market?: "kr" | "us"; price: number | null; change_pct: number | null; as_of: string | null; source: "live" | "close" | null; last_close_date: string | null
   chart: { series: TrackerBar[] }
   technicals: {
     rsi14?: number | null; ma20_gap?: number | null; ma60_gap?: number | null; ma120_gap?: number | null; off_52w_high?: number | null; ret_1m?: number | null; ret_3m?: number | null
@@ -1457,6 +1703,11 @@ export interface TrackerView {
   }
   conditions: TrackerCondition[]
 }
+
+/** 추적 종목 전체의 조건 충족 요약(GET /api/spine/tracker/status, D-301) — 머리 줄 '충족 n'·알림 줄. 저장된 시세·조건만 읽는다 */
+export interface TrackerStatusCondition { id: number; role: TrackerRole; label: string; status: TrackerCondition["status"]; newly_met: boolean }
+export interface TrackerStatusItem { code: string; name: string; market: "kr" | "us"; as_of: string | null; met: number; newly_met: number; conditions: TrackerStatusCondition[] }
+export interface TrackerStatus { items: TrackerStatusItem[]; met: number; newly_met: number }
 
 /* ---------- 국면 이력 (docs/specs/market-regimes.md) — 규칙 판정, LLM 0 ---------- */
 export type RegimeKind = 'bull' | 'bear'
@@ -1585,6 +1836,7 @@ export interface EraPremise {
   status: 'supports' | 'challenges' | 'mixed' | 'untestable' | 'nodata' | null
   rule: string
   sources: EraSource[]
+  who_people?: WhoPerson[]   // '누가'를 사람·기관으로 나눈 것(인물 대응 표, ia-redesign §4.23)
 }
 export interface EraStateResponse {
   state: EraLayerState
@@ -1639,7 +1891,164 @@ export interface ObserveSummary {
   costs: { usd: number; calls: number; prev_usd: number; change_pct: number | null
     by_job: { job: string; name: string; usd: number | null; calls: number; failed: number | null; cache_pct: number | null; share: number }[]
     daily: { day: string; usd: number | null }[] }
-  usage: { since: string | null; visits: number; sessions: number; screens: { name: string; visits: number; avg_dwell_ms: number | null }[]
-    paths: { ref: string; name: string; n: number }[]; actions: { name: string; n: number }[]; dropped: string[] }
-  value: { opens: { name: string; n: number; uniq: number }[]; expectation_grades: { hit: number; underweighted: number; noise: number; missed: number } }
+  usage: { since: string | null; visits: number; sessions: number
+    /** IA 대메뉴 → 탭. section null = 개편 전 기록 */
+    sections: { section: string | null; visits: number; avg_dwell_ms: number | null; actions: number; tabs: { tab: string | null; visits: number; avg_dwell_ms: number | null }[] }[]
+    screens: { name: string; visits: number; avg_dwell_ms: number | null }[]
+    paths: { ref: string; name: string; n: number }[]; actions: { name: string; n: number }[]; dropped: string[]
+    old_routes: { name: string; n: number; refs: string[] }[]; boards_api_calls: number }
+  value: { opens: { name: string; n: number; uniq: number }[]
+    rates: { key: "ai_outputs" | "call" | "overnight"; label: string; generated: number; opened: number }[]
+    expectation_grades: { hit: number; underweighted: number; noise: number; missed: number } }
 }
+
+/* ---------- Market Today (docs/specs/market-today.md) — GET /api/spine/market-today ---------- */
+export interface TodaySource { ref: string; kind: string; publisher: string | null; title: string | null; url: string | null; doc_id: number | null; published_at: string | null; echo: number }
+export interface TodayIndexAt { value: number; change_pct: number | null; at: string }
+/** 화두에 걸린 내러티브 (ia-redesign §9.1) — rule 1 태그 일치 · 2 자료 겹침 + 태그 부분 일치 · 3 자료 겹침 */
+export interface TopicNarrative { topic: string; narrative_id: number; version: number; created_at: string | null; rule: number; doc_overlap: number }
+export interface TodayTopic { title: string; body: string; tags: string[]; continuing: boolean; echo: number; refs: string[]; sources: TodaySource[]; narratives: TopicNarrative[] }
+export interface MarketToday {
+  trade_date: string | null
+  slots: { slot: string; label: string; created_at: string; topics: number }[]
+  current: {
+    slot: string; label: string; window_start: string; window_end: string; created_at: string; doc_count: number; telegram: number; news: number
+    /** 회차 시점 시장 상태 — 코스피·코스닥 값과 전일 대비, 코스피 5분 경로 */
+    market: { kospi?: TodayIndexAt | null; kosdaq?: TodayIndexAt | null; path: [string, number][] } | null
+    /** 내러티브 연결을 계산했는가 — 아니면 칩 줄을 그리지 않는다 */
+    links_ready: boolean
+    topics: TodayTopic[]
+  } | null
+  next_slot: string | null
+  /** 앞뒤로 회차가 있는 날(‹ › 이동). next_date는 없고 오늘보다 앞이면 오늘 */
+  prev_date?: string | null
+  next_date?: string | null
+}
+
+/* ---------- 화두 → 내러티브 타임라인·후보 (ia-redesign §9) ---------- */
+export type TimelineCellState = "linked" | "unlinked" | "scheduled" | "absent"
+export interface NarrativeMarketToday {
+  topic: string; narrative_id: number
+  collected_since: string | null
+  days: { trade_date: string; cells: { slot: string; label: string; state: string; wrap: boolean }[] }[]
+  items: { mt_id: number; trade_date: string; slot: string; label: string; title: string; rule: number; doc_overlap: number; wrap: boolean }[]
+  week_topics: number; week_sessions: number; boost: boolean
+}
+export interface NarrativeCandidate {
+  tag: string; name: string
+  /** pending 후보 · approved 승인(첫 버전 대기) · watching 관찰 중 */
+  status: string
+  first_seen: string; last_seen: string; days: number; sessions: number; sources: number; tags: string[]
+  session_list: { mt_id: number; trade_date: string; slot: string; label: string }[]
+  titles: string[]; linked: string[]
+  merge_into: { topic: string; overlap: number; narrative_id: number; version: number; created_at: string | null } | null
+  narrative_topic: string | null; attempt: string | null
+}
+export interface NarrativeCandidates { items: NarrativeCandidate[] }
+export interface CandidateAction { tag: string; status: string; mode: string | null; narrative_topic: string | null; dismissed_until: string | null }
+
+/* ---------- 기업 관련 자료 (GET /api/spine/feed/company-evidence) ---------- */
+export interface EvidenceItem {
+  id: string
+  doc_id: number | null
+  title: string
+  url: string
+  excerpt: string
+  source_type: string
+  publisher: string
+  published_at: string
+  local_date: string
+  time_precision: 'date' | 'time'
+  status: 'within' | 'after' | 'uncertain'
+  relation: string
+}
+export interface EvidenceResponse {
+  items: EvidenceItem[]
+  total: number
+  page: number
+  size: number
+  has_more: boolean
+  as_of: string
+  coverage: { source: string; first: string; last: string; count: number }[]
+  undated_count: number
+  uncertain_count: number
+  timezone: string
+  /** 최근 30일 언급 흐름 — 출처·검색어와 무관하게 이 기업 자료 전체(시장 시간대 날짜) */
+  flow: EvidenceFlow
+}
+export interface EvidenceFlow {
+  start: string
+  end: string
+  days: { date: string; count: number }[]
+  sources: { source: string; count: number }[]
+}
+export interface EvidenceRange {
+  start?: string
+  end?: string
+  cutoff?: 'end' | 'close'
+  after?: boolean
+}
+
+/* ---------- 관리자 › 작업·신선도 · 자동 정리 (ia-redesign §4.31) ---------- */
+/** GET /api/spine/admin/jobs — ran_at은 UTC(SQLite datetime('now')) */
+export interface AdminJobStatus {
+  name: string; label: string; description: string; entrypoint: string; enabled: boolean
+  last_run: { status: string; summary: string | null; duration_ms: number | null; ran_at: string } | null
+}
+/** GET /api/spine/admin/health — 데이터 신선도(D-222) */
+export interface AdminHealthItem {
+  key: string; label: string; kind: string; owner: string; critical: boolean
+  latest: string | null; expected: string | null; status: string; detail: string
+}
+/** GET /api/spine/admin/runs */
+export interface AdminJobRun { job: string; status: string; summary: string | null; duration_ms: number | null; ran_at: string }
+/** GET /api/spine/curation — 정리 작업 자동 판정 기록(D-294·D-295). decided_at은 UTC */
+export interface CurationEntry {
+  kind: string; target_id: number; title: string; verdict: string; rule: string | null; applied: boolean; decided_at: string | null
+}
+export interface CurationLog { apply_enabled: boolean; counts: Record<string, Record<string, number>>; items: CurationEntry[] }
+
+/** GET /api/spine/causal/activity — 최근 n일 새로 생기거나 갱신된 인과 그래프 노드 + 수혜 후보(D-035) */
+export interface GraphActivityBeneficiary { stock_code: string; name: string; rs_short: number | null }
+export interface GraphActivityNode { id: number; name: string; type: string; is_new: boolean; new_edges: number; beneficiaries: GraphActivityBeneficiary[] }
+
+/* ── Kalshi 예측시장 캐러셀 (홈 › 대시보드, GET /api/spine/home/predictions, models/kalshi.py) ── */
+export interface KalshiOutcome { label: string; ticker?: string | null; price: number; prev?: number | null; volume?: number | null; change?: number | null }
+export interface KalshiEvent {
+  event_ticker: string; series_ticker: string; category: string; category_label: string
+  title: string; subtitle?: string | null; recent_volume?: number | null; close_ts?: string | null; url: string
+  pinned?: boolean; spark?: [string, number][]
+  outcomes: KalshiOutcome[]
+}
+export interface KalshiDetailOutcome { label: string; ticker?: string | null; price: number; volume_24h: number; volume: number; status: string; result?: string | null; close_ts?: string | null }
+export interface KalshiDetail {
+  event_ticker: string; series_ticker: string; category: string; category_label: string; title: string; subtitle?: string | null
+  mutually_exclusive: boolean; close_ts?: string | null; rules?: string | null; url: string; pinned: boolean; fetched_at?: string | null
+  range: string; outcomes: KalshiDetailOutcome[]; series: { ticker?: string | null; label: string; points: [string, number][] }[]
+}
+export interface KalshiPredictions { fetched_at: string | null; base_at?: string | null; items: KalshiEvent[] }
+
+// 분기 손익 흐름(Sankey) — ia-redesign §4.13. 백엔드가 raw 금액(KRW/USD)과 보조 지표까지 완성해 돌려준다
+export interface FlowNodeSubs {
+  yoy: number | null; qoq: number | null; margin: number | null
+  margin_yoy_pp: number | null; margin_qoq_pp: number | null
+  share_of_revenue: number | null; effective_tax_rate: number | null
+  note: string | null
+}
+export interface FlowNode {
+  id: string; label: string; value: number; column: number
+  kind: 'revenue' | 'keep' | 'cost' | 'inflow'
+  estimated?: boolean; subs?: FlowNodeSubs | null
+}
+export interface FlowLink { source: string; target: string; value: number; estimated?: boolean }
+export interface FlowSegment { name: string; value: number; yoy: number | null; qoq: number | null; share: number | null }
+export interface FlowCallout { rule: number; text: string }
+export interface IncomeFlowResponse {
+  period: string; prev_q: string | null; prev_y: string | null; as_of: string | null
+  stage: 'preliminary' | 'quarterly_report'
+  fs_div: 'CFS' | 'OFS' | 'GAAP'; unit: 'KRW' | 'USD'; derived?: boolean
+  nodes: FlowNode[]; links: FlowLink[]; segments: FlowSegment[]
+  callout: FlowCallout | null; notes: string[]; degraded: string[]
+}
+export interface IncomeFlowQuarterItem { q: string; stage: 'preliminary' | 'quarterly_report'; as_of: string | null }
+export interface IncomeFlowQuarters { quarters: IncomeFlowQuarterItem[] }

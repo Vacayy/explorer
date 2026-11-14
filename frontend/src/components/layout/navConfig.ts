@@ -1,10 +1,11 @@
 /**
- * 내비게이션 단일 소스 — 상단 L1 5탭과 인페이지 L2가 같은 정의를 읽는다 (docs/specs/app-shell.md §2).
+ * 내비게이션 단일 소스 — 상단 L1 6탭·모바일 하단 탭과 인페이지 L2가 같은 정의를 읽는다 (docs/specs/app-shell.md §2).
  *
- * L1 = 홈 · 탐색 · 포트폴리오 · 캔버스 · 월드모델. P3a에서 L2는 지금 URL을 가리킨다(URL 이전은 P3b).
+ * L1 = 홈 · 피드 · 탐색 · 산업 · 포트폴리오 · Thesis (화면 구조 개편 C안). 홈 L2는 시스템 고정 탭 다섯 개(3단계), 나머지 L2는 지금 URL을 가리킨다.
  * 종목 도시에(/analyze, /us/:ticker, /company)는 L1이 아니라 목적지 — L2 자리에 도시에 탭을 보인다.
+ * 시장 전체 기업활동은 홈 › 한국 시장 #actions(D-300) — /actions는 리다이렉트(?code=X는 그 종목 도시에 개요 #actions, §10.6). 리다이렉트 전 한 번은 한국 시장으로 판정.
  */
-export type SectionKey = "home" | "explore" | "portfolio" | "canvas" | "world"
+export type SectionKey = "home" | "feed" | "explore" | "industry" | "portfolio" | "world"
 
 export interface SubTab {
   key: string
@@ -25,42 +26,47 @@ export interface SectionDef {
 }
 
 export const SECTIONS: readonly SectionDef[] = [
-  // 홈 L2 탭은 여기가 아니라 내 메뉴(home_boards)에서 그린다(App subNavFor). 아래 규칙은 위치 판정(전체 보기 화면 포함)용
+  // 홈 L2 = 시스템 고정 탭(개편 3단계). 옛 주소 /home/b/:id·/home/briefing·/home/risk·/regimes는 리다이렉트, /retail은 한국 시장으로 판정
   { key: "home", label: "홈", path: "/home", tabs: [
     { key: "dashboard", path: "/home", label: "대시보드", match: ["/home"] },
-    { key: "briefing", path: "/home/briefing", label: "시장 브리핑", match: ["/home/briefing"] },
-    { key: "risk", path: "/home/risk", label: "국면·리스크", match: ["/home/risk", "/retail"] },
-    { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro"] },
+    { key: "kr", path: "/home/kr", label: "한국 시장", match: ["/home/kr", "/retail", "/actions"] },
+    { key: "us", path: "/home/us", label: "미국 시장", match: ["/home/us", "/home/briefing"] },
+    { key: "macro", path: "/home/macro", label: "매크로", match: ["/home/macro", "/home/risk", "/regimes"] },
+    { key: "stocks", path: "/home/stocks", label: "내 종목", match: ["/home/stocks", "/follow"] },
+  ] },
+  // 피드 대메뉴(개편 4a단계). 옛 주소 /home?home_view=feed·/follow/saved는 리다이렉트 — 리다이렉트 전 한 프레임도 같은 탭으로 판정
+  { key: "feed", label: "피드", path: "/feed", tabs: [
+    { key: "feed", path: "/feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },
+    { key: "saved", path: "/feed/saved", label: "저장됨", match: ["/feed/saved", "/follow/saved"] },
   ] },
   { key: "explore", label: "탐색", path: "/discover", tabs: [
-    { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover"] },
-    { key: "signals", path: "/explore", label: "신호", match: ["/explore"] },
+    { key: "discover", path: "/discover", label: "종목 발견", match: ["/discover", "/explore"] },
     { key: "transcripts", path: "/follow/transcripts", label: "컨콜", match: ["/follow/transcripts", "/us"] },
-    { key: "sectors", path: "/map", label: "산업·섹터", match: ["/map", "/follow/universe", "/discover/industry"] },
+    { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
+    // 신호(/explore)는 종목 발견 '오늘의 신호'로 옮겨 리다이렉트(4c). 기업활동 탭은 홈 › 한국 시장으로 옮겨 없앴다(D-300)
+  ] },
+  // 산업 첫 탭 = 섹터 지도(/industry) → 섹터 화면(/industry/:sector). Peer 그룹은 섹터 화면 탭으로 옮겨 옛 /discover/peers·/analyze/compare는
+  // 리다이렉트 전 한 프레임도 여기로 판정(D-327)
+  { key: "industry", label: "산업", path: "/industry", tabs: [
+    { key: "sectors", path: "/industry", label: "섹터", match: ["/industry", "/map", "/follow/universe", "/discover/industry", "/discover/peers", "/analyze/compare"] },
     { key: "trade", path: "/follow/trade", label: "수출입", match: ["/follow/trade"] },
+    { key: "taiwan", path: "/follow/taiwan", label: "대만 공급망", match: ["/follow/taiwan"] },
     { key: "valuechain", path: "/value-chain", label: "밸류체인", match: ["/value-chain"] },
     { key: "credit", path: "/follow/credit", label: "회사채", match: ["/follow/credit"] },
-    { key: "regimes", path: "/regimes", label: "국면 이력", match: ["/regimes"] },
-    { key: "people", path: "/people", label: "인물", match: ["/people", "/person"] },
-    { key: "actions", path: "/actions", label: "기업활동", match: ["/actions"] },
   ] },
   { key: "portfolio", label: "포트폴리오", path: "/portfolio", tabs: [
     { key: "overview", path: "/portfolio", label: "개요", match: ["/portfolio"] },
     { key: "holdings", path: "/portfolio/holdings", label: "보유", match: ["/portfolio/holdings"] },
     { key: "principles", path: "/portfolio/principles", label: "원칙", match: ["/portfolio/principles"] },
     { key: "events", path: "/portfolio/events", label: "일정", match: ["/portfolio/events"] },
-    { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks", "/follow"] },
+    { key: "groups", path: "/follow/stocks", label: "종목 묶음", match: ["/follow/stocks"] },
   ] },
-  { key: "canvas", label: "캔버스", path: "/home?home_view=feed", tabs: [
-    { key: "feed", path: "/home?home_view=feed", label: "피드", match: ["/home?home_view=feed", "/feed", "/doc/", "/source"] },
-    { key: "study", path: "/study", label: "스터디", match: ["/study"] },
-    { key: "saved", path: "/follow/saved", label: "저장됨", match: ["/follow/saved"] },
-    { key: "sources", path: "/sources", label: "소스", match: ["/sources"] },
-  ] },
-  { key: "world", label: "월드모델", path: "/narrative", tabs: [
+  // key 'world'는 그대로 두고 이름만 Thesis (C안). 소스는 관리자 › 소스(/admin/sources)
+  { key: "world", label: "Thesis", path: "/narrative", tabs: [
     { key: "now", path: "/narrative", label: "지금", match: ["/narrative"] },
     { key: "graph", path: "/knowledge/ontology", label: "그래프", match: ["/knowledge"] },
     { key: "judgment", path: "/questions", label: "내 판단", match: ["/questions", "/question/", "/thesis", "/report", "/proxy-boards"] },
+    { key: "study", path: "/study", label: "스터디", match: ["/study"] },
   ] },
 ]
 
@@ -91,26 +97,12 @@ export function locate(pathname: string, search = ""): { section: SectionKey; ta
   return best && { section: best.section, tab: best.tab }
 }
 
-export const FEED_TABS: readonly SubTab[] = [
-  { key: "all", path: "/home?home_view=feed", label: "Home 피드" },
-  { key: "documents", path: "/feed?view=documents", label: "문서 검색" },
-  { key: "telegram", path: "/feed?source=telegram", label: "텔레그램" },
-  { key: "blog", path: "/feed?source=blog", label: "블로그" },
-  { key: "youtube", path: "/feed?source=youtube", label: "유튜브" },
-  { key: "news", path: "/feed?source=news", label: "뉴스" },
-  { key: "article", path: "/feed?source=article", label: "아티클" },
-  { key: "transcript", path: "/feed?source=transcript", label: "컨콜" },
-  { key: "people", path: "/feed?source=people", label: "인물" },
-  { key: "canon", path: "/feed?source=canon", label: "역사" },
-  // 스크랩 = 미검증(개인 투자자 블로그) — 다른 탭과 성격이 달라 맨 뒤 (D-142)
-  { key: "scrap", path: "/feed?source=scrap", label: "스크랩" },
-]
-
 /** 종목 도시에 탭 — path는 종목코드가 필요해 analyzeTabs(code)로 생성 */
 const ANALYZE_TAB_DEFS = [
   { key: "summary", label: "개요" },
   { key: "financials", label: "실적·사업" },
   { key: "mentions", label: "자료" },
+  { key: "lens", label: "투자 렌즈" },
 ] as const
 
 /** Carry only company research context, never unrelated filters or arbitrary return URLs. */
@@ -139,17 +131,6 @@ export const analyzeTabs = (stockCode: string, search = ''): SubTab[] => {
     key: t.key, label: hasDiscovery && t.key === 'summary' ? '기업 조사' : t.label,
     path: `/analyze/${stockCode}/${t.key}${context}`,
   }))
-}
-
-/** Existing document URLs remain valid alongside the home timeline. */
-export function isDocumentFeed(search: string): boolean {
-  const params = new URLSearchParams(search)
-  return params.get('view') === 'documents' || ['q', 'source', 'stock', 'industry', 'topic', 'page'].some(k => params.has(k))
-}
-
-/** 피드 문서 검색의 소스 탭 key — ?source= 쿼리가 상태 소스 */
-export function feedSourceTab(search: string): string {
-  return new URLSearchParams(search).get("source") ?? (isDocumentFeed(search) ? "documents" : "all")
 }
 
 /** 종목 도시에 탭 key — 옛 탭(사업·밸류·공시)은 가까운 탭으로 */

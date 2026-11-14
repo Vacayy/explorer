@@ -6,30 +6,30 @@ import type { SubTab } from "./navConfig"
 interface Props {
   tabs: readonly SubTab[]
   activeKey: string | null
-  /** 좌측 컨텍스트 라벨 — 종목 도시에의 회사명 */
+  /** 컨텍스트 라벨 — 종목 도시에의 회사명. 시안대로 첫 탭과 합쳐 'SK하이닉스 · 개요' 한 칩으로 그린다 */
   context?: string | null
-  /** 탭 뒤 동작 — 홈의 '새 메뉴' */
+  /** 탭 뒤 동작(선택) */
   trailing?: ReactNode
 }
 
 /**
  * 인페이지 서브탭 — 모드 안의 형제 탭 전환 (docs/specs/dock-navigation.md §2).
- * 콘텍스트 첫 줄 한 행(h-8 + mb-5 = --subnav-height). URL이 상태의 단일 소스 — Link만.
+ * 콘텍스트 첫 줄 한 행(h-[30px] + mb-4 = --subnav-height, 시안 칩 30 · 간격 4 · 아래 16). URL이 상태의 단일 소스 — Link만.
  * 모드 간 점프는 도크 팝오버가, 모드 안 전환은 이 스트립이 맡는다.
+ * 폰(<768): 줄 높이 h-10 + mb-3(= 폰 --subnav-height) — 누르는 칸을 40px로, 알약 모양은 안쪽 span이 그린다(ia-redesign §4.32).
  */
 export function SubNav({ tabs, activeKey, context, trailing }: Props) {
   return (
-    <nav aria-label="하위 메뉴" className="-mx-1 mb-5 flex h-8 items-center gap-0.5 overflow-x-auto px-1">
-      {context && <span className="mr-2 shrink-0 text-sm font-semibold">{context}</span>}
-      {tabs.map((t) => {
+    <nav aria-label="하위 메뉴" className="-mx-1 mb-4 flex h-[30px] items-center gap-1 overflow-x-auto px-1 max-md:mb-3 max-md:h-10">
+      {tabs.map((t, i) => {
         const active = t.key === activeKey
         return (
           <Link key={t.key} to={t.path} aria-current={active ? "page" : undefined}
-            className={cn(
-              "shrink-0 rounded-lg px-3 py-1.5 text-[13px] leading-none transition-colors",
-              active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}>
-            {t.label}
+            className="group flex shrink-0 items-center max-md:h-10">
+            <span className={cn(
+              "inline-flex h-[30px] items-center rounded-full px-3 text-[13px] leading-none whitespace-nowrap transition-colors",
+              active ? "bg-action font-medium text-action-ink" : "text-ink-2 group-hover:bg-chip group-hover:text-ink",
+            )}>{context && i === 0 ? `${context} · ${t.label}` : t.label}</span>
           </Link>
         )
       })}

@@ -8,9 +8,10 @@
 - 판정: claude -p sonnet 배치 (여러 쌍/콜) — same|different + 근거 한 문장.
 - 병합: survivor로 FK 전수 재배선(entity_relations는 UNIQUE 충돌 시 두 엣지 병합) → loser 삭제.
 """
+from pipeline import llm
 import math
 
-from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+from pipeline.enrich import _parse_json, llm_engine
 
 # company 추가(D-125): 같은 회사가 코드 있는 엔티티와 코드 없는 엔티티로 갈려 다이제스트 슬롯을
 # 이중 소모하고 있었다(실측: 현대자동차 005930류 vs "현대차" 코드없음, 코사인 0.9626).
@@ -105,7 +106,7 @@ def judge_pairs(pairs: list[dict]) -> list[dict]:
     out: list[dict] = []
     for i in range(0, len(pairs), JUDGE_BATCH):
         batch = pairs[i:i + JUDGE_BATCH]
-        raw = _call_claude_code(_build_judge_prompt(batch), model="sonnet", timeout=300)
+        raw = llm.run(_build_judge_prompt(batch), task='vocab.judge').text
         verdicts = _parse_verdicts(_parse_json(raw), len(batch))
         for j, pair in enumerate(batch):
             v = verdicts.get(j, {})
@@ -263,6 +264,9 @@ def _move_evidence_and_drop(conn, from_edge_id: int, to_edge_id: int | None) -> 
     conn.execute("DELETE FROM entity_relations WHERE id=?", (from_edge_id,))
 
 
+SOFT_ENTITY_REFS: list[tuple[str, str]] = [("transcript_follow", "entity_id")]
+
+
 def _entity_fk_columns(conn) -> list[tuple[str, str]]:
     """entities(id)를 참조하는 (테이블, 컬럼) 전수 — sqlite_master + PRAGMA foreign_key_list로 동적 발견.
     entity_relations는 별도 특수 처리하므로 제외."""
@@ -275,6 +279,10 @@ def _entity_fk_columns(conn) -> list[tuple[str, str]]:
         for fk in conn.execute(f"PRAGMA foreign_key_list({t})"):
             if fk["table"] == "entities" and (fk["to"] in ("id", None)):
                 cols.append((t, fk["from"]))
+    # FK 선언 없이 entities.id를 담는 컬럼 — 병합 때 같이 옮기지 않으면 지워진 id를 가리킨다
+    # (2026-11-06: transcript_follow.entity_id가 병합된 Apple 4201을 가리켜 실적 시즌 체인이 11/4부터 멈춤)
+    names = set(tables)
+    cols += [tc for tc in SOFT_ENTITY_REFS if tc[0] in names and tc not in cols]
     return cols
 
 

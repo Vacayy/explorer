@@ -3,6 +3,9 @@
 전부 저장된 행만 읽는다. LLM·subprocess를 부르는 경로(narrative_diff의 게으른 haiku 요약,
 worldview/narrative compute)는 쓰지 않는다 — 위젯이 열릴 때마다 생성이 돌면 안 되기 때문이다.
 """
+import re
+import sqlite3
+
 from pipeline.mega_narrative import list_mega
 from pipeline.narrative import _version_diff, causal_subgraph, change_summary_fallback, narrative_grounding
 from pipeline.narrative_graph import narrative_chain
@@ -28,16 +31,107 @@ def _latest_topic_rows(conn) -> dict[str, dict]:
 
 
 def big_picture(conn) -> dict:
-    """이번 주 큰 그림 — 살아 있는 메가 서사 + 저장된 세계관 브리핑(생성하지 않는다)."""
-    mega = list_mega(conn)
+    """이번 주 큰 그림 — 주간 생성분(줄기·전제, pipeline/weekly_big_picture)을 저장분 그대로 읽는다(생성하지 않는다).
+
+    생성분이 없으면(첫 생성 전) 살아 있는 메가 서사 + 저장된 세계관 브리핑의 전제로 보여 준다(`source='mega'`).
+    메가·세계관 필드는 두 경우 모두 채운다(홈 위젯이 쓴다). 낡음(`stale_days`)은 기준 시각(근거 중 가장 늦은 시각) 경과일.
+    """
+    from pipeline import weekly_big_picture as wbp
+    mega = _with_mt_counts(conn, list_mega(conn))
     cached = worldview_cached(conn)
     worldview = None
     if cached:
         m = worldview_gather(conn)
         worldview = {"briefing": cached["digest"], "created_at": cached["created_at"],
                      "stale": cached["doc_ids_hash"] != inputs_hash(m)}
+    gen = wbp.read_generated(conn)
+    rebuild = wbp.rebuild_state(conn)
+    if gen:
+        stamp = gen["inputs_as_of"] or gen["generated_at"]
+        return {"source": "generated", "strands": gen["strands"], "premises": gen["premises"],
+                "generated_at": gen["generated_at"], "week": gen["key"],
+                "as_of": stamp, "inputs": gen["inputs"], "inputs_as_of": gen["inputs_as_of"],
+                "stale_days": _days_since(conn, stamp), "new_versions_since": wbp.versions_since(conn, gen["generated_at"]),
+                "rebuild": rebuild, "mega": mega, "worldview": worldview}
     dates = [m["created_at"] for m in mega if m["created_at"]] + ([worldview["created_at"]] if worldview else [])
-    return {"mega": mega, "worldview": worldview, "as_of": max(dates) if dates else None}
+    inputs, inputs_as_of = _big_picture_inputs(conn)
+    since = None
+    if worldview and worldview["created_at"]:
+        since = conn.execute("SELECT COUNT(*) FROM narratives WHERE COALESCE(kind,'topic')='topic' AND created_at > ?",
+                             (worldview["created_at"],)).fetchone()[0]
+    p = premises_from_briefing(worldview["briefing"] if worldview else None)
+    return {"source": "mega", "strands": [], "generated_at": None, "week": None,
+            "premises": {k: [{"text": t, "shaken_by": None} for t in v] for k, v in p.items()},
+            "mega": mega, "worldview": worldview, "as_of": max(dates) if dates else None,
+            "inputs": inputs, "inputs_as_of": inputs_as_of,
+            "stale_days": _days_since(conn, worldview["created_at"]) if worldview else None,
+            "new_versions_since": since, "rebuild": rebuild}
+
+
+BIG_PICTURE_DAYS = 7
+
+
+def _with_mt_counts(conn, mega: list[dict]) -> list[dict]:
+    """줄기(지금은 메가 서사) 자리에 이번 주 Market Today 연결 수·앞당김을 붙인다(§4.25 — 별도 '자주 나온 서사' 카드 대신)."""
+    from pipeline.market_today_links import boosted_topics, ensure_schema, frequency, strand_counts
+    try:
+        ensure_schema(conn)
+        freq, boosted = frequency(conn), boosted_topics(conn)
+    except sqlite3.OperationalError:   # Market Today 표가 아직 없는 DB
+        freq, boosted = {}, set()
+    return [{**m, **strand_counts(conn, m["members"], freq, boosted)} for m in mega]
+
+
+def _big_picture_inputs(conn) -> tuple[dict, str | None]:
+    """최근 7일 근거 범위 — 새 내러티브 버전 수·Market Today 회차 수·Overnight 일수와 가장 늦은 시각(UTC 'YYYY-MM-DD HH:MM:SS').
+    Market Today 표는 파이프라인이 처음 돌 때 만들어지므로 없으면 0."""
+    window = f"-{BIG_PICTURE_DAYS} days"
+    n = conn.execute("SELECT COUNT(*), MAX(created_at) FROM narratives WHERE COALESCE(kind,'topic')='topic' "
+                     "AND created_at >= datetime('now', ?)", (window,)).fetchone()
+    try:
+        mt = conn.execute("SELECT COUNT(*), MAX(created_at) FROM market_today WHERE created_at >= datetime('now', ?)",
+                          (window,)).fetchone()
+    except sqlite3.OperationalError:
+        mt = (0, None)
+    ov = conn.execute("SELECT COUNT(*), MAX(created_at) FROM us_briefings WHERE trade_date >= date('now', ?)",
+                      (window,)).fetchone()
+    latest = [t for t in (n[1], mt[1], ov[1]) if t]
+    return ({"narratives": n[0], "mt_sessions": mt[0], "overnight_days": ov[0]}, max(latest) if latest else None)
+
+
+def _days_since(conn, stamp: str | None) -> int | None:
+    if not stamp:
+        return None
+    d = conn.execute("SELECT CAST(julianday('now') - julianday(?) AS INTEGER)", (stamp,)).fetchone()[0]
+    return None if d is None else max(0, d)
+
+
+_SETTLED = ("자리 잡은", "자리잡은", "통념")
+_CONTESTED = ("도전", "흔들", "엇갈", "이견")
+PREMISE_LIMIT = 6
+
+
+def premises_from_briefing(briefing: str | None) -> dict:
+    """세계관 브리핑 본문(저장된 마크다운) → {'settled': [...], 'contested': [...]}.
+    '### 자리 잡은 전제' 절과 '### 도전받는 것' 절의 문장을 그대로 나눈다(새로 쓰지 않는다). 절이 없으면 빈 목록."""
+    out: dict[str, list[str]] = {"settled": [], "contested": []}
+    if not briefing:
+        return out
+    section = None
+    for line in briefing.splitlines():
+        head = re.match(r"^#{1,4}\s*(.+)$", line.strip())
+        if head:
+            name = head.group(1)
+            section = ("settled" if any(k in name for k in _SETTLED)
+                       else "contested" if any(k in name for k in _CONTESTED) else None)
+            continue
+        if section and line.strip():
+            text = re.sub(r"\*\*|__|^[-*]\s+", "", line.strip())
+            for sentence in re.split(r"(?<=[다요까])[.?]\s+|(?<=[다요까])[.?]$", text):
+                sentence = sentence.strip()
+                if len(sentence) >= 8 and len(out[section]) < PREMISE_LIMIT:
+                    out[section].append(sentence + ("." if sentence[-1] not in ".?!" else ""))
+    return out
 
 
 def narrative_changes(conn, days: int = 7, limit: int = 20) -> dict:
@@ -97,8 +191,9 @@ def _member_companies(conn) -> list[dict]:
     rows = conn.execute("""
         SELECT m.stock_code, g.kind, e.id entity_id, e.name
         FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id
-        LEFT JOIN entities e ON e.id = (SELECT id FROM entities WHERE type='company' AND aliases=m.stock_code
-                                        ORDER BY id LIMIT 1)""").fetchall()
+        LEFT JOIN entities e ON e.id = COALESCE(
+            (SELECT id FROM entities WHERE type='company' AND aliases=m.stock_code ORDER BY id LIMIT 1),
+            (SELECT entity_id FROM transcript_follow WHERE ticker=m.stock_code))""").fetchall()
     by_code: dict[str, dict] = {}
     for r in rows:
         s = by_code.setdefault(r["stock_code"], {"stock_code": r["stock_code"], "name": r["name"],

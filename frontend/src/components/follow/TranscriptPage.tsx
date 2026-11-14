@@ -1,38 +1,49 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Megaphone, Network, Sparkles, ChevronRight } from "lucide-react"
+import { Search, Sparkles, ChevronRight, X } from "lucide-react"
 import api from "@/api/client"
 import { apiQuery, apiComputeQuery, STALE } from "@/api/query"
 import { PageContainer } from "@/components/shared/PageContainer"
 import { Markdown } from "@/components/shared/Markdown"
 import CollectTranscripts from "@/components/follow/CollectTranscripts"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { BoundedArea } from "@/components/shared/Bounded"
+import { useMediaQuery, MOBILE_QUERY } from "@/hooks/useMediaQuery"
 import { TranscriptTabs } from "@/components/follow/TranscriptTabs"
+import { proxiesUrl } from "@/lib/judgment"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
-import { ProxyDashboard } from "@/components/follow/ProxyDashboard"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { MomentumStrip } from "@/components/follow/CallMomentumPanel"
 import { RecentCalls } from "@/components/follow/RecentCalls"
 import { CallReaction } from "@/components/follow/CallReaction"
 import { TranscriptTickerActions } from "@/components/follow/TranscriptTickerActions"
 import { SeasonView } from "@/components/follow/season/SeasonView"
+import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
+import { seasonMarket } from "@/components/follow/season/SeasonHeader"
 import { SectorView } from "@/components/follow/season/SectorView"
-import { ChainCharts, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard } from "@/components/follow/season/ChainSections"
-import { useChain } from "@/hooks/useTranscripts"
+import { AfterDetail, CallWindowChart, ChainHeaderLinks, HistoryCard, IssuesRow, StagesCard, UpcomingBeforeDetail, UpcomingStagesCard, currentHistory, fyShort, type StageKey } from "@/components/follow/season/ChainSections"
+import { WEIGHT } from "@/components/follow/season/seasonUi"
+import { InfoTip } from "@/components/shared/InfoTip"
+import { formatPp } from "@/utils/format"
+import { useChain, useUpcoming } from "@/hooks/useTranscripts"
+import type { ChainDetail, UpcomingChain } from "@/types"
 import { QueryState } from "@/components/shared/QueryState"
 import { cn } from "@/lib/utils"
 
 /**
  * /follow/transcripts — 미국 기업 실적 컨콜 전용 페이지 (D-061, 2분할 브라우저).
  * 좌: 팔로우 기업 그룹 리스트(= 구독 관리) · 우: 선택 콜의 LLM 핵심 정리 → 원문 전문.
- * URL(?t=transcript_id)이 상태 소스. 정리는 POST compute(멱등·수 분)로 분리 생성.
+ * URL(?t=transcript_id)이 상태 소스 — 다가오는 분기(녹취록 전)는 ?t=next:TICKER. 정리는 POST compute(멱등·수 분)로 분리 생성.
  */
 const GROUP_LABEL: Record<string, string> = {
   M7: "M7", hyperscaler: "하이퍼스케일러", nasdaq: "반도체·나스닥",
@@ -46,6 +57,7 @@ interface FollowRow {
   ticker: string; company_name: string; group_label: string | null; n_calls: number; latest: LatestCall | null
   last_report_date?: string | null; next_report_date?: string | null; calendar_checked_at?: string | null
   market_cap?: number | null; category?: string | null; latest_results_date?: string | null; season_updated?: boolean
+  ko_names?: string[]; upcoming_expectation?: boolean
 }
 type RailSort = "cap" | "category" | "recent"
 const RAIL_SORTS: { value: RailSort; label: string }[] = [{ value: "cap", label: "시가총액" }, { value: "category", label: "사업분류" }, { value: "recent", label: "최근 발표" }]
@@ -79,6 +91,7 @@ const quarterLabel = (cy: string | null | undefined, y: number | null, p: string
 const shortQuarter = (cy: string | null | undefined, p: string | null) => cy ? `${cy.slice(4, 6)}${cy.slice(-2)}` : (p ?? "–")   // 26Q2
 
 /** 발표일까지 남은 일수 (오늘 0, 미래 양수, 지난 날 음수) */
+const ddayLabel = (n: number) => (n === 0 ? "오늘" : n > 0 ? `D-${n}` : `D+${-n}`)
 function daysUntil(iso?: string | null): number | null {
   if (!iso) return null
   const d = new Date(iso + "T00:00:00")
@@ -86,15 +99,17 @@ function daysUntil(iso?: string | null): number | null {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   return Math.round((d.getTime() - today.getTime()) / 86_400_000)
 }
-const ddayLabel = (n: number) => (n === 0 ? "오늘" : n > 0 ? `D-${n}` : `D+${-n}`)
 const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
+/** ?t= 값 — 다가오는 분기는 'next:TICKER' */
+const NEXT = "next:"
+const nextKey = (ticker: string) => `${NEXT}${ticker}`
 
 export default function TranscriptPage() {
   const [params, setParams] = useSearchParams()
   const selectedId = params.get("t")
   // 옛 '실적 모멘텀' 링크(?view=momentum)는 실적 시즌으로 — 모멘텀은 시즌 보기 안의 한 섹션
   const rawView = params.get("view") === "momentum" ? "season" : params.get("view")
-  const view = (["proxies", "season"] as const).find((v) => v === rawView) ?? "calls"
+  const view = (["season"] as const).find((v) => v === rawView) ?? "calls"
   const sector = params.get("sector")
   const railSort: RailSort = (["cap", "category", "recent"] as const).find((v) => v === params.get("rail")) ?? "cap"
   const qc = useQueryClient()
@@ -113,8 +128,19 @@ export default function TranscriptPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "follow"] }),
   })
 
-  const selectId = (id: number) => setParams({ t: String(id) }, { replace: true })
+  const mobile = useMediaQuery(MOBILE_QUERY)
+  // 기업 목록에서 고르면 기록을 남긴다(뒤로 가기 = 목록), 상세 안에서 분기·기업을 바꾸면 교체
+  const selectId = (id: number | string) => setParams({ t: String(id) }, { replace: !!selectedId })
+  const upcomingTicker = selectedId?.startsWith(NEXT) ? selectedId.slice(NEXT.length).toUpperCase() : null
 
+  // 옛 프록시 보기 → Thesis › 내 판단 '지표 보드'(ia-redesign §10.6)
+  if (rawView === "proxies") return <Navigate to={proxiesUrl(`?${params.toString()}`)} replace />
+  const tabs = <TranscriptTabs value={view} />
+  // 실적 시즌은 팔로우 목록을 기다리지 않는다 — 시즌 응답 하나로 그린다
+  if (view === "season") {
+    if (seasonMarket(params) === "kr") return <PageContainer><KrSeasonView tabs={tabs} /></PageContainer>
+    return <PageContainer>{sector ? <>{tabs}<SectorView key={sector} sectorKey={sector} /></> : <SeasonView tabs={tabs} />}</PageContainer>
+  }
   if (isLoading) return <TranscriptSkeleton />
   if (isError) return <PageContainer><ErrorState onRetry={() => refetch()} /></PageContainer>
 
@@ -122,128 +148,120 @@ export default function TranscriptPage() {
   // 기본 선택: URL에 없으면 콜 있는 첫 기업의 최신
   const effectiveId = selectedId ?? (withCalls[0]?.latest?.transcript_id ? String(withCalls[0].latest!.transcript_id) : null)
 
+  const header = (
+    <div className="flex flex-col gap-0.5">
+      <h1 className="font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]">컨콜</h1>
+      <span className="text-caption text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
+    </div>
+  )
+
+  const railFor = (onPick: (id: number | string) => void) => follows.length === 0 ? (
+    <div className="p-3 space-y-3">
+      <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>
+      <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
+        {seed.isPending ? "불러오는 중…" : "기본 세트 팔로우"}
+      </Button>
+    </div>
+  ) : (
+    <FollowRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={onPick}
+      onSort={(v) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("rail", v); return n }, { replace: true })} />
+  )
+  // 기업 목록(?t= 없음): 맨 위 모멘텀 한 줄·수집·최근 받은 컨콜·곧 발표 + 기업 목록. 모바일은 목록만(상세는 기업을 고른 뒤).
+  // 콜 상세(?t=): 기업 목록 | 상세(시안 Call-Detail). 모바일은 기업 고르기를 시트로(시안 Mobile-Call).
+  const listing = !selectedId
   return (
     <PageContainer>
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-bold">컨콜</h2>
-        <span className="text-xs text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
-      </div>
-
-      <TranscriptTabs value={view} />
-
-      {view === "season" ? (
-        sector ? <SectorView key={sector} sectorKey={sector} /> : <SeasonView />
-      ) : view === "proxies" ? (
-        <ProxyDashboard />
+      {/* 폰 콜 상세는 시안(Mobile-Call)대로 제목 없이 보기 칩부터 */}
+      {!(mobile && !listing) && header}
+      {tabs}
+      {listing && <>
+        {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 시즌' 보기) */}
+        <MomentumStrip />
+        {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
+        <CollectTranscripts />
+        <RecentCalls onSelect={selectId} selectedId={selectedId} />
+        <UpcomingLink follows={follows} onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
+      </>}
+      {mobile ? (
+        listing ? (
+          // 폰 기업 목록도 상한(lg) 안에서 스크롤 — 넓은 화면 레일(max-h 70vh)과 같은 원칙
+          <Card><CardContent className="p-2"><BoundedArea size="lg">{railFor(selectId)}</BoundedArea></CardContent></Card>
+        ) : upcomingTicker ? (
+          <UpcomingPanel key={upcomingTicker} ticker={upcomingTicker} onSelect={selectId} rail={railFor} mobile />
+        ) : (
+          <MobileCallDetail key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} rail={railFor} />
+        )
       ) : (
-      <>
-      {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 시즌' 보기) */}
-      <MomentumStrip />
-
-      {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
-      <CollectTranscripts />
-
-      <RecentCalls onSelect={selectId} selectedId={selectedId} />
-
-      <UpcomingEarnings follows={follows} onSelect={selectId}
-        onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
-      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4 items-start">
-        {/* 좌 레일 — 팔로우 기업 그룹 (구독 관리 겸용) */}
+      <div className="surface-grid grid grid-cols-1 md:grid-cols-[240px_1fr] items-start">
+        {/* 좌 레일 — 팔로우 기업 목록 (구독 관리 겸용) */}
         <Card className="md:sticky md:top-16">
-          <CardContent className="p-2 max-h-[45vh] md:max-h-[70vh] overflow-y-auto">
-            {follows.length === 0 ? (
-              <div className="p-3 space-y-3">
-                <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>
-                <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
-                  {seed.isPending ? "불러오는 중…" : "기본 세트 팔로우"}
-                </Button>
-              </div>
-            ) : (
-              <>
-                <SegmentTabs tabs={RAIL_SORTS} value={railSort} onChange={(v) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("rail", v); return n }, { replace: true })} className="mb-2 w-full" />
-                {railSort === "category"
-                  ? <GroupedRail follows={follows} effectiveId={effectiveId} onSelect={selectId} />
-                  : <FlatRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={selectId} />}
-              </>
-            )}
-          </CardContent>
+          <CardContent className="p-2 max-h-[45vh] md:max-h-[70vh] overflow-y-auto">{railFor(selectId)}</CardContent>
         </Card>
 
         {/* 우 본문 — 선택 콜 상세 */}
         <div className="min-w-0">
-          {effectiveId ? (
+          {upcomingTicker ? (
+            <UpcomingPanel key={upcomingTicker} ticker={upcomingTicker} onSelect={selectId} />
+          ) : effectiveId ? (
             <DetailPanel key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} />
           ) : (
             <Card><CardContent className="py-16">
-              <EmptyState message="아직 수집된 컨콜이 없습니다 — 관리자에서 '컨콜 수집'을 실행하거나 기업을 팔로우하세요." />
+              <EmptyState message="아직 수집된 컨콜이 없습니다. 관리자에서 '컨콜 수집'을 실행하거나 기업을 팔로우해 주세요." />
             </CardContent></Card>
           )}
         </div>
       </div>
-      </>
       )}
     </PageContainer>
   )
 }
 
-/* ---------- 곧 발표 (실적 발표일 캘린더, D-081) ---------- */
-function UpcomingEarnings({ follows, onSelect, onRefresh, refreshing }: {
-  follows: FollowRow[]; onSelect: (id: number) => void; onRefresh: () => void; refreshing: boolean
-}) {
-  const upcoming = useMemo(() => follows
-    .map((f) => ({ f, d: daysUntil(f.next_report_date) }))
-    .filter((x): x is { f: FollowRow; d: number } => x.d != null && x.d >= 0)
-    .sort((a, b) => a.d - b.d)
-    .slice(0, 12), [follows])
-  // 비었을 때 '정말 일정이 없나, 확인을 못 했나'를 가른다 — 조회 실패는 기존 값을 지우지 않는다(백엔드)
-  const known = follows.filter((f) => f.next_report_date || f.last_report_date).length
-  const lastChecked = follows.reduce<string | null>((m, f) => (f.calendar_checked_at && (!m || f.calendar_checked_at > m) ? f.calendar_checked_at : m), null)
-
+/* ---------- 곧 발표 → 실적 시즌 발표 캘린더로 (D-302: 목록 블록은 캘린더와 겹쳐 한 줄 연결만 남긴다) ---------- */
+function UpcomingLink({ follows, onRefresh, refreshing }: { follows: FollowRow[]; onRefresh: () => void; refreshing: boolean }) {
+  const soon = follows.filter((f) => { const d = daysUntil(f.next_report_date); return d != null && d >= 0 && d <= 7 }).length
   return (
     <Card>
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-muted-foreground">곧 발표 · 실적 캘린더</span>
-          <Button variant="ghost" size="xs" onClick={onRefresh} disabled={refreshing}>
-            {refreshing ? "갱신 중…(수십초)" : "발표일 갱신"}
-          </Button>
-        </div>
-        {upcoming.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-1">
-            예정된 발표일이 없습니다 · 발표일을 아는 기업 {known}/{follows.length}
-            {lastChecked && ` · 마지막 확인 ${mmdd(lastChecked)}`}. '발표일 갱신'으로 다시 불러오세요.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {upcoming.map(({ f, d }) => (
-              <button
-                key={f.ticker}
-                onClick={() => f.latest && onSelect(f.latest.transcript_id)}
-                disabled={!f.latest}
-                title={`${f.company_name} · ${f.next_report_date}${f.latest ? "" : " (수집된 콜 없음)"}`}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-                  d <= 3 ? "border-primary/40 bg-primary/5" : "border-border",
-                  f.latest ? "hover:bg-muted" : "opacity-60 cursor-default",
-                )}
-              >
-                <span className="font-semibold tabular-nums">{f.ticker}</span>
-                <span className={cn("tabular-nums", d <= 3 ? "text-primary font-medium" : "text-muted-foreground")}>
-                  {ddayLabel(d)}
-                </span>
-                <span className="text-muted-foreground tabular-nums">{mmdd(f.next_report_date!)}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm" data-upcoming-link>
+        <span className="text-xs font-medium text-muted-foreground">곧 발표</span>
+        <span>7일 안 <b className="tabular-nums">{soon}</b>곳</span>
+        <Link to="/follow/transcripts?view=season#calendar" className="inline-flex items-center gap-0.5 text-primary hover:underline">
+          발표 캘린더에서 보기<ChevronRight className="size-3.5" />
+        </Link>
+        <Button variant="ghost" size="xs" className="ml-auto" onClick={onRefresh} disabled={refreshing}>
+          {refreshing ? "갱신 중…(수십초)" : "발표일 갱신"}
+        </Button>
       </CardContent>
     </Card>
   )
 }
 
+/* ---------- 좌 레일: 정렬 탭 + 기업 검색(티커·영문명·한글 별칭) ---------- */
+function FollowRail({ follows, sort, onSort, effectiveId, onSelect }: {
+  follows: FollowRow[]; sort: RailSort; onSort: (v: RailSort) => void; effectiveId: string | null; onSelect: (id: number | string) => void
+}) {
+  const [query, setQuery] = useState("")
+  const q = query.trim().toLowerCase()
+  const shown = useMemo(() => !q ? follows : follows.filter((f) =>
+    [f.ticker, f.company_name, ...(f.ko_names ?? [])].some((name) => name.toLowerCase().includes(q))), [follows, q])
+  return (
+    <>
+      {/* 240px 레일에 세 탭이 들어가도록 칸을 균등 분할하고 글자·여백을 줄인다 */}
+      <SegmentTabs tabs={RAIL_SORTS} value={sort} onChange={(v) => onSort(v as RailSort)} className="mb-2 w-full *:h-8 *:min-w-0 *:flex-1 *:px-1 *:text-xs" />
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="기업 검색 (NVDA·엔비디아)" aria-label="팔로우 기업 검색" className="h-8 pl-7 text-xs" />
+      </div>
+      {shown.length === 0 ? <p className="px-2 py-3 text-xs text-muted-foreground">‘{query.trim()}’에 맞는 팔로우 기업이 없습니다.</p>
+        : sort === "category"
+          ? <GroupedRail follows={shown} effectiveId={effectiveId} onSelect={onSelect} />
+          : <FlatRail follows={shown} sort={sort} effectiveId={effectiveId} onSelect={onSelect} />}
+    </>
+  )
+}
+
 /* ---------- 좌 레일: 그룹별 기업 리스트 ---------- */
 function GroupedRail({ follows, effectiveId, onSelect }: {
-  follows: FollowRow[]; effectiveId: string | null; onSelect: (id: number) => void
+  follows: FollowRow[]; effectiveId: string | null; onSelect: (id: number | string) => void
 }) {
   const byGroup = useMemo(() => {
     const m = new Map<string, FollowRow[]>()
@@ -275,7 +293,7 @@ function GroupedRail({ follows, effectiveId, onSelect }: {
 
 /* ---------- 좌 레일: 시가총액순 / 최근 발표순 (평평한 목록) ---------- */
 function FlatRail({ follows, sort, effectiveId, onSelect }: {
-  follows: FollowRow[]; sort: "cap" | "recent"; effectiveId: string | null; onSelect: (id: number) => void
+  follows: FollowRow[]; sort: "cap" | "recent"; effectiveId: string | null; onSelect: (id: number | string) => void
 }) {
   const rows = useMemo(() => [...follows].sort((a, b) => sort === "cap"
     ? (b.market_cap ?? 0) - (a.market_cap ?? 0)
@@ -284,18 +302,20 @@ function FlatRail({ follows, sort, effectiveId, onSelect }: {
     meta={sort === "cap" ? usd(f.market_cap) : f.latest_results_date ? mmdd(f.latest_results_date) : "–"} />)}</div>
 }
 
-function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId: string | null; onSelect: (id: number) => void; meta?: string }) {
-  const active = f.latest && String(f.latest.transcript_id) === effectiveId
+function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId: string | null; onSelect: (id: number | string) => void; meta?: string }) {
+  const active = (f.latest && String(f.latest.transcript_id) === effectiveId) || effectiveId === nextKey(f.ticker)
   const dd = daysUntil(f.next_report_date)
   const imminent = dd != null && dd >= 0 && dd <= 14
+  // 다가오는 발표에 발표 전 정리가 있으면 그 분기부터 연다
+  const target = f.upcoming_expectation ? nextKey(f.ticker) : f.latest?.transcript_id
   return (
-    <Button variant="ghost" onClick={() => f.latest && onSelect(f.latest.transcript_id)} disabled={!f.latest}
+    <Button variant="ghost" onClick={() => target != null && onSelect(target)} disabled={target == null}
       title={f.season_updated ? `이번 시즌 실적 발표 ${f.latest_results_date}` : undefined}
       className={cn("h-auto w-full justify-start gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal",
-        active && "bg-accent text-accent-foreground font-semibold", !f.latest && "opacity-40")}>
+        active && "bg-accent text-accent-foreground font-semibold", target == null && "opacity-40")}>
       <span className="font-medium tabular-nums">{f.ticker}</span>
       <span className="truncate text-xs text-muted-foreground flex-1">{f.company_name}</span>
-      {f.season_updated && <span className="shrink-0 rounded bg-up/10 px-1 text-[9px] font-medium text-up">{seasonQ()}Q 실적</span>}
+      {f.season_updated && <span className="shrink-0 rounded bg-up/10 px-1 text-[9px] font-medium text-up-ink">{seasonQ()}Q 실적</span>}
       {imminent && !f.season_updated && (
         <span className="text-[9px] font-medium tabular-nums shrink-0 rounded bg-primary/10 px-1 text-primary" title={`다음 실적 ${f.next_report_date}`}>
           {ddayLabel(dd!)}
@@ -308,150 +328,447 @@ function RailRow({ f, effectiveId, onSelect, meta }: { f: FollowRow; effectiveId
   )
 }
 
-/* ---------- 우 본문: 콜 상세 — 분기 탭 · 차트 묶음 · 체인 네 단계 · 쟁점 · 분기별 기록 · 펼치기 (earnings-season.md §콜 상세) ---------- */
-function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelect: (id: number) => void }) {
-  const { data, isLoading, isError, refetch } = useQuery(
-    apiQuery<Detail>({ key: ["spine", "transcript", "detail", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}`, staleTime: STALE.medium }),
-  )
+/* ---------- 우 본문: 콜 상세 (시안 Call-Detail) — 머리(회사·분기 세그먼트) · 발표 창 차트 · 칸 넷 · 쟁점 · 분기별 기록 · 펼치기 ---------- */
+function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelect: (id: number | string) => void }) {
+  const { data, isLoading, isError, refetch } = useQuery(detailQuery(transcriptId))
   const chain = useChain(transcriptId)
-  const [wantDigest, setWantDigest] = useState(false)
-  const computed = useQuery({
-    ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),
-  })
 
-  if (isLoading) return <Card><CardContent className="py-6 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="h-24 w-full" /></CardContent></Card>
+  if (isLoading) return <Card><CardContent className="py-3 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="h-24 w-full" /></CardContent></Card>
   if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
 
-  const digest = computed.data?.digest ?? data.digest
-  const hasOnto = (data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0
   const headline = chain.data?.reaction_meta?.headline
 
   return (
-    <div className="space-y-4">
+    <FoldRevealHost>
+    <div className="surface-stack">
+      {/* 머리·차트·네 단계 = 한 영역 — 단계 '자세히 보기'는 이 영역 위로 물방울(D-331) */}
+      <FoldRevealHost>
+      <div className="surface-stack">
       <Card>
-        <CardContent className="space-y-3">
-          {/* 헤더 — 회사·섹터·핵심 + 분기 탭(오래된 분기 → 최신이 오른쪽) */}
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-lg truncate">{data.company_name}</span>
-              <Badge variant="secondary" className="text-[11px]">{data.ticker}</Badge>
-              <Link to={`/us/${data.ticker}`} className="text-xs text-primary hover:underline whitespace-nowrap"
-                title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에 →</Link>
+        <CardContent className="flex flex-col gap-3.5 p-[18px]">
+          {/* 머리 — 회사·티커·섹터·핵심, 오른쪽 끝 분기 세그먼트(오래된 분기 → 최신이 오른쪽) */}
+          <div className="flex flex-wrap items-baseline justify-between gap-2.5">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-2.5">
+              <h2 className="truncate font-display text-[26px] font-normal leading-tight">{data.company_name}</h2>
+              <Badge variant="outline">{data.ticker}</Badge>
               {chain.data && <ChainHeaderLinks chain={chain.data} />}
             </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {quarterLabel(data.cy, data.fiscal_year, data.fiscal_period)}{data.cy ? ` (회사 회계 ${periodOf(data.fiscal_year, data.fiscal_period)})` : ""}{data.call_date ? ` · ${data.call_date}` : ""}
-            </div>
+            <QuarterTabs ticker={data.ticker} current={String(transcriptId)} onSelect={onSelect} />
           </div>
-          <QuarterTabs ticker={data.ticker} current={transcriptId} onSelect={onSelect} />
-          <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect} />
-          {headline && <p className="text-[15px] font-semibold">{headline}</p>}
-          {/* 같은 날짜 축의 작은 차트 묶음 — 체인은 별도 쿼리라 실패해도 아래 정리는 보인다 */}
-          <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-[440px] w-full rounded-lg" />}>
-            {(c) => <ChainCharts chain={c} />}
+          <span className="text-[12.5px] text-ink-3">{callMeta(data, chain.data?.etf)}</span>
+          {headline && <p className="text-base font-semibold leading-normal text-pretty">{headline}</p>}
+          <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect}
+            extra={<Button variant="ghost" size="sm" asChild><Link to={`/us/${data.ticker}`} title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에<ChevronRight /></Link></Button>} />
+          {/* 발표 창 D−6~D+3 — 일별 긴 차트·거래량·자료 언급은 아래 '더 보기' */}
+          <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="aspect-[16/5] w-full rounded-card" />}>
+            {(c) => <CallWindowChart chain={c} />}
           </QueryState>
         </CardContent>
       </Card>
 
-      {chain.data && <>
-        <StagesCard chain={chain.data} transcriptId={transcriptId} />
-        <IssuesRow chain={chain.data} />
-        <HistoryCard chain={chain.data} transcriptId={transcriptId} onSelect={onSelect} />
-      </>}
+      {chain.data && <StagesWithMore chain={chain.data} data={data} transcriptId={transcriptId} />}
+      </div>
+      </FoldRevealHost>
 
-      {/* 전체 정리·원문·출처는 펼치기 */}
-      <Card>
-        <CardContent className="space-y-3">
-          <Fold icon={<Sparkles className="h-4 w-4 text-hypothesis" />} label="핵심 정리 (컨콜 전체)">
-            {digest ? (
-              <div className="rounded-lg bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
-            ) : computed.isFetching ? (
-              <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
-                <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
-                <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
-              </div>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => { track('action', 'digest.make', { entity: transcriptId }); setWantDigest(true) }}>
-                <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
-              </Button>
-            )}
-          </Fold>
-          {/* 시장 반응 — 발표일~7일 내 자료·주가·헤드라인 */}
-          <Fold icon={<Megaphone className="h-4 w-4 text-muted-foreground" />} label="시장 반응 정리 전문·출처">
-            <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
-          </Fold>
-          {/* 온톨로지 연결 (D-089) — 이 콜이 편입된 노드·인과, 클릭 시 그래프로 */}
-          {hasOnto && (
-            <Fold icon={<Network className="h-4 w-4 text-muted-foreground" />} label="온톨로지 연결">
-              <p className="mb-1.5 text-[11px] text-muted-foreground">이 콜이 편입된 노드·인과 — 클릭 시 그래프로</p>
-              {(data.nodes?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {data.nodes!.map((n) => <OntoChip key={n.id} id={n.id} name={n.name} type={n.type} />)}
-                </div>
-              )}
-              {(data.causal_edges?.length ?? 0) > 0 && (
-                <ul className="space-y-1">
-                  {data.causal_edges!.map((e, i) => (
-                    <li key={i} className="flex flex-wrap items-center gap-1">
-                      <OntoChip id={e.from_id} name={e.from} type={e.from_type} />
-                      <span className="text-[10px] text-muted-foreground">{e.rel_type === "BENEFITS_FROM" ? "← 수혜" : "→ 인과"}</span>
-                      <OntoChip id={e.to_id} name={e.to} type={e.to_type} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Fold>
-          )}
-          {/* 원문 전문 (펼침) */}
-          <Fold icon={<FileText className="h-4 w-4" />} label="원문 전문">
-            <div className="max-h-[60vh] overflow-y-auto rounded-lg border px-4 py-3 text-sm">
-              <Markdown>{data.body}</Markdown>
-            </div>
-          </Fold>
-        </CardContent>
-      </Card>
+      {chain.data && <HistoryCard chain={chain.data} transcriptId={transcriptId} onSelect={onSelect} />}
+
+      <Card><CardContent className="p-4"><DetailFolds data={data} transcriptId={transcriptId} rest /></CardContent></Card>
+    </div>
+    </FoldRevealHost>
+  )
+}
+
+const detailQuery = (transcriptId: number) =>
+  apiQuery<Detail>({ key: ["spine", "transcript", "detail", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}`, staleTime: STALE.medium })
+/** 'CY2026 Q3 · 10/28 발표 · 비교 QQQ' */
+const callMeta = (d: Detail, etf?: string) =>
+  [quarterLabel(d.cy, d.fiscal_year, d.fiscal_period), d.call_date && `${mmdd(d.call_date)} 발표`, etf && `비교 ${etf}`].filter(Boolean).join(" · ")
+/** 분기 라벨 — 시안 'FY26 Q3' (회계연도를 모르면 달력분기) */
+const fyLabel = (q: { fiscal_year: number | null; fiscal_period: string | null; cy?: string | null }) =>
+  q.fiscal_year != null ? `FY${String(q.fiscal_year).slice(2)} ${q.fiscal_period ?? ""}`.trim() : quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)
+
+/** 펼치기 묶음 — 기간 전체 차트 · 핵심 정리 · 시장 반응 전문 · 온톨로지 · 원문 (기본 접힘) */
+function DetailFolds({ data, transcriptId, rest }: { data: Detail; transcriptId: number; rest?: boolean }) {
+  const hasOnto = (data.nodes?.length ?? 0) > 0 || (data.causal_edges?.length ?? 0) > 0
+  return (
+    <div className="flex flex-col">
+      {/* 데스크톱(rest)은 핵심 정리·시장 반응을 네 단계의 '자세히 보기'로 연다 — 여기엔 온톨로지·원문만 */}
+      {!rest && <>
+        <Fold label="핵심 정리 (컨콜 전체)"><CallDigest data={data} transcriptId={transcriptId} /></Fold>
+        <Fold label="시장 반응 정리 전문·출처"><CallReaction transcriptId={transcriptId} callDate={data.call_date} /></Fold>
+      </>}
+      <OntoAndBody data={data} hasOnto={hasOnto} />
     </div>
   )
 }
 
-/** 펼치기 한 줄 — 기본 접힘 */
-function Fold({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+/** 네 단계 + 각 단계 '자세히 보기' → 단계 영역 위 물방울 (발표 전 = 시장이 주목한 내용 · 컨콜 = 핵심 정리 · 시장 반응 = 정리 전문 · 그 뒤 = 수익률·목표가 변경) */
+function StagesWithMore({ chain, data, transcriptId }: { chain: ChainDetail; data: Detail; transcriptId: number }) {
+  const reveal = useContext(FoldReveal)
+  const body = (k: StageKey) => k === "before" ? <IssuesRow chain={chain} expanded />
+    : k === "call" ? <CallDigest data={data} transcriptId={transcriptId} />
+    : k === "reaction" ? <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
+    : <AfterDetail chain={chain} transcriptId={transcriptId} />
+  return <StagesCard chain={chain} transcriptId={transcriptId} onMore={reveal ? (k, title) => { track("open", "transcript.stage", { entity: k, ref: String(transcriptId) }); reveal.show(title, body(k)) } : undefined} />
+}
+
+/** 핵심 정리(컨콜 전체) — 없으면 생성 버튼(LLM) */
+function CallDigest({ data, transcriptId }: { data: Detail; transcriptId: number }) {
+  const [wantDigest, setWantDigest] = useState(false)
+  const computed = useQuery({
+    ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),
+  })
+  const digest = computed.data?.digest ?? data.digest
   return (
-    <Collapsible>
-      <CollapsibleTrigger className="group flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
-        <ChevronRight className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />{icon} {label}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2">{children}</CollapsibleContent>
-    </Collapsible>
+    <>
+        {digest ? (
+          <div className="bg-muted/40 px-4 py-3"><Markdown>{digest}</Markdown></div>
+        ) : computed.isFetching ? (
+          <div className="bg-muted/40 px-4 py-3 space-y-2">
+            <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
+            <p className="text-xs text-muted-foreground">LLM이 컨콜을 정리하는 중… (수 분 소요)</p>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => { track('action', 'digest.make', { entity: transcriptId }); setWantDigest(true) }}>
+            <Sparkles className="h-3.5 w-3.5" /> 핵심 정리 생성 (LLM)
+          </Button>
+        )}
+    </>
   )
 }
 
-/** 분기 탭 — API는 최신 먼저라 뒤집어 최신 분기가 오른쪽 */
-function QuarterTabs({ ticker, current, onSelect }: { ticker: string; current: number; onSelect: (id: number) => void }) {
-  const { data: quarters = [] } = useQuery(
-    apiQuery<Quarter[]>({ key: ["spine", "transcript", "company", ticker], url: `/api/spine/transcript/company/${ticker}`, staleTime: STALE.short }),
-  )
-  if (quarters.length <= 1) return null
+/** 온톨로지 연결(D-089) · 원문 전문 — 펼치기 줄 */
+function OntoAndBody({ data, hasOnto }: { data: Detail; hasOnto: boolean }) {
   return (
-    <ToggleGroup type="single" variant="outline" size="sm" value={String(current)} onValueChange={(v) => { if (v) onSelect(Number(v)) }}
-      aria-label="분기" className="flex-wrap justify-start">
-      {[...quarters].reverse().map((q) => (
-        <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className="px-2.5 text-caption tabular-nums"
-          title={`${quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}${q.call_date ? ` · ${q.call_date}` : ""}`}>
-          {q.cy ? shortQuarter(q.cy, q.fiscal_period) : periodOf(q.fiscal_year, q.fiscal_period)}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+    <>
+      {hasOnto && (
+        <Fold label="온톨로지 연결">
+          {(data.nodes?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {data.nodes!.map((n) => <OntoChip key={n.id} id={n.id} name={n.name} type={n.type} />)}
+            </div>
+          )}
+          {(data.causal_edges?.length ?? 0) > 0 && (
+            <ul className="space-y-1">
+              {data.causal_edges!.map((e, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-1">
+                  <OntoChip id={e.from_id} name={e.from} type={e.from_type} />
+                  <span className="text-[10px] text-muted-foreground">{e.rel_type === "BENEFITS_FROM" ? "← 수혜" : "→ 인과"}</span>
+                  <OntoChip id={e.to_id} name={e.to} type={e.to_type} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Fold>
+      )}
+      <Fold label="원문 전문">
+        <div className="border px-4 py-3 text-sm">
+          <Markdown>{data.body}</Markdown>
+        </div>
+      </Fold>
+    </>
   )
+}
+
+/** 시트 안에서는 펼치기 줄을 제자리에서 연다(시트가 스크롤) — 모바일 '핵심 정리 전체 · 원문' 시트 */
+const FoldInline = createContext(false)
+
+/**
+ * 펼치기 한 줄 — 줄마다 윗선(시안 details). 긴 세부(차트·핵심 정리·전문·원문)는 카드 안에서 펼치지 않고
+ * 콜 상세 위에 물방울로 연다(D-329, 상세 높이 그대로). 시트 안(FoldInline, 모바일)에서는 제자리 펼침.
+ */
+function Fold({ label, children }: { label: string; children: ReactNode }) {
+  const inline = useContext(FoldInline)
+  const reveal = useContext(FoldReveal)
+  const trigger = "group flex w-full items-center gap-1.5 py-2.5 text-left text-[13.5px] font-medium hover:text-ink-2"
+  if (inline) return (
+    <Collapsible className="border-t border-line first:border-t-0" onOpenChange={o => { if (o) track("open", "transcript.fold", { entity: label }) }}>
+      <CollapsibleTrigger className={trigger}>
+        <ChevronRight className="size-3.5 text-ink-3 transition-transform group-data-[state=open]:rotate-90" />{label}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pb-3">{children}</CollapsibleContent>
+    </Collapsible>
+  )
+  return (
+    <div className="border-t border-line first:border-t-0">
+      <button type="button" className={trigger} aria-haspopup="dialog" aria-expanded={reveal?.open === label}
+        onClick={() => { track("open", "transcript.fold", { entity: label }); reveal?.show(label, children) }}><ChevronRight className="size-3.5 text-ink-3" />{label}</button>
+    </div>
+  )
+}
+
+/** 콜 상세 위 물방울 펼침(D-329) — 옆 시트 대신 상세 영역을 덮으며 퍼진다. 상세 높이는 그대로, 본문은 안에서 스크롤 */
+const FoldReveal = createContext<{ open: string | null; show: (label: string, body: ReactNode) => void } | null>(null)
+
+function FoldRevealHost({ children }: { children: ReactNode }) {
+  const [cur, setCur] = useState<{ label: string; body: ReactNode } | null>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const lastTrigger = useRef<HTMLElement | null>(null)
+  const show = useCallback((label: string, body: ReactNode) => {
+    lastTrigger.current = document.activeElement as HTMLElement | null
+    setCur({ label, body })
+  }, [])
+  const close = useCallback(() => { setCur(null); window.setTimeout(() => lastTrigger.current?.focus(), 0) }, [])
+  useEffect(() => {
+    if (!cur) return
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [cur, close])
+  const value = useMemo(() => ({ open: cur?.label ?? null, show }), [cur?.label, show])
+  return (
+    <FoldReveal.Provider value={value}>
+      <div className="relative">
+        {children}
+        {cur && (
+          <div className="absolute inset-0 z-20">
+            {/* 상세가 길어도 화면 안에 보이도록 위에 붙인다 */}
+            <div role="dialog" aria-modal="false" aria-label={cur.label}
+              className="sticky top-16 flex h-[min(100%,calc(100dvh-5rem))] flex-col overflow-hidden rounded-card border border-line-2 bg-[color-mix(in_srgb,var(--surface)_96%,transparent)] backdrop-blur-xl animate-droplet">
+              <div className="flex min-h-0 flex-1 flex-col gap-3 px-[22px] py-5 animate-droplet-rise max-sm:px-4">
+                <div className="flex items-center justify-between gap-2.5">
+                  <p className="font-display text-xl">{cur.label}</p>
+                  <Button ref={closeRef} variant="outline" size="icon" aria-label="닫기" className="size-9 shrink-0 rounded-full bg-surface" onClick={close}><X aria-hidden="true" /></Button>
+                </div>
+                <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block"><div className="pb-2 pr-2">{cur.body}</div></ScrollArea>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </FoldReveal.Provider>
+  )
+}
+
+/** 분기 세그먼트 — API는 최신 먼저라 뒤집어 최신 분기가 오른쪽, 최근 여섯 분기까지 */
+function useQuarters(ticker: string) {
+  return useQuery(apiQuery<Quarter[]>({ key: ["spine", "transcript", "company", ticker], url: `/api/spine/transcript/company/${ticker}`, staleTime: STALE.short }))
+}
+/** 맨 오른쪽 = 다가오는 분기(녹취록 전) 'FY27 Q1 · D-6' — 값은 next:TICKER */
+function QuarterTabs({ ticker, current, onSelect, compact = false }: { ticker: string; current: string; onSelect: (id: string) => void; compact?: boolean }) {
+  const { data: quarters = [] } = useQuarters(ticker)
+  const { data: upcoming } = useUpcoming(ticker)
+  // 카운트다운(목록의 D-n과 같은 14일 안)에 들어갔거나 발표 전 정리가 이미 있을 때만 탭을 붙인다
+  const next = upcoming && (upcoming.days_to_event <= 14 || upcoming.expectation) ? upcoming : null
+  // 폰 칩 줄은 가로 스크롤 — 고른 분기가 보이게 그 칩으로 민다
+  const scroller = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!compact) return
+    scroller.current?.querySelector<HTMLElement>("[data-state=on]")?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  }, [compact, current, quarters.length])
+  if (quarters.length + (next ? 1 : 0) <= 1) return null
+  const shown = [...quarters].slice(0, compact ? quarters.length : next ? 5 : 6).reverse()
+  return (
+    <div ref={scroller} className={cn(compact && "-mx-4 overflow-x-auto px-4 [scrollbar-width:none]")}>
+      <ToggleGroup type="single" size="sm" value={current} onValueChange={(v) => { if (v) onSelect(v) }}
+        aria-label="분기" className={cn(compact ? "flex-nowrap" : "flex-wrap justify-end")}>
+        {shown.map((q) => (
+          <ToggleGroupItem key={q.transcript_id} value={String(q.transcript_id)} className={cn("tabular-nums", compact ? "h-7 shrink-0 px-2.5 text-[12.5px]" : "h-[30px] px-3 text-[13px]")}
+            title={`${quarterLabel(q.cy, q.fiscal_year, q.fiscal_period)}${q.call_date ? ` · ${q.call_date}` : ""}`}>
+            {fyLabel(q)}
+          </ToggleGroupItem>
+        ))}
+        {next && (
+          <ToggleGroupItem value={nextKey(ticker)} className={cn("tabular-nums", compact ? "h-7 shrink-0 px-2.5 text-[12.5px]" : "h-[30px] px-3 text-[13px]")}
+            title={`${next.event_date} 발표${next.confirmed ? "" : " (예상일)"}`}>
+            {fyLabel(next)} · {ddayLabel(next.days_to_event)}
+          </ToggleGroupItem>
+        )}
+      </ToggleGroup>
+    </div>
+  )
+}
+
+/* ---------- 폰 콜 상세 (시안 Mobile-Call) — 기업 바꾸기 · 분기 칩 · 한 줄 요지 · 발표 전후 주가 · 발표 전 쟁점 · 컨콜 핵심 · 분기별 첫 거래일 반응 ---------- */
+function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: number; onSelect: (id: number | string) => void; rail: (onPick: (id: number | string) => void) => ReactNode }) {
+  const { data, isLoading, isError, refetch } = useQuery(detailQuery(transcriptId))
+  const chain = useChain(transcriptId)
+  const [more, setMore] = useState(false)
+
+  if (isLoading) return <div className="flex flex-col gap-3.5"><Skeleton className="h-16 w-full rounded-card" /><Skeleton className="h-48 w-full rounded-card" /></div>
+  if (isError || !data) return <Card><CardContent className="py-10"><ErrorState onRetry={() => refetch()} /></CardContent></Card>
+
+  const c = chain.data
+  const h = c ? currentHistory(c, transcriptId) : undefined
+  const grades = c?.reaction_meta?.grades ?? []
+  const order = { high: 0, mid: 1, low: 2 } as const
+  const topIssues = [...grades].sort((a, b) => order[a.weight ?? "low"] - order[b.weight ?? "low"]).slice(0, 2)
+  const callPoints = [...(c?.reaction_meta?.call_points ?? []).slice(0, 2), ...(c?.reaction_meta?.react_points ?? []).slice(0, 1)]
+  const clean = (t: string) => t.replace(/\s*\[\d+\]/g, "").trim()
+  const box = "flex flex-col gap-2.5 p-3.5"
+  const boxTitle = "text-[15px] font-semibold"
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <CompanySheet name={data.company_name} ticker={data.ticker} rail={rail} onSelect={onSelect}
+        sub={[c?.sector_name, quarterLabel(data.cy, data.fiscal_year, data.fiscal_period), data.call_date && `${mmdd(data.call_date)} 발표`].filter(Boolean).join(" · ")} />
+      <QuarterTabs ticker={data.ticker} current={String(transcriptId)} onSelect={onSelect} compact />
+      {c?.reaction_meta?.headline && <p className="text-[15px] font-semibold leading-[1.55]">{c.reaction_meta.headline}</p>}
+
+      <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="h-48 w-full rounded-card" />}>
+        {(cd) => <div className="flex flex-col gap-3.5">
+          <Card className={box}>
+            <h2 className={cn(boxTitle, "flex items-center gap-1.5")}>발표 전후 주가
+              <InfoTip label="발표 전후 주가 설명">{cd.etf} 비교 · 발표 전 마지막 거래일 = 0</InfoTip></h2>
+            <CallWindowChart chain={cd} compact />
+            {(h?.d1 != null || (cd.pt_after?.n ?? 0) > 0) && (
+              <span className="text-[12.5px]">
+                {h?.d1 != null && <>첫 거래일 {cd.etf} 대비 <span className={cn("font-mono tabular-nums", h.d1 > 0 ? "text-up-ink" : h.d1 < 0 ? "text-down-ink" : "")}>{formatPp(h.d1)}</span></>}
+                {h?.d1 != null && (cd.pt_after?.n ?? 0) > 0 && " · "}
+                {(cd.pt_after?.n ?? 0) > 0 && <>발표 후 7일 목표가 {cd.pt_after!.down >= cd.pt_after!.up ? `내림 ${cd.pt_after!.down}` : `올림 ${cd.pt_after!.up}`}건</>}
+              </span>
+            )}
+          </Card>
+          {topIssues.length > 0 && (
+            <Card className={box}>
+              <h2 className={boxTitle}>발표 전 쟁점</h2>
+              {topIssues.map((g) => (
+                <div key={g.issue} className="flex flex-col gap-1.5 text-[13px] leading-[1.55]">
+                  <span><b className="font-semibold">{g.issue}</b> {g.weight && <Badge variant={g.weight === "high" ? "warn" : "outline"}>{WEIGHT[g.weight]}</Badge>}</span>
+                  {g.outcome && <span className="text-ink-2">{g.outcome}</span>}
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>}
+      </QueryState>
+
+      <Card className={box}>
+        <h2 className={boxTitle}>컨콜 핵심</h2>
+        {callPoints.length > 0
+          ? <ul className="flex list-disc flex-col gap-1 pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{callPoints.map((t, i) => <li key={i}>{clean(t)}</li>)}</ul>
+          : <p className="text-caption text-muted-foreground">아래 핵심 정리를 펼쳐 보세요.</p>}
+        {/* 전체 정리·원문은 카드 안에서 펼치지 않고 아래 시트로(상한 안 스크롤) — 시트 안 펼치기 줄은 제자리 */}
+        <Sheet open={more} onOpenChange={setMore}>
+          <SheetTrigger className="self-start text-left text-[13px] font-medium text-ink">핵심 정리 전체 · 원문 ›</SheetTrigger>
+          <SheetContent side="bottom" className="max-h-[85dvh] gap-0">
+            <SheetHeader className="border-b"><SheetTitle>핵심 정리 전체 · 원문</SheetTitle><SheetDescription className="sr-only">컨콜 세부</SheetDescription></SheetHeader>
+            <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block"><div className="p-4">
+              <FoldInline.Provider value><DetailFolds data={data} transcriptId={transcriptId} /></FoldInline.Provider>
+            </div></ScrollArea>
+          </SheetContent>
+        </Sheet>
+      </Card>
+
+      {c && <MobileHistory chain={c} current={transcriptId} onSelect={onSelect} />}
+    </div>
+  )
+}
+
+/** 폰 머리 — 회사 한 줄 + '기업 바꾸기' 시트(팔로우 목록) */
+function CompanySheet({ name, ticker, sub, rail, onSelect }: { name: string; ticker: string; sub: string; rail: (onPick: (id: number | string) => void) => ReactNode; onSelect: (id: number | string) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="h-auto w-full justify-start gap-2.5 rounded-card bg-card px-3.5 py-3 text-left font-normal">
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate text-base font-semibold">{name} <span className="font-mono text-[12.5px] font-normal text-ink-3">{ticker}</span></span>
+            <span className="truncate text-xs text-ink-3">{sub}</span>
+          </span>
+          <span className="ml-auto shrink-0 text-[12.5px] text-ink-2">기업 바꾸기 ▾</span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-3">
+        <SheetHeader className="p-0"><SheetTitle>기업 고르기</SheetTitle></SheetHeader>
+        {rail((id) => { setOpen(false); onSelect(id) })}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+/** 폰 '분기별 첫 거래일 반응' — current = 지금 보는 콜(다가오는 분기면 없음) */
+function MobileHistory({ chain, current, onSelect }: { chain: ChainDetail; current?: number; onSelect: (id: number) => void }) {
+  if (!chain.history.length) return null
+  return (
+    <Card className="flex flex-col p-3.5">
+      <h2 className="pb-1.5 text-[15px] font-semibold">분기별 첫 거래일 반응</h2>
+      {chain.history.map((r) => (
+        <div key={`${r.fiscal}-${r.event_date}`} className={cn("grid grid-cols-[70px_64px_1fr] gap-2 border-t border-line py-2 text-[12.5px]",
+          r.transcript_id === current && "font-semibold")}>
+          {r.transcript_id && r.transcript_id !== current
+            ? <button type="button" className="text-left hover:underline" onClick={() => onSelect(r.transcript_id!)}>{fyShort(r.fiscal)}</button>
+            : <span>{fyShort(r.fiscal)}</span>}
+          <span className={cn("font-mono tabular-nums", r.d1 == null ? "text-ink-3" : r.d1 > 0 ? "text-up-ink" : r.d1 < 0 ? "text-down-ink" : "")}>{formatPp(r.d1, 1)}</span>
+          <span className="text-ink-2">{r.follow ?? "-"}</span>
+        </div>
+      ))}
+    </Card>
+  )
+}
+
+/* ---------- 다가오는 분기 (?t=next:TICKER) — 머리·카운트다운 · 오늘까지의 발표 전 주가 · 칸 넷(발표 전만) · 분기별 기록 ---------- */
+/** 'FY27 Q1 · 11/12 발표 예정(예상일) · 비교 SMH' */
+const upcomingMeta = (c: UpcomingChain) =>
+  [fyLabel(c), c.event_date && `${mmdd(c.event_date)} 발표 예정${c.confirmed ? "" : "(예상일)"}`, `비교 ${c.etf}`].filter(Boolean).join(" · ")
+
+function UpcomingPanel({ ticker, onSelect, mobile = false, rail }: {
+  ticker: string; onSelect: (id: number | string) => void; mobile?: boolean; rail?: (onPick: (id: number | string) => void) => ReactNode
+}) {
+  const q = useUpcoming(ticker)
+  if (q.isLoading) return <Card><CardContent className="py-3 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="aspect-[16/5] w-full rounded-card" /></CardContent></Card>
+  if (q.isError) return <Card><CardContent className="py-10"><ErrorState onRetry={() => q.refetch()} /></CardContent></Card>
+  const c = q.data
+  if (!c) return <Card><CardContent className="py-16"><EmptyState message={`${ticker}의 다가오는 실적 발표가 없습니다.`} /></CardContent></Card>
+  const countdown = <Badge variant="warn" className="tabular-nums">{ddayLabel(c.days_to_event)}</Badge>
+  const stages = <UpcomingStages chain={c} />
+  if (mobile) return (
+    <FoldRevealHost>
+      <div className="flex flex-col gap-3.5">
+        {rail && <CompanySheet name={c.name ?? c.ticker} ticker={c.ticker} rail={rail} onSelect={onSelect}
+          sub={[c.sector_name, fyLabel(c), `${mmdd(c.event_date!)} 발표 예정`].join(" · ")} />}
+        <QuarterTabs ticker={c.ticker} current={nextKey(c.ticker)} onSelect={onSelect} compact />
+        <Card className="flex flex-col gap-2.5 p-3.5">
+          <h2 className="flex items-center gap-1.5 text-[15px] font-semibold">발표 전 주가 {countdown}
+            <InfoTip label="발표 전 주가 설명">{c.etf} 비교 · 최근 종가 = 0</InfoTip></h2>
+          <CallWindowChart chain={c} compact upcoming />
+        </Card>
+        {stages}
+        <MobileHistory chain={c} onSelect={onSelect} />
+      </div>
+    </FoldRevealHost>
+  )
+  return (
+    <div className="surface-stack">
+      <FoldRevealHost>
+      <div className="surface-stack">
+      <Card>
+        <CardContent className="flex flex-col gap-3.5 p-[18px]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2.5">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-2.5">
+              <h2 className="truncate font-display text-[26px] font-normal leading-tight">{c.name ?? c.ticker}</h2>
+              <Badge variant="outline">{c.ticker}</Badge>
+              <ChainHeaderLinks chain={c} />
+            </div>
+            <QuarterTabs ticker={c.ticker} current={nextKey(c.ticker)} onSelect={onSelect} />
+          </div>
+          <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">{countdown}{upcomingMeta(c)}</span>
+          <div><Button variant="ghost" size="sm" asChild><Link to={`/us/${c.ticker}`} title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에<ChevronRight /></Link></Button></div>
+          <CallWindowChart chain={c} upcoming />
+        </CardContent>
+      </Card>
+      {stages}
+      </div>
+      </FoldRevealHost>
+      <HistoryCard chain={c} transcriptId={-1} onSelect={onSelect} />
+    </div>
+  )
+}
+
+/** 칸 넷 — '발표 전 · 자세히 보기'는 쟁점·기준·숫자·최근 목표가 변경을 물방울로 */
+function UpcomingStages({ chain }: { chain: UpcomingChain }) {
+  const reveal = useContext(FoldReveal)
+  return <UpcomingStagesCard chain={chain} onMore={reveal ? (_k, title) => reveal.show(title, <UpcomingBeforeDetail chain={chain} />) : undefined} />
 }
 
 function TranscriptSkeleton() {
   return (
     <PageContainer>
       <Skeleton className="h-6 w-32" />
-      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4">
-        <Skeleton className="h-96 w-full rounded-xl" />
-        <Skeleton className="h-96 w-full rounded-xl" />
+      <div className="surface-grid grid grid-cols-1 md:grid-cols-[240px_1fr]">
+        <Skeleton className="h-96 w-full rounded-card" />
+        <Skeleton className="h-96 w-full rounded-card" />
       </div>
     </PageContainer>
   )

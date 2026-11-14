@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { type ColumnDef, type SortingState, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, ChevronDown, LoaderCircle, MoreHorizontal, Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, LoaderCircle, MoreHorizontal, Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader, PageLayout } from '@/components/shared/PageLayout'
 import { EmptyState, ErrorState } from '@/components/shared/ErrorState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -16,20 +15,24 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCompanySearch } from '@/hooks/useCompanySearch'
+import { trackedNotice } from '@/lib/myStocks'
 import { WatchReasonsCard } from '@/components/follow/WatchReasonsCard'
-import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, usePutRules, useRemoveMember, useStrategyCatalog } from '@/hooks/useGroups'
-import { formatKrw, formatNumber, formatPercent } from '@/utils/format'
+import { useAddMember, useCreateGroup, useDeleteGroup, useEvaluateGroup, useGroup, useGroupSignals, useGroups, usePutRules, useRemoveMember, useSetTracked, useStrategyCatalog } from '@/hooks/useGroups'
+import { formatKrw, formatNumber, formatPercent, formatPrice } from '@/utils/format'
 import type { StockGroupDetail, StockGroupKind, StockGroupMember, StrategyCatalogItem, WatchRule, WatchRuleInput } from '@/types'
 
 const KIND_LABEL: Record<StockGroupKind, string> = { watch: '관심', portfolio: '포트폴리오' }
-const changeClass = (value: number | null) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up' : value < 0 ? 'text-down' : ''
+const changeClass = (value: number | null) => value == null ? 'text-muted-foreground' : value > 0 ? 'text-up-ink' : value < 0 ? 'text-down-ink' : ''
 const signedPercent = (value: number | null) => value == null ? '-' : formatPercent(value)
 const ruleKey = (rule: WatchRuleInput) => `${rule.strategy_id}:${JSON.stringify(rule.params ?? {})}:${rule.within_days ?? 1}`
 const toInput = (rule: WatchRule): WatchRuleInput => ({ strategy_id: rule.strategy_id, params: rule.params, within_days: rule.within_days, source_strategy_id: rule.source_strategy_id, source_version: rule.source_version })
 // 좁은 화면 — 종목명·가격이 글자 단위로 꺾이지 않게 줄바꿈을 막고 표를 가로 스크롤한다
 const NOWRAP_MOBILE = new Set(['name', 'close', 'market_cap'])
+/** 미국 종목(티커)은 미국 도시에로, 국내는 기업 개요로 */
+const dossierPath = (code: string, market?: string | null) => market === 'us' ? `/us/${code}` : `/analyze/${code}/summary`
 const NOWRAP_CELL = 'whitespace-nowrap md:whitespace-normal'
 const paramsText = (rule: { params: Record<string, unknown> }) => Object.entries(rule.params ?? {}).map(([key, value]) => `${key} ${String(value)}`).join(' · ')
 
@@ -52,13 +55,13 @@ function GroupList({ onOpen }: { onOpen: (id: number) => void }) {
     catch (error) { toast.error(error instanceof Error ? error.message : '묶음을 만들지 못했습니다.') }
   }
   return <PageLayout header={<PageHeader title="종목 묶음" description="포트폴리오와 관심 종목을 묶고, 종목별 기술적 조건을 매일 평가해 신호를 봅니다." actions={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" />새 묶음</Button>} />}>
-    {groups.isPending && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="묶음 불러오는 중" role="status">{[0, 1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}</div>}
+    {groups.isPending && <div className="surface-grid grid sm:grid-cols-2 lg:grid-cols-3" aria-label="묶음 불러오는 중" role="status">{[0, 1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}</div>}
     {groups.isError && <ErrorState message="묶음을 불러오지 못했습니다." onRetry={() => groups.refetch()} />}
     {groups.data && (groups.data.items.length === 0 ? <Card><CardContent className="space-y-3 py-10 text-center"><p className="font-medium">아직 묶음이 없습니다.</p><p className="text-sm text-muted-foreground">포트폴리오나 관심 종목 묶음을 만들고 조건을 걸면 매일 장 마감 후 신호를 평가합니다.</p><Button onClick={() => setCreating(true)}><Plus className="size-4" />첫 묶음 만들기</Button></CardContent></Card>
-      : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{groups.data.items.map(group => <Button key={group.id} variant="ghost" className="h-auto flex-col items-stretch gap-2 whitespace-normal rounded-xl border bg-card p-4 text-left" onClick={() => onOpen(group.id)}>
+      : <div className="surface-grid grid sm:grid-cols-2 lg:grid-cols-3">{groups.data.items.map(group => <Button key={group.id} variant="ghost" className="h-auto flex-col items-stretch gap-2 whitespace-normal rounded-card border bg-card p-3 text-left" onClick={() => onOpen(group.id)}>
         <span className="flex items-start justify-between gap-2"><span className="font-semibold">{group.name}</span><Badge variant="outline">{KIND_LABEL[group.kind]}</Badge></span>
         <span className="text-caption font-normal text-muted-foreground">{formatNumber(group.member_count)}종목 · 조건 {formatNumber(group.rule_count)}개</span>
-        <span className="flex items-center justify-between gap-2 text-sm font-normal"><span className={group.today_signals > 0 ? 'font-medium text-up' : 'text-muted-foreground'}>{group.last_as_of ? `신호 ${formatNumber(group.today_signals)}개` : '아직 평가 전'}</span><span className="text-caption text-muted-foreground">{group.last_as_of ? `${group.last_as_of} 기준` : ''}</span></span>
+        <span className="flex items-center justify-between gap-2 text-sm font-normal"><span className={group.today_signals > 0 ? 'font-medium text-up-ink' : 'text-muted-foreground'}>{group.last_as_of ? `신호 ${formatNumber(group.today_signals)}개` : '아직 평가 전'}</span><span className="text-caption text-muted-foreground">{group.last_as_of ? `${group.last_as_of} 기준` : ''}</span></span>
       </Button>)}</div>)}
     {groups.data?.latest_trade_date && <p className="text-caption text-muted-foreground">평가는 평일 16:40에 자동으로 돌고, 저장된 최신 시세일은 {groups.data.latest_trade_date}입니다. 모델 호출 없이 계산만 하므로 비용이 들지 않습니다.</p>}
     <Dialog open={creating} onOpenChange={setCreating}>
@@ -98,14 +101,17 @@ function GroupDetail({ groupId, onBack }: { groupId: number; onBack: () => void 
     {group.isError && <ErrorState message="묶음을 불러오지 못했습니다." onRetry={() => group.refetch()} />}
     {detail && <>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
-        {detail.last_as_of ? <span>{detail.last_as_of} 기준 평가 · 오늘 신호 <span className={detail.today_signals > 0 ? 'font-medium text-up' : ''}>{formatNumber(detail.today_signals)}개</span></span> : <span>아직 평가한 적이 없습니다.</span>}
-        {detail.evaluation_pending && detail.latest_trade_date && <span className="text-hypothesis">최신 시세일 {detail.latest_trade_date}은 아직 평가 전입니다. ‘지금 평가’를 누르거나 16:40 자동 실행을 기다리세요.</span>}
-        {detail.rules.default.length === 0 && Object.keys(detail.rules.members).length === 0 && <span className="text-hypothesis">조건이 없습니다. ‘기본 조건’에서 전략을 추가하세요.</span>}
+        {detail.last_as_of ? <span>{detail.last_as_of} 기준 평가 · 오늘 신호 <span className={detail.today_signals > 0 ? 'font-medium text-up-ink' : ''}>{formatNumber(detail.today_signals)}개</span></span> : <span>아직 평가한 적이 없습니다.</span>}
+        {detail.evaluation_pending && detail.latest_trade_date && <span className="text-warn">최신 시세일 {detail.latest_trade_date}은 아직 평가 전입니다. ‘지금 평가’를 누르거나 16:40 자동 실행을 기다리세요.</span>}
+        {detail.rules.default.length === 0 && Object.keys(detail.rules.members).length === 0 && <span className="text-warn">조건이 없습니다. ‘기본 조건’에서 전략을 추가하세요.</span>}
       </div>
       <MemberTable detail={detail} onEditRules={code => setEditing(code)} />
-      {detail.kind === 'watch' && <WatchReasonsCard detail={detail} />}
-      {detail.kind === 'portfolio' ? <LedgerNotice /> : <AddMember detail={detail} />}
-      <SignalHistory groupId={groupId} />
+      {/* 시안 Groups: 표 아래 두 칸 — 최근 30일 신호 | 관심 이유(관심 묶음) */}
+      <div className="surface-grid grid items-stretch lg:grid-cols-2">
+        <SignalHistory groupId={groupId} />
+        {detail.kind === 'watch' ? <WatchReasonsCard detail={detail} /> : detail.kind === 'portfolio' ? <LedgerNotice /> : <AddMember detail={detail} />}
+      </div>
+      {detail.kind === 'watch' && <AddMember detail={detail} />}
       <RulesSheet detail={detail} target={editing} onClose={() => setEditing(false)} />
     </>}
   </PageLayout>
@@ -113,6 +119,7 @@ function GroupDetail({ groupId, onBack }: { groupId: number; onBack: () => void 
 
 function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEditRules: (code: string) => void }) {
   const remove = useRemoveMember(detail.id)
+  const setTracked = useSetTracked(detail.id)
   const [sorting, setSorting] = useState<SortingState>([])
   const columns = useMemo<ColumnDef<StockGroupMember>[]>(() => {
     const sortable = (label: string) => ({ column }: { column: { getIsSorted: () => false | 'asc' | 'desc'; getToggleSortingHandler: () => ((event: unknown) => void) | undefined } }) => {
@@ -120,21 +127,27 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
       return <Button variant="ghost" size="sm" className="-mr-2 h-7 gap-1 px-2" onClick={column.getToggleSortingHandler()}>{label}<Icon className="size-3.5" aria-hidden="true" /></Button>
     }
     const list: ColumnDef<StockGroupMember>[] = [
-      { id: 'name', accessorKey: 'name', header: '종목', enableSorting: false, cell: ({ row }) => <span className="block"><Link className="font-semibold hover:underline" to={`/analyze/${row.original.stock_code}/summary`}>{row.original.name}</Link><span className="block text-caption text-muted-foreground">{row.original.stock_code}{row.original.conviction ? ` · 확신도 ${row.original.conviction}` : ''}{row.original.target_price ? ` · 목표 ${formatNumber(row.original.target_price)}원` : ''}</span></span> },
-      { id: 'close', accessorFn: item => item.close ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('현재가'), cell: ({ row }) => <span className="block text-right tabular-nums">{row.original.close != null ? `${formatNumber(row.original.close)}원` : '-'}<span className={`block text-caption ${changeClass(row.original.change_pct)}`}>{signedPercent(row.original.change_pct)}</span></span> },
+      { id: 'name', accessorKey: 'name', header: '종목', enableSorting: false, cell: ({ row }) => <span className="block"><Link className="font-semibold hover:underline" to={dossierPath(row.original.stock_code, row.original.market)}>{row.original.name}</Link><span className="block text-caption text-muted-foreground">{row.original.stock_code}{row.original.conviction ? ` · 확신도 ${row.original.conviction}` : ''}{row.original.target_price ? ` · 목표 ${formatNumber(row.original.target_price)}원` : ''}</span></span> },
+      { id: 'close', accessorFn: item => item.close ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('현재가'), cell: ({ row }) => <span className="block text-right tabular-nums">{row.original.close == null ? '-' : row.original.market === 'us' ? formatPrice(row.original.close) : `${formatNumber(row.original.close)}원`}<span className={`block text-caption ${changeClass(row.original.change_pct)}`}>{signedPercent(row.original.change_pct)}</span></span> },
       { id: 'market_cap', accessorFn: item => item.market_cap ?? undefined, sortUndefined: 'last', sortDescFirst: true, header: sortable('시가총액'), cell: ({ row }) => <span className="block text-right tabular-nums">{formatKrw(row.original.market_cap)}</span> },
     ]
+    // 추적 = 알림 대상(D-293). 관심 묶음의 국내 종목·미국 티커 모두(미국은 미국 일봉 기준)
+    if (detail.kind === 'watch') list.push({ id: 'tracked', accessorKey: 'tracked', header: '추적', enableSorting: false, cell: ({ row }) =>
+      <Switch size="sm" checked={row.original.tracked === 1} disabled={setTracked.isPending} aria-label={`${row.original.name} 추적`}
+        onCheckedChange={checked => setTracked.mutateAsync({ stockCode: row.original.stock_code, tracked: checked })
+          .then(state => toast.success(state.tracked ? `${row.original.name} 추적을 켰습니다. ${trackedNotice(row.original.market)}` : `${row.original.name} 추적을 껐습니다.`))
+          .catch(error => toast.error(error instanceof Error ? error.message : '추적을 바꾸지 못했습니다.'))} /> })
     list.push(
-      { id: 'signals', accessorFn: item => item.signals.length, sortDescFirst: true, header: sortable('오늘 신호'), cell: ({ row }) => row.original.signals.length ? <span className="flex flex-wrap gap-1">{row.original.signals.map(signal => <Badge key={signal.rule_id} className="font-normal">{signal.label}{signal.signal_date && signal.signal_date !== detail.last_as_of ? ` · ${signal.signal_date}` : ''}</Badge>)}</span> : <span className="text-caption text-muted-foreground">{row.original.rule_count === 0 ? '조건 없음' : row.original.unavailable > 0 ? `미평가 ${formatNumber(row.original.unavailable)}` : '-'}</span> },
+      { id: 'signals', accessorFn: item => item.signals.length, sortDescFirst: true, header: sortable('오늘 신호'), cell: ({ row }) => row.original.signals.length ? <span className="flex flex-wrap gap-1">{row.original.signals.map(signal => <Badge key={signal.rule_id} className="h-[22px] rounded-md border-0 bg-up-tint px-2 text-xs font-medium text-up-ink">{signal.label}{signal.signal_date && signal.signal_date !== detail.last_as_of ? ` · ${signal.signal_date}` : ''}</Badge>)}</span> : <span className="text-caption text-muted-foreground">{row.original.rule_count === 0 ? '조건 없음' : row.original.unavailable > 0 ? `미평가 ${formatNumber(row.original.unavailable)}` : '-'}</span> },
       { id: 'rules', accessorKey: 'rule_count', header: '조건', enableSorting: false, cell: ({ row }) => <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onEditRules(row.original.stock_code)} aria-label={`${row.original.name} 조건 편집`}>{formatNumber(row.original.rule_count)}개<SlidersHorizontal className="size-3.5" /></Button> },
       { id: 'actions', header: '', enableSorting: false, cell: ({ row }) => <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`${row.original.name} 더보기`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-        <DropdownMenuItem asChild><Link to={`/analyze/${row.original.stock_code}/summary`}>기업 개요</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link to={dossierPath(row.original.stock_code, row.original.market)}>기업 개요</Link></DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onEditRules(row.original.stock_code)}>종목 조건 편집</DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onSelect={() => remove.mutateAsync(row.original.stock_code).catch(error => toast.error(error instanceof Error ? error.message : '제거하지 못했습니다.'))}>묶음에서 제거</DropdownMenuItem>
       </DropdownMenuContent></DropdownMenu> },
     )
     return list
-  }, [detail.id, detail.last_as_of, onEditRules, remove])
+  }, [detail.id, detail.kind, detail.last_as_of, onEditRules, remove, setTracked])
   const table = useReactTable({ data: detail.members, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getRowId: item => item.stock_code })
   if (detail.members.length === 0) return <Card><CardContent className="py-8 text-center"><p className="font-medium">종목이 없습니다.</p><p className="mt-1 text-sm text-muted-foreground">아래에서 종목을 검색해 넣거나, <Link className="underline" to="/discover">종목 발견</Link> 후보에서 ‘묶음에 추가’를 누르세요.</p></CardContent></Card>
   return <div className="overflow-x-auto rounded-xl bg-card">
@@ -147,7 +160,7 @@ function MemberTable({ detail, onEditRules }: { detail: StockGroupDetail; onEdit
 
 /** 포트폴리오 보유는 거래 원장(D-212)이 정한다 — 수량·금액은 원장에만 두고 묶음 멤버에는 넣지 않는다. */
 function LedgerNotice() {
-  return <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+  return <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
     <p className="text-sm text-muted-foreground">보유 종목은 포트폴리오 거래 원장에서 매수·매도를 기록하면 채워집니다. 수량·금액은 원장에만 저장합니다.</p>
     <Button variant="outline" size="sm" asChild><Link to="/portfolio">포트폴리오 원장 열기</Link></Button>
   </CardContent></Card>
@@ -164,7 +177,7 @@ function AddMember({ detail }: { detail: StockGroupDetail }) {
       setQuery('')
     } catch (error) { toast.error(error instanceof Error ? error.message : '종목을 추가하지 못했습니다.') }
   }
-  return <Card><CardHeader className="pb-2"><h2 className="text-sm font-medium">종목 추가</h2></CardHeader><CardContent className="space-y-3">
+  return <Card><CardContent className="space-y-3 py-4"><h2 className="text-[15px] font-semibold">종목 추가</h2>
     <div className="space-y-1"><Label htmlFor="member-search" className="sr-only">종목명 또는 코드</Label><Input id="member-search" value={query} onChange={event => setQuery(event.target.value)} placeholder="종목명 또는 코드" autoComplete="off" /></div>
     {query.trim() && <ul className="max-h-56 space-y-1 overflow-y-auto" aria-label="검색 결과">
       {search.isPending && <li className="text-caption text-muted-foreground">검색 중…</li>}
@@ -176,16 +189,19 @@ function AddMember({ detail }: { detail: StockGroupDetail }) {
 
 function SignalHistory({ groupId }: { groupId: number }) {
   const signals = useGroupSignals(groupId, 30)
+  const [all, setAll] = useState(false)   // 시안: 가장 최근 날만, 나머지는 펼쳐 보기
   const byDate = useMemo(() => { const map = new Map<string, NonNullable<typeof signals.data>>(); for (const signal of signals.data ?? []) map.set(signal.as_of, [...(map.get(signal.as_of) ?? []), signal]); return [...map.entries()] }, [signals.data])
-  return <Collapsible defaultOpen className="rounded-xl bg-card px-4 py-2">
-    <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto w-full justify-between whitespace-normal text-left">최근 30일 신호 {signals.data ? `· ${formatNumber(signals.data.length)}건` : ''}<ChevronDown className="size-4 shrink-0" /></Button></CollapsibleTrigger>
-    <CollapsibleContent className="space-y-3 pb-3 pt-2">
-      {signals.isPending && <Skeleton className="h-16 w-full" />}
-      {signals.isError && <ErrorState message="신호 이력을 불러오지 못했습니다." onRetry={() => signals.refetch()} />}
-      {signals.data && signals.data.length === 0 && <EmptyState message="최근 30일 동안 새로 켜진 신호가 없습니다. 조건이 켜진 첫날만 기록합니다." />}
-      {byDate.map(([date, items]) => <div key={date} className="space-y-1"><p className="text-caption font-medium text-muted-foreground">{date}</p><ul className="space-y-1">{items.map(signal => <li key={`${signal.stock_code}-${signal.rule_id}`} className="flex flex-wrap items-baseline gap-x-2 text-sm"><Link className="font-medium hover:underline" to={`/analyze/${signal.stock_code}/summary`}>{signal.name ?? signal.stock_code}</Link><span>{signal.label}</span>{signal.value != null && <span className="text-caption tabular-nums text-muted-foreground">{formatNumber(signal.value)}{signal.reference != null ? ` / ${formatNumber(signal.reference)}` : ''}</span>}</li>)}</ul></div>)}
-    </CollapsibleContent>
-  </Collapsible>
+  return <Card aria-label="최근 30일 신호"><CardContent className="flex flex-col gap-3 py-4">
+    <h2 className="flex items-baseline gap-2.5 text-[15px] font-semibold">최근 30일 신호<span className="text-xs font-normal text-ink-3">날짜별{signals.data ? ` · ${formatNumber(signals.data.length)}건` : ''}</span></h2>
+    {signals.isPending && <Skeleton className="h-16 w-full" />}
+    {signals.isError && <ErrorState message="신호 이력을 불러오지 못했습니다." onRetry={() => signals.refetch()} />}
+    {signals.data && signals.data.length === 0 && <EmptyState message="최근 30일 동안 새로 켜진 신호가 없습니다." />}
+    {(all ? byDate : byDate.slice(0, 1)).map(([date, items]) => <div key={date}><p className="pb-1.5 text-xs text-ink-3">{date}</p><ul>{items.map(signal => <li key={`${signal.stock_code}-${signal.rule_id}`} className="flex justify-between gap-2.5 border-t py-2 text-[13px]">
+      <Link className="min-w-0 truncate hover:underline" to={dossierPath(signal.stock_code, signal.market)}>{signal.name ?? signal.stock_code}</Link>
+      <span className="shrink-0 text-ink-2">{signal.label}{signal.value != null && <span className="ml-1 font-mono text-xs tabular-nums">{formatNumber(signal.value)}{signal.reference != null ? ` / ${formatNumber(signal.reference)}` : ''}</span>}</span>
+    </li>)}</ul></div>)}
+    {byDate.length > 1 && <Button variant="ghost" size="sm" className="self-center text-ink-2" onClick={() => setAll(v => !v)}>{all ? '접기' : `이전 ${formatNumber(byDate.length - 1)}일 더 보기`}</Button>}
+  </CardContent></Card>
 }
 
 function RulesSheet({ detail, target, onClose }: { detail: StockGroupDetail; target: string | null | false; onClose: () => void }) {
@@ -230,10 +246,10 @@ function RuleEditor({ detail, code, onSaved }: { detail: StockGroupDetail; code:
   return <div className="space-y-5 pt-4">
     <section className="space-y-2" aria-label="현재 조건">
       {rules.length === 0 && <p className="text-sm text-muted-foreground">{code ? '이 종목에만 붙은 조건이 없습니다.' : '조건이 없습니다. 아래에서 전략을 골라 추가하세요.'}</p>}
-      {rules.map((rule, index) => <div key={ruleKey(rule)} className="flex items-start justify-between gap-2 rounded-lg border p-3"><div className="min-w-0"><p className="text-sm font-medium">{labelOf(rule.strategy_id)}</p><p className="text-caption text-muted-foreground">{paramsText({ params: rule.params ?? {} }) || '기본 매개변수'} · 최근 {rule.within_days ?? 1}거래일{rule.source_strategy_id ? ' · 저장 전략에서 복사' : ''}</p></div><Button variant="ghost" size="icon-sm" aria-label={`${labelOf(rule.strategy_id)} 조건 제거`} onClick={() => setRules(rules.filter((_, i) => i !== index))}><Trash2 className="size-4" /></Button></div>)}
-      {inherited.length > 0 && <div className="space-y-1 rounded-lg bg-muted/50 p-3"><p className="text-caption font-medium text-muted-foreground">기본 조건에서 이어받음</p>{inherited.map(rule => <p key={rule.id} className="text-caption text-muted-foreground">{rule.label} · {paramsText(rule) || '기본 매개변수'}</p>)}</div>}
+      {rules.map((rule, index) => <div key={ruleKey(rule)} className="flex items-start justify-between gap-2 border p-3"><div className="min-w-0"><p className="text-sm font-medium">{labelOf(rule.strategy_id)}</p><p className="text-caption text-muted-foreground">{paramsText({ params: rule.params ?? {} }) || '기본 매개변수'} · 최근 {rule.within_days ?? 1}거래일{rule.source_strategy_id ? ' · 저장 전략에서 복사' : ''}</p></div><Button variant="ghost" size="icon-sm" aria-label={`${labelOf(rule.strategy_id)} 조건 제거`} onClick={() => setRules(rules.filter((_, i) => i !== index))}><Trash2 className="size-4" /></Button></div>)}
+      {inherited.length > 0 && <div className="space-y-1 bg-muted/50 p-3"><p className="text-caption font-medium text-muted-foreground">기본 조건에서 이어받음</p>{inherited.map(rule => <p key={rule.id} className="text-caption text-muted-foreground">{rule.label} · {paramsText(rule) || '기본 매개변수'}</p>)}</div>}
     </section>
-    <section className="space-y-3 rounded-lg border p-3" aria-label="조건 추가">
+    <section className="space-y-3 border p-3" aria-label="조건 추가">
       <p className="text-sm font-medium">조건 추가</p>
       {catalog.isPending && <Skeleton className="h-9 w-full" />}
       {catalog.isError && <ErrorState message="전략 목록을 불러오지 못했습니다." onRetry={() => catalog.refetch()} />}

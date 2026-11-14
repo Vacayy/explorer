@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 /** 표 셸 — 넓은 표는 자기 안에서만 가로 스크롤(페이지 가로 스크롤 금지, DESIGN_SYSTEM §1) */
 function TableShell({ children }: React.ComponentProps<"table">) {
   return (
-    <div className="my-3 overflow-x-auto rounded-lg ring-1 ring-border">
+    <div className="my-3 overflow-x-auto rounded-card border border-border">
       <table>{children}</table>
     </div>
   )
@@ -28,7 +28,7 @@ function textOf(node: React.ReactNode): string {
 }
 function Td({ children, className, ...props }: React.ComponentProps<"td">) {
   const m = SIGNED_PCT.exec(textOf(children))
-  const tone = m ? (m[1] === "+" ? "text-up" : "text-down") : undefined
+  const tone = m ? (m[1] === "+" ? "text-up-ink" : "text-down-ink") : undefined
   return <td className={cn(tone, className)} {...props}>{children}</td>
 }
 
@@ -43,7 +43,7 @@ export function Markdown({ children, className, components }: { children: string
       "[&_p]:my-2.5 [&_p]:leading-relaxed",
       "[&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:my-2 [&_ol]:pl-5 [&_ol]:list-decimal",
       "[&_li]:my-1 [&_li]:leading-relaxed [&_li]:marker:text-muted-foreground",
-      "[&_strong]:font-semibold [&_a]:text-primary [&_a]:underline",
+      "[&_strong]:font-semibold [&_a]:text-primary [&_a]:underline [&_a:hover]:opacity-75",
       "[&_hr]:my-4 [&_hr]:border-border [&_em]:text-muted-foreground",
       "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
       // GFM 표 — 셸(overflow-x 래퍼)은 components.table, 셀 스타일은 여기

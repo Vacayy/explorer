@@ -5,7 +5,7 @@
 
 ## 현행 진입 (2026-09-10)
 
-Dock 관심목록의 기본 목적지는 `/follow/saved`이며 저장됨을 첫 탭으로 표시한다. 기존 관심 대상 관리 `/follow`는 유지한다. 스터디 기능은 [별도 단일 기획](study-mode.md) 단계이며 아직 저장 목록에 구현하지 않았다.
+**현행(2026-11-05, 개편 4a)**: 저장됨은 피드 › 저장됨 `/feed/saved`(옛 `/follow/saved`는 리다이렉트). 머리 '저장됨 n건' + ⓘ(저장 방법), 유형 탭에 건수(`?kind=`), 목록 폭 980px, 메모는 있는 줄만 보이고 쓰기·저장 해제는 줄에 마우스를 올리면 나오는 '메모'·'×'(터치 기기는 항상), 메모 입력은 누른 줄에만 펼친다. 상단 바 인박스 시트(compact `SavedList`)는 그대로. 이하 옛 기록: Dock 관심목록의 기본 목적지는 `/follow/saved`이며 저장됨을 첫 탭으로 표시한다. 기존 관심 대상 관리 `/follow`는 유지한다. 스터디 기능은 [별도 단일 기획](study-mode.md) 단계이며 아직 저장 목록에 구현하지 않았다.
 
 ## 관통 원칙
 
@@ -21,8 +21,8 @@ Dock 관심목록의 기본 목적지는 `/follow/saved`이며 저장됨을 첫 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INTEGER PK | |
-| kind | TEXT | `company` \| `doc` \| `narrative` \| `report` |
-| ref | TEXT | 안정 식별자 — company=stockCode · doc=docId · narrative=narrative_id(**버전 행 PK**) · report=report id(**버전 PK**) |
+| kind | TEXT | `company` \| `doc` \| `narrative` \| `report` \| `chat`(대화 답변, 2026-11-05 개편 4j) |
+| ref | TEXT | 안정 식별자 — company=stockCode · doc=docId · narrative=narrative_id(**버전 행 PK**) · report=report id(**버전 PK**) · chat=`chat_messages.id`(url `/chat?id=대화`) |
 | url | TEXT | 네비게이션 타깃(내러티브·리포트는 해당 버전 URL) |
 | title | TEXT | 저장 시점 제목 스냅샷 |
 | subtitle | TEXT | 보조 스냅샷 — 예: `v3`, topic, 기업명 |

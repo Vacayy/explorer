@@ -9,10 +9,6 @@ const number = z.number()
 const id = z.number().int()
 const object = z.looseObject
 export const companySchema = object({ corp_code: text, corp_name: text, stock_code: nullableText, market: nullableText, sector: nullableText })
-export const boardSchema = object({
-  id, label: text, sort: number, updated_at: text,
-  items: z.array(object({ i: text, widget: text, x: number, y: number, w: number.positive(), h: number.positive(), params: z.record(text, z.unknown()).optional() })),
-})
 const entitySchema = object({ entity_id: id, type: text, name: text, aliases: nullableText, link_type: text, confidence: number.nullable() })
 export const feedSchema = object({
   items: z.array(object({
@@ -42,10 +38,6 @@ const collectStartedSchema = object({ started: z.literal(true), budget: id.nonne
 export const responseContracts: { method: string; path: RegExp; schema: z.ZodType }[] = [
   { method: 'get', path: /^\/api\/companies\/search$/, schema: z.array(companySchema) },
   { method: 'get', path: /^\/api\/companies\/[^/]+$/, schema: companySchema },
-  { method: 'get', path: /^\/api\/dashboard\/boards$/, schema: z.array(boardSchema) },
-  { method: 'post', path: /^\/api\/dashboard\/boards$/, schema: boardSchema },
-  { method: 'put', path: /^\/api\/dashboard\/boards\/order$/, schema: z.array(boardSchema) },
-  { method: 'patch', path: /^\/api\/dashboard\/boards\/\d+$/, schema: boardSchema },
   { method: 'get', path: /^\/api\/spine\/feed$/, schema: feedSchema },
   { method: 'get', path: /^\/api\/spine\/indices$/, schema: indicesSchema },
   { method: 'get', path: /^\/api\/spine\/transcript\/recent$/, schema: z.array(recentCallSchema) },

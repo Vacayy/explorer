@@ -55,3 +55,16 @@ class TimelineChannelsResponse(BaseModel):
 class MarkReadRequest(BaseModel):
     channel: str
     read_until: str
+
+
+class MarkAllReadRequest(BaseModel):
+    """피드 '모두 읽음'(D-301) — platform 범위의 소스를 read_until까지 한 번에 읽음으로. all = 사람 소스 전체(Explorer 산출물 제외)"""
+    platform: Literal["all", "telegram", "blog", "youtube", "memo"] = "all"
+    read_until: str
+
+
+class MarkAllReadResponse(BaseModel):
+    platform: str
+    read_until: str
+    channels: int            # 이번에 읽음으로 바꾼 소스 수(안 읽은 글이 있던 소스만)
+    marked: int              # 그 소스들의 안 읽은 글 수 합

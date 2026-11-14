@@ -13,8 +13,8 @@ import { usePortfolioTheses, useStartThesis } from '@/hooks/usePortfolio'
 import type { QuestionVerdict } from '@/types'
 
 const VERDICT: Record<string, { label: string; cls: string }> = {
-  leaning_yes: { label: '지지', cls: 'text-up border-up/40' },
-  leaning_no: { label: '약화', cls: 'text-down border-down/40' },
+  leaning_yes: { label: '지지', cls: 'text-up-ink border-up/40' },
+  leaning_no: { label: '약화', cls: 'text-down-ink border-down/40' },
   mixed: { label: '엇갈림', cls: 'text-muted-foreground' },
   unknown: { label: '관측 전', cls: 'text-muted-foreground' },
 }
@@ -44,7 +44,7 @@ export function ThesisCard({ code, name }: { code: string; name: string }) {
             <span className="text-muted-foreground">확정 지표</span><Badge variant="outline" className={`text-caption ${V(t.confirm).cls}`}>{V(t.confirm).label}</Badge>
           </div>
           {t.warnings.length > 0 && <div role="alert" className="flex gap-2 rounded-lg border border-down/30 p-3 text-sm">
-            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-down" /><ul>{t.warnings.map(w => <li key={w}>{w}</li>)}</ul></div>}
+            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-down-ink" /><ul>{t.warnings.map(w => <li key={w}>{w}</li>)}</ul></div>}
           {t.summary && <p className="text-sm text-muted-foreground">{t.summary}</p>}
           <ul className="divide-y">{t.sub_questions.map(s => <li key={s.text} className="flex items-start gap-3 py-2 text-sm">
             <Badge variant="outline" className={`mt-0.5 shrink-0 text-caption ${V(s.verdict).cls}`}>{V(s.verdict).label}</Badge>

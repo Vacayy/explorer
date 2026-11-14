@@ -19,10 +19,10 @@ import { ThesisCard } from '@/components/portfolio/ThesisCard'
 /** 보유 종목 한 개: 가격(평단선·편입일 + 기술적 분석 표시) · 공시 · 뉴스/관련 자료. */
 export function HoldingDetail({ holding }: { holding: PortfolioHolding }) {
   const { code } = holding
-  return <div className="space-y-4">
+  return <div className="surface-stack">
     <PriceCard holding={holding} />
     <ThesisCard code={code} name={holding.name} />
-    <div className="grid gap-4 @3xl/portfolio:grid-cols-3">
+    <div className="surface-grid grid @3xl/portfolio:grid-cols-3">
       <FlowCard code={code} />
       <EvidenceCard code={code} title="최근 공시" source="disclosure" />
       <EvidenceCard code={code} title="뉴스·관련 자료" source="" />

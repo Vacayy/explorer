@@ -1,48 +1,72 @@
-"""섹터 맵 RS 계산 — 장기(12M)·단기(1M) 상대강도 4사분면 (LLM 0).
+"""섹터 맵 RS 계산 — 장기(3개월)·단기(1주) 상대강도 4사분면 (LLM 0, D-328).
 
 '주가 패턴은 시장 심리의 흔적'을 섹터 차원으로: x=장기 RS(구조적 강도),
 y=단기 RS(현재 수급), 크기=시총, 색=5일 흐름. 사분면 = 주도/부상/소외/과열경계.
 RS = 대분류별 시총가중 수익률의 백분위(0~100). hover 궤적 = 1·2·3주 전 위치.
 
-집계 축: sector_map(KSIC→투자 언어 대분류 18개, LLM 시드).
+집계 축: sector_map(KSIC→투자 언어 대분류 18개, LLM 시드) + 업종 정정 표(sector_overrides, D-313).
 계산은 요청 시 (15분 인메모리 캐시) — stock_prices 스냅샷 쿼리 기반.
 """
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, timedelta
 
 from database import get_connection
 
-# 장기 창 335일(약 11개월): 380일 백필 한도 안에서 '3주 전 시점의 장기 RS'
-# (궤적)까지 계산 가능해야 한다 (365일이면 3주 전 기준가가 백필 밖 → 궤적 유실)
-LONG_CAL_DAYS = 335
-SHORT_CAL_DAYS = 30
+# 장기 = 3개월(91일), 단기 = 1주(7일) — 2026-11-06 사용자 결정(D-328). 이전: 장기 335일(약 11개월) · 단기 30일.
+LONG_CAL_DAYS = 91
+SHORT_CAL_DAYS = 7
 FLOW_DAYS = 5
 TRAIL_WEEKS = (1, 2, 3)
 _TTL = 900
 _cache: dict[str, tuple[float, dict]] = {}
 
 
+# 종목별 시크: 종목코드를 인덱스로 건너뛰며 모으고(재귀 CTE), 종목마다 (stock_code, trade_date) 인덱스로
+# '그날 이전 마지막 종가 행' 하나만 찾는다. 예전 GROUP BY + 조인(120만 행 전체 스캔, 0.26~1.1초)과 같은 결과를
+# 0.01초 안팎에 낸다(API 성능 A단계 ③-b, tests/test_sector_snapshot.py가 옛 쿼리와 대조).
+_SNAPSHOT_SQL = """
+    WITH RECURSIVE codes(stock_code) AS (
+        SELECT min(stock_code) FROM stock_prices
+        UNION ALL
+        SELECT (SELECT min(stock_code) FROM stock_prices WHERE stock_code > codes.stock_code)
+        FROM codes WHERE codes.stock_code IS NOT NULL)
+    SELECT codes.stock_code, sp.close, sp.market_cap
+    FROM codes
+    JOIN stock_prices sp ON sp.id = (
+        SELECT x.id FROM stock_prices x
+        WHERE x.stock_code = codes.stock_code AND x.trade_date <= ? AND x.close IS NOT NULL
+        ORDER BY x.trade_date DESC LIMIT 1)"""
+
+_memo: ContextVar[dict | None] = ContextVar("sector_rs_snapshot_memo", default=None)
+
+
+@contextmanager
+def snapshot_memo():
+    """이 블록 안에서는 같은 날짜 _snapshot을 한 번만 읽는다(요청 하나 범위)."""
+    token = _memo.set({})
+    try:
+        yield
+    finally:
+        _memo.reset(token)
+
+
 def _snapshot(conn, on_or_before: str) -> dict[str, tuple[float, float]]:
     """종목별 (close, market_cap) — 해당 일자 이전 최근 거래일 기준."""
-    rows = conn.execute("""
-        SELECT sp.stock_code, sp.close, sp.market_cap
-        FROM stock_prices sp
-        JOIN (SELECT stock_code, max(trade_date) d FROM stock_prices
-              WHERE trade_date <= ? AND close IS NOT NULL GROUP BY stock_code) t
-          ON t.stock_code = sp.stock_code AND t.d = sp.trade_date""", (on_or_before,)).fetchall()
-    return {r["stock_code"]: (r["close"], r["market_cap"] or 0) for r in rows}
+    memo = _memo.get()
+    if memo is not None and on_or_before in memo:
+        return memo[on_or_before]
+    out = {r[0]: (r[1], r[2] or 0) for r in conn.execute(_SNAPSHOT_SQL, (on_or_before,))}
+    if memo is not None:
+        memo[on_or_before] = out
+    return out
 
 
 def _members(conn) -> dict[str, str]:
-    """종목코드 → 대분류."""
-    rows = conn.execute("""
-        SELECT c.aliases code, sm.group_name g
-        FROM entity_relations er
-        JOIN entities c ON c.id = er.src_id AND c.type='company' AND c.aliases IS NOT NULL
-        JOIN entities s ON s.id = er.dst_id AND s.type='sector'
-        JOIN sector_map sm ON sm.sector_name = s.name
-        WHERE er.rel_type='MEMBER_OF'""").fetchall()
-    return {r["code"]: r["g"] for r in rows}
+    """종목코드 → 대분류 (원천 + 업종 정정, pipeline/sector_overrides)."""
+    from pipeline.sector_overrides import effective_sectors
+    return effective_sectors(conn)
 
 
 def _group_returns(cur: dict, base: dict, members: dict, weights: dict[str, float]) -> dict[str, float]:

@@ -18,7 +18,7 @@ CREATE TABLE transcript_follow(ticker TEXT, company_name TEXT, entity_id INTEGER
 CREATE TABLE us_fundamentals(ticker TEXT, data_json TEXT, fetched_at TEXT);
 CREATE TABLE entities(id INTEGER PRIMARY KEY, type TEXT, name TEXT, aliases TEXT, meta_json TEXT, status TEXT DEFAULT 'active');
 CREATE TABLE study_projects(id INTEGER PRIMARY KEY, title TEXT, updated_at TEXT);
-CREATE TABLE entity_keywords(id INTEGER PRIMARY KEY, entity_id INTEGER, keyword TEXT);
+CREATE TABLE entity_keywords(id INTEGER PRIMARY KEY, entity_id INTEGER, keyword TEXT, status TEXT DEFAULT 'active');
 """
 
 
@@ -39,6 +39,8 @@ class SearchTests(unittest.TestCase):
         conn.execute("INSERT INTO entities (type, name) VALUES ('person','이재용'), ('theme','HBM'), ('theme','전자'), ('company','이닉스'), ('company','SK하이닉스')")
         conn.execute("INSERT INTO entities (type, name, aliases) VALUES ('company','삼성전자','005930'), ('company','한화에어로스페이스','012450')")
         conn.execute("INSERT INTO entity_keywords (entity_id, keyword) SELECT id, 'Samsung' FROM entities WHERE name='삼성전자'")
+        conn.execute("INSERT INTO entity_keywords (entity_id, keyword, status) SELECT id, 'Hanwha', 'rejected' FROM entities WHERE name='한화에어로스페이스'")
+        conn.execute("INSERT INTO entity_keywords (entity_id, keyword, status) SELECT id, 'Aero', 'proposed' FROM entities WHERE name='한화에어로스페이스'")
         conn.execute("INSERT INTO study_projects (title, updated_at) VALUES ('삼성 메모리 스터디', '2026-09-19')")
         gid = conn.execute("INSERT INTO stock_groups (name, kind) VALUES ('관심 종목','watch')").lastrowid
         conn.execute("INSERT INTO stock_group_members (group_id, stock_code) VALUES (?, '005930')", (gid,))
@@ -82,6 +84,9 @@ class SearchTests(unittest.TestCase):
         self.assertEqual([c["name"] for c in self.client.get("/api/spine/search", params={"q": "ㅅㅅ"}).json()["companies"]][:2], ["삼성전자", "삼성물산"], "prefix hits keep market-cap order")
         alias = self.client.get("/api/spine/search", params={"q": "Samsung"}).json()["companies"]
         self.assertEqual([(c["name"], c["alias"]) for c in alias], [("삼성전자", "Samsung")], "entity keyword aliases resolve to the company")
+        for q in ("Hanwha", "Aero"):
+            hits = self.client.get("/api/spine/search", params={"q": q}).json()["companies"]
+            self.assertFalse([c for c in hits if c.get("alias")], f"rejected/proposed alias '{q}' must not resolve")
         sentence = self.client.get("/api/spine/search", params={"q": "이재용 회장이 삼성전자 HBM 투자를 늘린다는데 한화에어로스페이스·SK하이닉스와 비교해줘"}).json()
         self.assertEqual([(m["name"], m["type"], m["stock_code"]) for m in sentence["mentions"]],
                          [("한화에어로스페이스", "company", "012450"), ("SK하이닉스", "company", None), ("삼성전자", "company", "005930"), ("이재용", "person", None), ("HBM", "theme", None)],

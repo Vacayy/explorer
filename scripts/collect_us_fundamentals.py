@@ -23,6 +23,27 @@ def main() -> int:
         return r
 
     r = run_job("us_fundamentals", work)
+
+    # 미국 분기 손익계산서(IS) — 도시에 '분기 손익 흐름' Sankey 원천(ia-redesign §4.13).
+    # us_quarterly에 이미 들어온 티커만. 백필·확장 범위는 백로그
+    from pipeline.us_income_is import collect_us_income
+
+    def work_income():
+        ri = collect_us_income()
+        print(f"[us_income_is] stored={ri['stored']} failed={ri['failed']} status={ri['status']}", flush=True)
+        return ri
+
+    run_job("us_income_is", work_income)
+
+    # 미국 사업부 매출(세그먼트) — EX-99.1 LLM 추출. 매일 최근 미처리 분만 돌려 비용을 억제
+    from pipeline.us_segments import collect as collect_segments
+
+    def work_segments():
+        rs = collect_segments(per_ticker=4, limit=30)
+        print(f"[us_segments] stored_rows={rs['stored_rows']} failed={rs['failed']} status={rs['status']}", flush=True)
+        return rs
+
+    run_job("us_segments", work_segments)
     # 고객 집중도는 10-K/10-Q 주석이라 분기에 한 번 바뀐다 — 공시 원본을 티커당 7건 읽어 무거우므로 주 1회만
     from database import get_connection
     conn = get_connection()

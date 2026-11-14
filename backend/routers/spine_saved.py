@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/spine/saved", tags=["spine"])
 
 class SavedItem(BaseModel):
     id: int
-    kind: str            # company | doc | narrative | report
+    kind: str            # company | doc | narrative | report | chat(대화 답변, ref=메시지 id)
     ref: str
     url: str
     title: str | None = None
@@ -50,7 +50,7 @@ def list_saved(kind: str | None = None):
 
 @router.post("", response_model=SavedItem, status_code=201)
 def add_saved(body: SaveRequest):
-    if body.kind not in ("company", "doc", "narrative", "report"):
+    if body.kind not in ("company", "doc", "narrative", "report", "chat"):
         raise HTTPException(400, "알 수 없는 kind")
     conn = get_connection()
     conn.execute(

@@ -11,6 +11,7 @@ LLM 호출 동안 DB 쓰기 트랜잭션을 잡지 않는다(쓰기 순간에만
 """
 from __future__ import annotations
 
+from pipeline.llm_policies import requested_model
 import hashlib
 import heapq
 import json
@@ -19,7 +20,9 @@ import re
 from database import get_connection
 
 DEPTH, MAX_NODES = 4, 12      # 소재·장비 칸에서 최종 수요까지 4단계가 필요할 때가 있다(포토 소재 → 메모리 → 서버 ODM → AI 투자)
-NOTE_MODEL, SYNTH_MODEL, WRITER_MODEL = "sonnet", "opus", "sonnet"
+NOTE_MODEL = requested_model('chain.note')  # existing cache/display field: requested model
+SYNTH_MODEL = requested_model('chain.analyze')  # existing cache/display field: requested model
+WRITER_MODEL = requested_model('chain.write')  # existing cache/display field: requested model
 DOCS_PER_NODE, DOC_CHARS, DOC_DAYS = 6, 700, 30
 WEB_SEARCH_CAP = 5
 
@@ -211,7 +214,7 @@ def _note(key: str, d: dict) -> str:
     prompt = (f"칸: {d['사실']['name']} ({key})\n\n## 사실(관측 데이터)\n{json.dumps(d['사실'], ensure_ascii=False, default=str)}\n\n"
               f"## 기대(컨센서스·리서치 전망)\n{json.dumps(d['기대'], ensure_ascii=False, default=str)}\n\n## 컨퍼런스콜 요약\n{calls or '(없음)'}\n\n"
               f"## 피드 문서(최근 {DOC_DAYS}일)\n{docs or '(없음)'}\n\n위 자료로 칸 메모를 써라.")
-    body = run(prompt, system=NOTE_SYSTEM, model=NOTE_MODEL, timeout=300, job="chain_report_note").text.strip()
+    body = run(prompt, task='chain.note', system=NOTE_SYSTEM).text.strip()
     conn = get_connection()
     try:
         conn.execute("INSERT OR REPLACE INTO chain_node_notes (node_key, inputs_hash, body, model) VALUES (?,?,?,?)", (key, h, body, NOTE_MODEL))
@@ -286,12 +289,12 @@ def build(rid: int, root: str, outline: str = "bottom_up") -> None:
                   f"## 칸 메모\n{body_notes}\n\n"
                   + (f"## 메모가 빠진 칸\n{', '.join(m['name'] for m in missing)}\n\n" if missing else "")
                   + "위 칸 메모들로 분석 메모를 써라.")
-        analysis = run(prompt, system=SYNTH_SYSTEM.replace("{order}", OUTLINES[outline]), model=SYNTH_MODEL, tools=("WebSearch", "WebFetch"), timeout=1200, job="chain_report").text.strip()
+        analysis = run(prompt, task='chain.analyze', system=SYNTH_SYSTEM.replace("{order}", OUTLINES[outline])).text.strip()
         _update(rid, analysis=analysis, progress="애널리스트 문체로 보고서 쓰는 중")
         # 글쓰기 — 분석 메모가 뼈대, 칸 메모는 숫자 확인용(새 숫자를 지어내지 않게 둘 다 준다)
         wprompt = (f"## 분석 메모\n{analysis}\n\n## 칸 메모(숫자·출처 확인용)\n{body_notes}\n\n"
                    f"루트 칸: {tree[0]['name']}. 위 분석 메모의 목차와 근거로 산업 리포트를 써라.")
-        body = run(wprompt, system=WRITER_SYSTEM, model=WRITER_MODEL, timeout=900, job="chain_report_writer").text.strip()
+        body = run(wprompt, task='chain.write', system=WRITER_SYSTEM).text.strip()
         status = "partial" if missing else "done"
         _update(rid, status=status, progress=None, body=body, refs_json=json.dumps(refs, ensure_ascii=False),
                 missing_json=json.dumps(missing, ensure_ascii=False), inputs_hash=_hash([notes, tree]), finished_at=_now())

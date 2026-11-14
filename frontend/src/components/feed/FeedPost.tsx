@@ -1,6 +1,6 @@
-import { AddToStudy } from "@/components/study/AddToStudy"
-import { StudyButton } from "@/components/study/StudyButton"
-import { DocumentBody } from "@/components/doc/DocumentBody"
+import { AddToStudy } from '@/components/study/AddToStudy'
+import { StudyButton } from '@/components/study/StudyButton'
+import { DocumentBody } from '@/components/doc/DocumentBody'
 import { useState, type ReactNode } from 'react'
 import { DetailLink as Link } from '@/components/shared/DetailNavigation'
 import { ArrowUpRight, ChevronDown, FileText, Sparkles } from 'lucide-react'
@@ -9,16 +9,17 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Markdown } from '@/components/shared/Markdown'
+import { BoundedArea } from '@/components/shared/Bounded'
 import { SourceBadge } from '@/components/shared/SourceBadge'
 import { EntityChip } from '@/components/shared/EntityChip'
-import { API_BASE } from '@/api/client'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { EntityTag, FeedDocument, TimelineItem } from '@/types'
+import { track } from '@/lib/usage'
 
 type PostVariant = 'card' | 'row'
 function PostSurface({ variant, children }: { variant: PostVariant; children: ReactNode }) {
   if (variant === 'row') return <div className="space-y-3">{children}</div>
-  return <Card className="gap-0 py-0"><CardContent className="space-y-3 p-4 sm:p-5">{children}</CardContent></Card>
+  return <Card className="gap-0 py-0"><CardContent className="space-y-3 p-3 sm:p-3">{children}</CardContent></Card>
 }
 
 const focusLink = 'rounded-sm hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-4'
@@ -29,72 +30,47 @@ function preview(text: string) {
   return text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^[#>\-\s]+/gm, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()
 }
 
-export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', variant = 'card', reading }: {
-  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; variant?: PostVariant; reading?: 'original' | 'summary'
+/** 피드 리더의 글 카드(D-325, 옛 ChannelReader) — 분류 · 소스 · 시각 / 제목 / 요약(기본) · '원문 보기'로 원문 펼침 / 태그 · 스터디로 읽기 · 스터디에 추가 · 자료 상세 · 원문 사이트.
+ *  요약이 없으면 원문을 바로 보인다. 펼친 원문은 높이 상한 안에서 스크롤한다(§4.34). */
+export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
+  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string
 }) {
-  const [open, setOpen] = useState(false)
   const excerpt = preview(doc.summary || doc.content || '')
-  const tags = doc.entities.slice(0, 4)
+  const hasSummary = !!doc.summary?.trim()
+  const hasOriginal = !!doc.content?.trim() || doc.images.length > 0
+  const [showOriginal, setShowOriginal] = useState(false)
   return (
-    <article aria-label={doc.title || '소스 게시물'} className={variant === 'row' ? 'feed-post-row' : undefined}>
-      <PostSurface variant={variant}>
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <SourceBadge sourceType={doc.source_type} />
-            {doc.channel_kind && doc.channel_key ? (
-              <Link to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
-                className={`min-w-0 max-w-[60%] truncate font-medium text-foreground ${focusLink}`}>{doc.channel}</Link>
-            ) : <span className="min-w-0 truncate font-medium text-foreground">{doc.channel || '수집 자료'}</span>}
-            <time className="ml-auto shrink-0 text-caption" dateTime={doc.published_at} title={doc.published_at}>
-              {formatRelativeTime(doc.published_at)} {timeLabel}
-            </time>
-          </div>
-          <h3 className="text-card-title font-semibold text-pretty break-words">
-            <Link to={`/doc/${doc.id}`} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
-          </h3>
-          {reading ? <div className="space-y-4">
-            <DocumentBody doc={doc} reading={reading} mediaSize="preview" />
-            <div className="flex flex-wrap items-center gap-2">
-              {tags.map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
-              <StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} /><Button asChild variant="ghost" size="sm" className="ml-auto"><Link to={`/doc/${doc.id}`}>자료 상세<ArrowUpRight aria-hidden="true" /></Link></Button>
-              {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer"><span>원문<span className="max-md:hidden"> 사이트</span></span><ArrowUpRight aria-hidden="true" /></a></Button>}
-            </div>
-          </div> : <Collapsible open={open} onOpenChange={setOpen}>
-            {!open && excerpt && (
-              <div className="flex gap-3">
-                <div className="min-w-0 flex-1">
-                  <span className={`text-caption ${doc.summary ? 'text-hypothesis' : 'text-muted-foreground'}`}>{doc.summary ? 'AI 요약' : '본문 발췌'}</span>
-                  <p className="mt-0.5 line-clamp-3 break-words text-sm leading-relaxed text-muted-foreground">{excerpt}</p>
-                </div>
-                {doc.images[0] && <a href={`${API_BASE}/media/${doc.images[0]}`} target="_blank" rel="noreferrer" className={`shrink-0 self-start ${focusLink}`} aria-label="첨부 이미지 원본 열기">
-                  <img src={`${API_BASE}/media/${doc.images[0]}`} alt="게시물 첨부 이미지" width={80} height={64} loading="lazy" className="h-16 w-20 rounded-md object-cover" />
-                </a>}
-              </div>
-            )}
-            <CollapsibleContent className="space-y-3">
-              <p className="text-caption text-muted-foreground">수집 본문</p>
-              <div className="break-words text-reading" tabIndex={0} aria-label="수집 본문"><Markdown>{doc.content || doc.summary || ""}</Markdown></div>
-              {doc.images.length > 0 && <div className="flex flex-wrap gap-2">{doc.images.map(img => (
-                <a key={img} href={`${API_BASE}/media/${img}`} target="_blank" rel="noreferrer" className={focusLink} aria-label="첨부 이미지 원본 열기">
-                  <img src={`${API_BASE}/media/${img}`} alt="게시물 첨부 이미지" width={160} height={100} loading="lazy" className="h-24 w-40 rounded-md object-cover" />
-                </a>
-              ))}</div>}
-            </CollapsibleContent>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {tags.map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
-              {doc.entities.length > tags.length && <span className="text-caption text-muted-foreground">+{formatNumber(doc.entities.length - tags.length)}</span>}
-              <div className="ml-auto flex flex-wrap items-center gap-3"><StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} />
-                {(doc.content || doc.summary) && <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-caption text-muted-foreground">
-                    {open ? '접기' : '펼쳐 읽기'}<ChevronDown aria-hidden="true" className={`size-3 ${open ? 'rotate-180' : ''}`} />
-                  </Button>
-                </CollapsibleTrigger>}
-                {/^https?:\/\//i.test(doc.url) && <a href={doc.url} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-1 text-xs text-muted-foreground ${focusLink}`}>
-                  원문<ArrowUpRight aria-hidden="true" className="size-3" />
-                </a>}
-              </div>
-            </div>
-          </Collapsible>}
-      </PostSurface>
+    <article aria-label={doc.title || '소스 게시물'} className="feed-post-row">
+      <div className="space-y-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+          <SourceBadge sourceType={doc.source_type} />
+          {doc.channel_kind && doc.channel_key ? (
+            <Link to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
+              className={`min-w-0 max-w-[60%] truncate font-medium text-ink-2 ${focusLink}`}>{doc.channel}</Link>
+          ) : <span className="min-w-0 truncate font-medium text-ink-2">{doc.channel || '수집 자료'}</span>}
+          <time className="ml-auto shrink-0 text-caption" dateTime={doc.published_at} title={doc.published_at}>
+            {formatRelativeTime(doc.published_at)} {timeLabel}
+          </time>
+        </div>
+        <h3 className="text-card-title font-semibold text-pretty break-words">
+          <Link to={`/doc/${doc.id}`} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
+        </h3>
+        <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" />
+        {hasSummary && hasOriginal && <>
+          <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal} onClick={() => { if (!showOriginal) track('open', 'feed.original', { entity: doc.id }); setShowOriginal(v => !v) }}>
+            {showOriginal ? '원문 접기' : '원문 보기'}<ChevronDown aria-hidden="true" className={`size-3 transition-transform ${showOriginal ? 'rotate-180' : ''}`} />
+          </Button>
+          {showOriginal && <BoundedArea size="md" className="rounded-lg border border-line bg-surface-2/50" viewportClassName="p-3">
+            <DocumentBody doc={doc} reading="original" mediaSize="preview" />
+          </BoundedArea>}
+        </>}
+        <div className="flex flex-wrap items-center gap-2">
+          {doc.entities.slice(0, 4).map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
+          <StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} />
+          <Button asChild variant="ghost" size="sm" className="ml-auto"><Link to={`/doc/${doc.id}`}>자료 상세<ArrowUpRight aria-hidden="true" /></Link></Button>
+          {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer"><span>원문<span className="max-md:hidden"> 사이트</span></span><ArrowUpRight aria-hidden="true" /></a></Button>}
+        </div>
+      </div>
     </article>
   )
 }

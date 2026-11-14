@@ -6,6 +6,40 @@
 
 ---
 
+## 현재 실행 계약: Claude → Codex failover (2026-11-11)
+
+- `pipeline.llm.run`: Claude Code가 기본. 실행 오류·시간 초과·오류 envelope·빈 응답이면 `codex exec`로 한 번 재시도한다. API 모드는 대상이 아니다. Claude 실행 파일이 없어도 명시한 claude-code 모드를 유지하여 Codex 대체 경로에 도달한다.
+- `LLM_FALLBACK_ENGINE=codex-exec`(기본), `none`으로 비활성화. `CODEX_BIN`은 실행 파일 절대경로(미설정이면 PATH), `CODEX_FALLBACK_MODEL=gpt-6.1-sol`(기본). Codex 로그인은 서비스와 같은 OS 사용자로 수행한다. API 키를 새로 요구하지 않는다.
+- 각 엔진에 원 호출의 timeout을 적용한다. 따라서 전환 시 최대 대기시간은 두 시도의 합이며, 호출자/worker의 전체 제한이 더 짧으면 그 제한이 우선한다. 별도 circuit breaker나 무한 재시도는 없다. 기존 호출자 수준의 형식 재시도는 유지한다.
+- system·prompt·effort를 전달하고, 구조화 출력은 `--output-schema`로 강제한다. 이미지 읽기는 호출자가 명시한 `images`를 `--image`로 첨부한다. 임시 cwd, read-only sandbox, 사용자 설정 미로드, 프로젝트 지침 미로드, shell·앱·플러그인·브라우저·컴퓨터·웹·이미지 생성·서브에이전트·훅·스킬 검색·메모리 비활성. 정상 종료·turn.completed·비어 있지 않은 최종 응답을 확인하고 도구 실행 이벤트는 거부한다.
+- Claude 텍스트를 이미 `on_text`로 전달한 경우 재시도하지 않는다(두 답변 혼합 방지). 첫 텍스트 전 실패면 Codex 완료 응답 전체를 한 번 전달한다. 콜백 오류·호출 인자 오류는 provider failover 대상이 아니다.
+- Claude 실패와 Codex 성공/실패를 `llm_calls`에 각각 기록한다. Codex의 실제 engine/model·입출력/캐시 토큰을 기록하며 CLI가 제공하지 않는 달러 비용은 NULL이다. 문서 태깅은 `LLMResult.label`로 실제 엔진/모델을 저장한다. 기존 캐시 키·요청 모델 필드는 의미를 보존하므로 나머지 산출물의 실제 실행 엔진은 원장을 기준으로 본다.
+- enrich의 Claude/API 전용 래퍼를 제거하고 세계관·지식·인과·시나리오·렌즈·기업 브리프·반증·업사이드·제안·유튜브 정리·이미지·운영 프로브를 공용 러너로 연결한다. 프로브는 대체 성공이면 실제 engine을 기록한다.
+- **자동 전환 제외**: 이미 텍스트를 전달한 스트림, Claude WebSearch/WebFetch 도구 원문 형식을 소비하는 스터디 웹 근거 수집, 이미지 첨부 없는 일반 Read 호출. `market_analysis`의 전용 CLI 어댑터/구조화·리서치 호출은 취소·격리·실측 달러 예산 강제 계약 때문에 유지한다(Codex는 달러 비용을 보고하지 않음). 별도 주간 리포트 수동 Codex 재개 경로는 기존 계약 유지.
+- 검증: `tests/test_llm_failover.py`, `test_llm_ledger.py`, 이미지·유튜브·주간 Codex 회귀 테스트. 실제 Codex 로그인 환경에서 Claude 오류를 주입하여 구조화 응답과 시도별 기록을 확인한다.
+- CLI 근거: [OpenAI 비대화형 실행 문서](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+## 작업 단위 정책 이관 계약
+
+상태: **1차 이관 구현**(2026-11-11). As-is·대안 비교·채택 이유는 [기술 선택 기록](../TECH_DECISIONS.md#task-model-policy)이 관리한다. 1~4는 구현했으며, 5의 관측·전체 deadline 개선은 후속 동작 변경이다. 사용자 재시작 확인 후 현 작업 저장소의 8000번 백엔드에서 `npm run contracts:live`를 실행했다: 통과 198·실패 0·호출 못 함 8·node 검증 불가 0. 미검사 8개는 예시 값 부재 또는 HTTP 404/422이며, 전체 경로 검증 완료를 뜻하지 않는다.
+
+1. 일반 기능의 진입점을 `llm.run(task=..., prompt=..., system=..., json_schema=..., images=..., on_text=...)`로 통일한다. 모델·effort·timeout·도구 권한·job은 작업 정책에서 해석한다.
+2. 정책 registry는 Python 타입으로 정의한다. primary/fallback은 provider와 모델을 함께 명시한다. 입력·출력·취소·정확한 비용·도구 증거의 요구를 만족하지 못하는 경로는 선택하지 않는다. 미등록 task·잘못된 설정은 provider 호출 전에 실패한다.
+3. 첫 이관은 기존 모델/effort/시도 timeout/프롬프트/결과를 보존한다. 기존 환경변수의 대응표를 먼저 만든다. 단계별로 해당 호출자의 구 설정과 래퍼를 함께 제거하며 영구적인 신·구 API 병행은 하지 않는다.
+4. 태깅·대화·내러티브·이미지·배치의 각 task를 명시한다. 서로 다른 작업을 동일 파일이라는 이유로 합치지 않는다. 주간 실험의 명시적 모델 선택과 시장 분석의 예산/취소 경로는 정책 검증 전까지 이관 예외로 목록화한다.
+5. 별도 동작 변경으로 논리 호출 ID/시도 번호/정책 버전·최종 실제 모델 표기를 연결하고, 전체 deadline·호출자 중복 재시도를 정리한다. DB 컬럼/API 응답 변경 시 별도 모델·마이그레이션·프론트 계약을 함께 갱신한다.
+6. 완료 검증: 작업별 독립 설정·미등록 작업 거부·provider별 능력 검증·기존 호출 인자 동등성·실패 분류·스트림 혼합 방지·스키마/이미지 보존·기존 캐시 의미. 마지막으로 서버 재시작 후 `contracts:live`를 실행한다.
+
+### 구현과 설정 방법
+
+- `pipeline/llm_policies.py`: 불변 `TaskSpec`/`TaskPolicy`와 작업 레지스트리. 일반 호출부 68곳의 기존 설정을 고정하고 공유 헬퍼의 작업을 분리했다. 관리용 backfill 2개와 명시적 실험 정책을 포함해 80개 task를 등록했다.
+- `pipeline/llm_config.py`: 실행 파일·기본 엔진 탐지. `pipeline/llm.py`: task 검증 → 공용 실행 → provider별 어댑터 함수 → 시도 원장. 기능은 프롬프트와 결과 검증을 소유한다.
+- 기본값 변경은 `TASKS`의 해당 `TaskSpec`만 수정한다. 운영 override는 `LLM_TASK_<작업명을 대문자·밑줄로 변환>_MODEL/EFFORT/TIMEOUT/FALLBACK_MODEL/FALLBACK_ENGINE`. 우선순위는 **task 환경변수 > 레지스트리에 연결한 기존 환경변수 > 코드 기본값**이다. 예: `LLM_TASK_CHAT_ANSWER_MODEL=haiku`는 답변 작업만 바꾸고 라우팅은 유지한다. `LLM_TASK_CHAT_ANSWER_FALLBACK_MODEL=gpt-6.1-sol`로 대체 모델도 작업별 지정한다.
+- 시작 시 오타가 있는 task 설정·빈 모델·잘못된 effort/timeout/fallback 엔진을 거부한다. 모델 문자열 형식은 검증하지만 원격 계정의 모델 이용 권한까지 미리 조회하지는 않는다. schema/이미지/스트림/웹 능력은 호출 전에 검증한다.
+- `tests/fixtures/llm_policy_baseline.json`은 이관 전 모델·effort·timeout·도구·환경변수 및 prompt/system AST 해시다. `test_llm_policies.py`가 이관 동등성과 설정 격리·우회 금지를 검증한다.
+- 예외: 시장 분석의 달러 예산·취소 전용 어댑터, 주간 worker/명시적 `--model` backfill의 `run_experiment`, 기존 관리용 seed/pace-layer CLI 스크립트. 일반 생성의 모델 인자 우회용 호환 API는 남기지 않았다.
+- 총 deadline, 오류 종류별 재시도 재설계, 논리 호출 ID/시도 번호/정책 버전 DB 확장은 아직 미구현이다. 현재는 기존 시도별 timeout과 호출자 형식 재시도를 유지한다.
+
 ## 0. 한 장 요약
 
 지금의 챗봇은 **"하이브리드 검색 1회 → 프롬프트 1장 → sonnet 1콜 → JSON"** 인 고정 RAG 파이프라인이다. 2026-07에 P2-0~P2-2로 세팅한 뒤 하네스 개선은 없었다. 원칙(근거 없으면 거부·갭 일급·에코챔버 방지·영속화)은 잘 박혀 있으나, 그 위의 **하네스가 없다**:

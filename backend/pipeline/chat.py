@@ -21,9 +21,6 @@ from pipeline.chat_tools import TOOLS, catalog_text, run_tool, validate_calls
 from pipeline.conversations import append_assistant
 from pipeline.llm import visible_text
 
-ROUTER_MODEL = os.getenv("CHAT_ROUTER_MODEL", "haiku")
-SYNTH_MODEL = os.getenv("RAG_MODEL", "sonnet")
-SYNTH_EFFORT = os.getenv("CHAT_SYNTH_EFFORT") or None   # 기본=모델 기본값(판단 품질 우선, D-117). 실측: 분석형 1콜 thinking 8.5K·130초
 MAX_EVIDENCE = 20
 MAX_EVIDENCE_REVIEW = 30   # 근거 점검이 추가 수집할 때의 상한 — 1라운드가 20을 채워도 추가분이 들어갈 자리
 NO_EVIDENCE_ANSWER = "관련 근거(수집 문서·시스템 산출물)가 없어 답할 수 없습니다."
@@ -211,6 +208,16 @@ def _page_block(turn: Turn) -> str | None:
     return line + "\n질문의 '이 종목·이 문서·이 서사·여기' 같은 지시어는 이 화면을 가리킨다. 질문이 화면과 무관하면 무시한다."
 
 
+def _attached_refs(turn: Turn) -> list[dict]:
+    """대화에 붙인 대상 (ia-redesign §4.14a) — state_json.attached_refs. 대화 내내 유지된다."""
+    return [r for r in (turn.ctx.get("state") or {}).get("attached_refs") or [] if isinstance(r, dict) and r.get("kind")]
+
+
+def _targets_block(turn: Turn) -> str | None:
+    from pipeline.chat_targets import prompt_block
+    return prompt_block(_attached_refs(turn))
+
+
 def _quoted_message(turn: Turn) -> tuple[str | None, set[int]]:
     """인용된 답변 전문 + 최근대화에서 뺄 id. 전문을 따로 싣고 잘린 사본은 중복이라 뺀다 (D-146).
 
@@ -240,6 +247,9 @@ def _router_user(turn: Turn) -> str:
     pb = _page_block(turn)
     if pb:
         parts.append(pb)
+    tb = _targets_block(turn)
+    if tb:
+        parts.append(tb)
     last = (turn.ctx.get("state") or {}).get("last_citations") or []
     if last:
         # 전부 나열 — 번호가 문서가 아닌 근거(시세·엣지)일 수 있어 "첫 번째 문서"를 고르려면 종류가 보여야 한다
@@ -261,8 +271,7 @@ def _route(turn: Turn, status) -> None:
     t0 = time.time()
     route = None
     try:
-        res = llm.run(_router_user(turn), system=_router_system(), model=ROUTER_MODEL, effort="low",
-                      tools=(), timeout=120, job="chat.route")
+        res = llm.run(_router_user(turn), task='chat.route', system=_router_system())
         route = llm.extract_json(res.text)
     except Exception as e:  # noqa: BLE001 — 라우터 실패는 기본 경로로
         turn.tool_log.append({"name": "router", "error": f"{type(e).__name__}: {str(e)[:80]}"})
@@ -270,7 +279,8 @@ def _route(turn: Turn, status) -> None:
     if not isinstance(route, dict):
         route = _default_route(turn)
     calls = validate_calls(route.get("tools"))
-    if not calls and not (turn.ctx.get("state", {}).get("attached_doc_ids") and route.get("tools") == []):
+    preloaded = turn.ctx.get("state", {}).get("attached_doc_ids") or any(e.get("tool") == "attached_targets" for e in turn.evidence)
+    if not calls and not (preloaded and route.get("tools") == []):
         calls = [{"name": "search_docs", "args": {"query": (route.get("standalone_question") or turn.question)}}]
     # 검색어 비면 독립형 질문으로 채움
     for c in calls:
@@ -352,7 +362,7 @@ def _review(turn: Turn, status) -> None:
     )
     user = f"질문: {turn.question}\n(독립형: {turn.standalone})\n\n지금까지 부른 도구:\n{called}\n\n모인 근거 {len(turn.evidence)}건:\n{digest}"
     try:
-        res = llm.run(user, system=system, model=ROUTER_MODEL, effort="low", tools=(), timeout=120, job="chat.review")
+        res = llm.run(user, task='chat.review', system=system)
         data = llm.extract_json(res.text) or {}
     except Exception as e:  # noqa: BLE001 — 점검 실패는 그냥 종합으로
         turn.review = {"enough": True, "reason": f"점검 실패: {type(e).__name__}", "skipped": True}
@@ -380,7 +390,9 @@ _KIND_LABEL = {"doc": "문서", "prices": "일별 시세(사실)", "transcript":
                "disclosure": "공시(사실)", "trade": "수출입 통계(사실)", "saved": "저장됨(사용자 북마크)", "proxy": "프록시 관측(지표)", "edges": "인과 엣지(가설)", "knowledge": "승격 지식",
                "question": "핵심질문 판정", "lens": "렌즈 판독(가설)", "quote": "실시간 시세(사실)",
                "regime": "시장 국면(지표 사실)", "briefing": "미국장 브리핑(가설)", "digest": "종목 요약(가설)",
-               "signal": "신호(지표)", "action": "기업활동(공시 사실)", "youtube": "유튜브 문서"}
+               "signal": "신호(지표)", "action": "기업활동(공시 사실)", "youtube": "유튜브 문서",
+               "financials": "실적·밸류(사실)", "dossier": "미국 종목 기본 지표(사실)", "peer_group": "Peer 그룹 구성·성과(사실)",
+               "report": "통합 리포트(가설)"}
 
 
 def _lens_text(name: str | None) -> str:
@@ -464,6 +476,9 @@ def _synth_user(turn: Turn) -> str:
     pb = _page_block(turn)
     if pb:
         parts.append(pb)
+    tb = _targets_block(turn)
+    if tb:
+        parts.append(tb)
     q = f"질문: {turn.question}"
     if turn.standalone != turn.question.strip():
         q += f"\n(독립형으로 풀면: {turn.standalone})"
@@ -502,8 +517,7 @@ def _synthesize(turn: Turn, status, on_text) -> None:
         return
     status(f"근거 {len(turn.evidence)}건 · 종합 중")
     t0 = time.time()
-    res = llm.run(_synth_user(turn), system=_synth_system(turn), model=SYNTH_MODEL, effort=SYNTH_EFFORT,
-                  tools=(), timeout=300, job="chat.answer", on_text=on_text)
+    res = llm.run(_synth_user(turn), task='chat.answer', system=_synth_system(turn), on_text=on_text)
     turn.timings["synth"] = int((time.time() - t0) * 1000)
     turn.model = res.label
     turn.usage = res.usage
@@ -560,7 +574,7 @@ _TOOL_KO = {"search_docs": "수집 문서를 검색", "open_doc": "문서 전문
             "get_questions": "핵심질문 트래커를 조회", "get_lens": "투자 렌즈 판독을 읽어", "get_quote": "실시간 시세를 조회",
             "get_price_history": "일별 시세를 조회", "get_regime": "시장 국면·매크로를 읽어", "get_us_briefing": "미국장 브리핑을 읽어", "get_pricing_ledger": "시장 프라이싱 원장을 읽어",
             "get_transcripts": "실적 컨콜 정리를 읽어", "get_trade": "수출입 통계를 조회", "get_saved": "저장됨 목록을 조회",
-            "get_proxies": "프록시 관측치를 조회"}
+            "get_proxies": "프록시 관측치를 조회", "attached_targets": "붙인 대상의 자료를 모아"}
 
 
 def _args_ko(args: dict) -> str:
@@ -657,6 +671,21 @@ def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | N
         turn.tool_log.append({'name':'attached_documents', 'args':{'doc_ids':attached},
                               'n':len(turn.evidence), 'note':'사용자가 읽던 자료. 채널 운영자와 원 발언자를 구분한다.',
                               'ms':0, 'round':1})
+    refs = _attached_refs(turn)
+    if any(r.get("kind") != "doc" for r in refs):
+        # 붙인 대상은 식별자로 바로 근거를 모은다 — 라우터가 이름을 추측하지 않게 (ia-redesign §4.14a)
+        from pipeline.chat_targets import gather
+        status("붙인 대상의 자료를 모으는 중")
+        t0 = time.time()
+        conn = get_connection()
+        try:
+            items, empty = gather(conn, refs)
+        finally:
+            conn.close()
+        turn.evidence.extend(items)
+        turn.tool_log.append({"name": "attached_targets", "args": {"refs": [f"{r['kind']}={r['ref']}" for r in refs if r.get("kind") != "doc"]},
+                              "n": len(items), "note": ("자료가 없던 대상: " + ", ".join(empty)) if empty else None,
+                              "ms": int((time.time() - t0) * 1000), "round": 1})
     _route(turn, status)
     _gather(turn, status)
     _review(turn, status)          # 모델 재량의 1회 추가 수집 (상한 3도구)

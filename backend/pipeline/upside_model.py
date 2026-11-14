@@ -10,11 +10,9 @@
 """
 import json
 import os
-import subprocess
 
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
-UPSIDE_MODEL = os.getenv("UPSIDE_MODEL", "opus")  # 다단 정량 추론 — 심층 종합 티어
 TOP_DOCS = 8
 EXCERPT = 700
 
@@ -159,14 +157,9 @@ def _call_opus(prompt: str) -> dict:
     """opus 호출 + 견고화 (펜스 제거·2회 재시도). 실패 시 RuntimeError."""
     data, last_err = None, ""
     for _ in range(2):
-        proc = subprocess.run(
-            [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", UPSIDE_MODEL, "--output-format", "json", prompt],
-            capture_output=True, text=True, timeout=300)
-        if proc.returncode != 0:
-            last_err = f"rc={proc.returncode} out={proc.stdout.strip()[:150]!r} err={proc.stderr.strip()[:120]!r}"
-            continue
+        from pipeline import llm
+        raw = llm.run(prompt, task='company.upside').text
         try:
-            raw = json.loads(proc.stdout).get("result", "")
             raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             s, e = raw.find("{"), raw.rfind("}")
             if s < 0 or e <= s:

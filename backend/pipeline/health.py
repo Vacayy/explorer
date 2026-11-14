@@ -50,6 +50,13 @@ CHECKS: list[tuple[str, str, str, str, object, str, bool]] = [
      "launchd chain 30분 · ingest", True),
     ("chain", "30분 체인", "age", "SELECT max(ran_at) FROM job_runs WHERE job='compute_digests' AND status='ok'", 12,
      "launchd chain 30분", False),
+    # 구독 25개 채널이면 사흘 동안 새 영상 0건은 수집 고장이다(2026-11 RSS 404를 '새 영상 없음'으로 읽어 조용히 멈춤)
+    ("kr_consensus", "국내 목표가 컨센서스(보유·관심)", "age",
+     "SELECT max(ran_at) FROM job_runs WHERE job='kr_consensus' AND status IN ('ok','partial')", 48,
+     "launchd krcompany 21:30 · kr_consensus", False),
+    ("youtube", "유튜브 구독 영상 유입", "age",
+     "SELECT max(fetched_at) FROM raw_documents WHERE source_type='youtube'", 72,
+     "launchd chain 30분 · ingest(youtube)", False),
     ("indices", "주요 지수(거래일 달력)", "age",
      "SELECT max(snapshot_date) FROM market_indicators WHERE indicator='index_kospi'", 100,
      "launchd usbriefing 06:30 · 홈 방문", True),

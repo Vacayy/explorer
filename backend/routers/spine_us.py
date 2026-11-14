@@ -3,16 +3,36 @@
 헤더(yfinance 시세·밸류) + 해소된 entity + 최근 컨콜 메타만. 렌즈는 기존 `/stock/{ticker}/lens?market=us`,
 컨콜 상세·내러티브·피드는 각 전용 엔드포인트를 FE가 entity_id/ticker로 재사용.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 import json
 import re
 
 from database import get_connection
+from models.income_flow import IncomeFlowQuarters, IncomeFlowResponse
 from models.us import (UsBriefing, UsBriefingListItem, UsBriefingSources, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
                         UsMoverItem, UsMoversResponse, UsNarrativeRef, UsWorldModel)
+from pipeline.income_flow import us_income_flow, us_income_flow_quarters
 
 router = APIRouter(prefix="/api/spine/us", tags=["spine"])
+
+
+@router.get("/{ticker}/income-flow/quarters", response_model=IncomeFlowQuarters)
+def us_income_flow_quarters_endpoint(ticker: str):
+    return us_income_flow_quarters(ticker.upper())
+
+
+@router.get("/{ticker}/income-flow", response_model=IncomeFlowResponse)
+def us_income_flow_endpoint(
+    ticker: str,
+    q: str | None = Query(None, pattern=r"^\d{4}-(03|06|09|12)$"),
+    mode: str = Query("q", pattern="^(q|ttm)$"),
+):
+    """미국 분기 손익 흐름(Sankey) — ia-redesign §4.13. q는 달력 분기 끝 'YYYY-MM'. mode=ttm은 최근 4분기 합."""
+    result = us_income_flow(ticker.upper(), q, mode)
+    if result is None:
+        raise HTTPException(404, detail="분기 손익 자료가 없습니다")
+    return result
 
 
 @router.get("", response_model=UsList)
@@ -186,9 +206,23 @@ def us_dossier(ticker: str):
     tr = conn.execute("""
         SELECT id, fiscal_year, fiscal_period, call_date FROM transcripts
         WHERE ticker=? ORDER BY call_date DESC LIMIT 1""", (ticker.upper(),)).fetchone()
+    sector, etf = _sector(conn, ticker.upper())
     conn.close()
     fund = get_fundamentals(ticker)
     if not fund and eid is None:
         raise HTTPException(404, "US 종목 데이터를 찾을 수 없습니다")
+    conn = get_connection()
+    fr = conn.execute("SELECT fetched_at FROM us_fundamentals WHERE ticker=?", (ticker.upper(),)).fetchone()
+    conn.close()
     return UsDossier(ticker=ticker.upper(), name=name or ticker.upper(), entity_id=eid,
-                     fundamentals=fund, latest_transcript=dict(tr) if tr else None)
+                     fundamentals=fund, fundamentals_fetched_at=fr["fetched_at"] if fr else None, latest_transcript=dict(tr) if tr else None, sector=sector, sector_etf=etf)
+
+
+def _sector(conn, ticker: str) -> tuple[str | None, str | None]:
+    """머리 첫 줄 업종·비교 ETF — 실적 시즌 섹터 표(earnings_chain)와 같은 판정. 팔로우 밖 종목은 (None, None)."""
+    from pipeline.earnings_chain import sector_etf, sector_name, sector_of
+    row = conn.execute("SELECT ticker, group_label, sic FROM transcript_follow WHERE ticker=? AND active=1", (ticker,)).fetchone()
+    if not row:
+        return None, None
+    key = sector_of(row)
+    return sector_name(key), sector_etf(key)

@@ -33,7 +33,7 @@ export function DiscoveryTechnicalContext({ runId, code, original, latest, onVie
         <p className="text-caption text-muted-foreground">발견 시세 기준 {result?.as_of ?? '미확인'} · 검색 실행 {formatRelativeTime(run.created_at)}</p>
         {result && <>
           {result.counts.excluded > 0 && <p className="text-caption text-muted-foreground">원 검색 대상 {formatNumber(result.counts.universe)}개 중 미평가 {formatNumber(result.counts.excluded)}개 · 자료 부족이나 계산 오류는 조건 탈락과 구분합니다.</p>}
-          {!!result.unsupported_conditions?.length && <p className="text-sm text-hypothesis">평가하지 못한 요청 조건: {result.unsupported_conditions.join(' · ')}</p>}
+          {!!result.unsupported_conditions?.length && <p className="text-sm text-warn">평가하지 못한 요청 조건: {result.unsupported_conditions.join(' · ')}</p>}
           <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="px-0">발견 당시 조건·검색 범위<ChevronDown className="size-3.5" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-3 pt-2"><AnalysisConditions spec={result.spec} definitions={result.strategy_definitions} priceAdjustment={run.snapshot?.price_adjustment?.status} />
             {!!result.warnings.length && <ul className="list-disc space-y-1 pl-5 text-caption text-muted-foreground">{result.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
           </CollapsibleContent></Collapsible>

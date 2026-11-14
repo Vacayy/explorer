@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { conditionInputError, comparisonCodes, isFollowupDraft, isPurposeDraft, isSearchDraft, recoveryScope, stackConditions, conditionSignature } from '../src/components/analysis/discoveryDraft.ts'
+import { conditionInputError, comparisonCodes, isFollowupDraft, isPurposeDraft, isSearchDraft, recoveryScope, stackConditions, conditionSignature, signalUniverse } from '../src/components/analysis/discoveryDraft.ts'
 
 test('comparison URL accepts only result members, without duplicates and at most three', () => {
   assert.deepEqual(comparisonCodes('000001,000001,missing,000002,000003,000004', ['000001', '000002', '000003', '000004']), ['000001', '000002', '000003'])
@@ -60,4 +60,21 @@ test('workspace drafts keep switched-off blocks and compare conditions by value'
   const b = [{ strategy_id: 'momentum_up', params: { lookback: 252.0, skip: 21 }, within_days: 1 }]
   assert.equal(conditionSignature(a), conditionSignature(b))
   assert.notEqual(conditionSignature(a), conditionSignature([{ ...a[0], within_days: 5 }]))
+})
+
+test('signal universe keeps only the latest day, domestic 6-digit codes, without duplicates', () => {
+  const items = [
+    { stock_code: '050090', date: '2026-11-04' }, { stock_code: '018000', date: '2026-11-04' }, { stock_code: '050090', date: '2026-11-04' },
+    { stock_code: '180640', date: '2026-11-03' }, { stock_code: null, date: '2026-11-04' }, { stock_code: 'NVDA', date: '2026-11-04' },
+  ]
+  assert.deepEqual(signalUniverse('52주 신고가', items), { label: '52주 신고가 11/04', codes: ['018000', '050090'] })
+  assert.equal(signalUniverse('주목 주제', [{ stock_code: null, date: '2026-11-04' }]), null)
+  assert.equal(signalUniverse('x', []), null)
+})
+
+test('purpose drafts accept an optional universe and reject malformed ones', () => {
+  const base = { conditions: [], market: 'all', minimumCap: '0', asOf: '', off: [] }
+  assert.equal(isPurposeDraft({ ...base, universe: { label: '52주 신고가 11/04', codes: ['050090'] } }), true)
+  assert.equal(isPurposeDraft({ ...base, universe: null }), true)
+  for (const universe of [{ label: 'x', codes: [] }, { label: 'x', codes: ['12'] }, { label: 1, codes: ['050090'] }, 'x']) assert.equal(isPurposeDraft({ ...base, universe }), false)
 })

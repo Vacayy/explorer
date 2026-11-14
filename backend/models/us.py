@@ -9,7 +9,10 @@ class UsDossier(BaseModel):
     name: str
     entity_id: int | None = None
     fundamentals: dict[str, Any] | None = None   # yfinance 스냅샷 (price·fwd_pe·estimates…)
+    fundamentals_fetched_at: str | None = None    # 스냅샷 수집 시각(UTC, us_fundamentals.fetched_at)
     latest_transcript: dict[str, Any] | None = None  # 최근 컨콜 메타 (있으면)
+    sector: str | None = None       # 실적 시즌 섹터 이름(transcript_follow 기준, 없으면 None)
+    sector_etf: str | None = None   # 실적 반응 비교 ETF(섹터와 같은 표, 없으면 None)
 
 
 class UsListItem(BaseModel):

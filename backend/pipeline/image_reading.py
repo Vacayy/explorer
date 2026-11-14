@@ -181,8 +181,7 @@ def _call(data: bytes, ext: str, context: str, source: str, published_at: str, j
     path.write_bytes(data)
     try:
         res = llm.run(PROMPT.format(path=rel, source=source, context=(context or "")[:1200],
-                                    date=(published_at or "")[:10]),
-                      model="haiku", effort="low", tools=("Read",), job=job, timeout=180)
+                                    date=(published_at or "")[:10]), task='image.read', images=(str(path),))
     finally:
         path.unlink(missing_ok=True)
     out = llm.extract_json(res.text)

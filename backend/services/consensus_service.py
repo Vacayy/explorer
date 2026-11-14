@@ -37,8 +37,25 @@ def fetch_consensus(stock_code: str) -> dict:
     }
 
 
-def _scrape_naver(stock_code: str):
-    """Scrape Naver Finance consensus data."""
+def refresh_consensus(codes: list[str], pause: float = 1.0) -> dict:
+    """정기 수집(launchd krcompany › kr_consensus) — 보유·관심 종목 컨센서스를 캐시와 무관하게 다시 읽는다.
+    화면을 열 때만 갱신되던 탓에 밸류 화면을 지운 뒤 9종목·9/10에서 멈췄다(2026-11-08)."""
+    import time
+    ok, empty, failed = [], [], []
+    for i, code in enumerate(codes):
+        r = _scrape_naver(code)
+        (ok if r == "ok" else empty if r == "empty" else failed).append(code)
+        if r == "ok":
+            set_cache(f"consensus:{code}", CACHE_TTL)
+        if pause and i + 1 < len(codes):
+            time.sleep(pause)
+    status = "error" if codes and not ok and failed else "partial" if failed else "ok"
+    return {"status": status, "targets": len(codes), "ok": len(ok), "no_coverage": len(empty),
+            "failed": len(failed), "failed_codes": failed[:10]}
+
+
+def _scrape_naver(stock_code: str) -> str:
+    """Scrape Naver Finance consensus data. 'ok'(저장) · 'empty'(커버리지 없음) · 'failed'(요청 실패)."""
     url = f"{BASE_URL}?cmp_cd={stock_code}"
 
     try:
@@ -50,10 +67,11 @@ def _scrape_naver(stock_code: str):
         resp.raise_for_status()
     except Exception as e:
         print(f"Naver scrape failed for {stock_code}: {e}")
-        return
+        return "failed"
 
     soup = BeautifulSoup(resp.text, "html.parser")
     conn = get_connection()
+    changes_before = conn.total_changes
     tables = soup.find_all("table")
 
     # ── 1. Parse 주요지표 table (PER/PBR/EPS/BPS by fiscal year) ──
@@ -105,7 +123,10 @@ def _scrape_naver(stock_code: str):
                     if val is not None:
                         metrics[year_key][field] = val
 
-        # Store estimate years
+        # Store estimate years — 이번에 보인 추정 연도로 통째로 바꾼다. 지난 연도(예: 실적이 나온 2026E)가
+        # 남으면 KPI가 가장 이른 추정 연도를 읽어 묵은 목표가를 보인다.
+        if any(y.endswith("E") and m for y, m in metrics.items()):
+            conn.execute("DELETE FROM consensus WHERE stock_code = ? AND data_source = 'naver'", (stock_code,))
         for year_key, m in metrics.items():
             if not year_key.endswith("E") or not m:
                 continue
@@ -180,8 +201,10 @@ def _scrape_naver(stock_code: str):
                  target_price, analyst_count, opinion),
             )
 
+    stored = conn.total_changes > changes_before
     conn.commit()
     conn.close()
+    return "ok" if stored else "empty"
 
 
 def _parse_num(s: str) -> float | None:

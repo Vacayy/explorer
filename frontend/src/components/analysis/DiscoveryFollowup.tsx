@@ -19,7 +19,7 @@ export function DiscoveryFollowup({ runId, empty, busy, onSubmit }: { runId: str
   const setScope = (scope: typeof draft.scope) => setDraft(previous => ({ ...previous, scope }))
   const setPolicy = (policy: typeof draft.policy) => setDraft(previous => ({ ...previous, policy }))
   const submit = () => { if (question.trim() && !busy) void onSubmit({ question: question.trim(), parent_run_id: runId, scope, date_policy: policy }) }
-  return <section aria-label="이 검색에서 이어서 찾기" className="rounded-xl bg-card p-4">
+  return <section aria-label="이 검색에서 이어서 찾기" className="border bg-card p-4">
     <form className="space-y-2" onSubmit={event => { event.preventDefault(); submit() }}>
       <div className="flex flex-wrap items-end gap-2"><div className="min-w-0 flex-1 basis-64 space-y-2"><Label htmlFor="discovery-followup-question">{empty ? '조건을 완화해서 다시 찾아보세요' : '조건을 바꾸거나 더 좁혀보세요'}</Label><Textarea id="discovery-followup-question" rows={2} className="min-h-16 resize-y" value={question} onChange={event => setQuestion(event.target.value)} disabled={busy} maxLength={12000} placeholder={empty ? '예: 최소 시가총액을 1,000억원으로 낮춰줘' : '예: 여기서 거래량이 증가한 종목만 보여줘'} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); submit() } }} /></div><Button type="submit" disabled={busy || !question.trim()}>{busy ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}이어서 검색</Button></div>
       {empty && <p className="text-sm text-muted-foreground">통과 후보가 없어 이전 검색 대상 전체에서 다시 찾습니다. 변경할 조건을 적고 실행해 주세요.</p>}

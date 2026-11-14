@@ -147,6 +147,14 @@ class EraSource(BaseModel):
     url: str | None
 
 
+class WhoPerson(BaseModel):
+    """전제 '누가' 한 칸 (ia-redesign §4.23 대응 표) — 인물이면 대표 인물 id(엔티티가 없으면 null), 기관이면 링크 없이 텍스트."""
+    label: str
+    kind: Literal['person', 'org']
+    entity_id: int | None
+    name: str | None            # 대표 인물 이름(한글 표기), 엔티티가 없거나 기관이면 null
+
+
 class EraPremise(BaseModel):
     key: str
     claim: str
@@ -156,6 +164,7 @@ class EraPremise(BaseModel):
     status: Literal['supports', 'challenges', 'mixed', 'untestable', 'nodata'] | None
     rule: str
     sources: list[EraSource]
+    who_people: list[WhoPerson] = []   # '누가'를 사람·기관으로 나눈 것(pipeline/people.who_people)
 
 
 class EraTempItem(BaseModel):

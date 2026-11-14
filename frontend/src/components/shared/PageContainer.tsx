@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
  *
  * - width="full"    : 셸 폭 전부 사용 (데이터 밀집 화면 기본값)
  * - width="reading" : max-w-3xl — 읽기 중심 문서 화면 (doc/source/archive)
- * - gap="md"        : space-y-6 (기본) / gap="sm" : space-y-4 (밀집 화면)
+ * - gap="md"        : space-y-3 (기본·밀집 화면 공통)
  *
  * 규칙: 페이지는 자체 max-w/padding을 지정하지 않는다 — 폭은 셸(--layout-shell)과
  * 이 컨테이너만이 결정한다. 풀하이트 앱형 페이지(예: ChatPage)만 예외로
@@ -20,11 +20,11 @@ interface PageContainerProps {
 }
 
 const WIDTHS = { full: '', reading: 'max-w-3xl' } as const
-const GAPS = { sm: 'space-y-4', md: 'space-y-6' } as const
+const GAPS = { sm: 'space-y-3', md: 'space-y-3' } as const
 
 export function PageContainer({ width = 'full', gap = 'md', className, children }: PageContainerProps) {
   return (
-    <div className={cn('w-full min-w-0', WIDTHS[width], GAPS[gap], className)}>
+    <div className={cn('page-container w-full min-w-0', WIDTHS[width], GAPS[gap], className)}>
       {children}
     </div>
   )

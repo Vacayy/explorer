@@ -1,12 +1,13 @@
 """KPI summary endpoint — aggregates price, valuation, and financial metrics for Hero cards."""
 from fastapi import APIRouter, HTTPException
 from database import get_connection
+from models.kpi import KpiData
 from services.dart_service import _corp_code_for_stock, _normalize_account_name, _parse_amount, SJ_DIV_QUERY
 
 router = APIRouter(prefix="/api/kpi", tags=["kpi"])
 
 
-@router.get("/{stock_code}")
+@router.get("/{stock_code}", response_model=KpiData)
 def get_kpi(stock_code: str):
     """Return key performance indicators for a single stock.
 
@@ -38,7 +39,7 @@ def get_kpi(stock_code: str):
 
     # 2. Latest fundamentals (PER, PBR)
     fund_row = conn.execute(
-        """SELECT per, pbr, eps, bps FROM fundamentals
+        """SELECT per, pbr, eps, bps, trade_date FROM fundamentals
         WHERE stock_code = ? AND (per IS NOT NULL OR pbr IS NOT NULL)
         ORDER BY trade_date DESC LIMIT 1""",
         (stock_code,),
@@ -46,6 +47,7 @@ def get_kpi(stock_code: str):
 
     per = fund_row["per"] if fund_row else None
     pbr = fund_row["pbr"] if fund_row else None
+    fund_date = fund_row["trade_date"] if fund_row else None
 
     # 3. Financial metrics from latest annual report
     # Get latest 2 years of IS data for YoY calculation
@@ -118,15 +120,16 @@ def get_kpi(stock_code: str):
     op_growth = round((op_profit - prev_op_profit) / abs(prev_op_profit) * 100, 1) if op_profit and prev_op_profit and prev_op_profit != 0 else None
 
     # Self-calculated PER/PBR if fundamentals table is empty
+    per_calc = pbr_calc = False
     if per is None and net_income and market_cap and net_income > 0:
-        per = round(market_cap / net_income, 1)
+        per, per_calc = round(market_cap / net_income, 1), True
     if pbr is None and equity and market_cap and equity > 0:
-        pbr = round(market_cap / equity, 2)
+        pbr, pbr_calc = round(market_cap / equity, 2), True
 
     # Forward estimates from consensus
     conn2 = get_connection()
     fwd_rows = conn2.execute(
-        """SELECT eps_est, per_est, target_price, fiscal_year, analyst_count FROM consensus
+        """SELECT eps_est, per_est, target_price, fiscal_year, analyst_count, data_source, fetched_at FROM consensus
            WHERE stock_code = ? ORDER BY fiscal_year ASC""",
         (stock_code,),
     ).fetchall()
@@ -138,17 +141,22 @@ def get_kpi(stock_code: str):
     target_price_consensus = fwd_row["target_price"] if fwd_row else None
 
     # Derive fwd_per from fwd_eps and current price if not directly available
+    fwd_per_calc = False
     if fwd_per is None and fwd_eps and fwd_eps > 0 and latest_close:
-        fwd_per = round(latest_close / fwd_eps, 1)
+        fwd_per, fwd_per_calc = round(latest_close / fwd_eps, 1), True
 
     return {
         "stock_code": stock_code,
         "latest_year": latest_year,
         "close": latest_close,
         "price_change_pct": price_change_pct,
+        "price_date": price_row["trade_date"] if price_row else None,
         "market_cap": market_cap,
         "per": per,
         "pbr": pbr,
+        "fund_date": fund_date,
+        "per_calc": per_calc,
+        "pbr_calc": pbr_calc,
         "op_margin": op_margin,
         "op_margin_change": op_margin_change,
         "roe": roe,
@@ -159,6 +167,7 @@ def get_kpi(stock_code: str):
         "op_profit_growth": op_growth,
         "net_income": net_income,
         "fwd_per": fwd_per,
+        "fwd_per_calc": fwd_per_calc,
         "fwd_fiscal_year": fwd_row["fiscal_year"] if fwd_row else None,  # 예: 2026E — 라벨 정직성
         "fwd_eps": fwd_eps,
         "fwd_analyst_count": fwd_row["analyst_count"] if fwd_row else None,
@@ -172,6 +181,8 @@ def get_kpi(stock_code: str):
         ],
         "fwd_eps": fwd_eps,
         "target_price_consensus": target_price_consensus,
+        "consensus_source": fwd_row["data_source"] if fwd_row else None,
+        "consensus_fetched_at": fwd_row["fetched_at"] if fwd_row else None,
     }
 
 

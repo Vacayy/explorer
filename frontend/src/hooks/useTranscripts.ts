@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiQuery, postJson, STALE } from "@/api/query"
+import { ApiError, apiQuery, getJson, postJson, STALE } from "@/api/query"
 import { track } from "@/lib/usage"
-import type { CallMomentum, CallReaction, ChainDetail, Expectation, RecentCall, SectorDetail, SeasonOverview, TranscriptCheck, TranscriptFollowSummary } from "@/types"
+import type { CallMomentum, CallReaction, ChainDetail, Expectation, KrSeasonOverview, RecentCall, SectorDetail, SeasonOverview, TranscriptCheck, UpcomingChain } from "@/types"
 
 /** 실적 발언 모멘텀 — 컨콜 탭·모멘텀 띠·위젯 공용 (읽기 전용 GET, 판정은 매일 07:20) */
 export function useCallMomentum() {
@@ -11,11 +11,6 @@ export function useCallMomentum() {
 /** 최근 받은 컨콜 — 수집 시각순 */
 export function useRecentCalls(days = 7) {
   return useQuery(apiQuery<RecentCall[]>({ key: ["transcript", "recent", days], url: "/api/spine/transcript/recent", params: { days }, staleTime: STALE.short }))
-}
-
-/** 팔로우 기업 + 다음 실적 발표일 — 컨콜 탭과 같은 키(캐시 공유) */
-export function useTranscriptFollow() {
-  return useQuery(apiQuery<TranscriptFollowSummary[]>({ key: ["spine", "transcript", "follow"], url: "/api/spine/transcript/follow", staleTime: STALE.short }))
 }
 
 /** 저장된 컨콜 시장 반응 — 없으면 null. 생성은 useComputeCallReaction */
@@ -55,6 +50,11 @@ export function useSeason(season?: string | null) {
   return useQuery(apiQuery<SeasonOverview>({ key: ["spine", "transcript", "season", season ?? "current"], url: "/api/spine/transcript/season", params: season ? { season } : undefined, staleTime: STALE.short }))
 }
 
+/** 국내 실적 시즌 — 잠정실적 공시·DB 시세만(ia-redesign §4.22). 지난 시즌도 season으로 */
+export function useKrSeason(season?: string | null) {
+  return useQuery(apiQuery<KrSeasonOverview>({ key: ["spine", "transcript", "season", "kr", season ?? "current"], url: "/api/spine/transcript/season/kr", params: season ? { season } : undefined, staleTime: STALE.short }))
+}
+
 /** 섹터 상세 — 발표일 정렬 반응 경로·종목별·해석 이력·지난 시즌 비교 */
 export function useSeasonSector(key: string, season?: string | null) {
   return useQuery(apiQuery<SectorDetail>({ key: ["spine", "transcript", "season", "sector", key, season ?? "current"], url: `/api/spine/transcript/season/sector/${encodeURIComponent(key)}`, params: season ? { season } : undefined, staleTime: STALE.short, keepPrevious: true }))
@@ -63,6 +63,23 @@ export function useSeasonSector(key: string, season?: string | null) {
 /** 콜 상세의 체인 — 발표 전 기대·반응 구조화·시계열·분기별 기록 */
 export function useChain(transcriptId: number) {
   return useQuery(apiQuery<ChainDetail>({ key: ["spine", "transcript", "chain", transcriptId], url: `/api/spine/transcript/chain/${transcriptId}`, staleTime: STALE.short }))
+}
+
+/** 다가오는 분기(녹취록 전) — 없으면(404) null. 404는 '없음'이라 오류 알림을 띄우지 않는다 */
+export function useUpcoming(ticker: string | null | undefined) {
+  return useQuery({
+    queryKey: ["spine", "transcript", "upcoming", ticker],
+    queryFn: async ({ signal }) => {
+      try {
+        return await getJson<UpcomingChain>(`/api/spine/transcript/chain/upcoming/${ticker}`, undefined, { signal })
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null
+        throw e
+      }
+    },
+    staleTime: STALE.short,
+    enabled: !!ticker,
+  })
 }
 
 /** 핵심 종목 직접 고정/해제 — 핵심이면 발표 전 기대·반응 정리가 자동으로 돈다 */

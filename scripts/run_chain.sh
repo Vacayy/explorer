@@ -46,8 +46,12 @@ STEPS=0
 step() {
   local name="$1"; shift
   STEPS=$((STEPS + 1))
-  "$PY" "$@" >> "$LOG" 2>&1
+  # 단계 시간 상한 — alarm은 exec 뒤에도 남아 상한을 넘기면 SIGALRM(rc=142)으로 끝난다.
+  # 2026-11-06 ingest가 응답 없는 유튜브 연결에 45시간 매달렸고, launchd는 실행 중인 잡을 다시 띄우지 않아
+  # 수집 전체가 이틀 멈췄다. 한 단계가 멈춰도 그 회차는 끝나고 다음 회차가 돈다.
+  perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "${CHAIN_STEP_SECONDS:-3600}" "$PY" "$@" >> "$LOG" 2>&1
   local rc=$?
+  [ $rc -eq 142 ] && echo "$(ts) [chain] $name 시간 상한(${CHAIN_STEP_SECONDS:-3600}초) 초과로 종료" >> "$LOG"
   if [ $rc -ne 0 ]; then
     FAILED+=("$name(rc=$rc)")
     echo "$(ts) [chain] $name 실패 rc=$rc" >> "$LOG"

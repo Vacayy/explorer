@@ -1,7 +1,39 @@
 """Stored company evidence only: no generation, network requests or fetched-at substitution."""
+import html
+import re
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit
+
+FLOW_DAYS = 30
+_TAG = re.compile(r'<(?:[a-zA-Z/!][^<>]*)>')
+
+
+def plain_text(value):
+    """원문 HTML(네이버 블로그 본문 등)이 미리보기에 그대로 보이지 않게 태그를 걷고 엔티티를 푼다.
+    '<' 뒤가 글자가 아니면(예: 'a < b') 태그로 보지 않는다. 줄바꿈은 살리고 줄 안 공백만 줄인다."""
+    if not value:
+        return value or ''
+    text = html.unescape(_TAG.sub(' ', value)) if '<' in value or '&' in value else value
+    lines = [re.sub(r'[ \t\u00a0]+', ' ', line).strip() for line in text.splitlines()]
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(lines)).strip()
+
+
+def _us_entity_ids(conn, ticker):
+    """미국 티커 → 연결 엔티티들. 미국 기업 엔티티는 별칭(티커)이 없고 이름으로만 있어서,
+    팔로우 표(transcript_follow)의 엔티티와 같은 이름의 기업 엔티티(병합으로 갈라진 것 포함)를 모두 쓴다."""
+    t = (ticker or '').upper()
+    ids, names = set(), {t.lower()}
+    row = conn.execute('SELECT entity_id, company_name FROM transcript_follow WHERE ticker=?', (t,)).fetchone()
+    if row:
+        if row['entity_id']:
+            ids.add(row['entity_id'])
+        if row['company_name']:
+            names.add(row['company_name'].lower())
+    marks = ','.join('?' * len(names))
+    ids.update(r[0] for r in conn.execute(
+        f"SELECT id FROM entities WHERE type='company' AND lower(name) IN ({marks})", sorted(names)))
+    return sorted(ids)
 
 
 def publication(value, zone):
@@ -30,16 +62,23 @@ def company_evidence(conn, company, *, start=None, end=None, cutoff='end', after
     boundary = (datetime.combine(end_day, closing, zone) if cutoff == 'close' else
                 datetime.combine(end_day + timedelta(days=1), time(), zone)) if end_day else None
     # An indexed ID candidate set avoids scanning every document; IN also deduplicates links.
-    rows = conn.execute('''
+    select = '''
         SELECT rd.id, rd.source_type, rd.source_id, rd.title, rd.url, rd.published_at,
-               substr(rd.markdown,1,600) excerpt,
+               substr(rd.markdown,1,1500) excerpt,
                instr(lower(COALESCE(rd.title,'') || ' ' || COALESCE(rd.markdown,'')),lower(?)) matched
-        FROM raw_documents rd WHERE rd.id IN (
+        FROM raw_documents rd WHERE rd.id IN ('''
+    if market == 'us':
+        ids = _us_entity_ids(conn, company)
+        rows = conn.execute(select + f'''
+            SELECT doc_id FROM entity_links WHERE link_type='stock'
+            AND entity_id IN ({','.join('?' * len(ids)) or 'NULL'}))''', (q.strip(), *ids)).fetchall()
+    else:
+        rows = conn.execute(select + '''
             SELECT el.doc_id FROM entity_links el JOIN entities e ON e.id=el.entity_id
             WHERE el.link_type='stock' AND e.status IS NOT 'merged'
-            AND (e.aliases=? OR (e.aliases IS NULL AND e.name=?)))
-    ''', (q.strip(), company, company)).fetchall()
-    candidates = [dict(r, id=f'doc:{r["id"]}', doc_id=r['id'], relation='기업 연결 자료') for r in rows]
+            AND (e.aliases=? OR (e.aliases IS NULL AND e.name=?)))''', (q.strip(), company, company)).fetchall()
+    candidates = [dict(r, id=f'doc:{r["id"]}', doc_id=r['id'], relation='기업 연결 자료', url=r['url'] or '',
+                       title=plain_text(r['title']), excerpt=plain_text(r['excerpt'])[:600]) for r in rows]
     # Direct disclosures are a separate store, available even before entity enrichment.
     disclosures = conn.execute('''
         SELECT d.* FROM disclosures d JOIN companies c ON c.corp_code=d.corp_code
@@ -47,11 +86,15 @@ def company_evidence(conn, company, *, start=None, end=None, cutoff='end', after
     ''', (company,)).fetchall()
     for r in disclosures:
         candidates.append(dict(id=f'disclosure:{r["rcp_no"]}', doc_id=None, source_type='disclosure',
-                               source_id=r['flr_nm'] or 'DART', title=r['report_nm'],
+                               source_id=r['flr_nm'] or 'DART', title=r['report_nm'] or '',
                                url=r['dart_url'] or f'https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r["rcp_no"]}',
                                published_at=r['rcept_dt'], excerpt='', relation='기업 직접 공시',
                                matched=q.strip().lower() in (r['report_nm'] or '').lower()))
     available, result, unknown, uncertain = {}, [], 0, 0
+    today = now.astimezone(zone).date()
+    flow_start = today - timedelta(days=FLOW_DAYS - 1)
+    flow_days = {str(flow_start + timedelta(days=i)): 0 for i in range(FLOW_DAYS)}
+    flow_sources = {}
     for row in candidates:
         stamp, precise = publication(row['published_at'], zone)
         if stamp is None:
@@ -64,6 +107,10 @@ def company_evidence(conn, company, *, start=None, end=None, cutoff='end', after
         coverage['first'] = min(coverage['first'], str(day))
         coverage['last'] = max(coverage['last'], str(day))
         coverage['count'] += 1
+        # 언급 흐름(최근 30일) — 출처·검색어와 무관하게 이 기업 자료 전체로 센다(막대를 누르면 그날로 좁힌다)
+        if day >= flow_start:
+            flow_days[str(day)] += 1
+            flow_sources[row['source_type']] = flow_sources.get(row['source_type'], 0) + 1
         if source and row['source_type'] != source:
             continue
         if not row['matched'] or (start_day and day < start_day):
@@ -101,4 +148,8 @@ def company_evidence(conn, company, *, start=None, end=None, cutoff='end', after
         r.pop('source_id', None)
     return dict(items=items, total=total, page=page, size=size, has_more=page*size < total,
                 coverage=list(available.values()), undated_count=unknown, uncertain_count=uncertain,
-                timezone=str(zone), as_of=now.isoformat())
+                timezone=str(zone), as_of=now.isoformat(),
+                flow=dict(start=str(flow_start), end=str(today),
+                          days=[dict(date=d, count=n) for d, n in flow_days.items()],
+                          sources=[dict(source=k, count=v) for k, v in
+                                   sorted(flow_sources.items(), key=lambda kv: (-kv[1], kv[0]))]))

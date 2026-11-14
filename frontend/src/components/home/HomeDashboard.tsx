@@ -1,0 +1,130 @@
+import type { CSSProperties } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { PageLayout } from "@/components/shared/PageLayout"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { HomeBlock, HomeSection } from "@/components/home/HomeSection"
+import { ContextBody, IndicesBody, RegimeBody, RiskTrend, useRegimeMeta } from "@/components/widgets/market"
+import { PredictionCarousel } from "@/components/home/PredictionCarousel"
+import { RISK_DETAIL_LABEL, RiskDetailDialog, useRiskDetail } from "@/components/home/RiskDetailDialog"
+import { Link } from "react-router-dom"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { InfoTip } from "@/components/shared/InfoTip"
+import { useCreditTable } from "@/hooks/useCredit"
+import { useIndices, useKrBreadth } from "@/hooks/useDashboard"
+import { cn } from "@/lib/utils"
+import { formatBp, formatKstLongDate } from "@/utils/format"
+
+/**
+ * 홈 › 대시보드 — 시스템 고정 화면 (docs/specs/home-widgets.md §0, ia-redesign §4.1).
+ * 순서 고정: 기상도(날짜 · 지수 띠 · 시장 요약 띠) → Market Overnight | Market Today(같은 높이) → 예측시장(Kalshi 캐러셀) → 이번 주 바뀐 서사 → 국면·리스크.
+ * 사용자가 고르는 배치·편집·위젯 추가는 없다. 블록마다 따로 불러오고 따로 실패한다.
+ * 분위기(그라디언트·세로 리브·유리 패널)는 이 상단 기상도에만 쓴다 (D-320).
+ */
+export default function HomeDashboard() {
+  return (
+    <PageLayout mode="document">
+      <div className="@container/market flex flex-col gap-4">
+        <WeatherHeader />
+
+        {/* 같은 높이 두 칸(유리 패널, 1024 이상) — 넘치는 본문은 칸 안에서 스크롤, 그 아래 폭은 내용 높이. 기상도 아래쪽 분위기(베일)를 이어 쓴다 */}
+        <section aria-label="브리핑" data-veil className="weather p-4 max-sm:p-3">
+          <div className="grid gap-3.5 lg:grid-cols-2">
+            <HomeSection widget="market.us" w={6} h={9} display link={{ to: "/home/us", label: "미국 시장" }} className={`${GLASS_PANEL} ${DISPLAY_H}`} />
+            <HomeSection widget="market.today" w={6} h={9} display link={{ to: "/home/kr", label: "한국 시장" }} className={`${GLASS_PANEL} ${DISPLAY_H}`} />
+          </div>
+        </section>
+
+        <PredictionCarousel />
+
+        <div>
+          <HomeSection widget="world.changes" w={12} h={3} />
+          <RiskBlock />
+        </div>
+      </div>
+    </PageLayout>
+  )
+}
+
+const GLASS_PANEL = "glass relative rounded-[16px]! [&>header]:border-line"
+/** Overnight·Today 큰 칸 높이 — 넓은 화면 시안 796, 좁은 화면도 고정(높이 상한과 넘침). 본문은 칸 안에서 스크롤 */
+const DISPLAY_H = "h-[min(680px,85dvh)] lg:h-[796px]"
+
+/**
+ * 기상도 — 그라디언트 바탕 + 세로 리브 + 유리 패널(시안 Home). 분홍(상승)·파랑(하락) 비율(D-321):
+ * 국내 시장 폭(최근 거래일 상승 종목 / 상승+하락) → 없으면 지수 띠의 상승 지수 비율 → 그것도 없으면 기본 0.33(시안 값).
+ */
+function WeatherHeader() {
+  const client = useQueryClient()
+  const { data } = useIndices()
+  const { data: breadth } = useKrBreadth()
+  const moved = (data?.items ?? []).filter(r => r.change_pct != null && r.change_pct !== 0)
+  const ratio = breadth?.up_ratio ?? (moved.length ? moved.filter(r => r.change_pct! > 0).length / moved.length : null)
+  const style = ratio == null ? undefined : { "--weather-up": ratio.toFixed(2) } as CSSProperties
+  const reset = () => { void client.refetchQueries({ type: "active", predicate: q => q.state.status === "error" }) }
+  return (
+    <section aria-label="시장" data-weather-up={ratio ?? undefined} className="weather flex flex-col gap-3.5 pb-[18px]" style={style}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2.5 px-[22px] pt-[22px] max-sm:px-4 max-sm:pt-4">
+        <h1 className="font-display text-[34px] leading-[1.15] font-light tracking-[-0.02em] max-sm:text-[28px]">{formatKstLongDate()}</h1>
+      </div>
+      <div data-home-section="market.indices" className="glass mx-[18px] min-h-[92px] overflow-hidden rounded-[14px] max-sm:mx-3">
+        <ErrorBoundary onReset={reset}><IndicesBody w={12} h={2} /></ErrorBoundary>
+      </div>
+      <div data-home-section="market.context" className="glass mx-[18px] overflow-hidden rounded-[12px] max-sm:mx-3">
+        <ErrorBoundary onReset={reset}><ContextBody w={12} h={2} /></ErrorBoundary>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * 국면·리스크 — 한 칸(시안 Home): 상태 줄(국장·미장 포스처 칩 + 한 줄) → 지표 넷(3개월 회색 추이·20일 변화). 모바일은 VIX·공포탐욕만.
+ * 포스처와 지표는 따로 불러오고 따로 실패한다.
+ */
+function RiskBlock() {
+  const meta = useRegimeMeta()
+  const { show: open } = useRiskDetail()
+  return (
+    <section aria-label="국면·리스크">
+      <HomeBlock label="risk" title="국면·리스크" info="국장·미장 포스처 · VIX · 공포·탐욕 · HY OAS · 장단기 금리차(3개월 추이·20일 변화). 누르면 자세히"
+        asOf={meta.asOf} stale={meta.stale} link={{ to: "/home/macro", label: "매크로" }} bodyClassName="flex flex-col gap-2.5">
+        <Button variant="ghost" onClick={() => open("regime")} aria-label="국면 판정 자세히"
+          className="-mx-2 block h-auto w-[calc(100%+1rem)] rounded-md px-2 py-1 text-left font-normal whitespace-normal hover:bg-chip/60 focus-visible:bg-chip/60">
+          <RegimeBody w={12} h={2} />
+        </Button>
+        <div className="grid grid-cols-2 gap-x-[18px] border-t lg:grid-cols-4">
+          {(["vix", "fear_greed", "hy", "curve"] as const).map((k, i) =>
+            // 추이선(svg)을 버튼 안에 넣으면 버튼의 아이콘 크기 규칙에 줄어든다 — 타일 위에 투명 버튼을 덮는다
+            <div key={k} className={cn("relative min-w-0", i >= 2 && "max-md:hidden")}>
+              <RiskTrend metric={k} label={RISK_DETAIL_LABEL[k]} className="pl-1" />
+              <Button variant="ghost" onClick={() => open(k)} aria-label={`${RISK_DETAIL_LABEL[k]} 자세히`}
+                className="absolute inset-0 h-auto rounded-none p-0 hover:bg-chip/40 focus-visible:bg-chip/40" />
+            </div>)}
+        </div>
+        <RiskDetailDialog />
+        <CreditTop />
+      </HomeBlock>
+    </section>
+  )
+}
+
+/**
+ * 신용 긴장 Top 3(시안 Home) — 회사채 스프레드(D-230)에서 1개월 새 가장 벌어진 곳. 이름 · 등급 · 스프레드 · 1개월 변화.
+ * 저장분이 없거나 1개월 변화가 없으면 줄째 숨긴다(지표 타일은 그대로).
+ */
+function CreditTop() {
+  const q = useCreditTable()
+  const rows = (q.data?.rows ?? []).filter(r => r.chg_1m != null && r.spread_bp != null).sort((a, b) => b.chg_1m! - a.chg_1m!).slice(0, 3)
+  if (rows.length === 0) return null
+  return <div className="border-t pt-2" data-credit-top>
+    <InfoTip label="신용 긴장 Top 설명">신용 긴장 Top · 1개월 새 스프레드가 가장 벌어진 곳 · AI 설비투자 관련 미국 기업 {q.data!.rows.length}곳</InfoTip>
+    <ul>{rows.map(r => (
+      <li key={r.ticker} className="grid min-w-0 grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-3 border-t py-1.5 first:border-t-0">
+        <Link to="/follow/credit" className="truncate text-[12.5px] hover:underline">{r.name}</Link>
+        {r.rating ? <Badge variant="outline">{r.rating}</Badge> : <span />}
+        <span className="font-mono text-xs tabular-nums">{formatBp(r.spread_bp)}bp</span>
+        <span className={cn("font-mono text-xs tabular-nums", r.chg_1m! > 0 ? "text-up-ink" : r.chg_1m! < 0 ? "text-down-ink" : "")}>{formatBp(r.chg_1m, true)}bp</span>
+      </li>
+    ))}</ul>
+  </div>
+}

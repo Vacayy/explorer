@@ -15,8 +15,8 @@
 - `pipeline/us_movers.get_leaders(force)` → `{status, items, source, fetched_at, error}`.
 - `GET /api/spine/us/movers` (라우터에서 `/{ticker}`보다 **먼저** 선언 — catch-all 회피).
 
-## 프론트 (홈 신호 대시보드 스택, `UsMoversSection`)
-카드: rank · ticker(→`/us/:ticker`) · 회사명 · ADR 배지 · 거래대금(`formatUsd` → `$62.5B`). 헤더에 `FreshnessStamp` + `/us` 링크.
+## 프론트
+전용 카드(`UsMoversSection`)는 홈 개편 전에 빠졌다. 지금 화면에서 이 API를 부르는 곳은 없다(서버·계약만 남음).
 
 ## 상태 계약 (5-state)
 | status | 의미 | FE 렌더 |

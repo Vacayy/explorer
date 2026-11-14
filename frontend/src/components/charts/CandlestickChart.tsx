@@ -2,6 +2,7 @@ import { useRef, useEffect } from "react"
 import { createChart, ColorType, LineStyle } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, DeepPartial, ChartOptions } from "lightweight-charts"
 import { DEFAULT_CHART_OPTIONS } from "./LightweightChart"
+import { chartOptions, readChartTheme, useChartTheme } from "./chartTheme"
 
 export interface ChartMarker {
   time: string
@@ -21,11 +22,13 @@ interface CandlestickChartProps {
   overlays?: { id: string; title: string; token: string; data: { time: string; value: number }[]; dashed?: boolean }[]
   /** Initial visible window (inclusive dates present in `data`). Omitted → fit all data. */
   initialRange?: { from: string; to: string } | null
+  /** 축 글자 크기(px) — 생략하면 라이브러리 기본(12) */
+  axisFontSize?: number
+  /** 거래량을 캔들 아래 띠로 분리(겹치지 않게)하고 거래량 값 라벨을 숨긴다 — 시안 Dossier 가격과 거래량 */
+  separateVolume?: boolean
 }
 
-// Korean stock convention: red = up, blue = down
-const UP_COLOR = "#ef4444"
-const DOWN_COLOR = "#3b82f6"
+// 등락색 = 브랜드색(D-320): 상승 --up(분홍/다크 오렌지), 하락 --down(파랑). 테마가 바뀌면 다시 칠한다
 
 export default function CandlestickChart({
   data,
@@ -38,6 +41,8 @@ export default function CandlestickChart({
   formatValue,
   overlays,
   initialRange,
+  axisFontSize,
+  separateVolume = false,
 }: CandlestickChartProps) {
   const onMarkerClickRef = useRef(onMarkerClick)
   onMarkerClickRef.current = onMarkerClick
@@ -46,6 +51,7 @@ export default function CandlestickChart({
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null)
+  const theme = useChartTheme()
 
   // Create chart once
   useEffect(() => {
@@ -57,6 +63,7 @@ export default function CandlestickChart({
       layout: {
         ...DEFAULT_CHART_OPTIONS.layout,
         background: { type: ColorType.Solid, color: "transparent" },
+        ...(axisFontSize ? { fontSize: axisFontSize } : {}),
       },
       width: container.clientWidth,
       height,
@@ -69,16 +76,18 @@ export default function CandlestickChart({
     }
 
     const chart = createChart(container, opts)
+    const t = readChartTheme()
+    chart.applyOptions(chartOptions(t))
     chartRef.current = chart
 
     // Candlestick series
     const candleSeries = chart.addCandlestickSeries({
-      upColor: UP_COLOR,
-      downColor: DOWN_COLOR,
-      borderUpColor: UP_COLOR,
-      borderDownColor: DOWN_COLOR,
-      wickUpColor: UP_COLOR,
-      wickDownColor: DOWN_COLOR,
+      upColor: t.up,
+      downColor: t.down,
+      borderUpColor: t.up,
+      borderDownColor: t.down,
+      wickUpColor: t.up,
+      wickDownColor: t.down,
       priceFormat: formatValue
         ? { type: "custom", formatter: formatValue }
         : { type: "price", precision: 0, minMove: 1 },
@@ -89,10 +98,16 @@ export default function CandlestickChart({
     const volSeries = chart.addHistogramSeries({
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
+      ...(separateVolume ? { lastValueVisible: false, priceLineVisible: false } : {}),
     })
     chart.priceScale("volume").applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: separateVolume ? 0.82 : 0.8, bottom: 0 },
     })
+    // 시안: 현재가 라벨 = 글자색 채움(봉 색 아님)
+    if (separateVolume) {
+      chart.priceScale("right").applyOptions({ scaleMargins: { top: 0.06, bottom: 0.24 } })
+      candleSeries.applyOptions({ priceLineColor: t.ink, priceLineStyle: LineStyle.SparseDotted })
+    }
     volumeSeriesRef.current = volSeries
 
     // 특징일 마커 클릭 → 가장 가까운 마커 시각 콜백
@@ -120,6 +135,12 @@ export default function CandlestickChart({
     }
   }, [height]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 테마 전환 — 축·격자·봉 색을 다시 칠한다
+  useEffect(() => {
+    chartRef.current?.applyOptions(chartOptions(theme))
+    candleSeriesRef.current?.applyOptions({ upColor: theme.up, downColor: theme.down, borderUpColor: theme.up, borderDownColor: theme.down, wickUpColor: theme.up, wickDownColor: theme.down, ...(separateVolume ? { priceLineColor: theme.ink } : {}) })
+  }, [theme, separateVolume])
+
   // Update candlestick data
   useEffect(() => {
     if (!candleSeriesRef.current) return
@@ -133,19 +154,19 @@ export default function CandlestickChart({
     else scale.fitContent()
   }, [data, initialRange?.from, initialRange?.to])
 
-  // 특징일 마커 — 상승=아래 빨강 화살표, 하락=위 파랑 화살표
+  // 특징일 마커 — 상승=아래 --up 화살표, 하락=위 --down 화살표, 선택일 = 글자색 점
   useEffect(() => {
     if (!candleSeriesRef.current) return
     const ms = (markers ?? []).map((m) => ({
       time: m.time,
       position: m.direction === "up" ? "belowBar" as const : "aboveBar" as const,
-      color: m.direction === "up" ? UP_COLOR : DOWN_COLOR,
+      color: m.direction === "up" ? theme.up : theme.down,
       shape: m.direction === "up" ? "arrowUp" as const : "arrowDown" as const,
       text: m.text,
     }))
-    const selection = selectedTime && data.some(d => d.time === selectedTime) ? [{ time: selectedTime, position: 'aboveBar' as const, color: '#80506f', shape: 'circle' as const, text: `선택 ${selectedTime}` }] : []
+    const selection = selectedTime && data.some(d => d.time === selectedTime) ? [{ time: selectedTime, position: 'aboveBar' as const, color: theme.ink, shape: 'circle' as const, text: `선택 ${selectedTime}` }] : []
     candleSeriesRef.current.setMarkers([...ms, ...selection].sort((a, b) => a.time.localeCompare(b.time)))
-  }, [markers, selectedTime, data])
+  }, [markers, selectedTime, data, theme])
 
   // Update volume data
   useEffect(() => {
@@ -176,7 +197,7 @@ export default function CandlestickChart({
       return line
     })
     return () => { if (chartRef.current === chart) series.forEach(line => chart.removeSeries(line)) }
-  }, [overlays, height])
+  }, [overlays, height, theme])
 
   useEffect(() => {
     const chart = chartRef.current, shade = shadeRef.current, container = containerRef.current

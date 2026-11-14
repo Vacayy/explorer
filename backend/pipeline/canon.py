@@ -9,17 +9,15 @@ canon 인과의 차이 (doc_causal과 대비):
 """
 import json
 import os
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 from config import VAULT_PATH
 from database import get_connection
 from pipeline.base import RawDoc
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 from pipeline.narrative import _node_vocab, _persist_causal
 
-CANON_MODEL = os.getenv("CANON_MODEL", "opus")
 CANON_DIR = VAULT_PATH / "canon"
 CONF_CAP = 0.85
 EXCERPT = 12000   # canon 노트는 통째로 (밀도 높은 정리본이라 자르면 사슬이 끊긴다)
@@ -67,12 +65,8 @@ def _build_prompt(title: str, markdown: str, node_vocab: list[str]) -> str:
 
 
 def _call(prompt: str) -> dict:
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", CANON_MODEL, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=600)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {(proc.stdout or proc.stderr)[:200]}")
-    raw = json.loads(proc.stdout).get("result", "")
+    from pipeline import llm
+    raw = llm.run(prompt, task='canon.extract').text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 

@@ -2,9 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config import MEDIA_PATH
+from pipeline.llm_policies import validate_configuration
+
+validate_configuration()
 from database import init_db
 from routers import companies, financials, disclosures, ir_notes, stock_prices, business, industries, kpi
-from routers import signals, compare, consensus
+from routers import signals, consensus
 from routers import telegram_feed
 from routers import blog_feed
 from routers import spine_feed, spine_signals, spine_home, spine_ask, spine_follows, spine_actions, spine_doc, spine_keywords, spine_sources
@@ -13,10 +16,11 @@ from routers import spine_tracker
 from routers import portfolio
 from routers import company_profile
 from routers import spine_search
+from routers import spine_chat_targets
 from routers import technical_scan
 from routers import chart_structure
 from routers import spine_conversations, spine_person, spine_knowledge, spine_approvals
-from routers import spine_quotes, spine_sector_map, spine_trend, spine_tw, spine_company, spine_narrative, spine_research, spine_report, spine_admin
+from routers import spine_quotes, spine_sector_map, spine_industry, spine_trend, spine_tw, spine_company, spine_narrative, spine_research, spine_report, spine_admin
 from routers import spine_causal
 from routers import spine_transcript
 from routers import spine_trade
@@ -33,7 +37,8 @@ app = FastAPI(title="Stock Explorer API")
 app.add_middleware(
     CORSMiddleware,
     # 프론트 dev 서버는 5174 (5173은 다른 프로젝트가 사용). 5173도 남겨 되돌릴 때 안 깨지게.
-    allow_origins=["http://localhost:5174", "http://localhost:5173"],
+    # 5175 = 개편 워크트리 dev 서버(feature/ia-redesign, 백엔드 8001)
+    allow_origins=["http://localhost:5174", "http://localhost:5173", "http://localhost:5175"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -47,7 +52,6 @@ app.include_router(business.router)
 app.include_router(industries.router)
 app.include_router(kpi.router)
 app.include_router(signals.router)
-app.include_router(compare.router)
 app.include_router(consensus.router)
 app.include_router(telegram_feed.router)
 app.include_router(blog_feed.router)
@@ -55,12 +59,14 @@ app.include_router(spine_quotes.router)
 app.include_router(spine_trend.router)
 app.include_router(spine_tw.router)
 app.include_router(spine_sector_map.router)
+app.include_router(spine_industry.router)
 app.include_router(spine_company.router)
 app.include_router(spine_groups.router)
 app.include_router(spine_tracker.router)
 app.include_router(portfolio.router)
 app.include_router(company_profile.router)
 app.include_router(spine_search.router)
+app.include_router(spine_chat_targets.router)
 app.include_router(technical_scan.router)
 app.include_router(chart_structure.router)
 app.include_router(spine_narrative.router)
@@ -84,6 +90,7 @@ app.include_router(spine_person.router)
 app.include_router(spine_knowledge.router)
 app.include_router(spine_approvals.router)
 app.include_router(spine_approvals.agent_router)
+app.include_router(spine_approvals.curation_router)
 app.include_router(spine_transcript.router)
 app.include_router(spine_trade.router)
 app.include_router(spine_questions.router)
@@ -109,24 +116,30 @@ from routers import spine_pricing  # 시장 프라이싱 원장 (docs/specs/pric
 app.include_router(spine_pricing.router)
 from routers import spine_retail  # 개인 투자 열기 (D-231)
 app.include_router(spine_retail.router)
-from routers import dashboard  # 홈 위젯 배치 저장
-app.include_router(dashboard.router)
 from routers import proxy_boards  # 프록시 보드 (D-240)
 app.include_router(proxy_boards.router)
 from routers import spine_world  # 월드모델 읽기 전용(지금 랜딩·체크포인트·위젯)
 app.include_router(spine_world.router)
 import pipeline.runtime  # noqa: F401 — 서버 시작 시각 고정(재시작 필요 감지)
 from routers import spine_client_errors  # 화면 API 오류 기록(응답 계약 위반·5xx·timeout)
+from routers import peers
+app.include_router(peers.router)
+
 from routers import spine_observe  # 관측(사용 이벤트·관측 탭 요약, D-283)
+from routers import spine_market_today  # 장중 화두 요약(docs/specs/market-today.md)
+from routers import spine_market_overview  # 홈 시장 탭 ① 지수 차트·요약 지표(ia-redesign §4.2·4.3, D-325)
 app.include_router(spine_client_errors.router)
 app.include_router(spine_observe.router)
+app.include_router(spine_market_today.router)
+app.include_router(spine_market_overview.router)
 
 
 @app.middleware("http")
 async def _observe_requests(request, call_next):
     """API 요청을 경로 패턴(실제 값 아님)·상태 계층·응답시간 구간으로 시간 단위 집계 (pipeline/observe.py)."""
+    import asyncio
     import time
-    from pipeline.observe import record_request
+    from pipeline.observe import FLUSH_BUSY_TIMEOUT_MS, claim_flush, flush, record_request
     started = time.perf_counter()
     status = 500
     try:
@@ -138,6 +151,9 @@ async def _observe_requests(request, call_next):
         # 정기 실제 응답 검사(contracts:live)는 사용 트래픽이 아니라 집계에서 뺀다
         if request.headers.get("x-observe-skip") != "1":
             record_request(request.method, getattr(route, "path", None) or "(unmatched)", status, (time.perf_counter() - started) * 1000)
+        # 저장(SQLite 쓰기)은 이벤트 루프 밖 스레드에서, 짧은 잠금 대기로 — 루프 위에서 하면 launchd 쓰기 잠금 동안 서버 전체가 멈춘다
+        if claim_flush():
+            asyncio.get_running_loop().run_in_executor(None, flush, FLUSH_BUSY_TIMEOUT_MS)
 
 
 MEDIA_PATH.mkdir(parents=True, exist_ok=True)

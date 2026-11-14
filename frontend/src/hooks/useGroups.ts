@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
-import type { StockGroupDetail, StockGroupKind, StockGroupList, StrategyCatalogItem, WatchRuleInput, GroupDigest, GroupSignal, WatchReason } from '@/types'
+import { track } from '@/lib/usage'
+import type { StockGroupDetail, StockGroupKind, StockGroupList, StockGroupTrackedState, StrategyCatalogItem, WatchRuleInput, GroupDigest, GroupSignal, WatchReason } from '@/types'
 
 const ROOT = '/api/spine/groups'
 export const groupKeys = {
@@ -42,6 +43,7 @@ function useGroupWrite<TVariables>(mutationFn: (variables: TVariables) => Promis
       client.invalidateQueries({ queryKey: groupKeys.list })
       client.invalidateQueries({ queryKey: ['spine', 'group-signals', detail.id] })
       client.invalidateQueries({ queryKey: groupKeys.defaultWatch })
+      client.invalidateQueries({ queryKey: ['spine', 'tracker-status'] })   // 추적 종목을 빼거나 되돌리면 충족 요약도 바뀐다
     },
   })
 }
@@ -55,9 +57,18 @@ export function useAddMember() {
   return useGroupWrite(async ({ groupId, ...body }: { groupId: number; stock_code: string; conviction?: number; target_price?: number; thesis?: string }) =>
     (await api.post<StockGroupDetail>(`${ROOT}/${groupId}/members`, body)).data)
 }
-export function useUpdateMember(groupId: number) {
-  return useGroupWrite(async ({ stockCode, ...body }: { stockCode: string; conviction?: number | null; target_price?: number | null; thesis?: string | null }) =>
-    (await api.patch<StockGroupDetail>(`${ROOT}/${groupId}/members/${stockCode}`, body)).data)
+/** 관심 종목 추적(알림 대상) 켜기·끄기 — 응답은 상태만이라 묶음 상세를 다시 읽는다. */
+export function useSetTracked(groupId: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ stockCode, tracked }: { stockCode: string; tracked: boolean }) =>
+      (await api.put<StockGroupTrackedState>(`${ROOT}/${groupId}/members/${stockCode}/tracked`, { tracked })).data,
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
+      client.invalidateQueries({ queryKey: groupKeys.defaultWatch })
+      client.invalidateQueries({ queryKey: ['spine', 'tracker-status'] })
+    },
+  })
 }
 export function useRemoveMember(groupId: number) { return useGroupWrite(async (stockCode: string) => (await api.delete<StockGroupDetail>(`${ROOT}/${groupId}/members/${stockCode}`)).data) }
 export function usePutRules(groupId: number) {
@@ -71,6 +82,7 @@ export function useToggleWatch() {
   const client = useQueryClient()
   return useGroupWrite(async ({ stockCode, watched }: { stockCode: string; watched: boolean }) => {
     const group = await client.ensureQueryData(defaultWatchQuery)
+    track('action', watched ? 'watch.add' : 'watch.remove', { entity: stockCode })
     return watched
       ? (await api.post<StockGroupDetail>(`${ROOT}/${group.id}/members`, { stock_code: stockCode })).data
       : (await api.delete<StockGroupDetail>(`${ROOT}/${group.id}/members/${stockCode}`)).data

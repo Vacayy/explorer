@@ -124,9 +124,10 @@ def collect_prices(ticker: str, period: str = "2y") -> dict:
 
 def _f(v):
     try:
-        return None if v is None else float(v)
+        x = None if v is None else float(v)
     except (TypeError, ValueError):
         return None
+    return None if x is None or x != x else x   # NaN(yfinance 미완성 봉)도 없는 값으로 — 아니면 NULL 종가가 저장된다
 
 
 # ── 재무·추정치 (us_fundamentals) ────────────────────────────────────────────

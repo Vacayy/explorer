@@ -9,7 +9,6 @@ import os
 from database import get_connection
 from pipeline import llm
 
-MODEL = os.getenv("PRICING_MODEL", "sonnet")
 THEMES = ("rates", "inflation", "growth", "credit", "geopolitics", "energy", "ai", "sector", "fx", "policy", "other")
 STANCES = ("present", "stronger", "weaker", "contested")
 LOOKBACK_DAYS = 45      # 추출 때 보여 줄 기존 전제 범위
@@ -107,7 +106,7 @@ def extract_day(trade_date: str, force: bool = False) -> dict:
         return {"trade_date": trade_date, "status": "empty"}
     listing = "\n".join(f"{c['id']}. [{c['theme']}] {c['statement']}" for c in claims) or "(아직 없음)"
     prompt = f"# 기존 전제 목록(id. [테마] 문장)\n{listing}\n\n# {trade_date} 미국장 브리핑\n{text}"
-    res = llm.run(prompt, system=SYSTEM, model=MODEL, effort="low", timeout=240, job="pricing.extract")
+    res = llm.run(prompt, task='pricing.extract', system=SYSTEM)
     data = llm.extract_json(res.text) or {}
     known = {c["id"] for c in claims}
     obs = [o for o in data.get("observations") or [] if o.get("claim_id") in known and o.get("stance") in STANCES][:MAX_PER_DAY]

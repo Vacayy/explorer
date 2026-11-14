@@ -26,6 +26,14 @@ def init_db():
     cur.executescript(PORTFOLIO_ALERTS_SCHEMA)
     from pipeline.portfolio_events import SCHEMA as PORTFOLIO_EVENTS_SCHEMA  # 포트폴리오 예상 이벤트
     cur.executescript(PORTFOLIO_EVENTS_SCHEMA)
+    from pipeline.market_today import SCHEMA as MARKET_TODAY_SCHEMA  # 장중 화두 요약 (docs/specs/market-today.md)
+    cur.executescript(MARKET_TODAY_SCHEMA)
+    from pipeline.market_today_links import ensure_schema as ensure_mt_links  # 화두 → 내러티브 연결·후보 (ia-redesign §9)
+    ensure_mt_links(conn)
+    from pipeline.index_intraday import SCHEMA as INDEX_INTRADAY_SCHEMA  # 지수 장중 5분 경로 (ia-redesign §4.2·4.3, D-325)
+    cur.executescript(INDEX_INTRADAY_SCHEMA)
+    from pipeline.kalshi import SCHEMA as KALSHI_SCHEMA  # Kalshi 예측시장 캐러셀 (2026-11-12)
+    cur.executescript(KALSHI_SCHEMA)
     from pipeline.credit_spreads import SCHEMA as CREDIT_SCHEMA  # 회사채 스프레드 (D-230)
     cur.executescript(CREDIT_SCHEMA)
     from pipeline.retail_heat import SCHEMA as RETAIL_SCHEMA  # 개인 투자 열기 (D-231)
@@ -664,6 +672,65 @@ def init_db():
         sector_name TEXT PRIMARY KEY,   -- entities(type='sector').name (KSIC)
         group_name  TEXT NOT NULL       -- 대분류 (반도체·전자부품, 바이오·헬스케어 등)
     );
+    -- 섹터 → Peer 그룹 대응표 (ia-redesign §4.12, D-301 6). 사람이 정한 연결만 둔다 — 자동 제안은 읽을 때 계산(pipeline/sector_peers)
+    CREATE TABLE IF NOT EXISTS sector_peer_map (
+        sector        TEXT NOT NULL,              -- sector_map.group_name 대분류
+        peer_group_id TEXT NOT NULL,              -- Peer 카탈로그 그룹 id (게시본 파일, DB 아님)
+        sort          INTEGER NOT NULL DEFAULT 0, -- 섹터 안 표시 순서
+        partial       INTEGER NOT NULL DEFAULT 0, -- 1 = 섹터의 일부 업종만 덮는 연결
+        note          TEXT,                       -- 부분 연결의 범위 (예: 화장품만)
+        source        TEXT NOT NULL DEFAULT 'seed', -- seed = 코드 대응표(pipeline/sector_peers.SEED, init마다 맞춤) · 그 밖 = 손으로 넣은 연결
+        updated_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE (sector, peer_group_id)
+    );
+    -- 업종 정정 표 (D-313 1~2): 회사 → 산업 맵 대분류를 원천(companies.sector → sector_map) 위에 얹는다. 원천은 덮어쓰지 않는다
+    CREATE TABLE IF NOT EXISTS sector_overrides (
+        stock_code  TEXT PRIMARY KEY,
+        sector      TEXT NOT NULL,                -- sector_map.group_name 대분류
+        reason      TEXT,                         -- 근거 ([K] 매핑 오류 · [N] 이름 · [C] 사람이 정한 묶음 · [D] 문서 공동 언급)
+        source      TEXT NOT NULL DEFAULT 'manual', -- audit-YYYY-MM-DD = 코드 시드(pipeline/sector_override_seed) · manual
+        updated_at  TEXT DEFAULT (datetime('now'))
+    );
+    -- 섹터 대표지수 대응표 (ia-redesign §4.35, D-327-4). 원본 = pipeline/sector_benchmarks.SEED(init마다 맞춤). ticker NULL = 대응 ETF 없음(계산 지수)
+    CREATE TABLE IF NOT EXISTS sector_benchmarks (
+        sector  TEXT PRIMARY KEY,                 -- sector_map.group_name 대분류
+        ticker  TEXT,                             -- 국내 ETF 6자리 코드
+        name    TEXT,                             -- ETF 이름 (예: KODEX 반도체)
+        tracks  TEXT,                             -- 기초지수 (예: KRX 반도체)
+        note    TEXT                              -- 섹터 구성과 다른 점·ETF가 없는 이유
+    );
+    -- 대표 ETF·코스피(^KS11) 일별 종가 (yfinance 수정 종가, pipeline/sector_benchmarks.collect). 미국 섹터 ETF 24 + SPY도 여기(us_sectors.collect_etfs)
+    CREATE TABLE IF NOT EXISTS sector_benchmark_prices (
+        ticker      TEXT NOT NULL,
+        trade_date  TEXT NOT NULL,
+        close       REAL NOT NULL,
+        PRIMARY KEY (ticker, trade_date)
+    );
+    -- 미국 팔로우 종목 Yahoo 업종 (ia-redesign §4.36, pipeline/us_sectors.collect_sectors) — 30일 주기 갱신.
+    -- GICS ETF·세부 업종 ETF 대응은 코드(us_sectors.SECTOR_ETF·INDUSTRY_ETF). 미국 섹터 ETF·SPY 종가는 sector_benchmark_prices에 함께 둔다
+    CREATE TABLE IF NOT EXISTS us_ticker_sectors (
+        ticker      TEXT PRIMARY KEY,
+        sector      TEXT,                         -- Yahoo sector (예: Technology)
+        industry    TEXT,                         -- Yahoo industry (예: Semiconductors)
+        fetched_at  TEXT NOT NULL
+    );
+    -- 섹터 계산 지수 — 시총 가중·최신 주식 수 고정, 체인 (pipeline/sector_benchmarks.compute_index)
+    CREATE TABLE IF NOT EXISTS sector_index (
+        sector      TEXT NOT NULL,
+        trade_date  TEXT NOT NULL,
+        value       REAL NOT NULL,
+        PRIMARY KEY (sector, trade_date)
+    );
+    -- 산업 개괄 (AI, D-327-3) — 섹터에 걸린 내러티브가 바뀔 때만 + 주 1회 상한 (pipeline/sector_overview)
+    CREATE TABLE IF NOT EXISTS sector_overviews (
+        sector        TEXT PRIMARY KEY,
+        question      TEXT NOT NULL,              -- 지금 이 산업의 질문 (한 줄)
+        bullets_json  TEXT NOT NULL,              -- ["…", "…", "…"]
+        narrative_ids TEXT,                       -- 입력 내러티브 id CSV
+        input_hash    TEXT NOT NULL,
+        model         TEXT,
+        generated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     -- 반증 조건 (지능 업그레이드 1): 지식마다 '틀렸다는 신호'를 명시하고 표적 감시
     CREATE TABLE IF NOT EXISTS knowledge_falsifiers (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -744,13 +811,27 @@ def init_db():
         rationale     TEXT,                 -- 왜 이걸 제안하는지 (승인 전 읽는 근거)
         payload_json  TEXT,                 -- kind별 구조화 데이터 (entity_id·edge_id·knowledge_id 등)
         dedup_key     TEXT,                 -- kind별 중복 방지 키 (같은 대상 재제안 억제)
-        status        TEXT DEFAULT 'proposed',  -- proposed|dismissed|actioned
+        status        TEXT DEFAULT 'proposed',  -- proposed|dismissed|actioned|held(자동 정리 보류, D-294)
         detected_at   TEXT DEFAULT (datetime('now')),
         actioned_at   TEXT,
         result_json   TEXT,                 -- 승인 후 실행 결과 요약
         UNIQUE(kind, dedup_key)
     );
     CREATE INDEX IF NOT EXISTS idx_agent_proposals_status ON agent_proposals(status, detected_at);
+
+    -- 정리 작업 자동 처리 기록 (D-294, pipeline/auto_curation.py) — 별칭·노드 병합·지식 승격의 규칙 판정.
+    -- 인박스 대신 관리자 화면에서 본다. applied=0이면 드라이런 판정만. 병합은 detail_json에 되돌리기 재료.
+    CREATE TABLE IF NOT EXISTS curation_log (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind         TEXT NOT NULL,        -- alias | vocab_merge | knowledge
+        target_id    INTEGER NOT NULL,     -- entity_keywords.id | agent_proposals.id | knowledge.id
+        verdict      TEXT NOT NULL,        -- approve | reject | hold | skip
+        rule         TEXT,
+        applied      INTEGER DEFAULT 0,
+        detail_json  TEXT,
+        decided_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(kind, target_id)
+    );
 
     -- 인과 엣지 근거 이력 (Phase 2 §2-4 교차검증) — entity_relations.narrative_id는 "가장 최근"
     -- 하나만 남기므로(재적재 시 덮어씀), 몇 개의 '독립' 내러티브가 이 엣지를 주장했는지 세려면
@@ -808,8 +889,8 @@ def init_db():
     -- 내러티브·리포트는 버전 행 PK를 ref로 저장(보던 그 버전 고정). UNIQUE(kind, ref)로 토글 멱등.
     CREATE TABLE IF NOT EXISTS saved_items (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind         TEXT NOT NULL,          -- company | doc | narrative | report
-        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id
+        kind         TEXT NOT NULL,          -- company | doc | narrative | report | chat
+        ref          TEXT NOT NULL,          -- stockCode | docId | narrative_id | report id | chat_messages.id
         url          TEXT NOT NULL,
         title        TEXT,
         subtitle     TEXT,
@@ -1030,11 +1111,23 @@ def init_db():
     CREATE TABLE IF NOT EXISTS entity_merges (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         old_name     TEXT NOT NULL,       -- 병합으로 사라진 노드 이름
-        type         TEXT NOT NULL,       -- theme | macro (v1 범위)
+        type         TEXT NOT NULL,       -- theme | macro (v1 범위) · person | person_company (인물 소프트 병합)
         survivor_id  INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
         rationale    TEXT,                -- LLM 판정 근거
         merged_at    TEXT DEFAULT (datetime('now')),
         UNIQUE(old_name, type)
+    );
+
+    -- 인물 역할 (ia-redesign §4.23 1단계) — 결정적 자동 분류(사람 사전·컨콜 화자 직함·전제·메모 저자). 사용자 지정 없음.
+    -- 대상은 대표 인물 엔티티(소프트 병합의 살아남은 쪽). 매 정리 실행마다 다시 계산한다(pipeline/people.classify_roles).
+    CREATE TABLE IF NOT EXISTS person_roles (
+        entity_id    INTEGER PRIMARY KEY REFERENCES entities(id) ON DELETE CASCADE,
+        role         TEXT NOT NULL,       -- policy 정책 | executive 경영자 | guru 구루
+        org          TEXT,                -- 소속 표기 (연준 · NVIDIA · 오크트리 캐피털)
+        org_code     TEXT,                -- 경영자 소속 종목(국내 6자리 · 미국 티커)
+        title        TEXT,                -- 직함 (CEO · CFO · 의장)
+        source       TEXT NOT NULL,       -- dictionary | transcript | premise | memo
+        updated_at   TEXT DEFAULT (datetime('now'))
     );
 
     -- Transcript 팔로우 (미국 기업 실적 컨콜, docs/specs/transcript-follow.md) — 기업 단위 구독
@@ -1349,6 +1442,35 @@ def init_db():
 
     -- 미국 수요 기업 분기 실적 (docs/specs/value-chain.md §6) — SEC XBRL companyfacts, 분기 단독 값(누적은 차감).
     -- use_key = 밸류체인 최종 수요 키(ai·ai_accel·mobile), q = 달력 분기 끝 'YYYY-MM'
+    -- 국내 잠정실적 공시의 매출·영업이익·순이익 (ia-redesign §4.13 분기 손익 흐름 2단계)
+    -- 분기보고서가 뜨기 전 잠정공시만으로 Sankey를 그리기 위한 fallback 숫자.
+    -- DART 잠정공시 HTML → LLM(haiku) 추출. period = 'YY.MM'(분기 끝월), stage는 항상 'preliminary'.
+    CREATE TABLE IF NOT EXISTS kr_preliminary_earnings (
+        stock_code    TEXT NOT NULL,
+        period        TEXT NOT NULL,          -- 'YY.MM' (26.06 등)
+        fs_div        TEXT,                   -- CFS | OFS
+        revenue       REAL,                   -- 원
+        op_income     REAL,                   -- 원
+        net_income    REAL,                   -- 원
+        rcp_no        TEXT NOT NULL,          -- 원 공시 접수번호
+        rcept_dt      TEXT,                   -- YYYY-MM-DD
+        source_url    TEXT,
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (stock_code, period)
+    );
+
+    -- 미국 사업부 매출(세그먼트) — EX-99.1 earnings release에서 LLM(haiku) 추출 (ia-redesign §4.13).
+    -- q = 달력 분기 끝 'YYYY-MM'(us_quarterly와 같은 키). segment_name은 회사가 쓰는 원 이름 그대로.
+    CREATE TABLE IF NOT EXISTS us_segments (
+        ticker        TEXT NOT NULL,
+        q             TEXT NOT NULL,
+        segment_name  TEXT NOT NULL,
+        revenue       REAL,                   -- USD
+        source_doc_id INTEGER,                -- raw_documents.id
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, q, segment_name)
+    );
+
     CREATE TABLE IF NOT EXISTS us_quarterly (
         ticker      TEXT NOT NULL,
         q           TEXT NOT NULL,
@@ -1502,6 +1624,7 @@ def init_db():
         "ALTER TABLE conversations ADD COLUMN summary TEXT",     # 스레드 작업 노트 (컴팩션, D-131)
         "ALTER TABLE conversations ADD COLUMN state_json TEXT",  # 스레드 상태: 엔티티·마지막 intent·도구·근거 (D-131)
         "ALTER TABLE chat_messages ADD COLUMN route_json TEXT",  # assistant: 라우팅·도구 로그 (D-131)
+        "ALTER TABLE chat_messages ADD COLUMN attachments_json TEXT",  # user: 그때 붙인 대상 [{kind,ref,label}] (ia-redesign §4.14a)
         "ALTER TABLE fundamentals ADD COLUMN roe REAL",  # 전종목 밸류 수집 (네이버 시세)
         "ALTER TABLE corporate_actions ADD COLUMN summary TEXT",
         "ALTER TABLE ir_notes ADD COLUMN memo_type TEXT DEFAULT 'general'",
@@ -1593,6 +1716,14 @@ def init_db():
         # 실적 시즌 체인 (D-277) — 반응 정리의 구조화 필드(해석·반긴 것·문제 삼은 것·쟁점 판정·화면 불릿)
         "ALTER TABLE transcript_reactions ADD COLUMN meta_json TEXT",
         "ALTER TABLE transcript_follow ADD COLUMN core_pinned INTEGER DEFAULT 0",   # 사용자가 핵심 종목으로 고정
+        "ALTER TABLE stock_group_members ADD COLUMN tracked INTEGER DEFAULT 0",    # 관심 종목 추적 표시 = 추적 알림 대상 (D-293, 위젯 원천 대체)
+        # 인물 소프트 병합(ia-redesign §4.23 C): 진 쪽 엔티티를 지우지 않고 status='merged' + 이 행으로 잇는다(되돌리기 가능)
+        "ALTER TABLE entity_merges ADD COLUMN old_entity_id INTEGER",  # 진 쪽 엔티티 id (type='person'·'person_company'만)
+        "ALTER TABLE entity_merges ADD COLUMN rule TEXT",              # type_fix · spacing · spelling · english · cleanup · alias · abbrev
+        "ALTER TABLE entity_merges ADD COLUMN prev_status TEXT",       # 병합 전 entities.status (되돌릴 때 복원)
+        "ALTER TABLE entity_merges ADD COLUMN reverted_at TEXT",       # 되돌린 시각 — 되돌린 이름은 다시 묶지 않는다
+        "ALTER TABLE usage_events ADD COLUMN section TEXT",            # IA 대메뉴(navConfig.locate·dossier·chat·admin). NULL = 개편 전 기록
+        "ALTER TABLE usage_events ADD COLUMN tab TEXT",                # IA 탭
     ]:
         try:
             conn.execute(migration)
@@ -1668,6 +1799,14 @@ def init_db():
     ensure_thesis_schema(conn)
     from pipeline.sec_filings import ensure_schema as ensure_sec_schema   # transcript_follow.fiscal_year_end (D-217)
     ensure_sec_schema(conn)
+    conn.commit()
+    from pipeline.sector_peers import seed as seed_sector_peers   # 섹터 → Peer 대응표의 seed 행을 코드에 맞춤 (D-301 6, D-316)
+    seed_sector_peers(conn)
+    from pipeline.sector_overrides import seed as seed_sector_overrides   # 업종 정정 초안, 없는 종목만 (D-313)
+    seed_sector_overrides(conn)
+    from pipeline.sector_benchmarks import seed as seed_sector_benchmarks   # 섹터 대표 ETF 대응표 (D-327-4)
+    seed_sector_benchmarks(conn)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_entity_merges_old ON entity_merges(old_entity_id)")
     conn.commit()
 
     conn.close()

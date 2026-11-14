@@ -4,6 +4,7 @@
 > 설계 원본은 docs/private/specs/knowledge-hierarchy-design.md,
 > 5-state 정책은 docs/policies/ui-states.md, 숫자·색 토큰은 docs/DESIGN_SYSTEM.md.
 > P2(홈 갭 패널·소스 트랙레코드 가중)는 후속 — §8 Out of Scope 참조.
+> **2026-11-05: 화면 제거** — `/knowledge`는 `/knowledge/ontology`로 리다이렉트한다(ia-redesign 개편 4g). 세계관 브리핑·충돌 중인 전제는 Thesis › 지금 전제 칸([world-model](world-model.md) §2), 지식 주입은 ⌘K, 승인은 상단 인박스. 아래 개념 축·주입·백엔드 절은 API 계약으로만 유효하다.
 > **2026-10-16 갱신**: 화면 배치는 [world-model](world-model.md) §3이 대체한다 — 이 화면은 월드모델 › 그래프 › 변화·검증 지식이고, 승격 대기 큐는 본문에서 빼 상단 승인 인박스로만 처리한다. 개념 축·주입·백엔드 절은 그대로 유효.
 
 ---

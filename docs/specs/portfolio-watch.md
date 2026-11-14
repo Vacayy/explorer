@@ -21,6 +21,7 @@
 - **묶음** `stock_groups`: 이름 · 종류 `portfolio | watch` · 메모 · 기본 조건 세트.
 - **멤버** `stock_group_members`: 묶음 × 종목. 종류가 `portfolio`면 멤버는 거래 원장([portfolio-ledger](portfolio-ledger.md), D-212)이 종목·편입일로 채운다 — 묶음 API는 수량·평균 매수가를 받지도 돌려주지도 않는다(칼럼은 NULL로 남김). 레거시 `watchlist`의 확신도·목표가·논지는 멤버 필드로 그대로 옮긴다.
 - **감시 조건** `watch_rules`: 묶음 기본 조건 또는 특정 멤버에만 붙는 조건. 조건 본문은 전략 카탈로그 형식 `{strategy_id, params, within_days}`(D-180 계약)을 그대로 쓰고, 저장 전략을 참조할 때는 버전 번호를 고정한다. 종목별 조건은 기본 조건에 **추가**되며, 같은 `strategy_id`는 종목 조건이 기본을 덮는다.
+- **미국 종목(2026-10-31)**: 멤버 코드는 국내 6자리 종목코드 또는 미국 티커다. 미국 티커는 자료가 있는 것(컨콜 팔로우·`us_fundamentals`·`us_prices`)만 받고, **관심(watch) 묶음에만** 넣는다 — 포트폴리오 원장은 국내 종목 기준이라 400. 이름은 `transcript_follow.company_name`, 시세는 `us_prices`(시가총액 없음 → `null`), 응답 `market='us'`.
 - **평가 결과** `watch_evaluations`: (멤버, 조건, 기준일) → `pass | fail | unavailable` · value · reference · reason. 날짜별 append-only. `unavailable`은 실패로 바꾸지 않는다(D-180 규약).
 
 ### 기존 저장소와의 융화
@@ -37,6 +38,7 @@
 - 실행: launchd 체인(D-106, cron 금지)에 `evaluate_watch_rules`를 장 마감 시세 적재 뒤 하루 1회 추가한다. 시세가 아직 없으면 그 날은 건너뛰고 다음 회차에 소급한다(멱등: 같은 기준일 재실행은 덮어쓰지 않고 없을 때만 삽입).
 - 계산: 멤버 × (기본 조건 ∪ 종목 조건)마다 `evaluate_strategy(rows, condition)`. 모델 호출 없음, 비용 0. 종목 30개 × 조건 5개 수준이면 초 단위다.
 - 필요 이력: `history_requirement`로 조건별 필요 봉 수를 계산해 `stock_prices`에서 읽는다. 부족하면 `unavailable`로 남기고 사유를 기록한다.
+- 미국 종목: 평가 직전 묶음의 미국 티커 시세를 `us_data.fetch_prices`로 채운다(신선하면 건너뜀, 실패 티커는 요약에 남기고 `partial`). 기준일은 **시장별 최신 거래일**(국내 `stock_prices`, 미국 `us_prices`) — 국내 16:40 실행 시점엔 전날 미국 정규장이 끝나 있다. `us_prices`엔 상장주식수가 없어 회전율 같은 조건은 `unavailable`. 묶음 화면·검색 '오늘 켜진 신호'의 '오늘'은 종목별 마지막 기준일이다.
 - 발행: `pass`가 새로 켜진 날(전일 fail/없음 → 당일 pass)만 **신호**로 취급한다. 기존 `signals` 테이블에 `strategy_hit` 타입으로 발행해 홈·브리핑에 흐르게 하는 것은 P1.
 - 수동 실행: 묶음 화면의 "지금 평가" 버튼(POST). 진행 상태는 `job_runs`에 남긴다(조용한 실패 금지 원칙).
 

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigationType } from 'react-router-dom'
 import { sessionMemory } from '@/lib/sessionMemory'
 
 const positions = sessionMemory<{ y: number; focus: string }>('explorer.discovery.positions')
@@ -13,13 +13,15 @@ function workspaceKey(pathname: string, search: string) {
 
 /** Restore both browser-back and the explicit results link, including async mounts. */
 export function DiscoveryNavigationMemory() {
-  const { pathname, search } = useLocation()
+  const { pathname, search, hash } = useLocation()
+  const navigationType = useNavigationType()
   const key = workspaceKey(pathname, search)
   const previousPath = useRef(pathname)
   useLayoutEffect(() => {
     const changedPage = previousPath.current !== pathname
     previousPath.current = pathname
-    if (!key) return
+    // 다른 화면으로 새로 이동하면 맨 위에서 시작한다(앞 화면의 스크롤 위치가 남지 않게). 뒤로 가기·#앵커 이동은 그대로 둔다
+    if (!key) { if (changedPage && navigationType !== 'POP' && !hash) window.scrollTo(0, 0); return }
     const saved = positions.get(key)
     let frame = 0
     let restoring = !!saved && changedPage
@@ -54,6 +56,6 @@ export function DiscoveryNavigationMemory() {
       window.removeEventListener('pointerdown', stop)
       window.removeEventListener('keydown', stop)
     }
-  }, [key, pathname])
+  }, [key, pathname, navigationType, hash])
   return null
 }

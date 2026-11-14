@@ -81,6 +81,16 @@ def history(conn: sqlite3.Connection, days: int = 14, limit: int = 60) -> list[d
             label, url = "보유 종목 공시", f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rest}"
         elif kind == "summary":
             day, label = rest, "마감 요약"
+        elif kind == "track-day" and len(parts) == 3:      # 추적 종목 급등락(stock_tracker, 같은 표에 기록)
+            from pipeline.stock_tracker import DAY_STEP as TRACK_STEP
+            day, code, label = parts[0], parts[1], _band("추적 · 전일 대비", parts[2], TRACK_STEP)
+        elif kind == "track-cond" and len(parts) == 2:     # 추적 조건 충족 — 조건 이름은 지금 표에서(지웠으면 일반 이름)
+            day = parts[0]
+            try:
+                c = conn.execute("SELECT stock_code, label FROM tracker_conditions WHERE id=?", (parts[1],)).fetchone()
+            except sqlite3.OperationalError:
+                c = None
+            code, label = (c["stock_code"], f"추적 조건 충족 · {c['label']}") if c else (None, "추적 조건 충족")
         else:
             label = kind
         name = None
@@ -134,12 +144,12 @@ def new_disclosures(holdings: list[dict], today: str, fetch=None) -> list[tuple[
 
 
 def technical_signals(conn: sqlite3.Connection, holdings: list[dict], scan=None) -> list[tuple[str, str]]:
-    """오늘(스캔 기준일) 새로 충족한 주요 신호."""
+    """오늘(스캔 기준일) 새로 충족한 주요 신호. holdings 항목의 market(기본 kr)으로 국내·미국 일봉을 고른다."""
     if scan is None:
         from pipeline.technical_scan import scan_company as scan
     out = []
     for h in holdings:
-        r = scan(conn, h["code"], "kr", 1)
+        r = scan(conn, h["code"], h.get("market", "kr"), 1)
         for s in r.get("signals", []):
             if s["status"] == "pass" and s["date"] == r.get("as_of") and (s["id"] in NOTABLE or s["category"] == "가격 구조"):
                 out.append((f"tech:{h['code']}:{s['date']}:{s['id']}", f"📐 <b>{html.escape(h['name'])}</b> {html.escape(s['label'])} ({s['date'][5:]})"))

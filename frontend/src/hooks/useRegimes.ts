@@ -1,6 +1,8 @@
+import { useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
+import { shouldAutoCollect } from "@/lib/macroPage"
 import type { BrkBenchKey, BrkRange, BrkResponse, EraCommentary, EraHeat, EraStateResponse, PricingResponse, RegimeCollectResponse, RegimesResponse, RiskResponse } from "@/types"
 
 /** 국면 이력 — S&P500 국면·조정·10개월선·침체 (docs/specs/market-regimes.md) */
@@ -25,11 +27,11 @@ export function useRegimeOverlay(key: OverlayKey) {
   }))
 }
 
-/** 시세·USREC 수집(처음엔 전 이력) */
+/** 시세·USREC 수집(처음엔 전 이력, 수십 초~수 분) — 자동 첫 수집과 관리자 '다시 받기'가 쓴다 */
 export function useCollectRegimes() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async () => (await api.post<RegimeCollectResponse>("/api/spine/regimes/collect")).data,
+    mutationFn: async () => (await api.post<RegimeCollectResponse>("/api/spine/regimes/collect", undefined, { timeout: 300_000 })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "regimes"] }),
   })
 }
@@ -68,11 +70,26 @@ export function usePricing(weeks = 8) {
   return useQuery(apiQuery<PricingResponse>({ key: ["spine", "pricing", weeks], url: `/api/spine/pricing?weeks=${weeks}`, staleTime: STALE.medium }))
 }
 
-/** 아직 추출하지 않은 브리핑 날짜를 소급 추출(하루 LLM 1회, 수 분 걸릴 수 있음) */
-export function useExtractPricing() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async () => (await api.post<{ trade_date: string; status: string }[]>("/api/spine/pricing/extract", undefined, { timeout: 900_000 })).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "pricing"] }),
-  })
+/** 이번 페이지 수명에서 자동 첫 수집을 이미 시도했는지 — 탭을 오가며 다시 쏘지 않게 모듈 범위에 둔다 */
+let autoCollectTried = false
+
+/**
+ * 국면 이력 자동 첫 수집(ia-redesign §4.28 결정 ①) — 지수 이력이 비어 있으면 사용자 버튼 없이 한 번만 받는다.
+ * 다시 받기는 관리자 화면(작업·신선도)이 맡는다.
+ */
+export function useAutoCollectRegimes(q: { isSuccess: boolean; isFetching: boolean; data?: RegimesResponse }) {
+  const collect = useCollectRegimes()
+  const empty = !!q.data && q.data.phases.length === 0
+  const { mutate, isPending } = collect
+  useEffect(() => {
+    if (!shouldAutoCollect({ loaded: q.isSuccess, empty, tried: autoCollectTried, pending: isPending })) return
+    autoCollectTried = true
+    mutate()
+  }, [q.isSuccess, empty, isPending, mutate])
+  return {
+    collecting: isPending || (collect.isSuccess && empty && q.isFetching),
+    failed: collect.isError || (collect.isSuccess && empty && !q.isFetching),
+    error: collect.error,
+    result: collect.data,
+  }
 }

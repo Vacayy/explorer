@@ -8,6 +8,7 @@
 판정은 하이브리드 — 결정적 스코어(LLM 0)가 verdict를 정하고, 서술(verdict_summary)만 판정이 바뀔 때 haiku.
 관측 추출·판정은 event-driven(관측 갱신 편승, 재료 없으면 no-op) — 고정 폴러 없음.
 """
+from pipeline import llm
 import json
 
 from database import get_connection
@@ -69,11 +70,11 @@ def decompose_question(text: str, created_by: str = "user",
 
 def _decompose_and_track(qid: int, text: str) -> dict:
     """질문 qid를 분해(sonnet)→적재→numeric/sentiment 추출→판정. 신규·승인 공용."""
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     if not llm_available():
         return {"error": "llm 미가용"}
     try:
-        raw = _call_claude_code(_DECOMPOSE_PROMPT.format(question=text), model="sonnet", timeout=240)
+        raw = llm.run(_DECOMPOSE_PROMPT.format(question=text), task='question.decompose').text
         plan = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
     except Exception as e:  # noqa: BLE001
         return {"error": f"분해 실패: {e}"}
@@ -148,7 +149,7 @@ JSON만: {{"candidates": ["핵심질문1", "핵심질문2"], "event": "파급 �
 
 def derive_questions_from_doc(doc_id: int) -> dict:
     """단일 소스 문서에서 딥다이브 핵심질문 후보 + 파급 event 도출 (Q5, sonnet). 생성 안 함 — 후보 반환만."""
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     if not llm_available():
         return {"error": "llm 미가용"}
     conn = get_connection()
@@ -162,7 +163,7 @@ def derive_questions_from_doc(doc_id: int) -> dict:
     if not body.strip():
         return {"error": "본문 없음"}
     try:
-        raw = _call_claude_code(_DERIVE_PROMPT.format(title=doc["title"] or "", body=body), model="sonnet", timeout=180)
+        raw = llm.run(_DERIVE_PROMPT.format(title=doc["title"] or "", body=body), task='question.derive').text
         d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
     except Exception as e:  # noqa: BLE001
         return {"error": f"도출 실패: {e}"}
@@ -258,10 +259,8 @@ JSON만: {{"question": "의문형 핵심질문 또는 null"}}"""
 
 def _insight_to_question(name: str, insight: str) -> str | None:
     """다이제스트 insight(서술문) → 추적 가능한 의문형 핵심질문 (haiku). 질문거리 아니면 None."""
-    from pipeline.enrich import _call_claude_code
     try:
-        raw = _call_claude_code(_INSIGHT_Q_PROMPT.format(name=name, insight=insight[:600]),
-                                model="haiku", timeout=60)
+        raw = llm.run(_INSIGHT_Q_PROMPT.format(name=name, insight=insight[:600]), task='question.from_insight').text
         q = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]).get("question")
         return q.strip() if isinstance(q, str) and q.strip() and q.strip().lower() != "null" else None
     except Exception:  # noqa: BLE001
@@ -343,7 +342,7 @@ def extract_sentiment_proxies(question_id: int | None = None, budget: int = 20,
     (1) 활성 질문만(최근 active_days 내 조회/생성 — dormant 일시정지) (2) 회당 budget 상한, 가장 오래
     안 본 프록시 우선(라운드로빈) → 일일 비용이 질문 수와 무관하게 천장 고정. 특정 질문 지정 시엔 전부(초기 분해)."""
     from datetime import datetime, timedelta, timezone
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     from pipeline.search import search
     if not llm_available():
         return {"extracted": 0, "reason": "llm 미가용"}
@@ -389,9 +388,7 @@ def extract_sentiment_proxies(question_id: int | None = None, budget: int = 20,
         if not snippets.strip():
             continue
         try:
-            raw = _call_claude_code(
-                _SENTIMENT_PROMPT.format(label=p["label"], hint=p["extract_hint"] or "", snippets=snippets[:8000]),
-                model="haiku", timeout=120)
+            raw = llm.run(_SENTIMENT_PROMPT.format(label=p["label"], hint=p["extract_hint"] or "", snippets=snippets[:8000]), task='proxy.sentiment').text
             d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
         except Exception as e:  # noqa: BLE001
             print(f"[sentiment] {p['label']} 실패: {e}")
@@ -510,15 +507,13 @@ _KO = {"leaning_yes": "긍정", "leaning_no": "부정", "mixed": "혼조", "unkn
 
 
 def _summarize(conn, q, lead_v, confirm_v, div) -> str | None:
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     if not llm_available():
         return None
     subs = conn.execute("SELECT text, verdict FROM sub_questions WHERE question_id=?", (q["id"],)).fetchall()
     sub_txt = " / ".join(f"{s['text']}: {_KO.get(s['verdict'], '미판정')}" for s in subs)
     try:
-        out = _call_claude_code(
-            _SUMMARY_PROMPT.format(q=q["text"], lead=_KO.get(lead_v), confirm=_KO.get(confirm_v), subs=sub_txt),
-            model="haiku", timeout=120)
+        out = llm.run(_SUMMARY_PROMPT.format(q=q["text"], lead=_KO.get(lead_v), confirm=_KO.get(confirm_v), subs=sub_txt), task='question.summarize').text
         return out.strip().split("\n")[0][:400] or None
     except Exception:  # noqa: BLE001
         return None
@@ -539,7 +534,8 @@ def get_tree(question_id: int) -> dict:
             obs = [dict(o) for o in conn.execute(
                 "SELECT observed_at, value_num, value_text, direction FROM proxy_observations "
                 "WHERE proxy_id=? ORDER BY observed_at DESC, id DESC LIMIT 6", (p["id"],)).fetchall()]
-            proxies.append({**dict(p), "observations": obs})
+            n_obs = conn.execute("SELECT count(*) FROM proxy_observations WHERE proxy_id=?", (p["id"],)).fetchone()[0]
+            proxies.append({**dict(p), "observations": obs, "obs_count": n_obs})   # observations는 최근 6건, obs_count는 전체 수
         subs.append({**dict(sq), "proxies": proxies})
     tree["sub_questions"] = subs
     # 허브(D-070): 이 질문에 묶인 파급 시나리오 + 소스 문서

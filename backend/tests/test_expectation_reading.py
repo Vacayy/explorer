@@ -94,14 +94,21 @@ class AttachmentTests(unittest.TestCase):
 
     def test_ask_validates_documents_before_creating_conversation(self):
         self.client.app.include_router(spine_ask.router)
+        def corpus_conn():
+            c=sqlite3.connect(self.corpus); c.row_factory=sqlite3.Row
+            return c
+        # 자료 첨부는 대상 붙이기의 '자료' 종류로 합쳐졌다(D-311) — 같은 목록이 attached_refs로 저장된다
         with patch('pipeline.conversations.log_question',return_value=99) as log, \
-             patch.object(chat_memory,'set_attached_documents') as save, \
+             patch('database.get_connection',corpus_conn), \
+             patch.object(chat_memory,'set_attached_refs') as save, \
              patch.object(spine_ask,'_generate_answer'):
             self.assertEqual(self.client.post('/api/spine/ask',json={'question':'읽어줘','document_ids':[999]}).status_code,422)
             log.assert_not_called()
             response=self.client.post('/api/spine/ask',json={'question':'읽어줘','document_ids':[2,1,2]})
             self.assertEqual(response.status_code,200,response.text)
-            save.assert_called_once_with(99,[2,1])
+            save.assert_called_once()
+            self.assertEqual(save.call_args.args[0],99)
+            self.assertEqual([(r['kind'],r['ref'],r['label']) for r in save.call_args.args[1]],[('doc','2','DRAM 전망 2'),('doc','1','DRAM 전망 1')])
             self.assertEqual(self.client.post('/api/spine/ask',json={'question':'읽어줘','document_ids':list(range(1,15))}).status_code,422)
 
 if __name__=='__main__': unittest.main()

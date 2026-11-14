@@ -7,13 +7,14 @@ LLM 종합(하루 1콜·캐시): 구조화 팩트 + 담론 입력 → 분위기 
 
 리서치를 대신하지 않고 '뭘 스터디하고 뭘 공유할지' 조준하게 하는 게 목적(펀드매니저 피드백, D-095·D-096).
 """
+from pipeline import llm
 import hashlib
 import json
 import re
 import statistics
 
 from database import get_connection
-from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+from pipeline.enrich import _parse_json, llm_engine
 from pipeline.us_data import resolve_us
 from pipeline.us_movers import get_leaders, last_completed_session, read_leaders, read_snapshot
 
@@ -578,7 +579,7 @@ def _macro_issues(conn, trade_date: str) -> dict:
     if llm_engine() != "claude-code":
         return {**empty, "gaps": ["LLM 미가용 — 매크로 이슈 추출 생략"]}
     try:
-        data = _parse_json(_call_claude_code(prompt, model="sonnet", timeout=300))
+        data = _parse_json(llm.run(prompt, task='briefing.macro').text)
     except Exception as e:  # noqa: BLE001
         print(f"[us_briefing] 매크로 이슈 추출 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return {**empty, "gaps": ["매크로 이슈 추출 실패"]}
@@ -697,12 +698,13 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, macro_i
         f"[D-2. 거래대금 개별 이슈 종목]\n" + ("\n".join(fmt_i(m) for m in idio) or "- 없음") + "\n\n"
         f"[D-3. 그날 시장 담론 — 지배 테마(문서수)]\n{themes}\n\n"
         f"[D-4. 그날 시장 담론 — 시장구조 코멘터리]\n{docs}\n\n"
-        "임무 — 두 문단. 화면에서 소제목 없이 이어 붙여 한 편의 글로 읽힌다(D-114). "
+        "임무 — 네 문단(매크로 두 문단 + 기업 두 문단). 화면에서 소제목 없이 이어 붙여 한 편의 글로 읽힌다(D-114). "
         "항목 이름을 문단 앞에 달지 말고 자연스럽게 넘어가라. 지수 수치는 화면 상단에 따로 보이니 나열하지 마라.\n"
-        "⓪ key_points(핵심 요약) — **3~5개 bullet.** 화면 맨 위에 먼저 보인다. 각 항목은 50자 안팎의 한 줄 평서문으로, "
-        "아래 두 문단에서 가장 중요한 사실만 사건 중심으로 뽑는다(매크로 1~2개 → 기업·자금 쏠림 1~3개 순). "
-        "수치는 핵심 하나만, 출처 표식은 붙이지 마라. 두 문단에 없는 내용을 새로 쓰지 마라.\n"
-        "① drivers(매크로) — **4~6문장.** 첫 문장은 지수 마감의 성격을 한 구절로 짚고 가장 중요한 매크로 이슈로 들어간다. "
+        "⓪ key_points(핵심 요약) — **3~5개 bullet.** 화면 맨 위에 먼저 보인다. 각 항목은 50자 안팎의 합니다체 한 줄('~했습니다', '~입니다')로, "
+        "아래 문단들에서 가장 중요한 사실만 사건 중심으로 뽑는다(매크로 1~2개 → 기업·자금 쏠림 1~3개 순). "
+        "수치는 핵심 하나만, 출처 표식은 붙이지 마라. 본문에 없는 내용을 새로 쓰지 마라.\n"
+        "① drivers(매크로) — **두 문단, 합쳐 4~6문장.** 두 문단 사이는 빈 줄(\\n\\n) 하나로 나눈다. 첫 문단은 지수 마감의 성격을 "
+        "한 구절로 짚고 가장 중요한 매크로 이슈 하나를 끝까지 쓴다. 둘째 문단은 두 번째 축(다른 이슈, 금리·신용 같은 배경)으로 넘어간다. "
         "[B]의 이슈 2~3개를 **사건 중심으로** 쓴다: 무슨 일이 있었나 → 시장이 어떻게 반응했나([C]의 수치로 확인, "
         "금리는 bp로) → 누가 그렇게 봤나. 지표를 이슈와 무관하게 나열하지 마라. 구조 지표(유동성·신용)는 "
         "필요할 때 마지막 한 문장의 배경으로만 국면·위치를 말한다.\n"
@@ -713,7 +715,8 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, macro_i
         "한 곳의 견해로 쓰지 마라.\n"
         "   [B]가 비었으면 '지정 매크로 소스에서 확인된 이슈가 없다'고 밝히고 [C]의 국면으로 2문장만 쓴다. "
         "재료에 없는 이벤트(FOMC·CPI 등)를 지어내지 마라.\n"
-        "② issues(기업) — **3~4문장.** 중요한 것만 남겨라: 쏠린 섹터 1~2개, 그룹으로 안 풀리는 개별 종목 "
+        "② issues(기업) — **두 문단, 합쳐 3~5문장.** 두 문단 사이는 빈 줄(\\n\\n) 하나. 첫 문단은 쏠린 섹터 1~2개와 거래대금 급증의 성격, "
+        "둘째 문단은 그룹으로 안 풀리는 개별 종목이다. 중요한 것만 남겨라: 쏠린 섹터 1~2개, 그룹으로 안 풀리는 개별 종목 "
         "**가장 중요한 2~3개**, 그리고 거래대금 급증의 **성격**(신규 매수 랠리인지, 청산·디레버리징·되돌림인지). "
         "종목을 빠짐없이 훑지 마라 — 덜 중요한 건 버리고 스터디 후보로 넘겨라. "
         "**개별 종목은 라벨이 아니라 사건으로 쓴다**: '단일 촉매 확인'·'촉매 실체 불명' 같은 판정어만 쓰지 말고, "
@@ -737,7 +740,10 @@ def _synthesis_prompt(clusters, idio, movers, discourse, indices, macro, macro_i
         "'누가 어디서 말했다'로 귀속해 쓴다.\n"
         "- **내부 판정 어휘를 쓰지 마라**: '방아쇠', '배경 조건', '밴드 상단/하단', '5관측' 같은 재료의 용어는 "
         "독자에게 뜻이 없다. '최근 범위의 위쪽', '며칠째 오름세'처럼 풀어 쓴다.\n"
-        "- **구어체·수사 금지.** 직접적인 평서문으로 쓴다. 비유·감탄·강조 부사를 덜어내라.\n"
+        "- **수사 금지.** 비유·감탄·강조 부사를 덜어내라.\n"
+        "- **문체는 존댓말(D-291과 같다).** 사실·수치·결론은 합니다체('~했습니다', '~하고 있습니다')로 쓰고, "
+        "흐름을 풀어 주는 문장은 한 문단에 한두 번만 해요체('~했어요', '~예요')로 섞는다. 반말·해라체('~했다') 금지. "
+        "movers_why·study_candidates·share_candidates도 존댓말로 끝맺는다(예: '…확인이 필요해요').\n"
         "- **투자 대응·매매 처방을 쓰지 마라.** 비중 조절·매수·헤지 조언은 범위 밖이다(스터디·공유 후보는 그대로 남긴다).\n"
         "- **재료 구획 이름을 본문에 노출하지 마라.** '[C]를 보면'이 아니라 내용으로 지칭하라. "
         "허용되는 괄호 표식은 출처 번호 `[S n]`뿐이다.\n"
@@ -821,7 +827,7 @@ def _synthesize(conn, trade_date: str, clusters, idio, movers,
     if llm_engine() != "claude-code":
         return None
     try:
-        data = _parse_json(_call_claude_code(prompt, model="sonnet", timeout=300))
+        data = _parse_json(llm.run(prompt, task='briefing.synthesize').text)
     except Exception as e:  # noqa: BLE001 — 원인을 로그로 남긴다(구 silent-None 대비)
         print(f"[us_briefing] 종합 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return None

@@ -17,6 +17,7 @@ from database import get_connection
 from pipeline.macro import _public_fred_history
 from pipeline.market_regime import _fear_greed_history, _yf_history
 from services import cache_service
+from services.shared_result import shared
 
 FRED = {
     'us2y': ('DGS2', '미국 2년 국채', '%'),
@@ -207,56 +208,99 @@ RANGES = {'1m': 1, '3m': 3, '1y': 12, '3y': 36, '5y': 60, '10y': 120, '20y': 240
 KEYS = (*META, 'curve')
 
 
+def window_start(expected: date, span: str | None) -> str | None:
+    """기대일 기준 span개월 전 날짜(창 시작). span이 없거나 'all'이면 None."""
+    months = RANGES.get(span) if span else None
+    if not months:
+        return None
+    y, m = divmod(expected.year * 12 + expected.month - 1 - months, 12)
+    return date(y, m + 1, min(expected.day, 28 if m + 1 == 2 else 30 if m + 1 in (4, 6, 9, 11) else 31)).isoformat()
+
+
 def window(data: dict, span: str | None, keys: list[str] | None) -> dict:
     """위젯용 창: 고른 계열만, 기대일 기준 span 이후 관측만 싣는다. 값·변화·품질·신호는 전체 이력 기준 그대로."""
-    months = RANGES.get(span) if span else None
-    start = None
-    if months:
-        d = date.fromisoformat(data['expected_date'])
-        y, m = divmod(d.year * 12 + d.month - 1 - months, 12)
-        start = date(y, m + 1, min(d.day, 28 if m + 1 == 2 else 30 if m + 1 in (4, 6, 9, 11) else 31)).isoformat()
+    start = window_start(date.fromisoformat(data['expected_date']), span)
     items = [item for item in data['items'] if keys is None or item['key'] in keys]
     if start:
         items = [{**item, 'points': [p for p in item['points'] if p[0] >= start]} for item in items]
     return {**data, 'items': items}
 
 
-def get_risk(now: datetime | None = None) -> dict:
+WINDOW_MARGIN_DAYS = 60   # 창 시작 전 여유 — 최근 21개 관측(change_20)을 채우는 데 충분. 모자라면 그 계열은 전 이력을 읽는다
+SIGNAL_KEYS = ('us10y', 'hy')
+_ROWS_SQL = ('SELECT snapshot_date,indicator,value,extra_json FROM market_indicators '
+             'WHERE indicator=? AND snapshot_date>=? AND snapshot_date<=? ORDER BY snapshot_date')
+
+
+def _rows(conn, key: str, since: str, today: str) -> list:
+    rows = conn.execute(_ROWS_SQL, (f'risk_{key}', since, today)).fetchall()
+    if not rows and key in ('vix', 'fear_greed') and since == HISTORY_START.isoformat():
+        # Reuse pre-existing sentiment observations before first explicit Risk collection.
+        rows = conn.execute(_ROWS_SQL, (key, since, today)).fetchall()
+    return rows
+
+
+def _points(key: str, rows, today: date) -> list[tuple[str, float]]:
+    raw = clean_rows(key, [(r['snapshot_date'], r['value']) for r in rows], today)
+    return [(d, round(v * (100 if META[key]['unit'] == 'bp' else 1), 4)) for d, v in raw]
+
+
+def _curve_points(two: list, ten: list) -> list[tuple[str, float]]:
+    two, ten = dict(two), dict(ten)
+    return [(d, round((ten[d]-two[d])*100, 4)) for d in sorted(two.keys() & ten.keys())]
+
+
+def get_risk(now: datetime | None = None, span: str | None = None, keys: list[str] | None = None) -> dict:
+    """span·keys가 있으면 그 창에 필요한 행만 읽는다. window(get_risk(now, span, keys), span, keys)는
+    window(get_risk(now), span, keys)와 같다 — 값·변화(최근 21개 관측)·품질·신호는 전 이력 기준 그대로
+    (tests/test_risk_window.py가 대조)."""
     now = now or datetime.now(timezone.utc)
     expected = expected_date(now)
     today = now.astimezone(ZoneInfo('America/New_York')).date()
-    cutoff = HISTORY_START.isoformat()
+    cutoff, until = HISTORY_START.isoformat(), today.isoformat()
+    want = set(keys) if keys else set(KEYS)
+    need = [k for k in META if k in want or k in SIGNAL_KEYS or (k in ('us2y', 'us10y') and 'curve' in want)]
+    start = window_start(expected, span)
+    since = cutoff if start is None else (date.fromisoformat(start) - timedelta(days=WINDOW_MARGIN_DAYS)).isoformat()
     conn = get_connection()
     try:
-        rows = conn.execute('SELECT snapshot_date,indicator,value,extra_json FROM market_indicators '
-                            "WHERE indicator GLOB 'risk_*' AND snapshot_date>=? AND snapshot_date<=? "
-                            'ORDER BY snapshot_date', (cutoff, today.isoformat())).fetchall()
-        # Reuse pre-existing sentiment observations before first explicit Risk collection.
-        legacy = conn.execute('SELECT snapshot_date,indicator,value,extra_json FROM market_indicators '
-                              "WHERE indicator IN ('vix','fear_greed') AND snapshot_date>=? AND snapshot_date<=? "
-                              'ORDER BY snapshot_date', (cutoff, today.isoformat())).fetchall()
+        # 신호(evaluate_signal)는 hy 전 이력과 같은 기간의 us10y가 필요하다
+        rows = {'hy': _rows(conn, 'hy', cutoff, until)}
+        low = {k: cutoff if k == 'hy' else since for k in need}
+        if rows['hy']:
+            low['us10y'] = min(since, rows['hy'][0]['snapshot_date'])
+        rows.update({k: _rows(conn, k, low[k], until) for k in need if k != 'hy'})
+        points = {k: _points(k, rows[k], today) for k in need}
+        short = {k for k in need if low[k] != cutoff and len(points[k]) <= 20}
+        if 'curve' in want and len(_curve_points(points['us2y'], points['us10y'])) <= 20:
+            short |= {k for k in ('us2y', 'us10y') if low[k] != cutoff}
+        for k in short:
+            rows[k] = _rows(conn, k, cutoff, until)
+            points[k] = _points(k, rows[k], today)
+        sync = {k: conn.execute('SELECT extra_json FROM market_indicators WHERE indicator=? AND snapshot_date>=? '
+                                'AND snapshot_date<=? ORDER BY snapshot_date DESC LIMIT 1',
+                                (f'risk_sync_{k}', cutoff, until)).fetchone() for k in need}
     finally:
         conn.close()
     items = {}
-    for key, meta in META.items():
-        selected = [r for r in rows if r['indicator'] == f'risk_{key}']
-        if not selected and key in ('vix', 'fear_greed'):
-            selected = [r for r in legacy if r['indicator'] == key]
-        raw = clean_rows(key, [(r['snapshot_date'], r['value']) for r in selected], today)
-        points = [(d, round(v * (100 if meta['unit'] == 'bp' else 1), 4)) for d, v in raw]
-        sync = [r for r in rows if r['indicator'] == f'risk_sync_{key}']
-        sync_meta = json.loads(sync[-1]['extra_json'] or '{}') if sync else {}
+    for key in need:
+        meta, selected = META[key], rows[key]
+        points_k = points[key]
+        sync_meta = json.loads(sync[key]['extra_json'] or '{}') if sync[key] else {}
         last_meta = json.loads(selected[-1]['extra_json'] or '{}') if selected else {}
-        stamp = points[-1][0] if points else None
+        stamp = points_k[-1][0] if points_k else None
         lag = lag_days(stamp, expected) if stamp else None
-        quality = 'missing' if not points else 'stale' if lag > 2 else 'error' if sync_meta.get('error') else 'fresh'
-        items[key] = {**meta, 'key': key, 'value': points[-1][1] if points else None,
+        quality = 'missing' if not points_k else 'stale' if lag > 2 else 'error' if sync_meta.get('error') else 'fresh'
+        items[key] = {**meta, 'key': key, 'value': points_k[-1][1] if points_k else None,
                       'as_of': stamp, 'fetched_at': last_meta.get('fetched_at'),
                       'attempted_at': sync_meta.get('attempted_at'), 'error': sync_meta.get('error'),
-                      'quality': quality, 'lag_days': lag, 'points': points,
-                      'change_5': delta(points, 5), 'change_20': delta(points, 20)}
-    two, ten = dict(items['us2y']['points']), dict(items['us10y']['points'])
-    curve = [(d, round((ten[d]-two[d])*100, 4)) for d in sorted(two.keys() & ten.keys())]
+                      'quality': quality, 'lag_days': lag, 'points': points_k,
+                      'change_5': delta(points_k, 5), 'change_20': delta(points_k, 20)}
+    if len(need) < len(META) and not any(item['points'] for item in items.values()):
+        return get_risk(now)   # 'empty'는 전 계열 기준 — 읽은 계열이 모두 비면 전체로 다시 계산
+    if 'curve' not in want:
+        return _assemble(items, expected, now)
+    curve = _curve_points(items['us2y']['points'], items['us10y']['points'])
     quality = 'missing' if not curve else 'stale' if lag_days(curve[-1][0], expected)>2 else 'error' if any(items[k]['quality']=='error' for k in ('us2y','us10y')) else 'fresh'
     items['curve'] = {'key': 'curve', 'label': '10Y − 2Y', 'unit': 'bp', 'source': 'FRED · DGS10 − DGS2',
                       'source_url': 'https://fred.stlouisfed.org/series/T10Y2Y',
@@ -265,7 +309,19 @@ def get_risk(now: datetime | None = None) -> dict:
                       'change_20': delta(curve, 20), 'fetched_at': min((items[k]['fetched_at'] for k in ('us2y','us10y') if items[k]['fetched_at']), default=None),
                       'lag_days': lag_days(curve[-1][0], expected) if curve else None,
                       'error': None, 'attempted_at': None}
+    return _assemble(items, expected, now)
+
+
+def _assemble(items: dict, expected: date, now: datetime) -> dict:
     return {'items': list(items.values()), 'signal': evaluate_signal(items, expected),
             'expected_date': expected.isoformat(), 'generated_at': now.isoformat(),
             'calendar_note': '미국 연방 공휴일 + Good Friday 근사 달력 · 비정기 휴장 미반영',
             'empty': not any(item['points'] for item in items.values())}
+
+
+def get_window(span: str | None, keys: list[str] | None) -> dict:
+    """위젯·매크로 창 응답. 같은 창을 동시에·연달아 부르면 계산 하나를 함께 쓴다(services/shared_result).
+    키에 미국 날짜를 넣는다 — 기대일과 관측 상한이 그 날짜를 따른다."""
+    now = datetime.now(timezone.utc)
+    day = now.astimezone(ZoneInfo('America/New_York')).date()
+    return shared(('risk', span, tuple(keys or ()), day), lambda: window(get_risk(now, span, keys), span, keys))

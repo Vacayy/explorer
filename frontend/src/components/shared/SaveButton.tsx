@@ -13,9 +13,11 @@ interface SaveButtonProps {
   subtitle?: string | null
   /** 아이콘 옆 라벨 노출 (기본 아이콘만) */
   showLabel?: boolean
+  /** 모바일 행동 바처럼 크기·테두리를 바꿀 때 */
+  className?: string
 }
 
-export default function SaveButton({ kind, refId, url, title, subtitle, showLabel }: SaveButtonProps) {
+export default function SaveButton({ kind, refId, url, title, subtitle, showLabel, className }: SaveButtonProps) {
   const { data: items = [] } = useSaved()
   const add = useAddSaved()
   const remove = useRemoveSaved()
@@ -41,6 +43,7 @@ export default function SaveButton({ kind, refId, url, title, subtitle, showLabe
       title={saved ? "저장 해제" : "저장 — 나중에 다시 보기"}
       aria-label={saved ? "저장 해제" : "저장"}
       aria-pressed={saved}
+      className={className}
     >
       {saved ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
       {showLabel && <span className="ml-1.5">{saved ? "저장됨" : "저장"}</span>}

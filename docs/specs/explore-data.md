@@ -1,6 +1,6 @@
 # 탐색 › 수출입·회사채·인물·기업활동 — 변화를 앞에 보이기
 
-- 상태: P6b 구현 계약 (2026-10-16). 셸은 [app-shell](app-shell.md), 위젯 계약은 [home-widgets](home-widgets.md) §2.
+- 상태: P6b 구현 계약 (2026-10-16). 셸은 [app-shell](app-shell.md).
 - 수출입 원천·판정은 [trade-follow](trade-follow.md), 회사채 계산은 [credit-spreads](credit-spreads.md), 인물 프로필 생성 규율은 [source-dossier](source-dossier.md)를 따른다.
 - 원칙: 서버가 이미 계산한 변화(판정·Δ·정정 여부)를 첫 화면 정렬과 배지로 쓴다. 새 LLM 호출·cron은 없다.
 
@@ -23,6 +23,8 @@
 
 ## 3. 인물 `/people`, `/person`
 
+> 2026-11-05 인물 1단계(ia-redesign §4.23 A안): `/people`은 인물 홈(요약 3칸 · 역할 칩 `?role=` · 팔로우 | 기록이 있는 인물 · 이번 주 언급이 는 인물, 폰은 앞의 두 목록만), 아래 디렉토리는 `/people?view=all`(이름 검색 `?q=`, 언급 1건도 찾음). 상세는 id 주소 `/person/:id`(`GET /api/spine/person/{entity_id}`) — 머리(이름·역할·소속·'같은 사람으로 묶은 이름')·요약 4칸·기록 원장(구루 전제 카드, 폰은 접힘)·본인 글·인용·글과 인용 흐름·함께 언급·등장하는 내러티브·프로필(버튼으로만 생성). 옛 `/person?name=`은 `/resolve`로 대표 id를 찾아 보낸다(묶인 이름도 대표로). 같은 사람의 다른 이름은 시스템이 자동으로 소프트 병합하고(`pipeline/people`, 사용자 화면에 이름 정리 없음), 집계·상세는 묶은 이름을 한 사람으로 센다. 매크로 › 구루 전제 원장의 '누가'는 인물 링크(기관은 텍스트). 2단계(발언 원장·경영자 가이던스·도시에 '관련 인물')는 아직 없다.
+
 - `GET /api/spine/person` → `{items, total, hidden_tail, as_of}`.
   - 집계는 쿼리 3번이다: 언급 수·7일·직전 7일, 최근 문서(창 함수), 함께 언급된 종목 상위 3(창 함수). 인물마다 서브쿼리를 돌던 N+1을 대체했다.
   - `sort=surge`(기본, `delta_7d` = 최근 7일 − 직전 7일) | `total` | `recent`.
@@ -37,6 +39,8 @@
 
 ## 4. 기업활동 `/actions`
 
+> 2026-11-05(D-300): 시장 전체 목록은 홈 › 한국 시장 `#actions` 블록(`ActionsList variant=block`)으로 옮겼다. 블록 목록은 데스크톱 10·모바일 6행 + 'n건 더 보기'(지금 필터만 펼침, 필터를 바꾸면 다시 접힘 — D-303; 페이지 맨 아래 블록이라 내부 스크롤은 겹친 스크롤이 되고, 원공시 40건 안팎이라 페이지 나눔까지는 필요 없다). `/actions`(코드 없음)는 `/home/kr#actions`로 리다이렉트(쿼리 `view·type·kind` 유지), `/actions?code=X`는 2026-11-05(개편 4e)부터 그 종목 도시에 개요 맨 아래 기업활동(`/analyze/X/summary#actions`, 쿼리 유지)으로 보낸다. 옛 `/actions` 화면(`ActionsPage` 기본 내보내기·페이지 보기)은 없앴고 `ActionsList`는 홈 블록만 쓴다.
+
 - `GET /api/spine/actions`에 다음을 더했다.
   - `kind=all|original|correction`(API 기본 all). `report_nm`에 '정정'이 있으면 정정이다.
   - `stock_code` 필터.
@@ -44,27 +48,19 @@
   - 항목별 `is_correction`·`my_group`('보유'=portfolio 묶음 우선, '관심'=watch 묶음, `stock_groups` 기준).
 - `/actions/rights` 행에도 `my_group`이 있다.
 - 화면: 원공시(기본)·정정·전체 토글(`?kind=`) · 내 종목은 맨 위에 고정하고 배지를 단다 · 정정 행에는 '정정' 배지.
-- 국내 도시에 개요의 '최근 활동' 줄(`summary/StockActivityStrip`)은 두 가지를 보인다.
-  - 최근 30일 기업활동: 원공시 칩과 정정 수. `stock_brief`와 같은 30일 창이며 `/actions?stock_code=`로 읽는다.
-  - 수출 지표: 이 종목을 지목한 품목 칩.
-  - 둘 다 없으면 줄을 그리지 않는다.
+- 국내 도시에 개요 오른쪽 '연결 신호'(`company/DossierLinkSignals`, 시안 Dossier-KR)는 한 줄 행(배지 | 내용 | 수치)으로 보인다.
+  - 수출: 이 종목을 지목한 품목(최대 2, 급증·급감 배지 + YoY).
+  - 대만: 연결 회사 월매출 3개월 YoY(최대 2, 가속·둔화 배지, `/tw/links`).
+  - 기업활동: 최근 30일 원공시 종류·건수. `stock_brief`와 같은 30일 창이며 `/actions?stock_code=`로 읽는다. 없으면 '최근 30일 공시 없음'.
+  - 셋 다 없으면 칸을 그리지 않는다.
 
-## 5. 위젯 5종 (탐색 섹션, `widgets/exploreFollow.tsx`)
+## 5. 위젯 — 제거
 
-| id | 이름 | 원천 | 기본 크기 | 머리 시각(원천 리듬) · 고장 | 큰 숫자 · 한 줄 · 목록 |
-|---|---|---|---|---|---|
-| explore.trade | Trade Pulse | `/trade/highlights?limit=5` | 4×4 | 통계월 · 2개월 넘게 묵음 | 기여 1위 YoY · 급등·급감 수(전 품목) · 기여도 순 |
-| explore.credit | 신용 긴장 Top | `/credit` | 4×3 | 시세 기준일 · 원천 미설정·4일 넘게 묵음 | 1개월 확대 1위 Δbp · 기업 수 · Δ 순 |
-| explore.people | 팔로우 인물 이번 주 | `/person/followed` | 4×3 | 최근 언급 게시 시각(KST) · 36시간 | 7일 언급 1위 · 최신 문서 · 7일·Δ·함께 뜬 종목 |
-| explore.actions | 오늘 기업활동 | `/actions?days=7&kind=original` | 4×4 | 마지막 DART 스캔 성공(KST) · 3시간 | 오늘 건수 · 7일·내 종목 수 · 내 종목 먼저 |
-| explore.rights | 유무증 D-day | `/actions/rights` | 4×3 | 〃 | 가장 가까운 D-day · 7일 안 일정 수 · 날짜 순 |
-
-- 프리셋: 수출 사이클에 Trade Pulse·신용 긴장 Top을, 이벤트 장세에 기업활동·유무증·팔로우 인물을 더한다.
-- `GET /api/spine/person/followed` → `{items: PersonRow[], as_of}`. 팔로우 인물만, 7일 급상승 순이고, `top_stocks`는 최근 7일 문서에서 함께 뜬 종목이다.
+옛 홈 위젯 5종(`widgets/exploreFollow.tsx`: Trade Pulse·신용 긴장 Top·팔로우 인물 이번 주·오늘 기업활동·유무증 D-day)은 홈 고정 탭이 같은 원천을 직접 만든 블록(`home/TradeBlock`·기업활동 목록)으로 보이게 되어 7단계(2026-11-05)에서 지웠다. `GET /api/spine/person/followed`는 서버에 남아 있다(화면 호출 없음).
 
 ## 6. 5-state
 
-| | 수출입 | 회사채 | 인물 | 기업활동 | 위젯 |
+| | 수출입 | 회사채 | 인물 | 기업활동 | — |
 |---|---|---|---|---|---|
 | Empty | 팔로우 없음 → 기본 세트 버튼 | 어댑터 없음 안내 | 기간 내 인물 없음 | 원공시 없음(정정 N건 안내) | 정상적으로 비어 있음 문구 |
 | Loading | Skeleton | Skeleton | Skeleton(이전 데이터 흐리게 유지) | Skeleton | Skeleton |

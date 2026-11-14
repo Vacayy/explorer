@@ -80,5 +80,23 @@ class AlertTests(unittest.TestCase):
             self.assertNotIn(banned, text)
 
 
+
+
+class HistoryTrackerKeyTests(unittest.TestCase):
+    """추적 알림(stock_tracker)도 같은 표에 남는다 — 이력에서 키 이름 그대로 보이지 않게 푼다."""
+    def test_tracker_keys_are_decoded(self):
+        conn = db()
+        conn.executescript(pa.SCHEMA)
+        conn.execute("CREATE TABLE IF NOT EXISTS tracker_conditions (id INTEGER PRIMARY KEY, stock_code TEXT, label TEXT)")
+        conn.execute("INSERT INTO tracker_conditions (id, stock_code, label) VALUES (7, 'AAAAAA', '120일선 위 마감')")
+        for key in ("track-day:2026-01-06:AAAAAA:-1", "track-cond:2026-01-06:7", "track-cond:2026-01-06:99"):
+            conn.execute("INSERT INTO portfolio_alerts_sent (key, sent_at) VALUES (?, datetime('now'))", (key,))
+        labels = {h["label"] for h in pa.history(conn, 14)}
+        self.assertIn("추적 · 전일 대비 −5%p 이하", labels)
+        self.assertIn("추적 조건 충족 · 120일선 위 마감", labels)
+        self.assertIn("추적 조건 충족", labels)
+        self.assertFalse({"track-day", "track-cond"} & labels)
+
+
 if __name__ == "__main__":
     unittest.main()

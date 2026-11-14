@@ -19,8 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from database import get_connection
 from pipeline import llm
 
-MODEL = "sonnet"
-TIMEOUT = 180
 REUSE_HOURS = 24
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS company_profiles (
@@ -193,8 +191,7 @@ def research_company(code: str, name: str, sector: str | None = None, reason: st
     """모델 1콜로 웹을 조사해 검증된 보고서와 비용을 돌려준다. 저장은 하지 않는다."""
     if llm.llm_engine() != "claude-code":
         raise ProfileUnavailable("현재 모델 연결에서는 웹 검색을 지원하지 않습니다.")
-    result = (runner or llm.run)(_prompt(code, name, sector, reason, official, market), system=system_prompt(market), model=MODEL,
-                                 tools=("WebSearch", "WebFetch"), timeout=TIMEOUT, job="company_profile")
+    result = (runner or llm.run)(_prompt(code, name, sector, reason, official, market), task='company.profile', system=system_prompt(market))
     payload = finalize(llm.extract_json(result.text), result.tool_results, official)
     if official_error:
         payload["gaps"] = [f"DART 사업보고서 본문을 받지 못했습니다: {official_error}", *payload["gaps"]][:10]

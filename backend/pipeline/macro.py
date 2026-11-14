@@ -9,6 +9,7 @@ FRED 키 없으면 유동성 축만 degraded(매크로는 정상).
 갱신은 버튼 주도(D-100 계승): GET=스냅샷 순수 읽기, POST /snapshot=재수집. 지표는 market_indicators에
 'macro_' 프리픽스로 적재(시장 국면과 네임스페이스 분리).
 """
+from pipeline import llm
 import csv
 import io
 import math
@@ -67,20 +68,22 @@ def _fred_history(series_id: str, days: int = 400) -> list[tuple[str, float]]:
 def _public_fred_history(series_id: str, days: int = 400) -> list[tuple[str, float]]:
     """Official FRED CSV: percentage yields as published, missing observations excluded."""
     start = (date.today() - timedelta(days=days)).isoformat()
-    query = urllib.parse.urlencode({"id": series_id, "cosd": start})
-    req = urllib.request.Request(f"https://fred.stlouisfed.org/graph/fredgraph.csv?{query}",
-                                 headers={"User-Agent": "stock-explorer"})
-    with urllib.request.urlopen(req, timeout=20) as response:
-        rows = csv.DictReader(io.StringIO(response.read().decode('utf-8-sig')))
-        values = []
-        for row in rows:
-            stamp = row.get('observation_date') or row.get('DATE')
-            raw_value = row.get(series_id)
-            if not stamp or stamp < start or raw_value in (None, '', '.'):
-                continue
-            value = float(raw_value)
-            if math.isfinite(value):
-                values.append((stamp, value))
+    # requests 기본 헤더로 부른다 — 2026-11-07부터 FRED가 urllib 요청(UA 'stock-explorer'·브라우저 UA 모두)에
+    # 응답을 보내지 않아 회사채 스프레드(credit)가 연속 timeout. requests·curl은 즉시 200.
+    import requests
+    response = requests.get("https://fred.stlouisfed.org/graph/fredgraph.csv",
+                            params={"id": series_id, "cosd": start}, timeout=20)
+    response.raise_for_status()
+    rows = csv.DictReader(io.StringIO(response.content.decode('utf-8-sig')))
+    values = []
+    for row in rows:
+        stamp = row.get('observation_date') or row.get('DATE')
+        raw_value = row.get(series_id)
+        if not stamp or stamp < start or raw_value in (None, '', '.'):
+            continue
+        value = float(raw_value)
+        if math.isfinite(value):
+            values.append((stamp, value))
     return sorted(values)
 
 
@@ -215,7 +218,7 @@ def _signal_prompt(items: list[dict], interp: dict) -> str:
 
 def _refresh_signal() -> None:
     """스냅샷 직후 신호등 산문 생성(sonnet). signature 불변이면 재사용, 엔진 미가용이면 건너뜀."""
-    from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+    from pipeline.enrich import _parse_json, llm_engine
     data = get_macro(with_signal=False)
     items = data["items"]
     if not items or not data["as_of"]:
@@ -227,7 +230,7 @@ def _refresh_signal() -> None:
         conn.close()
         return
     try:
-        r = _parse_json(_call_claude_code(_signal_prompt(items, _interpret(items)), model="sonnet", timeout=180))
+        r = _parse_json(llm.run(_signal_prompt(items, _interpret(items)), task='macro.interpret').text)
     except Exception:
         conn.close()
         return

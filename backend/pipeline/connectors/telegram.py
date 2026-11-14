@@ -4,6 +4,7 @@
 (docs/specs/image-reading.md). raw_content는 원문 그대로, 해석 줄은 markdown에만.
 예전에 받아둔 media/telegram/ 파일은 그대로 두고 media_json으로 계속 가리킨다.
 """
+from pipeline import llm
 import os
 import re
 from datetime import datetime
@@ -38,7 +39,7 @@ def _judge_continuation(prev_text: str, cur_text: str, gap: float = 0) -> bool |
     판별 기준은 주제가 아니라 구조 — B가 단독으로 완결된 새 글인지.
     출력은 JSON 대신 단어 토큰 (haiku의 형식 이탈에 강건).
     """
-    from pipeline.enrich import llm_engine, _call_claude_code
+    from pipeline.enrich import llm_engine
     if llm_engine() != "claude-code":
         return None
     prompt = (
@@ -53,7 +54,7 @@ def _judge_continuation(prev_text: str, cur_text: str, gap: float = 0) -> bool |
         f"[메시지A]\n{(prev_text or '')[:600]}\n\n[메시지B]\n{(cur_text or '')[:600]}"
     )
     try:
-        raw = _call_claude_code(prompt)
+        raw = llm.run(prompt, task='telegram.continuation').text
         hits = re.findall(r"\b(CONTINUATION|SEPARATE)\b", raw)
         if not hits:
             return None

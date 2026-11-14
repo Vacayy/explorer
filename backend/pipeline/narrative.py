@@ -2,9 +2,12 @@
 
 키워드+요약을 넘어, 한 이슈가 '어디서 시작해 어디로 가는지'를 자연어 md로:
 **주장형 제목**(D-120 — 목록·브리핑에서 제목만 봐도 전달되게. 관통 질문은 `core_question`으로
-분리해 질문 트래커에 공급) → 3줄 요약 → 전개 타임라인 → 인과 구조 → 시나리오(긍/부정) → 종합 해석.
+분리해 질문 트래커에 공급, 문체는 합니다체 1~2문장 — D-290) → 3줄 요약 → 인과를 따라 읽히는 특집 기사
+(리드 → 원인·전달 경로·결과 → 반론 → 앞으로의 갈림길, 중간 제목은 기사마다 — D-290).
 게으른 생성 + hash 가드(source_digests kind='narrative'). 심층 종합이라 opus.
 """
+from pipeline.llm_policies import requested_model
+from pipeline import llm
 import hashlib
 import json
 import os
@@ -14,7 +17,7 @@ from database import get_connection
 from pipeline.visibility import unverified_sql
 from pipeline.enrich import llm_engine
 
-NARRATIVE_MODEL = os.getenv("NARRATIVE_MODEL", "opus")
+NARRATIVE_MODEL = requested_model('narrative.generate')  # existing cache/display field: requested model
 DOCS = 25
 EXCERPT = 500
 
@@ -309,11 +312,63 @@ def _change_block(prev) -> str:
     return (
         f"★직전 버전(v{prev['version']})과 비교: 이 주제에는 이미 서사가 있다.\n"
         f"직전 제목: {prev['title'] or '(없음)'}\n직전 3줄 요약: {_summary(prev['body']) or '(없음)'}\n"
-        "change_summary: 직전 서사에서 이번 서사로 **이야기의 무게가 어떻게 옮겨 갔는지** 한국어 평서문 1~2문장, "
+        "change_summary: 직전 서사에서 이번 서사로 **이야기의 무게가 어떻게 옮겨 갔는지** 존댓말(합니다체·해요체) 1~2문장, "
         "80자 이내. 인과 고리(A→B)를 나열하지 말고 서사의 핵심 이동만 써라(예: '공급 부족 이야기에서 장기 계약·"
-        "사이클 장기화 이야기로 무게가 옮겨 갔다'). 큰 변화가 없으면 '큰 줄기는 그대로이고 ~가 더해졌다'처럼 써라. "
+        "사이클 장기화 이야기로 무게가 옮겨 갔습니다'). 큰 변화가 없으면 '큰 줄기는 그대로이고 ~가 더해졌어요'처럼 써라. "
         "JSON에 \"change_summary\" 키로 함께 넣어라.\n"
     )
+
+
+# 제목 규율 — 주장형(D-120)은 유지하고 문체를 자연스러운 한국어 합니다체로(D-290). 메가 내러티브도 같은 규율.
+TITLE_RULE = (
+    "title: **이 서사가 말하는 결론을 단언하는 제목**(D-120). 질문형 금지 — 제목만 읽어도 무슨 얘기인지 "
+    "전달돼야 한다(목록·홈·브리핑에서 제목만 노출되는 자리가 많다). "
+    "문체: **합니다체 평서문 1~2문장**, 기자가 기사 첫머리에서 독자에게 결론을 알려 주듯 쓴다. "
+    "두 문장이면 첫 문장에 사실·흐름, 둘째 문장에 그와 맞서는 긴장이나 시장의 시선을 둔다. "
+    "예: '메모리 증설로 인해 소부장 수혜가 예상됩니다. 그러나 금리가 상단을 누르고 있습니다.' / "
+    "'메모리 업체의 현금 보유량은 사상 최대인 와중 코리아 디스카운트는 여전합니다. 시장은 주주환원 정책을 "
+    "눈여겨보고 있습니다.' "
+    "피할 것: 명사를 억지로 주어로 세운 번역투('A가 B를 끈다', '병목이 자본으로 내려갔다'처럼 사물이 "
+    "행동하는 비유), 해라체 단문 압축, 쉼표로 이어 붙인 긴 한 문장. "
+    "규율: ① 코퍼스가 뒷받침하는 것만 단언하라 — 근거 없는 예측을 제목으로 만들지 마라. "
+    "② 목표주가·확률 같은 **수치 예측을 넣지 마라**(거짓 정밀). "
+    "③ 낚시성·과장 부사('충격', '대폭발') 금지. "
+    "④ 두 문장 합쳐 **70자 안팎** — 목록·피드에서 잘리지 않게 수식을 덜어내라."
+)
+
+# 서술 문체 — 독자에게 말하듯 존댓말로. 합니다체를 뼈대로 해요체를 섞는다(D-290 보완).
+PROSE_STYLE = (
+    "문체: **존댓말**. 사실·수치·결론은 합니다체('~했습니다', '~하고 있습니다', '~할 전망입니다')로, "
+    "흐름을 풀어 주거나 독자의 궁금증을 짚는 문장은 해요체('그런데 주가는 오히려 멈춰 섰어요', "
+    "'문제는 이 부족이 언제까지 가느냐예요')로 섞어 특집 기사를 읽어 주듯 쓴다. 한 문단 안에서 해요체는 "
+    "한두 문장이면 충분하다 — 매 문장 번갈아 쓰거나 해요체만 이어 가면 가벼워진다. 반말·해라체('~했다') 금지."
+)
+
+# 본문 규율 — 데이터 요약 나열이 아니라 인과를 따라 읽히는 특집 기사(D-290).
+# '## 3줄 요약'은 맨 앞에 그대로 둔다: 목록 미리보기·타임라인·미국장 브리핑·메가 내러티브가 이 섹션을 읽는다.
+ARTICLE_RULE = (
+    "narrative 마크다운 구조 — **특집 기사**다. 보고서식 고정 섹션·불릿 나열이 아니라, 인과를 따라 "
+    "읽어 내려가면 주장이 이해되는 한 편의 기사로 써라.\n"
+    "## 3줄 요약\n핵심 3가지를 각각 '- ' 불릿 한 줄로(아래 존댓말 문체). 이 섹션만 불릿을 쓴다.\n"
+    "그다음부터 기사 본문. 섹션 제목은 **이 기사만의 중간 제목**을 '## '로 2~4개 단다(예: '## 마이크론이 "
+    "다시 증설을 꺼낸 이유', '## 소부장 안에서도 갈리는 수혜'). '무엇이 다뤄지고 있나'·'인과 구조'·"
+    "'시나리오'·'종합 해석' 같은 범용 라벨은 쓰지 마라. 본문 흐름:\n"
+    "1) 첫 중간 제목 아래 **리드 문단** — 지금 무슨 일이 벌어지고 있고 그래서 무엇이 핵심인지 두세 문장으로 "
+    "먼저 결론을 준다.\n"
+    "2) **인과를 따라가는 전개** — 근본 원인에서 출발해 전달 경로를 거쳐 결과(수혜·부담)에 이르기까지, "
+    "앞 문단이 다음 문단의 원인이 되도록 이어 써라. 각 고리마다 그 근거가 된 사실·발언·수치를 문장 안에 "
+    "녹이고(누가 언제 무엇을 말했는지), 'A → B' 화살표 표기는 쓰지 마라. 문단 사이는 '그 결과', "
+    "'이 흐름은 ~로 번진다', '문제는 ~다' 같은 연결로 넘어가라.\n"
+    "3) **반론·긴장** — 이 흐름을 가로막는 힘이나 반대 시각을 한 문단으로. 누가 그렇게 보는지 밝혀라.\n"
+    "4) **앞으로의 갈림길** — 마지막 중간 제목 아래, 기본 경로와 그것이 위·아래로 갈리는 조건을 산문으로 "
+    "쓰고 판가름 낼 신호 1~2개로 맺는다. **확률·퍼센트 전망을 쓰지 마라**(거짓 정밀).\n"
+    f"{PROSE_STYLE} 한 문단 3~5문장, "
+    "문단마다 하나의 고리. 본문에서 불릿 목록은 쓰지 마라(꼭 필요하면 대등한 갈래 서너 개를 나열할 때만). "
+    "'회자되다'는 쓰지 말고 다뤄지다·거론되다·이야기가 나오다 등으로 다양하게.\n"
+    "규율: 문서에 없는 사실 지어내지 말 것. 주장은 근거 문서 흐름에 기반. 관측과 사실을 구분해 "
+    "'~라는 분석이 나옵니다', '~로 보는 시각도 있어요'처럼 쓴다. 날짜는 사건 발생일로 단정하지 말고 "
+    "'언제 다뤄졌다'로(위 시간 규율). 3줄 요약 포함 전체 1,400자 내외."
+)
 
 
 def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_vocab: list[str],
@@ -341,41 +396,19 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
         f"(이 주제 수집 시작: {first})\n"
         "★출력 규율(반드시): 본문에 '[현재]'·'[회고]'·'[전망]'·'[시점미상]' 같은 대괄호 태그를 "
         "절대 쓰지 마라. 그건 너에게 주는 입력 주석일 뿐이다. 시제·확실성은 자연스러운 한국어 "
-        "문장으로 녹여라 — 현재형('~하고 있다'), 과거형('~했다'), 전망('~할 전망이다'/'~라는 예상이 "
-        "나온다'), 검토('~을 검토 중이다'). "
+        "문장으로 녹여라 — 현재형('~하고 있습니다'), 과거형('~했습니다'), 전망('~할 전망입니다'/'~라는 예상이 "
+        "나와요'), 검토('~을 검토 중이에요'). "
         "예: '베이징의 자국 AI 해외접근 제한 [현재·검토 단계]이 상징' (나쁨) → "
-        "'현재 베이징이 자국 AI 해외접근 제한을 검토 중인 것이 대표적 상징이다' (좋음).\n"
+        "'현재 베이징이 자국 AI 해외접근 제한을 검토 중인 것이 대표적인 상징입니다' (좋음).\n"
         'JSON만 출력: {"title": "주장형 제목", "core_question": "이 서사를 관통하는 질문", '
         '"narrative": "마크다운 본문", '
         '"category": ["도메인 렌즈"], "causal": {"nodes": [...], "edges": [...]}}\n'
-        "title: **이 서사가 말하는 결론을 한 문장으로 단언하는 제목**(D-120). 질문형 금지 — "
-        "제목만 읽어도 무슨 얘기인지 전달돼야 한다(목록·브리핑에서 제목만 노출되는 자리가 많다). "
-        "예: '병목은 칩에서 자본으로 내려갔다', 'HBM4 의존이 SK하이닉스의 교섭력을 만들었다'. "
-        "규율: ① 코퍼스가 뒷받침하는 것만 단언하라 — 근거 없는 예측을 제목으로 만들지 마라. "
-        "② 목표주가·확률 같은 **수치 예측을 제목에 넣지 마라**(거짓 정밀). "
-        "③ 낚시성·과장 부사('충격', '대폭발') 금지. 핵심 긴장을 담되 평서문으로. "
-        "④ **40자 내외**로 끊어라 — 목록·피드·브리핑에서 잘리면 주장형으로 바꾼 이유가 사라진다. "
-        "수식을 덜어내고 주어·서술어만 남겨라(실측: 첫 산출물이 78자로 나왔다).\n"
+        f"{TITLE_RULE}\n"
         "core_question: 같은 서사를 **질문으로** 벼린 한 문장(예: '병목은 어디까지 내려가나?'). "
         "이 값은 핵심질문 트래커의 후보로 쓰이므로 추적 가능한 물음이어야 한다 — "
         "제목(주장)과 짝을 이루되 같은 문장을 물음표만 붙여 되풀이하지 마라.\n"
         f"{_change_block(prev)}"
-        "가독성 규율: 논리 단위마다 줄을 나눠라. 불릿은 각각 '- '로 시작하는 별도 줄, "
-        "여러 갈래(①②)나 시나리오(긍정/기본/부정)는 각각 자기 줄에 둔다. 한 문단에 여러 논점을 "
-        "몰아넣지 마라.\n"
-        "narrative 마크다운 구조 (섹션 고정, 섹션 사이 빈 줄):\n"
-        "## 3줄 요약\n핵심 3가지를 각각 '- ' 불릿 한 줄로.\n"
-        "## 무엇이 다뤄지고 있나\n최근 '수집·논의된' 내용을 정리 — 날짜를 사건 발생일로 단정하지 말고 "
-        "'언제 다뤄졌다/언급됐다'로. 실제 벌어진 일과 전망·논평을 자연스러운 시제로 구분(위 출력 규율). "
-        "'회자되다'라는 표현은 쓰지 말고, 다뤄지다·언급되다·거론되다·이야기가 나오다·논의되다 등으로 "
-        "다양하게(한 단어 반복 금지). 갈래가 둘 이상이면 '- ' 불릿으로 나눠라.\n"
-        "## 인과 구조\n무엇이 무엇으로 이어지는지 'A → B → C' 한 줄로 쓰고, 그 아래 줄에 "
-        "수혜/피해 주체를 짧게.\n"
-        "## 시나리오\n세 줄, 각각 별도 불릿:\n- **긍정 (확률%)** 트리거 → 결과\n"
-        "- **기본 (확률%)** 트리거 → 결과\n- **부정 (확률%)** 트리거 → 결과\n확률 합 100.\n"
-        "## 종합 해석\n지금 가장 중요한 긴장 1문장 + 판가름 낼 관전 포인트 1~2개(각 '- ' 불릿).\n"
-        "규율: 문서에 없는 사실 지어내지 말 것. 주장은 근거 문서 흐름에 기반. "
-        "'화자/시장은 ~로 본다'로 관측과 사실 구분. 전체 800자 내외, 밀도 높게.\n\n"
+        f"{ARTICLE_RULE}\n\n"
         "★인과 그래프 추출 (본문과 별도로 구조화 — 위 서사의 인과를 노드·엣지로):\n"
         "- category: 이 내러티브가 걸친 도메인 렌즈 1~3개 (아래 중에서만): "
         "macro·geopolitics·industry·flow·tech·policy\n"
@@ -413,14 +446,14 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
     )
 
 
-def _call(prompt: str, model: str = NARRATIVE_MODEL) -> dict:
-    from pipeline.enrich import _call_claude_code   # llm_calls 원장에 남는 공용 경로
-    raw = _call_claude_code(prompt, model=model, timeout=400)
+def _call(prompt: str, *, task: str = "narrative.generate") -> dict:
+    raw = llm.run(prompt, task=task).text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 
 
-def compute_narrative(topic: str) -> dict:
+def compute_narrative(topic: str, force: bool = False) -> dict:
+    """force=True면 근거 문서가 그대로여도 새 버전을 만든다(생성 규약을 바꾼 뒤 다시 쓰기용, D-290)."""
     conn = get_connection()
     ent = _resolve(conn, topic)
     if not ent:
@@ -432,7 +465,7 @@ def compute_narrative(topic: str) -> dict:
         return {"status": "empty", "title": None, "narrative": None, "created_at": None}
     h = _hash(docs)
     prev = _latest_narrative(conn, topic)
-    if prev and prev["doc_ids_hash"] == h:
+    if prev and prev["doc_ids_hash"] == h and not force:
         conn.close()
         return {"status": "cached", "title": prev["title"], "narrative": prev["body"],
                 "created_at": prev["created_at"]}
@@ -560,9 +593,10 @@ def compute_top_narratives(limit: int = 5) -> dict:
     """, (limit,)).fetchall()
     topics = [r["name"] for r in rows]
     coverage = _coverage_topics(conn, exclude=set(topics))
+    boosted = _mt_boosted(conn)
     conn.close()
     results = {}
-    for t in topics + coverage:
+    for t in _order_by_boost(topics + coverage, boosted):
         try:
             results[t] = compute_narrative(t).get("status")
         except Exception as e:  # noqa: BLE001 — 배치라 한 주제 실패가 전체를 막지 않게
@@ -597,6 +631,8 @@ def compute_urgent_narratives() -> dict:
         FROM signals s JOIN entities e ON e.id=s.entity_id
         WHERE s.signal_type='theme_surge' AND s.date=?
         ORDER BY delta DESC""", (latest,)).fetchall()
+    rows = _order_by_boost(rows, _mt_boosted(conn), key=lambda r: r["name"])
+    approved = _approved_new_topics(conn)
 
     picked, skipped = [], {}
     for r in rows:
@@ -628,7 +664,53 @@ def compute_urgent_narratives() -> dict:
             results[p["topic"]] = compute_narrative(p["topic"]).get("status")
         except Exception as e:  # noqa: BLE001 — 체인이라 한 주제 실패가 전체를 막지 않게
             results[p["topic"]] = f"error:{str(e)[:80]}"
+    # 사람이 승인한 내러티브 후보(ia-redesign §9.3) — 다음 갱신 때 첫 버전. 급증 상한과 별개(승인은 드물다)
+    for t in approved:
+        if t in results:
+            continue
+        try:
+            results[t] = compute_narrative(t).get("status")
+        except Exception as e:  # noqa: BLE001
+            results[t] = f"error:{str(e)[:80]}"
+        _record_candidate_attempt(t, results[t])
+        picked.append({"topic": t, "why": "후보 승인"})
     return {"picked": picked, "results": results, "skipped": skipped, "signal_date": latest}
+
+
+def _order_by_boost(items: list, boosted: set[str], key=lambda x: x) -> list:
+    """Market Today에 이번 주 자주 걸린 서사(§9.3 '다음 갱신 앞당김')를 앞으로 — 순서만, 대상·횟수는 그대로."""
+    return sorted(items, key=lambda x: key(x) not in boosted)
+
+
+def _mt_boosted(conn) -> set[str]:
+    try:
+        from pipeline.market_today_links import boosted_topics
+        return boosted_topics(conn)
+    except Exception:  # noqa: BLE001 — 순서 힌트일 뿐이라 실패하면 원래 순서
+        return set()
+
+
+def _approved_new_topics(conn) -> list[str]:
+    """승인한 후보 중 아직 첫 버전이 없는 새 주제. 생성을 실패(LLM 오류)한 주제는 다시 부르지 않는다."""
+    try:
+        from pipeline.market_today_links import pending_new_topics
+        rows = {r[0]: json.loads(r[1] or "{}").get("attempt") for r in conn.execute(
+            "SELECT narrative_topic, detail_json FROM narrative_candidates WHERE status='approved'")}
+        return [t for t in pending_new_topics(conn) if rows.get(t) != "failed"]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _record_candidate_attempt(topic: str, status: str) -> None:
+    try:
+        from pipeline.market_today_links import record_attempt
+        conn = get_connection()
+        try:
+            record_attempt(conn, topic, status)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def source_status_of(row) -> str:
@@ -671,7 +753,7 @@ def reverify_legacy_edges(conn, narrative_id: int, *, call=None) -> dict:
         from pipeline.llm import run
 
         def call(text):
-            res = run(text, system=REVERIFY_SYSTEM, model="haiku", timeout=180, job="reverify_edge_sources", json_schema=REVERIFY_SCHEMA)
+            res = run(text, task='narrative.reverify', system=REVERIFY_SYSTEM, json_schema=REVERIFY_SCHEMA)
             raw = res.text
             return json.loads(raw[raw.find("{"):raw.rfind("}") + 1]), res.cost_usd
     answer = call(prompt)
@@ -851,7 +933,7 @@ def compute_mer_narrative(topic: str) -> dict:
         conn.close()
         return {"status": "unavailable", "narrative": prev["mer_body"], "path": path}
     try:
-        data = _call(_build_mer_prompt(topic, path))
+        data = _call(_build_mer_prompt(topic, path), task="narrative.mer")
     except Exception:
         conn.close()
         return {"status": "failed", "narrative": None, "path": path}
@@ -922,8 +1004,9 @@ def _build_drift_prompt(added_edges: list[dict], removed_edges: list[dict]) -> s
     )
 
 
-def narrative_diff(conn, narrative_id: int) -> dict:
-    """버전 드리프트 — 결정적 diff(LLM 없음) + 변화가 있으면 게으른 haiku 한 줄 요약(캐시)."""
+def narrative_diff(conn, narrative_id: int, summarize: bool = True) -> dict:
+    """버전 드리프트 — 결정적 diff(LLM 없음) + 변화가 있으면 게으른 haiku 한 줄 요약(캐시).
+    summarize=False면 저장된 요약만 돌려주고 LLM을 부르지 않는다."""
     d = _version_diff(conn, narrative_id)
     if d["status"] != "ok":
         return d
@@ -934,11 +1017,11 @@ def narrative_diff(conn, narrative_id: int) -> dict:
     if row and row["drift_summary"]:
         d["summary"] = row["drift_summary"]
         return d
-    if llm_engine() != "claude-code":
+    if not summarize or llm_engine() != "claude-code":
         d["summary"] = None
         return d
     try:
-        data = _call(_build_drift_prompt(d["added_edges"], d["removed_edges"]), model="haiku")
+        data = _call(_build_drift_prompt(d["added_edges"], d["removed_edges"]), task="narrative.diff")
     except Exception:
         d["summary"] = None
         return d

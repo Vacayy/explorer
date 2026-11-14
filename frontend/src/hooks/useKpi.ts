@@ -6,9 +6,13 @@ export interface KpiData {
   latest_year: number | null
   close: number | null
   price_change_pct: number | null
+  price_date: string | null
   market_cap: number | null
   per: number | null
   pbr: number | null
+  fund_date: string | null
+  per_calc: boolean
+  pbr_calc: boolean
   op_margin: number | null
   op_margin_change: number | null
   roe: number | null
@@ -19,11 +23,14 @@ export interface KpiData {
   op_profit_growth: number | null
   net_income: number | null
   fwd_per: number | null
+  fwd_per_calc: boolean
   fwd_fiscal_year?: string | null
   fwd_eps: number | null
   fwd_analyst_count?: number | null
   fwd_estimates?: { fiscal_year: string; per: number | null; eps: number | null }[]
   target_price_consensus: number | null
+  consensus_source: string | null
+  consensus_fetched_at: string | null
 }
 
 export function useKpi(stockCode: string) {

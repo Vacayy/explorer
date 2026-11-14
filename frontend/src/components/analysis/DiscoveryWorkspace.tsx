@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Skeleton } from '@/components/ui/skeleton'
 import { activeConditions, ConditionPalette, ConditionStack, EMPTY_STACK, stackSubmission, type StrategySubmission } from '@/components/analysis/ConditionStackBuilder'
-import { conditionInputError, conditionSignature, isPurposeDraft, type PurposeDraft } from '@/components/analysis/discoveryDraft'
+import { conditionInputError, conditionSignature, isPurposeDraft, type DraftUniverse, type PurposeDraft } from '@/components/analysis/discoveryDraft'
 import { isTerminal } from '@/components/analysis/events'
 import type { AnalysisRun, AnalysisSpec } from '@/components/analysis/types'
 
@@ -21,8 +21,8 @@ function useDesktop() {
 }
 
 /** 검색 대상까지 포함한 조합 서명 — 같으면 다시 검색하지 않는다. */
-const draftSignature = (draft: PurposeDraft) => `${conditionSignature(activeConditions(draft))}|${draft.market}|${Number(draft.minimumCap)}|${draft.asOf}`
-const specSignature = (spec: AnalysisSpec) => `${conditionSignature(spec.strategy_conditions ?? [])}|${spec.market}|${spec.min_market_cap / 100_000_000}|${spec.as_of ?? ''}`
+const draftSignature = (draft: PurposeDraft) => `${conditionSignature(activeConditions(draft))}|${draft.market}|${Number(draft.minimumCap)}|${draft.asOf}|${draft.universe?.codes.join(',') ?? ''}`
+const specSignature = (spec: AnalysisSpec) => `${conditionSignature(spec.strategy_conditions ?? [])}|${spec.market}|${spec.min_market_cap / 100_000_000}|${spec.as_of ?? ''}|${spec.universe_codes?.join(',') ?? ''}`
 const workspaceSpec = (spec: AnalysisSpec | null | undefined): spec is AnalysisSpec => !!spec && spec.mode === 'catalog' && !spec.expression && !!spec.strategy_conditions?.length
 
 /**
@@ -30,9 +30,13 @@ const workspaceSpec = (spec: AnalysisSpec | null | undefined): spec is AnalysisS
  * 검색 버튼을 누르면 spec 명시 경로로 찾는다(모델 0, D-225 — 블록 변경마다 자동 실행하지 않음). 실행은 URL `run`이 소유하고,
  * 스택은 이 탭의 초안(sessionStorage)이 소유한다. 다른 경로(이전 검색·문장 검색)로 연 실행은 스택에 불러온다.
  */
-export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, results }: {
+export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, results, universeRequest, onUniverseApplied, inSheet = false }: {
   run: AnalysisRun | undefined; runLoading: boolean; startPending: boolean
   onStart: (body: StrategySubmission) => Promise<void>; results: ReactNode
+  /** 결과 화면의 '조건 고치기' 시트 안 — 결과 칸 없이 조건 목록 | 내 조건(넓은 화면은 두 칸) */
+  inSheet?: boolean
+  /** '오늘의 신호'에서 넘긴 검색 범위 — 초안에 넣고 onUniverseApplied로 비운다 */
+  universeRequest?: DraftUniverse | null; onUniverseApplied?: () => void
 }) {
   const desktop = useDesktop()
   const catalog = useAnalysisStrategies()
@@ -55,9 +59,17 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
     if (!runSpec || !current) return
     if (current === submitted.current) { submitted.current = null; return }
     if (current === signature) return
-    setDraft({ conditions: runSpec.strategy_conditions ?? [], market: runSpec.market, minimumCap: String(runSpec.min_market_cap / 100_000_000), asOf: runSpec.as_of ?? '', off: [] })
+    setDraft({ conditions: runSpec.strategy_conditions ?? [], market: runSpec.market, minimumCap: String(runSpec.min_market_cap / 100_000_000), asOf: runSpec.as_of ?? '', off: [],
+      universe: runSpec.universe_codes?.length ? { label: draft.universe && draft.universe.codes.join(',') === runSpec.universe_codes.join(',') ? draft.universe.label : '지정 종목', codes: runSpec.universe_codes } : null })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 실행이 바뀔 때만 동기화
   }, [run?.id, current])
+
+  useEffect(() => {
+    if (!universeRequest) return
+    setDraft(previous => ({ ...previous, universe: universeRequest }))
+    onUniverseApplied?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 요청이 바뀔 때만 한 번 반영
+  }, [universeRequest])
 
   function runNow() {
     if (!ready || computing || runLoading) return
@@ -75,22 +87,28 @@ export function DiscoveryWorkspace({ run, runLoading, startPending, onStart, res
     : <ConditionPalette draft={draft} definitions={definitions} busy={startPending} onChange={setDraft} />
   const stack = catalog.data ? <ConditionStack draft={draft} definitions={definitions} busy={startPending} computing={computing}
     result={runSpec ? run!.result ?? null : null} resultConditions={(runSpec?.strategy_conditions ?? []).map(c => c.strategy_id)} status={status}
+    warning={invalid || (stored === false ? '이 브라우저에 초안을 보존하지 못했습니다.' : null)}
     onChange={setDraft} onRunNow={runNow} runDisabled={!ready || computing || runLoading} /> : <Skeleton className="h-64 w-full" />
 
-  if (!desktop) return <div className="min-w-0 space-y-4">
-    <Collapsible open={paletteOpen} onOpenChange={setPaletteOpen} className="rounded-xl border bg-card">
-      <CollapsibleTrigger asChild><Button variant="ghost" className="min-h-11 w-full justify-between">조건 목록·빠른 시작<ChevronDown className="size-4" /></Button></CollapsibleTrigger>
-      <CollapsibleContent className="max-h-[60vh] overflow-y-auto border-t p-3">{palette}</CollapsibleContent>
-    </Collapsible>
-    <section aria-label="내 조건" className="@container rounded-xl border bg-card p-3">{stack}</section>
-    <section aria-label="결과" className="min-w-0">{results}</section>
+  if (inSheet && desktop) return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
+    <section aria-label="조건 목록" className="max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-4">{palette}</section>
+    <section aria-label="내 조건" className="@container max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain border bg-card p-4">{stack}</section>
   </div>
 
-  return <ResizablePanelGroup orientation="horizontal" className="min-h-[36rem] flex-1 rounded-xl border bg-card">
-    <ResizablePanel defaultSize="22%" minSize="16%"><div aria-label="조건 목록 패널" className="h-full overflow-y-auto overscroll-contain p-3">{palette}</div></ResizablePanel>
+  if (!desktop) return <div className="min-w-0 surface-stack">
+    <Collapsible open={paletteOpen} onOpenChange={setPaletteOpen} className="rounded-card border bg-card">
+      <CollapsibleTrigger asChild><Button variant="ghost" className="min-h-11 w-full justify-between">조건 목록<ChevronDown className="size-4" /></Button></CollapsibleTrigger>
+      <CollapsibleContent className="max-h-[60vh] overflow-y-auto border-t p-3">{palette}</CollapsibleContent>
+    </Collapsible>
+    <section aria-label="내 조건" className="@container rounded-card border bg-card p-4">{stack}</section>
+    {results && <section aria-label="결과" className="min-w-0">{results}</section>}
+  </div>
+
+  return <ResizablePanelGroup orientation="horizontal" className="min-h-[36rem] flex-1 rounded-card border bg-card">
+    <ResizablePanel defaultSize="25%" minSize="16%"><div aria-label="조건 목록 패널" className="h-full overflow-y-auto overscroll-contain p-4">{palette}</div></ResizablePanel>
     <ResizableHandle withHandle />
-    <ResizablePanel defaultSize="30%" minSize="22%"><div aria-label="내 조건 패널" className="@container h-full overflow-y-auto overscroll-contain p-3">{stack}</div></ResizablePanel>
+    <ResizablePanel defaultSize="25%" minSize="20%"><div aria-label="내 조건 패널" className="@container h-full overflow-y-auto overscroll-contain p-4">{stack}</div></ResizablePanel>
     <ResizableHandle withHandle />
-    <ResizablePanel defaultSize="48%" minSize="30%"><div aria-label="결과 패널" className="h-full overflow-y-auto overscroll-contain p-3">{results}</div></ResizablePanel>
+    <ResizablePanel defaultSize="50%" minSize="30%"><div aria-label="결과 패널" className="h-full overflow-y-auto overscroll-contain p-4">{results}</div></ResizablePanel>
   </ResizablePanelGroup>
 }

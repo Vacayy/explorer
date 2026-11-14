@@ -8,7 +8,7 @@ export function formatKrw(value: number | string | null | undefined): string {
   if (isNaN(num)) return "-"
 
   const absNum = Math.abs(num)
-  const sign = num < 0 ? "-" : ""
+  const sign = num < 0 ? MINUS : ""
 
   const eok = absNum / 1e8
   if (eok >= 10000) {
@@ -41,13 +41,19 @@ export function formatDartAmount(value: string | null | undefined): string {
   return formatKrw(num)
 }
 
+/** 부호 문자 — 양수 '+', 음수 '−'(U+2212, D-320), 표시 자릿수로 0이 되면 부호 없음 */
+export const MINUS = "\u2212"
+function signOf(value: number, digits: number): string {
+  const shown = Number(value.toFixed(digits))
+  return shown > 0 ? "+" : shown < 0 ? MINUS : ""
+}
+
 /**
- * Format as percentage with sign indicator.
+ * Format as percentage with sign indicator (+1.5% · −0.5%).
  */
-export function formatPercent(value: number | null | undefined): string {
+export function formatPercent(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined) return "-"
-  const sign = value > 0 ? "+" : ""
-  return `${sign}${value.toFixed(1)}%`
+  return `${signOf(value, digits)}${Math.abs(value).toFixed(digits)}%`
 }
 
 /**
@@ -55,8 +61,7 @@ export function formatPercent(value: number | null | undefined): string {
  */
 export function formatSigma(value: number | null | undefined): string {
   if (value === null || value === undefined) return "-"
-  const sign = value > 0 ? "+" : value < 0 ? "−" : ""
-  return `${sign}${Math.abs(value).toFixed(1)}σ`
+  return `${signOf(value, 1)}${Math.abs(value).toFixed(1)}σ`
 }
 
 /**
@@ -64,8 +69,15 @@ export function formatSigma(value: number | null | undefined): string {
  */
 export function formatPp(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined) return "-"
-  const sign = value > 0 ? "+" : ""
-  return `${sign}${value.toFixed(digits)}%p`
+  return `${signOf(value, digits)}${Math.abs(value).toFixed(digits)}%p`
+}
+
+/**
+ * PER·선행 PER — 소수 1자리 + '배'(docs/policies/number-formatting.md). null이면 '-'.
+ */
+export function formatPer(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${value.toFixed(1)}배`
 }
 
 /**
@@ -97,6 +109,7 @@ export function formatEok(value: number | null): string {
  * Format USD amount with compact suffix (B/M/K).
  */
 export function formatUsd(value: number): string {
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`
   if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`
   if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`
   if (value >= 1e3) return `$${(value / 1e3).toFixed(1)}K`
@@ -113,25 +126,28 @@ export function formatPrice(value: number): string {
 }
 
 /**
+ * 차트 가격 축(국내) — 100만 이상은 만 단위('142만'·'142.3만', 시안 Dossier 가격 축), 그 아래는 '72,900'.
+ */
+export function formatChartKrw(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `${Number((value / 10_000).toFixed(1)).toLocaleString("ko-KR")}만`
+  return value.toLocaleString("ko-KR")
+}
+
+/**
+ * 종목 가격 — 국내 '72,900원', 미국 '$479.54'(소수 2자리). null이면 '-'.
+ */
+export function formatStockPrice(value: number | null | undefined, market?: string | null): string {
+  if (value === null || value === undefined) return "-"
+  if (market === "us") return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `${formatNumber(value)}원`
+}
+
+/**
  * Format funding rate as percentage.
  */
 export function formatFundingRate(rate: string | number): string {
   const num = typeof rate === "string" ? parseFloat(rate) : rate
   return `${(num * 100).toFixed(4)}%`
-}
-
-/**
- * UTC 시각 → KST "HH:MM" 표기.
- * SQLite datetime('now')는 타임존 표기 없는 UTC("2026-08-18 04:30:00")라 Z를 붙여 파싱한다.
- */
-export function formatKstTime(utc: string | null | undefined): string {
-  if (!utc) return "-";
-  const iso = utc.includes("T") ? utc : utc.replace(" ", "T") + "Z";
-  const d = new Date(iso.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleTimeString("ko-KR", {
-    timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false,
-  });
 }
 
 /** UTC 시각(SQLite·ISO) → KST "MM-DD HH:MM" 표기 */
@@ -144,6 +160,22 @@ export function formatKstDateTime(utc: string | null | undefined): string {
     timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).formatToParts(d).map(x => [x.type, x.value]));
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+/** UTC 시각(SQLite·ISO) → KST "MM/DD HH:MM", time=false면 "MM/DD" (대화 목록·답변 머리) */
+export function formatKstSlashDate(utc: string | null | undefined, time = true): string {
+  const day = utc && /^\d{4}-(\d{2})-(\d{2})$/.exec(utc);
+  if (day) return `${day[1]}/${day[2]}`;
+  const s = formatKstDateTime(utc);
+  if (s === "-") return s;
+  const [md, hm] = s.split(" ");
+  const slash = md.replace("-", "/");
+  return time ? `${slash} ${hm}` : slash;
+}
+
+/** 시각 → KST "11월 4일 수요일" (홈 대시보드 머리) */
+export function formatKstLongDate(d: Date = new Date()): string {
+  return d.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", weekday: "long" });
 }
 
 /** ISO 시각 → 상대 시간 표기 ("3분 전", "2시간 전", "어제", "6/28") */
@@ -178,7 +210,8 @@ export function formatYield(value: number | null | undefined): string {
 export function formatBp(value: number | null | undefined, signed = false): string {
   if (value === null || value === undefined) return "-"
   const rounded = Math.round(value)
-  return `${signed && rounded > 0 ? "+" : ""}${rounded.toLocaleString("ko-KR")}`
+  const sign = rounded < 0 ? MINUS : signed && rounded > 0 ? "+" : ""
+  return `${sign}${Math.abs(rounded).toLocaleString("ko-KR")}`
 }
 
 /**
@@ -187,6 +220,12 @@ export function formatBp(value: number | null | undefined, signed = false): stri
 export function formatLevel(value: number | null | undefined): string {
   if (value === null || value === undefined) return "-"
   return value.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** 지수 포인트 변화 — 부호 + 소수 2자리(+12.34 · −300.00, 시안 Home-KR·US 지수 머리) */
+export function formatLevelChange(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${signOf(value, 2)}${formatLevel(Math.abs(value))}`
 }
 
 /** DB 시각(SQLite UTC 'YYYY-MM-DD HH:MM:SS' 또는 시간대 붙은 ISO) → 상대 표기. 비면 "-" */
@@ -210,4 +249,29 @@ export function formatTwdEok(thousand: number | null | undefined): string {
   return Math.abs(eok) >= 1000
     ? `${Math.round(eok).toLocaleString("ko-KR")}억`
     : `${eok.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}억`
+}
+
+/** 건수 줄임 — 1천 이상은 천 단위 소수 1자리('1.1천'·'25.3천', 피드 소스 칩). null은 '-' */
+export function formatCountShort(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "-"
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}천`
+  return String(value)
+}
+
+/** 원 단위 주가를 축 눈금용으로 짧게 — 1만 이상은 '82만', 그 아래는 천 단위 쉼표 */
+export function formatWonShort(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "-"
+  return value >= 10_000 ? `${formatNumber(Math.round(value / 10_000))}만` : formatNumber(Math.round(value))
+}
+
+/** 소요 시간 ms → "3.1초" (관리자 작업·실행 내역) */
+export function formatSeconds(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return "-";
+  return `${(ms / 1000).toFixed(1)}초`;
+}
+
+/** 예측시장 확률(0~100) — 정수 % (Kalshi 표기와 같게, 예: 85%) */
+export function formatProbability(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-"
+  return `${Math.round(value)}%`
 }

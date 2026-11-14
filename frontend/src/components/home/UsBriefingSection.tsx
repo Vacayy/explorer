@@ -29,7 +29,7 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
   const { data: dates = [] } = useUsBriefingDates()
   const [open, setOpen] = useState(false)
 
-  if (isLoading) return <Skeleton className="h-80 w-full rounded-xl" />
+  if (isLoading) return <Skeleton className="h-80 w-full rounded-card" />
   if (isError || !data || data.status === "error")
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
   if (data.movers.length === 0)
@@ -76,7 +76,7 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
       )}
       {!embedded && <UsBriefingSourcesDialog />}
       {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
-      {!embedded && <Link to="/us" className="text-caption text-muted-foreground hover:text-foreground">미국 종목 →</Link>}
+      {!embedded && <Link to="/follow/transcripts" className="text-caption text-muted-foreground hover:text-foreground">컨콜 기업 목록 →</Link>}
     </div>
   )
   return (
@@ -126,8 +126,10 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
         {/* 종합 — 소제목 없이 한 편의 글로 (D-114). 매크로 문단의 [n]은 원문 링크 (D-206) */}
         {synthesis && (
           <div className="space-y-2">
+            {/* 매크로·기업 각각 두 문단 — 필드 안의 빈 줄로 나뉜다(옛 브리핑은 한 문단 그대로) */}
             {[synthesis.index_summary, synthesis.drivers, synthesis.issues]
               .filter(Boolean)
+              .flatMap((field) => (field as string).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean))
               .map((para, i) => (
                 <p key={i} className="text-reading text-foreground/90">
                   <CitedText text={para} sources={sources} />
@@ -151,7 +153,7 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
                 <span className="w-12 shrink-0 text-right tabular-nums">{c.share_pct}%</span>
                 <span className={`w-14 shrink-0 text-right tabular-nums ${chg(c.median_change)}`}>{formatPercent(c.median_change)}</span>
                 {/* 좁은 화면은 막대 폭이 줄마다 같도록 배지 자리를 늘 비워 둔다 */}
-                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up border-up/40">신규</Badge>}</span>
+                <span className="flex w-10 shrink-0 justify-end sm:contents">{c.has_new && <Badge variant="outline" className="text-caption shrink-0 text-up-ink border-up/40">신규</Badge>}</span>
                 <span className="hidden sm:block text-caption text-muted-foreground truncate min-w-0 flex-1">{c.tickers.join(" · ")}</span>
               </div>
             ))}
@@ -200,10 +202,10 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
   )
 }
 
-/** 등락률 색 — 한국 컨벤션(상승=빨강 text-up, 하락=파랑 text-down). */
+/** 등락률 색 — 한국 컨벤션(상승=빨강 text-up-ink, 하락=파랑 text-down-ink). */
 function chg(v: number | null): string {
   if (v == null || v === 0) return "text-muted-foreground"
-  return v > 0 ? "text-up" : "text-down"
+  return v > 0 ? "text-up-ink" : "text-down-ink"
 }
 
 function MoverRow({ m }: { m: UsMoverBrief }) {
@@ -215,7 +217,7 @@ function MoverRow({ m }: { m: UsMoverBrief }) {
         <span className={`text-xs tabular-nums shrink-0 ${chg(m.change_pct)}`}>{m.change_pct != null ? formatPercent(m.change_pct) : ""}</span>
         <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
           {m.flags.map((f) => (
-            <Badge key={f} variant="outline" className={`text-caption shrink-0 ${f === "신규 진입" ? "text-up border-up/40" : ""}`}>{f}</Badge>
+            <Badge key={f} variant="outline" className={`text-caption shrink-0 ${f === "신규 진입" ? "text-up-ink border-up/40" : ""}`}>{f}</Badge>
           ))}
         </div>
         {m.narrative && (
@@ -255,7 +257,7 @@ function CandidateList({ icon: Icon, title, items, accent }: {
 
 /** `[n]` 출처 표식 → 위첨자 링크. 마우스를 올리면 출처(매체·제목·시각)를 보인다 — 하단 출처 목록 대신.
  * 출처 목록에 없는 번호는 평문으로 둔다(구 브리핑 호환). */
-function CitedText({ text, sources }: { text: string; sources: UsBriefingSource[] }) {
+export function CitedText({ text, sources }: { text: string; sources: UsBriefingSource[] }) {
   const byN = new Map(sources.map((s) => [s.n, s]))
   return <>{text.split(/(\[\d+\])/).map((part, i) => {
     const src = byN.get(Number(part.match(/^\[(\d+)\]$/)?.[1]))

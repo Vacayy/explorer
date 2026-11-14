@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react"
 import { createChart, ColorType } from "lightweight-charts"
 import type { IChartApi, DeepPartial, ChartOptions } from "lightweight-charts"
+import { chartOptions, readChartTheme, useChartTheme } from "./chartTheme"
 
 interface LightweightChartProps {
   height?: number
@@ -8,27 +9,16 @@ interface LightweightChartProps {
   onChart?: (chart: IChartApi) => void
 }
 
+/** 구조 기본값. 색은 차트를 만든 뒤 chartOptions(토큰)로 칠하고, 테마가 바뀌면 다시 칠한다 (chartTheme.ts) */
 const DEFAULT_CHART_OPTIONS: DeepPartial<ChartOptions> = {
   layout: {
     background: { type: ColorType.Solid, color: "transparent" },
-    textColor: "#6b7280",
     fontFamily: "inherit",
   },
-  grid: {
-    vertLines: { color: "#f0f0f0" },
-    horzLines: { color: "#f0f0f0" },
-  },
-  crosshair: {
-    vertLine: { labelBackgroundColor: "#6b7280" },
-    horzLine: { labelBackgroundColor: "#6b7280" },
-  },
   timeScale: {
-    borderColor: "#e5e7eb",
     timeVisible: false,
   },
-  rightPriceScale: {
-    borderColor: "#e5e7eb",
-  },
+  rightPriceScale: {},
 }
 
 /**
@@ -62,6 +52,7 @@ export default function LightweightChart({ height = 350, options, onChart }: Lig
     }
 
     const chart = createChart(container, merged)
+    chart.applyOptions(chartOptions(readChartTheme()))
     chartRef.current = chart
 
     onChartRef.current?.(chart)
@@ -82,6 +73,9 @@ export default function LightweightChart({ height = 350, options, onChart }: Lig
       chartRef.current = null
     }
   }, [height])
+
+  const theme = useChartTheme()
+  useEffect(() => { chartRef.current?.applyOptions(chartOptions(theme)) }, [theme])
 
   return <div ref={containerRef} style={{ width: "100%", height }} />
 }

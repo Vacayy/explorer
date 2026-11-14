@@ -9,6 +9,7 @@
 - 저장: narratives 테이블 재사용 (kind='mega', topic=군집 라벨(LLM 명명),
   members_json=구성 토픽들, doc_ids_hash=멤버 해시) — 버전·supersede 규약 그대로
 """
+from pipeline.llm_policies import requested_model
 import hashlib
 import json
 import os
@@ -16,7 +17,7 @@ import os
 from database import get_connection
 from pipeline.narrative import (_call, _latest_narrative, causal_subgraph, list_narratives)
 
-MEGA_MODEL = os.getenv("NARRATIVE_MODEL", "opus")   # 최상위 종합 — 내러티브와 같은 티어
+MEGA_MODEL = requested_model('narrative.mega')  # existing cache/display field: requested model
 MIN_CLUSTER = 3        # 이 수 이상의 내러티브가 엮여야 '세계관'
 # 공유 인과 노드 하한 (D-123). 1이면 허브 1개만 겹쳐도 합쳐져 **군집이 곧 전체**가 됐다 —
 # 실측: 살아있는 topic 54개 중 49개가 한 군집. 임계별 분할: 1→[49,3] · 2→[21,3] · 3→[4,3] · 4→[3].
@@ -93,6 +94,7 @@ def _summary_of(body: str | None) -> str:
 
 def _build_prompt(members: list[dict], shared_block: str) -> str:
     from pipeline.lenses import LENS_WORLDVIEW
+    from pipeline.narrative import PROSE_STYLE, TITLE_RULE
     parts = "\n\n".join(
         f"### {m['topic']} — {m['title']}\n{_summary_of(m['body'])}" for m in members)
     return (
@@ -102,14 +104,14 @@ def _build_prompt(members: list[dict], shared_block: str) -> str:
         "하나의 구조(근본 동인 → 전개 갈래들 → 긴장과 관전 포인트)로.\n"
         'JSON만 출력: {"cluster_name": "군집 이름 (2~5단어, 예: AI 슈퍼사이클)", '
         '"title": "주장형 제목", "narrative": "마크다운 서사"}\n'
-        "title: 이 세계관이 말하는 결론을 한 문장으로 단언(질문형 금지 — 제목만 읽어도 전달돼야 "
-        "한다, D-120). 코퍼스가 뒷받침하는 것만, 수치 예측·과장 부사 금지.\n"
+        f"{TITLE_RULE.replace('이 서사가', '이 세계관이')}\n"
         "narrative 구조(섹션 고정):\n"
         "## 하나의 이야기\n부분 서사들이 왜 한 이야기인지 — 근본 동인과 전개 구조를 3~5문장으로.\n"
         "## 갈래들\n각 부분 서사가 이 세계관의 어느 단면인지 — '- **주제**: 한 줄' 불릿.\n"
         "## 세계관의 긴장\n이 거대 서사 전체가 딛고 선 전제와, 그것이 흔들리는 조건 1~2개.\n"
         "## 관전 포인트\n부분이 아니라 전체의 방향을 판가름할 신호 2~3개 ('- ' 불릿).\n"
         "규율: 부분 서사에 없는 사실을 지어내지 마라. 전체 700자 내외. 내부 코드·약어 노출 금지.\n"
+        f"{PROSE_STYLE}\n"
         f"\n{LENS_WORLDVIEW}\n"
         f"\n[공유 구조]\n{shared_block}\n\n[부분 서사들]\n{parts}"
     )
@@ -147,7 +149,7 @@ def compute_mega_narratives() -> dict:
             continue
         try:
             data = _call(_build_prompt(members, _shared_edges_block(conn, members)),
-                         model=MEGA_MODEL)
+                         task="narrative.mega")
         except Exception as e:  # noqa: BLE001 — 배치라 한 군집 실패가 전체를 막지 않게
             results[label] = f"error:{str(e)[:80]}"
             continue

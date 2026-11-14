@@ -5,6 +5,7 @@ SEC 실적 공시가 오면 발표일을 그 날짜로 교정한다. 섹터는 �
 (M7처럼 섞인 그룹은 종목 단위로 나눈다). 숫자(주가·거래량·목표가·컨센서스)는 LLM 없이,
 글(발표 전 기대·섹터 요약)은 핵심 종목·섹터에만 sonnet으로 만든다.
 """
+from pipeline import llm
 import hashlib
 import json
 import re
@@ -109,6 +110,11 @@ def sync_events(conn, only: list[str] | None = None) -> dict:
                 (tk, q["year"], f"Q{q['quarter']}", q["date"], season_of(q["date"])["key"]))
             n += 1
     today = date.today().isoformat()
+    # 컨콜 녹취록을 받았으면 발표는 이미 있었다 — SEC 공시 확인이 늦어도 확정으로 본다
+    n += conn.execute(
+        "UPDATE earnings_events SET confirmed=1, updated_at=datetime('now') WHERE confirmed=0 AND event_date <= ? AND EXISTS "
+        "(SELECT 1 FROM transcripts t WHERE t.ticker=earnings_events.ticker AND t.fiscal_year=earnings_events.fiscal_year "
+        "AND t.fiscal_period=earnings_events.fiscal_period)", (today,)).rowcount
     for r in conn.execute(f"SELECT ticker, next_report_date FROM transcript_calendar WHERE next_report_date >= ? "
                           f"AND ticker IN ({','.join('?' * len(tickers))})", (today, *tickers)).fetchall():
         fye = fs[r["ticker"]].get("fiscal_year_end")
@@ -193,9 +199,48 @@ def path(conn, ticker: str, event_date: str, bench: str, before: int = 30, after
     return rows
 
 
+def season_timeline(conn, events: dict[str, str], bench: str, today: str) -> dict:
+    """섹터 시즌 차트 — 같은 달력 축 위의 업종 ETF 대비 누적 %p. 기준(0)은 창의 첫 거래일, 종목 모두 같다.
+    창: 첫 발표 7일 전부터 최소 5주, 마지막 발표 뒤 10일까지(오늘을 넘지 않음). events = 티커 → 발표일."""
+    if not events:
+        return {"start": None, "end": None, "view_end": None, "series": {}, "events": {}}
+    first, last = min(events.values()), max(events.values())
+    start = (date.fromisoformat(first) - timedelta(days=7)).isoformat()
+    end = min(today, max((date.fromisoformat(start) + timedelta(days=35)).isoformat(),
+                         (date.fromisoformat(last) + timedelta(days=10)).isoformat()))
+    bx = {r[0]: r[1] for r in conn.execute(
+        "SELECT trade_date, close FROM us_prices WHERE stock_code=? AND trade_date BETWEEN ? AND ? ORDER BY trade_date", (bench, start, end))}
+    days = sorted(bx)
+    series = {}
+    if days:
+        for t in events:
+            px = {r[0]: r[1] for r in conn.execute(
+                "SELECT trade_date, close FROM us_prices WHERE stock_code=? AND trade_date BETWEEN ? AND ?", (t, start, end))}
+            common = [d for d in days if px.get(d)]
+            if len(common) < 2:
+                continue
+            base, bbase = px[common[0]], bx[common[0]]
+            series[t] = [[d, round((px[d] / base - 1) * 100 - (bx[d] / bbase - 1) * 100, 2)] for d in common]
+    # 보이는 축은 시즌 한 달(창 시작 + 35일)과 아직 남은 발표일까지 — 데이터는 오늘에서 끝난다
+    view_end = max((date.fromisoformat(start) + timedelta(days=35)).isoformat(),
+                   (date.fromisoformat(last) + timedelta(days=3)).isoformat())
+    return {"start": start, "end": end, "view_end": view_end, "series": series, "events": events}
+
+
 def at(rows: list[dict], offset: int) -> float | None:
     hit = [r for r in rows if r["offset"] == offset]
     return hit[0]["excess"] if hit else None
+
+
+def quarter_excess(conn, ticker: str, event_date: str, bench: str, next_date: str | None, today: str) -> dict:
+    """분기 수익률 — 발표 전 종가(d1·d7과 같은 기준)부터 다음 발표 전 거래일 종가까지 업종 ETF 대비 초과 %p.
+    다음 발표가 아직 없으면 저장된 마지막 종가까지 재고 partial=True. 창은 이 계산에서만 다음 발표(또는 오늘)까지 넓힌다."""
+    end = next_date or today
+    rows = path(conn, ticker, event_date, bench, before=1, after=max(1, (date.fromisoformat(end) - date.fromisoformat(event_date)).days))
+    rows = [r for r in rows if r["offset"] >= 1 and (next_date is None or r["date"] < next_date)]
+    if not rows:
+        return {"dq": None, "dq_partial": None, "dq_end": None}
+    return {"dq": rows[-1]["excess"], "dq_partial": next_date is None, "dq_end": rows[-1]["date"]}
 
 
 def follow_label(d1: float | None, later: float | None) -> str | None:
@@ -245,7 +290,10 @@ def pt_window(conn, ticker: str, start: str, end: str) -> dict:
     srt = sorted(ch)
     return {"n": len(ch), "up": sum(1 for c in ch if c > 0), "down": sum(1 for c in ch if c < 0),
             "median_pct": round(srt[len(srt) // 2], 1) if srt else None,
-            "examples": [f"{r['firm']} ${r['pt_from']:.0f}→${r['pt_to']:.0f}" for r in sorted(rows, key=lambda r: -abs(r['pt_to'] / r['pt_from'] - 1))[:3]]}
+            "examples": [f"{r['firm']} ${r['pt_from']:.0f}→${r['pt_to']:.0f}" for r in sorted(rows, key=lambda r: -abs(r['pt_to'] / r['pt_from'] - 1))[:3]],
+            # 전체 목록(날짜순) — 콜 상세 '그 뒤 · 자세히 보기'
+            "changes": [{"date": r["graded_at"][:10], "firm": r["firm"], "pt_from": r["pt_from"], "pt_to": r["pt_to"],
+                         "pct": round((r["pt_to"] / r["pt_from"] - 1) * 100, 1)} for r in rows]}
 
 
 # ---------- 핵심 종목 ----------
@@ -453,12 +501,12 @@ def snapshot_expectation(ticker: str, fy: int, fp: str, snap: str, qualitative: 
         src = "\n\n".join(f"[{i + 1}] {d['source']} · {cr._kst(d['published_at'])} · {d['title'] or ''}\n{d['excerpt']}" for i, d in enumerate(docs)) \
             or "(발표 전 7일 동안 찾은 자료 없음)"
         h = hashlib.sha1(json.dumps([[d["id"] for d in docs], PROMPT_VERSION]).encode()).hexdigest()
-        from pipeline.enrich import _call_claude_code, llm_available
+        from pipeline.enrich import llm_available
         from pipeline.llm import extract_json
         if llm_available():
-            raw = _call_claude_code(_EXPECT_PROMPT.format(
+            raw = llm.run(_EXPECT_PROMPT.format(
                 company=f["company_name"] or ticker, ticker=ticker, event_date=ev["event_date"], quant=_quant_lines(quant),
-                prev=json.dumps(prev, ensure_ascii=False) if prev else "(없음)", sources=src), model="sonnet", timeout=300)
+                prev=json.dumps(prev, ensure_ascii=False) if prev else "(없음)", sources=src), task='earnings.expectation').text
             j = extract_json(raw) or {}
             issues, points = j.get("issues"), j.get("points")
             positioning, thin = j.get("positioning"), j.get("thin")
@@ -527,16 +575,30 @@ VERDICT_KO = {"hit": "맞힘", "underweighted": "덜 봄", "noise": "과하게 �
 
 # ---------- 섹터 요약 ----------
 
+# v2(2026-11-11): 한 줄이 수치 나열이 되던 것 → 해석 한 줄 + 산업 내러티브. 버전이 바뀌면 입력 해시가 달라져 다음 실행에서 다시 쓴다
+# v3(2026-11-11): 섹터마다 같은 서두('수요는 의심하지 않았고')로 시작하던 것 → 다른 섹터 요약을 주고 이 섹터만의 점을 앞에, 티커 대신 기업명
+THEME_PROMPT_VERSION = "v3"
+
 _THEME_PROMPT = """미국 실적 시즌 {season} '{sector}' 섹터의 발표별 시장 반응 정리다. 이 섹터에서 이번 시즌 시장이 무엇을 반기고 무엇을 문제 삼았는지 종합하라.
 재료에 있는 것만 쓴다. 종목 이름과 숫자를 근거로 붙인다. 투자 판단을 하지 않는다.
+기업은 티커가 아니라 이름으로 쓴다 — 한국에서 통용되는 한글 표기가 있으면 그것(예: GE 버노바, 블룸에너지, 카메코), 없으면 영문명. 모든 필드에 적용한다.
+문장은 존댓말로 쓴다 — 합니다체('~했습니다', '~입니다')를 뼈대로, 필요하면 해요체를 한두 번 섞는다(내러티브와 같은 문체, D-291). 반말·해라체('~했다') 금지.
+one_line과 narrative는 숫자·종목 나열이 아니라 해석이다 — 발표들을 관통하는 공통점을 찾아 이 산업이 지금 어떤 국면이고 시장이 무엇에 값을 매기는지(예: 수요는 의심하지 않지만 조달·희석·현금흐름을 따진다) 말한다.
+one_line은 [다른 섹터 요약]과 겹치는 공통 서두(예: 'AI 수요 자체는 의심하지 않았고')로 시작하지 않는다. 이 섹터에서만 보인 점 — 다른 섹터와 갈린 반응, 이 산업 고유의 쟁점 — 을 문장 앞에 둔다. 공통 흐름은 필요하면 narrative에서 짧게 잇는다.
+숫자는 해석을 받치는 근거로 한두 개만 쓰고, %p 범위나 종목별 수치를 늘어놓지 않는다. 숫자 나열은 welcomed·questioned에 둔다.
 JSON 하나만 출력:
-{{"verdict": "반김 우세|실망 우세|엇갈림", "one_line": "한 문장 요약", "welcomed": ["시장이 반긴 것(종목)"], "questioned": ["시장이 문제 삼은 것(종목)"],
+{{"verdict": "반김 우세|실망 우세|엇갈림", "one_line": "이번 시즌 이 섹터에서 시장이 무엇에 값을 매겼는지 한 문장(통찰, 숫자 나열 금지)",
+  "narrative": "산업 내러티브 3~4문장 — 반긴 재료와 벌한 재료의 공통점, 그것이 이 산업의 수요·투자·자금 사이클에 대해 말해 주는 것, 남은 발표에서 갈릴 지점",
+  "welcomed": ["시장이 반긴 것(종목)"], "questioned": ["시장이 문제 삼은 것(종목)"],
   "change_note": "직전 요약과 비교해 무엇이 바뀌었나(직전 요약이 없으면 null)",
   "next": ["아직 발표 안 한 이 섹터 종목을 볼 때 쓸 기준(종목 이름 포함)"],
   "vs_last_season": ["지난 시즌 같은 섹터 요약과 비교(없으면 빈 배열)"]}}
 
 [발표별 반응]
 {rows}
+
+[다른 섹터 요약(이번 시즌)]
+{others}
 
 [직전 요약]
 {prev}
@@ -546,6 +608,12 @@ JSON 하나만 출력:
 
 [아직 발표 안 한 종목]
 {pending}"""
+
+
+def _other_sector_lines(conn, season: str, sec: str) -> str:
+    rows = conn.execute("SELECT sector, body_json FROM season_themes WHERE season=? AND sector<>? AND id IN "
+                        "(SELECT max(id) FROM season_themes WHERE season=? GROUP BY sector)", (season, sec, season)).fetchall()
+    return "\n".join(f"- {sector_name(r[0])}: {json.loads(r[1]).get('one_line')}" for r in rows) or "(없음)"
 
 
 def refresh_themes(conn, season: str) -> dict:
@@ -561,12 +629,12 @@ def refresh_themes(conn, season: str) -> dict:
         if f:
             by.setdefault(f["sector"], []).append(r)
     made, skipped = 0, 0
-    from pipeline.enrich import _call_claude_code, llm_available
+    from pipeline.enrich import llm_available
     from pipeline.llm import extract_json
     for sec, items in by.items():
         if len(items) < 2:
             continue
-        h = hashlib.sha1(json.dumps(sorted((r["ticker"], r["meta_json"]) for r in items)).encode()).hexdigest()
+        h = hashlib.sha1(json.dumps([sorted((r["ticker"], r["meta_json"]) for r in items), THEME_PROMPT_VERSION]).encode()).hexdigest()
         prev = conn.execute("SELECT * FROM season_themes WHERE season=? AND sector=? ORDER BY id DESC LIMIT 1", (season, sec)).fetchone()
         if prev and prev["input_hash"] == h:
             skipped += 1
@@ -576,20 +644,20 @@ def refresh_themes(conn, season: str) -> dict:
         lines = []
         for r in items:
             m = json.loads(r["meta_json"])
-            lines.append(f"- {r['ticker']} {r['event_date']}: 해석 {m.get('interpretation')} · 첫 거래일 {m.get('d1')}%p · 일주일 {m.get('d7')}%p · "
+            lines.append(f"- {r['ticker']}({fs[r['ticker']].get('company_name') or r['ticker']}) {r['event_date']}: 해석 {m.get('interpretation')} · 첫 거래일 {m.get('d1')}%p · 일주일 {m.get('d7')}%p · "
                          f"{m.get('headline') or ''} · 반긴 것 {m.get('welcomed')} · 문제 삼은 것 {m.get('questioned')}")
         last_season = conn.execute("SELECT body_json FROM season_themes WHERE season<? AND sector=? ORDER BY season DESC, id DESC LIMIT 1",
                                    (season, sec)).fetchone()
         reported = {r["ticker"] for r in items}
-        pending = [f"{t} {e}" for t, e in conn.execute(
+        pending = [f"{t}({fs[t].get('company_name') or t}) {e}" for t, e in conn.execute(
             "SELECT ticker, event_date FROM earnings_events WHERE season=? AND event_date >= ?", (season, date.today().isoformat()))
             if fs.get(t, {}).get("sector") == sec and t not in reported]
         prompt = _THEME_PROMPT.format(season=season, sector=sector_name(sec), rows="\n".join(lines),
                                       prev=prev["body_json"] if prev else "(없음)", last=last_season[0] if last_season else "(없음)",
-                                      pending=", ".join(pending) or "(없음)")
+                                      pending=", ".join(pending) or "(없음)", others=_other_sector_lines(conn, season, sec))
         conn.commit()
         try:
-            j = extract_json(_call_claude_code(prompt, model="sonnet", timeout=300)) or {}
+            j = extract_json(llm.run(prompt, task='earnings.themes').text) or {}
         except Exception as e:  # noqa: BLE001
             print(f"[earnings_chain] 섹터 요약 실패 {sec}: {e}")
             continue
@@ -621,6 +689,38 @@ def _numbers(conn, ev: dict, sector: str) -> dict:
             "follow": follow_label(d1, d30 if d30 is not None else (d7 if d7 is not None else latest))}
 
 
+def season_windows(conn, fs: dict | None = None) -> list[dict]:
+    """시즌별 발표 구간(팔로우 기업 첫 발표일~마지막 발표일, 미확정 예정일 포함) — 홈 미국 시장의 '시즌 사이' 판정용(ia-redesign §4.28)."""
+    fs = fs if fs is not None else follows(conn)
+    rows = {}
+    for r in conn.execute("SELECT season, ticker, event_date, confirmed FROM earnings_events ORDER BY event_date"):
+        if r["ticker"] not in fs or not r["season"]:
+            continue
+        w = rows.setdefault(r["season"], {"key": r["season"], "label": season_by_key(r["season"])["label"],
+                                          "first": r["event_date"], "last": r["event_date"], "events": 0, "confirmed": 0})
+        w["last"] = max(w["last"], r["event_date"])
+        w["events"] += 1
+        w["confirmed"] += 1 if r["confirmed"] else 0
+    return sorted(rows.values(), key=lambda w: w["first"])
+
+
+def season_calendar(evs: list[dict], fs: dict, core: dict) -> list[dict]:
+    """발표 캘린더(ia-redesign §4.6a) — 팔로우 기업의 이번 시즌 발표를 날짜별로 센다. 새 테이블 없이 earnings_events 집계.
+    total = 그날 발표 수, core = 그중 핵심 종목, confirmed = 회사가 확정한 수(나머지는 예정일), tickers = 그날 발표 종목(확정 먼저)."""
+    days: dict[str, dict] = {}
+    for e in evs:
+        if e["ticker"] not in fs:
+            continue
+        d = days.setdefault(e["event_date"], {"date": e["event_date"], "total": 0, "core": 0, "confirmed": 0, "tickers": []})
+        if e["ticker"] in d["tickers"]:
+            continue
+        d["total"] += 1
+        d["core"] += 1 if core.get(e["ticker"]) else 0
+        d["confirmed"] += 1 if e["confirmed"] else 0
+        d["tickers"].append(e["ticker"])
+    return [days[k] for k in sorted(days)]
+
+
 def season_overview(season: str | None = None) -> dict:
     conn = get_connection()
     today = date.today().isoformat()
@@ -641,7 +741,7 @@ def season_overview(season: str | None = None) -> dict:
                 "fiscal": f"FY{e['fiscal_year']} {e['fiscal_period']}", "transcript_id": e["transcript_id"],
                 "reaction": e["reaction_status"], "core": core.get(e["ticker"], []),
                 "eps_surprise": e["eps_surprise"], "headline": (meta or {}).get("headline"),
-                "interpretation": (meta or {}).get("interpretation")}
+                "interpretation": (meta or {}).get("interpretation"), "confirmed": bool(e["confirmed"])}
         if e["event_date"] <= today and e["confirmed"]:
             item.update(_numbers(conn, e, sec))
             reported.append(item)
@@ -694,6 +794,8 @@ def season_overview(season: str | None = None) -> dict:
         "transcripts": [r[0] for r in conn.execute("SELECT DISTINCT ticker FROM transcripts WHERE date(fetched_at, '+9 hours')=?", (kst,))],
     }
     last_run = conn.execute("SELECT max(ran_at) FROM job_runs WHERE job='cm_chain'").fetchone()[0]
+    windows = season_windows(conn, fs)
+    calendar = season_calendar(evs, fs, core)
     core_rows = [{"ticker": t, "name": fs[t]["company_name"], "reasons": r} for t, r in sorted(core.items()) if t in fs]
     conn.close()
     beat_n = sum(1 for i in reported if (i["eps_surprise"] or 0) > 0)
@@ -703,7 +805,7 @@ def season_overview(season: str | None = None) -> dict:
                        "up": sum(1 for i in reported if (i["d1"] or 0) > 0), "miss": sum(1 for i in reported if (i["eps_surprise"] or 0) < 0),
                        "miss_up": len([i for i in reported if (i["eps_surprise"] or 0) < 0 and (i["d1"] or 0) > 0]), "reactions": sum(1 for i in reported if i["reaction"]),
                        "reactions_final": sum(1 for i in reported if i["reaction"] == "final")},
-            "changes": changes, "last_run": last_run,
+            "changes": changes, "last_run": last_run, "windows": windows, "calendar": calendar,
             "sectors": sector_rows, "top_up": top_up, "miss_up": miss_up, "beat_down": beat_down, "reversed": reversed_[:8],
             "upcoming": sorted(upcoming, key=lambda i: i["event_date"])[:12],
             "evals": evals, "core": {"criteria": CORE_REASONS, "tickers": core_rows},
@@ -721,7 +823,7 @@ def sector_detail(key: str, season: str | None = None) -> dict:
         f"SELECT DISTINCT season FROM earnings_events WHERE ticker IN ({','.join('?' * len(members))}) AND confirmed=1 ORDER BY season DESC LIMIT 4",
         tuple(members))][::-1] if members else []
     today = date.today().isoformat()
-    companies, paths = [], {}
+    companies = []
     evs = [e for e in _event_rows(conn, season) if e["ticker"] in members]
     for e in evs:
         meta = json.loads(e["meta_json"]) if e["meta_json"] else None
@@ -730,9 +832,8 @@ def sector_detail(key: str, season: str | None = None) -> dict:
                "headline": (meta or {}).get("headline"), "status": "reported" if e["event_date"] <= today and e["confirmed"] else "upcoming"}
         if row["status"] == "reported":
             row.update(_numbers(conn, e, key))
-            p = path(conn, e["ticker"], e["event_date"], etf, before=5, after=21)
-            paths[e["ticker"]] = [[r["offset"], r["excess"]] for r in p]
         companies.append(row)
+    timeline = season_timeline(conn, {e["ticker"]: e["event_date"] for e in evs}, etf, today)
     for t, f in members.items():
         if not any(c["ticker"] == t for c in companies):
             companies.append({"ticker": t, "name": f["company_name"], "status": "none", "core": core.get(t, [])})
@@ -754,7 +855,76 @@ def sector_detail(key: str, season: str | None = None) -> dict:
     latest = themes[-1] if themes else None
     return {"key": key, "name": sector_name(key), "etf": etf, "season": season, "seasons": seasons,
             "members": [{"ticker": t, "name": f["company_name"]} for t, f in members.items()],
-            "theme": latest, "theme_history": themes, "companies": companies, "paths": paths, "history": history}
+            "theme": latest, "theme_history": themes, "companies": companies, "timeline": timeline, "history": history}
+
+
+def _history(conn, ticker: str, sector: str, etf: str, today: str) -> list[dict]:
+    """분기별 기록 — 확정 발표 최근 여섯, 최신순. 콜 상세와 다가오는 발표 보기가 같이 쓴다."""
+    hist = []
+    next_date = None   # 최신순이라 바로 앞 행이 다음 발표
+    for e in conn.execute("SELECT e.*, t2.id tid, r.meta_json, r.status FROM earnings_events e LEFT JOIN transcripts t2 ON t2.ticker=e.ticker "
+                          "AND t2.fiscal_year=e.fiscal_year AND t2.fiscal_period=e.fiscal_period LEFT JOIN transcript_reactions r ON r.transcript_id=t2.id "
+                          "WHERE e.ticker=? AND e.confirmed=1 AND e.event_date <= ? ORDER BY e.event_date DESC LIMIT 6",
+                          (ticker, today)):
+        n = _numbers(conn, e, sector)
+        dq = quarter_excess(conn, ticker, e["event_date"], etf, next_date, today)
+        next_date = e["event_date"]
+        m = json.loads(e["meta_json"]) if e["meta_json"] else None
+        pt = pt_window(conn, ticker, e["event_date"], (date.fromisoformat(e["event_date"]) + timedelta(days=8)).isoformat())
+        hist.append({"fiscal": f"FY{e['fiscal_year']} {e['fiscal_period']}", "event_date": e["event_date"], "season": e["season"],
+                     "transcript_id": e["tid"], "d1": n["d1"], "d7": n["d7"], "d30": n["d30"], "follow": n["follow"], **dq,
+                     "pt_up": pt["up"] if pt["n"] else None, "pt_down": pt["down"] if pt["n"] else None,
+                     "headline": (m or {}).get("headline"), "reaction": e["status"]})
+    return hist
+
+
+def next_event(conn, ticker: str, today: str):
+    """다가오는 발표 — 오늘 이후(오늘 포함) 가장 가까운, 아직 녹취록이 없는 earnings_events 행(확정·예정 모두)."""
+    return conn.execute(
+        "SELECT * FROM earnings_events e WHERE e.ticker=? AND e.event_date >= ? AND NOT EXISTS (SELECT 1 FROM transcripts t "
+        "WHERE t.ticker=e.ticker AND t.fiscal_year=e.fiscal_year AND t.fiscal_period=e.fiscal_period) "
+        "ORDER BY e.event_date LIMIT 1", (ticker, today)).fetchone()
+
+
+def _weekdays_between(a: str, b: str) -> int:
+    """a와 b 사이(양끝 제외)의 평일 수 — 휴장일은 모른다(근사)."""
+    d, end, n = date.fromisoformat(a) + timedelta(days=1), date.fromisoformat(b), 0
+    while d < end:
+        n += d.weekday() < 5
+        d += timedelta(days=1)
+    return n
+
+
+def upcoming_detail(ticker: str, today: date | None = None) -> dict:
+    """콜 상세의 '다가오는 분기' — 발표 전 기대·오늘까지의 발표 전 주가(업종 ETF 대비)·최근 30일 목표가 변경·분기별 기록. LLM 0.
+    series.offset은 발표일 기준(발표일 = 0)으로 맞춘다: 최근 종가 = -(남은 평일 + 1). 기준(0%)은 최근 종가."""
+    today_s = (today or date.today()).isoformat()
+    conn = get_connection()
+    try:
+        ev = next_event(conn, ticker, today_s)
+        if not ev:
+            raise LookupError("다가오는 실적 발표가 없습니다")
+        f = follows(conn).get(ticker) or {"ticker": ticker, "company_name": ticker, "sector": "x:기타"}
+        etf = sector_etf(f["sector"])
+        exp = latest_expectation(conn, ticker, ev["fiscal_year"], ev["fiscal_period"])
+        # 창은 오늘까지 — 발표가 멀어도 최근 시세를 그린다(오늘 다음 날을 가상의 발표일로 읽고 offset만 옮긴다)
+        tomorrow = (date.fromisoformat(today_s) + timedelta(days=1)).isoformat()
+        rows = [r for r in path(conn, ticker, tomorrow, etf, before=21, after=0) if r["offset"] < 0]
+        if rows:
+            shift = _weekdays_between(rows[-1]["date"], ev["event_date"])
+            rows = [{**r, "offset": r["offset"] - shift} for r in rows]
+        start = (date.fromisoformat(today_s) - timedelta(days=30)).isoformat()
+        pt_before = pt_window(conn, ticker, start, (date.fromisoformat(today_s) + timedelta(days=1)).isoformat())
+        hist = _history(conn, ticker, f["sector"], etf, today_s)
+    finally:
+        conn.close()
+    return {"ticker": ticker, "name": f["company_name"], "sector": f["sector"], "sector_name": sector_name(f["sector"]),
+            "etf": etf, "event_date": ev["event_date"], "fiscal_year": ev["fiscal_year"], "fiscal_period": ev["fiscal_period"],
+            "confirmed": bool(ev["confirmed"]), "days_to_event": (date.fromisoformat(ev["event_date"]) - date.fromisoformat(today_s)).days,
+            "expectation": exp, "reaction_meta": None, "reaction_status": None,
+            "series": [{"date": r["date"], "offset": r["offset"], "ret": r["ret"], "bench": r["bench"], "excess": r["excess"],
+                        "volume": r["volume"]} for r in rows],
+            "mentions": [], "pt_after": None, "pt_before": pt_before, "history": hist}
 
 
 def chain_detail(transcript_id: int) -> dict:
@@ -784,19 +954,7 @@ def chain_detail(transcript_id: int) -> dict:
         for d in docs:
             k = cr._kst(d["published_at"])[:5]
             mentions[k] = mentions.get(k, 0) + 1
-    # 분기별 기록
-    hist = []
-    for e in conn.execute("SELECT e.*, t2.id tid, r.meta_json, r.status FROM earnings_events e LEFT JOIN transcripts t2 ON t2.ticker=e.ticker "
-                          "AND t2.fiscal_year=e.fiscal_year AND t2.fiscal_period=e.fiscal_period LEFT JOIN transcript_reactions r ON r.transcript_id=t2.id "
-                          "WHERE e.ticker=? AND e.confirmed=1 AND e.event_date <= ? ORDER BY e.event_date DESC LIMIT 6",
-                          (t["ticker"], date.today().isoformat())):
-        n = _numbers(conn, e, f["sector"])
-        m = json.loads(e["meta_json"]) if e["meta_json"] else None
-        pt = pt_window(conn, t["ticker"], e["event_date"], (date.fromisoformat(e["event_date"]) + timedelta(days=8)).isoformat())
-        hist.append({"fiscal": f"FY{e['fiscal_year']} {e['fiscal_period']}", "event_date": e["event_date"], "season": e["season"],
-                     "transcript_id": e["tid"], "d1": n["d1"], "d7": n["d7"], "d30": n["d30"], "follow": n["follow"],
-                     "pt_up": pt["up"] if pt["n"] else None, "pt_down": pt["down"] if pt["n"] else None,
-                     "headline": (m or {}).get("headline"), "reaction": e["status"]})
+    hist = _history(conn, t["ticker"], f["sector"], etf, date.today().isoformat())
     pt_after = pt_window(conn, t["ticker"], event_date, (date.fromisoformat(event_date) + timedelta(days=8)).isoformat()) if event_date else None
     conn.close()
     return {"ticker": t["ticker"], "name": f["company_name"], "sector": f["sector"], "sector_name": sector_name(f["sector"]),
@@ -814,7 +972,10 @@ def daily(max_llm: int = 20) -> dict:
     LLM 호출은 회차당 max_llm으로 막는다(못 한 것은 다음 회차)."""
     from pipeline import call_reaction as cr
     from pipeline.transcript import refresh_calendar
-    out: dict = {"aliases": cr.ensure_ko_aliases()}   # 새 팔로우의 한글 별칭(없는 것만, haiku)
+    try:
+        out: dict = {"aliases": cr.ensure_ko_aliases()}   # 새 팔로우의 한글 별칭(없는 것만, haiku)
+    except Exception as e:  # noqa: BLE001 — 별칭은 보조 단계. 실패해도 이벤트 동기화·반응은 돌아야 한다(11/4~ 멈춤 사고)
+        out = {"aliases": f"error {type(e).__name__}: {str(e)[:120]}"}
     conn = get_connection()
     today = date.today()
     season = season_of(today.isoformat())["key"]

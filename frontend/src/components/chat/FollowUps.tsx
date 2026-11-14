@@ -32,15 +32,15 @@ export function carriedFollowUps(messages: ChatMessage[]): FollowUp[] {
 
 function FollowUpList({ items, onPick }: { items: FollowUp[]; onPick: (q: string) => void }) {
   return (
-    <div className="flex flex-col items-start gap-1.5">
+    <div className="flex flex-wrap items-start gap-1.5">
       {items.map((f, i) => {
         const meta = KIND[f.kind] ?? KIND.next
         return (
-          <Button key={i} variant="outline" onClick={() => onPick(f.question)}
-            className="h-auto max-w-full justify-start gap-2 rounded-xl px-3 py-2 text-left font-normal whitespace-normal">
-            <meta.Icon className="mt-0.5 size-3.5 shrink-0 text-hypothesis" />
-            <span className="min-w-0 text-[13px] leading-relaxed">{f.question}</span>
-            <span className="shrink-0 text-[11px] text-muted-foreground">{meta.label}</span>
+          <Button key={i} variant="outline" onClick={() => onPick(f.question)} data-follow-up={f.kind}
+            className="h-auto min-h-8 max-w-full justify-start gap-1.5 rounded-full px-3 py-1.5 text-left font-normal whitespace-normal max-md:min-h-10">
+            <meta.Icon className="size-3.5 shrink-0 text-hypothesis" aria-hidden />
+            <span className="min-w-0 text-[13px] leading-snug">{f.question}</span>
+            <span className="sr-only">({meta.label})</span>
           </Button>
         )
       })}
@@ -49,7 +49,7 @@ function FollowUpList({ items, onPick }: { items: FollowUp[]; onPick: (q: string
 }
 
 /**
- * 후속 질문 제안 — 마지막 답변 아래에만 (docs/specs/chat-page.md §4). 앞 답에서 남은 것은 따로 이어 보인다.
+ * 후속 질문 제안 — 마지막 답변 아래 칩 줄(시안 Chat, docs/specs/chat-page.md §4). 앞 답에서 남은 것은 따로 이어 보인다.
  * 클릭은 **컴포저에 채우기**이지 바로 전송이 아니다 — 한 턴이 100초·실비라 오클릭을 막고,
  * 사용자가 문구를 다듬을 여지를 남긴다.
  */
@@ -63,7 +63,7 @@ export function FollowUps({ items, carried = [], onPick }: {
     <div className="space-y-3 pt-1">
       {items.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">이어서 물어볼 것</p>
+          <p className="sr-only">이어서 물어볼 것</p>
           <FollowUpList items={items} onPick={onPick} />
         </div>
       )}

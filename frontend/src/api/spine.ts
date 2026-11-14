@@ -1,7 +1,7 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
-import type { AskResponse, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SignalsSummary, SpineSignalsResponse, UsDossier, UsList, UsWorldModel } from "@/types";
+import type { AskResponse, AttachmentRef, ChatTargetKind, ChatTargetSearch, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SignalsSummary, SpineSignalsResponse, UsDossier, UsWorldModel } from "@/types";
 
 export interface SpineFeedParams {
   q?: string;
@@ -11,6 +11,8 @@ export interface SpineFeedParams {
   topic?: string;
   page?: number;
   size?: number;
+  days?: number;
+  sort?: "relevance" | "latest";
 }
 
 export const spineKeys = {
@@ -27,7 +29,6 @@ export const spineKeys = {
   stockLens: (code: string, market: string) => [...spineKeys.all, "stock-lens", code, market] as const,
   stockLensCompute: (code: string, type: string, market: string) => [...spineKeys.all, "stock-lens-compute", code, type, market] as const,
   usDossier: (ticker: string) => [...spineKeys.all, "us-dossier", ticker] as const,
-  usList: () => [...spineKeys.all, "us-list"] as const,
   usWorldModel: (ticker: string) => [...spineKeys.all, "us-worldmodel", ticker] as const,
 };
 
@@ -57,10 +58,6 @@ export const usDossierQuery = (ticker: string) =>
     enabled: !!ticker,
   });
 
-/** 미국 종목 디렉토리 — transcript_follow 그룹별 + 캐시된 렌즈 stance (LLM 없음) */
-export const usListQuery = () =>
-  apiQuery<UsList>({ key: spineKeys.usList(), url: `/api/spine/us`, staleTime: STALE.medium });
-
 /** 미국 종목 월드모델 위치 — 인과 엣지 + 걸린 내러티브 (LLM 없음) */
 export const usWorldModelQuery = (ticker: string) =>
   apiQuery<UsWorldModel>({
@@ -83,6 +80,17 @@ export const conversationDetailQuery = (id: number, enabled: boolean) =>
     key: spineKeys.conversation(id),
     url: `/api/spine/conversations/${id}`,
     staleTime: STALE.medium,
+    enabled,
+  });
+
+/** 대화에 붙일 대상 후보 — 종류별 묶음 ('전체'는 종류마다 4개). LLM 없음 */
+export const chatTargetsQuery = (q: string, kind: ChatTargetKind | null, enabled = true) =>
+  apiQuery<ChatTargetSearch>({
+    key: [...spineKeys.all, "chat-targets", q, kind ?? "all"],
+    url: "/api/spine/chat/targets",
+    params: kind ? { q, kind } : { q },
+    staleTime: STALE.short,
+    keepPrevious: true,
     enabled,
   });
 
@@ -146,6 +154,8 @@ export async function askQuestion(params: {
   quote?: { message_id?: number; doc_id?: number; doc_title?: string; selected: string; block: string; citations: { n: number; kind?: string; title: string; doc_id: number | null }[] };
   /** AI 대화 패널이 보는 화면 — 지시어 해석용, 메시지 본문에는 저장되지 않는다 (docs/specs/app-shell.md §5) */
   page_context?: PageContext;
+  /** 지금 붙어 있는 대상 전체 — ×로 뺀 것은 빠진 채로 보낸다 (ia-redesign §4.14a) */
+  attachments?: AttachmentRef[];
 }): Promise<AskResponse> {
   const { data } = await api.post<AskResponse>("/api/spine/ask", params, { timeout: 300_000 });
   return data;

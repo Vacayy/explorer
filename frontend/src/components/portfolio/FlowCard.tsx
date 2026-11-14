@@ -20,7 +20,7 @@ export function FlowCard({ code }: { code: string }) {
           <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
             <span>14일 {total}건 · 오늘 {f.today}건 · 7일 평균 {f.avg7}</span>
             {f.surge && <Badge variant="outline" className="text-caption text-hypothesis border-hypothesis/40">언급 급증</Badge>}
-            {f.tone_shift && <Badge variant="outline" className="text-caption text-down border-down/40">부정 {f.neg_prev_pct}%→{f.neg_today_pct}%</Badge>}
+            {f.tone_shift && <Badge variant="outline" className="text-caption text-down-ink border-down/40">부정 {f.neg_prev_pct}%→{f.neg_today_pct}%</Badge>}
           </div>
           <div className="h-20"><ResponsiveContainer><BarChart data={f.series} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <XAxis dataKey="date" hide />

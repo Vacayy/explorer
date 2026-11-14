@@ -1,7 +1,88 @@
 # Explorer 디자인 시스템
 
-> 최종 갱신: 2026-09-10 · 참고 모델: Meta astryx (CSS 변수 테마 · 강한 컨벤션 · 조합 가능한 컴포넌트 · "guidance over enforcement")
+> 최종 갱신: 2026-11-05 · 참고 모델: Meta astryx (CSS 변수 테마 · 강한 컨벤션 · 조합 가능한 컴포넌트 · "guidance over enforcement")
 > 관련: CLAUDE.md 프론트엔드 Hard Rules · docs/policies/number-formatting.md · docs/policies/ui-states.md
+
+## 2026-11-05 · 현행 계약 — Daylight·Midnight 디자인 시스템 (D-320)
+
+이 절이 아래의 모든 과거 규칙(화이트 플랫·멀버리·IBM Plex 단독·빨강 상승)보다 우선한다. 값의 원본은 `frontend/src/index.css`다.
+
+### 토큰 (시안 이름 그대로)
+
+| 토큰 | 라이트 Daylight | 다크 Midnight | 쓰임 |
+|---|---|---|---|
+| `--bg` · `--surface` · `--surface-2` | #FCFFFF · #FFFFFF · #F2F7F9 | #02070A · #081014 · #0D181E | 페이지 · 카드·표 · 입력·hover |
+| `--ink` · `--ink-2` · `--ink-3` | #0E1A22 · #46555F · #5F6F7A | #EAF2F7 · #A6B6C1 · #8396A2 | 본문·주 버튼 · 보조 · 캡션 |
+| `--line` · `--line-2` | ink 10% · 18% | ink 10% · 18% | 면 경계 · 컨트롤 테두리·표 머리 |
+| `--up` · `--up-ink` · `--up-tint` | #D83995 · #B4237A · 10% | #FC734D · #FC8A68 · 12% | 상승(막대·점 · 숫자 · 배지) |
+| `--down` · `--down-ink` · `--down-tint` | #0593C6 · #04709A · 10% | #0297DE · #3DB2EE · 14% | 하락 |
+| `--hyp` · `--hyp-tint` | #6E46CF · 8% | #B79BFF · 10% | AI 해석(LLM 산출) |
+| `--fact` · `--fact-tint` | #0B7A5E · 8% | #4FD1A5 · 10% | 사실 확인·신선 |
+| `--warn` · `--warn-tint` | #A35F00 · 10% | #F2C14E · 12% | 지연·경고·미평가 |
+| `--action` · `--action-ink` | ink · bg | ink · bg | 주 버튼·선택 상태 |
+| `--chip` | ink 6% | 흰색 7% | 보조 버튼·입력·세그먼트 바탕 |
+| `--series` · `--grid` | ink 26% · 7% | ink 28% · 7% | 차트 시리즈(회색) · 격자 |
+| `--closed` | #C8372D | #F25F5C | 장 마감 점 · 파괴적 행동(`--destructive`) |
+| `--field` · `--ribs` · `--glass` · `--glass-line` · `--veil` | | | 기상도 전용(아래) |
+
+shadcn 변수는 이 토큰에 잇는다: `--background=--bg`, `--card/--popover=--surface`, `--foreground=--ink`, `--muted=--surface-2`, `--muted-foreground=--ink-3`, `--primary=--action`, `--secondary/--accent=--chip`, `--border=--line`, `--input=--line-2`, `--ring=--ink`, `--hypothesis=--hyp`, `--chart-warning=--warn`. 기존 이름(`--color-up`·`--chart-*` 등)은 별칭으로 남아 있다.
+
+### 테마
+
+- `<html class="dark">` 하나로 전환한다. 테마·설정 메뉴(상단 바 해·달 아이콘, D-323)의 세그먼트에서 시스템·라이트·다크를 고른다. 기본은 시스템(`prefers-color-scheme`), 선택은 localStorage `theme`(next-themes)에 남는다.
+- `index.html`의 인라인 스크립트가 첫 그림 전에 `.dark`를 붙여 깜빡임을 막는다.
+- 캔버스 차트(lightweight-charts)는 `components/charts/chartTheme.ts`의 `useChartTheme()`로 토큰을 읽고, 테마가 바뀌면 다시 칠한다. Recharts·SVG는 `var(--token)`을 그대로 쓴다.
+
+### 서체 (Google Fonts, 실패하면 시스템 서체)
+
+| 역할 | 서체 | 크기 |
+|---|---|---|
+| 페이지 제목 | Geist 400 (`font-display text-page`) | 30/36, 자간 −0.02em |
+| 기상도 헤드라인 | Geist 300 + 강조는 Instrument Serif 이탤릭(`font-serif italic`) | 64/66 (`text-weather`). 홈 날짜는 34 |
+| 섹션 제목 | IBM Plex Sans KR 600 (`text-section`) | 15/21. 블록 머리 13.5 |
+| 본문 | IBM Plex Sans KR 400 (`text-reading`) | 14/22 |
+| 캡션 | IBM Plex Sans KR 400 (`text-caption`) | 12/18 |
+| 숫자 | Geist Mono, tabular (`tabular-nums`이면 자동으로 모노) | 부호는 −(U+2212) |
+
+### 면과 모서리
+
+- 데이터 면은 평평하다: 1px `--line`, 모서리 0, 카드 사이 간격 0(선 공유, `surface-grid`·`surface-stack`), 그림자 없음.
+- 모서리: 컨트롤 필 999px(`rounded-control`) · 배지 6(`rounded-badge`, 높이 22) · 패널 0(`rounded-card`) · 기상도 20(`rounded-weather`) · 오버레이 12(`rounded-overlay`). 그림자는 오버레이에만(`shadow-overlay`).
+- 분위기(그라디언트 필드 + 세로 리브 + 유리 패널, blur 18)는 **홈 상단 기상도에만** 쓴다(`.weather`·`.glass`). 분홍·파랑 타원의 크기·농도는 `--weather-up`(상승 비율 0~1)을 따른다. 투명도 줄이기(`prefers-reduced-transparency`)·blur 미지원이면 불투명 면(`--glass-opaque`)으로 바뀐다.
+
+### 색의 의미
+
+- 등락색 = 브랜드색. 상승 분홍(다크 오렌지), 하락 파랑, 0은 회색. **가격 방향에만** 쓴다. 숫자 글자는 `text-up-ink`·`text-down-ink`.
+- 버튼·선택 상태는 글자색(`--action`)으로 칠한다. 등락색을 버튼에 쓰지 않는다.
+- AI 해석은 보라 라벨 행 + 옅은 보라 틴트(`shared/AiBlock`). 좌측 보더 강조 금지. 사실 확인은 초록, 지연·미평가는 `--warn`.
+- 차트 시리즈는 회색(`--series`), 선택한 시리즈만 굵은 선. 값 라벨만 등락색. 선택 선의 색은 화면 시안을 따른다 — Peer 성과 비교·업종 간 비교·산업 섹터 Peer 그룹은 분홍(`--up`) 굵은 선 + 분홍 라벨(`--up-ink` 600, 시안 Explore-Peers·Industry-Sector), Peer 구성 종목 차트 위에는 범례 칩 줄(고른 종목 = 분홍 테두리·틴트 칩, 나머지 회색 점 칩), 실적 시즌 섹터는 글자색 굵은 선. 다중 선 차트는 값 상자 대신 선 끝 라벨 한 열(이름 `--ink-2`, 고른 것 600, 값만 등락색, 13~15px 간격으로 겹침 풀기) — lightweight-charts는 `MultiLineChart endLabels`(축 왼쪽), Recharts는 `season/SectorView`의 `EndLabels`. 폰은 라벨 없이 선만.
+
+### 컴포넌트 기본값 (shadcn 동작은 그대로, 스타일만)
+
+| 컴포넌트 | 기본 |
+|---|---|
+| Button | 필. 기본 36 · sm 32 · lg 44 · xs 28. `default`=글자색 채움, `outline`=선 `--line-2`, `secondary`=chip, `ghost`=글자 ink-2, `ai`=보라 틴트(AI 생성 행동만) |
+| Badge | 높이 22 · 모서리 6 · 12px. `neutral`(=default·secondary) · `outline` · `up` · `down` · `hyp` · `fact` · `warn` |
+| Input · Select · Textarea | chip 바탕, 테두리 없음, 포커스 링 글자색 2px. Input·Select는 필 |
+| Tabs · ToggleGroup(SegmentTabs·PeriodToggle) | chip 바탕(모서리 10, 안쪽 3) 안에 항목 모서리 8 · 선택 = 표면색 + 1px 선 |
+| Table | 머리 12px `--ink-3` + `--line-2` 아래선, 셀 13px, 숫자 열은 오른쪽 정렬 |
+| Dropdown · Popover · Command · Dialog · Select 목록 · HoverCard | 모서리 12 + 그림자 + `--line-2` 테두리. 항목 모서리 8 |
+| Tooltip | `--bg` 바탕 · `--line-2` 테두리 · 모서리 10 · 12.5px `--ink-2` |
+| 블록 머리(home/BlockHead) | 대시보드형: 13.5px 600 + 아래선 · 기준 시각 11.5px + 점(신선 = `--fact`, 지연 = `--warn`) · 링크 12px `--ink-2`. `section`(홈 시장 탭·시안 Home-KR/US): 선 없음 · 15px 600 · 칸 여백 16 · 링크 13px, 블록 사이 16. `display`(Market Overnight/Today): Geist 24 · 유리 알약 링크 · 칸 여백 22 · 둥근 16 |
+| 상세(shared/DetailLayout, 시안 Doc) | 위 행동 줄(outline 알약 · 원문 링크는 ghost) → 본문 칸(표면·선, 여백 22/26) \| 맥락 칸 260(표면·선, 제목 15/600 + ⓘ). 폰은 칸 없이 본문, 제목 22/600 |
+| 5-state | Skeleton = chip 사각형(모서리 0) · 오류(BlockError·ErrorState·WidgetState) = `--surface-2` 상자 + `--line-2` 선 · 경고 아이콘 + 13px 문구 + '다시 시도'(outline 30) · '자세히' |
+| 페이지 제목 | PageHeader Geist 400 30/36(폰 26). 홈 하위 탭(한국·미국·매크로)은 화면 제목 없이 하위 메뉴 칩이 대신한다(sr-only h1) |
+
+## 2026-10-31 · 화이트 플랫 공통 기준 (D-320에서 토큰·서체·모서리·등락색 대체, 평평한 면은 유지)
+
+이 절은 아래의 과거 표면·라운딩·카드 간격 규칙보다 우선한다.
+
+- 라이트 모드의 페이지·사이드바·카드·위젯 헤더는 순백색(`--background`, `--sidebar`, `--card`). 다크 모드의 대비 색상은 유지한다.
+- 카드·읽기 패널은 `--radius-card: 0`, 그림자·광택·블러 없이 얇은 테두리로 구분한다. 선택·오류·경고·AI 해석의 의미 색상은 유지한다.
+- 카드 묶음에는 `surface-grid` 또는 `surface-stack`을 지정한다. 카드 간격은 0, 카드 본문 패딩은 홈 위젯과 같은 12px, 헤더는 가로 12px·세로 8px이다. Card 자체의 중복 세로 패딩과 헤더/본문 사이 gap은 0이다. 제목·필터·서로 다른 섹션은 12px 간격을 기본으로 하며 폼 필드 간격과 문서 읽기 여백은 유지한다.
+- 버튼·입력·탭의 control 라운딩, 아바타·상태 점·차트 모양, 오버레이의 구분용 그림자와 포커스 링은 유지한다.
+- 홈은 별도 시안 쿼리 없이 동일한 기본 스타일이다. 저장된 배치 단위(22px)는 유지하고 여백을 카드 면적으로 흡수한다. 데스크톱·모바일 모두 카드 간격은 0이다.
+- Loading / Empty / Partial / Error / Ideal의 데이터·행동·메시지는 그대로 유지한다. 표면 변화가 상태 표시를 지우지 않는다.
 
 ## 2026-09-10 점검 상태
 
@@ -40,25 +121,24 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
 
 ## 1. 레이아웃 컨트랙트
 
-### 셸 (App.tsx Layout — 상단 5탭 · 3칸, docs/specs/app-shell.md)
+### 셸 (App.tsx Layout — 상단 6탭 · 2칸, docs/specs/app-shell.md)
 
 ```
 <TooltipProvider>
     <Omnibar/>                            ⌘K 오버레이 (CommandDialog)
-    <SidebarProvider open={내 목록} --sidebar-width:15.5rem className=flex-col>
-      <TopBar/>                           sticky · h-(--topbar-height)=52px · L1 5탭·검색·운영 상태·인박스·설정·AI 토글
+    <div flex-col min-h-svh>
+      <TopBar/>                           sticky · h-(--topbar-height)=65px(폰 57px, 검색·AI만 — 로고 'Explorer'를 누르면 아래 시트에 인박스·저장됨·관리자·테마, D-322) · L1 6탭(홈·피드·탐색·산업·포트폴리오·Thesis)·검색·운영 상태(Popover)·인박스·설정·AI 토글
       <div flex>
-        <MyListPanel/>                    shadcn <Sidebar side=left collapsible=offcanvas>, 상단 바 아래 고정
-        <SidebarInset>                    본문
+        <main>                            본문
           <div mx-auto max-w-[var(--layout-shell)] px-6 pt-6 pb-[var(--dock-reserve)]>
             <SubNav/>                     L2 (탭이 둘 이상일 때, h-8 + mb-5 = --subnav-height)
             ← 페이지 렌더 슬롯
           </div>
-        </SidebarInset>
+        </main>
         <ChatPanel/>                      aside sticky · w-(--ai-panel-width)=360px · /chat에서는 숨김 · <1024는 Sheet
       </div>
-      <TabBar/>                           <768 하단 L1 5탭 (fixed, --tabbar-height + 안전 영역)
-    </SidebarProvider>
+      <TabBar/>                           <768 하단 L1 6탭 (fixed, --tabbar-height + 안전 영역)
+    </div>
 </TooltipProvider>
 ```
 
@@ -97,13 +177,13 @@ DESIGN_REVIEW(비공개 문서)에 전체 코드 감사와 IBM Plex 기반 재�
 | 그룹 | 토큰 | 규칙 |
 |---|---|---|
 | shadcn semantic | `--color-background/foreground/card/primary/muted/accent/border…` | 모든 UI 색상의 기본 어휘 |
-| 도메인: 주가 | `--color-up`(빨강) `--color-down`(파랑) | 한국 컨벤션. 등락 표시는 이 둘만 |
-| 도메인: 인식론 | `--color-fact`(초록) `--color-hypothesis`(주황) | LLM 산출=hypothesis 스타일 필수 |
+| 도메인: 주가 | `--up`·`--up-ink`·`--up-tint`(분홍/다크 오렌지) `--down`…(파랑) | D-320. 등락 표시는 이 둘만, 가격 방향에만 |
+| 도메인: 인식론 | `--fact`(초록) `--hyp`(보라, 별칭 `--hypothesis`) `--warn`(주의) | LLM 산출 = hyp(AiBlock), 지연·미평가 = warn |
 | 차트 | `--color-chart-revenue/profit/ratio/negative/warning`, `--color-chart-1~5` | 신규 차트는 semantic 우선, 팔레트(1~5)는 시리즈 나열용 |
 | 레이아웃 | `--layout-shell` `--dock-height` `--dock-reserve` `--subnav-height` `--shell-offset` | §1 참조 |
-| 라운딩 | `--radius`(0.5rem) 파생 sm~4xl(xl·2xl 10px, 3xl·4xl 12px) | 카드=`rounded-card`(10px) |
+| 라운딩 | `--radius-control`(999) `--radius-badge`(6) `--radius-card`(0) `--radius-weather`(20) `--radius-overlay`(12). `--radius`(8) 파생 sm·md·lg = 4·6·8, xl~4xl = 12 | 위 현행 계약 참조 |
 
-폰트: 자체 호스팅 IBM Plex Sans / Sans KR, 숫자는 전역 `tabular-nums` (td/th 자동).
+폰트: Google Fonts — Geist·Geist Mono·IBM Plex Sans KR·Instrument Serif. 숫자는 `tabular-nums`(Geist Mono로 바뀜), td/th는 tabular 자동.
 
 ## 3. 컴포넌트 계층과 컨벤션
 
@@ -131,16 +211,74 @@ charts/  lightweight-charts 래퍼
 | 오버레이 드로어 | `ui/sheet` |
 | 강조 카드 (AI/hypothesis·primary) | **배경 틴트로 강조**: `bg-[color-mix(in_srgb,var(--hypothesis)_8%,var(--card))]` (AI) / `var(--primary)` (홈 브리핑). 좌측 보더(`border-l-*`) 강조는 변칙 — 금지. 예외: 리스트 선택 마커·인용 들여쓰기·다이어그램 헤더는 보더 유지 (D-018). **/chat 어시스턴트 본문은 말풍선·틴트 없이 풀폭 텍스트 — LLM 산출 마커는 `text-hypothesis` 라벨 행으로**(D-135, docs/specs/chat-page.md §4) |
 | 빈/로딩/에러 | shared/Skeleton · shared/ErrorState (5-state 정책) |
+| AI 해석 문장(LLM 산출) | **shared/AiBlock** — 보라 라벨 행 + 틴트, 좌측 보더 금지 |
+| 홈 상단 분위기 | `.weather`(그라디언트·리브, `--weather-up`) + `.glass`(유리 패널) — home/HomeDashboard 기상도에만 |
+| 패널 안에서 더 보기(요약 → 전체) | **shared/DropletReveal** — `ui/collapsible` 위 조합. 패널을 덮으며 Droplet reveal 모션으로 펼치고 패널 높이를 바꾸지 않는다(아래 §모션) |
+| 본문 높이 상한·안쪽 스크롤·제자리 더 보기 | **shared/Bounded** — `BoundedArea`·`InPlaceMore`·`BOUND` 눈금(아래 §높이 상한과 넘침) |
 
 ### 허용된 예외 (grandfathered — 신규 작성 금지, 점진 이관)
 
 | 파일 | 사유 |
 |---|---|
 | `actions/RightsProTable.tsx` | sticky 첫 컬럼 + `w-max` 밀집 테이블 — raw table 유지, `overflow-x-auto` 래퍼 필수 |
-| `discovery/ScreenerPage.tsx` · `industry/IndustryPage.tsx` 내부 Th/Td | 정렬 헤더 로컬 헬퍼 — 토큰 준수 확인됨 |
+| `discovery/ScreenerPage.tsx` 내부 Th/Td | 정렬 헤더 로컬 헬퍼 — 토큰 준수 확인됨 |
 | `layout/SubNav.tsx` · `layout/Dock.tsx` 모드 Link | 라우터 연동 네비 — Radix Tabs 의미론(패널 전환)과 다름. Link(pill) 유지. 도크 아이템은 ui/button 기반 |
 
 이 표에 없는 raw HTML atom 사용은 전부 위반이다.
+
+## 높이 상한과 넘침
+
+컴포넌트 영역은 내용 길이만큼 늘어나지 않는다. 펼치기·탭 전환·데이터 도착이 카드 높이를 바꾸면 아래 블록이 밀린다(레이아웃 이동). 구현은 `shared/Bounded`에 모여 있다.
+
+**상한 눈금** (`BOUND` = 최대 높이, `BOUND_FIXED` = 같은 값의 고정 높이). 넓은 화면 px와 창 높이 비율 중 작은 쪽을 쓰고, 640px 미만은 줄인 값을 쓴다.
+
+| 눈금 | 넓은 화면 | 좁은 화면(<640) | 쓰는 곳 |
+|---|---|---|---|
+| `sm` | min(320px, 45vh) | min(280px, 45vh) | 반 폭 블록 안의 짧은 목록, 칩 묶음 |
+| `md` | min(480px, 60vh) | min(400px, 55vh) | 블록 본문 기본(목록·표·AI 글) |
+| `lg` | min(640px, 70vh) | min(480px, 60vh) | 전체 폭 긴 표·보고서 전문·나란한 두 칸 |
+
+홈 대시보드 Overnight·Today 큰 칸만 예외로 고정 높이를 직접 쓴다(넓은 화면 796px, 좁은 화면 min(680px, 85dvh)).
+
+**띠 높이** (`BAND`, 홈 › 한국·미국 시장 공통 틀 — ia-redesign §4.2·4.3). 같은 줄의 칸은 같은 고정 높이다. 칸(`home/MarketFrame` `MarketCard`) 안에서 머리·바닥 줄을 뺀 자리는 `FillArea`(공식 ScrollArea, 남은 높이를 채움)가 스크롤하고, 순서가 있는 목록은 `shared/PagerBar`(공식 `ui/pagination`, 'n–m / 전체' · ‹ 번호 ›)로 나눈다.
+
+| 눈금 | 넓은 화면(768+) | 좁은 화면 | 띠 |
+|---|---|---|---|
+| `index` | 380px | 내용(차트 220 + 지표 2×2) | ① 지수 |
+| `summary` | 440px | 420px | ② 시장 정리 |
+| `stocks` | 500px | 420px | ③ 종목 |
+| `events` | 460px | 400px | ④ 실적·이벤트 |
+| `local` | 400px | 400px | ⑤ 시장 고유 |
+| `sectorMap` | 460px | 420px | 산업 › 섹터 지도 ① 상대강도 지도·순위 (§4.35) |
+| `sectorChart` | 400px | 360px | 섹터 화면 개요 ① 대표지수·상대강도 |
+| `sectorText` | 560px | 480px | 섹터 화면 개요 ② 산업 개괄·주요 자료 |
+| `sectorPeerBlock` | 720px | 560px | 섹터 화면 개요 ③ Peer 그룹(Peer 탭과 같은 컴포넌트) |
+| `sectorPeers` | 760px | 560px | 섹터 화면 Peer 그룹 탭 · 종목 탭 |
+
+**넘침**
+- 넘치면 영역 안에서 스크롤한다. `BoundedArea`(공식 `ui/scroll-area` 위 조합)를 쓰고, 상한은 스크롤 상자(viewport)에 건다. 홈 블록은 `HomeSection`·`HomeBlock`의 `bounded="sm|md|lg"`로 본문만 묶는다(머리는 고정).
+- 필터·정렬·탭으로 행 수가 바뀌는 목록은 상한 대신 `BoundedArea fixed`로 높이 자체를 고정한다.
+- 페이지 전체를 감싸는 내부 스크롤(창 높이에 가까운 스크롤 상자)은 만들지 않는다. 페이지의 주 목록이 끝없이 늘어나는 경우(피드 타임라인)는 페이지 스크롤을 쓴다.
+- 위치가 중요한 20행 넘는 목록은 `ui/pagination` 또는 '더 보기' + 상한 영역으로 나눈다.
+
+**펼침**
+- 읽을거리('전체 보기'·'더 보기'·'N개 더 보기')는 `InPlaceMore`로 연다. 펼치기 직전 높이를 고정하고 늘어난 내용은 그 안에서 스크롤한다. 요약 패널의 전문은 `DropletReveal`(패널을 덮고 높이를 바꾸지 않는다).
+- 깊은 세부(원문·분해 구조·시장 반응 전문·분석 메모)는 카드 안에서 펼치지 않고 `ui/sheet`(옆, 모바일은 아래) 또는 `ui/dialog`로 연다. 아래 시트는 `max-h-[85dvh]`에 안쪽 스크롤.
+- 기획서가 행 펼침을 정한 목록(내 종목 추적 행 상세, 매크로 프라이싱 근거, 컨콜 쟁점 기준·판정, 저장됨 메모)은 제자리에서 펼치되 목록을 `InPlaceMore`로 묶어 아래 블록이 움직이지 않게 한다. 한 번에 한 행.
+
+**상태가 바뀌어도 같은 틀**
+- 불러오는 중·빈 상태·오류·정상에서 머리(제목·회색 줄)와 틀은 그대로이고 본문만 바뀐다. 머리 회색 줄은 데이터 전에도 자리를 둔다(큰 칸 머리는 항상, 블록은 같은 폭의 보이지 않는 자리).
+- 뼈대(skeleton)는 최종 높이에 맞춘다. 상한 영역을 채우는 목록은 `BOUND_FIXED` 높이의 뼈대를 쓴다.
+- 늦게 나타나는 동작 버튼(관심 종목 등)은 불러오는 동안 같은 크기의 비활성 자리를 둔다.
+- 화면에 설명 문구를 더하지 않는다. 도움말은 ⓘ 툴팁만.
+
+## 모션
+
+이름 붙은 모션만 쓴다. 새 모션이 필요하면 여기와 `index.css` `@theme`에 이름을 먼저 등록하고 재사용한다. 운영체제 '동작 줄이기'가 켜지면 전역 규칙이 모든 애니메이션을 끈다(index.css).
+
+| 이름 | 토큰 · 클래스 | 동작 | 쓰는 곳 |
+|---|---|---|---|
+| **Droplet reveal**(물방울 등장) | `--animate-droplet` · `animate-droplet` (680ms) + 내용 `animate-droplet-rise` (520ms, 200ms 지연) | 패널 바닥 가운데부터 원이 퍼지며(clip-path circle) 흐림이 걷히고, 내용은 아래에서 살짝 떠오른다 | 요약 패널에서 전체 내용 펼치기 — `shared/DropletReveal`(홈 Market Overnight '브리핑 전체 보기' 등). 화면 전체를 덮는 오버레이는 `ui/sheet`·`ui/dialog`를 쓴다 |
 
 ## 4. 신규 화면 체크리스트
 
@@ -148,6 +286,7 @@ charts/  lightweight-charts 래퍼
 - [ ] 그리드는 `grid-cols-1`에서 시작하는 반응형
 - [ ] 넓은 표는 ui/table 또는 `overflow-x-auto` 래퍼
 - [ ] 색상은 semantic 토큰만 · 등락=up/down · LLM 산출=hypothesis
-- [ ] 5-state (Empty/Loading/Partial/Error/Ideal) + FreshnessStamp
+- [ ] 5-state (Empty/Loading/Partial/Error/Ideal) + 기준 시각(블록 머리 `BlockHead`의 `asOf`)
+- [ ] 본문 높이 상한(`shared/Bounded` 눈금) · 펼침은 제자리 스크롤 또는 시트 · 상태가 바뀌어도 머리·틀·높이 그대로(§높이 상한과 넘침)
 - [ ] 숫자 포맷은 utils/format.ts
 - [ ] 새 atom 필요 시 `npx shadcn@latest add <c>` CLI 설치 (수제 금지)

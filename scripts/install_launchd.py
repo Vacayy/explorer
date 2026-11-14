@@ -43,6 +43,9 @@ PATH = ":".join(p for p in [_NODE_BIN, "/opt/homebrew/bin", "/usr/local/bin",
 
 # (label, 실행 인자, 스케줄) — 스케줄은 int(초 간격) 또는 StartCalendarInterval dict/list
 JOBS = [
+    # Peer 전용 정규장 원천; 관측 저장만, 외부 알림 없음.
+    ("peer", [PY, "scripts/refresh_peer_monitor.py"],
+     [{"Weekday": d, "Hour": 20, "Minute": 30} for d in range(1, 6)]),
     ("chain", [str(PROJECT / "scripts" / "run_chain.sh")], 1800),
     # KRX 종가는 16:30에 확정 송출(네이버 closePriceSendTime) — 그 뒤에 수집. 감시(16:40)보다 앞.
     # 20:20 재실행은 시간외 단일가·NXT까지 끝난 뒤 같은 값을 덮어쓴다(D-220 — 16:35엔 marketStatus가 OPEN이라 판정에 안 씀).
@@ -112,6 +115,23 @@ JOBS = [
     # 관측(docs/specs/observability.md) — 주간 리포트는 월요일 브리핑 뒤, 경고는 1시간마다(상태가 바뀔 때만 보냄)
     ("observeweekly", [PY, "scripts/observe.py", "--weekly"], {"Weekday": 1, "Hour": 7, "Minute": 5}),
     ("observealerts", [PY, "scripts/observe.py", "--alerts"], 3600),
+    # Market Today(docs/specs/market-today.md) — 평일 다섯 회차(08:10 장전 + 장중 09:30·11:30·15:00 + 16:00 마감 정리), 텔레그램·매체 화두 요약
+    # (sonnet 1콜/회차). 휴장일은 스크립트가 건너뛴다
+    ("markettoday", [PY, "scripts/market_today.py"],
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((8, 10), (9, 30), (11, 30), (15, 0), (16, 0))]),
+    # 이번 주 큰 그림(ia-redesign §4.25, D-313 4) — 매주 월 07:00, 지난 7일 내러티브·Market Today·Overnight로 줄기·전제(sonnet 1콜).
+    # 입력 해시가 같으면 건너뛴다. 16:00 마감 정리 뒤 조건 실행은 markettoday 작업 안에서(scripts/market_today.py)
+    ("bigpicture", [PY, "scripts/weekly_big_picture.py"], {"Weekday": 1, "Hour": 7, "Minute": 0}),
+    # 지수 장중 5분 경로(ia-redesign §4.2·4.3 ①, D-325) — 10분마다, 국장·미장 정규장(+20분)에만 yfinance 5분봉 5콜 이하.
+    # 장 밖·주말은 스크립트가 외부 호출 없이 바로 끝난다. 지난 회차는 다음 회차가 같은 날 봉을 다시 받으므로 따라잡기 대상 아님
+    # 섹터 대표지수(ia-redesign §4.35, D-327-4) — 대표 ETF·코스피 종가(yfinance 18콜 이하) + 섹터 계산 지수. 일별 시세(16:35·20:20) 뒤
+    ("sectorbench", [PY, "scripts/collect_sector_benchmarks.py"],
+     [{"Weekday": d, "Hour": h, "Minute": m} for d in range(1, 6) for h, m in ((16, 55), (20, 35))]),
+    # 산업 개괄(D-327-3) — 매일 06:20(주간 내러티브 06:00 뒤). 관리자 플래그 sector_overview 기본 off: 꺼져 있으면 모델 호출 없이 끝난다
+    ("sectoroverview", [PY, "scripts/compute_sector_overview.py"], {"Hour": 6, "Minute": 20}),
+    # Kalshi 예측시장(홈 대시보드 캐러셀, 2026-11-12) — 매일 08:00·16:00·23:00, 카테고리 4개 검색 4요청(공식 문서 밖 검색 주소), LLM 0
+    ("kalshi", [PY, "scripts/kalshi.py"], [{"Hour": h, "Minute": 0} for h in (8, 16, 23)]),
+    ("indexintraday", [PY, "scripts/index_intraday.py"], 600),
     ("catchup", [PY, "scripts/run_daily.py", "--catchup"], 1800),
 ]
 
@@ -120,6 +140,7 @@ JOBS = [
 # window_h: 늦으면 의미 없는 작업은 정기 시각 뒤 이 시간까지만 따라잡는다. 없으면 다음 회차까지.
 # 빠진 것: chain(30분 간격 자체), pfintraday(장중 30분 알림 — 지난 회차는 의미 없음), backfill(야간 기회 작업), catchup 자신.
 CATCHUP = {
+    "peer": {"record": "peer_refresh", "window_h": 6},
     "prices": {"record": "prices"},
     "history": {"record": "market_history"},
     "credit": {"record": "credit"},
@@ -139,6 +160,7 @@ CATCHUP = {
     "pfclose": {"window_h": 7},                # 종가 요약 — 그날 밤까지만
     "callmomentum": {},
     "contracts": {"record": "live_contracts"},
+    "markettoday": {"record": "market_today", "window_h": 2},   # 지난 회차를 저녁에 만들어 봐야 의미가 없다
     "observeweekly": {"record": "observe_weekly", "window_h": 24},
     "callmomentumweekly": {"window_h": 24},
     "callfresh": {"record": "cm_fresh", "window_h": 3},
@@ -147,6 +169,9 @@ CATCHUP = {
     "usfund": {"record": "us_fundamentals"},
     "extseries": {"record": "ext_series"},
     "expfeed": {"record": "exp_feed"},
+    "bigpicture": {"record": "weekly_big_picture"},   # 놓치면 다음 순회에서 보충(그 주 안)
+    "sectorbench": {"record": "sector_benchmarks"},
+    "kalshi": {"record": "kalshi", "window_h": 8},     # 다음 정기 실행 전까지만 보충
 }
 
 
@@ -176,6 +201,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--uninstall", action="store_true")
+    ap.add_argument("--only", choices=[job[0] for job in JOBS], help="선택한 잡 하나만 설치/제거")
     args = ap.parse_args()
 
     domain = f"gui/{os.getuid()}"
@@ -183,6 +209,8 @@ def main() -> int:
     rc = 0
 
     for label, argv, schedule in JOBS:
+        if args.only and label != args.only:
+            continue
         full = PREFIX + label
         path = AGENTS / f"{full}.plist"
 

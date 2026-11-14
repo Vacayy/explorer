@@ -7,28 +7,24 @@
 - 종목별 in-flight 락 (source_dossier와 동일 — LLM 중복 호출 방지)
 - LLM 호출은 트랜잭션 밖
 """
+from pipeline.llm_policies import requested_model
 import hashlib
 import json
 import os
-import subprocess
 import threading
 
 from database import get_connection
 from pipeline.digests import STYLE_RULES
-from pipeline.enrich import _claude_bin, llm_engine
+from pipeline.enrich import llm_engine
 
 # 심층 종합은 opus — 전제·갭·챌린지·임계점을 저울질하는 다층 사고라
 # haiku 1콜로는 얕아진다 (티어: 태깅/판정=haiku, 대화 RAG=sonnet, 심층 종합=opus)
-BRIEF_MODEL = os.getenv("BRIEF_MODEL", "opus")
+BRIEF_MODEL = requested_model('company.brief')  # existing cache/display field: requested model
 
 
 def _call_json_brief(prompt: str) -> dict:
-    proc = subprocess.run(
-        [_claude_bin(), "-p", "--setting-sources", "", "--tools", "", "--model", BRIEF_MODEL, "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패: {proc.stderr[:200]}")
-    raw = json.loads(proc.stdout).get("result", "")
+    from pipeline import llm
+    raw = llm.run(prompt, task='company.brief').text
     s, e = raw.find("{"), raw.rfind("}")
     return json.loads(raw[s:e + 1])
 

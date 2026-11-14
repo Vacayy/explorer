@@ -8,13 +8,15 @@
   (재료 안 바뀌면 재열람 공짜, 리포트 갱신 시에만 시나리오 재생성 — 비용 체인).
 - 에피스테믹 분리(비타협): 리포트는 미판정을 미판정으로, 시나리오는 그 위의 가정형 전망.
 """
+from pipeline.llm_policies import requested_model
+from pipeline import llm
 import hashlib
 import json
 
 from database import get_connection
-from pipeline.enrich import _call_claude_code, llm_available
+from pipeline.enrich import llm_available
 
-REPORT_MODEL = "sonnet"
+REPORT_MODEL = requested_model('question.report')  # existing cache/display field: requested model
 _KO = {"leaning_yes": "긍정 우세", "leaning_no": "부정 우세", "mixed": "혼조", "unknown": "미판정"}
 _DIV_KO = {"aligned": "선행·확정 정합", "lead_ahead": "선행이 확정보다 앞섬(여론 선반영 의심)",
            "confirm_ahead": "확정이 선행보다 앞섬(실적이 여론을 끌어당김)"}
@@ -100,7 +102,7 @@ def _build_report_prompt(ev: dict) -> str:
 def _generate_report(ev: dict) -> str | None:
     prompt = _build_report_prompt(ev)
     try:
-        out = _call_claude_code(prompt, model=REPORT_MODEL, timeout=240)
+        out = llm.run(prompt, task='question.report').text
     except Exception:  # noqa: BLE001
         return None
     s, e = out.find("{"), out.rfind("}")

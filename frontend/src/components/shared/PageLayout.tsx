@@ -36,10 +36,10 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions, level = 1, id, titleRef }: PageHeaderProps) {
   const Heading = level === 1 ? 'h1' : 'h2'
-  return <header className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+  return <header className="flex min-w-0 flex-wrap items-end justify-between gap-x-4 gap-y-3">
     <div className="min-w-0">
       <Heading id={id} ref={titleRef} tabIndex={titleRef ? -1 : undefined}
-        className={cn('scroll-mt-4 break-words font-semibold focus-visible:outline-2 focus-visible:outline-ring', level === 1 ? 'text-page' : 'text-section')}>{title}</Heading>
+        className={cn('scroll-mt-4 break-words focus-visible:outline-2 focus-visible:outline-ring', level === 1 ? 'font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]' : 'text-section font-semibold')}>{title}</Heading>
       {description && <p className="mt-1 text-caption text-muted-foreground">{description}</p>}
     </div>
     {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

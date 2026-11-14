@@ -157,6 +157,17 @@ def raw_series(conn, hs_code: str) -> list[dict]:
         "SELECT period, export_usd, import_usd, export_wt, import_wt FROM trade_stats WHERE hs_code=? ORDER BY period", (hs_code,))]
 
 
+def raw_series_all(conn) -> dict[str, list[dict]]:
+    """팔로우 중인 전 품목의 월별 원본을 한 번에 — 품목마다 따로 읽지 않는다(품목 벽 `/trade/grid`·판정 표)."""
+    out: dict[str, list[dict]] = {}
+    for r in conn.execute(
+            "SELECT s.hs_code, s.period, s.export_usd, s.import_usd, s.export_wt, s.import_wt FROM trade_stats s "
+            "JOIN trade_follow f ON f.hs_code=s.hs_code AND f.active=1 ORDER BY s.hs_code, s.period"):
+        d = dict(r)
+        out.setdefault(d.pop("hs_code"), []).append(d)
+    return out
+
+
 def periods(conn) -> list[str]:
     return [r["period"] for r in conn.execute("SELECT DISTINCT period FROM trade_stats ORDER BY period DESC")]
 
@@ -181,8 +192,9 @@ def item_series(hs_code: str) -> dict:
     return {"item": dict(meta) if meta else {"hs_code": hs_code, "item_name": hs_code, "group_label": None}, "series": series}
 
 
-def table(period: str | None = None, flow: str = "export", **opt) -> dict:
-    """팔로우 전 품목 × 선택 시점(기본 최신월) 지표 + 판정 + 그룹 집계. 하이라이트와 같은 판정을 쓴다."""
+def table(period: str | None = None, flow: str = "export", raw: dict[str, list[dict]] | None = None, **opt) -> dict:
+    """팔로우 전 품목 × 선택 시점(기본 최신월) 지표 + 판정 + 그룹 집계. 하이라이트와 같은 판정을 쓴다.
+    raw = raw_series_all() 결과를 이미 읽었으면 넘긴다(없으면 여기서 한 번에 읽는다)."""
     o = _opts(**opt)
     conn = get_connection()
     try:
@@ -192,9 +204,10 @@ def table(period: str | None = None, flow: str = "export", **opt) -> dict:
         period = period or all_periods[0]
         items = [dict(r) for r in conn.execute(
             "SELECT hs_code, item_name, group_label FROM trade_follow WHERE active=1 ORDER BY group_label, hs_code")]
+        raw = raw if raw is not None else raw_series_all(conn)
         rows = []
         for it in items:
-            derived = derive(raw_series(conn, it["hs_code"]), flow)
+            derived = derive(raw.get(it["hs_code"], []), flow)
             point = next((d for d in derived if d["period"] == period), None)
             if point is None:
                 rows.append({**it, "value": None, "flag": "none", "intensity": 0.0, "reason": "기준월 데이터 없음", "missing": True,
@@ -224,7 +237,9 @@ def table(period: str | None = None, flow: str = "export", **opt) -> dict:
         # 같은 분류 안에 상위 품목이 있으면 금액은 상위 쪽에만 센다(분류가 다르면 그 분류의 품목으로 센다)
         if not (r["nested_in"] and group_of.get(r["nested_in"]) == r["group_label"]):
             g["value"] += r.get("value") or 0
-        if r["flag"] == "surge":
+        if r["nested_in"]:          # 세목은 급등·급감 수에서 뺀다 — 상위 품목에 이미 합산돼 있다(D-301)
+            continue
+        if r["flag"] == "surge":    # 신규(new)는 급등으로 세지 않는다(D-303)
             g["surge"] += 1
         elif r["flag"] == "plunge":
             g["plunge"] += 1
@@ -233,14 +248,18 @@ def table(period: str | None = None, flow: str = "export", **opt) -> dict:
 
 
 def highlights(period: str | None = None, flow: str = "export", limit: int = 8, rank: str = "contribution", **opt) -> dict:
-    """급등·급감 랭킹 — 기본은 기여도 순(무엇이 전체를 움직였나), rank=intensity면 이례성 순."""
+    """급등·급감 랭킹 — 기본은 기여도 순(무엇이 전체를 움직였나), rank=intensity면 이례성 순.
+
+    세목(팔로우한 다른 HS의 하위 부호, nested_in)은 목록·수에서 뺀다(D-301) — 관세청이 상위 부호에 하위를 합산해 주므로
+    상위가 급등이면 세목도 함께 급등으로 잡혀 같은 움직임을 두세 번 센다. 상위가 팔로우되지 않은 10자리 품목은 그 자체가 최상위라 남긴다.
+    세목의 판정은 table()·/follow 행(품목 격자 배지)에 그대로 있다."""
     t = table(period, flow, **opt)
-    flagged = [r for r in t["rows"] if r.get("flag") in ("surge", "plunge", "new")]
+    flagged = [r for r in t["rows"] if r.get("flag") in ("surge", "plunge") and not r.get("nested_in")]
     if rank == "intensity":
         flagged.sort(key=lambda r: -(r.get("intensity") or 0))
     else:
         flagged.sort(key=lambda r: (-(r.get("contribution") or 0), -(r.get("intensity") or 0)))
     return {"period": t["period"], "periods": t.get("periods", []), "flow": flow, "options": {**t["options"], "rank": rank},
             "total_usd": sum(r.get("value") or 0 for r in t["rows"] if not r.get("nested_in")),
-            "surge": [r for r in flagged if r["flag"] in ("surge", "new")][:limit],
+            "surge": [r for r in flagged if r["flag"] == "surge"][:limit],   # 신규는 급등 목록에서도 뺀다(D-303)
             "plunge": [r for r in flagged if r["flag"] == "plunge"][:limit], "groups": t["groups"]}

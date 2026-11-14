@@ -78,7 +78,7 @@ class YouTubeDigestTests(unittest.TestCase):
     def test_auth_failure_does_not_repeat_slow_generation(self):
         from pipeline.connectors.youtube import digest_transcript
         from types import SimpleNamespace
-        with patch('pipeline.enrich.llm_engine',return_value='claude-code'), patch('pipeline.enrich._claude_bin',return_value='claude'), patch('subprocess.run',return_value=SimpleNamespace(returncode=1,stdout='OAuth session expired',stderr='')) as run, patch('time.sleep') as sleep:
+        with patch.dict('os.environ', {'LLM_FALLBACK_ENGINE':'none'}), patch('pipeline.enrich.llm_engine',return_value='claude-code'), patch('pipeline.enrich._claude_bin',return_value='claude'), patch('subprocess.run',return_value=SimpleNamespace(returncode=1,stdout='OAuth session expired',stderr='')) as run, patch('time.sleep') as sleep:
             self.assertIsNone(digest_transcript('test','자막' * 100))
             run.assert_called_once();sleep.assert_not_called()
 

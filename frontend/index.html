@@ -1,9 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- 테마(시스템·라이트·다크) — 첫 그림 전에 .dark를 붙여 깜빡임을 막는다. 저장 키는 next-themes와 같다(theme) -->
+    <script>
+      (function () {
+        var t = 'system'
+        try { t = localStorage.getItem('theme') || 'system' } catch (e) {}
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        var root = document.documentElement
+        root.classList.toggle('dark', dark)
+        root.style.colorScheme = dark ? 'dark' : 'light'
+      })()
+    </script>
+    <!-- 서체(D-320): Geist(제목·숫자 헤드라인) · Geist Mono(숫자) · IBM Plex Sans KR(본문) · Instrument Serif 이탤릭(기상도 강조). 못 받으면 시스템 서체 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" />
     <title>frontend</title>
   </head>
   <body>

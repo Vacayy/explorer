@@ -2,18 +2,22 @@ import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Check, ChevronDown, FileText, HelpCircle, Inbox, Loader2, Plus, RefreshCw, Trash2, Wand2, X } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, FileText, HelpCircle, Loader2, RefreshCw, Trash2, X } from "lucide-react"
 import { apiQuery, STALE } from "@/api/query"
 import api from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { BoundedArea } from "@/components/shared/Bounded"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/shared/ErrorState"
 import SegmentTabs from "@/components/shared/SegmentTabs"
 import { MetricHint } from "@/components/shared/MetricHint"
+import { InfoTip } from "@/components/shared/InfoTip"
 import { cn } from "@/lib/utils"
 
 /**
@@ -26,11 +30,15 @@ interface QObs { observed_at: string; value_num: number | null; value_text: stri
 interface QProxy {
   id: number; label: string; modality: string; unit: string | null
   yes_direction: string | null; tickers: string | null; observations: QObs[]
+  /** 전체 관측 수(observations는 최근 6건만) */
+  obs_count?: number
 }
 interface QSub { id: number; text: string; falsifier: string | null; verdict: string | null; proxies: QProxy[] }
-export interface QScenario { event: string; answer: string; beneficiaries: { name?: string; reason?: string }[]; created_at: string }
+/** rel = '수혜'|'피해'(LLM 원문) — 화면도 같은 말(D-307, lib/judgment scenarioSide) */
+export interface QScenario { event: string; answer: string; beneficiaries: { name?: string; reason?: string; rel?: string; stock_code?: string | null }[]; created_at: string }
 export interface QTree {
   id: number; text: string; lead_verdict: string | null; confirm_verdict: string | null
+  created_at?: string; updated_at?: string; created_by?: string
   divergence: string | null; verdict_summary: string | null; sub_questions: QSub[]
   scenario?: QScenario | null; source_doc?: { id: number; title: string | null; source_type: string } | null
 }
@@ -42,13 +50,15 @@ export interface QListItem {
 
 /** 질문의 출처 — 보유 논지·관심 이유·논지 감사·서사 도출이 모두 같은 질문 객체다 (world-model.md §4) */
 export const QUESTION_ORIGIN: Record<string, { label: string; cls: string }> = {
-  portfolio: { label: "보유 논지", cls: "text-primary border-primary/40" },
-  watch: { label: "관심 이유", cls: "text-primary border-primary/40" },
-  thesis: { label: "논지 감사", cls: "text-hypothesis border-hypothesis/40" },
-  system: { label: "서사 도출", cls: "text-hypothesis border-hypothesis/40" },
-  digest: { label: "언급", cls: "text-muted-foreground border-border" },
-  user: { label: "직접 입력", cls: "text-muted-foreground border-border" },
+  portfolio: { label: "보유 논지", cls: "text-ink-2 border-line-2" },
+  watch: { label: "관심 이유", cls: "text-ink-2 border-line-2" },
+  thesis: { label: "논지 감사", cls: "text-hyp border-hyp/40" },
+  system: { label: "서사 도출", cls: "text-hyp border-hyp/40" },
+  digest: { label: "언급", cls: "text-ink-2 border-line-2" },
+  user: { label: "직접 입력", cls: "text-ink-2 border-line-2" },
 }
+/** 시안 Questions 태그: 22px · 모서리 6 · 12px 500 */
+const TAG = "inline-flex h-[22px] items-center rounded-md px-2 text-xs font-medium whitespace-nowrap"
 
 /* 원장 렌즈 (#3, D-082) — 괴리(선행/확정 어긋남) 우선, 그다음 확신 순. 최근순은 updated_at 유지. */
 const DIVERGING = (d: string | null) => d === "lead_ahead" || d === "confirm_ahead"
@@ -60,10 +70,10 @@ function ledgerSort(a: QListItem, b: QListItem) {
 }
 
 export const VERDICT: Record<string, { label: string; cls: string }> = {
-  leaning_yes: { label: "긍정", cls: "text-primary border-primary/40" },
-  leaning_no: { label: "부정", cls: "text-destructive border-destructive/50" },
-  mixed: { label: "혼조", cls: "text-hypothesis border-hypothesis/40" },
-  unknown: { label: "미판정", cls: "text-muted-foreground border-border" },
+  leaning_yes: { label: "긍정", cls: "bg-up-tint text-up-ink" },
+  leaning_no: { label: "부정", cls: "bg-down-tint text-down-ink" },
+  mixed: { label: "혼조", cls: "bg-chip text-ink-2" },
+  unknown: { label: "미판정", cls: "bg-chip text-ink-3" },
 }
 export const DIVERGENCE: Record<string, string> = {
   lead_ahead: "여론이 실적보다 앞섬 — 선행 경고",
@@ -77,9 +87,9 @@ const listKey = ["spine", "questions", "list"]
 export function VerdictBadge({ v, prefix }: { v: string | null; prefix: string }) {
   const d = VERDICT[v ?? "unknown"]
   return (
-    <Badge variant="outline" className={cn("text-[10px] gap-1", d.cls)}>
-      <span className="text-muted-foreground font-normal">{prefix}</span>{d.label}
-    </Badge>
+    <span className={cn("inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-md px-2 text-xs font-medium", d.cls)}>
+      {prefix}{d.label}
+    </span>
   )
 }
 
@@ -97,16 +107,19 @@ export function QuestionsSection() {
   }
 
   return (
-    <Card className="bg-[color-mix(in_srgb,var(--hypothesis)_5%,var(--card))] max-sm:[--card-spacing:--spacing(3)]">
-      <CardHeader className="pb-2 flex-row items-baseline gap-2">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <HelpCircle className="h-4 w-4 text-hypothesis" /> 미결 질문
-        </CardTitle>
-        <span className="text-[11px] text-muted-foreground">
-          분할정복으로 추적하는 열린 질문 — 서브질문·프록시로 쪼개 선행(여론)/확정(실적) 2층으로 판정. 판정되면 지식으로
-        </span>
+    <Card className="max-sm:[--card-spacing:--spacing(3)]">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-baseline gap-2.5">
+          <CardTitle className="text-[15px] font-semibold">미결 질문</CardTitle>
+          {!isLoading && (
+            <span className="text-xs tabular-nums text-ink-3">
+              {all.length}개 · 추적 {filtered.length} · 후보 {all.length - filtered.length}
+            </span>
+          )}
+          <InfoTip label="미결 질문 설명">분할정복으로 추적하는 열린 질문입니다. 서브질문·프록시로 쪼개 선행(여론)과 확정(실적) 두 층으로 판정하고, 판정되면 지식으로 올립니다.</InfoTip>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="flex flex-col gap-3">
         <QuestionConsole onDone={invalidate} />
         <ProposedQueue onDone={invalidate} />
         {isLoading ? (
@@ -116,9 +129,10 @@ export function QuestionsSection() {
         ) : data.length === 0 ? (
           <EmptyState message="아직 추적 중인 질문이 없습니다. 위에 핵심 질문을 넣으면 서브질문·프록시로 분해해 추적합니다." />
         ) : (
-          <div className="space-y-2">
+          <div>
             <LedgerBar data={data} sort={sort} onSort={setSort} />
-            {data.map((q) => <QuestionCard key={q.id} item={q} onChange={invalidate} />)}
+            {/* 질문 목록은 상한(lg) 안에서 스크롤 — 정렬을 바꿔도 카드 높이 그대로 */}
+            <BoundedArea size="lg" className="mt-3"><div>{data.map((q) => <QuestionCard key={q.id} item={q} onChange={invalidate} />)}</div></BoundedArea>
           </div>
         )}
       </CardContent>
@@ -179,16 +193,16 @@ function QuestionConsole({ onDone }: { onDone: () => void }) {
       <Textarea
         value={text} onChange={(e) => setText(e.target.value)}
         placeholder="예: 폭발적으로 증가하는 AI 사용량이 막대한 설비투자를 감당할 매출·마진으로 전환될 수 있는가?"
-        className="min-h-[56px] text-sm"
+        rows={2} className="min-h-[56px] resize-none rounded-xl border-line-2 bg-card text-sm"
       />
       {ask.isPending && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> 서브질문·프록시로 분해하고 컨콜에서 관측을 뽑는 중… (수 분)
         </div>
       )}
-      <div className="flex justify-end">
+      <div>
         <Button size="sm" disabled={!text.trim() || ask.isPending} onClick={() => ask.mutate()}>
-          {ask.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+          {ask.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           추적 시작
         </Button>
       </div>
@@ -204,6 +218,7 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
     apiQuery<QListItem[]>({ key: proposedKey, url: "/api/spine/questions?status=proposed", staleTime: STALE.short }),
   )
   const refresh = () => { qc.invalidateQueries({ queryKey: proposedKey }); onDone() }
+  const [open, setOpen] = useState(false)   // 시안: '질문 후보 · n' 접힌 칩 — 눌러 펼침
 
   const propose = useMutation({
     mutationFn: () => api.post<{ proposed: number }>("/api/spine/questions/propose"),
@@ -224,44 +239,46 @@ function ProposedQueue({ onDone }: { onDone: () => void }) {
   })
 
   return (
-    <div className="rounded-md border border-dashed px-3 py-2 space-y-1.5">
-      <div className="flex items-center gap-2">
-        <Inbox className="h-3.5 w-3.5 text-hypothesis" />
-        <span className="text-[11px] font-medium">질문 후보 (내러티브 · 언급 다이제스트 발)</span>
-        {data.length > 0 && <Badge variant="outline" className="text-[9px] text-hypothesis border-hypothesis/40">{data.length}</Badge>}
-        <Button size="xs" variant="ghost" className="ml-auto h-6 px-2 text-muted-foreground"
-          disabled={propose.isPending} onClick={() => propose.mutate()}>
-          {propose.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />} 후보 찾기
+    // 펼친 후보 목록은 칩 아래에 겹쳐 연다(Popover) — 아래 질문 목록이 밀리지 않게, 길면 안에서 스크롤
+    <Popover open={open} onOpenChange={setOpen}><div className="border border-dashed border-line-2">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5">
+        <PopoverTrigger className="group/pq flex min-h-8 min-w-0 items-center gap-1.5 text-left text-[13px] hover:underline" disabled={!data.length}>
+          <span className="min-w-0 truncate">질문 후보 · 내러티브·언급 다이제스트 발</span>
+          <span className="inline-flex h-[22px] items-center rounded-md px-2 text-xs font-medium whitespace-nowrap bg-chip text-ink-2 tabular-nums">{data.length}</span>
+          {data.length > 0 && <ChevronDown aria-hidden className="size-3.5 shrink-0 text-ink-3 transition-transform group-data-[state=open]/pq:rotate-180" />}
+        </PopoverTrigger>
+        <Button size="sm" variant="ghost" className="shrink-0 text-ink-2" disabled={propose.isPending} onClick={() => propose.mutate()}>
+          {propose.isPending && <Loader2 className="h-3 w-3 animate-spin" />}후보 찾기
         </Button>
       </div>
       {approve.isPending && (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div role="status" className="flex items-center gap-2 px-3 pb-2 text-xs text-ink-3">
           <Loader2 className="h-3 w-3 animate-spin" /> 승인된 질문을 분해·추적하는 중… (수 분)
         </div>
       )}
-      {data.length === 0 ? (
-        <p className="text-[10px] text-muted-foreground/60">승인 전 무행동 — "후보 찾기"로 지배 서사의 질문을 제안받으세요</p>
-      ) : (
-        data.map((q) => (
+      <PopoverContent align="start" className="w-[min(640px,calc(100vw-32px))] p-0">
+        <BoundedArea size="sm" viewportClassName="px-3 py-1.5">
+        {data.map((q) => (
           <div key={q.id} className="flex items-center gap-2 py-0.5">
             <span className="text-[13px] flex-1 max-md:line-clamp-2 md:truncate">
-              {q.created_by === "digest" && <Badge variant="secondary" className="text-[8px] mr-1 align-middle">언급</Badge>}
+              {q.created_by === "digest" && <span className="mr-1 align-middle text-[11px] text-ink-3">언급</span>}
               {q.text}
             </span>
             <span className="flex shrink-0 gap-1">
-              <Button size="xs" variant="outline" className="h-8 px-2 text-emerald-600 md:h-6 hover:text-emerald-700"
+              <Button size="xs" variant="outline" className="h-8 px-2 text-fact md:h-6 hover:text-fact/80"
                 disabled={approve.isPending} onClick={() => approve.mutate(q.id)}>
                 <Check className="h-3 w-3" /> 승인
               </Button>
-              <Button size="xs" variant="ghost" className="h-8 px-2 text-muted-foreground hover:text-destructive md:h-6"
+              <Button size="xs" variant="ghost" aria-label="후보 빼기" className="h-8 px-2 text-muted-foreground hover:text-destructive md:h-6"
                 onClick={() => reject.mutate(q.id)}>
                 <X className="h-3 w-3" />
               </Button>
             </span>
           </div>
-        ))
-      )}
-    </div>
+        ))}
+        </BoundedArea>
+      </PopoverContent>
+    </div></Popover>
   )
 }
 
@@ -284,50 +301,50 @@ function QuestionCard({ item, onChange }: { item: QListItem; onChange: () => voi
   })
 
   return (
-    <Card className="max-sm:[--card-spacing:--spacing(3)]">
-      <CardContent className="py-3 space-y-2">
-        <div className="flex items-start gap-2">
-          <Link to={`/question/${item.id}`} className="text-sm leading-snug flex-1 hover:text-primary hover:underline">
-            {item.text}
-          </Link>
-          <span className="flex shrink-0 items-center gap-1">
-            <button className="p-1.5 text-muted-foreground/60 hover:text-foreground md:p-0" title="판정 재계산"
-              disabled={roll.isPending} onClick={() => roll.mutate()}>
-              <RefreshCw className={cn("h-3.5 w-3.5", roll.isPending && "animate-spin")} />
-            </button>
-            <button className="p-1.5 text-muted-foreground/60 hover:text-destructive md:p-0" title="제거"
-              onClick={() => del.mutate()}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </span>
-        </div>
+    <article className="flex flex-col gap-2.5 border-t py-4">
+      <div className="flex items-start gap-2">
+        <Link to={`/question/${item.id}`} className="flex-1 text-[15px] font-semibold leading-[1.45] hover:underline">
+          {item.text}
+        </Link>
+        <span className="flex shrink-0 items-center">
+          <Button variant="ghost" size="icon-xs" className="text-ink-3 max-md:size-9" title="판정 재계산" aria-label="판정 재계산"
+            disabled={roll.isPending} onClick={() => roll.mutate()}>
+            <RefreshCw className={cn("size-3.5", roll.isPending && "animate-spin")} />
+          </Button>
+          <Button variant="ghost" size="icon-xs" className="text-ink-3 hover:text-destructive max-md:size-9" title="제거" aria-label="질문 제거"
+            onClick={() => del.mutate()}>
+            <Trash2 className="size-3.5" />
+          </Button>
+        </span>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <VerdictBadge v={item.confirm_verdict} prefix="확정 " />
-          <VerdictBadge v={item.lead_verdict} prefix="선행 " />
-          {QUESTION_ORIGIN[item.created_by] && (
-            <Badge variant="outline" className={cn("text-[9px]", QUESTION_ORIGIN[item.created_by].cls)}>{QUESTION_ORIGIN[item.created_by].label}</Badge>
-          )}
-          {item.stock_code && (
-            <Badge asChild variant="secondary" className="text-[9px]"><Link to={`/analyze/${item.stock_code}/summary`}>{item.stock_code}</Link></Badge>
-          )}
-          {div && <Badge variant="outline" className="text-[10px] text-hypothesis border-hypothesis/40">{div}</Badge>}
-          <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">서브질문 {item.sub_count}</span>
-        </div>
-
-        {item.verdict_summary && (
-          <p className="text-[11px] text-muted-foreground rounded-md bg-muted/40 px-2.5 py-1.5">{item.verdict_summary}</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <VerdictBadge v={item.confirm_verdict} prefix="확정 " />
+        <VerdictBadge v={item.lead_verdict} prefix="선행 " />
+        {div && <span className={cn(TAG, item.divergence === "confirm_ahead" ? "bg-fact-tint text-fact" : "bg-hyp-tint text-hyp")}>{div}</span>}
+        {QUESTION_ORIGIN[item.created_by] && (
+          <span className={cn(TAG, "border", QUESTION_ORIGIN[item.created_by].cls)}>{QUESTION_ORIGIN[item.created_by].label}</span>
         )}
+        {item.stock_code && <Link to={`/analyze/${item.stock_code}/summary`} className={cn(TAG, "border border-line-2 font-mono text-ink-2 hover:text-ink")}>{item.stock_code}</Link>}
+        <span className={cn(TAG, "border border-line-2 tabular-nums text-ink-2")}>서브질문 {item.sub_count}</span>
+      </div>
 
-        <Collapsible open={open} onOpenChange={setOpen}>
-          <CollapsibleTrigger className="group/tr flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
-            <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]/tr:rotate-180" />
-            분해 구조 · 관측
-          </CollapsibleTrigger>
-          <CollapsibleContent>{open && <QuestionTree id={item.id} />}</CollapsibleContent>
-        </Collapsible>
-      </CardContent>
-    </Card>
+      {item.verdict_summary && (
+        <p className="bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-ink-2 line-clamp-3">{item.verdict_summary}</p>
+      )}
+
+      {/* 깊은 세부 — 목록 안에서 펼치지 않고 옆 시트로(높이 상한과 넘침) */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger className="flex min-h-8 items-center gap-1 self-start text-xs text-ink-3 hover:text-ink">
+          <ChevronRight className="h-3 w-3" />
+          분해 구조 · 관측
+        </SheetTrigger>
+        <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
+          <SheetHeader className="border-b"><SheetTitle className="pr-8 leading-snug">{item.text}</SheetTitle><SheetDescription>분해 구조 · 관측</SheetDescription></SheetHeader>
+          <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block"><div className="px-4 pb-6">{open && <QuestionTree id={item.id} />}</div></ScrollArea>
+        </SheetContent>
+      </Sheet>
+    </article>
   )
 }
 
@@ -346,7 +363,7 @@ export function QuestionTree({ id }: { id: number }) {
   return (
     <div className="mt-2 space-y-2">
       {data.sub_questions.map((sq) => (
-        <div key={sq.id} className="rounded-md border px-3 py-2 space-y-1.5">
+        <div key={sq.id} className="rounded-card border px-3 py-2 space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-medium flex-1">{sq.text}</span>
             <VerdictBadge v={sq.verdict} prefix="" />
@@ -380,6 +397,7 @@ function ProxyRow({ p }: { p: QProxy }) {
               <span className="truncate max-w-[20rem] max-md:hidden" title={o.value_text ?? ""}>{o.value_text}</span>
               {o.direction && <span className="shrink-0 tabular-nums">{DIR[o.direction] ?? o.direction}</span>}
               <span className="shrink-0 tabular-nums text-[10px]">{o.observed_at?.slice(0, 10)}</span>
+              {p.obs_count != null && <span className="shrink-0 tabular-nums text-[10px] max-md:hidden">{p.obs_count}건</span>}
             </span>
           ) : (
             <span className="ml-auto text-[10px] text-muted-foreground/60">관측 대기{p.tickers ? ` · ${p.tickers}` : ""}</span>
@@ -446,7 +464,7 @@ function ProxyDetailBody({ proxyId }: { proxyId: number }) {
 
 function ObsRow({ o, unit }: { o: ProxyObs; unit: string | null }) {
   return (
-    <li className="flex items-start gap-2 rounded-md border px-2.5 py-1.5">
+    <li className="flex items-start gap-2 rounded-card border px-2.5 py-1.5">
       <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground mt-0.5">{o.observed_at?.slice(0, 10)}</span>
       <span className="shrink-0 tabular-nums w-3 text-center">{o.direction ? (DIR[o.direction] ?? "") : ""}</span>
       <div className="min-w-0 flex-1">

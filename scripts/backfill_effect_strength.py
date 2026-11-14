@@ -23,7 +23,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import get_connection, init_db
-from pipeline.enrich import _call_claude_code, _parse_json, llm_engine
+from pipeline import llm
+from pipeline.enrich import _parse_json, llm_engine
 from pipeline.narrative import EFFECT_DIRECTIONS, EFFECT_STRENGTHS
 
 DEFAULT_PLAN = Path(__file__).resolve().parent.parent / "logs" / "effect_backfill_plan.json"
@@ -64,7 +65,7 @@ def _build_batch_prompt(batch: list[dict]) -> str:
 
 def _judge_batch(batch: list[dict], model: str = MODEL) -> dict[int, dict]:
     """배치 → {entity_relation_id: {strength, direction}}. 어휘 밖·미판정은 제외."""
-    raw = _call_claude_code(_build_batch_prompt(batch), model=model, timeout=300)
+    raw = llm.run_experiment(_build_batch_prompt(batch), model=model, timeout=300, job="backfill.effect_strength").text
     data = _parse_json(raw)
     out: dict[int, dict] = {}
     for a in (data.get("assignments") or []):

@@ -32,6 +32,10 @@ logs/
 vault/
 media/
 
+# 개인 작업 임시 폴더 / 레거시 0B 더미
+_workspace/
+backend/explorer.db
+
 # 개인 큐레이션 — 담당 커버리지는 공개하지 않는다 (scripts/seed_universe.py 참조)
 scripts/universe.local.json
 # 개인 수출입 워치리스트(HS 168품목, 종목 힌트 포함) — 로더만 저장소에 (pipeline/trade.seed_watchlist)

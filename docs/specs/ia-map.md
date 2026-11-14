@@ -9,7 +9,7 @@
 | 라우트 | 페이지 | 노출 위치 |
 |---|---|---|
 | `/home` | 홈 (스트림) | 모드필 L1 |
-| `/explore` | 탐색-신호 | 모드필 L1 + 탐색 서브탭 |
+| `/discover` (`#signals`·`?signal=`) | 탐색 › 종목 발견 · 오늘의 신호 (옛 `/explore`, 2026-11-05 개편 4c) | 탐색 L2 |
 | `/ask` | AI 질문 | 탐색 서브탭 |
 | `/actions` (`?view=pro`) | 기업활동 | 탐색 서브탭 |
 | `/feed` (`?source·q·stock·industry·topic·page`) | 통합 피드 | 모드필 L1 + 피드 서브탭 |
@@ -19,10 +19,10 @@
 | `/archive` | 보관함 (네비 허브) | Header 아이콘 |
 
 ### 보관함 (2군 — 라우트 유지, 네비에서 제거)
-`/analyze/compare` · `/research/watchlist` · `/discover/industry` (투자메모·카탈리스트·스크리너·대안데이터는 D-241에서 제거 — 리다이렉트만 남음)
+`/research/watchlist` · `/discover/industry` (투자메모·카탈리스트·스크리너·대안데이터는 D-241에서 제거 — 리다이렉트만 남음)
 
 ### 리다이렉트 (레거시 호환)
-`/`→`/home` · `/discover`,`/discover/signals`→`/explore` · `/industry`→`/discover/industry` · `/onchain`→`/discover/alt-data` · `/feed/telegram·blogs`→`/feed?source=` · `/research`→`/research/watchlist` · `/company/:code/:tab`→`/analyze/...` · **catch-all `*`→`/discover/industry`** ← 보관함 화면이 404 기본값 (개편 시 `/home`으로)
+`/`→`/home` · `/explore`(`?list=`→`?signal=`)·`/discover/signals`→`/discover#signals` · `/analyze/compare`→`/discover/peers`(`?stocks=` 유지) · `/industry`→`/discover/industry` · `/onchain`→`/discover/alt-data` · `/feed/telegram·blogs`→`/feed?source=` · `/research`→`/research/watchlist` · `/company/:code/:tab`→`/analyze/...` · **catch-all `*`→`/discover/industry`** ← 보관함 화면이 404 기본값 (개편 시 `/home`으로)
 
 ### 라우트 미등록 죽은 코드 (파일만 존재)
 `MetricsPage` · `SignalFeedPage` · `TelegramFeedPage` · `BlogFeedPage` (사이드바 export도 FollowRail로 대체됨)

@@ -19,7 +19,7 @@ const WINDOW_DAYS = 7
 const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 const addDays = (iso: string, n: number) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
 const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86_400_000)
-const tone = (v: number | null) => v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : ""
+const tone = (v: number | null) => v == null ? "text-muted-foreground" : v > 0 ? "text-up-ink" : v < 0 ? "text-down-ink" : ""
 
 export function CallReaction({ transcriptId, callDate }: { transcriptId: number; callDate: string | null }) {
   const query = useCallReaction(transcriptId)
@@ -52,7 +52,7 @@ export function CallReaction({ transcriptId, callDate }: { transcriptId: number;
         <section>
           {header()}
           {compute.isPending ? (
-            <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
+            <div className="bg-muted/40 px-4 py-3 space-y-2">
               <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/6" />
               <p className="text-xs text-muted-foreground">기간 안의 자료를 모아 정리하는 중… (1분 내외)</p>
             </div>
@@ -75,7 +75,7 @@ export function CallReaction({ transcriptId, callDate }: { transcriptId: number;
         {header(data)}
         {data.prices && <PriceStrip prices={data.prices} />}
         {data.body ? (
-          <div className={cn("rounded-lg bg-muted/40 px-4 py-3", compute.isPending && "opacity-60")}><Markdown>{data.body}</Markdown></div>
+          <div className={cn("bg-muted/40 px-4 py-3", compute.isPending && "opacity-60")}><Markdown>{data.body}</Markdown></div>
         ) : (
           <p className="text-xs text-muted-foreground">기간 안에 이 회사를 다룬 내 자료·헤드라인을 찾지 못했습니다.</p>
         )}

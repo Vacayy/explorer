@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from database import get_connection
+from pipeline.actions import action_description
 
 router = APIRouter(prefix="/api/spine/actions", tags=["spine"])
 
@@ -21,6 +22,7 @@ class CorporateAction(BaseModel):
     rcept_dt: str             # YYYYMMDD
     market_cap: int | None
     summary: str | None       # haiku 핵심 요약 (규모·비율·일정)
+    description: str | None = None   # 목록 제목 아래 한 줄 — 증자 상세·저장 요약 첫 문장에서 결정적으로(LLM 0, D-306)
     dart_url: str
     is_correction: bool = False   # report_nm에 '정정'([기재정정]·[첨부정정]) — 원공시를 고친 것
     my_group: str | None = None   # 내 묶음(stock_groups) 멤버면 '보유'(portfolio) 또는 '관심'(watch)
@@ -81,6 +83,11 @@ def list_actions(
     """, params).fetchall()
     mine = my_groups(conn)
     as_of = _scanned_at(conn)
+    details = {}
+    if rows:
+        rcps = [r["rcp_no"] for r in rows]
+        details = {d["rcp_no"]: d for d in conn.execute(
+            f"SELECT * FROM capital_raise_details WHERE rcp_no IN ({','.join('?' * len(rcps))})", rcps)}
     conn.close()
     return ActionsResponse(
         items=[CorporateAction(
@@ -88,6 +95,7 @@ def list_actions(
             stock_code=r["stock_code"], market=r["market"], action_type=r["action_type"],
             report_nm=r["report_nm"], rcept_dt=r["rcept_dt"], market_cap=r["market_cap"],
             summary=r["summary"],
+            description=action_description(r["report_nm"], r["summary"], details.get(r["rcp_no"])),
             dart_url=f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r['rcp_no']}",
             is_correction="정정" in (r["report_nm"] or ""), my_group=mine.get(r["stock_code"]),
         ) for r in rows],
