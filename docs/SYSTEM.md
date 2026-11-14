@@ -6,6 +6,12 @@
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
+## 프론트엔드 의존성 보안 보완 (2026-11-14)
+
+- package-lock의 선언된 호환 범위 안에서 의존성을 갱신했다. axios·react-router-dom·Vite 등의 수정 버전을 포함하며 A2UI/AG-UI의 직접 고정 버전은 유지한다.
+- `@a2ui/markdown-it`이 고정한 DOMPurify3.4.11은 해당 패키지에 한정한 npm override로3.4.17을 사용한다. 근거: GHSA-cg2g-xh64-v4q7 및 같은 수정 버전의 sanitizer 보완. A2UI의 현재 호출은 문자열 기본 sanitize이며, 해당 critical advisory의 특수 DOM/shadow-root 설정이 이 앱에서 재현됐다는 뜻은 아니다.
+- A2UI Markdown의 정상 서식·안전 링크 보존과 위험 HTML/JavaScript 링크 비실행을 회귀 검사한다. Zod3 의존 체인은 메이저 호환성 검토가 필요하므로 Zod4 강제 치환하지 않는다. audit 경고 개수는 배포 환경에서 재현된 취약점 개수와 구분한다.
+
 ## 문서 안내
 
 설계 원칙은 PHILOSOPHY(비공개 문서), 주요 기능의 요청·처리·저장 흐름과 기술 선택은 [TECH_DECISIONS](TECH_DECISIONS.md), 세부 계약은 [기능별 스펙](specs/README.md)에 있다. 이 문서는 전체 시스템 현황과 운영 항목을 관리한다. 2026-09-12 문서 대조에서 승인 범위·사용자 기록 소유권·스터디 웹 탐색·조회 정책의 적용 범위를 바로잡았다. 과거 운영 측정치는 측정 당시 기록이며 현재 값을 뜻하지 않는다.
