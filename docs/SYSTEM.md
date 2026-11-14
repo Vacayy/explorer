@@ -712,3 +712,7 @@ tail -f logs/ingest.log               # 수집 관찰
 ## Linux 예약 작업 상태 관측 (2026-11-14)
 
 `pipeline.health.scheduler_item`은 Linux에서 공유 `logs/scheduler-health.json`의90초 이내 UTC heartbeat·running·39jobs를 읽고 macOS에서는 launchctl 종료 코드를 읽는다. 조회 불가/미등록은 정상으로 표시하지 않는다. API는 다른 컨테이너 PID를 검사하지 않으며 worker 자체 healthcheck와 결과 데이터 신선도 점검을 병행한다. API 응답 필드 변경 없음. [운영 건강 계약](specs/ops-health.md).
+
+## 회원 인증 기반 (구현 중, HTTP 미연결)
+
+`backend/security/identity_store.py`는 명시적 별도 SQLite에 identity/users/hashed sessions를 관리한다. `google_identity.py`는 공식 google-auth2.62.2 검증 후 서버 nonce/authorized-party를 확인한다. import 시 DB 생성 없음, 기존 API·운영 DB 변경 없음. 세션 HTTP/CSRF/Google callback과 기존 개인 데이터 소유권은 아직 연결 전이며 이 모듈만으로 외부 공개를 허용하지 않는다. [회원 접근 계약](specs/member-access.md).
