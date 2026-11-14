@@ -429,18 +429,19 @@ class AnalysisService:
         """Use one runtime-visible mapping for model, explicit run and verifier."""
         paths = [self.store.root / "snapshots" / state["_snapshot_id"],
                  self.store.root / "control" / run_id / "skills"]
-        mapper = getattr(self.sandbox_factory, "input_paths", None)
+        from .runtime import selected_sandbox
+        mapper = getattr(self.sandbox_factory or selected_sandbox(), "input_paths", None)
         mapped = mapper(paths) if mapper else paths
         if len(mapped) != 2:
             raise ValueError("분석 입력 경로 매핑이 올바르지 않습니다.")
         return str(mapped[0]), str(mapped[1])
 
     def _sandbox(self, run_id: str, *, verification=False):
-        from .runtime import Sandbox
+        from .runtime import selected_sandbox
         state = self.store.read(run_id)
         suffix = "-verify" if verification else ""
         control = self.store.root / "control" / run_id
-        return (self.sandbox_factory or Sandbox)(
+        return (self.sandbox_factory or selected_sandbox())(
             control_dir=control / ("verify-runtime" if verification else "runtime"),
             workdir=self.store.root / "workspaces" / f"{run_id}{suffix}",
             read_dirs=[self.store.root / "snapshots" / state["_snapshot_id"], control / "skills"])
