@@ -20,6 +20,9 @@ export function issueField(err: ApiError) {
 }
 
 export function reportApiError(err: ApiError, base: string) {
+  // Chat contract diagnostics can contain model-controlled property names.
+  // Neither console output nor telemetry may retain conversation fragments.
+  if (err.endpoint && /\/api\/public\/chat(?:\/session)?(?:\?|$)/.test(err.endpoint)) return
   if (!err.endpoint || (err.kind === 'http' && (err.status ?? 0) < 500)) return
   const field = issueField(err)
   const sig = `${err.endpoint}|${err.kind}|${err.status ?? ''}|${field}`

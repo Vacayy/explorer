@@ -2,6 +2,8 @@
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createServer, type Server } from 'node:http'
 import api from '../src/api/client'
+import { reportApiError } from '../src/api/telemetry'
+import { ApiError } from '../src/api/errors'
 
 // 응답 계약 위반·5xx가 원인(API·필드)과 함께 서버 기록 엔드포인트로 보고되는지, 같은 오류는 한 번만 보고되는지
 let server: Server
@@ -26,6 +28,20 @@ afterAll(() => { delete (globalThis as { __API_TELEMETRY_TEST__?: boolean }).__A
 const reports = (spy: ReturnType<typeof vi.fn>) => spy.mock.calls
   .filter(([url]) => String(url).endsWith('/api/spine/client-errors'))
   .map(([, init]) => JSON.parse((init as RequestInit).body as string))
+
+it('never logs or sends chat error details even for schema violations', () => {
+  const spy = vi.fn()
+  vi.stubGlobal('fetch', spy)
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  for (const endpoint of ['POST /api/public/chat', 'GET /api/public/chat/session']) {
+    const error = new ApiError('conversation-canary', 503, { kind: 'schema' })
+    error.endpoint = endpoint
+    reportApiError(error, root)
+  }
+  expect(warn).not.toHaveBeenCalled()
+  expect(spy).not.toHaveBeenCalled()
+  vi.unstubAllGlobals()
+})
 
 it('reports contract violations with endpoint and field, once per signature', async () => {
   const spy = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))

@@ -1,10 +1,12 @@
 """Admission/evidence orchestration; no transcript persistence or provider secrets.
 
-The completion adapter is a trusted dispatcher boundary. Once complete() is
-entered it owns reservation reconciliation even if this coroutine is cancelled.
-Only the dispatcher may start/finish, after proving its child has stopped.
+The completion adapter is a trusted dispatcher boundary. Once a write is
+attempted it owns reconciliation even if this coroutine is cancelled. Only a
+proven pre-write failure allows refund. The dispatcher alone starts/finishes,
+after proving its child has stopped.
 """
 import asyncio
+from security.public_completion import CompletionNotSubmitted, CompletionCancelledBeforeSend
 
 
 class IncompleteExecution(Exception):
@@ -41,9 +43,15 @@ class TrialChat:
             raise
         # No refund/finish finally here: a disconnected transport does not prove
         # the independently running child stopped (or never started).
-        result = await self.completion.complete(
-            reservation_id=reservation, question=question,
-            context=model_input, history=history)
+        try:
+            result = await self.completion.complete(
+                reservation_id=reservation, question=question,
+                context=model_input, history=history)
+        except (CompletionNotSubmitted, CompletionCancelledBeforeSend):
+            # The transport proves write() was never attempted. No dispatcher
+            # can own this request; stale/missing sockets must not strand quota.
+            self.quota.release_before_start(reservation)
+            raise
         if self.quota.state(reservation) != 'finished':
             raise IncompleteExecution('Execution completion not verified')
         answer = await asyncio.to_thread(

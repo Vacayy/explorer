@@ -1,11 +1,13 @@
 import asyncio
 from pathlib import Path
 import sqlite3
+import socket
 import tempfile
 import threading
 import unittest
 
 from security.trial_chat import IncompleteExecution, TrialChat
+from security.public_completion import PublicCompletionClient, CompletionNotSubmitted
 from security.trial_quota import TrialPolicy, TrialQuota, QuotaExceeded
 
 
@@ -141,6 +143,18 @@ class TrialChatTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(IncompleteExecution):
             await self.answer()
         self.assertEqual(self.quota.state(self.calls[0]['reservation_id']), 'reserved')
+
+    async def test_unreachable_dispatcher_refunds_and_can_recover(self):
+        socket_path = Path(self.tmp.name) / 'stale.sock'
+        with socket.socket(socket.AF_UNIX) as stale:
+            stale.bind(str(socket_path))
+        client = PublicCompletionClient(socket_path, 'f' * 64)
+        chat = TrialChat(self.quota, self.evidence, client)
+        for _ in range(4):
+            with self.assertRaises(CompletionNotSubmitted):
+                await chat.answer(actor_hash='a' * 64, network_hash='b' * 64, question='canary')
+            self.assertEqual(self.quota.remaining('a' * 64), 3)
+        self.assertEqual((await self.answer())['remaining'], 2)
 
     async def test_revoked_evidence_discards_answer_without_refund(self):
         def revoked(*args):

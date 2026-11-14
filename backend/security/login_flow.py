@@ -135,7 +135,8 @@ class CallbackQueryFilter(logging.Filter):
     def filter(self, record):
         if isinstance(record.args, tuple) and len(record.args) == 5:
             args = list(record.args)
-            if isinstance(args[2], str) and args[2].split('?', 1)[0] == CALLBACK_PATH:
-                args[2] = CALLBACK_PATH
+            if isinstance(args[2], str) and args[2].split('?', 1)[0] in {
+                    CALLBACK_PATH, '/api/public/chat', '/api/public/chat/session'}:
+                args[2] = args[2].split('?', 1)[0]
                 record.args = tuple(args)
         return True

@@ -48,7 +48,7 @@ CLI 기반 익명 체험은 별도 실행 경계에서 운영 DB/프로젝트/�
 
 `security.trial_identity`는 32-byte 별도 비밀키로 버전·발급시각·256-bit 난수를 서명한 30일 쿠키를 검증한다. actor/CSRF/network HMAC 용도를 분리하며 만료·미래 발급·변조를 거부한다. 원문 IP와 쿠키를 사용량 저장소로 넘기지 않는다. 프록시 CIDR이 명시된 peer만 단일 전달 IP를 신뢰하고, 나머지 peer의 전달 헤더는 무시한다. IPv4는 /32, IPv6는 /64로 집계하며 mapped IPv4를 정규화한다. HTTP에서는 Secure/HttpOnly/host-only/SameSite 쿠키와 검증된 프록시의 헤더 덮어쓰기를 추가해야 한다. 현재 이 모듈은 쿠키를 실제 발급하는 HTTP endpoint가 아니다.
 
-`security.trial_chat`는 예약 → 공개 근거 준비 → 신뢰된 completion dispatcher → finished 상태 확인 → 근거 재검증 순서로 연결한다. 근거 준비/직렬화 실패는 실행 전 환불한다. 요청 취소 시에도 실제 읽기 thread가 종료될 때까지 예약 슬롯을 유지한 뒤 환불하여 반복 취소로 읽기 작업이 누적되지 않게 한다. dispatcher 호출을 시작한 뒤의 예외/취소는 실행 여부를 추측해 환불하거나 슬롯을 반환하지 않는다. dispatcher가 실제 child 종료를 확인하고 상태를 정리해야 한다. 사용량의 remaining은 표시용 snapshot이며 실행 권한은 reserve transaction만 부여한다. HTTP 입력/본문 제한·Unix socket dispatcher·실제 프로세스 장애 복구·브라우저 메모리 전용 대화는 후속 연결이며, 이 내부 합성 테스트로 실제 서비스 완료를 주장하지 않는다.
+`security.trial_chat`는 예약 → 공개 근거 준비 → 신뢰된 completion dispatcher → finished 상태 확인 → 근거 재검증 순서로 연결한다. 근거 준비/직렬화 실패는 실행 전 환불한다. 요청 취소 시에도 실제 읽기 thread가 종료될 때까지 예약 슬롯을 유지한 뒤 환불하여 반복 취소로 읽기 작업이 누적되지 않게 한다. IPC가 write()를 시도하기 전임을 증명하는 인코딩/연결 실패·취소만 환불한다. write() 시도 이후 예외/취소는 실행 여부를 추측해 환불하거나 슬롯을 반환하지 않는다. dispatcher가 실제 child 종료를 확인하고 상태를 정리해야 한다. 사용량의 remaining은 표시용 snapshot이며 실행 권한은 reserve transaction만 부여한다. HTTP 입력/본문 제한·Unix socket dispatcher·실제 프로세스 장애 복구·브라우저 메모리 전용 대화는 후속 연결이며, 이 내부 합성 테스트로 실제 서비스 완료를 주장하지 않는다.
 
 ## 익명 체험 사용량 예약 계약
 
@@ -177,3 +177,14 @@ EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 Publica
 합성 legacy 결과를 ownership 준비 전 저장하고 A/B의 별개·겹치는 종목/그룹 추가 후 대조했다. 개인 수집 우선순위·월드 보유집합, 실제 watch 평가 결과와 job 요약/미국 가격 수집 호출은 동일하며 회원 그룹 평가0이다. 외부 provider는 stub, Docker network none에서 관련47검사와 main import 통과. 기존 수집 script 회귀 fixture에서 새 consensus/preliminary 두 단계의 stub/기대값이 빠져 있었고 보완 후 전체 단계 계속 실행·실패 exit1 검사를 유지했다.
 
 이 검증은 위 연결 경로의 합성 격리 수용이다. `watch_reasons`/`stock_tracker` 등의 watch 전용 조회는 현재 회원 API가 portfolio만 만들므로 이번 경로에 연결되지 않으며, 회원 관심묶음을 도입하기 전에 별도 소유권 적용이 필요하다. 기존 그룹 API/원칙/논지/알림·파생 전체/실제 소유 매핑과 운영 backup/restore·공개 사전검사는 미완이다. prepared code를 즉시 운영 활성화하거나39개 실제 작업 전체를 수용했다는 의미가 아니다.
+
+
+## 익명 채팅 HTTP 계약 (구현 중)
+
+- `GET /api/public/chat/session`: `{remaining:int, limit:int, csrf_token:string}`. 익명 서명 쿠키가 없거나 무효이면 새로 발급한다. host-only Secure/HttpOnly/SameSite=Lax/Path=/, 30일. Google 로그인 설정과 독립이다.
+- `POST /api/public/chat`: `X-CSRF-Token`과 정확한 Origin·유효 익명 쿠키 필수. 본문 `{question:string, history:[{role:"user"|"assistant",content:string}], search_query?:string, document_ids?:number[]}`. question1..4000자/12KiB, history 최대4개·각16KiB, search_query 최대120자, 문서 최대4개 양의 정수/중복 금지. history는 모델 문맥용 메모리 데이터이며 저장하지 않는다. search_query 생략 시 question의 앞120자로 승인 문서 문자열 검색한다.
+- POST 전체 JSON body는96KiB 이내이며 JSON parsing 전에 실제 수신 bytes를 제한한다. 응답 `{answer:string, citations:[{id:string,title:string,url:string}], partial:boolean, remaining:int}`. 답변은 plain text, 인용 링크는 서버만 생성한다.
+- 실패는 고정 문구(입력 원문/Pydantic input/공급자 예외 없음): 잘못된 입력422, 본문초과413, 신원/CSRF403, 한도429, 근거없음404, 근거변경409, 설정/실행불가503. no-store/no-referrer 적용, access log에서는 두 채팅 경로의 query를 제거한다.
+- `EXPLORER_TRIAL_SECRET_FILE`은 명시적32-byte0600 키 파일, `EXPLORER_TRIAL_DB`는 사전 초기화된 별도 DB, `EXPLORER_TRIAL_NETWORK_DAY_LIMIT`/`EXPLORER_TRIAL_GLOBAL_DAY_LIMIT`/`EXPLORER_TRIAL_MAX_IN_FLIGHT`는 필수 정수 정책이다. `EXPLORER_PUBLIC_ORIGIN`은 HTTPS origin. `EXPLORER_TRIAL_TRUSTED_PROXIES`는 선택 comma-separated CIDR이며 기본 비신뢰. 명시 신뢰 peer에만 `X-Explorer-Client-IP`를 사용한다. 실제 gateway에서 사용자 헤더 제거/덮어쓰기 검증 전 활성화하지 않는다.
+- `EXPLORER_PUBLIC_CHAT_SOCKET`은 절대 Unix socket 경로, `EXPLORER_PUBLIC_CHAT_TOKEN_FILE`은64hex0600 IPC capability 파일이다. API에는 Docker socket/공급자 인증을 제공하지 않는다. IPC newline JSON v1 request는 token/operation=complete/reservation_id/question/context/history, 최대160KiB. 응답은 version/status=complete/reservation_id/answer/citation_ids, 최대128KiB, 190초 deadline/no retry. dispatcher가 quota의 mark_started True인 경우에만 실행하고 실제 child 종료 뒤 finish한다. Unix socket/DB는 동일 Linux filesystem 안에서 공유해야 하며 macOS↔Linux SQLite WAL 공유는 허용하지 않는다.
+- 기능은 public 경계의 정확한 두 route에만 독립 trial 정책을 적용한다. 설정·실제 dispatcher 준비 전503이며 Google/유료 API fallback은 없다. 실제 CLI/프록시/브라우저 비저장 검증 전 공개 완료가 아니다.

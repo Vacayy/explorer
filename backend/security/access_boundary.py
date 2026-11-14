@@ -20,6 +20,8 @@ NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy'
 # Only these existing endpoints have been reviewed at this stage. Each business
 # route needs public projection or ownership validation before joining this map.
 PUBLIC_ROUTE_POLICIES = {
+    ('GET', '/api/public/chat/session'): 'trial',
+    ('POST', '/api/public/chat'): 'trial',
     ('GET', '/api/health'): 'public',
     ('GET', '/api/public/documents'): 'public',
     ('GET', '/api/member/portfolio'): 'member',
@@ -77,7 +79,8 @@ class PublicAccessBoundary:
                     registered[key] = registered.get(key, 0) + 1
                     self.endpoints[key] = route.endpoint
         for key, policy in self.policies.items():
-            if (registered.get(key) != 1 or policy not in {'auth', 'public', 'member', 'operator'}
+            if (registered.get(key) != 1 or policy not in {'auth', 'public', 'member', 'operator', 'trial'}
+                    or (policy == 'trial' and key not in {('GET', '/api/public/chat/session'), ('POST', '/api/public/chat')})
                     or (policy == 'public' and key[0] not in {'GET', 'HEAD'})):
                 raise ValueError('Invalid or ambiguous public route policy')
 

@@ -725,7 +725,7 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `backend/security/identity_store.py`는 명시적 별도 SQLite에 identity/users/hashed sessions를 관리한다. `google_identity.py`는 공식 google-auth2.62.2 검증 후 서버 nonce/authorized-party를 확인한다. import 시 DB 생성 없음, 기존 API·운영 DB 변경 없음. 세션 HTTP/CSRF/Google callback은 routers/auth.py에서 등록하되 설정 전503으로 비활성이다. 기존 개인 데이터 소유권은 아직 연결 전이며 이 모듈만으로 외부 공개를 허용하지 않는다. [회원 접근 계약](specs/member-access.md).
 
-`security.trial_quota`는 별도 SQLite에서 익명 actor/network digest와 예약 상태만 저장한다. actor 누적·UTC 일간 network/전체·진행 슬롯을 한 write transaction으로 제한한다. 실행 전만 환불하며 실행 중 예약은 시간 경과/프로세스 재시작으로 자동 해제하지 않는다. `trial_identity`가 서명 쿠키·용도별 HMAC·명시적 프록시 CIDR/IPv6 /64 식별을 준비하고, `trial_chat`이 예약/근거 준비/dispatcher 호출/완료 확인/근거 재검증을 연결한다. 실행 전만 환불하며 dispatcher 진입 후 취소/연결 실패는 예약을 보존한다. remaining/state 조회는 표시/내부 확인용이고 실행 승인에 대체하지 않는다. HTTP 발급·실제 CLI dispatcher/장애 정리는 아직 미연결이다. [사용량 예약 계약](specs/member-access.md#익명-체험-사용량-예약-계약).
+`security.trial_quota`는 별도 SQLite에서 익명 actor/network digest와 예약 상태만 저장한다. actor 누적·UTC 일간 network/전체·진행 슬롯을 한 write transaction으로 제한한다. 실행 전만 환불하며 실행 중 예약은 시간 경과/프로세스 재시작으로 자동 해제하지 않는다. `trial_identity`가 서명 쿠키·용도별 HMAC·명시적 프록시 CIDR/IPv6 /64 식별을 준비하고, `trial_chat`이 예약/근거 준비/dispatcher 호출/완료 확인/근거 재검증을 연결한다. 실행 전만 환불하며 IPC write 시도 이후 취소/연결 실패는 예약을 보존하며 명확한 전송 전 실패만 환불한다. remaining/state 조회는 표시/내부 확인용이고 실행 승인에 대체하지 않는다. HTTP 연결은 아래 준비 경로를 제공하며 실제 CLI dispatcher/장애 정리는 아직 미연결이다. [사용량 예약 계약](specs/member-access.md#익명-체험-사용량-예약-계약).
 
 `security.login_transactions`는 별도0600 SQLite에5분 로그인 state/binding hash와 nonce/PKCE를 관리한다. `security.login_flow`와 `routers/auth`는 browser-bound 일회용 callback과 세션교체/Origin+CSRF logout을 제공한다. 인증 설정키와 응답 계약은 member-access.md 참조. 콜백 access-log query 제거, no-store/no-referrer 응답을 적용하며 프록시의 동일 보호가 필요하다. 프론트 auth API/types와 생성 계약을 동기화했고 로그인 UI 및 기존 업무 API 권한은 미연결이다.
 
@@ -759,3 +759,8 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 
 
 공개 `/feed`는 `PublicDocumentListPage`/`usePublishedDocuments`에서 승인 문서 목록·제목/본문 검색·이어보기·본문 이동을 제공한다. GET `/api/public/documents`는 승인 후보를 현재 본문/첨부 fingerprint로 검증한 뒤 검색·plain-text 미리보기를 만들며 마지막에 승인도 재조회한다. 후보100/읽기128MiB 제한과 암호화 cursor로 빈 중간 구간도 이어갈 수 있고 전체 비공개 수는 반환하지 않는다. publication metadata v2의 Fernet 키는 명시 준비·영속백업 대상이며 요청 자동생성 없음. 실제 승인/외부공개·공용인용/RAG는 미완이다.
+
+
+익명 체험 HTTP 준비: `routers/trial_chat`/`models/trial_chat`는 GET `/api/public/chat/session` 및 POST `/api/public/chat`를 별도 trial 정책으로 등록한다. POST parsing 전96KiB 제한, 서명 쿠키/Origin/CSRF/네트워크 식별과 quota를 적용하며 오류에 입력을 재출력하지 않는다. `trial_service`는 별도0600 키/IPC capability·quota DB·HTTPS origin·명시 일간/동시 한도·신뢰 프록시를 환경에서 읽고 자동 초기화하지 않는다. `public_completion`은 크기/시간 제한된 Unix socket v1 protocol, 응답 예약id/인용 검증, 재시도 없는 고정 오류를 제공한다. 실제 dispatcher와 CLI 완료·장애 복구는 아직 미연결이며 설정 전503이다. 환경키/프로토콜은 [HTTP 계약](specs/member-access.md#익명-채팅-http-계약-구현-중) 참조.
+
+프론트 `useTrialChat`/`types/trialChat`는 계약 검증 API client를 사용하되 query/mutation cache나 브라우저 저장소 없이 대화·세션을 hook 메모리에만 둔다. 최근4개 메시지를 보내고 계정 scope/reset/unmount에서 abort+generation 검증으로 늦은 응답을 버린다. 실패 시 횟수를 재조회하고 POST를 자동 재시도하지 않는다. 두 채팅 경로는 서버 access-log query 제거 및 프론트 console/telemetry 제외 대상이다. 실제 화면 마운트·브라우저 동작/공급자 비저장은 후속 검증이다.
