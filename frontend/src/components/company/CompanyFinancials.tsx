@@ -25,6 +25,7 @@ import SegmentTabs from '@/components/shared/SegmentTabs'
 import { quarterCount } from '@/lib/dossier'
 import { PageContainer } from '@/components/shared/PageContainer'
 import FinancialsPage from '@/components/financials/FinancialsPage'
+import { IncomeFlow } from '@/components/financials/IncomeFlow'
 import { formatKrw, formatPercent, formatRatio } from '@/utils/format'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { quarterRows } from '@/utils/companyResearch'
@@ -270,6 +271,7 @@ export default function CompanyFinancials({
         <FinancialsPage stockCode={stockCode} corpCode={corpCode} />
       ) : (
         <>
+          <IncomeFlow code={stockCode} market="kr" />
           <Card className="gap-0 py-0" aria-label="분기 실적 추이">
             <header className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b px-4 py-3">
               <h2 className="text-section font-semibold">분기 실적 추이</h2>

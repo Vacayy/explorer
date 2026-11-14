@@ -3,16 +3,36 @@
 헤더(yfinance 시세·밸류) + 해소된 entity + 최근 컨콜 메타만. 렌즈는 기존 `/stock/{ticker}/lens?market=us`,
 컨콜 상세·내러티브·피드는 각 전용 엔드포인트를 FE가 entity_id/ticker로 재사용.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 import json
 import re
 
 from database import get_connection
+from models.income_flow import IncomeFlowQuarters, IncomeFlowResponse
 from models.us import (UsBriefing, UsBriefingListItem, UsBriefingSources, UsDossier, UsEdge, UsGroup, UsList, UsListItem, UsMention,
                         UsMoverItem, UsMoversResponse, UsNarrativeRef, UsWorldModel)
+from pipeline.income_flow import us_income_flow, us_income_flow_quarters
 
 router = APIRouter(prefix="/api/spine/us", tags=["spine"])
+
+
+@router.get("/{ticker}/income-flow/quarters", response_model=IncomeFlowQuarters)
+def us_income_flow_quarters_endpoint(ticker: str):
+    return us_income_flow_quarters(ticker.upper())
+
+
+@router.get("/{ticker}/income-flow", response_model=IncomeFlowResponse)
+def us_income_flow_endpoint(
+    ticker: str,
+    q: str | None = Query(None, pattern=r"^\d{4}-(03|06|09|12)$"),
+    mode: str = Query("q", pattern="^(q|ttm)$"),
+):
+    """미국 분기 손익 흐름(Sankey) — ia-redesign §4.13. q는 달력 분기 끝 'YYYY-MM'. mode=ttm은 최근 4분기 합."""
+    result = us_income_flow(ticker.upper(), q, mode)
+    if result is None:
+        raise HTTPException(404, detail="분기 손익 자료가 없습니다")
+    return result
 
 
 @router.get("", response_model=UsList)

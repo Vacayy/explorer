@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import get_connection, init_db
 
-STEPS = ("companies", "disclosures", "financials", "valuation", "consensus")
+STEPS = ("companies", "disclosures", "financials", "valuation", "consensus", "preliminary")
 
 
 def main() -> int:
@@ -63,6 +63,9 @@ def main() -> int:
         # 목표가 컨센서스 — 보유·관심 묶음 종목만(시총 상위는 화면 머리에 쓰이지 않는다). 네이버라 DART 예산과 무관
         mine = list(dict.fromkeys(t["stock_code"] for t in tgts if t["tier"] in ("portfolio", "watch")))
         step("consensus", "kr_consensus", lambda: refresh_consensus(mine))
+        # 잠정실적 공시 숫자(분기 손익 흐름 1단계) — 최근 ~30건만 돌린다. 이미 처리된 공시는 건너뛴다
+        from pipeline.kr_preliminary import collect as collect_preliminary
+        step("preliminary", "kr_preliminary", lambda: collect_preliminary(limit=30))
     finally:
         conn.close()
     print(f"[krcompany] DART 호출 {client.calls}/{args.budget}")

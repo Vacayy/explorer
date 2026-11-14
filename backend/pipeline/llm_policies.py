@@ -91,6 +91,8 @@ TASKS = MappingProxyType({
     'narrative.reverify': TaskSpec('haiku', timeout=180, schema=True),
     'narrative.weekly': TaskSpec('sonnet', timeout=300),
     'ops.probe': TaskSpec('haiku', timeout=90, effort='low'),
+    'preliminary.extract': TaskSpec('haiku', timeout=120, schema=True),
+    'segments.extract': TaskSpec('haiku', timeout=120, schema=True),
     'pricing.extract': TaskSpec('sonnet', timeout=240, effort='low', model_env='PRICING_MODEL'),
     'proxy.extract': TaskSpec('haiku', timeout=180),
     'proxy.sentiment': TaskSpec('haiku', timeout=120),

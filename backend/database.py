@@ -1442,6 +1442,35 @@ def init_db():
 
     -- 미국 수요 기업 분기 실적 (docs/specs/value-chain.md §6) — SEC XBRL companyfacts, 분기 단독 값(누적은 차감).
     -- use_key = 밸류체인 최종 수요 키(ai·ai_accel·mobile), q = 달력 분기 끝 'YYYY-MM'
+    -- 국내 잠정실적 공시의 매출·영업이익·순이익 (ia-redesign §4.13 분기 손익 흐름 2단계)
+    -- 분기보고서가 뜨기 전 잠정공시만으로 Sankey를 그리기 위한 fallback 숫자.
+    -- DART 잠정공시 HTML → LLM(haiku) 추출. period = 'YY.MM'(분기 끝월), stage는 항상 'preliminary'.
+    CREATE TABLE IF NOT EXISTS kr_preliminary_earnings (
+        stock_code    TEXT NOT NULL,
+        period        TEXT NOT NULL,          -- 'YY.MM' (26.06 등)
+        fs_div        TEXT,                   -- CFS | OFS
+        revenue       REAL,                   -- 원
+        op_income     REAL,                   -- 원
+        net_income    REAL,                   -- 원
+        rcp_no        TEXT NOT NULL,          -- 원 공시 접수번호
+        rcept_dt      TEXT,                   -- YYYY-MM-DD
+        source_url    TEXT,
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (stock_code, period)
+    );
+
+    -- 미국 사업부 매출(세그먼트) — EX-99.1 earnings release에서 LLM(haiku) 추출 (ia-redesign §4.13).
+    -- q = 달력 분기 끝 'YYYY-MM'(us_quarterly와 같은 키). segment_name은 회사가 쓰는 원 이름 그대로.
+    CREATE TABLE IF NOT EXISTS us_segments (
+        ticker        TEXT NOT NULL,
+        q             TEXT NOT NULL,
+        segment_name  TEXT NOT NULL,
+        revenue       REAL,                   -- USD
+        source_doc_id INTEGER,                -- raw_documents.id
+        fetched_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (ticker, q, segment_name)
+    );
+
     CREATE TABLE IF NOT EXISTS us_quarterly (
         ticker      TEXT NOT NULL,
         q           TEXT NOT NULL,

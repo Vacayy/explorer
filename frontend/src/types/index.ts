@@ -2027,3 +2027,28 @@ export interface KalshiDetail {
   range: string; outcomes: KalshiDetailOutcome[]; series: { ticker?: string | null; label: string; points: [string, number][] }[]
 }
 export interface KalshiPredictions { fetched_at: string | null; base_at?: string | null; items: KalshiEvent[] }
+
+// 분기 손익 흐름(Sankey) — ia-redesign §4.13. 백엔드가 raw 금액(KRW/USD)과 보조 지표까지 완성해 돌려준다
+export interface FlowNodeSubs {
+  yoy: number | null; qoq: number | null; margin: number | null
+  margin_yoy_pp: number | null; margin_qoq_pp: number | null
+  share_of_revenue: number | null; effective_tax_rate: number | null
+  note: string | null
+}
+export interface FlowNode {
+  id: string; label: string; value: number; column: number
+  kind: 'revenue' | 'keep' | 'cost' | 'inflow'
+  estimated?: boolean; subs?: FlowNodeSubs | null
+}
+export interface FlowLink { source: string; target: string; value: number; estimated?: boolean }
+export interface FlowSegment { name: string; value: number; yoy: number | null; qoq: number | null; share: number | null }
+export interface FlowCallout { rule: number; text: string }
+export interface IncomeFlowResponse {
+  period: string; prev_q: string | null; prev_y: string | null; as_of: string | null
+  stage: 'preliminary' | 'quarterly_report'
+  fs_div: 'CFS' | 'OFS' | 'GAAP'; unit: 'KRW' | 'USD'; derived?: boolean
+  nodes: FlowNode[]; links: FlowLink[]; segments: FlowSegment[]
+  callout: FlowCallout | null; notes: string[]; degraded: string[]
+}
+export interface IncomeFlowQuarterItem { q: string; stage: 'preliminary' | 'quarterly_report'; as_of: string | null }
+export interface IncomeFlowQuarters { quarters: IncomeFlowQuarterItem[] }

@@ -21,6 +21,7 @@ import { LensView } from '@/components/lens/LensPage'
 import { WatchButton } from '@/components/follow/WatchButton'
 import { UsPriceCollect } from '@/components/us/UsPriceCollect'
 import { UsEarningsCard, UsEarningsHistory } from '@/components/us/UsEarningsCard'
+import { IncomeFlow } from '@/components/financials/IncomeFlow'
 import { useCompanyPrices } from '@/hooks/useCompanyPrices'
 import { lastClose, rangePos, shortDate, upside, usConsensus, usEyebrow, usTabOf, type LastClose, type UsConsensus } from '@/lib/dossier'
 import { cn } from '@/lib/utils'
@@ -130,7 +131,7 @@ function UsFinancials({ d, price }: { d: UsDossier; price: number | null }) {
     <Card className="gap-0 py-0" aria-label="확보된 재무">
       <header className="flex flex-wrap items-center gap-x-2 border-b px-4 py-3">
         <h2 className="text-section font-semibold">확보된 재무</h2>
-        <span className="text-caption text-muted-foreground">Yahoo Finance</span>
+        <span className="text-caption text-muted-foreground">Yahoo Finance · 최근 회계연도 스냅샷</span>
       </header>
       <div className="space-y-3 p-4">
         {!f ? <p className="text-sm text-muted-foreground">재무 스냅샷을 아직 받지 못했습니다.</p> : <MetricStrip items={[
@@ -149,6 +150,7 @@ function UsFinancials({ d, price }: { d: UsDossier; price: number | null }) {
         </div>
       </div>
     </Card>
+    <IncomeFlow code={d.ticker} market="us" />
     <Card className="gap-0 py-0" aria-label="컨센서스와 목표가">
       <header className="flex flex-wrap items-center gap-x-2 border-b px-4 py-3">
         <h2 className="text-section font-semibold">컨센서스와 목표가</h2>
