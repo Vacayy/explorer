@@ -118,11 +118,21 @@ Vite 빌드는 번들에 주입하는 같은 값으로 `_explorer/build.json`(ve
 
 ### 승인 문서·본문·첨부와 철회
 
+목록/검색: GET `/api/public/documents?q=&cursor=&limit=10`은 승인 저장소의 문서ID 내림차순 후보만 검토한다. q는 제목·보관본문의 대소문자 무시 문자열 검색(최대120자), cursor는 서버가 발급한 불투명 이어보기 값, limit은1..20이다. 응답은 `{items:[{id,title,source_type,published_at,snippet}],next_cursor}`이며 snippet은 검증된 본문 앞부분/검색 주변 최대240자다. 전체 건수·비공개 후보수·관련자료는 반환하지 않는다. 검색 일치 검사도 본문/첨부 전체의 현재 승인 fingerprint 검증 뒤에 수행해, 변경된 비공개 본문에 따라 파일 검증 비용/상태가 달라지는 검색어 oracle을 막는다.
+
+후보100개/파일·선택본문 읽기128MiB를 요청 예산으로 제한한다. 완료한 후보의 위치를 암호화해 전달하므로 앞100개가 검색불일치이거나 변경으로 제외되어도 뒤의 공개 결과를 계속 찾을 수 있다. 빈 items+next_cursor는 검색 완료0건이 아니다. 파일 읽기 예산 때문에 검증하지 못한 후보는 다음 범위에 남긴다. 첫 후보조차 완료할 수 없는 오류/예산은503이며 거짓0건으로 처리하지 않는다. 새 검색엔진/영속 검색 인덱스는 추가하지 않는다.
+
+publication_metadata v2는 별도0600 SQLite 안에 cursor_key를 보관한다. 기존 v1은 명시 initialize 때만 ALTER/키생성/version2로 준비하며 요청 자동 변경은 없다. 재초기화는 기존 키를 유지한다. 설치된 cryptography50.0.2의 [Fernet 공식 API](https://cryptography.io/en/latest/fernet/)를 사용하고 진행위치·정규화검색어·버전의1024바이트 패딩 payload를 인증 암호화한다. 키는 서버 내부에만 있고 토큰의 생성시각은 Fernet 형식상 숨기지 않는다. 유효기간1시간, 검색어 재사용/변조/만료는400이며 처음부터 재검색한다. 키가 포함된 SQLite-aware 백업/복원을 요구하며 DB와 분리된 임의 키 파일·익명 요청별 영속 cursor 기록은 만들지 않는다. 초기화 누락은503이다.
+
+목록 연결 검증: 관련 ASGI23검사·프론트308검사·TypeScript·318응답 계약 일치 통과. 101개 유효문서 중 마지막 검색일치 및 앞100개 변경+마지막 유효문서 도달, 파일 예산 중단 후보가 다음 페이지에 남음, 승인 재검사/철회/metadata·첨부 변경 제외, DB 불변을 확인했다. 키 초기화누락 거부/요청무변경·변조/다른검색어/만료400, SQLite-aware 백업 integrity와 별도 Python 프로세스에서 복원DB로 이어보기도 통과했다. Chrome1440/390px에 실제 ASGI 합성응답을 공급하여 목록 다음/이전→빈 중간 검색→다음 결과→본문→목록 복귀→완결0건→철회 재검증 제거를 확인했다. API28회 session/공용목록/문서뿐, uncaught0/미승인API0/가로overflow0. 탐색 중 취소된 요청4개는 CDP fixture 응답 취소로 처리했으며 모든 실제 화면 전이를 별도로 기다렸다. 실제 운영키/DB/Google/외부 공개 검증은 아니다.
+
+공개 `/feed`는 검색 입력/URL q·cursor와 이전·다음 이동, 검증된 미리보기→`/doc/:id` 링크를 제공한다. 로딩·빈목록·검색0건·오류 재시도·정상목록을 구별하며 재검증 중/실패에는 이전 결과를 숨긴다. 공개 본문에서 목록으로 돌아갈 수 있다. 기존 개인 피드/검색/저장 API를 마운트하지 않는다. 실제 자료 승인/피드 전체·인용/RAG 연결과 외부 rate limit은 별도 후속이다.
+
 공용 GET `/api/public/documents/{doc_id}`는 명시적으로 승인한 공개 투영만 반환한다. id/title/source_type/url/published_at/content/content_kind/attachments가 전부이며 개인 태그·메모·작업·연관자료는 없다. content는 저장된 markdown 우선, 없으면 raw_content다. 저장된 가공 본문일 수 있으므로 UI는 '보관된 본문'으로 표시하고 원문 그대로라고 보장하지 않는다. 출처 종류 자체는 공개 권한의 근거가 아니다.
 
 운영자는 GET `/api/operator/publications/{doc_id}/preview`로 문서/첨부 목록/fingerprint/현재 version과 보호된 attachment_previews URL을 받는다. GET `/api/operator/publications/{doc_id}/preview/{fingerprint}/attachments/{attachment_id}`로 실제 파일을 검토한다. POST approve는 fingerprint/expected_version/rights_basis 및 personal_data_excluded=true를 요구한다. POST revoke는 expected_version을 받는다. 경로 앞부분은 동일한 `/api/operator/publications/{doc_id}`이며 회원은 운영자 경로에 접근할 수 없다. 기존 세션 역할과 Origin/CSRF를 검사하고 버전 충돌은409로 재검토를 요구한다. 운영자 검토 UI는 아직 없다.
 
-EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 PublicationStore.initialize 대상이다. 요청/import 자동 초기화는 없고 누락/장애는503이다. 배포 시 영속 볼륨과 SQLite-aware 백업/복원 범위에 포함해야 하며 현재 운영 환경에는 초기화/연결하지 않았다. 테이블은 publication_metadata와 현재 publications 결정이며 과거 본문/개정 이력 저장은 제공하지 않는다.
+EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 PublicationStore.initialize 대상이다. 요청/import 자동 초기화는 없고 누락/장애는503이다. 배포 시 영속 볼륨과 SQLite-aware 백업/복원 범위에 포함해야 하며 현재 운영 환경에는 초기화/연결하지 않았다. 테이블은 publication_metadata(v2, cursor_key 포함)와 현재 publications 결정이며 과거 본문/개정 이력 저장은 제공하지 않는다.
 
 승인은 실제 응답 전체와 첨부 상대경로·해시·크기·유형의 fingerprint에 결합한다. markdown만의 기존 content_hash는 근거로 쓰지 않는다. 매 GET마다 readonly 원본 조회와 첨부 검증, 승인 재조회로 변경/철회를 확인한다. 미승인/철회/변경/없는 문서는 같은404다. 공용 첨부 GET `/api/public/documents/{doc_id}/attachments/{attachment_id}`도 문서 전체 승인 검사를 통과해야 한다. 검증했던 바이트를 그대로 반환하며 경로를 다시 열지 않는다. 디렉터리 FD/O_NOFOLLOW로 중간 symlink·경로탈출을 막는다.
 

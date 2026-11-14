@@ -93,6 +93,122 @@ class PublicDocumentTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(),source_bytes)
         self.assertEqual(self.store.get(1)['approved_by'],self.actor)
 
+    def test_public_list_search_pagination_and_content_changes(self):
+        path='/api/public/documents'
+        self.assertEqual(self.client.get(path).json(),{'items':[],'next_cursor':None})
+        self.assertEqual(self.approve().status_code,200)
+        with sqlite3.connect(self.source) as conn:
+            for id in [3,4]:
+                conn.execute('INSERT INTO raw_documents VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    (id,f'Public title {id}','web',None,None,f'Searchable body {id}',None,'[]','same','private-canary'))
+        for id in [3,4]:
+            preview=self.service.preview(id)
+            self.store.approve(id,preview['fingerprint'],0,self.actor,'Synthetic fixture')
+        source_bytes=self.source.read_bytes()
+        r=self.client.get(path+'?limit=1');self.assertEqual(r.status_code,200)
+        self.assertEqual([i['id'] for i in r.json()['items']],[4]);self.assertIsInstance(r.json()['next_cursor'],str)
+        self.assertEqual([i['id'] for i in self.client.get(path,params={'limit':1,'cursor':r.json()['next_cursor']}).json()['items']],[3])
+        result=self.client.get(path+'?q=SEARCHABLE').json()
+        self.assertEqual([i['id'] for i in result['items']],[4,3])
+        self.assertNotIn('total',result);self.assertNotIn('canary',str(result))
+        self.assertTrue(all(len(i['snippet'])<=240 for i in result['items']))
+        self.assertEqual(self.client.get(path+'?q=private-canary').json()['items'],[])
+        self.assertEqual(self.source.read_bytes(),source_bytes)
+        self.store.revoke(4,1,self.actor)
+        self.mutate("UPDATE raw_documents SET title='changed-private-title' WHERE id=3")
+        self.assertEqual([i['id'] for i in self.client.get(path).json()['items']],[1])
+        self.assertNotIn('changed-private-title',self.client.get(path).text)
+        (self.media/'image.png').write_bytes(PNG+b'changed')
+        self.assertEqual(self.client.get(path).json()['items'],[])
+        for query in ['?limit=0','?limit=21','?q='+'x'*121]:
+            self.assertEqual(self.client.get(path+query).status_code,422)
+
+    def test_list_rechecks_earlier_approval_and_never_false_empty_on_budget(self):
+        from security.public_documents import ReadBudget
+        self.assertEqual(self.approve().status_code,200)
+        with patch('security.public_documents.ReadBudget',return_value=ReadBudget(remaining=1)):
+            self.assertEqual(self.client.get('/api/public/documents').status_code,503)
+        with sqlite3.connect(self.source) as conn:
+            conn.execute("INSERT INTO raw_documents VALUES(3,'Third','web',NULL,NULL,'Third body',NULL,'[]','hash',NULL)")
+        self.store.approve(3,self.service.preview(3)['fingerprint'],0,self.actor,'Fixture')
+        with patch('security.public_documents.ReadBudget',return_value=ReadBudget(remaining=20)):
+            limited=self.client.get('/api/public/documents').json()
+        self.assertEqual([i['id'] for i in limited['items']],[3])
+        continued=self.client.get('/api/public/documents',params={'cursor':limited['next_cursor']}).json()
+        self.assertEqual([i['id'] for i in continued['items']],[1])
+        original=self.service.published
+        def revoke_earlier(id,*args,**kwargs):
+            result=original(id,*args,**kwargs)
+            if id==1:self.store.revoke(3,1,self.actor)
+            return result
+        with patch.object(self.service,'published',side_effect=revoke_earlier):
+            result=self.client.get('/api/public/documents').json()
+        self.assertEqual([i['id'] for i in result['items']],[1])
+
+    def test_search_continues_past_nonmatches_and_changed_approvals(self):
+        with sqlite3.connect(self.source) as conn:
+            conn.executemany('INSERT INTO raw_documents VALUES(?,?,?,?,?,?,?,?,?,?)',[
+                (id,f'Title {id}','web',None,None,'needle' if id==3 else 'unrelated',None,'[]','hash',None)
+                for id in range(3,104)])
+        for id in range(3,104):
+            self.store.approve(id,self.service.preview(id)['fingerprint'],0,self.actor,'Fixture')
+        for changed in [False,True]:
+            if changed:self.mutate("UPDATE raw_documents SET markdown='changed-private-canary' WHERE id>3")
+            first=self.client.get('/api/public/documents',params={'q':'needle'}).json()
+            self.assertEqual(first['items'],[]);self.assertIsInstance(first['next_cursor'],str)
+            self.assertNotIn('canary',str(first))
+            second=self.client.get('/api/public/documents',params={'q':'needle','cursor':first['next_cursor']})
+            self.assertEqual(second.status_code,200,second.text)
+            self.assertEqual([i['id'] for i in second.json()['items']],[3])
+            self.assertIsNone(second.json()['next_cursor'])
+
+    def test_cursor_integrity_query_binding_expiry_restart_and_explicit_upgrade(self):
+        from contextlib import closing
+        from security.publication_store import InvalidCursor
+        import json
+        import subprocess
+        import sys
+        key=self.store.cursor_cipher()
+        token=self.store.encode_cursor(23,'query')
+        fresh=PublicationStore(self.store.path)
+        self.assertEqual(fresh.decode_cursor(token,'query'),23)
+        fresh.initialize()  # Provisioning again must not rotate the key.
+        self.assertEqual(fresh.decode_cursor(token,'query'),23)
+        restored_path=self.root/'restored-publication.sqlite'
+        with self.store.connection(readonly=True) as source, closing(sqlite3.connect(restored_path)) as restored:
+            source.backup(restored)
+            self.assertEqual(restored.execute('PRAGMA integrity_check').fetchone()[0],'ok')
+        # A separate interpreter opens the restored SQLite and resumes the search.
+        result=subprocess.run([sys.executable,'-c',
+            'import sys; from pathlib import Path; from security.publication_store import PublicationStore; '
+            'assert PublicationStore(Path(sys.argv[1])).decode_cursor(sys.stdin.read(),"query")==23',
+            str(restored_path)],input=token,text=True,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        for cursor,q in [(token,'other'),(token[:-10]+'AAAAAAAAAA','query'),('invalid','query'),
+                         (key.encrypt_at_time(json.dumps({'v':1,'before':23,'q':'query'}).encode(),current_time=1).decode(),'query')]:
+            self.assertEqual(self.client.get('/api/public/documents',params={'cursor':cursor,'q':q}).status_code,400)
+        # Older v1 stores require explicit preparation; request never upgrades.
+        with sqlite3.connect(self.store.path) as conn:
+            conn.execute('ALTER TABLE publication_metadata DROP COLUMN cursor_key')
+            conn.execute('UPDATE publication_metadata SET version=1')
+        before=self.store.path.read_bytes()
+        self.assertEqual(self.client.get('/api/public/documents',params={'cursor':token,'q':'query'}).status_code,503)
+        self.assertEqual(self.client.get('/api/public/documents').status_code,503)
+        self.assertEqual(self.store.path.read_bytes(),before)
+        fresh.initialize()
+        self.assertEqual(fresh.decode_cursor(fresh.encode_cursor(23,'query'),'query'),23)
+        with self.assertRaises(InvalidCursor):fresh.decode_cursor(token,'query')
+
+    def test_query_cannot_probe_changed_body_via_attachment_budget(self):
+        from security.public_documents import ReadBudget
+        self.assertEqual(self.approve().status_code,200)
+        self.mutate("UPDATE raw_documents SET markdown='secret-canary' WHERE id=1")
+        statuses=[]
+        for query in ['secret','absent']:
+            with patch('security.public_documents.ReadBudget',return_value=ReadBudget(remaining=15)):
+                statuses.append(self.client.get('/api/public/documents',params={'q':query}).status_code)
+        self.assertEqual(statuses,[503,503])
+
     def test_no_operator_impersonation_or_csrf_bypass(self):
         preview=self.preview()
         body={'fingerprint':preview['fingerprint'],'expected_version':0,'rights_basis':'fixture','personal_data_excluded':True}

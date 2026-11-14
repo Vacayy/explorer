@@ -744,7 +744,7 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 
 공용 한국 산업 지도는 `security.public_industry.kr_industry_map`의 readonly 요청별 연결과 코드의18개 benchmark 이름/설명을 사용한다. 공유 회사·업종 정정 분류는 유지하되 개인 테이블/자유형 정정 설명/Peer 실행본은 읽지 않는다. 기존 지도·카드·ETF 검색·한미 전환을 재사용한다. 국내 상세/종목 검색은 후속이다.
 
-`security.publication_store`는 명시적으로 초기화한 별도0600 SQLite(`EXPLORER_PUBLICATION_DB`)에 publication_metadata(v1), publications(doc_id/fingerprint/version/status/rights_basis/approved_by/at/revoked_by/at)를 둔다. 기존 업무 DB init_db와 분리하여 요청/import 자동 생성 및 원본 수정이 없다. `security.public_documents`는 raw_documents의 공개 투영과 실제 첨부 바이트를 해시로 묶어 현재 승인과 매번 대조한다. `routers/public_documents`는 공용 문서/첨부 GET과 운영자 preview/첨부 preview/approve/revoke를 제공하며 private 모드에서는 비활성이다. 원문 content_hash만으로 승인하지 않고 metadata/media 변경도 재검토를 요구한다. 전체 개정 이력 저장소가 아닌 현재 결정 저장소다.
+`security.publication_store`는 명시적으로 초기화한 별도0600 SQLite(`EXPLORER_PUBLICATION_DB`)에 publication_metadata(v2/cursor_key), publications(doc_id/fingerprint/version/status/rights_basis/approved_by/at/revoked_by/at)를 둔다. 기존 업무 DB init_db와 분리하여 요청/import 자동 생성 및 원본 수정이 없다. `security.public_documents`는 raw_documents의 공개 투영과 실제 첨부 바이트를 해시로 묶어 현재 승인과 매번 대조한다. `routers/public_documents`는 공용 문서/첨부 GET과 운영자 preview/첨부 preview/approve/revoke를 제공하며 private 모드에서는 비활성이다. 원문 content_hash만으로 승인하지 않고 metadata/media 변경도 재검토를 요구한다. 전체 개정 이력 저장소가 아닌 현재 결정 저장소다.
 
 공개 `/doc/:docId`는 `PublicDocumentPage`/`usePublishedDocument`를 사용한다. 승인된 보관 본문과 PNG/JPEG/WebP/GIF/PDF 첨부만 제공하고 기존 개인 DocPage/연관자료 API는 마운트하지 않는다. Markdown의 임의 이미지·내부 파일 링크는 실행하지 않으며 PDF는 다운로드다. 404/실패/재검증 중에는 이전 본문을 숨긴다. 운영자 자료 선정 화면·검색/인용 연결·실제 자료 승인과 별도 DB의 운영 백업/배포는 미완이다. 자세한 경로·용량·검증 한계는 [회원 접근 계약](specs/member-access.md#승인-문서본문첨부와-철회)을 따른다.
 
@@ -754,3 +754,6 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 
 
 `pipeline.group_ownership.legacy_groups_condition`은 ownership 컬럼 도입 여부를 매번 확인해 기존 스키마 또는 NULL-owner 범위를 선택한다. kr_company_data.targets의 보유/관심 tier(연결 script의 개인 컨센서스 포함), world_reads의 개인 서사/체크포인트 보유집합, watch_rules의 일괄 평가와 선행 미국 시세 수집에 적용한다. 공유 시장 수집은 유지한다. 합성 legacy 결과와 회원 추가 후 개인 집합·평가·job 요약·provider 호출 동일성을 관련47검사로 검증했다. 회원 watch 묶음·원칙/논지/알림 전체와 실제39개 job 수용을 대체하지 않는다.
+
+
+공개 `/feed`는 `PublicDocumentListPage`/`usePublishedDocuments`에서 승인 문서 목록·제목/본문 검색·이어보기·본문 이동을 제공한다. GET `/api/public/documents`는 승인 후보를 현재 본문/첨부 fingerprint로 검증한 뒤 검색·plain-text 미리보기를 만들며 마지막에 승인도 재조회한다. 후보100/읽기128MiB 제한과 암호화 cursor로 빈 중간 구간도 이어갈 수 있고 전체 비공개 수는 반환하지 않는다. publication metadata v2의 Fernet 키는 명시 준비·영속백업 대상이며 요청 자동생성 없음. 실제 승인/외부공개·공용인용/RAG는 미완이다.

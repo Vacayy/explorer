@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { toApiError } from '@/api/errors'
 import { usePublishedDocument } from '@/hooks/usePublishedDocument'
 import { PageContainer } from '@/components/shared/PageContainer'
@@ -6,6 +6,13 @@ import { EmptyState, ErrorState } from '@/components/shared/ErrorState'
 import { Markdown } from '@/components/shared/Markdown'
 import { Button } from '@/components/ui/button'
 import type { PublishedAttachment } from '@/types'
+
+function DocumentContainer({ children }: { children: ReactNode }) {
+  return <PageContainer width="reading" className="[overflow-wrap:anywhere]">
+    <Button asChild variant="ghost" size="sm" className="self-start"><a href="/feed">공개 문서 목록</a></Button>
+    {children}
+  </PageContainer>
+}
 
 function safeExternalUrl(value: string | null | undefined): string | null {
   if (!value || !/^https?:\/\//i.test(value) || /[\u0000-\u0020\\]/.test(value)) return null
@@ -31,16 +38,16 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
   const retry = () => { void query.refetch() }
   // Never keep cached approved content visible after a failed revalidation/revocation.
   if (id === null || (query.error && toApiError(query.error).status === 404)) {
-    return <PageContainer width="reading"><EmptyState message="공개된 문서를 찾을 수 없습니다." /></PageContainer>
+    return <DocumentContainer><EmptyState message="공개된 문서를 찾을 수 없습니다." /></DocumentContainer>
   }
-  if (query.error) return <PageContainer width="reading"><ErrorState message="공개 문서를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요." retrying={query.isFetching} onRetry={retry} /></PageContainer>
-  if (query.fetchStatus === 'paused') return <PageContainer width="reading"><ErrorState message="네트워크 연결을 확인해 주세요." onRetry={retry} /></PageContainer>
-  if (!query.data || query.isFetching) return <PageContainer width="reading"><p role="status">공개 문서를 불러오는 중…</p></PageContainer>
+  if (query.error) return <DocumentContainer><ErrorState message="공개 문서를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요." retrying={query.isFetching} onRetry={retry} /></DocumentContainer>
+  if (query.fetchStatus === 'paused') return <DocumentContainer><ErrorState message="네트워크 연결을 확인해 주세요." onRetry={retry} /></DocumentContainer>
+  if (!query.data || query.isFetching) return <DocumentContainer><p role="status">공개 문서를 불러오는 중…</p></DocumentContainer>
   const document = query.data
   const sourceUrl = safeExternalUrl(document.url)
   const attachments = document.attachments.filter(attachment => Number.isSafeInteger(attachment.id) && attachment.id >= 0
     && attachment.url === `/api/public/documents/${id}/attachments/${attachment.id}`)
-  return <PageContainer width="reading" className="[overflow-wrap:anywhere]">
+  return <DocumentContainer>
     <header className="space-y-2">
       <h1 className="text-xl font-medium">{document.title || '제목 없는 문서'}</h1>
       {sourceUrl && <Button asChild variant="outline" size="sm"><a href={sourceUrl} target="_blank" rel="noopener noreferrer">출처 페이지</a></Button>}
@@ -62,5 +69,5 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
       <h2 className="text-sm font-medium text-ink-2">공개 첨부</h2>
       {attachments.map((attachment, index) => <Attachment key={`${id}:${attachment.id}`} attachment={attachment} index={index} />)}
     </section>}
-  </PageContainer>
+  </DocumentContainer>
 }

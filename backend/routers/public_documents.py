@@ -1,11 +1,11 @@
 """Public document readers and authenticated, CSRF-protected operator decisions."""
 import sqlite3
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from models.public_documents import (PublishedDocument, PublicationPreview, ApprovePublication,
-    RevokePublication, PublicationResult)
+    RevokePublication, PublicationResult, PublicDocumentList)
 from security.access_boundary import NO_STORE
-from security.public_documents import PublicDocuments, DocumentUnavailable
-from security.publication_store import PublicationConflict
+from security.public_documents import PublicDocuments, DocumentUnavailable, ListingBudgetExceeded
+from security.publication_store import PublicationConflict, InvalidCursor
 
 router = APIRouter(tags=['public-documents'])
 
@@ -35,6 +35,10 @@ def perform(action):
         raise HTTPException(404, 'Document unavailable', headers=NO_STORE) from None
     except PublicationConflict:
         raise HTTPException(409, 'Publication changed; review again', headers=NO_STORE) from None
+    except ListingBudgetExceeded:
+        raise HTTPException(503, 'Document search unavailable', headers=NO_STORE) from None
+    except InvalidCursor:
+        raise HTTPException(400, 'Search continuation unavailable; start again', headers=NO_STORE) from None
     except (sqlite3.Error, OSError, ValueError):
         raise HTTPException(503, 'Publication unavailable', headers=NO_STORE) from None
 
@@ -55,6 +59,12 @@ def approve(body: ApprovePublication, request: Request, doc_id: int = Path(ge=1)
 def revoke(body: RevokePublication, request: Request, doc_id: int = Path(ge=1), service: PublicDocuments = Depends(publication_service)):
     actor = operator(request)
     return perform(lambda: service.store.revoke(doc_id, body.expected_version, actor))
+
+
+@router.get('/api/public/documents', response_model=PublicDocumentList)
+def documents(q: str = Query(default='', max_length=120), cursor: str | None = Query(default=None, max_length=2048),
+              limit: int = Query(default=10, ge=1, le=20), service: PublicDocuments = Depends(publication_service)):
+    return perform(lambda: service.listing(q, cursor, limit))
 
 
 @router.get('/api/public/documents/{doc_id}', response_model=PublishedDocument)

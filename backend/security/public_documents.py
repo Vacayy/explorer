@@ -21,6 +21,20 @@ class DocumentUnavailable(Exception):
     pass
 
 
+class ListingBudgetExceeded(Exception):
+    pass
+
+
+@dataclass
+class ReadBudget:
+    remaining: int = 128 * 1024 * 1024
+
+    def consume(self, size):
+        if size > self.remaining:
+            raise ListingBudgetExceeded()
+        self.remaining -= size
+
+
 @dataclass
 class Snapshot:
     document: PublishedDocument
@@ -49,7 +63,7 @@ def _media_type(data):
     raise DocumentUnavailable()
 
 
-def _file_bytes(root: Path, relative: str):
+def _file_bytes(root: Path, relative: str, budget: ReadBudget | None = None):
     # All traversal uses directory FDs and O_NOFOLLOW, including intermediate
     # directories. Never reopen a checked path later for the actual response.
     if (not isinstance(relative, str) or not relative or len(relative) > 1024
@@ -68,10 +82,14 @@ def _file_bytes(root: Path, relative: str):
             info = os.fstat(fd)
             if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE:
                 raise DocumentUnavailable()
+            if budget is not None and info.st_size > budget.remaining:
+                raise ListingBudgetExceeded()
             data = bytearray()
             while True:
                 chunk = os.read(fd, min(1024 * 1024, MAX_FILE + 1 - len(data)))
                 if not chunk: break
+                if budget is not None:
+                    budget.consume(len(chunk))
                 data.extend(chunk)
                 if len(data) > MAX_FILE: raise DocumentUnavailable()
             return bytes(data)
@@ -95,7 +113,7 @@ class PublicDocuments:
             raise ValueError('Publication store not configured')
         return cls(DB_PATH, MEDIA_PATH, PublicationStore(Path(name)))
 
-    def capture(self, doc_id: int, selected: int | None = None) -> Snapshot:
+    def capture(self, doc_id: int, selected: int | None = None, *, budget: ReadBudget | None = None) -> Snapshot:
         try:
             conn = sqlite3.connect(self.source.as_uri() + '?mode=ro', uri=True, timeout=3)
             conn.row_factory = sqlite3.Row
@@ -115,12 +133,14 @@ class PublicDocuments:
             content = row['markdown'] or row['raw_content'] or ''
             if not isinstance(content, str) or len(content.encode('utf8')) > MAX_TEXT:
                 raise DocumentUnavailable()
+            if budget is not None:
+                budget.consume(len(content.encode('utf8')))
             paths = json.loads(row['media_json']) if row['media_json'] else []
             if not isinstance(paths, list) or len(paths) > MAX_FILES or len(set(paths)) != len(paths):
                 raise DocumentUnavailable()
             attachments, manifest, selected_bytes, total = [], [], None, 0
             for index, path in enumerate(paths):
-                data = _file_bytes(self.media_root, path)
+                data = _file_bytes(self.media_root, path, budget) if budget is not None else _file_bytes(self.media_root, path)
                 total += len(data)
                 if total > MAX_TOTAL: raise DocumentUnavailable()
                 media_type = _media_type(data)
@@ -149,13 +169,60 @@ class PublicDocuments:
             raise PublicationConflict()
         return self.store.approve(doc_id, snapshot.fingerprint, request.expected_version, actor, request.rights_basis)
 
-    def published(self, doc_id, selected=None):
+    def published(self, doc_id, selected=None, *, budget=None):
         record = self.store.get(doc_id)
         if record is None or record['status'] != 'approved':
             raise DocumentUnavailable()
-        snapshot = self.capture(doc_id, selected)
+        snapshot = self.capture(doc_id, selected, budget=budget) if budget is not None else self.capture(doc_id, selected)
         if snapshot.fingerprint != record['fingerprint'] or self.store.get(doc_id) != record:
             raise DocumentUnavailable()
         if selected is not None and snapshot.selected_bytes is None:
             raise DocumentUnavailable()
         return snapshot
+
+    def listing(self, query='', cursor=None, limit=10):
+        # Only approved candidates enter the read path. No private full-text
+        # index, related-document lookup, or count is exposed.
+        self.store.cursor_cipher()  # Explicit v2 preparation required even for an empty first page.
+        needle = query.strip().casefold()
+        before = self.store.decode_cursor(cursor, needle) if cursor else None
+        candidates = self.store.candidates(before, 101)
+        items, fingerprints = [], {}
+        budget = ReadBudget()
+        more = False
+        progress = None
+        for index, doc_id in enumerate(candidates):
+            if index == 100:
+                more = True
+                break
+            try:
+                snapshot = self.published(doc_id, budget=budget)
+            except DocumentUnavailable:
+                progress = doc_id
+                continue
+            except ListingBudgetExceeded:
+                more = True
+                break
+            progress = doc_id
+            document = snapshot.document
+            if needle and needle not in document.title.casefold() and needle not in document.content.casefold():
+                continue
+            # Normalize whitespace only; never generate AI summaries or render
+            # source Markdown/HTML in the listing.
+            text = ' '.join(document.content.split())
+            position = text.casefold().find(needle) if needle else 0
+            start = max(0, position - 80)
+            items.append(dict(id=doc_id, title=document.title, source_type=document.source_type,
+                              published_at=document.published_at, snippet=text[start:start+240]))
+            fingerprints[doc_id] = snapshot.fingerprint
+            if len(items) == limit:
+                # Continuation does not assert more public matches exist.
+                more = True
+                break
+        # A later candidate can take time to read. Reflect approval/revocation
+        # changes to earlier entries before emitting their title/snippet.
+        items = [item for item in items if (record := self.store.get(item['id']))
+                 and record['status'] == 'approved' and record['fingerprint'] == fingerprints[item['id']]]
+        if more and progress is None:
+            raise ListingBudgetExceeded()
+        return {'items': items, 'next_cursor': self.store.encode_cursor(progress, needle) if more else None}

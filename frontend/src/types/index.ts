@@ -2083,3 +2083,15 @@ export interface PublishedDocument {
   content_kind: 'stored_markdown' | 'stored_text'
   attachments: PublishedAttachment[]
 }
+
+export interface PublishedDocumentItem {
+  id: number
+  title: string
+  source_type: string
+  published_at: string | null
+  snippet: string
+}
+export interface PublishedDocumentList {
+  items: PublishedDocumentItem[]
+  next_cursor: string | null
+}

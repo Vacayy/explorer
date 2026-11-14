@@ -4,9 +4,15 @@ import os
 from pathlib import Path
 import sqlite3
 import time
+import json
+from cryptography.fernet import Fernet, InvalidToken
 
 
 class PublicationConflict(Exception):
+    pass
+
+
+class InvalidCursor(Exception):
     pass
 
 
@@ -37,11 +43,15 @@ class PublicationStore:
             if tables:
                 if tables != {'publication_metadata', 'publications'}:
                     raise ValueError('Not a publication store')
-                if [r[0] for r in conn.execute('SELECT version FROM publication_metadata')] != [1]:
+                versions = [r[0] for r in conn.execute('SELECT version FROM publication_metadata')]
+                if versions == [1]:
+                    conn.execute('ALTER TABLE publication_metadata ADD COLUMN cursor_key TEXT')
+                    conn.execute('UPDATE publication_metadata SET version=2,cursor_key=?', (Fernet.generate_key().decode(),))
+                elif versions != [2]:
                     raise ValueError('Unsupported publication schema')
             else:
-                conn.execute('CREATE TABLE publication_metadata(version INTEGER NOT NULL)')
-                conn.execute('INSERT INTO publication_metadata VALUES(1)')
+                conn.execute('CREATE TABLE publication_metadata(version INTEGER NOT NULL,cursor_key TEXT NOT NULL)')
+                conn.execute('INSERT INTO publication_metadata VALUES(2,?)', (Fernet.generate_key().decode(),))
                 conn.execute('''CREATE TABLE publications(
                     doc_id INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL,
                     version INTEGER NOT NULL, status TEXT NOT NULL CHECK(status IN ('approved','revoked')),
@@ -49,10 +59,39 @@ class PublicationStore:
                     revoked_by TEXT, revoked_at REAL)''')
         os.chmod(self.path, 0o600)
 
+    def cursor_cipher(self):
+        with self.connection(readonly=True) as conn:
+            row = conn.execute('SELECT cursor_key FROM publication_metadata WHERE version=2').fetchone()
+        if row is None:
+            raise ValueError('Publication cursor schema not prepared')
+        return Fernet(row[0])
+
+    def encode_cursor(self, before, query):
+        # Fixed padded plaintext hides the size of the internal source ID.
+        payload = json.dumps({'v':1,'before':before,'q':query},ensure_ascii=False).encode()
+        return self.cursor_cipher().encrypt(payload.ljust(1024,b' ')).decode()
+
+    def decode_cursor(self, token, query):
+        cipher = self.cursor_cipher()
+        try:
+            payload = json.loads(cipher.decrypt(token,ttl=3600))
+            before = payload['before']
+            if payload.get('v') != 1 or payload.get('q') != query or type(before) is not int or not 1 <= before <= 2**63-1:
+                raise InvalidCursor()
+            return before
+        except (InvalidToken, ValueError, TypeError, KeyError):
+            raise InvalidCursor() from None
+
     def get(self, doc_id):
         with self.connection(readonly=True) as conn:
             row = conn.execute('SELECT * FROM publications WHERE doc_id=?', (doc_id,)).fetchone()
         return dict(row) if row else None
+
+    def candidates(self, before, limit):
+        with self.connection(readonly=True) as conn:
+            return [row[0] for row in conn.execute('''SELECT doc_id FROM publications
+                WHERE status='approved' AND (? IS NULL OR doc_id<?)
+                ORDER BY doc_id DESC LIMIT ?''', (before, before, limit))]
 
     def approve(self, doc_id, fingerprint, expected_version, actor, basis):
         if not actor or not basis.strip():

@@ -38,7 +38,7 @@ it('suppresses inline images and unsafe links; serves only document-bound approv
   render(<PublicDocumentPage docId="12" />)
   expect(screen.getAllByRole('img')).toHaveLength(1)
   expect(screen.getByRole('img').getAttribute('src')).toBe('/api/public/documents/12/attachments/0')
-  expect(screen.getAllByRole('link')).toHaveLength(2)
+  expect(screen.getAllByRole('link')).toHaveLength(3)
   expect(screen.getByRole('link', { name: 'safe' }).getAttribute('rel')).toContain('noreferrer')
   expect(screen.getByRole('link', { name: /PDF 첨부/ }).hasAttribute('download')).toBe(true)
   fireEvent.error(screen.getByRole('img'))
@@ -56,7 +56,7 @@ it('handles loading, image-only and literal stored text', () => {
   state.data = document({ content_kind: 'stored_text', content: '[literal](https://example.com)' })
   view.rerender(<PublicDocumentPage docId="12" />)
   expect(screen.getByText('[literal](https://example.com)')).toBeTruthy()
-  expect(screen.queryByRole('link')).toBeNull()
+  expect(screen.getByRole('link', { name: '공개 문서 목록' }).getAttribute('href')).toBe('/feed')
 })
 
 it('hides cached bodies for revocation and unavailable services, with explicit retry', () => {

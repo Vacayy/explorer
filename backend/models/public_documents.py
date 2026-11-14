@@ -28,6 +28,19 @@ class PublicationPreview(BaseModel):
     attachment_previews: list[str]
 
 
+class PublicDocumentSummary(BaseModel):
+    id: int
+    title: str
+    source_type: str
+    published_at: str | None
+    snippet: str
+
+
+class PublicDocumentList(BaseModel):
+    items: list[PublicDocumentSummary]
+    next_cursor: str | None
+
+
 class ApprovePublication(BaseModel):
     fingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
     expected_version: int = Field(ge=0)
