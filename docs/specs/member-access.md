@@ -32,7 +32,7 @@ Google 로그인은 검증된 OIDC 응답과 state/nonce/PKCE를 사용한다. H
 
 `security.google_identity.verify_google_identity`는 `google-auth[requests]==2.62.2`로 서명/issuer/audience/시간을 검사한 뒤 서버 nonce 및 authorized-party를 검사한다. 이메일은 검증된 경우에만 부가 정보로 반환하며 사용자 키로 사용하지 않는다. nonce는 향후 일회용 서버 로그인 트랜잭션에서 공급해야 한다. 이 함수에는 state/PKCE/CSRF/HTTP 세션 처리가 없으며 독립적으로 로그인 완료를 뜻하지 않는다.
 
-실제 Google 계정 없이 임시 RSA 키로 서명한 JWT를 사용해 정상/변조/다른 audience·issuer·nonce/만료·미래 발급을 검증한다. 모든 테스트는 임시 DB, 네트워크 없는 컨테이너에서 실행한다. HTTP router·기존 데이터·공개 접근은 아직 연결하지 않는다.
+실제 Google 계정 없이 임시 RSA 키로 서명한 JWT를 사용해 정상/변조/다른 audience·issuer·nonce/만료·미래 발급을 검증한다. 모든 테스트는 임시 DB, 네트워크 없는 컨테이너에서 실행한다. HTTP router는 등록하되 명시적 설정 전에는503으로 비활성화한다. 기존 개인 데이터 소유권과 외부 공개는 아직 연결하지 않는다.
 
 공식 참고: [Google OIDC](https://developers.google.com/identity/openid-connect/openid-connect), [서버 ID token 검증](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token), [google-auth verifier](https://google-auth.readthedocs.io/en/latest/reference/google.oauth2.id_token.html).
 
@@ -47,3 +47,13 @@ CLI 기반 익명 체험은 별도 실행 경계에서 운영 DB/프로젝트/�
 예약은 reserved → running → finished. 공급자 실행 전 reserved만 released로 환불할 수 있고 실행 시작 뒤 오류/중단은 사용 횟수에 포함한다. released는 횟수에서 제외한다. reserved/running은 날짜가 바뀌어도 진행 슬롯을 차지한다. 시간만으로 슬롯을 해제하면 실제 실행 중인 프로세스와 중복되므로 자동 해제하지 않는다. 이후 dispatcher가 실제 컨테이너 종료를 확인하고 장애 예약을 정리해야 하며, 이 복구 경로 검증 전 운영 활성화하지 않는다. 동일 요청의 중복 상태 전이는 재차 환불/차감을 만들지 않아야 한다.
 
 검증은 임시 SQLite에서 동시3회 초과 방지, 여러 actor의 network/global limit, 전날부터 진행 중인 슬롯, 실행 전 환불·실행 후 환불 거부 및 잘못된 원시 식별자 거부를 포함한다. 이는 HTTP 요청 제한·전체 실행 시간/토큰 한도·CLI 격리를 대신하지 않는다.
+
+## 로그인 HTTP 계약
+
+`GET /api/auth/session`은 authenticated/user(id,role)/csrf_token을 반환한다. Google start/callback은303리다이렉트, `POST /api/auth/logout`은{ok:boolean}. 모든 응답은no-store/no-referrer. 세션과5분짜리 로그인 binding은 __Host- Secure/HttpOnly/SameSite=Lax/Path=/ 쿠키를 사용한다. start는 안전한 내부 return_to만 받으며 callback은 단일 code/state와 binding을 검사한다. state를 원자적으로 일회용 consume한 뒤 PKCE코드 교환·nonce검증을 수행하고 기존 세션을 폐기한다. 공급자 오류·코드·토큰은 응답에 반영하지 않는다. logout은 정확한 HTTPS Origin과 세션별 CSRF 헤더를 요구한다.
+
+활성화 설정은 EXPLORER_AUTH_ENABLED=1, EXPLORER_GOOGLE_CLIENT_ID, EXPLORER_GOOGLE_CLIENT_SECRET, EXPLORER_PUBLIC_ORIGIN(HTTPS), EXPLORER_IDENTITY_DB, EXPLORER_LOGIN_DB. 모든 설정 검증 후 명시적으로 초기화된 별도DB만 연다. 설정 누락/비활성/DB미준비는503이며 자동DB생성 없음. Google클라이언트/도메인 없이 실행되는 기존 리허설은 비활성 상태를 유지한다.
+
+Uvicorn access의 정확한 callback 경로는 query를 제거한다. 프록시에서도 query와 Referer를 기록하지 않고 OAuth경로 upstream error에 전체URL이 찍히지 않도록 설정해야 한다. 실제Uvicorn과Nginx의 가짜code/state 요청에서 로그 비노출을 검증했다. Google실계정/외부TLS/쿠키 경로의 실제브라우저 검증은 아직 수행하지 않았다.
+
+frontend/api/auth.ts는 생성된 응답 계약을 사용하는 session/logout 호출과 Google로그인 URL을 제공한다. 로그인 버튼·계정별 UI gating은 아직 연결하지 않는다. 기존API의 인증·소유권 경계가 적용된 것은 아니므로 이 로그인만으로 외부 공개하지 않는다.

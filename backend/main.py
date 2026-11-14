@@ -34,6 +34,14 @@ from routers import analysis
 
 app = FastAPI(title="Stock Explorer API")
 
+# OAuth callbacks contain single-use credentials in their query string.
+import logging
+from routers import auth
+from security.login_flow import CallbackQueryFilter
+if not any(isinstance(f, CallbackQueryFilter) for f in logging.getLogger("uvicorn.access").filters):
+    logging.getLogger("uvicorn.access").addFilter(CallbackQueryFilter())
+app.include_router(auth.router)
+
 app.add_middleware(
     CORSMiddleware,
     # 프론트 dev 서버는 5174 (5173은 다른 프로젝트가 사용). 5173도 남겨 되돌릴 때 안 깨지게.

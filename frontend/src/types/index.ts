@@ -2052,3 +2052,12 @@ export interface IncomeFlowResponse {
 }
 export interface IncomeFlowQuarterItem { q: string; stage: 'preliminary' | 'quarterly_report'; as_of: string | null }
 export interface IncomeFlowQuarters { quarters: IncomeFlowQuarterItem[] }
+
+
+/** Google session endpoints; server models are the generated contract source. */
+export interface MemberSession {
+  authenticated: boolean
+  user: { id: string; role: 'member' | 'operator' } | null
+  csrf_token: string | null
+}
+export interface LogoutReply { ok: boolean }

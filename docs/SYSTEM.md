@@ -713,8 +713,10 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `pipeline.health.scheduler_item`은 Linux에서 공유 `logs/scheduler-health.json`의90초 이내 UTC heartbeat·running·39jobs를 읽고 macOS에서는 launchctl 종료 코드를 읽는다. 조회 불가/미등록은 정상으로 표시하지 않는다. API는 다른 컨테이너 PID를 검사하지 않으며 worker 자체 healthcheck와 결과 데이터 신선도 점검을 병행한다. API 응답 필드 변경 없음. [운영 건강 계약](specs/ops-health.md).
 
-## 회원 인증 기반 (구현 중, HTTP 미연결)
+## 회원 인증 기반 (구현 중, 명시적 설정 전 비활성)
 
-`backend/security/identity_store.py`는 명시적 별도 SQLite에 identity/users/hashed sessions를 관리한다. `google_identity.py`는 공식 google-auth2.62.2 검증 후 서버 nonce/authorized-party를 확인한다. import 시 DB 생성 없음, 기존 API·운영 DB 변경 없음. 세션 HTTP/CSRF/Google callback과 기존 개인 데이터 소유권은 아직 연결 전이며 이 모듈만으로 외부 공개를 허용하지 않는다. [회원 접근 계약](specs/member-access.md).
+`backend/security/identity_store.py`는 명시적 별도 SQLite에 identity/users/hashed sessions를 관리한다. `google_identity.py`는 공식 google-auth2.62.2 검증 후 서버 nonce/authorized-party를 확인한다. import 시 DB 생성 없음, 기존 API·운영 DB 변경 없음. 세션 HTTP/CSRF/Google callback은 routers/auth.py에서 등록하되 설정 전503으로 비활성이다. 기존 개인 데이터 소유권은 아직 연결 전이며 이 모듈만으로 외부 공개를 허용하지 않는다. [회원 접근 계약](specs/member-access.md).
 
 `security.trial_quota`는 별도 SQLite에서 익명 actor/network digest와 예약 상태만 저장한다. actor 누적·UTC 일간 network/전체·진행 슬롯을 한 write transaction으로 제한한다. 실행 전만 환불하며 실행 중 예약은 시간 경과/프로세스 재시작으로 자동 해제하지 않는다. HTTP 식별자 발급과 신뢰된 CLI dispatcher/장애 정리는 아직 미연결이다. [사용량 예약 계약](specs/member-access.md#익명-체험-사용량-예약-계약).
+
+`security.login_transactions`는 별도0600 SQLite에5분 로그인 state/binding hash와 nonce/PKCE를 관리한다. `security.login_flow`와 `routers/auth`는 browser-bound 일회용 callback과 세션교체/Origin+CSRF logout을 제공한다. 인증 설정키와 응답 계약은 member-access.md 참조. 콜백 access-log query 제거, no-store/no-referrer 응답을 적용하며 프록시의 동일 보호가 필요하다. 프론트 auth API/types와 생성 계약을 동기화했고 로그인 UI 및 기존 업무 API 권한은 미연결이다.
