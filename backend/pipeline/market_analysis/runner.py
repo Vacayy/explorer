@@ -318,8 +318,8 @@ class AnalysisService:
             {key: item[key] for key in ("id", "label", "category", "timeframe", "formula", "defaults", "parameters", "available")}
             for item in catalog() if state["spec"] is None or item["id"] in selected]}
         if state["_snapshot_id"]:
-            context.update(data_dir=str(self.store.root / "snapshots" / state["_snapshot_id"]),
-                           skill_dir=str(self.store.root / "control" / run_id / "skills"))
+            data_dir, skill_dir = self._input_paths(run_id, state)
+            context.update(data_dir=data_dir, skill_dir=skill_dir)
         self._update(run_id, _calls=state["_calls"] + 1, _inflight_model=True)
         started = time.monotonic()
         try:
@@ -425,6 +425,16 @@ class AnalysisService:
             if hashlib.sha256(read_bytes(directory, name, 512 * 1024 * 1024)).hexdigest() != digest:
                 raise StoreError("입력 스냅샷이 변경되어 실행을 차단했습니다.")
 
+    def _input_paths(self, run_id: str, state: dict) -> tuple[str, str]:
+        """Use one runtime-visible mapping for model, explicit run and verifier."""
+        paths = [self.store.root / "snapshots" / state["_snapshot_id"],
+                 self.store.root / "control" / run_id / "skills"]
+        mapper = getattr(self.sandbox_factory, "input_paths", None)
+        mapped = mapper(paths) if mapper else paths
+        if len(mapped) != 2:
+            raise ValueError("분석 입력 경로 매핑이 올바르지 않습니다.")
+        return str(mapped[0]), str(mapped[1])
+
     def _sandbox(self, run_id: str, *, verification=False):
         from .runtime import Sandbox
         state = self.store.read(run_id)
@@ -495,8 +505,7 @@ class AnalysisService:
             raise ValueError("분석 결과는 JSON 객체여야 합니다.")
         self._update(run_id, phase="verification")
         verifier = self._sandbox(run_id, verification=True)
-        directory = self.store.root / "snapshots" / state["_snapshot_id"]
-        skill_dir = self.store.root / "control" / run_id / "skills"
+        directory, skill_dir = self._input_paths(run_id, state)
         code = (f"import sys,json\nsys.path.insert(0,{str(skill_dir)!r})\nimport analytics\n"
                 f"result=analytics.screen({str(directory)!r},{state['spec']!r})\n"
                 "with open('verified.json','w') as out: json.dump(result,out,ensure_ascii=False,allow_nan=False)\n")
@@ -680,8 +689,8 @@ class AnalysisService:
             if explicit:
                 # Concrete user selections still get isolated execution and verification.
                 state = self.store.read(run_id)
-                directory = self.store.root / "snapshots" / state["_snapshot_id"]
-                code = (f"import sys,json\nsys.path.insert(0,{str(control / 'skills')!r})\nimport analytics\n"
+                directory, skill_dir = self._input_paths(run_id, state)
+                code = (f"import sys,json\nsys.path.insert(0,{skill_dir!r})\nimport analytics\n"
                         f"result=analytics.screen({str(directory)!r},{state['spec']!r})\n"
                         "with open('result.json','w') as out: json.dump(result,out,ensure_ascii=False,allow_nan=False)\n")
                 outcome = self._execute(run_id, sandbox, code)

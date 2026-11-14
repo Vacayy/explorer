@@ -34,6 +34,8 @@
 
 ## 읽기 전용 시장 분석 CodeAct (D-176, 2026-09-19)
 
+- 분석 런타임 경로 계약: `AnalysisService._input_paths`가 모델 문맥·명시 조건 실행·독립 검증의 입력 경로를 일관되게 결정한다. 주입한 sandbox factory는 `input_paths(read_dirs)`로 격리 환경의 경로를 제공할 수 있으며, 기본 macOS 실행은 기존 경로를 유지한다. 이 계약 추가만으로 Linux 실행기나 공개 서비스가 활성화되지는 않는다.
+
 - **아는 종목 검색 기록(2026-09-23)**: `useRecentCompanySearches`는 선택한 국내 종목 이름·코드를 이 브라우저의 localStorage에 최근 8개까지 보존한다. 상단 분석 카드에서 재선택·전체 삭제를 제공하며 기술적 분석·구조 그리기로 이어간다. 옴니바의 최근 본 종목과는 별도이며 서버 저장은 없다. [계약](specs/technical-reading.md#상승-후보-중심-탐색과-구조-그리기-우선순위-2026-09-23-d-203).
 - **발견 워크스페이스(D-224, 2026-10-14)**: `/discover` 실행 전 첫 화면은 3열(`analysis/DiscoveryWorkspace` — 좌 `ConditionPalette` 빠른 시작·카탈로그 / 중 `ConditionStack` 블록 스위치·블록별 집계 / 우 결과 자리), shadcn Resizable. 검색하면 전체 폭 결과 화면으로 바뀌고 워크스페이스는 '조건 고치기' 시트로 간다(2026-11-05, 아래). 블록을 바꾼 뒤 하단 고정 '검색' 버튼으로 spec 명시 경로 실행(모델 0, 자동 실행 없음 — D-225). 실행은 URL `run`, 스택은 sessionStorage `explorer:discovery:stack:v1`(꺼 둔 블록 `off` 포함). 계산 스킬 `strategy_screen`은 `condition_funnel`(조건별 통과 수·단독 탈락 수, 순위 제외, D-223)을 결과에 싣는다. 아는 종목 분석(`panel=known`)·문장으로 찾기(`intent=natural`)는 도구 줄 Sheet. 패턴·표현식·후속 스레드는 기존 스레드 화면. [계약](specs/technical-reading.md#발견-워크스페이스--조건과-결과를-한-화면에-2026-10-14-d-224).
 - **조건 블록 쌓기(D-219, 2026-10-14)**: 발견 시작 화면의 상황 카드는 단일 선택 대신 `analysis/ConditionStackBuilder`의 빠른 시작이다(누르면 서버 추천 spec 조건을 스택에 더하거나 뺌). 81개 카탈로그 팔레트에서도 조건을 하나씩 쌓고, 번호 블록을 제자리에서 수정한다. 제출은 `strategy_conditions` AND(최대 12, 중복 불가)이고 초안은 sessionStorage `explorer:discovery:stack:v1`이다. 아래 D-202~203 항목의 `intent` 단일 목적 편집기와 '조건 직접 구성' Sheet(`StrategyLibrary`)는 이것으로 대체됐다. [계약](specs/technical-reading.md#조건-블록-쌓기-2026-10-14-d-219).
