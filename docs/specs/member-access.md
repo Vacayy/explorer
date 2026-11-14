@@ -62,7 +62,7 @@ frontend/api/auth.ts는 생성된 응답 계약을 사용하는 session/logout �
 
 `EXPLORER_ACCESS_MODE=private|public`을 import 시 검증한다. 기본 private은 기존 비공개 실행을 유지하며 공개에 적합하지 않다. public은 `security.access_boundary`의 ASGI 경계를 설치한다. 실제 공개 배포의 사전 검사에서 public 설정을 확인해야 하며, 이 변경은 Tunnel이나 운영 설정을 활성화하지 않는다.
 
-현재 허용 목록은 `GET /api/health`, 기존 auth의 session/start/callback/logout 네 경로 및 `GET /api/spine/market/{market}/overview`, `GET /api/spine/industry/us/map`, `GET /api/spine/industry/us/{ticker}/market`다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
+현재 허용 목록은 `GET /api/health`, 기존 auth의 session/start/callback/logout 네 경로 및 `GET /api/spine/market/{market}/overview`, `GET /api/spine/industry/map`, `GET /api/spine/industry/us/map`, `GET /api/spine/industry/us/{ticker}/market`다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
 
 member/operator 정책은 기존 IdentityStore를 매 요청 조회해 만료·폐기·역할 변경·비활성화를 반영하고 `request.state.principal`에 검증된 User를 전달한다. identity 헤더는 사용하지 않는다. 보호된 쓰기는 정확한 HTTPS Origin과 세션별 CSRF가 필요하다. 저장소 장애는 내용 없는503, 인증 실패401, 권한/CSRF 실패403, 미분류404다. 응답과 오류는 no-store이며 공용 캐시 최적화는 별도 계약 뒤에 한다. 응답 전 예외는 고정500으로 처리하며 이미 시작한 스트림에 예외 내용을 덧붙이지 않는다.
 
@@ -86,7 +86,7 @@ Vite 빌드는 번들에 주입하는 같은 값으로 `_explorer/build.json`(ve
 
 `AccountControl`은 확인 중/익명 Google 로그인/회원·운영자 로그아웃/확인 실패 재시도를 표시한다. 세션 확인·실패가 공용 시장 화면을 가리지 않는다. 로그인 복귀 경로는 현재 내부 URL을 넘기고 서버의 기존 검증을 유지한다. 성공한 로그아웃과 확인된 계정·역할 변경에서는 요청 취소→query cache·앱 개인 browser storage 정리→전체 페이지 이동으로 이전 컴포넌트/모듈/첨부 메모리를 폐기한다. 세션/CSRF를 브라우저 저장소에 기록하지 않는다. 로그아웃 실패는 실패로 표시하고 미저장 초안을 삭제하거나 성공으로 가장하지 않는다. 테마와 다른 앱 저장소는 유지한다.
 
-현재 공개 화면 연결은 기존 셸의 `/home`, `/home/kr`, `/home/us` 시장 개요까지다. `PublicContent`는 연결되지 않은 기존 개인 페이지를 숨겨서 마운트하는 대신 마운트하지 않는다. 공개 빌드의 전역 Omnibar/AnswerWatcher/ChatPanel, 관리자·개인 조회 버튼/모바일 개인 메뉴도 미마운트하며 검토 전 사용량/오류 telemetry 전송을 하지 않는다. 기존 private 빌드 동작은 유지한다.
+공개 화면은 기존 셸의 `/home`, `/home/kr`, `/home/us` 시장 개요와 아래 한국/미국 산업 지도·미국 섹터 가격 상세를 연결한다. `PublicContent`는 연결되지 않은 기존 개인 페이지를 숨겨서 마운트하는 대신 마운트하지 않는다. 공개 빌드의 전역 Omnibar/AnswerWatcher/ChatPanel, 관리자·개인 조회 버튼/모바일 개인 메뉴도 미마운트하며 검토 전 사용량/오류 telemetry 전송을 하지 않는다. 기존 private 빌드 동작은 유지한다.
 
 이 분기는 첫 경로를 검증하는 **임시 구현 단계**다. 대부분 기존 화면·모바일 탐색·허용 검색·공개 원문/첨부·회원 포트폴리오·비저장 체험 채팅을 최종 수용에서 제외하지 않는다. 해당 API/데이터/도구 권한을 연결할 때 각 임시 제한을 해소해야 하며, 현재 축소된 연결 범위로 공개 완료를 선언하지 않는다.
 
@@ -107,3 +107,11 @@ Vite 빌드는 번들에 주입하는 같은 값으로 `_explorer/build.json`(ve
 지도→섹터→상위/같은 섹터→지도 동선을 제공하고 기존 가격 머리/기간 차트/RS UI를 재사용한다. Empty는 ETF 시세 대기, Loading은 skeleton, Partial은 비교 지수/일부 지표 '-' 유지, Error는 재시도와 없는 ticker404 안내, Ideal은 가격 차트·기간 선택·비교 이동이다. `tab=stocks|data` 직접 URL도 개인 탭을 마운트하지 않는다. 허용 원문/첨부와 회원 관심종목은 후속 경로로 유지한다.
 
 상세 검증: 공용/기존 개인 미국 섹터·진입 경계26검사, 프론트285검사·TypeScript·생성 계약307개 일치 통과. 합성 DB의 실제 ASGI 모델 응답을 Chrome에 공급해 지도→SMH상세→3개월 선택→XLK상위→지도 복귀를 검증했다. 1440/390px에서 차트 렌더와 overflow0, API8건은 session/map/두 ETF 전용상세뿐이고 미승인호출0/uncaught0. 운영 서비스/실데이터/Google/외부 연결 수용은 아니다. 테스트 프로세스·브라우저 프로필·fixture는 정리했다.
+
+### 공용 한국 산업 지도
+
+한국 지도는 기존 회사→업종 정정의 공유 시장 분류를 유지한다. 개인 관심목록·문서·Peer 실행본은 읽지 않는다. 공용 요청은 자체 readonly 연결에서 계산하며 기존 전역 DB 연결/15분 캐시를 사용하지 않는다. 종목별 snapshot 메모는 요청 안에서만 유지한다. 출력 섹터 이름과 대표 ETF 설명은 코드의18개 benchmark SEED 범위로 한정하고, DB의 자유형 benchmark note와 업종 정정 reason/source는 읽지 않는다. 기존 private 계산은 기존 cache/분류 계약을 유지한다.
+
+`/industry`의 기존 한국 지도/표/순위/카드와 한국·미국 전환을 사용한다. 공용 검색은 섹터/대표 ETF 이름만 대상으로 하며 Peer/종목 검색 API는 아직 호출하지 않는다. Loading skeleton·Empty 시세 대기·Partial 누락 지표 '-'·Error 재시도·Ideal 지도/카드·검색0건 안내를 유지한다. 한국 상세 및 Peer·허용 원문 연결은 후속이다.
+
+한국 지도 검증: 전용4검사 및 관련42검사 중40통과/옵션 실데이터2건 skip(합계44통과). 개인 설명 변경 불변·공유 업종 정정 반영·임의 섹터명/benchmark canary 제외·전역 연결/cache/Peer 미사용·readonly SQL 거부를 확인했다. 프론트286검사·TypeScript·계약307개 일치 통과. 합성 DB 실제 ASGI 응답으로 Chrome1440/390px 한국 지도/카드·ETF 검색·검색0건·한국→미국 전환을 확인했고 API6건은 session/두 지도뿐, 미승인0/uncaught0/가로overflow0. 실제운영DB/외부공개 수용 아님. 임시 프로필/fixture/전용서버는 정리했다.

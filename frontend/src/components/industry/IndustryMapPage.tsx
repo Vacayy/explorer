@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { Search } from "lucide-react"
@@ -37,6 +38,7 @@ const WALL_INFO = "섹터마다 대표 ETF(예: 반도체 = KODEX 반도체 0911
 export default function IndustryMapPage() {
   const [market, setMarket] = useUrlParam("market", "kr")
   return <PageLayout mode="document">
+    <h1 className="sr-only">{market === "us" ? "미국 산업 지도" : "한국 산업 지도"}</h1>
     {market === "us" ? <UsIndustryMap bar={asOf => <MarketBar market="us" onChange={setMarket} asOf={asOf} />} />
       : <KrIndustryMap bar={asOf => <MarketBar market="kr" onChange={setMarket} asOf={asOf} />} />}
   </PageLayout>
@@ -51,7 +53,7 @@ const MARKET_INFO = {
 function MarketBar({ market, onChange, asOf }: { market: "kr" | "us"; onChange: (v: string) => void; asOf: string | null | undefined }) {
   return <div className="flex items-center gap-2 pt-0.5 pb-1">
     <Seg label="시장" value={market} items={[{ key: "kr", label: "한국" }, { key: "us", label: "미국" }]} onChange={onChange} />
-    <InfoTip label="시장 전환 설명">{MARKET_INFO[market]}</InfoTip>
+    <InfoTip label="시장 전환 설명">{PUBLIC_ACCESS && market === "us" ? "비교 지수는 S&P500(SPY)이며 GICS 11개와 세부 업종 13개 ETF를 비교합니다." : MARKET_INFO[market]}</InfoTip>
     <span className="ml-auto font-mono text-xs text-ink-3">{asOf ? `${mmdd(asOf)} 종가` : ""}</span>
   </div>
 }
@@ -172,13 +174,13 @@ function SectorWall({ q, focus, onHover }: { q: MapQuery; focus: string | null; 
     <BlockHead section title="섹터" info={WALL_INFO} sub="시총 순 · 선 = 60거래일 대표지수, 점선 = 코스피"
       actions={<label className="relative flex h-8 w-[260px] items-center max-sm:w-full">
         <Search aria-hidden="true" className="pointer-events-none absolute left-3 size-3.5 text-ink-3" />
-        <Input type="search" aria-label="섹터·Peer 그룹·종목 찾기" value={query} onChange={e => setQuery(e.target.value)} placeholder="섹터·Peer 그룹·종목 찾기"
+        <Input type="search" aria-label={PUBLIC_ACCESS ? "섹터·대표 ETF 찾기" : "섹터·Peer 그룹·종목 찾기"} value={query} onChange={e => setQuery(e.target.value)} placeholder={PUBLIC_ACCESS ? "섹터·대표 ETF 찾기" : "섹터·Peer 그룹·종목 찾기"}
           className="h-8 rounded-full border-0 bg-chip pl-8 text-[12.5px] shadow-none" />
       </label>} />
-    {term && d && <FindResults term={term} map={d} />}
+    {!PUBLIC_ACCESS && term && d && <FindResults term={term} map={d} />}
     {q.isError ? <BlockError message="섹터를 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} />
       : !d ? <div className="grid grid-cols-2 pr-px pb-px md:grid-cols-6 [&>*]:-mr-px [&>*]:-mb-px">{Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="h-[176px] rounded-none border" />)}</div>
-      : !cards.length ? (term ? null : <FillNote>주가·섹터 데이터가 쌓이면 나타납니다.</FillNote>)
+      : !cards.length ? (term ? (PUBLIC_ACCESS ? <p role="status" className="text-sm text-ink-3">"{term}"에 맞는 섹터가 없습니다.</p> : null) : <FillNote>주가·섹터 데이터가 쌓이면 나타납니다.</FillNote>)
       : <div className="grid grid-cols-2 pr-px pb-px md:grid-cols-3 lg:grid-cols-6 [&>*]:-mr-px [&>*]:-mb-px">
         {cards.map(r => <SectorCard key={r.name} r={r} kospi={d.kospi} on={r.name === focus} onHover={onHover} />)}
       </div>}

@@ -6,8 +6,8 @@ import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/lib/accessMode', () => ({ PUBLIC_ACCESS: true }))
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
-const state = vi.hoisted(() => ({ data: undefined as unknown, isError: false, error: null as Error | null, refetch: vi.fn(), details: {} as Record<string, unknown> }))
-vi.mock('@/hooks/useSectorView', () => ({ useUsIndustryMap: () => state, useUsSectorMarket: (ticker: string) => ({ ...state, data: state.details[ticker] }) }))
+const state = vi.hoisted(() => ({ data: undefined as unknown, kr: undefined as unknown, isError: false, error: null as Error | null, refetch: vi.fn(), details: {} as Record<string, unknown> }))
+vi.mock('@/hooks/useSectorView', () => ({ useUsIndustryMap: () => state, useIndustryMap: () => ({ ...state, data: state.kr }), useUsSectorMarket: (ticker: string) => ({ ...state, data: state.details[ticker] }) }))
 const { PublicContent } = await import('../src/components/auth/PublicContent')
 const row = (ticker: string, name: string) => ({ ticker, name, full_name: name + ' ETF', parent: null,
   last: 100, last_date: '2026-11-13', chg_1d: 1, ret_1m: 2, ret_3m: null, chg_1w: 3,
@@ -15,7 +15,7 @@ const row = (ticker: string, name: string) => ({ ticker, name, full_name: name +
 function show(path = '/industry?market=us&rank=cov') {
   return render(<MemoryRouter initialEntries={[path]}><TooltipProvider><PublicContent /></TooltipProvider></MemoryRouter>)
 }
-afterEach(() => { cleanup(); state.data = undefined; state.isError = false; state.error = null; state.details = {}; vi.clearAllMocks() })
+afterEach(() => { cleanup(); state.data = undefined; state.kr = undefined; state.isError = false; state.error = null; state.details = {}; vi.clearAllMocks() })
 
 it('renders public ETF map, filters names and rejects personal coverage sorting', () => {
   state.data = { as_of: '2026-11-13', spy: [100, 101, 102], sectors: [row('XLK', '기술'), row('XLF', '금융')] }
@@ -80,4 +80,21 @@ it('keeps empty price and missing ticker states distinct', () => {
   expect(screen.getByRole('status').textContent).toContain('없는 미국 섹터')
   expect(screen.queryByRole('img')).toBeNull()
   expect(screen.getByRole('link', { name: '섹터 지도 · 미국' })).toBeTruthy()
+})
+
+it('renders Korean map, searches only sectors and switches markets without Peer queries', () => {
+  state.kr = { as_of: '2026-11-13', kospi: [100,101,102], peers_available: false, outside_groups: [], sectors: [
+    { name: '반도체·전자부품', benchmark: { kind: 'etf', ticker: '091160', name: 'KODEX 반도체', tracks: 'KRX 반도체', note: null },
+      last: 102, last_date: '2026-11-13', chg_1d: 1, ret_1m: 2, ret_3m: 3, rs_long: 80, rs_short: 60, chg_5d: 1,
+      trail: [], market_cap: 100000, stocks: 2, peer_groups: null, series: [100,101,102] }] }
+  const view = show('/industry')
+  expect(screen.getByRole('heading', { name: '한국 산업 지도' })).toBeTruthy()
+  expect(screen.getByRole('img', { name: '섹터 상대강도 지도' })).toBeTruthy()
+  fireEvent.change(screen.getByRole('searchbox', { name: '섹터·대표 ETF 찾기' }), { target: { value: '없음' } })
+  expect(screen.getByRole('status').textContent).toContain('맞는 섹터가 없습니다')
+  expect(view.container.textContent).not.toContain('Peer 그룹·종목')
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'KODEX' } })
+  expect(screen.getByRole('link', { name: '반도체·전자부품 섹터 화면' })).toBeTruthy()
+  fireEvent.click(screen.getByText('미국', { exact: true }))
+  expect(screen.getByRole('heading', { name: '미국 산업 지도' })).toBeTruthy()
 })

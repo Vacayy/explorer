@@ -111,16 +111,14 @@ def _rs_at(conn, members: dict, as_of: str, weights: dict[str, float]) -> dict[s
     return {g: {"rs_long": rs_l.get(g), "rs_short": rs_s.get(g)} for g in long_r}
 
 
-def compute_sector_map() -> dict:
-    hit = _cache.get("map")
-    if hit and time.time() - hit[0] < _TTL:
-        return hit[1]
-    conn = get_connection()
+def sector_map_from_connection(conn, *, allowed_groups=None) -> dict:
+    """Compute using only the supplied connection; no global result cache."""
     latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
     if not latest:
-        conn.close()
         return {"as_of": None, "groups": []}
     members = _members(conn)
+    if allowed_groups is not None:
+        members = {code: group for code, group in members.items() if group in allowed_groups}
     d = date.fromisoformat(latest)
     cur = _snapshot(conn, latest)
     weights = {c: m for c, (_, m) in cur.items() if m}
@@ -137,7 +135,6 @@ def compute_sector_map() -> dict:
         if g and mcap:
             size[g] = size.get(g, 0) + mcap
             count[g] = count.get(g, 0) + 1
-    conn.close()
 
     groups = []
     for g, rs in sorted(now.items(), key=lambda kv: -size.get(kv[0], 0)):
@@ -150,7 +147,20 @@ def compute_sector_map() -> dict:
                        "rs_short": trails[w].get(g, {}).get("rs_short")} for w in TRAIL_WEEKS],
         })
     result = {"as_of": latest, "groups": groups}
-    _cache["map"] = (time.time(), result)
+    return result
+
+
+def compute_sector_map() -> dict:
+    hit = _cache.get("map")
+    if hit and time.time() - hit[0] < _TTL:
+        return hit[1]
+    conn = get_connection()
+    try:
+        result = sector_map_from_connection(conn)
+    finally:
+        conn.close()
+    if result["as_of"] is not None:
+        _cache["map"] = (time.time(), result)
     return result
 
 

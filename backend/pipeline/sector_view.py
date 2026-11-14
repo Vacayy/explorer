@@ -170,10 +170,10 @@ def group_rows(runtime, ids: list[dict], groups: dict, members: dict) -> list[di
 
 # ---------- 섹터 지도 ----------
 
-def industry_map(conn, runtime=None) -> dict:
+def industry_map(conn, runtime=None, *, rs=None, benchmark_map=None) -> dict:
     from pipeline.sector_rs import compute_sector_map
-    rs = compute_sector_map()
-    benches = benchmarks(conn)
+    rs = compute_sector_map() if rs is None else rs
+    benches = benchmarks(conn) if benchmark_map is None else benchmark_map
     kospi = kospi_series(conn)
     peer_ids: dict[str, list[dict]] = {}
     outside: list[dict] = []

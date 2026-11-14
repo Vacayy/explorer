@@ -53,10 +53,17 @@ def us_sector_detail(ticker: str):
 
 
 @router.get("/map", response_model=IndustryMapResponse)
-def industry_map():
+def industry_map(request: Request):
     """섹터 지도 — 섹터마다 대표지수(ETF 또는 계산 지수)·1일·1개월·3개월·RS·61거래일 선 + 코스피 선, 섹터 밖 Peer 그룹."""
     from database import get_connection
     from pipeline.sector_view import industry_map as build
+    if getattr(request.state, 'public_access', False):
+        from security.public_industry import kr_industry_connection, kr_industry_map
+        conn = kr_industry_connection()
+        try:
+            return kr_industry_map(conn)
+        finally:
+            conn.close()
     conn = get_connection()
     try:
         return build(conn, _runtime(False))
