@@ -117,6 +117,7 @@ class GroupDigestTests(unittest.TestCase):
         conn.executescript("""
             CREATE TABLE companies(corp_code TEXT, corp_name TEXT, stock_code TEXT, market TEXT, sector TEXT);
             CREATE TABLE stock_prices(stock_code TEXT, trade_date TEXT, close REAL, market_cap INTEGER);
+            CREATE TABLE us_prices(ticker TEXT, trade_date TEXT, close REAL);
             CREATE TABLE watchlist(id INTEGER PRIMARY KEY, stock_code TEXT UNIQUE, corp_code TEXT, corp_name TEXT, conviction INTEGER, target_price INTEGER, thesis TEXT);
             CREATE TABLE entities(id INTEGER PRIMARY KEY, type TEXT, name TEXT, aliases TEXT);
             CREATE TABLE entity_digests(id INTEGER PRIMARY KEY, entity_id INTEGER, period TEXT, period_start TEXT, digest TEXT, insights TEXT, doc_count INTEGER);

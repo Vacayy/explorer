@@ -192,6 +192,8 @@ def health():
 # including static media, before handlers or request-observation writes execute.
 from routers import public_documents
 app.include_router(public_documents.router)
+from routers import member_portfolio
+app.include_router(member_portfolio.router)
 
 from security.access_boundary import configure_access_boundary
 configure_access_boundary(app)

@@ -133,3 +133,21 @@ EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 Publica
 합성 ASGI8검사+경계10검사 통과: 운영자/회원/익명, Origin/CSRF, stale 승인/철회, 동일 content_hash에서 metadata/media 변경, 파일바이트 변경, 경로탈출/symlink, 검증중 철회/파일교체, private 모드와 저장소 미설정, 원본 DB 불변. 프론트292검사·TypeScript·311응답 계약 일치 통과. 실제 ASGI 합성 응답을 Chrome1440/390px에서 렌더해 승인 본문/이미지/PDF 링크·재검증404 본문 제거·가로overflow0·미승인 API0·uncaught0을 확인했다. 기존 셸 Google Fonts 요청은 존재하며 문서 임의 외부 이미지 요청은0이다. 범용 live 검사에는 문서1 예시를 두지만 실제 승인·운영자 세션이 없으면 미검증으로 보고해야 한다. 파일 경로2개는 JSON이 아닌 바이너리로 명시한다. 운영 서비스 재시작/실데이터 선정/Google/외부 공개 검증을 대체하지 않는다.
 
 실제 자료 선정은 운영자가 출처의 배포 권한 근거와 개인 기록 제외를 확인한 뒤 preview 본문 및 각 파일을 검토하는 절차다. 실제 담당 계정/소스별 근거 목록은 PM과 소스 담당이 운영자에게 확인할 미해결 항목이며, 합성 검사 통과를 실자료 일괄 승인으로 취급하지 않는다. 검색·피드·인용은 이 승인 경로에 연결하기 전 공개하지 않는다.
+
+### 회원 포트폴리오 첫 연결 (준비 코드, 운영 미적용)
+
+`/api/member/portfolio` 및 `/history`, `/transactions` GET은 검증된 principal 소유 그룹만 조회하며 기존 PortfolioSummary/HistoryPoint/TransactionItem 계약을 유지한다. 새 회원의 조회는 빈 응답이고 쓰기/그룹 생성이 없다. POST `/transactions`는 기존 TransactionCreate 입력, `{ok,id}` 응답, DELETE `/transactions/{tx_id}`는 `{ok}` 응답이다. Origin/CSRF 및 세션 회원 확인을 적용한다. 회원용 `/companies?q=` GET은 회사 코드·이름만 최대20개 제공한다. 사용자 body/header의 owner/group ID는 받지 않는다.
+
+명시적 준비 작업에서 stock_groups.owner_id(nullable TEXT)와 portfolio owner별 unique partial index를 추가한다. 기존 행은 NULL로 그대로 보존하며 첫 로그인에게 배정하지 않는다. 기존 private group 선택은 NULL 소유만 사용하여 신규 회원 그룹을 잡지 않는다. 운영자 실제 identity 매핑은 private job 주체 연결/백업/동결과 함께 후속 적용하며 여기서 실행하지 않는다. 요청은 준비되지 않은 schema/DB를 자동 생성하지 않는다.
+
+회원 쓰기는 BEGIN IMMEDIATE 뒤 소유 그룹 선택/생성, 자동 부족금 입금+거래+members 변경을 하나의 트랜잭션으로 처리한다. 실패는 그룹 생성까지 rollback한다. 타인/없는 거래 삭제는 같은404로 처리한다. summary/history/transactions는 동일 읽기 snapshot에서 기존 순수 계산을 사용한다. 원칙·논지·알림·exposure/events/flow·시세 수집과 기존 그룹/검색/도구 경로는 소유권 연결 전 공개 허용하지 않는다. 부분 연결은 전체 포트폴리오 완료가 아니다.
+
+공개 `/portfolio` 화면은 비로그인 Google 로그인 안내, Loading, 빈 포트폴리오와 거래 추가, Partial 누락 시세, Error 재시도, Ideal 비율/가격/거래 내역을 제공한다. 금액·수량은 입력 때만 사용하며 조회에서 노출하지 않는다. 회원별 query key와 기존 계정 전환 전체 캐시 제거를 사용한다. 회원 전용 hook만 마운트하며 개인용 자동 시세갱신/원칙/논지/알림 요청을 시작하지 않는다. 첫 UI는 기존 입력/표 컴포넌트를 재사용하되 미연결 기능은 완료로 표시하지 않는다.
+
+거래 입력은 실제 달력 날짜와 유한한 amount/price만 받는다. 원장 재생의 cash/수량/평단/원가가 계산 범위를 벗어나면409로 전체 rollback한다. 회원422 응답은 제출한 원장 input/금액/메모를 다시 보내지 않고 loc/type/msg만 제공한다. 회사 검색은 기존 입력 계약에 맞는6자리 대문자/숫자 코드와 이름이 있는 회사만 조회하며 NULL/빈 코드 행은 제외한다.
+
+회원 기능8개 ASGI/동시성 검사와 기존 포트폴리오·경계 회귀를 포함한73검사 통과. 신규/기존 회원 UI·인증을 포함한 프론트300검사, TypeScript,317응답 계약 일치 통과. Chrome1440/390px에서 실제 ASGI 합성 응답으로 비로그인 차단→빈 공간→입금→회사 검색·매수→비율/차트/거래 조회→매수 삭제→입금 삭제·빈 공간을 확인했다. API27회는 session/회원 포트폴리오뿐이며 쓰기 CSRF·입력 body를 대조했고 uncaught0/미승인API0/가로overflow0. 브라우저는 합성 응답 재생이며 실제 Google/운영 DB/외부 공개 수용은 아니다. 범용 live 검사는 실제 로그인 없으면 해당 경로를 미검증으로 보고해야 한다.
+
+기존 GroupDigestTests의 us_prices 없는 fixture 실패는 변경 전 portfolio 코드에서도 재현되었다. 실제 그룹 상세의 한미 날짜 조회에 필요한 빈 us_prices fixture를 추가했으며 동작 검증을 생략하거나 production 쿼리를 완화하지 않았다.
+
+**운영 활성화 선행조건:** `kr_company_data.targets()`의 보유 우선 수집, `world_reads._member_companies()`의 개인 보유/관심 분석, `watch_rules.evaluate_all()`의 그룹 일괄 처리 등은 아직 전체 그룹을 읽는다. 이 경로들과 연결된 호출자를 기존 NULL-owner 주체 또는 명시 owner 범위로 분리한 뒤에만 기존 worker와 회원 쓰기를 함께 켠다. 수용은 신규 A/B 종목이 운영자 개인 집합·알림·분석에 섞이지 않음과 기존 운영자 job 결과 보존을 함께 대조한다. 현재 prepared code를 즉시 운영 활성화하는 승인은 아니다. 실제 소유 매핑, 원칙/논지/알림/파생 경로 및 운영 backup/restore 인벤토리와 공개 사전검사 연결도 남아 있다.

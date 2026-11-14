@@ -1004,6 +1004,7 @@ export interface PortfolioAlert { kind: 'day' | 'avg' | 'tech' | 'disc' | 'summa
 export interface GroupDigest { code: string; name: string; date: string; lead: string | null; insights: string | null; docs: number | null }
 export interface PortfolioHistoryPoint { date: string; cum_return_pct: number; day_return_pct: number }
 export type PortfolioTxKind = 'buy' | 'sell' | 'deposit' | 'withdraw'
+export interface PortfolioCompany { stock_code: string; corp_name: string }
 export interface PortfolioTransaction { id: number; trade_date: string; kind: PortfolioTxKind; stock_code: string | null; name: string | null; price: number | null }
 export interface PortfolioTxInput { trade_date: string; kind: PortfolioTxKind; stock_code?: string; amount?: number; price?: number; fund_shortfall?: boolean; sell_all?: boolean }
 export interface ExposureDriver {

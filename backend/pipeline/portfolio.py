@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import sqlite3
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -94,6 +95,11 @@ def apply(ledger: Ledger, tx: dict) -> None:
         ledger.cash += amount
         if pos.qty <= EPS:
             del ledger.positions[tx["stock_code"]]
+    if not math.isfinite(ledger.cash) or any(
+        not all(math.isfinite(value) for value in (pos.qty, pos.avg, pos.qty * pos.avg))
+        for pos in ledger.positions.values()
+    ):
+        raise LedgerError('거래 금액 또는 체결가가 계산 가능한 범위를 벗어났습니다.')
 
 
 def replay(txs: list[dict]) -> Ledger:
@@ -185,7 +191,13 @@ def valuation(txs: list[dict], prices: dict[str, list[tuple[str, float]]]) -> li
 # ── DB ──────────────────────────────────────────────────────────────────────
 
 def group_id(conn: sqlite3.Connection) -> int:
-    row = conn.execute("SELECT id FROM stock_groups WHERE kind='portfolio' ORDER BY id LIMIT 1").fetchone()
+    # After explicit ownership preparation, legacy jobs only see unassigned legacy
+    # groups. Mapping that group to an operator requires migrating job principals too.
+    scoped = any(r[1] == 'owner_id' for r in conn.execute('PRAGMA table_info(stock_groups)'))
+    query = "SELECT id FROM stock_groups WHERE kind='portfolio'"
+    if scoped:
+        query += ' AND owner_id IS NULL'
+    row = conn.execute(query + ' ORDER BY id LIMIT 1').fetchone()
     if row:
         return row["id"]
     cur = conn.execute("INSERT INTO stock_groups (name, kind) VALUES (?, 'portfolio')", (GROUP_NAME,))
@@ -282,9 +294,9 @@ def last_close_before(conn: sqlite3.Connection, code: str, day: str) -> float | 
     return float(row["close"]) if row else None
 
 
-def add_transaction(conn: sqlite3.Connection, tx: dict, fund_shortfall: bool = True) -> int:
+def add_transaction(conn: sqlite3.Connection, tx: dict, fund_shortfall: bool = True, *, gid: int | None = None, commit: bool = True) -> int:
     """거래 추가. 체결가 미입력은 그날 이전 마지막 종가. 매수 현금 부족 시 fund_shortfall이면 부족분 입금을 먼저 기록."""
-    gid = group_id(conn)
+    gid = group_id(conn) if gid is None else gid
     tx = {**tx, "note": tx.get("note") or ""}
     if tx["kind"] in ("buy", "sell"):
         if not tx.get("stock_code"):
@@ -318,22 +330,24 @@ def add_transaction(conn: sqlite3.Connection, tx: dict, fund_shortfall: bool = T
                               "VALUES (?,?,?,?,?,?,?)",
                               (gid, p["trade_date"], p["kind"], p["stock_code"], p["amount"], p["price"], p["note"])).lastrowid
     _sync_members(conn, gid, ledger)
-    conn.commit()
+    if commit:
+        conn.commit()
     return new_id
 
 
-def delete_transaction(conn: sqlite3.Connection, tx_id: int) -> None:
-    gid = group_id(conn)
+def delete_transaction(conn: sqlite3.Connection, tx_id: int, *, gid: int | None = None, commit: bool = True) -> None:
+    gid = group_id(conn) if gid is None else gid
     rest = [t for t in _txs(conn, gid) if t["id"] != tx_id]
     ledger = replay(rest)   # 남은 원장이 깨지면 LedgerError
     conn.execute("DELETE FROM portfolio_transactions WHERE id=? AND group_id=?", (tx_id, gid))
     _sync_members(conn, gid, ledger)
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
-def transactions(conn: sqlite3.Connection) -> list[dict]:
+def transactions(conn: sqlite3.Connection, *, gid: int | None = None) -> list[dict]:
     """거래 내역 — 금액·수량 없이."""
-    gid = group_id(conn)
+    gid = group_id(conn) if gid is None else gid
     txs = _txs(conn, gid)
     names = _names(conn, {t["stock_code"] for t in txs if t["stock_code"]})
     return [{"id": t["id"], "trade_date": t["trade_date"], "kind": t["kind"], "stock_code": t["stock_code"],
@@ -363,8 +377,8 @@ def refresh_now(conn: sqlite3.Connection, force: bool = True) -> dict:
     return {"quoted_at": row["at"], "count": row["n"], "refreshed": refreshed}
 
 
-def history(conn: sqlite3.Connection) -> list[dict]:
-    gid = group_id(conn)
+def history(conn: sqlite3.Connection, *, gid: int | None = None) -> list[dict]:
+    gid = group_id(conn) if gid is None else gid
     txs = _txs(conn, gid)
     if not txs:
         return []
@@ -372,9 +386,9 @@ def history(conn: sqlite3.Connection) -> list[dict]:
     return valuation(txs, prices)
 
 
-def summary(conn: sqlite3.Connection) -> dict:
+def summary(conn: sqlite3.Connection, *, gid: int | None = None) -> dict:
     """현황 — 비율·가격만."""
-    gid = group_id(conn)
+    gid = group_id(conn) if gid is None else gid
     txs = _txs(conn, gid)
     if not txs:
         return {"as_of": None, "total_return_pct": None, "day_return_pct": None, "cash_weight_pct": None, "holdings": [], "quoted_at": None,

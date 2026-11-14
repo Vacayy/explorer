@@ -5,12 +5,14 @@ import { MarketHero } from '@/components/home/MarketHero'
 import { PageContainer } from '@/components/shared/PageContainer'
 import { Button } from '@/components/ui/button'
 import { PublicDocumentPage } from '@/components/doc/PublicDocumentPage'
+import { MemberPortfolioPage } from '@/components/portfolio/MemberPortfolioPage'
 
 /** Incremental public coverage. Never mount a private page behind a hidden UI. */
 export function PublicContent() {
   const { pathname } = useLocation()
   const sector = useMatch('/industry/us/:ticker')
   const document = useMatch('/doc/:docId')
+  if (pathname === '/portfolio') return <MemberPortfolioPage />
   if (document?.params.docId) return <PublicDocumentPage docId={document.params.docId} />
   if (sector?.params.ticker) return <PublicUsSectorPage ticker={sector.params.ticker} />
   if (pathname === '/industry') return <IndustryMapPage />

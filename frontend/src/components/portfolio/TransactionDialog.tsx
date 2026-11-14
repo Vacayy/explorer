@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ComponentType } from 'react'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,15 @@ const today = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 1
 
 /** 거래 입력 — 금액은 여기서만 입력하고 저장 후 지운다. 화면 어디에도 다시 표시하지 않는다(D-212). */
 export function TransactionDialog() {
+  const add = useAddPortfolioTransaction()
+  return <TransactionFormDialog add={add} CompanyPicker={CompanySearchCombobox} />
+}
+
+export function TransactionFormDialog({ add, CompanyPicker, description = '금액은 로컬에만 저장되고 화면에는 비율로만 표시됩니다.' }: {
+  add: ReturnType<typeof useAddPortfolioTransaction>
+  CompanyPicker: ComponentType<{ value: Pick<Company, 'corp_name' | 'stock_code'> | null; onSelect: (company: Pick<Company, 'corp_name' | 'stock_code'>) => void; className?: string }>
+  description?: string
+}) {
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<PortfolioTxKind>('buy')
   const [company, setCompany] = useState<Pick<Company, 'corp_name' | 'stock_code'> | null>(null)
@@ -31,7 +40,6 @@ export function TransactionDialog() {
   const [mode, setMode] = useState<'amount' | 'quantity'>('amount')   // 매수·매도: 금액 직접 또는 수량 × 체결가
   const [quantity, setQuantity] = useState('')
   const [all, setAll] = useState(false)                                // 매도 전량 — 서버가 보유 수량 × 체결가로 계산
-  const add = useAddPortfolioTransaction()
   const trade = kind === 'buy' || kind === 'sell'
   const num = (text: string) => Number(text.replaceAll(',', ''))
   const sellAll = kind === 'sell' && all
@@ -55,11 +63,11 @@ export function TransactionDialog() {
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
         <DialogTitle>거래 입력</DialogTitle>
-        <DialogDescription>금액은 로컬에만 저장되고 화면에는 비율로만 표시됩니다.</DialogDescription>
+        <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (valid && !add.isPending) submit() }}>
         <SegmentTabs tabs={KINDS} value={kind} onChange={value => setKind(value as PortfolioTxKind)} />
-        {trade && <div className="space-y-1.5"><Label>종목</Label><CompanySearchCombobox value={company} onSelect={setCompany} className="w-full" /></div>}
+        {trade && <div className="space-y-1.5"><Label>종목</Label><CompanyPicker value={company} onSelect={setCompany} className="w-full" /></div>}
         <div className="space-y-1.5"><Label htmlFor="pf-date">날짜</Label><Input id="pf-date" type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
         {kind === 'sell' && <div className="flex items-center gap-2"><Checkbox id="pf-all" checked={all} onCheckedChange={value => setAll(value === true)} />
           <Label htmlFor="pf-all" className="font-normal">전량 매도 (그날 보유 수량 전부)</Label></div>}

@@ -5,6 +5,7 @@ export const loaders = {
   'financials': () => import('./validators-financials.js'),
   'ir-notes': () => import('./validators-ir-notes.js'),
   'kpi': () => import('./validators-kpi.js'),
+  'member': () => import('./validators-member.js'),
   'operator': () => import('./validators-operator.js'),
   'peers': () => import('./validators-peers.js'),
   'portfolio': () => import('./validators-portfolio.js'),
