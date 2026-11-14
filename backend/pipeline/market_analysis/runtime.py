@@ -261,8 +261,35 @@ class Sandbox:
                       timed_out, cancelled, limited)
 
 
+def selected_sandbox():
+    """Explicit trusted backend selection; never fall back to ordinary Python."""
+    name = os.environ.get('ANALYSIS_RUNTIME', 'macos-seatbelt')
+    if name == 'macos-seatbelt':
+        return Sandbox
+    if name != 'linux-broker':
+        raise RuntimeUnavailable('지원하지 않는 분석 실행기 설정입니다.')
+    socket_path = os.environ.get('ANALYSIS_BROKER_SOCKET', '')
+    token_file = os.environ.get('ANALYSIS_BROKER_TOKEN_FILE', '')
+    if not socket_path or not token_file or not all(Path(p).is_absolute() for p in (socket_path, token_file)):
+        raise RuntimeUnavailable('비공개 분석 소켓·인증 파일 경로가 필요합니다.')
+    try:
+        from explorer_analysis.app_adapter import BrokerSandbox
+    except ImportError as exc:
+        raise RuntimeUnavailable('Linux 분석 통신 패키지가 설치되지 않았습니다.') from exc
+    class ConfiguredSandbox(BrokerSandbox):
+        pass
+    ConfiguredSandbox.socket_path = socket_path
+    ConfiguredSandbox.token_file = token_file
+    return ConfiguredSandbox
+
+
 def preflight(python: Path | None = None) -> dict:
     """Real OS boundary smoke using fixtures only; must pass before a model run."""
+    selected = selected_sandbox()
+    if selected is not Sandbox:
+        if python is not None:
+            raise RuntimeUnavailable('Linux 실행기에 로컬 Python 경로를 지정할 수 없습니다.')
+        return selected.preflight()
     with tempfile.TemporaryDirectory(prefix='explorer-analysis-check-') as folder:
         root = Path(folder).resolve()
         protected = root / 'protected.txt'
