@@ -729,7 +729,7 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `security.login_transactions`는 별도0600 SQLite에5분 로그인 state/binding hash와 nonce/PKCE를 관리한다. `security.login_flow`와 `routers/auth`는 browser-bound 일회용 callback과 세션교체/Origin+CSRF logout을 제공한다. 인증 설정키와 응답 계약은 member-access.md 참조. 콜백 access-log query 제거, no-store/no-referrer 응답을 적용하며 프록시의 동일 보호가 필요하다. 프론트 auth API/types와 생성 계약을 동기화했고 로그인 UI 및 기존 업무 API 권한은 미연결이다.
 
-`security.access_boundary`는 `EXPLORER_ACCESS_MODE=public`에서 ASGI 진입 경계를 설치한다(default private은 기존 비공개 실행). 유효 route+method 허용 목록, 미분류 API/정적 파일/WS 차단, 기존 세션 기반 member/operator principal, 쓰기 Origin/CSRF, no-store·고정 오류를 제공한다. 현재 허용은 health/auth 네 경로와 한국·미국 시장 개요·미국 산업 지도이며 개인 업무 API는 아직 소유권 검증 전이라 열지 않는다. 포함 router prefix와 실제 앱 등록 목록을 합성 ASGI에서 검증했다. 이 설정 자체는 공개 배포·전체 화면/회원 기능 완료가 아니며 실제 공개 구성의 모드 사전검사가 별도로 필요하다. 세부 계약은 [회원 접근 계약](specs/member-access.md#공개-요청-진입-경계).
+`security.access_boundary`는 `EXPLORER_ACCESS_MODE=public`에서 ASGI 진입 경계를 설치한다(default private은 기존 비공개 실행). 유효 route+method 허용 목록, 미분류 API/정적 파일/WS 차단, 기존 세션 기반 member/operator principal, 쓰기 Origin/CSRF, no-store·고정 오류를 제공한다. 현재 허용은 health/auth 네 경로와 한국·미국 시장 개요·산업 지도 및 승인 문서/첨부이며 개인 업무 API는 아직 소유권 검증 전이라 열지 않는다. 포함 router prefix와 실제 앱 등록 목록을 합성 ASGI에서 검증했다. 이 설정 자체는 공개 배포·전체 화면/회원 기능 완료가 아니며 실제 공개 구성의 모드 사전검사가 별도로 필요하다. 세부 계약은 [회원 접근 계약](specs/member-access.md#공개-요청-진입-경계).
 
 `security.public_market`은 공개 시장 개요 요청에만 readonly SQLite 연결과 네 시장 테이블의 열/집계 함수 허용 목록을 제공한다. 개인 테이블·extra_json·쓰기·ATTACH/확장 로딩을 차단하며 기존 `MarketOverview` 응답/MarketHero 경로를 유지한다. 익명 kr/us 실제 합성 ASGI 응답과 개인 canary 비포함·DB 불변을 검증했고 운영 DB/이미지는 변경하지 않았다.
 
@@ -737,6 +737,13 @@ tail -f logs/ingest.log               # 수집 관찰
 
 Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API base를 기록하고 public에서 cross-origin/기본 localhost API base를 거부한다. API 공개 경계의 `X-Explorer-Access-Mode: public` 표식은 차단 응답에도 적용해 배포 검사가 구형 private 앱의 우연한404를 성공으로 오인하지 않게 한다. 이 표식과 빌드 검증은 실제 공개 기능·Google 로그인 수용을 대신하지 않는다.
 
-공용 미국 산업 지도(`/industry?market=us`)는 기존 ETF 지도·순위·검색·필터를 재사용한다. `security.public_industry`가 sector_benchmark_prices의 ticker/trade_date/close만 readonly로 읽고, `us_map(include_coverage=False)`는 팔로우 조회를 생략한다. map 응답의 coverage만 nullable(null=개인 집계 제외), private 지도/상세는 기존 정수 계약을 유지한다. 공개 UI는 개인 커버리지 표시·정렬을 제외하고 직접 rank=cov URL도 허용 정렬로 처리한다. 국내 지도/섹터 상세는 후속 연결이며 아직 공개 허용 목록에 넣지 않았다. API 계약을 재생성했다.
+공용 미국 산업 지도(`/industry?market=us`)는 기존 ETF 지도·순위·검색·필터를 재사용한다. `security.public_industry`가 sector_benchmark_prices의 ticker/trade_date/close만 readonly로 읽고, `us_map(include_coverage=False)`는 팔로우 조회를 생략한다. map 응답의 coverage만 nullable(null=개인 집계 제외), private 지도/상세는 기존 정수 계약을 유지한다. 공개 UI는 개인 커버리지 표시·정렬을 제외하고 직접 rank=cov URL도 허용 정렬로 처리한다. 국내 지도는 아래 공용 연결을 사용하며 국내 섹터 상세는 후속이다. API 계약을 재생성했다.
 
-공용 미국 섹터 상세(`/industry/us/:ticker`)는 `GET /api/spine/industry/us/{ticker}/market`과 `UsSectorMarketResponse`를 사용한다. `us_sector_market`은 ETF 가격/RS/시계열·같은 상위 섹터 비교만 계산하며 개인 필드가 없다. 기존 `us_sector_detail`은 그 시장 결과에 개인 조회를 별도로 결합해 private 계약을 유지한다. 공개 `PublicUsSectorPage`/`useUsSectorMarket`은 전용 경로만 호출하고 기존 가격 머리/차트/RS 표현을 재사용한다. 지도→상세→상위/형제→지도 이동과 기간 선택을 제공하며 개인 탭은 마운트하지 않는다. 원문/첨부 및 회원 관심종목 연결은 미완이다.
+공용 미국 섹터 상세(`/industry/us/:ticker`)는 `GET /api/spine/industry/us/{ticker}/market`과 `UsSectorMarketResponse`를 사용한다. `us_sector_market`은 ETF 가격/RS/시계열·같은 상위 섹터 비교만 계산하며 개인 필드가 없다. 기존 `us_sector_detail`은 그 시장 결과에 개인 조회를 별도로 결합해 private 계약을 유지한다. 공개 `PublicUsSectorPage`/`useUsSectorMarket`은 전용 경로만 호출하고 기존 가격 머리/차트/RS 표현을 재사용한다. 지도→상세→상위/형제→지도 이동과 기간 선택을 제공하며 개인 탭은 마운트하지 않는다. 승인 문서/첨부는 아래 전용 경로로 제공하며 섹터에서의 문서 탐색 및 회원 관심종목 연결은 미완이다.
+
+
+공용 한국 산업 지도는 `security.public_industry.kr_industry_map`의 readonly 요청별 연결과 코드의18개 benchmark 이름/설명을 사용한다. 공유 회사·업종 정정 분류는 유지하되 개인 테이블/자유형 정정 설명/Peer 실행본은 읽지 않는다. 기존 지도·카드·ETF 검색·한미 전환을 재사용한다. 국내 상세/종목 검색은 후속이다.
+
+`security.publication_store`는 명시적으로 초기화한 별도0600 SQLite(`EXPLORER_PUBLICATION_DB`)에 publication_metadata(v1), publications(doc_id/fingerprint/version/status/rights_basis/approved_by/at/revoked_by/at)를 둔다. 기존 업무 DB init_db와 분리하여 요청/import 자동 생성 및 원본 수정이 없다. `security.public_documents`는 raw_documents의 공개 투영과 실제 첨부 바이트를 해시로 묶어 현재 승인과 매번 대조한다. `routers/public_documents`는 공용 문서/첨부 GET과 운영자 preview/첨부 preview/approve/revoke를 제공하며 private 모드에서는 비활성이다. 원문 content_hash만으로 승인하지 않고 metadata/media 변경도 재검토를 요구한다. 전체 개정 이력 저장소가 아닌 현재 결정 저장소다.
+
+공개 `/doc/:docId`는 `PublicDocumentPage`/`usePublishedDocument`를 사용한다. 승인된 보관 본문과 PNG/JPEG/WebP/GIF/PDF 첨부만 제공하고 기존 개인 DocPage/연관자료 API는 마운트하지 않는다. Markdown의 임의 이미지·내부 파일 링크는 실행하지 않으며 PDF는 다운로드다. 404/실패/재검증 중에는 이전 본문을 숨긴다. 운영자 자료 선정 화면·검색/인용 연결·실제 자료 승인과 별도 DB의 운영 백업/배포는 미완이다. 자세한 경로·용량·검증 한계는 [회원 접근 계약](specs/member-access.md#승인-문서본문첨부와-철회)을 따른다.

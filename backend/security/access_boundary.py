@@ -21,6 +21,12 @@ NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy'
 # route needs public projection or ownership validation before joining this map.
 PUBLIC_ROUTE_POLICIES = {
     ('GET', '/api/health'): 'public',
+    ('GET', '/api/public/documents/{doc_id}'): 'public',
+    ('GET', '/api/public/documents/{doc_id}/attachments/{attachment_id}'): 'public',
+    ('GET', '/api/operator/publications/{doc_id}/preview'): 'operator',
+    ('GET', '/api/operator/publications/{doc_id}/preview/{fingerprint}/attachments/{attachment_id}'): 'operator',
+    ('POST', '/api/operator/publications/{doc_id}/approve'): 'operator',
+    ('POST', '/api/operator/publications/{doc_id}/revoke'): 'operator',
     ('GET', '/api/spine/industry/us/map'): 'public',
     ('GET', '/api/spine/industry/map'): 'public',
     ('GET', '/api/spine/industry/us/{ticker}/market'): 'public',

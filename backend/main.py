@@ -190,5 +190,8 @@ def health():
 
 # Install after route registration; public mode denies every unclassified path,
 # including static media, before handlers or request-observation writes execute.
+from routers import public_documents
+app.include_router(public_documents.router)
+
 from security.access_boundary import configure_access_boundary
 configure_access_boundary(app)

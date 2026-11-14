@@ -1,0 +1,52 @@
+"""Explicit publication projection; no private tags, jobs, errors or notes."""
+from typing import Literal
+from pydantic import BaseModel, Field, field_validator
+
+
+class PublishedAttachment(BaseModel):
+    id: int
+    media_type: Literal['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf']
+    size: int
+    url: str
+
+
+class PublishedDocument(BaseModel):
+    id: int
+    title: str
+    source_type: str
+    url: str | None
+    published_at: str | None
+    content: str
+    content_kind: Literal['stored_markdown', 'stored_text']
+    attachments: list[PublishedAttachment]
+
+
+class PublicationPreview(BaseModel):
+    fingerprint: str
+    version: int
+    document: PublishedDocument
+    attachment_previews: list[str]
+
+
+class ApprovePublication(BaseModel):
+    fingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
+    expected_version: int = Field(ge=0)
+    rights_basis: str = Field(min_length=1, max_length=2000)
+    personal_data_excluded: Literal[True]
+
+    @field_validator('rights_basis')
+    @classmethod
+    def nonempty_basis(cls, value):
+        if not value.strip():
+            raise ValueError('Rights basis required')
+        return value.strip()
+
+
+class RevokePublication(BaseModel):
+    expected_version: int = Field(ge=1)
+
+
+class PublicationResult(BaseModel):
+    id: int
+    version: int
+    status: Literal['approved', 'revoked']

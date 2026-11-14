@@ -20,6 +20,9 @@ it('explicitly accounts for the remaining unused JSON reads and non-JSON streams
   expect(unmodeled.filter(route => route.method === 'get').map(route => route.path).sort()).toEqual([
     '/api/analysis/runs/{run_id}/artifacts/{artifact_id}', '/api/analysis/runs/{run_id}/events',
     '/api/consensus/{stock_code}', '/api/health', '/api/signals', '/api/spine/conversations/{conversation_id}/stream',
+    // Reviewed attachment bytes (images/PDF), not JSON response contracts.
+    '/api/public/documents/{doc_id}/attachments/{attachment_id}',
+    '/api/operator/publications/{doc_id}/preview/{fingerprint}/attachments/{attachment_id}',
     '/api/spine/groups/{group_id}/evaluations', '/api/spine/trade/{hs_code}/metrics',
     '/api/valuation/{stock_code}',   // 옛 밸류 화면을 내림(11-06 B안) — API는 남겨 둔다
   ].sort())

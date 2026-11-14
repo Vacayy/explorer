@@ -62,7 +62,7 @@ frontend/api/auth.ts는 생성된 응답 계약을 사용하는 session/logout �
 
 `EXPLORER_ACCESS_MODE=private|public`을 import 시 검증한다. 기본 private은 기존 비공개 실행을 유지하며 공개에 적합하지 않다. public은 `security.access_boundary`의 ASGI 경계를 설치한다. 실제 공개 배포의 사전 검사에서 public 설정을 확인해야 하며, 이 변경은 Tunnel이나 운영 설정을 활성화하지 않는다.
 
-현재 허용 목록은 `GET /api/health`, 기존 auth의 session/start/callback/logout 네 경로 및 `GET /api/spine/market/{market}/overview`, `GET /api/spine/industry/map`, `GET /api/spine/industry/us/map`, `GET /api/spine/industry/us/{ticker}/market`다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
+현재 허용 목록은 `GET /api/health`, 기존 auth의 session/start/callback/logout 네 경로 및 `GET /api/spine/market/{market}/overview`, `GET /api/spine/industry/map`, `GET /api/spine/industry/us/map`, `GET /api/spine/industry/us/{ticker}/market`, 아래 승인 문서·첨부 GET과 운영자 검토/승인/철회 경로다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·API 문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
 
 member/operator 정책은 기존 IdentityStore를 매 요청 조회해 만료·폐기·역할 변경·비활성화를 반영하고 `request.state.principal`에 검증된 User를 전달한다. identity 헤더는 사용하지 않는다. 보호된 쓰기는 정확한 HTTPS Origin과 세션별 CSRF가 필요하다. 저장소 장애는 내용 없는503, 인증 실패401, 권한/CSRF 실패403, 미분류404다. 응답과 오류는 no-store이며 공용 캐시 최적화는 별도 계약 뒤에 한다. 응답 전 예외는 고정500으로 처리하며 이미 시작한 스트림에 예외 내용을 덧붙이지 않는다.
 
@@ -115,3 +115,21 @@ Vite 빌드는 번들에 주입하는 같은 값으로 `_explorer/build.json`(ve
 `/industry`의 기존 한국 지도/표/순위/카드와 한국·미국 전환을 사용한다. 공용 검색은 섹터/대표 ETF 이름만 대상으로 하며 Peer/종목 검색 API는 아직 호출하지 않는다. Loading skeleton·Empty 시세 대기·Partial 누락 지표 '-'·Error 재시도·Ideal 지도/카드·검색0건 안내를 유지한다. 한국 상세 및 Peer·허용 원문 연결은 후속이다.
 
 한국 지도 검증: 전용4검사 및 관련42검사 중40통과/옵션 실데이터2건 skip(합계44통과). 개인 설명 변경 불변·공유 업종 정정 반영·임의 섹터명/benchmark canary 제외·전역 연결/cache/Peer 미사용·readonly SQL 거부를 확인했다. 프론트286검사·TypeScript·계약307개 일치 통과. 합성 DB 실제 ASGI 응답으로 Chrome1440/390px 한국 지도/카드·ETF 검색·검색0건·한국→미국 전환을 확인했고 API6건은 session/두 지도뿐, 미승인0/uncaught0/가로overflow0. 실제운영DB/외부공개 수용 아님. 임시 프로필/fixture/전용서버는 정리했다.
+
+### 승인 문서·본문·첨부와 철회
+
+공용 GET `/api/public/documents/{doc_id}`는 명시적으로 승인한 공개 투영만 반환한다. id/title/source_type/url/published_at/content/content_kind/attachments가 전부이며 개인 태그·메모·작업·연관자료는 없다. content는 저장된 markdown 우선, 없으면 raw_content다. 저장된 가공 본문일 수 있으므로 UI는 '보관된 본문'으로 표시하고 원문 그대로라고 보장하지 않는다. 출처 종류 자체는 공개 권한의 근거가 아니다.
+
+운영자는 GET `/api/operator/publications/{doc_id}/preview`로 문서/첨부 목록/fingerprint/현재 version과 보호된 attachment_previews URL을 받는다. GET `/api/operator/publications/{doc_id}/preview/{fingerprint}/attachments/{attachment_id}`로 실제 파일을 검토한다. POST approve는 fingerprint/expected_version/rights_basis 및 personal_data_excluded=true를 요구한다. POST revoke는 expected_version을 받는다. 경로 앞부분은 동일한 `/api/operator/publications/{doc_id}`이며 회원은 운영자 경로에 접근할 수 없다. 기존 세션 역할과 Origin/CSRF를 검사하고 버전 충돌은409로 재검토를 요구한다. 운영자 검토 UI는 아직 없다.
+
+EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 PublicationStore.initialize 대상이다. 요청/import 자동 초기화는 없고 누락/장애는503이다. 배포 시 영속 볼륨과 SQLite-aware 백업/복원 범위에 포함해야 하며 현재 운영 환경에는 초기화/연결하지 않았다. 테이블은 publication_metadata와 현재 publications 결정이며 과거 본문/개정 이력 저장은 제공하지 않는다.
+
+승인은 실제 응답 전체와 첨부 상대경로·해시·크기·유형의 fingerprint에 결합한다. markdown만의 기존 content_hash는 근거로 쓰지 않는다. 매 GET마다 readonly 원본 조회와 첨부 검증, 승인 재조회로 변경/철회를 확인한다. 미승인/철회/변경/없는 문서는 같은404다. 공용 첨부 GET `/api/public/documents/{doc_id}/attachments/{attachment_id}`도 문서 전체 승인 검사를 통과해야 한다. 검증했던 바이트를 그대로 반환하며 경로를 다시 열지 않는다. 디렉터리 FD/O_NOFOLLOW로 중간 symlink·경로탈출을 막는다.
+
+본문 UTF-8 2MiB, 첨부16개/개별16MiB/합계64MiB 제한이며 PNG/JPEG/GIF/WebP/PDF의 시그니처만 허용한다. 완전한 파일 무해성 검사나 악성코드 검사는 아니다. PDF는 다운로드, 이미지는 inline, nosniff/sandbox/no-store/same-origin을 적용한다. 한도 초과/지원하지 않는 첨부가 있으면 문서 전체를 공개하지 않는다. 큰 문서의 공개 분할은 후속 정책이 필요하다. 철회 전에 이미 전달된 바이트/다운로드를 회수할 수는 없다.
+
+공개 `/doc/:docId`는 전용 GET만 사용하며 Markdown 임의 이미지와 상대 파일 링크를 로드하지 않는다. 공개 첨부 URL만 이미지/PDF로 제공한다. Loading·Empty404·Partial 본문 없음/첨부 실패·Error 재시도·Ideal 본문/첨부를 제공하며 재검증 중/오류/404에는 캐시된 본문을 숨긴다. 새 방문/창 복귀 시 재검증하며 실시간 강제 회수(push)는 아니다.
+
+합성 ASGI8검사+경계10검사 통과: 운영자/회원/익명, Origin/CSRF, stale 승인/철회, 동일 content_hash에서 metadata/media 변경, 파일바이트 변경, 경로탈출/symlink, 검증중 철회/파일교체, private 모드와 저장소 미설정, 원본 DB 불변. 프론트292검사·TypeScript·311응답 계약 일치 통과. 실제 ASGI 합성 응답을 Chrome1440/390px에서 렌더해 승인 본문/이미지/PDF 링크·재검증404 본문 제거·가로overflow0·미승인 API0·uncaught0을 확인했다. 기존 셸 Google Fonts 요청은 존재하며 문서 임의 외부 이미지 요청은0이다. 범용 live 검사에는 문서1 예시를 두지만 실제 승인·운영자 세션이 없으면 미검증으로 보고해야 한다. 파일 경로2개는 JSON이 아닌 바이너리로 명시한다. 운영 서비스 재시작/실데이터 선정/Google/외부 공개 검증을 대체하지 않는다.
+
+실제 자료 선정은 운영자가 출처의 배포 권한 근거와 개인 기록 제외를 확인한 뒤 preview 본문 및 각 파일을 검토하는 절차다. 실제 담당 계정/소스별 근거 목록은 PM과 소스 담당이 운영자에게 확인할 미해결 항목이며, 합성 검사 통과를 실자료 일괄 승인으로 취급하지 않는다. 검색·피드·인용은 이 승인 경로에 연결하기 전 공개하지 않는다.

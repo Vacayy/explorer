@@ -2064,3 +2064,21 @@ export interface MemberSession {
   csrf_token: string | null
 }
 export interface LogoutReply { ok: boolean }
+
+/** Explicitly approved public document; never substitute a private FeedDocument. */
+export interface PublishedAttachment {
+  id: number
+  media_type: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | 'application/pdf'
+  size: number
+  url: string
+}
+export interface PublishedDocument {
+  id: number
+  title: string
+  source_type: string
+  url: string | null
+  published_at: string | null
+  content: string
+  content_kind: 'stored_markdown' | 'stored_text'
+  attachments: PublishedAttachment[]
+}

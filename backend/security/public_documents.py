@@ -1,0 +1,161 @@
+"""Bounded publication projection with exact bytes and per-document decisions."""
+from dataclasses import dataclass
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import sqlite3
+import stat
+from urllib.parse import urlsplit
+
+from models.public_documents import PublishedAttachment, PublishedDocument
+from security.publication_store import PublicationStore, PublicationConflict
+
+MAX_TEXT = 2 * 1024 * 1024
+MAX_FILE = 16 * 1024 * 1024
+MAX_TOTAL = 64 * 1024 * 1024
+MAX_FILES = 16
+
+
+class DocumentUnavailable(Exception):
+    pass
+
+
+@dataclass
+class Snapshot:
+    document: PublishedDocument
+    fingerprint: str
+    selected_bytes: bytes | None
+
+
+def _safe_url(value):
+    if not value:
+        return None
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme in {'http', 'https'} and parsed.hostname and not parsed.username and not parsed.password:
+            return value
+    except ValueError:
+        pass
+    return None
+
+
+def _media_type(data):
+    if data.startswith(b'\x89PNG\r\n\x1a\n'): return 'image/png'
+    if data.startswith(b'\xff\xd8\xff'): return 'image/jpeg'
+    if data.startswith((b'GIF87a', b'GIF89a')): return 'image/gif'
+    if data.startswith(b'RIFF') and data[8:12] == b'WEBP': return 'image/webp'
+    if data.startswith(b'%PDF-'): return 'application/pdf'
+    raise DocumentUnavailable()
+
+
+def _file_bytes(root: Path, relative: str):
+    # All traversal uses directory FDs and O_NOFOLLOW, including intermediate
+    # directories. Never reopen a checked path later for the actual response.
+    if (not isinstance(relative, str) or not relative or len(relative) > 1024
+            or '\x00' in relative or '\\' in relative or relative.startswith('/')
+            or any(p in {'', '.', '..'} for p in relative.split('/'))):
+        raise DocumentUnavailable()
+    parts = PurePosixPath(relative).parts
+    current = os.open(root.resolve(strict=True), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+            os.close(current)
+            current = child
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=current)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE:
+                raise DocumentUnavailable()
+            data = bytearray()
+            while True:
+                chunk = os.read(fd, min(1024 * 1024, MAX_FILE + 1 - len(data)))
+                if not chunk: break
+                data.extend(chunk)
+                if len(data) > MAX_FILE: raise DocumentUnavailable()
+            return bytes(data)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(current)
+
+
+class PublicDocuments:
+    def __init__(self, source: Path, media_root: Path, store: PublicationStore):
+        self.source, self.media_root, self.store = Path(source).absolute(), Path(media_root).absolute(), store
+        if self.source.resolve() == self.store.path.resolve():
+            raise ValueError('Separate publication store required')
+
+    @classmethod
+    def from_environment(cls):
+        from config import DB_PATH, MEDIA_PATH
+        name = os.environ.get('EXPLORER_PUBLICATION_DB', '')
+        if not name or not Path(name).is_absolute():
+            raise ValueError('Publication store not configured')
+        return cls(DB_PATH, MEDIA_PATH, PublicationStore(Path(name)))
+
+    def capture(self, doc_id: int, selected: int | None = None) -> Snapshot:
+        try:
+            conn = sqlite3.connect(self.source.as_uri() + '?mode=ro', uri=True, timeout=3)
+            conn.row_factory = sqlite3.Row
+            try:
+                conn.execute('PRAGMA query_only=ON')
+                row = conn.execute('''SELECT id,substr(title,1,1025) title,substr(source_type,1,129) source_type,
+                    substr(url,1,4097) url,substr(published_at,1,129) published_at,
+                    substr(markdown,1,?) markdown,substr(raw_content,1,?) raw_content,
+                    substr(media_json,1,65537) media_json FROM raw_documents WHERE id=?''',
+                    (MAX_TEXT + 1, MAX_TEXT + 1, doc_id)).fetchone()
+            finally:
+                conn.close()
+            if not row: raise DocumentUnavailable()
+            for field, limit in [('title',1024),('source_type',128),('url',4096),('published_at',128),('media_json',65536)]:
+                if row[field] is not None and (not isinstance(row[field], str) or len(row[field]) > limit):
+                    raise DocumentUnavailable()
+            content = row['markdown'] or row['raw_content'] or ''
+            if not isinstance(content, str) or len(content.encode('utf8')) > MAX_TEXT:
+                raise DocumentUnavailable()
+            paths = json.loads(row['media_json']) if row['media_json'] else []
+            if not isinstance(paths, list) or len(paths) > MAX_FILES or len(set(paths)) != len(paths):
+                raise DocumentUnavailable()
+            attachments, manifest, selected_bytes, total = [], [], None, 0
+            for index, path in enumerate(paths):
+                data = _file_bytes(self.media_root, path)
+                total += len(data)
+                if total > MAX_TOTAL: raise DocumentUnavailable()
+                media_type = _media_type(data)
+                attachments.append(PublishedAttachment(id=index, media_type=media_type, size=len(data),
+                    url=f'/api/public/documents/{doc_id}/attachments/{index}'))
+                manifest.append({'path':path, 'sha256':hashlib.sha256(data).hexdigest(), 'size':len(data), 'type':media_type})
+                if index == selected: selected_bytes = data
+            document = PublishedDocument(id=doc_id, title=row['title'] or '', source_type=row['source_type'] or '',
+                url=_safe_url(row['url']), published_at=row['published_at'], content=content,
+                content_kind='stored_markdown' if row['markdown'] else 'stored_text', attachments=attachments)
+            material = {'version':1, 'document':document.model_dump(mode='json'), 'attachments':manifest}
+            fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True, ensure_ascii=False, separators=(',',':')).encode()).hexdigest()
+            return Snapshot(document, fingerprint, selected_bytes)
+        except (OSError, ValueError, TypeError, sqlite3.Error) as exc:
+            raise DocumentUnavailable() from exc
+
+    def preview(self, doc_id):
+        snapshot = self.capture(doc_id)
+        record = self.store.get(doc_id)
+        return {'fingerprint': snapshot.fingerprint, 'version': record['version'] if record else 0, 'document': snapshot.document,
+                'attachment_previews': [f'/api/operator/publications/{doc_id}/preview/{snapshot.fingerprint}/attachments/{a.id}' for a in snapshot.document.attachments]}
+
+    def approve(self, doc_id, request, actor):
+        snapshot = self.capture(doc_id)
+        if snapshot.fingerprint != request.fingerprint:
+            raise PublicationConflict()
+        return self.store.approve(doc_id, snapshot.fingerprint, request.expected_version, actor, request.rights_basis)
+
+    def published(self, doc_id, selected=None):
+        record = self.store.get(doc_id)
+        if record is None or record['status'] != 'approved':
+            raise DocumentUnavailable()
+        snapshot = self.capture(doc_id, selected)
+        if snapshot.fingerprint != record['fingerprint'] or self.store.get(doc_id) != record:
+            raise DocumentUnavailable()
+        if selected is not None and snapshot.selected_bytes is None:
+            raise DocumentUnavailable()
+        return snapshot
