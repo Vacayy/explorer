@@ -62,10 +62,18 @@ frontend/api/auth.ts는 생성된 응답 계약을 사용하는 session/logout �
 
 `EXPLORER_ACCESS_MODE=private|public`을 import 시 검증한다. 기본 private은 기존 비공개 실행을 유지하며 공개에 적합하지 않다. public은 `security.access_boundary`의 ASGI 경계를 설치한다. 실제 공개 배포의 사전 검사에서 public 설정을 확인해야 하며, 이 변경은 Tunnel이나 운영 설정을 활성화하지 않는다.
 
-현재 허용 목록은 `GET /api/health`와 기존 auth의 session/start/callback/logout 네 경로뿐이다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
+현재 허용 목록은 `GET /api/health`, 기존 auth의 session/start/callback/logout 네 경로 및 `GET /api/spine/market/{market}/overview`다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
 
 member/operator 정책은 기존 IdentityStore를 매 요청 조회해 만료·폐기·역할 변경·비활성화를 반영하고 `request.state.principal`에 검증된 User를 전달한다. identity 헤더는 사용하지 않는다. 보호된 쓰기는 정확한 HTTPS Origin과 세션별 CSRF가 필요하다. 저장소 장애는 내용 없는503, 인증 실패401, 권한/CSRF 실패403, 미분류404다. 응답과 오류는 no-store이며 공용 캐시 최적화는 별도 계약 뒤에 한다. 응답 전 예외는 고정500으로 처리하며 이미 시작한 스트림에 예외 내용을 덧붙이지 않는다.
 
 이 단계는 기존 개인 API를 member로 분류하지 않는다. 해당 저장소·목록·ID 상세·파일·파생 결과의 본인 소유권과 배경 작업 주체 전달이 검증된 뒤에만 허용 목록에 넣는다. 전체 시장 화면/회원별 포트폴리오/익명 비저장 채팅은 아직 공개되지 않았으며, 임시 차단 상태를 공개 기능 완료로 판정하지 않는다.
 
 합성 ASGI 검사와 임시 identity SQLite로 두 회원/운영자 구별, 위조 헤더, 만료/폐기/비활성·역할 변경, 쓰기 Origin/CSRF, 실제 앱 등록경로의 미분류 차단, 정적 파일/메서드/WebSocket 우회, include prefix/parameter, 신규·중복 경로, 예외 비노출을 검사한다. 기존 Google HTTP 흐름 검사는 별도로 유지한다. 실제 Google 로그인·회원별 업무 데이터 격리·외부 프록시·공개 설정 누락 사전검사는 이후 수용 대상이다.
+
+### 첫 공용 화면 데이터: 한국·미국 시장 개요
+
+기존 `MarketHero`/`useMarketOverview`의 경로와 `MarketOverview` 응답은 유지한다. 공개 경계가 설정한 서버 내부 state에서만 공용 연결을 선택하며 클라이언트 헤더로 전환하지 않는다. `security.public_market.market_connection`은 기존 SQLite를 `mode=ro`로 열고 query_only 및 SQL authorizer를 적용한다. live WAL을 읽으므로 immutable 옵션은 사용하지 않는다. DB 생성·저널 전환·외부 수집·LLM 실행은 없다.
+
+읽을 수 있는 데이터는 market_indicators(snapshot_date/indicator/value), index_intraday(key/trade_date/hhmm/value), retail_flows(date/credit_total/indiv_buy/indiv_sell), stock_prices(stock_code/trade_date/close)로 제한한다. 고정 overview 조회에 필요한 집계 함수만 허용하며 개인 테이블, 추가 열(extra_json 포함), DB 쓰기, ATTACH, PRAGMA 변경, 확장 로딩을 거부한다. 메모된 시장 폭과 응답 모델 역시 공용 수치만 사용한다. 이 열 제한은 임의 SQL API를 제공한다는 뜻이 아니다.
+
+합성 개인 canary가 있는 DB에서 실제 익명 kr/us HTTP 응답의 비어 있지 않은 지수 값·기존 모델 일치·canary 비포함·원본 DB 바이트 불변을 검증했다. 직접 private table/column 조회와 쓰기 거부, 없는 DB 자동 생성 거부도 확인했다. 기존 시장 개요 계산 검사를 유지한다. 이는 시장 탭의 첫 지수/요약 블록이며 홈 전체의 개인 관심정보/원문/첨부 공개 또는 로그인 UI 연결이 완료된 것은 아니다.

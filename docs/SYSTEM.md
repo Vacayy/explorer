@@ -725,4 +725,6 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `security.login_transactions`는 별도0600 SQLite에5분 로그인 state/binding hash와 nonce/PKCE를 관리한다. `security.login_flow`와 `routers/auth`는 browser-bound 일회용 callback과 세션교체/Origin+CSRF logout을 제공한다. 인증 설정키와 응답 계약은 member-access.md 참조. 콜백 access-log query 제거, no-store/no-referrer 응답을 적용하며 프록시의 동일 보호가 필요하다. 프론트 auth API/types와 생성 계약을 동기화했고 로그인 UI 및 기존 업무 API 권한은 미연결이다.
 
-`security.access_boundary`는 `EXPLORER_ACCESS_MODE=public`에서 ASGI 진입 경계를 설치한다(default private은 기존 비공개 실행). 유효 route+method 허용 목록, 미분류 API/정적 파일/WS 차단, 기존 세션 기반 member/operator principal, 쓰기 Origin/CSRF, no-store·고정 오류를 제공한다. 현재 실제 허용은 health와 auth 네 경로뿐이며 기존 업무 API는 아직 회원 소유권 검증 전이라 열지 않는다. 포함 router prefix와 실제 앱 등록 목록을 합성 ASGI에서 검증했다. 이 설정 자체는 공개 배포·전체 화면/회원 기능 완료가 아니며 실제 공개 구성의 모드 사전검사가 별도로 필요하다. 세부 계약은 [회원 접근 계약](specs/member-access.md#공개-요청-진입-경계).
+`security.access_boundary`는 `EXPLORER_ACCESS_MODE=public`에서 ASGI 진입 경계를 설치한다(default private은 기존 비공개 실행). 유효 route+method 허용 목록, 미분류 API/정적 파일/WS 차단, 기존 세션 기반 member/operator principal, 쓰기 Origin/CSRF, no-store·고정 오류를 제공한다. 현재 허용은 health/auth 네 경로와 한국·미국 시장 개요이며 개인 업무 API는 아직 소유권 검증 전이라 열지 않는다. 포함 router prefix와 실제 앱 등록 목록을 합성 ASGI에서 검증했다. 이 설정 자체는 공개 배포·전체 화면/회원 기능 완료가 아니며 실제 공개 구성의 모드 사전검사가 별도로 필요하다. 세부 계약은 [회원 접근 계약](specs/member-access.md#공개-요청-진입-경계).
+
+`security.public_market`은 공개 시장 개요 요청에만 readonly SQLite 연결과 네 시장 테이블의 열/집계 함수 허용 목록을 제공한다. 개인 테이블·extra_json·쓰기·ATTACH/확장 로딩을 차단하며 기존 `MarketOverview` 응답/MarketHero 경로를 유지한다. 익명 kr/us 실제 합성 ASGI 응답과 개인 canary 비포함·DB 불변을 검증했고 운영 DB/이미지는 변경하지 않았다.
