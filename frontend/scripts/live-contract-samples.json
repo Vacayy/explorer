@@ -12,6 +12,7 @@
     "/api/spine/person/{entity_id}": "/api/spine/person/5215",
     "/api/spine/transcript/chain/upcoming/{ticker}": "/api/spine/transcript/chain/upcoming/NVDA",
     "/api/spine/market/{market}/overview": ["/api/spine/market/kr/overview", "/api/spine/market/us/overview"],
+    "/api/spine/industry/us/{ticker}/market": ["/api/spine/industry/us/SMH/market", "/api/spine/industry/us/XLK/market"],
     "/api/spine/industry/us/{ticker}": ["/api/spine/industry/us/SMH", "/api/spine/industry/us/XLK"]
   },
   "query": {

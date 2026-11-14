@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from models.industry import (IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse, UsIndustryMapResponse,
-                             UsSectorDetailResponse)
+                             UsSectorDetailResponse, UsSectorMarketResponse)
 
 router = APIRouter(prefix="/api/spine/industry", tags=["spine"])
 logger = logging.getLogger(__name__)
@@ -92,4 +92,19 @@ def sector_peers(sector: str):
         conn.close()
     if out is None:
         raise HTTPException(status_code=404, detail="없는 섹터입니다.")
+    return out
+
+
+@router.get("/us/{ticker}/market", response_model=UsSectorMarketResponse)
+def us_sector_market(ticker: str):
+    """ETF-only public detail; no personal follows, documents or derived links."""
+    from security.public_industry import industry_connection
+    from pipeline.us_sectors import us_sector_market as build
+    conn = industry_connection()
+    try:
+        out = build(conn, ticker)
+    finally:
+        conn.close()
+    if out is None:
+        raise HTTPException(status_code=404, detail="없는 미국 섹터 ETF입니다.")
     return out

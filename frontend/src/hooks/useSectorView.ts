@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import type { IndustryMap, IndustrySectorDetail, SectorPeerList, UsIndustryMap, UsSectorDetail } from "@/types"
+import type { IndustryMap, IndustrySectorDetail, SectorPeerList, UsIndustryMap, UsSectorDetail, UsSectorMarket } from "@/types"
 
 /** 섹터 지도 — 섹터마다 대표지수·RS·61거래일 선 (GET, 저장분만 · 서버 15분 메모리 캐시) */
 export function useIndustryMap() {
@@ -30,4 +30,9 @@ export function useUsIndustryMap(enabled = true) {
 /** 미국 섹터 화면 — ETF 머리·ETF vs SPY·같은 상위 안 비교·내 커버리지·주요 자료·데이터 연결 (GET, 저장분만) */
 export function useUsSectorDetail(ticker: string) {
   return useQuery(apiQuery<UsSectorDetail>({ key: ["spine", "industry", "us", ticker], url: `/api/spine/industry/us/${encodeURIComponent(ticker)}`, staleTime: STALE.medium, enabled: !!ticker }))
+}
+
+/** Public ETF-only detail; never falls back to the personal detail endpoint. */
+export function useUsSectorMarket(ticker: string) {
+  return useQuery(apiQuery<UsSectorMarket>({ key: ["public", "industry", "us", ticker], url: `/api/spine/industry/us/${encodeURIComponent(ticker)}/market`, staleTime: STALE.medium, enabled: !!ticker }))
 }

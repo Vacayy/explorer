@@ -734,3 +734,5 @@ tail -f logs/ingest.log               # 수집 관찰
 Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API base를 기록하고 public에서 cross-origin/기본 localhost API base를 거부한다. API 공개 경계의 `X-Explorer-Access-Mode: public` 표식은 차단 응답에도 적용해 배포 검사가 구형 private 앱의 우연한404를 성공으로 오인하지 않게 한다. 이 표식과 빌드 검증은 실제 공개 기능·Google 로그인 수용을 대신하지 않는다.
 
 공용 미국 산업 지도(`/industry?market=us`)는 기존 ETF 지도·순위·검색·필터를 재사용한다. `security.public_industry`가 sector_benchmark_prices의 ticker/trade_date/close만 readonly로 읽고, `us_map(include_coverage=False)`는 팔로우 조회를 생략한다. map 응답의 coverage만 nullable(null=개인 집계 제외), private 지도/상세는 기존 정수 계약을 유지한다. 공개 UI는 개인 커버리지 표시·정렬을 제외하고 직접 rank=cov URL도 허용 정렬로 처리한다. 국내 지도/섹터 상세는 후속 연결이며 아직 공개 허용 목록에 넣지 않았다. API 계약을 재생성했다.
+
+공용 미국 섹터 상세(`/industry/us/:ticker`)는 `GET /api/spine/industry/us/{ticker}/market`과 `UsSectorMarketResponse`를 사용한다. `us_sector_market`은 ETF 가격/RS/시계열·같은 상위 섹터 비교만 계산하며 개인 필드가 없다. 기존 `us_sector_detail`은 그 시장 결과에 개인 조회를 별도로 결합해 private 계약을 유지한다. 공개 `PublicUsSectorPage`/`useUsSectorMarket`은 전용 경로만 호출하고 기존 가격 머리/차트/RS 표현을 재사용한다. 지도→상세→상위/형제→지도 이동과 기간 선택을 제공하며 개인 탭은 마운트하지 않는다. 원문/첨부 및 회원 관심종목 연결은 미완이다.

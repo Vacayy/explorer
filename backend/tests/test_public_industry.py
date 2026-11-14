@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from models.industry import UsIndustryMapResponse
+from models.industry import UsIndustryMapResponse, UsSectorMarketResponse
 from pipeline import us_sectors
 from routers import spine_industry
 from security.access_boundary import PublicAccessBoundary
@@ -29,7 +29,8 @@ class PublicIndustryTests(unittest.TestCase):
         app = FastAPI()
         app.include_router(spine_industry.router)
         app.add_middleware(PublicAccessBoundary, routes=app.router.routes,
-            policies={('GET', '/api/spine/industry/us/map'): 'public'})
+            policies={('GET', '/api/spine/industry/us/map'): 'public',
+                      ('GET', '/api/spine/industry/us/{ticker}/market'): 'public'})
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
 
@@ -81,3 +82,39 @@ class PublicIndustryTests(unittest.TestCase):
         missing = self.path.parent / 'missing.sqlite'
         with self.assertRaises(sqlite3.OperationalError): industry_connection(missing)
         self.assertFalse(missing.exists())
+
+    def test_public_detail_reads_only_etf_prices_and_omits_personal_fields(self):
+        before = self.path.read_bytes()
+        with patch('security.public_industry.industry_connection', side_effect=lambda: industry_connection(self.path)), \
+             patch.object(us_sectors, 'us_sector_detail', side_effect=AssertionError('private detail called')), \
+             patch.object(us_sectors, 'follows', side_effect=AssertionError('private follows read')), \
+             patch.object(us_sectors, '_docs', side_effect=AssertionError('private docs read')), \
+             patch.object(us_sectors, 'data_links', side_effect=AssertionError('private derived links read')):
+            response = self.client.get('/api/spine/industry/us/smh/market?tab=stocks')
+            self.assertEqual(response.status_code, 200, response.text)
+            data = UsSectorMarketResponse.model_validate(response.json())
+            self.assertEqual(data.ticker, 'SMH')
+            self.assertEqual(data.parent, 'XLK')
+            self.assertEqual(len(data.series), 140)
+            self.assertEqual(data.series[-1].v, 378)
+            self.assertIsNotNone(data.series[-1].k)
+            self.assertEqual(data.siblings[0].ticker, 'XLK')
+            self.assertTrue({'coverage', 'members', 'docs', 'data_links'}.isdisjoint(response.json()))
+            self.assertNotIn('canary', response.text)
+            self.assertEqual(response.headers['cache-control'], 'no-store')
+            self.assertEqual(self.client.get('/api/spine/industry/us/NOPE/market').status_code, 404)
+            self.assertEqual(self.client.get('/api/spine/industry/us/SMH').status_code, 404)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_public_detail_empty_and_partial_keep_ticker_without_private_fallback(self):
+        with sqlite3.connect(self.path) as conn:
+            conn.execute("DELETE FROM sector_benchmark_prices WHERE ticker = 'SPY'")
+        conn = industry_connection(self.path)
+        self.addCleanup(conn.close)
+        partial = UsSectorMarketResponse.model_validate(us_sectors.us_sector_market(conn, 'SMH'))
+        self.assertIsNone(partial.as_of)
+        self.assertTrue(partial.series)
+        self.assertTrue(all(point.k is None for point in partial.series))
+        empty = UsSectorMarketResponse.model_validate(us_sectors.us_sector_market(conn, 'XLV'))
+        self.assertEqual(empty.series, [])
+        self.assertIsNone(empty.last)

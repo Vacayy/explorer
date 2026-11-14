@@ -19,9 +19,12 @@ import { useUrlParam } from "@/hooks/useUrlParam"
 import { toApiError } from "@/api/query"
 import { cn } from "@/lib/utils"
 import { formatNumber, formatPercent, formatStockPrice, formatUsd } from "@/utils/format"
-import type { UsSectorDetail, UsSectorDocType } from "@/types"
+import type { UsSectorMarket, UsSectorDocType } from "@/types"
 
 type Q = ReturnType<typeof useUsSectorDetail>
+type MarketQuery<T extends UsSectorMarket = UsSectorMarket> = {
+  data: T | undefined; isError: boolean; error: Error | null; refetch: () => unknown
+}
 const TABS = ["overview", "stocks", "data"] as const
 type Tab = (typeof TABS)[number]
 const mmdd = (d: string | null | undefined) => d ? `${+d.slice(5, 7)}/${+d.slice(8, 10)}` : "-"
@@ -33,7 +36,7 @@ const DOC_FILTERS = [{ key: "all", label: "전체" }, { key: "earnings", label: 
 const DOC_MATCH: Record<string, UsSectorDocType[]> = { earnings: ["transcript", "earnings_release"], research: ["scrap", "web"], youtube: ["youtube"] }
 const PER = 20
 
-function etfTip(d: UsSectorDetail, parentName: string | null) {
+function etfTip(d: UsSectorMarket, parentName: string | null) {
   return `${d.full_name}(${d.ticker}) — 이 ${d.parent ? "업종" : "섹터"}의 대표지수로 쓰는 ETF입니다.${parentName ? ` 상위 섹터는 ${parentName}(${d.parent})입니다.` : ""} 비교 지수는 S&P500 ETF(SPY)입니다.`
 }
 
@@ -58,7 +61,7 @@ export default function UsSectorPage() {
         <Link to="/industry?market=us" className="text-ink-2 hover:text-ink">섹터 지도 · 미국</Link>
         {d?.parent && <> › <Link to={usSectorPath(d.parent)} className="text-ink-2 hover:text-ink">{d.parent_name}</Link></>} › {d?.name ?? ticker}
       </nav>
-      {d ? <Head d={d} /> : <div className="flex min-h-[44px] flex-wrap items-end gap-4">
+      {d ? <Head d={d} coverage={d.members.length} /> : <div className="flex min-h-[44px] flex-wrap items-end gap-4">
         <h1 className="font-display text-page font-normal tracking-[-0.01em] max-md:text-[26px]">{ticker}</h1>
         {!q.isError && <><Skeleton className="h-6 w-40" /><Skeleton className="h-6 w-56" /></>}
       </div>}
@@ -85,7 +88,7 @@ export default function UsSectorPage() {
   </PageLayout>
 }
 
-function Head({ d }: { d: UsSectorDetail }) {
+export function Head({ d, coverage }: { d: UsSectorMarket; coverage?: number }) {
   return <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
     <h1 className="font-display text-page leading-[1.2] font-normal tracking-[-0.01em] max-md:text-[26px]">{d.name}</h1>
     <span className="inline-flex items-center gap-1 self-center pt-2 text-[13px] text-ink-2">
@@ -94,7 +97,7 @@ function Head({ d }: { d: UsSectorDetail }) {
     </span>
     <span className="font-display text-[22px] tabular-nums">{formatStockPrice(d.last, "us")}</span>
     <span className="font-mono text-sm tabular-nums"><span className={tone(d.chg_1d)}>{formatPercent(d.chg_1d, 2)}</span> <span className="text-ink-3">·</span> <span className={tone(d.ret_1m)}>1개월 {formatPercent(d.ret_1m)}</span></span>
-    <span className="text-[12.5px] text-ink-3">내 커버리지 {formatNumber(d.members.length)}종목 · {mmdd(d.last_date)}</span>
+    <span className="text-[12.5px] text-ink-3">{coverage != null && <>내 커버리지 {formatNumber(coverage)}종목 · </>}{mmdd(d.last_date)}</span>
     <span className="flex flex-wrap gap-1.5">
       <Chip kind={(d.rs_long ?? 0) >= 50 ? "up" : "down"}>장기 RS {rsText(d.rs_long)}</Chip>
       <Chip kind={(d.rs_short ?? 0) >= 50 ? "up" : "down"}>단기 RS {rsText(d.rs_short)}</Chip>
@@ -103,12 +106,12 @@ function Head({ d }: { d: UsSectorDetail }) {
   </div>
 }
 
-function State({ q, rows, message, children }: { q: Q; rows?: number; message: string; children: (d: UsSectorDetail) => React.ReactNode }) {
+function State<T extends UsSectorMarket>({ q, rows, message, children }: { q: MarketQuery<T>; rows?: number; message: string; children: (d: T) => React.ReactNode }) {
   if (q.data) return <>{children(q.data)}</>
   return q.isError ? <BlockError message={message} error={q.error} onRetry={() => void q.refetch()} /> : <FillSkeleton rows={rows} />
 }
 
-function IndexCard({ q }: { q: Q }) {
+export function IndexCard({ q }: { q: MarketQuery }) {
   const [range, setRange] = useUrlParam("range", "1y")
   const d = q.data
   const pts = d ? slice(d.series, range) : []
@@ -136,7 +139,7 @@ function Bar({ v, cls }: { v: number | null; cls: string }) {
   </div>
 }
 
-function RsCard({ q }: { q: Q }) {
+export function RsCard({ q }: { q: MarketQuery }) {
   return <MarketCard band="sectorChart" label="sector.us.rs">
     <BlockHead section title="상대강도" info={US_RS_INFO} sub="24개 섹터·업종 중 백분위" />
     <State q={q} rows={8} message="상대강도를 불러오지 못했습니다">{d => {

@@ -1,4 +1,5 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useMatch } from 'react-router-dom'
+import { PublicUsSectorPage } from '@/components/industry/PublicUsSectorPage'
 import UsIndustryMap from '@/components/industry/UsIndustryMap'
 import { MarketHero } from '@/components/home/MarketHero'
 import { PageContainer } from '@/components/shared/PageContainer'
@@ -7,6 +8,8 @@ import { Button } from '@/components/ui/button'
 /** Incremental public coverage. Never mount a private page behind a hidden UI. */
 export function PublicContent() {
   const { pathname, search } = useLocation()
+  const sector = useMatch('/industry/us/:ticker')
+  if (sector?.params.ticker) return <PublicUsSectorPage ticker={sector.params.ticker} />
   if (pathname === '/industry' && new URLSearchParams(search).get('market') === 'us') {
     return <PageContainer><h1 className="text-xl font-medium">미국 산업 지도</h1>
       <UsIndustryMap bar={asOf => <p className="text-sm text-ink-2">섹터·업종 ETF · 비교 지수 S&amp;P500(SPY){asOf && ` · ${asOf} 종가`}</p>} />

@@ -444,6 +444,9 @@ export interface UsSectorDetail extends UsEtfRow {
   members: UsSectorMember[]; docs: UsSectorDoc[]; data_links: UsSectorDataLink[]
 }
 
+/** GET /api/spine/industry/us/{ticker}/market — no personal fields */
+export type UsSectorMarket = Omit<UsSectorDetail, 'coverage' | 'members' | 'docs' | 'data_links'>
+
 /** GET /api/spine/signals/summary — 유형별 최신일 건수·상위 3. as_of = 신호 최신일 */
 export interface SignalsSummaryType {
   type: string;

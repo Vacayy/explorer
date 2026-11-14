@@ -62,7 +62,7 @@ frontend/api/auth.ts는 생성된 응답 계약을 사용하는 session/logout �
 
 `EXPLORER_ACCESS_MODE=private|public`을 import 시 검증한다. 기본 private은 기존 비공개 실행을 유지하며 공개에 적합하지 않다. public은 `security.access_boundary`의 ASGI 경계를 설치한다. 실제 공개 배포의 사전 검사에서 public 설정을 확인해야 하며, 이 변경은 Tunnel이나 운영 설정을 활성화하지 않는다.
 
-현재 허용 목록은 `GET /api/health`, 기존 auth의 session/start/callback/logout 네 경로 및 `GET /api/spine/market/{market}/overview`, `GET /api/spine/industry/us/map`다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
+현재 허용 목록은 `GET /api/health`, 기존 auth의 session/start/callback/logout 네 경로 및 `GET /api/spine/market/{market}/overview`, `GET /api/spine/industry/us/map`, `GET /api/spine/industry/us/{ticker}/market`다. 메서드와 유효 route 경로를 함께 비교하고, 미분류 API·정적 media·문서 UI·WebSocket은 차단한다. 포함된 router의 prefix를 반영하며 등록하지 않은 정책·중복 정책 경로·알 수 없는 정책·public 쓰기 분류를 거부한다. 신규 라우트가 자동으로 공개되지 않는다. auth 경로는 기존 state/nonce/세션/CSRF 검사를 계속 수행한다.
 
 member/operator 정책은 기존 IdentityStore를 매 요청 조회해 만료·폐기·역할 변경·비활성화를 반영하고 `request.state.principal`에 검증된 User를 전달한다. identity 헤더는 사용하지 않는다. 보호된 쓰기는 정확한 HTTPS Origin과 세션별 CSRF가 필요하다. 저장소 장애는 내용 없는503, 인증 실패401, 권한/CSRF 실패403, 미분류404다. 응답과 오류는 no-store이며 공용 캐시 최적화는 별도 계약 뒤에 한다. 응답 전 예외는 고정500으로 처리하며 이미 시작한 스트림에 예외 내용을 덧붙이지 않는다.
 
@@ -99,3 +99,11 @@ Vite 빌드는 번들에 주입하는 같은 값으로 `_explorer/build.json`(ve
 공개 화면에서는 개인 커버리지 정렬/설명을 표시하지 않는다. Loading은 기존 skeleton, Empty는 시세 대기, Partial은 없는 지표의 '-' 및 받은 섹터 유지, Error는 재시도, Ideal은 지도/순위/카드·검색이다. 국내 지도·섹터 상세·허용 원문/첨부는 후속 연결 대상이며 이 단계로 전체 산업 화면 완료를 주장하지 않는다.
 
 검증: 공개 산업/기존 미국 섹터/진입 경계24검사, 프론트283검사·TypeScript·생성 계약 일치 통과. 실제 Chrome1440px/390px에서 합성 SQLite로 계산한 ETF 응답을 공급해 지도·순위·개인 집계 미표시·상세 미마운트/복귀·가로 overflow 없음 확인. API4회는 session/미국 map뿐, 미승인 호출0/uncaught오류0. 실제 운영 데이터·Google 인증·외부 공개 수용은 아니며 테스트 프로세스/프로필/fixture는 제거했다.
+
+### 공용 미국 섹터 가격 상세
+
+`/industry/us/:ticker`는 `GET /api/spine/industry/us/{ticker}/market`의 시장 전용 모델을 사용한다. 응답에는 ETF 가격/수익률/RS/4주 경로·ETF/SPY 시계열·같은 상위 섹터 비교만 있다. 개인 coverage/members/docs/data_links 필드는 모델에도 없으며 개인 상세 함수를 호출하거나 결과를 지워서 만드는 방식은 사용하지 않는다. 기존 개인 상세 경로는 공개 허용하지 않는다.
+
+지도→섹터→상위/같은 섹터→지도 동선을 제공하고 기존 가격 머리/기간 차트/RS UI를 재사용한다. Empty는 ETF 시세 대기, Loading은 skeleton, Partial은 비교 지수/일부 지표 '-' 유지, Error는 재시도와 없는 ticker404 안내, Ideal은 가격 차트·기간 선택·비교 이동이다. `tab=stocks|data` 직접 URL도 개인 탭을 마운트하지 않는다. 허용 원문/첨부와 회원 관심종목은 후속 경로로 유지한다.
+
+상세 검증: 공용/기존 개인 미국 섹터·진입 경계26검사, 프론트285검사·TypeScript·생성 계약307개 일치 통과. 합성 DB의 실제 ASGI 모델 응답을 Chrome에 공급해 지도→SMH상세→3개월 선택→XLK상위→지도 복귀를 검증했다. 1440/390px에서 차트 렌더와 overflow0, API8건은 session/map/두 ETF 전용상세뿐이고 미승인호출0/uncaught0. 운영 서비스/실데이터/Google/외부 연결 수용은 아니다. 테스트 프로세스·브라우저 프로필·fixture는 정리했다.

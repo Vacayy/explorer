@@ -461,33 +461,42 @@ def data_links(conn, etf: str, n_members: int) -> list[dict]:
     return out
 
 
-def us_sector_detail(conn, etf: str) -> dict | None:
+def us_sector_market(conn, etf: str) -> dict | None:
     etf = etf.upper()
     if etf not in META:
         return None
     series = _series(conn)
     as_of = series[SPY][-1][0] if series[SPY] else None
-    fol = follows(conn)
-    cov = coverage_counts(fol)
     if not as_of or not series[etf]:
         now, trails = {}, {w: {} for w in TRAIL_WEEKS}
         as_of_ = as_of or date.today().isoformat()
     else:
         now, trails = _rs_bundle(series, as_of)
         as_of_ = as_of
-    head = _etf_row(etf, series, now, trails, as_of_, cov)
+    head = _etf_row(etf, series, now, trails, as_of_, None)
+    del head['coverage']
     parent = META[etf]["parent"] or etf
     sib_t = [parent] + [t for t, *_ in ETFS if META[t]["parent"] == parent]
-    siblings = [{k: v for k, v in _etf_row(t, series, now, trails, as_of_, cov).items()
+    siblings = [{k: v for k, v in _etf_row(t, series, now, trails, as_of_, None).items()
                  if k in ("ticker", "name", "parent", "ret_1m", "ret_3m", "rs_long", "rs_short")} for t in sib_t]
-    members = members_of(etf, fol)
     spy = dict(series[SPY])
     return {
         "as_of": as_of, **head, "zone": zone(head["rs_long"], head["rs_short"]),
         "parent_name": META[META[etf]["parent"]]["name"] if META[etf]["parent"] else None,
         "series": [{"d": d, "v": v, "k": spy.get(d)} for d, v in series[etf]],
         "siblings": siblings,
-        "members": _member_rows(conn, members, as_of_),
-        "docs": _docs(conn, members, as_of_),
-        "data_links": data_links(conn, etf, len(members)),
     }
+
+
+def us_sector_detail(conn, etf: str) -> dict | None:
+    market = us_sector_market(conn, etf)
+    if market is None:
+        return None
+    etf = market["ticker"]
+    fol = follows(conn)
+    members = members_of(etf, fol)
+    as_of = market["as_of"] or date.today().isoformat()
+    return {**market, "coverage": coverage_counts(fol).get(etf, 0),
+            "members": _member_rows(conn, members, as_of),
+            "docs": _docs(conn, members, as_of),
+            "data_links": data_links(conn, etf, len(members))}
