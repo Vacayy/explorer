@@ -716,3 +716,5 @@ tail -f logs/ingest.log               # 수집 관찰
 ## 회원 인증 기반 (구현 중, HTTP 미연결)
 
 `backend/security/identity_store.py`는 명시적 별도 SQLite에 identity/users/hashed sessions를 관리한다. `google_identity.py`는 공식 google-auth2.62.2 검증 후 서버 nonce/authorized-party를 확인한다. import 시 DB 생성 없음, 기존 API·운영 DB 변경 없음. 세션 HTTP/CSRF/Google callback과 기존 개인 데이터 소유권은 아직 연결 전이며 이 모듈만으로 외부 공개를 허용하지 않는다. [회원 접근 계약](specs/member-access.md).
+
+`security.trial_quota`는 별도 SQLite에서 익명 actor/network digest와 예약 상태만 저장한다. actor 누적·UTC 일간 network/전체·진행 슬롯을 한 write transaction으로 제한한다. 실행 전만 환불하며 실행 중 예약은 시간 경과/프로세스 재시작으로 자동 해제하지 않는다. HTTP 식별자 발급과 신뢰된 CLI dispatcher/장애 정리는 아직 미연결이다. [사용량 예약 계약](specs/member-access.md#익명-체험-사용량-예약-계약).
