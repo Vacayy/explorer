@@ -14,6 +14,8 @@
 
 ## 문서 안내
 
+예약된 실제 응답 계약 검사(`scripts/check_live_contracts.py`)는 `API_BASE`로 API 주소를 선택하며, Python 사전 health 검사와 Node 계약 검사에 같은 정규화된 주소를 전달한다. 기본값은 기존 MacBook용 `http://localhost:8000`이다. API와 worker가 분리된 Docker 환경에서는 worker가 접근 가능한 사설 API 주소와 네트워크를 명시해야 한다.
+
 설계 원칙은 PHILOSOPHY(비공개 문서), 주요 기능의 요청·처리·저장 흐름과 기술 선택은 [TECH_DECISIONS](TECH_DECISIONS.md), 세부 계약은 [기능별 스펙](specs/README.md)에 있다. 이 문서는 전체 시스템 현황과 운영 항목을 관리한다. 2026-09-12 문서 대조에서 승인 범위·사용자 기록 소유권·스터디 웹 탐색·조회 정책의 적용 범위를 바로잡았다. 과거 운영 측정치는 측정 당시 기록이며 현재 값을 뜻하지 않는다.
 
 ## 데이터 계층과 생명주기 (2026-11-03)
