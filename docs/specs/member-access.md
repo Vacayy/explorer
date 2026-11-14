@@ -82,6 +82,8 @@ member/operator 정책은 기존 IdentityStore를 매 요청 조회해 만료·�
 
 `VITE_ACCESS_MODE=public`에서 `MemberAccessProvider`가 세션을 조회한다. 기본 private은 기존 개인용 UI를 유지하며 세션 조회를 시작하지 않는다. 잘못된 모드 값은 오류다. 이는 UI 선택값이며 서버의 EXPLORER_ACCESS_MODE를 대신하지 않는다. 공개 배포 사전검사에서 양쪽 설정과 실제 응답을 대조해야 한다.
 
+Vite 빌드는 번들에 주입하는 같은 값으로 `_explorer/build.json`(version/access_mode/api_base)을 생성한다. public 빌드는 같은 origin의 API base(`""` 또는 `/`)만 허용하며, 빠진 설정 때문에 브라우저 localhost를 호출하는 빌드는 거부한다. API 공개 경계는 정상/차단 응답 모두 `X-Explorer-Access-Mode: public`을 표시한다. 배포 검사는 설정뿐 아니라 실제 서빙 파일과 live header/no-store를 대조한다. 표식은 공개 범위·권한·실제 Google 수용 완료 선언이 아니다.
+
 `AccountControl`은 확인 중/익명 Google 로그인/회원·운영자 로그아웃/확인 실패 재시도를 표시한다. 세션 확인·실패가 공용 시장 화면을 가리지 않는다. 로그인 복귀 경로는 현재 내부 URL을 넘기고 서버의 기존 검증을 유지한다. 성공한 로그아웃과 확인된 계정·역할 변경에서는 요청 취소→query cache·앱 개인 browser storage 정리→전체 페이지 이동으로 이전 컴포넌트/모듈/첨부 메모리를 폐기한다. 세션/CSRF를 브라우저 저장소에 기록하지 않는다. 로그아웃 실패는 실패로 표시하고 미저장 초안을 삭제하거나 성공으로 가장하지 않는다. 테마와 다른 앱 저장소는 유지한다.
 
 현재 공개 화면 연결은 기존 셸의 `/home`, `/home/kr`, `/home/us` 시장 개요까지다. `PublicContent`는 연결되지 않은 기존 개인 페이지를 숨겨서 마운트하는 대신 마운트하지 않는다. 공개 빌드의 전역 Omnibar/AnswerWatcher/ChatPanel, 관리자·개인 조회 버튼/모바일 개인 메뉴도 미마운트하며 검토 전 사용량/오류 telemetry 전송을 하지 않는다. 기존 private 빌드 동작은 유지한다.

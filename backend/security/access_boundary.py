@@ -15,7 +15,8 @@ from starlette.routing import Match
 
 from security.login_flow import LoginFlow, SESSION_COOKIE, session_csrf
 
-NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy': 'no-referrer'}
+NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy': 'no-referrer',
+            'X-Explorer-Access-Mode': 'public'}
 # Only these existing endpoints have been reviewed at this stage. Each business
 # route needs public projection or ownership validation before joining this map.
 PUBLIC_ROUTE_POLICIES = {

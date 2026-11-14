@@ -730,3 +730,5 @@ tail -f logs/ingest.log               # 수집 관찰
 `security.public_market`은 공개 시장 개요 요청에만 readonly SQLite 연결과 네 시장 테이블의 열/집계 함수 허용 목록을 제공한다. 개인 테이블·extra_json·쓰기·ATTACH/확장 로딩을 차단하며 기존 `MarketOverview` 응답/MarketHero 경로를 유지한다. 익명 kr/us 실제 합성 ASGI 응답과 개인 canary 비포함·DB 불변을 검증했고 운영 DB/이미지는 변경하지 않았다.
 
 프론트 `VITE_ACCESS_MODE=public`은 `MemberAccessProvider`/`AccountControl`로 세션 상태·Google 로그인·로그아웃을 연결한다. 확인된 계정/역할 변경과 로그아웃 성공 시 요청·개인 캐시/browser state를 제거하고 전체 이동한다. 첫 공용 연결은 기존 셸의 kr/us MarketHero이며, `PublicContent`와 공개 모드 조건부 마운트가 미연결 개인 페이지/전역 자동 조회·채팅·telemetry 호출을 막는다. 기존 private UI는 유지한다. 281프론트검사/TypeScript 및 합성 응답을 사용한 실제 Chrome 화면·개인 API 자동호출0·로그아웃 정리를 확인했다. 이는 임시 첫 경로이며 기존 대부분 화면/검색/모바일/원문첨부/회원·채팅 전체 범위는 후속 연결 대상이다.
+
+Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API base를 기록하고 public에서 cross-origin/기본 localhost API base를 거부한다. API 공개 경계의 `X-Explorer-Access-Mode: public` 표식은 차단 응답에도 적용해 배포 검사가 구형 private 앱의 우연한404를 성공으로 오인하지 않게 한다. 이 표식과 빌드 검증은 실제 공개 기능·Google 로그인 수용을 대신하지 않는다.

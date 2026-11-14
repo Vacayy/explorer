@@ -67,11 +67,13 @@ class AccessBoundaryTests(unittest.TestCase):
 
     def test_public_and_unclassified_paths(self):
         self.assertEqual(self.client.get('/public').status_code, 200)
+        self.assertEqual(self.client.get('/public').headers['x-explorer-access-mode'], 'public')
         for path in ('/unclassified', '/media/private.txt', '/docs', '/openapi.json', '/missing', '/me/'):
             response = self.client.get(path, headers=self.cookie(), follow_redirects=False)
             self.assertEqual(response.status_code, 404, path)
             self.assertNotIn('canary', response.text)
             self.assertEqual(response.headers['cache-control'], 'no-store')
+            self.assertEqual(response.headers['x-explorer-access-mode'], 'public')
         self.assertEqual(self.calls, [])
         @self.app.get('/added-later')
         def added(): return {'private': True}
