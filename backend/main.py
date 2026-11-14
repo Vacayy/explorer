@@ -186,3 +186,9 @@ def startup():
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# Install after route registration; public mode denies every unclassified path,
+# including static media, before handlers or request-observation writes execute.
+from security.access_boundary import configure_access_boundary
+configure_access_boundary(app)

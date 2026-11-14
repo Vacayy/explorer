@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.testclient import TestClient
 from starlette.staticfiles import StaticFiles
 
@@ -131,6 +131,39 @@ class AccessBoundaryTests(unittest.TestCase):
         for policies in ({('GET', '/typo'): 'member'}, {('GET', '/me'): 'typo'}, {('POST', '/me'): 'public'}):
             with self.assertRaises(ValueError):
                 PublicAccessBoundary(self.app, self.app.router.routes, policies, lambda: self.service)
+
+    def test_nested_included_router_prefixes_and_parameters(self):
+        inner = APIRouter(prefix='/items')
+        @inner.get('/{item_id}')
+        def item(item_id: int, request: Request):
+            return {'item_id': item_id, 'user_id': request.state.principal.id}
+        outer = APIRouter(prefix='/v1')
+        outer.include_router(inner)
+        application = FastAPI()
+        application.include_router(outer, prefix='/api')
+        application.add_middleware(PublicAccessBoundary, routes=application.router.routes,
+            policies={('GET', '/api/v1/items/{item_id}'): 'member'}, service_factory=lambda: self.service)
+        with TestClient(application, base_url='https://beta.example') as client:
+            self.assertEqual(client.get('/api/v1/items/7').status_code, 401)
+            self.assertEqual(client.get('/api/v1/items/7', headers=self.cookie()).json(),
+                             {'item_id': 7, 'user_id': self.a.id})
+            self.assertEqual(client.get('/items/7', headers=self.cookie()).status_code, 404)
+
+    def test_duplicate_policy_route_and_handler_exception(self):
+        application = FastAPI()
+        @application.get('/fail')
+        def fail(): raise RuntimeError('private-error-canary')
+        application.add_middleware(PublicAccessBoundary, routes=application.router.routes,
+            policies={('GET', '/fail'): 'public'})
+        with TestClient(application, base_url='https://beta.example') as client:
+            response = client.get('/fail')
+            self.assertEqual(response.status_code, 500)
+            self.assertEqual(response.headers['cache-control'], 'no-store')
+            self.assertNotIn('private-error-canary', response.text)
+        @application.get('/fail')
+        def duplicate(): return {'ok': True}
+        with self.assertRaises(ValueError):
+            PublicAccessBoundary(application, application.routes, {('GET', '/fail'): 'public'})
 
     def test_modes_and_actual_application_registration(self):
         private = FastAPI()
