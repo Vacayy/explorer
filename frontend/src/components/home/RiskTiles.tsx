@@ -24,7 +24,7 @@ const POSITION_VARIANT = { 높음: "up", 보통: "neutral", 낮음: "down" } as 
  * 타일 = 값 · 20일 변화 · 장기 위치 배지(최근 5년, 관측이 짧으면 있는 만큼) · 6개월 추이선. 갱신은 예약 작업(snapshot_market)이 맡는다.
  * 한 지표가 갱신에 실패하면 그 타일만 마지막 값을 흐리게 두고 기준 날짜를 붙인다(상태 시트 §4.28).
  */
-export function RiskTiles({ compact }: { compact?: boolean }) {
+export function RiskTiles({ compact, showOverlay = true }: { compact?: boolean; showOverlay?: boolean }) {
   const q = useRiskTiles()
   const items = Object.fromEntries((q.data?.items ?? []).map(i => [i.key, i])) as Record<string, RiskIndicator | undefined>
   const signal = q.data?.signal
@@ -34,7 +34,7 @@ export function RiskTiles({ compact }: { compact?: boolean }) {
       <InfoTip label="리스크 지표 설명">미국 금리·신용·변동성·투자심리의 일별 저장 관측입니다. 배지는 최근 5년(관측이 더 짧으면 있는 만큼) 안에서 지금 값의 위치로, 상위 20%면 높음·하위 20%면 낮음입니다. 추이선은 최근 6개월입니다.
         {signal && <> 경계 실험 규칙({signal.rule_version}): 20 공통 관측일 10Y ≤ −30bp · HY OAS ≥ +75bp가 3회 지속되면 경계. 침체 확정 신호가 아닙니다.</>}</InfoTip>
       {signal && signal.status !== "unavailable" && <Badge variant="outline" className={cn("font-normal", ["joint", "watch", "credit"].includes(signal.status) && "border-hypothesis/40 text-hypothesis")} title={signal.reason}>{signal.label}</Badge>}
-      {!compact && <a href="#overlay" className="ml-auto text-xs text-muted-foreground hover:text-foreground">겹쳐 보기 ›</a>}
+      {!compact && showOverlay && <a href="#overlay" className="ml-auto text-xs text-muted-foreground hover:text-foreground">겹쳐 보기 ›</a>}
     </CardHeader>
     <CardContent className="space-y-3">
       {q.isPending ? <div className="space-y-3">{GROUPS.map(g => <Skeleton key={g.label} className="h-28 w-full" />)}</div>

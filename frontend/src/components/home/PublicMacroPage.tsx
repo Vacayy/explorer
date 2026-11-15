@@ -1,3 +1,4 @@
+import { RiskTiles } from '@/components/home/RiskTiles'
 import { Link } from 'react-router-dom'
 import { MiniSpark, fmtValue } from '@/components/home/MacroLiquidity'
 import { PageContainer } from '@/components/shared/PageContainer'
@@ -63,7 +64,8 @@ export function PublicMacroPage() {
           <p><a href="https://www.newyorkfed.org/privacy/termsofuse" target="_blank" rel="noopener noreferrer" className="underline">Federal Reserve Bank of New York 데이터 이용 조건</a></p>
           <p>Explorer의 계산·표시는 원기관의 보증을 뜻하지 않습니다.</p>
         </div>}
-      <p className="text-sm text-ink-3">시장 국면·리스크 평가·해설은 공개 화면 연결을 준비 중입니다.</p>
+      <p className="text-sm text-ink-3">시장 국면·해설은 공개 화면 연결을 준비 중입니다.</p>
     </>}</QueryState>
+    <RiskTiles showOverlay={false} />
   </PageContainer>
 }
