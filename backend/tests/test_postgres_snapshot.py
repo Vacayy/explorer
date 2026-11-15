@@ -16,6 +16,7 @@ except ImportError:
 
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_snapshot import SNAPSHOT_LOCK_KEY, load_snapshot
+from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -119,6 +120,24 @@ class SnapshotReplacementTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_snapshot(unsafe, self.pg, snapshot_at='2026-01-07T00:00:00+00:00')
         self.assertEqual(self.reader.snapshot_info(), original)
+
+    def test_pg_raw_rows_recreate_existing_detail_without_projection(self):
+        from pipeline.document_read import _read_sqlite_document
+        with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO raw_documents VALUES(3,'youtube','yt/3','영상',NULL,'2026-01-03','정리본','자막','ok',NULL)")
+            c.execute("INSERT INTO raw_documents VALUES(4,'youtube','yt/4','영상2',NULL,'2026-01-04',NULL,'원 자막','pending',NULL)")
+            c.execute("INSERT INTO youtube_digest_jobs VALUES(4,'원 자막','failed','fixture',0,'합성 오류')")
+            c.commit()
+            expected = {i: _read_sqlite_document(c, i).model_dump() for i in (1, 2, 3, 4)}
+        self.load('2026-01-05T00:00:00+00:00')
+        raw_reader = PostgreSQLRawDocumentReader(self.pg)
+        for doc_id, document in expected.items():
+            self.assertEqual(raw_reader.get(doc_id).model_dump(), document)
+        self.assertIsNone(raw_reader.get(999))
+        # Raw reader must not depend on the cached response projection.
+        with self.pg() as c:
+            c.execute("UPDATE document_projection SET detail_document = jsonb_set(detail_document, '{content}', '"projection only"') WHERE id=1")
+        self.assertEqual(raw_reader.get(1).model_dump(), expected[1])
 
     def test_refuses_non_fixture_target_schema(self):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)

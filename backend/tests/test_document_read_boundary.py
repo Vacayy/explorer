@@ -37,13 +37,17 @@ class DocumentReadBoundaryTests(unittest.TestCase):
               (2,1,'저장된 요약','model','2026-01-02');
             INSERT INTO entities VALUES (7,'company','합성 회사','000000');
             INSERT INTO entity_links VALUES (1,7,'stock',0.8);
+            INSERT INTO blog_sources VALUES ('https://example.test/','naver','합성 채널',1);
         ''')
         conn.commit()
         conn.close()
         self.patcher = patch.object(spine_doc, 'get_connection', side_effect=self.connect)
         self.patcher.start()
         self.channel = patch('routers.spine_feed.resolve_channels', return_value={1: {
-            'name': '합성 채널', 'kind': 'blog', 'key': 'https://example.test/'}})
+            'name': '합성 채널', 'kind': 'blog', 'key': 'https://example.test/'},
+            2: {'name': '내 노트', 'kind': None, 'key': None},
+            3: {'name': 'YouTube', 'kind': None, 'key': None},
+            4: {'name': 'YouTube', 'kind': None, 'key': None}})
         self.channel.start()
 
     def tearDown(self):
