@@ -711,9 +711,9 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `pipeline/postgres_search_snapshot.py`는 격리 fixture의 동일 PostgreSQL generation에서 문서·기존 벡터를 읽어 메모리 SQLite FTS5/sqlite-vec 색인을 만드는 검색 실험이다. `postgres_search_feed.py`와 `scripts/refactor_document_ui.py`는 이 색인을 격리 피드 API의 검색어·소스·날짜·엔티티 필터, 최신순 및 페이지에 연결하며, 모델이 없을 때 lexical 검색을 제공하고 generation 교체 시 색인을 다시 만든다. 실서비스에는 연결하지 않는다. 색인 재생성 시 동점 결과의 순서가 기존과 달라질 수 있다. 실제 사본에서 초기 색인 생성 약7초·프로세스 최대 약511MiB 및 대표 필터·정렬을 확인했으나 전체 조합, 동시 부하와 운영 적합성은 미검증이다.
 
-선택적 `include_claims=True`는 문서 논점 저장분을 동일 SQLite/격리 PostgreSQL 트랜잭션으로 보존한다. `postgres_document_claims.py`와 격리 문서 API는 저장된 상태 및 관련 문서 메타데이터를 읽고, 캡처되지 않은 논점 자료는 빈 결과로 위장하지 않는다. 과거 generation 논점과 논점 생성 POST는 지원하지 않는다. 실데이터 소표본을 기존 API와 비교했지만 실서비스·브라우저 연결은 미검증이다.
+선택적 `include_claims=True`는 문서 논점 저장분을 동일 SQLite/격리 PostgreSQL 트랜잭션으로 보존한다. `postgres_document_claims.py`와 격리 문서 API는 저장된 상태 및 관련 문서 메타데이터를 읽고, 캡처되지 않은 논점 자료는 빈 결과로 위장하지 않는다. 과거 generation 논점과 논점 생성 POST는 지원하지 않는다. 실데이터 소표본을 기존 API와 비교하고 한 문서의 저장 논점 표시를 격리 브라우저에서 확인했으며 실서비스 연결은 미검증이다.
 
-선택적 `include_centroids=True`는 문서 대표 벡터를 같은 generation으로 보존한다. `postgres_related_documents.py`는 격리 메모리 sqlite-vec 색인과 기존 유사도·중복 제목·출처·시간·엔티티 규칙을 이용해 관련 문서를 조회한다. 실제 사본의 세 문서 결과를 기존 API와 비교했으며 전체 corpus, 동점 순서, 동시 부하 및 운영 연결은 미검증이다.
+선택적 `include_centroids=True`는 문서 대표 벡터를 같은 generation으로 보존한다. `postgres_related_documents.py`는 격리 메모리 sqlite-vec 색인과 기존 유사도·중복 제목·출처·시간·엔티티 규칙을 이용해 관련 문서를 조회한다. 실제 사본의 세 문서 결과를 기존 API와 비교하고 한 문서의 관련 자료 표시를 격리 브라우저에서 확인했으며 전체 corpus, 동점 순서, 동시 부하 및 운영 연결은 미검증이다.
 
 `scripts/refactor_document_sample.py`는 읽기 전용 SQLite 단일 트랜잭션에서 최대 50개 목록 행과 선택한 소수 문서 상세를 읽고, 격리 테스트 PostgreSQL의 임시 schema에 응답을 넣어 비교한 뒤 schema를 삭제한다. 예제 목적의 fixture DB 외 연결을 거부하며 문서 내용·DSN을 출력하지 않는다. 이는 원본 전체 이관이나 최신 동기화 구현이 아니다.
 
