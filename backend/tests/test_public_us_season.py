@@ -181,6 +181,25 @@ class PublicUsSeasonTests(unittest.TestCase):
             self.assertFalse(public.stored_recent(path=self.path)[0]['has_digest'])
             self.assertFalse(public.stored_companies(path=self.path)[0]['latest']['has_digest'])
 
+    def test_verified_article_link_never_enables_restricted_text(self):
+        url = 'https://www.fool.com/earnings/call-transcripts/2026/11/02/public-public-q3-2026-earnings-call-transcript/'
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute("UPDATE transcripts SET provider='fool' WHERE id=1")
+            conn.execute('CREATE TABLE public_transcript_sources(transcript_id INTEGER PRIMARY KEY,ticker TEXT,fiscal_year INTEGER,fiscal_period TEXT,call_date TEXT,provider TEXT,url TEXT)')
+            conn.execute('INSERT INTO public_transcript_sources VALUES(1,?,?,?,?,?,?)', ('PUBLIC',2026,'Q3','2026-11-01','fool',url))
+        before = self.path.read_bytes()
+        result = public.stored_detail(1,path=self.path)
+        self.assertEqual((result['source_url'],result['source_link_kind']), (url,'article'))
+        self.assertEqual((result['body'],result['digest'],result['content_status']), ('',None,'source_only'))
+        self.assertEqual(before,self.path.read_bytes())
+        for bad in ['https://[/',url.replace('www.fool.com','www.fool.com.evil.test'),url.replace('https:','http:'),url.replace('/public-public-q3','/public-public-q2'),url+'?token=private',url.replace('www.fool.com','user@www.fool.com')]:
+            with closing(sqlite3.connect(self.path)) as conn, conn:
+                conn.execute('UPDATE public_transcript_sources SET url=?',(bad,))
+            self.assertEqual(public.stored_detail(1,path=self.path)['source_link_kind'],'provider')
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute("UPDATE public_transcript_sources SET url=?,call_date='2026-10-01'",(url,))
+        self.assertEqual(public.stored_detail(1,path=self.path)['source_link_kind'],'provider')
+
     def test_restricted_derived_prose_is_removed_but_release_only_text_preserved(self):
         import json
         with closing(sqlite3.connect(self.path)) as conn:

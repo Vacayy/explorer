@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from urllib.parse import urlsplit
 
 from models.earnings_season import SeasonOverview
 from pipeline import earnings_chain as ec
@@ -34,6 +35,7 @@ COLUMNS = {
     "us_prices": {"stock_code", "trade_date", "open", "high", "low", "close", "volume"},
     "call_momentum": {"ticker", "event_date", "score", "status", "reasons", "first_candidate_at", "summary", "computed_at"},
     "public_us_coverage": {"ticker", "has_release", "extracted_docs", "failed_docs"},
+    "public_transcript_sources": {"transcript_id", "ticker", "fiscal_year", "fiscal_period", "call_date", "provider", "url"},
     "public_transcript_text": {"transcript_id", "body", "digest"},
     "public_us_calendar": {"ticker", "last_report_date", "next_report_date", "checked_at", "latest_results_date"},
     "us_pt_changes": {"ticker", "graded_at", "firm", "pt_from", "pt_to"},
@@ -181,6 +183,32 @@ def _transcript(conn, transcript_id):
     return dict(row), _company(conn, row['ticker'])
 
 
+def _article_url(conn, transcript):
+    # Historical snapshots have no link table. Only this missing-table case falls back.
+    try:
+        row = conn.execute('SELECT ticker,fiscal_year,fiscal_period,call_date,provider,url '
+                           'FROM public_transcript_sources WHERE transcript_id=?', (transcript['id'],)).fetchone()
+    except sqlite3.OperationalError as exc:
+        if str(exc) == 'no such table: public_transcript_sources':
+            return None
+        raise
+    if not row or any(row[k] != transcript[k] for k in ('ticker','fiscal_year','fiscal_period','call_date','provider')):
+        return None
+    if (row['provider'] != 'fool' or not isinstance(row['url'], str)
+            or not isinstance(row['ticker'], str) or not isinstance(row['fiscal_period'], str)):
+        return None
+    try:
+        url = urlsplit(row['url'])
+    except ValueError:
+        return None
+    suffix = f"-{row['ticker'].lower()}-{row['fiscal_period'].lower()}-{row['fiscal_year']}-earnings-call-transcript/"
+    if (url.scheme != 'https' or url.netloc != 'www.fool.com' or url.query or url.fragment
+            or not re.fullmatch(r'/earnings/call-transcripts/\d{4}/\d{2}/\d{2}/[a-z0-9-]+/', url.path)
+            or not url.path.endswith(suffix)):
+        return None
+    return row['url']
+
+
 def stored_detail(transcript_id, *, path=None):
     from pipeline.transcript import cy_label
     with closing(connection(path)) as conn:
@@ -188,13 +216,14 @@ def stored_detail(transcript_id, *, path=None):
         text = conn.execute('SELECT body,digest FROM public_transcript_text WHERE transcript_id=?', (transcript_id,)).fetchone()
         source = RESTRICTED_TRANSCRIPT_PROVIDERS.get(t['provider'])
         published = text is not None and source is None
+        article = _article_url(conn, t) if source else None
         return {'transcript_id':t['id'],'ticker':t['ticker'],'company_name':f['company_name'] or t['ticker'],
                 'fiscal_year':t['fiscal_year'],'fiscal_period':t['fiscal_period'], 'call_date':t['call_date'],
                 'cy':cy_label(t['fiscal_year'],t['fiscal_period'],f['fiscal_year_end']),
                 'body':text['body'] if published else '', 'digest':text['digest'] if published else None,
                 'content_status':'published' if published else 'source_only',
-                'source_name':source[0] if source else None, 'source_url':source[1] if source else None,
-                'source_link_kind':'provider' if source else None,
+                'source_name':source[0] if source else None, 'source_url':article or (source[1] if source else None),
+                'source_link_kind':'article' if article else ('provider' if source else None),
                 'nodes':[],'causal_edges':[],'proxies':[]}
 
 

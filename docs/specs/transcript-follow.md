@@ -240,3 +240,6 @@ DART 기반 **한국 종목 전용**이라 미국 티커엔 페이지가 없어 
 ## 참조
 - 핵심질문·프록시 근거: docs/private/DECISIONS.md D-048·D-049 · 리포트 엔진: docs/private/specs/report-v2-agents.md
 - 팔로우/유니버스 연결: docs/private/specs/universe-curation.md · docs/specs/follow-rail.md
+
+
+공개 원문 이동: `public_transcript_sources`에 명시 준비한 URL을 transcript ID·ticker·fiscal_year·fiscal_period·call_date·provider와 대조한다. 현재 Fool 공식 HTTPS 기사 경로만 지원하며 미준비/불일치/잘못된 URL은 provider 안내로 유지한다. `source_link_kind=article`은 기존 원문 보기 UI를 사용하며 제한 body/digest를 활성화하지 않는다. GET에서 URL 탐색·수집·테이블 생성은 하지 않는다.
