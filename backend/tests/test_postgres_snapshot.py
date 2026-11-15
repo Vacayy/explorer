@@ -37,6 +37,7 @@ from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTIO
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
 from pipeline.postgres_ingest_runner_fixture import embed_document, run_source
 from pipeline.connectors.notes import NoteConnector
+from pipeline.connectors.blog import BlogConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
@@ -295,8 +296,15 @@ class SnapshotReplacementTests(unittest.TestCase):
             stats=run_source(NoteConnector(Path(vault)),self.pg)
             self.assertEqual((stats['docs'],stats['new']),(1,1))
             self.assertEqual(run_source(NoteConnector(Path(vault)),self.pg)['unchanged'],1)
+        post={'title':'합성 블로그','url':'https://example.test/new-post',
+              'published_at':'2026-01-02T00:00:00Z','content':'블로그 본문 검색어 ' * 80}
+        with patch('pipeline.connectors.blog.detect_platform_and_feed_url',return_value=('fixture',None)), \
+                patch('pipeline.connectors.blog.scrape_rss',return_value=([post],'합성 채널')):
+            self.assertEqual(run_source(BlogConnector(['https://example.test/']),self.pg)['new'],1)
+            self.assertEqual(run_source(BlogConnector(['https://example.test/']),self.pg)['unchanged'],1)
         with self.pg() as c:
             ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='note' AND source_id='fixture.md'").fetchone()[0]
+            blog_id=c.execute("SELECT id FROM ingest_documents WHERE source_type='blog' AND source_id=%s",(post['url'],)).fetchone()[0]
         def failed(*_):
             raise RuntimeError('fixture error')
         with self.assertRaisesRegex(RuntimeError,'fixture error'):
@@ -310,6 +318,8 @@ class SnapshotReplacementTests(unittest.TestCase):
                     'reference_period':'2027','stocks':[],'industries':['연결 산업'],'topics':[]}
         self.assertTrue(enrich_document(self.pg,ident,enrich=synthetic))
         self.assertFalse(enrich_document(self.pg,ident,enrich=synthetic))
+        from pipeline.enrich import _enrich_keyword
+        self.assertTrue(enrich_document(self.pg,blog_id,enrich=_enrich_keyword))
         destination='refactor_fixture_'+uuid.uuid4().hex
         with psycopg.connect(self.dsn) as c:
             c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
@@ -327,6 +337,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         detail=reader.get(ident)
         self.assertEqual((detail.title,detail.summary),('수집 연결 시험','합성 요약'))
         self.assertIn(ident,[item.id for item in reader.list(industry='연결 산업').items])
+        self.assertEqual(reader.get(blog_id).title,'합성 블로그')
         with target() as c:
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             fields=c.execute("SELECT row_data->>'sentiment',row_data->>'time_orientation',row_data->>'reference_period' "
@@ -338,6 +349,7 @@ class SnapshotReplacementTests(unittest.TestCase):
             index=SearchSnapshot(generation,rows)
             try:
                 self.assertIn(ident,[item.id for item in search_feed(c,index,'신규',industry='연결 산업').items])
+                self.assertIn(blog_id,[item.id for item in search_feed(c,index,'검색어').items])
             finally:
                 index.close()
 
