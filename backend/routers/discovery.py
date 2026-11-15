@@ -1,5 +1,6 @@
 """App-owned discovery actions; only explicit research POST prepares source data."""
 import threading
+from security.access_boundary import configured_access_mode
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -35,6 +36,8 @@ def invoke(action):
 
 @router.on_event("startup")
 def start_worker():
+    if configured_access_mode() == 'public':
+        return
     service().start()
 
 

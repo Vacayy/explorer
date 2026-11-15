@@ -6,6 +6,10 @@
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
+## 공개 API 시작·종료 경계
+
+`EXPLORER_ACCESS_MODE=public`도 전체 main 라우터를 유지하지만 init_db·Telegram bot·analysis/discovery worker·개인 observe 기록/flush를 시작하지 않는다. `security.public_startup`은 명시 준비된 앱/identity/login/publication/quota/macro와 설정을 readonly로 확인하고 미준비 시 listen 전에 실패한다. 전체 복원 무결성·스키마·소유권 gate는 별도 배포 절차이며 이 가벼운 검사가 대신하지 않는다. IPC socket 부재는 채팅 요청503으로 남겨 조회 API 시작과 분리한다. private의 기존 초기화·worker 동작은 유지한다.
+
 ## 프론트엔드 의존성 보안 보완 (2026-11-14)
 
 - package-lock의 선언된 호환 범위 안에서 의존성을 갱신했다. axios·react-router-dom·Vite 등의 수정 버전을 포함하며 A2UI/AG-UI의 직접 고정 버전은 유지한다.

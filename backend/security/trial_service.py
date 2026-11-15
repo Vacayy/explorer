@@ -29,6 +29,27 @@ def secret_file(name, size):
         os.close(fd)
 
 
+def configured_trial():
+    identity = TrialIdentity(secret_file('EXPLORER_TRIAL_SECRET_FILE', 32),
+        os.environ['EXPLORER_PUBLIC_ORIGIN'],
+        tuple(v.strip() for v in os.environ.get('EXPLORER_TRIAL_TRUSTED_PROXIES', '').split(',') if v.strip()))
+    policy = TrialPolicy(
+        per_network_day_limit=int(os.environ['EXPLORER_TRIAL_NETWORK_DAY_LIMIT']),
+        global_day_limit=int(os.environ['EXPLORER_TRIAL_GLOBAL_DAY_LIMIT']),
+        max_in_flight=int(os.environ['EXPLORER_TRIAL_MAX_IN_FLIGHT']))
+    path = Path(os.environ['EXPLORER_TRIAL_DB'])
+    if not path.is_absolute():
+        raise ValueError('Invalid trial database')
+    quota = TrialQuota(path, policy=policy)
+    socket = Path(os.environ['EXPLORER_PUBLIC_CHAT_SOCKET'])
+    if not socket.is_absolute():
+        raise ValueError('Invalid completion socket path')
+    token = secret_file('EXPLORER_PUBLIC_CHAT_TOKEN_FILE', 64).decode('ascii')
+    if len(token) != 64 or any(char not in '0123456789abcdef' for char in token):
+        raise ValueError('Invalid completion capability')
+    return identity, quota, socket, token
+
+
 @dataclass
 class TrialService:
     identity: TrialIdentity
@@ -38,20 +59,9 @@ class TrialService:
     @classmethod
     def from_environment(cls):
         from security.public_completion import PublicCompletionClient
-        identity = TrialIdentity(secret_file('EXPLORER_TRIAL_SECRET_FILE', 32),
-            os.environ['EXPLORER_PUBLIC_ORIGIN'],
-            tuple(v.strip() for v in os.environ.get('EXPLORER_TRIAL_TRUSTED_PROXIES', '').split(',') if v.strip()))
-        policy = TrialPolicy(
-            per_network_day_limit=int(os.environ['EXPLORER_TRIAL_NETWORK_DAY_LIMIT']),
-            global_day_limit=int(os.environ['EXPLORER_TRIAL_GLOBAL_DAY_LIMIT']),
-            max_in_flight=int(os.environ['EXPLORER_TRIAL_MAX_IN_FLIGHT']))
-        path = Path(os.environ['EXPLORER_TRIAL_DB'])
-        if not path.is_absolute():
-            raise ValueError('Invalid trial database')
-        quota = TrialQuota(path, policy=policy)
-        socket = Path(os.environ['EXPLORER_PUBLIC_CHAT_SOCKET'])
-        if not socket.is_absolute() or not stat.S_ISSOCK(socket.lstat().st_mode):
+        identity, quota, socket, token = configured_trial()
+        if not stat.S_ISSOCK(socket.lstat().st_mode):
             raise ValueError('Invalid completion socket')
         completion = PublicCompletionClient(socket,
-            secret_file('EXPLORER_PUBLIC_CHAT_TOKEN_FILE', 64).decode('ascii'))
+            token)
         return cls(identity, quota, TrialChat(quota, PublicEvidence(PublicDocuments.from_environment()), completion))

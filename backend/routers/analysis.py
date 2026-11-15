@@ -2,6 +2,7 @@
 import asyncio
 import json
 import threading
+from security.access_boundary import configured_access_mode
 
 from pydantic import BaseModel, ConfigDict, Field
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -39,6 +40,8 @@ def error(exc: Exception):
 
 @router.on_event("startup")
 def start_worker():
+    if configured_access_mode() == 'public':
+        return
     service()
 
 

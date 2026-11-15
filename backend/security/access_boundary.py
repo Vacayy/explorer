@@ -174,8 +174,15 @@ class PublicAccessBoundary:
             await reject(500, 'Request failed')
 
 
+def configured_access_mode():
+    mode = os.environ.get('EXPLORER_ACCESS_MODE', 'private')
+    if mode not in {'private', 'public'}:
+        raise ValueError('Invalid EXPLORER_ACCESS_MODE')
+    return mode
+
+
 def configure_access_boundary(app, *, mode=None):
-    mode = os.environ.get('EXPLORER_ACCESS_MODE', 'private') if mode is None else mode
+    mode = configured_access_mode() if mode is None else mode
     if mode not in {'private', 'public'}:
         raise ValueError('Invalid EXPLORER_ACCESS_MODE')
     if mode == 'public':

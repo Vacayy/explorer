@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config import MEDIA_PATH
+from security.access_boundary import configured_access_mode
+from security.public_startup import validate_public_state
 from pipeline.llm_policies import validate_configuration
 
 validate_configuration()
@@ -145,6 +147,8 @@ app.include_router(spine_market_overview.router)
 @app.middleware("http")
 async def _observe_requests(request, call_next):
     """API 요청을 경로 패턴(실제 값 아님)·상태 계층·응답시간 구간으로 시간 단위 집계 (pipeline/observe.py)."""
+    if configured_access_mode() == 'public':
+        return await call_next(request)
     import asyncio
     import time
     from pipeline.observe import FLUSH_BUSY_TIMEOUT_MS, claim_flush, flush, record_request
@@ -164,19 +168,24 @@ async def _observe_requests(request, call_next):
             asyncio.get_running_loop().run_in_executor(None, flush, FLUSH_BUSY_TIMEOUT_MS)
 
 
-MEDIA_PATH.mkdir(parents=True, exist_ok=True)
+if configured_access_mode() == 'private':
+    MEDIA_PATH.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(MEDIA_PATH)), name="media")
 
 
 @app.on_event("shutdown")
 def _flush_observe():
     """요청 집계 버퍼를 종료 전에 저장 — 재시작 때 마지막 1분이 사라지지 않게."""
-    from pipeline.observe import flush
-    flush()
+    if configured_access_mode() == 'private':
+        from pipeline.observe import flush
+        flush()
 
 
 @app.on_event("startup")
 def startup():
+    if configured_access_mode() == 'public':
+        validate_public_state()
+        return
     init_db()
     # 텔레그램 봇 양방향 (토큰·chat_id 설정 시에만, TELEGRAM_POLLING=0으로 비활성)
     from pipeline.bot import start_bot
