@@ -24,11 +24,20 @@ def main():
         conn.execute((Path(__file__).resolve().parents[1]/'backend/refactor_sql/document_projection.sql').read_text())
     source=sqlite3.connect('file:/data/stock_explorer.db?mode=ro',uri=True)
     source.row_factory=sqlite3.Row
+    include_centroids=os.getenv('REFACTOR_INCLUDE_CENTROIDS') == '1'
+    if include_centroids:
+        import sqlite_vec
+        source.enable_load_extension(True)
+        try:
+            sqlite_vec.load(source)
+        finally:
+            source.enable_load_extension(False)
     source.execute('PRAGMA query_only=ON')
     source.execute('BEGIN')
     try:
         result=load_snapshot(source,factory,snapshot_at=datetime.now(timezone.utc).isoformat(),
-                             include_linking=True,include_signals=True,include_claims=True)
+                             include_linking=True,include_signals=True,include_claims=True,
+                             include_centroids=include_centroids)
         print('Preview snapshot loaded:',result,flush=True)
     finally:
         source.close()

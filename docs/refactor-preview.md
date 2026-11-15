@@ -8,3 +8,4 @@
 - 나머지 API와 모든 데이터 변경 요청은 차단된다. 화면 전체 호환, 운영 전환, 회원 기능, 최신 데이터 동기화가 아니다.
 - 각 API 응답의 `X-Preview-Backend` 헤더는 `postgres` 또는 `existing-viewer`로 출처를 나타낸다. `/__preview-info`에서도 범위를 확인할 수 있다.
 - 임시 자원은 자동 재시작하지 않는다. 시험 종료 시 이 저장소에서 `sh scripts/stop-refactor-preview.sh`를 실행한다. 소유 레이블이 확인된 전용 DB 볼륨만 삭제하며 운영 viewer와 MacBook은 건드리지 않는다.
+- 이후 새 시험 사본을 만들 때 loader에 `REFACTOR_INCLUDE_CENTROIDS=1`을 명시하면 같은 SQLite 읽기 트랜잭션에서 관련 문서 벡터도 확보할 수 있다. 현재 18005 사본에는 적용되지 않았으며, 관련 문서 결과의 실제 사본 비교가 필요하다.

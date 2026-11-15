@@ -10,6 +10,7 @@ import time
 import tempfile
 import subprocess
 import sys
+import struct
 from datetime import date,datetime,timezone
 from contextlib import closing
 from collections import namedtuple
@@ -84,16 +85,43 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at, *, include_linking=False, include_signals=False, include_events=False):
+    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
+        if include_centroids:
+            import sqlite_vec
+            source.enable_load_extension(True)
+            try:
+                sqlite_vec.load(source)
+            finally:
+                source.enable_load_extension(False)
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids)
         finally:
             source.close()
+
+    def test_centroids_load_with_the_same_snapshot_generation(self):
+        import sqlite_vec
+        with closing(self.fixture.connect()) as source:
+            source.enable_load_extension(True)
+            sqlite_vec.load(source)
+            source.enable_load_extension(False)
+            source.execute('CREATE VIRTUAL TABLE doc_centroid_vec USING vec0(embedding float[384])')
+            vector=struct.pack('<384f',*([0.1]*384))
+            source.execute('INSERT INTO doc_centroid_vec(rowid,embedding) VALUES (?,?)',(1,vector))
+            source.commit()
+        self.load('2026-01-03T00:00:00+00:00',include_centroids=True)
+        from pipeline.postgres_related_documents import CentroidIndex
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            index=CentroidIndex.from_postgres(c)
+            try:
+                self.assertEqual(index.db.execute('SELECT count(*) FROM doc_centroid_vec').fetchone()[0],1)
+            finally:
+                index.close()
 
     def test_signal_snapshot_reads_existing_list_and_latest_theme(self):
         with self.fixture.connect() as c:
