@@ -32,6 +32,7 @@ from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finis
 from pipeline.postgres_ledger_snapshot_fixture import materialize
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
+from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -207,6 +208,47 @@ class SnapshotReplacementTests(unittest.TestCase):
                 self.assertEqual(search_feed(c,index,'신규').items[0].id, new['id'])
             finally:
                 index.close()
+
+    def test_projection_copy_keeps_existing_feed_and_vector_in_separate_schema(self):
+        import struct
+        self.load('2026-01-03T00:00:00+00:00')
+        vector = struct.pack('<384f', 1.0, *([0.0] * 383))
+        with self.pg() as c:
+            generation = c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            c.execute('INSERT INTO document_embeddings VALUES (1,%s,%s)', (vector,'fixture'))
+            c.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture',384,1,0,0)", (generation,))
+            c.execute('INSERT INTO media_generations VALUES (%s)', (generation,))
+            c.execute("INSERT INTO media_blobs VALUES ('fixture-digest',%s)", (b'fixture bytes',))
+            c.execute("INSERT INTO media_generation_refs VALUES (%s,'fixture.jpg','fixture-digest')", (generation,))
+        destination = 'refactor_fixture_' + uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn, options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            result = copy_projection(c,self.schema,destination)
+            self.assertEqual(result['tables'], len(PROJECTION_TABLES))
+            self.assertNotEqual(result['generation'], generation)
+        self.assertEqual(PostgreSQLDocumentReader(target).get(1).model_dump(), self.reader.get(1).model_dump())
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            self.assertEqual(c.execute('SELECT digest FROM media_generation_refs WHERE generation_id=%s',
+                                       (result['generation'],)).fetchone()[0], 'fixture-digest')
+            index = SearchSnapshot.from_postgres(c)
+            try:
+                self.assertEqual(search_feed(c,index,'없음',vector=vector).items[0].id, 1)
+            finally:
+                index.close()
+        with self.assertRaisesRegex(ValueError, 'must be empty'):
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                copy_projection(c,self.schema,destination)
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed
