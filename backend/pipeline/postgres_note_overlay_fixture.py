@@ -174,9 +174,22 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                         enrichment_dirty,embedding_dirty,bytes(embedding) if embedding is not None else None,links_dirty,
                         groups,visible,timeline,doc,list_doc,prior is not None,same_revision,media_changed))
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(target_schema)))
-    graph_columns={name:columns for name,columns in conn.execute("SELECT table_name,columns FROM legacy_snapshot_tables WHERE table_name IN ('entities','entity_keywords','entity_relations')")}
+    graph_columns={name:(columns,ddl) for name,columns,ddl in conn.execute("SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables WHERE table_name IN ('entities','entity_keywords','entity_relations')")}
+    graph_schema={}
     def graph_row(table, values):
-        return {name:values.get(name) for name in graph_columns[table]}
+        if table not in graph_schema:
+            columns,ddl=graph_columns[table]
+            with sqlite3.connect(':memory:') as schema:
+                schema.execute(ddl)
+                info=schema.execute(f'PRAGMA table_info("{table}")').fetchall()
+            if [row[1] for row in info] != columns:
+                raise ValueError('Graph schema and archived columns differ')
+            graph_schema[table]=(columns,info)
+        columns,info=graph_schema[table]
+        for _,name,_,required,default,_ in info:
+            if name not in values and (required or (default is not None and default.upper() != 'NULL')):
+                raise ValueError(f'Unsupported default for graph field {table}.{name}')
+        return {name:values.get(name) for name in columns}
     for ident,kind,name,aliases,status,created_at in new_entities:
         value=graph_row('entities',{'id':ident,'type':kind,'name':name,'aliases':aliases,'status':status,'meta_json':None,'created_at':created_at})
         conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entities',COALESCE(max(row_ordinal)+1,0),%s "

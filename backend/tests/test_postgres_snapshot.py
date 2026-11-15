@@ -259,6 +259,24 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertGreater(relation['id'],3)
             self.assertTrue(relation['created_at'])
             self.assertIsNone(relation['mechanism'])
+        # A future schema default must not silently become NULL in new rows.
+        with self.pg() as c:
+            c.execute("UPDATE legacy_snapshot_tables SET columns=columns || '[\"new_default\"]'::jsonb, "
+                      "schema_sql=replace(schema_sql, ')', ', new_default TEXT DEFAULT ''required'')') "
+                      "WHERE table_name='entity_keywords'")
+        rejected='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(rejected)))
+        def cleanup_rejected():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(rejected)))
+        self.addCleanup(cleanup_rejected)
+        with psycopg.connect(self.dsn,options=f'-c search_path={rejected}') as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.assertRaisesRegex(ValueError,'Unsupported default for graph field entity_keywords.new_default'):
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                copy_with_note_changes(c,self.schema,rejected)
 
     def test_note_connector_to_enrichment_graph_and_search(self):
         with self.fixture.connect() as c:
