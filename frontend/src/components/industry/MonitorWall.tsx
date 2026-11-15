@@ -33,19 +33,25 @@ export interface MonitorCardData {
   badge?: string
   bars: (number | null)[]
   ma: (number | null)[]
+  connectNulls?: boolean
 }
 
 /** 작은 차트 — 월별 막대(회색) · 마지막 달(급등이면 분홍, 아니면 글자색) · 12개월 평균 선. 칸마다 세로축이 다르다 */
-export function MiniBars({ bars, ma, surge, label }: { bars: (number | null)[]; ma: (number | null)[]; surge: boolean; label: string }) {
+export function MiniBars({ bars, ma, surge, label, connectNulls = true }: { bars: (number | null)[]; ma: (number | null)[]; surge: boolean; label: string; connectNulls?: boolean }) {
   const W = 240, H = 64
-  const max = Math.max(0, ...bars.map(v => v ?? 0)) || 1
+  const max = Math.max(0, ...bars.map(v => v ?? 0), ...(connectNulls ? [] : ma.map(v => v ?? 0))) || 1
   const step = W / Math.max(bars.length, 1)
   const y = (v: number) => H - Math.max(1, (v / max) * (H - 4))
-  const line = ma.map((v, i) => v == null ? null : `${(i * step + step / 2).toFixed(1)},${(H - (v / max) * (H - 4)).toFixed(1)}`).filter(Boolean).join(" ")
+  const points = ma.map((v, i) => v == null ? null : `${(i * step + step / 2).toFixed(1)},${(H - (v / max) * (H - 4)).toFixed(1)}`)
+  const lines = connectNulls ? [points.filter(Boolean).join(" ")] : points.reduce<string[][]>((segments, point) => {
+    if (point === null) { if (segments.at(-1)?.length) segments.push([]) }
+    else { if (!segments.length) segments.push([]); segments[segments.length - 1].push(point) }
+    return segments
+  }, []).filter(segment => segment.length > 1).map(segment => segment.join(" "))
   return <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={label} className="mt-auto block !h-[72px] !w-full">
     {bars.map((v, i) => v == null ? null : <rect key={i} x={i * step + 0.8} y={y(v)} width={Math.max(0.6, step - 1.6)} height={H - y(v)}
       fill={i === bars.length - 1 ? (surge ? "var(--up)" : "var(--ink)") : "var(--series)"} />)}
-    {line && <polyline points={line} fill="none" stroke="var(--ink-2)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" />}
+    {lines.filter(Boolean).map((line, index) => <polyline key={index} points={line} fill="none" stroke="var(--ink-2)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" />)}
   </svg>
 }
 
@@ -62,7 +68,7 @@ export function MonitorCard({ d, onOpen }: { d: MonitorCardData; onOpen: (key: s
       <span className="truncate font-display text-lg tabular-nums">{d.value}</span>
       <span className={cn("shrink-0 font-mono text-xs tabular-nums", tone(d.yoy))}>{formatPercent(d.yoy)}</span>
     </span>
-    <MiniBars bars={d.bars} ma={d.ma} surge={d.surge} label={`${d.name} 월별 추이`} />
+    <MiniBars bars={d.bars} ma={d.ma} connectNulls={d.connectNulls} surge={d.surge} label={`${d.name} 월별 추이`} />
   </Button>
 }
 
@@ -132,7 +138,7 @@ function MonthTick({ x, y, payload }: { x?: number | string; y?: number | string
 export interface BigPoint { period: string; v: number | null; yoy: number | null }
 
 /** 큰 차트 — 월별 막대(마지막 달 글자색) + 전년 대비 선(보라, 0선 점선). 세로축 숫자는 감춘다 — 값은 머리·툴팁에서 */
-export function BigChart({ data, height = 240, barLabel, fmt }: { data: BigPoint[]; height?: number; barLabel: string; fmt: (v: number) => string }) {
+export function BigChart({ data, height = 240, barLabel, fmt, connectNulls = true }: { data: BigPoint[]; height?: number; barLabel: string; fmt: (v: number) => string; connectNulls?: boolean }) {
   return <div className="flex flex-col gap-2">
     <div className="flex gap-3.5 text-xs text-ink-3">
       <span className="inline-flex items-center gap-1"><span className="inline-block size-2.5 bg-series" />{barLabel}</span>
@@ -150,7 +156,7 @@ export function BigChart({ data, height = 240, barLabel, fmt }: { data: BigPoint
             {data.map((_, i) => <Cell key={i} fill={i === data.length - 1 ? "var(--ink)" : "var(--series)"} />)}
           </Bar>
           <ReferenceLine yAxisId="yoy" y={0} stroke="var(--hyp)" strokeDasharray="3 4" strokeOpacity={0.6} />
-          <Line yAxisId="yoy" dataKey="yoy" stroke="var(--hyp)" strokeWidth={1.6} dot={false} connectNulls isAnimationActive={false} />
+          <Line yAxisId="yoy" dataKey="yoy" stroke="var(--hyp)" strokeWidth={1.6} dot={false} connectNulls={connectNulls} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

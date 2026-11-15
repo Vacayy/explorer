@@ -1,3 +1,4 @@
+import { PublicTradePage } from '@/components/follow/PublicTradePage'
 import { MemberSavedPage } from '@/components/follow/MemberSavedPage'
 import { PublicMacroPage } from '@/components/home/PublicMacroPage'
 import { PublicCompanySummary } from '@/components/company/PublicCompanySummary'
@@ -23,6 +24,8 @@ export function PublicContent() {
   const summary = useMatch('/analyze/:stockCode/summary')
   const document = useMatch('/doc/:docId')
   const financial = useMatch('/analyze/:stockCode/financials')
+  const trade = useMatch('/follow/trade/:hs')
+  if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
   if (pathname === '/home/macro') return <PublicMacroPage />

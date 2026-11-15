@@ -195,36 +195,44 @@ def item_series(hs_code: str) -> dict:
 def table(period: str | None = None, flow: str = "export", raw: dict[str, list[dict]] | None = None, **opt) -> dict:
     """팔로우 전 품목 × 선택 시점(기본 최신월) 지표 + 판정 + 그룹 집계. 하이라이트와 같은 판정을 쓴다.
     raw = raw_series_all() 결과를 이미 읽었으면 넘긴다(없으면 여기서 한 번에 읽는다)."""
-    o = _opts(**opt)
     conn = get_connection()
     try:
         all_periods = periods(conn)
         if not all_periods:
-            return {"period": None, "periods": [], "flow": flow, "options": o, "rows": [], "groups": [], "empty": True}
-        period = period or all_periods[0]
+            return table_from_inputs([], {}, [], period, flow, **opt)
         items = [dict(r) for r in conn.execute(
             "SELECT hs_code, item_name, group_label FROM trade_follow WHERE active=1 ORDER BY group_label, hs_code")]
         raw = raw if raw is not None else raw_series_all(conn)
-        rows = []
-        for it in items:
-            derived = derive(raw.get(it["hs_code"], []), flow)
-            point = next((d for d in derived if d["period"] == period), None)
-            if point is None:
-                rows.append({**it, "value": None, "flag": "none", "intensity": 0.0, "reason": "기준월 데이터 없음", "missing": True,
-                             "grid": {m: {"flag": "none", "reason": "기준월 데이터 없음"} for m in LOOKBACK}})
-                continue
-            idx = derived.index(point)
-            prev_year = derived[idx - 12]["value"] if idx >= 12 else None
-            v = point["value"]
-            verdict = classify(point, mode=o["mode"], metric=o["metric"], z_threshold=o["z_threshold"],
-                               fixed_threshold=o["fixed_threshold"], min_usd=o["min_usd"])
-            grid = classify_all(point, mode=o["mode"], z_threshold=o["z_threshold"], fixed_threshold=o["fixed_threshold"], min_usd=o["min_usd"])
-            rows.append({**it, "value": v, "mom": point["mom"], "yoy": point["yoy"], "qoq": point["qoq"], "yoy3m": point["yoy3m"],
-                         "z": point["z"], "z_mom": point["z_mom"], "z_yoy": point["z_yoy"], "z_qoq": point["z_qoq"], "z_yoy3m": point["z_yoy3m"],
-                         "grid": {m: {"flag": g["flag"], "reason": g["reason"]} for m, g in grid.items()},
-                         "delta_usd": (v - prev_year) if (v is not None and prev_year is not None) else None, **verdict})
     finally:
         conn.close()
+    return table_from_inputs(items, raw, all_periods, period, flow, **opt)
+
+
+def table_from_inputs(items: list[dict], raw: dict[str, list[dict]], all_periods: list[str],
+                      period: str | None = None, flow: str = "export", **opt) -> dict:
+    """Pure existing table calculation; callers own source selection and time bounds."""
+    o = _opts(**opt)
+    if not all_periods:
+        return {"period": None, "periods": [], "flow": flow, "options": o, "rows": [], "groups": [], "empty": True}
+    period = period or all_periods[0]
+    rows = []
+    for it in items:
+        derived = derive(raw.get(it["hs_code"], []), flow)
+        point = next((d for d in derived if d["period"] == period), None)
+        if point is None:
+            rows.append({**it, "value": None, "flag": "none", "intensity": 0.0, "reason": "기준월 데이터 없음", "missing": True,
+                         "grid": {m: {"flag": "none", "reason": "기준월 데이터 없음"} for m in LOOKBACK}})
+            continue
+        idx = derived.index(point)
+        prev_year = derived[idx - 12]["value"] if idx >= 12 else None
+        v = point["value"]
+        verdict = classify(point, mode=o["mode"], metric=o["metric"], z_threshold=o["z_threshold"],
+                           fixed_threshold=o["fixed_threshold"], min_usd=o["min_usd"])
+        grid = classify_all(point, mode=o["mode"], z_threshold=o["z_threshold"], fixed_threshold=o["fixed_threshold"], min_usd=o["min_usd"])
+        rows.append({**it, "value": v, "mom": point["mom"], "yoy": point["yoy"], "qoq": point["qoq"], "yoy3m": point["yoy3m"],
+                     "z": point["z"], "z_mom": point["z_mom"], "z_yoy": point["z_yoy"], "z_qoq": point["z_qoq"], "z_yoy3m": point["z_yoy3m"],
+                     "grid": {m: {"flag": g["flag"], "reason": g["reason"]} for m, g in grid.items()},
+                     "delta_usd": (v - prev_year) if (v is not None and prev_year is not None) else None, **verdict})
     parent = nesting(r["hs_code"] for r in rows)
     group_of = {r["hs_code"]: r["group_label"] for r in rows}
     for r in rows:

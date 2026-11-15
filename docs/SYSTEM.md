@@ -12,6 +12,10 @@
 - `@a2ui/markdown-it`이 고정한 DOMPurify3.4.11은 해당 패키지에 한정한 npm override로3.4.17을 사용한다. 근거: GHSA-cg2g-xh64-v4q7 및 같은 수정 버전의 sanitizer 보완. A2UI의 현재 호출은 문자열 기본 sanitize이며, 해당 critical advisory의 특수 DOM/shadow-root 설정이 이 앱에서 재현됐다는 뜻은 아니다.
 - A2UI Markdown의 정상 서식·안전 링크 보존과 위험 HTML/JavaScript 링크 비실행을 회귀 검사한다. Zod3 의존 체인은 메이저 호환성 검토가 필요하므로 Zod4 강제 치환하지 않는다. audit 경고 개수는 배포 환경에서 재현된 취약점 개수와 구분한다.
 
+## 공개 수출입 조회 준비
+
+`GET /api/public/trade`는 `security.public_trade`의 readonly/query_only/컬럼 허용 snapshot으로 고정11개 공개 HS 카탈로그의 최근 최대240개월 저장 수치만 읽는다. 개인 trade_follow·CSV·beneficiaries·관심그룹과 수집기를 호출하지 않는다. `trade_metrics.table_from_inputs`는 기존 개인 테이블 계산과 공개 입력이 공유하는 순수 계산이며 개인 조회 경로의 의미는 유지한다. 공개 projection은 누락 비교월을 신규·재개로 표시하지 않고 결측 기여도를 null로 유지한다. 그룹/선택 품목 소계는 관측수·전체수·partial을 함께 제공한다. 공개 `/follow/trade`는 URL의 수출입/월/2·5년/그룹/검색/품목 상태로 저장 추이·MA12·증감률·무역수지를 표시하며 개인 관리와 관련종목 모델 호출은 제외한다. 운영 배포·원천 정기갱신·실제 외부 연결은 별도다.
+
 ## 공개 매크로 수치 준비
 
 `security.public_macro`는 `EXPLORER_PUBLIC_MACRO_DB`의 직접원천 schema/계열receipt 검증된 고정 지표만 readonly/query_only snapshot으로 읽고 `pipeline.macro.numeric_macro` 순수 계산을 재사용한다. `/api/spine/macro/public`은 `PublicMacroResponse`의 수치·관측일·5관측 비교일·원출처/입력일·coverage만 반환한다. 기존 GET의 lazy수집과 signal/개인체크/환경설정은 연결하지 않는다. 직접Board/NYFed취득을 작은독립저장본으로 준비하고 `/home/macro`는 지표별관측일/5관측비교/혼합입력날짜/출처를 표시한다. Yahoo원천검토·정기갱신·매크로국면/리스크/해설 연결은 후속이며 운영공개를 뜻하지 않는다.

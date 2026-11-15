@@ -201,3 +201,6 @@ app.include_router(trial_chat.router)
 
 from security.access_boundary import configure_access_boundary
 configure_access_boundary(app)
+
+from routers import public_trade
+app.include_router(public_trade.router)

@@ -2130,3 +2130,24 @@ export interface MemberSavedDocument {
   note: string | null; created_at: string
 }
 export interface MemberSavedResponse { items: MemberSavedDocument[]; next_offset: number | null }
+
+/** Fixed public customs catalog; ratios are decimal fractions, amounts are USD. */
+export interface PublicTradePoint {
+  export_usd: number | null; import_usd: number | null; balance_usd: number | null; ma12: number | null
+  period: string; value: number | null; mom: number | null; yoy: number | null; qoq: number | null; yoy3m: number | null
+}
+export interface PublicTradeMetrics extends PublicTradePoint {
+  z: number | null; flag: 'none' | 'new' | 'surge' | 'plunge'; reason: string
+  delta_usd: number | null; contribution: number | null
+}
+export interface PublicTradeRow {
+  hs_code: string; item_name: string; group_label: string; nested_in: string | null
+  fetched_at: string | null; missing: boolean; metrics: PublicTradeMetrics; series: PublicTradePoint[]
+}
+export interface PublicTradeAggregate { value: number | null; observed_count: number; total_count: number; partial: boolean }
+export interface PublicTradeResponse {
+  flow: 'export' | 'import'; period: string | null; latest_period: string | null; periods: string[]; months: 24 | 60
+  unit: 'USD'; valuation: 'FOB' | 'CIF'; source: string; source_url: string; note: string
+  fetched_at: string | null; empty: boolean; partial: boolean; rows: PublicTradeRow[]
+  total: PublicTradeAggregate; groups: (PublicTradeAggregate & { group_label: string })[]
+}
