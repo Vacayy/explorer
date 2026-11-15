@@ -7,7 +7,7 @@ vi.mock('@/hooks/usePublicCompanyPrices', () => ({ usePublicCompanyPrices: () =>
 vi.mock('@/hooks/useFinancials', () => ({ useFinancials: (...args: unknown[]) => { state.calls.push(args); return ready({periods:['25.03','26.03'],rows:[{account_nm:'매출액',values:['100','200'],yoy:[null,100]}],key_metrics:{},sj_div:'IS',fs_div:'CFS',period_type:'quarterly'}) } }))
 vi.mock('@/components/charts/CandlestickChart', () => ({ default: ({data}: {data:unknown[]}) => <div data-testid="candles">{data.length}</div> }))
 vi.mock('@/components/shared/NextQuestions', () => ({ default: () => { throw new Error('private questions mounted') } }))
-vi.mock('@/components/company/CompanyOverview', () => ({ CompanyOverviewCard: () => { throw new Error('private profile mounted') } }))
+vi.mock('@/components/company/CompanyOverview', () => ({ CompanyOverviewCard: () => { throw new Error('private profile mounted') }, PublicCompanyOverviewCard: ({ stockCode, market }: { stockCode: string; market: string }) => <section aria-label="공개 기업 설명" data-code={stockCode} data-market={market} /> }))
 import { PublicContent } from '@/components/auth/PublicContent'
 function ready(data:unknown) { return {data,error:null,isPending:false,isFetching:false,fetchStatus:'idle',refetch:vi.fn()} }
 function Location() { const l=useLocation(); return <output data-testid="location">{l.pathname}{l.search}</output> }

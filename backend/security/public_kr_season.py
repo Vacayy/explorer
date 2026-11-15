@@ -10,6 +10,7 @@ from models.kr_season import KrSeasonOverview
 from pipeline.kr_season import read_overview
 
 COLUMNS = {
+    'public_company_profiles': {'ticker', 'payload_json'},
     'disclosures': {'rcp_no', 'corp_code', 'corp_name', 'report_nm', 'rcept_dt'},
     'companies': {'corp_code', 'corp_name', 'stock_code', 'sector'},
     'public_kr_company_sectors': {'stock_code', 'sector'},

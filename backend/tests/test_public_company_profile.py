@@ -8,7 +8,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from routers import company_profile as route
-from security import public_company_profile as public, public_us_season
+from security import public_company_profile as public, public_us_season, public_kr_season
 from security.access_boundary import PublicAccessBoundary
 
 
@@ -70,3 +70,26 @@ class PublicCompanyProfileTests(unittest.TestCase):
         with TestClient(private) as client,patch.object(route.cp,'connect') as connect,patch.object(route,'_company'),patch.object(route.cp,'latest_profile',return_value=dict(self.profile,reason='private reason',model='private model',cost_usd=1)):
             r=client.get('/api/spine/company-profile/NVDA?market=us');self.assertEqual(r.status_code,200)
             self.assertEqual(r.json()['profile']['reason'],'private reason');connect.return_value.close.assert_called_once()
+
+class PublicKrCompanyProfileTests(PublicCompanyProfileTests):
+    def test_kr_registry_and_official_metadata(self):
+        profile=dict(self.profile,stock_code='000660',official_report=dict(rcept_no='20261114000123',report_nm='Quarterly report',rcept_dt='20261114',url='https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20261114000123'))
+        with closing(sqlite3.connect(self.path)) as c,c:
+            c.executescript("CREATE TABLE companies(stock_code,corp_name);INSERT INTO companies VALUES('000660','Company');INSERT INTO companies VALUES('005930','Empty');")
+            c.execute('INSERT INTO public_company_profiles VALUES(?,?)',('000660',json.dumps(profile)))
+        before=self.path.read_bytes()
+        got=public.stored_profile('000660',market='kr',path=self.path)
+        self.assertEqual(got.official_report.rcept_no,'20261114000123')
+        self.assertIsNone(public.stored_profile('005930',market='kr',path=self.path))
+        for code in ['999999','NVDA']:
+            with self.assertRaises(LookupError):public.stored_profile(code,market='kr',path=self.path)
+        self.assertEqual(before,self.path.read_bytes())
+        app=FastAPI();app.include_router(route.router)
+        app.add_middleware(PublicAccessBoundary,routes=app.router.routes,policies={('GET','/api/spine/company-profile/{code}'):'public'})
+        with TestClient(app) as client,patch.object(public_kr_season,'DB_PATH',self.path),patch.object(route.cp,'connect',side_effect=AssertionError('private DB')):
+            r=client.get('/api/spine/company-profile/000660?market=kr');self.assertEqual(r.status_code,200,r.text)
+            self.assertEqual(r.json()['profile']['stock_code'],'000660')
+            self.assertEqual(client.post('/api/spine/company-profile/000660?market=kr',json={}).status_code,404)
+        profile['official_report']['url']='https://user:password@dart.fss.or.kr/'
+        with closing(sqlite3.connect(self.path)) as c,c:c.execute('UPDATE public_company_profiles SET payload_json=? WHERE ticker=?',(json.dumps(profile),'000660'))
+        with self.assertRaises(ValueError):public.stored_profile('000660',market='kr',path=self.path)

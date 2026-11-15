@@ -870,3 +870,7 @@ PublicMacroPage는 기존 RiskTiles와 useRiskTiles의 readonly `/api/spine/risk
 ## 공개 국면 이력 조회 준비
 
 `security.public_regimes`는 준비된 public US snapshot의 고정5개 지수/BRK 종가 및 `public_regime_recessions(snapshot_date,value)`만 읽는다. 날짜·양수유한가격·0/1침체값을 검증하고 기존 regimes_from_series/brk_from_series/recessions_from_rows 계산을 재사용한다. 공개 GET `/api/spine/regimes`와 `/brk`는 해당 reader만 사용하며 state/checks/commentary/collect는 허용하지 않는다. 이 구조는 API 준비이며 실제 원자료 공개 근거·snapshot·화면·배포 수용을 대신하지 않는다. 개인 get_regimes/get_brk와 수집 경로는 유지한다.
+
+## 공개 국내 기업 개요
+
+company-profile GET의 market=kr는 public KR snapshot companies의 정확한6자리 종목과 같은 snapshot의 public_company_profiles만 읽는다. 미국과 같은 ProfileRecord·출처/인용/개인metadata 검증을 공유하고 DART official_report는 HTTPS 공식호스트만 허용한다. PublicCompanySummary는 기존 PublicCompanyOverviewCard를 사용하며 최신 저장본문·작성시각·출처·gaps를 유지하고 생성/갱신을 마운트하지 않는다. 준비없는 등록기업은null,등록밖은404. 개인reason입력 보고서는 준비 단계에서 제외하며 필드삭제만으로 공개하지 않는다.

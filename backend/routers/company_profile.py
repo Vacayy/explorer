@@ -64,11 +64,9 @@ def _company(conn, code: str, market: str):
 def get_profile(code: str, request: Request, market: Literal["kr", "us"] = Query("kr")):
     code = code.upper() if market == "us" else code
     if getattr(request.state, 'public_access', False):
-        if market != 'us':
-            raise HTTPException(404, 'Public company profile unavailable')
         from security.public_company_profile import stored_profile
         try:
-            profile = stored_profile(code)
+            profile = stored_profile(code, market=market)
         except LookupError:
             raise HTTPException(404, 'Public company profile unavailable') from None
         return {'profile': profile, 'reuse_hours': cp.REUSE_HOURS, 'market': market}

@@ -9,6 +9,7 @@ import SegmentTabs from '@/components/shared/SegmentTabs'
 import CandlestickChart from '@/components/charts/CandlestickChart'
 import { useChartTheme } from '@/components/charts/chartTheme'
 import { FinancialPreview } from '@/components/company/CompanyFinancials'
+import { PublicCompanyOverviewCard } from '@/components/company/CompanyOverview'
 import { formatKrw, formatNumber } from '@/utils/format'
 
 export function PublicCompanySummary({ stockCode }: { stockCode: string }) {
@@ -24,9 +25,10 @@ export function PublicCompanySummary({ stockCode }: { stockCode: string }) {
       <header className="space-y-2">
         <h1 className="text-xl font-medium">{value.corp_name} · {value.stock_code}</h1>
         <p className="text-sm text-muted-foreground">{value.market || '시장 구분 없음'} · {value.sector || '업종 분류 없음'}</p>
-        <p className="text-sm text-muted-foreground">저장된 시세와 공시 재무입니다. 사업 설명·관련 자료·AI 분석의 공개 연결은 준비 중입니다.</p>
+        <p className="text-sm text-muted-foreground">저장된 기업 설명·시세·공시 재무입니다. 관련 자료·AI 분석의 공개 연결은 준비 중입니다.</p>
       </header>
       <Button asChild variant="outline"><Link to={publicFeedUrl(value.corp_name, null, location.pathname + location.search)}>기업명으로 공개 문서 검색</Link></Button>
+      <PublicCompanyOverviewCard stockCode={stockCode} market="kr" />
       <PublicPrices stockCode={stockCode} />
       <FinancialPreview stockCode={stockCode} publicView />
     </>}</QueryState>
