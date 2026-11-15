@@ -38,7 +38,6 @@ export function PublicDocumentListPage() {
   const data = query.data
   return <PageContainer width="reading" className="[overflow-wrap:anywhere]">
     <header className="space-y-2"><h1 className="text-xl font-medium">공개 문서</h1><p className="text-sm text-ink-2">공개된 자료의 제목과 보관된 본문을 검색합니다.</p></header>
-    <Button asChild variant="outline"><Link to="/chat">공개 자료 체험 채팅</Link></Button>
     {companyReturn && <div className="space-y-2"><Button asChild variant="outline"><Link to={companyReturn}>기업 요약으로</Link></Button><p className="text-sm text-ink-2">회사명으로 시작한 제목·본문 검색입니다. 검색 결과는 검증된 기업 관계나 추천을 뜻하지 않습니다.</p></div>}
     <SearchForm key={q} q={q.slice(0, 120)} onSearch={value => navigate(feedUrl(value, null, companyReturn))} />
     {!valid ? <ErrorState message="검색 주소를 확인해 주세요." />

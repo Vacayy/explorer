@@ -1,12 +1,13 @@
 import { publicFeedReturn, publicCompanyReturn } from '@/lib/publicDocumentNavigation'
-import { MemberDocumentSaveButton } from '@/components/shared/MemberDocumentSaveButton'
 import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toApiError } from '@/api/errors'
 import { usePublishedDocument } from '@/hooks/usePublishedDocument'
 import { PageContainer } from '@/components/shared/PageContainer'
 import { EmptyState, ErrorState } from '@/components/shared/ErrorState'
-import { Markdown } from '@/components/shared/Markdown'
+import { DocumentBody } from '@/components/doc/DocumentBody'
+import { BoundedArea } from '@/components/shared/Bounded'
+import SegmentTabs from '@/components/shared/SegmentTabs'
 import { Button } from '@/components/ui/button'
 import { ChevronDown } from 'lucide-react'
 import type { PublishedAttachment, PublishedDocument } from '@/types'
@@ -40,6 +41,7 @@ function Attachment({ attachment, index }: { attachment: PublishedAttachment; in
 }
 
 export function PublicDocumentPage({ docId }: { docId: string }) {
+  const [params, setParams] = useSearchParams()
   const id = /^[1-9]\d*$/.test(docId) && Number.isSafeInteger(Number(docId)) ? Number(docId) : null
   const query = usePublishedDocument(id)
   const retry = () => { void query.refetch() }
@@ -52,55 +54,49 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
   if (!query.data || query.isFetching) return <DocumentContainer><p role="status">공개 문서를 불러오는 중…</p></DocumentContainer>
   const document = query.data
   const sourceUrl = safeExternalUrl(document.url)
+  const reading = params.get('reading') === 'summary' ? 'summary' : 'original'
   return <DocumentContainer>
     <header className="space-y-2">
       <h1 className="text-xl font-medium">{document.title || '제목 없는 문서'}</h1>
-      <MemberDocumentSaveButton docId={id} />
-      <Button asChild variant="outline" size="sm"><Link to="/feed/saved">내 저장 목록</Link></Button>
-      <Button asChild variant="outline" size="sm"><Link to={`/chat?doc=${id}`}>이 문서로 체험 채팅</Link></Button>
       {sourceUrl && <Button asChild variant="outline" size="sm"><a href={sourceUrl} target="_blank" rel="noopener noreferrer">출처 페이지</a></Button>}
     </header>
-    <PublishedDocumentBody document={document} />
+    <SegmentTabs tabs={[{ value: 'original', label: '원문' }, { value: 'summary', label: '저장 요약' }]}
+      value={reading} onChange={value => setParams(prev => { const next = new URLSearchParams(prev); value === 'summary' ? next.set('reading', value) : next.delete('reading'); return next })} />
+    <PublishedDocumentBody document={document} reading={reading} showToggle={false} />
   </DocumentContainer>
 }
 
 /** Approved text and document-bound attachments; never resolves raw /media or private document tools. */
-export function PublishedDocumentBody({ document }: { document: PublishedDocument }) {
+export function PublishedDocumentBody({ document, reading = 'summary', showToggle = true }: { document: PublishedDocument; reading?: 'summary' | 'original'; showToggle?: boolean }) {
   const id = document.id
   const [showOriginal, setShowOriginal] = useState(false)
   const hasSummary = !!document.summary?.trim()
   const attachments = document.attachments.filter(attachment => Number.isSafeInteger(attachment.id) && attachment.id >= 0
     && attachment.url === `/api/public/documents/${id}/attachments/${attachment.id}`)
+  const hasOriginal = !!document.content.trim() || attachments.length > 0
+  const doc = { source_type: document.source_type, content: document.content, summary: document.summary ?? null, images: [] }
+  const markdownComponents = { img: () => null, a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+    const safe = safeExternalUrl(href)
+    return safe ? <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>
+  } }
+  const original = <>
+    <section aria-label="보관된 본문" className="min-w-0 space-y-3">
+      <DocumentBody doc={doc} reading="original" mediaSize={showToggle ? 'preview' : 'full'} markdownComponents={markdownComponents} />
+    </section>
+    {attachments.length > 0 && <section aria-label="공개 첨부" className="min-w-0 space-y-3">
+      {attachments.map((attachment, index) => <Attachment key={`${id}:${attachment.id}`} attachment={attachment} index={index} />)}
+    </section>}
+  </>
   return <>
-    {hasSummary && <section aria-label="요약" className="min-w-0 space-y-3">
-      <Markdown className="min-w-0 [&_pre]:overflow-x-auto" components={{ img: () => null,
-        a: ({ href, children }) => {
-          const safe = safeExternalUrl(href)
-          return safe ? <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>
-        } }}>{document.summary ?? ''}</Markdown>
+    {reading === 'summary' && (hasSummary || !showToggle) && <section aria-label="요약" className="min-w-0 space-y-3">
+      <DocumentBody doc={doc} reading="summary" mediaSize="preview" markdownComponents={markdownComponents} />
+      {showToggle && hasSummary && hasOriginal &&
       <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal}
         onClick={() => setShowOriginal(value => !value)}>
         {showOriginal ? '원문 접기' : '원문 보기'}<ChevronDown aria-hidden="true" className={`size-3 transition-transform ${showOriginal ? 'rotate-180' : ''}`} />
-      </Button>
+      </Button>}
     </section>}
-    {(!hasSummary || showOriginal) && <>
-    <section aria-label="보관된 본문" className="min-w-0 space-y-3">
-      <h2 className="text-sm font-medium text-ink-2">보관된 본문</h2>
-      {document.content.trim() ? document.content_kind === 'stored_markdown'
-        ? <Markdown className="min-w-0 [&_pre]:overflow-x-auto" components={{
-          img: () => null,
-          a: ({ href, children }) => {
-            const safe = safeExternalUrl(href)
-            return safe ? <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>
-          },
-        }}>{document.content}</Markdown>
-        : <div className="whitespace-pre-wrap text-sm leading-relaxed">{document.content}</div>
-        : <p className="text-sm text-ink-2">보관된 본문이 없습니다.{attachments.length > 0 ? ' 아래 첨부를 확인해 주세요.' : ''}</p>}
-    </section>
-    {attachments.length > 0 && <section aria-label="공개 첨부" className="min-w-0 space-y-3">
-      <h2 className="text-sm font-medium text-ink-2">공개 첨부</h2>
-      {attachments.map((attachment, index) => <Attachment key={`${id}:${attachment.id}`} attachment={attachment} index={index} />)}
-    </section>}
-    </>}
+    {(reading === 'original' || (!hasSummary && showToggle)) && original}
+    {reading === 'summary' && hasSummary && showToggle && showOriginal && <BoundedArea size="md" className="rounded-lg border border-line bg-surface-2/50" viewportClassName="p-3">{original}</BoundedArea>}
   </>
 }
