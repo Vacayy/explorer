@@ -124,6 +124,8 @@ class PublicKrIndustryTests(unittest.TestCase):
         self.assertEqual(data.stocks,len(data.constituents))
         self.assertEqual({x.stock_code for x in data.constituents},{'000001','000004'})
         self.assertAlmostEqual(sum(x.weight for x in data.constituents),100)
+        company = next(x for x in data.constituents if x.stock_code == "000001")
+        self.assertEqual(company.ret_1m, round((239 / 209 - 1) * 100, 1))
         self.assertTrue(data.series)
         self.assertEqual(data.benchmark.name,'KODEX 반도체')
         self.assertEqual(response.headers['cache-control'],'no-store')

@@ -32,7 +32,7 @@ import { quarterRows } from '@/utils/companyResearch'
 import { companyResearchSearch } from '@/components/layout/navConfig'
 
 /** 국내 개요 '최근 분기 실적' — 최근 분기 매출·영업이익과 4분기 표(모바일은 값 두 개만) */
-export function FinancialPreview({ stockCode }: { stockCode: string }) {
+export function FinancialPreview({ stockCode, publicView = false }: { stockCode: string; publicView?: boolean }) {
   const [params] = useSearchParams()
   const query = useFinancials(stockCode, 'IS', 'quarterly', 3, 'CFS', {
     storedOnly: true,
@@ -54,9 +54,10 @@ export function FinancialPreview({ stockCode }: { stockCode: string }) {
         <h2 className="text-section font-semibold">최근 분기 실적</h2>
         {latest && <span className="text-caption text-muted-foreground">{query.data?.fs_div === 'OFS' ? '별도' : '연결'} · {latest.period}</span>}
         <span className="ml-auto" />
-        <Link className="text-xs text-muted-foreground hover:text-foreground" to={`/analyze/${stockCode}/financials${companyResearchSearch(params.toString())}`}>실적·사업 보기 ›</Link>
+        <Link className="text-xs text-muted-foreground hover:text-foreground" to={`/analyze/${stockCode}/financials${publicView ? `?${new URLSearchParams({ summary_query: `?${params.toString()}` })}` : companyResearchSearch(params.toString())}`}>{publicView ? '재무제표 보기 ›' : '실적·사업 보기 ›'}</Link>
       </header>
       <div className="space-y-3 p-4">
+        {publicView && <p className="text-sm text-muted-foreground">출처: OpenDART 저장 공시 · 단일 분기 · 통화와 정정 이력은 원공시 확인이 필요합니다.</p>}
         {query.isPending ? (
           <Skeleton className="h-32 w-full" />
         ) : query.isError ? (

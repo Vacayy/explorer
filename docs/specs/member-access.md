@@ -224,3 +224,7 @@ UI 상태: Empty는 아직 원칙없음, Loading은 skeleton, Error는 재시도
 ### 한국 섹터 공개 시장 상세
 
 `GET /api/spine/industry/{sector}/market`은 검토된 SEED 섹터만 같은 readonly snapshot에서 지도·개별 종목 RS·시총비중·벤치마크/코스피 시계열을 계산한다. 개인 detail cache/내러티브/AI 개괄/문서/팔로우/data_links/Peer runtime을 읽지 않는다. 구성종목은 기존 분류·시총 기준을 재사용한다. 응답은 KrSectorMarketResponse로 한정하며 미등록 또는 시장 자료 없는 섹터는404. 기존 상세 API와 개인 UI는 유지한다. 공개 화면은 Loading/Empty/Error/Partial/Ideal과 미연결 개인 기능을 구분하고, 섹터→기업요약→재무 왕복 동선으로 연결한다. 해당 UI 연결과 공개 승인 요약·문서 확장은 별도 진행 중이다.
+
+공개 KR 화면은 기존 IndexCard/RsCard/SectorStocksTab의 시장 데이터 표현만 재사용한다. 개인 hook이 필요한 상세·요약·조사 컴포넌트를 마운트하지 않는다. `map_query`→`sector_query`→`summary_query`는 내부 경로에 붙이는 query로만 사용하고 외부 URL로 이동하지 않는다. 기업 요약의 시세 API는 등록회사 여부를 확인한 뒤 최신1500개 저장 OHLCV/시총을 반환한다(미등록404·등록/시세없음200). 불완전 OHLC는 캔들에서 제외하고 결측을 표시한다. 재무 미리보기는 기존 저장재무/회계범위를 그대로 쓰며 개인 KPI/조사 profile을 대신 호출하지 않는다. 산업 해설·Peer·사업 설명·관련 문서/AI 분석의 공개 연결은 미완으로 표시한다.
+
+구성종목 수익률 표시 수정: 기존 ret_1m/ret_12m이 RS 기준7/91일 수익률을 재사용하던 오류를30/365일 비교로 수정했다. RS 자체의91/7일 계산과 순위는 유지한다. 거래일 달력 완전성/정확한 해당일 가격을 보장하지 않으며 기존 snapshot의 해당일 이하 저장값 선택을 따른다.

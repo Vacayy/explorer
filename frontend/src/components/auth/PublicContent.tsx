@@ -1,3 +1,5 @@
+import { PublicCompanySummary } from '@/components/company/PublicCompanySummary'
+import { PublicKrSectorPage } from '@/components/industry/PublicKrSectorPage'
 import { PublicFinancialSearch, PublicFinancialsPage } from '@/components/financials/PublicFinancialsPage'
 import { Link, useLocation, useMatch } from 'react-router-dom'
 import { PublicUsSectorPage } from '@/components/industry/PublicUsSectorPage'
@@ -15,8 +17,12 @@ import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
 export function PublicContent() {
   const { pathname } = useLocation()
   const sector = useMatch('/industry/us/:ticker')
+  const krSector = useMatch('/industry/:sector')
+  const summary = useMatch('/analyze/:stockCode/summary')
   const document = useMatch('/doc/:docId')
   const financial = useMatch('/analyze/:stockCode/financials')
+  if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
+  if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
   if (pathname === '/financials') return <PublicFinancialSearch />
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
   if (pathname === '/chat') return <PublicTrialChatPage />

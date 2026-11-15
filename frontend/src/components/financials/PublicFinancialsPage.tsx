@@ -31,6 +31,7 @@ export function PublicFinancialsPage({ stockCode }: { stockCode: string }) {
   return <>
     <PageContainer>
       <Button variant="outline" asChild><Link to={`/financials?q=${encodeURIComponent(params.get('q') ?? '')}`}>기업 검색으로</Link></Button>
+      <Button variant="outline" asChild><Link to={`/analyze/${stockCode}/summary${params.get('summary_query')?.startsWith('?') ? params.get('summary_query') : ''}`}>기업 요약으로</Link></Button>
       <QueryState query={company} emptyMessage="등록되지 않은 종목입니다.">
         {value => <h1 className="text-xl font-medium">{value.corp_name} · {value.stock_code} 재무</h1>}
       </QueryState>

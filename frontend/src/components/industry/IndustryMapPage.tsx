@@ -1,6 +1,6 @@
 import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useMemo, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import { Search } from "lucide-react"
 import { BlockHead } from "@/components/home/HomeSection"
 import { BlockError, tone } from "@/components/home/blockState"
@@ -91,6 +91,7 @@ function RsMapCard({ q, mobile, focus, onHover }: { q: MapQuery; mobile: boolean
 /** 지도 — 가로 단기 RS, 세로 장기 RS, 점 크기 시총, 고른 섹터만 4주 경로(점선). 점·이름을 누르면 섹터 화면 */
 function Scatter({ rows, focus, onHover }: { rows: IndustryMapSector[]; focus: string | null; onHover: (s: string | null) => void }) {
   const navigate = useNavigate()
+  const { search } = useLocation()
   const W = 760, H = 380
   const X = (v: number) => 70 + v / 100 * (W - 100)
   const Y = (v: number) => H - 30 - v / 100 * (H - 70)
@@ -112,7 +113,7 @@ function Scatter({ rows, focus, onHover }: { rows: IndustryMapSector[]; focus: s
         const left = r.rs_short! > 80
         return <g key={r.name} role="link" tabIndex={0} aria-label={`${r.name} 장기 RS ${r.rs_long} 단기 RS ${r.rs_short}`} className="cursor-pointer outline-none"
           onMouseEnter={() => onHover(r.name)} onMouseLeave={() => onHover(null)} onFocus={() => onHover(r.name)} onBlur={() => onHover(null)}
-          onClick={() => navigate(sectorPath(r.name))} onKeyDown={e => { if (e.key === "Enter") navigate(sectorPath(r.name)) }}>
+          onClick={() => navigate(sectorPath(r.name, PUBLIC_ACCESS ? `?${new URLSearchParams({ map_query: search })}` : undefined))} onKeyDown={e => { if (e.key === "Enter") navigate(sectorPath(r.name, PUBLIC_ACCESS ? `?${new URLSearchParams({ map_query: search })}` : undefined)) }}>
           <circle cx={X(r.rs_short!)} cy={Y(r.rs_long!)} r={rad} className={cn(on ? "fill-up" : "fill-ink-2", "stroke-surface")} fillOpacity={on ? 0.9 : 0.28} strokeWidth="2" />
           <text x={X(r.rs_short!) + (left ? -(rad + 4) : rad + 4)} y={Y(r.rs_long!) + 4} textAnchor={left ? "end" : "start"} fontSize={on ? 12 : 11} fontWeight={on ? 600 : 400} className={on ? "fill-ink" : "fill-ink-2"}>{r.name}</text>
         </g>
@@ -141,6 +142,7 @@ const WIDE_COLS = "grid-cols-[minmax(0,1fr)_64px_54px_54px_46px_46px_54px]"
 
 /** 순위 줄 — 섹터 · 1개월 · 장기 · 단기 · 5일 (넓은 표 보기는 시총·3개월을 더한다). 줄을 누르면 섹터 화면 */
 function RankList({ rows, sort, focus, onHover, wide }: { rows: IndustryMapSector[]; sort: RankSort; focus: string | null; onHover: (s: string | null) => void; wide?: boolean }) {
+  const { search } = useLocation()
   const key = sortKey(sort)
   const sorted = [...rows].sort((a, b) => (key(b) ?? -Infinity) - (key(a) ?? -Infinity))
   const cols = wide ? WIDE_COLS : RANK_COLS
@@ -149,7 +151,7 @@ function RankList({ rows, sort, focus, onHover, wide }: { rows: IndustryMapSecto
       <span>섹터</span>{wide && <span className="text-right">시총</span>}<span className="text-right">1개월</span>{wide && <span className="text-right">3개월</span>}<span className="text-right">장기</span><span className="text-right">단기</span><span className="text-right">5일</span>
     </div>
     <FillArea aria-label="섹터 순위">
-      {sorted.map(r => <Link key={r.name} to={sectorPath(r.name)} data-sector-row onMouseEnter={() => onHover(r.name)} onMouseLeave={() => onHover(null)}
+      {sorted.map(r => <Link key={r.name} to={sectorPath(r.name, PUBLIC_ACCESS ? `?${new URLSearchParams({ map_query: search })}` : undefined)} data-sector-row onMouseEnter={() => onHover(r.name)} onMouseLeave={() => onHover(null)}
         className={cn("grid items-center gap-2 border-b py-2 text-[12.5px]", cols, r.name === focus && "bg-up-tint")}>
         <span className={cn("truncate", r.name === focus && "font-semibold")}>{r.name}</span>
         {wide && <span className="text-right font-mono text-ink-2 tabular-nums">{formatKrw(r.market_cap)}</span>}
@@ -192,8 +194,9 @@ function SectorWall({ q, focus, onHover }: { q: MapQuery; focus: string | null; 
 }
 
 function SectorCard({ r, kospi, on, onHover }: { r: IndustryMapSector; kospi: number[]; on: boolean; onHover: (s: string | null) => void }) {
+  const { search } = useLocation()
   const strong = (r.rs_long ?? 0) >= 70
-  return <Link to={sectorPath(r.name)} onMouseEnter={() => onHover(r.name)} onMouseLeave={() => onHover(null)} aria-label={`${r.name} 섹터 화면`}
+  return <Link to={sectorPath(r.name, PUBLIC_ACCESS ? `?${new URLSearchParams({ map_query: search })}` : undefined)} onMouseEnter={() => onHover(r.name)} onMouseLeave={() => onHover(null)} aria-label={`${r.name} 섹터 화면`}
     className={cn("flex h-[176px] min-w-0 flex-col gap-[5px] border bg-card p-3 hover:bg-surface-2", on && "relative z-[1] border-ink")}>
     <div className="flex min-w-0 items-center gap-1.5">
       <span className="truncate text-[13.5px] font-semibold">{r.name}</span>

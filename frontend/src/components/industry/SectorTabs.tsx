@@ -3,7 +3,7 @@ import { BlockHead } from "@/components/home/HomeSection"
 import { BlockError, tone } from "@/components/home/blockState"
 import { FillNote, FillSkeleton, MarketCard } from "@/components/home/MarketFrame"
 import { FillArea } from "@/components/shared/Bounded"
-import { DataLinkCard } from "@/components/industry/SectorOverview"
+import { DataLinkCard, type SectorMarketQuery } from "@/components/industry/SectorOverview"
 import { PagerBar, paged } from "@/components/shared/PagerBar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -29,14 +29,14 @@ export function SectorDataTab({ q }: { q: Q }) {
 }
 
 /** 섹터 화면 › 종목 — 구성 종목 표(시총 · 비중 · 1일 · 1개월 · RS), 20개씩(URL page) */
-export function SectorStocksTab({ q }: { q: Q }) {
+export function SectorStocksTab({ q, companyHref = code => `/analyze/${code}/summary` }: { q: SectorMarketQuery; companyHref?: (code: string) => string }) {
   const [rawPage, setPage] = useUrlParam("page", "1")
   const rows = q.data?.constituents ?? []
   const p = paged(rows, Math.max(0, (Number(rawPage) || 1) - 1), PER)
   return <MarketCard band="sectorPeers" label="sector.stocks">
     <BlockHead section title="구성 종목" info="이 섹터로 분류된 종목입니다(업종 정정 반영). 비중은 섹터 시가총액 대비, RS는 전 종목 대비 백분위(장기 3개월 · 단기 1주)입니다."
       sub={q.data ? `시총 순 · ${q.data.as_of ? `${+q.data.as_of.slice(5, 7)}/${+q.data.as_of.slice(8, 10)}` : ""}` : " "} />
-    {q.isError ? <BlockError message="구성 종목을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} />
+    {q.isError && !q.data ? <BlockError message="구성 종목을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} />
       : !q.data ? <FillSkeleton rows={14} />
       : !rows.length ? <FillNote>이 섹터로 분류된 종목이 없습니다.</FillNote>
       : <>
@@ -50,7 +50,7 @@ export function SectorStocksTab({ q }: { q: Q }) {
             </TableRow></TableHeader>
             <TableBody>{p.rows.map((c, i) => <TableRow key={c.stock_code}>
               <TableCell className="font-mono text-ink-3 tabular-nums">{p.from + i}</TableCell>
-              <TableCell className="max-w-[220px] truncate"><Link to={`/analyze/${c.stock_code}/summary`} className="font-medium hover:underline">{c.corp_name}</Link></TableCell>
+              <TableCell className="max-w-[220px] truncate"><Link to={companyHref(c.stock_code)} className="font-medium hover:underline">{c.corp_name}</Link></TableCell>
               <TableCell className="text-right font-mono tabular-nums">{formatKrw(c.market_cap)}</TableCell>
               <TableCell className="text-right font-mono text-ink-2 tabular-nums">{formatPercent(c.weight).replace("+", "")}</TableCell>
               <TableCell className={cn("text-right font-mono tabular-nums", tone(c.chg_1d))}>{formatPercent(c.chg_1d)}</TableCell>

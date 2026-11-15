@@ -2,6 +2,7 @@ from fastapi import APIRouter, Query, Request
 from database import get_connection
 from security.public_financials import financial_connection
 from models.company import CompanyResponse
+from models.stock_price import StockPriceResponse
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -40,3 +41,9 @@ def get_company(request: Request, stock_code: str):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Company not found")
     return dict(row)
+
+
+@router.get("/{stock_code}/prices", response_model=StockPriceResponse)
+def get_stored_company_prices(stock_code: str):
+    from security.public_financials import stored_company_prices
+    return stored_company_prices(stock_code)

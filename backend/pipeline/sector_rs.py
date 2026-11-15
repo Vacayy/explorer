@@ -186,6 +186,8 @@ def group_members_from_connection(conn, group_name: str, limit: int = 40) -> dic
         return out
     rl, rs_ = rets(base_l), rets(base_s)
     pl, ps = _percentile(rl), _percentile(rs_)
+    monthly = rets(_snapshot(conn, (d - timedelta(days=30)).isoformat()))
+    yearly = rets(_snapshot(conn, (d - timedelta(days=365)).isoformat()))
 
     names = {r["stock_code"]: r["corp_name"] for r in conn.execute(
         f"SELECT stock_code, corp_name FROM companies WHERE stock_code IN ({','.join('?'*len(codes))})", codes)}
@@ -193,8 +195,8 @@ def group_members_from_connection(conn, group_name: str, limit: int = 40) -> dic
         "stock_code": c, "corp_name": names.get(c, c),
         "market_cap": cur.get(c, (0, 0))[1],
         "rs_long": pl.get(c), "rs_short": ps.get(c),
-        "ret_1m": round(rs_.get(c), 1) if c in rs_ else None,
-        "ret_12m": round(rl.get(c), 1) if c in rl else None,
+        "ret_1m": round(monthly[c], 1) if c in monthly else None,
+        "ret_12m": round(yearly[c], 1) if c in yearly else None,
     } for c in codes if c in cur]
     items.sort(key=lambda x: -(x["market_cap"] or 0))
     return {"group": group_name, "as_of": latest, "items": items[:limit]}

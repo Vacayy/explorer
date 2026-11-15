@@ -58,6 +58,7 @@ export const loaders = {
   'tw': () => import('./validators-tw.js'),
   'us': () => import('./validators-us.js'),
   'world': () => import('./validators-world.js'),
+  'business': () => import('./validators-business.js'),
   'macro': () => import('./validators-macro.js'),
   'market-regime': () => import('./validators-market-regime.js'),
   'analysis': () => import('./validators-analysis.js'),
@@ -74,7 +75,6 @@ export const loaders = {
   'consensus': () => import('./validators-consensus.js'),
   'telegram': () => import('./validators-telegram.js'),
   'blog': () => import('./validators-blog.js'),
-  'business': () => import('./validators-business.js'),
   'company-profile': () => import('./validators-company-profile.js'),
   'disclosures': () => import('./validators-disclosures.js'),
 }

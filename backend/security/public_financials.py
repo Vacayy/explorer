@@ -9,6 +9,7 @@ from services.dart_service import _build_financial_response, SJ_DIV_QUERY
 
 COLUMNS = {
     'companies': {'stock_code', 'corp_code', 'corp_name', 'market', 'sector'},
+    'stock_prices': {'stock_code', 'trade_date', 'open', 'high', 'low', 'close', 'volume', 'market_cap'},
     'financial_statements': {'corp_code', 'fs_div', 'sj_div', 'bsns_year',
                              'reprt_code', 'account_nm', 'thstrm_amount', 'ord'},
 }
@@ -59,5 +60,19 @@ def stored_financials(stock_code, sj_div, period, years, fs_div):
         return _build_financial_response(company['corp_code'] or '', sj_div, period,
                                          year - years, year, fs_div, connection=conn)
 
+    finally:
+        conn.close()
+
+
+def stored_company_prices(stock_code):
+    """Bounded stored KR bars, including nullable observations, with no collection."""
+    conn = financial_connection()
+    try:
+        if conn.execute('SELECT stock_code FROM companies WHERE stock_code=?', (stock_code,)).fetchone() is None:
+            raise HTTPException(404, 'Company not found')
+        rows = conn.execute(
+            'SELECT trade_date,open,high,low,close,volume,market_cap FROM stock_prices '
+            'WHERE stock_code=? ORDER BY trade_date DESC LIMIT 1500', (stock_code,)).fetchall()
+        return {'items': [dict(row) for row in reversed(rows)]}
     finally:
         conn.close()

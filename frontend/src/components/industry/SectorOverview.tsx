@@ -11,10 +11,11 @@ import SectorPeersTab from "@/components/industry/SectorPeersTab"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { formatPercent, formatUsd } from "@/utils/format"
-import type { SectorDataLinkCard, IndustrySectorDetail, SectorDoc } from "@/types"
+import type { SectorDataLinkCard, IndustrySectorDetail, SectorDoc, KrSectorMarket } from "@/types"
 import type { useSectorDetail } from "@/hooks/useSectorView"
 
 type Q = ReturnType<typeof useSectorDetail>
+export type SectorMarketQuery = { data: KrSectorMarket | undefined; isError: boolean; error: unknown; refetch: () => unknown }
 const mmdd = (d: string | null | undefined) => d ? `${+d.slice(5, 7)}/${+d.slice(8, 10)}` : "-"
 const RANGES = [{ key: "1m", label: "1개월" }, { key: "3m", label: "3개월" }, { key: "1y", label: "1년" }, { key: "3y", label: "3년" }] as const
 const RANGE_SUB: Record<string, string> = { "1m": "1개월 전 = 100", "3m": "3개월 전 = 100", "1y": "1년 전 = 100", "3y": "3년 전 = 100" }
@@ -48,12 +49,12 @@ export default function SectorOverview({ q }: { q: Q }) {
   </div>
 }
 
-function State({ q, rows, message, children }: { q: Q; rows?: number; message: string; children: (d: IndustrySectorDetail) => React.ReactNode }) {
+function State<T extends KrSectorMarket>({ q, rows, message, children }: { q: { data: T | undefined; isError: boolean; error: unknown; refetch: () => unknown }; rows?: number; message: string; children: (d: T) => React.ReactNode }) {
   if (q.data) return <>{children(q.data)}</>
   return q.isError ? <BlockError message={message} error={q.error} onRetry={() => void q.refetch()} /> : <FillSkeleton rows={rows} />
 }
 
-function IndexCard({ q }: { q: Q }) {
+export function IndexCard({ q }: { q: SectorMarketQuery }) {
   const [range, setRange] = useUrlParam("range", "1y")
   const d = q.data
   const b = d?.benchmark
@@ -82,7 +83,7 @@ function Bar({ v, cls }: { v: number | null; cls: string }) {
   </div>
 }
 
-function RsCard({ q }: { q: Q }) {
+export function RsCard({ q, companyHref = code => `/analyze/${code}/summary` }: { q: SectorMarketQuery; companyHref?: (code: string) => string }) {
   return <MarketCard band="sectorChart" label="sector.rs">
     <BlockHead section title="상대강도" info={RS_INFO} sub="18개 섹터 중 백분위" />
     <State q={q} rows={8} message="상대강도를 불러오지 못했습니다">{d => {
@@ -93,7 +94,7 @@ function RsCard({ q }: { q: Q }) {
           <span className="text-ink-3">{r.label}</span><Bar v={r.l} cls="bg-ink-2" /><Bar v={r.s} cls="bg-down" />
         </div>)}</div>
         <div className="mt-1 flex shrink-0 justify-between text-xs text-ink-3"><span>섹터 시총 비중 상위</span><span>비중 · 1개월</span></div>
-        <FillArea aria-label="섹터 시총 비중 상위">{d.top_weights.map(c => <Link key={c.stock_code} to={`/analyze/${c.stock_code}/summary`}
+        <FillArea aria-label="섹터 시총 비중 상위">{d.top_weights.map(c => <Link key={c.stock_code} to={companyHref(c.stock_code)}
           className="grid grid-cols-[minmax(0,1fr)_52px_62px] gap-2 border-b py-1.5 text-[12.5px] hover:bg-surface-2">
           <span className="truncate">{c.corp_name}</span>
           <span className="text-right font-mono text-ink-3 tabular-nums">{formatPercent(c.weight, 0).replace("+", "")}</span>

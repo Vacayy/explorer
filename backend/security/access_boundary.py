@@ -29,6 +29,7 @@ PUBLIC_ROUTE_POLICIES = {
     ('DELETE', '/api/member/portfolio/principles/{principle_id}'): 'member',
     ('GET', '/api/companies/search'): 'public',
     ('GET', '/api/companies/{stock_code}'): 'public',
+    ('GET', '/api/companies/{stock_code}/prices'): 'public',
     ('GET', '/api/financials/{stock_code}'): 'public',
     ('GET', '/api/public/chat/session'): 'trial',
     ('POST', '/api/public/chat'): 'trial',
