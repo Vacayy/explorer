@@ -28,6 +28,18 @@ class DocumentReadBoundaryTests(unittest.TestCase):
             CREATE TABLE scrap_links(doc_id INTEGER,channel TEXT);
             CREATE TABLE follows(entity_id INTEGER);
             CREATE TABLE youtube_digest_jobs(doc_id INTEGER,transcript TEXT,status TEXT,token TEXT,updated_at REAL,error TEXT);
+            CREATE TABLE entity_digests(id INTEGER,entity_id INTEGER,period TEXT,period_start TEXT,digest TEXT,doc_count INTEGER,created_at TEXT);
+            CREATE TABLE source_digests(id INTEGER,kind TEXT,key TEXT,digest TEXT,doc_count INTEGER,created_at TEXT);
+            CREATE TABLE transcripts(id INTEGER,raw_doc_id INTEGER,ticker TEXT,fiscal_year INTEGER,fiscal_period TEXT,digest TEXT,fetched_at TEXT);
+            CREATE TABLE transcript_follow(ticker TEXT,company_name TEXT,active INTEGER);
+            CREATE TABLE trade_stats(hs_code TEXT,period TEXT,fetched_at TEXT);
+            CREATE TABLE trade_follow(hs_code TEXT,item_name TEXT,group_label TEXT,active INTEGER);
+            CREATE TABLE narratives(id INTEGER,topic TEXT,version INTEGER,title TEXT,body TEXT,doc_count INTEGER,created_at TEXT);
+            CREATE TABLE reports(id INTEGER,anchor_topic TEXT,title TEXT,body TEXT,members_json TEXT,created_at TEXT);
+            CREATE TABLE scenarios(topic TEXT,answer TEXT,question_id INTEGER,created_at TEXT);
+            CREATE TABLE channel_reads(channel TEXT,read_until TEXT,updated_at TEXT);
+            INSERT INTO entity_digests VALUES (1,7,'1d','2026-01-01','합성 요약',1,'2026-01-02');
+            INSERT INTO channel_reads VALUES ('blog:fixture','2026-01-02',NULL);
             INSERT INTO raw_documents VALUES
               (1,'blog','synthetic','제목','https://example.test/article','2026-01-01',
                '원문', '원본', NULL, '["fixtures/example.jpg"]'),

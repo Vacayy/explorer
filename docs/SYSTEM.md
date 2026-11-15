@@ -713,11 +713,11 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `pipeline/postgres_snapshot.py`는 격리 실험에서 query-only SQLite 단일 트랜잭션의 문서·저장 요약·첨부 참조·엔티티를 읽어 PostgreSQL 조회용 projection을 한 트랜잭션으로 교체한다. snapshot 시각은 요청 응답의 `as_of`와 별도 보관한다. 중간 실패 시 이전 projection을 유지한다. 목록과 문서 상세를 묶음 처리하지만 문서 ID·분류는 메모리에 보관하며 실제 전체 자료 성능·첨부 파일 전송·증분 동기화는 검증하지 않았다. 블로그·뉴스·기사·인물 필터는 SQLite의 기존 소스 분류·팔로우 규칙을 기준으로 합성 자료에서 비교한다. 검색과 나머지 필터는 아직 구현하지 않았다.
 
-같은 실험은 문서·요약·엔티티·링크·출처 관련 10개 SQLite 테이블의 모든 원래 컬럼과 행을 별도 비공개 JSONB 중간 원장에 함께 보존한다. 스키마 SQL·컬럼 목록·행수도 기록하며 BLOB·비유한 수 등 변환 불가 값은 실패시켜 이전 세대를 유지한다. 이는 최종 정규화 PostgreSQL 원장이나 모든 SQLite 테이블의 이관을 뜻하지 않는다.
+같은 실험은 문서·요약·엔티티·링크·출처 관련 20개 SQLite 테이블의 모든 원래 컬럼과 행을 별도 비공개 JSONB 중간 원장에 함께 보존한다. 스키마 SQL·컬럼 목록·행수도 기록하며 BLOB·비유한 수 등 변환 불가 값은 실패시켜 이전 세대를 유지한다. 이는 최종 정규화 PostgreSQL 원장이나 모든 SQLite 테이블의 이관을 뜻하지 않는다.
 
 실험 snapshot 적재는 PostgreSQL transaction-scoped advisory lock으로 직렬화하고 기존보다 오래된 시각 라벨을 거부한다. 동일 라벨 재실행은 호출자가 동일한 불변 snapshot을 준다는 전제다. 별도의 원본 관측 시각과 적재 기록 시각을 저장하지만, 호출 전 이미 SQLite 읽기가 시작됐을 수 있어 실제 snapshot 취득 시각을 보증하지 않는다. 별도 HTTP 요청 간 세대 고정도 제공하지 않는다. 현재 적재기는 이름이 지정된 일회성 fixture DB/schema 이외의 쓰기를 거부한다.
 
-실험 projection은 같은 발행 시각의 문서 순서가 SQLite에서 출처 필터별 실행 계획에 따라 달라질 수 있어, 각 출처 필터의 원래 순서를 별도로 저장한다. 필터별 동률·페이지 계약을 합성 테스트로 고정했다. `scripts/refactor_full_trial.py`는 명시적으로 지정된 읽기 전용 사본과 disposable fixture PostgreSQL만 사용해 10개 테이블 행수·대표 값, 일부 피드/상세와 첨부 파일 표본을 비교하고 실험 schema를 제거한다. 실제 운영 전환이나 원본 전체 필드 전수 대조를 의미하지 않는다.
+실험 projection은 같은 발행 시각의 문서 순서가 SQLite에서 출처 필터별 실행 계획에 따라 달라질 수 있어, 각 출처 필터의 원래 순서를 별도로 저장한다. 필터별 동률·페이지 계약을 합성 테스트로 고정했다. `scripts/refactor_full_trial.py`는 명시적으로 지정된 읽기 전용 사본과 disposable fixture PostgreSQL만 사용해 20개 테이블 행수·대표 값, 일부 피드/상세와 첨부 파일 표본을 비교하고 실험 schema를 제거한다. 실제 운영 전환이나 원본 전체 필드 전수 대조를 의미하지 않는다.
 
 실제 크기 비교에서는 SQLite 정렬용 작은 임시 tmpfs가 가득 차 `SQLITE_FULL`로 실패할 수 있다. 사본 적재 시험은 여유가 확인된 비공개 디스크 임시 공간을 `SQLITE_TMPDIR`로 지정하고, 사용 후 해당 실험 전용 공간을 삭제한다.
 
@@ -725,4 +725,4 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `pipeline/postgres_rebuild_detail.py`는 보존된 PostgreSQL 원본 행과 별도 엔티티 순서 메타데이터를 이용해 기존 상세 응답 캐시를 일회성 fixture 안에서 한 트랜잭션으로 다시 만든다. 문서 ID 집합이 다르면 실패하며 적재와 같은 잠금을 사용한다. 목록·필터·검색 캐시의 재생성이나 운영 전환은 제공하지 않는다. 대량 자료에서 소요 시간은 아직 측정하지 않았다.
 
-리팩토링 실험의 `PostgreSQLDocumentReader.list()`는 `/api/spine/feed` 문서 목록에 대한 부분 실험이다. 사용자가 기본 피드에서 보는 `ChannelReader`는 `GET /api/spine/feed/timeline`과 `/channels`를 사용하므로 이 실험만으로 기본 피드를 PostgreSQL에 연결했다고 볼 수 없다. 타임라인의 sources 범위는 수집 문서·저장 요약·엔티티·채널 활성 상태를 사용하고, system 범위는 기업/인물 요약, 컨콜·팔로우, 수출입·팔로우, 내러티브·리포트·시나리오 테이블을 추가로 사용한다. 채널 목록의 읽음 수에는 `channel_reads`도 필요하다. 현재 열 개 테이블 보존 실험은 system 타임라인과 읽음 상태를 복구할 수 없다. UI의 시간 고정(`until`), 채널·주제·출처 필터와 페이지 계약을 실제 타임라인 경로에서 별도 확인해야 한다.
+리팩토링 실험의 `PostgreSQLDocumentReader.list()`는 `/api/spine/feed` 문서 목록에 대한 부분 실험이다. 사용자가 기본 피드에서 보는 `ChannelReader`는 `GET /api/spine/feed/timeline`과 `/channels`를 사용하므로 이 실험만으로 기본 피드를 PostgreSQL에 연결했다고 볼 수 없다. 타임라인의 sources 범위는 수집 문서·저장 요약·엔티티·채널 활성 상태를 사용하고, system 범위는 기업/인물 요약, 컨콜·팔로우, 수출입·팔로우, 내러티브·리포트·시나리오 테이블을 추가로 사용한다. 채널 목록의 읽음 수에는 `channel_reads`도 필요하다. 타임라인에서 참조하는 추가 10개 테이블을 원본 행 보존 범위에 포함했지만, system 타임라인과 읽음 상태를 PostgreSQL에서 읽는 구현은 아직 없다. UI의 시간 고정(`until`), 채널·주제·출처 필터와 페이지 계약을 실제 타임라인 경로에서 별도 확인해야 한다.

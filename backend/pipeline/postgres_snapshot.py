@@ -62,7 +62,10 @@ def _list_rows(conn, *, batch_size=250):
 # silently claimed as migrated; they require their own contracts and loaders.
 LEGACY_TABLES = ('raw_documents', 'enrichments', 'entities', 'entity_links',
                  'telegram_channels', 'blog_sources', 'youtube_channels',
-                 'scrap_links', 'follows', 'youtube_digest_jobs')
+                 'scrap_links', 'follows', 'youtube_digest_jobs',
+                 'entity_digests', 'source_digests', 'transcripts', 'transcript_follow',
+                 'trade_stats', 'trade_follow', 'narratives', 'reports', 'scenarios',
+                 'channel_reads')
 
 
 def _source_groups(source):

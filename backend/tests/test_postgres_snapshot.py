@@ -135,6 +135,11 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.commit()
             expected = {i: _read_sqlite_document(c, i).model_dump() for i in (1, 2, 3, 4)}
         self.load('2026-01-05T00:00:00+00:00')
+        with self.pg() as c:
+            saved = c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_digests'").fetchone()
+            self.assertEqual(saved[0]['digest'], '합성 요약')
+            saved = c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='channel_reads'").fetchone()
+            self.assertEqual(saved[0]['channel'], 'blog:fixture')
         raw_reader = PostgreSQLRawDocumentReader(self.pg)
         for doc_id, document in expected.items():
             self.assertEqual(raw_reader.get(doc_id).model_dump(), document)
