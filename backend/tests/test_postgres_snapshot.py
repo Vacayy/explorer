@@ -35,7 +35,7 @@ from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
 from pipeline.postgres_ingest_runner_fixture import embed_document
-from pipeline.postgres_link_preview_fixture import preview_links
+from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -125,11 +125,16 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             doc=store_document(c,source_type='note',source_id='link-fixture',title='자료',markdown='합성 회사 문서')
+            claim=claim_enrichment(c,document_id=doc['id'])
+            claim_enrichment(c,document_id=1)
         with self.pg() as c:
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             out=preview_links(c,doc['id'],{'stocks':['합성 회사'],'industries':[],'topics':[]})
             self.assertEqual(out['links'],[{'entity_id':7,'link_type':'stock','confidence':0.9}])
             self.assertEqual(out['legacy_links_replaced'],0)
+            old=preview_links(c,1,{'stocks':['합성 회사'],'industries':[],'topics':[]})
+            self.assertEqual(old['legacy_links_replaced'],1)
+            prepared=prepare_enrichment(c,doc['id'],claim['token'],{'stocks':['합성 회사'],'industries':[],'topics':[]})
             for result in (
                 {'stocks':[],'industries':['새 산업'],'topics':[]},
                 {'stocks':['합성 회사'],'stock_aliases':[{'name':'합성 회사','alias':'새별명'}],'industries':[],'topics':[]},
@@ -137,6 +142,59 @@ class SnapshotReplacementTests(unittest.TestCase):
             ):
                 with self.subTest(result=result),self.assertRaisesRegex(ValueError,'side effect'):
                     preview_links(c,doc['id'],result)
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            with self.pg() as c:
+                finish_with_links(c,doc['id'],revision=prepared['revision'],token=prepared['token'],
+                                  summary='합성 요약',model='fixture',links=prepared['links']*2)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(doc['id'],)).fetchone()[0],'running')
+            self.assertIsNone(c.execute('SELECT summary FROM ingest_enrichments WHERE document_id=%s',(doc['id'],)).fetchone())
+            self.assertTrue(finish_with_links(c,doc['id'],summary='합성 요약',model='fixture',**prepared))
+            self.assertEqual(c.execute('SELECT count(*) FROM ingest_entity_links WHERE document_id=%s',(doc['id'],)).fetchone()[0],1)
+            store_document(c,source_type='note',source_id='link-fixture',title='자료',markdown='새 내용')
+            self.assertFalse(finish_with_links(c,doc['id'],summary='늦은 요약',model='fixture',**prepared))
+
+    def test_existing_linker_result_reaches_detail_filter_and_search(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            doc=store_document(c,source_type='note',source_id='link-new',title='합성 회사',markdown='합성 회사에 관한 신규 문서')
+            claim=claim_enrichment(c,document_id=doc['id'])
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            prepared=prepare_enrichment(c,doc['id'],claim['token'],{'stocks':['합성 회사'],'industries':[],'topics':[]})
+        with self.pg() as c:
+            self.assertTrue(finish_with_links(c,doc['id'],summary='신규 요약',model='fixture',**prepared))
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader=PostgreSQLDocumentReader(target)
+        self.assertEqual([(e.entity_id,e.link_type) for e in reader.get(doc['id']).entities],[(7,'stock')])
+        self.assertIn(doc['id'],[item.id for item in reader.list(stock='000000').items])
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            rows=c.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
+                           "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
+            index=SearchSnapshot(generation,rows)
+            try:
+                self.assertIn(doc['id'],[item.id for item in search_feed(c,index,'신규',stock='000000').items])
+            finally:
+                index.close()
 
     def test_ledger_detail_keeps_legacy_links_and_suppresses_stale_links(self):
         self.load('2026-01-03T00:00:00+00:00')

@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 from pipeline.store import _link
+from pipeline.postgres_ingest_fixture import finish_enrichment
 
 
 def preview_links(conn, document_id, result):
@@ -52,3 +53,34 @@ def preview_links(conn, document_id, result):
         return {'revision':doc[2],'links':links,'legacy_links_replaced':previous}
     finally:
         db.close()
+
+
+def prepare_enrichment(conn, document_id, token, result):
+    """Preview only while the matching enrichment claim is still current."""
+    job=conn.execute('SELECT revision,status,token FROM ingest_enrichment_jobs WHERE document_id=%s',(document_id,)).fetchone()
+    if not job or job[1] != 'running' or job[2] != token:
+        raise ValueError('Enrichment claim is not current')
+    preview=preview_links(conn,document_id,result)
+    if preview['revision'] != job[0]:
+        raise ValueError('Enrichment revision is not current')
+    return {'revision':job[0],'token':token,'links':preview['links']}
+
+
+def finish_with_links(conn, document_id, *, revision, token, summary, model, links):
+    """Commit summary and existing-entity links together, or neither."""
+    current=conn.execute('SELECT revision FROM ingest_documents WHERE id=%s FOR UPDATE',(document_id,)).fetchone()
+    job=conn.execute('SELECT revision,status,token FROM ingest_enrichment_jobs WHERE document_id=%s',(document_id,)).fetchone()
+    if current is None or current[0] != revision or job != (revision,'running',token):
+        return False
+    for link in links:
+        if not conn.execute("SELECT 1 FROM legacy_snapshot_rows WHERE table_name='entities' AND row_data->>'id'=%s",
+                            (str(link['entity_id']),)).fetchone():
+            raise ValueError('Link references an unknown entity')
+    if not finish_enrichment(conn,document_id=document_id,revision=revision,token=token,summary=summary,model=model):
+        return False
+    conn.execute('DELETE FROM ingest_entity_links WHERE document_id=%s',(document_id,))
+    for pos,link in enumerate(links):
+        conn.execute('INSERT INTO ingest_entity_links VALUES (%s,%s,%s,%s,%s,%s)',
+                     (document_id,revision,pos,link['entity_id'],link['link_type'],link['confidence']))
+    conn.execute('UPDATE ingest_documents SET links_dirty=TRUE WHERE id=%s',(document_id,))
+    return True

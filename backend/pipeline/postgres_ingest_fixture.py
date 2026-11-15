@@ -35,7 +35,7 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
     revision = row[1] + 1
     conn.execute('UPDATE ingest_documents SET title=%s, markdown=%s, content_hash=%s, revision=%s, media_json=%s, '
                  'url=%s, published_at=%s, raw_content=%s, digest_status=%s, fetched_at=%s, '
-                 'projection_version=projection_version+1,enrichment_dirty=FALSE,embedding_dirty=FALSE WHERE id=%s',
+                 'projection_version=projection_version+1,enrichment_dirty=FALSE,embedding_dirty=FALSE,links_dirty=FALSE WHERE id=%s',
                  (title, markdown, digest, revision, Jsonb(media) if media else None,
                   url, published_at, raw_content, digest_status, fetched_at, row[0]))
     conn.execute('INSERT INTO ingest_enrichment_history(document_id,revision,summary,model) '
@@ -43,6 +43,7 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
                  'ON CONFLICT(document_id,revision) DO NOTHING', (row[0],))
     conn.execute('DELETE FROM ingest_enrichments WHERE document_id=%s', (row[0],))
     conn.execute('DELETE FROM ingest_embeddings WHERE document_id=%s', (row[0],))
+    conn.execute('DELETE FROM ingest_entity_links WHERE document_id=%s', (row[0],))
     conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
     return {'id': row[0], 'revision': revision, 'status': 'updated'}
 

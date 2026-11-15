@@ -26,6 +26,7 @@ CREATE TABLE ingest_documents (
     projected_version BIGINT NOT NULL DEFAULT 0,
     enrichment_dirty BOOLEAN NOT NULL DEFAULT FALSE,
     embedding_dirty BOOLEAN NOT NULL DEFAULT FALSE,
+    links_dirty BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (source_type, source_id)
 );
 CREATE TABLE ingest_enrichment_jobs (
@@ -70,4 +71,14 @@ CREATE TABLE ingest_embeddings (
     revision BIGINT NOT NULL,
     embedding BYTEA NOT NULL CHECK (octet_length(embedding) = 1536),
     model TEXT NOT NULL
+);
+CREATE TABLE ingest_entity_links (
+    document_id BIGINT NOT NULL REFERENCES ingest_documents(id) ON DELETE CASCADE,
+    revision BIGINT NOT NULL,
+    position INTEGER NOT NULL,
+    entity_id BIGINT NOT NULL,
+    link_type TEXT NOT NULL,
+    confidence DOUBLE PRECISION,
+    PRIMARY KEY(document_id,revision,position),
+    UNIQUE(document_id,revision,entity_id,link_type)
 );

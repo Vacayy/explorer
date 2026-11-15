@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from psycopg import sql
 from psycopg.types.json import Jsonb
-from models.spine import FeedDocument
+from models.spine import EntityTag, FeedDocument
 from pipeline.postgres_projection_copy_fixture import copy_projection
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_generation_media import _read_file
@@ -77,13 +77,13 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     metadata = conn.execute('SELECT expected_model,vector_count,generation_id FROM document_embedding_metadata WHERE singleton').fetchone()
     dirty = conn.execute('SELECT d.id,d.source_type,d.source_id,d.title,d.url,d.published_at,d.fetched_at,d.raw_content, '
                          'd.markdown,d.media_json,d.digest_status,d.content_hash,d.revision,e.summary,e.model, '
-                         'd.enrichment_dirty,d.embedding_dirty,v.embedding,v.model '
+                         'd.enrichment_dirty,d.embedding_dirty,v.embedding,v.model,d.links_dirty '
                          'FROM ingest_documents d LEFT JOIN ingest_enrichments e '
                          'ON e.document_id=d.id AND e.revision=d.revision '
                          'LEFT JOIN ingest_embeddings v ON v.document_id=d.id AND v.revision=d.revision '
                          'WHERE d.projection_version>d.projected_version ORDER BY d.id').fetchall()
     updates = []
-    for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,revision,summary,model,enrichment_dirty,embedding_dirty,embedding,embedding_model in dirty:
+    for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,revision,summary,model,enrichment_dirty,embedding_dirty,embedding,embedding_model,links_dirty in dirty:
         if embedding_dirty and (embedding is None or metadata is None or embedding_model != metadata[0]):
             raise ValueError('Embedding is missing or uses a different model')
         if embedding_dirty and metadata[1] > 0:
@@ -120,6 +120,20 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         else:
             projection = conn.execute('SELECT source_groups,feed_visible FROM document_projection WHERE id=%s',(ident,)).fetchone()
             channel,groups,visible,timeline = {},projection[0],projection[1],None
+        link_rows=[]
+        if links_dirty:
+            links = conn.execute("SELECT l.entity_id,l.link_type,l.confidence,e.row_data FROM ingest_entity_links l "
+                                 "JOIN legacy_snapshot_rows e ON e.table_name='entities' AND e.row_data->>'id'=l.entity_id::text "
+                                 "WHERE l.document_id=%s AND l.revision=%s ORDER BY l.position",(ident,revision)).fetchall()
+            expected=conn.execute('SELECT count(*) FROM ingest_entity_links WHERE document_id=%s AND revision=%s',(ident,revision)).fetchone()[0]
+            if len(links) != expected:
+                raise ValueError('An entity link no longer resolves')
+            link_rows=[EntityTag(entity_id=eid,type=entity['type'],name=entity['name'],aliases=entity.get('aliases'),
+                                 link_type=kind,confidence=confidence) for eid,kind,confidence,entity in links]
+            followed={int(r[0]['entity_id']) for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='follows'")}
+            groups=[group for group in groups if group != 'people']
+            if any(link.link_type == 'person' and link.entity_id in followed for link in link_rows):
+                groups=sorted([*groups,'people'])
         doc = (prior or FeedDocument(id=ident,source_type=source,title='',url='',published_at='',summary=None,
                                      channel=channel.get('name'),channel_kind=channel.get('kind'),
                                      channel_key=channel.get('key'),content=None,images=[],enrich_model=None,entities=[]))
@@ -137,13 +151,15 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                 job = dict(zip(('transcript','status','updated_at','error'),job)) if job else None
                 doc = doc.model_copy(update=fields_from_job({'source_type':source,'digest_status':status,
                                                             'markdown':markdown,'raw_content':raw},job))
+        if links_dirty:
+            doc = doc.model_copy(update={'entities':link_rows})
         old_list = conn.execute('SELECT list_document FROM document_list_projection WHERE document_id=%s ORDER BY ordinal LIMIT 1', (ident,)).fetchone()
         list_content = old_list[0].get('content') if same_revision and old_list else markdown
         list_doc = doc.model_copy(update={'content':list_content})
         if source == 'youtube':
             list_doc = list_doc.model_copy(update={'digest_status':None,'digest_error':None,'video_digest':None,'transcript':None})
         updates.append((ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,summary,model,
-                        enrichment_dirty,embedding_dirty,bytes(embedding) if embedding is not None else None,
+                        enrichment_dirty,embedding_dirty,bytes(embedding) if embedding is not None else None,links_dirty,
                         groups,visible,timeline,doc,list_doc,prior is not None,same_revision,media_changed))
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(target_schema)))
     if captured:
@@ -160,18 +176,19 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     conn.execute('DELETE FROM document_list_projection')
     # Same-revision media/vector-only updates must retain duplicate legacy feed rows.
     replaced_ids = [row[0] for row in updates if not (row[-2] and not row[14])]
-    for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,summary,model,enrichment_dirty,embedding_dirty,embedding,groups,visible,timeline,doc,list_doc,existing,same_revision,media_changed in updates:
+    for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,summary,model,enrichment_dirty,embedding_dirty,embedding,links_dirty,groups,visible,timeline,doc,list_doc,existing,same_revision,media_changed in updates:
         if existing:
-            if not same_revision:
+            if not same_revision or links_dirty:
                 conn.execute('DELETE FROM document_entity_order WHERE document_id=%s', (ident,))
                 conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='entity_links' AND row_data->>'doc_id'=%s", (str(ident),))
+            if not same_revision:
                 conn.execute('DELETE FROM document_embeddings WHERE document_id=%s', (ident,))
                 conn.execute('DELETE FROM document_centroids WHERE document_id=%s', (ident,))
             if not same_revision or enrichment_dirty:
                 conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='enrichments' AND row_data->>'doc_id'=%s", (str(ident),))
             if same_revision:
-                conn.execute('UPDATE document_projection SET detail_document=%s WHERE id=%s',
-                             (Jsonb(doc.model_dump(mode='json')),ident))
+                conn.execute('UPDATE document_projection SET detail_document=%s,source_groups=%s WHERE id=%s',
+                             (Jsonb(doc.model_dump(mode='json')),groups,ident))
             else:
                 conn.execute('UPDATE document_projection SET published_at=%s,detail_document=%s,source_groups=%s,feed_visible=%s WHERE id=%s',
                              (published,Jsonb(doc.model_dump(mode='json')),groups,visible,ident))
@@ -219,6 +236,17 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                          (f'source:{ident}',ident,occurred,millis,f'{source}:{key}',source,[],
                           label,(title or markdown or '')[:180],Jsonb(timeline_doc.model_dump(mode='json'))))
             conn.execute("INSERT INTO timeline_source_metadata VALUES (%s,%s,'[]'::jsonb)",(ident,next_id))
+        if links_dirty:
+            for position,link in enumerate(doc.entities):
+                linkrow={'doc_id':ident,'entity_id':link.entity_id,'link_type':link.link_type,'confidence':link.confidence}
+                conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entity_links',COALESCE(max(row_ordinal)+1,0),%s "
+                             "FROM legacy_snapshot_rows WHERE table_name='entity_links'",(Jsonb(linkrow),))
+                conn.execute('INSERT INTO document_entity_order VALUES (%s,%s,%s,%s,%s,0)',
+                             (ident,position,link.entity_id,link.link_type,link.confidence))
+            ordered=[{'entity_id':link.entity_id,'link_type':link.link_type,'confidence':link.confidence} for link in doc.entities]
+            conn.execute("UPDATE timeline_source_projection SET document=jsonb_set(document,'{entities}',%s),topic_names=%s WHERE document_id=%s",
+                         (Jsonb([link.model_dump(mode='json') for link in doc.entities]),sorted({link.name for link in doc.entities}),ident))
+            conn.execute('UPDATE timeline_source_metadata SET entity_order=%s WHERE document_id=%s',(Jsonb(ordered),ident))
         if embedding_dirty:
             conn.execute('INSERT INTO document_embeddings(document_id,embedding,content_hash) VALUES (%s,%s,%s) '
                          'ON CONFLICT(document_id) DO UPDATE SET embedding=excluded.embedding,content_hash=excluded.content_hash',
@@ -242,6 +270,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         FROM overlay_new_rows n JOIN document_projection d ON d.id=n.document_id''')
     conn.execute('INSERT INTO document_list_projection SELECT ordinal,document_id,list_document FROM overlay_ord')
     moved_ids = [row[0] for row in updates if row[1] != 'note' and not row[-2]]
+    relinked_ids = [row[0] for row in updates if row[17]]
     conn.execute('''INSERT INTO document_filter_order
         SELECT filter_key,row_number() OVER (PARTITION BY filter_key ORDER BY old_position,ordinal)-1,ordinal
         FROM (
@@ -251,16 +280,19 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             SELECT f.filter_key,min(f.position),n.ordinal FROM overlay_old_filters f
             JOIN overlay_old_list l ON l.ordinal=f.list_ordinal
             JOIN overlay_ord n ON n.document_id=l.document_id AND n.old_ordinal IS NULL
-            WHERE f.filter_key<>'note' AND NOT(l.document_id=ANY(%s)) GROUP BY f.filter_key,n.ordinal
-        ) membership''',(moved_ids,))
+            WHERE f.filter_key<>'note' AND NOT(l.document_id=ANY(%s))
+              AND NOT(f.filter_key='people' AND l.document_id=ANY(%s)) GROUP BY f.filter_key,n.ordinal
+        ) membership''',(moved_ids,relinked_ids))
     # New non-note sources have no old filter membership. Merge them by date;
     # existing positions remain the tie-breaker within each source filter.
     conn.execute('CREATE TEMP TABLE overlay_new_filters(filter_key text,document_id bigint) ON COMMIT DROP')
     for row in updates:
         ident,source,groups,visible,existing = row[0],row[1],row[-8],row[-7],row[-3]
         if visible and source != 'note' and (not existing or not row[-2]):
-            for key in (groups if source == 'blog' else [source]):
+            for key in (groups if source == 'blog' else [source,*(['people'] if 'people' in groups else [])]):
                 conn.execute('INSERT INTO overlay_new_filters VALUES (%s,%s)',(key,ident))
+        elif visible and row[17] and 'people' in groups:
+            conn.execute("INSERT INTO overlay_new_filters VALUES ('people',%s)",(ident,))
     if conn.execute('SELECT EXISTS(SELECT 1 FROM overlay_new_filters)').fetchone()[0]:
         conn.execute('CREATE TEMP TABLE overlay_existing_filters ON COMMIT DROP AS SELECT * FROM document_filter_order')
         conn.execute("DELETE FROM document_filter_order WHERE filter_key IN (SELECT filter_key FROM overlay_new_filters)")
