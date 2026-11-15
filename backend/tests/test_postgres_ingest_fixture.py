@@ -8,7 +8,7 @@ from pathlib import Path
 
 import psycopg
 from psycopg import sql
-from pipeline.postgres_ingest_fixture import store_document, apply_enrichment
+from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment, fail_enrichment
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -40,24 +40,26 @@ class IngestFixtureTests(unittest.TestCase):
         a = self.put('A')
         self.assertEqual(self.put('A')['status'], 'unchanged')
         with self.pg() as c:
-            self.assertTrue(apply_enrichment(c, document_id=a['id'], revision=a['revision'], summary='a', model='fixture'))
+            first = claim_enrichment(c, document_id=a['id'])
         b = self.put('B')
         self.assertEqual((b['status'], b['revision']), ('updated', 2))
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM ingest_enrichments').fetchone()[0], 0)
-            self.assertFalse(apply_enrichment(c, document_id=a['id'], revision=1, summary='late', model='fixture'))
+            self.assertFalse(finish_enrichment(c, document_id=a['id'], **first, summary='late', model='fixture'))
         again = self.put('A')
         self.assertEqual(again['revision'], 3)
         with self.pg() as c:
-            self.assertFalse(apply_enrichment(c, document_id=a['id'], revision=1, summary='old A', model='fixture'))
-            self.assertTrue(apply_enrichment(c, document_id=a['id'], revision=3, summary='new A', model='fixture'))
+            self.assertFalse(finish_enrichment(c, document_id=a['id'], **first, summary='old A', model='fixture'))
+            current = claim_enrichment(c, document_id=a['id'])
+            self.assertTrue(finish_enrichment(c, document_id=a['id'], **current, summary='new A', model='fixture'))
             self.assertEqual(c.execute('SELECT summary FROM ingest_enrichments').fetchone()[0], 'new A')
 
     def test_rollback_does_not_leave_document_or_enrichment(self):
         with self.assertRaisesRegex(RuntimeError, 'rollback'):
             with self.pg() as c:
                 row = store_document(c, source_type='fixture', source_id='1', title='t', markdown='a')
-                apply_enrichment(c, document_id=row['id'], revision=row['revision'], summary='s', model='fixture')
+                job = claim_enrichment(c, document_id=row['id'])
+                finish_enrichment(c, document_id=row['id'], **job, summary='s', model='fixture')
                 raise RuntimeError('rollback')
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM ingest_documents').fetchone()[0], 0)
@@ -70,6 +72,43 @@ class IngestFixtureTests(unittest.TestCase):
             self.assertEqual((row['status'], row['revision']), ('unchanged', 1))
             store_document(c, source_type='fixture', source_id='1', title='ignored', markdown='A', media=[])
             self.assertEqual(c.execute('SELECT title, media_json FROM ingest_documents').fetchone(), ('title', ['one']))
+
+    def test_failed_retry_rejects_old_token_and_keyword_upgrade(self):
+        row = self.put('A')
+        with self.pg() as c:
+            first = claim_enrichment(c, document_id=row['id'])
+            self.assertIsNone(claim_enrichment(c, document_id=row['id']))
+            self.assertTrue(fail_enrichment(c, document_id=row['id'], **first))
+            retry = claim_enrichment(c, document_id=row['id'])
+            self.assertFalse(finish_enrichment(c, document_id=row['id'], **first, summary='late', model='fixture'))
+            self.assertTrue(finish_enrichment(c, document_id=row['id'], **retry, summary='k', model='keyword'))
+            self.assertIsNone(claim_enrichment(c, document_id=row['id']))
+            upgrade = claim_enrichment(c, document_id=row['id'], upgrade_keyword=True)
+            self.assertTrue(finish_enrichment(c, document_id=row['id'], **upgrade, summary='better', model='fixture'))
+            self.assertIsNone(claim_enrichment(c, document_id=row['id'], upgrade_keyword=True))
+
+    def test_concurrent_claim_has_one_winner(self):
+        row = self.put('A')
+        barrier = threading.Barrier(4)
+        def worker(_):
+            barrier.wait(timeout=10)
+            with self.pg() as c:
+                return claim_enrichment(c, document_id=row['id'])
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            jobs = list(pool.map(worker, range(4)))
+        self.assertEqual(sum(job is not None for job in jobs), 1)
+
+    def test_raw_fields_update_only_when_content_changes(self):
+        with self.pg() as c:
+            store_document(c, source_type='fixture', source_id='1', title='t', markdown='A',
+                           raw_content='raw A', url='one', published_at='2026-01-01', digest_status='ok')
+            store_document(c, source_type='fixture', source_id='1', title='ignored', markdown='A', raw_content='ignored')
+            self.assertEqual(c.execute('SELECT raw_content,url,published_at,digest_status FROM ingest_documents').fetchone(),
+                             ('raw A', 'one', '2026-01-01', 'ok'))
+            store_document(c, source_type='fixture', source_id='1', title='t2', markdown='B',
+                           raw_content='raw B', url='two', published_at='2026-01-02', digest_status='failed')
+            self.assertEqual(c.execute('SELECT raw_content,url,published_at,digest_status FROM ingest_documents').fetchone(),
+                             ('raw B', 'two', '2026-01-02', 'failed'))
 
     def test_concurrent_duplicate(self):
         barrier = threading.Barrier(4)
