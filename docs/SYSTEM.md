@@ -764,3 +764,8 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 익명 체험 HTTP 준비: `routers/trial_chat`/`models/trial_chat`는 GET `/api/public/chat/session` 및 POST `/api/public/chat`를 별도 trial 정책으로 등록한다. POST parsing 전96KiB 제한, 서명 쿠키/Origin/CSRF/네트워크 식별과 quota를 적용하며 오류에 입력을 재출력하지 않는다. `trial_service`는 별도0600 키/IPC capability·quota DB·HTTPS origin·명시 일간/동시 한도·신뢰 프록시를 환경에서 읽고 자동 초기화하지 않는다. `public_completion`은 크기/시간 제한된 Unix socket v1 protocol, 응답 예약id/인용 검증, 재시도 없는 고정 오류를 제공한다. 실제 dispatcher와 CLI 완료·장애 복구는 아직 미연결이며 설정 전503이다. 환경키/프로토콜은 [HTTP 계약](specs/member-access.md#익명-채팅-http-계약-구현-중) 참조.
 
 프론트 `useTrialChat`/`types/trialChat`는 계약 검증 API client를 사용하되 query/mutation cache나 브라우저 저장소 없이 대화·세션을 hook 메모리에만 둔다. 최근4개 메시지를 보내고 계정 scope/reset/unmount에서 abort+generation 검증으로 늦은 응답을 버린다. 실패 시 횟수를 재조회하고 POST를 자동 재시도하지 않는다. 두 채팅 경로는 서버 access-log query 제거 및 프론트 console/telemetry 제외 대상이다. 실제 화면 마운트·브라우저 동작/공급자 비저장은 후속 검증이다.
+
+
+공개 `/chat`은 `PublicTrialChatPage`와 메모리 전용 `useTrialChat`를 사용한다. 공개 문서 목록/원문 버튼에서 진입하고, `/chat?doc=<id>`는 현재 공개 조회에 성공한 뒤 선택한다. 최대4개 문서 선택이 필수이며 질문 자연어를 검색어로 재사용하지 않는다. 자료 검색/cursor는 URL, 질문 draft/선택/대화는 component 메모리다. 계정 scope 변경 시 key remount로 draft/선택을 비우고 hook은 이전 응답을 폐기한다. 답변은 plain text, `/doc/<positive id>` 인용만 링크다. 소진·부분 근거·조회/실행 오류·로딩/빈 상태를 구분하며 초기화/로그인이 체험 횟수를 복원한다고 표시하지 않는다. 기존 private ChatPage는 유지한다.
+
+화면 검증은 실제 ASGI 합성자료 승인/list/read 및 PublicEvidence를 거친 합성 completion 응답으로 수행했다. Chrome에서 명시 문서+자연어 질문3회/소진, 인용 표시, 질문 마크업 비실행, reload 대화 제거, 다른 페이지 후 seed 없는 재진입 선택 제거, local/sessionStorage·console canary 부재,390px 가로 overflow 부재를 확인했다. `?doc`로 재진입하면 URL 의도대로 문서를 새로 검증해 선택하므로 이 동작은 저장된 대화 복원이 아니다. 실제 공급자/dispatcher/공개 배포 검증을 대신하지 않는다.

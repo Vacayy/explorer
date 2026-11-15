@@ -188,3 +188,18 @@ EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 Publica
 - `EXPLORER_TRIAL_SECRET_FILE`은 명시적32-byte0600 키 파일, `EXPLORER_TRIAL_DB`는 사전 초기화된 별도 DB, `EXPLORER_TRIAL_NETWORK_DAY_LIMIT`/`EXPLORER_TRIAL_GLOBAL_DAY_LIMIT`/`EXPLORER_TRIAL_MAX_IN_FLIGHT`는 필수 정수 정책이다. `EXPLORER_PUBLIC_ORIGIN`은 HTTPS origin. `EXPLORER_TRIAL_TRUSTED_PROXIES`는 선택 comma-separated CIDR이며 기본 비신뢰. 명시 신뢰 peer에만 `X-Explorer-Client-IP`를 사용한다. 실제 gateway에서 사용자 헤더 제거/덮어쓰기 검증 전 활성화하지 않는다.
 - `EXPLORER_PUBLIC_CHAT_SOCKET`은 절대 Unix socket 경로, `EXPLORER_PUBLIC_CHAT_TOKEN_FILE`은64hex0600 IPC capability 파일이다. API에는 Docker socket/공급자 인증을 제공하지 않는다. IPC newline JSON v1 request는 token/operation=complete/reservation_id/question/context/history, 최대160KiB. 응답은 version/status=complete/reservation_id/answer/citation_ids, 최대128KiB, 190초 deadline/no retry. dispatcher가 quota의 mark_started True인 경우에만 실행하고 실제 child 종료 뒤 finish한다. Unix socket/DB는 동일 Linux filesystem 안에서 공유해야 하며 macOS↔Linux SQLite WAL 공유는 허용하지 않는다.
 - 기능은 public 경계의 정확한 두 route에만 독립 trial 정책을 적용한다. 설정·실제 dispatcher 준비 전503이며 Google/유료 API fallback은 없다. 실제 CLI/프록시/브라우저 비저장 검증 전 공개 완료가 아니다.
+
+
+## 공개 체험 채팅 화면 계약
+
+공개 `/chat`은 기존 개인 ChatPage를 마운트하지 않고 전용 `PublicTrialChatPage`를 사용한다. `/feed`와 공개 `/doc/:id`에서 체험 채팅으로 이동할 수 있고 문서의 버튼은 `/chat?doc=<id>`만 전달한다. 질문/답변을 URL·route state·browser storage에 넣지 않는다. 질문 q 프리필은 읽지 않는다. 계정 scope 변경 시 질문 draft/문맥 선택/대화 메모리 모두 초기화한다.
+
+자료 선택은 기존 공개 문서 목록 API·검색·cursor를 사용한다. 문서 하나 이상 최대4개를 선택해야 질문을 보낼 수 있으며, URL로 받은 id도 공개 문서 조회로 확인한 다음 선택한다. 검색어는 자료 찾기용 별도 입력이며 search/cursor URL 파라미터로 탐색 상태를 관리한다. 질문 자연어를 자동 검색어로 쓰지 않는다. 선택 문서 id와 명시 검색어(없으면 빈 문자열)를 POST로 전달한다. 실제 승인/변경 검증은 서버가 다시 수행한다. 표시되지 않는 다른 페이지의 선택도 제목/해제 버튼으로 확인할 수 있어야 한다.
+
+- Empty: 공개 자료 없음/검색0건/아직 질문 없음 각각 구분. 계속 검색 가능한 빈 cursor 페이지는 다음 버튼 유지. 선택 없이 보내기 비활성.
+- Loading: 자료/체험 세션 준비 중 상태 표시, 제출 중 중복 입력·자료 변경 차단. 화면 이탈/초기화는 취소하고 늦은 답변을 버린다.
+- Partial: 제한된 문맥으로 만든 답변에 부분 근거 안내. 답변 본문은 plain text, 검증된 `/doc/<positive id>` 인용만 링크.
+- Error: 자료 조회·체험 세션 실패·질문 실패를 구분하고 고정 문구/명시 재시도. 실패한 질문 draft는 유지하되 자동 재전송 금지. 변경/철회된 자료로 실패하면 선택 재검토를 안내한다.
+- Ideal: 선택 근거, 질문/답변, 인용, 남은 체험 횟수. 대화가 새로고침/화면 이탈 시 사라짐을 표시. 초기화는 대화만 지우며 횟수 복원을 암시하지 않는다.
+
+횟수 소진은 추가 전송을 막고 Google 로그인 진입을 제공하되 로그인만으로 현재 체험 횟수가 초기화되거나 미구현 회원 무제한 채팅을 사용할 수 있다고 약속하지 않는다. 공급자 측 보존과 서비스 대화 기록 비저장은 구분한다. 현재 UI 준비는 실제 dispatcher·모델 호출·공개 서비스 완료가 아니다.

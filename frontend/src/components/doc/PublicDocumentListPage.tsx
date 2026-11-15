@@ -42,6 +42,7 @@ export function PublicDocumentListPage() {
   const data = query.data
   return <PageContainer width="reading" className="[overflow-wrap:anywhere]">
     <header className="space-y-2"><h1 className="text-xl font-medium">공개 문서</h1><p className="text-sm text-ink-2">공개된 자료의 제목과 보관된 본문을 검색합니다.</p></header>
+    <Button asChild variant="outline"><Link to="/chat">공개 자료 체험 채팅</Link></Button>
     <SearchForm key={q} q={q.slice(0, 120)} onSearch={value => navigate(feedUrl(value))} />
     {!valid ? <ErrorState message="검색 주소를 확인해 주세요." />
       : query.error ? toApiError(query.error).status === 400

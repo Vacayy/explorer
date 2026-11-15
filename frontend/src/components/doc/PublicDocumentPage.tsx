@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { toApiError } from '@/api/errors'
 import { usePublishedDocument } from '@/hooks/usePublishedDocument'
 import { PageContainer } from '@/components/shared/PageContainer'
@@ -50,6 +51,7 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
   return <DocumentContainer>
     <header className="space-y-2">
       <h1 className="text-xl font-medium">{document.title || '제목 없는 문서'}</h1>
+      <Button asChild variant="outline" size="sm"><Link to={`/chat?doc=${id}`}>이 문서로 체험 채팅</Link></Button>
       {sourceUrl && <Button asChild variant="outline" size="sm"><a href={sourceUrl} target="_blank" rel="noopener noreferrer">출처 페이지</a></Button>}
     </header>
     <section aria-label="보관된 본문" className="min-w-0 space-y-3">
