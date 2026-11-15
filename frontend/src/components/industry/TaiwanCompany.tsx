@@ -1,3 +1,5 @@
+import { PUBLIC_ACCESS } from '@/lib/accessMode'
+import { TaiwanSources } from '@/components/industry/TaiwanSources'
 import { Link, useParams } from "react-router-dom"
 import { PageLayout } from "@/components/shared/PageLayout"
 import { ErrorState, EmptyState } from "@/components/shared/ErrorState"
@@ -41,7 +43,7 @@ export function TwCompanyDialog({ code, item, layers, asOf, onClose }: { code: s
   if (!code || !item) return null
   return <MonitorDialog open onClose={onClose} sub={`${layerOf(item, layers)} · ${item.code}`} name={item.name} value={value(item)} yoy={item.yoy_pct}
     detailTo={`/follow/taiwan/${encodeURIComponent(item.code)}`}>
-    <BigChart data={points(item)} barLabel="월매출(36개월)" fmt={fmtTwd} />
+    <BigChart data={points(item)} barLabel={PUBLIC_ACCESS ? "월매출(공개 2개월)" : "월매출(36개월)"} fmt={fmtTwd} />
     <StatGrid stats={stats(item, layers, asOf)} />
     <DialogRow label="역할">{item.role || "-"}</DialogRow>
   </MonitorDialog>
@@ -57,6 +59,7 @@ export default function TaiwanCompanyPage() {
   if (d && !item) return <PageLayout mode="document"><EmptyState message="이 회사의 월매출이 없습니다." /><Link to="/follow/taiwan" className="text-[13px] text-ink-2 hover:text-ink">‹ 대만 공급망</Link></PageLayout>
   return <PageLayout mode="document">
     <div className="flex flex-col gap-5">
+      {PUBLIC_ACCESS && <TaiwanSources />}
       <Link to="/follow/taiwan" className="w-fit text-[13px] text-ink-2 hover:text-ink">‹ 대만 공급망</Link>
       {!item || !d ? <div role="status" aria-label="불러오는 중" className="flex flex-col gap-3"><Skeleton className="h-4 w-40" /><Skeleton className="h-9 w-64" /><Skeleton className="h-[460px] w-full" /></div> : <>
         <header className="flex flex-col gap-1">
@@ -68,7 +71,7 @@ export default function TaiwanCompanyPage() {
           </div>
         </header>
         <section className="flex flex-col gap-4 border bg-card p-5 max-sm:p-3">
-          <BigChart data={points(item)} height={360} barLabel="월매출(36개월)" fmt={fmtTwd} />
+          <BigChart data={points(item)} height={360} barLabel={PUBLIC_ACCESS ? "월매출(공개 2개월)" : "월매출(36개월)"} fmt={fmtTwd} />
           <StatGrid stats={stats(item, d.layers, d.as_of)} large />
         </section>
         <section className="flex flex-col gap-3 border bg-card p-5 max-sm:p-3">

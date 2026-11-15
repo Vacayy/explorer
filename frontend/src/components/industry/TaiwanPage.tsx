@@ -1,3 +1,4 @@
+import { TaiwanSources } from '@/components/industry/TaiwanSources'
 import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
@@ -49,7 +50,7 @@ export default function TaiwanPage() {
         onChange={kv => setMany({ ...kv, page: null })} onPage={p => setMany({ page: p > 1 ? String(p) : null })}
         hrefOf={p => { const n = new URLSearchParams(params); if (p > 1) n.set("page", String(p)); else n.delete("page"); return `?${n}` }}
         onOpen={v => setMany({ tw: v })} />
-      {PUBLIC_ACCESS ? <p className="p-4 text-sm text-muted-foreground">대만·한국 연결 분석은 공개 준비 중입니다.</p> : <LinkWall q={links} />}
+      {PUBLIC_ACCESS ? <><TaiwanSources /><p className="p-4 text-sm text-muted-foreground">대만·한국 연결 분석은 공개 준비 중입니다.</p></> : <LinkWall q={links} />}
     </div>
     <TwCompanyDialog code={code} item={rev.data?.items.find(i => i.code === code)} layers={rev.data?.layers ?? []} asOf={rev.data?.as_of ?? null} onClose={() => setMany({ tw: null })} />
   </PageLayout>
@@ -91,7 +92,7 @@ function RevenueMonitor({ q, layer, sort, page, onChange, onPage, hrefOf, onOpen
   const pg = pageOf(list, page, wallPageSize(mobile))
   const last = d?.as_of ? `${+d.as_of.slice(5, 7)}월` : "최신 달"
   return <MonitorSection label="tw.monitor">
-    <BlockHead section title="대만 월매출 모니터" sub={<span className="max-sm:hidden">{`24개월 · 억 TWD · 막대 끝 = ${last} · 선 = 12개월 평균`}</span>}
+    <BlockHead section title="대만 월매출 모니터" sub={<span className="max-sm:hidden">{`${PUBLIC_ACCESS ? "공개 2개월" : "24개월"} · 억 TWD · 막대 끝 = ${last} · 선 = 12개월 평균`}</span>}
       info="대만 상장사 월매출(공시)입니다. 분홍 막대는 전년 대비 +50% 이상. 카드를 누르면 상세가 가운데 창으로 열립니다." />
     <div className="flex items-center gap-2.5 max-lg:flex-col max-lg:items-stretch">
       {d ? <FilterChips options={[{ value: "all", label: `전체 ${d.items.length}` }, ...d.layers.map(x => ({ value: x.key, label: x.label }))]} value={l}
