@@ -28,6 +28,8 @@
 
 `pipeline.company_evidence.evidence_response`는 호출자가 선택한 근거 행의 기간·장 마감 시각·출처·페이지·30일 흐름을 계산한다. 입력 행을 수정하지 않으며 DB나 수집기를 직접 호출하지 않는다. 기존 private `company_evidence`는 개인 엔티티 연결/공시 조회와 페이지 출처명 resolver를 유지한다. 이 분리는 승인 문서 입력을 연결하기 위한 준비이며 공개 근거 API 허용이나 데이터 배포를 뜻하지 않는다.
 
+공개 GET `/api/spine/feed/company-evidence?market=us`는 public US registry와 `public_company_evidence(ticker,doc_id,fingerprint)`의 명시 준비 연결을 사용한다. 각 문서는 PublicDocuments의 현재 승인/원문 fingerprint 및 연결 준비 시 fingerprint가 모두 일치해야 한다. 이 집합에 대해서만 기존 기간·출처·검색·페이지·coverage/flow를 계산한다. 철회/변경 자료는 본문과 집계에서 제외하고 재승인만으로 기업 연결을 새 revision에 승계하지 않는다. 개인 엔티티·팔로우·공시 조회나 요약 POST는 허용하지 않는다. 실제 데이터 준비 및 화면/배포 수용은 별도다.
+
 ## 공개 기업 개요 저장 조회
 
 `GET /api/spine/company-profile/{code}?market=us`의 public 분기는 공개 미국 기업 registry와 같은 readonly snapshot의 `public_company_profiles(ticker,payload_json)`만 조회한다. 준비된 보고서의 사업 설명·인용·출처 metadata·gaps·작성시각을 유지하며 model/cost/reason은 null, 원문 발췌는 빈 값이어야 한다. 출처 URL과 인용 ID·기업 식별을 검증하고 개인 입력이나 알려진 제한 제공사 입력이 있는 준비본을 거부한다. 개인 company_profiles 테이블이나 수집/모델 호출로 폴백하지 않는다. 등록 기업의 미준비 보고서는 profile=null, 등록 밖/아직 미연결 시장은404다. POST 조사 기능은 공개 허용 목록에 없다.
