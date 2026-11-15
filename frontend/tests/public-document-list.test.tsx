@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({ data: undefined as PublishedDocumentList | und
 vi.mock('@/hooks/usePublishedDocuments', () => ({ usePublishedDocuments: (...args: unknown[]) => { state.calls(...args); return state } }))
 const { PublicContent } = await import('@/components/auth/PublicContent')
 function Location() { const loc = useLocation(); return <span aria-label="현재 주소">{loc.pathname}{loc.search}</span> }
-function renderFeed(path = '/feed') { return render(<MemoryRouter initialEntries={[path]}><PublicContent /><Location /></MemoryRouter>) }
+function renderFeed(path = '/feed?view=documents') { return render(<MemoryRouter initialEntries={[path]}><PublicContent /><Location /></MemoryRouter>) }
 afterEach(() => { cleanup(); state.data = undefined; state.error = null; state.isFetching = false; state.fetchStatus = 'idle'; vi.clearAllMocks() })
 const data = (): PublishedDocumentList => ({ items: [{ id: 12, title: '승인 자료', source_type: 'web', published_at: null, snippet: '공개된 보관 본문' }], next_cursor: 'opaque-next' })
 

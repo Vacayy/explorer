@@ -10,6 +10,12 @@ class PublishedAttachment(BaseModel):
     url: str
 
 
+class PublishedChannel(BaseModel):
+    id: str
+    name: str
+    platform: str
+
+
 class PublishedDocument(BaseModel):
     id: int
     title: str
@@ -19,6 +25,7 @@ class PublishedDocument(BaseModel):
     content: str
     content_kind: Literal['stored_markdown', 'stored_text']
     attachments: list[PublishedAttachment]
+    channel: PublishedChannel | None = None
 
 
 class PublicationPreview(BaseModel):
@@ -63,3 +70,17 @@ class PublicationResult(BaseModel):
     id: int
     version: int
     status: Literal['approved', 'revoked']
+
+
+class PublicFeedChannel(PublishedChannel):
+    count: int
+    latest_at: str | None
+    preview: str
+
+
+class PublicFeed(BaseModel):
+    channels: list[PublicFeedChannel]
+    items: list[PublicDocumentSummary]
+    page: int
+    has_more: bool
+    until: str

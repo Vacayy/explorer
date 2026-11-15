@@ -1,3 +1,5 @@
+import { PublicFeedPage } from '@/components/feed/PublicFeedPage'
+import { isSearchView } from '@/lib/feed'
 import { PublicTradePage } from '@/components/follow/PublicTradePage'
 import { MemberSavedPage } from '@/components/follow/MemberSavedPage'
 import { PublicMacroPage } from '@/components/home/PublicMacroPage'
@@ -18,7 +20,7 @@ import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
 
 /** Incremental public coverage. Never mount a private page behind a hidden UI. */
 export function PublicContent() {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const sector = useMatch('/industry/us/:ticker')
   const krSector = useMatch('/industry/:sector')
   const summary = useMatch('/analyze/:stockCode/summary')
@@ -33,7 +35,7 @@ export function PublicContent() {
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
   if (pathname === '/chat') return <PublicTrialChatPage />
   if (pathname === '/feed/saved') return <MemberSavedPage />
-  if (pathname === '/feed') return <PublicDocumentListPage />
+  if (pathname === '/feed') return isSearchView(search) || new URLSearchParams(search).has('cursor') ? <PublicDocumentListPage /> : <PublicFeedPage />
   if (pathname === '/portfolio/principles') return <MemberPrinciplesPage />
   if (pathname === '/portfolio') return <MemberPortfolioPage />
   if (document?.params.docId) return <PublicDocumentPage docId={document.params.docId} />

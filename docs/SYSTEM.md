@@ -8,7 +8,9 @@
 
 ## 기존 피드 화면 재사용
 
-`FeedFrame`/`FeedHeaderView`, `ChannelReaderFrame`, `DocumentCardView`는 기존 피드의 레이아웃·헤더·2열/모바일 틀·카드 마크업을 명시 입력으로 재사용한다. private 진입점의 채널 조회·읽음 변경·개인 도구는 그대로 유지한다. `PublishedDocumentCard`는 승인 문서 API와 `PublishedDocumentBody`만 조합하고 재검증 중/실패/철회/오프라인에는 캐시 본문을 숨긴다. 아직 공개 피드 라우트에 연결하지 않았으며, 실제 승인 소스 디렉터리·채널 선택/페이지와 연결해야 공개 피드 복원이 성립한다.
+`FeedFrame`/`FeedHeaderView`, `ChannelReaderFrame`/`ChannelEntry`, `DocumentCardView`는 private/public 피드가 공유하는 기존 레이아웃·헤더·2열/모바일 틀·소스 행·카드다. 공개 `/feed`는 `PublicFeedPage`에서 `/api/public/feed`의 승인 소스 디렉터리와 서버 채널/종류/페이지 필터를 연결한다. URL의 channel/channel_type/channel_q/reader_topic/reader_page/reader_until/reader_open과 문서 return_to를 유지한다. 개인 읽음·관리·스터디·주제추천 hook은 마운트하지 않는다. 공개 문서 검색은 기존 승인 검색으로 연결하며 원래 DocumentSearch 전체 UI와 홈 구성 연결은 후속이다.
+
+`PublishedDocument.channel`은 해당 문서의 출처 식별/명칭/종류를 승인 fingerprint에 포함한다. PublicationStore의 명시 initialize는 v1/v2→v3로 `publications.feed_metadata`를 추가하며 GET은 DDL을 실행하지 않는다. 기존 승인에 새 채널 정보를 자동 부여하지 않으며 새 preview/approve가 필요하다. 승인 transaction에 원문 없는 채널/제목/게시일 metadata를 저장하므로 디렉터리는 전체 원문/첨부를 읽지 않고, 선택한20개 문서만 현재 승인 fingerprint와 공유128MiB 읽기 예산으로 검증한다. 디렉터리 이름·건수는 승인 revision 기준이다. 원문이나 출처가 이후 변경되면 새 내용은 노출하지 않고 문서 검증에서 제외하며 승인 철회는 디렉터리에서도 제외한다. 주제 URL은 승인 제목 검색이며 전체 본문 검색은 기존 문서 검색 API를 사용한다. `PublishedDocumentCard`는 재검증 중/실패/철회/오프라인에서 캐시 본문을 숨긴다. 실제 공개 배포에는 v3 사전 준비와 해당 배포 revision의 복원/schema 검사 갱신이 필요하다.
 
 ## 공개 API 시작·종료 경계
 

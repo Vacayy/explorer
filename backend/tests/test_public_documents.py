@@ -42,7 +42,7 @@ class PublicDocumentTests(unittest.TestCase):
         self.headers = {'Cookie':SESSION_COOKIE+'='+token, 'Origin':'https://beta.example', 'x-csrf-token':session_csrf(token)}
         self.member = {'Cookie':SESSION_COOKIE+'='+member_token}
         self.app = FastAPI(); self.app.include_router(routes.router)
-        policies = {k:v for k,v in PUBLIC_ROUTE_POLICIES.items() if k[1].startswith(('/api/public/documents','/api/operator/publications'))}
+        policies = {k:v for k,v in PUBLIC_ROUTE_POLICIES.items() if k[1].startswith(('/api/public/documents','/api/public/feed','/api/operator/publications'))}
         self.app.add_middleware(PublicAccessBoundary, routes=self.app.router.routes, policies=policies,
             service_factory=lambda:SimpleNamespace(identities=identities,config=SimpleNamespace(public_origin='https://beta.example')))
         self.client=TestClient(self.app,base_url='https://beta.example'); self.addCleanup(self.client.close)

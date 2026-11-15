@@ -1,8 +1,9 @@
 """Public document readers and authenticated, CSRF-protected operator decisions."""
 import sqlite3
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from models.public_documents import (PublishedDocument, PublicationPreview, ApprovePublication,
-    RevokePublication, PublicationResult, PublicDocumentList)
+    RevokePublication, PublicationResult, PublicDocumentList, PublicFeed)
 from security.access_boundary import NO_STORE
 from security.public_documents import PublicDocuments, DocumentUnavailable, ListingBudgetExceeded
 from security.publication_store import PublicationConflict, InvalidCursor
@@ -99,3 +100,13 @@ def preview_attachment(request: Request, doc_id: int = Path(ge=1),
     if snapshot.fingerprint != fingerprint or snapshot.selected_bytes is None:
         raise HTTPException(404, 'Document unavailable', headers=NO_STORE)
     return attachment_response(snapshot, doc_id, attachment_id)
+
+
+@router.get('/api/public/feed', response_model=PublicFeed)
+def feed(channel: str = Query(default='', max_length=2200), platform: str = Query(default='all', max_length=128),
+         topic: str = Query(default='', max_length=120), page: int = Query(default=1, ge=1, le=100),
+         until: datetime | None = None, service: PublicDocuments = Depends(publication_service)):
+    from security.public_feed import public_feed
+    from datetime import timezone
+    cutoff = until.replace(tzinfo=timezone.utc) if until is not None and until.tzinfo is None else until
+    return perform(lambda: public_feed(service, channel=channel, platform=platform, topic=topic, page=page, until=cutoff))

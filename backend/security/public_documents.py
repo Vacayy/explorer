@@ -132,11 +132,14 @@ class PublicDocuments:
             conn.row_factory = sqlite3.Row
             try:
                 conn.execute('PRAGMA query_only=ON')
+                conn.execute('BEGIN')
                 row = conn.execute('''SELECT id,substr(title,1,1025) title,substr(source_type,1,129) source_type,
                     substr(url,1,4097) url,substr(published_at,1,129) published_at,
                     substr(markdown,1,?) markdown,substr(raw_content,1,?) raw_content,
                     substr(media_json,1,65537) media_json FROM raw_documents WHERE id=?''',
                     (MAX_TEXT + 1, MAX_TEXT + 1, doc_id)).fetchone()
+                from security.public_feed import channel_for
+                channel = channel_for(conn, row) if row else None
             finally:
                 conn.close()
             if not row: raise DocumentUnavailable()
@@ -163,8 +166,10 @@ class PublicDocuments:
                 if index == selected: selected_bytes = data
             document = PublishedDocument(id=doc_id, title=row['title'] or '', source_type=row['source_type'] or '',
                 url=_safe_url(row['url']), published_at=row['published_at'], content=content,
-                content_kind='stored_markdown' if row['markdown'] else 'stored_text', attachments=attachments)
+                content_kind='stored_markdown' if row['markdown'] else 'stored_text', attachments=attachments, channel=channel)
             material = {'version':1, 'document':document.model_dump(mode='json'), 'attachments':manifest}
+            if channel is None:
+                material['document'].pop('channel')  # Preserve old approvals with no additional source metadata.
             fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True, ensure_ascii=False, separators=(',',':')).encode()).hexdigest()
             return Snapshot(document, fingerprint, selected_bytes)
         except (OSError, ValueError, TypeError, sqlite3.Error) as exc:
@@ -180,7 +185,9 @@ class PublicDocuments:
         snapshot = self.capture(doc_id)
         if snapshot.fingerprint != request.fingerprint:
             raise PublicationConflict()
-        return self.store.approve(doc_id, snapshot.fingerprint, request.expected_version, actor, request.rights_basis)
+        from security.public_feed import feed_metadata
+        return self.store.approve(doc_id, snapshot.fingerprint, request.expected_version, actor, request.rights_basis,
+                                  feed_metadata=feed_metadata(snapshot.document))
 
     def published(self, doc_id, selected=None, *, budget=None):
         record = self.store.get(doc_id)

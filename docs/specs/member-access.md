@@ -236,3 +236,10 @@ UI 상태: Empty는 아직 원칙없음, Loading은 skeleton, Error는 재시도
 ### 공개 API 수명주기
 
 공개 모드도 기존 main 전체 라우터와 허용 목록을 사용한다. 시작 시 기존 store·metadata/대표 필수열·인증/체험 설정을 readonly로 확인하며 DB 생성/ALTER·개인 bot·분석/발견 background·개인 요청 관측 쓰기는 수행하지 않는다. 배포자는 별도의 전체 schema/복원 gate를 먼저 통과해야 한다. 잘못된 모드·누락/빈 store·필수 설정 실패는 listen 전에 차단한다. 시작 검사는 실제 Google 인증이나 provider 연결 검증이 아니다. 채팅 socket을 시작 조건으로 요구하지 않고 실제 채팅 요청에서 확인하며, 사용할 수 없으면 기존503을 유지한다. private 실행은 기존 동작을 보존한다.
+
+
+### 기존 피드의 공개 읽기 연결
+
+`GET /api/public/feed`는 승인 당시 channel metadata만으로 소스 디렉터리를 구성하고 channel/platform/topic/page/until을 서버에서 적용한다. 개인 구독/읽음/스크랩 전달채널은 조회하지 않는다. title 기반 topic과 본문 검색은 구분한다. 원래2열/모바일 소스목록·카드·페이지·문서복귀를 공유 컴포넌트로 유지한다. Empty는 공개 자료 없음/선택 페이지 검증가능 자료 없음, Loading은 소스·본문 skeleton, Partial은 승인 revision의 목록에서 현재본문 검증에 실패한 항목 제외, Error는 재시도와 캐시내용 숨김, Ideal은 승인된 본문과 출처/첨부다. 개인 unread를 공용 count로 대체하지 않으며 읽음 POST를 보내지 않는다.
+
+PublicationStore v3의 `feed_metadata`는 승인 transaction에서만 생성된다. 이름 변경은 fingerprint를 변경하여 새 승인 없이 본문에 반영되지 않는다. 디렉터리의 이름/건수는 마지막 승인 revision 기준이며 현재 원문 검증 여부와 다르다. v2 백업→명시 initialize→무결성→필요 문서 재검토/승인 순서로 준비한다. 오래된 승인에는 metadata를 소급 생성하지 않는다. 기존 배포용 schema reference는 해당 코드/이미지에 고정되어 있으므로 v3 배포 전에 갱신·복원 검증해야 한다. 새 채널 정보가 포함된 문서를 예전 fingerprint로 자동 재승인하지 않는다.

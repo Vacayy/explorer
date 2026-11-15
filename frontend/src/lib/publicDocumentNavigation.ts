@@ -24,5 +24,10 @@ export function publicFeedReturn(value: string | null): string {
   const q = (url.searchParams.get('q') ?? '').trim()
   const cursor = url.searchParams.get('cursor')
   if (q.length > 120 || (cursor !== null && (!cursor || cursor.length > 2048))) return '/feed'
-  return publicFeedUrl(q, cursor, url.searchParams.get('company_return'))
+  const result = new URL(publicFeedUrl(q, cursor, url.searchParams.get('company_return')), 'https://local.invalid')
+  for (const [key, limit] of Object.entries({ view: 16, channel: 2200, channel_type: 128, channel_q: 120, reader_topic: 120, reader_page: 3, reader_until: 64, reader_open: 1 })) {
+    const value = url.searchParams.get(key)
+    if (value && value.length <= limit) result.searchParams.set(key, value)
+  }
+  return result.pathname + result.search
 }

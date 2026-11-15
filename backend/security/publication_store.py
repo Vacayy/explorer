@@ -47,7 +47,7 @@ class PublicationStore:
                 if versions == [1]:
                     conn.execute('ALTER TABLE publication_metadata ADD COLUMN cursor_key TEXT')
                     conn.execute('UPDATE publication_metadata SET version=2,cursor_key=?', (Fernet.generate_key().decode(),))
-                elif versions != [2]:
+                elif versions not in ([2], [3]):
                     raise ValueError('Unsupported publication schema')
             else:
                 conn.execute('CREATE TABLE publication_metadata(version INTEGER NOT NULL,cursor_key TEXT NOT NULL)')
@@ -57,11 +57,15 @@ class PublicationStore:
                     version INTEGER NOT NULL, status TEXT NOT NULL CHECK(status IN ('approved','revoked')),
                     rights_basis TEXT NOT NULL, approved_by TEXT NOT NULL, approved_at REAL NOT NULL,
                     revoked_by TEXT, revoked_at REAL)''')
+            columns = {r[1] for r in conn.execute('PRAGMA table_info(publications)')}
+            if 'feed_metadata' not in columns:
+                conn.execute('ALTER TABLE publications ADD COLUMN feed_metadata TEXT')
+            conn.execute('UPDATE publication_metadata SET version=3')
         os.chmod(self.path, 0o600)
 
     def cursor_cipher(self):
         with self.connection(readonly=True) as conn:
-            row = conn.execute('SELECT cursor_key FROM publication_metadata WHERE version=2').fetchone()
+            row = conn.execute('SELECT cursor_key FROM publication_metadata WHERE version IN (2,3)').fetchone()
         if row is None:
             raise ValueError('Publication cursor schema not prepared')
         return Fernet(row[0])
@@ -104,7 +108,7 @@ class PublicationStore:
         return len(rows) == len(fingerprints) and all(
             row['status'] == 'approved' and row['fingerprint'] == fingerprints[row['doc_id']] for row in rows)
 
-    def approve(self, doc_id, fingerprint, expected_version, actor, basis):
+    def approve(self, doc_id, fingerprint, expected_version, actor, basis, *, feed_metadata=None):
         if not actor or not basis.strip():
             raise ValueError('Approval evidence required')
         with self.connection() as conn, conn:
@@ -114,11 +118,11 @@ class PublicationStore:
             if expected_version != version:
                 raise PublicationConflict()
             version += 1
-            conn.execute('''INSERT INTO publications VALUES(?,?,?,'approved',?,?,?,NULL,NULL)
+            conn.execute('''INSERT INTO publications(doc_id,fingerprint,version,status,rights_basis,approved_by,approved_at,revoked_by,revoked_at,feed_metadata) VALUES(?,?,?,'approved',?,?,?,NULL,NULL,?)
                 ON CONFLICT(doc_id) DO UPDATE SET fingerprint=excluded.fingerprint,version=excluded.version,
                 status='approved',rights_basis=excluded.rights_basis,approved_by=excluded.approved_by,
-                approved_at=excluded.approved_at,revoked_by=NULL,revoked_at=NULL''',
-                (doc_id, fingerprint, version, basis.strip(), actor, time.time()))
+                approved_at=excluded.approved_at,revoked_by=NULL,revoked_at=NULL,feed_metadata=excluded.feed_metadata''',
+                (doc_id, fingerprint, version, basis.strip(), actor, time.time(), json.dumps(feed_metadata, ensure_ascii=False) if feed_metadata is not None else None))
         return {'id': doc_id, 'version': version, 'status': 'approved'}
 
     def revoke(self, doc_id, expected_version, actor):

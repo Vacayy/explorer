@@ -47,10 +47,11 @@ def validate_public_state():
         ])
         for path,table,version in [(auth.identity_db,'identity_metadata',1),
                                     (auth.login_db,'login_metadata',1),
-                                    (publication,'publication_metadata',2),
+                                    (publication,'publication_metadata',3),
                                     (quota.path,'trial_metadata',1)]:
             readonly(path,[('SELECT version FROM '+table,[(version,)])])
         readonly(macro,[("SELECT value FROM meta WHERE key='schema'",[('public_macro_direct_v1',)])])
+        readonly(publication,[('SELECT feed_metadata FROM publications LIMIT 0',[])])
         PublicationStore(publication).cursor_cipher()
     except Exception:
         # Do not expose paths, Google configuration, tokens or DB contents in logs.

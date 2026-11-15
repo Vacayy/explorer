@@ -1,6 +1,9 @@
 import { Badge } from "@/components/ui/badge"
 
 const SOURCE_LABEL: Record<string, string> = {
+  earnings_release: "실적 발표",
+  web: "웹",
+  other: "기타",
   telegram: "텔레그램",
   blog: "블로그",
   youtube: "유튜브",
@@ -16,11 +19,13 @@ const SOURCE_LABEL: Record<string, string> = {
 // 미검증 소스(개인 투자자 블로그 스크랩)는 가설 색으로 — 사실 소스와 눈으로 구분된다 (D-142)
 const UNVERIFIED = new Set(["scrap"])
 
+export function sourceLabel(sourceType: string) { return SOURCE_LABEL[sourceType] ?? sourceType }
+
 export function SourceBadge({ sourceType }: { sourceType: string }) {
   const unverified = UNVERIFIED.has(sourceType)
   return (
     <Badge variant={unverified ? "hyp" : "neutral"}>
-      {SOURCE_LABEL[sourceType] ?? sourceType}
+      {sourceLabel(sourceType)}
     </Badge>
   )
 }

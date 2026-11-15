@@ -23,7 +23,7 @@ export function PublishedDocumentCard({ id, returnTo = '/feed' }: { id: number; 
   return <DocumentCardView title={doc.title || '제목 없는 게시물'} to={to}
     header={<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
       <SourceBadge sourceType={doc.source_type} />
-      <span className="min-w-0 truncate font-medium text-ink-2">수집 자료</span>
+      <span className="min-w-0 truncate font-medium text-ink-2">{doc.channel?.name || '수집 자료'}</span>
       {doc.published_at && <time className="ml-auto shrink-0 text-caption" dateTime={doc.published_at} title={doc.published_at}>{formatRelativeTime(doc.published_at)} 게시</time>}
     </div>}
     body={<PublishedDocumentBody document={doc} />}

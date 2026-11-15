@@ -330,1290 +330,1345 @@
   },
   {
     "method": "get",
-    "path": "/api/public/trade",
+    "path": "/api/public/feed",
     "status": 200,
     "validator": "response47",
     "group": "public"
   },
   {
     "method": "get",
-    "path": "/api/spine/actions",
+    "path": "/api/public/trade",
     "status": 200,
     "validator": "response48",
-    "group": "actions"
+    "group": "public"
   },
   {
     "method": "get",
-    "path": "/api/spine/actions/rights",
+    "path": "/api/spine/actions",
     "status": 200,
     "validator": "response49",
     "group": "actions"
   },
   {
     "method": "get",
-    "path": "/api/spine/admin/health",
+    "path": "/api/spine/actions/rights",
     "status": 200,
     "validator": "response50",
-    "group": "admin"
+    "group": "actions"
   },
   {
     "method": "get",
-    "path": "/api/spine/admin/jobs",
+    "path": "/api/spine/admin/health",
     "status": 200,
     "validator": "response51",
     "group": "admin"
   },
   {
     "method": "get",
-    "path": "/api/spine/admin/observe",
+    "path": "/api/spine/admin/jobs",
     "status": 200,
     "validator": "response52",
     "group": "admin"
   },
   {
     "method": "get",
-    "path": "/api/spine/admin/runs",
+    "path": "/api/spine/admin/observe",
     "status": 200,
     "validator": "response53",
     "group": "admin"
   },
   {
     "method": "get",
-    "path": "/api/spine/admin/runtime",
+    "path": "/api/spine/admin/runs",
     "status": 200,
     "validator": "response54",
+    "group": "admin"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/admin/runtime",
+    "status": 200,
+    "validator": "response55",
     "group": "admin"
   },
   {
     "method": "post",
     "path": "/api/spine/agent-proposals/{proposal_id}/approve",
     "status": 200,
-    "validator": "response55",
+    "validator": "response56",
     "group": "agent-proposals"
   },
   {
     "method": "post",
     "path": "/api/spine/agent-proposals/{proposal_id}/dismiss",
     "status": 200,
-    "validator": "response56",
+    "validator": "response57",
     "group": "agent-proposals"
   },
   {
     "method": "get",
     "path": "/api/spine/approvals",
     "status": 200,
-    "validator": "response57",
+    "validator": "response58",
     "group": "approvals"
   },
   {
     "method": "post",
     "path": "/api/spine/ask",
     "status": 200,
-    "validator": "response58",
+    "validator": "response59",
     "group": "ask"
   },
   {
     "method": "get",
     "path": "/api/spine/beneficiary/screen",
     "status": 200,
-    "validator": "response59",
+    "validator": "response60",
     "group": "beneficiary"
   },
   {
     "method": "post",
     "path": "/api/spine/beneficiary/upside",
     "status": 200,
-    "validator": "response60",
+    "validator": "response61",
     "group": "beneficiary"
   },
   {
     "method": "get",
     "path": "/api/spine/causal/activity",
     "status": 200,
-    "validator": "response61",
+    "validator": "response62",
     "group": "causal"
   },
   {
     "method": "get",
     "path": "/api/spine/causal/node/{entity_id}/narratives",
     "status": 200,
-    "validator": "response62",
+    "validator": "response63",
     "group": "causal"
   },
   {
     "method": "get",
     "path": "/api/spine/causal/worldview/core",
     "status": 200,
-    "validator": "response63",
+    "validator": "response64",
     "group": "causal"
   },
   {
     "method": "get",
     "path": "/api/spine/causal/worldview/index",
     "status": 200,
-    "validator": "response64",
+    "validator": "response65",
     "group": "causal"
   },
   {
     "method": "get",
     "path": "/api/spine/causal/worldview/neighborhood/{entity_id}",
     "status": 200,
-    "validator": "response65",
+    "validator": "response66",
     "group": "causal"
   },
   {
     "method": "get",
     "path": "/api/spine/chat/targets",
     "status": 200,
-    "validator": "response66",
+    "validator": "response67",
     "group": "chat"
   },
   {
     "method": "get",
     "path": "/api/spine/client-errors",
     "status": 200,
-    "validator": "response67",
+    "validator": "response68",
     "group": "client-errors"
   },
   {
     "method": "get",
     "path": "/api/spine/company/{name}/dossier",
     "status": 200,
-    "validator": "response68",
+    "validator": "response69",
     "group": "company"
   },
   {
     "method": "post",
     "path": "/api/spine/company/{name}/profile",
     "status": 200,
-    "validator": "response69",
+    "validator": "response70",
     "group": "company"
   },
   {
     "method": "get",
     "path": "/api/spine/conversations",
     "status": 200,
-    "validator": "response70",
-    "group": "conversations"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/conversations/{conversation_id}",
-    "status": 200,
     "validator": "response71",
     "group": "conversations"
   },
   {
-    "method": "patch",
+    "method": "get",
     "path": "/api/spine/conversations/{conversation_id}",
     "status": 200,
     "validator": "response72",
     "group": "conversations"
   },
   {
-    "method": "get",
-    "path": "/api/spine/credit",
+    "method": "patch",
+    "path": "/api/spine/conversations/{conversation_id}",
     "status": 200,
     "validator": "response73",
-    "group": "credit"
+    "group": "conversations"
   },
   {
     "method": "get",
-    "path": "/api/spine/credit/history",
+    "path": "/api/spine/credit",
     "status": 200,
     "validator": "response74",
     "group": "credit"
   },
   {
     "method": "get",
-    "path": "/api/spine/curation",
+    "path": "/api/spine/credit/history",
     "status": 200,
     "validator": "response75",
+    "group": "credit"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/curation",
+    "status": 200,
+    "validator": "response76",
     "group": "curation"
   },
   {
     "method": "get",
     "path": "/api/spine/doc/{doc_id}",
     "status": 200,
-    "validator": "response76",
+    "validator": "response77",
     "group": "doc"
   },
   {
     "method": "get",
     "path": "/api/spine/doc/{doc_id}/claims",
     "status": 200,
-    "validator": "response77",
+    "validator": "response78",
     "group": "doc"
   },
   {
     "method": "get",
     "path": "/api/spine/doc/{doc_id}/related",
     "status": 200,
-    "validator": "response78",
+    "validator": "response79",
     "group": "doc"
   },
   {
     "method": "get",
     "path": "/api/spine/feed",
     "status": 200,
-    "validator": "response79",
+    "validator": "response80",
     "group": "feed"
   },
   {
     "method": "get",
     "path": "/api/spine/feed/channels",
     "status": 200,
-    "validator": "response80",
+    "validator": "response81",
     "group": "feed"
   },
   {
     "method": "post",
     "path": "/api/spine/feed/channels/read-all",
     "status": 200,
-    "validator": "response81",
+    "validator": "response82",
     "group": "feed"
   },
   {
     "method": "get",
     "path": "/api/spine/feed/company-evidence",
     "status": 200,
-    "validator": "response82",
+    "validator": "response83",
     "group": "feed"
   },
   {
     "method": "get",
     "path": "/api/spine/feed/timeline",
     "status": 200,
-    "validator": "response83",
+    "validator": "response84",
     "group": "feed"
   },
   {
     "method": "get",
     "path": "/api/spine/follows",
     "status": 200,
-    "validator": "response84",
+    "validator": "response85",
     "group": "follows"
   },
   {
     "method": "post",
     "path": "/api/spine/follows",
     "status": 201,
-    "validator": "response85",
+    "validator": "response86",
     "group": "follows"
   },
   {
     "method": "put",
     "path": "/api/spine/groups/{group_id}/members/{stock_code}/tracked",
     "status": 200,
-    "validator": "response86",
+    "validator": "response87",
     "group": "groups"
   },
   {
     "method": "get",
     "path": "/api/spine/home",
     "status": 200,
-    "validator": "response87",
+    "validator": "response88",
     "group": "home"
   },
   {
     "method": "get",
     "path": "/api/spine/home/ai-activity",
     "status": 200,
-    "validator": "response88",
+    "validator": "response89",
     "group": "home"
   },
   {
     "method": "get",
     "path": "/api/spine/home/predictions",
     "status": 200,
-    "validator": "response89",
+    "validator": "response90",
     "group": "home"
   },
   {
     "method": "get",
     "path": "/api/spine/home/predictions/{event_ticker}",
     "status": 200,
-    "validator": "response90",
+    "validator": "response91",
     "group": "home"
   },
   {
     "method": "post",
     "path": "/api/spine/home/predictions/{event_ticker}/pin",
     "status": 200,
-    "validator": "response91",
+    "validator": "response92",
     "group": "home"
   },
   {
     "method": "get",
     "path": "/api/spine/indices/breadth",
     "status": 200,
-    "validator": "response92",
+    "validator": "response93",
     "group": "indices"
   },
   {
     "method": "get",
     "path": "/api/spine/industry/{sector}",
     "status": 200,
-    "validator": "response93",
+    "validator": "response94",
     "group": "industry"
   },
   {
     "method": "get",
     "path": "/api/spine/industry/{sector}/market",
     "status": 200,
-    "validator": "response94",
+    "validator": "response95",
     "group": "industry"
   },
   {
     "method": "get",
     "path": "/api/spine/industry/{sector}/peers",
     "status": 200,
-    "validator": "response95",
+    "validator": "response96",
     "group": "industry"
   },
   {
     "method": "get",
     "path": "/api/spine/industry/map",
     "status": 200,
-    "validator": "response96",
+    "validator": "response97",
     "group": "industry"
   },
   {
     "method": "get",
     "path": "/api/spine/industry/us/{ticker}",
     "status": 200,
-    "validator": "response97",
+    "validator": "response98",
     "group": "industry"
   },
   {
     "method": "get",
     "path": "/api/spine/industry/us/{ticker}/market",
     "status": 200,
-    "validator": "response98",
+    "validator": "response99",
     "group": "industry"
   },
   {
     "method": "get",
     "path": "/api/spine/industry/us/map",
     "status": 200,
-    "validator": "response99",
+    "validator": "response100",
     "group": "industry"
   },
   {
     "method": "post",
     "path": "/api/spine/knowledge",
     "status": 201,
-    "validator": "response100",
+    "validator": "response101",
     "group": "knowledge"
   },
   {
     "method": "get",
     "path": "/api/spine/knowledge/items",
     "status": 200,
-    "validator": "response101",
+    "validator": "response102",
     "group": "knowledge"
   },
   {
     "method": "get",
     "path": "/api/spine/knowledge/items/{knowledge_id}/evidence",
     "status": 200,
-    "validator": "response102",
+    "validator": "response103",
     "group": "knowledge"
   },
   {
     "method": "get",
     "path": "/api/spine/knowledge/overview",
     "status": 200,
-    "validator": "response103",
+    "validator": "response104",
     "group": "knowledge"
   },
   {
     "method": "get",
     "path": "/api/spine/knowledge/worldview",
     "status": 200,
-    "validator": "response104",
+    "validator": "response105",
     "group": "knowledge"
   },
   {
     "method": "post",
     "path": "/api/spine/knowledge/worldview/compute",
     "status": 200,
-    "validator": "response105",
+    "validator": "response106",
     "group": "knowledge"
   },
   {
     "method": "get",
     "path": "/api/spine/kr/movers",
     "status": 200,
-    "validator": "response106",
+    "validator": "response107",
     "group": "kr"
   },
   {
     "method": "get",
     "path": "/api/spine/macro/public",
     "status": 200,
-    "validator": "response107",
+    "validator": "response108",
     "group": "macro"
   },
   {
     "method": "get",
     "path": "/api/spine/market-today",
     "status": 200,
-    "validator": "response108",
+    "validator": "response109",
     "group": "market-today"
   },
   {
     "method": "get",
     "path": "/api/spine/market/{market}/overview",
     "status": 200,
-    "validator": "response109",
+    "validator": "response110",
     "group": "market"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative",
     "status": 200,
-    "validator": "response110",
+    "validator": "response111",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative-candidates",
     "status": 200,
-    "validator": "response111",
+    "validator": "response112",
     "group": "narrative-candidates"
   },
   {
     "method": "post",
     "path": "/api/spine/narrative-candidates/{tag}/approve",
     "status": 200,
-    "validator": "response112",
+    "validator": "response113",
     "group": "narrative-candidates"
   },
   {
     "method": "post",
     "path": "/api/spine/narrative-candidates/{tag}/dismiss",
     "status": 200,
-    "validator": "response113",
+    "validator": "response114",
     "group": "narrative-candidates"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/{narrative_id}/causal",
     "status": 200,
-    "validator": "response114",
+    "validator": "response115",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/{narrative_id}/chain",
     "status": 200,
-    "validator": "response115",
+    "validator": "response116",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/{narrative_id}/diff",
     "status": 200,
-    "validator": "response116",
+    "validator": "response117",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/{narrative_id}/grounding",
     "status": 200,
-    "validator": "response117",
+    "validator": "response118",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/{narrative_id}/related",
     "status": 200,
-    "validator": "response118",
+    "validator": "response119",
     "group": "narrative"
   },
   {
     "method": "post",
     "path": "/api/spine/narrative/compute",
     "status": 200,
-    "validator": "response119",
+    "validator": "response120",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/list",
     "status": 200,
-    "validator": "response120",
+    "validator": "response121",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/mega",
     "status": 200,
-    "validator": "response121",
+    "validator": "response122",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/mer",
     "status": 200,
-    "validator": "response122",
+    "validator": "response123",
     "group": "narrative"
   },
   {
     "method": "post",
     "path": "/api/spine/narrative/mer/compute",
     "status": 200,
-    "validator": "response123",
+    "validator": "response124",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/scenario",
     "status": 200,
-    "validator": "response124",
+    "validator": "response125",
     "group": "narrative"
   },
   {
     "method": "post",
     "path": "/api/spine/narrative/scenario/compute",
     "status": 200,
-    "validator": "response125",
+    "validator": "response126",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/version",
     "status": 200,
-    "validator": "response126",
+    "validator": "response127",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narrative/versions",
     "status": 200,
-    "validator": "response127",
+    "validator": "response128",
     "group": "narrative"
   },
   {
     "method": "get",
     "path": "/api/spine/narratives/{narrative_id}/market-today",
     "status": 200,
-    "validator": "response128",
+    "validator": "response129",
     "group": "narratives"
   },
   {
     "method": "get",
     "path": "/api/spine/person",
     "status": 200,
-    "validator": "response129",
+    "validator": "response130",
     "group": "person"
   },
   {
     "method": "get",
     "path": "/api/spine/person/{entity_id}",
     "status": 200,
-    "validator": "response130",
+    "validator": "response131",
     "group": "person"
   },
   {
     "method": "get",
     "path": "/api/spine/person/{name}/dossier",
     "status": 200,
-    "validator": "response131",
+    "validator": "response132",
     "group": "person"
   },
   {
     "method": "post",
     "path": "/api/spine/person/{name}/profile",
     "status": 200,
-    "validator": "response132",
+    "validator": "response133",
     "group": "person"
   },
   {
     "method": "get",
     "path": "/api/spine/person/followed",
     "status": 200,
-    "validator": "response133",
+    "validator": "response134",
     "group": "person"
   },
   {
     "method": "get",
     "path": "/api/spine/person/home",
     "status": 200,
-    "validator": "response134",
+    "validator": "response135",
     "group": "person"
   },
   {
     "method": "get",
     "path": "/api/spine/person/resolve",
     "status": 200,
-    "validator": "response135",
+    "validator": "response136",
     "group": "person"
   },
   {
     "method": "get",
     "path": "/api/spine/pricing",
     "status": 200,
-    "validator": "response136",
+    "validator": "response137",
     "group": "pricing"
   },
   {
     "method": "post",
     "path": "/api/spine/pricing/extract",
     "status": 200,
-    "validator": "response137",
+    "validator": "response138",
     "group": "pricing"
   },
   {
     "method": "get",
     "path": "/api/spine/proxy-boards",
     "status": 200,
-    "validator": "response138",
+    "validator": "response139",
     "group": "proxy-boards"
   },
   {
     "method": "post",
     "path": "/api/spine/proxy-boards",
     "status": 201,
-    "validator": "response139",
-    "group": "proxy-boards"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/proxy-boards/{board_id}",
-    "status": 200,
     "validator": "response140",
     "group": "proxy-boards"
   },
   {
-    "method": "patch",
+    "method": "get",
     "path": "/api/spine/proxy-boards/{board_id}",
     "status": 200,
     "validator": "response141",
     "group": "proxy-boards"
   },
   {
+    "method": "patch",
+    "path": "/api/spine/proxy-boards/{board_id}",
+    "status": 200,
+    "validator": "response142",
+    "group": "proxy-boards"
+  },
+  {
     "method": "post",
     "path": "/api/spine/proxy-boards/{board_id}/items",
     "status": 201,
-    "validator": "response142",
+    "validator": "response143",
     "group": "proxy-boards"
   },
   {
     "method": "get",
     "path": "/api/spine/proxy-boards/adapters",
     "status": 200,
-    "validator": "response143",
+    "validator": "response144",
     "group": "proxy-boards"
   },
   {
     "method": "get",
     "path": "/api/spine/proxy-boards/adapters/{kind}/catalog",
     "status": 200,
-    "validator": "response144",
+    "validator": "response145",
     "group": "proxy-boards"
   },
   {
     "method": "post",
     "path": "/api/spine/proxy-boards/suggest",
     "status": 200,
-    "validator": "response145",
+    "validator": "response146",
     "group": "proxy-boards"
   },
   {
     "method": "get",
     "path": "/api/spine/quotes",
     "status": 200,
-    "validator": "response146",
+    "validator": "response147",
     "group": "quotes"
   },
   {
     "method": "get",
     "path": "/api/spine/regimes",
     "status": 200,
-    "validator": "response147",
+    "validator": "response148",
     "group": "regimes"
   },
   {
     "method": "get",
     "path": "/api/spine/regimes/brk",
     "status": 200,
-    "validator": "response148",
+    "validator": "response149",
     "group": "regimes"
   },
   {
     "method": "post",
     "path": "/api/spine/regimes/collect",
     "status": 200,
-    "validator": "response149",
-    "group": "regimes"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/regimes/commentary",
-    "status": 200,
     "validator": "response150",
     "group": "regimes"
   },
   {
-    "method": "post",
+    "method": "get",
     "path": "/api/spine/regimes/commentary",
     "status": 200,
     "validator": "response151",
     "group": "regimes"
   },
   {
-    "method": "get",
-    "path": "/api/spine/regimes/state",
+    "method": "post",
+    "path": "/api/spine/regimes/commentary",
     "status": 200,
     "validator": "response152",
     "group": "regimes"
   },
   {
     "method": "get",
-    "path": "/api/spine/report",
+    "path": "/api/spine/regimes/state",
     "status": 200,
     "validator": "response153",
+    "group": "regimes"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/report",
+    "status": 200,
+    "validator": "response154",
     "group": "report"
   },
   {
     "method": "post",
     "path": "/api/spine/report/compute",
     "status": 200,
-    "validator": "response154",
+    "validator": "response155",
     "group": "report"
   },
   {
     "method": "get",
     "path": "/api/spine/report/history",
     "status": 200,
-    "validator": "response155",
+    "validator": "response156",
     "group": "report"
   },
   {
     "method": "get",
     "path": "/api/spine/report/list",
     "status": 200,
-    "validator": "response156",
+    "validator": "response157",
     "group": "report"
   },
   {
     "method": "get",
     "path": "/api/spine/report/version",
     "status": 200,
-    "validator": "response157",
+    "validator": "response158",
     "group": "report"
   },
   {
     "method": "get",
     "path": "/api/spine/research/candidates",
     "status": 200,
-    "validator": "response158",
+    "validator": "response159",
     "group": "research"
   },
   {
     "method": "post",
     "path": "/api/spine/research/candidates/{candidate_id}/approve",
     "status": 200,
-    "validator": "response159",
+    "validator": "response160",
     "group": "research"
   },
   {
     "method": "get",
     "path": "/api/spine/retail",
     "status": 200,
-    "validator": "response160",
+    "validator": "response161",
     "group": "retail"
   },
   {
     "method": "get",
     "path": "/api/spine/retail/snapshots",
     "status": 200,
-    "validator": "response161",
+    "validator": "response162",
     "group": "retail"
   },
   {
     "method": "get",
     "path": "/api/spine/risk",
     "status": 200,
-    "validator": "response162",
+    "validator": "response163",
     "group": "risk"
   },
   {
     "method": "post",
     "path": "/api/spine/risk/snapshot",
     "status": 200,
-    "validator": "response163",
+    "validator": "response164",
     "group": "risk"
   },
   {
     "method": "get",
     "path": "/api/spine/saved",
     "status": 200,
-    "validator": "response164",
+    "validator": "response165",
     "group": "saved"
   },
   {
     "method": "post",
     "path": "/api/spine/saved",
     "status": 201,
-    "validator": "response165",
+    "validator": "response166",
     "group": "saved"
   },
   {
     "method": "patch",
     "path": "/api/spine/saved/{item_id}",
     "status": 200,
-    "validator": "response166",
+    "validator": "response167",
     "group": "saved"
   },
   {
     "method": "get",
     "path": "/api/spine/sector-map",
     "status": 200,
-    "validator": "response167",
+    "validator": "response168",
     "group": "sector-map"
   },
   {
     "method": "get",
     "path": "/api/spine/sector-map/chain",
     "status": 200,
-    "validator": "response168",
+    "validator": "response169",
     "group": "sector-map"
   },
   {
     "method": "get",
     "path": "/api/spine/sector-map/members",
     "status": 200,
-    "validator": "response169",
+    "validator": "response170",
     "group": "sector-map"
   },
   {
     "method": "get",
     "path": "/api/spine/sector-map/peers",
     "status": 200,
-    "validator": "response170",
+    "validator": "response171",
     "group": "sector-map"
   },
   {
     "method": "get",
     "path": "/api/spine/signals",
     "status": 200,
-    "validator": "response171",
+    "validator": "response172",
     "group": "signals"
   },
   {
     "method": "get",
     "path": "/api/spine/signals/backtest",
     "status": 200,
-    "validator": "response172",
+    "validator": "response173",
     "group": "signals"
   },
   {
     "method": "get",
     "path": "/api/spine/signals/momentum",
     "status": 200,
-    "validator": "response173",
+    "validator": "response174",
     "group": "signals"
   },
   {
     "method": "get",
     "path": "/api/spine/signals/summary",
     "status": 200,
-    "validator": "response174",
+    "validator": "response175",
     "group": "signals"
   },
   {
     "method": "get",
     "path": "/api/spine/sources/dossier",
     "status": 200,
-    "validator": "response175",
+    "validator": "response176",
     "group": "sources"
   },
   {
     "method": "post",
     "path": "/api/spine/sources/dossier/summary",
     "status": 200,
-    "validator": "response176",
+    "validator": "response177",
     "group": "sources"
   },
   {
     "method": "get",
     "path": "/api/spine/sources/health",
     "status": 200,
-    "validator": "response177",
+    "validator": "response178",
     "group": "sources"
   },
   {
     "method": "get",
     "path": "/api/spine/stock/{stock_code}/lens",
     "status": 200,
-    "validator": "response178",
+    "validator": "response179",
     "group": "stock"
   },
   {
     "method": "post",
     "path": "/api/spine/stock/{stock_code}/lens/compute",
     "status": 200,
-    "validator": "response179",
+    "validator": "response180",
     "group": "stock"
   },
   {
     "method": "get",
     "path": "/api/spine/tracker/{code}",
     "status": 200,
-    "validator": "response180",
+    "validator": "response181",
     "group": "tracker"
   },
   {
     "method": "post",
     "path": "/api/spine/tracker/{code}/conditions",
     "status": 200,
-    "validator": "response181",
+    "validator": "response182",
     "group": "tracker"
   },
   {
     "method": "patch",
     "path": "/api/spine/tracker/conditions/{cid}",
     "status": 200,
-    "validator": "response182",
+    "validator": "response183",
     "group": "tracker"
   },
   {
     "method": "get",
     "path": "/api/spine/tracker/status",
     "status": 200,
-    "validator": "response183",
+    "validator": "response184",
     "group": "tracker"
   },
   {
     "method": "get",
     "path": "/api/spine/trade/{hs_code}",
     "status": 200,
-    "validator": "response184",
+    "validator": "response185",
     "group": "trade"
   },
   {
     "method": "post",
     "path": "/api/spine/trade/{hs_code}/beneficiaries",
     "status": 200,
-    "validator": "response185",
+    "validator": "response186",
     "group": "trade"
   },
   {
     "method": "get",
     "path": "/api/spine/trade/by-stock/{stock_code}",
     "status": 200,
-    "validator": "response186",
+    "validator": "response187",
     "group": "trade"
   },
   {
     "method": "get",
     "path": "/api/spine/trade/follow",
     "status": 200,
-    "validator": "response187",
+    "validator": "response188",
     "group": "trade"
   },
   {
     "method": "get",
     "path": "/api/spine/trade/grid",
     "status": 200,
-    "validator": "response188",
+    "validator": "response189",
     "group": "trade"
   },
   {
     "method": "get",
     "path": "/api/spine/trade/highlights",
     "status": 200,
-    "validator": "response189",
+    "validator": "response190",
     "group": "trade"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/chain/{transcript_id}",
     "status": 200,
-    "validator": "response190",
+    "validator": "response191",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/chain/upcoming/{ticker}",
     "status": 200,
-    "validator": "response191",
+    "validator": "response192",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/company/{ticker}",
     "status": 200,
-    "validator": "response192",
+    "validator": "response193",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/detail/{transcript_id}",
     "status": 200,
-    "validator": "response193",
+    "validator": "response194",
     "group": "transcript"
   },
   {
     "method": "post",
     "path": "/api/spine/transcript/detail/{transcript_id}/digest",
     "status": 200,
-    "validator": "response194",
+    "validator": "response195",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/follow",
     "status": 200,
-    "validator": "response195",
+    "validator": "response196",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/momentum",
     "status": 200,
-    "validator": "response196",
+    "validator": "response197",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/proxies",
     "status": 200,
-    "validator": "response197",
+    "validator": "response198",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/recent",
     "status": 200,
-    "validator": "response198",
+    "validator": "response199",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/season",
     "status": 200,
-    "validator": "response199",
+    "validator": "response200",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/transcript/season/kr",
     "status": 200,
-    "validator": "response200",
+    "validator": "response201",
     "group": "transcript"
   },
   {
     "method": "get",
     "path": "/api/spine/trend-leaders",
     "status": 200,
-    "validator": "response201",
+    "validator": "response202",
     "group": "trend-leaders"
   },
   {
     "method": "get",
     "path": "/api/spine/trend-leaders/{code}/chart",
     "status": 200,
-    "validator": "response202",
+    "validator": "response203",
     "group": "trend-leaders"
   },
   {
     "method": "post",
     "path": "/api/spine/tw/chain-report",
     "status": 200,
-    "validator": "response203",
+    "validator": "response204",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/chain-report/{rid}",
     "status": 200,
-    "validator": "response204",
+    "validator": "response205",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/chain-report/preview",
     "status": 200,
-    "validator": "response205",
+    "validator": "response206",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/chain-reports",
     "status": 200,
-    "validator": "response206",
+    "validator": "response207",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/confirm",
     "status": 200,
-    "validator": "response207",
+    "validator": "response208",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/expectations",
     "status": 200,
-    "validator": "response208",
+    "validator": "response209",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/flow",
     "status": 200,
-    "validator": "response209",
+    "validator": "response210",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/links",
     "status": 200,
-    "validator": "response210",
+    "validator": "response211",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/propagation",
     "status": 200,
-    "validator": "response211",
+    "validator": "response212",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/revenue",
     "status": 200,
-    "validator": "response212",
+    "validator": "response213",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/tw/value-chain",
     "status": 200,
-    "validator": "response213",
+    "validator": "response214",
     "group": "tw"
   },
   {
     "method": "get",
     "path": "/api/spine/us",
     "status": 200,
-    "validator": "response214",
+    "validator": "response215",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/{ticker}",
     "status": 200,
-    "validator": "response215",
+    "validator": "response216",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/{ticker}/income-flow",
     "status": 200,
-    "validator": "response216",
+    "validator": "response217",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/{ticker}/income-flow/quarters",
     "status": 200,
-    "validator": "response217",
+    "validator": "response218",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/{ticker}/mentions",
     "status": 200,
-    "validator": "response218",
+    "validator": "response219",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/{ticker}/worldmodel",
     "status": 200,
-    "validator": "response219",
+    "validator": "response220",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/briefing",
     "status": 200,
-    "validator": "response220",
+    "validator": "response221",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/briefing/list",
     "status": 200,
-    "validator": "response221",
+    "validator": "response222",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/briefing/sources",
     "status": 200,
-    "validator": "response222",
+    "validator": "response223",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/us/movers",
     "status": 200,
-    "validator": "response223",
+    "validator": "response224",
     "group": "us"
   },
   {
     "method": "get",
     "path": "/api/spine/world/big-picture",
     "status": 200,
-    "validator": "response224",
+    "validator": "response225",
     "group": "world"
   },
   {
     "method": "post",
     "path": "/api/spine/world/big-picture/rebuild",
     "status": 200,
-    "validator": "response225",
+    "validator": "response226",
     "group": "world"
   },
   {
     "method": "get",
     "path": "/api/spine/world/changes",
     "status": 200,
-    "validator": "response226",
+    "validator": "response227",
     "group": "world"
   },
   {
     "method": "get",
     "path": "/api/spine/world/checkpoint",
     "status": 200,
-    "validator": "response227",
+    "validator": "response228",
     "group": "world"
   },
   {
     "method": "get",
     "path": "/api/spine/world/contested",
     "status": 200,
-    "validator": "response228",
+    "validator": "response229",
     "group": "world"
   },
   {
     "method": "get",
     "path": "/api/spine/world/my-stocks",
     "status": 200,
-    "validator": "response229",
+    "validator": "response230",
     "group": "world"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/studies/{study_id}",
+    "status": 200,
+    "validator": "response231",
+    "source": "frontend",
+    "group": "studies"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/study-projects",
+    "status": 200,
+    "validator": "response232",
+    "source": "frontend",
+    "group": "study-projects"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/study-projects/{pid}",
+    "status": 200,
+    "validator": "response233",
+    "source": "frontend",
+    "group": "study-projects"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/studies",
+    "status": 200,
+    "validator": "response234",
+    "source": "frontend",
+    "group": "studies"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/feed/channels/read",
+    "status": 200,
+    "validator": "response235",
+    "source": "frontend",
+    "group": "feed"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/study-projects",
+    "status": 200,
+    "validator": "response236",
+    "source": "frontend",
+    "group": "study-projects"
   },
   {
     "method": "get",
     "path": "/api/spine/macro",
     "status": 200,
-    "validator": "response230",
+    "validator": "response237",
     "source": "frontend",
     "group": "macro"
   },
@@ -1621,7 +1676,7 @@
     "method": "get",
     "path": "/api/business/{stock_code}/segments",
     "status": 200,
-    "validator": "response231",
+    "validator": "response238",
     "source": "frontend",
     "group": "business"
   },
@@ -1629,7 +1684,7 @@
     "method": "get",
     "path": "/api/spine/indices",
     "status": 200,
-    "validator": "response232",
+    "validator": "response239",
     "source": "frontend",
     "group": "indices"
   },
@@ -1637,7 +1692,7 @@
     "method": "get",
     "path": "/api/spine/market-regime",
     "status": 200,
-    "validator": "response233",
+    "validator": "response240",
     "source": "frontend",
     "group": "market-regime"
   },
@@ -1645,7 +1700,7 @@
     "method": "get",
     "path": "/api/portfolio/thesis",
     "status": 200,
-    "validator": "response234",
+    "validator": "response241",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1653,7 +1708,7 @@
     "method": "post",
     "path": "/api/portfolio/thesis",
     "status": 201,
-    "validator": "response235",
+    "validator": "response242",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1661,7 +1716,7 @@
     "method": "post",
     "path": "/api/portfolio/transactions",
     "status": 200,
-    "validator": "response236",
+    "validator": "response243",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1669,7 +1724,7 @@
     "method": "post",
     "path": "/api/portfolio/quotes/refresh",
     "status": 200,
-    "validator": "response237",
+    "validator": "response244",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1677,7 +1732,7 @@
     "method": "post",
     "path": "/api/portfolio/principles",
     "status": 201,
-    "validator": "response238",
+    "validator": "response245",
     "source": "frontend",
     "group": "portfolio"
   },
@@ -1685,7 +1740,7 @@
     "method": "get",
     "path": "/api/spine/groups/default-watch",
     "status": 200,
-    "validator": "response239",
+    "validator": "response246",
     "source": "frontend",
     "group": "groups"
   },
@@ -1693,7 +1748,7 @@
     "method": "get",
     "path": "/api/spine/groups",
     "status": 200,
-    "validator": "response240",
+    "validator": "response247",
     "source": "frontend",
     "group": "groups"
   },
@@ -1701,7 +1756,7 @@
     "method": "get",
     "path": "/api/spine/groups/{group_id}",
     "status": 200,
-    "validator": "response241",
+    "validator": "response248",
     "source": "frontend",
     "group": "groups"
   },
@@ -1709,7 +1764,7 @@
     "method": "get",
     "path": "/api/spine/groups/{group_id}/signals",
     "status": 200,
-    "validator": "response242",
+    "validator": "response249",
     "source": "frontend",
     "group": "groups"
   },
@@ -1717,7 +1772,7 @@
     "method": "get",
     "path": "/api/spine/groups/{group_id}/digests",
     "status": 200,
-    "validator": "response243",
+    "validator": "response250",
     "source": "frontend",
     "group": "groups"
   },
@@ -1725,7 +1780,7 @@
     "method": "get",
     "path": "/api/analysis/strategies",
     "status": 200,
-    "validator": "response244",
+    "validator": "response251",
     "source": "frontend",
     "group": "analysis"
   },
@@ -1733,7 +1788,7 @@
     "method": "post",
     "path": "/api/spine/groups",
     "status": 201,
-    "validator": "response245",
+    "validator": "response252",
     "source": "frontend",
     "group": "groups"
   },
@@ -1741,7 +1796,7 @@
     "method": "post",
     "path": "/api/spine/groups/{group_id}/members",
     "status": 201,
-    "validator": "response246",
+    "validator": "response253",
     "source": "frontend",
     "group": "groups"
   },
@@ -1749,7 +1804,7 @@
     "method": "delete",
     "path": "/api/spine/groups/{group_id}/members/{stock_code}",
     "status": 200,
-    "validator": "response247",
+    "validator": "response254",
     "source": "frontend",
     "group": "groups"
   },
@@ -1757,7 +1812,7 @@
     "method": "put",
     "path": "/api/spine/groups/{group_id}/rules",
     "status": 200,
-    "validator": "response248",
+    "validator": "response255",
     "source": "frontend",
     "group": "groups"
   },
@@ -1765,7 +1820,7 @@
     "method": "post",
     "path": "/api/spine/groups/{group_id}/evaluate",
     "status": 200,
-    "validator": "response249",
+    "validator": "response256",
     "source": "frontend",
     "group": "groups"
   },
@@ -1773,7 +1828,7 @@
     "method": "get",
     "path": "/api/spine/groups/{group_id}/reasons",
     "status": 200,
-    "validator": "response250",
+    "validator": "response257",
     "source": "frontend",
     "group": "groups"
   },
@@ -1781,7 +1836,7 @@
     "method": "post",
     "path": "/api/spine/groups/{group_id}/reasons",
     "status": 201,
-    "validator": "response251",
+    "validator": "response258",
     "source": "frontend",
     "group": "groups"
   },
@@ -1789,7 +1844,7 @@
     "method": "post",
     "path": "/api/spine/knowledge/items/{knowledge_id}/approve",
     "status": 200,
-    "validator": "response252",
+    "validator": "response259",
     "source": "frontend",
     "group": "knowledge"
   },
@@ -1797,55 +1852,15 @@
     "method": "post",
     "path": "/api/spine/keywords/{keyword_id}/approve",
     "status": 200,
-    "validator": "response253",
+    "validator": "response260",
     "source": "frontend",
     "group": "keywords"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/feed/channels/read",
-    "status": 200,
-    "validator": "response254",
-    "source": "frontend",
-    "group": "feed"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/studies/{study_id}",
-    "status": 200,
-    "validator": "response255",
-    "source": "frontend",
-    "group": "studies"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/study-projects",
-    "status": 200,
-    "validator": "response256",
-    "source": "frontend",
-    "group": "study-projects"
-  },
-  {
-    "method": "get",
-    "path": "/api/spine/study-projects/{pid}",
-    "status": 200,
-    "validator": "response257",
-    "source": "frontend",
-    "group": "study-projects"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/study-projects",
-    "status": 200,
-    "validator": "response258",
-    "source": "frontend",
-    "group": "study-projects"
   },
   {
     "method": "get",
     "path": "/api/stock-prices/{stock_code}/snapshot",
     "status": 200,
-    "validator": "response259",
+    "validator": "response261",
     "source": "frontend",
     "group": "stock-prices"
   },
@@ -1853,7 +1868,7 @@
     "method": "get",
     "path": "/api/spine/search",
     "status": 200,
-    "validator": "response260",
+    "validator": "response262",
     "source": "frontend",
     "group": "search"
   },
@@ -1861,7 +1876,7 @@
     "method": "get",
     "path": "/api/spine/search/today",
     "status": 200,
-    "validator": "response261",
+    "validator": "response263",
     "source": "frontend",
     "group": "search"
   },
@@ -1869,7 +1884,7 @@
     "method": "get",
     "path": "/api/analysis/discovery/strategies",
     "status": 200,
-    "validator": "response262",
+    "validator": "response264",
     "source": "frontend",
     "group": "analysis"
   },
@@ -1877,29 +1892,13 @@
     "method": "get",
     "path": "/api/analysis/discovery/recommendations",
     "status": 200,
-    "validator": "response263",
-    "source": "frontend",
-    "group": "analysis"
-  },
-  {
-    "method": "get",
-    "path": "/api/analysis/discovery/cases",
-    "status": 200,
-    "validator": "response264",
-    "source": "frontend",
-    "group": "analysis"
-  },
-  {
-    "method": "get",
-    "path": "/api/analysis/discovery/cases/{case_id}",
-    "status": 200,
     "validator": "response265",
     "source": "frontend",
     "group": "analysis"
   },
   {
     "method": "get",
-    "path": "/api/analysis/runs/{run_id}",
+    "path": "/api/analysis/discovery/cases",
     "status": 200,
     "validator": "response266",
     "source": "frontend",
@@ -1907,7 +1906,7 @@
   },
   {
     "method": "get",
-    "path": "/api/analysis/runs/{run_id}/chart/{code}",
+    "path": "/api/analysis/discovery/cases/{case_id}",
     "status": 200,
     "validator": "response267",
     "source": "frontend",
@@ -1915,7 +1914,7 @@
   },
   {
     "method": "get",
-    "path": "/api/analysis/runs/{run_id}/thread",
+    "path": "/api/analysis/runs/{run_id}",
     "status": 200,
     "validator": "response268",
     "source": "frontend",
@@ -1923,23 +1922,23 @@
   },
   {
     "method": "get",
-    "path": "/api/analysis/runs",
+    "path": "/api/analysis/runs/{run_id}/chart/{code}",
     "status": 200,
     "validator": "response269",
     "source": "frontend",
     "group": "analysis"
   },
   {
-    "method": "post",
-    "path": "/api/analysis/runs",
+    "method": "get",
+    "path": "/api/analysis/runs/{run_id}/thread",
     "status": 200,
     "validator": "response270",
     "source": "frontend",
     "group": "analysis"
   },
   {
-    "method": "post",
-    "path": "/api/analysis/runs/{run_id}/resume",
+    "method": "get",
+    "path": "/api/analysis/runs",
     "status": 200,
     "validator": "response271",
     "source": "frontend",
@@ -1947,7 +1946,7 @@
   },
   {
     "method": "post",
-    "path": "/api/analysis/runs/{run_id}/cancel",
+    "path": "/api/analysis/runs",
     "status": 200,
     "validator": "response272",
     "source": "frontend",
@@ -1955,7 +1954,7 @@
   },
   {
     "method": "post",
-    "path": "/api/analysis/discovery/cases",
+    "path": "/api/analysis/runs/{run_id}/resume",
     "status": 200,
     "validator": "response273",
     "source": "frontend",
@@ -1963,7 +1962,7 @@
   },
   {
     "method": "post",
-    "path": "/api/analysis/discovery/strategies/{strategy_id}/versions",
+    "path": "/api/analysis/runs/{run_id}/cancel",
     "status": 200,
     "validator": "response274",
     "source": "frontend",
@@ -1971,7 +1970,7 @@
   },
   {
     "method": "post",
-    "path": "/api/analysis/discovery/strategies",
+    "path": "/api/analysis/discovery/cases",
     "status": 200,
     "validator": "response275",
     "source": "frontend",
@@ -1979,7 +1978,7 @@
   },
   {
     "method": "post",
-    "path": "/api/analysis/discovery/strategies/{strategy_id}/run",
+    "path": "/api/analysis/discovery/strategies/{strategy_id}/versions",
     "status": 200,
     "validator": "response276",
     "source": "frontend",
@@ -1987,9 +1986,25 @@
   },
   {
     "method": "post",
-    "path": "/api/analysis/discovery/recommendations/{recommendation_id}/run",
+    "path": "/api/analysis/discovery/strategies",
     "status": 200,
     "validator": "response277",
+    "source": "frontend",
+    "group": "analysis"
+  },
+  {
+    "method": "post",
+    "path": "/api/analysis/discovery/strategies/{strategy_id}/run",
+    "status": 200,
+    "validator": "response278",
+    "source": "frontend",
+    "group": "analysis"
+  },
+  {
+    "method": "post",
+    "path": "/api/analysis/discovery/recommendations/{recommendation_id}/run",
+    "status": 200,
+    "validator": "response279",
     "source": "frontend",
     "group": "analysis"
   },
@@ -1997,7 +2012,7 @@
     "method": "get",
     "path": "/api/spine/transcript/detail/{transcript_id}/reaction",
     "status": 200,
-    "validator": "response278",
+    "validator": "response280",
     "source": "frontend",
     "group": "transcript"
   },
@@ -2005,7 +2020,7 @@
     "method": "post",
     "path": "/api/spine/transcript/detail/{transcript_id}/reaction",
     "status": 200,
-    "validator": "response279",
+    "validator": "response281",
     "source": "frontend",
     "group": "transcript"
   },
@@ -2013,7 +2028,7 @@
     "method": "post",
     "path": "/api/spine/transcript/check/{ticker}",
     "status": 200,
-    "validator": "response280",
+    "validator": "response282",
     "source": "frontend",
     "group": "transcript"
   },
@@ -2021,7 +2036,7 @@
     "method": "get",
     "path": "/api/spine/transcript/season/sector/{key}",
     "status": 200,
-    "validator": "response281",
+    "validator": "response283",
     "source": "frontend",
     "group": "transcript"
   },
@@ -2029,7 +2044,7 @@
     "method": "post",
     "path": "/api/spine/transcript/core/pin",
     "status": 200,
-    "validator": "response282",
+    "validator": "response284",
     "source": "frontend",
     "group": "transcript"
   },
@@ -2037,7 +2052,7 @@
     "method": "post",
     "path": "/api/spine/transcript/expectation/{ticker}",
     "status": 200,
-    "validator": "response283",
+    "validator": "response285",
     "source": "frontend",
     "group": "transcript"
   },
@@ -2045,7 +2060,7 @@
     "method": "get",
     "path": "/api/spine/retail/history",
     "status": 200,
-    "validator": "response284",
+    "validator": "response286",
     "source": "frontend",
     "group": "retail"
   },
@@ -2053,7 +2068,7 @@
     "method": "get",
     "path": "/api/spine/chart-structure/{code}",
     "status": 200,
-    "validator": "response285",
+    "validator": "response287",
     "source": "frontend",
     "group": "chart-structure"
   },
@@ -2061,7 +2076,7 @@
     "method": "get",
     "path": "/api/spine/technical-scan/{code}",
     "status": 200,
-    "validator": "response286",
+    "validator": "response288",
     "source": "frontend",
     "group": "technical-scan"
   },
@@ -2069,7 +2084,7 @@
     "method": "post",
     "path": "/api/spine/feed/company-evidence/summary",
     "status": 200,
-    "validator": "response287",
+    "validator": "response289",
     "source": "frontend",
     "group": "feed"
   },
@@ -2077,7 +2092,7 @@
     "method": "get",
     "path": "/api/spine/feed/company-prices",
     "status": 200,
-    "validator": "response288",
+    "validator": "response290",
     "source": "frontend",
     "group": "feed"
   },
@@ -2085,7 +2100,7 @@
     "method": "get",
     "path": "/api/spine/transcript/collect/status",
     "status": 200,
-    "validator": "response289",
+    "validator": "response291",
     "source": "frontend",
     "group": "transcript"
   },
@@ -2093,29 +2108,13 @@
     "method": "get",
     "path": "/api/spine/studies",
     "status": 200,
-    "validator": "response290",
+    "validator": "response292",
     "source": "frontend",
     "group": "studies"
   },
   {
     "method": "get",
     "path": "/api/spine/studies/{study_id}/actions",
-    "status": 200,
-    "validator": "response291",
-    "source": "frontend",
-    "group": "studies"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/studies/{study_id}/actions",
-    "status": 200,
-    "validator": "response292",
-    "source": "frontend",
-    "group": "studies"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/studies/{study_id}/annotations",
     "status": 200,
     "validator": "response293",
     "source": "frontend",
@@ -2123,9 +2122,25 @@
   },
   {
     "method": "post",
-    "path": "/api/spine/studies/{study_id}/turns/{turn_id}/recover",
+    "path": "/api/spine/studies/{study_id}/actions",
     "status": 200,
     "validator": "response294",
+    "source": "frontend",
+    "group": "studies"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/studies/{study_id}/annotations",
+    "status": 200,
+    "validator": "response295",
+    "source": "frontend",
+    "group": "studies"
+  },
+  {
+    "method": "post",
+    "path": "/api/spine/studies/{study_id}/turns/{turn_id}/recover",
+    "status": 200,
+    "validator": "response296",
     "source": "frontend",
     "group": "studies"
   },
@@ -2133,7 +2148,7 @@
     "method": "get",
     "path": "/api/spine/study-projects/search",
     "status": 200,
-    "validator": "response295",
+    "validator": "response297",
     "source": "frontend",
     "group": "study-projects"
   },
@@ -2141,7 +2156,7 @@
     "method": "post",
     "path": "/api/spine/study-projects/{pid}/documents",
     "status": 200,
-    "validator": "response296",
+    "validator": "response298",
     "source": "frontend",
     "group": "study-projects"
   },
@@ -2149,7 +2164,7 @@
     "method": "post",
     "path": "/api/spine/study-projects/{pid}/clips",
     "status": 200,
-    "validator": "response297",
+    "validator": "response299",
     "source": "frontend",
     "group": "study-projects"
   },
@@ -2157,7 +2172,7 @@
     "method": "delete",
     "path": "/api/spine/study-projects/{pid}/documents/{sid}",
     "status": 200,
-    "validator": "response298",
+    "validator": "response300",
     "source": "frontend",
     "group": "study-projects"
   },
@@ -2165,7 +2180,7 @@
     "method": "post",
     "path": "/api/spine/study-projects/{pid}/turns/{tid}/recover",
     "status": 200,
-    "validator": "response299",
+    "validator": "response301",
     "source": "frontend",
     "group": "study-projects"
   },
@@ -2173,28 +2188,12 @@
     "method": "patch",
     "path": "/api/spine/study-projects/{pid}",
     "status": 200,
-    "validator": "response300",
+    "validator": "response302",
     "source": "frontend",
     "group": "study-projects"
   },
   {
     "method": "post",
-    "path": "/api/spine/studies",
-    "status": 200,
-    "validator": "response301",
-    "source": "frontend",
-    "group": "studies"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/sources/refresh",
-    "status": 200,
-    "validator": "response302",
-    "source": "frontend",
-    "group": "sources"
-  },
-  {
-    "method": "get",
     "path": "/api/spine/sources/refresh",
     "status": 200,
     "validator": "response303",
@@ -2203,9 +2202,17 @@
   },
   {
     "method": "get",
-    "path": "/api/spine/questions",
+    "path": "/api/spine/sources/refresh",
     "status": 200,
     "validator": "response304",
+    "source": "frontend",
+    "group": "sources"
+  },
+  {
+    "method": "get",
+    "path": "/api/spine/questions",
+    "status": 200,
+    "validator": "response305",
     "source": "frontend",
     "group": "questions"
   },
@@ -2213,7 +2220,7 @@
     "method": "post",
     "path": "/api/spine/questions",
     "status": 201,
-    "validator": "response305",
+    "validator": "response306",
     "source": "frontend",
     "group": "questions"
   },
@@ -2221,7 +2228,7 @@
     "method": "post",
     "path": "/api/spine/questions/propose",
     "status": 200,
-    "validator": "response306",
+    "validator": "response307",
     "source": "frontend",
     "group": "questions"
   },
@@ -2229,7 +2236,7 @@
     "method": "get",
     "path": "/api/spine/questions/{question_id}",
     "status": 200,
-    "validator": "response307",
+    "validator": "response308",
     "source": "frontend",
     "group": "questions"
   },
@@ -2237,7 +2244,7 @@
     "method": "get",
     "path": "/api/spine/questions/proxy/{proxy_id}",
     "status": 200,
-    "validator": "response308",
+    "validator": "response309",
     "source": "frontend",
     "group": "questions"
   },
@@ -2245,7 +2252,7 @@
     "method": "post",
     "path": "/api/spine/thesis/audit",
     "status": 200,
-    "validator": "response309",
+    "validator": "response310",
     "source": "frontend",
     "group": "thesis"
   },
@@ -2253,7 +2260,7 @@
     "method": "get",
     "path": "/api/spine/thesis/audits",
     "status": 200,
-    "validator": "response310",
+    "validator": "response311",
     "source": "frontend",
     "group": "thesis"
   },
@@ -2261,7 +2268,7 @@
     "method": "get",
     "path": "/api/spine/thesis/{audit_id}",
     "status": 200,
-    "validator": "response311",
+    "validator": "response312",
     "source": "frontend",
     "group": "thesis"
   },
@@ -2269,7 +2276,7 @@
     "method": "get",
     "path": "/api/spine/questions/{question_id}/synthesis",
     "status": 200,
-    "validator": "response312",
+    "validator": "response313",
     "source": "frontend",
     "group": "questions"
   },
@@ -2277,7 +2284,7 @@
     "method": "get",
     "path": "/api/spine/causal/edge/{edge_id}/source",
     "status": 200,
-    "validator": "response313",
+    "validator": "response314",
     "source": "frontend",
     "group": "causal"
   },
@@ -2285,7 +2292,7 @@
     "method": "get",
     "path": "/api/industries/",
     "status": 200,
-    "validator": "response314",
+    "validator": "response315",
     "source": "frontend",
     "group": "industries"
   },
@@ -2293,7 +2300,7 @@
     "method": "get",
     "path": "/api/stock-prices/{stock_code}",
     "status": 200,
-    "validator": "response315",
+    "validator": "response316",
     "source": "frontend",
     "group": "stock-prices"
   },
@@ -2301,7 +2308,7 @@
     "method": "get",
     "path": "/api/consensus/{stock_code}/history",
     "status": 200,
-    "validator": "response316",
+    "validator": "response317",
     "source": "frontend",
     "group": "consensus"
   },
@@ -2309,7 +2316,7 @@
     "method": "get",
     "path": "/api/telegram/channels",
     "status": 200,
-    "validator": "response317",
+    "validator": "response318",
     "source": "frontend",
     "group": "telegram"
   },
@@ -2317,7 +2324,7 @@
     "method": "put",
     "path": "/api/telegram/channels/{channel_id}/toggle",
     "status": 200,
-    "validator": "response318",
+    "validator": "response319",
     "source": "frontend",
     "group": "telegram"
   },
@@ -2325,7 +2332,7 @@
     "method": "get",
     "path": "/api/blog/sources",
     "status": 200,
-    "validator": "response319",
+    "validator": "response320",
     "source": "frontend",
     "group": "blog"
   },
@@ -2333,7 +2340,7 @@
     "method": "put",
     "path": "/api/blog/sources/{source_id}/toggle",
     "status": 200,
-    "validator": "response320",
+    "validator": "response321",
     "source": "frontend",
     "group": "blog"
   },
@@ -2341,7 +2348,7 @@
     "method": "post",
     "path": "/api/spine/sources/telegram",
     "status": 201,
-    "validator": "response321",
+    "validator": "response322",
     "source": "frontend",
     "group": "sources"
   },
@@ -2349,21 +2356,13 @@
     "method": "get",
     "path": "/api/spine/sources/youtube",
     "status": 200,
-    "validator": "response322",
-    "source": "frontend",
-    "group": "sources"
-  },
-  {
-    "method": "post",
-    "path": "/api/spine/sources/youtube",
-    "status": 201,
     "validator": "response323",
     "source": "frontend",
     "group": "sources"
   },
   {
     "method": "post",
-    "path": "/api/spine/sources/blog",
+    "path": "/api/spine/sources/youtube",
     "status": 201,
     "validator": "response324",
     "source": "frontend",
@@ -2371,9 +2370,17 @@
   },
   {
     "method": "post",
+    "path": "/api/spine/sources/blog",
+    "status": 201,
+    "validator": "response325",
+    "source": "frontend",
+    "group": "sources"
+  },
+  {
+    "method": "post",
     "path": "/api/analysis/refine",
     "status": 200,
-    "validator": "response325",
+    "validator": "response326",
     "source": "frontend",
     "group": "analysis"
   },
@@ -2381,7 +2388,7 @@
     "method": "post",
     "path": "/api/spine/chart-structure/interpret",
     "status": 200,
-    "validator": "response326",
+    "validator": "response327",
     "source": "frontend",
     "group": "chart-structure"
   },
@@ -2389,7 +2396,7 @@
     "method": "post",
     "path": "/api/analysis/discovery/cases/{case_id}/notes",
     "status": 200,
-    "validator": "response327",
+    "validator": "response328",
     "source": "frontend",
     "group": "analysis"
   },
@@ -2397,7 +2404,7 @@
     "method": "post",
     "path": "/api/analysis/discovery/cases/{case_id}/research",
     "status": 200,
-    "validator": "response328",
+    "validator": "response329",
     "source": "frontend",
     "group": "analysis"
   },
@@ -2405,7 +2412,7 @@
     "method": "post",
     "path": "/api/analysis/discovery/cases/{case_id}/research/{research_id}/cancel",
     "status": 200,
-    "validator": "response329",
+    "validator": "response330",
     "source": "frontend",
     "group": "analysis"
   },
@@ -2413,7 +2420,7 @@
     "method": "get",
     "path": "/api/spine/company-profile/{code}",
     "status": 200,
-    "validator": "response330",
+    "validator": "response331",
     "source": "frontend",
     "group": "company-profile"
   },
@@ -2421,7 +2428,7 @@
     "method": "post",
     "path": "/api/spine/company-profile/{code}",
     "status": 200,
-    "validator": "response331",
+    "validator": "response332",
     "source": "frontend",
     "group": "company-profile"
   },
@@ -2429,7 +2436,7 @@
     "method": "get",
     "path": "/api/disclosures/{stock_code}",
     "status": 200,
-    "validator": "response332",
+    "validator": "response333",
     "source": "frontend",
     "group": "disclosures"
   },
@@ -2437,7 +2444,7 @@
     "method": "get",
     "path": "/api/spine/us/{ticker}/prices/status",
     "status": 200,
-    "validator": "response333",
+    "validator": "response334",
     "source": "frontend",
     "group": "us"
   },
@@ -2445,7 +2452,7 @@
     "method": "post",
     "path": "/api/spine/us/{ticker}/prices/collect",
     "status": 200,
-    "validator": "response334",
+    "validator": "response335",
     "source": "frontend",
     "group": "us"
   }

@@ -40,6 +40,7 @@ PUBLIC_ROUTE_POLICIES = {
     ('POST', '/api/public/chat'): 'trial',
     ('GET', '/api/health'): 'public',
     ('GET', '/api/public/documents'): 'public',
+    ('GET', '/api/public/feed'): 'public',
     ('GET', '/api/member/portfolio'): 'member',
     ('GET', '/api/member/portfolio/history'): 'member',
     ('GET', '/api/member/portfolio/transactions'): 'member',

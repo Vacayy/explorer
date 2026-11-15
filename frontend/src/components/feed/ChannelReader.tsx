@@ -17,14 +17,15 @@ import { sessionMemory } from '@/lib/sessionMemory'
 import { cn } from '@/lib/utils'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { TimelineChannel } from '@/types'
+import { sourceLabel } from '@/components/shared/SourceBadge'
 import { track } from '@/lib/usage'
 
 /** 왼쪽 종류 칩 — Explorer(system)는 칩 없이 목록 맨 아래 묶음으로 */
 const TYPE_CHIPS = [['all', '전체'], ...Object.entries(FEED_PLATFORMS).filter(([k]) => k !== 'system')] as [FeedPlatform, string][]
 const isSystemChannel = (id: string) => !!id && Object.hasOwn(SYSTEM_KIND_LABEL, systemKind(id))
-function channelLabel(item: TimelineChannel) {
+function channelLabel(item: { id: string; platform: string }) {
   const kind = SYSTEM_KIND_LABEL[systemKind(item.id)]
-  return item.platform === 'system' && kind ? `Explorer · ${kind}` : FEED_PLATFORMS[item.platform]
+  return item.platform === 'system' && kind ? `Explorer · ${kind}` : FEED_PLATFORMS[item.platform as keyof typeof FEED_PLATFORMS] || sourceLabel(item.platform)
 }
 // 화면 위치만 기억한다. 읽음 표시는 channel_reads(D-200)에 있고 문서 코퍼스에는 쓰지 않는다
 const scrollPositions = sessionMemory<number>('explorer.reader.positions')
@@ -238,7 +239,7 @@ function MarketTodayLink() {
 }
 
 /** 소스 목록 한 줄 — Collapsible 트리거로도 쓰므로 ref·속성을 그대로 넘긴다 */
-const EntryButton = forwardRef<HTMLButtonElement, ComponentProps<typeof Button> & { selected?: boolean }>(function EntryButton({ selected, className, ...rest }, ref) {
+export const EntryButton = forwardRef<HTMLButtonElement, ComponentProps<typeof Button> & { selected?: boolean }>(function EntryButton({ selected, className, ...rest }, ref) {
   return <Button ref={ref} variant="ghost" aria-pressed={selected} {...rest}
     className={cn('h-auto min-h-[60px] w-full justify-start gap-2.5 rounded-lg p-2.5 font-normal whitespace-normal hover:bg-chip aria-pressed:bg-chip', className)} />
 })
@@ -285,7 +286,7 @@ function KindGroup({ group, channel, onSelect }: { group: DirectoryGroup; channe
 }
 
 /** 소스 줄 — 이름 · 시각 / 종류 / 최근 글 제목 · 안 읽음 수. 7일 넘게 새 글이 없으면 흐리게(§4.28) */
-function ChannelEntry({ item, selected, onSelect }: { item: TimelineChannel; selected: boolean; onSelect: () => void }) {
+export function ChannelEntry({ item, selected, onSelect }: { item: Omit<TimelineChannel, 'platform'> & { platform: string }; selected: boolean; onSelect: () => void }) {
   const snippet = item.preview.replace(/[#*_`>]/g, '').replace(/\s+/g, ' ').trim()
   const quiet = item.platform !== 'system' && isQuiet(item.latest_at)
   return <EntryButton selected={selected} onClick={onSelect} className={cn('min-h-[72px]', quiet && !selected && 'opacity-60')}>
