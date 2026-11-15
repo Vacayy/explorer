@@ -45,6 +45,7 @@ from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
+from pipeline.postgres_projection_publisher_fixture import FixturePublisher
 from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
@@ -469,8 +470,17 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             stop=threading.Event()
             results=[]
             errors=[]
+            publisher=FixturePublisher(self.pg,self.schema,lambda schema:psycopg.connect(self.dsn,options=f'-c search_path={schema}'))
+            self.addCleanup(publisher.close)
+            observed=[]
+            observed_ids=[]
             def completed(result):
                 results.append(result)
+                publisher.publish()
+                with self.pg() as c:
+                    ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='note' AND source_id='periodic.md'").fetchone()[0]
+                observed_ids.append(ident)
+                observed.append(publisher.get(ident).summary)
                 if len(results)==1:
                     note.write_text('# 정기 문서\n변경',encoding='utf-8')
                 else:
@@ -483,6 +493,17 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             run_periodic(connector,self.pg,enrich=_enrich_keyword,
                          stop=stop,interval_seconds=0.01,on_cycle=completed,on_error=errors.append)
             self.assertEqual(len(errors),1)
+            self.assertEqual(observed,['# 정기 문서 처음','# 정기 문서 변경'])
+            ident=observed_ids[-1]
+            self.assertIn(ident,[row.id for row in publisher.search('변경').items])
+            def broken_index(*_):
+                raise RuntimeError('fixture index failure')
+            publisher.index_factory=broken_index
+            with self.assertRaisesRegex(RuntimeError,'fixture index failure'):
+                publisher.publish()
+            self.assertEqual(publisher.get(ident).summary,'# 정기 문서 변경')
+            self.assertIn(ident,[row.id for row in publisher.search('변경').items])
+            publisher.close()
         self.assertEqual([(r['new'],r['updated'],r['enriched']) for r in results],[(1,0,1),(0,1,1)])
         with self.pg() as c:
             self.assertEqual(c.execute("SELECT e.summary FROM ingest_enrichments e JOIN ingest_documents d ON d.id=e.document_id WHERE d.source_id='periodic.md'").fetchone()[0],'# 정기 문서 변경')
