@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 발표 캘린더 (ia-redesign §4.6a 캘린더 규칙) — 거래일마다 막대 하나, 높이 = 그날 팔로우 기업 발표 수.
 // 핵심 몫은 아래쪽 진한 채움, 미확정 예정일은 점선 테두리. 막대를 누르면 아래 '그날 발표'가 바뀐다(?day=).
 import { Link, useSearchParams } from "react-router-dom"
@@ -36,7 +37,7 @@ export function SeasonCalendar({ d, today }: { d: SeasonOverview; today: string 
         <h2 className="flex items-center gap-1 text-[15px] font-semibold">
           발표 캘린더
           <InfoTip label="발표 캘린더 설명">
-            팔로우 기업의 이번 시즌 발표 수를 거래일마다 막대로 보입니다. 진한 부분은 핵심 종목, 점선은 회사가 아직 확정하지 않은 예정일입니다. 막대를 누르면 그날 발표한 종목이 아래에 나옵니다.
+            {PUBLIC_ACCESS ? "공개 대상" : "팔로우"} 기업의 이번 시즌 발표 수를 거래일마다 막대로 보입니다. 진한 부분은 핵심 종목, 점선은 회사가 아직 확정하지 않은 예정일입니다. 막대를 누르면 그날 발표한 종목이 아래에 나옵니다.
           </InfoTip>
         </h2>
         <span className="text-caption text-muted-foreground">

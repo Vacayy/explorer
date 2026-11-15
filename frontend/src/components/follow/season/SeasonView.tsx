@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 실적 시즌 개요 (?view=season) — 시즌 → 섹터 → 콜 3단의 첫 단 (ia-redesign §4.6a, docs/specs/earnings-season.md §시즌 보고서)
 // 위계: 머리(시즌 선택) → 진행 줄 → 발표 캘린더 → 이번 시즌 시장이 따진 것 → 반응 보드 | 새 모멘텀 후보 → 선택한 후보 → 핵심 종목 진행판
 import { useEffect, type ReactNode } from "react"
@@ -40,6 +41,7 @@ export function SeasonView({ tabs }: { tabs: ReactNode }) {
         : q.isPending ? <div className="space-y-2"><Skeleton className="h-8 w-72" /><Skeleton className="h-4 w-40" /></div>
         : <SeasonHeader title="실적 시즌" />}
       <SeasonTabsRow tabs={tabs} />
+      {PUBLIC_ACCESS && <Meta>공개 대상 기업의 저장된 일정·주가 기준입니다. 정성 해설과 기대 채점은 공개 근거가 확인된 자료만 연결하며, 아직 준비되지 않은 결과가 있습니다.</Meta>}
       {between ? <BetweenSeasons phase={between} today={today} /> : (
         // 갱신 실패·오프라인이어도 이전 결과를 유지한다(QueryState 규약, docs/specs/frontend-api-reliability.md)
         <QueryState query={q} loading={<SeasonSkeleton />} isEmpty={() => false}>{(data) => <SeasonBody d={data} today={today} />}</QueryState>
@@ -105,15 +107,15 @@ function ProgressLine({ d }: { d: SeasonOverview }) {
           </span>
           <span>Outperform&nbsp;<b className="tabular-nums text-up-ink">{formatNumber(c.up)}</b><span className="text-muted-foreground"> / {formatNumber(c.reported)}</span></span>
           <span>실적-주가 디커플링&nbsp;&nbsp;<b className="tabular-nums">{formatNumber(c.miss_up + c.beat_down)}</b></span>
-          <span>반응 정리 <b className="tabular-nums">{formatNumber(c.reactions)}</b><span className="text-muted-foreground"> · 확정 {formatNumber(c.reactions_final)}</span></span>
+          <span>{PUBLIC_ACCESS ? "공개 반응 해설" : "반응 정리"} <b className="tabular-nums">{formatNumber(c.reactions)}</b><span className="text-muted-foreground"> · 확정 {formatNumber(c.reactions_final)}</span></span>
           <InfoTip label="진행 줄 설명">
-            Outperform은 발표 후 첫 거래일에 업종 ETF보다 강했던 발표 수입니다. 실적-주가 디커플링은 EPS가 컨센서스를 밑돌았는데 주가가 강했거나({c.miss_up}), 웃돌았는데 약했던({c.beat_down}) 발표 수입니다. 매일 07:20에 갱신합니다.
+            Outperform은 발표 후 첫 거래일에 업종 ETF보다 강했던 발표 수입니다. 실적-주가 디커플링은 EPS가 컨센서스를 밑돌았는데 주가가 강했거나({c.miss_up}), 웃돌았는데 약했던({c.beat_down}) 발표 수입니다. {PUBLIC_ACCESS ? "공개 대상 기업의 저장된 날짜별 자료를 사용합니다." : "매일 07:20에 갱신합니다."}
           </InfoTip>
           {/* 줄 아래로 펼치면 아래 블록이 밀린다 — 버튼 아래 팝오버로 연다(높이 상한 규칙) */}
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="group ml-auto" disabled={!changed}>
-                오늘 바뀐 것 <span className="tabular-nums text-muted-foreground">{changed}</span>
+                {PUBLIC_ACCESS ? "저장 자료 중 오늘 갱신" : "오늘 바뀐 것"} <span className="tabular-nums text-muted-foreground">{changed}</span>
                 <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
               </Button>
             </PopoverTrigger>

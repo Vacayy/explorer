@@ -500,11 +500,11 @@ def season(day: str) -> dict:
     return {"key": f"{year}Q{reported}", "label": f"{year}년 {reported}분기 실적 시즌", "start": start.isoformat()}
 
 
-def by_season(conn: sqlite3.Connection, today: date | None = None, history_days: int = 400) -> dict:
+def by_season(conn: sqlite3.Connection, today: date | None = None, history_days: int = 400, *, company_names=None) -> dict:
     """전면은 이번 시즌 후보만, 지난 시즌은 기록으로 묶는다(2026-10-13 사용자: 3분기 시즌에 2분기 신호가 전면에 나오지 않게)."""
     today = today or date.today()
     cur = season(today.isoformat())
-    items = candidates(conn, (today - date.fromisoformat(cur["start"])).days + history_days)
+    items = candidates(conn, (today - date.fromisoformat(cur["start"])).days + history_days, company_names=company_names)
     current = [c for c in items if c["event_date"] >= cur["start"]]
     history: dict[str, dict] = {}
     for c in items:
@@ -512,19 +512,27 @@ def by_season(conn: sqlite3.Connection, today: date | None = None, history_days:
             s = season(c["event_date"])
             history.setdefault(s["key"], {**s, "candidates": []})["candidates"].append(c)
     reported = conn.execute("SELECT count(DISTINCT ticker) FROM call_momentum WHERE event_date >= ?", (cur["start"],)).fetchone()[0]
-    continuing = candidates(conn, (today - date.fromisoformat(cur["start"])).days + history_days, status="continuing")
+    if company_names is not None:
+        reported = len({r[0] for r in conn.execute("SELECT DISTINCT ticker FROM call_momentum WHERE event_date >= ?", (cur["start"],)) if r[0] in company_names})
+    continuing = candidates(conn, (today - date.fromisoformat(cur["start"])).days + history_days, status="continuing", company_names=company_names)
     return {"season": {**cur, "reported": reported}, "candidates": current,
             "continuing": [c for c in continuing if c["event_date"] >= cur["start"]],
             "history": sorted(history.values(), key=lambda h: h["key"], reverse=True)}
 
 
-def candidates(conn: sqlite3.Connection, days: int = 120, status: str = "candidate") -> list[dict]:
+def candidates(conn: sqlite3.Connection, days: int = 120, status: str = "candidate", *, company_names=None) -> list[dict]:
     since = (date.today() - timedelta(days=days)).isoformat()
     out = []
-    for r in conn.execute("SELECT cm.*, tf.company_name FROM call_momentum cm LEFT JOIN transcript_follow tf ON tf.ticker=cm.ticker "
-                          "WHERE cm.status=? AND cm.event_date >= ? ORDER BY cm.event_date DESC, cm.score DESC", (status, since)):
+    columns = "cm.ticker, cm.event_date, cm.score, cm.first_candidate_at, cm.summary, cm.reasons"
+    join = " LEFT JOIN transcript_follow tf ON tf.ticker=cm.ticker" if company_names is None else ""
+    if company_names is None:
+        columns += ", tf.company_name"
+    for r in conn.execute("SELECT " + columns + " FROM call_momentum cm" + join +
+                          " WHERE cm.status=? AND cm.event_date >= ? ORDER BY cm.event_date DESC, cm.score DESC", (status, since)):
+        if company_names is not None and r["ticker"] not in company_names:
+            continue
         reasons = json.loads(r["reasons"])
-        out.append({"ticker": r["ticker"], "name": r["company_name"], "event_date": r["event_date"], "score": r["score"],
+        out.append({"ticker": r["ticker"], "name": r["company_name"] if company_names is None else company_names[r["ticker"]], "event_date": r["event_date"], "score": r["score"],
                     "first_candidate_at": r["first_candidate_at"], "summary": r["summary"], **reasons})
     return out
 

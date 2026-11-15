@@ -1,5 +1,6 @@
 from contextlib import closing
 from pathlib import Path
+from datetime import date
 import sqlite3
 import tempfile
 import unittest
@@ -39,7 +40,17 @@ class PublicUsSeasonTests(unittest.TestCase):
                 INSERT INTO us_prices VALUES ('PUBLIC','2026-10-30',100,100),('PUBLIC','2026-11-02',105,100),
                   ('PUBLIC','2026-11-03',110,100),('SMH','2026-10-30',100,100),('SMH','2026-11-02',100,100),('SMH','2026-11-03',100,100);
                 INSERT INTO transcript_follow (ticker,company_name,core_pinned) VALUES ('PRIVATE','Private canary',1);
+                ALTER TABLE public_us_companies ADD COLUMN fiscal_year_end TEXT;
+                UPDATE public_us_companies SET fiscal_year_end='12-31';
+                ALTER TABLE transcripts ADD COLUMN provider TEXT;
+                ALTER TABLE season_themes ADD COLUMN tickers TEXT;
+                CREATE TABLE public_us_coverage(ticker TEXT,has_release INTEGER,extracted_docs INTEGER,failed_docs INTEGER);
+                INSERT INTO public_us_coverage VALUES ('PUBLIC',1,2,0),('PRIVATE',1,9999,9999);
+                CREATE TABLE call_momentum(ticker TEXT,event_date TEXT,score REAL,status TEXT,reasons TEXT,first_candidate_at TEXT,summary TEXT,computed_at TEXT);
             ''')
+            conn.executemany('INSERT INTO call_momentum VALUES (?,?,7,?,\'{}\',NULL,?,?)', [
+                ('PUBLIC',date.today().isoformat(),'candidate','Public summary','2026-11-01'),
+                ('PRIVATE',date.today().isoformat(),'candidate','Private canary','2099-01-01')])
             conn.commit()
 
     def test_public_scope_and_numeric_reaction_without_private_getters_or_writes(self):
@@ -96,3 +107,27 @@ class PublicUsSeasonTests(unittest.TestCase):
             self.assertEqual(client.get('/api/spine/transcript/season?season=2026Q9').status_code, 422)
             self.assertEqual(client.post('/api/spine/transcript/season').status_code, 404)
         self.assertEqual(before, self.path.read_bytes())
+
+    def test_sector_momentum_recent_share_public_universe_and_do_not_write(self):
+        from models.earnings_season import SectorDetail
+        from routers.spine_transcript import MomentumResponse, RecentCall
+        before = self.path.read_bytes()
+        with patch.object(ec, 'get_connection', side_effect=AssertionError('private connection')), \
+             patch.object(ec, 'core_map', side_effect=AssertionError('private core')):
+            sector = public.stored_sector('semis','2026Q3',path=self.path,today='2026-11-15')
+            SectorDetail(**sector)
+            self.assertEqual([c['ticker'] for c in sector['companies']], ['PUBLIC'])
+            self.assertEqual(sector['companies'][0]['d1'],10)
+            momentum = public.stored_momentum(path=self.path)
+            MomentumResponse(**momentum)
+            self.assertEqual(momentum['season']['reported'],1)
+            self.assertEqual([c['ticker'] for c in momentum['candidates']],['PUBLIC'])
+            self.assertEqual(momentum['coverage'],{'universe':1,'with_releases':1,'with_transcripts':1,'extracted_docs':2,'failed_docs':0,'comparable':1})
+            self.assertEqual(momentum['as_of'],'2026-11-01')
+            self.assertFalse(momentum['sec_configured'])
+            recent=public.stored_recent(3650,40,path=self.path)
+            for row in recent: RecentCall(**row)
+            self.assertEqual([r['ticker'] for r in recent],['PUBLIC'])
+            self.assertFalse(recent[0]['has_digest'])
+            self.assertNotIn('Private canary',str((sector,momentum,recent)))
+        self.assertEqual(before,self.path.read_bytes())

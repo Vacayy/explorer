@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import type { ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +16,7 @@ import type { SeasonItem, SeasonOverview, SeasonWindow } from "@/types"
 
 const SEASON = "/follow/transcripts?view=season"
 const sectorPath = (key: string, season?: string) => `${SEASON}&sector=${encodeURIComponent(key)}${season ? `&season=${season}` : ""}`
-const INFO = "팔로우 기업의 실적 발표를 시즌 단위로 봅니다. 첫 거래일 반응은 업종 ETF 대비 %p이고, 매일 07:20에 갱신합니다."
+const INFO = PUBLIC_ACCESS ? "공개 대상 기업의 저장된 실적 일정과 주가를 시즌 단위로 봅니다. 첫 거래일 반응은 업종 ETF 대비 %p입니다. 날짜별 저장 자료를 사용하며 정성 해설은 공개 근거가 확인된 자료만 연결합니다." : "팔로우 기업의 실적 발표를 시즌 단위로 봅니다. 첫 거래일 반응은 업종 ETF 대비 %p이고, 매일 07:20에 갱신합니다."
 
 /** 오늘 — 개발 서버에서만 ?today=YYYY-MM-DD로 바꿔 시즌 사이 화면을 확인한다 */
 export function useHomeToday(): string {
@@ -38,8 +39,8 @@ export function UsSeasonBlock() {
   </Frame>
   if (!d.counts.followed) return <Frame title={d.season.label}>
     <div className="space-y-2 text-sm">
-      <p className="text-muted-foreground">팔로우한 기업이 없습니다.</p>
-      <Button asChild variant="outline" size="sm"><Link to="/follow/transcripts">기본 세트 팔로우</Link></Button>
+      <p className="text-muted-foreground">{PUBLIC_ACCESS ? "공개 대상 기업 자료가 아직 준비되지 않았습니다." : "팔로우한 기업이 없습니다."}</p>
+      {!PUBLIC_ACCESS && <Button asChild variant="outline" size="sm"><Link to="/follow/transcripts">기본 세트 팔로우</Link></Button>}
     </div>
   </Frame>
   const phase = seasonPhase(today, d.windows)
@@ -92,14 +93,14 @@ function InSeason({ d, today }: { d: SeasonOverview; today: string }) {
   const sectors = d.sectors.filter(s => s.one_line)
   const upcoming = d.upcoming.filter(u => u.event_date >= today)
   const c = d.counts
-  return <Frame title={d.season.label} sub={`미국 · 팔로우 ${formatNumber(c.followed)}`} note={pending > 0 ? `첫 거래일 반응을 아직 집계하고 있는 발표가 ${formatNumber(pending)}건 있어요.` : undefined}>
+  return <Frame title={d.season.label} sub={`미국 · ${PUBLIC_ACCESS ? "공개 대상" : "팔로우"} ${formatNumber(c.followed)}`} note={pending > 0 ? PUBLIC_ACCESS ? `첫 거래일 주가가 아직 없는 발표가 ${formatNumber(pending)}건 있어요.` : `첫 거래일 반응을 아직 집계하고 있는 발표가 ${formatNumber(pending)}건 있어요.` : undefined}>
     <KpiStrip items={[
       { label: "발표", value: formatNumber(c.reported), of: `/ ${formatNumber(c.followed)}` },
-      { label: "업종보다 강했다", value: formatNumber(c.up), of: `/ ${formatNumber(c.reactions)}` },
+      { label: "업종보다 강했다", value: formatNumber(c.up), of: `/ ${formatNumber(PUBLIC_ACCESS ? d.reported.filter(r => r.d1 != null).length : c.reactions)}` },
       { label: "상회에도 약세", value: formatNumber(c.beat_down), of: `/ ${formatNumber(c.beat)}` },
       { label: "첫 반응 뒤집힘", value: formatNumber(c.reversed) },
     ]} />
-    {!sectors.length ? <p className="min-h-0 flex-1 text-sm text-ink-3">섹터 요약이 아직 없습니다. 반응 정리 {formatNumber(c.reactions)}/{formatNumber(c.reported)}</p>
+    {!sectors.length ? <p className="min-h-0 flex-1 text-sm text-ink-3">{PUBLIC_ACCESS ? "공개 근거가 확인된 섹터 해설을 준비 중입니다. 발표 일정과 주가 반응은 실적 시즌 전체에서 볼 수 있습니다." : <>섹터 요약이 아직 없습니다. 반응 정리 {formatNumber(c.reactions)}/{formatNumber(c.reported)}</>}</p>
       : <FillArea aria-label="이번 시즌 시장이 따진 것"><ul>{sectors.map(s => (
         <li key={s.key} className="border-b">
           <Link to={sectorPath(s.key)} className="grid grid-cols-[150px_minmax(0,1fr)] gap-3 py-[9px] hover:bg-muted/50 max-sm:grid-cols-[110px_minmax(0,1fr)]">
@@ -166,8 +167,8 @@ function NextUpcoming({ base, next, today }: { base: SeasonOverview; next: Seaso
   const q = useSeason(next && next.key !== base.season.key ? next.key : null)
   const d = next && next.key === base.season.key ? base : q.data
   const days = d ? groupByDate(d.upcoming.filter(u => u.event_date >= today)).slice(0, 6) : []
-  return <section aria-label="곧 발표 · 팔로우 기업" className="bg-card p-3">
-    <h3 className="mb-2 text-xs font-semibold">곧 발표 · 팔로우 기업</h3>
+  return <section aria-label={`곧 발표 · ${PUBLIC_ACCESS ? "공개 대상" : "팔로우 기업"}`} className="bg-card p-3">
+    <h3 className="mb-2 text-xs font-semibold">곧 발표 · {PUBLIC_ACCESS ? "공개 대상" : "팔로우 기업"}</h3>
     {!next ? <p className="text-sm text-muted-foreground">다음 시즌 발표 일정이 아직 없습니다.</p>
       : !d ? (q.isError ? <BlockError message="발표 일정을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <Skeleton className="h-28 w-full" />)
       : !days.length ? <p className="text-sm text-muted-foreground">확인된 발표 일정이 없습니다.</p>

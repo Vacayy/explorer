@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { UsBriefingDate } from "@/components/home/UsBriefingDate"
 import { useState } from "react"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
@@ -119,9 +120,9 @@ export function CallsCard() {
   const pg = paged(rows, page, 6)
   return <MarketCard band="events" label="us.calls">
     <BlockHead section title="최근 컨콜" sub={q.data ? `최근 7일 ${formatNumber(q.data.length)}건` : <span aria-hidden className="invisible">최근 7일 00건</span>}
-      info="녹취록을 받은 콜. 누르면 콜 상세(발표 전 시장이 주목한 내용·반응)로 갑니다. 매일 07:20에 수집합니다" link={{ to: "/follow/transcripts", label: "컨콜 전체" }} />
+      info={PUBLIC_ACCESS ? "공개 대상으로 준비된 최근 녹취록 목록입니다. 저장된 수집 시각을 기준으로 표시합니다. 콜 상세와 정성 해설은 준비된 자료에 따라 제공됩니다." : "녹취록을 받은 콜. 누르면 콜 상세(발표 전 시장이 주목한 내용·반응)로 갑니다. 매일 07:20에 수집합니다"} link={{ to: "/follow/transcripts", label: "컨콜 전체" }} />
     <FillState data={q.data} isError={q.isError} error={q.error} onRetry={() => void q.refetch()} message="최근 컨콜을 불러오지 못했습니다" rows={6}>{() => !rows.length
-      ? <FillNote>지난 7일간 새로 받은 컨콜이 없어요. 매일 07:20에 수집합니다.</FillNote>
+      ? <FillNote>{PUBLIC_ACCESS ? "공개 자료에 최근 7일간 저장된 컨콜이 없습니다." : "지난 7일간 새로 받은 컨콜이 없어요. 매일 07:20에 수집합니다."}</FillNote>
       : <>
         <FillArea aria-label="최근 컨콜 목록"><ul>{pg.rows.map(c => <li key={c.transcript_id} className="border-b">
           <Link to={`/follow/transcripts?t=${c.transcript_id}`} className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2.5 py-2.5 hover:[&_.tk]:underline">

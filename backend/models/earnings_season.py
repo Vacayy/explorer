@@ -9,6 +9,79 @@ from pydantic import BaseModel
 CoreReason = Literal["cap", "mention", "holding_chain", "dc_chain", "pinned"]
 
 
+class SectorThemeBody(BaseModel):
+    one_line: str | None = None
+    narrative: str | None = None
+    welcomed: list[str] = []
+    questioned: list[str] = []
+    change_note: str | None = None
+    next: list[str] = []
+    vs_last_season: list[str] = []
+
+
+class SectorTheme(BaseModel):
+    id: int
+    verdict: str | None
+    tickers: str
+    created_at: str
+    body: SectorThemeBody
+
+
+class SectorMember(BaseModel):
+    ticker: str
+    name: str | None
+
+
+class SectorCompany(SectorMember):
+    status: Literal['reported', 'upcoming', 'none']
+    core: list[CoreReason]
+    event_date: str | None = None
+    transcript_id: int | None = None
+    reaction: Literal['interim', 'final'] | None = None
+    headline: str | None = None
+    d1: float | None = None
+    d7: float | None = None
+    d30: float | None = None
+    latest: float | None = None
+    latest_date: str | None = None
+    follow: Literal['유지', '확대', '되돌림', '반전'] | None = None
+
+
+class SectorTimeline(BaseModel):
+    start: str | None
+    end: str | None
+    view_end: str | None
+    series: dict[str, list[tuple[str, float]]]
+    events: dict[str, str]
+
+
+class SectorHistoryRow(BaseModel):
+    ticker: str
+    d1: float | None
+
+
+class SectorHistory(BaseModel):
+    season: str
+    label: str
+    rows: list[SectorHistoryRow]
+    verdict: str | None
+    one_line: str | None
+
+
+class SectorDetail(BaseModel):
+    key: str
+    name: str
+    etf: str
+    season: str
+    seasons: list[str]
+    members: list[SectorMember]
+    theme: SectorTheme | None
+    theme_history: list[SectorTheme]
+    companies: list[SectorCompany]
+    timeline: SectorTimeline
+    history: list[SectorHistory]
+
+
 class SeasonRef(BaseModel):
     key: str
     label: str

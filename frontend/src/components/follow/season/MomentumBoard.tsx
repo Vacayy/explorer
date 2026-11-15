@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 새 모멘텀 후보 (ia-redesign §4.6a ⑤ 오른쪽·⑥, D-217 11-04 규칙) — 새로 붙은 모멘텀(펼친 줄)과 이어지는 모멘텀(칩)으로 나누고,
 // 고른 후보(?pick=)는 아래 전체 폭 카드로 가속 근거·동인 인용·가이던스·행동을 보인다. 첫 거래일 반응은 보조 정보.
 import { Link, useSearchParams } from "react-router-dom"
@@ -63,11 +64,11 @@ export function MomentumBoard({ query, d, momentum }: { query: MomentumQuery; d:
             새 모멘텀 후보
             <InfoTip label="새 모멘텀 후보 설명">
               직전 분기보다 매출 성장이 빨라지며 기대를 넘었거나(기대 초과 가속), 성장 가이던스를 올렸거나, 수요 어조가 높아진 회사입니다. 직전 분기에도 후보였으면 '이어지는 모멘텀'으로 따로 둡니다. 인용은 원문 대조를 통과한 것만 씁니다.
-              대상 {cov.universe}개사 · 보도자료 {cov.with_releases} · 컨콜 {cov.with_transcripts} · 분기 비교 가능 {cov.comparable}. 매일 07:20 판정, 월요일 07:10 텔레그램.
+              대상 {cov.universe}개사 · 보도자료 {cov.with_releases} · 컨콜 {cov.with_transcripts} · 분기 비교 가능 {cov.comparable}. {PUBLIC_ACCESS ? "공개 대상의 저장된 판정 자료이며, 아직 연결되지 않은 근거가 있을 수 있습니다." : "매일 07:20 판정, 월요일 07:10 텔레그램."}
             </InfoTip>
             <span className="tabular-nums font-normal text-muted-foreground">{total}</span>
           </h2>
-          {!m.sec_configured && <div role="alert" className="flex gap-2 border border-chart-warning/40 bg-chart-warning/10 p-3 text-sm">
+          {!PUBLIC_ACCESS && !m.sec_configured && <div role="alert" className="flex gap-2 border border-chart-warning/40 bg-chart-warning/10 p-3 text-sm">
             <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-chart-warning" />
             <span>SEC 실적 보도자료 수집이 멈춰 있습니다. <code>.env</code>에 <code>SEC_USER_AGENT="이름 이메일"</code>을 넣어 주세요.</span>
           </div>}
@@ -217,7 +218,7 @@ export function PickedCandidate({ d, momentum }: { d: SeasonOverview; momentum: 
         </p>}
         {c.qa_focus.length > 0 && <p className="text-caption text-muted-foreground">애널리스트 질문 초점 · {c.qa_focus.join(" · ")}</p>}
         <div className="flex flex-wrap gap-2 pt-1">
-          <WatchAdd ticker={c.ticker} />
+          {!PUBLIC_ACCESS && <WatchAdd ticker={c.ticker} />}
           <Button variant="outline" size="sm" asChild><Link to={`/discover?code=${encodeURIComponent(c.ticker)}&market=us`}>종목 발견에서 차트·조건 보기</Link></Button>
           {r?.transcript_id && <Button variant="outline" size="sm" asChild><Link to={`/follow/transcripts?t=${r.transcript_id}`}>콜 상세 →</Link></Button>}
           <Button variant="ghost" size="sm" asChild>

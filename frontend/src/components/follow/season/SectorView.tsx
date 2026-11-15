@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 섹터 상세 (?view=season&sector=<키>[&season=]) — 시즌 → 섹터 → 콜 3단의 가운데 (docs/specs/earnings-season.md §섹터 상세)
 import type { ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
@@ -70,7 +71,7 @@ function SectorBody({ d, crumb, pickSeason }: { d: SectorDetail; crumb: (name?: 
           {body && (body.welcomed?.length || body.questioned?.length) ? <>
             {!!body.welcomed?.length && <><h3 className="text-sm font-semibold">반긴 것</h3><Bullets items={body.welcomed} /></>}
             {!!body.questioned?.length && <><h3 className="mt-2 text-sm font-semibold">문제 삼은 것</h3><Bullets items={body.questioned} /></>}
-          </> : <Meta>섹터 요약 전입니다.</Meta>}
+          </> : <Meta>{PUBLIC_ACCESS ? "공개 근거가 확인된 섹터 해설을 준비 중입니다." : "섹터 요약 전입니다."}</Meta>}
         </Section>
         <Companies companies={d.companies} />
       </Cols>
@@ -222,7 +223,7 @@ function Companies({ companies }: { companies: SectorDetail["companies"] }) {
                 <CoreBadge core={c.core} />
               </div>
               {c.status === "reported" && c.transcript_id
-                ? c.reaction
+                ? c.reaction || PUBLIC_ACCESS
                   ? <Link to={`/follow/transcripts?t=${c.transcript_id}`} className="text-sm font-semibold text-primary hover:underline">콜 상세 →</Link>
                   : <MakeReaction transcriptId={c.transcript_id} ticker={c.ticker} />
                 : c.status === "reported" ? <span className="text-caption text-muted-foreground">녹취록 대기</span> : <span />}

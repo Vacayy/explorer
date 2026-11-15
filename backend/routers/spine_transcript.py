@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from database import get_connection
 from pipeline.transcript import cy_label
 from models.earnings_chain import ChainDetail, UpcomingChain
-from models.earnings_season import SeasonOverview
+from models.earnings_season import SeasonOverview, SectorDetail
 from models.kr_season import KrSeasonOverview
 
 router = APIRouter(prefix="/api/spine/transcript", tags=["spine"])
@@ -274,9 +274,16 @@ def season_kr(request: Request, season: str | None = Query(None, pattern=r"^\d{4
     return overview(season)
 
 
-@router.get("/season/sector/{key}")
-def season_sector(key: str, season: str | None = None):
+@router.get("/season/sector/{key}", response_model=SectorDetail, response_model_exclude_unset=True)
+def season_sector(request: Request, key: str, season: str | None = Query(None, pattern=r"^[0-9]{4}Q[1-4]$")):
     """섹터 상세 — 발표일 정렬 반응 경로·종목별·섹터 요약 이력·지난 시즌 비교. LLM 0."""
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_sector
+        from routers.public_documents import perform
+        try:
+            return perform(lambda: stored_sector(key, season))
+        except LookupError:
+            raise HTTPException(404, "Public sector unavailable") from None
     from pipeline.earnings_chain import sector_detail
     return sector_detail(key, season)
 
@@ -518,8 +525,12 @@ class MomentumResponse(BaseModel):
 
 
 @router.get("/momentum", response_model=MomentumResponse)
-def momentum():
+def momentum(request: Request):
     """실적 발언 새 모멘텀(D-217) — 이번 실적 시즌 후보는 전면, 지난 시즌은 history로. 판정은 매일 07:20 call_momentum --daily."""
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_momentum
+        from routers.public_documents import perform
+        return perform(stored_momentum)
     import os
     from database import get_connection
     from pipeline import call_momentum as cm
@@ -547,8 +558,12 @@ class RecentCall(BaseModel):
 
 
 @router.get("/recent", response_model=list[RecentCall])
-def recent_calls(days: int = 7, limit: int = 40):
+def recent_calls(request: Request, days: int = Query(7, ge=1, le=3650), limit: int = Query(40, ge=1, le=200)):
     """최근 받은 컨콜(D-218) — 수집 시각 최신순. Fool·AV 어느 출처로 들어왔는지 함께."""
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_recent
+        from routers.public_documents import perform
+        return perform(lambda: stored_recent(days, limit))
     conn = get_connection()
     try:
         rows = conn.execute(

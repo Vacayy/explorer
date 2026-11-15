@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 이번 시즌 시장이 따진 것 (ia-redesign §4.6a ④) — 섹터 줄 = 섹터명·판정·모멘텀 n | 요약 한 줄 | 반응 분포 점 띠 | 발표 수 | ›.
 // 줄 전체가 섹터 상세 링크. 정렬은 ?ssort=, 요약 없는 섹터는 '그 밖의 섹터 ›'로 접는다.
 import { useState } from "react"
@@ -37,7 +38,7 @@ export function SeasonSectors({ d, momentum }: { d: SeasonOverview; momentum: Mo
           {s.momentum > 0 && <Badge variant="outline" className="border-hypothesis/40 font-normal text-hypothesis">모멘텀 {s.momentum}</Badge>}
         </span>
       </span>
-      <span className="line-clamp-2 text-sm">{s.one_line ?? <span className="text-muted-foreground">요약 전 · 반응 정리 {s.n_reactions}/{s.n_reported}</span>}</span>
+      <span className="line-clamp-2 text-sm">{s.one_line ?? <span className="text-muted-foreground">{PUBLIC_ACCESS ? "공개 해설 준비 중" : <>요약 전 · 반응 정리 {s.n_reactions}/{s.n_reported}</>}</span>}</span>
       <DotBand dots={s.dots} />
       <span className="text-sm tabular-nums text-muted-foreground md:text-right">{s.n_reported}<span className="md:hidden">곳 발표</span></span>
       <ChevronRight className="hidden size-4 text-muted-foreground md:block" aria-hidden="true" />

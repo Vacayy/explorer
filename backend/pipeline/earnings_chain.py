@@ -828,15 +828,21 @@ def read_season_overview(conn, season: str | None = None, *, fs, core, last_run,
 
 def sector_detail(key: str, season: str | None = None) -> dict:
     conn = get_connection()
+    try:
+        selected = season or season_of(date.today().isoformat())["key"]
+        return read_sector_detail(conn, key, selected, fs=follows(conn), core=core_map(conn, selected))
+    finally:
+        conn.close()
+
+
+def read_sector_detail(conn, key: str, season: str | None = None, *, fs, core, today=None) -> dict:
     season = season or season_of(date.today().isoformat())["key"]
-    fs = follows(conn)
     members = {t: f for t, f in fs.items() if f["sector"] == key}
-    core = core_map(conn, season)
     etf = sector_etf(key)
     seasons = [r[0] for r in conn.execute(
         f"SELECT DISTINCT season FROM earnings_events WHERE ticker IN ({','.join('?' * len(members))}) AND confirmed=1 ORDER BY season DESC LIMIT 4",
         tuple(members))][::-1] if members else []
-    today = date.today().isoformat()
+    today = today or date.today().isoformat()
     companies = []
     evs = [e for e in _event_rows(conn, season) if e["ticker"] in members]
     for e in evs:
@@ -865,7 +871,6 @@ def sector_detail(key: str, season: str | None = None) -> dict:
         "SELECT id, verdict, body_json, tickers, created_at FROM season_themes WHERE season=? AND sector=? ORDER BY id", (season, key))]
     for t in themes:
         t.pop("body_json", None)
-    conn.close()
     latest = themes[-1] if themes else None
     return {"key": key, "name": sector_name(key), "etf": etf, "season": season, "seasons": seasons,
             "members": [{"ticker": t, "name": f["company_name"]} for t, f in members.items()],

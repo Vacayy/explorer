@@ -1,6 +1,7 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 핵심 종목 진행판 (ia-redesign §4.6a ⑦) — 기준별 필터(?core=) · 상태 요약 · 종목 타일(곧 발표 → 발표 완료 → 일정 미정)
 // | 오른쪽에 곧 발표(기대 정리 상태·만들기)와 발표 전 기대를 얼마나 맞혔나.
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -20,7 +21,7 @@ const REASON_ORDER: CoreReason[] = ["cap", "mention", "holding_chain", "dc_chain
 
 export function CoreBoard({ d, today, momentum }: { d: SeasonOverview; today: string; momentum: MomentumSet }) {
   const [params, setParams] = useSearchParams()
-  const filter = REASON_ORDER.find((r) => r === params.get("core")) ?? "all"
+  const filter = REASON_ORDER.find((r) => r === params.get("core") && (!PUBLIC_ACCESS || !!d.core.criteria[r])) ?? "all"
   const all = coreTiles(d.core, d.reported, d.calendar, today, momentum)
   const tiles = filter === "all" ? all : all.filter((t) => t.reasons.includes(filter))
   const n = coreCounts(tiles)
@@ -33,7 +34,7 @@ export function CoreBoard({ d, today, momentum }: { d: SeasonOverview; today: st
         <h2 className="flex items-center gap-1 text-[15px] font-semibold">
           핵심 종목
           <InfoTip label="핵심 종목 설명">
-            핵심 종목은 발표 전 기대(D-7·D-1)와 시장 반응 정리가 자동으로 만들어집니다. 기준 중 하나라도 맞으면 핵심입니다 — {REASON_ORDER.map((r) => d.core.criteria[r]).filter(Boolean).join(" · ")}
+            {PUBLIC_ACCESS ? "공개 대상 기업 안에서 아래 기준으로 핵심 종목을 고릅니다 — " : "핵심 종목은 발표 전 기대(D-7·D-1)와 시장 반응 정리가 자동으로 만들어집니다. 기준 중 하나라도 맞으면 핵심입니다 — "} {REASON_ORDER.map((r) => d.core.criteria[r]).filter(Boolean).join(" · ")}
           </InfoTip>
           <span className="tabular-nums font-normal text-muted-foreground">{all.length}개</span>
         </h2>
@@ -64,7 +65,7 @@ export function CoreBoard({ d, today, momentum }: { d: SeasonOverview; today: st
         {/* '사례 전체'도 제자리 — 오른쪽 칸 높이 그대로 안에서 스크롤 */}
         <InPlaceMore open={cases} className="flex-1">
           <div className="flex flex-col gap-2">
-            <Upcoming items={d.upcoming} />
+            {PUBLIC_ACCESS ? <Upcoming items={d.upcoming} /> : <PrivateUpcoming items={d.upcoming} />}
             <Evals evals={d.evals} open={cases} onOpenChange={setCases} />
           </div>
         </InPlaceMore>
@@ -91,29 +92,32 @@ function Tile({ t }: { t: CoreTile }) {
   )
 }
 
-function Upcoming({ items }: { items: SeasonItem[] }) {
+function PrivateUpcoming({ items }: { items: SeasonItem[] }) {
   const make = useMakeExpectation()
   const run = (ticker: string) => make.mutate({ ticker }, {
     onSuccess: () => toast.success(`${ticker} 발표 전 기대를 정리했습니다`),
     onError: (e) => toast.error(e.message),
   })
+  return <Upcoming items={items} action={(it) => !it.expectation?.qualitative ? (
+    <Button variant="ghost" size="xs" onClick={() => run(it.ticker)} disabled={make.isPending}>
+      {make.isPending && make.variables?.ticker === it.ticker && <Spinner className="size-3" />} 기대 정리 만들기
+    </Button>
+  ) : <span />} />
+}
+
+function Upcoming({ items, action }: { items: SeasonItem[]; action?: (item: SeasonItem) => ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <H3>곧 발표 <span className="tabular-nums font-normal text-muted-foreground">{items.length}</span></H3>
       {items.length === 0 ? <Meta>예정된 발표가 없습니다.</Meta> : (
         <ul className="flex flex-col">
           {items.map((it) => {
-            const busy = make.isPending && make.variables?.ticker === it.ticker
             return (
               <li key={it.ticker} className="grid grid-cols-[52px_40px_1fr_auto] items-center gap-x-2 border-t py-1.5 text-sm first:border-t-0">
                 <Link to={`/us/${it.ticker}`} className="font-mono font-semibold hover:underline" title={it.name ?? it.ticker}>{it.ticker}</Link>
                 <span className="tabular-nums text-muted-foreground">{mmdd(it.event_date)}</span>
-                <span className="flex min-w-0 items-center gap-1.5 truncate text-caption text-muted-foreground"><CoreBadge core={it.core} />{expectationStatus(it.expectation)}</span>
-                {!it.expectation?.qualitative ? (
-                  <Button variant="ghost" size="xs" onClick={() => run(it.ticker)} disabled={make.isPending}>
-                    {busy && <Spinner className="size-3" />} 기대 정리 만들기
-                  </Button>
-                ) : <span />}
+                <span className="flex min-w-0 items-center gap-1.5 truncate text-caption text-muted-foreground"><CoreBadge core={it.core} />{PUBLIC_ACCESS && !it.expectation?.qualitative ? "공개 기대 해설 준비 중" : expectationStatus(it.expectation)}</span>
+                {action?.(it)}
               </li>
             )
           })}
@@ -132,7 +136,7 @@ function Evals({ evals, open, onOpenChange }: { evals: SeasonOverview["evals"]; 
   return (
     <div className="flex flex-col gap-2 border-t pt-3">
       <H3>발표 전 기대를 얼마나 맞혔나 <span className="tabular-nums font-normal text-muted-foreground">{total}건</span></H3>
-      {total === 0 ? <Meta>아직 채점된 발표가 없습니다.</Meta> : <>
+      {total === 0 ? <Meta>{PUBLIC_ACCESS ? "공개 근거가 확인된 기대 채점 자료를 준비 중입니다." : "아직 채점된 발표가 없습니다."}</Meta> : <>
         <div className="flex h-2 w-full overflow-hidden" role="img" aria-label={EVAL_KEYS.map((k) => `${VERDICT[k]} ${evals[k]}`).join(", ")}>
           {EVAL_KEYS.map((k) => evals[k] > 0 && <span key={k} className={EVAL_CLS[k]} style={{ width: `${(evals[k] / total) * 100}%` }} />)}
         </div>

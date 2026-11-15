@@ -1,3 +1,5 @@
+import { SeasonView } from "@/components/follow/season/SeasonView"
+import { SectorView } from "@/components/follow/season/SectorView"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
 import NarrativePage from "@/components/explore/NarrativePage"
@@ -31,7 +33,12 @@ export function PublicContent() {
   const document = useMatch('/doc/:docId')
   const financial = useMatch('/analyze/:stockCode/financials')
   const trade = useMatch('/follow/trade/:hs')
-  if (pathname === '/follow/transcripts' && new URLSearchParams(search).get('view') === 'season' && new URLSearchParams(search).get('market') === 'kr') return <PageContainer><KrSeasonView tabs={null} /></PageContainer>
+  const params = new URLSearchParams(search)
+  if (pathname === '/follow/transcripts' && params.get('view') === 'season') {
+    if (params.get('market') === 'kr') return <PageContainer><KrSeasonView tabs={null} /></PageContainer>
+    const sectorKey = params.get('sector')
+    return <PageContainer>{sectorKey ? <SectorView sectorKey={sectorKey} /> : <SeasonView tabs={null} />}</PageContainer>
+  }
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
