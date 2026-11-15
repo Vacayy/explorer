@@ -36,6 +36,7 @@ from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTIO
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
 from pipeline.postgres_ingest_runner_fixture import embed_document
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
+from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -195,6 +196,89 @@ class SnapshotReplacementTests(unittest.TestCase):
                 self.assertIn(doc['id'],[item.id for item in search_feed(c,index,'신규',stock='000000').items])
             finally:
                 index.close()
+
+    def test_graph_side_effects_are_atomic_and_preserved(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+            doc=store_document(c,source_type='note',source_id='graph-new',title='합성 회사',markdown='합성 회사 자료')
+            claim=claim_enrichment(c,document_id=doc['id'])
+        result={'stocks':['합성 회사'],'stock_aliases':[{'name':'합성 회사','alias':'새별명'}],
+                'industries':['신규 산업'],'topics':['신규 주제'],'label_parents':{'신규 산업':'신규 주제'}}
+        with self.assertRaisesRegex(RuntimeError,'fixture failure'):
+            with self.pg() as c, patch('pipeline.postgres_graph_fixture.finish_enrichment',side_effect=RuntimeError('fixture failure')):
+                finish_with_graph(c,doc['id'],revision=claim['revision'],token=claim['token'],summary='요약',model='fixture',result=result)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM ingest_graph_entities').fetchone()[0],1)
+            self.assertEqual(c.execute('SELECT count(*) FROM ingest_graph_keywords').fetchone()[0],0)
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(doc['id'],)).fetchone()[0],'running')
+            self.assertTrue(finish_with_graph(c,doc['id'],revision=claim['revision'],token=claim['token'],summary='요약',model='fixture',result=result))
+            self.assertEqual(c.execute('SELECT count(*) FROM ingest_graph_entities').fetchone()[0],3)
+            self.assertEqual(c.execute("SELECT status FROM ingest_graph_keywords WHERE keyword='새별명'").fetchone()[0],'proposed')
+            self.assertEqual(c.execute("SELECT count(*) FROM ingest_graph_relations WHERE rel_type='MEMBER_OF'").fetchone()[0],1)
+            self.assertEqual(c.execute('SELECT count(*) FROM ingest_entity_links WHERE document_id=%s',(doc['id'],)).fetchone()[0],3)
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='entities'").fetchone()[0],1)
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader=PostgreSQLDocumentReader(target)
+        detail=reader.get(doc['id'])
+        self.assertEqual({e.name for e in detail.entities},{'합성 회사','신규 산업','신규 주제'})
+        self.assertIn(doc['id'],[item.id for item in reader.list(industry='신규 산업').items])
+        self.assertIn(doc['id'],[item.id for item in reader.list(topic='신규 주제').items])
+        with target() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='entity_keywords' AND row_data->>'keyword'='새별명' AND row_data->>'status'='proposed'").fetchone()[0],1)
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'rel_type'='MEMBER_OF'").fetchone()[0],1)
+
+    def test_concurrent_new_graph_names_share_one_entity(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+            docs=[]
+            for number in range(2):
+                doc=store_document(c,source_type='note',source_id=f'graph-{number}',title='자료',markdown='본문')
+                claim=claim_enrichment(c,document_id=doc['id'])
+                docs.append((doc,claim))
+        barrier=threading.Barrier(2)
+        def worker(pair):
+            doc,claim=pair
+            barrier.wait(timeout=5)
+            with self.pg() as c:
+                return finish_with_graph(c,doc['id'],revision=claim['revision'],token=claim['token'],
+                                         summary='요약',model='fixture',result={'stocks':[],'industries':['동일 산업'],'topics':[]})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            self.assertEqual(list(pool.map(worker,docs)),[True,True])
+        with self.pg() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM ingest_graph_entities WHERE type='sector' AND name='동일 산업'").fetchone()[0],1)
+            self.assertEqual(c.execute('SELECT count(DISTINCT entity_id) FROM ingest_entity_links WHERE document_id=ANY(%s)',
+                                       ([doc['id'] for doc,_ in docs],)).fetchone()[0],1)
+        with self.assertRaisesRegex(ValueError, 'read committed'):
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                doc, claim = docs[0]
+                finish_with_graph(c,doc['id'],revision=claim['revision'],token=claim['token'],
+                                  summary='요약',model='fixture',result={})
 
     def test_ledger_detail_keeps_legacy_links_and_suppresses_stale_links(self):
         self.load('2026-01-03T00:00:00+00:00')

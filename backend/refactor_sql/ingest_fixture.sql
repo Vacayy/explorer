@@ -82,3 +82,20 @@ CREATE TABLE ingest_entity_links (
     PRIMARY KEY(document_id,revision,position),
     UNIQUE(document_id,revision,entity_id,link_type)
 );
+CREATE TABLE ingest_graph_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK(singleton));
+CREATE TABLE ingest_graph_entities (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    type TEXT NOT NULL, name TEXT NOT NULL, aliases TEXT, status TEXT,
+    UNIQUE(type,name)
+);
+CREATE TABLE ingest_graph_keywords (
+    entity_id BIGINT NOT NULL, keyword TEXT NOT NULL, status TEXT,
+    UNIQUE(entity_id,keyword)
+);
+CREATE TABLE ingest_graph_relations (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    src_id BIGINT NOT NULL, dst_id BIGINT NOT NULL, rel_type TEXT NOT NULL,
+    epistemic_type TEXT, confidence DOUBLE PRECISION, source_doc_id BIGINT, valid_from TEXT,
+    source_ordinal BIGINT,
+    UNIQUE(src_id,dst_id,rel_type,valid_from)
+);

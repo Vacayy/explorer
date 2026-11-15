@@ -75,6 +75,17 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         raise ValueError('Invalid fixture media root')
     captured = {}
     metadata = conn.execute('SELECT expected_model,vector_count,generation_id FROM document_embedding_metadata WHERE singleton').fetchone()
+    graph_ready=bool(conn.execute('SELECT 1 FROM ingest_graph_state').fetchone())
+    if graph_ready:
+        new_entities=conn.execute("SELECT g.id,g.type,g.name,g.aliases,g.status FROM ingest_graph_entities g "
+                                  "WHERE NOT EXISTS(SELECT 1 FROM legacy_snapshot_rows a WHERE a.table_name='entities' AND a.row_data->>'id'=g.id::text) ORDER BY g.id").fetchall()
+        new_keywords=conn.execute("SELECT g.entity_id,g.keyword,g.status FROM ingest_graph_keywords g "
+                                  "WHERE NOT EXISTS(SELECT 1 FROM legacy_snapshot_rows a WHERE a.table_name='entity_keywords' "
+                                  "AND a.row_data->>'entity_id'=g.entity_id::text AND a.row_data->>'keyword'=g.keyword)").fetchall()
+        new_relations=conn.execute('SELECT id,src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from '
+                                   'FROM ingest_graph_relations WHERE source_ordinal IS NULL ORDER BY id').fetchall()
+    else:
+        new_entities,new_keywords,new_relations=[],[],[]
     dirty = conn.execute('SELECT d.id,d.source_type,d.source_id,d.title,d.url,d.published_at,d.fetched_at,d.raw_content, '
                          'd.markdown,d.media_json,d.digest_status,d.content_hash,d.revision,e.summary,e.model, '
                          'd.enrichment_dirty,d.embedding_dirty,v.embedding,v.model,d.links_dirty '
@@ -122,11 +133,12 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             channel,groups,visible,timeline = {},projection[0],projection[1],None
         link_rows=[]
         if links_dirty:
-            links = conn.execute("SELECT l.entity_id,l.link_type,l.confidence,e.row_data FROM ingest_entity_links l "
-                                 "JOIN legacy_snapshot_rows e ON e.table_name='entities' AND e.row_data->>'id'=l.entity_id::text "
+            links = conn.execute("SELECT l.entity_id,l.link_type,l.confidence,COALESCE(to_jsonb(g),e.row_data) FROM ingest_entity_links l "
+                                 "LEFT JOIN ingest_graph_entities g ON g.id=l.entity_id "
+                                 "LEFT JOIN legacy_snapshot_rows e ON e.table_name='entities' AND e.row_data->>'id'=l.entity_id::text "
                                  "WHERE l.document_id=%s AND l.revision=%s ORDER BY l.position",(ident,revision)).fetchall()
             expected=conn.execute('SELECT count(*) FROM ingest_entity_links WHERE document_id=%s AND revision=%s',(ident,revision)).fetchone()[0]
-            if len(links) != expected:
+            if len(links) != expected or any(row[3] is None for row in links):
                 raise ValueError('An entity link no longer resolves')
             link_rows=[EntityTag(entity_id=eid,type=entity['type'],name=entity['name'],aliases=entity.get('aliases'),
                                  link_type=kind,confidence=confidence) for eid,kind,confidence,entity in links]
@@ -162,6 +174,19 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                         enrichment_dirty,embedding_dirty,bytes(embedding) if embedding is not None else None,links_dirty,
                         groups,visible,timeline,doc,list_doc,prior is not None,same_revision,media_changed))
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(target_schema)))
+    for ident,kind,name,aliases,status in new_entities:
+        value={'id':ident,'type':kind,'name':name,'aliases':aliases,'status':status,'meta_json':None}
+        conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entities',COALESCE(max(row_ordinal)+1,0),%s "
+                     "FROM legacy_snapshot_rows WHERE table_name='entities'",(Jsonb(value),))
+    for ident,keyword,status in new_keywords:
+        value={'entity_id':ident,'keyword':keyword,'status':status}
+        conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entity_keywords',COALESCE(max(row_ordinal)+1,0),%s "
+                     "FROM legacy_snapshot_rows WHERE table_name='entity_keywords'",(Jsonb(value),))
+    for ident,src,dst,kind,epistemic,confidence,doc_id,valid_from in new_relations:
+        value={'id':ident,'src_id':src,'dst_id':dst,'rel_type':kind,'epistemic_type':epistemic,
+               'confidence':confidence,'source_doc_id':doc_id,'valid_from':valid_from}
+        conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entity_relations',COALESCE(max(row_ordinal)+1,0),%s "
+                     "FROM legacy_snapshot_rows WHERE table_name='entity_relations'",(Jsonb(value),))
     if captured:
         conn.execute('INSERT INTO media_generations VALUES (%s) ON CONFLICT DO NOTHING', (result['generation'],))
         for path,body in captured.items():
@@ -310,7 +335,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     conn.execute("INSERT INTO document_filter_order SELECT 'note',row_number() OVER (ORDER BY n.ordinal)-1,n.ordinal "
                  "FROM overlay_ord n JOIN document_projection d ON d.id=n.document_id WHERE d.source_type='note'")
     conn.execute("UPDATE legacy_snapshot_tables t SET row_count=(SELECT count(*) FROM legacy_snapshot_rows r WHERE r.table_name=t.table_name) "
-                 "WHERE table_name IN ('raw_documents','enrichments','entity_links')")
+                 "WHERE table_name IN ('raw_documents','enrichments','entity_links','entities','entity_keywords','entity_relations')")
     conn.execute('UPDATE snapshot_metadata SET document_count=(SELECT count(*) FROM document_projection), '
                  'list_row_count=(SELECT count(*) FROM document_list_projection)')
     conn.execute('''UPDATE document_embedding_metadata SET
