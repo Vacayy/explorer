@@ -199,6 +199,15 @@ class SnapshotReplacementTests(unittest.TestCase):
     def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
         self.load('2026-01-03T00:00:00+00:00')
         with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            with self.assertRaisesRegex(ValueError,'Embeddings are missing'):
+                SearchSnapshot.from_postgres(c)
+            index=SearchSnapshot.from_postgres(c,lexical_only=True)
+            try:
+                self.assertEqual(search_feed(c,index,'원문').items[0].id,1)
+            finally:
+                index.close()
+        with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
             self.assertEqual(import_archived_documents(c), 2)
             source_count = c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='raw_documents'").fetchone()[0]

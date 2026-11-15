@@ -34,7 +34,7 @@ class SearchSnapshot:
             raise
 
     @classmethod
-    def from_postgres(cls, connection):
+    def from_postgres(cls, connection, *, lexical_only=False):
         database, schema = connection.execute('SELECT current_database(), current_schema()').fetchone()
         if database != 'fixture' or not schema or not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema):
             raise ValueError('Only a disposable fixture is supported')
@@ -45,17 +45,20 @@ class SearchSnapshot:
             'SELECT generation_id, document_count FROM snapshot_metadata WHERE singleton').fetchone()
         metadata = connection.execute('SELECT generation_id, vector_count, stale_count, source_hash_missing_count '
                                       'FROM document_embedding_metadata WHERE singleton').fetchone()
-        if metadata is None or metadata[0] != generation or metadata[2] or metadata[3]:
+        if not lexical_only and (metadata is None or metadata[0] != generation or metadata[2] or metadata[3]):
             raise ValueError('Embeddings are missing or do not match the current generation')
         # Named cursors keep PostgreSQL transfer bounded; the resulting search
         # index itself is intentionally an in-memory prototype.
         with connection.cursor(name='fixture_search_documents') as docs, connection.cursor(name='fixture_search_embeddings') as vecs:
             docs.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
                          "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal")
-            vecs.execute('SELECT document_id,embedding FROM document_embeddings ORDER BY document_id')
-            index = cls(generation, docs, ((ident, bytes(blob)) for ident, blob in vecs))
+            if lexical_only:
+                index = cls(generation, docs)
+            else:
+                vecs.execute('SELECT document_id,embedding FROM document_embeddings ORDER BY document_id')
+                index = cls(generation, docs, ((ident, bytes(blob)) for ident, blob in vecs))
         if index.db.execute('SELECT count(*) FROM raw_documents').fetchone()[0] != count or \
-                index.db.execute('SELECT count(*) FROM doc_vec').fetchone()[0] != metadata[1]:
+                (not lexical_only and index.db.execute('SELECT count(*) FROM doc_vec').fetchone()[0] != metadata[1]):
             index.close()
             raise ValueError('Incomplete search generation')
         return index
