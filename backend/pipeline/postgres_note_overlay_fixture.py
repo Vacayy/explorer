@@ -20,7 +20,7 @@ from pipeline.timeline import utc
 from pipeline.urls import blog_category, is_feedlike, norm_domain, url_belongs
 
 
-def _new_source_details(conn, ident, source, source_id, url, published):
+def _new_source_details(conn, ident, source, source_id, url, published, fetched=None):
     """Reproduce existing source registry, visibility, and timeline rules."""
     blogs = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='blog_sources'")]
     youtube = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='youtube_channels'")]
@@ -49,16 +49,17 @@ def _new_source_details(conn, ident, source, source_id, url, published):
             if any(row['channel_id'] == channel_id and row['is_active'] == 1 for row in youtube):
                 timeline_key = channel_id
     if timeline_key is not None:
-        if not published:
-            raise ValueError('New timeline sources need an explicit published time')
+        stamp = published or fetched
+        if not stamp:
+            raise ValueError('Timeline sources need an explicit published or fetched time')
         try:
-            occurred = utc(published)
+            occurred = utc(stamp)
             instant = datetime.fromisoformat(occurred)
         except (ValueError,TypeError,AttributeError) as exc:
             raise ValueError('Unsupported publication time') from exc
         delta = instant-datetime(1970,1,1,tzinfo=timezone.utc)
         millis = ((delta.days*86400+delta.seconds)*1000000+delta.microseconds+500)//1000
-        timeline = (timeline_key,occurred,millis)
+        timeline = (timeline_key,occurred,millis,'게시' if published else '수집')
     else:
         timeline = None
     return channel,sorted(groups),visible,timeline
@@ -91,20 +92,20 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             for path in media:
                 captured[path] = _read_file(root, path)
         same_revision = prior is not None and revision == 1
-        if source != 'note' and prior is not None and media_changed:
-            raise ValueError('Existing attachment changes are unsupported for this source')
+        original = None
         if source != 'note' and prior is not None and not same_revision:
             original = conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(ident),)).fetchone()[0]
-            if (original.get('source_id') or '') != source_id or (original.get('url') or '') != url or (original.get('published_at') or '') != published:
-                raise ValueError('Source identity, URL or date changes are unsupported')
-        if timeline_present and (source == 'note' or media_changed):
+            if (original.get('source_id') or '') != source_id:
+                raise ValueError('Source identity changes are unsupported')
+        if timeline_present and source == 'note':
             raise ValueError('Timeline content changes are not supported')
         if same_revision and media_changed and model is not None and (summary,model) != (prior.summary,prior.enrich_model):
             raise ValueError('Combined same-revision media and summary changes are ambiguous')
         if same_revision and not media_changed and model is None:
             raise ValueError('Same-revision changes require a current summary')
-        if prior is None and source != 'note':
-            channel,groups,visible,timeline = _new_source_details(conn,ident,source,source_id,url,published)
+        if source != 'note' and (prior is None or not same_revision):
+            channel,groups,visible,timeline = _new_source_details(conn,ident,source,source_id,url,published,
+                                                                  original.get('fetched_at') if original else None)
         elif prior is None:
             channel,groups,visible,timeline = {'name':'내 노트'},[],True,None
         else:
@@ -118,6 +119,9 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         else:
             doc = doc.model_copy(update={'title':title,'url':url,'published_at':published,'content':markdown or raw,
                                          'images':media or [],'summary':summary,'enrich_model':model,'entities':[]})
+            if source != 'note':
+                doc = doc.model_copy(update={'channel':channel.get('name'),'channel_kind':channel.get('kind'),
+                                             'channel_key':channel.get('key')})
             if source == 'youtube':
                 job = conn.execute('SELECT transcript,status,updated_at,error FROM ingest_youtube_jobs WHERE document_id=%s AND revision=%s',
                                    (ident,revision)).fetchone()
@@ -158,8 +162,8 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                 conn.execute('UPDATE document_projection SET detail_document=%s WHERE id=%s',
                              (Jsonb(doc.model_dump(mode='json')),ident))
             else:
-                conn.execute('UPDATE document_projection SET published_at=%s,detail_document=%s WHERE id=%s',
-                             (published,Jsonb(doc.model_dump(mode='json')),ident))
+                conn.execute('UPDATE document_projection SET published_at=%s,detail_document=%s,source_groups=%s,feed_visible=%s WHERE id=%s',
+                             (published,Jsonb(doc.model_dump(mode='json')),groups,visible,ident))
             old = conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(ident),)).fetchone()[0]
         else:
             conn.execute('INSERT INTO document_projection VALUES (%s,%s,%s,%s,%s,%s)',
@@ -183,7 +187,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                           'enriched_at':'2026-01-01T00:00:00Z'}
             conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'enrichments',COALESCE(max(row_ordinal)+1,0),%s "
                          "FROM legacy_snapshot_rows WHERE table_name='enrichments'", (Jsonb(enrichment),))
-        if existing and not same_revision:
+        if existing and not same_revision and source == 'note':
             conn.execute("UPDATE timeline_source_projection SET document=%s || jsonb_build_object('published_at',document->'published_at'), "
                          "preview=left(COALESCE(NULLIF(%s,''),NULLIF(%s,''),''),180),topic_names=ARRAY[]::text[] WHERE document_id=%s",
                          (Jsonb(list_doc.model_dump(mode='json')),title,markdown,ident))
@@ -192,12 +196,17 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             conn.execute("UPDATE timeline_source_projection SET document=jsonb_set(jsonb_set(document,'{summary}',%s),'{enrich_model}',%s) "
                          "WHERE document_id=%s", (Jsonb(summary),Jsonb(model),ident))
             conn.execute('UPDATE timeline_source_metadata SET enrichment_id=%s WHERE document_id=%s', (next_id,ident))
-        if not existing and timeline:
-            key,occurred,millis = timeline
+        elif same_revision and media_changed:
+            conn.execute("UPDATE timeline_source_projection SET document=jsonb_set(document,'{images}',%s) WHERE document_id=%s", (Jsonb(media or []),ident))
+        if existing and not same_revision and source != 'note':
+            conn.execute('DELETE FROM timeline_source_projection WHERE document_id=%s',(ident,))
+            conn.execute('DELETE FROM timeline_source_metadata WHERE document_id=%s',(ident,))
+        if timeline:
+            key,occurred,millis,label = timeline
             timeline_doc = list_doc.model_copy(update={'published_at':occurred})
             conn.execute('INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                          (f'source:{ident}',ident,occurred,millis,f'{source}:{key}',source,[],
-                          '게시',(title or markdown or '')[:180],Jsonb(timeline_doc.model_dump(mode='json'))))
+                          label,(title or markdown or '')[:180],Jsonb(timeline_doc.model_dump(mode='json'))))
             conn.execute("INSERT INTO timeline_source_metadata VALUES (%s,%s,'[]'::jsonb)",(ident,next_id))
     conn.execute('CREATE TEMP TABLE overlay_new_rows(old_ordinal bigint,document_id bigint,list_document jsonb) ON COMMIT DROP')
     conn.execute('INSERT INTO overlay_new_rows SELECT ordinal,document_id,list_document FROM overlay_old_list '
@@ -217,6 +226,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                n.old_ordinal,n.document_id,n.list_document
         FROM overlay_new_rows n JOIN document_projection d ON d.id=n.document_id''')
     conn.execute('INSERT INTO document_list_projection SELECT ordinal,document_id,list_document FROM overlay_ord')
+    moved_ids = [row[0] for row in updates if row[1] != 'note' and not row[-2]]
     conn.execute('''INSERT INTO document_filter_order
         SELECT filter_key,row_number() OVER (PARTITION BY filter_key ORDER BY old_position,ordinal)-1,ordinal
         FROM (
@@ -226,14 +236,14 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             SELECT f.filter_key,min(f.position),n.ordinal FROM overlay_old_filters f
             JOIN overlay_old_list l ON l.ordinal=f.list_ordinal
             JOIN overlay_ord n ON n.document_id=l.document_id AND n.old_ordinal IS NULL
-            WHERE f.filter_key<>'note' GROUP BY f.filter_key,n.ordinal
-        ) membership''')
+            WHERE f.filter_key<>'note' AND NOT(l.document_id=ANY(%s)) GROUP BY f.filter_key,n.ordinal
+        ) membership''',(moved_ids,))
     # New non-note sources have no old filter membership. Merge them by date;
     # existing positions remain the tie-breaker within each source filter.
     conn.execute('CREATE TEMP TABLE overlay_new_filters(filter_key text,document_id bigint) ON COMMIT DROP')
     for row in updates:
         ident,source,groups,visible,existing = row[0],row[1],row[-8],row[-7],row[-3]
-        if not existing and visible and source != 'note':
+        if visible and source != 'note' and (not existing or not row[-2]):
             for key in (groups if source == 'blog' else [source]):
                 conn.execute('INSERT INTO overlay_new_filters VALUES (%s,%s)',(key,ident))
     if conn.execute('SELECT EXISTS(SELECT 1 FROM overlay_new_filters)').fetchone()[0]:
