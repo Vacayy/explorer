@@ -83,6 +83,7 @@ export default function UsDossierPage({ ticker: publicTicker }: { ticker?: strin
             <SaveButton kind="company" refId={d.ticker} url={`/us/${d.ticker}`} title={d.name} subtitle={d.ticker} />
             <UsPriceCollect ticker={d.ticker} compact />
           </>} />
+        {PUBLIC_ACCESS && d.ticker === 'WBD' && <p role="status" className="text-sm text-muted-foreground">과거 저장 자료입니다. Warner Bros. Discovery는 2026년 10월 6일 인수되었습니다. 표시된 시세와 재무는 인수 이전에 수집되었으며 현재 가격이 아닙니다. <a href="https://ir.wbd.com/investor-relations/default.aspx" target="_blank" rel="noreferrer" className="underline">공식 투자자 안내</a></p>}
         <MetricStrip items={[
           { label: '시가총액', value: usd(f?.market_cap), info: src.market_cap },
           { label: 'Fwd PER', value: times(f?.fwd_pe), info: src.fwd_pe },
