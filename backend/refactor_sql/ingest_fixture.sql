@@ -33,7 +33,17 @@ CREATE TABLE ingest_llm_calls (
     duration_ms INTEGER NOT NULL,
     ok BOOLEAN NOT NULL,
     usage JSONB NOT NULL,
-    cost_usd DOUBLE PRECISION
+    cost_usd DOUBLE PRECISION,
+    attempt_token UUID
+);
+CREATE TABLE ingest_enrichment_attempts (
+    token UUID PRIMARY KEY,
+    document_id BIGINT NOT NULL,
+    revision BIGINT NOT NULL,
+    external BOOLEAN NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('started','completed','failed','unknown','stale')),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    finished_at TIMESTAMPTZ
 );
 CREATE TABLE ingest_documents (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

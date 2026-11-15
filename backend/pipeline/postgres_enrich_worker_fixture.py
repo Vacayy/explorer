@@ -6,7 +6,7 @@ import math
 from psycopg.types.json import Jsonb
 
 
-def fixture_call_recorder(factory):
+def fixture_call_recorder(factory, *, attempt_token=None):
     """Record bounded usage metadata only, never prompts, responses or errors."""
     def record(task, model, engine, effort, result, duration_ms, error):
         usage = (result.usage or {}) if result is not None else {}
@@ -18,9 +18,9 @@ def fixture_call_recorder(factory):
             cost = None
         with factory() as conn:
             _guard(conn)
-            conn.execute('INSERT INTO ingest_llm_calls(task,model,engine,effort,duration_ms,ok,usage,cost_usd) '
-                         'VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
-                         (task,model,engine,effort,duration_ms,error is None,Jsonb(safe_usage),cost))
+            conn.execute('INSERT INTO ingest_llm_calls(task,model,engine,effort,duration_ms,ok,usage,cost_usd,attempt_token) '
+                         'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                         (task,model,engine,effort,duration_ms,error is None,Jsonb(safe_usage),cost,attempt_token))
     return record
 
 
@@ -39,15 +39,19 @@ def existing_enricher(factory, *, record_call=None):
     from pipeline.enrich import enrich
     from pipeline.postgres_enrich_vocabulary_fixture import vocabulary_provider
     provider = vocabulary_provider(factory)
-    recorder = fixture_call_recorder(factory) if record_call is None else record_call
+    def for_attempt(token):
+        recorder = fixture_call_recorder(factory,attempt_token=token) if record_call is None else record_call
+        return lambda title,markdown: enrich(title,markdown,vocabulary_provider=provider,record_call=recorder)
     def run(title, markdown):
-        return enrich(title, markdown, vocabulary_provider=provider, record_call=recorder)
+        raise RuntimeError('Existing enrichment requires a claimed attempt')
+    run.for_attempt = for_attempt
     return run
 
 
 def enrich_document(factory, document_id, *, enrich, worker_id='fixture-worker'):
     """Claim and commit before calling the supplied function, then save atomically."""
     validate_enricher(enrich)
+    external = callable(getattr(enrich,'for_attempt',None))
     with factory() as conn:
         _guard(conn)
         claim=claim_enrichment(conn,document_id=document_id,worker_id=worker_id)
@@ -56,20 +60,29 @@ def enrich_document(factory, document_id, *, enrich, worker_id='fixture-worker')
         row=conn.execute('SELECT title,markdown FROM ingest_documents WHERE id=%s',(document_id,)).fetchone()
         if row is None:
             raise ValueError('Claimed document missing')
+        conn.execute("INSERT INTO ingest_enrichment_attempts(token,document_id,revision,external,state) VALUES (%s,%s,%s,%s,'started')",
+                     (claim['token'],document_id,claim['revision'],external))
     try:
-        result=enrich(row[0] or '',row[1] or '')
+        callback=enrich.for_attempt(claim['token']) if external else enrich
+        result=callback(row[0] or '',row[1] or '')
         if not isinstance(result,dict) or not isinstance(result.get('model'),str) or not result['model']:
             raise ValueError('Enrichment result requires a model')
         with factory() as conn:
-            return finish_with_graph(conn,document_id,revision=claim['revision'],token=claim['token'],
-                                     summary=result.get('summary'),model=result['model'],result=result)
+            applied=finish_with_graph(conn,document_id,revision=claim['revision'],token=claim['token'],
+                                      summary=result.get('summary'),model=result['model'],result=result)
+            conn.execute("UPDATE ingest_enrichment_attempts SET state=%s,finished_at=clock_timestamp() WHERE token=%s AND state='started'",
+                         ('completed' if applied else 'stale',claim['token']))
+            return applied
     except BaseException as exc:
         with factory() as conn:
             from pipeline.llm import CallRecordingError
-            if isinstance(exc, CallRecordingError):
+            unknown = external or isinstance(exc, CallRecordingError)
+            if unknown:
                 conn.execute("UPDATE ingest_enrichment_jobs SET status='unknown',token=NULL,worker_id=NULL,started_at=NULL "
                              "WHERE document_id=%s AND revision=%s AND status='running' AND token=%s",
                              (document_id,claim['revision'],claim['token']))
             else:
                 fail_enrichment(conn,document_id=document_id,**claim)
+            conn.execute("UPDATE ingest_enrichment_attempts SET state=%s,finished_at=clock_timestamp() WHERE token=%s AND state='started'",
+                         ('unknown' if unknown else 'failed',claim['token']))
         raise

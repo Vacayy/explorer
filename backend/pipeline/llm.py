@@ -56,7 +56,7 @@ class LLMResult:
 
 def run(prompt: str, *, task: str, system: str | None = None,
         on_text: OnText | None = None, json_schema: dict | None = None,
-        images: tuple[str, ...] = (), record_call=None) -> LLMResult:
+        images: tuple[str, ...] = (), record_call=None, allow_fallback=True) -> LLMResult:
     """Run one registered task; model, effort, permissions and timeout are task-owned."""
     from pipeline.llm_policies import resolve
     engine = llm_engine()
@@ -76,6 +76,8 @@ def run(prompt: str, *, task: str, system: str | None = None,
     kwargs = dict(policy=policy, system=system, on_text=on_text, json_schema=json_schema, images=images)
     if record_call is not None:
         kwargs['record_call'] = record_call
+    if not allow_fallback:
+        kwargs['allow_fallback'] = False
     return _execute(prompt, **kwargs)
 
 
@@ -97,7 +99,7 @@ def run_experiment(prompt: str, *, system=None, model="sonnet", effort=None,
     return _execute(prompt, policy=policy, system=system, on_text=on_text, json_schema=json_schema)
 
 
-def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None, images=(), record_call=None) -> LLMResult:
+def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None, images=(), record_call=None, allow_fallback=True) -> LLMResult:
     def record(*args):
         if record_call is None:
             return _record(*args)
@@ -139,7 +141,7 @@ def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None
                 f"{type(primary).__name__}: {str(primary)[:300]}")
         # Retrying after publishing text mixes two independent answers. Tool-result
         # consumers require Claude's native evidence contract, not fabricated events.
-        eligible = (eng == "claude-code" and not emitted and not callback_failed
+        eligible = (allow_fallback and eng == "claude-code" and not emitted and not callback_failed
                     and (not tools or (set(tools) == {"Read"} and images))
                     and isinstance(primary, (RuntimeError, OSError, subprocess.SubprocessError, ValueError))
                     and policy.fallback is not None)

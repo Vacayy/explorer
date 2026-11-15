@@ -598,6 +598,29 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             self.assertEqual(c.execute("SELECT status FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id WHERE d.source_id='success'").fetchone()[0],'done')
 
+    def test_abandoned_external_attempt_is_held_not_retried(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+            ident=store_document(c,source_type='note',source_id='unknown-external',title='자료',markdown='본문')['id']
+            claim=claim_enrichment(c,document_id=ident,worker_id='cycle:lost')
+            c.execute("INSERT INTO ingest_enrichment_attempts(token,document_id,revision,external,state) VALUES (%s,%s,%s,TRUE,'started')",(claim['token'],ident,claim['revision']))
+        calls=[]
+        with tempfile.TemporaryDirectory() as vault:
+            (Path(vault)/'notes').mkdir()
+            result=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=lambda *a:calls.append(a))
+        self.assertEqual(calls,[])
+        self.assertEqual(result['enrichment_held'],1)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(ident,)).fetchone()[0],'unknown')
+            self.assertEqual(c.execute('SELECT state FROM ingest_enrichment_attempts WHERE token=%s',(claim['token'],)).fetchone()[0],'unknown')
+            self.assertFalse(finish_enrichment(c,document_id=ident,**claim,summary='late',model='fake'))
+
     def test_exclusive_cycle_recovers_after_process_exit(self):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
@@ -822,10 +845,23 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 uncertain=store_document(c,source_type='note',source_id='record-fail',title='제목',markdown='본문')['id']
             with self.assertRaises(enrichment.llm.CallRecordingError):
                 enrich_document(self.pg,uncertain,enrich=existing_enricher(self.pg,record_call=lambda *a: (_ for _ in ()).throw(RuntimeError('fixture'))))
+            with self.pg() as c:
+                recorded=store_document(c,source_type='note',source_id='record-success',title='제목',markdown='본문')['id']
+            self.assertTrue(enrich_document(self.pg,recorded,enrich=existing_enricher(self.pg)))
         with self.pg() as c:
-            row=c.execute('SELECT task,engine,ok,usage FROM ingest_llm_calls').fetchone()
-            self.assertEqual(row,('document.tag','claude-code',True,{'input':12,'output':3}))
+            rows=c.execute('SELECT task,engine,ok,usage FROM ingest_llm_calls ORDER BY id').fetchall()
+            self.assertEqual(rows,[('document.tag','claude-code',True,{'input':12,'output':3})]*2)
             self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(uncertain,)).fetchone()[0],'unknown')
+            self.assertEqual(c.execute("SELECT a.state FROM ingest_enrichment_attempts a JOIN ingest_llm_calls l ON l.attempt_token=a.token WHERE a.document_id=%s",(recorded,)).fetchone()[0],'completed')
+            timed_out=store_document(c,source_type='note',source_id='timeout-test',title='제목',markdown='본문')['id']
+        with patch.dict(os.environ,{'ENRICH_ENGINE':'claude-code'}), \
+             patch.object(enrichment.llm,'_run_claude_code',side_effect=TimeoutError('fixture timeout')), \
+             patch.object(enrichment.llm,'_run_codex') as fallback:
+            with self.assertRaises(TimeoutError):
+                enrich_document(self.pg,timed_out,enrich=existing_enricher(self.pg))
+            fallback.assert_not_called()
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(timed_out,)).fetchone()[0],'unknown')
 
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:

@@ -62,6 +62,10 @@ def enrich(title: str, markdown: str, *, vocabulary_provider=None, record_call=N
         except llm.CallRecordingError:
             raise
         except Exception as e:
+            if record_call is not None:
+                # A timed-out external call may have completed; the fixture
+                # worker must hold it for reconciliation, not replace it.
+                raise
             print(f"[enrich] LLM 실패, 키워드 fallback: {e}")
     return _enrich_keyword(title, markdown)
 
@@ -248,7 +252,7 @@ def _normalize_llm_result(data: dict, model: str) -> dict:
 def _enrich_llm(title: str, markdown: str, *, vocabulary=None, record_call=None) -> dict:
     prompt = _build_prompt(title, markdown, vocabulary=vocabulary)
     result = (llm.run(prompt, task="document.tag") if record_call is None
-              else llm.run(prompt, task="document.tag", record_call=record_call))
+              else llm.run(prompt, task="document.tag", record_call=record_call,allow_fallback=False))
     raw = result.text
     return _normalize_llm_result(_parse_json(raw), result.label)
 
@@ -303,7 +307,7 @@ def enrich_batch(docs: list[dict], *, vocabulary_provider=None, record_call=None
     prompt = (_build_batch_prompt(docs) if vocabulary_provider is None
               else _build_batch_prompt(docs, vocabulary=vocabulary))
     raw = (llm.run(prompt, task='document.tag_batch') if record_call is None
-           else llm.run(prompt, task='document.tag_batch', record_call=record_call)).text
+           else llm.run(prompt, task='document.tag_batch', record_call=record_call,allow_fallback=False)).text
     data = _parse_json(raw)
     out: dict[int, dict] = {}
     for r in (data.get("results") or []):

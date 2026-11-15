@@ -52,6 +52,12 @@ def run_exclusive_cycle(connector, factory, *, enrich):
         try:
             with factory() as conn:
                 _guard(conn)
+                conn.execute("UPDATE ingest_enrichment_jobs j SET status='unknown',token=NULL,worker_id=NULL,started_at=NULL "
+                             "FROM ingest_enrichment_attempts a WHERE j.token=a.token AND j.status='running' "
+                             "AND j.worker_id LIKE 'cycle:%' AND a.external AND a.state='started'")
+                conn.execute("UPDATE ingest_enrichment_attempts SET state='unknown',finished_at=clock_timestamp() "
+                             "WHERE external AND state='started' AND token NOT IN "
+                             "(SELECT token FROM ingest_enrichment_jobs WHERE status='running' AND token IS NOT NULL)")
                 conn.execute("UPDATE ingest_enrichment_jobs SET status='failed',token=NULL,worker_id=NULL,started_at=NULL "
                              "WHERE status='running' AND worker_id LIKE 'cycle:%'")
             return run_cycle(connector,factory,enrich=enrich,worker_id='cycle:'+uuid4().hex)
