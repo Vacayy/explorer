@@ -219,6 +219,20 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT * FROM timeline_system_projection ORDER BY id').fetchall(), expected)
 
+    def test_inconsistent_enrichment_selection_fails_without_replacing_snapshot(self):
+        from pipeline.timeline import _documents
+        self.load('2026-01-05T00:00:00+00:00')
+        before = self.reader.snapshot_info()
+        def inconsistent(conn, ids):
+            result = _documents(conn, ids)
+            for doc in result.values():
+                doc.summary = '다른 요약'
+            return result
+        with patch('pipeline.timeline._documents', side_effect=inconsistent):
+            with self.assertRaisesRegex(ValueError, 'enrichment selection'):
+                self.load('2026-01-06T00:00:00+00:00')
+        self.assertEqual(self.reader.snapshot_info(), before)
+
     def test_rebuild_source_timeline_from_raw_and_failure_rolls_back(self):
         self.load('2026-01-06T00:00:00+00:00')
         with self.pg() as c:

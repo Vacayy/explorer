@@ -152,14 +152,17 @@ def _timeline_source_rows(source, metadata, *, batch_size=250):
         topics = defaultdict(set)
         for tag in source.execute(f"SELECT el.doc_id,e.name FROM entity_links el JOIN entities e ON e.id=el.entity_id WHERE el.doc_id IN ({marks})", ids):
             topics[tag['doc_id']].add(tag['name'])
-        enrichment_ids = {}
-        for r in source.execute(f'SELECT rd.id, en.id enrichment_id FROM raw_documents rd LEFT JOIN enrichments en ON en.doc_id=rd.id WHERE rd.id IN ({marks})', ids):
-            enrichment_ids[r['id']] = r['enrichment_id']
+        selected_enrichment = {}
+        for r in source.execute(f'SELECT rd.*, en.id enrichment_id, en.summary, en.model enrich_model FROM raw_documents rd LEFT JOIN enrichments en ON en.doc_id=rd.id WHERE rd.id IN ({marks})', ids):
+            selected_enrichment[r['id']] = (r['enrichment_id'], r['summary'], r['enrich_model'])
         published = {r['id']: r['published_at'] for r in source.execute(
             f'SELECT id,published_at FROM raw_documents WHERE id IN ({marks})', ids)}
         for row in rows:
             doc = documents[row['ref']]
-            metadata.append((doc.id, enrichment_ids[doc.id], json.dumps([{'entity_id': e.entity_id, 'link_type': e.link_type, 'confidence': e.confidence} for e in doc.entities])))
+            enrichment_id, summary, model = selected_enrichment[doc.id]
+            if (summary, model) != (doc.summary, doc.enrich_model):
+                raise ValueError('Timeline enrichment selection differs from captured response')
+            metadata.append((doc.id, enrichment_id, json.dumps([{'entity_id': e.entity_id, 'link_type': e.link_type, 'confidence': e.confidence} for e in doc.entities])))
             yield (row['id'], row['ref'], utc(row['ts']), row['sort_millis'], row['channel'], row['platform'],
                    sorted(topics[row['ref']]), '게시' if published[row['ref']] else '수집',
                    row['preview'] or '', json.dumps(doc.model_dump(mode='json'), ensure_ascii=False))
