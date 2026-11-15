@@ -32,8 +32,8 @@ function preview(text: string) {
 
 /** 피드 리더의 글 카드(D-325, 옛 ChannelReader) — 분류 · 소스 · 시각 / 제목 / 요약(기본) · '원문 보기'로 원문 펼침 / 태그 · 스터디로 읽기 · 스터디에 추가 · 자료 상세 · 원문 사이트.
  *  요약이 없으면 원문을 바로 보인다. 펼친 원문은 높이 상한 안에서 스크롤한다(§4.34). */
-export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generation, archived = false }: {
-  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; generation?: string; archived?: boolean
+export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generation, archived = false, mediaGeneration }: {
+  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; generation?: string; archived?: boolean; mediaGeneration?: string
 }) {
   const docHref = `/doc/${doc.id}${generation ? `?generation=${encodeURIComponent(generation)}` : ''}`
   const excerpt = preview(doc.summary || doc.content || '')
@@ -56,13 +56,13 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generati
         <h3 className="text-card-title font-semibold text-pretty break-words">
           <Link to={docHref} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
         </h3>
-        <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" archived={archived} />
+        <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" archived={archived} mediaGeneration={mediaGeneration} />
         {hasSummary && hasOriginal && <>
           <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal} onClick={() => { if (!showOriginal) track('open', 'feed.original', { entity: doc.id }); setShowOriginal(v => !v) }}>
             {showOriginal ? '원문 접기' : '원문 보기'}<ChevronDown aria-hidden="true" className={`size-3 transition-transform ${showOriginal ? 'rotate-180' : ''}`} />
           </Button>
           {showOriginal && <BoundedArea size="md" className="rounded-lg border border-line bg-surface-2/50" viewportClassName="p-3">
-            <DocumentBody doc={doc} reading="original" mediaSize="preview" archived={archived} />
+            <DocumentBody doc={doc} reading="original" mediaSize="preview" archived={archived} mediaGeneration={mediaGeneration} />
           </BoundedArea>}
         </>}
         <div className="flex flex-wrap items-center gap-2">

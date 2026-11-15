@@ -18,9 +18,11 @@ export function useTimeline(filters: TimelineFilters) {
   return useQuery({
     queryKey: ['spine', 'timeline', filters],
     queryFn: async () => {
-      const data = await getJson<TimelineResponse>('/api/spine/feed/timeline', { ...filters, size: 20 })
+      const response = await api.get<TimelineResponse>('/api/spine/feed/timeline', { params: { ...filters, size: 20 } })
+      const data = response.data
       if (filters.generation && data.generation !== filters.generation) throw new ApiError('조회하던 자료가 갱신됐습니다.', 410)
-      return data
+      const media = response.headers['x-explorer-media-generation']
+      return { ...data, _mediaGeneration: data.generation && media === data.generation ? data.generation : undefined }
     },
     staleTime: STALE.medium,
     // Filters must not briefly show posts from the previous, differently labelled lane.

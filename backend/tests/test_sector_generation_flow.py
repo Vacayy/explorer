@@ -44,8 +44,9 @@ class SectorGenerationFlow(unittest.TestCase):
                 c.executemany('INSERT INTO stock_prices (stock_code,trade_date,close,market_cap) VALUES (?,?,?,?)',
                               [('000001','2025-09-01',100,1000), ('000001','2026-01-09',120,1200)])
                 c.execute("INSERT INTO entities (id,type,name) VALUES (1,'sector','합성업종')")
-                c.execute("INSERT INTO raw_documents (id,source_type,source_id,title,published_at,markdown,media_json) "
-                          "VALUES (1,'blog','fixture','합성업종 문서','2026-01-09','첫 원문','[\"fixtures/sample.jpg\"]')")
+                c.execute("INSERT INTO blog_sources (url,platform,blog_name,is_active) VALUES ('https://example.test/','naver','fixture',1)")
+                c.execute("INSERT INTO raw_documents (id,source_type,source_id,title,url,published_at,markdown,media_json) "
+                          "VALUES (1,'blog','fixture','합성업종 문서','https://example.test/article','2026-01-09','첫 원문','[\"fixtures/sample.jpg\"]')")
                 c.execute("INSERT INTO entity_links (doc_id,entity_id,link_type) VALUES (1,1,'industry')")
                 c.commit()
             finally:
@@ -95,6 +96,10 @@ class SectorGenerationFlow(unittest.TestCase):
         self.assertEqual(sector.status_code, 200)
         self.assertEqual([doc['id'] for doc in sector.json()['docs']], [1])
         generation = sector.headers['x-explorer-generation']
+        timeline = self.client.get('/api/spine/feed/timeline', params={'generation': generation})
+        self.assertEqual(timeline.status_code, 200)
+        self.assertEqual(timeline.headers['x-explorer-media-generation'], generation)
+        self.assertTrue(any(item.get('document', {}).get('id') == 1 for item in timeline.json()['items'] if item.get('document')))
         current = self.client.get('/api/spine/doc/1', params={'generation': generation})
         self.assertEqual(current.json()['content'], '첫 원문')
         self.assertEqual(current.headers['x-explorer-archived'], '0')
@@ -108,6 +113,10 @@ class SectorGenerationFlow(unittest.TestCase):
             c.execute("UPDATE raw_documents SET markdown='바뀐 원문' WHERE id=1")
         (self.media / 'fixtures' / 'sample.jpg').write_bytes(b'new image bytes')
         self.load('2026-01-10T00:00:00+00:00')
+        timeline = self.client.get('/api/spine/feed/timeline', params={'generation': generation})
+        self.assertEqual(timeline.status_code, 200)
+        self.assertTrue(timeline.json()['archived'])
+        self.assertEqual(timeline.headers['x-explorer-media-generation'], generation)
         for url in ('/api/spine/industry/합성섹터/peers', '/api/peers/runtime'):
             self.assertEqual(self.client.get(url, params={'generation': generation}).status_code, 410)
         previous = self.client.get('/api/spine/doc/1', params={'generation': generation})

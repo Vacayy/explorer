@@ -106,15 +106,22 @@ def sector_detail(sector: str, response: Response):
 
 
 @app.get('/api/spine/feed/timeline', response_model=GenerationTimelineResponse)
-def timeline(scope: Literal['all', 'sources', 'system'] = 'all',
+def timeline(response: Response, scope: Literal['all', 'sources', 'system'] = 'all',
              kind: Literal['all', 'company', 'person', 'transcript', 'trade', 'narrative', 'report', 'scenario'] = 'all',
              source: Literal['all', 'telegram', 'blog', 'youtube', 'memo'] = 'all',
              page: int = Query(1, ge=1, le=100), size: int = Query(20, ge=1, le=50),
              until: datetime | None = None, channel: str | None = Query(None, max_length=2048),
              topic: str | None = Query(None, max_length=200), generation: UUID | None = None):
     try:
-        return timeline_reader.timeline(scope=scope, kind=kind, source=source, page=page, size=size,
-                                        until=until.isoformat() if until else None, channel=channel, topic=topic, generation=generation)
+        result = timeline_reader.timeline(scope=scope, kind=kind, source=source, page=page, size=size,
+                                          until=until.isoformat() if until else None, channel=channel, topic=topic, generation=generation)
+        with factory() as connection:
+            connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            resolve_generation(connection, result.generation)
+            if connection.execute('SELECT EXISTS(SELECT 1 FROM media_generations WHERE generation_id=%s)',
+                                  (result.generation,)).fetchone()[0]:
+                response.headers['X-Explorer-Media-Generation'] = result.generation
+        return result
     except GenerationExpired as exc:
         raise HTTPException(410, '조회하던 데이터가 만료됐습니다. 새로고침해 주세요.') from exc
 
