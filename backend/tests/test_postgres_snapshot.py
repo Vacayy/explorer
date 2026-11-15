@@ -848,6 +848,7 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             c.execute("INSERT INTO telegram_channels VALUES ('fixture','합성 채널',1,1)")
             c.execute("INSERT INTO telegram_channels VALUES ('disabled','수집 중지',1,0)")
             c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','UCfixture',1)")
+            c.execute("INSERT INTO raw_documents VALUES (10,'youtube','UCfixture/old123def45','기존 영상','https://example.test/old','2026-01-01','기존 본문','기존 본문',NULL,NULL,NULL)")
         self.load('2026-01-03T00:00:00+00:00',include_linking=True)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
@@ -905,6 +906,13 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             reader=PostgreSQLDocumentReader(lambda:target(publisher.active[0]))
             for name in ('blog','telegram','youtube'):
                 self.assertTrue(any(doc.summary=='기존 요약 함수 결과' for doc in reader.list(source=name).items))
+            videos=reader.list(source='youtube').items
+            self.assertEqual({doc.channel for doc in videos},{'수동 이름'})
+            self.assertEqual(reader.get(10).channel,'수동 이름')
+            with target(publisher.active[0]) as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                self.assertEqual(c.execute("SELECT row_data->>'title' FROM legacy_snapshot_rows WHERE table_name='youtube_channels' AND row_data->>'channel_id'='UCfixture'").fetchone()[0],'수동 이름')
+                self.assertEqual({r[0] for r in c.execute("SELECT document->>'channel' FROM timeline_source_projection WHERE platform='youtube'")},{'수동 이름'})
         finally:
             publisher.close()
 

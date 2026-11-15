@@ -20,13 +20,15 @@ from pipeline.timeline import utc
 from pipeline.urls import blog_category, is_feedlike, norm_domain, url_belongs
 
 
-def _new_source_details(conn, ident, source, source_id, url, published, fetched=None):
+def _new_source_details(conn, ident, source, source_id, url, published, fetched=None, youtube_names=None):
     """Reproduce existing source registry, visibility, and timeline rules."""
     blogs = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='blog_sources'")]
     youtube = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='youtube_channels'")]
     telegram = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='telegram_channels'")]
     blog_names = sorted(((r['url'],r['blog_name'] or r['url']) for r in blogs), key=lambda x: len(x[0] or ''), reverse=True)
     yt_names = {r['channel_id']:r['title'] for r in youtube}
+    if youtube_names:
+        yt_names.update(youtube_names)
     channel = source_names_from_rows([{'id':ident,'source_type':source,'source_id':source_id,'url':url}],
                                      telegram={r['channel_name']:r['display_name'] for r in telegram},blogs=blog_names,youtube=yt_names,scraps={}).get(ident) or {}
     groups = set()
@@ -77,6 +79,11 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     result = copy_projection(conn, source_schema, target_schema)
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(source_schema)))
     reader = PostgreSQLRawDocumentReader(None)
+    youtube_names = {}
+    if conn.execute('SELECT 1 FROM ingest_youtube_registry_state').fetchone():
+        youtube_names = dict(conn.execute("SELECT y.channel_id,y.title FROM ingest_youtube_registry y "
+            "JOIN legacy_snapshot_rows r ON r.table_name='youtube_channels' AND r.row_data->>'channel_id'=y.channel_id "
+            "WHERE y.title IS DISTINCT FROM r.row_data->>'title'").fetchall())
     root = Path(media_root) if media_root is not None else None
     if root is not None and (root.is_symlink() or not root.is_dir()):
         raise ValueError('Invalid fixture media root')
@@ -132,7 +139,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         if same_revision and enrichment_dirty and model is None:
             raise ValueError('Same-revision changes require a current summary')
         if source != 'note' and (prior is None or not same_revision):
-            channel,groups,visible,timeline = _new_source_details(conn,ident,source,source_id,url,published,fetched)
+            channel,groups,visible,timeline = _new_source_details(conn,ident,source,source_id,url,published,fetched,youtube_names)
         elif prior is None:
             channel,groups,visible,timeline = {'name':'내 노트'},[],True,None
         else:
@@ -359,6 +366,20 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             ) membership''')
     conn.execute("INSERT INTO document_filter_order SELECT 'note',row_number() OVER (ORDER BY n.ordinal)-1,n.ordinal "
                  "FROM overlay_ord n JOIN document_projection d ON d.id=n.document_id WHERE d.source_type='note'")
+    for channel_id, title in youtube_names.items():
+        value = Jsonb(title)
+        conn.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{title}',%s) "
+                     "WHERE table_name='youtube_channels' AND row_data->>'channel_id'=%s",(value,channel_id))
+        conn.execute("UPDATE document_projection d SET detail_document=jsonb_set(jsonb_set(jsonb_set(detail_document,'{channel}',%s),'{channel_kind}',%s),'{channel_key}',%s) "
+                     "FROM legacy_snapshot_rows r WHERE d.source_type='youtube' AND r.table_name='raw_documents' "
+                     "AND r.row_data->>'id'=d.id::text AND position('/' IN r.row_data->>'source_id')>0 "
+                     "AND split_part(r.row_data->>'source_id','/',1)=%s",(value,Jsonb('youtube'),Jsonb(channel_id),channel_id))
+        conn.execute("UPDATE document_list_projection l SET list_document=jsonb_set(jsonb_set(jsonb_set(l.list_document,'{channel}',%s),'{channel_kind}',%s),'{channel_key}',%s) "
+                     "FROM document_projection d WHERE d.id=l.document_id AND d.source_type='youtube' "
+                     "AND d.detail_document->>'channel_kind'='youtube' AND d.detail_document->>'channel_key'=%s",(value,Jsonb('youtube'),Jsonb(channel_id),channel_id))
+        conn.execute("UPDATE timeline_source_projection t SET document=jsonb_set(jsonb_set(jsonb_set(t.document,'{channel}',%s),'{channel_kind}',%s),'{channel_key}',%s) "
+                     "FROM document_projection d WHERE d.id=t.document_id AND t.platform='youtube' "
+                     "AND d.detail_document->>'channel_kind'='youtube' AND d.detail_document->>'channel_key'=%s",(value,Jsonb('youtube'),Jsonb(channel_id),channel_id))
     conn.execute("UPDATE legacy_snapshot_tables t SET row_count=(SELECT count(*) FROM legacy_snapshot_rows r WHERE r.table_name=t.table_name) "
                  "WHERE table_name IN ('raw_documents','enrichments','entity_links','entities','entity_keywords','entity_relations')")
     conn.execute('UPDATE snapshot_metadata SET document_count=(SELECT count(*) FROM document_projection), '
