@@ -9,6 +9,10 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
+from pipeline.postgres_ingest_rebuild_fixture import rebuild
+from pipeline.postgres_document_read import PostgreSQLDocumentReader
+from pipeline.postgres_search_snapshot import SearchSnapshot
+from pipeline.postgres_search_feed import search_feed
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -24,6 +28,7 @@ class IngestFixtureTests(unittest.TestCase):
         self.addCleanup(self.drop_schema)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
 
     def drop_schema(self):
         with psycopg.connect(self.dsn) as c:
@@ -161,3 +166,62 @@ class IngestFixtureTests(unittest.TestCase):
             retry = claim_enrichment(c, document_id=row['id'], worker_id='worker-2')
             self.assertFalse(finish_enrichment(c, document_id=row['id'], **first, summary='late', model='fixture'))
             self.assertTrue(finish_enrichment(c, document_id=row['id'], **retry, summary='new', model='fixture'))
+
+    def test_ingest_to_existing_feed_and_lexical_search_generation(self):
+        with self.pg() as c:
+            doc = store_document(c, source_type='note', source_id='test', title='반도체 전망',
+                                 markdown='반도체 원문', raw_content='반도체 원문',
+                                 published_at='2026-01-01', media=['image.png'])
+            job = claim_enrichment(c, document_id=doc['id'])
+            finish_enrichment(c, document_id=doc['id'], **job, summary='저장 요약', model='fixture')
+            first = rebuild(c)
+        reader = PostgreSQLDocumentReader(self.pg)
+        item = reader.list(source='note').items[0]
+        self.assertEqual((item.title, item.summary, item.content, item.images),
+                         ('반도체 전망', '저장 요약', '반도체 원문', ['image.png']))
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            index = SearchSnapshot.from_postgres(c)
+            result = search_feed(c, index, '반도체')
+            self.assertEqual((result.total, result.items[0].summary), (1, '저장 요약'))
+        with self.pg() as c:
+            store_document(c, source_type='note', source_id='test', title='새 제목',
+                           markdown='배터리 원문', published_at='2026-01-02')
+            self.assertEqual(reader.list().items[0].summary, '저장 요약')
+            second = rebuild(c)
+        self.assertNotEqual(first, second)
+        self.assertEqual((reader.list().items[0].content, reader.list().items[0].summary), ('배터리 원문', None))
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            with self.assertRaisesRegex(ValueError, 'generation expired'):
+                search_feed(c, index, '반도체')
+            index.close()
+            index = SearchSnapshot.from_postgres(c)
+            self.assertEqual(search_feed(c, index, '배터리').total, 1)
+            self.assertEqual(search_feed(c, index, '반도체').total, 0)
+            index.close()
+
+    def test_rebuild_failure_keeps_previous_feed_and_retry_succeeds(self):
+        with self.pg() as c:
+            store_document(c, source_type='note', source_id='test', title='old', markdown='old')
+            generation = rebuild(c)
+        with self.pg() as c:
+            store_document(c, source_type='note', source_id='test', title='new', markdown='new', media='invalid')
+        with self.assertRaises(ValueError):
+            with self.pg() as c:
+                rebuild(c)
+        reader = PostgreSQLDocumentReader(self.pg)
+        self.assertEqual(reader.list().items[0].title, 'old')
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0], generation)
+            store_document(c, source_type='note', source_id='test', title='new', markdown='new', media=['fixed'])
+            rebuild(c)
+        self.assertEqual(reader.list().items[0].title, 'new')
+
+    def test_rebuild_rejects_existing_non_ingest_snapshot(self):
+        with self.pg() as c:
+            c.execute("INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) "
+                      "VALUES (TRUE,'2026-01-01T00:00:00+00:00',now(),0,0,%s)", (uuid.uuid4(),))
+        with self.assertRaisesRegex(ValueError, 'another snapshot'):
+            with self.pg() as c:
+                rebuild(c)
