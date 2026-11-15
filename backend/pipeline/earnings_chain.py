@@ -723,12 +723,22 @@ def season_calendar(evs: list[dict], fs: dict, core: dict) -> list[dict]:
 
 def season_overview(season: str | None = None) -> dict:
     conn = get_connection()
-    today = date.today().isoformat()
+    try:
+        selected = season or season_of(date.today().isoformat())["key"]
+        fs = follows(conn)
+        core = core_map(conn, selected)
+        last_run = conn.execute("SELECT max(ran_at) FROM job_runs WHERE job='cm_chain'").fetchone()[0]
+        return read_season_overview(conn, selected, fs=fs, core=core, last_run=last_run)
+    finally:
+        conn.close()
+
+
+def read_season_overview(conn, season: str | None = None, *, fs, core, last_run, today=None, core_criteria=None) -> dict:
+    """Stored season calculations; caller supplies universe, core reasons and run metadata."""
+    today = today or date.today().isoformat()
     cur = season_of(today)
     season = season or cur["key"]
     s = season_by_key(season)
-    fs = follows(conn)
-    core = core_map(conn, season)
     evs = _event_rows(conn, season)
     reported, upcoming = [], []
     for e in evs:
@@ -793,11 +803,9 @@ def season_overview(season: str | None = None) -> dict:
         "expectations": [r[0] for r in conn.execute("SELECT DISTINCT ticker FROM earnings_expectations WHERE date(created_at, '+9 hours')=? AND issues_json IS NOT NULL", (kst,))],
         "transcripts": [r[0] for r in conn.execute("SELECT DISTINCT ticker FROM transcripts WHERE date(fetched_at, '+9 hours')=?", (kst,))],
     }
-    last_run = conn.execute("SELECT max(ran_at) FROM job_runs WHERE job='cm_chain'").fetchone()[0]
     windows = season_windows(conn, fs)
     calendar = season_calendar(evs, fs, core)
     core_rows = [{"ticker": t, "name": fs[t]["company_name"], "reasons": r} for t, r in sorted(core.items()) if t in fs]
-    conn.close()
     beat_n = sum(1 for i in reported if (i["eps_surprise"] or 0) > 0)
     return {"season": {"key": season, "label": s["label"], "start": s["start"], "is_current": season == cur["key"]},
             "counts": {"followed": len(fs), "reported": len(reported), "beat": beat_n, "beat_down": sum(1 for i in reported if (i["eps_surprise"] or 0) > 0 and (i["d1"] or 0) < 0),
@@ -808,7 +816,7 @@ def season_overview(season: str | None = None) -> dict:
             "changes": changes, "last_run": last_run, "windows": windows, "calendar": calendar,
             "sectors": sector_rows, "top_up": top_up, "miss_up": miss_up, "beat_down": beat_down, "reversed": reversed_[:8],
             "upcoming": sorted(upcoming, key=lambda i: i["event_date"])[:12],
-            "evals": evals, "core": {"criteria": CORE_REASONS, "tickers": core_rows},
+            "evals": evals, "core": {"criteria": CORE_REASONS if core_criteria is None else core_criteria, "tickers": core_rows},
             "reported": reported}
 
 

@@ -830,3 +830,5 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 공개 기업활동(`GET /api/spine/actions`, `/rights`)은 `security.public_actions`가 KR 시장 준비 사본의 공시/증자 필드·종가·명시 `public_actions_metadata(as_of)`만 읽는다. 마지막 성공 스캔 시각만 준비 시점에 투영하며 GET은 job_runs/개인묶음을 읽지 않는다. `read_actions/read_rights`는 기존 정정 필터·한줄 설명·발행가/증자비율 계산을 재사용한다. 공개 my_group=null, 목록은 접수일 순이며 기존 ActionsList/RightsProTable의 전체·유무증 Pro/방식 필터를 유지하고 내 그룹만 제외한다. 공시 원문은 기존 DART 링크를 유지한다.
 
 공개 홈 수출입 요약은 기존 `/api/spine/trade/highlights`에서 `stored_highlights`로 공개 고정 카탈로그를 조회하며 개인 trade_follow를 읽지 않는다. `highlights_from_table`는 기존 기여도/이례성 정렬을 재사용한다. 응답에 scope/observed_count/total_count/partial을 더하고 공개 총액·그룹은 관측 소계, 관측이 없으면 null이다. 기존 TradeCard는 공개 카탈로그 소계임과 관측 품목 수·누락을 표시하고 기존 공개 상세로 연결한다. 전체 무역총액·모든 시장품목 커버리지를 뜻하지 않는다. 개인 하이라이트는 기존 팔로우 범위를 유지한다.
+
+미국 실적 시즌의 `earnings_chain.read_season_overview`는 호출자가 제공하는 기업 범위·핵심 종목 기준·갱신 시각과 DB 연결로 기존 수익률/일정/집계를 계산한다. 기존 개인 `season_overview`는 core_map의 재계산·개인 기준을 유지하는 wrapper다. 이 분리는 공개 GET에서 개인 핵심 기준·lazy DB 쓰기를 우회하기 위한 준비이며 미국 시즌 공개 라우트/데이터 사본/화면 연결 완료를 뜻하지 않는다.
