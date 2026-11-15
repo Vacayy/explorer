@@ -374,12 +374,31 @@ class SnapshotReplacementTests(unittest.TestCase):
             first=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
             second=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
             note.write_text('# 합성 문서\n변경된 본문',encoding='utf-8')
-            third=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+            def failed(*_):
+                raise RuntimeError('fixture failure')
+            third=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=failed)
+            fourth=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
         self.assertEqual((first['new'],first['enriched']), (1,1))
         self.assertEqual((second['unchanged'],second['enriched']), (1,0))
-        self.assertEqual((third['updated'],third['enriched']), (1,1))
+        self.assertEqual((third['updated'],third['enrichment_failed']), (1,1))
+        self.assertEqual((fourth['unchanged'],fourth['enriched']), (1,1))
         with self.pg() as c:
             self.assertEqual(c.execute("SELECT e.summary FROM ingest_enrichments e JOIN ingest_documents d ON d.id=e.document_id WHERE d.source_id='cycle.md'").fetchone()[0], '# 합성 문서 변경된 본문')
+            ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='note' AND source_id='cycle.md'").fetchone()[0]
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        self.assertEqual(PostgreSQLDocumentReader(target).get(ident).summary,'# 합성 문서 변경된 본문')
 
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:
