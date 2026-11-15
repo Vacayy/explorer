@@ -174,3 +174,8 @@ Empty는 조사 전/근거 없음, Loading은 검색·원문 확인·정리 진�
 공개 모드의 `GET /api/financials/{stock_code}`는 `stored_only` 값과 무관하게 저장 재무만 읽는다. 회사 코드 매핑과 계산 입력은 허용된 companies/financial_statements 컬럼만 읽는 동일 readonly snapshot을 사용한다. 수집 POST와 income-flow 경로는 별도 검토 전 공개하지 않는다. 미등록 종목은404, 등록됐지만 재무가 없으면 빈200이다. 연결 자료가 없을 때만 별도로 전체 응답을 폴백하며 두 회계기준을 합치지 않는다. 실제 기준은 응답 fs_div로 표시한다. 통화·정정 이력이 저장되지 않은 자료에 최신 정정본/과거 시점 재현을 보장하지 않는다.
 
 공용 화면은 `/financials?q=...`의 기업명/코드 검색 → `/analyze/:stockCode/financials`의 기존 재무 표·차트 → 검색 복귀로 연결한다. 조회 조건 `sj`, `period`, `years`, `fs`, `display`는 URL에 보존한다. 개인 회사 셸·NextQuestions·수집 컨트롤은 마운트하지 않는다. Loading은 Skeleton, Error는 재시도, Empty는 등록 종목의 저장자료 없음, Partial은 결측 및 통화/정정 이력 미보유 고지, Ideal은 실제 연결/별도와 회계기간을 표시하는 표/차트다. BS의 trailing 선택은 분기말 시점값으로 명시한다. 기업 검색과 이름 조회도 허용 컬럼 readonly 연결을 사용한다.
+
+
+### 공개 저장 개요 조회 (2026-11-15)
+
+공개 미국 기업 개요는 기존 보고서 읽기 UI를 유지한다. 공개 registry의 준비된 public_company_profiles만 읽고 개인 조사 reason/비용/실행모델·원문 excerpt는 제공하지 않는다. 입력 reason이 있던 보고서는 필드 삭제만으로 승인하지 않으며 본문 의존성 검토가 선행되어야 한다. 출처 링크·인용ID·작성시각·gaps를 보존한다. API GET은 수집/DDL/LLM 없이 readonly, 미준비는null이며 미등록/미연결시장은404. POST와 자동 생성은 공개되지 않는다. PC본문/모바일시트의 로딩·자료없음·오류재시도·부분자료·저장보고서 상태를 기존 컴포넌트로 제공한다.

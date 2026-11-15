@@ -22,6 +22,7 @@ RESTRICTED_TRANSCRIPT_PROVIDERS = {
 
 DB_PATH = os.environ.get("EXPLORER_PUBLIC_US_SEASON_DB")
 COLUMNS = {
+    "public_company_profiles": {"ticker", "payload_json"},
     "public_us_companies": {"ticker", "company_name", "sector", "market_cap", "fiscal_year_end"},
     "earnings_events": {"ticker", "fiscal_year", "fiscal_period", "event_date", "season", "confirmed", "eps_surprise"},
     "transcripts": {"id", "ticker", "fiscal_year", "fiscal_period", "fetched_at", "call_date", "provider"},

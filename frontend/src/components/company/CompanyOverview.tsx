@@ -15,7 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { InfoTip } from '@/components/shared/InfoTip'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { formatNumber, formatRelativeTime } from '@/utils/format'
+import { formatNumber, formatRelativeTime, formatKstSlashDate } from '@/utils/format'
 import type { CompanyWebProfile } from '@/types'
 
 const KIND: Record<string, string> = { filing: '공시', ir: 'IR', news: '뉴스', report: '리포트', other: '기타' }
@@ -44,7 +44,7 @@ function Cited({ text, ids, sources }: { text: string; ids: number[]; sources: C
 }
 
 /** 사업 구성·제품·경쟁 등 개요 본문 — 넓은 화면은 왼쪽(개요·사업·제품·경쟁) | 오른쪽(동인·리스크·사건·확인 못 한 것) */
-function ProfileBody({ profile, brief }: { profile: CompanyWebProfile; brief: boolean }) {
+function ProfileBody({ profile, brief, publicView = false }: { profile: CompanyWebProfile; brief: boolean; publicView?: boolean }) {
   const sources = profile.sources
   if (brief) return <div className="space-y-3 text-sm">
     <p className="line-clamp-4 leading-relaxed">{profile.overview}</p>
@@ -75,7 +75,8 @@ function ProfileBody({ profile, brief }: { profile: CompanyWebProfile; brief: bo
       <ul className="divide-y border-t">{sources.map(source => <li key={source.id} className="flex flex-wrap items-baseline gap-x-2 py-1.5 text-caption">
         <span className="font-mono text-muted-foreground">[{source.id}]</span>
         <span className="text-muted-foreground">{KIND[source.kind] ?? source.kind} · {source.publisher}</span>
-        <a className="min-w-0 flex-1 truncate hover:underline" href={source.url} target="_blank" rel="noreferrer" title={source.fetched ? '원문 확인' : '검색 요약만'}>{source.title || source.url}<ExternalLink className="ml-1 inline size-3" /></a>
+        <a className="min-w-0 flex-1 truncate hover:underline" href={source.url} target="_blank" rel="noreferrer" title={source.fetched ? (publicView ? '저장 당시 원문 확인' : '원문 확인') : '검색 요약만'}>{source.title || source.url}<ExternalLink className="ml-1 inline size-3" /></a>
+        {publicView && !source.fetched && <Badge variant="outline" className="font-normal">원문 미확인 · 검색 요약만</Badge>}
         {source.published_at && <span className="font-mono tabular-nums text-muted-foreground">{source.published_at}</span>}
       </li>)}</ul>
     </section>
@@ -89,8 +90,6 @@ function ProfileBody({ profile, brief }: { profile: CompanyWebProfile; brief: bo
 export function CompanyOverviewCard({ stockCode, fallback, market = 'kr' }: { stockCode: string; fallback: ReactNode; market?: 'kr' | 'us' }) {
   const query = useCompanyProfile(stockCode, market)
   const build = useBuildProfile(stockCode, market)
-  const mobile = useIsMobile()
-  const [open, setOpen] = useState(false)
   const profile = query.data?.profile ?? null
   async function run(force: boolean) {
     try {
@@ -106,10 +105,28 @@ export function CompanyOverviewCard({ stockCode, fallback, market = 'kr' }: { st
   const info = <>{market === 'us' ? 'SEC 10-K·IR·뉴스·애널리스트 기사를' : '사업보고서·IR·뉴스·리포트를'} 웹에서 찾아 구조화합니다. 버튼을 누를 때만 모델을 한 번 호출합니다.
     {official && <> 공식 자료: DART {official.report_nm}{official.rcept_dt ? `(접수 ${official.rcept_dt})` : ''}의 ‘사업의 내용’을 출처 [1]로 썼습니다.</>}
     {profile?.cost_usd != null && <> 조사 비용 ${profile.cost_usd.toFixed(2)}.</>}</>
+  return <OverviewCardView query={query} fallback={fallback} action={action} info={info} buildError={build.error?.message} />
+}
+
+/** Prepared public report only: this branch never mounts the research mutation. */
+export function PublicCompanyOverviewCard({ stockCode, market = 'us' }: { stockCode: string; market?: 'kr' | 'us' }) {
+  const query = useCompanyProfile(stockCode, market)
+  return <OverviewCardView query={query} publicView
+    fallback={<p className="text-muted-foreground">공개된 기업 개요 자료가 아직 없습니다.</p>}
+    info={<>저장된 웹 조사 자료입니다. 작성 이후 내용이 달라졌을 수 있으며, 출처 확인 상태는 저장 시점 기준입니다. 원문을 확인하지 못한 출처와 확인하지 못한 사항을 함께 확인하세요.</>} />
+}
+
+function OverviewCardView({ query, fallback, action, info, buildError, publicView = false }: {
+  query: ReturnType<typeof useCompanyProfile>; fallback: ReactNode; action?: ReactNode; info: ReactNode; buildError?: string; publicView?: boolean
+}) {
+  const mobile = useIsMobile()
+  const [open, setOpen] = useState(false)
+  const profile = query.data?.profile ?? null
   return <Card className="gap-0 py-0" aria-label="기업 개요" data-company-overview>
     <header className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-3">
       <h2 className="text-section font-semibold">기업 개요</h2>
-      {profile && <span className="text-caption text-muted-foreground">웹 조사 v{profile.version} · {formatRelativeTime(profile.created_at)} · 출처 {profile.sources.length}</span>}
+      {profile && <span className="text-caption text-muted-foreground">{publicView ? `저장 웹 조사 v${profile.version} · 작성 ${formatKstSlashDate(profile.created_at)} KST` : `웹 조사 v${profile.version} · ${formatRelativeTime(profile.created_at)}`} · 출처 {profile.sources.length}</span>}
+      {publicView && profile?.sources.some(source => !source.fetched) && <Badge variant="outline" className="font-normal">미확인 근거 포함</Badge>}
       <InfoTip label="기업 개요 설명">{info}</InfoTip>
       <span className="ml-auto" />
       {!(mobile && profile) && action}
@@ -117,17 +134,17 @@ export function CompanyOverviewCard({ stockCode, fallback, market = 'kr' }: { st
     <div className="p-4">
       {query.isPending ? <div className="space-y-2" role="status" aria-label="기업 개요 불러오는 중"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-4 w-2/3" /></div>
         : query.isError ? <ErrorState message="기업 개요를 불러오지 못했습니다." onRetry={() => query.refetch()} />
-        : !profile ? <div className="space-y-3 text-sm">{fallback}{build.error && <p role="alert" className="text-sm text-destructive">{build.error.message}</p>}</div>
+        : !profile ? <div className="space-y-3 text-sm">{fallback}{buildError && <p role="alert" className="text-sm text-destructive">{buildError}</p>}</div>
         // 모바일 전체 개요는 카드 안에서 펼치지 않고 아래 시트로(상한 안 스크롤), 넓은 화면은 본문 상한(lg) 안에서 스크롤
         : mobile ? <Sheet open={open} onOpenChange={setOpen}>
-            <ProfileBody profile={profile} brief />
+            <ProfileBody profile={profile} brief publicView={publicView} />
             <SheetTrigger asChild><Button variant="ghost" size="sm" className="mt-2 h-8 px-0 font-semibold">개요 전체 · 리스크 · 출처 ›</Button></SheetTrigger>
             <SheetContent side="bottom" className="max-h-[85dvh] gap-0">
               <SheetHeader className="border-b"><SheetTitle>기업 개요</SheetTitle><SheetDescription className="sr-only">개요 전체 · 리스크 · 출처</SheetDescription></SheetHeader>
-              <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block"><div className="p-4"><ProfileBody profile={profile} brief={false} /><div className="mt-3">{action}</div></div></ScrollArea>
+              <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block"><div className="p-4"><ProfileBody profile={profile} brief={false} publicView={publicView} />{action && <div className="mt-3">{action}</div>}</div></ScrollArea>
             </SheetContent>
           </Sheet>
-        : <BoundedArea size="lg"><ProfileBody profile={profile} brief={false} /></BoundedArea>}
+        : <BoundedArea size="lg"><ProfileBody profile={profile} brief={false} publicView={publicView} /></BoundedArea>}
     </div>
   </Card>
 }

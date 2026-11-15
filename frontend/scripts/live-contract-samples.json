@@ -7,6 +7,7 @@
     "pid": "8", "group_id": "1", "hs_code": "1902301010", "study_id": "48", "sector": "반도체·전자부품"
   },
   "paths": {
+    "/api/spine/company-profile/{code}": "/api/spine/company-profile/NVDA?market=us",
     "/api/public/documents/{doc_id}": "/api/public/documents/1",
     "/api/operator/publications/{doc_id}/preview": "/api/operator/publications/1/preview",
     "/api/spine/company/{name}/dossier": "/api/spine/company/삼성전자/dossier",

@@ -14,7 +14,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { CompanyPriceResearch } from '@/components/company/CompanyPriceResearch'
 import { CompanyEvidence } from '@/components/company/CompanyEvidence'
 import { CompanyMentions } from '@/components/company/CompanyMentions'
-import { CompanyOverviewCard } from '@/components/company/CompanyOverview'
+import { CompanyOverviewCard, PublicCompanyOverviewCard } from '@/components/company/CompanyOverview'
 import { DossierHead, MetricStrip, type MetricSource } from '@/components/company/DossierHead'
 import { InfoTip } from '@/components/shared/InfoTip'
 import SaveButton from '@/components/shared/SaveButton'
@@ -99,7 +99,7 @@ export default function UsDossierPage({ ticker: publicTicker }: { ticker?: strin
             <WorldModelSection ticker={d.ticker} name={d.name} />
           </>
           : <>
-            {PUBLIC_ACCESS ? <Card className="gap-0 py-0" aria-label="기업 개요"><header className="border-b px-4 py-3"><h2 className="text-section font-semibold">기업 개요</h2></header><CardContent className="py-4 text-sm text-muted-foreground">공개 근거가 확인된 사업 설명과 조사 자료를 연결하고 있습니다. 아래 실적 발표와 공개 문서에서 원자료를 확인할 수 있습니다.</CardContent></Card> : <CompanyOverviewCard stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다.</p>} />}
+            {PUBLIC_ACCESS ? <PublicCompanyOverviewCard stockCode={d.ticker} market="us" /> : <CompanyOverviewCard stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다.</p>} />}
             <CompanyPriceResearch
               key={ticker}
               company={d.ticker}
