@@ -2,7 +2,7 @@
 import os
 import re
 import threading
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -10,7 +10,7 @@ import psycopg
 from fastapi import FastAPI, HTTPException, Query, Response
 import uvicorn
 
-from models.spine import FeedDocument, FeedResponse
+from models.spine import FeedDocument, FeedResponse, SignalsResponse
 from models.timeline import TimelineResponse, TimelineChannelsResponse
 from models.industry import IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse
 from models.peers import PeerRuntime
@@ -22,6 +22,7 @@ from pipeline.postgres_sector_market import PostgreSQLSectorSource
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_document_claims import claims_state
+from pipeline.postgres_signals_fixture import signals_items
 from routers.spine_doc import DocClaims, RelatedDoc
 from pipeline.postgres_related_documents import CentroidIndex, related_documents
 from pipeline.postgres_us_sectors import us_map as postgres_us_map, us_sector_detail as postgres_us_sector_detail
@@ -45,6 +46,16 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 search_lock = threading.RLock()
 search_index = None
 related_index = None
+
+
+@app.get('/api/spine/signals', response_model=SignalsResponse)
+def experimental_signals(type: str | None = None, days: int = Query(7,ge=1,le=90)):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        if not connection.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='signals'").fetchone():
+            raise HTTPException(503,'신호 자료가 준비되지 않았습니다.')
+        items=signals_items(connection,since=(date.today()-timedelta(days=days)).isoformat(),signal_type=type)
+        return SignalsResponse(items=items,as_of=datetime.now(timezone.utc).isoformat())
 
 
 @app.get('/api/spine/feed', response_model=FeedResponse)

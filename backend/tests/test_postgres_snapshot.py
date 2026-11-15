@@ -46,6 +46,7 @@ from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrich
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
 from pipeline.postgres_projection_publisher_fixture import FixturePublisher
+from pipeline.postgres_signals_fixture import signals_items
 from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
@@ -79,16 +80,41 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at, *, include_linking=False):
+    def load(self, at, *, include_linking=False, include_signals=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals)
         finally:
             source.close()
+
+    def test_signal_snapshot_reads_existing_list_and_latest_theme(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE signals(id INTEGER,signal_type TEXT,entity_id INTEGER,date TEXT,payload_json TEXT,interpretation TEXT,interpretation_model TEXT)')
+            c.executemany('INSERT INTO signals VALUES (?,?,?,?,?,?,?)',[
+                (1,'theme_surge',7,'2026-01-01','{}',None,None),
+                (2,'theme_surge',7,'2026-01-02','{}',None,None),
+                (3,'mention_surge',7,'2026-01-02','{}','기존 해석','fixture'),
+                (4,'mention_surge',7,'2099-01-01','{}','미래 해석','fixture')])
+        self.load('2026-01-03T00:00:00+00:00',include_signals=True)
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            self.assertEqual([item.id for item in signals_items(c,since='2026-01-01')],[4,3,2,1])
+            self.assertEqual([item.id for item in signals_items(c,since='2026-01-01',signal_type='theme_surge')],[2])
+            self.assertEqual(signals_items(c,since='2026-01-01',signal_type='mention_surge')[1].interpretation,'기존 해석')
+        from fastapi.testclient import TestClient
+        script=Path(__file__).resolve().parents[2]/'scripts/refactor_document_ui.py'
+        with patch.dict(os.environ,{'REFACTOR_FIXTURE_SCHEMA':self.schema}):
+            spec=importlib.util.spec_from_file_location('fixture_signal_ui',script)
+            module=importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            with TestClient(module.app) as client:
+                response=client.get('/api/spine/signals',params={'type':'mention_surge','days':7})
+                self.assertEqual(response.status_code,200)
+                self.assertEqual([row['id'] for row in response.json()['items']],[4])
 
     def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
         self.load('2026-01-03T00:00:00+00:00')
