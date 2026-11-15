@@ -188,20 +188,31 @@ def group_rows(runtime, ids: list[dict], groups: dict, members: dict) -> list[di
 
 def industry_map(conn, runtime=None) -> dict:
     from pipeline.sector_rs import compute_sector_map
-    rs = compute_sector_map()
-    benches = benchmarks(conn)
-    kospi = kospi_series(conn)
+    from pipeline.sector_peers import sector_peers
+    links = sector_peers(conn, runtime) if runtime is not None else None
+    return _industry_map(compute_sector_map(), benchmarks(conn), kospi_series(conn),
+                         lambda sector, bench: bench_series(conn, sector, bench), runtime, links)
+
+
+def industry_map_from_source(source, runtime=None) -> dict:
+    from pipeline.sector_rs import build_sector_map
+    links = source.sector_peers(runtime) if runtime is not None else None
+    return _industry_map(build_sector_map(source), source.benchmarks(), source.kospi_series(),
+                         source.benchmark_series, runtime, links)
+
+
+def _industry_map(rs, benches, kospi, series_for, runtime, links):
     peer_ids: dict[str, list[dict]] = {}
     outside: list[dict] = []
     if runtime is not None:
-        peer_ids, groups, members = sector_group_ids(conn, runtime)
+        peer_ids, groups, members = sector_group_ids_from_links(runtime, links)
         covered = {s["id"] for ids in peer_ids.values() for s in ids}
         outside = [{"id": g["id"], "name": g["name"], "members": len(members.get(g["id"], ()))}
                    for g in groups.values() if g["id"] not in covered and not peer_parent(groups, members, g["id"])]
         outside.sort(key=lambda g: g["name"])
     sectors = []
     for g in rs["groups"]:
-        series = bench_series(conn, g["name"], benches.get(g["name"]))
+        series = series_for(g["name"], benches.get(g["name"]))
         sectors.append({
             "name": g["name"], "benchmark": bench_out(benches.get(g["name"])), **quote(series),
             "rs_long": g["rs_long"], "rs_short": g["rs_short"], "chg_5d": g["chg_5d"], "trail": g["trail"],

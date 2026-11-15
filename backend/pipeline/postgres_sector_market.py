@@ -21,7 +21,8 @@ def load_sector_market(source, destination):
     with destination.transaction():
         destination.execute('SELECT pg_advisory_xact_lock(%s)', (_LOCK_KEY,))
         destination.execute('TRUNCATE sector_market_prices, sector_market_membership, '
-                            'sector_market_groups, sector_market_peer_links')
+                            'sector_market_groups, sector_market_peer_links, '
+                            'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index')
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:
@@ -41,6 +42,14 @@ def load_sector_market(source, destination):
             for row in source.execute('''SELECT sector, peer_group_id, sort, partial, note, source
                                           FROM sector_peer_map'''):
                 copy.write_row(tuple(row))
+        for target, columns, table in (
+            ('sector_market_benchmarks', 'sector, ticker, name, tracks, note', 'sector_benchmarks'),
+            ('sector_market_benchmark_prices', 'ticker, trade_date, close', 'sector_benchmark_prices'),
+            ('sector_market_index', 'sector, trade_date, value', 'sector_index'),
+        ):
+            with destination.cursor().copy(f'COPY {target} ({columns}) FROM STDIN') as copy:
+                for row in source.execute(f'SELECT {columns} FROM {table}'):
+                    copy.write_row(tuple(row))
     return {'prices': count, 'members': len(members)}
 
 
@@ -55,6 +64,24 @@ class PostgreSQLSectorSource:
 
     def members(self):
         return dict(self.conn.execute('SELECT stock_code, sector FROM sector_market_membership'))
+
+    def benchmarks(self):
+        return {sector: {'ticker': ticker, 'name': name, 'tracks': tracks, 'note': note,
+                         'kind': 'etf' if ticker else 'computed'}
+                for sector, ticker, name, tracks, note in self.conn.execute(
+                    'SELECT sector, ticker, name, tracks, note FROM sector_market_benchmarks')}
+
+    def benchmark_series(self, sector, bench):
+        if bench and bench.get('ticker'):
+            return list(self.conn.execute('SELECT trade_date, close FROM sector_market_benchmark_prices '
+                                          'WHERE ticker = %s ORDER BY trade_date', (bench['ticker'],)))
+        return list(self.conn.execute('SELECT trade_date, value FROM sector_market_index '
+                                      'WHERE sector = %s ORDER BY trade_date', (sector,)))
+
+    def kospi_series(self):
+        from pipeline.sector_benchmarks import KOSPI
+        return list(self.conn.execute('SELECT trade_date, close FROM sector_market_benchmark_prices '
+                                      'WHERE ticker = %s ORDER BY trade_date', (KOSPI,)))
 
     def sector_peers(self, runtime):
         """Combine same-transaction DB rows with the caller's validated Peer bundle."""

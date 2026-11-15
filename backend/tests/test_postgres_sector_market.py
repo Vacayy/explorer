@@ -5,6 +5,7 @@ import unittest
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import psycopg
 from psycopg import sql
@@ -12,7 +13,7 @@ from psycopg import sql
 from pipeline.postgres_sector_market import PostgreSQLSectorSource, load_sector_market
 from pipeline.sector_rs import SQLiteSectorSource, build_sector_map
 from pipeline.sector_peers import sector_peers
-from pipeline.sector_view import sector_peer_list, sector_peer_list_from_source
+from pipeline.sector_view import industry_map, industry_map_from_source, sector_peer_list, sector_peer_list_from_source
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -39,12 +40,18 @@ class SectorMarketTest(unittest.TestCase):
             CREATE TABLE sector_overrides(stock_code TEXT, sector TEXT);
             CREATE TABLE sector_peer_map(sector TEXT, peer_group_id TEXT, sort INTEGER,
                                          partial INTEGER, note TEXT, source TEXT);
+            CREATE TABLE sector_benchmarks(sector TEXT, ticker TEXT, name TEXT, tracks TEXT, note TEXT);
+            CREATE TABLE sector_benchmark_prices(ticker TEXT, trade_date TEXT, close REAL);
+            CREATE TABLE sector_index(sector TEXT, trade_date TEXT, value REAL);
             CREATE TABLE entities(id INTEGER, type TEXT, aliases TEXT, name TEXT);
             CREATE TABLE entity_relations(src_id INTEGER, dst_id INTEGER, rel_type TEXT);
             INSERT INTO sector_map VALUES ('source-a','A'),('source-b','B');
             INSERT INTO companies VALUES ('001','source-a'),('002','source-b'),('003','source-a');
             INSERT INTO sector_overrides VALUES ('003','B');
             INSERT INTO sector_peer_map VALUES ('A','g',0,0,NULL,'seed');
+            INSERT INTO sector_benchmarks VALUES ('A','AAA','ETF A','index',NULL),('B',NULL,NULL,NULL,NULL);
+            INSERT INTO sector_benchmark_prices VALUES ('AAA','2026-01-09',10.0),('^KS11','2026-01-09',100.0);
+            INSERT INTO sector_index VALUES ('B','2026-01-09',120.0);
             INSERT INTO stock_prices(stock_code,trade_date,close,market_cap) VALUES
                 ('001','2025-10-01',100,900),('002','2025-10-01',100,600),
                 ('003','2025-10-01',200,100),('001','2026-01-02',150,900),
@@ -80,6 +87,8 @@ class SectorMarketTest(unittest.TestCase):
             self.assertEqual(sector_peer_list_from_source(pgsource, 'A', runtime),
                              sector_peer_list(self.db, 'A', runtime))
             self.assertIsNone(sector_peer_list_from_source(pgsource, 'missing', runtime))
+            with patch('pipeline.sector_rs.compute_sector_map', return_value=expected):
+                self.assertEqual(industry_map_from_source(pgsource, runtime), industry_map(self.db, runtime))
         self.pg.execute('''CREATE FUNCTION reject_price() RETURNS trigger LANGUAGE plpgsql AS $$
                         BEGIN RAISE EXCEPTION 'fixture failure'; END $$''')
         self.pg.execute('CREATE TRIGGER reject_price BEFORE INSERT ON sector_market_prices '
