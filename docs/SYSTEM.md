@@ -202,6 +202,7 @@
 - 지수 스트립은 S&P500·나스닥·코스피·코스닥·항셍·니케이225·대만증시 순. `pipeline/indices`에 ^TWII/Asia-Taipei 세션 추가, 기존 index_* 저장소 재사용. 16px 값·20px 추이로 압축.
 - 시장 탭은 상태만: 시장 국면·미국장·국장 거래대금·Risk 모니터링(전체 폭). **D-208**: 읽을거리(주목 주제·언급 모멘텀·AI 생성물·내러티브·종목 요약·리포트)는 피드로 — Explorer 생성물 소스(내러티브·리포트·파급 분석)와 리더 상단 주제 칩(주목 주제·부상 종목, `reader_topic`). 인과 그래프 업데이트(옛 `/knowledge` 변화·검증 지식)는 2026-11-05 개편 4g에서 `/knowledge`와 함께 뺐다가 D-308로 Thesis › 그래프(`/knowledge/ontology`) 그래프 아래 접힌 블록으로 되살렸다(`explore/GraphActivitySection`, 펼칠 때만 호출, docs/specs/world-model.md).
 - 'AI가 최근 만든 것'(`GET /api/spine/home/ai-activity`, `home/AiActivityFeed`·`hooks/useAiActivity`)은 화면이 없어져(4a) 7단계에서 API까지 지웠다. D-325(2026-11-06)로 상단 바 아이콘(`layout/AiOutputs`)으로 되살렸다. 원천은 피드 Explorer 묶음과 같은 `GET /api/spine/feed/timeline?scope=system`(최신 20건, `useExplorerOutputs`)과, 유튜브 AI 정리본까지 담도록 되살린 `GET /api/spine/home/ai-activity`(지난 7일 30건, `useAiActivity`) 두 개를 `lib/aiOutputs.mergeAiOutputs`가 합친다 — 종류·주제·생성 시각이 같으면 타임라인 쪽 하나만, 최신순.
+- 공개 `GET /api/spine/kr/movers`는 `security.public_kr_movers`의 readonly/query_only/컬럼 제한 연결로 저장 순위·업종·거래대금만 읽고 기존 클러스터·급등락 계산을 재사용한다. force 수집은403이며 별도 개인 문서 연결은 호출하지 않는다. 승인 문서 근거 연결은 아직 후속으로, 공개 briefing은 빈 배열이다. 개인 진입의 근거 조회는 유지한다.
 - `kr_movers._briefing_evidence`: 상위 5종목의 스냅샷 당일까지 3일 발행 자료를 entity_links로 연결, 각 최대 2건. 기업명이 포함된 저장 요약/원문 발췌와 문서 링크, 우선주 본주 포함·근거 없음 표시. GET은 저장분 조회이며 LLM 호출 없음. 기존 수집 날짜 정확도의 제약을 유지하고 스냅샷 기준으로 표시.
 - 현행 계약과 출처: `specs/home-feed.md`. 검증: `logs/home-order/`.
 
