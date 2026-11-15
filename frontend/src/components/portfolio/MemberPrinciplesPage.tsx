@@ -29,6 +29,8 @@ export function MemberPrinciplesPage() {
 
 const STATUS: Record<MemberRuleCoverage['status'], string> = { evaluated: '평가함', partial: '일부만 평가', unavailable: '평가할 자료 부족', not_applicable: '현재 보유 대상 없음' }
 const REASONS: Record<string, string> = {
+  'Peak-exit requires market and at least 252 stored prices before entry': '시장 구분과 편입 전 시세 252개 이상이 필요합니다. 부족한 종목은 고점 규칙을 평가하지 않았습니다.',
+  'Only holdings with verified peak-exit inputs were evaluated': '시장 구분과 시세 이력이 충분한 종목만 고점 규칙을 평가했습니다.',
   'Shared exposure evidence is not connected': '공통 변수의 근거 자료 연결을 준비 중입니다.',
   'Complete peak-exit price history is not verified': '고점·이동평균 판단에 필요한 시세 이력 검증이 남아 있습니다.',
   'Historical entry valuation is not verified': '매수 당시 계좌 평가 자료 검증이 남아 있습니다.',
@@ -65,7 +67,7 @@ function Principles() {
     <section className="space-y-3 border-t pt-4"><h2 className="text-lg font-medium">현재 원칙 점검</h2>
       <QueryState query={state} isEmpty={value => value.rules === 0} emptyMessage="수치로 점검할 규칙이 아직 없습니다.">{value => <>
         {value.as_of && <p className="text-sm text-muted-foreground">시세 시점 참고: {value.as_of}</p>}
-        <p className="text-sm text-muted-foreground">종목마다 시세 갱신 시점이 다를 수 있으며 실시간 평가가 아닙니다.{value.price_dates.length > 1 && ` 보유 종목 시세 날짜: ${value.price_dates.join(', ')}`}</p>
+        <p className="text-sm text-muted-foreground">종목마다 시세 갱신 시점이 다를 수 있으며 실시간 평가가 아닙니다. 고점 규칙은 저장된 시세 관측값을 사용하며 거래일 이력의 완전성을 보장하지 않습니다.{value.price_dates.length > 1 && ` 보유 종목 시세 날짜: ${value.price_dates.join(', ')}`}</p>
         <ul className="space-y-2">{value.coverage.map(item => <li key={`${item.principle_id}:${item.rule_index}`}>
           <p className="text-sm">{item.rule} · {STATUS[item.status]}</p>
           {item.reason && <p className="text-sm text-muted-foreground">{REASONS[item.reason] ?? '필요한 자료를 확인하고 있습니다.'}</p>}

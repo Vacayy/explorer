@@ -145,3 +145,53 @@ class MemberPrincipleTests(unittest.TestCase):
             r=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
         self.assertEqual(r.status_code,200,r.text)
         self.assertEqual(r.json()['price_dates'],['2025-12-01','2026-01-02'])
+
+    def test_peak_exit_uses_owned_prices_and_skips_short_history(self):
+        from datetime import date,timedelta
+        with self.connect() as conn:
+            conn.execute('ALTER TABLE companies ADD COLUMN market TEXT')
+            conn.execute("UPDATE companies SET market='KOSPI'")
+            conn.execute('DELETE FROM stock_prices')
+            first=date(2026,1,1)-timedelta(days=260)
+            fixture.prices(conn,'AAAAAA',[(str(first+timedelta(days=i)),10) for i in range(260)]
+                           + [('2026-01-01',20),('2026-01-02',15)])
+            fixture.prices(conn,'BBBBBB',[('2026-01-01',10),('2026-01-02',9)])
+        self.create(rules=[{'type':'peak_exit','params':{'pct':15}}])
+        self.create('b',rules=[{'type':'peak_exit','params':{'pct':15}}])
+        fixture.MemberPortfolioTests.add(self,name='a')
+        fixture.MemberPortfolioTests.add(self,name='a',stock_code='BBBBBB')
+        before=self.path.read_bytes()
+        with patch.object(legacy,'load_prices',wraps=legacy.load_prices) as load:
+            a=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+            self.assertEqual(a.status_code,200,a.text)
+            self.assertEqual(a.json()['coverage'][0]['status'],'partial')
+            self.assertEqual(len(a.json()['items']),1)
+            self.assertIn('1/3',a.json()['items'][0]['message'])
+            self.assertIn('AAAAAA',a.json()['items'][0]['key'])
+            self.assertNotIn('BBBBBB',a.json()['items'][0]['key'])
+            b=self.client.get(self.base+'/principles/state',headers=self.headers['b'])
+            self.assertEqual(b.json()['coverage'][0]['status'],'not_applicable')
+            self.assertEqual(load.call_args.args[1],[])
+        self.assertEqual(before,self.path.read_bytes())
+        with self.connect() as conn:conn.execute("UPDATE companies SET market='KOSDAQ' WHERE stock_code='AAAAAA'")
+        r=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+        self.assertIn('전량',r.json()['items'][0]['message'])
+        # Enough positive observations remain even when the legacy loader drops
+        # an invalid stored row. The member adapter must not silently accept it.
+        for invalid in (None, 0, -1, 'invalid'):
+            with self.connect() as conn:
+                conn.execute('UPDATE stock_prices SET close=? WHERE stock_code=? AND trade_date=?',
+                             (invalid,'AAAAAA',str(first)))
+            r=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+            self.assertEqual(r.status_code,200,r.text)
+            self.assertEqual(r.json()['coverage'][0]['status'],'unavailable')
+            self.assertEqual(r.json()['items'],[])
+
+    def test_peak_input_requires_full_lookback_known_market_and_finite_positive_values(self):
+        from security.member_principles import peak_input_ready
+        good={'closes':[10.0]*253,'start':252,'market':'KOSPI'}
+        self.assertTrue(peak_input_ready(good,10))
+        for changes in ({'start':251},{'start':253},{'market':None},{'closes':[10.0]*252+[float('nan')]},
+                        {'closes':[10.0]*252+[0.0]}):
+            self.assertFalse(peak_input_ready({**good,**changes},10))
+        self.assertFalse(peak_input_ready(good,11))

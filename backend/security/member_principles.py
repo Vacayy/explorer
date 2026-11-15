@@ -1,5 +1,6 @@
 """Member-owned confirmed principles; no legacy schema, parser or alert side effects."""
 import json
+import math
 from pipeline import portfolio_principles as rules, portfolio as pf
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -54,19 +55,35 @@ class MemberPrinciples(MemberPortfolio):
             items = [self.projection(row) for row in conn.execute(
                 'SELECT id,text,rules_json,notes_json,created_at FROM member_portfolio_principles WHERE group_id=? ORDER BY id', (gid,))]
             summary = pf.summary(conn, gid=gid)
+            peak_prices = {}
+            if any(rule['type'] == 'peak_exit' for item in items for rule in item['rules']):
+                candidates = [h for h in summary.get('holdings', []) if h.get('entry_date') and h.get('last_close') is not None]
+                # The shared loader drops nonpositive/null rows. Reject corrupt
+                # stored inputs before that filtering (or conversion of text).
+                candidates = [h for h in candidates if not conn.execute(
+                    "SELECT 1 FROM stock_prices WHERE stock_code=? AND trade_date >= date(?, '-400 days') "
+                    "AND (typeof(close) NOT IN ('integer','real') OR close <= 0) LIMIT 1",
+                    (h['code'], h['entry_date'])).fetchone()]
+                loaded = rules.load_prices(conn, candidates)
+                peak_prices = {h['code']: loaded[h['code']] for h in candidates
+                               if peak_input_ready(loaded.get(h['code']), h['last_close'])}
             coverage, violations = [], []
             today = datetime.now(ZoneInfo('Asia/Seoul')).date().isoformat()
             for item in items:
                 for index, rule in enumerate(item['rules']):
                     status, reason = rule_coverage(rule['type'], summary)
+                    if rule['type'] == 'peak_exit':
+                        status, reason = peak_coverage(summary.get('holdings', []), peak_prices)
                     coverage.append({'principle_id':item['id'], 'rule_index':index,
                                      'rule':rules.describe(rule), 'status':status, 'reason':reason})
                     if status not in ('evaluated', 'partial'):
                         continue
                     field = HOLDING_FIELDS.get(rule['type'])
                     eligible = [h for h in summary.get('holdings', []) if field is None or h.get(field) is not None]
+                    if rule['type'] == 'peak_exit':
+                        eligible = [h for h in eligible if h['code'] in peak_prices]
                     inputs = {**summary, 'holdings': eligible}
-                    for hit in rules.violations([{**item, 'rules':[rule]}], inputs, today=today):
+                    for hit in rules.violations([{**item, 'rules':[rule]}], inputs, today=today, prices=peak_prices):
                         # The engine sees one rule; preserve its original index in the response key.
                         suffix = hit['key'].split(':', 2)[2]
                         hit['key'] = f"{item['id']}:{index}:{suffix}"
@@ -136,4 +153,26 @@ def rule_coverage(kind, summary):
             return 'unavailable', 'Required holding inputs are unavailable'
         if available < len(holdings):
             return 'partial', 'Only holdings with complete inputs were evaluated'
+    return 'evaluated', None
+
+
+def peak_input_ready(prices, last_close):
+    if not prices or prices.get('market') not in ('KOSPI', 'KOSDAQ', 'KOSDAQ GLOBAL', 'KONEX'):
+        return False
+    closes, start = prices['closes'], prices['start']
+    # The existing shoulder search uses 252 stored observations before a peak.
+    # Requiring them before entry supports every possible held-period peak.
+    return (252 <= start < len(closes) and len(closes) >= rules.EXIT_MA
+            and all(math.isfinite(value) and value > 0 for value in closes)
+            and closes[-1] == last_close)
+
+
+def peak_coverage(holdings, prices):
+    if not holdings:
+        return 'not_applicable', 'No current holdings'
+    available = sum(h['code'] in prices for h in holdings)
+    if available == 0:
+        return 'unavailable', 'Peak-exit requires market and at least 252 stored prices before entry'
+    if available < len(holdings):
+        return 'partial', 'Only holdings with verified peak-exit inputs were evaluated'
     return 'evaluated', None
