@@ -39,6 +39,7 @@ from pipeline.postgres_ingest_runner_fixture import embed_document, run_source
 from pipeline.connectors.notes import NoteConnector
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.telegram import TelegramConnector
+from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
@@ -407,6 +408,55 @@ class SnapshotReplacementTests(unittest.TestCase):
             index=SearchSnapshot(generation,rows)
             try:
                 self.assertIn(ident,[row.id for row in search_feed(c,index,'텔레그램',source='telegram').items])
+            finally:
+                index.close()
+
+    def test_youtube_connector_to_detail_and_search_without_network(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','합성 영상 채널',1)")
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        with patch('pipeline.connectors.youtube.fetch_transcript',return_value='합성 영상 자막과 검색어'), \
+             patch('pipeline.connectors.youtube._video_title',return_value='합성 영상'), \
+             patch('pipeline.connectors.youtube._video_published',return_value='2026-01-02T00:00:00Z'), \
+             patch('pipeline.connectors.youtube.video_channel_id',return_value='UCfixture'):
+            self.assertEqual(run_source(YouTubeConnector(video_ids=['abc123def45']),self.pg)['new'],1)
+            self.assertEqual(run_source(YouTubeConnector(video_ids=['abc123def45']),self.pg)['unchanged'],1)
+        with self.pg() as c:
+            ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='youtube' AND source_id='UCfixture/abc123def45'").fetchone()[0]
+            self.assertEqual(c.execute('SELECT raw_content,digest_status FROM ingest_documents WHERE id=%s',(ident,)).fetchone(),('합성 영상 자막과 검색어','pending'))
+        from pipeline.enrich import _enrich_keyword
+        self.assertTrue(enrich_document(self.pg,ident,enrich=_enrich_keyword))
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader=PostgreSQLDocumentReader(target)
+        detail=reader.get(ident)
+        self.assertEqual((detail.title,detail.summary,detail.content),('합성 영상','합성 영상 자막과 검색어','합성 영상 자막과 검색어'))
+        self.assertIn(ident,[row.id for row in reader.list(source='youtube').items])
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            rows=c.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
+                           "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
+            index=SearchSnapshot(generation,rows)
+            try:
+                self.assertIn(ident,[row.id for row in search_feed(c,index,'검색어',source='youtube').items])
             finally:
                 index.close()
 
