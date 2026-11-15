@@ -12,6 +12,8 @@ CREATE TABLE ingest_documents (
     digest_status TEXT,
     content_hash TEXT NOT NULL,
     revision BIGINT NOT NULL DEFAULT 1 CHECK (revision > 0),
+    projection_version BIGINT NOT NULL DEFAULT 1,
+    projected_version BIGINT NOT NULL DEFAULT 0,
     UNIQUE (source_type, source_id)
 );
 CREATE TABLE ingest_enrichment_jobs (
@@ -19,6 +21,8 @@ CREATE TABLE ingest_enrichment_jobs (
     revision BIGINT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'failed', 'done')),
     token UUID,
+    worker_id TEXT,
+    started_at TIMESTAMPTZ,
     CHECK ((status = 'running') = (token IS NOT NULL))
 );
 CREATE TABLE ingest_enrichments (

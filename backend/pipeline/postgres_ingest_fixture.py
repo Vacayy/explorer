@@ -25,19 +25,21 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
         'WHERE source_type=%s AND source_id=%s FOR UPDATE', (source_type, source_id)).fetchone()
     if row[2] == digest:
         if media:
-            conn.execute('UPDATE ingest_documents SET media_json=%s WHERE id=%s', (Jsonb(media), row[0]))
+            conn.execute('UPDATE ingest_documents SET media_json=%s, projection_version=projection_version+1 '
+                         'WHERE id=%s AND media_json IS DISTINCT FROM %s', (Jsonb(media), row[0], Jsonb(media)))
         return {'id': row[0], 'revision': row[1], 'status': 'unchanged'}
     revision = row[1] + 1
     conn.execute('UPDATE ingest_documents SET title=%s, markdown=%s, content_hash=%s, revision=%s, media_json=%s, '
-                 'url=%s, published_at=%s, raw_content=%s, digest_status=%s WHERE id=%s',
+                 'url=%s, published_at=%s, raw_content=%s, digest_status=%s, '
+                 'projection_version=projection_version+1 WHERE id=%s',
                  (title, markdown, digest, revision, Jsonb(media) if media else None,
                   url, published_at, raw_content, digest_status, row[0]))
     conn.execute('DELETE FROM ingest_enrichments WHERE document_id=%s', (row[0],))
-    conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',token=NULL WHERE document_id=%s", (revision, row[0]))
+    conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
     return {'id': row[0], 'revision': revision, 'status': 'updated'}
 
 
-def claim_enrichment(conn, *, document_id, upgrade_keyword=False):
+def claim_enrichment(conn, *, document_id, worker_id='fixture-worker', upgrade_keyword=False):
     """Claim once per document/revision; caller commits before invoking model."""
     current = conn.execute('SELECT revision FROM ingest_documents WHERE id=%s FOR UPDATE', (document_id,)).fetchone()
     if current is None:
@@ -50,7 +52,9 @@ def claim_enrichment(conn, *, document_id, upgrade_keyword=False):
     elif job[0] not in ('pending', 'failed'):
         return None
     token = uuid4()
-    conn.execute("UPDATE ingest_enrichment_jobs SET status='running',token=%s WHERE document_id=%s", (token, document_id))
+    if not worker_id:
+        raise ValueError('worker_id is required')
+    conn.execute("UPDATE ingest_enrichment_jobs SET status='running',token=%s,worker_id=%s,started_at=clock_timestamp() WHERE document_id=%s", (token, worker_id, document_id))
     return {'revision': current[0], 'token': token}
 
 
@@ -63,7 +67,8 @@ def finish_enrichment(conn, *, document_id, revision, token, summary, model):
                  'VALUES (%s,%s,%s,%s) ON CONFLICT(document_id) DO UPDATE '
                  'SET revision=excluded.revision, summary=excluded.summary, model=excluded.model',
                  (document_id, revision, summary, model))
-    conn.execute("UPDATE ingest_enrichment_jobs SET status='done',token=NULL WHERE document_id=%s", (document_id,))
+    conn.execute('UPDATE ingest_documents SET projection_version=projection_version+1 WHERE id=%s', (document_id,))
+    conn.execute("UPDATE ingest_enrichment_jobs SET status='done',token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (document_id,))
     return True
 
 
@@ -72,6 +77,17 @@ def fail_enrichment(conn, *, document_id, revision, token):
     current = conn.execute('SELECT revision FROM ingest_documents WHERE id=%s FOR UPDATE', (document_id,)).fetchone()
     if current is None or current[0] != revision:
         return False
-    return bool(conn.execute("UPDATE ingest_enrichment_jobs SET status='failed',token=NULL "
+    return bool(conn.execute("UPDATE ingest_enrichment_jobs SET status='failed',token=NULL,worker_id=NULL,started_at=NULL "
                              "WHERE document_id=%s AND revision=%s AND status='running' AND token=%s RETURNING 1",
                              (document_id, revision, token)).fetchone())
+
+
+def publish_projection(conn, *, document_id, version, publish):
+    """Publish atomically; caller provides the actual projection writer in this transaction."""
+    row = conn.execute('SELECT projection_version,projected_version FROM ingest_documents WHERE id=%s FOR UPDATE',
+                       (document_id,)).fetchone()
+    if row is None or row[0] != version or row[1] == version:
+        return False
+    publish(conn, document_id)
+    conn.execute('UPDATE ingest_documents SET projected_version=%s WHERE id=%s', (version, document_id))
+    return True

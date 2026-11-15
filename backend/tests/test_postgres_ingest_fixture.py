@@ -8,7 +8,7 @@ from pathlib import Path
 
 import psycopg
 from psycopg import sql
-from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment, fail_enrichment
+from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -121,3 +121,43 @@ class IngestFixtureTests(unittest.TestCase):
         self.assertEqual(len({r['id'] for r in rows}), 1)
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM ingest_documents').fetchone()[0], 1)
+
+    def test_projection_publication_failure_retry_and_media_dirty(self):
+        row = self.put('A')
+        with self.pg() as c:
+            c.execute('CREATE TABLE fixture_projection(document_id BIGINT PRIMARY KEY, body TEXT)')
+        def publish(c, doc_id):
+            c.execute('INSERT INTO fixture_projection SELECT id,markdown FROM ingest_documents WHERE id=%s '
+                      'ON CONFLICT(document_id) DO UPDATE SET body=excluded.body', (doc_id,))
+        with self.pg() as c:
+            self.assertTrue(publish_projection(c, document_id=row['id'], version=1, publish=publish))
+        self.put('B')
+        def broken(c, doc_id):
+            publish(c, doc_id)
+            raise RuntimeError('projection failure')
+        with self.assertRaisesRegex(RuntimeError, 'projection failure'):
+            with self.pg() as c:
+                publish_projection(c, document_id=row['id'], version=2, publish=broken)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT body FROM fixture_projection').fetchone()[0], 'A')
+            self.assertEqual(c.execute('SELECT projection_version,projected_version FROM ingest_documents').fetchone(), (2, 1))
+            self.assertTrue(publish_projection(c, document_id=row['id'], version=2, publish=publish))
+            self.assertEqual(c.execute('SELECT body FROM fixture_projection').fetchone()[0], 'B')
+            store_document(c, source_type='fixture', source_id='1', title='title', markdown='B', media=['image'])
+            self.assertFalse(publish_projection(c, document_id=row['id'], version=2, publish=publish))
+            self.assertEqual(c.execute('SELECT projection_version,projected_version FROM ingest_documents').fetchone(), (3, 2))
+            self.assertTrue(publish_projection(c, document_id=row['id'], version=3, publish=publish))
+
+    def test_worker_recovery_is_explicit_and_invalidates_old_token(self):
+        row = self.put('A')
+        with self.pg() as c:
+            first = claim_enrichment(c, document_id=row['id'], worker_id='worker-1')
+            worker, started = c.execute('SELECT worker_id,started_at FROM ingest_enrichment_jobs').fetchone()
+            self.assertEqual(worker, 'worker-1')
+            self.assertIsNotNone(started)
+            self.assertIsNone(claim_enrichment(c, document_id=row['id'], worker_id='worker-2'))
+            # Caller must establish that worker-1 is stopped before releasing it.
+            self.assertTrue(fail_enrichment(c, document_id=row['id'], **first))
+            retry = claim_enrichment(c, document_id=row['id'], worker_id='worker-2')
+            self.assertFalse(finish_enrichment(c, document_id=row['id'], **first, summary='late', model='fixture'))
+            self.assertTrue(finish_enrichment(c, document_id=row['id'], **retry, summary='new', model='fixture'))
