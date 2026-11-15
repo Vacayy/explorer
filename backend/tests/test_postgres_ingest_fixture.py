@@ -15,6 +15,9 @@ from pipeline.base import SourceRef
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finish as finish_video
+from pipeline.postgres_video_import_fixture import import_videos
+from tests.test_document_read_boundary import DocumentReadBoundaryTests
+from routers import spine_doc
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
 from pipeline.postgres_ingest_coordinator_fixture import FixtureCoordinator
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
@@ -404,3 +407,33 @@ class IngestFixtureTests(unittest.TestCase):
         coordinator.rebuild()
         detail = coordinator.reader.get(doc['id'])
         self.assertEqual((detail.transcript, detail.video_digest), ('나' * 100, None))
+
+    def test_import_existing_video_preserves_display_and_rejects_duplicate(self):
+        source_fixture = DocumentReadBoundaryTests('test_raw_fallback_and_missing')
+        source_fixture.setUp()
+        self.addCleanup(source_fixture.tearDown)
+        with source_fixture.connect() as c:
+            c.execute("INSERT INTO raw_documents VALUES (10,'youtube','UCfixture/abc123def45','영상','https://example.test',"
+                      "'2026-01-01','기존 정리본','기존 정리본','ok',NULL)")
+            c.execute("INSERT INTO enrichments VALUES (10,10,'기존 요약','fixture','2026-01-01')")
+            c.execute("INSERT INTO youtube_digest_jobs VALUES (10,'원래 자막','ok','old-token',1,NULL)")
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','합성 채널',1)")
+        with patch('routers.spine_feed.resolve_channels', return_value={10: {'name': '합성 채널', 'kind': 'youtube', 'key': 'UCfixture'}}):
+            expected = spine_doc.get_document(10)
+        with source_fixture.connect() as source:
+            source.execute('PRAGMA query_only=ON')
+            source.execute('BEGIN')
+            with self.pg() as target:
+                self.assertEqual(import_videos(source, target, [10]), 1)
+            with self.assertRaises(psycopg.errors.UniqueViolation):
+                with self.pg() as target:
+                    import_videos(source, target, [10])
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        coordinator.rebuild()
+        actual = coordinator.reader.get(10)
+        for field in ('id','title','content','summary','digest_status','video_digest','transcript','channel'):
+            self.assertEqual(getattr(actual, field), getattr(expected, field), field)
+        with self.pg() as c:
+            created = store_document(c, source_type='note', source_id='new', title='n', markdown='n')
+            self.assertGreater(created['id'], 10)

@@ -55,8 +55,8 @@ def rebuild(conn):
                            channel_kind=channel.get('kind'), channel_key=channel.get('key'), images=media or [],
                            enrich_model=model, entities=[])
         payload = Jsonb(doc.model_dump(mode='json'))
-        details = doc.model_copy(update=fields_from_job({'source_type': source, 'digest_status': digest,
-                                                          'markdown': markdown, 'raw_content': raw}, jobs.get(ident)))
+        details = doc.model_copy(update={'content': markdown or raw, **fields_from_job(
+            {'source_type': source, 'digest_status': digest, 'markdown': markdown, 'raw_content': raw}, jobs.get(ident))})
         conn.execute('INSERT INTO document_projection VALUES (%s,%s,%s,%s,TRUE,%s)',
                      (ident, source, published, Jsonb(details.model_dump(mode='json')), groups))
         conn.execute('INSERT INTO document_list_projection VALUES (%s,%s,%s)', (ordinal, ident, payload))

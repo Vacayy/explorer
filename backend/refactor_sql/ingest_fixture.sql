@@ -38,19 +38,25 @@ CREATE TABLE ingest_enrichments (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
     summary TEXT,
-    model TEXT NOT NULL
+    model TEXT
+);
+CREATE TABLE ingest_legacy_video_archive (
+    document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
+    document JSONB NOT NULL,
+    enrichments JSONB NOT NULL,
+    job JSONB
 );
 CREATE TABLE ingest_enrichment_history (
     document_id BIGINT NOT NULL REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
     summary TEXT,
-    model TEXT NOT NULL,
+    model TEXT,
     PRIMARY KEY(document_id,revision)
 );
 CREATE TABLE ingest_youtube_jobs (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
-    transcript TEXT NOT NULL,
+    transcript TEXT,
     status TEXT NOT NULL,
     token UUID,
     updated_at DOUBLE PRECISION NOT NULL,
