@@ -358,6 +358,8 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
             c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.execute("INSERT INTO telegram_channels VALUES ('fixture','합성 채널',1)")
+            c.execute("INSERT INTO telegram_channels VALUES ('muted','숨김 채널',0)")
         self.load('2026-01-03T00:00:00+00:00',include_linking=True)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
@@ -369,13 +371,44 @@ class SnapshotReplacementTests(unittest.TestCase):
                 patch('pipeline.connectors.telegram.image_reading.read_images',return_value={}):
             self.assertEqual(run_source(TelegramConnector(['fixture']),self.pg)['new'],1)
             self.assertEqual(run_source(TelegramConnector(['fixture']),self.pg)['unchanged'],1)
+            self.assertEqual(run_source(TelegramConnector(['muted']),self.pg)['new'],1)
         with self.pg() as c:
             ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='telegram' AND source_id='fixture/123'").fetchone()[0]
+            muted_id=c.execute("SELECT id FROM ingest_documents WHERE source_type='telegram' AND source_id='muted/123'").fetchone()[0]
         from pipeline.enrich import _enrich_keyword
         self.assertTrue(enrich_document(self.pg,ident,enrich=_enrich_keyword))
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT summary,model FROM ingest_enrichments WHERE document_id=%s',(ident,)).fetchone(),
                              ('합성 텔레그램 수집 본문','keyword'))
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader=PostgreSQLDocumentReader(target)
+        self.assertEqual(reader.get(ident).summary,'합성 텔레그램 수집 본문')
+        self.assertIn(ident,[row.id for row in reader.list(source='telegram').items])
+        self.assertNotIn(muted_id,[row.id for row in reader.list(source='telegram').items])
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            self.assertEqual(c.execute('SELECT channel FROM timeline_source_projection WHERE document_id=%s',(ident,)).fetchone()[0],'telegram:fixture')
+            self.assertIsNone(c.execute('SELECT channel FROM timeline_source_projection WHERE document_id=%s',(muted_id,)).fetchone())
+            generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            rows=c.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
+                           "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
+            index=SearchSnapshot(generation,rows)
+            try:
+                self.assertIn(ident,[row.id for row in search_feed(c,index,'텔레그램',source='telegram').items])
+            finally:
+                index.close()
 
     def test_concurrent_new_graph_names_share_one_entity(self):
         from concurrent.futures import ThreadPoolExecutor

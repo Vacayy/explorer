@@ -24,10 +24,11 @@ def _new_source_details(conn, ident, source, source_id, url, published, fetched=
     """Reproduce existing source registry, visibility, and timeline rules."""
     blogs = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='blog_sources'")]
     youtube = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='youtube_channels'")]
+    telegram = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='telegram_channels'")]
     blog_names = sorted(((r['url'],r['blog_name'] or r['url']) for r in blogs), key=lambda x: len(x[0] or ''), reverse=True)
     yt_names = {r['channel_id']:r['title'] for r in youtube}
     channel = source_names_from_rows([{'id':ident,'source_type':source,'source_id':source_id,'url':url}],
-                                     telegram={},blogs=blog_names,youtube=yt_names,scraps={}).get(ident) or {}
+                                     telegram={r['channel_name']:r['display_name'] for r in telegram},blogs=blog_names,youtube=yt_names,scraps={}).get(ident) or {}
     groups = set()
     visible = True
     timeline_key = None
@@ -44,6 +45,12 @@ def _new_source_details(conn, ident, source, source_id, url, published, fetched=
             matched = [row for row in blogs if url_belongs(url,row['url'])]
             if any(row['is_active'] == 1 for row in matched) and not any(row['is_active'] == 0 for row in matched):
                 timeline_key = channel.get('key') or ''
+        elif source == 'telegram':
+            channel_id = source_id.split('/',1)[0] if '/' in source_id else ''
+            if any(row['channel_name'] == channel_id and row['is_active'] == 0 for row in telegram):
+                visible = False
+            if any(row['channel_name'] == channel_id and row['is_active'] == 1 for row in telegram):
+                timeline_key = channel_id
         elif source == 'youtube':
             channel_id = source_id.split('/',1)[0] if '/' in source_id else ''
             if any(row['channel_id'] == channel_id and row['is_active'] == 1 for row in youtube):
@@ -102,7 +109,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                                        (metadata[2],)).fetchone()
             if attestation is None or attestation[0] != 'fixture:' + embedding_model:
                 raise ValueError('Existing vector profile is not verified for mixing')
-        if source not in ('note','blog','youtube'):
+        if source not in ('note','blog','youtube','telegram'):
             raise ValueError('Unsupported source change')
         timeline_present = bool(conn.execute('SELECT 1 FROM timeline_source_projection WHERE document_id=%s', (ident,)).fetchone())
         prior = reader.get_in_transaction(conn, ident)
