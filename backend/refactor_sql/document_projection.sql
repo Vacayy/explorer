@@ -137,3 +137,13 @@ CREATE TABLE archived_document_details (
     detail_document JSONB NOT NULL,
     PRIMARY KEY (generation_id, id)
 );
+
+-- Fixture-only immutable, content-addressed media for captured generations.
+CREATE TABLE media_generations (generation_id UUID PRIMARY KEY);
+CREATE TABLE media_blobs (digest TEXT PRIMARY KEY, content BYTEA NOT NULL);
+CREATE TABLE media_generation_refs (
+    generation_id UUID NOT NULL REFERENCES media_generations(generation_id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    digest TEXT NOT NULL REFERENCES media_blobs(digest),
+    PRIMARY KEY (generation_id, path)
+);

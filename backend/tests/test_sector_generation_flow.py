@@ -32,6 +32,9 @@ class SectorGenerationFlow(unittest.TestCase):
             c.execute((root / 'sector_market.sql').read_text())
         self.tmp = tempfile.TemporaryDirectory()
         self.path = Path(self.tmp.name) / 'source.sqlite'
+        self.media = Path(self.tmp.name) / 'media'
+        (self.media / 'fixtures').mkdir(parents=True)
+        (self.media / 'fixtures' / 'sample.jpg').write_bytes(b'old image bytes')
         with patch.object(database, 'DB_PATH', self.path):
             database.init_db()
             c = database.get_connection()
@@ -41,8 +44,8 @@ class SectorGenerationFlow(unittest.TestCase):
                 c.executemany('INSERT INTO stock_prices (stock_code,trade_date,close,market_cap) VALUES (?,?,?,?)',
                               [('000001','2025-09-01',100,1000), ('000001','2026-01-09',120,1200)])
                 c.execute("INSERT INTO entities (id,type,name) VALUES (1,'sector','합성업종')")
-                c.execute("INSERT INTO raw_documents (id,source_type,source_id,title,published_at,markdown) "
-                          "VALUES (1,'blog','fixture','합성업종 문서','2026-01-09','첫 원문')")
+                c.execute("INSERT INTO raw_documents (id,source_type,source_id,title,published_at,markdown,media_json) "
+                          "VALUES (1,'blog','fixture','합성업종 문서','2026-01-09','첫 원문','[\"fixtures/sample.jpg\"]')")
                 c.execute("INSERT INTO entity_links (doc_id,entity_id,link_type) VALUES (1,1,'industry')")
                 c.commit()
             finally:
@@ -68,7 +71,7 @@ class SectorGenerationFlow(unittest.TestCase):
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
         try:
-            return load_snapshot(source, self.pg, snapshot_at=timestamp, include_sector=True,
+            return load_snapshot(source, self.pg, snapshot_at=timestamp, include_sector=True, media_root=self.media,
                                  capacity_check=lambda *_: None)
         finally:
             source.close()
@@ -82,14 +85,35 @@ class SectorGenerationFlow(unittest.TestCase):
         current = self.client.get('/api/spine/doc/1', params={'generation': generation})
         self.assertEqual(current.json()['content'], '첫 원문')
         self.assertEqual(current.headers['x-explorer-archived'], '0')
+        self.assertEqual(current.headers['x-explorer-media-generation'], generation)
+        self.assertEqual(self.client.get(f'/api/refactor/media/{generation}/fixtures/sample.jpg').content, b'old image bytes')
         with sqlite3.connect(self.path) as c:
             c.execute("UPDATE raw_documents SET markdown='바뀐 원문' WHERE id=1")
+        (self.media / 'fixtures' / 'sample.jpg').write_bytes(b'new image bytes')
         self.load('2026-01-10T00:00:00+00:00')
         previous = self.client.get('/api/spine/doc/1', params={'generation': generation})
         self.assertEqual(previous.status_code, 200)
         self.assertEqual(previous.json()['content'], '첫 원문')
         self.assertEqual(previous.headers['x-explorer-archived'], '1')
+        self.assertEqual(previous.headers['x-explorer-media-generation'], generation)
+        self.assertEqual(self.client.get(f'/api/refactor/media/{generation}/fixtures/sample.jpg').content, b'old image bytes')
+        new_generation = self.client.get('/api/spine/industry/합성섹터').headers['x-explorer-generation']
+        self.assertEqual(self.client.get(f'/api/refactor/media/{new_generation}/fixtures/sample.jpg').content, b'new image bytes')
         self.assertEqual(self.client.get('/api/spine/doc/1').json()['content'], '바뀐 원문')
         with self.pg() as c:
             c.execute("UPDATE archived_timeline_generations SET expires_at=clock_timestamp()-interval '1 second' WHERE generation_id=%s", (generation,))
         self.assertEqual(self.client.get('/api/spine/doc/1', params={'generation': generation}).status_code, 410)
+        self.assertEqual(self.client.get(f'/api/refactor/media/{generation}/fixtures/sample.jpg').status_code, 410)
+        self.load('2026-01-11T00:00:00+00:00')
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM media_blobs').fetchone()[0], 1)
+
+    def test_unsafe_attachment_cannot_replace_a_valid_snapshot(self):
+        self.load('2026-01-09T00:00:00+00:00')
+        generation = self.client.get('/api/spine/industry/합성섹터').headers['x-explorer-generation']
+        with sqlite3.connect(self.path) as c:
+            c.execute("UPDATE raw_documents SET media_json='[\"../outside.jpg\"]' WHERE id=1")
+        with self.assertRaises(ValueError):
+            self.load('2026-01-10T00:00:00+00:00')
+        self.assertEqual(self.client.get('/api/spine/industry/합성섹터').headers['x-explorer-generation'], generation)
+        self.assertEqual(self.client.get(f'/api/refactor/media/{generation}/fixtures/sample.jpg').content, b'old image bytes')

@@ -67,7 +67,8 @@ export default function DocPage() {
     queryFn: async () => {
       const result = await api.get<FeedDocument>(`/api/spine/doc/${docId}`, { params: { generation } })
       if (generation && result.headers['x-explorer-generation'] !== generation) throw new ApiError('조회하던 자료가 갱신됐습니다.', 410)
-      return { ...result.data, _archivedSnapshot: !!generation && result.headers['x-explorer-archived'] !== '0' }
+      return { ...result.data, _archivedSnapshot: !!generation && result.headers['x-explorer-archived'] !== '0',
+        _mediaGeneration: generation && result.headers['x-explorer-media-generation'] === generation ? generation : undefined }
     },
     enabled: !!docId, staleTime: 5 * 60_000,
     refetchInterval: query => query.state.data?.digest_status === 'generating' ? 2000 : false,
@@ -137,7 +138,7 @@ export default function DocPage() {
       </div>}
       {/* 본문에서 문장을 고르면 공통 선택 팔레트 (canvas.md §2) */}
       {/* 읽기 폭 720(시안 Doc) — 카드는 넓어도 본문 줄 길이는 이 폭에서 멈춘다 */}
-      <div ref={bodyRef} className="max-w-[720px]"><DocumentBody doc={doc} reading={reading} archived={doc._archivedSnapshot} /></div>
+      <div ref={bodyRef} className="max-w-[720px]"><DocumentBody doc={doc} reading={reading} archived={doc._archivedSnapshot} mediaGeneration={doc._mediaGeneration} /></div>
       <div className="mt-6 flex justify-end border-t pt-4 max-md:hidden"><CopyDocButton doc={doc} /></div>
       <SelectionPalette containerRef={bodyRef} actions={[
         { key: 'explain', label: '설명', Icon: BookOpen, onSelect: sel => askAboutText(sel, source, 'explain') },

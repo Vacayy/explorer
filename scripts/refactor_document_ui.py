@@ -15,7 +15,7 @@ from models.industry import IndustryMapResponse, SectorDetailResponse, SectorPee
 from models.peers import PeerRuntime
 from models.sector_peers import SectorPeersResponse
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
-from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationTimelineResponse, GenerationExpired
+from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationTimelineResponse, GenerationExpired, resolve_generation
 from pipeline.postgres_sector_market import PostgreSQLSectorSource
 from pipeline.sector_view import industry_map_from_source, sector_detail_from_source, sector_peer_list_from_source
 
@@ -133,7 +133,34 @@ def document(doc_id: int, response: Response, generation: UUID | None = None):
     if generation is not None:
         response.headers['X-Explorer-Generation'] = str(generation)
         response.headers['X-Explorer-Archived'] = '1' if archived else '0'
+        with factory() as connection:
+            connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            if connection.execute('SELECT EXISTS(SELECT 1 FROM media_generations WHERE generation_id=%s)',
+                                  (generation,)).fetchone()[0]:
+                response.headers['X-Explorer-Media-Generation'] = str(generation)
     return result
+
+
+@app.get('/api/refactor/media/{generation}/{media_path:path}')
+def generation_media(generation: UUID, media_path: str):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        try:
+            resolve_generation(connection, generation)
+        except GenerationExpired as exc:
+            raise HTTPException(410, '조회하던 자료가 만료됐습니다.') from exc
+        row = connection.execute('''SELECT b.content FROM media_generation_refs r
+            JOIN media_blobs b ON b.digest=r.digest WHERE r.generation_id=%s AND r.path=%s''',
+                                 (generation, media_path)).fetchone()
+    if not row:
+        raise HTTPException(404, '첨부를 찾을 수 없습니다.')
+    suffix = media_path.rsplit('.', 1)[-1].lower()
+    types = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+             'gif': 'image/gif', 'webp': 'image/webp'}
+    if suffix not in types:
+        raise HTTPException(404, '첨부를 찾을 수 없습니다.')
+    return Response(content=bytes(row[0]), media_type=types[suffix],
+                    headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
 
 
 if __name__ == '__main__':

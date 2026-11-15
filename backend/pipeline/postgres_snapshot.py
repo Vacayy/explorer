@@ -213,7 +213,7 @@ def _store_legacy_tables(source, target):
 
 
 def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None,
-                  include_sector=False, peer_runtime=None) -> dict:
+                  include_sector=False, peer_runtime=None, media_root=None) -> dict:
     """Replace the projection atomically from one existing SQLite transaction."""
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('An active query-only SQLite snapshot is required')
@@ -300,6 +300,9 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_chec
         _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_system_rows(source))
         generation = uuid.uuid4()
+        if media_root is not None:
+            from pipeline.postgres_generation_media import capture_media
+            capture_media(source, target, generation, media_root)
         if include_sector:
             from pipeline.postgres_sector_market import load_sector_market
             # Both domains use this SQLite transaction and this PostgreSQL
