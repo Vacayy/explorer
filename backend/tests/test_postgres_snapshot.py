@@ -1,5 +1,6 @@
 """Synthetic snapshot replacement and rollback in a disposable PostgreSQL DB."""
 import os
+import json
 import sqlite3
 import unittest
 import uuid
@@ -124,6 +125,9 @@ class SnapshotReplacementTests(unittest.TestCase):
     def test_pg_raw_rows_recreate_existing_detail_without_projection(self):
         from pipeline.document_read import _read_sqlite_document
         with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO entities VALUES(5,'company','다른 회사','000005')")
+            c.execute("INSERT INTO entity_links VALUES(1,5,'stock',0.6)")
+            c.execute("CREATE INDEX fixture_entity_order ON entity_links(doc_id,entity_id,link_type)")
             c.execute("INSERT INTO raw_documents VALUES(3,'youtube','yt/3','영상',NULL,'2026-01-03','정리본','자막','ok',NULL)")
             c.execute("INSERT INTO raw_documents VALUES(4,'youtube','yt/4','영상2',NULL,'2026-01-04',NULL,'원 자막','pending',NULL)")
             c.execute("INSERT INTO youtube_digest_jobs VALUES(4,'원 자막','failed','fixture',0,'합성 오류')")
@@ -136,7 +140,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertIsNone(raw_reader.get(999))
         # Raw reader must not depend on the cached response projection.
         with self.pg() as c:
-            c.execute("UPDATE document_projection SET detail_document = jsonb_set(detail_document, '{content}', '"projection only"') WHERE id=1")
+            c.execute("UPDATE document_projection SET detail_document = jsonb_set(detail_document, '{content}', %s::jsonb) WHERE id=1", (json.dumps("projection only"),))
         self.assertEqual(raw_reader.get(1).model_dump(), expected[1])
 
     def test_refuses_non_fixture_target_schema(self):

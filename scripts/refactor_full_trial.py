@@ -26,6 +26,7 @@ from psycopg import sql
 
 from pipeline.document_read import _read_sqlite_document
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
+from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_snapshot import LEGACY_TABLES, load_snapshot
 from routers import spine_feed
 
@@ -41,7 +42,8 @@ def _feed(conn, *, source=None, page=1, size=20):
                                    topic=None, page=page, size=size, days=None, sort='relevance')
 
 
-def run(source_path: Path, media: Path, dsn: str) -> dict:
+def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
+        retain_on_mismatch: bool = False) -> dict:
     if os.getenv('REFACTOR_TEST_DISPOSABLE') != '1':
         raise ValueError('Disposable fixture opt-in required')
     params = psycopg.conninfo.conninfo_to_dict(dsn)
@@ -52,6 +54,7 @@ def run(source_path: Path, media: Path, dsn: str) -> dict:
     source.row_factory = sqlite3.Row
     schema = 'refactor_fixture_' + uuid.uuid4().hex
     created = False
+    retain_completed = False
     try:
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
@@ -107,6 +110,19 @@ def run(source_path: Path, media: Path, dsn: str) -> dict:
         result['detail_samples_match'] = all(
             (old := _read_sqlite_document(source, i)) is not None and
             (new := reader.get(i)) is not None and old.model_dump() == new.model_dump() for i in unique)
+        raw_reader = PostgreSQLRawDocumentReader(pg)
+        differences = []
+        for i in unique:
+            old, new = _read_sqlite_document(source, i), raw_reader.get(i)
+            if old is None or new is None:
+                differences.append({'source_type': 'unavailable', 'fields': ['missing']})
+                continue
+            old_value, new_value = old.model_dump(), new.model_dump()
+            fields = sorted(k for k in old_value if old_value[k] != new_value[k])
+            if fields:
+                differences.append({'source_type': old.source_type, 'fields': fields})
+        result['raw_detail_samples_match'] = not differences
+        result['raw_detail_differences'] = differences
         # Copy a few real attachment bytes to an isolated temporary directory;
         # source volume is read-only and no original paths or content are logged.
         attached, missing = 0, 0
@@ -162,10 +178,15 @@ def run(source_path: Path, media: Path, dsn: str) -> dict:
             'postgres_max_ms': round(max(timings['postgres_ms']), 2),
             'scope': 'warm, connection reuse; PostgreSQL precomputed projection',
         }
+        if retain and all((result['source_table_counts_match'], result['source_row_values_match'],
+                           all(result['feed_cases_match'].values()), result['detail_samples_match'],
+                           result['raw_detail_samples_match'] or retain_on_mismatch)):
+            result['fixture_schema'] = schema
+            retain_completed = True
         return result
     finally:
         sqlite3.Connection.close(source)
-        if created:
+        if created and not retain_completed:
             with psycopg.connect(dsn) as conn:
                 conn.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
 
@@ -174,9 +195,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--media', type=Path, required=True)
+    parser.add_argument('--retain', action='store_true', help='retain a successful disposable fixture for UI testing')
+    parser.add_argument('--retain-on-mismatch', action='store_true', help='retain a mismatched fixture only for local debugging')
     args = parser.parse_args()
+    if args.retain_on_mismatch and not args.retain:
+        parser.error('--retain-on-mismatch requires --retain')
     try:
-        result = run(args.source, args.media, os.environ['REFACTOR_POSTGRES_DSN'])
+        result = run(args.source, args.media, os.environ['REFACTOR_POSTGRES_DSN'],
+                     retain=args.retain, retain_on_mismatch=args.retain_on_mismatch)
     except Exception as exc:
         frames = traceback.extract_tb(exc.__traceback__)
         location = [(Path(f.filename).name, f.name, f.lineno) for f in frames[-4:]]

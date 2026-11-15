@@ -179,10 +179,35 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
                 self.assertTrue(result['source_row_values_match'])
                 self.assertTrue(all(result['feed_cases_match'].values()))
                 self.assertTrue(result['detail_samples_match'])
+                self.assertTrue(result['raw_detail_samples_match'])
                 self.assertEqual(result['attachment_bytes_compared'], 1)
                 self.assertEqual(fixture.path.read_bytes(), before)
         finally:
             fixture.tearDown()
+
+    def test_successful_trial_can_retain_only_its_disposable_schema(self):
+        script = Path(__file__).resolve().parents[2] / 'scripts/refactor_full_trial.py'
+        spec = importlib.util.spec_from_file_location('refactor_full_trial_hold', script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        fixture = detail_fixtures.DocumentReadBoundaryTests('test_raw_fallback_and_missing')
+        fixture.setUp()
+        schema = None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / 'fixtures').mkdir()
+                (Path(tmp) / 'fixtures/example.jpg').write_bytes(b'synthetic attachment')
+                with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+                    result = module.run(fixture.path, Path(tmp), self.dsn, retain=True)
+                schema = result['fixture_schema']
+                self.assertRegex(schema, r'^refactor_fixture_[0-9a-f]{32}$')
+                with psycopg.connect(self.dsn, options=f'-c search_path={schema}') as conn:
+                    self.assertEqual(conn.execute('SELECT count(*) FROM document_projection').fetchone()[0], 2)
+        finally:
+            fixture.tearDown()
+            if schema:
+                with psycopg.connect(self.dsn) as conn:
+                    conn.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(schema)))
 
     def test_projection_rejects_mismatched_identity(self):
         payload = json.dumps(self.original[0].model_dump(mode='json'))

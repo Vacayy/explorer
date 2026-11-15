@@ -54,3 +54,17 @@ CREATE TABLE document_filter_order (
     PRIMARY KEY (filter_key, position),
     UNIQUE (filter_key, list_ordinal)
 );
+CREATE INDEX legacy_snapshot_rows_by_id ON legacy_snapshot_rows (table_name, (row_data->>'id'));
+CREATE INDEX legacy_snapshot_rows_by_doc_id ON legacy_snapshot_rows (table_name, (row_data->>'doc_id'));
+
+-- SQLite detail does not specify ORDER BY for entity links. Preserve its
+-- observed per-document order separately from the raw rows and response cache.
+CREATE TABLE document_entity_order (
+    document_id BIGINT NOT NULL REFERENCES document_projection(id),
+    position BIGINT NOT NULL,
+    entity_id BIGINT NOT NULL,
+    link_type TEXT NOT NULL,
+    confidence DOUBLE PRECISION,
+    occurrence BIGINT NOT NULL,
+    PRIMARY KEY (document_id, position)
+);

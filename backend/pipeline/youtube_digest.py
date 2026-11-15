@@ -21,6 +21,13 @@ def fields(conn, row):
     if row['source_type'] != 'youtube':
         return {}
     job = conn.execute('SELECT * FROM youtube_digest_jobs WHERE doc_id=?', (row['id'],)).fetchone()
+    return fields_from_job(row, job)
+
+
+def fields_from_job(row, job):
+    """Build the existing video fields from already-loaded source rows."""
+    if row['source_type'] != 'youtube':
+        return {}
     done = row['digest_status'] == 'ok'
     status = 'ok' if done else (job['status'] if job else row['digest_status'] or 'pending')
     if status == 'generating' and time.time() - job['updated_at'] > STALE_SECONDS:

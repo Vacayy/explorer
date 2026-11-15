@@ -18,19 +18,26 @@ def source_names(conn, rows) -> dict[int, dict | None]:
     yt = {r["channel_id"]: r["title"] for r in
           conn.execute("SELECT channel_id, title FROM youtube_channels")}
 
-    def get(r, key):
-        try:
-            return r[key]
-        except (KeyError, IndexError):
-            return None
-
-    ids = [get(r, "id") for r in rows]
+    ids = [_get(r, 'id') for r in rows]
     scrap_origin: dict[int, str] = {}
     if ids:
         ph = ",".join("?" for _ in ids)
         scrap_origin = {r["doc_id"]: r["channel"] for r in conn.execute(
             f"SELECT doc_id, channel FROM scrap_links WHERE doc_id IN ({ph})", ids) if r["channel"]}
+    return source_names_from_rows(rows, telegram=tg, blogs=blogs, youtube=yt, scraps=scrap_origin)
 
+
+def _get(row, key):
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None
+
+
+def source_names_from_rows(rows, *, telegram, blogs, youtube, scraps):
+    """Resolve sources from already-loaded registries without a DB dependency."""
+    tg, yt, scrap_origin = telegram, youtube, scraps
+    get = _get
     out: dict[int, dict | None] = {}
     for r in rows:
         did, st = get(r, "id"), get(r, "source_type")

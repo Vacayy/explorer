@@ -720,3 +720,5 @@ tail -f logs/ingest.log               # 수집 관찰
 실험 projection은 같은 발행 시각의 문서 순서가 SQLite에서 출처 필터별 실행 계획에 따라 달라질 수 있어, 각 출처 필터의 원래 순서를 별도로 저장한다. 필터별 동률·페이지 계약을 합성 테스트로 고정했다. `scripts/refactor_full_trial.py`는 명시적으로 지정된 읽기 전용 사본과 disposable fixture PostgreSQL만 사용해 10개 테이블 행수·대표 값, 일부 피드/상세와 첨부 파일 표본을 비교하고 실험 schema를 제거한다. 실제 운영 전환이나 원본 전체 필드 전수 대조를 의미하지 않는다.
 
 실제 크기 비교에서는 SQLite 정렬용 작은 임시 tmpfs가 가득 차 `SQLITE_FULL`로 실패할 수 있다. 사본 적재 시험은 여유가 확인된 비공개 디스크 임시 공간을 `SQLITE_TMPDIR`로 지정하고, 사용 후 해당 실험 전용 공간을 삭제한다.
+
+격리 PostgreSQL 실험의 `pipeline/postgres_raw_document_read.py`는 보존된 원본 행에서 문서 상세 한 건을 구성한다. 기존 SQLite의 명시되지 않은 엔티티 순서는 snapshot 당시 `document_entity_order`에 기록하며 영구적인 업무 순서로 취급하지 않는다. 출처 이름과 YouTube 요약 필드 생성은 기존 SQLite 경로와 공통 함수를 사용한다. 이것은 전체 조회 모델 재생성이나 검색 이전이 아니다. `scripts/refactor_document_ui.py`는 일회성 fixture DB에서만 상세 GET을 제공하는 로컬 UI 실험 도구다. `scripts/refactor_full_trial.py --retain`은 성공한 fixture schema를 UI 실험용으로 임시 보존하므로 사용 후 전용 schema와 볼륨을 정리해야 한다.

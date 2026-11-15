@@ -190,20 +190,29 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         target.execute('DELETE FROM legacy_snapshot_rows')
         target.execute('DELETE FROM legacy_snapshot_tables')
         target.execute('DELETE FROM document_filter_order')
+        target.execute('DELETE FROM document_entity_order')
         target.execute('DELETE FROM document_list_projection')
         target.execute('DELETE FROM document_projection')
         target.execute('DELETE FROM snapshot_metadata')
         _store_legacy_tables(source, target)
+        entity_orders = []
         def documents():
             ids = (row['id'] for row in source_rows)
             for row, doc in zip(source_rows, _read_sqlite_documents(source, ids), strict=True):
                 if doc is None or doc.id != row['id']:
                     raise RuntimeError('Snapshot document disappeared')
+                counts = defaultdict(int)
+                for position, tag in enumerate(doc.entities):
+                    key = (tag.entity_id, tag.link_type, tag.confidence)
+                    entity_orders.append((doc.id, position, *key, counts[key]))
+                    counts[key] += 1
                 payload = json.dumps(doc.model_dump(mode='json'), ensure_ascii=False)
                 yield (doc.id, doc.source_type, row['published_at'], payload,
                        doc.id in visible_ids, sorted(groups.get(doc.id, ())))
         _insert_batches(target, 'INSERT INTO document_projection VALUES (%s,%s,%s,%s::jsonb,%s,%s)',
                         documents())
+        _insert_batches(target, 'INSERT INTO document_entity_order VALUES (%s,%s,%s,%s,%s,%s)',
+                        entity_orders)
         list_count = 0
         ordinal_keys = defaultdict(list)
         def feed_rows():
