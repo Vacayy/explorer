@@ -366,6 +366,8 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             ) membership''')
     conn.execute("INSERT INTO document_filter_order SELECT 'note',row_number() OVER (ORDER BY n.ordinal)-1,n.ordinal "
                  "FROM overlay_ord n JOIN document_projection d ON d.id=n.document_id WHERE d.source_type='note'")
+    from pipeline.postgres_narrative_ledger_fixture import overlay_narrative_ledger
+    overlay_narrative_ledger(conn,source_schema)
     for channel_id, title in youtube_names.items():
         value = Jsonb(title)
         conn.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{title}',%s) "

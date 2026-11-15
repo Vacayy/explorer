@@ -46,7 +46,7 @@ CREATE TABLE ingest_enrichment_attempts (
     started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     finished_at TIMESTAMPTZ
 );
-CREATE TABLE ingest_narrative_ledger_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton));
+CREATE TABLE ingest_narrative_ledger_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton), dirty BOOLEAN NOT NULL DEFAULT FALSE);
 CREATE TABLE ingest_narrative_versions (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     topic TEXT NOT NULL,
