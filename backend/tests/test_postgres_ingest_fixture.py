@@ -10,6 +10,7 @@ import psycopg
 from psycopg import sql
 from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
+from pipeline.postgres_ingest_coordinator_fixture import FixtureCoordinator
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
@@ -225,3 +226,51 @@ class IngestFixtureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'another snapshot'):
             with self.pg() as c:
                 rebuild(c)
+
+    def test_search_index_failure_keeps_old_generation_until_retry(self):
+        with self.pg() as c:
+            store_document(c, source_type='note', source_id='test', title='반도체', markdown='반도체 자료')
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        first = coordinator.rebuild()
+        self.assertEqual(coordinator.search('반도체').total, 1)
+        with self.pg() as c:
+            store_document(c, source_type='note', source_id='test', title='배터리', markdown='배터리 자료')
+        def broken(*args):
+            raise RuntimeError('index failed')
+        coordinator.index_factory = broken
+        with self.assertRaisesRegex(RuntimeError, 'index failed'):
+            coordinator.rebuild()
+        self.assertEqual(coordinator.list().items[0].title, '반도체')
+        self.assertEqual(coordinator.search('반도체').total, 1)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0], first)
+        coordinator.index_factory = SearchSnapshot
+        self.assertNotEqual(coordinator.rebuild(), first)
+        self.assertEqual(coordinator.list().items[0].title, '배터리')
+        self.assertEqual(coordinator.search('배터리').total, 1)
+        self.assertEqual(coordinator.search('반도체').total, 0)
+
+    def test_read_waits_during_generation_switch(self):
+        with self.pg() as c:
+            store_document(c, source_type='note', source_id='test', title='A', markdown='old')
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        coordinator.rebuild()
+        with self.pg() as c:
+            store_document(c, source_type='note', source_id='test', title='B', markdown='new')
+        entered, release = threading.Event(), threading.Event()
+        def slow(generation, rows):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError('test timed out')
+            return SearchSnapshot(generation, rows)
+        coordinator.index_factory = slow
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            building = pool.submit(coordinator.rebuild)
+            self.assertTrue(entered.wait(5))
+            reading = pool.submit(coordinator.list)
+            self.assertFalse(reading.done())
+            release.set()
+            building.result(timeout=5)
+            self.assertEqual(reading.result(timeout=5).items[0].title, 'B')
