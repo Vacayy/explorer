@@ -202,10 +202,8 @@ def reenrich_document(doc_id: int) -> str | None:
     return result.get("model")
 
 
-def store_document(doc: RawDoc) -> dict:
-    md = to_markdown(doc)
-    h = _hash(md)
-    conn = get_connection()
+def _store_raw_document(conn, doc: RawDoc, md: str, h: str) -> tuple[int, str]:
+    """정규화된 문서의 신규·변경·중복 상태를 저장한다. 커밋은 호출자가 담당한다."""
     existing = conn.execute(
         "SELECT id, content_hash FROM raw_documents WHERE source_type=? AND source_id=?",
         (doc.source_type, doc.source_id),
@@ -235,6 +233,14 @@ def store_document(doc: RawDoc) -> dict:
              doc.raw_content, md, h, media, doc.digest_status),
         )
         doc_id, status = cur.lastrowid, "new"
+    return doc_id, status
+
+
+def store_document(doc: RawDoc) -> dict:
+    md = to_markdown(doc)
+    h = _hash(md)
+    conn = get_connection()
+    doc_id, status = _store_raw_document(conn, doc, md, h)
     conn.commit()
 
     # enrich 필요 판정:
