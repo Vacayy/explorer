@@ -57,6 +57,10 @@ CREATE TABLE sector_market_us_metadata (
 CREATE TABLE sector_market_us_classifications (
     ticker TEXT PRIMARY KEY, sector TEXT, industry TEXT, fetched_at TEXT
 );
+CREATE TABLE sector_market_us_prices (
+    stock_code TEXT NOT NULL, trade_date TEXT NOT NULL, close DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (stock_code, trade_date)
+);
 CREATE TABLE sector_market_index (
     sector TEXT NOT NULL, trade_date TEXT NOT NULL, value DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (sector, trade_date)

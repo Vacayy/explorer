@@ -24,9 +24,9 @@ from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_document_claims import claims_state
 from routers.spine_doc import DocClaims, RelatedDoc
 from pipeline.postgres_related_documents import CentroidIndex, related_documents
-from pipeline.postgres_us_sectors import us_map as postgres_us_map
+from pipeline.postgres_us_sectors import us_map as postgres_us_map, us_sector_detail as postgres_us_sector_detail
 from pipeline.sector_view import industry_map_from_source, sector_detail_from_source, sector_peer_list_from_source
-from models.industry import UsIndustryMapResponse
+from models.industry import UsIndustryMapResponse, UsSectorDetailResponse
 
 
 dsn = os.environ['REFACTOR_POSTGRES_DSN']
@@ -133,6 +133,19 @@ def us_industry_map():
             return postgres_us_map(connection)
         except ValueError as exc:
             raise HTTPException(503, '미국 산업 자료가 준비되지 않았습니다.') from exc
+
+
+@app.get('/api/spine/industry/us/{ticker}', response_model=UsSectorDetailResponse)
+def us_sector_detail(ticker: str):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        try:
+            result = postgres_us_sector_detail(connection, ticker)
+        except ValueError as exc:
+            raise HTTPException(503, '미국 산업 자료가 준비되지 않았습니다.') from exc
+    if result is None:
+        raise HTTPException(404, '없는 미국 섹터입니다.')
+    return result
 
 
 @app.get('/api/spine/industry/{sector}/peers', response_model=SectorPeerListResponse)

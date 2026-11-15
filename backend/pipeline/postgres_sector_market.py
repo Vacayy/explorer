@@ -51,7 +51,7 @@ def load_sector_market(source, destination, *, peer_runtime=None, document_gener
                             'sector_market_company_entities, sector_market_documents, sector_market_document_links, '
                             'sector_market_doc_scan, sector_market_trade_follow, sector_market_trade_stats, '
                             'sector_market_taiwan_revenue, sector_market_season_themes, sector_market_overviews, '
-                            'sector_market_us_metadata, sector_market_us_classifications')
+                            'sector_market_us_metadata, sector_market_us_classifications, sector_market_us_prices')
         if include_us:
             count_us = 0
             with destination.cursor().copy('COPY sector_market_us_classifications (ticker,sector,industry,fetched_at) FROM STDIN') as copy:
@@ -60,6 +60,9 @@ def load_sector_market(source, destination, *, peer_runtime=None, document_gener
                     count_us += 1
             destination.execute('INSERT INTO sector_market_us_metadata(generation_id,classifications) VALUES (%s,%s)',
                                 (document_generation, count_us))
+            with destination.cursor().copy('COPY sector_market_us_prices (stock_code,trade_date,close) FROM STDIN') as copy:
+                for row in source.execute('SELECT stock_code,trade_date,close FROM us_prices WHERE close IS NOT NULL'):
+                    copy.write_row(tuple(row))
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:

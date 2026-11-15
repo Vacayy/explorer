@@ -386,13 +386,15 @@ def us_map_from_data(series: dict, followed: list[dict]) -> dict:
 
 
 def _member_rows(conn, members: list[dict], as_of: str) -> list[dict]:
+    return member_rows_from_source(SQLiteUsSource(conn), members, as_of)
+
+
+def member_rows_from_source(source, members: list[dict], as_of: str) -> list[dict]:
     from pipeline.sector_rs import SHORT_CAL_DAYS
     out = []
     since = (date.fromisoformat(as_of) - timedelta(days=200)).isoformat()
     for m in members:
-        s = [(r[0], r[1]) for r in conn.execute(
-            "SELECT trade_date, close FROM us_prices WHERE stock_code = ? AND close IS NOT NULL AND trade_date >= ? ORDER BY trade_date",
-            (m["ticker"], since))]
+        s = source.member_prices(m['ticker'], since)
         vals = [v for _, v in s]
         w = cal_return(s, s[-1][0], SHORT_CAL_DAYS) if s else None
         out.append({"ticker": m["ticker"], "name": m["name"], "market_cap": m["market_cap"],
@@ -422,16 +424,17 @@ def _link(kind: str, label: str, title: str, sub: str, href: str, value=None, va
 
 
 def data_links(conn, etf: str, n_members: int) -> list[dict]:
+    return data_links_from_source(SQLiteUsSource(conn), etf, n_members)
+
+
+def data_links_from_source(source, etf: str, n_members: int) -> list[dict]:
     import json
     import statistics
     out = []
     keys = US_SEASON.get(etf)
     if keys:
         from pipeline.earnings_chain import SECTORS
-        ph = ",".join("?" * len(keys))
-        season = conn.execute(f"SELECT max(season) FROM season_themes WHERE sector IN ({ph})", keys).fetchone()[0]
-        rows = {r["sector"]: r for r in conn.execute(
-            f"SELECT sector, verdict, body_json FROM season_themes WHERE season = ? AND sector IN ({ph}) ORDER BY id", [season, *keys])} if season else {}
+        season, rows = source.season_themes(keys)
         key = next((k for k in keys if k in rows), keys[0])
         row = rows.get(key)
         one = ((json.loads(row["body_json"] or "{}") or {}).get("one_line") if row else None) or ("판정 대기" if row else "이번 시즌 판정 없음")
@@ -449,10 +452,7 @@ def data_links(conn, etf: str, n_members: int) -> list[dict]:
         from pipeline.tw_universe import COMPANIES, LAYERS
         layers = TW_LAYERS[tw_sector]
         codes = [c for c, _n, layer, *_ in COMPANIES if layer in layers]
-        ym = conn.execute("SELECT max(ym) FROM tw_monthly_revenue").fetchone()[0]
-        yoys = [r[0] for r in conn.execute(
-            f"SELECT yoy_pct FROM tw_monthly_revenue WHERE ym = ? AND yoy_pct IS NOT NULL AND code IN ({','.join('?' * len(codes))})",
-            [ym, *codes])] if ym and codes else []
+        ym, yoys = source.taiwan_revenue(codes)
         names = dict(LAYERS)
         out.append(_link("taiwan", "대만 공급망", f"{names[layers[0]]} 외 {len(layers) - 1}계층 {len(codes)}사",
                          f"{int(ym[5:7])}월 월매출 전년 대비 중앙값" if ym and yoys else "월매출 대기", "/follow/taiwan",
@@ -460,8 +460,7 @@ def data_links(conn, etf: str, n_members: int) -> list[dict]:
         out[-1]["filtered"] = False
     kr = KR_SECTOR.get(etf)
     if kr:
-        from pipeline.sector_rs import compute_sector_map
-        g = next((x for x in compute_sector_map()["groups"] if x["name"] == kr), None)
+        g = next((x for x in source.kr_sector_map()["groups"] if x["name"] == kr), None)
         if g:
             rs = f"RS {'-' if g['rs_long'] is None else round(g['rs_long'])}·{'-' if g['rs_short'] is None else round(g['rs_short'])}"
             out.append(_link("krSector", "한국 섹터", kr, "같은 업종의 한국 상대강도", f"/industry/{kr}", verdict=rs))
@@ -469,12 +468,16 @@ def data_links(conn, etf: str, n_members: int) -> list[dict]:
 
 
 def us_sector_detail(conn, etf: str) -> dict | None:
+    return us_sector_detail_from_source(SQLiteUsSource(conn), etf)
+
+
+def us_sector_detail_from_source(source, etf: str) -> dict | None:
     etf = etf.upper()
     if etf not in META:
         return None
-    series = _series(conn)
+    series = source.series()
     as_of = series[SPY][-1][0] if series[SPY] else None
-    fol = follows(conn)
+    fol = source.follows()
     cov = coverage_counts(fol)
     if not as_of or not series[etf]:
         now, trails = {}, {w: {} for w in TRAIL_WEEKS}
@@ -494,7 +497,45 @@ def us_sector_detail(conn, etf: str) -> dict | None:
         "parent_name": META[META[etf]["parent"]]["name"] if META[etf]["parent"] else None,
         "series": [{"d": d, "v": v, "k": spy.get(d)} for d, v in series[etf]],
         "siblings": siblings,
-        "members": _member_rows(conn, members, as_of_),
-        "docs": _docs(conn, members, as_of_),
-        "data_links": data_links(conn, etf, len(members)),
+        "members": member_rows_from_source(source, members, as_of_),
+        "docs": source.documents(members, as_of_),
+        "data_links": data_links_from_source(source, etf, len(members)),
     }
+
+
+class SQLiteUsSource:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def series(self):
+        return _series(self.connection)
+
+    def follows(self):
+        return follows(self.connection)
+
+    def member_prices(self, ticker, since):
+        return [(r[0], r[1]) for r in self.connection.execute(
+            'SELECT trade_date,close FROM us_prices WHERE stock_code=? AND close IS NOT NULL AND trade_date>=? ORDER BY trade_date',
+            (ticker, since))]
+
+    def documents(self, members, as_of):
+        return _docs(self.connection, members, as_of)
+
+    def season_themes(self, keys):
+        ph = ','.join('?' * len(keys))
+        season = self.connection.execute(f'SELECT max(season) FROM season_themes WHERE sector IN ({ph})', keys).fetchone()[0]
+        rows = {r['sector']: r for r in self.connection.execute(
+            f'SELECT sector,verdict,body_json FROM season_themes WHERE season=? AND sector IN ({ph}) ORDER BY id',
+            [season, *keys])} if season else {}
+        return season, rows
+
+    def taiwan_revenue(self, codes):
+        ym = self.connection.execute('SELECT max(ym) FROM tw_monthly_revenue').fetchone()[0]
+        values = [r[0] for r in self.connection.execute(
+            f"SELECT yoy_pct FROM tw_monthly_revenue WHERE ym=? AND yoy_pct IS NOT NULL AND code IN ({','.join('?' * len(codes))})",
+            [ym, *codes])] if ym and codes else []
+        return ym, values
+
+    def kr_sector_map(self):
+        from pipeline.sector_rs import compute_sector_map
+        return compute_sector_map()
