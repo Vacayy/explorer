@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import type { PublicMacroResponse } from '@/types'
 
-const state = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
+const state = vi.hoisted(() => ({ query: {} as Record<string, unknown>, mobile: false }))
+vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => state.mobile }))
 vi.mock('@/hooks/usePublicMacro', () => ({ usePublicMacro: () => state.query }))
 vi.mock('@/hooks/useRisk', async importOriginal => ({
   ...await importOriginal<typeof import('@/hooks/useRisk')>(),
@@ -21,8 +22,8 @@ const data: PublicMacroResponse = {
   coverage: [{ key: 'us10y', label: '미국 10년 금리', status: 'available' }, { key: 'us2y', label: '미국 2년 금리', status: 'missing' }, { key: 'm2', label: 'M2', status: 'source_review_pending' }, { key: 'invalid', label: '검증 지표', status: 'invalid' }],
 }
 const ready = (value: unknown = data) => ({ data: value, error: null, isPending: false, isFetching: false, fetchStatus: 'idle', refetch: vi.fn() })
-function show() { return render(<MemoryRouter initialEntries={['/home/macro']}><TooltipProvider><PublicMacroPage /></TooltipProvider></MemoryRouter>) }
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+function show(openDetails = true) { const result = render(<MemoryRouter initialEntries={['/home/macro']}><TooltipProvider><PublicMacroPage /></TooltipProvider></MemoryRouter>); if(openDetails) screen.queryAllByRole('button', { name: /관측일·출처/ }).forEach(button => fireEvent.click(button)); return result }
+afterEach(() => { cleanup(); vi.clearAllMocks(); state.mobile = false })
 it('shows numeric observations, real dates, comparison count and source attribution without private macro hooks', () => {
   state.query = ready(); show()
   const item = screen.getByRole('region', { name: '미국 10년 금리' })
@@ -79,6 +80,23 @@ it('keeps original risk block independent of macro failure without a dead overla
   state.query = { ...ready(), data: undefined, error: new Error('macro unavailable'), isError: true }
   show()
   expect(document.querySelector('[data-macro-block="risk"]')).toBeTruthy()
-  expect(screen.getByText('리스크 지표')).toBeTruthy()
+  expect(within(document.querySelector('[data-macro-block="risk"]') as HTMLElement).getByText('리스크 지표')).toBeTruthy()
   expect(document.querySelector('a[href="#overlay"]')).toBeNull()
+})
+
+it('uses original grouped rows and mobile core/full navigation while keeping sources reachable', () => {
+  state.mobile = true
+  state.query = ready({ ...data, items: [...data.items, {...data.items[0], key:'walcl', label:'연준 총자산', group:'liquidity'}] })
+  show(false)
+  expect(document.querySelector('[data-macro-compact]')).toBeTruthy()
+  expect(document.querySelector('[data-macro-indicator="walcl"]')).toBeNull()
+  expect(screen.queryByRole('link', {name:/Board of Governors/})).toBeNull()
+  fireEvent.click(screen.getByRole('button', {name:'미국 10년 금리 관측일·출처'}))
+  expect(screen.getByRole('link', {name:/Board of Governors/})).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', {name:'전체 지표 보기'}))
+  expect(document.querySelector('[data-macro-compact]')).toBeNull()
+  expect(document.querySelectorAll('[data-macro-group]').length).toBe(4)
+  expect(document.querySelector('[data-macro-indicator="walcl"]')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', {name:'핵심 지표 보기'}))
+  expect(document.querySelector('[data-macro-indicator="walcl"]')).toBeNull()
 })

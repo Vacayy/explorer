@@ -876,3 +876,5 @@ PublicMacroPage는 기존 RiskTiles와 useRiskTiles의 readonly `/api/spine/risk
 ## 공개 국내 기업 개요
 
 company-profile GET의 market=kr는 public KR snapshot companies의 정확한6자리 종목과 같은 snapshot의 public_company_profiles만 읽는다. 미국과 같은 ProfileRecord·출처/인용/개인metadata 검증을 공유하고 DART official_report는 HTTPS 공식호스트만 허용한다. PublicCompanySummary는 기존 PublicCompanyOverviewCard를 사용하며 최신 저장본문·작성시각·출처·gaps를 유지하고 생성/갱신을 마운트하지 않는다. 준비없는 등록기업은null,등록밖은404. 개인reason입력 보고서는 준비 단계에서 제외하며 필드삭제만으로 공개하지 않는다.
+
+공개 매크로는 기존 `PageLayout`과 `MacroLiquidity`의 공통 `MacroIndicatorRows`를 사용해 금리·달러/유동성/신용·위험선호/원자재 행과 모바일 핵심 지표 구성을 유지한다. `macro_view=full`에서 전체 그룹으로 전환하며 공개 관측일·출처·비교 기준·순유동성 계산 설명은 기존 Collapsible에 보존한다. private 데이터 hook/신호 산문은 마운트하지 않고 공개 수치 GET과 RiskTiles만 연결한다. 국면·Now·History·BRK의 나머지 공개 연결은 별도다.

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -64,6 +65,27 @@ function Row({ m }: { m: MacroIndicator }) {
   )
 }
 
+/** Shared original row/group layout; data ownership stays with the caller. */
+export function MacroIndicatorRows<T extends MacroIndicator>({ items, compact, supplement, emptyGroup }: {
+  items: T[]; compact?: boolean; supplement?: (item: T) => ReactNode; emptyGroup?: (key: string) => ReactNode
+}) {
+  const row = (m: T) => supplement
+    ? <section key={m.key} aria-label={m.label} className="min-w-0 border-b last:border-0" data-macro-indicator={m.key}>
+        <Row m={m} />{supplement(m)}
+      </section>
+    : <Row key={m.key} m={m} />
+  if (compact) return <div data-macro-compact>{COMPACT_KEYS.map(key => items.find(m => m.key === key)).filter((m): m is T => !!m).map(row)}</div>
+  return <div className="surface-grid grid md:grid-cols-2">
+    {GROUP_ORDER.map(({ key, label }) => {
+      const group = items.filter(m => m.group === key)
+      return <div key={key} className="min-w-0 border px-4 py-3" data-macro-group={key}>
+        <div className="mb-1 text-caption font-medium text-muted-foreground">{label}</div>
+        {group.length ? group.map(row) : <p className="py-1 text-caption text-muted-foreground">{emptyGroup?.(key) ?? "-"}</p>}
+      </div>
+    })}
+  </div>
+}
+
 export function MacroLiquidity({ compact }: { compact?: boolean }) {
   const { data, isLoading, isError, error, refetch } = useMacro()
   const head = <CardHeader className="flex flex-row flex-wrap items-center gap-1.5 space-y-0">
@@ -74,7 +96,6 @@ export function MacroLiquidity({ compact }: { compact?: boolean }) {
   if (isLoading) return <Card id="macro" className="scroll-mt-24">{head}<CardContent><Skeleton className="h-56 w-full" /></CardContent></Card>
   if (isError || !data) return <Card id="macro" className="scroll-mt-24">{head}<CardContent><BlockError message="매크로·유동성을 불러오지 못했습니다" error={error} onRetry={() => void refetch()} /></CardContent></Card>
 
-  const byGroup = (g: string) => data.items.filter((m) => m.group === g)
   const light = data.signal ? LIGHT[data.signal.signal] : null
   return (
     <Card id="macro" className="scroll-mt-24" data-macro-block="macro">
@@ -87,20 +108,8 @@ export function MacroLiquidity({ compact }: { compact?: boolean }) {
         </div>}
         {!compact && (data.signal ? <p className="max-w-4xl text-sm leading-relaxed">{data.signal.comment}</p>
           : data.interpretation && <p className="text-sm text-muted-foreground">{data.interpretation.comment.replace(/ → 위험자산 배경 \S+$/, "")}</p>)}
-        {compact ? <div>{COMPACT_KEYS.map(k => data.items.find(m => m.key === k)).filter((m): m is MacroIndicator => !!m).map(m => <Row key={m.key} m={m} />)}</div>
-          : <div className="surface-grid grid md:grid-cols-2">
-            {GROUP_ORDER.map(({ key, label }) => {
-              const items = byGroup(key)
-              return (
-                <div key={key} className="min-w-0 border px-4 py-3">
-                  <div className="mb-1 text-caption font-medium text-muted-foreground">{label}</div>
-                  {items.length > 0 ? items.map((m) => <Row key={m.key} m={m} />)
-                    : key === "liquidity" && !data.fred_enabled ? <p className="py-1 text-caption text-muted-foreground">FRED 키가 없어 순유동성·M2를 받지 못했습니다.</p>
-                    : <p className="py-1 text-caption text-muted-foreground">-</p>}
-                </div>
-              )
-            })}
-          </div>}
+        <MacroIndicatorRows items={data.items} compact={compact}
+          emptyGroup={key => key === "liquidity" && !data.fred_enabled ? "FRED 키가 없어 순유동성·M2를 받지 못했습니다." : "-"} />
         {data.degraded.length > 0 && <p className="flex items-center gap-1.5 text-caption text-hypothesis">
           <AlertTriangle className="size-3.5" aria-hidden="true" />{data.degraded.join(" · ")} 원천 지연 · 이 지표 없이 판정했습니다
         </p>}
