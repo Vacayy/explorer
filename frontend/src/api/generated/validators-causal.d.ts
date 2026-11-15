@@ -4,4 +4,4 @@ export const response56: ValidateFunction
 export const response57: ValidateFunction
 export const response58: ValidateFunction
 export const response59: ValidateFunction
-export const response304: ValidateFunction
+export const response305: ValidateFunction

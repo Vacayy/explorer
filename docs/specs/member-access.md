@@ -220,3 +220,7 @@ UI 상태: Empty는 아직 원칙없음, Loading은 skeleton, Error는 재시도
 고점 복합규칙은 본인 보유만 `load_prices`로 읽고 기존 `violations/exit_signals`에 전달한다. 시장구분(KOSPI/KOSDAQ/KOSDAQ GLOBAL/KONEX), 유한 양수 시세, 편입 전252개 저장관측 및 편입 후관측, 평가 종가일치가 있는 종목만 실행한다. 이 기준은 기존252관측 어깨탐색과50관측 이동평균의 입력범위를 확보하며 거래소 캘린더상의 무결한 전체이력을 보장하지 않는다. 부족종목은 실행전에 제외하고 부분/평가불가를 표시한다. 원칙별 고점규칙 입력 미연결 항목은 이 경로로 대체하며 다른 역사적평가·공통노출·parse·알림 잔여는 유지한다.
 
 고점 시세 로더 호출 전에 동일400일 조회범위의 저장 원자료를 검사한다. NULL·0·음수·비수치 종가가 있으면 해당 종목을 제외한다. 따라서 로더의 양수 필터가 잘못된 저장 관측을 숨긴 채 평가하지 않는다.
+
+### 한국 섹터 공개 시장 상세
+
+`GET /api/spine/industry/{sector}/market`은 검토된 SEED 섹터만 같은 readonly snapshot에서 지도·개별 종목 RS·시총비중·벤치마크/코스피 시계열을 계산한다. 개인 detail cache/내러티브/AI 개괄/문서/팔로우/data_links/Peer runtime을 읽지 않는다. 구성종목은 기존 분류·시총 기준을 재사용한다. 응답은 KrSectorMarketResponse로 한정하며 미등록 또는 시장 자료 없는 섹터는404. 기존 상세 API와 개인 UI는 유지한다. 공개 화면은 Loading/Empty/Error/Partial/Ideal과 미연결 개인 기능을 구분하고, 섹터→기업요약→재무 왕복 동선으로 연결한다. 해당 UI 연결과 공개 승인 요약·문서 확장은 별도 진행 중이다.

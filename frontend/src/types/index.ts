@@ -2100,3 +2100,6 @@ export interface MemberPrincipleInput { text: string; rules: PrincipleRule[]; no
 export interface MemberPrincipleRuleOption { type: string; label: string; parameter: 'pct' | 'count' | 'days'; minimum: number; maximum: number }
 export interface MemberRuleCoverage { principle_id: number; rule_index: number; rule: string; status: 'evaluated' | 'partial' | 'unavailable' | 'not_applicable'; reason: string | null }
 export interface MemberPrincipleState { as_of: string | null; price_dates: string[]; rules: number; coverage: MemberRuleCoverage[]; items: Omit<PrincipleViolation, 'alerted_since'>[]; notifications_enabled: false }
+
+/** Public KR sector market projection; no personal or publication fields. */
+export type KrSectorMarket = Omit<IndustrySectorDetail, 'narratives' | 'overview' | 'docs' | 'peer_groups' | 'data_links' | 'feed_industry' | 'entity_id'>

@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from models.industry import (IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse, UsIndustryMapResponse,
-                             UsSectorDetailResponse, UsSectorMarketResponse)
+                             UsSectorDetailResponse, UsSectorMarketResponse, KrSectorMarketResponse)
 
 router = APIRouter(prefix="/api/spine/industry", tags=["spine"])
 logger = logging.getLogger(__name__)
@@ -114,4 +114,17 @@ def us_sector_market(ticker: str):
         conn.close()
     if out is None:
         raise HTTPException(status_code=404, detail="없는 미국 섹터 ETF입니다.")
+    return out
+
+
+@router.get("/{sector}/market", response_model=KrSectorMarketResponse)
+def kr_sector_market(sector: str):
+    from security.public_industry import kr_industry_connection, kr_sector_market as build
+    conn = kr_industry_connection()
+    try:
+        out = build(conn, sector)
+    finally:
+        conn.close()
+    if out is None:
+        raise HTTPException(status_code=404, detail="Sector market data not found")
     return out

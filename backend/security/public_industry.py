@@ -35,7 +35,7 @@ def industry_connection(path: Path | None = None) -> sqlite3.Connection:
 
 KR_COLUMNS = {
     'stock_prices': {'id', 'stock_code', 'trade_date', 'close', 'market_cap'},
-    'companies': {'stock_code', 'sector'},
+    'companies': {'stock_code', 'sector', 'corp_name'},
     'entities': {'id', 'type', 'aliases', 'name'},
     'entity_relations': {'src_id', 'dst_id', 'rel_type'},
     'sector_map': {'sector_name', 'group_name'},
@@ -70,3 +70,25 @@ def kr_industry_map(conn):
     with snapshot_memo():
         rs = sector_map_from_connection(conn, allowed_groups=set(benches))
         return industry_map(conn, rs=rs, benchmark_map=benches)
+
+
+def kr_sector_market(conn, sector):
+    from pipeline.sector_benchmarks import SEED
+    from pipeline.sector_rs import sector_map_from_connection, group_members_from_connection, snapshot_memo
+    from pipeline.sector_view import bench_series, bench_out, quote, kospi_series, _members
+    benches = {name: dict(ticker=ticker, name=label, tracks=tracks, note=note)
+               for name, ticker, label, tracks, note in SEED}
+    if sector not in benches:
+        return None
+    with snapshot_memo():
+        rs = sector_map_from_connection(conn, allowed_groups=set(benches))
+        group = next((g for g in rs['groups'] if g['name'] == sector), None)
+        if group is None:
+            return None
+        series = bench_series(conn, sector, benches[sector])
+        kospi = dict(kospi_series(conn))
+        rows = group_members_from_connection(conn, sector, limit=100000)['items']
+        members = _members(conn, sector, rs['as_of'], member_rows=rows)
+        return {**group, 'as_of':rs['as_of'], 'benchmark':bench_out(benches[sector]), **quote(series),
+                'series':[{'d':d, 'v':v, 'k':kospi.get(d)} for d,v in series],
+                'constituents':members, 'top_weights':members[:8]}

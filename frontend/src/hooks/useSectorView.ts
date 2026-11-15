@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
-import type { IndustryMap, IndustrySectorDetail, SectorPeerList, UsIndustryMap, UsSectorDetail, UsSectorMarket } from "@/types"
+import type { KrSectorMarket, IndustryMap, IndustrySectorDetail, SectorPeerList, UsIndustryMap, UsSectorDetail, UsSectorMarket } from "@/types"
 
 /** 섹터 지도 — 섹터마다 대표지수·RS·61거래일 선 (GET, 저장분만 · 서버 15분 메모리 캐시) */
 export function useIndustryMap() {
@@ -35,4 +35,9 @@ export function useUsSectorDetail(ticker: string) {
 /** Public ETF-only detail; never falls back to the personal detail endpoint. */
 export function useUsSectorMarket(ticker: string) {
   return useQuery(apiQuery<UsSectorMarket>({ key: ["public", "industry", "us", ticker], url: `/api/spine/industry/us/${encodeURIComponent(ticker)}/market`, staleTime: STALE.medium, enabled: !!ticker }))
+}
+
+/** Shared snapshot only; never reuse the private sector-detail cache. */
+export function useKrSectorMarket(sector: string) {
+  return useQuery(apiQuery<KrSectorMarket>({ key: ["public", "industry", "kr", sector], url: `/api/spine/industry/${encodeURIComponent(sector)}/market`, staleTime: STALE.medium, enabled: !!sector }))
 }

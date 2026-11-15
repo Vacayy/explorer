@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from models.industry import IndustryMapResponse
+from models.industry import IndustryMapResponse, KrSectorMarketResponse
 from pipeline import sector_rs, sector_view
 from routers import spine_industry
 from security.access_boundary import PublicAccessBoundary
@@ -45,9 +45,12 @@ class PublicKrIndustryTests(unittest.TestCase):
             conn.executemany('INSERT INTO sector_benchmark_prices VALUES (?,?,?)',
                 [(t,d,100+i) for t in ('091160','^KS11') for i,d in enumerate(days)])
             conn.executemany('INSERT INTO sector_index VALUES (?,?,?)', [('통신',d,100+2*i) for i,d in enumerate(days)])
+        with sqlite3.connect(self.path) as conn:
+            conn.execute('ALTER TABLE companies ADD COLUMN corp_name TEXT')
+            conn.execute("UPDATE companies SET corp_name='Public company'")
         app = FastAPI()
         app.include_router(spine_industry.router)
-        app.add_middleware(PublicAccessBoundary, routes=app.router.routes, policies={('GET','/api/spine/industry/map'):'public'})
+        app.add_middleware(PublicAccessBoundary, routes=app.router.routes, policies={('GET','/api/spine/industry/map'):'public', ('GET','/api/spine/industry/{sector}/market'):'public'})
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
         self.conn_patch = patch('security.public_industry.kr_industry_connection', side_effect=lambda: kr_industry_connection(self.path))
@@ -107,3 +110,31 @@ class PublicKrIndustryTests(unittest.TestCase):
                     'SELECT meta_json FROM entities','SELECT note FROM sector_benchmarks',
                     'DELETE FROM stock_prices','PRAGMA query_only=OFF',"ATTACH DATABASE ':memory:' AS other"):
             with self.subTest(sql=sql), self.assertRaises(sqlite3.DatabaseError): conn.execute(sql)
+
+    def test_market_detail_uses_one_snapshot_without_private_detail_or_cache(self):
+        before = self.path.read_bytes()
+        with patch.object(sector_rs, 'get_connection', side_effect=AssertionError('hidden connection')), \
+             patch.object(sector_rs, 'compute_sector_map', side_effect=AssertionError('private cache')), \
+             patch.object(sector_view, 'sector_detail', side_effect=AssertionError('private detail')), \
+             patch.object(sector_view, '_cached', side_effect=AssertionError('private cache')), \
+             patch.object(spine_industry, '_runtime', side_effect=AssertionError('private runtime')):
+            response = self.client.get('/api/spine/industry/반도체·전자부품/market')
+        self.assertEqual(response.status_code,200,response.text)
+        data = KrSectorMarketResponse.model_validate(response.json())
+        self.assertEqual(data.stocks,len(data.constituents))
+        self.assertEqual({x.stock_code for x in data.constituents},{'000001','000004'})
+        self.assertAlmostEqual(sum(x.weight for x in data.constituents),100)
+        self.assertTrue(data.series)
+        self.assertEqual(data.benchmark.name,'KODEX 반도체')
+        self.assertEqual(response.headers['cache-control'],'no-store')
+        self.assertEqual(before,self.path.read_bytes())
+        self.assertFalse({'docs','overview','narratives','entity_id','data_links'} & response.json().keys())
+        with sqlite3.connect(self.path) as conn:
+            conn.execute("INSERT INTO private_notes VALUES ('private-document-follow-trade-canary')")
+            conn.execute("UPDATE entities SET meta_json='private-profile-canary'")
+            conn.execute("UPDATE sector_benchmarks SET name='private-canary'")
+        self.assertEqual(self.client.get('/api/spine/industry/반도체·전자부품/market').json(),response.json())
+        self.assertEqual(self.client.get('/api/spine/industry/private-group-canary/market').status_code,404)
+        self.assertEqual(self.client.get('/api/spine/industry/반도체·전자부품').status_code,404)
+        with sqlite3.connect(self.path) as conn: conn.execute('DELETE FROM stock_prices')
+        self.assertEqual(self.client.get('/api/spine/industry/반도체·전자부품/market').status_code,404)

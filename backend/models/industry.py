@@ -105,7 +105,7 @@ class DataLink(BaseModel):
     verdict: str | None
 
 
-class SectorDetailResponse(BaseModel):
+class KrSectorMarketResponse(BaseModel):
     as_of: str | None
     name: str
     benchmark: Benchmark
@@ -123,6 +123,9 @@ class SectorDetailResponse(BaseModel):
     series: list[SeriesPoint]              # 저장된 대표지수 전부(최대 3년)
     top_weights: list[Constituent]         # 섹터 시총 비중 상위 8
     constituents: list[Constituent]        # 시총 순 전체
+
+
+class SectorDetailResponse(KrSectorMarketResponse):
     narratives: list[SectorNarrative]
     overview: SectorOverview | None        # AI 산업 개괄 (아직 없으면 null)
     docs: list[SectorDoc]                  # 최근 10일 주요 자료

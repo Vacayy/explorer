@@ -164,14 +164,12 @@ def compute_sector_map() -> dict:
     return result
 
 
-def group_members_rs(group_name: str, limit: int = 40) -> dict:
+def group_members_from_connection(conn, group_name: str, limit: int = 40) -> dict:
     """대분류 소속 종목들의 개별 RS (전 종목 대비 백분위) — 드릴다운."""
-    conn = get_connection()
     latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
     members = _members(conn)
     codes = [c for c, g in members.items() if g == group_name]
     if not codes or not latest:
-        conn.close()
         return {"group": group_name, "items": []}
     d = date.fromisoformat(latest)
     cur = _snapshot(conn, latest)
@@ -191,7 +189,6 @@ def group_members_rs(group_name: str, limit: int = 40) -> dict:
 
     names = {r["stock_code"]: r["corp_name"] for r in conn.execute(
         f"SELECT stock_code, corp_name FROM companies WHERE stock_code IN ({','.join('?'*len(codes))})", codes)}
-    conn.close()
     items = [{
         "stock_code": c, "corp_name": names.get(c, c),
         "market_cap": cur.get(c, (0, 0))[1],
@@ -201,3 +198,11 @@ def group_members_rs(group_name: str, limit: int = 40) -> dict:
     } for c in codes if c in cur]
     items.sort(key=lambda x: -(x["market_cap"] or 0))
     return {"group": group_name, "as_of": latest, "items": items[:limit]}
+
+
+def group_members_rs(group_name: str, limit: int = 40) -> dict:
+    conn = get_connection()
+    try:
+        return group_members_from_connection(conn, group_name, limit)
+    finally:
+        conn.close()

@@ -22,7 +22,7 @@
 
 ## 공용 한국 산업 지도
 
-공용 한국 산업 지도는 `sector_rs.sector_map_from_connection`에 readonly 연결을 전달해 전역 DB/결과 캐시를 우회하고 요청별 snapshot 메모로 계산한다. `security.public_industry.kr_industry_map`은 공유 업종 분류를 유지하되 출력 그룹은 benchmark SEED18개로 제한하며 설명도 같은 코드 metadata를 사용한다. DB의 benchmark 자유 메모/정정 reason 및 개인 문서/Peer runtime을 읽지 않는다. public `/industry`는 기존 한국/미국 전환·지도/표/순위/카드와 섹터/ETF 검색을 연결하며 Peer 검색 요청을 마운트하지 않는다. 한국 상세/Peer/허용 원문 연결은 후속이다.
+공용 한국 산업 지도는 `sector_rs.sector_map_from_connection`에 readonly 연결을 전달해 전역 DB/결과 캐시를 우회하고 요청별 snapshot 메모로 계산한다. `security.public_industry.kr_industry_map`은 공유 업종 분류를 유지하되 출력 그룹은 benchmark SEED18개로 제한하며 설명도 같은 코드 metadata를 사용한다. DB의 benchmark 자유 메모/정정 reason 및 개인 문서/Peer runtime을 읽지 않는다. public `/industry`는 기존 한국/미국 전환·지도/표/순위/카드와 섹터/ETF 검색을 연결하며 Peer 검색 요청을 마운트하지 않는다. 한국 시장 상세 `/api/spine/industry/{sector}/market`는 같은 readonly snapshot으로 기존 구성종목 RS/비중·벤치마크 시계열을 연결한다. `group_members_from_connection`을 추출해 숨은 전역 연결을 제거하고 개인 detail cache/문서/내러티브/팔로우/Peer를 호출하지 않는다. 공개 화면·Peer/허용 원문 연결은 후속이다.
 
 ## 문서 안내
 
