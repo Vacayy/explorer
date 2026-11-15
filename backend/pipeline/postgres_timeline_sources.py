@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from models.spine import FeedDocument
-from models.timeline import TimelineItem, TimelineResponse
+from models.timeline import TimelineItem, TimelineResponse, TimelineChannel, TimelineChannelsResponse
 from pipeline.timeline import utc
 
 
@@ -49,3 +49,50 @@ class PostgreSQLTimelineSources:
                 time_label=label, to=f'/doc/{doc_id}', document=doc))
         return TimelineResponse(items=items, page=page, size=size,
                                 has_more=len(rows)>size, until=until, as_of=now)
+
+    def channels(self, *, until=None):
+        """Read the captured owner's channel state; does not mark anything read."""
+        from pipeline.connectors.memo import SOURCES as MEMO_SOURCES
+        until = utc(until) if until else datetime.now(timezone.utc).isoformat()
+        with self.connection_factory() as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            registries = conn.execute("SELECT table_name,row_data FROM legacy_snapshot_rows WHERE table_name IN ('telegram_channels','blog_sources','youtube_channels') ORDER BY row_ordinal").fetchall()
+            rows = conn.execute("""
+                WITH updates AS (
+                  SELECT id,occurred_at,channel,platform,''::text AS name,preview FROM timeline_source_projection
+                  UNION ALL
+                  SELECT id,occurred_at,channel,'system'::text,name,preview FROM timeline_system_projection
+                ), reads AS (
+                  SELECT row_data->>'channel' AS channel, (row_data->>'read_until')::timestamptz AS read_until
+                  FROM legacy_snapshot_rows WHERE table_name='channel_reads'
+                ), ranked AS (
+                  SELECT u.*, count(*) OVER (PARTITION BY u.channel) AS count,
+                    sum(CASE WHEN u.occurred_at > COALESCE(r.read_until,
+                        (SELECT read_until FROM reads WHERE channel='*'), '1970-01-01'::timestamptz)
+                        THEN 1 ELSE 0 END) OVER (PARTITION BY u.channel) AS unread,
+                    row_number() OVER (PARTITION BY u.channel ORDER BY u.occurred_at DESC,u.id COLLATE "C" DESC) AS rank
+                  FROM updates u LEFT JOIN reads r ON r.channel=u.channel WHERE u.occurred_at <= %s::timestamptz
+                ) SELECT channel,platform,name,preview,occurred_at,count,unread FROM ranked WHERE rank=1
+            """, (until,)).fetchall()
+        registered = {}
+        fields = {'telegram_channels': ('channel_name','display_name','telegram'),
+                  'blog_sources': ('url','blog_name','blog'),
+                  'youtube_channels': ('channel_id','title','youtube')}
+        for table, value in registries:
+            if not value.get('is_active'):
+                continue
+            key_field, name_field, platform = fields[table]
+            key = value[key_field]
+            ident = f'{platform}:{key}'
+            registered[ident] = TimelineChannel(id=ident, name=value[name_field] or key, platform=platform)
+        for key, value in MEMO_SOURCES.items():
+            ident = f'memo:{key}'
+            registered[ident] = TimelineChannel(id=ident, name=value['name'], platform='memo')
+        for ident, platform, name, preview, stamp, count, unread in rows:
+            registered[ident] = TimelineChannel(id=ident,
+                name=registered[ident].name if ident in registered else name or ident,
+                platform=platform, count=count, unread=unread or 0,
+                latest_at=stamp.isoformat(), preview=preview or '')
+        items = sorted(registered.values(), key=lambda item: (item.latest_at or '', item.id), reverse=True)
+        return TimelineChannelsResponse(items=items, total=sum(i.count for i in items),
+                                        total_unread=sum(i.unread for i in items), until=until)

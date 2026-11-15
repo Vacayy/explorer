@@ -189,6 +189,18 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual([i.model_dump() for i in actual.items], [i.model_dump() for i in expected[key].items], key)
             self.assertEqual(actual.has_more, expected[key].has_more, key)
 
+    def test_channel_directory_matches_sqlite_and_remains_readonly(self):
+        from pipeline.timeline import channels
+        with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO channel_reads VALUES ('*','2026-01-01T12:00:00Z',NULL)")
+            c.commit()
+            expected = channels(c, until='2026-01-06T00:00:00Z')
+        self.load('2026-01-06T00:00:00+00:00')
+        reader = PostgreSQLTimelineSources(self.pg)
+        actual = reader.channels(until='2026-01-06T00:00:00Z')
+        self.assertEqual(actual.model_dump(), expected.model_dump())
+        self.assertEqual(reader.channels(until='2026-01-06T00:00:00Z').model_dump(), expected.model_dump())
+
     def test_rebuild_details_from_pg_and_rollback_on_failure(self):
         self.load('2026-01-05T00:00:00+00:00')
         original = self.reader.get(1).model_dump()

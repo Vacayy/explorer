@@ -79,6 +79,7 @@ CREATE TABLE timeline_source_projection (
     platform TEXT NOT NULL,
     topic_names TEXT[] NOT NULL,
     time_label TEXT NOT NULL,
+    preview TEXT NOT NULL,
     document JSONB NOT NULL
 );
 CREATE INDEX timeline_source_order ON timeline_source_projection (occurred_at DESC, id DESC);
@@ -89,6 +90,7 @@ CREATE TABLE timeline_system_projection (
     occurred_at TIMESTAMPTZ NOT NULL,
     channel TEXT NOT NULL,
     topic TEXT,
+    name TEXT NOT NULL,
     preview TEXT NOT NULL,
     item JSONB NOT NULL
 );

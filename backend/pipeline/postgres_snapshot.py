@@ -158,7 +158,7 @@ def _timeline_source_rows(source, *, batch_size=250):
             doc = documents[row['ref']]
             yield (row['id'], row['ref'], utc(row['ts']), row['channel'], row['platform'],
                    sorted(topics[row['ref']]), '게시' if published[row['ref']] else '수집',
-                   json.dumps(doc.model_dump(mode='json'), ensure_ascii=False))
+                   row['preview'] or '', json.dumps(doc.model_dump(mode='json'), ensure_ascii=False))
 
 
 def _timeline_system_rows(source):
@@ -172,7 +172,7 @@ def _timeline_system_rows(source):
                           until='9999-12-31T23:59:59+00:00')
         for item in result.items:
             row = metadata[item.id]
-            yield (item.id, item.occurred_at, row['channel'], row['topic'], row['preview'] or '',
+            yield (item.id, item.occurred_at, row['channel'], row['topic'], row['name'] or '', row['preview'] or '',
                    json.dumps(item.model_dump(mode='json'), ensure_ascii=False))
         if not result.has_more:
             break
@@ -271,9 +271,9 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
                         feed_rows())
         _insert_batches(target, 'INSERT INTO document_filter_order VALUES (%s,%s,%s)',
                         _filter_orders(source, ordinal_keys))
-        _insert_batches(target, 'INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
+        _insert_batches(target, 'INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_source_rows(source))
-        _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s::jsonb)',
+        _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_system_rows(source))
         target.execute('INSERT INTO snapshot_metadata '
                        '(singleton,snapshot_at,source_observed_at,document_count,list_row_count) '
