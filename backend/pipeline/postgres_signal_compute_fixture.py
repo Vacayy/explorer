@@ -13,16 +13,32 @@ def compute_mention_signals(conn, *, as_of):
     root=sqlite3.connect(uri,uri=True)
     root.row_factory=sqlite3.Row
     try:
+        fields={
+            'entities':('id','type','name'),
+            'raw_documents':('id','source_type','title','url','published_at'),
+            'entity_links':('doc_id','entity_id','link_type'),
+            'enrichments':('doc_id','time_orientation'),
+        }
         for name in names:
             meta=conn.execute('SELECT columns,schema_sql FROM legacy_snapshot_tables WHERE table_name=%s',(name,)).fetchone()
             if not meta: raise ValueError('Required snapshot table missing: '+name)
             columns,ddl=meta
+            if name in fields:
+                columns=fields[name]
+                ddl='CREATE TABLE "'+name+'" ('+','.join('"'+column+'"' for column in columns)+')'
             root.execute(ddl)
             quoted=','.join('"'+column.replace('"','""')+'"' for column in columns)
             placeholders=','.join('?' for _ in columns)
-            rows=conn.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal',(name,))
-            root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({placeholders})',
-                             ([row.get(column) for column in columns] for row, in rows))
+            if name == 'signals':
+                rows=conn.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal',(name,))
+                values=([row.get(column) for column in columns] for row, in rows)
+            else:
+                query='SELECT '+','.join("row_data->>'"+column+"'" for column in columns)+' FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal'
+                rows=conn.execute(query,(name,))
+                numeric={'id','doc_id','entity_id'}
+                values=([int(value) if column in numeric and value is not None else value
+                         for column,value in zip(columns,row)] for row in rows)
+            root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({placeholders})',values)
         root.commit()
         def factory():
             db=sqlite3.connect(uri,uri=True)

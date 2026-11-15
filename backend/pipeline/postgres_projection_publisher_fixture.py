@@ -11,11 +11,12 @@ from pipeline.postgres_document_read import PostgreSQLDocumentReader
 
 
 class FixturePublisher:
-    def __init__(self, factory, source_schema, target_factory, index_factory=SearchSnapshot):
+    def __init__(self, factory, source_schema, target_factory, index_factory=SearchSnapshot, process_projection=None):
         self.factory=factory
         self.source_schema=source_schema
         self.target_factory=target_factory
         self.index_factory=index_factory
+        self.process_projection=process_projection
         self.lock=threading.RLock()
         self.active=None
         self.pending_cleanup=set()
@@ -39,6 +40,8 @@ class FixturePublisher:
                 with self.factory() as conn:
                     conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
                     result=copy_with_note_changes(conn,self.source_schema,schema)
+                    if self.process_projection is not None:
+                        self.process_projection(conn)
                     rows=conn.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
                                       "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
                     vectors=[(ident,bytes(value)) for ident,value in conn.execute('SELECT document_id,embedding FROM document_embeddings ORDER BY document_id')]

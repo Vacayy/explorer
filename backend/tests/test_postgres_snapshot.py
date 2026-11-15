@@ -512,7 +512,9 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
             c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
-        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+            c.execute('ALTER TABLE enrichments ADD COLUMN time_orientation TEXT')
+            c.execute('CREATE TABLE signals(id INTEGER PRIMARY KEY,signal_type TEXT,entity_id INTEGER,date TEXT,payload_json TEXT,interpretation TEXT,interpretation_model TEXT,UNIQUE(signal_type,entity_id,date))')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True,include_signals=True)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
@@ -525,7 +527,10 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             stop=threading.Event()
             results=[]
             errors=[]
-            publisher=FixturePublisher(self.pg,self.schema,lambda schema:psycopg.connect(self.dsn,options=f'-c search_path={schema}'))
+            computed=[]
+            def process_projection(conn):
+                computed.append(compute_mention_signals(conn,as_of=datetime(2026,1,3,tzinfo=timezone.utc)))
+            publisher=FixturePublisher(self.pg,self.schema,lambda schema:psycopg.connect(self.dsn,options=f'-c search_path={schema}'),process_projection=process_projection)
             self.addCleanup(publisher.close)
             observed=[]
             observed_ids=[]
@@ -548,6 +553,7 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             run_periodic(connector,self.pg,enrich=_enrich_keyword,
                          stop=stop,interval_seconds=0.01,on_cycle=completed,on_error=errors.append)
             self.assertEqual(len(errors),1)
+            self.assertEqual(computed,[0,0])
             self.assertEqual(observed,['# 정기 문서 처음','# 정기 문서 변경'])
             ident=observed_ids[-1]
             self.assertIn(ident,[row.id for row in publisher.search('변경').items])
