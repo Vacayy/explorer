@@ -1,4 +1,4 @@
-"""One explicit, disposable collection/enrichment cycle; not a scheduler."""
+"""Disposable collection cycles and an explicit in-process periodic experiment."""
 from pipeline.postgres_enrich_worker_fixture import enrich_document
 from pipeline.postgres_ingest_runner_fixture import run_source
 from pipeline.postgres_graph_fixture import _guard
@@ -46,3 +46,14 @@ def run_exclusive_cycle(connector, factory, *, enrich):
             return run_cycle(connector,factory,enrich=enrich,worker_id='cycle:'+uuid4().hex)
         finally:
             lease.execute('SELECT pg_advisory_unlock(%s)',(CYCLE_LOCK,))
+
+
+def run_periodic(connector_factory, factory, *, enrich, stop, interval_seconds, on_cycle):
+    """Run serial cycles until stopped; caller supplies all side effects."""
+    if interval_seconds <= 0:
+        raise ValueError('interval_seconds must be positive')
+    while not stop.is_set():
+        result=run_exclusive_cycle(connector_factory(),factory,enrich=enrich)
+        on_cycle(result)
+        if stop.wait(interval_seconds):
+            return

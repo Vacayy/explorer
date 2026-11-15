@@ -45,7 +45,7 @@ from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
-from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, CYCLE_LOCK
+from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -451,6 +451,50 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             self.assertEqual((recovered['unchanged'],recovered['enriched']),(1,1))
             with self.pg() as c:
                 self.assertEqual(c.execute("SELECT j.status FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id WHERE d.source_id='crash.md'").fetchone()[0],'done')
+
+    def test_periodic_fixture_runs_changed_note_twice(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        with tempfile.TemporaryDirectory() as vault:
+            notes=Path(vault)/'notes'
+            notes.mkdir()
+            note=notes/'periodic.md'
+            note.write_text('# 정기 문서\n처음',encoding='utf-8')
+            stop=threading.Event()
+            results=[]
+            def completed(result):
+                results.append(result)
+                if len(results)==1:
+                    note.write_text('# 정기 문서\n변경',encoding='utf-8')
+                else:
+                    stop.set()
+            from pipeline.enrich import _enrich_keyword
+            run_periodic(lambda: NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword,
+                         stop=stop,interval_seconds=0.01,on_cycle=completed)
+        self.assertEqual([(r['new'],r['updated'],r['enriched']) for r in results],[(1,0,1),(0,1,1)])
+        with self.pg() as c:
+            self.assertEqual(c.execute("SELECT e.summary FROM ingest_enrichments e JOIN ingest_documents d ON d.id=e.document_id WHERE d.source_id='periodic.md'").fetchone()[0],'# 정기 문서 변경')
+            ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='note' AND source_id='periodic.md'").fetchone()[0]
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        self.assertEqual(PostgreSQLDocumentReader(target).get(ident).summary,'# 정기 문서 변경')
 
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:
