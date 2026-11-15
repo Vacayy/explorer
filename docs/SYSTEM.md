@@ -12,6 +12,10 @@
 - `@a2ui/markdown-it`이 고정한 DOMPurify3.4.11은 해당 패키지에 한정한 npm override로3.4.17을 사용한다. 근거: GHSA-cg2g-xh64-v4q7 및 같은 수정 버전의 sanitizer 보완. A2UI의 현재 호출은 문자열 기본 sanitize이며, 해당 critical advisory의 특수 DOM/shadow-root 설정이 이 앱에서 재현됐다는 뜻은 아니다.
 - A2UI Markdown의 정상 서식·안전 링크 보존과 위험 HTML/JavaScript 링크 비실행을 회귀 검사한다. Zod3 의존 체인은 메이저 호환성 검토가 필요하므로 Zod4 강제 치환하지 않는다. audit 경고 개수는 배포 환경에서 재현된 취약점 개수와 구분한다.
 
+## 회원 운용 원칙 소유권 준비
+
+명시적 `initialize_ownership`는 기존 회원 포트폴리오 group에 연결된 `member_portfolio_principles` 테이블/인덱스를 준비한다. `/api/member/portfolio/principles` GET/POST 및 항목 PUT/PATCH/DELETE는 `MemberPrinciples`가 인증 사용자 소유 group 안에서만 처리한다. 기존 개인용 원칙 테이블·전역 scheduler/LLM과 분리하고 기존 규칙 validate/describe만 재사용한다. 원칙 화면·문장 해석·평가·회원 알림은 후속이며 운영 schema/데이터 이관을 뜻하지 않는다.
+
 ## 공용 저장 재무 조회
 
 `GET /api/financials/{stock_code}`는 공용 모드에서 `security.public_financials`의 컬럼 제한 readonly snapshot으로 회사 매핑과 재무 계산을 수행한다. 쿼리 옵션과 관계없이 외부 수집을 하지 않으며 기존 계산기를 연결 주입으로 재사용한다. 수집 POST·income-flow는 공개 정책에 포함하지 않는다. 공유 응답은 `models.financials.FinancialResponse`로 검증한다. 공용 `/financials` 기업 검색에서 `/analyze/:stockCode/financials`로 이동하며 회사명/코드 검색·기본 metadata도 같은 readonly 허용 컬럼 경계를 사용한다. 기존 FinancialsPage 표/차트를 재사용하고 개인 NextQuestions는 마운트하지 않는다. 재무 조건은 URL에 보존한다.

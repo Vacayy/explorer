@@ -79,3 +79,54 @@ def delete(tx_id: int = Path(ge=1), service: MemberPortfolio = Depends(member_se
 @router.get('/companies', response_model=list[CompanyChoice])
 def companies(q: str = Query(min_length=1, max_length=80), service: MemberPortfolio = Depends(member_service)):
     return perform(lambda: service.companies(q.strip()))
+
+
+# Member principles remain separate from the legacy operator scheduler/LLM path.
+from models.member_portfolio import MemberPrincipleCreate, PrincipleCreated, PrincipleChanged
+from models.portfolio import Principle, PrincipleText
+from security.member_principles import MemberPrinciples, PrincipleUnavailable, PrincipleInvalid, PrincipleLimit
+
+
+def principle_service(service: MemberPortfolio = Depends(member_service)):
+    return MemberPrinciples(service.source, service.owner)
+
+
+def principle_action(action):
+    try:
+        return perform(action)
+    except PrincipleUnavailable:
+        raise HTTPException(404, 'Principle unavailable') from None
+    except PrincipleInvalid:
+        raise HTTPException(422, 'Invalid confirmed principle') from None
+    except PrincipleLimit:
+        raise HTTPException(409, 'Principle limit reached') from None
+
+
+@router.get('/principles', response_model=list[Principle])
+def principles(service: MemberPrinciples = Depends(principle_service)):
+    return principle_action(service.listing)
+
+
+@router.post('/principles', response_model=PrincipleCreated, status_code=201)
+def create_principle(body: MemberPrincipleCreate, service: MemberPrinciples = Depends(principle_service)):
+    return {'ok': True, 'id': principle_action(lambda: service.create(body))}
+
+
+@router.put('/principles/{principle_id}', response_model=PrincipleChanged)
+def replace_principle(body: MemberPrincipleCreate, principle_id: int = Path(ge=1),
+                      service: MemberPrinciples = Depends(principle_service)):
+    principle_action(lambda: service.replace(principle_id, body))
+    return {'ok': True}
+
+
+@router.patch('/principles/{principle_id}', response_model=PrincipleChanged)
+def edit_principle_text(body: PrincipleText, principle_id: int = Path(ge=1),
+                        service: MemberPrinciples = Depends(principle_service)):
+    principle_action(lambda: service.update_text(principle_id, body.text))
+    return {'ok': True}
+
+
+@router.delete('/principles/{principle_id}', response_model=PrincipleChanged)
+def delete_principle(principle_id: int = Path(ge=1), service: MemberPrinciples = Depends(principle_service)):
+    principle_action(lambda: service.delete(principle_id))
+    return {'ok': True}

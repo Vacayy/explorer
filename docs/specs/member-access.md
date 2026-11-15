@@ -203,3 +203,12 @@ EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 Publica
 - Ideal: 선택 근거, 질문/답변, 인용, 남은 체험 횟수. 대화가 새로고침/화면 이탈 시 사라짐을 표시. 초기화는 대화만 지우며 횟수 복원을 암시하지 않는다.
 
 횟수 소진은 추가 전송을 막고 Google 로그인 진입을 제공하되 로그인만으로 현재 체험 횟수가 초기화되거나 미구현 회원 무제한 채팅을 사용할 수 있다고 약속하지 않는다. 공급자 측 보존과 서비스 대화 기록 비저장은 구분한다. 현재 UI 준비는 실제 dispatcher·모델 호출·공개 서비스 완료가 아니다.
+
+
+### 회원 운용 원칙: 소유권 준비
+
+`/portfolio/principles` 동선은 회원의 원문·확인된 규칙·참고 원칙을 저장/조회/수정/삭제한다. 기존 개인 portfolio_principles와 전역 알림 jobs를 공유하지 않고 member_portfolio_principles를 회원 portfolio group FK로 분리한다. 회원 ID는 인증 principal에서만 받으며 group/id를 입력받아 소유자를 바꾸지 않는다. 기존 validate/describe 규칙 함수를 재사용한다. 초기화는 배포 시 명시적으로 수행하며 GET/요청에서 스키마를 변경하지 않는다. 운영 DB는 아직 미이관이다.
+
+API는 `/api/member/portfolio/principles` GET/POST, `/{principle_id}` PUT/PATCH/DELETE로 계획한다. 본인 범위 SQL 안에서 수정·삭제하며 없는 항목과 타인 항목은 동일404. 사용자 데이터가 검증오류에 반사되지 않도록 기존 MemberRoute를 사용한다. 회원당 최대100원칙, 본문20000자·규칙20개·참고60개(각500자), 입력 owner/group 키 금지. 읽기는 부작용 없이 기존 empty 회원을 유지한다.
+
+UI 상태: Empty는 아직 원칙없음, Loading은 skeleton, Error는 재시도/입력보존, Partial은 저장된 원칙과 아직 연결되지 않은 해석·평가·알림 상태를 구분, Ideal은 본인 원문/확인규칙/참고목록과 수정·삭제. 문장→규칙 LLM parse, 본인 원장만 사용하는 평가, 알림수신자 및 scheduler 연결은 별도 후속이며 CRUD 준비를 전체 원칙기능 완료로 표시하지 않는다. 개인용 모델/텔레그램을 회원 요청에 암묵적으로 호출하지 않는다.

@@ -30,6 +30,13 @@ def initialize_ownership(conn):
             conn.execute('ALTER TABLE stock_groups ADD COLUMN owner_id TEXT')
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_owner ON stock_groups(owner_id) "
                      "WHERE kind='portfolio' AND owner_id IS NOT NULL")
+        conn.execute("""CREATE TABLE IF NOT EXISTS member_portfolio_principles(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id INTEGER NOT NULL REFERENCES stock_groups(id),
+            text TEXT NOT NULL, rules_json TEXT NOT NULL, notes_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )""")
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_member_principles_group ON member_portfolio_principles(group_id,id)')
 
 
 class MemberPortfolio:
