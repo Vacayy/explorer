@@ -1,0 +1,20 @@
+-- Synthetic read model for the isolated refactor experiment. Not a migration.
+CREATE TABLE document_projection (
+    id BIGINT PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    published_at TEXT,
+    detail_document JSONB NOT NULL,
+    CHECK (jsonb_typeof(detail_document) = 'object'),
+    CHECK ((detail_document->>'id') IS NOT DISTINCT FROM id::text)
+);
+-- Existing SQLite feed can produce multiple rows for one document when it has
+-- multiple saved enrichments, even though total counts distinct source documents.
+CREATE TABLE document_list_projection (
+    ordinal BIGINT PRIMARY KEY,
+    document_id BIGINT NOT NULL REFERENCES document_projection(id),
+    list_document JSONB NOT NULL,
+    CHECK (jsonb_typeof(list_document) = 'object'),
+    CHECK ((list_document->>'id') IS NOT DISTINCT FROM document_id::text)
+);
+CREATE INDEX document_projection_order ON document_projection (published_at DESC NULLS LAST, id);
+CREATE INDEX document_list_projection_document ON document_list_projection (document_id);

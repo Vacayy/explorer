@@ -704,3 +704,7 @@ tail -f logs/ingest.log               # 수집 관찰
 | observations·models 미가동 | 무역 커넥터·살아있는 모델 단계에서 |
 | AWS 배포 (24/7 — 맥 꺼지면 수집 중단) | 설계 논의됨 (EC2+SQLite 리프트&시프트) |
 | Phase 3 자율 리서치 에이전트 | 가설만 (설계 보류 중) |
+
+## 격리 문서 읽기 리팩토링 실험
+
+`pipeline/document_read.py`는 기존 문서 상세의 SQLite 조회를 `SQLiteDocumentReader` 경계로 분리한다. 기존 API 응답 모델과 경로는 유지한다. `pipeline/postgres_document_read.py`와 `refactor_sql/document_projection.sql`은 동일한 문서 상세·일부 피드 목록 응답을 합성 PostgreSQL 자료로 비교하는 실험용 읽기 어댑터다. 목록 행은 기존 SQLite의 다중 요약 결합으로 같은 문서가 여러 번 나타날 수 있는 동작과 원본 문서 기준 총 건수를 각각 보존한다. 필터 전체, 수집·실제 DB 이관·쓰기·운영 연결은 구현하지 않았으며 이 구조를 최종 PostgreSQL 스키마로 확정하지 않는다. `psycopg[binary]`는 실험용 PostgreSQL 연결 의존성이다.

@@ -22,3 +22,5 @@ duckdb==1.5.5     # 시장 분석의 읽기 전용 Parquet 스냅샷
 pyarrow==25.0.1
 ag-ui-protocol==0.1.22
 # anthropic  # LLM enrich 활성화 시 주석 해제 (ANTHROPIC_API_KEY 확보 후)
+
+psycopg[binary]==3.2.13  # 격리된 PostgreSQL 읽기 어댑터
