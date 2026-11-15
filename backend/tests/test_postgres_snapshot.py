@@ -188,6 +188,30 @@ class SnapshotReplacementTests(unittest.TestCase):
             count = c.execute("SELECT row_count FROM legacy_snapshot_tables WHERE table_name='youtube_digest_jobs'").fetchone()[0]
             self.assertEqual(count, 0)
 
+    def test_source_filter_uses_existing_sqlite_tie_order_across_pages(self):
+        from routers import spine_feed
+        from tests.test_postgres_document_read import sqlite_feed
+        with closing(self.fixture.connect()) as c:
+            c.executescript("""
+                INSERT INTO raw_documents VALUES
+                  (3,'transcript','t3','컨콜3',NULL,'2026-01-05','본문3',NULL,NULL,NULL),
+                  (4,'transcript','t4','컨콜4',NULL,'2026-01-05','본문4',NULL,NULL,NULL);
+                CREATE INDEX fixture_source_order ON raw_documents(source_type, published_at DESC, id DESC);
+                CREATE INDEX fixture_global_order ON raw_documents(published_at DESC, id ASC);
+            """)
+            c.commit()
+        with patch.object(spine_feed, 'get_connection', side_effect=self.fixture.connect), \
+             patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+            expected = sqlite_feed(source='transcript', size=1, page=1)
+            expected2 = sqlite_feed(source='transcript', size=1, page=2)
+            global_order = [x.id for x in sqlite_feed().items if x.source_type == 'transcript']
+        self.assertNotEqual(global_order, [expected.items[0].id, expected2.items[0].id])
+        self.load('2026-01-06T00:00:00+00:00')
+        actual = self.reader.list(source='transcript', size=1, page=1)
+        actual2 = self.reader.list(source='transcript', size=1, page=2)
+        self.assertEqual([x.model_dump() for x in actual.items], [x.model_dump() for x in expected.items])
+        self.assertEqual([x.model_dump() for x in actual2.items], [x.model_dump() for x in expected2.items])
+
     def test_source_categories_and_original_rows_preserved(self):
         from routers import spine_feed
         from tests.test_postgres_document_read import sqlite_feed
