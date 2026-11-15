@@ -24,8 +24,8 @@ from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_document_claims import claims_state
 from pipeline.postgres_signals_fixture import signals_items, signals_summary, mention_momentum
 from routers.spine_signals import SignalsSummary, MomentumResponse
-from pipeline.postgres_narrative_fixture import list_narratives
-from routers.spine_narrative import NarrativeList
+from pipeline.postgres_narrative_fixture import list_narratives, cached_narrative
+from routers.spine_narrative import NarrativeList, Narrative
 from routers.spine_doc import DocClaims, RelatedDoc
 from pipeline.postgres_related_documents import CentroidIndex, related_documents
 from pipeline.postgres_us_sectors import us_map as postgres_us_map, us_sector_detail as postgres_us_sector_detail
@@ -85,6 +85,13 @@ def experimental_narrative_list():
             return list_narratives(connection)
         except ValueError as exc:
             raise HTTPException(503,'내러티브 자료가 준비되지 않았습니다.') from exc
+
+
+@app.get('/api/spine/narrative', response_model=Narrative)
+def experimental_narrative_detail(topic: str):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        return cached_narrative(connection,topic)
 
 
 @app.get('/api/spine/feed', response_model=FeedResponse)

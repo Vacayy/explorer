@@ -9,9 +9,9 @@ from psycopg import sql
 from psycopg.types.json import Jsonb
 from routers.spine_signals import _row_to_item, signals_summary as sqlite_summary, mention_momentum as sqlite_momentum
 from pipeline.postgres_signals_fixture import signals_items, signals_summary as pg_summary, mention_momentum as pg_momentum
-from pipeline.postgres_narrative_fixture import list_narratives as pg_narratives
-from pipeline.narrative import list_narratives as sqlite_narratives
-from routers.spine_narrative import NarrativeList
+from pipeline.postgres_narrative_fixture import list_narratives as pg_narratives, cached_narrative as pg_narrative
+from pipeline.narrative import list_narratives as sqlite_narratives, cached_meta as sqlite_narrative
+from routers.spine_narrative import NarrativeList, Narrative
 
 
 def main():
@@ -31,8 +31,9 @@ def main():
         signals=[dict(row) for row in source.execute('SELECT * FROM signals')]
         entities=[dict(row) for row in source.execute('SELECT * FROM entities')]
         narratives=[dict(row) for row in source.execute('SELECT * FROM narratives')]
-        links=[dict(row) for row in source.execute("SELECT el.* FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id WHERE el.link_type='stock' AND rd.published_at>=datetime('now','-14 days')")]
-        documents=[dict(row) for row in source.execute("SELECT id,published_at FROM raw_documents WHERE published_at>=datetime('now','-14 days')")]
+        links=[dict(row) for row in source.execute('SELECT * FROM entity_links')]
+        documents=[dict(row) for row in source.execute('SELECT id,published_at,source_type FROM raw_documents')]
+        enrichments=[dict(row) for row in source.execute('SELECT doc_id,time_orientation,reference_period FROM enrichments')]
         with psycopg.connect(dsn) as conn:
             conn.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
             conn.execute(sql.SQL('CREATE TABLE {}.legacy_snapshot_rows(table_name text,row_ordinal bigint,row_data jsonb)').format(sql.Identifier(schema)))
@@ -40,8 +41,9 @@ def main():
             conn.execute(sql.SQL("INSERT INTO {}.legacy_snapshot_tables VALUES ('signals')").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'id'))").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'signal_type'),(row_data->>'entity_id'))").format(sql.Identifier(schema)))
+            conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'doc_id'))").format(sql.Identifier(schema)))
             with conn.cursor() as cur:
-                for table,rows in [('entities',entities),('signals',signals),('narratives',narratives),('entity_links',links),('raw_documents',documents)]:
+                for table,rows in [('entities',entities),('signals',signals),('narratives',narratives),('entity_links',links),('raw_documents',documents),('enrichments',enrichments)]:
                     cur.executemany(sql.SQL('INSERT INTO {}.legacy_snapshot_rows VALUES (%s,%s,%s)').format(sql.Identifier(schema)),[(table,i,Jsonb(row)) for i,row in enumerate(rows)])
         counts=[]
         with psycopg.connect(dsn,options=f'-c search_path={schema}') as conn:
@@ -74,7 +76,11 @@ def main():
             actual_narratives=pg_narratives(conn).model_dump()
             if actual_narratives != expected_narratives:
                 raise AssertionError('Narrative list mismatch')
-        print(f'Compared signal lists {counts}, summary, {len(expected_momentum)} momentum and {len(expected_narratives["items"])} narratives: matched')
+            topics=[item['topic'] for item in expected_narratives['items'][:3]]+['fixture-not-found']
+            for topic in topics:
+                if pg_narrative(conn,topic).model_dump() != Narrative(**sqlite_narrative(source,topic)).model_dump():
+                    raise AssertionError('Narrative detail mismatch')
+        print(f'Compared signal lists {counts}, summary, {len(expected_momentum)} momentum, {len(expected_narratives["items"])} narratives and {len(topics)} details: matched')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:

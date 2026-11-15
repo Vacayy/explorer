@@ -99,6 +99,7 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute("UPDATE raw_documents SET published_at='2099-01-01' WHERE id IN (1,2)")
             c.execute("INSERT INTO entity_links VALUES (2,7,'stock',0.8)")
             c.execute("INSERT INTO narratives VALUES (1,'합성 주제',1,'합성 내러티브','본문',3,'2026-01-01')")
+            c.execute("INSERT INTO entities VALUES (8,'theme','합성 주제',NULL)")
             c.executemany('INSERT INTO signals VALUES (?,?,?,?,?,?,?)',[
                 (1,'theme_surge',7,'2026-01-01','{}',None,None),
                 (2,'theme_surge',7,'2026-01-02','{}',None,None),
@@ -129,6 +130,9 @@ class SnapshotReplacementTests(unittest.TestCase):
                 narratives=client.get('/api/spine/narrative/list')
                 self.assertEqual(narratives.status_code,200)
                 self.assertEqual(narratives.json()['items'][0]['title'],'합성 내러티브')
+                narrative=client.get('/api/spine/narrative',params={'topic':'합성 주제'})
+                self.assertEqual(narrative.status_code,200)
+                self.assertEqual((narrative.json()['status'],narrative.json()['narrative']),('cached','본문'))
 
     def test_existing_mention_calculation_updates_isolated_snapshot(self):
         with self.fixture.connect() as c:
