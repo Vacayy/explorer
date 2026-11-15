@@ -792,6 +792,8 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             c.execute('ALTER TABLE entities ADD COLUMN status TEXT')
             c.execute('ALTER TABLE entities ADD COLUMN meta_json TEXT')
             c.execute("INSERT INTO entities(id,type,name) VALUES (8,'theme','합성 원인'),(9,'theme','합성 결과')")
+            c.execute("UPDATE entities SET meta_json='{\"pace_layer\":\"flow\"}' WHERE id=8")
+            c.execute("INSERT INTO entity_relations(id,src_id,dst_id,rel_type,source_quote,mechanism) VALUES (77,7,8,'CAUSES','이전 근거','이전 설명')")
             c.execute('DROP TABLE narratives')
             c.execute('''CREATE TABLE narratives(id INTEGER PRIMARY KEY,topic TEXT,version INTEGER,title TEXT,body TEXT,doc_count INTEGER,created_at TEXT DEFAULT (datetime('now')),
                 kind TEXT,superseded_at TEXT,core_question TEXT,category TEXT,doc_ids_hash TEXT,model TEXT,change_summary TEXT)''')
@@ -806,6 +808,8 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             initialize_graph(c)
+            self.assertEqual(c.execute("SELECT source_row->>'meta_json' FROM ingest_graph_entities WHERE id=8").fetchone()[0],'{"pace_layer":"flow"}')
+            self.assertEqual(c.execute("SELECT source_row->>'source_quote',source_row->>'mechanism' FROM ingest_graph_relations WHERE id=77").fetchone(),('이전 근거','이전 설명'))
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
         def process(c):
             from pipeline.postgres_urgent_selection_fixture import select_urgent

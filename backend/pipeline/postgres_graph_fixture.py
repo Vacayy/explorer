@@ -2,6 +2,7 @@
 import os
 import re
 import sqlite3
+from psycopg.types.json import Jsonb
 from pipeline.store import _link
 from pipeline.postgres_ingest_fixture import finish_enrichment
 
@@ -27,8 +28,8 @@ def initialize_graph(conn):
     if present != required:
         raise ValueError('Complete linking registry snapshot required')
     for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entities' ORDER BY row_ordinal"):
-        conn.execute('INSERT INTO ingest_graph_entities(id,type,name,aliases,status,created_at) OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s)',
-                     (row['id'],row['type'],row['name'],row.get('aliases'),row.get('status'),row.get('created_at')))
+        conn.execute('INSERT INTO ingest_graph_entities(id,type,name,aliases,status,created_at,source_row) OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s,%s)',
+                     (row['id'],row['type'],row['name'],row.get('aliases'),row.get('status'),row.get('created_at'),Jsonb(row)))
     for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_keywords' ORDER BY row_ordinal"):
         if row.get('id') is not None:
             conn.execute('INSERT INTO ingest_graph_keywords(id,entity_id,keyword,status,created_at) OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s)',
@@ -38,13 +39,13 @@ def initialize_graph(conn):
                          (row['entity_id'],row['keyword'],row.get('status'),row.get('created_at')))
     for ordinal,row in conn.execute("SELECT row_ordinal,row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' ORDER BY row_ordinal"):
         values=(row['src_id'],row['dst_id'],row['rel_type'],row.get('epistemic_type'),row.get('confidence'),
-                row.get('source_doc_id'),row.get('valid_from'),ordinal)
+                row.get('source_doc_id'),row.get('valid_from'),ordinal,Jsonb(row))
         if row.get('id') is not None:
-            conn.execute('INSERT INTO ingest_graph_relations(id,src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from,source_ordinal) '
-                         'OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',(row['id'],*values))
+            conn.execute('INSERT INTO ingest_graph_relations(id,src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from,source_ordinal,source_row) '
+                         'OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(row['id'],*values))
         else:
-            conn.execute('INSERT INTO ingest_graph_relations(src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from,source_ordinal) '
-                         'VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',values)
+            conn.execute('INSERT INTO ingest_graph_relations(src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from,source_ordinal,source_row) '
+                         'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',values)
     conn.execute("SELECT setval(pg_get_serial_sequence('ingest_graph_entities','id'), "
                  "GREATEST(COALESCE((SELECT max(id) FROM ingest_graph_entities),0),1), EXISTS(SELECT 1 FROM ingest_graph_entities))")
     conn.execute("SELECT setval(pg_get_serial_sequence('ingest_graph_keywords','id'), "

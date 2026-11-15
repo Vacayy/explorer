@@ -133,6 +133,7 @@ CREATE TABLE ingest_graph_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHEC
 CREATE TABLE ingest_graph_entities (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     type TEXT NOT NULL, name TEXT NOT NULL, aliases TEXT, status TEXT,
+    source_row JSONB,
     created_at TEXT DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),
     UNIQUE(type,name)
 );
@@ -147,6 +148,7 @@ CREATE TABLE ingest_graph_relations (
     src_id BIGINT NOT NULL, dst_id BIGINT NOT NULL, rel_type TEXT NOT NULL,
     epistemic_type TEXT, confidence DOUBLE PRECISION, source_doc_id BIGINT, valid_from TEXT,
     source_ordinal BIGINT,
+    source_row JSONB,
     created_at TEXT DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),
     UNIQUE(src_id,dst_id,rel_type,valid_from)
 );
