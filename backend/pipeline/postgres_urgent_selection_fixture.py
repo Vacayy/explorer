@@ -12,17 +12,17 @@ TABLES = ('entities','entity_links','raw_documents','enrichments','narratives',
           'signals','market_today','market_today_links','narrative_candidates')
 
 
-def select_urgent(conn):
+def open_snapshot(conn, tables):
     _guard(conn)
     meta = {name:(columns,ddl) for name,columns,ddl in conn.execute(
-        'SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)',(list(TABLES),))}
-    if set(meta) != set(TABLES):
+        'SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)',(list(tables),))}
+    if set(meta) != set(tables):
         raise ValueError('Complete narrative input snapshot required')
     uri='file:urgent-fixture-'+uuid.uuid4().hex+'?mode=memory&cache=shared'
     root=sqlite3.connect(uri,uri=True)
     root.row_factory=sqlite3.Row
     try:
-        for name in TABLES:
+        for name in tables:
             columns,ddl=meta[name]
             root.execute(ddl)
             actual=[row['name'] for row in root.execute('PRAGMA table_info("'+name+'")')]
@@ -34,6 +34,15 @@ def select_urgent(conn):
             root.executemany('INSERT INTO "'+name+'" ('+quoted+') VALUES ('+placeholders+')',
                              (tuple(row[0].get(column) for column in columns) for row in rows))
         root.commit()
+        return root,uri,meta
+    except BaseException:
+        root.close()
+        raise
+
+
+def select_urgent(conn):
+    root,uri,_=open_snapshot(conn,TABLES)
+    try:
         def connect():
             db=sqlite3.connect(uri,uri=True)
             db.row_factory=sqlite3.Row

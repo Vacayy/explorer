@@ -1,0 +1,46 @@
+"""Apply the existing narrative writer to a disposable staging snapshot only.
+
+The caller supplies a fake model result and owns the PostgreSQL transaction.
+This is not a durable writer or an external model invocation.
+"""
+from psycopg.types.json import Jsonb
+
+from pipeline.narrative import _hash, _latest_narrative, _persist_narrative, _resolve, gather
+from pipeline.postgres_urgent_selection_fixture import open_snapshot
+
+TABLES=('entities','entity_links','raw_documents','enrichments','narratives',
+        'entity_relations','narrative_edge_evidence','entity_merges')
+CHANGED=('entities','entity_relations','narratives','narrative_edge_evidence')
+
+
+def persist_fixture_narrative(conn, topic, data):
+    if conn.execute("SELECT to_regclass('ingest_documents')").fetchone()[0] is not None:
+        raise ValueError('A separate staging snapshot is required')
+    if conn.execute('SHOW transaction_isolation').fetchone()[0] != 'repeatable read':
+        raise ValueError('Repeatable-read transaction required')
+    if not isinstance(data,dict) or not all(isinstance(data.get(k),str) and data[k].strip() for k in ('title','narrative')):
+        raise ValueError('A complete synthetic narrative is required')
+    db,_,_=open_snapshot(conn,TABLES)
+    try:
+        entity=_resolve(db,topic)
+        if entity is None:
+            return {'status':'not_found'}
+        docs=gather(db,entity['id'])
+        if len(docs)<3:
+            return {'status':'empty'}
+        digest=_hash(docs)
+        previous=_latest_narrative(db,topic)
+        if previous and previous['doc_ids_hash']==digest:
+            return {'status':'cached'}
+        ident,version,edges=_persist_narrative(db,topic,data,docs,digest)
+        db.commit()
+        for name in CHANGED:
+            conn.execute('DELETE FROM legacy_snapshot_rows WHERE table_name=%s',(name,))
+            rows=db.execute('SELECT * FROM "'+name+'" ORDER BY rowid')
+            with conn.cursor() as cursor:
+                cursor.executemany('INSERT INTO legacy_snapshot_rows VALUES (%s,%s,%s)',
+                                   ((name,index,Jsonb(dict(row))) for index,row in enumerate(rows)))
+            conn.execute('UPDATE legacy_snapshot_tables SET row_count=(SELECT count(*) FROM legacy_snapshot_rows WHERE table_name=%s) WHERE table_name=%s',(name,name))
+        return {'status':'fresh','id':ident,'version':version,'edges':edges}
+    finally:
+        db.close()

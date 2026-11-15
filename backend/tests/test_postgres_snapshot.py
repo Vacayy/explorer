@@ -86,7 +86,7 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False, include_telegram_marks=False, include_narrative_inputs=False):
+    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False, include_telegram_marks=False, include_narrative_inputs=False, include_narrative_graph=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
         if include_centroids:
@@ -100,7 +100,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids, include_telegram_marks=include_telegram_marks, include_narrative_inputs=include_narrative_inputs)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids, include_telegram_marks=include_telegram_marks, include_narrative_inputs=include_narrative_inputs, include_narrative_graph=include_narrative_graph)
         finally:
             source.close()
 
@@ -785,29 +785,47 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
         with self.fixture.connect() as c:
             from pipeline.market_today_links import SCHEMA
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
-            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.execute('''CREATE TABLE entity_relations(id INTEGER PRIMARY KEY,src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT,
+                narrative_id INTEGER,mechanism TEXT,geo_scope TEXT,effect_strength TEXT,effect_direction TEXT,source_status TEXT,source_quote TEXT,reference_period TEXT,time_orientation TEXT,created_at TEXT)''')
             c.execute('ALTER TABLE enrichments ADD COLUMN time_orientation TEXT')
             c.execute('ALTER TABLE enrichments ADD COLUMN reference_period TEXT')
             c.execute('ALTER TABLE entities ADD COLUMN status TEXT')
-            c.execute('ALTER TABLE narratives ADD COLUMN kind TEXT')
-            c.execute('ALTER TABLE narratives ADD COLUMN superseded_at TEXT')
+            c.execute('ALTER TABLE entities ADD COLUMN meta_json TEXT')
+            c.execute("INSERT INTO entities(id,type,name) VALUES (8,'theme','합성 원인'),(9,'theme','합성 결과')")
+            c.execute('DROP TABLE narratives')
+            c.execute('''CREATE TABLE narratives(id INTEGER PRIMARY KEY,topic TEXT,version INTEGER,title TEXT,body TEXT,doc_count INTEGER,created_at TEXT DEFAULT (datetime('now')),
+                kind TEXT,superseded_at TEXT,core_question TEXT,category TEXT,doc_ids_hash TEXT,model TEXT,change_summary TEXT)''')
+            c.execute('CREATE TABLE entity_merges(old_name TEXT,type TEXT,survivor_id INTEGER)')
+            c.execute('CREATE TABLE narrative_edge_evidence(id INTEGER PRIMARY KEY,entity_relation_id INTEGER,narrative_id INTEGER,doc_id INTEGER,quote TEXT,UNIQUE(entity_relation_id,narrative_id))')
             c.execute('CREATE TABLE market_today(id INTEGER PRIMARY KEY,trade_date TEXT,slot TEXT,links_at TEXT)')
             c.executescript(SCHEMA)
             c.execute('CREATE TABLE signals(id INTEGER PRIMARY KEY,signal_type TEXT,entity_id INTEGER,date TEXT,payload_json TEXT,interpretation TEXT,interpretation_model TEXT,UNIQUE(signal_type,entity_id,date))')
             c.execute("INSERT INTO narratives(id,topic,version,title,body,doc_count,created_at) VALUES (1,'합성 신주제',1,'저장된 이야기','기존 본문',3,'2026-01-01')")
-        self.load('2026-01-03T00:00:00+00:00',include_linking=True,include_signals=True,include_narrative_inputs=True)
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True,include_signals=True,include_narrative_inputs=True,include_narrative_graph=True)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             initialize_graph(c)
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
-        publisher=FixturePublisher.with_signal_recalculation(self.pg,self.schema,target,clock=lambda:datetime.now(timezone.utc))
+        def process(c):
+            from pipeline.postgres_urgent_selection_fixture import select_urgent
+            from pipeline.postgres_narrative_persist_fixture import persist_fixture_narrative
+            compute_mention_signals(c,as_of=datetime.now(timezone.utc),include_themes=True)
+            selection=select_urgent(c)
+            self.assertEqual(selection['results'],{'합성 신주제':'selected'})
+            data={'title':'합성 신규 이야기','narrative':'## 3줄 요약\n- 합성 결과',
+                  'causal':{'edges':[{'from':'합성 원인','to':'합성 결과','rel':'CAUSES',
+                                      'evidence':['D1'],'quote':'신주제 본문 자료'}]}}
+            result=persist_fixture_narrative(c,'합성 신주제',data)
+            self.assertEqual((result['status'],result['version'],result['edges']),('fresh',2,1))
+            self.assertEqual(persist_fixture_narrative(c,'합성 신주제',data)['status'],'cached')
+        publisher=FixturePublisher(self.pg,self.schema,target,process_projection=process)
         try:
             with tempfile.TemporaryDirectory() as vault:
                 notes=Path(vault)/'notes'
                 notes.mkdir()
                 for i in range(6):
-                    (notes/f'{i}.md').write_text(f'# 합성 자료 {i}\n신주제 본문',encoding='utf-8')
+                    (notes/f'{i}.md').write_text(f'# 합성 자료 {i}\n신주제 본문 자료',encoding='utf-8')
                 from types import SimpleNamespace
                 fake_result=SimpleNamespace(text='{"summary":"합성 요약","topics":["합성 신주제"]}',label='fake')
                 stop=threading.Event(); rounds=[]; errors=[]
@@ -827,17 +845,21 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 from pipeline.postgres_narrative_fixture import list_narratives
                 item=list_narratives(c).items[0]
-                self.assertEqual((item.topic,item.title,item.is_surging),('합성 신주제','저장된 이야기',True))
+                self.assertEqual((item.topic,item.title,item.is_surging),('합성 신주제','합성 신규 이야기',True))
                 self.assertEqual(signals_items(c,since='2026-01-01',signal_type='theme_surge')[0].payload['recent'],6)
                 from pipeline.postgres_urgent_selection_fixture import select_urgent
                 selection=select_urgent(c)
-                self.assertEqual(selection['results'],{'합성 신주제':'selected'})
+                self.assertEqual(selection['results'],{})
+                self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='narrative_edge_evidence' AND row_data->>'doc_id' IS NOT NULL").fetchone()[0],1)
+                self.assertIsNotNone(c.execute("SELECT row_data->>'superseded_at' FROM legacy_snapshot_rows WHERE table_name='narratives' AND row_data->>'id'='1'").fetchone()[0])
             self.assertEqual(len(publisher.search('신주제').items),6)
             with target(publisher.active[0]) as c:
                 summaries=[r[0] for r in c.execute("SELECT row_data->>'summary' FROM legacy_snapshot_rows WHERE table_name='enrichments' AND row_data->>'model'='fake'")]
                 self.assertEqual(summaries,['합성 요약']*6)
         finally:
             publisher.close()
+        with self.pg() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='narratives'").fetchone()[0],1)
 
     def test_existing_enrichment_uses_isolated_graph_vocabulary(self):
         from pipeline import enrich as enrichment
