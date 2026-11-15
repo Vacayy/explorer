@@ -1,8 +1,32 @@
 """Readonly public ETF map input, excluding all personal follow/document data."""
 from pathlib import Path
+import json
 import sqlite3
 
 from config import DB_PATH
+
+
+def stored_sector_view(sector, *, peers=False):
+    """Read the prepared public projection; never query the private sector DB."""
+    try:
+        with sqlite3.connect(Path(DB_PATH).resolve().as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+            row = conn.execute('SELECT detail, peers FROM public_sector_details WHERE sector=?', (sector,)).fetchone()
+        return json.loads(row[1 if peers else 0]) if row else None
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        from fastapi import HTTPException
+        raise HTTPException(503, '공개 섹터 자료를 불러오지 못했습니다.') from exc
+
+
+def stored_peer_runtime():
+    try:
+        with sqlite3.connect(Path(DB_PATH).resolve().as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+            row = conn.execute('SELECT data FROM public_peer_runtime WHERE id=1').fetchone()
+        if not row:
+            raise ValueError('Missing public peer snapshot')
+        return json.loads(row[0])
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        from fastapi import HTTPException
+        raise HTTPException(503, '공개 Peer 자료를 불러오지 못했습니다.') from exc
 
 
 def _authorize(action, first, second, database, source):

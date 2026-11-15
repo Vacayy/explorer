@@ -72,8 +72,14 @@ def industry_map(request: Request):
 
 
 @router.get("/{sector}", response_model=SectorDetailResponse)
-def sector_detail(sector: str):
+def sector_detail(sector: str, request: Request):
     """섹터 화면 머리·개요·종목 — 대표지수 vs 코스피, RS 흐름, 비중 상위, 내러티브·AI 개괄, 주요 자료, Peer 미리보기, 데이터 연결."""
+    if getattr(request.state, 'public_access', False):
+        from security.public_industry import stored_sector_view
+        out = stored_sector_view(sector)
+        if out is None:
+            raise HTTPException(status_code=404, detail='없는 섹터입니다.')
+        return out
     from database import get_connection
     from pipeline.sector_view import sector_detail as build
     conn = get_connection()
@@ -87,8 +93,14 @@ def sector_detail(sector: str):
 
 
 @router.get("/{sector}/peers", response_model=SectorPeerListResponse)
-def sector_peers(sector: str):
+def sector_peers(sector: str, request: Request):
     """섹터의 하위 Peer 그룹 — 대응표 그룹과 그 아래 제품 그룹, 종목 수·20·60거래일 중앙값."""
+    if getattr(request.state, 'public_access', False):
+        from security.public_industry import stored_sector_view
+        out = stored_sector_view(sector, peers=True)
+        if out is None:
+            raise HTTPException(status_code=404, detail='없는 섹터입니다.')
+        return out
     from database import get_connection
     from pipeline.sector_view import sector_peer_list
     runtime = _runtime(True)

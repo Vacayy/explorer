@@ -12,6 +12,7 @@ from pipeline import us_sectors
 from routers import spine_industry
 from security.access_boundary import PublicAccessBoundary
 from security.public_industry import industry_connection
+from security import public_industry
 
 
 class PublicIndustryTests(unittest.TestCase):
@@ -58,6 +59,18 @@ class PublicIndustryTests(unittest.TestCase):
             data = us_sectors.us_map(conn)
         follows.assert_called_once()
         self.assertTrue(all(r['coverage'] == 1 for r in data['sectors']))
+
+    def test_stored_sector_and_peer_reads_use_only_prepared_snapshots(self):
+        with sqlite3.connect(self.path) as conn:
+            conn.executescript('''CREATE TABLE public_sector_details(sector TEXT PRIMARY KEY,detail TEXT,peers TEXT);
+                CREATE TABLE public_peer_runtime(id INTEGER PRIMARY KEY,data TEXT);
+                INSERT INTO public_sector_details VALUES('sector','{"name":"sector"}','{"groups":[]}');
+                INSERT INTO public_peer_runtime VALUES(1,'{"catalog":{}}');''')
+        with patch.object(public_industry, 'DB_PATH', self.path):
+            self.assertEqual(public_industry.stored_sector_view('sector'), {'name':'sector'})
+            self.assertEqual(public_industry.stored_sector_view('sector', peers=True), {'groups':[]})
+            self.assertEqual(public_industry.stored_peer_runtime(), {'catalog':{}})
+            self.assertIsNone(public_industry.stored_sector_view('missing'))
 
     def test_empty_and_partial_are_not_personal_fallbacks(self):
         with sqlite3.connect(self.path) as conn:

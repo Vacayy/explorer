@@ -29,8 +29,9 @@ const mmdd = (d: string | null | undefined) => d ? `${+d.slice(5, 7)}/${+d.slice
  * 위치 '섹터 지도 › 섹터' → 머리(이름 · 대표지수 ETF 이름·코드 ⓘ · 값 · 1일 · 1개월 · 종목 수 · 시총 · 기준일 · RS 배지 · 팔로우 · AI에게 묻기)
  * → 탭 개요 · Peer 그룹(n) · 이 산업의 데이터(n) · 종목(n). 탭은 URL ?tab=, Peer 탭 상태는 group·view·stock·days·q.
  */
-export default function SectorPage() {
-  const { sector = "" } = useParams()
+export default function SectorPage({ publicSector }: { publicSector?: string } = {}) {
+  const params = useParams()
+  const sector = publicSector ?? params.sector ?? ""
   const [rawTab, setTab] = useUrlParam("tab", "overview")
   const tab: Tab = (TABS as readonly string[]).includes(rawTab) ? rawTab as Tab : "overview"
   const q = useSectorDetail(sector)
@@ -39,7 +40,7 @@ export default function SectorPage() {
   return <PageLayout mode="document">
     <div className="flex flex-col gap-2.5">
       <nav aria-label="위치" className="text-[12.5px] text-ink-3"><Link to="/industry" className="text-ink-2 hover:text-ink">섹터 지도</Link> › {sector}</nav>
-      {d ? <SectorHead d={d} /> : <div className="flex min-h-[44px] flex-wrap items-end gap-4">
+      {d ? <SectorHead d={d} publicMode={publicSector !== undefined} /> : <div className="flex min-h-[44px] flex-wrap items-end gap-4">
         <h1 className="font-display text-page font-normal tracking-[-0.01em] max-md:text-[26px]">{sector}</h1>
         {!q.isError && <><Skeleton className="h-6 w-40" /><Skeleton className="h-6 w-56" /></>}
       </div>}
@@ -63,7 +64,7 @@ export default function SectorPage() {
   </PageLayout>
 }
 
-function SectorHead({ d }: { d: IndustrySectorDetail }) {
+function SectorActions({ d }: { d: IndustrySectorDetail }) {
   const qc = useQueryClient()
   const follows = useFollowedEntities()
   const followed = d.entity_id != null && !!follows.data?.some(f => f.entity_id === d.entity_id)
@@ -72,6 +73,15 @@ function SectorHead({ d }: { d: IndustrySectorDetail }) {
     onSuccess: () => { toast.success(followed ? `'${d.name}' 팔로우 해제` : `'${d.name}' 팔로우`); void qc.invalidateQueries({ queryKey: ["spine", "follows"] }) },
     onError: () => toast.error("팔로우를 바꾸지 못했습니다."),
   })
+  return <span className="ml-auto flex gap-1.5 max-md:ml-0">
+    {d.entity_id != null && <Button variant="outline" size="sm" className={cn("h-8 rounded-full px-3 text-[13px]", followed && "bg-chip")} aria-pressed={followed}
+      disabled={toggle.isPending || follows.isPending} onClick={() => toggle.mutate()}>{followed ? "팔로우 중" : "팔로우"}</Button>}
+    {d.entity_id != null && <Button variant="secondary" size="sm" className="h-8 rounded-full px-3 text-[13px]"
+      onClick={() => attachToAi({ kind: "theme", ref: String(d.entity_id), label: d.name, sub: "업종", available: true })}>AI에게 묻기</Button>}
+  </span>
+}
+
+function SectorHead({ d, publicMode }: { d: IndustrySectorDetail; publicMode: boolean }) {
   const move = zoneMove(d)
   return <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
     <h1 className="font-display text-page leading-[1.2] font-normal tracking-[-0.01em] max-md:text-[26px]">{d.name}</h1>
@@ -84,11 +94,6 @@ function SectorHead({ d }: { d: IndustrySectorDetail }) {
       <Chip kind="down">단기 RS {d.rs_short == null ? "-" : Math.round(d.rs_short)}</Chip>
       {move && <Chip kind={move.includes("→") ? "warn" : "chip"}>{move}</Chip>}
     </span>
-    <span className="ml-auto flex gap-1.5 max-md:ml-0">
-      {d.entity_id != null && <Button variant="outline" size="sm" className={cn("h-8 rounded-full px-3 text-[13px]", followed && "bg-chip")} aria-pressed={followed}
-        disabled={toggle.isPending || follows.isPending} onClick={() => toggle.mutate()}>{followed ? "팔로우 중" : "팔로우"}</Button>}
-      {d.entity_id != null && <Button variant="secondary" size="sm" className="h-8 rounded-full px-3 text-[13px]"
-        onClick={() => attachToAi({ kind: "theme", ref: String(d.entity_id), label: d.name, sub: "업종", available: true })}>AI에게 묻기</Button>}
-    </span>
+    {!publicMode && <SectorActions d={d} />}
   </div>
 }

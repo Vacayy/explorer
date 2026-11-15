@@ -16,7 +16,7 @@ import { PublicTradePage } from '@/components/follow/PublicTradePage'
 import { MemberSavedPage } from '@/components/follow/MemberSavedPage'
 import { PublicMacroPage } from '@/components/home/PublicMacroPage'
 import { PublicCompanySummary, PublicCompanyMentions } from '@/components/company/PublicCompanySummary'
-import { PublicKrSectorPage } from '@/components/industry/PublicKrSectorPage'
+import SectorPage from '@/components/industry/SectorPage'
 import { PublicFinancialSearch, PublicFinancialsPage } from '@/components/financials/PublicFinancialsPage'
 import { Link, useLocation, useMatch } from 'react-router-dom'
 import { PublicUsSectorPage } from '@/components/industry/PublicUsSectorPage'
@@ -57,7 +57,7 @@ export function PublicContent() {
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (mentions?.params.stockCode) return <PublicCompanyMentions stockCode={mentions.params.stockCode} />
-  if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
+  if (krSector?.params.sector) return <SectorPage publicSector={krSector.params.sector} />
   if (pathname === '/narrative') return <NarrativePage />
   if (pathname === '/narrative/history') return <NarrativeHistory />
   if (pathname === '/home/macro') return <PublicMacroPage />
