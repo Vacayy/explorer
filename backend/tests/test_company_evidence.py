@@ -3,7 +3,7 @@ import sqlite3
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
-from pipeline.company_evidence import company_evidence, plain_text
+from pipeline.company_evidence import company_evidence, evidence_response, plain_text
 from services.dart_service import _build_financial_response
 
 class EvidenceTests(unittest.TestCase):
@@ -78,6 +78,24 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(len(days),30);self.assertEqual(r['flow']['end'],'2026-06-20');self.assertEqual(r['flow']['start'],'2026-05-22')
         self.assertEqual(days['2026-06-19'],2);self.assertEqual(days['2026-06-12'],1)   # 공시(rcept_dt)도 센다
         self.assertEqual(r['flow']['sources'],[{'source':'telegram','count':2},{'source':'disclosure','count':1}])
+
+class PreparedEvidenceTests(unittest.TestCase):
+    def test_prepared_rows_preserve_filters_and_do_not_read_private_publishers(self):
+        rows = [dict(id='doc:1', doc_id=1, source_type='earnings_release',
+                     source_id='sec.gov', publisher='SEC', title='Release', url='https://www.sec.gov/',
+                     published_at='2026-06-12', excerpt='Revenue', relation='기업 직접 공시', matched=True)]
+        original = [dict(row) for row in rows]
+        with patch('pipeline.sources.source_names', side_effect=AssertionError('private lookup')):
+            response = evidence_response(rows, market='us', end='2026-06-12', cutoff='close',
+                                         now=datetime(2026,6,20,tzinfo=timezone.utc))
+            self.assertEqual(response['total'], 0)
+            self.assertEqual(response['uncertain_count'], 1)
+            response = evidence_response(rows, market='us', end='2026-06-12', cutoff='close', after=True,
+                                         now=datetime(2026,6,20,tzinfo=timezone.utc))
+        self.assertEqual(response['items'][0]['status'], 'uncertain')
+        self.assertEqual(response['items'][0]['publisher'], 'SEC')
+        self.assertEqual(response['coverage'][0]['count'], 1)
+        self.assertEqual(rows, original)
 
 class FinancialTests(unittest.TestCase):
     def build(self,sj,values):

@@ -24,6 +24,10 @@
 
 `market_today.read_snapshot(conn, day, slot)`는 준비된 연결에서 기존 회차·본문·출처·내러티브 링크·날짜 탐색 응답을 읽는다. 연결 소유/스키마 준비/수집/모델 호출은 수행하지 않는다. private `read`는 기존 초기화 후 같은 함수를 사용한다. `security.public_market_today`가 공개 GET에 이 함수를 연결한다. 명시 준비된 market_today 컬럼만 readonly authorizer로 읽고 내러티브 조회를 끈다. 본문·회차·날짜 탐색은 유지하며 출처 링크는 현재 승인 문서 metadata로 재구성하고 그 외 출처/refs와 비공개 내러티브 링크를 제외한다. 집계는 해당 저장 브리핑의 생성 시점 기준이다. 공개 `/api/spine/indices`, `/indices/breadth`, `/macro`도 같은 저장 시장 데이터 readonly 연결을 사용한다. 지수 `read_indices(conn)`와 매크로 `read_numeric_macro(conn)`는 기존 수치 계산을 재사용하며 public 분기는 background 수집·lazy snapshot·신호 산문 캐시·credential 확인을 실행하지 않는다. 공개 HomePage/HomeKrPage/HomeUsPage는 원래 컴포넌트를 사용하며 한국 브리핑·지수·시장 폭·수치 context 외 다른 블록의 공개 조회 연결은 아직 진행 중이다. 한국 시장 카드도 기존 DayNav를 공유하고 날짜 변경과 회차 초기화를 한 URL 갱신으로 처리한다.
 
+## 기업 근거의 공통 기간 계산
+
+`pipeline.company_evidence.evidence_response`는 호출자가 선택한 근거 행의 기간·장 마감 시각·출처·페이지·30일 흐름을 계산한다. 입력 행을 수정하지 않으며 DB나 수집기를 직접 호출하지 않는다. 기존 private `company_evidence`는 개인 엔티티 연결/공시 조회와 페이지 출처명 resolver를 유지한다. 이 분리는 승인 문서 입력을 연결하기 위한 준비이며 공개 근거 API 허용이나 데이터 배포를 뜻하지 않는다.
+
 ## 공개 기업 개요 저장 조회
 
 `GET /api/spine/company-profile/{code}?market=us`의 public 분기는 공개 미국 기업 registry와 같은 readonly snapshot의 `public_company_profiles(ticker,payload_json)`만 조회한다. 준비된 보고서의 사업 설명·인용·출처 metadata·gaps·작성시각을 유지하며 model/cost/reason은 null, 원문 발췌는 빈 값이어야 한다. 출처 URL과 인용 ID·기업 식별을 검증하고 개인 입력이나 알려진 제한 제공사 입력이 있는 준비본을 거부한다. 개인 company_profiles 테이블이나 수집/모델 호출로 폴백하지 않는다. 등록 기업의 미준비 보고서는 profile=null, 등록 밖/아직 미연결 시장은404다. POST 조사 기능은 공개 허용 목록에 없다.
