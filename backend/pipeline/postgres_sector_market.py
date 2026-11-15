@@ -49,9 +49,25 @@ class PostgreSQLSectorSource:
 
     def snapshot(self, as_of):
         rows = self.conn.execute('''
-            SELECT DISTINCT ON (stock_code COLLATE "C") stock_code, close, market_cap
-            FROM sector_market_prices
-            WHERE trade_date <= %s AND close IS NOT NULL
-            ORDER BY stock_code COLLATE "C", trade_date DESC
+            WITH RECURSIVE codes(stock_code) AS (
+                (SELECT stock_code FROM sector_market_prices
+                 WHERE close IS NOT NULL
+                 ORDER BY stock_code COLLATE "C" LIMIT 1)
+                UNION ALL
+                SELECT next_code.stock_code FROM codes
+                CROSS JOIN LATERAL (
+                    SELECT stock_code FROM sector_market_prices
+                    WHERE close IS NOT NULL
+                      AND stock_code COLLATE "C" > codes.stock_code COLLATE "C"
+                    ORDER BY stock_code COLLATE "C" LIMIT 1
+                ) next_code
+            )
+            SELECT codes.stock_code, price.close, price.market_cap
+            FROM codes CROSS JOIN LATERAL (
+                SELECT close, market_cap FROM sector_market_prices
+                WHERE stock_code COLLATE "C" = codes.stock_code COLLATE "C"
+                  AND trade_date <= %s AND close IS NOT NULL
+                ORDER BY trade_date DESC LIMIT 1
+            ) price
         ''', (as_of,))
         return {code: (close, market_cap or 0) for code, close, market_cap in rows}
