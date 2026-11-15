@@ -69,12 +69,24 @@ class SectorMarketTest(unittest.TestCase):
             c.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(self.schema)))
 
     def test_map_and_failed_replacement(self):
-        result = load_sector_market(self.db, self.pg)
+        bundle = {
+            'catalog': {'version': 'test', 'asOf': '2026-01-09', 'groups': [], 'companies': []},
+            'prices': {'version': 'test', 'asOf': '2026-01-09', 'collectedAt': '2026-01-09T00:00:00Z',
+                       'sourceUrl': 'https://example.com', 'sourceHash': 'a' * 64,
+                       'field': 'regularMarketClosingPrice', 'session': 'KRX_REGULAR',
+                       'adjustmentStatus': 'unverified', 'dates': ['2026-01-09'], 'prices': {},
+                       'qualityIssues': [], 'caveats': []},
+            'origin': 'collector', 'publishedAt': '2026-01-09T00:00:00Z', 'baselineOn': None,
+            'lastAttempt': None, 'priceAgeDays': 0, 'snapshotAgeHours': 0,
+            'signalStatus': 'held', 'signalHoldReason': 'fixture',
+        }
+        result = load_sector_market(self.db, self.pg, peer_runtime=bundle)
         self.assertEqual(result, {'prices': 9, 'members': 3})
         expected = build_sector_map(SQLiteSectorSource(self.db))
         with self.pg.transaction():
             self.pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             pgsource = PostgreSQLSectorSource(self.pg)
+            self.assertEqual(pgsource.peer_runtime().catalog.version, 'test')
             self.assertEqual(pgsource.snapshot('2026-01-09'), SQLiteSectorSource(self.db).snapshot('2026-01-09'))
             self.assertEqual(build_sector_map(pgsource), expected)
             prices = SimpleNamespace(asOf='2026-01-09', model_dump=lambda **_: {
@@ -94,9 +106,10 @@ class SectorMarketTest(unittest.TestCase):
         self.pg.execute('CREATE TRIGGER reject_price BEFORE INSERT ON sector_market_prices '
                         'FOR EACH ROW EXECUTE FUNCTION reject_price()')
         with self.assertRaises(psycopg.errors.RaiseException):
-            load_sector_market(self.db, self.pg)
+            load_sector_market(self.db, self.pg, peer_runtime=bundle)
         self.assertEqual(self.pg.execute('SELECT count(*) FROM sector_market_prices').fetchone()[0], 9)
         self.assertEqual(self.pg.execute('SELECT count(*) FROM sector_market_membership').fetchone()[0], 3)
+        self.assertEqual(PostgreSQLSectorSource(self.pg).peer_runtime().catalog.version, 'test')
 
 
 if __name__ == '__main__':

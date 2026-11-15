@@ -42,3 +42,10 @@ CREATE TABLE sector_market_index (
     sector TEXT NOT NULL, trade_date TEXT NOT NULL, value DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (sector, trade_date)
 );
+
+-- Optional captured Peer bundle, committed with the market snapshot. This
+-- does not assert the source SQLite database and file were captured atomically.
+CREATE TABLE sector_market_peer_runtime (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    payload JSONB NOT NULL
+);

@@ -12,9 +12,18 @@ _COLUMNS = ('id', 'stock_code', 'trade_date', 'open', 'high', 'low', 'close',
             'volume', 'market_cap', 'shares', 'fetched_at')
 
 
-def load_sector_market(source, destination):
+def load_sector_market(source, destination, *, peer_runtime=None):
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('A query-only SQLite transaction is required')
+    if peer_runtime is not None:
+        from models.peers import PeerRuntime
+        # Revalidate even an existing model so mutations cannot bypass validation.
+        value = peer_runtime.model_dump(mode='json') if isinstance(peer_runtime, PeerRuntime) else peer_runtime
+        peer_runtime = PeerRuntime.model_validate(value)
+        if peer_runtime.origin == 'collector' and (
+            {c.code for c in peer_runtime.catalog.companies} != set(peer_runtime.prices.prices)
+        ):
+            raise ValueError('Peer catalog and price membership differ')
     # Mapping is small; the 1M+ price history below is never materialized.
     members = effective_sectors(source)
     count = 0
@@ -22,7 +31,8 @@ def load_sector_market(source, destination):
         destination.execute('SELECT pg_advisory_xact_lock(%s)', (_LOCK_KEY,))
         destination.execute('TRUNCATE sector_market_prices, sector_market_membership, '
                             'sector_market_groups, sector_market_peer_links, '
-                            'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index')
+                            'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index, '
+                            'sector_market_peer_runtime')
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:
@@ -50,6 +60,10 @@ def load_sector_market(source, destination):
             with destination.cursor().copy(f'COPY {target} ({columns}) FROM STDIN') as copy:
                 for row in source.execute(f'SELECT {columns} FROM {table}'):
                     copy.write_row(tuple(row))
+        if peer_runtime is not None:
+            from psycopg.types.json import Jsonb
+            destination.execute('INSERT INTO sector_market_peer_runtime (payload) VALUES (%s)',
+                                (Jsonb(peer_runtime.model_dump(mode='json')),))
     return {'prices': count, 'members': len(members)}
 
 
@@ -64,6 +78,12 @@ class PostgreSQLSectorSource:
 
     def members(self):
         return dict(self.conn.execute('SELECT stock_code, sector FROM sector_market_membership'))
+
+    def peer_runtime(self):
+        """Return the bundle committed with this snapshot, or None if absent."""
+        from models.peers import PeerRuntime
+        row = self.conn.execute('SELECT payload FROM sector_market_peer_runtime WHERE singleton').fetchone()
+        return PeerRuntime.model_validate(row[0]) if row else None
 
     def benchmarks(self):
         return {sector: {'ticker': ticker, 'name': name, 'tracks': tracks, 'note': note,
