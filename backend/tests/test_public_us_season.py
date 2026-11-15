@@ -165,23 +165,23 @@ class PublicUsSeasonTests(unittest.TestCase):
                 with self.assertRaises(LookupError): action()
         self.assertEqual(before,self.path.read_bytes())
 
-    def test_restricted_provider_text_and_digest_flags_are_not_published(self):
+    def test_prepared_provider_text_and_digest_flags_are_published(self):
         from routers.spine_transcript import Detail
         for provider in ('fool', 'alphavantage'):
             with closing(sqlite3.connect(self.path)) as conn:
                 conn.execute("UPDATE transcripts SET provider=?,fetched_at=datetime('now') WHERE id=1", (provider,))
                 conn.commit()
             result=Detail(**public.stored_detail(1,path=self.path))
-            self.assertEqual(result.body,'')
-            self.assertIsNone(result.digest)
-            self.assertEqual(result.content_status,'source_only')
+            self.assertEqual(result.body,'Public transcript body')
+            self.assertEqual(result.digest,'Stored transcript summary')
+            self.assertEqual(result.content_status,'published')
             self.assertEqual(result.source_link_kind,'provider')
             self.assertTrue(result.source_url.startswith('https://'))
-            self.assertFalse(public.stored_quarters('PUBLIC',path=self.path)[0]['has_digest'])
-            self.assertFalse(public.stored_recent(path=self.path)[0]['has_digest'])
-            self.assertFalse(public.stored_companies(path=self.path)[0]['latest']['has_digest'])
+            self.assertTrue(public.stored_quarters('PUBLIC',path=self.path)[0]['has_digest'])
+            self.assertTrue(public.stored_recent(path=self.path)[0]['has_digest'])
+            self.assertTrue(public.stored_companies(path=self.path)[0]['latest']['has_digest'])
 
-    def test_verified_article_link_never_enables_restricted_text(self):
+    def test_verified_article_link_preserves_prepared_text(self):
         url = 'https://www.fool.com/earnings/call-transcripts/2026/11/02/public-public-q3-2026-earnings-call-transcript/'
         with closing(sqlite3.connect(self.path)) as conn, conn:
             conn.execute("UPDATE transcripts SET provider='fool' WHERE id=1")
@@ -190,7 +190,7 @@ class PublicUsSeasonTests(unittest.TestCase):
         before = self.path.read_bytes()
         result = public.stored_detail(1,path=self.path)
         self.assertEqual((result['source_url'],result['source_link_kind']), (url,'article'))
-        self.assertEqual((result['body'],result['digest'],result['content_status']), ('',None,'source_only'))
+        self.assertEqual((result['body'],result['digest'],result['content_status']), ('Public transcript body','Stored transcript summary','published'))
         self.assertEqual(before,self.path.read_bytes())
         for bad in ['https://[/',url.replace('www.fool.com','www.fool.com.evil.test'),url.replace('https:','http:'),url.replace('/public-public-q3','/public-public-q2'),url+'?token=private',url.replace('www.fool.com','user@www.fool.com')]:
             with closing(sqlite3.connect(self.path)) as conn, conn:

@@ -8,9 +8,9 @@
 
 ## 외부 컨콜 자료 표시 경계
 
-공개 컨콜 상세의 `content_status`는 `published` 또는 `source_only`다. 준비된 원문이 없더라도 기업·회계분기·가격 상세는 유지하며 `source_only`로 응답한다. 현재 Fool/Alpha Vantage의 본문·digest는 public 조회에서 반환하지 않고 recent/company/follow의 `has_digest`도 false로 맞춘다. `source_url`·`source_name`·`source_link_kind`로 제공사 링크와 개별 기사 링크를 구분하며 기존 수집이 개별 URL을 보존하지 않은 자료는 제공사 홈페이지로만 안내한다. 다른 공개 가능한 준비 원문과 기존 승인 문서/첨부 경로는 유지한다. `call_momentum`의 sources에 transcript가 포함된 준비 행은 summary와 파생 산문 대신 수치 순위·식별 metadata 및 `text_withheld`를 반환한다. 외부용 SQLite 준비본에서도 해당 본문/산문을 제거하며 이 제한은 전체 서비스 자료 권리 승인을 대신하지 않는다. private 컨콜 조회·생성은 유지한다.
+공개 컨콜 상세의 `content_status`는 `published` 또는 `source_only`다. 준비된 수집 원문과 기존 digest가 있으면 제공사와 관계없이 그대로 반환하고, 없으면 기업·회계분기·가격 상세는 유지하며 `source_only`로 응답한다. recent/company/follow의 `has_digest`도 준비된 digest에 맞춘다. `source_url`·`source_name`·`source_link_kind`로 제공사 링크와 개별 기사 링크를 구분한다. `call_momentum`의 transcript 기반 파생 산문은 별도의 후속 복원 범위다. private 컨콜 조회·생성은 유지한다.
 
-공개 컨콜의 `public_transcript_sources`는 직접 대조한 개별 원문 URL만 준비하며 transcript ID와 티커·회계연도/분기·콜 날짜·제공사가 모두 일치해야 한다. Motley Fool HTTPS 공식 도메인/기사 경로와 분기 suffix를 검증하고, 준비되지 않거나 맞지 않는 링크는 기존 제공사 안내를 유지한다. 원문 링크가 있어도 제한 본문·digest는 반환하지 않는다. 과거 사본의 링크 테이블 부재는 제공사 안내로 호환하며 조회 중 수집/DDL은 실행하지 않는다.
+공개 컨콜의 `public_transcript_sources`는 직접 대조한 개별 원문 URL만 준비하며 transcript ID와 티커·회계연도/분기·콜 날짜·제공사가 모두 일치해야 한다. Motley Fool HTTPS 공식 도메인/기사 경로와 분기 suffix를 검증하고, 준비되지 않거나 맞지 않는 링크는 기존 제공사 안내를 유지한다. 과거 사본의 링크 테이블 부재는 제공사 안내로 호환하며 조회 중 수집/DDL은 실행하지 않는다.
 
 ## 공개 수집 자료
 

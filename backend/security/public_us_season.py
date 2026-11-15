@@ -119,7 +119,7 @@ def stored_recent(days=7, limit=40, *, path=None):
             "SELECT t.id transcript_id,t.ticker,c.company_name,t.fiscal_year,t.fiscal_period,t.call_date,t.provider,t.fetched_at,c.fiscal_year_end,x.digest "
             "FROM transcripts t JOIN public_us_companies c ON c.ticker=t.ticker LEFT JOIN public_transcript_text x ON x.transcript_id=t.id WHERE t.fetched_at >= datetime('now',?) "
             "ORDER BY t.fetched_at DESC LIMIT ?", (f'-{days} day', limit)).fetchall()
-        return [{**{k:r[k] for k in r.keys() if k != 'digest'}, "has_digest": bool(r['digest']) and r['provider'] not in RESTRICTED_TRANSCRIPT_PROVIDERS, "cy": cy_label(r['fiscal_year'],r['fiscal_period'],r['fiscal_year_end'])} for r in rows]
+        return [{**{k:r[k] for k in r.keys() if k != 'digest'}, "has_digest": bool(r['digest']), "cy": cy_label(r['fiscal_year'],r['fiscal_period'],r['fiscal_year_end'])} for r in rows]
 
 
 def stored_sector(key, season=None, *, path=None, today=None):
@@ -148,7 +148,7 @@ def _quarters(conn, company):
                         'ORDER BY t.fiscal_year DESC,t.fiscal_period DESC', (company['ticker'],)).fetchall()
     return [{'transcript_id':r['id'],'fiscal_year':r['fiscal_year'],'fiscal_period':r['fiscal_period'],
              'cy':cy_label(r['fiscal_year'],r['fiscal_period'],company['fiscal_year_end']),
-             'call_date':r['call_date'],'has_digest':bool(r['digest']) and r['provider'] not in RESTRICTED_TRANSCRIPT_PROVIDERS} for r in rows]
+             'call_date':r['call_date'],'has_digest':bool(r['digest'])} for r in rows]
 
 
 def stored_quarters(ticker, *, path=None):
@@ -215,7 +215,7 @@ def stored_detail(transcript_id, *, path=None):
         t, f = _transcript(conn, transcript_id)
         text = conn.execute('SELECT body,digest FROM public_transcript_text WHERE transcript_id=?', (transcript_id,)).fetchone()
         source = RESTRICTED_TRANSCRIPT_PROVIDERS.get(t['provider'])
-        published = text is not None and source is None
+        published = text is not None
         article = _article_url(conn, t) if source else None
         return {'transcript_id':t['id'],'ticker':t['ticker'],'company_name':f['company_name'] or t['ticker'],
                 'fiscal_year':t['fiscal_year'],'fiscal_period':t['fiscal_period'], 'call_date':t['call_date'],
