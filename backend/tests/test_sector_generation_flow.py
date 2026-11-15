@@ -2,9 +2,11 @@
 import importlib.util
 import os
 import sqlite3
+import struct
 import tempfile
 import unittest
 import uuid
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -66,9 +68,14 @@ class SectorGenerationFlow(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, timestamp):
+    def load(self, timestamp, *, include_embeddings=False):
         source = sqlite3.connect(self.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
+        if include_embeddings:
+            import sqlite_vec
+            source.enable_load_extension(True)
+            sqlite_vec.load(source)
+            source.enable_load_extension(False)
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
         try:
@@ -85,7 +92,7 @@ class SectorGenerationFlow(unittest.TestCase):
             }
             runtime = getattr(self, 'peer_runtime', runtime)
             return load_snapshot(source, self.pg, snapshot_at=timestamp, include_sector=True, media_root=self.media,
-                                 peer_runtime=runtime,
+                                 peer_runtime=runtime, include_embeddings=include_embeddings,
                                  capacity_check=lambda *_: None)
         finally:
             source.close()
@@ -109,7 +116,7 @@ class SectorGenerationFlow(unittest.TestCase):
             self.assertEqual(peer.status_code, 200)
             self.assertEqual(peer.headers['x-explorer-generation'], generation)
         self.assertEqual(self.client.get(f'/api/refactor/media/{generation}/fixtures/sample.jpg').content, b'old image bytes')
-        with sqlite3.connect(self.path) as c:
+        with closing(sqlite3.connect(self.path)) as c, c:
             c.execute("UPDATE raw_documents SET markdown='바뀐 원문' WHERE id=1")
         (self.media / 'fixtures' / 'sample.jpg').write_bytes(b'new image bytes')
         self.load('2026-01-10T00:00:00+00:00')
@@ -139,9 +146,36 @@ class SectorGenerationFlow(unittest.TestCase):
     def test_unsafe_attachment_cannot_replace_a_valid_snapshot(self):
         self.load('2026-01-09T00:00:00+00:00')
         generation = self.client.get('/api/spine/industry/합성섹터').headers['x-explorer-generation']
-        with sqlite3.connect(self.path) as c:
+        with closing(sqlite3.connect(self.path)) as c, c:
             c.execute("UPDATE raw_documents SET media_json='[\"../outside.jpg\"]' WHERE id=1")
         with self.assertRaises(ValueError):
             self.load('2026-01-10T00:00:00+00:00')
         self.assertEqual(self.client.get('/api/spine/industry/합성섹터').headers['x-explorer-generation'], generation)
         self.assertEqual(self.client.get(f'/api/refactor/media/{generation}/fixtures/sample.jpg').content, b'old image bytes')
+
+    def test_embedding_snapshot_bytes_and_stale_generation_guard(self):
+        import sqlite_vec
+        from pipeline.postgres_embedding_snapshot import embedding_for_current_snapshot
+        blob = struct.pack('<384f', *([0.25] * 384))
+        with closing(sqlite3.connect(self.path)) as c, c:
+            c.enable_load_extension(True)
+            sqlite_vec.load(c)
+            c.enable_load_extension(False)
+            c.execute('CREATE VIRTUAL TABLE doc_vec USING vec0(embedding float[384])')
+            c.execute('CREATE TABLE doc_vec_hash(rowid INTEGER PRIMARY KEY, content_hash TEXT)')
+            c.execute('INSERT INTO doc_vec(rowid,embedding) VALUES (?,?)', (1, blob))
+            c.execute('INSERT INTO doc_vec_hash(rowid,content_hash) VALUES (?,?)', (1, 'fixture-hash'))
+        self.load('2026-01-09T00:00:00+00:00', include_embeddings=True)
+        with self.pg() as c:
+            self.assertEqual(embedding_for_current_snapshot(c, 1), (blob, 'fixture-hash'))
+            self.assertIsNone(embedding_for_current_snapshot(c, 999))
+        with closing(sqlite3.connect(self.path)) as c, c:
+            c.execute('DELETE FROM doc_vec_hash WHERE rowid=1')
+        with self.assertRaisesRegex(ValueError, 'Missing embedding hash'):
+            self.load('2026-01-10T00:00:00+00:00', include_embeddings=True)
+        with self.pg() as c:
+            self.assertEqual(embedding_for_current_snapshot(c, 1), (blob, 'fixture-hash'))
+        self.load('2026-01-10T00:00:00+00:00')
+        with self.pg() as c:
+            with self.assertRaisesRegex(ValueError, 'do not match'):
+                embedding_for_current_snapshot(c, 1)

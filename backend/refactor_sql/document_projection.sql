@@ -147,3 +147,16 @@ CREATE TABLE media_generation_refs (
     digest TEXT NOT NULL REFERENCES media_blobs(digest),
     PRIMARY KEY (generation_id, path)
 );
+
+-- Raw sqlite-vec floats are preserved verbatim; this is not a search index.
+CREATE TABLE document_embedding_metadata (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    generation_id UUID NOT NULL,
+    expected_model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL CHECK (dimensions = 384)
+);
+CREATE TABLE document_embeddings (
+    document_id BIGINT PRIMARY KEY,
+    embedding BYTEA NOT NULL CHECK (octet_length(embedding) = 1536),
+    content_hash TEXT
+);
