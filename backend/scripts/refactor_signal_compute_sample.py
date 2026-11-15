@@ -1,5 +1,7 @@
 """Measure isolated mention-signal recomputation on read-only snapshot data."""
 import os
+import json
+import re
 import resource
 import sqlite3
 import time
@@ -9,6 +11,7 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 from pipeline.postgres_signal_compute_fixture import compute_mention_signals
+from pipeline.signals import compute_mention_surge
 
 
 def main():
@@ -44,12 +47,34 @@ def main():
                             batch=[]
                     if batch:
                         cursor.executemany(sql.SQL('INSERT INTO {}.legacy_snapshot_rows VALUES (%s,%s,%s)').format(sql.Identifier(schema)),batch)
+        as_of=datetime.now(timezone.utc)
+        # main is opened mode=ro; only a temporary signals table is writable.
+        source.execute('PRAGMA query_only=OFF')
+        ddl=source.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='signals'").fetchone()[0]
+        temp_ddl,count=re.subn(r'^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?',
+                                'CREATE TEMP TABLE ',ddl,count=1,flags=re.IGNORECASE)
+        if count != 1: raise ValueError('Unsupported signals schema')
+        source.execute(temp_ddl)
+        source.execute('INSERT INTO temp.signals SELECT * FROM main.signals')
+        class SourceWrapper:
+            def execute(self,*args): return source.execute(*args)
+            def commit(self): source.commit()
+            def close(self): pass
+        expected=compute_mention_surge(as_of=as_of,connection_factory=SourceWrapper)
         with psycopg.connect(dsn,options=f'-c search_path={schema}') as conn:
             started=time.monotonic()
-            generated=compute_mention_signals(conn,as_of=datetime.now(timezone.utc))
+            generated=compute_mention_signals(conn,as_of=as_of)
             seconds=time.monotonic()-started
             peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024
-        print(f'Computed {generated} mention signals in {seconds:.1f}s; process peak {peak:.0f} MiB (includes sample loading)')
+            actual={int(row['entity_id']):json.loads(row['payload_json']) for row, in conn.execute(
+                "SELECT row_data FROM legacy_snapshot_rows WHERE table_name='signals' "
+                "AND row_data->>'signal_type'='mention_surge' AND row_data->>'date'=%s",(as_of.date().isoformat(),))}
+            mismatches=[row for row in expected if actual.get(row['entity_id']) != row['payload']]
+            if generated != len(expected) or mismatches:
+                fields={key for row in mismatches for key in row['payload'] if actual.get(row['entity_id'],{}).get(key) != row['payload'][key]}
+                doc_sets=sum({d['id'] for d in actual.get(row['entity_id'],{}).get('docs',[])} != {d['id'] for d in row['payload']['docs']} for row in mismatches)
+                raise AssertionError(f'Mention signal results differ: counts {generated}/{len(expected)}, mismatches {len(mismatches)}, fields {sorted(fields)}, different document sets {doc_sets}')
+        print(f'Computed and matched {generated} mention signals in {seconds:.1f}s; process peak {peak:.0f} MiB (includes sample loading and original comparison)')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:
