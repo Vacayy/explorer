@@ -183,10 +183,26 @@ class SectorMarketTest(unittest.TestCase):
             response = client.get('/api/spine/industry/A')
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.headers['x-explorer-generation'], str(generation))
+            with self.assertRaisesRegex(ValueError, 'replaced together'):
+                load_sector_market(self.db, self.pg)
+            self.assertEqual(client.get('/api/spine/industry/A').headers['x-explorer-generation'], str(generation))
+            # A separate, explicitly unlinked fixture still supports legacy callers.
+            self.pg.execute('UPDATE sector_market_metadata SET linked_document_generation=FALSE')
             load_sector_market(self.db, self.pg)
             response = client.get('/api/spine/industry/A')
             self.assertEqual(response.status_code, 200)
             self.assertNotIn('x-explorer-generation', response.headers)
+
+    def test_loader_rejects_non_fixture_schema(self):
+        name = 'not_a_refactor_fixture'
+        with psycopg.connect(self.dsn, autocommit=True) as c:
+            c.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(name)))
+            try:
+                c.execute(sql.SQL('SET search_path TO {}').format(sql.Identifier(name)))
+                with self.assertRaisesRegex(ValueError, 'outside the disposable fixture'):
+                    load_sector_market(self.db, c)
+            finally:
+                c.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(name)))
 
 
 if __name__ == '__main__':

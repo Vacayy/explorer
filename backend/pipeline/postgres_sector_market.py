@@ -6,6 +6,7 @@ memory. PostgreSQL replacement is one transaction, so a failure rolls back.
 This captures a derived membership map, not all source tables or Peer files.
 """
 import uuid
+import re
 
 from pipeline.sector_overrides import effective_sectors
 
@@ -33,7 +34,13 @@ def load_sector_market(source, destination, *, peer_runtime=None, document_gener
     members = effective_sectors(source)
     count = 0
     with destination.transaction():
+        database, schema = destination.execute('SELECT current_database(), current_schema()').fetchone()
+        if database != 'fixture' or not schema or not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema):
+            raise ValueError('Refusing sector writes outside the disposable fixture schema')
         destination.execute('SELECT pg_advisory_xact_lock(%s)', (_LOCK_KEY,))
+        prior = destination.execute('SELECT linked_document_generation FROM sector_market_metadata WHERE singleton').fetchone()
+        if prior and prior[0] and document_generation is None:
+            raise ValueError('A linked sector snapshot must be replaced together with documents')
         destination.execute('TRUNCATE sector_market_metadata, sector_market_prices, sector_market_membership, sector_market_companies, '
                             'sector_market_groups, sector_market_peer_links, '
                             'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index, '
