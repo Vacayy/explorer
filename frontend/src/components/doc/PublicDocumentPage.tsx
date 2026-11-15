@@ -1,6 +1,7 @@
+import { publicFeedReturn } from '@/lib/publicDocumentNavigation'
 import { MemberDocumentSaveButton } from '@/components/shared/MemberDocumentSaveButton'
 import { useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toApiError } from '@/api/errors'
 import { usePublishedDocument } from '@/hooks/usePublishedDocument'
 import { PageContainer } from '@/components/shared/PageContainer'
@@ -10,8 +11,10 @@ import { Button } from '@/components/ui/button'
 import type { PublishedAttachment } from '@/types'
 
 function DocumentContainer({ children }: { children: ReactNode }) {
+  const [params] = useSearchParams()
+  const back = publicFeedReturn(params.get('return_to'))
   return <PageContainer width="reading" className="[overflow-wrap:anywhere]">
-    <Button asChild variant="ghost" size="sm" className="self-start"><a href="/feed">공개 문서 목록</a></Button>
+    <Button asChild variant="ghost" size="sm" className="self-start"><Link to={back}>공개 문서 목록</Link></Button>
     {children}
   </PageContainer>
 }

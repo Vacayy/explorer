@@ -33,3 +33,9 @@ it('supports loading and retry', () => {
  setup();state.prices={...ready(undefined),isPending:true,fetchStatus:'fetching'};const loading=show();expect(screen.getByRole('status',{name:'데이터 불러오는 중'})).toBeTruthy();loading.unmount()
  const retry=vi.fn();state.prices={...ready(undefined),error:new Error('fixture'),refetch:retry};show();fireEvent.click(screen.getByRole('button',{name:/다시|재시도/}));expect(retry).toHaveBeenCalledOnce()
 })
+it('starts document keyword search with the exact company summary filters', () => {
+ setup();const query='?'+new URLSearchParams({price_range:'all',sector:'반도체',sector_query:'?range=3m&map_query=%3Fv%3Dtable'});show(query)
+ const link=new URL(screen.getByRole('link',{name:'기업명으로 공개 문서 검색'}).getAttribute('href')!,'https://local.invalid')
+ expect(link.pathname).toBe('/feed');expect(link.searchParams.get('q')).toBe('Fixture')
+ expect(link.searchParams.get('company_return')).toBe('/analyze/111111/summary'+query)
+})

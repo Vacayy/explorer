@@ -90,3 +90,18 @@ it('distinguishes empty public feed and zero search results; disables malformed 
   expect(screen.getByRole('alert').textContent).toContain('검색 주소')
   expect(state.calls).toHaveBeenLastCalledWith('', 'x'.repeat(2049), false)
 })
+
+it('preserves company return through search edits, paging and document links', () => {
+ const company='/analyze/005930/summary?price_range=1y&sector=semiconductor'
+ state.data=data();renderFeed('/feed?'+new URLSearchParams({q:'company',company_return:company}))
+ expect(screen.getByRole('link',{name:'기업 요약으로'}).getAttribute('href')).toBe(company)
+ fireEvent.click(screen.getByRole('link',{name:'다음'}))
+ const current=screen.getByLabelText('현재 주소').textContent!
+ const document=new URL(screen.getByRole('link',{name:'승인 자료'}).getAttribute('href')!,'https://local.invalid')
+ expect(document.searchParams.get('return_to')).toBe(current)
+ fireEvent.change(screen.getByRole('searchbox'),{target:{value:'new company'}});fireEvent.submit(screen.getByRole('search'))
+ const changed=new URL(screen.getByLabelText('현재 주소').textContent!,'https://local.invalid')
+ expect(changed.searchParams.get('cursor')).toBeNull()
+ expect(changed.searchParams.get('company_return')).toBe(company)
+ expect(changed.searchParams.get('q')).toBe('new company')
+})

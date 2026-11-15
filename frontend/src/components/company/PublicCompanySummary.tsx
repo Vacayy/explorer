@@ -1,4 +1,5 @@
-import { Link, useSearchParams } from 'react-router-dom'
+import { publicFeedUrl } from '@/lib/publicDocumentNavigation'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useCompany } from '@/hooks/useCompanySearch'
 import { usePublicCompanyPrices } from '@/hooks/usePublicCompanyPrices'
 import { PageContainer } from '@/components/shared/PageContainer'
@@ -11,6 +12,7 @@ import { FinancialPreview } from '@/components/company/CompanyFinancials'
 import { formatKrw, formatNumber } from '@/utils/format'
 
 export function PublicCompanySummary({ stockCode }: { stockCode: string }) {
+  const location = useLocation()
   const company = useCompany(stockCode)
   const [params] = useSearchParams()
   const sector = params.get('sector')
@@ -24,6 +26,7 @@ export function PublicCompanySummary({ stockCode }: { stockCode: string }) {
         <p className="text-sm text-muted-foreground">{value.market || '시장 구분 없음'} · {value.sector || '업종 분류 없음'}</p>
         <p className="text-sm text-muted-foreground">저장된 시세와 공시 재무입니다. 사업 설명·관련 자료·AI 분석의 공개 연결은 준비 중입니다.</p>
       </header>
+      <Button asChild variant="outline"><Link to={publicFeedUrl(value.corp_name, null, location.pathname + location.search)}>기업명으로 공개 문서 검색</Link></Button>
       <PublicPrices stockCode={stockCode} />
       <FinancialPreview stockCode={stockCode} publicView />
     </>}</QueryState>

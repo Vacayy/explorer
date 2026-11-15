@@ -85,3 +85,11 @@ it('does not show cached content for malformed document identifiers', () => {
   expect(screen.queryByText('승인 문서')).toBeNull()
   expect(screen.getByText('공개된 문서를 찾을 수 없습니다.')).toBeTruthy()
 })
+
+it('keeps search return after direct open and revocation while hiding cached text', () => {
+ const feed='/feed?'+new URLSearchParams({q:'company',cursor:'opaque',company_return:'/analyze/005930/summary?price_range=1y'})
+ state.data=document();state.error=new ApiError('revoked',404)
+ render(<MemoryRouter initialEntries={['/doc/12?'+new URLSearchParams({return_to:feed})]}><PublicDocumentPage docId="12"/></MemoryRouter>)
+ expect(screen.queryByText('보관된 내용')).toBeNull()
+ expect(screen.getByRole('link',{name:'공개 문서 목록'}).getAttribute('href')).toBe(feed)
+})

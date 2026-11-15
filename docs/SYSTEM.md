@@ -776,6 +776,8 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 `pipeline.group_ownership.legacy_groups_condition`은 ownership 컬럼 도입 여부를 매번 확인해 기존 스키마 또는 NULL-owner 범위를 선택한다. kr_company_data.targets의 보유/관심 tier(연결 script의 개인 컨센서스 포함), world_reads의 개인 서사/체크포인트 보유집합, watch_rules의 일괄 평가와 선행 미국 시세 수집에 적용한다. 공유 시장 수집은 유지한다. 합성 legacy 결과와 회원 추가 후 개인 집합·평가·job 요약·provider 호출 동일성을 관련47검사로 검증했다. 회원 watch 묶음·원칙/논지/알림 전체와 실제39개 job 수용을 대체하지 않는다.
 
 
+기업 요약의 회사명 검색은 `/feed`로 연결되며 `company_return`에 내부 기업 요약 경로와 시세/섹터/지도 조건을 보존한다. 문서 `return_to`는 내부 `/feed`만 검증·재구성해 검색/cursor/기업 복귀를 유지한다. 이는 승인 제목·본문 문자열 검색이며 기업 관계 추출이나 추천이 아니다.
+
 공개 `/feed`는 `PublicDocumentListPage`/`usePublishedDocuments`에서 승인 문서 목록·제목/본문 검색·이어보기·본문 이동을 제공한다. GET `/api/public/documents`는 승인 후보를 현재 본문/첨부 fingerprint로 검증한 뒤 검색·plain-text 미리보기를 만들며 마지막에 승인도 재조회한다. 후보100/읽기128MiB 제한과 암호화 cursor로 빈 중간 구간도 이어갈 수 있고 전체 비공개 수는 반환하지 않는다. publication metadata v2의 Fernet 키는 명시 준비·영속백업 대상이며 요청 자동생성 없음. 실제 승인/외부공개·공용인용/RAG는 미완이다.
 
 
