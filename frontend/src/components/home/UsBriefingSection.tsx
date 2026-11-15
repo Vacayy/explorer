@@ -1,3 +1,5 @@
+import { useUrlParam } from "@/hooks/useUrlParam"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { AlertTriangle, ChevronDown, GraduationCap,
@@ -24,7 +26,7 @@ import type { UsBriefing, UsBriefingSource, UsMoverBrief } from "@/types"
 /** 위젯 안에 넣을 때 — 바깥 카드 틀과 제목은 위젯 틀이 맡는다 */
 const EMBED = "gap-3 border-0 bg-transparent py-0 shadow-none [&>[data-slot=card-content]]:px-0 [&>[data-slot=card-header]]:px-0 [&_[data-slot=card-title]]:sr-only"
 export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) {
-  const [pickedDate, setPickedDate] = useState<string | null>(null)
+  const [pickedDate, setPickedDate] = useUrlParam("usdate", "")
   const { data, isLoading, isError, refetch, refresh, refreshing } = useUsBriefing(pickedDate)
   const { data: dates = [] } = useUsBriefingDates()
   const [open, setOpen] = useState(false)
@@ -32,7 +34,7 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
   if (isLoading) return <Skeleton className="h-80 w-full rounded-card" />
   if (isError || !data || data.status === "error")
     return <ErrorState message={data?.error ?? "미국장 브리핑을 불러올 수 없습니다."} onRetry={() => refetch()} />
-  if (data.movers.length === 0)
+  if (data.movers.length === 0 && !data.synthesis)
     return (
       <Card data-home-briefing className={embedded ? EMBED : undefined}>
         <CardHeader className="pb-2 flex flex-wrap items-start gap-3">
@@ -40,8 +42,8 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
             <TrendingUp className="h-4 w-4 text-primary" /> 어젯밤 미국장 브리핑
           </CardTitle>
           <div className="ml-auto flex items-center gap-1.5">
-            <UsBriefingSourcesDialog />
-            <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트" />
+            {!PUBLIC_ACCESS && <UsBriefingSourcesDialog />}
+            {!PUBLIC_ACCESS && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트" />}
           </div>
         </CardHeader>
         <CardContent>
@@ -59,8 +61,8 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
   const controls = (
     <div className="ml-auto flex items-center gap-1">
       {dates.length > 1 && (
-        <Select value={pickedDate ?? "latest"}
-          onValueChange={(v) => setPickedDate(v === "latest" ? null : v)}>
+        <Select value={pickedDate || "latest"}
+          onValueChange={(v) => setPickedDate(v === "latest" ? "" : v)}>
           <SelectTrigger className="h-7 w-24 text-caption" aria-label="브리핑 날짜">
             <SelectValue placeholder="날짜" />
           </SelectTrigger>
@@ -74,8 +76,8 @@ export function UsBriefingSection({ embedded = false }: { embedded?: boolean }) 
           </SelectContent>
         </Select>
       )}
-      {!embedded && <UsBriefingSourcesDialog />}
-      {!pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
+      {!embedded && !PUBLIC_ACCESS && <UsBriefingSourcesDialog />}
+      {!PUBLIC_ACCESS && !pickedDate && <RefreshButton onClick={refresh} pending={refreshing} title="지금 업데이트 (전날 미국장 재수집·재종합)" />}
       {!embedded && <Link to="/follow/transcripts" className="text-caption text-muted-foreground hover:text-foreground">컨콜 기업 목록 →</Link>}
     </div>
   )

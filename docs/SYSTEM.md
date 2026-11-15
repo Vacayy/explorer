@@ -807,3 +807,6 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 공개 `/chat`은 `PublicTrialChatPage`와 메모리 전용 `useTrialChat`를 사용한다. 공개 문서 목록/원문 버튼에서 진입하고, `/chat?doc=<id>`는 현재 공개 조회에 성공한 뒤 선택한다. 최대4개 문서 선택이 필수이며 질문 자연어를 검색어로 재사용하지 않는다. 자료 검색/cursor는 URL, 질문 draft/선택/대화는 component 메모리다. 계정 scope 변경 시 key remount로 draft/선택을 비우고 hook은 이전 응답을 폐기한다. 답변은 plain text, `/doc/<positive id>` 인용만 링크다. 소진·부분 근거·조회/실행 오류·로딩/빈 상태를 구분하며 초기화/로그인이 체험 횟수를 복원한다고 표시하지 않는다. 기존 private ChatPage는 유지한다.
 
 화면 검증은 실제 ASGI 합성자료 승인/list/read 및 PublicEvidence를 거친 합성 completion 응답으로 수행했다. Chrome에서 명시 문서+자연어 질문3회/소진, 인용 표시, 질문 마크업 비실행, reload 대화 제거, 다른 페이지 후 seed 없는 재진입 선택 제거, local/sessionStorage·console canary 부재,390px 가로 overflow 부재를 확인했다. `?doc`로 재진입하면 URL 의도대로 문서를 새로 검증해 선택하므로 이 동작은 저장된 대화 복원이 아니다. 실제 공급자/dispatcher/공개 배포 검증을 대신하지 않는다.
+
+
+공개 미국장 브리핑: `security.public_us_briefing`은 `us_briefings` 본문/생성시각 및 `us_movers` 수치 열만 readonly로 읽는다. 기존 정규화·업종 집계·개별 움직임 계산을 재사용하며 private coverage/narrative/job/log/수집을 호출하지 않는다. `/api/spine/us/briefing`와 `/list`는 같은 기존 응답 모델을 유지하고 public force=true는403이다. 본문 출처는 승인 문서만 재구성하며 수집 진단·모델명은 공개하지 않는다. 원래 홈/미국장 카드의 `usdate` URL 선택으로 저장된 날짜를 함께 조회한다. 과거 종목 스냅샷이 없는 날도 저장 본문을 표시하며 부분 상태를 유지한다.

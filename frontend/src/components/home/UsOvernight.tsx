@@ -1,3 +1,4 @@
+import { UsBriefingDate } from "@/components/home/UsBriefingDate"
 import { Link } from "react-router-dom"
 import { ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -95,11 +96,12 @@ export function UsOvernightBody() {
   const d = q.data
   if (!d) return <WidgetState loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} />
   if (d.status === "error") return <WidgetState error onRetry={() => void q.refetch()} />
-  if (d.movers.length === 0) return <WidgetState empty emptyText="오늘 브리핑이 아직 없어요. 매일 06:30에 만들어집니다." />
+  if (d.movers.length === 0 && !d.synthesis) return <WidgetState empty emptyText="오늘 브리핑이 아직 없어요. 매일 06:30에 만들어집니다." />
   const s = d.synthesis
   const lead = (s?.drivers || s?.index_summary || s?.issues || "").replace(/\[\d+\]/g, "").split(/(?<=[.다요])\s/)[0]
   // 물방울은 칸 전체(머리 포함)를 덮는다 — 기준 상자는 바깥 칸(relative), 여기는 static
   return <DropletReveal className="static flex h-full flex-col gap-3.5 overflow-visible">
+    <UsBriefingDate />
     {/* 칸 높이는 고정 — 요지·핵심·쏠림·칩은 그 안에서 스크롤, 전체 보기 버튼은 바닥에 고정 */}
     <ScrollArea className="min-h-0 flex-1 -mr-2" viewportClassName="pr-2 [&>div]:!block"><div className="flex flex-col gap-3.5">
     {lead && <p className="text-[17px] leading-[1.55] font-medium text-pretty">{lead}</p>}

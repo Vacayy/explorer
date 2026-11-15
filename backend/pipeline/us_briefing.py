@@ -174,11 +174,11 @@ def _enrich_coverage(conn, ticker: str) -> dict:
             "mentions": _recent_mentions(conn, ids, names)}
 
 
-def _build_movers(conn, items: list[dict]) -> list[dict]:
+def _build_movers(conn, items: list[dict], *, include_coverage: bool = True) -> list[dict]:
     """스냅샷 행 → 브리핑 mover(클러스터·커버리지 부착)."""
     out = []
     for r in items:
-        cov = _enrich_coverage(conn, r["ticker"])
+        cov = _enrich_coverage(conn, r["ticker"]) if include_coverage else {"coverage": "uncovered"}
         out.append({
             "rank": r["rank"], "ticker": r["ticker"], "name": r["name"],
             "dollar_volume": r["dollar_volume"], "change_pct": r["change_pct"],
