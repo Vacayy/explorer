@@ -161,6 +161,24 @@ def _timeline_source_rows(source, *, batch_size=250):
                    json.dumps(doc.model_dump(mode='json'), ensure_ascii=False))
 
 
+def _timeline_system_rows(source):
+    """Capture existing system-lane items without calling a generator or LLM."""
+    from pipeline.timeline import _projection, timeline
+    query, params = _projection(source, scope='system')
+    metadata = {r['id']: r for r in source.execute(query, params) if r['ts']}
+    page = 1
+    while True:
+        result = timeline(source, scope='system', size=250, page=page,
+                          until='9999-12-31T23:59:59+00:00')
+        for item in result.items:
+            row = metadata[item.id]
+            yield (item.id, item.occurred_at, row['channel'], row['topic'], row['preview'] or '',
+                   json.dumps(item.model_dump(mode='json'), ensure_ascii=False))
+        if not result.has_more:
+            break
+        page += 1
+
+
 def _insert_batches(target, query, records, *, size=500):
     records = iter(records)
     with target.cursor() as cursor:
@@ -214,6 +232,7 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         groups = _source_groups(source)
         target.execute('DELETE FROM legacy_snapshot_rows')
         target.execute('DELETE FROM legacy_snapshot_tables')
+        target.execute('DELETE FROM timeline_system_projection')
         target.execute('DELETE FROM timeline_source_projection')
         target.execute('DELETE FROM document_filter_order')
         target.execute('DELETE FROM document_entity_order')
@@ -254,6 +273,8 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
                         _filter_orders(source, ordinal_keys))
         _insert_batches(target, 'INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_source_rows(source))
+        _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s::jsonb)',
+                        _timeline_system_rows(source))
         target.execute('INSERT INTO snapshot_metadata '
                        '(singleton,snapshot_at,source_observed_at,document_count,list_row_count) '
                        'VALUES (TRUE,%s,%s,%s,%s)',

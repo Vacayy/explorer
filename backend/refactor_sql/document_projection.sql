@@ -83,3 +83,13 @@ CREATE TABLE timeline_source_projection (
 );
 CREATE INDEX timeline_source_order ON timeline_source_projection (occurred_at DESC, id DESC);
 CREATE INDEX timeline_source_channel ON timeline_source_projection (channel, occurred_at DESC, id DESC);
+
+CREATE TABLE timeline_system_projection (
+    id TEXT PRIMARY KEY,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    channel TEXT NOT NULL,
+    topic TEXT,
+    preview TEXT NOT NULL,
+    item JSONB NOT NULL
+);
+CREATE INDEX timeline_system_order ON timeline_system_projection (occurred_at DESC, id DESC);

@@ -142,6 +142,21 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
             timeline_matches[name] = (expected.has_more == actual.has_more and
                                       [i.model_dump() for i in expected.items] == [i.model_dump() for i in actual.items])
         result['source_timeline_cases_match'] = timeline_matches
+        system_cases = {'mixed': {'scope': 'all'}, 'system': {'scope': 'system'},
+                        'person': {'scope': 'system', 'kind': 'person'},
+                        'company': {'scope': 'system', 'kind': 'company'},
+                        'transcript': {'scope': 'system', 'kind': 'transcript'},
+                        'trade': {'scope': 'system', 'kind': 'trade'},
+                        'narrative': {'scope': 'system', 'kind': 'narrative'},
+                        'report': {'scope': 'system', 'kind': 'report'},
+                        'scenario': {'scope': 'system', 'kind': 'scenario'}}
+        system_matches = {}
+        for name, params in system_cases.items():
+            expected = timeline(source, until=fixed_until, **params)
+            actual = timeline_reader.timeline(until=fixed_until, **params)
+            system_matches[name] = (expected.has_more == actual.has_more and
+                                     [i.model_dump() for i in expected.items] == [i.model_dump() for i in actual.items])
+        result['system_timeline_cases_match'] = system_matches
         # Copy a few real attachment bytes to an isolated temporary directory;
         # source volume is read-only and no original paths or content are logged.
         attached, missing = 0, 0
@@ -200,6 +215,7 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
         if retain and all((result['source_table_counts_match'], result['source_row_values_match'],
                            all(result['feed_cases_match'].values()), result['detail_samples_match'],
                            all(result['source_timeline_cases_match'].values()),
+                           all(result['system_timeline_cases_match'].values()),
                            result['raw_detail_samples_match'] or retain_on_mismatch)):
             result['fixture_schema'] = schema
             retain_completed = True

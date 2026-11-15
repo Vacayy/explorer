@@ -174,6 +174,21 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual([i.model_dump() for i in actual.items], [i.model_dump() for i in expected[key].items], key)
             self.assertEqual(actual.has_more, expected[key].has_more, key)
 
+    def test_system_and_mixed_timeline_match_sqlite(self):
+        from pipeline.timeline import timeline
+        with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO source_digests VALUES (1,'person','합성 인물','저장 요약',1,'2026-01-01')")
+            c.commit()
+            cases = {'system': {'scope': 'system'}, 'person': {'scope': 'system', 'kind': 'person'},
+                     'all': {'scope': 'all'}, 'topic': {'scope': 'all', 'topic': '합성 회사'}}
+            expected = {key: timeline(c, until='2026-01-06T00:00:00Z', **params) for key, params in cases.items()}
+        self.load('2026-01-06T00:00:00+00:00')
+        reader = PostgreSQLTimelineSources(self.pg)
+        for key, params in cases.items():
+            actual = reader.timeline(until='2026-01-06T00:00:00Z', **params)
+            self.assertEqual([i.model_dump() for i in actual.items], [i.model_dump() for i in expected[key].items], key)
+            self.assertEqual(actual.has_more, expected[key].has_more, key)
+
     def test_rebuild_details_from_pg_and_rollback_on_failure(self):
         self.load('2026-01-05T00:00:00+00:00')
         original = self.reader.get(1).model_dump()
