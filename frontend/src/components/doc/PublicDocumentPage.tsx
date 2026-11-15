@@ -54,27 +54,29 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
   if (!query.data || query.isFetching) return <DocumentContainer><p role="status">공개 문서를 불러오는 중…</p></DocumentContainer>
   const document = query.data
   const sourceUrl = safeExternalUrl(document.url)
-  const reading = params.get('reading') === 'summary' ? 'summary' : 'original'
+  const isVideo = document.source_type === 'youtube'
+  const requested = params.get('reading')
+  const reading = requested === 'summary' ? 'summary' : isVideo ? (requested === 'transcript' ? 'transcript' : 'digest') : 'original'
   return <DocumentContainer>
     <header className="space-y-2">
       <h1 className="text-xl font-medium">{document.title || '제목 없는 문서'}</h1>
       {sourceUrl && <Button asChild variant="outline" size="sm"><a href={sourceUrl} target="_blank" rel="noopener noreferrer">출처 페이지</a></Button>}
     </header>
-    <SegmentTabs tabs={[{ value: 'original', label: '원문' }, { value: 'summary', label: '저장 요약' }]}
-      value={reading} onChange={value => setParams(prev => { const next = new URLSearchParams(prev); value === 'summary' ? next.set('reading', value) : next.delete('reading'); return next })} />
+    <SegmentTabs tabs={isVideo ? [{ value: 'digest', label: 'AI 정리본' }, { value: 'transcript', label: '원본 자막' }, { value: 'summary', label: '짧은 요약' }] : [{ value: 'original', label: '원문' }, { value: 'summary', label: '저장 요약' }]}
+      value={reading} onChange={value => setParams(prev => { const next = new URLSearchParams(prev); next.set('reading', value); return next })} />
     <PublishedDocumentBody document={document} reading={reading} showToggle={false} />
   </DocumentContainer>
 }
 
 /** Approved text and document-bound attachments; never resolves raw /media or private document tools. */
-export function PublishedDocumentBody({ document, reading = 'summary', showToggle = true }: { document: PublishedDocument; reading?: 'summary' | 'original'; showToggle?: boolean }) {
+export function PublishedDocumentBody({ document, reading = 'summary', showToggle = true }: { document: PublishedDocument; reading?: 'summary' | 'original' | 'digest' | 'transcript'; showToggle?: boolean }) {
   const id = document.id
   const [showOriginal, setShowOriginal] = useState(false)
   const hasSummary = !!document.summary?.trim()
   const attachments = document.attachments.filter(attachment => Number.isSafeInteger(attachment.id) && attachment.id >= 0
     && attachment.url === `/api/public/documents/${id}/attachments/${attachment.id}`)
   const hasOriginal = !!document.content.trim() || attachments.length > 0
-  const doc = { source_type: document.source_type, content: document.content, summary: document.summary ?? null, images: [] }
+  const doc = { source_type: document.source_type, content: document.content, summary: document.summary ?? null, images: [], video_digest: document.video_digest, transcript: document.transcript }
   const markdownComponents = { img: () => null, a: ({ href, children }: { href?: string; children?: ReactNode }) => {
     const safe = safeExternalUrl(href)
     return safe ? <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>
@@ -88,6 +90,7 @@ export function PublishedDocumentBody({ document, reading = 'summary', showToggl
     </section>}
   </>
   return <>
+    {(reading === 'digest' || reading === 'transcript') && <DocumentBody doc={doc} reading={reading} markdownComponents={markdownComponents} />}
     {reading === 'summary' && (hasSummary || !showToggle) && <section aria-label="요약" className="min-w-0 space-y-3">
       <DocumentBody doc={doc} reading="summary" mediaSize="preview" markdownComponents={markdownComponents} />
       {showToggle && hasSummary && hasOriginal &&

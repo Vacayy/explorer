@@ -2081,6 +2081,9 @@ export interface PublishedChannel { id: string; name: string; platform: string }
 export interface PublicFeedChannel extends PublishedChannel { count: number; latest_at: string | null; preview: string }
 export interface PublicFeed { channels: PublicFeedChannel[]; items: PublishedDocumentItem[]; page: number; has_more: boolean; until: string }
 export interface PublishedDocument {
+  digest_status?: string | null
+  video_digest?: string | null
+  transcript?: string | null
   channel?: PublishedChannel | null
   summary?: string | null
   id: number

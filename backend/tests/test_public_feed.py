@@ -9,6 +9,22 @@ from security.public_documents import DocumentUnavailable
 class PublicFeedTests(unittest.TestCase):
     setUp = fixtures.PublicDocumentTests.setUp
     mutate = fixtures.PublicDocumentTests.mutate
+    def test_collection_youtube_reads_only_stored_public_video_fields(self):
+        with sqlite3.connect(self.source) as conn:
+            conn.executescript('''ALTER TABLE raw_documents ADD COLUMN source_id TEXT;
+                UPDATE raw_documents SET source_type='youtube', markdown='Saved digest' WHERE id=1;
+                CREATE TABLE enrichments(id INTEGER PRIMARY KEY,doc_id INTEGER,summary TEXT,enriched_at TEXT);
+                INSERT INTO enrichments VALUES(1,1,'Short summary','2026-11-14');
+                CREATE TABLE public_collection_index(doc_id INTEGER PRIMARY KEY,channel TEXT,name TEXT,platform TEXT,title TEXT,published_at TEXT,sort_at TEXT);
+                INSERT INTO public_collection_index VALUES(1,'youtube:test','test','youtube','Video','2026-11-14','2026-11-14');
+                CREATE TABLE public_youtube_reading(doc_id INTEGER PRIMARY KEY,digest_status TEXT,transcript TEXT);
+                INSERT INTO public_youtube_reading VALUES(1,'ok','Saved captions');''')
+        response = self.client.get('/api/public/documents/1')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((response.json()['video_digest'], response.json()['transcript'], response.json()['summary']),
+                         ('Saved digest', 'Saved captions', 'Short summary'))
+        self.assertNotIn('private-canary', response.text)
+
     def test_collection_reads_indexed_documents_and_stored_summaries_without_approvals(self):
         with sqlite3.connect(self.source) as conn:
             conn.executescript('''CREATE TABLE enrichments(id INTEGER PRIMARY KEY,doc_id INTEGER,summary TEXT,enriched_at TEXT);

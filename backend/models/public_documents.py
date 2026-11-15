@@ -27,6 +27,9 @@ class PublishedDocument(BaseModel):
     attachments: list[PublishedAttachment]
     channel: PublishedChannel | None = None
     summary: str | None = None
+    digest_status: str | None = None
+    video_digest: str | None = None
+    transcript: str | None = None
 
 
 class PublicationPreview(BaseModel):

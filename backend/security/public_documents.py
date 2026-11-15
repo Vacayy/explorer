@@ -146,6 +146,9 @@ class PublicDocuments:
                 channel = channel_for(conn, row) if row else None
                 collection = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='public_collection_index'").fetchone() is not None
                 summary = conn.execute('SELECT summary FROM enrichments WHERE doc_id=? ORDER BY enriched_at DESC,id DESC LIMIT 1', (doc_id,)).fetchone() if collection and row else None
+                video = None
+                if collection and row and row['source_type'] == 'youtube' and conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='public_youtube_reading'").fetchone():
+                    video = conn.execute('SELECT digest_status, transcript FROM public_youtube_reading WHERE doc_id=?', (doc_id,)).fetchone()
             finally:
                 conn.close()
             if not row: raise DocumentUnavailable()
@@ -155,8 +158,12 @@ class PublicDocuments:
             content = row['markdown'] or row['raw_content'] or ''
             if not isinstance(content, str) or len(content.encode('utf8')) > MAX_TEXT:
                 raise DocumentUnavailable()
+            if video and video['transcript'] is not None and (not isinstance(video['transcript'], str) or len(video['transcript'].encode('utf8')) > MAX_TEXT):
+                raise DocumentUnavailable()
             if budget is not None:
                 budget.consume(len(content.encode('utf8')))
+                if video and video['transcript']:
+                    budget.consume(len(video['transcript'].encode('utf8')))
             paths = json.loads(row['media_json']) if row['media_json'] else []
             if not isinstance(paths, list) or len(paths) > MAX_FILES or len(set(paths)) != len(paths):
                 raise DocumentUnavailable()
@@ -173,10 +180,15 @@ class PublicDocuments:
             document = PublishedDocument(id=doc_id, title=row['title'] or '', source_type=row['source_type'] or '',
                 url=_safe_url(row['url']), published_at=row['published_at'], content=content,
                 content_kind='stored_markdown' if row['markdown'] else 'stored_text', attachments=attachments, channel=channel,
-                summary=summary[0] if summary else None)
+                summary=summary[0] if summary else None, digest_status=video['digest_status'] if video else None,
+                video_digest=content if video and video['digest_status'] == 'ok' else None,
+                transcript=video['transcript'] if video else None)
             material = {'version':1, 'document':document.model_dump(mode='json'), 'attachments':manifest}
             if document.summary is None:
                 material['document'].pop('summary')
+            for field in ('digest_status', 'video_digest', 'transcript'):
+                if material['document'][field] is None:
+                    material['document'].pop(field)
             if channel is None:
                 material['document'].pop('channel')  # Preserve old approvals with no additional source metadata.
             fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True, ensure_ascii=False, separators=(',',':')).encode()).hexdigest()
