@@ -322,14 +322,14 @@ THEME_MIN_BASE_DOCS = 3    # 주제 신규성 판정용 (직전 언급 이만큼
 THEME_LIMIT = 12
 
 
-def compute_theme_surge() -> list[dict]:
+def compute_theme_surge(*, connection_factory=None) -> list[dict]:
     """주목 주제 — 똑똑한 소스들이 '유독 지금' 몰리는 화두 (mention_surge의 테마판).
 
     전체 유입 증가에 강건하도록 절대 배수가 아닌 '점유율(share) 상승'으로:
     전체 문서 중 이 주제의 비중이 최근에 늘었나. 문서 유형 메타 라벨은 제외.
     요약(왜 화두인지)은 interpret_pending이 근거 문서로 채운다. LLM 0(감지).
     """
-    conn = get_connection()
+    conn = (connection_factory or get_connection)()
     tot = conn.execute("""
         SELECT SUM(published_at >= datetime('now','-7 days')) r,
                SUM(published_at >= datetime('now','-14 days') AND published_at < datetime('now','-7 days')) b

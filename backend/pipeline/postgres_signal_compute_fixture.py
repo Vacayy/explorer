@@ -3,10 +3,10 @@ import sqlite3
 import uuid
 from psycopg.types.json import Jsonb
 from pipeline.postgres_graph_fixture import _guard
-from pipeline.signals import compute_mention_surge
+from pipeline.signals import compute_mention_surge, compute_theme_surge
 
 
-def compute_mention_signals(conn, *, as_of):
+def compute_mention_signals(conn, *, as_of, include_themes=False):
     _guard(conn)
     names=('entities','raw_documents','entity_links','enrichments','signals')
     uri='file:fixture-'+uuid.uuid4().hex+'?mode=memory&cache=shared'
@@ -55,6 +55,8 @@ def compute_mention_signals(conn, *, as_of):
             db.row_factory=sqlite3.Row
             return db
         generated=compute_mention_surge(as_of=as_of,connection_factory=factory)
+        if include_themes:
+            compute_theme_surge(connection_factory=factory)
         rows=[dict(row) for row in root.execute('SELECT * FROM signals')]
         conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='signals'")
         with conn.cursor() as cursor:

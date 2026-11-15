@@ -11,7 +11,7 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 from pipeline.postgres_signal_compute_fixture import compute_mention_signals
-from pipeline.signals import compute_mention_surge
+from pipeline.signals import compute_mention_surge, compute_theme_surge
 
 
 def main():
@@ -58,12 +58,13 @@ def main():
         source.execute('INSERT INTO temp.signals SELECT * FROM main.signals')
         class SourceWrapper:
             def execute(self,*args): return source.execute(*args)
-            def commit(self): source.commit()
+            def commit(self): pass
             def close(self): pass
         expected=compute_mention_surge(as_of=as_of,connection_factory=SourceWrapper)
+        expected_themes=compute_theme_surge(connection_factory=SourceWrapper)
         with psycopg.connect(dsn,options=f'-c search_path={schema}') as conn:
             started=time.monotonic()
-            generated=compute_mention_signals(conn,as_of=as_of)
+            generated=compute_mention_signals(conn,as_of=as_of,include_themes=True)
             seconds=time.monotonic()-started
             peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024
             actual={int(row['entity_id']):json.loads(row['payload_json']) for row, in conn.execute(
@@ -74,7 +75,14 @@ def main():
                 fields={key for row in mismatches for key in row['payload'] if actual.get(row['entity_id'],{}).get(key) != row['payload'][key]}
                 doc_sets=sum({d['id'] for d in actual.get(row['entity_id'],{}).get('docs',[])} != {d['id'] for d in row['payload']['docs']} for row in mismatches)
                 raise AssertionError(f'Mention signal results differ: counts {generated}/{len(expected)}, mismatches {len(mismatches)}, fields {sorted(fields)}, different document sets {doc_sets}')
-        print(f'Computed and matched {generated} mention signals in {seconds:.1f}s; process peak {peak:.0f} MiB (includes sample loading and original comparison)')
+            actual_themes={int(row['entity_id']):json.loads(row['payload_json']) for row, in conn.execute(
+                "SELECT row_data FROM legacy_snapshot_rows WHERE table_name='signals' "
+                "AND row_data->>'signal_type'='theme_surge' AND row_data->>'date'=%s",(as_of.date().isoformat(),))}
+            mismatched_themes=[row for row in expected_themes if actual_themes.get(row['entity_id']) != row['payload']]
+            if mismatched_themes:
+                fields={key for row in mismatched_themes for key in row['payload'] if actual_themes.get(row['entity_id'],{}).get(key) != row['payload'][key]}
+                raise AssertionError(f'Theme signal mismatch: {len(mismatched_themes)} of {len(expected_themes)}; fields {sorted(fields)}')
+        print(f'Computed and matched {generated} mention and {len(expected_themes)} theme signals in {seconds:.1f}s; process peak {peak:.0f} MiB (includes sample loading and original comparison)')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:

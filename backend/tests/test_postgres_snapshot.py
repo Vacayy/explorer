@@ -176,16 +176,21 @@ class SnapshotReplacementTests(unittest.TestCase):
             for ident in (3,4,5):
                 c.execute("INSERT INTO raw_documents VALUES (?,'blog',?,'합성 자료','https://example.test','2026-01-02','본문','본문',NULL,NULL,NULL)",(ident,f'new-{ident}'))
                 c.execute("INSERT INTO entity_links VALUES (?,7,'stock',0.9)",(ident,))
+            c.execute("INSERT INTO entities VALUES (8,'theme','합성 주제',NULL)")
+            for ident in (6,7,8,9,10,11):
+                c.execute("INSERT INTO raw_documents VALUES (?,'blog',?,'합성 주제 문서','https://example.test','2099-01-01','본문','본문',NULL,NULL,NULL)",(ident,f'theme-{ident}'))
+                c.execute("INSERT INTO entity_links VALUES (?,8,'topic',0.9)",(ident,))
         self.load('2026-01-03T00:00:00+00:00',include_signals=True)
         instant=datetime(2026,1,3,tzinfo=timezone.utc)
         with self.pg() as c:
-            self.assertEqual(compute_mention_signals(c,as_of=instant),1)
-            self.assertEqual(compute_mention_signals(c,as_of=instant),1)
-            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='signals'").fetchone()[0],1)
+            self.assertEqual(compute_mention_signals(c,as_of=instant,include_themes=True),1)
+            self.assertEqual(compute_mention_signals(c,as_of=instant,include_themes=True),1)
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='signals'").fetchone()[0],2)
         with self.pg() as c:
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             item=signals_items(c,since='2026-01-01',signal_type='mention_surge')[0]
             self.assertEqual(item.payload['count_7d'],3)
+            self.assertEqual(signals_items(c,since='2026-01-01',signal_type='theme_surge')[0].payload['recent'],6)
 
     def test_transcript_detail_and_quarters_use_snapshot(self):
         with self.fixture.connect() as c:
