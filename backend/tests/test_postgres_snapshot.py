@@ -262,6 +262,8 @@ class SnapshotReplacementTests(unittest.TestCase):
             generation = c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
             c.execute('INSERT INTO document_embeddings VALUES (1,%s,%s),(2,%s,%s)', (vector,'a',vector,'b'))
             c.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture',384,2,0,0)", (generation,))
+            c.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{content_hash}',to_jsonb('a'::text)) "
+                      "WHERE table_name='raw_documents' AND row_data->>'id'='1'")
             store_document(c, source_type='note', source_id='synthetic-2', title='변경 자료', markdown='배터리 새 본문')
             new = store_document(c, source_type='note', source_id='new', title='신규 자료', markdown='새로운 내용')
         destination = 'refactor_fixture_' + uuid.uuid4().hex
@@ -348,6 +350,51 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertIsNone(self.reader.get(2).summary)
         with target() as c:
             self.assertEqual(bytes(c.execute('SELECT embedding FROM document_embeddings WHERE document_id=2').fetchone()[0]),vector)
+
+    def test_note_media_change_keeps_all_existing_summaries_and_captures_bytes(self):
+        import tempfile
+        from pipeline.store import _hash
+        with self.fixture.connect() as c:
+            c.execute("INSERT INTO enrichments VALUES (3,2,'요약 하나','one','2026-01-01')")
+            c.execute("INSERT INTO enrichments VALUES (4,2,'요약 둘','two','2026-01-02')")
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            c.execute('UPDATE ingest_documents SET content_hash=%s WHERE id=2', (_hash(''),))
+            changed = store_document(c,source_type='note',source_id='synthetic-2',title='',markdown='',media=['new.png'])
+            self.assertEqual(changed['status'], 'unchanged')
+        destination = 'refactor_fixture_' + uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                with self.pg() as c:
+                    c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                    copy_with_note_changes(c,self.schema,destination,media_root=tmp)
+            with target() as c:
+                self.assertEqual(c.execute('SELECT count(*) FROM document_projection').fetchone()[0],0)
+            (Path(tmp)/'new.png').write_bytes(b'synthetic image bytes')
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                result = copy_with_note_changes(c,self.schema,destination,media_root=tmp)
+        reader = PostgreSQLDocumentReader(target)
+        self.assertEqual(reader.get(2).images,['new.png'])
+        self.assertEqual(reader.get(2).summary,'요약 둘')
+        note = reader.list(source='note')
+        self.assertEqual({item.summary for item in note.items},{'요약 하나','요약 둘'})
+        self.assertEqual({item.content for item in note.items},{None})
+        with target() as c:
+            data = c.execute('SELECT b.content FROM media_generation_refs r JOIN media_blobs b ON b.digest=r.digest '
+                             'WHERE r.generation_id=%s AND r.path=%s',(result['generation'],'new.png')).fetchone()
+            self.assertEqual(bytes(data[0]),b'synthetic image bytes')
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed
