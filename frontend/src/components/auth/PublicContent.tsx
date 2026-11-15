@@ -1,3 +1,4 @@
+import { MemberSavedPage } from '@/components/follow/MemberSavedPage'
 import { PublicMacroPage } from '@/components/home/PublicMacroPage'
 import { PublicCompanySummary } from '@/components/company/PublicCompanySummary'
 import { PublicKrSectorPage } from '@/components/industry/PublicKrSectorPage'
@@ -28,6 +29,7 @@ export function PublicContent() {
   if (pathname === '/financials') return <PublicFinancialSearch />
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
   if (pathname === '/chat') return <PublicTrialChatPage />
+  if (pathname === '/feed/saved') return <MemberSavedPage />
   if (pathname === '/feed') return <PublicDocumentListPage />
   if (pathname === '/portfolio/principles') return <MemberPrinciplesPage />
   if (pathname === '/portfolio') return <MemberPortfolioPage />

@@ -2123,3 +2123,10 @@ export interface PublicMacroResponse {
   items: PublicMacroIndicator[]
   coverage: PublicMacroCoverage[]
 }
+
+export interface MemberSavedDocument {
+  id: number; doc_id: number; title: string | null; url: string | null
+  available: boolean; status: 'available' | 'unavailable' | 'changed'; current_url: string | null
+  note: string | null; created_at: string
+}
+export interface MemberSavedResponse { items: MemberSavedDocument[]; next_offset: number | null }

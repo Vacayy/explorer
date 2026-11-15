@@ -194,6 +194,8 @@ from routers import public_documents
 app.include_router(public_documents.router)
 from routers import member_portfolio
 app.include_router(member_portfolio.router)
+from routers import member_saved
+app.include_router(member_saved.router)
 from routers import trial_chat
 app.include_router(trial_chat.router)
 

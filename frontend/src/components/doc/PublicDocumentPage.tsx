@@ -1,3 +1,4 @@
+import { MemberDocumentSaveButton } from '@/components/shared/MemberDocumentSaveButton'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { toApiError } from '@/api/errors'
@@ -51,6 +52,8 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
   return <DocumentContainer>
     <header className="space-y-2">
       <h1 className="text-xl font-medium">{document.title || '제목 없는 문서'}</h1>
+      <MemberDocumentSaveButton docId={id} />
+      <Button asChild variant="outline" size="sm"><Link to="/feed/saved">내 저장 목록</Link></Button>
       <Button asChild variant="outline" size="sm"><Link to={`/chat?doc=${id}`}>이 문서로 체험 채팅</Link></Button>
       {sourceUrl && <Button asChild variant="outline" size="sm"><a href={sourceUrl} target="_blank" rel="noopener noreferrer">출처 페이지</a></Button>}
     </header>

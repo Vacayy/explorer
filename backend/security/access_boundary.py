@@ -20,6 +20,10 @@ NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy'
 # Only these existing endpoints have been reviewed at this stage. Each business
 # route needs public projection or ownership validation before joining this map.
 PUBLIC_ROUTE_POLICIES = {
+    ('GET', '/api/member/saved'): 'member',
+    ('POST', '/api/member/saved'): 'member',
+    ('PATCH', '/api/member/saved/{item_id}'): 'member',
+    ('DELETE', '/api/member/saved/{item_id}'): 'member',
     ('GET', '/api/member/portfolio/principles/rules'): 'member',
     ('GET', '/api/member/portfolio/principles/state'): 'member',
     ('GET', '/api/member/portfolio/principles'): 'member',

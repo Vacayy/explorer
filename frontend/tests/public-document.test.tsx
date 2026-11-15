@@ -7,6 +7,7 @@ import type { PublishedDocument } from '@/types'
 const state = vi.hoisted(() => ({ data: undefined as PublishedDocument | undefined, error: null as Error | null,
   isFetching: false, fetchStatus: 'idle', refetch: vi.fn() }))
 vi.mock('@/hooks/usePublishedDocument', () => ({ usePublishedDocument: () => state }))
+vi.mock('@/components/auth/MemberAccess', () => ({ useMemberAccess: () => ({ status: 'anonymous', session: undefined, retry: vi.fn() }) }))
 const { PublicDocumentPage } = await import('@/components/doc/PublicDocumentPage')
 const { PublicContent } = await import('@/components/auth/PublicContent')
 function document(overrides: Partial<PublishedDocument> = {}): PublishedDocument {
@@ -38,7 +39,7 @@ it('suppresses inline images and unsafe links; serves only document-bound approv
   render(<MemoryRouter><PublicDocumentPage docId="12" /></MemoryRouter>)
   expect(screen.getAllByRole('img')).toHaveLength(1)
   expect(screen.getByRole('img').getAttribute('src')).toBe('/api/public/documents/12/attachments/0')
-  expect(screen.getAllByRole('link')).toHaveLength(4)
+  expect(screen.getAllByRole('link')).toHaveLength(6)
   expect(screen.getByRole('link', { name: '이 문서로 체험 채팅' }).getAttribute('href')).toBe('/chat?doc=12')
   expect(screen.getByRole('link', { name: 'safe' }).getAttribute('rel')).toContain('noreferrer')
   expect(screen.getByRole('link', { name: /PDF 첨부/ }).hasAttribute('download')).toBe(true)
