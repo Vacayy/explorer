@@ -38,6 +38,7 @@ from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
 from pipeline.postgres_ingest_runner_fixture import embed_document, run_source
 from pipeline.connectors.notes import NoteConnector
 from pipeline.connectors.blog import BlogConnector
+from pipeline.connectors.telegram import TelegramConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
@@ -352,6 +353,29 @@ class SnapshotReplacementTests(unittest.TestCase):
                 self.assertIn(blog_id,[item.id for item in search_feed(c,index,'검색어').items])
             finally:
                 index.close()
+
+    def test_telegram_connector_collects_and_enriches_without_network(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        message={'message_id':'123','content':'합성 텔레그램 수집 본문',
+                 'date':'2026-01-02T00:00:00Z','link':'https://t.me/fixture/123','images':[]}
+        with patch('pipeline.connectors.telegram.scrape_channel',return_value=[message]), \
+                patch('pipeline.connectors.telegram.image_reading.read_images',return_value={}):
+            self.assertEqual(run_source(TelegramConnector(['fixture']),self.pg)['new'],1)
+            self.assertEqual(run_source(TelegramConnector(['fixture']),self.pg)['unchanged'],1)
+        with self.pg() as c:
+            ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='telegram' AND source_id='fixture/123'").fetchone()[0]
+        from pipeline.enrich import _enrich_keyword
+        self.assertTrue(enrich_document(self.pg,ident,enrich=_enrich_keyword))
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT summary,model FROM ingest_enrichments WHERE document_id=%s',(ident,)).fetchone(),
+                             ('합성 텔레그램 수집 본문','keyword'))
 
     def test_concurrent_new_graph_names_share_one_entity(self):
         from concurrent.futures import ThreadPoolExecutor
