@@ -31,6 +31,7 @@ PUBLIC_ROUTE_POLICIES = {
     ('GET', '/api/spine/narrative/version'): 'public',
     ('GET', '/api/spine/narrative/{narrative_id}/diff'): 'public',
     ('GET', '/api/spine/narrative/{narrative_id}/causal'): 'public',
+    ('GET', '/api/spine/narrative/{narrative_id}/related'): 'public',
 
     ('GET', '/api/spine/home/predictions'): 'public',
     ('GET', '/api/spine/home/predictions/{event_ticker}'): 'public',

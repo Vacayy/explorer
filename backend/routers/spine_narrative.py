@@ -298,8 +298,11 @@ def get_grounding(narrative_id: int):
 
 
 @router.get("/{narrative_id}/related", response_model=Related)
-def get_related(narrative_id: int):
+def get_related(narrative_id: int, request: Request):
     """인과 노드를 공유하는 다른 내러티브(주제별 최신 버전) — 공유 수 랭킹, LLM 없음 (Phase 2 §2-4)."""
+    if getattr(request.state, "public_access", False):
+        from security import public_narratives
+        return Related(**public_narratives.related(narrative_id))
     from pipeline.narrative import related_narratives
     conn = get_connection()
     r = related_narratives(conn, narrative_id)

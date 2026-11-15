@@ -867,10 +867,10 @@ def narrative_grounding(conn, narrative_id: int) -> dict:
     return {"status": "ok" if items else "empty", "grounding": items}
 
 
-def related_narratives(conn, narrative_id: int) -> dict:
+def related_narratives(conn, narrative_id: int, *, public: bool = False) -> dict:
     """narrative_id와 인과 노드를 공유하는 다른 내러티브(주제별 최신 버전) — 공유 노드 수로
     랭킹 (Phase 2 §2-4 머지). 공유 노드 = 같은 그래프의 서브그래프라는 신호."""
-    my_nodes = {n["name"] for n in causal_subgraph(conn, narrative_id)["nodes"]}
+    my_nodes = {n["name"] for n in causal_subgraph(conn, narrative_id, public=public)["nodes"]}
     if not my_nodes:
         return {"status": "empty", "related": []}
     rows = conn.execute("""
@@ -880,7 +880,7 @@ def related_narratives(conn, narrative_id: int) -> dict:
         WHERE n.id != ? AND COALESCE(n.kind,'topic')='topic'""", (narrative_id,)).fetchall()
     related = []
     for row in rows:
-        other_nodes = {n["name"] for n in causal_subgraph(conn, row["id"])["nodes"]}
+        other_nodes = {n["name"] for n in causal_subgraph(conn, row["id"], public=public)["nodes"]}
         shared = my_nodes & other_nodes
         if shared:
             related.append({"narrative_id": row["id"], "topic": row["topic"], "title": row["title"],

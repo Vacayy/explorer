@@ -33,6 +33,10 @@ class PublicNarrativeTests(unittest.TestCase):
                 self.assertNotIn('canary',json.dumps(graph))
                 self.assertTrue(all(e['source_status']=='unverified' for e in graph['edges']))
                 self.assertEqual(public.diff(11,path=path)['status'],'ok')
+                related=public.related(11,path=path)
+                self.assertIn(related['status'], ('ok', 'empty'))
+                self.assertNotIn('canary',json.dumps(related))
+                self.assertEqual(public.related(20,path=path), {'status':'empty','related':[]})
             conn=public.connection(path)
             try:
                 for sql in ['SELECT text FROM questions','SELECT feedback_note FROM entity_relations','DELETE FROM narratives','CREATE TABLE injected(x)']:

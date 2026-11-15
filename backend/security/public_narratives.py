@@ -3,7 +3,7 @@ from contextlib import closing
 from pathlib import Path
 import sqlite3
 from config import DB_PATH
-from pipeline.narrative import _version_diff, causal_subgraph, list_narratives
+from pipeline.narrative import _version_diff, causal_subgraph, list_narratives, related_narratives
 from pipeline.world_reads import narrative_changes
 
 COLUMNS = {
@@ -62,3 +62,9 @@ def diff(narrative_id,*,path=None):
 
 def index(*,path=None):
     with closing(connection(path)) as conn:return {"items":list_narratives(conn)}
+
+
+def related(narrative_id, *, path=None):
+    with closing(connection(path)) as conn:
+        row = conn.execute("SELECT id FROM narratives WHERE id=? AND COALESCE(kind,'topic')='topic'", (narrative_id,)).fetchone()
+        return related_narratives(conn, narrative_id, public=True) if row else {"status": "empty", "related": []}

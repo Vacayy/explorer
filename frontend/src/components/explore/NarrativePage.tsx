@@ -159,7 +159,7 @@ export default function NarrativePage() {
         {narrativeId != null && <VersionChange narrativeId={narrativeId} />}
         {narrativeId != null && <AsideCausal narrativeId={narrativeId} />}
         <AsideVersions topic={topic} currentId={narrativeId ?? null} origin={origin} />
-        {!PUBLIC_ACCESS && narrativeId != null && <RelatedNarratives narrativeId={!PUBLIC_ACCESS && narrativeId} />}
+        {narrativeId != null && <RelatedNarratives narrativeId={narrativeId} />}
         {!PUBLIC_ACCESS && <div>
           <DetailSection title="관련 질문">{narrativeId ? <NarrativeQuestions narrativeId={narrativeId} /> : <EmptyState message="연결된 버전이 없습니다." />}</DetailSection>
           <DetailSection title="관련 리포트"><ReportLinkCard topic={topic} /></DetailSection>
