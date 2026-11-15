@@ -39,7 +39,9 @@ def peer_runtime():
     # Fixture only: lastAttempt can contain operational information.
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-        runtime = PostgreSQLSectorSource(connection).peer_runtime()
+        source = PostgreSQLSectorSource(connection)
+        source.generation()
+        runtime = source.peer_runtime()
     if runtime is None:
         raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')
     return runtime
@@ -50,6 +52,7 @@ def sector_peer_mapping():
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         source = PostgreSQLSectorSource(connection)
+        source.generation()
         runtime = source.peer_runtime()
         if runtime is None:
             raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')
@@ -61,6 +64,7 @@ def industry_map():
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         source = PostgreSQLSectorSource(connection)
+        source.generation()
         return industry_map_from_source(source, source.peer_runtime())
 
 
@@ -69,6 +73,7 @@ def sector_peers(sector: str):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         source = PostgreSQLSectorSource(connection)
+        source.generation()
         runtime = source.peer_runtime()
         if runtime is None:
             raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')
@@ -83,6 +88,7 @@ def sector_detail(sector: str):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         source = PostgreSQLSectorSource(connection)
+        source.generation()
         result = sector_detail_from_source(source, sector, source.peer_runtime())
     if result is None:
         raise HTTPException(404, '없는 섹터입니다.')

@@ -5,6 +5,8 @@ PostgreSQL connection. COPY streams rows without retaining the price history in
 memory. PostgreSQL replacement is one transaction, so a failure rolls back.
 This captures a derived membership map, not all source tables or Peer files.
 """
+import uuid
+
 from pipeline.sector_overrides import effective_sectors
 
 _LOCK_KEY = 0x534543544F524D50
@@ -12,7 +14,7 @@ _COLUMNS = ('id', 'stock_code', 'trade_date', 'open', 'high', 'low', 'close',
             'volume', 'market_cap', 'shares', 'fetched_at')
 
 
-def load_sector_market(source, destination, *, peer_runtime=None):
+def load_sector_market(source, destination, *, peer_runtime=None, document_generation=None):
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('A query-only SQLite transaction is required')
     if peer_runtime is not None:
@@ -29,7 +31,7 @@ def load_sector_market(source, destination, *, peer_runtime=None):
     count = 0
     with destination.transaction():
         destination.execute('SELECT pg_advisory_xact_lock(%s)', (_LOCK_KEY,))
-        destination.execute('TRUNCATE sector_market_prices, sector_market_membership, sector_market_companies, '
+        destination.execute('TRUNCATE sector_market_metadata, sector_market_prices, sector_market_membership, sector_market_companies, '
                             'sector_market_groups, sector_market_peer_links, '
                             'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index, '
                             'sector_market_peer_runtime, sector_market_sector_names, '
@@ -110,6 +112,8 @@ def load_sector_market(source, destination, *, peer_runtime=None):
             from psycopg.types.json import Jsonb
             destination.execute('INSERT INTO sector_market_peer_runtime (payload) VALUES (%s)',
                                 (Jsonb(peer_runtime.model_dump(mode='json')),))
+        destination.execute('INSERT INTO sector_market_metadata (generation_id, linked_document_generation) '
+                            'VALUES (%s, %s)', (document_generation or uuid.uuid4(), document_generation is not None))
     return {'prices': count, 'members': len(members)}
 
 
@@ -118,6 +122,17 @@ class PostgreSQLSectorSource:
 
     def __init__(self, conn):
         self.conn = conn
+
+    def generation(self):
+        row = self.conn.execute('SELECT generation_id, linked_document_generation '
+                                'FROM sector_market_metadata WHERE singleton').fetchone()
+        if not row:
+            raise ValueError('Sector snapshot is missing')
+        if row[1]:
+            current = self.conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+            if not current or current[0] != row[0]:
+                raise ValueError('Sector and document snapshots are not aligned')
+        return row
 
     def latest_date(self):
         return self.conn.execute('SELECT max(trade_date) FROM sector_market_prices').fetchone()[0]

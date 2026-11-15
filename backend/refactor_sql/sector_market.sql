@@ -1,5 +1,10 @@
 -- Experimental sector-map data only; detail, Peer and historical generations
 -- are deliberately not represented by this schema.
+CREATE TABLE sector_market_metadata (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    generation_id UUID NOT NULL,
+    linked_document_generation BOOLEAN NOT NULL
+);
 CREATE TABLE sector_market_prices (
     id BIGINT PRIMARY KEY,
     stock_code TEXT NOT NULL,

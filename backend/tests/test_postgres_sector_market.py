@@ -109,6 +109,8 @@ class SectorMarketTest(unittest.TestCase):
         }
         result = load_sector_market(self.db, self.pg, peer_runtime=bundle)
         self.assertEqual(result, {'prices': 9, 'members': 3})
+        generation = PostgreSQLSectorSource(self.pg).generation()
+        self.assertFalse(generation[1])
         expected = build_sector_map(SQLiteSectorSource(self.db))
         with self.pg.transaction():
             self.pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -151,6 +153,17 @@ class SectorMarketTest(unittest.TestCase):
         self.assertEqual(self.pg.execute('SELECT count(*) FROM sector_market_prices').fetchone()[0], 9)
         self.assertEqual(self.pg.execute('SELECT count(*) FROM sector_market_membership').fetchone()[0], 3)
         self.assertEqual(PostgreSQLSectorSource(self.pg).peer_runtime().catalog.version, 'test')
+        self.assertEqual(PostgreSQLSectorSource(self.pg).generation(), generation)
+
+    def test_linked_generation_rejects_misaligned_documents(self):
+        expected = uuid.uuid4()
+        self.pg.execute('CREATE TABLE snapshot_metadata (singleton BOOLEAN PRIMARY KEY, generation_id UUID NOT NULL)')
+        self.pg.execute('INSERT INTO snapshot_metadata VALUES (TRUE, %s)', (uuid.uuid4(),))
+        load_sector_market(self.db, self.pg, document_generation=expected)
+        with self.assertRaisesRegex(ValueError, 'not aligned'):
+            PostgreSQLSectorSource(self.pg).generation()
+        self.pg.execute('UPDATE snapshot_metadata SET generation_id=%s', (expected,))
+        self.assertEqual(PostgreSQLSectorSource(self.pg).generation(), (expected, True))
 
 
 if __name__ == '__main__':

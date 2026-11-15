@@ -212,7 +212,8 @@ def _store_legacy_tables(source, target):
         _insert_batches(target, 'INSERT INTO legacy_snapshot_rows VALUES (%s,%s,%s::jsonb)', records())
 
 
-def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None) -> dict:
+def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None,
+                  include_sector=False, peer_runtime=None) -> dict:
     """Replace the projection atomically from one existing SQLite transaction."""
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('An active query-only SQLite snapshot is required')
@@ -298,8 +299,14 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_chec
         _insert_batches(target, 'INSERT INTO timeline_source_metadata VALUES (%s,%s,%s::jsonb)', timeline_metadata)
         _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_system_rows(source))
+        generation = uuid.uuid4()
+        if include_sector:
+            from pipeline.postgres_sector_market import load_sector_market
+            # Both domains use this SQLite transaction and this PostgreSQL
+            # transaction. Failure in either leaves the prior snapshot intact.
+            load_sector_market(source, target, peer_runtime=peer_runtime, document_generation=generation)
         target.execute('INSERT INTO snapshot_metadata '
                        '(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) '
                        'VALUES (TRUE,%s,%s,%s,%s,%s)',
-                       (snapshot_at, source_observed_at, len(source_rows), list_count, uuid.uuid4()))
+                       (snapshot_at, source_observed_at, len(source_rows), list_count, generation))
     return {'snapshot_at': snapshot_at, 'documents': len(source_rows), 'list_rows': list_count}

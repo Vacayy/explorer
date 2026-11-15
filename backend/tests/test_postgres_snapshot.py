@@ -106,6 +106,32 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertEqual([x.model_dump() for x in self.reader.list().items], before)
         self.assertEqual(self.reader.snapshot_info()['snapshot_at'], second_at)
 
+    def test_combined_domain_failure_rolls_back_documents_and_sector(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        before = self.reader.snapshot_info()
+        with self.pg() as c:
+            c.execute('CREATE TABLE combined_sector_fixture (generation UUID NOT NULL)')
+
+        def sector_loader(source, target, *, peer_runtime, document_generation):
+            target.execute('INSERT INTO combined_sector_fixture VALUES (%s)', (document_generation,))
+            raise RuntimeError('sector load failed')
+
+        source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
+        source.row_factory = sqlite3.Row
+        source.execute('PRAGMA query_only=ON')
+        source.execute('BEGIN')
+        try:
+            with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])), \
+                    patch('pipeline.postgres_sector_market.load_sector_market', side_effect=sector_loader):
+                with self.assertRaisesRegex(RuntimeError, 'sector load failed'):
+                    load_snapshot(source, self.pg, snapshot_at='2026-01-04T00:00:00+00:00',
+                                  capacity_check=lambda *_: None, include_sector=True)
+        finally:
+            source.close()
+        self.assertEqual(self.reader.snapshot_info(), before)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM combined_sector_fixture').fetchone()[0], 0)
+
 
     def test_ties_visibility_source_filter_and_source_guard(self):
         with closing(self.fixture.connect()) as c:
