@@ -8,7 +8,7 @@
 
 ## 외부 컨콜 자료 표시 경계
 
-공개 컨콜 상세의 `content_status`는 `published` 또는 `source_only`다. 준비된 수집 원문과 기존 digest가 있으면 제공사와 관계없이 그대로 반환하고, 없으면 기업·회계분기·가격 상세는 유지하며 `source_only`로 응답한다. recent/company/follow의 `has_digest`도 준비된 digest에 맞춘다. `source_url`·`source_name`·`source_link_kind`로 제공사 링크와 개별 기사 링크를 구분한다. `call_momentum`의 transcript 기반 파생 산문은 별도의 후속 복원 범위다. private 컨콜 조회·생성은 유지한다.
+공개 컨콜 상세의 `content_status`는 `published` 또는 `source_only`다. 준비된 수집 원문과 기존 digest가 있으면 제공사와 관계없이 그대로 반환하고, 없으면 기업·회계분기·가격 상세는 유지하며 `source_only`로 응답한다. recent/company/follow의 `has_digest`도 준비된 digest에 맞춘다. `source_url`·`source_name`·`source_link_kind`로 제공사 링크와 개별 기사 링크를 구분한다. `call_momentum`은 저장된 점수·근거·기존 요약을 공개 사본에서 조회하며 생성이나 갱신을 실행하지 않는다. private 컨콜 조회·생성은 유지한다.
 
 공개 컨콜의 `public_transcript_sources`는 직접 대조한 개별 원문 URL만 준비하며 transcript ID와 티커·회계연도/분기·콜 날짜·제공사가 모두 일치해야 한다. Motley Fool HTTPS 공식 도메인/기사 경로와 분기 suffix를 검증하고, 준비되지 않거나 맞지 않는 링크는 기존 제공사 안내를 유지한다. 과거 사본의 링크 테이블 부재는 제공사 안내로 호환하며 조회 중 수집/DDL은 실행하지 않는다.
 

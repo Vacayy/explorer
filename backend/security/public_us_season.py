@@ -90,16 +90,6 @@ def stored_momentum(*, path=None):
     with closing(connection(path)) as conn:
         names = dict(conn.execute("SELECT ticker, company_name FROM public_us_companies"))
         data = cm.by_season(conn, company_names=names)
-        # Existing imports mix restricted transcripts into derived prose. Preserve
-        # numerical rankings and metadata while withholding that prose as a unit.
-        for rows in [data['candidates'], data['continuing'], *[h['candidates'] for h in data['history']]]:
-            for index, row in enumerate(rows):
-                if 'transcript' in row.get('sources', []):
-                    rows[index] = {**{key: row.get(key) for key in
-                        ('ticker','name','event_date','score','first_candidate_at','sources')},
-                        'summary':None, 'drivers':[], 'guidance':[], 'qa_focus':[],
-                        'beyond_expectation':[], 'tone':None, 'prev_tone':None,
-                        'accel':None, 'text_withheld':True}
         coverage = [dict(r) for r in conn.execute("SELECT ticker, has_release, extracted_docs, failed_docs FROM public_us_coverage") if r['ticker'] in names]
         transcripts = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM transcripts") if r[0] in names}
         comparable = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM call_momentum WHERE status!='first'") if r[0] in names}

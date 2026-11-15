@@ -200,7 +200,7 @@ class PublicUsSeasonTests(unittest.TestCase):
             conn.execute("UPDATE public_transcript_sources SET url=?,call_date='2026-10-01'",(url,))
         self.assertEqual(public.stored_detail(1,path=self.path)['source_link_kind'],'provider')
 
-    def test_restricted_derived_prose_is_removed_but_release_only_text_preserved(self):
+    def test_stored_momentum_prose_is_preserved_for_transcripts_and_releases(self):
         import json
         with closing(sqlite3.connect(self.path)) as conn:
             conn.execute("UPDATE call_momentum SET reasons=?,summary='RESTRICTED_CANARY' WHERE ticker='PUBLIC'",
@@ -208,11 +208,11 @@ class PublicUsSeasonTests(unittest.TestCase):
                              'extra':'RESTRICTED_CANARY'}),))
             conn.commit()
         result=public.stored_momentum(path=self.path)
-        self.assertNotIn('RESTRICTED_CANARY',json.dumps(result))
+        self.assertIn('RESTRICTED_CANARY',json.dumps(result))
         row=result['candidates'][0]
         self.assertEqual(row['score'],7)
-        self.assertTrue(row['text_withheld'])
-        self.assertEqual(row['drivers'],[])
+        self.assertEqual(row['summary'],'RESTRICTED_CANARY')
+        self.assertEqual(row['drivers'][0]['name'],'RESTRICTED_CANARY')
         with closing(sqlite3.connect(self.path)) as conn:
             conn.execute("UPDATE call_momentum SET reasons=?,summary='Release source summary' WHERE ticker='PUBLIC'",
                          (json.dumps({'sources':['release']}),))
