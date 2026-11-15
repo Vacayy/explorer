@@ -1,6 +1,7 @@
 """Local-only experimental document API over a disposable PostgreSQL fixture."""
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -9,7 +10,7 @@ import psycopg
 from fastapi import FastAPI, HTTPException, Query, Response
 import uvicorn
 
-from models.spine import FeedDocument
+from models.spine import FeedDocument, FeedResponse
 from models.timeline import TimelineResponse, TimelineChannelsResponse
 from models.industry import IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse
 from models.peers import PeerRuntime
@@ -17,6 +18,8 @@ from models.sector_peers import SectorPeersResponse
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationTimelineResponse, GenerationExpired, resolve_generation
 from pipeline.postgres_sector_market import PostgreSQLSectorSource
+from pipeline.postgres_search_snapshot import SearchSnapshot
+from pipeline.postgres_search_feed import search_feed
 from pipeline.sector_view import industry_map_from_source, sector_detail_from_source, sector_peer_list_from_source
 
 
@@ -32,6 +35,42 @@ factory = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')
 reader = PostgreSQLRawDocumentReader(factory)
 timeline_reader = PostgreSQLTimelineSources(factory)
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+search_lock = threading.RLock()
+search_index = None
+
+
+@app.get('/api/spine/feed', response_model=FeedResponse)
+def experimental_search_feed(response: Response, q: str = Query(..., min_length=1, max_length=200),
+                             source: str | None = None, page: int = Query(1, ge=1),
+                             size: int = Query(20, ge=1, le=100), stock: str | None = None,
+                             industry: str | None = None, topic: str | None = None,
+                             days: int | None = Query(None, ge=1, le=3650),
+                             sort: Literal['relevance', 'latest'] = 'relevance'):
+    # Serializing rebuilds and queries prevents a replaced generation from
+    # closing an index while another request is using it. Fixture only.
+    global search_index
+    if not q.strip() or stock or industry or topic or days or sort != 'relevance':
+        raise HTTPException(501, '이 검색 조건은 아직 지원하지 않습니다.')
+    with search_lock, factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        generation = connection.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+        if generation is None:
+            raise HTTPException(503, '검색 자료가 준비되지 않았습니다.')
+        if search_index is None or search_index.generation != str(generation[0]):
+            replacement = SearchSnapshot.from_postgres(connection)
+            previous, search_index = search_index, replacement
+            if previous is not None:
+                previous.close()
+        vector = None
+        try:
+            from pipeline.search import _get_model, _serialize
+            vector = _serialize(next(iter(_get_model(local_files_only=True).embed([q]))))
+        except Exception:
+            # The original search retains lexical results when the model is unavailable.
+            pass
+        result = search_feed(connection, search_index, q, vector=vector, source=source, page=page, size=size)
+        response.headers['X-Explorer-Generation'] = search_index.generation
+        return result
 
 
 def check_sector_generation(source, requested, response):
