@@ -73,6 +73,7 @@ class MemberPrinciples(MemberPortfolio):
                         violations.append({k:hit[k] for k in ('key','principle_id','rule','message')})
             return {'as_of':summary.get('quoted_at') or summary.get('as_of'), 'rules':len(coverage),
                     'coverage':coverage, 'notifications_enabled':False,
+                    'price_dates':sorted({h['last_date'] for h in summary.get('holdings', []) if h.get('last_date')}),
                     'items':violations}
 
     def create(self, body):

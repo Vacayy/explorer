@@ -123,3 +123,25 @@ class MemberPrincipleTests(unittest.TestCase):
         self.assertEqual(r.json()['items'][0]['key'].split(':')[1],'1')
         self.assertEqual(evaluate.call_count,1)
         self.assertEqual([h['code'] for h in evaluate.call_args.args[1]['holdings']],['KNOWN'])
+
+    def test_rule_options_are_authorized_shared_definitions_and_notes_only_have_zero_rules(self):
+        url=self.base+'/principles/rules'
+        self.assertEqual(self.client.get(url).status_code,401)
+        before=self.path.read_bytes()
+        r=self.client.get(url,headers=self.headers['a'])
+        self.assertEqual(r.status_code,200)
+        self.assertEqual({x['type'] for x in r.json()},set(legacy.RULES))
+        self.assertEqual(before,self.path.read_bytes())
+        self.assertEqual(self.create(rules=[],notes=['confirmed reference only']).status_code,201)
+        state=self.client.get(self.base+'/principles/state',headers=self.headers['a']).json()
+        self.assertEqual(state['rules'],0)
+        self.assertEqual(state['coverage'],[])
+
+    def test_mixed_quote_dates_are_preserved_without_implying_one_current_snapshot(self):
+        self.create(rules=[{'type':'max_holdings','params':{'count':10}}])
+        summary={'as_of':'2026-01-02','quoted_at':None,'holdings':[
+            {'code':'A','last_date':'2025-12-01'}, {'code':'B','last_date':'2026-01-02'}]}
+        with patch('security.member_principles.pf.summary',return_value=summary):
+            r=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(r.json()['price_dates'],['2025-12-01','2026-01-02'])

@@ -54,7 +54,16 @@ class MemberRuleViolation(BaseModel):
 
 class MemberPrincipleState(BaseModel):
     as_of: str | None
+    price_dates: list[str]
     rules: int
     coverage: list[MemberRuleCoverage]
     items: list[MemberRuleViolation]
     notifications_enabled: Literal[False] = False
+
+
+class MemberPrincipleRuleOption(BaseModel):
+    type: str
+    label: str
+    parameter: Literal['pct', 'count', 'days']
+    minimum: float
+    maximum: float

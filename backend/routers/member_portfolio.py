@@ -138,3 +138,13 @@ from models.member_portfolio import MemberPrincipleState
 @router.get('/principles/state', response_model=MemberPrincipleState)
 def evaluate_principles(service: MemberPrinciples = Depends(principle_service)):
     return principle_action(service.evaluate)
+
+
+from models.member_portfolio import MemberPrincipleRuleOption
+from pipeline import portfolio_principles as principle_rules
+
+
+@router.get('/principles/rules', response_model=list[MemberPrincipleRuleOption])
+def principle_options(service: MemberPrinciples = Depends(principle_service)):
+    return [{'type':kind, 'label':meta[0], 'parameter':meta[1], 'minimum':meta[2], 'maximum':meta[3]}
+            for kind, meta in principle_rules.RULES.items()]

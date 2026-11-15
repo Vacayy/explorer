@@ -6,6 +6,7 @@ import { MarketHero } from '@/components/home/MarketHero'
 import { PageContainer } from '@/components/shared/PageContainer'
 import { Button } from '@/components/ui/button'
 import { PublicDocumentPage } from '@/components/doc/PublicDocumentPage'
+import { MemberPrinciplesPage } from '@/components/portfolio/MemberPrinciplesPage'
 import { MemberPortfolioPage } from '@/components/portfolio/MemberPortfolioPage'
 import { PublicDocumentListPage } from '@/components/doc/PublicDocumentListPage'
 import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
@@ -20,6 +21,7 @@ export function PublicContent() {
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
   if (pathname === '/chat') return <PublicTrialChatPage />
   if (pathname === '/feed') return <PublicDocumentListPage />
+  if (pathname === '/portfolio/principles') return <MemberPrinciplesPage />
   if (pathname === '/portfolio') return <MemberPortfolioPage />
   if (document?.params.docId) return <PublicDocumentPage docId={document.params.docId} />
   if (sector?.params.ticker) return <PublicUsSectorPage ticker={sector.params.ticker} />

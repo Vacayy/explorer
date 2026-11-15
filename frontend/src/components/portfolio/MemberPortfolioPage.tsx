@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useMemberAccess } from '@/components/auth/MemberAccess'
 import { googleLoginUrl } from '@/api/auth'
 import { toApiError } from '@/api/errors'
@@ -47,6 +48,7 @@ function MemberPortfolio() {
       <div><h1 className="text-xl font-medium">내 포트폴리오</h1><p className="text-sm text-ink-2">비율·가격만 표시합니다.{data?.as_of ? ` ${data.as_of} 기준` : ''}</p></div>
       <TransactionFormDialog add={add} CompanyPicker={MemberCompanyPicker} description="금액은 본인의 거래 기록으로 저장됩니다. 조회 화면에는 비율과 가격만 표시됩니다." />
     </header>
+    <Button variant="outline" asChild><Link to="/portfolio/principles">내 운용 원칙</Link></Button>
     {summary.isError ? <ErrorState message="포트폴리오를 불러오지 못했습니다." onRetry={() => void summary.refetch()} />
       : summary.isPending ? <Skeleton className="h-48 w-full" />
       : data && <>
