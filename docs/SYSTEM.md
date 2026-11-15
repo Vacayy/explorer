@@ -813,3 +813,6 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 
 
 공개 홈 국면·리스크: `market_regime.read_regime(conn)`, `risk.read_risk(conn, now, span, keys)`, `credit_spreads.read_table/read_history`로 기존 수치 계산을 호출자 소유 연결에서 재사용한다. private 진입점은 기존 연결/스키마/수집 설정을 유지한다. 공개 `/api/spine/market-regime`, `/risk`, `/credit`, `/credit/history`는 readonly 시장 관측·회사채·국채 열만 읽으며 lazy 수집, DDL, credit provider import를 실행하지 않는다. Risk 품질·신호 판정에는 저장 성공/실패를 반영하되 상세 수집 오류를 일반 문구로 바꾸고 시도 시각은 제외한다. 개인 포트폴리오 risk/checks와는 별도다.
+
+
+공개 예측시장: `kalshi.read_latest(conn, include_pins=False)`는 기존 확률·변화 기준·스파크 계산을 재사용하고 개인 pin 테이블을 읽지 않으며 최근 거래량/이벤트 키로 정렬한다. private latest는 기존 스키마 준비와 추적 순서를 유지한다. 상세 `detail(..., conn=..., stored_only=True)`는 저장 event cache와 봉만 읽고 cache TTL/외부 수집/DDL/핀을 호출하지 않는다. `security.public_predictions`가 readonly 열 경계를 제공한다. 공개 카드·상세는 기존 모델/컴포넌트이며 추적 버튼은 제외된다. 저장 상세가 없으면404이며 전체 상세 준비는 별도 배포 데이터 작업이다.

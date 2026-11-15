@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { ExternalLink, Pin } from "lucide-react"
 import MultiLineChart from "@/components/charts/MultiLineChart"
 import { useChartTheme } from "@/components/charts/chartTheme"
@@ -28,6 +29,7 @@ export const closeLabel = (ts: string) => {
 /** 추적 핀 — 카드·상세 창 공용 */
 export function PinButton({ eventTicker, seriesTicker, pinned, className }: { eventTicker: string; seriesTicker: string; pinned: boolean; className?: string }) {
   const pin = usePinPrediction()
+  if (PUBLIC_ACCESS) return null
   const on = pin.isPending ? !pinned : pinned
   return <Tooltip>
     <TooltipTrigger asChild>
