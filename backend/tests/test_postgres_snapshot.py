@@ -686,6 +686,42 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             copy_with_note_changes(c,self.schema,destination)
         self.assertEqual(PostgreSQLDocumentReader(target).get(ident).summary,'# 정기 문서 변경')
 
+    def test_collection_to_theme_signal_and_narrative_list(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.execute('ALTER TABLE enrichments ADD COLUMN time_orientation TEXT')
+            c.execute('CREATE TABLE signals(id INTEGER PRIMARY KEY,signal_type TEXT,entity_id INTEGER,date TEXT,payload_json TEXT,interpretation TEXT,interpretation_model TEXT,UNIQUE(signal_type,entity_id,date))')
+            c.execute("INSERT INTO narratives VALUES (1,'합성 신주제',1,'저장된 이야기','기존 본문',3,'2026-01-01')")
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True,include_signals=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        with tempfile.TemporaryDirectory() as vault:
+            notes=Path(vault)/'notes'
+            notes.mkdir()
+            for i in range(6):
+                (notes/f'{i}.md').write_text(f'# 합성 자료 {i}\n신주제 본문',encoding='utf-8')
+            def synthetic(title,body):
+                return {'model':'fixture','summary':'합성 요약','stocks':[],'industries':[],'topics':['합성 신주제']}
+            result=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=synthetic)
+        self.assertEqual((result['new'],result['enriched']),(6,6))
+        def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
+        publisher=FixturePublisher(self.pg,self.schema,target,
+            process_projection=lambda conn:compute_mention_signals(conn,as_of=datetime.now(timezone.utc),include_themes=True))
+        try:
+            publisher.publish()
+            with target(publisher.active[0]) as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                from pipeline.postgres_narrative_fixture import list_narratives
+                item=list_narratives(c).items[0]
+                self.assertEqual((item.topic,item.title,item.is_surging),('합성 신주제','저장된 이야기',True))
+                self.assertEqual(signals_items(c,since='2026-01-01',signal_type='theme_surge')[0].payload['recent'],6)
+            self.assertEqual(len(publisher.search('신주제').items),6)
+        finally:
+            publisher.close()
+
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
