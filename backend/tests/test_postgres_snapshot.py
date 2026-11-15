@@ -8,6 +8,8 @@ import uuid
 import threading
 import time
 import tempfile
+import subprocess
+import sys
 from contextlib import closing
 from collections import namedtuple
 from pathlib import Path
@@ -415,6 +417,40 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
             copy_with_note_changes(c,self.schema,destination)
         self.assertEqual(PostgreSQLDocumentReader(target).get(ident).summary,'# 합성 문서 변경된 본문')
+
+    def test_exclusive_cycle_recovers_after_process_exit(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        code='''import os,psycopg
+from pathlib import Path
+from pipeline.connectors.notes import NoteConnector
+from pipeline.postgres_ingest_cycle_fixture import run_exclusive_cycle
+def factory():
+    return psycopg.connect(os.environ['REFACTOR_POSTGRES_DSN'],options='-c search_path='+os.environ['FIXTURE_SCHEMA'])
+def terminate(*args):
+    os._exit(23)
+run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enrich=terminate)
+'''
+        with tempfile.TemporaryDirectory() as vault:
+            notes=Path(vault)/'notes'
+            notes.mkdir()
+            (notes/'crash.md').write_text('# 복구 문서\n원문',encoding='utf-8')
+            env={**os.environ,'FIXTURE_SCHEMA':self.schema,'FIXTURE_VAULT':vault}
+            child=subprocess.run([sys.executable,'-c',code],env=env,timeout=15,capture_output=True)
+            self.assertEqual(child.returncode,23)
+            with self.pg() as c:
+                self.assertEqual(c.execute("SELECT j.status FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id WHERE d.source_id='crash.md'").fetchone()[0],'running')
+            from pipeline.enrich import _enrich_keyword
+            recovered=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+            self.assertEqual((recovered['unchanged'],recovered['enriched']),(1,1))
+            with self.pg() as c:
+                self.assertEqual(c.execute("SELECT j.status FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id WHERE d.source_id='crash.md'").fetchone()[0],'done')
 
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:
