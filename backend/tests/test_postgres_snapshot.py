@@ -655,6 +655,41 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             with self.pg() as c:
                 self.assertEqual(c.execute("SELECT j.status FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id WHERE d.source_id='crash.md'").fetchone()[0],'done')
 
+    def test_external_attempt_process_exit_is_held(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        code='''import os,psycopg
+from pathlib import Path
+from pipeline.connectors.notes import NoteConnector
+from pipeline.postgres_ingest_cycle_fixture import run_exclusive_cycle
+def factory():
+    return psycopg.connect(os.environ['REFACTOR_POSTGRES_DSN'],options='-c search_path='+os.environ['FIXTURE_SCHEMA'])
+class LostExternal:
+    def for_attempt(self, token):
+        def run(*args): os._exit(23)
+        return run
+run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enrich=LostExternal())
+'''
+        with tempfile.TemporaryDirectory() as vault:
+            notes=Path(vault)/'notes'; notes.mkdir()
+            (notes/'crash.md').write_text('# 합성 문서\n본문',encoding='utf-8')
+            env={**os.environ,'FIXTURE_SCHEMA':self.schema,'FIXTURE_VAULT':vault}
+            child=subprocess.run([sys.executable,'-c',code],env=env,timeout=15,capture_output=True)
+            self.assertEqual(child.returncode,23)
+            calls=[]
+            recovered=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=lambda *args:calls.append(args))
+            self.assertEqual((calls,recovered['enrichment_held']),([],1))
+            with self.pg() as c:
+                row=c.execute("SELECT j.status,a.state FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id "
+                              "JOIN ingest_enrichment_attempts a ON a.document_id=d.id WHERE d.source_id='crash.md'").fetchone()
+                self.assertEqual(row,('unknown','unknown'))
+
     def test_periodic_fixture_runs_changed_note_twice(self):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
