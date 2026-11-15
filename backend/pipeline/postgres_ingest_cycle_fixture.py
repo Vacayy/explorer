@@ -7,29 +7,31 @@ from uuid import uuid4
 CYCLE_LOCK=0x4558504C4359434C
 
 
-def run_cycle(connector, factory, *, enrich, worker_id='fixture-worker'):
+def run_cycle(connector, factory, *, enrich, worker_id='fixture-worker', batch_size=100):
     validate_enricher(enrich)
-    changed=[]
-    def collect(result):
-        if result['status'] in ('new','updated'):
-            changed.append(result['id'])
-    stats=run_source(connector,factory,on_stored=collect)
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or not 1 <= batch_size <= 100:
+        raise ValueError('batch_size must be between 1 and 100')
+    stats=run_source(connector,factory)
     source_type = getattr(connector, 'source_type', None)
+    pending=[]
+    remaining=0
     if source_type:
         with factory() as conn:
             _guard(conn)
-            retry = [row[0] for row in conn.execute("SELECT j.document_id FROM ingest_enrichment_jobs j "
+            rows=conn.execute("SELECT j.document_id,count(*) OVER() FROM ingest_enrichment_jobs j "
                     "JOIN ingest_documents d ON d.id=j.document_id "
-                    "WHERE j.status='failed' AND d.source_type=%s ORDER BY j.document_id", (source_type,))]
-        changed.extend(retry)
+                    "WHERE j.auto_retry AND j.status IN ('pending','failed') AND d.source_type=%s "
+                    "ORDER BY j.document_id LIMIT %s", (source_type,batch_size)).fetchall()
+            pending=[row[0] for row in rows]
+            remaining=(rows[0][1]-len(rows)) if rows else 0
     enriched=failed=0
-    for ident in dict.fromkeys(changed):
+    for ident in pending:
         try:
             if enrich_document(factory,ident,enrich=enrich,worker_id=worker_id):
                 enriched+=1
         except Exception:
             failed+=1
-    return {**stats,'enriched':enriched,'enrichment_failed':failed}
+    return {**stats,'enriched':enriched,'enrichment_failed':failed,'enrichment_waiting':remaining}
 
 
 def run_exclusive_cycle(connector, factory, *, enrich):

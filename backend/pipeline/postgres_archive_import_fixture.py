@@ -37,8 +37,8 @@ def import_archived_documents(conn):
               AND e.row_data->>'content_hash'=d.content_hash
         ORDER BY d.id, (e.row_data->>'enriched_at') COLLATE "C" DESC NULLS LAST,
                  (e.row_data->>'id')::bigint DESC''')
-    conn.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status) "
-                 "SELECT d.id,1,CASE WHEN e.document_id IS NULL THEN 'pending' ELSE 'done' END "
+    conn.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status,auto_retry) "
+                 "SELECT d.id,1,CASE WHEN e.document_id IS NULL THEN 'pending' ELSE 'done' END,FALSE "
                  "FROM ingest_documents d LEFT JOIN ingest_enrichments e ON e.document_id=d.id")
     # Historical tokens remain only in the archive: imported jobs describe
     # state and transcript, but do not grant authority to resume a worker.

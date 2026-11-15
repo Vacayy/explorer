@@ -98,6 +98,10 @@ def registered_telegram_connector(factory, *, image_reader, image_finder, judge)
     from pipeline.connectors.telegram import TelegramConnector
     if not all(callable(value) for value in (image_reader,image_finder,judge)):
         raise ValueError('Explicit image and grouping dependencies are required')
+    with factory() as conn:
+        _guard(conn)
+        if not conn.execute('SELECT 1 FROM ingest_telegram_marks_state').fetchone():
+            raise ValueError('Telegram marks are not initialized')
     channels = registered_connector(factory,'telegram')._channels
     class Marks:
         def get(self, channel, msg_id):
@@ -120,6 +124,12 @@ def registered_telegram_connector(factory, *, image_reader, image_finder, judge)
 
 
 def run_source(connector, factory, *, clock=lambda: datetime.now(timezone.utc), on_stored=None):
+    from pipeline.connectors.telegram import TelegramConnector
+    if isinstance(connector, TelegramConnector):
+        marks = connector._mark_store
+        if (connector._channels is None or marks is None or not callable(getattr(marks,'get',None)) or not callable(getattr(marks,'put',None))
+                or not all(callable(value) for value in (connector._image_reader,connector._image_finder,connector._judge))):
+            raise ValueError('Telegram fixture requires explicit grouping and image dependencies')
     with factory() as conn:
         _guard(conn)
     if getattr(connector,'after_store',None):

@@ -794,11 +794,17 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             initialize_graph(c)
         message={'message_id':'123','content':'합성 텔레그램 수집 본문',
                  'date':'2026-01-02T00:00:00Z','link':'https://t.me/fixture/123','images':[]}
+        from types import SimpleNamespace
+        marks=SimpleNamespace(get=lambda *_:None,put=lambda channel,ident,value,model:value)
+        def telegram(channels):
+            return TelegramConnector(channels,mark_store=marks,image_reader=lambda *a,**kw:{},image_finder=lambda *a:[],judge=lambda *a:None)
         with patch('pipeline.connectors.telegram.scrape_channel',return_value=[message]), \
                 patch('pipeline.connectors.telegram.image_reading.read_images',return_value={}):
-            self.assertEqual(run_source(TelegramConnector(['fixture']),self.pg)['new'],1)
-            self.assertEqual(run_source(TelegramConnector(['fixture']),self.pg)['unchanged'],1)
-            self.assertEqual(run_source(TelegramConnector(['muted']),self.pg)['new'],1)
+            with self.assertRaisesRegex(ValueError,'explicit grouping'):
+                run_source(TelegramConnector(['fixture']),self.pg)
+            self.assertEqual(run_source(telegram(['fixture']),self.pg)['new'],1)
+            self.assertEqual(run_source(telegram(['fixture']),self.pg)['unchanged'],1)
+            self.assertEqual(run_source(telegram(['muted']),self.pg)['new'],1)
         with self.pg() as c:
             ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='telegram' AND source_id='fixture/123'").fetchone()[0]
             muted_id=c.execute("SELECT id FROM ingest_documents WHERE source_type='telegram' AND source_id='muted/123'").fetchone()[0]
@@ -855,8 +861,12 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             import_archived_documents(c)
             initialize_graph(c)
             initialize_youtube_registry(c)
+            self.assertFalse(c.execute('SELECT auto_retry FROM ingest_enrichment_jobs WHERE document_id=1').fetchone()[0])
         blog=registered_connector(self.pg,'blog')
-        telegram=registered_connector(self.pg,'telegram')
+        from types import SimpleNamespace
+        marks=SimpleNamespace(get=lambda *_:None,put=lambda channel,ident,value,model:value)
+        telegram=TelegramConnector(registered_connector(self.pg,'telegram')._channels,mark_store=marks,
+                                   image_reader=lambda *a,**kw:{},image_finder=lambda *a:[],judge=lambda *a:None)
         youtube=registered_youtube_connector(self.pg)
         self.assertEqual([r.key for r in blog.discover()],['https://example.test/'])
         self.assertEqual([r.key for r in telegram.discover()],['fixture'])
@@ -881,9 +891,11 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
              patch('pipeline.enrich.llm.run',return_value=answer):
             for connector in (blog,telegram,youtube):
                 if connector is youtube:
+                    self.assertEqual(run_source(youtube,self.pg)['new'],1)
+                    # A process can exit after document storage, before any claim.
                     def failing(*args): raise RuntimeError('fixture enrichment failure')
                     result=run_exclusive_cycle(connector,self.pg,enrich=failing)
-                    self.assertEqual((result['new'],result['enriched'],result['enrichment_failed']),(1,0,1))
+                    self.assertEqual((result['new'],result['enriched'],result['enrichment_failed']),(0,0,1))
                     retried=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
                     self.assertEqual((retried['docs'],retried['enriched'],retried['enrichment_failed']),(0,1,0))
                     with self.pg() as c:

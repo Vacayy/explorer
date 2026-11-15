@@ -48,6 +48,7 @@ CREATE TABLE ingest_enrichment_jobs (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'failed', 'done')),
+    auto_retry BOOLEAN NOT NULL DEFAULT TRUE,
     token UUID,
     worker_id TEXT,
     started_at TIMESTAMPTZ,

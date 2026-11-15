@@ -32,7 +32,7 @@ def import_videos(source, target, ids):
                        (ident, doc['source_type'], doc['source_id'], doc.get('title') or '', doc.get('url') or '',
                         doc.get('published_at') or '', doc.get('raw_content') or '', doc.get('markdown') or '',
                         Jsonb(media) if media else None, doc.get('digest_status'), doc.get('content_hash') or '', doc.get('fetched_at')))
-        target.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status) VALUES (%s,1,%s)",
+        target.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status,auto_retry) VALUES (%s,1,%s,FALSE)",
                        (ident, 'done' if entries else 'pending'))
         if entries:
             target.execute('INSERT INTO ingest_enrichments(document_id,revision,summary,model) VALUES (%s,1,%s,%s)',

@@ -44,7 +44,7 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
     conn.execute('DELETE FROM ingest_enrichments WHERE document_id=%s', (row[0],))
     conn.execute('DELETE FROM ingest_embeddings WHERE document_id=%s', (row[0],))
     conn.execute('DELETE FROM ingest_entity_links WHERE document_id=%s', (row[0],))
-    conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
+    conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',auto_retry=TRUE,token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
     return {'id': row[0], 'revision': revision, 'status': 'updated'}
 
 
