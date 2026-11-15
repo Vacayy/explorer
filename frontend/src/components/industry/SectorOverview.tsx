@@ -43,7 +43,7 @@ export default function SectorOverview({ q }: { q: Q }) {
   return <div className="flex flex-col gap-4">
     <Band label="대표지수와 상대강도" cells={[[8, <IndexCard key="i" q={q} />], [4, <RsCard key="r" q={q} />]]} />
     <Band label="산업 개괄과 주요 자료" cells={[[7, <OverviewCard key="o" q={q} />], [5, <DocsCard key="d" q={q} />]]} />
-    {q.data?.name ? <SectorPeersTab sector={q.data.name} band="sectorPeerBlock" /> : <Band label="Peer 그룹" cells={[[12, <MarketCard key="p" band="sectorPeerBlock"><FillSkeleton rows={14} /></MarketCard>]]} />}
+    {q.data?.name ? <SectorPeersTab sector={q.data.name} band="sectorPeerBlock" generation={q.data._documentGeneration} /> : <Band label="Peer 그룹" cells={[[12, <MarketCard key="p" band="sectorPeerBlock"><FillSkeleton rows={14} /></MarketCard>]]} />}
     <DataCard q={q} />
   </div>
 }

@@ -55,7 +55,7 @@ export default function SectorPage() {
     <div className="mt-4">
       {notFound ? <div role="status" className="space-y-2 border p-6 text-sm"><p>없는 섹터입니다.</p><Link to="/industry" className="font-semibold hover:underline">섹터 지도로 가기 ›</Link></div>
         : q.isError ? <ErrorState error={q.error} onRetry={() => void q.refetch()} />
-        : tab === "peers" ? <SectorPeersTab sector={sector} />
+        : tab === "peers" ? (d ? <SectorPeersTab sector={sector} generation={d._documentGeneration} /> : <Skeleton className="h-64 w-full" />)
         : tab === "data" ? <SectorDataTab q={q} />
         : tab === "stocks" ? <SectorStocksTab q={q} />
         : <SectorOverview q={q} />}

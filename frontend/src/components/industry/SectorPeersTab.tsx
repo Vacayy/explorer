@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Search } from "lucide-react"
 import { BlockHead } from "@/components/home/HomeSection"
 import { BlockError, tone } from "@/components/home/blockState"
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { usePeerRuntime } from "@/hooks/usePeerRuntime"
+import { toApiError } from "@/api/query"
 import { useSectorPeerList } from "@/hooks/useSectorView"
 import { selectPeerGroup } from "@/lib/peerFrame"
 import { cn } from "@/lib/utils"
@@ -25,10 +27,11 @@ import type { SectorPeerGroupRow } from "@/types"
  * 폰: 본문 위에 '그룹 바꾸기' 줄 — 누르면 목록이 아래 시트로 열린다.
  * 원천: 하위 그룹 = GET /api/spine/industry/{sector}/peers, 본문 = Peer 게시본(/api/peers/runtime).
  */
-export default function SectorPeersTab({ sector, band = "sectorPeers" }: { sector: string; band?: "sectorPeers" | "sectorPeerBlock" }) {
+export default function SectorPeersTab({ sector, band = "sectorPeers", generation }: { sector: string; band?: "sectorPeers" | "sectorPeerBlock"; generation?: string }) {
   const [sheet, setSheet] = useState(false)
-  const list = useSectorPeerList(sector)
-  const runtime = usePeerRuntime()
+  const queryClient = useQueryClient()
+  const list = useSectorPeerList(sector, generation)
+  const runtime = usePeerRuntime(generation)
   const mobile = useIsMobile()
   const [params, setParams] = useSearchParams()
   const q = (params.get("q") ?? "").trim()
@@ -41,6 +44,12 @@ export default function SectorPeersTab({ sector, band = "sectorPeers" }: { secto
   const pick = (id: string | null) => { setSheet(false); setParams(prev => { const n = selectPeerGroup(prev, id ?? ""); if (!id) n.delete("group"); return n }, { preventScrollReset: true }) }
   const setQ = (v: string) => setParams(prev => { const n = new URLSearchParams(prev); if (v) n.set("q", v); else n.delete("q"); return n }, { replace: true })
   const tops = groups.filter(g => !g.parent)
+
+  const expired = [list.error, runtime.error].find(error => error && toApiError(error).status === 410)
+  if (expired) return <MarketCard band={band} label="sector.peerbody">
+    <BlockError message="산업 자료가 갱신됐습니다. 다시 불러와 주세요." error={expired}
+      onRetry={() => void queryClient.invalidateQueries({ queryKey: ['spine', 'industry', sector], exact: true })} />
+  </MarketCard>
 
   const listBody = <>
     <label className="relative flex h-8 shrink-0 items-center">

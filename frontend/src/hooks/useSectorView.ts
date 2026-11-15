@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
 import api from "@/api/client"
+import { ApiError } from "@/api/query"
 import type { IndustryMap, IndustrySectorDetail, SectorPeerList, UsIndustryMap, UsSectorDetail } from "@/types"
 
 /** 섹터 지도 — 섹터마다 대표지수·RS·61거래일 선 (GET, 저장분만 · 서버 15분 메모리 캐시) */
@@ -23,8 +24,16 @@ export function useSectorDetail(sector: string) {
 }
 
 /** 섹터의 하위 Peer 그룹 — 종목 수·20·60거래일 중앙값 (GET) */
-export function useSectorPeerList(sector: string) {
-  return useQuery(apiQuery<SectorPeerList>({ key: ["spine", "industry", sector, "peers"], url: `/api/spine/industry/${encodeURIComponent(sector)}/peers`, staleTime: STALE.medium, enabled: !!sector }))
+export function useSectorPeerList(sector: string, generation?: string) {
+  return useQuery({
+    queryKey: ["spine", "industry", sector, "peers", generation],
+    queryFn: async ({ signal }) => {
+      const response = await api.get<SectorPeerList>(`/api/spine/industry/${encodeURIComponent(sector)}/peers`, { params: { generation }, signal })
+      if (generation && response.headers['x-explorer-generation'] !== generation) throw new ApiError('조회하던 산업 자료가 갱신됐습니다.', 410)
+      return response.data
+    },
+    staleTime: STALE.medium, enabled: !!sector,
+  })
 }
 
 /** 팔로우 중인 엔티티 (GET /api/spine/follows) — 섹터 머리 팔로우 상태 */

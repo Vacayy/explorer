@@ -34,13 +34,21 @@ timeline_reader = PostgreSQLTimelineSources(factory)
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
+def check_sector_generation(source, requested, response):
+    current, linked = source.generation()
+    if requested is not None and (not linked or requested != current):
+        raise HTTPException(410, '조회하던 산업 자료가 갱신됐습니다. 다시 열어 주세요.')
+    if linked:
+        response.headers['X-Explorer-Generation'] = str(current)
+
+
 @app.get('/api/peers/runtime', response_model=PeerRuntime)
-def peer_runtime():
+def peer_runtime(response: Response, generation: UUID | None = None):
     # Fixture only: lastAttempt can contain operational information.
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         source = PostgreSQLSectorSource(connection)
-        source.generation()
+        check_sector_generation(source, generation, response)
         runtime = source.peer_runtime()
     if runtime is None:
         raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')
@@ -69,11 +77,11 @@ def industry_map():
 
 
 @app.get('/api/spine/industry/{sector}/peers', response_model=SectorPeerListResponse)
-def sector_peers(sector: str):
+def sector_peers(sector: str, response: Response, generation: UUID | None = None):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         source = PostgreSQLSectorSource(connection)
-        source.generation()
+        check_sector_generation(source, generation, response)
         runtime = source.peer_runtime()
         if runtime is None:
             raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')

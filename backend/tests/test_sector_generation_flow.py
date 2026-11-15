@@ -71,7 +71,20 @@ class SectorGenerationFlow(unittest.TestCase):
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
         try:
+            runtime = {
+                'catalog': {'version': 'test', 'asOf': '2026-01-09', 'groups': [], 'companies': []},
+                'prices': {'version': 'test', 'asOf': '2026-01-09', 'collectedAt': '2026-01-09T00:00:00Z',
+                           'sourceUrl': 'https://example.com', 'sourceHash': 'a' * 64,
+                           'field': 'regularMarketClosingPrice', 'session': 'KRX_REGULAR',
+                           'adjustmentStatus': 'unverified', 'dates': ['2026-01-09'], 'prices': {},
+                           'qualityIssues': [], 'caveats': []},
+                'origin': 'collector', 'publishedAt': '2026-01-09T00:00:00Z', 'baselineOn': None,
+                'lastAttempt': None, 'priceAgeDays': 0, 'snapshotAgeHours': 0,
+                'signalStatus': 'held', 'signalHoldReason': 'fixture',
+            }
+            runtime = getattr(self, 'peer_runtime', runtime)
             return load_snapshot(source, self.pg, snapshot_at=timestamp, include_sector=True, media_root=self.media,
+                                 peer_runtime=runtime,
                                  capacity_check=lambda *_: None)
         finally:
             source.close()
@@ -86,11 +99,17 @@ class SectorGenerationFlow(unittest.TestCase):
         self.assertEqual(current.json()['content'], '첫 원문')
         self.assertEqual(current.headers['x-explorer-archived'], '0')
         self.assertEqual(current.headers['x-explorer-media-generation'], generation)
+        for url in ('/api/spine/industry/합성섹터/peers', '/api/peers/runtime'):
+            peer = self.client.get(url, params={'generation': generation})
+            self.assertEqual(peer.status_code, 200)
+            self.assertEqual(peer.headers['x-explorer-generation'], generation)
         self.assertEqual(self.client.get(f'/api/refactor/media/{generation}/fixtures/sample.jpg').content, b'old image bytes')
         with sqlite3.connect(self.path) as c:
             c.execute("UPDATE raw_documents SET markdown='바뀐 원문' WHERE id=1")
         (self.media / 'fixtures' / 'sample.jpg').write_bytes(b'new image bytes')
         self.load('2026-01-10T00:00:00+00:00')
+        for url in ('/api/spine/industry/합성섹터/peers', '/api/peers/runtime'):
+            self.assertEqual(self.client.get(url, params={'generation': generation}).status_code, 410)
         previous = self.client.get('/api/spine/doc/1', params={'generation': generation})
         self.assertEqual(previous.status_code, 200)
         self.assertEqual(previous.json()['content'], '첫 원문')
