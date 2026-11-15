@@ -51,7 +51,7 @@ function ProfileBody({ profile, brief, publicView = false }: { profile: CompanyW
     {profile.drivers.length > 0 && <section aria-label="성장 동인" className="space-y-1"><h3 className="text-caption font-medium text-up-ink">성장 동인</h3>
       <ul className="list-disc space-y-1 pl-5">{profile.drivers.slice(0, 2).map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
   </div>
-  return <div className="grid gap-x-8 gap-y-5 text-sm lg:grid-cols-2">
+  return <div className="grid min-w-0 grid-cols-1 gap-x-8 gap-y-5 text-sm [overflow-wrap:anywhere] lg:grid-cols-2">
     <div className="min-w-0 space-y-4">
       <p className="leading-relaxed">{profile.overview}</p>
       {profile.business_lines.length > 0 && <section aria-label="사업 구성" className="space-y-1.5">
@@ -67,7 +67,7 @@ function ProfileBody({ profile, brief, publicView = false }: { profile: CompanyW
     <div className="min-w-0 space-y-4">
       {profile.drivers.length > 0 && <section aria-label="성장 동인" className="space-y-1"><h3 className="text-caption font-medium text-up-ink">성장 동인</h3><ul className="list-disc space-y-1 pl-5">{profile.drivers.map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
       {profile.risks.length > 0 && <section aria-label="리스크" className="space-y-1"><h3 className="text-caption font-medium text-down-ink">리스크</h3><ul className="list-disc space-y-1 pl-5">{profile.risks.map((item, index) => <li key={index}><Cited text={item.text} ids={item.source_ids} sources={sources} /></li>)}</ul></section>}
-      {profile.recent_events.length > 0 && <section aria-label="최근 사건" className="space-y-1"><h3 className="text-caption font-medium text-muted-foreground">최근 사건</h3><ul className="divide-y">{profile.recent_events.map((event, index) => <li key={index} className="grid grid-cols-[5.5rem_1fr] gap-x-2 py-1.5"><span className="font-mono text-caption tabular-nums text-muted-foreground">{event.date ?? '-'}</span><Cited text={event.title} ids={event.source_ids} sources={sources} /></li>)}</ul></section>}
+      {profile.recent_events.length > 0 && <section aria-label="최근 사건" className="space-y-1"><h3 className="text-caption font-medium text-muted-foreground">최근 사건</h3><ul className="divide-y">{profile.recent_events.map((event, index) => <li key={index} className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2 py-1.5"><span className="font-mono text-caption tabular-nums text-muted-foreground">{event.date ?? '-'}</span><Cited text={event.title} ids={event.source_ids} sources={sources} /></li>)}</ul></section>}
       {profile.gaps.length > 0 && <section aria-label="확인하지 못한 것" className="space-y-1 bg-muted/60 p-3 text-caption"><h3 className="font-medium">확인하지 못한 것</h3><ul className="list-disc space-y-0.5 pl-5">{profile.gaps.map((g, i) => <li key={i}>{g}</li>)}</ul></section>}
     </div>
     <section aria-label="출처" className="space-y-1 lg:col-span-2">
@@ -141,7 +141,7 @@ function OverviewCardView({ query, fallback, action, info, buildError, publicVie
             <SheetTrigger asChild><Button variant="ghost" size="sm" className="mt-2 h-8 px-0 font-semibold">개요 전체 · 리스크 · 출처 ›</Button></SheetTrigger>
             <SheetContent side="bottom" className="max-h-[85dvh] gap-0">
               <SheetHeader className="border-b"><SheetTitle>기업 개요</SheetTitle><SheetDescription className="sr-only">개요 전체 · 리스크 · 출처</SheetDescription></SheetHeader>
-              <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block"><div className="p-4"><ProfileBody profile={profile} brief={false} publicView={publicView} />{action && <div className="mt-3">{action}</div>}</div></ScrollArea>
+              <ScrollArea className="min-h-0 min-w-0 w-full flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block [&>div]:w-full [&>div]:min-w-0"><div className="min-w-0 p-4"><ProfileBody profile={profile} brief={false} publicView={publicView} />{action && <div className="mt-3">{action}</div>}</div></ScrollArea>
             </SheetContent>
           </Sheet>
         : <BoundedArea size="lg"><ProfileBody profile={profile} brief={false} publicView={publicView} /></BoundedArea>}
