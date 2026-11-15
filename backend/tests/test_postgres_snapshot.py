@@ -27,6 +27,7 @@ from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
 from pipeline.postgres_capacity import require_snapshot_capacity, SnapshotCapacityError
 from pipeline.postgres_archive_import_fixture import import_archived_documents
 from pipeline.postgres_ingest_fixture import store_document
+from pipeline.postgres_ledger_detail_fixture import LedgerDetailFixture
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -84,6 +85,33 @@ class SnapshotReplacementTests(unittest.TestCase):
             with self.pg() as c:
                 import_archived_documents(c)
         self.assertEqual(self.reader.list().total, 2)
+
+    def test_ledger_detail_keeps_legacy_links_and_suppresses_stale_links(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+        ledger_reader = LedgerDetailFixture(self.pg)
+        old = self.reader.get(1)
+        self.assertEqual(ledger_reader.get(1).model_dump(), old.model_dump())
+        self.assertEqual(len(old.entities), 1)
+        with self.pg() as c:
+            from pipeline.store import _hash
+            c.execute('UPDATE ingest_documents SET content_hash=%s WHERE id=1', (_hash('원문'),))
+            same = store_document(c, source_type='blog', source_id='synthetic', title='제목',
+                                  markdown='원문', media=['fixtures/new.jpg'])
+            self.assertEqual(same['status'], 'unchanged')
+        self.assertEqual(ledger_reader.get(1).images, ['fixtures/new.jpg'])
+        self.assertEqual(ledger_reader.get(1).summary, '저장된 요약')
+        self.assertEqual(len(ledger_reader.get(1).entities), 1)
+        with self.pg() as c:
+            changed = store_document(c, source_type='blog', source_id='synthetic', title='새 제목', markdown='새 본문')
+            self.assertEqual(changed['status'], 'updated')
+            new = store_document(c, source_type='note', source_id='new', title='새 노트', markdown='신규 원문')
+        current = ledger_reader.get(1)
+        self.assertEqual((current.title, current.content, current.summary, current.entities), ('새 제목', '새 본문', None, []))
+        self.assertEqual(ledger_reader.get(new['id']).content, '신규 원문')
+        self.assertEqual(self.reader.get(1).model_dump(), old.model_dump())
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed
