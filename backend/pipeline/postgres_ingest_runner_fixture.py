@@ -17,6 +17,32 @@ def _guard(conn):
         raise ValueError('Disposable fixture schema required')
 
 
+def registered_connector(factory, source):
+    """Read configured blog/Telegram sources from the captured fixture registry."""
+    from pipeline.connectors.blog import BlogConnector
+    from pipeline.connectors.telegram import TelegramConnector
+    config = {'blog': ('blog_sources', 'url', BlogConnector),
+              'telegram': ('telegram_channels', 'channel_name', TelegramConnector)}
+    if source not in config:
+        raise ValueError('Only blog and Telegram registries are supported')
+    table, key, connector = config[source]
+    with factory() as conn:
+        conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        _guard(conn)
+        if not conn.execute('SELECT 1 FROM legacy_snapshot_tables WHERE table_name=%s', (table,)).fetchone():
+            raise ValueError('Source registry missing from snapshot')
+        records = conn.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal', (table,)).fetchall()
+    sources = []
+    for (row,) in records:
+        enabled = row.get('collect_enabled')
+        if enabled is None or enabled == 1:
+            value = row.get(key)
+            if not isinstance(value, str) or not value:
+                raise ValueError('Invalid source in registry')
+            sources.append(value)
+    return connector(sources)
+
+
 def run_source(connector, factory, *, clock=lambda: datetime.now(timezone.utc), on_stored=None):
     with factory() as conn:
         _guard(conn)

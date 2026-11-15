@@ -39,7 +39,7 @@ from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
-from pipeline.postgres_ingest_runner_fixture import embed_document, run_source
+from pipeline.postgres_ingest_runner_fixture import embed_document, run_source, registered_connector
 from pipeline.connectors.notes import NoteConnector
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.telegram import TelegramConnector
@@ -835,6 +835,60 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 self.assertIn(ident,[row.id for row in search_feed(c,index,'텔레그램',source='telegram').items])
             finally:
                 index.close()
+
+    def test_registered_sources_through_existing_enrichment(self):
+        from types import SimpleNamespace
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.execute('ALTER TABLE blog_sources ADD COLUMN collect_enabled INTEGER')
+            c.execute('ALTER TABLE telegram_channels ADD COLUMN collect_enabled INTEGER')
+            c.execute("INSERT INTO blog_sources VALUES ('https://disabled.test/','naver','중지',1,0)")
+            c.execute("INSERT INTO telegram_channels VALUES ('fixture','합성 채널',1,1)")
+            c.execute("INSERT INTO telegram_channels VALUES ('disabled','수집 중지',1,0)")
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','합성 영상 채널',1)")
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        blog=registered_connector(self.pg,'blog')
+        telegram=registered_connector(self.pg,'telegram')
+        self.assertEqual([r.key for r in blog.discover()],['https://example.test/'])
+        self.assertEqual([r.key for r in telegram.discover()],['fixture'])
+        post={'title':'합성 블로그','url':'https://example.test/new','published_at':'2026-01-02T00:00:00Z','content':'블로그 본문 '*100}
+        message={'message_id':'123','content':'합성 텔레그램 본문','date':'2026-01-02T00:00:00Z','link':'https://t.me/fixture/123','images':[]}
+        answer=SimpleNamespace(text='{"summary":"기존 요약 함수 결과","topics":[]}',label='fake')
+        with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+             patch('pipeline.connectors.blog.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+             patch('pipeline.connectors.telegram.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+             patch('pipeline.connectors.blog.detect_platform_and_feed_url',return_value=('fixture',None)), \
+             patch('pipeline.connectors.blog.scrape_rss',return_value=([post],'합성 채널')), \
+             patch('pipeline.connectors.telegram.scrape_channel',return_value=[message]), \
+             patch('pipeline.connectors.telegram.image_reading.read_images',return_value={}), \
+             patch('pipeline.connectors.youtube.fetch_transcript',return_value='합성 영상 자막'), \
+             patch('pipeline.connectors.youtube._video_title',return_value='합성 영상'), \
+             patch('pipeline.connectors.youtube._video_published',return_value='2026-01-02T00:00:00Z'), \
+             patch('pipeline.connectors.youtube.video_channel_id',return_value='UCfixture'), \
+             patch('pipeline.enrich.llm_available',return_value=True), \
+             patch('pipeline.enrich.llm.run',return_value=answer):
+            for connector in (blog,telegram,YouTubeConnector(video_ids=['abc123def45'])):
+                result=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
+                self.assertEqual((result['new'],result['enriched'],result['enrichment_failed']),(1,1,0))
+                repeated=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
+                self.assertEqual((repeated['unchanged'],repeated['enriched']),(1,0))
+        with self.pg() as c:
+            rows=c.execute("SELECT d.source_type,e.summary FROM ingest_documents d JOIN ingest_enrichments e ON e.document_id=d.id WHERE e.model='fake' ORDER BY d.source_type").fetchall()
+            self.assertEqual(rows,[(name,'기존 요약 함수 결과') for name in ('blog','telegram','youtube')])
+        def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
+        publisher=FixturePublisher(self.pg,self.schema,target)
+        try:
+            publisher.publish()
+            reader=PostgreSQLDocumentReader(lambda:target(publisher.active[0]))
+            for name in ('blog','telegram','youtube'):
+                self.assertTrue(any(doc.summary=='기존 요약 함수 결과' for doc in reader.list(source=name).items))
+        finally:
+            publisher.close()
 
     def test_youtube_connector_to_detail_and_search_without_network(self):
         with self.fixture.connect() as c:
