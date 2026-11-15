@@ -14,7 +14,8 @@ PROJECTION_TABLES = frozenset({
     'timeline_system_projection','timeline_source_metadata','archived_timeline_generations',
     'archived_timeline_source','archived_timeline_system','archived_timeline_legacy',
     'archived_document_details','media_generations','media_blobs','media_generation_refs',
-    'document_embedding_metadata','document_embeddings','document_centroid_metadata','document_centroids',
+    'document_embedding_metadata','document_embeddings','embedding_profile_attestations',
+    'document_centroid_metadata','document_centroids',
 })
 
 
@@ -66,6 +67,8 @@ def copy_projection(conn, source_schema, target_schema):
             raise ValueError('Projection metadata generation mismatch')
         conn.execute(sql.SQL('UPDATE {}.{} SET generation_id=%s WHERE generation_id=%s').format(
             sql.Identifier(target_schema),sql.Identifier(table)), (new,old))
+    conn.execute(sql.SQL('UPDATE {}.embedding_profile_attestations SET generation_id=%s WHERE generation_id=%s').format(
+        sql.Identifier(target_schema)), (new,old))
     media = conn.execute(sql.SQL('SELECT 1 FROM {}.media_generations WHERE generation_id=%s').format(
         sql.Identifier(target_schema)), (old,)).fetchone()
     if media:

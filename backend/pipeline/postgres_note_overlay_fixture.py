@@ -74,7 +74,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     if root is not None and (root.is_symlink() or not root.is_dir()):
         raise ValueError('Invalid fixture media root')
     captured = {}
-    metadata = conn.execute('SELECT expected_model FROM document_embedding_metadata WHERE singleton').fetchone()
+    metadata = conn.execute('SELECT expected_model,vector_count,generation_id FROM document_embedding_metadata WHERE singleton').fetchone()
     dirty = conn.execute('SELECT d.id,d.source_type,d.source_id,d.title,d.url,d.published_at,d.fetched_at,d.raw_content, '
                          'd.markdown,d.media_json,d.digest_status,d.content_hash,d.revision,e.summary,e.model, '
                          'd.enrichment_dirty,d.embedding_dirty,v.embedding,v.model '
@@ -86,6 +86,11 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,revision,summary,model,enrichment_dirty,embedding_dirty,embedding,embedding_model in dirty:
         if embedding_dirty and (embedding is None or metadata is None or embedding_model != metadata[0]):
             raise ValueError('Embedding is missing or uses a different model')
+        if embedding_dirty and metadata[1] > 0:
+            attestation = conn.execute('SELECT profile FROM embedding_profile_attestations WHERE generation_id=%s',
+                                       (metadata[2],)).fetchone()
+            if attestation is None or attestation[0] != 'fixture:' + embedding_model:
+                raise ValueError('Existing vector profile is not verified for mixing')
         if source not in ('note','blog','youtube'):
             raise ValueError('Unsupported source change')
         timeline_present = bool(conn.execute('SELECT 1 FROM timeline_source_projection WHERE document_id=%s', (ident,)).fetchone())

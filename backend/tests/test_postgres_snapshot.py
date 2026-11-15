@@ -35,6 +35,7 @@ from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
 from pipeline.postgres_ingest_runner_fixture import embed_document
+from pipeline.postgres_link_preview_fixture import preview_links
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -67,14 +68,14 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at):
+    def load(self, at, *, include_linking=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking)
         finally:
             source.close()
 
@@ -111,6 +112,31 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=1').fetchone()[0], 'done')
             self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=2').fetchone()[0], 'pending')
         self.assertEqual(self.reader.get(1).summary, '나중의 오래된 요약')
+
+    def test_existing_linker_preview_rejects_graph_side_effects(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.execute("INSERT INTO entity_keywords VALUES (7,'다른별명','active')")
+            c.execute("INSERT INTO entities VALUES (8,'sector','산업A',NULL)")
+            c.execute("INSERT INTO entities VALUES (9,'theme','주제B',NULL)")
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            doc=store_document(c,source_type='note',source_id='link-fixture',title='자료',markdown='합성 회사 문서')
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            out=preview_links(c,doc['id'],{'stocks':['합성 회사'],'industries':[],'topics':[]})
+            self.assertEqual(out['links'],[{'entity_id':7,'link_type':'stock','confidence':0.9}])
+            self.assertEqual(out['legacy_links_replaced'],0)
+            for result in (
+                {'stocks':[],'industries':['새 산업'],'topics':[]},
+                {'stocks':['합성 회사'],'stock_aliases':[{'name':'합성 회사','alias':'새별명'}],'industries':[],'topics':[]},
+                {'stocks':[],'industries':['산업A'],'topics':['주제B'],'label_parents':{'산업A':'주제B'}},
+            ):
+                with self.subTest(result=result),self.assertRaisesRegex(ValueError,'side effect'):
+                    preview_links(c,doc['id'],result)
 
     def test_ledger_detail_keeps_legacy_links_and_suppresses_stale_links(self):
         self.load('2026-01-03T00:00:00+00:00')
@@ -645,7 +671,10 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
-            c.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture-model',384,0,0,0)",(generation,))
+            c.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture-model',384,1,0,0)",(generation,))
+            c.execute("INSERT INTO document_embeddings VALUES (1,%s,'base-hash')",(vector,))
+            c.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{content_hash}',to_jsonb('base-hash'::text)) "
+                      "WHERE table_name='raw_documents' AND row_data->>'id'='1'")
             c.execute('UPDATE ingest_documents SET content_hash=%s WHERE id=2',(_hash(''),))
             c.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{content_hash}',to_jsonb(%s::text)) "
                       "WHERE table_name='raw_documents' AND row_data->>'id'='2'",(_hash(''),))
@@ -669,6 +698,12 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             self.assertFalse(store_embedding(c,document_id=2,revision=99,embedding=vector,model='fixture-model'))
             self.assertTrue(store_embedding(c,document_id=2,revision=1,embedding=vector,model='fixture-model'))
+        with self.assertRaisesRegex(ValueError,'profile is not verified'):
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                copy_with_note_changes(c,self.schema,destination)
+        with self.pg() as c:
+            c.execute("INSERT INTO embedding_profile_attestations VALUES (%s,'fixture:fixture-model')",(generation,))
         with self.pg() as c:
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
             copy_with_note_changes(c,self.schema,destination)
@@ -676,7 +711,7 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             index=SearchSnapshot.from_postgres(c)
             try:
-                self.assertEqual(search_feed(c,index,'없는단어',vector=vector).items[0].id,2)
+                self.assertIn(2,[item.id for item in search_feed(c,index,'없는단어',vector=vector).items])
             finally:
                 index.close()
 

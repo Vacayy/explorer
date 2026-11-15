@@ -164,6 +164,13 @@ CREATE TABLE document_embeddings (
     content_hash TEXT
 );
 
+-- Explicit fixture-only evidence that an existing nonempty vector space and
+-- incoming fixture embeddings belong together; legacy snapshots have none.
+CREATE TABLE embedding_profile_attestations (
+    generation_id UUID PRIMARY KEY,
+    profile TEXT NOT NULL
+);
+
 -- Fixture-only preserved document centroids for existing related-document reads.
 CREATE TABLE document_centroid_metadata (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),

@@ -41,7 +41,7 @@ def rebuild(conn):
                 'JOIN ingest_documents d ON d.id=j.document_id AND d.revision=j.revision')}
     for table in ('document_filter_order', 'document_entity_order', 'document_list_projection',
                   'document_projection', 'legacy_snapshot_rows', 'legacy_snapshot_tables',
-                  'document_embeddings', 'document_embedding_metadata', 'snapshot_metadata'):
+                  'document_embeddings', 'document_embedding_metadata', 'embedding_profile_attestations', 'snapshot_metadata'):
         conn.execute('DELETE FROM ' + table)
     conn.execute("INSERT INTO legacy_snapshot_tables VALUES ('__ingest_fixture__','[]'::jsonb,'fixture',0)")
     conn.execute("INSERT INTO legacy_snapshot_tables VALUES ('raw_documents','[]'::jsonb,'fixture',%s)", (len(rows),))
