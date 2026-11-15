@@ -195,3 +195,30 @@ class SectorGenerationFlow(unittest.TestCase):
         with self.pg() as c:
             with self.assertRaisesRegex(ValueError, 'do not match'):
                 embedding_for_current_snapshot(c, 1)
+
+    def test_exact_vector_fixture_scan(self):
+        import sqlite_vec
+        from pipeline.postgres_embedding_snapshot import nearest_embeddings
+        zero = struct.pack('<384f', *([0.0] * 384))
+        one = struct.pack('<384f', *([1.0] * 384))
+        with closing(sqlite3.connect(self.path)) as c, c:
+            c.enable_load_extension(True)
+            sqlite_vec.load(c)
+            c.enable_load_extension(False)
+            c.execute('CREATE VIRTUAL TABLE doc_vec USING vec0(embedding float[384])')
+            c.execute('CREATE TABLE doc_vec_hash(rowid INTEGER PRIMARY KEY, content_hash TEXT)')
+            c.execute("UPDATE raw_documents SET content_hash='h1' WHERE id=1")
+            c.execute("INSERT INTO raw_documents (id,source_type,source_id,title,content_hash) VALUES (2,'note','two','two','h2')")
+            c.executemany('INSERT INTO doc_vec(rowid,embedding) VALUES (?,?)', [(1, zero), (2, one)])
+            c.executemany('INSERT INTO doc_vec_hash(rowid,content_hash) VALUES (?,?)', [(1, 'h1'), (2, 'h2')])
+        self.load('2026-01-09T00:00:00+00:00', include_embeddings=True)
+        with self.pg() as c:
+            with self.assertRaisesRegex(ValueError, 'repeatable-read'):
+                nearest_embeddings(c, zero)
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            found = nearest_embeddings(c, zero, limit=2)
+            self.assertEqual([item[0] for item in found], [1, 2])
+            self.assertEqual(found[0][1], 0.0)
+            with self.assertRaises(ValueError):
+                nearest_embeddings(c, b'bad')
