@@ -257,19 +257,32 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.load('2026-01-05T00:00:00+00:00')
         reader = PostgreSQLTimelineSources(self.pg)
         first = reader.timeline(scope='sources', size=1, page=1, until='2026-01-06T00:00:00Z')
+        old_channels = reader.channels(until=first.until, include_owner_read_state=True).model_dump()
+        details = PostgreSQLRawDocumentReader(self.pg)
+        old_detail = details.get(1).model_dump()
         with closing(self.fixture.connect()) as c:
+            c.execute("UPDATE raw_documents SET title='바뀐 제목' WHERE id=1")
+            c.execute("UPDATE blog_sources SET blog_name='바뀐 출처'")
             c.execute("INSERT INTO raw_documents VALUES(4,'blog','b4','늦게 들어온 글','https://example.test/new','2026-01-02','본문',NULL,NULL,'[]',NULL)")
             c.commit()
         self.load('2026-01-07T00:00:00+00:00')
         second = reader.timeline(scope='sources', size=1, page=2, until=first.until, generation=first.generation)
         self.assertNotEqual(first.items[0].id, second.items[0].id)
         self.assertEqual(second.generation, first.generation)
+        self.assertEqual(reader.channels(until=first.until, include_owner_read_state=True, generation=first.generation).model_dump(), old_channels)
+        self.assertEqual(details.get(1, generation=first.generation).model_dump(), old_detail)
+        self.assertNotEqual(details.get(1).title, old_detail['title'])
+        self.assertIsNone(details.get(4, generation=first.generation))
         current = reader.timeline(scope='sources', size=1, page=2, until=first.until)
         self.assertEqual(current.items[0].id, first.items[0].id)  # compatibility path is unpinned
         with self.pg() as c:
             c.execute("UPDATE archived_timeline_generations SET expires_at=clock_timestamp()-interval '1 second' WHERE generation_id=%s", (first.generation,))
         with self.assertRaises(GenerationExpired):
             reader.timeline(scope='sources', size=1, page=2, until=first.until, generation=first.generation)
+        with self.assertRaises(GenerationExpired):
+            reader.channels(until=first.until, generation=first.generation)
+        with self.assertRaises(GenerationExpired):
+            details.get(1, generation=first.generation)
 
     def test_timeline_submillisecond_ties_and_until_match_sqlite(self):
         from pipeline.timeline import timeline
@@ -313,6 +326,8 @@ class SnapshotReplacementTests(unittest.TestCase):
         with TestClient(module.app) as client:
             response = client.get('/api/spine/feed/timeline', params={'generation': first.generation})
             self.assertEqual(response.status_code, 410)
+            self.assertEqual(client.get('/api/spine/feed/channels', params={'generation': first.generation}).status_code, 410)
+            self.assertEqual(client.get('/api/spine/doc/1', params={'generation': first.generation}).status_code, 410)
             self.assertEqual(client.get('/api/spine/feed/timeline', params={'generation': 'bad'}).status_code, 422)
             response = client.get('/api/spine/feed/timeline')
             self.assertEqual(response.status_code, 200)

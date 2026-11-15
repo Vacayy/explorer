@@ -123,3 +123,17 @@ CREATE TABLE archived_timeline_system (
 );
 CREATE INDEX archived_timeline_system_page ON archived_timeline_system(generation_id, sort_millis DESC, id DESC);
 ALTER TABLE snapshot_metadata ADD COLUMN generation_id UUID NOT NULL;
+
+CREATE TABLE archived_timeline_legacy (
+    generation_id UUID NOT NULL REFERENCES archived_timeline_generations(generation_id) ON DELETE CASCADE,
+    table_name TEXT NOT NULL,
+    row_ordinal BIGINT NOT NULL,
+    row_data JSONB NOT NULL,
+    PRIMARY KEY (generation_id, table_name, row_ordinal)
+);
+CREATE TABLE archived_document_details (
+    generation_id UUID NOT NULL REFERENCES archived_timeline_generations(generation_id) ON DELETE CASCADE,
+    id BIGINT NOT NULL,
+    detail_document JSONB NOT NULL,
+    PRIMARY KEY (generation_id, id)
+);

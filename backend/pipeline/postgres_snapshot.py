@@ -237,6 +237,8 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
             target.execute("INSERT INTO archived_timeline_generations(generation_id,expires_at) VALUES (%s, clock_timestamp() + interval '15 minutes')", (prior[1],))
             target.execute('INSERT INTO archived_timeline_source SELECT %s, p.* FROM timeline_source_projection p', (prior[1],))
             target.execute('INSERT INTO archived_timeline_system SELECT %s, p.* FROM timeline_system_projection p', (prior[1],))
+            target.execute("INSERT INTO archived_timeline_legacy SELECT %s,table_name,row_ordinal,row_data FROM legacy_snapshot_rows WHERE table_name IN ('telegram_channels','blog_sources','youtube_channels','channel_reads')", (prior[1],))
+            target.execute('INSERT INTO archived_document_details SELECT %s,id,detail_document FROM document_projection', (prior[1],))
             target.execute("DELETE FROM archived_timeline_generations WHERE expires_at <= clock_timestamp() OR generation_id IN (SELECT generation_id FROM archived_timeline_generations ORDER BY archived_at DESC OFFSET 2)")
         # The first data read establishes a deferred SQLite snapshot if the
         # caller has not already read. This is an observation, not a guarantee

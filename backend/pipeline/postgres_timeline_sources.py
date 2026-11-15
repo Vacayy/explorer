@@ -15,6 +15,19 @@ class GenerationTimelineResponse(TimelineResponse):
     generation: str
 
 
+def resolve_generation(conn, generation):
+    """Resolve within the caller's repeatable-read transaction."""
+    row = conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+    if not row:
+        raise GenerationExpired('No timeline generation available')
+    current = row[0]
+    requested = UUID(str(generation)) if generation is not None else current
+    archived = requested != current
+    if archived and not conn.execute('SELECT EXISTS (SELECT 1 FROM archived_timeline_generations WHERE generation_id=%s AND expires_at>clock_timestamp())', (requested,)).fetchone()[0]:
+        raise GenerationExpired('Timeline generation expired')
+    return requested, archived
+
+
 class PostgreSQLTimelineSources:
     def __init__(self, connection_factory):
         self.connection_factory = connection_factory
@@ -28,14 +41,7 @@ class PostgreSQLTimelineSources:
         until = utc(until) if until else now
         with self.connection_factory() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-            current_row = conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
-            if not current_row:
-                raise GenerationExpired('No timeline generation available')
-            current = current_row[0]
-            requested = UUID(str(generation)) if generation is not None else current
-            archived = requested != current
-            if archived and not conn.execute('SELECT EXISTS (SELECT 1 FROM archived_timeline_generations WHERE generation_id=%s AND expires_at>clock_timestamp())', (requested,)).fetchone()[0]:
-                raise GenerationExpired('Timeline generation expired')
+            requested, archived = resolve_generation(conn, generation)
             source_table = 'archived_timeline_source' if archived else 'timeline_source_projection'
             system_table = 'archived_timeline_system' if archived else 'timeline_system_projection'
             generation_filter = 'AND generation_id=%s' if archived else ''
@@ -71,7 +77,7 @@ class PostgreSQLTimelineSources:
         return GenerationTimelineResponse(items=items, page=page, size=size,
                                 has_more=len(rows)>size, until=until, as_of=now, generation=str(requested))
 
-    def channels(self, *, until=None, include_owner_read_state=False):
+    def channels(self, *, until=None, include_owner_read_state=False, generation=None):
         """Omit the legacy owner's read state unless explicitly requested."""
         from pipeline.connectors.memo import SOURCES as MEMO_SOURCES
         if type(include_owner_read_state) is not bool:
@@ -79,15 +85,22 @@ class PostgreSQLTimelineSources:
         until = utc(until) if until else datetime.now(timezone.utc).isoformat()
         with self.connection_factory() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-            registries = conn.execute("SELECT table_name,row_data FROM legacy_snapshot_rows WHERE table_name IN ('telegram_channels','blog_sources','youtube_channels') ORDER BY row_ordinal").fetchall()
-            rows = conn.execute("""
+            requested, archived = resolve_generation(conn, generation)
+            source_table = 'archived_timeline_source' if archived else 'timeline_source_projection'
+            system_table = 'archived_timeline_system' if archived else 'timeline_system_projection'
+            legacy_table = 'archived_timeline_legacy' if archived else 'legacy_snapshot_rows'
+            generation_filter = 'AND generation_id=%s' if archived else ''
+            generation_where = 'WHERE generation_id=%s' if archived else ''
+            generation_params = (requested,) if archived else ()
+            registries = conn.execute(f"SELECT table_name,row_data FROM {legacy_table} WHERE table_name IN ('telegram_channels','blog_sources','youtube_channels') {generation_filter} ORDER BY row_ordinal", generation_params).fetchall()
+            rows = conn.execute(f"""
                 WITH updates AS (
-                  SELECT id,occurred_at,sort_millis,channel,platform,''::text AS name,preview FROM timeline_source_projection
+                  SELECT id,occurred_at,sort_millis,channel,platform,''::text AS name,preview FROM {source_table} {generation_where}
                   UNION ALL
-                  SELECT id,occurred_at,sort_millis,channel,'system'::text,name,preview FROM timeline_system_projection
+                  SELECT id,occurred_at,sort_millis,channel,'system'::text,name,preview FROM {system_table} {generation_where}
                 ), reads AS (
                   SELECT row_data->>'channel' AS channel, (row_data->>'read_until')::timestamptz AS read_until
-                  FROM legacy_snapshot_rows WHERE table_name='channel_reads' AND %s
+                  FROM {legacy_table} WHERE table_name='channel_reads' AND %s {generation_filter}
                 ), ranked AS (
                   SELECT u.*, count(*) OVER (PARTITION BY u.channel) AS count,
                     sum(CASE WHEN %s AND u.sort_millis > FLOOR(EXTRACT(EPOCH FROM COALESCE(r.read_until,
@@ -96,7 +109,7 @@ class PostgreSQLTimelineSources:
                     row_number() OVER (PARTITION BY u.channel ORDER BY u.sort_millis DESC,u.id COLLATE "C" DESC) AS rank
                   FROM updates u LEFT JOIN reads r ON r.channel=u.channel WHERE u.sort_millis <= FLOOR(EXTRACT(EPOCH FROM %s::timestamptz)*1000 + 0.5)
                 ) SELECT channel,platform,name,preview,occurred_at,count,unread FROM ranked WHERE rank=1
-            """, (include_owner_read_state, include_owner_read_state, until)).fetchall()
+            """, (*generation_params, *generation_params, include_owner_read_state, *generation_params, include_owner_read_state, until)).fetchall()
         registered = {}
         fields = {'telegram_channels': ('channel_name','display_name','telegram'),
                   'blog_sources': ('url','blog_name','blog'),

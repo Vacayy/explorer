@@ -7,15 +7,21 @@ import json
 from models.spine import EntityTag, FeedDocument
 from pipeline.sources import source_names_from_rows
 from pipeline.youtube_digest import fields_from_job
+from pipeline.postgres_timeline_sources import resolve_generation
 
 
 class PostgreSQLRawDocumentReader:
     def __init__(self, connection_factory):
         self.connection_factory = connection_factory
 
-    def get(self, doc_id: int) -> FeedDocument | None:
+    def get(self, doc_id: int, *, generation=None) -> FeedDocument | None:
         with self.connection_factory() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            if generation is not None:
+                requested, archived = resolve_generation(conn, generation)
+                if archived:
+                    row = conn.execute('SELECT detail_document FROM archived_document_details WHERE generation_id=%s AND id=%s', (requested, doc_id)).fetchone()
+                    return FeedDocument.model_validate(row[0]) if row else None
             return self.get_in_transaction(conn, doc_id)
 
     def get_in_transaction(self, conn, doc_id: int) -> FeedDocument | None:
