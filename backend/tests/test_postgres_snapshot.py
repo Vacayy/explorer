@@ -20,6 +20,7 @@ from pipeline.postgres_snapshot import SNAPSHOT_LOCK_KEY, load_snapshot
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_rebuild_detail import rebuild_details
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources
+from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -188,6 +189,21 @@ class SnapshotReplacementTests(unittest.TestCase):
             actual = reader.timeline(until='2026-01-06T00:00:00Z', **params)
             self.assertEqual([i.model_dump() for i in actual.items], [i.model_dump() for i in expected[key].items], key)
             self.assertEqual(actual.has_more, expected[key].has_more, key)
+
+    def test_rebuild_source_timeline_from_raw_and_failure_rolls_back(self):
+        self.load('2026-01-06T00:00:00+00:00')
+        with self.pg() as c:
+            expected = c.execute('SELECT * FROM timeline_source_projection ORDER BY id').fetchall()
+            self.assertTrue(expected)
+            c.execute('DELETE FROM timeline_source_projection')
+        self.assertEqual(rebuild_source_timeline(self.pg), len(expected))
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT * FROM timeline_source_projection ORDER BY id').fetchall(), expected)
+            c.execute('DELETE FROM timeline_source_metadata WHERE document_id=%s', (expected[0][1],))
+        with self.assertRaises(ValueError):
+            rebuild_source_timeline(self.pg)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT * FROM timeline_source_projection ORDER BY id').fetchall(), expected)
 
     def test_timeline_submillisecond_ties_and_until_match_sqlite(self):
         from pipeline.timeline import timeline

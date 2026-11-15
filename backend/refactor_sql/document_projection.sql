@@ -97,3 +97,11 @@ CREATE TABLE timeline_system_projection (
     item JSONB NOT NULL
 );
 CREATE INDEX timeline_system_order ON timeline_system_projection (sort_millis DESC, id DESC);
+
+-- The legacy timeline's unordered joins select an enrichment and entity order
+-- implicitly. Keep their observed identities separate from the response cache.
+CREATE TABLE timeline_source_metadata (
+    document_id BIGINT PRIMARY KEY REFERENCES document_projection(id),
+    enrichment_id BIGINT,
+    entity_order JSONB NOT NULL
+);

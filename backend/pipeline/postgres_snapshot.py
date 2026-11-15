@@ -139,7 +139,7 @@ def _filter_orders(source, ordinal_keys):
             yield (name, position, available[key].popleft())
 
 
-def _timeline_source_rows(source, *, batch_size=250):
+def _timeline_source_rows(source, metadata, *, batch_size=250):
     """Capture existing source-lane responses in the same SQLite snapshot."""
     from pipeline.timeline import _projection, _documents, utc
 
@@ -152,10 +152,14 @@ def _timeline_source_rows(source, *, batch_size=250):
         topics = defaultdict(set)
         for tag in source.execute(f"SELECT el.doc_id,e.name FROM entity_links el JOIN entities e ON e.id=el.entity_id WHERE el.doc_id IN ({marks})", ids):
             topics[tag['doc_id']].add(tag['name'])
+        enrichment_ids = {}
+        for r in source.execute(f'SELECT rd.id, en.id enrichment_id FROM raw_documents rd LEFT JOIN enrichments en ON en.doc_id=rd.id WHERE rd.id IN ({marks})', ids):
+            enrichment_ids[r['id']] = r['enrichment_id']
         published = {r['id']: r['published_at'] for r in source.execute(
             f'SELECT id,published_at FROM raw_documents WHERE id IN ({marks})', ids)}
         for row in rows:
             doc = documents[row['ref']]
+            metadata.append((doc.id, enrichment_ids[doc.id], json.dumps([{'entity_id': e.entity_id, 'link_type': e.link_type, 'confidence': e.confidence} for e in doc.entities])))
             yield (row['id'], row['ref'], utc(row['ts']), row['sort_millis'], row['channel'], row['platform'],
                    sorted(topics[row['ref']]), '게시' if published[row['ref']] else '수집',
                    row['preview'] or '', json.dumps(doc.model_dump(mode='json'), ensure_ascii=False))
@@ -232,6 +236,7 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         groups = _source_groups(source)
         target.execute('DELETE FROM legacy_snapshot_rows')
         target.execute('DELETE FROM legacy_snapshot_tables')
+        target.execute('DELETE FROM timeline_source_metadata')
         target.execute('DELETE FROM timeline_system_projection')
         target.execute('DELETE FROM timeline_source_projection')
         target.execute('DELETE FROM document_filter_order')
@@ -271,8 +276,10 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
                         feed_rows())
         _insert_batches(target, 'INSERT INTO document_filter_order VALUES (%s,%s,%s)',
                         _filter_orders(source, ordinal_keys))
+        timeline_metadata = []
         _insert_batches(target, 'INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
-                        _timeline_source_rows(source))
+                        _timeline_source_rows(source, timeline_metadata))
+        _insert_batches(target, 'INSERT INTO timeline_source_metadata VALUES (%s,%s,%s::jsonb)', timeline_metadata)
         _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_system_rows(source))
         target.execute('INSERT INTO snapshot_metadata '
