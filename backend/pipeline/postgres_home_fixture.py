@@ -2,7 +2,7 @@
 import json
 from datetime import timedelta
 from models.spine import WatchlistUpdate
-from pipeline.postgres_signals_fixture import signals_items
+from pipeline.postgres_signals_fixture import signals_items, _require_signals
 
 
 def market_highlights(conn, *, today):
@@ -10,7 +10,7 @@ def market_highlights(conn, *, today):
 
 
 def watchlist_updates(conn, *, watched_codes, follow_ids, since, since_date):
-    signals_items(conn,since='9999-12-31')
+    _require_signals(conn)
     updates=[]
     seen=set()
     if watched_codes:

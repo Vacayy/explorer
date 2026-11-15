@@ -173,6 +173,8 @@ class SnapshotReplacementTests(unittest.TestCase):
             events=calendar_events(c,start=date(2026,1,1),watched_codes={'B'})
             self.assertEqual([row.id for row in events],[2,1])
             self.assertEqual(events[1].corp_name,'합성 기업')
+            with self.assertRaisesRegex(ValueError,'Signal snapshot required'):
+                signals_items(c,since='2026-01-01')
 
     def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
         self.load('2026-01-03T00:00:00+00:00')

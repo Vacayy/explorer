@@ -7,7 +7,7 @@ from datetime import date,datetime,timedelta,timezone
 from routers.spine_signals import _row_to_item, _RANK_KEY, SummaryTop, SummaryType, SignalsSummary, MomentumRow, MomentumResponse
 
 
-def signals_items(conn, *, since, signal_type=None):
+def _guard_read(conn):
     database,schema=conn.execute('SELECT current_database(),current_schema()').fetchone()
     if (os.getenv('REFACTOR_TEST_DISPOSABLE') != '1' or database != 'fixture' or
             not schema or not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}',schema)):
@@ -15,6 +15,16 @@ def signals_items(conn, *, since, signal_type=None):
     if (conn.execute('SHOW transaction_isolation').fetchone()[0] != 'repeatable read' or
             conn.execute('SHOW transaction_read_only').fetchone()[0] != 'on'):
         raise ValueError('Read-only repeatable-read required')
+
+
+def _require_signals(conn):
+    _guard_read(conn)
+    if not conn.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='signals'").fetchone():
+        raise ValueError('Signal snapshot required')
+
+
+def signals_items(conn, *, since, signal_type=None):
+    _require_signals(conn)
     rows=conn.execute("""
       SELECT s.row_data,e.row_data FROM legacy_snapshot_rows s
       JOIN legacy_snapshot_rows e ON e.table_name='entities' AND e.row_data->>'id'=s.row_data->>'entity_id'
@@ -30,8 +40,7 @@ def signals_items(conn, *, since, signal_type=None):
 
 
 def signals_summary(conn, *, days=7):
-    # Reuse the same guard before querying any fixture contents.
-    signals_items(conn,since='9999-12-31')
+    _require_signals(conn)
     latest=conn.execute("SELECT row_data->>'signal_type',max(row_data->>'date') "
                         "FROM legacy_snapshot_rows WHERE table_name='signals' GROUP BY 1 ORDER BY (row_data->>'signal_type') COLLATE \"C\"").fetchall()
     out=[]
@@ -53,7 +62,7 @@ def signals_summary(conn, *, days=7):
 
 
 def mention_momentum(conn, *, limit=12, now=None, today=None):
-    signals_items(conn,since='9999-12-31')
+    _guard_read(conn)
     instant=now or datetime.now(timezone.utc)
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError('Timezone-aware time required')

@@ -1,11 +1,11 @@
 """Home calendar reads from disposable snapshots; no external collection."""
 from datetime import timedelta
 from models.spine import CalendarEvent
-from pipeline.postgres_signals_fixture import signals_items
+from pipeline.postgres_signals_fixture import _guard_read
 
 
 def calendar_events(conn, *, start, watched_codes):
-    signals_items(conn,since='9999-12-31')
+    _guard_read(conn)
     present={row[0] for row in conn.execute("SELECT table_name FROM legacy_snapshot_tables WHERE table_name IN ('catalysts','companies')")}
     if present != {'catalysts','companies'}: raise ValueError('Event snapshot required')
     rows=conn.execute("""

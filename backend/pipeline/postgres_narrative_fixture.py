@@ -1,15 +1,13 @@
 """Read existing narrative list from a disposable snapshot."""
 import json
 from datetime import datetime,timedelta,timezone
-from pipeline.postgres_signals_fixture import signals_items
+from pipeline.postgres_signals_fixture import _guard_read, _require_signals
 from pipeline.narrative import _summary, _hash
 from routers.spine_narrative import NarrativeList, Narrative
 
 
 def list_narratives(conn):
-    signals_items(conn,since='9999-12-31')  # validates disposable, read-only transaction
-    if not conn.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='signals'").fetchone():
-        raise ValueError('Signal snapshot required')
+    _require_signals(conn)
     metric_rows=conn.execute("""
       SELECT e.row_data->>'name',s.row_data->>'payload_json'
       FROM legacy_snapshot_rows s JOIN legacy_snapshot_rows e
@@ -41,7 +39,7 @@ def list_narratives(conn):
 
 
 def cached_narrative(conn, topic, *, now=None):
-    signals_items(conn,since='9999-12-31')
+    _guard_read(conn)
     instant=now or datetime.now(timezone.utc)
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError('Timezone-aware time required')
