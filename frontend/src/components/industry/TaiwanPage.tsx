@@ -39,7 +39,7 @@ export default function TaiwanPage() {
     for (const [k, v] of Object.entries(kv)) { if (v) n.set(k, v); else n.delete(k) }
     return n
   }, { replace: true, preventScrollReset: true })
-  if (rev.isError && (PUBLIC_ACCESS || links.isError)) return <PageLayout mode="document"><ErrorState message="대만 월매출을 불러오지 못했습니다." onRetry={() => { void rev.refetch(); void links.refetch() }} /></PageLayout>
+  if (rev.isError && (PUBLIC_ACCESS || links.isError)) return <PageLayout mode="document"><ErrorState message="대만 월매출을 불러오지 못했습니다." onRetry={() => { void rev.refetch(); if (!PUBLIC_ACCESS) void links.refetch() }} /></PageLayout>
   const code = params.get("tw")
   return <PageLayout mode="document">
     <div className="flex flex-col">
