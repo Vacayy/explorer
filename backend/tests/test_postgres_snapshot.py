@@ -468,6 +468,7 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             note.write_text('# 정기 문서\n처음',encoding='utf-8')
             stop=threading.Event()
             results=[]
+            errors=[]
             def completed(result):
                 results.append(result)
                 if len(results)==1:
@@ -475,8 +476,13 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 else:
                     stop.set()
             from pipeline.enrich import _enrich_keyword
-            run_periodic(lambda: NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword,
-                         stop=stop,interval_seconds=0.01,on_cycle=completed)
+            def connector():
+                if not errors:
+                    raise RuntimeError('fixture transient error')
+                return NoteConnector(Path(vault))
+            run_periodic(connector,self.pg,enrich=_enrich_keyword,
+                         stop=stop,interval_seconds=0.01,on_cycle=completed,on_error=errors.append)
+            self.assertEqual(len(errors),1)
         self.assertEqual([(r['new'],r['updated'],r['enriched']) for r in results],[(1,0,1),(0,1,1)])
         with self.pg() as c:
             self.assertEqual(c.execute("SELECT e.summary FROM ingest_enrichments e JOIN ingest_documents d ON d.id=e.document_id WHERE d.source_id='periodic.md'").fetchone()[0],'# 정기 문서 변경')

@@ -48,12 +48,16 @@ def run_exclusive_cycle(connector, factory, *, enrich):
             lease.execute('SELECT pg_advisory_unlock(%s)',(CYCLE_LOCK,))
 
 
-def run_periodic(connector_factory, factory, *, enrich, stop, interval_seconds, on_cycle):
+def run_periodic(connector_factory, factory, *, enrich, stop, interval_seconds, on_cycle, on_error):
     """Run serial cycles until stopped; caller supplies all side effects."""
     if interval_seconds <= 0:
         raise ValueError('interval_seconds must be positive')
     while not stop.is_set():
-        result=run_exclusive_cycle(connector_factory(),factory,enrich=enrich)
-        on_cycle(result)
+        try:
+            result=run_exclusive_cycle(connector_factory(),factory,enrich=enrich)
+        except Exception as exc:
+            on_error(exc)
+        else:
+            on_cycle(result)
         if stop.wait(interval_seconds):
             return
