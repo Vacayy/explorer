@@ -10,6 +10,7 @@ import CandlestickChart from '@/components/charts/CandlestickChart'
 import { useChartTheme } from '@/components/charts/chartTheme'
 import { FinancialPreview } from '@/components/company/CompanyFinancials'
 import { CompanyEvidence } from '@/components/company/CompanyEvidence'
+import { CompanyMentions } from '@/components/company/CompanyMentions'
 import { PublicCompanyOverviewCard } from '@/components/company/CompanyOverview'
 import { formatKrw, formatNumber } from '@/utils/format'
 
@@ -31,6 +32,7 @@ export function PublicCompanySummary({ stockCode }: { stockCode: string }) {
       <Button asChild variant="outline"><Link to={publicFeedUrl(value.corp_name, null, location.pathname + location.search)}>기업명으로 공개 문서 검색</Link></Button>
       <PublicCompanyOverviewCard stockCode={stockCode} market="kr" />
       <CompanyEvidence company={stockCode} market="kr" preview />
+      <Button asChild variant="outline"><Link to={`/analyze/${stockCode}/mentions`}>기업 자료 전체 보기</Link></Button>
       <PublicPrices stockCode={stockCode} />
       <FinancialPreview stockCode={stockCode} publicView />
     </>}</QueryState>
@@ -64,4 +66,15 @@ function PublicPrices({ stockCode }: { stockCode: string }) {
       </>
     }}</QueryState>
   </section>
+}
+
+export function PublicCompanyMentions({ stockCode }: { stockCode: string }) {
+  const company = useCompany(stockCode)
+  return <PageContainer>
+    <Button asChild variant="outline"><Link to={`/analyze/${stockCode}/summary`}>기업 개요로</Link></Button>
+    <QueryState query={company} emptyMessage="등록되지 않은 종목입니다.">{value => <>
+      <h1 className="text-xl font-medium">{value.corp_name} · 기업 자료</h1>
+      <CompanyMentions company={stockCode} market="kr" />
+    </>}</QueryState>
+  </PageContainer>
 }

@@ -11,7 +11,7 @@ import { isSearchView } from '@/lib/feed'
 import { PublicTradePage } from '@/components/follow/PublicTradePage'
 import { MemberSavedPage } from '@/components/follow/MemberSavedPage'
 import { PublicMacroPage } from '@/components/home/PublicMacroPage'
-import { PublicCompanySummary } from '@/components/company/PublicCompanySummary'
+import { PublicCompanySummary, PublicCompanyMentions } from '@/components/company/PublicCompanySummary'
 import { PublicKrSectorPage } from '@/components/industry/PublicKrSectorPage'
 import { PublicFinancialSearch, PublicFinancialsPage } from '@/components/financials/PublicFinancialsPage'
 import { Link, useLocation, useMatch } from 'react-router-dom'
@@ -33,6 +33,7 @@ export function PublicContent() {
   const sector = useMatch('/industry/us/:ticker')
   const krSector = useMatch('/industry/:sector')
   const summary = useMatch('/analyze/:stockCode/summary')
+  const mentions = useMatch('/analyze/:stockCode/mentions')
   const document = useMatch('/doc/:docId')
   const financial = useMatch('/analyze/:stockCode/financials')
   const trade = useMatch('/follow/trade/:hs')
@@ -46,6 +47,7 @@ export function PublicContent() {
   if (usCompany?.params.ticker) return <UsDossierPage ticker={usCompany.params.ticker} />
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
+  if (mentions?.params.stockCode) return <PublicCompanyMentions stockCode={mentions.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
   if (pathname === '/narrative') return <NarrativePage />
   if (pathname === '/narrative/history') return <NarrativeHistory />
