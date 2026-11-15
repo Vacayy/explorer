@@ -42,7 +42,10 @@ CREATE TABLE ingest_enrichments (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
     summary TEXT,
-    model TEXT
+    model TEXT,
+    sentiment TEXT,
+    time_orientation TEXT,
+    reference_period TEXT
 );
 CREATE TABLE ingest_legacy_video_archive (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
@@ -55,6 +58,9 @@ CREATE TABLE ingest_enrichment_history (
     revision BIGINT NOT NULL,
     summary TEXT,
     model TEXT,
+    sentiment TEXT,
+    time_orientation TEXT,
+    reference_period TEXT,
     PRIMARY KEY(document_id,revision)
 );
 CREATE TABLE ingest_youtube_jobs (

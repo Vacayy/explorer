@@ -38,8 +38,8 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
                  'projection_version=projection_version+1,enrichment_dirty=FALSE,embedding_dirty=FALSE,links_dirty=FALSE WHERE id=%s',
                  (title, markdown, digest, revision, Jsonb(media) if media else None,
                   url, published_at, raw_content, digest_status, fetched_at, row[0]))
-    conn.execute('INSERT INTO ingest_enrichment_history(document_id,revision,summary,model) '
-                 'SELECT document_id,revision,summary,model FROM ingest_enrichments WHERE document_id=%s '
+    conn.execute('INSERT INTO ingest_enrichment_history(document_id,revision,summary,model,sentiment,time_orientation,reference_period) '
+                 'SELECT document_id,revision,summary,model,sentiment,time_orientation,reference_period FROM ingest_enrichments WHERE document_id=%s '
                  'ON CONFLICT(document_id,revision) DO NOTHING', (row[0],))
     conn.execute('DELETE FROM ingest_enrichments WHERE document_id=%s', (row[0],))
     conn.execute('DELETE FROM ingest_embeddings WHERE document_id=%s', (row[0],))
@@ -92,15 +92,16 @@ def claim_enrichment(conn, *, document_id, worker_id='fixture-worker', upgrade_k
     return {'revision': current[0], 'token': token}
 
 
-def finish_enrichment(conn, *, document_id, revision, token, summary, model):
+def finish_enrichment(conn, *, document_id, revision, token, summary, model, sentiment=None, time_orientation=None, reference_period=None):
     current = conn.execute('SELECT revision FROM ingest_documents WHERE id=%s FOR UPDATE', (document_id,)).fetchone()
     job = conn.execute('SELECT revision,status,token FROM ingest_enrichment_jobs WHERE document_id=%s', (document_id,)).fetchone()
     if current is None or job is None or current[0] != revision or job != (revision, 'running', token):
         return False
-    conn.execute('INSERT INTO ingest_enrichments(document_id, revision, summary, model) '
-                 'VALUES (%s,%s,%s,%s) ON CONFLICT(document_id) DO UPDATE '
-                 'SET revision=excluded.revision, summary=excluded.summary, model=excluded.model',
-                 (document_id, revision, summary, model))
+    conn.execute('INSERT INTO ingest_enrichments(document_id,revision,summary,model,sentiment,time_orientation,reference_period) '
+                 'VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(document_id) DO UPDATE '
+                 'SET revision=excluded.revision,summary=excluded.summary,model=excluded.model,sentiment=excluded.sentiment, '
+                 'time_orientation=excluded.time_orientation,reference_period=excluded.reference_period',
+                 (document_id,revision,summary,model,sentiment,time_orientation,reference_period))
     conn.execute('UPDATE ingest_documents SET projection_version=projection_version+1,enrichment_dirty=TRUE WHERE id=%s', (document_id,))
     conn.execute("UPDATE ingest_enrichment_jobs SET status='done',token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (document_id,))
     return True

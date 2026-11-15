@@ -306,7 +306,8 @@ class SnapshotReplacementTests(unittest.TestCase):
         def synthetic(title,markdown):
             self.assertEqual(title,'수집 연결 시험')
             self.assertIn('신규 본문',markdown)
-            return {'summary':'합성 요약','model':'fixture','stocks':[],'industries':['연결 산업'],'topics':[]}
+            return {'summary':'합성 요약','model':'fixture','sentiment':'positive','time_orientation':'forward',
+                    'reference_period':'2027','stocks':[],'industries':['연결 산업'],'topics':[]}
         self.assertTrue(enrich_document(self.pg,ident,enrich=synthetic))
         self.assertFalse(enrich_document(self.pg,ident,enrich=synthetic))
         destination='refactor_fixture_'+uuid.uuid4().hex
@@ -328,6 +329,9 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertIn(ident,[item.id for item in reader.list(industry='연결 산업').items])
         with target() as c:
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            fields=c.execute("SELECT row_data->>'sentiment',row_data->>'time_orientation',row_data->>'reference_period' "
+                             "FROM legacy_snapshot_rows WHERE table_name='enrichments' AND row_data->>'doc_id'=%s",(str(ident),)).fetchone()
+            self.assertEqual(fields,('positive','forward','2027'))
             generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
             rows=c.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
                            "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()

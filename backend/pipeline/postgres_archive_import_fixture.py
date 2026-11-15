@@ -29,8 +29,9 @@ def import_archived_documents(conn):
     # Legacy detail displays the latest result even when it does not match the
     # current document hash. Keep that display in the archive, but only treat a
     # hash-matching result as current in the write ledger.
-    conn.execute('''INSERT INTO ingest_enrichments(document_id,revision,summary,model)
-        SELECT DISTINCT ON (d.id) d.id, 1, e.row_data->>'summary', e.row_data->>'model'
+    conn.execute('''INSERT INTO ingest_enrichments(document_id,revision,summary,model,sentiment,time_orientation,reference_period)
+        SELECT DISTINCT ON (d.id) d.id, 1, e.row_data->>'summary', e.row_data->>'model',
+            e.row_data->>'sentiment',e.row_data->>'time_orientation',e.row_data->>'reference_period'
         FROM legacy_snapshot_rows e JOIN ingest_documents d ON d.id=(e.row_data->>'doc_id')::bigint
         WHERE e.table_name='enrichments' AND d.content_hash <> ''
               AND e.row_data->>'content_hash'=d.content_hash

@@ -35,7 +35,7 @@ def import_videos(source, target, ids):
         target.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status) VALUES (%s,1,%s)",
                        (ident, 'done' if entries else 'pending'))
         if entries:
-            target.execute('INSERT INTO ingest_enrichments VALUES (%s,1,%s,%s)',
+            target.execute('INSERT INTO ingest_enrichments(document_id,revision,summary,model) VALUES (%s,1,%s,%s)',
                            (ident, entries[0].get('summary'), entries[0].get('model')))
         if job:
             # Historical tokens are preserved in the archive, not made runnable.

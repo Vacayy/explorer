@@ -97,7 +97,9 @@ def finish_with_graph(conn, document_id, *, revision, token, summary, model, res
                          'VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
                          (remap[row['src_id']],remap[row['dst_id']],row['rel_type'],row['epistemic_type'],row['confidence'],row['source_doc_id'],row['valid_from']))
         links=list(db.execute('SELECT entity_id,link_type,confidence FROM entity_links ORDER BY rowid'))
-        if not finish_enrichment(conn,document_id=document_id,revision=revision,token=token,summary=summary,model=model):
+        if not finish_enrichment(conn,document_id=document_id,revision=revision,token=token,summary=summary,model=model,
+                                 sentiment=result.get('sentiment'),time_orientation=result.get('time_orientation'),
+                                 reference_period=result.get('reference_period')):
             raise RuntimeError('Claim changed during graph update')
         conn.execute('DELETE FROM ingest_entity_links WHERE document_id=%s',(document_id,))
         for position,row in enumerate(links):

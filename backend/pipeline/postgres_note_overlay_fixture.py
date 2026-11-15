@@ -254,6 +254,8 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             next_id = conn.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0)+1 FROM legacy_snapshot_rows WHERE table_name='enrichments'").fetchone()[0]
             enrichment = {'id':next_id,'doc_id':ident,'summary':summary,'model':model,'content_hash':digest,
                           'enriched_at':'2026-01-01T00:00:00Z'}
+            sentiment,orientation,period=conn.execute(sql.SQL('SELECT sentiment,time_orientation,reference_period FROM {}.ingest_enrichments WHERE document_id=%s').format(sql.Identifier(source_schema)),(ident,)).fetchone()
+            enrichment.update(sentiment=sentiment,time_orientation=orientation,reference_period=period)
             conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'enrichments',COALESCE(max(row_ordinal)+1,0),%s "
                          "FROM legacy_snapshot_rows WHERE table_name='enrichments'", (Jsonb(enrichment),))
         if existing and not same_revision and source == 'note':
