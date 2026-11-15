@@ -8,6 +8,7 @@ import uuid
 import threading
 import time
 from contextlib import closing
+from collections import namedtuple
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,6 +24,7 @@ from pipeline.postgres_rebuild_detail import rebuild_details
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationExpired
 from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
 from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
+from pipeline.postgres_capacity import require_snapshot_capacity, SnapshotCapacityError
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -62,7 +64,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None)
         finally:
             source.close()
 
@@ -385,6 +387,34 @@ class SnapshotReplacementTests(unittest.TestCase):
                 load_snapshot(source, factory, snapshot_at='2026-01-05T00:00:00+00:00')
         finally:
             source.close()
+
+    def test_capacity_refusal_preserves_current_snapshot_and_archives(self):
+        self.load('2026-01-05T00:00:00+00:00')
+        before = self.reader.snapshot_info()
+        with closing(self.fixture.connect()) as source:
+            source.execute('PRAGMA query_only=ON')
+            source.execute('BEGIN')
+            with self.assertRaisesRegex(ValueError, 'capacity check'):
+                load_snapshot(source, self.pg, snapshot_at='2026-01-06T00:00:00+00:00')
+            with self.assertRaises(SnapshotCapacityError):
+                load_snapshot(source, self.pg, snapshot_at='2026-01-06T00:00:00+00:00',
+                    capacity_check=lambda src, dst: require_snapshot_capacity(src, dst,
+                        host_probe=Path('/tmp'), vm_probe=Path('/tmp'), reserve_bytes=1 << 60))
+            with self.assertRaises(SnapshotCapacityError):
+                load_snapshot(source, self.pg, snapshot_at='2026-01-06T00:00:00+00:00',
+                    capacity_check=lambda src, dst: require_snapshot_capacity(src, dst,
+                        host_probe=Path('/not-a-probe'), vm_probe=Path('/tmp')))
+            usage = namedtuple('usage', 'total used free')
+            for free_values in ((1 << 50, 0), (0, 1 << 50)):
+                with patch('pipeline.postgres_capacity.shutil.disk_usage', side_effect=[usage(1, 0, n) for n in free_values]):
+                    with self.assertRaises(SnapshotCapacityError):
+                        load_snapshot(source, self.pg, snapshot_at='2026-01-06T00:00:00+00:00',
+                            capacity_check=lambda src, dst: require_snapshot_capacity(src, dst,
+                                host_probe=Path('/tmp'), vm_probe=Path('/tmp')))
+        self.assertEqual(self.reader.snapshot_info(), before)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM archived_timeline_generations').fetchone()[0], 0)
+        self.assertEqual(self.reader.get(1).content, '원문')
 
     def test_older_snapshot_cannot_replace_newer(self):
         self.load('2026-01-05T00:00:00+00:00')

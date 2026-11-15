@@ -212,7 +212,7 @@ def _store_legacy_tables(source, target):
         _insert_batches(target, 'INSERT INTO legacy_snapshot_rows VALUES (%s,%s,%s::jsonb)', records())
 
 
-def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
+def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None) -> dict:
     """Replace the projection atomically from one existing SQLite transaction."""
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('An active query-only SQLite snapshot is required')
@@ -228,6 +228,9 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         target.execute('SELECT pg_advisory_xact_lock(%s)', (SNAPSHOT_LOCK_KEY,))
         prior = target.execute('SELECT snapshot_at, generation_id FROM snapshot_metadata WHERE singleton').fetchone()
         if prior:
+            if capacity_check is None:
+                raise ValueError('Snapshot replacement requires a capacity check')
+            capacity_check(source, target)
             previous = datetime.fromisoformat(prior[0].replace('Z', '+00:00'))
             if instant < previous:
                 raise ValueError('Older snapshot cannot replace a newer snapshot')
