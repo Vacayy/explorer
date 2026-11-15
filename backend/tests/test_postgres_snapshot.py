@@ -39,6 +39,7 @@ from pipeline.postgres_ingest_runner_fixture import embed_document, run_source
 from pipeline.connectors.notes import NoteConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
+from pipeline.postgres_enrich_worker_fixture import enrich_document
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -296,9 +297,18 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual(run_source(NoteConnector(Path(vault)),self.pg)['unchanged'],1)
         with self.pg() as c:
             ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='note' AND source_id='fixture.md'").fetchone()[0]
-            claim=claim_enrichment(c,document_id=ident)
-            self.assertTrue(finish_with_graph(c,ident,revision=claim['revision'],token=claim['token'],
-                summary='합성 요약',model='fixture',result={'stocks':[],'industries':['연결 산업'],'topics':[]}))
+        def failed(*_):
+            raise RuntimeError('fixture error')
+        with self.assertRaisesRegex(RuntimeError,'fixture error'):
+            enrich_document(self.pg,ident,enrich=failed)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(ident,)).fetchone()[0],'failed')
+        def synthetic(title,markdown):
+            self.assertEqual(title,'수집 연결 시험')
+            self.assertIn('신규 본문',markdown)
+            return {'summary':'합성 요약','model':'fixture','stocks':[],'industries':['연결 산업'],'topics':[]}
+        self.assertTrue(enrich_document(self.pg,ident,enrich=synthetic))
+        self.assertFalse(enrich_document(self.pg,ident,enrich=synthetic))
         destination='refactor_fixture_'+uuid.uuid4().hex
         with psycopg.connect(self.dsn) as c:
             c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
