@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import MultiLineChart from '@/components/charts/MultiLineChart'
@@ -44,8 +45,8 @@ export default function RetailHeatPage() {
             <div className="flex flex-wrap items-center gap-3"><CardTitle>지금 국면</CardTitle><RegimeBadge regime={s.regime} className="text-sm" /></div>
             <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{s.regime.reasons.map(r => <li key={r}>{r}</li>)}</ul>
             <p className="text-caption text-muted-foreground">규칙으로 판정한 관측 결과이지 매매 신호가 아닙니다. 판정 규칙은 아래 도움말에 있습니다.</p>
-            {(!s.krx_configured || !s.accounts_available) && <p className="text-caption text-hypothesis">
-              {!s.krx_configured && '개인 거래 비중·순매수·ETF 선호도는 한국거래소 계정(.env KRX_ID·KRX_PW)을 설정하면 채워집니다. '}
+            {((!PUBLIC_ACCESS && !s.krx_configured) || !s.accounts_available) && <p className="text-caption text-hypothesis">
+              {(!PUBLIC_ACCESS && !s.krx_configured) && '개인 거래 비중·순매수·ETF 선호도는 한국거래소 계정(.env KRX_ID·KRX_PW)을 설정하면 채워집니다. '}
               {!s.accounts_available && '주식거래활동계좌는 아직 수집 경로가 없어 국면 판정에서 빠집니다.'}</p>}
           </CardHeader>
           <CardContent><MetricTable metrics={s.metrics} /></CardContent>

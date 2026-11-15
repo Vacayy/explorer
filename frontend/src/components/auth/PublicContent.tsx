@@ -1,3 +1,4 @@
+import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
 import NarrativePage from "@/components/explore/NarrativePage"
 import NarrativeHistory from "@/components/explore/NarrativeHistory"
@@ -48,6 +49,7 @@ export function PublicContent() {
   if (sector?.params.ticker) return <PublicUsSectorPage ticker={sector.params.ticker} />
   if (pathname === '/industry') return <IndustryMapPage />
   if (pathname === '/' || pathname === '/home') return <HomePage />
+  if (pathname === '/retail') return <RetailHeatPage />
   if (pathname === '/home/kr') return <HomeKrPage />
   if (pathname === '/home/us') return <HomeUsPage />
   return <PageContainer><h1 className="text-xl font-medium">아직 공개되지 않은 화면입니다</h1>

@@ -212,7 +212,18 @@ def _num(v):
 def series(conn) -> list[dict]:
     """날짜순 원시 행 + 파생 지표."""
     ensure_schema(conn)
-    rows = [dict(r) for r in conn.execute("SELECT * FROM retail_flows ORDER BY date")]
+    return read_series(conn)
+
+
+FLOW_COLUMNS = ('date', 'deposits', 'receivables', 'forced_sales', 'forced_ratio', 'credit_total',
+                'credit_kospi', 'credit_kosdaq', 'kospi_close', 'kospi_value', 'kosdaq_value',
+                'kospi_cap', 'kosdaq_cap', 'indiv_buy', 'indiv_sell', 'total_buy', 'total_sell',
+                'lev_value', 'inv_value', 'active_accounts')
+
+
+def read_series(conn) -> list[dict]:
+    """Stored inputs only: schema initialization belongs to the private wrapper."""
+    rows = [dict(r) for r in conn.execute('SELECT '+','.join(FLOW_COLUMNS)+' FROM retail_flows ORDER BY date')]
     out = []
     for i, r in enumerate(rows):
         prev = rows[i - WINDOW] if i >= WINDOW else None
@@ -334,20 +345,30 @@ def computed(conn) -> list[dict]:
 
 
 def summary(conn) -> dict:
-    pts = [p for p in computed(conn) if p.get("credit_total") is not None]
+    ensure_schema(conn)
+    return read_summary(conn, configured=krx_configured())
+
+
+def read_summary(conn, *, configured=False) -> dict:
+    pts = [p for p in with_percentiles(read_series(conn)) if p.get("credit_total") is not None]
     if not pts:
-        return {"as_of": None, "regime": None, "metrics": [], "levels": {}, "krx_configured": krx_configured(), "accounts_available": False}
+        return {"as_of": None, "regime": None, "metrics": [], "levels": {}, "krx_configured": configured, "accounts_available": False}
     p, prev = pts[-1], (pts[-1 - WINDOW] if len(pts) > WINDOW else None)
     return {"as_of": p["date"], "regime": classify(p), "metrics": _metrics(p, prev),
             "levels": {"credit_total": p["credit_total"], "deposits": p["deposits"], "kospi_close": p["kospi_close"]},
-            "krx_configured": krx_configured(), "accounts_available": any(x.get("accounts_growth") is not None for x in pts[-60:])}
+            "krx_configured": configured, "accounts_available": any(x.get("accounts_growth") is not None for x in pts[-60:])}
 
 
 def history(conn, days: int = 1500) -> list[dict]:
+    ensure_schema(conn)
+    return read_history(conn, days)
+
+
+def read_history(conn, days: int = 1500) -> list[dict]:
     since = (date.today() - timedelta(days=days)).isoformat()
     keep = ["date", "credit_total", "deposits", "kospi_close", "value", "credit_growth", "credit_growth_pct", "deposit_growth_pct",
             "value_growth_pct", "leverage", "turnover", "indiv_share", "forced_20_pct"]
-    return [{k: p.get(k) for k in keep} for p in computed(conn) if p["date"] >= since and p.get("credit_total") is not None]
+    return [{k: p.get(k) for k in keep} for p in with_percentiles(read_series(conn)) if p["date"] >= since and p.get("credit_total") is not None]
 
 
 def save_snapshots(conn) -> int:
@@ -369,7 +390,11 @@ def save_snapshots(conn) -> int:
 
 def snapshots(conn) -> list[dict]:
     ensure_schema(conn)
+    return read_snapshots(conn)
+
+
+def read_snapshots(conn) -> list[dict]:
     order = {k: i for i, (k, *_rest) in enumerate(EPISODES)}
     rows = [{"episode": r["episode"], "date": r["date"], **json.loads(r["metrics_json"])}
-            for r in conn.execute("SELECT * FROM retail_snapshots")]
+            for r in conn.execute("SELECT episode,date,metrics_json FROM retail_snapshots")]
     return sorted(rows, key=lambda r: order.get(r["episode"], 99))
