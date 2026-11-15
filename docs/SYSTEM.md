@@ -726,3 +726,5 @@ tail -f logs/ingest.log               # 수집 관찰
 `pipeline/postgres_rebuild_detail.py`는 보존된 PostgreSQL 원본 행과 별도 엔티티 순서 메타데이터를 이용해 기존 상세 응답 캐시를 일회성 fixture 안에서 한 트랜잭션으로 다시 만든다. 문서 ID 집합이 다르면 실패하며 적재와 같은 잠금을 사용한다. 목록·필터·검색 캐시의 재생성이나 운영 전환은 제공하지 않는다. 대량 자료에서 소요 시간은 아직 측정하지 않았다.
 
 리팩토링 실험의 `PostgreSQLDocumentReader.list()`는 `/api/spine/feed` 문서 목록에 대한 부분 실험이다. 사용자가 기본 피드에서 보는 `ChannelReader`는 `GET /api/spine/feed/timeline`과 `/channels`를 사용하므로 이 실험만으로 기본 피드를 PostgreSQL에 연결했다고 볼 수 없다. 타임라인의 sources 범위는 수집 문서·저장 요약·엔티티·채널 활성 상태를 사용하고, system 범위는 기업/인물 요약, 컨콜·팔로우, 수출입·팔로우, 내러티브·리포트·시나리오 테이블을 추가로 사용한다. 채널 목록의 읽음 수에는 `channel_reads`도 필요하다. 타임라인에서 참조하는 추가 10개 테이블을 원본 행 보존 범위에 포함했지만, system 타임라인과 읽음 상태를 PostgreSQL에서 읽는 구현은 아직 없다. UI의 시간 고정(`until`), 채널·주제·출처 필터와 페이지 계약을 실제 타임라인 경로에서 별도 확인해야 한다.
+
+`pipeline/postgres_timeline_sources.py`는 기본 피드의 수집 자료(`scope=sources`)에 대한 격리 PostgreSQL 읽기 실험이다. 기존 SQLite snapshot 적재 시 타임라인용 응답과 채널·주제 정보를 미리 만들어 보관하며, PostgreSQL 원본 행에서 재생성하지는 않는다. 출처·채널·주제·페이지 및 기준 시각을 지원하나 `/channels`, system 범위, 읽음 쓰기, 공개 운영 연결은 미구현이다. 정렬 시각 동률의 SQLite julianday 정밀도와 PostgreSQL timestamp 정밀도 차이는 실제 자료에서 추가 검증이 필요하다.

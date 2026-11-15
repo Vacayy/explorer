@@ -139,6 +139,28 @@ def _filter_orders(source, ordinal_keys):
             yield (name, position, available[key].popleft())
 
 
+def _timeline_source_rows(source, *, batch_size=250):
+    """Capture existing source-lane responses in the same SQLite snapshot."""
+    from pipeline.timeline import _projection, _documents, utc
+
+    query, params = _projection(source, scope='sources')
+    cursor = source.execute(query, params)
+    while rows := cursor.fetchmany(batch_size):
+        ids = [row['ref'] for row in rows]
+        documents = _documents(source, ids)
+        marks = ','.join('?' for _ in ids)
+        topics = defaultdict(set)
+        for tag in source.execute(f"SELECT el.doc_id,e.name FROM entity_links el JOIN entities e ON e.id=el.entity_id WHERE el.doc_id IN ({marks})", ids):
+            topics[tag['doc_id']].add(tag['name'])
+        published = {r['id']: r['published_at'] for r in source.execute(
+            f'SELECT id,published_at FROM raw_documents WHERE id IN ({marks})', ids)}
+        for row in rows:
+            doc = documents[row['ref']]
+            yield (row['id'], row['ref'], utc(row['ts']), row['channel'], row['platform'],
+                   sorted(topics[row['ref']]), '게시' if published[row['ref']] else '수집',
+                   json.dumps(doc.model_dump(mode='json'), ensure_ascii=False))
+
+
 def _insert_batches(target, query, records, *, size=500):
     records = iter(records)
     with target.cursor() as cursor:
@@ -192,6 +214,7 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         groups = _source_groups(source)
         target.execute('DELETE FROM legacy_snapshot_rows')
         target.execute('DELETE FROM legacy_snapshot_tables')
+        target.execute('DELETE FROM timeline_source_projection')
         target.execute('DELETE FROM document_filter_order')
         target.execute('DELETE FROM document_entity_order')
         target.execute('DELETE FROM document_list_projection')
@@ -229,6 +252,8 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
                         feed_rows())
         _insert_batches(target, 'INSERT INTO document_filter_order VALUES (%s,%s,%s)',
                         _filter_orders(source, ordinal_keys))
+        _insert_batches(target, 'INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
+                        _timeline_source_rows(source))
         target.execute('INSERT INTO snapshot_metadata '
                        '(singleton,snapshot_at,source_observed_at,document_count,list_row_count) '
                        'VALUES (TRUE,%s,%s,%s,%s)',

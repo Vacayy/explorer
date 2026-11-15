@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from contextlib import closing
 from unittest.mock import patch
 
 from fastapi import FastAPI, HTTPException, Query
@@ -167,6 +168,9 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
         spec.loader.exec_module(module)
         fixture = detail_fixtures.DocumentReadBoundaryTests('test_raw_fallback_and_missing')
         fixture.setUp()
+        with closing(fixture.connect()) as c:
+            c.execute('ALTER TABLE raw_documents ADD COLUMN fetched_at TEXT')
+            c.commit()
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 media = Path(tmp)
@@ -192,6 +196,9 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
         spec.loader.exec_module(module)
         fixture = detail_fixtures.DocumentReadBoundaryTests('test_raw_fallback_and_missing')
         fixture.setUp()
+        with closing(fixture.connect()) as c:
+            c.execute('ALTER TABLE raw_documents ADD COLUMN fetched_at TEXT')
+            c.commit()
         schema = None
         try:
             with tempfile.TemporaryDirectory() as tmp:

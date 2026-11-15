@@ -27,6 +27,8 @@ from psycopg import sql
 from pipeline.document_read import _read_sqlite_document
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
+from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources
+from pipeline.timeline import timeline
 from pipeline.postgres_snapshot import LEGACY_TABLES, load_snapshot
 from routers import spine_feed
 
@@ -123,6 +125,23 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
                 differences.append({'source_type': old.source_type, 'fields': fields})
         result['raw_detail_samples_match'] = not differences
         result['raw_detail_differences'] = differences
+        # Compare the actual source-lane timeline, not the separate document feed.
+        timeline_reader = PostgreSQLTimelineSources(pg)
+        fixed_until = datetime.now(timezone.utc).isoformat()
+        with pg() as conn:
+            channel_row = conn.execute("SELECT channel FROM timeline_source_projection GROUP BY channel ORDER BY count(*) DESC LIMIT 1").fetchone()
+        timeline_cases = {'all': {}, 'page2': {'page': 2}, 'telegram': {'source': 'telegram'},
+                          'blog': {'source': 'blog'}, 'youtube': {'source': 'youtube'},
+                          'empty': {'channel': 'telegram:__fixture_missing__'}}
+        if channel_row:
+            timeline_cases['channel'] = {'channel': channel_row[0]}
+        timeline_matches = {}
+        for name, params in timeline_cases.items():
+            expected = timeline(source, scope='sources', until=fixed_until, **params)
+            actual = timeline_reader.timeline(until=fixed_until, **params)
+            timeline_matches[name] = (expected.has_more == actual.has_more and
+                                      [i.model_dump() for i in expected.items] == [i.model_dump() for i in actual.items])
+        result['source_timeline_cases_match'] = timeline_matches
         # Copy a few real attachment bytes to an isolated temporary directory;
         # source volume is read-only and no original paths or content are logged.
         attached, missing = 0, 0
@@ -180,6 +199,7 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
         }
         if retain and all((result['source_table_counts_match'], result['source_row_values_match'],
                            all(result['feed_cases_match'].values()), result['detail_samples_match'],
+                           all(result['source_timeline_cases_match'].values()),
                            result['raw_detail_samples_match'] or retain_on_mismatch)):
             result['fixture_schema'] = schema
             retain_completed = True

@@ -19,6 +19,7 @@ from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_snapshot import SNAPSHOT_LOCK_KEY, load_snapshot
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_rebuild_detail import rebuild_details
+from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -38,6 +39,9 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
         self.fixture = detail_fixtures.DocumentReadBoundaryTests('test_raw_fallback_and_missing')
         self.fixture.setUp()
+        with closing(self.fixture.connect()) as c:
+            c.execute('ALTER TABLE raw_documents ADD COLUMN fetched_at TEXT')
+            c.commit()
         self.reader = PostgreSQLDocumentReader(self.pg)
 
     def tearDown(self):
@@ -75,7 +79,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         with closing(self.fixture.connect()) as c:
             c.execute("UPDATE raw_documents SET markdown='수정 원문',media_json='[\"fixtures/new.jpg\"]' WHERE id=1")
             c.execute('DELETE FROM raw_documents WHERE id=2')
-            c.execute("INSERT INTO raw_documents VALUES(3,'note','n3','새 문서',NULL,'2026-01-05','새 원문',NULL,NULL,NULL)")
+            c.execute("INSERT INTO raw_documents VALUES(3,'note','n3','새 문서',NULL,'2026-01-05','새 원문',NULL,NULL,NULL,NULL)")
             c.commit()
         self.load(second_at)
         self.assertIsNone(self.reader.get(2))
@@ -129,8 +133,8 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute("INSERT INTO entities VALUES(5,'company','다른 회사','000005')")
             c.execute("INSERT INTO entity_links VALUES(1,5,'stock',0.6)")
             c.execute("CREATE INDEX fixture_entity_order ON entity_links(doc_id,entity_id,link_type)")
-            c.execute("INSERT INTO raw_documents VALUES(3,'youtube','yt/3','영상',NULL,'2026-01-03','정리본','자막','ok',NULL)")
-            c.execute("INSERT INTO raw_documents VALUES(4,'youtube','yt/4','영상2',NULL,'2026-01-04',NULL,'원 자막','pending',NULL)")
+            c.execute("INSERT INTO raw_documents VALUES(3,'youtube','yt/3','영상',NULL,'2026-01-03','정리본','자막','ok',NULL,NULL)")
+            c.execute("INSERT INTO raw_documents VALUES(4,'youtube','yt/4','영상2',NULL,'2026-01-04',NULL,'원 자막','pending',NULL,NULL)")
             c.execute("INSERT INTO youtube_digest_jobs VALUES(4,'원 자막','failed','fixture',0,'합성 오류')")
             c.commit()
             expected = {i: _read_sqlite_document(c, i).model_dump() for i in (1, 2, 3, 4)}
@@ -148,6 +152,27 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             c.execute("UPDATE document_projection SET detail_document = jsonb_set(detail_document, '{content}', %s::jsonb) WHERE id=1", (json.dumps("projection only"),))
         self.assertEqual(raw_reader.get(1).model_dump(), expected[1])
+
+    def test_source_timeline_filters_and_pagination_match_sqlite(self):
+        from pipeline.timeline import timeline
+        with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO raw_documents VALUES(3,'blog','b3','둘째','https://example.test/post','2026-01-01','내용',NULL,NULL,'[]',NULL)")
+            c.commit()
+            expected = {key: timeline(c, scope='sources', until='2026-01-02T00:00:00Z', **params)
+                        for key, params in {'all': {}, 'blog': {'source': 'blog'},
+                                            'channel': {'channel': 'blog:https://example.test/'},
+                                            'empty': {'source': 'youtube'},
+                                            'topic': {'topic': '합성 회사'},
+                                            'page2': {'size': 1, 'page': 2}}.items()}
+        self.load('2026-01-05T00:00:00+00:00')
+        reader = PostgreSQLTimelineSources(self.pg)
+        for key, params in {'all': {}, 'blog': {'source': 'blog'},
+                            'channel': {'channel': 'blog:https://example.test/'},
+                            'empty': {'source': 'youtube'}, 'topic': {'topic': '합성 회사'},
+                            'page2': {'size': 1, 'page': 2}}.items():
+            actual = reader.timeline(until='2026-01-02T00:00:00Z', **params)
+            self.assertEqual([i.model_dump() for i in actual.items], [i.model_dump() for i in expected[key].items], key)
+            self.assertEqual(actual.has_more, expected[key].has_more, key)
 
     def test_rebuild_details_from_pg_and_rollback_on_failure(self):
         self.load('2026-01-05T00:00:00+00:00')
@@ -240,8 +265,8 @@ class SnapshotReplacementTests(unittest.TestCase):
         with closing(self.fixture.connect()) as c:
             c.executescript("""
                 INSERT INTO raw_documents VALUES
-                  (3,'transcript','t3','컨콜3',NULL,'2026-01-05','본문3',NULL,NULL,NULL),
-                  (4,'transcript','t4','컨콜4',NULL,'2026-01-05','본문4',NULL,NULL,NULL);
+                  (3,'transcript','t3','컨콜3',NULL,'2026-01-05','본문3',NULL,NULL,NULL,NULL),
+                  (4,'transcript','t4','컨콜4',NULL,'2026-01-05','본문4',NULL,NULL,NULL,NULL);
                 CREATE INDEX fixture_source_order ON raw_documents(source_type, published_at DESC, id DESC);
                 CREATE INDEX fixture_global_order ON raw_documents(published_at DESC, id ASC);
             """)
@@ -268,8 +293,8 @@ class SnapshotReplacementTests(unittest.TestCase):
                   ('https://rss.hankyung.com/feed','rss','뉴스',1),
                   ('https://rss.newsletter.test/feed','rss','기사',1);
                 INSERT INTO raw_documents VALUES
-                  (3,'blog','news-3','뉴스','https://www.hankyung.com/a','2026-01-04','뉴스 본문',NULL,NULL,NULL),
-                  (4,'blog','article-4','기사','https://newsletter.test/a','2026-01-03','기사 본문',NULL,NULL,NULL);
+                  (3,'blog','news-3','뉴스','https://www.hankyung.com/a','2026-01-04','뉴스 본문',NULL,NULL,NULL,NULL),
+                  (4,'blog','article-4','기사','https://newsletter.test/a','2026-01-03','기사 본문',NULL,NULL,NULL,NULL);
                 INSERT INTO entities VALUES (8,'person','합성 인물',NULL);
                 INSERT INTO entity_links VALUES (4,8,'person',0.7);
                 INSERT INTO follows VALUES (8);
