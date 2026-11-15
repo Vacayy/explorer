@@ -64,24 +64,29 @@ def _judge_continuation(prev_text: str, cur_text: str, gap: float = 0) -> bool |
 
 
 def _joins_prev(channel: str | None, msg_id: int, gap: float,
-                prev_text: str, cur_text: str) -> bool:
+                prev_text: str, cur_text: str, *, mark_store=None, judge=None) -> bool:
     """이 메시지가 직전 메시지의 연장인지 — 캐시 → 판정 → 시간 fallback 순."""
     if gap > JUDGE_WINDOW_SEC:
         return False
     if channel:
-        conn = get_connection()
-        row = conn.execute(
-            "SELECT joins_prev FROM telegram_group_marks WHERE channel=? AND msg_id=?",
-            (channel, msg_id)).fetchone()
-        conn.close()
+        if mark_store is not None:
+            row = mark_store.get(channel, msg_id)
+        else:
+            conn = get_connection()
+            row = conn.execute(
+                "SELECT joins_prev FROM telegram_group_marks WHERE channel=? AND msg_id=?",
+                (channel, msg_id)).fetchone()
+            conn.close()
         if row is not None:
             return bool(row["joins_prev"])
-    verdict = _judge_continuation(prev_text, cur_text, gap)
+    verdict = (judge or _judge_continuation)(prev_text, cur_text, gap)
     model = "judge"
     if verdict is None:
         verdict = gap <= GROUP_GAP_SEC
         model = "gap"
     if channel:
+        if mark_store is not None:
+            return mark_store.put(channel, msg_id, verdict, model)
         conn = get_connection()
         conn.execute(
             "INSERT OR REPLACE INTO telegram_group_marks (channel, msg_id, joins_prev, model) "
@@ -91,7 +96,7 @@ def _joins_prev(channel: str | None, msg_id: int, gap: float,
     return verdict
 
 
-def group_bursts(messages: list[dict], channel: str | None = None) -> list[list[dict]]:
+def group_bursts(messages: list[dict], channel: str | None = None, *, mark_store=None, judge=None) -> list[list[dict]]:
     """메시지들을 연속 타이핑 묶음으로 그룹핑 (msg_id 오름차순 입력 가정 안 함).
 
     channel을 주면 판정을 캐시한다 (없으면 시간 규칙만 — 테스트/드라이런용).
@@ -107,7 +112,7 @@ def group_bursts(messages: list[dict], channel: str | None = None) -> list[list[
                 gap = (dt - prev_dt).total_seconds()
                 if 0 <= gap and (
                     (channel and _joins_prev(channel, int(str(m.get("message_id") or 0) or 0),
-                                             gap, prev.get("content", ""), m.get("content", "")))
+                                             gap, prev.get("content", ""), m.get("content", ""), mark_store=mark_store, judge=judge))
                     or (not channel and gap <= GROUP_GAP_SEC)
                 ):
                     groups[-1].append(m)
@@ -125,8 +130,12 @@ def _existing_images(channel: str, msg_id: str, urls: list[str]) -> list[str]:
 class TelegramConnector:
     source_type = "telegram"
 
-    def __init__(self, channels: list[str] | None = None):
+    def __init__(self, channels: list[str] | None = None, *, mark_store=None, image_reader=None, image_finder=None, judge=None):
         self._channels = channels
+        self._mark_store = mark_store
+        self._image_reader = image_reader
+        self._image_finder = image_finder
+        self._judge = judge
 
     def discover(self) -> list[SourceRef]:
         if self._channels is not None:
@@ -143,7 +152,7 @@ class TelegramConnector:
         channel = ref.key
         messages = scrape_channel(channel)
         docs = []
-        for group in group_bursts(messages, channel=channel):
+        for group in group_bursts(messages, channel=channel, mark_store=self._mark_store, judge=self._judge):
             head = group[0]
             head_id = head.get("message_id", "")
             contents, images, slots = [], [], []
@@ -153,11 +162,11 @@ class TelegramConnector:
                     contents.append(m["content"])
                 mid = m.get("message_id", "")
                 urls = m.get("images", [])
-                images += _existing_images(channel, mid, urls)
+                images += (self._image_finder or _existing_images)(channel, mid, urls)
                 slots.append((m["content"] if text else None,
                               [{"key": f"telegram/{channel}_{mid}_{i}", "url": u} for i, u in enumerate(urls)]))
             content = "\n\n".join(contents)
-            notes = image_reading.read_images(
+            notes = (self._image_reader or image_reading.read_images)(
                 [{**it, "context": content} for _, its in slots for it in its],
                 published_at=head.get("date", ""), source="증권·산업 리서치 텔레그램 글",
                 source_url=head.get("link", ""))

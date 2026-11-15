@@ -15,6 +15,14 @@ CREATE TABLE ingest_youtube_registry (
     collect_enabled INTEGER
 );
 CREATE TABLE ingest_youtube_registry_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton));
+CREATE TABLE ingest_telegram_group_marks (
+    channel TEXT NOT NULL,
+    msg_id BIGINT NOT NULL,
+    joins_prev BOOLEAN NOT NULL,
+    model TEXT,
+    PRIMARY KEY(channel,msg_id)
+);
+CREATE TABLE ingest_telegram_marks_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton));
 CREATE TABLE ingest_documents (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_type TEXT NOT NULL,

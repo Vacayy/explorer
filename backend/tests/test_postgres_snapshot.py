@@ -40,7 +40,7 @@ from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
 from pipeline.postgres_ingest_runner_fixture import (embed_document, run_source, registered_connector,
-    initialize_youtube_registry, registered_youtube_connector)
+    initialize_youtube_registry, registered_youtube_connector, initialize_telegram_marks, registered_telegram_connector)
 from pipeline.connectors.notes import NoteConnector
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.telegram import TelegramConnector
@@ -86,7 +86,7 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False):
+    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False, include_telegram_marks=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
         if include_centroids:
@@ -100,7 +100,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids, include_telegram_marks=include_telegram_marks)
         finally:
             source.close()
 
@@ -905,6 +905,51 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             reader=PostgreSQLDocumentReader(lambda:target(publisher.active[0]))
             for name in ('blog','telegram','youtube'):
                 self.assertTrue(any(doc.summary=='기존 요약 함수 결과' for doc in reader.list(source=name).items))
+        finally:
+            publisher.close()
+
+    def test_telegram_group_marks_and_image_notes_survive_collection(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.execute('CREATE TABLE telegram_group_marks(channel TEXT,msg_id INTEGER,joins_prev INTEGER,model TEXT,judged_at TEXT,PRIMARY KEY(channel,msg_id))')
+            c.execute("INSERT INTO telegram_group_marks VALUES ('fixture',2,1,'judge',NULL)")
+            c.execute("INSERT INTO telegram_channels VALUES ('fixture','합성 채널',1)")
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True,include_telegram_marks=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+            initialize_telegram_marks(c)
+        messages=[{'message_id':str(i),'content':body,'date':f'2026-01-02T00:0{i}:00Z','link':'https://t.me/fixture/'+str(i),
+                   'images':['https://example.test/image.jpg'] if i==2 else []}
+                  for i,body in [(1,'첫 부분'),(2,'이어진 부분'),(3,'별도 메시지')]]
+        calls=[]
+        def judge(*args):
+            calls.append(args)
+            return False
+        def images(items,**kwargs):
+            return {item['key']:'이미지 설명' for item in items}
+        connector=registered_telegram_connector(self.pg,image_reader=images,image_finder=lambda *args:[],judge=judge)
+        with patch('pipeline.connectors.telegram.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+             patch('pipeline.connectors.telegram.scrape_channel',return_value=messages), \
+             patch('pipeline.enrich.llm_available',return_value=False):
+            first=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
+            second=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
+        self.assertEqual((first['new'],first['enriched'],second['unchanged']),(2,2,2))
+        self.assertEqual(len(calls),1)
+        with self.pg() as c:
+            rows=c.execute("SELECT source_id,raw_content,markdown FROM ingest_documents WHERE source_type='telegram' ORDER BY source_id").fetchall()
+            self.assertEqual(len(rows),2)
+            self.assertEqual(rows[0][1],'첫 부분\n\n이어진 부분')
+            self.assertIn('이미지 설명',rows[0][2])
+            self.assertEqual(c.execute("SELECT joins_prev FROM ingest_telegram_group_marks WHERE channel='fixture' AND msg_id=3").fetchone()[0],False)
+        def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
+        publisher=FixturePublisher(self.pg,self.schema,target)
+        try:
+            publisher.publish()
+            reader=PostgreSQLDocumentReader(lambda:target(publisher.active[0]))
+            self.assertTrue(any('이미지 설명' in (doc.content or '') for doc in reader.list(source='telegram').items))
         finally:
             publisher.close()
 

@@ -81,6 +81,44 @@ def registered_youtube_connector(factory, *, channel_ids=None):
     return YouTubeConnector(channel_ids=channel_ids,registry_loader=registry,title_repair=repair)
 
 
+def initialize_telegram_marks(conn):
+    _guard(conn)
+    if not conn.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='telegram_group_marks'").fetchone():
+        raise ValueError('Telegram grouping marks missing from snapshot')
+    if conn.execute('SELECT 1 FROM ingest_telegram_marks_state').fetchone():
+        raise ValueError('Telegram marks already initialized')
+    for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='telegram_group_marks' ORDER BY row_ordinal"):
+        conn.execute('INSERT INTO ingest_telegram_group_marks VALUES (%s,%s,%s,%s)',
+                     (row['channel'],row['msg_id'],bool(row['joins_prev']),row.get('model')))
+    conn.execute('INSERT INTO ingest_telegram_marks_state DEFAULT VALUES')
+
+
+def registered_telegram_connector(factory, *, image_reader, image_finder, judge):
+    """Use captured grouping marks and explicit image dependencies in a fixture."""
+    from pipeline.connectors.telegram import TelegramConnector
+    if not all(callable(value) for value in (image_reader,image_finder,judge)):
+        raise ValueError('Explicit image and grouping dependencies are required')
+    channels = registered_connector(factory,'telegram')._channels
+    class Marks:
+        def get(self, channel, msg_id):
+            with factory() as conn:
+                conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                _guard(conn)
+                if not conn.execute('SELECT 1 FROM ingest_telegram_marks_state').fetchone():
+                    raise ValueError('Telegram marks are not initialized')
+                row=conn.execute('SELECT joins_prev FROM ingest_telegram_group_marks WHERE channel=%s AND msg_id=%s',(channel,msg_id)).fetchone()
+                return {'joins_prev':row[0]} if row else None
+        def put(self, channel, msg_id, verdict, model):
+            with factory() as conn:
+                _guard(conn)
+                if not conn.execute('SELECT 1 FROM ingest_telegram_marks_state').fetchone():
+                    raise ValueError('Telegram marks are not initialized')
+                conn.execute('INSERT INTO ingest_telegram_group_marks VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING',
+                             (channel,msg_id,verdict,model))
+                return conn.execute('SELECT joins_prev FROM ingest_telegram_group_marks WHERE channel=%s AND msg_id=%s',(channel,msg_id)).fetchone()[0]
+    return TelegramConnector(channels,mark_store=Marks(),image_reader=image_reader,image_finder=image_finder,judge=judge)
+
+
 def run_source(connector, factory, *, clock=lambda: datetime.now(timezone.utc), on_stored=None):
     with factory() as conn:
         _guard(conn)
