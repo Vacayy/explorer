@@ -1,5 +1,5 @@
 """Disposable collection cycles and an explicit in-process periodic experiment."""
-from pipeline.postgres_enrich_worker_fixture import enrich_document
+from pipeline.postgres_enrich_worker_fixture import enrich_document, validate_enricher
 from pipeline.postgres_ingest_runner_fixture import run_source
 from pipeline.postgres_graph_fixture import _guard
 from uuid import uuid4
@@ -8,6 +8,7 @@ CYCLE_LOCK=0x4558504C4359434C
 
 
 def run_cycle(connector, factory, *, enrich, worker_id='fixture-worker'):
+    validate_enricher(enrich)
     changed=[]
     unchanged=[]
     def collect(result):

@@ -46,7 +46,7 @@ from pipeline.connectors.telegram import TelegramConnector
 from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
-from pipeline.postgres_enrich_worker_fixture import enrich_document
+from pipeline.postgres_enrich_worker_fixture import enrich_document, existing_enricher
 from pipeline.postgres_projection_publisher_fixture import FixturePublisher
 from pipeline.postgres_signals_fixture import signals_items
 from pipeline.postgres_signal_compute_fixture import compute_mention_signals
@@ -703,9 +703,12 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             notes.mkdir()
             for i in range(6):
                 (notes/f'{i}.md').write_text(f'# 합성 자료 {i}\n신주제 본문',encoding='utf-8')
-            def synthetic(title,body):
-                return {'model':'fixture','summary':'합성 요약','stocks':[],'industries':[],'topics':['합성 신주제']}
-            result=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=synthetic)
+            from types import SimpleNamespace
+            fake_result=SimpleNamespace(text='{"summary":"합성 요약","topics":["합성 신주제"]}',label='fake')
+            with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+                 patch('pipeline.enrich.llm_available',return_value=True), \
+                 patch('pipeline.enrich.llm.run',return_value=fake_result):
+                result=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=existing_enricher(self.pg))
         self.assertEqual((result['new'],result['enriched']),(6,6))
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
         publisher=FixturePublisher(self.pg,self.schema,target,
@@ -719,6 +722,9 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 self.assertEqual((item.topic,item.title,item.is_surging),('합성 신주제','저장된 이야기',True))
                 self.assertEqual(signals_items(c,since='2026-01-01',signal_type='theme_surge')[0].payload['recent'],6)
             self.assertEqual(len(publisher.search('신주제').items),6)
+            with target(publisher.active[0]) as c:
+                summaries=[r[0] for r in c.execute("SELECT row_data->>'summary' FROM legacy_snapshot_rows WHERE table_name='enrichments' AND row_data->>'model'='fake'")]
+                self.assertEqual(summaries,['합성 요약']*6)
         finally:
             publisher.close()
 
@@ -739,6 +745,12 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             initialize_graph(c)
         provider=vocabulary_provider(self.pg)
         vocab=provider()
+        with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')):
+            with self.assertRaisesRegex(ValueError,'vocabulary provider'):
+                enrich_document(self.pg,1,enrich=enrichment.enrich)
+            from functools import partial
+            with self.assertRaisesRegex(ValueError,'vocabulary provider'):
+                enrich_document(self.pg,1,enrich=partial(enrichment.enrich))
         self.assertEqual((vocab[0][0],vocab[1][0],vocab[2],vocab[3]),('합성 산업','합성 주제',['합성 인물'],['합성 기업']))
         with patch('database.get_connection',side_effect=self.fixture.connect):
             industries,topics=enrichment._live_vocab()
