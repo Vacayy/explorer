@@ -20,6 +20,8 @@ from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, Genera
 from pipeline.postgres_sector_market import PostgreSQLSectorSource
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
+from pipeline.postgres_document_claims import claims_state
+from routers.spine_doc import DocClaims
 from pipeline.sector_view import industry_map_from_source, sector_detail_from_source, sector_peer_list_from_source
 
 
@@ -193,6 +195,26 @@ def document(doc_id: int, response: Response, generation: UUID | None = None):
             if connection.execute('SELECT EXISTS(SELECT 1 FROM media_generations WHERE generation_id=%s)',
                                   (generation,)).fetchone()[0]:
                 response.headers['X-Explorer-Media-Generation'] = str(generation)
+    return result
+
+
+@app.get('/api/spine/doc/{doc_id}/claims', response_model=DocClaims)
+def document_claims(doc_id: int, generation: UUID | None = None):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        if generation is not None:
+            try:
+                _, archived = resolve_generation(connection, generation)
+            except GenerationExpired as exc:
+                raise HTTPException(410, '조회하던 데이터가 만료됐습니다.') from exc
+            if archived:
+                raise HTTPException(410, '이전 자료의 논점은 사용할 수 없습니다.')
+        try:
+            result = claims_state(connection, doc_id)
+        except ValueError as exc:
+            raise HTTPException(503, '논점 자료가 준비되지 않았습니다.') from exc
+    if result is None:
+        raise HTTPException(404, '문서를 찾을 수 없습니다')
     return result
 
 

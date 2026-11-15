@@ -194,8 +194,8 @@ def _insert_batches(target, query, records, *, size=500):
             cursor.executemany(query, batch)
 
 
-def _store_legacy_tables(source, target):
-    for name in LEGACY_TABLES:
+def _store_legacy_tables(source, target, *, include_claims=False):
+    for name in LEGACY_TABLES + (('doc_claims',) if include_claims else ()):
         schema = source.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (name,)
         ).fetchone()
@@ -213,7 +213,8 @@ def _store_legacy_tables(source, target):
 
 
 def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None,
-                  include_sector=False, peer_runtime=None, media_root=None, include_embeddings=False) -> dict:
+                  include_sector=False, peer_runtime=None, media_root=None, include_embeddings=False,
+                  include_claims=False) -> dict:
     """Replace the projection atomically from one existing SQLite transaction."""
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('An active query-only SQLite snapshot is required')
@@ -261,7 +262,7 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_chec
         target.execute('DELETE FROM document_list_projection')
         target.execute('DELETE FROM document_projection')
         target.execute('DELETE FROM snapshot_metadata')
-        _store_legacy_tables(source, target)
+        _store_legacy_tables(source, target, include_claims=include_claims)
         entity_orders = []
         def documents():
             ids = (row['id'] for row in source_rows)
