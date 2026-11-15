@@ -790,23 +790,29 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             initialize_graph(c)
-        with tempfile.TemporaryDirectory() as vault:
-            notes=Path(vault)/'notes'
-            notes.mkdir()
-            for i in range(6):
-                (notes/f'{i}.md').write_text(f'# 합성 자료 {i}\n신주제 본문',encoding='utf-8')
-            from types import SimpleNamespace
-            fake_result=SimpleNamespace(text='{"summary":"합성 요약","topics":["합성 신주제"]}',label='fake')
-            with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')), \
-                 patch('pipeline.enrich.llm_available',return_value=True), \
-                 patch('pipeline.enrich.llm.run',return_value=fake_result):
-                result=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=existing_enricher(self.pg))
-        self.assertEqual((result['new'],result['enriched']),(6,6))
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
-        publisher=FixturePublisher(self.pg,self.schema,target,
-            process_projection=lambda conn:compute_mention_signals(conn,as_of=datetime.now(timezone.utc),include_themes=True))
+        publisher=FixturePublisher.with_signal_recalculation(self.pg,self.schema,target,clock=lambda:datetime.now(timezone.utc))
         try:
-            publisher.publish()
+            with tempfile.TemporaryDirectory() as vault:
+                notes=Path(vault)/'notes'
+                notes.mkdir()
+                for i in range(6):
+                    (notes/f'{i}.md').write_text(f'# 합성 자료 {i}\n신주제 본문',encoding='utf-8')
+                from types import SimpleNamespace
+                fake_result=SimpleNamespace(text='{"summary":"합성 요약","topics":["합성 신주제"]}',label='fake')
+                stop=threading.Event(); rounds=[]; errors=[]
+                def on_round(results,published):
+                    rounds.append((results,published))
+                    if len(rounds)==2: stop.set()
+                with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+                     patch('pipeline.enrich.llm_available',return_value=True), \
+                     patch('pipeline.enrich.llm.run',return_value=fake_result):
+                    run_periodic_sources([('notes',lambda:NoteConnector(Path(vault)))],self.pg,
+                        enrich=existing_enricher(self.pg),stop=stop,interval_seconds=0.01,
+                        publish=publisher.publish,on_round=on_round,on_error=lambda name,exc:errors.append(name))
+            self.assertEqual(errors,[])
+            self.assertEqual((rounds[0][0]['notes']['new'],rounds[0][0]['notes']['enriched']),(6,6))
+            self.assertEqual([round[1] for round in rounds],[True,False])
             with target(publisher.active[0]) as c:
                 c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 from pipeline.postgres_narrative_fixture import list_narratives

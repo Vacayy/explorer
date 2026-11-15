@@ -21,6 +21,15 @@ class FixturePublisher:
         self.active=None
         self.pending_cleanup=set()
 
+    @classmethod
+    def with_signal_recalculation(cls, factory, source_schema, target_factory, *, clock):
+        """Build each fixture generation with existing mention and theme signals."""
+        from pipeline.postgres_signal_compute_fixture import compute_mention_signals
+        if not callable(clock):
+            raise ValueError('An explicit clock is required')
+        return cls(factory,source_schema,target_factory,
+                   process_projection=lambda conn:compute_mention_signals(conn,as_of=clock(),include_themes=True))
+
     def _drop(self, schema):
         with self.factory() as conn:
             _guard(conn)
