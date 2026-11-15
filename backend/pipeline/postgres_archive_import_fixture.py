@@ -39,6 +39,13 @@ def import_archived_documents(conn):
     conn.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status) "
                  "SELECT d.id,1,CASE WHEN e.document_id IS NULL THEN 'pending' ELSE 'done' END "
                  "FROM ingest_documents d LEFT JOIN ingest_enrichments e ON e.document_id=d.id")
+    # Historical tokens remain only in the archive: imported jobs describe
+    # state and transcript, but do not grant authority to resume a worker.
+    conn.execute('''INSERT INTO ingest_youtube_jobs(document_id,revision,transcript,status,token,updated_at,error)
+        SELECT d.id,1,j.row_data->>'transcript',j.row_data->>'status',NULL,
+               COALESCE((j.row_data->>'updated_at')::double precision,0),j.row_data->>'error'
+        FROM legacy_snapshot_rows j JOIN ingest_documents d ON d.id=(j.row_data->>'doc_id')::bigint
+        WHERE j.table_name='youtube_digest_jobs' AND d.source_type='youtube' ''')
     conn.execute("SELECT setval(pg_get_serial_sequence('ingest_documents','id'), "
                  "GREATEST(COALESCE((SELECT max(id) FROM ingest_documents),0),1), "
                  "EXISTS(SELECT 1 FROM ingest_documents))")

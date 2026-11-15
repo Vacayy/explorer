@@ -28,6 +28,7 @@ from pipeline.postgres_capacity import require_snapshot_capacity, SnapshotCapaci
 from pipeline.postgres_archive_import_fixture import import_archived_documents
 from pipeline.postgres_ingest_fixture import store_document
 from pipeline.postgres_ledger_detail_fixture import LedgerDetailFixture
+from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finish as finish_video
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -131,6 +132,26 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertEqual((current.title, current.content, current.summary, current.entities), ('새 제목', '새 본문', None, []))
         self.assertEqual(ledger_reader.get(new['id']).content, '신규 원문')
         self.assertEqual(self.reader.get(1).model_dump(), old.model_dump())
+
+    def test_imported_video_job_keeps_transcript_after_new_digest(self):
+        transcript = '합성 자막 ' * 30
+        with self.fixture.connect() as c:
+            c.execute("INSERT INTO raw_documents VALUES (10,'youtube','UCfixture/abc123def45','영상',"
+                      "'https://example.test','2026-01-01',?,?,'failed',NULL,NULL)", (transcript,transcript))
+            c.execute("INSERT INTO youtube_digest_jobs VALUES (10,?,'failed','old-token',1,'오류')", (transcript,))
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','합성 채널',1)")
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            state = c.execute('SELECT status,token FROM ingest_youtube_jobs WHERE document_id=10').fetchone()
+            self.assertEqual(state, ('failed', None))
+            job = queue_video(c, 10)
+            self.assertTrue(finish_video(c, 10, revision=job['revision'], token=job['token'], digest='합성 정리본'))
+        detail = LedgerDetailFixture(self.pg).get(10)
+        self.assertEqual((detail.digest_status,detail.transcript,detail.summary), ('ok',transcript,None))
+        self.assertIn('합성 정리본', detail.video_digest)
+        self.assertEqual(self.reader.get(10).digest_status, 'failed')
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed
