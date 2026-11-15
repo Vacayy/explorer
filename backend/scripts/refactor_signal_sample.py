@@ -7,8 +7,8 @@ from unittest.mock import patch
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
-from routers.spine_signals import _row_to_item, signals_summary as sqlite_summary
-from pipeline.postgres_signals_fixture import signals_items, signals_summary as pg_summary
+from routers.spine_signals import _row_to_item, signals_summary as sqlite_summary, mention_momentum as sqlite_momentum
+from pipeline.postgres_signals_fixture import signals_items, signals_summary as pg_summary, mention_momentum as pg_momentum
 
 
 def main():
@@ -27,13 +27,15 @@ def main():
         since=(date.fromisoformat(latest)-timedelta(days=7)).isoformat()
         signals=[dict(row) for row in source.execute('SELECT * FROM signals')]
         entities=[dict(row) for row in source.execute('SELECT * FROM entities')]
+        links=[dict(row) for row in source.execute("SELECT el.* FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id WHERE el.link_type='stock' AND rd.published_at>=datetime('now','-14 days')")]
+        documents=[dict(row) for row in source.execute("SELECT id,published_at FROM raw_documents WHERE published_at>=datetime('now','-14 days')")]
         with psycopg.connect(dsn) as conn:
             conn.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
             conn.execute(sql.SQL('CREATE TABLE {}.legacy_snapshot_rows(table_name text,row_ordinal bigint,row_data jsonb)').format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'id'))").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'signal_type'),(row_data->>'entity_id'))").format(sql.Identifier(schema)))
             with conn.cursor() as cur:
-                for table,rows in [('entities',entities),('signals',signals)]:
+                for table,rows in [('entities',entities),('signals',signals),('entity_links',links),('raw_documents',documents)]:
                     cur.executemany(sql.SQL('INSERT INTO {}.legacy_snapshot_rows VALUES (%s,%s,%s)').format(sql.Identifier(schema)),[(table,i,Jsonb(row)) for i,row in enumerate(rows)])
         counts=[]
         with psycopg.connect(dsn,options=f'-c search_path={schema}') as conn:
@@ -58,7 +60,11 @@ def main():
                 expected_summary=sqlite_summary(days=7).model_dump()
             if pg_summary(conn,days=7).model_dump() != expected_summary:
                 raise AssertionError('Signal summary mismatch')
-        print(f'Compared signal lists all/theme/mentions: {counts} and summary: matched')
+            with patch('routers.spine_signals.get_connection',side_effect=original_connection):
+                expected_momentum=sqlite_momentum(limit=12).model_dump()['items']
+            if pg_momentum(conn,limit=12).model_dump()['items'] != expected_momentum:
+                raise AssertionError('Momentum mismatch')
+        print(f'Compared signal lists all/theme/mentions: {counts}, summary and {len(expected_momentum)} momentum entries: matched')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:

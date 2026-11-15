@@ -2,8 +2,9 @@
 import os
 import re
 import json
-from datetime import date,timedelta
-from routers.spine_signals import _row_to_item, _RANK_KEY, SummaryTop, SummaryType, SignalsSummary
+import sqlite3
+from datetime import date,datetime,timedelta,timezone
+from routers.spine_signals import _row_to_item, _RANK_KEY, SummaryTop, SummaryType, SignalsSummary, MomentumRow, MomentumResponse
 
 
 def signals_items(conn, *, since, signal_type=None):
@@ -49,3 +50,42 @@ def signals_summary(conn, *, days=7):
             for p,s,e in ranked[:3]]))
     out.sort(key=lambda row:(row.latest_date,row.count_latest),reverse=True)
     return SignalsSummary(as_of=max((row.latest_date for row in out),default=None),types=out)
+
+
+def mention_momentum(conn, *, limit=12, now=None, today=None):
+    signals_items(conn,since='9999-12-31')
+    instant=now or datetime.now(timezone.utc)
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError('Timezone-aware time required')
+    instant=instant.astimezone(timezone.utc)
+    cutoff7=(instant-timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+    cutoff14=(instant-timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
+    rows=conn.execute("""
+      SELECT e.row_data,l.row_data->>'doc_id',d.row_data->>'published_at'
+      FROM legacy_snapshot_rows l
+      JOIN legacy_snapshot_rows e ON e.table_name='entities' AND e.row_data->>'id'=l.row_data->>'entity_id'
+      JOIN legacy_snapshot_rows d ON d.table_name='raw_documents' AND d.row_data->>'id'=l.row_data->>'doc_id'
+      WHERE l.table_name='entity_links' AND l.row_data->>'link_type'='stock'
+        AND e.row_data->>'type'='company' AND (d.row_data->>'published_at') COLLATE "C">=%s
+      ORDER BY (e.row_data->>'id')::bigint,l.row_ordinal
+    """,(cutoff14,)).fetchall()
+    grouped={}
+    with sqlite3.connect(':memory:') as sqlite:
+        for entity,doc_id,published in rows:
+            record=grouped.setdefault(entity['id'],{'name':entity['name'],'stock_code':entity.get('aliases'),
+                                                    'count_7d':0,'prior_7d':0,'daily':{}})
+            if published >= cutoff7: record['count_7d']+=1
+            else: record['prior_7d']+=1
+            day=sqlite.execute('SELECT date(?)',(published,)).fetchone()[0]
+            if day: record['daily'].setdefault(day,set()).add(doc_id)
+    days=[((today or date.today())-timedelta(days=i)).isoformat() for i in range(13,-1,-1)]
+    scored=[]
+    for ident,record in grouped.items():
+        count,prior=record['count_7d'],record['prior_7d']
+        if count < 2: continue
+        scored.append({'entity_id':ident,'name':record['name'],'stock_code':record['stock_code'],
+                       'count_7d':count,'prior_7d':prior,'score':round(count/max(prior,1),1),
+                       'daily':[len(record['daily'].get(day,())) for day in days]})
+    scored.sort(key=lambda row:(-row['count_7d'],-row['score']))
+    return MomentumResponse(items=[MomentumRow(rank=i+1,**row) for i,row in enumerate(scored[:limit])],
+                            as_of=datetime.now(timezone.utc).isoformat())

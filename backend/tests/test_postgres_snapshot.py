@@ -94,6 +94,8 @@ class SnapshotReplacementTests(unittest.TestCase):
     def test_signal_snapshot_reads_existing_list_and_latest_theme(self):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE signals(id INTEGER,signal_type TEXT,entity_id INTEGER,date TEXT,payload_json TEXT,interpretation TEXT,interpretation_model TEXT)')
+            c.execute("UPDATE raw_documents SET published_at='2099-01-01' WHERE id IN (1,2)")
+            c.execute("INSERT INTO entity_links VALUES (2,7,'stock',0.8)")
             c.executemany('INSERT INTO signals VALUES (?,?,?,?,?,?,?)',[
                 (1,'theme_surge',7,'2026-01-01','{}',None,None),
                 (2,'theme_surge',7,'2026-01-02','{}',None,None),
@@ -118,6 +120,9 @@ class SnapshotReplacementTests(unittest.TestCase):
                 summary=client.get('/api/spine/signals/summary',params={'days':7})
                 self.assertEqual(summary.status_code,200)
                 self.assertEqual(summary.json()['as_of'],'2099-01-01')
+                momentum=client.get('/api/spine/signals/momentum')
+                self.assertEqual(momentum.status_code,200)
+                self.assertEqual(momentum.json()['items'][0]['count_7d'],2)
 
     def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
         self.load('2026-01-03T00:00:00+00:00')

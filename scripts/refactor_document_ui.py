@@ -22,8 +22,8 @@ from pipeline.postgres_sector_market import PostgreSQLSectorSource
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_document_claims import claims_state
-from pipeline.postgres_signals_fixture import signals_items, signals_summary
-from routers.spine_signals import SignalsSummary
+from pipeline.postgres_signals_fixture import signals_items, signals_summary, mention_momentum
+from routers.spine_signals import SignalsSummary, MomentumResponse
 from routers.spine_doc import DocClaims, RelatedDoc
 from pipeline.postgres_related_documents import CentroidIndex, related_documents
 from pipeline.postgres_us_sectors import us_map as postgres_us_map, us_sector_detail as postgres_us_sector_detail
@@ -66,6 +66,13 @@ def experimental_signals_summary(days: int = Query(7,ge=1,le=90)):
         if not connection.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='signals'").fetchone():
             raise HTTPException(503,'신호 자료가 준비되지 않았습니다.')
         return signals_summary(connection,days=days)
+
+
+@app.get('/api/spine/signals/momentum', response_model=MomentumResponse)
+def experimental_momentum(limit: int = Query(12,ge=3,le=30)):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        return mention_momentum(connection,limit=limit)
 
 
 @app.get('/api/spine/feed', response_model=FeedResponse)
