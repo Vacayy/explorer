@@ -17,6 +17,9 @@ _COLUMNS = ('id', 'stock_code', 'trade_date', 'open', 'high', 'low', 'close',
 def load_sector_market(source, destination, *, peer_runtime=None, document_generation=None):
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('A query-only SQLite transaction is required')
+    index_columns = [row[2] for row in source.execute('PRAGMA index_info(idx_entity_links_entity)')]
+    if index_columns != ['entity_id', 'link_type']:
+        raise ValueError('Unsupported SQLite entity link index')
     if peer_runtime is not None:
         from models.peers import PeerRuntime
         # Revalidate even an existing model so mutations cannot bypass validation.
@@ -219,7 +222,8 @@ class PostgreSQLSectorSource:
         if policy is None:
             raise ValueError('Document scan size not captured')
         order = ('d.source_type COLLATE "C", d.source_id COLLATE "C" NULLS FIRST, d.id, '
-                 'el.entity_id, el.link_type COLLATE "C" NULLS FIRST, el.id') if policy[0] else 'el.entity_id, el.id'
+                 'el.entity_id, el.link_type COLLATE "C" NULLS FIRST, el.id') if policy[0] else (
+                     'el.entity_id, el.link_type COLLATE "C" NULLS FIRST, el.id')
         return list(self.conn.execute('''SELECT el.doc_id, el.entity_id, d.source_type, d.title, d.published_at
             FROM sector_market_document_links el JOIN sector_market_documents d ON d.id = el.doc_id
             WHERE el.entity_id = ANY(%s) AND d.published_at >= %s AND d.source_type = ANY(%s)

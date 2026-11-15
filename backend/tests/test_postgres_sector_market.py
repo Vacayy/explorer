@@ -61,7 +61,7 @@ class SectorMarketTest(unittest.TestCase):
                                        UNIQUE(source_type,source_id));
             CREATE TABLE entity_links(id INTEGER PRIMARY KEY, doc_id INTEGER, entity_id INTEGER, link_type TEXT,
                                       UNIQUE(doc_id,entity_id,link_type));
-            CREATE INDEX idx_entity_links_entity ON entity_links(entity_id);
+            CREATE INDEX idx_entity_links_entity ON entity_links(entity_id, link_type);
             INSERT INTO sector_map VALUES ('source-a','A'),('source-b','B');
             INSERT INTO companies VALUES ('001','source-a','one','c1'),('002','source-b','two','c2'),('003','source-a','three','c3');
             INSERT INTO sector_overrides VALUES ('003','B');
@@ -78,8 +78,9 @@ class SectorMarketTest(unittest.TestCase):
             INSERT INTO entities VALUES (2,'company',NULL,'one','active','{"corp_code":"c1"}');
             INSERT INTO entities VALUES (3,'sector',NULL,'A','active',NULL);
             INSERT INTO sector_overviews VALUES ('A','question','["bullet"]','1','fixture','2026-01-09');
-            INSERT INTO raw_documents VALUES (1,'blog','b1','theme-a report','2026-01-09');
-            INSERT INTO entity_links VALUES (1,1,1,'sector'),(2,1,2,'stock');
+            INSERT INTO raw_documents VALUES (1,'blog','b1','theme-a report','2026-01-09'),
+                                             (2,'blog','b2','theme-a report 2','2026-01-09');
+            INSERT INTO entity_links VALUES (1,1,1,'z'),(2,1,2,'stock'),(3,2,1,'a');
             INSERT INTO stock_prices(stock_code,trade_date,close,market_cap) VALUES
                 ('001','2025-10-01',100,900),('002','2025-10-01',100,600),
                 ('003','2025-10-01',200,100),('001','2026-01-02',150,900),
@@ -127,6 +128,7 @@ class SectorMarketTest(unittest.TestCase):
             self.assertEqual(sector_narratives_from_source(pgsource, 'A'), sector_narratives(self.db, 'A'))
             self.assertEqual(sector_docs_from_source(pgsource, 'A', ['001'], '2026-01-09'),
                              sector_docs(self.db, 'A', ['001'], '2026-01-09'))
+            self.assertEqual([doc['id'] for doc in sector_docs_from_source(pgsource, 'A', ['001'], '2026-01-09')], [2, 1])
             self.assertEqual(data_links_from_source(pgsource, '반도체·전자부품', {}),
                              data_links(self.db, '반도체·전자부품', {}))
             prices = SimpleNamespace(asOf='2026-01-09', model_dump=lambda **_: {
