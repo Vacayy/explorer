@@ -930,7 +930,7 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
-            store_document(c,source_type='telegram',source_id='synthetic',title='changed',markdown='changed')
+            store_document(c,source_type='memo',source_id='synthetic',title='changed',markdown='changed')
         destination = 'refactor_fixture_' + uuid.uuid4().hex
         with psycopg.connect(self.dsn) as c:
             c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
