@@ -282,6 +282,32 @@ def sector_narratives(conn, sector: str) -> list[dict]:
              "docs": r["doc_count"], "updated_at": r["created_at"]} for r in rows if sector in topic_sectors(r["topic"], primary, themes)]
 
 
+def sector_narratives_from_source(source, sector: str) -> list[dict]:
+    """기존 내러티브 연결 규칙을 별도 저장소의 원천 분류에 적용한다."""
+    from pipeline.market_today_links import GENERIC_TAGS
+    names, theme_rows = source.sector_names(), source.sector_themes()
+    sectors = {group for _, group in names}
+    primary = {}
+    for group in sectors:
+        words = {part for part in group.split('·') if len(part) >= 2}
+        if group != '지주·기타':
+            words.update(name for name, owner in names if owner == group)
+        primary[group] = {word for word in words if word not in GENERIC_TAGS}
+    themes = {}
+    for group in sectors:
+        own = primary[group]
+        other = set().union(*(primary[g] for g in sectors if g != group)) - own
+        words = set(own)
+        for owner, encoded in theme_rows:
+            if owner == group:
+                for theme in json.loads(encoded or '[]'):
+                    words.update(set(_clean_theme(theme)) - other)
+        themes[group] = {word for word in words if len(word) >= 2 and word not in GENERIC_TAGS} - own
+    return [{'id': r['id'], 'topic': r['topic'], 'title': r['title'] or r['topic'],
+             'core_question': r['core_question'], 'docs': r['doc_count'], 'updated_at': r['created_at']}
+            for r in source.active_narratives() if sector in topic_sectors(r['topic'], primary, themes)]
+
+
 # ---------- 주요 자료 ----------
 
 def sector_docs(conn, sector: str, codes_by_cap: list[str], latest: str) -> list[dict]:

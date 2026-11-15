@@ -32,7 +32,8 @@ def load_sector_market(source, destination, *, peer_runtime=None):
         destination.execute('TRUNCATE sector_market_prices, sector_market_membership, sector_market_companies, '
                             'sector_market_groups, sector_market_peer_links, '
                             'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index, '
-                            'sector_market_peer_runtime')
+                            'sector_market_peer_runtime, sector_market_sector_names, '
+                            'sector_market_themes, sector_market_narratives')
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:
@@ -62,10 +63,17 @@ def load_sector_market(source, destination, *, peer_runtime=None):
             ('sector_market_benchmarks', 'sector, ticker, name, tracks, note', 'sector_benchmarks'),
             ('sector_market_benchmark_prices', 'ticker, trade_date, close', 'sector_benchmark_prices'),
             ('sector_market_index', 'sector, trade_date, value', 'sector_index'),
+            ('sector_market_sector_names', 'sector_name, group_name', 'sector_map'),
+            ('sector_market_themes', 'group_name, themes_json', 'value_chains'),
         ):
             with destination.cursor().copy(f'COPY {target} ({columns}) FROM STDIN') as copy:
                 for row in source.execute(f'SELECT {columns} FROM {table}'):
                     copy.write_row(tuple(row))
+        with destination.cursor().copy('''COPY sector_market_narratives
+            (ordinal, id, topic, title, core_question, doc_count, created_at) FROM STDIN''') as copy:
+            for ordinal, row in enumerate(source.execute('''SELECT id, topic, title, core_question, doc_count,
+                created_at FROM narratives WHERE superseded_at IS NULL ORDER BY created_at DESC''')):
+                copy.write_row((ordinal, *row))
         if peer_runtime is not None:
             from psycopg.types.json import Jsonb
             destination.execute('INSERT INTO sector_market_peer_runtime (payload) VALUES (%s)',
@@ -94,6 +102,18 @@ class PostgreSQLSectorSource:
             return {}
         return dict(self.conn.execute('SELECT stock_code, corp_name FROM sector_market_companies '
                                       'WHERE stock_code = ANY(%s) ORDER BY ordinal', (codes,)))
+
+    def sector_names(self):
+        return list(self.conn.execute('SELECT sector_name, group_name FROM sector_market_sector_names'))
+
+    def sector_themes(self):
+        return list(self.conn.execute('SELECT group_name, themes_json FROM sector_market_themes'))
+
+    def active_narratives(self):
+        columns = ('id', 'topic', 'title', 'core_question', 'doc_count', 'created_at')
+        return [dict(zip(columns, row)) for row in self.conn.execute(
+            'SELECT id, topic, title, core_question, doc_count, created_at '
+            'FROM sector_market_narratives ORDER BY ordinal')]
 
     def peer_runtime(self):
         """Return the bundle committed with this snapshot, or None if absent."""

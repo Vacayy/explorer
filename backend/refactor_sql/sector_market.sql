@@ -55,3 +55,10 @@ CREATE TABLE sector_market_peer_runtime (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
     payload JSONB NOT NULL
 );
+
+CREATE TABLE sector_market_sector_names (sector_name TEXT, group_name TEXT NOT NULL);
+CREATE TABLE sector_market_themes (group_name TEXT, themes_json TEXT);
+CREATE TABLE sector_market_narratives (
+    ordinal BIGINT PRIMARY KEY, id BIGINT NOT NULL, topic TEXT, title TEXT,
+    core_question TEXT, doc_count INTEGER, created_at TEXT
+);
