@@ -167,11 +167,15 @@ def chart(code: str, days: int = CHART_DAYS) -> dict:
     """근거 창 차트 — 최근 days거래일 종가·MA20·MA60·52주 고점선(직전 250거래일 최고가 = 그날의 돌파선)"""
     conn = get_connection()
     try:
-        rows = [dict(r) for r in conn.execute(
-            "SELECT trade_date date, high, close FROM stock_prices WHERE stock_code=? AND close IS NOT NULL "
-            "ORDER BY trade_date DESC LIMIT ?", (code, days + HIGH_LOOKBACK))][::-1]
+        return read_chart(conn, code, days)
     finally:
         conn.close()
+
+
+def read_chart(conn, code: str, days: int = CHART_DAYS) -> dict:
+    rows = [dict(r) for r in conn.execute(
+        "SELECT trade_date date, high, close FROM stock_prices WHERE stock_code=? AND close IS NOT NULL "
+        "ORDER BY trade_date DESC LIMIT ?", (code, days + HIGH_LOOKBACK))][::-1]
     closes = [r["close"] for r in rows]
     highs = [r["high"] if r["high"] is not None else r["close"] for r in rows]
     start = max(0, len(rows) - days)
@@ -215,27 +219,33 @@ def volume_node_retest(rows: list[dict]) -> dict | None:
 def compute() -> dict:
     conn = get_connection()
     try:
-        dates = [r[0] for r in conn.execute(
-            "SELECT DISTINCT trade_date FROM stock_prices ORDER BY trade_date DESC LIMIT ?", (HISTORY,))]
-        if not dates:
-            return {"as_of": None, "criteria": CRITERIA, "universe": 0, "items": []}
-        as_of = dates[0]
-        stamp = conn.execute("SELECT max(fetched_at) FROM stock_prices WHERE trade_date = ?", (as_of,)).fetchone()[0]
-        if (as_of, stamp) in _cache:
-            return _cache[(as_of, stamp)]
-        latest = {r["stock_code"]: r for r in conn.execute(
-            "SELECT sp.stock_code, sp.market_cap, c.corp_name FROM stock_prices sp JOIN companies c ON c.stock_code = sp.stock_code "
-            "WHERE sp.trade_date = ? AND sp.market_cap >= ?", (as_of, MIN_MCAP))}
-        series: dict[str, list[dict]] = {code: [] for code in latest}
-        for r in conn.execute(
-                "SELECT stock_code, trade_date, high, low, close, volume FROM stock_prices WHERE trade_date >= ? AND close IS NOT NULL "
-                "ORDER BY stock_code, trade_date", (dates[-1],)):
-            if r["stock_code"] in series and r["high"] is not None and r["low"] is not None:
-                series[r["stock_code"]].append({"date": r["trade_date"], "high": r["high"], "low": r["low"],
-                                                "close": r["close"], "volume": r["volume"]})
-        sectors = _members(conn)
+        return read_compute(conn, cache=_cache)
     finally:
         conn.close()
+
+
+def read_compute(conn, *, sectors=None, cache=None) -> dict:
+    """Existing calculations on caller-owned stored prices; cache is explicitly scoped."""
+    dates = [r[0] for r in conn.execute(
+        "SELECT DISTINCT trade_date FROM stock_prices ORDER BY trade_date DESC LIMIT ?", (HISTORY,))]
+    if not dates:
+        return {"as_of": None, "criteria": CRITERIA, "universe": 0, "items": []}
+    as_of = dates[0]
+    stamp = conn.execute("SELECT max(fetched_at) FROM stock_prices WHERE trade_date = ?", (as_of,)).fetchone()[0]
+    if cache is not None and (as_of, stamp) in cache:
+        return cache[(as_of, stamp)]
+    latest = {r["stock_code"]: r for r in conn.execute(
+        "SELECT sp.stock_code, sp.market_cap, c.corp_name FROM stock_prices sp JOIN companies c ON c.stock_code = sp.stock_code "
+        "WHERE sp.trade_date = ? AND sp.market_cap >= ?", (as_of, MIN_MCAP))}
+    series: dict[str, list[dict]] = {code: [] for code in latest}
+    for r in conn.execute(
+            "SELECT stock_code, trade_date, high, low, close, volume FROM stock_prices WHERE trade_date >= ? AND close IS NOT NULL "
+            "ORDER BY stock_code, trade_date", (dates[-1],)):
+        if r["stock_code"] in series and r["high"] is not None and r["low"] is not None:
+            series[r["stock_code"]].append({"date": r["trade_date"], "high": r["high"], "low": r["low"],
+                                            "close": r["close"], "volume": r["volume"]})
+    if sectors is None:
+        sectors = _members(conn)
 
     items, events = [], []
     for code, rows in series.items():
@@ -258,6 +268,7 @@ def compute() -> dict:
     shown = items[:LIMIT] + [i for i in items[LIMIT:] if i["high52"]]
     result = {"as_of": as_of, "computed_from": stamp, "criteria": CRITERIA, "universe": len(latest),
               "passed": len(items), "items": shown, "events": events}
-    _cache.clear()
-    _cache[(as_of, stamp)] = result
+    if cache is not None:
+        cache.clear()
+        cache[(as_of, stamp)] = result
     return result
