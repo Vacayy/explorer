@@ -194,8 +194,8 @@ def _insert_batches(target, query, records, *, size=500):
             cursor.executemany(query, batch)
 
 
-def _store_legacy_tables(source, target, *, include_claims=False, include_linking=False, include_signals=False, include_events=False, include_telegram_marks=False):
-    for name in LEGACY_TABLES + (('doc_claims',) if include_claims else ()) + (('entity_keywords','entity_relations') if include_linking else ()) + (('signals',) if include_signals else ()) + (('catalysts','companies') if include_events else ()) + (('telegram_group_marks',) if include_telegram_marks else ()):
+def _store_legacy_tables(source, target, *, include_claims=False, include_linking=False, include_signals=False, include_events=False, include_telegram_marks=False, include_narrative_inputs=False):
+    for name in LEGACY_TABLES + (('doc_claims',) if include_claims else ()) + (('entity_keywords','entity_relations') if include_linking else ()) + (('signals',) if include_signals else ()) + (('catalysts','companies') if include_events else ()) + (('telegram_group_marks',) if include_telegram_marks else ()) + (('market_today','market_today_links','narrative_candidates') if include_narrative_inputs else ()):
         schema = source.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (name,)
         ).fetchone()
@@ -214,7 +214,7 @@ def _store_legacy_tables(source, target, *, include_claims=False, include_linkin
 
 def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None,
                   include_sector=False, peer_runtime=None, media_root=None, include_embeddings=False,
-                  include_claims=False, include_centroids=False, include_us=False, include_linking=False, include_signals=False, include_events=False, include_telegram_marks=False) -> dict:
+                  include_claims=False, include_centroids=False, include_us=False, include_linking=False, include_signals=False, include_events=False, include_telegram_marks=False, include_narrative_inputs=False) -> dict:
     """Replace the projection atomically from one existing SQLite transaction."""
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('An active query-only SQLite snapshot is required')
@@ -264,7 +264,7 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_chec
         target.execute('DELETE FROM document_list_projection')
         target.execute('DELETE FROM document_projection')
         target.execute('DELETE FROM snapshot_metadata')
-        _store_legacy_tables(source, target, include_claims=include_claims, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_telegram_marks=include_telegram_marks)
+        _store_legacy_tables(source, target, include_claims=include_claims, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_telegram_marks=include_telegram_marks, include_narrative_inputs=include_narrative_inputs)
         entity_orders = []
         def documents():
             ids = (row['id'] for row in source_rows)
