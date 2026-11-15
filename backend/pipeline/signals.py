@@ -21,12 +21,12 @@ MIN_HISTORY_ROWS = 200  # 52주 신고가 판정에 필요한 최소 일봉 수 
 
 
 
-def compute_mention_surge(as_of: datetime | None = None) -> list[dict]:
+def compute_mention_surge(as_of: datetime | None = None, *, connection_factory=None) -> list[dict]:
     as_of = as_of or datetime.now(timezone.utc)
     win_start = as_of - timedelta(days=7)
     base_start = as_of - timedelta(days=14)
 
-    conn = get_connection()
+    conn = (connection_factory or get_connection)()
     rows = conn.execute("""
         SELECT el.entity_id, e.name, rd.id doc_id, rd.title, rd.url, rd.published_at,
                en.time_orientation

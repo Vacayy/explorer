@@ -10,6 +10,7 @@ import time
 import tempfile
 import subprocess
 import sys
+from datetime import datetime,timezone
 from contextlib import closing
 from collections import namedtuple
 from pathlib import Path
@@ -47,6 +48,7 @@ from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
 from pipeline.postgres_projection_publisher_fixture import FixturePublisher
 from pipeline.postgres_signals_fixture import signals_items
+from pipeline.postgres_signal_compute_fixture import compute_mention_signals
 from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
@@ -123,6 +125,25 @@ class SnapshotReplacementTests(unittest.TestCase):
                 momentum=client.get('/api/spine/signals/momentum')
                 self.assertEqual(momentum.status_code,200)
                 self.assertEqual(momentum.json()['items'][0]['count_7d'],2)
+
+    def test_existing_mention_calculation_updates_isolated_snapshot(self):
+        with self.fixture.connect() as c:
+            c.execute('ALTER TABLE enrichments ADD COLUMN time_orientation TEXT')
+            c.execute('CREATE TABLE signals(id INTEGER PRIMARY KEY,signal_type TEXT,entity_id INTEGER,date TEXT,payload_json TEXT,interpretation TEXT,interpretation_model TEXT, UNIQUE(signal_type,entity_id,date))')
+            c.execute('DELETE FROM entity_links')
+            for ident in (3,4,5):
+                c.execute("INSERT INTO raw_documents VALUES (?,'blog',?,'합성 자료','https://example.test','2026-01-02','본문','본문',NULL,NULL,NULL)",(ident,f'new-{ident}'))
+                c.execute("INSERT INTO entity_links VALUES (?,7,'stock',0.9)",(ident,))
+        self.load('2026-01-03T00:00:00+00:00',include_signals=True)
+        instant=datetime(2026,1,3,tzinfo=timezone.utc)
+        with self.pg() as c:
+            self.assertEqual(compute_mention_signals(c,as_of=instant),1)
+            self.assertEqual(compute_mention_signals(c,as_of=instant),1)
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='signals'").fetchone()[0],1)
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            item=signals_items(c,since='2026-01-01',signal_type='mention_surge')[0]
+            self.assertEqual(item.payload['count_7d'],3)
 
     def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
         self.load('2026-01-03T00:00:00+00:00')
