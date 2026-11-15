@@ -39,6 +39,8 @@ PUBLIC_ROUTE_POLICIES = {
     ('GET', '/api/spine/retail'): 'public',
     ('GET', '/api/spine/retail/history'): 'public',
     ('GET', '/api/spine/retail/snapshots'): 'public',
+    ('GET', '/api/spine/actions'): 'public',
+    ('GET', '/api/spine/actions/rights'): 'public',
     ('GET', '/api/spine/kr/movers'): 'public',
     ('GET', '/api/spine/transcript/season/kr'): 'public',
     ('GET', '/api/spine/us/briefing'): 'public',

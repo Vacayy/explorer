@@ -28,6 +28,12 @@ class ActionsFreshnessTests(unittest.TestCase):
             INSERT INTO job_runs VALUES ('scan_actions', 'ok', '2026-10-16 03:26:26'),
                                         ('scan_actions', 'error', '2026-10-16 04:39:17');
         """)
+        # The fixture must include the actual public detail columns even with zero rows.
+        from routers.spine_actions import RIGHTS_COLUMNS
+        present = {r[1] for r in raw.execute('PRAGMA table_info(capital_raise_details)')}
+        for column in RIGHTS_COLUMNS:
+            if column not in present:
+                raw.execute('ALTER TABLE capital_raise_details ADD COLUMN '+column)
         self.conn = KeepOpen(raw)
         self.client = TestClient(app)
 

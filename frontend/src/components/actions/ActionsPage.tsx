@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +14,7 @@ import { reportTitle } from "@/lib/dossier"
 import { formatNumber } from "@/utils/format"
 import type { CorporateAction } from "@/types"
 
-const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 증자·공개매수·자사주·합병 등 원공시만 보이고 정정 공시는 뺍니다. 내 종목(보유·관심)은 위로 올립니다."
+const INFO = "시가총액 5,000억 이상 · 최근 30일 · DART 공시 자동 분류. 증자·공개매수·자사주·합병 등 원공시만 보이고 정정 공시는 뺍니다." + (PUBLIC_ACCESS ? "" : " 내 종목(보유·관심)은 위로 올립니다.")
 /** 한 페이지 줄 수(시안 Home-KR ④) */
 const PER = 6
 
@@ -25,9 +26,10 @@ const PER = 6
  */
 export function ActionsList(_: { variant: "block" }) {
   const { data, isLoading, isError, refetch } = useActions({ kind: "original" })
-  const [view, setView] = useUrlParam("acts", "all")
+  const [selectedView, setView] = useUrlParam("acts", "all")
+  const view = PUBLIC_ACCESS && selectedView === "mine" ? "all" : selectedView
   const [page, setPage] = useState(0)
-  const all = data ? pinMine(data.items) : []
+  const all = data ? (PUBLIC_ACCESS ? data.items : pinMine(data.items)) : []
   const items = view === "mine" ? all.filter(a => a.my_group) : all
   const pg = paged(items, page, PER)
   const pick = (v: string) => { setPage(0); setView(v) }
@@ -36,7 +38,7 @@ export function ActionsList(_: { variant: "block" }) {
       <BlockHead section title="기업활동" info={INFO} sub={data ? `원공시 · 최근 30일 ${formatNumber(all.length)}건` : <span aria-hidden className="invisible">원공시 · 최근 30일 00건</span>}
         asOf={data && !data.as_of ? "갱신 기록 없음" : null} stale={!!data && !data.as_of}
         actions={<Seg label="기업활동 보기" value={view} onChange={pick}
-          items={[{ key: "all", label: "전체" }, { key: "mine", label: "내 그룹" }, { key: "pro", label: "유무증 Pro" }]} />} />
+          items={[{ key: "all", label: "전체" }, ...(!PUBLIC_ACCESS ? [{ key: "mine", label: "내 그룹" }] : []), { key: "pro", label: "유무증 Pro" }]} />} />
       {isLoading ? <FillSkeleton rows={PER} label="기업활동 불러오는 중" />
         : isError || !data ? <BlockError message="기업활동을 불러오지 못했습니다" onRetry={() => void refetch()} />
         : view === "pro" ? <FillArea aria-label="유무증 Pro"><RightsProTable /></FillArea>

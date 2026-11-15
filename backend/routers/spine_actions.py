@@ -2,7 +2,7 @@
 from datetime import date, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
 from database import get_connection
@@ -60,12 +60,29 @@ def my_groups(conn) -> dict[str, str]:
 
 @router.get("", response_model=ActionsResponse)
 def list_actions(
+    request: Request,
     type: str | None = Query(None, description="유상증자|무상증자|공개매수|주식분할|합병|회사분할|감자"),
     days: int = Query(30, ge=1, le=180),
     kind: Literal["all", "original", "correction"] = Query("all", description="원공시만 | 정정만 | 전체"),
     stock_code: str | None = Query(None, description="한 종목만 (종목 도시에)"),
 ):
+    if getattr(request.state, "public_access", False):
+        from security.public_actions import actions
+        from routers.public_documents import perform
+        return perform(lambda: actions(type, days, kind, stock_code))
     conn = get_connection()
+    try:
+        return read_actions(conn, type, days, kind, stock_code, mine=my_groups(conn), as_of=_scanned_at(conn))
+    finally:
+        conn.close()
+
+
+ACTION_COLUMNS = ('id', 'rcp_no', 'corp_name', 'stock_code', 'market', 'action_type',
+                  'report_nm', 'rcept_dt', 'market_cap', 'summary')
+DETAIL_COLUMNS = ('rcp_no', 'method', 'price_final', 'price_2nd', 'price_1st', 'new_shares', 'old_shares')
+
+
+def read_actions(conn, type=None, days=30, kind='all', stock_code=None, *, mine, as_of):
     where, params = ["rcept_dt >= ?"], [(date.today() - timedelta(days=days)).strftime("%Y%m%d")]
     if type:
         where.append("action_type = ?")
@@ -78,17 +95,14 @@ def list_actions(
     if kind != "all":
         where.append(_IS_CORRECTION if kind == "correction" else f"NOT ({_IS_CORRECTION})")
     rows = conn.execute(f"""
-        SELECT * FROM corporate_actions WHERE {" AND ".join(where)}
+        SELECT {",".join(ACTION_COLUMNS)} FROM corporate_actions WHERE {" AND ".join(where)}
         ORDER BY rcept_dt DESC, id DESC LIMIT 200
     """, params).fetchall()
-    mine = my_groups(conn)
-    as_of = _scanned_at(conn)
     details = {}
     if rows:
         rcps = [r["rcp_no"] for r in rows]
         details = {d["rcp_no"]: d for d in conn.execute(
-            f"SELECT * FROM capital_raise_details WHERE rcp_no IN ({','.join('?' * len(rcps))})", rcps)}
-    conn.close()
+            f"SELECT {','.join(DETAIL_COLUMNS)} FROM capital_raise_details WHERE rcp_no IN ({','.join('?' * len(rcps))})", rcps)}
     return ActionsResponse(
         items=[CorporateAction(
             id=r["id"], rcp_no=r["rcp_no"], corp_name=r["corp_name"],
@@ -143,12 +157,31 @@ class RightsResponse(BaseModel):
 
 
 @router.get("/rights", response_model=RightsResponse)
-def list_rights():
+def list_rights(request: Request):
     """유·무상증자 Pro 뷰 — 결정 공시별 구조화 상세 + 현재가 대비 차액."""
+    if getattr(request.state, "public_access", False):
+        from security.public_actions import rights
+        from routers.public_documents import perform
+        return perform(rights)
     conn = get_connection()
+    try:
+        return read_rights(conn, mine=my_groups(conn), as_of=_scanned_at(conn))
+    finally:
+        conn.close()
+
+
+RIGHTS_COLUMNS = ('rcp_no', 'stock_code', 'corp_name', 'action_type', 'method',
+    'price_1st', 'price_2nd', 'price_final', 'old_shares', 'new_shares',
+    'date_disclosure', 'date_price_1st', 'date_ex_rights', 'date_record',
+    'date_rights_listing_start', 'date_price_fix', 'date_sub_start',
+    'date_public_start', 'date_payment', 'date_rights_listing_end',
+    'date_new_listing', 'underwriter', 'major_holder')
+
+
+def read_rights(conn, *, mine, as_of):
     # 종목·타입별 최신 결정 공시만 (기재정정이 이전 것을 대체)
-    rows = conn.execute("""
-        SELECT d.* FROM capital_raise_details d
+    rows = conn.execute(f"""
+        SELECT {",".join("d."+c for c in RIGHTS_COLUMNS)} FROM capital_raise_details d
         JOIN (SELECT stock_code, action_type, max(rcp_no) mx FROM capital_raise_details
               GROUP BY stock_code, action_type) t
           ON d.stock_code = t.stock_code AND d.action_type = t.action_type AND d.rcp_no = t.mx
@@ -159,9 +192,6 @@ def list_rights():
         WHERE (stock_code, trade_date) IN (
             SELECT stock_code, max(trade_date) FROM stock_prices GROUP BY stock_code)
     """)}
-    as_of = _scanned_at(conn)
-    mine = my_groups(conn)
-    conn.close()
 
     items = []
     for r in rows:
