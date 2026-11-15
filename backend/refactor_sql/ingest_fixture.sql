@@ -46,6 +46,25 @@ CREATE TABLE ingest_enrichment_attempts (
     started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     finished_at TIMESTAMPTZ
 );
+CREATE TABLE ingest_narrative_ledger_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton));
+CREATE TABLE ingest_narrative_versions (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    topic TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    source_row JSONB NOT NULL,
+    UNIQUE(topic,version)
+);
+CREATE TABLE ingest_narrative_evidence (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    source_row JSONB NOT NULL
+);
+CREATE TABLE ingest_narrative_claims (
+    topic TEXT PRIMARY KEY,
+    token UUID NOT NULL,
+    base_version INTEGER NOT NULL,
+    input_fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('claimed','stale','completed','unknown'))
+);
 CREATE TABLE ingest_documents (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_type TEXT NOT NULL,

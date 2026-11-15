@@ -782,6 +782,7 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
         self.assertEqual(PostgreSQLDocumentReader(target).get(ident).summary,'# 정기 문서 변경')
 
     def test_collection_to_theme_signal_and_narrative_list(self):
+        from pipeline.postgres_narrative_ledger_fixture import initialize_narrative_ledger, claim_narrative, validate_narrative_claim
         with self.fixture.connect() as c:
             from pipeline.market_today_links import SCHEMA
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
@@ -808,6 +809,11 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             initialize_graph(c)
+            initialize_narrative_ledger(c)
+            claim=claim_narrative(c,'합성 신주제')
+            self.assertTrue(validate_narrative_claim(c,'합성 신주제',claim))
+            self.assertFalse(validate_narrative_claim(c,'합성 신주제',uuid.uuid4()))
+            self.assertIsNone(claim_narrative(c,'합성 신주제'))
             self.assertEqual(c.execute("SELECT source_row->>'meta_json' FROM ingest_graph_entities WHERE id=8").fetchone()[0],'{"pace_layer":"flow"}')
             self.assertEqual(c.execute("SELECT source_row->>'source_quote',source_row->>'mechanism' FROM ingest_graph_relations WHERE id=77").fetchone(),('이전 근거','이전 설명'))
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
@@ -864,6 +870,8 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             publisher.close()
         with self.pg() as c:
             self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='narratives'").fetchone()[0],1)
+            self.assertFalse(validate_narrative_claim(c,'합성 신주제',claim))
+            self.assertEqual(c.execute("SELECT status FROM ingest_narrative_claims WHERE topic='합성 신주제'").fetchone()[0],'stale')
 
     def test_existing_enrichment_uses_isolated_graph_vocabulary(self):
         from pipeline import enrich as enrichment
