@@ -2,6 +2,7 @@ import struct
 import unittest
 
 from pipeline.postgres_search_snapshot import SearchSnapshot
+from pipeline.postgres_search_feed import _sort_latest
 
 
 def vector(x):
@@ -30,6 +31,13 @@ class SearchSnapshotTests(unittest.TestCase):
             self.index.search('반도체', vector=b'bad')
         with self.assertRaises(ValueError):
             self.index.search('반도체', vector=vector(float('nan')))
+
+    def test_latest_keeps_legacy_rowid_order_for_equal_dates(self):
+        rows = [(9, {'published_at': '2026-01-01'}, 'blog'),
+                (2, {'published_at': '2026-01-01'}, 'blog'),
+                (3, {'published_at': '2026-01-02'}, 'blog')]
+        _sort_latest(rows)
+        self.assertEqual([row[0] for row in rows], [3, 2, 9])
 
 
 if __name__ == '__main__':

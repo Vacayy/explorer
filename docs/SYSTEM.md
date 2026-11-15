@@ -709,7 +709,7 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `pipeline/document_read.py`는 기존 문서 상세의 SQLite 조회를 `SQLiteDocumentReader` 경계로 분리한다. 기존 API 응답 모델과 경로는 유지한다. `pipeline/postgres_document_read.py`와 `refactor_sql/document_projection.sql`은 동일한 문서 상세·일부 피드 목록 응답을 합성 PostgreSQL 자료로 비교하는 실험용 읽기 어댑터다. 목록 행은 기존 SQLite의 다중 요약 결합으로 같은 문서가 여러 번 나타날 수 있는 동작과 원본 문서 기준 총 건수를 각각 보존한다. 필터 전체, 수집·실제 DB 이관·쓰기·운영 연결은 구현하지 않았으며 이 구조를 최종 PostgreSQL 스키마로 확정하지 않는다. `psycopg[binary]`는 실험용 PostgreSQL 연결 의존성이다.
 
-`pipeline/postgres_search_snapshot.py`는 격리 fixture의 동일 PostgreSQL generation에서 문서·기존 벡터를 읽어 메모리 SQLite FTS5/sqlite-vec 색인을 만드는 검색 실험이다. `postgres_search_feed.py`와 `scripts/refactor_document_ui.py`는 이 색인을 격리 피드 API의 검색어·소스·페이지에 연결하며, 모델이 없을 때 lexical 검색을 제공하고 generation 교체 시 색인을 다시 만든다. 날짜·엔티티 필터와 최신순은 지원하지 않아 명시적으로 거부한다. 실서비스에는 연결하지 않는다. 색인 재생성 시 동점 결과의 순서가 기존과 달라질 수 있다. 실제 사본에서 초기 색인 생성 약7초·프로세스 최대 약511MiB 및 lexical 피드 소표본을 확인했으나 동시 부하와 운영 적합성은 미검증이다.
+`pipeline/postgres_search_snapshot.py`는 격리 fixture의 동일 PostgreSQL generation에서 문서·기존 벡터를 읽어 메모리 SQLite FTS5/sqlite-vec 색인을 만드는 검색 실험이다. `postgres_search_feed.py`와 `scripts/refactor_document_ui.py`는 이 색인을 격리 피드 API의 검색어·소스·날짜·엔티티 필터, 최신순 및 페이지에 연결하며, 모델이 없을 때 lexical 검색을 제공하고 generation 교체 시 색인을 다시 만든다. 실서비스에는 연결하지 않는다. 색인 재생성 시 동점 결과의 순서가 기존과 달라질 수 있다. 실제 사본에서 초기 색인 생성 약7초·프로세스 최대 약511MiB 및 대표 필터·정렬을 확인했으나 전체 조합, 동시 부하와 운영 적합성은 미검증이다.
 
 `scripts/refactor_document_sample.py`는 읽기 전용 SQLite 단일 트랜잭션에서 최대 50개 목록 행과 선택한 소수 문서 상세를 읽고, 격리 테스트 PostgreSQL의 임시 schema에 응답을 넣어 비교한 뒤 schema를 삭제한다. 예제 목적의 fixture DB 외 연결을 거부하며 문서 내용·DSN을 출력하지 않는다. 이는 원본 전체 이관이나 최신 동기화 구현이 아니다.
 

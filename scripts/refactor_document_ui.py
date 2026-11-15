@@ -49,8 +49,8 @@ def experimental_search_feed(response: Response, q: str = Query(..., min_length=
     # Serializing rebuilds and queries prevents a replaced generation from
     # closing an index while another request is using it. Fixture only.
     global search_index
-    if not q.strip() or stock or industry or topic or days or sort != 'relevance':
-        raise HTTPException(501, '이 검색 조건은 아직 지원하지 않습니다.')
+    if not q.strip():
+        raise HTTPException(501, '검색어 없는 피드 조회는 아직 지원하지 않습니다.')
     with search_lock, factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         generation = connection.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
@@ -68,7 +68,8 @@ def experimental_search_feed(response: Response, q: str = Query(..., min_length=
         except Exception:
             # The original search retains lexical results when the model is unavailable.
             pass
-        result = search_feed(connection, search_index, q, vector=vector, source=source, page=page, size=size)
+        result = search_feed(connection, search_index, q, vector=vector, source=source, stock=stock,
+                             industry=industry, topic=topic, days=days, sort=sort, page=page, size=size)
         response.headers['X-Explorer-Generation'] = search_index.generation
         return result
 
