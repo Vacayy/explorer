@@ -1,10 +1,13 @@
 """One synthetic host-worker run against an explicitly disposable localhost PG.
 
-This experiment always uses a fake model. It cannot start production workers.
+The default uses a fake model. Actual calls require explicit fixture-only opt-in.
+It cannot start production workers.
 """
 import argparse
 import os
 import re
+from contextlib import nullcontext
+from shutil import which
 from unittest.mock import patch
 
 import psycopg
@@ -19,6 +22,7 @@ LOCK = 0x4558504C4359434C
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--document-id', type=int, required=True)
+    parser.add_argument('--actual-model', action='store_true')
     args = parser.parse_args()
     dsn = os.environ.get('REFACTOR_POSTGRES_DSN', '')
     schema = os.environ.get('REFACTOR_FIXTURE_SCHEMA', '')
@@ -28,6 +32,8 @@ def main():
             target.get('user') != 'fixture' or 'hostaddr' in target or 'service' in target or
             not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema) or args.document_id < 1):
         raise ValueError('Explicit disposable localhost fixture required')
+    if args.actual_model and (os.environ.get('FIXTURE_ALLOW_REAL_MODEL') != '1' or not which('claude')):
+        raise ValueError('Actual fixture calls require explicit opt-in and Claude CLI')
 
     def factory():
         return psycopg.connect(dsn, options='-c search_path=' + schema)
@@ -40,8 +46,8 @@ def main():
         try:
             with factory() as conn:
                 recover_cycle_attempts(conn)
-            with patch.dict(os.environ, {'ENRICH_ENGINE':'claude-code', 'LLM_FALLBACK_ENGINE':'none'}), \
-                 patch('pipeline.llm._run_claude_code', return_value=response):
+            model = nullcontext() if args.actual_model else patch('pipeline.llm._run_claude_code', return_value=response)
+            with patch.dict(os.environ, {'ENRICH_ENGINE':'claude-code', 'LLM_FALLBACK_ENGINE':'none'}), model:
                 applied = enrich_document(factory, args.document_id, enrich=existing_enricher(factory), worker_id='cycle:host-fixture')
         finally:
             lease.execute('SELECT pg_advisory_unlock(%s)', (LOCK,))
