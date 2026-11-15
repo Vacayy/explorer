@@ -123,6 +123,31 @@ class MarketTodayTests(unittest.TestCase):
         self.assertEqual(d["current"]["market"]["kospi"]["change_pct"], -3.59, "회차 시점 시장 상태를 함께 쌓는다")
         self.assertEqual(mt.run(date(2026, 11, 3), "0930", call=fake, check_holiday=False, snapshot=snap)["status"], "skipped", "자료가 적은 창은 만들지 않는다")
 
+    def test_prepared_readonly_snapshot_preserves_private_response_and_navigation(self):
+        import json
+        conn = self.connect()
+        mt.ensure_schema(conn)
+        topic = {"title": "시장 화두", "body": "저장된 브리핑", "tags": ["시장"], "refs": [], "continuing": False, "echo": 1}
+        for day, slot in [("2026-11-02", "1600"), ("2026-11-03", "0930"), ("2026-11-03", "1500")]:
+            conn.execute("INSERT INTO market_today(trade_date,slot,window_start,window_end,items_json,sources_json,doc_count) VALUES(?,?,?,?,?,?,?)",
+                         (day, slot, 'start', 'end', json.dumps([topic]), '{}', 1))
+        conn.commit(); conn.close()
+        expected = {(day, slot): mt.read(day, slot) for day, slot in [
+            ('2026-11-03', None), ('2026-11-03', '0930'), ('2026-11-01', None)]}
+        before = self.path.read_bytes()
+        readonly = sqlite3.connect(self.path.as_uri() + '?mode=ro', uri=True)
+        readonly.row_factory = sqlite3.Row
+        readonly.execute('PRAGMA query_only=ON')
+        try:
+            with patch.object(mt, 'get_connection', side_effect=AssertionError('unexpected connection')), \
+                 patch.object(mt, 'ensure_schema', side_effect=AssertionError('schema write')):
+                for (day, slot), result in expected.items():
+                    self.assertEqual(mt.read_snapshot(readonly, day, slot), result)
+                self.assertEqual(readonly.execute('SELECT 1').fetchone()[0], 1)
+        finally:
+            readonly.close()
+        self.assertEqual(self.path.read_bytes(), before)
+
     def test_wrap_slot_sees_whole_day_and_all_intraday_topics(self):
         snap = lambda d, s: None
         fake = lambda prompt: {"topics": []}

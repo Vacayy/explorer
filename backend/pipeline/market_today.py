@@ -370,39 +370,49 @@ def _link_after(conn, day: date) -> dict:
 # ---------- 읽기 ----------
 
 def read(day: str | None = None, slot: str | None = None) -> dict:
-    """그날(없으면 오늘 KST — 자정에 넘어간다) 회차 목록 + 선택(없으면 최신) 회차 본문, 앞뒤로 회차가 있는 날. LLM 0."""
-    today = datetime.now(timezone.utc).astimezone(KST).date().isoformat()
-    day = day or today
+    """Private entry point retains explicit legacy schema preparation."""
     conn = get_connection()
     try:
         ensure_schema(conn)
-        prev = conn.execute("SELECT MAX(trade_date) d FROM market_today WHERE trade_date < ?", (day,)).fetchone()["d"]
-        nxt = conn.execute("SELECT MIN(trade_date) d FROM market_today WHERE trade_date > ?", (day,)).fetchone()["d"]
-        if nxt is None and day < today:
-            nxt = today            # 오늘은 회차가 아직 없어도 갈 수 있다
-        nav = {"prev_date": prev, "next_date": nxt, "next_slot": _next_label() if day == today else None}
-        rows = conn.execute("SELECT * FROM market_today WHERE trade_date=? ORDER BY slot", (day,)).fetchall()
-        slots = [{"slot": r["slot"], "label": SLOT_LABEL[r["slot"]], "created_at": r["created_at"],
-                  "topics": len(json.loads(r["items_json"]))} for r in rows]
-        pick = next((r for r in rows if r["slot"] == slot), rows[-1] if rows else None)
-        current = None
-        if pick:
-            from pipeline.market_today_links import links_for_session
-            ready = pick["links_at"] is not None
-            links = links_for_session(conn, pick["id"]) if ready else {}
-            sources = json.loads(pick["sources_json"])
-            counts = json.loads(pick["counts_json"] or "{}")
-            current = {"slot": pick["slot"], "label": SLOT_LABEL[pick["slot"]], "window_start": pick["window_start"],
-                       "window_end": pick["window_end"], "created_at": pick["created_at"], "doc_count": pick["doc_count"],
-                       "telegram": counts.get("telegram", 0), "news": counts.get("news", 0),
-                       "market": json.loads(pick["market_json"]) if pick["market_json"] else None,
-                       "links_ready": ready,
-                       "topics": [{**t, "sources": [sources[r] | {"ref": r} for r in t["refs"] if r in sources],
-                                   "narratives": links.get(i, [])}
-                                  for i, t in enumerate(json.loads(pick["items_json"]))]}
-        return {"trade_date": day, "slots": slots, "current": current, **nav}
+        return read_snapshot(conn, day, slot)
     finally:
         conn.close()
+
+
+def read_snapshot(conn, day: str | None = None, slot: str | None = None) -> dict:
+    """Read a prepared connection without schema changes, collection or model calls.
+
+    This preserves the complete stored response; public callers must separately
+    project permitted source metadata and narrative links before returning it.
+    The caller owns the connection and its transaction.
+    """
+    today = datetime.now(timezone.utc).astimezone(KST).date().isoformat()
+    day = day or today
+    prev = conn.execute("SELECT MAX(trade_date) d FROM market_today WHERE trade_date < ?", (day,)).fetchone()["d"]
+    nxt = conn.execute("SELECT MIN(trade_date) d FROM market_today WHERE trade_date > ?", (day,)).fetchone()["d"]
+    if nxt is None and day < today:
+        nxt = today            # 오늘은 회차가 아직 없어도 갈 수 있다
+    nav = {"prev_date": prev, "next_date": nxt, "next_slot": _next_label() if day == today else None}
+    rows = conn.execute("SELECT * FROM market_today WHERE trade_date=? ORDER BY slot", (day,)).fetchall()
+    slots = [{"slot": r["slot"], "label": SLOT_LABEL[r["slot"]], "created_at": r["created_at"],
+              "topics": len(json.loads(r["items_json"]))} for r in rows]
+    pick = next((r for r in rows if r["slot"] == slot), rows[-1] if rows else None)
+    current = None
+    if pick:
+        from pipeline.market_today_links import links_for_session
+        ready = pick["links_at"] is not None
+        links = links_for_session(conn, pick["id"]) if ready else {}
+        sources = json.loads(pick["sources_json"])
+        counts = json.loads(pick["counts_json"] or "{}")
+        current = {"slot": pick["slot"], "label": SLOT_LABEL[pick["slot"]], "window_start": pick["window_start"],
+                   "window_end": pick["window_end"], "created_at": pick["created_at"], "doc_count": pick["doc_count"],
+                   "telegram": counts.get("telegram", 0), "news": counts.get("news", 0),
+                   "market": json.loads(pick["market_json"]) if pick["market_json"] else None,
+                   "links_ready": ready,
+                   "topics": [{**t, "sources": [sources[r] | {"ref": r} for r in t["refs"] if r in sources],
+                               "narratives": links.get(i, [])}
+                              for i, t in enumerate(json.loads(pick["items_json"]))]}
+    return {"trade_date": day, "slots": slots, "current": current, **nav}
 
 
 def _next_label(now: datetime | None = None) -> str | None:

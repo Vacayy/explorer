@@ -12,6 +12,10 @@
 
 `PublishedDocument.channel`은 해당 문서의 출처 식별/명칭/종류를 승인 fingerprint에 포함한다. PublicationStore의 명시 initialize는 v1/v2→v3로 `publications.feed_metadata`를 추가하며 GET은 DDL을 실행하지 않는다. 기존 승인에 새 채널 정보를 자동 부여하지 않으며 새 preview/approve가 필요하다. 승인 transaction에 원문 없는 채널/제목/게시일 metadata를 저장하므로 디렉터리는 전체 원문/첨부를 읽지 않고, 선택한20개 문서만 현재 승인 fingerprint와 공유128MiB 읽기 예산으로 검증한다. 디렉터리 이름·건수는 승인 revision 기준이다. 원문이나 출처가 이후 변경되면 새 내용은 노출하지 않고 문서 검증에서 제외하며 승인 철회는 디렉터리에서도 제외한다. 주제 URL은 승인 제목 검색이며 전체 본문 검색은 기존 문서 검색 API를 사용한다. `PublishedDocumentCard`는 재검증 중/실패/철회/오프라인에서 캐시 본문을 숨긴다. 실제 공개 배포에는 v3 사전 준비와 해당 배포 revision의 복원/schema 검사 갱신이 필요하다.
 
+## 저장된 한국 브리핑 조회 분리
+
+`market_today.read_snapshot(conn, day, slot)`는 준비된 연결에서 기존 회차·본문·출처·내러티브 링크·날짜 탐색 응답을 읽는다. 연결 소유/스키마 준비/수집/모델 호출은 수행하지 않는다. private `read`는 기존 초기화 후 같은 함수를 사용한다. 이 함수 자체는 공개 투영이 아니며, 공개 연결에서는 출처 metadata와 연결 대상의 허용 범위를 별도로 적용해야 한다.
+
 ## 공개 API 시작·종료 경계
 
 `EXPLORER_ACCESS_MODE=public`도 전체 main 라우터를 유지하지만 init_db·Telegram bot·analysis/discovery worker·개인 observe 기록/flush를 시작하지 않는다. `security.public_startup`은 명시 준비된 앱/identity/login/publication/quota/macro와 설정을 readonly로 확인하고 미준비 시 listen 전에 실패한다. 전체 복원 무결성·스키마·소유권 gate는 별도 배포 절차이며 이 가벼운 검사가 대신하지 않는다. IPC socket 부재는 채팅 요청503으로 남겨 조회 API 시작과 분리한다. private의 기존 초기화·worker 동작은 유지한다.
