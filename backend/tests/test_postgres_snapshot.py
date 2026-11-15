@@ -270,7 +270,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         from pipeline.timeline import channels
         with closing(self.fixture.connect()) as c:
             expected_channels = channels(c, until='2026-01-01T00:00:00.000200Z')
-        self.assertEqual(reader.channels(until='2026-01-01T00:00:00.000200Z').model_dump(), expected_channels.model_dump())
+        self.assertEqual(reader.channels(until='2026-01-01T00:00:00.000200Z', include_owner_read_state=True).model_dump(), expected_channels.model_dump())
 
     def test_channel_directory_matches_sqlite_and_remains_readonly(self):
         from pipeline.timeline import channels
@@ -280,9 +280,16 @@ class SnapshotReplacementTests(unittest.TestCase):
             expected = channels(c, until='2026-01-06T00:00:00Z')
         self.load('2026-01-06T00:00:00+00:00')
         reader = PostgreSQLTimelineSources(self.pg)
-        actual = reader.channels(until='2026-01-06T00:00:00Z')
+        actual = reader.channels(until='2026-01-06T00:00:00Z', include_owner_read_state=True)
         self.assertEqual(actual.model_dump(), expected.model_dump())
-        self.assertEqual(reader.channels(until='2026-01-06T00:00:00Z').model_dump(), expected.model_dump())
+        self.assertGreater(actual.total_unread, 0)
+        with self.assertRaises(TypeError):
+            reader.channels(until='2026-01-06T00:00:00Z', include_owner_read_state='false')
+        anonymous = reader.channels(until='2026-01-06T00:00:00Z')
+        self.assertEqual(anonymous.total_unread, 0)
+        self.assertTrue(all(item.unread == 0 for item in anonymous.items))
+        self.assertEqual([(i.id, i.count) for i in anonymous.items], [(i.id, i.count) for i in actual.items])
+        self.assertEqual(reader.channels(until='2026-01-06T00:00:00Z', include_owner_read_state=True).model_dump(), expected.model_dump())
 
     def test_rebuild_details_from_pg_and_rollback_on_failure(self):
         self.load('2026-01-05T00:00:00+00:00')

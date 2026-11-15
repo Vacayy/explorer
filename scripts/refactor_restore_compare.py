@@ -55,7 +55,7 @@ def main():
     for name, params in cases.items():
         a, b = left.timeline(until=until, **params), right.timeline(until=until, **params)
         matches[name] = a.has_more == b.has_more and [x.model_dump() for x in a.items] == [x.model_dump() for x in b.items]
-    channel_match = left.channels(until=until).model_dump() == right.channels(until=until).model_dump()
+    channel_match = left.channels(until=until, include_owner_read_state=True).model_dump() == right.channels(until=until, include_owner_read_state=True).model_dump()
     sample_ids = [item.document.id for item in left.timeline(until=until, scope='sources').items[:10] if item.document]
     a, b = PostgreSQLRawDocumentReader(original), PostgreSQLRawDocumentReader(restored)
     detail_match = all(a.get(doc_id).model_dump() == b.get(doc_id).model_dump() for doc_id in sample_ids)

@@ -160,7 +160,7 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
                                      [i.model_dump() for i in expected.items] == [i.model_dump() for i in actual.items])
         result['system_timeline_cases_match'] = system_matches
         old_channels = channels(source, until=fixed_until)
-        new_channels = timeline_reader.channels(until=fixed_until)
+        new_channels = timeline_reader.channels(until=fixed_until, include_owner_read_state=True)
         result['timeline_channels_match'] = old_channels.model_dump() == new_channels.model_dump()
         result['timeline_channel_count'] = len(old_channels.items)
         if rebuild_system:
@@ -172,7 +172,7 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
                        [i.model_dump() for i in timeline_reader.timeline(until=fixed_until, **params).items])
                 for name, params in system_cases.items()
             }
-            result['system_rebuilt_channels_match'] = old_channels.model_dump() == timeline_reader.channels(until=fixed_until).model_dump()
+            result['system_rebuilt_channels_match'] = old_channels.model_dump() == timeline_reader.channels(until=fixed_until, include_owner_read_state=True).model_dump()
         if rebuild_source:
             started = time.monotonic()
             result['source_timeline_rebuilt_rows'] = rebuild_source_timeline(pg)
@@ -183,7 +183,7 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
                        [i.model_dump() for i in timeline_reader.timeline(until=fixed_until, **params).items])
                 for name, params in timeline_cases.items()
             }
-            result['rebuilt_timeline_channels_match'] = old_channels.model_dump() == timeline_reader.channels(until=fixed_until).model_dump()
+            result['rebuilt_timeline_channels_match'] = old_channels.model_dump() == timeline_reader.channels(until=fixed_until, include_owner_read_state=True).model_dump()
         # Copy a few real attachment bytes to an isolated temporary directory;
         # source volume is read-only and no original paths or content are logged.
         attached, missing = 0, 0

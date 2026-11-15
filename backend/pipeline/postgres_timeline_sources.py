@@ -50,9 +50,11 @@ class PostgreSQLTimelineSources:
         return TimelineResponse(items=items, page=page, size=size,
                                 has_more=len(rows)>size, until=until, as_of=now)
 
-    def channels(self, *, until=None):
-        """Read the captured owner's channel state; does not mark anything read."""
+    def channels(self, *, until=None, include_owner_read_state=False):
+        """Omit the legacy owner's read state unless explicitly requested."""
         from pipeline.connectors.memo import SOURCES as MEMO_SOURCES
+        if type(include_owner_read_state) is not bool:
+            raise TypeError('include_owner_read_state must be bool')
         until = utc(until) if until else datetime.now(timezone.utc).isoformat()
         with self.connection_factory() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -64,16 +66,16 @@ class PostgreSQLTimelineSources:
                   SELECT id,occurred_at,sort_millis,channel,'system'::text,name,preview FROM timeline_system_projection
                 ), reads AS (
                   SELECT row_data->>'channel' AS channel, (row_data->>'read_until')::timestamptz AS read_until
-                  FROM legacy_snapshot_rows WHERE table_name='channel_reads'
+                  FROM legacy_snapshot_rows WHERE table_name='channel_reads' AND %s
                 ), ranked AS (
                   SELECT u.*, count(*) OVER (PARTITION BY u.channel) AS count,
-                    sum(CASE WHEN u.sort_millis > FLOOR(EXTRACT(EPOCH FROM COALESCE(r.read_until,
+                    sum(CASE WHEN %s AND u.sort_millis > FLOOR(EXTRACT(EPOCH FROM COALESCE(r.read_until,
                         (SELECT read_until FROM reads WHERE channel='*'), '1970-01-01'::timestamptz))*1000 + 0.5)
                         THEN 1 ELSE 0 END) OVER (PARTITION BY u.channel) AS unread,
                     row_number() OVER (PARTITION BY u.channel ORDER BY u.sort_millis DESC,u.id COLLATE "C" DESC) AS rank
                   FROM updates u LEFT JOIN reads r ON r.channel=u.channel WHERE u.sort_millis <= FLOOR(EXTRACT(EPOCH FROM %s::timestamptz)*1000 + 0.5)
                 ) SELECT channel,platform,name,preview,occurred_at,count,unread FROM ranked WHERE rank=1
-            """, (until,)).fetchall()
+            """, (include_owner_read_state, include_owner_read_state, until)).fetchall()
         registered = {}
         fields = {'telegram_channels': ('channel_name','display_name','telegram'),
                   'blog_sources': ('url','blog_name','blog'),

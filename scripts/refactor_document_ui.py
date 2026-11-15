@@ -41,7 +41,7 @@ def timeline(scope: Literal['all', 'sources', 'system'] = 'all',
 
 @app.get('/api/spine/feed/channels', response_model=TimelineChannelsResponse)
 def channels(until: datetime | None = None):
-    return timeline_reader.channels(until=until.isoformat() if until else None)
+    return timeline_reader.channels(until=until.isoformat() if until else None, include_owner_read_state=True)
 
 
 @app.get('/api/spine/doc/{doc_id}', response_model=FeedDocument)
