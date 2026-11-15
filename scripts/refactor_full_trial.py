@@ -2,6 +2,8 @@
 
 No real contents or credentials are printed. This is not an operational migration.
 The caller must provide a private disposable fixture PostgreSQL database.
+Large SQLite sorts need a private, disk-backed SQLITE_TMPDIR with enough space;
+a small tmpfs may result in SQLITE_FULL. Remove scratch data after the trial.
 """
 import argparse
 from contextlib import contextmanager
