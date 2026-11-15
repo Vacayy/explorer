@@ -2,7 +2,7 @@
 import os
 import sqlite3
 import uuid
-from datetime import date,timedelta
+from datetime import date,datetime,timedelta,timezone
 from unittest.mock import patch
 import psycopg
 from psycopg import sql
@@ -13,7 +13,8 @@ from pipeline.postgres_narrative_fixture import list_narratives as pg_narratives
 from pipeline.narrative import list_narratives as sqlite_narratives, cached_meta as sqlite_narrative
 from routers.spine_narrative import NarrativeList, Narrative
 from pipeline.postgres_calendar_fixture import calendar_events
-from models.spine import CalendarEvent
+from models.spine import CalendarEvent, WatchlistUpdate
+from pipeline.postgres_home_fixture import market_highlights, watchlist_updates
 
 
 def main():
@@ -36,7 +37,7 @@ def main():
         catalysts=[dict(row) for row in source.execute('SELECT * FROM catalysts')]
         companies=[dict(row) for row in source.execute('SELECT * FROM companies')]
         links=[dict(row) for row in source.execute('SELECT * FROM entity_links')]
-        documents=[dict(row) for row in source.execute('SELECT id,published_at,source_type FROM raw_documents')]
+        documents=[dict(row) for row in source.execute('SELECT id,published_at,source_type,title,url FROM raw_documents')]
         enrichments=[dict(row) for row in source.execute('SELECT doc_id,time_orientation,reference_period FROM enrichments')]
         with psycopg.connect(dsn) as conn:
             conn.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
@@ -92,7 +93,30 @@ def main():
             events=sorted([CalendarEvent(**dict(row),in_watchlist=row['stock_code'] in watched) for row in rows],key=lambda e:(not e.in_watchlist,e.event_date))
             if [row.model_dump() for row in calendar_events(conn,start=start,watched_codes=watched)] != [row.model_dump() for row in events]:
                 raise AssertionError('Calendar event mismatch')
-        print(f'Compared signal lists {counts}, summary, {len(expected_momentum)} momentum, {len(expected_narratives["items"])} narratives, {len(topics)} details and {len(events)} calendar events: matched')
+            since=(date.today()-timedelta(days=7)).isoformat()
+            rows=source.execute("SELECT s.*,e.name entity_name,e.aliases stock_code FROM signals s JOIN entities e ON e.id=s.entity_id WHERE s.date>=? ORDER BY s.date DESC,s.id DESC LIMIT 10",(since,))
+            expected_highlights=[_row_to_item(row).model_dump() for row in rows]
+            if [row.model_dump() for row in market_highlights(conn,today=date.today())] != expected_highlights:
+                raise AssertionError('Home highlights mismatch')
+            since_dt=(datetime.now(timezone.utc)-timedelta(days=3)).isoformat()
+            picked=source.execute("SELECT e.aliases FROM entity_links l JOIN entities e ON e.id=l.entity_id JOIN raw_documents d ON d.id=l.doc_id WHERE l.link_type='stock' AND e.type='company' AND e.aliases IS NOT NULL AND d.published_at>=? LIMIT 1",(since_dt,)).fetchone()
+            expected_updates=[]
+            if picked:
+                code=picked[0]
+                docs=source.execute("SELECT DISTINCT d.id doc_id,e.aliases stock_code,e.name corp_name,d.published_at,d.title,d.url,d.source_type FROM entity_links l JOIN entities e ON l.entity_id=e.id JOIN raw_documents d ON l.doc_id=d.id WHERE l.link_type='stock' AND e.type='company' AND e.aliases=? AND d.published_at>=? ORDER BY d.published_at DESC LIMIT 50",(code,since_dt))
+                for row in docs:
+                    expected_updates.append(WatchlistUpdate(kind='document',doc_id=row['doc_id'],stock_code=row['stock_code'],corp_name=row['corp_name'],occurred_at=row['published_at'],title=row['title'] or '',url=row['url'],source_type=row['source_type'],signal_type=None))
+                since_date=(date.today()-timedelta(days=3)).isoformat()
+                signal_rows=source.execute("SELECT s.signal_type,s.date,s.payload_json,e.aliases stock_code,e.name corp_name FROM signals s JOIN entities e ON s.entity_id=e.id WHERE e.aliases=? AND s.date>=? ORDER BY s.date DESC LIMIT 20",(code,since_date))
+                import json
+                for row in signal_rows:
+                    payload=json.loads(row['payload_json'] or '{}')
+                    expected_updates.append(WatchlistUpdate(kind='signal',stock_code=row['stock_code'],corp_name=row['corp_name'],occurred_at=row['date'],title=f"언급 급증: 최근 7일 {payload.get('count_7d','?')}회",url=None,source_type=None,signal_type=row['signal_type']))
+                expected_updates.sort(key=lambda row:row.occurred_at,reverse=True)
+                actual_updates=watchlist_updates(conn,watched_codes={code},follow_ids=[],since=since_dt,since_date=since_date)
+                if [row.model_dump() for row in actual_updates] != [row.model_dump() for row in expected_updates[:30]]:
+                    raise AssertionError('Home updates mismatch')
+        print(f'Compared signal lists {counts}, summary, {len(expected_momentum)} momentum, {len(expected_narratives["items"])} narratives, {len(topics)} details, {len(events)} calendar events, {len(expected_highlights)} highlights and {min(len(expected_updates),30)} watched updates: matched')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:

@@ -50,6 +50,7 @@ from pipeline.postgres_projection_publisher_fixture import FixturePublisher
 from pipeline.postgres_signals_fixture import signals_items
 from pipeline.postgres_signal_compute_fixture import compute_mention_signals
 from pipeline.postgres_calendar_fixture import calendar_events
+from pipeline.postgres_home_fixture import market_highlights, watchlist_updates
 from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
@@ -112,6 +113,10 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual([item.id for item in signals_items(c,since='2026-01-01')],[4,3,2,1])
             self.assertEqual([item.id for item in signals_items(c,since='2026-01-01',signal_type='theme_surge')],[2])
             self.assertEqual(signals_items(c,since='2026-01-01',signal_type='mention_surge')[1].interpretation,'기존 해석')
+            self.assertEqual([item.id for item in market_highlights(c,today=date(2026,1,3))],[4,3,2,1])
+            updates=watchlist_updates(c,watched_codes={'000000'},follow_ids=[],since='2098-01-01',since_date='2098-01-01')
+            self.assertEqual({row.doc_id for row in updates if row.kind=='document'},{1,2})
+            self.assertEqual(len([row for row in updates if row.kind=='signal']),1)
         from fastapi.testclient import TestClient
         script=Path(__file__).resolve().parents[2]/'scripts/refactor_document_ui.py'
         with patch.dict(os.environ,{'REFACTOR_FIXTURE_SCHEMA':self.schema}):
