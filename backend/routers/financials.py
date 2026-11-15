@@ -1,5 +1,7 @@
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from models.financials import FinancialResponse
+from security.public_financials import stored_financials
 from models.income_flow import IncomeFlowQuarters, IncomeFlowResponse
 from pipeline.income_flow import kr_income_flow, kr_income_flow_quarters
 from services.dart_service import _corp_code_for_stock, fetch_financial_statements
@@ -67,8 +69,9 @@ def collect_financials_for_stock(stock_code: str):
                         targets=stats.get("targets", 0), calls=stats.get("calls", 0))
 
 
-@router.get("/{stock_code}")
+@router.get("/{stock_code}", response_model=FinancialResponse)
 def get_financials(
+    request: Request,
     stock_code: str,
     sj_div: str = Query("IS", pattern="^(IS|BS|CF|CIS)$"),
     period: str = Query("annual", pattern="^(annual|quarterly|trailing)$"),
@@ -76,6 +79,8 @@ def get_financials(
     fs_div: str = Query("CFS", pattern="^(CFS|OFS)$"),
     stored_only: bool = False,
 ):
+    if getattr(request.state, "public_access", False):
+        return stored_financials(stock_code, sj_div, period, years, fs_div)
     if stored_only:
         from datetime import datetime
         from services.dart_service import _corp_code_for_stock, _build_financial_response

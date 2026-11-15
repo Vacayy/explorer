@@ -139,9 +139,10 @@ def _period_label(year: int, reprt_code: str) -> str:
 
 
 def _build_financial_response(
-    corp_code: str, sj_div: str, period: str, start_year: int, current_year: int, fs_div: str
+    corp_code: str, sj_div: str, period: str, start_year: int, current_year: int, fs_div: str,
+    *, connection=None,
 ) -> dict:
-    conn = get_connection()
+    conn = connection if connection is not None else get_connection()
 
     sj_values = SJ_DIV_QUERY.get(sj_div, (sj_div,))
     placeholders = ",".join("?" for _ in sj_values)
@@ -160,7 +161,8 @@ def _build_financial_response(
         """,
         (corp_code, fs_div, *sj_values, calculation_start, current_year),
     ).fetchall()
-    conn.close()
+    if connection is None:
+        conn.close()
 
     if not rows:
         return {"periods": [], "rows": [], "key_metrics": {}, "sj_div": sj_div, "fs_div": fs_div, "period_type": period}

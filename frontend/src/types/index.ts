@@ -23,7 +23,7 @@ export interface KeyMetric {
 export interface FinancialResponse {
   periods: string[];
   rows: FinancialRow[];
-  key_metrics?: Record<string, KeyMetric>;
+  key_metrics: Record<string, KeyMetric>;
   sj_div: string;
   fs_div: string;
   period_type: string;

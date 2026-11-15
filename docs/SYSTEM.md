@@ -12,6 +12,10 @@
 - `@a2ui/markdown-it`이 고정한 DOMPurify3.4.11은 해당 패키지에 한정한 npm override로3.4.17을 사용한다. 근거: GHSA-cg2g-xh64-v4q7 및 같은 수정 버전의 sanitizer 보완. A2UI의 현재 호출은 문자열 기본 sanitize이며, 해당 critical advisory의 특수 DOM/shadow-root 설정이 이 앱에서 재현됐다는 뜻은 아니다.
 - A2UI Markdown의 정상 서식·안전 링크 보존과 위험 HTML/JavaScript 링크 비실행을 회귀 검사한다. Zod3 의존 체인은 메이저 호환성 검토가 필요하므로 Zod4 강제 치환하지 않는다. audit 경고 개수는 배포 환경에서 재현된 취약점 개수와 구분한다.
 
+## 공용 저장 재무 조회
+
+`GET /api/financials/{stock_code}`는 공용 모드에서 `security.public_financials`의 컬럼 제한 readonly snapshot으로 회사 매핑과 재무 계산을 수행한다. 쿼리 옵션과 관계없이 외부 수집을 하지 않으며 기존 계산기를 연결 주입으로 재사용한다. 수집 POST·income-flow는 공개 정책에 포함하지 않는다. 공유 응답은 `models.financials.FinancialResponse`로 검증한다.
+
 ## 공용 한국 산업 지도
 
 공용 한국 산업 지도는 `sector_rs.sector_map_from_connection`에 readonly 연결을 전달해 전역 DB/결과 캐시를 우회하고 요청별 snapshot 메모로 계산한다. `security.public_industry.kr_industry_map`은 공유 업종 분류를 유지하되 출력 그룹은 benchmark SEED18개로 제한하며 설명도 같은 코드 metadata를 사용한다. DB의 benchmark 자유 메모/정정 reason 및 개인 문서/Peer runtime을 읽지 않는다. public `/industry`는 기존 한국/미국 전환·지도/표/순위/카드와 섹터/ETF 검색을 연결하며 Peer 검색 요청을 마운트하지 않는다. 한국 상세/Peer/허용 원문 연결은 후속이다.

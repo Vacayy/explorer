@@ -18,6 +18,7 @@
     "/api/spine/industry/us/{ticker}": ["/api/spine/industry/us/SMH", "/api/spine/industry/us/XLK"]
   },
   "query": {
+    "/api/financials/{stock_code}": "stored_only=true",
     "/api/member/portfolio/companies": "q=005930",
     "/api/companies/search": "q=삼성",
     "/api/spine/person/resolve": "name=하워드 막스",
