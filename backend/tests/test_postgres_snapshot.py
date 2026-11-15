@@ -473,6 +473,67 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT count(*) FROM document_projection').fetchone()[0],0)
         self.assertEqual(self.reader.list().total,2)
 
+    def test_new_blog_and_video_respect_registry_visibility_and_timeline(self):
+        with self.fixture.connect() as c:
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','영상 채널',1)")
+            c.execute("INSERT INTO blog_sources VALUES ('https://muted.test/feed','rss','뮤트',0)")
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            blog=store_document(c,source_type='blog',source_id='https://example.test/new',title='새 블로그',
+                                url='https://example.test/new',published_at='2026-01-05',markdown='블로그 본문')
+            video=store_document(c,source_type='youtube',source_id='UCfixture/abc123def45',title='새 영상',
+                                 url='https://youtube.com/watch?v=abc123def45',published_at='2026-01-05',
+                                 markdown='영상 자막',raw_content='영상 자막',digest_status='pending')
+            self.assertEqual(store_document(c,source_type='youtube',source_id='UCfixture/abc123def45',
+                             title='새 영상',markdown='영상 자막')['status'],'unchanged')
+            unregistered=store_document(c,source_type='youtube',source_id='notregistered',title='미등록 영상',
+                                        markdown='미등록 자막',raw_content='미등록 자막',digest_status='pending')
+            muted=store_document(c,source_type='blog',source_id='https://muted.test/post',title='뮤트 글',
+                                 url='https://muted.test/post',published_at='2026-01-05',markdown='숨긴 본문')
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            self.assertEqual(copy_with_note_changes(c,self.schema,destination)['updated_documents'],4)
+        reader=PostgreSQLDocumentReader(target)
+        self.assertEqual(reader.list().total,5)
+        self.assertIn(blog['id'],[item.id for item in reader.list(source='blog').items])
+        self.assertIn(video['id'],[item.id for item in reader.list(source='youtube').items])
+        self.assertNotIn(muted['id'],[item.id for item in reader.list().items])
+        self.assertEqual(reader.get(video['id']).transcript,'영상 자막')
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            ids={r[0] for r in c.execute('SELECT document_id FROM timeline_source_projection')}
+            self.assertTrue({blog['id'],video['id']}.issubset(ids))
+            self.assertNotIn(muted['id'],ids)
+            self.assertNotIn(unregistered['id'],ids)
+            generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            rows=c.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
+                           "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
+            index=SearchSnapshot(generation,rows)
+            try:
+                self.assertIn(blog['id'],[item.id for item in search_feed(c,index,'블로그').items])
+                self.assertIn(video['id'],[item.id for item in search_feed(c,index,'자막').items])
+                self.assertEqual(search_feed(c,index,'숨긴').total,0)
+            finally:
+                index.close()
+        timeline=PostgreSQLTimelineSources(target)
+        channels=timeline.channels(until='2026-01-06T00:00:00+00:00')
+        self.assertIn('youtube:UCfixture',[channel.id for channel in channels.items])
+        entries=timeline.timeline(channel='youtube:UCfixture',until='2026-01-06T00:00:00+00:00')
+        self.assertEqual(entries.items[0].document.id,video['id'])
+        self.assertEqual(self.reader.list().total,2)
+
     def test_note_overlay_updates_summary_without_discarding_matching_vector(self):
         import struct
         self.load('2026-01-03T00:00:00+00:00')
