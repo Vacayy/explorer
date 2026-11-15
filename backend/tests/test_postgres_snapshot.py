@@ -34,6 +34,7 @@ from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
+from pipeline.postgres_ingest_runner_fixture import embed_document
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -676,6 +677,40 @@ class SnapshotReplacementTests(unittest.TestCase):
             index=SearchSnapshot.from_postgres(c)
             try:
                 self.assertEqual(search_feed(c,index,'없는단어',vector=vector).items[0].id,2)
+            finally:
+                index.close()
+
+    @unittest.skipUnless(os.getenv('REFACTOR_LOCAL_EMBED_FIXTURE') == '1', 'local model cache not configured')
+    def test_local_model_embedding_reaches_fixture_search(self):
+        from pipeline.search import EMBED_MODEL
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            c.execute('INSERT INTO document_embedding_metadata VALUES (TRUE,%s,%s,384,0,0,0)',(generation,EMBED_MODEL))
+            new=store_document(c,source_type='note',source_id='model-fixture',title='합성 문서',markdown='테스트 문장')
+        self.assertTrue(embed_document(self.pg,new['id']))
+        with self.pg() as c:
+            vector=bytes(c.execute('SELECT embedding FROM ingest_embeddings WHERE document_id=%s',(new['id'],)).fetchone()[0])
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            index=SearchSnapshot.from_postgres(c)
+            try:
+                self.assertEqual(search_feed(c,index,'없는단어',vector=vector).items[0].id,new['id'])
             finally:
                 index.close()
 

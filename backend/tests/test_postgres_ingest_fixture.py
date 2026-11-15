@@ -7,15 +7,17 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
+from datetime import datetime,timezone
 
 import psycopg
 from psycopg import sql
 from pipeline.postgres_ingest_fixture import store_document, store_raw_doc, store_embedding, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
-from pipeline.base import SourceRef
+from pipeline.base import RawDoc, SourceRef
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finish as finish_video
 from pipeline.postgres_video_import_fixture import import_videos
+from pipeline.postgres_ingest_runner_fixture import run_source as run_fixture_source, embed_document
 from tests.test_document_read_boundary import DocumentReadBoundaryTests
 from routers import spine_doc
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
@@ -345,6 +347,40 @@ class IngestFixtureTests(unittest.TestCase):
         self.assertEqual(fetch.call_count, 1)
         self.assertEqual(docs[0].raw_content, 'b' * 800)
         self.assertEqual(docs[1].source_id, 'URL 없는 글')
+
+    def test_existing_runner_records_fetch_time_and_local_embed_input(self):
+        class Connector:
+            def discover(self): return [SourceRef('fixture')]
+            def fetch(self, ref): return [RawDoc(source_type='note',source_id=ref.key,title='제목',raw_content='가'*2100)]
+        at=datetime(2026,1,2,3,4,5,tzinfo=timezone.utc)
+        stats=run_fixture_source(Connector(),self.pg,clock=lambda:at)
+        self.assertEqual((stats['refs'],stats['docs'],stats['new']),(1,1,1))
+        with self.pg() as c:
+            ident,fetched=c.execute('SELECT id,fetched_at FROM ingest_documents').fetchone()
+            self.assertEqual(fetched,at.isoformat())
+        class Model:
+            def embed(self,texts):
+                self.texts=texts
+                return [[1.0]+[0.0]*383]
+        model=Model()
+        with patch('pipeline.search._get_model',return_value=model) as get_model:
+            self.assertTrue(embed_document(self.pg,ident))
+            get_model.assert_called_once_with(local_files_only=True)
+        self.assertEqual(model.texts,['제목\n'+'가'*2000])
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT model FROM ingest_embeddings').fetchone()[0],
+                             'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+
+    def test_local_embedding_result_is_rejected_after_document_change(self):
+        doc=self.put('A')
+        class Model:
+            def embed(inner,texts):
+                self.put('B')
+                return [[1.0]+[0.0]*383]
+        with patch('pipeline.search._get_model',return_value=Model()):
+            self.assertFalse(embed_document(self.pg,doc['id']))
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM ingest_embeddings').fetchone()[0],0)
 
     def test_youtube_connector_transcript_to_feed_detail_and_search(self):
         ref = SourceRef('abc123def45', meta={'title': '합성 영상', 'published': '2026-01-02',
