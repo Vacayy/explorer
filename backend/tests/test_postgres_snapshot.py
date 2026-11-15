@@ -568,6 +568,36 @@ class SnapshotReplacementTests(unittest.TestCase):
             copy_with_note_changes(c,self.schema,destination)
         self.assertEqual(PostgreSQLDocumentReader(target).get(ident).summary,'# 합성 문서 변경된 본문')
 
+    def test_failed_jobs_do_not_starve_untried_documents(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+            for ident in ('fail-one','fail-two','success'):
+                store_document(c,source_type='note',source_id=ident,title=ident,markdown='본문')
+        calls=[]
+        def enrich(title,body):
+            calls.append(title)
+            if title.startswith('fail'):
+                raise RuntimeError('fixture failure')
+            return {'summary':'ok','model':'fixture'}
+        with tempfile.TemporaryDirectory() as vault:
+            (Path(vault)/'notes').mkdir()
+            connector=NoteConnector(Path(vault))
+            for _ in range(3):
+                run_cycle(connector,self.pg,enrich=enrich,batch_size=1)
+            self.assertEqual(calls,['fail-one','fail-two','success'])
+            for _ in range(4):
+                status=run_cycle(connector,self.pg,enrich=enrich,batch_size=1)
+            self.assertEqual((status['enrichment_waiting'],status['enrichment_held']),(0,2))
+            self.assertEqual(len(calls),7)
+        with self.pg() as c:
+            self.assertEqual(c.execute("SELECT status FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id WHERE d.source_id='success'").fetchone()[0],'done')
+
     def test_exclusive_cycle_recovers_after_process_exit(self):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')

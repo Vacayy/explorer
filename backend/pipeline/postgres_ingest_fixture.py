@@ -44,7 +44,7 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
     conn.execute('DELETE FROM ingest_enrichments WHERE document_id=%s', (row[0],))
     conn.execute('DELETE FROM ingest_embeddings WHERE document_id=%s', (row[0],))
     conn.execute('DELETE FROM ingest_entity_links WHERE document_id=%s', (row[0],))
-    conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',auto_retry=TRUE,token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
+    conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',auto_retry=TRUE,attempted_at=NULL,attempt_count=0,token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
     return {'id': row[0], 'revision': revision, 'status': 'updated'}
 
 
@@ -88,7 +88,7 @@ def claim_enrichment(conn, *, document_id, worker_id='fixture-worker', upgrade_k
     token = uuid4()
     if not worker_id:
         raise ValueError('worker_id is required')
-    conn.execute("UPDATE ingest_enrichment_jobs SET status='running',token=%s,worker_id=%s,started_at=clock_timestamp() WHERE document_id=%s", (token, worker_id, document_id))
+    conn.execute("UPDATE ingest_enrichment_jobs SET status='running',token=%s,worker_id=%s,started_at=clock_timestamp(),attempted_at=clock_timestamp(),attempt_count=attempt_count+1 WHERE document_id=%s", (token, worker_id, document_id))
     return {'revision': current[0], 'token': token}
 
 
