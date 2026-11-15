@@ -34,10 +34,17 @@ export function PublicTrialChatPage() {
   }
   // Do not repopulate cleared selection from a stale URL after account changes.
   const initialDoc = changedScope.current ? null : positiveId(params.get('doc'))
-  return <TrialPage key={scope} scope={scope} initialDoc={initialDoc} anonymous={access.status === 'anonymous'} />
+  if (access.status === 'loading') return <PageContainer><p role="status">계정 확인 중…</p></PageContainer>
+  if (access.status === 'error') return <PageContainer><ErrorState message="로그인 상태를 확인할 수 없습니다." onRetry={access.retry} /></PageContainer>
+  if (access.session?.chat_available === false) return <PageContainer width="reading">
+    <h1 className="text-xl font-medium">채팅 준비 중</h1>
+    <p className="text-sm text-ink-2">공개 자료를 먼저 둘러보세요.</p>
+    <Button asChild variant="outline"><Link to="/feed">공개 자료 보기</Link></Button>
+  </PageContainer>
+  return <TrialPage loginAvailable={access.session?.login_available !== false} key={scope} scope={scope} initialDoc={initialDoc} anonymous={access.status === 'anonymous'} />
 }
 
-function TrialPage({ scope, initialDoc, anonymous }: { scope: string; initialDoc: number | null; anonymous: boolean }) {
+function TrialPage({ scope, initialDoc, anonymous, loginAvailable }: { scope: string; initialDoc: number | null; anonymous: boolean; loginAvailable: boolean }) {
   const chat = useTrialChat(scope)
   const [params, setParams] = useSearchParams()
   const search = (params.get('search') ?? '').slice(0, 120)
@@ -143,7 +150,7 @@ function TrialPage({ scope, initialDoc, anonymous }: { scope: string; initialDoc
       </div>}
       {exhausted && <div role="status" className="space-y-2 border-y py-3 text-sm">
         <p>체험 횟수를 모두 사용했습니다.</p>
-        {anonymous && <Button asChild variant="outline"><a href={googleLoginUrl('/chat')}>Google 로그인</a></Button>}
+        {anonymous && (loginAvailable ? <Button asChild variant="outline"><a href={googleLoginUrl('/chat')}>Google 로그인</a></Button> : <p role="status">로그인 준비 중</p>)}
         <p className="text-xs text-ink-2">로그인해도 체험 횟수가 초기화되지는 않습니다. 회원 전용 추가 채팅은 아직 준비 중입니다.</p>
       </div>}
       {chat.messages.length === 0 ? <p className="text-sm text-ink-2">아직 질문이 없습니다. 자료를 선택하고 궁금한 점을 적어 주세요.</p>

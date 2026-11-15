@@ -127,7 +127,7 @@ class AuthFlowTests(unittest.TestCase):
         response = self.client.post('/api/auth/logout', headers={'origin':'https://example.test', 'x-csrf-token':csrf})
         self.assertEqual(response.json(), {'ok':True})
         self.assertIsNone(self.ids.resolve_session(token))
-        self.assertEqual(self.client.get('/api/auth/session').json(), {'authenticated':False,'user':None,'csrf_token':None})
+        self.assertEqual(self.client.get('/api/auth/session').json(), {'authenticated':False,'user':None,'csrf_token':None,'login_available':True,'chat_available':True})
         user = self.ids.get_or_create_google_user('accounts.google.com', 'short-session')
         self.client.cookies.set(SESSION_COOKIE, self.ids.issue_session(user.id, ttl_seconds=1), domain='example.test', path='/')
         self.now += 1

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
-from security.login_flow import LOGIN_COOKIE, SESSION_COOKIE, SESSION_TTL, LoginFlow, session_csrf
+from security.login_flow import LOGIN_COOKIE, SESSION_COOKIE, SESSION_TTL, LoginFlow, session_csrf, public_read_only
 
 router = APIRouter(prefix='/api/auth', tags=['auth'])
 NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy': 'no-referrer'}
@@ -20,6 +20,8 @@ class SessionResponse(BaseModel):
     authenticated: bool
     user: SessionUser | None
     csrf_token: str | None
+    login_available: bool = True
+    chat_available: bool = True
 
 
 class LogoutResponse(BaseModel):
@@ -27,10 +29,18 @@ class LogoutResponse(BaseModel):
 
 
 def get_service():
+    if public_read_only():
+        return None
     try:
         return LoginFlow.from_environment()
     except Exception:
         raise HTTPException(503, 'Authentication unavailable', headers=NO_STORE) from None
+
+
+def require_service(service: LoginFlow | None = Depends(get_service)):
+    if service is None:
+        raise HTTPException(503, 'Authentication unavailable', headers=NO_STORE)
+    return service
 
 
 def set_cookie(response, name, value, max_age):
@@ -42,8 +52,11 @@ def clear_cookie(response, name):
 
 
 @router.get('/session', response_model=SessionResponse)
-def session(request: Request, response: Response, service: LoginFlow = Depends(get_service)):
+def session(request: Request, response: Response, service: LoginFlow | None = Depends(get_service)):
     response.headers.update(NO_STORE)
+    if service is None:
+        return SessionResponse(authenticated=False, user=None, csrf_token=None,
+                               login_available=False, chat_available=False)
     token = request.cookies.get(SESSION_COOKIE, '')
     try:
         user = service.identities.resolve_session(token)
@@ -57,7 +70,7 @@ def session(request: Request, response: Response, service: LoginFlow = Depends(g
 
 
 @router.get('/google/start', response_class=RedirectResponse, status_code=303)
-def google_start(return_to: str = '/', service: LoginFlow = Depends(get_service)):
+def google_start(return_to: str = '/', service: LoginFlow = Depends(require_service)):
     try:
         location, binding = service.start(return_to)
     except ValueError:
@@ -70,7 +83,7 @@ def google_start(return_to: str = '/', service: LoginFlow = Depends(get_service)
 
 
 @router.get('/google/callback', response_class=RedirectResponse, status_code=303)
-def google_callback(request: Request, service: LoginFlow = Depends(get_service)):
+def google_callback(request: Request, service: LoginFlow = Depends(require_service)):
     try:
         if request.query_params.get('error'):
             raise ValueError('Login denied')
@@ -88,7 +101,7 @@ def google_callback(request: Request, service: LoginFlow = Depends(get_service))
 
 
 @router.post('/logout', response_model=LogoutResponse)
-def logout(request: Request, response: Response, service: LoginFlow = Depends(get_service)):
+def logout(request: Request, response: Response, service: LoginFlow = Depends(require_service)):
     response.headers.update(NO_STORE)
     token = request.cookies.get(SESSION_COOKIE, '')
     csrf = request.headers.get('x-csrf-token', '')

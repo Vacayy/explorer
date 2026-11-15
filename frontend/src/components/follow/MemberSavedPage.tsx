@@ -19,7 +19,7 @@ export function MemberSavedPage() {
   if (access.status === 'error') return <PageContainer><ErrorState message="로그인 상태를 확인할 수 없습니다." onRetry={access.retry} /></PageContainer>
   if (access.status !== 'member' && access.status !== 'operator') return <PageContainer>
     <h1 className="text-xl font-medium">내 저장 문서</h1><p>로그인하면 문서를 저장하고 본인만 볼 수 있는 메모를 남길 수 있습니다.</p>
-    <Button asChild><a href={googleLoginUrl('/feed/saved')}>Google 로그인</a></Button>
+    {access.session?.login_available === false ? <p role="status">로그인 준비 중</p> : <Button asChild><a href={googleLoginUrl('/feed/saved')}>Google 로그인</a></Button>}
   </PageContainer>
   return <SavedDocuments key={`${access.session!.user!.id}:${access.status}`} />
 }

@@ -82,6 +82,7 @@ export function AccountControl() {
   if (access.status === 'private') return null
   if (access.status === 'loading') return <span role="status" className="text-xs text-ink-3">계정 확인 중</span>
   if (access.status === 'error') return <Button variant="outline" size="sm" onClick={access.retry}>로그인 확인 재시도</Button>
+  if (access.session?.login_available === false) return <span role="status" className="text-xs text-ink-3">로그인 준비 중</span>
   if (access.status === 'anonymous') return <Button asChild size="sm" variant="outline">
     <a href={googleLoginUrl(location.pathname + location.search)}>Google 로그인</a>
   </Button>

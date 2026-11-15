@@ -24,6 +24,10 @@
 
 `market_today.read_snapshot(conn, day, slot)`는 준비된 연결에서 기존 회차·본문·출처·내러티브 링크·날짜 탐색 응답을 읽는다. 연결 소유/스키마 준비/수집/모델 호출은 수행하지 않는다. private `read`는 기존 초기화 후 같은 함수를 사용한다. `security.public_market_today`가 공개 GET에 이 함수를 연결한다. 명시 준비된 market_today 컬럼만 readonly authorizer로 읽고 내러티브 조회를 끈다. 본문·회차·날짜 탐색은 유지하며 출처 링크는 현재 승인 문서 metadata로 재구성하고 그 외 출처/refs와 비공개 내러티브 링크를 제외한다. 집계는 해당 저장 브리핑의 생성 시점 기준이다. 공개 `/api/spine/indices`, `/indices/breadth`, `/macro`도 같은 저장 시장 데이터 readonly 연결을 사용한다. 지수 `read_indices(conn)`와 매크로 `read_numeric_macro(conn)`는 기존 수치 계산을 재사용하며 public 분기는 background 수집·lazy snapshot·신호 산문 캐시·credential 확인을 실행하지 않는다. 공개 HomePage/HomeKrPage/HomeUsPage는 원래 컴포넌트를 사용하며 한국 브리핑·지수·시장 폭·수치 context 외 다른 블록의 공개 조회 연결은 아직 진행 중이다. 한국 시장 카드도 기존 DayNav를 공유하고 날짜 변경과 회차 초기화를 한 URL 갱신으로 처리한다.
 
+## 초기 조회 전용 공개 모드
+
+`EXPLORER_ACCESS_MODE=public`, `EXPLORER_PUBLIC_READ_ONLY=1`, `EXPLORER_AUTH_ENABLED=0`의 명시 조합은 OAuth·회원·채팅 활성화 전 조회 배포용이다. startup은 origin/공개 앱·publication·macro 저장소를 검증하며 OAuth/채팅 저장소나 키를 읽지 않는다. 회원·운영자·trial 및 session 외 인증 경로는 boundary에서503으로 닫고, 쿠키나 identity header로 우회할 수 없다. `/api/auth/session`은 no-store 익명 응답과 `login_available=false`, `chat_available=false`를 반환한다. 프론트는 준비 중을 표시하며 chat hook을 마운트하지 않는다. 읽기 전용을 명시하지 않은 인증 활성 모드의 설정/저장소 오류는 기존503·startup 실패로 유지한다. private 인증 흐름은 그대로다. 이 모드는 회원/채팅 구현 완료나 활성화를 뜻하지 않으며, 실제 활성화에는 해당 저장소 준비와 기존 인증 검증이 필요하다.
+
 ## 공개 API 시작·종료 경계
 
 `EXPLORER_ACCESS_MODE=public`도 전체 main 라우터를 유지하지만 init_db·Telegram bot·analysis/discovery worker·개인 observe 기록/flush를 시작하지 않는다. `security.public_startup`은 명시 준비된 앱/identity/login/publication/quota/macro와 설정을 readonly로 확인하고 미준비 시 listen 전에 실패한다. 전체 복원 무결성·스키마·소유권 gate는 별도 배포 절차이며 이 가벼운 검사가 대신하지 않는다. IPC socket 부재는 채팅 요청503으로 남겨 조회 API 시작과 분리한다. private의 기존 초기화·worker 동작은 유지한다.

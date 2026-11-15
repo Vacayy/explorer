@@ -10,8 +10,8 @@ vi.mock('@/lib/memberReset', async importOriginal => ({ ...await importOriginal<
 const { getMemberSession, logoutMember } = await import('../src/api/auth')
 const { leaveMemberSession } = await import('../src/lib/memberReset')
 const { MemberAccessProvider, AccountControl, MEMBER_SESSION_KEY } = await import('../src/components/auth/MemberAccess')
-const anonymous: MemberSession = { authenticated: false, user: null, csrf_token: null }
-const member: MemberSession = { authenticated: true, user: { id: 'member-a', role: 'member' }, csrf_token: 'fixture-token' }
+const anonymous: MemberSession = { login_available: true, chat_available: true, authenticated: false, user: null, csrf_token: null }
+const member: MemberSession = { login_available: true, chat_available: true, authenticated: true, user: { id: 'member-a', role: 'member' }, csrf_token: 'fixture-token' }
 const clients: QueryClient[] = []
 
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.resetAllMocks(); localStorage.clear(); sessionStorage.clear() })
@@ -99,4 +99,12 @@ it('also clears prior state when the same account loses its operator role', asyn
   client.setQueryData(MEMBER_SESSION_KEY, member)
   await waitFor(() => expect(leaveMemberSession).toHaveBeenCalledOnce())
   expect(client.getQueryData(['operator', 'private'])).toBeUndefined()
+})
+
+it('shows confirmed unavailable login without creating an OAuth link', async () => {
+  vi.mocked(getMemberSession).mockResolvedValue({ ...anonymous, login_available: false, chat_available: false })
+  show()
+  expect(await screen.findByText('로그인 준비 중')).toBeTruthy()
+  expect(screen.queryByRole('link', { name: 'Google 로그인' })).toBeNull()
+  expect(screen.getByText('공용 시장 화면')).toBeTruthy()
 })

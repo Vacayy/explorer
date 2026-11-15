@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Match
 
-from security.login_flow import LoginFlow, SESSION_COOKIE, session_csrf
+from security.login_flow import LoginFlow, SESSION_COOKIE, session_csrf, public_read_only
 
 NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy': 'no-referrer',
             'X-Explorer-Access-Mode': 'public'}
@@ -168,6 +168,11 @@ class PublicAccessBoundary:
                 break
         if policy is None:
             await reject(404, 'Route unavailable')
+            return
+
+        if (public_read_only() and policy != 'public'
+                and key != ('GET', '/api/auth/session')):
+            await reject(503, 'This feature is not enabled for this read-only release')
             return
 
         # Authentication routes implement their own state/nonce/session/CSRF

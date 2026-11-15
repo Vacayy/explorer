@@ -10,6 +10,7 @@ export function MemberDocumentSaveButton({ docId }: { docId: number }) {
   const access = useMemberAccess()
   if (access.status === 'loading') return <span role="status" className="text-sm text-ink-3">계정 확인 중…</span>
   if (access.status === 'error') return <Button variant="outline" size="sm" onClick={access.retry}>로그인 확인 재시도</Button>
+  if (access.session?.login_available === false) return <span role="status" className="text-sm text-ink-3">로그인 준비 중</span>
   if (access.status !== 'member' && access.status !== 'operator') return <Button asChild variant="outline" size="sm"><a href={googleLoginUrl(`/doc/${docId}`)}>로그인하고 문서 저장</a></Button>
   return <DocumentSave key={`${access.session!.user!.id}:${access.status}:${docId}`} docId={docId} />
 }

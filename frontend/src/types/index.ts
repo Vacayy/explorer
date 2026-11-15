@@ -2062,6 +2062,8 @@ export interface IncomeFlowQuarters { quarters: IncomeFlowQuarterItem[] }
 
 /** Google session endpoints; server models are the generated contract source. */
 export interface MemberSession {
+  login_available: boolean
+  chat_available: boolean
   authenticated: boolean
   user: { id: string; role: 'member' | 'operator' } | null
   csrf_token: string | null

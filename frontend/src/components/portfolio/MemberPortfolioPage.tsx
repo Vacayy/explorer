@@ -24,7 +24,7 @@ export function MemberPortfolioPage() {
   if (access.status === 'error') return <PageContainer><ErrorState message="로그인 상태를 확인할 수 없습니다." onRetry={access.retry} /></PageContainer>
   if (access.status !== 'member' && access.status !== 'operator') return <PageContainer>
     <h1 className="text-xl font-medium">내 포트폴리오</h1><p>로그인하면 본인의 거래와 포트폴리오를 기록할 수 있습니다.</p>
-    <Button asChild><a href={googleLoginUrl('/portfolio')}>Google 로그인</a></Button>
+    {access.session?.login_available === false ? <p role="status">로그인 준비 중</p> : <Button asChild><a href={googleLoginUrl('/portfolio')}>Google 로그인</a></Button>}
   </PageContainer>
   return <MemberPortfolio key={access.session!.user!.id} />
 }

@@ -34,6 +34,12 @@ def validate_origin(origin):
     return origin.rstrip('/')
 
 
+def public_read_only():
+    """Explicit initial rollout mode; never inferred from broken OAuth config."""
+    return (os.environ.get('EXPLORER_ACCESS_MODE') == 'public'
+            and os.environ.get('EXPLORER_PUBLIC_READ_ONLY') == '1')
+
+
 @dataclass(frozen=True)
 class AuthConfig:
     client_id: str
