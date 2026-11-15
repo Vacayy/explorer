@@ -6,6 +6,7 @@ LLM, network fetch, file copying, production routing, or incremental sync runs.
 import json
 from datetime import datetime, timezone
 from itertools import islice
+from collections import defaultdict, deque
 
 from models.spine import EntityTag, FeedDocument
 from pipeline.document_read import _read_sqlite_documents
@@ -92,6 +93,49 @@ def _source_groups(source):
     return groups
 
 
+def _filter_predicate(source, name):
+    if name in {'blog', 'news', 'article'}:
+        from pipeline.urls import blog_category, norm_domain
+        conditions, values = [], []
+        for row in source.execute('SELECT url, platform FROM blog_sources'):
+            if blog_category(row['url'], row['platform']) != name:
+                continue
+            if row['platform'] == 'rss':
+                conditions.append("rd.url LIKE '%//%' || ? || '%'")
+                values.append(norm_domain(row['url']))
+            else:
+                conditions.append("rd.url LIKE ? || '%'")
+                values.append(row['url'])
+        if not conditions:
+            return None, []
+        return "rd.source_type = 'blog' AND (" + ' OR '.join(conditions) + ')', values
+    if name == 'people':
+        return """rd.id IN (SELECT el.doc_id FROM entity_links el
+                 JOIN follows f ON f.entity_id=el.entity_id WHERE el.link_type='person')""", []
+    return 'rd.source_type = ?', [name]
+
+
+def _filter_orders(source, ordinal_keys):
+    from pipeline.visibility import feed_mute_sql
+    names = {row['source_type'] for row in source.execute('SELECT DISTINCT source_type FROM raw_documents')}
+    names.update({'blog', 'news', 'article', 'people'})
+    mute_sql, mute_params = feed_mute_sql(source)
+    for name in sorted(names):
+        predicate, params = _filter_predicate(source, name)
+        if predicate is None:
+            continue
+        available = {key: deque(values) for key, values in ordinal_keys.items()}
+        query = f"""SELECT rd.id, rd.source_type, rd.source_id, rd.title, rd.url, rd.published_at,
+                    rd.markdown, rd.media_json, en.summary, en.model AS enrich_model
+                    FROM raw_documents rd LEFT JOIN enrichments en ON en.doc_id=rd.id
+                    WHERE {mute_sql} AND {predicate} ORDER BY rd.published_at DESC"""
+        for position, row in enumerate(source.execute(query, [*mute_params, *params])):
+            key = (row['id'], row['summary'], row['enrich_model'])
+            if key not in available or not available[key]:
+                raise RuntimeError('Filtered feed row missing from full feed projection')
+            yield (name, position, available[key].popleft())
+
+
 def _insert_batches(target, query, records, *, size=500):
     records = iter(records)
     with target.cursor() as cursor:
@@ -145,6 +189,7 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         groups = _source_groups(source)
         target.execute('DELETE FROM legacy_snapshot_rows')
         target.execute('DELETE FROM legacy_snapshot_tables')
+        target.execute('DELETE FROM document_filter_order')
         target.execute('DELETE FROM document_list_projection')
         target.execute('DELETE FROM document_projection')
         target.execute('DELETE FROM snapshot_metadata')
@@ -160,14 +205,18 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         _insert_batches(target, 'INSERT INTO document_projection VALUES (%s,%s,%s,%s::jsonb,%s,%s)',
                         documents())
         list_count = 0
+        ordinal_keys = defaultdict(list)
         def feed_rows():
             nonlocal list_count
             for ordinal, item in enumerate(_list_rows(source)):
                 list_count += 1
                 payload = json.dumps(item.model_dump(mode='json'), ensure_ascii=False)
+                ordinal_keys[(item.id, item.summary, item.enrich_model)].append(ordinal)
                 yield (ordinal, item.id, payload)
         _insert_batches(target, 'INSERT INTO document_list_projection VALUES (%s,%s,%s::jsonb)',
                         feed_rows())
+        _insert_batches(target, 'INSERT INTO document_filter_order VALUES (%s,%s,%s)',
+                        _filter_orders(source, ordinal_keys))
         target.execute('INSERT INTO snapshot_metadata '
                        '(singleton,snapshot_at,source_observed_at,document_count,list_row_count) '
                        'VALUES (TRUE,%s,%s,%s,%s)',

@@ -61,10 +61,15 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
                 payload = json.dumps(doc.model_dump(mode='json'), ensure_ascii=False)
                 conn.execute('INSERT INTO document_projection VALUES (%s,%s,%s,%s::jsonb)',
                              (doc.id, doc.source_type, doc.published_at or None, payload))
+            positions = {}
             for ordinal, doc in enumerate(cls.original_feed.items):
                 payload = json.dumps(doc.model_dump(mode='json'), ensure_ascii=False)
                 conn.execute('INSERT INTO document_list_projection VALUES (%s,%s,%s::jsonb)',
                              (ordinal, doc.id, payload))
+                position = positions.get(doc.source_type, 0)
+                conn.execute('INSERT INTO document_filter_order VALUES (%s,%s,%s)',
+                             (doc.source_type, position, ordinal))
+                positions[doc.source_type] = position + 1
         cls.reader = PostgreSQLDocumentReader(cls.connect)
 
     @classmethod
@@ -152,6 +157,30 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
             self.assertEqual(fixture.path.read_bytes(), before)
             with self.assertRaises(ValueError):
                 module.compare(fixture.path, 'host=production dbname=fixture user=fixture', 20)
+        finally:
+            fixture.tearDown()
+
+    def test_full_trial_on_synthetic_source(self):
+        script = Path(__file__).resolve().parents[2] / 'scripts/refactor_full_trial.py'
+        spec = importlib.util.spec_from_file_location('refactor_full_trial', script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        fixture = detail_fixtures.DocumentReadBoundaryTests('test_raw_fallback_and_missing')
+        fixture.setUp()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                media = Path(tmp)
+                (media / 'fixtures').mkdir()
+                (media / 'fixtures/example.jpg').write_bytes(b'synthetic attachment')
+                before = fixture.path.read_bytes()
+                with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+                    result = module.run(fixture.path, media, self.dsn)
+                self.assertTrue(result['source_table_counts_match'])
+                self.assertTrue(result['source_row_values_match'])
+                self.assertTrue(all(result['feed_cases_match'].values()))
+                self.assertTrue(result['detail_samples_match'])
+                self.assertEqual(result['attachment_bytes_compared'], 1)
+                self.assertEqual(fixture.path.read_bytes(), before)
         finally:
             fixture.tearDown()
 

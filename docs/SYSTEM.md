@@ -716,3 +716,5 @@ tail -f logs/ingest.log               # 수집 관찰
 같은 실험은 문서·요약·엔티티·링크·출처 관련 10개 SQLite 테이블의 모든 원래 컬럼과 행을 별도 비공개 JSONB 중간 원장에 함께 보존한다. 스키마 SQL·컬럼 목록·행수도 기록하며 BLOB·비유한 수 등 변환 불가 값은 실패시켜 이전 세대를 유지한다. 이는 최종 정규화 PostgreSQL 원장이나 모든 SQLite 테이블의 이관을 뜻하지 않는다.
 
 실험 snapshot 적재는 PostgreSQL transaction-scoped advisory lock으로 직렬화하고 기존보다 오래된 시각 라벨을 거부한다. 동일 라벨 재실행은 호출자가 동일한 불변 snapshot을 준다는 전제다. 별도의 원본 관측 시각과 적재 기록 시각을 저장하지만, 호출 전 이미 SQLite 읽기가 시작됐을 수 있어 실제 snapshot 취득 시각을 보증하지 않는다. 별도 HTTP 요청 간 세대 고정도 제공하지 않는다. 현재 적재기는 이름이 지정된 일회성 fixture DB/schema 이외의 쓰기를 거부한다.
+
+실험 projection은 같은 발행 시각의 문서 순서가 SQLite에서 출처 필터별 실행 계획에 따라 달라질 수 있어, 각 출처 필터의 원래 순서를 별도로 저장한다. 필터별 동률·페이지 계약을 합성 테스트로 고정했다. `scripts/refactor_full_trial.py`는 명시적으로 지정된 읽기 전용 사본과 disposable fixture PostgreSQL만 사용해 10개 테이블 행수·대표 값, 일부 피드/상세와 첨부 파일 표본을 비교하고 실험 schema를 제거한다. 실제 운영 전환이나 원본 전체 필드 전수 대조를 의미하지 않는다.

@@ -44,3 +44,13 @@ CREATE TABLE legacy_snapshot_rows (
     row_data JSONB NOT NULL,
     PRIMARY KEY (table_name, row_ordinal)
 );
+
+-- Each source filter may use a different SQLite index for tied timestamps.
+-- Preserve the order observed for that filter, including duplicate enrichments.
+CREATE TABLE document_filter_order (
+    filter_key TEXT NOT NULL,
+    position BIGINT NOT NULL,
+    list_ordinal BIGINT NOT NULL REFERENCES document_list_projection(ordinal),
+    PRIMARY KEY (filter_key, position),
+    UNIQUE (filter_key, list_ordinal)
+);

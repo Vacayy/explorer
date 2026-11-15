@@ -34,12 +34,21 @@ class PostgreSQLDocumentReader:
                 where = 'WHERE d.feed_visible'
             params = (source,) if source else ()
             total = conn.execute(f'SELECT count(*) FROM document_projection d {where}', params).fetchone()[0]
-            rows = conn.execute(
-                f'SELECT l.list_document FROM document_list_projection l '
-                f'JOIN document_projection d ON d.id = l.document_id {where} '
-                'ORDER BY d.published_at DESC NULLS LAST, l.ordinal ASC LIMIT %s OFFSET %s',
-                (*params, size, (page - 1) * size),
-            ).fetchall()
+            if source:
+                rows = conn.execute(
+                    'SELECT l.list_document FROM document_filter_order o '
+                    'JOIN document_list_projection l ON l.ordinal=o.list_ordinal '
+                    f'JOIN document_projection d ON d.id=l.document_id {where} '
+                    'AND o.filter_key=%s ORDER BY o.position LIMIT %s OFFSET %s',
+                    (*params, source, size, (page - 1) * size),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f'SELECT l.list_document FROM document_list_projection l '
+                    f'JOIN document_projection d ON d.id=l.document_id {where} '
+                    'ORDER BY l.ordinal LIMIT %s OFFSET %s',
+                    (size, (page - 1) * size),
+                ).fetchall()
         return FeedResponse(items=[FeedDocument.model_validate(row[0]) for row in rows],
                             total=total, page=page, size=size,
                             as_of=datetime.now(timezone.utc).isoformat(), facets=None)
