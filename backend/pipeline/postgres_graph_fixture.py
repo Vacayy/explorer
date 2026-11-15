@@ -27,10 +27,15 @@ def initialize_graph(conn):
     if present != required:
         raise ValueError('Complete linking registry snapshot required')
     for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entities' ORDER BY row_ordinal"):
-        conn.execute('INSERT INTO ingest_graph_entities(id,type,name,aliases,status) OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s)',
-                     (row['id'],row['type'],row['name'],row.get('aliases'),row.get('status')))
+        conn.execute('INSERT INTO ingest_graph_entities(id,type,name,aliases,status,created_at) OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s)',
+                     (row['id'],row['type'],row['name'],row.get('aliases'),row.get('status'),row.get('created_at')))
     for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_keywords' ORDER BY row_ordinal"):
-        conn.execute('INSERT INTO ingest_graph_keywords VALUES (%s,%s,%s)',(row['entity_id'],row['keyword'],row.get('status')))
+        if row.get('id') is not None:
+            conn.execute('INSERT INTO ingest_graph_keywords(id,entity_id,keyword,status,created_at) OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s)',
+                         (row['id'],row['entity_id'],row['keyword'],row.get('status'),row.get('created_at')))
+        else:
+            conn.execute('INSERT INTO ingest_graph_keywords(entity_id,keyword,status,created_at) VALUES (%s,%s,%s,%s)',
+                         (row['entity_id'],row['keyword'],row.get('status'),row.get('created_at')))
     for ordinal,row in conn.execute("SELECT row_ordinal,row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' ORDER BY row_ordinal"):
         values=(row['src_id'],row['dst_id'],row['rel_type'],row.get('epistemic_type'),row.get('confidence'),
                 row.get('source_doc_id'),row.get('valid_from'),ordinal)
@@ -42,6 +47,8 @@ def initialize_graph(conn):
                          'VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',values)
     conn.execute("SELECT setval(pg_get_serial_sequence('ingest_graph_entities','id'), "
                  "GREATEST(COALESCE((SELECT max(id) FROM ingest_graph_entities),0),1), EXISTS(SELECT 1 FROM ingest_graph_entities))")
+    conn.execute("SELECT setval(pg_get_serial_sequence('ingest_graph_keywords','id'), "
+                 "GREATEST(COALESCE((SELECT max(id) FROM ingest_graph_keywords),0),1), EXISTS(SELECT 1 FROM ingest_graph_keywords))")
     conn.execute("SELECT setval(pg_get_serial_sequence('ingest_graph_relations','id'), "
                  "GREATEST(COALESCE((SELECT max(id) FROM ingest_graph_relations),0),1), EXISTS(SELECT 1 FROM ingest_graph_relations))")
     conn.execute('INSERT INTO ingest_graph_state DEFAULT VALUES')
@@ -83,7 +90,7 @@ def finish_with_graph(conn, document_id, *, revision, token, summary, model, res
                 remap[row['id']]=actual
         for row in db.execute('SELECT entity_id,keyword,status FROM entity_keywords ORDER BY rowid'):
             if (row['entity_id'],row['keyword']) not in old_keywords:
-                conn.execute('INSERT INTO ingest_graph_keywords VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',
+                conn.execute('INSERT INTO ingest_graph_keywords(entity_id,keyword,status) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',
                              (remap[row['entity_id']],row['keyword'],row['status']))
         for row in db.execute('SELECT src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from FROM entity_relations WHERE rowid>? ORDER BY rowid',(last_relation,)):
             conn.execute('INSERT INTO ingest_graph_relations(src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from) '

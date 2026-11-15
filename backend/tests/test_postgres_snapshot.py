@@ -202,10 +202,11 @@ class SnapshotReplacementTests(unittest.TestCase):
     def test_graph_side_effects_are_atomic_and_preserved(self):
         with self.fixture.connect() as c:
             c.execute('ALTER TABLE entities ADD COLUMN meta_json TEXT')
+            c.execute('ALTER TABLE entities ADD COLUMN created_at TEXT')
             c.execute("UPDATE entities SET meta_json=? WHERE id=7", ('{\"fixture_metadata\":\"preserve\"}',))
-            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
-            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT,mechanism TEXT)')
-            c.execute("INSERT INTO entity_relations VALUES (7,7,'fixture','fact',0.9,1,NULL,'기존 관계 설명')")
+            c.execute('CREATE TABLE entity_keywords(id INTEGER PRIMARY KEY,entity_id INTEGER,keyword TEXT,status TEXT,created_at TEXT)')
+            c.execute('CREATE TABLE entity_relations(id INTEGER PRIMARY KEY,src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT,mechanism TEXT,created_at TEXT)')
+            c.execute("INSERT INTO entity_relations VALUES (3,7,7,'fixture','fact',0.9,1,NULL,'기존 관계 설명',NULL)")
         self.load('2026-01-03T00:00:00+00:00',include_linking=True)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
@@ -251,6 +252,13 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'rel_type'='MEMBER_OF'").fetchone()[0],1)
             self.assertEqual(c.execute("SELECT row_data->>'mechanism' FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'rel_type'='fixture'").fetchone()[0],'기존 관계 설명')
             self.assertEqual(c.execute("SELECT row_data->>'meta_json' FROM legacy_snapshot_rows WHERE table_name='entities' AND row_data->>'id'='7'").fetchone()[0],'{"fixture_metadata":"preserve"}')
+            keyword=c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_keywords' AND row_data->>'keyword'='새별명'").fetchone()[0]
+            relation=c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'rel_type'='MEMBER_OF'").fetchone()[0]
+            self.assertIsInstance(keyword['id'],int)
+            self.assertTrue(keyword['created_at'])
+            self.assertGreater(relation['id'],3)
+            self.assertTrue(relation['created_at'])
+            self.assertIsNone(relation['mechanism'])
 
     def test_note_connector_to_enrichment_graph_and_search(self):
         with self.fixture.connect() as c:

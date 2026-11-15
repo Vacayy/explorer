@@ -77,12 +77,12 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     metadata = conn.execute('SELECT expected_model,vector_count,generation_id FROM document_embedding_metadata WHERE singleton').fetchone()
     graph_ready=bool(conn.execute('SELECT 1 FROM ingest_graph_state').fetchone())
     if graph_ready:
-        new_entities=conn.execute("SELECT g.id,g.type,g.name,g.aliases,g.status FROM ingest_graph_entities g "
+        new_entities=conn.execute("SELECT g.id,g.type,g.name,g.aliases,g.status,g.created_at FROM ingest_graph_entities g "
                                   "WHERE NOT EXISTS(SELECT 1 FROM legacy_snapshot_rows a WHERE a.table_name='entities' AND a.row_data->>'id'=g.id::text) ORDER BY g.id").fetchall()
-        new_keywords=conn.execute("SELECT g.entity_id,g.keyword,g.status FROM ingest_graph_keywords g "
+        new_keywords=conn.execute("SELECT g.id,g.entity_id,g.keyword,g.status,g.created_at FROM ingest_graph_keywords g "
                                   "WHERE NOT EXISTS(SELECT 1 FROM legacy_snapshot_rows a WHERE a.table_name='entity_keywords' "
                                   "AND a.row_data->>'entity_id'=g.entity_id::text AND a.row_data->>'keyword'=g.keyword)").fetchall()
-        new_relations=conn.execute('SELECT id,src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from '
+        new_relations=conn.execute('SELECT id,src_id,dst_id,rel_type,epistemic_type,confidence,source_doc_id,valid_from,created_at '
                                    'FROM ingest_graph_relations WHERE source_ordinal IS NULL ORDER BY id').fetchall()
     else:
         new_entities,new_keywords,new_relations=[],[],[]
@@ -174,17 +174,20 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                         enrichment_dirty,embedding_dirty,bytes(embedding) if embedding is not None else None,links_dirty,
                         groups,visible,timeline,doc,list_doc,prior is not None,same_revision,media_changed))
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(target_schema)))
-    for ident,kind,name,aliases,status in new_entities:
-        value={'id':ident,'type':kind,'name':name,'aliases':aliases,'status':status,'meta_json':None}
+    graph_columns={name:columns for name,columns in conn.execute("SELECT table_name,columns FROM legacy_snapshot_tables WHERE table_name IN ('entities','entity_keywords','entity_relations')")}
+    def graph_row(table, values):
+        return {name:values.get(name) for name in graph_columns[table]}
+    for ident,kind,name,aliases,status,created_at in new_entities:
+        value=graph_row('entities',{'id':ident,'type':kind,'name':name,'aliases':aliases,'status':status,'meta_json':None,'created_at':created_at})
         conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entities',COALESCE(max(row_ordinal)+1,0),%s "
                      "FROM legacy_snapshot_rows WHERE table_name='entities'",(Jsonb(value),))
-    for ident,keyword,status in new_keywords:
-        value={'entity_id':ident,'keyword':keyword,'status':status}
+    for key_id,ident,keyword,status,created_at in new_keywords:
+        value=graph_row('entity_keywords',{'id':key_id,'entity_id':ident,'keyword':keyword,'status':status,'created_at':created_at})
         conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entity_keywords',COALESCE(max(row_ordinal)+1,0),%s "
                      "FROM legacy_snapshot_rows WHERE table_name='entity_keywords'",(Jsonb(value),))
-    for ident,src,dst,kind,epistemic,confidence,doc_id,valid_from in new_relations:
-        value={'id':ident,'src_id':src,'dst_id':dst,'rel_type':kind,'epistemic_type':epistemic,
-               'confidence':confidence,'source_doc_id':doc_id,'valid_from':valid_from}
+    for ident,src,dst,kind,epistemic,confidence,doc_id,valid_from,created_at in new_relations:
+        value=graph_row('entity_relations',{'id':ident,'src_id':src,'dst_id':dst,'rel_type':kind,'epistemic_type':epistemic,
+               'confidence':confidence,'source_doc_id':doc_id,'valid_from':valid_from,'created_at':created_at})
         conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'entity_relations',COALESCE(max(row_ordinal)+1,0),%s "
                      "FROM legacy_snapshot_rows WHERE table_name='entity_relations'",(Jsonb(value),))
     if captured:
