@@ -40,6 +40,7 @@ CREATE TABLE ingest_enrichment_attempts (
     token UUID PRIMARY KEY,
     document_id BIGINT NOT NULL,
     revision BIGINT NOT NULL,
+    worker_id TEXT NOT NULL,
     external BOOLEAN NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('started','completed','failed','unknown','stale')),
     started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),

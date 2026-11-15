@@ -11,7 +11,7 @@ import psycopg
 from psycopg.conninfo import conninfo_to_dict
 
 from pipeline.llm import LLMResult
-from pipeline.postgres_enrich_worker_fixture import enrich_document, existing_enricher
+from pipeline.postgres_enrich_worker_fixture import enrich_document, existing_enricher, recover_cycle_attempts
 
 LOCK = 0x4558504C4359434C
 
@@ -38,9 +38,11 @@ def main():
         if not lease.execute('SELECT pg_try_advisory_lock(%s)', (LOCK,)).fetchone()[0]:
             raise RuntimeError('Fixture worker already running')
         try:
+            with factory() as conn:
+                recover_cycle_attempts(conn)
             with patch.dict(os.environ, {'ENRICH_ENGINE':'claude-code', 'LLM_FALLBACK_ENGINE':'none'}), \
                  patch('pipeline.llm._run_claude_code', return_value=response):
-                applied = enrich_document(factory, args.document_id, enrich=existing_enricher(factory))
+                applied = enrich_document(factory, args.document_id, enrich=existing_enricher(factory), worker_id='cycle:host-fixture')
         finally:
             lease.execute('SELECT pg_advisory_unlock(%s)', (LOCK,))
     print('fixture host worker:', 'applied' if applied else 'not applied')

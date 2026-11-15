@@ -30,8 +30,20 @@ def validate_enricher(callback):
     if callback is enrich:
         raise ValueError('Existing enrichment requires an explicit vocabulary provider')
     if isinstance(callback, partial) and callback.func is enrich:
-        if not callable((callback.keywords or {}).get('vocabulary_provider')):
-            raise ValueError('Existing enrichment requires an explicit vocabulary provider')
+        raise ValueError('Existing enrichment requires an explicit vocabulary provider and attempt recorder')
+
+
+def recover_cycle_attempts(conn):
+    """Caller must hold the cycle lock throughout this transaction."""
+    _guard(conn)
+    conn.execute("UPDATE ingest_enrichment_jobs j SET status='unknown',token=NULL,worker_id=NULL,started_at=NULL "
+                 "FROM ingest_enrichment_attempts a WHERE j.token=a.token AND j.status='running' "
+                 "AND j.worker_id LIKE 'cycle:%' AND a.external AND a.state='started'")
+    conn.execute("UPDATE ingest_enrichment_attempts SET state='unknown',finished_at=clock_timestamp() "
+                 "WHERE external AND state='started' AND worker_id LIKE 'cycle:%' AND token NOT IN "
+                 "(SELECT token FROM ingest_enrichment_jobs WHERE status='running' AND token IS NOT NULL)")
+    conn.execute("UPDATE ingest_enrichment_jobs SET status='failed',token=NULL,worker_id=NULL,started_at=NULL "
+                 "WHERE status='running' AND worker_id LIKE 'cycle:%'")
 
 
 def existing_enricher(factory, *, record_call=None):
@@ -60,8 +72,8 @@ def enrich_document(factory, document_id, *, enrich, worker_id='fixture-worker')
         row=conn.execute('SELECT title,markdown FROM ingest_documents WHERE id=%s',(document_id,)).fetchone()
         if row is None:
             raise ValueError('Claimed document missing')
-        conn.execute("INSERT INTO ingest_enrichment_attempts(token,document_id,revision,external,state) VALUES (%s,%s,%s,%s,'started')",
-                     (claim['token'],document_id,claim['revision'],external))
+        conn.execute("INSERT INTO ingest_enrichment_attempts(token,document_id,revision,worker_id,external,state) VALUES (%s,%s,%s,%s,%s,'started')",
+                     (claim['token'],document_id,claim['revision'],worker_id,external))
     try:
         callback=enrich.for_attempt(claim['token']) if external else enrich
         result=callback(row[0] or '',row[1] or '')

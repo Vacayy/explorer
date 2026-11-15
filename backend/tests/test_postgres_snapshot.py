@@ -609,7 +609,9 @@ class SnapshotReplacementTests(unittest.TestCase):
             initialize_graph(c)
             ident=store_document(c,source_type='note',source_id='unknown-external',title='자료',markdown='본문')['id']
             claim=claim_enrichment(c,document_id=ident,worker_id='cycle:lost')
-            c.execute("INSERT INTO ingest_enrichment_attempts(token,document_id,revision,external,state) VALUES (%s,%s,%s,TRUE,'started')",(claim['token'],ident,claim['revision']))
+            c.execute("INSERT INTO ingest_enrichment_attempts(token,document_id,revision,worker_id,external,state) VALUES (%s,%s,%s,'cycle:lost',TRUE,'started')",(claim['token'],ident,claim['revision']))
+            unrelated=uuid.uuid4()
+            c.execute("INSERT INTO ingest_enrichment_attempts(token,document_id,revision,worker_id,external,state) VALUES (%s,%s,%s,'manual:other',TRUE,'started')",(unrelated,ident,claim['revision']))
         calls=[]
         with tempfile.TemporaryDirectory() as vault:
             (Path(vault)/'notes').mkdir()
@@ -619,6 +621,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(ident,)).fetchone()[0],'unknown')
             self.assertEqual(c.execute('SELECT state FROM ingest_enrichment_attempts WHERE token=%s',(claim['token'],)).fetchone()[0],'unknown')
+            self.assertEqual(c.execute('SELECT state FROM ingest_enrichment_attempts WHERE token=%s',(unrelated,)).fetchone()[0],'started')
             self.assertFalse(finish_enrichment(c,document_id=ident,**claim,summary='late',model='fake'))
 
     def test_exclusive_cycle_recovers_after_process_exit(self):
@@ -840,6 +843,8 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             from functools import partial
             with self.assertRaisesRegex(ValueError,'vocabulary provider'):
                 enrich_document(self.pg,1,enrich=partial(enrichment.enrich))
+            with self.assertRaisesRegex(ValueError,'attempt recorder'):
+                enrich_document(self.pg,1,enrich=partial(enrichment.enrich,vocabulary_provider=provider))
         self.assertEqual((vocab[0][0],vocab[1][0],vocab[2],vocab[3]),('합성 산업','합성 주제',['합성 인물'],['합성 기업']))
         with patch('database.get_connection',side_effect=self.fixture.connect):
             industries,topics=enrichment._live_vocab()
