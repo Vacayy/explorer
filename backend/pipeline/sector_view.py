@@ -136,6 +136,11 @@ def _catalog(runtime) -> tuple[dict[str, dict], dict[str, set[str]]]:
 def sector_group_ids(conn, runtime) -> tuple[dict[str, list[dict]], dict[str, dict], dict[str, set[str]]]:
     """섹터 → [{id, partial, source}] (연결 그룹 다음에 그 아래 제품 그룹, 중복 없이). 카탈로그·구성도 같이 돌려준다."""
     from pipeline.sector_peers import sector_peers as links_of
+    return sector_group_ids_from_links(runtime, links_of(conn, runtime))
+
+
+def sector_group_ids_from_links(runtime, sector_links):
+    """저장소에서 읽은 섹터·Peer 대응과 실제 Peer bundle을 조합한다."""
     groups, members = _catalog(runtime)
     children: dict[str, list[str]] = {}
     for gid in groups:
@@ -143,7 +148,7 @@ def sector_group_ids(conn, runtime) -> tuple[dict[str, list[dict]], dict[str, di
         if p:
             children.setdefault(p, []).append(gid)
     out: dict[str, list[dict]] = {}
-    for entry in links_of(conn, runtime)["sectors"]:
+    for entry in sector_links["sectors"]:
         seen: list[dict] = []
         for link in entry["links"]:
             for gid in [link["group_id"], *children.get(link["group_id"], [])]:
@@ -152,6 +157,17 @@ def sector_group_ids(conn, runtime) -> tuple[dict[str, list[dict]], dict[str, di
                                  "parent": link["group_id"] if gid != link["group_id"] else None})
         out[entry["sector"]] = seen
     return out, groups, members
+
+
+def sector_peer_list_from_source(source, sector: str, runtime) -> dict | None:
+    """별도 저장소의 자료로 기존 Peer 화면 응답을 계산한다."""
+    links = source.sector_peers(runtime)
+    if not any(entry['sector'] == sector for entry in links['sectors']):
+        return None
+    peer_ids, groups, members = sector_group_ids_from_links(runtime, links)
+    return {'sector': sector, 'catalog_as_of': str(runtime.catalog.asOf),
+            'prices_as_of': str(runtime.prices.asOf),
+            'groups': group_rows(runtime, peer_ids.get(sector, []), groups, members)}
 
 
 def group_rows(runtime, ids: list[dict], groups: dict, members: dict) -> list[dict]:

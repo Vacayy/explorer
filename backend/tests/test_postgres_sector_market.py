@@ -4,12 +4,15 @@ import sqlite3
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import psycopg
 from psycopg import sql
 
 from pipeline.postgres_sector_market import PostgreSQLSectorSource, load_sector_market
 from pipeline.sector_rs import SQLiteSectorSource, build_sector_map
+from pipeline.sector_peers import sector_peers
+from pipeline.sector_view import sector_peer_list, sector_peer_list_from_source
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -34,11 +37,14 @@ class SectorMarketTest(unittest.TestCase):
             CREATE TABLE companies(stock_code TEXT, sector TEXT);
             CREATE TABLE sector_map(sector_name TEXT, group_name TEXT);
             CREATE TABLE sector_overrides(stock_code TEXT, sector TEXT);
+            CREATE TABLE sector_peer_map(sector TEXT, peer_group_id TEXT, sort INTEGER,
+                                         partial INTEGER, note TEXT, source TEXT);
             CREATE TABLE entities(id INTEGER, type TEXT, aliases TEXT, name TEXT);
             CREATE TABLE entity_relations(src_id INTEGER, dst_id INTEGER, rel_type TEXT);
             INSERT INTO sector_map VALUES ('source-a','A'),('source-b','B');
             INSERT INTO companies VALUES ('001','source-a'),('002','source-b'),('003','source-a');
             INSERT INTO sector_overrides VALUES ('003','B');
+            INSERT INTO sector_peer_map VALUES ('A','g',0,0,NULL,'seed');
             INSERT INTO stock_prices(stock_code,trade_date,close,market_cap) VALUES
                 ('001','2025-10-01',100,900),('002','2025-10-01',100,600),
                 ('003','2025-10-01',200,100),('001','2026-01-02',150,900),
@@ -64,6 +70,16 @@ class SectorMarketTest(unittest.TestCase):
             pgsource = PostgreSQLSectorSource(self.pg)
             self.assertEqual(pgsource.snapshot('2026-01-09'), SQLiteSectorSource(self.db).snapshot('2026-01-09'))
             self.assertEqual(build_sector_map(pgsource), expected)
+            prices = SimpleNamespace(asOf='2026-01-09', model_dump=lambda **_: {
+                'dates': [], 'prices': {}, 'asOf': '2026-01-09', 'qualityIssues': []})
+            runtime = SimpleNamespace(catalog=SimpleNamespace(
+                asOf='2026-01-09', groups=[SimpleNamespace(id='g', name='그룹', scope='product')],
+                companies=[SimpleNamespace(code='001', groupIds=['g'])]), prices=prices)
+            self.db.row_factory = sqlite3.Row
+            self.assertEqual(pgsource.sector_peers(runtime), sector_peers(self.db, runtime))
+            self.assertEqual(sector_peer_list_from_source(pgsource, 'A', runtime),
+                             sector_peer_list(self.db, 'A', runtime))
+            self.assertIsNone(sector_peer_list_from_source(pgsource, 'missing', runtime))
         self.pg.execute('''CREATE FUNCTION reject_price() RETURNS trigger LANGUAGE plpgsql AS $$
                         BEGIN RAISE EXCEPTION 'fixture failure'; END $$''')
         self.pg.execute('CREATE TRIGGER reject_price BEFORE INSERT ON sector_market_prices '

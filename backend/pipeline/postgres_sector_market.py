@@ -20,7 +20,8 @@ def load_sector_market(source, destination):
     count = 0
     with destination.transaction():
         destination.execute('SELECT pg_advisory_xact_lock(%s)', (_LOCK_KEY,))
-        destination.execute('TRUNCATE sector_market_prices, sector_market_membership')
+        destination.execute('TRUNCATE sector_market_prices, sector_market_membership, '
+                            'sector_market_groups, sector_market_peer_links')
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:
@@ -32,6 +33,14 @@ def load_sector_market(source, destination):
         ) as copy:
             for row in members.items():
                 copy.write_row(row)
+        with destination.cursor().copy('COPY sector_market_groups (sector) FROM STDIN') as copy:
+            for row in source.execute('SELECT DISTINCT group_name FROM sector_map'):
+                copy.write_row(tuple(row))
+        with destination.cursor().copy('''COPY sector_market_peer_links
+            (sector, peer_group_id, sort, partial, note, source) FROM STDIN''') as copy:
+            for row in source.execute('''SELECT sector, peer_group_id, sort, partial, note, source
+                                          FROM sector_peer_map'''):
+                copy.write_row(tuple(row))
     return {'prices': count, 'members': len(members)}
 
 
@@ -46,6 +55,21 @@ class PostgreSQLSectorSource:
 
     def members(self):
         return dict(self.conn.execute('SELECT stock_code, sector FROM sector_market_membership'))
+
+    def sector_peers(self, runtime):
+        """Combine same-transaction DB rows with the caller's validated Peer bundle."""
+        from pipeline.sector_peers import AUTO_SHARE, build
+        sectors = sorted(row[0] for row in self.conn.execute('SELECT sector FROM sector_market_groups'))
+        rows = [dict(zip(('sector', 'peer_group_id', 'sort', 'partial', 'note', 'source'), row))
+                for row in self.conn.execute('SELECT sector, peer_group_id, sort, partial, note, source '
+                                             'FROM sector_market_peer_links')]
+        groups = [{'id': g.id, 'name': g.name, 'scope': g.scope} for g in runtime.catalog.groups]
+        members = {}
+        for company in runtime.catalog.companies:
+            for group in company.groupIds:
+                members.setdefault(group, []).append(company.code)
+        return {'catalog_as_of': str(runtime.catalog.asOf), 'auto_share': AUTO_SHARE,
+                'sectors': build(sectors, rows, groups, members, self.members())}
 
     def snapshot(self, as_of):
         rows = self.conn.execute('''

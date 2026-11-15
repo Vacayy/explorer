@@ -19,3 +19,14 @@ CREATE TABLE sector_market_membership (
     stock_code TEXT PRIMARY KEY,
     sector TEXT NOT NULL
 );
+
+CREATE TABLE sector_market_groups (sector TEXT PRIMARY KEY);
+CREATE TABLE sector_market_peer_links (
+    sector TEXT NOT NULL,
+    peer_group_id TEXT NOT NULL,
+    sort INTEGER NOT NULL,
+    partial INTEGER NOT NULL,
+    note TEXT,
+    source TEXT NOT NULL,
+    PRIMARY KEY (sector, peer_group_id)
+);
