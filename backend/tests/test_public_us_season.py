@@ -4,9 +4,13 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from pipeline import earnings_chain as ec
 from security import public_us_season as public
+from security.access_boundary import PublicAccessBoundary
+from routers import spine_transcript
 from tests.test_earnings_upcoming import SCHEMA
 
 
@@ -77,3 +81,18 @@ class PublicUsSeasonTests(unittest.TestCase):
         for season in ('2026Q0', '2026Q5', '2026Q3 trailing'):
             with self.subTest(season=season), self.assertRaises(ValueError):
                 public.stored_season(season, path=self.path)
+
+    def test_public_http_route_and_invalid_season(self):
+        app = FastAPI()
+        app.include_router(spine_transcript.router)
+        app.add_middleware(PublicAccessBoundary, routes=app.router.routes,
+                           policies={('GET', '/api/spine/transcript/season'): 'public'})
+        before = self.path.read_bytes()
+        with TestClient(app, base_url='https://beta.example') as client, patch.object(public, 'DB_PATH', self.path), \
+             patch.object(ec, 'season_overview', side_effect=AssertionError('private season')):
+            response = client.get('/api/spine/transcript/season?season=2026Q3')
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['counts']['followed'], 1)
+            self.assertEqual(client.get('/api/spine/transcript/season?season=2026Q9').status_code, 422)
+            self.assertEqual(client.post('/api/spine/transcript/season').status_code, 404)
+        self.assertEqual(before, self.path.read_bytes())

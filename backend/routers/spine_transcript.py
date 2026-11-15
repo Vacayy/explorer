@@ -253,8 +253,12 @@ def compute_reaction(transcript_id: int, force: bool = False):
 
 
 @router.get("/season", response_model=SeasonOverview)
-def season(season: str | None = None):
+def season(request: Request, season: str | None = Query(None, pattern=r"^[0-9]{4}Q[1-4]$")):
     """실적 시즌 화면 — 요약 숫자·오늘 바뀐 것·섹터 목록·엇갈린 반응·곧 발표·기대 채점·핵심 종목(기준 포함). LLM 0."""
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_season
+        from routers.public_documents import perform
+        return perform(lambda: stored_season(season))
     from pipeline.earnings_chain import season_overview
     return season_overview(season)
 
