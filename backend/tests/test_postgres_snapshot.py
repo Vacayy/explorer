@@ -33,6 +33,7 @@ from pipeline.postgres_ledger_snapshot_fixture import materialize
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
+from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -249,6 +250,72 @@ class SnapshotReplacementTests(unittest.TestCase):
             with self.pg() as c:
                 c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
                 copy_projection(c,self.schema,destination)
+
+    def test_note_overlay_preserves_existing_and_replaces_stale_search(self):
+        import struct
+        self.load('2026-01-03T00:00:00+00:00')
+        old = self.reader.get(1)
+        vector = struct.pack('<384f',1.0,*([0.0]*383))
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            generation = c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            c.execute('INSERT INTO document_embeddings VALUES (1,%s,%s),(2,%s,%s)', (vector,'a',vector,'b'))
+            c.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture',384,2,0,0)", (generation,))
+            store_document(c, source_type='note', source_id='synthetic-2', title='변경 자료', markdown='배터리 새 본문')
+            new = store_document(c, source_type='note', source_id='new', title='신규 자료', markdown='새로운 내용')
+        destination = 'refactor_fixture_' + uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn, options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            self.assertEqual(copy_with_note_changes(c,self.schema,destination)['updated_documents'], 2)
+        reader = PostgreSQLDocumentReader(target)
+        self.assertEqual(reader.get(1).model_dump(), old.model_dump())
+        self.assertEqual(reader.get(2).content, '배터리 새 본문')
+        self.assertEqual(reader.list().total, 3)
+        self.assertEqual(reader.list(source='note').total, 2)
+        self.assertEqual(self.reader.list().total, 2)
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            self.assertEqual(c.execute('SELECT count(*) FROM document_embeddings').fetchone()[0], 1)
+            index = SearchSnapshot.from_postgres(c)
+            try:
+                self.assertEqual(search_feed(c,index,'배터리').items[0].id,2)
+                self.assertEqual(search_feed(c,index,'신규').items[0].id,new['id'])
+            finally:
+                index.close()
+
+    def test_note_overlay_rejects_other_sources_without_partial_copy(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            store_document(c,source_type='blog',source_id='synthetic',title='changed',markdown='changed')
+        destination = 'refactor_fixture_' + uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn, options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.assertRaisesRegex(ValueError, 'Only note changes'):
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                copy_with_note_changes(c,self.schema,destination)
+        with target() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM document_projection').fetchone()[0],0)
+        self.assertEqual(self.reader.list().total, 2)
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed

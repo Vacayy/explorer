@@ -49,4 +49,6 @@ def import_archived_documents(conn):
     conn.execute("SELECT setval(pg_get_serial_sequence('ingest_documents','id'), "
                  "GREATEST(COALESCE((SELECT max(id) FROM ingest_documents),0),1), "
                  "EXISTS(SELECT 1 FROM ingest_documents))")
+    # The imported projection is the baseline, not a pending user change.
+    conn.execute('UPDATE ingest_documents SET projected_version=projection_version')
     return conn.execute('SELECT count(*) FROM ingest_documents').fetchone()[0]
