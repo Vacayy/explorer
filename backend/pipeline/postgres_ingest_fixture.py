@@ -8,6 +8,8 @@ import math
 import struct
 from uuid import uuid4
 from psycopg.types.json import Jsonb
+from pipeline.dates import to_iso_utc
+from pipeline.normalize import to_markdown
 
 
 def store_document(conn, *, source_type, source_id, title, markdown, media=None,
@@ -40,6 +42,14 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
     conn.execute('DELETE FROM ingest_embeddings WHERE document_id=%s', (row[0],))
     conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
     return {'id': row[0], 'revision': revision, 'status': 'updated'}
+
+
+def store_raw_doc(conn, doc):
+    """Fixture adapter for the existing connector's RawDoc contract."""
+    return store_document(conn, source_type=doc.source_type, source_id=doc.source_id,
+                          title=doc.title, markdown=to_markdown(doc), media=doc.images,
+                          url=doc.url, published_at=to_iso_utc(doc.published_at) or '',
+                          raw_content=doc.raw_content, digest_status=doc.digest_status)
 
 
 def store_embedding(conn, *, document_id, revision, embedding):

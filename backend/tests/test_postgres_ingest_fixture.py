@@ -6,10 +6,13 @@ import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 import psycopg
 from psycopg import sql
-from pipeline.postgres_ingest_fixture import store_document, store_embedding, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
+from pipeline.postgres_ingest_fixture import store_document, store_raw_doc, store_embedding, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
+from pipeline.base import SourceRef
+from pipeline.connectors.blog import BlogConnector
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
 from pipeline.postgres_ingest_coordinator_fixture import FixtureCoordinator
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
@@ -294,3 +297,46 @@ class IngestFixtureTests(unittest.TestCase):
             self.assertTrue(store_embedding(c, document_id=row['id'], revision=changed['revision'], embedding=vector))
         coordinator.rebuild()
         self.assertEqual(coordinator.search('없는단어', vector=vector).total, 1)
+
+    def test_rss_connector_to_blog_feed_and_search_without_network(self):
+        entry = {'url': 'https://example.test/posts/1', 'title': '반도체 기사',
+                 'content': '<p>짧은 본문</p>', 'published_at': '2026-01-02'}
+        with patch('pipeline.connectors.blog.detect_platform_and_feed_url', return_value=('rss', 'https://example.test/feed')), \
+             patch('pipeline.connectors.blog.scrape_rss', return_value=([entry], '합성 매체')), \
+             patch('services.blog_service.fetch_full_content', return_value='<p>반도체 전체 원문</p>'):
+            docs = BlogConnector(['https://example.test/feed']).fetch(SourceRef('https://example.test/feed'))
+        with self.pg() as c:
+            c.execute("INSERT INTO ingest_blog_sources VALUES ('https://example.test/feed','rss','합성 매체')")
+            saved = store_raw_doc(c, docs[0])
+            job = claim_enrichment(c, document_id=saved['id'])
+            finish_enrichment(c, document_id=saved['id'], **job, summary='합성 요약', model='fixture')
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        coordinator.rebuild()
+        result = coordinator.search('반도체', source='article')
+        self.assertEqual(result.total, 1)
+        item = result.items[0]
+        self.assertEqual((item.title, item.summary, item.content, item.channel),
+                         ('반도체 기사', '합성 요약', '반도체 전체 원문', '합성 매체'))
+        self.assertEqual(coordinator.list(source='article').total, 1)
+        self.assertEqual(coordinator.reader.get(saved['id']).summary, '합성 요약')
+        with self.pg() as c:
+            self.assertEqual(store_raw_doc(c, docs[0])['status'], 'unchanged')
+            docs[0].raw_content = '<p>배터리 새 본문</p>'
+            self.assertEqual(store_raw_doc(c, docs[0])['status'], 'updated')
+        coordinator.rebuild()
+        self.assertEqual(coordinator.search('반도체', source='article').items[0].summary, None)
+        self.assertEqual(coordinator.search('배터리', source='article').total, 1)
+
+    def test_blog_connector_naver_full_and_missing_url_title_fallback(self):
+        posts = [
+            {'url': 'https://blog.naver.com/synthetic/1', 'title': '긴 글', 'content': 'a' * 700},
+            {'url': '', 'title': 'URL 없는 글', 'content': '본문'},
+        ]
+        with patch('pipeline.connectors.blog.detect_platform_and_feed_url', return_value=('rss', 'https://example.test/feed')), \
+             patch('pipeline.connectors.blog.scrape_rss', return_value=(posts, '합성')), \
+             patch('services.blog_service.fetch_full_content', return_value='b' * 800) as fetch:
+            docs = BlogConnector().fetch(SourceRef('https://example.test/feed'))
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(docs[0].raw_content, 'b' * 800)
+        self.assertEqual(docs[1].source_id, 'URL 없는 글')

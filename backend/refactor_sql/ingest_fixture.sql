@@ -1,4 +1,9 @@
 -- Disposable ingest experiment only: deliberately separate from read projections.
+CREATE TABLE ingest_blog_sources (
+    url TEXT PRIMARY KEY,
+    platform TEXT NOT NULL,
+    blog_name TEXT NOT NULL
+);
 CREATE TABLE ingest_documents (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_type TEXT NOT NULL,
