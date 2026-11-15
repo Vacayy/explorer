@@ -29,6 +29,9 @@ from pipeline.postgres_archive_import_fixture import import_archived_documents
 from pipeline.postgres_ingest_fixture import store_document
 from pipeline.postgres_ledger_detail_fixture import LedgerDetailFixture
 from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finish as finish_video
+from pipeline.postgres_ledger_snapshot_fixture import materialize
+from pipeline.postgres_search_snapshot import SearchSnapshot
+from pipeline.postgres_search_feed import search_feed
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -152,6 +155,58 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertEqual((detail.digest_status,detail.transcript,detail.summary), ('ok',transcript,None))
         self.assertIn('합성 정리본', detail.video_digest)
         self.assertEqual(self.reader.get(10).digest_status, 'failed')
+
+    def test_ledger_to_separate_feed_generation_keeps_old_and_new_documents(self):
+        transcript = '합성 영상 자막 ' * 20
+        with self.fixture.connect() as c:
+            c.execute("INSERT INTO raw_documents VALUES (10,'youtube','UCfixture/abc123def45','영상',"
+                      "'https://example.test','2026-01-01',?,?,'pending',NULL,NULL)", (transcript,transcript))
+        self.load('2026-01-03T00:00:00+00:00')
+        old = self.reader.get(1)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            store_document(c, source_type='note', source_id='synthetic-2', title='변경 문서', markdown='배터리 원문')
+            new = store_document(c, source_type='note', source_id='new', title='신규 문서', markdown='신규 검색어')
+            job = queue_video(c, 10)
+            finish_video(c, 10, revision=job['revision'], token=job['token'], digest='합성 영상 정리본')
+        destination = 'refactor_fixture_' + uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn, options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as source:
+            source.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            snapshot = materialize(source)
+            try:
+                with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+                    load_snapshot(snapshot, target, snapshot_at='2026-01-04T00:00:00+00:00')
+            finally:
+                snapshot.close()
+        reader = PostgreSQLDocumentReader(target)
+        self.assertEqual(reader.list().total, 4)
+        self.assertEqual(reader.get(1).model_dump(), old.model_dump())
+        self.assertEqual(reader.get(2).content, '배터리 원문')
+        self.assertEqual(reader.get(new['id']).content, '신규 검색어')
+        self.assertEqual(reader.get(10).transcript, transcript)
+        self.assertIn('합성 영상 정리본', reader.get(10).video_digest)
+        self.assertEqual(self.reader.list().total, 3)
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            generation = c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            rows = c.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
+                             "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
+            index = SearchSnapshot(generation, rows)
+            try:
+                self.assertEqual(search_feed(c,index,'배터리').items[0].id, 2)
+                self.assertEqual(search_feed(c,index,'신규').items[0].id, new['id'])
+            finally:
+                index.close()
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed
