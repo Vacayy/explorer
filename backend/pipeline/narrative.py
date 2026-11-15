@@ -610,7 +610,7 @@ URGENT_MIN_AGE_DAYS = 3    # 살아있는 서사가 이보다 어리면 급증�
 URGENT_MAX_PER_RUN = 2     # 동시 다발 시 한 회차 폭주 방지
 
 
-def compute_urgent_narratives() -> dict:
+def compute_urgent_narratives(*, connection_factory=None, generate=None, record_candidate=None) -> dict:
     """이벤트 트리거 — **신규로 드러난 주제**나 **비중이 갑자기 커진 주제**만 즉시 생성 (D-122).
 
     주 1회 전량 배치(compute_top_narratives)와 짝을 이룬다. 30분 체인에서 전량을 돌리면
@@ -618,7 +618,11 @@ def compute_urgent_narratives() -> dict:
     여기선 좁게: ①`is_new`(커버가 없던 주제 — 실측 7일 1건) 또는 ②Δ≥3.0pp 급증.
     비용 상한은 **쿨다운**이 만든다 — 이미 3일 내 서사가 있으면 급증이어도 건너뛴다.
     """
-    conn = get_connection()
+    if connection_factory is not None and not all(callable(x) for x in (connection_factory,generate,record_candidate)):
+        raise ValueError('An isolated connection requires explicit generation and candidate recording')
+    conn = (connection_factory or get_connection)()
+    generate = generate or compute_narrative
+    record_candidate = record_candidate or _record_candidate_attempt
     latest = conn.execute(
         "SELECT MAX(date) d FROM signals WHERE signal_type='theme_surge'").fetchone()["d"]
     if not latest:
@@ -661,7 +665,7 @@ def compute_urgent_narratives() -> dict:
     results = {}
     for p in picked:
         try:
-            results[p["topic"]] = compute_narrative(p["topic"]).get("status")
+            results[p["topic"]] = generate(p["topic"]).get("status")
         except Exception as e:  # noqa: BLE001 — 체인이라 한 주제 실패가 전체를 막지 않게
             results[p["topic"]] = f"error:{str(e)[:80]}"
     # 사람이 승인한 내러티브 후보(ia-redesign §9.3) — 다음 갱신 때 첫 버전. 급증 상한과 별개(승인은 드물다)
@@ -669,10 +673,10 @@ def compute_urgent_narratives() -> dict:
         if t in results:
             continue
         try:
-            results[t] = compute_narrative(t).get("status")
+            results[t] = generate(t).get("status")
         except Exception as e:  # noqa: BLE001
             results[t] = f"error:{str(e)[:80]}"
-        _record_candidate_attempt(t, results[t])
+        record_candidate(t, results[t])
         picked.append({"topic": t, "why": "후보 승인"})
     return {"picked": picked, "results": results, "skipped": skipped, "signal_date": latest}
 
