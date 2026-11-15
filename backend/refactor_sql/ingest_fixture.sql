@@ -31,3 +31,8 @@ CREATE TABLE ingest_enrichments (
     summary TEXT,
     model TEXT NOT NULL
 );
+CREATE TABLE ingest_embeddings (
+    document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
+    revision BIGINT NOT NULL,
+    embedding BYTEA NOT NULL CHECK (octet_length(embedding) = 1536)
+);

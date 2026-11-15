@@ -1,7 +1,8 @@
 """Rebuild a dedicated synthetic-note fixture into the existing feed/search tables.
 
 This deliberately cannot operate on a migrated snapshot. It omits real source
-channels, entity links, media bytes, embeddings and all non-note source types.
+channels, entity links, media bytes and all non-note source types. Embeddings
+are precomputed synthetic values; this module never invokes a model.
 """
 import os
 import re
@@ -50,6 +51,11 @@ def rebuild(conn):
     now = datetime.now(timezone.utc)
     conn.execute('INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) '
                  'VALUES (TRUE,%s,%s,%s,%s,%s)', (now.isoformat(), now, len(rows), len(rows), generation))
-    conn.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture-no-vectors',384,0,0,0)", (generation,))
+    conn.execute('INSERT INTO document_embeddings(document_id,embedding,content_hash) '
+                 'SELECT d.id,e.embedding,d.content_hash FROM ingest_documents d '
+                 'JOIN ingest_embeddings e ON e.document_id=d.id AND e.revision=d.revision')
+    vector_count = conn.execute('SELECT count(*) FROM document_embeddings').fetchone()[0]
+    conn.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'synthetic-fixture',384,%s,0,0)",
+                 (generation, vector_count))
     conn.execute('UPDATE ingest_documents SET projected_version=projection_version')
     return generation

@@ -26,7 +26,9 @@ class FixtureCoordinator:
                     generation = rebuild(conn)
                     rows = conn.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
                                         "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
-                    replacement = self.index_factory(generation, rows)
+                    vectors = [(ident, bytes(value)) for ident, value in conn.execute(
+                        'SELECT document_id,embedding FROM document_embeddings ORDER BY document_id')]
+                    replacement = self.index_factory(generation, rows, vectors)
                     if replacement.generation != str(generation):
                         raise ValueError('Replacement index has wrong generation')
                 previous, self.index = self.index, replacement

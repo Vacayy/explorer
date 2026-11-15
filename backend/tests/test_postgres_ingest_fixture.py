@@ -1,5 +1,6 @@
 """Exercise writes only in a fresh schema of a disposable PostgreSQL server."""
 import os
+import struct
 import threading
 import unittest
 import uuid
@@ -8,7 +9,7 @@ from pathlib import Path
 
 import psycopg
 from psycopg import sql
-from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
+from pipeline.postgres_ingest_fixture import store_document, store_embedding, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
 from pipeline.postgres_ingest_coordinator_fixture import FixtureCoordinator
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
@@ -260,11 +261,11 @@ class IngestFixtureTests(unittest.TestCase):
         with self.pg() as c:
             store_document(c, source_type='note', source_id='test', title='B', markdown='new')
         entered, release = threading.Event(), threading.Event()
-        def slow(generation, rows):
+        def slow(generation, rows, vectors):
             entered.set()
             if not release.wait(5):
                 raise TimeoutError('test timed out')
-            return SearchSnapshot(generation, rows)
+            return SearchSnapshot(generation, rows, vectors)
         coordinator.index_factory = slow
         with ThreadPoolExecutor(max_workers=2) as pool:
             building = pool.submit(coordinator.rebuild)
@@ -274,3 +275,22 @@ class IngestFixtureTests(unittest.TestCase):
             release.set()
             building.result(timeout=5)
             self.assertEqual(reading.result(timeout=5).items[0].title, 'B')
+
+    def test_current_vector_search_and_stale_vector_rejection(self):
+        vector = struct.pack('<384f', 1.0, *([0.0] * 383))
+        with self.pg() as c:
+            row = store_document(c, source_type='note', source_id='test', title='제목', markdown='원문')
+            self.assertTrue(store_embedding(c, document_id=row['id'], revision=1, embedding=vector))
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        coordinator.rebuild()
+        self.assertEqual(coordinator.search('없는단어', vector=vector).total, 1)
+        with self.pg() as c:
+            changed = store_document(c, source_type='note', source_id='test', title='제목', markdown='변경')
+            self.assertFalse(store_embedding(c, document_id=row['id'], revision=1, embedding=vector))
+        coordinator.rebuild()
+        self.assertEqual(coordinator.search('없는단어', vector=vector).total, 0)
+        with self.pg() as c:
+            self.assertTrue(store_embedding(c, document_id=row['id'], revision=changed['revision'], embedding=vector))
+        coordinator.rebuild()
+        self.assertEqual(coordinator.search('없는단어', vector=vector).total, 1)

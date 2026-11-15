@@ -4,6 +4,8 @@ The caller owns transaction boundaries. Slow summarization happens between
 transactions. A revision, not only the hash, prevents stale A→B→A results.
 """
 from hashlib import sha256
+import math
+import struct
 from uuid import uuid4
 from psycopg.types.json import Jsonb
 
@@ -35,8 +37,24 @@ def store_document(conn, *, source_type, source_id, title, markdown, media=None,
                  (title, markdown, digest, revision, Jsonb(media) if media else None,
                   url, published_at, raw_content, digest_status, row[0]))
     conn.execute('DELETE FROM ingest_enrichments WHERE document_id=%s', (row[0],))
+    conn.execute('DELETE FROM ingest_embeddings WHERE document_id=%s', (row[0],))
     conn.execute("UPDATE ingest_enrichment_jobs SET revision=%s,status='pending',token=NULL,worker_id=NULL,started_at=NULL WHERE document_id=%s", (revision, row[0]))
     return {'id': row[0], 'revision': revision, 'status': 'updated'}
+
+
+def store_embedding(conn, *, document_id, revision, embedding):
+    """Accept a precomputed fixture vector only for the current source revision."""
+    if (not isinstance(embedding, bytes) or len(embedding) != 1536 or
+            not all(math.isfinite(v[0]) for v in struct.iter_unpack('<f', embedding))):
+        raise ValueError('Expected 384 finite float32 values')
+    row = conn.execute('SELECT revision,content_hash FROM ingest_documents WHERE id=%s FOR UPDATE', (document_id,)).fetchone()
+    if row is None or row[0] != revision:
+        return False
+    conn.execute('INSERT INTO ingest_embeddings VALUES (%s,%s,%s) '
+                 'ON CONFLICT(document_id) DO UPDATE SET revision=excluded.revision,embedding=excluded.embedding',
+                 (document_id, revision, embedding))
+    conn.execute('UPDATE ingest_documents SET projection_version=projection_version+1 WHERE id=%s', (document_id,))
+    return True
 
 
 def claim_enrichment(conn, *, document_id, worker_id='fixture-worker', upgrade_keyword=False):
