@@ -1,8 +1,11 @@
 import importlib.util
 import os
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
+import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from models.spine import FeedResponse
@@ -35,6 +38,46 @@ class FeedEntryTests(unittest.TestCase):
             response = self.client.get('/api/spine/feed', params={'stock': '005930', 'days': 30})
         self.assertEqual(response.status_code, 200)
         reader.assert_called_once_with(page=1, size=20, source=None, stock='005930', industry=None, topic=None, days=30)
+
+    def test_search_generation_change_failure_and_concurrent_requests(self):
+        current = {'generation': 'a'}
+        class Connection:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def execute(self, sql):
+                return SimpleNamespace(fetchone=lambda: (current['generation'],))
+        def index(generation):
+            result = MagicMock()
+            result.generation = generation
+            return result
+        first, second = index('a'), index('b')
+        def build(_):
+            time.sleep(0.04)
+            if current['generation'] == 'failure':
+                raise ValueError('index build failed')
+            return first if current['generation'] == 'a' else second
+        value = FeedResponse(items=[], total=0, page=1, size=20, as_of='2026-01-01', facets=None)
+        client = TestClient(self.module.app, raise_server_exceptions=False)
+        self.module.search_index = None
+        try:
+            with patch.object(self.module, 'factory', side_effect=Connection), \
+                    patch.object(self.module.SearchSnapshot, 'from_postgres', side_effect=build) as builder, \
+                    patch.object(self.module, 'search_feed', return_value=value), \
+                    patch('pipeline.search._get_model', side_effect=RuntimeError('offline')):
+                with ThreadPoolExecutor(max_workers=6) as pool:
+                    responses = list(pool.map(lambda _: client.get('/api/spine/feed', params={'q': 'test'}), range(6)))
+                self.assertTrue(all(r.status_code == 200 for r in responses))
+                self.assertEqual(builder.call_count, 1)
+                current['generation'] = 'failure'
+                self.assertEqual(client.get('/api/spine/feed', params={'q': 'test'}).status_code, 500)
+                first.close.assert_not_called()
+                current['generation'] = 'a'
+                self.assertEqual(client.get('/api/spine/feed', params={'q': 'test'}).headers['x-explorer-generation'], 'a')
+                current['generation'] = 'b'
+                self.assertEqual(client.get('/api/spine/feed', params={'q': 'test'}).headers['x-explorer-generation'], 'b')
+                first.close.assert_called_once()
+        finally:
+            self.module.search_index = None
 
 
 if __name__ == '__main__':
