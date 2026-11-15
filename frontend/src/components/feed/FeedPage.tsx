@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { PageLayout } from '@/components/shared/PageLayout'
@@ -31,18 +31,32 @@ export default function FeedPage() {
     if (v === 'documents') next.set('view', 'documents')
     return next
   })
+  return <FeedFrame searching={searching} header={<FeedHeader searching={searching} onView={setView} total={total} />}>
+    {searching ? <DocumentSearch /> : <ChannelReader />}
+  </FeedFrame>
+}
+
+/** Original feed layout, without fetching any private data. */
+export function FeedFrame({ searching, header, children }: { searching: boolean; header: ReactNode; children: ReactNode }) {
   return <PageLayout mode="document">
     <div className={cn('flex flex-col gap-5', !searching && 'md:h-[calc(100dvh-var(--shell-offset))] md:min-h-[520px]')}>
-      <FeedHeader searching={searching} onView={setView} total={total} />
-      {searching ? <DocumentSearch /> : <ChannelReader />}
+      {header}
+      {children}
     </div>
   </PageLayout>
 }
 
 function FeedHeader({ searching, onView, total }: { searching: boolean; onView: (v: string) => void; total?: number }) {
-  const navigate = useNavigate()
   const channels = useTimelineChannels()
   const unread = channels.data?.items.filter(c => c.platform !== 'system').reduce((s, c) => s + c.unread, 0)
+  return <FeedHeaderView searching={searching} onView={onView} total={total} unread={unread} />
+}
+
+/** Existing header with explicit counts, so public use cannot read private totals. */
+export function FeedHeaderView({ searching, onView, total, unread }: {
+  searching: boolean; onView: (v: string) => void; total?: number; unread?: number
+}) {
+  const navigate = useNavigate()
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const q = new FormData(e.currentTarget).get('q')?.toString().trim()
