@@ -713,6 +713,8 @@ tail -f logs/ingest.log               # 수집 관찰
 
 같은 격리 API의 검색어 없는 기본 피드·소스별 건수는 `PostgreSQLDocumentReader`의 기존 목록 조회를 사용한다. 검색어 없이 엔티티·날짜 조건을 주는 경우는 아직 지원하지 않아 명시적으로 거부한다.
 
+실제 리허설 사본을 한 격리 PostgreSQL generation에 문서·검색 벡터·논점·관련 벡터·첨부·국내 산업 자료를 함께 적재한 뒤 기본 피드, 검색, 타임라인, 산업 지도, Peer, 상세, 논점, 관련 자료와 첨부의 대표 HTTP 요청을 확인했다. Peer 파일과 첨부는 DB와 원자적 snapshot이 아니며 이는 최신 원본 이전이나 전체 화면·동시 부하 확인이 아니다. 공개 서비스에는 연결하지 않았다.
+
 선택적 `include_claims=True`는 문서 논점 저장분을 동일 SQLite/격리 PostgreSQL 트랜잭션으로 보존한다. `postgres_document_claims.py`와 격리 문서 API는 저장된 상태 및 관련 문서 메타데이터를 읽고, 캡처되지 않은 논점 자료는 빈 결과로 위장하지 않는다. 과거 generation 논점과 논점 생성 POST는 지원하지 않는다. 실데이터 소표본을 기존 API와 비교하고 한 문서의 저장 논점 표시를 격리 브라우저에서 확인했으며 실서비스 연결은 미검증이다.
 
 선택적 `include_centroids=True`는 문서 대표 벡터를 같은 generation으로 보존한다. `postgres_related_documents.py`는 격리 메모리 sqlite-vec 색인과 기존 유사도·중복 제목·출처·시간·엔티티 규칙을 이용해 관련 문서를 조회한다. 실제 사본의 세 문서 결과를 기존 API와 비교하고 한 문서의 관련 자료 표시를 격리 브라우저에서 확인했으며 전체 corpus, 동점 순서, 동시 부하 및 운영 연결은 미검증이다.
