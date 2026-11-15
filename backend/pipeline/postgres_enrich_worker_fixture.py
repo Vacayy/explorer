@@ -3,11 +3,11 @@ from pipeline.postgres_graph_fixture import _guard, finish_with_graph
 from pipeline.postgres_ingest_fixture import claim_enrichment, fail_enrichment
 
 
-def enrich_document(factory, document_id, *, enrich):
+def enrich_document(factory, document_id, *, enrich, worker_id='fixture-worker'):
     """Claim and commit before calling the supplied function, then save atomically."""
     with factory() as conn:
         _guard(conn)
-        claim=claim_enrichment(conn,document_id=document_id)
+        claim=claim_enrichment(conn,document_id=document_id,worker_id=worker_id)
         if claim is None:
             return False
         row=conn.execute('SELECT title,markdown FROM ingest_documents WHERE id=%s',(document_id,)).fetchone()

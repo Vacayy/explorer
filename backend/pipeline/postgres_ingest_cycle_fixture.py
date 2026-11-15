@@ -2,9 +2,12 @@
 from pipeline.postgres_enrich_worker_fixture import enrich_document
 from pipeline.postgres_ingest_runner_fixture import run_source
 from pipeline.postgres_graph_fixture import _guard
+from uuid import uuid4
+
+CYCLE_LOCK=0x4558504C4359434C
 
 
-def run_cycle(connector, factory, *, enrich):
+def run_cycle(connector, factory, *, enrich, worker_id='fixture-worker'):
     changed=[]
     unchanged=[]
     def collect(result):
@@ -22,8 +25,24 @@ def run_cycle(connector, factory, *, enrich):
     enriched=failed=0
     for ident in dict.fromkeys(changed):
         try:
-            if enrich_document(factory,ident,enrich=enrich):
+            if enrich_document(factory,ident,enrich=enrich,worker_id=worker_id):
                 enriched+=1
         except Exception:
             failed+=1
     return {**stats,'enriched':enriched,'enrichment_failed':failed}
+
+
+def run_exclusive_cycle(connector, factory, *, enrich):
+    """One process holds the lease; a later holder invalidates abandoned tokens."""
+    with factory() as lease:
+        _guard(lease)
+        if not lease.execute('SELECT pg_try_advisory_lock(%s)',(CYCLE_LOCK,)).fetchone()[0]:
+            raise RuntimeError('Another fixture cycle is running')
+        try:
+            with factory() as conn:
+                _guard(conn)
+                conn.execute("UPDATE ingest_enrichment_jobs SET status='failed',token=NULL,worker_id=NULL,started_at=NULL "
+                             "WHERE status='running' AND worker_id LIKE 'cycle:%'")
+            return run_cycle(connector,factory,enrich=enrich,worker_id='cycle:'+uuid4().hex)
+        finally:
+            lease.execute('SELECT pg_advisory_unlock(%s)',(CYCLE_LOCK,))

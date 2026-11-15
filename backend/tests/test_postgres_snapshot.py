@@ -43,7 +43,7 @@ from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
-from pipeline.postgres_ingest_cycle_fixture import run_cycle
+from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -378,10 +378,26 @@ class SnapshotReplacementTests(unittest.TestCase):
                 raise RuntimeError('fixture failure')
             third=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=failed)
             fourth=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+            (notes/'abandoned.md').write_text('# 복구 자료\n원문',encoding='utf-8')
+            with self.pg() as c:
+                abandoned=store_document(c,source_type='note',source_id='abandoned.md',title='복구 자료',markdown='# 복구 자료\n원문')
+                old_claim=claim_enrichment(c,document_id=abandoned['id'],worker_id='cycle:stopped')
+                other=store_document(c,source_type='note',source_id='other.md',title='별도 작업',markdown='본문')
+                claim_enrichment(c,document_id=other['id'],worker_id='other-worker')
+            recovered=run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+            with self.pg() as c:
+                self.assertFalse(finish_enrichment(c,document_id=abandoned['id'],**old_claim,summary='늦은 결과',model='fixture'))
+                self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(other['id'],)).fetchone()[0],'running')
+            with self.pg() as lease:
+                lease.execute('SELECT pg_advisory_lock(%s)',(CYCLE_LOCK,))
+                with self.assertRaisesRegex(RuntimeError,'Another fixture cycle is running'):
+                    run_exclusive_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+                lease.execute('SELECT pg_advisory_unlock(%s)',(CYCLE_LOCK,))
         self.assertEqual((first['new'],first['enriched']), (1,1))
         self.assertEqual((second['unchanged'],second['enriched']), (1,0))
         self.assertEqual((third['updated'],third['enrichment_failed']), (1,1))
         self.assertEqual((fourth['unchanged'],fourth['enriched']), (1,1))
+        self.assertEqual(recovered['enriched'],1)
         with self.pg() as c:
             self.assertEqual(c.execute("SELECT e.summary FROM ingest_enrichments e JOIN ingest_documents d ON d.id=e.document_id WHERE d.source_id='cycle.md'").fetchone()[0], '# 합성 문서 변경된 본문')
             ident=c.execute("SELECT id FROM ingest_documents WHERE source_type='note' AND source_id='cycle.md'").fetchone()[0]
