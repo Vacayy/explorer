@@ -68,6 +68,22 @@ class SnapshotReplacementTests(unittest.TestCase):
         finally:
             source.close()
 
+    def test_unsearched_feed_filters_preserve_sqlite_results(self):
+        from routers import spine_feed
+        self.load('2026-01-05T00:00:00+00:00')
+        for filters in ({'days': 3650}, {'stock': '000000'},
+                        {'source': 'blog', 'days': 3650, 'stock': '000000'}):
+            with self.subTest(filters=filters), \
+                    patch.object(spine_feed, 'get_connection', side_effect=self.fixture.connect), \
+                    patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+                expected = spine_feed.get_feed(q=None, source=filters.get('source'), stock=filters.get('stock'),
+                                               industry=None, topic=None, page=1, size=20,
+                                               days=filters.get('days'), sort='relevance')
+                actual = self.reader.list(**filters)
+            self.assertEqual(actual.total, expected.total)
+            self.assertEqual([item.model_dump() for item in actual.items],
+                             [item.model_dump() for item in expected.items])
+
     def test_replacement_idempotency_and_failure_rollback(self):
         first_at = '2026-01-03T00:00:00+00:00'
         second_at = '2026-01-04T00:00:00+00:00'

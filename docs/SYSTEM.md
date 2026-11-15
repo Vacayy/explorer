@@ -711,7 +711,7 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `pipeline/postgres_search_snapshot.py`는 격리 fixture의 동일 PostgreSQL generation에서 문서·기존 벡터를 읽어 메모리 SQLite FTS5/sqlite-vec 색인을 만드는 검색 실험이다. `postgres_search_feed.py`와 `scripts/refactor_document_ui.py`는 이 색인을 격리 피드 API의 검색어·소스·날짜·엔티티 필터, 최신순 및 페이지에 연결하며, 모델이 없을 때 lexical 검색을 제공하고 generation 교체 시 색인을 다시 만든다. 실서비스에는 연결하지 않는다. 색인 재생성 시 동점 결과의 순서가 기존과 달라질 수 있다. 실제 사본에서 초기 색인 생성 약7초·프로세스 최대 약511MiB 및 대표 필터·정렬을 확인했으나 전체 조합, 동시 부하와 운영 적합성은 미검증이다.
 
-같은 격리 API의 검색어 없는 기본 피드·소스별 건수는 `PostgreSQLDocumentReader`의 기존 목록 조회를 사용한다. 검색어 없이 엔티티·날짜 조건을 주는 경우는 아직 지원하지 않아 명시적으로 거부한다.
+같은 격리 API의 검색어 없는 피드는 `PostgreSQLDocumentReader`의 목록 조회를 사용하며 소스·엔티티·날짜 조건을 지원한다. 실제 리허설 사본에서 대표 조건의 목록과 총 건수를 기존 API와 비교했으나 모든 조건 조합과 동점 순서는 보장하지 않는다.
 
 실제 리허설 사본을 한 격리 PostgreSQL generation에 문서·검색 벡터·논점·관련 벡터·첨부·국내 산업 자료를 함께 적재한 뒤 기본 피드, 검색, 타임라인, 산업 지도, Peer, 상세, 논점, 관련 자료와 첨부의 대표 HTTP 요청을 확인했다. Peer 파일과 첨부는 DB와 원자적 snapshot이 아니며 이는 최신 원본 이전이나 전체 화면·동시 부하 확인이 아니다. 공개 서비스에는 연결하지 않았다.
 

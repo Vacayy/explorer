@@ -27,11 +27,14 @@ class FeedEntryTests(unittest.TestCase):
             response = self.client.get('/api/spine/feed', params={'source': 'scrap', 'size': 1})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['total'], 17)
-        reader.assert_called_once_with(page=1, size=1, source='scrap')
+        reader.assert_called_once_with(page=1, size=1, source='scrap', stock=None, industry=None, topic=None, days=None)
 
-    def test_unimplemented_no_query_entity_filter_is_not_silently_ignored(self):
-        response = self.client.get('/api/spine/feed', params={'stock': '005930'})
-        self.assertEqual(response.status_code, 501)
+    def test_no_query_entity_and_date_filters_are_forwarded(self):
+        value = FeedResponse(items=[], total=0, page=1, size=20, as_of='2026-01-01', facets=None)
+        with patch.object(self.module.list_reader, 'list', return_value=value) as reader:
+            response = self.client.get('/api/spine/feed', params={'stock': '005930', 'days': 30})
+        self.assertEqual(response.status_code, 200)
+        reader.assert_called_once_with(page=1, size=20, source=None, stock='005930', industry=None, topic=None, days=30)
 
 
 if __name__ == '__main__':

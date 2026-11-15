@@ -56,9 +56,8 @@ def experimental_search_feed(response: Response, q: str | None = Query(None, max
     # closing an index while another request is using it. Fixture only.
     global search_index
     if not q or not q.strip():
-        if stock or industry or topic or days:
-            raise HTTPException(501, '검색어 없는 필터 조회는 아직 지원하지 않습니다.')
-        return list_reader.list(page=page, size=size, source=source)
+        return list_reader.list(page=page, size=size, source=source, stock=stock,
+                                industry=industry, topic=topic, days=days)
     with search_lock, factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         generation = connection.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
