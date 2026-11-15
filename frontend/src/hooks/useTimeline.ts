@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
-import { getJson, STALE } from '@/api/query'
+import { getJson, STALE, ApiError, toApiError } from '@/api/query'
 import type { AiActivityItem, MarkAllReadPlatform, MarkAllReadResponse, TimelineResponse, TimelineChannelsResponse } from '@/types'
 
 export interface TimelineFilters {
@@ -11,12 +11,17 @@ export interface TimelineFilters {
   channel?: string
   topic?: string   // 주제 칩 (D-208)
   until?: string
+  generation?: string
 }
 
 export function useTimeline(filters: TimelineFilters) {
   return useQuery({
     queryKey: ['spine', 'timeline', filters],
-    queryFn: () => getJson<TimelineResponse>('/api/spine/feed/timeline', { ...filters, size: 20 }),
+    queryFn: async () => {
+      const data = await getJson<TimelineResponse>('/api/spine/feed/timeline', { ...filters, size: 20 })
+      if (filters.generation && data.generation !== filters.generation) throw new ApiError('조회하던 자료가 갱신됐습니다.', 410)
+      return data
+    },
     staleTime: STALE.medium,
     // Filters must not briefly show posts from the previous, differently labelled lane.
   })
@@ -40,10 +45,17 @@ export function useAiActivity() {
   })
 }
 
-export function useTimelineChannels(until?: string) {
+export function useTimelineChannels(until?: string, generation?: string, enabled = true) {
   return useQuery({
-    queryKey: ['spine', 'timeline-channels', until],
-    queryFn: () => getJson<TimelineChannelsResponse>('/api/spine/feed/channels', { until }),
+    queryKey: ['spine', 'timeline-channels', until, generation],
+    queryFn: async () => {
+      try {
+        const result = await api.get<TimelineChannelsResponse>('/api/spine/feed/channels', { params: { until, generation } })
+        if (generation && result.headers['x-explorer-generation'] !== generation) throw new ApiError('조회하던 자료가 갱신됐습니다.', 410)
+        return result.data
+      } catch (error) { throw toApiError(error) }
+    },
+    enabled,
     staleTime: STALE.medium,
   })
 }

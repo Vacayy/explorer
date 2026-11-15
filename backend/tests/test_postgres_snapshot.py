@@ -331,7 +331,12 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual(client.get('/api/spine/feed/timeline', params={'generation': 'bad'}).status_code, 422)
             response = client.get('/api/spine/feed/timeline')
             self.assertEqual(response.status_code, 200)
-            self.assertIsNotNone(uuid.UUID(response.json()['generation']))
+            active_generation = response.json()['generation']
+            self.assertIsNotNone(uuid.UUID(active_generation))
+            for path in ('/api/spine/feed/channels', '/api/spine/doc/1'):
+                pinned = client.get(path, params={'generation': active_generation})
+                self.assertEqual(pinned.status_code, 200)
+                self.assertEqual(pinned.headers['x-explorer-generation'], active_generation)
 
     def test_channel_directory_matches_sqlite_and_remains_readonly(self):
         from pipeline.timeline import channels

@@ -32,9 +32,10 @@ function preview(text: string) {
 
 /** 피드 리더의 글 카드(D-325, 옛 ChannelReader) — 분류 · 소스 · 시각 / 제목 / 요약(기본) · '원문 보기'로 원문 펼침 / 태그 · 스터디로 읽기 · 스터디에 추가 · 자료 상세 · 원문 사이트.
  *  요약이 없으면 원문을 바로 보인다. 펼친 원문은 높이 상한 안에서 스크롤한다(§4.34). */
-export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
-  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string
+export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generation }: {
+  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; generation?: string
 }) {
+  const docHref = `/doc/${doc.id}${generation ? `?generation=${encodeURIComponent(generation)}` : ''}`
   const excerpt = preview(doc.summary || doc.content || '')
   const hasSummary = !!doc.summary?.trim()
   const hasOriginal = !!doc.content?.trim() || doc.images.length > 0
@@ -53,7 +54,7 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
           </time>
         </div>
         <h3 className="text-card-title font-semibold text-pretty break-words">
-          <Link to={`/doc/${doc.id}`} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
+          <Link to={docHref} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
         </h3>
         <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" />
         {hasSummary && hasOriginal && <>
@@ -67,7 +68,7 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
         <div className="flex flex-wrap items-center gap-2">
           {doc.entities.slice(0, 4).map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
           <StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} />
-          <Button asChild variant="ghost" size="sm" className="ml-auto"><Link to={`/doc/${doc.id}`}>자료 상세<ArrowUpRight aria-hidden="true" /></Link></Button>
+          <Button asChild variant="ghost" size="sm" className="ml-auto"><Link to={docHref}>자료 상세<ArrowUpRight aria-hidden="true" /></Link></Button>
           {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer"><span>원문<span className="max-md:hidden"> 사이트</span></span><ArrowUpRight aria-hidden="true" /></a></Button>}
         </div>
       </div>
@@ -75,7 +76,7 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
   )
 }
 
-export function SystemPost({ item, variant = 'card', presentation = 'preview' }: { item: TimelineItem; variant?: PostVariant; presentation?: 'preview' | 'reading' }) {
+export function SystemPost({ item, variant = 'card', presentation = 'preview', generation }: { item: TimelineItem; variant?: PostVariant; presentation?: 'preview' | 'reading'; generation?: string }) {
   const [open, setOpen] = useState(false)
   return (
     <article aria-label={item.title} className={variant === 'row' ? 'feed-post-row' : undefined}>
@@ -101,7 +102,7 @@ export function SystemPost({ item, variant = 'card', presentation = 'preview' }:
               <Link to={item.to} className={`ml-auto inline-flex items-center gap-1 text-xs ${focusLink}`}>상세 보기<ArrowUpRight aria-hidden="true" className="size-3" /></Link>
             </div>
           </Collapsible>
-          {item.links.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-2 border-t pt-2">{item.links.map(link => <Link key={link.to} to={link.to} className={`inline-flex items-center gap-1 text-caption text-muted-foreground ${focusLink}`}><FileText aria-hidden="true" className="size-3" />{link.label}</Link>)}</div>}
+          {item.links.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-2 border-t pt-2">{item.links.map(link => <Link key={link.to} to={generation && /^\/doc\/\d+$/.test(link.to) ? `${link.to}?generation=${encodeURIComponent(generation)}` : link.to} className={`inline-flex items-center gap-1 text-caption text-muted-foreground ${focusLink}`}><FileText aria-hidden="true" className="size-3" />{link.label}</Link>)}</div>}
       </PostSurface>
     </article>
   )

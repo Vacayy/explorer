@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 import psycopg
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 import uvicorn
 
 from models.spine import FeedDocument
@@ -44,21 +44,26 @@ def timeline(scope: Literal['all', 'sources', 'system'] = 'all',
 
 
 @app.get('/api/spine/feed/channels', response_model=TimelineChannelsResponse)
-def channels(until: datetime | None = None, generation: UUID | None = None):
+def channels(response: Response, until: datetime | None = None, generation: UUID | None = None):
     try:
-        return timeline_reader.channels(until=until.isoformat() if until else None, include_owner_read_state=True, generation=generation)
+        result = timeline_reader.channels(until=until.isoformat() if until else None, include_owner_read_state=True, generation=generation)
+        if generation is not None:
+            response.headers['X-Explorer-Generation'] = str(generation)
+        return result
     except GenerationExpired as exc:
         raise HTTPException(410, '조회하던 데이터가 만료됐습니다. 새로고침해 주세요.') from exc
 
 
 @app.get('/api/spine/doc/{doc_id}', response_model=FeedDocument)
-def document(doc_id: int, generation: UUID | None = None):
+def document(doc_id: int, response: Response, generation: UUID | None = None):
     try:
         result = reader.get(doc_id, generation=generation)
     except GenerationExpired as exc:
         raise HTTPException(410, '조회하던 데이터가 만료됐습니다. 새로고침해 주세요.') from exc
     if result is None:
         raise HTTPException(404, '문서를 찾을 수 없습니다')
+    if generation is not None:
+        response.headers['X-Explorer-Generation'] = str(generation)
     return result
 
 

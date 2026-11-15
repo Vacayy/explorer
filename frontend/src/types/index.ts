@@ -734,6 +734,7 @@ export interface AiActivityItem {
 }
 
 export interface TimelineResponse {
+  generation?: string
   items: TimelineItem[]
   page: number
   size: number

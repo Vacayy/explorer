@@ -1,4 +1,6 @@
 import { QueryState } from "@/components/shared/QueryState"
+import { ErrorState } from '@/components/shared/ErrorState'
+import { ApiError, toApiError } from '@/api/errors'
 import { AddToStudy } from "@/components/study/AddToStudy"
 import { StudyButton } from "@/components/study/StudyButton"
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -55,13 +57,18 @@ export default function DocPage() {
   const { docId } = useParams<{ docId: string }>()
   const navigate = useNavigate(), location = useLocation()
   const [params, setParams] = useSearchParams()
+  const generation = params.get('generation') || undefined
   const attempted = useRef(new Set<number>())
   const discussion = useReadingDiscussion()
   const bodyRef = useRef<HTMLDivElement>(null)
   const [studyOpen, setStudyOpen] = useState(false)
   const query = useQuery({
-    queryKey: ['spine', 'doc', docId],
-    queryFn: async () => (await api.get<FeedDocument>(`/api/spine/doc/${docId}`)).data,
+    queryKey: ['spine', 'doc', docId, generation],
+    queryFn: async () => {
+      const result = await api.get<FeedDocument>(`/api/spine/doc/${docId}`, { params: { generation } })
+      if (generation && result.headers['x-explorer-generation'] !== generation) throw new ApiError('조회하던 자료가 갱신됐습니다.', 410)
+      return result.data
+    },
     enabled: !!docId, staleTime: 5 * 60_000,
     refetchInterval: query => query.state.data?.digest_status === 'generating' ? 2000 : false,
   })
@@ -71,12 +78,23 @@ export default function DocPage() {
     onSuccess: () => { void refetch() },
   })
   useEffect(() => {
-    if (doc?.source_type === 'youtube' && (!doc.digest_status || doc.digest_status === 'pending') &&
+    if (!generation && doc?.source_type === 'youtube' && (!doc.digest_status || doc.digest_status === 'pending') &&
         (doc.transcript?.length ?? 0) >= 100 && !attempted.current.has(doc.id)) {
       attempted.current.add(doc.id)
       digest.mutate(doc.id)
     }
-  }, [doc?.id, doc?.digest_status])
+  }, [doc?.id, doc?.digest_status, generation])
+  if (generation && query.error && toApiError(query.error).status === 410) {
+    const restart = () => {
+      const origin = location.state?.detailOrigin?.url
+      const url = new URL(typeof origin === 'string' && origin.startsWith('/feed') ? origin : '/feed', window.location.origin)
+      url.searchParams.delete('reader_generation')
+      url.searchParams.delete('reader_page')
+      url.searchParams.delete('reader_until')
+      navigate(url.pathname + url.search, { replace: true })
+    }
+    return <ErrorState message="조회하던 자료가 갱신됐습니다. 피드에서 새로 시작해 주세요." onRetry={restart} />
+  }
   const isVideo = doc?.source_type === 'youtube'
   const reading = params.get('reading') === 'summary' ? 'summary' :
     isVideo ? (params.get('reading') === 'transcript' ? 'transcript' : 'digest') : 'original'

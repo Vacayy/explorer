@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { formatNumber, formatRelativeTime } from '@/utils/format'
 import type { TimelineChannel } from '@/types'
 import { track } from '@/lib/usage'
+import { toApiError } from '@/api/errors'
 
 /** 왼쪽 종류 칩 — Explorer(system)는 칩 없이 목록 맨 아래 묶음으로 */
 const TYPE_CHIPS = [['all', '전체'], ...Object.entries(FEED_PLATFORMS).filter(([k]) => k !== 'system')] as [FeedPlatform, string][]
@@ -40,6 +41,7 @@ export function ChannelReader() {
   const navigate = useNavigate()
   const [initialSnapshot] = useState(() => new Date().toISOString())
   const until = params.get('reader_until') || initialSnapshot
+  const generation = params.get('reader_generation') || undefined
   const channel = params.get('channel') || ''
   const page = Math.max(1, Math.min(100, Math.floor(Number(params.get('reader_page'))) || 1))
   const query = params.get('channel_q') || ''
@@ -47,8 +49,9 @@ export function ChannelReader() {
   const platform = feedPlatform(params.toString())
   const readerOpen = params.get('reader_open') === '1' || (!params.has('reader_open') && !!channel)
   const systemView = platform === 'system' || isSystemChannel(channel)
-  const directory = useTimelineChannels(until)
-  const timeline = useTimeline({ scope: systemView ? 'system' : 'sources', kind: 'all', source: systemView ? 'all' : platform, channel: channel || undefined, topic: topic || undefined, page, until })
+  const timeline = useTimeline({ scope: systemView ? 'system' : 'sources', kind: 'all', source: systemView ? 'all' : platform, channel: channel || undefined, topic: topic || undefined, page, until, generation })
+  const activeGeneration = generation ?? timeline.data?.generation
+  const directory = useTimelineChannels(until, activeGeneration, !!timeline.data)
   const channels = directory.data?.items ?? []
   const selected = channels.find(item => item.id === channel)
   const markRead = useMarkChannelRead()
@@ -74,11 +77,19 @@ export function ChannelReader() {
     }, { replace: true })
   }, [params, setParams, initialSnapshot])
 
+  useEffect(() => {
+    if (!generation && timeline.data?.generation) setParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (!next.has('reader_generation')) next.set('reader_generation', timeline.data!.generation!)
+      return next
+    }, { replace: true })
+  }, [generation, timeline.data?.generation, setParams])
+
   // 소스를 열어 게시물이 화면에 오면 최신 시각까지 읽음으로 표시한다 (D-200). 주제로 거른 화면은 일부만 보이므로 표시하지 않는다 (D-208)
   useEffect(() => {
-    if (topic || !channel || !selected || selected.unread <= 0 || !selected.latest_at || !timeline.data || markRead.isPending) return
+    if (activeGeneration || topic || !channel || !selected || selected.unread <= 0 || !selected.latest_at || !timeline.data || markRead.isPending) return
     markRead.mutate({ channel, read_until: selected.latest_at })
-  }, [topic, channel, selected, timeline.data, markRead])
+  }, [activeGeneration, topic, channel, selected, timeline.data, markRead])
 
   useLayoutEffect(() => {
     if (directory.data && list.current) list.current.scrollTop = scrollPositions.get(listKey) || 0
@@ -115,7 +126,9 @@ export function ChannelReader() {
   const grouped = !query.trim() && (platform === 'all' || platform === 'system') ? groupDirectory(entries) : null
   const title = !channel ? allTitle : selected?.name || (directory.isLoading ? '소스 불러오는 중' : '선택한 소스')
   // '모두 읽음'(D-301) = 지금 종류 칩 범위. 소스를 고르면 그 소스는 열 때 읽음 처리되므로 두지 않는다
-  const markScope = !channel && !topic && platform !== 'system' ? platform : null
+  const markScope = !activeGeneration && !channel && !topic && platform !== 'system' ? platform : null
+  const generationExpired = !!generation && [timeline.error, directory.error].some(error => error && toApiError(error).status === 410)
+  const restart = () => patch({ reader_generation: null, reader_page: null, reader_until: new Date().toISOString() })
 
   return <div className="grid min-h-0 border bg-card md:flex-1 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
     <aside aria-label="피드 소스 목록" className={cn('flex min-h-0 min-w-0 flex-col md:border-r', readerOpen && 'max-md:hidden')}>
@@ -143,7 +156,7 @@ export function ChannelReader() {
           {directory.data && allUnread > 0 && <UnreadCount n={allUnread} />}
         </EntryButton>
         {directory.isLoading && <div className="space-y-2 p-2" role="status" aria-label="소스 불러오는 중">{[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-[72px] w-full" />)}</div>}
-        {directory.isError && <ErrorState message="소스 목록을 불러오지 못했습니다." onRetry={() => void directory.refetch()} />}
+        {directory.isError && <ErrorState message={generationExpired ? '조회하던 자료가 갱신됐습니다. 새로 시작해 주세요.' : '소스 목록을 불러오지 못했습니다.'} onRetry={generationExpired ? restart : () => void directory.refetch()} />}
         {grouped ? <>
           {grouped.human.map(item => <ChannelEntry key={item.id} item={item} selected={channel === item.id} onSelect={() => select(item.id)} />)}
           {grouped.explorer.count > 0 && <ExplorerGroup key={platform} explorer={grouped.explorer} channel={channel} defaultOpen={platform === 'system' || isSystemChannel(channel)}
@@ -169,7 +182,7 @@ export function ChannelReader() {
         </div>
         <div className="flex items-center gap-2 max-sm:w-full max-sm:justify-between">
           <Button variant="ghost" size="icon" aria-label="피드 새로고침" disabled={timeline.isFetching || directory.isFetching}
-            onClick={() => { scrollPositions.set(`${platform}:${channel}:${topic}:1`, 0); patch({ reader_until: new Date().toISOString(), reader_page: null }) }}>
+            onClick={() => { scrollPositions.set(`${platform}:${channel}:${topic}:1`, 0); restart() }}>
             <RefreshCw aria-hidden="true" className={timeline.isFetching ? 'animate-spin' : ''} />
           </Button>
         </div>
@@ -179,10 +192,10 @@ export function ChannelReader() {
         onScroll={event => { if (timeline.data) scrollPositions.set(positionKey, event.currentTarget.scrollTop) }}>
         <div className="mx-auto max-w-[860px] px-6 pt-2 pb-6 max-md:px-4" aria-busy={timeline.isFetching}>
           {timeline.isLoading && <div role="status" aria-label="게시물 불러오는 중" className="space-y-4 pt-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-48 w-full" />)}</div>}
-          {timeline.isError && <ErrorState message={timeline.data ? '갱신에 실패했습니다. 이전 자료를 표시합니다.' : '게시물을 불러오지 못했습니다.'} onRetry={() => void timeline.refetch()} />}
+          {timeline.isError && <ErrorState message={generationExpired ? '조회하던 자료가 갱신됐습니다. 새로 시작해 주세요.' : timeline.data ? '갱신에 실패했습니다. 이전 자료를 표시합니다.' : '게시물을 불러오지 못했습니다.'} onRetry={generationExpired ? restart : () => void timeline.refetch()} />}
           {timeline.data?.items.map(item => item.document
-            ? <DocumentCard key={item.id} doc={item.document} timeLabel={item.time_label} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />
-            : <SystemPost key={item.id} item={item} variant="row" presentation="reading" />)}
+            ? <DocumentCard key={item.id} doc={item.document} timeLabel={item.time_label} generation={activeGeneration} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />
+            : <SystemPost key={item.id} item={item} variant="row" presentation="reading" generation={activeGeneration} />)}
           {timeline.data?.items.length === 0 && <EmptyState message={topic ? `‘${topic}’ 주제의 게시물이 없습니다.` : channel ? '이 소스에 저장된 게시물이 없습니다.' : '아직 저장된 업데이트가 없습니다.'} />}
           {timeline.data && <nav className="flex flex-wrap items-center justify-between gap-3 border-t pt-5" aria-label="게시물 페이지">
             <Button variant="outline" size="sm" disabled={page === 1} onClick={() => paginate(page - 1)}><ChevronLeft aria-hidden="true" />이전</Button>
