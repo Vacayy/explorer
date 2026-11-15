@@ -251,6 +251,14 @@ def _curve_points(two: list, ten: list) -> list[tuple[str, float]]:
 
 
 def get_risk(now: datetime | None = None, span: str | None = None, keys: list[str] | None = None) -> dict:
+    conn = get_connection()
+    try:
+        return read_risk(conn, now, span, keys)
+    finally:
+        conn.close()
+
+
+def read_risk(conn, now: datetime | None = None, span: str | None = None, keys: list[str] | None = None) -> dict:
     """span·keys가 있으면 그 창에 필요한 행만 읽는다. window(get_risk(now, span, keys), span, keys)는
     window(get_risk(now), span, keys)와 같다 — 값·변화(최근 21개 관측)·품질·신호는 전 이력 기준 그대로
     (tests/test_risk_window.py가 대조)."""
@@ -262,26 +270,22 @@ def get_risk(now: datetime | None = None, span: str | None = None, keys: list[st
     need = [k for k in META if k in want or k in SIGNAL_KEYS or (k in ('us2y', 'us10y') and 'curve' in want)]
     start = window_start(expected, span)
     since = cutoff if start is None else (date.fromisoformat(start) - timedelta(days=WINDOW_MARGIN_DAYS)).isoformat()
-    conn = get_connection()
-    try:
-        # 신호(evaluate_signal)는 hy 전 이력과 같은 기간의 us10y가 필요하다
-        rows = {'hy': _rows(conn, 'hy', cutoff, until)}
-        low = {k: cutoff if k == 'hy' else since for k in need}
-        if rows['hy']:
-            low['us10y'] = min(since, rows['hy'][0]['snapshot_date'])
-        rows.update({k: _rows(conn, k, low[k], until) for k in need if k != 'hy'})
-        points = {k: _points(k, rows[k], today) for k in need}
-        short = {k for k in need if low[k] != cutoff and len(points[k]) <= 20}
-        if 'curve' in want and len(_curve_points(points['us2y'], points['us10y'])) <= 20:
-            short |= {k for k in ('us2y', 'us10y') if low[k] != cutoff}
-        for k in short:
-            rows[k] = _rows(conn, k, cutoff, until)
-            points[k] = _points(k, rows[k], today)
-        sync = {k: conn.execute('SELECT extra_json FROM market_indicators WHERE indicator=? AND snapshot_date>=? '
-                                'AND snapshot_date<=? ORDER BY snapshot_date DESC LIMIT 1',
-                                (f'risk_sync_{k}', cutoff, until)).fetchone() for k in need}
-    finally:
-        conn.close()
+    # 신호(evaluate_signal)는 hy 전 이력과 같은 기간의 us10y가 필요하다
+    rows = {'hy': _rows(conn, 'hy', cutoff, until)}
+    low = {k: cutoff if k == 'hy' else since for k in need}
+    if rows['hy']:
+        low['us10y'] = min(since, rows['hy'][0]['snapshot_date'])
+    rows.update({k: _rows(conn, k, low[k], until) for k in need if k != 'hy'})
+    points = {k: _points(k, rows[k], today) for k in need}
+    short = {k for k in need if low[k] != cutoff and len(points[k]) <= 20}
+    if 'curve' in want and len(_curve_points(points['us2y'], points['us10y'])) <= 20:
+        short |= {k for k in ('us2y', 'us10y') if low[k] != cutoff}
+    for k in short:
+        rows[k] = _rows(conn, k, cutoff, until)
+        points[k] = _points(k, rows[k], today)
+    sync = {k: conn.execute('SELECT extra_json FROM market_indicators WHERE indicator=? AND snapshot_date>=? '
+                            'AND snapshot_date<=? ORDER BY snapshot_date DESC LIMIT 1',
+                            (f'risk_sync_{k}', cutoff, until)).fetchone() for k in need}
     items = {}
     for key in need:
         meta, selected = META[key], rows[key]
@@ -297,7 +301,7 @@ def get_risk(now: datetime | None = None, span: str | None = None, keys: list[st
                       'quality': quality, 'lag_days': lag, 'points': points_k,
                       'change_5': delta(points_k, 5), 'change_20': delta(points_k, 20)}
     if len(need) < len(META) and not any(item['points'] for item in items.values()):
-        return get_risk(now)   # 'empty'는 전 계열 기준 — 읽은 계열이 모두 비면 전체로 다시 계산
+        return read_risk(conn, now)   # 'empty'는 전 계열 기준 — 읽은 계열이 모두 비면 전체로 다시 계산
     if 'curve' not in want:
         return _assemble(items, expected, now)
     curve = _curve_points(items['us2y']['points'], items['us10y']['points'])

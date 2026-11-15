@@ -202,6 +202,11 @@ def _before(series: list[dict], day: str) -> float | None:
 
 def table(conn: sqlite3.Connection) -> dict:
     ensure_schema(conn)
+    return read_table(conn, configured=source() is not None)
+
+
+def read_table(conn: sqlite3.Connection, *, configured: bool = False) -> dict:
+    """Existing stored spread calculation, without schema setup or provider import."""
     since = (date.today() - timedelta(days=400)).isoformat()
     rows, as_of = [], None
     bonds = {r[0]: r for r in conn.execute("SELECT ticker, description, rating_sp, rating_moodys, source FROM credit_bonds")}
@@ -220,12 +225,16 @@ def table(conn: sqlite3.Connection) -> dict:
                        chg_1m=change(30), chg_3m=change(91), chg_1y=change(365), pd_pct=default_probability(last["spread_bp"]))
             as_of = max(as_of or last["date"], last["date"])
         rows.append(row)
-    return {"configured": source() is not None, "as_of": as_of, "groups": [{"key": k, "label": v} for k, v in GROUPS], "rows": rows}
+    return {"configured": configured, "as_of": as_of, "groups": [{"key": k, "label": v} for k, v in GROUPS], "rows": rows}
 
 
 def history(conn: sqlite3.Connection, tickers: list[str], days: int = 1000) -> dict:
     """선택 회사들의 날짜별 수익률·스프레드와 그 회사들의 국채(같은 만기) 평균."""
     ensure_schema(conn)
+    return read_history(conn, tickers, days)
+
+
+def read_history(conn: sqlite3.Connection, tickers: list[str], days: int = 1000) -> dict:
     since = (date.today() - timedelta(days=days)).isoformat()
     per = {t: {p["date"]: p for p in spread_series(conn, t, since)} for t in tickers if t in BY_TICKER}
     dates = sorted({d for s in per.values() for d in s})

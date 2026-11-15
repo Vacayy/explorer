@@ -810,3 +810,6 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 
 
 공개 미국장 브리핑: `security.public_us_briefing`은 `us_briefings` 본문/생성시각 및 `us_movers` 수치 열만 readonly로 읽는다. 기존 정규화·업종 집계·개별 움직임 계산을 재사용하며 private coverage/narrative/job/log/수집을 호출하지 않는다. `/api/spine/us/briefing`와 `/list`는 같은 기존 응답 모델을 유지하고 public force=true는403이다. 본문 출처는 승인 문서만 재구성하며 수집 진단·모델명은 공개하지 않는다. 원래 홈/미국장 카드의 `usdate` URL 선택으로 저장된 날짜를 함께 조회한다. 과거 종목 스냅샷이 없는 날도 저장 본문을 표시하며 부분 상태를 유지한다.
+
+
+공개 홈 국면·리스크: `market_regime.read_regime(conn)`, `risk.read_risk(conn, now, span, keys)`, `credit_spreads.read_table/read_history`로 기존 수치 계산을 호출자 소유 연결에서 재사용한다. private 진입점은 기존 연결/스키마/수집 설정을 유지한다. 공개 `/api/spine/market-regime`, `/risk`, `/credit`, `/credit/history`는 readonly 시장 관측·회사채·국채 열만 읽으며 lazy 수집, DDL, credit provider import를 실행하지 않는다. Risk 품질·신호 판정에는 저장 성공/실패를 반영하되 상세 수집 오류를 일반 문구로 바꾸고 시도 시각은 제외한다. 개인 포트폴리오 risk/checks와는 별도다.
