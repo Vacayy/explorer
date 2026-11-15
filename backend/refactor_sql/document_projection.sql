@@ -4,6 +4,7 @@ CREATE TABLE document_projection (
     source_type TEXT NOT NULL,
     published_at TEXT,
     detail_document JSONB NOT NULL,
+    feed_visible BOOLEAN NOT NULL DEFAULT TRUE,
     CHECK (jsonb_typeof(detail_document) = 'object'),
     CHECK ((detail_document->>'id') IS NOT DISTINCT FROM id::text)
 );
@@ -18,3 +19,10 @@ CREATE TABLE document_list_projection (
 );
 CREATE INDEX document_projection_order ON document_projection (published_at DESC NULLS LAST, id);
 CREATE INDEX document_list_projection_document ON document_list_projection (document_id);
+
+CREATE TABLE snapshot_metadata (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    snapshot_at TEXT NOT NULL,
+    document_count BIGINT NOT NULL,
+    list_row_count BIGINT NOT NULL
+);

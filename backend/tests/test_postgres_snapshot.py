@@ -3,6 +3,7 @@ import os
 import sqlite3
 import unittest
 import uuid
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -63,10 +64,11 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertEqual(len(self.reader.list().items), 3)
         self.assertEqual(self.reader.snapshot_info()['snapshot_at'], first_at)
 
-        with self.fixture.connect() as c:
+        with closing(self.fixture.connect()) as c:
             c.execute("UPDATE raw_documents SET markdown='수정 원문',media_json='[\"fixtures/new.jpg\"]' WHERE id=1")
             c.execute('DELETE FROM raw_documents WHERE id=2')
             c.execute("INSERT INTO raw_documents VALUES(3,'note','n3','새 문서',NULL,'2026-01-05','새 원문',NULL,NULL,NULL)")
+            c.commit()
         self.load(second_at)
         self.assertIsNone(self.reader.get(2))
         self.assertEqual(self.reader.get(1).images, ['fixtures/new.jpg'])
@@ -83,6 +85,48 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.load('2026-01-05T00:00:00+00:00')
         self.assertEqual([x.model_dump() for x in self.reader.list().items], before)
         self.assertEqual(self.reader.snapshot_info()['snapshot_at'], second_at)
+
+
+    def test_ties_visibility_source_filter_and_source_guard(self):
+        with closing(self.fixture.connect()) as c:
+            c.execute("UPDATE raw_documents SET published_at='2026-01-01' WHERE id=2")
+            c.commit()
+        source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
+        source.row_factory = sqlite3.Row
+        source.execute('PRAGMA query_only=ON')
+        source.execute('BEGIN')
+        try:
+            with patch('pipeline.visibility.feed_mute_sql', return_value=('rd.id <> ?', [1])):
+                result = load_snapshot(source, self.pg, snapshot_at='2026-01-06T00:00:00+00:00')
+        finally:
+            source.close()
+        self.assertEqual((result['documents'], result['list_rows']), (2, 1))
+        self.assertIsNotNone(self.reader.get(1))  # muted in feed, detail preserved
+        self.assertEqual(self.reader.list().total, 1)
+        self.assertEqual([x.id for x in self.reader.list(source='note').items], [2])
+        self.assertEqual(self.reader.list(source='telegram').total, 0)
+        self.assertEqual(self.reader.list(page=2, size=1).items, [])
+        original = self.reader.snapshot_info()
+        with closing(self.fixture.connect()) as unsafe:
+            with self.assertRaises(ValueError):
+                load_snapshot(unsafe, self.pg, snapshot_at='2026-01-07T00:00:00+00:00')
+        self.assertEqual(self.reader.snapshot_info(), original)
+
+    def test_tie_order_matches_sqlite_feed(self):
+        from routers import spine_feed
+        from tests.test_postgres_document_read import sqlite_feed
+        with closing(self.fixture.connect()) as c:
+            c.execute("UPDATE raw_documents SET published_at='2026-01-01' WHERE id=2")
+            c.commit()
+        with patch.object(spine_feed, 'get_connection', side_effect=self.fixture.connect), \
+             patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+            expected = sqlite_feed()
+        self.load('2026-01-06T00:00:00+00:00')
+        actual = self.reader.list()
+        self.assertEqual([x.model_dump() for x in actual.items], [x.model_dump() for x in expected.items])
+        pages = [self.reader.list(page=i, size=1).items for i in (1, 2, 3)]
+        self.assertEqual([x.model_dump() for page in pages for x in page],
+                         [x.model_dump() for x in expected.items])
 
 
 if __name__ == '__main__':
