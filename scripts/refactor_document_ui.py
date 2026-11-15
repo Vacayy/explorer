@@ -21,7 +21,8 @@ from pipeline.postgres_sector_market import PostgreSQLSectorSource
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_document_claims import claims_state
-from routers.spine_doc import DocClaims
+from routers.spine_doc import DocClaims, RelatedDoc
+from pipeline.postgres_related_documents import CentroidIndex, related_documents
 from pipeline.sector_view import industry_map_from_source, sector_detail_from_source, sector_peer_list_from_source
 
 
@@ -39,6 +40,7 @@ timeline_reader = PostgreSQLTimelineSources(factory)
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 search_lock = threading.RLock()
 search_index = None
+related_index = None
 
 
 @app.get('/api/spine/feed', response_model=FeedResponse)
@@ -216,6 +218,32 @@ def document_claims(doc_id: int, generation: UUID | None = None):
     if result is None:
         raise HTTPException(404, '문서를 찾을 수 없습니다')
     return result
+
+
+@app.get('/api/spine/doc/{doc_id}/related', response_model=list[RelatedDoc])
+def document_related(doc_id: int, generation: UUID | None = None):
+    global related_index
+    with search_lock, factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        if generation is not None:
+            try:
+                _, archived = resolve_generation(connection, generation)
+            except GenerationExpired as exc:
+                raise HTTPException(410, '조회하던 데이터가 만료됐습니다.') from exc
+            if archived:
+                raise HTTPException(410, '이전 자료의 관련 문서는 사용할 수 없습니다.')
+        current = connection.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+        if current is None:
+            raise HTTPException(503, '관련 문서 자료가 준비되지 않았습니다.')
+        if related_index is None or related_index.generation != str(current[0]):
+            try:
+                replacement = CentroidIndex.from_postgres(connection)
+            except ValueError as exc:
+                raise HTTPException(503, '관련 문서 자료가 준비되지 않았습니다.') from exc
+            previous, related_index = related_index, replacement
+            if previous is not None:
+                previous.close()
+        return related_documents(connection, related_index, doc_id)
 
 
 @app.get('/api/refactor/media/{generation}/{media_path:path}')

@@ -163,3 +163,14 @@ CREATE TABLE document_embeddings (
     embedding BYTEA NOT NULL CHECK (octet_length(embedding) = 1536),
     content_hash TEXT
 );
+
+-- Fixture-only preserved document centroids for existing related-document reads.
+CREATE TABLE document_centroid_metadata (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    generation_id UUID NOT NULL,
+    vector_count BIGINT NOT NULL
+);
+CREATE TABLE document_centroids (
+    document_id BIGINT PRIMARY KEY,
+    embedding BYTEA NOT NULL CHECK (octet_length(embedding) = 1536)
+);

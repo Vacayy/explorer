@@ -214,7 +214,7 @@ def _store_legacy_tables(source, target, *, include_claims=False):
 
 def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None,
                   include_sector=False, peer_runtime=None, media_root=None, include_embeddings=False,
-                  include_claims=False) -> dict:
+                  include_claims=False, include_centroids=False) -> dict:
     """Replace the projection atomically from one existing SQLite transaction."""
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('An active query-only SQLite snapshot is required')
@@ -304,6 +304,9 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_chec
         if include_embeddings:
             from pipeline.postgres_embedding_snapshot import capture_embeddings
             capture_embeddings(source, target, generation)
+        if include_centroids:
+            from pipeline.postgres_related_documents import capture_centroids
+            capture_centroids(source, target, generation)
         if media_root is not None:
             from pipeline.postgres_generation_media import capture_media
             capture_media(source, target, generation, media_root)
