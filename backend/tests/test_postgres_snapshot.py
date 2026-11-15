@@ -25,6 +25,8 @@ from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, Genera
 from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
 from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
 from pipeline.postgres_capacity import require_snapshot_capacity, SnapshotCapacityError
+from pipeline.postgres_archive_import_fixture import import_archived_documents
+from pipeline.postgres_ingest_fixture import store_document
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -67,6 +69,21 @@ class SnapshotReplacementTests(unittest.TestCase):
                 return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None)
         finally:
             source.close()
+
+    def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            self.assertEqual(import_archived_documents(c), 2)
+            source_count = c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='raw_documents'").fetchone()[0]
+            self.assertEqual(source_count, c.execute('SELECT count(*) FROM ingest_documents').fetchone()[0])
+            self.assertEqual(c.execute('SELECT summary FROM ingest_enrichments WHERE document_id=1').fetchone()[0], '저장된 요약')
+            row = store_document(c, source_type='note', source_id='new', title='new', markdown='synthetic')
+            self.assertGreater(row['id'], 2)
+        with self.assertRaisesRegex(ValueError, 'nonempty ledger'):
+            with self.pg() as c:
+                import_archived_documents(c)
+        self.assertEqual(self.reader.list().total, 2)
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed

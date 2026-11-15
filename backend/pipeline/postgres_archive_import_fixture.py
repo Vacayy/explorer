@@ -1,0 +1,42 @@
+"""Import a disposable legacy document archive into the experimental write ledger.
+
+The unchanged snapshot tables remain the source archive. This step does not
+publish a new feed, copy media bytes, or connect an operational writer.
+"""
+import os
+import re
+
+
+def import_archived_documents(conn):
+    database, schema = conn.execute('SELECT current_database(),current_schema()').fetchone()
+    if (os.getenv('REFACTOR_TEST_DISPOSABLE') != '1' or database != 'fixture' or
+            not schema or not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema)):
+        raise ValueError('Disposable fixture schema required')
+    if not conn.execute('SELECT 1 FROM snapshot_metadata WHERE singleton').fetchone():
+        raise ValueError('A captured legacy snapshot is required')
+    if conn.execute('SELECT 1 FROM ingest_documents LIMIT 1').fetchone():
+        raise ValueError('Refusing import into a nonempty ledger')
+    conn.execute('''INSERT INTO ingest_documents
+        (id,source_type,source_id,title,url,published_at,raw_content,markdown,media_json,digest_status,content_hash)
+        OVERRIDING SYSTEM VALUE
+        SELECT (row_data->>'id')::bigint, row_data->>'source_type', row_data->>'source_id',
+               COALESCE(row_data->>'title',''), COALESCE(row_data->>'url',''),
+               COALESCE(row_data->>'published_at',''), COALESCE(row_data->>'raw_content',''),
+               COALESCE(row_data->>'markdown',''),
+               CASE WHEN COALESCE(row_data->>'media_json','')='' THEN NULL ELSE (row_data->>'media_json')::jsonb END,
+               row_data->>'digest_status', COALESCE(row_data->>'content_hash','')
+        FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal''')
+    conn.execute('''INSERT INTO ingest_enrichments(document_id,revision,summary,model)
+        SELECT DISTINCT ON ((row_data->>'doc_id')::bigint)
+               (row_data->>'doc_id')::bigint, 1, row_data->>'summary', row_data->>'model'
+        FROM legacy_snapshot_rows
+        WHERE table_name='enrichments' AND (row_data->>'doc_id')::bigint IN (SELECT id FROM ingest_documents)
+        ORDER BY (row_data->>'doc_id')::bigint, (row_data->>'enriched_at') COLLATE "C" DESC NULLS LAST,
+                 (row_data->>'id')::bigint DESC''')
+    conn.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status) "
+                 "SELECT d.id,1,CASE WHEN e.document_id IS NULL THEN 'pending' ELSE 'done' END "
+                 "FROM ingest_documents d LEFT JOIN ingest_enrichments e ON e.document_id=d.id")
+    conn.execute("SELECT setval(pg_get_serial_sequence('ingest_documents','id'), "
+                 "GREATEST(COALESCE((SELECT max(id) FROM ingest_documents),0),1), "
+                 "EXISTS(SELECT 1 FROM ingest_documents))")
+    return conn.execute('SELECT count(*) FROM ingest_documents').fetchone()[0]
