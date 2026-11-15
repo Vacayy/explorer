@@ -21,14 +21,17 @@ class PostgreSQLDocumentReader:
             return FeedDocument.model_validate(row[0]) if row else None
 
     def list(self, *, page: int = 1, size: int = 20, source: str | None = None) -> FeedResponse:
-        if source in {'blog', 'news', 'article', 'people'}:
-            raise NotImplementedError('This source filter needs the original category or follow rules')
         if page < 1 or not 1 <= size <= 100:
             raise ValueError('page must be positive and size must be between 1 and 100')
         with self.connection_factory() as conn:
             # Count and page must describe one consistent snapshot.
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-            where = 'WHERE d.feed_visible AND d.source_type = %s' if source else 'WHERE d.feed_visible'
+            if source in {'blog', 'news', 'article', 'people'}:
+                where = 'WHERE d.feed_visible AND d.source_groups @> ARRAY[%s]::text[]'
+            elif source:
+                where = 'WHERE d.feed_visible AND d.source_type = %s'
+            else:
+                where = 'WHERE d.feed_visible'
             params = (source,) if source else ()
             total = conn.execute(f'SELECT count(*) FROM document_projection d {where}', params).fetchone()[0]
             rows = conn.execute(

@@ -97,8 +97,7 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
         self.assertEqual(filtered.total, self.original_blog.total)
         self.assertEqual(self.reader.list(source='missing').items, [])
         for source in ('blog', 'news', 'article', 'people'):
-            with self.assertRaises(NotImplementedError):
-                self.reader.list(source=source)
+            self.assertEqual(self.reader.list(source=source).items, [])
         for kwargs in ({'page': 0}, {'size': 0}, {'size': 101}):
             with self.assertRaises(ValueError):
                 self.reader.list(**kwargs)

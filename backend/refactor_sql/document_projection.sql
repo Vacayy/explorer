@@ -5,6 +5,7 @@ CREATE TABLE document_projection (
     published_at TEXT,
     detail_document JSONB NOT NULL,
     feed_visible BOOLEAN NOT NULL DEFAULT TRUE,
+    source_groups TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     CHECK (jsonb_typeof(detail_document) = 'object'),
     CHECK ((detail_document->>'id') IS NOT DISTINCT FROM id::text)
 );
@@ -25,4 +26,19 @@ CREATE TABLE snapshot_metadata (
     snapshot_at TEXT NOT NULL,
     document_count BIGINT NOT NULL,
     list_row_count BIGINT NOT NULL
+);
+
+-- Private intermediate source archive. JSON preserves SQLite's field names,
+-- nulls and duplicate rows; it is not the final normalized PostgreSQL schema.
+CREATE TABLE legacy_snapshot_tables (
+    table_name TEXT PRIMARY KEY,
+    columns JSONB NOT NULL,
+    schema_sql TEXT NOT NULL,
+    row_count BIGINT NOT NULL
+);
+CREATE TABLE legacy_snapshot_rows (
+    table_name TEXT NOT NULL REFERENCES legacy_snapshot_tables(table_name),
+    row_ordinal BIGINT NOT NULL,
+    row_data JSONB NOT NULL,
+    PRIMARY KEY (table_name, row_ordinal)
 );

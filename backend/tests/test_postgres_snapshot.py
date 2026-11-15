@@ -74,6 +74,9 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertEqual(self.reader.get(1).images, ['fixtures/new.jpg'])
         self.assertEqual(self.reader.get(3).content, '새 원문')
         self.assertEqual(self.reader.snapshot_info()['snapshot_at'], second_at)
+        with self.pg() as c:
+            ids = {r[0] for r in c.execute("SELECT row_data->>'id' FROM legacy_snapshot_rows WHERE table_name='raw_documents'")}
+            self.assertEqual(ids, {'1', '3'})
         before = [x.model_dump() for x in self.reader.list().items]
         self.load(second_at)
         self.assertEqual([x.model_dump() for x in self.reader.list().items], before)
@@ -111,6 +114,21 @@ class SnapshotReplacementTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_snapshot(unsafe, self.pg, snapshot_at='2026-01-07T00:00:00+00:00')
         self.assertEqual(self.reader.snapshot_info(), original)
+
+    def test_unsupported_source_value_rolls_back_entire_snapshot(self):
+        at = '2026-01-06T00:00:00+00:00'
+        self.load(at)
+        with closing(self.fixture.connect()) as c:
+            c.execute('INSERT INTO youtube_digest_jobs VALUES(?,?,?,?,?,?)',
+                      (1, 'synthetic', 'pending', sqlite3.Binary(b'\x00\x01'), 0, None))
+            c.commit()
+        with self.assertRaises(TypeError):
+            self.load('2026-01-07T00:00:00+00:00')
+        self.assertEqual(self.reader.get(1).content, '원문')
+        self.assertEqual(self.reader.snapshot_info()['snapshot_at'], at)
+        with self.pg() as c:
+            count = c.execute("SELECT row_count FROM legacy_snapshot_tables WHERE table_name='youtube_digest_jobs'").fetchone()[0]
+            self.assertEqual(count, 0)
 
     def test_source_categories_and_original_rows_preserved(self):
         from routers import spine_feed
