@@ -117,6 +117,18 @@ class SnapshotReplacementTests(unittest.TestCase):
                 load_snapshot(unsafe, self.pg, snapshot_at='2026-01-07T00:00:00+00:00')
         self.assertEqual(self.reader.snapshot_info(), original)
 
+    def test_refuses_non_fixture_target_schema(self):
+        source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
+        source.row_factory = sqlite3.Row
+        source.execute('PRAGMA query_only=ON')
+        source.execute('BEGIN')
+        try:
+            factory = lambda: psycopg.connect(self.dsn, options='-c search_path=public')
+            with self.assertRaises(ValueError):
+                load_snapshot(source, factory, snapshot_at='2026-01-05T00:00:00+00:00')
+        finally:
+            source.close()
+
     def test_older_snapshot_cannot_replace_newer(self):
         self.load('2026-01-05T00:00:00+00:00')
         with closing(self.fixture.connect()) as c:

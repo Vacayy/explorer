@@ -145,9 +145,10 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
         try:
             before = fixture.path.read_bytes()
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                result = module.compare(fixture.path, self.dsn, 20)
+                result = module.compare(fixture.path, self.dsn, 20, benchmark=True)
             self.assertTrue(result['list_and_detail_match'])
             self.assertEqual((result['source_total'], result['sample_rows']), (2, 3))
+            self.assertEqual(result['benchmark']['calls_each'], 10)
             self.assertEqual(fixture.path.read_bytes(), before)
             with self.assertRaises(ValueError):
                 module.compare(fixture.path, 'host=production dbname=fixture user=fixture', 20)
