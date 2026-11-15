@@ -116,10 +116,10 @@ class IngestFixtureTests(unittest.TestCase):
     def test_raw_fields_update_only_when_content_changes(self):
         with self.pg() as c:
             store_document(c, source_type='fixture', source_id='1', title='t', markdown='A',
-                           raw_content='raw A', url='one', published_at='2026-01-01', digest_status='ok')
-            store_document(c, source_type='fixture', source_id='1', title='ignored', markdown='A', raw_content='ignored')
-            self.assertEqual(c.execute('SELECT raw_content,url,published_at,digest_status FROM ingest_documents').fetchone(),
-                             ('raw A', 'one', '2026-01-01', 'ok'))
+                           raw_content='raw A', url='one', published_at='2026-01-01', fetched_at='2026-01-02', digest_status='ok')
+            store_document(c, source_type='fixture', source_id='1', title='ignored', markdown='A', raw_content='ignored',fetched_at='2026-01-03')
+            self.assertEqual(c.execute('SELECT raw_content,url,published_at,digest_status,fetched_at FROM ingest_documents').fetchone(),
+                             ('raw A', 'one', '2026-01-01', 'ok','2026-01-02'))
             store_document(c, source_type='fixture', source_id='1', title='t2', markdown='B',
                            raw_content='raw B', url='two', published_at='2026-01-02', digest_status='failed')
             self.assertEqual(c.execute('SELECT raw_content,url,published_at,digest_status FROM ingest_documents').fetchone(),

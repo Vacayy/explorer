@@ -35,12 +35,12 @@ def materialize(conn):
                            (tuple(data.get(c) for c in columns) for (data,) in rows))
         raw_columns = {r['name'] for r in db.execute('PRAGMA table_info(raw_documents)')}
         en_columns = {r['name'] for r in db.execute('PRAGMA table_info(enrichments)')}
-        rows = conn.execute('SELECT d.id,d.source_type,d.source_id,d.title,d.url,d.published_at,d.raw_content, '
+        rows = conn.execute('SELECT d.id,d.source_type,d.source_id,d.title,d.url,d.published_at,d.fetched_at,d.raw_content, '
                             'd.markdown,d.media_json,d.digest_status,d.content_hash,d.revision,e.summary,e.model '
                             'FROM ingest_documents d LEFT JOIN ingest_enrichments e '
                             'ON e.document_id=d.id AND e.revision=d.revision ORDER BY d.id')
         import json
-        for ident,source,source_id,title,url,published,raw,markdown,media,status,digest,revision,summary,model in rows:
+        for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,revision,summary,model in rows:
             existing = db.execute('SELECT id FROM raw_documents WHERE id=?', (ident,)).fetchone()
             if existing and revision == 1:
                 # Media can change without changing the content revision.
@@ -49,7 +49,7 @@ def materialize(conn):
                                (json.dumps(media, ensure_ascii=False) if media else None,ident))
                 continue
             values = {'id':ident,'source_type':source,'source_id':source_id,'title':title,'url':url,
-                      'published_at':published,'raw_content':raw,'markdown':markdown,
+                      'published_at':published,'fetched_at':fetched,'raw_content':raw,'markdown':markdown,
                       'media_json':json.dumps(media,ensure_ascii=False) if media else None,
                       'digest_status':status,'content_hash':digest}
             values = {k:v for k,v in values.items() if k in raw_columns}

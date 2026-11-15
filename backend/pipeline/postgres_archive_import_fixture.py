@@ -17,14 +17,14 @@ def import_archived_documents(conn):
     if conn.execute('SELECT 1 FROM ingest_documents LIMIT 1').fetchone():
         raise ValueError('Refusing import into a nonempty ledger')
     conn.execute('''INSERT INTO ingest_documents
-        (id,source_type,source_id,title,url,published_at,raw_content,markdown,media_json,digest_status,content_hash)
+        (id,source_type,source_id,title,url,published_at,raw_content,markdown,media_json,digest_status,content_hash,fetched_at)
         OVERRIDING SYSTEM VALUE
         SELECT (row_data->>'id')::bigint, row_data->>'source_type', row_data->>'source_id',
                COALESCE(row_data->>'title',''), COALESCE(row_data->>'url',''),
                COALESCE(row_data->>'published_at',''), COALESCE(row_data->>'raw_content',''),
                COALESCE(row_data->>'markdown',''),
                CASE WHEN COALESCE(row_data->>'media_json','')='' THEN NULL ELSE (row_data->>'media_json')::jsonb END,
-               row_data->>'digest_status', COALESCE(row_data->>'content_hash','')
+               row_data->>'digest_status', COALESCE(row_data->>'content_hash',''),row_data->>'fetched_at'
         FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal''')
     # Legacy detail displays the latest result even when it does not match the
     # current document hash. Keep that display in the archive, but only treat a

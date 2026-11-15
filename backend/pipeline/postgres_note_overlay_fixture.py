@@ -74,13 +74,18 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     if root is not None and (root.is_symlink() or not root.is_dir()):
         raise ValueError('Invalid fixture media root')
     captured = {}
-    dirty = conn.execute('SELECT d.id,d.source_type,d.source_id,d.title,d.url,d.published_at,d.raw_content, '
-                         'd.markdown,d.media_json,d.digest_status,d.content_hash,d.revision,e.summary,e.model '
+    metadata = conn.execute('SELECT expected_model FROM document_embedding_metadata WHERE singleton').fetchone()
+    dirty = conn.execute('SELECT d.id,d.source_type,d.source_id,d.title,d.url,d.published_at,d.fetched_at,d.raw_content, '
+                         'd.markdown,d.media_json,d.digest_status,d.content_hash,d.revision,e.summary,e.model, '
+                         'd.enrichment_dirty,d.embedding_dirty,v.embedding,v.model '
                          'FROM ingest_documents d LEFT JOIN ingest_enrichments e '
                          'ON e.document_id=d.id AND e.revision=d.revision '
+                         'LEFT JOIN ingest_embeddings v ON v.document_id=d.id AND v.revision=d.revision '
                          'WHERE d.projection_version>d.projected_version ORDER BY d.id').fetchall()
     updates = []
-    for ident,source,source_id,title,url,published,raw,markdown,media,status,digest,revision,summary,model in dirty:
+    for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,revision,summary,model,enrichment_dirty,embedding_dirty,embedding,embedding_model in dirty:
+        if embedding_dirty and (embedding is None or metadata is None or embedding_model != metadata[0]):
+            raise ValueError('Embedding is missing or uses a different model')
         if source not in ('note','blog','youtube'):
             raise ValueError('Unsupported source change')
         timeline_present = bool(conn.execute('SELECT 1 FROM timeline_source_projection WHERE document_id=%s', (ident,)).fetchone())
@@ -99,13 +104,12 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                 raise ValueError('Source identity changes are unsupported')
         if timeline_present and source == 'note':
             raise ValueError('Timeline content changes are not supported')
-        if same_revision and media_changed and model is not None and (summary,model) != (prior.summary,prior.enrich_model):
+        if same_revision and media_changed and enrichment_dirty:
             raise ValueError('Combined same-revision media and summary changes are ambiguous')
-        if same_revision and not media_changed and model is None:
+        if same_revision and enrichment_dirty and model is None:
             raise ValueError('Same-revision changes require a current summary')
         if source != 'note' and (prior is None or not same_revision):
-            channel,groups,visible,timeline = _new_source_details(conn,ident,source,source_id,url,published,
-                                                                  original.get('fetched_at') if original else None)
+            channel,groups,visible,timeline = _new_source_details(conn,ident,source,source_id,url,published,fetched)
         elif prior is None:
             channel,groups,visible,timeline = {'name':'내 노트'},[],True,None
         else:
@@ -115,7 +119,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                                      channel=channel.get('name'),channel_kind=channel.get('kind'),
                                      channel_key=channel.get('key'),content=None,images=[],enrich_model=None,entities=[]))
         if same_revision:
-            doc = doc.model_copy(update={'images':media or [], **({'summary':summary,'enrich_model':model} if not media_changed else {})})
+            doc = doc.model_copy(update={'images':media or [], **({'summary':summary,'enrich_model':model} if enrichment_dirty else {})})
         else:
             doc = doc.model_copy(update={'title':title,'url':url,'published_at':published,'content':markdown or raw,
                                          'images':media or [],'summary':summary,'enrich_model':model,'entities':[]})
@@ -133,7 +137,8 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         list_doc = doc.model_copy(update={'content':list_content})
         if source == 'youtube':
             list_doc = list_doc.model_copy(update={'digest_status':None,'digest_error':None,'video_digest':None,'transcript':None})
-        updates.append((ident,source,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,
+        updates.append((ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,summary,model,
+                        enrichment_dirty,embedding_dirty,bytes(embedding) if embedding is not None else None,
                         groups,visible,timeline,doc,list_doc,prior is not None,same_revision,media_changed))
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(target_schema)))
     if captured:
@@ -148,15 +153,16 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     conn.execute('CREATE TEMP TABLE overlay_old_filters ON COMMIT DROP AS SELECT * FROM document_filter_order')
     conn.execute('DELETE FROM document_filter_order')
     conn.execute('DELETE FROM document_list_projection')
-    replaced_ids = [row[0] for row in updates if not (row[-2] and row[-1])]
-    for ident,source,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,groups,visible,timeline,doc,list_doc,existing,same_revision,media_changed in updates:
+    # Same-revision media/vector-only updates must retain duplicate legacy feed rows.
+    replaced_ids = [row[0] for row in updates if not (row[-2] and not row[14])]
+    for ident,source,source_id,title,url,published,fetched,raw,markdown,media,status,digest,summary,model,enrichment_dirty,embedding_dirty,embedding,groups,visible,timeline,doc,list_doc,existing,same_revision,media_changed in updates:
         if existing:
             if not same_revision:
                 conn.execute('DELETE FROM document_entity_order WHERE document_id=%s', (ident,))
                 conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='entity_links' AND row_data->>'doc_id'=%s", (str(ident),))
                 conn.execute('DELETE FROM document_embeddings WHERE document_id=%s', (ident,))
                 conn.execute('DELETE FROM document_centroids WHERE document_id=%s', (ident,))
-            if not same_revision or not media_changed:
+            if not same_revision or enrichment_dirty:
                 conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='enrichments' AND row_data->>'doc_id'=%s", (str(ident),))
             if same_revision:
                 conn.execute('UPDATE document_projection SET detail_document=%s WHERE id=%s',
@@ -171,7 +177,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             old = {}
         if not same_revision:
             old.update({'id':ident,'source_type':source,'source_id':source_id,'title':title,'url':url,
-                        'published_at':published,'raw_content':raw,'markdown':markdown,'content_hash':digest,
+                        'published_at':published,'fetched_at':fetched,'raw_content':raw,'markdown':markdown,'content_hash':digest,
                         'media_json':json.dumps(media,ensure_ascii=False) if media else None,'digest_status':status})
         if same_revision and media_changed:
             old['media_json'] = json.dumps(media,ensure_ascii=False) if media else None
@@ -181,7 +187,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'raw_documents',COALESCE(max(row_ordinal)+1,0),%s "
                          "FROM legacy_snapshot_rows WHERE table_name='raw_documents'", (Jsonb(old),))
         next_id = None
-        if model is not None and not (same_revision and media_changed):
+        if model is not None and (not same_revision or enrichment_dirty):
             next_id = conn.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0)+1 FROM legacy_snapshot_rows WHERE table_name='enrichments'").fetchone()[0]
             enrichment = {'id':next_id,'doc_id':ident,'summary':summary,'model':model,'content_hash':digest,
                           'enriched_at':'2026-01-01T00:00:00Z'}
@@ -192,7 +198,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                          "preview=left(COALESCE(NULLIF(%s,''),NULLIF(%s,''),''),180),topic_names=ARRAY[]::text[] WHERE document_id=%s",
                          (Jsonb(list_doc.model_dump(mode='json')),title,markdown,ident))
             conn.execute("UPDATE timeline_source_metadata SET enrichment_id=%s,entity_order='[]'::jsonb WHERE document_id=%s", (next_id,ident))
-        elif same_revision and not media_changed and model is not None:
+        elif same_revision and enrichment_dirty and model is not None:
             conn.execute("UPDATE timeline_source_projection SET document=jsonb_set(jsonb_set(document,'{summary}',%s),'{enrich_model}',%s) "
                          "WHERE document_id=%s", (Jsonb(summary),Jsonb(model),ident))
             conn.execute('UPDATE timeline_source_metadata SET enrichment_id=%s WHERE document_id=%s', (next_id,ident))
@@ -208,14 +214,18 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                          (f'source:{ident}',ident,occurred,millis,f'{source}:{key}',source,[],
                           label,(title or markdown or '')[:180],Jsonb(timeline_doc.model_dump(mode='json'))))
             conn.execute("INSERT INTO timeline_source_metadata VALUES (%s,%s,'[]'::jsonb)",(ident,next_id))
+        if embedding_dirty:
+            conn.execute('INSERT INTO document_embeddings(document_id,embedding,content_hash) VALUES (%s,%s,%s) '
+                         'ON CONFLICT(document_id) DO UPDATE SET embedding=excluded.embedding,content_hash=excluded.content_hash',
+                         (ident,embedding,digest))
     conn.execute('CREATE TEMP TABLE overlay_new_rows(old_ordinal bigint,document_id bigint,list_document jsonb) ON COMMIT DROP')
     conn.execute('INSERT INTO overlay_new_rows SELECT ordinal,document_id,list_document FROM overlay_old_list '
                  'WHERE NOT (document_id=ANY(%s))', (replaced_ids,))
-    for ident,*rest in updates:
-        doc = rest[-4]
-        if not rest[-7]:
+    for row in updates:
+        ident,doc,visible,existing,same_revision,media_changed,enrichment_dirty = row[0],row[-4],row[-7],row[-3],row[-2],row[-1],row[14]
+        if not visible:
             continue
-        if rest[-2] and rest[-1]:
+        if same_revision and not enrichment_dirty:
             conn.execute("UPDATE overlay_new_rows SET list_document=jsonb_set(list_document,'{images}',%s) WHERE document_id=%s",
                          (Jsonb(doc.images),ident))
         else:

@@ -26,7 +26,7 @@ from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
 from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
 from pipeline.postgres_capacity import require_snapshot_capacity, SnapshotCapacityError
 from pipeline.postgres_archive_import_fixture import import_archived_documents
-from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment
+from pipeline.postgres_ingest_fixture import store_document, store_embedding, claim_enrichment, finish_enrichment
 from pipeline.postgres_ledger_detail_fixture import LedgerDetailFixture
 from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finish as finish_video
 from pipeline.postgres_ledger_snapshot_fixture import materialize
@@ -518,7 +518,7 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             store_document(c,source_type='blog',source_id='synthetic',title='변경',
-                           url='https://example.test/article',published_at='',markdown='변경',
+                           url='https://example.test/article',published_at='',fetched_at='2026-01-07T04:05:06Z',markdown='변경',
                            media=['fixtures/example.jpg'])
         destination='refactor_fixture_'+uuid.uuid4().hex
         with psycopg.connect(self.dsn) as c:
@@ -535,7 +535,7 @@ class SnapshotReplacementTests(unittest.TestCase):
             copy_with_note_changes(c,self.schema,destination)
         with target() as c:
             stamp,label=c.execute('SELECT occurred_at,time_label FROM timeline_source_projection WHERE document_id=1').fetchone()
-            self.assertEqual((stamp.isoformat(),label),('2026-01-04T01:02:03+00:00','수집'))
+            self.assertEqual((stamp.isoformat(),label),('2026-01-07T04:05:06+00:00','수집'))
 
     def test_new_blog_and_video_respect_registry_visibility_and_timeline(self):
         with self.fixture.connect() as c:
@@ -547,6 +547,8 @@ class SnapshotReplacementTests(unittest.TestCase):
             import_archived_documents(c)
             blog=store_document(c,source_type='blog',source_id='https://example.test/new',title='새 블로그',
                                 url='https://example.test/new',published_at='2026-01-05',markdown='블로그 본문')
+            fetched_blog=store_document(c,source_type='blog',source_id='https://example.test/no-date',title='수집시각 글',
+                                        url='https://example.test/no-date',fetched_at='2026-01-04T01:02:03Z',markdown='본문')
             video=store_document(c,source_type='youtube',source_id='UCfixture/abc123def45',title='새 영상',
                                  url='https://youtube.com/watch?v=abc123def45',published_at='2026-01-05',
                                  markdown='영상 자막',raw_content='영상 자막',digest_status='pending')
@@ -568,9 +570,9 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
         with self.pg() as c:
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
-            self.assertEqual(copy_with_note_changes(c,self.schema,destination)['updated_documents'],4)
+            self.assertEqual(copy_with_note_changes(c,self.schema,destination)['updated_documents'],5)
         reader=PostgreSQLDocumentReader(target)
-        self.assertEqual(reader.list().total,5)
+        self.assertEqual(reader.list().total,6)
         self.assertIn(blog['id'],[item.id for item in reader.list(source='blog').items])
         self.assertIn(video['id'],[item.id for item in reader.list(source='youtube').items])
         self.assertNotIn(muted['id'],[item.id for item in reader.list().items])
@@ -581,6 +583,9 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertTrue({blog['id'],video['id']}.issubset(ids))
             self.assertNotIn(muted['id'],ids)
             self.assertNotIn(unregistered['id'],ids)
+            stamp,label=c.execute('SELECT occurred_at,time_label FROM timeline_source_projection WHERE document_id=%s',
+                                  (fetched_blog['id'],)).fetchone()
+            self.assertEqual((stamp.isoformat(),label),('2026-01-04T01:02:03+00:00','수집'))
             generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
             rows=c.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
                            "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal").fetchall()
@@ -629,6 +634,50 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertIsNone(self.reader.get(2).summary)
         with target() as c:
             self.assertEqual(bytes(c.execute('SELECT embedding FROM document_embeddings WHERE document_id=2').fetchone()[0]),vector)
+
+    def test_overlay_accepts_only_current_matching_model_vector(self):
+        import struct
+        from pipeline.store import _hash
+        self.load('2026-01-03T00:00:00+00:00')
+        vector=struct.pack('<384f',1.0,*([0.0]*383))
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            c.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture-model',384,0,0,0)",(generation,))
+            c.execute('UPDATE ingest_documents SET content_hash=%s WHERE id=2',(_hash(''),))
+            c.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{content_hash}',to_jsonb(%s::text)) "
+                      "WHERE table_name='raw_documents' AND row_data->>'id'='2'",(_hash(''),))
+            self.assertTrue(store_embedding(c,document_id=2,revision=1,embedding=vector,model='wrong-model'))
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.assertRaisesRegex(ValueError,'different model'):
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                copy_with_note_changes(c,self.schema,destination)
+        with target() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM document_projection').fetchone()[0],0)
+        with self.pg() as c:
+            self.assertFalse(store_embedding(c,document_id=2,revision=99,embedding=vector,model='fixture-model'))
+            self.assertTrue(store_embedding(c,document_id=2,revision=1,embedding=vector,model='fixture-model'))
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        with target() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            index=SearchSnapshot.from_postgres(c)
+            try:
+                self.assertEqual(search_feed(c,index,'없는단어',vector=vector).items[0].id,2)
+            finally:
+                index.close()
 
     def test_note_media_change_keeps_all_existing_summaries_and_captures_bytes(self):
         import tempfile

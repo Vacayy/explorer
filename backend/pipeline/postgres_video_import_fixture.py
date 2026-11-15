@@ -27,11 +27,11 @@ def import_videos(source, target, ids):
         job = dict(found_job) if found_job else None
         import json
         media = json.loads(doc['media_json']) if doc.get('media_json') else None
-        target.execute('INSERT INTO ingest_documents(id,source_type,source_id,title,url,published_at,raw_content,markdown,media_json,digest_status,content_hash) '
-                       'OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+        target.execute('INSERT INTO ingest_documents(id,source_type,source_id,title,url,published_at,raw_content,markdown,media_json,digest_status,content_hash,fetched_at) '
+                       'OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                        (ident, doc['source_type'], doc['source_id'], doc.get('title') or '', doc.get('url') or '',
                         doc.get('published_at') or '', doc.get('raw_content') or '', doc.get('markdown') or '',
-                        Jsonb(media) if media else None, doc.get('digest_status'), doc.get('content_hash') or ''))
+                        Jsonb(media) if media else None, doc.get('digest_status'), doc.get('content_hash') or '', doc.get('fetched_at')))
         target.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status) VALUES (%s,1,%s)",
                        (ident, 'done' if entries else 'pending'))
         if entries:

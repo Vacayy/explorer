@@ -68,6 +68,8 @@ def rebuild(conn):
     now = datetime.now(timezone.utc)
     conn.execute('INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) '
                  'VALUES (TRUE,%s,%s,%s,%s,%s)', (now.isoformat(), now, len(rows), len(rows), generation))
+    if conn.execute("SELECT EXISTS(SELECT 1 FROM ingest_embeddings WHERE model<>'synthetic-fixture')").fetchone()[0]:
+        raise ValueError('Fixture embedding model mismatch')
     conn.execute('INSERT INTO document_embeddings(document_id,embedding,content_hash) '
                  'SELECT d.id,e.embedding,d.content_hash FROM ingest_documents d '
                  'JOIN ingest_embeddings e ON e.document_id=d.id AND e.revision=d.revision')

@@ -15,6 +15,7 @@ CREATE TABLE ingest_documents (
     title TEXT NOT NULL,
     url TEXT NOT NULL DEFAULT '',
     published_at TEXT NOT NULL DEFAULT '',
+    fetched_at TEXT,
     raw_content TEXT NOT NULL DEFAULT '',
     markdown TEXT NOT NULL,
     media_json JSONB,
@@ -23,6 +24,8 @@ CREATE TABLE ingest_documents (
     revision BIGINT NOT NULL DEFAULT 1 CHECK (revision > 0),
     projection_version BIGINT NOT NULL DEFAULT 1,
     projected_version BIGINT NOT NULL DEFAULT 0,
+    enrichment_dirty BOOLEAN NOT NULL DEFAULT FALSE,
+    embedding_dirty BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (source_type, source_id)
 );
 CREATE TABLE ingest_enrichment_jobs (
@@ -65,5 +68,6 @@ CREATE TABLE ingest_youtube_jobs (
 CREATE TABLE ingest_embeddings (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
-    embedding BYTEA NOT NULL CHECK (octet_length(embedding) = 1536)
+    embedding BYTEA NOT NULL CHECK (octet_length(embedding) = 1536),
+    model TEXT NOT NULL
 );
