@@ -102,33 +102,45 @@ def _percentile(values: dict[str, float]) -> dict[str, float]:
     return {k: round(i / (n - 1) * 100) for i, (k, _) in enumerate(ordered)}
 
 
-def _rs_at(conn, members: dict, as_of: str, weights: dict[str, float]) -> dict[str, dict]:
-    cur = _snapshot(conn, as_of)
+def _rs_at(snapshot, members: dict, as_of: str, weights: dict[str, float]) -> dict[str, dict]:
+    cur = snapshot(as_of)
     d = date.fromisoformat(as_of)
-    long_r = _group_returns(cur, _snapshot(conn, (d - timedelta(days=LONG_CAL_DAYS)).isoformat()), members, weights)
-    short_r = _group_returns(cur, _snapshot(conn, (d - timedelta(days=SHORT_CAL_DAYS)).isoformat()), members, weights)
+    long_r = _group_returns(cur, snapshot((d - timedelta(days=LONG_CAL_DAYS)).isoformat()), members, weights)
+    short_r = _group_returns(cur, snapshot((d - timedelta(days=SHORT_CAL_DAYS)).isoformat()), members, weights)
     rs_l, rs_s = _percentile(long_r), _percentile(short_r)
     return {g: {"rs_long": rs_l.get(g), "rs_short": rs_s.get(g)} for g in long_r}
 
 
-def compute_sector_map() -> dict:
-    hit = _cache.get("map")
-    if hit and time.time() - hit[0] < _TTL:
-        return hit[1]
-    conn = get_connection()
-    latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
+class SQLiteSectorSource:
+    """기존 SQLite 자료를 산업 지도 계산에 전달한다. 연결 수명은 호출자가 관리한다."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def latest_date(self):
+        return self.conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
+
+    def members(self):
+        return _members(self.conn)
+
+    def snapshot(self, as_of):
+        return _snapshot(self.conn, as_of)
+
+
+def build_sector_map(source) -> dict:
+    """시세·소속 조회와 계산을 분리한다. source의 전체 조회는 같은 자료 시점을 사용해야 한다."""
+    latest = source.latest_date()
     if not latest:
-        conn.close()
         return {"as_of": None, "groups": []}
-    members = _members(conn)
+    members = source.members()
     d = date.fromisoformat(latest)
-    cur = _snapshot(conn, latest)
+    cur = source.snapshot(latest)
     weights = {c: m for c, (_, m) in cur.items() if m}
 
-    now = _rs_at(conn, members, latest, weights)
-    flow = _group_returns(cur, _snapshot(conn, (d - timedelta(days=7)).isoformat()),
+    now = _rs_at(source.snapshot, members, latest, weights)
+    flow = _group_returns(cur, source.snapshot((d - timedelta(days=7)).isoformat()),
                           members, weights)  # ~5거래일
-    trails = {w: _rs_at(conn, members, (d - timedelta(weeks=w)).isoformat(), weights)
+    trails = {w: _rs_at(source.snapshot, members, (d - timedelta(weeks=w)).isoformat(), weights)
               for w in TRAIL_WEEKS}
     size: dict[str, float] = {}
     count: dict[str, int] = {}
@@ -137,8 +149,6 @@ def compute_sector_map() -> dict:
         if g and mcap:
             size[g] = size.get(g, 0) + mcap
             count[g] = count.get(g, 0) + 1
-    conn.close()
-
     groups = []
     for g, rs in sorted(now.items(), key=lambda kv: -size.get(kv[0], 0)):
         groups.append({
@@ -149,7 +159,20 @@ def compute_sector_map() -> dict:
                        "rs_long": trails[w].get(g, {}).get("rs_long"),
                        "rs_short": trails[w].get(g, {}).get("rs_short")} for w in TRAIL_WEEKS],
         })
-    result = {"as_of": latest, "groups": groups}
+    return {"as_of": latest, "groups": groups}
+
+
+def compute_sector_map() -> dict:
+    hit = _cache.get("map")
+    if hit and time.time() - hit[0] < _TTL:
+        return hit[1]
+    conn = get_connection()
+    try:
+        result = build_sector_map(SQLiteSectorSource(conn))
+    finally:
+        conn.close()
+    if result["as_of"] is None:
+        return result
     _cache["map"] = (time.time(), result)
     return result
 
