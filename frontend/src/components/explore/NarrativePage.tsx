@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useEffect, useState, type ReactNode } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { Anchor, MessageCircle, ArrowRight, HelpCircle, Loader2, RefreshCw, Route, Sparkles, Workflow } from "lucide-react"
@@ -83,7 +84,7 @@ export default function NarrativePage() {
     apiComputeQuery<Narrative>({
       key: ["spine", "narrative", topic, "compute", refreshNonce],
       url: `/api/spine/narrative/compute?topic=${encodeURIComponent(topic)}`,
-      enabled: !!topic && (autoStale || refreshNonce > 0),
+      enabled: !PUBLIC_ACCESS && !!topic && (autoStale || refreshNonce > 0),
     }),
   )
   // 생성 완료 시 캐시·버전 목록 무효화. 수동 새로고침이면 결과(갱신됨 vs 재료 없음)를 토스트로 알림.
@@ -124,11 +125,11 @@ export default function NarrativePage() {
             {(n?.category || '').split(',').filter(Boolean).map(l => <span key={l}>{LENS_LABEL[l] || l}</span>)}
           </p>
           {cached.isLoading ? <Skeleton className="h-9 w-3/4" /> : <h1 className="text-page font-semibold leading-snug [overflow-wrap:anywhere]">{n?.title || topic}</h1>}
-          <div className="flex flex-wrap items-center gap-2">
+          {!PUBLIC_ACCESS && <div className="flex flex-wrap items-center gap-2">
             {narrativeId != null && <SaveButton kind="narrative" refId={String(narrativeId)} url={`/narrative/history?topic=${encodeURIComponent(topic)}&v=${narrativeId}`} title={topic} subtitle={version ? `v${version}` : '내러티브'} showLabel />}
             <Button variant="ghost" size="sm" disabled={!n?.narrative || discussion.isPending} onClick={() => discussion.mutate(`아래 저장된 AI 내러티브의 핵심 주장과 근거, 반론을 검토해줘. 원문 사실과 AI 해석을 구분해줘.\n\n주제: ${topic}\n버전: ${version ?? '미상'} (ID ${narrativeId ?? '미상'})\n생성: ${n?.created_at ?? '미상'}\n\n${n?.narrative || ''}`)}><MessageCircle aria-hidden="true" />{discussion.isPending ? '대화 준비 중' : '이 내러티브로 대화'}</Button>
             <Button variant="outline" size="sm" disabled={generating} onClick={() => setRefreshNonce(k => k + 1)}><RefreshCw aria-hidden="true" className={generating ? 'animate-spin' : ''} />갱신</Button>
-          </div>
+          </div>}
         </header>
         {cached.isError && <ErrorState message="저장된 내러티브를 불러오지 못했습니다." onRetry={() => void cached.refetch()} />}
         {fresh.isError && <p role="alert" className="text-sm text-destructive">갱신에 실패했습니다. 저장된 내용은 계속 읽을 수 있습니다.</p>}
@@ -143,26 +144,26 @@ export default function NarrativePage() {
             <Markdown className="[overflow-wrap:anywhere] [&_pre]:overflow-x-auto">{body}</Markdown>
           </>
           : !cached.isError && <EmptyState message="저장된 내러티브가 없습니다. 갱신 버튼으로 생성을 요청할 수 있습니다." />}
-        <NarrativeCheckpoint topic={topic} />
+        {!PUBLIC_ACCESS && <NarrativeCheckpoint topic={topic} />}
         <Fold title="근거" open={tab === 'evidence'} onOpenChange={openPart('evidence')}>
-          {narrativeId ? <><Grounding narrativeId={narrativeId} /><CausalChain narrativeId={narrativeId} /><ChainPaths narrativeId={narrativeId} /></> : <EmptyState message="연결된 근거가 없습니다." />}
+          {narrativeId ? <>{!PUBLIC_ACCESS && <Grounding narrativeId={narrativeId} />}<CausalChain narrativeId={narrativeId} />{!PUBLIC_ACCESS && <ChainPaths narrativeId={narrativeId} />}</> : <EmptyState message="연결된 근거가 없습니다." />}
         </Fold>
-        <Fold title="추가 탐구" open={tab === 'explore'} onOpenChange={openPart('explore')}>
+        {!PUBLIC_ACCESS && <Fold title="추가 탐구" open={tab === 'explore'} onOpenChange={openPart('explore')}>
           <DetailSection title="인과 흐름 (메르 모드)"><MerNarrativeCard topic={topic} /></DetailSection>
           <DetailSection title="파급 시나리오"><ScenarioSection topic={topic} /></DetailSection>
           <DetailSection title="언급 상위 종목"><BeneficiaryList sector={topic} /></DetailSection>
-        </Fold>
+        </Fold>}
       </article>
       <aside className="min-w-0 space-y-5" aria-label="상세 맥락">
-        {narrativeId != null && <MarketTodayTimeline narrativeId={narrativeId} />}
+        {!PUBLIC_ACCESS && narrativeId != null && <MarketTodayTimeline narrativeId={!PUBLIC_ACCESS && narrativeId} />}
         {narrativeId != null && <VersionChange narrativeId={narrativeId} />}
         {narrativeId != null && <AsideCausal narrativeId={narrativeId} />}
         <AsideVersions topic={topic} currentId={narrativeId ?? null} origin={origin} />
-        {narrativeId != null && <RelatedNarratives narrativeId={narrativeId} />}
-        <div>
+        {!PUBLIC_ACCESS && narrativeId != null && <RelatedNarratives narrativeId={!PUBLIC_ACCESS && narrativeId} />}
+        {!PUBLIC_ACCESS && <div>
           <DetailSection title="관련 질문">{narrativeId ? <NarrativeQuestions narrativeId={narrativeId} /> : <EmptyState message="연결된 버전이 없습니다." />}</DetailSection>
           <DetailSection title="관련 리포트"><ReportLinkCard topic={topic} /></DetailSection>
-        </div>
+        </div>}
       </aside>
     </div>
   </PageContainer>
@@ -290,11 +291,11 @@ function NarrativeLanding() {
   return (
     <PageContainer gap="sm">
       <h1 className="text-page font-semibold">지금</h1>
-      <BigPictureCard />
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      {!PUBLIC_ACCESS && <BigPictureCard />}
+      {!PUBLIC_ACCESS && <div className="grid items-start gap-4 lg:grid-cols-2">
         <PremisesCard />
         <NarrativeCandidatesCard />
-      </div>
+      </div>}
       <Card className="gap-0 py-0" aria-label="서사 목록">
         <header className="flex items-baseline gap-2 border-b px-4 py-3">
           <h2 className="text-section font-semibold">서사 목록</h2>

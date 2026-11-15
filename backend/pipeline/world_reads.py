@@ -134,7 +134,7 @@ def premises_from_briefing(briefing: str | None) -> dict:
     return out
 
 
-def narrative_changes(conn, days: int = 7, limit: int = 20) -> dict:
+def narrative_changes(conn, days: int = 7, limit: int = 20, *, public: bool = False) -> dict:
     """최근 days일에 새 버전이 나온 주제 — 바뀐 것 한 줄(저장분) + 직전 버전 대비 추가·삭제 고리(결정적).
     change_summary는 생성 때 저장된 1~2문장, 없는 옛 버전은 드리프트 첫 문장을 결정적으로 줄여 쓴다."""
     rows = conn.execute("""
@@ -149,7 +149,7 @@ def narrative_changes(conn, days: int = 7, limit: int = 20) -> dict:
         ORDER BY n.created_at DESC LIMIT ?""", (f"-{days} days", f"-{days} days", limit)).fetchall()
     items = []
     for r in rows:
-        d = _version_diff(conn, r["id"])
+        d = _version_diff(conn, r["id"], public=public)
         ok = d["status"] == "ok"
         added = d.get("added_edges", []) if ok else []
         removed = d.get("removed_edges", []) if ok else []

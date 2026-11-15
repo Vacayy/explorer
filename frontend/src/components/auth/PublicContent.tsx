@@ -1,3 +1,5 @@
+import NarrativePage from "@/components/explore/NarrativePage"
+import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import { PublicFeedPage } from '@/components/feed/PublicFeedPage'
 import { isSearchView } from '@/lib/feed'
 import { PublicTradePage } from '@/components/follow/PublicTradePage'
@@ -30,6 +32,8 @@ export function PublicContent() {
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
+  if (pathname === '/narrative') return <NarrativePage />
+  if (pathname === '/narrative/history') return <NarrativeHistory />
   if (pathname === '/home/macro') return <PublicMacroPage />
   if (pathname === '/financials') return <PublicFinancialSearch />
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />

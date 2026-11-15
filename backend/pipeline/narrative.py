@@ -520,7 +520,7 @@ def list_narratives(conn) -> list[dict]:
     """생성된 내러티브 목록(주제별 최신 버전) — 급증 주제 먼저, 나머지 최신순."""
     metrics = _theme_metrics(conn)
     rows = conn.execute("""
-        SELECT n.* FROM narratives n
+        SELECT n.topic,n.title,n.body,n.category,n.created_at,n.drift_summary,n.version FROM narratives n
         JOIN (SELECT topic, MAX(version) mv FROM narratives GROUP BY topic) l
           ON l.topic=n.topic AND l.mv=n.version
         WHERE n.title IS NOT NULL AND COALESCE(n.kind,'topic')='topic'""").fetchall()
@@ -810,14 +810,15 @@ def edge_source(conn, edge_id: int) -> dict | None:
             "recorded_doc_id": er["source_doc_id"] or er["legacy_source_doc_id"] if status == "legacy_unverified" else None}
 
 
-def causal_subgraph(conn, narrative_id: int) -> dict:
+def causal_subgraph(conn, narrative_id: int, *, public: bool = False) -> dict:
     """한 내러티브의 인과 서브그래프 — 노드·엣지 (프론트 구조 뷰용).
     엣지마다 교차검증 정보(Phase 2 §2-4)도 얹는다: corroborated_by(이 엣지를 주장한 독립
     내러티브 수, narrative_edge_evidence 집계) · contested(반대 방향 CAUSES가 그래프에 공존)."""
-    edges = conn.execute("""
+    evidence_columns = ("NULL obs_confirmed_at, NULL promoted_knowledge_id, NULL feedback_note, er.geo_scope, 'unverified' source_status, NULL source_doc_id" if public else
+                        "er.obs_confirmed_at, er.promoted_knowledge_id, er.feedback_note, er.geo_scope, er.source_status, er.source_doc_id")
+    edges = conn.execute(f"""
         SELECT er.id, er.rel_type, er.mechanism, er.reference_period, er.time_orientation, er.confidence,
-               er.effect_direction, er.effect_strength, er.obs_confirmed_at,
-               er.promoted_knowledge_id, er.feedback_note, er.geo_scope, er.source_status, er.source_doc_id,
+               er.effect_direction, er.effect_strength, {evidence_columns},
                s.id sid, s.name sname, s.type stype, d.id did, d.name dname, d.type dtype
         FROM entity_relations er
         JOIN entities s ON s.id=er.src_id JOIN entities d ON d.id=er.dst_id
@@ -964,21 +965,22 @@ def _edge_key(e: dict) -> tuple:
     return (e["from"], e["to"], e["rel"])
 
 
-def _version_diff(conn, narrative_id: int) -> dict:
+def _version_diff(conn, narrative_id: int, *, public: bool = False) -> dict:
     """narrative_id 버전과 직전 버전(topic, version-1)의 인과 서브그래프 비교 (Phase 2 §2-3).
     엣지는 (from,to,rel) 노드-이름 정체성으로 비교한다 — 재적재 시 narrative_id 태그가
     최신 버전으로 옮겨가므로(D-023 confidence 강화), 태그가 아니라 정체성으로 비교해야
     '그대로 이어진 고리'를 '사라짐+새로 생김'으로 오판하지 않는다."""
-    cur = conn.execute("SELECT topic, version FROM narratives WHERE id=?", (narrative_id,)).fetchone()
+    kind_filter = " AND COALESCE(kind,'topic')='topic'" if public else ""
+    cur = conn.execute("SELECT topic, version FROM narratives WHERE id=?" + kind_filter, (narrative_id,)).fetchone()
     if not cur:
         return {"status": "not_found"}
     prev_row = conn.execute(
-        "SELECT id FROM narratives WHERE topic=? AND version=?",
+        "SELECT id FROM narratives WHERE topic=? AND version=?" + kind_filter,
         (cur["topic"], cur["version"] - 1)).fetchone()
     if not prev_row:
         return {"status": "no_prior_version"}
-    cur_graph = causal_subgraph(conn, narrative_id)
-    prev_graph = causal_subgraph(conn, prev_row["id"])
+    cur_graph = causal_subgraph(conn, narrative_id, public=public)
+    prev_graph = causal_subgraph(conn, prev_row["id"], public=public)
     cur_edges = {_edge_key(e): e for e in cur_graph["edges"]}
     prev_edges = {_edge_key(e): e for e in prev_graph["edges"]}
     cur_nodes = {n["name"] for n in cur_graph["nodes"]}

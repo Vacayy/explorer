@@ -20,6 +20,14 @@ NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy'
 # Only these existing endpoints have been reviewed at this stage. Each business
 # route needs public projection or ownership validation before joining this map.
 PUBLIC_ROUTE_POLICIES = {
+    ('GET', '/api/spine/world/changes'): 'public',
+    ('GET', '/api/spine/narrative'): 'public',
+    ('GET', '/api/spine/narrative/list'): 'public',
+    ('GET', '/api/spine/narrative/versions'): 'public',
+    ('GET', '/api/spine/narrative/version'): 'public',
+    ('GET', '/api/spine/narrative/{narrative_id}/diff'): 'public',
+    ('GET', '/api/spine/narrative/{narrative_id}/causal'): 'public',
+
     ('GET', '/api/spine/home/predictions'): 'public',
     ('GET', '/api/spine/home/predictions/{event_ticker}'): 'public',
     ('GET', '/api/spine/risk'): 'public',

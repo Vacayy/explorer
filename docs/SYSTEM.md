@@ -816,3 +816,6 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 
 
 공개 예측시장: `kalshi.read_latest(conn, include_pins=False)`는 기존 확률·변화 기준·스파크 계산을 재사용하고 개인 pin 테이블을 읽지 않으며 최근 거래량/이벤트 키로 정렬한다. private latest는 기존 스키마 준비와 추적 순서를 유지한다. 상세 `detail(..., conn=..., stored_only=True)`는 저장 event cache와 봉만 읽고 cache TTL/외부 수집/DDL/핀을 호출하지 않는다. `security.public_predictions`가 readonly 열 경계를 제공한다. 공개 카드·상세는 기존 모델/컴포넌트이며 추적 버튼은 제외된다. 저장 상세가 없으면404이며 전체 상세 준비는 별도 배포 데이터 작업이다.
+
+
+공개 내러티브 읽기: `security.public_narratives`는 topic 종류의 저장 본문·목록·버전·인과 고리·결정적 diff와 world/changes만 읽는다. 목록은 기존 테마 비중 계산, 변경은 기존 버전 고리 비교를 재사용한다. readonly 허용 열에서 개인 질문·보유·관찰확인·피드백 메모·승격 지식은 제외한다. graph/diff 직접 ID 조회도 topic 조건을 검사한다. 공개 인과 고리는 승인 원문 연결 전까지 unverified로 표시한다. public diff의 summarize 파라미터는 생성을 일으키지 않는다. 기존 NarrativePage/History의 본문·요약·인과 구조·버전·복귀를 재사용하고 자동 compute/개인 질문/저장/대화/갱신 동작을 차단한다. BigPicture·Premises·MarketTodayTimeline·RelatedNarratives·저장 MER/Scenario·승인 원문근거는 개인 기능으로 확정한 것이 아니라 후속 공개 읽기 미연결 범위다. 현재 구현으로 전체 내러티브 완료를 뜻하지 않는다.
