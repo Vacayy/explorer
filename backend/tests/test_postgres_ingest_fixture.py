@@ -13,6 +13,7 @@ from psycopg import sql
 from pipeline.postgres_ingest_fixture import store_document, store_raw_doc, store_embedding, claim_enrichment, finish_enrichment, fail_enrichment, publish_projection
 from pipeline.base import SourceRef
 from pipeline.connectors.blog import BlogConnector
+from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
 from pipeline.postgres_ingest_coordinator_fixture import FixtureCoordinator
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
@@ -340,3 +341,27 @@ class IngestFixtureTests(unittest.TestCase):
         self.assertEqual(fetch.call_count, 1)
         self.assertEqual(docs[0].raw_content, 'b' * 800)
         self.assertEqual(docs[1].source_id, 'URL 없는 글')
+
+    def test_youtube_connector_transcript_to_feed_detail_and_search(self):
+        ref = SourceRef('abc123def45', meta={'title': '합성 영상', 'published': '2026-01-02',
+                                            'channel_id': 'UCfixture'})
+        with patch('pipeline.connectors.youtube.fetch_transcript', return_value='합성 반도체 자막 원문'):
+            docs = YouTubeConnector(video_ids=[ref.key]).fetch(ref)
+        with patch('pipeline.connectors.youtube.fetch_transcript', return_value=None):
+            self.assertEqual(YouTubeConnector(video_ids=[ref.key]).fetch(ref), [])
+        self.assertEqual(docs[0].source_id, 'UCfixture/abc123def45')
+        with self.pg() as c:
+            c.execute("INSERT INTO ingest_youtube_channels VALUES ('UCfixture','합성 영상 채널')")
+            saved = store_raw_doc(c, docs[0])
+            job = claim_enrichment(c, document_id=saved['id'])
+            finish_enrichment(c, document_id=saved['id'], **job, summary='합성 짧은 요약', model='fixture')
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        coordinator.rebuild()
+        result = coordinator.search('반도체', source='youtube')
+        self.assertEqual(result.total, 1)
+        self.assertEqual((result.items[0].channel, result.items[0].summary, result.items[0].content),
+                         ('합성 영상 채널', '합성 짧은 요약', '합성 반도체 자막 원문'))
+        detail = coordinator.reader.get(saved['id'])
+        self.assertEqual((detail.digest_status, detail.transcript, detail.video_digest),
+                         ('pending', '합성 반도체 자막 원문', None))

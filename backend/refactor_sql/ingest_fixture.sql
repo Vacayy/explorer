@@ -4,6 +4,10 @@ CREATE TABLE ingest_blog_sources (
     platform TEXT NOT NULL,
     blog_name TEXT NOT NULL
 );
+CREATE TABLE ingest_youtube_channels (
+    channel_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL
+);
 CREATE TABLE ingest_documents (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_type TEXT NOT NULL,
