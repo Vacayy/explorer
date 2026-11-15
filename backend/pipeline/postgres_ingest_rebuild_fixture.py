@@ -35,6 +35,10 @@ def rebuild(conn):
                         'ORDER BY d.published_at DESC,d.id').fetchall()
     blogs = conn.execute('SELECT url,platform,blog_name FROM ingest_blog_sources ORDER BY length(url) DESC').fetchall()
     youtube = dict(conn.execute('SELECT channel_id,title FROM ingest_youtube_channels').fetchall())
+    jobs = {ident: {'transcript': transcript, 'status': status, 'updated_at': updated_at, 'error': error}
+            for ident,transcript,status,updated_at,error in conn.execute(
+                'SELECT j.document_id,j.transcript,j.status,j.updated_at,j.error FROM ingest_youtube_jobs j '
+                'JOIN ingest_documents d ON d.id=j.document_id AND d.revision=j.revision')}
     for table in ('document_filter_order', 'document_entity_order', 'document_list_projection',
                   'document_projection', 'legacy_snapshot_rows', 'legacy_snapshot_tables',
                   'document_embeddings', 'document_embedding_metadata', 'snapshot_metadata'):
@@ -52,7 +56,7 @@ def rebuild(conn):
                            enrich_model=model, entities=[])
         payload = Jsonb(doc.model_dump(mode='json'))
         details = doc.model_copy(update=fields_from_job({'source_type': source, 'digest_status': digest,
-                                                          'markdown': markdown, 'raw_content': raw}, None))
+                                                          'markdown': markdown, 'raw_content': raw}, jobs.get(ident)))
         conn.execute('INSERT INTO document_projection VALUES (%s,%s,%s,%s,TRUE,%s)',
                      (ident, source, published, Jsonb(details.model_dump(mode='json')), groups))
         conn.execute('INSERT INTO document_list_projection VALUES (%s,%s,%s)', (ordinal, ident, payload))

@@ -14,6 +14,7 @@ from pipeline.postgres_ingest_fixture import store_document, store_raw_doc, stor
 from pipeline.base import SourceRef
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.youtube import YouTubeConnector
+from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finish as finish_video
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
 from pipeline.postgres_ingest_coordinator_fixture import FixtureCoordinator
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
@@ -365,3 +366,41 @@ class IngestFixtureTests(unittest.TestCase):
         detail = coordinator.reader.get(saved['id'])
         self.assertEqual((detail.digest_status, detail.transcript, detail.video_digest),
                          ('pending', '합성 반도체 자막 원문', None))
+
+    def test_video_digest_retains_transcript_and_previous_summary(self):
+        transcript = '원본 자막 ' * 30
+        with self.pg() as c:
+            doc = store_document(c, source_type='youtube', source_id='UCfixture/abc123def45',
+                                 title='영상', markdown=transcript, raw_content=transcript, digest_status='pending')
+            summary_job = claim_enrichment(c, document_id=doc['id'])
+            finish_enrichment(c, document_id=doc['id'], **summary_job, summary='기존 요약', model='fixture')
+            first = queue_video(c, doc['id'])
+            self.assertIsNone(queue_video(c, doc['id']))
+            self.assertTrue(finish_video(c, doc['id'], revision=first['revision'], token=first['token']))
+            retry = queue_video(c, doc['id'])
+            self.assertFalse(finish_video(c, doc['id'], revision=first['revision'], token=first['token'], digest='늦은 정리'))
+            self.assertTrue(finish_video(c, doc['id'], revision=retry['revision'], token=retry['token'], digest='새 정리본'))
+            self.assertEqual(c.execute('SELECT summary FROM ingest_enrichment_history').fetchone()[0], '기존 요약')
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs').fetchone()[0], 'pending')
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        coordinator.rebuild()
+        detail = coordinator.reader.get(doc['id'])
+        self.assertEqual(detail.digest_status, 'ok')
+        self.assertEqual(detail.transcript, transcript)
+        self.assertIn('새 정리본', detail.video_digest)
+        self.assertIsNone(detail.summary)
+
+    def test_video_digest_rejects_result_when_transcript_changed(self):
+        with self.pg() as c:
+            doc = store_document(c, source_type='youtube', source_id='x', title='영상',
+                                 markdown='가' * 100, raw_content='가' * 100, digest_status='pending')
+            job = queue_video(c, doc['id'])
+            store_document(c, source_type='youtube', source_id='x', title='영상',
+                           markdown='나' * 100, raw_content='나' * 100, digest_status='pending')
+            self.assertFalse(finish_video(c, doc['id'], revision=job['revision'], token=job['token'], digest='오래된 정리'))
+        coordinator = FixtureCoordinator(self.pg)
+        self.addCleanup(coordinator.close)
+        coordinator.rebuild()
+        detail = coordinator.reader.get(doc['id'])
+        self.assertEqual((detail.transcript, detail.video_digest), ('나' * 100, None))

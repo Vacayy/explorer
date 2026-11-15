@@ -40,6 +40,22 @@ CREATE TABLE ingest_enrichments (
     summary TEXT,
     model TEXT NOT NULL
 );
+CREATE TABLE ingest_enrichment_history (
+    document_id BIGINT NOT NULL REFERENCES ingest_documents(id) ON DELETE CASCADE,
+    revision BIGINT NOT NULL,
+    summary TEXT,
+    model TEXT NOT NULL,
+    PRIMARY KEY(document_id,revision)
+);
+CREATE TABLE ingest_youtube_jobs (
+    document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
+    revision BIGINT NOT NULL,
+    transcript TEXT NOT NULL,
+    status TEXT NOT NULL,
+    token UUID,
+    updated_at DOUBLE PRECISION NOT NULL,
+    error TEXT
+);
 CREATE TABLE ingest_embeddings (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
