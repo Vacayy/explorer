@@ -1,5 +1,6 @@
 """Synthetic SQLite → PostgreSQL read-contract comparison; no live services."""
 import json
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -131,6 +132,25 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
             self.assertEqual(client.post('/api/spine/doc/1').status_code, 405)
             self.assertEqual(client.get('/media/fixtures/example.jpg').content, image)
             self.assertEqual(client.get('/media/%2e%2e/private.txt').status_code, 404)
+
+    def test_sample_loader_reads_sqlite_without_modifying_it(self):
+        script = Path(__file__).resolve().parents[2] / 'scripts/refactor_document_sample.py'
+        spec = importlib.util.spec_from_file_location('refactor_document_sample', script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        fixture = detail_fixtures.DocumentReadBoundaryTests('test_raw_fallback_and_missing')
+        fixture.setUp()
+        try:
+            before = fixture.path.read_bytes()
+            with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+                result = module.compare(fixture.path, self.dsn, 20)
+            self.assertTrue(result['list_and_detail_match'])
+            self.assertEqual((result['source_total'], result['sample_rows']), (2, 3))
+            self.assertEqual(fixture.path.read_bytes(), before)
+            with self.assertRaises(ValueError):
+                module.compare(fixture.path, 'host=production dbname=fixture user=fixture', 20)
+        finally:
+            fixture.tearDown()
 
     def test_projection_rejects_mismatched_identity(self):
         payload = json.dumps(self.original[0].model_dump(mode='json'))
