@@ -3,6 +3,8 @@ import os
 import sqlite3
 import unittest
 import uuid
+import threading
+import time
 from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
@@ -13,7 +15,7 @@ except ImportError:
     psycopg = None
 
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
-from pipeline.postgres_snapshot import load_snapshot
+from pipeline.postgres_snapshot import SNAPSHOT_LOCK_KEY, load_snapshot
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -114,6 +116,47 @@ class SnapshotReplacementTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_snapshot(unsafe, self.pg, snapshot_at='2026-01-07T00:00:00+00:00')
         self.assertEqual(self.reader.snapshot_info(), original)
+
+    def test_older_snapshot_cannot_replace_newer(self):
+        self.load('2026-01-05T00:00:00+00:00')
+        with closing(self.fixture.connect()) as c:
+            c.execute("UPDATE raw_documents SET markdown='older data' WHERE id=1")
+            c.commit()
+        with self.assertRaises(ValueError):
+            self.load('2026-01-04T00:00:00+00:00')
+        self.assertEqual(self.reader.get(1).content, '원문')
+        self.assertEqual(self.reader.snapshot_info()['snapshot_at'], '2026-01-05T00:00:00+00:00')
+
+    def test_concurrent_loader_waits_for_transaction_lock(self):
+        blocker = self.pg()
+        blocker.execute('SELECT pg_advisory_xact_lock(%s)', (SNAPSHOT_LOCK_KEY,))
+        failures = []
+        def run():
+            try:
+                self.load('2026-01-05T00:00:00+00:00')
+            except Exception as exc:
+                failures.append(exc)
+        worker = threading.Thread(target=run)
+        worker.start()
+        try:
+            deadline = time.monotonic() + 5
+            waiting = False
+            while time.monotonic() < deadline and worker.is_alive():
+                with self.pg() as conn:
+                    waiting = conn.execute(
+                        "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted)"
+                    ).fetchone()[0]
+                if waiting:
+                    break
+                time.sleep(0.02)
+            self.assertTrue(waiting, 'loader must wait for the advisory transaction lock')
+        finally:
+            blocker.commit()
+            blocker.close()
+            worker.join(timeout=10)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(failures)
+        self.assertEqual(self.reader.get(1).content, '원문')
 
     def test_unsupported_source_value_rolls_back_entire_snapshot(self):
         at = '2026-01-06T00:00:00+00:00'
