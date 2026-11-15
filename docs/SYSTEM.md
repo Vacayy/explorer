@@ -832,3 +832,5 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 공개 홈 수출입 요약은 기존 `/api/spine/trade/highlights`에서 `stored_highlights`로 공개 고정 카탈로그를 조회하며 개인 trade_follow를 읽지 않는다. `highlights_from_table`는 기존 기여도/이례성 정렬을 재사용한다. 응답에 scope/observed_count/total_count/partial을 더하고 공개 총액·그룹은 관측 소계, 관측이 없으면 null이다. 기존 TradeCard는 공개 카탈로그 소계임과 관측 품목 수·누락을 표시하고 기존 공개 상세로 연결한다. 전체 무역총액·모든 시장품목 커버리지를 뜻하지 않는다. 개인 하이라이트는 기존 팔로우 범위를 유지한다.
 
 미국 실적 시즌의 `earnings_chain.read_season_overview`는 호출자가 제공하는 기업 범위·핵심 종목 기준·갱신 시각과 DB 연결로 기존 수익률/일정/집계를 계산한다. 기존 개인 `season_overview`는 core_map의 재계산·개인 기준을 유지하는 wrapper다. 이 분리는 공개 GET에서 개인 핵심 기준·lazy DB 쓰기를 우회하기 위한 준비이며 미국 시즌 공개 라우트/데이터 사본/화면 연결 완료를 뜻하지 않는다.
+
+`security.public_us_season`은 `EXPLORER_PUBLIC_US_SEASON_DB`의 명시 준비 사본과 `public_us_companies(ticker,company_name,sector,market_cap)`만 사용한다. 핵심 종목은 이 공개 기업 범위의 시가총액·데이터센터 분류로 재계산하고 개인 팔로우/고정/보유/언급수와 운영 job 시각을 읽지 않는다. 오늘 변경된 reaction/theme/expectation/transcript 목록도 동일 기업·업종 범위로 제한한다. 원본 정성 설명은 개인 note/memo·이전 기대/반응이 입력일 수 있으므로 이 사본의 reaction/expectation/theme에는 공개 출처가 확인된 결과만 준비해야 한다. 이 모듈은 readonly 열 경계와 기존 계산 연결 준비이며 라우트·실제 공개 사본·원래 화면의 연결은 아직 후속이다.

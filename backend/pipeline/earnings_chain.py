@@ -676,7 +676,8 @@ def _kst_today() -> str:
 
 def _event_rows(conn, season: str) -> list[dict]:
     return [dict(r) for r in conn.execute(
-        "SELECT e.*, t.id transcript_id, r.status reaction_status, r.meta_json FROM earnings_events e "
+        "SELECT e.ticker, e.fiscal_year, e.fiscal_period, e.event_date, e.season, e.confirmed, e.eps_surprise, "
+        "t.id transcript_id, r.status reaction_status, r.meta_json FROM earnings_events e "
         "LEFT JOIN transcripts t ON t.ticker=e.ticker AND t.fiscal_year=e.fiscal_year AND t.fiscal_period=e.fiscal_period "
         "LEFT JOIN transcript_reactions r ON r.transcript_id=t.id WHERE e.season=? ORDER BY e.event_date", (season,))]
 
@@ -803,6 +804,11 @@ def read_season_overview(conn, season: str | None = None, *, fs, core, last_run,
         "expectations": [r[0] for r in conn.execute("SELECT DISTINCT ticker FROM earnings_expectations WHERE date(created_at, '+9 hours')=? AND issues_json IS NOT NULL", (kst,))],
         "transcripts": [r[0] for r in conn.execute("SELECT DISTINCT ticker FROM transcripts WHERE date(fetched_at, '+9 hours')=?", (kst,))],
     }
+    # The change summary follows the same company universe as the calendar and cards.
+    for kind in ("reactions", "expectations", "transcripts"):
+        changes[kind] = [ticker for ticker in changes[kind] if ticker in fs]
+    sector_names = {sector_name(f["sector"]) for f in fs.values()}
+    changes["themes"] = [name for name in changes["themes"] if name in sector_names]
     windows = season_windows(conn, fs)
     calendar = season_calendar(evs, fs, core)
     core_rows = [{"ticker": t, "name": fs[t]["company_name"], "reasons": r} for t, r in sorted(core.items()) if t in fs]
