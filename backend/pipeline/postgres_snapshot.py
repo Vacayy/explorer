@@ -4,6 +4,7 @@ The source connection must already be a read-only, consistent transaction. No
 LLM, network fetch, file copying, production routing, or incremental sync runs.
 """
 import json
+import uuid
 from datetime import datetime, timezone
 from itertools import islice
 from collections import defaultdict, deque
@@ -225,11 +226,18 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         if database != 'fixture' or not schema or not schema.startswith('refactor_fixture_'):
             raise ValueError('Refusing snapshot writes outside the disposable fixture schema')
         target.execute('SELECT pg_advisory_xact_lock(%s)', (SNAPSHOT_LOCK_KEY,))
-        prior = target.execute('SELECT snapshot_at FROM snapshot_metadata WHERE singleton').fetchone()
+        prior = target.execute('SELECT snapshot_at, generation_id FROM snapshot_metadata WHERE singleton').fetchone()
         if prior:
             previous = datetime.fromisoformat(prior[0].replace('Z', '+00:00'))
             if instant < previous:
                 raise ValueError('Older snapshot cannot replace a newer snapshot')
+        # Retain prior timeline rows atomically. This is a small fixture-only
+        # policy, not a production capacity/retention decision.
+        if prior:
+            target.execute("INSERT INTO archived_timeline_generations(generation_id,expires_at) VALUES (%s, clock_timestamp() + interval '15 minutes')", (prior[1],))
+            target.execute('INSERT INTO archived_timeline_source SELECT %s, p.* FROM timeline_source_projection p', (prior[1],))
+            target.execute('INSERT INTO archived_timeline_system SELECT %s, p.* FROM timeline_system_projection p', (prior[1],))
+            target.execute("DELETE FROM archived_timeline_generations WHERE expires_at <= clock_timestamp() OR generation_id IN (SELECT generation_id FROM archived_timeline_generations ORDER BY archived_at DESC OFFSET 2)")
         # The first data read establishes a deferred SQLite snapshot if the
         # caller has not already read. This is an observation, not a guarantee
         # of the source backup time or an exact snapshot acquisition time.
@@ -286,7 +294,7 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
         _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_system_rows(source))
         target.execute('INSERT INTO snapshot_metadata '
-                       '(singleton,snapshot_at,source_observed_at,document_count,list_row_count) '
-                       'VALUES (TRUE,%s,%s,%s,%s)',
-                       (snapshot_at, source_observed_at, len(source_rows), list_count))
+                       '(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) '
+                       'VALUES (TRUE,%s,%s,%s,%s,%s)',
+                       (snapshot_at, source_observed_at, len(source_rows), list_count, uuid.uuid4()))
     return {'snapshot_at': snapshot_at, 'documents': len(source_rows), 'list_rows': list_count}

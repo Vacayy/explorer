@@ -1,6 +1,7 @@
 """Synthetic snapshot replacement and rollback in a disposable PostgreSQL DB."""
 import os
 import json
+import importlib.util
 import sqlite3
 import unittest
 import uuid
@@ -19,7 +20,7 @@ from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_snapshot import SNAPSHOT_LOCK_KEY, load_snapshot
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_rebuild_detail import rebuild_details
-from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources
+from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationExpired
 from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
 from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
 import tests.test_document_read_boundary as detail_fixtures
@@ -248,9 +249,8 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT * FROM timeline_source_projection ORDER BY id').fetchall(), expected)
 
-    @unittest.expectedFailure
     def test_snapshot_replacement_does_not_repeat_prior_page(self):
-        """Known gap: until is a time bound, not a snapshot generation token."""
+        """A generation token keeps page two on the original immutable snapshot."""
         with closing(self.fixture.connect()) as c:
             c.execute("INSERT INTO raw_documents VALUES(3,'blog','b3','이전 글','https://example.test/old','2025-12-31','본문',NULL,NULL,'[]',NULL)")
             c.commit()
@@ -261,8 +261,15 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute("INSERT INTO raw_documents VALUES(4,'blog','b4','늦게 들어온 글','https://example.test/new','2026-01-02','본문',NULL,NULL,'[]',NULL)")
             c.commit()
         self.load('2026-01-07T00:00:00+00:00')
-        second = reader.timeline(scope='sources', size=1, page=2, until=first.until)
+        second = reader.timeline(scope='sources', size=1, page=2, until=first.until, generation=first.generation)
         self.assertNotEqual(first.items[0].id, second.items[0].id)
+        self.assertEqual(second.generation, first.generation)
+        current = reader.timeline(scope='sources', size=1, page=2, until=first.until)
+        self.assertEqual(current.items[0].id, first.items[0].id)  # compatibility path is unpinned
+        with self.pg() as c:
+            c.execute("UPDATE archived_timeline_generations SET expires_at=clock_timestamp()-interval '1 second' WHERE generation_id=%s", (first.generation,))
+        with self.assertRaises(GenerationExpired):
+            reader.timeline(scope='sources', size=1, page=2, until=first.until, generation=first.generation)
 
     def test_timeline_submillisecond_ties_and_until_match_sqlite(self):
         from pipeline.timeline import timeline
@@ -285,6 +292,31 @@ class SnapshotReplacementTests(unittest.TestCase):
         with closing(self.fixture.connect()) as c:
             expected_channels = channels(c, until='2026-01-01T00:00:00.000200Z')
         self.assertEqual(reader.channels(until='2026-01-01T00:00:00.000200Z', include_owner_read_state=True).model_dump(), expected_channels.model_dump())
+
+    def test_old_generation_eviction_and_http_expiry(self):
+        from fastapi.testclient import TestClient
+        self.load('2026-01-01T00:00:00+00:00')
+        reader = PostgreSQLTimelineSources(self.pg)
+        first = reader.timeline(until='2026-01-09T00:00:00Z')
+        self.load('2026-01-02T00:00:00+00:00')
+        self.load('2026-01-03T00:00:00+00:00')
+        self.load('2026-01-04T00:00:00+00:00')
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM archived_timeline_generations').fetchone()[0], 2)
+        with self.assertRaises(GenerationExpired):
+            reader.timeline(until=first.until, generation=first.generation)
+        script = Path(__file__).resolve().parents[2] / 'scripts/refactor_document_ui.py'
+        spec = importlib.util.spec_from_file_location('refactor_generation_ui', script)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(os.environ, {'REFACTOR_FIXTURE_SCHEMA': self.schema}):
+            spec.loader.exec_module(module)
+        with TestClient(module.app) as client:
+            response = client.get('/api/spine/feed/timeline', params={'generation': first.generation})
+            self.assertEqual(response.status_code, 410)
+            self.assertEqual(client.get('/api/spine/feed/timeline', params={'generation': 'bad'}).status_code, 422)
+            response = client.get('/api/spine/feed/timeline')
+            self.assertEqual(response.status_code, 200)
+            self.assertIsNotNone(uuid.UUID(response.json()['generation']))
 
     def test_channel_directory_matches_sqlite_and_remains_readonly(self):
         from pipeline.timeline import channels

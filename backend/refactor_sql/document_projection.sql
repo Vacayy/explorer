@@ -105,3 +105,21 @@ CREATE TABLE timeline_source_metadata (
     enrichment_id BIGINT,
     entity_order JSONB NOT NULL
 );
+
+-- Disposable experiment: retain at most two prior timeline generations.
+CREATE TABLE archived_timeline_generations (
+    generation_id UUID PRIMARY KEY,
+    archived_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE archived_timeline_source (
+    generation_id UUID NOT NULL REFERENCES archived_timeline_generations(generation_id) ON DELETE CASCADE,
+    LIKE timeline_source_projection INCLUDING DEFAULTS
+);
+CREATE INDEX archived_timeline_source_page ON archived_timeline_source(generation_id, sort_millis DESC, id DESC);
+CREATE TABLE archived_timeline_system (
+    generation_id UUID NOT NULL REFERENCES archived_timeline_generations(generation_id) ON DELETE CASCADE,
+    LIKE timeline_system_projection INCLUDING DEFAULTS
+);
+CREATE INDEX archived_timeline_system_page ON archived_timeline_system(generation_id, sort_millis DESC, id DESC);
+ALTER TABLE snapshot_metadata ADD COLUMN generation_id UUID NOT NULL;

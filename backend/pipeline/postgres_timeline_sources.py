@@ -1,16 +1,25 @@
 """Isolated timeline reader over captured SQLite response projections."""
 from datetime import datetime, timezone
+from uuid import UUID
 
 from models.spine import FeedDocument
 from models.timeline import TimelineItem, TimelineResponse, TimelineChannel, TimelineChannelsResponse
 from pipeline.timeline import utc
 
 
+class GenerationExpired(Exception):
+    """Requested timeline generation is missing or no longer retained."""
+
+
+class GenerationTimelineResponse(TimelineResponse):
+    generation: str
+
+
 class PostgreSQLTimelineSources:
     def __init__(self, connection_factory):
         self.connection_factory = connection_factory
 
-    def timeline(self, *, scope='sources', kind='all', source='all', channel=None, topic=None, page=1, size=20, until=None):
+    def timeline(self, *, scope='sources', kind='all', source='all', channel=None, topic=None, page=1, size=20, until=None, generation=None):
         if (scope not in {'all', 'sources', 'system'} or
                 kind not in {'all', 'company', 'person', 'transcript', 'trade', 'narrative', 'report', 'scenario'} or
                 source not in {'all', 'telegram', 'blog', 'youtube', 'memo'} or not 1 <= page <= 100 or not 1 <= size <= 50):
@@ -19,25 +28,37 @@ class PostgreSQLTimelineSources:
         until = utc(until) if until else now
         with self.connection_factory() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-            rows = conn.execute('''
+            current_row = conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+            if not current_row:
+                raise GenerationExpired('No timeline generation available')
+            current = current_row[0]
+            requested = UUID(str(generation)) if generation is not None else current
+            archived = requested != current
+            if archived and not conn.execute('SELECT EXISTS (SELECT 1 FROM archived_timeline_generations WHERE generation_id=%s AND expires_at>clock_timestamp())', (requested,)).fetchone()[0]:
+                raise GenerationExpired('Timeline generation expired')
+            source_table = 'archived_timeline_source' if archived else 'timeline_source_projection'
+            system_table = 'archived_timeline_system' if archived else 'timeline_system_projection'
+            generation_filter = 'AND generation_id=%s' if archived else ''
+            source_generation = (requested,) if archived else ()
+            rows = conn.execute(f'''
                 SELECT id,document_id,occurred_at,time_label,payload,is_source FROM (
                     SELECT id,document_id,occurred_at,sort_millis,time_label,document AS payload,TRUE AS is_source
-                    FROM timeline_source_projection
-                    WHERE %s IN ('all','sources') AND %s='all'
+                    FROM {source_table}
+                    WHERE %s IN ('all','sources') AND %s='all' {generation_filter}
                       AND (%s='all' OR platform=%s)
                       AND (%s::text IS NULL OR channel=%s)
                       AND (%s::text IS NULL OR %s=ANY(topic_names))
                     UNION ALL
                     SELECT id,NULL::bigint,occurred_at,sort_millis,NULL::text,item,FALSE
-                    FROM timeline_system_projection
-                    WHERE %s IN ('all','system')
+                    FROM {system_table}
+                    WHERE %s IN ('all','system') {generation_filter}
                       AND (%s='all' OR item->>'kind'=%s)
                       AND (%s::text IS NULL OR channel=%s)
                       AND (%s::text IS NULL OR topic=%s)
                 ) entries WHERE sort_millis <= FLOOR(EXTRACT(EPOCH FROM %s::timestamptz)*1000 + 0.5)
                 ORDER BY sort_millis DESC,id COLLATE "C" DESC LIMIT %s OFFSET %s
-            ''', (scope, kind, source, source, channel, channel, topic, topic,
-                  scope, kind, kind, channel, channel, topic, topic, until, size+1, (page-1)*size)).fetchall()
+            ''', (scope, kind, *source_generation, source, source, channel, channel, topic, topic,
+                  scope, *source_generation, kind, kind, channel, channel, topic, topic, until, size+1, (page-1)*size)).fetchall()
         items = []
         for ident, doc_id, stamp, label, payload, is_source in rows[:size]:
             if not is_source:
@@ -47,8 +68,8 @@ class PostgreSQLTimelineSources:
             items.append(TimelineItem(id=ident, kind='source', occurred_at=stamp.isoformat(),
                 title=doc.title, subject=doc.channel or doc.source_type,
                 time_label=label, to=f'/doc/{doc_id}', document=doc))
-        return TimelineResponse(items=items, page=page, size=size,
-                                has_more=len(rows)>size, until=until, as_of=now)
+        return GenerationTimelineResponse(items=items, page=page, size=size,
+                                has_more=len(rows)>size, until=until, as_of=now, generation=str(requested))
 
     def channels(self, *, until=None, include_owner_read_state=False):
         """Omit the legacy owner's read state unless explicitly requested."""
