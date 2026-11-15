@@ -169,13 +169,29 @@ class SectorGenerationFlow(unittest.TestCase):
         with self.pg() as c:
             self.assertEqual(embedding_for_current_snapshot(c, 1), (blob, 'fixture-hash'))
             self.assertIsNone(embedding_for_current_snapshot(c, 999))
+            self.assertEqual(c.execute('SELECT vector_count, stale_count, source_hash_missing_count FROM document_embedding_metadata').fetchone(), (1, 0, 1))
+        with closing(sqlite3.connect(self.path)) as c, c:
+            c.execute("UPDATE raw_documents SET content_hash='changed-hash' WHERE id=1")
+        self.load('2026-01-10T00:00:00+00:00', include_embeddings=True)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT vector_count, stale_count, source_hash_missing_count FROM document_embedding_metadata').fetchone(), (1, 1, 0))
         with closing(sqlite3.connect(self.path)) as c, c:
             c.execute('DELETE FROM doc_vec_hash WHERE rowid=1')
         with self.assertRaisesRegex(ValueError, 'Missing embedding hash'):
-            self.load('2026-01-10T00:00:00+00:00', include_embeddings=True)
+            self.load('2026-01-11T00:00:00+00:00', include_embeddings=True)
         with self.pg() as c:
             self.assertEqual(embedding_for_current_snapshot(c, 1), (blob, 'fixture-hash'))
-        self.load('2026-01-10T00:00:00+00:00')
+        with closing(sqlite3.connect(self.path)) as c, c:
+            c.enable_load_extension(True)
+            sqlite_vec.load(c)
+            c.enable_load_extension(False)
+            c.execute('INSERT INTO doc_vec_hash(rowid,content_hash) VALUES (?,?)', (1, 'fixture-hash'))
+            c.execute('DELETE FROM doc_vec WHERE rowid=1')
+            c.execute('INSERT INTO doc_vec(rowid,embedding) VALUES (?,?)',
+                      (1, struct.pack('<384f', float('nan'), *([0.0] * 383))))
+        with self.assertRaisesRegex(ValueError, 'non-finite'):
+            self.load('2026-01-11T00:00:00+00:00', include_embeddings=True)
+        self.load('2026-01-11T00:00:00+00:00')
         with self.pg() as c:
             with self.assertRaisesRegex(ValueError, 'do not match'):
                 embedding_for_current_snapshot(c, 1)

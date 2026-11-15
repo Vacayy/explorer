@@ -7,6 +7,8 @@ It is not a search index or live API. The source must have sqlite-vec loaded and
 already be in a query-only read transaction.
 """
 import re
+import math
+import struct
 
 from pipeline.search import EMBED_MODEL
 
@@ -24,16 +26,24 @@ def capture_embeddings(source, destination, generation):
     if source.execute('SELECT count(*) FROM doc_vec_hash h LEFT JOIN doc_vec v ON v.rowid=h.rowid WHERE v.rowid IS NULL').fetchone()[0]:
         raise ValueError('Embedding hash without vector')
     destination.execute('TRUNCATE document_embeddings, document_embedding_metadata')
-    count = 0
+    count = stale = unknown_hash = 0
     with destination.cursor().copy('COPY document_embeddings (document_id, embedding, content_hash) FROM STDIN') as copy:
-        for ident, embedding, hash_id, content_hash in source.execute('''SELECT v.rowid, v.embedding, h.rowid, h.content_hash
-            FROM doc_vec v LEFT JOIN doc_vec_hash h ON h.rowid=v.rowid'''):
+        for ident, embedding, hash_id, content_hash, source_hash in source.execute('''SELECT v.rowid, v.embedding, h.rowid, h.content_hash, d.content_hash
+            FROM doc_vec v LEFT JOIN doc_vec_hash h ON h.rowid=v.rowid
+            JOIN raw_documents d ON d.id=v.rowid'''):
             if hash_id is None or len(embedding) != _DIMENSIONS * 4:
                 raise ValueError('Missing embedding hash or invalid vector size')
+            if not all(math.isfinite(value[0]) for value in struct.iter_unpack('<f', embedding)):
+                raise ValueError('Embedding contains a non-finite value')
+            if source_hash is None:
+                unknown_hash += 1
+            elif content_hash != source_hash:
+                stale += 1
             copy.write_row((ident, bytes(embedding), content_hash))
             count += 1
-    destination.execute('INSERT INTO document_embedding_metadata (generation_id, expected_model, dimensions) VALUES (%s,%s,%s)',
-                        (generation, EMBED_MODEL, _DIMENSIONS))
+    destination.execute('''INSERT INTO document_embedding_metadata
+        (generation_id, expected_model, dimensions, vector_count, stale_count, source_hash_missing_count)
+        VALUES (%s,%s,%s,%s,%s,%s)''', (generation, EMBED_MODEL, _DIMENSIONS, count, stale, unknown_hash))
     return count
 
 

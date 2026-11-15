@@ -153,7 +153,10 @@ CREATE TABLE document_embedding_metadata (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
     generation_id UUID NOT NULL,
     expected_model TEXT NOT NULL,
-    dimensions INTEGER NOT NULL CHECK (dimensions = 384)
+    dimensions INTEGER NOT NULL CHECK (dimensions = 384),
+    vector_count BIGINT NOT NULL,
+    stale_count BIGINT NOT NULL,
+    source_hash_missing_count BIGINT NOT NULL
 );
 CREATE TABLE document_embeddings (
     document_id BIGINT PRIMARY KEY,
