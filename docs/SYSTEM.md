@@ -16,6 +16,8 @@
 
 `security.public_macro`는 `EXPLORER_PUBLIC_MACRO_DB`의 직접원천 schema/계열receipt 검증된 고정 지표만 readonly/query_only snapshot으로 읽고 `pipeline.macro.numeric_macro` 순수 계산을 재사용한다. `/api/spine/macro/public`은 `PublicMacroResponse`의 수치·관측일·5관측 비교일·원출처/입력일·coverage만 반환한다. 기존 GET의 lazy수집과 signal/개인체크/환경설정은 연결하지 않는다. 직접Board/NYFed취득을 작은독립저장본으로 준비하고 `/home/macro`는 지표별관측일/5관측비교/혼합입력날짜/출처를 표시한다. Yahoo원천검토·정기갱신·매크로국면/리스크/해설 연결은 후속이며 운영공개를 뜻하지 않는다.
 
+국면 계산은 `regimes.regimes_from_series`로 명시한 종가/침체 snapshot을 받을 수 있고, `era.quantitative_temperature`는 개인 체크를 읽지 않는 기존 정량 items 계산이다. 기존 개인 진입점이 이 함수를 재사용하며 기존 결과를 유지한다. 이 분리는 공개 API/자료권리 승인이나 운영 연결을 뜻하지 않는다. `risk.get_risk`의 전역 DB fallback·sync metadata 및 개인 shared cache는 공개 진입에서 제외해야 한다. 상세는 market-regimes spec의 공개 정량 경계에 기록한다.
+
 ## 회원 운용 원칙 소유권 준비
 
 명시적 `initialize_ownership`는 기존 회원 포트폴리오 group에 연결된 `member_portfolio_principles` 테이블/인덱스를 준비한다. `/api/member/portfolio/principles` GET/POST 및 항목 PUT/PATCH/DELETE는 `MemberPrinciples`가 인증 사용자 소유 group 안에서만 처리한다. 기존 개인용 원칙 테이블·전역 scheduler/LLM과 분리하고 기존 규칙 validate/describe만 재사용한다. 원칙 state GET은 동일 readonly snapshot의 본인 원장과 기존 순수 violations로 평가하며 규칙별 evaluated/partial/unavailable/not_applicable을 반환한다. 취득가 대체 시세로 비중을 판정하지 않는다. 고점 복합규칙은 시장·편입 전252개 저장관측·유한 양수·평가 종가일치를 검증한 본인 보유만 기존 계산기에 전달한다. 로더가 제거하는 NULL/비양수/비수치 원자료도 먼저 검사해 평가에서 제외한다. 저장되지 않은 거래일의 완전성은 보장하지 않으며 역사적 평가·공통노출은 미검증으로 명시한다. 회원 `/portfolio/principles` 화면은 원문/직접 확인한 규칙·참고목록 CRUD와 평가 상태를 제공한다. 규칙 metadata GET은 기존 RULES 정의를 제공하고 계정별 query key 및 화면 remount로 분리한다. 문장 자동 해석·나머지 평가입력·회원 알림은 후속이며 운영 schema/데이터 이관을 뜻하지 않는다.

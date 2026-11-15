@@ -94,3 +94,11 @@
 - P1: 사임 규칙·10Y−3M 역전 신호, Baa−10Y 1986 이전 월간 연장, 연준 EBP, 1980~87 S&P 총수익 근사(Shiller 배당).
 - P2: 성장×물가 4분면, Pagan–Sossounov 견고성 점검, 난류 지수, KOSPI 국면.
 - §8 후속: forward P/E·상위 종목 집중도·시총/GDP·HY 부도율·BDC 할인/PIK 수집(온도·전제 원장의 빈칸), 새 Marks 메모가 들어오면 바뀐 판단만 짚는 해설.
+
+## 공개 정량 계산 경계 준비
+
+`regimes_from_series(series, recessions, fetched)`는 명시한 시간순 종가/침체 snapshot으로 기존 국면 응답을 계산한다. `get_regimes()`가 그대로 재사용하며 confirm_date·confirm_lag_days·provisional과 기존 월말/주별 계산을 유지한다. 이 함수가 입력의 품질·공개 권한을 승인하지 않는다.
+
+`era.quantitative_temperature(conn)`는 기존 정량 items만 계산한다. 개인 `era_checks`를 읽거나 합산 verdict를 만들지 않는다. 기존 개인 `layer_temperature`는 이 결과에 정성 체크를 합쳐 원래 응답을 유지한다. 테스트는 개인 체크8개 변경으로 기존 verdict가 달라져도 정량 items는 같고, 개인 테이블 접근을 거부한 연결에서도 정량 계산이 같은지 확인한다. 빈 정량 입력은 빈 목록이며 중립 판정으로 채우지 않는다.
+
+공개 연결은 아직 미구현이다. 후속 reader는 검증된 원천 snapshot만 전달하고 `get_state`, `layer_premises`, `era_commentary.latest`, 전역 `shared` cache를 사용하지 않는다. `risk.get_risk`는 요청키 외 HY/금리와 sync metadata를 읽으며 빈 입력에서 전체 DB로 fallback할 수 있으므로 공개 진입점으로 재사용하지 않는다. 공용 금리차는 동일 관측일 교집합, bp 변환·실제 관측일을 보존해야 하고 HY 입력이 미확인인 복합 신호는 clear가 아니라 unavailable이어야 한다. S&P500/VIX/ICE/Moody's/CNN 원천 이용 조건과 개인 영향을 제거한 판정·UI·운영 연결은 별도 수용 범위다.

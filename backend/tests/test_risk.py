@@ -9,6 +9,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pipeline import risk
+from services import shared_result
 from models.risk import RiskResponse
 from routers.spine_risk import router
 
@@ -28,6 +29,16 @@ class RiskTests(unittest.TestCase):
         with self.connection() as c:
             c.executescript('''CREATE TABLE market_indicators(snapshot_date TEXT, indicator TEXT, value REAL, extra_json TEXT, PRIMARY KEY(snapshot_date,indicator)); CREATE TABLE cache_meta(cache_key TEXT PRIMARY KEY, fetched_at TEXT, expires_at TEXT);''')
         self.addCleanup(self.tmp.cleanup)
+        # The window route's shared cache probes database.DB_PATH independently
+        # of get_connection; keep that probe on this fixture, never the host DB.
+        probe_path=patch.object(shared_result.database,'DB_PATH',self.path)
+        probe_path.start();self.addCleanup(probe_path.stop)
+        def close_probe():
+            if shared_result._probe is not None:
+                shared_result._probe[1].close()
+                shared_result._probe=None
+            shared_result._entries.clear()
+        self.addCleanup(close_probe)
         for target in [risk, risk.cache_service]:
             p=patch.object(target,'get_connection',self.connection);p.start();self.addCleanup(p.stop)
     def connection(self):

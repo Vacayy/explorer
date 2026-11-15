@@ -193,6 +193,16 @@ def get_regimes() -> dict:
         fetched = conn.execute("SELECT max(fetched_at) FROM us_prices WHERE stock_code=?", (INDEX,)).fetchone()[0]
     finally:
         conn.close()
+    return regimes_from_series(series, recessions, fetched)
+
+
+def regimes_from_series(series: list[tuple[str, float]], recessions: list[dict],
+                        fetched: str | None = None) -> dict:
+    """Existing regime calculation over an explicit chronological price snapshot.
+
+    Preserve historical confirmation dates, lags and provisional phases. The
+    caller must validate input quality and permission before publishing results.
+    """
     phases = phases_of(series)
     trend = trend_of(series)
     current = None
