@@ -49,6 +49,14 @@ CREATE TABLE sector_market_benchmark_prices (
     ticker TEXT NOT NULL, trade_date TEXT NOT NULL, close DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (ticker, trade_date)
 );
+CREATE TABLE sector_market_us_metadata (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    generation_id UUID NOT NULL,
+    classifications BIGINT NOT NULL
+);
+CREATE TABLE sector_market_us_classifications (
+    ticker TEXT PRIMARY KEY, sector TEXT, industry TEXT, fetched_at TEXT
+);
 CREATE TABLE sector_market_index (
     sector TEXT NOT NULL, trade_date TEXT NOT NULL, value DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (sector, trade_date)

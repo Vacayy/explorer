@@ -214,10 +214,12 @@ def _store_legacy_tables(source, target, *, include_claims=False):
 
 def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_check=None,
                   include_sector=False, peer_runtime=None, media_root=None, include_embeddings=False,
-                  include_claims=False, include_centroids=False) -> dict:
+                  include_claims=False, include_centroids=False, include_us=False) -> dict:
     """Replace the projection atomically from one existing SQLite transaction."""
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('An active query-only SQLite snapshot is required')
+    if include_us and not include_sector:
+        raise ValueError('US sector data requires the linked sector snapshot')
     instant = datetime.fromisoformat(snapshot_at.replace('Z', '+00:00'))
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError('snapshot_at must include timezone')
@@ -314,7 +316,10 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str, capacity_chec
             from pipeline.postgres_sector_market import load_sector_market
             # Both domains use this SQLite transaction and this PostgreSQL
             # transaction. Failure in either leaves the prior snapshot intact.
-            load_sector_market(source, target, peer_runtime=peer_runtime, document_generation=generation)
+            if include_us:
+                load_sector_market(source, target, peer_runtime=peer_runtime, document_generation=generation, include_us=True)
+            else:
+                load_sector_market(source, target, peer_runtime=peer_runtime, document_generation=generation)
         target.execute('INSERT INTO snapshot_metadata '
                        '(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) '
                        'VALUES (TRUE,%s,%s,%s,%s,%s)',

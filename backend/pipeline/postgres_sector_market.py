@@ -15,9 +15,11 @@ _COLUMNS = ('id', 'stock_code', 'trade_date', 'open', 'high', 'low', 'close',
             'volume', 'market_cap', 'shares', 'fetched_at')
 
 
-def load_sector_market(source, destination, *, peer_runtime=None, document_generation=None):
+def load_sector_market(source, destination, *, peer_runtime=None, document_generation=None, include_us=False):
     if not source.in_transaction or source.execute('PRAGMA query_only').fetchone()[0] != 1:
         raise ValueError('A query-only SQLite transaction is required')
+    if include_us and document_generation is None:
+        raise ValueError('US sector data requires a linked document generation')
     index_columns = [row[2] for row in source.execute('PRAGMA index_info(idx_entity_links_entity)')]
     if index_columns != ['entity_id', 'link_type']:
         raise ValueError('Unsupported SQLite entity link index')
@@ -48,7 +50,16 @@ def load_sector_market(source, destination, *, peer_runtime=None, document_gener
                             'sector_market_themes, sector_market_narratives, sector_market_entities, '
                             'sector_market_company_entities, sector_market_documents, sector_market_document_links, '
                             'sector_market_doc_scan, sector_market_trade_follow, sector_market_trade_stats, '
-                            'sector_market_taiwan_revenue, sector_market_season_themes, sector_market_overviews')
+                            'sector_market_taiwan_revenue, sector_market_season_themes, sector_market_overviews, '
+                            'sector_market_us_metadata, sector_market_us_classifications')
+        if include_us:
+            count_us = 0
+            with destination.cursor().copy('COPY sector_market_us_classifications (ticker,sector,industry,fetched_at) FROM STDIN') as copy:
+                for row in source.execute('SELECT ticker,sector,industry,fetched_at FROM us_ticker_sectors'):
+                    copy.write_row(tuple(row))
+                    count_us += 1
+            destination.execute('INSERT INTO sector_market_us_metadata(generation_id,classifications) VALUES (%s,%s)',
+                                (document_generation, count_us))
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:

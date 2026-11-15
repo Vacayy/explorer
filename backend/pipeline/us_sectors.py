@@ -365,11 +365,18 @@ def _etf_row(t: str, series: dict, now: dict, trails: dict, as_of: str, cov: dic
 
 def us_map(conn) -> dict:
     series = _series(conn)
+    if not series[SPY]:
+        return {'as_of': None, 'spy': [], 'sectors': []}
+    return us_map_from_data(series, follows(conn))
+
+
+def us_map_from_data(series: dict, followed: list[dict]) -> dict:
+    """Build the existing map from already-loaded price and coverage data."""
     as_of = series[SPY][-1][0] if series[SPY] else None
     if not as_of:
         return {"as_of": None, "spy": [], "sectors": []}
     now, trails = _rs_bundle(series, as_of)
-    cov = coverage_counts(follows(conn))
+    cov = coverage_counts(followed)
     rows = []
     for t in wall_order():
         if not series[t]:
