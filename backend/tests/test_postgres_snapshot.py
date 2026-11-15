@@ -39,7 +39,8 @@ from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_projection_copy_fixture import copy_projection, PROJECTION_TABLES
 from pipeline.postgres_note_overlay_fixture import copy_with_note_changes
-from pipeline.postgres_ingest_runner_fixture import embed_document, run_source, registered_connector
+from pipeline.postgres_ingest_runner_fixture import (embed_document, run_source, registered_connector,
+    initialize_youtube_registry, registered_youtube_connector)
 from pipeline.connectors.notes import NoteConnector
 from pipeline.connectors.blog import BlogConnector
 from pipeline.connectors.telegram import TelegramConnector
@@ -846,19 +847,22 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             c.execute("INSERT INTO blog_sources VALUES ('https://disabled.test/','naver','중지',1,0)")
             c.execute("INSERT INTO telegram_channels VALUES ('fixture','합성 채널',1,1)")
             c.execute("INSERT INTO telegram_channels VALUES ('disabled','수집 중지',1,0)")
-            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','합성 영상 채널',1)")
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','UCfixture',1)")
         self.load('2026-01-03T00:00:00+00:00',include_linking=True)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
             initialize_graph(c)
+            initialize_youtube_registry(c)
         blog=registered_connector(self.pg,'blog')
         telegram=registered_connector(self.pg,'telegram')
+        youtube=registered_youtube_connector(self.pg)
         self.assertEqual([r.key for r in blog.discover()],['https://example.test/'])
         self.assertEqual([r.key for r in telegram.discover()],['fixture'])
         post={'title':'합성 블로그','url':'https://example.test/new','published_at':'2026-01-02T00:00:00Z','content':'블로그 본문 '*100}
         message={'message_id':'123','content':'합성 텔레그램 본문','date':'2026-01-02T00:00:00Z','link':'https://t.me/fixture/123','images':[]}
         answer=SimpleNamespace(text='{"summary":"기존 요약 함수 결과","topics":[]}',label='fake')
+        feed=SimpleNamespace(feed={'title':'합성 영상 채널','links':[{'rel':'alternate','href':'https://www.youtube.com/channel/UCfixture'}]})
         with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')), \
              patch('pipeline.connectors.blog.get_connection',side_effect=AssertionError('unexpected SQLite')), \
              patch('pipeline.connectors.telegram.get_connection',side_effect=AssertionError('unexpected SQLite')), \
@@ -867,19 +871,33 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
              patch('pipeline.connectors.telegram.scrape_channel',return_value=[message]), \
              patch('pipeline.connectors.telegram.image_reading.read_images',return_value={}), \
              patch('pipeline.connectors.youtube.fetch_transcript',return_value='합성 영상 자막'), \
+             patch('pipeline.connectors.youtube.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+             patch('pipeline.connectors.youtube._rss_entries',return_value=(feed,[{'yt_videoid':'abc123def45','title':'합성 영상','published':'2026-01-02T00:00:00Z'}])), \
              patch('pipeline.connectors.youtube._video_title',return_value='합성 영상'), \
              patch('pipeline.connectors.youtube._video_published',return_value='2026-01-02T00:00:00Z'), \
              patch('pipeline.connectors.youtube.video_channel_id',return_value='UCfixture'), \
              patch('pipeline.enrich.llm_available',return_value=True), \
              patch('pipeline.enrich.llm.run',return_value=answer):
-            for connector in (blog,telegram,YouTubeConnector(video_ids=['abc123def45'])):
-                result=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
-                self.assertEqual((result['new'],result['enriched'],result['enrichment_failed']),(1,1,0))
+            for connector in (blog,telegram,youtube):
+                if connector is youtube:
+                    def failing(*args): raise RuntimeError('fixture enrichment failure')
+                    result=run_exclusive_cycle(connector,self.pg,enrich=failing)
+                    self.assertEqual((result['new'],result['enriched'],result['enrichment_failed']),(1,0,1))
+                    retried=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
+                    self.assertEqual((retried['docs'],retried['enriched'],retried['enrichment_failed']),(0,1,0))
+                    with self.pg() as c:
+                        self.assertEqual(c.execute("SELECT title FROM ingest_youtube_registry WHERE channel_id='UCfixture'").fetchone()[0],'합성 영상 채널')
+                        c.execute("UPDATE ingest_youtube_registry SET title='수동 이름' WHERE channel_id='UCfixture'")
+                else:
+                    result=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
+                    self.assertEqual((result['new'],result['enriched'],result['enrichment_failed']),(1,1,0))
                 repeated=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
-                self.assertEqual((repeated['unchanged'],repeated['enriched']),(1,0))
+                self.assertEqual(repeated['enriched'],0)
+                self.assertEqual(repeated['unchanged'],0 if connector is youtube else 1)
         with self.pg() as c:
             rows=c.execute("SELECT d.source_type,e.summary FROM ingest_documents d JOIN ingest_enrichments e ON e.document_id=d.id WHERE e.model='fake' ORDER BY d.source_type").fetchall()
             self.assertEqual(rows,[(name,'기존 요약 함수 결과') for name in ('blog','telegram','youtube')])
+            self.assertEqual(c.execute("SELECT title FROM ingest_youtube_registry WHERE channel_id='UCfixture'").fetchone()[0],'수동 이름')
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
         publisher=FixturePublisher(self.pg,self.schema,target)
         try:

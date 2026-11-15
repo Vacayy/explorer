@@ -8,6 +8,13 @@ CREATE TABLE ingest_youtube_channels (
     channel_id TEXT PRIMARY KEY,
     title TEXT NOT NULL
 );
+CREATE TABLE ingest_youtube_registry (
+    channel_id TEXT PRIMARY KEY,
+    title TEXT,
+    is_active INTEGER,
+    collect_enabled INTEGER
+);
+CREATE TABLE ingest_youtube_registry_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton));
 CREATE TABLE ingest_documents (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_type TEXT NOT NULL,

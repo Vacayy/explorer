@@ -43,6 +43,44 @@ def registered_connector(factory, source):
     return connector(sources)
 
 
+def initialize_youtube_registry(conn):
+    """Initialize the fixture's writable registry from its captured source."""
+    _guard(conn)
+    if not conn.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='youtube_channels'").fetchone():
+        raise ValueError('YouTube registry missing from snapshot')
+    if conn.execute('SELECT 1 FROM ingest_youtube_registry_state').fetchone():
+        raise ValueError('YouTube registry already initialized')
+    rows = conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='youtube_channels' ORDER BY row_ordinal").fetchall()
+    for (row,) in rows:
+        conn.execute('INSERT INTO ingest_youtube_registry VALUES (%s,%s,%s,%s)',
+                     (row['channel_id'], row.get('title'), row.get('is_active'), row.get('collect_enabled')))
+    conn.execute('INSERT INTO ingest_youtube_registry_state DEFAULT VALUES')
+
+
+def registered_youtube_connector(factory, *, channel_ids=None):
+    """Create a YouTube connector backed by the disposable registry and ledger."""
+    from pipeline.connectors.youtube import YouTubeConnector
+    def registry(ids):
+        with factory() as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            _guard(conn)
+            if not conn.execute('SELECT 1 FROM ingest_youtube_registry_state').fetchone():
+                raise ValueError('YouTube registry is not initialized')
+            rows = conn.execute('SELECT channel_id,title,is_active,collect_enabled FROM ingest_youtube_registry ORDER BY channel_id').fetchall()
+            seen = {r[0].split('/')[-1] for r in conn.execute("SELECT source_id FROM ingest_documents WHERE source_type='youtube'")}
+        channels = [{'channel_id': cid, 'title': title} for cid,title,active,enabled in rows
+                    if (cid in ids if ids else active == 1 and (enabled is None or enabled == 1))]
+        return channels, seen
+    def repair(cid, title):
+        if not title or title == cid:
+            return
+        with factory() as conn:
+            _guard(conn)
+            conn.execute("UPDATE ingest_youtube_registry SET title=%s WHERE channel_id=%s "
+                         "AND (title IS NULL OR btrim(title)='' OR btrim(title)=channel_id)", (title,cid))
+    return YouTubeConnector(channel_ids=channel_ids,registry_loader=registry,title_repair=repair)
+
+
 def run_source(connector, factory, *, clock=lambda: datetime.now(timezone.utc), on_stored=None):
     with factory() as conn:
         _guard(conn)

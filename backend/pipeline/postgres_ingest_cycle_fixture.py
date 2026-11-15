@@ -10,19 +10,18 @@ CYCLE_LOCK=0x4558504C4359434C
 def run_cycle(connector, factory, *, enrich, worker_id='fixture-worker'):
     validate_enricher(enrich)
     changed=[]
-    unchanged=[]
     def collect(result):
         if result['status'] in ('new','updated'):
             changed.append(result['id'])
-        elif result['status'] == 'unchanged':
-            unchanged.append(result['id'])
     stats=run_source(connector,factory,on_stored=collect)
-    if unchanged:
+    source_type = getattr(connector, 'source_type', None)
+    if source_type:
         with factory() as conn:
             _guard(conn)
-            retry={row[0] for row in conn.execute("SELECT document_id FROM ingest_enrichment_jobs "
-                    "WHERE status='failed' AND document_id=ANY(%s)",(unchanged,))}
-        changed.extend(ident for ident in unchanged if ident in retry)
+            retry = [row[0] for row in conn.execute("SELECT j.document_id FROM ingest_enrichment_jobs j "
+                    "JOIN ingest_documents d ON d.id=j.document_id "
+                    "WHERE j.status='failed' AND d.source_type=%s ORDER BY j.document_id", (source_type,))]
+        changed.extend(retry)
     enriched=failed=0
     for ident in dict.fromkeys(changed):
         try:
