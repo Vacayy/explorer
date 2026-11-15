@@ -7,6 +7,17 @@ from security import public_narratives as public
 from tests.test_world_reads import SEED
 
 class PublicNarrativeTests(unittest.TestCase):
+    def test_sector_mega_reads_only_explicit_public_projection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'narratives.sqlite'
+            with sqlite3.connect(path) as c:
+                c.executescript('''CREATE TABLE narratives(id,topic,title,body,category,version,created_at,kind);
+                    CREATE TABLE public_sector_mega(id,topic,title,body,version,created_at);
+                    INSERT INTO narratives VALUES(20,'mega','private','private-canary',NULL,1,'2026-11-15','mega');
+                    INSERT INTO public_sector_mega VALUES(20,'mega','title','published',1,'2026-11-15');''')
+            self.assertEqual(public.stored_body('mega',path=path)['narrative'],'published')
+            self.assertEqual(public.stored_body(version_id=20,path=path)['status'],'not_found')
+
     def test_stored_changes_body_versions_and_graph_exclude_private_reads(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'narratives.sqlite'

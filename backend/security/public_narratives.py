@@ -9,6 +9,7 @@ from pipeline.world_reads import narrative_changes
 COLUMNS = {
     'signals': {'entity_id','signal_type','date','payload_json'},
     'narratives': {'id','topic','title','body','version','category','kind','created_at','superseded_at','drift_summary','change_summary'},
+    'public_sector_mega': {'id','topic','title','body','version','created_at'},
     'entities': {'id','name','type'},
     'entity_relations': {'id','src_id','dst_id','rel_type','narrative_id','mechanism','reference_period','time_orientation','confidence','effect_direction','effect_strength','geo_scope'},
     'narrative_edge_evidence': {'entity_relation_id','narrative_id'},
@@ -37,6 +38,11 @@ def stored_body(topic=None,version_id=None,*,path=None):
     with closing(connection(path)) as conn:
         field,value=('id',version_id) if version_id is not None else ('topic',topic)
         row=conn.execute('SELECT id,title,body,category,version,created_at FROM narratives WHERE '+field+"=? AND COALESCE(kind,'topic')='topic' ORDER BY version DESC LIMIT 1",(value,)).fetchone()
+        if row is None and version_id is None:
+            try:
+                row=conn.execute('SELECT id,title,body,NULL AS category,version,created_at FROM public_sector_mega WHERE topic=? ORDER BY version DESC LIMIT 1',(topic,)).fetchone()
+            except sqlite3.OperationalError as exc:
+                if 'no such table: public_sector_mega' not in str(exc): raise
     if not row:return {'status':'not_found'}
     return dict(status='cached',title=row['title'],narrative=row['body'],category=row['category'],version=row['version'],created_at=row['created_at'],narrative_id=row['id'],stale=False)
 
