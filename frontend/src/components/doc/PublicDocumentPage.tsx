@@ -8,6 +8,7 @@ import { PageContainer } from '@/components/shared/PageContainer'
 import { EmptyState, ErrorState } from '@/components/shared/ErrorState'
 import { Markdown } from '@/components/shared/Markdown'
 import { Button } from '@/components/ui/button'
+import { ChevronDown } from 'lucide-react'
 import type { PublishedAttachment, PublishedDocument } from '@/types'
 
 function DocumentContainer({ children }: { children: ReactNode }) {
@@ -66,9 +67,23 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
 /** Approved text and document-bound attachments; never resolves raw /media or private document tools. */
 export function PublishedDocumentBody({ document }: { document: PublishedDocument }) {
   const id = document.id
+  const [showOriginal, setShowOriginal] = useState(false)
+  const hasSummary = !!document.summary?.trim()
   const attachments = document.attachments.filter(attachment => Number.isSafeInteger(attachment.id) && attachment.id >= 0
     && attachment.url === `/api/public/documents/${id}/attachments/${attachment.id}`)
   return <>
+    {hasSummary && <section aria-label="요약" className="min-w-0 space-y-3">
+      <Markdown className="min-w-0 [&_pre]:overflow-x-auto" components={{ img: () => null,
+        a: ({ href, children }) => {
+          const safe = safeExternalUrl(href)
+          return safe ? <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>
+        } }}>{document.summary ?? ''}</Markdown>
+      <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal}
+        onClick={() => setShowOriginal(value => !value)}>
+        {showOriginal ? '원문 접기' : '원문 보기'}<ChevronDown aria-hidden="true" className={`size-3 transition-transform ${showOriginal ? 'rotate-180' : ''}`} />
+      </Button>
+    </section>}
+    {(!hasSummary || showOriginal) && <>
     <section aria-label="보관된 본문" className="min-w-0 space-y-3">
       <h2 className="text-sm font-medium text-ink-2">보관된 본문</h2>
       {document.content.trim() ? document.content_kind === 'stored_markdown'
@@ -86,5 +101,6 @@ export function PublishedDocumentBody({ document }: { document: PublishedDocumen
       <h2 className="text-sm font-medium text-ink-2">공개 첨부</h2>
       {attachments.map((attachment, index) => <Attachment key={`${id}:${attachment.id}`} attachment={attachment} index={index} />)}
     </section>}
+    </>}
   </>
 }

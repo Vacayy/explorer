@@ -26,6 +26,7 @@ class PublishedDocument(BaseModel):
     content_kind: Literal['stored_markdown', 'stored_text']
     attachments: list[PublishedAttachment]
     channel: PublishedChannel | None = None
+    summary: str | None = None
 
 
 class PublicationPreview(BaseModel):

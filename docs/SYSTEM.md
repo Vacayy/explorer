@@ -12,6 +12,10 @@
 
 공개 컨콜의 `public_transcript_sources`는 직접 대조한 개별 원문 URL만 준비하며 transcript ID와 티커·회계연도/분기·콜 날짜·제공사가 모두 일치해야 한다. Motley Fool HTTPS 공식 도메인/기사 경로와 분기 suffix를 검증하고, 준비되지 않거나 맞지 않는 링크는 기존 제공사 안내를 유지한다. 원문 링크가 있어도 제한 본문·digest는 반환하지 않는다. 과거 사본의 링크 테이블 부재는 제공사 안내로 호환하며 조회 중 수집/DDL은 실행하지 않는다.
 
+## 공개 수집 자료
+
+공개 자료 사본에 `public_collection_index`가 명시적으로 준비된 경우 공개 문서와 피드는 그 인덱스에 담긴 수집 자료만 읽는다. 원본 DB가 아니라 개인정보를 분리한 읽기 전용 사본과 첨부 디렉터리가 전제이며, 요청 중 인덱스 생성이나 AI 요약 생성을 수행하지 않는다. 기존에 저장된 `enrichments.summary`는 문서 응답에 포함되고 기존 피드의 요약/원문 보기 방식으로 표시한다. 인덱스가 없는 기존 배포는 기존 승인 방식으로 동작한다.
+
 ## 공개 미국 기업 상세의 저장 수치 조회
 
 공개 `/us/:ticker`는 기존 기업 헤더·시세 차트·실적 카드·재무 탭·손익 흐름·발표 이력을 사용한다. `security.public_us_dossier`는 공개 미국 기업 registry에 속한 티커만 같은 readonly snapshot의 `us_fundamentals`(준비된 수치 JSON·수집 시각), OHLCV, `us_quarterly`, `us_segments`에서 읽는다. 기존 `/api/spine/us/{ticker}`와 손익/분기 API, `/api/spine/feed/company-prices?market=us`의 공개 분기이며 get_fundamentals의 TTL 수집·갱신을 호출하지 않는다. 주가 응답은 `CompanyPriceResponse`로 소수점 OHLC를 보존한다. `income_flow`는 호출자 소유 연결을 받을 수 있으며 기존 분기/TTM·사업부 계산을 재사용한다. 자료 없는 기업은 재무 스냅샷 없음으로 표시한다. 개인 Watch/Save/수집/기술분석 실행은 마운트하지 않는다. 기업 설명·증거·Lens·월드모델의 공개 연결은 별도 후속이며 전체 기능 수용이나 원천 재배포 권리 승인을 뜻하지 않는다.

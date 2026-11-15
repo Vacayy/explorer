@@ -21,6 +21,7 @@ def stored_evidence(company, *, market='us', path=None, service=None, q='', **fi
             company = _company(conn, company)
             links = conn.execute('SELECT doc_id, fingerprint FROM public_company_evidence WHERE ticker=? ORDER BY doc_id', (company['ticker'],)).fetchall()
     service = service or PublicDocuments.from_environment()
+    collection = service.collection_enabled()
     budget, candidates, fingerprints = ReadBudget(), [], {}
     needle = q.strip().lower()
     for link in links:
@@ -28,7 +29,7 @@ def stored_evidence(company, *, market='us', path=None, service=None, q='', **fi
             snapshot = service.published(link['doc_id'], budget=budget)
         except DocumentUnavailable:
             continue
-        if snapshot.fingerprint != link['fingerprint']:
+        if not collection and snapshot.fingerprint != link['fingerprint']:
             continue
         doc = snapshot.document
         fingerprints[doc.id] = snapshot.fingerprint
@@ -39,7 +40,8 @@ def stored_evidence(company, *, market='us', path=None, service=None, q='', **fi
             excerpt=plain_text(doc.content[:1500])[:600], relation='기업 연결 자료',
             matched=needle in (doc.title + ' ' + doc.content).lower()))
     # Recheck the entire input before computing any count, coverage or flow.
-    candidates = [row for row in candidates if
-        (record := service.store.get(row['doc_id'])) and record['status'] == 'approved'
-        and record['fingerprint'] == fingerprints[row['doc_id']]]
+    if not collection:
+        candidates = [row for row in candidates if
+            (record := service.store.get(row['doc_id'])) and record['status'] == 'approved'
+            and record['fingerprint'] == fingerprints[row['doc_id']]]
     return evidence_response(candidates, market=market, **filters)

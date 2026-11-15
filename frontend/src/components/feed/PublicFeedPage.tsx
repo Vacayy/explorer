@@ -25,7 +25,7 @@ export function PublicFeedPage() {
   const channel = params.get('channel') || ''
   const platform = params.get('channel_type') || 'all'
   const topic = params.get('reader_topic') || ''
-  const page = Math.max(1, Math.min(100, Math.floor(Number(params.get('reader_page'))) || 1))
+  const page = Math.max(1, Math.min(2000, Math.floor(Number(params.get('reader_page'))) || 1))
   const search = params.get('channel_q') || ''
   const readerOpen = params.get('reader_open') === '1' || (!params.has('reader_open') && !!channel)
   const query = usePublicFeed({ channel, platform, topic, page, until })
@@ -107,8 +107,8 @@ export function PublicFeedPage() {
           {data && <nav className="flex flex-wrap items-center justify-between gap-3 border-t pt-5" aria-label="게시물 페이지">
             <Button variant="outline" size="sm" disabled={page === 1} onClick={() => paginate(page - 1)}><ChevronLeft aria-hidden="true" />이전</Button>
             <span className="text-caption text-ink-3" role="status">{page}페이지{!data.has_more && ' · 마지막'}</span>
-            <Button variant="outline" size="sm" disabled={!data.has_more || page >= 100} onClick={() => paginate(page + 1)}>다음<ChevronRight aria-hidden="true" /></Button>
-            {page >= 100 && data.has_more && <p className="w-full text-caption text-ink-3">더 이전 자료는 <Link to="/feed?view=documents" className="underline">문서 검색</Link>에서 확인하세요.</p>}
+            <Button variant="outline" size="sm" disabled={!data.has_more || page >= 2000} onClick={() => paginate(page + 1)}>다음<ChevronRight aria-hidden="true" /></Button>
+            {page >= 2000 && data.has_more && <p className="w-full text-caption text-ink-3">더 이전 자료는 <Link to="/feed?view=documents" className="underline">문서 검색</Link>에서 확인하세요.</p>}
           </nav>}
         </div>
       </div>

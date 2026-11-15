@@ -2082,6 +2082,7 @@ export interface PublicFeedChannel extends PublishedChannel { count: number; lat
 export interface PublicFeed { channels: PublicFeedChannel[]; items: PublishedDocumentItem[]; page: number; has_more: boolean; until: string }
 export interface PublishedDocument {
   channel?: PublishedChannel | null
+  summary?: string | null
   id: number
   title: string
   source_type: string

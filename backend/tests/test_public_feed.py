@@ -9,6 +9,22 @@ from security.public_documents import DocumentUnavailable
 class PublicFeedTests(unittest.TestCase):
     setUp = fixtures.PublicDocumentTests.setUp
     mutate = fixtures.PublicDocumentTests.mutate
+    def test_collection_reads_indexed_documents_and_stored_summaries_without_approvals(self):
+        with sqlite3.connect(self.source) as conn:
+            conn.executescript('''CREATE TABLE enrichments(id INTEGER PRIMARY KEY,doc_id INTEGER,summary TEXT,enriched_at TEXT);
+                INSERT INTO enrichments VALUES(1,1,'Stored summary','2026-11-14');
+                CREATE TABLE public_collection_index(doc_id INTEGER PRIMARY KEY,channel TEXT,name TEXT,
+                    platform TEXT,title TEXT,published_at TEXT,sort_at TEXT);
+                INSERT INTO public_collection_index VALUES(1,'web:example.test','example.test','web',
+                    'Reviewed title','2026-11-14','2026-11-14T00:00:00+00:00');''')
+        document = self.client.get('/api/public/documents/1')
+        self.assertEqual(document.status_code, 200)
+        self.assertEqual(document.json()['summary'], 'Stored summary')
+        self.assertEqual(self.client.get('/api/public/documents/1/attachments/0').content, fixtures.PNG)
+        self.assertEqual(self.client.get('/api/public/documents/2').status_code, 404)
+        self.assertEqual([item['id'] for item in self.client.get('/api/public/feed').json()['items']], [1])
+        self.assertEqual([item['id'] for item in self.client.get('/api/public/documents?q=BODY').json()['items']], [1])
+        self.assertEqual(self.client.get('/api/public/documents?q=private-canary').json()['items'], [])
     def test_channel_navigation_and_changed_source_requires_review(self):
         with sqlite3.connect(self.source) as conn:
             conn.executescript("""ALTER TABLE raw_documents ADD COLUMN source_id TEXT;

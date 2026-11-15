@@ -118,6 +118,10 @@ class PublicDocuments:
         if self.source.resolve() == self.store.path.resolve():
             raise ValueError('Separate publication store required')
 
+    def collection_enabled(self):
+        with sqlite3.connect(self.source.as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+            return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='public_collection_index'").fetchone() is not None
+
     @classmethod
     def from_environment(cls):
         from config import DB_PATH, MEDIA_PATH
@@ -140,6 +144,8 @@ class PublicDocuments:
                     (MAX_TEXT + 1, MAX_TEXT + 1, doc_id)).fetchone()
                 from security.public_feed import channel_for
                 channel = channel_for(conn, row) if row else None
+                collection = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='public_collection_index'").fetchone() is not None
+                summary = conn.execute('SELECT summary FROM enrichments WHERE doc_id=? ORDER BY enriched_at DESC,id DESC LIMIT 1', (doc_id,)).fetchone() if collection and row else None
             finally:
                 conn.close()
             if not row: raise DocumentUnavailable()
@@ -166,8 +172,11 @@ class PublicDocuments:
                 if index == selected: selected_bytes = data
             document = PublishedDocument(id=doc_id, title=row['title'] or '', source_type=row['source_type'] or '',
                 url=_safe_url(row['url']), published_at=row['published_at'], content=content,
-                content_kind='stored_markdown' if row['markdown'] else 'stored_text', attachments=attachments, channel=channel)
+                content_kind='stored_markdown' if row['markdown'] else 'stored_text', attachments=attachments, channel=channel,
+                summary=summary[0] if summary else None)
             material = {'version':1, 'document':document.model_dump(mode='json'), 'attachments':manifest}
+            if document.summary is None:
+                material['document'].pop('summary')
             if channel is None:
                 material['document'].pop('channel')  # Preserve old approvals with no additional source metadata.
             fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True, ensure_ascii=False, separators=(',',':')).encode()).hexdigest()
@@ -190,6 +199,14 @@ class PublicDocuments:
                                   feed_metadata=feed_metadata(snapshot.document))
 
     def published(self, doc_id, selected=None, *, budget=None):
+        if self.collection_enabled():
+            with sqlite3.connect(self.source.as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+                if conn.execute('SELECT 1 FROM public_collection_index WHERE doc_id=?', (doc_id,)).fetchone() is None:
+                    raise DocumentUnavailable()
+            snapshot = self.capture(doc_id, selected, budget=budget)
+            if selected is not None and snapshot.selected_bytes is None:
+                raise DocumentUnavailable()
+            return snapshot
         record = self.store.get(doc_id)
         if record is None or record['status'] != 'approved':
             raise DocumentUnavailable()
@@ -201,6 +218,8 @@ class PublicDocuments:
         return snapshot
 
     def listing(self, query='', cursor=None, limit=10, *, budget=None, snapshots=None):
+        if self.collection_enabled():
+            return self.collection_listing(query, cursor, limit, budget=budget, snapshots=snapshots)
         # Only approved candidates enter the read path. No private full-text
         # index, related-document lookup, or count is exposed.
         self.store.cursor_cipher()  # Explicit v2 preparation required even for an empty first page.
@@ -255,3 +274,29 @@ class PublicDocuments:
         if more and progress is None:
             raise ListingBudgetExceeded()
         return {'items': items, 'next_cursor': self.store.encode_cursor(progress, needle) if more else None}
+
+    def collection_listing(self, query='', cursor=None, limit=10, *, budget=None, snapshots=None):
+        needle = query.strip().casefold()
+        before = self.store.decode_cursor(cursor, needle) if cursor else None
+        with sqlite3.connect(self.source.as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+            conn.execute('PRAGMA query_only=ON')
+            conn.create_function('casefold', 1, lambda value: (value or '').casefold(), deterministic=True)
+            rows = conn.execute('''SELECT i.doc_id FROM public_collection_index i
+                JOIN raw_documents d ON d.id=i.doc_id
+                WHERE (? IS NULL OR i.doc_id<?) AND (?='' OR instr(casefold(d.title),?)>0
+                    OR instr(casefold(coalesce(nullif(d.markdown,''),d.raw_content,'')),?)>0)
+                ORDER BY i.doc_id DESC LIMIT ?''', (before, before, needle, needle, needle, limit+1)).fetchall()
+        if snapshots is not None:
+            snapshots.clear()
+        items = []
+        budget = ReadBudget() if budget is None else budget
+        for (doc_id,) in rows[:limit]:
+            snapshot = self.published(doc_id, budget=budget)
+            doc = snapshot.document
+            content = ' '.join(doc.content.split())
+            start = max(0, casefold_match_offset(content, needle)-80) if needle else 0
+            items.append(dict(id=doc_id,title=doc.title,source_type=doc.source_type,
+                              published_at=doc.published_at,snippet=content[start:start+240]))
+            if snapshots is not None:
+                snapshots[doc_id] = snapshot
+        return {'items':items, 'next_cursor':self.store.encode_cursor(items[-1]['id'], needle) if len(rows)>limit and items else None}

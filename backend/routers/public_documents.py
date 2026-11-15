@@ -104,7 +104,7 @@ def preview_attachment(request: Request, doc_id: int = Path(ge=1),
 
 @router.get('/api/public/feed', response_model=PublicFeed)
 def feed(channel: str = Query(default='', max_length=2200), platform: str = Query(default='all', max_length=128),
-         topic: str = Query(default='', max_length=120), page: int = Query(default=1, ge=1, le=100),
+         topic: str = Query(default='', max_length=120), page: int = Query(default=1, ge=1, le=2000),
          until: datetime | None = None, service: PublicDocuments = Depends(publication_service)):
     from security.public_feed import public_feed
     from datetime import timezone

@@ -61,6 +61,8 @@ def feed_metadata(document):
 
 
 def public_feed(service, *, channel='', platform='all', topic='', page=1, until=None):
+    if service.collection_enabled():
+        return collection_feed(service, channel=channel, platform=platform, topic=topic, page=page, until=until)
     # The directory reads only metadata saved by the same approval transaction.
     # It does not re-read every source body/attachment on each page request.
     # Metadata describes the approved revision; current body is revalidated below.
@@ -105,4 +107,31 @@ def public_feed(service, *, channel='', platform='all', topic='', page=1, until=
         fingerprints[doc.id] = snapshot.fingerprint
     items = [item for item in items if (record := service.store.get(item['id']))
              and record['status']=='approved' and record['fingerprint']==fingerprints[item['id']]]
+    return dict(channels=channels,items=items,page=page,has_more=len(rows)>20,until=cutoff.isoformat())
+
+
+def collection_feed(service, *, channel='', platform='all', topic='', page=1, until=None):
+    import sqlite3
+    cutoff = until or datetime.now(timezone.utc)
+    with sqlite3.connect(service.source.as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA query_only=ON')
+        directory = conn.execute('''WITH ranked AS (
+            SELECT *,count(*) OVER (PARTITION BY channel) count,
+                row_number() OVER (PARTITION BY channel ORDER BY sort_at DESC,doc_id DESC) rank
+            FROM public_collection_index WHERE sort_at<=?)
+            SELECT * FROM ranked WHERE rank=1 ORDER BY sort_at DESC,channel''', (cutoff.isoformat(),)).fetchall()
+        channels = [dict(id=r['channel'],name=r['name'],platform=r['platform'],count=r['count'],
+                         latest_at=r['published_at'],preview=r['title']) for r in directory]
+        rows = conn.execute('''SELECT doc_id FROM public_collection_index WHERE sort_at<=?
+            AND (?='' OR channel=?) AND (?='all' OR platform=?)
+            AND (?='' OR instr(lower(title),lower(?))>0)
+            ORDER BY sort_at DESC,doc_id DESC LIMIT 21 OFFSET ?''',
+            (cutoff.isoformat(),channel,channel,platform,platform,topic.strip(),topic.strip(),(page-1)*20)).fetchall()
+    items = []
+    budget = ReadBudget()
+    for row in rows[:20]:
+        doc = service.published(row['doc_id'], budget=budget).document
+        items.append(dict(id=doc.id,title=doc.title,source_type=doc.source_type,published_at=doc.published_at,
+                          snippet=' '.join(doc.content.split())[:240]))
     return dict(channels=channels,items=items,page=page,has_more=len(rows)>20,until=cutoff.isoformat())
