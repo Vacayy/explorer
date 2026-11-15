@@ -112,6 +112,41 @@ class SnapshotReplacementTests(unittest.TestCase):
                 load_snapshot(unsafe, self.pg, snapshot_at='2026-01-07T00:00:00+00:00')
         self.assertEqual(self.reader.snapshot_info(), original)
 
+    def test_source_categories_and_original_rows_preserved(self):
+        from routers import spine_feed
+        from tests.test_postgres_document_read import sqlite_feed
+        with closing(self.fixture.connect()) as c:
+            c.executescript("""
+                INSERT INTO blog_sources VALUES
+                  ('https://example.test','naver','블로그',1),
+                  ('https://rss.hankyung.com/feed','rss','뉴스',1),
+                  ('https://rss.newsletter.test/feed','rss','기사',1);
+                INSERT INTO raw_documents VALUES
+                  (3,'blog','news-3','뉴스','https://www.hankyung.com/a','2026-01-04','뉴스 본문',NULL,NULL,NULL),
+                  (4,'blog','article-4','기사','https://newsletter.test/a','2026-01-03','기사 본문',NULL,NULL,NULL);
+                INSERT INTO entities VALUES (8,'person','합성 인물',NULL);
+                INSERT INTO entity_links VALUES (4,8,'person',0.7);
+                INSERT INTO follows VALUES (8);
+            """)
+            c.commit()
+        with patch.object(spine_feed, 'get_connection', side_effect=self.fixture.connect), \
+             patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
+            expected = {name: sqlite_feed(source=name) for name in ('blog','news','article','people')}
+        self.load('2026-01-06T00:00:00+00:00')
+        for name, wanted in expected.items():
+            actual = self.reader.list(source=name)
+            self.assertEqual(actual.total, wanted.total, name)
+            self.assertEqual([x.model_dump() for x in actual.items],
+                             [x.model_dump() for x in wanted.items], name)
+        with self.pg() as c:
+            raw = c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'='3'").fetchone()[0]
+            self.assertEqual((raw['source_type'], raw['source_id'], raw['markdown'], raw['raw_content']),
+                             ('blog','news-3','뉴스 본문',None))
+            saved = c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='enrichments'").fetchone()[0]
+            self.assertEqual(saved, 2)
+            columns = c.execute("SELECT columns FROM legacy_snapshot_tables WHERE table_name='raw_documents'").fetchone()[0]
+            self.assertIn('media_json', columns)
+
     def test_tie_order_matches_sqlite_feed(self):
         from routers import spine_feed
         from tests.test_postgres_document_read import sqlite_feed

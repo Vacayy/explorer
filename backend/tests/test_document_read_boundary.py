@@ -22,6 +22,12 @@ class DocumentReadBoundaryTests(unittest.TestCase):
               model TEXT,enriched_at TEXT);
             CREATE TABLE entities(id INTEGER,type TEXT,name TEXT,aliases TEXT);
             CREATE TABLE entity_links(doc_id INTEGER,entity_id INTEGER,link_type TEXT,confidence REAL);
+            CREATE TABLE telegram_channels(channel_name TEXT,display_name TEXT,is_active INTEGER);
+            CREATE TABLE blog_sources(url TEXT,platform TEXT,blog_name TEXT,is_active INTEGER);
+            CREATE TABLE youtube_channels(channel_id TEXT,title TEXT,is_active INTEGER);
+            CREATE TABLE scrap_links(doc_id INTEGER,channel TEXT);
+            CREATE TABLE follows(entity_id INTEGER);
+            CREATE TABLE youtube_digest_jobs(doc_id INTEGER,transcript TEXT,status TEXT,token TEXT,updated_at REAL,error TEXT);
             INSERT INTO raw_documents VALUES
               (1,'blog','synthetic','제목','https://example.test/article','2026-01-01',
                '원문', '원본', NULL, '["fixtures/example.jpg"]'),
