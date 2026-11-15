@@ -25,6 +25,8 @@ def compute_mention_signals(conn, *, as_of):
             columns,ddl=meta
             if name in fields:
                 columns=fields[name]
+                if name == 'enrichments' and 'content_hash' in meta[0]:
+                    columns=(*columns,'content_hash')
                 ddl='CREATE TABLE "'+name+'" ('+','.join('"'+column+'"' for column in columns)+')'
             root.execute(ddl)
             quoted=','.join('"'+column.replace('"','""')+'"' for column in columns)
@@ -39,6 +41,14 @@ def compute_mention_signals(conn, *, as_of):
                 values=([int(value) if column in numeric and value is not None else value
                          for column,value in zip(columns,row)] for row in rows)
             root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({placeholders})',values)
+        # Match the source's index traversal for the original query, whose
+        # representative document list has no explicit ORDER BY.
+        root.execute('CREATE INDEX fixture_entity_type_name ON entities(type,name)')
+        root.execute('CREATE INDEX fixture_link_entity_type ON entity_links(entity_id,link_type)')
+        root.execute('CREATE INDEX fixture_link_doc_entity_type ON entity_links(doc_id,entity_id,link_type)')
+        root.execute('CREATE INDEX fixture_document_id ON raw_documents(id)')
+        enrichment_columns={row[1] for row in root.execute('PRAGMA table_info(enrichments)')}
+        root.execute('CREATE INDEX fixture_enrichment_doc ON enrichments(doc_id'+(',content_hash' if 'content_hash' in enrichment_columns else '')+')')
         root.commit()
         def factory():
             db=sqlite3.connect(uri,uri=True)

@@ -25,7 +25,7 @@ def main():
     source.execute('PRAGMA query_only=ON')
     source.execute('BEGIN')
     fields={'entities':('id','type','name'),'raw_documents':('id','source_type','title','url','published_at'),
-            'entity_links':('doc_id','entity_id','link_type'),'enrichments':('doc_id','time_orientation')}
+            'entity_links':('doc_id','entity_id','link_type'),'enrichments':('doc_id','time_orientation','content_hash')}
     try:
         with psycopg.connect(dsn) as conn:
             conn.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
@@ -37,7 +37,7 @@ def main():
                 columns=fields.get(name) or tuple(row['name'] for row in source.execute(f'PRAGMA table_info("{name}")'))
                 conn.execute(sql.SQL('INSERT INTO {}.legacy_snapshot_tables VALUES (%s,%s,%s,0)').format(sql.Identifier(schema)),(name,Jsonb(columns),info['sql']))
                 quoted=','.join('"'+column.replace('"','""')+'"' for column in columns)
-                rows=source.execute(f'SELECT {quoted} FROM "{name}"')
+                rows=source.execute(f'SELECT {quoted} FROM "{name}" NOT INDEXED')
                 with conn.cursor() as cursor:
                     batch=[]
                     for i,row in enumerate(rows):
