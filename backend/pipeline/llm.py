@@ -34,6 +34,10 @@ API_MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-5",
 OnText = Callable[[str], None]
 
 
+class CallRecordingError(RuntimeError):
+    """An explicitly supplied call recorder could not persist metadata."""
+
+
 @dataclass
 class LLMResult:
     text: str
@@ -52,7 +56,7 @@ class LLMResult:
 
 def run(prompt: str, *, task: str, system: str | None = None,
         on_text: OnText | None = None, json_schema: dict | None = None,
-        images: tuple[str, ...] = ()) -> LLMResult:
+        images: tuple[str, ...] = (), record_call=None) -> LLMResult:
     """Run one registered task; model, effort, permissions and timeout are task-owned."""
     from pipeline.llm_policies import resolve
     engine = llm_engine()
@@ -69,8 +73,10 @@ def run(prompt: str, *, task: str, system: str | None = None,
         raise ValueError(f"{task}: 이미지 입력을 허용하지 않는 작업입니다")
     if "Read" in policy.tools and not images:
         raise ValueError(f"{task}: 명시적 이미지 입력이 필요합니다")
-    return _execute(prompt, policy=policy, system=system, on_text=on_text,
-                    json_schema=json_schema, images=images)
+    kwargs = dict(policy=policy, system=system, on_text=on_text, json_schema=json_schema, images=images)
+    if record_call is not None:
+        kwargs['record_call'] = record_call
+    return _execute(prompt, **kwargs)
 
 
 def run_experiment(prompt: str, *, system=None, model="sonnet", effort=None,
@@ -91,7 +97,14 @@ def run_experiment(prompt: str, *, system=None, model="sonnet", effort=None,
     return _execute(prompt, policy=policy, system=system, on_text=on_text, json_schema=json_schema)
 
 
-def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None, images=()) -> LLMResult:
+def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None, images=(), record_call=None) -> LLMResult:
+    def record(*args):
+        if record_call is None:
+            return _record(*args)
+        try:
+            return record_call(*args)
+        except Exception as exc:
+            raise CallRecordingError('Explicit model call recorder failed') from exc
     model, effort = policy.primary.model, policy.primary.effort
     eng, timeout, tools, job = policy.primary.engine, policy.timeout, policy.tools, policy.task
     if json_schema is not None and (on_text is not None or tools):
@@ -122,7 +135,7 @@ def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None
                 raise ValueError("json_schema 강제 출력은 claude-code 엔진에서 지원합니다")
             res = _run_api(prompt, system=system, model=model, on_text=callback, max_tokens=policy.api_max_tokens)
     except Exception as primary:
-        _record(job, model, eng, effort, None, int((time.monotonic()-started)*1000),
+        record(job, model, eng, effort, None, int((time.monotonic()-started)*1000),
                 f"{type(primary).__name__}: {str(primary)[:300]}")
         # Retrying after publishing text mixes two independent answers. Tool-result
         # consumers require Claude's native evidence contract, not fabricated events.
@@ -138,16 +151,16 @@ def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None
             res = _run_codex(prompt, system=system, model=fallback_model, effort=effort,
                              timeout=timeout, json_schema=json_schema, images=images)
         except Exception as secondary:
-            _record(job, fallback_model, "codex-exec", effort, None,
+            record(job, fallback_model, "codex-exec", effort, None,
                     int((time.monotonic()-started)*1000), f"{type(secondary).__name__}: {str(secondary)[:300]}")
             raise RuntimeError(f"Claude 실패 ({primary}); Codex 대체 호출도 실패 ({secondary})") from secondary
         res.duration_ms = res.duration_ms or int((time.monotonic()-started)*1000)
-        _record(job, res.model, res.engine, effort, res, res.duration_ms, None)
+        record(job, res.model, res.engine, effort, res, res.duration_ms, None)
         if on_text:
             on_text(res.text)  # Publish only the validated, completed fallback answer.
         return res
     res.duration_ms = res.duration_ms or int((time.monotonic()-started)*1000)
-    _record(job, res.model, res.engine, effort, res, res.duration_ms, None)
+    record(job, res.model, res.engine, effort, res, res.duration_ms, None)
     return res
 
 

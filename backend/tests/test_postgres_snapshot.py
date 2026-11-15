@@ -47,7 +47,7 @@ from pipeline.connectors.telegram import TelegramConnector
 from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
-from pipeline.postgres_enrich_worker_fixture import enrich_document, existing_enricher
+from pipeline.postgres_enrich_worker_fixture import enrich_document, existing_enricher, fixture_call_recorder
 from pipeline.postgres_projection_publisher_fixture import FixturePublisher
 from pipeline.postgres_signals_fixture import signals_items
 from pipeline.postgres_signal_compute_fixture import compute_mention_signals
@@ -810,6 +810,22 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             result=enrichment.enrich_batch([{'id':1,'title':'제목','markdown':'본문'}],vocabulary_provider=provider)
             self.assertEqual(result[1]['summary'],'배치 요약')
             self.assertIn('합성 주제',run.call_args.args[0])
+        response=enrichment.llm.LLMResult(text='{"summary":"기록 시험"}',model='haiku',engine='claude-code',usage={'input':12,'output':3,'private':'ignored'},duration_ms=10)
+        with patch.dict(os.environ,{'ENRICH_ENGINE':'claude-code','LLM_FALLBACK_ENGINE':'none'}), \
+             patch.object(enrichment.llm,'_run_claude_code',return_value=response), \
+             patch.object(enrichment.llm,'_record',side_effect=AssertionError('unexpected SQLite logger')):
+            result=enrichment.enrich('제목','본문',vocabulary_provider=provider,record_call=fixture_call_recorder(self.pg))
+            self.assertEqual(result['summary'],'기록 시험')
+            with self.assertRaises(enrichment.llm.CallRecordingError):
+                enrichment.enrich('제목','본문',vocabulary_provider=provider,record_call=lambda *a: (_ for _ in ()).throw(RuntimeError('fixture')))
+            with self.pg() as c:
+                uncertain=store_document(c,source_type='note',source_id='record-fail',title='제목',markdown='본문')['id']
+            with self.assertRaises(enrichment.llm.CallRecordingError):
+                enrich_document(self.pg,uncertain,enrich=existing_enricher(self.pg,record_call=lambda *a: (_ for _ in ()).throw(RuntimeError('fixture'))))
+        with self.pg() as c:
+            row=c.execute('SELECT task,engine,ok,usage FROM ingest_llm_calls').fetchone()
+            self.assertEqual(row,('document.tag','claude-code',True,{'input':12,'output':3}))
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=%s',(uncertain,)).fetchone()[0],'unknown')
 
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:

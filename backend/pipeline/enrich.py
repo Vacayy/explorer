@@ -51,14 +51,16 @@ def classify_temporal(title: str, summary: str) -> dict:
     }
 
 
-def enrich(title: str, markdown: str, *, vocabulary_provider=None) -> dict:
+def enrich(title: str, markdown: str, *, vocabulary_provider=None, record_call=None) -> dict:
     if llm_available():
         # Explicit providers fail closed; never silently open the default DB.
         vocabulary = _provided_vocabulary(vocabulary_provider)
         try:
-            if vocabulary_provider is None:
+            if vocabulary_provider is None and record_call is None:
                 return _enrich_llm(title, markdown)
-            return _enrich_llm(title, markdown, vocabulary=vocabulary)
+            return _enrich_llm(title, markdown, vocabulary=vocabulary, record_call=record_call)
+        except llm.CallRecordingError:
+            raise
         except Exception as e:
             print(f"[enrich] LLM 실패, 키워드 fallback: {e}")
     return _enrich_keyword(title, markdown)
@@ -243,9 +245,10 @@ def _normalize_llm_result(data: dict, model: str) -> dict:
     }
 
 
-def _enrich_llm(title: str, markdown: str, *, vocabulary=None) -> dict:
+def _enrich_llm(title: str, markdown: str, *, vocabulary=None, record_call=None) -> dict:
     prompt = _build_prompt(title, markdown, vocabulary=vocabulary)
-    result = llm.run(prompt, task="document.tag")
+    result = (llm.run(prompt, task="document.tag") if record_call is None
+              else llm.run(prompt, task="document.tag", record_call=record_call))
     raw = result.text
     return _normalize_llm_result(_parse_json(raw), result.label)
 
@@ -291,7 +294,7 @@ def _build_batch_prompt(docs: list[dict], *, vocabulary=None) -> str:
     )
 
 
-def enrich_batch(docs: list[dict], *, vocabulary_provider=None) -> dict[int, dict]:
+def enrich_batch(docs: list[dict], *, vocabulary_provider=None, record_call=None) -> dict[int, dict]:
     """배치 재태깅 (백필 전용, D-028) — docs: [{id, title, markdown}].
     반환: {doc_id: 표준 enrich dict}. 배치 전체 실패 시 예외 (호출자가 재시도 관리)."""
     if llm_engine() != "claude-code":
@@ -299,7 +302,8 @@ def enrich_batch(docs: list[dict], *, vocabulary_provider=None) -> dict[int, dic
     vocabulary = _provided_vocabulary(vocabulary_provider)
     prompt = (_build_batch_prompt(docs) if vocabulary_provider is None
               else _build_batch_prompt(docs, vocabulary=vocabulary))
-    raw = llm.run(prompt, task='document.tag_batch').text
+    raw = (llm.run(prompt, task='document.tag_batch') if record_call is None
+           else llm.run(prompt, task='document.tag_batch', record_call=record_call)).text
     data = _parse_json(raw)
     out: dict[int, dict] = {}
     for r in (data.get("results") or []):

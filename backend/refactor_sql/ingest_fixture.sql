@@ -23,6 +23,18 @@ CREATE TABLE ingest_telegram_group_marks (
     PRIMARY KEY(channel,msg_id)
 );
 CREATE TABLE ingest_telegram_marks_state (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton));
+CREATE TABLE ingest_llm_calls (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    task TEXT NOT NULL,
+    model TEXT NOT NULL,
+    engine TEXT NOT NULL,
+    effort TEXT,
+    duration_ms INTEGER NOT NULL,
+    ok BOOLEAN NOT NULL,
+    usage JSONB NOT NULL,
+    cost_usd DOUBLE PRECISION
+);
 CREATE TABLE ingest_documents (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_type TEXT NOT NULL,
@@ -47,7 +59,7 @@ CREATE TABLE ingest_documents (
 CREATE TABLE ingest_enrichment_jobs (
     document_id BIGINT PRIMARY KEY REFERENCES ingest_documents(id) ON DELETE CASCADE,
     revision BIGINT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'failed', 'done')),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'failed', 'unknown', 'done')),
     auto_retry BOOLEAN NOT NULL DEFAULT TRUE,
     attempted_at TIMESTAMPTZ,
     attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),

@@ -35,7 +35,7 @@ def run_cycle(connector, factory, *, enrich, worker_id='fixture-worker', batch_s
     with factory() as conn:
         _guard(conn)
         counts=conn.execute("SELECT count(*) FILTER (WHERE j.status IN ('pending','failed') AND j.attempt_count<%s), "
-                            "count(*) FILTER (WHERE j.status IN ('pending','failed') AND j.attempt_count>=%s), "
+                            "count(*) FILTER (WHERE j.status='unknown' OR (j.status IN ('pending','failed') AND j.attempt_count>=%s)), "
                             "count(*) FILTER (WHERE j.status='running') FROM ingest_enrichment_jobs j "
                             "JOIN ingest_documents d ON d.id=j.document_id WHERE j.auto_retry AND d.source_type=%s",
                             (MAX_ATTEMPTS,MAX_ATTEMPTS,source_type)).fetchone()
