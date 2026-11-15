@@ -28,37 +28,48 @@ def copy_with_note_changes(conn, source_schema, target_schema):
         if conn.execute('SELECT 1 FROM timeline_source_projection WHERE document_id=%s', (ident,)).fetchone():
             raise ValueError('Timeline changes are not supported')
         prior = reader.get_in_transaction(conn, ident)
-        if prior is not None and revision == 1:
-            raise ValueError('Attachment-only or same-revision changes are not supported')
         if (prior.images if prior else []) != (media or []):
             raise ValueError('Changed attachment files are not supported')
+        same_revision = prior is not None and revision == 1
+        if same_revision and model is None:
+            raise ValueError('Same-revision changes require a current summary')
         doc = (prior or FeedDocument(id=ident,source_type='note',title='',url='',published_at='',summary=None,
                                      channel='내 노트',content=None,images=[],enrich_model=None,entities=[]))
-        doc = doc.model_copy(update={'title':title,'url':url,'published_at':published,'content':markdown or raw,
-                                     'images':media or [],'summary':summary,'enrich_model':model,'entities':[]})
-        updates.append((ident,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,doc,prior is not None))
+        if same_revision:
+            doc = doc.model_copy(update={'summary':summary,'enrich_model':model})
+        else:
+            doc = doc.model_copy(update={'title':title,'url':url,'published_at':published,'content':markdown or raw,
+                                         'images':media or [],'summary':summary,'enrich_model':model,'entities':[]})
+        updates.append((ident,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,doc,prior is not None,same_revision))
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(target_schema)))
     conn.execute('CREATE TEMP TABLE overlay_old_list ON COMMIT DROP AS SELECT * FROM document_list_projection')
     conn.execute('CREATE TEMP TABLE overlay_old_filters ON COMMIT DROP AS SELECT * FROM document_filter_order')
     conn.execute('DELETE FROM document_filter_order')
     conn.execute('DELETE FROM document_list_projection')
     changed_ids = [row[0] for row in updates]
-    for ident,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,doc,existing in updates:
+    for ident,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,doc,existing,same_revision in updates:
         if existing:
-            conn.execute('DELETE FROM document_entity_order WHERE document_id=%s', (ident,))
-            conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name IN ('enrichments','entity_links') AND row_data->>'doc_id'=%s", (str(ident),))
-            conn.execute('DELETE FROM document_embeddings WHERE document_id=%s', (ident,))
-            conn.execute('DELETE FROM document_centroids WHERE document_id=%s', (ident,))
-            conn.execute('UPDATE document_projection SET published_at=%s,detail_document=%s WHERE id=%s',
-                         (published,Jsonb(doc.model_dump(mode='json')),ident))
+            if not same_revision:
+                conn.execute('DELETE FROM document_entity_order WHERE document_id=%s', (ident,))
+                conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='entity_links' AND row_data->>'doc_id'=%s", (str(ident),))
+                conn.execute('DELETE FROM document_embeddings WHERE document_id=%s', (ident,))
+                conn.execute('DELETE FROM document_centroids WHERE document_id=%s', (ident,))
+            conn.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='enrichments' AND row_data->>'doc_id'=%s", (str(ident),))
+            if same_revision:
+                conn.execute('UPDATE document_projection SET detail_document=%s WHERE id=%s',
+                             (Jsonb(doc.model_dump(mode='json')),ident))
+            else:
+                conn.execute('UPDATE document_projection SET published_at=%s,detail_document=%s WHERE id=%s',
+                             (published,Jsonb(doc.model_dump(mode='json')),ident))
             old = conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(ident),)).fetchone()[0]
         else:
             conn.execute('INSERT INTO document_projection VALUES (%s,%s,%s,%s,TRUE,ARRAY[]::text[])',
                          (ident,'note',published,Jsonb(doc.model_dump(mode='json'))))
             old = {}
-        old.update({'id':ident,'source_type':'note','source_id':source_id,'title':title,'url':url,
-                    'published_at':published,'raw_content':raw,'markdown':markdown,'content_hash':digest,
-                    'media_json':json.dumps(media,ensure_ascii=False) if media else None,'digest_status':status})
+        if not same_revision:
+            old.update({'id':ident,'source_type':'note','source_id':source_id,'title':title,'url':url,
+                        'published_at':published,'raw_content':raw,'markdown':markdown,'content_hash':digest,
+                        'media_json':json.dumps(media,ensure_ascii=False) if media else None,'digest_status':status})
         if existing:
             conn.execute("UPDATE legacy_snapshot_rows SET row_data=%s WHERE table_name='raw_documents' AND row_data->>'id'=%s", (Jsonb(old),str(ident)))
         else:
@@ -74,7 +85,7 @@ def copy_with_note_changes(conn, source_schema, target_schema):
     conn.execute('INSERT INTO overlay_new_rows SELECT ordinal,document_id,list_document FROM overlay_old_list '
                  'WHERE NOT (document_id=ANY(%s))', (changed_ids,))
     for ident,*rest in updates:
-        doc = rest[-2]
+        doc = rest[-3]
         conn.execute('INSERT INTO overlay_new_rows VALUES (NULL,%s,%s)', (ident,Jsonb(doc.model_dump(mode='json'))))
     conn.execute('''CREATE TEMP TABLE overlay_ord ON COMMIT DROP AS
         SELECT row_number() OVER (ORDER BY d.published_at COLLATE "C" DESC NULLS LAST,

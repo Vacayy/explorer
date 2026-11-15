@@ -26,7 +26,7 @@ from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
 from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
 from pipeline.postgres_capacity import require_snapshot_capacity, SnapshotCapacityError
 from pipeline.postgres_archive_import_fixture import import_archived_documents
-from pipeline.postgres_ingest_fixture import store_document
+from pipeline.postgres_ingest_fixture import store_document, claim_enrichment, finish_enrichment
 from pipeline.postgres_ledger_detail_fixture import LedgerDetailFixture
 from pipeline.postgres_youtube_digest_fixture import queue as queue_video, finish as finish_video
 from pipeline.postgres_ledger_snapshot_fixture import materialize
@@ -316,6 +316,38 @@ class SnapshotReplacementTests(unittest.TestCase):
         with target() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM document_projection').fetchone()[0],0)
         self.assertEqual(self.reader.list().total, 2)
+
+    def test_note_overlay_updates_summary_without_discarding_matching_vector(self):
+        import struct
+        self.load('2026-01-03T00:00:00+00:00')
+        vector = struct.pack('<384f',1.0,*([0.0]*383))
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            generation = c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+            c.execute('INSERT INTO document_embeddings VALUES (2,%s,%s)', (vector,'fixture'))
+            c.execute("INSERT INTO document_embedding_metadata VALUES (TRUE,%s,'fixture',384,1,0,0)", (generation,))
+            job = claim_enrichment(c,document_id=2)
+            finish_enrichment(c,document_id=2,**job,summary='새 요약',model='fixture')
+        destination = 'refactor_fixture_' + uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            self.assertEqual(copy_with_note_changes(c,self.schema,destination)['updated_documents'],1)
+        target_reader = PostgreSQLDocumentReader(target)
+        self.assertEqual(target_reader.get(2).summary, '새 요약')
+        self.assertEqual(target_reader.list(source='note').items[0].summary, '새 요약')
+        self.assertIsNone(self.reader.get(2).summary)
+        with target() as c:
+            self.assertEqual(bytes(c.execute('SELECT embedding FROM document_embeddings WHERE document_id=2').fetchone()[0]),vector)
 
     def test_unsearched_feed_filters_preserve_sqlite_results(self):
         from routers import spine_feed
