@@ -6,7 +6,7 @@ from config import DB_PATH
 
 
 MARKET_COLUMNS = {
-    'market_indicators': {'snapshot_date', 'indicator', 'value'},
+    'market_indicators': {'snapshot_date', 'indicator', 'value', 'fetched_at'},
     'index_intraday': {'key', 'trade_date', 'hhmm', 'value'},
     'retail_flows': {'date', 'credit_total', 'indiv_buy', 'indiv_sell'},
     'stock_prices': {'stock_code', 'trade_date', 'close'},

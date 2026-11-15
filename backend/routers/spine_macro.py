@@ -3,15 +3,22 @@
 GET  /api/spine/macro          — 지표 그룹 + 스파크라인 (LLM 0, 순수 읽기). 첫 진입 시 lazy 스냅샷.
 POST /api/spine/macro/snapshot — 지표 재수집 적재 (수동 버튼·선택 크론).
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-from pipeline.macro import get_macro, snapshot_macro
+from pipeline.macro import get_macro, snapshot_macro, read_numeric_macro
 
 router = APIRouter(prefix="/api/spine/macro", tags=["spine"])
 
 
 @router.get("")
-def macro():
+def macro(request: Request):
+    if getattr(request.state, "public_access", False):
+        from security.public_market import market_connection
+        conn = market_connection()
+        try:
+            return {**read_numeric_macro(conn), "signal": None, "fred_enabled": False}
+        finally:
+            conn.close()
     data = get_macro()
     if data["as_of"] is None:      # 첫 진입 — lazy 스냅샷 1회
         snapshot_macro()

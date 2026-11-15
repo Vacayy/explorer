@@ -57,6 +57,44 @@ class PublicMarketTests(unittest.TestCase):
             self.assertEqual(self.client.get('/api/spine/market/jp/overview').status_code, 422)
         self.assertEqual(self.path.read_bytes(), before)
 
+    def test_original_home_reads_never_schedule_collection_or_read_signals(self):
+        from routers import spine_indices, spine_macro
+        from pipeline import indices, macro
+        app = FastAPI()
+        app.include_router(spine_indices.router)
+        app.include_router(spine_macro.router)
+        app.add_middleware(PublicAccessBoundary, routes=app.router.routes, policies={
+            ('GET', '/api/spine/' + route): 'public'
+            for route in ('indices', 'indices/breadth', 'macro')})
+        with sqlite3.connect(self.path) as conn:
+            conn.execute("INSERT INTO market_indicators(snapshot_date, indicator, value) VALUES ('2026-11-13', 'macro_usdkrw', 1400)")
+        before = self.path.read_bytes()
+        connect = lambda: market_connection(self.path)
+        fail = AssertionError('public read triggered private/collection work')
+        with TestClient(app, base_url='https://beta.example') as client, \
+                patch.object(spine_indices, 'market_connection', side_effect=connect), \
+                patch('security.public_market.market_connection', side_effect=connect), \
+                patch.object(spine_indices, 'is_cached', side_effect=fail), \
+                patch.object(spine_indices, 'get_connection', side_effect=fail), \
+                patch.object(spine_macro, 'snapshot_macro', side_effect=fail), \
+                patch.object(macro, '_read_signal', side_effect=fail):
+            values = client.get('/api/spine/indices')
+            self.assertEqual(values.status_code, 200, values.text)
+            kospi = next(i for i in values.json()['items'] if i['key'] == 'kospi')
+            self.assertEqual(kospi['price'], 102)
+            self.assertEqual(kospi['as_of'], '2026-11-13')
+            breadth = client.get('/api/spine/indices/breadth')
+            self.assertEqual(breadth.status_code, 200, breadth.text)
+            self.assertEqual(breadth.json()['up'], 1)
+            context = client.get('/api/spine/macro')
+            self.assertEqual(context.status_code, 200, context.text)
+            self.assertEqual(context.json()['items'][0]['value'], 1400)
+            self.assertIsNone(context.json()['signal'])
+            self.assertNotIn('canary', values.text + breadth.text + context.text)
+            for endpoint in ('indices/snapshot', 'macro/snapshot'):
+                self.assertEqual(client.post('/api/spine/' + endpoint).status_code, 404)
+        self.assertEqual(before, self.path.read_bytes())
+
     def test_sql_permissions_deny_private_columns_tables_and_mutations(self):
         conn = market_connection(self.path)
         self.addCleanup(conn.close)

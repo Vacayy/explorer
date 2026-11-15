@@ -164,9 +164,17 @@ def _downsample(series: list[float], points: int = SPARK_POINTS) -> list[float]:
 
 def get_indices() -> dict:
     """저장분에서 종가·전일대비·1Y 추이 + 시장 개장 상태 (LLM 0, 외부 fetch 없음)."""
+    conn = get_connection()
+    try:
+        return read_indices(conn)
+    finally:
+        conn.close()
+
+
+def read_indices(conn) -> dict:
+    """Read stored index values through a caller-owned connection; never collect."""
     now = datetime.now(timezone.utc)
     status = {m: market_status(m, now) for m in MARKETS}
-    conn = get_connection()
     items, missing = [], []
     for key, label, _ticker, region, market in INDICES:
         rows = conn.execute(
@@ -210,8 +218,6 @@ def get_indices() -> dict:
             "fetched_at": shown_at,
             "_collected_at": fetched_at,
         })
-    conn.close()
-
     # 뒤처진 지수 = 다른 지수는 갱신됐는데 이것만 옛 수집 시각 → 그 지수만 실패했다는 뜻.
     # 프로세스 상태가 아니라 저장된 데이터에서 파생하므로 서버 재시작에도 살아남는다.
     # 판정은 yfinance 수집 시각으로 — 장중 봉을 얹은 지수의 새 시각과 비교하면 나머지가 뒤처진 것으로 잘못 보인다
