@@ -711,6 +711,8 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `scripts/refactor_document_sample.py`는 읽기 전용 SQLite 단일 트랜잭션에서 최대 50개 목록 행과 선택한 소수 문서 상세를 읽고, 격리 테스트 PostgreSQL의 임시 schema에 응답을 넣어 비교한 뒤 schema를 삭제한다. 예제 목적의 fixture DB 외 연결을 거부하며 문서 내용·DSN을 출력하지 않는다. 이는 원본 전체 이관이나 최신 동기화 구현이 아니다.
 
-`pipeline/postgres_snapshot.py`는 격리 실험에서 query-only SQLite 단일 트랜잭션의 문서·저장 요약·첨부 참조·엔티티를 읽어 PostgreSQL 조회용 projection을 한 트랜잭션으로 교체한다. snapshot 시각은 요청 응답의 `as_of`와 별도 보관한다. 중간 실패 시 이전 projection을 유지한다. 전체 목록을 현재 메모리에 올리며 실제 전체 자료 성능·첨부 파일 전송·증분 동기화는 검증하지 않았다. 블로그·뉴스·기사·인물 필터는 SQLite의 기존 소스 분류·팔로우 규칙을 기준으로 합성 자료에서 비교한다. 검색과 나머지 필터는 아직 구현하지 않았다.
+`pipeline/postgres_snapshot.py`는 격리 실험에서 query-only SQLite 단일 트랜잭션의 문서·저장 요약·첨부 참조·엔티티를 읽어 PostgreSQL 조회용 projection을 한 트랜잭션으로 교체한다. snapshot 시각은 요청 응답의 `as_of`와 별도 보관한다. 중간 실패 시 이전 projection을 유지한다. 목록과 문서 상세를 묶음 처리하지만 문서 ID·분류는 메모리에 보관하며 실제 전체 자료 성능·첨부 파일 전송·증분 동기화는 검증하지 않았다. 블로그·뉴스·기사·인물 필터는 SQLite의 기존 소스 분류·팔로우 규칙을 기준으로 합성 자료에서 비교한다. 검색과 나머지 필터는 아직 구현하지 않았다.
 
 같은 실험은 문서·요약·엔티티·링크·출처 관련 10개 SQLite 테이블의 모든 원래 컬럼과 행을 별도 비공개 JSONB 중간 원장에 함께 보존한다. 스키마 SQL·컬럼 목록·행수도 기록하며 BLOB·비유한 수 등 변환 불가 값은 실패시켜 이전 세대를 유지한다. 이는 최종 정규화 PostgreSQL 원장이나 모든 SQLite 테이블의 이관을 뜻하지 않는다.
+
+실험 snapshot 적재는 PostgreSQL transaction-scoped advisory lock으로 직렬화하고 기존보다 오래된 시각 라벨을 거부한다. 동일 라벨 재실행은 호출자가 동일한 불변 snapshot을 준다는 전제다. 별도의 원본 관측 시각과 적재 기록 시각을 저장하지만, 호출 전 이미 SQLite 읽기가 시작됐을 수 있어 실제 snapshot 취득 시각을 보증하지 않는다. 별도 HTTP 요청 간 세대 고정도 제공하지 않는다. 현재 적재기는 이름이 지정된 일회성 fixture DB/schema 이외의 쓰기를 거부한다.

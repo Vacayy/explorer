@@ -24,6 +24,8 @@ CREATE INDEX document_list_projection_document ON document_list_projection (docu
 CREATE TABLE snapshot_metadata (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
     snapshot_at TEXT NOT NULL,
+    source_observed_at TIMESTAMPTZ NOT NULL,
+    loaded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     document_count BIGINT NOT NULL,
     list_row_count BIGINT NOT NULL
 );

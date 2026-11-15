@@ -47,8 +47,10 @@ class PostgreSQLDocumentReader:
     def snapshot_info(self) -> dict | None:
         with self.connection_factory() as conn:
             row = conn.execute(
-                'SELECT snapshot_at, document_count, list_row_count FROM snapshot_metadata WHERE singleton'
+                'SELECT snapshot_at, document_count, list_row_count, source_observed_at, loaded_at '
+                'FROM snapshot_metadata WHERE singleton'
             ).fetchone()
             if row is None:
                 return None
-            return {'snapshot_at': row[0], 'documents': row[1], 'list_rows': row[2]}
+            return {'snapshot_at': row[0], 'documents': row[1], 'list_rows': row[2],
+                    'source_observed_at': row[3], 'loaded_at': row[4]}

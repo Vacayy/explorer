@@ -64,7 +64,10 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertEqual(self.reader.get(1).content, '원문')
         self.assertEqual(self.reader.list().total, 2)
         self.assertEqual(len(self.reader.list().items), 3)
-        self.assertEqual(self.reader.snapshot_info()['snapshot_at'], first_at)
+        info = self.reader.snapshot_info()
+        self.assertEqual(info['snapshot_at'], first_at)
+        self.assertIsNotNone(info['source_observed_at'])
+        self.assertGreaterEqual(info['loaded_at'], info['source_observed_at'])
 
         with closing(self.fixture.connect()) as c:
             c.execute("UPDATE raw_documents SET markdown='수정 원문',media_json='[\"fixtures/new.jpg\"]' WHERE id=1")

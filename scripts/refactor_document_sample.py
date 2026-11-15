@@ -4,9 +4,12 @@ Never modifies the source, never prints document content, and deliberately does
 not implement migration, synchronization, or a production data loader.
 """
 import argparse
+from contextlib import nullcontext
 import json
 import os
 import sqlite3
+import statistics
+import time
 import sys
 import uuid
 from pathlib import Path
@@ -27,7 +30,8 @@ class _SnapshotConnection(sqlite3.Connection):
         pass
 
 
-def compare(source: Path, dsn: str, size: int, include_ids: list[int] | None = None) -> dict:
+def compare(source: Path, dsn: str, size: int, include_ids: list[int] | None = None,
+            *, benchmark: bool = False) -> dict:
     if os.getenv('REFACTOR_TEST_DISPOSABLE') != '1':
         raise ValueError('Disposable fixture opt-in required')
     params = psycopg.conninfo.conninfo_to_dict(dsn)
@@ -76,12 +80,37 @@ def compare(source: Path, dsn: str, size: int, include_ids: list[int] | None = N
         same_detail = all(target.get(k).model_dump() == v.model_dump() for k, v in docs.items())
         if not same_list or not same_detail:
             raise AssertionError('Sample response mismatch')
-        return {'source_total': feed.total, 'sample_rows': len(feed.items),
-                'sample_unique_documents': len(docs), 'list_and_detail_match': True,
-                'documents_with_content': sum(bool(d.content) for d in docs.values()),
-                'documents_with_saved_summary': sum(bool(d.summary) for d in docs.values()),
-                'documents_with_attachments': sum(bool(d.images) for d in docs.values()),
-                'sample_total_only': page.total, 'source_read_only': True}
+        result = {'source_total': feed.total, 'sample_rows': len(feed.items),
+                  'sample_unique_documents': len(docs), 'list_and_detail_match': True,
+                  'documents_with_content': sum(bool(d.content) for d in docs.values()),
+                  'documents_with_saved_summary': sum(bool(d.summary) for d in docs.values()),
+                  'documents_with_attachments': sum(bool(d.images) for d in docs.values()),
+                  'sample_total_only': page.total, 'source_read_only': True}
+        if benchmark and docs:
+            old_ms, new_ms = [], []
+            # Both readers reuse a connection. PG contains only the sample and
+            # is in-memory; this is not a production or full-data benchmark.
+            with pg() as shared:
+                pooled = PostgreSQLDocumentReader(lambda: nullcontext(shared))
+                for _ in range(5):
+                    for doc_id in docs:
+                        start = time.perf_counter()
+                        old = reader.get(doc_id)
+                        old_ms.append((time.perf_counter() - start) * 1000)
+                        start = time.perf_counter()
+                        new = pooled.get(doc_id)
+                        new_ms.append((time.perf_counter() - start) * 1000)
+                        if old.model_dump() != new.model_dump():
+                            raise AssertionError('Benchmark result mismatch')
+            result['benchmark'] = {
+                'calls_each': len(old_ms), 'rounds': 5,
+                'sqlite_median_ms': round(statistics.median(old_ms), 3),
+                'postgres_median_ms': round(statistics.median(new_ms), 3),
+                'sqlite_max_ms': round(max(old_ms), 3),
+                'postgres_max_ms': round(max(new_ms), 3),
+                'scope': 'warm reused connections; PostgreSQL holds sample only',
+            }
+        return result
     finally:
         sqlite3.Connection.close(sqlite)
         if created:
@@ -94,9 +123,11 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--size', type=int, default=20)
     parser.add_argument('--include-id', type=int, action='append', default=[])
+    parser.add_argument('--benchmark', action='store_true')
     args = parser.parse_args()
     try:
-        result = compare(args.source, os.environ['REFACTOR_POSTGRES_DSN'], args.size, args.include_id)
+        result = compare(args.source, os.environ['REFACTOR_POSTGRES_DSN'], args.size, args.include_id,
+                         benchmark=args.benchmark)
     except Exception as exc:
         # Do not expose DSNs, source paths, or real document content on failure.
         print('sample comparison failed:', type(exc).__name__, file=sys.stderr)
