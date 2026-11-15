@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from security.public_value_chain import stored
+from security.public_value_chain import report, reports, stored
 
 
 class PublicValueChainTests(unittest.TestCase):
@@ -26,4 +26,19 @@ class PublicValueChainTests(unittest.TestCase):
             self.assertNotIn('private-canary', str(stored('links',path=path)))
             with self.assertRaises(LookupError): stored('confirm','999999',path=path)
             with self.assertRaises(ValueError): stored('private_records',path=path)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_report_list_and_detail_only_read_prepared_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'snapshot.sqlite'
+            value = {'id':1,'root':'memory','status':'done','outline':'bottom_up',
+                     'created_at':'2026-11-01','finished_at':'2026-11-01','body':'stored body'}
+            with sqlite3.connect(path) as conn:
+                conn.execute('CREATE TABLE public_chain_reports(id INTEGER PRIMARY KEY,root TEXT,payload TEXT)')
+                conn.execute('INSERT INTO public_chain_reports VALUES (?,?,?)',(1,'memory',json.dumps(value)))
+            before = path.read_bytes()
+            self.assertEqual(report(1,path=path)['body'], 'stored body')
+            self.assertNotIn('body', reports('memory',path=path)[0])
+            self.assertEqual(reports('other',path=path), [])
+            with self.assertRaises(LookupError): report(2,path=path)
             self.assertEqual(path.read_bytes(), before)

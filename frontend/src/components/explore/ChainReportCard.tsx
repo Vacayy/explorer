@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge"
+import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -58,7 +59,7 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
     <CardHeader className="pb-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <CardTitle className="text-card-title">밸류체인 보고서 — {rootName}</CardTitle>
-        <div className="flex flex-wrap items-center gap-2">
+        {!PUBLIC_ACCESS && <div className="flex flex-wrap items-center gap-2">
           <span className="text-caption text-muted-foreground">목차</span>
           <ToggleGroup type="single" size="sm" variant="outline" value={outline} onValueChange={v => v && onOutline(v as ChainOutline)} aria-label="목차 순서">
             {(Object.keys(OUTLINE) as ChainOutline[]).map(k => <ToggleGroupItem key={k} value={k} title={OUTLINE[k].hint} className="px-3 text-xs">{OUTLINE[k].label}</ToggleGroupItem>)}
@@ -66,20 +67,20 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
           <Button size="sm" disabled={running || preview.isLoading} onClick={() => create.mutate({ root, outline }, { onSuccess: x => onReport(x.id) })}>
             {running ? "만드는 중…" : "보고서 만들기"}
           </Button>
-        </div>
+        </div>}
       </div>
-      <p className="text-caption text-muted-foreground">
+      {!PUBLIC_ACCESS && <p className="text-caption text-muted-foreground">
         지도에서 고른 칸에서 그 물건을 사는 쪽(수요)으로 깊이 4·칸 12까지 타고 올라가며(직접 판로는 모두, 그 위는 추정 증가액이 큰 가지 우선) — 이 칸으로 들어오는 돈이 어느 수요에서 오고 이어지는지를 사실·시장 기대·컨퍼런스콜·피드로 씁니다.
         {preview.data && ` 칸 메모 ${preview.data.models.note} 최대 ${preview.data.calls.node_notes_max}회(자료가 그대로인 칸은 재사용) → 분석 메모 ${preview.data.models.synthesis} 1회(목차·근거 설계, 웹 검색 최대 ${preview.data.calls.web_search_cap}회) → 애널리스트 문체 글쓰기 ${preview.data.models.writer ?? "sonnet"} 1회.`}
         {" "}재료는 언제나 칸 → 수요(bottom-up)로 모으고, 목차 순서만 고릅니다 — {OUTLINE[outline].hint}. 출처 없는 문장은 쓰지 않고, 사실과 기대를 구분합니다. 버튼을 누를 때만 만듭니다.
-      </p>
+      </p>}
       {pickedDemand && <p className="text-caption text-muted-foreground">'{pickedDemand}'는 수요 칸이라 더 올라갈 곳이 없어 {rootName} 기준으로 보여 줍니다 — 지도에서 공급 칸을 고르면 그 칸이 루트가 됩니다.</p>}
       {create.isError && <p className="text-caption text-destructive">보고서 요청에 실패했습니다.</p>}
     </CardHeader>
     <CardContent className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
       <div className="space-y-4">
         <div><p className="mb-1 text-caption font-medium text-muted-foreground">타고 올라갈 트리(루트 → 수요)</p>
-          {preview.isLoading ? <Skeleton className="h-40 w-full" /> : preview.isError ? <p className="text-caption text-destructive">트리를 불러오지 못했습니다.</p>
+          {PUBLIC_ACCESS ? r?.tree && <Tree tree={r.tree} /> : preview.isLoading ? <Skeleton className="h-40 w-full" /> : preview.isError ? <p className="text-caption text-destructive">트리를 불러오지 못했습니다.</p>
             : preview.data && <Tree tree={preview.data.tree} />}</div>
         {!!list.data?.length && <div><p className="mb-1 text-caption font-medium text-muted-foreground">이전 보고서</p>
           <ul className="space-y-0.5">{list.data.map(x => <li key={x.id}>
@@ -91,10 +92,10 @@ export function ChainReportCard({ root, rootName, pickedDemand, reportId, onRepo
       <div className="min-w-0">
         {list.isLoading || (current != null && report.isLoading) ? <Skeleton className="h-64 w-full" />
           : report.isError ? <ErrorState message="보고서를 불러오지 못했습니다." onRetry={() => void report.refetch()} />
-          : !r ? <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">아직 이 루트의 보고서가 없습니다. 왼쪽 트리를 확인하고 '보고서 만들기'를 누르세요.</div>
+          : !r ? <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">{PUBLIC_ACCESS ? '저장된 보고서가 없습니다.' : "아직 이 루트의 보고서가 없습니다. 왼쪽 트리를 확인하고 '보고서 만들기'를 누르세요."}</div>
           : r.status === "running" ? <div className="space-y-2 rounded-lg border p-4 text-sm"><p className="font-medium">만드는 중 — {r.progress ?? "준비 중"}</p>
             <p className="text-caption text-muted-foreground">칸 메모를 쓰고 종합합니다. 몇 분 걸리며, 이 화면을 떠나도 계속 만들어집니다.</p><Skeleton className="h-40 w-full" /></div>
-          : r.status === "error" ? <ErrorState message={`보고서를 만들지 못했습니다: ${r.error ?? "알 수 없는 오류"}`} onRetry={() => create.mutate({ root, outline }, { onSuccess: x => onReport(x.id) })} />
+          : r.status === "error" ? <ErrorState message={`보고서를 만들지 못했습니다: ${r.error ?? "알 수 없는 오류"}`} onRetry={() => PUBLIC_ACCESS ? void report.refetch() : create.mutate({ root, outline }, { onSuccess: x => onReport(x.id) })} />
           : <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
               <Badge variant={r.status === "done" ? "secondary" : "outline"}>{STATUS[r.status]}</Badge>

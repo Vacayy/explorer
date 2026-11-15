@@ -22,3 +22,20 @@ def stored(name, kr=None, *, path=None):
         if not data:
             raise LookupError('Company confirmation unavailable')
     return data
+
+
+def report(report_id, *, path=None):
+    with sqlite3.connect(Path(path or DB_PATH).resolve().as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+        conn.execute('PRAGMA query_only=ON')
+        row = conn.execute('SELECT payload FROM public_chain_reports WHERE id=?', (report_id,)).fetchone()
+    if row is None:
+        raise LookupError('Report unavailable')
+    return json.loads(row[0])
+
+
+def reports(root, *, path=None):
+    with sqlite3.connect(Path(path or DB_PATH).resolve().as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
+        conn.execute('PRAGMA query_only=ON')
+        rows = conn.execute('SELECT payload FROM public_chain_reports WHERE root=? ORDER BY id DESC LIMIT 10', (root,)).fetchall()
+    fields = ('id', 'root', 'status', 'outline', 'created_at', 'finished_at')
+    return [{k: value.get(k) for k in fields} for value in (json.loads(row[0]) for row in rows)]

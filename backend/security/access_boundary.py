@@ -43,6 +43,8 @@ PUBLIC_ROUTE_POLICIES = {
     ('GET', '/api/spine/tw/propagation'): 'public',
     ('GET', '/api/spine/tw/flow'): 'public',
     ('GET', '/api/spine/tw/expectations'): 'public',
+    ('GET', '/api/spine/tw/chain-report/{rid}'): 'public',
+    ('GET', '/api/spine/tw/chain-reports'): 'public',
     ('GET', '/api/spine/credit'): 'public',
     ('GET', '/api/spine/credit/history'): 'public',
     ('GET', '/api/spine/market-regime'): 'public',

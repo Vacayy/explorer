@@ -109,7 +109,16 @@ def chain_report_create(root: str, background: BackgroundTasks, outline: str = Q
 
 
 @router.get("/chain-report/{rid}", response_model=ChainReport)
-def chain_report_get(rid: int):
+def chain_report_get(request: Request, rid: int):
+    if getattr(request.state, 'public_access', False):
+        import sqlite3
+        from security.public_value_chain import report
+        try:
+            return report(rid)
+        except LookupError:
+            raise HTTPException(404, '보고서 없음') from None
+        except (sqlite3.Error, OSError, ValueError):
+            raise HTTPException(503, '보고서를 불러올 수 없습니다') from None
     from pipeline.chain_report import read
     r = read(rid)
     if not r:
@@ -118,6 +127,13 @@ def chain_report_get(rid: int):
 
 
 @router.get("/chain-reports", response_model=list[ChainReportItem])
-def chain_report_list(root: str):
+def chain_report_list(request: Request, root: str):
+    if getattr(request.state, 'public_access', False):
+        import sqlite3
+        from security.public_value_chain import reports
+        try:
+            return reports(root)
+        except (sqlite3.Error, OSError, ValueError):
+            raise HTTPException(503, '보고서를 불러올 수 없습니다') from None
     from pipeline.chain_report import history
     return history(root)

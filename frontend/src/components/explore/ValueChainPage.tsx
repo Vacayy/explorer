@@ -1,7 +1,6 @@
 import { useMemo } from "react"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
-import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { ReactFlow, Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, Position, MarkerType, getBezierPath, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { Badge } from "@/components/ui/badge"
@@ -303,7 +302,7 @@ export default function ValueChainPage() {
         </div>}
 
       {/* 트리 보고서 — 고른 공급 칸(없거나 수요 칸이면 메모리)에서 수요 쪽으로 타고 올라간다(§16, bottom-up) */}
-      {!PUBLIC_ACCESS && vc.data && <ChainReportCard root={node?.key ?? "memory"} rootName={node?.name ?? vc.data.nodes.find(n => n.key === "memory")?.name ?? "메모리"}
+      {vc.data && <ChainReportCard root={node?.key ?? "memory"} rootName={node?.name ?? vc.data.nodes.find(n => n.key === "memory")?.name ?? "메모리"}
         pickedDemand={demand?.name ?? null} reportId={reportId} onReport={id => setParam("report", id == null ? null : String(id))}
         outline={params.get("outline") === "top_down" ? "top_down" : "bottom_up"} onOutline={o => setParam("outline", o === "bottom_up" ? null : o)} />}
 

@@ -43,7 +43,7 @@ export function useValueChainExpectations() {
 /** 트리 보고서(§16) — 생성 전 트리 미리보기(LLM 0) */
 export function useChainPreview(root: string | null) {
   return useQuery(apiQuery<ChainPreview>({ key: ["spine", "tw", "chain-preview", root], url: "/api/spine/tw/chain-report/preview",
-    params: { root }, enabled: !!root, staleTime: STALE.long }))
+    params: { root }, enabled: !!root && !PUBLIC_ACCESS, staleTime: STALE.long }))
 }
 
 /** 루트별 보고서 이력(최신순) */
@@ -70,3 +70,4 @@ export function useCreateChainReport() {
     onSuccess: r => { void qc.invalidateQueries({ queryKey: ["spine", "tw", "chain-reports", r.root] }) },
   })
 }
+import { PUBLIC_ACCESS } from '@/lib/accessMode'
