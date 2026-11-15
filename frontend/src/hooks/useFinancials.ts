@@ -12,8 +12,9 @@ export function useFinancials(
 ) {
   return useQuery<FinancialResponse>({
     queryKey: ["financials", stockCode, sj_div, period, years, fs_div, !!options?.storedOnly],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const { data } = await api.get(`/api/financials/${stockCode}`, {
+        signal,
         params: { sj_div, period, years, fs_div, stored_only: options?.storedOnly },
       });
       return data;

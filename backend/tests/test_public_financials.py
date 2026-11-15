@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from routers import financials
+from routers import financials, companies
 from services import dart_service
 from security import public_financials as public
 from security.access_boundary import PublicAccessBoundary
@@ -18,20 +18,24 @@ class PublicFinancialTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
         self.path = Path(tmp.name) / 'db.sqlite'
         conn = sqlite3.connect(self.path)
-        conn.executescript('''CREATE TABLE companies(stock_code, corp_code, private_note);
-            INSERT INTO companies VALUES ('111111','corp','PRIVATE_CANARY'), ('222222','empty','PRIVATE_CANARY');
+        conn.executescript('''CREATE TABLE companies(stock_code, corp_code, private_note, corp_name, market, sector);
+            INSERT INTO companies VALUES ('111111','corp','PRIVATE_CANARY','Fixture Corp','KOSPI','Test'), ('222222','empty','PRIVATE_CANARY','Empty Corp',NULL,NULL);
             CREATE TABLE private_notes(body); INSERT INTO private_notes VALUES ('PRIVATE_CANARY');
             CREATE TABLE financial_statements(corp_code, fs_div, sj_div, bsns_year, reprt_code, account_nm, thstrm_amount, ord, private_note);''')
         for fd, amount in [('CFS','100'), ('OFS','900')]:
             conn.execute('INSERT INTO financial_statements VALUES (?,?,?,?,?,?,?,?,?)',
                          ('corp',fd,'IS',datetime.now().year-1,'11011','매출액',amount,1,'PRIVATE_CANARY'))
         conn.commit(); conn.close()
-        app = FastAPI(); app.include_router(financials.router)
+        app = FastAPI(); app.include_router(financials.router); app.include_router(companies.router)
         app.add_middleware(PublicAccessBoundary, routes=app.router.routes,
-                           policies={('GET','/api/financials/{stock_code}'): 'public'})
+                           policies={('GET','/api/financials/{stock_code}'): 'public',
+                                     ('GET','/api/companies/search'): 'public',
+                                     ('GET','/api/companies/{stock_code}'): 'public'})
         self.client = TestClient(app); self.addCleanup(self.client.close)
         self.addCleanup(patch.stopall)
         patch.object(public, 'financial_connection', side_effect=lambda: self.connection()).start()
+        patch.object(companies, 'financial_connection', side_effect=lambda: self.connection()).start()
+        patch.object(companies, 'get_connection', side_effect=AssertionError('private companies DB')).start()
         patch.object(dart_service, 'get_connection', side_effect=AssertionError('private DB')).start()
         patch.object(financials, 'fetch_financial_statements', side_effect=AssertionError('collector')).start()
 
@@ -91,6 +95,18 @@ class PublicFinancialTests(unittest.TestCase):
                     'DELETE FROM companies', 'PRAGMA query_only=OFF', "ATTACH ':memory:' AS other"):
             with self.subTest(sql=sql), self.assertRaises(sqlite3.DatabaseError):
                 conn.execute(sql)
+
+    def test_public_company_search_and_metadata_are_bounded_and_projected(self):
+        before = self.path.read_bytes()
+        r = self.client.get('/api/companies/search?q=Fixture')
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()[0]['stock_code'], '111111')
+        self.assertNotIn('PRIVATE_CANARY', r.text)
+        self.assertEqual(self.client.get('/api/companies/111111').json()['corp_name'], 'Fixture Corp')
+        self.assertEqual(self.client.get('/api/companies/333333').status_code, 404)
+        self.assertEqual(self.client.get('/api/companies/search?q=x&limit=-1').status_code, 422)
+        self.assertEqual(self.client.get('/api/companies/search?q=x&limit=1000').status_code, 422)
+        self.assertEqual(before, self.path.read_bytes())
 
     def test_missing_database_is_not_created(self):
         missing = self.path.parent / 'missing.sqlite'

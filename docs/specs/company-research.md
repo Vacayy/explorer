@@ -172,3 +172,5 @@ Empty는 조사 전/근거 없음, Loading은 검색·원문 확인·정리 진�
 ## 공용 저장 재무 조회
 
 공개 모드의 `GET /api/financials/{stock_code}`는 `stored_only` 값과 무관하게 저장 재무만 읽는다. 회사 코드 매핑과 계산 입력은 허용된 companies/financial_statements 컬럼만 읽는 동일 readonly snapshot을 사용한다. 수집 POST와 income-flow 경로는 별도 검토 전 공개하지 않는다. 미등록 종목은404, 등록됐지만 재무가 없으면 빈200이다. 연결 자료가 없을 때만 별도로 전체 응답을 폴백하며 두 회계기준을 합치지 않는다. 실제 기준은 응답 fs_div로 표시한다. 통화·정정 이력이 저장되지 않은 자료에 최신 정정본/과거 시점 재현을 보장하지 않는다.
+
+공용 화면은 `/financials?q=...`의 기업명/코드 검색 → `/analyze/:stockCode/financials`의 기존 재무 표·차트 → 검색 복귀로 연결한다. 조회 조건 `sj`, `period`, `years`, `fs`, `display`는 URL에 보존한다. 개인 회사 셸·NextQuestions·수집 컨트롤은 마운트하지 않는다. Loading은 Skeleton, Error는 재시도, Empty는 등록 종목의 저장자료 없음, Partial은 결측 및 통화/정정 이력 미보유 고지, Ideal은 실제 연결/별도와 회계기간을 표시하는 표/차트다. BS의 trailing 선택은 분기말 시점값으로 명시한다. 기업 검색과 이름 조회도 허용 컬럼 readonly 연결을 사용한다.

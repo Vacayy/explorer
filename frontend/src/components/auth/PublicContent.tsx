@@ -1,3 +1,4 @@
+import { PublicFinancialSearch, PublicFinancialsPage } from '@/components/financials/PublicFinancialsPage'
 import { Link, useLocation, useMatch } from 'react-router-dom'
 import { PublicUsSectorPage } from '@/components/industry/PublicUsSectorPage'
 import IndustryMapPage from '@/components/industry/IndustryMapPage'
@@ -14,6 +15,9 @@ export function PublicContent() {
   const { pathname } = useLocation()
   const sector = useMatch('/industry/us/:ticker')
   const document = useMatch('/doc/:docId')
+  const financial = useMatch('/analyze/:stockCode/financials')
+  if (pathname === '/financials') return <PublicFinancialSearch />
+  if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
   if (pathname === '/chat') return <PublicTrialChatPage />
   if (pathname === '/feed') return <PublicDocumentListPage />
   if (pathname === '/portfolio') return <MemberPortfolioPage />
@@ -23,6 +27,7 @@ export function PublicContent() {
   if (['/', '/home', '/home/kr', '/home/us'].includes(pathname)) {
     const market = pathname === '/home/us' ? 'us' : 'kr'
     return <PageContainer><h1 className="text-xl font-medium">{market === 'kr' ? '한국 시장' : '미국 시장'}</h1>
+      <Button variant="outline" asChild><Link to="/financials">기업 재무 조회</Link></Button>
       <MarketHero market={market} />
     </PageContainer>
   }

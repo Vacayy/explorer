@@ -8,13 +8,15 @@ from config import DB_PATH
 from services.dart_service import _build_financial_response, SJ_DIV_QUERY
 
 COLUMNS = {
-    'companies': {'stock_code', 'corp_code'},
+    'companies': {'stock_code', 'corp_code', 'corp_name', 'market', 'sector'},
     'financial_statements': {'corp_code', 'fs_div', 'sj_div', 'bsns_year',
                              'reprt_code', 'account_nm', 'thstrm_amount', 'ord'},
 }
 
 
 def _authorize(action, table, column, database, source):
+    if action == sqlite3.SQLITE_FUNCTION and column == 'like':
+        return sqlite3.SQLITE_OK
     if action == sqlite3.SQLITE_SELECT:
         return sqlite3.SQLITE_OK
     if (action == sqlite3.SQLITE_READ and database == 'main'

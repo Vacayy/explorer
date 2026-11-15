@@ -267,6 +267,7 @@ export default function App() {
             <Route index element={<Navigate to="/home" replace />} />
 
             {/* Home — 시스템 고정 탭 다섯 개 (home-widgets.md §0). 옛 홈 주소는 리다이렉트(ia-redesign §10.6) */}
+            {PUBLIC_ACCESS && <Route path="financials" element={null} />}
             <Route path="home" element={<HomePage />} />
             <Route path="home/kr" element={<HomeKrPage />} />
             <Route path="home/us" element={<HomeUsPage />} />

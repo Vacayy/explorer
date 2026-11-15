@@ -1,5 +1,5 @@
-import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { QueryState } from "@/components/shared/QueryState"
 import NextQuestions from "@/components/shared/NextQuestions"
 import { useFinancials } from "@/hooks/useFinancials"
 import SegmentTabs from "@/components/shared/SegmentTabs"
@@ -17,7 +17,8 @@ import {
 
 interface Props {
   stockCode: string
-  corpCode: string
+  corpCode?: string
+  publicView?: boolean
 }
 
 const SJ_TABS = [
@@ -32,15 +33,22 @@ const CHART_ACCOUNTS: Record<string, string[]> = {
   CF: ["영업활동", "투자활동", "재무활동"],
 }
 
-export default function FinancialsPage({ stockCode }: Props) {
-  const [params] = useSearchParams()
-  const [sjDiv, setSjDiv] = useState("IS")
-  const [period, setPeriod] = useState("annual")
-  const [years, setYears] = useState(5)
-  const [fsDiv, setFsDiv] = useState("CFS")
-  const [viewMode, setViewMode] = useState<"table" | "chart">("table")
-
-  const { data, isLoading } = useFinancials(stockCode, sjDiv, period, years, fsDiv, { storedOnly: params.has('discovery') })
+export default function FinancialsPage({ stockCode, publicView = false }: Props) {
+  const [params, setParams] = useSearchParams()
+  const choice = (key: string, allowed: string[], fallback: string) => {
+    const value = params.get(key)
+    return value && allowed.includes(value) ? value : fallback
+  }
+  const change = (key: string, value: string) => setParams(previous => {
+    const next = new URLSearchParams(previous); next.set(key, value); return next
+  })
+  const sjDiv = choice('sj', ['IS', 'BS', 'CF'], 'IS')
+  const period = choice('period', ['annual', 'quarterly', 'trailing'], 'annual')
+  const years = Number(choice('years', ['5', '10'], '5'))
+  const fsDiv = choice('fs', ['CFS', 'OFS'], 'CFS')
+  const viewMode = choice('display', ['table', 'chart'], 'table')
+  const query = useFinancials(stockCode, sjDiv, period, years, fsDiv, { storedOnly: publicView || params.has('discovery') })
+  const { data } = query
 
   const chartAccounts = CHART_ACCOUNTS[sjDiv] || []
   const periods = data?.periods || []
@@ -69,10 +77,10 @@ export default function FinancialsPage({ stockCode }: Props) {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
-        <SegmentTabs tabs={SJ_TABS} value={sjDiv} onChange={setSjDiv} />
-        <PeriodToggle value={period} onChange={setPeriod} />
-        <YearToggle value={years} onChange={setYears} />
-        <Select value={fsDiv} onValueChange={setFsDiv}>
+        <SegmentTabs tabs={SJ_TABS} value={sjDiv} onChange={value => change('sj', value)} />
+        <PeriodToggle value={period} onChange={value => change('period', value)} />
+        <YearToggle value={years} onChange={value => change('years', String(value))} />
+        <Select value={fsDiv} onValueChange={value => change('fs', value)}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
           </SelectTrigger>
@@ -88,18 +96,24 @@ export default function FinancialsPage({ stockCode }: Props) {
             { value: "table", label: "테이블" },
           ]}
           value={viewMode}
-          onChange={(v) => setViewMode(v as "table" | "chart")}
+          onChange={value => change('display', value)}
         />
       </div>
 
-      {isLoading && <p className="text-muted-foreground">로딩 중...</p>}
-
-      {data && periods.length === 0 && !isLoading && (
-        <p className="text-muted-foreground text-center py-10">데이터가 없습니다.</p>
-      )}
-
+      {publicView && <div className="space-y-1 text-sm text-muted-foreground">
+        <p>출처: <a href="https://opendart.fss.or.kr/intro/main.do" target="_blank" rel="noreferrer" className="underline">OpenDART</a> · 저장된 재무 자료. 조회 시 새 자료를 수집하지 않습니다.</p>
+        <p>통화와 정정 이력을 보관하지 않아 최신 정정본 여부는 확인할 수 없습니다. 표·차트의 억/조는 저장 금액의 표시 배율입니다.</p>
+      </div>}
+      {data && <p className="text-sm" role="status">표시 기준: {data.fs_div === 'CFS' ? '연결재무제표' : '별도재무제표'}
+        {data.fs_div !== fsDiv && ' · 연결 자료가 없어 별도 자료를 표시합니다.'}
+        {sjDiv === 'BS' && ' · 기간말 시점 값이며 합산하지 않습니다.'}
+        {sjDiv !== 'BS' && period === 'trailing' && ' · 연속 네 분기가 모두 있는 기간만 합산합니다.'}
+      </p>}
+      <QueryState query={query} isEmpty={value => value.periods.length === 0} emptyMessage="선택한 조건으로 표시할 저장 재무 자료가 없습니다.">
+        {value => <>
+        {value.rows.some(row => row.values.some(v => v === null)) && <p role="status" className="text-sm text-muted-foreground">일부 항목이 누락되어 있습니다. 빈 값은 0으로 추정하지 않습니다.</p>}
       {data && periods.length > 0 && viewMode === "table" && (
-        <DataTable periods={periods} rows={data.rows} exportFilename={`${stockCode}_${sjDiv}_${period}`} />
+        <DataTable periods={periods} rows={data.rows} unit={publicView ? "저장 금액 (억/조 배율)" : undefined} exportFilename={`${stockCode}_${sjDiv}_${period}`} />
       )}
 
       {data && periods.length > 0 && viewMode === "chart" && (
@@ -130,8 +144,10 @@ export default function FinancialsPage({ stockCode }: Props) {
           </ResponsiveContainer>
         </ChartCard>
       )}
+        </>}
+      </QueryState>
       {/* 다음 질문 — dead-end 제거 (P2-3) */}
-      <NextQuestions stockCode={stockCode} context="financials" />
+      {!publicView && <NextQuestions stockCode={stockCode} context="financials" />}
     </PageContainer>
   )
 }

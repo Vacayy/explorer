@@ -14,7 +14,7 @@
 
 ## 공용 저장 재무 조회
 
-`GET /api/financials/{stock_code}`는 공용 모드에서 `security.public_financials`의 컬럼 제한 readonly snapshot으로 회사 매핑과 재무 계산을 수행한다. 쿼리 옵션과 관계없이 외부 수집을 하지 않으며 기존 계산기를 연결 주입으로 재사용한다. 수집 POST·income-flow는 공개 정책에 포함하지 않는다. 공유 응답은 `models.financials.FinancialResponse`로 검증한다.
+`GET /api/financials/{stock_code}`는 공용 모드에서 `security.public_financials`의 컬럼 제한 readonly snapshot으로 회사 매핑과 재무 계산을 수행한다. 쿼리 옵션과 관계없이 외부 수집을 하지 않으며 기존 계산기를 연결 주입으로 재사용한다. 수집 POST·income-flow는 공개 정책에 포함하지 않는다. 공유 응답은 `models.financials.FinancialResponse`로 검증한다. 공용 `/financials` 기업 검색에서 `/analyze/:stockCode/financials`로 이동하며 회사명/코드 검색·기본 metadata도 같은 readonly 허용 컬럼 경계를 사용한다. 기존 FinancialsPage 표/차트를 재사용하고 개인 NextQuestions는 마운트하지 않는다. 재무 조건은 URL에 보존한다.
 
 ## 공용 한국 산업 지도
 
