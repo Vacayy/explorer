@@ -9,6 +9,9 @@ from psycopg import sql
 from psycopg.types.json import Jsonb
 from routers.spine_signals import _row_to_item, signals_summary as sqlite_summary, mention_momentum as sqlite_momentum
 from pipeline.postgres_signals_fixture import signals_items, signals_summary as pg_summary, mention_momentum as pg_momentum
+from pipeline.postgres_narrative_fixture import list_narratives as pg_narratives
+from pipeline.narrative import list_narratives as sqlite_narratives
+from routers.spine_narrative import NarrativeList
 
 
 def main():
@@ -27,15 +30,18 @@ def main():
         since=(date.fromisoformat(latest)-timedelta(days=7)).isoformat()
         signals=[dict(row) for row in source.execute('SELECT * FROM signals')]
         entities=[dict(row) for row in source.execute('SELECT * FROM entities')]
+        narratives=[dict(row) for row in source.execute('SELECT * FROM narratives')]
         links=[dict(row) for row in source.execute("SELECT el.* FROM entity_links el JOIN raw_documents rd ON rd.id=el.doc_id WHERE el.link_type='stock' AND rd.published_at>=datetime('now','-14 days')")]
         documents=[dict(row) for row in source.execute("SELECT id,published_at FROM raw_documents WHERE published_at>=datetime('now','-14 days')")]
         with psycopg.connect(dsn) as conn:
             conn.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
             conn.execute(sql.SQL('CREATE TABLE {}.legacy_snapshot_rows(table_name text,row_ordinal bigint,row_data jsonb)').format(sql.Identifier(schema)))
+            conn.execute(sql.SQL('CREATE TABLE {}.legacy_snapshot_tables(table_name text primary key)').format(sql.Identifier(schema)))
+            conn.execute(sql.SQL("INSERT INTO {}.legacy_snapshot_tables VALUES ('signals')").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'id'))").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'signal_type'),(row_data->>'entity_id'))").format(sql.Identifier(schema)))
             with conn.cursor() as cur:
-                for table,rows in [('entities',entities),('signals',signals),('entity_links',links),('raw_documents',documents)]:
+                for table,rows in [('entities',entities),('signals',signals),('narratives',narratives),('entity_links',links),('raw_documents',documents)]:
                     cur.executemany(sql.SQL('INSERT INTO {}.legacy_snapshot_rows VALUES (%s,%s,%s)').format(sql.Identifier(schema)),[(table,i,Jsonb(row)) for i,row in enumerate(rows)])
         counts=[]
         with psycopg.connect(dsn,options=f'-c search_path={schema}') as conn:
@@ -64,7 +70,11 @@ def main():
                 expected_momentum=sqlite_momentum(limit=12).model_dump()['items']
             if pg_momentum(conn,limit=12).model_dump()['items'] != expected_momentum:
                 raise AssertionError('Momentum mismatch')
-        print(f'Compared signal lists all/theme/mentions: {counts}, summary and {len(expected_momentum)} momentum entries: matched')
+            expected_narratives=NarrativeList(items=sqlite_narratives(source)).model_dump()
+            actual_narratives=pg_narratives(conn).model_dump()
+            if actual_narratives != expected_narratives:
+                raise AssertionError('Narrative list mismatch')
+        print(f'Compared signal lists {counts}, summary, {len(expected_momentum)} momentum and {len(expected_narratives["items"])} narratives: matched')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:
