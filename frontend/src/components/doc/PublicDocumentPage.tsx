@@ -1,4 +1,4 @@
-import { publicFeedReturn } from '@/lib/publicDocumentNavigation'
+import { publicFeedReturn, publicCompanyReturn } from '@/lib/publicDocumentNavigation'
 import { MemberDocumentSaveButton } from '@/components/shared/MemberDocumentSaveButton'
 import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -12,9 +12,10 @@ import type { PublishedAttachment, PublishedDocument } from '@/types'
 
 function DocumentContainer({ children }: { children: ReactNode }) {
   const [params] = useSearchParams()
-  const back = publicFeedReturn(params.get('return_to'))
+  const company = publicCompanyReturn(params.get('return_to'))
+  const back = company ?? publicFeedReturn(params.get('return_to'))
   return <PageContainer width="reading" className="[overflow-wrap:anywhere]">
-    <Button asChild variant="ghost" size="sm" className="self-start"><Link to={back}>공개 문서 목록</Link></Button>
+    <Button asChild variant="ghost" size="sm" className="self-start"><Link to={back}>{company ? '기업 자료로 돌아가기' : '공개 문서 목록'}</Link></Button>
     {children}
   </PageContainer>
 }

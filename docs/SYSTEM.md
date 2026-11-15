@@ -28,7 +28,7 @@
 
 `pipeline.company_evidence.evidence_response`는 호출자가 선택한 근거 행의 기간·장 마감 시각·출처·페이지·30일 흐름을 계산한다. 입력 행을 수정하지 않으며 DB나 수집기를 직접 호출하지 않는다. 기존 private `company_evidence`는 개인 엔티티 연결/공시 조회와 페이지 출처명 resolver를 유지한다. 이 분리는 승인 문서 입력을 연결하기 위한 준비이며 공개 근거 API 허용이나 데이터 배포를 뜻하지 않는다.
 
-공개 GET `/api/spine/feed/company-evidence?market=us`는 public US registry와 `public_company_evidence(ticker,doc_id,fingerprint)`의 명시 준비 연결을 사용한다. 각 문서는 PublicDocuments의 현재 승인/원문 fingerprint 및 연결 준비 시 fingerprint가 모두 일치해야 한다. 이 집합에 대해서만 기존 기간·출처·검색·페이지·coverage/flow를 계산한다. 철회/변경 자료는 본문과 집계에서 제외하고 재승인만으로 기업 연결을 새 revision에 승계하지 않는다. 개인 엔티티·팔로우·공시 조회나 요약 POST는 허용하지 않는다. 실제 데이터 준비 및 화면/배포 수용은 별도다.
+공개 GET `/api/spine/feed/company-evidence?market=us`는 public US registry와 `public_company_evidence(ticker,doc_id,fingerprint)`의 명시 준비 연결을 사용한다. 각 문서는 PublicDocuments의 현재 승인/원문 fingerprint 및 연결 준비 시 fingerprint가 모두 일치해야 한다. 이 집합에 대해서만 기존 기간·출처·검색·페이지·coverage/flow를 계산한다. 철회/변경 자료는 본문과 집계에서 제외하고 재승인만으로 기업 연결을 새 revision에 승계하지 않는다. 개인 엔티티·팔로우·공시 조회나 요약 POST는 허용하지 않는다. 공개 미국 자료 탭은 기존 CompanyMentions의 기간/흐름/출처와 CompanyEvidence의 검색/페이지를 재사용한다. 가격 선택 구간에도 같은 기간 조건을 적용한다. 공개 요청은 AI 요약을 마운트하지 않으며 재검증 중/실패/오프라인에서 캐시 본문과 통계를 숨긴다. 공개 문서 return_to는 허용된 기업 경로의 기간/검색 문맥을 보존한다. 실제 데이터 준비 및 배포 수용은 별도다.
 
 ## 공개 기업 개요 저장 조회
 

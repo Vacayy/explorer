@@ -403,7 +403,7 @@ export function CompanyPriceResearch({
               tabIndex={0}
               aria-label="선택 구간 자료 목록"
             >
-              {PUBLIC_ACCESS ? publicEvidence ?? <p className="p-4 text-sm text-muted-foreground">선택 날짜와 관련된 공개 자료 연결을 준비 중입니다.</p> : <CompanyEvidence
+              {PUBLIC_ACCESS && market !== 'us' ? publicEvidence ?? <p className="p-4 text-sm text-muted-foreground">선택 날짜와 관련된 공개 자료 연결을 준비 중입니다.</p> : <CompanyEvidence
                 key={`${company}:research`}
                 company={company}
                 market={market}

@@ -1,5 +1,4 @@
 import { PUBLIC_ACCESS } from "@/lib/accessMode"
-import { publicFeedUrl } from "@/lib/publicDocumentNavigation"
 import { QueryState } from "@/components/shared/QueryState"
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useEffect } from 'react'
@@ -92,7 +91,7 @@ export default function UsDossierPage({ ticker: publicTicker }: { ticker?: strin
             sub: room != null ? <span className={room >= 0 ? 'text-up-ink' : 'text-down-ink'}>{formatPercent(room)} 여력</span> : undefined },
           { label: '목표가 범위', value: c.targets ? `${formatStockPrice(c.targets.low, 'us')} – ${formatStockPrice(c.targets.high, 'us')}` : '-', info: src.target_range },
         ]} />
-        {tab === 'evidence' ? PUBLIC_ACCESS ? <PublicCompanyEvidence ticker={d.ticker} name={d.name} /> : <CompanyMentions key={ticker} company={d.ticker} market="us" />
+        {tab === 'evidence' ? <CompanyMentions key={ticker} company={d.ticker} market="us" />
           : tab === 'financials' ? <UsFinancials d={d} price={price} />
           : tab === 'lens' ? PUBLIC_ACCESS ? <Card><CardContent className="space-y-2 py-4"><h2 className="text-section font-semibold">투자 렌즈 · 월드모델</h2><p className="text-sm text-muted-foreground">저장된 분석과 인과 관계의 공개 연결을 준비 중입니다. 실적·시세는 개요와 실적·사업 탭에서 확인할 수 있습니다.</p></CardContent></Card> : <>
             <LensView code={d.ticker} market="us" />
@@ -108,28 +107,15 @@ export default function UsDossierPage({ ticker: publicTicker }: { ticker?: strin
               loading={prices.isPending}
               error={prices.isError}
               retry={() => void prices.refetch()}
-              publicEvidence={<PublicCompanyEvidence ticker={d.ticker} name={d.name} />}
               overview={<div className="space-y-3">
                 {typeof d.latest_transcript?.id === 'number' && <UsEarningsCard transcriptId={d.latest_transcript.id} />}
-                {PUBLIC_ACCESS ? <PublicCompanyEvidence ticker={d.ticker} name={d.name} /> : <CompanyEvidence company={d.ticker} market="us" preview moreTo={`/us/${d.ticker}?tab=evidence`} />}
+                {<CompanyEvidence company={d.ticker} market="us" preview moreTo={`/us/${d.ticker}?tab=evidence`} />}
               </div>}
             />
           </>}
       </PageContainer>
     )
   }}</QueryState>
-}
-
-function PublicCompanyEvidence({ ticker, name }: { ticker: string; name: string }) {
-  const location = useLocation()
-  return <Card aria-label="관련 공개 자료"><CardContent className="space-y-3 py-4">
-    <h2 className="text-section font-semibold">관련 공개 자료</h2>
-    <p className="text-sm text-muted-foreground">기업별·날짜별 자료 연결을 준비 중입니다. 현재 공개된 문서는 기업명이나 티커로 검색할 수 있습니다.</p>
-    <div className="flex flex-wrap gap-2">
-      <Button asChild variant="outline"><Link to={publicFeedUrl(name, null, location.pathname + location.search)}>기업명으로 공개 문서 검색</Link></Button>
-      <Button asChild variant="outline"><Link to={publicFeedUrl(ticker, null, location.pathname + location.search)}>티커로 공개 문서 검색</Link></Button>
-    </div>
-  </CardContent></Card>
 }
 
 function DossierSkeleton() {

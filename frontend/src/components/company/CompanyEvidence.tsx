@@ -1,5 +1,6 @@
+import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { useEffect, useRef } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { BoundedArea } from '@/components/shared/Bounded'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -59,6 +60,8 @@ export function CompanyEvidence({
   title?: string
 }) {
   const [sp, setSp] = useSearchParams()
+  const location = useLocation()
+  const documentUrl = (id: number) => `/doc/${id}${PUBLIC_ACCESS ? `?return_to=${encodeURIComponent(location.pathname + location.search)}` : ''}`
   const source = preview ? '' : sp.get('source') || ''
   const q = preview ? '' : sp.get('q') || ''
   const page = preview ? 1 : Math.max(1, Number(sp.get('page')) || 1)
@@ -95,7 +98,7 @@ export function CompanyEvidence({
         {preview && moreTo && <Link to={moreTo} className="shrink-0 text-xs text-muted-foreground hover:text-foreground">자료 전체 ›</Link>}
       </header>
       <CardContent className="space-y-4 px-4 py-3">
-        {!preview && summary && range.start && range.end && <CompanyEvidenceSummary company={company} market={market} range={range} source={source} q={q}
+        {!PUBLIC_ACCESS && !preview && summary && range.start && range.end && <CompanyEvidenceSummary company={company} market={market} range={range} source={source} q={q}
           disabled={feed.isPending || feed.isError || feed.data?.total === 0} total={feed.data?.total} />}
 
         {!preview && (
@@ -127,11 +130,11 @@ export function CompanyEvidence({
           </form>
         )}
         <div aria-live="polite" aria-busy={feed.isFetching}>
-          {feed.isPending ? (
+          {feed.isPending || (PUBLIC_ACCESS && feed.isFetching) ? (
             <div role="status" aria-label="자료 불러오는 중" className="space-y-3 py-2">
               {Array.from({ length: preview ? 3 : 6 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
-          ) : feed.isError ? (
+          ) : feed.isError || !feed.data ? (
             <div role="alert" className="space-y-2 py-4 text-sm">
               <p>자료를 불러오지 못했습니다.</p>
               <Button variant="outline" size="sm" onClick={() => void feed.refetch()}>다시 시도</Button>
@@ -169,7 +172,7 @@ export function CompanyEvidence({
                   <li key={item.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3 border-t py-2.5 first:border-t-0" data-evidence-row>
                     <span className="inline-flex h-[22px] items-center whitespace-nowrap rounded-md bg-chip px-2 text-xs font-medium text-ink-2">{sourceLabels[item.source_type] || item.source_type}</span>
                     {item.doc_id ? (
-                      <DetailLink to={`/doc/${item.doc_id}`} className="min-w-0 truncate text-[13.5px] hover:underline" title={item.title || undefined}>{item.title || '제목 없는 자료'}</DetailLink>
+                      <DetailLink to={documentUrl(item.doc_id)} className="min-w-0 truncate text-[13.5px] hover:underline" title={item.title || undefined}>{item.title || '제목 없는 자료'}</DetailLink>
                     ) : item.url && /^https?:\/\//i.test(item.url) ? (
                       <a className="min-w-0 truncate text-[13.5px] hover:underline" href={item.url} target="_blank" rel="noopener noreferrer" title={item.title || undefined}>{item.title || '제목 없는 자료'}</a>
                     ) : (
@@ -195,7 +198,7 @@ export function CompanyEvidence({
                       )}
                     </div>
                     {item.doc_id ? (
-                      <DetailLink to={`/doc/${item.doc_id}`} className={titleLink}>
+                      <DetailLink to={documentUrl(item.doc_id)} className={titleLink}>
                         {item.title || '제목 없는 자료'}
                       </DetailLink>
                     ) : item.url && /^https?:\/\//i.test(item.url) ? (
