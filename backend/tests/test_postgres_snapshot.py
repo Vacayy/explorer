@@ -43,6 +43,7 @@ from pipeline.connectors.youtube import YouTubeConnector
 from pipeline.postgres_link_preview_fixture import preview_links, prepare_enrichment, finish_with_links
 from pipeline.postgres_graph_fixture import initialize_graph, finish_with_graph
 from pipeline.postgres_enrich_worker_fixture import enrich_document
+from pipeline.postgres_ingest_cycle_fixture import run_cycle
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -354,6 +355,31 @@ class SnapshotReplacementTests(unittest.TestCase):
                 self.assertIn(blog_id,[item.id for item in search_feed(c,index,'검색어').items])
             finally:
                 index.close()
+
+    def test_collection_cycle_processes_only_changed_documents(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        with tempfile.TemporaryDirectory() as vault:
+            notes=Path(vault)/'notes'
+            notes.mkdir()
+            note=notes/'cycle.md'
+            note.write_text('# 합성 문서\n본문',encoding='utf-8')
+            from pipeline.enrich import _enrich_keyword
+            first=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+            second=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+            note.write_text('# 합성 문서\n변경된 본문',encoding='utf-8')
+            third=run_cycle(NoteConnector(Path(vault)),self.pg,enrich=_enrich_keyword)
+        self.assertEqual((first['new'],first['enriched']), (1,1))
+        self.assertEqual((second['unchanged'],second['enriched']), (1,0))
+        self.assertEqual((third['updated'],third['enriched']), (1,1))
+        with self.pg() as c:
+            self.assertEqual(c.execute("SELECT e.summary FROM ingest_enrichments e JOIN ingest_documents d ON d.id=e.document_id WHERE d.source_id='cycle.md'").fetchone()[0], '# 합성 문서 변경된 본문')
 
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:

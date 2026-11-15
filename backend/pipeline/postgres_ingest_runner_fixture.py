@@ -17,7 +17,7 @@ def _guard(conn):
         raise ValueError('Disposable fixture schema required')
 
 
-def run_source(connector, factory, *, clock=lambda: datetime.now(timezone.utc)):
+def run_source(connector, factory, *, clock=lambda: datetime.now(timezone.utc), on_stored=None):
     with factory() as conn:
         _guard(conn)
     if getattr(connector,'after_store',None):
@@ -28,7 +28,10 @@ def run_source(connector, factory, *, clock=lambda: datetime.now(timezone.utc)):
             raise ValueError('A timezone-aware collection time is required')
         with factory() as conn:
             _guard(conn)
-            return store_raw_doc(conn,doc,fetched_at=observed.astimezone(timezone.utc).isoformat())
+            result=store_raw_doc(conn,doc,fetched_at=observed.astimezone(timezone.utc).isoformat())
+        if on_stored is not None:
+            on_stored(result)
+        return result
     return runner.run_source(connector,store=store)
 
 
