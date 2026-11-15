@@ -1,6 +1,8 @@
 """Member-owned confirmed principles; no legacy schema, parser or alert side effects."""
 import json
-from pipeline import portfolio_principles as rules
+from pipeline import portfolio_principles as rules, portfolio as pf
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from security.member_portfolio import MemberPortfolio
 
 
@@ -45,6 +47,34 @@ class MemberPrinciples(MemberPortfolio):
                 'SELECT id,text,rules_json,notes_json,created_at FROM member_portfolio_principles WHERE group_id=? ORDER BY id',
                 (self.group(conn),))]
 
+    def evaluate(self):
+        with self.connection() as conn:
+            self.prepared(conn)
+            gid = self.group(conn)
+            items = [self.projection(row) for row in conn.execute(
+                'SELECT id,text,rules_json,notes_json,created_at FROM member_portfolio_principles WHERE group_id=? ORDER BY id', (gid,))]
+            summary = pf.summary(conn, gid=gid)
+            coverage, violations = [], []
+            today = datetime.now(ZoneInfo('Asia/Seoul')).date().isoformat()
+            for item in items:
+                for index, rule in enumerate(item['rules']):
+                    status, reason = rule_coverage(rule['type'], summary)
+                    coverage.append({'principle_id':item['id'], 'rule_index':index,
+                                     'rule':rules.describe(rule), 'status':status, 'reason':reason})
+                    if status not in ('evaluated', 'partial'):
+                        continue
+                    field = HOLDING_FIELDS.get(rule['type'])
+                    eligible = [h for h in summary.get('holdings', []) if field is None or h.get(field) is not None]
+                    inputs = {**summary, 'holdings': eligible}
+                    for hit in rules.violations([{**item, 'rules':[rule]}], inputs, today=today):
+                        # The engine sees one rule; preserve its original index in the response key.
+                        suffix = hit['key'].split(':', 2)[2]
+                        hit['key'] = f"{item['id']}:{index}:{suffix}"
+                        violations.append({k:hit[k] for k in ('key','principle_id','rule','message')})
+            return {'as_of':summary.get('quoted_at') or summary.get('as_of'), 'rules':len(coverage),
+                    'coverage':coverage, 'notifications_enabled':False,
+                    'items':violations}
+
     def create(self, body):
         values = self.cleaned(body)
         with self.connection(write=True) as conn:
@@ -76,3 +106,33 @@ class MemberPrinciples(MemberPortfolio):
             if not conn.execute('DELETE FROM member_portfolio_principles WHERE id=? AND group_id=?',
                                 (principle_id, self.group(conn))).rowcount:
                 raise PrincipleUnavailable()
+
+
+HOLDING_FIELDS = {'max_weight': 'weight_pct', 'stop_loss': 'return_pct', 'take_profit': 'return_pct',
+                  'day_drop': 'day_change_pct', 'max_holding_days': 'entry_date'}
+
+def rule_coverage(kind, summary):
+    holdings = summary.get('holdings', [])
+    deferred = {'max_exposure': 'Shared exposure evidence is not connected',
+                'peak_exit': 'Complete peak-exit price history is not verified',
+                'max_entry_weight': 'Historical entry valuation is not verified',
+                'account_drawdown': 'Complete historical account valuation is not verified'}
+    if kind in deferred:
+        return 'unavailable', deferred[kind]
+    if kind == 'max_holdings':
+        return 'evaluated', None
+    if kind in ('min_cash', 'max_cash', 'max_weight'):
+        if any(h.get('last_close') is None for h in holdings):
+            return 'unavailable', 'Some holdings have no stored price'
+        field = 'cash_weight_pct' if kind != 'max_weight' else None
+        if field and summary.get(field) is None:
+            return 'unavailable', 'Account valuation is unavailable'
+    if not holdings and kind not in ('min_cash', 'max_cash'):
+        return 'not_applicable', 'No current holdings'
+    if kind in HOLDING_FIELDS:
+        available = sum(h.get(HOLDING_FIELDS[kind]) is not None for h in holdings)
+        if available == 0:
+            return 'unavailable', 'Required holding inputs are unavailable'
+        if available < len(holdings):
+            return 'partial', 'Only holdings with complete inputs were evaluated'
+    return 'evaluated', None

@@ -116,7 +116,7 @@ class MemberPortfolioTests(unittest.TestCase):
             self.assertEqual(self.add(**extra).status_code,422)
         for path in ['/api/portfolio','/api/portfolio/transactions','/api/spine/groups/1',
                      '/api/spine/search?q=portfolio',self.base+'/exposure',self.base+'/flow',
-                     self.base+'/events',self.base+'/principles/state',self.base+'/thesis',self.base+'/alerts']:
+                     self.base+'/events',self.base+'/principles/parse',self.base+'/thesis',self.base+'/alerts']:
             self.assertEqual(self.client.get(path,headers=self.headers['a']).status_code,404)
         legacy=FastAPI();legacy.include_router(routes.router)
         with TestClient(legacy) as client:self.assertEqual(client.get(self.base).status_code,404)

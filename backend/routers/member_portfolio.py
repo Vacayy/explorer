@@ -130,3 +130,11 @@ def edit_principle_text(body: PrincipleText, principle_id: int = Path(ge=1),
 def delete_principle(principle_id: int = Path(ge=1), service: MemberPrinciples = Depends(principle_service)):
     principle_action(lambda: service.delete(principle_id))
     return {'ok': True}
+
+
+from models.member_portfolio import MemberPrincipleState
+
+
+@router.get('/principles/state', response_model=MemberPrincipleState)
+def evaluate_principles(service: MemberPrinciples = Depends(principle_service)):
+    return principle_action(service.evaluate)

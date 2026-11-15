@@ -70,3 +70,56 @@ class MemberPrincipleTests(unittest.TestCase):
             conn.executemany('INSERT INTO member_portfolio_principles(group_id,text,rules_json,notes_json) VALUES(?,?,?,?)', [tuple(row)]*99)
         self.assertEqual(self.create().status_code,409)
         self.assertEqual(self.create('b').status_code,201)
+
+    def test_evaluation_uses_only_own_portfolio_and_never_legacy_alerts(self):
+        self.assertEqual(self.create().status_code,201)
+        self.assertEqual(self.create('b').status_code,201)
+        fixture.MemberPortfolioTests.add(self, name='a')
+        before=self.path.read_bytes()
+        with patch.object(legacy,'current',side_effect=AssertionError('legacy current')), \
+                patch.object(legacy,'alert',side_effect=AssertionError('alert')):
+            a=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+            b=self.client.get(self.base+'/principles/state',headers=self.headers['b'])
+        self.assertEqual(a.status_code,200,a.text)
+        self.assertEqual(a.json()['coverage'][0]['status'],'evaluated')
+        self.assertEqual(len(a.json()['items']),1)
+        self.assertFalse(a.json()['notifications_enabled'])
+        self.assertEqual(b.json()['items'],[])
+        self.assertEqual(b.json()['coverage'][0]['status'],'not_applicable')
+        self.assertNotIn('member private principle',a.text)
+        self.assertEqual(before,self.path.read_bytes())
+
+    def test_missing_quotes_and_deferred_inputs_are_not_reported_as_pass(self):
+        self.assertEqual(self.create(rules=[{'type':'max_weight','params':{'pct':25}},
+                                         {'type':'max_exposure','params':{'pct':25}}]).status_code,201)
+        fixture.MemberPortfolioTests.add(self,name='a',stock_code='BBBBBB')
+        r=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual([x['status'] for x in r.json()['coverage']],['unavailable','unavailable'])
+        self.assertEqual(r.json()['items'],[])
+
+    def test_mixed_price_coverage_is_partial_with_only_known_violations(self):
+        self.assertEqual(self.create(rules=[{'type':'take_profit','params':{'pct':5}}]).status_code,201)
+        fixture.MemberPortfolioTests.add(self,name='a')
+        fixture.MemberPortfolioTests.add(self,name='a',stock_code='BBBBBB')
+        r=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(r.json()['coverage'][0]['status'],'partial')
+        self.assertEqual(len(r.json()['items']),1)
+        self.assertNotIn('BBBBBB',r.json()['items'][0]['message'])
+
+    def test_incomplete_holding_is_not_executed_and_original_rule_index_survives(self):
+        self.assertEqual(self.create(rules=[{'type':'max_exposure','params':{'pct':25}},
+                                         {'type':'max_holding_days','params':{'days':1}}]).status_code,201)
+        summary={'as_of':'2026-01-01','holdings':[
+            {'code':'KNOWN','name':'known','entry_date':'2020-01-01'},
+            {'code':'MISSING','name':'missing','entry_date':None}]}
+        with patch('security.member_principles.pf.summary', return_value=summary), \
+                patch.object(legacy,'violations',wraps=legacy.violations) as evaluate:
+            r=self.client.get(self.base+'/principles/state',headers=self.headers['a'])
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual([x['status'] for x in r.json()['coverage']],['unavailable','partial'])
+        self.assertEqual(len(r.json()['items']),1)
+        self.assertEqual(r.json()['items'][0]['key'].split(':')[1],'1')
+        self.assertEqual(evaluate.call_count,1)
+        self.assertEqual([h['code'] for h in evaluate.call_args.args[1]['holdings']],['KNOWN'])

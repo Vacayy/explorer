@@ -212,3 +212,5 @@ EXPLORER_PUBLICATION_DB는 업무 DB와 다른 절대경로의 명시적 Publica
 API는 `/api/member/portfolio/principles` GET/POST, `/{principle_id}` PUT/PATCH/DELETE로 계획한다. 본인 범위 SQL 안에서 수정·삭제하며 없는 항목과 타인 항목은 동일404. 사용자 데이터가 검증오류에 반사되지 않도록 기존 MemberRoute를 사용한다. 회원당 최대100원칙, 본문20000자·규칙20개·참고60개(각500자), 입력 owner/group 키 금지. 읽기는 부작용 없이 기존 empty 회원을 유지한다.
 
 UI 상태: Empty는 아직 원칙없음, Loading은 skeleton, Error는 재시도/입력보존, Partial은 저장된 원칙과 아직 연결되지 않은 해석·평가·알림 상태를 구분, Ideal은 본인 원문/확인규칙/참고목록과 수정·삭제. 문장→규칙 LLM parse, 본인 원장만 사용하는 평가, 알림수신자 및 scheduler 연결은 별도 후속이며 CRUD 준비를 전체 원칙기능 완료로 표시하지 않는다. 개인용 모델/텔레그램을 회원 요청에 암묵적으로 호출하지 않는다.
+
+회원 원칙 평가 GET `/api/member/portfolio/principles/state`는 같은 readonly transaction의 회원 원칙과 해당 group의 원장만 사용한다. 전역 current/alert/cache/LLM을 호출하지 않고 기존 순수 violations를 재사용한다. 규칙별 evaluated/partial/unavailable/not_applicable과 이유를 반환하며 partial/unavailable을 위반없음으로 표시하지 않는다. 현재 평가 연결은 보유수·보유기간·개별수익률/일변화·현재비중/현금비중이다. 진입비중·누적손실의 역사적 평가, 공통변수·고점복합규칙은 입력 완전성/공개근거 검토 전 unavailable이며 후속 범위다. 시세가 없는 보유종목이 있으면 취득가를 평가금액으로 대체해 비중을 판정하지 않는다. 알림상태를 읽거나 쓰지 않고 발송도 하지 않는다.

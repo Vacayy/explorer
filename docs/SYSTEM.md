@@ -14,7 +14,7 @@
 
 ## 회원 운용 원칙 소유권 준비
 
-명시적 `initialize_ownership`는 기존 회원 포트폴리오 group에 연결된 `member_portfolio_principles` 테이블/인덱스를 준비한다. `/api/member/portfolio/principles` GET/POST 및 항목 PUT/PATCH/DELETE는 `MemberPrinciples`가 인증 사용자 소유 group 안에서만 처리한다. 기존 개인용 원칙 테이블·전역 scheduler/LLM과 분리하고 기존 규칙 validate/describe만 재사용한다. 원칙 화면·문장 해석·평가·회원 알림은 후속이며 운영 schema/데이터 이관을 뜻하지 않는다.
+명시적 `initialize_ownership`는 기존 회원 포트폴리오 group에 연결된 `member_portfolio_principles` 테이블/인덱스를 준비한다. `/api/member/portfolio/principles` GET/POST 및 항목 PUT/PATCH/DELETE는 `MemberPrinciples`가 인증 사용자 소유 group 안에서만 처리한다. 기존 개인용 원칙 테이블·전역 scheduler/LLM과 분리하고 기존 규칙 validate/describe만 재사용한다. 원칙 state GET은 동일 readonly snapshot의 본인 원장과 기존 순수 violations로 평가하며 규칙별 evaluated/partial/unavailable/not_applicable을 반환한다. 취득가 대체 시세로 비중을 판정하지 않는다. 역사적 평가·공통노출·고점복합입력은 미검증으로 명시한다. 원칙 화면·문장 해석·나머지 평가입력·회원 알림은 후속이며 운영 schema/데이터 이관을 뜻하지 않는다.
 
 ## 공용 저장 재무 조회
 

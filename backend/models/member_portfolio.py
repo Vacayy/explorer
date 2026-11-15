@@ -33,3 +33,28 @@ class PrincipleCreated(BaseModel):
 
 class PrincipleChanged(BaseModel):
     ok: bool
+
+from typing import Literal
+
+
+class MemberRuleCoverage(BaseModel):
+    principle_id: int
+    rule_index: int
+    rule: str
+    status: Literal['evaluated', 'partial', 'unavailable', 'not_applicable']
+    reason: str | None
+
+
+class MemberRuleViolation(BaseModel):
+    key: str
+    principle_id: int
+    rule: str
+    message: str
+
+
+class MemberPrincipleState(BaseModel):
+    as_of: str | None
+    rules: int
+    coverage: list[MemberRuleCoverage]
+    items: list[MemberRuleViolation]
+    notifications_enabled: Literal[False] = False
